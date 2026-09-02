@@ -639,10 +639,12 @@ func TestEnsureKafkaMessagingReadySkipsNonKafka(t *testing.T) {
 	require.NoError(t, server.ensureKafkaMessagingReady())
 }
 
-func TestEnsureKafkaMessagingReadyUsesAllKafkaTopics(t *testing.T) {
+func TestEnsureKafkaMessagingReadyUsesOnlyRoleTopics(t *testing.T) {
 	oldEnsureKafka := ensureKafkaMessaging
 	var captured clients.KafkaConfig
+	calls := 0
 	ensureKafkaMessaging = func(cfg clients.KafkaConfig) (*kafka.Dialer, error) {
+		calls++
 		captured = cfg
 		return &kafka.Dialer{}, nil
 	}
@@ -650,27 +652,40 @@ func TestEnsureKafkaMessagingReadyUsesAllKafkaTopics(t *testing.T) {
 		ensureKafkaMessaging = oldEnsureKafka
 	})
 
-	server := &restServer{
-		cfg: config.Config{
-			Messaging: config.MessagingConfig{
-				Type:                        "kafka",
-				ChannelPrefix:               "tenant-a",
-				KafkaBrokers:                []string{"broker-1:9092"},
-				KafkaTopicPartitions:        3,
-				KafkaTopicReplicationFactor: 2,
-			},
-		},
+	base := config.Config{Messaging: config.MessagingConfig{
+		Type:                        "kafka",
+		ChannelPrefix:               "tenant-a",
+		KafkaBrokers:                []string{"broker-1:9092"},
+		KafkaTopicPartitions:        3,
+		KafkaTopicReplicationFactor: 2,
+	}}
+	tests := []struct {
+		role   config.RuntimeRole
+		topics []string
+	}{
+		{role: config.RuntimeRoleAPI},
+		{role: config.RuntimeRoleController, topics: []string{"tenant-a.job.delay", "tenant-a.job.result"}},
+		{role: config.RuntimeRoleScheduler, topics: []string{"tenant-a.workflow.dispatch"}},
+		{role: config.RuntimeRoleWorker, topics: []string{"tenant-a.workflow.dispatch", "tenant-a.job.delay"}},
 	}
-
-	require.NoError(t, server.ensureKafkaMessagingReady())
-	require.Equal(t, []string{
-		"tenant-a.workflow.dispatch",
-		"tenant-a.job.delay",
-		"tenant-a.job.result",
-	}, captured.Topics)
-	require.Equal(t, []string{"broker-1:9092"}, captured.Brokers)
-	require.Equal(t, 3, captured.TopicPartitions)
-	require.Equal(t, 2, captured.TopicReplicationFactor)
+	for _, tc := range tests {
+		t.Run(string(tc.role), func(t *testing.T) {
+			cfg := base
+			cfg.Role = tc.role
+			server := &restServer{cfg: cfg}
+			before := calls
+			require.NoError(t, server.ensureKafkaMessagingReady())
+			if len(tc.topics) == 0 {
+				require.Equal(t, before, calls)
+				return
+			}
+			require.Equal(t, before+1, calls)
+			require.Equal(t, tc.topics, captured.Topics)
+			require.Equal(t, []string{"broker-1:9092"}, captured.Brokers)
+			require.Equal(t, 3, captured.TopicPartitions)
+			require.Equal(t, 2, captured.TopicReplicationFactor)
+		})
+	}
 }
 
 func TestBuildWorkflowTaskRunLockerRequiresRedisCacheType(t *testing.T) {

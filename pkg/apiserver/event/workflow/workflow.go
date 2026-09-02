@@ -36,18 +36,18 @@ type workflowRuntimeService interface {
 }
 
 type Workflow struct {
-	KubeClient                kubernetes.Interface            `inject:"kubeClient"`
-	KubeConfig                *rest.Config                    `inject:"kubeConfig"`
-	Store                     datastore.DataStore             `inject:"datastore"`
-	WorkflowService           workflowRuntimeService          `inject:""`
-	Queue                     msg.Queue                       `inject:"queue"`
-	DelayQueue                msg.Queue                       `inject:"delayQueue"`
-	ResultQueue               msg.Queue                       `inject:"resultQueue"`
-	Cfg                       *config.Config                  `inject:""`
-	Cache                     cache.ICache                    `inject:"cache"`
-	ResourceWaiter            informer.ComponentReadyObserver `inject:"resourceObserver"`
-	URLSecurityPolicyProvider *urlpolicy.Provider             `inject:""`
-	TaskRunLocker             locker.Locker                   `inject:"workflowTaskRunLocker"`
+	KubeClient                kubernetes.Interface   `inject:"kubeClient"`
+	KubeConfig                *rest.Config           `inject:"kubeConfig"`
+	Store                     datastore.DataStore    `inject:"datastore"`
+	WorkflowService           workflowRuntimeService `inject:""`
+	Queue                     msg.Queue
+	DelayQueue                msg.Queue
+	ResultQueue               msg.Queue
+	Cfg                       *config.Config `inject:""`
+	Cache                     cache.ICache   `inject:"cache"`
+	ResourceWaiter            informer.ComponentReadyObserver
+	URLSecurityPolicyProvider *urlpolicy.Provider `inject:""`
+	TaskRunLocker             locker.Locker       `inject:"workflowTaskRunLocker"`
 	controllerLifecycleMu     sync.Mutex
 	schedulerLifecycleMu      sync.Mutex
 	workerLimiterOnce         sync.Once

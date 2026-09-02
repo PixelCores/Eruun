@@ -87,7 +87,11 @@ func TestReadinessCheckWithHealthyQueue(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	h := &health{
-		Queue: &mockHealthQueue{},
+		Queues: &msg.RuntimeQueues{Dispatch: &mockHealthQueue{}},
+		Cfg: &config.Config{
+			Role:      config.RuntimeRoleScheduler,
+			Messaging: config.MessagingConfig{Type: "redis"},
+		},
 	}
 	r := gin.New()
 	r.GET("/ready", h.readinessCheck)
@@ -106,7 +110,10 @@ func TestReadinessCheckReportsRuntimeRole(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	h := &health{
-		Queue:   &mockHealthQueue{},
+		Queues: &msg.RuntimeQueues{
+			Dispatch: &mockHealthQueue{},
+			Delay:    &mockHealthQueue{},
+		},
 		Runtime: mockRuntimeReadiness{ready: true},
 		Cfg:     &config.Config{Role: config.RuntimeRoleWorker},
 	}
@@ -127,7 +134,6 @@ func TestReadinessCheckRejectsInitializingRuntimeLeader(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	h := &health{
-		Queue:   &mockHealthQueue{},
 		Runtime: mockRuntimeReadiness{reason: "scheduler leader is still initializing"},
 	}
 	r := gin.New()
@@ -146,7 +152,11 @@ func TestReadinessCheckWithUnhealthyQueue(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	h := &health{
-		Queue: &mockHealthQueue{statsError: errors.New("connection refused")},
+		Queues: &msg.RuntimeQueues{Dispatch: &mockHealthQueue{statsError: errors.New("connection refused")}},
+		Cfg: &config.Config{
+			Role:      config.RuntimeRoleScheduler,
+			Messaging: config.MessagingConfig{Type: "redis"},
+		},
 	}
 	r := gin.New()
 	r.GET("/ready", h.readinessCheck)
@@ -166,9 +176,7 @@ func TestReadinessCheckWithUnhealthyQueue(t *testing.T) {
 func TestReadinessCheckWithNilQueueWithoutExternalQueue(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	h := &health{
-		Queue: nil,
-	}
+	h := &health{}
 	r := gin.New()
 	r.GET("/ready", h.readinessCheck)
 
@@ -182,14 +190,35 @@ func TestReadinessCheckWithNilQueueWithoutExternalQueue(t *testing.T) {
 	require.Equal(t, "ready", payload["status"])
 }
 
-func TestReadinessCheckWithNilQueueInExternalMode(t *testing.T) {
+func TestReadinessCheckAPIHasNoQueueDependencyInExternalMode(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	h := &health{
-		Queue:       nil,
-		DelayQueue:  nil,
-		ResultQueue: nil,
 		Cfg: &config.Config{
+			Role:      config.RuntimeRoleAPI,
+			Messaging: config.MessagingConfig{Type: "redis"},
+		},
+	}
+	r := gin.New()
+	r.GET("/ready", h.readinessCheck)
+
+	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	resp := httptest.NewRecorder()
+	r.ServeHTTP(resp, req)
+
+	require.Equal(t, http.StatusOK, resp.Code)
+	var payload map[string]string
+	requireSuccessResponse(t, resp.Body.Bytes(), &payload)
+	require.Equal(t, "api", payload["role"])
+}
+
+func TestReadinessCheckControllerRequiresOnlyDelayAndResultQueues(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	h := &health{
+		Queues: &msg.RuntimeQueues{},
+		Cfg: &config.Config{
+			Role:      config.RuntimeRoleController,
 			Messaging: config.MessagingConfig{Type: "redis"},
 		},
 	}
@@ -202,11 +231,9 @@ func TestReadinessCheckWithNilQueueInExternalMode(t *testing.T) {
 
 	require.Equal(t, http.StatusServiceUnavailable, resp.Code)
 	envelope := decodeResponse(t, resp.Body.Bytes(), nil)
-	require.Equal(t, bcode.ErrServiceUnavailable.BusinessCode, envelope.Code)
-	require.Contains(t, envelope.Message, "external queue degraded")
-	require.Contains(t, envelope.Message, "dispatch")
 	require.Contains(t, envelope.Message, "delay")
 	require.Contains(t, envelope.Message, "result")
+	require.NotContains(t, envelope.Message, "dispatch")
 }
 
 func TestReadinessCheckWithExternalDelayQueueStatsError(t *testing.T) {
@@ -219,10 +246,12 @@ func TestReadinessCheckWithExternalDelayQueueStatsError(t *testing.T) {
 	})
 
 	h := &health{
-		Queue:       &mockHealthQueue{},
-		DelayQueue:  &mockHealthQueue{statsError: errors.New("delay queue down")},
-		ResultQueue: &mockHealthQueue{},
+		Queues: &msg.RuntimeQueues{
+			Delay:  &mockHealthQueue{statsError: errors.New("delay queue down")},
+			Result: &mockHealthQueue{},
+		},
 		Cfg: &config.Config{
+			Role:      config.RuntimeRoleController,
 			Messaging: config.MessagingConfig{Type: "kafka"},
 		},
 	}
@@ -251,10 +280,9 @@ func TestReadinessCheckWithKafkaBrokerConnectivityFailure(t *testing.T) {
 	})
 
 	h := &health{
-		Queue:       &mockHealthQueue{},
-		DelayQueue:  &mockHealthQueue{},
-		ResultQueue: &mockHealthQueue{},
+		Queues: &msg.RuntimeQueues{Dispatch: &mockHealthQueue{}},
 		Cfg: &config.Config{
+			Role:      config.RuntimeRoleScheduler,
 			Messaging: config.MessagingConfig{Type: "kafka", KafkaBrokers: []string{"127.0.0.1:1"}},
 		},
 	}
@@ -281,10 +309,9 @@ func TestReadinessCheckWithKafkaQueueStatsFailureAfterBrokerHealthPasses(t *test
 	})
 
 	h := &health{
-		Queue:       &mockHealthQueue{statsError: errors.New("queue stats failed")},
-		DelayQueue:  &mockHealthQueue{},
-		ResultQueue: &mockHealthQueue{},
+		Queues: &msg.RuntimeQueues{Dispatch: &mockHealthQueue{statsError: errors.New("queue stats failed")}},
 		Cfg: &config.Config{
+			Role:      config.RuntimeRoleScheduler,
 			Messaging: config.MessagingConfig{Type: "kafka", KafkaBrokers: []string{"127.0.0.1:9092"}},
 		},
 	}
@@ -304,9 +331,7 @@ func TestReadinessCheckWithKafkaQueueStatsFailureAfterBrokerHealthPasses(t *test
 func TestReadinessCheckWithNilQueue(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	h := &health{
-		Queue: nil,
-	}
+	h := &health{}
 	r := gin.New()
 	r.GET("/ready", h.readinessCheck)
 
@@ -333,10 +358,9 @@ func TestReadinessCheckWithKafkaTopicHealthFailure(t *testing.T) {
 	})
 
 	h := &health{
-		Queue:       &mockHealthQueue{},
-		DelayQueue:  &mockHealthQueue{},
-		ResultQueue: &mockHealthQueue{},
+		Queues: &msg.RuntimeQueues{Dispatch: &mockHealthQueue{}},
 		Cfg: &config.Config{
+			Role: config.RuntimeRoleScheduler,
 			Messaging: config.MessagingConfig{
 				Type:         "kafka",
 				KafkaBrokers: []string{"127.0.0.1:9092"},

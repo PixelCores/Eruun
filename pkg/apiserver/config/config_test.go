@@ -56,6 +56,30 @@ func TestRuntimeRoleCapabilities(t *testing.T) {
 	}
 }
 
+func TestRuntimeRoleQueueRequirements(t *testing.T) {
+	tests := []struct {
+		role                    RuntimeRole
+		dispatch, delay, result bool
+		topics                  []string
+	}{
+		{role: RuntimeRoleAPI, topics: []string{}},
+		{role: RuntimeRoleController, delay: true, result: true, topics: []string{"tenant.job.delay", "tenant.job.result"}},
+		{role: RuntimeRoleScheduler, dispatch: true, topics: []string{"tenant.workflow.dispatch"}},
+		{role: RuntimeRoleWorker, dispatch: true, delay: true, topics: []string{"tenant.workflow.dispatch", "tenant.job.delay"}},
+	}
+	for _, tc := range tests {
+		t.Run(string(tc.role), func(t *testing.T) {
+			cfg := NewConfig()
+			cfg.Role = tc.role
+			cfg.Messaging.ChannelPrefix = "tenant"
+			require.Equal(t, tc.dispatch, cfg.RequiresDispatchQueue())
+			require.Equal(t, tc.delay, cfg.RequiresDelayQueue())
+			require.Equal(t, tc.result, cfg.RequiresResultQueue())
+			require.Equal(t, tc.topics, cfg.RuntimeMessagingTopics())
+		})
+	}
+}
+
 func TestApplyEnvOverridesParsesRuntimeRole(t *testing.T) {
 	cfg := NewConfig()
 	flags := pflag.NewFlagSet("runtime-role", pflag.ContinueOnError)
