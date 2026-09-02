@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"fmt"
 
 	"testing"
 	"time"
@@ -410,6 +411,84 @@ func TestDispatchWorkflowSchedulesContinuesAfterDispatchFailure(t *testing.T) {
 	require.Equal(t, int64(0), store.schedules[0].LastRun)
 	require.Greater(t, store.schedules[1].NextRun, now.Unix())
 	require.NotZero(t, store.schedules[1].LastRun)
+}
+
+func TestDispatchWorkflowSchedulesProgressesPastUnchangedBatch(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		blockedBy    string
+		healthyCount int
+	}{
+		{name: "dispatch failures", blockedBy: "missing workflow", healthyCount: 1},
+		{name: "locked app", blockedBy: "lock", healthyCount: 1},
+		{name: "cron without a future date", blockedBy: "cron", healthyCount: 1},
+		{name: "empty page after candidate removal", blockedBy: "missing workflow", healthyCount: 200},
+		{name: "shrinking candidate set", blockedBy: "missing workflow", healthyCount: 201},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			now := time.Now().UTC()
+			blockedNext := now.Add(-time.Hour).Unix()
+			cron := "*/5 * * * *"
+			if tt.blockedBy == "cron" {
+				cron = "0 0 31 2 *"
+				var err error
+				blockedNext, err = nextWorkflowScheduleRun(cron, now)
+				require.NoError(t, err)
+				require.Negative(t, blockedNext)
+			}
+			steps, err := model.NewJSONStructByStruct(&model.WorkflowSteps{
+				Steps: []*model.WorkflowStep{{Name: "web", WorkflowType: config.JobDeploy}},
+			})
+			require.NoError(t, err)
+			store := &scheduleDataStore{}
+			for i := 0; i < 100; i++ {
+				store.schedules = append(store.schedules, &model.WorkflowSchedule{
+					ID: fmt.Sprintf("blocked-%03d", i), AppID: "app-blocked", WorkflowID: "wf-missing",
+					Cron: cron, Enabled: true, NextRun: blockedNext,
+				})
+			}
+			// Reverse insertion order exercises deterministic ordering at equal next_run values.
+			for i := tt.healthyCount - 1; i >= 0; i-- {
+				id := fmt.Sprintf("healthy-%03d", i)
+				store.workflows = append(store.workflows, &model.Workflow{ID: id, AppID: id, Name: "deploy", Steps: steps})
+				store.schedules = append(store.schedules, &model.WorkflowSchedule{
+					ID: id, AppID: id, WorkflowID: id, Cron: "*/5 * * * *", Enabled: true,
+					NextRun: now.Add(-time.Hour).Unix(),
+				})
+			}
+			lockProvider := locker.NewMemoryLocker("test-schedule-batch-progress")
+			if tt.blockedBy == "lock" {
+				defer holdWorkflowTestAppScheduleLock(t, lockProvider, "app-blocked")()
+			}
+			svc := &workflowServiceImpl{
+				Store: &transactionalScheduleDataStore{store}, Cfg: &config.Config{AllowPrivateURLTargets: true},
+				ScheduleLocker: lockProvider,
+			}
+			sawDispatchError := false
+			for poll := 0; poll < 10 && len(store.queues) < tt.healthyCount; poll++ {
+				_, err := svc.DispatchWorkflowSchedules(ctx)
+				if tt.blockedBy == "missing workflow" {
+					if err != nil {
+						require.ErrorContains(t, err, "dispatch workflow schedule blocked-")
+						sawDispatchError = true
+					}
+				} else {
+					require.NoError(t, err)
+				}
+				require.LessOrEqual(t, store.scheduleListSize, 100)
+			}
+			require.Len(t, store.queues, tt.healthyCount, "later due schedules must progress despite unchanged earlier schedules")
+			if tt.blockedBy == "missing workflow" {
+				require.True(t, sawDispatchError, "dispatch failures must still be returned")
+			}
+			for _, schedule := range store.schedules[:100] {
+				require.Equal(t, blockedNext, schedule.NextRun)
+				require.Zero(t, schedule.LastRun)
+				require.True(t, schedule.Enabled)
+			}
+		})
+	}
 }
 
 func TestDispatchWorkflowSchedulesContinuesAfterActiveAppSkip(t *testing.T) {

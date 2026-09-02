@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -61,6 +62,8 @@ type workflowServiceImpl struct {
 	Cfg                       *config.Config       `inject:""`
 	URLSecurityPolicyProvider *urlpolicy.Provider  `inject:""`
 	ScheduleLocker            locker.Locker
+	scheduleDispatchMu        sync.Mutex
+	scheduleDispatchPage      int
 }
 
 var workflowScheduleParser = cron.NewParser(
@@ -701,16 +704,25 @@ func (w *workflowServiceImpl) deleteWorkflowScheduleUnlocked(ctx context.Context
 }
 
 func (w *workflowServiceImpl) DispatchWorkflowSchedules(ctx context.Context) (int, error) {
+	w.scheduleDispatchMu.Lock()
+	defer w.scheduleDispatchMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
 	txStore, ok := w.Store.(datastore.Transactional)
 	if !ok {
 		return 0, fmt.Errorf("workflow schedule dispatch requires transactional datastore")
 	}
+	if w.scheduleDispatchPage == 0 {
+		w.scheduleDispatchPage = 1
+	}
 	now := time.Now().UTC()
-	schedules, err := repository.FindDueWorkflowSchedules(ctx, w.Store, now.Unix())
+	schedules, err := repository.FindDueWorkflowSchedules(ctx, w.Store, now.Unix(), w.scheduleDispatchPage)
 	if err != nil {
 		return 0, err
 	}
 	if len(schedules) == 0 {
+		w.scheduleDispatchPage = 1
 		return 0, nil
 	}
 	processed := 0
@@ -735,6 +747,14 @@ func (w *workflowServiceImpl) DispatchWorkflowSchedules(ctx context.Context) (in
 		if queued {
 			processed++
 		}
+	}
+	// Advance even when a full batch failed or was skipped. Successful dispatches
+	// can shrink the candidate set; wrapping at the end revisits any rows shifted
+	// into earlier pages, without changing their next_run or idempotency keys.
+	if len(schedules) == repository.WorkflowScheduleDispatchQueryBatchSize {
+		w.scheduleDispatchPage++
+	} else {
+		w.scheduleDispatchPage = 1
 	}
 	if len(dispatchErrs) > 0 {
 		return processed, errors.Join(dispatchErrs...)
