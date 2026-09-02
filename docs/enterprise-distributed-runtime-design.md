@@ -115,7 +115,7 @@ Workflow fencing 固定启用，Chart 不暴露关闭开关、v1 兼容开关、
 ## 9. 依赖与安全
 
 - MySQL 保存 Workflow、Job 和 ownership 状态；生产环境应使用经过验证的 HA 实例。
-- Redis 用于缓存、运行锁及可选的 Streams 消息；Kafka 可作为消息后端。
+- Redis 用于缓存、应用变更分布式锁及可选的 Streams 消息；Kafka 可作为消息后端，Workflow 执行租约由 MySQL 管理。
 - 内置 MySQL/Redis 只适合开发和演示。
 - run token 属于执行凭据，不写入业务日志、trace 或指标标签。
 - Scheduler 只需要 namespace-scoped Leader Election 权限；API、Controller 和 Worker 当前共享资源管理 ClusterRole，进一步细分 RBAC 属于后续安全工作。
