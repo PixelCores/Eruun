@@ -2,6 +2,7 @@ package job
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -337,6 +338,16 @@ func (s *resultOutboxTestStore) List(_ context.Context, query datastore.Entity, 
 			jobInfos = append(jobInfos, &copy)
 		}
 		sort.Slice(jobInfos, func(i, j int) bool {
+			if opts != nil && len(opts.SortBy) > 0 {
+				switch opts.SortBy[0].Key {
+				case "id":
+					return jobInfos[i].ID > jobInfos[j].ID
+				case "delay_execute_at":
+					if jobInfos[i].DelayExecuteAt != jobInfos[j].DelayExecuteAt {
+						return jobInfos[i].DelayExecuteAt < jobInfos[j].DelayExecuteAt
+					}
+				}
+			}
 			return jobInfos[i].CreateTime.After(jobInfos[j].CreateTime)
 		})
 		return paginateJobInfos(jobInfos, opts), nil
@@ -366,6 +377,30 @@ func (s *resultOutboxTestStore) CompareAndSwap(ctx context.Context, entity datas
 func (s *resultOutboxTestStore) CompareAndSwapWithConditions(_ context.Context, entity datastore.Entity, conditions map[string]interface{}, updates map[string]interface{}) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	if jobInfo, ok := entity.(*model.JobInfo); ok {
+		current, exists := s.jobInfos[jobInfo.ID]
+		if !exists {
+			return false, nil
+		}
+		for field, value := range conditions {
+			switch field {
+			case "delay_state":
+				if string(current.DelayState) != strings.TrimSpace(fmt.Sprint(value)) {
+					return false, nil
+				}
+			default:
+				return false, datastore.ErrEntityInvalid
+			}
+		}
+		if state, ok := updates["delay_state"].(string); ok {
+			current.DelayState = config.JobDelayState(state)
+		} else if state, ok := updates["delay_state"].(config.JobDelayState); ok {
+			current.DelayState = state
+		}
+		current.UpdateTime = time.Now()
+		return true, nil
+	}
 
 	outbox, ok := entity.(*model.JobResultOutbox)
 	if !ok {
@@ -434,6 +469,14 @@ func matchJobInfoFilters(jobInfo *model.JobInfo, opts *datastore.ListOptions) bo
 	}
 	for _, filter := range opts.FilterOptions.In {
 		switch filter.Key {
+		case "status":
+			if !containsString(filter.Values, jobInfo.Status) {
+				return false
+			}
+		case "delay_state":
+			if !containsString(filter.Values, string(jobInfo.DelayState)) {
+				return false
+			}
 		case "type":
 			if !containsString(filter.Values, jobInfo.Type) {
 				return false
@@ -448,6 +491,20 @@ func matchJobInfoFilters(jobInfo *model.JobInfo, opts *datastore.ListOptions) bo
 			}
 		case "run_generation":
 			if !containsString(filter.Values, fmt.Sprint(jobInfo.RunGeneration)) {
+				return false
+			}
+		}
+	}
+	for _, filter := range opts.FilterOptions.LessThan {
+		switch filter.Key {
+		case "delay_execute_at":
+			deadline, ok := filter.Value.(int64)
+			if !ok || jobInfo.DelayExecuteAt >= deadline {
+				return false
+			}
+		case "id":
+			beforeID, ok := filter.Value.(int)
+			if !ok || jobInfo.ID >= beforeID {
 				return false
 			}
 		}
@@ -883,6 +940,53 @@ func TestDelayDispatcherDispatchPersistsResultOutboxWithoutQueueDependency(t *te
 	createdJob, err := client.BatchV1().Jobs("default").Get(context.Background(), "delay-job-1", metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Equal(t, "delay-job-1", createdJob.Name)
+}
+
+func TestDelayDispatcherRecoversDueCheckpointWithoutQueue(t *testing.T) {
+	store := newResultOutboxTestStore()
+	client := fake.NewSimpleClientset()
+	executionKey := "execution-delay-recovery"
+	payload := &DelayJobPayload{
+		ExecuteAt:     time.Now().Add(-time.Minute).Unix(),
+		Namespace:     "default",
+		JobType:       string(config.JobDeployInstant),
+		TaskID:        "task-delay-recovery",
+		ExecutionKey:  executionKey,
+		RunGeneration: 4,
+		ServiceName:   "delay-job-recovery",
+		Job: &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
+			Name:      "delay-job-recovery",
+			Namespace: "default",
+		}},
+	}
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+	store.jobInfos[1] = &model.JobInfo{
+		ID:             1,
+		Type:           payload.JobType,
+		TaskID:         payload.TaskID,
+		ServiceName:    payload.ServiceName,
+		Status:         string(config.StatusDistributed),
+		ExecutionKey:   &executionKey,
+		RunGeneration:  payload.RunGeneration,
+		DelayState:     config.JobDelayStatePending,
+		DelayExecuteAt: payload.ExecuteAt,
+		DelayPayload:   string(raw),
+	}
+	dispatcher := NewDelayDispatcher(nil, client, store, "", "")
+
+	require.NoError(t, dispatcher.recoverDueCheckpoints(context.Background()))
+	item, wait := dispatcher.nextItem()
+	require.NotNil(t, item)
+	require.Zero(t, wait)
+	require.NoError(t, dispatcher.dispatch(context.Background(), item))
+	dispatcher.finish(context.Background(), item)
+
+	created, err := client.BatchV1().Jobs("default").Get(context.Background(), payload.Job.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, executionKey, created.Annotations[config.AnnotationJobExecutionKey])
+	require.Equal(t, config.JobDelayStateDispatched, store.jobInfos[1].DelayState)
+	require.Len(t, store.outboxes, 1)
 }
 
 func TestDelayDispatcherDispatchDoesNotPersistOutboxBeforeJobExists(t *testing.T) {
