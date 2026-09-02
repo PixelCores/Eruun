@@ -705,14 +705,14 @@ func (w *workflowServiceImpl) DispatchWorkflowSchedules(ctx context.Context) (in
 	if !ok {
 		return 0, fmt.Errorf("workflow schedule dispatch requires transactional datastore")
 	}
-	schedules, err := repository.FindEnabledWorkflowSchedules(ctx, w.Store)
+	now := time.Now().UTC()
+	schedules, err := repository.FindDueWorkflowSchedules(ctx, w.Store, now.Unix())
 	if err != nil {
 		return 0, err
 	}
 	if len(schedules) == 0 {
 		return 0, nil
 	}
-	now := time.Now().UTC()
 	processed := 0
 	var dispatchErrs []error
 	for _, schedule := range schedules {

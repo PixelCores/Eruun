@@ -9,6 +9,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
+const workflowScheduleDispatchQueryBatchSize = 100
+
 func CreateWorkflowSchedule(ctx context.Context, store datastore.DataStore, schedule *model.WorkflowSchedule) error {
 	return store.Add(ctx, schedule)
 }
@@ -67,9 +69,15 @@ func FindWorkflowScheduleByAppAndWorkflowID(ctx context.Context, store datastore
 	return nil, datastore.ErrRecordNotExist
 }
 
-func FindEnabledWorkflowSchedules(ctx context.Context, store datastore.DataStore) ([]*model.WorkflowSchedule, error) {
+func FindDueWorkflowSchedules(ctx context.Context, store datastore.DataStore, nowUnix int64) ([]*model.WorkflowSchedule, error) {
 	entities, err := store.List(ctx, &model.WorkflowSchedule{Enabled: true}, &datastore.ListOptions{
-		SortBy: []datastore.SortOption{{Key: "next_run", Order: datastore.SortOrderAscending}},
+		FilterOptions: datastore.FilterOptions{
+			// LessThan is strict, so use the next Unix second to express next_run <= now.
+			LessThan: []datastore.ComparisonQueryOption{{Key: "next_run", Value: nowUnix + 1}},
+		},
+		Page:     1,
+		PageSize: workflowScheduleDispatchQueryBatchSize,
+		SortBy:   []datastore.SortOption{{Key: "next_run", Order: datastore.SortOrderAscending}},
 	})
 	if err != nil {
 		return nil, err
