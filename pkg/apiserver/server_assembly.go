@@ -14,12 +14,10 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event"
-	workflowevent "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/mysql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api"
 	"github.com/PixelCores/Eruun/pkg/apiserver/security/urlpolicy"
@@ -99,10 +97,6 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 		iCache = cache.NewMemCacheWithClient(false, redisClient)
 	}
 	s.cache = iCache
-	workflowTaskRunLocker, err := s.buildWorkflowTaskRunLocker(cacheType, iCache)
-	if err != nil {
-		return err
-	}
 
 	// 将db 注入到IOC中
 	if err := s.beanContainer.ProvideWithName("datastore", s.dataStore); err != nil {
@@ -111,9 +105,6 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 
 	if err := s.beanContainer.ProvideWithName("cache", iCache); err != nil {
 		return fmt.Errorf("fail to provides the cache bean to the container: %w", err)
-	}
-	if err := s.beanContainer.ProvideWithName("workflowTaskRunLocker", workflowTaskRunLocker); err != nil {
-		return fmt.Errorf("fail to provides the workflow task run locker bean to the container: %w", err)
 	}
 
 	// Initialize work queue. Messaging backends are required once configured.
@@ -267,21 +258,6 @@ func (s *restServer) initRedisClientForConfiguredBackends() (*redis.Client, erro
 		return nil, fmt.Errorf("init redis client for configured redis backend: %w", err)
 	}
 	return redisClient, nil
-}
-
-func (s *restServer) buildWorkflowTaskRunLocker(cacheType string, iCache cache.ICache) (locker.Locker, error) {
-	cacheType = strings.ToLower(strings.TrimSpace(cacheType))
-	if cacheType != string(cache.CacheTypeRedis) {
-		return nil, fmt.Errorf("workflow task run locker requires cache-type=redis")
-	}
-	if iCache == nil {
-		return nil, fmt.Errorf("workflow task run locker requires redis cache")
-	}
-	redisClient := iCache.GetRedisClient()
-	if redisClient == nil {
-		return nil, fmt.Errorf("workflow task run locker requires redis client")
-	}
-	return workflowevent.NewTaskRunRedisLocker(redisClient)
 }
 
 func (s *restServer) buildQueue(streamKey string, redisClient *redis.Client) (msg.Queue, error) {

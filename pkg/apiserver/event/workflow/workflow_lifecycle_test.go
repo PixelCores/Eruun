@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 )
 
@@ -52,9 +51,8 @@ func TestWorkflowStartWorkerStartsNewGenerationWhilePreviousStops(t *testing.T) 
 	cfg := config.NewConfig()
 	queue := newLifecycleBlockingQueue(200 * time.Millisecond)
 	w := &Workflow{
-		Queue:         queue,
-		Cfg:           cfg,
-		taskRunLocker: locker.NewMemoryLocker(workflowTaskRunLockerPrefix),
+		Queue: queue,
+		Cfg:   cfg,
 	}
 
 	firstCtx, cancelFirst := context.WithCancel(context.Background())

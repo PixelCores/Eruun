@@ -215,17 +215,17 @@ func TestValidateDatastoreURLForMySQL(t *testing.T) {
 	})
 }
 
-func TestValidateWorkflowTaskRunLockerRequiresRedisCacheType(t *testing.T) {
+func TestValidateApplicationMutationLockRequiresRedisCacheType(t *testing.T) {
 	cfg := NewConfig()
 	cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
 	cfg.Cache.CacheType = "memory"
 
 	errs := cfg.Validate()
 
-	require.Contains(t, errorsJoin(errs), "workflow task run locker requires cache-type=redis")
+	require.Contains(t, errorsJoin(errs), "distributed application mutation locking requires cache-type=redis")
 }
 
-func TestValidateWorkflowTaskRunLockerTrimsRedisCacheType(t *testing.T) {
+func TestValidateApplicationMutationLockTrimsRedisCacheType(t *testing.T) {
 	cfg := NewConfig()
 	cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
 	cfg.Cache.CacheType = " redis "

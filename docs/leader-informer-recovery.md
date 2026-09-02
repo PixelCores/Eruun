@@ -43,7 +43,7 @@ Controller Leader 负责延迟 Job、结果消息和结果 outbox 协调；Sched
 - WorkflowQueue 状态写入结果不确定或执行 ownership 丢失时，本地取消使用基础设施接管原因；旧执行不写入 `cancelled` JobInfo，仍由当前 Worker 保留租约并按权威任务快照恢复。用户取消继续写入明确的 `cancelled` 终态。
 - 延迟 Job、结果消息和结果 outbox 透传 `executionKey/runGeneration`；结果写入按该身份精确查找 JobInfo，同名 Kubernetes Job 也用注解校验身份后才允许收集日志或删除。
 
-在 30 秒 lease 和 10 秒 reaper 默认值下，系统目标是在故障后 60 秒内让可恢复任务重新进入派发。消息队列提供 at-least-once 交付，Redis task-run lock 用于降低重复启动概率，数据库 token 是最终 fencing 事实。
+在 30 秒 lease 和 10 秒 reaper 默认值下，系统目标是在故障后 60 秒内让可恢复任务重新进入派发。消息队列提供 at-least-once 交付，Worker 通过数据库 CAS 认领执行 ownership，数据库 generation/token/worker 是执行与状态写入的 fencing 依据；Worker 不再获取 Redis task-run lock。
 
 ## 运行建议
 

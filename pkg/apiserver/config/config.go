@@ -295,7 +295,7 @@ func (c *Config) Validate() []error {
 	}
 	cacheType := strings.ToLower(strings.TrimSpace(c.Cache.CacheType))
 	if cacheType != REDIS {
-		errs = append(errs, fmt.Errorf("workflow task run locker requires cache-type=redis"))
+		errs = append(errs, fmt.Errorf("distributed application mutation locking requires cache-type=redis"))
 	} else if strings.TrimSpace(c.Cache.CacheHost) == "" || c.Cache.CacheProt <= 0 {
 		errs = append(errs, fmt.Errorf("redis cache host/port is invalid"))
 	}
