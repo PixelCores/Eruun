@@ -1,0 +1,7 @@
+{
+  "name": ".NET",
+  "version": "8.0",
+  "enabled": true,
+  "cpuReq": "100m",
+  "memReq": "0Mi"
+}

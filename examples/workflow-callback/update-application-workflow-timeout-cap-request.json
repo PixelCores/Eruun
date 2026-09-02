@@ -1,0 +1,17 @@
+{
+  "_comment": "callback.timeoutSeconds 超过 72h 时会被服务端钳制为 72h（259200 秒）",
+  "name": "deploy-with-callback-timeout-cap",
+  "alias": "deploy-callback-cap",
+  "callback": {
+    "success": "http://example.com/callback/success",
+    "failure": "http://example.com/callback/failure",
+    "timeoutSeconds": 345600
+  },
+  "workflow": [
+    {
+      "name": "deploy-nginx",
+      "mode": "StepByStep",
+      "components": ["nginx"]
+    }
+  ]
+}

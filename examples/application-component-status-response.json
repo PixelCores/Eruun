@@ -1,0 +1,28 @@
+{
+  "_comment": "Response example for GET /api/v1/applications/:appID/components/status.",
+  "code": 0,
+  "message": "",
+  "data": {
+    "appId": "app-123",
+    "components": [
+      {
+        "name": "mysql",
+        "namespace": "default",
+        "type": "store",
+        "status": "Running",
+        "replicas": 2,
+        "readyReplicas": 2,
+        "lastAbnormal": ""
+      },
+      {
+        "name": "redis",
+        "namespace": "default",
+        "type": "store",
+        "status": "Pending",
+        "replicas": 1,
+        "readyReplicas": 0,
+        "lastAbnormal": "container=redis reason=ImagePullBackOff"
+      }
+    ]
+  }
+}

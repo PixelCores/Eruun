@@ -1,0 +1,8 @@
+{
+  "sourceAppId": "app-version-101",
+  "dryRun": true,
+  "targetOnlyStrategy": "preserve",
+  "strategy": "rolling",
+  "autoExec": false,
+  "description": "preview target app update while preserving target-only components"
+}

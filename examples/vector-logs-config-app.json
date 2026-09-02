@@ -1,0 +1,32 @@
+{
+  "name": "vector-logs-config",
+  "namespace": "paas-game-review",
+  "version": "1.0.0",
+  "project": "default",
+  "description": "Converted from ConfigMap vector-logs",
+  "component": [
+    {
+      "name": "vector-logs",
+      "type": "config",
+      "namespace": "paas-game-review",
+      "replicas": 1,
+      "properties": {
+        "conf": {
+          "vector.toml": "[sources.source_logs]\ntype = \"file\"\ninclude = [\"/app/log/*.log\"]\nignore_older = 86400\nread_from = \"beginning\"\n\n[sinks.console]\ntype = \"console\"\ninputs = [\"source_logs\"]\ntarget = \"stdout\"\nencoding.codec = \"text\""
+        }
+      },
+      "traits": {
+        "share": {
+          "strategy": "default"
+        }
+      }
+    }
+  ],
+  "workflow": [
+    {
+      "name": "deploy",
+      "mode": "StepByStep",
+      "components": ["vector-logs"]
+    }
+  ]
+}

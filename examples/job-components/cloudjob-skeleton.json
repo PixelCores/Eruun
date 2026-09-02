@@ -1,0 +1,35 @@
+{
+  "name": "cloudjob-demo",
+  "namespace": "default",
+  "version": "1.0.0",
+  "description": "CloudJob skeleton demo",
+  "component": [
+    {
+      "name": "bootstrap-cloud",
+      "type": "cloudjob",
+      "properties": {
+        "cloud": {
+          "provider": "aliyun",
+          "action": "create-ecs",
+          "params": {
+            "region": "cn-hangzhou",
+            "instanceType": "ecs.g6.large"
+          }
+        }
+      }
+    },
+    {
+      "name": "app-api",
+      "type": "webservice",
+      "image": "nginx:1.25",
+      "replicas": 1,
+      "properties": {
+        "ports": [
+          {
+            "port": 80
+          }
+        ]
+      }
+    }
+  ]
+}

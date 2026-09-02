@@ -1,0 +1,11 @@
+{
+  "appId": "app-123",
+  "taskId": "task-cleanup-001",
+  "deletedResources": [
+    "Deployment:default/deploy-web-app-123",
+    "Service:default/service-web-app-123"
+  ],
+  "failedResources": [
+    "ConfigMap:default/config-app-123 (not found)"
+  ]
+}

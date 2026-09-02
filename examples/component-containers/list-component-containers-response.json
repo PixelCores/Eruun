@@ -1,0 +1,33 @@
+{
+  "code": 0,
+  "message": "",
+  "data": {
+    "appId": "app-1",
+    "componentName": "api",
+    "componentType": "webservice",
+    "pods": [
+      {
+        "podName": "api-7c9bbd7d4f-9qzqx",
+        "namespace": "default",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "api",
+            "image": "nginx:1.25",
+            "ready": true,
+            "restartCount": 0,
+            "state": "running"
+          },
+          {
+            "name": "sidecar",
+            "image": "busybox:1.36",
+            "ready": false,
+            "restartCount": 3,
+            "state": "waiting",
+            "reason": "CrashLoopBackOff"
+          }
+        ]
+      }
+    ]
+  }
+}

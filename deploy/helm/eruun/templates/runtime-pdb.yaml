@@ -1,0 +1,25 @@
+{{- define "eruun.runtimePDB" -}}
+{{- $root := index . "root" -}}
+{{- $role := index . "role" -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "eruun.suffixedName" (dict "root" $root "suffix" $role) }}
+  labels:
+    {{- include "eruun.labels" $root | nindent 4 }}
+spec:
+  maxUnavailable: {{ $root.Values.podDisruptionBudget.maxUnavailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: {{ $role }}
+      app.kubernetes.io/instance: {{ $root.Release.Name }}
+---
+{{- end -}}
+{{- if .Values.podDisruptionBudget.enabled }}
+{{- range $role := list "api" "controller" "scheduler" "worker" }}
+{{- $roleValues := index $.Values.runtime.roles $role }}
+{{- if gt (int $roleValues.replicas) 1 }}
+{{ include "eruun.runtimePDB" (dict "root" $ "role" $role) }}
+{{- end }}
+{{- end }}
+{{- end }}

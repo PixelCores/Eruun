@@ -1,0 +1,5 @@
+{
+  "workflowId": "wf-123",
+  "cron": "*/5 * * * *",
+  "enabled": true
+}

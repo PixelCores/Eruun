@@ -1,0 +1,12 @@
+{
+  "type": "aliyunCloud",
+  "value": {
+    "accessKeyId": "replace-with-access-key-id",
+    "accessKeySecret": "replace-with-access-key-secret",
+    "endpoint": "nas.cn-hangzhou.aliyuncs.com",
+    "regionId": "cn-hangzhou",
+    "zoneId": "cn-hangzhou-i",
+    "vpcId": "vpc-xxxx",
+    "vswId": "vsw-xxxx"
+  }
+}

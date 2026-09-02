@@ -1,0 +1,92 @@
+{
+  "code": 0,
+  "message": "",
+  "data": {
+    "namespace": "2506191710kp42v3",
+    "mode": "dry-run",
+    "managementMode": "adopted",
+    "planFingerprint": "v1:2026-07:<redacted-hmac>",
+    "summary": {
+      "appsPlanned": 1,
+      "appsApplied": 0,
+      "componentsPlanned": 5,
+      "componentsApplied": 0,
+      "resourcesScanned": 19,
+      "resourcesLabeledSuccess": 0,
+      "resourcesLabeledFailed": 0
+    },
+    "apps": [
+      {
+        "appId": "",
+        "name": "lucky77pro-25062015279gan7p",
+        "workflowDisabled": false,
+        "components": [
+          "backend",
+          "frontend",
+          "socket",
+          "mysql",
+          "redis"
+        ]
+      }
+    ],
+    "resourceResults": [
+      {
+        "kind": "StatefulSet",
+        "namespace": "2506191710kp42v3",
+        "name": "m25062015279gan7p-mysql",
+        "source": {
+          "apiVersion": "apps/v1",
+          "kind": "StatefulSet",
+          "namespace": "2506191710kp42v3",
+          "name": "m25062015279gan7p-mysql",
+          "uid": "00000000-0000-0000-0000-000000000001",
+          "resourceVersion": "100001",
+          "specDigest": "<sha256-redacted>"
+        },
+        "componentName": "mysql",
+        "dependencyRole": "workload",
+        "ownership": "exclusive",
+        "disposition": "managed",
+        "status": "planned"
+      },
+      {
+        "kind": "PersistentVolumeClaim",
+        "namespace": "2506191710kp42v3",
+        "name": "data-m25062015279gan7p-mysql-0",
+        "source": {
+          "apiVersion": "v1",
+          "kind": "PersistentVolumeClaim",
+          "namespace": "2506191710kp42v3",
+          "name": "data-m25062015279gan7p-mysql-0",
+          "uid": "00000000-0000-0000-0000-000000000002",
+          "resourceVersion": "100002",
+          "specDigest": "<sha256-redacted>"
+        },
+        "componentName": "mysql",
+        "dependencyRole": "pvc",
+        "ownership": "data-protected",
+        "disposition": "data-protected",
+        "status": "planned"
+      },
+      {
+        "kind": "Deployment",
+        "namespace": "2506191710kp42v3",
+        "name": "proxy-2506191710kp42v3",
+        "source": {
+          "apiVersion": "apps/v1",
+          "kind": "Deployment",
+          "namespace": "2506191710kp42v3",
+          "name": "proxy-2506191710kp42v3",
+          "uid": "00000000-0000-0000-0000-000000000003",
+          "resourceVersion": "100003",
+          "specDigest": "<sha256-redacted>"
+        },
+        "dependencyRole": "outside-root",
+        "ownership": "external",
+        "disposition": "excluded",
+        "status": "skipped"
+      }
+    ],
+    "warnings": []
+  }
+}

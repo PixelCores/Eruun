@@ -1,0 +1,5 @@
+{
+  "code": 10000,
+  "message": "application config does not comply with OAM specification",
+  "data": null
+}

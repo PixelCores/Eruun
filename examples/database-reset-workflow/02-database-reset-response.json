@@ -1,0 +1,14 @@
+{
+  "code": 0,
+  "message": "",
+  "data": {
+    "appId": "app-123",
+    "workflowId": "workflow-database-reset-001",
+    "taskId": "task-database-reset-001",
+    "databaseComponents": [
+      "mysql",
+      "redis"
+    ],
+    "restartComponents": []
+  }
+}

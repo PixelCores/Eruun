@@ -1,0 +1,201 @@
+{
+  "_comment": "Response example for GET /api/v1/applications/:appID/components with sidecars, services, ingresses, resourceConfigs, and credentials fields",
+  "code": 0,
+  "message": "",
+  "data": {
+    "components": [
+      {
+        "id": 1,
+        "appId": "app-123",
+        "name": "api",
+        "namespace": "default",
+        "image": "nginx:1.27",
+        "replicas": 1,
+        "type": "webservice",
+        "properties": {
+          "ports": [
+            {
+              "port": 80
+            }
+          ],
+          "env": {},
+          "conf": {},
+          "secret": {},
+          "command": []
+        },
+        "traits": {
+          "sidecar": [
+            {
+              "name": "log-agent",
+              "image": "vector:0.36",
+              "command": [
+                "vector"
+              ],
+              "args": [
+                "--config",
+                "/etc/vector/vector.yaml"
+              ],
+              "env": {
+                "VECTOR_LOG": "info"
+              }
+            }
+          ],
+          "service": [
+            {
+              "name": "api-svc",
+              "type": "internal",
+              "ports": [
+                {
+                  "name": "http",
+                  "port": 80,
+                  "targetPort": 80,
+                  "protocol": "TCP"
+                }
+              ]
+            }
+          ],
+          "ingress": [
+            {
+              "routes": [
+                {
+                  "host": "api.example.com",
+                  "path": "/",
+                  "backend": {}
+                }
+              ]
+            }
+          ],
+          "envs": [
+            {
+              "name": "DB_PASSWORD",
+              "valueFrom": {
+                "secret": {
+                  "name": "api-secret",
+                  "key": "password"
+                }
+              }
+            }
+          ],
+          "resources": {
+            "cpu": "500m",
+            "memory": "256Mi"
+          }
+        },
+        "sidecars": [
+          {
+            "name": "log-agent",
+            "image": "vector:0.36",
+            "command": [
+              "vector"
+            ],
+            "args": [
+              "--config",
+              "/etc/vector/vector.yaml"
+            ],
+            "env": {
+              "VECTOR_LOG": "info"
+            }
+          }
+        ],
+        "services": [
+          {
+            "name": "api-svc",
+            "namespace": "default",
+            "type": "internal",
+            "ports": [
+              {
+                "name": "http",
+                "port": 80,
+                "targetPort": 80,
+                "protocol": "TCP"
+              }
+            ]
+          }
+        ],
+        "ingresses": [
+          {
+            "name": "api-ingress",
+            "namespace": "default",
+            "routes": [
+              {
+                "host": "api.example.com",
+                "path": "/",
+                "serviceName": "api-svc",
+                "servicePort": 80
+              }
+            ]
+          }
+        ],
+        "resourceConfigs": [
+          {
+            "scope": "main",
+            "name": "api",
+            "cpu": "500m",
+            "memory": "256Mi"
+          }
+        ],
+        "credentials": [
+          {
+            "source": "component.envs",
+            "envName": "DB_PASSWORD",
+            "secretName": "api-secret",
+            "key": "password",
+            "value": "__REPLACE_WITH_SECRET__",
+            "resolved": true
+          }
+        ],
+        "status": "Running",
+        "externalLinks": [
+          {
+            "type": "ingress",
+            "value": "api.example.com/"
+          }
+        ],
+        "createTime": "2026-02-17T00:00:00Z",
+        "updateTime": "2026-02-17T00:00:00Z"
+      },
+      {
+        "id": 2,
+        "appId": "app-123",
+        "name": "worker",
+        "namespace": "default",
+        "image": "busybox:1.36",
+        "replicas": 1,
+        "type": "job",
+        "properties": {
+          "ports": [],
+          "env": {},
+          "conf": {},
+          "secret": {},
+          "command": []
+        },
+        "traits": {},
+        "status": "Running",
+        "createTime": "2026-02-17T00:00:00Z",
+        "updateTime": "2026-02-17T00:00:00Z"
+      },
+      {
+        "id": 3,
+        "appId": "app-123",
+        "name": "api-secret",
+        "namespace": "default",
+        "replicas": 0,
+        "type": "secret",
+        "properties": {
+          "ports": [],
+          "env": {},
+          "conf": {},
+          "secret": {
+            "password": "__REPLACE_WITH_SECRET__",
+            "username": "root"
+          },
+          "command": []
+        },
+        "traits": {},
+        "status": "Running",
+        "createTime": "2026-02-17T00:00:00Z",
+        "updateTime": "2026-02-17T00:00:00Z"
+      }
+    ]
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "_comment": "Template instantiation with explicit workflow: server should not rewrite user workflow",
+  "name": "tenant-b-from-template",
+  "alias": "tenant-b-template-app",
+  "version": "1.0.0",
+  "description": "Explicit workflow should be preserved when using tmp.id",
+  "component": [
+    {
+      "name": "tenant-b-config",
+      "type": "config",
+      "tmp": {
+        "id": "tmpl-mixed-stack-id",
+        "target": "tpl-config"
+      }
+    },
+    {
+      "name": "tenant-b-store",
+      "type": "store",
+      "tmp": {
+        "id": "tmpl-mixed-stack-id",
+        "target": "tpl-store"
+      }
+    },
+    {
+      "name": "tenant-b-api",
+      "type": "webservice",
+      "tmp": {
+        "id": "tmpl-mixed-stack-id",
+        "target": "tpl-web"
+      }
+    }
+  ],
+  "workflow": [
+    {
+      "name": "custom-first",
+      "mode": "StepByStep",
+      "components": [
+        "tenant-b-config"
+      ]
+    },
+    {
+      "name": "custom-second",
+      "mode": "StepByStep",
+      "components": [
+        "tenant-b-store",
+        "tenant-b-api"
+      ]
+    }
+  ]
+}
+

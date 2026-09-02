@@ -1,0 +1,58 @@
+{
+  "_comment": "Template instantiation without workflow: server should auto-generate 4 staged workflow steps",
+  "name": "tenant-a-from-template",
+  "alias": "tenant-a-template-app",
+  "version": "1.0.0",
+  "description": "Auto staged workflow example for tmp.id multi-component references",
+  "component": [
+    {
+      "name": "tenant-a-config",
+      "type": "config",
+      "tmp": {
+        "id": "tmpl-mixed-stack-id",
+        "target": "tpl-config"
+      }
+    },
+    {
+      "name": "tenant-a-secret",
+      "type": "secret",
+      "tmp": {
+        "id": "tmpl-mixed-stack-id",
+        "target": "tpl-secret"
+      }
+    },
+    {
+      "name": "tenant-a-store",
+      "type": "store",
+      "tmp": {
+        "id": "tmpl-mixed-stack-id",
+        "target": "tpl-store"
+      }
+    },
+    {
+      "name": "tenant-a-worker",
+      "type": "job",
+      "tmp": {
+        "id": "tmpl-mixed-stack-id",
+        "target": "tpl-job"
+      }
+    },
+    {
+      "name": "tenant-a-api",
+      "type": "webservice",
+      "tmp": {
+        "id": "tmpl-mixed-stack-id",
+        "target": "tpl-web"
+      }
+    },
+    {
+      "name": "tenant-a-nightly",
+      "type": "scheduledjob",
+      "tmp": {
+        "id": "tmpl-mixed-stack-id",
+        "target": "tpl-cron"
+      }
+    }
+  ]
+}
+

@@ -1,0 +1,55 @@
+{
+  "namespace": "2506191710kp42v3",
+  "mode": "apply",
+  "managementMode": "adopted",
+  "planFingerprint": "v1:2026-07:<replace-with-dry-run-hmac>",
+  "applications": [
+    {
+      "name": "lucky77pro-25062015279gan7p",
+      "alias": "lucky77pro",
+      "targetAppId": "",
+      "components": [
+        {
+          "name": "backend",
+          "workload": {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "name": "lucky77pro-25062015279gan7p-backend"
+          }
+        },
+        {
+          "name": "frontend",
+          "workload": {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "name": "lucky77pro-25062015279gan7p-frontend"
+          }
+        },
+        {
+          "name": "socket",
+          "workload": {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "name": "lucky77pro-25062015279gan7p-socket"
+          }
+        },
+        {
+          "name": "mysql",
+          "workload": {
+            "apiVersion": "apps/v1",
+            "kind": "StatefulSet",
+            "name": "m25062015279gan7p-mysql"
+          }
+        },
+        {
+          "name": "redis",
+          "workload": {
+            "apiVersion": "apps/v1",
+            "kind": "StatefulSet",
+            "name": "lucky77pro-25062015279gan7p-redis"
+          }
+        }
+      ]
+    }
+  ]
+}

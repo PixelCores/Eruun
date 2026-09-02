@@ -1,0 +1,31 @@
+{
+  "version": "1.1.0",
+  "workflowId": "wf-custom-update",
+  "autoExec": true,
+  "components": [
+    {
+      "name": "backend",
+      "image": "myapp/backend:v1.1.0"
+    }
+  ],
+  "callback": {
+    "success": "https://example.com/eruun/version/success",
+    "failure": "https://example.com/eruun/version/failure",
+    "timeout": "https://example.com/eruun/version/timeout",
+    "reject": "https://example.com/eruun/version/reject",
+    "cancelled": "https://example.com/eruun/version/cancelled",
+    "methods": {
+      "success": "POST",
+      "failure": "POST",
+      "timeout": "POST",
+      "reject": "POST",
+      "cancelled": "POST"
+    },
+    "headers": {
+      "X-Source": "eruun",
+      "X-Callback-Scope": "version-update-task"
+    },
+    "timeoutSeconds": 30
+  },
+  "description": "Update backend image and use a callback only for this version update task"
+}

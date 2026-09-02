@@ -1,0 +1,4 @@
+{
+  "_comment": "GET /api/v1/applications/:appID/components/status uses path params; no request body.",
+  "appId": "app-123"
+}

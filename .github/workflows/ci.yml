@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Sensitive-content and brand checks
+        run: scripts/check-sensitive-content.sh
+      - name: Format
+        shell: bash
+        run: |
+          unformatted=$(find . -type f -name '*.go' -not -path './.git/*' -print0 | xargs -0 gofmt -l)
+          test -z "${unformatted}" || {
+            printf 'Unformatted Go files:\n%s\n' "${unformatted}" >&2
+            exit 1
+          }
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test ./... -race -coverprofile=coverage.out
+      - name: Build server
+        run: go build -trimpath -o "${{ runner.temp }}/eruun-server" ./cmd/main.go
+      - name: Deployment tests
+        run: |
+          deploy/all_in_one_install_quickstart_test.sh
+          go test ./deploy
+
+  helm:
+    runs-on: ubuntu-latest
+    env:
+      HELM_VERSION: v4.2.0
+      HELM_SHA256: 97dbeb971be4ac4b27e3839976d9564c0fb35c6f3b1da89dd1e292d236af4096
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install pinned Helm
+        shell: bash
+        run: |
+          archive="helm-${HELM_VERSION}-linux-amd64.tar.gz"
+          curl --fail --silent --show-error --location \
+            "https://get.helm.sh/${archive}" \
+            --output "${{ runner.temp }}/${archive}"
+          printf '%s  %s\n' "${HELM_SHA256}" "${{ runner.temp }}/${archive}" |
+            sha256sum --check -
+          tar -xzf "${{ runner.temp }}/${archive}" -C "${{ runner.temp }}"
+          printf '%s\n' "${{ runner.temp }}/linux-amd64" >> "${GITHUB_PATH}"
+      - name: Lint and render Chart
+        run: |
+          helm lint deploy/helm/eruun \
+            --set-string mysql.rootPassword=ci-only \
+            --set-string redis.password=ci-only
+          HELM_BIN=helm deploy/helm/eruun/helm_template_test.sh
+
+  licenses:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Check third-party licenses
+        run: scripts/check-licenses.sh
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build image without publishing
+        run: docker build --tag ghcr.io/pixelcores/eruun:ci .

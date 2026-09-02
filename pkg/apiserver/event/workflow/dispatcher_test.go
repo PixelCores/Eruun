@@ -1,0 +1,199 @@
+package workflow
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"io"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+	"k8s.io/klog/v2"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
+)
+
+type fakeAckQueue struct {
+	ackErr   error
+	ackCalls []ackRequest
+	enqueued [][]byte
+}
+
+type ackRequest struct {
+	group string
+	ids   []string
+}
+
+func (f *fakeAckQueue) record(group string, ids ...string) {
+	copied := append([]string(nil), ids...)
+	f.ackCalls = append(f.ackCalls, ackRequest{group: group, ids: copied})
+}
+
+func (f *fakeAckQueue) EnsureGroup(context.Context, string) error { return nil }
+func (f *fakeAckQueue) Enqueue(_ context.Context, payload []byte) (string, error) {
+	f.enqueued = append(f.enqueued, append([]byte(nil), payload...))
+	return "", nil
+}
+func (f *fakeAckQueue) ReadGroup(context.Context, string, string, int, time.Duration) ([]msg.Message, error) {
+	return nil, errors.New("not implemented")
+}
+func (f *fakeAckQueue) Ack(ctx context.Context, group string, ids ...string) error {
+	f.record(group, ids...)
+	return f.ackErr
+}
+func (f *fakeAckQueue) AutoClaim(context.Context, string, string, time.Duration, int) ([]msg.Message, error) {
+	return nil, errors.New("not implemented")
+}
+func (f *fakeAckQueue) Close(context.Context) error                         { return nil }
+func (f *fakeAckQueue) Stats(context.Context, string) (int64, int64, error) { return 0, 0, nil }
+
+func captureKlogOutput(t *testing.T, fn func()) string {
+	t.Helper()
+
+	oldStderr := os.Stderr
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+
+	os.Stderr = w
+	klog.SetOutput(w)
+
+	fn()
+
+	require.NoError(t, w.Close())
+	os.Stderr = oldStderr
+	klog.SetOutput(oldStderr)
+
+	var buf bytes.Buffer
+	_, err = io.Copy(&buf, r)
+	require.NoError(t, err)
+	require.NoError(t, r.Close())
+	return buf.String()
+}
+
+func TestAckMessageDelegatesToQueue(t *testing.T) {
+	q := &fakeAckQueue{}
+	wf := &Workflow{
+		Queue: q,
+		Cfg: &config.Config{
+			Workflow: config.WorkflowRuntimeConfig{MaxConcurrentWorkflows: 1},
+		},
+	}
+
+	err := wf.ackMessage(context.Background(), config.WorkflowWorkerQueueGroup, "1", "2", "3")
+	require.NoError(t, err)
+	require.Len(t, q.ackCalls, 1)
+	require.Equal(t, config.WorkflowWorkerQueueGroup, q.ackCalls[0].group)
+	require.Equal(t, []string{"1", "2", "3"}, q.ackCalls[0].ids)
+}
+
+func TestAckMessagePropagatesError(t *testing.T) {
+	expectedErr := errors.New("ack failed")
+	q := &fakeAckQueue{ackErr: expectedErr}
+	wf := &Workflow{Queue: q}
+
+	err := wf.ackMessage(context.Background(), config.WorkflowWorkerQueueGroup, "42")
+	require.ErrorIs(t, err, expectedErr)
+	require.Len(t, q.ackCalls, 1)
+}
+
+func TestAckDispatchMessagesBatchesIDs(t *testing.T) {
+	q := &fakeAckQueue{}
+	wf := &Workflow{Queue: q}
+	acks := []dispatchAck{
+		{id: "1", taskID: "task-1"},
+		{id: "2", taskID: "task-2", claimed: true},
+	}
+
+	wf.ackDispatchMessages(context.Background(), config.WorkflowWorkerQueueGroup, "consumer-1", acks)
+
+	require.Len(t, q.ackCalls, 1)
+	require.Equal(t, config.WorkflowWorkerQueueGroup, q.ackCalls[0].group)
+	require.Equal(t, []string{"1", "2"}, q.ackCalls[0].ids)
+}
+
+func TestAckDispatchMessagesLogsClaimSource(t *testing.T) {
+	q := &fakeAckQueue{}
+	wf := &Workflow{Queue: q}
+
+	logOutput := captureKlogOutput(t, func() {
+		wf.ackDispatchMessages(context.Background(), config.WorkflowWorkerQueueGroup, "consumer-1", []dispatchAck{
+			{id: "1", taskID: "task-1", claimed: false},
+			{id: "2", taskID: "task-2", claimed: true},
+		})
+	})
+
+	require.True(t, strings.Contains(logOutput, "consumer=consumer-1 acked message id=1 task=task-1"), logOutput)
+	require.True(t, strings.Contains(logOutput, "consumer=consumer-1 acked claimed message id=2 task=task-2"), logOutput)
+}
+
+func TestAckDispatchMessagesLogsClaimSourceOnAckError(t *testing.T) {
+	q := &fakeAckQueue{ackErr: errors.New("ack failed")}
+	wf := &Workflow{Queue: q}
+
+	logOutput := captureKlogOutput(t, func() {
+		wf.ackDispatchMessages(context.Background(), config.WorkflowWorkerQueueGroup, "consumer-1", []dispatchAck{
+			{id: "1", taskID: "task-1", claimed: false},
+			{id: "2", taskID: "task-2", claimed: true},
+		})
+	})
+
+	require.True(t, strings.Contains(logOutput, "failed to ack message id=1 task=task-1: ack failed"), logOutput)
+	require.True(t, strings.Contains(logOutput, "failed to ack claimed message id=2 task=task-2: ack failed"), logOutput)
+}
+
+func TestAckDispatchMessagesSkipsEmptyBatch(t *testing.T) {
+	q := &fakeAckQueue{}
+	wf := &Workflow{Queue: q}
+
+	wf.ackDispatchMessages(context.Background(), config.WorkflowWorkerQueueGroup, "consumer-1", nil)
+
+	require.Len(t, q.ackCalls, 0)
+}
+
+func TestWorkerBackoffDelay(t *testing.T) {
+	wf := &Workflow{}
+	testCases := []struct {
+		name     string
+		current  time.Duration
+		expected time.Duration
+	}{
+		{"lessThanMin", 0, 200 * time.Millisecond},
+		{"doubleWithinMax", 400 * time.Millisecond, 800 * time.Millisecond},
+		{"capAtMax", 4 * time.Second, 5 * time.Second},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := wf.workerBackoffDelay(tc.current, 200*time.Millisecond, 5*time.Second)
+			require.Equal(t, tc.expected, got)
+		})
+	}
+}
+
+func TestReportWorkerErrorLogsError(t *testing.T) {
+	// reportWorkerError now only logs errors instead of sending to errChan.
+	// This is intentional: workflow task failures are business errors and
+	// should not cause service termination.
+	wf := &Workflow{
+		errChan: make(chan error, 1),
+	}
+	wf.reportWorkerError(errors.New("worker failed"))
+	// errChan should remain empty since errors are now only logged
+	require.Len(t, wf.errChan, 0)
+}
+
+func TestReportWorkerErrorIgnoresNil(t *testing.T) {
+	wf := &Workflow{
+		errChan: make(chan error, 1),
+	}
+	wf.reportWorkerError(nil)
+	require.Len(t, wf.errChan, 0)
+}
+
+func TestDispatchMessageLogLabel(t *testing.T) {
+	require.Equal(t, "message", dispatchMessageLogLabel(false))
+	require.Equal(t, "claimed message", dispatchMessageLogLabel(true))
+}

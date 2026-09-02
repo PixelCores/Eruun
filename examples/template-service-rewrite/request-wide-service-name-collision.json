@@ -1,0 +1,40 @@
+{
+  "_comment": "Collision example. Template precondition: template id tmpl-request-service-collision-id has target mysql with service name primary. Cloning it as new-mysql produces service new-mysql-primary, which conflicts with worker.traits.service[0].name below.",
+  "name": "service-name-collision-clone",
+  "alias": "service-name-collision-clone",
+  "version": "1.0.0",
+  "description": "Request should fail fast because a template-cloned Service collides with a regular component Service.",
+  "component": [
+    {
+      "name": "worker",
+      "type": "webservice",
+      "image": "nginx:latest",
+      "traits": {
+        "service": [
+          {
+            "name": "new-mysql-primary",
+            "type": "internal",
+            "selector": {
+              "app": "worker"
+            },
+            "ports": [
+              {
+                "port": 8080,
+                "targetPort": 8080,
+                "protocol": "TCP"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "new-mysql",
+      "type": "store",
+      "tmp": {
+        "id": "tmpl-request-service-collision-id",
+        "target": "mysql"
+      }
+    }
+  ]
+}

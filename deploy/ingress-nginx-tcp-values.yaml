@@ -1,0 +1,21 @@
+# Optional values for the external kubernetes/ingress-nginx Helm release.
+#
+# The default deploy/eruun-stack.yaml exposes MySQL and Redis with dedicated
+# LoadBalancer Services. Use this file only if you intentionally choose the
+# ingress-nginx TCP services path instead.
+#
+# Apply these values to the ingress-nginx chart, not to the Eruun chart:
+#
+#   helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+#     --namespace ingress-nginx \
+#     --values deploy/ingress-nginx-tcp-values.yaml
+#
+# DNS should point both names at the ingress-nginx controller external address:
+# - mysql.eruun.example.com
+# - redis.eruun.example.com
+#
+# TCP routing is selected by port, not by hostname.
+# The controller Service must expose 13306/TCP and 16379/TCP for external clients.
+tcp:
+  "13306": "eruun-system/eruun-mysql:3306"
+  "16379": "eruun-system/eruun-redis:6379"

@@ -1,0 +1,33 @@
+{
+  "_comment": "Clone request example for namespace-qualified ambiguous Service DNS. Template precondition: target mysql has service primary in default namespace, target redis has service primary in redis-ns, and gateway template text references primary.default.svc.cluster.local plus primary.redis-ns.svc.cluster.local.",
+  "name": "ambiguous-service-dns-clone",
+  "alias": "ambiguous-service-dns-clone",
+  "version": "1.0.0",
+  "description": "Namespace-qualified Service DNS rewrite should not conflict with ambiguous short service names.",
+  "component": [
+    {
+      "name": "new-mysql",
+      "type": "store",
+      "tmp": {
+        "id": "tmpl-ambiguous-service-dns-id",
+        "target": "mysql"
+      }
+    },
+    {
+      "name": "new-redis",
+      "type": "store",
+      "tmp": {
+        "id": "tmpl-ambiguous-service-dns-id",
+        "target": "redis"
+      }
+    },
+    {
+      "name": "new-gateway",
+      "type": "webservice",
+      "tmp": {
+        "id": "tmpl-ambiguous-service-dns-id",
+        "target": "gateway"
+      }
+    }
+  ]
+}

@@ -1,0 +1,108 @@
+{
+  "name": "tenant-cloud-bootstrap",
+  "namespace": "default",
+  "version": "1.0.0",
+  "project": "demo-project",
+  "description": "Tenant bootstrap by cloudjob actions",
+  "component": [
+    {
+      "name": "create-nas-filesystem",
+      "type": "cloudjob",
+      "namespace": "default",
+      "properties": {
+        "cloud": {
+          "provider": "aliyun",
+          "action": "aliyun.nas.ensure_filesystem",
+          "params": {
+            "tenantId": "tenant-1001",
+            "storageType": "Capacity",
+            "protocolType": "NFS",
+            "capacityGiB": 100
+          }
+        }
+      },
+      "traits": {}
+    },
+    {
+      "name": "create-nas-mount-target",
+      "type": "cloudjob",
+      "namespace": "default",
+      "properties": {
+        "cloud": {
+          "provider": "aliyun",
+          "action": "aliyun.nas.ensure_mount_target",
+          "params": {
+            "tenantId": "tenant-1001",
+            "pollIntervalSeconds": 15
+          }
+        }
+      },
+      "traits": {}
+    },
+    {
+      "name": "create-tenant-storage-class",
+      "type": "cloudjob",
+      "namespace": "default",
+      "properties": {
+        "cloud": {
+          "provider": "aliyun",
+          "action": "aliyun.k8s.ensure_storage_class",
+          "params": {
+            "tenantId": "tenant-1001",
+            "storageClassName": "sc-tenant-1001-nas",
+            "reclaimPolicy": "Retain",
+            "volumeBindingMode": "Immediate",
+            "serverPath": "/tenants/tenant-1001",
+            "pollIntervalSeconds": 15
+          }
+        }
+      },
+      "traits": {}
+    },
+    {
+      "name": "tenant-api",
+      "type": "webservice",
+      "image": "nginx:1.25",
+      "namespace": "default",
+      "replicas": 1,
+      "properties": {
+        "ports": [
+          {
+            "port": 80
+          }
+        ]
+      },
+      "traits": {}
+    }
+  ],
+  "workflow": [
+    {
+      "name": "step-1-ensure-filesystem",
+      "mode": "StepByStep",
+      "components": [
+        "create-nas-filesystem"
+      ]
+    },
+    {
+      "name": "step-2-ensure-mount-target",
+      "mode": "StepByStep",
+      "components": [
+        "create-nas-mount-target"
+      ]
+    },
+    {
+      "name": "step-3-ensure-storage-class",
+      "mode": "StepByStep",
+      "components": [
+        "create-tenant-storage-class"
+      ]
+    },
+    {
+      "name": "step-4-deploy-api",
+      "mode": "StepByStep",
+      "components": [
+        "tenant-api"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "name": "callback-default-app",
+  "namespace": "default",
+  "alias": "Callback Default App",
+  "version": "1.0.0",
+  "callback": {
+    "success": "https://example.com/app/success",
+    "failure": "https://example.com/app/failure",
+    "timeoutSeconds": 5
+  },
+  "component": [
+    {
+      "name": "web",
+      "type": "webservice",
+      "image": "nginx:latest",
+      "replicas": 1,
+      "properties": {
+        "ports": [
+          {
+            "port": 80
+          }
+        ]
+      },
+      "traits": {}
+    }
+  ]
+}

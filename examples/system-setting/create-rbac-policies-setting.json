@@ -1,0 +1,15 @@
+{
+  "type": "rbacPolicies",
+  "value": [
+    {
+      "serviceAccount": "default",
+      "rules": [
+        {
+          "apiGroups": [""],
+          "resources": ["pods"],
+          "verbs": ["get", "list"]
+        }
+      ]
+    }
+  ]
+}

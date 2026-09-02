@@ -1,0 +1,10 @@
+{
+  "code": 0,
+  "message": "",
+  "data": {
+    "appId": "app-1",
+    "componentName": "config-center",
+    "componentType": "config",
+    "pods": []
+  }
+}

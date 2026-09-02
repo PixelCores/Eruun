@@ -1,0 +1,32 @@
+{
+  "name": "demo-target-work-env",
+  "namespace": "default",
+  "component": [
+    {
+      "name": "backend",
+      "type": "webservice",
+      "image": "nginx:1.27",
+      "replicas": 1,
+      "properties": {
+        "ports": [
+          {
+            "port": 8080
+          }
+        ]
+      },
+      "traits": {
+        "targetWorkEnv": {
+          "app": "lab"
+        }
+      }
+    }
+  ],
+  "workflow": [
+    {
+      "name": "deploy-backend",
+      "components": [
+        "backend"
+      ]
+    }
+  ]
+}

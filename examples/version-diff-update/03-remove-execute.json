@@ -1,0 +1,8 @@
+{
+  "sourceAppId": "app-version-101",
+  "dryRun": false,
+  "targetOnlyStrategy": "remove",
+  "strategy": "rolling",
+  "autoExec": false,
+  "description": "sync target app to source version and remove target-only components"
+}

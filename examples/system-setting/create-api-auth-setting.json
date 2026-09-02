@@ -1,0 +1,33 @@
+{
+  "type": "apiAuth",
+  "value": {
+    "enabled": true,
+    "jwt": {
+      "algorithms": ["HS256", "RS256"],
+      "issuers": ["eruun"],
+      "audience": ["eruun-api"],
+      "clockSkewSeconds": 60,
+      "hs256": {
+        "secret": "replace-with-secret"
+      },
+      "rs256": {
+        "publicKeys": [
+          {
+            "kid": "key-1",
+            "pem": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
+          }
+        ]
+      }
+    },
+    "authorization": {
+      "defaultEffect": "deny",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/api/v1/applications",
+          "roles": ["admin", "reader"]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "name": "demo-create-exec",
+  "namespace": "default",
+  "alias": "demo-create-exec",
+  "project": "default",
+  "version": "1.0.0",
+  "description": "Create app and execute workflow in one request",
+  "components": [
+    {
+      "name": "api",
+      "type": "webservice",
+      "image": "nginx:1.27",
+      "namespace": "default",
+      "replicas": 1,
+      "properties": {},
+      "traits": {}
+    }
+  ],
+  "workflow": [
+    {
+      "name": "deploy",
+      "jobType": "deploy",
+      "components": [
+        "api"
+      ],
+      "properties": {
+        "policies": [
+          "api"
+        ]
+      },
+      "mode": "step-by-step"
+    }
+  ],
+  "workflowId": "wf-default-123",
+  "executeAt": 1735689600
+}

@@ -1,0 +1,14 @@
+{
+  "callback": {
+    "success": "https://example.com/lifecycle/restart/success",
+    "failure": "https://example.com/lifecycle/restart/failure",
+    "methods": {
+      "success": "POST",
+      "failure": "POST"
+    },
+    "headers": {
+      "X-Source": "eruun"
+    },
+    "timeoutSeconds": 30
+  }
+}

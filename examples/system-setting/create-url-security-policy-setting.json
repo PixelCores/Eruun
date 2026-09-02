@@ -1,0 +1,11 @@
+{
+  "type": "urlSecurityPolicy",
+  "value": {
+    "allowPrivateByDefault": false,
+    "allowedHostPatterns": [
+      "*.svc.cluster.local",
+      "*.paas.example.com"
+    ],
+    "allowedCIDRs": []
+  }
+}

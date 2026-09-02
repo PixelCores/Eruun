@@ -1,0 +1,134 @@
+# Helm 部署契约
+
+> 状态：Current。本文说明 `deploy/helm/eruun` 的当前安装参数、运行探针和 Kubernetes 权限边界。
+
+## 安装前提
+
+Chart 部署 Eruun 的 API、Controller、Scheduler、Worker 四类运行角色，以及 MySQL 和 Redis。默认密码是占位符，安装时必须通过受控 values 文件提供真实值，不要把密码直接写入命令历史或提交到仓库。
+
+```yaml
+# secure-values.yaml（示例结构；不要提交真实值）
+mysql:
+  rootPassword: "<strong-password>"
+redis:
+  password: "<strong-password>"
+```
+
+```bash
+helm upgrade --install eruun deploy/helm/eruun \
+  --namespace eruun-system \
+  --create-namespace \
+  --values secure-values.yaml
+```
+
+`deploy/all_in_one_install_quickstart.sh` 使用同一套四角色拓扑。Helm 安装时，Quickstart 把密码写入权限为 `0600` 的临时 values 文件并在退出时清理；manifest 安装时使用 `deploy/eruun-stack.yaml` 中的四类 Deployment。
+
+manifest 安装会先用 server-side dry-run 验证四角色清单，再把旧单进程 `Deployment/eruun` 缩容到零并保留为回滚点。四类 Deployment 全部 ready 后才清理旧 Deployment 和 `ServiceAccount/eruun-platform`；应用、覆盖或 readiness 失败时会删除本轮角色 Deployment 并恢复旧副本数。旧 ServiceAccount 清理失败只记录告警，不会把已经 ready 的新运行时判为安装失败；迁移过程不会删除 MySQL、Redis 或其持久化数据。
+
+## 运行契约
+
+- API 监听 `0.0.0.0:<service.port>`，默认 Service 和容器端口都是 `8000`；Service 只选择 API Pod。
+- Controller 和 Scheduler 分别竞争 `runtime.controllerLockName`、`runtime.schedulerLockName` 指定的 Lease。
+- readiness/liveness 路由为 `/api/v1/readyz` 和 `/api/v1/healthz`。
+- 四类 Deployment 和 ServiceAccount 使用 `-api`、`-controller`、`-scheduler`、`-worker` 后缀。
+- Quickstart readiness 会等待四类 Deployment、MySQL 和 Redis；名称计算与 Chart 的 63 字符截断和角色后缀预留规则一致。
+- 将 `FULLNAME_OVERRIDE` 显式设为空时，Quickstart 使用 `<release>-eruun`；非空 `SERVICE_NAME` 只覆盖 Service 查询、port-forward 与打印命令。
+
+```yaml
+runtime:
+  controllerLockName: eruun-controller
+  schedulerLockName: eruun-scheduler
+  heartbeatInterval: 10s
+  leaseDuration: 30s
+  leaseReaperInterval: 10s
+  workerDrainTimeoutSeconds: 60
+  terminationGracePeriodSeconds: 90
+  roles:
+    api:
+      replicas: 2
+    controller:
+      replicas: 2
+    scheduler:
+      replicas: 2
+    worker:
+      replicas: 3
+```
+
+generation/token ownership 与数据库 execution lease 是唯一执行协议，不提供关闭开关。当前处于开发阶段，部署前应使用新数据库，或清理旧任务数据和消息积压；不支持缺少 ownership 字段的历史任务、消息或混合版本 Worker。
+
+每类副本数大于 1 的角色默认生成 `maxUnavailable: 1` 的 PodDisruptionBudget。角色资源名会先为后缀预留长度再限制为 63 字符，因此长 `fullnameOverride` 下仍保持唯一。topology spread 默认按 `kubernetes.io/hostname` 分散同角色 Pod。
+
+所有运行角色默认使用 90 秒 `terminationGracePeriodSeconds`，覆盖 60 秒 Worker drain；终止宽限期必须严格大于 `workerDrainTimeoutSeconds`。每个角色都使用最长 150 秒的 `startupProbe` 窗口，初始化迁移或 Worker informer cache 同步期间不会提前触发 liveness 重启。Controller、Scheduler 和 Worker 副本数可以独立调整，不要求奇数。
+
+`env` 只用于追加应用配置，不允许设置由 Chart 管理的 `ERUUN_ROLE`、`ERUUN_ID` 或 `ERUUN_WORKFLOW_WORKER_DRAIN_TIMEOUT`。Worker drain 必须通过 `runtime.workerDrainTimeoutSeconds` 配置，这样 Chart 才能同时校验 `terminationGracePeriodSeconds`。旧单进程顶层键 `replicaCount` 和 `resources` 会被 schema 拒绝；副本数与资源必须分别配置在 `runtime.roles.<role>.replicas` 和 `runtime.roles.<role>.resources`。
+
+四类角色启动时仍会执行同一套数据库 schema 迁移；服务端使用同一 MySQL 连接持有命名锁，串行完成 AutoMigrate、数据回填和旧表/列清理，其他副本最多等待 120 秒后失败并由 Kubernetes 重启重试。
+
+Chart 内置 MySQL 和 Redis 是单副本开发依赖，不构成企业 HA 数据面。生产环境应使用外部 HA MySQL、HA Redis 或多 Broker Kafka，并通过受控 Chart overlay 接入。
+
+## Adopted import keyring
+
+显式 adopted 接管使用 AES-256-GCM 保存导入 Secret，并使用 HMAC 签发导入与 cleanup 计划指纹。启用 adopted API 前，必须预先创建包含完整 keyring JSON 的 Kubernetes Secret：
+
+```yaml
+importSecretKeyring:
+  existingSecret: eruun-import-keyring
+  key: keyring.json
+```
+
+Chart 只把该 Secret 挂载到实际使用 keyring 的 API 和 Worker，路径为 `/var/run/secrets/eruun/import-secret-keyring/keyring.json`，并设置 `ERUUN_IMPORT_SECRET_KEYRING_FILE`。内联配置与文件配置互斥；同时存在或 keyring 无法解析时进程启动失败。未设置 `existingSecret` 时不渲染对应 env、volume 或 volumeMount。
+
+每个 key 值必须是恰好 32 字节密钥的 Base64 编码。
+
+```json
+{
+  "activeKeyId": "2026-08",
+  "keys": {
+    "2026-08": "<base64-32-byte-key>",
+    "2026-07": "<previous-key-during-rotation>"
+  }
+}
+```
+
+## ServiceAccount 与 RBAC
+
+| Value | 默认值 | 语义 |
+| --- | --- | --- |
+| `serviceAccount.create` | `true` | 创建四个角色专用 ServiceAccount。 |
+| `serviceAccount.roleNames.api` | `""` | 不创建账号时使用的已有 API ServiceAccount。 |
+| `serviceAccount.roleNames.controller` | `""` | 不创建账号时使用的已有 Controller ServiceAccount。 |
+| `serviceAccount.roleNames.scheduler` | `""` | 不创建账号时使用的已有 Scheduler ServiceAccount。 |
+| `serviceAccount.roleNames.worker` | `""` | 不创建账号时使用的已有 Worker ServiceAccount。 |
+| `serviceAccount.annotations` | `{}` | 写入 Chart 创建的 ServiceAccount。 |
+| `serviceAccount.automountServiceAccountToken` | `true` | 控制 Chart 创建账号的 token 自动挂载。 |
+| `rbac.create` | `true` | 创建 Lease Role/RoleBinding 和资源管理 ClusterRole/ClusterRoleBinding。 |
+
+Controller 和 Scheduler 绑定 namespace-scoped Leader Election Role；API、Controller 和 Worker 绑定资源管理 ClusterRole，Scheduler 不绑定该 ClusterRole。使用已有账号时，Scheduler 名称必须不同于 API、Controller 和 Worker，防止它通过共享身份继承资源管理权限。
+
+默认 ClusterRole 只包含当前 Eruun 管理 Kubernetes 工作负载、Pod 日志与 exec、Namespace、Service/Secret/ConfigMap/PVC、StorageClass、Ingress 和 RBAC Trait 所需的显式资源权限，不绑定内置 `cluster-admin`。Pods 的 `patch` 只用于 adopted source owner 链校验成功后补 metadata 管理标签；协调器不修改 controller PodTemplate。ReplicaSet 的 `update` 只用于 signed cleanup quiesce，ReplicaSet/ControllerRevision 的 `delete` 只用于签名计划覆盖且 UID 匹配的 runtime child。PV 与 HPA 权限保持只读；PDB、NetworkPolicy 和 PVC update 用于 source-aware 调和。RBAC Trait 所需的 `roles`、`clusterroles` 规则包含 Kubernetes 要求的 `bind`、`escalate` verbs。
+
+Chart 不授予 CRD/custom resource、impersonation、Pod attach 或 Pod port-forward 权限。ClusterRole 名称完整使用 `<release fullname>-<release namespace>`，避免不同 namespace 中同名 release 争用同一个集群级对象。ClusterRole 和 ClusterRoleBinding 使用 Kubernetes RBAC path-segment 名称规则，不受通用 DNS label 的 63 字符限制。
+
+```bash
+helm upgrade --install eruun deploy/helm/eruun \
+  --namespace eruun-system \
+  --set serviceAccount.create=false \
+  --set serviceAccount.roleNames.api=precreated-eruun-api \
+  --set serviceAccount.roleNames.controller=precreated-eruun-controller \
+  --set serviceAccount.roleNames.scheduler=precreated-eruun-scheduler \
+  --set serviceAccount.roleNames.worker=precreated-eruun-worker \
+  --set rbac.create=false \
+  --values secure-values.yaml
+```
+
+当 `serviceAccount.create=false` 时必须提供全部四个 `serviceAccount.roleNames.*`。也可以保留 `rbac.create=true`，让 Chart 为已有 ServiceAccount 创建绑定。
+
+## 静态验证
+
+```bash
+helm lint deploy/helm/eruun --values secure-values.yaml
+helm template eruun deploy/helm/eruun --namespace eruun-system --values secure-values.yaml
+bash deploy/helm/eruun/helm_template_test.sh
+```
+
+静态渲染只能验证对象结构和引用闭环。正式发布前仍应在隔离集群执行 rollout、健康探针和代表性的 `kubectl auth can-i --as=system:serviceaccount:<namespace>:<name>` 检查。

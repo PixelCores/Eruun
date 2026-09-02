@@ -1,0 +1,35 @@
+{
+  "name": "share-ignore-demo",
+  "alias": "share-ignore-demo",
+  "namespace": "default",
+  "version": "1.0.0",
+  "project": "default",
+  "description": "share strategy ignore demo",
+  "component": [
+    {
+      "name": "cm-ignore",
+      "type": "config",
+      "namespace": "default",
+      "replicas": 1,
+      "properties": {
+        "conf": {
+          "app.yaml": "mode: ignore\n"
+        }
+      },
+      "traits": {
+        "share": {
+          "strategy": "ignore"
+        }
+      }
+    }
+  ],
+  "workflow": [
+    {
+      "name": "share-ignore-step",
+      "mode": "StepByStep",
+      "components": [
+        "cm-ignore"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "_comment": "ExternalName rewrite example. Template precondition: target mysql has service mysql, target proxy has an external Service whose externalName is mysql.default.svc.cluster.local and another externalName example.org.",
+  "name": "external-name-service-dns-clone",
+  "alias": "external-name-service-dns-clone",
+  "version": "1.0.0",
+  "description": "ExternalName hosts that point at template Services should be rewritten during clone.",
+  "component": [
+    {
+      "name": "new-mysql",
+      "type": "store",
+      "tmp": {
+        "id": "tmpl-external-name-service-dns-id",
+        "target": "mysql"
+      }
+    },
+    {
+      "name": "new-proxy",
+      "type": "webservice",
+      "tmp": {
+        "id": "tmpl-external-name-service-dns-id",
+        "target": "proxy"
+      }
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+{
+  "_comment": "GET /api/v1/workflow/tasks/:taskID/stages uses path params; no request body",
+  "taskId": "task-xyz"
+}

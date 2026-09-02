@@ -1,0 +1,15 @@
+{
+  "appId": "app-123",
+  "taskId": "task-restart-001",
+  "restartedAt": "2026-01-30T08:00:00Z",
+  "restartedResources": [
+    "Deployment:default/deploy-web-app-123",
+    "StatefulSet:default/store-db-app-123"
+  ],
+  "skippedResources": [
+    "StatefulSet:default/store-cache-app-123"
+  ],
+  "failedResources": [
+    "Deployment:default/deploy-api-app-123 (context deadline exceeded)"
+  ]
+}

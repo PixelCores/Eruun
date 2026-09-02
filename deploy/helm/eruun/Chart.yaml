@@ -1,0 +1,6 @@
+apiVersion: v2
+name: eruun
+description: Helm chart for deploying the Eruun API server and dependencies
+version: 0.1.0
+appVersion: "0.1.0"
+type: application

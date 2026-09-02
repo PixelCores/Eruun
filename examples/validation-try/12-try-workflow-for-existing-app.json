@@ -1,0 +1,10 @@
+{
+  "appId": "app-123",
+  "workflow": [
+    {
+      "name": "release",
+      "mode": "StepByStep",
+      "components": ["backend"]
+    }
+  ]
+}

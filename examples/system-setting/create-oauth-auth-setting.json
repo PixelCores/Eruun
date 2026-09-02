@@ -1,0 +1,31 @@
+{
+  "type": "oauthAuth",
+  "value": {
+    "enabled": true,
+    "providers": {
+      "google": {
+        "clientId": "replace-with-google-client-id",
+        "clientSecret": "replace-with-google-client-secret",
+        "redirectURI": "https://your-eruun.example.com/api/v1/auth/oauth2/google/callback",
+        "scopes": ["openid", "email", "profile"]
+      }
+    },
+    "jwtIssue": {
+      "issuer": "eruun",
+      "audience": "eruun-api",
+      "ttlSeconds": 3600
+    },
+    "roleMapping": {
+      "defaultRoles": ["reader"],
+      "googleHostedDomainToRoles": {
+        "example.com": ["admin"]
+      },
+      "googleEmailToRoles": {
+        "owner@example.com": ["admin"]
+      }
+    },
+    "security": {
+      "stateTTLSeconds": 300
+    }
+  }
+}

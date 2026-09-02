@@ -1,0 +1,867 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: eruun-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: eruun-api
+  namespace: eruun-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: eruun-controller
+  namespace: eruun-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: eruun-scheduler
+  namespace: eruun-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: eruun-worker
+  namespace: eruun-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: eruun-leader-election
+  namespace: eruun-system
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: eruun-leader-election
+  namespace: eruun-system
+subjects:
+  - kind: ServiceAccount
+    name: eruun-controller
+    namespace: eruun-system
+  - kind: ServiceAccount
+    name: eruun-scheduler
+    namespace: eruun-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: eruun-leader-election
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: eruun-platform-cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: eruun-api
+    namespace: eruun-system
+  - kind: ServiceAccount
+    name: eruun-controller
+    namespace: eruun-system
+  - kind: ServiceAccount
+    name: eruun-worker
+    namespace: eruun-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eruun-mysql
+  namespace: eruun-system
+  labels:
+    app: eruun-mysql
+spec:
+  clusterIP: None
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: mysql
+  selector:
+    app: eruun-mysql
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eruun-mysql-external
+  namespace: eruun-system
+  labels:
+    app: eruun-mysql
+spec:
+  type: LoadBalancer
+  ports:
+    - name: mysql
+      port: 13306
+      targetPort: mysql
+      protocol: TCP
+  selector:
+    app: eruun-mysql
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: eruun-mysql
+  namespace: eruun-system
+  labels:
+    app: eruun-mysql
+spec:
+  serviceName: eruun-mysql
+  replicas: 1
+  selector:
+    matchLabels:
+      app: eruun-mysql
+  template:
+    metadata:
+      labels:
+        app: eruun-mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.0.37
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3306
+              name: mysql
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: eruun-mysql-secret
+                  key: mysql-root-password
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: eruun-mysql-secret
+                  key: mysql-user
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: eruun-mysql-secret
+                  key: mysql-password
+            - name: MYSQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: eruun-mysql-secret
+                  key: mysql-database
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysqladmin ping -h 127.0.0.1 -uroot --silent
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysqladmin ping -h 127.0.0.1 -uroot --silent
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eruun-redis
+  namespace: eruun-system
+  labels:
+    app: eruun-redis
+spec:
+  clusterIP: None
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+  selector:
+    app: eruun-redis
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eruun-redis-external
+  namespace: eruun-system
+  labels:
+    app: eruun-redis
+spec:
+  type: LoadBalancer
+  ports:
+    - name: redis
+      port: 16379
+      targetPort: redis
+      protocol: TCP
+  selector:
+    app: eruun-redis
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: eruun-redis
+  namespace: eruun-system
+  labels:
+    app: eruun-redis
+spec:
+  serviceName: eruun-redis
+  replicas: 1
+  selector:
+    matchLabels:
+      app: eruun-redis
+  template:
+    metadata:
+      labels:
+        app: eruun-redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7.2.4
+          imagePullPolicy: Always
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: eruun-secret
+                  key: cache-password
+          command:
+            - /bin/sh
+            - -ec
+          args:
+            - exec redis-server --save 60 1 --appendonly yes --requirepass "$REDIS_PASSWORD"
+          ports:
+            - containerPort: 6379
+              name: redis
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli -h 127.0.0.1 -p 6379 ping | grep -q PONG
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli -h 127.0.0.1 -p 6379 ping | grep -q PONG
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 2Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: eruun-flags
+  namespace: eruun-system
+data:
+  ERUUN_BIND_ADDR: "0.0.0.0:8000"
+  ERUUN_CONTROLLER_LOCK_NAME: "eruun-controller"
+  ERUUN_SCHEDULER_LOCK_NAME: "eruun-scheduler"
+  ERUUN_DURATION: "5m"
+  ERUUN_LEADER_NAMESPACE: "eruun-system"
+  ERUUN_KUBE_API_QPS: "150"
+  ERUUN_KUBE_API_BURST: "450"
+  ERUUN_DATASTORE_TYPE: "mysql"
+  ERUUN_DATASTORE_DATABASE: "eruun"
+  ERUUN_MYSQL_MAX_IDLE_CONNS: "20"
+  ERUUN_MYSQL_MAX_OPEN_CONNS: "200"
+  ERUUN_MYSQL_CONN_MAX_LIFETIME: "30m"
+  ERUUN_MYSQL_CONN_MAX_IDLE_TIME: "10m"
+  ERUUN_ENABLE_TRACING: "true"
+  ERUUN_AUTO_TRACING: "true"
+  ERUUN_MSG_TYPE: "redis"
+  ERUUN_MSG_CHANNEL_PREFIX: "eruun"
+  ERUUN_MSG_REDIS_MAXLEN: "50000"
+  ERUUN_CACHE_TYPE: "redis"
+  ERUUN_CACHE_HOST: "eruun-redis"
+  ERUUN_CACHE_PORT: "6379"
+  ERUUN_CACHE_DB: "0"
+  ERUUN_CACHE_USERNAME: ""
+  ERUUN_CACHE_TTL: "24h"
+  ERUUN_CACHE_PREFIX: "eruun:cache:"
+  ERUUN_WORKFLOW_CALLBACK_TIMEOUT_MAX: "72h"
+  ERUUN_WORKFLOW_HEARTBEAT_INTERVAL: "10s"
+  ERUUN_WORKFLOW_LEASE_DURATION: "30s"
+  ERUUN_WORKFLOW_LEASE_REAPER_INTERVAL: "10s"
+  ERUUN_WORKFLOW_WORKER_DRAIN_TIMEOUT: "60s"
+  ERUUN_PROFILING_ADDR: ""
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eruun
+  namespace: eruun-system
+  labels:
+    app: eruun
+spec:
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+  selector:
+    app: eruun
+    app.kubernetes.io/component: api
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eruun-api
+  namespace: eruun-system
+  labels:
+    app: eruun
+    app.kubernetes.io/component: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: eruun
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        app: eruun
+        app.kubernetes.io/component: api
+    spec:
+      serviceAccountName: eruun-api
+      terminationGracePeriodSeconds: 90
+      containers:
+        - name: eruun-server
+          image: ghcr.io/pixelcores/eruun:0.1.0
+          imagePullPolicy: Always
+          args:
+            - "--log_dir=./logs"
+            - "--logtostderr=false"
+            - "--alsologtostderr=true"
+          ports:
+            - containerPort: 8000
+              name: http
+          envFrom:
+            - configMapRef:
+                name: eruun-flags
+          env:
+            - name: ERUUN_ROLE
+              value: "api"
+            - name: ERUUN_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: ERUUN_DATASTORE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: eruun-secret
+                  key: datastore-url
+            - name: ERUUN_CACHE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: eruun-secret
+                  key: cache-password
+            - name: MYSQL_HOST
+              value: eruun-mysql
+            - name: MYSQL_PORT
+              value: "3306"
+            - name: MYSQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: eruun-mysql-secret
+                  key: mysql-database
+            - name: MYSQL_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: eruun-mysql-secret
+                  key: mysql-user
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: eruun-mysql-secret
+                  key: mysql-password
+          startupProbe:
+            httpGet:
+              path: /api/v1/healthz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /api/v1/readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /api/v1/healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: eruun
+              app.kubernetes.io/component: api
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eruun-controller
+  namespace: eruun-system
+  labels:
+    app: eruun
+    app.kubernetes.io/component: controller
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: eruun
+      app.kubernetes.io/component: controller
+  template:
+    metadata:
+      labels:
+        app: eruun
+        app.kubernetes.io/component: controller
+    spec:
+      serviceAccountName: eruun-controller
+      terminationGracePeriodSeconds: 90
+      containers:
+        - name: eruun-server
+          image: ghcr.io/pixelcores/eruun:0.1.0
+          imagePullPolicy: Always
+          args:
+            - "--log_dir=./logs"
+            - "--logtostderr=false"
+            - "--alsologtostderr=true"
+          ports:
+            - containerPort: 8000
+              name: http
+          envFrom:
+            - configMapRef:
+                name: eruun-flags
+          env:
+            - name: ERUUN_ROLE
+              value: "controller"
+            - name: ERUUN_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: ERUUN_DATASTORE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: eruun-secret
+                  key: datastore-url
+            - name: ERUUN_CACHE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: eruun-secret
+                  key: cache-password
+            - name: MYSQL_HOST
+              value: eruun-mysql
+            - name: MYSQL_PORT
+              value: "3306"
+            - name: MYSQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: eruun-mysql-secret
+                  key: mysql-database
+            - name: MYSQL_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: eruun-mysql-secret
+                  key: mysql-user
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: eruun-mysql-secret
+                  key: mysql-password
+          startupProbe:
+            httpGet:
+              path: /api/v1/healthz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /api/v1/readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /api/v1/healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: eruun
+              app.kubernetes.io/component: controller
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eruun-scheduler
+  namespace: eruun-system
+  labels:
+    app: eruun
+    app.kubernetes.io/component: scheduler
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: eruun
+      app.kubernetes.io/component: scheduler
+  template:
+    metadata:
+      labels:
+        app: eruun
+        app.kubernetes.io/component: scheduler
+    spec:
+      serviceAccountName: eruun-scheduler
+      terminationGracePeriodSeconds: 90
+      containers:
+        - name: eruun-server
+          image: ghcr.io/pixelcores/eruun:0.1.0
+          imagePullPolicy: Always
+          args:
+            - "--log_dir=./logs"
+            - "--logtostderr=false"
+            - "--alsologtostderr=true"
+          ports:
+            - containerPort: 8000
+              name: http
+          envFrom:
+            - configMapRef:
+                name: eruun-flags
+          env:
+            - name: ERUUN_ROLE
+              value: "scheduler"
+            - name: ERUUN_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: ERUUN_DATASTORE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: eruun-secret
+                  key: datastore-url
+            - name: ERUUN_CACHE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: eruun-secret
+                  key: cache-password
+            - name: MYSQL_HOST
+              value: eruun-mysql
+            - name: MYSQL_PORT
+              value: "3306"
+            - name: MYSQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: eruun-mysql-secret
+                  key: mysql-database
+            - name: MYSQL_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: eruun-mysql-secret
+                  key: mysql-user
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: eruun-mysql-secret
+                  key: mysql-password
+          startupProbe:
+            httpGet:
+              path: /api/v1/healthz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /api/v1/readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /api/v1/healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: eruun
+              app.kubernetes.io/component: scheduler
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eruun-worker
+  namespace: eruun-system
+  labels:
+    app: eruun
+    app.kubernetes.io/component: worker
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: eruun
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        app: eruun
+        app.kubernetes.io/component: worker
+    spec:
+      serviceAccountName: eruun-worker
+      terminationGracePeriodSeconds: 90
+      containers:
+        - name: eruun-server
+          image: ghcr.io/pixelcores/eruun:0.1.0
+          imagePullPolicy: Always
+          args:
+            - "--log_dir=./logs"
+            - "--logtostderr=false"
+            - "--alsologtostderr=true"
+          ports:
+            - containerPort: 8000
+              name: http
+          envFrom:
+            - configMapRef:
+                name: eruun-flags
+          env:
+            - name: ERUUN_ROLE
+              value: "worker"
+            - name: ERUUN_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: ERUUN_DATASTORE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: eruun-secret
+                  key: datastore-url
+            - name: ERUUN_CACHE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: eruun-secret
+                  key: cache-password
+            - name: MYSQL_HOST
+              value: eruun-mysql
+            - name: MYSQL_PORT
+              value: "3306"
+            - name: MYSQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: eruun-mysql-secret
+                  key: mysql-database
+            - name: MYSQL_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: eruun-mysql-secret
+                  key: mysql-user
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: eruun-mysql-secret
+                  key: mysql-password
+          startupProbe:
+            httpGet:
+              path: /api/v1/healthz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /api/v1/readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /api/v1/healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: eruun
+              app.kubernetes.io/component: worker
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: eruun-api
+  namespace: eruun-system
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: eruun
+      app.kubernetes.io/component: api
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: eruun-controller
+  namespace: eruun-system
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: eruun
+      app.kubernetes.io/component: controller
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: eruun-scheduler
+  namespace: eruun-system
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: eruun
+      app.kubernetes.io/component: scheduler
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: eruun-worker
+  namespace: eruun-system
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: eruun
+      app.kubernetes.io/component: worker
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: eruun
+  namespace: eruun-system
+spec:
+  ingressClassName: ingress-nginx
+  rules:
+    - host: eruun.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: eruun
+                port:
+                  number: 8000

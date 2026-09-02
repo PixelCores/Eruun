@@ -1,0 +1,15 @@
+{
+  "version": "1.1.0",
+  "workflowId": "wf-deploy-all",
+  "components": [
+    {
+      "action": "remove",
+      "name": "cleanup_all"
+    },
+    {
+      "action": "add",
+      "name": "all"
+    }
+  ],
+  "description": "Clean all component resources before deploying all components"
+}

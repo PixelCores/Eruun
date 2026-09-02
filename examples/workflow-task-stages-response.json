@@ -1,0 +1,42 @@
+{
+  "code": 0,
+  "message": "",
+  "data": {
+    "taskId": "task-xyz",
+    "status": "completed",
+    "workflowId": "wf-2",
+    "workflowName": "release",
+    "appId": "app-2",
+    "type": "workflow",
+    "stages": [
+      {
+        "id": 10,
+        "name": "web",
+        "type": "[deploy]",
+        "status": "completed",
+        "info": [
+          {
+            "type": "deploy",
+            "message": "apply deployment"
+          }
+        ],
+        "startTime": 1768917106,
+        "endTime": 1768917108
+      },
+      {
+        "id": 11,
+        "name": "db",
+        "type": "[pvc]",
+        "status": "completed",
+        "info": [
+          {
+            "type": "pvc",
+            "message": "pvc applied"
+          }
+        ],
+        "startTime": 1768917108,
+        "endTime": 1768917110
+      }
+    ]
+  }
+}

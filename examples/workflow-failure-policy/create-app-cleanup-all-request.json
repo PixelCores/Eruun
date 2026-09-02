@@ -1,0 +1,48 @@
+{
+  "name": "cleanup-all-app",
+  "namespace": "default",
+  "alias": "Cleanup All App",
+  "version": "1.0.0",
+  "workflow": {
+    "failurePolicy": "cleanup_all",
+    "steps": [
+      {
+        "name": "deploy-runtime-components",
+        "mode": "DAG",
+        "components": ["api", "worker", "mysql"]
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "api",
+      "type": "webservice",
+      "image": "nginx:latest",
+      "replicas": 1,
+      "properties": {
+        "ports": [
+          {
+            "port": 80
+          }
+        ]
+      },
+      "traits": {}
+    },
+    {
+      "name": "worker",
+      "type": "webservice",
+      "image": "nginx:latest",
+      "replicas": 1,
+      "properties": {},
+      "traits": {}
+    },
+    {
+      "name": "mysql",
+      "type": "store",
+      "image": "mysql:8.0",
+      "replicas": 1,
+      "properties": {},
+      "traits": {}
+    }
+  ]
+}

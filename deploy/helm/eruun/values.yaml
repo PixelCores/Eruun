@@ -1,0 +1,122 @@
+image:
+  repository: ghcr.io/pixelcores/eruun
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8000
+
+log:
+  dir: ./logs
+  toStderr: false
+  alsoToStderr: true
+
+mysql:
+  image: mysql:8.0.37
+  # Must be overridden in production. apiserver rejects placeholder DSN values.
+  rootPassword: "__REPLACE_WITH_STRONG_PASSWORD__"
+  database: eruun
+  storage: 10Gi
+  servicePort: 3306
+  resources: {}
+
+redis:
+  image: redis:7.2.4
+  # Must be overridden in production. Redis is used for cache, workflow messaging, and locks.
+  password: "__REPLACE_WITH_STRONG_PASSWORD__"
+  storage: 2Gi
+  servicePort: 6379
+  resources: {}
+
+runtime:
+  # Empty lock names derive release-scoped defaults from eruun.fullname.
+  # Set explicit names only when coordinated lock sharing is intentional.
+  controllerLockName: ""
+  schedulerLockName: ""
+  heartbeatInterval: 10s
+  leaseDuration: 30s
+  leaseReaperInterval: 10s
+  workerDrainTimeoutSeconds: 60
+  # Must remain longer than workerDrainTimeoutSeconds so Kubernetes does not SIGKILL
+  # a Worker while it is completing its graceful drain.
+  terminationGracePeriodSeconds: 90
+  roles:
+    api:
+      replicas: 2
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+    controller:
+      replicas: 2
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+    scheduler:
+      replicas: 2
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+    worker:
+      replicas: 3
+      resources:
+        requests:
+          cpu: 250m
+          memory: 256Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+
+topologySpreadConstraints:
+  enabled: true
+  maxSkew: 1
+  topologyKey: kubernetes.io/hostname
+  whenUnsatisfiable: ScheduleAnyway
+
+serviceAccount:
+  create: true
+  # Required per role when create=false.
+  # The Scheduler name must differ from api/controller/worker so it cannot inherit their ClusterRole.
+  roleNames:
+    api: ""
+    controller: ""
+    scheduler: ""
+    worker: ""
+  annotations: {}
+  automountServiceAccountToken: true
+
+rbac:
+  create: true
+
+importSecretKeyring:
+  # Name of a user-managed Secret containing the adopted import keyring JSON.
+  # The Chart never creates this Secret. Leave empty when adopted imports are
+  # not enabled.
+  existingSecret: ""
+  key: keyring.json
+
+env:
+  # Example extra environment variables for the application
+  # - name: SOME_ENV
+  #   value: some-value
+  []
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

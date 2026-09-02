@@ -1,0 +1,27 @@
+{
+  "name": "job-demo-instant",
+  "namespace": "default",
+  "version": "1.0.0",
+  "project": "demo-project",
+  "description": "Instant job demo",
+  "component": [
+    {
+      "name": "instant-task",
+      "type": "job",
+      "image": "busybox:1.36",
+      "namespace": "default",
+      "replicas": 1,
+      "properties": {
+        "command": ["/bin/sh", "-c", "echo instant job"]
+      },
+      "traits": {}
+    }
+  ],
+  "workflow": [
+    {
+      "name": "run-instant-task",
+      "mode": "StepByStep",
+      "components": ["instant-task"]
+    }
+  ]
+}

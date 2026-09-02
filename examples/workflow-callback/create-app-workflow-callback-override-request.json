@@ -1,0 +1,42 @@
+{
+  "name": "callback-custom-workflow-app",
+  "namespace": "default",
+  "alias": "Callback Custom Workflow App",
+  "version": "1.0.0",
+  "callback": {
+    "success": "https://example.com/app/success"
+  },
+  "workflow": {
+    "callback": {
+      "success": "https://example.com/workflow/success",
+      "failure": "https://example.com/workflow/failure",
+      "methods": {
+        "success": "POST",
+        "failure": "PUT"
+      }
+    },
+    "steps": [
+      {
+        "name": "deploy-web",
+        "components": ["web"],
+        "mode": "StepByStep"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "web",
+      "type": "webservice",
+      "image": "nginx:latest",
+      "replicas": 1,
+      "properties": {
+        "ports": [
+          {
+            "port": 80
+          }
+        ]
+      },
+      "traits": {}
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "name": "service-trait-demo",
+  "namespace": "nvg",
+  "component": [
+    {
+      "name": "mysql",
+      "type": "store",
+      "image": "mysql:8.0",
+      "namespace": "nvg",
+      "replicas": 1,
+      "properties": {
+        "ports": [{"port": 3306}],
+        "env": {
+          "MYSQL_ROOT_PASSWORD": "root123"
+        }
+      },
+      "traits": {
+        "service": [
+          {
+            "name": "mysql-master",
+            "type": "internal",
+            "labels": {
+              "layer": "db",
+              "name": "mysql-master"
+            },
+            "selector": {
+              "mysql-pod-role": "mysql-master"
+            },
+            "ports": [
+              {
+                "name": "mysql",
+                "port": 3306,
+                "targetPort": 3306,
+                "protocol": "TCP"
+              }
+            ]
+          },
+          {
+            "name": "mysql-slave",
+            "type": "internal",
+            "labels": {
+              "layer": "db",
+              "name": "mysql-slave"
+            },
+            "selector": {
+              "mysql-pod-role": "mysql-slave"
+            },
+            "ports": [
+              {
+                "name": "mysql",
+                "port": 3306,
+                "targetPort": 3306,
+                "protocol": "TCP"
+              }
+            ]
+          },
+          {
+            "name": "mysql-headless",
+            "type": "internal",
+            "headless": true,
+            "labels": {
+              "layer": "db",
+              "name": "mysql-headless"
+            },
+            "selector": {
+              "name": "mysql"
+            },
+            "ports": [
+              {
+                "name": "mysql",
+                "port": 3306,
+                "targetPort": 3306,
+                "protocol": "TCP"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

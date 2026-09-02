@@ -1,0 +1,96 @@
+{{- $redisPassword := required "redis.password is required" .Values.redis.password -}}
+{{- if hasPrefix "__REPLACE_" $redisPassword -}}
+{{- fail "redis.password must not contain placeholder text" -}}
+{{- end -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "eruun.fullname" . }}-redis
+  labels:
+    {{- include "eruun.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  ports:
+    - name: redis
+      port: {{ .Values.redis.servicePort }}
+      targetPort: redis
+  selector:
+    app.kubernetes.io/component: redis
+    app.kubernetes.io/instance: {{ .Release.Name }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "eruun.fullname" . }}-redis
+  labels:
+    {{- include "eruun.labels" . | nindent 4 }}
+type: Opaque
+data:
+  password: {{ .Values.redis.password | b64enc }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "eruun.fullname" . }}-redis
+  labels:
+    {{- include "eruun.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "eruun.fullname" . }}-redis
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: redis
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        {{- include "eruun.labels" . | nindent 8 }}
+        app.kubernetes.io/component: redis
+    spec:
+      containers:
+        - name: redis
+          image: {{ .Values.redis.image }}
+          imagePullPolicy: Always
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "eruun.fullname" . }}-redis
+                  key: password
+          ports:
+            - name: redis
+              containerPort: {{ .Values.redis.servicePort }}
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli -h 127.0.0.1 -p {{ .Values.redis.servicePort }} ping | grep -q PONG
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli -h 127.0.0.1 -p {{ .Values.redis.servicePort }} ping | grep -q PONG
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          command:
+            - /bin/sh
+            - -ec
+          args:
+            - exec redis-server --appendonly yes --requirepass "$REDIS_PASSWORD"
+          resources:
+            {{- toYaml .Values.redis.resources | nindent 12 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.redis.storage }}

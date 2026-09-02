@@ -1,0 +1,29 @@
+{
+  "name": "job-demo-delay",
+  "namespace": "default",
+  "version": "1.0.0",
+  "project": "demo-project",
+  "description": "Job (startTime) demo",
+  "component": [
+    {
+      "name": "delay-task",
+      "type": "job",
+      "image": "busybox:1.36",
+      "namespace": "default",
+      "replicas": 1,
+      "properties": {
+        "startTime": 1893456000,
+        "runPolicy": "skip_if_completed",
+        "command": ["/bin/sh", "-c", "echo delayed job"]
+      },
+      "traits": {}
+    }
+  ],
+  "workflow": [
+    {
+      "name": "create-delay-task",
+      "mode": "StepByStep",
+      "components": ["delay-task"]
+    }
+  ]
+}

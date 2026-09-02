@@ -1,0 +1,12 @@
+{
+  "name": "deploy-cleanup-all",
+  "alias": "Deploy Cleanup All",
+  "failurePolicy": "cleanup_all",
+  "steps": [
+    {
+      "name": "deploy-runtime-components",
+      "mode": "DAG",
+      "components": ["api", "worker", "mysql"]
+    }
+  ]
+}

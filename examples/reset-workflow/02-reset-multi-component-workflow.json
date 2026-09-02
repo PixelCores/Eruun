@@ -1,0 +1,31 @@
+{
+  "name": "reset-app",
+  "alias": "Reset application components",
+  "workflowType": "workflow",
+  "workflow": [
+    {
+      "name": "cleanup-resources",
+      "jobType": "cleanup_resources",
+      "mode": "DAG",
+      "components": ["api", "worker", "redis"]
+    },
+    {
+      "name": "deploy-config",
+      "jobType": "deploy",
+      "mode": "DAG",
+      "components": ["app-config", "app-secret"]
+    },
+    {
+      "name": "deploy-state",
+      "jobType": "deploy",
+      "mode": "StepByStep",
+      "components": ["redis"]
+    },
+    {
+      "name": "deploy-workloads",
+      "jobType": "deploy",
+      "mode": "DAG",
+      "components": ["api", "worker"]
+    }
+  ]
+}

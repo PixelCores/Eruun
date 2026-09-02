@@ -1,0 +1,23 @@
+{
+  "name": "deploy-with-callback",
+  "alias": "deploy-callback",
+  "callback": {
+    "success": "http://example.com/callback/success",
+    "failure": "http://example.com/callback/failure",
+    "methods": {
+      "success": "POST",
+      "failure": "PUT"
+    },
+    "headers": {
+      "Authorization": "Bearer token"
+    },
+    "timeoutSeconds": 5
+  },
+  "steps": [
+    {
+      "name": "deploy-nginx",
+      "mode": "StepByStep",
+      "components": ["nginx"]
+    }
+  ]
+}

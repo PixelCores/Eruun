@@ -1,0 +1,164 @@
+{{- include "eruun.validateRuntime" . -}}
+{{- define "eruun.runtimeDeployment" -}}
+{{- $root := index . "root" -}}
+{{- $role := index . "role" -}}
+{{- $roleValues := index $root.Values.runtime.roles $role -}}
+{{- $usesImportSecretKeyring := and $root.Values.importSecretKeyring.existingSecret (or (eq $role "api") (eq $role "worker")) -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "eruun.suffixedName" (dict "root" $root "suffix" $role) }}
+  labels:
+    {{- include "eruun.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $role }}
+spec:
+  replicas: {{ $roleValues.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: {{ $role }}
+      app.kubernetes.io/instance: {{ $root.Release.Name }}
+  template:
+    metadata:
+      labels:
+        {{- include "eruun.labels" $root | nindent 8 }}
+        app.kubernetes.io/component: {{ $role }}
+    spec:
+      serviceAccountName: {{ include "eruun.roleServiceAccountName" (dict "root" $root "role" $role) }}
+      terminationGracePeriodSeconds: {{ $root.Values.runtime.terminationGracePeriodSeconds }}
+      containers:
+        - name: eruun-server
+          image: "{{ $root.Values.image.repository }}:{{ $root.Values.image.tag }}"
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          args:
+            - {{ printf "--log_dir=%s" $root.Values.log.dir | quote }}
+            - {{ printf "--logtostderr=%t" $root.Values.log.toStderr | quote }}
+            - {{ printf "--alsologtostderr=%t" $root.Values.log.alsoToStderr | quote }}
+          ports:
+            - name: http
+              containerPort: {{ $root.Values.service.port }}
+          env:
+            - name: ERUUN_ROLE
+              value: {{ $role | quote }}
+            - name: ERUUN_EXIT_ON_LOST_LEADER
+              value: "false"
+            - name: ERUUN_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: ERUUN_BIND_ADDR
+              value: {{ printf "0.0.0.0:%v" $root.Values.service.port | quote }}
+            - name: ERUUN_LEADER_NAMESPACE
+              value: {{ $root.Release.Namespace | quote }}
+            - name: ERUUN_CONTROLLER_LOCK_NAME
+              value: {{ include "eruun.runtimeLockName" (dict "root" $root "role" "controller") | quote }}
+            - name: ERUUN_SCHEDULER_LOCK_NAME
+              value: {{ include "eruun.runtimeLockName" (dict "root" $root "role" "scheduler") | quote }}
+            - name: ERUUN_WORKFLOW_HEARTBEAT_INTERVAL
+              value: {{ $root.Values.runtime.heartbeatInterval | quote }}
+            - name: ERUUN_WORKFLOW_LEASE_DURATION
+              value: {{ $root.Values.runtime.leaseDuration | quote }}
+            - name: ERUUN_WORKFLOW_LEASE_REAPER_INTERVAL
+              value: {{ $root.Values.runtime.leaseReaperInterval | quote }}
+            - name: ERUUN_WORKFLOW_WORKER_DRAIN_TIMEOUT
+              value: {{ printf "%ds" (int $root.Values.runtime.workerDrainTimeoutSeconds) | quote }}
+            - name: ERUUN_DATASTORE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "eruun.fullname" $root }}-mysql
+                  key: datastore-url
+            - name: MYSQL_HOST
+              value: {{ include "eruun.fullname" $root }}-mysql
+            - name: MYSQL_PORT
+              value: {{ $root.Values.mysql.servicePort | quote }}
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "eruun.fullname" $root }}-mysql
+                  key: password
+            - name: MYSQL_DATABASE
+              value: {{ $root.Values.mysql.database | quote }}
+            - name: ERUUN_CACHE_TYPE
+              value: redis
+            - name: ERUUN_CACHE_HOST
+              value: {{ include "eruun.fullname" $root }}-redis
+            - name: ERUUN_CACHE_PORT
+              value: {{ $root.Values.redis.servicePort | quote }}
+            - name: ERUUN_CACHE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "eruun.fullname" $root }}-redis
+                  key: password
+            - name: ERUUN_MSG_TYPE
+              value: redis
+            {{- if $usesImportSecretKeyring }}
+            - name: ERUUN_IMPORT_SECRET_KEYRING_FILE
+              value: /var/run/secrets/eruun/import-secret-keyring/keyring.json
+            {{- end }}
+            {{- range $root.Values.env }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+          {{- if $usesImportSecretKeyring }}
+          volumeMounts:
+            - name: import-secret-keyring
+              mountPath: /var/run/secrets/eruun/import-secret-keyring
+              readOnly: true
+          {{- end }}
+          startupProbe:
+            httpGet:
+              path: /api/v1/healthz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /api/v1/readyz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/v1/healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          resources:
+            {{- toYaml $roleValues.resources | nindent 12 }}
+      {{- if $usesImportSecretKeyring }}
+      volumes:
+        - name: import-secret-keyring
+          secret:
+            secretName: {{ $root.Values.importSecretKeyring.existingSecret | quote }}
+            items:
+              - key: {{ required "importSecretKeyring.key is required when importSecretKeyring.existingSecret is set" $root.Values.importSecretKeyring.key | quote }}
+                path: keyring.json
+      {{- end }}
+      {{- with $root.Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $root.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $root.Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if $root.Values.topologySpreadConstraints.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: {{ $root.Values.topologySpreadConstraints.maxSkew }}
+          topologyKey: {{ $root.Values.topologySpreadConstraints.topologyKey | quote }}
+          whenUnsatisfiable: {{ $root.Values.topologySpreadConstraints.whenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/component: {{ $role }}
+              app.kubernetes.io/instance: {{ $root.Release.Name }}
+      {{- end }}
+---
+{{- end -}}
+{{- range $role := list "api" "controller" "scheduler" "worker" }}
+{{ include "eruun.runtimeDeployment" (dict "root" $ "role" $role) }}
+{{- end }}

@@ -1,0 +1,53 @@
+{
+  "name": "ingress-derive-service-trait",
+  "namespace": "default",
+  "version": "1.0.0",
+  "component": [
+    {
+      "name": "backend",
+      "type": "webservice",
+      "image": "nginx:1.24",
+      "namespace": "default",
+      "properties": {
+        "ports": [{"port": 8080}]
+      },
+      "traits": {
+        "service": [
+          {
+            "name": "backend-internal",
+            "type": "internal",
+            "selector": {
+              "appId": "demo-app"
+            },
+            "ports": [
+              {
+                "port": 9000,
+                "targetPort": 8080,
+                "protocol": "TCP"
+              }
+            ]
+          }
+        ],
+        "ingress": [
+          {
+            "name": "backend-ingress",
+            "ingressClassName": "nginx",
+            "routes": [
+              {
+                "path": "/api",
+                "backend": {}
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "workflow": [
+    {
+      "name": "deploy-backend",
+      "mode": "StepByStep",
+      "components": ["backend"]
+    }
+  ]
+}

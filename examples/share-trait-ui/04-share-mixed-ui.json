@@ -1,0 +1,69 @@
+{
+  "name": "share-ui-demo",
+  "alias": "share-ui-demo",
+  "namespace": "default",
+  "version": "1.0.0",
+  "project": "default",
+  "description": "share trait ui test",
+  "component": [
+    {
+      "name": "cm-default",
+      "type": "config",
+      "namespace": "default",
+      "replicas": 1,
+      "properties": {
+        "conf": {
+          "app.yaml": "mode: default\n"
+        }
+      },
+      "traits": {
+        "share": {
+          "strategy": "default"
+        }
+      }
+    },
+    {
+      "name": "cm-ignore",
+      "type": "config",
+      "namespace": "default",
+      "replicas": 1,
+      "properties": {
+        "conf": {
+          "app.yaml": "mode: ignore\n"
+        }
+      },
+      "traits": {
+        "share": {
+          "strategy": "ignore"
+        }
+      }
+    },
+    {
+      "name": "cm-force",
+      "type": "config",
+      "namespace": "default",
+      "replicas": 1,
+      "properties": {
+        "conf": {
+          "app.yaml": "mode: force\n"
+        }
+      },
+      "traits": {
+        "share": {
+          "strategy": "force"
+        }
+      }
+    }
+  ],
+  "workflow": [
+    {
+      "name": "share-test",
+      "mode": "StepByStep",
+      "components": [
+        "cm-default",
+        "cm-ignore",
+        "cm-force"
+      ]
+    }
+  ]
+}

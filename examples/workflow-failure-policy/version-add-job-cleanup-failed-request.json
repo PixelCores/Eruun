@@ -1,0 +1,24 @@
+{
+  "version": "1.1.0",
+  "autoExec": true,
+  "components": [
+    {
+      "action": "add",
+      "name": "mysql-update-job",
+      "type": "job",
+      "image": "registry.example.com/3os/skeema-tool:1.12.3-centos",
+      "properties": {
+        "runPolicy": "recreate",
+        "failurePolicy": "cleanup_failed",
+        "env": {
+          "SCHEMA": "game",
+          "DB_HOST": "mysql-master",
+          "DB_USER": "root",
+          "ALLOW_DROP": "no",
+          "SQL_URL": "https://oss.example.com/update.sql",
+          "ALLOW_INSERT": "yes"
+        }
+      }
+    }
+  ]
+}

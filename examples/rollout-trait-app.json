@@ -1,0 +1,57 @@
+{
+  "name": "rollout-demo",
+  "namespace": "default",
+  "version": "1.0.0",
+  "description": "Rollout trait demo for Deployment and StatefulSet",
+  "component": [
+    {
+      "name": "api",
+      "type": "webservice",
+      "image": "nginx:1.25",
+      "namespace": "default",
+      "replicas": 3,
+      "properties": {
+        "ports": [
+          {
+            "port": 80
+          }
+        ]
+      },
+      "traits": {
+        "rollout": {
+          "type": "RollingUpdate",
+          "rollingUpdate": {
+            "maxSurge": "25%",
+            "maxUnavailable": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "mysql",
+      "type": "store",
+      "image": "mysql:8",
+      "namespace": "default",
+      "replicas": 3,
+      "properties": {
+        "ports": [
+          {
+            "port": 3306
+          }
+        ],
+        "env": {
+          "MYSQL_ROOT_PASSWORD": "example"
+        }
+      },
+      "traits": {
+        "rollout": {
+          "type": "RollingUpdate",
+          "rollingUpdate": {
+            "partition": 1,
+            "maxUnavailable": 1
+          }
+        }
+      }
+    }
+  ]
+}

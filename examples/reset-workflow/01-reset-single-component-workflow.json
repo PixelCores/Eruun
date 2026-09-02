@@ -1,0 +1,19 @@
+{
+  "name": "reset-web",
+  "alias": "Reset web component",
+  "workflowType": "workflow",
+  "workflow": [
+    {
+      "name": "cleanup-web",
+      "jobType": "cleanup_resources",
+      "mode": "StepByStep",
+      "components": ["web"]
+    },
+    {
+      "name": "deploy-web",
+      "jobType": "deploy",
+      "mode": "StepByStep",
+      "components": ["web"]
+    }
+  ]
+}

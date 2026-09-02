@@ -1,0 +1,35 @@
+{
+  "name": "share-force-demo",
+  "alias": "share-force-demo",
+  "namespace": "default",
+  "version": "1.0.0",
+  "project": "default",
+  "description": "share strategy force demo",
+  "component": [
+    {
+      "name": "cm-force",
+      "type": "config",
+      "namespace": "default",
+      "replicas": 1,
+      "properties": {
+        "conf": {
+          "app.yaml": "mode: force\n"
+        }
+      },
+      "traits": {
+        "share": {
+          "strategy": "force"
+        }
+      }
+    }
+  ],
+  "workflow": [
+    {
+      "name": "share-force-step",
+      "mode": "StepByStep",
+      "components": [
+        "cm-force"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "id": "replace-with-app-id",
+  "name": "callback-custom-workflow-app",
+  "namespace": "default",
+  "version": "1.0.1",
+  "callback": {
+    "success": "https://example.com/app-updated/success",
+    "failure": "https://example.com/app-updated/failure"
+  },
+  "component": [
+    {
+      "name": "web",
+      "type": "webservice",
+      "image": "nginx:1.27",
+      "replicas": 1,
+      "properties": {
+        "ports": [
+          {
+            "port": 80
+          }
+        ]
+      },
+      "traits": {}
+    }
+  ],
+  "workflow": [
+    {
+      "name": "deploy-web",
+      "components": ["web"],
+      "mode": "StepByStep"
+    }
+  ]
+}

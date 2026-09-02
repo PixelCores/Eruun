@@ -1,0 +1,8 @@
+{
+  "type": "podRestartMonitor",
+  "value": {
+    "enabled": true,
+    "windowSeconds": 1800,
+    "threshold": 3
+  }
+}
