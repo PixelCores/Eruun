@@ -7,7 +7,7 @@ toolchain go1.25.8
 require (
 	github.com/alibabacloud-go/darabonba-openapi v0.1.7
 	github.com/alibabacloud-go/nas-20170626/v2 v2.0.2
-	github.com/alicebob/miniredis/v2 v2.34.0
+	github.com/alicebob/miniredis/v2 v2.38.0
 	github.com/barnettZQG/inject v0.0.1
 	github.com/fatih/color v1.15.0
 	github.com/gin-gonic/gin v1.12.0
@@ -47,7 +47,6 @@ require (
 	github.com/alibabacloud-go/openapi-util v0.1.0 // indirect
 	github.com/alibabacloud-go/tea v1.3.13 // indirect
 	github.com/alibabacloud-go/tea-utils v1.3.9 // indirect
-	github.com/alicebob/gopher-json v0.0.0-20230218143504-906a9b012302 // indirect
 	github.com/aliyun/credentials-go v1.4.12 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
