@@ -53,6 +53,8 @@ Scheduler 对 `waiting` task 执行 CAS，生成新的：
 
 随后发布版本 2 dispatch。Worker 只接受携带完整 `taskId/runGeneration/runToken` 的消息，并在 ownership CAS 成功后把任务置为 `running`、写入 `workerId` 和新的 lease deadline。
 
+dispatch、Worker claim、heartbeat、显式释放和 Scheduler reaper 都以 MySQL 的微秒级 Unix 时间为权威时间。运行节点的墙钟和 DSN 时区不参与数据库 lease 的到期判断，因此节点时钟偏差不会让 Scheduler 提前接管仍在续租的 Worker。
+
 消息队列是 at-least-once 分发通道，数据库中的 `WorkflowQueue` 才是执行状态和 ownership 的事实源。缺少版本或完整 ownership 的 dispatch 不进入执行路径。
 
 ### 4.2 心跳与状态写入
@@ -68,6 +70,10 @@ ownership 不匹配时，旧执行立即停止后续状态写入。外部系统�
 ### 4.3 故障恢复
 
 Scheduler lease reaper 周期扫描 lease 已过期且身份完整的 `queued/running` task，以 CAS 清理旧 ownership 并恢复为 `waiting`。下一次派发创建新的 generation/token。
+
+Scheduler 的 waiting task 与 cron schedule 查询都在数据库侧按到期时间过滤，并按 100 条固定批次处理。`workflow_queue(status, execute_at)` 与 `workflow_schedule(enabled, next_run)` 复合索引支撑这两条热路径；持续积压会由后续轮询继续排空，而不会把全量未到期记录加载到单个 Leader 进程。
+
+Cron schedule 按 `next_run, id` 稳定排序，在同一进程的后续轮询中推进页码，读到末页后回到第一页。即使整批计划因错误、应用锁争用或无可运行日期而未推进 `next_run`，后面的到期计划也会获得处理机会。成功派发、删除或禁用计划导致候选集缩小时，移入前页的记录会在下一轮扫描中重新被读取；进程重启从第一页开始。分页不改写计划的 `next_run`、`last_run` 或幂等键，派发失败仍按原有事务语义回滚并返回错误。
 
 进程启动不会全表重置 active task。未认领消息依赖 Redis AutoClaim 或 Kafka Rebalance；已经 ACK 的任务依赖数据库 lease reaper。
 

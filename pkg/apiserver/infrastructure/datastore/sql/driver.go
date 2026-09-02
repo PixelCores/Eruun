@@ -19,6 +19,26 @@ type Driver struct {
 	Client gorm.DB
 }
 
+// CurrentDatabaseTime returns the SQL server's UTC wall clock. MySQL lease
+// writers and reapers use this value so node clock skew cannot transfer an
+// active workflow lease prematurely.
+func (m *Driver) CurrentDatabaseTime(ctx context.Context) (time.Time, error) {
+	var result struct {
+		CurrentUnixMicro int64 `gorm:"column:current_unix_micro"`
+	}
+	// Keep both operands in UTC; converting a local datetime back to Unix time
+	// is ambiguous during the repeated hour at the end of daylight saving time.
+	if err := m.Client.WithContext(ctx).
+		Raw("SELECT TIMESTAMPDIFF(MICROSECOND, '1970-01-01 00:00:00', UTC_TIMESTAMP(6)) AS current_unix_micro").
+		Scan(&result).Error; err != nil {
+		return time.Time{}, datastore.NewDBError(fmt.Errorf("query current database time: %w", err))
+	}
+	if result.CurrentUnixMicro <= 0 {
+		return time.Time{}, datastore.NewDBError(fmt.Errorf("query current database time returned zero value"))
+	}
+	return time.UnixMicro(result.CurrentUnixMicro).UTC(), nil
+}
+
 func normalizeWriteError(err error) error {
 	if err == nil {
 		return nil
