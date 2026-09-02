@@ -4,7 +4,7 @@
 
 ## 角色与 Leader 契约
 
-服务端通过 `--role` / `ERUUN_ROLE` 运行 `api`、`controller`、`scheduler`、`worker`，或用聚合角色 `all` 同时启用四类职责。角色不通过 Deployment 副本数推断，副本数也不要求奇数。
+服务端通过 `--role` / `ERUUN_ROLE` 运行 `api`、`controller`、`scheduler`、`worker` 中的一类职责，直接运行默认是 `api`。角色不通过 Deployment 副本数推断，不提供聚合 `all` 角色，副本数也不要求奇数。
 
 Controller 与 Scheduler 使用彼此独立的 Kubernetes Lease：
 
@@ -13,7 +13,7 @@ Controller 与 Scheduler 使用彼此独立的 Kubernetes Lease：
 | Controller | `eruun-controller` | `--controller-lock-name` / `ERUUN_CONTROLLER_LOCK_NAME` |
 | Scheduler | `eruun-scheduler` | `--scheduler-lock-name` / `ERUUN_SCHEDULER_LOCK_NAME` |
 
-`--duration` / `ERUUN_DURATION` 控制 election 的 `LeaseDuration`，默认 `15s`、最小 `4s`；`RenewDeadline` 按 LeaseDuration 约三分之二计算。`role=all` 不创建第三种历史 Lease，而是分别参与 Controller 与 Scheduler 两个 election；任一职责只在取得对应任期后启动。
+`--duration` / `ERUUN_DURATION` 控制 election 的 `LeaseDuration`，默认 `15s`、最小 `4s`；`RenewDeadline` 按 LeaseDuration 约三分之二计算。Controller 与 Scheduler 只参与各自的 election，任一职责只在取得对应任期后启动。
 
 每个 election 使用 `ReleaseOnCancel=false`；失去任期或进程关闭时，先同步停止该角色的 worker，再显式释放 Lease，避免新 Leader 与旧任期工作重叠。`--exit-on-lost-leader=true` 保留进程退出语义；设为 `false` 时，实例短暂退避并重新参选，作为 standby 保持运行和 ready。
 

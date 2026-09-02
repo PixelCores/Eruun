@@ -47,13 +47,14 @@ go run ./cmd/main.go
 
 ## 运行架构
 
-Eruun 可以单进程运行全部职责，也可以拆分为四类角色：
+Eruun 以四类显式运行角色之一启动；Helm 与独立 Manifest 会分别部署全部四类角色：
 
 - api：HTTP 路由、请求校验和响应契约。
 - controller：Kubernetes 观察与运行状态同步。
 - scheduler：工作流调度与分发。
 - worker：工作流 Job 与 Kubernetes 资源调和。
-- all：默认的单进程开发模式。
+
+直接在本地运行服务端时默认使用 `api` 角色，不提供聚合的 `all` 角色。
 
 Redis 用于缓存、工作流锁和默认 Redis Streams 消息传输。工作流消息可以切换为 Kafka，但缓存和锁仍需要 Redis。MySQL 是持久化状态主存储。
 
