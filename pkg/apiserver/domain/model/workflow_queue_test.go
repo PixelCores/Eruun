@@ -14,9 +14,8 @@ func TestWorkflowQueue_IdempotencyKeyUniqueIndex(t *testing.T) {
 	parsed, err := gormschema.Parse(&WorkflowQueue{}, &sync.Map{}, gormschema.NamingStrategy{})
 	require.NoError(t, err)
 
-	indexes := parsed.ParseIndexes()
-	index, ok := indexes["idx_workflow_queue_idempotency_key"]
-	require.True(t, ok, "expected workflow queue idempotency index")
+	index := parsed.LookIndex("idx_workflow_queue_idempotency_key")
+	require.NotNil(t, index, "expected workflow queue idempotency index")
 	require.Equal(t, "UNIQUE", index.Class)
 	require.Len(t, index.Fields, 1)
 	require.Equal(t, "idempotency_key", index.Fields[0].DBName)
@@ -26,9 +25,8 @@ func TestWorkflowQueue_ReaperIndex(t *testing.T) {
 	parsed, err := gormschema.Parse(&WorkflowQueue{}, &sync.Map{}, gormschema.NamingStrategy{})
 	require.NoError(t, err)
 
-	indexes := parsed.ParseIndexes()
-	index, ok := indexes["idx_workflow_queue_reaper"]
-	require.True(t, ok, "expected workflow queue reaper index")
+	index := parsed.LookIndex("idx_workflow_queue_reaper")
+	require.NotNil(t, index, "expected workflow queue reaper index")
 	require.Equal(t, []string{"status", "lease_expires_at"}, []string{
 		index.Fields[0].DBName,
 		index.Fields[1].DBName,

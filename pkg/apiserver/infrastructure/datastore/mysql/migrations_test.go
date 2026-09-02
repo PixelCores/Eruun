@@ -113,19 +113,19 @@ func TestApplicationComponentRuntimeNullBackfills(t *testing.T) {
 		{
 			name:      "status",
 			field:     applicationComponentRuntimeNullBackfill{column: "status", value: ""},
-			wantSQL:   "UPDATE `eruun_app_components` SET `status`=? WHERE `status` IS NULL",
+			wantSQL:   "UPDATE `eruun_app_components` SET `status`=? WHERE `eruun_app_components`.`status` IS NULL",
 			wantValue: "",
 		},
 		{
 			name:      "ready replicas",
 			field:     applicationComponentRuntimeNullBackfill{column: "ready_replicas", value: int32(0)},
-			wantSQL:   "UPDATE `eruun_app_components` SET `ready_replicas`=? WHERE `ready_replicas` IS NULL",
+			wantSQL:   "UPDATE `eruun_app_components` SET `ready_replicas`=? WHERE `eruun_app_components`.`ready_replicas` IS NULL",
 			wantValue: int32(0),
 		},
 		{
 			name:      "last abnormal",
 			field:     applicationComponentRuntimeNullBackfill{column: "last_abnormal", value: ""},
-			wantSQL:   "UPDATE `eruun_app_components` SET `last_abnormal`=? WHERE `last_abnormal` IS NULL",
+			wantSQL:   "UPDATE `eruun_app_components` SET `last_abnormal`=? WHERE `eruun_app_components`.`last_abnormal` IS NULL",
 			wantValue: "",
 		},
 	}
