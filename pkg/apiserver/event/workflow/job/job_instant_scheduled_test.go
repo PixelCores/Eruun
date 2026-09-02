@@ -79,13 +79,16 @@ func TestNewInstantAndScheduledCtlNilJob(t *testing.T) {
 func TestDelayedJobControllersPropagateWorkflowOwnership(t *testing.T) {
 	newTask := func(jobType config.JobType) *model.JobTask {
 		return &model.JobTask{
-			Name:          "delayed-job",
-			TaskID:        "task-delayed",
-			Namespace:     "default",
-			JobType:       string(jobType),
-			ExecutionKey:  "execution-delayed",
-			RunGeneration: 3,
-			RunToken:      "run-3",
+			Name:               "delayed-job",
+			TaskID:             "task-delayed",
+			Namespace:          "default",
+			JobType:            string(jobType),
+			ExecutionKey:       "execution-delayed",
+			RunGeneration:      3,
+			OwnerRunGeneration: 3,
+			OwnerStatus:        config.StatusRunning,
+			RunToken:           "run-3",
+			WorkerID:           "worker-delayed",
 			JobInfo: &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
 				Name:      "delayed-job",
 				Namespace: "default",
@@ -108,22 +111,68 @@ func TestDelayedJobControllersPropagateWorkflowOwnership(t *testing.T) {
 	t.Run("instant", func(t *testing.T) {
 		queue := &enqueueCaptureQueue{enqueueID: "delay-instant"}
 		task := newTask(config.JobDeployInstant)
-		ctl := NewInstantJobCtl(task, fake.NewSimpleClientset(), &noopStore{}, func() {})
+		store := &workflowOwnershipStore{noopStore: &noopStore{}, task: model.WorkflowQueue{
+			TaskID: task.TaskID, Status: config.StatusRunning, RunGeneration: 3, RunToken: "run-3", WorkerID: "worker-delayed",
+		}}
+		ctl := NewInstantJobCtl(task, fake.NewSimpleClientset(), store, func() {})
 		ctl.setRuntime(&jobRuntime{delayQueue: queue})
 
 		require.NoError(t, ctl.run(context.Background()))
 		assertPayload(t, queue)
+		require.Equal(t, config.JobDelayStatePending, task.DelayState)
+		require.NotEmpty(t, task.DelayPayload)
 	})
 
 	t.Run("scheduled", func(t *testing.T) {
 		queue := &enqueueCaptureQueue{enqueueID: "delay-scheduled"}
 		task := newTask(config.JobDeployScheduled)
-		ctl := NewScheduledJobCtl(task, fake.NewSimpleClientset(), &noopStore{}, func() {})
+		store := &workflowOwnershipStore{noopStore: &noopStore{}, task: model.WorkflowQueue{
+			TaskID: task.TaskID, Status: config.StatusRunning, RunGeneration: 3, RunToken: "run-3", WorkerID: "worker-delayed",
+		}}
+		ctl := NewScheduledJobCtl(task, fake.NewSimpleClientset(), store, func() {})
 		ctl.setRuntime(&jobRuntime{delayQueue: queue})
 
 		require.NoError(t, ctl.runOneTimeJob(context.Background(), task.JobInfo.(*batchv1.Job)))
 		assertPayload(t, queue)
+		require.Equal(t, config.StatusDistributed, task.Status)
+		require.Equal(t, config.JobDelayStatePending, task.DelayState)
 	})
+}
+
+func TestDelayedJobControllersCommitWithoutQueue(t *testing.T) {
+	for _, jobType := range []config.JobType{config.JobDeployInstant, config.JobDeployScheduled} {
+		t.Run(string(jobType), func(t *testing.T) {
+			store := &jobInfoSaveStore{}
+			jobObj := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
+				Name:      "durable-delay",
+				Namespace: "default",
+				Annotations: map[string]string{
+					config.AnnotationJobStartTime: "4102444800",
+				},
+			}}
+			task := &model.JobTask{
+				Name:          "durable-delay",
+				TaskID:        "task-durable-delay",
+				Namespace:     "default",
+				JobType:       string(jobType),
+				ExecutionKey:  "execution-durable-delay",
+				RunGeneration: 2,
+				JobInfo:       jobObj,
+			}
+			var ctl JobCtl
+			if jobType == config.JobDeployInstant {
+				ctl = NewInstantJobCtl(task, fake.NewSimpleClientset(), store, func() {})
+			} else {
+				ctl = NewScheduledJobCtl(task, fake.NewSimpleClientset(), store, func() {})
+			}
+
+			require.NoError(t, ctl.Run(context.Background()))
+			require.Equal(t, config.StatusDistributed, task.Status)
+			require.NotNil(t, store.added)
+			require.Equal(t, config.JobDelayStatePending, store.added.DelayState)
+			require.NotEmpty(t, store.added.DelayPayload)
+		})
+	}
 }
 
 func TestImmediateJobControllersRejectStaleWorkflowOwnerBeforeKubernetesAccess(t *testing.T) {

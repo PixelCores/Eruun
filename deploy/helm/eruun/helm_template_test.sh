@@ -132,6 +132,49 @@ bindingSubjectNames() {
   ' "${manifest}"
 }
 
+bindingSubjectNamesFor() {
+  local binding_name="$1"
+  local manifest="$2"
+  awk -v target="${binding_name}" '
+    /^kind:/ {
+      inBinding = ($2 == "ClusterRoleBinding")
+      inMetadata = 0
+      selected = 0
+      inSubjects = 0
+    }
+    inBinding && /^metadata:/ { inMetadata = 1; next }
+    inBinding && inMetadata && /^  name:/ {
+      selected = ($2 == target)
+      inMetadata = 0
+      next
+    }
+    selected && /^subjects:/ { inSubjects = 1; next }
+    selected && inSubjects && /^roleRef:/ { inSubjects = 0; next }
+    selected && inSubjects && /^    name:/ { print $2 }
+  ' "${manifest}"
+}
+
+bindingRoleRefNameFor() {
+  local binding_name="$1"
+  local manifest="$2"
+  awk -v target="${binding_name}" '
+    /^kind:/ {
+      inBinding = ($2 == "ClusterRoleBinding")
+      inMetadata = 0
+      selected = 0
+      inRoleRef = 0
+    }
+    inBinding && /^metadata:/ { inMetadata = 1; next }
+    inBinding && inMetadata && /^  name:/ {
+      selected = ($2 == target)
+      inMetadata = 0
+      next
+    }
+    selected && /^roleRef:/ { inRoleRef = 1; next }
+    selected && inRoleRef && /^  name:/ { print $2; exit }
+  ' "${manifest}"
+}
+
 clusterRoleRuleVerbs() {
   local manifest="$1"
   local api_group="$2"
@@ -145,7 +188,7 @@ clusterRoleRuleVerbs() {
       gsub(/,[[:space:]]*/, " ", value)
       return value
     }
-    $1 == "kind:" {
+    /^kind:/ {
       inClusterRole = ($2 == "ClusterRole")
       matchingGroup = 0
       matchingResource = 0
@@ -160,6 +203,49 @@ clusterRoleRuleVerbs() {
       next
     }
     inClusterRole && matchingGroup && matchingResource && $1 == "verbs:" {
+      print listValue($0)
+      exit
+    }
+  ' "${manifest}"
+}
+
+clusterRoleRuleVerbsFor() {
+  local manifest="$1"
+  local role_name="$2"
+  local api_group="$3"
+  local resource="$4"
+  awk -v targetRole="${role_name}" -v targetGroup="${api_group}" -v targetResource="${resource}" '
+    function listValue(line, value) {
+      value = line
+      sub(/^[^[]*\[/, "", value)
+      sub(/\][[:space:]]*$/, "", value)
+      gsub(/"/, "", value)
+      gsub(/,[[:space:]]*/, " ", value)
+      return value
+    }
+    /^kind:/ {
+      inClusterRole = ($2 == "ClusterRole")
+      inMetadata = 0
+      selected = 0
+      matchingGroup = 0
+      matchingResource = 0
+    }
+    inClusterRole && /^metadata:/ { inMetadata = 1; next }
+    inClusterRole && inMetadata && /^  name:/ {
+      selected = ($2 == targetRole)
+      inMetadata = 0
+      next
+    }
+    selected && $1 == "-" && $2 == "apiGroups:" {
+      matchingGroup = (listValue($0) == targetGroup)
+      matchingResource = 0
+      next
+    }
+    selected && matchingGroup && $1 == "resources:" {
+      matchingResource = (listValue($0) == targetResource)
+      next
+    }
+    selected && matchingGroup && matchingResource && $1 == "verbs:" {
       print listValue($0)
       exit
     }
@@ -192,10 +278,61 @@ grep -q '^appVersion: "0.1.0"$' "${TEST_DIR}/Chart.yaml" ||
 
 default_manifest=$(renderRBAC default eruun eruun-system)
 assertRBACClosure "${default_manifest}" eruun-system
+assertEqual "$(resourceNames ClusterRole "${default_manifest}" | wc -l | tr -d ' ')" "2" "RBAC must render resource-manager and controller-observer ClusterRoles"
+assertEqual "$(resourceNames ClusterRoleBinding "${default_manifest}" | wc -l | tr -d ' ')" "2" "RBAC must render one binding per ClusterRole"
 assertEqual \
   "$(resourceName ClusterRole "${default_manifest}")" \
   "eruun-eruun-eruun-system" \
   "default ClusterRole name must remain stable"
+controller_role_name="eruun-eruun-eruun-system-controller-observer"
+assertEqual \
+  "$(bindingRoleRefNameFor "${controller_role_name}" "${default_manifest}")" \
+  "${controller_role_name}" \
+  "controller observer binding must reference its narrow ClusterRole"
+assertEqual \
+  "$(bindingSubjectNamesFor eruun-eruun-eruun-system "${default_manifest}" | sort | tr '\n' ' ' | sed 's/ $//')" \
+  "eruun-eruun-api eruun-eruun-worker" \
+  "resource manager binding must include only API and Worker"
+assertEqual \
+  "$(bindingSubjectNamesFor "${controller_role_name}" "${default_manifest}")" \
+  "eruun-eruun-controller" \
+  "controller observer binding must include only Controller"
+assertEqual \
+  "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" "" pods)" \
+  "get list watch patch delete" \
+  "Controller must observe, label, and clean up completed Job Pods"
+assertEqual \
+  "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" "" pods/log)" \
+  "get" \
+  "ResultDispatcher must collect completed Job logs"
+assertEqual \
+  "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" batch jobs)" \
+  "get create update delete" \
+  "Controller must dispatch delayed Jobs, adopt execution identities, and clean up completed Jobs"
+assertEqual \
+  "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" apps replicasets)" \
+  "get" \
+  "Controller must only read ReplicaSet owners"
+assertEqual \
+  "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" "" secrets)" \
+  "" \
+  "Controller must not receive Secret permissions"
+assertEqual \
+  "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" "" pods/exec)" \
+  "" \
+  "Controller must not receive Pod exec permissions"
+assertEqual \
+  "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" apps deployments)" \
+  "" \
+  "Controller must not manage Deployments"
+assertEqual \
+  "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" rbac.authorization.k8s.io roles)" \
+  "" \
+  "Controller must not manage RBAC roles"
+assertEqual \
+  "$(clusterRoleRuleVerbs "${default_manifest}" batch jobs)" \
+  "get list create update patch delete" \
+  "Worker must adopt reusable Jobs into a new execution generation"
 assertEqual \
   "$(clusterRoleRuleVerbs "${default_manifest}" storage.k8s.io storageclasses)" \
   "get create" \
@@ -371,6 +508,12 @@ if runHelm template eruun "${TEST_DIR}" \
   --set-string "env[0].value=300s" >/dev/null 2>&1; then
   fail "env must not override Chart-managed worker drain timeout"
 fi
+if runHelm template eruun "${TEST_DIR}" \
+  --namespace eruun-system \
+  --set-string "env[0].name=ERUUN_DATASTORE_SCHEMA_MODE" \
+  --set-string "env[0].value=migrate" >/dev/null 2>&1; then
+  fail "env must not override Chart-managed datastore schema mode"
+fi
 runHelm template eruun "${TEST_DIR}" \
   --namespace eruun-system > "${runtime_manifest}"
 
@@ -402,6 +545,75 @@ assertEqual \
   "$(grep -c 'failureThreshold: 30' "${runtime_manifest}")" \
   "4" \
   "distributed runtime startup probes must allow slow initialization"
+assertEqual \
+  "$(grep -c 'name: ERUUN_DATASTORE_SCHEMA_MODE' "${runtime_manifest}")" \
+  "5" \
+  "runtime deployments and migration Job must declare schema ownership"
+assertEqual \
+  "$(grep -c 'value: \"migrate\"' "${runtime_manifest}")" \
+  "1" \
+  "initial install must assign schema migration to the API role only"
+assertEqual \
+  "$(grep -c 'value: \"validate\"' "${runtime_manifest}")" \
+  "3" \
+  "non-API roles must only validate schema on initial install"
+
+upgrade_manifest="${TEST_ROOT}/upgrade-runtime.yaml"
+runHelm template eruun "${TEST_DIR}" \
+  --namespace eruun-system \
+  --is-upgrade > "${upgrade_manifest}"
+assertEqual \
+  "$(grep -c 'value: \"validate\"' "${upgrade_manifest}")" \
+  "4" \
+  "all runtime roles must validate schema after the pre-upgrade migration"
+grep -q '"helm.sh/hook": pre-upgrade' "${upgrade_manifest}" ||
+  fail "schema migration Job must run as a pre-upgrade hook"
+grep -q 'value: migrate-only' "${upgrade_manifest}" ||
+  fail "schema migration hook must exit after applying migrations"
+
+assertEqual \
+  "$(grep -c 'key: datastore-url' "${upgrade_manifest}")" \
+  "5" \
+  "runtime deployments and migration Job must default to the same datastore Secret"
+
+external_datastore_manifest="${TEST_ROOT}/upgrade-external-datastore.yaml"
+external_datastore_url='review:example@tcp(external-db.example:3306)/eruun?parseTime=true'
+runHelm template eruun "${TEST_DIR}" \
+  --namespace eruun-system \
+  --is-upgrade \
+  --set-string 'env[0].name=ERUUN_DATASTORE_URL' \
+  --set-string "env[0].value=${external_datastore_url}" > "${external_datastore_manifest}"
+assertEqual \
+  "$(grep -Fc "value: \"${external_datastore_url}\"" "${external_datastore_manifest}")" \
+  "5" \
+  "all runtime deployments and migration Job must use the external datastore override"
+
+expanded_datastore_manifest="${TEST_ROOT}/upgrade-expanded-datastore.yaml"
+expanded_datastore_url='root:$(MYSQL_PASSWORD)@tcp($(EXTERNAL_MYSQL_HOST):3306)/$(MYSQL_DATABASE)?parseTime=true'
+runHelm template eruun "${TEST_DIR}" \
+  --namespace eruun-system \
+  --is-upgrade \
+  --set-string 'env[0].name=EXTERNAL_MYSQL_HOST' \
+  --set-string 'env[0].value=external-db.example' \
+  --set-string 'env[1].name=ERUUN_DATASTORE_URL' \
+  --set-string "env[1].value=${expanded_datastore_url}" > "${expanded_datastore_manifest}"
+awk -v expectedURL="${expanded_datastore_url}" '
+  /^kind:/ { kind = $2; passwordReady = 0; databaseReady = 0; hostReady = 0 }
+  kind != "Deployment" && kind != "Job" { next }
+  $1 == "-" && $2 == "name:" { env = $3 }
+  env == "MYSQL_PASSWORD" && $1 == "key:" && $2 == "password" { passwordReady = 1 }
+  env == "MYSQL_DATABASE" && $1 == "value:" && $2 == "\"eruun\"" { databaseReady = 1 }
+  env == "EXTERNAL_MYSQL_HOST" && $1 == "value:" && $2 == "\"external-db.example\"" { hostReady = 1 }
+  env == "ERUUN_DATASTORE_URL" && $1 == "value:" {
+    value = $0
+    sub(/^[[:space:]]*value: "/, "", value)
+    sub(/"$/, "", value)
+    if (value != expectedURL || !passwordReady || !databaseReady || !hostReady) failed = 1
+    count++
+  }
+  END { exit failed || count != 5 }
+' "${expanded_datastore_manifest}" ||
+  fail "runtime deployments and migration Job must define DSN expansion inputs before the override"
 
 assertEqual \
   "$(grep -c 'value: \"eruun-eruun-controller\"' "${runtime_manifest}")" \
@@ -496,11 +708,18 @@ runHelm template eruun "${TEST_DIR}" \
 if runHelm template eruun "${TEST_DIR}" --namespace eruun-system --set serviceAccount.create=false --set-string serviceAccount.roleNames.api=shared-runtime --set-string serviceAccount.roleNames.controller=precreated-controller --set-string serviceAccount.roleNames.scheduler=shared-runtime --set-string serviceAccount.roleNames.worker=precreated-worker >/dev/null 2>&1; then
   fail "distributed runtime must reject a Scheduler ServiceAccount shared with a ClusterRole-bound role"
 fi
+if runHelm template eruun "${TEST_DIR}" --namespace eruun-system --set serviceAccount.create=false --set-string serviceAccount.roleNames.api=shared-runtime --set-string serviceAccount.roleNames.controller=shared-runtime --set-string serviceAccount.roleNames.scheduler=precreated-scheduler --set-string serviceAccount.roleNames.worker=precreated-worker >/dev/null 2>&1; then
+  fail "distributed runtime must reject a Controller ServiceAccount shared with the resource-manager role"
+fi
 
 assertEqual \
-  "$(bindingSubjectNames "${external_sa_manifest}" | sort | tr '\n' ' ' | sed 's/ $//')" \
-  "precreated-api precreated-controller precreated-worker" \
-  "ClusterRoleBinding must exclude the Scheduler ServiceAccount"
+  "$(bindingSubjectNamesFor eruun-eruun-eruun-system "${external_sa_manifest}" | sort | tr '\n' ' ' | sed 's/ $//')" \
+  "precreated-api precreated-worker" \
+  "resource manager binding must include only the API and Worker ServiceAccounts"
+assertEqual \
+  "$(bindingSubjectNamesFor "${controller_role_name}" "${external_sa_manifest}")" \
+  "precreated-controller" \
+  "controller observer binding must include only the Controller ServiceAccount"
 assertEqual \
   "$(grep -c 'name: precreated-scheduler' "${external_sa_manifest}")" \
   "1" \

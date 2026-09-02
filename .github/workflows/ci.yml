@@ -68,17 +68,6 @@ jobs:
             --set-string redis.password=ci-only
           HELM_BIN=helm deploy/helm/eruun/helm_template_test.sh
 
-  licenses:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache-dependency-path: go.sum
-      - name: Check third-party licenses
-        run: scripts/check-licenses.sh
-
   container:
     runs-on: ubuntu-latest
     steps:

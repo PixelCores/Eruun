@@ -31,7 +31,7 @@
 - API 前缀：`/api/v1`。
 - 服务进程默认监听：`127.0.0.1:8000`；`deploy/eruun-stack.yaml` 会通过 `ERUUN_BIND_ADDR=0.0.0.0:8000` 暴露集群内服务。
 - 服务端角色通过 `--role` / `ERUUN_ROLE` 显式选择 `api/controller/scheduler/worker`；直接运行默认是 `api`，不存在聚合 `all` 角色。
-- Workflow 固定使用 v2 generation/token ownership 与数据库执行租约；不存在关闭 fencing 或处理 v1 dispatch 的运行模式。
+- Workflow 固定使用 v2 generation/token ownership 与数据库执行租约，Worker 不再获取 Redis 执行锁；不存在关闭 fencing 或处理 v1 dispatch 的运行模式。
 - 顶层 `/workflow`、`/workflow/exec`、`/workflow/cancel` 路由不再注册；应用维度 workflow API 是当前主路径。
 - OAuth 登录路由与 `/authz/*` 管理路由当前未注册；`apiAuth` 中间件已接入全局路由，但默认配置为 `enabled=false`。
 
@@ -74,6 +74,7 @@
 
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
+| `distributed-runtime-hardening-merge-guide.md` | Current | 已合并的 7 个分布式运行时加固 PR、实现边界、合并记录与待完成的真实集群验收清单 |
 | `api-error-response-contract.md` | Current | API 统一错误响应与通用错误脱敏契约 |
 | `system-setting.md` | Current | 系统设置类型、API 与默认初始化 |
 | `settings-page-api.md` | Current | 前端设置页字段归属、请求参数与保存策略 |
@@ -83,7 +84,7 @@
 | `create-and-exec-application-api.md` | Current | 创建并执行应用 API |
 | `app-workflow-callback.md` | Current | App 与 Workflow Callback 优先级 |
 | `workflow-failure-policy.md` | Current | Workflow `cleanup_failed` / `cleanup_all` 策略与 Job 级失败清理例外 |
-| `leader-informer-recovery.md` | Current | Controller/Scheduler 双 Leader、Informer 重建、Worker 独立观察与数据库执行租约恢复契约 |
+| `leader-informer-recovery.md` | Current | Controller/Scheduler 双 Leader、Informer 重建、Worker 独立观察、数据库执行租约恢复与 UTC 时钟回归验证 |
 | `batch-applications-api.md` | Current | 批量应用详情查询 API |
 | `application-management-mode.md` | Current | 应用 `native` / `observe` 写权限边界与历史导入迁移契约 |
 | `application-status-api.md` | Current | 单应用聚合状态、单应用组件状态明细、批量应用状态的接口边界 |
@@ -109,14 +110,14 @@
 | `template-engine-status.md` | Current | 模板能力状态 |
 | `mysql-template-init-env-example.md` | Current | MySQL 模板初始化环境变量示例 |
 | `tcp-ingress-nginx-dependencies.md` | Current | Redis/MySQL TCP 外部访问配置 |
-| `helm-deployment.md` | Current | Helm 四角色拓扑、探针、PDB、topology spread、ServiceAccount 与 RBAC 契约 |
+| `helm-deployment.md` | Current | Helm 四角色拓扑、schema 迁移与数据库配置、探针、PDB、topology spread、ServiceAccount、Controller Job 权限与 Quickstart 旧 RBAC 绑定清理边界 |
 
 ## 实现参考
 
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
 | `workflow-architecture-guide.md` | Implemented Reference | 工作流引擎架构详解 |
-| `enterprise-distributed-runtime-design.md` | Implemented Reference | 分布式运行时：角色、Leader Election、数据库 lease/fencing、Worker observer 和 Helm 拓扑 |
+| `enterprise-distributed-runtime-design.md` | Implemented Reference | 分布式运行时：角色依赖、API Redis readiness、Leader Election、数据库 lease/fencing、延迟任务恢复与通知去重、Cron 有界分页与失败计划重试、Worker observer 和 Helm 拓扑 |
 | `架构文档.md` | Implemented Reference | 架构与 OAM Traits 汇总 |
 | `architecture-diagrams.md` | Implemented Reference | 架构图与流程图 |
 | `kafka-queue-implementation.md` | Implemented Reference | Kafka 队列实现 |
@@ -150,7 +151,6 @@
 
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
-| `distributed-runtime-hardening-merge-guide.md` | Draft / Proposal | 7 个分布式运行时加固 PR 的代码证据、设计理由、保留边界、合并顺序与集群验收计划 |
 | `agent-evaluation-job-design.md` | Draft / Proposal | Agent evaluation Job 的执行、隔离与结果契约 |
 | `architecture-refactor-plan.md` | Draft / Proposal | 架构演进方案 |
 | `cloudjob-hotplug-provider-design.md` | Draft / Proposal | CloudJob 热插拔 Provider |

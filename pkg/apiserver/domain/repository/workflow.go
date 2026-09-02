@@ -13,6 +13,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
+const workflowDispatchQueryBatchSize = 100
+
 // ---- Workflow Repository Interface ----
 
 // WorkflowRepository defines the interface for workflow data operations.
@@ -288,16 +290,22 @@ func CreateWorkflowQueue(ctx context.Context, store datastore.DataStore, queue *
 }
 
 func WaitingTasks(ctx context.Context, store datastore.DataStore) (list []*model.WorkflowQueue, err error) {
+	now := time.Now().Unix()
 	var workflowQueue = &model.WorkflowQueue{
 		Status: config.StatusWaiting,
 	}
 	queues, err := store.List(ctx, workflowQueue, &datastore.ListOptions{
-		SortBy: []datastore.SortOption{{Key: "create_time", Order: datastore.SortOrderAscending}},
+		FilterOptions: datastore.FilterOptions{
+			// LessThan is strict, so use the next Unix second to express execute_at <= now.
+			LessThan: []datastore.ComparisonQueryOption{{Key: "execute_at", Value: now + 1}},
+		},
+		Page:     1,
+		PageSize: workflowDispatchQueryBatchSize,
+		SortBy:   []datastore.SortOption{{Key: "create_time", Order: datastore.SortOrderAscending}},
 	})
 	if err != nil {
 		return nil, err
 	}
-	now := time.Now().Unix()
 	for _, entity := range queues {
 		wq, ok := entity.(*model.WorkflowQueue)
 		if !ok {

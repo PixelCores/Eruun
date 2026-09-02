@@ -56,7 +56,7 @@ Eruun runs as one of four explicit runtime roles. The Helm and standalone manife
 
 The server defaults to the `api` role for direct local runs. There is no combined `all` role.
 
-Redis is required for cache, workflow locking, and the default Redis Streams message transport. Kafka can be selected for workflow messaging while Redis remains the cache and lock backend. MySQL is the durable state store.
+MySQL is the durable state store and the authoritative owner of workflow execution leases. Redis is required for distributed application-mutation locks and is the default Redis Streams message transport. Kafka can be selected for workflow messaging while Redis remains the cache and application-lock backend; workflow workers do not take a second Redis execution lock.
 
 ## Configuration
 
@@ -92,10 +92,6 @@ Key documentation:
 - docs/enterprise-distributed-runtime-design.md — distributed runtime roles and leases
 - docs/core-module-boundary-and-cross-layer-contracts.md — API, domain, persistence, and Kubernetes boundaries
 - examples/ — HTTP request payloads and operational examples
-
-## Security and contributing
-
-Please read SECURITY.md before reporting a vulnerability and CONTRIBUTING.md before opening a change. The dependency license inventory is technical due-diligence material and is not legal advice.
 
 ## License
 

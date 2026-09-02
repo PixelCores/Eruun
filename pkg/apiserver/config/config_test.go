@@ -21,12 +21,42 @@ func TestNewConfigHasSequentialConcurrencyDefault(t *testing.T) {
 	require.Equal(t, 1, cfg.Messaging.KafkaTopicReplicationFactor)
 	require.Equal(t, 15*time.Second, cfg.LeaderConfig.Duration)
 	require.Equal(t, RuntimeRoleAPI, cfg.Role)
+	require.Equal(t, DatastoreSchemaModeMigrate, cfg.DatastoreSchemaMode)
 	require.Equal(t, 100, cfg.Workflow.MaxConcurrentWorkflows)
 	require.Equal(t, 10*time.Second, cfg.Workflow.HeartbeatInterval)
 	require.Equal(t, 30*time.Second, cfg.Workflow.LeaseDuration)
 	require.Equal(t, 60*time.Second, cfg.Workflow.WorkerDrainTimeout)
 	require.Zero(t, cfg.APIRateLimitQPS)
 	require.Zero(t, cfg.APIRateLimitBurst)
+}
+
+func TestValidateDatastoreSchemaMode(t *testing.T) {
+	for _, mode := range []string{DatastoreSchemaModeMigrate, DatastoreSchemaModeValidate, DatastoreSchemaModeMigrateOnly, " migrate-only "} {
+		t.Run(mode, func(t *testing.T) {
+			cfg := NewConfig()
+			cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
+			cfg.DatastoreSchemaMode = mode
+			require.Empty(t, cfg.Validate())
+		})
+	}
+
+	cfg := NewConfig()
+	cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
+	cfg.DatastoreSchemaMode = "unsafe"
+	require.Contains(t, errorsJoin(cfg.Validate()), "datastore schema mode must be one of")
+}
+
+func TestMigrateOnlyValidatesOnlyDatastoreInputs(t *testing.T) {
+	cfg := NewConfig()
+	cfg.DatastoreSchemaMode = DatastoreSchemaModeMigrateOnly
+	cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
+	cfg.Role = "invalid"
+	cfg.BindAddr = ""
+	cfg.Cache.CacheType = "memory"
+	cfg.Messaging.Type = "invalid"
+
+	require.Empty(t, cfg.Validate())
+	require.True(t, cfg.MigrateSchemaOnly())
 }
 
 func TestWorkflowLeaseFencingHasNoDisableFlag(t *testing.T) {
@@ -53,6 +83,30 @@ func TestRuntimeRoleCapabilities(t *testing.T) {
 		require.Equal(t, tc.controller, cfg.RunsController())
 		require.Equal(t, tc.scheduler, cfg.RunsScheduler())
 		require.Equal(t, tc.worker, cfg.RunsWorker())
+	}
+}
+
+func TestRuntimeRoleQueueRequirements(t *testing.T) {
+	tests := []struct {
+		role                    RuntimeRole
+		dispatch, delay, result bool
+		topics                  []string
+	}{
+		{role: RuntimeRoleAPI, topics: []string{}},
+		{role: RuntimeRoleController, delay: true, result: true, topics: []string{"tenant.job.delay", "tenant.job.result"}},
+		{role: RuntimeRoleScheduler, dispatch: true, topics: []string{"tenant.workflow.dispatch"}},
+		{role: RuntimeRoleWorker, dispatch: true, delay: true, topics: []string{"tenant.workflow.dispatch", "tenant.job.delay"}},
+	}
+	for _, tc := range tests {
+		t.Run(string(tc.role), func(t *testing.T) {
+			cfg := NewConfig()
+			cfg.Role = tc.role
+			cfg.Messaging.ChannelPrefix = "tenant"
+			require.Equal(t, tc.dispatch, cfg.RequiresDispatchQueue())
+			require.Equal(t, tc.delay, cfg.RequiresDelayQueue())
+			require.Equal(t, tc.result, cfg.RequiresResultQueue())
+			require.Equal(t, tc.topics, cfg.RuntimeMessagingTopics())
+		})
 	}
 }
 
@@ -215,17 +269,17 @@ func TestValidateDatastoreURLForMySQL(t *testing.T) {
 	})
 }
 
-func TestValidateWorkflowTaskRunLockerRequiresRedisCacheType(t *testing.T) {
+func TestValidateApplicationMutationLockRequiresRedisCacheType(t *testing.T) {
 	cfg := NewConfig()
 	cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
 	cfg.Cache.CacheType = "memory"
 
 	errs := cfg.Validate()
 
-	require.Contains(t, errorsJoin(errs), "workflow task run locker requires cache-type=redis")
+	require.Contains(t, errorsJoin(errs), "distributed application mutation locking requires cache-type=redis")
 }
 
-func TestValidateWorkflowTaskRunLockerTrimsRedisCacheType(t *testing.T) {
+func TestValidateApplicationMutationLockTrimsRedisCacheType(t *testing.T) {
 	cfg := NewConfig()
 	cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
 	cfg.Cache.CacheType = " redis "

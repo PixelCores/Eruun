@@ -21,7 +21,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/security/urlpolicy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
@@ -36,26 +35,22 @@ type workflowRuntimeService interface {
 }
 
 type Workflow struct {
-	KubeClient                kubernetes.Interface            `inject:"kubeClient"`
-	KubeConfig                *rest.Config                    `inject:"kubeConfig"`
-	Store                     datastore.DataStore             `inject:"datastore"`
-	WorkflowService           workflowRuntimeService          `inject:""`
-	Queue                     msg.Queue                       `inject:"queue"`
-	DelayQueue                msg.Queue                       `inject:"delayQueue"`
-	ResultQueue               msg.Queue                       `inject:"resultQueue"`
-	Cfg                       *config.Config                  `inject:""`
-	Cache                     cache.ICache                    `inject:"cache"`
-	ResourceWaiter            informer.ComponentReadyObserver `inject:"resourceObserver"`
-	URLSecurityPolicyProvider *urlpolicy.Provider             `inject:""`
-	TaskRunLocker             locker.Locker                   `inject:"workflowTaskRunLocker"`
+	KubeClient                kubernetes.Interface   `inject:"kubeClient"`
+	KubeConfig                *rest.Config           `inject:"kubeConfig"`
+	Store                     datastore.DataStore    `inject:"datastore"`
+	WorkflowService           workflowRuntimeService `inject:""`
+	Queue                     msg.Queue
+	DelayQueue                msg.Queue
+	ResultQueue               msg.Queue
+	Cfg                       *config.Config `inject:""`
+	Cache                     cache.ICache   `inject:"cache"`
+	ResourceWaiter            informer.ComponentReadyObserver
+	URLSecurityPolicyProvider *urlpolicy.Provider `inject:""`
 	controllerLifecycleMu     sync.Mutex
 	schedulerLifecycleMu      sync.Mutex
 	workerLimiterOnce         sync.Once
 	workflowLimiter           *semaphore.Weighted
 	errChan                   chan error
-	taskRunLocker             locker.Locker
-	taskRunLockerErr          error
-	taskRunLockOnce           sync.Once
 }
 
 type workflowWorkerRun struct {
@@ -142,7 +137,7 @@ func (w *Workflow) startLeaseReaper(ctx context.Context, wg *sync.WaitGroup) {
 			case <-ticker.C:
 			}
 			reaperCtx, cancel := context.WithTimeout(ctx, config.TaskStateTransitionTimeout)
-			recovered, err := repository.RecoverExpiredWorkflowTasks(reaperCtx, w.Store, time.Now().UTC())
+			recovered, err := repository.RecoverExpiredWorkflowTasks(reaperCtx, w.Store)
 			cancel()
 			if err != nil {
 				klog.ErrorS(err, "recover expired workflow execution leases")
@@ -273,23 +268,12 @@ func (w *Workflow) runWorkflowTask(ctx context.Context, workerRun *workflowWorke
 	}
 	runnerCtx = taskCtx
 
-	lease, leaseAcquired, err := w.tryAcquireTaskRunLease(ctx, runnerCtx, task.TaskID)
-	if err != nil {
-		stopHeartbeat()
-		return false, fmt.Errorf("acquire workflow task run lease: %w", err)
-	}
-	if !leaseAcquired {
-		stopHeartbeat()
-		return false, errTaskRunLeaseHeld
-	}
-
 	urlPolicy, err := urlpolicy.ResolvePolicy(ctx, w.URLSecurityPolicyProvider)
 	if err != nil {
 		runErr := fmt.Errorf("load url security policy: %w", err)
 		if !isContextCancellationError(runErr) {
 			w.markTaskRunStartFailure(ctx, task, runErr)
 		}
-		lease.release()
 		stopHeartbeat()
 		return false, runErr
 	}
@@ -297,7 +281,6 @@ func (w *Workflow) runWorkflowTask(ctx context.Context, workerRun *workflowWorke
 	acquired := false
 	if workflowLimiter != nil {
 		if err := workflowLimiter.Acquire(runnerCtx, 1); err != nil {
-			lease.release()
 			stopHeartbeat()
 			return false, fmt.Errorf("acquire workflow slot: %w", err)
 		}
@@ -310,13 +293,11 @@ func (w *Workflow) runWorkflowTask(ctx context.Context, workerRun *workflowWorke
 		if acquired {
 			workflowLimiter.Release(1)
 		}
-		lease.release()
 		stopHeartbeat()
 		return false, runErr
 	}
 	runController := func() error {
 		defer stopHeartbeat()
-		defer lease.release()
 		if acquired {
 			defer workflowLimiter.Release(1)
 		}
@@ -346,7 +327,7 @@ func (w *Workflow) runClaimedWorkflowTask(ctx context.Context, workerRun *workfl
 		return err
 	}
 	if !started {
-		return errTaskRunLeaseHeld
+		return fmt.Errorf("workflow task did not start")
 	}
 	return nil
 }

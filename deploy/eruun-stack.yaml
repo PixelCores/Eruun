@@ -55,15 +55,81 @@ roleRef:
   name: eruun-leader-election
 ---
 apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: eruun-platform-runtime
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["list"]
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets", "serviceaccounts", "services"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "create"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["daemonsets"]
+    verbs: ["get", "list", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "update", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["controllerrevisions"]
+    verbs: ["get", "list", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["cronjobs"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "create", "update", "delete"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list", "create", "update", "delete"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "clusterroles"]
+    verbs: ["get", "list", "create", "update", "patch", "delete", "bind", "escalate"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["rolebindings", "clusterrolebindings"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: eruun-platform-cluster-admin
+  name: eruun-platform-runtime
 subjects:
   - kind: ServiceAccount
     name: eruun-api
-    namespace: eruun-system
-  - kind: ServiceAccount
-    name: eruun-controller
     namespace: eruun-system
   - kind: ServiceAccount
     name: eruun-worker
@@ -71,7 +137,38 @@ subjects:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: cluster-admin
+  name: eruun-platform-runtime
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: eruun-controller-observer
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "create", "update", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: eruun-controller-observer
+subjects:
+  - kind: ServiceAccount
+    name: eruun-controller
+    namespace: eruun-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: eruun-controller-observer
 ---
 apiVersion: v1
 kind: Service
@@ -394,6 +491,8 @@ spec:
           env:
             - name: ERUUN_ROLE
               value: "api"
+            - name: ERUUN_DATASTORE_SCHEMA_MODE
+              value: "migrate"
             - name: ERUUN_ID
               valueFrom:
                 fieldRef:
@@ -505,6 +604,8 @@ spec:
           env:
             - name: ERUUN_ROLE
               value: "controller"
+            - name: ERUUN_DATASTORE_SCHEMA_MODE
+              value: "validate"
             - name: ERUUN_ID
               valueFrom:
                 fieldRef:
@@ -616,6 +717,8 @@ spec:
           env:
             - name: ERUUN_ROLE
               value: "scheduler"
+            - name: ERUUN_DATASTORE_SCHEMA_MODE
+              value: "validate"
             - name: ERUUN_ID
               valueFrom:
                 fieldRef:
@@ -727,6 +830,8 @@ spec:
           env:
             - name: ERUUN_ROLE
               value: "worker"
+            - name: ERUUN_DATASTORE_SCHEMA_MODE
+              value: "validate"
             - name: ERUUN_ID
               valueFrom:
                 fieldRef:

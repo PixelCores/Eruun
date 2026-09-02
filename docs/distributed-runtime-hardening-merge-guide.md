@@ -1,12 +1,12 @@
 # 分布式运行时加固方案与合并指南
 
-> 状态：Proposal / Merge Plan。基线为 `main@3df077a2fa94ed331add8c4f739b4582bd559408`。本文记录 7 个已实现、已推送但尚未合并的独立草稿 PR；在对应 PR 合并前，“目标实现”不得当作当前 `main` 行为。建议本文件最后合并，并在全部代码 PR 验收后把状态改为 `Current`。
+> 状态：Current。PR #9–#15 已按第 5 节顺序合并，本文按 `main@f46f685a25b46de91fbcba864d543ad255f9fb10` 校准实现说明；原始问题基线为 `main@3df077a2fa94ed331add8c4f739b4582bd559408`。代码整合与本地回归已完成，第 6 节真实集群验收仍待执行；Current 不代表生产 HA 或集群验收已经通过。
 
 ## 1. 结论
 
 Eruun 已经具备分布式运行时的基本骨架：API、Controller、Scheduler、Worker 四类独立角色，Controller/Scheduler 双 Leader Election，Redis Streams 或 Kafka 的 at-least-once 消息传输，以及 MySQL 中的 workflow generation/token/lease fencing。
 
-主要问题不在“有没有拆成多个 Pod”，而在几个权威边界仍然混杂：
+原始基线的问题不在“有没有拆成多个 Pod”，而在以下权威边界混杂；本批已合并代码针对这些问题收敛职责：
 
 1. Workflow lease 的过期判断使用各节点本机时间，数据库 ownership 却是跨节点共享事实。
 2. 延迟任务把消息队列当成了唯一计时器，队列裁剪、consumer group 丢失或进程退出可能让已 ACK/未恢复的数据失去执行入口。
@@ -40,7 +40,7 @@ flowchart LR
 
 ## 2. 问题与 PR 对应关系
 
-| 优先级 | 问题与代码证据 | 处理方案 | 草稿 PR |
+| 原始优先级 | 基线问题与代码证据 | 已合并处理方案 | 已合并 PR |
 | --- | --- | --- | --- |
 | P0 | `pkg/apiserver/domain/repository/workflow_lease.go` 的 claim、renew、expire、reaper 使用进程 `time.Now()` | 引入 datastore 数据库时钟；所有 lease 写入和回收使用同一 MySQL UTC 时间 | [#9](https://github.com/PixelCores/Eruun/pull/9) |
 | P0 | `pkg/apiserver/event/workflow/job/delay_dispatcher.go` 依赖延迟队列内存堆与消息存活；Redis Streams 允许 MAXLEN 裁剪 | 先把延迟 checkpoint 持久化到 `JobInfo`，队列只用于唤醒；Controller 周期恢复 DB 中到期记录 | [#11](https://github.com/PixelCores/Eruun/pull/11) |
@@ -48,13 +48,13 @@ flowchart LR
 | P1 | `WaitingTasks` 和 schedule dispatch 会读取未到期记录后在 Go 中过滤；扫描频率固定 | SQL 侧按到期时间过滤、每批 100 条并补组合索引 | [#10](https://github.com/PixelCores/Eruun/pull/10) |
 | P1 | `pkg/apiserver/server_assembly.go` 为所有角色构造 dispatch/delay/result 队列、Controller manager 和 Worker observer | 建立显式角色依赖矩阵，只初始化并检查该角色实际使用的队列与 observer | [#13](https://github.com/PixelCores/Eruun/pull/13) |
 | P1 | `mysql.New` 在每个角色、每个副本启动时执行 AutoMigrate 和数据迁移 | 增加 `migrate/validate/migrate-only`；升级使用独立 migration Job，常驻 Pod 只校验 | [#14](https://github.com/PixelCores/Eruun/pull/14) |
-| P0 | Helm Controller 与 API/Worker 共享资源管理 ClusterRole；`deploy/eruun-stack.yaml` 绑定 `cluster-admin` | Controller 使用最小观察角色；静态 manifest 改用显式规则；Quickstart 删除遗留高权限 Binding | [#15](https://github.com/PixelCores/Eruun/pull/15) |
+| P0 | Helm Controller 与 API/Worker 共享资源管理 ClusterRole；`deploy/eruun-stack.yaml` 绑定 `cluster-admin` | Controller 使用职责所需的专用角色；静态 manifest 改用显式规则；Quickstart 在限定安装路径清理遗留高权限 Binding | [#15](https://github.com/PixelCores/Eruun/pull/15) |
 
 ## 3. 为什么这样解决
 
 ### 3.1 数据库时钟统一 lease 判断
 
-PR #9 给 datastore 增加 `DatabaseClock` 能力，MySQL 通过 `CURRENT_TIMESTAMP(6)` 返回 UTC 微秒时间。Scheduler claim、Worker claim/heartbeat、主动 expire 和 reaper 都从数据库取得时间；数据库时钟不可用时 fail-closed，不猜测 lease 已过期。
+PR #9 给 datastore 增加 `DatabaseClock` 能力，MySQL 使用 `TIMESTAMPDIFF(MICROSECOND, '1970-01-01 00:00:00', UTC_TIMESTAMP(6))` 返回 UTC 微秒时间，避免会话时区及夏令时重复小时影响。Scheduler claim、Worker claim/heartbeat、主动 expire 和 reaper 都从数据库取得时间；数据库时钟不可用时 fail-closed，不猜测 lease 已过期。
 
 这样做的好处：
 
@@ -66,7 +66,7 @@ PR #9 给 datastore 增加 `DatabaseClock` 能力，MySQL 通过 `CURRENT_TIMEST
 
 ### 3.2 Scheduler 查询有界化
 
-PR #10 把 `execute_at <= now`、`next_run <= now` 下推到 SQL，dispatch 和 schedule 每次最多读取 100 条，并为 workflow queue 的 `status + execute_at` 增加组合索引。后续轮询会继续处理剩余批次，因此这是吞吐整形，不是丢弃任务。
+PR #10 把 `execute_at <= now`、`next_run <= now` 下推到 SQL，dispatch 和 schedule 每次最多读取 100 条，并为 workflow queue 的 `status + execute_at` 增加组合索引。Cron 扫描按 `next_run, id` 稳定分页，在不足一页或空页后回绕，避免首批失败或锁竞争的记录永久阻挡后续到期工作。后续轮询会继续处理剩余批次，因此这是吞吐整形，不是丢弃任务。
 
 这样做的好处：
 
@@ -117,7 +117,7 @@ Kafka topic 初始化与 `/readyz` 也使用相同矩阵，避免“角色没有
 
 这样做的好处：
 
-- API 不会因为 workflow broker 故障失去只依赖数据库的查询/管理能力。
+- API 不会仅因未使用的 workflow topic 故障而启动失败或 NotReady；共享的 datastore、缓存、Kubernetes client 和应用锁依赖仍然存在。
 - Controller、Scheduler、Worker 的故障域与职责一致，排障时可以从角色直接推导依赖。
 - 不再在每个 Pod 内无意义地建立所有队列客户端和 informer cache。
 
@@ -133,7 +133,7 @@ Helm 首次安装时，Chart 内置 MySQL 还不存在，不能安全使用 `pre
 
 这样做的好处：
 
-- 普通 Pod 扩容、重启不再隐式修改数据库。
+- 使用 `validate` 的 Pod 扩容、重启不再修改数据库；首次 Helm 安装、静态 manifest 和直接运行的 API 仍可能使用 `migrate`。
 - 迁移失败会阻止 rollout，错误集中在一个可诊断 Job 中。
 - migration Job 没有 Kubernetes ServiceAccount token，权限和依赖面更小。
 
@@ -143,15 +143,18 @@ Helm 首次安装时，Chart 内置 MySQL 还不存在，不能安全使用 `pre
 
 PR #15 保留 API/Worker 的显式资源管理 ClusterRole，把 Controller 收敛到：
 
-- Pod：`get/list/watch/patch`；
-- Job：`get`；
+- Pod：`get/list/watch/patch/delete`；
+- Pod 日志：`get`；
+- Job：`get/create/update/delete`；
 - ReplicaSet：`get`。
 
-Scheduler 只有 namespace-scoped Lease 权限。静态 manifest 不再引用内置 `cluster-admin`；Quickstart 在新权限对象应用成功后删除固定遗留 Binding `eruun-platform-cluster-admin`，避免升级后旧权限继续生效。外部 ServiceAccount 配置也会拒绝 Controller 与 API/Worker 共用身份、Scheduler 与任何其他角色共用身份。
+Controller 还参与 namespace-scoped Leader Election。它负责延迟 Job 分发、结果处理和 outbox 恢复，因此必须保留 Job 创建/复用、日志读取及已完成 Job/Pod 清理能力，不能描述为纯观察者。
+
+Scheduler 只有 namespace-scoped Lease 权限。静态 manifest 不再引用内置 `cluster-admin`；Quickstart 仅在 manifest 模式、`eruun-system` namespace 且使用脚本同目录默认 `eruun-stack.yaml` 时，于新权限对象成功应用后删除固定遗留 Binding `eruun-platform-cluster-admin`。Helm、自定义 manifest 或其他 namespace 不自动清理；这些迁移应先确认旧绑定的全部身份具有替代权限，再由管理员删除。外部 ServiceAccount 配置也会拒绝 Controller 与 API/Worker 共用身份、Scheduler 与任何其他角色共用身份。
 
 这样做的好处：
 
-- Controller 被利用时不能读取 Secret、删除 workload 或执行 RBAC `bind/escalate`。
+- Controller 的专用角色不授予 Secret 读取、Pod exec、Deployment/StatefulSet 管理或 RBAC `bind/escalate`，但仍具有上述 Job/Pod 权限，不能宣称它没有 workload 写能力。
 - Helm 与静态 manifest 使用同一权限语义，避免不同安装路径产生安全差异。
 - 遗留 Binding 有明确清理路径，不只修复新安装。
 
@@ -175,9 +178,9 @@ Scheduler 只有 namespace-scoped Lease 权限。静态 manifest 不再引用内
 
 本批 PR 改善了依赖故障的隔离与恢复语义，但没有把内置依赖包装成未经验证的“生产 HA”。
 
-## 5. 推荐合并顺序
+## 5. 已完成的代码合并顺序
 
-7 个代码 PR 都从同一 `main` 提交独立创建并单独通过测试。它们不是一个无冲突的并行 merge queue；若目标分支启用 squash merge，也仍应在每次合并后重放后续分支。
+7 个代码 PR 最初从同一 `main` 提交独立创建，现已按以下顺序整合并合并到 `main`。这些分支存在交叉修改，下列顺序和冲突热点保留为本批变更的整合记录。
 
 1. [#9：数据库 lease 时钟](https://github.com/PixelCores/Eruun/pull/9)
 2. [#10：有界 Scheduler 查询](https://github.com/PixelCores/Eruun/pull/10)
@@ -186,7 +189,7 @@ Scheduler 只有 namespace-scoped Lease 权限。静态 manifest 不再引用内
 5. [#13：角色级运行依赖](https://github.com/PixelCores/Eruun/pull/13)
 6. [#14：显式 schema migration](https://github.com/PixelCores/Eruun/pull/14)
 7. [#15：角色级 Kubernetes RBAC](https://github.com/PixelCores/Eruun/pull/15)
-8. 本文档 PR。
+8. 本文档 PR 作为实现说明与集群验收清单收尾。
 
 主要冲突热点：
 
@@ -198,7 +201,7 @@ Scheduler 只有 namespace-scoped Lease 权限。静态 manifest 不再引用内
 
 ## 6. 验证与验收
 
-每个代码 PR 已分别执行与改动相称的聚焦测试。涉及 Go 运行时代码的 PR 都执行了：
+各代码 PR 的独立验证证据见对应 PR。整合后的 `main@f46f685` 已使用 Go 1.25.8 通过全量竞态测试、静态检查、服务端构建及 `go mod tidy -diff`；运行时代码验证命令为：
 
 ```bash
 go test ./... -race -cover
@@ -206,7 +209,7 @@ go vet ./...
 go build -o /private/tmp/eruun-server ./cmd/main.go
 ```
 
-纯部署权限 PR 也执行了全量 Go race/vet，确认模板与清单调整没有破坏仓库测试；部署相关 PR 还执行了：
+部署权限 PR #15 执行了 `go test ./deploy -count=1`、`go vet ./deploy` 和 shell 语法检查；部署相关 PR 还记录了以下验证（具体参数见对应 PR）：
 
 ```bash
 deploy/all_in_one_install_quickstart_test.sh
@@ -214,20 +217,20 @@ HELM_BIN=/path/to/helm deploy/helm/eruun/helm_template_test.sh
 helm lint deploy/helm/eruun --values /path/to/secure-values.yaml
 ```
 
-本地静态/单元测试不能替代真实集群验收。全部 PR 重放到同一分支后，至少还要完成：
+本地静态/单元测试不能替代真实集群验收。以下验收尚未完成，生产部署前至少还要执行：
 
 1. `helm install` 新数据库，确认仅 API 初始化 schema，其他角色最终 Ready。
 2. `helm upgrade`，确认 migration hook 成功后才 rollout，失败 hook 会阻止新 Pod。
 3. 分别删除 Controller Leader、Scheduler Leader 和运行中的 Worker，确认无提前 lease 接管、过期任务可恢复。
 4. 在延迟任务等待期间重启 Controller、裁剪/重建消息 consumer group，确认 DB checkpoint 最终触发任务且没有重复终态。
 5. 短暂停止 Redis/Kafka/MySQL，确认只有依赖该能力的角色降级，恢复后可继续处理。
-6. 使用 `kubectl auth can-i --as=system:serviceaccount:<namespace>:<name>` 验证 Controller 不能读取 Secret、删除 Pod 或创建 RBAC，Scheduler 只能操作目标 namespace 的 Lease。
-7. 确认升级后不存在 `ClusterRoleBinding/eruun-platform-cluster-admin`。
+6. 使用 `kubectl auth can-i --as=system:serviceaccount:<namespace>:<name>` 验证 Controller 不能读取 Secret、执行 Pod exec、管理 Deployment/StatefulSet 或创建 RBAC；同时验证其必要的 Job 创建/更新/删除、Pod 清理和日志读取能力，以及 Scheduler 只能操作目标 namespace 的 Lease。
+7. 验证默认 manifest 升级成功后清理 `ClusterRoleBinding/eruun-platform-cluster-admin`；Helm、自定义 manifest 或其他 namespace 的迁移先确认替代权限，再人工清理遗留绑定。
 8. 采集 Worker informer 的 watch 数、RSS、cache sync 时间，形成后续分片阈值。
 
 ## 7. 预期收益
 
-合并并完成集群验收后，分布式实现会获得以下可验证改进：
+代码已落实以下改进，其真实集群故障恢复与容量表现仍须按第 6 节验收：
 
 - 正确性：lease 不再受节点时钟偏差影响；延迟任务不再依赖单一队列记录；任务 ownership 只有一个事实源。
 - 可恢复性：队列丢消息、Worker 崩溃、Leader 切换都能沿数据库 checkpoint/lease 找到恢复入口。

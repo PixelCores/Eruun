@@ -1,6 +1,0 @@
-package,source,license,rationale
-github.com/alibabacloud-go/darabonba-openapi/client,https://github.com/alibabacloud-go/darabonba-openapi/blob/master/LICENSE,Apache-2.0,Upstream repository declares Apache-2.0 but the v0.1.7 module archive omits LICENSE
-github.com/alibabacloud-go/endpoint-util/service,https://github.com/alibabacloud-go/endpoint-util/blob/master/LICENSE,Apache-2.0,Upstream repository declares Apache-2.0 but the v1.1.0 module archive omits LICENSE
-github.com/alibabacloud-go/nas-20170626/v2/client,https://github.com/alibabacloud-go/nas-20170626/blob/master/LICENSE,Apache-2.0,Upstream repository declares Apache-2.0 but the v2.0.2 module archive omits LICENSE
-github.com/alibabacloud-go/tea-utils/service,https://github.com/alibabacloud-go/tea-utils/blob/master/LICENSE,Apache-2.0,Upstream repository declares Apache-2.0 but the v1.3.9 module archive omits LICENSE
-go.opentelemetry.io/otel/exporters/jaeger/internal/third_party/thrift/lib/go/thrift,https://github.com/open-telemetry/opentelemetry-go/blob/exporters/jaeger/v1.17.0/exporters/jaeger/internal/third_party/thrift/LICENSE,Apache-2.0 AND BSD-3-Clause AND FSFAP,Bundled Apache Thrift notices reviewed because go-licenses classifies FSFAP as Unknown

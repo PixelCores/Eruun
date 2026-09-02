@@ -30,6 +30,19 @@
 
 API 角色注册完整业务 API；非 API 角色只注册健康路由。Follower Controller/Scheduler 保持进程可用并等待下一任期，readiness 不把“当前不是 Leader”当作失败。
 
+进程只初始化本角色会生产或消费的消息主题，未列出的主题不可用不会阻塞该角色启动或 readiness：
+
+| 角色 | dispatch | delay | result | Kubernetes 观察器 |
+| --- | --- | --- | --- | --- |
+| `api` | - | - | - | - |
+| `controller` | - | 消费 | 生产与消费 | 全局状态 Informer Manager |
+| `scheduler` | 生产 | - | - | - |
+| `worker` | 消费 | 生产 | - | Pod readiness observer |
+
+这张依赖矩阵同时约束 Kafka topic 初始化和健康探针。这样 result topic 故障不会让 API、Scheduler 或 Worker 被判为不可用，Controller 也不会因为不拥有 dispatch topic 而被错误摘流。
+
+API 的工作流执行、应用版本更新和取消操作仍依赖 Redis 分布式锁及取消信号。无论消息后端选择 Redis 还是 Kafka，API 的 `/api/v1/ready`、`/api/v1/readyz` 都通过已注入的缓存 Redis 客户端执行 `PING`；客户端缺失或连接失败时返回 503，连接恢复后返回 200。该检查不访问消息主题，`/api/v1/health`、`/api/v1/healthz` 仍只检查进程存活。
+
 ## 3. 双 Leader 契约
 
 Controller 和 Scheduler 分别使用：
@@ -53,6 +66,8 @@ Scheduler 对 `waiting` task 执行 CAS，生成新的：
 
 随后发布版本 2 dispatch。Worker 只接受携带完整 `taskId/runGeneration/runToken` 的消息，并在 ownership CAS 成功后把任务置为 `running`、写入 `workerId` 和新的 lease deadline。
 
+dispatch、Worker claim、heartbeat、显式释放和 Scheduler reaper 都以 MySQL 的微秒级 Unix 时间为权威时间。运行节点的墙钟和 DSN 时区不参与数据库 lease 的到期判断，因此节点时钟偏差不会让 Scheduler 提前接管仍在续租的 Worker。
+
 消息队列是 at-least-once 分发通道，数据库中的 `WorkflowQueue` 才是执行状态和 ownership 的事实源。缺少版本或完整 ownership 的 dispatch 不进入执行路径。
 
 ### 4.2 心跳与状态写入
@@ -69,11 +84,19 @@ ownership 不匹配时，旧执行立即停止后续状态写入。外部系统�
 
 Scheduler lease reaper 周期扫描 lease 已过期且身份完整的 `queued/running` task，以 CAS 清理旧 ownership 并恢复为 `waiting`。下一次派发创建新的 generation/token。
 
+Scheduler 的 waiting task 与 cron schedule 查询都在数据库侧按到期时间过滤，并按 100 条固定批次处理。`workflow_queue(status, execute_at)` 与 `workflow_schedule(enabled, next_run)` 复合索引支撑这两条热路径；持续积压会由后续轮询继续排空，而不会把全量未到期记录加载到单个 Leader 进程。
+
+Cron schedule 按 `next_run, id` 稳定排序，在同一进程的后续轮询中推进页码，读到末页后回到第一页。即使整批计划因错误、应用锁争用或无可运行日期而未推进 `next_run`，后面的到期计划也会获得处理机会。成功派发、删除或禁用计划导致候选集缩小时，移入前页的记录会在下一轮扫描中重新被读取；进程重启从第一页开始。分页不改写计划的 `next_run`、`last_run` 或幂等键，派发失败仍按原有事务语义回滚并返回错误。
+
 进程启动不会全表重置 active task。未认领消息依赖 Redis AutoClaim 或 Kafka Rebalance；已经 ACK 的任务依赖数据库 lease reaper。
 
 ## 5. Job 执行身份
 
 `JobInfo`、延迟载荷、结果载荷和 result outbox 携带同一 generation-aware 执行身份。Kubernetes Job 同时写入执行身份 annotation。
+
+一次性延迟 Job 在发送队列通知前，先把完整载荷、到期时间和 `pending` 检查点写入 `JobInfo`。Redis Stream 只负责降低到期发现延迟；Controller Leader 还会按 `(status, delay_state, delay_execute_at)` 索引轮询已到期检查点并直接恢复。因此 consumer group 被重建、Stream 被裁剪、Redis 暂时不可用或进程在写库后/入队前退出，都不会让已提交的延迟执行永久丢失。成功创建同身份 Kubernetes Job 并持久化 result outbox 后，检查点才变为 `dispatched`。
+
+数据库恢复每次轮询最多读取 100 条记录，按记录 ID 倒序推进游标，到末尾后重新扫描。持续重试、无效载荷或扫描期间记录状态变化不会阻塞后续到期任务；新到达的记录在下一轮扫描中纳入。队列通知按执行键去重，被去重的消息释放处理标记并保持未确认状态，允许 Kafka 再次认领并在执行完成后确认。
 
 结果处理只消费与当前 `JobInfo` 和 Kubernetes Job annotation 匹配的结果；旧 generation 的迟到结果不能覆盖当前执行。确定性资源名用于重试复用，执行身份用于区分不同 generation。
 
@@ -89,7 +112,7 @@ initial sync、List/Watch 重连和等待过程都受运行 context 控制；关
 
 启动顺序为：
 
-1. 使用父 context 初始化 Kubernetes、MySQL schema、默认系统设置、Redis/Kafka 和 IoC。
+1. 使用父 context 初始化 Kubernetes，按配置迁移或校验 MySQL schema，初始化默认系统设置、缓存，以及本角色拥有的 Redis Stream / Kafka topic 和 IoC。
 2. 按角色注册业务或健康路由。
 3. 启动角色选举、Worker observer 和 Worker intake。
 4. 启动 HTTP server。
@@ -112,17 +135,19 @@ Chart 固定渲染 API、Controller、Scheduler、Worker 四个独立 Deployment
 
 Workflow fencing 固定启用，Chart 不暴露关闭开关、v1 兼容开关、cutover acknowledgement 或运行时迁移门禁。values 只描述目标拓扑。
 
+Schema 迁移也不由所有运行 Pod 共同承担：首次安装由 API 在 MySQL 命名锁内初始化 schema；升级由独立的 `pre-upgrade` migration Job 在新 Pod rollout 前执行，升级后的所有角色使用只读校验模式。该 Job 只连接 MySQL，不构建 Kubernetes、消息队列和 HTTP 运行时依赖，并仅在结构与数据迁移全部成功后写入版本化 marker；校验模式同时检查 marker、表和列。迁移必须保持对仍在运行的旧 Pod 向后兼容。
+
 ## 9. 依赖与安全
 
 - MySQL 保存 Workflow、Job 和 ownership 状态；生产环境应使用经过验证的 HA 实例。
-- Redis 用于缓存、运行锁及可选的 Streams 消息；Kafka 可作为消息后端。
+- Redis 用于缓存、应用变更分布式锁及可选的 Streams 消息；Kafka 可作为消息后端，Workflow 执行租约由 MySQL 管理。
 - 内置 MySQL/Redis 只适合开发和演示。
 - run token 属于执行凭据，不写入业务日志、trace 或指标标签。
-- Scheduler 只需要 namespace-scoped Leader Election 权限；API、Controller 和 Worker 当前共享资源管理 ClusterRole，进一步细分 RBAC 属于后续安全工作。
+- Scheduler 只拥有 namespace-scoped Leader Election 权限；Controller 额外拥有 Pod 观察/metadata patch、ReplicaSet owner 读取，以及延时 Job 分发、执行身份更新、结果日志读取和已完成 Job/Pod 清理权限；API 与 Worker 使用显式资源管理 ClusterRole，其中 Job `update` 支持复用 Job 的执行代次接管。Helm 与静态 manifest 都不绑定内置 `cluster-admin`；具体权限与旧绑定迁移边界见 `helm-deployment.md`。
 
 ## 10. 验证要求
 
-- 单元测试覆盖角色装配、双 Leader、lease CAS、heartbeat、reaper、消息身份校验和关闭时序。
+- 单元测试覆盖角色装配、schema migrate/validate 模式、双 Leader、lease CAS、heartbeat、reaper、消息身份校验和关闭时序。
 - race 测试覆盖 Worker 生命周期、Leader 回调、observer 和 Workflow 状态写入。
-- Helm 模板测试覆盖固定四角色对象数量、Service selector、PDB、termination grace、ServiceAccount 引用和 63 字符 fullname 下的角色名唯一性。
+- Helm 模板测试覆盖固定四角色对象数量、Service selector、角色级 RBAC、schema migration hook 与运行模式、PDB、termination grace、ServiceAccount 引用和 63 字符 fullname 下的角色名唯一性。
 - 集群验收覆盖随机删除 Worker、Controller Leader、Scheduler Leader，以及 Redis、Kafka、MySQL 短暂不可用后的恢复。

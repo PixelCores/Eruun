@@ -9,7 +9,11 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
 
 var (
@@ -41,6 +45,28 @@ func EnqueueDelayJob(ctx context.Context, queue msg.Queue, payload *DelayJobPayl
 		return "", fmt.Errorf("marshal delay payload: %w", err)
 	}
 	return queue.Enqueue(ctx, raw)
+}
+
+func persistDelayJobCheckpoint(ctx context.Context, store datastore.DataStore, job *model.JobTask, payload *DelayJobPayload) error {
+	if err := validateDelayJobPayload(payload); err != nil {
+		return err
+	}
+	if store == nil || job == nil {
+		return fmt.Errorf("persist delay checkpoint: datastore and job are required")
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal delay checkpoint: %w", err)
+	}
+	job.Status = config.StatusDistributed
+	job.Error = ""
+	job.DelayState = config.JobDelayStatePending
+	job.DelayExecuteAt = payload.ExecuteAt
+	job.DelayPayload = string(raw)
+	if err := saveJobInfo(ctx, store, job); err != nil {
+		return errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("save delay checkpoint: %w", err))
+	}
+	return nil
 }
 
 func validateDelayJobPayload(payload *DelayJobPayload) error {

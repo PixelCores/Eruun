@@ -8,24 +8,27 @@ import (
 )
 
 type JobInfo struct {
-	ID            int     `json:"id" gorm:"primaryKey;column:id"`
-	Type          string  `json:"type" gorm:"type:varchar(64);column:type"`
-	WorkflowID    string  `json:"workflow_id" gorm:"type:varchar(64);column:workflow_id"`
-	ProductID     string  `json:"product_Id" gorm:"type:varchar(64);column:product_id"`
-	AppID         string  `json:"app_id" gorm:"type:varchar(64);column:app_id"`
-	TaskID        string  `json:"task_id" gorm:"type:varchar(255);column:task_id"`
-	Status        string  `json:"status" bson:"status" gorm:"type:varchar(32);column:status"`
-	StartTime     int64   `json:"start_time" bson:"start_time" gorm:"column:start_time"`
-	EndTime       int64   `json:"end_time" bson:"end_time" gorm:"column:end_time"`
-	Info          string  `json:"service_type" gorm:"type:longtext;column:info"`
-	InternalInfo  string  `json:"-" gorm:"type:longtext;column:internal_info"`
-	ServiceName   string  `json:"service_name" gorm:"type:varchar(255);column:service_name"`
-	Error         string  `json:"error" gorm:"type:text;column:error"`
-	Production    bool    `json:"production" gorm:"column:production"`                  // 是否生产
-	TargetEnv     string  `json:"target_env" gorm:"type:varchar(64);column:target_env"` //目标环境
-	ExecutionKey  *string `json:"execution_key,omitempty" gorm:"type:varchar(255);column:execution_key;uniqueIndex:idx_job_execution_key"`
-	RunGeneration uint64  `json:"run_generation,omitempty" gorm:"column:run_generation;not null;default:0"`
-	Attempt       uint    `json:"attempt,omitempty" gorm:"column:attempt;not null;default:0"`
+	ID             int                  `json:"id" gorm:"primaryKey;column:id"`
+	Type           string               `json:"type" gorm:"type:varchar(64);column:type"`
+	WorkflowID     string               `json:"workflow_id" gorm:"type:varchar(64);column:workflow_id"`
+	ProductID      string               `json:"product_Id" gorm:"type:varchar(64);column:product_id"`
+	AppID          string               `json:"app_id" gorm:"type:varchar(64);column:app_id"`
+	TaskID         string               `json:"task_id" gorm:"type:varchar(255);column:task_id"`
+	Status         string               `json:"status" bson:"status" gorm:"type:varchar(32);column:status;index:idx_job_delay_pending,priority:1"`
+	StartTime      int64                `json:"start_time" bson:"start_time" gorm:"column:start_time"`
+	EndTime        int64                `json:"end_time" bson:"end_time" gorm:"column:end_time"`
+	Info           string               `json:"service_type" gorm:"type:longtext;column:info"`
+	InternalInfo   string               `json:"-" gorm:"type:longtext;column:internal_info"`
+	ServiceName    string               `json:"service_name" gorm:"type:varchar(255);column:service_name"`
+	Error          string               `json:"error" gorm:"type:text;column:error"`
+	Production     bool                 `json:"production" gorm:"column:production"`                  // 是否生产
+	TargetEnv      string               `json:"target_env" gorm:"type:varchar(64);column:target_env"` //目标环境
+	ExecutionKey   *string              `json:"execution_key,omitempty" gorm:"type:varchar(255);column:execution_key;uniqueIndex:idx_job_execution_key"`
+	RunGeneration  uint64               `json:"run_generation,omitempty" gorm:"column:run_generation;not null;default:0"`
+	Attempt        uint                 `json:"attempt,omitempty" gorm:"column:attempt;not null;default:0"`
+	DelayState     config.JobDelayState `json:"-" gorm:"type:varchar(32);column:delay_state;index:idx_job_delay_pending,priority:2"`
+	DelayExecuteAt int64                `json:"-" gorm:"column:delay_execute_at;index:idx_job_delay_pending,priority:3"`
+	DelayPayload   string               `json:"-" gorm:"type:longtext;column:delay_payload"`
 	BaseModel
 }
 
@@ -59,6 +62,9 @@ type JobTask struct {
 	RunToken           string        `json:"-"`
 	WorkerID           string        `json:"-"`
 	Attempt            uint
+	DelayState         config.JobDelayState `json:"-"`
+	DelayExecuteAt     int64                `json:"-"`
+	DelayPayload       string               `json:"-"`
 }
 
 func (j *JobInfo) PrimaryKey() string {

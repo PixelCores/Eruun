@@ -19,6 +19,10 @@ app.kubernetes.io/managed-by: eruun
 {{- printf "%s-%s" (include "eruun.fullname" .) .Release.Namespace -}}
 {{- end -}}
 
+{{- define "eruun.controllerObserverRBACName" -}}
+{{- printf "%s-controller-observer" (include "eruun.clusterRBACName" .) -}}
+{{- end -}}
+
 {{- define "eruun.suffixedName" -}}
 {{- $root := index . "root" -}}
 {{- $suffix := required "suffix is required for a suffixed Eruun resource name" (index . "suffix") | toString -}}
@@ -32,6 +36,25 @@ app.kubernetes.io/managed-by: eruun
 {{- $role := index . "role" -}}
 {{- $override := index $root.Values.runtime (printf "%sLockName" $role) -}}
 {{- default (include "eruun.suffixedName" (dict "root" $root "suffix" $role)) $override -}}
+{{- end -}}
+
+{{- define "eruun.datastoreEnv" -}}
+- name: ERUUN_DATASTORE_URL
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "eruun.fullname" . }}-mysql
+      key: datastore-url
+- name: MYSQL_HOST
+  value: {{ include "eruun.fullname" . }}-mysql
+- name: MYSQL_PORT
+  value: {{ .Values.mysql.servicePort | quote }}
+- name: MYSQL_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "eruun.fullname" . }}-mysql
+      key: password
+- name: MYSQL_DATABASE
+  value: {{ .Values.mysql.database | quote }}
 {{- end -}}
 
 {{- define "eruun.roleServiceAccountName" -}}
@@ -48,7 +71,16 @@ app.kubernetes.io/managed-by: eruun
 {{- define "eruun.validateRuntime" -}}
 {{- if not .Values.serviceAccount.create -}}
 {{- $roleNames := default dict .Values.serviceAccount.roleNames -}}
+{{- $apiName := default "" (index $roleNames "api") -}}
+{{- $controllerName := default "" (index $roleNames "controller") -}}
 {{- $schedulerName := default "" (index $roleNames "scheduler") -}}
+{{- $workerName := default "" (index $roleNames "worker") -}}
+{{- if and $controllerName $apiName (eq $controllerName $apiName) -}}
+{{- fail "serviceAccount.roleNames.controller must differ from serviceAccount.roleNames.api" -}}
+{{- end -}}
+{{- if and $controllerName $workerName (eq $controllerName $workerName) -}}
+{{- fail "serviceAccount.roleNames.controller must differ from serviceAccount.roleNames.worker" -}}
+{{- end -}}
 {{- range $role := list "api" "controller" "worker" -}}
 {{- $roleName := default "" (index $roleNames $role) -}}
 {{- if and $schedulerName $roleName (eq $schedulerName $roleName) -}}
@@ -61,7 +93,7 @@ app.kubernetes.io/managed-by: eruun
 {{- end -}}
 {{- range $env := .Values.env -}}
 {{- $name := trim (default "" $env.name) -}}
-{{- if or (eq $name "ERUUN_ROLE") (eq $name "ERUUN_ID") (eq $name "ERUUN_EXIT_ON_LOST_LEADER") (eq $name "ERUUN_WORKFLOW_WORKER_DRAIN_TIMEOUT") -}}
+{{- if or (eq $name "ERUUN_ROLE") (eq $name "ERUUN_ID") (eq $name "ERUUN_EXIT_ON_LOST_LEADER") (eq $name "ERUUN_WORKFLOW_WORKER_DRAIN_TIMEOUT") (eq $name "ERUUN_DATASTORE_SCHEMA_MODE") -}}
 {{- fail (printf "env must not override Chart-managed variable %s" $name) -}}
 {{- end -}}
 {{- end -}}
