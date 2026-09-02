@@ -55,7 +55,7 @@ Eruun can run all responsibilities in one process or split them across four role
 - worker: workflow jobs and Kubernetes resource reconciliation.
 - all: the default single-process development mode.
 
-Redis is required for cache, workflow locking, and the default Redis Streams message transport. Kafka can be selected for workflow messaging while Redis remains the cache and lock backend. MySQL is the durable state store.
+MySQL is the durable state store and the authoritative owner of workflow execution leases. Redis is required for distributed application-mutation locks and is the default Redis Streams message transport. Kafka can be selected for workflow messaging while Redis remains the cache and application-lock backend; workflow workers do not take a second Redis execution lock.
 
 ## Configuration
 

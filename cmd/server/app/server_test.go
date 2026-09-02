@@ -43,6 +43,33 @@ func TestNewAPIServerCommandUsesBinaryName(t *testing.T) {
 	require.Equal(t, "eruun-server", NewAPIServerCommand().Use)
 }
 
+func TestRunMigrateOnlySkipsRuntimeStartup(t *testing.T) {
+	original := migrateSchema
+	t.Cleanup(func() { migrateSchema = original })
+	called := false
+	migrateSchema = func(_ context.Context, cfg config.Config) error {
+		called = true
+		require.Equal(t, config.DatastoreSchemaModeMigrateOnly, cfg.NormalizedDatastoreSchemaMode())
+		return nil
+	}
+	serverOptions := options.NewServerRunOptions()
+	serverOptions.GenericServerRunOptions.DatastoreSchemaMode = config.DatastoreSchemaModeMigrateOnly
+
+	require.NoError(t, Run(serverOptions))
+	require.True(t, called)
+}
+
+func TestRunMigrateOnlyReturnsMigrationFailure(t *testing.T) {
+	original := migrateSchema
+	t.Cleanup(func() { migrateSchema = original })
+	expected := errors.New("migration failed")
+	migrateSchema = func(context.Context, config.Config) error { return expected }
+	serverOptions := options.NewServerRunOptions()
+	serverOptions.GenericServerRunOptions.DatastoreSchemaMode = config.DatastoreSchemaModeMigrateOnly
+
+	require.ErrorIs(t, Run(serverOptions), expected)
+}
+
 func TestWaitForServerRunCancelsAndWaitsAfterTerminationSignal(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	term := make(chan os.Signal, 1)

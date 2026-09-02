@@ -27,23 +27,67 @@ type mysql struct {
 	sqlstore.Driver
 }
 
+type SchemaMode string
+
+const (
+	SchemaModeMigrate  SchemaMode = "migrate"
+	SchemaModeValidate SchemaMode = "validate"
+)
+
 // New mysql datastore instance
 func New(ctx context.Context, cfg datastore.Config, models []model.Interface) (datastore.DataStore, error) {
+	return NewWithSchemaMode(ctx, cfg, models, SchemaModeMigrate)
+}
+
+func NewWithSchemaMode(ctx context.Context, cfg datastore.Config, models []model.Interface, schemaMode SchemaMode) (datastore.DataStore, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	db, sqlDB, err := openDatabase(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if err := initializeSchema(ctx, db, models, schemaMode); err != nil {
+		return nil, errors.Join(err, sqlDB.Close())
+	}
+
+	m := &mysql{
+		Driver: sqlstore.Driver{
+			Client: *db.WithContext(ctx),
+		},
+	}
+	return m, nil
+}
+
+// MigrateSchema applies all schema and data migrations and closes its dedicated
+// database connection pool before returning.
+func MigrateSchema(ctx context.Context, cfg datastore.Config, models []model.Interface) (err error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	db, sqlDB, err := openDatabase(cfg)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err = errors.Join(err, sqlDB.Close())
+	}()
+	return initializeSchema(ctx, db, models, SchemaModeMigrate)
+}
+
+func openDatabase(cfg datastore.Config) (*gorm.DB, *stdsql.DB, error) {
 	db, err := gorm.Open(mysqlgorm.Open(cfg.URL), &gorm.Config{
 		NamingStrategy: sqlnamer.SQLNamer{},
 		Logger:         logger.Default.LogMode(logger.Silent),
 		TranslateError: true,
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	sqlDB, err := db.DB()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if cfg.MaxIdleConns > 0 {
 		sqlDB.SetMaxIdleConns(cfg.MaxIdleConns)
@@ -58,18 +102,20 @@ func New(ctx context.Context, cfg datastore.Config, models []model.Interface) (d
 		sqlDB.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
 	}
 
-	if err := withSchemaMigrationLock(ctx, db, func(migrationDB *gorm.DB) error {
-		return migrateSchema(ctx, migrationDB, models)
-	}); err != nil {
-		return nil, errors.Join(err, sqlDB.Close())
-	}
+	return db, sqlDB, nil
+}
 
-	m := &mysql{
-		Driver: sqlstore.Driver{
-			Client: *db.WithContext(ctx),
-		},
+func initializeSchema(ctx context.Context, db *gorm.DB, models []model.Interface, schemaMode SchemaMode) error {
+	switch schemaMode {
+	case SchemaModeMigrate:
+		return withSchemaMigrationLock(ctx, db, func(migrationDB *gorm.DB) error {
+			return migrateSchema(ctx, migrationDB, models)
+		})
+	case SchemaModeValidate:
+		return validateSchema(ctx, db, models)
+	default:
+		return fmt.Errorf("unsupported MySQL schema mode %q", schemaMode)
 	}
-	return m, nil
 }
 
 func withSchemaMigrationLock(ctx context.Context, db *gorm.DB, migrate func(*gorm.DB) error) error {
@@ -162,5 +208,34 @@ func migrateSchema(ctx context.Context, db *gorm.DB, models []model.Interface) e
 	if err := migrateTextOnlySecretSchema(ctx, db.WithContext(ctx)); err != nil {
 		return err
 	}
-	return nil
+	return writeSchemaMigrationMarker(ctx, db)
+}
+
+func validateSchema(ctx context.Context, db *gorm.DB, models []model.Interface) error {
+	if db == nil {
+		return fmt.Errorf("gorm db is nil")
+	}
+	migrationDB := db.WithContext(ctx)
+	migrator := migrationDB.Migrator()
+	for _, entity := range models {
+		if entity == nil {
+			return fmt.Errorf("schema model is nil")
+		}
+		if !migrator.HasTable(entity) {
+			return fmt.Errorf("schema validation failed: table for %T is missing", entity)
+		}
+		statement := &gorm.Statement{DB: migrationDB}
+		if err := statement.Parse(entity); err != nil {
+			return fmt.Errorf("parse schema model %T: %w", entity, err)
+		}
+		for _, field := range statement.Schema.Fields {
+			if field.DBName == "" || field.IgnoreMigration {
+				continue
+			}
+			if !migrator.HasColumn(entity, field.DBName) {
+				return fmt.Errorf("schema validation failed: column %s.%s is missing", statement.Schema.Table, field.DBName)
+			}
+		}
+	}
+	return validateSchemaMigrationMarker(ctx, migrationDB)
 }

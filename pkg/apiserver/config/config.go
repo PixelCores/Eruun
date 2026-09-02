@@ -24,8 +24,11 @@ type leaderConfig struct {
 }
 
 const (
-	defaultLeaderLeaseDuration = 15 * time.Second
-	minLeaderLeaseDuration     = 4 * time.Second
+	defaultLeaderLeaseDuration     = 15 * time.Second
+	minLeaderLeaseDuration         = 4 * time.Second
+	DatastoreSchemaModeMigrate     = "migrate"
+	DatastoreSchemaModeValidate    = "validate"
+	DatastoreSchemaModeMigrateOnly = "migrate-only"
 )
 
 // WorkflowRuntimeConfig controls how workflow steps are executed.
@@ -92,6 +95,9 @@ type Config struct {
 	DTMAddr string
 
 	Datastore datastore.Config
+	// DatastoreSchemaMode controls whether this process migrates, validates, or
+	// migrates and exits before starting the runtime.
+	DatastoreSchemaMode string
 
 	Cache RedisCacheConfig
 
@@ -197,6 +203,7 @@ func NewConfig() *Config {
 			ConnMaxLifetime: 30 * time.Minute,
 			ConnMaxIdleTime: 10 * time.Minute,
 		},
+		DatastoreSchemaMode: DatastoreSchemaModeMigrate,
 		Cache: RedisCacheConfig{
 			CacheHost: "localhost",
 			CacheProt: 6379,
@@ -249,6 +256,21 @@ func NewConfig() *Config {
 
 func (c *Config) Validate() []error {
 	var errs []error
+	schemaMode, schemaModeValid := normalizeDatastoreSchemaMode(c.DatastoreSchemaMode)
+	if !schemaModeValid {
+		errs = append(errs, fmt.Errorf("datastore schema mode must be one of migrate, validate, migrate-only; got %q", c.DatastoreSchemaMode))
+	}
+	if schemaMode == DatastoreSchemaModeMigrateOnly {
+		if c.Datastore.Type != MYSQL {
+			errs = append(errs, fmt.Errorf("unsupported datastore type: %s", c.Datastore.Type))
+		}
+		if strings.TrimSpace(c.Datastore.URL) == "" {
+			errs = append(errs, fmt.Errorf("mysql url cannot be empty"))
+		} else if strings.Contains(c.Datastore.URL, "__REPLACE_") {
+			errs = append(errs, fmt.Errorf("mysql url contains placeholder value, please replace it with real credentials"))
+		}
+		return errs
+	}
 	_, roleValid := NormalizeRuntimeRole(string(c.Role))
 	if !roleValid {
 		errs = append(errs, fmt.Errorf("runtime role must be one of api, controller, scheduler, worker; got %q", c.Role))
@@ -295,7 +317,7 @@ func (c *Config) Validate() []error {
 	}
 	cacheType := strings.ToLower(strings.TrimSpace(c.Cache.CacheType))
 	if cacheType != REDIS {
-		errs = append(errs, fmt.Errorf("workflow task run locker requires cache-type=redis"))
+		errs = append(errs, fmt.Errorf("distributed application mutation locking requires cache-type=redis"))
 	} else if strings.TrimSpace(c.Cache.CacheHost) == "" || c.Cache.CacheProt <= 0 {
 		errs = append(errs, fmt.Errorf("redis cache host/port is invalid"))
 	}
@@ -399,6 +421,7 @@ func (c *Config) AddFlags(fs *pflag.FlagSet, configParameter *Config) {
 	fs.StringVar(&c.Datastore.Type, "datastore-type", configParameter.Datastore.Type, "datastore backend type (e.g., mysql, tidb)")
 	fs.StringVar(&c.Datastore.URL, "datastore-url", configParameter.Datastore.URL, "datastore connection URL / DSN")
 	fs.StringVar(&c.Datastore.Database, "datastore-database", configParameter.Datastore.Database, "datastore database/schema name")
+	fs.StringVar(&c.DatastoreSchemaMode, "datastore-schema-mode", configParameter.DatastoreSchemaMode, "datastore schema handling: migrate|validate|migrate-only")
 	fs.IntVar(&c.Datastore.MaxIdleConns, "mysql-max-idle-conns", configParameter.Datastore.MaxIdleConns, "maximum number of idle MySQL connections to retain in the pool")
 	fs.IntVar(&c.Datastore.MaxOpenConns, "mysql-max-open-conns", configParameter.Datastore.MaxOpenConns, "maximum number of open MySQL connections (<=0 means unlimited)")
 	fs.DurationVar(&c.Datastore.ConnMaxLifetime, "mysql-conn-max-lifetime", configParameter.Datastore.ConnMaxLifetime, "maximum amount of time a MySQL connection may be reused (<=0 disables)")
@@ -465,6 +488,31 @@ func (r *runtimeRoleValue) Set(value string) error {
 
 func (r *runtimeRoleValue) Type() string { return "runtime-role" }
 
+func normalizeDatastoreSchemaMode(value string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", DatastoreSchemaModeMigrate:
+		return DatastoreSchemaModeMigrate, true
+	case DatastoreSchemaModeValidate:
+		return DatastoreSchemaModeValidate, true
+	case DatastoreSchemaModeMigrateOnly:
+		return DatastoreSchemaModeMigrateOnly, true
+	default:
+		return "", false
+	}
+}
+
+func (c Config) NormalizedDatastoreSchemaMode() string {
+	mode, ok := normalizeDatastoreSchemaMode(c.DatastoreSchemaMode)
+	if !ok {
+		return DatastoreSchemaModeMigrate
+	}
+	return mode
+}
+
+func (c Config) MigrateSchemaOnly() bool {
+	return c.NormalizedDatastoreSchemaMode() == DatastoreSchemaModeMigrateOnly
+}
+
 func NormalizeRuntimeRole(value string) (RuntimeRole, bool) {
 	switch RuntimeRole(strings.ToLower(strings.TrimSpace(value))) {
 	case RuntimeRoleAPI:
@@ -504,6 +552,32 @@ func (c Config) RunsScheduler() bool {
 
 func (c Config) RunsWorker() bool {
 	return c.NormalizedRole() == RuntimeRoleWorker
+}
+
+func (c Config) RequiresDispatchQueue() bool {
+	return c.RunsScheduler() || c.RunsWorker()
+}
+
+func (c Config) RequiresDelayQueue() bool {
+	return c.RunsController() || c.RunsWorker()
+}
+
+func (c Config) RequiresResultQueue() bool {
+	return c.RunsController()
+}
+
+func (c Config) RuntimeMessagingTopics() []string {
+	topics := make([]string, 0, 3)
+	if c.RequiresDispatchQueue() {
+		topics = append(topics, DispatchTopic(c.Messaging.ChannelPrefix))
+	}
+	if c.RequiresDelayQueue() {
+		topics = append(topics, DelayTopic(c.Messaging.ChannelPrefix))
+	}
+	if c.RequiresResultQueue() {
+		topics = append(topics, ResultTopic(c.Messaging.ChannelPrefix))
+	}
+	return topics
 }
 
 // HasExternalQueue returns true if a supported distributed queue backend is configured.

@@ -42,6 +42,10 @@ type repositoryTestStore struct {
 	casConditions               map[string]interface{}
 	casWithConditionsUpdateTime time.Time
 
+	databaseNow      time.Time
+	databaseNowErr   error
+	databaseNowCalls int
+
 	isExistByCondValue bool
 	isExistByCondErr   error
 	isExistByCondTable string
@@ -128,5 +132,17 @@ func (s *repositoryTestStore) CompareAndSwapWithConditions(_ context.Context, en
 	return s.casWithConditionsSwapped, s.casWithConditionsErr
 }
 
+func (s *repositoryTestStore) CurrentDatabaseTime(context.Context) (time.Time, error) {
+	s.databaseNowCalls++
+	if s.databaseNowErr != nil {
+		return time.Time{}, s.databaseNowErr
+	}
+	if s.databaseNow.IsZero() {
+		return time.Unix(1700000000, 0).UTC(), nil
+	}
+	return s.databaseNow, nil
+}
+
 var _ datastore.DataStore = (*repositoryTestStore)(nil)
 var _ datastore.ConditionalCompareAndSwap = (*repositoryTestStore)(nil)
+var _ datastore.DatabaseClock = (*repositoryTestStore)(nil)

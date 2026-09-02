@@ -7,13 +7,22 @@ import (
 	"fmt"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 )
 
-const applicationManagementModeMigrationMarker = "migration.application-management-mode.v1"
+const (
+	applicationManagementModeMigrationMarker = "migration.application-management-mode.v1"
+	schemaMigrationMarker                    = "migration.schema.v1"
+	completedSchemaMigrationJSON             = `{"completed":true}`
+)
+
+type schemaMigrationState struct {
+	Completed bool `json:"completed"`
+}
 
 type nodeSelectorProfileRow struct {
 	ID          string          `json:"id"`
@@ -185,6 +194,39 @@ func migrateTextOnlySecretSchema(ctx context.Context, db *gorm.DB) error {
 		return err
 	}
 	klog.Info("dropped legacy secret encoding column from application components")
+	return nil
+}
+
+func writeSchemaMigrationMarker(ctx context.Context, db *gorm.DB) error {
+	marker := &model.SystemSetting{
+		Type:  schemaMigrationMarker,
+		Value: json.RawMessage(completedSchemaMigrationJSON),
+	}
+	if err := db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "type"}},
+		DoUpdates: clause.AssignmentColumns([]string{"value"}),
+	}).Create(marker).Error; err != nil {
+		return fmt.Errorf("write schema migration marker: %w", err)
+	}
+	return nil
+}
+
+func validateSchemaMigrationMarker(ctx context.Context, db *gorm.DB) error {
+	var marker model.SystemSetting
+	result := db.WithContext(ctx).
+		Where("type = ?", schemaMigrationMarker).
+		Limit(1).
+		Find(&marker)
+	if result.Error != nil {
+		return fmt.Errorf("read schema migration marker: %w", result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return fmt.Errorf("schema validation failed: migration marker %q is missing", schemaMigrationMarker)
+	}
+	var state schemaMigrationState
+	if err := json.Unmarshal(marker.Value, &state); err != nil || !state.Completed {
+		return fmt.Errorf("schema validation failed: migration marker %q is incomplete", schemaMigrationMarker)
+	}
 	return nil
 }
 
