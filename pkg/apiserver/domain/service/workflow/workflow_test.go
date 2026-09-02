@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"cmp"
 	"context"
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
@@ -12,6 +13,7 @@ import (
 	miniredis "github.com/alicebob/miniredis/v2"
 	redis "github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -523,13 +525,14 @@ func (s *statusDataStore) CompareAndSwapWithConditions(
 }
 
 type scheduleDataStore struct {
-	app         *model.Applications
-	workflows   []*model.Workflow
-	schedules   []*model.WorkflowSchedule
-	queues      []*model.WorkflowQueue
-	tasks       []*model.WorkflowQueue
-	jobs        []*model.JobInfo
-	queueAddErr error
+	app              *model.Applications
+	workflows        []*model.Workflow
+	schedules        []*model.WorkflowSchedule
+	queues           []*model.WorkflowQueue
+	tasks            []*model.WorkflowQueue
+	jobs             []*model.JobInfo
+	queueAddErr      error
+	scheduleListSize int
 }
 
 type transactionalScheduleDataStore struct {
@@ -678,7 +681,7 @@ func (s *scheduleDataStore) Get(_ context.Context, entity datastore.Entity) erro
 	return datastore.ErrRecordNotExist
 }
 
-func (s *scheduleDataStore) List(_ context.Context, query datastore.Entity, _ *datastore.ListOptions) ([]datastore.Entity, error) {
+func (s *scheduleDataStore) List(_ context.Context, query datastore.Entity, opts *datastore.ListOptions) ([]datastore.Entity, error) {
 	switch q := query.(type) {
 	case *model.WorkflowSchedule:
 		var out []datastore.Entity
@@ -695,8 +698,47 @@ func (s *scheduleDataStore) List(_ context.Context, query datastore.Entity, _ *d
 			if q.Enabled && !schedule.Enabled {
 				continue
 			}
+			if opts != nil {
+				excluded := false
+				for _, filter := range opts.LessThan {
+					if filter.Key == "next_run" && schedule.NextRun >= filter.Value.(int64) {
+						excluded = true
+					}
+				}
+				if excluded {
+					continue
+				}
+			}
 			out = append(out, schedule)
 		}
+		if opts != nil {
+			sort.SliceStable(out, func(i, j int) bool {
+				a, b := out[i].(*model.WorkflowSchedule), out[j].(*model.WorkflowSchedule)
+				for _, order := range opts.SortBy {
+					var comparison int
+					switch order.Key {
+					case "next_run":
+						comparison = cmp.Compare(a.NextRun, b.NextRun)
+					case "id":
+						comparison = cmp.Compare(a.ID, b.ID)
+					case "create_time":
+						comparison = a.CreateTime.Compare(b.CreateTime)
+					}
+					if comparison != 0 {
+						if order.Order == datastore.SortOrderDescending {
+							return comparison > 0
+						}
+						return comparison < 0
+					}
+				}
+				return false
+			})
+			if opts.Page > 0 && opts.PageSize > 0 {
+				start := min(opts.PageSize*(opts.Page-1), len(out))
+				out = out[start:min(start+opts.PageSize, len(out))]
+			}
+		}
+		s.scheduleListSize = len(out)
 		return out, nil
 	case *model.WorkflowQueue:
 		var out []datastore.Entity

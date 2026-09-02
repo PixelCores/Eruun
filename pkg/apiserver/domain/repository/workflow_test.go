@@ -55,6 +55,13 @@ func TestWaitingTasksUsesFIFOSort(t *testing.T) {
 	}
 	require.Equal(t, "create_time", store.lastOptions.SortBy[0].Key)
 	require.Equal(t, datastore.SortOrderAscending, store.lastOptions.SortBy[0].Order)
+	require.Equal(t, 1, store.lastOptions.Page)
+	require.Equal(t, workflowDispatchQueryBatchSize, store.lastOptions.PageSize)
+	require.Len(t, store.lastOptions.FilterOptions.LessThan, 1)
+	require.Equal(t, "execute_at", store.lastOptions.FilterOptions.LessThan[0].Key)
+	deadline, ok := store.lastOptions.FilterOptions.LessThan[0].Value.(int64)
+	require.True(t, ok)
+	require.InDelta(t, time.Now().Unix()+1, deadline, 1)
 }
 
 func TestWaitingTasksFiltersFutureExecuteAt(t *testing.T) {

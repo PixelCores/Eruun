@@ -20,12 +20,12 @@ type WorkflowQueue struct {
 	AppID               string                  `json:"app_id" gorm:"type:varchar(64);column:app_id"`
 	WorkflowID          string                  `json:"workflow_id" gorm:"type:varchar(64);column:workflow_id"`
 	WorkflowDisplayName string                  `json:"workflow_display_name" gorm:"type:varchar(255);column:workflow_display_name"`
-	Status              config.Status           `json:"status,omitempty" gorm:"type:varchar(32);column:status;index:idx_workflow_queue_reaper,priority:1"`
+	Status              config.Status           `json:"status,omitempty" gorm:"type:varchar(32);column:status;index:idx_workflow_queue_reaper,priority:1;index:idx_workflow_queue_dispatch,priority:1"`
 	TaskCreator         string                  `json:"task_creator,omitempty" gorm:"type:varchar(128);column:task_creator"`
 	TaskRevoker         string                  `json:"task_revoker,omitempty" gorm:"type:varchar(128);column:task_revoker"`
 	CancelSource        string                  `json:"cancel_source,omitempty" gorm:"type:varchar(32);column:cancel_source"`
 	Type                config.WorkflowTaskType `json:"type,omitempty" gorm:"type:varchar(32);column:type"`
-	ExecuteAt           int64                   `json:"executeAt,omitempty" gorm:"type:bigint;column:execute_at"`
+	ExecuteAt           int64                   `json:"executeAt,omitempty" gorm:"type:bigint;column:execute_at;index:idx_workflow_queue_dispatch,priority:2"`
 	CurrentStep         int                     `json:"currentStep,omitempty" gorm:"type:int;column:current_step"`
 	ApprovalPending     bool                    `json:"approvalPending,omitempty" gorm:"column:approval_pending"`
 	PendingApprovalStep string                  `json:"pendingApprovalStep,omitempty" gorm:"type:varchar(255);column:pending_approval_step"`
