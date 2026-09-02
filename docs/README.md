@@ -1,6 +1,6 @@
 # Eruun 文档索引
 
-> 状态：Current。本文是 `docs/` 的导航入口，按当前 `master` 代码事实整理文档状态，并为维护者和 LLM 提供需求定位路径。
+> 状态：Current。本文是 `docs/` 的导航入口，按当前 `main` 代码事实整理文档状态，并为维护者和 LLM 提供需求定位路径。
 
 ## 推荐阅读顺序
 
@@ -9,7 +9,8 @@
 3. `core-module-boundary-and-cross-layer-contracts.md`：API、Domain、DB、Cache、K8s 的核心字段契约。
 4. `workflow-architecture-guide.md`：工作流调度、队列、Job 执行和状态机。
 5. `enterprise-distributed-runtime-design.md`：四类运行角色、双 Leader、Workflow 数据库租约和部署拓扑。
-6. `architecture-diagrams.md`：架构图、DDD 分层图、消息队列、Informer、Traits 和目录结构。
+6. `distributed-runtime-hardening-merge-guide.md`：分布式运行时加固 PR 集、设计理由、保留边界与合并验收指南。
+7. `architecture-diagrams.md`：架构图、DDD 分层图、消息队列、Informer、Traits 和目录结构。
 
 ## 状态约定
 
@@ -29,7 +30,7 @@
 
 - API 前缀：`/api/v1`。
 - 服务进程默认监听：`127.0.0.1:8000`；`deploy/eruun-stack.yaml` 会通过 `ERUUN_BIND_ADDR=0.0.0.0:8000` 暴露集群内服务。
-- 服务端角色通过 `--role` / `ERUUN_ROLE` 显式选择 `api/controller/scheduler/worker/all`；默认 `all` 在单进程内运行全部职责。
+- 服务端角色通过 `--role` / `ERUUN_ROLE` 显式选择 `api/controller/scheduler/worker`；直接运行默认是 `api`，不存在聚合 `all` 角色。
 - Workflow 固定使用 v2 generation/token ownership 与数据库执行租约，Worker 不再获取 Redis 执行锁；不存在关闭 fencing 或处理 v1 dispatch 的运行模式。
 - 顶层 `/workflow`、`/workflow/exec`、`/workflow/cancel` 路由不再注册；应用维度 workflow API 是当前主路径。
 - OAuth 登录路由与 `/authz/*` 管理路由当前未注册；`apiAuth` 中间件已接入全局路由，但默认配置为 `enabled=false`。
@@ -73,6 +74,7 @@
 
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
+| `distributed-runtime-hardening-merge-guide.md` | Current | 已合并的 7 个分布式运行时加固 PR、实现边界、合并记录与待完成的真实集群验收清单 |
 | `api-error-response-contract.md` | Current | API 统一错误响应与通用错误脱敏契约 |
 | `system-setting.md` | Current | 系统设置类型、API 与默认初始化 |
 | `settings-page-api.md` | Current | 前端设置页字段归属、请求参数与保存策略 |

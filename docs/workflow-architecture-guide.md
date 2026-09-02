@@ -2015,7 +2015,7 @@ type MessagingConfig struct {
 | `--workflow-sequential-max-concurrency` | 1 | 串行步骤内部最大并发数 | 生产环境建议 1-3 |
 | `--workflow-dispatch-poll-interval` | 3s | Dispatcher 扫描间隔 | 生产环境建议 3-5s |
 | `--workflow-worker-stale-interval` | 15s | Worker 过期检查间隔 | 生产环境建议 15-30s |
-| `--role` | all | 运行角色：api/controller/scheduler/worker/all | 生产部署建议拆分职责 |
+| `--role` | api | 运行角色：api/controller/scheduler/worker | 每个进程只运行一类职责 |
 | `--controller-lock-name` | eruun-controller | Controller Leader Lease | 同 namespace 内唯一 |
 | `--scheduler-lock-name` | eruun-scheduler | Scheduler Leader Lease | 不得与 Controller 相同 |
 | `--workflow-heartbeat-interval` | 10s | Worker DB 心跳 | 小于 lease duration |

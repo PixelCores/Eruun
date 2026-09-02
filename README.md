@@ -47,13 +47,14 @@ The server listens on 127.0.0.1:8000 by default. Set ERUUN_BIND_ADDR=0.0.0.0:800
 
 ## Architecture
 
-Eruun can run all responsibilities in one process or split them across four roles:
+Eruun runs as one of four explicit runtime roles. The Helm and standalone manifests deploy all four roles independently:
 
 - api: HTTP routes, request validation, and response contracts.
 - controller: Kubernetes observation and runtime-state synchronization.
 - scheduler: workflow scheduling and dispatch.
 - worker: workflow jobs and Kubernetes resource reconciliation.
-- all: the default single-process development mode.
+
+The server defaults to the `api` role for direct local runs. There is no combined `all` role.
 
 MySQL is the durable state store and the authoritative owner of workflow execution leases. Redis is required for distributed application-mutation locks and is the default Redis Streams message transport. Kafka can be selected for workflow messaging while Redis remains the cache and application-lock backend; workflow workers do not take a second Redis execution lock.
 
