@@ -82,7 +82,7 @@
 | `create-and-exec-application-api.md` | Current | 创建并执行应用 API |
 | `app-workflow-callback.md` | Current | App 与 Workflow Callback 优先级 |
 | `workflow-failure-policy.md` | Current | Workflow `cleanup_failed` / `cleanup_all` 策略与 Job 级失败清理例外 |
-| `leader-informer-recovery.md` | Current | Controller/Scheduler 双 Leader、Informer 重建、Worker 独立观察与数据库执行租约恢复契约 |
+| `leader-informer-recovery.md` | Current | Controller/Scheduler 双 Leader、Informer 重建、Worker 独立观察、数据库执行租约恢复与 UTC 时钟回归验证 |
 | `batch-applications-api.md` | Current | 批量应用详情查询 API |
 | `application-management-mode.md` | Current | 应用 `native` / `observe` 写权限边界与历史导入迁移契约 |
 | `application-status-api.md` | Current | 单应用聚合状态、单应用组件状态明细、批量应用状态的接口边界 |
