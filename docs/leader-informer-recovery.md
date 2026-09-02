@@ -50,6 +50,6 @@ Controller Leader 负责延迟 Job、结果消息和结果 outbox 协调；Sched
 - 所有角色都直接使用 generation/token ownership，不存在 v1 消息、空 ownership 或关闭 fencing 的运行组合。
 - Controller、Scheduler 和 Worker 副本数都可按容量与可用性独立设置，不要求奇数。
 - Worker 收到终止信号后停止领取新消息，默认最多排空 60 秒；Helm Chart 和 `deploy/eruun-stack.yaml` 都提供 90 秒 `terminationGracePeriodSeconds`，超时后取消执行并由数据库 lease reaper 接管。
-- Workflow 数据库 lease 的过期比较仍使用 Scheduler 进程 UTC 时间，生产集群必须保持节点时钟同步；历史 Kubernetes Lease 迁移门禁使用本机经过时间观察，不受节点绝对时钟偏差影响。
+- Workflow 数据库 lease 的写入、续租、释放和过期比较统一使用 MySQL 的微秒级 Unix 时间；运行节点的绝对时钟偏差和 DSN 时区不参与 ownership 转移。历史 Kubernetes Lease 迁移门禁继续使用本机经过时间观察。
 
 完整字段和消息协议见 [企业级分布式运行时设计](enterprise-distributed-runtime-design.md)；当前不提供跨版本迁移或回滚协议。
