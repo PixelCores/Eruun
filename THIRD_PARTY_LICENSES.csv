@@ -25,7 +25,7 @@ github.com/facebookgo/structtag,https://github.com/facebookgo/structtag/blob/217
 github.com/fatih/color,https://github.com/fatih/color/blob/v1.15.0/LICENSE.md,MIT
 github.com/fsnotify/fsnotify,https://github.com/fsnotify/fsnotify/blob/v1.7.0/LICENSE,BSD-3-Clause
 github.com/fxamacker/cbor/v2,https://github.com/fxamacker/cbor/blob/v2.9.0/LICENSE,MIT
-github.com/gabriel-vasile/mimetype,https://github.com/gabriel-vasile/mimetype/blob/v1.4.9/LICENSE,MIT
+github.com/gabriel-vasile/mimetype,https://github.com/gabriel-vasile/mimetype/blob/v1.4.13/LICENSE,MIT
 github.com/gin-contrib/sse,https://github.com/gin-contrib/sse/blob/v1.1.0/LICENSE,MIT
 github.com/gin-gonic/gin,https://github.com/gin-gonic/gin/blob/v1.10.1/LICENSE,MIT
 github.com/go-logr/logr,https://github.com/go-logr/logr/blob/v1.4.3/LICENSE,Apache-2.0
@@ -35,7 +35,7 @@ github.com/go-openapi/jsonreference,https://github.com/go-openapi/jsonreference/
 github.com/go-openapi/swag,https://github.com/go-openapi/swag/blob/v0.23.0/LICENSE,Apache-2.0
 github.com/go-playground/locales,https://github.com/go-playground/locales/blob/v0.14.1/LICENSE,MIT
 github.com/go-playground/universal-translator,https://github.com/go-playground/universal-translator/blob/v0.18.1/LICENSE,MIT
-github.com/go-playground/validator/v10,https://github.com/go-playground/validator/blob/v10.26.0/LICENSE,MIT
+github.com/go-playground/validator/v10,https://github.com/go-playground/validator/blob/v10.30.3/LICENSE,MIT
 github.com/go-redsync/redsync/v4,https://github.com/go-redsync/redsync/blob/v4.13.0/LICENSE,BSD-3-Clause
 github.com/go-sql-driver/mysql,https://github.com/go-sql-driver/mysql/blob/v1.7.0/LICENSE,MPL-2.0
 github.com/gogo/protobuf,https://github.com/gogo/protobuf/blob/v1.3.2/LICENSE,BSD-3-Clause
