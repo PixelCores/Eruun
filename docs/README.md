@@ -30,7 +30,7 @@
 - API 前缀：`/api/v1`。
 - 服务进程默认监听：`127.0.0.1:8000`；`deploy/eruun-stack.yaml` 会通过 `ERUUN_BIND_ADDR=0.0.0.0:8000` 暴露集群内服务。
 - 服务端角色通过 `--role` / `ERUUN_ROLE` 显式选择 `api/controller/scheduler/worker/all`；默认 `all` 在单进程内运行全部职责。
-- Workflow 固定使用 v2 generation/token ownership 与数据库执行租约；不存在关闭 fencing 或处理 v1 dispatch 的运行模式。
+- Workflow 固定使用 v2 generation/token ownership 与数据库执行租约，Worker 不再获取 Redis 执行锁；不存在关闭 fencing 或处理 v1 dispatch 的运行模式。
 - 顶层 `/workflow`、`/workflow/exec`、`/workflow/cancel` 路由不再注册；应用维度 workflow API 是当前主路径。
 - OAuth 登录路由与 `/authz/*` 管理路由当前未注册；`apiAuth` 中间件已接入全局路由，但默认配置为 `enabled=false`。
 
@@ -82,7 +82,7 @@
 | `create-and-exec-application-api.md` | Current | 创建并执行应用 API |
 | `app-workflow-callback.md` | Current | App 与 Workflow Callback 优先级 |
 | `workflow-failure-policy.md` | Current | Workflow `cleanup_failed` / `cleanup_all` 策略与 Job 级失败清理例外 |
-| `leader-informer-recovery.md` | Current | Controller/Scheduler 双 Leader、Informer 重建、Worker 独立观察与数据库执行租约恢复契约 |
+| `leader-informer-recovery.md` | Current | Controller/Scheduler 双 Leader、Informer 重建、Worker 独立观察、数据库执行租约恢复与 UTC 时钟回归验证 |
 | `batch-applications-api.md` | Current | 批量应用详情查询 API |
 | `application-management-mode.md` | Current | 应用 `native` / `observe` 写权限边界与历史导入迁移契约 |
 | `application-status-api.md` | Current | 单应用聚合状态、单应用组件状态明细、批量应用状态的接口边界 |
@@ -115,7 +115,7 @@
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
 | `workflow-architecture-guide.md` | Implemented Reference | 工作流引擎架构详解 |
-| `enterprise-distributed-runtime-design.md` | Implemented Reference | 分布式运行时：角色依赖、API Redis readiness、Leader Election、数据库 lease/fencing、Worker observer 和 Helm 拓扑 |
+| `enterprise-distributed-runtime-design.md` | Implemented Reference | 分布式运行时：角色依赖、API Redis readiness、Leader Election、数据库 lease/fencing、延迟任务恢复与通知去重、Cron 有界分页与失败计划重试、Worker observer 和 Helm 拓扑 |
 | `架构文档.md` | Implemented Reference | 架构与 OAM Traits 汇总 |
 | `architecture-diagrams.md` | Implemented Reference | 架构图与流程图 |
 | `kafka-queue-implementation.md` | Implemented Reference | Kafka 队列实现 |

@@ -204,6 +204,13 @@ type ConditionalCompareAndSwap interface {
 	CompareAndSwapWithConditions(ctx context.Context, entity Entity, conditions map[string]interface{}, updates map[string]interface{}) (bool, error)
 }
 
+// DatabaseClock exposes the datastore server's wall clock. Distributed leases
+// must use one authoritative clock instead of comparing timestamps produced by
+// different runtime processes.
+type DatabaseClock interface {
+	CurrentDatabaseTime(ctx context.Context) (time.Time, error)
+}
+
 // Transactional is an optional extension interface for datastores that support transactions.
 // Implementations should ensure all operations performed on the provided tx store are committed
 // atomically, and rolled back if fn returns an error.

@@ -337,7 +337,7 @@ func TestWorkflowRunRetriesOriginalStepWhenDistributedCheckpointFails(t *testing
 	require.ErrorIs(t, runErr, checkpointErr)
 	require.Equal(t, config.StatusRunning, firstCtl.snapshotTask().Status)
 	require.Zero(t, firstCtl.snapshotTask().CurrentStep)
-	require.Len(t, queue.enqueued, 1)
+	require.Empty(t, queue.enqueued, "queue notification must not precede the durable checkpoint")
 
 	store.mu.Lock()
 	persistedStatus := store.task.Status
@@ -357,7 +357,7 @@ func TestWorkflowRunRetriesOriginalStepWhenDistributedCheckpointFails(t *testing
 	require.NoError(t, recoveredCtl.Run(context.Background(), 1))
 	require.Equal(t, config.StatusCompleted, recoveredCtl.snapshotTask().Status)
 	require.Equal(t, 1, recoveredCtl.snapshotTask().CurrentStep)
-	require.Len(t, queue.enqueued, 2)
+	require.Len(t, queue.enqueued, 1)
 }
 
 func TestWorkflowRunResumesFromCheckpoint(t *testing.T) {
