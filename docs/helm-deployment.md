@@ -66,6 +66,7 @@ generation/token ownership 与数据库 execution lease 是唯一执行协议，
 
 - 首次 `helm install` 时只有 API Deployment 使用 `migrate` 模式；其他角色使用 `validate`。多 API 副本仍通过 MySQL 命名锁串行迁移，避免 Chart 内置 MySQL 尚未创建时运行 `pre-install` hook。
 - `helm upgrade` 会先运行一个 `pre-upgrade` migration Job，使用 `migrate-only` 模式完成 AutoMigrate、数据回填和旧表/列清理；升级后的四类运行角色全部只做 schema 校验。
+- migration Job 与四类 Deployment 共用数据库环境变量默认值，并按原顺序追加 `env`。通过 `env` 覆盖 `ERUUN_DATASTORE_URL` 时，Job 和运行 Pod 使用同一外部数据库；DSN 中的 `$(MYSQL_PASSWORD)`、`$(MYSQL_DATABASE)` 或此前定义的自定义环境变量引用也保持相同顺序。未覆盖时使用 Chart 内置 MySQL Secret。
 - migration Job 不挂载 Kubernetes ServiceAccount token，也不初始化 Kubernetes、消息队列、HTTP 或业务服务。它只在全部结构与数据迁移完成后写入版本化 migration marker；运行角色在 marker、必需表或列缺失时 fail-fast，不会偷偷修改 schema。
 - 直接运行二进制的默认值保持 `migrate`；静态 `deploy/eruun-stack.yaml` 明确让 API 使用 `migrate`，其余三类角色使用 `validate`。
 

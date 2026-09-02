@@ -34,6 +34,25 @@ app.kubernetes.io/managed-by: eruun
 {{- default (include "eruun.suffixedName" (dict "root" $root "suffix" $role)) $override -}}
 {{- end -}}
 
+{{- define "eruun.datastoreEnv" -}}
+- name: ERUUN_DATASTORE_URL
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "eruun.fullname" . }}-mysql
+      key: datastore-url
+- name: MYSQL_HOST
+  value: {{ include "eruun.fullname" . }}-mysql
+- name: MYSQL_PORT
+  value: {{ .Values.mysql.servicePort | quote }}
+- name: MYSQL_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "eruun.fullname" . }}-mysql
+      key: password
+- name: MYSQL_DATABASE
+  value: {{ .Values.mysql.database | quote }}
+{{- end -}}
+
 {{- define "eruun.roleServiceAccountName" -}}
 {{- $root := index . "root" -}}
 {{- $role := index . "role" -}}

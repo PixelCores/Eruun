@@ -29,11 +29,11 @@ spec:
           env:
             - name: ERUUN_DATASTORE_SCHEMA_MODE
               value: migrate-only
-            - name: ERUUN_DATASTORE_URL
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "eruun.fullname" . }}-mysql
-                  key: datastore-url
+            {{- include "eruun.datastoreEnv" . | nindent 12 }}
+            {{- range .Values.env }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
           resources:
             requests:
               cpu: 100m

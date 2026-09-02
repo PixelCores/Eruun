@@ -435,6 +435,50 @@ grep -q 'value: migrate-only' "${upgrade_manifest}" ||
   fail "schema migration hook must exit after applying migrations"
 
 assertEqual \
+  "$(grep -c 'key: datastore-url' "${upgrade_manifest}")" \
+  "5" \
+  "runtime deployments and migration Job must default to the same datastore Secret"
+
+external_datastore_manifest="${TEST_ROOT}/upgrade-external-datastore.yaml"
+external_datastore_url='review:example@tcp(external-db.example:3306)/eruun?parseTime=true'
+runHelm template eruun "${TEST_DIR}" \
+  --namespace eruun-system \
+  --is-upgrade \
+  --set-string 'env[0].name=ERUUN_DATASTORE_URL' \
+  --set-string "env[0].value=${external_datastore_url}" > "${external_datastore_manifest}"
+assertEqual \
+  "$(grep -Fc "value: \"${external_datastore_url}\"" "${external_datastore_manifest}")" \
+  "5" \
+  "all runtime deployments and migration Job must use the external datastore override"
+
+expanded_datastore_manifest="${TEST_ROOT}/upgrade-expanded-datastore.yaml"
+expanded_datastore_url='root:$(MYSQL_PASSWORD)@tcp($(EXTERNAL_MYSQL_HOST):3306)/$(MYSQL_DATABASE)?parseTime=true'
+runHelm template eruun "${TEST_DIR}" \
+  --namespace eruun-system \
+  --is-upgrade \
+  --set-string 'env[0].name=EXTERNAL_MYSQL_HOST' \
+  --set-string 'env[0].value=external-db.example' \
+  --set-string 'env[1].name=ERUUN_DATASTORE_URL' \
+  --set-string "env[1].value=${expanded_datastore_url}" > "${expanded_datastore_manifest}"
+awk -v expectedURL="${expanded_datastore_url}" '
+  /^kind:/ { kind = $2; passwordReady = 0; databaseReady = 0; hostReady = 0 }
+  kind != "Deployment" && kind != "Job" { next }
+  $1 == "-" && $2 == "name:" { env = $3 }
+  env == "MYSQL_PASSWORD" && $1 == "key:" && $2 == "password" { passwordReady = 1 }
+  env == "MYSQL_DATABASE" && $1 == "value:" && $2 == "\"eruun\"" { databaseReady = 1 }
+  env == "EXTERNAL_MYSQL_HOST" && $1 == "value:" && $2 == "\"external-db.example\"" { hostReady = 1 }
+  env == "ERUUN_DATASTORE_URL" && $1 == "value:" {
+    value = $0
+    sub(/^[[:space:]]*value: "/, "", value)
+    sub(/"$/, "", value)
+    if (value != expectedURL || !passwordReady || !databaseReady || !hostReady) failed = 1
+    count++
+  }
+  END { exit failed || count != 5 }
+' "${expanded_datastore_manifest}" ||
+  fail "runtime deployments and migration Job must define DSN expansion inputs before the override"
+
+assertEqual \
   "$(grep -c 'value: \"eruun-eruun-controller\"' "${runtime_manifest}")" \
   "4" \
   "default controller Lease must derive from the release fullname"
