@@ -1,5 +1,7 @@
 # Eruun 独立开源产品基线
 
+> 状态：Historical / Audit。本文记录当时的开源基线；2026-09-03 后续清理已移除发布就绪清单和许可证检查机制，保留其他构建、测试与安全检查。当前 CI 范围以[贡献指南](../CONTRIBUTING.md#continuous-integration)为准。
+
 ## 背景与需求
 
 Eruun 作为独立产品线进入独立 Git 仓库，定位为 “A distributed runtime for agents, models, and AI workloads”。迁入内容来自权利人指定的干净源代码快照，仅包含当时受 Git 跟踪的文件；目标仓库保留自己的远端和历史。

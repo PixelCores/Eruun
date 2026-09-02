@@ -23,6 +23,14 @@ deploy/all_in_one_install_quickstart_test.sh
 
 For deployment changes, also run the manifest tests and Helm lint/template checks described in `AGENTS.md`.
 
+## Continuous integration
+
+GitHub Actions runs Go formatting, vet, race tests, server builds, deployment and Helm checks, container builds, and sensitive-content scanning. Dependency Review checks newly introduced dependency vulnerabilities at moderate severity or above; its license checks are disabled.
+
+The repository does not maintain a generated dependency-license inventory, manual license overrides, or a separate public-launch checklist. The MIT License and contribution requirements above remain unchanged.
+
+Run `scripts/check-sensitive-content.sh` locally to check for sensitive content and obsolete product references.
+
 ## Documentation
 
 - Mark shipped behavior as Current only when it is verified against code and tests.

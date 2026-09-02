@@ -135,6 +135,7 @@
 
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
+| [贡献指南](../CONTRIBUTING.md#continuous-integration) | Current | GitHub Actions 检查范围、依赖漏洞审查与本地敏感内容扫描；不维护许可证清单或许可证 CI 门禁 |
 | `go-idiomatic-code-quality-audit-2026-08-09.md` | Historical / Audit | 基于 `aaec6307` 的全仓 Go 惯用性、接口、并发、错误传播与测试组织审计 |
 | `existing-cluster-application-import-analysis-2026-08-03.md` | Historical / Audit | 现有集群应用进入 Eruun 的发现、observe/adopted 导入、source identity、执行边界与上线验收分析 |
 | `code-quality-audit-2026-05-20.md` | Historical / Audit | 全仓代码质量审计与后续简化重构建议 |

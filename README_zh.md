@@ -94,7 +94,7 @@ go vet ./...
 
 ## 安全与贡献
 
-报告安全问题前请阅读 SECURITY.md，提交变更前请阅读 CONTRIBUTING.md。第三方依赖许可证清单仅用于技术尽调，不构成法律意见。
+报告安全问题前请阅读 SECURITY.md，提交变更前请阅读 CONTRIBUTING.md。
 
 ## 许可证
 

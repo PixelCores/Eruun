@@ -94,7 +94,7 @@ Key documentation:
 
 ## Security and contributing
 
-Please read SECURITY.md before reporting a vulnerability and CONTRIBUTING.md before opening a change. The dependency license inventory is technical due-diligence material and is not legal advice.
+Please read SECURITY.md before reporting a vulnerability and CONTRIBUTING.md before opening a change.
 
 ## License
 
