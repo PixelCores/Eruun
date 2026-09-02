@@ -20,6 +20,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 func TestApprovalNotificationContextUsesDefaultTimeout(t *testing.T) {
@@ -31,7 +32,7 @@ func TestApprovalNotificationContextUsesDefaultTimeout(t *testing.T) {
 
 	deadline, ok := ctx.Deadline()
 	require.True(t, ok)
-	require.WithinDuration(t, time.Now().Add(config.DefaultWorkflowCallbackTimeout), deadline, 2*time.Second)
+	require.WithinDuration(t, time.Now().Add(workflowconfig.DefaultWorkflowCallbackTimeout), deadline, 2*time.Second)
 }
 
 func TestApprovalNotificationContextUsesProvidedTimeout(t *testing.T) {
@@ -68,7 +69,7 @@ func TestApprovalNotificationContextNegativeTimeoutUsesDefault(t *testing.T) {
 
 	deadline, ok := ctx.Deadline()
 	require.True(t, ok)
-	require.WithinDuration(t, time.Now().Add(config.DefaultWorkflowCallbackTimeout), deadline, 2*time.Second)
+	require.WithinDuration(t, time.Now().Add(workflowconfig.DefaultWorkflowCallbackTimeout), deadline, 2*time.Second)
 }
 
 func TestApprovalUpdateContextDetachedDoesNotInheritCancelledParent(t *testing.T) {

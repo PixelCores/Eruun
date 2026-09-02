@@ -12,6 +12,7 @@ import (
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/security/urlpolicy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 var (
@@ -137,7 +138,7 @@ func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.C
 
 	// 1. Validate application name
 	errors = append(errors, v.validateName(effectiveReq.Name, "name")...)
-	if _, ok := config.NormalizeWorkflowFailurePolicy(effectiveReq.WorkflowFailurePolicy); !ok {
+	if _, ok := workflowconfig.NormalizeWorkflowFailurePolicy(effectiveReq.WorkflowFailurePolicy); !ok {
 		errors = append(errors, apisv1.ValidationError{
 			Field:   "workflow.failurePolicy",
 			Code:    apisv1.ErrCodeInvalidWorkflowFailurePolicy,
@@ -406,7 +407,7 @@ func (v *validationServiceImpl) validateJobProperties(comp apisv1.CreateComponen
 				Code:    apisv1.ErrCodeInvalidJobFailurePolicy,
 				Message: "failurePolicy is only supported for job components",
 			})
-		} else if _, ok := config.NormalizeJobFailurePolicy(*props.FailurePolicy); !ok {
+		} else if _, ok := workflowconfig.NormalizeJobFailurePolicy(*props.FailurePolicy); !ok {
 			errors = append(errors, apisv1.ValidationError{
 				Field:   fmt.Sprintf("%s.properties.failurePolicy", fieldPrefix),
 				Code:    apisv1.ErrCodeInvalidJobFailurePolicy,
@@ -416,7 +417,7 @@ func (v *validationServiceImpl) validateJobProperties(comp apisv1.CreateComponen
 	}
 
 	if runPolicy != "" {
-		if _, ok := config.NormalizeJobRunPolicy(runPolicy); !ok {
+		if _, ok := workflowconfig.NormalizeJobRunPolicy(runPolicy); !ok {
 			errors = append(errors, apisv1.ValidationError{
 				Field:   fmt.Sprintf("%s.properties.runPolicy", fieldPrefix),
 				Code:    apisv1.ErrCodeInvalidJobRunPolicy,

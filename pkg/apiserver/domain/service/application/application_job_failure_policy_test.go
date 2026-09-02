@@ -11,6 +11,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 func TestPrepareComponentsPersistsJobFailurePolicyOptOut(t *testing.T) {
@@ -19,7 +20,7 @@ func TestPrepareComponentsPersistsJobFailurePolicyOptOut(t *testing.T) {
 		ComponentType: config.InstantJob,
 		Image:         "skeema-tool:latest",
 		Properties: apisv1.Properties{
-			RunPolicy:     string(config.JobRunPolicyRecreate),
+			RunPolicy:     string(workflowconfig.JobRunPolicyRecreate),
 			FailurePolicy: jobFailurePolicyPointer(" cleanup_FAILED "),
 		},
 	}})
@@ -28,20 +29,20 @@ func TestPrepareComponentsPersistsJobFailurePolicyOptOut(t *testing.T) {
 
 	var properties apisv1.Properties
 	require.NoError(t, decodeJSONStruct(components[0].Properties, &properties))
-	require.Equal(t, string(config.JobRunPolicyRecreate), properties.RunPolicy)
+	require.Equal(t, string(workflowconfig.JobRunPolicyRecreate), properties.RunPolicy)
 	require.NotNil(t, properties.FailurePolicy)
-	require.Equal(t, config.WorkflowFailurePolicyCleanupFailed, *properties.FailurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupFailed, *properties.FailurePolicy)
 }
 
 func TestPrepareComponentsRejectsInvalidJobFailurePolicy(t *testing.T) {
 	tests := []struct {
 		name          string
 		componentType config.JobType
-		policy        config.WorkflowFailurePolicy
+		policy        workflowconfig.WorkflowFailurePolicy
 	}{
-		{name: "cleanup all", componentType: config.InstantJob, policy: config.WorkflowFailurePolicyCleanupAll},
+		{name: "cleanup all", componentType: config.InstantJob, policy: workflowconfig.WorkflowFailurePolicyCleanupAll},
 		{name: "unknown", componentType: config.InstantJob, policy: "unknown"},
-		{name: "non job", componentType: config.ServerJob, policy: config.WorkflowFailurePolicyCleanupFailed},
+		{name: "non job", componentType: config.ServerJob, policy: workflowconfig.WorkflowFailurePolicyCleanupFailed},
 	}
 
 	for _, tt := range tests {
@@ -70,7 +71,7 @@ func TestPrepareComponentsRejectsNestedJobFailurePolicy(t *testing.T) {
 				Name:  "migrate",
 				Image: "busybox:latest",
 				Properties: spec.Properties{
-					FailurePolicy: jobFailurePolicyPointer(config.WorkflowFailurePolicyCleanupFailed),
+					FailurePolicy: jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupFailed),
 				},
 			}},
 		},
@@ -93,8 +94,8 @@ func TestUpdateVersionAddPersistsJobFailurePolicyOptOut(t *testing.T) {
 			Image:         "skeema-tool:latest",
 			Replicas:      &replicas,
 			Properties: &apisv1.Properties{
-				RunPolicy:     string(config.JobRunPolicyRecreate),
-				FailurePolicy: jobFailurePolicyPointer(config.WorkflowFailurePolicyCleanupFailed),
+				RunPolicy:     string(workflowconfig.JobRunPolicyRecreate),
+				FailurePolicy: jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupFailed),
 			},
 		}},
 		AutoExec: boolPtr(false),
@@ -103,9 +104,9 @@ func TestUpdateVersionAddPersistsJobFailurePolicyOptOut(t *testing.T) {
 
 	var properties apisv1.Properties
 	require.NoError(t, decodeJSONStruct(store.components["mysql-update-job"].Properties, &properties))
-	require.Equal(t, string(config.JobRunPolicyRecreate), properties.RunPolicy)
+	require.Equal(t, string(workflowconfig.JobRunPolicyRecreate), properties.RunPolicy)
 	require.NotNil(t, properties.FailurePolicy)
-	require.Equal(t, config.WorkflowFailurePolicyCleanupFailed, *properties.FailurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupFailed, *properties.FailurePolicy)
 }
 
 func TestUpdateVersionUpdatePersistsJobFailurePolicyOptOut(t *testing.T) {
@@ -125,8 +126,8 @@ func TestUpdateVersionUpdatePersistsJobFailurePolicyOptOut(t *testing.T) {
 		Components: []apisv1.ComponentUpdateSpec{{
 			Name: "existing-job",
 			Properties: &apisv1.Properties{
-				RunPolicy:     string(config.JobRunPolicyRecreate),
-				FailurePolicy: jobFailurePolicyPointer(config.WorkflowFailurePolicyCleanupFailed),
+				RunPolicy:     string(workflowconfig.JobRunPolicyRecreate),
+				FailurePolicy: jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupFailed),
 			},
 		}},
 		AutoExec: boolPtr(false),
@@ -135,19 +136,19 @@ func TestUpdateVersionUpdatePersistsJobFailurePolicyOptOut(t *testing.T) {
 
 	var properties apisv1.Properties
 	require.NoError(t, decodeJSONStruct(store.components["existing-job"].Properties, &properties))
-	require.Equal(t, string(config.JobRunPolicyRecreate), properties.RunPolicy)
+	require.Equal(t, string(workflowconfig.JobRunPolicyRecreate), properties.RunPolicy)
 	require.NotNil(t, properties.FailurePolicy)
-	require.Equal(t, config.WorkflowFailurePolicyCleanupFailed, *properties.FailurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupFailed, *properties.FailurePolicy)
 }
 
 func TestUpdateVersionRejectsInvalidJobFailurePolicy(t *testing.T) {
 	tests := []struct {
 		name          string
 		componentType config.JobType
-		policy        config.WorkflowFailurePolicy
+		policy        workflowconfig.WorkflowFailurePolicy
 	}{
-		{name: "cleanup all", componentType: config.InstantJob, policy: config.WorkflowFailurePolicyCleanupAll},
-		{name: "non job", componentType: config.ServerJob, policy: config.WorkflowFailurePolicyCleanupFailed},
+		{name: "cleanup all", componentType: config.InstantJob, policy: workflowconfig.WorkflowFailurePolicyCleanupAll},
+		{name: "non job", componentType: config.ServerJob, policy: workflowconfig.WorkflowFailurePolicyCleanupFailed},
 		{name: "non job whitespace", componentType: config.ServerJob, policy: "   "},
 	}
 
@@ -214,7 +215,7 @@ func TestUpdateVersionExplicitEmptyClearsJobFailurePolicyOverride(t *testing.T) 
 		ComponentType: config.InstantJob,
 		Image:         "skeema-tool:latest",
 		Properties: mustJSONStruct(&apisv1.Properties{
-			FailurePolicy: jobFailurePolicyPointer(config.WorkflowFailurePolicyCleanupFailed),
+			FailurePolicy: jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupFailed),
 		}),
 	}
 	svc := newMockServiceWithStore(store)
@@ -247,8 +248,8 @@ func TestUpdateVersionOmittedPropertiesPreservesJobFailurePolicyOverride(t *test
 		Image:         "skeema-tool:v1",
 		Properties: mustJSONStruct(&apisv1.Properties{
 			Env:           map[string]string{"SCHEMA": "game"},
-			RunPolicy:     string(config.JobRunPolicyRecreate),
-			FailurePolicy: jobFailurePolicyPointer(config.WorkflowFailurePolicyCleanupFailed),
+			RunPolicy:     string(workflowconfig.JobRunPolicyRecreate),
+			FailurePolicy: jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupFailed),
 		}),
 	}
 	svc := newMockServiceWithStore(store)
@@ -268,9 +269,9 @@ func TestUpdateVersionOmittedPropertiesPreservesJobFailurePolicyOverride(t *test
 	var properties apisv1.Properties
 	require.NoError(t, decodeJSONStruct(store.components["existing-job"].Properties, &properties))
 	require.Equal(t, map[string]string{"SCHEMA": "game"}, properties.Env)
-	require.Equal(t, string(config.JobRunPolicyRecreate), properties.RunPolicy)
+	require.Equal(t, string(workflowconfig.JobRunPolicyRecreate), properties.RunPolicy)
 	require.NotNil(t, properties.FailurePolicy)
-	require.Equal(t, config.WorkflowFailurePolicyCleanupFailed, *properties.FailurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupFailed, *properties.FailurePolicy)
 }
 
 func TestUpdateVersionEmptyPropertiesClearsJobFailurePolicyOverride(t *testing.T) {
@@ -283,8 +284,8 @@ func TestUpdateVersionEmptyPropertiesClearsJobFailurePolicyOverride(t *testing.T
 		Image:         "skeema-tool:latest",
 		Properties: mustJSONStruct(&apisv1.Properties{
 			Env:           map[string]string{"SCHEMA": "game"},
-			RunPolicy:     string(config.JobRunPolicyRecreate),
-			FailurePolicy: jobFailurePolicyPointer(config.WorkflowFailurePolicyCleanupFailed),
+			RunPolicy:     string(workflowconfig.JobRunPolicyRecreate),
+			FailurePolicy: jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupFailed),
 		}),
 	}
 	svc := newMockServiceWithStore(store)
@@ -310,23 +311,23 @@ func TestUpdateVersionEmptyPropertiesClearsJobFailurePolicyOverride(t *testing.T
 func TestCreateApplicationsFromTemplateMergesJobFailurePolicyOverride(t *testing.T) {
 	tests := []struct {
 		name           string
-		templatePolicy *config.WorkflowFailurePolicy
-		overridePolicy *config.WorkflowFailurePolicy
-		expectedPolicy *config.WorkflowFailurePolicy
+		templatePolicy *workflowconfig.WorkflowFailurePolicy
+		overridePolicy *workflowconfig.WorkflowFailurePolicy
+		expectedPolicy *workflowconfig.WorkflowFailurePolicy
 	}{
 		{
 			name:           "request sets override",
-			overridePolicy: jobFailurePolicyPointer(config.WorkflowFailurePolicyCleanupFailed),
-			expectedPolicy: jobFailurePolicyPointer(config.WorkflowFailurePolicyCleanupFailed),
+			overridePolicy: jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupFailed),
+			expectedPolicy: jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupFailed),
 		},
 		{
 			name:           "omitted request preserves template override",
-			templatePolicy: jobFailurePolicyPointer(config.WorkflowFailurePolicyCleanupFailed),
-			expectedPolicy: jobFailurePolicyPointer(config.WorkflowFailurePolicyCleanupFailed),
+			templatePolicy: jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupFailed),
+			expectedPolicy: jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupFailed),
 		},
 		{
 			name:           "explicit empty clears template override",
-			templatePolicy: jobFailurePolicyPointer(config.WorkflowFailurePolicyCleanupFailed),
+			templatePolicy: jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupFailed),
 			overridePolicy: jobFailurePolicyPointer("   "),
 		},
 	}
@@ -364,11 +365,11 @@ func TestCreateApplicationsFromTemplateRejectsInvalidJobFailurePolicyOverride(t 
 	tests := []struct {
 		name          string
 		componentType config.JobType
-		policy        config.WorkflowFailurePolicy
+		policy        workflowconfig.WorkflowFailurePolicy
 	}{
-		{name: "cleanup all", componentType: config.InstantJob, policy: config.WorkflowFailurePolicyCleanupAll},
+		{name: "cleanup all", componentType: config.InstantJob, policy: workflowconfig.WorkflowFailurePolicyCleanupAll},
 		{name: "unknown", componentType: config.InstantJob, policy: "unknown"},
-		{name: "non job", componentType: config.ServerJob, policy: config.WorkflowFailurePolicyCleanupFailed},
+		{name: "non job", componentType: config.ServerJob, policy: workflowconfig.WorkflowFailurePolicyCleanupFailed},
 		{name: "non job empty", componentType: config.ServerJob, policy: ""},
 	}
 
@@ -403,7 +404,7 @@ func TestCreateApplicationsFromTemplateRejectsNestedJobFailurePolicyOverride(t *
 			Traits: apisv1.Traits{Init: []spec.InitTraitSpec{{
 				Name: "migrate",
 				Properties: spec.Properties{
-					FailurePolicy: jobFailurePolicyPointer(config.WorkflowFailurePolicyCleanupFailed),
+					FailurePolicy: jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupFailed),
 				},
 			}}},
 		}},
@@ -413,7 +414,7 @@ func TestCreateApplicationsFromTemplateRejectsNestedJobFailurePolicyOverride(t *
 	require.Contains(t, err.Error(), "component[0].traits.init[0].properties.failurePolicy")
 }
 
-func templateFailurePolicyStore(componentType config.JobType, policy *config.WorkflowFailurePolicy) *inMemoryAppStore {
+func templateFailurePolicyStore(componentType config.JobType, policy *workflowconfig.WorkflowFailurePolicy) *inMemoryAppStore {
 	store := newInMemoryAppStore()
 	store.apps["tmpl-1"] = &model.Applications{
 		ID:              "tmpl-1",
@@ -445,7 +446,7 @@ func findCreatedFailurePolicyComponent(store *inMemoryAppStore, appID string) *m
 	return nil
 }
 
-func jobFailurePolicyPointer(policy config.WorkflowFailurePolicy) *config.WorkflowFailurePolicy {
+func jobFailurePolicyPointer(policy workflowconfig.WorkflowFailurePolicy) *workflowconfig.WorkflowFailurePolicy {
 	return &policy
 }
 

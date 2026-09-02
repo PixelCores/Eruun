@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 
 	"github.com/stretchr/testify/require"
 )
@@ -106,16 +107,16 @@ func TestUpdateVersionRequestDecodesJobFailurePolicy(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(input), &req))
 	require.Len(t, req.Components, 1)
 	require.NotNil(t, req.Components[0].Properties)
-	require.Equal(t, string(config.JobRunPolicyRecreate), req.Components[0].Properties.RunPolicy)
+	require.Equal(t, string(workflowconfig.JobRunPolicyRecreate), req.Components[0].Properties.RunPolicy)
 	require.NotNil(t, req.Components[0].Properties.FailurePolicy)
-	require.Equal(t, config.WorkflowFailurePolicyCleanupFailed, *req.Components[0].Properties.FailurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupFailed, *req.Components[0].Properties.FailurePolicy)
 }
 
 func TestUpdateVersionRequestDistinguishesOmittedAndExplicitJobFailurePolicy(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected *config.WorkflowFailurePolicy
+		expected *workflowconfig.WorkflowFailurePolicy
 	}{
 		{name: "omitted", input: `{"version":"1.1.0","components":[{"name":"job","properties":{}}]}`},
 		{name: "explicit empty", input: `{"version":"1.1.0","components":[{"name":"job","properties":{"failurePolicy":""}}]}`, expected: jobFailurePolicyPointer("")},
@@ -144,7 +145,7 @@ func TestUpdateVersionRequestKeepsStrictPropertiesValidation(t *testing.T) {
 	require.ErrorContains(t, decodeStrictJSON(input, &req), `unknown field "unknown"`)
 }
 
-func jobFailurePolicyPointer(policy config.WorkflowFailurePolicy) *config.WorkflowFailurePolicy {
+func jobFailurePolicyPointer(policy workflowconfig.WorkflowFailurePolicy) *workflowconfig.WorkflowFailurePolicy {
 	return &policy
 }
 
@@ -244,7 +245,7 @@ func TestCreateApplicationsRequestWorkflowObjectShape(t *testing.T) {
 	require.Equal(t, "https://example.com/app", req.Callback.Success)
 	require.NotNil(t, req.WorkflowCallback)
 	require.Equal(t, "https://example.com/workflow", req.WorkflowCallback.Success)
-	require.Equal(t, config.WorkflowFailurePolicyCleanupAll, req.WorkflowFailurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, req.WorkflowFailurePolicy)
 	require.Len(t, req.WorkflowSteps, 1)
 	require.Equal(t, "deploy-web", req.WorkflowSteps[0].Name)
 }
@@ -295,7 +296,7 @@ func TestUpdateApplicationWorkflowRequestAcceptsStepsAlias(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "wf-1", req.WorkflowID)
 	require.Equal(t, config.WorkflowTaskTypeUpdate, req.WorkflowType)
-	require.Equal(t, config.WorkflowFailurePolicyCleanupAll, req.FailurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, req.FailurePolicy)
 	require.True(t, req.FailurePolicySet)
 	require.Len(t, req.Workflow, 1)
 	require.Equal(t, config.JobDeploy, req.Workflow[0].WorkflowType)
@@ -305,7 +306,7 @@ func TestUpdateApplicationWorkflowRequestTracksFailurePolicyPresence(t *testing.
 	tests := []struct {
 		name           string
 		input          string
-		expectedPolicy config.WorkflowFailurePolicy
+		expectedPolicy workflowconfig.WorkflowFailurePolicy
 		expectedSet    bool
 	}{
 		{
@@ -317,7 +318,7 @@ func TestUpdateApplicationWorkflowRequestTracksFailurePolicyPresence(t *testing.
 		{
 			name:           "cleanup all",
 			input:          `{"workflowId":"wf-1","failurePolicy":"cleanup_all","steps":[{"name":"deploy-web","jobType":"deploy","components":["web"]}]}`,
-			expectedPolicy: config.WorkflowFailurePolicyCleanupAll,
+			expectedPolicy: workflowconfig.WorkflowFailurePolicyCleanupAll,
 			expectedSet:    true,
 		},
 		{

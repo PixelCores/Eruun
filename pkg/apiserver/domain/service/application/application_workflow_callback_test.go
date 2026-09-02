@@ -13,6 +13,7 @@ import (
 
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 func TestUpdateApplicationWorkflowStoresCallback(t *testing.T) {
@@ -209,7 +210,7 @@ func TestUpdateApplicationWorkflowCapsCallbackTimeout(t *testing.T) {
 	var callback apisv1.WorkflowCallback
 	err = decodeJSONStruct(stored.Callback, &callback)
 	require.NoError(t, err)
-	require.Equal(t, int64((config.DefaultWorkflowCallbackTimeoutMax / time.Second)), callback.TimeoutSeconds)
+	require.Equal(t, int64((workflowconfig.DefaultWorkflowCallbackTimeoutMax / time.Second)), callback.TimeoutSeconds)
 }
 
 func TestUpdateApplicationWorkflowRejectsInvalidCallbackMethod(t *testing.T) {

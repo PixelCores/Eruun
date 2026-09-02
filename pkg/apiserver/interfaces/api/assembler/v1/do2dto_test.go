@@ -9,6 +9,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -29,7 +30,7 @@ func TestConvertComponentModelToDTOStatusDefault(t *testing.T) {
 
 func TestConvertWorkflowStepsPreservesProperties(t *testing.T) {
 	steps := &model.WorkflowSteps{
-		FailurePolicy: config.WorkflowFailurePolicyCleanupAll,
+		FailurePolicy: workflowconfig.WorkflowFailurePolicyCleanupAll,
 		Steps: []*model.WorkflowStep{
 			{
 				Name:         "deploy-nginx",
@@ -63,7 +64,7 @@ func TestConvertWorkflowStepsPreservesProperties(t *testing.T) {
 
 	failurePolicy, details, err := convertWorkflowSteps(raw)
 	require.NoError(t, err)
-	require.Equal(t, config.WorkflowFailurePolicyCleanupAll, failurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, failurePolicy)
 	require.Len(t, details, 2)
 
 	require.Equal(t, []string{"nginx"}, details[0].Components)
@@ -94,7 +95,7 @@ func TestConvertWorkflowStepsDefaultsMissingFailurePolicyToCleanupAll(t *testing
 
 	failurePolicy, details, err := convertWorkflowSteps(raw)
 	require.NoError(t, err)
-	require.Equal(t, config.WorkflowFailurePolicyCleanupAll, failurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, failurePolicy)
 	require.Len(t, details, 1)
 }
 

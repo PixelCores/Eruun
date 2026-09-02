@@ -5,6 +5,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 type CreateWorkflowRequest struct {
@@ -123,14 +124,14 @@ type CreateWorkflowResponse struct {
 }
 
 type UpdateApplicationWorkflowRequest struct {
-	WorkflowID       string                       `json:"workflowId,omitempty"`
-	Name             string                       `json:"name,omitempty"`
-	Alias            string                       `json:"alias,omitempty"`
-	Callback         *WorkflowCallback            `json:"callback,omitempty"`
-	WorkflowType     config.WorkflowTaskType      `json:"workflowType,omitempty"`
-	FailurePolicy    config.WorkflowFailurePolicy `json:"failurePolicy,omitempty"`
-	FailurePolicySet bool                         `json:"-"`
-	Workflow         []CreateWorkflowStepRequest  `json:"workflow" validate:"required,min=1,dive"`
+	WorkflowID       string                               `json:"workflowId,omitempty"`
+	Name             string                               `json:"name,omitempty"`
+	Alias            string                               `json:"alias,omitempty"`
+	Callback         *WorkflowCallback                    `json:"callback,omitempty"`
+	WorkflowType     config.WorkflowTaskType              `json:"workflowType,omitempty"`
+	FailurePolicy    workflowconfig.WorkflowFailurePolicy `json:"failurePolicy,omitempty"`
+	FailurePolicySet bool                                 `json:"-"`
+	Workflow         []CreateWorkflowStepRequest          `json:"workflow" validate:"required,min=1,dive"`
 }
 
 type UpdateWorkflowResponse struct {
@@ -290,20 +291,20 @@ type ListApplicationWorkflowsResponse struct {
 }
 
 type ApplicationWorkflow struct {
-	ID            string                       `json:"id"`
-	Name          string                       `json:"name"`
-	Alias         string                       `json:"alias"`
-	Namespace     string                       `json:"namespace,omitempty"`
-	ProjectID     string                       `json:"projectId,omitempty"`
-	Description   string                       `json:"description,omitempty"`
-	Status        string                       `json:"status"`
-	Disabled      bool                         `json:"disabled"`
-	FailurePolicy config.WorkflowFailurePolicy `json:"failurePolicy"`
-	Steps         []WorkflowStepDetail         `json:"steps,omitempty"`
-	Callback      *WorkflowCallback            `json:"callback,omitempty"`
-	CreateTime    time.Time                    `json:"createTime"`
-	UpdateTime    time.Time                    `json:"updateTime"`
-	WorkflowType  config.WorkflowTaskType      `json:"workflowType"`
+	ID            string                               `json:"id"`
+	Name          string                               `json:"name"`
+	Alias         string                               `json:"alias"`
+	Namespace     string                               `json:"namespace,omitempty"`
+	ProjectID     string                               `json:"projectId,omitempty"`
+	Description   string                               `json:"description,omitempty"`
+	Status        string                               `json:"status"`
+	Disabled      bool                                 `json:"disabled"`
+	FailurePolicy workflowconfig.WorkflowFailurePolicy `json:"failurePolicy"`
+	Steps         []WorkflowStepDetail                 `json:"steps,omitempty"`
+	Callback      *WorkflowCallback                    `json:"callback,omitempty"`
+	CreateTime    time.Time                            `json:"createTime"`
+	UpdateTime    time.Time                            `json:"updateTime"`
+	WorkflowType  config.WorkflowTaskType              `json:"workflowType"`
 }
 
 type WorkflowStepDetail struct {

@@ -22,6 +22,7 @@ import (
 	api "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/profiling"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/version"
 )
 
@@ -167,7 +168,7 @@ func waitForServerRun(
 }
 
 func serverShutdownWaitTimeout(s *options.ServerRunOptions) time.Duration {
-	drainTimeout := config.DefaultWorkerDrainTimeout
+	drainTimeout := workflowconfig.DefaultWorkerDrainTimeout
 	if s != nil &&
 		s.GenericServerRunOptions != nil &&
 		s.GenericServerRunOptions.Workflow.WorkerDrainTimeout > 0 {

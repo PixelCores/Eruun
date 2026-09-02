@@ -18,6 +18,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 func TestGenerateInstantJobSetsTTL(t *testing.T) {
@@ -90,7 +91,7 @@ func TestApplyJobRunPolicy(t *testing.T) {
 		namespace = "default"
 	)
 
-	newJob := func(policy config.JobRunPolicy) *batchv1.Job {
+	newJob := func(policy workflowconfig.JobRunPolicy) *batchv1.Job {
 		return &batchv1.Job{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
@@ -154,7 +155,7 @@ func TestApplyJobRunPolicy(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		policy        config.JobRunPolicy
+		policy        workflowconfig.JobRunPolicy
 		existing      *batchv1.Job
 		expectAction  runPolicyAction
 		expectErr     bool
@@ -163,26 +164,26 @@ func TestApplyJobRunPolicy(t *testing.T) {
 	}{
 		{
 			name:         "skip if completed",
-			policy:       config.JobRunPolicySkipIfCompleted,
+			policy:       workflowconfig.JobRunPolicySkipIfCompleted,
 			existing:     completedJob,
 			expectAction: runPolicyActionSkip,
 		},
 		{
 			name:         "skip if running allows existing job",
-			policy:       config.JobRunPolicySkipIfCompleted,
+			policy:       workflowconfig.JobRunPolicySkipIfCompleted,
 			existing:     runningJob,
 			expectAction: runPolicyActionCreate,
 		},
 		{
 			name:         "skip if failed returns error",
-			policy:       config.JobRunPolicySkipIfCompleted,
+			policy:       workflowconfig.JobRunPolicySkipIfCompleted,
 			existing:     failedJob,
 			expectErr:    true,
 			expectStatus: config.StatusFailed,
 		},
 		{
 			name:          "recreate deletes existing job",
-			policy:        config.JobRunPolicyRecreate,
+			policy:        workflowconfig.JobRunPolicyRecreate,
 			existing:      runningJob,
 			expectAction:  runPolicyActionCreate,
 			expectDeleted: true,
@@ -449,7 +450,7 @@ func TestApplyJobRunPolicy_UsesStoreForSkipIfCompleted(t *testing.T) {
 			Name:      "demo-job",
 			Namespace: "default",
 			Annotations: map[string]string{
-				config.AnnotationJobRunPolicy: string(config.JobRunPolicySkipIfCompleted),
+				config.AnnotationJobRunPolicy: string(workflowconfig.JobRunPolicySkipIfCompleted),
 			},
 			Labels: map[string]string{
 				config.LabelAppID:         "app-1",
@@ -476,7 +477,7 @@ func TestApplyJobRunPolicy_StoreErrorContinues(t *testing.T) {
 			Name:      "demo-job",
 			Namespace: "default",
 			Annotations: map[string]string{
-				config.AnnotationJobRunPolicy: string(config.JobRunPolicySkipIfCompleted),
+				config.AnnotationJobRunPolicy: string(workflowconfig.JobRunPolicySkipIfCompleted),
 			},
 			Labels: map[string]string{
 				config.LabelAppID:         "app-1",

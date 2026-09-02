@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/require"
 )
@@ -16,7 +17,7 @@ func TestNewConfigHasSequentialConcurrencyDefault(t *testing.T) {
 	cfg := NewConfig()
 	require.Equal(t, "127.0.0.1:8000", cfg.BindAddr)
 	require.Equal(t, 1, cfg.Workflow.SequentialMaxConcurrency)
-	require.Equal(t, DefaultWorkflowCallbackTimeoutMax, cfg.Workflow.CallbackTimeoutMax)
+	require.Equal(t, workflowconfig.DefaultWorkflowCallbackTimeoutMax, cfg.Workflow.CallbackTimeoutMax)
 	require.Equal(t, 1, cfg.Messaging.KafkaTopicPartitions)
 	require.Equal(t, 1, cfg.Messaging.KafkaTopicReplicationFactor)
 	require.Equal(t, 15*time.Second, cfg.LeaderConfig.Duration)
@@ -28,6 +29,43 @@ func TestNewConfigHasSequentialConcurrencyDefault(t *testing.T) {
 	require.Equal(t, 60*time.Second, cfg.Workflow.WorkerDrainTimeout)
 	require.Zero(t, cfg.APIRateLimitQPS)
 	require.Zero(t, cfg.APIRateLimitBurst)
+}
+
+func TestWorkflowCallbackTimeoutConfigBoundary(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  *Config
+		want time.Duration
+	}{
+		{name: "nil config", want: 72 * time.Hour},
+		{name: "zero config", cfg: &Config{}, want: 72 * time.Hour},
+		{name: "negative max", cfg: &Config{Workflow: workflowconfig.RuntimeConfig{CallbackTimeoutMax: -time.Second}}, want: 72 * time.Hour},
+		{name: "custom max", cfg: &Config{Workflow: workflowconfig.RuntimeConfig{CallbackTimeoutMax: 500 * time.Millisecond}}, want: 500 * time.Millisecond},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, workflowconfig.ResolveWorkflowCallbackTimeoutMax(tt.cfg.WorkflowRuntime()))
+		})
+	}
+}
+
+func TestWorkflowConfigFlagAndEnvironmentOverrides(t *testing.T) {
+	cfg := NewConfig()
+	flags := pflag.NewFlagSet("workflow-config", pflag.ContinueOnError)
+	cfg.AddFlags(flags, cfg)
+	t.Setenv("ERUUN_WORKFLOW_MAX_CONCURRENT", "25")
+	t.Setenv("ERUUN_WORKFLOW_CALLBACK_TIMEOUT_MAX", "45m")
+	t.Setenv("ERUUN_WORKFLOW_LEASE_DURATION", "20s")
+	require.NoError(t, flags.Parse([]string{"--workflow-max-concurrent=7"}))
+	require.NoError(t, ApplyEnvOverrides(flags, EnvPrefix))
+
+	require.Equal(t, 7, cfg.Workflow.MaxConcurrentWorkflows)
+	require.Equal(t, 45*time.Minute, cfg.Workflow.CallbackTimeoutMax)
+	require.Equal(t, 20*time.Second, cfg.Workflow.LeaseDuration)
+	require.Equal(t, time.Minute, cfg.Workflow.DefaultJobTimeout)
+	require.Zero(t, cfg.Workflow.WorkerMaxReadFailures)
+	require.Zero(t, cfg.Workflow.WorkerMaxClaimFailures)
+	require.Empty(t, cfg.Workflow.Validate())
 }
 
 func TestValidateDatastoreSchemaMode(t *testing.T) {
@@ -54,6 +92,7 @@ func TestMigrateOnlyValidatesOnlyDatastoreInputs(t *testing.T) {
 	cfg.BindAddr = ""
 	cfg.Cache.CacheType = "memory"
 	cfg.Messaging.Type = "invalid"
+	cfg.Workflow = workflowconfig.RuntimeConfig{}
 
 	require.Empty(t, cfg.Validate())
 	require.True(t, cfg.MigrateSchemaOnly())

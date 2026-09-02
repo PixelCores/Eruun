@@ -16,6 +16,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 func TestCallbackContextUsesDefaultWhenTimeoutIsZero(t *testing.T) {
@@ -24,7 +25,7 @@ func TestCallbackContextUsesDefaultWhenTimeoutIsZero(t *testing.T) {
 
 	deadline, ok := ctx.Deadline()
 	require.True(t, ok)
-	require.WithinDuration(t, time.Now().Add(config.DefaultWorkflowCallbackTimeout), deadline, 2*time.Second)
+	require.WithinDuration(t, time.Now().Add(workflowconfig.DefaultWorkflowCallbackTimeout), deadline, 2*time.Second)
 }
 
 func TestCallbackContextCapsTimeoutByMax(t *testing.T) {

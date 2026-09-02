@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/security/urlpolicy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 type applicationCallbackSelection struct {
@@ -36,7 +36,7 @@ func (c *applicationsServiceImpl) resolveCreateApplicationCallback(ctx context.C
 	}
 	selection.setCallback = true
 
-	callbackMax := config.ResolveWorkflowCallbackTimeoutMax(c.Cfg)
+	callbackMax := workflowconfig.ResolveWorkflowCallbackTimeoutMax(c.Cfg.WorkflowRuntime())
 	var urlPolicy *spec.URLSecurityPolicySpec
 	var err error
 	if workflowCallbackRequiresURLPolicy(callback) {
@@ -67,7 +67,7 @@ func (c *applicationsServiceImpl) resolveOperationTaskCallback(ctx context.Conte
 	if callbackIsEmpty(callback) {
 		return nil, nil
 	}
-	callbackMax := config.ResolveWorkflowCallbackTimeoutMax(c.Cfg)
+	callbackMax := workflowconfig.ResolveWorkflowCallbackTimeoutMax(c.Cfg.WorkflowRuntime())
 	var urlPolicy *spec.URLSecurityPolicySpec
 	var err error
 	if workflowCallbackRequiresURLPolicy(callback) {
@@ -91,7 +91,7 @@ func (c *applicationsServiceImpl) resolveOperationTaskCallback(ctx context.Conte
 }
 
 func (c *applicationsServiceImpl) normalizeWorkflowCallbackForWrite(ctx context.Context, callback *apisv1.WorkflowCallback) (*apisv1.WorkflowCallback, error) {
-	callbackMax := config.ResolveWorkflowCallbackTimeoutMax(c.Cfg)
+	callbackMax := workflowconfig.ResolveWorkflowCallbackTimeoutMax(c.Cfg.WorkflowRuntime())
 	var urlPolicy *spec.URLSecurityPolicySpec
 	var err error
 	if workflowCallbackRequiresURLPolicy(callback) {
@@ -128,7 +128,7 @@ func normalizeWorkflowCallback(ctx context.Context, callback *apisv1.WorkflowCal
 	if normalized.TimeoutSeconds < 0 {
 		return nil, fmt.Errorf("callback timeoutSeconds must be >= 0")
 	}
-	normalized.TimeoutSeconds = config.ClampWorkflowCallbackTimeoutSeconds(normalized.TimeoutSeconds, timeoutMax)
+	normalized.TimeoutSeconds = workflowconfig.ClampWorkflowCallbackTimeoutSeconds(normalized.TimeoutSeconds, timeoutMax)
 	if callbackIsEmpty(&normalized) {
 		return nil, nil
 	}

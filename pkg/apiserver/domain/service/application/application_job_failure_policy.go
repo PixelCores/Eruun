@@ -8,6 +8,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 func normalizeJobFailurePolicyForWrite(componentType config.JobType, properties *apisv1.Properties, field string) error {
@@ -17,7 +18,7 @@ func normalizeJobFailurePolicyForWrite(componentType config.JobType, properties 
 	if componentType != config.InstantJob {
 		return fmt.Errorf("%w: %s is only supported for type job", bcode.ErrInvalidProperties, field)
 	}
-	policy, ok := config.NormalizeJobFailurePolicy(*properties.FailurePolicy)
+	policy, ok := workflowconfig.NormalizeJobFailurePolicy(*properties.FailurePolicy)
 	if !ok {
 		return fmt.Errorf("%w: %s only supports cleanup_failed", bcode.ErrInvalidProperties, field)
 	}

@@ -13,6 +13,7 @@ import (
 	assembler "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/assembler/v1"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 func TestUpdateApplicationWorkflowCreatesWorkflow(t *testing.T) {
@@ -49,7 +50,7 @@ func TestUpdateApplicationWorkflowCreatesWorkflow(t *testing.T) {
 
 	steps := decodeWorkflowSteps(t, stored.Steps)
 	require.Len(t, steps.Steps, 3)
-	require.Equal(t, config.WorkflowFailurePolicyCleanupAll, steps.FailurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, steps.FailurePolicy)
 	require.Equal(t, config.WorkflowModeDAG, steps.Steps[1].Mode)
 	require.ElementsMatch(t, []string{"mysql-primary", "mysql-replica"}, steps.Steps[1].Properties[0].Policies)
 }
@@ -66,7 +67,7 @@ func TestUpdateApplicationWorkflowStoresAndEchoesFailurePolicy(t *testing.T) {
 
 	resp, err := svc.UpdateApplicationWorkflow(context.Background(), "app-1", apisv1.UpdateApplicationWorkflowRequest{
 		Name:          "custom-flow",
-		FailurePolicy: config.WorkflowFailurePolicyCleanupAll,
+		FailurePolicy: workflowconfig.WorkflowFailurePolicyCleanupAll,
 		Workflow: []apisv1.CreateWorkflowStepRequest{{
 			Name:         "deploy-web",
 			WorkflowType: config.JobDeploy,
@@ -78,11 +79,11 @@ func TestUpdateApplicationWorkflowStoresAndEchoesFailurePolicy(t *testing.T) {
 	stored := store.workflows[resp.WorkflowID]
 	require.NotNil(t, stored)
 	steps := decodeWorkflowSteps(t, stored.Steps)
-	require.Equal(t, config.WorkflowFailurePolicyCleanupAll, steps.FailurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, steps.FailurePolicy)
 
 	dto, err := assembler.ConvertWorkflowModelToDTO(stored)
 	require.NoError(t, err)
-	require.Equal(t, config.WorkflowFailurePolicyCleanupAll, dto.FailurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, dto.FailurePolicy)
 }
 
 func TestUpdateApplicationWorkflowPreservesExistingFailurePolicyWhenOmitted(t *testing.T) {
@@ -94,7 +95,7 @@ func TestUpdateApplicationWorkflowPreservesExistingFailurePolicyWhenOmitted(t *t
 	}
 	store.components["web"] = &model.ApplicationComponent{Name: "web", AppID: "app-1", ComponentType: config.ServerJob}
 	stepsJSON, err := model.NewJSONStructByStruct(&model.WorkflowSteps{
-		FailurePolicy: config.WorkflowFailurePolicyCleanupAll,
+		FailurePolicy: workflowconfig.WorkflowFailurePolicyCleanupAll,
 		Steps: []*model.WorkflowStep{{
 			Name:         "old-deploy-web",
 			WorkflowType: config.JobDeploy,
@@ -123,7 +124,7 @@ func TestUpdateApplicationWorkflowPreservesExistingFailurePolicyWhenOmitted(t *t
 
 	stored := store.workflows["wf-1"]
 	steps := decodeWorkflowSteps(t, stored.Steps)
-	require.Equal(t, config.WorkflowFailurePolicyCleanupAll, steps.FailurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, steps.FailurePolicy)
 	require.Len(t, steps.Steps, 1)
 	require.Equal(t, "deploy-web", steps.Steps[0].Name)
 }
@@ -137,7 +138,7 @@ func TestUpdateApplicationWorkflowExplicitlyResetsFailurePolicy(t *testing.T) {
 	}
 	store.components["web"] = &model.ApplicationComponent{Name: "web", AppID: "app-1", ComponentType: config.ServerJob}
 	stepsJSON, err := model.NewJSONStructByStruct(&model.WorkflowSteps{
-		FailurePolicy: config.WorkflowFailurePolicyCleanupAll,
+		FailurePolicy: workflowconfig.WorkflowFailurePolicyCleanupAll,
 		Steps: []*model.WorkflowStep{{
 			Name:         "old-deploy-web",
 			WorkflowType: config.JobDeploy,
@@ -155,7 +156,7 @@ func TestUpdateApplicationWorkflowExplicitlyResetsFailurePolicy(t *testing.T) {
 
 	resp, err := svc.UpdateApplicationWorkflow(context.Background(), "app-1", apisv1.UpdateApplicationWorkflowRequest{
 		WorkflowID:       "wf-1",
-		FailurePolicy:    config.WorkflowFailurePolicyCleanupFailed,
+		FailurePolicy:    workflowconfig.WorkflowFailurePolicyCleanupFailed,
 		FailurePolicySet: true,
 		Workflow: []apisv1.CreateWorkflowStepRequest{{
 			Name:         "deploy-web",
@@ -168,7 +169,7 @@ func TestUpdateApplicationWorkflowExplicitlyResetsFailurePolicy(t *testing.T) {
 
 	stored := store.workflows["wf-1"]
 	steps := decodeWorkflowSteps(t, stored.Steps)
-	require.Equal(t, config.WorkflowFailurePolicyCleanupFailed, steps.FailurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupFailed, steps.FailurePolicy)
 }
 
 func TestUpdateApplicationWorkflowCreatesWorkflowWithCleanupFailedOptOut(t *testing.T) {
@@ -183,7 +184,7 @@ func TestUpdateApplicationWorkflowCreatesWorkflowWithCleanupFailedOptOut(t *test
 
 	resp, err := svc.UpdateApplicationWorkflow(context.Background(), "app-1", apisv1.UpdateApplicationWorkflowRequest{
 		Name:             "custom-flow",
-		FailurePolicy:    config.WorkflowFailurePolicyCleanupFailed,
+		FailurePolicy:    workflowconfig.WorkflowFailurePolicyCleanupFailed,
 		FailurePolicySet: true,
 		Workflow: []apisv1.CreateWorkflowStepRequest{{
 			Name:         "deploy-web",
@@ -196,7 +197,7 @@ func TestUpdateApplicationWorkflowCreatesWorkflowWithCleanupFailedOptOut(t *test
 	stored := store.workflows[resp.WorkflowID]
 	require.NotNil(t, stored)
 	steps := decodeWorkflowSteps(t, stored.Steps)
-	require.Equal(t, config.WorkflowFailurePolicyCleanupFailed, steps.FailurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupFailed, steps.FailurePolicy)
 }
 
 func TestUpdateApplicationWorkflowNormalizesComponentRefs(t *testing.T) {

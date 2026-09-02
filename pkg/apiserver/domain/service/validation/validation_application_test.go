@@ -12,6 +12,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 func TestValidationService_TryApplication_ValidConfig(t *testing.T) {
@@ -818,7 +819,7 @@ func TestValidationService_TryApplication_JobProperties(t *testing.T) {
 				ComponentType: config.InstantJob,
 				Image:         "busybox:latest",
 				Properties: apisv1.Properties{
-					FailurePolicy: jobFailurePolicyPointer(config.WorkflowFailurePolicyCleanupAll),
+					FailurePolicy: jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupAll),
 				},
 			},
 			expectedCode:  apisv1.ErrCodeInvalidJobFailurePolicy,
@@ -845,7 +846,7 @@ func TestValidationService_TryApplication_JobProperties(t *testing.T) {
 				Image:         "busybox:latest",
 				Properties: apisv1.Properties{
 					Schedule:      "0 * * * *",
-					FailurePolicy: jobFailurePolicyPointer(config.WorkflowFailurePolicyCleanupFailed),
+					FailurePolicy: jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupFailed),
 				},
 			},
 			expectedCode:  apisv1.ErrCodeInvalidJobFailurePolicy,
@@ -862,7 +863,7 @@ func TestValidationService_TryApplication_JobProperties(t *testing.T) {
 						Name:  "migrate",
 						Image: "busybox:latest",
 						Properties: spec.Properties{
-							FailurePolicy: jobFailurePolicyPointer(config.WorkflowFailurePolicyCleanupFailed),
+							FailurePolicy: jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupFailed),
 						},
 					}},
 				},
@@ -916,8 +917,8 @@ func TestValidationService_TryApplication_JobAllowsFailurePolicyOptOut(t *testin
 			ComponentType: config.InstantJob,
 			Image:         "busybox:latest",
 			Properties: apisv1.Properties{
-				RunPolicy:     string(config.JobRunPolicyRecreate),
-				FailurePolicy: jobFailurePolicyPointer(config.WorkflowFailurePolicyCleanupFailed),
+				RunPolicy:     string(workflowconfig.JobRunPolicyRecreate),
+				FailurePolicy: jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupFailed),
 			},
 		}},
 	})
@@ -929,7 +930,7 @@ func TestValidationService_TryApplication_JobFailurePolicyPresence(t *testing.T)
 	tests := []struct {
 		name          string
 		componentType config.JobType
-		policy        *config.WorkflowFailurePolicy
+		policy        *workflowconfig.WorkflowFailurePolicy
 		valid         bool
 	}{
 		{name: "job omitted inherits", componentType: config.InstantJob, valid: true},
@@ -961,15 +962,15 @@ func TestValidationService_TryApplication_TemplateJobFailurePolicyOverrides(t *t
 	tests := []struct {
 		name          string
 		componentType config.JobType
-		policy        *config.WorkflowFailurePolicy
-		nestedPolicy  *config.WorkflowFailurePolicy
+		policy        *workflowconfig.WorkflowFailurePolicy
+		nestedPolicy  *workflowconfig.WorkflowFailurePolicy
 		valid         bool
 		expectedField string
 	}{
 		{
 			name:          "job cleanup failed override",
 			componentType: config.InstantJob,
-			policy:        jobFailurePolicyPointer(config.WorkflowFailurePolicyCleanupFailed),
+			policy:        jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupFailed),
 			valid:         true,
 		},
 		{
@@ -981,7 +982,7 @@ func TestValidationService_TryApplication_TemplateJobFailurePolicyOverrides(t *t
 		{
 			name:          "job cleanup all rejected",
 			componentType: config.InstantJob,
-			policy:        jobFailurePolicyPointer(config.WorkflowFailurePolicyCleanupAll),
+			policy:        jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupAll),
 			expectedField: "component[0].properties.failurePolicy",
 		},
 		{
@@ -993,7 +994,7 @@ func TestValidationService_TryApplication_TemplateJobFailurePolicyOverrides(t *t
 		{
 			name:          "nested init rejected before template merge",
 			componentType: config.InstantJob,
-			nestedPolicy:  jobFailurePolicyPointer(config.WorkflowFailurePolicyCleanupFailed),
+			nestedPolicy:  jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupFailed),
 			expectedField: "component[0].traits.init[0].properties.failurePolicy",
 		},
 	}
@@ -1098,7 +1099,7 @@ func TestValidationService_TryApplication_TemplateValidationUsesRequestComponent
 				{
 					Name:       "sql-job",
 					Template:   &apisv1.TemplateRef{ID: "tmpl-source-index", Target: "template-job"},
-					Properties: apisv1.Properties{FailurePolicy: jobFailurePolicyPointer(config.WorkflowFailurePolicyCleanupAll)},
+					Properties: apisv1.Properties{FailurePolicy: jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupAll)},
 				},
 				directComponent("direct-job"),
 			},
@@ -1124,7 +1125,7 @@ func TestValidationService_TryApplication_TemplateValidationUsesRequestComponent
 				{
 					Name:       "sql-job",
 					Template:   &apisv1.TemplateRef{ID: "tmpl-source-index", Target: "template-job"},
-					Properties: apisv1.Properties{FailurePolicy: jobFailurePolicyPointer(config.WorkflowFailurePolicyCleanupFailed)},
+					Properties: apisv1.Properties{FailurePolicy: jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupFailed)},
 				},
 				directComponent("direct-after"),
 			},
@@ -1159,7 +1160,7 @@ func TestValidationService_TryApplication_TemplateValidationUsesRequestComponent
 	}
 }
 
-func jobFailurePolicyPointer(policy config.WorkflowFailurePolicy) *config.WorkflowFailurePolicy {
+func jobFailurePolicyPointer(policy workflowconfig.WorkflowFailurePolicy) *workflowconfig.WorkflowFailurePolicy {
 	return &policy
 }
 

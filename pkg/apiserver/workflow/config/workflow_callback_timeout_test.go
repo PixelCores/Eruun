@@ -9,10 +9,10 @@ import (
 )
 
 func TestResolveWorkflowCallbackTimeoutMax(t *testing.T) {
-	require.Equal(t, DefaultWorkflowCallbackTimeoutMax, ResolveWorkflowCallbackTimeoutMax(nil))
+	require.Equal(t, DefaultWorkflowCallbackTimeoutMax, ResolveWorkflowCallbackTimeoutMax(RuntimeConfig{}))
 
-	cfg := NewConfig()
-	cfg.Workflow.CallbackTimeoutMax = 12 * time.Hour
+	cfg := DefaultRuntimeConfig()
+	cfg.CallbackTimeoutMax = 12 * time.Hour
 	require.Equal(t, 12*time.Hour, ResolveWorkflowCallbackTimeoutMax(cfg))
 }
 

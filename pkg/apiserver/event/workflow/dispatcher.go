@@ -17,11 +17,7 @@ import (
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 )
 
-// Note: Worker resilience constants are defined in config/consts.go:
-// - config.DefaultWorkerBackoffMin
-// - config.DefaultWorkerBackoffMax
-// - config.DefaultWorkerMaxReadFailures
-// - config.DefaultWorkerMaxClaimFailures
+// Worker resilience defaults are defined in workflow/config/runtime.go.
 
 // TaskDispatch is the minimal payload for dispatching a workflow task to a worker.
 type TaskDispatch struct {

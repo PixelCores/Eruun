@@ -24,6 +24,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 const (
@@ -239,7 +240,7 @@ func applyJobMetadataToComponent(job *batchv1.Job, comp *apis.CreateComponentReq
 		return
 	}
 	if raw := strings.TrimSpace(annotations[config.AnnotationJobRunPolicy]); raw != "" {
-		if policy, ok := config.NormalizeJobRunPolicy(raw); ok {
+		if policy, ok := workflowconfig.NormalizeJobRunPolicy(raw); ok {
 			comp.Properties.RunPolicy = string(policy)
 		}
 	}

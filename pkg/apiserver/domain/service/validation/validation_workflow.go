@@ -9,6 +9,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 // TryWorkflow validates a workflow update request against existing components
@@ -28,7 +29,7 @@ func (v *validationServiceImpl) TryWorkflow(ctx context.Context, appID string, r
 		})
 	}
 	errors = append(errors, v.validateWorkflowCallback(ctx, req.Callback)...)
-	if _, ok := config.NormalizeWorkflowFailurePolicy(req.FailurePolicy); !ok {
+	if _, ok := workflowconfig.NormalizeWorkflowFailurePolicy(req.FailurePolicy); !ok {
 		errors = append(errors, apisv1.ValidationError{
 			Field:   "failurePolicy",
 			Code:    apisv1.ErrCodeInvalidWorkflowFailurePolicy,

@@ -29,6 +29,7 @@ import (
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/security/importsecret"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	signal "github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
 
@@ -37,7 +38,7 @@ const (
 	approvalPathTemplate       = "/api/v1/workflow/tasks/%s/approval"
 	approvalUpdateTimeout      = 5 * time.Second
 	approvalProbeInterval      = 2 * time.Second
-	approvalNotifyTimeout      = config.DefaultWorkflowCallbackTimeout
+	approvalNotifyTimeout      = workflowconfig.DefaultWorkflowCallbackTimeout
 	taskPersistenceCASAttempts = 2
 	approvalTimeoutReasonFmt   = "approval step %q timed out after %s"
 	approvalTimeoutStepReason  = "approval step timed out after %s"
@@ -104,7 +105,7 @@ func NewWorkflowController(workflowTask *model.WorkflowQueue, client kubernetes.
 		Cache:                    cache,
 		prefix:                   fmt.Sprintf("workflowctl-%s-%s", workflowTask.WorkflowName, workflowTask.TaskID),
 		defaultJobTimeoutSeconds: resolveDefaultJobTimeout(cfg),
-		callbackTimeoutMax:       config.ResolveWorkflowCallbackTimeoutMax(cfg),
+		callbackTimeoutMax:       workflowconfig.ResolveWorkflowCallbackTimeoutMax(cfg.WorkflowRuntime()),
 		urlSecurityPolicy:        urlSecurityPolicy,
 		importSecretKeyring:      importSecretKeyring,
 	}
@@ -530,16 +531,16 @@ func isJobSuccessStatus(task *model.JobTask) bool {
 	return false
 }
 
-func shouldCleanupAllOnWorkflowFailure(policy config.WorkflowFailurePolicy, task *model.JobTask) bool {
+func shouldCleanupAllOnWorkflowFailure(policy workflowconfig.WorkflowFailurePolicy, task *model.JobTask) bool {
 	if task == nil {
 		return false
 	}
 	effectivePolicy := policy
-	if override, ok := config.NormalizeJobFailurePolicy(task.FailurePolicy); ok && override != "" {
+	if override, ok := workflowconfig.NormalizeJobFailurePolicy(task.FailurePolicy); ok && override != "" {
 		effectivePolicy = override
 	}
-	normalized, ok := config.NormalizeWorkflowFailurePolicy(effectivePolicy)
-	if !ok || normalized != config.WorkflowFailurePolicyCleanupAll {
+	normalized, ok := workflowconfig.NormalizeWorkflowFailurePolicy(effectivePolicy)
+	if !ok || normalized != workflowconfig.WorkflowFailurePolicyCleanupAll {
 		return false
 	}
 	if task.Status != config.StatusFailed && task.Status != config.StatusTimeout {
@@ -548,7 +549,7 @@ func shouldCleanupAllOnWorkflowFailure(policy config.WorkflowFailurePolicy, task
 	return isWorkflowFailureCleanupTriggerJob(config.JobType(task.JobType))
 }
 
-func workflowFailureCleanupTrigger(policy config.WorkflowFailurePolicy, tasks []*model.JobTask) *model.JobTask {
+func workflowFailureCleanupTrigger(policy workflowconfig.WorkflowFailurePolicy, tasks []*model.JobTask) *model.JobTask {
 	for _, task := range tasks {
 		if shouldCleanupAllOnWorkflowFailure(policy, task) {
 			return task
@@ -603,7 +604,7 @@ func (w *WorkflowCtl) runWorkflowFailureCleanup(ctx context.Context, logger klog
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	cleanupCtx := klog.NewContext(ctx, logger.WithValues("failurePolicy", config.WorkflowFailurePolicyCleanupAll))
+	cleanupCtx := klog.NewContext(ctx, logger.WithValues("failurePolicy", workflowconfig.WorkflowFailurePolicyCleanupAll))
 	cleanupCtx = job.WithTaskMetadata(cleanupCtx, task.TaskID)
 	logger.Info("Running workflow failure cleanup jobs", "appID", task.AppID, "taskID", task.TaskID, "jobCount", len(cleanupJobs))
 	if err := job.RunJobs(cleanupCtx, cleanupJobs, 1, w.Client, w.KubeConfig, w.Store, w.ack, false, w.Cache, w.urlSecurityPolicy, w.DelayQueue, w.ResourceWaiter, w.importSecretKeyring); err != nil {
@@ -952,7 +953,7 @@ func (w *WorkflowCtl) triggerApprovalNotification(ctx context.Context, stepExec 
 			Method:         method,
 			Headers:        approval.Headers,
 			TimeoutSeconds: int64(approvalNotifyTimeout / time.Second),
-			TimeoutMaxSec:  config.ResolveWorkflowCallbackTimeoutMaxSeconds(approvalNotifyTimeout),
+			TimeoutMaxSec:  workflowconfig.ResolveWorkflowCallbackTimeoutMaxSeconds(approvalNotifyTimeout),
 			TimeoutMaxNS:   int64(approvalNotifyTimeout),
 			Payload:        payload,
 		},
@@ -1199,8 +1200,8 @@ func (w *WorkflowCtl) triggerWorkflowCallback(ctx context.Context, status config
 			URL:            targetURL,
 			Method:         method,
 			Headers:        callback.Headers,
-			TimeoutSeconds: config.ClampWorkflowCallbackTimeoutSeconds(callback.TimeoutSeconds, w.callbackTimeoutMax),
-			TimeoutMaxSec:  config.ResolveWorkflowCallbackTimeoutMaxSeconds(w.callbackTimeoutMax),
+			TimeoutSeconds: workflowconfig.ClampWorkflowCallbackTimeoutSeconds(callback.TimeoutSeconds, w.callbackTimeoutMax),
+			TimeoutMaxSec:  workflowconfig.ResolveWorkflowCallbackTimeoutMaxSeconds(w.callbackTimeoutMax),
 			TimeoutMaxNS:   int64(w.callbackTimeoutMax),
 			Payload:        payload,
 		},
@@ -1238,7 +1239,7 @@ func callbackContext(ctx context.Context, timeoutSeconds int64, timeoutMax time.
 	if ctx != nil && ctx.Err() == nil {
 		return ctx, func() {}
 	}
-	timeout := config.ResolveWorkflowCallbackTimeout(timeoutSeconds, timeoutMax)
+	timeout := workflowconfig.ResolveWorkflowCallbackTimeout(timeoutSeconds, timeoutMax)
 	return context.WithTimeout(context.Background(), timeout)
 }
 

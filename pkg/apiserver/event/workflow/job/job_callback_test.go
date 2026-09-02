@@ -16,6 +16,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 func newCallbackTestServer(t *testing.T, handler http.HandlerFunc, connState ...func(net.Conn, http.ConnState)) *httptest.Server {
@@ -344,7 +345,7 @@ func TestCallbackURLsShareOriginCanonicalizesIDNAHosts(t *testing.T) {
 
 func TestCallbackTimeoutUsesDefaultWhenZero(t *testing.T) {
 	timeout := callbackTimeout(0, 0, 0)
-	require.Equal(t, config.DefaultWorkflowCallbackTimeout, timeout)
+	require.Equal(t, workflowconfig.DefaultWorkflowCallbackTimeout, timeout)
 }
 
 func TestCallbackTimeoutCapsToMax(t *testing.T) {

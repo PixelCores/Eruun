@@ -19,6 +19,7 @@ import (
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	wfNaming "github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 	traitsPlu "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
@@ -307,9 +308,9 @@ func TestBuildJobsForComponent_ShareIgnoreSkipsJobs(t *testing.T) {
 
 func TestBuildJobsForComponentAppliesFailurePolicyOnlyToInstantJobTask(t *testing.T) {
 	traitsPlu.RegisterAllProcessors()
-	failurePolicy := config.WorkflowFailurePolicyCleanupFailed
+	failurePolicy := workflowconfig.WorkflowFailurePolicyCleanupFailed
 	propertiesJSON, err := model.NewJSONStructByStruct(model.Properties{
-		RunPolicy:     string(config.JobRunPolicyRecreate),
+		RunPolicy:     string(workflowconfig.JobRunPolicyRecreate),
 		FailurePolicy: &failurePolicy,
 	})
 	require.NoError(t, err)
@@ -338,7 +339,7 @@ func TestBuildJobsForComponentAppliesFailurePolicyOnlyToInstantJobTask(t *testin
 
 	buckets := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout), "")
 	require.Len(t, buckets[config.JobPriorityNormal], 1)
-	require.Equal(t, config.WorkflowFailurePolicyCleanupFailed, buckets[config.JobPriorityNormal][0].FailurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupFailed, buckets[config.JobPriorityNormal][0].FailurePolicy)
 	require.NotEmpty(t, buckets[config.JobPriorityHigh])
 	for _, additionalTask := range buckets[config.JobPriorityHigh] {
 		require.Empty(t, additionalTask.FailurePolicy)

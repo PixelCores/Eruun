@@ -18,6 +18,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	wfNaming "github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 	traitsPlu "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 	"k8s.io/client-go/kubernetes/fake"
@@ -39,7 +40,7 @@ func TestGenerateJobTasksPropagatesWorkflowFailurePolicy(t *testing.T) {
 		Properties:    serverProps,
 	}
 	steps := &model.WorkflowSteps{
-		FailurePolicy: config.WorkflowFailurePolicyCleanupAll,
+		FailurePolicy: workflowconfig.WorkflowFailurePolicyCleanupAll,
 		Steps: []*model.WorkflowStep{{
 			Name:         "server",
 			WorkflowType: config.JobDeploy,
@@ -64,7 +65,7 @@ func TestGenerateJobTasksPropagatesWorkflowFailurePolicy(t *testing.T) {
 	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout))
 	require.NotEmpty(t, executions)
 	for _, execution := range executions {
-		require.Equal(t, config.WorkflowFailurePolicyCleanupAll, execution.FailurePolicy)
+		require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, execution.FailurePolicy)
 	}
 }
 
@@ -107,7 +108,7 @@ func TestGenerateJobTasksDefaultsMissingFailurePolicyToCleanupAll(t *testing.T) 
 	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout))
 	require.NotEmpty(t, executions)
 	for _, execution := range executions {
-		require.Equal(t, config.WorkflowFailurePolicyCleanupAll, execution.FailurePolicy)
+		require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, execution.FailurePolicy)
 	}
 }
 

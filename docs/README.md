@@ -51,6 +51,7 @@
 | `pkg/apiserver/event/workflow/job` | 具体 Job 控制器和 K8s 资源调和 | Deployment、StatefulSet、Service、PVC、Secret、RBAC 等资源执行 | 保持资源生成、等待和清理语义一致 |
 | `pkg/apiserver/event/workflow/cloudjob` | 云资源 Provider 合约与实现 | 云资源步骤、Provider 注册、外部云动作 | 合约字符串集中为常量 |
 | `pkg/apiserver/workflow/traits` | OAM Traits 处理器 | storage、env、probe、resources、sidecar、rbac、ingress 等 Trait | 新 Trait 需要处理顺序、测试和文档 |
+| `pkg/apiserver/workflow/config` | 工作流运行配置、失败/运行策略与回调超时规则 | 调度/Worker 默认值、配置校验、策略归一化 | 全局 `pkg/apiserver/config` 组合配置并绑定启动参数；模块配置不反向依赖全局配置、领域模型或执行器 |
 | `pkg/apiserver/workflow/naming` | 资源命名规则 | Kubernetes 资源名、PVC/Service 命名 | 命名变化影响状态同步和清理 |
 | `pkg/apiserver/infrastructure` | 外部系统适配 | K8s、Redis、Kafka、MySQL、Informer、锁、可观测性 | Infrastructure 实现接口，不反向承载业务规则 |
 | `pkg/apiserver/utils` | 通用工具 | 缓存、错误码、异步执行、K8s helper、profiling | 新工具必须可复用，避免放业务分支 |

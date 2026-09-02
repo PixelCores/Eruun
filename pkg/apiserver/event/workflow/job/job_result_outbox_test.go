@@ -22,6 +22,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 type resultOutboxTestStore struct {
@@ -722,7 +723,7 @@ func TestDelayDispatcherDoesNotRecreateSettledDelayedExecution(t *testing.T) {
 					Annotations: map[string]string{
 						config.AnnotationJobExecutionKey:  executionKey,
 						config.AnnotationJobRunGeneration: "2",
-						config.AnnotationJobRunPolicy:     string(config.JobRunPolicyRecreate),
+						config.AnnotationJobRunPolicy:     string(workflowconfig.JobRunPolicyRecreate),
 					},
 				}},
 			}
@@ -770,9 +771,9 @@ func TestDelayDispatcherAcceptsCurrentGenerationWithCompatibleToken(t *testing.T
 }
 
 func TestDelayDispatcherDoesNotBindOutboxToDifferentJobExecution(t *testing.T) {
-	for _, policy := range []config.JobRunPolicy{
-		config.JobRunPolicySkipIfCompleted,
-		config.JobRunPolicyRecreate,
+	for _, policy := range []workflowconfig.JobRunPolicy{
+		workflowconfig.JobRunPolicySkipIfCompleted,
+		workflowconfig.JobRunPolicyRecreate,
 	} {
 		t.Run(string(policy), func(t *testing.T) {
 			executionKey := "execution-current"
@@ -858,7 +859,7 @@ func TestDelayDispatcherDoesNotRecreateWhenResultSettlesBetweenReads(t *testing.
 			Annotations: map[string]string{
 				config.AnnotationJobExecutionKey:  executionKey,
 				config.AnnotationJobRunGeneration: "2",
-				config.AnnotationJobRunPolicy:     string(config.JobRunPolicyRecreate),
+				config.AnnotationJobRunPolicy:     string(workflowconfig.JobRunPolicyRecreate),
 			},
 		}},
 	}

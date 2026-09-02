@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 var createApplicationsRequestFields = []string{
@@ -27,9 +27,9 @@ var createApplicationsRequestFields = []string{
 }
 
 type createApplicationWorkflowObject struct {
-	Callback      *WorkflowCallback            `json:"callback,omitempty"`
-	FailurePolicy config.WorkflowFailurePolicy `json:"failurePolicy,omitempty"`
-	Steps         []CreateWorkflowStepRequest  `json:"steps,omitempty"`
+	Callback      *WorkflowCallback                    `json:"callback,omitempty"`
+	FailurePolicy workflowconfig.WorkflowFailurePolicy `json:"failurePolicy,omitempty"`
+	Steps         []CreateWorkflowStepRequest          `json:"steps,omitempty"`
 }
 
 func (r *CreateApplicationsRequest) UnmarshalJSON(data []byte) error {

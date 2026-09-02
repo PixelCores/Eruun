@@ -15,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -710,11 +711,11 @@ func markJobSkippedIfIgnored(share shareConfig, jobTask *model.JobTask) {
 	}
 }
 
-func applyJobFailurePolicyOverride(jobTask *model.JobTask, policy *config.WorkflowFailurePolicy) {
+func applyJobFailurePolicyOverride(jobTask *model.JobTask, policy *workflowconfig.WorkflowFailurePolicy) {
 	if jobTask == nil || policy == nil {
 		return
 	}
-	normalized, ok := config.NormalizeJobFailurePolicy(*policy)
+	normalized, ok := workflowconfig.NormalizeJobFailurePolicy(*policy)
 	if !ok {
 		return
 	}
