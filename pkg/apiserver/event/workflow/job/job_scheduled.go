@@ -69,6 +69,10 @@ func (c *ScheduledJobCtl) Run(ctx context.Context) error {
 		c.job.Error = ""
 		return nil
 	}
+	if c.job.Status == config.StatusDistributed {
+		c.job.Error = ""
+		return nil
+	}
 	if _, ok := optionalJobInfo[*batchv1.CronJob](c.job); ok {
 		c.job.Status = config.StatusCompleted
 		c.job.Error = ""
@@ -172,9 +176,13 @@ func (c *ScheduledJobCtl) runOneTimeJob(ctx context.Context, jobObj *batchv1.Job
 			TimeoutSeconds: c.job.Timeout,
 			Job:            jobObj,
 		}
-		if _, err := EnqueueDelayJob(ctx, c.delayQueue, payload); err != nil {
-			return fmt.Errorf("enqueue delay job: %w", err)
+		if err := persistDelayJobCheckpoint(ctx, c.store, c.job, payload); err != nil {
+			return err
 		}
+		if _, err := EnqueueDelayJob(ctx, c.delayQueue, payload); err != nil {
+			klog.ErrorS(err, "delay queue notification failed; database recovery remains active", "taskID", c.job.TaskID, "executionKey", c.job.ExecutionKey)
+		}
+		c.ack()
 		return nil
 	}
 

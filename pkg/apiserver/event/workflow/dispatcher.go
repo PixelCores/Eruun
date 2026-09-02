@@ -125,15 +125,6 @@ func (w *Workflow) StartWorker(consumerCtx, executionCtx context.Context, errCha
 	group := w.consumerGroup()
 	consumer := w.consumerName()
 
-	if _, err := w.ensureTaskRunLocker(); err != nil {
-		startErr := fmt.Errorf("ensure workflow task run locker: %w", err)
-		klog.ErrorS(startErr, "worker startup aborted")
-		if errChan != nil {
-			errChan <- startErr
-		}
-		return
-	}
-
 	workerRun := newWorkflowWorkerRun(executionCtx, w.workerConcurrencyLimiter())
 	defer func() {
 		if err := workerRun.wait(); err != nil {
@@ -332,9 +323,9 @@ func (w *Workflow) reportWorkerError(err error) {
 }
 
 // processDispatchMessage processes a single dispatch message.
-// Most failures are pass/fail (log + ack). When execution lease is held by another
-// runner or the worker context is stopping, we intentionally leave the message
-// pending so AutoClaim can retry recovery.
+// Most failures are pass/fail (log + ack). The database execution claim is the
+// authoritative ownership fence; duplicate messages that lose that claim are safe
+// to acknowledge. Context cancellation leaves the message pending for recovery.
 func (w *Workflow) processDispatchMessage(ctx context.Context, workerRun *workflowWorkerRun, m msg.Message) (bool, string) {
 	td, err := UnmarshalTaskDispatch(m.Payload)
 	if err != nil {
@@ -380,7 +371,7 @@ func (w *Workflow) processDispatchMessage(ctx context.Context, workerRun *workfl
 		return true, td.TaskID
 	}
 	if err := w.runClaimedWorkflowTask(ctx, workerRun, claimedTask, 1); err != nil {
-		if errors.Is(err, errTaskRunLeaseHeld) || isContextCancellationError(err) {
+		if isContextCancellationError(err) {
 			return false, td.TaskID
 		}
 		klog.Errorf("run claimed task %s failed: %v", td.TaskID, err)

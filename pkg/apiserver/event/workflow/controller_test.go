@@ -144,6 +144,10 @@ func (s *controllerTestStore) WithTransaction(ctx context.Context, fn func(datas
 	return fn(s)
 }
 
+func (s *controllerTestStore) CurrentDatabaseTime(context.Context) (time.Time, error) {
+	return time.Now().UTC(), nil
+}
+
 func (s *controllerTestStore) BatchAdd(context.Context, []datastore.Entity) error { return nil }
 
 func (s *controllerTestStore) Put(_ context.Context, entity datastore.Entity) error {

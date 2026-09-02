@@ -30,4 +30,4 @@
 
 - 生产 datastore 必须实现多条件 CAS；不支持时服务或写入路径直接报错。
 - Redis/Kafka 是消息后端选择，不改变上述 ownership 协议。
-- Redis task-run lock 作为并发保护补充存在，数据库 generation/token/worker 才是持久化写入的最终 fencing 边界。
+- Workflow 执行认领、续租和状态写入统一由数据库 generation/token/worker ownership 约束；Worker 不再获取 Redis task-run lock。

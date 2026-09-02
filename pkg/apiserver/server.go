@@ -37,8 +37,9 @@ type restServer struct {
 	cache                     cache.ICache
 	KubeClient                kubernetes.Interface `inject:"kubeClient"` //inject 是注入IOC的name，如果tag中包含inject 那么必须有对应的容器注入服务,必须大写，小写会无法访问
 	KubeConfig                *rest.Config         `inject:"kubeConfig"`
-	Queue                     msg.Queue            `inject:"queue"`
-	InformerManager           *informer.Manager    // Informer 管理器，用于 List-Watch 机制
+	Queue                     msg.Queue
+	runtimeQueues             *msg.RuntimeQueues
+	InformerManager           *informer.Manager // Informer 管理器，用于 List-Watch 机制
 	resourceObserver          *informer.KubernetesWorkloadObserver
 	eventWorkers              []event.Worker
 	workersMu                 sync.Mutex

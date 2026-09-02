@@ -47,14 +47,15 @@ func TestFindWorkflowScheduleByAppAndWorkflowID(t *testing.T) {
 	require.Equal(t, "sch-1", schedule.ID)
 }
 
-func TestFindEnabledWorkflowSchedulesUsesDispatchQueryShape(t *testing.T) {
+func TestFindDueWorkflowSchedulesUsesDispatchQueryShape(t *testing.T) {
 	store := &repositoryTestStore{
 		listEntities: []datastore.Entity{
 			&model.Workflow{ID: "wf-invalid"},
 			&model.WorkflowSchedule{ID: "sch-1", Enabled: true, NextRun: 10},
 		},
 	}
-	schedules, err := FindEnabledWorkflowSchedules(context.Background(), store)
+	const nowUnix = int64(20)
+	schedules, err := FindDueWorkflowSchedules(context.Background(), store, nowUnix, 2)
 	require.NoError(t, err)
 	require.Len(t, schedules, 1)
 	require.Equal(t, "sch-1", schedules[0].ID)
@@ -63,9 +64,24 @@ func TestFindEnabledWorkflowSchedulesUsesDispatchQueryShape(t *testing.T) {
 	require.True(t, ok)
 	require.True(t, query.Enabled)
 	require.NotNil(t, store.lastListOpts)
+	require.Equal(t, 2, store.lastListOpts.Page)
+	require.Equal(t, WorkflowScheduleDispatchQueryBatchSize, store.lastListOpts.PageSize)
+	require.Equal(t, []datastore.ComparisonQueryOption{
+		{Key: "next_run", Value: nowUnix + 1},
+	}, store.lastListOpts.FilterOptions.LessThan)
 	require.Equal(t, []datastore.SortOption{
 		{Key: "next_run", Order: datastore.SortOrderAscending},
+		{Key: "id", Order: datastore.SortOrderAscending},
 	}, store.lastListOpts.SortBy)
+}
+
+func TestFindDueWorkflowSchedulesRejectsInvalidPage(t *testing.T) {
+	for _, page := range []int{0, -1} {
+		store := &repositoryTestStore{}
+		_, err := FindDueWorkflowSchedules(context.Background(), store, 20, page)
+		require.ErrorContains(t, err, "page must be positive")
+		require.Nil(t, store.lastListOpts)
+	}
 }
 
 func TestDeleteWorkflowSchedulesByAppID(t *testing.T) {

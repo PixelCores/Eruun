@@ -36,6 +36,7 @@ type WorkflowFailurePolicy string
 type Status string
 type ShareStrategy string
 type JobResultOutboxState string
+type JobDelayState string
 type VersionUpdateExecutionScope string
 type ManagementMode string
 type RuntimeRole string
@@ -224,6 +225,11 @@ const (
 	JobResultOutboxStateResultProcessingQueue JobResultOutboxState = "result_processing_queue"
 	JobResultOutboxStateResultProcessingLocal JobResultOutboxState = "result_processing_local"
 	JobResultOutboxStateFailed                JobResultOutboxState = "failed"
+)
+
+const (
+	JobDelayStatePending    JobDelayState = "pending"
+	JobDelayStateDispatched JobDelayState = "dispatched"
 )
 
 const (

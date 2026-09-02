@@ -317,7 +317,7 @@ func (c *Config) Validate() []error {
 	}
 	cacheType := strings.ToLower(strings.TrimSpace(c.Cache.CacheType))
 	if cacheType != REDIS {
-		errs = append(errs, fmt.Errorf("workflow task run locker requires cache-type=redis"))
+		errs = append(errs, fmt.Errorf("distributed application mutation locking requires cache-type=redis"))
 	} else if strings.TrimSpace(c.Cache.CacheHost) == "" || c.Cache.CacheProt <= 0 {
 		errs = append(errs, fmt.Errorf("redis cache host/port is invalid"))
 	}
@@ -552,6 +552,32 @@ func (c Config) RunsScheduler() bool {
 
 func (c Config) RunsWorker() bool {
 	return c.NormalizedRole() == RuntimeRoleWorker
+}
+
+func (c Config) RequiresDispatchQueue() bool {
+	return c.RunsScheduler() || c.RunsWorker()
+}
+
+func (c Config) RequiresDelayQueue() bool {
+	return c.RunsController() || c.RunsWorker()
+}
+
+func (c Config) RequiresResultQueue() bool {
+	return c.RunsController()
+}
+
+func (c Config) RuntimeMessagingTopics() []string {
+	topics := make([]string, 0, 3)
+	if c.RequiresDispatchQueue() {
+		topics = append(topics, DispatchTopic(c.Messaging.ChannelPrefix))
+	}
+	if c.RequiresDelayQueue() {
+		topics = append(topics, DelayTopic(c.Messaging.ChannelPrefix))
+	}
+	if c.RequiresResultQueue() {
+		topics = append(topics, ResultTopic(c.Messaging.ChannelPrefix))
+	}
+	return topics
 }
 
 // HasExternalQueue returns true if a supported distributed queue backend is configured.

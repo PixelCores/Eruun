@@ -288,22 +288,25 @@ func versionUpdateCleanupJobInfoConditions(existing *model.JobInfo) map[string]i
 
 func versionUpdateCleanupJobInfoUpdates(jobInfo model.JobInfo, includeInternalInfo bool) map[string]interface{} {
 	updates := map[string]interface{}{
-		"type":           jobInfo.Type,
-		"workflow_id":    jobInfo.WorkflowID,
-		"product_id":     jobInfo.ProductID,
-		"app_id":         jobInfo.AppID,
-		"task_id":        jobInfo.TaskID,
-		"status":         jobInfo.Status,
-		"start_time":     jobInfo.StartTime,
-		"end_time":       jobInfo.EndTime,
-		"info":           jobInfo.Info,
-		"service_name":   jobInfo.ServiceName,
-		"error":          jobInfo.Error,
-		"production":     jobInfo.Production,
-		"target_env":     jobInfo.TargetEnv,
-		"execution_key":  nil,
-		"run_generation": jobInfo.RunGeneration,
-		"attempt":        jobInfo.Attempt,
+		"type":             jobInfo.Type,
+		"workflow_id":      jobInfo.WorkflowID,
+		"product_id":       jobInfo.ProductID,
+		"app_id":           jobInfo.AppID,
+		"task_id":          jobInfo.TaskID,
+		"status":           jobInfo.Status,
+		"start_time":       jobInfo.StartTime,
+		"end_time":         jobInfo.EndTime,
+		"info":             jobInfo.Info,
+		"service_name":     jobInfo.ServiceName,
+		"error":            jobInfo.Error,
+		"production":       jobInfo.Production,
+		"target_env":       jobInfo.TargetEnv,
+		"execution_key":    nil,
+		"run_generation":   jobInfo.RunGeneration,
+		"attempt":          jobInfo.Attempt,
+		"delay_state":      jobInfo.DelayState,
+		"delay_execute_at": jobInfo.DelayExecuteAt,
+		"delay_payload":    jobInfo.DelayPayload,
 	}
 	if includeInternalInfo {
 		updates["internal_info"] = jobInfo.InternalInfo
@@ -335,6 +338,9 @@ func copyJobInfoRecord(existing *model.JobInfo, jobInfo model.JobInfo) {
 	existing.ExecutionKey = jobInfo.ExecutionKey
 	existing.RunGeneration = jobInfo.RunGeneration
 	existing.Attempt = jobInfo.Attempt
+	existing.DelayState = jobInfo.DelayState
+	existing.DelayExecuteAt = jobInfo.DelayExecuteAt
+	existing.DelayPayload = jobInfo.DelayPayload
 }
 
 func findExistingJobInfo(ctx context.Context, store datastore.DataStore, job *model.JobTask) (*model.JobInfo, error) {
@@ -534,20 +540,23 @@ func loadJobInfos(ctx context.Context, store datastore.DataStore, taskID, jobTyp
 
 func buildJobInfoRecord(job *model.JobTask) model.JobInfo {
 	record := model.JobInfo{
-		Type:          job.JobType,
-		WorkflowID:    job.WorkflowID,
-		ProductID:     job.ProjectID,
-		AppID:         job.AppID,
-		TaskID:        job.TaskID,
-		Status:        string(job.Status),
-		StartTime:     job.StartTime,
-		EndTime:       job.EndTime,
-		Info:          job.Info,
-		InternalInfo:  job.InternalInfo,
-		Error:         job.Error,
-		ServiceName:   resolveJobServiceName(job),
-		RunGeneration: job.RunGeneration,
-		Attempt:       job.Attempt,
+		Type:           job.JobType,
+		WorkflowID:     job.WorkflowID,
+		ProductID:      job.ProjectID,
+		AppID:          job.AppID,
+		TaskID:         job.TaskID,
+		Status:         string(job.Status),
+		StartTime:      job.StartTime,
+		EndTime:        job.EndTime,
+		Info:           job.Info,
+		InternalInfo:   job.InternalInfo,
+		Error:          job.Error,
+		ServiceName:    resolveJobServiceName(job),
+		RunGeneration:  job.RunGeneration,
+		Attempt:        job.Attempt,
+		DelayState:     job.DelayState,
+		DelayExecuteAt: job.DelayExecuteAt,
+		DelayPayload:   job.DelayPayload,
 	}
 	currentAttempt := uint(job.RetryCount + 1)
 	if currentAttempt > record.Attempt {

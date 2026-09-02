@@ -28,7 +28,8 @@ func (s *workflowExecutionClaimStore) Get(_ context.Context, entity datastore.En
 }
 
 func TestClaimWorkflowTaskForDispatchCreatesGenerationAndLease(t *testing.T) {
-	store := &repositoryTestStore{casWithConditionsSwapped: true}
+	now := time.Unix(1700000000, 123000000).UTC()
+	store := &repositoryTestStore{casWithConditionsSwapped: true, databaseNow: now}
 	task := &model.WorkflowQueue{TaskID: "task-1", Status: config.StatusWaiting, RunGeneration: 4, DispatchAttempts: 2}
 
 	claimed, updated, err := ClaimWorkflowTaskForDispatch(context.Background(), store, task, 30*time.Second)
@@ -38,6 +39,8 @@ func TestClaimWorkflowTaskForDispatchCreatesGenerationAndLease(t *testing.T) {
 	require.Equal(t, uint64(5), claimed.RunGeneration)
 	require.NotEmpty(t, claimed.RunToken)
 	require.NotNil(t, claimed.LeaseExpiresAt)
+	require.Equal(t, now.Add(30*time.Second), *claimed.LeaseExpiresAt)
+	require.Equal(t, 1, store.databaseNowCalls)
 	require.Equal(t, uint(3), claimed.DispatchAttempts)
 	require.Equal(t, map[string]interface{}{
 		"status": config.StatusWaiting, "run_generation": uint64(4),
@@ -61,7 +64,8 @@ func TestWorkflowLeaseRejectsIncompleteIdentity(t *testing.T) {
 }
 
 func TestRenewWorkflowTaskLeaseUsesFullOwnershipFence(t *testing.T) {
-	store := &repositoryTestStore{casWithConditionsSwapped: true}
+	now := time.Unix(1700000000, 456000000).UTC()
+	store := &repositoryTestStore{casWithConditionsSwapped: true, databaseNow: now}
 	renewed, err := RenewWorkflowTaskLease(context.Background(), store, "task-1", 7, "token-7", "worker-a", 30*time.Second)
 
 	require.NoError(t, err)
@@ -70,13 +74,16 @@ func TestRenewWorkflowTaskLeaseUsesFullOwnershipFence(t *testing.T) {
 	require.Equal(t, uint64(7), store.casConditions["run_generation"])
 	require.Equal(t, "token-7", store.casConditions["run_token"])
 	require.Equal(t, "worker-a", store.casConditions["worker_id"])
+	require.Equal(t, now, store.casUpdates["heartbeat_at"])
+	require.Equal(t, now.Add(30*time.Second), store.casUpdates["lease_expires_at"])
 }
 
 func TestRecoverExpiredWorkflowTasksFencesExactGeneration(t *testing.T) {
 	expired := time.Now().Add(-time.Second)
 	future := time.Now().Add(time.Minute)
-	now := time.Now()
+	now := time.Now().UTC()
 	store := &repositoryTestStore{
+		databaseNow:              now,
 		casWithConditionsSwapped: true,
 		listEntities: []datastore.Entity{
 			&model.WorkflowQueue{
@@ -90,7 +97,7 @@ func TestRecoverExpiredWorkflowTasksFencesExactGeneration(t *testing.T) {
 		},
 	}
 
-	recovered, err := RecoverExpiredWorkflowTasks(context.Background(), store, now)
+	recovered, err := RecoverExpiredWorkflowTasks(context.Background(), store)
 
 	require.NoError(t, err)
 	require.Equal(t, 1, recovered)
@@ -122,7 +129,7 @@ func (s *countingWorkflowLeaseStore) CompareAndSwapWithConditions(ctx context.Co
 }
 
 func TestRecoverExpiredWorkflowTasksBoundsOneReaperBatch(t *testing.T) {
-	now := time.Now()
+	now := time.Now().UTC()
 	expired := now.Add(-time.Minute)
 	entities := make([]datastore.Entity, workflowLeaseRecoveryBatchSize+1)
 	for i := range entities {
@@ -134,13 +141,25 @@ func TestRecoverExpiredWorkflowTasksBoundsOneReaperBatch(t *testing.T) {
 	store := &countingWorkflowLeaseStore{repositoryTestStore: &repositoryTestStore{
 		casWithConditionsSwapped: true,
 		listEntities:             entities,
+		databaseNow:              now,
 	}}
 
-	recovered, err := RecoverExpiredWorkflowTasks(context.Background(), store, now)
+	recovered, err := RecoverExpiredWorkflowTasks(context.Background(), store)
 
 	require.NoError(t, err)
 	require.Equal(t, workflowLeaseRecoveryBatchSize, recovered)
 	require.Equal(t, workflowLeaseRecoveryBatchSize, store.compareAndSwapCalls)
+}
+
+func TestWorkflowLeaseRequiresDatabaseClock(t *testing.T) {
+	store := &repositoryTestStoreNoConditional{}
+	task := &model.WorkflowQueue{TaskID: "task-1", Status: config.StatusWaiting}
+
+	claimed, updated, err := ClaimWorkflowTaskForDispatch(context.Background(), store, task, 30*time.Second)
+
+	require.Nil(t, claimed)
+	require.False(t, updated)
+	require.ErrorIs(t, err, ErrWorkflowClockUnsupported)
 }
 
 func TestOwnedUpdateRejectsStoreWithoutConditionalCAS(t *testing.T) {

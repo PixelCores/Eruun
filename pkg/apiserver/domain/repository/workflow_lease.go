@@ -16,6 +16,7 @@ import (
 
 var (
 	ErrWorkflowFencingUnsupported = errors.New("workflow fencing requires multi-condition compare-and-swap")
+	ErrWorkflowClockUnsupported   = errors.New("workflow leases require an authoritative database clock")
 	ErrWorkflowOwnershipRequired  = errors.New("workflow ownership is incomplete")
 	ErrWorkflowLeaseRenewalFailed = errors.New("workflow execution lease renewal failed")
 	ErrWorkflowOwnershipLost      = errors.New("workflow execution ownership changed")
@@ -31,8 +32,12 @@ func ClaimWorkflowTaskForDispatch(ctx context.Context, store datastore.DataStore
 	if leaseDuration <= 0 {
 		return nil, false, fmt.Errorf("workflow dispatch lease duration must be positive")
 	}
+	now, err := currentWorkflowDatabaseTime(ctx, store)
+	if err != nil {
+		return nil, false, err
+	}
 	token := uuid.NewString()
-	expiresAt := time.Now().UTC().Add(leaseDuration)
+	expiresAt := now.Add(leaseDuration)
 	updates := map[string]interface{}{
 		"status":            config.StatusQueued,
 		"run_generation":    task.RunGeneration + 1,
@@ -74,7 +79,10 @@ func ClaimWorkflowTaskForExecution(ctx context.Context, store datastore.DataStor
 	if leaseDuration <= 0 {
 		return nil, false, fmt.Errorf("workflow execution lease duration must be positive")
 	}
-	now := time.Now().UTC()
+	now, err := currentWorkflowDatabaseTime(ctx, store)
+	if err != nil {
+		return nil, false, err
+	}
 	expiresAt := now.Add(leaseDuration)
 	conditions := map[string]interface{}{
 		"status":         config.StatusQueued,
@@ -115,7 +123,10 @@ func RenewWorkflowTaskLease(ctx context.Context, store datastore.DataStore, task
 	if leaseDuration <= 0 {
 		return false, fmt.Errorf("workflow execution lease duration must be positive")
 	}
-	now := time.Now().UTC()
+	now, err := currentWorkflowDatabaseTime(ctx, store)
+	if err != nil {
+		return false, err
+	}
 	return compareWorkflowTaskWithConditions(ctx, store, taskID, map[string]interface{}{
 		"status":         config.StatusRunning,
 		"run_generation": generation,
@@ -134,13 +145,17 @@ func ExpireWorkflowTaskLease(ctx context.Context, store datastore.DataStore, tas
 	if strings.TrimSpace(workerID) == "" {
 		return false, fmt.Errorf("%w: workflow lease expiration requires worker identity", ErrWorkflowOwnershipRequired)
 	}
+	now, err := currentWorkflowDatabaseTime(ctx, store)
+	if err != nil {
+		return false, err
+	}
 	return compareWorkflowTaskWithConditions(ctx, store, taskID, map[string]interface{}{
 		"status":         config.StatusRunning,
 		"run_generation": generation,
 		"run_token":      token,
 		"worker_id":      workerID,
 	}, map[string]interface{}{
-		"lease_expires_at":  time.Now().UTC(),
+		"lease_expires_at":  now,
 		"scheduling_reason": "worker execution stopped",
 	})
 }
@@ -233,7 +248,11 @@ func ReleaseWorkflowDispatchClaim(ctx context.Context, store datastore.DataStore
 	})
 }
 
-func RecoverExpiredWorkflowTasks(ctx context.Context, store datastore.DataStore, now time.Time) (int, error) {
+func RecoverExpiredWorkflowTasks(ctx context.Context, store datastore.DataStore) (int, error) {
+	now, err := currentWorkflowDatabaseTime(ctx, store)
+	if err != nil {
+		return 0, err
+	}
 	entities, err := store.List(ctx, &model.WorkflowQueue{}, &datastore.ListOptions{
 		FilterOptions: datastore.FilterOptions{
 			In: []datastore.InQueryOption{{
@@ -286,6 +305,21 @@ func RecoverExpiredWorkflowTasks(ctx context.Context, store datastore.DataStore,
 		}
 	}
 	return recovered, nil
+}
+
+func currentWorkflowDatabaseTime(ctx context.Context, store datastore.DataStore) (time.Time, error) {
+	clock, ok := store.(datastore.DatabaseClock)
+	if !ok {
+		return time.Time{}, ErrWorkflowClockUnsupported
+	}
+	now, err := clock.CurrentDatabaseTime(ctx)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("query workflow database clock: %w", err)
+	}
+	if now.IsZero() {
+		return time.Time{}, fmt.Errorf("query workflow database clock: zero timestamp")
+	}
+	return now.UTC(), nil
 }
 
 func validateWorkflowExecutionIdentity(taskID string, generation uint64, token string) error {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -19,7 +20,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/mysql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api"
 	"github.com/PixelCores/Eruun/pkg/apiserver/security/urlpolicy"
@@ -103,10 +103,6 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 		iCache = cache.NewMemCacheWithClient(false, redisClient)
 	}
 	s.cache = iCache
-	workflowTaskRunLocker, err := s.buildWorkflowTaskRunLocker(cacheType, iCache)
-	if err != nil {
-		return err
-	}
 
 	// 将db 注入到IOC中
 	if err := s.beanContainer.ProvideWithName("datastore", s.dataStore); err != nil {
@@ -116,38 +112,19 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 	if err := s.beanContainer.ProvideWithName("cache", iCache); err != nil {
 		return fmt.Errorf("fail to provides the cache bean to the container: %w", err)
 	}
-	if err := s.beanContainer.ProvideWithName("workflowTaskRunLocker", workflowTaskRunLocker); err != nil {
-		return fmt.Errorf("fail to provides the workflow task run locker bean to the container: %w", err)
-	}
 
-	// Initialize work queue. Messaging backends are required once configured.
+	// Initialize only the queues used by this process role.
 	if err := s.ensureKafkaMessagingReady(); err != nil {
 		return err
 	}
-
-	streamKey := s.dispatchTopic()
-	q, err := s.buildQueue(streamKey, redisClient)
+	runtimeQueues, err := s.buildRuntimeQueues(redisClient)
 	if err != nil {
-		return fmt.Errorf("initialize dispatch queue: %w", err)
+		return err
 	}
-	delayQueue, err := s.buildQueue(s.delayTopic(), redisClient)
-	if err != nil {
-		return fmt.Errorf("initialize delay queue: %w", err)
-	}
-	resultQueue, err := s.buildQueue(s.resultTopic(), redisClient)
-	if err != nil {
-		return fmt.Errorf("initialize result queue: %w", err)
-	}
-
-	// 注入消息队列
-	if err := s.beanContainer.ProvideWithName("queue", q); err != nil {
-		return fmt.Errorf("fail to provides the queue bean to the container: %w", err)
-	}
-	if err := s.beanContainer.ProvideWithName("delayQueue", delayQueue); err != nil {
-		return fmt.Errorf("fail to provides the delay queue bean to the container: %w", err)
-	}
-	if err := s.beanContainer.ProvideWithName("resultQueue", resultQueue); err != nil {
-		return fmt.Errorf("fail to provides the result queue bean to the container: %w", err)
+	s.runtimeQueues = runtimeQueues
+	s.Queue = runtimeQueues.Dispatch
+	if err := s.beanContainer.Provides(runtimeQueues); err != nil {
+		return fmt.Errorf("fail to provide runtime queues bean to the container: %w", err)
 	}
 
 	// 将操作k8s的权限全都注入到IOC中
@@ -159,24 +136,7 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 		return fmt.Errorf("fail to provides the kubeConfig bean to the container: %w", err)
 	}
 
-	// 初始化 Informer Manager（只监听 Eruun 管理的资源以减少内存消耗）
-	s.InformerManager = informer.NewManager(
-		kubeClient,
-		informer.WithResyncPeriod(30*time.Second),
-		informer.WithLabelSelector(config.LabelAppID), // 只监听带有 eruun.io/app-id 标签的资源
-	)
-
-	// 设置状态同步回调，将组件运行状态同步到数据库
-	waiter := s.InformerManager.GetWaiter()
-	observer := informer.NewKubernetesWorkloadObserver(kubeClient)
-	s.resourceObserver = observer
-	if err := s.beanContainer.ProvideWithName("resourceObserver", observer); err != nil {
-		return fmt.Errorf("fail to provide the resource observer bean to the container: %w", err)
-	}
-	waiter.SetStatusSyncFunc(s.syncComponentStatus)
-	waiter.SetPodRestartMonitorConfigFunc(s.loadPodRestartMonitorConfig)
-	waiter.SetDeploymentPodRestartTriggerFunc(s.handleDeploymentPodRestartThresholdExceeded)
-	klog.Info("Informer manager initialized with label selector filter and status sync")
+	s.initRoleObservers(kubeClient)
 
 	// provide config for downstream components that need it (inject by type)
 	if err := s.beanContainer.Provides(&s.cfg); err != nil {
@@ -212,6 +172,7 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 
 	// event
 	eventWorkers := event.InitEvent()
+	configureWorkflowEventWorkers(eventWorkers, runtimeQueues, s.resourceObserver)
 	s.eventWorkers = append([]event.Worker(nil), eventWorkers...)
 	eventBeans := make([]interface{}, 0, len(eventWorkers))
 	for _, worker := range eventWorkers {
@@ -239,18 +200,18 @@ func (s *restServer) resultTopic() string {
 	return config.ResultTopic(s.cfg.Messaging.ChannelPrefix)
 }
 
-func (s *restServer) kafkaTopics() []string {
-	return config.KafkaTopics(s.cfg.Messaging.ChannelPrefix)
-}
-
 func (s *restServer) ensureKafkaMessagingReady() error {
 	if !strings.EqualFold(strings.TrimSpace(s.cfg.Messaging.Type), config.KAFKA) {
+		return nil
+	}
+	topics := s.cfg.RuntimeMessagingTopics()
+	if len(topics) == 0 {
 		return nil
 	}
 
 	_, err := ensureKafkaMessaging(clients.KafkaConfig{
 		Brokers:                s.cfg.Messaging.KafkaBrokers,
-		Topics:                 s.kafkaTopics(),
+		Topics:                 topics,
 		TopicPartitions:        s.cfg.Messaging.KafkaTopicPartitions,
 		TopicReplicationFactor: s.cfg.Messaging.KafkaTopicReplicationFactor,
 	})
@@ -258,6 +219,65 @@ func (s *restServer) ensureKafkaMessagingReady() error {
 		return fmt.Errorf("init kafka client failed: %w", err)
 	}
 	return nil
+}
+
+func (s *restServer) buildRuntimeQueues(redisClient *redis.Client) (*msg.RuntimeQueues, error) {
+	queues := &msg.RuntimeQueues{}
+	var err error
+	if s.cfg.RequiresDispatchQueue() {
+		queues.Dispatch, err = s.buildQueue(s.dispatchTopic(), redisClient)
+		if err != nil {
+			return nil, fmt.Errorf("initialize dispatch queue: %w", err)
+		}
+	}
+	if s.cfg.RequiresDelayQueue() {
+		queues.Delay, err = s.buildQueue(s.delayTopic(), redisClient)
+		if err != nil {
+			return nil, fmt.Errorf("initialize delay queue: %w", err)
+		}
+	}
+	if s.cfg.RequiresResultQueue() {
+		queues.Result, err = s.buildQueue(s.resultTopic(), redisClient)
+		if err != nil {
+			return nil, fmt.Errorf("initialize result queue: %w", err)
+		}
+	}
+	return queues, nil
+}
+
+func (s *restServer) initRoleObservers(kubeClient kubernetes.Interface) {
+	if s.cfg.RunsController() {
+		// The controller alone owns cluster state observation and database sync.
+		s.InformerManager = informer.NewManager(
+			kubeClient,
+			informer.WithResyncPeriod(30*time.Second),
+			informer.WithLabelSelector(config.LabelAppID),
+		)
+		waiter := s.InformerManager.GetWaiter()
+		waiter.SetStatusSyncFunc(s.syncComponentStatus)
+		waiter.SetPodRestartMonitorConfigFunc(s.loadPodRestartMonitorConfig)
+		waiter.SetDeploymentPodRestartTriggerFunc(s.handleDeploymentPodRestartThresholdExceeded)
+		klog.Info("controller informer manager initialized with Eruun label selector")
+	}
+	if s.cfg.RunsWorker() {
+		s.resourceObserver = informer.NewKubernetesWorkloadObserver(kubeClient)
+	}
+}
+
+func configureWorkflowEventWorkers(workers []event.Worker, queues *msg.RuntimeQueues, observer informer.ComponentReadyObserver) {
+	if queues == nil {
+		queues = &msg.RuntimeQueues{}
+	}
+	for _, worker := range workers {
+		workflowWorker, ok := worker.(*workflowevent.Workflow)
+		if !ok {
+			continue
+		}
+		workflowWorker.Queue = queues.Dispatch
+		workflowWorker.DelayQueue = queues.Delay
+		workflowWorker.ResultQueue = queues.Result
+		workflowWorker.ResourceWaiter = observer
+	}
 }
 
 func (s *restServer) initRedisClientForConfiguredBackends() (*redis.Client, error) {
@@ -271,21 +291,6 @@ func (s *restServer) initRedisClientForConfiguredBackends() (*redis.Client, erro
 		return nil, fmt.Errorf("init redis client for configured redis backend: %w", err)
 	}
 	return redisClient, nil
-}
-
-func (s *restServer) buildWorkflowTaskRunLocker(cacheType string, iCache cache.ICache) (locker.Locker, error) {
-	cacheType = strings.ToLower(strings.TrimSpace(cacheType))
-	if cacheType != string(cache.CacheTypeRedis) {
-		return nil, fmt.Errorf("workflow task run locker requires cache-type=redis")
-	}
-	if iCache == nil {
-		return nil, fmt.Errorf("workflow task run locker requires redis cache")
-	}
-	redisClient := iCache.GetRedisClient()
-	if redisClient == nil {
-		return nil, fmt.Errorf("workflow task run locker requires redis client")
-	}
-	return workflowevent.NewTaskRunRedisLocker(redisClient)
 }
 
 func (s *restServer) buildQueue(streamKey string, redisClient *redis.Client) (msg.Queue, error) {

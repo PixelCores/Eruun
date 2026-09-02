@@ -10,6 +10,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 )
 
 var checkKafkaReadiness = clients.CheckKafkaReadiness
@@ -20,11 +21,10 @@ type RuntimeReadiness interface {
 
 // health provides health check endpoints for Kubernetes probes.
 type health struct {
-	Queue       msg.Queue        `inject:"queue"`
-	DelayQueue  msg.Queue        `inject:"delayQueue"`
-	ResultQueue msg.Queue        `inject:"resultQueue"`
-	Cfg         *config.Config   `inject:""`
-	Runtime     RuntimeReadiness `inject:"runtimeReadiness"`
+	Queues  *msg.RuntimeQueues `inject:""`
+	Cache   cache.ICache       `inject:"cache"`
+	Cfg     *config.Config     `inject:""`
+	Runtime RuntimeReadiness   `inject:"runtimeReadiness"`
 }
 
 // GetName returns the API name for registration.
@@ -49,7 +49,7 @@ func (h *health) healthCheck(c *gin.Context) {
 }
 
 // readinessCheck checks if the server is ready to accept traffic.
-// It verifies connectivity to dependencies like the message queue.
+// It verifies connectivity to the dependencies required by the runtime role.
 func (h *health) readinessCheck(c *gin.Context) {
 	ctx := c.Request.Context()
 	if h.Runtime != nil {
@@ -58,19 +58,28 @@ func (h *health) readinessCheck(c *gin.Context) {
 			return
 		}
 	}
+	if h.Cfg != nil && h.Cfg.RunsAPI() {
+		// API mutations require Redis locks and cancellation signals even without queues.
+		if h.Cache == nil || h.Cache.GetRedisClient() == nil {
+			bcode.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: redis client is not configured")
+			return
+		}
+		if err := h.Cache.GetRedisClient().Ping(ctx).Err(); err != nil {
+			klog.V(4).InfoS("readiness check failed", "dependency", "redis", "err", err)
+			bcode.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: redis connection failed")
+			return
+		}
+	}
 	externalQueue := h.Cfg != nil && h.Cfg.HasExternalQueue()
 	isKafka := h.Cfg != nil && strings.EqualFold(strings.TrimSpace(h.Cfg.Messaging.Type), "kafka")
+	checks := h.requiredQueueChecks()
 
 	if externalQueue {
 		var degraded []string
-		if !queueIsReady(h.Queue) {
-			degraded = append(degraded, "dispatch")
-		}
-		if !queueIsReady(h.DelayQueue) {
-			degraded = append(degraded, "delay")
-		}
-		if !queueIsReady(h.ResultQueue) {
-			degraded = append(degraded, "result")
+		for _, check := range checks {
+			if !queueIsReady(check.queue) {
+				degraded = append(degraded, check.name)
+			}
 		}
 		if len(degraded) > 0 {
 			bcode.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: external queue degraded ("+strings.Join(degraded, ", ")+")")
@@ -78,7 +87,7 @@ func (h *health) readinessCheck(c *gin.Context) {
 		}
 	}
 
-	if isKafka {
+	if isKafka && len(checks) > 0 {
 		if err := checkKafkaReadiness(ctx, clients.KafkaConfig{
 			Brokers: h.Cfg.Messaging.KafkaBrokers,
 			Topics:  kafkaTopicsForHealth(h.Cfg),
@@ -87,28 +96,6 @@ func (h *health) readinessCheck(c *gin.Context) {
 			bcode.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: kafka readiness failed")
 			return
 		}
-	}
-
-	checks := []struct {
-		name  string
-		queue msg.Queue
-		group string
-	}{
-		{name: "dispatch", queue: h.Queue, group: config.WorkflowWorkerQueueGroup},
-	}
-	if externalQueue {
-		checks = append(checks,
-			struct {
-				name  string
-				queue msg.Queue
-				group string
-			}{name: "delay", queue: h.DelayQueue, group: config.DelayQueueGroup},
-			struct {
-				name  string
-				queue msg.Queue
-				group string
-			}{name: "result", queue: h.ResultQueue, group: config.ResultQueueGroup},
-		)
 	}
 
 	for _, check := range checks {
@@ -132,6 +119,33 @@ func (h *health) readinessCheck(c *gin.Context) {
 	})
 }
 
+type healthQueueCheck struct {
+	name  string
+	queue msg.Queue
+	group string
+}
+
+func (h *health) requiredQueueChecks() []healthQueueCheck {
+	if h == nil || h.Cfg == nil {
+		return nil
+	}
+	queues := h.Queues
+	if queues == nil {
+		queues = &msg.RuntimeQueues{}
+	}
+	checks := make([]healthQueueCheck, 0, 3)
+	if h.Cfg.RequiresDispatchQueue() {
+		checks = append(checks, healthQueueCheck{name: "dispatch", queue: queues.Dispatch, group: config.WorkflowWorkerQueueGroup})
+	}
+	if h.Cfg.RequiresDelayQueue() {
+		checks = append(checks, healthQueueCheck{name: "delay", queue: queues.Delay, group: config.DelayQueueGroup})
+	}
+	if h.Cfg.RequiresResultQueue() {
+		checks = append(checks, healthQueueCheck{name: "result", queue: queues.Result, group: config.ResultQueueGroup})
+	}
+	return checks
+}
+
 func queueIsReady(queue msg.Queue) bool {
 	return queue != nil
 }
@@ -140,5 +154,5 @@ func kafkaTopicsForHealth(cfg *config.Config) []string {
 	if cfg == nil {
 		return nil
 	}
-	return config.KafkaTopics(cfg.Messaging.ChannelPrefix)
+	return cfg.RuntimeMessagingTopics()
 }
