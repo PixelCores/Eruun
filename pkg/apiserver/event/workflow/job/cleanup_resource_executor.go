@@ -6,14 +6,14 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
 type deleteNamespacedFunc func(context.Context, string, string) error
 type deleteClusterFunc func(context.Context, string) error
 
 // cleanupNamespacedResources deletes created namespaced resources tracked in the cleanup context.
-func cleanupNamespacedResources(ctx context.Context, kind config.ResourceKind, namespaceFallback string, timeout time.Duration, resourceLabel string, deleteFn deleteNamespacedFunc, isNotFound func(error) bool, successSuffix string) {
+func cleanupNamespacedResources(ctx context.Context, kind domainspec.ResourceKind, namespaceFallback string, timeout time.Duration, resourceLabel string, deleteFn deleteNamespacedFunc, isNotFound func(error) bool, successSuffix string) {
 	if deleteFn == nil {
 		return
 	}
@@ -44,7 +44,7 @@ func cleanupNamespacedResources(ctx context.Context, kind config.ResourceKind, n
 }
 
 // cleanupClusterResources deletes created cluster-scoped resources tracked in the cleanup context.
-func cleanupClusterResources(ctx context.Context, kind config.ResourceKind, timeout time.Duration, resourceLabel string, deleteFn deleteClusterFunc, isNotFound func(error) bool) {
+func cleanupClusterResources(ctx context.Context, kind domainspec.ResourceKind, timeout time.Duration, resourceLabel string, deleteFn deleteClusterFunc, isNotFound func(error) bool) {
 	if deleteFn == nil {
 		return
 	}

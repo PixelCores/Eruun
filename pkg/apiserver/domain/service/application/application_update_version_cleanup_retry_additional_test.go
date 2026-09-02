@@ -612,7 +612,7 @@ func statefulSetDeletionV2Traits(serviceName string) apisv1.Traits {
 			Name: "data", Type: config.StorageTypePersistent, MountPath: "/data", TmpCreate: true, Size: "1Gi",
 		}},
 		Service: []spec.ServiceTraitSpec{{
-			Name: serviceName, Type: string(config.ServiceAccessInternal), Headless: true,
+			Name: serviceName, Type: string(spec.ServiceAccessInternal), Headless: true,
 			Selector: map[string]string{config.LabelComponentName: "mysql"},
 			Ports:    []spec.ServicePortTraitSpec{{Name: "mysql", Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
 		}},

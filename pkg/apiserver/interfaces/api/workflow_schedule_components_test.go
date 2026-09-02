@@ -181,7 +181,7 @@ func TestListApplicationComponentsIncludesResourceDetailsAndCredentials(t *testi
 		Service: []spec.ServiceTraitSpec{
 			{
 				Name: "api-svc",
-				Type: string(config.ServiceAccessInternal),
+				Type: string(spec.ServiceAccessInternal),
 				Ports: []spec.ServicePortTraitSpec{
 					{Name: "http", Port: 80, TargetPort: 8080, Protocol: "TCP"},
 				},
@@ -262,7 +262,7 @@ func TestListApplicationComponentsIncludesResourceDetailsAndCredentials(t *testi
 		{
 			Name:      "api-svc",
 			Namespace: "default",
-			Type:      string(config.ServiceAccessInternal),
+			Type:      string(spec.ServiceAccessInternal),
 			Ports: []apis.ComponentServicePortInfo{
 				{Name: "http", Port: 80, TargetPort: 8080, Protocol: "TCP"},
 			},
@@ -400,7 +400,7 @@ func TestListApplicationComponentsSkipsSyntheticServicesAndNormalizesIngressDefa
 		Service: []spec.ServiceTraitSpec{
 			{
 				Name: "job-svc",
-				Type: string(config.ServiceAccessInternal),
+				Type: string(spec.ServiceAccessInternal),
 				Ports: []spec.ServicePortTraitSpec{
 					{Port: 80, TargetPort: 8080},
 				},

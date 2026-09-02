@@ -6,9 +6,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 // InitProcessor creates init containers (pre-main) and applies nested traits
@@ -86,7 +86,7 @@ func (i *InitProcessor) Process(ctx *TraitContext) (*TraitResult, error) {
 			Env:             envVars, // Now contains envs from both properties and traits
 			EnvFrom:         envFromSources,
 			VolumeMounts:    volumeMounts,
-			ImagePullPolicy: config.DefaultWorkflowImagePullPolicy,
+			ImagePullPolicy: workflowconfig.DefaultWorkflowImagePullPolicy,
 		}
 
 		// Apply nested resource requirements to the init container if present

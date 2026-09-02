@@ -20,6 +20,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
 func TestCleanupResourcesJobCtlRetainsAllStatefulSetPVCsBeforeRequiredDeletion(t *testing.T) {
@@ -402,7 +403,7 @@ func TestCleanupResourcesJobCtlBlocksExtraProtectedLabeledStatefulSetBeforeAnyDe
 		config.LabelAppID:         component.AppID,
 		config.LabelComponentName: component.Name,
 		config.LabelShareName:     "shared-mysql",
-		config.LabelShareStrategy: string(config.ShareStrategyDefault),
+		config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 	}
 	client := fake.NewSimpleClientset(
 		&appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{
@@ -488,7 +489,7 @@ func TestCleanupResourcesJobCtlRechecksRequiredStatefulSetShareLabelsAfterRetent
 		statefulSet.ResourceVersion = "62"
 		statefulSet.Labels = map[string]string{
 			config.LabelShareName:     "late-shared-mysql",
-			config.LabelShareStrategy: string(config.ShareStrategyDefault),
+			config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 		}
 		if err := client.Tracker().Update(statefulSetResource, statefulSet, component.Namespace); err != nil {
 			return true, nil, err
@@ -641,7 +642,7 @@ func TestCleanupResourcesJobCtlProtectsPodsForEveryRequiredStatefulSetDeletion(t
 			name: "protected pod",
 			podLabels: map[string]string{
 				config.LabelAppID: "app-1", config.LabelComponentName: "mysql",
-				config.LabelShareName: "shared-mysql", config.LabelShareStrategy: string(config.ShareStrategyDefault),
+				config.LabelShareName: "shared-mysql", config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 			},
 			want: "pod default/mysql-0 is protected",
 		},
@@ -654,7 +655,7 @@ func TestCleanupResourcesJobCtlProtectsPodsForEveryRequiredStatefulSetDeletion(t
 				Name: "mysql-owner", Namespace: "default",
 				UID: types.UID("mysql-owner-uid"), ResourceVersion: "21",
 				Labels: map[string]string{
-					config.LabelShareName: "shared-mysql-owner", config.LabelShareStrategy: string(config.ShareStrategyIgnore),
+					config.LabelShareName: "shared-mysql-owner", config.LabelShareStrategy: string(domainspec.ShareStrategyIgnore),
 				},
 			}},
 			ownerRefs: []metav1.OwnerReference{{Kind: "Job", Name: "mysql-owner", UID: types.UID("mysql-owner-uid")}},

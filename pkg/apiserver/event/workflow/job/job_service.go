@@ -41,7 +41,7 @@ func NewDeployServiceJobCtl(job *model.JobTask, client kubernetes.Interface, sto
 }
 
 func (c *DeployServiceJobCtl) Clean(ctx context.Context) {
-	c.cleanCreated(ctx, config.ResourceService, "service", func(ctx context.Context, namespace, name string) error {
+	c.cleanCreated(ctx, spec.ResourceService, "service", func(ctx context.Context, namespace, name string) error {
 		return c.client.CoreV1().Services(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	}, k8serrors.IsNotFound, "after job failure")
 }
@@ -83,7 +83,7 @@ func (c *DeployServiceJobCtl) run(ctx context.Context) error {
 		job:          c.job,
 		ack:          c.ack,
 		labels:       service.Labels,
-		kind:         config.ResourceService,
+		kind:         spec.ResourceService,
 		lockProvider: c.shareLocker,
 		listFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
 			list, err := c.client.CoreV1().Services(namespace).List(ctx, opts)
@@ -92,8 +92,8 @@ func (c *DeployServiceJobCtl) run(ctx context.Context) error {
 			}
 			return len(list.Items), nil
 		},
-		logSkip: func(strategy config.ShareStrategy) {
-			if strategy == config.ShareStrategyIgnore {
+		logSkip: func(strategy spec.ShareStrategy) {
+			if strategy == spec.ShareStrategyIgnore {
 				klog.Infof("Service %s/%s marked as shared ignore; skipping", namespace, name)
 			} else {
 				klog.Infof("Service %s/%s already exists and is shared; skipping", namespace, name)
@@ -110,7 +110,7 @@ func (c *DeployServiceJobCtl) run(ctx context.Context) error {
 		return nil
 	}
 
-	if err := trackResourcePresence(ctx, config.ResourceService, namespace, name, func(ctx context.Context) (*corev1.Service, error) {
+	if err := trackResourcePresence(ctx, spec.ResourceService, namespace, name, func(ctx context.Context) (*corev1.Service, error) {
 		return c.client.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{})
 	}, k8serrors.IsNotFound); err != nil {
 		return fmt.Errorf("check service existence failed: %w", err)
@@ -162,7 +162,7 @@ func (c *DeployServiceJobCtl) reconcileAdoptedService(
 		}
 	}
 	if !adoptedServiceNeedsUpdate(current, desired) {
-		markResourceObserved(ctx, config.ResourceService, desired.Namespace, desired.Name)
+		markResourceObserved(ctx, spec.ResourceService, desired.Namespace, desired.Name)
 		return nil
 	}
 	if err := updateResourceWithRetry(ctx, func(ctx context.Context) (*corev1.Service, error) {
@@ -182,7 +182,7 @@ func (c *DeployServiceJobCtl) reconcileAdoptedService(
 	}); err != nil {
 		return fmt.Errorf("update adopted service %s/%s: %w", desired.Namespace, desired.Name, err)
 	}
-	markResourceObserved(ctx, config.ResourceService, desired.Namespace, desired.Name)
+	markResourceObserved(ctx, spec.ResourceService, desired.Namespace, desired.Name)
 	return nil
 }
 
@@ -252,7 +252,7 @@ func (c *DeployServiceJobCtl) recreateAdoptedService(
 	if err := recreation.persistCreated(recreationCtx, created, created, c.runtime); err != nil {
 		return fmt.Errorf("persist recreated adopted service binding; pending claim retained: %w", err)
 	}
-	markResourceObserved(ctx, config.ResourceService, created.Namespace, created.Name)
+	markResourceObserved(ctx, spec.ResourceService, created.Namespace, created.Name)
 	return nil
 }
 
@@ -485,8 +485,8 @@ func resolveServiceName(jobTask *model.JobTask) string {
 }
 
 func serviceTypeFromTrait(raw string) corev1.ServiceType {
-	normalized, _ := config.NormalizeServiceAccessType(raw)
-	return config.ToKubeServiceType(normalized)
+	normalized, _ := spec.NormalizeServiceAccessType(raw)
+	return spec.ToKubeServiceType(normalized)
 }
 
 func serviceProtocolFromTrait(raw string) corev1.Protocol {

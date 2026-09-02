@@ -15,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
@@ -593,7 +594,7 @@ func rawComponentNameFromJobInfo(info interface{}) string {
 	return strings.TrimSpace(jobInfoAnnotations(info)[config.AnnotationComponentName])
 }
 
-func shareStrategyFromJobInfo(info interface{}) (config.ShareStrategy, bool) {
+func shareStrategyFromJobInfo(info interface{}) (domainspec.ShareStrategy, bool) {
 	labels := jobInfoLabels(info)
 	if len(labels) == 0 {
 		return "", false
@@ -603,7 +604,7 @@ func shareStrategyFromJobInfo(info interface{}) (config.ShareStrategy, bool) {
 		return "", false
 	}
 	raw := strings.TrimSpace(labels[config.LabelShareStrategy])
-	strategy, ok := config.NormalizeShareStrategy(raw)
+	strategy, ok := domainspec.NormalizeShareStrategy(raw)
 	if !ok && raw != "" {
 		return "", false
 	}

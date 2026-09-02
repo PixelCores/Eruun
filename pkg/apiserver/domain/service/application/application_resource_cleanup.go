@@ -22,6 +22,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
@@ -197,9 +198,9 @@ func (c *applicationsServiceImpl) updateComponentCleanupStatus(ctx context.Conte
 // SharedLifecycleStrategyForComponent returns the normalized share strategy
 // when default/ignore protects the component from per-application lifecycle
 // actions. Missing share traits and share=force remain application-managed.
-func SharedLifecycleStrategyForComponent(component *model.ApplicationComponent) (config.ShareStrategy, bool) {
+func SharedLifecycleStrategyForComponent(component *model.ApplicationComponent) (domainspec.ShareStrategy, bool) {
 	strategy, shared := component.ShareStrategy()
-	if !shared || strategy == config.ShareStrategyForce {
+	if !shared || strategy == domainspec.ShareStrategyForce {
 		return "", false
 	}
 	return strategy, true

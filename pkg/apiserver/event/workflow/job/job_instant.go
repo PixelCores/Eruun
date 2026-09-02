@@ -13,6 +13,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	traitsPlu "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
@@ -65,7 +66,7 @@ func NewInstantJobCtl(job *model.JobTask, client kubernetes.Interface, store dat
 }
 
 func (c *InstantJobCtl) Clean(ctx context.Context) {
-	c.cleanCreated(ctx, config.ResourceJob, "job", func(ctx context.Context, namespace, name string) error {
+	c.cleanCreated(ctx, domainspec.ResourceJob, "job", func(ctx context.Context, namespace, name string) error {
 		return c.client.BatchV1().Jobs(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	}, k8serrors.IsNotFound, "after failure")
 }
@@ -167,7 +168,7 @@ func (c *InstantJobCtl) createJob(ctx context.Context, jobObj *batchv1.Job) (boo
 		return false, err
 	}
 	validateExisting := validateExistingJobExecutionIdentity(ctx, c.store, jobObj)
-	_, created, err := createOrUpdateTrackedResource(ctx, config.ResourceJob, jobObj.Namespace, jobObj.Name, func(ctx context.Context) (*batchv1.Job, error) {
+	_, created, err := createOrUpdateTrackedResource(ctx, domainspec.ResourceJob, jobObj.Namespace, jobObj.Name, func(ctx context.Context) (*batchv1.Job, error) {
 		return c.client.BatchV1().Jobs(jobObj.Namespace).Get(ctx, jobObj.Name, metav1.GetOptions{})
 	}, func(ctx context.Context) (*batchv1.Job, error) {
 		return c.client.BatchV1().Jobs(jobObj.Namespace).Create(ctx, jobObj, metav1.CreateOptions{})

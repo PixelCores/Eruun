@@ -12,13 +12,14 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
 
 const shareLockerPrefix = "eruun-share"
 
 // shareInfoFromLabels extracts share metadata from workload labels.
-func shareInfoFromLabels(labels map[string]string) (string, config.ShareStrategy) {
+func shareInfoFromLabels(labels map[string]string) (string, domainspec.ShareStrategy) {
 	if labels == nil {
 		return "", ""
 	}
@@ -27,7 +28,7 @@ func shareInfoFromLabels(labels map[string]string) (string, config.ShareStrategy
 		return "", ""
 	}
 	rawStrategy := strings.TrimSpace(labels[config.LabelShareStrategy])
-	strategy, _ := config.NormalizeShareStrategy(rawStrategy)
+	strategy, _ := domainspec.NormalizeShareStrategy(rawStrategy)
 	return name, strategy
 }
 
@@ -47,7 +48,7 @@ func hasSharedResources(ctx context.Context, name string, listFn func(context.Co
 	return count > 0, nil
 }
 
-func shareLockKey(kind config.ResourceKind, name string) string {
+func shareLockKey(kind domainspec.ResourceKind, name string) string {
 	if kind == "" || name == "" {
 		return ""
 	}
@@ -91,14 +92,14 @@ func newShareLocker(redisClient *redis.Client) locker.Locker {
 }
 
 // resolveSharedResource applies share strategy and returns (unlock, skipped, err).
-func resolveSharedResource(ctx context.Context, name string, strategy config.ShareStrategy, kind config.ResourceKind, listFn func(context.Context, metav1.ListOptions) (int, error), lockProvider locker.Locker) (func(), bool, error) {
+func resolveSharedResource(ctx context.Context, name string, strategy domainspec.ShareStrategy, kind domainspec.ResourceKind, listFn func(context.Context, metav1.ListOptions) (int, error), lockProvider locker.Locker) (func(), bool, error) {
 	if name == "" || strategy == "" {
 		return nil, false, nil
 	}
-	if strategy == config.ShareStrategyIgnore {
+	if strategy == domainspec.ShareStrategyIgnore {
 		return nil, true, nil
 	}
-	if strategy != config.ShareStrategyDefault {
+	if strategy != domainspec.ShareStrategyDefault {
 		return nil, false, nil
 	}
 	unlock, err := acquireShareLock(ctx, lockProvider, shareLockKey(kind, name))

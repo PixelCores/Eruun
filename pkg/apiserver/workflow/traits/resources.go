@@ -6,7 +6,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
@@ -71,8 +70,8 @@ func (r *ResourcesProcessor) Process(ctx *TraitContext) (*TraitResult, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid gpu resource %q: %w", resourceSpec.GPU, err)
 		}
-		resourceReq.Requests[corev1.ResourceName(config.ResourceNvidiaGPU)] = qty
-		resourceReq.Limits[corev1.ResourceName(config.ResourceNvidiaGPU)] = qty
+		resourceReq.Requests[corev1.ResourceName(spec.ResourceNvidiaGPU)] = qty
+		resourceReq.Limits[corev1.ResourceName(spec.ResourceNvidiaGPU)] = qty
 	}
 
 	return &TraitResult{ResourceRequirements: &resourceReq}, nil

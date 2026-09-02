@@ -20,6 +20,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
 type statefulSetRetentionTarget struct {
@@ -151,7 +152,7 @@ func (c *CleanupResourcesJobCtl) ensureStatefulSetPVCRetention(ctx context.Conte
 	if c == nil || c.client == nil {
 		return fmt.Errorf("client is nil")
 	}
-	if ref.kind != config.ResourceStatefulSet || strings.TrimSpace(ref.name) == "" {
+	if ref.kind != domainspec.ResourceStatefulSet || strings.TrimSpace(ref.name) == "" {
 		return fmt.Errorf("invalid StatefulSet retention target %s", cleanupResourceDisplayName(ref))
 	}
 	ref.namespace = namespaceOrDefault(ref.namespace)
@@ -252,7 +253,7 @@ func (c *CleanupResourcesJobCtl) statefulSetPVCOwnerReferencesConverged(ctx cont
 	if len(templates) == 0 {
 		return true, nil
 	}
-	ref, ok := newCleanupResourceRef(config.ResourceStatefulSet, statefulSet.Namespace, statefulSet.Name, false)
+	ref, ok := newCleanupResourceRef(domainspec.ResourceStatefulSet, statefulSet.Namespace, statefulSet.Name, false)
 	if !ok {
 		return false, fmt.Errorf("StatefulSet identity is empty while checking PVC retention")
 	}
@@ -339,7 +340,7 @@ func (c *CleanupResourcesJobCtl) rememberedStatefulSetPVCOwnerReferencesConverge
 }
 
 func (c *CleanupResourcesJobCtl) rememberStatefulSetRetentionTarget(ref cleanupResourceRef, uid types.UID, templates []string) error {
-	if c == nil || ref.kind != config.ResourceStatefulSet || strings.TrimSpace(ref.name) == "" {
+	if c == nil || ref.kind != domainspec.ResourceStatefulSet || strings.TrimSpace(ref.name) == "" {
 		return nil
 	}
 	if c.statefulSetRetentionTargets == nil {
@@ -405,7 +406,7 @@ func retainedStatefulSetPVCOwnerReferences(
 	retained := make([]metav1.OwnerReference, 0, len(ownerReferences))
 	changed := false
 	for _, owner := range ownerReferences {
-		remove := strings.EqualFold(owner.Kind, string(config.KubeKindStatefulSet)) &&
+		remove := strings.EqualFold(owner.Kind, string(domainspec.KubeKindStatefulSet)) &&
 			statefulSetOwnerReferenceMatches(statefulSetName, statefulSetUID, owner.Name, owner.UID)
 		remove = remove || strings.EqualFold(owner.Kind, "Pod") && isStatefulSetOrdinalPodName(statefulSetName, owner.Name)
 		if remove {
@@ -441,7 +442,7 @@ func statefulSetPVCDeletionOwnerReferencePresent(statefulSet *appsv1.StatefulSet
 	}
 	for _, owner := range pvc.OwnerReferences {
 		switch {
-		case strings.EqualFold(owner.Kind, string(config.KubeKindStatefulSet)) && statefulSetOwnerReferenceMatches(statefulSet.Name, statefulSet.UID, owner.Name, owner.UID):
+		case strings.EqualFold(owner.Kind, string(domainspec.KubeKindStatefulSet)) && statefulSetOwnerReferenceMatches(statefulSet.Name, statefulSet.UID, owner.Name, owner.UID):
 			return true
 		case strings.EqualFold(owner.Kind, "Pod") && isStatefulSetOrdinalPodName(statefulSet.Name, owner.Name):
 			return true

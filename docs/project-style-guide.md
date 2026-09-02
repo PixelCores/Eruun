@@ -21,18 +21,19 @@
 | --- | --- | --- |
 | `cmd/main.go` | API Server 主入口 | 保持薄入口，只做全局注册、命令构建和错误退出 |
 | `cmd/server/app` | 服务端 Cobra 命令、参数、启动生命周期 | 配置覆盖、校验和 server 运行应 fail-fast；初始化错误应携带操作上下文 |
+| `pkg/apiserver/config` | 进程配置入口与模块配置组合 | 负责启动参数、环境变量和模块配置装配；模块专属策略和资源契约由所属模块定义 |
 | `pkg/apiserver/interfaces/api` | 路由、请求绑定、响应封装、中间件 | Handler 只做 HTTP 契约处理和 Domain 委托，不直接写 DB 或 K8s |
 | `pkg/apiserver/interfaces/api/dto/v1` | API 请求和响应结构 | DTO 表达对外 JSON 契约，字段变化必须同步 assembler、examples 和 docs |
 | `pkg/apiserver/interfaces/api/assembler/v1` | Domain 到 DTO 的组装 | 负责展示字段、派生字段、兼容字段和脱敏，不放持久化或 K8s 调用 |
 | `pkg/apiserver/domain/model` | GORM 模型和领域实体 | 模型字段是 DB 主事实源之一，字段语义要和跨层契约文档一致 |
 | `pkg/apiserver/domain/repository` | 仓储接口和数据访问意图 | 新代码优先使用接口表达业务查询/写入意图，兼容函数保留但不扩大使用面 |
 | `pkg/apiserver/domain/service` | 领域服务 | 应用生命周期、校验、转换、导入、workflow 创建等规则集中在这里 |
-| `pkg/apiserver/domain/spec` | 共享规格和值对象 | Traits、系统设置、安全策略等跨 DTO/Domain 的语义结构优先放这里 |
+| `pkg/apiserver/domain/spec` | 共享规格和值对象 | Traits、资源类型、Service 暴露类型、共享策略及系统设置、安全策略等跨 DTO/Domain 的语义结构优先放这里 |
 | `pkg/apiserver/event/workflow` | 工作流调度和控制器 | 以 DB 状态机为事实源，队列只承载分发，控制器负责状态推进和 ack |
 | `pkg/apiserver/event/workflow/job` | Kubernetes 资源 Job 控制器 | 每类资源独立控制器，生成、应用、等待、清理语义要保持一致 |
 | `pkg/apiserver/event/workflow/cloudjob` | 云资源 Provider 合约 | Provider、Action、上下文和状态字符串集中定义，避免散落魔法字符串 |
 | `pkg/apiserver/workflow/traits` | Trait Processor | Processor 有序注册、无状态、返回聚合结果，由框架统一应用到 workload |
-| `pkg/apiserver/workflow/config` | 工作流运行配置和共享策略 | 集中运行参数、默认值、校验、失败/运行策略和回调超时规则；不依赖全局配置、领域模型或执行器 |
+| `pkg/apiserver/workflow/config` | 工作流运行配置和执行策略 | 集中运行参数、默认值、校验、失败/运行策略、回调超时、镜像拉取默认值和 topic 命名；不依赖全局配置、领域模型或执行器 |
 | `pkg/apiserver/workflow/naming` | Kubernetes 资源命名 | 所有资源名生成优先复用这里，避免局部拼接造成清理和同步不一致 |
 | `pkg/apiserver/infrastructure` | 外部系统适配 | 实现连接、队列、存储、Informer、锁和可观测性，不反向承载业务规则 |
 | `pkg/apiserver/utils` | 技术工具 | 只放可复用技术 helper，不放应用生命周期、workflow 或 API 业务分支 |
@@ -70,6 +71,8 @@
 
 - 当前跨模块共享的 `JobType`、`Status`、`WorkflowMode`、`WorkflowStepType` 等枚举仍在 `pkg/apiserver/config`。
 - 工作流的 `JobRunPolicy`、`WorkflowFailurePolicy` 及其归一化规则由 `workflow/config` 管理；运行配置使用该包的 `RuntimeConfig`、默认值和校验。全局 `config.Config.Workflow` 组合模块配置，并保留现有 flags 和 `ERUUN_` 环境变量入口。
+- 工作流镜像拉取默认值和 dispatch/delay/result topic 名称由 `workflow/config` 管理；消息后端连接参数和 topic 前缀仍通过全局配置入口传入。
+- `ResourceKind`、`KubeKind`、GPU 资源名、`ServiceAccessType` 及其 Kubernetes 映射、`ShareStrategy` 及其归一化由 `domain/spec` 管理，供模型、校验、资源转换和执行器共同使用。
 - 系统设置、traits 和安全策略的规格结构放在 `domain/spec`，避免 DTO 和 Domain 重复定义同一语义。
 - 新增状态必须明确所在状态机、终态/非终态属性、回写路径和 API 展示语义。
 

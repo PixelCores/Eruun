@@ -17,6 +17,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	domainadoption "github.com/PixelCores/Eruun/pkg/apiserver/domain/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
@@ -62,7 +63,7 @@ func (s *cleanupOwnershipStore) Get(ctx context.Context, entity datastore.Entity
 
 type cleanupWorkloadCase struct {
 	name          string
-	kind          config.ResourceKind
+	kind          domainspec.ResourceKind
 	componentName string
 	resourceName  string
 	resource      string
@@ -75,7 +76,7 @@ func cleanupWorkloadCases() []cleanupWorkloadCase {
 	return []cleanupWorkloadCase{
 		{
 			name:          "deployment",
-			kind:          config.ResourceDeployment,
+			kind:          domainspec.ResourceDeployment,
 			componentName: "backend",
 			resourceName:  "legacy-backend",
 			resource:      "deployments",
@@ -97,7 +98,7 @@ func cleanupWorkloadCases() []cleanupWorkloadCase {
 		},
 		{
 			name:          "statefulset",
-			kind:          config.ResourceStatefulSet,
+			kind:          domainspec.ResourceStatefulSet,
 			componentName: "mysql",
 			resourceName:  "legacy-mysql",
 			resource:      "statefulsets",

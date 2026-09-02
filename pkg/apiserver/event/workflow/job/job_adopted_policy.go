@@ -12,8 +12,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
@@ -138,7 +138,7 @@ func (c *DeployAdoptedPodDisruptionBudgetJobCtl) reconcileAdoptedPodDisruptionBu
 	}
 	candidate := adoptedPodDisruptionBudgetForExistingUpdate(current, desired)
 	if adoptedPodDisruptionBudgetEqual(current, candidate) {
-		markResourceObserved(ctx, config.ResourcePodDisruptionBudget, desired.Namespace, desired.Name)
+		markResourceObserved(ctx, domainspec.ResourcePodDisruptionBudget, desired.Namespace, desired.Name)
 		return nil
 	}
 	if err := updateResourceWithRetry(
@@ -165,7 +165,7 @@ func (c *DeployAdoptedPodDisruptionBudgetJobCtl) reconcileAdoptedPodDisruptionBu
 			err,
 		)
 	}
-	markResourceObserved(ctx, config.ResourcePodDisruptionBudget, desired.Namespace, desired.Name)
+	markResourceObserved(ctx, domainspec.ResourcePodDisruptionBudget, desired.Namespace, desired.Name)
 	return nil
 }
 
@@ -250,7 +250,7 @@ func (c *DeployAdoptedPodDisruptionBudgetJobCtl) recreateAdoptedPodDisruptionBud
 	); err != nil {
 		return err
 	}
-	markResourceObserved(ctx, config.ResourcePodDisruptionBudget, created.Namespace, created.Name)
+	markResourceObserved(ctx, domainspec.ResourcePodDisruptionBudget, created.Namespace, created.Name)
 	return nil
 }
 
@@ -398,7 +398,7 @@ func (c *DeployAdoptedNetworkPolicyJobCtl) reconcileAdoptedNetworkPolicy(
 	}
 	candidate := adoptedNetworkPolicyForExistingUpdate(current, desired)
 	if adoptedNetworkPolicyEqual(current, candidate) {
-		markResourceObserved(ctx, config.ResourceNetworkPolicy, desired.Namespace, desired.Name)
+		markResourceObserved(ctx, domainspec.ResourceNetworkPolicy, desired.Namespace, desired.Name)
 		return nil
 	}
 	if err := updateResourceWithRetry(
@@ -425,7 +425,7 @@ func (c *DeployAdoptedNetworkPolicyJobCtl) reconcileAdoptedNetworkPolicy(
 			err,
 		)
 	}
-	markResourceObserved(ctx, config.ResourceNetworkPolicy, desired.Namespace, desired.Name)
+	markResourceObserved(ctx, domainspec.ResourceNetworkPolicy, desired.Namespace, desired.Name)
 	return nil
 }
 
@@ -510,7 +510,7 @@ func (c *DeployAdoptedNetworkPolicyJobCtl) recreateAdoptedNetworkPolicy(
 	); err != nil {
 		return err
 	}
-	markResourceObserved(ctx, config.ResourceNetworkPolicy, created.Namespace, created.Name)
+	markResourceObserved(ctx, domainspec.ResourceNetworkPolicy, created.Namespace, created.Name)
 	return nil
 }
 

@@ -5,8 +5,8 @@ import (
 
 	"k8s.io/client-go/util/retry"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
 
@@ -20,10 +20,10 @@ type sharedResourceAccessOptions struct {
 	job             *model.JobTask
 	ack             func()
 	labels          map[string]string
-	kind            config.ResourceKind
+	kind            domainspec.ResourceKind
 	listFn          resourceListFn
 	lockProvider    locker.Locker
-	logSkip         func(config.ShareStrategy)
+	logSkip         func(domainspec.ShareStrategy)
 	reconcileShared bool
 }
 
@@ -110,7 +110,7 @@ func createOrUpdateResource[T any](
 // createOrUpdateTrackedResource wraps createOrUpdateResource and records resource ownership.
 func createOrUpdateTrackedResource[T any](
 	ctx context.Context,
-	kind config.ResourceKind,
+	kind domainspec.ResourceKind,
 	namespace string,
 	name string,
 	getFn getResourceFunc[T],
@@ -134,7 +134,7 @@ func createOrUpdateTrackedResource[T any](
 func resolveSharedResourceAccess(ctx context.Context, opts sharedResourceAccessOptions) (func(), bool, error) {
 	if opts.reconcileShared {
 		_, strategy := shareInfoFromLabels(opts.labels)
-		if strategy != config.ShareStrategyIgnore {
+		if strategy != domainspec.ShareStrategyIgnore {
 			return nil, false, nil
 		}
 	}
@@ -155,7 +155,7 @@ func reconcileTrackedResource[T any](ctx context.Context, opts trackedResourceRe
 	return createOrUpdateTrackedResource(ctx, opts.kind, opts.namespace, opts.name, opts.getFn, opts.createFn, opts.onExisting, opts.isNotFound, opts.isAlreadyExists)
 }
 
-func trackResourcePresence[T any](ctx context.Context, kind config.ResourceKind, namespace, name string, getFn getResourceFunc[T], isNotFound func(error) bool) error {
+func trackResourcePresence[T any](ctx context.Context, kind domainspec.ResourceKind, namespace, name string, getFn getResourceFunc[T], isNotFound func(error) bool) error {
 	existing, err := getFn(ctx)
 	if err != nil {
 		if isNotFound(err) {

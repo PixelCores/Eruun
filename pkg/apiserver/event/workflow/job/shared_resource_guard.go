@@ -7,6 +7,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
 
@@ -19,10 +20,10 @@ func handleSharedResource(
 	job *model.JobTask,
 	ack func(),
 	labels map[string]string,
-	kind config.ResourceKind,
+	kind domainspec.ResourceKind,
 	listFn resourceListFn,
 	lockProvider locker.Locker,
-	logSkip func(strategy config.ShareStrategy),
+	logSkip func(strategy domainspec.ShareStrategy),
 ) (func(), bool, error) {
 	shareName, shareStrategy := shareInfoFromLabels(labels)
 	unlock, skipped, err := resolveSharedResource(ctx, shareName, shareStrategy, kind, listFn, lockProvider)

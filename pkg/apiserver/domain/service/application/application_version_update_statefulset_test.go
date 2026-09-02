@@ -302,7 +302,7 @@ func TestUpdateVersionRejectsStatefulSetImmutableTraitChangesBeforeCommit(t *tes
 					Name: "data", Type: config.StorageTypePersistent, MountPath: "/data", TmpCreate: true, Size: "1Gi",
 				}},
 				Service: []spec.ServiceTraitSpec{{
-					Name: "mysql-headless", Type: string(config.ServiceAccessInternal), Headless: true,
+					Name: "mysql-headless", Type: string(spec.ServiceAccessInternal), Headless: true,
 					Selector: map[string]string{config.LabelComponentName: "mysql"},
 					Ports:    []spec.ServicePortTraitSpec{{Name: "mysql", Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
 				}},

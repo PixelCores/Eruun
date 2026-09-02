@@ -240,10 +240,10 @@ func TestDatabaseResetJobCtlIgnoresLegacyRestartComponentsAcrossShareStrategies(
 		shared   bool
 	}{
 		{name: "ordinary"},
-		{name: "default", strategy: string(config.ShareStrategyDefault), shared: true},
-		{name: "ignore", strategy: string(config.ShareStrategyIgnore), shared: true},
+		{name: "default", strategy: string(spec.ShareStrategyDefault), shared: true},
+		{name: "ignore", strategy: string(spec.ShareStrategyIgnore), shared: true},
 		{name: "unknown", strategy: "future-default", shared: true},
-		{name: "force", strategy: string(config.ShareStrategyForce), shared: true},
+		{name: "force", strategy: string(spec.ShareStrategyForce), shared: true},
 	}
 
 	components := []*model.ApplicationComponent{db}

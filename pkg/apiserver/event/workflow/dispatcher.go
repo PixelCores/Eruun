@@ -15,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 // Worker resilience defaults are defined in workflow/config/runtime.go.
@@ -384,7 +385,7 @@ func (w *Workflow) dispatchTopic() string {
 	if w.Cfg != nil {
 		prefix = w.Cfg.Messaging.ChannelPrefix
 	}
-	return config.DispatchTopic(prefix)
+	return workflowconfig.DispatchTopic(prefix)
 }
 
 func (w *Workflow) consumerGroup() string { return config.WorkflowWorkerQueueGroup }

@@ -24,6 +24,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api"
 	"github.com/PixelCores/Eruun/pkg/apiserver/security/urlpolicy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 func (s *restServer) buildIoCContainer(ctx context.Context) error {
@@ -189,15 +190,15 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 }
 
 func (s *restServer) dispatchTopic() string {
-	return config.DispatchTopic(s.cfg.Messaging.ChannelPrefix)
+	return workflowconfig.DispatchTopic(s.cfg.Messaging.ChannelPrefix)
 }
 
 func (s *restServer) delayTopic() string {
-	return config.DelayTopic(s.cfg.Messaging.ChannelPrefix)
+	return workflowconfig.DelayTopic(s.cfg.Messaging.ChannelPrefix)
 }
 
 func (s *restServer) resultTopic() string {
-	return config.ResultTopic(s.cfg.Messaging.ChannelPrefix)
+	return workflowconfig.ResultTopic(s.cfg.Messaging.ChannelPrefix)
 }
 
 func (s *restServer) ensureKafkaMessagingReady() error {

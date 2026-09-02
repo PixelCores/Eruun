@@ -9,6 +9,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
 )
 
@@ -21,7 +22,7 @@ func shouldForceCleanupSharedWorkload(ctx context.Context, kubeClient kubernetes
 	if shareName == "" {
 		return false, "share label missing"
 	}
-	if strategy != config.ShareStrategyDefault && strategy != config.ShareStrategyIgnore {
+	if strategy != domainspec.ShareStrategyDefault && strategy != domainspec.ShareStrategyIgnore {
 		return false, fmt.Sprintf("strategy=%s", strategy)
 	}
 

@@ -24,7 +24,7 @@ func TestSharedLifecycleStrategyForComponent(t *testing.T) {
 	tests := []struct {
 		name         string
 		component    *model.ApplicationComponent
-		wantStrategy config.ShareStrategy
+		wantStrategy spec.ShareStrategy
 		wantShared   bool
 	}{
 		{
@@ -41,23 +41,23 @@ func TestSharedLifecycleStrategyForComponent(t *testing.T) {
 		{
 			name: "default strategy is shared",
 			component: &model.ApplicationComponent{Traits: &model.JSONStruct{
-				"share": map[string]interface{}{"strategy": string(config.ShareStrategyDefault)},
+				"share": map[string]interface{}{"strategy": string(spec.ShareStrategyDefault)},
 			}},
-			wantStrategy: config.ShareStrategyDefault,
+			wantStrategy: spec.ShareStrategyDefault,
 			wantShared:   true,
 		},
 		{
 			name: "ignore strategy is shared",
 			component: &model.ApplicationComponent{Traits: &model.JSONStruct{
-				"share": map[string]interface{}{"strategy": string(config.ShareStrategyIgnore)},
+				"share": map[string]interface{}{"strategy": string(spec.ShareStrategyIgnore)},
 			}},
-			wantStrategy: config.ShareStrategyIgnore,
+			wantStrategy: spec.ShareStrategyIgnore,
 			wantShared:   true,
 		},
 		{
 			name: "force strategy is managed",
 			component: &model.ApplicationComponent{Traits: &model.JSONStruct{
-				"share": map[string]interface{}{"strategy": string(config.ShareStrategyForce)},
+				"share": map[string]interface{}{"strategy": string(spec.ShareStrategyForce)},
 			}},
 		},
 		{
@@ -65,7 +65,7 @@ func TestSharedLifecycleStrategyForComponent(t *testing.T) {
 			component: &model.ApplicationComponent{Traits: &model.JSONStruct{
 				"share": map[string]interface{}{"strategy": "future-default"},
 			}},
-			wantStrategy: config.ShareStrategyDefault,
+			wantStrategy: spec.ShareStrategyDefault,
 			wantShared:   true,
 		},
 		{
@@ -78,7 +78,7 @@ func TestSharedLifecycleStrategyForComponent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var gotStrategy config.ShareStrategy
+			var gotStrategy spec.ShareStrategy
 			var gotShared bool
 			logOutput := captureLifecycleKlogOutput(t, func() {
 				gotStrategy, gotShared = SharedLifecycleStrategyForComponent(tt.component)
@@ -141,10 +141,10 @@ func TestApplicationLifecycleOperationsHonorSharePolicy(t *testing.T) {
 		strategy  string
 		protected bool
 	}{
-		{name: "default", strategy: string(config.ShareStrategyDefault), protected: true},
-		{name: "ignore", strategy: string(config.ShareStrategyIgnore), protected: true},
+		{name: "default", strategy: string(spec.ShareStrategyDefault), protected: true},
+		{name: "ignore", strategy: string(spec.ShareStrategyIgnore), protected: true},
 		{name: "unknown", strategy: "future-default", protected: true},
-		{name: "force", strategy: string(config.ShareStrategyForce)},
+		{name: "force", strategy: string(spec.ShareStrategyForce)},
 	}
 
 	for _, operation := range operations {

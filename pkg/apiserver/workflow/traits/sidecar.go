@@ -6,9 +6,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 // SidecarProcessor materializes additional containers attached to the Pod.
@@ -91,7 +91,7 @@ func (s *SidecarProcessor) Process(ctx *TraitContext) (*TraitResult, error) {
 			Env:             envVars,
 			EnvFrom:         envFromSources,
 			VolumeMounts:    volumeMounts,
-			ImagePullPolicy: config.DefaultWorkflowImagePullPolicy,
+			ImagePullPolicy: workflowconfig.DefaultWorkflowImagePullPolicy,
 		}
 
 		// Apply probes if present

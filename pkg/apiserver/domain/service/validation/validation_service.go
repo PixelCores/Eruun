@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 )
@@ -22,7 +21,7 @@ func validateServiceTraitSpec(service spec.ServiceTraitSpec, field string) []api
 	}
 	errors = append(errors, validateReservedLabelMap(service.Labels, fmt.Sprintf("%s.labels", field), "traits.service.labels")...)
 
-	serviceType, known := config.NormalizeServiceAccessType(service.Type)
+	serviceType, known := spec.NormalizeServiceAccessType(service.Type)
 	if !known {
 		errors = append(errors, apisv1.ValidationError{
 			Field:   fmt.Sprintf("%s.type", field),
@@ -31,7 +30,7 @@ func validateServiceTraitSpec(service spec.ServiceTraitSpec, field string) []api
 		})
 	}
 
-	if service.Headless && serviceType != config.ServiceAccessInternal {
+	if service.Headless && serviceType != spec.ServiceAccessInternal {
 		errors = append(errors, apisv1.ValidationError{
 			Field:   fmt.Sprintf("%s.headless", field),
 			Code:    apisv1.ErrCodeInvalidTraitConfig,
@@ -39,14 +38,14 @@ func validateServiceTraitSpec(service spec.ServiceTraitSpec, field string) []api
 		})
 	}
 
-	if serviceType != config.ServiceAccessExternal && len(service.Selector) == 0 {
+	if serviceType != spec.ServiceAccessExternal && len(service.Selector) == 0 {
 		errors = append(errors, apisv1.ValidationError{
 			Field:   fmt.Sprintf("%s.selector", field),
 			Code:    apisv1.ErrCodeMissingRequiredField,
 			Message: "selector is required for non-external service",
 		})
 	}
-	if serviceType == config.ServiceAccessExternal && strings.TrimSpace(service.ExternalName) == "" {
+	if serviceType == spec.ServiceAccessExternal && strings.TrimSpace(service.ExternalName) == "" {
 		errors = append(errors, apisv1.ValidationError{
 			Field:   fmt.Sprintf("%s.externalName", field),
 			Code:    apisv1.ErrCodeMissingRequiredField,

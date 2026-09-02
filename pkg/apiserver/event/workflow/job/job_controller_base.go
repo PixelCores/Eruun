@@ -8,6 +8,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
@@ -50,7 +51,7 @@ func (b *deployNamespacedResourceJobBase) setRuntime(runtime *jobRuntime) {
 	b.runtime = runtime
 }
 
-func (b *deployNamespacedResourceJobBase) cleanCreated(ctx context.Context, kind config.ResourceKind, resourceLabel string, deleteFn deleteNamespacedFunc, isNotFound func(error) bool, successSuffix string) {
+func (b *deployNamespacedResourceJobBase) cleanCreated(ctx context.Context, kind domainspec.ResourceKind, resourceLabel string, deleteFn deleteNamespacedFunc, isNotFound func(error) bool, successSuffix string) {
 	if b.client == nil {
 		return
 	}

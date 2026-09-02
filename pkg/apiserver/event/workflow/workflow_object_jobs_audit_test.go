@@ -233,7 +233,7 @@ func TestCreateObjectJobsFromResultRBAC(t *testing.T) {
 			t.Fatalf("unexpected job type %s", job.JobType)
 		}
 		require.Equal(t, "ops", labels[config.LabelShareName])
-		require.Equal(t, string(config.ShareStrategyDefault), labels[config.LabelShareStrategy])
+		require.Equal(t, string(spec.ShareStrategyDefault), labels[config.LabelShareStrategy])
 	}
 
 	require.True(t, jobTypes[string(config.JobDeployServiceAccount)])
@@ -278,7 +278,7 @@ func TestSecretJobNameNormalization(t *testing.T) {
 func TestBuildJobsForComponent_ShareIgnoreSkipsJobs(t *testing.T) {
 	traitsJSON, err := model.NewJSONStructByStruct(spec.Traits{
 		Share: &spec.ShareTraitSpec{
-			Strategy: string(config.ShareStrategyIgnore),
+			Strategy: string(spec.ShareStrategyIgnore),
 		},
 	})
 	require.NoError(t, err)
@@ -349,7 +349,7 @@ func TestBuildJobsForComponentAppliesFailurePolicyOnlyToInstantJobTask(t *testin
 func TestBuildJobsForComponentAddsShareLabelsToWorkloadPodTemplates(t *testing.T) {
 	traitsJSON, err := model.NewJSONStructByStruct(spec.Traits{
 		Share: &spec.ShareTraitSpec{
-			Strategy: string(config.ShareStrategyDefault),
+			Strategy: string(spec.ShareStrategyDefault),
 		},
 	})
 	require.NoError(t, err)
@@ -368,7 +368,7 @@ func TestBuildJobsForComponentAddsShareLabelsToWorkloadPodTemplates(t *testing.T
 	shareAssertions := func(t *testing.T, labels map[string]string) {
 		t.Helper()
 		require.Equal(t, "default", labels[config.LabelShareName])
-		require.Equal(t, string(config.ShareStrategyDefault), labels[config.LabelShareStrategy])
+		require.Equal(t, string(spec.ShareStrategyDefault), labels[config.LabelShareStrategy])
 	}
 	selectorAssertions := func(t *testing.T, labels map[string]string) {
 		t.Helper()
@@ -461,7 +461,7 @@ func TestBuildJobsForComponentAddsShareLabelsToWorkloadPodTemplates(t *testing.T
 func TestCreateObjectJobsFromResult_ShareIgnoreSkipsAdditionalJobs(t *testing.T) {
 	traitsJSON, err := model.NewJSONStructByStruct(spec.Traits{
 		Share: &spec.ShareTraitSpec{
-			Strategy: string(config.ShareStrategyIgnore),
+			Strategy: string(spec.ShareStrategyIgnore),
 		},
 	})
 	require.NoError(t, err)
@@ -601,7 +601,7 @@ func TestBuildJobsForComponent_StoreServiceTraitPrecedesStatefulSet(t *testing.T
 		Service: []spec.ServiceTraitSpec{
 			{
 				Name:     "mysql",
-				Type:     string(config.ServiceAccessInternal),
+				Type:     string(spec.ServiceAccessInternal),
 				Headless: true,
 				Selector: map[string]string{
 					"name": "mysql",

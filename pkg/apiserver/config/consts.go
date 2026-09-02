@@ -32,7 +32,6 @@ type WorkflowTaskType string
 type WorkflowMode string
 type WorkflowStepType string
 type Status string
-type ShareStrategy string
 type JobResultOutboxState string
 type JobDelayState string
 type VersionUpdateExecutionScope string
@@ -139,10 +138,6 @@ const (
 
 	WorkflowStepTypeComponent WorkflowStepType = "component"
 	WorkflowStepTypeApproval  WorkflowStepType = "approval"
-
-	ShareStrategyDefault ShareStrategy = "default"
-	ShareStrategyIgnore  ShareStrategy = "ignore"
-	ShareStrategyForce   ShareStrategy = "force"
 
 	AnnotationJobStartTime     = "eruun.job/startTime"
 	AnnotationJobRunPolicy     = "eruun.job/runPolicy"

@@ -367,7 +367,7 @@ func TestCleanupApplicationResourcesSkipsSharedComponent(t *testing.T) {
 		Image:         "nginx:latest",
 		Properties:    props,
 		Traits: mustJSONStruct(&spec.Traits{
-			Share: &spec.ShareTraitSpec{Strategy: string(config.ShareStrategyDefault)},
+			Share: &spec.ShareTraitSpec{Strategy: string(spec.ShareStrategyDefault)},
 		}),
 	}
 	store := &cleanupStore{
@@ -426,7 +426,7 @@ func TestCleanupApplicationResourcesSharedAbnormalPodAllowsDelete(t *testing.T) 
 		Image:         "nginx:latest",
 		Properties:    mustJSONStruct(&model.Properties{}),
 		Traits: mustJSONStruct(&spec.Traits{
-			Share: &spec.ShareTraitSpec{Strategy: string(config.ShareStrategyDefault)},
+			Share: &spec.ShareTraitSpec{Strategy: string(spec.ShareStrategyDefault)},
 		}),
 	}
 	store := &cleanupStore{
@@ -500,7 +500,7 @@ func TestCleanupApplicationResourcesDoesNotSkipSharedForce(t *testing.T) {
 		Image:         "nginx:latest",
 		Properties:    props,
 		Traits: mustJSONStruct(&spec.Traits{
-			Share: &spec.ShareTraitSpec{Strategy: string(config.ShareStrategyForce)},
+			Share: &spec.ShareTraitSpec{Strategy: string(spec.ShareStrategyForce)},
 		}),
 	}
 	store := &cleanupStore{

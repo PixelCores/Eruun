@@ -19,6 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -699,7 +700,7 @@ func TestApplyTraits_InitTrait_WithNestedTraits(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, workload.Spec.Template.Spec.InitContainers, 2)
 	for _, container := range workload.Spec.Template.Spec.InitContainers {
-		require.Equal(t, config.DefaultWorkflowImagePullPolicy, container.ImagePullPolicy)
+		require.Equal(t, workflowconfig.DefaultWorkflowImagePullPolicy, container.ImagePullPolicy)
 	}
 
 	// 4. Marshal and print for snapshot verification.
@@ -966,7 +967,7 @@ func TestResourcesProcessor(t *testing.T) {
 	assert.Equal(t, resource.MustParse("1Gi"), memLimitQty)
 
 	// Check GPU
-	gpuQty, exists := mainContainer.Resources.Limits[corev1.ResourceName(config.ResourceNvidiaGPU)]
+	gpuQty, exists := mainContainer.Resources.Limits[corev1.ResourceName(spec.ResourceNvidiaGPU)]
 	assert.True(t, exists)
 	assert.Equal(t, resource.MustParse("1"), gpuQty)
 }
@@ -1092,7 +1093,7 @@ func TestApplyTraits_SidecarTrait_WithNestedTraits(t *testing.T) {
 	sidecarContainer := findContainer(workload.Spec.Template.Spec.Containers, "my-sidecar")
 	require.NotNil(t, sidecarContainer, "Sidecar container should be found")
 	require.Equal(t, "sidecar:v1", sidecarContainer.Image)
-	require.Equal(t, config.DefaultWorkflowImagePullPolicy, sidecarContainer.ImagePullPolicy)
+	require.Equal(t, workflowconfig.DefaultWorkflowImagePullPolicy, sidecarContainer.ImagePullPolicy)
 
 	require.Len(t, sidecarContainer.VolumeMounts, 1, "Sidecar should have one volume mount")
 	require.Equal(t, "sidecar-data", sidecarContainer.VolumeMounts[0].Name)

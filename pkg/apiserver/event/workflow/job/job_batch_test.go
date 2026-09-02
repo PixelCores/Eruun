@@ -16,6 +16,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -36,7 +37,7 @@ func TestGenerateInstantJobSetsTTL(t *testing.T) {
 	require.True(t, ok)
 	require.NotNil(t, jobObj.Spec.TTLSecondsAfterFinished)
 	require.Equal(t, config.DefaultJobTTLSeconds, *jobObj.Spec.TTLSecondsAfterFinished)
-	require.Equal(t, config.DefaultWorkflowImagePullPolicy, jobObj.Spec.Template.Spec.Containers[0].ImagePullPolicy)
+	require.Equal(t, workflowconfig.DefaultWorkflowImagePullPolicy, jobObj.Spec.Template.Spec.Containers[0].ImagePullPolicy)
 }
 
 func TestGenerateScheduledCronJobSetsTTL(t *testing.T) {
@@ -58,7 +59,7 @@ func TestGenerateScheduledCronJobSetsTTL(t *testing.T) {
 	require.NotNil(t, cronObj.Spec.FailedJobsHistoryLimit)
 	require.Equal(t, config.DefaultCronJobSuccessfulLimit, *cronObj.Spec.SuccessfulJobsHistoryLimit)
 	require.Equal(t, config.DefaultCronJobFailedLimit, *cronObj.Spec.FailedJobsHistoryLimit)
-	require.Equal(t, config.DefaultWorkflowImagePullPolicy, cronObj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].ImagePullPolicy)
+	require.Equal(t, workflowconfig.DefaultWorkflowImagePullPolicy, cronObj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].ImagePullPolicy)
 }
 
 func TestGenerateScheduledCronJobOverridesHistoryLimit(t *testing.T) {
@@ -741,7 +742,7 @@ func TestRunJob_ConfigMapSharedDefaultSkippedMapsRunning(t *testing.T) {
 				Namespace: "default",
 				Labels: map[string]string{
 					config.LabelShareName:     "shared-app-config",
-					config.LabelShareStrategy: string(config.ShareStrategyDefault),
+					config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 				},
 			},
 		},
@@ -778,7 +779,7 @@ func TestRunJob_ConfigMapSharedIgnoreSkippedDoesNotMapRunning(t *testing.T) {
 				Namespace: "default",
 				Labels: map[string]string{
 					config.LabelShareName:     "shared-app-config",
-					config.LabelShareStrategy: string(config.ShareStrategyIgnore),
+					config.LabelShareStrategy: string(domainspec.ShareStrategyIgnore),
 				},
 			},
 		},
@@ -950,7 +951,7 @@ func TestRunJob_SecretSharedDefaultSkippedMapsRunning(t *testing.T) {
 				Namespace: "default",
 				Labels: map[string]string{
 					config.LabelShareName:     "shared-app-secret",
-					config.LabelShareStrategy: string(config.ShareStrategyDefault),
+					config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 				},
 			},
 		},

@@ -536,7 +536,7 @@ func TestCreateApplicationsFromTemplateClonesTraitsAndNames(t *testing.T) {
 		Service: []spec.ServiceTraitSpec{
 			{
 				Name: "mysql-master",
-				Type: string(config.ServiceAccessInternal),
+				Type: string(spec.ServiceAccessInternal),
 				Labels: map[string]string{
 					"name": "mysql-master",
 				},
@@ -549,7 +549,7 @@ func TestCreateApplicationsFromTemplateClonesTraitsAndNames(t *testing.T) {
 			},
 			{
 				Name:     "primary",
-				Type:     string(config.ServiceAccessInternal),
+				Type:     string(spec.ServiceAccessInternal),
 				Selector: map[string]string{"mysql-pod-role": "primary"},
 				Ports:    []spec.ServicePortTraitSpec{{Port: 3307, TargetPort: 3306, Protocol: "TCP"}},
 			},

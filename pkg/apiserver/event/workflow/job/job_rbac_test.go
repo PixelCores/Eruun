@@ -14,6 +14,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
@@ -150,7 +151,7 @@ func TestDeployServiceAccountJobCtl_ShareDefaultStillReconcilesWithoutLocker(t *
 				Namespace: "ops",
 				Labels: map[string]string{
 					config.LabelShareName:     shareName,
-					config.LabelShareStrategy: string(config.ShareStrategyDefault),
+					config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 				},
 			},
 		},
@@ -218,7 +219,7 @@ func TestDeployRoleJobCtl_UpdateManaged(t *testing.T) {
 				config.LabelManagedBy:     config.ManagedByEruun,
 				config.LabelAppID:         "app-1",
 				config.LabelShareName:     "ops",
-				config.LabelShareStrategy: string(config.ShareStrategyDefault),
+				config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 			},
 		},
 		Rules: []rbacv1.PolicyRule{{
@@ -238,7 +239,7 @@ func TestDeployRoleJobCtl_UpdateManaged(t *testing.T) {
 				Name: "pod-labeler-role",
 				Labels: map[string]string{
 					config.LabelShareName:     "ops",
-					config.LabelShareStrategy: string(config.ShareStrategyDefault),
+					config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 				},
 			},
 			Rules: []rbacv1.PolicyRule{{

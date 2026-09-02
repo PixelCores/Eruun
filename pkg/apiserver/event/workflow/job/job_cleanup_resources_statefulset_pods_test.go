@@ -16,6 +16,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
@@ -50,7 +51,7 @@ func TestCleanupResourcesJobCtlRechecksPinnedPodProtectionAfterOrphan(t *testing
 		require.NoError(t, err)
 		current.Labels = map[string]string{
 			config.LabelShareName:     "late-shared-mysql",
-			config.LabelShareStrategy: string(config.ShareStrategyDefault),
+			config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 		}
 		_, err = client.CoreV1().Pods(component.Namespace).Update(ctx, current, metav1.UpdateOptions{})
 		require.NoError(t, err)
@@ -92,7 +93,7 @@ func TestCleanupResourcesJobCtlRechecksPinnedPodProtectionAfterOrphan(t *testing
 		require.NoError(t, err)
 		currentJob.Labels = map[string]string{
 			config.LabelShareName:     "late-shared-owner",
-			config.LabelShareStrategy: string(config.ShareStrategyIgnore),
+			config.LabelShareStrategy: string(domainspec.ShareStrategyIgnore),
 		}
 		_, err = client.BatchV1().Jobs(component.Namespace).Update(ctx, currentJob, metav1.UpdateOptions{})
 		require.NoError(t, err)

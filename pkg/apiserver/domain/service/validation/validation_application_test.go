@@ -563,10 +563,10 @@ func TestValidationService_TryApplication_RejectsForceShareServiceNameCollision(
 				ComponentType: config.ServerJob,
 				Image:         "nginx:latest",
 				Traits: apisv1.Traits{
-					Share: &spec.ShareTraitSpec{Strategy: string(config.ShareStrategyForce)},
+					Share: &spec.ShareTraitSpec{Strategy: string(spec.ShareStrategyForce)},
 					Service: []spec.ServiceTraitSpec{{
 						Name:     "shared-api",
-						Type:     string(config.ServiceAccessInternal),
+						Type:     string(spec.ServiceAccessInternal),
 						Selector: map[string]string{"app": "api"},
 						Ports:    []spec.ServicePortTraitSpec{{Port: 8080, TargetPort: 8080, Protocol: "TCP"}},
 					}},
@@ -577,10 +577,10 @@ func TestValidationService_TryApplication_RejectsForceShareServiceNameCollision(
 				ComponentType: config.ServerJob,
 				Image:         "nginx:latest",
 				Traits: apisv1.Traits{
-					Share: &spec.ShareTraitSpec{Strategy: string(config.ShareStrategyForce)},
+					Share: &spec.ShareTraitSpec{Strategy: string(spec.ShareStrategyForce)},
 					Service: []spec.ServiceTraitSpec{{
 						Name:     "shared-api",
-						Type:     string(config.ServiceAccessInternal),
+						Type:     string(spec.ServiceAccessInternal),
 						Selector: map[string]string{"app": "worker"},
 						Ports:    []spec.ServicePortTraitSpec{{Port: 8081, TargetPort: 8081, Protocol: "TCP"}},
 					}},
@@ -618,7 +618,7 @@ func TestValidationService_TryApplication_AllowsUnknownShareStrategyServiceNameC
 					Share: &spec.ShareTraitSpec{Strategy: "future-default"},
 					Service: []spec.ServiceTraitSpec{{
 						Name:     "shared-api",
-						Type:     string(config.ServiceAccessInternal),
+						Type:     string(spec.ServiceAccessInternal),
 						Selector: map[string]string{"app": "api"},
 						Ports:    []spec.ServicePortTraitSpec{{Port: 8080, TargetPort: 8080, Protocol: "TCP"}},
 					}},
@@ -632,7 +632,7 @@ func TestValidationService_TryApplication_AllowsUnknownShareStrategyServiceNameC
 					Share: &spec.ShareTraitSpec{Strategy: "future-default"},
 					Service: []spec.ServiceTraitSpec{{
 						Name:     "shared-api",
-						Type:     string(config.ServiceAccessInternal),
+						Type:     string(spec.ServiceAccessInternal),
 						Selector: map[string]string{"app": "worker"},
 						Ports:    []spec.ServicePortTraitSpec{{Port: 8081, TargetPort: 8081, Protocol: "TCP"}},
 					}},

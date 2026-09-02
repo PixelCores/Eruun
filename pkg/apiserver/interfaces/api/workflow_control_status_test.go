@@ -20,6 +20,7 @@ import (
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	containerutil "github.com/PixelCores/Eruun/pkg/apiserver/utils/container"
 )
 
@@ -744,7 +745,7 @@ func TestAggregateApplicationStatusUsesServingComponentsForAvailability(t *testi
 }
 
 func TestAggregateApplicationStatusPrefersManagedServingComponents(t *testing.T) {
-	shareTraits := func(strategy config.ShareStrategy) *model.JSONStruct {
+	shareTraits := func(strategy domainspec.ShareStrategy) *model.JSONStruct {
 		return &model.JSONStruct{
 			"share": map[string]interface{}{
 				"strategy": string(strategy),
@@ -761,7 +762,7 @@ func TestAggregateApplicationStatusPrefersManagedServingComponents(t *testing.T)
 			components: []*model.ApplicationComponent{
 				{Name: "backend", ComponentType: config.ServerJob, Status: string(config.ComponentStatusStopped)},
 				{Name: "socket", ComponentType: config.ServerJob, Status: string(config.ComponentStatusStopped)},
-				{Name: "proxy", ComponentType: config.ServerJob, Status: string(config.ComponentStatusRunning), Traits: shareTraits(config.ShareStrategyDefault)},
+				{Name: "proxy", ComponentType: config.ServerJob, Status: string(config.ComponentStatusRunning), Traits: shareTraits(domainspec.ShareStrategyDefault)},
 				{Name: "mysql", ComponentType: config.StoreJob, Status: string(config.ComponentStatusRunning)},
 				{Name: "redis", ComponentType: config.StoreJob, Status: string(config.ComponentStatusRunning)},
 			},
@@ -773,7 +774,7 @@ func TestAggregateApplicationStatusPrefersManagedServingComponents(t *testing.T)
 				{Name: "backend", ComponentType: config.ServerJob, Status: string(config.ComponentStatusRunning)},
 				{Name: "frontend", ComponentType: config.ServerJob, Status: string(config.ComponentStatusRunning)},
 				{Name: "socket", ComponentType: config.ServerJob, Status: string(config.ComponentStatusRunning)},
-				{Name: "proxy", ComponentType: config.ServerJob, Status: string(config.ComponentStatusPending), Traits: shareTraits(config.ShareStrategyDefault)},
+				{Name: "proxy", ComponentType: config.ServerJob, Status: string(config.ComponentStatusPending), Traits: shareTraits(domainspec.ShareStrategyDefault)},
 				{Name: "mysql", ComponentType: config.StoreJob, Status: string(config.ComponentStatusRunning)},
 				{Name: "redis", ComponentType: config.StoreJob, Status: string(config.ComponentStatusRunning)},
 			},
@@ -783,7 +784,7 @@ func TestAggregateApplicationStatusPrefersManagedServingComponents(t *testing.T)
 			name: "shared ignore pending does not hide managed running",
 			components: []*model.ApplicationComponent{
 				{Name: "backend", ComponentType: config.ServerJob, Status: string(config.ComponentStatusRunning)},
-				{Name: "ignored-proxy", ComponentType: config.ServerJob, Status: string(config.ComponentStatusPending), Traits: shareTraits(config.ShareStrategyIgnore)},
+				{Name: "ignored-proxy", ComponentType: config.ServerJob, Status: string(config.ComponentStatusPending), Traits: shareTraits(domainspec.ShareStrategyIgnore)},
 			},
 			want: "running",
 		},
@@ -791,7 +792,7 @@ func TestAggregateApplicationStatusPrefersManagedServingComponents(t *testing.T)
 			name: "unknown shared strategy pending does not hide managed running",
 			components: []*model.ApplicationComponent{
 				{Name: "backend", ComponentType: config.ServerJob, Status: string(config.ComponentStatusRunning)},
-				{Name: "future-proxy", ComponentType: config.ServerJob, Status: string(config.ComponentStatusPending), Traits: shareTraits(config.ShareStrategy("future-default"))},
+				{Name: "future-proxy", ComponentType: config.ServerJob, Status: string(config.ComponentStatusPending), Traits: shareTraits(domainspec.ShareStrategy("future-default"))},
 			},
 			want: "running",
 		},
@@ -799,14 +800,14 @@ func TestAggregateApplicationStatusPrefersManagedServingComponents(t *testing.T)
 			name: "shared failure remains globally visible",
 			components: []*model.ApplicationComponent{
 				{Name: "backend", ComponentType: config.ServerJob, Status: string(config.ComponentStatusRunning)},
-				{Name: "shared-socket", ComponentType: config.ServerJob, Status: string(config.ComponentStatusFailed), Traits: shareTraits(config.ShareStrategyDefault)},
+				{Name: "shared-socket", ComponentType: config.ServerJob, Status: string(config.ComponentStatusFailed), Traits: shareTraits(domainspec.ShareStrategyDefault)},
 			},
 			want: "failed",
 		},
 		{
 			name: "shared only application falls back to shared availability",
 			components: []*model.ApplicationComponent{
-				{Name: "shared-socket", ComponentType: config.ServerJob, Status: string(config.ComponentStatusPending), Traits: shareTraits(config.ShareStrategyDefault)},
+				{Name: "shared-socket", ComponentType: config.ServerJob, Status: string(config.ComponentStatusPending), Traits: shareTraits(domainspec.ShareStrategyDefault)},
 			},
 			want: "pending",
 		},
@@ -814,7 +815,7 @@ func TestAggregateApplicationStatusPrefersManagedServingComponents(t *testing.T)
 			name: "share force remains managed",
 			components: []*model.ApplicationComponent{
 				{Name: "backend", ComponentType: config.ServerJob, Status: string(config.ComponentStatusRunning)},
-				{Name: "forced-socket", ComponentType: config.ServerJob, Status: string(config.ComponentStatusPending), Traits: shareTraits(config.ShareStrategyForce)},
+				{Name: "forced-socket", ComponentType: config.ServerJob, Status: string(config.ComponentStatusPending), Traits: shareTraits(domainspec.ShareStrategyForce)},
 			},
 			want: "pending",
 		},

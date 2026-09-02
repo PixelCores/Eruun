@@ -23,6 +23,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 	traitsPlu "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
@@ -76,7 +77,7 @@ func (c *DeployStatefulSetJobCtl) Clean(ctx context.Context) {
 		namespace = config.DefaultNamespace
 	}
 
-	cleanupNamespacedResources(ctx, config.ResourceStatefulSet, c.namespace, config.DelTimeOut, "statefulset", func(ctx context.Context, namespace, name string) error {
+	cleanupNamespacedResources(ctx, spec.ResourceStatefulSet, c.namespace, config.DelTimeOut, "statefulset", func(ctx context.Context, namespace, name string) error {
 		return c.client.AppsV1().StatefulSets(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	}, errors.IsNotFound, "after job failure")
 
@@ -136,7 +137,7 @@ func (c *DeployStatefulSetJobCtl) run(ctx context.Context) error {
 	updateStatefulSet := func(ctx context.Context, current *appsv1.StatefulSet) error {
 		if !statefulSetNeedsUpdate(current, statefulSet) {
 			c.expectedPodTemplateAnnotations = podTemplateReadyWaitAnnotationsFromTemplate(c.job, &current.Spec.Template)
-			markResourceObserved(ctx, config.ResourceStatefulSet, statefulSet.Namespace, statefulSet.Name)
+			markResourceObserved(ctx, spec.ResourceStatefulSet, statefulSet.Namespace, statefulSet.Name)
 			klog.Infof("StatefulSet %s/%s is up-to-date; skipping update", statefulSet.Namespace, statefulSet.Name)
 			return nil
 		}
@@ -155,7 +156,7 @@ func (c *DeployStatefulSetJobCtl) run(ctx context.Context) error {
 			return fmt.Errorf("update statefulset %s/%s failed: %w", statefulSet.Namespace, statefulSet.Name, err)
 		}
 		c.expectedPodTemplateAnnotations = expectedAnnotations
-		markResourceObserved(ctx, config.ResourceStatefulSet, statefulSet.Namespace, statefulSet.Name)
+		markResourceObserved(ctx, spec.ResourceStatefulSet, statefulSet.Namespace, statefulSet.Name)
 		klog.Infof("StatefulSet %s/%s updated successfully", statefulSet.Namespace, statefulSet.Name)
 		return nil
 	}
@@ -165,7 +166,7 @@ func (c *DeployStatefulSetJobCtl) run(ctx context.Context) error {
 			job:          c.job,
 			ack:          c.ack,
 			labels:       statefulSet.Labels,
-			kind:         config.ResourceStatefulSet,
+			kind:         spec.ResourceStatefulSet,
 			lockProvider: c.shareLocker,
 			listFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
 				list, err := c.client.AppsV1().StatefulSets(statefulSet.Namespace).List(ctx, opts)
@@ -174,8 +175,8 @@ func (c *DeployStatefulSetJobCtl) run(ctx context.Context) error {
 				}
 				return len(list.Items), nil
 			},
-			logSkip: func(strategy config.ShareStrategy) {
-				if strategy == config.ShareStrategyIgnore {
+			logSkip: func(strategy spec.ShareStrategy) {
+				if strategy == spec.ShareStrategyIgnore {
 					klog.Infof("StatefulSet %q marked as shared ignore; skipping", statefulSet.Name)
 				} else {
 					klog.Infof("StatefulSet %q already exists and is shared; skipping", statefulSet.Name)
@@ -297,7 +298,7 @@ func (c *DeployStatefulSetJobCtl) reconcileAdoptedStatefulSet(ctx context.Contex
 	}
 	if !needsUpdate {
 		c.expectedPodTemplateAnnotations = podTemplateReadyWaitAnnotationsFromTemplate(c.job, &current.Spec.Template)
-		markResourceObserved(ctx, config.ResourceStatefulSet, desired.Namespace, desired.Name)
+		markResourceObserved(ctx, spec.ResourceStatefulSet, desired.Namespace, desired.Name)
 		return nil
 	}
 	if err := updateResourceWithRetry(ctx, func(ctx context.Context) (*appsv1.StatefulSet, error) {
@@ -327,7 +328,7 @@ func (c *DeployStatefulSetJobCtl) reconcileAdoptedStatefulSet(ctx context.Contex
 		return fmt.Errorf("get updated adopted statefulset %s/%s: %w", desired.Namespace, desired.Name, err)
 	}
 	c.expectedPodTemplateAnnotations = podTemplateReadyWaitAnnotationsFromTemplate(c.job, &updated.Spec.Template)
-	markResourceObserved(ctx, config.ResourceStatefulSet, desired.Namespace, desired.Name)
+	markResourceObserved(ctx, spec.ResourceStatefulSet, desired.Namespace, desired.Name)
 	return nil
 }
 
@@ -442,7 +443,7 @@ func (c *DeployStatefulSetJobCtl) recreateAdoptedStatefulSet(
 		return fmt.Errorf("restore recreated adopted statefulset PVC retention policy: %w", err)
 	}
 	c.expectedPodTemplateAnnotations = expectedAnnotations
-	markResourceObserved(ctx, config.ResourceStatefulSet, created.Namespace, created.Name)
+	markResourceObserved(ctx, spec.ResourceStatefulSet, created.Namespace, created.Name)
 	return nil
 }
 
@@ -563,7 +564,7 @@ func GenerateStoreService(component *model.ApplicationComponent) *GenerateServic
 		Image:           component.Image,
 		Ports:           ContainerPort,
 		Env:             envs,
-		ImagePullPolicy: config.DefaultWorkflowImagePullPolicy,
+		ImagePullPolicy: workflowconfig.DefaultWorkflowImagePullPolicy,
 	}
 	if len(properties.Command) > 0 {
 		container.Command = properties.Command

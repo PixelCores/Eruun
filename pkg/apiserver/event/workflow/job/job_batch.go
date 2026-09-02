@@ -125,7 +125,7 @@ func buildJobContainer(component *model.ApplicationComponent, properties *model.
 		Name:            containerName,
 		Image:           component.Image,
 		Env:             envs,
-		ImagePullPolicy: config.DefaultWorkflowImagePullPolicy,
+		ImagePullPolicy: workflowconfig.DefaultWorkflowImagePullPolicy,
 	}
 	if properties != nil && len(properties.Command) > 0 {
 		container.Command = properties.Command

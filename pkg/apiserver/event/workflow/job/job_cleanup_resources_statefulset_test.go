@@ -27,11 +27,11 @@ import (
 func TestCleanupResourcesJobCtlEnforcesRequiredStatefulSetDeletion(t *testing.T) {
 	tests := []struct {
 		name          string
-		shareStrategy config.ShareStrategy
+		shareStrategy spec.ShareStrategy
 		wantBlocked   bool
 	}{
-		{name: "live default share labels block before deletion", shareStrategy: config.ShareStrategyDefault, wantBlocked: true},
-		{name: "live force share labels allow deletion", shareStrategy: config.ShareStrategyForce},
+		{name: "live default share labels block before deletion", shareStrategy: spec.ShareStrategyDefault, wantBlocked: true},
+		{name: "live force share labels allow deletion", shareStrategy: spec.ShareStrategyForce},
 	}
 
 	for _, tt := range tests {
@@ -283,7 +283,7 @@ func TestCleanupResourcesJobCtlBlocksStatefulSetPVCDeletionForProtectedPVC(t *te
 		Name: templatePVCName, Namespace: component.Namespace, UID: types.UID("protected-pvc-uid"),
 		Labels: map[string]string{
 			config.LabelShareName:     "shared-mysql-data",
-			config.LabelShareStrategy: string(config.ShareStrategyDefault),
+			config.LabelShareStrategy: string(spec.ShareStrategyDefault),
 		},
 	}})
 	internalInfo := versionUpdateRequireStatefulSetPVCDeletionInternalInfo(t, "data")
@@ -326,7 +326,7 @@ func TestCleanupResourcesJobCtlPreflightsProtectedPodsBeforeAnyDelete(t *testing
 				config.LabelAppID:         "app-1",
 				config.LabelComponentName: "mysql",
 				config.LabelShareName:     "shared-mysql",
-				config.LabelShareStrategy: string(config.ShareStrategyIgnore),
+				config.LabelShareStrategy: string(spec.ShareStrategyIgnore),
 			},
 			wantErrDetail: "pod default/mysql-0 is protected",
 		},
@@ -341,7 +341,7 @@ func TestCleanupResourcesJobCtlPreflightsProtectedPodsBeforeAnyDelete(t *testing
 				UID: types.UID("mysql-owner-uid"), ResourceVersion: "21",
 				Labels: map[string]string{
 					config.LabelShareName:     "shared-mysql-owner",
-					config.LabelShareStrategy: string(config.ShareStrategyDefault),
+					config.LabelShareStrategy: string(spec.ShareStrategyDefault),
 				},
 			}},
 			ownerRefs: []metav1.OwnerReference{
@@ -431,7 +431,7 @@ func TestCleanupResourcesJobCtlRechecksProtectedPodsBeforePVCDeletion(t *testing
 		}
 		pod := obj.(*corev1.Pod).DeepCopy()
 		pod.Labels[config.LabelShareName] = "late-shared-mysql"
-		pod.Labels[config.LabelShareStrategy] = string(config.ShareStrategyDefault)
+		pod.Labels[config.LabelShareStrategy] = string(spec.ShareStrategyDefault)
 		if err := client.Tracker().Update(podResource, pod, component.Namespace); err != nil {
 			return true, nil, err
 		}
@@ -490,7 +490,7 @@ func TestCleanupResourcesJobCtlDoesNotSilentlySkipRequiredStatefulSetDeletion(t 
 		Name: statefulSetName, Namespace: component.Namespace,
 		Labels: map[string]string{
 			config.LabelShareName:     "shared-mysql",
-			config.LabelShareStrategy: string(config.ShareStrategyDefault),
+			config.LabelShareStrategy: string(spec.ShareStrategyDefault),
 		},
 	}})
 	task := &model.JobTask{
@@ -502,7 +502,7 @@ func TestCleanupResourcesJobCtlDoesNotSilentlySkipRequiredStatefulSetDeletion(t 
 	deleted := cleanupResourceSet{seen: make(map[string]struct{})}
 	deleteCalled := false
 
-	ctl.deleteTrackedResource(context.Background(), &deleted, config.ResourceStatefulSet, component.Namespace, statefulSetName, false, func(context.Context) error {
+	ctl.deleteTrackedResource(context.Background(), &deleted, spec.ResourceStatefulSet, component.Namespace, statefulSetName, false, func(context.Context) error {
 		deleteCalled = true
 		return nil
 	})

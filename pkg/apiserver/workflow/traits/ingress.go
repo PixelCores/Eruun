@@ -166,8 +166,8 @@ func selectIngressServiceTrait(component *model.ApplicationComponent, traits *sp
 		if fallback == nil {
 			fallback = current
 		}
-		accessType, _ := config.NormalizeServiceAccessType(current.Type)
-		if accessType != config.ServiceAccessExternal {
+		accessType, _ := spec.NormalizeServiceAccessType(current.Type)
+		if accessType != spec.ServiceAccessExternal {
 			nonExternal = append(nonExternal, *current)
 		}
 	}

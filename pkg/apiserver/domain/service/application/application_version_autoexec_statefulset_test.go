@@ -22,7 +22,7 @@ func TestUpdateVersionFullRebuildAllowsOnlyRecreatedStatefulSetImmutableChanges(
 		wantError     bool
 	}{
 		{name: "non-shared StatefulSet is recreated"},
-		{name: "shared StatefulSet remains protected", shareStrategy: string(config.ShareStrategyDefault), wantError: true},
+		{name: "shared StatefulSet remains protected", shareStrategy: string(spec.ShareStrategyDefault), wantError: true},
 	}
 
 	for _, tt := range tests {
@@ -36,7 +36,7 @@ func TestUpdateVersionFullRebuildAllowsOnlyRecreatedStatefulSetImmutableChanges(
 					Name: "data", Type: config.StorageTypePersistent, MountPath: "/data", TmpCreate: true, Size: "1Gi",
 				}},
 				Service: []spec.ServiceTraitSpec{{
-					Name: "mysql-headless", Type: string(config.ServiceAccessInternal), Headless: true,
+					Name: "mysql-headless", Type: string(spec.ServiceAccessInternal), Headless: true,
 					Selector: map[string]string{config.LabelComponentName: "mysql"},
 					Ports:    []spec.ServicePortTraitSpec{{Name: "mysql", Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
 				}},
@@ -130,11 +130,11 @@ func TestUpdateVersionFullRebuildRejectsStatefulSetIdentityChange(t *testing.T) 
 			if tt.currentShare {
 				var currentTraits apisv1.Traits
 				require.NoError(t, decodeJSONStruct(store.components["mysql"].Traits, &currentTraits))
-				currentTraits.Share = &spec.ShareTraitSpec{Strategy: string(config.ShareStrategyForce)}
+				currentTraits.Share = &spec.ShareTraitSpec{Strategy: string(spec.ShareStrategyForce)}
 				store.components["mysql"].Traits = mustJSONStruct(&currentTraits)
 			}
 			if tt.desiredShare {
-				req.Components[2].Traits.Share = &spec.ShareTraitSpec{Strategy: string(config.ShareStrategyForce)}
+				req.Components[2].Traits.Share = &spec.ShareTraitSpec{Strategy: string(spec.ShareStrategyForce)}
 			}
 
 			resp, err := svc.UpdateVersion(context.Background(), "app-1", req)
@@ -390,7 +390,7 @@ func TestPendingStatefulSetPVCDeletionKeepsResourceIdentitiesSeparate(t *testing
 			Name: "data", Type: config.StorageTypePersistent, MountPath: "/data", TmpCreate: true, Size: "1Gi",
 		}},
 		Service: []spec.ServiceTraitSpec{{
-			Name: "mysql-headless", Type: string(config.ServiceAccessInternal), Headless: true,
+			Name: "mysql-headless", Type: string(spec.ServiceAccessInternal), Headless: true,
 			Selector: map[string]string{config.LabelComponentName: "mysql"},
 		}},
 	}
@@ -399,7 +399,7 @@ func TestPendingStatefulSetPVCDeletionKeepsResourceIdentitiesSeparate(t *testing
 		ResourceAppName: "shop", ComponentType: config.StoreJob, Traits: mustJSONStruct(&traits),
 	}
 	sharedTraits := traits
-	sharedTraits.Share = &spec.ShareTraitSpec{Strategy: string(config.ShareStrategyDefault)}
+	sharedTraits.Share = &spec.ShareTraitSpec{Strategy: string(spec.ShareStrategyDefault)}
 	shared := *nonShared
 	shared.Traits = mustJSONStruct(&sharedTraits)
 	nonSharedCleanup := model.VersionUpdateCleanupComponent{

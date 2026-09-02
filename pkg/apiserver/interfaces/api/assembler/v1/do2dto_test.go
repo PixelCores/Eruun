@@ -356,7 +356,7 @@ func TestConvertComponentModelToDTOUsesSharedResourceKeyForGeneratedNames(t *tes
 		Ports: []model.Ports{{Port: 8080}},
 	})
 	traits := mustJSONStruct(t, model.Traits{
-		Share: &spec.ShareTraitSpec{Strategy: string(config.ShareStrategyDefault)},
+		Share: &spec.ShareTraitSpec{Strategy: string(spec.ShareStrategyDefault)},
 		Ingress: []spec.IngressTraitsSpec{
 			{
 				Routes: []spec.IngressRoutes{
@@ -398,7 +398,7 @@ func TestConvertComponentModelToDTOUsesExplicitServiceTraitNameForSvcLink(t *tes
 		Service: []spec.ServiceTraitSpec{
 			{
 				Name: "api-fixed",
-				Type: string(config.ServiceAccessInternal),
+				Type: string(spec.ServiceAccessInternal),
 				Ports: []spec.ServicePortTraitSpec{
 					{Port: 80, TargetPort: 80, Protocol: "TCP"},
 				},
@@ -435,12 +435,12 @@ func TestConvertComponentModelToDTOPrefersNonExternalServiceTraitForSvcLink(t *t
 		Service: []spec.ServiceTraitSpec{
 			{
 				Name:         "external-api",
-				Type:         string(config.ServiceAccessExternal),
+				Type:         string(spec.ServiceAccessExternal),
 				ExternalName: "example.com",
 			},
 			{
 				Name: "internal-api",
-				Type: string(config.ServiceAccessInternal),
+				Type: string(spec.ServiceAccessInternal),
 				Ports: []spec.ServicePortTraitSpec{
 					{Port: 80, TargetPort: 80, Protocol: "TCP"},
 				},
@@ -477,7 +477,7 @@ func TestConvertComponentModelToDTOSkipsServiceSummariesForNonServiceDeployCompo
 		Service: []spec.ServiceTraitSpec{
 			{
 				Name: "job-svc",
-				Type: string(config.ServiceAccessInternal),
+				Type: string(spec.ServiceAccessInternal),
 				Ports: []spec.ServicePortTraitSpec{
 					{Port: 80, TargetPort: 8080},
 				},
@@ -669,7 +669,7 @@ func TestConvertComponentModelsToDTOAddsResourceDetailsAndCredentials(t *testing
 		Service: []spec.ServiceTraitSpec{
 			{
 				Name: "api-svc",
-				Type: string(config.ServiceAccessInternal),
+				Type: string(spec.ServiceAccessInternal),
 				Ports: []spec.ServicePortTraitSpec{
 					{Name: "http", Port: 80, TargetPort: 8080, Protocol: "TCP"},
 				},
@@ -741,7 +741,7 @@ func TestConvertComponentModelsToDTOAddsResourceDetailsAndCredentials(t *testing
 		{
 			Name:      "api-svc",
 			Namespace: "default",
-			Type:      string(config.ServiceAccessInternal),
+			Type:      string(spec.ServiceAccessInternal),
 			Ports: []apisv1.ComponentServicePortInfo{
 				{Name: "http", Port: 80, TargetPort: 8080, Protocol: "TCP"},
 			},

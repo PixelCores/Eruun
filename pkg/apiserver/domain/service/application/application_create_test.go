@@ -741,7 +741,7 @@ func TestCreateApplicationsRejectsGeneratedResourceNameCollisionAcrossApps(t *te
 }
 
 func TestCreateApplicationsAllowsDuplicateSafeShareResourceNameCollisionAcrossApps(t *testing.T) {
-	for _, strategy := range []string{string(config.ShareStrategyDefault), string(config.ShareStrategyIgnore), "future-default"} {
+	for _, strategy := range []string{string(spec.ShareStrategyDefault), string(spec.ShareStrategyIgnore), "future-default"} {
 		t.Run(strategy, func(t *testing.T) {
 			store := newInMemoryAppStore()
 			store.apps["app-1"] = &model.Applications{
@@ -804,7 +804,7 @@ func TestCreateApplicationsRejectsForceShareResourceNameCollisionAcrossApps(t *t
 			Ports: []spec.Ports{{Port: 8080}},
 		}),
 		Traits: mustJSONStruct(&apisv1.Traits{
-			Share: &spec.ShareTraitSpec{Strategy: string(config.ShareStrategyForce)},
+			Share: &spec.ShareTraitSpec{Strategy: string(spec.ShareStrategyForce)},
 		}),
 	}
 
@@ -819,7 +819,7 @@ func TestCreateApplicationsRejectsForceShareResourceNameCollisionAcrossApps(t *t
 				Ports: []spec.Ports{{Port: 8081}},
 			},
 			Traits: apisv1.Traits{
-				Share: &spec.ShareTraitSpec{Strategy: string(config.ShareStrategyForce)},
+				Share: &spec.ShareTraitSpec{Strategy: string(spec.ShareStrategyForce)},
 			},
 		}},
 	})
@@ -1238,7 +1238,7 @@ func TestCreateApplicationsRejectsInvalidExplicitServiceTraitName(t *testing.T) 
 				Service: []spec.ServiceTraitSpec{
 					{
 						Name: "Backend_Service",
-						Type: string(config.ServiceAccessInternal),
+						Type: string(spec.ServiceAccessInternal),
 						Ports: []spec.ServicePortTraitSpec{
 							{Port: 80, TargetPort: 80, Protocol: "TCP"},
 						},

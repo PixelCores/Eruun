@@ -24,7 +24,7 @@ func TestBuildVersionUpdateFullCleanupInfoKeepsV2WhenVCTsAreUnchanged(t *testing
 			Name: "data", Type: config.StorageTypePersistent, MountPath: "/data", TmpCreate: true, Size: "1Gi",
 		}},
 		Service: []spec.ServiceTraitSpec{{
-			Name: "mysql-headless", Type: string(config.ServiceAccessInternal), Headless: true,
+			Name: "mysql-headless", Type: string(spec.ServiceAccessInternal), Headless: true,
 			Selector: map[string]string{config.LabelComponentName: "mysql"},
 			Ports:    []spec.ServicePortTraitSpec{{Name: "mysql", Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
 		}},
@@ -298,7 +298,7 @@ func TestUpdateVersionRejectsProtectedSharedComponentRemove(t *testing.T) {
 		Replicas:      1,
 		Properties:    mustJSONStruct(&model.Properties{}),
 		Traits: mustJSONStruct(&spec.Traits{
-			Share: &spec.ShareTraitSpec{Strategy: string(config.ShareStrategyDefault)},
+			Share: &spec.ShareTraitSpec{Strategy: string(spec.ShareStrategyDefault)},
 		}),
 	}
 
@@ -365,7 +365,7 @@ func TestUpdateVersionRejectsProtectedSharedComponentRemoveWhenPodAbnormal(t *te
 		Replicas:      1,
 		Properties:    mustJSONStruct(&model.Properties{}),
 		Traits: mustJSONStruct(&spec.Traits{
-			Share: &spec.ShareTraitSpec{Strategy: string(config.ShareStrategyDefault)},
+			Share: &spec.ShareTraitSpec{Strategy: string(spec.ShareStrategyDefault)},
 		}),
 	}
 
@@ -432,7 +432,7 @@ func TestUpdateVersionRemoveForceSharedComponentCleansResources(t *testing.T) {
 		Replicas:      1,
 		Properties:    mustJSONStruct(&model.Properties{}),
 		Traits: mustJSONStruct(&spec.Traits{
-			Share: &spec.ShareTraitSpec{Strategy: string(config.ShareStrategyForce)},
+			Share: &spec.ShareTraitSpec{Strategy: string(spec.ShareStrategyForce)},
 		}),
 	}
 

@@ -8,6 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
 type fakeResource struct {
@@ -153,9 +154,9 @@ func TestResolveSharedResourceAccess_ReconcileSharedBypassesDefaultGuard(t *test
 	unlock, skipped, err := resolveSharedResourceAccess(context.Background(), sharedResourceAccessOptions{
 		labels: map[string]string{
 			config.LabelShareName:     "ops",
-			config.LabelShareStrategy: string(config.ShareStrategyDefault),
+			config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 		},
-		kind:            config.ResourceServiceAccount,
+		kind:            domainspec.ResourceServiceAccount,
 		lockProvider:    nil,
 		reconcileShared: true,
 		listFn: func(context.Context, metav1.ListOptions) (int, error) {
@@ -185,9 +186,9 @@ func TestResolveSharedResourceAccess_ReconcileSharedStillSkipsIgnore(t *testing.
 	unlock, skipped, err := resolveSharedResourceAccess(context.Background(), sharedResourceAccessOptions{
 		labels: map[string]string{
 			config.LabelShareName:     "ops",
-			config.LabelShareStrategy: string(config.ShareStrategyIgnore),
+			config.LabelShareStrategy: string(domainspec.ShareStrategyIgnore),
 		},
-		kind:            config.ResourceServiceAccount,
+		kind:            domainspec.ResourceServiceAccount,
 		lockProvider:    nil,
 		reconcileShared: true,
 		listFn: func(context.Context, metav1.ListOptions) (int, error) {

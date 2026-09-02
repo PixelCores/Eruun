@@ -24,7 +24,7 @@ func buildComponentServices(component *apisv1.ApplicationComponent) []apisv1.Com
 			if name == "" {
 				name = naming.ServiceName(component.Name, componentResourceAppName(component))
 			}
-			accessType, _ := config.NormalizeServiceAccessType(trait.Type)
+			accessType, _ := spec.NormalizeServiceAccessType(trait.Type)
 			services = append(services, apisv1.ComponentServiceInfo{
 				Name:         name,
 				Namespace:    namespace,
@@ -43,7 +43,7 @@ func buildComponentServices(component *apisv1.ApplicationComponent) []apisv1.Com
 		{
 			Name:      naming.ServiceName(component.Name, componentResourceAppName(component)),
 			Namespace: namespace,
-			Type:      string(config.ServiceAccessInternal),
+			Type:      string(spec.ServiceAccessInternal),
 			Ports:     buildPropertyPortInfos(component.Name, component.Properties.Ports),
 		},
 	}
@@ -316,8 +316,8 @@ func selectServiceTraitForLink(component *apisv1.ApplicationComponent) (int, boo
 		if fallbackIndex == -1 {
 			fallbackIndex = i
 		}
-		serviceType, _ := config.NormalizeServiceAccessType(component.Traits.Service[i].Type)
-		if serviceType != config.ServiceAccessExternal {
+		serviceType, _ := spec.NormalizeServiceAccessType(component.Traits.Service[i].Type)
+		if serviceType != spec.ServiceAccessExternal {
 			return i, true
 		}
 	}

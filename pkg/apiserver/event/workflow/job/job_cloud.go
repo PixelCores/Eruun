@@ -12,6 +12,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	wfcloudcontract "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob/contracts"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
@@ -416,7 +417,7 @@ func ensurePublicCloudJobInfo(job *model.JobTask) {
 	if job == nil || strings.TrimSpace(job.Info) != "" {
 		return
 	}
-	kind := strings.TrimSpace(string(config.ResourceCloudJob))
+	kind := strings.TrimSpace(string(domainspec.ResourceCloudJob))
 	if kind == "" {
 		kind = "cloudjob"
 	}

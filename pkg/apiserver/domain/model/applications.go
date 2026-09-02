@@ -176,7 +176,7 @@ func (w *ApplicationComponent) ResourceNameKey() string {
 
 // ShareStrategy returns the normalized share strategy and whether a share trait
 // is present. Unknown strategies follow the conservative default behavior.
-func (w *ApplicationComponent) ShareStrategy() (config.ShareStrategy, bool) {
+func (w *ApplicationComponent) ShareStrategy() (spec.ShareStrategy, bool) {
 	if w == nil || w.Traits == nil {
 		return "", false
 	}
@@ -192,7 +192,7 @@ func (w *ApplicationComponent) ShareStrategy() (config.ShareStrategy, bool) {
 	if err := json.Unmarshal(traitBytes, &traits); err != nil || traits.Share == nil {
 		return "", false
 	}
-	strategy, _ := config.NormalizeShareStrategy(traits.Share.Strategy)
+	strategy, _ := spec.NormalizeShareStrategy(traits.Share.Strategy)
 	return strategy, true
 }
 

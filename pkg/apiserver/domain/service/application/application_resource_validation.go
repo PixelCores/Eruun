@@ -17,7 +17,7 @@ import (
 )
 
 type resolvedResourceRef struct {
-	kind                config.ResourceKind
+	kind                spec.ResourceKind
 	namespace           string
 	name                string
 	duplicateSafeShared bool
@@ -133,7 +133,7 @@ func trackResolvedApplicationResources(
 			}
 		}
 
-		track := func(kind config.ResourceKind, name, source string) error {
+		track := func(kind spec.ResourceKind, name, source string) error {
 			ref := resolvedResourceRef{
 				kind:                kind,
 				namespace:           componentNamespace,
@@ -154,28 +154,28 @@ func trackResolvedApplicationResources(
 
 		switch component.ComponentType {
 		case config.ConfJob:
-			if err := track(config.ResourceConfigMap, componentName, "component.name"); err != nil {
+			if err := track(spec.ResourceConfigMap, componentName, "component.name"); err != nil {
 				return err
 			}
 		case config.SecretJob:
-			if err := track(config.ResourceSecret, componentName, "component.name"); err != nil {
+			if err := track(spec.ResourceSecret, componentName, "component.name"); err != nil {
 				return err
 			}
 		case config.ServerJob:
-			if err := track(config.ResourceDeployment, naming.WebServiceName(componentName, componentResourceAppName), "generated deployment"); err != nil {
+			if err := track(spec.ResourceDeployment, naming.WebServiceName(componentName, componentResourceAppName), "generated deployment"); err != nil {
 				return err
 			}
 		case config.StoreJob:
-			if err := track(config.ResourceStatefulSet, naming.StoreServerName(componentName, componentResourceAppName), "generated statefulset"); err != nil {
+			if err := track(spec.ResourceStatefulSet, naming.StoreServerName(componentName, componentResourceAppName), "generated statefulset"); err != nil {
 				return err
 			}
 		case config.InstantJob:
-			if err := track(config.ResourceJob, naming.JobName(componentName, componentResourceAppName), "generated job"); err != nil {
+			if err := track(spec.ResourceJob, naming.JobName(componentName, componentResourceAppName), "generated job"); err != nil {
 				return err
 			}
 		case config.ScheduledJob:
 			if strings.TrimSpace(component.Properties.Schedule) != "" {
-				if err := track(config.ResourceCronJob, naming.CronJobName(componentName, componentResourceAppName), "generated cronjob"); err != nil {
+				if err := track(spec.ResourceCronJob, naming.CronJobName(componentName, componentResourceAppName), "generated cronjob"); err != nil {
 					return err
 				}
 			}
@@ -187,12 +187,12 @@ func trackResolvedApplicationResources(
 			}
 		}
 		for serviceIndex, serviceName := range resolvedServiceResourceNames(component, componentResourceAppName) {
-			if err := track(config.ResourceService, serviceName, fmt.Sprintf("traits.service[%d]", serviceIndex)); err != nil {
+			if err := track(spec.ResourceService, serviceName, fmt.Sprintf("traits.service[%d]", serviceIndex)); err != nil {
 				return err
 			}
 		}
 		for ingressIndex, ingressName := range resolvedIngressResourceNames(component, componentResourceAppName) {
-			if err := track(config.ResourceIngress, ingressName, fmt.Sprintf("traits.ingress[%d]", ingressIndex)); err != nil {
+			if err := track(spec.ResourceIngress, ingressName, fmt.Sprintf("traits.ingress[%d]", ingressIndex)); err != nil {
 				return err
 			}
 		}
@@ -220,9 +220,9 @@ func trackResolvedResource(seen map[string]resolvedResourceRef, current resolved
 	}
 	resourceNameKind := string(current.kind)
 	switch current.kind {
-	case config.ResourceService:
+	case spec.ResourceService:
 		resourceNameKind = "service name"
-	case config.ResourcePVC:
+	case spec.ResourcePVC:
 		resourceNameKind = "pvc name"
 	}
 	return fmt.Errorf("%w: component[%d] %q%s %s resolves to duplicate %s %q in namespace %s already used by component[%d] %q%s %s",
@@ -266,8 +266,8 @@ func createComponentDuplicateSafeShare(component apisv1.CreateComponentRequest) 
 	if component.Traits.Share == nil {
 		return false
 	}
-	strategy, _ := config.NormalizeShareStrategy(component.Traits.Share.Strategy)
-	return strategy == config.ShareStrategyDefault || strategy == config.ShareStrategyIgnore
+	strategy, _ := spec.NormalizeShareStrategy(component.Traits.Share.Strategy)
+	return strategy == spec.ShareStrategyDefault || strategy == spec.ShareStrategyIgnore
 }
 
 func resourceRefAppSuffix(ref resolvedResourceRef) string {

@@ -16,6 +16,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
 
@@ -141,7 +142,7 @@ func TestDeployPVCJobCtlCleanPreservesTrackedPVC(t *testing.T) {
 	}
 	_, err := client.CoreV1().PersistentVolumeClaims("ops").Create(ctx, pvc, metav1.CreateOptions{})
 	require.NoError(t, err)
-	MarkResourceCreated(ctx, config.ResourcePVC, "ops", "data-mysql")
+	MarkResourceCreated(ctx, domainspec.ResourcePVC, "ops", "data-mysql")
 
 	job := &model.JobTask{
 		Name:      pvc.Name,
@@ -167,17 +168,17 @@ func TestIngressReady(t *testing.T) {
 
 func TestCleanupClusterResources(t *testing.T) {
 	ctx := WithCleanupTracker(context.Background())
-	MarkResourceCreated(ctx, config.ResourceClusterRole, "", "role-a")
-	markResourceObserved(ctx, config.ResourceClusterRole, "", "role-b")
+	MarkResourceCreated(ctx, domainspec.ResourceClusterRole, "", "role-a")
+	markResourceObserved(ctx, domainspec.ResourceClusterRole, "", "role-b")
 
 	var deleted []string
-	cleanupClusterResources(ctx, config.ResourceClusterRole, time.Second, "clusterrole", func(_ context.Context, name string) error {
+	cleanupClusterResources(ctx, domainspec.ResourceClusterRole, time.Second, "clusterrole", func(_ context.Context, name string) error {
 		deleted = append(deleted, name)
 		return nil
 	}, nil)
 	require.Equal(t, []string{"role-a"}, deleted)
 
-	cleanupClusterResources(ctx, config.ResourceClusterRole, time.Second, "clusterrole", func(context.Context, string) error {
+	cleanupClusterResources(ctx, domainspec.ResourceClusterRole, time.Second, "clusterrole", func(context.Context, string) error {
 		return errors.New("not found")
 	}, func(err error) bool {
 		return err != nil && err.Error() == "not found"

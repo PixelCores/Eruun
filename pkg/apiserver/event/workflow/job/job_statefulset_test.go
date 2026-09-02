@@ -17,6 +17,7 @@ import (
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -253,7 +254,7 @@ func TestGenerateStoreService_UsesCommand(t *testing.T) {
 	if !reflect.DeepEqual(got, properties.Command) {
 		t.Fatalf("expected command %v, got %v", properties.Command, got)
 	}
-	require.Equal(t, config.DefaultWorkflowImagePullPolicy, statefulSet.Spec.Template.Spec.Containers[0].ImagePullPolicy)
+	require.Equal(t, workflowconfig.DefaultWorkflowImagePullPolicy, statefulSet.Spec.Template.Spec.Containers[0].ImagePullPolicy)
 	require.NotNil(t, statefulSet.Spec.PersistentVolumeClaimRetentionPolicy)
 	require.Equal(t, appsv1.DeletePersistentVolumeClaimRetentionPolicyType, statefulSet.Spec.PersistentVolumeClaimRetentionPolicy.WhenDeleted)
 	require.Equal(t, appsv1.RetainPersistentVolumeClaimRetentionPolicyType, statefulSet.Spec.PersistentVolumeClaimRetentionPolicy.WhenScaled)

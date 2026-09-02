@@ -46,15 +46,16 @@
 | `pkg/apiserver/domain/model` | GORM 模型和领域实体 | 新表字段、状态字段、业务实体 | 字段语义必须同步跨层契约文档 |
 | `pkg/apiserver/domain/repository` | 仓储接口和数据访问契约 | 查询/写入方法、事务边界 | 接口表达业务意图，不暴露上层 DTO |
 | `pkg/apiserver/domain/service` | 应用生命周期、转换、查询、工作流创建 | 创建/更新/删除应用、组件查询、K8s YAML 转换 | 保持业务规则集中，避免依赖接口层细节 |
-| `pkg/apiserver/domain/spec` | 配置规格、策略和校验 | Auth、OAuth、URL 安全、云资源配置校验 | 校验规则要有失败路径测试 |
+| `pkg/apiserver/domain/spec` | 共享规格、资源契约、策略和校验 | Auth、OAuth、URL 安全、云资源配置、资源类型、Service 暴露类型与共享策略 | 业务取值及归一化与对应规格集中定义 |
 | `pkg/apiserver/event/workflow` | Workflow 调度、分发、状态推进、审批/超时 | 任务状态、队列消费、分布式执行 | DB 状态机是任务事实源 |
 | `pkg/apiserver/event/workflow/job` | 具体 Job 控制器和 K8s 资源调和 | Deployment、StatefulSet、Service、PVC、Secret、RBAC 等资源执行 | 保持资源生成、等待和清理语义一致 |
 | `pkg/apiserver/event/workflow/cloudjob` | 云资源 Provider 合约与实现 | 云资源步骤、Provider 注册、外部云动作 | 合约字符串集中为常量 |
 | `pkg/apiserver/workflow/traits` | OAM Traits 处理器 | storage、env、probe、resources、sidecar、rbac、ingress 等 Trait | 新 Trait 需要处理顺序、测试和文档 |
-| `pkg/apiserver/workflow/config` | 工作流运行配置、失败/运行策略与回调超时规则 | 调度/Worker 默认值、配置校验、策略归一化 | 全局 `pkg/apiserver/config` 组合配置并绑定启动参数；模块配置不反向依赖全局配置、领域模型或执行器 |
+| `pkg/apiserver/workflow/config` | 工作流运行配置、执行策略与 topic 命名 | 调度/Worker 默认值、配置校验、回调超时、镜像拉取策略与队列名称 | 模块配置不反向依赖全局配置、领域模型或执行器 |
 | `pkg/apiserver/workflow/naming` | 资源命名规则 | Kubernetes 资源名、PVC/Service 命名 | 命名变化影响状态同步和清理 |
 | `pkg/apiserver/infrastructure` | 外部系统适配 | K8s、Redis、Kafka、MySQL、Informer、锁、可观测性 | Infrastructure 实现接口，不反向承载业务规则 |
 | `pkg/apiserver/utils` | 通用工具 | 缓存、错误码、异步执行、K8s helper、profiling | 新工具必须可复用，避免放业务分支 |
+| `pkg/apiserver/config` | 进程配置入口与模块配置组合 | 启动参数、环境变量、连接配置、模块配置装配 | 模块专属策略和资源契约由所属模块定义 |
 | `config`, `deploy`, `examples`, `scripts` | 默认配置、部署清单、请求样例和辅助脚本 | 部署参数、示例更新、脚本化验证 | 行为或配置变化要同步 docs |
 
 ## 需求定位表

@@ -11,6 +11,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
 func TestDeployCleanupDeletesCreatedDeployment(t *testing.T) {
@@ -25,7 +26,7 @@ func TestDeployCleanupDeletesCreatedDeployment(t *testing.T) {
 	}
 
 	ctx := WithCleanupTracker(context.Background())
-	MarkResourceCreated(ctx, config.ResourceDeployment, "default", "web")
+	MarkResourceCreated(ctx, domainspec.ResourceDeployment, "default", "web")
 
 	deploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "default"},
@@ -52,7 +53,7 @@ func TestDeployCleanupDeletesObservedSharedDeploymentWhenPodAbnormal(t *testing.
 		config.LabelComponentName: "web",
 		config.LabelComponentID:   "7",
 		config.LabelShareName:     "shared-web",
-		config.LabelShareStrategy: string(config.ShareStrategyDefault),
+		config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 	}
 	client := fake.NewSimpleClientset(
 		&appsv1.Deployment{
@@ -109,7 +110,7 @@ func TestDeployCleanupDeletesObservedSharedDeploymentWhenPodAbnormal(t *testing.
 	}
 
 	ctx := WithCleanupTracker(context.Background())
-	markResourceObserved(ctx, config.ResourceDeployment, "default", deployName)
+	markResourceObserved(ctx, domainspec.ResourceDeployment, "default", deployName)
 
 	ctl.Clean(ctx)
 
@@ -125,7 +126,7 @@ func TestDeployCleanupKeepsObservedSharedDeploymentWithoutAbnormalPod(t *testing
 		config.LabelComponentName: "web",
 		config.LabelComponentID:   "7",
 		config.LabelShareName:     "shared-web",
-		config.LabelShareStrategy: string(config.ShareStrategyDefault),
+		config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 	}
 	client := fake.NewSimpleClientset(
 		&appsv1.Deployment{
@@ -182,7 +183,7 @@ func TestDeployCleanupKeepsObservedSharedDeploymentWithoutAbnormalPod(t *testing
 	}
 
 	ctx := WithCleanupTracker(context.Background())
-	markResourceObserved(ctx, config.ResourceDeployment, "default", deployName)
+	markResourceObserved(ctx, domainspec.ResourceDeployment, "default", deployName)
 
 	ctl.Clean(ctx)
 
@@ -198,7 +199,7 @@ func TestStatefulSetCleanupDeletesObservedSharedStatefulSetWhenPodAbnormal(t *te
 		config.LabelComponentName: "db",
 		config.LabelComponentID:   "8",
 		config.LabelShareName:     "shared-db",
-		config.LabelShareStrategy: string(config.ShareStrategyDefault),
+		config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 	}
 	client := fake.NewSimpleClientset(
 		&appsv1.StatefulSet{
@@ -255,7 +256,7 @@ func TestStatefulSetCleanupDeletesObservedSharedStatefulSetWhenPodAbnormal(t *te
 	}
 
 	ctx := WithCleanupTracker(context.Background())
-	markResourceObserved(ctx, config.ResourceStatefulSet, "default", statefulSetName)
+	markResourceObserved(ctx, domainspec.ResourceStatefulSet, "default", statefulSetName)
 
 	ctl.Clean(ctx)
 

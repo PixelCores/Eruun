@@ -475,13 +475,13 @@ func (c Config) RequiresResultQueue() bool {
 func (c Config) RuntimeMessagingTopics() []string {
 	topics := make([]string, 0, 3)
 	if c.RequiresDispatchQueue() {
-		topics = append(topics, DispatchTopic(c.Messaging.ChannelPrefix))
+		topics = append(topics, workflowconfig.DispatchTopic(c.Messaging.ChannelPrefix))
 	}
 	if c.RequiresDelayQueue() {
-		topics = append(topics, DelayTopic(c.Messaging.ChannelPrefix))
+		topics = append(topics, workflowconfig.DelayTopic(c.Messaging.ChannelPrefix))
 	}
 	if c.RequiresResultQueue() {
-		topics = append(topics, ResultTopic(c.Messaging.ChannelPrefix))
+		topics = append(topics, workflowconfig.ResultTopic(c.Messaging.ChannelPrefix))
 	}
 	return topics
 }
