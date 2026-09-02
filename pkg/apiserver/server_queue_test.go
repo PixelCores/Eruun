@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	miniredis "github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 	"github.com/segmentio/kafka-go"
 	"github.com/stretchr/testify/require"
@@ -24,7 +23,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 )
 
 type testServerQueue struct {
@@ -671,57 +669,6 @@ func TestEnsureKafkaMessagingReadyUsesAllKafkaTopics(t *testing.T) {
 	require.Equal(t, []string{"broker-1:9092"}, captured.Brokers)
 	require.Equal(t, 3, captured.TopicPartitions)
 	require.Equal(t, 2, captured.TopicReplicationFactor)
-}
-
-func TestBuildWorkflowTaskRunLockerRequiresRedisCacheType(t *testing.T) {
-	server := &restServer{
-		cfg: config.Config{
-			Cache: config.RedisCacheConfig{CacheType: string(cache.CacheTypeMem)},
-		},
-	}
-
-	lockProvider, err := server.buildWorkflowTaskRunLocker(server.cfg.Cache.CacheType, cache.NewMemCache(false))
-
-	require.Nil(t, lockProvider)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "workflow task run locker requires cache-type=redis")
-}
-
-func TestBuildWorkflowTaskRunLockerRequiresRedisClient(t *testing.T) {
-	server := &restServer{
-		cfg: config.Config{
-			Cache: config.RedisCacheConfig{CacheType: string(cache.CacheTypeRedis)},
-		},
-	}
-
-	lockProvider, err := server.buildWorkflowTaskRunLocker(server.cfg.Cache.CacheType, cache.NewMemCache(false))
-
-	require.Nil(t, lockProvider)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "workflow task run locker requires redis client")
-}
-
-func TestBuildWorkflowTaskRunLockerUsesRedisCache(t *testing.T) {
-	redisServer, err := miniredis.Run()
-	require.NoError(t, err)
-	t.Cleanup(redisServer.Close)
-
-	redisClient := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
-	t.Cleanup(func() {
-		_ = redisClient.Close()
-	})
-
-	server := &restServer{
-		cfg: config.Config{
-			Cache: config.RedisCacheConfig{CacheType: " redis "},
-		},
-	}
-	iCache := cache.NewRedisICache(redisClient, false, time.Minute, "eruun:test:")
-
-	lockProvider, err := server.buildWorkflowTaskRunLocker(server.cfg.Cache.CacheType, iCache)
-
-	require.NoError(t, err)
-	require.NotNil(t, lockProvider)
 }
 
 func TestServerLifecycleRejectsNilContext(t *testing.T) {

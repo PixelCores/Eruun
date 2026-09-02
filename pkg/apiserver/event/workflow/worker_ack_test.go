@@ -21,7 +21,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
@@ -239,7 +238,6 @@ func newWorkflowForAckTests(t testing.TB, updateOK bool) *Workflow {
 		WorkflowService:           &stubWorkflowService{updateOK: updateOK, store: store},
 		Queue:                     nil,
 		Cfg:                       &config.Config{},
-		taskRunLocker:             locker.NewMemoryLocker(workflowTaskRunLockerPrefix),
 		URLSecurityPolicyProvider: newTestURLSecurityPolicyProvider(t, spec.URLSecurityPolicySpec{AllowPrivateByDefault: true}),
 	}
 }
@@ -633,41 +631,6 @@ func TestRunWorkflowControllerReportsMissingTaskDuringPersistenceRecovery(t *tes
 	require.Equal(t, 1, store.compareAndSwapCallsCount())
 }
 
-func TestRunWorkflowTaskRetainsLeaseWhilePersistenceRecoveryWaits(t *testing.T) {
-	w := newWorkflowForAckTests(t, true)
-	w.Cfg.Workflow.WorkerBackoffMin = 5 * time.Millisecond
-	w.Cfg.Workflow.WorkerBackoffMax = 10 * time.Millisecond
-	store := w.Store.(*workflowAckTestStore)
-	store.failCompareAndSwapAt = 1
-	store.failCompareAndSwapError = errors.New("temporary database failure")
-	store.taskGetErr = errors.New("database unavailable")
-
-	ctx, cancel := context.WithCancel(context.Background())
-	task := store.taskSnapshot()
-	require.NotNil(t, task)
-	started, err := w.runWorkflowTask(ctx, nil, task, 1)
-	require.NoError(t, err)
-	require.True(t, started)
-	require.Eventually(t, func() bool {
-		return store.taskGetsCount() > 0
-	}, time.Second, 5*time.Millisecond)
-
-	secondLease, acquired, err := w.tryAcquireTaskRunLease(context.Background(), context.Background(), task.TaskID)
-	require.NoError(t, err)
-	require.False(t, acquired)
-	require.Nil(t, secondLease)
-
-	cancel()
-	require.Eventually(t, func() bool {
-		lease, ok, acquireErr := w.tryAcquireTaskRunLease(context.Background(), context.Background(), task.TaskID)
-		if acquireErr != nil || !ok {
-			return false
-		}
-		lease.release()
-		return true
-	}, time.Second, 10*time.Millisecond)
-}
-
 func TestProcessDispatchMessageAckOnSuccess(t *testing.T) {
 	w := newWorkflowForAckTests(t, true)
 	payload := mustTestTaskDispatch(t)
@@ -776,22 +739,16 @@ func TestProcessDispatchMessageSkipsUserCancelledTask(t *testing.T) {
 	require.False(t, svc.updateCalled)
 }
 
-func TestProcessDispatchMessageKeepsPendingWhenRunningLeaseHeld(t *testing.T) {
+func TestProcessDispatchMessageAcknowledgesDuplicateAfterDatabaseClaimRejected(t *testing.T) {
 	w := newWorkflowForAckTests(t, true)
 	store := w.Store.(*workflowAckTestStore)
-	task := store.taskSnapshot()
-	require.NotNil(t, task)
-
-	lockProvider := locker.NewMemoryLocker(workflowTaskRunLockerPrefix)
-	w.taskRunLocker = lockProvider
-	mutex := lockProvider.NewMutex(w.taskRunLeaseKey(task.TaskID), locker.WithTTL(time.Minute), locker.WithRetryCount(0))
-	require.NoError(t, mutex.Lock(context.Background()))
-	defer func() {
-		require.NoError(t, mutex.Unlock(context.Background()))
-	}()
+	store.mutateTask(func(task *model.WorkflowQueue) {
+		task.Status = config.StatusRunning
+	})
 
 	payload := mustTestTaskDispatch(t)
 	ack, taskID := w.processDispatchMessage(context.Background(), nil, msg.Message{ID: "1-0", Payload: payload})
-	require.False(t, ack)
+	require.True(t, ack)
 	require.Equal(t, "task-1", taskID)
+	require.Equal(t, 1, store.compareAndSwapCallsCount())
 }
