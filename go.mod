@@ -29,7 +29,7 @@ require (
 	golang.org/x/sync v0.20.0
 	golang.org/x/time v0.9.0
 	gorm.io/driver/mysql v1.6.0
-	gorm.io/gorm v1.30.0
+	gorm.io/gorm v1.31.2
 	k8s.io/api v0.34.0
 	k8s.io/apimachinery v0.34.0
 	k8s.io/client-go v0.34.0
