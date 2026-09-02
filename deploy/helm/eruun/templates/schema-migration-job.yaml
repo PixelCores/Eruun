@@ -1,0 +1,43 @@
+{{- include "eruun.validateRuntime" . -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "eruun.suffixedName" (dict "root" . "suffix" "schema-migration") }}
+  labels:
+    {{- include "eruun.labels" . | nindent 4 }}
+    app.kubernetes.io/component: schema-migration
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        {{- include "eruun.labels" . | nindent 8 }}
+        app.kubernetes.io/component: schema-migration
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      containers:
+        - name: schema-migration
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: ERUUN_DATASTORE_SCHEMA_MODE
+              value: migrate-only
+            {{- include "eruun.datastoreEnv" . | nindent 12 }}
+            {{- range .Values.env }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

@@ -108,7 +108,7 @@
 | `template-engine-status.md` | Current | 模板能力状态 |
 | `mysql-template-init-env-example.md` | Current | MySQL 模板初始化环境变量示例 |
 | `tcp-ingress-nginx-dependencies.md` | Current | Redis/MySQL TCP 外部访问配置 |
-| `helm-deployment.md` | Current | Helm 四角色拓扑、探针、PDB、topology spread、ServiceAccount 与 RBAC 契约 |
+| `helm-deployment.md` | Current | Helm 四角色拓扑、schema 迁移与数据库配置、探针、PDB、topology spread、ServiceAccount 与 RBAC 契约 |
 
 ## 实现参考
 

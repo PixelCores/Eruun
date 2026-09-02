@@ -112,7 +112,7 @@ initial sync、List/Watch 重连和等待过程都受运行 context 控制；关
 
 启动顺序为：
 
-1. 使用父 context 初始化 Kubernetes、MySQL schema、默认系统设置、缓存，以及本角色拥有的 Redis Stream / Kafka topic 和 IoC。
+1. 使用父 context 初始化 Kubernetes，按配置迁移或校验 MySQL schema，初始化默认系统设置、缓存，以及本角色拥有的 Redis Stream / Kafka topic 和 IoC。
 2. 按角色注册业务或健康路由。
 3. 启动角色选举、Worker observer 和 Worker intake。
 4. 启动 HTTP server。
@@ -135,6 +135,8 @@ Chart 固定渲染 API、Controller、Scheduler、Worker 四个独立 Deployment
 
 Workflow fencing 固定启用，Chart 不暴露关闭开关、v1 兼容开关、cutover acknowledgement 或运行时迁移门禁。values 只描述目标拓扑。
 
+Schema 迁移也不由所有运行 Pod 共同承担：首次安装由 API 在 MySQL 命名锁内初始化 schema；升级由独立的 `pre-upgrade` migration Job 在新 Pod rollout 前执行，升级后的所有角色使用只读校验模式。该 Job 只连接 MySQL，不构建 Kubernetes、消息队列和 HTTP 运行时依赖，并仅在结构与数据迁移全部成功后写入版本化 marker；校验模式同时检查 marker、表和列。迁移必须保持对仍在运行的旧 Pod 向后兼容。
+
 ## 9. 依赖与安全
 
 - MySQL 保存 Workflow、Job 和 ownership 状态；生产环境应使用经过验证的 HA 实例。
@@ -145,7 +147,7 @@ Workflow fencing 固定启用，Chart 不暴露关闭开关、v1 兼容开关、
 
 ## 10. 验证要求
 
-- 单元测试覆盖角色装配、双 Leader、lease CAS、heartbeat、reaper、消息身份校验和关闭时序。
+- 单元测试覆盖角色装配、schema migrate/validate 模式、双 Leader、lease CAS、heartbeat、reaper、消息身份校验和关闭时序。
 - race 测试覆盖 Worker 生命周期、Leader 回调、observer 和 Workflow 状态写入。
-- Helm 模板测试覆盖固定四角色对象数量、Service selector、PDB、termination grace、ServiceAccount 引用和 63 字符 fullname 下的角色名唯一性。
+- Helm 模板测试覆盖固定四角色对象数量、Service selector、schema migration hook 与运行模式、PDB、termination grace、ServiceAccount 引用和 63 字符 fullname 下的角色名唯一性。
 - 集群验收覆盖随机删除 Worker、Controller Leader、Scheduler Leader，以及 Redis、Kafka、MySQL 短暂不可用后的恢复。

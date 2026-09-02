@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -36,6 +37,67 @@ func TestRunSchemaMigrationsOrdersLockAndMigration(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, []string{"acquire", "migrate", "release"}, events)
+}
+
+func TestInitializeSchemaRejectsUnsupportedMode(t *testing.T) {
+	err := initializeSchema(context.Background(), nil, nil, SchemaMode("unsafe"))
+	require.ErrorContains(t, err, "unsupported MySQL schema mode")
+}
+
+func TestValidateSchemaRequiresDatabase(t *testing.T) {
+	require.ErrorContains(t, validateSchema(context.Background(), nil, nil), "gorm db is nil")
+}
+
+func TestWriteSchemaMigrationMarkerIsIdempotent(t *testing.T) {
+	db := newDryRunMySQL(t)
+	var statement string
+	require.NoError(t, db.Callback().Create().After("gorm:create").Register(
+		"test:capture_schema_migration_marker",
+		func(tx *gorm.DB) { statement = tx.Statement.SQL.String() },
+	))
+
+	require.NoError(t, writeSchemaMigrationMarker(context.Background(), db))
+	require.Contains(t, statement, "ON DUPLICATE KEY UPDATE")
+	require.Contains(t, statement, "`value`=VALUES(`value`)")
+}
+
+func TestValidateSchemaMigrationMarker(t *testing.T) {
+	tests := []struct {
+		name      string
+		value     json.RawMessage
+		rows      int64
+		wantError string
+	}{
+		{name: "complete", value: json.RawMessage(completedSchemaMigrationJSON), rows: 1},
+		{name: "missing", rows: 0, wantError: "is missing"},
+		{name: "incomplete", value: json.RawMessage(`{"completed":false}`), rows: 1, wantError: "is incomplete"},
+		{name: "invalid", value: json.RawMessage(`{"completed":`), rows: 1, wantError: "is incomplete"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := newDryRunMySQL(t)
+			require.NoError(t, db.Callback().Query().After("gorm:query").Register(
+				"test:load_schema_migration_marker",
+				func(tx *gorm.DB) {
+					marker, ok := tx.Statement.Dest.(*model.SystemSetting)
+					if !ok {
+						return
+					}
+					marker.Type = schemaMigrationMarker
+					marker.Value = tt.value
+					tx.RowsAffected = tt.rows
+				},
+			))
+
+			err := validateSchemaMigrationMarker(context.Background(), db)
+			if tt.wantError == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tt.wantError)
+		})
+	}
 }
 
 func TestRunSchemaMigrationsDoesNotMigrateWithoutLock(t *testing.T) {
