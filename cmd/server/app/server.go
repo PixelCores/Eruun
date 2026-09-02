@@ -27,6 +27,8 @@ import (
 
 var errServerShutdownTimedOut = errors.New("server shutdown timed out")
 
+var migrateSchema = server.MigrateSchema
+
 // NewAPIServerCommand creates a *cobra.Command object with default parameters
 func NewAPIServerCommand() *cobra.Command {
 	s := options.NewServerRunOptions()
@@ -62,6 +64,11 @@ func NewAPIServerCommand() *cobra.Command {
 
 // Run runs the specified APIServer. This should never exit.
 func Run(s *options.ServerRunOptions) error {
+	if s != nil && s.GenericServerRunOptions != nil && s.GenericServerRunOptions.MigrateSchemaOnly() {
+		migrationCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		return migrateSchema(migrationCtx, *s.GenericServerRunOptions)
+	}
 	// The server is not terminal, there is no color default.
 	// Force set to false, this is useful for the dry-run API.
 	color.NoColor = false

@@ -58,11 +58,18 @@ generation/token ownership 与数据库 execution lease 是唯一执行协议，
 
 每类副本数大于 1 的角色默认生成 `maxUnavailable: 1` 的 PodDisruptionBudget。角色资源名会先为后缀预留长度再限制为 63 字符，因此长 `fullnameOverride` 下仍保持唯一。topology spread 默认按 `kubernetes.io/hostname` 分散同角色 Pod。
 
-所有运行角色默认使用 90 秒 `terminationGracePeriodSeconds`，覆盖 60 秒 Worker drain；终止宽限期必须严格大于 `workerDrainTimeoutSeconds`。每个角色都使用最长 150 秒的 `startupProbe` 窗口，初始化迁移或 Worker informer cache 同步期间不会提前触发 liveness 重启。Controller、Scheduler 和 Worker 副本数可以独立调整，不要求奇数。
+所有运行角色默认使用 90 秒 `terminationGracePeriodSeconds`，覆盖 60 秒 Worker drain；终止宽限期必须严格大于 `workerDrainTimeoutSeconds`。每个角色都使用最长 150 秒的 `startupProbe` 窗口，首次安装的 API schema 初始化或 Worker informer cache 同步期间不会提前触发 liveness 重启。Controller、Scheduler 和 Worker 副本数可以独立调整，不要求奇数。
 
-`env` 只用于追加应用配置，不允许设置由 Chart 管理的 `ERUUN_ROLE`、`ERUUN_ID` 或 `ERUUN_WORKFLOW_WORKER_DRAIN_TIMEOUT`。Worker drain 必须通过 `runtime.workerDrainTimeoutSeconds` 配置，这样 Chart 才能同时校验 `terminationGracePeriodSeconds`。旧单进程顶层键 `replicaCount` 和 `resources` 会被 schema 拒绝；副本数与资源必须分别配置在 `runtime.roles.<role>.replicas` 和 `runtime.roles.<role>.resources`。
+`env` 只用于追加应用配置，不允许设置由 Chart 管理的 `ERUUN_ROLE`、`ERUUN_ID`、`ERUUN_DATASTORE_SCHEMA_MODE` 或 `ERUUN_WORKFLOW_WORKER_DRAIN_TIMEOUT`。Worker drain 必须通过 `runtime.workerDrainTimeoutSeconds` 配置，这样 Chart 才能同时校验 `terminationGracePeriodSeconds`。旧单进程顶层键 `replicaCount` 和 `resources` 会被 schema 拒绝；副本数与资源必须分别配置在 `runtime.roles.<role>.replicas` 和 `runtime.roles.<role>.resources`。
 
-四类角色启动时仍会执行同一套数据库 schema 迁移；服务端使用同一 MySQL 连接持有命名锁，串行完成 AutoMigrate、数据回填和旧表/列清理，其他副本最多等待 120 秒后失败并由 Kubernetes 重启重试。
+数据库 schema 的写入所有权与普通运行时启动分离：
+
+- 首次 `helm install` 时只有 API Deployment 使用 `migrate` 模式；其他角色使用 `validate`。多 API 副本仍通过 MySQL 命名锁串行迁移，避免 Chart 内置 MySQL 尚未创建时运行 `pre-install` hook。
+- `helm upgrade` 会先运行一个 `pre-upgrade` migration Job，使用 `migrate-only` 模式完成 AutoMigrate、数据回填和旧表/列清理；升级后的四类运行角色全部只做 schema 校验。
+- migration Job 不挂载 Kubernetes ServiceAccount token，也不初始化 Kubernetes、消息队列、HTTP 或业务服务。它只在全部结构与数据迁移完成后写入版本化 migration marker；运行角色在 marker、必需表或列缺失时 fail-fast，不会偷偷修改 schema。
+- 直接运行二进制的默认值保持 `migrate`；静态 `deploy/eruun-stack.yaml` 明确让 API 使用 `migrate`，其余三类角色使用 `validate`。
+
+由于 `pre-upgrade` hook 执行时旧版本 Pod 仍可能提供服务，每次数据库变更都必须遵循可滚动升级的 expand/backfill/contract 顺序。破坏旧版本读写的删列、改义或不可逆数据转换不得直接放进一次在线升级；应拆分为多个版本，并在旧代码不再运行后执行 contract 阶段。
 
 Chart 内置 MySQL 和 Redis 是单副本开发依赖，不构成企业 HA 数据面。生产环境应使用外部 HA MySQL、HA Redis 或多 Broker Kafka，并通过受控 Chart overlay 接入。
 

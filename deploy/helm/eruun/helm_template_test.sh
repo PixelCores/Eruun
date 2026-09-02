@@ -371,6 +371,12 @@ if runHelm template eruun "${TEST_DIR}" \
   --set-string "env[0].value=300s" >/dev/null 2>&1; then
   fail "env must not override Chart-managed worker drain timeout"
 fi
+if runHelm template eruun "${TEST_DIR}" \
+  --namespace eruun-system \
+  --set-string "env[0].name=ERUUN_DATASTORE_SCHEMA_MODE" \
+  --set-string "env[0].value=migrate" >/dev/null 2>&1; then
+  fail "env must not override Chart-managed datastore schema mode"
+fi
 runHelm template eruun "${TEST_DIR}" \
   --namespace eruun-system > "${runtime_manifest}"
 
@@ -402,6 +408,31 @@ assertEqual \
   "$(grep -c 'failureThreshold: 30' "${runtime_manifest}")" \
   "4" \
   "distributed runtime startup probes must allow slow initialization"
+assertEqual \
+  "$(grep -c 'name: ERUUN_DATASTORE_SCHEMA_MODE' "${runtime_manifest}")" \
+  "5" \
+  "runtime deployments and migration Job must declare schema ownership"
+assertEqual \
+  "$(grep -c 'value: \"migrate\"' "${runtime_manifest}")" \
+  "1" \
+  "initial install must assign schema migration to the API role only"
+assertEqual \
+  "$(grep -c 'value: \"validate\"' "${runtime_manifest}")" \
+  "3" \
+  "non-API roles must only validate schema on initial install"
+
+upgrade_manifest="${TEST_ROOT}/upgrade-runtime.yaml"
+runHelm template eruun "${TEST_DIR}" \
+  --namespace eruun-system \
+  --is-upgrade > "${upgrade_manifest}"
+assertEqual \
+  "$(grep -c 'value: \"validate\"' "${upgrade_manifest}")" \
+  "4" \
+  "all runtime roles must validate schema after the pre-upgrade migration"
+grep -q '"helm.sh/hook": pre-upgrade' "${upgrade_manifest}" ||
+  fail "schema migration Job must run as a pre-upgrade hook"
+grep -q 'value: migrate-only' "${upgrade_manifest}" ||
+  fail "schema migration hook must exit after applying migrations"
 
 assertEqual \
   "$(grep -c 'value: \"eruun-eruun-controller\"' "${runtime_manifest}")" \

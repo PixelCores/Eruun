@@ -21,12 +21,42 @@ func TestNewConfigHasSequentialConcurrencyDefault(t *testing.T) {
 	require.Equal(t, 1, cfg.Messaging.KafkaTopicReplicationFactor)
 	require.Equal(t, 15*time.Second, cfg.LeaderConfig.Duration)
 	require.Equal(t, RuntimeRoleAPI, cfg.Role)
+	require.Equal(t, DatastoreSchemaModeMigrate, cfg.DatastoreSchemaMode)
 	require.Equal(t, 100, cfg.Workflow.MaxConcurrentWorkflows)
 	require.Equal(t, 10*time.Second, cfg.Workflow.HeartbeatInterval)
 	require.Equal(t, 30*time.Second, cfg.Workflow.LeaseDuration)
 	require.Equal(t, 60*time.Second, cfg.Workflow.WorkerDrainTimeout)
 	require.Zero(t, cfg.APIRateLimitQPS)
 	require.Zero(t, cfg.APIRateLimitBurst)
+}
+
+func TestValidateDatastoreSchemaMode(t *testing.T) {
+	for _, mode := range []string{DatastoreSchemaModeMigrate, DatastoreSchemaModeValidate, DatastoreSchemaModeMigrateOnly, " migrate-only "} {
+		t.Run(mode, func(t *testing.T) {
+			cfg := NewConfig()
+			cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
+			cfg.DatastoreSchemaMode = mode
+			require.Empty(t, cfg.Validate())
+		})
+	}
+
+	cfg := NewConfig()
+	cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
+	cfg.DatastoreSchemaMode = "unsafe"
+	require.Contains(t, errorsJoin(cfg.Validate()), "datastore schema mode must be one of")
+}
+
+func TestMigrateOnlyValidatesOnlyDatastoreInputs(t *testing.T) {
+	cfg := NewConfig()
+	cfg.DatastoreSchemaMode = DatastoreSchemaModeMigrateOnly
+	cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
+	cfg.Role = "invalid"
+	cfg.BindAddr = ""
+	cfg.Cache.CacheType = "memory"
+	cfg.Messaging.Type = "invalid"
+
+	require.Empty(t, cfg.Validate())
+	require.True(t, cfg.MigrateSchemaOnly())
 }
 
 func TestWorkflowLeaseFencingHasNoDisableFlag(t *testing.T) {

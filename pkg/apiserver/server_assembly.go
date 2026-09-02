@@ -57,7 +57,11 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 	var ds datastore.DataStore
 	switch s.cfg.Datastore.Type {
 	case "mysql":
-		ds, err = mysql.New(ctx, s.cfg.Datastore, builtinModels)
+		schemaMode := mysql.SchemaModeMigrate
+		if s.cfg.NormalizedDatastoreSchemaMode() == config.DatastoreSchemaModeValidate {
+			schemaMode = mysql.SchemaModeValidate
+		}
+		ds, err = mysql.NewWithSchemaMode(ctx, s.cfg.Datastore, builtinModels, schemaMode)
 		if err != nil {
 			return fmt.Errorf("create mysql datastore instance failure %w", err)
 		}

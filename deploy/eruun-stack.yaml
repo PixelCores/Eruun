@@ -394,6 +394,8 @@ spec:
           env:
             - name: ERUUN_ROLE
               value: "api"
+            - name: ERUUN_DATASTORE_SCHEMA_MODE
+              value: "migrate"
             - name: ERUUN_ID
               valueFrom:
                 fieldRef:
@@ -505,6 +507,8 @@ spec:
           env:
             - name: ERUUN_ROLE
               value: "controller"
+            - name: ERUUN_DATASTORE_SCHEMA_MODE
+              value: "validate"
             - name: ERUUN_ID
               valueFrom:
                 fieldRef:
@@ -616,6 +620,8 @@ spec:
           env:
             - name: ERUUN_ROLE
               value: "scheduler"
+            - name: ERUUN_DATASTORE_SCHEMA_MODE
+              value: "validate"
             - name: ERUUN_ID
               valueFrom:
                 fieldRef:
@@ -727,6 +733,8 @@ spec:
           env:
             - name: ERUUN_ROLE
               value: "worker"
+            - name: ERUUN_DATASTORE_SCHEMA_MODE
+              value: "validate"
             - name: ERUUN_ID
               valueFrom:
                 fieldRef:

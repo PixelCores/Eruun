@@ -39,6 +39,8 @@ spec:
           env:
             - name: ERUUN_ROLE
               value: {{ $role | quote }}
+            - name: ERUUN_DATASTORE_SCHEMA_MODE
+              value: {{ ternary "migrate" "validate" (and $root.Release.IsInstall (eq $role "api")) | quote }}
             - name: ERUUN_EXIT_ON_LOST_LEADER
               value: "false"
             - name: ERUUN_ID

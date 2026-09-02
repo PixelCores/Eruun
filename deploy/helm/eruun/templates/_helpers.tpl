@@ -61,7 +61,7 @@ app.kubernetes.io/managed-by: eruun
 {{- end -}}
 {{- range $env := .Values.env -}}
 {{- $name := trim (default "" $env.name) -}}
-{{- if or (eq $name "ERUUN_ROLE") (eq $name "ERUUN_ID") (eq $name "ERUUN_EXIT_ON_LOST_LEADER") (eq $name "ERUUN_WORKFLOW_WORKER_DRAIN_TIMEOUT") -}}
+{{- if or (eq $name "ERUUN_ROLE") (eq $name "ERUUN_ID") (eq $name "ERUUN_EXIT_ON_LOST_LEADER") (eq $name "ERUUN_WORKFLOW_WORKER_DRAIN_TIMEOUT") (eq $name "ERUUN_DATASTORE_SCHEMA_MODE") -}}
 {{- fail (printf "env must not override Chart-managed variable %s" $name) -}}
 {{- end -}}
 {{- end -}}
