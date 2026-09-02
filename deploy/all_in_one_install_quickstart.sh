@@ -319,6 +319,14 @@ installHelm() {
   runCmd "${HELM_BIN}" "${args[@]}"
 }
 
+removeLegacyClusterAdminBinding() {
+  local args=(delete clusterrolebinding eruun-platform-cluster-admin --ignore-not-found=true)
+  if isTrue "${DRY_RUN}"; then
+    args+=(--dry-run=client)
+  fi
+  runCmd "${KUBECTL_BIN}" "${args[@]}"
+}
+
 waitForReady() {
   if isTrue "${DRY_RUN}" || ! isTrue "${WAIT_READY}"; then
     return 0
@@ -365,6 +373,7 @@ main() {
     installManifest
   fi
 
+  removeLegacyClusterAdminBinding
   waitForReady
   startPortForward
   showAccessHints

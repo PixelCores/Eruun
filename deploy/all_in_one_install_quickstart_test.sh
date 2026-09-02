@@ -79,6 +79,7 @@ runManifestGeneratedSecretsContract() {
   assertContains "${command_log}" "create secret generic eruun-secret"
   assertContains "${command_log}" "apply --dry-run=server -f ${case_dir}/eruun-stack.yaml"
   assertContains "${command_log}" "apply -f ${case_dir}/eruun-stack.yaml"
+  assertContains "${command_log}" "delete clusterrolebinding eruun-platform-cluster-admin --ignore-not-found=true"
   assertContains "${output}" "curl --fail http://127.0.0.1:8000/api/v1/healthz"
   assertNotContains "${output}" "0123456789abcdef0123456789abcdef0123456789abcdef"
   assertTempFilesCleaned "${case_dir}"
@@ -105,6 +106,7 @@ runHelmSensitiveValuesContract() {
 
   assertContains "${command_log}" "upgrade --install eruun ${CHART_SOURCE}"
   assertContains "${command_log}" "--values ${case_dir}/tmp/eruun-helm-sensitive-values."
+  assertContains "${command_log}" "delete clusterrolebinding eruun-platform-cluster-admin --ignore-not-found=true"
   assertNotContains "${output}" "0123456789abcdef0123456789abcdef0123456789abcdef"
   assertTempFilesCleaned "${case_dir}"
 }
@@ -159,6 +161,7 @@ runDryRunContract() {
     "${case_dir}/installer.sh" > "${output}" 2>&1
 
   assertContains "${command_log}" "apply --dry-run=client -f"
+  assertContains "${command_log}" "delete clusterrolebinding eruun-platform-cluster-admin --ignore-not-found=true --dry-run=client"
   assertNotContains "${command_log}" "apply --dry-run=server"
   assertTempFilesCleaned "${case_dir}"
 }

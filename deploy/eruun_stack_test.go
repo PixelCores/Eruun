@@ -12,7 +12,7 @@ import (
 	sigsyaml "sigs.k8s.io/yaml"
 )
 
-func TestEruunStackManifestPreservesRBACDocumentBoundary(t *testing.T) {
+func TestEruunStackManifestUsesExplicitRBACBoundaries(t *testing.T) {
 	manifest, err := os.Open("eruun-stack.yaml")
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -20,7 +20,8 @@ func TestEruunStackManifestPreservesRBACDocumentBoundary(t *testing.T) {
 	})
 
 	decoder := yaml.NewYAMLOrJSONDecoder(manifest, 4096)
-	clusterRoleBindings := 0
+	clusterRoles := map[string]struct{}{}
+	clusterRoleBindings := map[string]map[string]interface{}{}
 	secrets := 0
 	runtimeFlagsConfigMaps := 0
 
@@ -41,8 +42,11 @@ func TestEruunStackManifestPreservesRBACDocumentBoundary(t *testing.T) {
 		kind, _ := object["kind"].(string)
 		apiVersion, _ := object["apiVersion"].(string)
 
-		if apiVersion == "rbac.authorization.k8s.io/v1" && kind == "ClusterRoleBinding" && name == "eruun-platform-cluster-admin" {
-			clusterRoleBindings++
+		if apiVersion == "rbac.authorization.k8s.io/v1" && kind == "ClusterRole" {
+			clusterRoles[name] = struct{}{}
+		}
+		if apiVersion == "rbac.authorization.k8s.io/v1" && kind == "ClusterRoleBinding" {
+			clusterRoleBindings[name] = object
 		}
 		if apiVersion == "v1" && kind == "ConfigMap" && name == "eruun-flags" {
 			runtimeFlagsConfigMaps++
@@ -57,7 +61,17 @@ func TestEruunStackManifestPreservesRBACDocumentBoundary(t *testing.T) {
 		}
 	}
 
-	require.Equal(t, 1, clusterRoleBindings)
+	require.Equal(t, map[string]struct{}{
+		"eruun-platform-runtime":    {},
+		"eruun-controller-observer": {},
+	}, clusterRoles)
+	require.Len(t, clusterRoleBindings, 2)
+	for name, binding := range clusterRoleBindings {
+		roleName, found, nestedErr := unstructured.NestedString(binding, "roleRef", "name")
+		require.NoError(t, nestedErr)
+		require.True(t, found, "%s must contain roleRef.name", name)
+		require.NotEqual(t, "cluster-admin", roleName)
+	}
 	require.Equal(t, 0, secrets)
 	require.Equal(t, 1, runtimeFlagsConfigMaps)
 }
@@ -76,7 +90,8 @@ func TestEruunStackUsesFixedDistributedRuntime(t *testing.T) {
 	var service map[string]interface{}
 	var flags map[string]interface{}
 	var leaderBinding map[string]interface{}
-	var clusterBinding map[string]interface{}
+	clusterRoles := map[string]map[string]interface{}{}
+	clusterBindings := map[string]map[string]interface{}{}
 
 	for {
 		var object map[string]interface{}
@@ -117,9 +132,9 @@ func TestEruunStackUsesFixedDistributedRuntime(t *testing.T) {
 				leaderBinding = object
 			}
 		case "ClusterRoleBinding":
-			if name == "eruun-platform-cluster-admin" {
-				clusterBinding = object
-			}
+			clusterBindings[name] = object
+		case "ClusterRole":
+			clusterRoles[name] = object
 		}
 	}
 
@@ -217,7 +232,47 @@ func TestEruunStackUsesFixedDistributedRuntime(t *testing.T) {
 		return names
 	}
 	require.ElementsMatch(t, []string{"eruun-controller", "eruun-scheduler"}, subjectNames(leaderBinding))
-	require.ElementsMatch(t, []string{"eruun-api", "eruun-controller", "eruun-worker"}, subjectNames(clusterBinding))
+	require.ElementsMatch(t, []string{"eruun-api", "eruun-worker"}, subjectNames(clusterBindings["eruun-platform-runtime"]))
+	require.Equal(t, []string{"eruun-controller"}, subjectNames(clusterBindings["eruun-controller-observer"]))
+
+	roleRefName := func(binding map[string]interface{}) string {
+		name, found, err := unstructured.NestedString(binding, "roleRef", "name")
+		require.NoError(t, err)
+		require.True(t, found)
+		return name
+	}
+	require.Equal(t, "eruun-platform-runtime", roleRefName(clusterBindings["eruun-platform-runtime"]))
+	require.Equal(t, "eruun-controller-observer", roleRefName(clusterBindings["eruun-controller-observer"]))
+
+	verbsFor := func(role map[string]interface{}, apiGroup, resource string) []string {
+		rules, found, err := unstructured.NestedSlice(role, "rules")
+		require.NoError(t, err)
+		require.True(t, found)
+		for _, rawRule := range rules {
+			rule, ok := rawRule.(map[string]interface{})
+			require.True(t, ok)
+			apiGroups, _, err := unstructured.NestedStringSlice(rule, "apiGroups")
+			require.NoError(t, err)
+			resources, _, err := unstructured.NestedStringSlice(rule, "resources")
+			require.NoError(t, err)
+			if len(apiGroups) != 1 || apiGroups[0] != apiGroup {
+				continue
+			}
+			for _, candidate := range resources {
+				if candidate == resource {
+					verbs, _, err := unstructured.NestedStringSlice(rule, "verbs")
+					require.NoError(t, err)
+					return verbs
+				}
+			}
+		}
+		return nil
+	}
+	controllerRole := clusterRoles["eruun-controller-observer"]
+	require.ElementsMatch(t, []string{"get", "list", "watch", "patch"}, verbsFor(controllerRole, "", "pods"))
+	require.Equal(t, []string{"get"}, verbsFor(controllerRole, "batch", "jobs"))
+	require.Equal(t, []string{"get"}, verbsFor(controllerRole, "apps", "replicasets"))
+	require.Nil(t, verbsFor(controllerRole, "", "secrets"))
 }
 
 func TestHelmValuesUseTopLevelDistributedRuntime(t *testing.T) {

@@ -132,6 +132,49 @@ bindingSubjectNames() {
   ' "${manifest}"
 }
 
+bindingSubjectNamesFor() {
+  local binding_name="$1"
+  local manifest="$2"
+  awk -v target="${binding_name}" '
+    /^kind:/ {
+      inBinding = ($2 == "ClusterRoleBinding")
+      inMetadata = 0
+      selected = 0
+      inSubjects = 0
+    }
+    inBinding && /^metadata:/ { inMetadata = 1; next }
+    inBinding && inMetadata && /^  name:/ {
+      selected = ($2 == target)
+      inMetadata = 0
+      next
+    }
+    selected && /^subjects:/ { inSubjects = 1; next }
+    selected && inSubjects && /^roleRef:/ { inSubjects = 0; next }
+    selected && inSubjects && /^    name:/ { print $2 }
+  ' "${manifest}"
+}
+
+bindingRoleRefNameFor() {
+  local binding_name="$1"
+  local manifest="$2"
+  awk -v target="${binding_name}" '
+    /^kind:/ {
+      inBinding = ($2 == "ClusterRoleBinding")
+      inMetadata = 0
+      selected = 0
+      inRoleRef = 0
+    }
+    inBinding && /^metadata:/ { inMetadata = 1; next }
+    inBinding && inMetadata && /^  name:/ {
+      selected = ($2 == target)
+      inMetadata = 0
+      next
+    }
+    selected && /^roleRef:/ { inRoleRef = 1; next }
+    selected && inRoleRef && /^  name:/ { print $2; exit }
+  ' "${manifest}"
+}
+
 clusterRoleRuleVerbs() {
   local manifest="$1"
   local api_group="$2"
@@ -145,7 +188,7 @@ clusterRoleRuleVerbs() {
       gsub(/,[[:space:]]*/, " ", value)
       return value
     }
-    $1 == "kind:" {
+    /^kind:/ {
       inClusterRole = ($2 == "ClusterRole")
       matchingGroup = 0
       matchingResource = 0
@@ -160,6 +203,49 @@ clusterRoleRuleVerbs() {
       next
     }
     inClusterRole && matchingGroup && matchingResource && $1 == "verbs:" {
+      print listValue($0)
+      exit
+    }
+  ' "${manifest}"
+}
+
+clusterRoleRuleVerbsFor() {
+  local manifest="$1"
+  local role_name="$2"
+  local api_group="$3"
+  local resource="$4"
+  awk -v targetRole="${role_name}" -v targetGroup="${api_group}" -v targetResource="${resource}" '
+    function listValue(line, value) {
+      value = line
+      sub(/^[^[]*\[/, "", value)
+      sub(/\][[:space:]]*$/, "", value)
+      gsub(/"/, "", value)
+      gsub(/,[[:space:]]*/, " ", value)
+      return value
+    }
+    /^kind:/ {
+      inClusterRole = ($2 == "ClusterRole")
+      inMetadata = 0
+      selected = 0
+      matchingGroup = 0
+      matchingResource = 0
+    }
+    inClusterRole && /^metadata:/ { inMetadata = 1; next }
+    inClusterRole && inMetadata && /^  name:/ {
+      selected = ($2 == targetRole)
+      inMetadata = 0
+      next
+    }
+    selected && $1 == "-" && $2 == "apiGroups:" {
+      matchingGroup = (listValue($0) == targetGroup)
+      matchingResource = 0
+      next
+    }
+    selected && matchingGroup && $1 == "resources:" {
+      matchingResource = (listValue($0) == targetResource)
+      next
+    }
+    selected && matchingGroup && matchingResource && $1 == "verbs:" {
       print listValue($0)
       exit
     }
@@ -192,10 +278,41 @@ grep -q '^appVersion: "0.1.0"$' "${TEST_DIR}/Chart.yaml" ||
 
 default_manifest=$(renderRBAC default eruun eruun-system)
 assertRBACClosure "${default_manifest}" eruun-system
+assertEqual "$(resourceNames ClusterRole "${default_manifest}" | wc -l | tr -d ' ')" "2" "RBAC must render resource-manager and controller-observer ClusterRoles"
+assertEqual "$(resourceNames ClusterRoleBinding "${default_manifest}" | wc -l | tr -d ' ')" "2" "RBAC must render one binding per ClusterRole"
 assertEqual \
   "$(resourceName ClusterRole "${default_manifest}")" \
   "eruun-eruun-eruun-system" \
   "default ClusterRole name must remain stable"
+controller_role_name="eruun-eruun-eruun-system-controller-observer"
+assertEqual \
+  "$(bindingRoleRefNameFor "${controller_role_name}" "${default_manifest}")" \
+  "${controller_role_name}" \
+  "controller observer binding must reference its narrow ClusterRole"
+assertEqual \
+  "$(bindingSubjectNamesFor eruun-eruun-eruun-system "${default_manifest}" | sort | tr '\n' ' ' | sed 's/ $//')" \
+  "eruun-eruun-api eruun-eruun-worker" \
+  "resource manager binding must include only API and Worker"
+assertEqual \
+  "$(bindingSubjectNamesFor "${controller_role_name}" "${default_manifest}")" \
+  "eruun-eruun-controller" \
+  "controller observer binding must include only Controller"
+assertEqual \
+  "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" "" pods)" \
+  "get list watch patch" \
+  "Controller must only observe and label Pods"
+assertEqual \
+  "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" batch jobs)" \
+  "get" \
+  "Controller must only read Job owners"
+assertEqual \
+  "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" apps replicasets)" \
+  "get" \
+  "Controller must only read ReplicaSet owners"
+assertEqual \
+  "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" "" secrets)" \
+  "" \
+  "Controller must not receive Secret permissions"
 assertEqual \
   "$(clusterRoleRuleVerbs "${default_manifest}" storage.k8s.io storageclasses)" \
   "get create" \
@@ -496,11 +613,18 @@ runHelm template eruun "${TEST_DIR}" \
 if runHelm template eruun "${TEST_DIR}" --namespace eruun-system --set serviceAccount.create=false --set-string serviceAccount.roleNames.api=shared-runtime --set-string serviceAccount.roleNames.controller=precreated-controller --set-string serviceAccount.roleNames.scheduler=shared-runtime --set-string serviceAccount.roleNames.worker=precreated-worker >/dev/null 2>&1; then
   fail "distributed runtime must reject a Scheduler ServiceAccount shared with a ClusterRole-bound role"
 fi
+if runHelm template eruun "${TEST_DIR}" --namespace eruun-system --set serviceAccount.create=false --set-string serviceAccount.roleNames.api=shared-runtime --set-string serviceAccount.roleNames.controller=shared-runtime --set-string serviceAccount.roleNames.scheduler=precreated-scheduler --set-string serviceAccount.roleNames.worker=precreated-worker >/dev/null 2>&1; then
+  fail "distributed runtime must reject a Controller ServiceAccount shared with the resource-manager role"
+fi
 
 assertEqual \
-  "$(bindingSubjectNames "${external_sa_manifest}" | sort | tr '\n' ' ' | sed 's/ $//')" \
-  "precreated-api precreated-controller precreated-worker" \
-  "ClusterRoleBinding must exclude the Scheduler ServiceAccount"
+  "$(bindingSubjectNamesFor eruun-eruun-eruun-system "${external_sa_manifest}" | sort | tr '\n' ' ' | sed 's/ $//')" \
+  "precreated-api precreated-worker" \
+  "resource manager binding must include only the API and Worker ServiceAccounts"
+assertEqual \
+  "$(bindingSubjectNamesFor "${controller_role_name}" "${external_sa_manifest}")" \
+  "precreated-controller" \
+  "controller observer binding must include only the Controller ServiceAccount"
 assertEqual \
   "$(grep -c 'name: precreated-scheduler' "${external_sa_manifest}")" \
   "1" \

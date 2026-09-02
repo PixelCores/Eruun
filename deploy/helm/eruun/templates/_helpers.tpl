@@ -19,6 +19,10 @@ app.kubernetes.io/managed-by: eruun
 {{- printf "%s-%s" (include "eruun.fullname" .) .Release.Namespace -}}
 {{- end -}}
 
+{{- define "eruun.controllerObserverRBACName" -}}
+{{- printf "%s-controller-observer" (include "eruun.clusterRBACName" .) -}}
+{{- end -}}
+
 {{- define "eruun.suffixedName" -}}
 {{- $root := index . "root" -}}
 {{- $suffix := required "suffix is required for a suffixed Eruun resource name" (index . "suffix") | toString -}}
@@ -48,7 +52,16 @@ app.kubernetes.io/managed-by: eruun
 {{- define "eruun.validateRuntime" -}}
 {{- if not .Values.serviceAccount.create -}}
 {{- $roleNames := default dict .Values.serviceAccount.roleNames -}}
+{{- $apiName := default "" (index $roleNames "api") -}}
+{{- $controllerName := default "" (index $roleNames "controller") -}}
 {{- $schedulerName := default "" (index $roleNames "scheduler") -}}
+{{- $workerName := default "" (index $roleNames "worker") -}}
+{{- if and $controllerName $apiName (eq $controllerName $apiName) -}}
+{{- fail "serviceAccount.roleNames.controller must differ from serviceAccount.roleNames.api" -}}
+{{- end -}}
+{{- if and $controllerName $workerName (eq $controllerName $workerName) -}}
+{{- fail "serviceAccount.roleNames.controller must differ from serviceAccount.roleNames.worker" -}}
+{{- end -}}
 {{- range $role := list "api" "controller" "worker" -}}
 {{- $roleName := default "" (index $roleNames $role) -}}
 {{- if and $schedulerName $roleName (eq $schedulerName $roleName) -}}
