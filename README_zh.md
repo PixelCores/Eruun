@@ -92,10 +92,6 @@ go vet ./...
 - docs/core-module-boundary-and-cross-layer-contracts.md — API、领域、持久化和 Kubernetes 边界
 - examples/ — HTTP 请求载荷与运维示例
 
-## 安全
-
-报告安全问题前请阅读 SECURITY.md。
-
 ## 许可证
 
 Eruun 使用 MIT License，详见 LICENSE。
