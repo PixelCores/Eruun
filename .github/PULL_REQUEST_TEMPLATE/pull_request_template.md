@@ -14,7 +14,7 @@ Describe the problem and the chosen change.
 - [ ] Go tests with race detection
 - [ ] Server build
 - [ ] Deployment and Helm checks when applicable
-- [ ] Sensitive-content and license checks
+- [ ] Sensitive-content checks
 - [ ] Documentation updated
 
 ## Release

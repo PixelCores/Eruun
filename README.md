@@ -92,10 +92,6 @@ Key documentation:
 - docs/core-module-boundary-and-cross-layer-contracts.md — API, domain, persistence, and Kubernetes boundaries
 - examples/ — HTTP request payloads and operational examples
 
-## Security and contributing
-
-Please read SECURITY.md before reporting a vulnerability and CONTRIBUTING.md before opening a change. The dependency license inventory is technical due-diligence material and is not legal advice.
-
 ## License
 
 Eruun is licensed under the MIT License. See LICENSE.
