@@ -53,6 +53,8 @@ Scheduler 对 `waiting` task 执行 CAS，生成新的：
 
 随后发布版本 2 dispatch。Worker 只接受携带完整 `taskId/runGeneration/runToken` 的消息，并在 ownership CAS 成功后把任务置为 `running`、写入 `workerId` 和新的 lease deadline。
 
+dispatch、Worker claim、heartbeat、显式释放和 Scheduler reaper 都以 MySQL 的微秒级 Unix 时间为权威时间。运行节点的墙钟和 DSN 时区不参与数据库 lease 的到期判断，因此节点时钟偏差不会让 Scheduler 提前接管仍在续租的 Worker。
+
 消息队列是 at-least-once 分发通道，数据库中的 `WorkflowQueue` 才是执行状态和 ownership 的事实源。缺少版本或完整 ownership 的 dispatch 不进入执行路径。
 
 ### 4.2 心跳与状态写入

@@ -142,7 +142,7 @@ func (w *Workflow) startLeaseReaper(ctx context.Context, wg *sync.WaitGroup) {
 			case <-ticker.C:
 			}
 			reaperCtx, cancel := context.WithTimeout(ctx, config.TaskStateTransitionTimeout)
-			recovered, err := repository.RecoverExpiredWorkflowTasks(reaperCtx, w.Store, time.Now().UTC())
+			recovered, err := repository.RecoverExpiredWorkflowTasks(reaperCtx, w.Store)
 			cancel()
 			if err != nil {
 				klog.ErrorS(err, "recover expired workflow execution leases")

@@ -45,6 +45,10 @@ func (s *workflowAckTestStore) WithTransaction(ctx context.Context, fn func(data
 	return fn(s)
 }
 
+func (s *workflowAckTestStore) CurrentDatabaseTime(context.Context) (time.Time, error) {
+	return time.Now().UTC(), nil
+}
+
 func (s *workflowAckTestStore) BatchAdd(context.Context, []datastore.Entity) error { return nil }
 func (s *workflowAckTestStore) Put(_ context.Context, entity datastore.Entity) error {
 	s.mu.Lock()
