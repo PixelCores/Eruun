@@ -338,6 +338,16 @@ func (s *resultOutboxTestStore) List(_ context.Context, query datastore.Entity, 
 			jobInfos = append(jobInfos, &copy)
 		}
 		sort.Slice(jobInfos, func(i, j int) bool {
+			if opts != nil && len(opts.SortBy) > 0 {
+				switch opts.SortBy[0].Key {
+				case "id":
+					return jobInfos[i].ID > jobInfos[j].ID
+				case "delay_execute_at":
+					if jobInfos[i].DelayExecuteAt != jobInfos[j].DelayExecuteAt {
+						return jobInfos[i].DelayExecuteAt < jobInfos[j].DelayExecuteAt
+					}
+				}
+			}
 			return jobInfos[i].CreateTime.After(jobInfos[j].CreateTime)
 		})
 		return paginateJobInfos(jobInfos, opts), nil
@@ -486,12 +496,17 @@ func matchJobInfoFilters(jobInfo *model.JobInfo, opts *datastore.ListOptions) bo
 		}
 	}
 	for _, filter := range opts.FilterOptions.LessThan {
-		if filter.Key != "delay_execute_at" {
-			continue
-		}
-		deadline, ok := filter.Value.(int64)
-		if !ok || jobInfo.DelayExecuteAt >= deadline {
-			return false
+		switch filter.Key {
+		case "delay_execute_at":
+			deadline, ok := filter.Value.(int64)
+			if !ok || jobInfo.DelayExecuteAt >= deadline {
+				return false
+			}
+		case "id":
+			beforeID, ok := filter.Value.(int)
+			if !ok || jobInfo.ID >= beforeID {
+				return false
+			}
 		}
 	}
 	return true

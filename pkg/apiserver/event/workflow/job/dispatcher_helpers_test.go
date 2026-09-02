@@ -167,7 +167,7 @@ func TestDelayDispatcherRecoveryUsesBoundedDueQuery(t *testing.T) {
 	}, store.opts.FilterOptions.In)
 	require.Len(t, store.opts.FilterOptions.LessThan, 1)
 	require.Equal(t, "delay_execute_at", store.opts.FilterOptions.LessThan[0].Key)
-	require.Equal(t, "delay_execute_at", store.opts.SortBy[0].Key)
+	require.Equal(t, []datastore.SortOption{{Key: "id", Order: datastore.SortOrderDescending}}, store.opts.SortBy)
 }
 
 func TestDispatcherConstructorsAndStartGuards(t *testing.T) {

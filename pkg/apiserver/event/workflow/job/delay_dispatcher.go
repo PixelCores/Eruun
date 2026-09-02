@@ -51,6 +51,7 @@ type DelayDispatcher struct {
 	autoClaimIdle     time.Duration
 	autoClaimCount    int
 	recoveryInterval  time.Duration
+	recoveryBeforeID  int
 	backoffMin        time.Duration
 	backoffMax        time.Duration
 	mu                sync.Mutex
@@ -224,6 +225,8 @@ func (d *DelayDispatcher) handleMessage(ctx context.Context, message msg.Message
 		payload:   payload,
 	}
 	if !d.addPending(item) {
+		// The existing item owns dispatch; leave this delivery unacked but reclaimable.
+		msg.MarkMessageHandlingDone(d.queue, message.ID, false)
 		return
 	}
 	d.notify()
@@ -292,7 +295,7 @@ func (d *DelayDispatcher) recoverDueCheckpoints(ctx context.Context) error {
 		return fmt.Errorf("recover delay checkpoints: datastore is nil")
 	}
 	now := time.Now().Unix()
-	entities, err := d.store.List(ctx, &model.JobInfo{}, &datastore.ListOptions{
+	opts := &datastore.ListOptions{
 		FilterOptions: datastore.FilterOptions{
 			In: []datastore.InQueryOption{
 				{Key: "status", Values: []string{string(config.StatusDistributed)}},
@@ -303,9 +306,15 @@ func (d *DelayDispatcher) recoverDueCheckpoints(ctx context.Context) error {
 		Page:     1,
 		PageSize: delayRecoveryBatchSize,
 		SortBy: []datastore.SortOption{
-			{Key: "delay_execute_at", Order: datastore.SortOrderAscending},
+			{Key: "id", Order: datastore.SortOrderDescending},
 		},
-	})
+	}
+	// Descending IDs advance past retries without letting new arrivals extend this pass.
+	if d.recoveryBeforeID > 0 {
+		opts.FilterOptions.LessThan = append(opts.FilterOptions.LessThan,
+			datastore.ComparisonQueryOption{Key: "id", Value: d.recoveryBeforeID})
+	}
+	entities, err := d.store.List(ctx, &model.JobInfo{}, opts)
 	if err != nil {
 		return fmt.Errorf("list due delay checkpoints: %w", err)
 	}
@@ -316,6 +325,7 @@ func (d *DelayDispatcher) recoverDueCheckpoints(ctx context.Context) error {
 			recoveryErrs = append(recoveryErrs, datastore.ErrEntityInvalid)
 			continue
 		}
+		d.recoveryBeforeID = record.ID
 		payload, err := d.decodePayload([]byte(record.DelayPayload))
 		if err != nil {
 			recoveryErrs = append(recoveryErrs, fmt.Errorf("decode delay checkpoint %d: %w", record.ID, err))
@@ -329,6 +339,9 @@ func (d *DelayDispatcher) recoverDueCheckpoints(ctx context.Context) error {
 		if d.addPending(item) {
 			d.notify()
 		}
+	}
+	if len(entities) < delayRecoveryBatchSize {
+		d.recoveryBeforeID = 0
 	}
 	return errors.Join(recoveryErrs...)
 }
