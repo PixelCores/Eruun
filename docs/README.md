@@ -6,10 +6,11 @@
 
 1. `AGENTS.md`：仓库协作规则、构建测试命令、提交和 PR 要求。
 2. 本文档：目录分层、需求定位、当前代码事实和文档索引。
-3. `core-module-boundary-and-cross-layer-contracts.md`：API、Domain、DB、Cache、K8s 的核心字段契约。
-4. `workflow-architecture-guide.md`：工作流调度、队列、Job 执行和状态机。
-5. `enterprise-distributed-runtime-design.md`：四类运行角色、双 Leader、Workflow 数据库租约和部署拓扑。
-6. `architecture-diagrams.md`：架构图、DDD 分层图、消息队列、Informer、Traits 和目录结构。
+3. `product-positioning.md`：产品定位、目标工作负载、当前产品形态与能力边界。
+4. `core-module-boundary-and-cross-layer-contracts.md`：API、Domain、DB、Cache、K8s 的核心字段契约。
+5. `workflow-architecture-guide.md`：工作流调度、队列、Job 执行和状态机。
+6. `enterprise-distributed-runtime-design.md`：四类运行角色、双 Leader、Workflow 数据库租约和部署拓扑。
+7. `architecture-diagrams.md`：架构图、DDD 分层图、消息队列、Informer、Traits 和目录结构。
 
 ## 状态约定
 
@@ -73,6 +74,7 @@
 
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
+| `product-positioning.md` | Current | Eruun 产品定位、目标工作负载、当前产品形态与能力边界 |
 | `api-error-response-contract.md` | Current | API 统一错误响应与通用错误脱敏契约 |
 | `system-setting.md` | Current | 系统设置类型、API 与默认初始化 |
 | `settings-page-api.md` | Current | 前端设置页字段归属、请求参数与保存策略 |
