@@ -1,4 +1,4 @@
-package config
+package spec
 
 // ResourceKind identifies the category of Kubernetes resources managed by jobs.
 type ResourceKind string

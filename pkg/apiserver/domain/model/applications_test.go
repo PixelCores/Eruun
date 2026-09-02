@@ -5,14 +5,14 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
 func TestApplicationComponentShareStrategy(t *testing.T) {
 	tests := []struct {
 		name         string
 		component    *ApplicationComponent
-		wantStrategy config.ShareStrategy
+		wantStrategy domainspec.ShareStrategy
 		wantShared   bool
 	}{
 		{name: "nil component"},
@@ -20,25 +20,25 @@ func TestApplicationComponentShareStrategy(t *testing.T) {
 		{
 			name: "default",
 			component: &ApplicationComponent{Traits: &JSONStruct{
-				"share": map[string]interface{}{"strategy": string(config.ShareStrategyDefault)},
+				"share": map[string]interface{}{"strategy": string(domainspec.ShareStrategyDefault)},
 			}},
-			wantStrategy: config.ShareStrategyDefault,
+			wantStrategy: domainspec.ShareStrategyDefault,
 			wantShared:   true,
 		},
 		{
 			name: "ignore",
 			component: &ApplicationComponent{Traits: &JSONStruct{
-				"share": map[string]interface{}{"strategy": string(config.ShareStrategyIgnore)},
+				"share": map[string]interface{}{"strategy": string(domainspec.ShareStrategyIgnore)},
 			}},
-			wantStrategy: config.ShareStrategyIgnore,
+			wantStrategy: domainspec.ShareStrategyIgnore,
 			wantShared:   true,
 		},
 		{
 			name: "force",
 			component: &ApplicationComponent{Traits: &JSONStruct{
-				"share": map[string]interface{}{"strategy": string(config.ShareStrategyForce)},
+				"share": map[string]interface{}{"strategy": string(domainspec.ShareStrategyForce)},
 			}},
-			wantStrategy: config.ShareStrategyForce,
+			wantStrategy: domainspec.ShareStrategyForce,
 			wantShared:   true,
 		},
 		{
@@ -46,7 +46,7 @@ func TestApplicationComponentShareStrategy(t *testing.T) {
 			component: &ApplicationComponent{Traits: &JSONStruct{
 				"share": map[string]interface{}{"strategy": "future-default"},
 			}},
-			wantStrategy: config.ShareStrategyDefault,
+			wantStrategy: domainspec.ShareStrategyDefault,
 			wantShared:   true,
 		},
 		{

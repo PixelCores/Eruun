@@ -859,7 +859,7 @@ func isSharedDefaultSkippedConfigJob(job *model.JobTask) bool {
 	if !shared {
 		return false
 	}
-	return strategy == config.ShareStrategyDefault
+	return strategy == spec.ShareStrategyDefault
 }
 
 func persistenceContext(ctx context.Context) (context.Context, context.CancelFunc) {

@@ -24,6 +24,7 @@ import (
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/security/urlpolicy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	signal "github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
 
@@ -591,5 +592,5 @@ func (w *Workflow) maxWorkflowConcurrency() int64 {
 	if w.Cfg != nil && w.Cfg.Workflow.MaxConcurrentWorkflows > 0 {
 		return int64(w.Cfg.Workflow.MaxConcurrentWorkflows)
 	}
-	return int64(config.DefaultMaxConcurrentWorkflows)
+	return int64(workflowconfig.DefaultMaxConcurrentWorkflows)
 }

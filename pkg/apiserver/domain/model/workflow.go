@@ -1,6 +1,9 @@
 package model
 
-import "github.com/PixelCores/Eruun/pkg/apiserver/config"
+import (
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
+)
 
 // Workflow application delivery database model
 type Workflow struct {
@@ -21,8 +24,8 @@ type Workflow struct {
 }
 
 type WorkflowSteps struct {
-	FailurePolicy config.WorkflowFailurePolicy `json:"failurePolicy,omitempty"`
-	Steps         []*WorkflowStep              `json:"steps"`
+	FailurePolicy workflowconfig.WorkflowFailurePolicy `json:"failurePolicy,omitempty"`
+	Steps         []*WorkflowStep                      `json:"steps"`
 }
 
 type WorkflowStep struct {

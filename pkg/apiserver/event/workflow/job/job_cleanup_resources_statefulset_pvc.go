@@ -16,6 +16,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
@@ -53,7 +54,7 @@ func requiredStatefulSetCleanupRef(component *model.ApplicationComponent) (clean
 			name = pickNonEmpty(statefulSet.GetName(), name)
 		}
 	}
-	ref, ok := newCleanupResourceRef(config.ResourceStatefulSet, namespace, name, false)
+	ref, ok := newCleanupResourceRef(domainspec.ResourceStatefulSet, namespace, name, false)
 	if !ok {
 		return cleanupResourceRef{}, fmt.Errorf("required StatefulSet deletion target is empty for component %s", component.Name)
 	}
@@ -525,7 +526,7 @@ func sortedRequiredStatefulSetPVCUIDNames(pvcUIDs map[string]types.UID) []string
 }
 
 func (target *requiredStatefulSetPVCDeletionTarget) refForPVC(name string) cleanupResourceRef {
-	ref, _ := newCleanupResourceRef(config.ResourcePVC, target.ref.namespace, name, false)
+	ref, _ := newCleanupResourceRef(domainspec.ResourcePVC, target.ref.namespace, name, false)
 	return ref
 }
 

@@ -22,6 +22,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 var (
@@ -76,13 +77,13 @@ func NewResultDispatcher(queue msg.Queue, client kubernetes.Interface, store dat
 		store:                 store,
 		group:                 group,
 		consumer:              consumer,
-		readCount:             config.DefaultWorkerReadCount,
-		readBlock:             config.DefaultWorkerReadBlock,
-		autoClaimInterval:     config.DefaultWorkerStaleInterval,
-		autoClaimIdle:         config.DefaultWorkerAutoClaimIdle,
-		autoClaimCount:        config.DefaultWorkerAutoClaimCount,
-		backoffMin:            config.DefaultWorkerBackoffMin,
-		backoffMax:            config.DefaultWorkerBackoffMax,
+		readCount:             workflowconfig.DefaultWorkerReadCount,
+		readBlock:             workflowconfig.DefaultWorkerReadBlock,
+		autoClaimInterval:     workflowconfig.DefaultWorkerStaleInterval,
+		autoClaimIdle:         workflowconfig.DefaultWorkerAutoClaimIdle,
+		autoClaimCount:        workflowconfig.DefaultWorkerAutoClaimCount,
+		backoffMin:            workflowconfig.DefaultWorkerBackoffMin,
+		backoffMax:            workflowconfig.DefaultWorkerBackoffMax,
 		processingConcurrency: defaultResultProcessingConcurrency,
 	}
 }

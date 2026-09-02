@@ -18,7 +18,7 @@ import (
 )
 
 type shareConfig struct {
-	Strategy config.ShareStrategy
+	Strategy spec.ShareStrategy
 	Name     string
 }
 
@@ -27,7 +27,7 @@ func (s shareConfig) enabled() bool {
 }
 
 func (s shareConfig) ignore() bool {
-	return s.Strategy == config.ShareStrategyIgnore
+	return s.Strategy == spec.ShareStrategyIgnore
 }
 
 func shareConfigForComponent(component *model.ApplicationComponent) shareConfig {
@@ -36,7 +36,7 @@ func shareConfigForComponent(component *model.ApplicationComponent) shareConfig 
 		return shareConfig{}
 	}
 
-	strategy, ok := config.NormalizeShareStrategy(traits.Share.Strategy)
+	strategy, ok := spec.NormalizeShareStrategy(traits.Share.Strategy)
 	if !ok {
 		klog.Warningf("unknown share strategy %q, falling back to default", traits.Share.Strategy)
 	}
@@ -54,7 +54,7 @@ func rbacShareConfigForComponent(component *model.ApplicationComponent, share sh
 		return share
 	}
 	return shareConfig{
-		Strategy: config.ShareStrategyDefault,
+		Strategy: spec.ShareStrategyDefault,
 		Name:     shareNameForComponent(component),
 	}
 }
@@ -90,7 +90,7 @@ func defaultServiceTraitsFromProperties(component *model.ApplicationComponent, p
 	return []spec.ServiceTraitSpec{
 		{
 			Name: "",
-			Type: string(config.ServiceAccessInternal),
+			Type: string(spec.ServiceAccessInternal),
 			Selector: map[string]string{
 				config.LabelAppID:         component.AppID,
 				config.LabelComponentName: naming.BoundedLabelValue(component.Name),

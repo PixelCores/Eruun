@@ -1,7 +1,7 @@
 package spec
 
 import (
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -101,19 +101,19 @@ type ConfigMapSelectorSpec struct {
 
 // Properties describes container-level properties shared by traits.
 type Properties struct {
-	Ports                      []Ports                       `json:"ports"`
-	Env                        map[string]string             `json:"env"`
-	Conf                       map[string]string             `json:"conf"`
-	Secret                     map[string]string             `json:"secret"`
-	Command                    []string                      `json:"command"`
-	Labels                     map[string]string             `json:"labels"`
-	Cloud                      *CloudSpec                    `json:"cloud,omitempty"`
-	Schedule                   string                        `json:"schedule,omitempty"`
-	StartTime                  int64                         `json:"startTime,omitempty"`
-	RunPolicy                  string                        `json:"runPolicy,omitempty"`
-	FailurePolicy              *config.WorkflowFailurePolicy `json:"failurePolicy,omitempty"`
-	SuccessfulJobsHistoryLimit *int32                        `json:"successfulJobsHistoryLimit,omitempty"`
-	FailedJobsHistoryLimit     *int32                        `json:"failedJobsHistoryLimit,omitempty"`
+	Ports                      []Ports                               `json:"ports"`
+	Env                        map[string]string                     `json:"env"`
+	Conf                       map[string]string                     `json:"conf"`
+	Secret                     map[string]string                     `json:"secret"`
+	Command                    []string                              `json:"command"`
+	Labels                     map[string]string                     `json:"labels"`
+	Cloud                      *CloudSpec                            `json:"cloud,omitempty"`
+	Schedule                   string                                `json:"schedule,omitempty"`
+	StartTime                  int64                                 `json:"startTime,omitempty"`
+	RunPolicy                  string                                `json:"runPolicy,omitempty"`
+	FailurePolicy              *workflowconfig.WorkflowFailurePolicy `json:"failurePolicy,omitempty"`
+	SuccessfulJobsHistoryLimit *int32                                `json:"successfulJobsHistoryLimit,omitempty"`
+	FailedJobsHistoryLimit     *int32                                `json:"failedJobsHistoryLimit,omitempty"`
 }
 
 // CloudSpec defines the generic cloud provider invocation shape for cloudjob components.

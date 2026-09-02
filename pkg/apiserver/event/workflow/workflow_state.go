@@ -6,6 +6,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 func (w *Workflow) waitingTasks(ctx context.Context) ([]*model.WorkflowQueue, error) {
@@ -24,89 +25,89 @@ func (w *Workflow) dispatchPollInterval() time.Duration {
 	if w.Cfg != nil && w.Cfg.Workflow.DispatchPollInterval > 0 {
 		return w.Cfg.Workflow.DispatchPollInterval
 	}
-	return config.DefaultDispatchPollInterval
+	return workflowconfig.DefaultDispatchPollInterval
 }
 
 func (w *Workflow) workerStaleInterval() time.Duration {
 	if w.Cfg != nil && w.Cfg.Workflow.WorkerStaleInterval > 0 {
 		return w.Cfg.Workflow.WorkerStaleInterval
 	}
-	return config.DefaultWorkerStaleInterval
+	return workflowconfig.DefaultWorkerStaleInterval
 }
 
 func (w *Workflow) workerAutoClaimMinIdle() time.Duration {
 	if w.Cfg != nil && w.Cfg.Workflow.WorkerAutoClaimMinIdle > 0 {
 		return w.Cfg.Workflow.WorkerAutoClaimMinIdle
 	}
-	return config.DefaultWorkerAutoClaimIdle
+	return workflowconfig.DefaultWorkerAutoClaimIdle
 }
 
 func (w *Workflow) workerAutoClaimCount() int {
 	if w.Cfg != nil && w.Cfg.Workflow.WorkerAutoClaimCount > 0 {
 		return w.Cfg.Workflow.WorkerAutoClaimCount
 	}
-	return config.DefaultWorkerAutoClaimCount
+	return workflowconfig.DefaultWorkerAutoClaimCount
 }
 
 func (w *Workflow) workerReadCount() int {
 	if w.Cfg != nil && w.Cfg.Workflow.WorkerReadCount > 0 {
 		return w.Cfg.Workflow.WorkerReadCount
 	}
-	return config.DefaultWorkerReadCount
+	return workflowconfig.DefaultWorkerReadCount
 }
 
 func (w *Workflow) workerReadBlock() time.Duration {
 	if w.Cfg != nil && w.Cfg.Workflow.WorkerReadBlock > 0 {
 		return w.Cfg.Workflow.WorkerReadBlock
 	}
-	return config.DefaultWorkerReadBlock
+	return workflowconfig.DefaultWorkerReadBlock
 }
 
 func (w *Workflow) workerMaxReadFailures() int {
 	if w.Cfg != nil {
 		return w.Cfg.Workflow.WorkerMaxReadFailures
 	}
-	return config.DefaultWorkerMaxReadFailures
+	return workflowconfig.DefaultWorkerMaxReadFailures
 }
 
 func (w *Workflow) workerMaxClaimFailures() int {
 	if w.Cfg != nil {
 		return w.Cfg.Workflow.WorkerMaxClaimFailures
 	}
-	return config.DefaultWorkerMaxClaimFailures
+	return workflowconfig.DefaultWorkerMaxClaimFailures
 }
 
 func (w *Workflow) workerBackoffMin() time.Duration {
 	if w.Cfg != nil && w.Cfg.Workflow.WorkerBackoffMin > 0 {
 		return w.Cfg.Workflow.WorkerBackoffMin
 	}
-	return config.DefaultWorkerBackoffMin
+	return workflowconfig.DefaultWorkerBackoffMin
 }
 
 func (w *Workflow) workerBackoffMax() time.Duration {
 	if w.Cfg != nil && w.Cfg.Workflow.WorkerBackoffMax > 0 {
 		return w.Cfg.Workflow.WorkerBackoffMax
 	}
-	return config.DefaultWorkerBackoffMax
+	return workflowconfig.DefaultWorkerBackoffMax
 }
 
 func (w *Workflow) workflowHeartbeatInterval() time.Duration {
 	if w.Cfg != nil && w.Cfg.Workflow.HeartbeatInterval > 0 {
 		return w.Cfg.Workflow.HeartbeatInterval
 	}
-	return config.DefaultWorkflowHeartbeatInterval
+	return workflowconfig.DefaultWorkflowHeartbeatInterval
 }
 
 func (w *Workflow) workflowLeaseDuration() time.Duration {
 	if w.Cfg != nil && w.Cfg.Workflow.LeaseDuration > 0 {
 		return w.Cfg.Workflow.LeaseDuration
 	}
-	return config.DefaultWorkflowLeaseDuration
+	return workflowconfig.DefaultWorkflowLeaseDuration
 }
 
 func (w *Workflow) workflowLeaseReaperInterval() time.Duration {
 	if w.Cfg != nil && w.Cfg.Workflow.LeaseReaperInterval > 0 {
 		return w.Cfg.Workflow.LeaseReaperInterval
 	}
-	return config.DefaultWorkflowLeaseReaperInterval
+	return workflowconfig.DefaultWorkflowLeaseReaperInterval
 }

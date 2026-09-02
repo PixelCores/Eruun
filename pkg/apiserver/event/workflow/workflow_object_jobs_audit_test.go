@@ -19,6 +19,7 @@ import (
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	wfNaming "github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 	traitsPlu "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
@@ -232,7 +233,7 @@ func TestCreateObjectJobsFromResultRBAC(t *testing.T) {
 			t.Fatalf("unexpected job type %s", job.JobType)
 		}
 		require.Equal(t, "ops", labels[config.LabelShareName])
-		require.Equal(t, string(config.ShareStrategyDefault), labels[config.LabelShareStrategy])
+		require.Equal(t, string(spec.ShareStrategyDefault), labels[config.LabelShareStrategy])
 	}
 
 	require.True(t, jobTypes[string(config.JobDeployServiceAccount)])
@@ -277,7 +278,7 @@ func TestSecretJobNameNormalization(t *testing.T) {
 func TestBuildJobsForComponent_ShareIgnoreSkipsJobs(t *testing.T) {
 	traitsJSON, err := model.NewJSONStructByStruct(spec.Traits{
 		Share: &spec.ShareTraitSpec{
-			Strategy: string(config.ShareStrategyIgnore),
+			Strategy: string(spec.ShareStrategyIgnore),
 		},
 	})
 	require.NoError(t, err)
@@ -307,9 +308,9 @@ func TestBuildJobsForComponent_ShareIgnoreSkipsJobs(t *testing.T) {
 
 func TestBuildJobsForComponentAppliesFailurePolicyOnlyToInstantJobTask(t *testing.T) {
 	traitsPlu.RegisterAllProcessors()
-	failurePolicy := config.WorkflowFailurePolicyCleanupFailed
+	failurePolicy := workflowconfig.WorkflowFailurePolicyCleanupFailed
 	propertiesJSON, err := model.NewJSONStructByStruct(model.Properties{
-		RunPolicy:     string(config.JobRunPolicyRecreate),
+		RunPolicy:     string(workflowconfig.JobRunPolicyRecreate),
 		FailurePolicy: &failurePolicy,
 	})
 	require.NoError(t, err)
@@ -338,7 +339,7 @@ func TestBuildJobsForComponentAppliesFailurePolicyOnlyToInstantJobTask(t *testin
 
 	buckets := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout), "")
 	require.Len(t, buckets[config.JobPriorityNormal], 1)
-	require.Equal(t, config.WorkflowFailurePolicyCleanupFailed, buckets[config.JobPriorityNormal][0].FailurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupFailed, buckets[config.JobPriorityNormal][0].FailurePolicy)
 	require.NotEmpty(t, buckets[config.JobPriorityHigh])
 	for _, additionalTask := range buckets[config.JobPriorityHigh] {
 		require.Empty(t, additionalTask.FailurePolicy)
@@ -348,7 +349,7 @@ func TestBuildJobsForComponentAppliesFailurePolicyOnlyToInstantJobTask(t *testin
 func TestBuildJobsForComponentAddsShareLabelsToWorkloadPodTemplates(t *testing.T) {
 	traitsJSON, err := model.NewJSONStructByStruct(spec.Traits{
 		Share: &spec.ShareTraitSpec{
-			Strategy: string(config.ShareStrategyDefault),
+			Strategy: string(spec.ShareStrategyDefault),
 		},
 	})
 	require.NoError(t, err)
@@ -367,7 +368,7 @@ func TestBuildJobsForComponentAddsShareLabelsToWorkloadPodTemplates(t *testing.T
 	shareAssertions := func(t *testing.T, labels map[string]string) {
 		t.Helper()
 		require.Equal(t, "default", labels[config.LabelShareName])
-		require.Equal(t, string(config.ShareStrategyDefault), labels[config.LabelShareStrategy])
+		require.Equal(t, string(spec.ShareStrategyDefault), labels[config.LabelShareStrategy])
 	}
 	selectorAssertions := func(t *testing.T, labels map[string]string) {
 		t.Helper()
@@ -460,7 +461,7 @@ func TestBuildJobsForComponentAddsShareLabelsToWorkloadPodTemplates(t *testing.T
 func TestCreateObjectJobsFromResult_ShareIgnoreSkipsAdditionalJobs(t *testing.T) {
 	traitsJSON, err := model.NewJSONStructByStruct(spec.Traits{
 		Share: &spec.ShareTraitSpec{
-			Strategy: string(config.ShareStrategyIgnore),
+			Strategy: string(spec.ShareStrategyIgnore),
 		},
 	})
 	require.NoError(t, err)
@@ -600,7 +601,7 @@ func TestBuildJobsForComponent_StoreServiceTraitPrecedesStatefulSet(t *testing.T
 		Service: []spec.ServiceTraitSpec{
 			{
 				Name:     "mysql",
-				Type:     string(config.ServiceAccessInternal),
+				Type:     string(spec.ServiceAccessInternal),
 				Headless: true,
 				Selector: map[string]string{
 					"name": "mysql",

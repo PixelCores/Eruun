@@ -5,7 +5,6 @@ import (
 	"net"
 	"strings"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	k8svalidation "k8s.io/apimachinery/pkg/util/validation"
@@ -87,8 +86,8 @@ func validateIngressHost(host, field string) []apisv1.ValidationError {
 func validateIngressBackendServiceReferences(traits apisv1.Traits, fieldPrefix string) []apisv1.ValidationError {
 	nonExternalServices := 0
 	for _, svc := range traits.Service {
-		serviceType, known := config.NormalizeServiceAccessType(svc.Type)
-		if known && serviceType != config.ServiceAccessExternal {
+		serviceType, known := spec.NormalizeServiceAccessType(svc.Type)
+		if known && serviceType != spec.ServiceAccessExternal {
 			nonExternalServices++
 		}
 	}

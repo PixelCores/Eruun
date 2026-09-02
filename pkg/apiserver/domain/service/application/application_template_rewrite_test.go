@@ -23,7 +23,7 @@ func TestCreateApplicationsFromTemplateKeepsDuplicateCloneRewritesPerClone(t *te
 	templateTraits := apisv1.Traits{
 		Service: []spec.ServiceTraitSpec{{
 			Name: "mysql",
-			Type: string(config.ServiceAccessInternal),
+			Type: string(spec.ServiceAccessInternal),
 			Selector: map[string]string{
 				config.LabelComponentName: "mysql",
 				"role":                    "mysql",
@@ -100,7 +100,7 @@ func TestCreateApplicationsFromTemplateRejectsRewrittenServiceTraitNameTooLong(t
 	templateTraits := apisv1.Traits{
 		Service: []spec.ServiceTraitSpec{{
 			Name:     "shared-database-service-name-that-is-already-long",
-			Type:     string(config.ServiceAccessInternal),
+			Type:     string(spec.ServiceAccessInternal),
 			Selector: map[string]string{"role": "db"},
 			Ports:    []spec.ServicePortTraitSpec{{Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
 		}},
@@ -144,13 +144,13 @@ func TestCreateApplicationsFromTemplateRejectsRewrittenServiceTraitNameCollision
 		Service: []spec.ServiceTraitSpec{
 			{
 				Name:     "primary",
-				Type:     string(config.ServiceAccessInternal),
+				Type:     string(spec.ServiceAccessInternal),
 				Selector: map[string]string{"role": "primary"},
 				Ports:    []spec.ServicePortTraitSpec{{Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
 			},
 			{
 				Name:     "primary",
-				Type:     string(config.ServiceAccessInternal),
+				Type:     string(spec.ServiceAccessInternal),
 				Selector: map[string]string{"role": "primary"},
 				Ports:    []spec.ServicePortTraitSpec{{Port: 3307, TargetPort: 3306, Protocol: "TCP"}},
 			},
@@ -194,7 +194,7 @@ func TestCreateApplicationsFromTemplateRejectsRewrittenServiceTraitNameCollision
 		traitsJSON, err := model.NewJSONStructByStruct(apisv1.Traits{
 			Service: []spec.ServiceTraitSpec{{
 				Name:     serviceName,
-				Type:     string(config.ServiceAccessInternal),
+				Type:     string(spec.ServiceAccessInternal),
 				Selector: map[string]string{"role": serviceName},
 				Ports:    []spec.ServicePortTraitSpec{{Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
 			}},
@@ -238,7 +238,7 @@ func TestCreateApplicationsRejectsResolvedServiceTraitNameCollisionWithNonTempla
 	traitsJSON, err := model.NewJSONStructByStruct(apisv1.Traits{
 		Service: []spec.ServiceTraitSpec{{
 			Name:     "primary",
-			Type:     string(config.ServiceAccessInternal),
+			Type:     string(spec.ServiceAccessInternal),
 			Selector: map[string]string{"role": "primary"},
 			Ports:    []spec.ServicePortTraitSpec{{Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
 		}},
@@ -267,7 +267,7 @@ func TestCreateApplicationsRejectsResolvedServiceTraitNameCollisionWithNonTempla
 				Image:         "nginx:latest",
 				Traits: apisv1.Traits{Service: []spec.ServiceTraitSpec{{
 					Name:     "cloned-app-primary",
-					Type:     string(config.ServiceAccessInternal),
+					Type:     string(spec.ServiceAccessInternal),
 					Selector: map[string]string{"app": "worker"},
 					Ports:    []spec.ServicePortTraitSpec{{Port: 8080, TargetPort: 8080, Protocol: "TCP"}},
 				}}},
@@ -292,7 +292,7 @@ func TestCreateApplicationsRejectsResolvedServiceTraitNameCollisionAcrossTemplat
 		traitsJSON, err := model.NewJSONStructByStruct(apisv1.Traits{
 			Service: []spec.ServiceTraitSpec{{
 				Name:     serviceName,
-				Type:     string(config.ServiceAccessInternal),
+				Type:     string(spec.ServiceAccessInternal),
 				Selector: map[string]string{"role": serviceName},
 				Ports:    []spec.ServicePortTraitSpec{{Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
 			}},
@@ -338,7 +338,7 @@ func TestCreateApplicationsFromTemplateDoesNotRewriteBareServiceNameText(t *test
 	traitsJSON, err := model.NewJSONStructByStruct(apisv1.Traits{
 		Service: []spec.ServiceTraitSpec{{
 			Name: "mysql",
-			Type: string(config.ServiceAccessInternal),
+			Type: string(spec.ServiceAccessInternal),
 			Selector: map[string]string{
 				"role":                    "mysql",
 				config.LabelComponentName: "mysql",
@@ -468,7 +468,7 @@ func TestCreateApplicationsFromTemplateRejectsAmbiguousIngressBackendServiceRefe
 		traitsJSON, err := model.NewJSONStructByStruct(apisv1.Traits{
 			Service: []spec.ServiceTraitSpec{{
 				Name:     "primary",
-				Type:     string(config.ServiceAccessPublic),
+				Type:     string(spec.ServiceAccessPublic),
 				Selector: map[string]string{"role": "primary"},
 				Ports:    []spec.ServicePortTraitSpec{{Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
 			}},
@@ -538,7 +538,7 @@ func TestCreateApplicationsFromTemplatePreservesAmbiguousServiceDNSInText(t *tes
 		traitsJSON, err := model.NewJSONStructByStruct(apisv1.Traits{
 			Service: []spec.ServiceTraitSpec{{
 				Name:     "primary",
-				Type:     string(config.ServiceAccessPublic),
+				Type:     string(spec.ServiceAccessPublic),
 				Selector: map[string]string{"role": "primary"},
 				Ports:    []spec.ServicePortTraitSpec{{Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
 			}},
@@ -614,7 +614,7 @@ func TestCreateApplicationsFromTemplateRewritesNamespaceQualifiedAmbiguousServic
 		traitsJSON, err := model.NewJSONStructByStruct(apisv1.Traits{
 			Service: []spec.ServiceTraitSpec{{
 				Name:     "primary",
-				Type:     string(config.ServiceAccessPublic),
+				Type:     string(spec.ServiceAccessPublic),
 				Selector: map[string]string{"role": "primary"},
 				Ports:    []spec.ServicePortTraitSpec{{Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
 			}},
@@ -693,7 +693,7 @@ func TestCreateApplicationsFromTemplateRewritesExternalNameServiceDNS(t *testing
 	mysqlTraitsJSON, err := model.NewJSONStructByStruct(apisv1.Traits{
 		Service: []spec.ServiceTraitSpec{{
 			Name:     "mysql",
-			Type:     string(config.ServiceAccessInternal),
+			Type:     string(spec.ServiceAccessInternal),
 			Selector: map[string]string{"role": "mysql"},
 			Ports:    []spec.ServicePortTraitSpec{{Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
 		}},
@@ -716,13 +716,13 @@ func TestCreateApplicationsFromTemplateRewritesExternalNameServiceDNS(t *testing
 		Service: []spec.ServiceTraitSpec{
 			{
 				Name:         "mysql-proxy",
-				Type:         string(config.ServiceAccessExternal),
+				Type:         string(spec.ServiceAccessExternal),
 				ExternalName: "mysql.default.svc.cluster.local",
 				Ports:        []spec.ServicePortTraitSpec{{Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
 			},
 			{
 				Name:         "external-api",
-				Type:         string(config.ServiceAccessExternal),
+				Type:         string(spec.ServiceAccessExternal),
 				ExternalName: "example.org",
 				Ports:        []spec.ServicePortTraitSpec{{Port: 443, TargetPort: 443, Protocol: "TCP"}},
 			},
@@ -783,7 +783,7 @@ func TestCreateApplicationsFromTemplateKeepsServiceNamesOutOfResourceReferenceRe
 		}},
 		Service: []spec.ServiceTraitSpec{{
 			Name:     "primary",
-			Type:     string(config.ServiceAccessInternal),
+			Type:     string(spec.ServiceAccessInternal),
 			Labels:   map[string]string{"role": "primary"},
 			Selector: map[string]string{"role": "primary"},
 			Ports:    []spec.ServicePortTraitSpec{{Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
@@ -881,7 +881,7 @@ func TestCreateApplicationsFromTemplatePreservesUndeclaredResourceReferenceMatch
 		}},
 		Service: []spec.ServiceTraitSpec{{
 			Name:     "primary",
-			Type:     string(config.ServiceAccessInternal),
+			Type:     string(spec.ServiceAccessInternal),
 			Labels:   map[string]string{"role": "primary"},
 			Selector: map[string]string{"role": "primary"},
 			Ports:    []spec.ServicePortTraitSpec{{Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
@@ -983,7 +983,7 @@ func TestCreateApplicationsFromTemplateScopesDuplicateServiceTraitNames(t *testi
 			}},
 			Service: []spec.ServiceTraitSpec{{
 				Name:     "primary",
-				Type:     string(config.ServiceAccessPublic),
+				Type:     string(spec.ServiceAccessPublic),
 				Selector: map[string]string{"role": "primary"},
 				Labels:   map[string]string{"role": "primary"},
 				Ports:    []spec.ServicePortTraitSpec{{Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
@@ -1063,11 +1063,11 @@ func TestRewriteTemplateServiceNameUsesHyphenTokenBoundaries(t *testing.T) {
 }
 
 func TestRewriteTemplateServiceNameForTraitUsesAppNameForLiteralInternal(t *testing.T) {
-	require.Equal(t, "game-db-mysql-master", rewriteTemplateServiceNameForTrait("mysql-master", "mysql-8", "game-db-mysql-8", "game-db", string(config.ServiceAccessInternal)))
-	require.Equal(t, "game-db-mysql", rewriteTemplateServiceNameForTrait("mysql", "mysql-8", "game-db-mysql-8", "game-db", string(config.ServiceAccessInternal)))
+	require.Equal(t, "game-db-mysql-master", rewriteTemplateServiceNameForTrait("mysql-master", "mysql-8", "game-db-mysql-8", "game-db", string(spec.ServiceAccessInternal)))
+	require.Equal(t, "game-db-mysql", rewriteTemplateServiceNameForTrait("mysql", "mysql-8", "game-db-mysql-8", "game-db", string(spec.ServiceAccessInternal)))
 	require.Equal(t, "game-db-mysql-8-mysql-master", rewriteTemplateServiceNameForTrait("mysql-master", "mysql-8", "game-db-mysql-8", "game-db", ""))
 	require.Equal(t, "game-db-mysql-8-mysql-master", rewriteTemplateServiceNameForTrait("mysql-master", "mysql-8", "game-db-mysql-8", "game-db", string(corev1.ServiceTypeClusterIP)))
-	require.Equal(t, "game-db-mysql-8-mysql-master", rewriteTemplateServiceNameForTrait("mysql-master", "mysql-8", "game-db-mysql-8", "game-db", string(config.ServiceAccessPublic)))
+	require.Equal(t, "game-db-mysql-8-mysql-master", rewriteTemplateServiceNameForTrait("mysql-master", "mysql-8", "game-db-mysql-8", "game-db", string(spec.ServiceAccessPublic)))
 }
 
 func TestTemplateRewriteMapUsesReferenceBoundaries(t *testing.T) {

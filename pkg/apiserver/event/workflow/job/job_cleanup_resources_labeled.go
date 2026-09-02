@@ -7,8 +7,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
 func (c *CleanupResourcesJobCtl) deleteLabeledResources(ctx context.Context, component *model.ApplicationComponent, deleted *cleanupResourceSet) {
@@ -30,7 +30,7 @@ func (c *CleanupResourcesJobCtl) deleteLabeledWorkloads(ctx context.Context, ns 
 	} else {
 		for i := range list.Items {
 			item := &list.Items[i]
-			c.deleteTrackedResource(ctx, deleted, config.ResourceDeployment, item.Namespace, item.Name, false, func(deleteCtx context.Context) error {
+			c.deleteTrackedResource(ctx, deleted, domainspec.ResourceDeployment, item.Namespace, item.Name, false, func(deleteCtx context.Context) error {
 				return c.deleteDeployment(deleteCtx, item.Namespace, item.Name)
 			})
 		}
@@ -40,7 +40,7 @@ func (c *CleanupResourcesJobCtl) deleteLabeledWorkloads(ctx context.Context, ns 
 	} else {
 		for i := range list.Items {
 			item := &list.Items[i]
-			c.deleteTrackedResource(ctx, deleted, config.ResourceStatefulSet, item.Namespace, item.Name, false, func(deleteCtx context.Context) error {
+			c.deleteTrackedResource(ctx, deleted, domainspec.ResourceStatefulSet, item.Namespace, item.Name, false, func(deleteCtx context.Context) error {
 				return c.deleteStatefulSet(deleteCtx, item.Namespace, item.Name)
 			})
 		}
@@ -50,7 +50,7 @@ func (c *CleanupResourcesJobCtl) deleteLabeledWorkloads(ctx context.Context, ns 
 	} else {
 		for i := range list.Items {
 			item := &list.Items[i]
-			c.deleteTrackedResource(ctx, deleted, config.ResourceJob, item.Namespace, item.Name, false, func(deleteCtx context.Context) error {
+			c.deleteTrackedResource(ctx, deleted, domainspec.ResourceJob, item.Namespace, item.Name, false, func(deleteCtx context.Context) error {
 				return c.deleteJob(deleteCtx, item.Namespace, item.Name)
 			})
 		}
@@ -60,7 +60,7 @@ func (c *CleanupResourcesJobCtl) deleteLabeledWorkloads(ctx context.Context, ns 
 	} else {
 		for i := range list.Items {
 			item := &list.Items[i]
-			c.deleteTrackedResource(ctx, deleted, config.ResourceCronJob, item.Namespace, item.Name, false, func(deleteCtx context.Context) error {
+			c.deleteTrackedResource(ctx, deleted, domainspec.ResourceCronJob, item.Namespace, item.Name, false, func(deleteCtx context.Context) error {
 				return c.deleteCronJob(deleteCtx, item.Namespace, item.Name)
 			})
 		}
@@ -73,7 +73,7 @@ func (c *CleanupResourcesJobCtl) deleteLabeledCoreResources(ctx context.Context,
 	} else {
 		for i := range list.Items {
 			item := &list.Items[i]
-			c.deleteTrackedResource(ctx, deleted, config.ResourceService, item.Namespace, item.Name, false, func(deleteCtx context.Context) error {
+			c.deleteTrackedResource(ctx, deleted, domainspec.ResourceService, item.Namespace, item.Name, false, func(deleteCtx context.Context) error {
 				return c.deleteService(deleteCtx, item.Namespace, item.Name)
 			})
 		}
@@ -83,7 +83,7 @@ func (c *CleanupResourcesJobCtl) deleteLabeledCoreResources(ctx context.Context,
 	} else {
 		for i := range list.Items {
 			item := &list.Items[i]
-			c.deleteTrackedResource(ctx, deleted, config.ResourceConfigMap, item.Namespace, item.Name, false, func(deleteCtx context.Context) error {
+			c.deleteTrackedResource(ctx, deleted, domainspec.ResourceConfigMap, item.Namespace, item.Name, false, func(deleteCtx context.Context) error {
 				return c.deleteConfigMap(deleteCtx, item.Namespace, item.Name)
 			})
 		}
@@ -93,7 +93,7 @@ func (c *CleanupResourcesJobCtl) deleteLabeledCoreResources(ctx context.Context,
 	} else {
 		for i := range list.Items {
 			item := &list.Items[i]
-			c.deleteTrackedResource(ctx, deleted, config.ResourceSecret, item.Namespace, item.Name, false, func(deleteCtx context.Context) error {
+			c.deleteTrackedResource(ctx, deleted, domainspec.ResourceSecret, item.Namespace, item.Name, false, func(deleteCtx context.Context) error {
 				return c.deleteSecret(deleteCtx, item.Namespace, item.Name)
 			})
 		}
@@ -108,7 +108,7 @@ func (c *CleanupResourcesJobCtl) deleteLabeledNetworkingResources(ctx context.Co
 	} else {
 		for i := range list.Items {
 			item := &list.Items[i]
-			c.deleteTrackedResource(ctx, deleted, config.ResourceIngress, item.Namespace, item.Name, false, func(deleteCtx context.Context) error {
+			c.deleteTrackedResource(ctx, deleted, domainspec.ResourceIngress, item.Namespace, item.Name, false, func(deleteCtx context.Context) error {
 				return c.deleteIngress(deleteCtx, item.Namespace, item.Name)
 			})
 		}

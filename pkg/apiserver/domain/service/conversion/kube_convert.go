@@ -24,6 +24,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 const (
@@ -100,7 +101,7 @@ func decodeKubeObjects(yamlText string) ([]*unstructured.Unstructured, error) {
 			continue
 		}
 		obj := &unstructured.Unstructured{Object: raw}
-		if strings.EqualFold(obj.GetKind(), string(config.KubeKindList)) {
+		if strings.EqualFold(obj.GetKind(), string(spec.KubeKindList)) {
 			items := expandListItems(obj)
 			objects = append(objects, items...)
 			continue
@@ -146,7 +147,7 @@ func buildWorkloadConversionInput(obj *unstructured.Unstructured) (workloadConve
 		return workloadConversionInput{}, fmt.Errorf("kubernetes workload object is nil")
 	}
 	switch strings.TrimSpace(obj.GetKind()) {
-	case string(config.KubeKindStatefulSet):
+	case string(spec.KubeKindStatefulSet):
 		var sts appsv1.StatefulSet
 		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &sts); err != nil {
 			return workloadConversionInput{}, err
@@ -159,9 +160,9 @@ func buildWorkloadConversionInput(obj *unstructured.Unstructured) (workloadConve
 			claims:        sts.Spec.VolumeClaimTemplates,
 			rollout:       rolloutTraitFromStatefulSetStrategy(sts.Spec.UpdateStrategy),
 			componentType: config.StoreJob,
-			kind:          string(config.KubeKindStatefulSet),
+			kind:          string(spec.KubeKindStatefulSet),
 		}, nil
-	case string(config.KubeKindDeployment):
+	case string(spec.KubeKindDeployment):
 		var deploy appsv1.Deployment
 		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &deploy); err != nil {
 			return workloadConversionInput{}, err
@@ -173,9 +174,9 @@ func buildWorkloadConversionInput(obj *unstructured.Unstructured) (workloadConve
 			replicas:      deploy.Spec.Replicas,
 			rollout:       rolloutTraitFromDeploymentStrategy(deploy.Spec.Strategy),
 			componentType: config.ServerJob,
-			kind:          string(config.KubeKindDeployment),
+			kind:          string(spec.KubeKindDeployment),
 		}, nil
-	case string(config.KubeKindDaemonSet):
+	case string(spec.KubeKindDaemonSet):
 		var ds appsv1.DaemonSet
 		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &ds); err != nil {
 			return workloadConversionInput{}, err
@@ -185,9 +186,9 @@ func buildWorkloadConversionInput(obj *unstructured.Unstructured) (workloadConve
 			podSpec:       ds.Spec.Template.Spec,
 			podLabels:     ds.Spec.Template.Labels,
 			componentType: config.ServerJob,
-			kind:          string(config.KubeKindDaemonSet),
+			kind:          string(spec.KubeKindDaemonSet),
 		}, nil
-	case string(config.KubeKindJob):
+	case string(spec.KubeKindJob):
 		var job batchv1.Job
 		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &job); err != nil {
 			return workloadConversionInput{}, err
@@ -197,12 +198,12 @@ func buildWorkloadConversionInput(obj *unstructured.Unstructured) (workloadConve
 			podSpec:       job.Spec.Template.Spec,
 			podLabels:     job.Spec.Template.Labels,
 			componentType: config.InstantJob,
-			kind:          string(config.KubeKindJob),
+			kind:          string(spec.KubeKindJob),
 			applyMetadata: func(comp *apis.CreateComponentRequest) {
 				applyJobMetadataToComponent(&job, comp)
 			},
 		}, nil
-	case string(config.KubeKindCronJob):
+	case string(spec.KubeKindCronJob):
 		var cron batchv1.CronJob
 		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &cron); err != nil {
 			return workloadConversionInput{}, err
@@ -212,7 +213,7 @@ func buildWorkloadConversionInput(obj *unstructured.Unstructured) (workloadConve
 			podSpec:       cron.Spec.JobTemplate.Spec.Template.Spec,
 			podLabels:     cron.Spec.JobTemplate.Spec.Template.Labels,
 			componentType: config.ScheduledJob,
-			kind:          string(config.KubeKindCronJob),
+			kind:          string(spec.KubeKindCronJob),
 			applyMetadata: func(comp *apis.CreateComponentRequest) {
 				applyCronJobMetadataToComponent(&cron, comp)
 			},
@@ -239,7 +240,7 @@ func applyJobMetadataToComponent(job *batchv1.Job, comp *apis.CreateComponentReq
 		return
 	}
 	if raw := strings.TrimSpace(annotations[config.AnnotationJobRunPolicy]); raw != "" {
-		if policy, ok := config.NormalizeJobRunPolicy(raw); ok {
+		if policy, ok := workflowconfig.NormalizeJobRunPolicy(raw); ok {
 			comp.Properties.RunPolicy = string(policy)
 		}
 	}
@@ -691,7 +692,7 @@ func convertResourceTraits(container corev1.Container) *spec.ResourceTraitsSpec 
 	cpuLimit := selectLimitResourceQuantity(container.Resources, corev1.ResourceCPU)
 	memoryRequest := selectRequestResourceQuantity(container.Resources, corev1.ResourceMemory)
 	memoryLimit := selectLimitResourceQuantity(container.Resources, corev1.ResourceMemory)
-	gpu := selectResourceQuantity(container.Resources, corev1.ResourceName(config.ResourceNvidiaGPU))
+	gpu := selectResourceQuantity(container.Resources, corev1.ResourceName(spec.ResourceNvidiaGPU))
 	if cpuRequest == "" && cpuLimit == "" && memoryRequest == "" && memoryLimit == "" && gpu == "" {
 		return nil
 	}
@@ -1051,7 +1052,7 @@ func buildServiceTrait(svc *corev1.Service) spec.ServiceTraitSpec {
 	}
 	return spec.ServiceTraitSpec{
 		Name:         strings.TrimSpace(svc.Name),
-		Type:         string(config.ServiceAccessTypeFromKube(serviceType)),
+		Type:         string(spec.ServiceAccessTypeFromKube(serviceType)),
 		ExternalName: strings.TrimSpace(svc.Spec.ExternalName),
 		Headless:     strings.EqualFold(strings.TrimSpace(svc.Spec.ClusterIP), corev1.ClusterIPNone),
 		Selector:     normalizeConvertedServiceSelector(svc.Spec.Selector),
@@ -1117,7 +1118,7 @@ func ensureShareLabels(labels map[string]string, name string) map[string]string 
 		labels[config.LabelShareName] = name
 	}
 	if strings.TrimSpace(labels[config.LabelShareStrategy]) == "" {
-		labels[config.LabelShareStrategy] = string(config.ShareStrategyDefault)
+		labels[config.LabelShareStrategy] = string(spec.ShareStrategyDefault)
 	}
 	return labels
 }
@@ -1134,7 +1135,7 @@ func buildShareTrait(primaryLabels, fallbackLabels map[string]string) (*spec.Sha
 	if strategy == "" {
 		return nil, nil
 	}
-	normalized, ok := config.NormalizeShareStrategy(strategy)
+	normalized, ok := spec.NormalizeShareStrategy(strategy)
 	if !ok {
 		return &spec.ShareTraitSpec{Strategy: string(normalized)}, []string{fmt.Sprintf("unknown share strategy %q; using default", strategy)}
 	}

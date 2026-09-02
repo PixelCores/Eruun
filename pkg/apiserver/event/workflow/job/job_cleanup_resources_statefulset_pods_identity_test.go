@@ -19,6 +19,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
 func TestCleanupResourcesJobCtlPinsOwnerJobAndPodDeleteIdentity(t *testing.T) {
@@ -1068,7 +1069,7 @@ func requiredStatefulSetPodCheckpointContainsPod(
 func protectedRequiredStatefulSetCleanupLabels(shareName string) map[string]string {
 	return map[string]string{
 		config.LabelShareName:     shareName,
-		config.LabelShareStrategy: string(config.ShareStrategyDefault),
+		config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 	}
 }
 

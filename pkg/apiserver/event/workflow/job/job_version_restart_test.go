@@ -332,10 +332,10 @@ func TestVersionRestartJobCtlHonorsShareLifecyclePolicy(t *testing.T) {
 		strategy string
 		wantSkip bool
 	}{
-		{name: "default", strategy: string(config.ShareStrategyDefault), wantSkip: true},
-		{name: "ignore", strategy: string(config.ShareStrategyIgnore), wantSkip: true},
+		{name: "default", strategy: string(spec.ShareStrategyDefault), wantSkip: true},
+		{name: "ignore", strategy: string(spec.ShareStrategyIgnore), wantSkip: true},
 		{name: "unknown", strategy: "future-default", wantSkip: true},
-		{name: "force", strategy: string(config.ShareStrategyForce)},
+		{name: "force", strategy: string(spec.ShareStrategyForce)},
 	}
 
 	for _, tt := range tests {

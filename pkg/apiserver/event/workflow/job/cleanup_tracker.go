@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
 // cleanupContextKey is the private key used to stash cleanup tracker data in the context.
@@ -14,7 +14,7 @@ type cleanupContextKey struct{}
 // resourceRef stores the namespace/name of a resource along with whether the job
 // created it during the current execution.
 type resourceRef struct {
-	Kind      config.ResourceKind
+	Kind      domainspec.ResourceKind
 	Namespace string
 	Name      string
 	Created   bool
@@ -38,7 +38,7 @@ func (t *cleanupTracker) add(ref resourceRef) {
 	t.resources = append(t.resources, ref)
 }
 
-func (t *cleanupTracker) list(kind config.ResourceKind) []resourceRef {
+func (t *cleanupTracker) list(kind domainspec.ResourceKind) []resourceRef {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	var out []resourceRef
@@ -73,7 +73,7 @@ func trackerFromContext(ctx context.Context) (*cleanupTracker, error) {
 
 // MarkResourceCreated records that the job created the specified resource so that
 // it can be deleted if execution fails.
-func MarkResourceCreated(ctx context.Context, kind config.ResourceKind, namespace, name string) {
+func MarkResourceCreated(ctx context.Context, kind domainspec.ResourceKind, namespace, name string) {
 	tracker, err := trackerFromContext(ctx)
 	if err != nil {
 		return
@@ -83,7 +83,7 @@ func MarkResourceCreated(ctx context.Context, kind config.ResourceKind, namespac
 
 // markResourceObserved records that the job interacted with the specified resource
 // without claiming ownership of its lifecycle.
-func markResourceObserved(ctx context.Context, kind config.ResourceKind, namespace, name string) {
+func markResourceObserved(ctx context.Context, kind domainspec.ResourceKind, namespace, name string) {
 	tracker, err := trackerFromContext(ctx)
 	if err != nil {
 		return
@@ -93,7 +93,7 @@ func markResourceObserved(ctx context.Context, kind config.ResourceKind, namespa
 
 // resourcesForCleanup returns the tracked resources. When kind is empty, all resources
 // are returned. Only resources marked as Created should be deleted by cleanup routines.
-func resourcesForCleanup(ctx context.Context, kind config.ResourceKind) []resourceRef {
+func resourcesForCleanup(ctx context.Context, kind domainspec.ResourceKind) []resourceRef {
 	tracker, err := trackerFromContext(ctx)
 	if err != nil {
 		return nil

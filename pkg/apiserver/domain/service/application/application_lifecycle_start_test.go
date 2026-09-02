@@ -448,7 +448,7 @@ func TestStartApplicationDeploymentsSkipsSharedComponent(t *testing.T) {
 		Image:         "nginx:latest",
 		Properties:    mustJSONStruct(&model.Properties{}),
 		Traits: mustJSONStruct(&spec.Traits{
-			Share: &spec.ShareTraitSpec{Strategy: string(config.ShareStrategyDefault)},
+			Share: &spec.ShareTraitSpec{Strategy: string(spec.ShareStrategyDefault)},
 		}),
 	}
 	store := &cleanupStore{
@@ -508,7 +508,7 @@ func TestStartApplicationDeploymentsDoesNotSkipSharedForce(t *testing.T) {
 		Image:         "nginx:latest",
 		Properties:    mustJSONStruct(&model.Properties{}),
 		Traits: mustJSONStruct(&spec.Traits{
-			Share: &spec.ShareTraitSpec{Strategy: string(config.ShareStrategyForce)},
+			Share: &spec.ShareTraitSpec{Strategy: string(spec.ShareStrategyForce)},
 		}),
 	}
 	store := &cleanupStore{

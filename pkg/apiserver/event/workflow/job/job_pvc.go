@@ -19,6 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	domainadoption "github.com/PixelCores/Eruun/pkg/apiserver/domain/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
@@ -76,7 +77,7 @@ func (c *DeployPVCJobCtl) run(ctx context.Context) error {
 
 	observeExistingPVC := func(ctx context.Context, current *corev1.PersistentVolumeClaim) error {
 		logger.Info("pvc already exists; skipping spec update", "pvcName", current.Name)
-		markResourceObserved(ctx, config.ResourcePVC, pvc.Namespace, pvc.Name)
+		markResourceObserved(ctx, domainspec.ResourcePVC, pvc.Namespace, pvc.Name)
 		return nil
 	}
 
@@ -85,7 +86,7 @@ func (c *DeployPVCJobCtl) run(ctx context.Context) error {
 			job:          c.job,
 			ack:          c.ack,
 			labels:       pvc.Labels,
-			kind:         config.ResourcePVC,
+			kind:         domainspec.ResourcePVC,
 			lockProvider: c.shareLocker,
 			listFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
 				list, err := c.client.CoreV1().PersistentVolumeClaims(pvc.Namespace).List(ctx, opts)
@@ -94,8 +95,8 @@ func (c *DeployPVCJobCtl) run(ctx context.Context) error {
 				}
 				return len(list.Items), nil
 			},
-			logSkip: func(strategy config.ShareStrategy) {
-				if strategy == config.ShareStrategyIgnore {
+			logSkip: func(strategy domainspec.ShareStrategy) {
+				if strategy == domainspec.ShareStrategyIgnore {
 					logger.Info("pvc marked as shared ignore; skipping", "pvcName", pvc.Name)
 				} else {
 					logger.Info("pvc already exists and is shared; skipping", "pvcName", pvc.Name)
@@ -172,7 +173,7 @@ func (c *DeployPVCJobCtl) reconcileAdoptedPVC(
 		return fmt.Errorf("adopted pvc %s/%s: %w", desired.Namespace, desired.Name, err)
 	}
 	if !changed {
-		markResourceObserved(ctx, config.ResourcePVC, desired.Namespace, desired.Name)
+		markResourceObserved(ctx, domainspec.ResourcePVC, desired.Namespace, desired.Name)
 		return nil
 	}
 	if err := updateResourceWithRetry(ctx, func(ctx context.Context) (*corev1.PersistentVolumeClaim, error) {
@@ -196,7 +197,7 @@ func (c *DeployPVCJobCtl) reconcileAdoptedPVC(
 	}); err != nil {
 		return fmt.Errorf("resize adopted pvc %s/%s: %w", desired.Namespace, desired.Name, err)
 	}
-	markResourceObserved(ctx, config.ResourcePVC, desired.Namespace, desired.Name)
+	markResourceObserved(ctx, domainspec.ResourcePVC, desired.Namespace, desired.Name)
 	return nil
 }
 

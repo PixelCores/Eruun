@@ -32,7 +32,7 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 			}
 			c.deleteAdditionalObjects(ctx, component.Namespace, result.AdditionalObjects, deleted)
 		}
-		c.deleteTrackedResource(ctx, deleted, config.ResourceDeployment, ns, name, false, func(deleteCtx context.Context) error {
+		c.deleteTrackedResource(ctx, deleted, spec.ResourceDeployment, ns, name, false, func(deleteCtx context.Context) error {
 			return c.deleteDeployment(deleteCtx, ns, name)
 		})
 	case config.StoreJob:
@@ -46,7 +46,7 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 			}
 			c.deleteAdditionalObjects(ctx, component.Namespace, result.AdditionalObjects, deleted)
 		}
-		c.deleteTrackedResource(ctx, deleted, config.ResourceStatefulSet, ns, name, false, func(deleteCtx context.Context) error {
+		c.deleteTrackedResource(ctx, deleted, spec.ResourceStatefulSet, ns, name, false, func(deleteCtx context.Context) error {
 			return c.deleteStatefulSet(deleteCtx, ns, name)
 		})
 	case config.ConfJob:
@@ -64,7 +64,7 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 			}
 			c.deleteAdditionalObjects(ctx, component.Namespace, result.AdditionalObjects, deleted)
 		}
-		c.deleteTrackedResource(ctx, deleted, config.ResourceJob, ns, name, false, func(deleteCtx context.Context) error {
+		c.deleteTrackedResource(ctx, deleted, spec.ResourceJob, ns, name, false, func(deleteCtx context.Context) error {
 			return c.deleteJob(deleteCtx, ns, name)
 		})
 	case config.ScheduledJob:
@@ -81,7 +81,7 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 			}
 			c.deleteAdditionalObjects(ctx, component.Namespace, result.AdditionalObjects, deleted)
 		}
-		c.deleteTrackedResource(ctx, deleted, config.ResourceCronJob, ns, name, false, func(deleteCtx context.Context) error {
+		c.deleteTrackedResource(ctx, deleted, spec.ResourceCronJob, ns, name, false, func(deleteCtx context.Context) error {
 			return c.deleteCronJob(deleteCtx, ns, name)
 		})
 	}
@@ -110,7 +110,7 @@ func (c *CleanupResourcesJobCtl) deleteServicesForComponent(ctx context.Context,
 			name = pickNonEmpty(valueOrEmpty(svc.Name), name)
 			ns = pickNonEmpty(valueOrEmpty(svc.Namespace), ns)
 		}
-		c.deleteTrackedResource(ctx, deleted, config.ResourceService, ns, name, false, func(deleteCtx context.Context) error {
+		c.deleteTrackedResource(ctx, deleted, spec.ResourceService, ns, name, false, func(deleteCtx context.Context) error {
 			return c.deleteService(deleteCtx, ns, name)
 		})
 	}
@@ -123,7 +123,7 @@ func (c *CleanupResourcesJobCtl) deleteServicesForComponent(ctx context.Context,
 			name = pickNonEmpty(valueOrEmpty(svc.Name), name)
 			ns = pickNonEmpty(valueOrEmpty(svc.Namespace), ns)
 		}
-		c.deleteTrackedResource(ctx, deleted, config.ResourceService, ns, name, false, func(deleteCtx context.Context) error {
+		c.deleteTrackedResource(ctx, deleted, spec.ResourceService, ns, name, false, func(deleteCtx context.Context) error {
 			return c.deleteService(deleteCtx, ns, name)
 		})
 	}
@@ -155,7 +155,7 @@ func (c *CleanupResourcesJobCtl) deleteAdditionalObjects(ctx context.Context, fa
 			klog.V(4).Infof("cleanup resources: preserving pvc %s/%s", ns, resource.Name)
 		case *networkingv1.Ingress:
 			ns := pickNonEmpty(resource.Namespace, fallbackNamespace)
-			c.deleteTrackedResource(ctx, deleted, config.ResourceIngress, ns, resource.Name, false, func(deleteCtx context.Context) error {
+			c.deleteTrackedResource(ctx, deleted, spec.ResourceIngress, ns, resource.Name, false, func(deleteCtx context.Context) error {
 				return c.deleteIngress(deleteCtx, ns, resource.Name)
 			})
 		case *corev1.ServiceAccount:
@@ -183,13 +183,13 @@ func (c *CleanupResourcesJobCtl) deleteConfigMapForComponent(ctx context.Context
 	case *model.ConfigMapInput:
 		ns := pickNonEmpty(cm.Namespace, component.Namespace)
 		name := pickNonEmpty(cm.Name, component.Name)
-		c.deleteTrackedResource(ctx, deleted, config.ResourceConfigMap, ns, name, false, func(deleteCtx context.Context) error {
+		c.deleteTrackedResource(ctx, deleted, spec.ResourceConfigMap, ns, name, false, func(deleteCtx context.Context) error {
 			return c.deleteConfigMap(deleteCtx, ns, name)
 		})
 	case *corev1.ConfigMap:
 		ns := pickNonEmpty(cm.Namespace, component.Namespace)
 		name := pickNonEmpty(cm.Name, component.Name)
-		c.deleteTrackedResource(ctx, deleted, config.ResourceConfigMap, ns, name, false, func(deleteCtx context.Context) error {
+		c.deleteTrackedResource(ctx, deleted, spec.ResourceConfigMap, ns, name, false, func(deleteCtx context.Context) error {
 			return c.deleteConfigMap(deleteCtx, ns, name)
 		})
 	}
@@ -201,13 +201,13 @@ func (c *CleanupResourcesJobCtl) deleteSecretForComponent(ctx context.Context, c
 	case *model.SecretInput:
 		ns := pickNonEmpty(sec.Namespace, component.Namespace)
 		name := pickNonEmpty(sec.Name, component.Name)
-		c.deleteTrackedResource(ctx, deleted, config.ResourceSecret, ns, name, false, func(deleteCtx context.Context) error {
+		c.deleteTrackedResource(ctx, deleted, spec.ResourceSecret, ns, name, false, func(deleteCtx context.Context) error {
 			return c.deleteSecret(deleteCtx, ns, name)
 		})
 	case *corev1.Secret:
 		ns := pickNonEmpty(sec.Namespace, component.Namespace)
 		name := pickNonEmpty(sec.Name, component.Name)
-		c.deleteTrackedResource(ctx, deleted, config.ResourceSecret, ns, name, false, func(deleteCtx context.Context) error {
+		c.deleteTrackedResource(ctx, deleted, spec.ResourceSecret, ns, name, false, func(deleteCtx context.Context) error {
 			return c.deleteSecret(deleteCtx, ns, name)
 		})
 	}

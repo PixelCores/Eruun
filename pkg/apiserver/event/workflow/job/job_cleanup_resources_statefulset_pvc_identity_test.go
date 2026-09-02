@@ -18,6 +18,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
 func TestCleanupResourcesJobCtlRejectsPVCCheckpointWriteAfterExecutionTakeover(t *testing.T) {
@@ -94,7 +95,7 @@ func TestCleanupResourcesJobCtlPVCDeletePreconditionsRejectLateProtection(t *tes
 		current := currentObject.(*corev1.PersistentVolumeClaim).DeepCopy()
 		current.Labels = map[string]string{
 			config.LabelShareName:     "late-shared-data",
-			config.LabelShareStrategy: string(config.ShareStrategyDefault),
+			config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 		}
 		current.ResourceVersion = "2"
 		require.NoError(t, client.Tracker().Update(corev1.SchemeGroupVersion.WithResource("persistentvolumeclaims"), current, component.Namespace))

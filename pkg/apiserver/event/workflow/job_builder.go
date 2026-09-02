@@ -12,13 +12,14 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 type StepExecution struct {
 	Name          string
 	Mode          config.WorkflowMode
 	StepType      config.WorkflowStepType
-	FailurePolicy config.WorkflowFailurePolicy
+	FailurePolicy workflowconfig.WorkflowFailurePolicy
 	Approval      *ApprovalExecution
 	Jobs          map[int][]*model.JobTask
 }
@@ -58,7 +59,7 @@ func GenerateJobTasks(ctx context.Context, task *model.WorkflowQueue, ds datasto
 			return []StepExecution{*failedWorkflowGenerationExecution(task, defaultJobTimeoutSeconds, err)}, nil
 		}
 	}
-	failurePolicy, ok := config.NormalizeWorkflowFailurePolicy(workflowSteps.FailurePolicy)
+	failurePolicy, ok := workflowconfig.NormalizeWorkflowFailurePolicy(workflowSteps.FailurePolicy)
 	if !ok {
 		err := fmt.Errorf("workflow %s has unsupported failurePolicy %q", task.WorkflowID, workflowSteps.FailurePolicy)
 		logger.Error(err, "Failed to prepare workflow job tasks", "workflowID", task.WorkflowID, "appID", task.AppID)
@@ -227,7 +228,7 @@ func isRestorableCommittedJobStatus(jobTask *model.JobTask, status config.Status
 	}
 }
 
-func applyWorkflowFailurePolicyToExecutions(executions []StepExecution, policy config.WorkflowFailurePolicy) {
+func applyWorkflowFailurePolicyToExecutions(executions []StepExecution, policy workflowconfig.WorkflowFailurePolicy) {
 	for idx := range executions {
 		executions[idx].FailurePolicy = policy
 	}

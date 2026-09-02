@@ -5,6 +5,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 // ApplicationBase application base model
@@ -69,7 +70,7 @@ type CreateApplicationsRequest struct {
 
 	// WorkflowFailurePolicy is populated from the workflow object request shape:
 	// {"workflow":{"failurePolicy":"cleanup_all","steps":[...]}}.
-	WorkflowFailurePolicy config.WorkflowFailurePolicy `json:"-"`
+	WorkflowFailurePolicy workflowconfig.WorkflowFailurePolicy `json:"-"`
 
 	// TemplateEnabled 标记该应用是否允许作为模板被引用
 	TemplateEnabled *bool `json:"templateEnabled,omitempty"`

@@ -6,7 +6,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 )
 
@@ -118,33 +118,33 @@ func classifyKubeObjects(objects []*unstructured.Unstructured) (kubeObjectBucket
 			continue
 		}
 		switch kind {
-		case string(config.KubeKindStatefulSet),
-			string(config.KubeKindDeployment),
-			string(config.KubeKindDaemonSet):
+		case string(domainspec.KubeKindStatefulSet),
+			string(domainspec.KubeKindDeployment),
+			string(domainspec.KubeKindDaemonSet):
 			buckets.workloads = append(buckets.workloads, obj)
-		case string(config.KubeKindJob):
+		case string(domainspec.KubeKindJob):
 			buckets.jobs = append(buckets.jobs, obj)
-		case string(config.KubeKindCronJob):
+		case string(domainspec.KubeKindCronJob):
 			buckets.cronJobs = append(buckets.cronJobs, obj)
-		case string(config.KubeKindService):
+		case string(domainspec.KubeKindService):
 			buckets.services = append(buckets.services, obj)
-		case string(config.KubeKindConfigMap):
+		case string(domainspec.KubeKindConfigMap):
 			buckets.configMaps = append(buckets.configMaps, obj)
-		case string(config.KubeKindSecret):
+		case string(domainspec.KubeKindSecret):
 			buckets.secrets = append(buckets.secrets, obj)
-		case string(config.KubeKindIngress):
+		case string(domainspec.KubeKindIngress):
 			buckets.ingresses = append(buckets.ingresses, obj)
-		case string(config.KubeKindServiceAccount):
+		case string(domainspec.KubeKindServiceAccount):
 			buckets.serviceAccounts = append(buckets.serviceAccounts, obj)
-		case string(config.KubeKindRole):
+		case string(domainspec.KubeKindRole):
 			buckets.roles = append(buckets.roles, obj)
-		case string(config.KubeKindRoleBinding):
+		case string(domainspec.KubeKindRoleBinding):
 			buckets.roleBindings = append(buckets.roleBindings, obj)
-		case string(config.KubeKindClusterRole):
+		case string(domainspec.KubeKindClusterRole):
 			buckets.clusterRoles = append(buckets.clusterRoles, obj)
-		case string(config.KubeKindClusterRoleBinding):
+		case string(domainspec.KubeKindClusterRoleBinding):
 			buckets.clusterRoleBindings = append(buckets.clusterRoleBindings, obj)
-		case string(config.KubeKindPersistentVolumeClaim):
+		case string(domainspec.KubeKindPersistentVolumeClaim):
 			buckets.pvcs = append(buckets.pvcs, obj)
 		default:
 			warnings = append(warnings, fmt.Sprintf("unsupported kind %s ignored", kind))

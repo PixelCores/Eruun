@@ -755,7 +755,7 @@ func importComponentResolvedResourceKeys(component apisv1.CreateComponentRequest
 	}
 
 	keys := make([]string, 0, 4+len(component.Traits.Service)+len(component.Traits.Ingress))
-	add := func(kind config.ResourceKind, name string) {
+	add := func(kind domainspec.ResourceKind, name string) {
 		name = strings.TrimSpace(name)
 		if name == "" {
 			return
@@ -765,31 +765,31 @@ func importComponentResolvedResourceKeys(component apisv1.CreateComponentRequest
 
 	switch component.ComponentType {
 	case config.ConfJob:
-		add(config.ResourceConfigMap, componentName)
+		add(domainspec.ResourceConfigMap, componentName)
 	case config.SecretJob:
-		add(config.ResourceSecret, componentName)
+		add(domainspec.ResourceSecret, componentName)
 	case config.ServerJob:
-		add(config.ResourceDeployment, naming.WebServiceName(componentName, componentResourceAppName))
+		add(domainspec.ResourceDeployment, naming.WebServiceName(componentName, componentResourceAppName))
 	case config.StoreJob:
-		add(config.ResourceStatefulSet, naming.StoreServerName(componentName, componentResourceAppName))
+		add(domainspec.ResourceStatefulSet, naming.StoreServerName(componentName, componentResourceAppName))
 	case config.InstantJob:
-		add(config.ResourceJob, naming.JobName(componentName, componentResourceAppName))
+		add(domainspec.ResourceJob, naming.JobName(componentName, componentResourceAppName))
 	case config.ScheduledJob:
 		if strings.TrimSpace(component.Properties.Schedule) != "" {
-			add(config.ResourceCronJob, naming.CronJobName(componentName, componentResourceAppName))
+			add(domainspec.ResourceCronJob, naming.CronJobName(componentName, componentResourceAppName))
 		}
 	}
 
 	for _, name := range applicationservice.ResolvedServiceResourceNames(component, componentResourceAppName) {
-		add(config.ResourceService, name)
+		add(domainspec.ResourceService, name)
 	}
 	for _, name := range applicationservice.ResolvedIngressResourceNames(component, componentResourceAppName) {
-		add(config.ResourceIngress, name)
+		add(domainspec.ResourceIngress, name)
 	}
 	return keys
 }
 
-func importResourceCollisionKey(kind config.ResourceKind, namespace, name string) string {
+func importResourceCollisionKey(kind domainspec.ResourceKind, namespace, name string) string {
 	return string(kind) + "\x00" + applicationservice.ServiceNamespaceOrDefault(namespace) + "\x00" + strings.TrimSpace(name)
 }
 
@@ -2101,7 +2101,7 @@ func filterUnsafeStatefulSetVolumeClaimTemplateImports(objects []*unstructured.U
 		if obj == nil {
 			continue
 		}
-		if obj.GetKind() == string(config.KubeKindStatefulSet) && statefulSetImportHasVolumeClaimTemplates(obj) {
+		if obj.GetKind() == string(domainspec.KubeKindStatefulSet) && statefulSetImportHasVolumeClaimTemplates(obj) {
 			warnings = append(warnings, fmt.Sprintf("statefulset %s/%s has volumeClaimTemplates and was skipped; importing it safely requires explicit PVC data migration", obj.GetNamespace(), obj.GetName()))
 			continue
 		}
@@ -2295,11 +2295,11 @@ func ensureSharedComponentsOnApp(
 		}
 		sharedBudget[signature]--
 		if dedupedComponents[i].Traits.Share == nil {
-			dedupedComponents[i].Traits.Share = &domainspec.ShareTraitSpec{Strategy: string(config.ShareStrategyDefault)}
+			dedupedComponents[i].Traits.Share = &domainspec.ShareTraitSpec{Strategy: string(domainspec.ShareStrategyDefault)}
 			continue
 		}
 		if strings.TrimSpace(dedupedComponents[i].Traits.Share.Strategy) == "" {
-			dedupedComponents[i].Traits.Share.Strategy = string(config.ShareStrategyDefault)
+			dedupedComponents[i].Traits.Share.Strategy = string(domainspec.ShareStrategyDefault)
 		}
 	}
 }
@@ -2795,12 +2795,12 @@ func buildImportLabels(res *importResource, appID, stableAppKey, componentName s
 		}
 	}
 	if shareName != "" && shareStrategy == "" {
-		shareStrategy = string(config.ShareStrategyDefault)
+		shareStrategy = string(domainspec.ShareStrategyDefault)
 	}
 	if shareStrategy != "" {
-		normalized, ok := config.NormalizeShareStrategy(shareStrategy)
+		normalized, ok := domainspec.NormalizeShareStrategy(shareStrategy)
 		if !ok {
-			normalized = config.ShareStrategyDefault
+			normalized = domainspec.ShareStrategyDefault
 		}
 		shareStrategy = string(normalized)
 	}

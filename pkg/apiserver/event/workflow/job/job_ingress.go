@@ -9,6 +9,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 
@@ -35,7 +36,7 @@ func NewDeployIngressJobCtl(job *model.JobTask, client kubernetes.Interface, sto
 }
 
 func (c *DeployIngressJobCtl) Clean(ctx context.Context) {
-	c.cleanCreated(ctx, config.ResourceIngress, "ingress", func(ctx context.Context, namespace, name string) error {
+	c.cleanCreated(ctx, domainspec.ResourceIngress, "ingress", func(ctx context.Context, namespace, name string) error {
 		return c.client.NetworkingV1().Ingresses(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	}, k8serrors.IsNotFound, "after job failure")
 }
@@ -84,7 +85,7 @@ func (c *DeployIngressJobCtl) run(ctx context.Context) error {
 
 	updateIngress := func(ctx context.Context, current *networkingv1.Ingress) error {
 		if !ingressNeedsUpdate(current, ingress) {
-			markResourceObserved(ctx, config.ResourceIngress, ingress.Namespace, ingress.Name)
+			markResourceObserved(ctx, domainspec.ResourceIngress, ingress.Namespace, ingress.Name)
 			klog.Infof("Ingress %s/%s is up-to-date; skipping update", ingress.Namespace, ingress.Name)
 			return nil
 		}
@@ -97,7 +98,7 @@ func (c *DeployIngressJobCtl) run(ctx context.Context) error {
 		}); err != nil {
 			return fmt.Errorf("update ingress %s/%s failed: %w", ingress.Namespace, ingress.Name, err)
 		}
-		markResourceObserved(ctx, config.ResourceIngress, ingress.Namespace, ingress.Name)
+		markResourceObserved(ctx, domainspec.ResourceIngress, ingress.Namespace, ingress.Name)
 		klog.Infof("Ingress %s/%s updated successfully", ingress.Namespace, ingress.Name)
 		return nil
 	}
@@ -107,7 +108,7 @@ func (c *DeployIngressJobCtl) run(ctx context.Context) error {
 			job:          c.job,
 			ack:          c.ack,
 			labels:       ingress.Labels,
-			kind:         config.ResourceIngress,
+			kind:         domainspec.ResourceIngress,
 			lockProvider: c.shareLocker,
 			listFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
 				list, err := c.client.NetworkingV1().Ingresses(ingress.Namespace).List(ctx, opts)
@@ -116,8 +117,8 @@ func (c *DeployIngressJobCtl) run(ctx context.Context) error {
 				}
 				return len(list.Items), nil
 			},
-			logSkip: func(strategy config.ShareStrategy) {
-				if strategy == config.ShareStrategyIgnore {
+			logSkip: func(strategy domainspec.ShareStrategy) {
+				if strategy == domainspec.ShareStrategyIgnore {
 					klog.Infof("Ingress %s/%s marked as shared ignore; skipping", ingress.Namespace, ingress.Name)
 				} else {
 					klog.Infof("Ingress %s/%s already exists and is shared; skipping", ingress.Namespace, ingress.Name)
@@ -181,7 +182,7 @@ func (c *DeployIngressJobCtl) reconcileAdoptedIngress(
 		}
 	}
 	if !adoptedIngressNeedsUpdate(current, desired) {
-		markResourceObserved(ctx, config.ResourceIngress, desired.Namespace, desired.Name)
+		markResourceObserved(ctx, domainspec.ResourceIngress, desired.Namespace, desired.Name)
 		return nil
 	}
 	if err := updateResourceWithRetry(ctx, func(ctx context.Context) (*networkingv1.Ingress, error) {
@@ -201,7 +202,7 @@ func (c *DeployIngressJobCtl) reconcileAdoptedIngress(
 	}); err != nil {
 		return fmt.Errorf("update adopted ingress %s/%s: %w", desired.Namespace, desired.Name, err)
 	}
-	markResourceObserved(ctx, config.ResourceIngress, desired.Namespace, desired.Name)
+	markResourceObserved(ctx, domainspec.ResourceIngress, desired.Namespace, desired.Name)
 	return nil
 }
 
@@ -271,7 +272,7 @@ func (c *DeployIngressJobCtl) recreateAdoptedIngress(
 	if err := recreation.persistCreated(recreationCtx, created, created, c.runtime); err != nil {
 		return fmt.Errorf("persist recreated adopted ingress binding; pending claim retained: %w", err)
 	}
-	markResourceObserved(ctx, config.ResourceIngress, created.Namespace, created.Name)
+	markResourceObserved(ctx, domainspec.ResourceIngress, created.Namespace, created.Name)
 	return nil
 }
 

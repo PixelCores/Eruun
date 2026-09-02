@@ -23,6 +23,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api"
 	apiauth "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/auth"
 	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/middleware"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 func (s *restServer) runBootstrapStep(parent context.Context, step func(context.Context) error) error {
@@ -240,7 +241,7 @@ func (s *restServer) Run(ctx context.Context, errChan chan error) error {
 
 			drainTimeout := s.cfg.Workflow.WorkerDrainTimeout
 			if drainTimeout <= 0 {
-				drainTimeout = config.DefaultWorkerDrainTimeout
+				drainTimeout = workflowconfig.DefaultWorkerDrainTimeout
 			}
 			drainCtx, cancelDrain := context.WithTimeout(context.Background(), drainTimeout)
 			defer cancelDrain()

@@ -24,6 +24,7 @@ import (
 	k8stesting "k8s.io/client-go/testing"
 
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 func TestWorkflowRunStopsFailureCleanupWhenPersistenceStops(t *testing.T) {
@@ -81,7 +82,7 @@ func TestWorkflowRunStopsFailureCleanupWhenPersistenceStops(t *testing.T) {
 			})
 			require.NoError(t, err)
 			steps, err := model.NewJSONStructByStruct(&model.WorkflowSteps{
-				FailurePolicy: config.WorkflowFailurePolicyCleanupAll,
+				FailurePolicy: workflowconfig.WorkflowFailurePolicyCleanupAll,
 				Steps: []*model.WorkflowStep{
 					{
 						Name:         "deploy-secret",
@@ -185,13 +186,13 @@ func TestStopOnFailureLogicForStepModes(t *testing.T) {
 func TestShouldCleanupAllOnWorkflowFailure(t *testing.T) {
 	tests := []struct {
 		name     string
-		policy   config.WorkflowFailurePolicy
+		policy   workflowconfig.WorkflowFailurePolicy
 		task     *model.JobTask
 		expected bool
 	}{
 		{
 			name:   "default cleanup failed keeps existing per job cleanup behavior",
-			policy: config.WorkflowFailurePolicyCleanupFailed,
+			policy: workflowconfig.WorkflowFailurePolicyCleanupFailed,
 			task: &model.JobTask{
 				JobType: string(config.JobDeploy),
 				Status:  config.StatusFailed,
@@ -209,7 +210,7 @@ func TestShouldCleanupAllOnWorkflowFailure(t *testing.T) {
 		},
 		{
 			name:   "cleanup all on failed deploy job",
-			policy: config.WorkflowFailurePolicyCleanupAll,
+			policy: workflowconfig.WorkflowFailurePolicyCleanupAll,
 			task: &model.JobTask{
 				JobType: string(config.JobDeployService),
 				Status:  config.StatusFailed,
@@ -218,7 +219,7 @@ func TestShouldCleanupAllOnWorkflowFailure(t *testing.T) {
 		},
 		{
 			name:   "cleanup all on timed out deploy job",
-			policy: config.WorkflowFailurePolicyCleanupAll,
+			policy: workflowconfig.WorkflowFailurePolicyCleanupAll,
 			task: &model.JobTask{
 				JobType: string(config.JobDeployStore),
 				Status:  config.StatusTimeout,
@@ -227,27 +228,27 @@ func TestShouldCleanupAllOnWorkflowFailure(t *testing.T) {
 		},
 		{
 			name:   "instant job override skips cleanup all on failure",
-			policy: config.WorkflowFailurePolicyCleanupAll,
+			policy: workflowconfig.WorkflowFailurePolicyCleanupAll,
 			task: &model.JobTask{
 				JobType:       string(config.JobDeployInstant),
 				Status:        config.StatusFailed,
-				FailurePolicy: config.WorkflowFailurePolicyCleanupFailed,
+				FailurePolicy: workflowconfig.WorkflowFailurePolicyCleanupFailed,
 			},
 			expected: false,
 		},
 		{
 			name:   "instant job override skips cleanup all on timeout",
-			policy: config.WorkflowFailurePolicyCleanupAll,
+			policy: workflowconfig.WorkflowFailurePolicyCleanupAll,
 			task: &model.JobTask{
 				JobType:       string(config.JobDeployInstant),
 				Status:        config.StatusTimeout,
-				FailurePolicy: config.WorkflowFailurePolicyCleanupFailed,
+				FailurePolicy: workflowconfig.WorkflowFailurePolicyCleanupFailed,
 			},
 			expected: false,
 		},
 		{
 			name:   "successful workflow job does not trigger cleanup all",
-			policy: config.WorkflowFailurePolicyCleanupAll,
+			policy: workflowconfig.WorkflowFailurePolicyCleanupAll,
 			task: &model.JobTask{
 				JobType: string(config.JobDeploy),
 				Status:  config.StatusCompleted,
@@ -256,7 +257,7 @@ func TestShouldCleanupAllOnWorkflowFailure(t *testing.T) {
 		},
 		{
 			name:   "callback failure does not trigger cleanup all",
-			policy: config.WorkflowFailurePolicyCleanupAll,
+			policy: workflowconfig.WorkflowFailurePolicyCleanupAll,
 			task: &model.JobTask{
 				JobType: string(config.JobDeployCallback),
 				Status:  config.StatusFailed,
@@ -265,7 +266,7 @@ func TestShouldCleanupAllOnWorkflowFailure(t *testing.T) {
 		},
 		{
 			name:   "manual cancellation does not trigger cleanup all",
-			policy: config.WorkflowFailurePolicyCleanupAll,
+			policy: workflowconfig.WorkflowFailurePolicyCleanupAll,
 			task: &model.JobTask{
 				JobType: string(config.JobDeploy),
 				Status:  config.StatusCancelled,
@@ -286,14 +287,14 @@ func TestWorkflowFailureCleanupTrigger(t *testing.T) {
 		Name:          "sql-job",
 		JobType:       string(config.JobDeployInstant),
 		Status:        config.StatusFailed,
-		FailurePolicy: config.WorkflowFailurePolicyCleanupFailed,
+		FailurePolicy: workflowconfig.WorkflowFailurePolicyCleanupFailed,
 	}
-	require.Nil(t, workflowFailureCleanupTrigger(config.WorkflowFailurePolicyCleanupAll, []*model.JobTask{
+	require.Nil(t, workflowFailureCleanupTrigger(workflowconfig.WorkflowFailurePolicyCleanupAll, []*model.JobTask{
 		sqlJobFailure,
 		{Name: "api", JobType: string(config.JobDeploy), Status: config.StatusCompleted},
 	}))
 	ordinaryFailure := &model.JobTask{Name: "api", JobType: string(config.JobDeploy), Status: config.StatusFailed}
-	require.Same(t, ordinaryFailure, workflowFailureCleanupTrigger(config.WorkflowFailurePolicyCleanupAll, []*model.JobTask{
+	require.Same(t, ordinaryFailure, workflowFailureCleanupTrigger(workflowconfig.WorkflowFailurePolicyCleanupAll, []*model.JobTask{
 		sqlJobFailure,
 		ordinaryFailure,
 	}))

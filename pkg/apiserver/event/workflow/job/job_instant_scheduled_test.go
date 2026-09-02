@@ -20,6 +20,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
 
@@ -180,7 +181,7 @@ func TestImmediateJobControllersRejectStaleWorkflowOwnerBeforeKubernetesAccess(t
 		t.Run(string(jobType), func(t *testing.T) {
 			jobObj := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
 				Name: "demo", Namespace: "default",
-				Annotations: map[string]string{config.AnnotationJobRunPolicy: string(config.JobRunPolicyRecreate)},
+				Annotations: map[string]string{config.AnnotationJobRunPolicy: string(workflowconfig.JobRunPolicyRecreate)},
 			}}
 			jobTask := &model.JobTask{
 				Name: "demo", Namespace: "default", TaskID: "task-1", JobType: string(jobType), JobInfo: jobObj,
@@ -212,7 +213,7 @@ func TestImmediateJobControllersDoNotDeleteNewerExecution(t *testing.T) {
 		t.Run(string(jobType), func(t *testing.T) {
 			desired := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
 				Name: "demo", Namespace: "default",
-				Annotations: map[string]string{config.AnnotationJobRunPolicy: string(config.JobRunPolicyRecreate)},
+				Annotations: map[string]string{config.AnnotationJobRunPolicy: string(workflowconfig.JobRunPolicyRecreate)},
 			}}
 			jobTask := &model.JobTask{
 				Name: "demo", Namespace: "default", TaskID: "task-1", JobType: string(jobType), JobInfo: desired,
@@ -282,7 +283,7 @@ func TestExistingJobExecutionIdentityComparesGenerationsWithinOneTask(t *testing
 			desired := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
 				Name: "demo", Namespace: "default",
 				Annotations: map[string]string{
-					config.AnnotationJobRunPolicy:     string(config.JobRunPolicyRecreate),
+					config.AnnotationJobRunPolicy:     string(workflowconfig.JobRunPolicyRecreate),
 					config.AnnotationJobTaskID:        "task-new",
 					config.AnnotationJobExecutionKey:  "execution-new",
 					config.AnnotationJobRunGeneration: "1",
@@ -442,7 +443,7 @@ func TestScheduledJobCtlRunOneTimeSkip(t *testing.T) {
 				Name:      "demo",
 				Namespace: "default",
 				Annotations: map[string]string{
-					config.AnnotationJobRunPolicy: string(config.JobRunPolicySkipIfCompleted),
+					config.AnnotationJobRunPolicy: string(workflowconfig.JobRunPolicySkipIfCompleted),
 				},
 			},
 		},
@@ -617,7 +618,7 @@ func TestImmediateJobControllersRejectReplacementAfterRecreateWait(t *testing.T)
 			t.Run(string(jobType)+"/"+tc.name, func(t *testing.T) {
 				desired := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
 					Name: "demo", Namespace: "default",
-					Annotations: map[string]string{config.AnnotationJobRunPolicy: string(config.JobRunPolicyRecreate)},
+					Annotations: map[string]string{config.AnnotationJobRunPolicy: string(workflowconfig.JobRunPolicyRecreate)},
 				}}
 				jobTask := &model.JobTask{
 					Name: "demo", Namespace: "default", TaskID: "task-1", JobType: string(jobType), JobInfo: desired,
@@ -686,7 +687,7 @@ func TestRunJobsPreservesNonTerminalStateAfterRecreateOwnershipReadFailure(t *te
 				temporaryErr := errors.New("temporary database outage")
 				desired := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
 					Name: "demo", Namespace: "default",
-					Annotations: map[string]string{config.AnnotationJobRunPolicy: string(config.JobRunPolicyRecreate)},
+					Annotations: map[string]string{config.AnnotationJobRunPolicy: string(workflowconfig.JobRunPolicyRecreate)},
 				}}
 				jobTask := &model.JobTask{
 					Name: "demo", Namespace: "default", TaskID: "task-1", JobType: string(jobType), JobInfo: desired,

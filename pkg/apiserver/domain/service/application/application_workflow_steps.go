@@ -11,6 +11,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 const (
@@ -48,11 +49,11 @@ func defaultWorkflowBodyForCreate(req apisv1.CreateApplicationsRequest, resolved
 	return workflowSteps
 }
 
-func applyWorkflowFailurePolicy(steps *model.WorkflowSteps, policy config.WorkflowFailurePolicy) {
+func applyWorkflowFailurePolicy(steps *model.WorkflowSteps, policy workflowconfig.WorkflowFailurePolicy) {
 	if steps == nil {
 		return
 	}
-	normalized, _ := config.NormalizeWorkflowFailurePolicy(policy)
+	normalized, _ := workflowconfig.NormalizeWorkflowFailurePolicy(policy)
 	steps.FailurePolicy = normalized
 }
 
@@ -60,24 +61,24 @@ func updateWorkflowFailurePolicySpecified(req apisv1.UpdateApplicationWorkflowRe
 	return req.FailurePolicySet || strings.TrimSpace(string(req.FailurePolicy)) != ""
 }
 
-func storedWorkflowFailurePolicy(raw *model.JSONStruct) (config.WorkflowFailurePolicy, error) {
+func storedWorkflowFailurePolicy(raw *model.JSONStruct) (workflowconfig.WorkflowFailurePolicy, error) {
 	var steps model.WorkflowSteps
 	if raw == nil {
-		policy, _ := config.NormalizeWorkflowFailurePolicy("")
+		policy, _ := workflowconfig.NormalizeWorkflowFailurePolicy("")
 		return policy, nil
 	}
 	if err := decodeJSONStruct(raw, &steps); err != nil {
 		return "", err
 	}
-	policy, ok := config.NormalizeWorkflowFailurePolicy(steps.FailurePolicy)
+	policy, ok := workflowconfig.NormalizeWorkflowFailurePolicy(steps.FailurePolicy)
 	if !ok {
 		return "", fmt.Errorf("%w: unsupported stored workflow failurePolicy %q", bcode.ErrWorkflowConfig, steps.FailurePolicy)
 	}
 	return policy, nil
 }
 
-func validateWorkflowFailurePolicy(policy config.WorkflowFailurePolicy) error {
-	if _, ok := config.NormalizeWorkflowFailurePolicy(policy); ok {
+func validateWorkflowFailurePolicy(policy workflowconfig.WorkflowFailurePolicy) error {
+	if _, ok := workflowconfig.NormalizeWorkflowFailurePolicy(policy); ok {
 		return nil
 	}
 	return bcode.ErrWorkflowConfig

@@ -9,6 +9,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -29,7 +30,7 @@ func TestConvertComponentModelToDTOStatusDefault(t *testing.T) {
 
 func TestConvertWorkflowStepsPreservesProperties(t *testing.T) {
 	steps := &model.WorkflowSteps{
-		FailurePolicy: config.WorkflowFailurePolicyCleanupAll,
+		FailurePolicy: workflowconfig.WorkflowFailurePolicyCleanupAll,
 		Steps: []*model.WorkflowStep{
 			{
 				Name:         "deploy-nginx",
@@ -63,7 +64,7 @@ func TestConvertWorkflowStepsPreservesProperties(t *testing.T) {
 
 	failurePolicy, details, err := convertWorkflowSteps(raw)
 	require.NoError(t, err)
-	require.Equal(t, config.WorkflowFailurePolicyCleanupAll, failurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, failurePolicy)
 	require.Len(t, details, 2)
 
 	require.Equal(t, []string{"nginx"}, details[0].Components)
@@ -94,7 +95,7 @@ func TestConvertWorkflowStepsDefaultsMissingFailurePolicyToCleanupAll(t *testing
 
 	failurePolicy, details, err := convertWorkflowSteps(raw)
 	require.NoError(t, err)
-	require.Equal(t, config.WorkflowFailurePolicyCleanupAll, failurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, failurePolicy)
 	require.Len(t, details, 1)
 }
 
@@ -355,7 +356,7 @@ func TestConvertComponentModelToDTOUsesSharedResourceKeyForGeneratedNames(t *tes
 		Ports: []model.Ports{{Port: 8080}},
 	})
 	traits := mustJSONStruct(t, model.Traits{
-		Share: &spec.ShareTraitSpec{Strategy: string(config.ShareStrategyDefault)},
+		Share: &spec.ShareTraitSpec{Strategy: string(spec.ShareStrategyDefault)},
 		Ingress: []spec.IngressTraitsSpec{
 			{
 				Routes: []spec.IngressRoutes{
@@ -397,7 +398,7 @@ func TestConvertComponentModelToDTOUsesExplicitServiceTraitNameForSvcLink(t *tes
 		Service: []spec.ServiceTraitSpec{
 			{
 				Name: "api-fixed",
-				Type: string(config.ServiceAccessInternal),
+				Type: string(spec.ServiceAccessInternal),
 				Ports: []spec.ServicePortTraitSpec{
 					{Port: 80, TargetPort: 80, Protocol: "TCP"},
 				},
@@ -434,12 +435,12 @@ func TestConvertComponentModelToDTOPrefersNonExternalServiceTraitForSvcLink(t *t
 		Service: []spec.ServiceTraitSpec{
 			{
 				Name:         "external-api",
-				Type:         string(config.ServiceAccessExternal),
+				Type:         string(spec.ServiceAccessExternal),
 				ExternalName: "example.com",
 			},
 			{
 				Name: "internal-api",
-				Type: string(config.ServiceAccessInternal),
+				Type: string(spec.ServiceAccessInternal),
 				Ports: []spec.ServicePortTraitSpec{
 					{Port: 80, TargetPort: 80, Protocol: "TCP"},
 				},
@@ -476,7 +477,7 @@ func TestConvertComponentModelToDTOSkipsServiceSummariesForNonServiceDeployCompo
 		Service: []spec.ServiceTraitSpec{
 			{
 				Name: "job-svc",
-				Type: string(config.ServiceAccessInternal),
+				Type: string(spec.ServiceAccessInternal),
 				Ports: []spec.ServicePortTraitSpec{
 					{Port: 80, TargetPort: 8080},
 				},
@@ -668,7 +669,7 @@ func TestConvertComponentModelsToDTOAddsResourceDetailsAndCredentials(t *testing
 		Service: []spec.ServiceTraitSpec{
 			{
 				Name: "api-svc",
-				Type: string(config.ServiceAccessInternal),
+				Type: string(spec.ServiceAccessInternal),
 				Ports: []spec.ServicePortTraitSpec{
 					{Name: "http", Port: 80, TargetPort: 8080, Protocol: "TCP"},
 				},
@@ -740,7 +741,7 @@ func TestConvertComponentModelsToDTOAddsResourceDetailsAndCredentials(t *testing
 		{
 			Name:      "api-svc",
 			Namespace: "default",
-			Type:      string(config.ServiceAccessInternal),
+			Type:      string(spec.ServiceAccessInternal),
 			Ports: []apisv1.ComponentServicePortInfo{
 				{Name: "http", Port: 80, TargetPort: 8080, Protocol: "TCP"},
 			},

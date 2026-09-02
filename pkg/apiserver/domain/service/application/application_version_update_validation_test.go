@@ -187,7 +187,7 @@ func TestUpdateVersionAddComponentRejectsInvalidExplicitServiceName(t *testing.T
 		Service: []spec.ServiceTraitSpec{
 			{
 				Name: "Backend_Service",
-				Type: string(config.ServiceAccessInternal),
+				Type: string(spec.ServiceAccessInternal),
 				Ports: []spec.ServicePortTraitSpec{
 					{Port: 6379, TargetPort: 6379, Protocol: "TCP"},
 				},

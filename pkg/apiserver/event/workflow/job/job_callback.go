@@ -20,6 +20,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 const (
@@ -255,13 +256,13 @@ func newCallbackURLPolicyHTTPClient(base *http.Client, policy *spec.URLSecurityP
 }
 
 func callbackTimeout(seconds, maxSeconds, maxNS int64) time.Duration {
-	maxTimeout := config.DefaultWorkflowCallbackTimeoutMax
+	maxTimeout := workflowconfig.DefaultWorkflowCallbackTimeoutMax
 	if maxNS > 0 {
 		maxTimeout = time.Duration(maxNS)
 	} else if maxSeconds > 0 {
 		maxTimeout = time.Duration(maxSeconds) * time.Second
 	}
-	return config.ResolveWorkflowCallbackTimeout(seconds, maxTimeout)
+	return workflowconfig.ResolveWorkflowCallbackTimeout(seconds, maxTimeout)
 }
 
 func appendCallbackQuery(rawURL string, payload CallbackPayload) (string, error) {

@@ -1,6 +1,14 @@
-package config
+package spec
 
 import "strings"
+
+type ShareStrategy string
+
+const (
+	ShareStrategyDefault ShareStrategy = "default"
+	ShareStrategyIgnore  ShareStrategy = "ignore"
+	ShareStrategyForce   ShareStrategy = "force"
+)
 
 // NormalizeShareStrategy returns a normalized strategy and whether the input is known.
 func NormalizeShareStrategy(strategy string) (ShareStrategy, bool) {

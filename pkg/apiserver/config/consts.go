@@ -26,15 +26,12 @@ const (
 	LabelShareStrategy = "eruun.io/share-strategy"
 )
 
-type JobRunPolicy string
 type JobType string
 type JobErrorPolicy string
 type WorkflowTaskType string
 type WorkflowMode string
 type WorkflowStepType string
-type WorkflowFailurePolicy string
 type Status string
-type ShareStrategy string
 type JobResultOutboxState string
 type JobDelayState string
 type VersionUpdateExecutionScope string
@@ -124,13 +121,6 @@ const (
 )
 
 const (
-	DefaultRun                  JobRunPolicy = ""
-	DefaultNotRun               JobRunPolicy = "default_not_run"
-	ForceRun                    JobRunPolicy = "force_run"
-	SkipRun                     JobRunPolicy = "skip"
-	JobRunPolicyRecreate        JobRunPolicy = "recreate"
-	JobRunPolicySkipIfCompleted JobRunPolicy = "skip_if_completed"
-
 	WorkflowTaskTypeWorkflow         WorkflowTaskType = "workflow"
 	WorkflowTaskTypeTesting          WorkflowTaskType = "test"
 	WorkflowTaskTypeScanning         WorkflowTaskType = "scan"
@@ -148,13 +138,6 @@ const (
 
 	WorkflowStepTypeComponent WorkflowStepType = "component"
 	WorkflowStepTypeApproval  WorkflowStepType = "approval"
-
-	WorkflowFailurePolicyCleanupFailed WorkflowFailurePolicy = "cleanup_failed"
-	WorkflowFailurePolicyCleanupAll    WorkflowFailurePolicy = "cleanup_all"
-
-	ShareStrategyDefault ShareStrategy = "default"
-	ShareStrategyIgnore  ShareStrategy = "ignore"
-	ShareStrategyForce   ShareStrategy = "force"
 
 	AnnotationJobStartTime     = "eruun.job/startTime"
 	AnnotationJobRunPolicy     = "eruun.job/runPolicy"
@@ -177,22 +160,14 @@ const (
 	DelayQueueGroup             = "job-delay-dispatcher"
 	ResultQueueGroup            = "job-result-dispatcher"
 
-	WaitingTasksQueryTimeout                = 5 * time.Second
-	TaskStateTransitionTimeout              = 5 * time.Second
-	QueueDispatchTimeout                    = 5 * time.Second
-	DefaultDispatchPollInterval             = 3 * time.Second
-	DefaultWorkerStaleInterval              = 15 * time.Second
-	DefaultWorkerAutoClaimIdle              = 60 * time.Second
-	DefaultWorkerAutoClaimCount             = 50
-	DefaultWorkerReadCount                  = 10
-	DefaultWorkerReadBlock                  = 2 * time.Second
-	DefaultJobTaskTimeout                   = 20 * time.Minute //超时时间设置为20分钟
-	DefaultJobTTLSeconds              int32 = 3600             // 默认 1 小时后清理完成的 Job
-	DefaultCronJobSuccessfulLimit     int32 = 3                // 默认保留成功的 CronJob 历史数
-	DefaultCronJobFailedLimit         int32 = 3                // 默认保留失败的 CronJob 历史数
-	DefaultWorkflowCallbackTimeout          = 10 * time.Second // 回调默认超时时间
-	DefaultWorkflowCallbackTimeoutMax       = 72 * time.Hour   // 回调超时上限（默认 3 天）
-	DefaultRequestBodyLimitBytes      int64 = 24 * 1024 * 1024 // 默认请求体上限 24MB（覆盖 10MB inline YAML 的 JSON 包装开销）
+	WaitingTasksQueryTimeout            = 5 * time.Second
+	TaskStateTransitionTimeout          = 5 * time.Second
+	QueueDispatchTimeout                = 5 * time.Second
+	DefaultJobTaskTimeout               = 20 * time.Minute //超时时间设置为20分钟
+	DefaultJobTTLSeconds          int32 = 3600             // 默认 1 小时后清理完成的 Job
+	DefaultCronJobSuccessfulLimit int32 = 3                // 默认保留成功的 CronJob 历史数
+	DefaultCronJobFailedLimit     int32 = 3                // 默认保留失败的 CronJob 历史数
+	DefaultRequestBodyLimitBytes  int64 = 24 * 1024 * 1024 // 默认请求体上限 24MB（覆盖 10MB inline YAML 的 JSON 包装开销）
 
 	DefaultApplicationCleanupTimeout                    = 10 * time.Second
 	DefaultApplicationWorkloadRestartTimeout            = 10 * time.Second
@@ -201,21 +176,10 @@ const (
 	DefaultDeleteApplicationWaitSeconds           int64 = 60
 	DeleteApplicationTaskPollInterval                   = 1 * time.Second
 
-	DefaultComponentLogTailLines       int64 = 200         // 组件日志默认拉取行数
-	DefaultJobLogTailLines             int64 = 2000        // 默认最多拉取 2000 行日志
-	DefaultJobLogLimitBytes            int64 = 1024 * 1024 // 默认最多拉取 1MB 日志
-	DefaultMaxConcurrentWorkflows            = 100
-	DefaultWorkflowHeartbeatInterval         = 10 * time.Second
-	DefaultWorkflowLeaseDuration             = 30 * time.Second
-	DefaultWorkflowLeaseReaperInterval       = 10 * time.Second
-	DefaultWorkerDrainTimeout                = 60 * time.Second
-	DefaultHTTPShutdownTimeout               = 30 * time.Second
-
-	// Worker resilience settings
-	DefaultWorkerBackoffMin       = 200 * time.Millisecond // 最小退避时间
-	DefaultWorkerBackoffMax       = 5 * time.Minute        // 最大退避时间
-	DefaultWorkerMaxReadFailures  = 10                     // 连续 10 次失败后退出
-	DefaultWorkerMaxClaimFailures = 10                     // 连续 10 次失败后退出
+	DefaultComponentLogTailLines int64 = 200         // 组件日志默认拉取行数
+	DefaultJobLogTailLines       int64 = 2000        // 默认最多拉取 2000 行日志
+	DefaultJobLogLimitBytes      int64 = 1024 * 1024 // 默认最多拉取 1MB 日志
+	DefaultHTTPShutdownTimeout         = 30 * time.Second
 )
 
 const (

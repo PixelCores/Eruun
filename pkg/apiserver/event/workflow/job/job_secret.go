@@ -44,7 +44,7 @@ func NewDeploySecretJobCtl(job *model.JobTask, client kubernetes.Interface, stor
 }
 
 func (c *DeploySecretJobCtl) Clean(ctx context.Context) {
-	c.cleanCreated(ctx, config.ResourceSecret, "secret", func(ctx context.Context, namespace, name string) error {
+	c.cleanCreated(ctx, spec.ResourceSecret, "secret", func(ctx context.Context, namespace, name string) error {
 		return c.client.CoreV1().Secrets(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	}, k8serrors.IsNotFound, "after job failure")
 }
@@ -118,7 +118,7 @@ func (c *DeploySecretJobCtl) run(ctx context.Context) error {
 				return fmt.Errorf("secret %s/%s is immutable; content differs and cannot be updated", secret.Namespace, secret.Name)
 			}
 			logger.Info("Secret is immutable and unchanged; skipping update", "secretName", secret.Name, "namespace", secret.Namespace)
-			markResourceObserved(ctx, config.ResourceSecret, secret.Namespace, secret.Name)
+			markResourceObserved(ctx, spec.ResourceSecret, secret.Namespace, secret.Name)
 			return nil
 		}
 		if err := updateResourceWithRetry(ctx, func(ctx context.Context) (*corev1.Secret, error) {
@@ -137,7 +137,7 @@ func (c *DeploySecretJobCtl) run(ctx context.Context) error {
 			return fmt.Errorf("update secret %q failed: %w", secret.Name, err)
 		}
 		logger.Info("Secret updated", "secretName", secret.Name, "namespace", secret.Namespace)
-		markResourceObserved(ctx, config.ResourceSecret, secret.Namespace, secret.Name)
+		markResourceObserved(ctx, spec.ResourceSecret, secret.Namespace, secret.Name)
 		return nil
 	}
 
@@ -146,7 +146,7 @@ func (c *DeploySecretJobCtl) run(ctx context.Context) error {
 			job:          c.job,
 			ack:          c.ack,
 			labels:       secret.Labels,
-			kind:         config.ResourceSecret,
+			kind:         spec.ResourceSecret,
 			lockProvider: c.shareLocker,
 			listFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
 				list, err := cli.List(ctx, opts)
@@ -155,8 +155,8 @@ func (c *DeploySecretJobCtl) run(ctx context.Context) error {
 				}
 				return len(list.Items), nil
 			},
-			logSkip: func(strategy config.ShareStrategy) {
-				if strategy == config.ShareStrategyIgnore {
+			logSkip: func(strategy spec.ShareStrategy) {
+				if strategy == spec.ShareStrategyIgnore {
 					logger.Info("Secret marked as shared ignore; skipping", "secretName", secret.Name, "namespace", secret.Namespace)
 				} else {
 					logger.Info("Secret already exists and is shared; skipping", "secretName", secret.Name, "namespace", secret.Namespace)
@@ -269,7 +269,7 @@ func (c *DeploySecretJobCtl) reconcileAdoptedSecret(
 			return err
 		}
 	}
-	markResourceObserved(ctx, config.ResourceSecret, desired.Namespace, desired.Name)
+	markResourceObserved(ctx, spec.ResourceSecret, desired.Namespace, desired.Name)
 	return nil
 }
 
@@ -643,7 +643,7 @@ func (c *DeploySecretJobCtl) recreateAdoptedSecret(
 	if err := recreation.persistCreatedSecret(recreationCtx, created, created, material.ciphertextUpdates, c.runtime); err != nil {
 		return fmt.Errorf("persist recreated adopted secret binding; pending claim retained: %w", err)
 	}
-	markResourceObserved(ctx, config.ResourceSecret, created.Namespace, created.Name)
+	markResourceObserved(ctx, spec.ResourceSecret, created.Namespace, created.Name)
 	return nil
 }
 

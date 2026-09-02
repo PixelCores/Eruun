@@ -13,6 +13,7 @@ import (
 	assembler "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/assembler/v1"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 func TestCreateApplications_UpdatePreservesWorkflowID(t *testing.T) {
@@ -219,7 +220,7 @@ func TestCreateApplicationsStoresAndEchoesWorkflowFailurePolicy(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:                  "demo-failure-policy",
 		Namespace:             config.DefaultNamespace,
-		WorkflowFailurePolicy: config.WorkflowFailurePolicyCleanupAll,
+		WorkflowFailurePolicy: workflowconfig.WorkflowFailurePolicyCleanupAll,
 		Component: []apisv1.CreateComponentRequest{{
 			Name:          "web",
 			ComponentType: config.ServerJob,
@@ -243,11 +244,11 @@ func TestCreateApplicationsStoresAndEchoesWorkflowFailurePolicy(t *testing.T) {
 	defaultWorkflow := store.workflows[resp.WorkflowID]
 	require.NotNil(t, defaultWorkflow)
 	steps := decodeWorkflowSteps(t, defaultWorkflow.Steps)
-	require.Equal(t, config.WorkflowFailurePolicyCleanupAll, steps.FailurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, steps.FailurePolicy)
 
 	dto, err := assembler.ConvertWorkflowModelToDTO(defaultWorkflow)
 	require.NoError(t, err)
-	require.Equal(t, config.WorkflowFailurePolicyCleanupAll, dto.FailurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, dto.FailurePolicy)
 }
 
 func TestCreateApplicationsDefaultsWorkflowFailurePolicyToCleanupAll(t *testing.T) {
@@ -280,11 +281,11 @@ func TestCreateApplicationsDefaultsWorkflowFailurePolicyToCleanupAll(t *testing.
 	defaultWorkflow := store.workflows[resp.WorkflowID]
 	require.NotNil(t, defaultWorkflow)
 	steps := decodeWorkflowSteps(t, defaultWorkflow.Steps)
-	require.Equal(t, config.WorkflowFailurePolicyCleanupAll, steps.FailurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, steps.FailurePolicy)
 
 	dto, err := assembler.ConvertWorkflowModelToDTO(defaultWorkflow)
 	require.NoError(t, err)
-	require.Equal(t, config.WorkflowFailurePolicyCleanupAll, dto.FailurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, dto.FailurePolicy)
 }
 
 func TestCreateApplicationsUpdateAppCallbackOverwritesAllWorkflowCallbacks(t *testing.T) {

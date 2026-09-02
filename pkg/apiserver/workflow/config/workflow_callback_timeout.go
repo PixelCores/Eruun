@@ -5,12 +5,17 @@ import (
 	"time"
 )
 
+const (
+	DefaultWorkflowCallbackTimeout    = 10 * time.Second // 回调默认超时时间
+	DefaultWorkflowCallbackTimeoutMax = 72 * time.Hour   // 回调超时上限（默认 3 天）
+)
+
 const maxDurationSeconds = math.MaxInt64 / int64(time.Second)
 
 // ResolveWorkflowCallbackTimeoutMax returns the effective callback timeout upper bound.
-func ResolveWorkflowCallbackTimeoutMax(cfg *Config) time.Duration {
-	if cfg != nil && cfg.Workflow.CallbackTimeoutMax > 0 {
-		return cfg.Workflow.CallbackTimeoutMax
+func ResolveWorkflowCallbackTimeoutMax(cfg RuntimeConfig) time.Duration {
+	if cfg.CallbackTimeoutMax > 0 {
+		return cfg.CallbackTimeoutMax
 	}
 	return DefaultWorkflowCallbackTimeoutMax
 }

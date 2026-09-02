@@ -23,6 +23,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
 
@@ -37,7 +38,7 @@ func buildJob(component *model.ApplicationComponent, properties *model.Propertie
 	}
 	labels := BuildLabels(component, properties)
 	annotations := map[string]string{}
-	policy, _ := config.NormalizeJobRunPolicy(opts.runPolicy)
+	policy, _ := workflowconfig.NormalizeJobRunPolicy(opts.runPolicy)
 	annotations[config.AnnotationJobRunPolicy] = string(policy)
 	if opts.startTime > 0 {
 		annotations[config.AnnotationJobStartTime] = fmt.Sprintf("%d", opts.startTime)
@@ -124,7 +125,7 @@ func buildJobContainer(component *model.ApplicationComponent, properties *model.
 		Name:            containerName,
 		Image:           component.Image,
 		Env:             envs,
-		ImagePullPolicy: config.DefaultWorkflowImagePullPolicy,
+		ImagePullPolicy: workflowconfig.DefaultWorkflowImagePullPolicy,
 	}
 	if properties != nil && len(properties.Command) > 0 {
 		container.Command = properties.Command
@@ -158,13 +159,13 @@ func cronHistoryLimit(properties *model.Properties, success bool) *int32 {
 }
 
 // Job annotations and status helpers.
-func runPolicyFromJob(job *batchv1.Job) config.JobRunPolicy {
+func runPolicyFromJob(job *batchv1.Job) workflowconfig.JobRunPolicy {
 	if job == nil {
-		policy, _ := config.NormalizeJobRunPolicy("")
+		policy, _ := workflowconfig.NormalizeJobRunPolicy("")
 		return policy
 	}
 	raw := strings.TrimSpace(job.GetAnnotations()[config.AnnotationJobRunPolicy])
-	policy, _ := config.NormalizeJobRunPolicy(raw)
+	policy, _ := workflowconfig.NormalizeJobRunPolicy(raw)
 	return policy
 }
 
@@ -206,7 +207,7 @@ func applyJobRunPolicy(
 		return runPolicyActionCreate, err
 	}
 	if !exists {
-		if policy == config.JobRunPolicySkipIfCompleted {
+		if policy == workflowconfig.JobRunPolicySkipIfCompleted {
 			completed, err := jobCompletedInStore(ctx, store, jobType, jobObj)
 			if err != nil {
 				klog.Warningf("job runPolicy skip check failed: %v", err)
@@ -229,7 +230,7 @@ func applyJobRunPolicy(
 
 	status, message, done := jobTerminalStatus(existing)
 	switch policy {
-	case config.JobRunPolicySkipIfCompleted:
+	case workflowconfig.JobRunPolicySkipIfCompleted:
 		if done && status == config.StatusCompleted {
 			return runPolicyActionSkip, nil
 		}
@@ -241,7 +242,7 @@ func applyJobRunPolicy(
 			return runPolicyActionCreate, err
 		}
 		return runPolicyActionCreate, nil
-	case config.JobRunPolicyRecreate:
+	case workflowconfig.JobRunPolicyRecreate:
 		deleteOptions := metav1.DeleteOptions{}
 		if existing.UID != "" {
 			uid := existing.UID

@@ -7,6 +7,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/traitvalidation"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
@@ -281,7 +282,7 @@ func rewriteInternalTemplateServiceName(oldServiceName, baseName string) string 
 }
 
 func isLiteralInternalServiceType(serviceType string) bool {
-	return strings.TrimSpace(serviceType) == string(config.ServiceAccessInternal)
+	return strings.TrimSpace(serviceType) == string(domainspec.ServiceAccessInternal)
 }
 
 func isAlreadyTargetServiceName(serviceName, targetName string) bool {

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 type JobInfo struct {
@@ -43,7 +44,7 @@ type JobTask struct {
 	TaskID          string
 	JobInfo         interface{}
 	JobType         string
-	FailurePolicy   config.WorkflowFailurePolicy
+	FailurePolicy   workflowconfig.WorkflowFailurePolicy
 	Status          config.Status
 	StartTime       int64
 	EndTime         int64

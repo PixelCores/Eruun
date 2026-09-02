@@ -1,21 +1,21 @@
 package v1
 
 import (
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
-func convertWorkflowSteps(raw *model.JSONStruct) (config.WorkflowFailurePolicy, []apisv1.WorkflowStepDetail, error) {
+func convertWorkflowSteps(raw *model.JSONStruct) (workflowconfig.WorkflowFailurePolicy, []apisv1.WorkflowStepDetail, error) {
 	if raw == nil {
-		policy, _ := config.NormalizeWorkflowFailurePolicy("")
+		policy, _ := workflowconfig.NormalizeWorkflowFailurePolicy("")
 		return policy, nil, nil
 	}
 	var steps model.WorkflowSteps
 	if err := decodeJSONStruct(raw, &steps); err != nil {
 		return "", nil, err
 	}
-	failurePolicy, _ := config.NormalizeWorkflowFailurePolicy(steps.FailurePolicy)
+	failurePolicy, _ := workflowconfig.NormalizeWorkflowFailurePolicy(steps.FailurePolicy)
 	result := make([]apisv1.WorkflowStepDetail, 0, len(steps.Steps))
 	for _, step := range steps.Steps {
 		if step == nil {

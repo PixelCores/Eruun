@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
 func TestBuildImportLabels_UseAppIDForRBACManagedLabel(t *testing.T) {
@@ -40,7 +41,7 @@ func TestBuildImportLabels_SharedPlanUsesStandardShareLabels(t *testing.T) {
 	assert.Equal(t, component, labels[config.LabelComponentName])
 	assert.Equal(t, "shared-default", labels[config.LabelImportAppKey])
 	assert.Equal(t, component, labels[config.LabelShareName])
-	assert.Equal(t, string(config.ShareStrategyDefault), labels[config.LabelShareStrategy])
+	assert.Equal(t, string(domainspec.ShareStrategyDefault), labels[config.LabelShareStrategy])
 }
 
 func TestBuildImportLabels_PreservesExistingShareLabels(t *testing.T) {
@@ -49,12 +50,12 @@ func TestBuildImportLabels_PreservesExistingShareLabels(t *testing.T) {
 		name:    "backend-config",
 		labels: map[string]string{
 			config.LabelShareName:     "shared-config",
-			config.LabelShareStrategy: string(config.ShareStrategyIgnore),
+			config.LabelShareStrategy: string(domainspec.ShareStrategyIgnore),
 		},
 	}, "app-id", "stable-app-key", "backend", 0, false)
 
 	assert.Equal(t, "shared-config", labels[config.LabelShareName])
-	assert.Equal(t, string(config.ShareStrategyIgnore), labels[config.LabelShareStrategy])
+	assert.Equal(t, string(domainspec.ShareStrategyIgnore), labels[config.LabelShareStrategy])
 	assert.Equal(t, "stable-app-key", labels[config.LabelImportAppKey])
 }
 

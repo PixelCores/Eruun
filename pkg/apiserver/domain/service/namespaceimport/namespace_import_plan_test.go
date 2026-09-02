@@ -65,9 +65,9 @@ func TestBuildImportPlans_InjectsSharedComponentsIntoEveryApp(t *testing.T) {
 	require.NotNil(t, sharedCompA.Traits.Share)
 	require.NotNil(t, sharedCompB.Traits.Share)
 	require.NotNil(t, sharedCompRoot.Traits.Share)
-	assert.Equal(t, string(config.ShareStrategyDefault), sharedCompA.Traits.Share.Strategy)
-	assert.Equal(t, string(config.ShareStrategyDefault), sharedCompB.Traits.Share.Strategy)
-	assert.Equal(t, string(config.ShareStrategyDefault), sharedCompRoot.Traits.Share.Strategy)
+	assert.Equal(t, string(domainspec.ShareStrategyDefault), sharedCompA.Traits.Share.Strategy)
+	assert.Equal(t, string(domainspec.ShareStrategyDefault), sharedCompB.Traits.Share.Strategy)
+	assert.Equal(t, string(domainspec.ShareStrategyDefault), sharedCompRoot.Traits.Share.Strategy)
 }
 
 func TestBuildImportPlans_InjectsSharedRBACIntoEveryApp(t *testing.T) {
@@ -108,7 +108,7 @@ func TestBuildImportPlans_InjectsSharedRBACIntoEveryApp(t *testing.T) {
 		if policy.RoleName == roleName {
 			found = true
 			assert.Equal(t, roleName, policy.RoleLabels[config.LabelShareName])
-			assert.Equal(t, string(config.ShareStrategyDefault), policy.RoleLabels[config.LabelShareStrategy])
+			assert.Equal(t, string(domainspec.ShareStrategyDefault), policy.RoleLabels[config.LabelShareStrategy])
 		}
 	}
 	assert.True(t, found, "expected shared component to carry role policy %s", roleName)
@@ -303,7 +303,7 @@ func TestBuildResourceComponentNameMapping_ExcludesSharedTemplateComponents(t *t
 			Conf: map[string]string{"k": "v"},
 		},
 		Traits: apisv1.Traits{
-			Share: &domainspec.ShareTraitSpec{Strategy: string(config.ShareStrategyDefault)},
+			Share: &domainspec.ShareTraitSpec{Strategy: string(domainspec.ShareStrategyDefault)},
 		},
 	}
 
@@ -339,7 +339,7 @@ func TestEnsureSharedComponentsOnApp_MarksBySourceSignatureNotName(t *testing.T)
 				Conf: map[string]string{"k": "v"},
 			},
 			Traits: apisv1.Traits{
-				Share: &domainspec.ShareTraitSpec{Strategy: string(config.ShareStrategyDefault)},
+				Share: &domainspec.ShareTraitSpec{Strategy: string(domainspec.ShareStrategyDefault)},
 			},
 		},
 	}
@@ -367,7 +367,7 @@ func TestEnsureSharedComponentsOnApp_MarksBySourceSignatureNotName(t *testing.T)
 
 	assert.Nil(t, deduped[0].Traits.Share)
 	require.NotNil(t, deduped[1].Traits.Share)
-	assert.Equal(t, string(config.ShareStrategyDefault), deduped[1].Traits.Share.Strategy)
+	assert.Equal(t, string(domainspec.ShareStrategyDefault), deduped[1].Traits.Share.Strategy)
 }
 
 func TestEnsureSharedComponentsOnApp_DoesNotTagLocalComponentWhenSignatureCollides(t *testing.T) {
@@ -400,7 +400,7 @@ func TestEnsureSharedComponentsOnApp_DoesNotTagLocalComponentWhenSignatureCollid
 
 	assert.Nil(t, deduped[0].Traits.Share)
 	require.NotNil(t, deduped[1].Traits.Share)
-	assert.Equal(t, string(config.ShareStrategyDefault), deduped[1].Traits.Share.Strategy)
+	assert.Equal(t, string(domainspec.ShareStrategyDefault), deduped[1].Traits.Share.Strategy)
 }
 
 func TestResolveResourceComponentName_UsesMappedNameWhenOriginalMissing(t *testing.T) {
@@ -453,7 +453,7 @@ func TestSanitizeImportComponentsForCreate_RemovesReservedLabels(t *testing.T) {
 					config.LabelComponentName: "backend",
 					config.LabelImportAppKey:  "stable-app-key",
 					config.LabelShareName:     "proxy",
-					config.LabelShareStrategy: string(config.ShareStrategyDefault),
+					config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 					"team":                    "games",
 				},
 			},
@@ -497,7 +497,7 @@ func TestSanitizeImportComponentsForCreate_RemovesReservedLabels(t *testing.T) {
 						},
 						BindingLabels: map[string]string{
 							config.LabelManagedBy:     config.ManagedByEruun,
-							config.LabelShareStrategy: string(config.ShareStrategyDefault),
+							config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 							"binding":                 "reader",
 						},
 						Rules: []domainspec.RBACRuleSpec{{Verbs: []string{"get"}}},
@@ -542,7 +542,7 @@ func TestSanitizeImportComponentsForCreate_RemovesReservedLabels(t *testing.T) {
 	assert.Equal(t, "proxy", policy.RoleLabels[config.LabelShareName])
 	assert.Equal(t, "reader", policy.RoleLabels["role"])
 	assert.NotContains(t, policy.BindingLabels, config.LabelManagedBy)
-	assert.Equal(t, string(config.ShareStrategyDefault), policy.BindingLabels[config.LabelShareStrategy])
+	assert.Equal(t, string(domainspec.ShareStrategyDefault), policy.BindingLabels[config.LabelShareStrategy])
 	assert.Equal(t, "reader", policy.BindingLabels["binding"])
 
 	// Ensure original input remains unchanged.

@@ -849,9 +849,9 @@ func buildAdoptedRoots(
 func canonicalAdoptedWorkloadKind(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "deployment", "deployments":
-		return string(config.KubeKindDeployment)
+		return string(domainspec.KubeKindDeployment)
 	case "statefulset", "statefulsets":
-		return string(config.KubeKindStatefulSet)
+		return string(domainspec.KubeKindStatefulSet)
 	default:
 		return ""
 	}
@@ -2054,7 +2054,7 @@ func attachAdoptedServiceTraits(component *apisv1.CreateComponentRequest, root *
 		}
 		trait := domainspec.ServiceTraitSpec{
 			Name:         service.Name,
-			Type:         string(config.ServiceAccessTypeFromKube(service.Spec.Type)),
+			Type:         string(domainspec.ServiceAccessTypeFromKube(service.Spec.Type)),
 			ExternalName: service.Spec.ExternalName,
 			Headless:     service.Spec.ClusterIP == corev1.ClusterIPNone,
 			Selector:     copyStringMap(service.Spec.Selector),

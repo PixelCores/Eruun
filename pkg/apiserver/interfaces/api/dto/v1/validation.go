@@ -1,6 +1,9 @@
 package v1
 
-import "github.com/PixelCores/Eruun/pkg/apiserver/config"
+import (
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
+)
 
 // ValidationError represents a single validation error with field path and details
 type ValidationError struct {
@@ -42,7 +45,7 @@ type TryWorkflowRequest struct {
 	// Callback is the workflow-level terminal callback to validate with update workflow payloads
 	Callback *WorkflowCallback `json:"callback,omitempty"`
 	// FailurePolicy controls cleanup behavior when a deploy job fails or times out
-	FailurePolicy config.WorkflowFailurePolicy `json:"failurePolicy,omitempty"`
+	FailurePolicy workflowconfig.WorkflowFailurePolicy `json:"failurePolicy,omitempty"`
 	// Workflow contains the workflow steps to validate
 	Workflow []CreateWorkflowStepRequest `json:"workflow" validate:"required,min=1,dive"`
 }

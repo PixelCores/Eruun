@@ -16,6 +16,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
 func TestCleanupResourcesJobCtlOnlyDefersGenericOwnerJobDeletesForRequiredStatefulSetCleanup(t *testing.T) {
@@ -48,13 +49,13 @@ func TestCleanupResourcesJobCtlOnlyDefersGenericOwnerJobDeletesForRequiredStatef
 			}, client, &noopStore{}, nil)
 			require.NotNil(t, ctl)
 			ctl.requiredStatefulSetPodTarget = &requiredStatefulSetPodDeletionTarget{
-				ref: cleanupResourceRef{kind: config.ResourceStatefulSet, namespace: ownerJob.Namespace, name: "mysql"},
+				ref: cleanupResourceRef{kind: domainspec.ResourceStatefulSet, namespace: ownerJob.Namespace, name: "mysql"},
 				ownerJobs: map[string]requiredStatefulSetPodOwnerJobIdentity{
 					ownerJob.Name: {name: ownerJob.Name, uid: ownerJob.UID},
 				},
 			}
 			deleted := cleanupResourceSet{seen: make(map[string]struct{})}
-			ctl.deleteTrackedResource(context.Background(), &deleted, config.ResourceJob, ownerJob.Namespace, ownerJob.Name, false, func(ctx context.Context) error {
+			ctl.deleteTrackedResource(context.Background(), &deleted, domainspec.ResourceJob, ownerJob.Namespace, ownerJob.Name, false, func(ctx context.Context) error {
 				return ctl.deleteJob(ctx, ownerJob.Namespace, ownerJob.Name)
 			})
 
@@ -238,7 +239,7 @@ func TestCleanupResourcesJobCtlRunNeverGenericallyDeletesChangedCheckpointedOwne
 				require.NoError(t, err)
 				job := object.(*batchv1.Job).DeepCopy()
 				job.Labels[config.LabelShareName] = "late-share"
-				job.Labels[config.LabelShareStrategy] = string(config.ShareStrategyDefault)
+				job.Labels[config.LabelShareStrategy] = string(domainspec.ShareStrategyDefault)
 				job.ResourceVersion = "22"
 				require.NoError(t, fixture.client.Tracker().Update(
 					batchv1.SchemeGroupVersion.WithResource("jobs"), job, job.Namespace,

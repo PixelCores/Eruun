@@ -16,6 +16,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
@@ -68,7 +69,7 @@ func (c *DeployServiceAccountJobCtl) run(ctx context.Context) error {
 	updateServiceAccount := func(ctx context.Context, current *corev1.ServiceAccount) error {
 		if !isManagedResource(current, c.job.AppID) {
 			logger.Info("serviceAccount exists but is not managed; skipping update", "namespace", sa.Namespace, "name", sa.Name)
-			markResourceObserved(ctx, config.ResourceServiceAccount, sa.Namespace, sa.Name)
+			markResourceObserved(ctx, domainspec.ResourceServiceAccount, sa.Namespace, sa.Name)
 			return nil
 		}
 		if shouldUpdateServiceAccount(current, sa) {
@@ -88,7 +89,7 @@ func (c *DeployServiceAccountJobCtl) run(ctx context.Context) error {
 		} else {
 			logger.Info("serviceAccount is up-to-date, skipping update", "namespace", sa.Namespace, "name", sa.Name)
 		}
-		markResourceObserved(ctx, config.ResourceServiceAccount, sa.Namespace, sa.Name)
+		markResourceObserved(ctx, domainspec.ResourceServiceAccount, sa.Namespace, sa.Name)
 		return nil
 	}
 	_, created, err := reconcileTrackedResource(ctx, trackedResourceReconcileOptions[corev1.ServiceAccount]{
@@ -96,7 +97,7 @@ func (c *DeployServiceAccountJobCtl) run(ctx context.Context) error {
 			job:             c.job,
 			ack:             c.ack,
 			labels:          sa.Labels,
-			kind:            config.ResourceServiceAccount,
+			kind:            domainspec.ResourceServiceAccount,
 			lockProvider:    c.shareLocker,
 			reconcileShared: true,
 			listFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
@@ -106,8 +107,8 @@ func (c *DeployServiceAccountJobCtl) run(ctx context.Context) error {
 				}
 				return len(list.Items), nil
 			},
-			logSkip: func(strategy config.ShareStrategy) {
-				if strategy == config.ShareStrategyIgnore {
+			logSkip: func(strategy domainspec.ShareStrategy) {
+				if strategy == domainspec.ShareStrategyIgnore {
 					logger.Info("serviceAccount marked as shared ignore; skipping", "namespace", sa.Namespace, "name", sa.Name)
 				} else {
 					logger.Info("serviceAccount already exists and is shared; skipping", "namespace", sa.Namespace, "name", sa.Name)
@@ -184,7 +185,7 @@ func (c *DeployRoleJobCtl) run(ctx context.Context) error {
 	updateRole := func(ctx context.Context, current *rbacv1.Role) error {
 		if !isManagedResource(current, c.job.AppID) {
 			logger.Info("role exists but is not managed; skipping update", "namespace", role.Namespace, "name", role.Name)
-			markResourceObserved(ctx, config.ResourceRole, role.Namespace, role.Name)
+			markResourceObserved(ctx, domainspec.ResourceRole, role.Namespace, role.Name)
 			return nil
 		}
 		if shouldUpdateRole(current, role) {
@@ -204,7 +205,7 @@ func (c *DeployRoleJobCtl) run(ctx context.Context) error {
 		} else {
 			logger.Info("role is up-to-date, skipping update", "namespace", role.Namespace, "name", role.Name)
 		}
-		markResourceObserved(ctx, config.ResourceRole, role.Namespace, role.Name)
+		markResourceObserved(ctx, domainspec.ResourceRole, role.Namespace, role.Name)
 		return nil
 	}
 	_, created, err := reconcileTrackedResource(ctx, trackedResourceReconcileOptions[rbacv1.Role]{
@@ -212,7 +213,7 @@ func (c *DeployRoleJobCtl) run(ctx context.Context) error {
 			job:             c.job,
 			ack:             c.ack,
 			labels:          role.Labels,
-			kind:            config.ResourceRole,
+			kind:            domainspec.ResourceRole,
 			lockProvider:    c.shareLocker,
 			reconcileShared: true,
 			listFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
@@ -222,8 +223,8 @@ func (c *DeployRoleJobCtl) run(ctx context.Context) error {
 				}
 				return len(list.Items), nil
 			},
-			logSkip: func(strategy config.ShareStrategy) {
-				if strategy == config.ShareStrategyIgnore {
+			logSkip: func(strategy domainspec.ShareStrategy) {
+				if strategy == domainspec.ShareStrategyIgnore {
 					logger.Info("role marked as shared ignore; skipping", "namespace", role.Namespace, "name", role.Name)
 				} else {
 					logger.Info("role already exists and is shared; skipping", "namespace", role.Namespace, "name", role.Name)
@@ -294,7 +295,7 @@ func (c *DeployRoleBindingJobCtl) run(ctx context.Context) error {
 	updateBinding := func(ctx context.Context, current *rbacv1.RoleBinding) error {
 		if !isManagedResource(current, c.job.AppID) {
 			logger.Info("roleBinding exists but is not managed; skipping update", "namespace", binding.Namespace, "name", binding.Name)
-			markResourceObserved(ctx, config.ResourceRoleBinding, binding.Namespace, binding.Name)
+			markResourceObserved(ctx, domainspec.ResourceRoleBinding, binding.Namespace, binding.Name)
 			return nil
 		}
 		if shouldUpdateRoleBinding(current, binding) {
@@ -314,7 +315,7 @@ func (c *DeployRoleBindingJobCtl) run(ctx context.Context) error {
 		} else {
 			logger.Info("roleBinding is up-to-date, skipping update", "namespace", binding.Namespace, "name", binding.Name)
 		}
-		markResourceObserved(ctx, config.ResourceRoleBinding, binding.Namespace, binding.Name)
+		markResourceObserved(ctx, domainspec.ResourceRoleBinding, binding.Namespace, binding.Name)
 		return nil
 	}
 	_, created, err := reconcileTrackedResource(ctx, trackedResourceReconcileOptions[rbacv1.RoleBinding]{
@@ -322,7 +323,7 @@ func (c *DeployRoleBindingJobCtl) run(ctx context.Context) error {
 			job:             c.job,
 			ack:             c.ack,
 			labels:          binding.Labels,
-			kind:            config.ResourceRoleBinding,
+			kind:            domainspec.ResourceRoleBinding,
 			lockProvider:    c.shareLocker,
 			reconcileShared: true,
 			listFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
@@ -332,8 +333,8 @@ func (c *DeployRoleBindingJobCtl) run(ctx context.Context) error {
 				}
 				return len(list.Items), nil
 			},
-			logSkip: func(strategy config.ShareStrategy) {
-				if strategy == config.ShareStrategyIgnore {
+			logSkip: func(strategy domainspec.ShareStrategy) {
+				if strategy == domainspec.ShareStrategyIgnore {
 					logger.Info("roleBinding marked as shared ignore; skipping", "namespace", binding.Namespace, "name", binding.Name)
 				} else {
 					logger.Info("roleBinding already exists and is shared; skipping", "namespace", binding.Namespace, "name", binding.Name)
@@ -403,7 +404,7 @@ func (c *DeployClusterRoleJobCtl) run(ctx context.Context) error {
 	updateRole := func(ctx context.Context, current *rbacv1.ClusterRole) error {
 		if !isManagedResource(current, c.job.AppID) {
 			logger.Info("clusterRole exists but is not managed; skipping update", "name", role.Name)
-			markResourceObserved(ctx, config.ResourceClusterRole, "", role.Name)
+			markResourceObserved(ctx, domainspec.ResourceClusterRole, "", role.Name)
 			return nil
 		}
 		if shouldUpdateClusterRole(current, role) {
@@ -423,7 +424,7 @@ func (c *DeployClusterRoleJobCtl) run(ctx context.Context) error {
 		} else {
 			logger.Info("clusterRole is up-to-date, skipping update", "name", role.Name)
 		}
-		markResourceObserved(ctx, config.ResourceClusterRole, "", role.Name)
+		markResourceObserved(ctx, domainspec.ResourceClusterRole, "", role.Name)
 		return nil
 	}
 	_, created, err := reconcileTrackedResource(ctx, trackedResourceReconcileOptions[rbacv1.ClusterRole]{
@@ -431,7 +432,7 @@ func (c *DeployClusterRoleJobCtl) run(ctx context.Context) error {
 			job:             c.job,
 			ack:             c.ack,
 			labels:          role.Labels,
-			kind:            config.ResourceClusterRole,
+			kind:            domainspec.ResourceClusterRole,
 			lockProvider:    c.shareLocker,
 			reconcileShared: true,
 			listFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
@@ -441,8 +442,8 @@ func (c *DeployClusterRoleJobCtl) run(ctx context.Context) error {
 				}
 				return len(list.Items), nil
 			},
-			logSkip: func(strategy config.ShareStrategy) {
-				if strategy == config.ShareStrategyIgnore {
+			logSkip: func(strategy domainspec.ShareStrategy) {
+				if strategy == domainspec.ShareStrategyIgnore {
 					logger.Info("clusterRole marked as shared ignore; skipping", "name", role.Name)
 				} else {
 					logger.Info("clusterRole already exists and is shared; skipping", "name", role.Name)
@@ -512,7 +513,7 @@ func (c *DeployClusterRoleBindingJobCtl) run(ctx context.Context) error {
 	updateBinding := func(ctx context.Context, current *rbacv1.ClusterRoleBinding) error {
 		if !isManagedResource(current, c.job.AppID) {
 			logger.Info("clusterRoleBinding exists but is not managed; skipping update", "name", binding.Name)
-			markResourceObserved(ctx, config.ResourceClusterRoleBinding, "", binding.Name)
+			markResourceObserved(ctx, domainspec.ResourceClusterRoleBinding, "", binding.Name)
 			return nil
 		}
 		if shouldUpdateClusterRoleBinding(current, binding) {
@@ -532,7 +533,7 @@ func (c *DeployClusterRoleBindingJobCtl) run(ctx context.Context) error {
 		} else {
 			logger.Info("clusterRoleBinding is up-to-date, skipping update", "name", binding.Name)
 		}
-		markResourceObserved(ctx, config.ResourceClusterRoleBinding, "", binding.Name)
+		markResourceObserved(ctx, domainspec.ResourceClusterRoleBinding, "", binding.Name)
 		return nil
 	}
 	_, created, err := reconcileTrackedResource(ctx, trackedResourceReconcileOptions[rbacv1.ClusterRoleBinding]{
@@ -540,7 +541,7 @@ func (c *DeployClusterRoleBindingJobCtl) run(ctx context.Context) error {
 			job:             c.job,
 			ack:             c.ack,
 			labels:          binding.Labels,
-			kind:            config.ResourceClusterRoleBinding,
+			kind:            domainspec.ResourceClusterRoleBinding,
 			lockProvider:    c.shareLocker,
 			reconcileShared: true,
 			listFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
@@ -550,8 +551,8 @@ func (c *DeployClusterRoleBindingJobCtl) run(ctx context.Context) error {
 				}
 				return len(list.Items), nil
 			},
-			logSkip: func(strategy config.ShareStrategy) {
-				if strategy == config.ShareStrategyIgnore {
+			logSkip: func(strategy domainspec.ShareStrategy) {
+				if strategy == domainspec.ShareStrategyIgnore {
 					logger.Info("clusterRoleBinding marked as shared ignore; skipping", "name", binding.Name)
 				} else {
 					logger.Info("clusterRoleBinding already exists and is shared; skipping", "name", binding.Name)
@@ -618,7 +619,7 @@ func (c *DeployServiceAccountJobCtl) reconcileAdoptedServiceAccount(
 	}
 	candidate := adoptedServiceAccountForExistingUpdate(current, desired)
 	if adoptedServiceAccountEqual(current, candidate) {
-		markResourceObserved(ctx, config.ResourceServiceAccount, desired.Namespace, desired.Name)
+		markResourceObserved(ctx, domainspec.ResourceServiceAccount, desired.Namespace, desired.Name)
 		return nil
 	}
 	if err := updateResourceWithRetry(ctx, func(ctx context.Context) (*corev1.ServiceAccount, error) {
@@ -636,7 +637,7 @@ func (c *DeployServiceAccountJobCtl) reconcileAdoptedServiceAccount(
 	}); err != nil {
 		return fmt.Errorf("update adopted serviceAccount %s/%s: %w", desired.Namespace, desired.Name, err)
 	}
-	markResourceObserved(ctx, config.ResourceServiceAccount, desired.Namespace, desired.Name)
+	markResourceObserved(ctx, domainspec.ResourceServiceAccount, desired.Namespace, desired.Name)
 	return nil
 }
 
@@ -713,7 +714,7 @@ func (c *DeployServiceAccountJobCtl) recreateAdoptedServiceAccount(
 	); err != nil {
 		return err
 	}
-	markResourceObserved(ctx, config.ResourceServiceAccount, created.Namespace, created.Name)
+	markResourceObserved(ctx, domainspec.ResourceServiceAccount, created.Namespace, created.Name)
 	return nil
 }
 
@@ -804,7 +805,7 @@ func (c *DeployRoleJobCtl) reconcileAdoptedRole(
 	}
 	candidate := adoptedRoleForExistingUpdate(current, desired)
 	if adoptedRoleEqual(current, candidate) {
-		markResourceObserved(ctx, config.ResourceRole, desired.Namespace, desired.Name)
+		markResourceObserved(ctx, domainspec.ResourceRole, desired.Namespace, desired.Name)
 		return nil
 	}
 	if err := updateResourceWithRetry(ctx, func(ctx context.Context) (*rbacv1.Role, error) {
@@ -822,7 +823,7 @@ func (c *DeployRoleJobCtl) reconcileAdoptedRole(
 	}); err != nil {
 		return fmt.Errorf("update adopted role %s/%s: %w", desired.Namespace, desired.Name, err)
 	}
-	markResourceObserved(ctx, config.ResourceRole, desired.Namespace, desired.Name)
+	markResourceObserved(ctx, domainspec.ResourceRole, desired.Namespace, desired.Name)
 	return nil
 }
 
@@ -899,7 +900,7 @@ func (c *DeployRoleJobCtl) recreateAdoptedRole(
 	); err != nil {
 		return err
 	}
-	markResourceObserved(ctx, config.ResourceRole, created.Namespace, created.Name)
+	markResourceObserved(ctx, domainspec.ResourceRole, created.Namespace, created.Name)
 	return nil
 }
 
@@ -967,7 +968,7 @@ func (c *DeployRoleBindingJobCtl) reconcileAdoptedRoleBinding(
 		return err
 	}
 	if adoptedRoleBindingEqual(current, candidate) {
-		markResourceObserved(ctx, config.ResourceRoleBinding, desired.Namespace, desired.Name)
+		markResourceObserved(ctx, domainspec.ResourceRoleBinding, desired.Namespace, desired.Name)
 		return nil
 	}
 	if err := updateResourceWithRetry(ctx, func(ctx context.Context) (*rbacv1.RoleBinding, error) {
@@ -985,7 +986,7 @@ func (c *DeployRoleBindingJobCtl) reconcileAdoptedRoleBinding(
 	}); err != nil {
 		return fmt.Errorf("update adopted roleBinding %s/%s: %w", desired.Namespace, desired.Name, err)
 	}
-	markResourceObserved(ctx, config.ResourceRoleBinding, desired.Namespace, desired.Name)
+	markResourceObserved(ctx, domainspec.ResourceRoleBinding, desired.Namespace, desired.Name)
 	return nil
 }
 
@@ -1065,7 +1066,7 @@ func (c *DeployRoleBindingJobCtl) recreateAdoptedRoleBinding(
 	); err != nil {
 		return err
 	}
-	markResourceObserved(ctx, config.ResourceRoleBinding, created.Namespace, created.Name)
+	markResourceObserved(ctx, domainspec.ResourceRoleBinding, created.Namespace, created.Name)
 	return nil
 }
 

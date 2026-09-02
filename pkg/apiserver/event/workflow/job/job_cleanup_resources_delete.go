@@ -13,11 +13,12 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 type cleanupResourceRef struct {
-	kind      config.ResourceKind
+	kind      domainspec.ResourceKind
 	namespace string
 	name      string
 	cluster   bool
@@ -31,7 +32,7 @@ type cleanupResourceSet struct {
 
 type cleanupResourceDeleteFunc func(context.Context) error
 
-func (c *CleanupResourcesJobCtl) deleteTrackedResource(ctx context.Context, deleted *cleanupResourceSet, kind config.ResourceKind, namespace, name string, cluster bool, deleteFn cleanupResourceDeleteFunc) {
+func (c *CleanupResourcesJobCtl) deleteTrackedResource(ctx context.Context, deleted *cleanupResourceSet, kind domainspec.ResourceKind, namespace, name string, cluster bool, deleteFn cleanupResourceDeleteFunc) {
 	ref, ok := newCleanupResourceRef(kind, namespace, name, cluster)
 	if !ok {
 		return
@@ -92,33 +93,33 @@ func (c *CleanupResourcesJobCtl) resourceLabels(ctx context.Context, ref cleanup
 		err error
 	)
 	switch ref.kind {
-	case config.ResourceDeployment:
+	case domainspec.ResourceDeployment:
 		obj, err = c.client.AppsV1().Deployments(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourceStatefulSet:
+	case domainspec.ResourceStatefulSet:
 		obj, err = c.client.AppsV1().StatefulSets(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourceJob:
+	case domainspec.ResourceJob:
 		obj, err = c.client.BatchV1().Jobs(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourceCronJob:
+	case domainspec.ResourceCronJob:
 		obj, err = c.client.BatchV1().CronJobs(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourceService:
+	case domainspec.ResourceService:
 		obj, err = c.client.CoreV1().Services(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourceConfigMap:
+	case domainspec.ResourceConfigMap:
 		obj, err = c.client.CoreV1().ConfigMaps(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourceSecret:
+	case domainspec.ResourceSecret:
 		obj, err = c.client.CoreV1().Secrets(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourcePVC:
+	case domainspec.ResourcePVC:
 		obj, err = c.client.CoreV1().PersistentVolumeClaims(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourceIngress:
+	case domainspec.ResourceIngress:
 		obj, err = c.client.NetworkingV1().Ingresses(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourceServiceAccount:
+	case domainspec.ResourceServiceAccount:
 		obj, err = c.client.CoreV1().ServiceAccounts(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourceRole:
+	case domainspec.ResourceRole:
 		obj, err = c.client.RbacV1().Roles(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourceRoleBinding:
+	case domainspec.ResourceRoleBinding:
 		obj, err = c.client.RbacV1().RoleBindings(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourceClusterRole:
+	case domainspec.ResourceClusterRole:
 		obj, err = c.client.RbacV1().ClusterRoles().Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourceClusterRoleBinding:
+	case domainspec.ResourceClusterRoleBinding:
 		obj, err = c.client.RbacV1().ClusterRoleBindings().Get(ctx, ref.name, metav1.GetOptions{})
 	default:
 		return nil, false, fmt.Errorf("unsupported cleanup resource kind %q", ref.kind)
@@ -146,7 +147,7 @@ func (c *CleanupResourcesJobCtl) deleteStatefulSet(ctx context.Context, namespac
 	if strings.TrimSpace(name) == "" {
 		return nil
 	}
-	ref, ok := newCleanupResourceRef(config.ResourceStatefulSet, namespace, name, false)
+	ref, ok := newCleanupResourceRef(domainspec.ResourceStatefulSet, namespace, name, false)
 	if !ok {
 		return nil
 	}
@@ -271,7 +272,7 @@ func (c *CleanupResourcesJobCtl) deleteIngress(ctx context.Context, namespace, n
 	return c.client.NetworkingV1().Ingresses(namespaceOrDefault(namespace)).Delete(ctx, name, metav1.DeleteOptions{})
 }
 
-func (s *cleanupResourceSet) record(kind config.ResourceKind, namespace, name string, cluster bool, err error) {
+func (s *cleanupResourceSet) record(kind domainspec.ResourceKind, namespace, name string, cluster bool, err error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return
@@ -290,7 +291,7 @@ func (s *cleanupResourceSet) record(kind config.ResourceKind, namespace, name st
 	}
 }
 
-func newCleanupResourceRef(kind config.ResourceKind, namespace, name string, cluster bool) (cleanupResourceRef, bool) {
+func newCleanupResourceRef(kind domainspec.ResourceKind, namespace, name string, cluster bool) (cleanupResourceRef, bool) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return cleanupResourceRef{}, false
@@ -302,12 +303,12 @@ func newCleanupResourceRef(kind config.ResourceKind, namespace, name string, clu
 	return cleanupResourceRef{kind: kind, namespace: ns, name: name, cluster: cluster}, true
 }
 
-func cleanupResourceShareProtected(resourceLabels map[string]string) (config.ShareStrategy, bool) {
+func cleanupResourceShareProtected(resourceLabels map[string]string) (domainspec.ShareStrategy, bool) {
 	shareName, strategy := shareInfoFromLabels(resourceLabels)
 	if strings.TrimSpace(shareName) == "" {
 		return "", false
 	}
-	return strategy, strategy == config.ShareStrategyDefault || strategy == config.ShareStrategyIgnore
+	return strategy, strategy == domainspec.ShareStrategyDefault || strategy == domainspec.ShareStrategyIgnore
 }
 
 func cleanupResourceDisplayName(ref cleanupResourceRef) string {

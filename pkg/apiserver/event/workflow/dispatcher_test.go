@@ -15,6 +15,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 type fakeAckQueue struct {
@@ -79,7 +80,7 @@ func TestAckMessageDelegatesToQueue(t *testing.T) {
 	wf := &Workflow{
 		Queue: q,
 		Cfg: &config.Config{
-			Workflow: config.WorkflowRuntimeConfig{MaxConcurrentWorkflows: 1},
+			Workflow: workflowconfig.RuntimeConfig{MaxConcurrentWorkflows: 1},
 		},
 	}
 

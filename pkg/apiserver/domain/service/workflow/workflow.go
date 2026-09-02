@@ -29,6 +29,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	wf "github.com/PixelCores/Eruun/pkg/apiserver/workflow"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 type WorkflowService interface {
@@ -1539,8 +1540,8 @@ func (w *workflowServiceImpl) triggerWorkflowTerminalCallbackOnApprovalAction(ct
 		EndTime:      time.Now().Unix(),
 		Reason:       strings.TrimSpace(reason),
 	}
-	callbackTimeoutMax := config.ResolveWorkflowCallbackTimeoutMax(w.Cfg)
-	callbackTimeoutSeconds := config.ClampWorkflowCallbackTimeoutSeconds(callback.TimeoutSeconds, callbackTimeoutMax)
+	callbackTimeoutMax := workflowconfig.ResolveWorkflowCallbackTimeoutMax(w.Cfg.WorkflowRuntime())
+	callbackTimeoutSeconds := workflowconfig.ClampWorkflowCallbackTimeoutSeconds(callback.TimeoutSeconds, callbackTimeoutMax)
 	callbackJob := &model.JobTask{
 		Name:       fmt.Sprintf("workflow-callback-%s", task.TaskID),
 		WorkflowID: task.WorkflowID,
@@ -1554,13 +1555,13 @@ func (w *workflowServiceImpl) triggerWorkflowTerminalCallbackOnApprovalAction(ct
 			Method:         method,
 			Headers:        callback.Headers,
 			TimeoutSeconds: callbackTimeoutSeconds,
-			TimeoutMaxSec:  config.ResolveWorkflowCallbackTimeoutMaxSeconds(callbackTimeoutMax),
+			TimeoutMaxSec:  workflowconfig.ResolveWorkflowCallbackTimeoutMaxSeconds(callbackTimeoutMax),
 			TimeoutMaxNS:   int64(callbackTimeoutMax),
 			Payload:        payload,
 		},
 		Status: config.StatusRunning,
 	}
-	callbackTimeout := config.ResolveWorkflowCallbackTimeout(callback.TimeoutSeconds, callbackTimeoutMax)
+	callbackTimeout := workflowconfig.ResolveWorkflowCallbackTimeout(callback.TimeoutSeconds, callbackTimeoutMax)
 	runCtx, runCancel := inheritWorkflowCallbackTimeout(parentCtx, callbackTimeout)
 	defer runCancel()
 	callbackJob.StartTime = time.Now().Unix()

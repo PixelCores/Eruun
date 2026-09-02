@@ -13,6 +13,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	traitsPlu "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
@@ -48,10 +49,10 @@ func NewScheduledJobCtl(job *model.JobTask, client kubernetes.Interface, store d
 }
 
 func (c *ScheduledJobCtl) Clean(ctx context.Context) {
-	c.cleanCreated(ctx, config.ResourceJob, "job", func(ctx context.Context, namespace, name string) error {
+	c.cleanCreated(ctx, domainspec.ResourceJob, "job", func(ctx context.Context, namespace, name string) error {
 		return c.client.BatchV1().Jobs(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	}, k8serrors.IsNotFound, "")
-	c.cleanCreated(ctx, config.ResourceCronJob, "cronjob", func(ctx context.Context, namespace, name string) error {
+	c.cleanCreated(ctx, domainspec.ResourceCronJob, "cronjob", func(ctx context.Context, namespace, name string) error {
 		return c.client.BatchV1().CronJobs(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	}, k8serrors.IsNotFound, "")
 }
@@ -120,7 +121,7 @@ func (c *ScheduledJobCtl) runCronJob(ctx context.Context, cron *batchv1.CronJob)
 		_, err := c.client.BatchV1().CronJobs(namespace).Update(ctx, cron, metav1.UpdateOptions{})
 		return err
 	}
-	_, _, err := createOrUpdateTrackedResource(ctx, config.ResourceCronJob, namespace, cron.Name, func(ctx context.Context) (*batchv1.CronJob, error) {
+	_, _, err := createOrUpdateTrackedResource(ctx, domainspec.ResourceCronJob, namespace, cron.Name, func(ctx context.Context) (*batchv1.CronJob, error) {
 		return c.client.BatchV1().CronJobs(namespace).Get(ctx, cron.Name, metav1.GetOptions{})
 	}, func(ctx context.Context) (*batchv1.CronJob, error) {
 		return c.client.BatchV1().CronJobs(namespace).Create(ctx, cron, metav1.CreateOptions{})
@@ -197,7 +198,7 @@ func (c *ScheduledJobCtl) createJob(ctx context.Context, jobObj *batchv1.Job) (b
 		return false, err
 	}
 	validateExisting := validateExistingJobExecutionIdentity(ctx, c.store, jobObj)
-	_, created, err := createOrUpdateTrackedResource(ctx, config.ResourceJob, jobObj.Namespace, jobObj.Name, func(ctx context.Context) (*batchv1.Job, error) {
+	_, created, err := createOrUpdateTrackedResource(ctx, domainspec.ResourceJob, jobObj.Namespace, jobObj.Name, func(ctx context.Context) (*batchv1.Job, error) {
 		return c.client.BatchV1().Jobs(jobObj.Namespace).Get(ctx, jobObj.Name, metav1.GetOptions{})
 	}, func(ctx context.Context) (*batchv1.Job, error) {
 		return c.client.BatchV1().Jobs(jobObj.Namespace).Create(ctx, jobObj, metav1.CreateOptions{})

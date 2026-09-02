@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
 
@@ -17,7 +18,7 @@ func TestGuardSharedResource_DefaultUsesLabelSelector(t *testing.T) {
 	var gotSelector string
 
 	lockProvider := locker.NewNoopLocker(shareLockerPrefix)
-	unlock, skipped, err := resolveSharedResource(context.Background(), shareName, config.ShareStrategyDefault, config.ResourceService, func(_ context.Context, opts metav1.ListOptions) (int, error) {
+	unlock, skipped, err := resolveSharedResource(context.Background(), shareName, domainspec.ShareStrategyDefault, domainspec.ResourceService, func(_ context.Context, opts metav1.ListOptions) (int, error) {
 		gotSelector = opts.LabelSelector
 		return 0, nil
 	}, lockProvider)
@@ -32,7 +33,7 @@ func TestGuardSharedResource_DefaultUsesLabelSelector(t *testing.T) {
 }
 
 func TestGuardSharedResource_DefaultRequiresLocker(t *testing.T) {
-	unlock, skipped, err := resolveSharedResource(context.Background(), "demo-ns", config.ShareStrategyDefault, config.ResourceService, func(context.Context, metav1.ListOptions) (int, error) {
+	unlock, skipped, err := resolveSharedResource(context.Background(), "demo-ns", domainspec.ShareStrategyDefault, domainspec.ResourceService, func(context.Context, metav1.ListOptions) (int, error) {
 		t.Fatal("list should not be called when locker is unavailable")
 		return 0, nil
 	}, nil)
@@ -44,7 +45,7 @@ func TestGuardSharedResource_DefaultRequiresLocker(t *testing.T) {
 
 func TestGuardSharedResource_IgnoreSkips(t *testing.T) {
 	lockProvider := locker.NewNoopLocker(shareLockerPrefix)
-	unlock, skipped, err := resolveSharedResource(context.Background(), "demo-ns", config.ShareStrategyIgnore, config.ResourceService, func(context.Context, metav1.ListOptions) (int, error) {
+	unlock, skipped, err := resolveSharedResource(context.Background(), "demo-ns", domainspec.ShareStrategyIgnore, domainspec.ResourceService, func(context.Context, metav1.ListOptions) (int, error) {
 		t.Fatal("list should not be called for ignore strategy")
 		return 0, nil
 	}, lockProvider)

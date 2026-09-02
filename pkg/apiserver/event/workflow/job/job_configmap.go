@@ -36,7 +36,7 @@ func NewDeployConfigMapJobCtl(job *model.JobTask, client kubernetes.Interface, s
 }
 
 func (c *DeployConfigMapJobCtl) Clean(ctx context.Context) {
-	c.cleanCreated(ctx, config.ResourceConfigMap, "configmap", func(ctx context.Context, namespace, name string) error {
+	c.cleanCreated(ctx, spec.ResourceConfigMap, "configmap", func(ctx context.Context, namespace, name string) error {
 		return c.client.CoreV1().ConfigMaps(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	}, k8serrors.IsNotFound, "after job failure")
 }
@@ -95,7 +95,7 @@ func (c *DeployConfigMapJobCtl) deployConfigMap(ctx context.Context, cm *corev1.
 			return fmt.Errorf("update configmap %q failed: %w", cm.Name, err)
 		}
 		logger.Info("ConfigMap updated", "namespace", cm.Namespace, "name", cm.Name)
-		markResourceObserved(ctx, config.ResourceConfigMap, cm.Namespace, cm.Name)
+		markResourceObserved(ctx, spec.ResourceConfigMap, cm.Namespace, cm.Name)
 		return nil
 	}
 
@@ -104,7 +104,7 @@ func (c *DeployConfigMapJobCtl) deployConfigMap(ctx context.Context, cm *corev1.
 			job:          c.job,
 			ack:          c.ack,
 			labels:       cm.Labels,
-			kind:         config.ResourceConfigMap,
+			kind:         spec.ResourceConfigMap,
 			lockProvider: c.shareLocker,
 			listFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
 				list, err := cli.List(ctx, opts)
@@ -113,8 +113,8 @@ func (c *DeployConfigMapJobCtl) deployConfigMap(ctx context.Context, cm *corev1.
 				}
 				return len(list.Items), nil
 			},
-			logSkip: func(strategy config.ShareStrategy) {
-				if strategy == config.ShareStrategyIgnore {
+			logSkip: func(strategy spec.ShareStrategy) {
+				if strategy == spec.ShareStrategyIgnore {
 					logger.Info("ConfigMap marked as shared ignore; skipping", "namespace", cm.Namespace, "name", cm.Name)
 				} else {
 					logger.Info("ConfigMap already exists and is shared; skipping", "namespace", cm.Namespace, "name", cm.Name)
@@ -186,7 +186,7 @@ func (c *DeployConfigMapJobCtl) reconcileAdoptedConfigMap(
 		return err
 	}
 	if adoptedConfigMapEqual(current, candidate) {
-		markResourceObserved(ctx, config.ResourceConfigMap, desired.Namespace, desired.Name)
+		markResourceObserved(ctx, spec.ResourceConfigMap, desired.Namespace, desired.Name)
 		return nil
 	}
 	if err := updateResourceWithRetry(ctx, func(ctx context.Context) (*corev1.ConfigMap, error) {
@@ -204,7 +204,7 @@ func (c *DeployConfigMapJobCtl) reconcileAdoptedConfigMap(
 	}); err != nil {
 		return fmt.Errorf("update adopted configmap %s/%s: %w", desired.Namespace, desired.Name, err)
 	}
-	markResourceObserved(ctx, config.ResourceConfigMap, desired.Namespace, desired.Name)
+	markResourceObserved(ctx, spec.ResourceConfigMap, desired.Namespace, desired.Name)
 	return nil
 }
 
@@ -283,7 +283,7 @@ func (c *DeployConfigMapJobCtl) recreateAdoptedConfigMap(
 	if err := recreation.persistCreated(recreationCtx, created, created, c.runtime); err != nil {
 		return fmt.Errorf("persist recreated adopted configmap binding; pending claim retained: %w", err)
 	}
-	markResourceObserved(ctx, config.ResourceConfigMap, created.Namespace, created.Name)
+	markResourceObserved(ctx, spec.ResourceConfigMap, created.Namespace, created.Name)
 	return nil
 }
 

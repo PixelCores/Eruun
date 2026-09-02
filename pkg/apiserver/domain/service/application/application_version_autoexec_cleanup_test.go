@@ -528,7 +528,7 @@ func TestUpdateVersionAutoExecRejectsProtectedSharedComponentRemove(t *testing.T
 		Replicas:      1,
 		ComponentType: config.ServerJob,
 		Traits: mustJSONStruct(&spec.Traits{
-			Share: &spec.ShareTraitSpec{Strategy: string(config.ShareStrategyDefault)},
+			Share: &spec.ShareTraitSpec{Strategy: string(spec.ShareStrategyDefault)},
 		}),
 	}
 	store.workflows["wf-1"] = &model.Workflow{

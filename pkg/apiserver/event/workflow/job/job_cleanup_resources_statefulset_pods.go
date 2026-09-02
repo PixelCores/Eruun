@@ -17,6 +17,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
@@ -49,7 +50,7 @@ type requiredStatefulSetPodOwnerJobTarget struct {
 // deciding this from the local ownerJobs map is unsafe. The dedicated
 // reconciler below handles both checkpointed and label-discovered Jobs.
 func (c *CleanupResourcesJobCtl) deferRequiredStatefulSetJobDelete(ref cleanupResourceRef) bool {
-	return c != nil && c.job != nil && ref.kind == config.ResourceJob &&
+	return c != nil && c.job != nil && ref.kind == domainspec.ResourceJob &&
 		versionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo)
 }
 
@@ -401,7 +402,7 @@ func (c *CleanupResourcesJobCtl) captureRequiredStatefulSetOwnerJobPods(
 		pod := &pods.Items[i]
 		matchedJobs := make(map[string]struct{})
 		for _, owner := range pod.OwnerReferences {
-			if !strings.EqualFold(owner.Kind, string(config.KubeKindJob)) {
+			if !strings.EqualFold(owner.Kind, string(domainspec.KubeKindJob)) {
 				continue
 			}
 			name := strings.TrimSpace(owner.Name)
@@ -592,7 +593,7 @@ func requiredStatefulSetPodOwnedByLabeledJob(pod *corev1.Pod, job *batchv1.Job) 
 		return false, nil
 	}
 	for _, owner := range pod.OwnerReferences {
-		if !strings.EqualFold(owner.Kind, string(config.KubeKindJob)) || strings.TrimSpace(owner.Name) != job.Name {
+		if !strings.EqualFold(owner.Kind, string(domainspec.KubeKindJob)) || strings.TrimSpace(owner.Name) != job.Name {
 			continue
 		}
 		if owner.UID == "" || owner.UID != job.UID {
@@ -1302,7 +1303,7 @@ func requiredStatefulSetPodOwnership(pod *corev1.Pod, statefulSetName string, st
 	ownedByTarget := false
 	unprovenTargetOwner := false
 	for _, owner := range pod.OwnerReferences {
-		if !strings.EqualFold(owner.Kind, string(config.KubeKindStatefulSet)) {
+		if !strings.EqualFold(owner.Kind, string(domainspec.KubeKindStatefulSet)) {
 			continue
 		}
 		if statefulSetUID != "" && owner.UID == statefulSetUID {
@@ -1359,7 +1360,7 @@ func (c *CleanupResourcesJobCtl) requiredStatefulSetPodOwnerJobs(
 	ownerJobs := make([]requiredStatefulSetPodOwnerJobTarget, 0, len(pod.OwnerReferences))
 	ownerUIDsByName := make(map[string]types.UID)
 	for _, owner := range pod.OwnerReferences {
-		if !strings.EqualFold(owner.Kind, string(config.KubeKindJob)) {
+		if !strings.EqualFold(owner.Kind, string(domainspec.KubeKindJob)) {
 			continue
 		}
 		name := strings.TrimSpace(owner.Name)

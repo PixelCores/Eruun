@@ -16,6 +16,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
@@ -258,7 +259,7 @@ func (c *CleanupResourcesJobCtl) ensureRequiredStatefulSetDeletionTargetsAllowed
 	}
 	for i := range list.Items {
 		item := &list.Items[i]
-		ref, ok := newCleanupResourceRef(config.ResourceStatefulSet, item.Namespace, item.Name, false)
+		ref, ok := newCleanupResourceRef(domainspec.ResourceStatefulSet, item.Namespace, item.Name, false)
 		if !ok {
 			continue
 		}
@@ -282,7 +283,7 @@ func (c *CleanupResourcesJobCtl) ensureRequiredStatefulSetDeletionTargetsAllowed
 }
 
 func (c *CleanupResourcesJobCtl) requiredStatefulSetDeletionProtectedError(ref cleanupResourceRef) error {
-	if c == nil || c.job == nil || ref.kind != config.ResourceStatefulSet || !versionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo) {
+	if c == nil || c.job == nil || ref.kind != domainspec.ResourceStatefulSet || !versionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo) {
 		return nil
 	}
 	componentName := strings.TrimSpace(resolveJobServiceName(c.job))

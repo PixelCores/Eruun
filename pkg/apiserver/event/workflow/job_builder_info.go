@@ -13,25 +13,26 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
 func buildWorkloadInfo(jobType config.JobType, info interface{}, fallbackNamespace, fallbackName string) string {
-	kind := config.ResourceKind("resource")
+	kind := domainspec.ResourceKind("resource")
 	switch jobType {
 	case config.JobDeploy:
-		kind = config.ResourceDeployment
+		kind = domainspec.ResourceDeployment
 	case config.JobDeployStore:
-		kind = config.ResourceStatefulSet
+		kind = domainspec.ResourceStatefulSet
 	case config.CloudJob, config.JobDeployCloud:
-		kind = config.ResourceCloudJob
+		kind = domainspec.ResourceCloudJob
 	case config.InstantJob:
-		kind = config.ResourceJob
+		kind = domainspec.ResourceJob
 	case config.ScheduledJob:
 		switch v := info.(type) {
 		case *batchv1.CronJob:
-			return buildResourceInfo(config.ResourceCronJob, v.Namespace, v.Name)
+			return buildResourceInfo(domainspec.ResourceCronJob, v.Namespace, v.Name)
 		case *batchv1.Job:
-			return buildResourceInfo(config.ResourceJob, v.Namespace, v.Name)
+			return buildResourceInfo(domainspec.ResourceJob, v.Namespace, v.Name)
 		}
 	}
 	if obj, ok := info.(metav1.Object); ok {
@@ -40,7 +41,7 @@ func buildWorkloadInfo(jobType config.JobType, info interface{}, fallbackNamespa
 	return buildResourceInfo(kind, fallbackNamespace, fallbackName)
 }
 
-func buildConfigLikeInfo(kind config.ResourceKind, info interface{}, fallbackNamespace, fallbackName string) string {
+func buildConfigLikeInfo(kind domainspec.ResourceKind, info interface{}, fallbackNamespace, fallbackName string) string {
 	switch v := info.(type) {
 	case *model.ConfigMapInput:
 		return buildResourceInfo(kind, v.Namespace, v.Name)
@@ -57,7 +58,7 @@ func buildConfigLikeInfo(kind config.ResourceKind, info interface{}, fallbackNam
 
 func buildServiceDeployInfo(svc *applyv1.ServiceApplyConfiguration, fallbackName, fallbackNamespace string) string {
 	if svc == nil {
-		return buildResourceInfo(config.ResourceService, fallbackNamespace, fallbackName)
+		return buildResourceInfo(domainspec.ResourceService, fallbackNamespace, fallbackName)
 	}
 	name := derefString(svc.Name)
 	if name == "" {
@@ -80,25 +81,25 @@ func buildServiceDeployInfo(svc *applyv1.ServiceApplyConfiguration, fallbackName
 		parts = append(parts, fmt.Sprintf("ports: %s", strings.Join(portDetails, ", ")))
 	}
 	if len(parts) == 0 {
-		return buildResourceInfo(config.ResourceService, namespace, name)
+		return buildResourceInfo(domainspec.ResourceService, namespace, name)
 	}
 	return strings.Join(parts, "; ")
 }
 
 func buildIngressDeployInfo(ingress *networkingv1.Ingress, fallbackName, fallbackNamespace string) string {
 	if ingress == nil {
-		return buildResourceInfo(config.ResourceIngress, fallbackNamespace, fallbackName)
+		return buildResourceInfo(domainspec.ResourceIngress, fallbackNamespace, fallbackName)
 	}
 	routes := ingressRoutes(ingress)
 	if len(routes) == 0 {
 		name := nameOrFallback(ingress.Name, fallbackName)
 		namespace := nameOrFallback(ingress.Namespace, fallbackNamespace)
-		return buildResourceInfo(config.ResourceIngress, namespace, name)
+		return buildResourceInfo(domainspec.ResourceIngress, namespace, name)
 	}
 	return fmt.Sprintf("ingress: %s", strings.Join(routes, ", "))
 }
 
-func buildResourceInfo(kind config.ResourceKind, namespace, name string) string {
+func buildResourceInfo(kind domainspec.ResourceKind, namespace, name string) string {
 	kindValue := strings.TrimSpace(string(kind))
 	if kindValue == "" {
 		kindValue = "resource"

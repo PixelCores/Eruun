@@ -15,13 +15,10 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
-// Note: Worker resilience constants are defined in config/consts.go:
-// - config.DefaultWorkerBackoffMin
-// - config.DefaultWorkerBackoffMax
-// - config.DefaultWorkerMaxReadFailures
-// - config.DefaultWorkerMaxClaimFailures
+// Worker resilience defaults are defined in workflow/config/runtime.go.
 
 // TaskDispatch is the minimal payload for dispatching a workflow task to a worker.
 type TaskDispatch struct {
@@ -388,7 +385,7 @@ func (w *Workflow) dispatchTopic() string {
 	if w.Cfg != nil {
 		prefix = w.Cfg.Messaging.ChannelPrefix
 	}
-	return config.DispatchTopic(prefix)
+	return workflowconfig.DispatchTopic(prefix)
 }
 
 func (w *Workflow) consumerGroup() string { return config.WorkflowWorkerQueueGroup }

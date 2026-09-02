@@ -16,6 +16,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
 func TestCleanupResourcesJobCtlRefreshesStatefulSetSafetyBeforeRetentionMutation(t *testing.T) {
@@ -300,9 +301,9 @@ func applyRequiredStatefulSetSafetyDrift(
 		current.Labels = requiredStatefulSetSafetyComponentLabels(component)
 		current.Labels[config.LabelShareName] = "late-shared-mysql"
 		if drift == requiredStatefulSetDefaultShareDrift {
-			current.Labels[config.LabelShareStrategy] = string(config.ShareStrategyDefault)
+			current.Labels[config.LabelShareStrategy] = string(domainspec.ShareStrategyDefault)
 		} else {
-			current.Labels[config.LabelShareStrategy] = string(config.ShareStrategyIgnore)
+			current.Labels[config.LabelShareStrategy] = string(domainspec.ShareStrategyIgnore)
 		}
 		require.NoError(t, client.Tracker().Update(appsv1.SchemeGroupVersion.WithResource("statefulsets"), current, component.Namespace))
 	case requiredStatefulSetExtraTargetDrift:

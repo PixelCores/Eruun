@@ -13,6 +13,7 @@ import (
 
 	"github.com/PixelCores/Eruun/cmd/server/app/options"
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 func TestEnsureLogDir(t *testing.T) {
@@ -129,7 +130,7 @@ func TestWaitForServerRunBoundsShutdownWait(t *testing.T) {
 }
 
 func TestServerShutdownWaitTimeoutCoversConcurrentDrainPhases(t *testing.T) {
-	require.Equal(t, config.DefaultWorkerDrainTimeout+5*time.Second, serverShutdownWaitTimeout(nil))
+	require.Equal(t, workflowconfig.DefaultWorkerDrainTimeout+5*time.Second, serverShutdownWaitTimeout(nil))
 
 	serverOptions := options.NewServerRunOptions()
 	serverOptions.GenericServerRunOptions.Workflow.WorkerDrainTimeout = 10 * time.Second

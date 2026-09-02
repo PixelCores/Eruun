@@ -21,6 +21,7 @@ import (
 	domainadoption "github.com/PixelCores/Eruun/pkg/apiserver/domain/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
@@ -470,9 +471,9 @@ func normalizeVersionRestartComponent(component *model.ApplicationComponent) *mo
 	return &cp
 }
 
-func versionRestartShareStrategyForComponent(component *model.ApplicationComponent) (config.ShareStrategy, bool) {
+func versionRestartShareStrategyForComponent(component *model.ApplicationComponent) (domainspec.ShareStrategy, bool) {
 	strategy, shared := component.ShareStrategy()
-	if !shared || strategy == config.ShareStrategyForce {
+	if !shared || strategy == domainspec.ShareStrategyForce {
 		return "", false
 	}
 	return strategy, true

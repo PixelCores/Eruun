@@ -23,7 +23,7 @@ func TestCreateApplicationsFromTemplatePreservesEnvOverrideValuesDuringRewrite(t
 	traitsJSON, err := model.NewJSONStructByStruct(apisv1.Traits{
 		Service: []spec.ServiceTraitSpec{{
 			Name:     "mysql-master",
-			Type:     string(config.ServiceAccessInternal),
+			Type:     string(spec.ServiceAccessInternal),
 			Selector: map[string]string{"role": "mysql-master"},
 			Ports:    []spec.ServicePortTraitSpec{{Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
 		}},
@@ -85,7 +85,7 @@ func TestCreateApplicationsFromTemplatePreservesInitEnvOverrideValuesDuringRewri
 	traitsJSON, err := model.NewJSONStructByStruct(apisv1.Traits{
 		Service: []spec.ServiceTraitSpec{{
 			Name:     "mysql-master",
-			Type:     string(config.ServiceAccessInternal),
+			Type:     string(spec.ServiceAccessInternal),
 			Selector: map[string]string{"role": "mysql-master"},
 			Ports:    []spec.ServicePortTraitSpec{{Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
 		}},
@@ -556,7 +556,7 @@ func TestCreateApplicationsFromTemplateOverridesInitEnv(t *testing.T) {
 	templateTraits := apisv1.Traits{
 		Service: []spec.ServiceTraitSpec{{
 			Name: "mysql-master",
-			Type: string(config.ServiceAccessInternal),
+			Type: string(spec.ServiceAccessInternal),
 			Selector: map[string]string{
 				"mysql-pod-role": "mysql-master",
 			},

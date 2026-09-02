@@ -16,8 +16,10 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 func TestGenerateInstantJobSetsTTL(t *testing.T) {
@@ -35,7 +37,7 @@ func TestGenerateInstantJobSetsTTL(t *testing.T) {
 	require.True(t, ok)
 	require.NotNil(t, jobObj.Spec.TTLSecondsAfterFinished)
 	require.Equal(t, config.DefaultJobTTLSeconds, *jobObj.Spec.TTLSecondsAfterFinished)
-	require.Equal(t, config.DefaultWorkflowImagePullPolicy, jobObj.Spec.Template.Spec.Containers[0].ImagePullPolicy)
+	require.Equal(t, workflowconfig.DefaultWorkflowImagePullPolicy, jobObj.Spec.Template.Spec.Containers[0].ImagePullPolicy)
 }
 
 func TestGenerateScheduledCronJobSetsTTL(t *testing.T) {
@@ -57,7 +59,7 @@ func TestGenerateScheduledCronJobSetsTTL(t *testing.T) {
 	require.NotNil(t, cronObj.Spec.FailedJobsHistoryLimit)
 	require.Equal(t, config.DefaultCronJobSuccessfulLimit, *cronObj.Spec.SuccessfulJobsHistoryLimit)
 	require.Equal(t, config.DefaultCronJobFailedLimit, *cronObj.Spec.FailedJobsHistoryLimit)
-	require.Equal(t, config.DefaultWorkflowImagePullPolicy, cronObj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].ImagePullPolicy)
+	require.Equal(t, workflowconfig.DefaultWorkflowImagePullPolicy, cronObj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].ImagePullPolicy)
 }
 
 func TestGenerateScheduledCronJobOverridesHistoryLimit(t *testing.T) {
@@ -90,7 +92,7 @@ func TestApplyJobRunPolicy(t *testing.T) {
 		namespace = "default"
 	)
 
-	newJob := func(policy config.JobRunPolicy) *batchv1.Job {
+	newJob := func(policy workflowconfig.JobRunPolicy) *batchv1.Job {
 		return &batchv1.Job{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
@@ -154,7 +156,7 @@ func TestApplyJobRunPolicy(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		policy        config.JobRunPolicy
+		policy        workflowconfig.JobRunPolicy
 		existing      *batchv1.Job
 		expectAction  runPolicyAction
 		expectErr     bool
@@ -163,26 +165,26 @@ func TestApplyJobRunPolicy(t *testing.T) {
 	}{
 		{
 			name:         "skip if completed",
-			policy:       config.JobRunPolicySkipIfCompleted,
+			policy:       workflowconfig.JobRunPolicySkipIfCompleted,
 			existing:     completedJob,
 			expectAction: runPolicyActionSkip,
 		},
 		{
 			name:         "skip if running allows existing job",
-			policy:       config.JobRunPolicySkipIfCompleted,
+			policy:       workflowconfig.JobRunPolicySkipIfCompleted,
 			existing:     runningJob,
 			expectAction: runPolicyActionCreate,
 		},
 		{
 			name:         "skip if failed returns error",
-			policy:       config.JobRunPolicySkipIfCompleted,
+			policy:       workflowconfig.JobRunPolicySkipIfCompleted,
 			existing:     failedJob,
 			expectErr:    true,
 			expectStatus: config.StatusFailed,
 		},
 		{
 			name:          "recreate deletes existing job",
-			policy:        config.JobRunPolicyRecreate,
+			policy:        workflowconfig.JobRunPolicyRecreate,
 			existing:      runningJob,
 			expectAction:  runPolicyActionCreate,
 			expectDeleted: true,
@@ -449,7 +451,7 @@ func TestApplyJobRunPolicy_UsesStoreForSkipIfCompleted(t *testing.T) {
 			Name:      "demo-job",
 			Namespace: "default",
 			Annotations: map[string]string{
-				config.AnnotationJobRunPolicy: string(config.JobRunPolicySkipIfCompleted),
+				config.AnnotationJobRunPolicy: string(workflowconfig.JobRunPolicySkipIfCompleted),
 			},
 			Labels: map[string]string{
 				config.LabelAppID:         "app-1",
@@ -476,7 +478,7 @@ func TestApplyJobRunPolicy_StoreErrorContinues(t *testing.T) {
 			Name:      "demo-job",
 			Namespace: "default",
 			Annotations: map[string]string{
-				config.AnnotationJobRunPolicy: string(config.JobRunPolicySkipIfCompleted),
+				config.AnnotationJobRunPolicy: string(workflowconfig.JobRunPolicySkipIfCompleted),
 			},
 			Labels: map[string]string{
 				config.LabelAppID:         "app-1",
@@ -740,7 +742,7 @@ func TestRunJob_ConfigMapSharedDefaultSkippedMapsRunning(t *testing.T) {
 				Namespace: "default",
 				Labels: map[string]string{
 					config.LabelShareName:     "shared-app-config",
-					config.LabelShareStrategy: string(config.ShareStrategyDefault),
+					config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 				},
 			},
 		},
@@ -777,7 +779,7 @@ func TestRunJob_ConfigMapSharedIgnoreSkippedDoesNotMapRunning(t *testing.T) {
 				Namespace: "default",
 				Labels: map[string]string{
 					config.LabelShareName:     "shared-app-config",
-					config.LabelShareStrategy: string(config.ShareStrategyIgnore),
+					config.LabelShareStrategy: string(domainspec.ShareStrategyIgnore),
 				},
 			},
 		},
@@ -949,7 +951,7 @@ func TestRunJob_SecretSharedDefaultSkippedMapsRunning(t *testing.T) {
 				Namespace: "default",
 				Labels: map[string]string{
 					config.LabelShareName:     "shared-app-secret",
-					config.LabelShareStrategy: string(config.ShareStrategyDefault),
+					config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 				},
 			},
 		},

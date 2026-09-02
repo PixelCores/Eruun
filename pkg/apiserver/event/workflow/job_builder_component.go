@@ -13,8 +13,10 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -85,7 +87,7 @@ func CreateObjectJobsFromResult(additionalObjects []client.Object, component *mo
 			)
 			pvcJob.JobType = string(config.JobDeployPVC)
 			pvcJob.JobInfo = pvc
-			pvcJob.Info = buildResourceInfo(config.ResourcePVC, ns, pvc.Name)
+			pvcJob.Info = buildResourceInfo(domainspec.ResourcePVC, ns, pvc.Name)
 			setDeployTimeout(pvcJob)
 			markJobSkippedIfIgnored(share, pvcJob)
 
@@ -143,7 +145,7 @@ func CreateObjectJobsFromResult(additionalObjects []client.Object, component *mo
 			)
 			jobTask.JobType = string(config.JobDeployServiceAccount)
 			jobTask.JobInfo = sa.DeepCopy()
-			jobTask.Info = buildResourceInfo(config.ResourceServiceAccount, ns, sa.Name)
+			jobTask.Info = buildResourceInfo(domainspec.ResourceServiceAccount, ns, sa.Name)
 			setDeployTimeout(jobTask)
 			markJobSkippedIfIgnored(rbacShare, jobTask)
 			jobs = append(jobs, jobTask)
@@ -168,7 +170,7 @@ func CreateObjectJobsFromResult(additionalObjects []client.Object, component *mo
 			)
 			jobTask.JobType = string(config.JobDeployRole)
 			jobTask.JobInfo = role.DeepCopy()
-			jobTask.Info = buildResourceInfo(config.ResourceRole, ns, role.Name)
+			jobTask.Info = buildResourceInfo(domainspec.ResourceRole, ns, role.Name)
 			setDeployTimeout(jobTask)
 			markJobSkippedIfIgnored(rbacShare, jobTask)
 			jobs = append(jobs, jobTask)
@@ -193,7 +195,7 @@ func CreateObjectJobsFromResult(additionalObjects []client.Object, component *mo
 			)
 			jobTask.JobType = string(config.JobDeployRoleBinding)
 			jobTask.JobInfo = binding.DeepCopy()
-			jobTask.Info = buildResourceInfo(config.ResourceRoleBinding, ns, binding.Name)
+			jobTask.Info = buildResourceInfo(domainspec.ResourceRoleBinding, ns, binding.Name)
 			setDeployTimeout(jobTask)
 			markJobSkippedIfIgnored(rbacShare, jobTask)
 			jobs = append(jobs, jobTask)
@@ -213,7 +215,7 @@ func CreateObjectJobsFromResult(additionalObjects []client.Object, component *mo
 			)
 			jobTask.JobType = string(config.JobDeployClusterRole)
 			jobTask.JobInfo = clusterRole.DeepCopy()
-			jobTask.Info = buildResourceInfo(config.ResourceClusterRole, "", clusterRole.Name)
+			jobTask.Info = buildResourceInfo(domainspec.ResourceClusterRole, "", clusterRole.Name)
 			setDeployTimeout(jobTask)
 			markJobSkippedIfIgnored(rbacShare, jobTask)
 			jobs = append(jobs, jobTask)
@@ -233,7 +235,7 @@ func CreateObjectJobsFromResult(additionalObjects []client.Object, component *mo
 			)
 			jobTask.JobType = string(config.JobDeployClusterRoleBinding)
 			jobTask.JobInfo = clusterBinding.DeepCopy()
-			jobTask.Info = buildResourceInfo(config.ResourceClusterRoleBinding, "", clusterBinding.Name)
+			jobTask.Info = buildResourceInfo(domainspec.ResourceClusterRoleBinding, "", clusterBinding.Name)
 			setDeployTimeout(jobTask)
 			markJobSkippedIfIgnored(rbacShare, jobTask)
 			jobs = append(jobs, jobTask)
@@ -514,7 +516,7 @@ func buildJobsForComponent(
 		jobTask.JobType = string(config.JobDeployConfigMap)
 		jobTask.JobInfo = job.GenerateConfigMap(component, &properties)
 		applyShareLabelsToJobInfo(jobTask.JobInfo, share)
-		jobTask.Info = buildConfigLikeInfo(config.ResourceConfigMap, jobTask.JobInfo, namespace, component.Name)
+		jobTask.Info = buildConfigLikeInfo(domainspec.ResourceConfigMap, jobTask.JobInfo, namespace, component.Name)
 		setDeployTimeout(jobTask)
 		markJobSkippedIfIgnored(share, jobTask)
 		buckets[config.JobPriorityMaxHigh] = append(buckets[config.JobPriorityMaxHigh], jobTask)
@@ -524,7 +526,7 @@ func buildJobsForComponent(
 		jobTask.JobType = string(config.JobDeploySecret)
 		jobTask.JobInfo = job.GenerateSecret(component, &properties)
 		applyShareLabelsToJobInfo(jobTask.JobInfo, share)
-		jobTask.Info = buildConfigLikeInfo(config.ResourceSecret, jobTask.JobInfo, namespace, component.Name)
+		jobTask.Info = buildConfigLikeInfo(domainspec.ResourceSecret, jobTask.JobInfo, namespace, component.Name)
 		setDeployTimeout(jobTask)
 		markJobSkippedIfIgnored(share, jobTask)
 		buckets[config.JobPriorityMaxHigh] = append(buckets[config.JobPriorityMaxHigh], jobTask)
@@ -541,7 +543,7 @@ func buildJobsForComponent(
 		jobTask := NewJobTask(component.Name, namespace, task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, resourceAppName)
 		jobTask.JobType = string(config.JobDeployCloud)
 		jobTask.JobInfo = cloudInfo
-		jobTask.Info = buildResourceInfo(config.ResourceCloudJob, namespace, component.Name)
+		jobTask.Info = buildResourceInfo(domainspec.ResourceCloudJob, namespace, component.Name)
 		setCloudJobTimeout(jobTask)
 		buckets[config.JobPriorityNormal] = append(buckets[config.JobPriorityNormal], jobTask)
 	case config.InstantJob:
@@ -710,11 +712,11 @@ func markJobSkippedIfIgnored(share shareConfig, jobTask *model.JobTask) {
 	}
 }
 
-func applyJobFailurePolicyOverride(jobTask *model.JobTask, policy *config.WorkflowFailurePolicy) {
+func applyJobFailurePolicyOverride(jobTask *model.JobTask, policy *workflowconfig.WorkflowFailurePolicy) {
 	if jobTask == nil || policy == nil {
 		return
 	}
-	normalized, ok := config.NormalizeJobFailurePolicy(*policy)
+	normalized, ok := workflowconfig.NormalizeJobFailurePolicy(*policy)
 	if !ok {
 		return
 	}

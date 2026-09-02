@@ -18,6 +18,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
 func TestCleanupResourcesJobCtlRetriesStatefulSetDeleteAfterResourceVersionConflict(t *testing.T) {
@@ -79,7 +80,7 @@ func TestCleanupResourcesJobCtlStatefulSetDeleteConflictStillFailsClosed(t *test
 			mutate: func(current *appsv1.StatefulSet) {
 				current.ResourceVersion = "12"
 				current.Labels[config.LabelShareName] = "late-shared-mysql"
-				current.Labels[config.LabelShareStrategy] = string(config.ShareStrategyDefault)
+				current.Labels[config.LabelShareStrategy] = string(domainspec.ShareStrategyDefault)
 			},
 			wantError:  "protected by live share labels",
 			wantUID:    types.UID("required-statefulset-uid"),
@@ -267,7 +268,7 @@ func TestCleanupResourcesJobCtlPVCDeleteConflictStillFailsClosed(t *testing.T) {
 				current.ResourceVersion = "2"
 				current.Labels = map[string]string{
 					config.LabelShareName:     "late-shared-data",
-					config.LabelShareStrategy: string(config.ShareStrategyIgnore),
+					config.LabelShareStrategy: string(domainspec.ShareStrategyIgnore),
 				}
 			},
 			wantError:  "protected by live share labels",

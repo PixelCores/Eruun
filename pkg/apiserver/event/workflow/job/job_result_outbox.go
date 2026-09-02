@@ -17,13 +17,14 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 const (
-	resultOutboxPollInterval  = config.DefaultDispatchPollInterval
-	resultOutboxBatchSize     = config.DefaultWorkerReadCount
+	resultOutboxPollInterval  = workflowconfig.DefaultDispatchPollInterval
+	resultOutboxBatchSize     = workflowconfig.DefaultWorkerReadCount
 	resultOutboxProcessGrace  = 30 * time.Second
-	resultOutboxDispatchGrace = config.DefaultWorkerAutoClaimIdle
+	resultOutboxDispatchGrace = workflowconfig.DefaultWorkerAutoClaimIdle
 )
 
 var resultOutboxPersistTimeout = 5 * time.Second

@@ -13,6 +13,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/security/importsecret"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/profiling"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 type leaderConfig struct {
@@ -30,49 +31,6 @@ const (
 	DatastoreSchemaModeValidate    = "validate"
 	DatastoreSchemaModeMigrateOnly = "migrate-only"
 )
-
-// WorkflowRuntimeConfig controls how workflow steps are executed.
-type WorkflowRuntimeConfig struct {
-	// SequentialMaxConcurrency caps how many jobs within a sequential
-	// workflow step may run at once. Values <= 0 fall back to 1.
-	SequentialMaxConcurrency int
-	// DispatchPollInterval determines dispatcher scan cadence.
-	DispatchPollInterval time.Duration
-	// WorkerStaleInterval determines how frequently workers reclaim messages.
-	WorkerStaleInterval time.Duration
-	// WorkerAutoClaimMinIdle minimum idle before a message is considered stale.
-	WorkerAutoClaimMinIdle time.Duration
-	// WorkerAutoClaimCount batch size for AutoClaim operations.
-	WorkerAutoClaimCount int
-	// WorkerReadCount number of messages fetched per worker read.
-	WorkerReadCount int
-	// WorkerReadBlock blocking duration for worker reads.
-	WorkerReadBlock time.Duration
-	// DefaultJobTimeout per-job timeout.
-	DefaultJobTimeout time.Duration
-	// CallbackTimeoutMax is the upper bound for workflow callback timeout.
-	CallbackTimeoutMax time.Duration
-	// MaxConcurrentWorkflows limits how many workflow controllers each worker process runs in parallel.
-	MaxConcurrentWorkflows int
-	// WorkerMaxReadFailures is the max consecutive read failures before worker exits.
-	// Set to 0 for infinite retries (recommended for resilience).
-	WorkerMaxReadFailures int
-	// WorkerMaxClaimFailures is the max consecutive claim failures before worker exits.
-	// Set to 0 for infinite retries (recommended for resilience).
-	WorkerMaxClaimFailures int
-	// WorkerBackoffMin is the minimum backoff duration for worker retries.
-	WorkerBackoffMin time.Duration
-	// WorkerBackoffMax is the maximum backoff duration for worker retries.
-	WorkerBackoffMax time.Duration
-	// HeartbeatInterval controls how frequently a running worker renews its database lease.
-	HeartbeatInterval time.Duration
-	// LeaseDuration is the database ownership lease for queued and running tasks.
-	LeaseDuration time.Duration
-	// LeaseReaperInterval controls stale task recovery cadence.
-	LeaseReaperInterval time.Duration
-	// WorkerDrainTimeout bounds graceful shutdown before in-flight tasks are fenced.
-	WorkerDrainTimeout time.Duration
-}
 
 type Config struct {
 	// Role selects the explicit runtime responsibility for this process.
@@ -132,8 +90,8 @@ type Config struct {
 	// Messaging configuration (pub/sub)
 	Messaging MessagingConfig
 
-	// WorkflowRuntime configures workflow scheduling behaviour.
-	Workflow WorkflowRuntimeConfig
+	// Workflow configures workflow scheduling behaviour.
+	Workflow workflowconfig.RuntimeConfig
 
 	// ImportSecretKeyring is an inline JSON AES-256-GCM keyring used only for
 	// adopted Kubernetes Secret payloads and import plan fingerprints.
@@ -178,6 +136,14 @@ type MessagingConfig struct {
 	KafkaTopicPartitions int
 	// KafkaTopicReplicationFactor is the default replication factor when auto-creating topics.
 	KafkaTopicReplicationFactor int
+}
+
+// WorkflowRuntime returns the workflow settings, or zero settings for a nil server config.
+func (c *Config) WorkflowRuntime() workflowconfig.RuntimeConfig {
+	if c == nil {
+		return workflowconfig.RuntimeConfig{}
+	}
+	return c.Workflow
 }
 
 func NewConfig() *Config {
@@ -231,26 +197,7 @@ func NewConfig() *Config {
 			KafkaTopicPartitions:        1,
 			KafkaTopicReplicationFactor: 1,
 		},
-		Workflow: WorkflowRuntimeConfig{
-			SequentialMaxConcurrency: 1,
-			DispatchPollInterval:     3 * time.Second,
-			WorkerStaleInterval:      15 * time.Second,
-			WorkerAutoClaimMinIdle:   60 * time.Second,
-			WorkerAutoClaimCount:     50,
-			WorkerReadCount:          10,
-			WorkerReadBlock:          2 * time.Second,
-			DefaultJobTimeout:        60 * time.Second,
-			CallbackTimeoutMax:       DefaultWorkflowCallbackTimeoutMax,
-			MaxConcurrentWorkflows:   DefaultMaxConcurrentWorkflows,
-			WorkerMaxReadFailures:    0, // 0 = infinite retries (resilient)
-			WorkerMaxClaimFailures:   0, // 0 = infinite retries (resilient)
-			WorkerBackoffMin:         200 * time.Millisecond,
-			WorkerBackoffMax:         5 * time.Minute,
-			HeartbeatInterval:        DefaultWorkflowHeartbeatInterval,
-			LeaseDuration:            DefaultWorkflowLeaseDuration,
-			LeaseReaperInterval:      DefaultWorkflowLeaseReaperInterval,
-			WorkerDrainTimeout:       DefaultWorkerDrainTimeout,
-		},
+		Workflow: workflowconfig.DefaultRuntimeConfig(),
 	}
 }
 
@@ -321,48 +268,7 @@ func (c *Config) Validate() []error {
 	} else if strings.TrimSpace(c.Cache.CacheHost) == "" || c.Cache.CacheProt <= 0 {
 		errs = append(errs, fmt.Errorf("redis cache host/port is invalid"))
 	}
-	if c.Workflow.SequentialMaxConcurrency <= 0 {
-		errs = append(errs, fmt.Errorf("workflow sequential max concurrency must be >= 1"))
-	}
-	if c.Workflow.DispatchPollInterval <= 0 {
-		errs = append(errs, fmt.Errorf("workflow dispatch poll interval must be > 0"))
-	}
-	if c.Workflow.WorkerStaleInterval <= 0 {
-		errs = append(errs, fmt.Errorf("workflow worker stale interval must be > 0"))
-	}
-	if c.Workflow.WorkerAutoClaimMinIdle <= 0 {
-		errs = append(errs, fmt.Errorf("workflow worker auto-claim min idle must be > 0"))
-	}
-	if c.Workflow.WorkerAutoClaimCount <= 0 {
-		errs = append(errs, fmt.Errorf("workflow worker auto-claim count must be > 0"))
-	}
-	if c.Workflow.WorkerReadCount <= 0 {
-		errs = append(errs, fmt.Errorf("workflow worker read count must be > 0"))
-	}
-	if c.Workflow.WorkerReadBlock <= 0 {
-		errs = append(errs, fmt.Errorf("workflow worker read block must be > 0"))
-	}
-	if c.Workflow.DefaultJobTimeout <= 0 {
-		errs = append(errs, fmt.Errorf("workflow default job timeout must be > 0"))
-	}
-	if c.Workflow.CallbackTimeoutMax <= 0 {
-		errs = append(errs, fmt.Errorf("workflow callback timeout max must be > 0"))
-	}
-	if c.Workflow.MaxConcurrentWorkflows <= 0 {
-		errs = append(errs, fmt.Errorf("workflow max concurrent executions must be > 0"))
-	}
-	if c.Workflow.HeartbeatInterval <= 0 {
-		errs = append(errs, fmt.Errorf("workflow heartbeat interval must be > 0"))
-	}
-	if c.Workflow.LeaseDuration <= c.Workflow.HeartbeatInterval {
-		errs = append(errs, fmt.Errorf("workflow lease duration must be greater than heartbeat interval"))
-	}
-	if c.Workflow.LeaseReaperInterval <= 0 {
-		errs = append(errs, fmt.Errorf("workflow lease reaper interval must be > 0"))
-	}
-	if c.Workflow.WorkerDrainTimeout <= 0 {
-		errs = append(errs, fmt.Errorf("workflow worker drain timeout must be > 0"))
-	}
+	errs = append(errs, c.Workflow.Validate()...)
 	if strings.TrimSpace(c.ImportSecretKeyring) != "" || strings.TrimSpace(c.ImportSecretKeyringFile) != "" {
 		if _, err := importsecret.Load(c.ImportSecretKeyring, c.ImportSecretKeyringFile); err != nil {
 			errs = append(errs, err)
@@ -569,13 +475,13 @@ func (c Config) RequiresResultQueue() bool {
 func (c Config) RuntimeMessagingTopics() []string {
 	topics := make([]string, 0, 3)
 	if c.RequiresDispatchQueue() {
-		topics = append(topics, DispatchTopic(c.Messaging.ChannelPrefix))
+		topics = append(topics, workflowconfig.DispatchTopic(c.Messaging.ChannelPrefix))
 	}
 	if c.RequiresDelayQueue() {
-		topics = append(topics, DelayTopic(c.Messaging.ChannelPrefix))
+		topics = append(topics, workflowconfig.DelayTopic(c.Messaging.ChannelPrefix))
 	}
 	if c.RequiresResultQueue() {
-		topics = append(topics, ResultTopic(c.Messaging.ChannelPrefix))
+		topics = append(topics, workflowconfig.ResultTopic(c.Messaging.ChannelPrefix))
 	}
 	return topics
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 	traitsPlu "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
@@ -50,7 +51,7 @@ func TestGenerateWebService_UsesCommand(t *testing.T) {
 	if !reflect.DeepEqual(got, properties.Command) {
 		t.Fatalf("expected command %v, got %v", properties.Command, got)
 	}
-	require.Equal(t, config.DefaultWorkflowImagePullPolicy, deploy.Spec.Template.Spec.Containers[0].ImagePullPolicy)
+	require.Equal(t, workflowconfig.DefaultWorkflowImagePullPolicy, deploy.Spec.Template.Spec.Containers[0].ImagePullPolicy)
 }
 
 func TestGenerateWebService_AppliesRolloutTrait(t *testing.T) {
@@ -188,7 +189,7 @@ func TestIsDeploymentChangedWhenImagePullPolicyDiffers(t *testing.T) {
 	current.Spec.Template.Spec.Containers[0].ImagePullPolicy = corev1.PullNever
 
 	desired := deploymentWithStrategy(appsv1.DeploymentStrategy{})
-	desired.Spec.Template.Spec.Containers[0].ImagePullPolicy = config.DefaultWorkflowImagePullPolicy
+	desired.Spec.Template.Spec.Containers[0].ImagePullPolicy = workflowconfig.DefaultWorkflowImagePullPolicy
 
 	require.True(t, isDeploymentChanged(current, desired))
 }
@@ -205,7 +206,7 @@ func TestIsDeploymentChangedWhenInitContainerImagePullPolicyDiffers(t *testing.T
 	desired.Spec.Template.Spec.InitContainers = []corev1.Container{{
 		Name:            "init",
 		Image:           "busybox:1.36",
-		ImagePullPolicy: config.DefaultWorkflowImagePullPolicy,
+		ImagePullPolicy: workflowconfig.DefaultWorkflowImagePullPolicy,
 	}}
 
 	require.True(t, isDeploymentChanged(current, desired))
@@ -465,7 +466,7 @@ func TestIsDeploymentChangedIgnoresLiveOnlySystemLabels(t *testing.T) {
 	current.Spec.Template.Labels = map[string]string{
 		config.LabelAppID:         "app-1",
 		config.LabelComponentName: "api",
-		config.LabelShareStrategy: string(config.ShareStrategyIgnore),
+		config.LabelShareStrategy: string(spec.ShareStrategyIgnore),
 	}
 
 	desired := deploymentWithStrategy(appsv1.DeploymentStrategy{})
@@ -535,7 +536,7 @@ func TestDeploymentForExistingUpdatePreservesSystemLabelsAndRemovesStaleCustomMe
 		"legacy-selector":         "true",
 		"mesh.injected":           "true",
 		"tier":                    "old",
-		config.LabelShareStrategy: string(config.ShareStrategyIgnore),
+		config.LabelShareStrategy: string(spec.ShareStrategyIgnore),
 	}
 	current.Spec.Template.Annotations = map[string]string{
 		"checksum/config":      "old-template",
@@ -576,7 +577,7 @@ func TestDeploymentForExistingUpdatePreservesSystemLabelsAndRemovesStaleCustomMe
 	require.Equal(t, "7", update.Annotations["eruun.io/component-id"])
 	require.Equal(t, current.Spec.Selector, update.Spec.Selector)
 	require.Equal(t, "true", update.Spec.Template.Labels["legacy-selector"])
-	require.Equal(t, string(config.ShareStrategyIgnore), update.Spec.Template.Labels[config.LabelShareStrategy])
+	require.Equal(t, string(spec.ShareStrategyIgnore), update.Spec.Template.Labels[config.LabelShareStrategy])
 	require.NotContains(t, update.Spec.Template.Labels, "mesh.injected")
 	require.Equal(t, "backend", update.Spec.Template.Labels["tier"])
 	require.Equal(t, "api", update.Spec.Template.Labels[config.LabelComponentName])
@@ -771,7 +772,7 @@ func TestDeployJobCtlRunSkipsDeploymentWithOnlyLiveSystemLabels(t *testing.T) {
 	current.Spec.Template.Labels = map[string]string{
 		config.LabelAppID:         "app-1",
 		config.LabelComponentName: "api",
-		config.LabelShareStrategy: string(config.ShareStrategyIgnore),
+		config.LabelShareStrategy: string(spec.ShareStrategyIgnore),
 	}
 
 	client := fake.NewSimpleClientset(current)
@@ -801,7 +802,7 @@ func TestDeployJobCtlRunSkipsDeploymentWithOnlyLiveSystemLabels(t *testing.T) {
 	updated, err := client.AppsV1().Deployments("default").Get(ctx, deployName, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Equal(t, "shared", updated.Labels[config.LabelShareName])
-	require.Equal(t, string(config.ShareStrategyIgnore), updated.Spec.Template.Labels[config.LabelShareStrategy])
+	require.Equal(t, string(spec.ShareStrategyIgnore), updated.Spec.Template.Labels[config.LabelShareStrategy])
 	require.Equal(t, 0, countClientActions(client, "update", "deployments"))
 	require.Equal(t, 0, countClientActions(client, "patch", "deployments"))
 }

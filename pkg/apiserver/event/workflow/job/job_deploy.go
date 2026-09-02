@@ -21,10 +21,12 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 	traitsPlu "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
@@ -83,7 +85,7 @@ func (c *DeployJobCtl) Clean(ctx context.Context) {
 		namespace = config.DefaultNamespace
 	}
 
-	cleanupNamespacedResources(ctx, config.ResourceDeployment, c.job.Namespace, config.DelTimeOut, "deployment", func(ctx context.Context, namespace, name string) error {
+	cleanupNamespacedResources(ctx, domainspec.ResourceDeployment, c.job.Namespace, config.DelTimeOut, "deployment", func(ctx context.Context, namespace, name string) error {
 		return c.client.AppsV1().Deployments(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	}, k8serrors.IsNotFound, "after job failure")
 
@@ -146,7 +148,7 @@ func (c *DeployJobCtl) run(ctx context.Context) error {
 		if !isDeploymentChanged(current, deploy) {
 			c.expectedPodTemplateAnnotations = podTemplateReadyWaitAnnotationsFromTemplate(c.job, &current.Spec.Template)
 			klog.Infof("Deployment %q is up-to-date, skip update.", deploy.Name)
-			markResourceObserved(ctx, config.ResourceDeployment, deploy.Namespace, deploy.Name)
+			markResourceObserved(ctx, domainspec.ResourceDeployment, deploy.Namespace, deploy.Name)
 			return nil
 		}
 		podTemplateChanged := deploymentPodTemplateChanged(current, deploy)
@@ -168,7 +170,7 @@ func (c *DeployJobCtl) run(ctx context.Context) error {
 		}
 		c.expectedPodTemplateAnnotations = expectedAnnotations
 		klog.Infof("Deployment %q updated successfully.", updated.Name)
-		markResourceObserved(ctx, config.ResourceDeployment, deploy.Namespace, deploy.Name)
+		markResourceObserved(ctx, domainspec.ResourceDeployment, deploy.Namespace, deploy.Name)
 		return nil
 	}
 
@@ -177,7 +179,7 @@ func (c *DeployJobCtl) run(ctx context.Context) error {
 			job:          c.job,
 			ack:          c.ack,
 			labels:       deploy.Labels,
-			kind:         config.ResourceDeployment,
+			kind:         domainspec.ResourceDeployment,
 			lockProvider: c.shareLocker,
 			listFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
 				list, err := c.client.AppsV1().Deployments(deploy.Namespace).List(ctx, opts)
@@ -186,8 +188,8 @@ func (c *DeployJobCtl) run(ctx context.Context) error {
 				}
 				return len(list.Items), nil
 			},
-			logSkip: func(strategy config.ShareStrategy) {
-				if strategy == config.ShareStrategyIgnore {
+			logSkip: func(strategy domainspec.ShareStrategy) {
+				if strategy == domainspec.ShareStrategyIgnore {
 					klog.Infof("Deployment %q marked as shared ignore; skipping", deploy.Name)
 				} else {
 					klog.Infof("Deployment %q already exists and is shared; skipping", deploy.Name)
@@ -286,7 +288,7 @@ func GenerateWebService(component *model.ApplicationComponent, properties *model
 		Image:           component.Image,
 		Ports:           ContainerPort,
 		Env:             envs,
-		ImagePullPolicy: config.DefaultWorkflowImagePullPolicy,
+		ImagePullPolicy: workflowconfig.DefaultWorkflowImagePullPolicy,
 	}
 	if properties != nil && len(properties.Command) > 0 {
 		container.Command = properties.Command
@@ -371,7 +373,7 @@ func (c *DeployJobCtl) reconcileAdoptedDeployment(ctx context.Context, desired *
 	}
 	if !adoptedDeploymentNeedsUpdate(current, desired) {
 		c.expectedPodTemplateAnnotations = podTemplateReadyWaitAnnotationsFromTemplate(c.job, &current.Spec.Template)
-		markResourceObserved(ctx, config.ResourceDeployment, desired.Namespace, desired.Name)
+		markResourceObserved(ctx, domainspec.ResourceDeployment, desired.Namespace, desired.Name)
 		return nil
 	}
 	if err := updateResourceWithRetry(ctx, func(ctx context.Context) (*appsv1.Deployment, error) {
@@ -397,7 +399,7 @@ func (c *DeployJobCtl) reconcileAdoptedDeployment(ctx context.Context, desired *
 		return fmt.Errorf("get updated adopted deployment %s/%s: %w", desired.Namespace, desired.Name, err)
 	}
 	c.expectedPodTemplateAnnotations = podTemplateReadyWaitAnnotationsFromTemplate(c.job, &updated.Spec.Template)
-	markResourceObserved(ctx, config.ResourceDeployment, desired.Namespace, desired.Name)
+	markResourceObserved(ctx, domainspec.ResourceDeployment, desired.Namespace, desired.Name)
 	return nil
 }
 
@@ -481,7 +483,7 @@ func (c *DeployJobCtl) recreateAdoptedDeployment(
 		return fmt.Errorf("persist recreated adopted deployment binding; pending claim retained: %w", err)
 	}
 	c.expectedPodTemplateAnnotations = expectedAnnotations
-	markResourceObserved(ctx, config.ResourceDeployment, created.Namespace, created.Name)
+	markResourceObserved(ctx, domainspec.ResourceDeployment, created.Namespace, created.Name)
 	return nil
 }
 

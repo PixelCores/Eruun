@@ -19,6 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
@@ -26,7 +27,7 @@ import (
 
 type adoptedDependencyJobSpec struct {
 	jobType      config.JobType
-	resourceKind config.ResourceKind
+	resourceKind domainspec.ResourceKind
 	priority     int
 	apiVersion   string
 }
@@ -34,61 +35,61 @@ type adoptedDependencyJobSpec struct {
 var adoptedDependencyJobSpecs = map[string]adoptedDependencyJobSpec{
 	"service": {
 		jobType:      config.JobDeployService,
-		resourceKind: config.ResourceService,
+		resourceKind: domainspec.ResourceService,
 		priority:     config.JobPriorityHigh,
 		apiVersion:   "v1",
 	},
 	"ingress": {
 		jobType:      config.JobDeployIngress,
-		resourceKind: config.ResourceIngress,
+		resourceKind: domainspec.ResourceIngress,
 		priority:     config.JobPriorityHigh,
 		apiVersion:   networkingv1.SchemeGroupVersion.String(),
 	},
 	"persistentvolumeclaim": {
 		jobType:      config.JobDeployPVC,
-		resourceKind: config.ResourcePVC,
+		resourceKind: domainspec.ResourcePVC,
 		priority:     config.JobPriorityHigh,
 		apiVersion:   "v1",
 	},
 	"configmap": {
 		jobType:      config.JobDeployConfigMap,
-		resourceKind: config.ResourceConfigMap,
+		resourceKind: domainspec.ResourceConfigMap,
 		priority:     config.JobPriorityMaxHigh,
 		apiVersion:   "v1",
 	},
 	"secret": {
 		jobType:      config.JobDeploySecret,
-		resourceKind: config.ResourceSecret,
+		resourceKind: domainspec.ResourceSecret,
 		priority:     config.JobPriorityMaxHigh,
 		apiVersion:   "v1",
 	},
 	"serviceaccount": {
 		jobType:      config.JobDeployServiceAccount,
-		resourceKind: config.ResourceServiceAccount,
+		resourceKind: domainspec.ResourceServiceAccount,
 		priority:     config.JobPriorityMaxHigh,
 		apiVersion:   "v1",
 	},
 	"role": {
 		jobType:      config.JobDeployRole,
-		resourceKind: config.ResourceRole,
+		resourceKind: domainspec.ResourceRole,
 		priority:     config.JobPriorityMaxHigh,
 		apiVersion:   rbacv1.SchemeGroupVersion.String(),
 	},
 	"rolebinding": {
 		jobType:      config.JobDeployRoleBinding,
-		resourceKind: config.ResourceRoleBinding,
+		resourceKind: domainspec.ResourceRoleBinding,
 		priority:     config.JobPriorityMaxHigh,
 		apiVersion:   rbacv1.SchemeGroupVersion.String(),
 	},
 	"poddisruptionbudget": {
 		jobType:      config.JobDeployPodDisruptionBudget,
-		resourceKind: config.ResourcePodDisruptionBudget,
+		resourceKind: domainspec.ResourcePodDisruptionBudget,
 		priority:     config.JobPriorityHigh,
 		apiVersion:   policyv1.SchemeGroupVersion.String(),
 	},
 	"networkpolicy": {
 		jobType:      config.JobDeployNetworkPolicy,
-		resourceKind: config.ResourceNetworkPolicy,
+		resourceKind: domainspec.ResourceNetworkPolicy,
 		priority:     config.JobPriorityHigh,
 		apiVersion:   networkingv1.SchemeGroupVersion.String(),
 	},

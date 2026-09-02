@@ -14,6 +14,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
 const cleanupPollInterval = 500 * time.Millisecond
@@ -60,33 +61,33 @@ func (c *CleanupResourcesJobCtl) waitForCleanup(ctx context.Context, component *
 func (c *CleanupResourcesJobCtl) resourceGone(ctx context.Context, ref cleanupResourceRef) (bool, error) {
 	var err error
 	switch ref.kind {
-	case config.ResourceDeployment:
+	case domainspec.ResourceDeployment:
 		_, err = c.client.AppsV1().Deployments(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourceStatefulSet:
+	case domainspec.ResourceStatefulSet:
 		_, err = c.client.AppsV1().StatefulSets(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourceJob:
+	case domainspec.ResourceJob:
 		_, err = c.client.BatchV1().Jobs(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourceCronJob:
+	case domainspec.ResourceCronJob:
 		_, err = c.client.BatchV1().CronJobs(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourceService:
+	case domainspec.ResourceService:
 		_, err = c.client.CoreV1().Services(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourceConfigMap:
+	case domainspec.ResourceConfigMap:
 		_, err = c.client.CoreV1().ConfigMaps(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourceSecret:
+	case domainspec.ResourceSecret:
 		_, err = c.client.CoreV1().Secrets(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourcePVC:
+	case domainspec.ResourcePVC:
 		_, err = c.client.CoreV1().PersistentVolumeClaims(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourceIngress:
+	case domainspec.ResourceIngress:
 		_, err = c.client.NetworkingV1().Ingresses(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourceServiceAccount:
+	case domainspec.ResourceServiceAccount:
 		_, err = c.client.CoreV1().ServiceAccounts(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourceRole:
+	case domainspec.ResourceRole:
 		_, err = c.client.RbacV1().Roles(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourceRoleBinding:
+	case domainspec.ResourceRoleBinding:
 		_, err = c.client.RbacV1().RoleBindings(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourceClusterRole:
+	case domainspec.ResourceClusterRole:
 		_, err = c.client.RbacV1().ClusterRoles().Get(ctx, ref.name, metav1.GetOptions{})
-	case config.ResourceClusterRoleBinding:
+	case domainspec.ResourceClusterRoleBinding:
 		_, err = c.client.RbacV1().ClusterRoleBindings().Get(ctx, ref.name, metav1.GetOptions{})
 	default:
 		return false, fmt.Errorf("unsupported cleanup resource kind %q", ref.kind)
@@ -158,10 +159,10 @@ func (c *CleanupResourcesJobCtl) componentPodOwnerJobs(ctx context.Context, name
 	}
 	ownerJobs := make([]string, 0, len(pod.GetOwnerReferences()))
 	for _, owner := range pod.GetOwnerReferences() {
-		if !strings.EqualFold(owner.Kind, string(config.KubeKindJob)) || strings.TrimSpace(owner.Name) == "" {
+		if !strings.EqualFold(owner.Kind, string(domainspec.KubeKindJob)) || strings.TrimSpace(owner.Name) == "" {
 			continue
 		}
-		ref, ok := newCleanupResourceRef(config.ResourceJob, namespace, owner.Name, false)
+		ref, ok := newCleanupResourceRef(domainspec.ResourceJob, namespace, owner.Name, false)
 		if !ok {
 			continue
 		}
