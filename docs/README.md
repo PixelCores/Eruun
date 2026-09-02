@@ -115,7 +115,7 @@
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
 | `workflow-architecture-guide.md` | Implemented Reference | 工作流引擎架构详解 |
-| `enterprise-distributed-runtime-design.md` | Implemented Reference | 分布式运行时：角色、Leader Election、数据库 lease/fencing、Worker observer 和 Helm 拓扑 |
+| `enterprise-distributed-runtime-design.md` | Implemented Reference | 分布式运行时：角色依赖、API Redis readiness、Leader Election、数据库 lease/fencing、Worker observer 和 Helm 拓扑 |
 | `架构文档.md` | Implemented Reference | 架构与 OAM Traits 汇总 |
 | `architecture-diagrams.md` | Implemented Reference | 架构图与流程图 |
 | `kafka-queue-implementation.md` | Implemented Reference | Kafka 队列实现 |

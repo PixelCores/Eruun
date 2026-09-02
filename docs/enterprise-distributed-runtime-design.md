@@ -41,6 +41,8 @@ API 角色注册完整业务 API；非 API 角色只注册健康路由。Followe
 
 这张依赖矩阵同时约束 Kafka topic 初始化和健康探针。这样 result topic 故障不会让 API、Scheduler 或 Worker 被判为不可用，Controller 也不会因为不拥有 dispatch topic 而被错误摘流。
 
+API 的工作流执行、应用版本更新和取消操作仍依赖 Redis 分布式锁及取消信号。无论消息后端选择 Redis 还是 Kafka，API 的 `/api/v1/ready`、`/api/v1/readyz` 都通过已注入的缓存 Redis 客户端执行 `PING`；客户端缺失或连接失败时返回 503，连接恢复后返回 200。该检查不访问消息主题，`/api/v1/health`、`/api/v1/healthz` 仍只检查进程存活。
+
 ## 3. 双 Leader 契约
 
 Controller 和 Scheduler 分别使用：

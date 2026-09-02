@@ -10,6 +10,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 )
 
 var checkKafkaReadiness = clients.CheckKafkaReadiness
@@ -21,6 +22,7 @@ type RuntimeReadiness interface {
 // health provides health check endpoints for Kubernetes probes.
 type health struct {
 	Queues  *msg.RuntimeQueues `inject:""`
+	Cache   cache.ICache       `inject:"cache"`
 	Cfg     *config.Config     `inject:""`
 	Runtime RuntimeReadiness   `inject:"runtimeReadiness"`
 }
@@ -47,12 +49,24 @@ func (h *health) healthCheck(c *gin.Context) {
 }
 
 // readinessCheck checks if the server is ready to accept traffic.
-// It verifies connectivity to dependencies like the message queue.
+// It verifies connectivity to the dependencies required by the runtime role.
 func (h *health) readinessCheck(c *gin.Context) {
 	ctx := c.Request.Context()
 	if h.Runtime != nil {
 		if ready, reason := h.Runtime.RuntimeReady(); !ready {
 			bcode.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: "+reason)
+			return
+		}
+	}
+	if h.Cfg != nil && h.Cfg.RunsAPI() {
+		// API mutations require Redis locks and cancellation signals even without queues.
+		if h.Cache == nil || h.Cache.GetRedisClient() == nil {
+			bcode.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: redis client is not configured")
+			return
+		}
+		if err := h.Cache.GetRedisClient().Ping(ctx).Err(); err != nil {
+			klog.V(4).InfoS("readiness check failed", "dependency", "redis", "err", err)
+			bcode.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: redis connection failed")
 			return
 		}
 	}
