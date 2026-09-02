@@ -92,9 +92,9 @@ Key documentation:
 - docs/core-module-boundary-and-cross-layer-contracts.md — API, domain, persistence, and Kubernetes boundaries
 - examples/ — HTTP request payloads and operational examples
 
-## Security and contributing
+## Security
 
-Please read SECURITY.md before reporting a vulnerability and CONTRIBUTING.md before opening a change.
+Please read SECURITY.md before reporting a vulnerability.
 
 ## License
 

@@ -1,6 +1,6 @@
 # Eruun 独立开源产品基线
 
-> 状态：Historical / Audit。本文记录当时的开源基线；2026-09-03 后续清理已移除发布就绪清单和许可证检查机制，保留其他构建、测试与安全检查。当前 CI 范围以[贡献指南](../CONTRIBUTING.md#continuous-integration)为准。
+> 状态：Historical / Audit。本文记录当时的开源基线；2026-09-03 后续清理已移除发布就绪清单、许可证检查机制及独立的社区行为准则和贡献指南文档，保留其他构建、测试与安全检查。当前 CI 范围以 [CI 工作流](../.github/workflows/ci.yml)和[依赖审查工作流](../.github/workflows/dependency-review.yml)为准。
 
 ## 背景与需求
 

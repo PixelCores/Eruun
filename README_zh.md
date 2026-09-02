@@ -92,9 +92,9 @@ go vet ./...
 - docs/core-module-boundary-and-cross-layer-contracts.md — API、领域、持久化和 Kubernetes 边界
 - examples/ — HTTP 请求载荷与运维示例
 
-## 安全与贡献
+## 安全
 
-报告安全问题前请阅读 SECURITY.md，提交变更前请阅读 CONTRIBUTING.md。
+报告安全问题前请阅读 SECURITY.md。
 
 ## 许可证
 
