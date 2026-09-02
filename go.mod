@@ -11,7 +11,7 @@ require (
 	github.com/barnettZQG/inject v0.0.1
 	github.com/fatih/color v1.15.0
 	github.com/gin-gonic/gin v1.12.0
-	github.com/go-playground/validator/v10 v10.30.1
+	github.com/go-playground/validator/v10 v10.30.3
 	github.com/go-redsync/redsync/v4 v4.13.0
 	github.com/google/uuid v1.6.0
 	github.com/redis/go-redis/v9 v9.7.3
@@ -63,7 +63,7 @@ require (
 	github.com/facebookgo/structtag v0.0.0-20150214074306-217e25fb9691 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
-	github.com/gabriel-vasile/mimetype v1.4.12 // indirect
+	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
 	github.com/gin-contrib/sse v1.1.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
