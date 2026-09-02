@@ -143,11 +143,11 @@ Schema 迁移也不由所有运行 Pod 共同承担：首次安装由 API 在 My
 - Redis 用于缓存、应用变更分布式锁及可选的 Streams 消息；Kafka 可作为消息后端，Workflow 执行租约由 MySQL 管理。
 - 内置 MySQL/Redis 只适合开发和演示。
 - run token 属于执行凭据，不写入业务日志、trace 或指标标签。
-- Scheduler 只需要 namespace-scoped Leader Election 权限；API、Controller 和 Worker 当前共享资源管理 ClusterRole，进一步细分 RBAC 属于后续安全工作。
+- Scheduler 只拥有 namespace-scoped Leader Election 权限；Controller 额外拥有 Pod 观察/metadata patch、ReplicaSet owner 读取，以及延时 Job 分发、执行身份更新、结果日志读取和已完成 Job/Pod 清理权限；API 与 Worker 使用显式资源管理 ClusterRole，其中 Job `update` 支持复用 Job 的执行代次接管。Helm 与静态 manifest 都不绑定内置 `cluster-admin`；具体权限与旧绑定迁移边界见 `helm-deployment.md`。
 
 ## 10. 验证要求
 
 - 单元测试覆盖角色装配、schema migrate/validate 模式、双 Leader、lease CAS、heartbeat、reaper、消息身份校验和关闭时序。
 - race 测试覆盖 Worker 生命周期、Leader 回调、observer 和 Workflow 状态写入。
-- Helm 模板测试覆盖固定四角色对象数量、Service selector、schema migration hook 与运行模式、PDB、termination grace、ServiceAccount 引用和 63 字符 fullname 下的角色名唯一性。
+- Helm 模板测试覆盖固定四角色对象数量、Service selector、角色级 RBAC、schema migration hook 与运行模式、PDB、termination grace、ServiceAccount 引用和 63 字符 fullname 下的角色名唯一性。
 - 集群验收覆盖随机删除 Worker、Controller Leader、Scheduler Leader，以及 Redis、Kafka、MySQL 短暂不可用后的恢复。

@@ -9,6 +9,9 @@ fi
 
 if [ "${ERUUN_QUICKSTART_FAKE_COMMAND:-false}" = "true" ]; then
   printf '%s\n' "$*" >> "${FAKE_COMMAND_LOG}"
+  if [ -n "${FAKE_FAIL_COMMAND:-}" ] && [ "$*" = "${FAKE_FAIL_COMMAND}" ]; then
+    exit 1
+  fi
   case "$*" in
     *"create secret generic"*)
       printf '%s\n' 'apiVersion: v1' 'kind: Secret' 'metadata:' '  name: fake'
@@ -79,6 +82,7 @@ runManifestGeneratedSecretsContract() {
   assertContains "${command_log}" "create secret generic eruun-secret"
   assertContains "${command_log}" "apply --dry-run=server -f ${case_dir}/eruun-stack.yaml"
   assertContains "${command_log}" "apply -f ${case_dir}/eruun-stack.yaml"
+  assertContains "${command_log}" "delete clusterrolebinding eruun-platform-cluster-admin --ignore-not-found=true"
   assertContains "${output}" "curl --fail http://127.0.0.1:8000/api/v1/healthz"
   assertNotContains "${output}" "0123456789abcdef0123456789abcdef0123456789abcdef"
   assertTempFilesCleaned "${case_dir}"
@@ -105,8 +109,63 @@ runHelmSensitiveValuesContract() {
 
   assertContains "${command_log}" "upgrade --install eruun ${CHART_SOURCE}"
   assertContains "${command_log}" "--values ${case_dir}/tmp/eruun-helm-sensitive-values."
+  assertNotContains "${command_log}" "delete clusterrolebinding"
   assertNotContains "${output}" "0123456789abcdef0123456789abcdef0123456789abcdef"
   assertTempFilesCleaned "${case_dir}"
+}
+
+runLegacyBindingCleanupScopeContract() {
+  local scenario
+  for scenario in helm-other-namespace helm-other-fullname custom-manifest custom-namespace apply-failure; do
+    local case_dir
+    case_dir=$(newCase "${scenario}")
+    local command_log="${case_dir}/commands.log"
+    local output="${case_dir}/output.log"
+    local mode=manifest
+    local namespace=eruun-system
+    local fullname=eruun
+    local manifest="${case_dir}/eruun-stack.yaml"
+    local fail_command=""
+    case "${scenario}" in
+      helm-other-namespace) mode=helm; namespace=another-eruun ;;
+      helm-other-fullname) mode=helm; fullname=another-eruun ;;
+      custom-manifest)
+        manifest="${case_dir}/custom-stack.yaml"
+        cp "${MANIFEST_SOURCE}" "${manifest}"
+        ;;
+      custom-namespace) namespace=another-eruun ;;
+      apply-failure) fail_command="apply -f ${manifest}" ;;
+    esac
+
+    local status=0
+    env \
+      ERUUN_QUICKSTART_FAKE_COMMAND=true \
+      FAKE_COMMAND_LOG="${command_log}" \
+      FAKE_FAIL_COMMAND="${fail_command}" \
+      INSTALL_MODE="${mode}" \
+      NAMESPACE="${namespace}" \
+      FULLNAME_OVERRIDE="${fullname}" \
+      MANIFEST="${manifest}" \
+      CHART_PATH="${CHART_SOURCE}" \
+      KUBECTL_BIN="${TEST_SCRIPT}" \
+      HELM_BIN="${TEST_SCRIPT}" \
+      OPENSSL_BIN="${TEST_SCRIPT}" \
+      MYSQL_ROOT_PASSWORD=test-root \
+      REDIS_PASSWORD=test-redis \
+      MYSQL_PASSWORD=test-mysql \
+      TMPDIR="${case_dir}/tmp" \
+      SKIP_CONFIRM=true \
+      WAIT_READY=false \
+      "${case_dir}/installer.sh" > "${output}" 2>&1 || status=$?
+
+    if [ "${scenario}" = apply-failure ]; then
+      [ "${status}" -ne 0 ] || fail "failed manifest apply must fail the installation"
+    else
+      [ "${status}" -eq 0 ] || fail "${scenario} installation unexpectedly failed"
+    fi
+    assertNotContains "${command_log}" "delete clusterrolebinding"
+    assertTempFilesCleaned "${case_dir}"
+  done
 }
 
 runPlaceholderRejectionContract() {
@@ -159,12 +218,14 @@ runDryRunContract() {
     "${case_dir}/installer.sh" > "${output}" 2>&1
 
   assertContains "${command_log}" "apply --dry-run=client -f"
+  assertContains "${command_log}" "delete clusterrolebinding eruun-platform-cluster-admin --ignore-not-found=true --dry-run=client"
   assertNotContains "${command_log}" "apply --dry-run=server"
   assertTempFilesCleaned "${case_dir}"
 }
 
 runManifestGeneratedSecretsContract
 runHelmSensitiveValuesContract
+runLegacyBindingCleanupScopeContract
 runPlaceholderRejectionContract
 runDryRunContract
 
