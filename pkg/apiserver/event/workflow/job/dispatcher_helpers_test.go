@@ -13,6 +13,8 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 )
 
@@ -136,6 +138,36 @@ func TestResultDispatcherHelperBranches(t *testing.T) {
 	dispatcher.group = "result-workers"
 	require.Error(t, dispatcher.ackMessage(context.Background(), "id-1", "reason"))
 	require.EqualValues(t, 1, dispatcher.ackFailures.Load())
+}
+
+type delayRecoveryQueryStore struct {
+	noopStore
+	query datastore.Entity
+	opts  *datastore.ListOptions
+}
+
+func (s *delayRecoveryQueryStore) List(_ context.Context, query datastore.Entity, opts *datastore.ListOptions) ([]datastore.Entity, error) {
+	s.query = query
+	s.opts = opts
+	return nil, nil
+}
+
+func TestDelayDispatcherRecoveryUsesBoundedDueQuery(t *testing.T) {
+	store := &delayRecoveryQueryStore{}
+	dispatcher := NewDelayDispatcher(nil, fake.NewSimpleClientset(), store, "", "")
+
+	require.NoError(t, dispatcher.recoverDueCheckpoints(context.Background()))
+	require.IsType(t, &model.JobInfo{}, store.query)
+	require.NotNil(t, store.opts)
+	require.Equal(t, 1, store.opts.Page)
+	require.Equal(t, delayRecoveryBatchSize, store.opts.PageSize)
+	require.Equal(t, []datastore.InQueryOption{
+		{Key: "status", Values: []string{string(config.StatusDistributed)}},
+		{Key: "delay_state", Values: []string{string(config.JobDelayStatePending)}},
+	}, store.opts.FilterOptions.In)
+	require.Len(t, store.opts.FilterOptions.LessThan, 1)
+	require.Equal(t, "delay_execute_at", store.opts.FilterOptions.LessThan[0].Key)
+	require.Equal(t, "delay_execute_at", store.opts.SortBy[0].Key)
 }
 
 func TestDispatcherConstructorsAndStartGuards(t *testing.T) {

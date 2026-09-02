@@ -141,9 +141,9 @@ func TestRunJobsReturnsInfrastructureStopWhenDistributedCheckpointFails(t *testi
 
 			require.ErrorIs(t, err, signal.ErrInfrastructureStop)
 			require.ErrorIs(t, err, checkpointErr)
-			require.Equal(t, config.StatusDistributed, task.Status)
+			require.Equal(t, config.StatusPrepare, task.Status)
 			require.Empty(t, task.Error)
-			require.Len(t, queue.enqueued, 1)
+			require.Empty(t, queue.enqueued, "queue notification must not precede the durable checkpoint")
 			require.Equal(t, 1, store.addCount)
 		})
 	}

@@ -75,6 +75,8 @@ Scheduler lease reaper 周期扫描 lease 已过期且身份完整的 `queued/ru
 
 `JobInfo`、延迟载荷、结果载荷和 result outbox 携带同一 generation-aware 执行身份。Kubernetes Job 同时写入执行身份 annotation。
 
+一次性延迟 Job 在发送队列通知前，先把完整载荷、到期时间和 `pending` 检查点写入 `JobInfo`。Redis Stream 只负责降低到期发现延迟；Controller Leader 还会按 `(status, delay_state, delay_execute_at)` 索引轮询已到期检查点并直接恢复。因此 consumer group 被重建、Stream 被裁剪、Redis 暂时不可用或进程在写库后/入队前退出，都不会让已提交的延迟执行永久丢失。成功创建同身份 Kubernetes Job 并持久化 result outbox 后，检查点才变为 `dispatched`。
+
 结果处理只消费与当前 `JobInfo` 和 Kubernetes Job annotation 匹配的结果；旧 generation 的迟到结果不能覆盖当前执行。确定性资源名用于重试复用，执行身份用于区分不同 generation。
 
 ## 6. Informer 与 Worker

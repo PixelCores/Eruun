@@ -144,6 +144,39 @@ func TestEnqueueDelayJobBranches(t *testing.T) {
 	require.Equal(t, "demo", payload.Job.Name)
 }
 
+func TestPersistDelayJobCheckpointStoresRecoverablePayload(t *testing.T) {
+	store := &jobInfoSaveStore{}
+	jobTask := &model.JobTask{
+		Name:          "demo",
+		TaskID:        "task-1",
+		JobType:       string(config.JobDeployInstant),
+		ExecutionKey:  "execution-1",
+		RunGeneration: 3,
+	}
+	payload := &DelayJobPayload{
+		ExecuteAt:     4102444800,
+		TaskID:        jobTask.TaskID,
+		ExecutionKey:  jobTask.ExecutionKey,
+		RunGeneration: jobTask.RunGeneration,
+		JobType:       jobTask.JobType,
+		Job:           &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"}},
+	}
+
+	require.NoError(t, persistDelayJobCheckpoint(context.Background(), store, jobTask, payload))
+	require.Equal(t, config.StatusDistributed, jobTask.Status)
+	require.Equal(t, config.JobDelayStatePending, jobTask.DelayState)
+	require.Equal(t, payload.ExecuteAt, jobTask.DelayExecuteAt)
+	require.NotEmpty(t, jobTask.DelayPayload)
+
+	record := store.added
+	require.NotNil(t, record)
+	require.Equal(t, config.JobDelayStatePending, record.DelayState)
+	require.Equal(t, payload.ExecuteAt, record.DelayExecuteAt)
+	var storedPayload DelayJobPayload
+	require.NoError(t, json.Unmarshal([]byte(record.DelayPayload), &storedPayload))
+	require.Equal(t, payload.ExecutionKey, storedPayload.ExecutionKey)
+}
+
 func TestEnqueueResultJobAndDispatch(t *testing.T) {
 	ctx := context.Background()
 

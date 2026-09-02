@@ -33,6 +33,19 @@ func TestWorkflowQueue_ReaperIndex(t *testing.T) {
 	})
 }
 
+func TestJobInfo_DelayRecoveryIndex(t *testing.T) {
+	parsed, err := gormschema.Parse(&JobInfo{}, &sync.Map{}, gormschema.NamingStrategy{})
+	require.NoError(t, err)
+
+	index := parsed.LookIndex("idx_job_delay_pending")
+	require.NotNil(t, index, "expected delayed job recovery index")
+	require.Equal(t, []string{"status", "delay_state", "delay_execute_at"}, []string{
+		index.Fields[0].DBName,
+		index.Fields[1].DBName,
+		index.Fields[2].DBName,
+	})
+}
+
 func TestWorkflowQueue_RunTokenIsNotSerialized(t *testing.T) {
 	payload, err := json.Marshal(WorkflowQueue{
 		TaskID:        "task-1",

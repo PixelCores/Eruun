@@ -26,10 +26,16 @@ import (
 
 var errDelayDispatchNoRetry = errors.New("delay dispatch no retry")
 
+const (
+	delayRecoveryPollInterval = config.DefaultDispatchPollInterval
+	delayRecoveryBatchSize    = 100
+)
+
 type delayItem struct {
 	executeAt int64
 	attempts  int
 	msgID     string
+	key       string
 	payload   *DelayJobPayload
 }
 
@@ -44,6 +50,7 @@ type DelayDispatcher struct {
 	autoClaimInterval time.Duration
 	autoClaimIdle     time.Duration
 	autoClaimCount    int
+	recoveryInterval  time.Duration
 	backoffMin        time.Duration
 	backoffMax        time.Duration
 	mu                sync.Mutex
@@ -66,6 +73,7 @@ func NewDelayDispatcher(queue msg.Queue, client kubernetes.Interface, store data
 		autoClaimInterval: config.DefaultWorkerStaleInterval,
 		autoClaimIdle:     config.DefaultWorkerAutoClaimIdle,
 		autoClaimCount:    config.DefaultWorkerAutoClaimCount,
+		recoveryInterval:  delayRecoveryPollInterval,
 		backoffMin:        config.DefaultWorkerBackoffMin,
 		backoffMax:        config.DefaultWorkerBackoffMax,
 		pending:           make(map[string]struct{}),
@@ -91,8 +99,8 @@ func (d *DelayDispatcher) prepare(ctx context.Context) bool {
 	if d == nil {
 		return false
 	}
-	if d.queue == nil || d.client == nil {
-		klog.ErrorS(fmt.Errorf("queue or client is nil"), "delay dispatcher dependencies missing", "queueNil", d.queue == nil, "clientNil", d.client == nil)
+	if d.client == nil || d.store == nil {
+		klog.ErrorS(fmt.Errorf("client or store is nil"), "delay dispatcher dependencies missing", "clientNil", d.client == nil, "storeNil", d.store == nil)
 		return false
 	}
 	if d.group == "" {
@@ -100,6 +108,10 @@ func (d *DelayDispatcher) prepare(ctx context.Context) bool {
 	}
 	if d.consumer == "" {
 		d.consumer = "delay-dispatcher"
+	}
+	if d.queue == nil {
+		klog.InfoS("delay queue unavailable; database recovery remains active")
+		return true
 	}
 	if err := d.queue.EnsureGroup(ctx, d.group); err != nil {
 		failures := d.ensureFailures.Add(1)
@@ -110,18 +122,25 @@ func (d *DelayDispatcher) prepare(ctx context.Context) bool {
 
 func (d *DelayDispatcher) runLoops(ctx context.Context) {
 	var wg sync.WaitGroup
-	wg.Add(3)
-	go func() {
-		defer wg.Done()
-		d.readLoop(ctx)
-	}()
-	go func() {
-		defer wg.Done()
-		d.claimLoop(ctx)
-	}()
+	if d.queue != nil {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			d.readLoop(ctx)
+		}()
+		go func() {
+			defer wg.Done()
+			d.claimLoop(ctx)
+		}()
+	}
+	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		d.scheduleLoop(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		d.recoveryLoop(ctx)
 	}()
 	wg.Wait()
 }
@@ -201,6 +220,7 @@ func (d *DelayDispatcher) handleMessage(ctx context.Context, message msg.Message
 	item := &delayItem{
 		executeAt: executeAt,
 		msgID:     message.ID,
+		key:       payload.ExecutionKey,
 		payload:   payload,
 	}
 	if !d.addPending(item) {
@@ -248,6 +268,71 @@ func (d *DelayDispatcher) scheduleLoop(ctx context.Context) {
 	}
 }
 
+func (d *DelayDispatcher) recoveryLoop(ctx context.Context) {
+	interval := d.recoveryInterval
+	if interval <= 0 {
+		interval = delayRecoveryPollInterval
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		if err := d.recoverDueCheckpoints(ctx); err != nil {
+			klog.ErrorS(err, "delay dispatcher database recovery failed")
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func (d *DelayDispatcher) recoverDueCheckpoints(ctx context.Context) error {
+	if d == nil || d.store == nil {
+		return fmt.Errorf("recover delay checkpoints: datastore is nil")
+	}
+	now := time.Now().Unix()
+	entities, err := d.store.List(ctx, &model.JobInfo{}, &datastore.ListOptions{
+		FilterOptions: datastore.FilterOptions{
+			In: []datastore.InQueryOption{
+				{Key: "status", Values: []string{string(config.StatusDistributed)}},
+				{Key: "delay_state", Values: []string{string(config.JobDelayStatePending)}},
+			},
+			LessThan: []datastore.ComparisonQueryOption{{Key: "delay_execute_at", Value: now + 1}},
+		},
+		Page:     1,
+		PageSize: delayRecoveryBatchSize,
+		SortBy: []datastore.SortOption{
+			{Key: "delay_execute_at", Order: datastore.SortOrderAscending},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("list due delay checkpoints: %w", err)
+	}
+	var recoveryErrs []error
+	for _, entity := range entities {
+		record, ok := entity.(*model.JobInfo)
+		if !ok || record == nil {
+			recoveryErrs = append(recoveryErrs, datastore.ErrEntityInvalid)
+			continue
+		}
+		payload, err := d.decodePayload([]byte(record.DelayPayload))
+		if err != nil {
+			recoveryErrs = append(recoveryErrs, fmt.Errorf("decode delay checkpoint %d: %w", record.ID, err))
+			continue
+		}
+		item := &delayItem{
+			executeAt: payload.ExecuteAt,
+			key:       payload.ExecutionKey,
+			payload:   payload,
+		}
+		if d.addPending(item) {
+			d.notify()
+		}
+	}
+	return errors.Join(recoveryErrs...)
+}
+
 func (d *DelayDispatcher) decodePayload(raw []byte) (*DelayJobPayload, error) {
 	var payload DelayJobPayload
 	if err := json.Unmarshal(raw, &payload); err != nil {
@@ -275,12 +360,19 @@ func (d *DelayDispatcher) nextItem() (*delayItem, time.Duration) {
 }
 
 func (d *DelayDispatcher) addPending(item *delayItem) bool {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if _, exists := d.pending[item.msgID]; exists {
+	if item == nil {
 		return false
 	}
-	d.pending[item.msgID] = struct{}{}
+	key := d.itemKey(item)
+	if key == "" {
+		return false
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if _, exists := d.pending[key]; exists {
+		return false
+	}
+	d.pending[key] = struct{}{}
 	d.items = append(d.items, item)
 	d.sortItems()
 	return true
@@ -302,6 +394,12 @@ func (d *DelayDispatcher) finish(ctx context.Context, item *delayItem) {
 	if item == nil {
 		return
 	}
+	if err := d.markDelayCheckpointDispatched(ctx, item.payload); err != nil {
+		item.attempts++
+		item.executeAt = time.Now().Add(d.retryDelay(item.attempts)).Unix()
+		d.requeue(item)
+		return
+	}
 	if err := d.ackMessage(ctx, item.msgID, "dispatch_finished", false); err != nil {
 		item.attempts++
 		item.executeAt = time.Now().Add(d.retryDelay(item.attempts)).Unix()
@@ -309,8 +407,23 @@ func (d *DelayDispatcher) finish(ctx context.Context, item *delayItem) {
 		return
 	}
 	d.mu.Lock()
-	delete(d.pending, item.msgID)
+	delete(d.pending, d.itemKey(item))
 	d.mu.Unlock()
+}
+
+func (d *DelayDispatcher) itemKey(item *delayItem) string {
+	if item == nil {
+		return ""
+	}
+	if key := strings.TrimSpace(item.key); key != "" {
+		return key
+	}
+	if item.payload != nil {
+		if key := strings.TrimSpace(item.payload.ExecutionKey); key != "" {
+			return key
+		}
+	}
+	return strings.TrimSpace(item.msgID)
 }
 
 func (d *DelayDispatcher) ackMessage(ctx context.Context, msgID, reason string, releaseOnFailure bool) error {
@@ -506,6 +619,63 @@ func (d *DelayDispatcher) delayedExecutionCommitted(ctx context.Context, payload
 		return status == config.StatusDistributed, isSettledDelayedExecutionStatus(status), nil
 	}
 	return false, false, nil
+}
+
+func (d *DelayDispatcher) markDelayCheckpointDispatched(ctx context.Context, payload *DelayJobPayload) error {
+	if d == nil || d.store == nil || payload == nil {
+		return nil
+	}
+	record, err := d.findDelayCheckpoint(ctx, payload)
+	if err != nil {
+		return err
+	}
+	if record == nil || record.DelayState == "" || record.DelayState == config.JobDelayStateDispatched {
+		return nil
+	}
+	if record.DelayState != config.JobDelayStatePending {
+		return fmt.Errorf("unexpected delay checkpoint state %q", record.DelayState)
+	}
+	updated, err := d.store.CompareAndSwap(ctx, record, "delay_state", config.JobDelayStatePending, map[string]interface{}{
+		"delay_state": string(config.JobDelayStateDispatched),
+	})
+	if err != nil {
+		return fmt.Errorf("mark delay checkpoint dispatched: %w", err)
+	}
+	if updated {
+		return nil
+	}
+	latest, err := d.findDelayCheckpoint(ctx, payload)
+	if err != nil {
+		return err
+	}
+	if latest == nil || latest.DelayState != config.JobDelayStatePending || config.Status(latest.Status) != config.StatusDistributed {
+		return nil
+	}
+	return fmt.Errorf("mark delay checkpoint dispatched: concurrent state did not converge")
+}
+
+func (d *DelayDispatcher) findDelayCheckpoint(ctx context.Context, payload *DelayJobPayload) (*model.JobInfo, error) {
+	if d == nil || d.store == nil || payload == nil {
+		return nil, nil
+	}
+	records, err := loadJobInfos(
+		ctx,
+		d.store,
+		strings.TrimSpace(payload.TaskID),
+		strings.TrimSpace(payload.JobType),
+		strings.TrimSpace(payload.ServiceName),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("load delay checkpoint: %w", err)
+	}
+	executionKey := strings.TrimSpace(payload.ExecutionKey)
+	for _, record := range records {
+		if record == nil || record.RunGeneration != payload.RunGeneration || jobInfoExecutionKey(*record) != executionKey {
+			continue
+		}
+		return record, nil
+	}
+	return nil, nil
 }
 
 func isSettledDelayedExecutionStatus(status config.Status) bool {

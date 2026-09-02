@@ -193,6 +193,9 @@ func restoreCommittedJobExecutions(ctx context.Context, executions []StepExecuti
 					jobTask.Info = selected.Info
 					jobTask.InternalInfo = selected.InternalInfo
 					jobTask.Error = selected.Error
+					jobTask.DelayState = selected.DelayState
+					jobTask.DelayExecuteAt = selected.DelayExecuteAt
+					jobTask.DelayPayload = selected.DelayPayload
 					if selected.Attempt > 0 {
 						jobTask.Attempt = selected.Attempt
 					}
