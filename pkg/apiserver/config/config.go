@@ -506,6 +506,32 @@ func (c Config) RunsWorker() bool {
 	return c.NormalizedRole() == RuntimeRoleWorker
 }
 
+func (c Config) RequiresDispatchQueue() bool {
+	return c.RunsScheduler() || c.RunsWorker()
+}
+
+func (c Config) RequiresDelayQueue() bool {
+	return c.RunsController() || c.RunsWorker()
+}
+
+func (c Config) RequiresResultQueue() bool {
+	return c.RunsController()
+}
+
+func (c Config) RuntimeMessagingTopics() []string {
+	topics := make([]string, 0, 3)
+	if c.RequiresDispatchQueue() {
+		topics = append(topics, DispatchTopic(c.Messaging.ChannelPrefix))
+	}
+	if c.RequiresDelayQueue() {
+		topics = append(topics, DelayTopic(c.Messaging.ChannelPrefix))
+	}
+	if c.RequiresResultQueue() {
+		topics = append(topics, ResultTopic(c.Messaging.ChannelPrefix))
+	}
+	return topics
+}
+
 // HasExternalQueue returns true if a supported distributed queue backend is configured.
 func (c Config) HasExternalQueue() bool {
 	t := strings.ToLower(strings.TrimSpace(c.Messaging.Type))

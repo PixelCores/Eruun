@@ -30,6 +30,19 @@
 
 API 角色注册完整业务 API；非 API 角色只注册健康路由。Follower Controller/Scheduler 保持进程可用并等待下一任期，readiness 不把“当前不是 Leader”当作失败。
 
+进程只初始化本角色会生产或消费的消息主题，未列出的主题不可用不会阻塞该角色启动或 readiness：
+
+| 角色 | dispatch | delay | result | Kubernetes 观察器 |
+| --- | --- | --- | --- | --- |
+| `api` | - | - | - | - |
+| `controller` | - | 消费 | 生产与消费 | 全局状态 Informer Manager |
+| `scheduler` | 生产 | - | - | - |
+| `worker` | 消费 | 生产 | - | Pod readiness observer |
+
+这张依赖矩阵同时约束 Kafka topic 初始化和健康探针。这样 result topic 故障不会让 API、Scheduler 或 Worker 被判为不可用，Controller 也不会因为不拥有 dispatch topic 而被错误摘流。
+
+API 的工作流执行、应用版本更新和取消操作仍依赖 Redis 分布式锁及取消信号。无论消息后端选择 Redis 还是 Kafka，API 的 `/api/v1/ready`、`/api/v1/readyz` 都通过已注入的缓存 Redis 客户端执行 `PING`；客户端缺失或连接失败时返回 503，连接恢复后返回 200。该检查不访问消息主题，`/api/v1/health`、`/api/v1/healthz` 仍只检查进程存活。
+
 ## 3. 双 Leader 契约
 
 Controller 和 Scheduler 分别使用：
@@ -99,7 +112,7 @@ initial sync、List/Watch 重连和等待过程都受运行 context 控制；关
 
 启动顺序为：
 
-1. 使用父 context 初始化 Kubernetes、MySQL schema、默认系统设置、Redis/Kafka 和 IoC。
+1. 使用父 context 初始化 Kubernetes、MySQL schema、默认系统设置、缓存，以及本角色拥有的 Redis Stream / Kafka topic 和 IoC。
 2. 按角色注册业务或健康路由。
 3. 启动角色选举、Worker observer 和 Worker intake。
 4. 启动 HTTP server。
