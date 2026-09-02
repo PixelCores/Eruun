@@ -59,7 +59,7 @@ func TestCurrentDatabaseTimeIntegrationAcrossDaylightSaving(t *testing.T) {
 						want, err := time.Parse(time.RFC3339Nano, tt.utc)
 						require.NoError(t, err)
 						timestamp := fmt.Sprintf("%d.%06d", want.Unix(), want.Nanosecond()/1000)
-						require.NoError(t, conn.Exec("SET timestamp = ?", timestamp).Error)
+						require.NoError(t, conn.Exec("SET timestamp = CAST(? AS DECIMAL(20,6))", timestamp).Error)
 
 						got, err := store.CurrentDatabaseTime(ctx)
 						require.NoError(t, err)
