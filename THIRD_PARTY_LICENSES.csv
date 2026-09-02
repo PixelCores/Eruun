@@ -75,7 +75,7 @@ github.com/prometheus/client_model/go,https://github.com/prometheus/client_model
 github.com/prometheus/common,https://github.com/prometheus/common/blob/v0.55.0/LICENSE,Apache-2.0
 github.com/prometheus/procfs,https://github.com/prometheus/procfs/blob/v0.15.1/LICENSE,Apache-2.0
 github.com/quic-go/qpack,https://github.com/quic-go/qpack/blob/v0.6.0/LICENSE.md,MIT
-github.com/quic-go/quic-go,https://github.com/quic-go/quic-go/blob/v0.59.0/LICENSE,MIT
+github.com/quic-go/quic-go,https://github.com/quic-go/quic-go/blob/v0.59.1/LICENSE,MIT
 github.com/redis/go-redis/v9,https://github.com/redis/go-redis/blob/v9.7.3/LICENSE,BSD-2-Clause
 github.com/robfig/cron/v3,https://github.com/robfig/cron/blob/v3.0.1/LICENSE,MIT
 github.com/segmentio/kafka-go,https://github.com/segmentio/kafka-go/blob/v0.4.49/LICENSE,MIT
