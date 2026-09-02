@@ -299,12 +299,16 @@ assertEqual \
   "controller observer binding must include only Controller"
 assertEqual \
   "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" "" pods)" \
-  "get list watch patch" \
-  "Controller must only observe and label Pods"
+  "get list watch patch delete" \
+  "Controller must observe, label, and clean up completed Job Pods"
+assertEqual \
+  "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" "" pods/log)" \
+  "get" \
+  "ResultDispatcher must collect completed Job logs"
 assertEqual \
   "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" batch jobs)" \
-  "get" \
-  "Controller must only read Job owners"
+  "get create update delete" \
+  "Controller must dispatch delayed Jobs, adopt execution identities, and clean up completed Jobs"
 assertEqual \
   "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" apps replicasets)" \
   "get" \
@@ -313,6 +317,22 @@ assertEqual \
   "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" "" secrets)" \
   "" \
   "Controller must not receive Secret permissions"
+assertEqual \
+  "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" "" pods/exec)" \
+  "" \
+  "Controller must not receive Pod exec permissions"
+assertEqual \
+  "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" apps deployments)" \
+  "" \
+  "Controller must not manage Deployments"
+assertEqual \
+  "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" rbac.authorization.k8s.io roles)" \
+  "" \
+  "Controller must not manage RBAC roles"
+assertEqual \
+  "$(clusterRoleRuleVerbs "${default_manifest}" batch jobs)" \
+  "get list create update patch delete" \
+  "Worker must adopt reusable Jobs into a new execution generation"
 assertEqual \
   "$(clusterRoleRuleVerbs "${default_manifest}" storage.k8s.io storageclasses)" \
   "get create" \

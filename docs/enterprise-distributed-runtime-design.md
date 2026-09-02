@@ -118,7 +118,7 @@ Workflow fencing 固定启用，Chart 不暴露关闭开关、v1 兼容开关、
 - Redis 用于缓存、运行锁及可选的 Streams 消息；Kafka 可作为消息后端。
 - 内置 MySQL/Redis 只适合开发和演示。
 - run token 属于执行凭据，不写入业务日志、trace 或指标标签。
-- Scheduler 只拥有 namespace-scoped Leader Election 权限；Controller 额外只拥有 Pod 观察/metadata patch 及 Job、ReplicaSet owner 读取权限；API 与 Worker 使用显式资源管理 ClusterRole。Helm 与静态 manifest 都不绑定内置 `cluster-admin`。
+- Scheduler 只拥有 namespace-scoped Leader Election 权限；Controller 额外拥有 Pod 观察/metadata patch、ReplicaSet owner 读取，以及延时 Job 分发、执行身份更新、结果日志读取和已完成 Job/Pod 清理权限；API 与 Worker 使用显式资源管理 ClusterRole，其中 Job `update` 支持复用 Job 的执行代次接管。Helm 与静态 manifest 都不绑定内置 `cluster-admin`；具体权限与旧绑定迁移边界见 `helm-deployment.md`。
 
 ## 10. 验证要求
 

@@ -101,13 +101,15 @@ Chart 只把该 Secret 挂载到实际使用 keyring 的 API 和 Worker，路径
 | `serviceAccount.roleNames.worker` | `""` | 不创建账号时使用的已有 Worker ServiceAccount。 |
 | `serviceAccount.annotations` | `{}` | 写入 Chart 创建的 ServiceAccount。 |
 | `serviceAccount.automountServiceAccountToken` | `true` | 控制 Chart 创建账号的 token 自动挂载。 |
-| `rbac.create` | `true` | 创建 Lease Role/RoleBinding、资源管理 ClusterRole 及 Controller 观察 ClusterRole。 |
+| `rbac.create` | `true` | 创建 Lease Role/RoleBinding、资源管理 ClusterRole 及 Controller 专用 ClusterRole。 |
 
-Controller 和 Scheduler 绑定 namespace-scoped Leader Election Role；API 与 Worker 绑定资源管理 ClusterRole；Controller 只绑定 Pod `get/list/watch/patch`、Job `get` 和 ReplicaSet `get` 的观察角色；Scheduler 不绑定任何 ClusterRole。使用已有账号时，Controller 名称必须不同于 API/Worker，Scheduler 名称必须不同于其余三类角色，防止共享身份重新扩大权限；API 与 Worker 可以有意复用同一个资源管理身份。
+Controller 和 Scheduler 绑定 namespace-scoped Leader Election Role；API 与 Worker 绑定资源管理 ClusterRole；Controller 的专用角色允许 Pod `get/list/watch/patch/delete`、Pod 日志 `get`、Job `get/create/update/delete` 和 ReplicaSet `get`；Scheduler 不绑定任何 ClusterRole。Controller 除了 Pod 观察和 adopted metadata 标签协调，还运行延时 Job 分发、结果处理和 outbox 恢复，因此需要创建/复用 Job、收集日志及清理已完成的 Job/Pod。使用已有账号时，Controller 名称必须不同于 API/Worker，Scheduler 名称必须不同于其余三类角色，防止共享身份重新扩大权限；API 与 Worker 可以有意复用同一个资源管理身份。
 
-默认资源管理 ClusterRole 只包含当前 Eruun 管理 Kubernetes 工作负载、Pod 日志与 exec、Namespace、Service/Secret/ConfigMap/PVC、StorageClass、Ingress 和 RBAC Trait 所需的显式资源权限，不绑定内置 `cluster-admin`。Pods 的 `patch` 只用于 adopted source owner 链校验成功后补 metadata 管理标签；Controller 观察角色不允许删除 Pod、读取 Secret、修改 workload 或创建 RBAC。资源管理角色中的 ReplicaSet `update` 只用于 signed cleanup quiesce，ReplicaSet/ControllerRevision `delete` 只用于签名计划覆盖且 UID 匹配的 runtime child。PV 与 HPA 权限保持只读；PDB、NetworkPolicy 和 PVC update 用于 source-aware 调和。RBAC Trait 所需的 `roles`、`clusterroles` 规则包含 Kubernetes 要求的 `bind`、`escalate` verbs。
+默认资源管理 ClusterRole 只包含当前 Eruun 管理 Kubernetes 工作负载、Pod 日志与 exec、Namespace、Service/Secret/ConfigMap/PVC、StorageClass、Ingress 和 RBAC Trait 所需的显式资源权限，不绑定内置 `cluster-admin`。Pods 的 `patch` 只用于 adopted source owner 链校验成功后补 metadata 管理标签；Controller 专用角色不授予 Secret 读取、Pod exec、Deployment/StatefulSet 管理或 RBAC 管理权限。Job `update` 用于复用未完成 Job 时更新 task/execution key/run generation，支持 Worker 接管新的执行代次。资源管理角色中的 ReplicaSet `update` 只用于 signed cleanup quiesce，ReplicaSet/ControllerRevision `delete` 只用于签名计划覆盖且 UID 匹配的 runtime child。PV 与 HPA 权限保持只读；PDB、NetworkPolicy 和 PVC update 用于 source-aware 调和。RBAC Trait 所需的 `roles`、`clusterroles` 规则包含 Kubernetes 要求的 `bind`、`escalate` verbs。
 
-Chart 不授予 CRD/custom resource、impersonation、Pod attach 或 Pod port-forward 权限。静态 `deploy/eruun-stack.yaml` 使用与 Chart 相同的显式资源管理/Controller 观察边界，不再绑定 `cluster-admin`；Quickstart 在新权限对象应用成功后还会删除旧版本遗留的固定 Binding `eruun-platform-cluster-admin`，不存在时无操作。ClusterRole 名称完整使用 `<release fullname>-<release namespace>`，Controller 角色追加 `-controller-observer`，避免不同 namespace 中同名 release 争用同一个集群级对象。ClusterRole 和 ClusterRoleBinding 使用 Kubernetes RBAC path-segment 名称规则，不受通用 DNS label 的 63 字符限制。
+Chart 不授予 CRD/custom resource、impersonation、Pod attach 或 Pod port-forward 权限。静态 `deploy/eruun-stack.yaml` 使用与 Chart 相同的显式资源管理/Controller 权限边界，不再绑定 `cluster-admin`。Quickstart 仅在 `INSTALL_MODE=manifest`、`NAMESPACE=eruun-system` 且 `MANIFEST` 指向脚本同目录的默认 `eruun-stack.yaml` 时，在新权限对象成功应用后删除旧版本遗留的固定 Binding `eruun-platform-cluster-admin`；不存在时无操作，dry-run 只预览删除。Helm 安装、自定义 manifest 路径或其他 namespace 不自动清理该绑定，避免撤销其他实例的权限；如需迁移这些安装方式，应先确认旧绑定的全部 ServiceAccount 已获得替代权限，再由管理员删除旧绑定。
+
+ClusterRole 名称完整使用 `<release fullname>-<release namespace>`，Controller 角色追加 `-controller-observer`，避免不同 namespace 中同名 release 争用同一个集群级对象。ClusterRole 和 ClusterRoleBinding 使用 Kubernetes RBAC path-segment 名称规则，不受通用 DNS label 的 63 字符限制。
 
 ```bash
 helm upgrade --install eruun deploy/helm/eruun \

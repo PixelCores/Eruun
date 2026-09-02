@@ -320,6 +320,11 @@ installHelm() {
 }
 
 removeLegacyClusterAdminBinding() {
+  # Only the bundled static manifest replaces the fixed legacy binding's subjects.
+  if [ "${INSTALL_MODE}" != "manifest" ] || [ "${NAMESPACE}" != "eruun-system" ] || \
+    ! [ "${MANIFEST}" -ef "${SCRIPT_DIR}/eruun-stack.yaml" ]; then
+    return 0
+  fi
   local args=(delete clusterrolebinding eruun-platform-cluster-admin --ignore-not-found=true)
   if isTrue "${DRY_RUN}"; then
     args+=(--dry-run=client)

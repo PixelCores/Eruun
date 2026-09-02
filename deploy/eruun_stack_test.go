@@ -269,10 +269,20 @@ func TestEruunStackUsesFixedDistributedRuntime(t *testing.T) {
 		return nil
 	}
 	controllerRole := clusterRoles["eruun-controller-observer"]
-	require.ElementsMatch(t, []string{"get", "list", "watch", "patch"}, verbsFor(controllerRole, "", "pods"))
-	require.Equal(t, []string{"get"}, verbsFor(controllerRole, "batch", "jobs"))
+	require.ElementsMatch(t, []string{"get", "list", "watch", "patch", "delete"}, verbsFor(controllerRole, "", "pods"), "Controller must observe, label, and clean up completed Job Pods")
+	require.Equal(t, []string{"get"}, verbsFor(controllerRole, "", "pods/log"), "ResultDispatcher must collect completed Job logs")
+	require.ElementsMatch(t, []string{"get", "create", "update", "delete"}, verbsFor(controllerRole, "batch", "jobs"), "Controller must dispatch delayed Jobs, adopt execution identities, and clean up completed Jobs")
 	require.Equal(t, []string{"get"}, verbsFor(controllerRole, "apps", "replicasets"))
-	require.Nil(t, verbsFor(controllerRole, "", "secrets"))
+	for _, resource := range []struct{ apiGroup, name string }{
+		{"", "secrets"},
+		{"", "pods/exec"},
+		{"apps", "deployments"},
+		{"rbac.authorization.k8s.io", "roles"},
+		{"rbac.authorization.k8s.io", "clusterroles"},
+	} {
+		require.Nil(t, verbsFor(controllerRole, resource.apiGroup, resource.name), "Controller must not manage %s", resource.name)
+	}
+	require.Contains(t, verbsFor(clusterRoles["eruun-platform-runtime"], "batch", "jobs"), "update", "Worker must adopt reusable Jobs into a new execution generation")
 }
 
 func TestHelmValuesUseTopLevelDistributedRuntime(t *testing.T) {
