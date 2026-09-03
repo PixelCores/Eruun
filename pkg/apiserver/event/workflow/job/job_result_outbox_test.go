@@ -11,12 +11,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/stretchr/testify/require"
 	batchv1 "k8s.io/api/batch/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
 	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -619,7 +621,7 @@ func TestDelayDispatcherDropsStaleWorkflowOwnership(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			store := &delayFencingStore{resultOutboxTestStore: newResultOutboxTestStore(), task: tc.task}
 			client := fake.NewSimpleClientset()
-			dispatcher := NewDelayDispatcher(nil, client, store, "", "")
+			dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
 			payload := &DelayJobPayload{
 				TaskID:        "task-delay-fenced",
 				JobType:       string(config.JobDeployScheduled),
@@ -634,7 +636,7 @@ func TestDelayDispatcherDropsStaleWorkflowOwnership(t *testing.T) {
 				}},
 			}
 
-			require.NoError(t, dispatcher.dispatch(context.Background(), &delayItem{payload: payload}))
+			require.NoError(t, dispatcher.dispatchJob(context.Background(), &delayItem{payload: payload}, client))
 			require.Empty(t, client.Actions(), "stale delayed ownership must be rejected before Kubernetes access")
 			require.Empty(t, store.outboxes)
 		})
@@ -657,7 +659,7 @@ func TestDelayDispatcherPreservesCommittedDelayedJobAcrossWorkflowGeneration(t *
 		RunGeneration: 1,
 	}))
 	client := fake.NewSimpleClientset()
-	dispatcher := NewDelayDispatcher(nil, client, store, "", "")
+	dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
 	payload := &DelayJobPayload{
 		TaskID:        "task-delay-committed",
 		JobType:       string(config.JobDeployInstant),
@@ -676,7 +678,7 @@ func TestDelayDispatcherPreservesCommittedDelayedJobAcrossWorkflowGeneration(t *
 		}},
 	}
 
-	require.NoError(t, dispatcher.dispatch(context.Background(), &delayItem{payload: payload}))
+	require.NoError(t, dispatcher.dispatchJob(context.Background(), &delayItem{payload: payload}, client))
 	_, err := client.BatchV1().Jobs("default").Get(context.Background(), "delay-job-committed", metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Len(t, store.outboxes, 1)
@@ -708,7 +710,7 @@ func TestDelayDispatcherDoesNotRecreateSettledDelayedExecution(t *testing.T) {
 				RunGeneration: 2,
 			}))
 			client := fake.NewSimpleClientset()
-			dispatcher := NewDelayDispatcher(nil, client, store, "", "")
+			dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
 			payload := &DelayJobPayload{
 				TaskID:        "task-delay-settled",
 				JobType:       string(config.JobDeployScheduled),
@@ -728,7 +730,7 @@ func TestDelayDispatcherDoesNotRecreateSettledDelayedExecution(t *testing.T) {
 				}},
 			}
 
-			require.NoError(t, dispatcher.dispatch(context.Background(), &delayItem{payload: payload}))
+			require.NoError(t, dispatcher.dispatchJob(context.Background(), &delayItem{payload: payload}, client))
 			require.Empty(t, client.Actions(), "a settled delayed execution must not access or recreate its Kubernetes Job")
 			require.Empty(t, store.outboxes, "a settled delayed execution must not recreate its result outbox")
 		})
@@ -743,7 +745,7 @@ func TestDelayDispatcherAcceptsCurrentGenerationWithCompatibleToken(t *testing.T
 				task:                  &model.WorkflowQueue{TaskID: "task-delay-current", RunGeneration: 2, RunToken: "run-2"},
 			}
 			client := fake.NewSimpleClientset()
-			dispatcher := NewDelayDispatcher(nil, client, store, "", "")
+			dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
 			payload := &DelayJobPayload{
 				TaskID:        "task-delay-current",
 				JobType:       string(config.JobDeployScheduled),
@@ -762,7 +764,7 @@ func TestDelayDispatcherAcceptsCurrentGenerationWithCompatibleToken(t *testing.T
 				}},
 			}
 
-			require.NoError(t, dispatcher.dispatch(context.Background(), &delayItem{payload: payload}))
+			require.NoError(t, dispatcher.dispatchJob(context.Background(), &delayItem{payload: payload}, client))
 			_, err := client.BatchV1().Jobs("default").Get(context.Background(), "delay-job-current", metav1.GetOptions{})
 			require.NoError(t, err)
 			require.Len(t, store.outboxes, 1)
@@ -800,7 +802,7 @@ func TestDelayDispatcherDoesNotBindOutboxToDifferentJobExecution(t *testing.T) {
 				},
 			}}
 			client := fake.NewSimpleClientset(existing)
-			dispatcher := NewDelayDispatcher(nil, client, store, "", "")
+			dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
 			payload := &DelayJobPayload{
 				TaskID:        "task-delay-current",
 				JobType:       string(config.JobDeployScheduled),
@@ -820,7 +822,7 @@ func TestDelayDispatcherDoesNotBindOutboxToDifferentJobExecution(t *testing.T) {
 				}},
 			}
 
-			err := dispatcher.dispatch(context.Background(), &delayItem{payload: payload})
+			err := dispatcher.dispatchJob(context.Background(), &delayItem{payload: payload}, client)
 			require.ErrorContains(t, err, "belongs to another execution")
 			require.ErrorIs(t, err, errDelayDispatchNoRetry)
 			require.Empty(t, store.outboxes)
@@ -875,9 +877,9 @@ func TestDelayDispatcherDoesNotRecreateWhenResultSettlesBetweenReads(t *testing.
 		outboxID:  outbox.ID,
 	}
 	client := fake.NewSimpleClientset(payload.Job.DeepCopy())
-	dispatcher := NewDelayDispatcher(nil, client, store, "", "")
+	dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
 
-	require.NoError(t, dispatcher.dispatch(context.Background(), &delayItem{payload: payload}))
+	require.NoError(t, dispatcher.dispatchJob(context.Background(), &delayItem{payload: payload}, client))
 	require.Empty(t, client.Actions(), "a result that settles concurrently must prevent Kubernetes recreation")
 	require.Equal(t, string(config.StatusCompleted), store.jobInfos[1].Status)
 	require.Empty(t, store.outboxes)
@@ -889,7 +891,7 @@ func TestDelayDispatcherRetriesOwnershipLookupFailure(t *testing.T) {
 		getErr:                errors.New("database unavailable"),
 	}
 	client := fake.NewSimpleClientset()
-	dispatcher := NewDelayDispatcher(nil, client, store, "", "")
+	dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
 	payload := &DelayJobPayload{
 		TaskID:        "task-delay-current",
 		JobType:       string(config.JobDeployScheduled),
@@ -903,7 +905,7 @@ func TestDelayDispatcherRetriesOwnershipLookupFailure(t *testing.T) {
 		}},
 	}
 
-	err := dispatcher.dispatch(context.Background(), &delayItem{payload: payload})
+	err := dispatcher.dispatchJob(context.Background(), &delayItem{payload: payload}, client)
 	require.ErrorContains(t, err, "load workflow task for delayed job")
 	require.Empty(t, client.Actions(), "a failed ownership lookup must retry before Kubernetes access")
 	require.Empty(t, store.outboxes)
@@ -915,7 +917,7 @@ func TestDelayDispatcherDispatchPersistsResultOutboxWithoutQueueDependency(t *te
 		task:                  &model.WorkflowQueue{TaskID: "task-delay-1", RunGeneration: 1, RunToken: "run-1"},
 	}
 	client := fake.NewSimpleClientset()
-	dispatcher := NewDelayDispatcher(nil, client, store, "", "")
+	dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
 
 	jobObj := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "delay-job-1", Namespace: "default"}}
 	item := &delayItem{
@@ -931,7 +933,7 @@ func TestDelayDispatcherDispatchPersistsResultOutboxWithoutQueueDependency(t *te
 		},
 	}
 
-	require.NoError(t, dispatcher.dispatch(context.Background(), item))
+	require.NoError(t, dispatcher.dispatchJob(context.Background(), item, client))
 
 	resultPayload := newJobResultPayloadFromDelay(item.payload, jobObj)
 	outbox, err := getJobResultOutboxByPayload(context.Background(), store, resultPayload)
@@ -974,13 +976,13 @@ func TestDelayDispatcherRecoversDueCheckpointWithoutQueue(t *testing.T) {
 		DelayExecuteAt: payload.ExecuteAt,
 		DelayPayload:   string(raw),
 	}
-	dispatcher := NewDelayDispatcher(nil, client, store, "", "")
+	dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
 
 	require.NoError(t, dispatcher.recoverDueCheckpoints(context.Background()))
 	item, wait := dispatcher.nextItem()
 	require.NotNil(t, item)
 	require.Zero(t, wait)
-	require.NoError(t, dispatcher.dispatch(context.Background(), item))
+	require.NoError(t, dispatcher.dispatchJob(context.Background(), item, client))
 	dispatcher.finish(context.Background(), item)
 
 	created, err := client.BatchV1().Jobs("default").Get(context.Background(), payload.Job.Name, metav1.GetOptions{})
@@ -999,7 +1001,7 @@ func TestDelayDispatcherDispatchDoesNotPersistOutboxBeforeJobExists(t *testing.T
 	client.Fake.PrependReactor("create", "jobs", func(action k8stesting.Action) (bool, runtime.Object, error) {
 		return true, nil, fmt.Errorf("create failed before job persisted")
 	})
-	dispatcher := NewDelayDispatcher(nil, client, store, "", "")
+	dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
 
 	jobObj := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "delay-job-create-fail", Namespace: "default"}}
 	item := &delayItem{
@@ -1015,7 +1017,7 @@ func TestDelayDispatcherDispatchDoesNotPersistOutboxBeforeJobExists(t *testing.T
 		},
 	}
 
-	err := dispatcher.dispatch(context.Background(), item)
+	err := dispatcher.dispatchJob(context.Background(), item, client)
 	require.EqualError(t, err, "create failed before job persisted")
 
 	resultPayload := newJobResultPayloadFromDelay(item.payload, jobObj)
@@ -1041,7 +1043,7 @@ func TestDelayDispatcherDispatchPersistsOutboxWhenCreateErrorLeavesJobPresent(t 
 		_ = client.Tracker().Add(jobObj.DeepCopy())
 		return true, jobObj, k8serrors.NewInternalError(fmt.Errorf("create returned transient error after persisting"))
 	})
-	dispatcher := NewDelayDispatcher(nil, client, store, "", "")
+	dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
 
 	jobObj := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
 		Name:      "delay-job-create-visible",
@@ -1065,7 +1067,7 @@ func TestDelayDispatcherDispatchPersistsOutboxWhenCreateErrorLeavesJobPresent(t 
 		},
 	}
 
-	require.NoError(t, dispatcher.dispatch(context.Background(), item))
+	require.NoError(t, dispatcher.dispatchJob(context.Background(), item, client))
 
 	resultPayload := newJobResultPayloadFromDelay(item.payload, jobObj)
 	outbox, getErr := getJobResultOutboxByPayload(context.Background(), store, resultPayload)
@@ -1094,7 +1096,7 @@ func TestDelayDispatcherDispatchRejectsDifferentJobAfterCreateError(t *testing.T
 		require.NoError(t, client.Tracker().Add(conflicting))
 		return true, desired, k8serrors.NewInternalError(fmt.Errorf("create response lost"))
 	})
-	dispatcher := NewDelayDispatcher(nil, client, store, "", "")
+	dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
 
 	jobObj := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "delay-job-create-conflict", Namespace: "default"}}
 	payload := &DelayJobPayload{
@@ -1112,7 +1114,7 @@ func TestDelayDispatcherDispatchRejectsDifferentJobAfterCreateError(t *testing.T
 	jobInfo.Status = string(config.StatusWaiting)
 	require.NoError(t, store.Add(context.Background(), jobInfo))
 
-	err := dispatcher.dispatch(context.Background(), &delayItem{payload: payload})
+	err := dispatcher.dispatchJob(context.Background(), &delayItem{payload: payload}, client)
 	require.ErrorIs(t, err, errDelayDispatchNoRetry)
 	require.ErrorContains(t, err, "foreign-task")
 
@@ -1130,7 +1132,7 @@ func TestDelayDispatcherDispatchDoesNotRecreateWhenResultOutboxPendingAndJobMiss
 		task:                  &model.WorkflowQueue{TaskID: "task-delay-2", RunGeneration: 1, RunToken: "run-1"},
 	}
 	client := fake.NewSimpleClientset()
-	dispatcher := NewDelayDispatcher(nil, client, store, "", "")
+	dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
 
 	jobObj := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "delay-job-2", Namespace: "default"}}
 	payload := &DelayJobPayload{
@@ -1146,7 +1148,7 @@ func TestDelayDispatcherDispatchDoesNotRecreateWhenResultOutboxPendingAndJobMiss
 	resultPayload := newJobResultPayloadFromDelay(payload, jobObj)
 	require.NoError(t, store.Add(context.Background(), buildJobResultOutbox(resultPayload, config.JobResultOutboxStateResultPending)))
 
-	err := dispatcher.dispatch(context.Background(), &delayItem{payload: payload})
+	err := dispatcher.dispatchJob(context.Background(), &delayItem{payload: payload}, client)
 	require.NoError(t, err)
 	require.Empty(t, client.Actions())
 }

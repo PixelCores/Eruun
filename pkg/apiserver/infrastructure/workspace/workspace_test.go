@@ -270,15 +270,15 @@ func TestTaskValidationAndImpersonation(t *testing.T) {
 	w := &model.Workspace{ID: "a", Namespace: "own"}
 	cfg := workspaceConfig(t)
 	task := &model.JobTask{AppID: "app", Namespace: "own", JobType: string(config.JobDeploy), JobInfo: &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "own"}}}
-	deploy, err := ValidateTask(task, "app", w, cfg)
+	deploy, err := PrepareTask(task, "app", w, cfg)
 	require.NoError(t, err)
 	require.True(t, deploy)
 	task.AppID = "other"
-	_, err = ValidateTask(task, "app", w, cfg)
+	_, err = PrepareTask(task, "app", w, cfg)
 	require.ErrorIs(t, err, bcode.ErrForbidden)
 	task.AppID = "app"
 	task.JobType = string(config.JobDeployCloud)
-	_, err = ValidateTask(task, "app", w, cfg)
+	_, err = PrepareTask(task, "app", w, cfg)
 	require.ErrorIs(t, err, bcode.ErrForbidden)
 	manager := &Manager{RESTConfig: &rest.Config{Host: "https://kubernetes.example"}, Config: cfg}
 	_, restConfig, err := manager.TenantClient(w)

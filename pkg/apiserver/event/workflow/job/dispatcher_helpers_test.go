@@ -7,10 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/stretchr/testify/require"
 	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
@@ -154,7 +156,7 @@ func (s *delayRecoveryQueryStore) List(_ context.Context, query datastore.Entity
 
 func TestDelayDispatcherRecoveryUsesBoundedDueQuery(t *testing.T) {
 	store := &delayRecoveryQueryStore{}
-	dispatcher := NewDelayDispatcher(nil, fake.NewSimpleClientset(), store, "", "")
+	dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: fake.NewSimpleClientset(), RESTConfig: &rest.Config{}}, store, "", "")
 
 	require.NoError(t, dispatcher.recoverDueCheckpoints(context.Background()))
 	require.IsType(t, &model.JobInfo{}, store.query)
@@ -179,7 +181,7 @@ func TestDispatcherConstructorsAndStartGuards(t *testing.T) {
 	delay.Start(context.Background())
 
 	ctxDelay, cancelDelay := context.WithCancel(context.Background())
-	delay = NewDelayDispatcher(&dispatcherAckQueue{}, fake.NewSimpleClientset(), &noopStore{}, "", "")
+	delay = NewDelayDispatcher(&dispatcherAckQueue{}, &workspace.Manager{Client: fake.NewSimpleClientset(), RESTConfig: &rest.Config{}}, &noopStore{}, "", "")
 	delay.readBlock = 5 * time.Millisecond
 	delay.autoClaimInterval = 5 * time.Millisecond
 	delay.Start(ctxDelay)
@@ -227,7 +229,7 @@ func TestDispatcherConstructorsAndStartGuards(t *testing.T) {
 func TestDispatcherStartCountsEnsureGroupFailures(t *testing.T) {
 	ctxDelay, cancelDelay := context.WithCancel(context.Background())
 	defer cancelDelay()
-	delay := NewDelayDispatcher(&dispatcherAckQueue{ensureGroupErr: errors.New("ensure delay failed")}, fake.NewSimpleClientset(), &noopStore{}, "", "")
+	delay := NewDelayDispatcher(&dispatcherAckQueue{ensureGroupErr: errors.New("ensure delay failed")}, &workspace.Manager{Client: fake.NewSimpleClientset(), RESTConfig: &rest.Config{}}, &noopStore{}, "", "")
 	delay.readBlock = time.Millisecond
 	delay.autoClaimInterval = time.Millisecond
 	delay.Start(ctxDelay)
@@ -250,7 +252,7 @@ func TestDispatchersRunBlocksUntilContextCancelled(t *testing.T) {
 	t.Run("delay", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		queue := newBlockingDispatcherQueue()
-		dispatcher := NewDelayDispatcher(queue, fake.NewSimpleClientset(), &noopStore{}, "", "")
+		dispatcher := NewDelayDispatcher(queue, &workspace.Manager{Client: fake.NewSimpleClientset(), RESTConfig: &rest.Config{}}, &noopStore{}, "", "")
 		dispatcher.autoClaimInterval = time.Millisecond
 		done := make(chan struct{})
 		go func() {

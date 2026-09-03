@@ -22,6 +22,9 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
+	"github.com/PixelCores/Eruun/pkg/apiserver/security/access"
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
@@ -42,7 +45,7 @@ type delayItem struct {
 
 type DelayDispatcher struct {
 	queue             msg.Queue
-	client            kubernetes.Interface
+	workspaceManager  *workspace.Manager
 	store             datastore.DataStore
 	group             string
 	consumer          string
@@ -63,10 +66,10 @@ type DelayDispatcher struct {
 	ensureFailures    atomic.Int64
 }
 
-func NewDelayDispatcher(queue msg.Queue, client kubernetes.Interface, store datastore.DataStore, group, consumer string) *DelayDispatcher {
+func NewDelayDispatcher(queue msg.Queue, manager *workspace.Manager, store datastore.DataStore, group, consumer string) *DelayDispatcher {
 	return &DelayDispatcher{
 		queue:             queue,
-		client:            client,
+		workspaceManager:  manager,
 		store:             store,
 		group:             group,
 		consumer:          consumer,
@@ -101,8 +104,8 @@ func (d *DelayDispatcher) prepare(ctx context.Context) bool {
 	if d == nil {
 		return false
 	}
-	if d.client == nil || d.store == nil {
-		klog.ErrorS(fmt.Errorf("client or store is nil"), "delay dispatcher dependencies missing", "clientNil", d.client == nil, "storeNil", d.store == nil)
+	if d.workspaceManager == nil || d.workspaceManager.Client == nil || d.workspaceManager.RESTConfig == nil || d.store == nil {
+		klog.ErrorS(fmt.Errorf("workspace manager, Kubernetes REST config and store are required"), "delay dispatcher dependencies missing")
 		return false
 	}
 	if d.group == "" {
@@ -465,6 +468,69 @@ func (d *DelayDispatcher) dispatch(ctx context.Context, item *delayItem) error {
 		return errors.Join(errDelayDispatchNoRetry, err)
 	}
 	current, err := d.delayExecutionCurrent(ctx, item.payload)
+	if err != nil || !current {
+		return err
+	}
+	if d.workspaceManager == nil || d.workspaceManager.Client == nil {
+		return fmt.Errorf("delayed execution requires a workspace manager")
+	}
+	// The committed checkpoint owns the application identity even after the
+	// workflow's lease/generation has advanced. Queue namespaces are not trusted.
+	checkpoint, err := d.findDelayCheckpoint(ctx, item.payload)
+	if err != nil {
+		return err
+	}
+	if checkpoint == nil || checkpoint.AppID == "" {
+		return fmt.Errorf("%w: delayed checkpoint has no application", errDelayDispatchNoRetry)
+	}
+	app := &model.Applications{ID: checkpoint.AppID}
+	if err = d.store.Get(ctx, app); err != nil {
+		return fmt.Errorf("load delayed application: %w", err)
+	}
+	if app.WorkspaceID == "" {
+		return errors.Join(errDelayDispatchNoRetry, bcode.ErrForbidden)
+	}
+	space := &model.Workspace{ID: app.WorkspaceID}
+	if err = d.store.Get(ctx, space); err != nil {
+		return fmt.Errorf("load delayed workspace: %w", err)
+	}
+	if space.Namespace == "" || app.Namespace != space.Namespace || item.payload.Namespace != space.Namespace {
+		return errors.Join(errDelayDispatchNoRetry, bcode.ErrForbidden)
+	}
+	payload := *item.payload
+	payload.Job = payload.Job.DeepCopy()
+	task := &model.JobTask{AppID: app.ID, Namespace: space.Namespace, JobType: string(config.JobDeployInstant), JobInfo: payload.Job}
+	if _, err = workspace.PrepareTask(task, app.ID, space, d.workspaceManager.Config); err != nil {
+		return errors.Join(errDelayDispatchNoRetry, err)
+	}
+	// The worker initializes the full baseline before committing a delayed job.
+	// Revalidate ownership here; the controller cannot create a new namespace.
+	ns, err := d.workspaceManager.Client.CoreV1().Namespaces().Get(ctx, space.Namespace, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("read delayed workspace namespace: %w", err)
+	}
+	if ns.Labels[workspace.OwnerLabel] != space.ID || ns.DeletionTimestamp != nil {
+		return errors.Join(errDelayDispatchNoRetry, bcode.ErrForbidden)
+	}
+	client, _, err := d.workspaceManager.TenantClient(space)
+	if err != nil {
+		return err
+	}
+	scopedItem := *item
+	scopedItem.payload = &payload
+	return d.dispatchJob(access.WithScope(ctx, access.ForWorkspace(space)), &scopedItem, client)
+}
+
+// dispatchJob handles execution fencing and outbox recovery after its caller
+// has selected the workspace client and prepared the workload.
+func (d *DelayDispatcher) dispatchJob(ctx context.Context, item *delayItem, client kubernetes.Interface) error {
+	if item == nil || item.payload == nil || item.payload.Job == nil {
+		return fmt.Errorf("delay item is nil")
+	}
+	if err := validateDelayJobPayload(item.payload); err != nil {
+		return errors.Join(errDelayDispatchNoRetry, err)
+	}
+	current, err := d.delayExecutionCurrent(ctx, item.payload)
 	if err != nil {
 		return err
 	}
@@ -511,7 +577,7 @@ func (d *DelayDispatcher) dispatch(ctx context.Context, item *delayItem) error {
 		if !current {
 			return nil
 		}
-		existingJob, exists, err := jobExists(ctx, d.client, namespace, jobObj.Name)
+		existingJob, exists, err := jobExists(ctx, client, namespace, jobObj.Name)
 		if err != nil {
 			return err
 		}
@@ -520,7 +586,7 @@ func (d *DelayDispatcher) dispatch(ctx context.Context, item *delayItem) error {
 		}
 	}
 
-	action, err := applyJobRunPolicy(ctx, d.client, d.store, jobObj, jobType)
+	action, err := applyJobRunPolicy(ctx, client, d.store, jobObj, jobType)
 	if err != nil {
 		if _, ok := ExtractStatusError(err); ok {
 			if resultPayload != nil {
@@ -538,9 +604,9 @@ func (d *DelayDispatcher) dispatch(ctx context.Context, item *delayItem) error {
 	}
 
 	liveJob, _, err := createOrUpdateResource(ctx, func(ctx context.Context) (*batchv1.Job, error) {
-		return d.client.BatchV1().Jobs(namespace).Get(ctx, jobObj.Name, metav1.GetOptions{})
+		return client.BatchV1().Jobs(namespace).Get(ctx, jobObj.Name, metav1.GetOptions{})
 	}, func(ctx context.Context) (*batchv1.Job, error) {
-		return d.client.BatchV1().Jobs(namespace).Create(ctx, jobObj, metav1.CreateOptions{})
+		return client.BatchV1().Jobs(namespace).Create(ctx, jobObj, metav1.CreateOptions{})
 	}, func(_ context.Context, existing *batchv1.Job) error {
 		if jobResultMatchesExecutionIdentity(resultPayload, existing) {
 			return nil
@@ -552,7 +618,7 @@ func (d *DelayDispatcher) dispatch(ctx context.Context, item *delayItem) error {
 			return err
 		}
 		if resultPayload != nil {
-			return d.handleDelayedJobCreateError(ctx, resultPayload, err)
+			return d.handleDelayedJobCreateError(ctx, client, resultPayload, err)
 		}
 		return err
 	}
@@ -737,11 +803,11 @@ func (d *DelayDispatcher) ensureDelayedResultOutboxPending(ctx context.Context, 
 	return d.resumeDelayedResultOutbox(ctx, outbox)
 }
 
-func (d *DelayDispatcher) handleDelayedJobCreateError(ctx context.Context, payload *JobResultPayload, createErr error) error {
+func (d *DelayDispatcher) handleDelayedJobCreateError(ctx context.Context, client kubernetes.Interface, payload *JobResultPayload, createErr error) error {
 	if payload == nil {
 		return createErr
 	}
-	existing, exists, err := jobExists(ctx, d.client, payload.Namespace, payload.Name)
+	existing, exists, err := jobExists(ctx, client, payload.Namespace, payload.Name)
 	if err != nil {
 		return createErr
 	}

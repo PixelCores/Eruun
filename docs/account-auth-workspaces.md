@@ -119,13 +119,15 @@ OAuth 前端先 POST start，再导航到 authorizationURL。回调页从当前 
 
 API 资源操作及后台执行使用 namespace 内受限 `eruun-runner` 身份；工作负载本身使用无 token 挂载的 default ServiceAccount。Pod 必须非 root、禁止提权、drop ALL capabilities、RuntimeDefault seccomp。镜像须支持非 root USER，或在 securityPolicy 设置非零 runAsUser。入口及展开后的最终容器（含 init、sidecar）均校验；拒绝 host namespace、hostPath、hostPort、任意 ServiceAccount、额外 RBAC、CloudJob、跨 namespace、NodePort/LoadBalancer、任意 Ingress 注解/域名/默认后端、不允许的存储类。
 
+展开后的任务在资源比较和持久化之前写入与请求边界相同的安全默认值；相同配置再次部署不会因这些默认值触发 Deployment/StatefulSet 滚动更新。延迟 Job 到期时从已提交 JobInfo 的 AppID 读取应用及空间，重新验证 namespace 归属，并使用该空间的受限客户端执行。Controller RBAC 仅增加 namespace 读取和指定 `eruun-runner` 的 impersonation，不负责空间初始化。
+
 网络默认仅允许同空间通信、DNS、公共 HTTP/HTTPS 出口和配置的入口控制器；排除其他私网及 `clusterCIDRs`。配额和 LimitRange 由部署配置统一控制。Kubernetes 原生准入与 NetworkPolicy 是实际隔离的一部分，需要真实集群验证其生效。后台任务从持久化应用加载空间，不使用用户 access token；请求退出不影响已排队任务归属。
 
 ## 错误与验证证据
 
 沿用 [统一错误契约](api-error-response-contract.md)。401 表示登录/令牌无效，403 为权限不足；33000 输入错误，33001 身份/空间冲突，33002 先登录原账号绑定，33003 验证码无效/过期，33004 限流（429），33005 需近期登录（403），33006 首次改密（403），33007 发送失败（502），33008 空间非空（409）。其他上游失败返回统一 502，内部错误脱敏。
 
-自动化证据覆盖 SQLite 事务与唯一索引、Redis Lua 消费/并发/过期/限流、两提供方的 HTTP/JWKS 模拟、团队角色及邀请、HTTP 认证与空间过滤、Kubernetes fake client 基线和最终请求校验、部署模板与安装脚本。SMTP/阿里云通过适配器测试验证协议及失败，不消耗真实消息额度。
+自动化证据覆盖 SQLite 事务与唯一索引、Redis Lua 消费/并发/过期/限流、两提供方的 HTTP/JWKS 模拟、团队角色及邀请、HTTP 认证与空间过滤、Kubernetes fake client 基线和最终请求校验、延迟任务跨空间拒绝及受限身份、Deployment/StatefulSet 重复部署幂等性、部署模板与安装脚本。SMTP/阿里云通过适配器测试验证协议及失败，不消耗真实消息额度。
 
 真实 GitHub/Google 应用、SMTP/阿里云账号和 Kubernetes 集群由部署环境提供，本地模拟不能代替真实联调。部署验收应分别记录：两提供方真实回调、邮件/短信实际投递、两个空间的网络互拒及公共出口、SA impersonation/Pod Security 拒绝、配额、并发首次部署、删除空 namespace。配置 Secret 不纳入 PR，不自动操作现有开发数据库。
 

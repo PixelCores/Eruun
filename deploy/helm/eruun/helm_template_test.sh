@@ -210,12 +210,12 @@ clusterRoleRuleVerbs() {
   ' "${manifest}"
 }
 
-clusterRoleRuleVerbsFor() {
+clusterRoleRuleFieldFor() {
   local manifest="$1"
   local role_name="$2"
   local api_group="$3"
   local resource="$4"
-  awk -v targetRole="${role_name}" -v targetGroup="${api_group}" -v targetResource="${resource}" '
+  awk -v targetRole="${role_name}" -v targetGroup="${api_group}" -v targetResource="${resource}" -v targetField="${5:-verbs}" '
     function listValue(line, value) {
       value = line
       sub(/^[^[]*\[/, "", value)
@@ -246,7 +246,7 @@ clusterRoleRuleVerbsFor() {
       matchingResource = (listValue($0) == targetResource)
       next
     }
-    selected && matchingGroup && matchingResource && $1 == "verbs:" {
+    selected && matchingGroup && matchingResource && $1 == (targetField ":") {
       print listValue($0)
       exit
     }
@@ -286,6 +286,10 @@ assertEqual \
   "eruun-eruun-eruun-system" \
   "default ClusterRole name must remain stable"
 controller_role_name="eruun-eruun-eruun-system-controller-observer"
+assertEqual "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" "" namespaces)" "get" "Delayed dispatch must only read workspace namespaces"
+assertEqual "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" "" serviceaccounts)" "impersonate" "Delayed dispatch must use its workspace identity"
+assertEqual "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" "" serviceaccounts resourceNames)" "eruun-runner" "Controller impersonation must be restricted to workspace runners"
+
 assertEqual \
   "$(bindingRoleRefNameFor "${controller_role_name}" "${default_manifest}")" \
   "${controller_role_name}" \
@@ -299,35 +303,35 @@ assertEqual \
   "eruun-eruun-controller" \
   "controller observer binding must include only Controller"
 assertEqual \
-  "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" "" pods)" \
+  "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" "" pods)" \
   "get list watch patch delete" \
   "Controller must observe, label, and clean up completed Job Pods"
 assertEqual \
-  "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" "" pods/log)" \
+  "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" "" pods/log)" \
   "get" \
   "ResultDispatcher must collect completed Job logs"
 assertEqual \
-  "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" batch jobs)" \
+  "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" batch jobs)" \
   "get create update delete" \
   "Controller must dispatch delayed Jobs, adopt execution identities, and clean up completed Jobs"
 assertEqual \
-  "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" apps replicasets)" \
+  "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" apps replicasets)" \
   "get" \
   "Controller must only read ReplicaSet owners"
 assertEqual \
-  "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" "" secrets)" \
+  "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" "" secrets)" \
   "" \
   "Controller must not receive Secret permissions"
 assertEqual \
-  "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" "" pods/exec)" \
+  "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" "" pods/exec)" \
   "" \
   "Controller must not receive Pod exec permissions"
 assertEqual \
-  "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" apps deployments)" \
+  "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" apps deployments)" \
   "" \
   "Controller must not manage Deployments"
 assertEqual \
-  "$(clusterRoleRuleVerbsFor "${default_manifest}" "${controller_role_name}" rbac.authorization.k8s.io roles)" \
+  "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" rbac.authorization.k8s.io roles)" \
   "" \
   "Controller must not manage RBAC roles"
 assertEqual \

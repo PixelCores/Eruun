@@ -155,6 +155,14 @@ kind: ClusterRole
 metadata:
   name: eruun-controller-observer
 rules:
+  # Delayed jobs revalidate namespace ownership and execute as its runner.
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    resourceNames: ["eruun-runner"]
+    verbs: ["impersonate"]
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch", "patch", "delete"]

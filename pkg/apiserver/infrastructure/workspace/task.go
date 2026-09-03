@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
@@ -9,10 +10,11 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
-// ValidateTask validates expanded jobs before namespace initialization. The
-// transport repeats payload validation at the actual Kubernetes write boundary.
+// PrepareTask validates expanded jobs and writes policy defaults back to their
+// typed payloads before comparisons, checkpointing and namespace initialization.
+// The transport repeats validation at the actual Kubernetes write boundary.
 // The boolean identifies jobs which deploy resources and need the baseline.
-func ValidateTask(task *model.JobTask, appID string, w *model.Workspace, cfg spec.WorkspaceConfig) (bool, error) {
+func PrepareTask(task *model.JobTask, appID string, w *model.Workspace, cfg spec.WorkspaceConfig) (bool, error) {
 	if task == nil || w == nil || task.AppID != appID || task.Namespace != w.Namespace {
 		return false, bcode.ErrForbidden
 	}
@@ -56,6 +58,13 @@ func ValidateTask(task *model.JobTask, appID string, w *model.Workspace, cfg spe
 	transport := &tenantTransport{namespace: w.Namespace, config: cfg}
 	if err = transport.prepare(resource, obj); err != nil {
 		return false, err
+	}
+	raw, err = json.Marshal(obj)
+	if err != nil {
+		return false, fmt.Errorf("encode prepared workspace task: %w", err)
+	}
+	if err = json.Unmarshal(raw, task.JobInfo); err != nil {
+		return false, fmt.Errorf("populate prepared workspace task: %w", err)
 	}
 	return true, nil
 }

@@ -407,7 +407,7 @@ func (w *WorkflowCtl) run(ctx context.Context, concurrency int) error {
 		for _, step := range stepExecutions {
 			for _, tasks := range step.Jobs {
 				for _, task := range tasks {
-					if _, err := workspace.ValidateTask(task, taskForGeneration.AppID, w.workspace, w.accountConfig.Workspace); err != nil {
+					if _, err := workspace.PrepareTask(task, taskForGeneration.AppID, w.workspace, w.accountConfig.Workspace); err != nil {
 						failureReason = err.Error()
 						suppressTerminalCallback = true
 						w.mutateTask(func(t *model.WorkflowQueue) { t.Status = config.StatusFailed })
@@ -482,7 +482,7 @@ func (w *WorkflowCtl) run(ctx context.Context, concurrency int) error {
 			if w.workspaceManager != nil && !namespaceReady {
 				requiresNamespace := false
 				for _, task := range tasksInPriority {
-					deploy, _ := workspace.ValidateTask(task, taskForGeneration.AppID, w.workspace, w.accountConfig.Workspace)
+					deploy, _ := workspace.PrepareTask(task, taskForGeneration.AppID, w.workspace, w.accountConfig.Workspace)
 					requiresNamespace = requiresNamespace || deploy
 				}
 				if requiresNamespace {
