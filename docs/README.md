@@ -78,6 +78,7 @@
 
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
+| `local-docker-dependencies.md` | Current | MySQL、Redis、Kafka 本地 Compose 分组、凭据、连接配置、健康检查和数据保留 |
 | `distributed-runtime-hardening-merge-guide.md` | Current | 已合并的 7 个分布式运行时加固 PR、实现边界、合并记录与待完成的真实集群验收清单 |
 | `account-auth-workspaces.md` | Current | GitHub/Google、邮箱/手机号登录、会话、团队权限、延迟任务隔离与失败收尾、重复部署幂等性、前端与部署接入 |
 | [`../examples/account-auth-workspaces/README.md`](../examples/account-auth-workspaces/README.md) | Current | 账号与团队 API 实操：curl 注册/登录/刷新、OAuth 浏览器回调、身份绑定、邀请和空间资源访问 |

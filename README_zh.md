@@ -39,6 +39,8 @@ curl --fail http://127.0.0.1:8000/api/v1/readyz
 
 本地运行服务端：
 
+可先按照 [本地 Docker 开发依赖](docs/local-docker-dependencies.md) 启动同一 Compose 分组下的 MySQL、Redis、Kafka；使用命名卷保留数据，端口仅供本机访问。
+
 ~~~bash
 export ERUUN_DATASTORE_URL='eruun:__REPLACE_WITH_MYSQL_PASSWORD__@tcp(127.0.0.1:3306)/eruun?charset=utf8mb4&parseTime=true'
 export ERUUN_CACHE_PASSWORD='__REPLACE_WITH_REDIS_PASSWORD__'

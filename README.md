@@ -39,6 +39,8 @@ curl --fail http://127.0.0.1:8000/api/v1/readyz
 
 To run the server locally:
 
+Start MySQL, Redis, and Kafka together with the [local Docker dependencies guide](docs/local-docker-dependencies.md). The Compose project keeps its data in named volumes and exposes ports only on localhost.
+
 ~~~bash
 export ERUUN_DATASTORE_URL='eruun:__REPLACE_WITH_MYSQL_PASSWORD__@tcp(127.0.0.1:3306)/eruun?charset=utf8mb4&parseTime=true'
 export ERUUN_CACHE_PASSWORD='__REPLACE_WITH_REDIS_PASSWORD__'
