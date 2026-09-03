@@ -6,9 +6,12 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	mysqlgorm "gorm.io/driver/mysql"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 
 	"github.com/stretchr/testify/require"
 
@@ -59,6 +62,55 @@ func TestWriteSchemaMigrationMarkerIsIdempotent(t *testing.T) {
 	require.NoError(t, writeSchemaMigrationMarker(context.Background(), db))
 	require.Contains(t, statement, "ON DUPLICATE KEY UPDATE")
 	require.Contains(t, statement, "`value`=VALUES(`value`)")
+}
+
+func TestMigrationSettingsHaveTimestamps(t *testing.T) {
+	for _, tc := range []struct {
+		name, settingType string
+		migrate           func(context.Context, *gorm.DB) error
+	}{
+		{"application management marker", applicationManagementModeMigrationMarker, migrateApplicationManagementMode},
+		{"schema marker", schemaMigrationMarker, writeSchemaMigrationMarker},
+		{"imported setting", model.SystemSettingTypeNodeSelector, func(ctx context.Context, db *gorm.DB) error {
+			return migrateSettingFromTable(ctx, db, "legacy_profiles", model.SystemSettingTypeNodeSelector, func(rows []nodeSelectorProfileRow) (json.RawMessage, error) {
+				return json.Marshal(rows)
+			})
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Date(2026, time.September, 3, 12, 0, 0, 0, time.UTC)
+			createdAt := now
+			db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+				NamingStrategy: sqlnamer.SQLNamer{},
+				TranslateError: true,
+				NowFunc:        func() time.Time { return now },
+				Logger:         logger.Default.LogMode(logger.Silent),
+			})
+			require.NoError(t, err)
+			sqlDB, err := db.DB()
+			require.NoError(t, err)
+			sqlDB.SetMaxOpenConns(1)
+			t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
+			require.NoError(t, db.AutoMigrate(&model.SystemSetting{}, &model.Applications{}))
+			require.NoError(t, db.Table("legacy_profiles").AutoMigrate(&nodeSelectorProfileRow{}))
+			require.NoError(t, db.Table("legacy_profiles").Create(&nodeSelectorProfileRow{
+				ID: "profile-1", Name: "local", Selection: json.RawMessage(`{"region":"local"}`),
+			}).Error)
+
+			require.NoError(t, tc.migrate(context.Background(), db))
+			var setting model.SystemSetting
+			require.NoError(t, db.Where("type = ?", tc.settingType).First(&setting).Error)
+			require.Equal(t, createdAt, setting.CreateTime)
+			require.Equal(t, createdAt, setting.UpdateTime)
+
+			// Re-running a completed migration must not replace the existing record.
+			now = now.Add(time.Hour)
+			require.NoError(t, tc.migrate(context.Background(), db))
+			var repeated model.SystemSetting
+			require.NoError(t, db.Where("type = ?", tc.settingType).First(&repeated).Error)
+			require.Equal(t, setting, repeated)
+		})
+	}
 }
 
 func TestValidateSchemaMigrationMarker(t *testing.T) {
