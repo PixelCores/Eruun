@@ -10,6 +10,7 @@ runHelm() {
   shift
   "${HELM_BIN}" "${command}" \
     --set-string mysql.rootPassword=helm-template-test \
+    --set-string auth.existingSecret=eruun-account-config \
     --set-string redis.password=helm-template-test "$@"
 }
 TEST_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/eruun-helm-template-test.XXXXXX")
@@ -725,5 +726,19 @@ assertEqual \
   "1" \
   "Scheduler ServiceAccount must appear only in the namespace-scoped RoleBinding"
 
+
+for bad_secret in '' '__REPLACE_WITH_ACCOUNT_SECRET__'; do
+  if runHelm template account-auth "${TEST_DIR}" --set-string "auth.existingSecret=${bad_secret}" > "${TEST_ROOT}/bad-auth.yaml" 2>&1; then
+    fail "empty or placeholder account Secret must be rejected"
+  fi
+done
+if runHelm template account-auth "${TEST_DIR}" --set-string auth.key= > "${TEST_ROOT}/bad-auth-key.yaml" 2>&1; then
+  fail "empty account Secret key must be rejected"
+fi
+runHelm template account-auth "${TEST_DIR}" --show-only templates/runtime-deployments.yaml > "${TEST_ROOT}/account-auth.yaml"
+assertEqual "$(grep -c 'name: ERUUN_AUTH_CONFIG_FILE' "${TEST_ROOT}/account-auth.yaml")" "4" "all roles require account config"
+assertEqual "$(grep -c 'fsGroup: 1000' "${TEST_ROOT}/account-auth.yaml")" "4" "non-root runtime must be able to read the Secret"
+assertEqual "$(grep -c 'defaultMode: 0440' "${TEST_ROOT}/account-auth.yaml")" "4" "account Secret must have restrictive group-readable permissions"
+assertEqual "$(grep -c 'secretName: "eruun-account-config"' "${TEST_ROOT}/account-auth.yaml")" "4" "all roles mount the shared account Secret"
 
 printf '%s\n' "Helm template tests passed"

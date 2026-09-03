@@ -6,15 +6,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"k8s.io/klog/v2"
-
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 	assembler "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/assembler/v1"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	"github.com/PixelCores/Eruun/pkg/apiserver/security/access"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	"github.com/gin-gonic/gin"
+	"k8s.io/klog/v2"
 )
 
 type applicationRuntimeComponentReader interface {
@@ -136,6 +136,11 @@ func (app *applications) applicationComponentStatus(ctx context.Context, appID s
 			ReadyReplicas: comp.ReadyReplicas,
 			LastAbnormal:  comp.LastAbnormal,
 		})
+	}
+	if scope, ok := access.FromContext(ctx); ok && scope.Role == "viewer" {
+		for i := range resp.Components {
+			resp.Components[i].LastAbnormal = ""
+		}
 	}
 	return resp, nil
 }

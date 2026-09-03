@@ -4,6 +4,8 @@
 
 ## 安装前提
 
+先按 [账号与空间部署文档](account-auth-workspaces.md) 创建 `eruun-account-config` Secret，并设置 `auth.existingSecret=eruun-account-config`；`auth.key` 默认为 `accounts.json`。所有运行角色只读挂载该 JSON。脚本安装须指定 `AUTH_CONFIG_FILE`。需要支持 NetworkPolicy 的 CNI 和 Restricted v1.34 Pod Security Admission，正确填写集群网络范围；注册/保存应用不会创建 namespace。
+
 Chart 部署 Eruun 的 API、Controller、Scheduler、Worker 四类运行角色，以及 MySQL 和 Redis。默认密码是占位符，安装时必须通过受控 values 文件提供真实值，不要把密码直接写入命令历史或提交到仓库。
 
 ```yaml
@@ -16,6 +18,7 @@ redis:
 
 ```bash
 helm upgrade --install eruun deploy/helm/eruun \
+  --set-string auth.existingSecret=eruun-account-config \
   --namespace eruun-system \
   --create-namespace \
   --values secure-values.yaml
@@ -115,12 +118,13 @@ Controller 和 Scheduler 绑定 namespace-scoped Leader Election Role；API 与 
 
 默认资源管理 ClusterRole 只包含当前 Eruun 管理 Kubernetes 工作负载、Pod 日志与 exec、Namespace、Service/Secret/ConfigMap/PVC、StorageClass、Ingress 和 RBAC Trait 所需的显式资源权限，不绑定内置 `cluster-admin`。Pods 的 `patch` 只用于 adopted source owner 链校验成功后补 metadata 管理标签；Controller 专用角色不授予 Secret 读取、Pod exec、Deployment/StatefulSet 管理或 RBAC 管理权限。Job `update` 用于复用未完成 Job 时更新 task/execution key/run generation，支持 Worker 接管新的执行代次。资源管理角色中的 ReplicaSet `update` 只用于 signed cleanup quiesce，ReplicaSet/ControllerRevision `delete` 只用于签名计划覆盖且 UID 匹配的 runtime child。PV 与 HPA 权限保持只读；PDB、NetworkPolicy 和 PVC update 用于 source-aware 调和。RBAC Trait 所需的 `roles`、`clusterroles` 规则包含 Kubernetes 要求的 `bind`、`escalate` verbs。
 
-Chart 不授予 CRD/custom resource、impersonation、Pod attach 或 Pod port-forward 权限。静态 `deploy/eruun-stack.yaml` 使用与 Chart 相同的显式资源管理/Controller 权限边界，不再绑定 `cluster-admin`。Quickstart 仅在 `INSTALL_MODE=manifest`、`NAMESPACE=eruun-system` 且 `MANIFEST` 指向脚本同目录的默认 `eruun-stack.yaml` 时，在新权限对象成功应用后删除旧版本遗留的固定 Binding `eruun-platform-cluster-admin`；不存在时无操作，dry-run 只预览删除。Helm 安装、自定义 manifest 路径或其他 namespace 不自动清理该绑定，避免撤销其他实例的权限；如需迁移这些安装方式，应先确认旧绑定的全部 ServiceAccount 已获得替代权限，再由管理员删除旧绑定。
+Chart 不授予 CRD/custom resource 写入、Pod attach 或 Pod port-forward 权限；允许列出资源以检查空间是否为空，并仅允许 impersonate 名为 eruun-runner 的 ServiceAccount。用户资源通过各自 namespace 的受限身份操作，空间基线由控制身份建立。静态 `deploy/eruun-stack.yaml` 使用与 Chart 相同的显式资源管理/Controller 权限边界，不再绑定 `cluster-admin`。Quickstart 仅在 `INSTALL_MODE=manifest`、`NAMESPACE=eruun-system` 且 `MANIFEST` 指向脚本同目录的默认 `eruun-stack.yaml` 时，在新权限对象成功应用后删除旧版本遗留的固定 Binding `eruun-platform-cluster-admin`；不存在时无操作，dry-run 只预览删除。Helm 安装、自定义 manifest 路径或其他 namespace 不自动清理该绑定，避免撤销其他实例的权限；如需迁移这些安装方式，应先确认旧绑定的全部 ServiceAccount 已获得替代权限，再由管理员删除旧绑定。
 
 ClusterRole 名称完整使用 `<release fullname>-<release namespace>`，Controller 角色追加 `-controller-observer`，避免不同 namespace 中同名 release 争用同一个集群级对象。ClusterRole 和 ClusterRoleBinding 使用 Kubernetes RBAC path-segment 名称规则，不受通用 DNS label 的 63 字符限制。
 
 ```bash
 helm upgrade --install eruun deploy/helm/eruun \
+  --set-string auth.existingSecret=eruun-account-config \
   --namespace eruun-system \
   --set serviceAccount.create=false \
   --set serviceAccount.roleNames.api=precreated-eruun-api \

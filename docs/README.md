@@ -33,7 +33,8 @@
 - 服务端角色通过 `--role` / `ERUUN_ROLE` 显式选择 `api/controller/scheduler/worker`；直接运行默认是 `api`，不存在聚合 `all` 角色。
 - Workflow 固定使用 v2 generation/token ownership 与数据库执行租约，Worker 不再获取 Redis 执行锁；不存在关闭 fencing 或处理 v1 dispatch 的运行模式。
 - 顶层 `/workflow`、`/workflow/exec`、`/workflow/cancel` 路由不再注册；应用维度 workflow API 是当前主路径。
-- OAuth 登录路由与 `/authz/*` 管理路由当前未注册；`apiAuth` 中间件已接入全局路由，但默认配置为 `enabled=false`。
+- 业务 API 强制 Bearer 登录并按个人/团队空间授权；账号配置由 `ERUUN_AUTH_CONFIG_FILE` 加载，所有认证依赖失败时保持拒绝访问。
+- 应用必须属于一个空间；namespace 在首次实际部署时初始化，账号注册和应用保存不创建 Kubernetes 资源。
 
 ## 目录层级速查
 
@@ -68,7 +69,7 @@
 | Kubernetes 资源生成或等待 | `pkg/apiserver/event/workflow/job` | resource generation、job controller、waiter | `architecture-diagrams.md`, `statefulset-pvc-volume-naming.md` |
 | Trait 能力 | `pkg/apiserver/workflow/traits` | trait processor、job builder、相关 API 示例 | `架构文档.md`, `share-trait.md`, `rollout-trait.md` |
 | 组件状态、Pod 日志/文件/执行 | `pkg/apiserver/domain/service`, `pkg/apiserver/interfaces/api` | component query、pod ops、logs/files/exec API、Log archive workflow | `application-status-api.md`, `component-log-stream-api.md`, `component-pod-file-exec-api.md`, `log-archive-upload-workflow.md`, `component-container-info-api.md` |
-| 认证、授权、OAuth | `pkg/apiserver/interfaces/api/auth` | auth provider、middleware、domain spec | `api-auth-authz-foundation.md`, `oauth2-google-login.md` |
+| 认证、授权、OAuth、团队空间 | `pkg/apiserver/domain/service/account` | account、middleware、security/access、infrastructure/workspace | `account-auth-workspaces.md` |
 | 配置、系统设置、安全策略 | `pkg/apiserver/config`, `pkg/apiserver/domain/spec` | config defaults、validation、system setting service | `system-setting.md`, `url-security-policy.md` |
 | 消息队列或分布式执行 | `pkg/apiserver/infrastructure/messaging`, `pkg/apiserver/domain/repository/workflow_lease.go` | 运行角色、Redis Streams、Kafka、workflow worker、DB lease/fencing | `enterprise-distributed-runtime-design.md`, `leader-informer-recovery.md`, `kafka-queue-implementation.md`, `workflow-architecture-guide.md` |
 
@@ -77,6 +78,7 @@
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
 | `distributed-runtime-hardening-merge-guide.md` | Current | 已合并的 7 个分布式运行时加固 PR、实现边界、合并记录与待完成的真实集群验收清单 |
+| `account-auth-workspaces.md` | Current | GitHub/Google、邮箱/手机号登录、会话、团队权限、前端与部署接入 |
 | `api-error-response-contract.md` | Current | API 统一错误响应与通用错误脱敏契约 |
 | `system-setting.md` | Current | 系统设置类型、API 与默认初始化 |
 | `settings-page-api.md` | Current | 前端设置页字段归属、请求参数与保存策略 |
@@ -125,9 +127,6 @@
 | `kafka-queue-implementation.md` | Implemented Reference | Kafka 队列实现 |
 | `cloudjob-skeleton.md` | Implemented Reference | CloudJob 基础说明 |
 | `cloudjob-custom-provider-template.md` | Implemented Reference | Custom CloudJob Provider 扩展 |
-| `api-auth-authz-foundation.md` | Implemented Reference | API 鉴权/授权一期 |
-| `oauth2-google-login.md` | Implemented Reference | Google OAuth2 后端流程，当前路由未暴露 |
-| `oauth2-google-login-integration.md` | Implemented Reference | Google OAuth2 前后端接入，当前路由未暴露 |
 | `core-module-boundary-and-cross-layer-contracts.md` | Implemented Reference | 核心模块边界与跨层字段契约 |
 | `project-style-guide.md` | Implemented Reference | 项目命名、模块边界与架构风格维护基线 |
 | `devlogs/2026-08-03-explicit-namespace-adoption-api.md` | Implemented Reference | 显式 adopted import/cleanup API 激活决策与安全边界 |

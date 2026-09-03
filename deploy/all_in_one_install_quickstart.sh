@@ -45,6 +45,8 @@ REDIS_SERVICE_PORT="${REDIS_SERVICE_PORT:-}"
 REDIS_WORKLOAD_KIND=$(printf '%s' "${REDIS_WORKLOAD_KIND:-statefulset}" | tr '[:upper:]' '[:lower:]')
 REDIS_WORKLOAD_NAME="${REDIS_WORKLOAD_NAME:-eruun-redis}"
 
+AUTH_CONFIG_FILE="${AUTH_CONFIG_FILE:-}"
+
 TEMP_FILES=()
 PORT_FORWARD_PID=
 
@@ -153,6 +155,8 @@ resolveServiceName() {
 }
 
 preflightCheck() {
+  [ -n "${AUTH_CONFIG_FILE}" ] && [ -s "${AUTH_CONFIG_FILE}" ] || bail "AUTH_CONFIG_FILE must name a nonempty account configuration file; see docs/account-auth-workspaces.md"
+
   case "${INSTALL_MODE}" in
     manifest|helm) ;;
     *) bail "unsupported INSTALL_MODE=${INSTALL_MODE}; expected manifest or helm" ;;
@@ -208,6 +212,19 @@ newTempYaml() {
   NEW_TEMP_YAML=$(mktemp "${TMPDIR:-/tmp}/${prefix}.XXXXXX.yaml")
   chmod 600 "${NEW_TEMP_YAML}"
   registerTempFile "${NEW_TEMP_YAML}"
+}
+
+createAccountSecret() {
+  local auth_secret_file
+  newTempYaml eruun-account-secret
+  auth_secret_file="${NEW_TEMP_YAML}"
+  "${KUBECTL_BIN}" -n "${NAMESPACE}" create secret generic eruun-account-config \
+    --from-file=accounts.json="${AUTH_CONFIG_FILE}" --dry-run=client -o yaml > "${auth_secret_file}"
+  if isTrue "${DRY_RUN}"; then
+    runCmd "${KUBECTL_BIN}" apply --dry-run=client -f "${auth_secret_file}"
+  else
+    runCmd "${KUBECTL_BIN}" apply -f "${auth_secret_file}"
+  fi
 }
 
 createManifestSecrets() {
@@ -267,6 +284,7 @@ patchManifestOverrides() {
 
 installManifest() {
   ensureNamespace
+  createAccountSecret
   createManifestSecrets
 
   if isTrue "${DRY_RUN}"; then
@@ -291,6 +309,8 @@ createHelmValues() {
 }
 
 installHelm() {
+  ensureNamespace
+  createAccountSecret
   local sensitive_values
   createHelmValues
   sensitive_values="${HELM_VALUES_PATH}"
@@ -298,6 +318,7 @@ installHelm() {
     upgrade --install "${RELEASE_NAME}" "${CHART_PATH}"
     --namespace "${NAMESPACE}" --create-namespace
     --set "fullnameOverride=${FULLNAME_OVERRIDE}"
+    --set-string auth.existingSecret=eruun-account-config
     --values "${sensitive_values}"
   )
 

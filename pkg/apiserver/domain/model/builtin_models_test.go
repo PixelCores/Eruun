@@ -22,6 +22,7 @@ func TestBuiltinModelsReturnsOrderedIsolatedSnapshots(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, []string{
+		"eruun_users", "eruun_identities", "eruun_sessions", "eruun_workspaces", "eruun_workspace_members", "eruun_workspace_invitations",
 		"eruun_applications",
 		"eruun_app_components",
 		"eruun_workflow",
@@ -36,7 +37,7 @@ func TestBuiltinModelsReturnsOrderedIsolatedSnapshots(t *testing.T) {
 	require.Equal(t, modelTableNames(first), modelTableNames(second))
 	require.NotSame(t, first[0], second[0])
 	first[0] = &testBuiltinModel{name: "changed"}
-	require.Equal(t, "eruun_applications", second[0].TableName())
+	require.Equal(t, "eruun_users", second[0].TableName())
 }
 
 func TestValidateModelSetReportsInvalidAndDuplicateEntries(t *testing.T) {
@@ -63,7 +64,7 @@ func TestBuiltinModelsSupportsConcurrentSnapshots(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			models, err := BuiltinModels()
-			if err == nil && len(models) != 10 {
+			if err == nil && len(models) != 16 {
 				err = &unexpectedBuiltinModelCount{count: len(models)}
 			}
 			errors <- err

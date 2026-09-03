@@ -51,7 +51,7 @@ func RateLimit(opts RateLimitOptions) gin.HandlerFunc {
 		if fullPath == "" && c.Request != nil && c.Request.URL != nil {
 			fullPath = strings.TrimSpace(c.Request.URL.Path)
 		}
-		if shouldSkipAuthPath(fullPath, skipPathSet) {
+		if pathInSet(fullPath, skipPathSet) {
 			c.Next()
 			return
 		}
@@ -81,4 +81,18 @@ func isExpensiveRateLimitRequest(method, path string) bool {
 		strings.Contains(normalizedPath, "/logs") ||
 		strings.Contains(normalizedPath, "/shell/stream") ||
 		strings.Contains(normalizedPath, "/files/export")
+}
+
+func pathInSet(path string, set map[string]struct{}) bool {
+	_, ok := set[path]
+	return path != "" && ok
+}
+func toPathSet(paths []string) map[string]struct{} {
+	result := make(map[string]struct{}, len(paths))
+	for _, path := range paths {
+		if path != "" {
+			result[path] = struct{}{}
+		}
+	}
+	return result
 }

@@ -14,20 +14,30 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event"
 	workflowevent "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/mysql"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/identity"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api"
+	"github.com/PixelCores/Eruun/pkg/apiserver/security/access"
 	"github.com/PixelCores/Eruun/pkg/apiserver/security/urlpolicy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 func (s *restServer) buildIoCContainer(ctx context.Context) error {
+	accountsConfig, err := spec.LoadAccountConfig(s.cfg.AuthConfigFile)
+	if err != nil {
+		return fmt.Errorf("load authentication configuration: %w", err)
+	}
+	s.cfg.Accounts = accountsConfig
 	builtinModels, err := model.BuiltinModels()
 	if err != nil {
 		return fmt.Errorf("build model set: %w", err)
@@ -69,11 +79,7 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 	default:
 		return fmt.Errorf("not support datastore type %s", s.cfg.Datastore.Type)
 	}
-	s.dataStore = ds
-
-	if err := s.runBootstrapStep(ctx, s.ensureDefaultAPIAuthSetting); err != nil {
-		return err
-	}
+	s.dataStore = access.NewStore(ds)
 	if err := s.runBootstrapStep(ctx, s.ensureDefaultURLSecurityPolicySetting); err != nil {
 		return err
 	}
@@ -89,6 +95,13 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 	cacheType := strings.ToLower(strings.TrimSpace(s.cfg.Cache.CacheType))
 	redisClient, err := s.initRedisClientForConfiguredBackends()
 	if err != nil {
+		return err
+	}
+	s.accounts = account.New(ds, accountsConfig, redisClient, &identity.Delivery{Config: accountsConfig})
+	if err := s.runBootstrapStep(ctx, s.accounts.Bootstrap); err != nil {
+		return err
+	}
+	if err := s.beanContainer.Provides(s.accounts, &workspace.Manager{Client: kubeClient, RESTConfig: kubeConfig, Config: accountsConfig.Workspace}); err != nil {
 		return err
 	}
 
@@ -129,6 +142,12 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 	}
 
 	// 将操作k8s的权限全都注入到IOC中
+	if s.cfg.NormalizedRole() == config.RuntimeRoleAPI {
+		kubeClient, kubeConfig, err = workspace.APIClient(kubeConfig, accountsConfig.Workspace)
+		if err != nil {
+			return fmt.Errorf("create scoped API Kubernetes client: %w", err)
+		}
+	}
 	if err := s.beanContainer.ProvideWithName("kubeClient", kubeClient); err != nil {
 		return fmt.Errorf("fail to provides the kubeClient bean to the container: %w", err)
 	}
@@ -282,11 +301,7 @@ func configureWorkflowEventWorkers(workers []event.Worker, queues *msg.RuntimeQu
 }
 
 func (s *restServer) initRedisClientForConfiguredBackends() (*redis.Client, error) {
-	useRedisCache := strings.EqualFold(strings.TrimSpace(s.cfg.Cache.CacheType), string(cache.CacheTypeRedis))
-	useRedisMessaging := strings.EqualFold(strings.TrimSpace(s.cfg.Messaging.Type), config.REDIS)
-	if !useRedisCache && !useRedisMessaging {
-		return nil, nil
-	}
+	// Authentication always requires Redis for single-use challenges and limits.
 	redisClient, err := newRedisClient(s.cfg.Cache)
 	if err != nil {
 		return nil, fmt.Errorf("init redis client for configured redis backend: %w", err)

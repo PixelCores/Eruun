@@ -16,12 +16,10 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api"
-	apiauth "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/auth"
 	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/middleware"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
@@ -47,13 +45,23 @@ func (s *restServer) registerAPIRoutes(healthOnly bool) {
 	// 初始化中间件
 	s.webContainer.Use(gin.Recovery())
 
-	// Enable CORS for browser clients
+	// Exact configured origins are required for credentialed browser clients.
+	var origins []string
+	if s.cfg.Accounts != nil {
+		origins = s.cfg.Accounts.Origins
+	}
+	var trustedProxies []string
+	if s.cfg.Accounts != nil {
+		trustedProxies = s.cfg.Accounts.TrustedProxyCIDRs
+	}
+	// CIDRs are validated during startup; forwarding headers are ignored by default.
+	_ = s.webContainer.SetTrustedProxies(trustedProxies)
 	s.webContainer.Use(middleware.CORS(middleware.CORSOptions{
-		AllowOrigins:     []string{"*"},
+		AllowOrigins:     origins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"},
+		AllowHeaders:     []string{"Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With", "X-Eruun-Workspace-ID"},
 		ExposeHeaders:    []string{},
-		AllowCredentials: false,
+		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
 	if s.cfg.APIRateLimitQPS > 0 {
@@ -65,11 +73,7 @@ func (s *restServer) registerAPIRoutes(healthOnly bool) {
 	}
 	s.webContainer.Use(middleware.RequestBodyLimit(config.DefaultRequestBodyLimitBytes))
 	s.webContainer.Use(middleware.Auth(middleware.AuthOptions{
-		PolicyProvider: apiauth.NewSystemSettingPolicyProvider(
-			repository.NewSystemSettingRepositoryWithStore(s.dataStore),
-			0,
-		),
-		SkipPaths: middleware.DefaultAuthSkipPaths(),
+		Accounts: s.accounts,
 	}))
 
 	// Enable tracing middleware if configured
@@ -99,12 +103,6 @@ func (s *restServer) registerAPIRoutes(healthOnly bool) {
 		}
 	}
 
-}
-
-func (s *restServer) ensureDefaultAPIAuthSetting(ctx context.Context) error {
-	return s.ensureDefaultSystemSetting(ctx, model.SystemSettingTypeAPIAuth, "apiAuth", func() ([]byte, error) {
-		return json.Marshal(spec.APIAuthSettingSpec{Enabled: false})
-	})
 }
 
 func (s *restServer) ensureDefaultURLSecurityPolicySetting(ctx context.Context) error {

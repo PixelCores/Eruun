@@ -12,7 +12,9 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	"github.com/PixelCores/Eruun/pkg/apiserver/security/access"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
@@ -218,6 +220,26 @@ func (c *applicationsServiceImpl) preflightVersionUpdateRun(
 	resolvedComponents, err := buildVersionUpdateResolvedComponents(components, run.normalReq.Components)
 	if err != nil {
 		return err
+	}
+	if scope, scoped := access.FromContext(ctx); scoped {
+		if c.Cfg == nil || c.Cfg.Accounts == nil {
+			return bcode.ErrServiceUnavailable
+		}
+		for i := range resolvedComponents {
+			component := &resolvedComponents[i]
+			if (component.Namespace != "" && component.Namespace != scope.Namespace) || component.ComponentType == config.CloudJob {
+				return bcode.ErrForbidden
+			}
+			if err := workspace.ValidateTraits(scope.Namespace, component.Name, &component.Traits, &component.Properties, c.Cfg.Accounts.Workspace); err != nil {
+				return err
+			}
+			for j := range run.normalReq.Components {
+				patch := &run.normalReq.Components[j]
+				if strings.EqualFold(patch.Name, component.Name) && (patch.Traits != nil || patch.Action == "add") {
+					patch.Traits = &component.Traits
+				}
+			}
+		}
 	}
 	if err := c.validateApplicationResourceNames(ctx, &validationApp, resolvedComponents); err != nil {
 		return err

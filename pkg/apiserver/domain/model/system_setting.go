@@ -5,8 +5,6 @@ import "encoding/json"
 const (
 	SystemSettingTypeNodeSelector      = "nodeSelector"
 	SystemSettingTypeRBACPolicies      = "rbacPolicies"
-	SystemSettingTypeAPIAuth           = "apiAuth"
-	SystemSettingTypeOAuthAuth         = "oauthAuth"
 	SystemSettingTypeAliyunCloud       = "aliyunCloud"
 	SystemSettingTypeURLSecurityPolicy = "urlSecurityPolicy"
 	SystemSettingTypePodRestartMonitor = "podRestartMonitor"

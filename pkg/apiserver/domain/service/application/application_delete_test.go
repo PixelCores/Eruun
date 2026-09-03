@@ -48,11 +48,8 @@ func TestDeleteApplicationCascadeSuccess(t *testing.T) {
 	queueRepo := &mockWorkflowQueueRepo{}
 	namespace := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "tenant-a",
-			Annotations: map[string]string{
-				config.AnnotationNamespaceOwnerAppID:  "app-1",
-				config.AnnotationNamespaceAutoCreated: "true",
-			},
+			Name:   "tenant-a",
+			Labels: map[string]string{"eruun.io/workspace-id": "workspace"},
 		},
 	}
 	clientset := fake.NewSimpleClientset(namespace)
@@ -135,7 +132,7 @@ func TestDeleteApplicationCascadeReloadsManagementModeAfterLock(t *testing.T) {
 	}
 }
 
-func TestDeleteApplicationCascadeContinuesWhenActiveTasksRemain(t *testing.T) {
+func TestDeleteApplicationCascadePreservesOwnershipWhenActiveTasksRemain(t *testing.T) {
 	store := newCascadeDeleteStore()
 	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "demo", Namespace: "default"}
 	store.tasks["task-1"] = &model.WorkflowQueue{
@@ -179,11 +176,11 @@ func TestDeleteApplicationCascadeContinuesWhenActiveTasksRemain(t *testing.T) {
 	if len(resp.Warnings) == 0 {
 		t.Fatalf("expected warnings, got none")
 	}
-	if _, ok := store.apps["app-1"]; ok {
-		t.Fatalf("app should still be deleted on warning")
+	if _, ok := store.apps["app-1"]; !ok {
+		t.Fatalf("app ownership must survive until all tasks have stopped")
 	}
-	if len(store.tasks) != 0 || len(store.jobs) != 0 {
-		t.Fatalf("task/job should be deleted despite warnings")
+	if len(store.tasks) != 1 || len(store.jobs) != 1 {
+		t.Fatalf("running task/job metadata must be retained")
 	}
 }
 

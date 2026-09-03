@@ -2,169 +2,149 @@ package middleware
 
 import (
 	"context"
-	"crypto/hmac"
 	"crypto/sha256"
-	"encoding/base64"
-	"encoding/json"
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/stretchr/testify/require"
-
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	apiauth "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/auth"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
+	"github.com/PixelCores/Eruun/pkg/apiserver/security/access"
+	"github.com/alicebob/miniredis/v2"
+	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
-type staticPolicyProvider struct {
-	policy *spec.APIAuthSettingSpec
-	err    error
-}
-
-func (s *staticPolicyProvider) Load(context.Context) (*spec.APIAuthSettingSpec, error) {
-	if s.err != nil {
-		return nil, s.err
-	}
-	return s.policy, nil
-}
-
-func TestAuthMiddleware(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	policy := &spec.APIAuthSettingSpec{
-		Enabled: true,
-		JWT: spec.APIAuthJWTSpec{
-			Algorithms: []string{spec.APIAuthAlgorithmHS256},
-			HS256: spec.APIAuthHS256Spec{
-				Secret: "test-secret",
-			},
-		},
-		Authorization: spec.APIAuthorizationSpec{
-			DefaultEffect: spec.APIAuthDefaultEffectDeny,
-			Routes: []spec.APIAuthRouteRuleSpec{
-				{
-					Method: "GET",
-					Path:   "/api/v1/applications",
-					Roles:  []string{"reader"},
-				},
-			},
-		},
-	}
-
-	router := gin.New()
-	router.Use(Auth(AuthOptions{
-		PolicyProvider: &staticPolicyProvider{policy: policy},
-	}))
-	router.GET("/api/v1/applications", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"ok": true})
-	})
-	router.GET("/api/v1/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"ok": true})
-	})
-	router.GET("/api/v1/auth/oauth2/google/login", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"ok": true})
-	})
-	router.GET("/api/v1/auth/oauth2/google/callback", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"ok": true})
-	})
-
-	withoutTokenReq := httptest.NewRequest(http.MethodGet, "/api/v1/applications", nil)
-	withoutTokenResp := httptest.NewRecorder()
-	router.ServeHTTP(withoutTokenResp, withoutTokenReq)
-	require.Equal(t, http.StatusUnauthorized, withoutTokenResp.Code)
-
-	token := signHS256TokenForMiddlewareTest(t, "test-secret", map[string]interface{}{
-		"sub":   "u-1",
-		"exp":   time.Now().Add(time.Hour).Unix(),
-		"roles": []string{"reader"},
-	})
-	withTokenReq := httptest.NewRequest(http.MethodGet, "/api/v1/applications", nil)
-	withTokenReq.Header.Set("Authorization", "Bearer "+token)
-	withTokenResp := httptest.NewRecorder()
-	router.ServeHTTP(withTokenResp, withTokenReq)
-	require.Equal(t, http.StatusOK, withTokenResp.Code)
-
-	insufficientRoleToken := signHS256TokenForMiddlewareTest(t, "test-secret", map[string]interface{}{
-		"sub":   "u-2",
-		"exp":   time.Now().Add(time.Hour).Unix(),
-		"roles": []string{"writer"},
-	})
-	forbiddenReq := httptest.NewRequest(http.MethodGet, "/api/v1/applications", nil)
-	forbiddenReq.Header.Set("Authorization", "Bearer "+insufficientRoleToken)
-	forbiddenResp := httptest.NewRecorder()
-	router.ServeHTTP(forbiddenResp, forbiddenReq)
-	require.Equal(t, http.StatusForbidden, forbiddenResp.Code)
-
-	healthReq := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
-	healthResp := httptest.NewRecorder()
-	router.ServeHTTP(healthResp, healthReq)
-	require.Equal(t, http.StatusOK, healthResp.Code)
-
-	loginReq := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth2/google/login", nil)
-	loginResp := httptest.NewRecorder()
-	router.ServeHTTP(loginResp, loginReq)
-	require.Equal(t, http.StatusOK, loginResp.Code)
-
-	callbackReq := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth2/google/callback", nil)
-	callbackResp := httptest.NewRecorder()
-	router.ServeHTTP(callbackResp, callbackReq)
-	require.Equal(t, http.StatusOK, callbackResp.Code)
-}
-
-func TestAuthMiddlewareDenyWhenPolicyMissing(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	router := gin.New()
-	router.Use(Auth(AuthOptions{
-		PolicyProvider: &staticPolicyProvider{err: apiauth.ErrPolicyNotFound},
-	}))
-	router.GET("/api/v1/applications", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"ok": true})
-	})
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/applications", nil)
-	resp := httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-	require.Equal(t, http.StatusUnauthorized, resp.Code)
-}
-
-func TestAuthMiddlewareAllowsWhenPolicyDisabled(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	router := gin.New()
-	router.Use(Auth(AuthOptions{
-		PolicyProvider: &staticPolicyProvider{policy: &spec.APIAuthSettingSpec{Enabled: false}},
-	}))
-	router.GET("/api/v1/applications", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"ok": true})
-	})
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/applications", nil)
-	resp := httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-	require.Equal(t, http.StatusOK, resp.Code)
-}
-
-func signHS256TokenForMiddlewareTest(t *testing.T, secret string, claims map[string]interface{}) string {
+func middlewareAccounts(t *testing.T) (*account.Service, *access.Store) {
 	t.Helper()
-	header := map[string]interface{}{
-		"alg": "HS256",
-		"typ": "JWT",
-	}
-	headerPart := encodeJWTPartForMiddlewareTest(t, header)
-	claimPart := encodeJWTPartForMiddlewareTest(t, claims)
-	signingInput := headerPart + "." + claimPart
-	mac := hmac.New(sha256.New, []byte(secret))
-	_, _ = mac.Write([]byte(signingInput))
-	signature := mac.Sum(nil)
-	return signingInput + "." + base64.RawURLEncoding.EncodeToString(signature)
-}
-
-func encodeJWTPartForMiddlewareTest(t *testing.T, value interface{}) string {
-	t.Helper()
-	data, err := json.Marshal(value)
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "auth.db")), &gorm.Config{TranslateError: true, Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
-	return base64.RawURLEncoding.EncodeToString(data)
+	conn, err := db.DB()
+	require.NoError(t, err)
+	conn.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = conn.Close() })
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Session{}, &model.Workspace{}, &model.WorkspaceMember{}, &model.Applications{}, &model.WorkflowQueue{}, &model.ApplicationComponent{}))
+	r := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: r.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+	raw := &sqlstore.Driver{Client: *db}
+	s := account.New(raw, &spec.AccountConfig{Origins: []string{"https://console.example.com"}}, client, nil)
+	ctx := context.Background()
+	for _, id := range []string{"a", "b"} {
+		u := &model.User{ID: id}
+		token := strings.Repeat(id, 43)
+		sum := sha256.Sum256([]byte(token))
+		refresh := sha256.Sum256([]byte("refresh" + token))
+		uid := u.ID
+		for _, e := range []datastore.Entity{u, &model.Session{ID: id, UserID: id, AccessHash: hex.EncodeToString(sum[:]), RefreshHash: hex.EncodeToString(refresh[:]), AccessExpiresAt: time.Now().Add(time.Hour), ExpiresAt: time.Now().Add(time.Hour), AuthenticatedAt: time.Now()}, &model.Workspace{ID: "personal-" + id, OwnerID: id, PersonalUserID: &uid, Kind: "personal", Namespace: "ns-" + id}, &model.WorkspaceMember{ID: "personal-" + id, WorkspaceID: "personal-" + id, UserID: id, Role: "admin"}, &model.Workspace{ID: "team-" + id, OwnerID: id, Kind: "team", Namespace: "team-ns-" + id}, &model.WorkspaceMember{ID: "team-" + id, WorkspaceID: "team-" + id, UserID: id, Role: "admin"}, &model.Applications{ID: "app-" + id, Name: "app-" + id, WorkspaceID: "personal-" + id, Namespace: "ns-" + id}, &model.WorkflowQueue{TaskID: "task-" + id, AppID: "app-" + id}} {
+			require.NoError(t, raw.Add(ctx, e))
+		}
+	}
+	return s, access.NewStore(raw)
+}
+
+func TestAuthRouteMatrixAndImmediateMembershipChanges(t *testing.T) {
+	s, _ := middlewareAccounts(t)
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(Auth(AuthOptions{Accounts: s}))
+	called := 0
+	for _, path := range []string{"/api/v1/health", "/api/v1/auth/methods", "/api/v1/applications", "/api/v1/applications/:appID/status", "/api/v1/applications/:appID/components/:componentName/logs", "/api/v1/workflow/tasks/:taskID/status", "/api/v1/settings", "/api/v1/new-unclassified-route"} {
+		r.GET(path, func(c *gin.Context) { called++; c.Status(200) })
+	}
+	r.POST("/api/v1/auth/refresh", func(c *gin.Context) { called++; c.Status(200) })
+	request := func(method, path, token, workspace, origin string) int {
+		req := httptest.NewRequest(method, path, nil)
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		if workspace != "" {
+			req.Header.Set("X-Eruun-Workspace-ID", workspace)
+		}
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	a := strings.Repeat("a", 43)
+	for _, tc := range []struct {
+		path, token, space string
+		want               int
+	}{{"/api/v1/health", "", "", 200}, {"/api/v1/auth/methods", "", "", 200}, {"/api/v1/applications", "", "", 401}, {"/api/v1/applications", a, "", 200}, {"/api/v1/applications/app-b/status", a, "", 403}, {"/api/v1/applications/app-b/components/web/logs", a, "", 403}, {"/api/v1/workflow/tasks/task-b/status", a, "", 403}, {"/api/v1/applications", a, "team-b", 403}, {"/api/v1/settings", a, "", 403}, {"/api/v1/new-unclassified-route", a, "", 403}} {
+		before := called
+		require.Equal(t, tc.want, request("GET", tc.path, tc.token, tc.space, ""), tc.path)
+		if tc.want != 200 {
+			require.Equal(t, before, called, "denied request reached handler")
+		}
+	}
+	require.Equal(t, 403, request("POST", "/api/v1/auth/refresh", "", "", "https://attacker.example"))
+	require.Equal(t, 403, request("POST", "/api/v1/auth/refresh", "", "", ""))
+	require.Equal(t, 200, request("POST", "/api/v1/auth/refresh", "", "", "https://console.example.com"))
+	ctx := context.Background()
+	member := &model.WorkspaceMember{ID: "a-in-b", WorkspaceID: "team-b", UserID: "a", Role: "viewer"}
+	require.NoError(t, s.Repo.Store.Add(ctx, member))
+	require.Equal(t, 200, request("GET", "/api/v1/applications", a, "team-b", ""))
+	require.Equal(t, 403, request("GET", "/api/v1/applications/app-b/components/web/logs", a, "team-b", ""))
+	require.NoError(t, s.Repo.Store.Delete(ctx, member))
+	require.Equal(t, 403, request("GET", "/api/v1/applications", a, "team-b", ""))
+	user := &model.User{ID: "a"}
+	require.NoError(t, s.Repo.Update(ctx, user, map[string]interface{}{"system_admin": true}))
+	require.Equal(t, 403, request("GET", "/api/v1/new-unclassified-route", a, "", ""))
+	require.Equal(t, 200, request("GET", "/api/v1/settings", a, "", ""))
+}
+
+func TestScopedStoreFiltersBeforePaginationAndDeniesWrites(t *testing.T) {
+	s, store := middlewareAccounts(t)
+	ctx := access.WithScope(context.Background(), access.Scope{UserID: "a", WorkspaceID: "personal-a", Namespace: "ns-a", Role: "owner"})
+	rows, err := store.List(ctx, &model.Applications{}, &datastore.ListOptions{Page: 1, PageSize: 1})
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	require.Equal(t, "app-a", rows[0].(*model.Applications).ID)
+	rows, err = store.List(ctx, &model.Applications{}, &datastore.ListOptions{Page: 2, PageSize: 1})
+	require.NoError(t, err)
+	require.Empty(t, rows)
+	rows, err = store.List(ctx, &model.Applications{}, &datastore.ListOptions{FilterOptions: datastore.FilterOptions{In: []datastore.InQueryOption{{Key: "id", Values: []string{"app-a", "app-b"}}}}})
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	for _, e := range []datastore.Entity{&model.Applications{ID: "app-b"}, &model.WorkflowQueue{TaskID: "task-b"}} {
+		require.Error(t, store.Get(ctx, e))
+		require.Error(t, store.Delete(ctx, e))
+	}
+	require.Error(t, store.Add(ctx, &model.ApplicationComponent{Name: "bad", AppID: "app-b", Namespace: "ns-b"}))
+	require.Error(t, store.Add(ctx, &model.ApplicationComponent{Name: "bad", AppID: "app-a", Namespace: "ns-b"}))
+	_, err = store.CompareAndSwap(ctx, &model.Applications{ID: "app-a"}, "id", "app-a", map[string]interface{}{"workspace_id": "personal-b"})
+	require.Error(t, err)
+	n, err := s.Repo.Store.Count(context.Background(), &model.Applications{}, nil)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, n)
+	n, err = s.Repo.Store.Count(context.Background(), &model.ApplicationComponent{}, nil)
+	require.NoError(t, err)
+	require.Zero(t, n)
+	rows, err = store.List(ctx, &model.WorkflowQueue{}, nil)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	require.Equal(t, "task-a", rows[0].(*model.WorkflowQueue).TaskID)
+}
+
+func TestAuthFailsClosedWithoutDependencies(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(Auth(AuthOptions{}))
+	r.GET("/api/v1/applications", func(*gin.Context) { t.Fatal("handler reached") })
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/applications", nil))
+	require.Equal(t, 503, rec.Code)
 }

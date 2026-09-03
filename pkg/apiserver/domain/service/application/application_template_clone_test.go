@@ -236,7 +236,7 @@ func TestResolveComponentsWithSourceIndexes(t *testing.T) {
 			Name:          "legacy-job",
 			ComponentType: config.InstantJob,
 			Template:      &apisv1.TemplateRef{ID: "tmpl-source-index", Target: "template-job"},
-		}})
+		}}, nil)
 
 		require.NoError(t, err)
 		require.Len(t, components, 2)

@@ -1,5 +1,8 @@
 # Eruun `master` 潜在问题审计（2026-07-10）
 
+> 历史认证条目已被统一账号和空间契约取代；当前行为见 [账号与空间](account-auth-workspaces.md)。
+
+
 > 状态：Historical / Audit。本文记录对 `master` 的一次只读、证据化审计，不代表问题已经修复，也不替代各专题的 Current 行为文档。
 
 ## 审计基线与结论

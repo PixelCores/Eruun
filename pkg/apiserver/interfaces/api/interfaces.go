@@ -57,7 +57,7 @@ func registerBuiltinAPIs() {
 	RegisterAPI(NewApplications())
 	RegisterAPI(NewSettings())
 	RegisterAPI(NewProgrammingLanguages())
-	RegisterAPI(NewOAuth())
+	RegisterAPI(NewAccounts())
 	RegisterAPI(&health{})
 }
 

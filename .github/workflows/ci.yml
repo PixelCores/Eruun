@@ -64,6 +64,7 @@ jobs:
       - name: Lint and render Chart
         run: |
           helm lint deploy/helm/eruun \
+            --set-string auth.existingSecret=eruun-account-config \
             --set-string mysql.rootPassword=ci-only \
             --set-string redis.password=ci-only
           HELM_BIN=helm deploy/helm/eruun/helm_template_test.sh

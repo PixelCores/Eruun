@@ -28,28 +28,3 @@ type UpdateSystemSettingRequest struct {
 type ListSystemSettingResponse struct {
 	Settings []*SystemSetting `json:"settings"`
 }
-
-// APIAuthorizationRoute describes one route-level authorization rule.
-type APIAuthorizationRoute struct {
-	Method string   `json:"method"`
-	Path   string   `json:"path"`
-	Roles  []string `json:"roles"`
-}
-
-// APIAuthorizationPolicy describes route authorization configuration.
-type APIAuthorizationPolicy struct {
-	DefaultEffect string                  `json:"defaultEffect"`
-	Routes        []APIAuthorizationRoute `json:"routes"`
-}
-
-// UpsertAPIAuthorizationRouteRequest upserts one route rule.
-type UpsertAPIAuthorizationRouteRequest struct {
-	Method string   `json:"method" validate:"required"`
-	Path   string   `json:"path" validate:"required"`
-	Roles  []string `json:"roles" validate:"required,min=1,dive,required"`
-}
-
-// UpdateAPIAuthorizationDefaultEffectRequest updates default effect.
-type UpdateAPIAuthorizationDefaultEffectRequest struct {
-	DefaultEffect string `json:"defaultEffect" validate:"required"`
-}

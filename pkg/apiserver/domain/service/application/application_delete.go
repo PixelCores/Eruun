@@ -93,7 +93,7 @@ func (c *applicationsServiceImpl) DeleteApplicationCascade(ctx context.Context, 
 		resp.ActiveTaskIDs = append(resp.ActiveTaskIDs, activeTaskIDs...)
 		resp.Warnings = append(resp.Warnings, warnings...)
 
-		if !nativeApplication && len(activeTaskIDs) > 0 {
+		if len(activeTaskIDs) > 0 {
 			return fmt.Errorf("refusing to detach %s application while workflow tasks remain active: %s",
 				app.EffectiveManagementMode(), strings.Join(uniqueStrings(activeTaskIDs), ","))
 		}
@@ -121,7 +121,7 @@ func (c *applicationsServiceImpl) DeleteApplicationCascade(ctx context.Context, 
 		resp.CancelledTaskIDs = append(resp.CancelledTaskIDs, cancelledTaskIDs...)
 		resp.ActiveTaskIDs = append(resp.ActiveTaskIDs, activeTaskIDs...)
 		resp.Warnings = append(resp.Warnings, warnings...)
-		if !nativeApplication && len(activeTaskIDs) > 0 {
+		if len(activeTaskIDs) > 0 {
 			return fmt.Errorf("refusing to detach %s application while workflow tasks remain active: %s",
 				app.EffectiveManagementMode(), strings.Join(uniqueStrings(activeTaskIDs), ","))
 		}
@@ -137,7 +137,7 @@ func (c *applicationsServiceImpl) DeleteApplicationCascade(ctx context.Context, 
 		resp.Warnings = uniqueStrings(resp.Warnings)
 		hasIncompleteCleanup := len(resp.Warnings) > 0 || len(resp.FailedResources) > 0 || len(resp.ActiveTaskIDs) > 0
 
-		c.invalidateApplicationListCaches()
+		c.invalidateApplicationListCaches(ctx)
 		c.invalidateApplicationComponentsCache(app.ID)
 
 		if hasIncompleteCleanup {

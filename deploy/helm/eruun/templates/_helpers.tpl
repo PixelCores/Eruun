@@ -69,6 +69,10 @@ app.kubernetes.io/managed-by: eruun
 {{- end -}}
 
 {{- define "eruun.validateRuntime" -}}
+{{- if or (empty .Values.auth.existingSecret) (contains "REPLACE" .Values.auth.existingSecret) (eq .Values.auth.existingSecret "******") -}}
+{{- fail "auth.existingSecret is required and must reference a configured account Secret" -}}
+{{- end -}}
+{{- if empty .Values.auth.key -}}{{- fail "auth.key is required" -}}{{- end -}}
 {{- if not .Values.serviceAccount.create -}}
 {{- $roleNames := default dict .Values.serviceAccount.roleNames -}}
 {{- $apiName := default "" (index $roleNames "api") -}}
@@ -93,7 +97,7 @@ app.kubernetes.io/managed-by: eruun
 {{- end -}}
 {{- range $env := .Values.env -}}
 {{- $name := trim (default "" $env.name) -}}
-{{- if or (eq $name "ERUUN_ROLE") (eq $name "ERUUN_ID") (eq $name "ERUUN_EXIT_ON_LOST_LEADER") (eq $name "ERUUN_WORKFLOW_WORKER_DRAIN_TIMEOUT") (eq $name "ERUUN_DATASTORE_SCHEMA_MODE") -}}
+{{- if or (eq $name "ERUUN_AUTH_CONFIG_FILE") (eq $name "ERUUN_ROLE") (eq $name "ERUUN_ID") (eq $name "ERUUN_EXIT_ON_LOST_LEADER") (eq $name "ERUUN_WORKFLOW_WORKER_DRAIN_TIMEOUT") (eq $name "ERUUN_DATASTORE_SCHEMA_MODE") -}}
 {{- fail (printf "env must not override Chart-managed variable %s" $name) -}}
 {{- end -}}
 {{- end -}}

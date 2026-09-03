@@ -27,6 +27,9 @@ MANIFEST_SOURCE="${TEST_DIR}/eruun-stack.yaml"
 CHART_SOURCE="${TEST_DIR}/helm/eruun"
 TEST_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/eruun-quickstart-test.XXXXXX")
 trap 'rm -rf "${TEST_ROOT}"' EXIT
+export AUTH_CONFIG_FILE="${TEST_ROOT}/accounts.json"
+printf '%s\n' '{"bootstrapAdmin":{"email":"admin@example.com","password":"test-only-bootstrap-password"}}' > "${AUTH_CONFIG_FILE}"
+chmod 600 "${AUTH_CONFIG_FILE}"
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
@@ -80,6 +83,8 @@ runManifestGeneratedSecretsContract() {
 
   assertContains "${command_log}" "create secret generic eruun-mysql-secret"
   assertContains "${command_log}" "create secret generic eruun-secret"
+  assertContains "${command_log}" "create secret generic eruun-account-config"
+  assertNotContains "${output}" "test-only-bootstrap-password"
   assertContains "${command_log}" "apply --dry-run=server -f ${case_dir}/eruun-stack.yaml"
   assertContains "${command_log}" "apply -f ${case_dir}/eruun-stack.yaml"
   assertContains "${command_log}" "delete clusterrolebinding eruun-platform-cluster-admin --ignore-not-found=true"

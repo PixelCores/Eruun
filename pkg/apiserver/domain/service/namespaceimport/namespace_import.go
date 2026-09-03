@@ -31,6 +31,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	assembler "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/assembler/v1"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	"github.com/PixelCores/Eruun/pkg/apiserver/security/access"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
@@ -240,6 +241,9 @@ type importAppPlan struct {
 
 func (s *namespaceImportServiceImpl) ImportNamespaceResources(ctx context.Context, req apisv1.ImportNamespaceApplicationsRequest) (*apisv1.ImportNamespaceApplicationsResponse, error) {
 	namespace := strings.TrimSpace(req.Namespace)
+	if scope, scoped := access.FromContext(ctx); scoped && namespace != scope.Namespace {
+		return nil, bcode.ErrForbidden
+	}
 	if namespace == "" {
 		return nil, bcode.ErrApplicationConfig
 	}
@@ -301,6 +305,9 @@ func (s *namespaceImportServiceImpl) importNamespaceResources(
 
 func (s *namespaceImportServiceImpl) TryImportNamespaceResources(ctx context.Context, req apisv1.TryImportNamespaceApplicationsRequest) (*apisv1.TryImportNamespaceApplicationsResponse, error) {
 	namespace := strings.TrimSpace(req.Namespace)
+	if scope, scoped := access.FromContext(ctx); scoped && namespace != scope.Namespace {
+		return nil, bcode.ErrForbidden
+	}
 	if namespace == "" {
 		return nil, bcode.ErrApplicationConfig
 	}

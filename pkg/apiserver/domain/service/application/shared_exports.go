@@ -11,13 +11,13 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/security/urlpolicy"
 )
 
-func ResolveComponents(ctx context.Context, appRepo repository.ApplicationRepository, componentRepo repository.ComponentRepository, namespace, appName string, reqComponents []apisv1.CreateComponentRequest) ([]apisv1.CreateComponentRequest, error) {
-	resolver := &applicationsServiceImpl{AppRepo: appRepo, ComponentRepo: componentRepo}
+func ResolveComponents(ctx context.Context, appRepo repository.ApplicationRepository, componentRepo repository.ComponentRepository, namespace, appName string, reqComponents []apisv1.CreateComponentRequest, cfg *config.Config) ([]apisv1.CreateComponentRequest, error) {
+	resolver := &applicationsServiceImpl{AppRepo: appRepo, ComponentRepo: componentRepo, Cfg: cfg}
 	return resolver.resolveComponents(ctx, namespace, appName, reqComponents)
 }
 
-func ResolveComponentsWithSourceIndexes(ctx context.Context, appRepo repository.ApplicationRepository, componentRepo repository.ComponentRepository, namespace, appName string, reqComponents []apisv1.CreateComponentRequest) ([]apisv1.CreateComponentRequest, []int, error) {
-	resolver := &applicationsServiceImpl{AppRepo: appRepo, ComponentRepo: componentRepo}
+func ResolveComponentsWithSourceIndexes(ctx context.Context, appRepo repository.ApplicationRepository, componentRepo repository.ComponentRepository, namespace, appName string, reqComponents []apisv1.CreateComponentRequest, cfg *config.Config) ([]apisv1.CreateComponentRequest, []int, error) {
+	resolver := &applicationsServiceImpl{AppRepo: appRepo, ComponentRepo: componentRepo, Cfg: cfg}
 	return resolver.resolveComponentsWithSourceIndexes(ctx, namespace, appName, reqComponents)
 }
 

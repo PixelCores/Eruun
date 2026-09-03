@@ -1,9 +1,11 @@
 package application
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/security/access"
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	"k8s.io/klog/v2"
 )
@@ -71,9 +73,9 @@ func (c *applicationsServiceImpl) invalidateCacheKey(key string) {
 	}
 }
 
-func (c *applicationsServiceImpl) invalidateApplicationListCaches() {
-	c.invalidateCacheKey(applicationListCacheKey)
-	c.invalidateCacheKey(templateApplicationListCacheKey)
+func (c *applicationsServiceImpl) invalidateApplicationListCaches(ctx context.Context) {
+	c.invalidateCacheKey(scopedListCacheKey(ctx, applicationListCacheKey))
+	c.invalidateCacheKey(scopedListCacheKey(ctx, templateApplicationListCacheKey))
 }
 
 func (c *applicationsServiceImpl) invalidateApplicationComponentsCache(appID string) {
@@ -82,4 +84,11 @@ func (c *applicationsServiceImpl) invalidateApplicationComponentsCache(appID str
 		return
 	}
 	c.invalidateCacheKey(applicationComponentsCacheKey(appID))
+}
+
+func scopedListCacheKey(ctx context.Context, key string) string {
+	if scope, ok := access.FromContext(ctx); ok {
+		return key + ":workspace:" + scope.WorkspaceID
+	}
+	return key
 }

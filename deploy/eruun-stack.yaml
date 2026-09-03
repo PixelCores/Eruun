@@ -61,7 +61,18 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["namespaces"]
-    verbs: ["get", "create", "delete"]
+    verbs: ["get", "create", "update", "delete"]
+  # Discovery-driven empty-workspace deletion must detect namespaced CRDs too.
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["list"]
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    resourceNames: ["eruun-runner"]
+    verbs: ["impersonate"]
+  - apiGroups: [""]
+    resources: ["resourcequotas", "limitranges"]
+    verbs: ["get", "list", "create", "update"]
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch", "patch", "delete"]
@@ -404,6 +415,7 @@ metadata:
   name: eruun-flags
   namespace: eruun-system
 data:
+  ERUUN_AUTH_CONFIG_FILE: "/var/run/secrets/eruun/accounts/accounts.json"
   ERUUN_BIND_ADDR: "0.0.0.0:8000"
   ERUUN_CONTROLLER_LOCK_NAME: "eruun-controller"
   ERUUN_SCHEDULER_LOCK_NAME: "eruun-scheduler"
@@ -473,6 +485,8 @@ spec:
         app.kubernetes.io/component: api
     spec:
       serviceAccountName: eruun-api
+      securityContext:
+        fsGroup: 1000
       terminationGracePeriodSeconds: 90
       containers:
         - name: eruun-server
@@ -549,6 +563,10 @@ spec:
             periodSeconds: 20
             timeoutSeconds: 5
             failureThreshold: 3
+          volumeMounts:
+            - name: accounts
+              mountPath: /var/run/secrets/eruun/accounts
+              readOnly: true
           resources:
             requests:
               cpu: 100m
@@ -556,6 +574,14 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+      volumes:
+        - name: accounts
+          secret:
+            secretName: eruun-account-config
+            defaultMode: 0440
+            items:
+              - key: accounts.json
+                path: accounts.json
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
@@ -586,6 +612,8 @@ spec:
         app.kubernetes.io/component: controller
     spec:
       serviceAccountName: eruun-controller
+      securityContext:
+        fsGroup: 1000
       terminationGracePeriodSeconds: 90
       containers:
         - name: eruun-server
@@ -662,6 +690,10 @@ spec:
             periodSeconds: 20
             timeoutSeconds: 5
             failureThreshold: 3
+          volumeMounts:
+            - name: accounts
+              mountPath: /var/run/secrets/eruun/accounts
+              readOnly: true
           resources:
             requests:
               cpu: 100m
@@ -669,6 +701,14 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+      volumes:
+        - name: accounts
+          secret:
+            secretName: eruun-account-config
+            defaultMode: 0440
+            items:
+              - key: accounts.json
+                path: accounts.json
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
@@ -699,6 +739,8 @@ spec:
         app.kubernetes.io/component: scheduler
     spec:
       serviceAccountName: eruun-scheduler
+      securityContext:
+        fsGroup: 1000
       terminationGracePeriodSeconds: 90
       containers:
         - name: eruun-server
@@ -775,6 +817,10 @@ spec:
             periodSeconds: 20
             timeoutSeconds: 5
             failureThreshold: 3
+          volumeMounts:
+            - name: accounts
+              mountPath: /var/run/secrets/eruun/accounts
+              readOnly: true
           resources:
             requests:
               cpu: 100m
@@ -782,6 +828,14 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+      volumes:
+        - name: accounts
+          secret:
+            secretName: eruun-account-config
+            defaultMode: 0440
+            items:
+              - key: accounts.json
+                path: accounts.json
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
@@ -812,6 +866,8 @@ spec:
         app.kubernetes.io/component: worker
     spec:
       serviceAccountName: eruun-worker
+      securityContext:
+        fsGroup: 1000
       terminationGracePeriodSeconds: 90
       containers:
         - name: eruun-server
@@ -888,6 +944,10 @@ spec:
             periodSeconds: 20
             timeoutSeconds: 5
             failureThreshold: 3
+          volumeMounts:
+            - name: accounts
+              mountPath: /var/run/secrets/eruun/accounts
+              readOnly: true
           resources:
             requests:
               cpu: 100m
@@ -895,6 +955,14 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+      volumes:
+        - name: accounts
+          secret:
+            secretName: eruun-account-config
+            defaultMode: 0440
+            items:
+              - key: accounts.json
+                path: accounts.json
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname

@@ -7,8 +7,6 @@
 -- - Keeps existing user-managed values on repeated runs
 -- Included default records:
 -- - nodeSelector
--- - apiAuth
--- - oauthAuth
 -- - rbacPolicies
 -- - urlSecurityPolicy
 -- - podRestartMonitor
@@ -23,22 +21,6 @@ VALUES
       'nodeSelector', JSON_OBJECT(),
       'affinity', JSON_OBJECT(),
       'tolerations', JSON_ARRAY()
-    ),
-    NOW(),
-    NOW()
-  ),
-  (
-    'apiAuth',
-    JSON_OBJECT(
-      'enabled', FALSE
-    ),
-    NOW(),
-    NOW()
-  ),
-  (
-    'oauthAuth',
-    JSON_OBJECT(
-      'enabled', FALSE
     ),
     NOW(),
     NOW()

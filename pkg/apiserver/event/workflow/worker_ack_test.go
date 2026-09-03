@@ -347,7 +347,7 @@ func TestWorkflowRunSuppressesCallbackAfterOwnershipChanges(t *testing.T) {
 		controller.stopTaskPersistence(authoritative, false, true)
 	}
 
-	err = controller.Run(context.Background(), 1)
+	err = controller.run(context.Background(), 1)
 
 	require.NoError(t, err)
 	require.Equal(t, int32(0), atomic.LoadInt32(&callbackCount))
@@ -415,7 +415,7 @@ func TestRunWorkflowControllerRecoversTransientPersistenceFailure(t *testing.T) 
 			store.failCompareAndSwapError = errors.New("temporary database failure")
 
 			controller := newTestWorkflowController(t, store.taskSnapshot(), w.KubeClient, store)
-			err := w.runWorkflowControllerWithPersistenceRecovery(context.Background(), controller, 1)
+			err := runControllerRecoveryForTest(t, w, controller)
 
 			require.NoError(t, err)
 			task := store.taskSnapshot()
@@ -445,7 +445,7 @@ func TestRunWorkflowControllerStopsRecoveryWhenOwnershipChanges(t *testing.T) {
 	}
 
 	controller := newTestWorkflowController(t, store.taskSnapshot(), w.KubeClient, store)
-	err := w.runWorkflowControllerWithPersistenceRecovery(context.Background(), controller, 1)
+	err := runControllerRecoveryForTest(t, w, controller)
 
 	require.ErrorIs(t, err, repository.ErrWorkflowOwnershipLost)
 	task := store.taskSnapshot()
@@ -464,7 +464,7 @@ func TestWorkflowRunSkipsDeferredExitAckAfterCompletedPersistence(t *testing.T) 
 	store.failCompareAndSwapError = errors.New("unexpected redundant exit ack")
 
 	controller := newTestWorkflowController(t, store.taskSnapshot(), w.KubeClient, store)
-	err := controller.Run(context.Background(), 1)
+	err := controller.run(context.Background(), 1)
 
 	require.NoError(t, err)
 	require.Equal(t, 2, store.compareAndSwapCallsCount())
@@ -498,7 +498,7 @@ func TestWorkflowRunSendsCompletedCallbackWithoutWorkflowAck(t *testing.T) {
 
 	controller := newTestWorkflowController(t, store.taskSnapshot(), w.KubeClient, store)
 	controller.Cache = w.Cache
-	err = controller.Run(context.Background(), 1)
+	err = controller.run(context.Background(), 1)
 
 	require.NoError(t, err)
 	require.Equal(t, 2, store.compareAndSwapCallsCount())
@@ -531,7 +531,7 @@ func TestRunWorkflowControllerRecoversDeferredExitAckPersistenceFailure(t *testi
 
 	controller := newTestWorkflowController(t, store.taskSnapshot(), w.KubeClient, store)
 	controller.Cache = w.Cache
-	err = w.runWorkflowControllerWithPersistenceRecovery(context.Background(), controller, 1)
+	err = runControllerRecoveryForTest(t, w, controller)
 
 	require.Error(t, err)
 	require.NotErrorIs(t, err, errWorkflowTaskPersistenceUncertain)
@@ -574,7 +574,7 @@ func TestRunWorkflowControllerAcceptsAuthoritativeCancellationFromDeferredExitAc
 		controller.stopTaskPersistence(authoritative, false, true)
 	}
 
-	err = w.runWorkflowControllerWithPersistenceRecovery(context.Background(), controller, 1)
+	err = runControllerRecoveryForTest(t, w, controller)
 
 	require.NoError(t, err)
 	task := store.taskSnapshot()
@@ -608,7 +608,7 @@ func TestRunWorkflowControllerStopsRecoveryAtNonRunnableState(t *testing.T) {
 			}
 
 			controller := newTestWorkflowController(t, store.taskSnapshot(), w.KubeClient, store)
-			err = w.runWorkflowControllerWithPersistenceRecovery(context.Background(), controller, 1)
+			err = runControllerRecoveryForTest(t, w, controller)
 
 			require.NoError(t, err)
 			task := store.taskSnapshot()
@@ -628,11 +628,12 @@ func TestRunWorkflowControllerReportsMissingTaskDuringPersistenceRecovery(t *tes
 	store.taskGetErr = datastore.ErrRecordNotExist
 
 	controller := newTestWorkflowController(t, store.taskSnapshot(), w.KubeClient, store)
-	err := w.runWorkflowControllerWithPersistenceRecovery(context.Background(), controller, 1)
+	err := runControllerRecoveryForTest(t, w, controller)
 
 	require.ErrorIs(t, err, errWorkflowTaskPersistenceUncertain)
 	require.ErrorIs(t, err, datastore.ErrRecordNotExist)
-	require.Equal(t, 1, store.compareAndSwapCallsCount())
+	// Ownership validation detects a missing task before attempting a write.
+	require.Equal(t, 0, store.compareAndSwapCallsCount())
 }
 
 func TestProcessDispatchMessageAckOnSuccess(t *testing.T) {

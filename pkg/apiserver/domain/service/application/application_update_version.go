@@ -49,7 +49,7 @@ func (c *applicationsServiceImpl) updateVersionUnlocked(ctx context.Context, app
 		return nil, fmt.Errorf("%w: observe applications are read-only", bcode.ErrApplicationManagementMode)
 	}
 	defer func() {
-		c.invalidateApplicationListCaches()
+		c.invalidateApplicationListCaches(ctx)
 		c.invalidateApplicationComponentsCache(app.ID)
 	}()
 

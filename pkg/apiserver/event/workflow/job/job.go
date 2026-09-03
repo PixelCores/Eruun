@@ -28,6 +28,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
+	"github.com/PixelCores/Eruun/pkg/apiserver/security/access"
 	"github.com/PixelCores/Eruun/pkg/apiserver/security/importsecret"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
@@ -243,6 +244,20 @@ func RunJobs(ctx context.Context, jobs []*model.JobTask, concurrency int, client
 		return nil
 	}
 
+	if scope, ok := access.FromContext(ctx); ok {
+		for _, task := range jobs {
+			if task == nil || task.Namespace != scope.Namespace || task.AppID == "" {
+				return fmt.Errorf("job namespace does not match workspace")
+			}
+			if err := access.NewStore(store).Get(ctx, &model.Applications{ID: task.AppID}); err != nil {
+				return err
+			}
+			switch config.JobType(task.JobType) {
+			case config.JobDeployCloud, config.JobDeployServiceAccount, config.JobDeployRole, config.JobDeployRoleBinding, config.JobDeployClusterRole, config.JobDeployClusterRoleBinding, config.JobDeployNetworkPolicy:
+				return fmt.Errorf("job type %s is forbidden in workspaces", task.JobType)
+			}
+		}
+	}
 	runtime := newJobRuntime(cache, kubeConfig, urlSecurityPolicy, delayQueue, resourceWaiter, keyrings...)
 	defer runtime.close()
 

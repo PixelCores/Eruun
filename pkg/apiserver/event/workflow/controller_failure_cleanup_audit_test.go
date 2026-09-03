@@ -2,29 +2,24 @@ package workflow
 
 import (
 	"context"
-
 	"encoding/json"
 	"errors"
-
 	"net/http"
 	"net/http/httptest"
-
-	miniredis "github.com/alicebob/miniredis/v2"
-	redis "github.com/redis/go-redis/v9"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-	"k8s.io/apimachinery/pkg/runtime"
-
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	kubefake "k8s.io/client-go/kubernetes/fake"
-	k8stesting "k8s.io/client-go/testing"
-
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
+	miniredis "github.com/alicebob/miniredis/v2"
+	redis "github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/runtime"
+	kubefake "k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 func TestWorkflowRunStopsFailureCleanupWhenPersistenceStops(t *testing.T) {
@@ -137,7 +132,7 @@ func TestWorkflowRunStopsFailureCleanupWhenPersistenceStops(t *testing.T) {
 			defer redisClient.Close()
 			ctl.Cache = cacheutil.NewMemCacheWithClient(false, redisClient)
 
-			runErr := ctl.Run(context.Background(), 1)
+			runErr := ctl.run(context.Background(), 1)
 
 			if tt.expectPersistenceUncertain {
 				require.ErrorIs(t, runErr, errWorkflowTaskPersistenceUncertain)
@@ -445,7 +440,7 @@ func TestWorkflowRunFailureTerminalizesSkippedVersionUpdateCleanupJobs(t *testin
 	}
 
 	ctl := newTestWorkflowController(t, task, nil, store)
-	err = ctl.Run(context.Background(), 1)
+	err = ctl.run(context.Background(), 1)
 	require.Error(t, err)
 	require.Equal(t, config.StatusFailed, task.Status)
 

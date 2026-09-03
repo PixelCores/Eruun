@@ -14,6 +14,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -30,6 +31,7 @@ type APIServer interface {
 }
 
 type restServer struct {
+	accounts                  *account.Service
 	webContainer              *gin.Engine
 	beanContainer             *container.Container
 	cfg                       config.Config

@@ -9,9 +9,12 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	"github.com/PixelCores/Eruun/pkg/apiserver/security/access"
 	"github.com/PixelCores/Eruun/pkg/apiserver/security/urlpolicy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
@@ -162,7 +165,7 @@ func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.C
 				Message: "template repositories are required to validate template components",
 			})
 		} else {
-			components, sourceIndexes, err := applicationservice.ResolveComponentsWithSourceIndexes(ctx, v.AppRepo, v.ComponentRepo, applicationservice.ServiceNamespaceOrDefault(effectiveReq.Namespace), effectiveReq.Name, effectiveReq.Component)
+			components, sourceIndexes, err := applicationservice.ResolveComponentsWithSourceIndexes(ctx, v.AppRepo, v.ComponentRepo, applicationservice.ServiceNamespaceOrDefault(effectiveReq.Namespace), effectiveReq.Name, effectiveReq.Component, v.Cfg)
 			if err != nil {
 				componentsResolved = false
 				errors = append(errors, apisv1.ValidationError{
@@ -187,6 +190,17 @@ func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.C
 				fieldIndex = resolvedComponentSourceIndexes[i]
 			}
 			fieldPrefix := fmt.Sprintf("component[%d]", fieldIndex)
+			if scope, ok := access.FromContext(ctx); ok {
+				var err error
+				if v.Cfg == nil || v.Cfg.Accounts == nil || comp.ComponentType == config.CloudJob || (comp.Namespace != "" && comp.Namespace != scope.Namespace) {
+					err = bcode.ErrForbidden
+				} else {
+					err = workspace.ValidateTraits(scope.Namespace, comp.Name, &comp.Traits, &comp.Properties, v.Cfg.Accounts.Workspace)
+				}
+				if err != nil {
+					errors = append(errors, apisv1.ValidationError{Field: fieldPrefix, Code: apisv1.ErrCodeInvalidTraitConfig, Message: err.Error()})
+				}
+			}
 			errors = append(errors, v.validateComponent(comp, fieldPrefix, componentNames)...)
 		}
 
@@ -234,6 +248,12 @@ func applicationCallbackValidationField(req apisv1.CreateApplicationsRequest) st
 
 func (v *validationServiceImpl) effectiveTryApplicationRequest(ctx context.Context, req apisv1.CreateApplicationsRequest) (apisv1.CreateApplicationsRequest, error) {
 	effective := req
+	if scope, ok := access.FromContext(ctx); ok {
+		if effective.Namespace != "" && effective.Namespace != scope.Namespace {
+			return effective, bcode.ErrForbidden
+		}
+		effective.Namespace = scope.Namespace
+	}
 	appID := strings.TrimSpace(req.ID)
 	if appID == "" {
 		return effective, nil
