@@ -2,6 +2,8 @@
 
 > 状态：Current。Eruun 后端新账号契约，按新建开发数据库验收。旧 JWT/动态路由授权配置及未启用的登录实现已移除；不迁移旧身份、空间或资源归属，也不自动清空现有数据库。
 
+接入时先看 [逐步 API 示例](../examples/account-auth-workspaces/README.md)：包含可复制的 curl 请求、GitHub/Google 浏览器回调，以及团队邀请到资源访问的完整流程。本文作为接口、响应字段和部署要求的参考。
+
 ## 部署与配置
 
 全部运行角色从 `--auth-config-file` / `ERUUN_AUTH_CONFIG_FILE` 读取同一份严格 JSON 配置，示例为 [`deploy/accounts.example.json`](../deploy/accounts.example.json)。复制到仓库外的私密文件，权限设为 `0600`，填写真实值后再部署。配置不通过系统设置 API 读取或修改，变更后滚动重启所有角色。未知字段、占位凭据、无效 Origin、缺少集群网络配置会使启动失败。MySQL 与 Redis 是必需依赖，Redis 同时承担验证码、OAuth state 和限流；Kafka 不能替代它。
@@ -65,6 +67,28 @@ GitHub/Google 使用授权码、PKCE S256、随机 state、浏览器绑定。Goo
 
 ## 浏览器接入
 
+### 响应字段
+
+账号与空间接口成功时均为 HTTP `200`，响应为 `{"code":0,"message":"","data":...}`，创建和删除也使用该封装。错误时根据 HTTP status 和业务 `code` 处理，不能只检查是否收到 JSON。
+
+| 接口 | 成功响应的 `data` |
+| --- | --- |
+| `GET /auth/methods` | `{password,email,phone,github,google}`，均为布尔值；email/phone 表示验证码投递渠道是否配置，password 不表示当前用户已经设置密码 |
+| 注册、登录、刷新、OAuth 登录回调 | `{accessToken,tokenType,expiresIn,user}`；`expiresIn` 单位为秒，refresh token 仅通过 Cookie 交付 |
+| `GET /auth/me` | `{user,workspaces:[{workspace,role}]}` |
+| `GET /auth/identities` | `[{id,provider,subject,...}]`；subject 为邮箱、`+86` 手机号、GitHub 数字 ID 字符串或 Google sub |
+| `GET /workspaces` | `[{workspace,role}]`，不是直接的 Workspace 数组 |
+| `GET /workspaces/:workspaceID` | `{workspace,role}` |
+| 创建团队、接受邀请 | Workspace 对象，ID 取 `data.id` |
+| `GET /workspaces/:workspaceID/members` | `[{id,workspaceId,userId,role,...}]`；成员操作路径取 `userId`，不是成员关系的 `id` |
+| 创建/重发邀请 | `{id,workspaceId,email,role,expiresAt,...}`；不返回邀请 token，token 只在发给目标邮箱的链接中 |
+| `GET /admin/users` | User 数组；使用 page/pageSize 翻页，不包含 total 字段 |
+| 发验证码、改密/重置密码、绑定/解绑、登出、修改/删除团队、成员操作、转移、撤销邀请、停用用户 | `null`；OAuth 绑定成功回调也为 `null`，保留原会话，不返回新的登录结果 |
+
+User 的业务字段为 `id/name/systemAdmin/disabled/mustChangePassword`；Workspace 为 `id/name/kind/ownerId/namespace`，kind 为 `personal` 或 `team`。模型响应还包含创建/更新时间。注意应用 DTO 使用 `workspaceID`，成员和邀请使用 `workspaceId`，所有者为 `ownerId`，转移请求为 `userId`，大小写必须按各接口契约填写。
+
+### 会话与 OAuth
+
 前端与 API 按同站 HTTPS 部署（例如 console.example.com / api.example.com）。跨源请求使用 `credentials: 'include'`。浏览器只把 access token 保存在内存，每次业务请求加 Bearer 和选中的空间 ID；页面刷新后通过 refresh Cookie 获取新 access token。不要把令牌放入 URL、localStorage、分析事件或客户端错误日志。服务端返回 `Cache-Control: no-store`；入口和 APM 也应禁用认证请求体及 Authorization/Cookie 的记录。
 
 ```js
@@ -82,6 +106,8 @@ await fetch('https://api.example.com/api/v1/applications', {
 ```
 
 OAuth 前端先 POST start，再导航到 authorizationURL。回调页从当前 URL 读取 code/state（或 error），立即用 `history.replaceState` 移除查询参数，再向后端 callback POST；请求保留 Cookie，绑定身份时还保留当前 Bearer。后端只返回本地 access token，不把令牌重定向到 URL。刷新需串行化，同一旧 refresh 只有一个请求成功；刷新失败需重新登录。所有 `/auth/*` 非 GET 请求必须有配置允许的 Origin，CLI 也需显式发送 Origin。
+
+调用公开登录/刷新接口时省略 Authorization，避免已过期的 Bearer 先被中间件拒绝。OAuth 绑定要求 start 与 callback 使用同一个本地会话；整页跳转后可先通过 refresh 恢复该会话的 access token，再提交 callback。刷新保持会话 ID 和原始认证时间，不能代替近期登录；若中途重新登录或超过 5 分钟，应重新发起绑定流程。
 
 邀请落地页读取 `#invitation=...` 后清除 fragment，注册/登录并验证目标邮箱，最后提交接受接口；fragment 不发送到 HTTP 服务器日志。邀请链接也是凭据，应只在内存保存。
 

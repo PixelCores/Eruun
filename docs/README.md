@@ -79,6 +79,7 @@
 | --- | --- | --- |
 | `distributed-runtime-hardening-merge-guide.md` | Current | 已合并的 7 个分布式运行时加固 PR、实现边界、合并记录与待完成的真实集群验收清单 |
 | `account-auth-workspaces.md` | Current | GitHub/Google、邮箱/手机号登录、会话、团队权限、延迟任务隔离与失败收尾、重复部署幂等性、前端与部署接入 |
+| [`../examples/account-auth-workspaces/README.md`](../examples/account-auth-workspaces/README.md) | Current | 账号与团队 API 实操：curl 注册/登录/刷新、OAuth 浏览器回调、身份绑定、邀请和空间资源访问 |
 | `api-error-response-contract.md` | Current | API 统一错误响应与通用错误脱敏契约 |
 | `system-setting.md` | Current | 系统设置类型、API 与默认初始化 |
 | `settings-page-api.md` | Current | 前端设置页字段归属、请求参数与保存策略 |
