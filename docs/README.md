@@ -30,6 +30,7 @@
 
 - API 前缀：`/api/v1`。
 - 服务进程默认监听：`127.0.0.1:8000`；`deploy/eruun-stack.yaml` 会通过 `ERUUN_BIND_ADDR=0.0.0.0:8000` 暴露集群内服务。
+- MySQL 默认 DSN 是 `127.0.0.1:3306/eruun` 的本地连接模板，必须替换密码占位符；Kafka 默认 Broker 为 `localhost:9092`，消息后端仍默认 Redis。字段与覆盖方式见 [`config/apiserver-default.yaml`](../config/apiserver-default.yaml) 和 [Kafka 配置说明](kafka-queue-implementation.md#4-配置说明)。
 - 服务端角色通过 `--role` / `ERUUN_ROLE` 显式选择 `api/controller/scheduler/worker`；直接运行默认是 `api`，不存在聚合 `all` 角色。
 - Workflow 固定使用 v2 generation/token ownership 与数据库执行租约，Worker 不再获取 Redis 执行锁；不存在关闭 fencing 或处理 v1 dispatch 的运行模式。
 - 顶层 `/workflow`、`/workflow/exec`、`/workflow/cancel` 路由不再注册；应用维度 workflow API 是当前主路径。

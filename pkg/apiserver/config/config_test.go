@@ -213,10 +213,78 @@ func TestValidateRuntimeLeaderLockNames(t *testing.T) {
 	}
 }
 
-func TestNewConfigHasNoDefaultDatastoreURL(t *testing.T) {
+func TestNewConfigHasMySQLAndKafkaDefaults(t *testing.T) {
 	cfg := NewConfig()
 	require.Equal(t, MYSQL, cfg.Datastore.Type)
-	require.Empty(t, strings.TrimSpace(cfg.Datastore.URL))
+	require.Equal(t, "eruun", cfg.Datastore.Database)
+	require.Equal(t, "eruun:__REPLACE_WITH_MYSQL_PASSWORD__@tcp(127.0.0.1:3306)/eruun?charset=utf8mb4&parseTime=true", cfg.Datastore.URL)
+	require.Equal(t, REDIS, cfg.Messaging.Type)
+	require.Equal(t, []string{"localhost:9092"}, cfg.Messaging.KafkaBrokers)
+	require.Equal(t, "eruun-workflow-workers", cfg.Messaging.KafkaGroupID)
+	require.Equal(t, "earliest", cfg.Messaging.KafkaAutoOffsetReset)
+
+	flags := pflag.NewFlagSet("connection-defaults", pflag.ContinueOnError)
+	cfg.AddFlags(flags, cfg)
+	require.Equal(t, cfg.Datastore.URL, flags.Lookup("datastore-url").DefValue)
+	require.Equal(t, "[localhost:9092]", flags.Lookup("msg-kafka-brokers").DefValue)
+	require.Equal(t, cfg.Messaging.KafkaGroupID, flags.Lookup("msg-kafka-group-id").DefValue)
+	require.Equal(t, cfg.Messaging.KafkaAutoOffsetReset, flags.Lookup("msg-kafka-offset-reset").DefValue)
+
+	for _, mode := range []string{DatastoreSchemaModeMigrate, DatastoreSchemaModeValidate, DatastoreSchemaModeMigrateOnly} {
+		t.Run(mode, func(t *testing.T) {
+			cfg.DatastoreSchemaMode = mode
+			require.Contains(t, errorsJoin(cfg.Validate()), "mysql url contains placeholder value")
+		})
+	}
+}
+
+func TestConnectionConfigFlagAndEnvironmentOverrides(t *testing.T) {
+	const envDSN = "eruun:test-env@tcp(mysql-env.example:3306)/eruun?parseTime=true"
+	const cliDSN = "eruun:test-cli@tcp(mysql-cli.example:3307)/eruun?parseTime=true"
+	for _, tc := range []struct {
+		name    string
+		args    []string
+		dsn     string
+		brokers []string
+		group   string
+		offset  string
+	}{
+		{
+			name: "environment overrides defaults", dsn: envDSN,
+			brokers: []string{"kafka-env-1.example:9092", "kafka-env-2.example:9092"},
+			group:   "env-workers", offset: "latest",
+		},
+		{
+			name: "flags override environment",
+			args: []string{
+				"--datastore-url=" + cliDSN,
+				"--msg-kafka-brokers=kafka-cli.example:9093",
+				"--msg-kafka-group-id=cli-workers",
+				"--msg-kafka-offset-reset=earliest",
+			},
+			dsn: cliDSN, brokers: []string{"kafka-cli.example:9093"},
+			group: "cli-workers", offset: "earliest",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := NewConfig()
+			flags := pflag.NewFlagSet("connection-overrides", pflag.ContinueOnError)
+			cfg.AddFlags(flags, cfg)
+			t.Setenv("ERUUN_DATASTORE_URL", envDSN)
+			t.Setenv("ERUUN_MSG_KAFKA_BROKERS", "kafka-env-1.example:9092,kafka-env-2.example:9092")
+			t.Setenv("ERUUN_MSG_KAFKA_GROUP_ID", "env-workers")
+			t.Setenv("ERUUN_MSG_KAFKA_OFFSET_RESET", "latest")
+			require.NoError(t, flags.Parse(tc.args))
+			require.NoError(t, ApplyEnvOverrides(flags, EnvPrefix))
+
+			require.Equal(t, tc.dsn, cfg.Datastore.URL)
+			require.Equal(t, tc.brokers, cfg.Messaging.KafkaBrokers)
+			require.Equal(t, tc.group, cfg.Messaging.KafkaGroupID)
+			require.Equal(t, tc.offset, cfg.Messaging.KafkaAutoOffsetReset)
+			cfg.Messaging.Type = KAFKA
+			require.Empty(t, cfg.Validate())
+		})
+	}
 }
 
 func TestValidateImportSecretKeyring(t *testing.T) {
@@ -404,7 +472,19 @@ func TestValidateKafkaTopicAutoCreateConfig(t *testing.T) {
 	base := NewConfig()
 	base.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
 	base.Messaging.Type = "kafka"
-	base.Messaging.KafkaBrokers = []string{"127.0.0.1:9092"}
+
+	t.Run("valid_defaults", func(t *testing.T) {
+		require.Empty(t, base.Validate())
+	})
+
+	t.Run("explicit_empty_brokers", func(t *testing.T) {
+		cfg := *base
+		flags := pflag.NewFlagSet("empty-kafka-brokers", pflag.ContinueOnError)
+		cfg.AddFlags(flags, &cfg)
+		require.NoError(t, flags.Parse([]string{"--msg-kafka-brokers="}))
+		require.Empty(t, cfg.Messaging.KafkaBrokers)
+		require.Contains(t, errorsJoin(cfg.Validate()), "kafka brokers cannot be empty")
+	})
 
 	t.Run("invalid_partitions", func(t *testing.T) {
 		cfg := *base

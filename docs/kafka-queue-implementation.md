@@ -172,11 +172,13 @@ type MessagingConfig struct {
 |------|------|--------|
 | `--msg-type` | 消息队列类型 | `redis` |
 | `--msg-channel-prefix` | 消息通道前缀；为空时运行时使用 `eruun` | 空 |
-| `--msg-kafka-brokers` | Kafka Broker 地址列表 | - |
+| `--msg-kafka-brokers` | Kafka Broker 地址列表 | `localhost:9092` |
 | `--msg-kafka-group-id` | Consumer Group ID | `eruun-workflow-workers` |
 | `--msg-kafka-offset-reset` | Offset 重置策略 | `earliest` |
 | `--msg-kafka-topic-partitions` | 自动创建 Topic 分区数 | `1` |
 | `--msg-kafka-topic-replication-factor` | 自动创建 Topic 副本数 | `1` |
+
+Kafka Broker、消费组和 Offset 策略的默认值由 `NewConfig()` 显式提供，并展示在 `--help` 中。配置优先级为命令行参数 > `ERUUN_` 环境变量 > 默认值；默认消息后端仍为 Redis，只有设置 `--msg-type=kafka` 才会启用 Kafka。`localhost:9092` 仅用于本地连接，集群部署时应通过 `--msg-kafka-brokers` / `ERUUN_MSG_KAFKA_BROKERS` 指定可达的 Broker 地址；显式清空列表仍会校验失败。
 
 ### 4.3 配置示例
 

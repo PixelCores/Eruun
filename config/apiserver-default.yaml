@@ -8,6 +8,26 @@
 # Flag --auth-config-file, environment ERUUN_AUTH_CONFIG_FILE.
 authConfigFile: /var/run/secrets/eruun/accounts/accounts.json
 
+# Local MySQL connection template. Replace the password placeholder via
+# --datastore-url / ERUUN_DATASTORE_URL; startup rejects unchanged placeholders.
+datastore:
+  type: mysql
+  database: eruun
+  url: "eruun:__REPLACE_WITH_MYSQL_PASSWORD__@tcp(127.0.0.1:3306)/eruun?charset=utf8mb4&parseTime=true"
+
+# Kafka defaults apply only when --msg-type / ERUUN_MSG_TYPE is kafka.
+# Flags/env override these local defaults; deployment broker addresses must be explicit.
+messaging:
+  type: redis
+  # --msg-kafka-brokers / ERUUN_MSG_KAFKA_BROKERS (comma-separated)
+  kafkaBrokers: ["localhost:9092"]
+  # --msg-kafka-group-id / ERUUN_MSG_KAFKA_GROUP_ID
+  kafkaGroupID: eruun-workflow-workers
+  # --msg-kafka-offset-reset / ERUUN_MSG_KAFKA_OFFSET_RESET
+  kafkaAutoOffsetReset: earliest
+  kafkaTopicPartitions: 1
+  kafkaTopicReplicationFactor: 1
+
 workflow:
   # Maximum timeout for workflow callback requests.
   # Values above this limit are capped to avoid duration overflow.

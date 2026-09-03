@@ -165,8 +165,8 @@ func NewConfig() *Config {
 		Datastore: datastore.Config{
 			Type:     MYSQL,
 			Database: DBNAME_ERUUN,
-			// Must be provided via --datastore-url or ERUUN_DATASTORE_URL.
-			URL:             "",
+			// Local connection template; replace the password via --datastore-url or ERUUN_DATASTORE_URL.
+			URL:             "eruun:__REPLACE_WITH_MYSQL_PASSWORD__@tcp(127.0.0.1:3306)/eruun?charset=utf8mb4&parseTime=true",
 			MaxIdleConns:    10,
 			MaxOpenConns:    100,
 			ConnMaxLifetime: 30 * time.Minute,
@@ -197,6 +197,9 @@ func NewConfig() *Config {
 		Messaging: MessagingConfig{
 			Type:                        REDIS,
 			RedisStreamMaxLen:           50000,
+			KafkaBrokers:                []string{"localhost:9092"},
+			KafkaGroupID:                "eruun-workflow-workers",
+			KafkaAutoOffsetReset:        "earliest",
 			KafkaTopicPartitions:        1,
 			KafkaTopicReplicationFactor: 1,
 		},
@@ -329,7 +332,7 @@ func (c *Config) AddFlags(fs *pflag.FlagSet, configParameter *Config) {
 	fs.IntVar(&c.KubeBurst, "kube-api-burst", configParameter.KubeBurst, "the burst for kube clients. Recommend setting it qps*3.")
 	fs.BoolVar(&c.ExitOnLostLeader, "exit-on-lost-leader", configParameter.ExitOnLostLeader, "exit the process if this server lost the leader election")
 	fs.StringVar(&c.Datastore.Type, "datastore-type", configParameter.Datastore.Type, "datastore backend type (e.g., mysql, tidb)")
-	fs.StringVar(&c.Datastore.URL, "datastore-url", configParameter.Datastore.URL, "datastore connection URL / DSN")
+	fs.StringVar(&c.Datastore.URL, "datastore-url", configParameter.Datastore.URL, "datastore connection URL / DSN (replace the default password placeholder before starting)")
 	fs.StringVar(&c.Datastore.Database, "datastore-database", configParameter.Datastore.Database, "datastore database/schema name")
 	fs.StringVar(&c.DatastoreSchemaMode, "datastore-schema-mode", configParameter.DatastoreSchemaMode, "datastore schema handling: migrate|validate|migrate-only")
 	fs.IntVar(&c.Datastore.MaxIdleConns, "mysql-max-idle-conns", configParameter.Datastore.MaxIdleConns, "maximum number of idle MySQL connections to retain in the pool")
@@ -345,8 +348,8 @@ func (c *Config) AddFlags(fs *pflag.FlagSet, configParameter *Config) {
 	fs.Int64Var(&c.Messaging.RedisStreamMaxLen, "msg-redis-maxlen", configParameter.Messaging.RedisStreamMaxLen, "redis streams XADD MAXLEN cap (<=0 to disable)")
 	// kafka-specific flags
 	fs.StringSliceVar(&c.Messaging.KafkaBrokers, "msg-kafka-brokers", configParameter.Messaging.KafkaBrokers, "kafka broker addresses (e.g., localhost:9092)")
-	fs.StringVar(&c.Messaging.KafkaGroupID, "msg-kafka-group-id", configParameter.Messaging.KafkaGroupID, "kafka consumer group ID (default: eruun-workflow-workers)")
-	fs.StringVar(&c.Messaging.KafkaAutoOffsetReset, "msg-kafka-offset-reset", configParameter.Messaging.KafkaAutoOffsetReset, "kafka auto offset reset strategy: earliest|latest (default: earliest)")
+	fs.StringVar(&c.Messaging.KafkaGroupID, "msg-kafka-group-id", configParameter.Messaging.KafkaGroupID, "kafka consumer group ID")
+	fs.StringVar(&c.Messaging.KafkaAutoOffsetReset, "msg-kafka-offset-reset", configParameter.Messaging.KafkaAutoOffsetReset, "kafka auto offset reset strategy: earliest|latest")
 	fs.IntVar(&c.Messaging.KafkaTopicPartitions, "msg-kafka-topic-partitions", configParameter.Messaging.KafkaTopicPartitions, "kafka topic partitions for auto-created topics (must be > 0)")
 	fs.IntVar(&c.Messaging.KafkaTopicReplicationFactor, "msg-kafka-topic-replication-factor", configParameter.Messaging.KafkaTopicReplicationFactor, "kafka topic replication factor for auto-created topics (must be > 0)")
 	// cache-specific flags
