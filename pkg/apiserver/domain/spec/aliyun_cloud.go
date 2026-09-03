@@ -1,7 +1,7 @@
 package spec
 
 const (
-	AliyunCloudSecretMaskedValue = APIAuthSecretMaskedValue
+	AliyunCloudSecretMaskedValue = "******"
 )
 
 // AliyunCloudSettingSpec defines credentials and topology defaults for aliyun cloudjob.

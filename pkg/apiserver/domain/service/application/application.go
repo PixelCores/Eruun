@@ -19,6 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	assembler "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/assembler/v1"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	"github.com/PixelCores/Eruun/pkg/apiserver/security/access"
 	"github.com/PixelCores/Eruun/pkg/apiserver/security/urlpolicy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -161,6 +162,12 @@ func (c *applicationsServiceImpl) createApplicationsWithScheduleLock(
 	mutation ApplicationCreateMutation,
 	operation string,
 ) (*apisv1.ApplicationBase, error) {
+	if scope, ok := access.FromContext(ctx); ok {
+		if req.Namespace != "" && req.Namespace != scope.Namespace {
+			return nil, bcode.ErrForbidden
+		}
+		req.Namespace = scope.Namespace
+	}
 	var err error
 	req, err = c.resolveCreateApplicationReplacement(ctx, req)
 	if err != nil {
@@ -294,8 +301,8 @@ func (c *applicationsServiceImpl) createApplications(
 	if application.Namespace == "" {
 		application.Namespace = config.DefaultNamespace
 	}
-	if err := c.ensureApplicationNamespace(ctx, application); err != nil {
-		return nil, err
+	if scope, ok := access.FromContext(ctx); ok {
+		application.WorkspaceID = scope.WorkspaceID
 	}
 
 	callbackSelection, err := c.resolveCreateApplicationCallback(ctx, req)
@@ -449,7 +456,7 @@ func (c *applicationsServiceImpl) createApplications(
 
 	base := assembler.ConvertAppModelToBase(application, workflow.ID)
 	base.Resources = summarizeApplicationResourcesFromCreateComponents(resolvedComponents)
-	c.invalidateApplicationListCaches()
+	c.invalidateApplicationListCaches(ctx)
 	c.invalidateApplicationComponentsCache(application.ID)
 	return base, nil
 }
@@ -1189,7 +1196,7 @@ func (c *applicationsServiceImpl) updateApplicationWorkflowLocked(ctx context.Co
 			}
 		}
 	}
-	c.invalidateApplicationListCaches()
+	c.invalidateApplicationListCaches(ctx)
 	return &apisv1.UpdateWorkflowResponse{WorkflowID: target.ID}, nil
 }
 

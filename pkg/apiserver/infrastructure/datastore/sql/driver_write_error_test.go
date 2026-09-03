@@ -1,7 +1,10 @@
 package sql
 
 import (
+	"bytes"
+	"context"
 	"errors"
+	"log"
 	"testing"
 	"time"
 
@@ -9,11 +12,31 @@ import (
 	mysqlgorm "gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"gorm.io/gorm/logger"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
 )
+
+func TestAccountMySQLLockAndIdentityStorageContracts(t *testing.T) {
+	var output bytes.Buffer
+	db, err := gorm.Open(mysqlgorm.New(mysqlgorm.Config{
+		DSN:                       "gorm:gorm@tcp(127.0.0.1:9910)/gorm?charset=utf8mb4&parseTime=True",
+		SkipInitializeWithVersion: true,
+	}), &gorm.Config{
+		DryRun: true, DisableAutomaticPing: true, SkipDefaultTransaction: true,
+		NamingStrategy: sqlnamer.SQLNamer{},
+		Logger:         logger.New(log.New(&output, "", 0), logger.Config{LogLevel: logger.Info}),
+	})
+	require.NoError(t, err)
+	store := &Driver{Client: *db}
+	require.NoError(t, store.GetForUpdate(context.Background(), &model.User{ID: "account"}))
+	require.Contains(t, output.String(), "FOR UPDATE")
+	statement := &gorm.Statement{DB: db}
+	require.NoError(t, statement.Parse(&model.Identity{}))
+	require.Equal(t, "varbinary(255)", db.Dialector.DataTypeOf(statement.Schema.LookUpField("Subject")))
+}
 
 func TestNormalizeWriteError(t *testing.T) {
 	t.Run("duplicate key maps to record exists", func(t *testing.T) {

@@ -217,3 +217,15 @@ type DatabaseClock interface {
 type Transactional interface {
 	WithTransaction(ctx context.Context, fn func(tx DataStore) error) error
 }
+
+// ReadCommittedTransactional supports fresh reads after acquiring account row
+// locks, even when a transaction performed an earlier identity lookup.
+type ReadCommittedTransactional interface {
+	WithReadCommittedTransaction(ctx context.Context, fn func(tx DataStore) error) error
+}
+
+// RowLocker reads the current row while holding an exclusive lock until commit.
+// It must be used on a datastore supplied by a transaction.
+type RowLocker interface {
+	GetForUpdate(context.Context, Entity) error
+}

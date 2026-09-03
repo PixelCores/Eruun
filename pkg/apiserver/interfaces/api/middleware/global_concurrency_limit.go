@@ -29,7 +29,7 @@ func GlobalConcurrencyLimit(opts GlobalConcurrencyLimitOptions) gin.HandlerFunc 
 		if fullPath == "" && c.Request != nil && c.Request.URL != nil {
 			fullPath = strings.TrimSpace(c.Request.URL.Path)
 		}
-		if shouldSkipAuthPath(fullPath, skipPathSet) {
+		if pathInSet(fullPath, skipPathSet) {
 			c.Next()
 			return
 		}

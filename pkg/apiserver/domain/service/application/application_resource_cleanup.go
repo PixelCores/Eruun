@@ -70,7 +70,7 @@ func (c *applicationsServiceImpl) cleanupApplicationResourcesUnlocked(
 		}
 	}
 	defer func() {
-		c.invalidateApplicationListCaches()
+		c.invalidateApplicationListCaches(ctx)
 		c.invalidateApplicationComponentsCache(app.ID)
 	}()
 	startTime := time.Now().Unix()

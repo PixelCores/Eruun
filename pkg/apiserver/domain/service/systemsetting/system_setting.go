@@ -18,19 +18,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
-const apiAuthSecretMaskedValue = spec.APIAuthSecretMaskedValue
-const oauthClientSecretMaskedValue = spec.OAuthClientSecretMaskedValue
-
-var supportedAuthorizationHTTPMethods = map[string]struct{}{
-	"GET":     {},
-	"POST":    {},
-	"PUT":     {},
-	"PATCH":   {},
-	"DELETE":  {},
-	"HEAD":    {},
-	"OPTIONS": {},
-}
-
 var builtinSystemSettingSupports = map[string]wfcloudcontract.CloudProviderSettingSupport{
 	model.SystemSettingTypeAliyunCloud: wfaliyun.NewProvider(),
 }
@@ -54,26 +41,6 @@ var builtinSystemSettingCodecs = map[string]systemSettingCodec{
 		accept:    isJSONArray,
 		normalize: normalizeRawSystemSettingValue,
 	},
-	model.SystemSettingTypeAPIAuth: {
-		accept:    isJSONObject,
-		normalize: normalizeAPIAuthSettingValue,
-		sanitize: func(value json.RawMessage) json.RawMessage {
-			return sanitizeJSONObjectValue(value, jsonFieldMask{
-				path:        []string{"jwt", "hs256", "secret"},
-				replacement: apiAuthSecretMaskedValue,
-			})
-		},
-	},
-	model.SystemSettingTypeOAuthAuth: {
-		accept:    isJSONObject,
-		normalize: normalizeOAuthAuthSettingValue,
-		sanitize: func(value json.RawMessage) json.RawMessage {
-			return sanitizeJSONObjectValue(value, jsonFieldMask{
-				path:        []string{"providers", "google", "clientSecret"},
-				replacement: oauthClientSecretMaskedValue,
-			})
-		},
-	},
 	model.SystemSettingTypeURLSecurityPolicy: {
 		accept:    isJSONObject,
 		normalize: normalizeURLSecurityPolicySettingValue,
@@ -91,10 +58,6 @@ type SystemSettingService interface {
 	Delete(ctx context.Context, settingType string) error
 	Get(ctx context.Context, settingType string) (*apisv1.SystemSetting, error)
 	List(ctx context.Context) ([]*apisv1.SystemSetting, error)
-	GetAPIAuthorization(ctx context.Context) (*apisv1.APIAuthorizationPolicy, error)
-	UpsertAPIAuthorizationRoute(ctx context.Context, req apisv1.UpsertAPIAuthorizationRouteRequest) (*apisv1.APIAuthorizationPolicy, error)
-	DeleteAPIAuthorizationRoute(ctx context.Context, method, path string) (*apisv1.APIAuthorizationPolicy, error)
-	UpdateAPIAuthorizationDefaultEffect(ctx context.Context, req apisv1.UpdateAPIAuthorizationDefaultEffectRequest) (*apisv1.APIAuthorizationPolicy, error)
 }
 
 type systemSettingServiceImpl struct {
@@ -216,184 +179,6 @@ func (s *systemSettingServiceImpl) List(ctx context.Context) ([]*apisv1.SystemSe
 	return out, nil
 }
 
-func (s *systemSettingServiceImpl) GetAPIAuthorization(ctx context.Context) (*apisv1.APIAuthorizationPolicy, error) {
-	_, cfg, err := s.loadAPIAuthSetting(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return toAPIAuthorizationPolicyDTO(cfg.Authorization), nil
-}
-
-func (s *systemSettingServiceImpl) UpsertAPIAuthorizationRoute(ctx context.Context, req apisv1.UpsertAPIAuthorizationRouteRequest) (*apisv1.APIAuthorizationPolicy, error) {
-	setting, cfg, err := s.loadAPIAuthSetting(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	route := normalizeAuthorizationRoute(spec.APIAuthRouteRuleSpec{
-		Method: req.Method,
-		Path:   req.Path,
-		Roles:  req.Roles,
-	})
-	if err := validateAuthorizationRoute(route); err != nil {
-		return nil, bcode.ErrSystemSettingValueInvalid
-	}
-
-	updated := false
-	for i := range cfg.Authorization.Routes {
-		existing := normalizeAuthorizationRoute(cfg.Authorization.Routes[i])
-		if existing.Method == route.Method && existing.Path == route.Path {
-			cfg.Authorization.Routes[i] = route
-			updated = true
-			break
-		}
-	}
-	if !updated {
-		cfg.Authorization.Routes = append(cfg.Authorization.Routes, route)
-	}
-
-	return s.persistAPIAuthSetting(ctx, setting, cfg)
-}
-
-func (s *systemSettingServiceImpl) DeleteAPIAuthorizationRoute(ctx context.Context, method, path string) (*apisv1.APIAuthorizationPolicy, error) {
-	setting, cfg, err := s.loadAPIAuthSetting(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	method = strings.ToUpper(strings.TrimSpace(method))
-	path = strings.TrimSpace(path)
-	if method == "" || path == "" {
-		return nil, bcode.ErrSystemSettingValueInvalid
-	}
-	if _, ok := supportedAuthorizationHTTPMethods[method]; !ok {
-		return nil, bcode.ErrSystemSettingValueInvalid
-	}
-	if !strings.HasPrefix(path, "/") {
-		return nil, bcode.ErrSystemSettingValueInvalid
-	}
-
-	routes := make([]spec.APIAuthRouteRuleSpec, 0, len(cfg.Authorization.Routes))
-	for _, route := range cfg.Authorization.Routes {
-		normalized := normalizeAuthorizationRoute(route)
-		if normalized.Method == method && normalized.Path == path {
-			continue
-		}
-		routes = append(routes, normalized)
-	}
-	cfg.Authorization.Routes = routes
-
-	return s.persistAPIAuthSetting(ctx, setting, cfg)
-}
-
-func (s *systemSettingServiceImpl) UpdateAPIAuthorizationDefaultEffect(ctx context.Context, req apisv1.UpdateAPIAuthorizationDefaultEffectRequest) (*apisv1.APIAuthorizationPolicy, error) {
-	setting, cfg, err := s.loadAPIAuthSetting(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	defaultEffect := strings.ToLower(strings.TrimSpace(req.DefaultEffect))
-	if !isValidDefaultEffect(defaultEffect) {
-		return nil, bcode.ErrSystemSettingValueInvalid
-	}
-	cfg.Authorization.DefaultEffect = defaultEffect
-
-	return s.persistAPIAuthSetting(ctx, setting, cfg)
-}
-
-func (s *systemSettingServiceImpl) loadAPIAuthSetting(ctx context.Context) (*model.SystemSetting, *spec.APIAuthSettingSpec, error) {
-	setting, err := s.SettingRepo.FindByType(ctx, model.SystemSettingTypeAPIAuth)
-	if err != nil {
-		if err == datastore.ErrRecordNotExist {
-			return nil, nil, bcode.ErrSystemSettingNotFound
-		}
-		return nil, nil, err
-	}
-
-	var cfg spec.APIAuthSettingSpec
-	if err := json.Unmarshal(setting.Value, &cfg); err != nil {
-		return nil, nil, bcode.ErrSystemSettingValueInvalid
-	}
-	normalized := spec.NormalizeAPIAuthSetting(cfg)
-	return setting, &normalized, nil
-}
-
-func (s *systemSettingServiceImpl) persistAPIAuthSetting(ctx context.Context, setting *model.SystemSetting, cfg *spec.APIAuthSettingSpec) (*apisv1.APIAuthorizationPolicy, error) {
-	if setting == nil || cfg == nil {
-		return nil, bcode.ErrSystemSettingValueInvalid
-	}
-
-	normalized := spec.NormalizeAPIAuthSetting(*cfg)
-	if err := spec.ValidateAPIAuthSetting(normalized); err != nil {
-		return nil, bcode.ErrSystemSettingValueInvalid
-	}
-
-	value, err := json.Marshal(normalized)
-	if err != nil {
-		return nil, bcode.ErrSystemSettingValueInvalid
-	}
-	setting.Value = json.RawMessage(value)
-	if err := s.SettingRepo.Update(ctx, setting); err != nil {
-		if err == datastore.ErrRecordNotExist {
-			return nil, bcode.ErrSystemSettingNotFound
-		}
-		return nil, err
-	}
-	return toAPIAuthorizationPolicyDTO(normalized.Authorization), nil
-}
-
-func normalizeAuthorizationRoute(route spec.APIAuthRouteRuleSpec) spec.APIAuthRouteRuleSpec {
-	route.Method = strings.ToUpper(strings.TrimSpace(route.Method))
-	route.Path = strings.TrimSpace(route.Path)
-	route.Roles = normalizeRoleList(route.Roles)
-	return route
-}
-
-func normalizeRoleList(roles []string) []string {
-	seen := make(map[string]struct{}, len(roles))
-	out := make([]string, 0, len(roles))
-	for _, role := range roles {
-		role = strings.TrimSpace(role)
-		if role == "" {
-			continue
-		}
-		key := strings.ToLower(role)
-		if _, exists := seen[key]; exists {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, role)
-	}
-	return out
-}
-
-func validateAuthorizationRoute(route spec.APIAuthRouteRuleSpec) error {
-	if _, ok := supportedAuthorizationHTTPMethods[route.Method]; !ok {
-		return bcode.ErrSystemSettingValueInvalid
-	}
-	if route.Path == "" || !strings.HasPrefix(route.Path, "/") {
-		return bcode.ErrSystemSettingValueInvalid
-	}
-	if len(route.Roles) == 0 {
-		return bcode.ErrSystemSettingValueInvalid
-	}
-	for _, role := range route.Roles {
-		if role == "" {
-			return bcode.ErrSystemSettingValueInvalid
-		}
-	}
-	return nil
-}
-
-func isValidDefaultEffect(effect string) bool {
-	switch effect {
-	case spec.APIAuthDefaultEffectDeny, spec.APIAuthDefaultEffectAllow:
-		return true
-	default:
-		return false
-	}
-}
-
 func validateSettingType(settingType string) error {
 	if _, ok := getSystemSettingCodec(settingType); ok {
 		return nil
@@ -431,28 +216,6 @@ func normalizeAndValidateSettingValue(settingType string, value json.RawMessage)
 }
 
 func normalizeRawSystemSettingValue(value json.RawMessage) (json.RawMessage, error) {
-	return json.RawMessage(value), nil
-}
-
-func normalizeAPIAuthSettingValue(value json.RawMessage) (json.RawMessage, error) {
-	var cfg spec.APIAuthSettingSpec
-	if err := json.Unmarshal(value, &cfg); err != nil {
-		return nil, err
-	}
-	if err := spec.ValidateAPIAuthSetting(cfg); err != nil {
-		return nil, err
-	}
-	return json.RawMessage(value), nil
-}
-
-func normalizeOAuthAuthSettingValue(value json.RawMessage) (json.RawMessage, error) {
-	var cfg spec.OAuthAuthSettingSpec
-	if err := json.Unmarshal(value, &cfg); err != nil {
-		return nil, err
-	}
-	if err := spec.ValidateOAuthAuthSetting(cfg); err != nil {
-		return nil, err
-	}
 	return json.RawMessage(value), nil
 }
 
@@ -498,26 +261,6 @@ func toSystemSettingDTO(setting *model.SystemSetting) *apisv1.SystemSetting {
 		Value:      value,
 		CreateTime: setting.CreateTime,
 		UpdateTime: setting.UpdateTime,
-	}
-}
-
-func toAPIAuthorizationPolicyDTO(auth spec.APIAuthorizationSpec) *apisv1.APIAuthorizationPolicy {
-	routes := make([]apisv1.APIAuthorizationRoute, 0, len(auth.Routes))
-	for _, route := range auth.Routes {
-		normalized := normalizeAuthorizationRoute(route)
-		routes = append(routes, apisv1.APIAuthorizationRoute{
-			Method: normalized.Method,
-			Path:   normalized.Path,
-			Roles:  normalized.Roles,
-		})
-	}
-	defaultEffect := strings.ToLower(strings.TrimSpace(auth.DefaultEffect))
-	if defaultEffect == "" {
-		defaultEffect = spec.APIAuthDefaultEffectDeny
-	}
-	return &apisv1.APIAuthorizationPolicy{
-		DefaultEffect: defaultEffect,
-		Routes:        routes,
 	}
 }
 

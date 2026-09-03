@@ -269,6 +269,22 @@ func TestEruunStackUsesFixedDistributedRuntime(t *testing.T) {
 		return nil
 	}
 	controllerRole := clusterRoles["eruun-controller-observer"]
+	require.Equal(t, []string{"get"}, verbsFor(controllerRole, "", "namespaces"), "Delayed dispatch must revalidate workspace ownership without creating namespaces")
+	require.Equal(t, []string{"impersonate"}, verbsFor(controllerRole, "", "serviceaccounts"))
+	rules, _, err := unstructured.NestedSlice(controllerRole, "rules")
+	require.NoError(t, err)
+	for _, item := range rules {
+		rule := item.(map[string]interface{})
+		verbs, _, err := unstructured.NestedStringSlice(rule, "verbs")
+		require.NoError(t, err)
+		for _, verb := range verbs {
+			if verb == "impersonate" {
+				names, _, err := unstructured.NestedStringSlice(rule, "resourceNames")
+				require.NoError(t, err)
+				require.Equal(t, []string{"eruun-runner"}, names)
+			}
+		}
+	}
 	require.ElementsMatch(t, []string{"get", "list", "watch", "patch", "delete"}, verbsFor(controllerRole, "", "pods"), "Controller must observe, label, and clean up completed Job Pods")
 	require.Equal(t, []string{"get"}, verbsFor(controllerRole, "", "pods/log"), "ResultDispatcher must collect completed Job logs")
 	require.ElementsMatch(t, []string{"get", "create", "update", "delete"}, verbsFor(controllerRole, "batch", "jobs"), "Controller must dispatch delayed Jobs, adopt execution identities, and clean up completed Jobs")

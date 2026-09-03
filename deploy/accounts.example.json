@@ -1,0 +1,53 @@
+{
+  "origins": ["https://console.example.com"],
+  "frontendURL": "https://console.example.com/account",
+  "trustedProxyCIDRs": [],
+  "bootstrapAdmin": {
+    "email": "admin@example.com",
+    "password": "__REPLACE_WITH_RANDOM_BOOTSTRAP_PASSWORD"
+  },
+  "github": {
+    "enabled": true,
+    "clientId": "__REPLACE_WITH_GITHUB_CLIENT_ID",
+    "clientSecret": "__REPLACE_WITH_GITHUB_CLIENT_SECRET",
+    "redirectURI": "https://console.example.com/auth/github/callback"
+  },
+  "google": {
+    "enabled": true,
+    "clientId": "__REPLACE_WITH_GOOGLE_CLIENT_ID",
+    "clientSecret": "__REPLACE_WITH_GOOGLE_CLIENT_SECRET",
+    "redirectURI": "https://console.example.com/auth/google/callback"
+  },
+  "smtp": {
+    "host": "smtp.example.com",
+    "port": 465,
+    "tls": "implicit",
+    "username": "__REPLACE_WITH_SMTP_USERNAME",
+    "password": "__REPLACE_WITH_SMTP_PASSWORD",
+    "from": "accounts@example.com"
+  },
+  "sms": {
+    "accessKeyId": "__REPLACE_WITH_ALIYUN_ACCESS_KEY_ID",
+    "accessKeySecret": "__REPLACE_WITH_ALIYUN_ACCESS_KEY_SECRET",
+    "signName": "__REPLACE_WITH_APPROVED_SMS_SIGNATURE",
+    "templateCode": "__REPLACE_WITH_APPROVED_SMS_TEMPLATE"
+  },
+  "workspace": {
+    "clusterCIDRs": ["__REPLACE_WITH_CLUSTER_POD_SERVICE_NODE_CONTROL_PLANE_CIDRS"],
+    "storageClasses": ["__REPLACE_WITH_ALLOWED_STORAGE_CLASS"],
+    "ingressDomain": "apps.example.com",
+    "ingressClass": "nginx",
+    "ingressNamespace": "ingress-nginx",
+    "dnsNamespace": "kube-system",
+    "quota": {
+      "pods": "20",
+      "requests.cpu": "2",
+      "limits.cpu": "4",
+      "requests.memory": "4Gi",
+      "limits.memory": "8Gi",
+      "persistentvolumeclaims": "10",
+      "requests.storage": "20Gi",
+      "requests.nvidia.com/gpu": "0"
+    }
+  }
+}

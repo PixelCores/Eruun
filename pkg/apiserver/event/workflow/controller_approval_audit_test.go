@@ -134,7 +134,7 @@ func TestWorkflowRunPausesAtApprovalStep(t *testing.T) {
 	}
 
 	ctl := newTestWorkflowController(t, task, nil, store)
-	err = ctl.Run(context.Background(), 1)
+	err = ctl.run(context.Background(), 1)
 	require.NoError(t, err)
 	require.Equal(t, config.StatusWaitingApprove, task.Status)
 	require.True(t, task.ApprovalPending)
@@ -192,7 +192,7 @@ func TestWorkflowRunResendApprovalNotificationWhenPendingCheckpointExists(t *tes
 	}
 
 	ctl := newTestWorkflowController(t, task, kubefake.NewSimpleClientset(), store)
-	err = ctl.Run(context.Background(), 1)
+	err = ctl.run(context.Background(), 1)
 	require.NoError(t, err)
 	require.Equal(t, config.StatusWaitingApprove, task.Status)
 	require.Eventually(t, func() bool {
@@ -251,7 +251,7 @@ func TestWorkflowRunApprovalNotificationIsAsyncAndDoesNotOverwriteExternalDecisi
 	ctl := newTestWorkflowController(t, task, kubefake.NewSimpleClientset(), store)
 	runDone := make(chan error, 1)
 	go func() {
-		runDone <- ctl.Run(context.Background(), 1)
+		runDone <- ctl.run(context.Background(), 1)
 	}()
 
 	select {
@@ -399,7 +399,7 @@ func TestWorkflowRunReturnsErrorWhenApprovalCheckpointPersistFails(t *testing.T)
 	}
 
 	ctl := newTestWorkflowController(t, task, nil, store)
-	runErr := ctl.Run(context.Background(), 1)
+	runErr := ctl.run(context.Background(), 1)
 	require.Error(t, runErr)
 	require.Contains(t, runErr.Error(), "persist approval checkpoint")
 
@@ -464,7 +464,7 @@ func TestWorkflowRunApprovalStepTimesOut(t *testing.T) {
 	}
 
 	ctl := newTestWorkflowController(t, task, nil, store)
-	err = ctl.Run(context.Background(), 1)
+	err = ctl.run(context.Background(), 1)
 	require.NoError(t, err)
 	require.Equal(t, config.StatusWaitingApprove, task.Status)
 
@@ -546,7 +546,7 @@ func TestWorkflowRunApprovalTimeoutCallbackSentOnce(t *testing.T) {
 	ctl := newTestWorkflowController(t, task, kubefake.NewSimpleClientset(), store)
 	runDone := make(chan error, 1)
 	go func() {
-		runDone <- ctl.Run(context.Background(), 1)
+		runDone <- ctl.run(context.Background(), 1)
 	}()
 
 	select {
@@ -611,7 +611,7 @@ func TestWorkflowRunApprovalTimeoutFromPreviousStepDoesNotAffectCurrentStep(t *t
 	}
 
 	ctl := newTestWorkflowController(t, task, nil, store)
-	err = ctl.Run(context.Background(), 1)
+	err = ctl.run(context.Background(), 1)
 	require.NoError(t, err)
 	require.Equal(t, config.StatusWaitingApprove, task.Status)
 	require.Equal(t, "manual-check-1", task.PendingApprovalStep)
@@ -624,7 +624,7 @@ func TestWorkflowRunApprovalTimeoutFromPreviousStepDoesNotAffectCurrentStep(t *t
 	store.task = cloneWorkflowQueue(task)
 	store.mu.Unlock()
 
-	err = ctl.Run(context.Background(), 1)
+	err = ctl.run(context.Background(), 1)
 	require.NoError(t, err)
 	secondStep := ctl.snapshotTask()
 	require.Equal(t, config.StatusWaitingApprove, secondStep.Status)

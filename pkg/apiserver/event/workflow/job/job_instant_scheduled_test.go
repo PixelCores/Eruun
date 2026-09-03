@@ -2,6 +2,7 @@ package job
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
@@ -19,7 +20,9 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
@@ -160,6 +163,11 @@ func TestDelayedJobControllersCommitWithoutQueue(t *testing.T) {
 				RunGeneration: 2,
 				JobInfo:       jobObj,
 			}
+			task.AppID = "app"
+			jobObj.Spec.Template.Spec = workspacePodSpec()
+			jobObj.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
+			_, err := workspace.PrepareTask(task, "app", &model.Workspace{ID: "workspace", Namespace: "default"}, spec.WorkspaceConfig{})
+			require.NoError(t, err)
 			var ctl JobCtl
 			if jobType == config.JobDeployInstant {
 				ctl = NewInstantJobCtl(task, fake.NewSimpleClientset(), store, func() {})
@@ -172,6 +180,9 @@ func TestDelayedJobControllersCommitWithoutQueue(t *testing.T) {
 			require.NotNil(t, store.added)
 			require.Equal(t, config.JobDelayStatePending, store.added.DelayState)
 			require.NotEmpty(t, store.added.DelayPayload)
+			var persisted DelayJobPayload
+			require.NoError(t, json.Unmarshal([]byte(store.added.DelayPayload), &persisted))
+			requireWorkspacePodSecurity(t, persisted.Job.Spec.Template.Spec)
 		})
 	}
 }

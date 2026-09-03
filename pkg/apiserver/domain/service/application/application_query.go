@@ -18,6 +18,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	assembler "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/assembler/v1"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	"github.com/PixelCores/Eruun/pkg/apiserver/security/access"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
@@ -52,7 +53,7 @@ func normalizeBatchApplicationIDs(appIDs []string) ([]string, []string, error) {
 func (c *applicationsServiceImpl) ListApplications(ctx context.Context, opts ListApplicationsOptions) ([]*apisv1.ApplicationBase, error) {
 	if opts.FullScan() {
 		var cached []*apisv1.ApplicationBase
-		if c.loadJSONCache(applicationListCacheKey, &cached) {
+		if c.loadJSONCache(scopedListCacheKey(ctx, applicationListCacheKey), &cached) {
 			return cached, nil
 		}
 	}
@@ -77,7 +78,7 @@ func (c *applicationsServiceImpl) ListApplications(ctx context.Context, opts Lis
 		return nil, err
 	}
 	if opts.FullScan() {
-		c.storeJSONCache(applicationListCacheKey, list)
+		c.storeJSONCache(scopedListCacheKey(ctx, applicationListCacheKey), list)
 	}
 	return list, nil
 }
@@ -202,7 +203,7 @@ func (c *applicationsServiceImpl) applicationsByIDs(ctx context.Context, appIDs 
 func (c *applicationsServiceImpl) ListTemplateApplications(ctx context.Context, opts ListApplicationsOptions) ([]*apisv1.ApplicationBase, error) {
 	if opts.FullScan() {
 		var cached []*apisv1.ApplicationBase
-		if c.loadJSONCache(templateApplicationListCacheKey, &cached) {
+		if c.loadJSONCache(scopedListCacheKey(ctx, templateApplicationListCacheKey), &cached) {
 			return cached, nil
 		}
 	}
@@ -230,7 +231,7 @@ func (c *applicationsServiceImpl) ListTemplateApplications(ctx context.Context, 
 		return nil, err
 	}
 	if opts.FullScan() {
-		c.storeJSONCache(templateApplicationListCacheKey, list)
+		c.storeJSONCache(scopedListCacheKey(ctx, templateApplicationListCacheKey), list)
 	}
 	return list, nil
 }
@@ -477,7 +478,7 @@ func (c *applicationsServiceImpl) DeleteApplication(ctx context.Context, app *mo
 	if err := c.AppRepo.Delete(ctx, app); err != nil {
 		return err
 	}
-	c.invalidateApplicationListCaches()
+	c.invalidateApplicationListCaches(ctx)
 	if app != nil {
 		c.invalidateApplicationComponentsCache(app.ID)
 	}
@@ -772,7 +773,11 @@ func (c *applicationsServiceImpl) ListCronJobs(ctx context.Context) ([]*apisv1.C
 	if c.KubeClient == nil {
 		return nil, fmt.Errorf("kube client is nil")
 	}
-	list, err := c.KubeClient.BatchV1().CronJobs("").List(ctx, metav1.ListOptions{})
+	namespace := ""
+	if scope, ok := access.FromContext(ctx); ok {
+		namespace = scope.Namespace
+	}
+	list, err := c.KubeClient.BatchV1().CronJobs(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}

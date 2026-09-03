@@ -91,7 +91,7 @@ func CORS(opts CORSOptions) gin.HandlerFunc {
 
 func originAllowed(origin string, allowed []string) bool {
 	for _, candidate := range allowed {
-		if strings.EqualFold(candidate, origin) {
+		if candidate == origin {
 			return true
 		}
 	}

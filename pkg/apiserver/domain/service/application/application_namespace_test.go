@@ -14,7 +14,7 @@ import (
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 )
 
-func TestCreateApplicationsAutoCreatesNamespaceForCustomNamespace(t *testing.T) {
+func TestCreateApplicationsDoesNotCreateNamespace(t *testing.T) {
 	store := newInMemoryAppStore()
 	svc := newMockServiceWithStore(store)
 	svc.KubeClient = fake.NewSimpleClientset()
@@ -37,10 +37,7 @@ func TestCreateApplicationsAutoCreatesNamespaceForCustomNamespace(t *testing.T) 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 
-	ns, err := svc.KubeClient.CoreV1().Namespaces().Get(context.Background(), "tenant-a", metav1.GetOptions{})
-	require.NoError(t, err)
-	require.Equal(t, namespaceAutoCreatedValue, ns.Annotations[config.AnnotationNamespaceAutoCreated])
-	require.Equal(t, resp.ID, ns.Annotations[config.AnnotationNamespaceOwnerAppID])
+	require.Empty(t, svc.KubeClient.(*fake.Clientset).Actions())
 }
 
 func TestDeleteApplicationPreservesOwnedNamespaceWhenEmpty(t *testing.T) {
@@ -54,11 +51,8 @@ func TestDeleteApplicationPreservesOwnedNamespaceWhenEmpty(t *testing.T) {
 
 	namespace := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "tenant-a",
-			Annotations: map[string]string{
-				config.AnnotationNamespaceAutoCreated: namespaceAutoCreatedValue,
-				config.AnnotationNamespaceOwnerAppID:  app.ID,
-			},
+			Name:   "tenant-a",
+			Labels: map[string]string{"eruun.io/workspace-id": "workspace"},
 		},
 	}
 	svc := newMockServiceWithStore(store)
@@ -89,11 +83,8 @@ func TestDeleteApplicationKeepsNamespaceWhenAnotherAppUsesIt(t *testing.T) {
 
 	namespace := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "tenant-a",
-			Annotations: map[string]string{
-				config.AnnotationNamespaceAutoCreated: namespaceAutoCreatedValue,
-				config.AnnotationNamespaceOwnerAppID:  app1.ID,
-			},
+			Name:   "tenant-a",
+			Labels: map[string]string{"eruun.io/workspace-id": "workspace"},
 		},
 	}
 	svc := newMockServiceWithStore(store)
@@ -118,11 +109,8 @@ func TestDeleteApplicationKeepsNamespaceWhenUserResourcesRemain(t *testing.T) {
 
 	namespace := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "tenant-a",
-			Annotations: map[string]string{
-				config.AnnotationNamespaceAutoCreated: namespaceAutoCreatedValue,
-				config.AnnotationNamespaceOwnerAppID:  app.ID,
-			},
+			Name:   "tenant-a",
+			Labels: map[string]string{"eruun.io/workspace-id": "workspace"},
 		},
 	}
 	cm := &corev1.ConfigMap{

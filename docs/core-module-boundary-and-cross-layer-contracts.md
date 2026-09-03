@@ -2,6 +2,10 @@
 
 > 状态：Implemented Reference。本文作为跨 API/Domain/DB/Cache/K8s 字段语义的维护基线。
 
+## 账号与空间归属
+
+应用存在未停止任务时保留归属并拒绝删除。应用 `workspaceID` 为必填且不可跨空间修改；namespace 从空间派生。组件、工作流、任务只通过所属应用追溯空间。HTTP 通过 X-Eruun-Workspace-ID 和成员关系授权，后台从持久化应用确定空间。注册/保存不创建 Kubernetes 资源，首次部署先完成安全基线。完整契约见 [账号与空间](account-auth-workspaces.md)。
+
 ## 背景
 
 在 Eruun 中，`app_id`、组件状态、Secret 引用等字段会跨 `API/Domain/DB/Cache/K8s` 多层流转。

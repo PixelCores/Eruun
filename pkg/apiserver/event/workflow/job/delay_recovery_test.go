@@ -8,11 +8,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/stretchr/testify/require"
 	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
 	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -52,7 +54,7 @@ func TestDelayDispatcherRecoveryAdvancesPastFirstBatch(t *testing.T) {
 				}
 			}
 			client := fake.NewSimpleClientset()
-			dispatcher := NewDelayDispatcher(nil, client, store, "", "")
+			dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
 			err := dispatcher.recoverDueCheckpoints(ctx)
 			if firstBatchState == "invalid_payload" {
 				require.Error(t, err)
@@ -75,7 +77,7 @@ func TestDelayDispatcherRecoveryAdvancesPastFirstBatch(t *testing.T) {
 			require.NotNil(t, item)
 			require.Zero(t, wait)
 			require.Equal(t, healthy.ExecutionKey, item.payload.ExecutionKey)
-			require.NoError(t, dispatcher.dispatch(ctx, item))
+			require.NoError(t, dispatcher.dispatchJob(ctx, item, client))
 			dispatcher.finish(ctx, item)
 			require.Equal(t, config.JobDelayStateDispatched, store.jobInfos[1].DelayState)
 
@@ -123,7 +125,7 @@ func TestDelayDispatcherDeduplicatedMessagesRemainRetryable(t *testing.T) {
 				}
 				return false, nil, nil
 			})
-			dispatcher := NewDelayDispatcher(queue, client, store, "", "")
+			dispatcher := NewDelayDispatcher(queue, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
 			if source == "database" {
 				require.NoError(t, dispatcher.recoverDueCheckpoints(ctx))
 			} else {
@@ -138,7 +140,7 @@ func TestDelayDispatcherDeduplicatedMessagesRemainRetryable(t *testing.T) {
 			require.Len(t, dispatcher.items, 1)
 
 			item, _ := dispatcher.nextItem()
-			require.ErrorIs(t, dispatcher.dispatch(ctx, item), createErr)
+			require.ErrorIs(t, dispatcher.dispatchJob(ctx, item, client), createErr)
 			dispatcher.requeue(item)
 			// Reclaiming while dispatch is retrying must remain safe and retryable.
 			msg.MarkMessageHandlingStart(queue, duplicate.ID)
@@ -147,7 +149,7 @@ func TestDelayDispatcherDeduplicatedMessagesRemainRetryable(t *testing.T) {
 			require.Empty(t, queue.ackCalls)
 			require.Len(t, dispatcher.items, 1)
 			item, _ = dispatcher.nextItem()
-			require.NoError(t, dispatcher.dispatch(ctx, item))
+			require.NoError(t, dispatcher.dispatchJob(ctx, item, client))
 			dispatcher.finish(ctx, item)
 
 			// Once dispatch finishes, reclaiming the notification must ACK it without another Job create.
@@ -155,7 +157,7 @@ func TestDelayDispatcherDeduplicatedMessagesRemainRetryable(t *testing.T) {
 			dispatcher.handleMessage(ctx, duplicate)
 			item, _ = dispatcher.nextItem()
 			require.NotNil(t, item)
-			require.NoError(t, dispatcher.dispatch(ctx, item))
+			require.NoError(t, dispatcher.dispatchJob(ctx, item, client))
 			dispatcher.finish(ctx, item)
 			require.False(t, queue.inFlight[duplicate.ID])
 			require.Equal(t, []string{duplicate.ID}, queue.ackCalls[len(queue.ackCalls)-1].ids)

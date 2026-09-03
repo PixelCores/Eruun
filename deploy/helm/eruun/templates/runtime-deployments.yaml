@@ -24,6 +24,8 @@ spec:
         app.kubernetes.io/component: {{ $role }}
     spec:
       serviceAccountName: {{ include "eruun.roleServiceAccountName" (dict "root" $root "role" $role) }}
+      securityContext:
+        fsGroup: 1000
       terminationGracePeriodSeconds: {{ $root.Values.runtime.terminationGracePeriodSeconds }}
       containers:
         - name: eruun-server
@@ -37,6 +39,8 @@ spec:
             - name: http
               containerPort: {{ $root.Values.service.port }}
           env:
+            - name: ERUUN_AUTH_CONFIG_FILE
+              value: /var/run/secrets/eruun/accounts/accounts.json
             - name: ERUUN_ROLE
               value: {{ $role | quote }}
             - name: ERUUN_DATASTORE_SCHEMA_MODE
@@ -85,8 +89,11 @@ spec:
             - name: {{ .name }}
               value: {{ .value | quote }}
             {{- end }}
-          {{- if $usesImportSecretKeyring }}
           volumeMounts:
+            - name: accounts
+              mountPath: /var/run/secrets/eruun/accounts
+              readOnly: true
+          {{- if $usesImportSecretKeyring }}
             - name: import-secret-keyring
               mountPath: /var/run/secrets/eruun/import-secret-keyring
               readOnly: true
@@ -113,8 +120,15 @@ spec:
             periodSeconds: 15
           resources:
             {{- toYaml $roleValues.resources | nindent 12 }}
-      {{- if $usesImportSecretKeyring }}
       volumes:
+        - name: accounts
+          secret:
+            secretName: {{ $root.Values.auth.existingSecret | quote }}
+            defaultMode: 0440
+            items:
+              - key: {{ $root.Values.auth.key | quote }}
+                path: accounts.json
+      {{- if $usesImportSecretKeyring }}
         - name: import-secret-keyring
           secret:
             secretName: {{ $root.Values.importSecretKeyring.existingSecret | quote }}

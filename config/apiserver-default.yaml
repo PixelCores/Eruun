@@ -4,6 +4,10 @@
 # - workflow.callbackTimeoutMax -> --workflow-callback-timeout-max
 # - env key: ERUUN_WORKFLOW_CALLBACK_TIMEOUT_MAX
 
+# Required account/OAuth/delivery/workspace Secret JSON, read by all roles.
+# Flag --auth-config-file, environment ERUUN_AUTH_CONFIG_FILE.
+authConfigFile: /var/run/secrets/eruun/accounts/accounts.json
+
 workflow:
   # Maximum timeout for workflow callback requests.
   # Values above this limit are capped to avoid duration overflow.

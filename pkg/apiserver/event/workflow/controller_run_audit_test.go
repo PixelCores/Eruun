@@ -68,7 +68,7 @@ func TestWorkflowRunStopsOnAuthoritativeCancellation(t *testing.T) {
 	client := kubefake.NewSimpleClientset()
 	ctl := newTestWorkflowController(t, task, client, store)
 
-	err = ctl.Run(context.Background(), 1)
+	err = ctl.run(context.Background(), 1)
 
 	require.NoError(t, err)
 	require.Equal(t, config.StatusCancelled, ctl.snapshotTask().Status)
@@ -119,7 +119,7 @@ func TestWorkflowRunSuppressesCallbackAfterExecutionOwnershipChanges(t *testing.
 	}
 	ctl := newTestWorkflowController(t, task, kubefake.NewSimpleClientset(), store)
 
-	err = ctl.Run(context.Background(), 1)
+	err = ctl.run(context.Background(), 1)
 
 	require.NoError(t, err)
 	require.True(t, ctl.terminalCallbackSuppressed())
@@ -170,7 +170,7 @@ func TestWorkflowRunDoesNotTerminalizeInfrastructureHandoff(t *testing.T) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	cancel(workflowsignal.ErrInfrastructureStop)
 
-	err = ctl.Run(ctx, 1)
+	err = ctl.run(ctx, 1)
 
 	require.ErrorIs(t, err, workflowsignal.ErrInfrastructureStop)
 	require.Equal(t, config.StatusRunning, ctl.snapshotTask().Status)
@@ -251,7 +251,7 @@ func TestWorkflowRunSuppressesCallbackWhenPersistenceReloadFails(t *testing.T) {
 	}
 	ctl := newTestWorkflowController(t, task, kubefake.NewSimpleClientset(), store)
 
-	err = ctl.Run(context.Background(), 1)
+	err = ctl.run(context.Background(), 1)
 
 	require.ErrorIs(t, err, errWorkflowTaskPersistenceUncertain)
 	require.Equal(t, config.StatusCompleted, ctl.snapshotTask().Status)
@@ -331,7 +331,7 @@ func TestWorkflowRunRetriesOriginalStepWhenDistributedCheckpointFails(t *testing
 	}
 
 	firstCtl := newController(t, task)
-	runErr := firstCtl.Run(context.Background(), 1)
+	runErr := firstCtl.run(context.Background(), 1)
 
 	require.ErrorIs(t, runErr, workflowsignal.ErrInfrastructureStop)
 	require.ErrorIs(t, runErr, checkpointErr)
@@ -354,7 +354,7 @@ func TestWorkflowRunRetriesOriginalStepWhenDistributedCheckpointFails(t *testing
 	require.Zero(t, persistedStep)
 
 	recoveredCtl := newController(t, recoveredTask)
-	require.NoError(t, recoveredCtl.Run(context.Background(), 1))
+	require.NoError(t, recoveredCtl.run(context.Background(), 1))
 	require.Equal(t, config.StatusCompleted, recoveredCtl.snapshotTask().Status)
 	require.Equal(t, 1, recoveredCtl.snapshotTask().CurrentStep)
 	require.Len(t, queue.enqueued, 1)
@@ -395,7 +395,7 @@ func TestWorkflowRunResumesFromCheckpoint(t *testing.T) {
 	}
 
 	ctl := newTestWorkflowController(t, task, nil, store)
-	err = ctl.Run(context.Background(), 1)
+	err = ctl.run(context.Background(), 1)
 	require.NoError(t, err)
 	require.Equal(t, config.StatusWaitingApprove, task.Status)
 	require.True(t, task.ApprovalPending)

@@ -4,13 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -95,76 +92,6 @@ func cloneSystemSetting(in *model.SystemSetting) *model.SystemSetting {
 		out.Value = append(json.RawMessage(nil), in.Value...)
 	}
 	return &out
-}
-
-func TestEnsureDefaultAPIAuthSettingCreatesWhenMissing(t *testing.T) {
-	store := newSystemSettingStore()
-	server := &restServer{dataStore: store}
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	err := server.ensureDefaultAPIAuthSetting(ctx)
-	require.NoError(t, err)
-
-	stored := store.settings[model.SystemSettingTypeAPIAuth]
-	require.NotNil(t, stored)
-	require.Equal(t, 1, store.addCalls)
-
-	var cfg spec.APIAuthSettingSpec
-	require.NoError(t, json.Unmarshal(stored.Value, &cfg))
-	require.False(t, cfg.Enabled)
-}
-
-func TestEnsureDefaultAPIAuthSettingSkipsExisting(t *testing.T) {
-	store := newSystemSettingStore()
-	existingPayload, err := json.Marshal(spec.APIAuthSettingSpec{Enabled: true})
-	require.NoError(t, err)
-	store.settings[model.SystemSettingTypeAPIAuth] = &model.SystemSetting{
-		Type:  model.SystemSettingTypeAPIAuth,
-		Value: existingPayload,
-	}
-
-	server := &restServer{dataStore: store}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	require.NoError(t, server.ensureDefaultAPIAuthSetting(ctx))
-	require.Equal(t, 0, store.addCalls)
-}
-
-func TestRegisterAPIRouteReloadsAPIAuthPolicyOnNextRequest(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	store := newSystemSettingStore()
-	store.settings[model.SystemSettingTypeAPIAuth] = &model.SystemSetting{
-		Type:  model.SystemSettingTypeAPIAuth,
-		Value: json.RawMessage(`{"enabled":false}`),
-	}
-	server := &restServer{
-		dataStore:    store,
-		webContainer: gin.New(),
-	}
-	server.RegisterAPIRoute()
-	server.webContainer.GET("/api/v1/protected", func(c *gin.Context) {
-		c.Status(http.StatusNoContent)
-	})
-
-	firstResponse := httptest.NewRecorder()
-	server.webContainer.ServeHTTP(firstResponse, httptest.NewRequest(http.MethodGet, "/api/v1/protected", nil))
-	require.Equal(t, http.StatusNoContent, firstResponse.Code)
-
-	store.mu.Lock()
-	store.settings[model.SystemSettingTypeAPIAuth] = &model.SystemSetting{
-		Type: model.SystemSettingTypeAPIAuth,
-		Value: json.RawMessage(`{
-			"enabled":true,
-			"jwt":{"algorithms":["HS256"],"hs256":{"secret":"test-secret"}},
-			"authorization":{"defaultEffect":"deny","routes":[{"method":"GET","path":"/api/v1/protected","roles":["reader"]}]}
-		}`),
-	}
-	store.mu.Unlock()
-
-	secondResponse := httptest.NewRecorder()
-	server.webContainer.ServeHTTP(secondResponse, httptest.NewRequest(http.MethodGet, "/api/v1/protected", nil))
-	require.Equal(t, http.StatusUnauthorized, secondResponse.Code)
 }
 
 func TestEnsureDefaultURLSecurityPolicyCreatesWhenMissing(t *testing.T) {

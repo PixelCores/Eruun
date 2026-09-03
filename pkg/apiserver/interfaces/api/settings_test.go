@@ -18,15 +18,11 @@ import (
 )
 
 type mockSettingService struct {
-	createFn                            func(context.Context, apis.CreateSystemSettingRequest) (*apis.SystemSetting, error)
-	updateFn                            func(context.Context, string, apis.UpdateSystemSettingRequest) (*apis.SystemSetting, error)
-	deleteFn                            func(context.Context, string) error
-	getFn                               func(context.Context, string) (*apis.SystemSetting, error)
-	listFn                              func(context.Context) ([]*apis.SystemSetting, error)
-	getAPIAuthorizationFn               func(context.Context) (*apis.APIAuthorizationPolicy, error)
-	upsertAPIAuthorizationRouteFn       func(context.Context, apis.UpsertAPIAuthorizationRouteRequest) (*apis.APIAuthorizationPolicy, error)
-	deleteAPIAuthorizationRouteFn       func(context.Context, string, string) (*apis.APIAuthorizationPolicy, error)
-	updateAPIAuthorizationDefaultEffect func(context.Context, apis.UpdateAPIAuthorizationDefaultEffectRequest) (*apis.APIAuthorizationPolicy, error)
+	createFn func(context.Context, apis.CreateSystemSettingRequest) (*apis.SystemSetting, error)
+	updateFn func(context.Context, string, apis.UpdateSystemSettingRequest) (*apis.SystemSetting, error)
+	deleteFn func(context.Context, string) error
+	getFn    func(context.Context, string) (*apis.SystemSetting, error)
+	listFn   func(context.Context) ([]*apis.SystemSetting, error)
 }
 
 func (m *mockSettingService) Create(ctx context.Context, req apis.CreateSystemSettingRequest) (*apis.SystemSetting, error) {
@@ -62,34 +58,6 @@ func (m *mockSettingService) List(ctx context.Context) ([]*apis.SystemSetting, e
 		return nil, nil
 	}
 	return m.listFn(ctx)
-}
-
-func (m *mockSettingService) GetAPIAuthorization(ctx context.Context) (*apis.APIAuthorizationPolicy, error) {
-	if m.getAPIAuthorizationFn == nil {
-		return nil, nil
-	}
-	return m.getAPIAuthorizationFn(ctx)
-}
-
-func (m *mockSettingService) UpsertAPIAuthorizationRoute(ctx context.Context, req apis.UpsertAPIAuthorizationRouteRequest) (*apis.APIAuthorizationPolicy, error) {
-	if m.upsertAPIAuthorizationRouteFn == nil {
-		return nil, nil
-	}
-	return m.upsertAPIAuthorizationRouteFn(ctx, req)
-}
-
-func (m *mockSettingService) DeleteAPIAuthorizationRoute(ctx context.Context, method, path string) (*apis.APIAuthorizationPolicy, error) {
-	if m.deleteAPIAuthorizationRouteFn == nil {
-		return nil, nil
-	}
-	return m.deleteAPIAuthorizationRouteFn(ctx, method, path)
-}
-
-func (m *mockSettingService) UpdateAPIAuthorizationDefaultEffect(ctx context.Context, req apis.UpdateAPIAuthorizationDefaultEffectRequest) (*apis.APIAuthorizationPolicy, error) {
-	if m.updateAPIAuthorizationDefaultEffect == nil {
-		return nil, nil
-	}
-	return m.updateAPIAuthorizationDefaultEffect(ctx, req)
 }
 
 func TestSettingsAPI_CreateAndGet(t *testing.T) {
@@ -171,111 +139,6 @@ func TestSettingsAPI_List(t *testing.T) {
 	requireSuccessResponse(t, resp.Body.Bytes(), &payload)
 	require.Len(t, payload.Settings, 1)
 	require.Equal(t, model.SystemSettingTypeRBACPolicies, payload.Settings[0].Type)
-}
-
-func TestSettingsAPI_ManageAPIAuthorization(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	service := &mockSettingService{
-		getAPIAuthorizationFn: func(context.Context) (*apis.APIAuthorizationPolicy, error) {
-			return &apis.APIAuthorizationPolicy{
-				DefaultEffect: "deny",
-				Routes: []apis.APIAuthorizationRoute{
-					{Method: "GET", Path: "/api/v1/applications", Roles: []string{"reader"}},
-				},
-			}, nil
-		},
-		upsertAPIAuthorizationRouteFn: func(_ context.Context, req apis.UpsertAPIAuthorizationRouteRequest) (*apis.APIAuthorizationPolicy, error) {
-			require.Equal(t, "POST", req.Method)
-			require.Equal(t, "/api/v1/applications", req.Path)
-			require.Equal(t, []string{"admin"}, req.Roles)
-			return &apis.APIAuthorizationPolicy{
-				DefaultEffect: "deny",
-				Routes: []apis.APIAuthorizationRoute{
-					{Method: "GET", Path: "/api/v1/applications", Roles: []string{"reader"}},
-					{Method: "POST", Path: "/api/v1/applications", Roles: []string{"admin"}},
-				},
-			}, nil
-		},
-		deleteAPIAuthorizationRouteFn: func(_ context.Context, method, path string) (*apis.APIAuthorizationPolicy, error) {
-			require.Equal(t, "POST", method)
-			require.Equal(t, "/api/v1/applications", path)
-			return &apis.APIAuthorizationPolicy{
-				DefaultEffect: "deny",
-				Routes: []apis.APIAuthorizationRoute{
-					{Method: "GET", Path: "/api/v1/applications", Roles: []string{"reader"}},
-				},
-			}, nil
-		},
-		updateAPIAuthorizationDefaultEffect: func(_ context.Context, req apis.UpdateAPIAuthorizationDefaultEffectRequest) (*apis.APIAuthorizationPolicy, error) {
-			require.Equal(t, "allow", req.DefaultEffect)
-			return &apis.APIAuthorizationPolicy{
-				DefaultEffect: "allow",
-				Routes: []apis.APIAuthorizationRoute{
-					{Method: "GET", Path: "/api/v1/applications", Roles: []string{"reader"}},
-				},
-			}, nil
-		},
-	}
-
-	h := &settings{SystemSettingService: service}
-	r := gin.New()
-	r.GET("/authz/routes", h.listAPIAuthorization)
-	r.PUT("/authz/routes", h.upsertAPIAuthorizationRoute)
-	r.DELETE("/authz/routes", h.deleteAPIAuthorizationRoute)
-	r.PATCH("/authz/default-effect", h.updateAPIAuthorizationDefaultEffect)
-
-	getReq := httptest.NewRequest(http.MethodGet, "/authz/routes", nil)
-	getResp := httptest.NewRecorder()
-	r.ServeHTTP(getResp, getReq)
-	require.Equal(t, http.StatusOK, getResp.Code)
-	var listed apis.APIAuthorizationPolicy
-	requireSuccessResponse(t, getResp.Body.Bytes(), &listed)
-	require.Equal(t, "deny", listed.DefaultEffect)
-	require.Len(t, listed.Routes, 1)
-
-	upsertReq := httptest.NewRequest(http.MethodPut, "/authz/routes", strings.NewReader(`{"method":"POST","path":"/api/v1/applications","roles":["admin"]}`))
-	upsertReq.Header.Set("Content-Type", "application/json")
-	upsertResp := httptest.NewRecorder()
-	r.ServeHTTP(upsertResp, upsertReq)
-	require.Equal(t, http.StatusOK, upsertResp.Code)
-	var upserted apis.APIAuthorizationPolicy
-	requireSuccessResponse(t, upsertResp.Body.Bytes(), &upserted)
-	require.Len(t, upserted.Routes, 2)
-
-	deleteReq := httptest.NewRequest(http.MethodDelete, "/authz/routes?method=POST&path=/api/v1/applications", nil)
-	deleteResp := httptest.NewRecorder()
-	r.ServeHTTP(deleteResp, deleteReq)
-	require.Equal(t, http.StatusOK, deleteResp.Code)
-	var deleted apis.APIAuthorizationPolicy
-	requireSuccessResponse(t, deleteResp.Body.Bytes(), &deleted)
-	require.Len(t, deleted.Routes, 1)
-
-	patchReq := httptest.NewRequest(http.MethodPatch, "/authz/default-effect", strings.NewReader(`{"defaultEffect":"allow"}`))
-	patchReq.Header.Set("Content-Type", "application/json")
-	patchResp := httptest.NewRecorder()
-	r.ServeHTTP(patchResp, patchReq)
-	require.Equal(t, http.StatusOK, patchResp.Code)
-	var patched apis.APIAuthorizationPolicy
-	requireSuccessResponse(t, patchResp.Body.Bytes(), &patched)
-	require.Equal(t, "allow", patched.DefaultEffect)
-}
-
-func TestSettingsAPI_UpsertAPIAuthorizationRouteInvalidPayload(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	h := &settings{SystemSettingService: &mockSettingService{}}
-	r := gin.New()
-	r.PUT("/authz/routes", h.upsertAPIAuthorizationRoute)
-
-	req := httptest.NewRequest(http.MethodPut, "/authz/routes", strings.NewReader(`{"method":"GET","path":"/api/v1/applications","roles":[]}`))
-	req.Header.Set("Content-Type", "application/json")
-	resp := httptest.NewRecorder()
-	r.ServeHTTP(resp, req)
-
-	require.Equal(t, http.StatusBadRequest, resp.Code)
-	envelope := decodeResponse(t, resp.Body.Bytes(), nil)
-	require.Equal(t, bcode.ErrSystemSettingValueInvalid.BusinessCode, envelope.Code)
 }
 
 func TestSettingsAPI_CreateConnectivityCheckFailure(t *testing.T) {

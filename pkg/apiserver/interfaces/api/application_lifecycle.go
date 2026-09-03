@@ -6,13 +6,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"k8s.io/klog/v2"
-
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	"github.com/PixelCores/Eruun/pkg/apiserver/security/access"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	"github.com/gin-gonic/gin"
+	"k8s.io/klog/v2"
 )
 
 func (app *applications) createApplications(c *gin.Context) {
@@ -146,6 +146,14 @@ func (app *applications) listApplications(c *gin.Context) {
 		return
 	}
 	apps, err := app.ApplicationService.ListApplications(c.Request.Context(), opts)
+	if scope, ok := access.FromContext(c.Request.Context()); ok && scope.Role == "viewer" {
+		summaries := make([]apis.ApplicationSummary, 0, len(apps))
+		for _, a := range apps {
+			summaries = append(summaries, apis.ApplicationSummary{ID: a.ID, Name: a.Name, Namespace: a.Namespace, WorkspaceID: a.WorkspaceID, Version: a.Version})
+		}
+		respondWithResult(c, gin.H{"applications": summaries}, err)
+		return
+	}
 	respondWithResult(c, apis.ListApplicationResponse{Applications: apps}, err)
 }
 

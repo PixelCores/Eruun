@@ -27,6 +27,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
+	"github.com/PixelCores/Eruun/pkg/apiserver/security/access"
 	"github.com/PixelCores/Eruun/pkg/apiserver/security/importsecret"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -54,6 +56,9 @@ const (
 )
 
 type WorkflowCtl struct {
+	accountConfig            *spec.AccountConfig
+	workspaceManager         *workspace.Manager
+	workspace                *model.Workspace
 	workflowTask             *model.WorkflowQueue
 	workflowTaskMutex        sync.RWMutex
 	persistedTaskStatus      config.Status
@@ -108,6 +113,9 @@ func NewWorkflowController(workflowTask *model.WorkflowQueue, client kubernetes.
 		callbackTimeoutMax:       workflowconfig.ResolveWorkflowCallbackTimeoutMax(cfg.WorkflowRuntime()),
 		urlSecurityPolicy:        urlSecurityPolicy,
 		importSecretKeyring:      importSecretKeyring,
+	}
+	if cfg != nil {
+		ctl.accountConfig = cfg.Accounts
 	}
 	ctl.ack = ctl.updateWorkflowTask
 	return ctl, nil
@@ -261,7 +269,21 @@ func shouldTerminalizeSkippedCleanupForWorkflowStatus(status config.Status) bool
 	}
 }
 
+// Run establishes persisted workspace ownership before entering the state machine.
 func (w *WorkflowCtl) Run(ctx context.Context, concurrency int) error {
+	scopedCtx, err := w.prepareWorkspace(ctx)
+	if err != nil {
+		w.resetTaskPersistenceForRun()
+		w.ctx = ctx
+		w.mutateTask(func(task *model.WorkflowQueue) { task.Status = config.StatusFailed })
+		w.ack()
+		return fmt.Errorf("prepare workflow workspace: %w", err)
+	}
+	return w.run(scopedCtx, concurrency)
+}
+
+// run is the workflow state machine, independently exercised by its unit tests.
+func (w *WorkflowCtl) run(ctx context.Context, concurrency int) error {
 	w.resetTaskPersistenceForRun()
 	// 1. Start a new trace for this workflow execution
 	tracer := otel.Tracer("workflow-runner")
@@ -381,6 +403,21 @@ func (w *WorkflowCtl) Run(ctx context.Context, concurrency int) error {
 		failureReason = runErr.Error()
 		return runErr
 	}
+	if w.workspaceManager != nil {
+		for _, step := range stepExecutions {
+			for _, tasks := range step.Jobs {
+				for _, task := range tasks {
+					if _, err := workspace.PrepareTask(task, taskForGeneration.AppID, w.workspace, w.accountConfig.Workspace); err != nil {
+						failureReason = err.Error()
+						suppressTerminalCallback = true
+						w.mutateTask(func(t *model.WorkflowQueue) { t.Status = config.StatusFailed })
+						return err
+					}
+				}
+			}
+		}
+	}
+	namespaceReady := false
 	seqLimit := 1
 	if concurrency > 0 {
 		seqLimit = concurrency
@@ -441,6 +478,22 @@ func (w *WorkflowCtl) Run(ctx context.Context, concurrency int) error {
 			tasksInPriority := stepExec.Jobs[priority]
 			if len(tasksInPriority) == 0 {
 				continue
+			}
+			if w.workspaceManager != nil && !namespaceReady {
+				requiresNamespace := false
+				for _, task := range tasksInPriority {
+					deploy, _ := workspace.PrepareTask(task, taskForGeneration.AppID, w.workspace, w.accountConfig.Workspace)
+					requiresNamespace = requiresNamespace || deploy
+				}
+				if requiresNamespace {
+					if err := w.workspaceManager.Ensure(ctx, w.workspace); err != nil {
+						failureReason = err.Error()
+						suppressTerminalCallback = true
+						w.mutateTask(func(t *model.WorkflowQueue) { t.Status = config.StatusFailed })
+						return fmt.Errorf("initialize workspace before deployment: %w", err)
+					}
+					namespaceReady = true
+				}
 			}
 			stepConcurrency := determineStepConcurrency(stepExec.Mode, len(tasksInPriority), seqLimit)
 			// Fix: StepByStep mode should stop on first failure (stopOnFailure=true)
@@ -959,8 +1012,11 @@ func (w *WorkflowCtl) triggerApprovalNotification(ctx context.Context, stepExec 
 		},
 		Status: config.StatusWaiting,
 	}
+	if w.workspace != nil {
+		callbackJob.Namespace = w.workspace.Namespace
+	}
 	job.ApplyExecutionIdentity(callbackJob)
-	callbackCtx, cancel := approvalNotificationContext(context.Background(), approvalNotifyTimeout)
+	callbackCtx, cancel := approvalNotificationContext(job.WithTaskMetadata(context.WithoutCancel(ctx), ""), approvalNotifyTimeout)
 	go func() {
 		defer cancel()
 		// Notification jobs should not mutate workflow queue state.
@@ -1207,6 +1263,9 @@ func (w *WorkflowCtl) triggerWorkflowCallback(ctx context.Context, status config
 		},
 		Status: config.StatusWaiting,
 	}
+	if w.workspace != nil {
+		callbackJob.Namespace = w.workspace.Namespace
+	}
 	job.ApplyExecutionIdentity(callbackJob)
 	callbackCtx, cancel := callbackContext(ctx, callback.TimeoutSeconds, w.callbackTimeoutMax)
 	defer cancel()
@@ -1240,7 +1299,11 @@ func callbackContext(ctx context.Context, timeoutSeconds int64, timeoutMax time.
 		return ctx, func() {}
 	}
 	timeout := workflowconfig.ResolveWorkflowCallbackTimeout(timeoutSeconds, timeoutMax)
-	return context.WithTimeout(context.Background(), timeout)
+	parent := context.Background()
+	if ctx != nil {
+		parent = job.WithTaskMetadata(context.WithoutCancel(ctx), "")
+	}
+	return context.WithTimeout(parent, timeout)
 }
 
 func decodeWorkflowCallback(raw *model.JSONStruct, target interface{}) error {
@@ -1290,4 +1353,36 @@ func callbackMethodForEvent(callback *model.WorkflowCallback, event string) stri
 		return ""
 	}
 	return strings.ToUpper(strings.TrimSpace(method))
+}
+
+func (w *WorkflowCtl) prepareWorkspace(ctx context.Context) (context.Context, error) {
+	if w.accountConfig == nil {
+		return ctx, fmt.Errorf("workspace configuration is required")
+	}
+	app := &model.Applications{ID: w.snapshotTask().AppID}
+	if err := w.Store.Get(ctx, app); err != nil {
+		return ctx, err
+	}
+	if app.WorkspaceID == "" {
+		return ctx, fmt.Errorf("application has no workspace")
+	}
+	space := &model.Workspace{ID: app.WorkspaceID}
+	if err := w.Store.Get(ctx, space); err != nil {
+		return ctx, err
+	}
+	if app.Namespace != space.Namespace {
+		return ctx, fmt.Errorf("application namespace does not match workspace")
+	}
+	manager := w.workspaceManager
+	if manager == nil {
+		manager = &workspace.Manager{Client: w.Client, RESTConfig: w.KubeConfig, Config: w.accountConfig.Workspace}
+	}
+	w.workspaceManager, w.workspace = manager, space
+	client, restConfig, err := manager.TenantClient(space)
+	if err != nil {
+		return ctx, err
+	}
+	w.Client, w.KubeConfig = client, restConfig
+	w.Store = access.NewStore(w.Store)
+	return access.WithScope(ctx, access.ForWorkspace(space)), nil
 }

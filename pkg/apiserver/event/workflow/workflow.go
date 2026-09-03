@@ -22,6 +22,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/PixelCores/Eruun/pkg/apiserver/security/urlpolicy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -201,7 +202,11 @@ func (w *Workflow) startDelayDispatcher(ctx context.Context, wg *sync.WaitGroup)
 		return
 	}
 	consumer := w.delayConsumerName()
-	dispatcher := job.NewDelayDispatcher(w.DelayQueue, w.KubeClient, w.Store, config.DelayQueueGroup, consumer)
+	var manager *workspace.Manager
+	if w.Cfg != nil && w.Cfg.Accounts != nil {
+		manager = &workspace.Manager{Client: w.KubeClient, RESTConfig: w.KubeConfig, Config: w.Cfg.Accounts.Workspace}
+	}
+	dispatcher := job.NewDelayDispatcher(w.DelayQueue, manager, w.Store, config.DelayQueueGroup, consumer)
 	if wg == nil {
 		dispatcher.Start(ctx)
 		return

@@ -9,6 +9,7 @@ import (
 )
 
 type Applications struct {
+	WorkspaceID      string                `json:"workspaceId" gorm:"type:varchar(36);not null;index"`
 	ID               string                `json:"id" gorm:"primaryKey;type:varchar(64);column:id"`
 	Name             string                `json:"name" gorm:"type:varchar(255);column:name"`          //应用名称
 	Namespace        string                `json:"namespace" gorm:"type:varchar(64);column:namespace"` //命名空间，但是不对外暴露
@@ -54,6 +55,9 @@ func (a *Applications) ShortTableName() string {
 // Index return custom index
 func (a *Applications) Index() map[string]interface{} {
 	index := make(map[string]interface{})
+	if a.WorkspaceID != "" {
+		index["workspace_id"] = a.WorkspaceID
+	}
 	if a.ID != "" {
 		index["id"] = a.ID
 	}

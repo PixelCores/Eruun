@@ -10,7 +10,9 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	"github.com/PixelCores/Eruun/pkg/apiserver/security/access"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
@@ -88,6 +90,9 @@ func (c *applicationsServiceImpl) resolveComponentsWithSourceIndexes(ctx context
 	templateMap := make(map[string]*templateRequest)
 
 	for sourceIndex, comp := range reqComponents {
+		if scope, ok := access.FromContext(ctx); ok && comp.Namespace != "" && comp.Namespace != scope.Namespace {
+			return nil, nil, bcode.ErrForbidden
+		}
 		// 如果该组件没有使用模版，就直接组装这个模版
 		if comp.Template == nil || strings.TrimSpace(comp.Template.ID) == "" {
 			components = append(components, comp)
@@ -126,6 +131,24 @@ func (c *applicationsServiceImpl) resolveComponentsWithSourceIndexes(ctx context
 		}
 		components = append(components, clones...)
 		sourceIndexes = append(sourceIndexes, cloneSourceIndexes...)
+	}
+	if scope, ok := access.FromContext(ctx); ok {
+		if namespace != scope.Namespace || c.Cfg == nil || c.Cfg.Accounts == nil {
+			return nil, nil, bcode.ErrForbidden
+		}
+		for i := range components {
+			comp := &components[i]
+			if comp.Namespace != "" && comp.Namespace != scope.Namespace {
+				return nil, nil, bcode.ErrForbidden
+			}
+			comp.Namespace = scope.Namespace
+			if comp.ComponentType == config.CloudJob {
+				return nil, nil, bcode.ErrForbidden
+			}
+			if err := workspace.ValidateTraits(namespace, comp.Name, &comp.Traits, &comp.Properties, c.Cfg.Accounts.Workspace); err != nil {
+				return nil, nil, err
+			}
+		}
 	}
 	return components, sourceIndexes, nil
 }

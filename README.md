@@ -21,12 +21,14 @@ Eruun ships only the server runtime. It does not include a client command-line a
 
 ## Quick start
 
+Configure the required account Secret from [accounts.example.json](deploy/accounts.example.json) before starting. GitHub/Google login, email/phone accounts, personal/team spaces, HTTPS integration and Kubernetes isolation requirements are described in [Account and workspace integration](docs/account-auth-workspaces.md). Kubernetes must support Restricted v1.34 Pod Security and enforce NetworkPolicy.
+
 Prerequisites: Go 1.25, GNU Make, kubectl, Helm, and access to a Kubernetes cluster.
 
 The installer generates MySQL and Redis credentials locally when they are not supplied. Generated values are held only in protected temporary files and Kubernetes Secrets.
 
 ~~~bash
-SKIP_CONFIRM=true INSTALL_MODE=helm \
+AUTH_CONFIG_FILE=/secure/eruun/accounts.json SKIP_CONFIRM=true INSTALL_MODE=helm \
   ./deploy/all_in_one_install_quickstart.sh
 
 kubectl -n eruun-system port-forward svc/eruun 8000:8000
@@ -40,6 +42,7 @@ To run the server locally:
 ~~~bash
 export ERUUN_DATASTORE_URL='eruun:__REPLACE_WITH_MYSQL_PASSWORD__@tcp(127.0.0.1:3306)/eruun?charset=utf8mb4&parseTime=true'
 export ERUUN_CACHE_PASSWORD='__REPLACE_WITH_REDIS_PASSWORD__'
+export ERUUN_AUTH_CONFIG_FILE='/secure/eruun/accounts.json'
 go run ./cmd/main.go
 ~~~
 
@@ -66,6 +69,7 @@ Every server flag has an ERUUN_ environment-variable equivalent generated from i
 - ERUUN_DATASTORE_URL
 - ERUUN_CACHE_HOST, ERUUN_CACHE_PORT, and ERUUN_CACHE_PASSWORD
 - ERUUN_MSG_TYPE and ERUUN_MSG_KAFKA_BROKERS
+- ERUUN_AUTH_CONFIG_FILE
 - ERUUN_ROLE
 
 Run the following command for the complete server contract:

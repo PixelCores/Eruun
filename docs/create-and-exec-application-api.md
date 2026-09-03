@@ -28,7 +28,7 @@
 
 ## Namespace 生命周期
 
-创建应用时，Eruun 仍会在非 `default` namespace 不存在时自动创建它，并保留现有的托管 annotations 兼容格式。namespace 不归属于单个应用的删除生命周期：普通应用删除、级联删除和应用资源清理都不会删除 namespace，即使该 namespace 是 Eruun 自动创建且已经为空。
+应用使用 `X-Eruun-Workspace-ID` 选中的空间（省略使用个人空间），`workspaceID` 为服务端必填归属。namespace 由空间确定；请求填写不一致 namespace 时拒绝。注册和保存应用不创建 namespace，首次实际部署才初始化安全基线。应用删除不删除 namespace；只有所有者可通过空间接口删除空团队。详见 [账号与空间](account-auth-workspaces.md)。
 
 示例请求见：
 

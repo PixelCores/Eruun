@@ -10,6 +10,7 @@ import (
 
 // ApplicationBase application base model
 type ApplicationBase struct {
+	WorkspaceID     string                `json:"workspaceID"`
 	ID              string                `json:"id"`
 	Name            string                `json:"name"`
 	Namespace       string                `json:"namespace"`

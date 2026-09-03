@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/pflag"
 	k8svalidation "k8s.io/apimachinery/pkg/util/validation"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/security/importsecret"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/profiling"
@@ -33,6 +34,8 @@ const (
 )
 
 type Config struct {
+	AuthConfigFile string
+	Accounts       *spec.AccountConfig
 	// Role selects the explicit runtime responsibility for this process.
 	Role RuntimeRole
 
@@ -310,6 +313,7 @@ func (c *Config) Validate() []error {
 
 // AddFlags adds flags to the specified FlagSet
 func (c *Config) AddFlags(fs *pflag.FlagSet, configParameter *Config) {
+	fs.StringVar(&c.AuthConfigFile, "auth-config-file", c.AuthConfigFile, "Mounted Secret JSON containing account and workspace configuration (required)")
 	c.Role = configParameter.Role
 	fs.Var((*runtimeRoleValue)(&c.Role), "role", "runtime role: api|controller|scheduler|worker")
 	fs.StringVar(&c.BindAddr, "bind-addr", configParameter.BindAddr, "The bind address used to serve the http APIs.")

@@ -120,3 +120,8 @@ env:
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# Required user-managed Secret; see docs/account-auth-workspaces.md.
+auth:
+  existingSecret: ""
+  key: accounts.json

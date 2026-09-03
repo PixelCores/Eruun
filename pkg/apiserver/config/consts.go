@@ -146,10 +146,6 @@ const (
 	AnnotationJobRunGeneration = "eruun.io/job-run-generation"
 	// AnnotationComponentName stores the raw component name for task aggregation.
 	AnnotationComponentName = "eruun.io/component-name"
-	// AnnotationNamespaceAutoCreated marks namespaces created automatically by Eruun.
-	AnnotationNamespaceAutoCreated = "eruun.io/namespace-auto-created"
-	// AnnotationNamespaceOwnerAppID stores the appID that auto-created the namespace.
-	AnnotationNamespaceOwnerAppID = "eruun.io/namespace-owner-app-id"
 	// AnnotationAdoptedStatefulSetRetentionRestore marks a safe recreation whose original PVC retention policy still needs restoration.
 	AnnotationAdoptedStatefulSetRetentionRestore = "eruun.io/adopted-statefulset-retention-restore"
 	// AnnotationAdoptedRecreationToken binds a recreated object to its persisted write-ahead claim.

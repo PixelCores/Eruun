@@ -21,12 +21,14 @@ Eruun 只提供服务端运行时，不包含客户端命令行应用。
 
 ## 快速开始
 
+启动前必须按照 [账号配置示例](deploy/accounts.example.json) 提供统一账号 Secret。GitHub/Google、邮箱/手机号登录、个人和团队空间、HTTPS 接入及 Kubernetes 隔离要求见 [账号与空间文档](docs/account-auth-workspaces.md)。集群须支持 Restricted v1.34 Pod Security 并实际执行 NetworkPolicy。
+
 前置条件：Go 1.25、GNU Make、kubectl、Helm，以及可访问的 Kubernetes 集群。
 
 未显式提供 MySQL、Redis 密码时，安装脚本会在本地生成随机值。生成值只进入受保护的临时文件和 Kubernetes Secret。
 
 ~~~bash
-SKIP_CONFIRM=true INSTALL_MODE=helm \
+AUTH_CONFIG_FILE=/secure/eruun/accounts.json SKIP_CONFIRM=true INSTALL_MODE=helm \
   ./deploy/all_in_one_install_quickstart.sh
 
 kubectl -n eruun-system port-forward svc/eruun 8000:8000
@@ -40,6 +42,7 @@ curl --fail http://127.0.0.1:8000/api/v1/readyz
 ~~~bash
 export ERUUN_DATASTORE_URL='eruun:__REPLACE_WITH_MYSQL_PASSWORD__@tcp(127.0.0.1:3306)/eruun?charset=utf8mb4&parseTime=true'
 export ERUUN_CACHE_PASSWORD='__REPLACE_WITH_REDIS_PASSWORD__'
+export ERUUN_AUTH_CONFIG_FILE='/secure/eruun/accounts.json'
 go run ./cmd/main.go
 ~~~
 
@@ -66,6 +69,7 @@ Redis 用于缓存、工作流锁和默认 Redis Streams 消息传输。工作�
 - ERUUN_DATASTORE_URL
 - ERUUN_CACHE_HOST、ERUUN_CACHE_PORT、ERUUN_CACHE_PASSWORD
 - ERUUN_MSG_TYPE、ERUUN_MSG_KAFKA_BROKERS
+- ERUUN_AUTH_CONFIG_FILE
 - ERUUN_ROLE
 
 完整服务端参数：
