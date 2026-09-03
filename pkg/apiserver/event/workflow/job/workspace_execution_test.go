@@ -47,6 +47,7 @@ func requireWorkspacePodSecurity(t *testing.T, pod corev1.PodSpec) {
 		require.Equal(t, ptr.To(true), c.SecurityContext.RunAsNonRoot)
 		require.Equal(t, []corev1.Capability{"ALL"}, c.SecurityContext.Capabilities.Drop)
 		require.Equal(t, corev1.SeccompProfileTypeRuntimeDefault, c.SecurityContext.SeccompProfile.Type)
+		require.Nil(t, c.SecurityContext.SeccompProfile.LocalhostProfile)
 	}
 }
 
@@ -58,50 +59,63 @@ func TestWorkspaceRepeatedDeploymentDoesNotRollout(t *testing.T) {
 	})}}
 	client, _, err := manager.TenantClient(space)
 	require.NoError(t, err)
-	for _, kind := range []string{"deployment", "statefulset"} {
-		t.Run(kind, func(t *testing.T) {
-			meta := metav1.ObjectMeta{Name: "app", Namespace: space.Namespace}
-			template := corev1.PodTemplateSpec{Spec: workspacePodSpec()}
-			task := &model.JobTask{AppID: "app", Namespace: space.Namespace}
-			if kind == "deployment" {
-				desired := &appsv1.Deployment{ObjectMeta: meta, Spec: appsv1.DeploymentSpec{Template: template}}
-				task.JobType, task.JobInfo = string(config.JobDeploy), desired
-				_, err = workspace.PrepareTask(task, "app", space, manager.Config)
-				require.NoError(t, err)
-				requireWorkspacePodSecurity(t, desired.Spec.Template.Spec)
-				current, err := client.AppsV1().Deployments(space.Namespace).Create(context.Background(), desired, metav1.CreateOptions{})
-				require.NoError(t, err)
-				// Regenerate the same source payload, as the next workflow invocation does.
-				desired.Spec.Template.Spec = workspacePodSpec()
-				_, err = workspace.PrepareTask(task, "app", space, manager.Config)
-				require.NoError(t, err)
-				require.False(t, isDeploymentChanged(current, desired))
-				require.False(t, deploymentPodTemplateChanged(current, desired))
-				desired.Spec.Template.Spec.Containers[0].SecurityContext.RunAsUser = ptr.To(int64(1001))
-				_, err = workspace.PrepareTask(task, "app", space, manager.Config)
-				require.NoError(t, err)
-				require.True(t, isDeploymentChanged(current, desired), "real security changes must still be applied")
-				require.True(t, deploymentPodTemplateChanged(current, desired))
-			} else {
-				desired := &appsv1.StatefulSet{ObjectMeta: meta, Spec: appsv1.StatefulSetSpec{Template: template}}
-				task.JobType, task.JobInfo = string(config.JobDeployStore), desired
-				_, err = workspace.PrepareTask(task, "app", space, manager.Config)
-				require.NoError(t, err)
-				requireWorkspacePodSecurity(t, desired.Spec.Template.Spec)
-				current, err := client.AppsV1().StatefulSets(space.Namespace).Create(context.Background(), desired, metav1.CreateOptions{})
-				require.NoError(t, err)
-				desired.Spec.Template.Spec = workspacePodSpec()
-				_, err = workspace.PrepareTask(task, "app", space, manager.Config)
-				require.NoError(t, err)
-				require.False(t, statefulSetPodTemplateChanged(current, desired))
-				require.False(t, statefulSetNeedsUpdate(current, desired))
-				desired.Spec.Template.Spec.InitContainers[0].SecurityContext.RunAsUser = ptr.To(int64(1001))
-				_, err = workspace.PrepareTask(task, "app", space, manager.Config)
-				require.NoError(t, err)
-				require.True(t, statefulSetPodTemplateChanged(current, desired))
-				require.True(t, statefulSetNeedsUpdate(current, desired))
+	for _, localhost := range []bool{false, true} {
+		podSpec := func() corev1.PodSpec {
+			pod := workspacePodSpec()
+			if localhost {
+				for _, containers := range [][]corev1.Container{pod.Containers, pod.InitContainers} {
+					for i := range containers {
+						containers[i].SecurityContext = &corev1.SecurityContext{SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeLocalhost, LocalhostProfile: ptr.To("profiles/app.json")}}
+					}
+				}
 			}
-		})
+			return pod
+		}
+		for _, kind := range []string{"deployment", "statefulset"} {
+			t.Run(fmt.Sprintf("%s/localhost=%t", kind, localhost), func(t *testing.T) {
+				meta := metav1.ObjectMeta{Name: "app", Namespace: space.Namespace}
+				template := corev1.PodTemplateSpec{Spec: podSpec()}
+				task := &model.JobTask{AppID: "app", Namespace: space.Namespace}
+				if kind == "deployment" {
+					desired := &appsv1.Deployment{ObjectMeta: meta, Spec: appsv1.DeploymentSpec{Template: template}}
+					task.JobType, task.JobInfo = string(config.JobDeploy), desired
+					_, err = workspace.PrepareTask(task, "app", space, manager.Config)
+					require.NoError(t, err)
+					requireWorkspacePodSecurity(t, desired.Spec.Template.Spec)
+					current, err := client.AppsV1().Deployments(space.Namespace).Create(context.Background(), desired, metav1.CreateOptions{})
+					require.NoError(t, err)
+					// Regenerate the same source payload, as the next workflow invocation does.
+					desired.Spec.Template.Spec = podSpec()
+					_, err = workspace.PrepareTask(task, "app", space, manager.Config)
+					require.NoError(t, err)
+					require.False(t, isDeploymentChanged(current, desired))
+					require.False(t, deploymentPodTemplateChanged(current, desired))
+					desired.Spec.Template.Spec.Containers[0].SecurityContext.RunAsUser = ptr.To(int64(1001))
+					_, err = workspace.PrepareTask(task, "app", space, manager.Config)
+					require.NoError(t, err)
+					require.True(t, isDeploymentChanged(current, desired), "real security changes must still be applied")
+					require.True(t, deploymentPodTemplateChanged(current, desired))
+				} else {
+					desired := &appsv1.StatefulSet{ObjectMeta: meta, Spec: appsv1.StatefulSetSpec{Template: template}}
+					task.JobType, task.JobInfo = string(config.JobDeployStore), desired
+					_, err = workspace.PrepareTask(task, "app", space, manager.Config)
+					require.NoError(t, err)
+					requireWorkspacePodSecurity(t, desired.Spec.Template.Spec)
+					current, err := client.AppsV1().StatefulSets(space.Namespace).Create(context.Background(), desired, metav1.CreateOptions{})
+					require.NoError(t, err)
+					desired.Spec.Template.Spec = podSpec()
+					_, err = workspace.PrepareTask(task, "app", space, manager.Config)
+					require.NoError(t, err)
+					require.False(t, statefulSetPodTemplateChanged(current, desired))
+					require.False(t, statefulSetNeedsUpdate(current, desired))
+					desired.Spec.Template.Spec.InitContainers[0].SecurityContext.RunAsUser = ptr.To(int64(1001))
+					_, err = workspace.PrepareTask(task, "app", space, manager.Config)
+					require.NoError(t, err)
+					require.True(t, statefulSetPodTemplateChanged(current, desired))
+					require.True(t, statefulSetNeedsUpdate(current, desired))
+				}
+			})
+		}
 	}
 }
 
@@ -213,16 +227,6 @@ func TestDelayedJobsRejectInvalidWorkspaceBeforeWrites(t *testing.T) {
 		{"queue namespace", func(_ *delayedWorkspaceStore, _ *workspace.Manager, p *DelayJobPayload) { p.Namespace = "namespace-2" }},
 		{"job namespace", func(_ *delayedWorkspaceStore, _ *workspace.Manager, p *DelayJobPayload) {
 			p.Job.Namespace = "namespace-2"
-		}},
-		{"missing ownership", func(s *delayedWorkspaceStore, _ *workspace.Manager, _ *DelayJobPayload) { s.jobInfos[1].AppID = "" }},
-		{"missing app", func(s *delayedWorkspaceStore, _ *workspace.Manager, _ *DelayJobPayload) { delete(s.apps, "app-1") }},
-		{"app namespace", func(s *delayedWorkspaceStore, _ *workspace.Manager, _ *DelayJobPayload) {
-			s.apps["app-1"].Namespace = "namespace-2"
-		}},
-		{"namespace owner", func(_ *delayedWorkspaceStore, m *workspace.Manager, _ *DelayJobPayload) {
-			_, err := m.Client.CoreV1().Namespaces().Update(context.Background(), &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "namespace-1", Labels: map[string]string{workspace.OwnerLabel: "space-2"}}}, metav1.UpdateOptions{})
-			require.NoError(t, err)
-			m.Client.(*fake.Clientset).ClearActions()
 		}},
 		{"privileged init", func(_ *delayedWorkspaceStore, _ *workspace.Manager, p *DelayJobPayload) {
 			p.Job.Spec.Template.Spec.InitContainers[0].SecurityContext = &corev1.SecurityContext{Privileged: ptr.To(true)}

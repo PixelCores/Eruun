@@ -388,6 +388,22 @@ func (s *resultOutboxTestStore) CompareAndSwapWithConditions(_ context.Context, 
 		}
 		for field, value := range conditions {
 			switch field {
+			case "status":
+				if current.Status != fmt.Sprint(value) {
+					return false, nil
+				}
+			case "app_id":
+				if current.AppID != fmt.Sprint(value) {
+					return false, nil
+				}
+			case "execution_key":
+				if jobInfoExecutionKey(*current) != fmt.Sprint(value) {
+					return false, nil
+				}
+			case "run_generation":
+				if fmt.Sprint(current.RunGeneration) != fmt.Sprint(value) {
+					return false, nil
+				}
 			case "delay_state":
 				if string(current.DelayState) != strings.TrimSpace(fmt.Sprint(value)) {
 					return false, nil
@@ -400,6 +416,15 @@ func (s *resultOutboxTestStore) CompareAndSwapWithConditions(_ context.Context, 
 			current.DelayState = config.JobDelayState(state)
 		} else if state, ok := updates["delay_state"].(config.JobDelayState); ok {
 			current.DelayState = state
+		}
+		if status, ok := updates["status"].(string); ok {
+			current.Status = status
+		}
+		if message, ok := updates["error"].(string); ok {
+			current.Error = message
+		}
+		if endTime, ok := updates["end_time"].(int64); ok {
+			current.EndTime = endTime
 		}
 		current.UpdateTime = time.Now()
 		return true, nil

@@ -3,6 +3,7 @@ package workspace
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
@@ -63,8 +64,16 @@ func PrepareTask(task *model.JobTask, appID string, w *model.Workspace, cfg spec
 	if err != nil {
 		return false, fmt.Errorf("encode prepared workspace task: %w", err)
 	}
-	if err = json.Unmarshal(raw, task.JobInfo); err != nil {
+	value := reflect.ValueOf(task.JobInfo)
+	if value.Kind() != reflect.Pointer || value.IsNil() {
+		return false, fmt.Errorf("workspace task payload must be a non-nil pointer")
+	}
+	// Unmarshal merges into existing structs and maps. Decode a fresh value so
+	// policy-removed fields disappear, then preserve the caller's payload pointer.
+	prepared := reflect.New(value.Type().Elem())
+	if err = json.Unmarshal(raw, prepared.Interface()); err != nil {
 		return false, fmt.Errorf("populate prepared workspace task: %w", err)
 	}
+	value.Elem().Set(prepared.Elem())
 	return true, nil
 }

@@ -119,7 +119,9 @@ OAuth 前端先 POST start，再导航到 authorizationURL。回调页从当前 
 
 API 资源操作及后台执行使用 namespace 内受限 `eruun-runner` 身份；工作负载本身使用无 token 挂载的 default ServiceAccount。Pod 必须非 root、禁止提权、drop ALL capabilities、RuntimeDefault seccomp。镜像须支持非 root USER，或在 securityPolicy 设置非零 runAsUser。入口及展开后的最终容器（含 init、sidecar）均校验；拒绝 host namespace、hostPath、hostPort、任意 ServiceAccount、额外 RBAC、CloudJob、跨 namespace、NodePort/LoadBalancer、任意 Ingress 注解/域名/默认后端、不允许的存储类。
 
-展开后的任务在资源比较和持久化之前写入与请求边界相同的安全默认值；相同配置再次部署不会因这些默认值触发 Deployment/StatefulSet 滚动更新。延迟 Job 到期时从已提交 JobInfo 的 AppID 读取应用及空间，重新验证 namespace 归属，并使用该空间的受限客户端执行。Controller RBAC 仅增加 namespace 读取和指定 `eruun-runner` 的 impersonation，不负责空间初始化。
+展开后的任务在资源比较和持久化之前写入与请求边界相同的安全默认值；规范化会完整替换对象内容，包括清除已移除的嵌套字段（如 Localhost seccomp 的 localhostProfile），相同配置再次部署不会因这些默认值触发 Deployment/StatefulSet 滚动更新。延迟 Job 到期时从已提交 JobInfo 的 AppID 读取应用及空间，重新验证 namespace 归属，并使用该空间的受限客户端执行。Controller RBAC 仅增加 namespace 读取和指定 `eruun-runner` 的 impersonation，不负责空间初始化。
+
+延迟通知须与持久化检查点一致，不一致的通知仅确认消息，不修改检查点，正确任务仍可由数据库恢复。对已核实检查点的空间/工作负载校验失败，先按执行身份和当前状态原子写入失败终态，再确认消息；未创建的 Job 不标为已派发。失败写入或消息确认失败可重试，已有终态、新一代执行及已交给结果处理的任务不会被覆盖。
 
 网络默认仅允许同空间通信、DNS、公共 HTTP/HTTPS 出口和配置的入口控制器；排除其他私网及 `clusterCIDRs`。配额和 LimitRange 由部署配置统一控制。Kubernetes 原生准入与 NetworkPolicy 是实际隔离的一部分，需要真实集群验证其生效。后台任务从持久化应用加载空间，不使用用户 access token；请求退出不影响已排队任务归属。
 
