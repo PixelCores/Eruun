@@ -3,7 +3,6 @@ package middleware
 import (
 	"compress/gzip"
 	"io"
-	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -66,9 +65,9 @@ type gzipWriter struct {
 }
 
 func (w *gzipWriter) Write(data []byte) (int, error) {
-	// If status not written yet, ensure a default OK
+	// Commit the status selected by the handler before gzip writes the body.
 	if !w.Written() {
-		w.WriteHeader(http.StatusOK)
+		w.ResponseWriter.WriteHeaderNow()
 	}
 	return w.Writer.Write(data)
 }

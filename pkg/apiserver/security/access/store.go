@@ -87,7 +87,7 @@ func (s *Store) options(ctx context.Context, e datastore.Entity, input *datastor
 		return &opts, nil
 	}
 	if isApp {
-		opts.In = append(opts.In, datastore.InQueryOption{Key: "workspace_id", Values: []string{scope.WorkspaceID}})
+		opts.In = append(opts.In, datastore.InQueryOption{Key: "workspaceid", Values: []string{scope.WorkspaceID}})
 		return &opts, nil
 	}
 	if appID != "" {
@@ -283,10 +283,10 @@ func (s *Store) CompareAndSwapWithConditions(ctx context.Context, e datastore.En
 	}
 	if scope, ok := FromContext(ctx); ok {
 		if _, _, scoped := runtimeEntity(e); scoped {
-			for _, key := range []string{"workspace_id", "namespace", "app_id"} {
+			for _, key := range []string{"workspaceid", "namespace", "app_id"} {
 				if value, exists := updates[key]; exists {
 					switch key {
-					case "workspace_id":
+					case "workspaceid":
 						if value != scope.WorkspaceID {
 							return false, bcode.ErrForbidden
 						}

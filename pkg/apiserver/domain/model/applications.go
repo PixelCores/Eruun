@@ -56,7 +56,7 @@ func (a *Applications) ShortTableName() string {
 func (a *Applications) Index() map[string]interface{} {
 	index := make(map[string]interface{})
 	if a.WorkspaceID != "" {
-		index["workspace_id"] = a.WorkspaceID
+		index["workspaceid"] = a.WorkspaceID
 	}
 	if a.ID != "" {
 		index["id"] = a.ID
