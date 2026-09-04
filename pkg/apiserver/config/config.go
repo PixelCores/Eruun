@@ -152,7 +152,7 @@ func (c *Config) WorkflowRuntime() workflowconfig.RuntimeConfig {
 func NewConfig() *Config {
 	return &Config{
 		Role:              RuntimeRoleAPI,
-		BindAddr:          "127.0.0.1:8000",
+		BindAddr:          "127.0.0.1:8001",
 		APIRateLimitQPS:   0,
 		APIRateLimitBurst: 0,
 		LeaderConfig: leaderConfig{
