@@ -2,7 +2,6 @@ package workflow
 
 import (
 	"context"
-
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,15 +12,12 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	redis "github.com/redis/go-redis/v9"
-	"github.com/stretchr/testify/require"
-
-	approvaltimeout "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/approvaltimeout"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
+	redis "github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCancelDelayedVersionTaskForAppSuccess(t *testing.T) {
@@ -1314,15 +1310,6 @@ func TestCancelWorkflowTaskForAppFailsBeforeStateChangeWithoutCancelSignal(t *te
 }
 
 func TestApproveWorkflowTaskCancel(t *testing.T) {
-	var timeoutCancelled int32
-	timerID := approvaltimeout.Register("task-approve-2", func() {
-		atomic.AddInt32(&timeoutCancelled, 1)
-	})
-	require.NotZero(t, timerID)
-	t.Cleanup(func() {
-		approvaltimeout.Cancel("task-approve-2")
-	})
-
 	store := &statusDataStore{
 		task: &model.WorkflowQueue{
 			TaskID:              "task-approve-2",
@@ -1344,7 +1331,6 @@ func TestApproveWorkflowTaskCancel(t *testing.T) {
 	require.Equal(t, "", store.task.PendingApprovalStep)
 	require.Equal(t, "approver", store.task.TaskRevoker)
 	require.Equal(t, config.CancelSourceUser, store.task.CancelSource)
-	require.Equal(t, int32(1), atomic.LoadInt32(&timeoutCancelled))
 }
 
 func TestApproveWorkflowTaskCancelTerminalizesPrecreatedCleanupJobs(t *testing.T) {

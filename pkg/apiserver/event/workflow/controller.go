@@ -23,7 +23,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	approvaltimeout "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/approvaltimeout"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/importsecret"
@@ -1063,10 +1062,9 @@ func (w *WorkflowCtl) scheduleApprovalTimeout(stepExec *StepExecution, stepName 
 		return
 	}
 	timeout := time.Duration(stepExec.Approval.TimeoutSeconds) * time.Second
-	timerCtx, stopTimer := context.WithCancel(context.Background())
-	timerID := approvaltimeout.Register(taskID, stopTimer)
+	// Approval state may be changed by another process, so the timer observes the
+	// persisted checkpoint instead of relying on process-local cancellation.
 	go func() {
-		defer approvaltimeout.Unregister(taskID, timerID)
 		timer := time.NewTimer(timeout)
 		defer timer.Stop()
 		probeEvery := approvalProbeInterval
@@ -1077,8 +1075,6 @@ func (w *WorkflowCtl) scheduleApprovalTimeout(stepExec *StepExecution, stepName 
 		defer probeTicker.Stop()
 		for {
 			select {
-			case <-timerCtx.Done():
-				return
 			case <-timer.C:
 				w.markApprovalTimeout(taskID, stepName, stepIndex, timeout)
 				return
@@ -1149,7 +1145,6 @@ func (w *WorkflowCtl) markApprovalTimeout(taskID, stepName string, stepIndex int
 	if !updated {
 		return
 	}
-	approvaltimeout.Cancel(taskID)
 
 	reason := fmt.Sprintf(approvalTimeoutStepReason, timeout)
 	if strings.TrimSpace(stepName) != "" {
