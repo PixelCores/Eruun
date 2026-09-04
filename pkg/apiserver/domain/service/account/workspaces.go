@@ -170,8 +170,8 @@ func (s *Service) UpdateMember(ctx context.Context, p *Principal, id, userID, ro
 }
 
 func (s *Service) TransferWorkspace(ctx context.Context, p *Principal, id, userID string) error {
-	if !p.Recent(s.Now()) {
-		return bcode.ErrAccountRecentAuth
+	if err := s.requireRecentAuthentication(ctx, p); err != nil {
+		return err
 	}
 	return s.teamMutation(ctx, p, id, func(r repository.Accounts, w *model.Workspace, role string) error {
 		if role != "owner" || userID == w.OwnerID {
@@ -334,8 +334,8 @@ func (s *Service) RevokeInvitation(ctx context.Context, p *Principal, id, invita
 // Namespace removal is injected by the API assembly, keeping Kubernetes IO out
 // of the account model. The workspace lock also serializes application creation.
 func (s *Service) DeleteWorkspace(ctx context.Context, p *Principal, id string, deleteNamespace func(context.Context, *model.Workspace) error) error {
-	if !p.Recent(s.Now()) {
-		return bcode.ErrAccountRecentAuth
+	if err := s.requireRecentAuthentication(ctx, p); err != nil {
+		return err
 	}
 	return s.teamMutation(ctx, p, id, func(r repository.Accounts, w *model.Workspace, role string) error {
 		if role != "owner" {

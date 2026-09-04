@@ -23,14 +23,15 @@ type Identity struct {
 }
 
 type Session struct {
-	ID              string    `json:"id" gorm:"primaryKey;type:varchar(36)"`
-	UserID          string    `json:"-" gorm:"type:varchar(36);not null;index"`
-	AccessHash      string    `json:"-" gorm:"type:char(64);not null;uniqueIndex"`
-	RefreshHash     string    `json:"-" gorm:"type:char(64);not null;uniqueIndex"`
-	AccessExpiresAt time.Time `json:"-"`
-	ExpiresAt       time.Time `json:"expiresAt" gorm:"index"`
-	AuthenticatedAt time.Time `json:"-"`
-	SecurityVersion uint64    `json:"-"`
+	ID                string    `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	UserID            string    `json:"-" gorm:"type:varchar(36);not null;index"`
+	AccessHash        string    `json:"-" gorm:"type:char(64);not null;uniqueIndex"`
+	RefreshFamilyHash string    `json:"-" gorm:"type:char(64);not null;uniqueIndex"`
+	RefreshHash       string    `json:"-" gorm:"type:char(64);not null;uniqueIndex"`
+	AccessExpiresAt   time.Time `json:"-" gorm:"index:idx_session_idle_cleanup"`
+	ExpiresAt         time.Time `json:"expiresAt" gorm:"index"`
+	AuthenticatedAt   time.Time `json:"-"`
+	SecurityVersion   uint64    `json:"-"`
 	BaseModel
 }
 
@@ -109,6 +110,9 @@ func (m *Session) Index() map[string]interface{} {
 	}
 	if m.AccessHash != "" {
 		out["accesshash"] = m.AccessHash
+	}
+	if m.RefreshFamilyHash != "" {
+		out["refreshfamilyhash"] = m.RefreshFamilyHash
 	}
 	if m.RefreshHash != "" {
 		out["refreshhash"] = m.RefreshHash

@@ -251,6 +251,9 @@ func (s *restServer) Run(ctx context.Context, errChan chan error) error {
 	}
 	defer shutdown()
 	watchRuntimeShutdown(ctx, runCtx, shutdown)
+	if s.cfg.RunsAPI() {
+		go s.accounts.RunSessionCleanup(runCtx)
+	}
 
 	elections, err := s.setupRuntimeLeaderElections(runCtx, errChan)
 	if err != nil {

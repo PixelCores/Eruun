@@ -103,6 +103,31 @@ var businessRoutes = map[string]string{
 	"GET /api/v1/admin/users":                                                 "system", "PATCH /api/v1/admin/users/:userID": "system",
 }
 
+// HasAuthPolicy reports whether a registered route belongs to exactly one
+// explicit authorization class, including health/readiness bypasses.
+func HasAuthPolicy(method, path string) bool {
+	route := method + " " + path
+	classes := 0
+	if method == "GET" {
+		for _, health := range DefaultAuthSkipPaths() {
+			if path == health {
+				classes++
+				break
+			}
+		}
+	}
+	if publicAccountRoutes[route] {
+		classes++
+	}
+	if privateAccountRoutes[route] {
+		classes++
+	}
+	if _, known := businessRoutes[route]; known {
+		classes++
+	}
+	return classes == 1
+}
+
 func Auth(opts AuthOptions) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.FullPath()

@@ -15,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"k8s.io/klog/v2"
 )
 
 type Delivery interface {
@@ -49,7 +50,25 @@ type Principal struct {
 }
 
 func (p *Principal) Recent(now time.Time) bool {
-	return p != nil && p.Session != nil && now.Sub(p.Session.AuthenticatedAt) <= recentAuthTTL
+	if p == nil || p.Session == nil {
+		return false
+	}
+	age := now.Sub(p.Session.AuthenticatedAt)
+	return age >= 0 && age <= recentAuthTTL
+}
+
+func (s *Service) requireRecentAuthentication(ctx context.Context, p *Principal) error {
+	if p == nil || p.Session == nil {
+		return bcode.ErrAccountRecentAuth
+	}
+	now, err := s.Repo.CurrentDatabaseTime(ctx)
+	if err != nil {
+		return err
+	}
+	if !p.Recent(now) {
+		return bcode.ErrAccountRecentAuth
+	}
+	return nil
 }
 
 func (s *Service) Bootstrap(ctx context.Context) error {
@@ -176,20 +195,35 @@ func (s *Service) issueSession(ctx context.Context, r repository.Accounts, u *mo
 	if err != nil {
 		return nil, err
 	}
-	refresh, err := randomToken()
+	refresh, err := newRefreshToken("")
 	if err != nil {
 		return nil, err
 	}
-	now := s.Now().UTC()
-	session := &model.Session{ID: uuid.NewString(), UserID: u.ID, AccessHash: tokenHash(a), RefreshHash: tokenHash(refresh), AccessExpiresAt: now.Add(accessTTL), ExpiresAt: now.Add(sessionTTL), AuthenticatedAt: now, SecurityVersion: u.SecurityVersion}
+	refreshFamilyHash, refreshHash, _, ok := parseRefreshToken(refresh)
+	if !ok {
+		return nil, fmt.Errorf("create refresh token: invalid generated token")
+	}
+	now, err := r.CurrentDatabaseTime(ctx)
+	if err != nil {
+		return nil, err
+	}
+	session := &model.Session{ID: uuid.NewString(), UserID: u.ID, AccessHash: tokenHash(a), RefreshFamilyHash: refreshFamilyHash, RefreshHash: refreshHash, AccessExpiresAt: now.Add(accessTTL), ExpiresAt: now.Add(sessionTTL), AuthenticatedAt: now, SecurityVersion: u.SecurityVersion}
 	if err = r.Store.Add(ctx, session); err != nil {
 		return nil, fmt.Errorf("create session: %w", err)
 	}
 	return &Login{AccessToken: a, TokenType: "Bearer", ExpiresIn: int64(accessTTL.Seconds()), User: u, RefreshToken: refresh}, nil
 }
 
+func sessionIdleExpired(session *model.Session, now time.Time) bool {
+	// AccessExpiresAt is set on issuance and then advanced only by a successful
+	// refresh. Subtracting the fixed access lifetime reconstructs the last
+	// refresh time without adding a write to every authenticated request or
+	// maintaining a separate activity timestamp.
+	return !session.AccessExpiresAt.Add(sessionIdleTTL - accessTTL).After(now)
+}
+
 func (s *Service) Authenticate(ctx context.Context, token string) (*Principal, error) {
-	if len(token) != 43 {
+	if len(token) != tokenPartLength {
 		return nil, bcode.ErrUnauthorized
 	}
 	session := &model.Session{AccessHash: tokenHash(token)}
@@ -200,49 +234,121 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Principal, e
 	if err := s.Repo.Store.Get(ctx, u); err != nil {
 		return nil, authLookupError(err)
 	}
-	now := s.Now()
-	if u.Disabled || u.SecurityVersion != session.SecurityVersion || !session.AccessExpiresAt.After(now) || !session.ExpiresAt.After(now) {
+	now, err := s.Repo.CurrentDatabaseTime(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if u.Disabled || u.SecurityVersion != session.SecurityVersion || !session.AccessExpiresAt.After(now) || !session.ExpiresAt.After(now) || sessionIdleExpired(session, now) {
 		return nil, bcode.ErrUnauthorized
 	}
 	return &Principal{User: u, Session: session}, nil
 }
 
 func (s *Service) Refresh(ctx context.Context, token string) (*Login, error) {
-	if len(token) != 43 {
+	refreshFamilyHash, refreshHash, family, ok := parseRefreshToken(token)
+	if !ok {
 		return nil, bcode.ErrUnauthorized
 	}
-	session := &model.Session{RefreshHash: tokenHash(token)}
+	session := &model.Session{RefreshFamilyHash: refreshFamilyHash}
 	if err := s.Repo.One(ctx, session); err != nil {
 		return nil, authLookupError(err)
 	}
 	var result *Login
+	replayedSessionID := ""
 	err := s.Repo.Transaction(ctx, func(r repository.Accounts) error {
 		u := &model.User{ID: session.UserID}
 		if e := r.Lock(ctx, u); e != nil {
 			return e
 		}
-		if u.Disabled || u.SecurityVersion != session.SecurityVersion || !session.ExpiresAt.After(s.Now()) {
+		current := &model.Session{ID: session.ID}
+		if e := r.Lock(ctx, current); e != nil {
+			return authLookupError(e)
+		}
+		now, e := r.CurrentDatabaseTime(ctx)
+		if e != nil {
+			return e
+		}
+		if current.UserID != u.ID || u.Disabled || u.SecurityVersion != current.SecurityVersion || !current.ExpiresAt.After(now) || sessionIdleExpired(current, now) {
 			return bcode.ErrUnauthorized
+		}
+		if current.RefreshHash != refreshHash {
+			replayedSessionID = current.ID
+			return deleteSessionFamily(ctx, r, current)
 		}
 		a, e := randomToken()
 		if e != nil {
 			return e
 		}
-		refresh, e := randomToken()
+		refresh, e := newRefreshToken(family)
 		if e != nil {
 			return e
 		}
-		ok, e := r.Store.CompareAndSwap(ctx, session, "refreshhash", tokenHash(token), map[string]interface{}{"accesshash": tokenHash(a), "refreshhash": tokenHash(refresh), "accessexpiresat": s.Now().UTC().Add(accessTTL)})
+		ok, e := r.Store.CompareAndSwap(ctx, current, "refreshhash", refreshHash, map[string]interface{}{"accesshash": tokenHash(a), "refreshhash": tokenHash(refresh), "accessexpiresat": now.Add(accessTTL)})
 		if e != nil {
 			return e
 		}
 		if !ok {
-			return bcode.ErrUnauthorized
+			replayedSessionID = current.ID
+			return deleteSessionFamily(ctx, r, current)
 		}
 		result = &Login{AccessToken: a, TokenType: "Bearer", ExpiresIn: int64(accessTTL.Seconds()), User: u, RefreshToken: refresh}
 		return nil
 	})
+	if err == nil && replayedSessionID != "" {
+		logRefreshReplay(replayedSessionID)
+		return nil, bcode.ErrUnauthorized
+	}
 	return result, err
+}
+
+func logRefreshReplay(sessionID string) {
+	reference := tokenHash(sessionID)
+	klog.InfoS("refresh token replay detected; revoked session", "sessionRef", reference[:16])
+}
+
+func deleteSessionFamily(ctx context.Context, r repository.Accounts, session *model.Session) error {
+	if err := r.Store.Delete(ctx, session); err != nil {
+		return fmt.Errorf("delete session: %w", err)
+	}
+	return nil
+}
+
+// CleanupExpiredSessions removes sessions that reached either the absolute or
+// refresh-idle deadline.
+func (s *Service) CleanupExpiredSessions(ctx context.Context) error {
+	return s.Repo.Transaction(ctx, func(r repository.Accounts) error {
+		now, err := r.CurrentDatabaseTime(ctx)
+		if err != nil {
+			return err
+		}
+		idleCutoff := now.Add(-(sessionIdleTTL - accessTTL))
+		if err := r.Store.DeleteByFilter(ctx, &model.Session{}, &datastore.FilterOptions{LessThan: []datastore.ComparisonQueryOption{{Key: "expiresat", Value: now}}}); err != nil {
+			return fmt.Errorf("delete absolutely expired sessions: %w", err)
+		}
+		if err := r.Store.DeleteByFilter(ctx, &model.Session{}, &datastore.FilterOptions{LessThan: []datastore.ComparisonQueryOption{{Key: "accessexpiresat", Value: idleCutoff}}}); err != nil {
+			return fmt.Errorf("delete idle sessions: %w", err)
+		}
+		return nil
+	})
+}
+
+// RunSessionCleanup periodically bounds persisted session state.
+func (s *Service) RunSessionCleanup(ctx context.Context) {
+	ticker := time.NewTicker(cleanupInterval)
+	defer ticker.Stop()
+	for {
+		if err := s.CleanupExpiredSessions(ctx); err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			klog.ErrorS(err, "clean up expired account sessions")
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
 }
 
 func (s *Service) Logout(ctx context.Context, p *Principal) error {
@@ -250,8 +356,8 @@ func (s *Service) Logout(ctx context.Context, p *Principal) error {
 }
 
 func (s *Service) ChangePassword(ctx context.Context, p *Principal, password string) error {
-	if !p.Recent(s.Now()) {
-		return bcode.ErrAccountRecentAuth
+	if err := s.requireRecentAuthentication(ctx, p); err != nil {
+		return err
 	}
 	if p.User.MustChangePassword && verifyPassword(p.User.PasswordHash, password) {
 		return bcode.ErrAccountInput
@@ -309,8 +415,8 @@ func (s *Service) Identities(ctx context.Context, p *Principal) ([]datastore.Ent
 }
 
 func (s *Service) Bind(ctx context.Context, p *Principal, provider, subject, code string) error {
-	if !p.Recent(s.Now()) {
-		return bcode.ErrAccountRecentAuth
+	if err := s.requireRecentAuthentication(ctx, p); err != nil {
+		return err
 	}
 	id, err := NormalizeIdentity(provider, subject)
 	if err != nil {
@@ -332,8 +438,8 @@ func (s *Service) Bind(ctx context.Context, p *Principal, provider, subject, cod
 }
 
 func (s *Service) Unbind(ctx context.Context, p *Principal, id string) error {
-	if !p.Recent(s.Now()) {
-		return bcode.ErrAccountRecentAuth
+	if err := s.requireRecentAuthentication(ctx, p); err != nil {
+		return err
 	}
 	return s.Repo.Transaction(ctx, func(r repository.Accounts) error {
 		u := &model.User{ID: p.User.ID}

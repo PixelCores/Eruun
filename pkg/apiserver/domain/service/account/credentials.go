@@ -21,9 +21,13 @@ import (
 )
 
 const (
-	accessTTL     = 15 * time.Minute
-	sessionTTL    = 30 * 24 * time.Hour
-	recentAuthTTL = 5 * time.Minute
+	tokenPartLength    = 43
+	refreshTokenLength = 2*tokenPartLength + 1
+	accessTTL          = 15 * time.Minute
+	sessionTTL         = 30 * 24 * time.Hour
+	sessionIdleTTL     = 7 * 24 * time.Hour
+	recentAuthTTL      = 5 * time.Minute
+	cleanupInterval    = time.Hour
 )
 
 var mainlandPhone = regexp.MustCompile(`^1[3-9][0-9]{9}$`)
@@ -87,6 +91,30 @@ func randomToken() (string, error) {
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
+
+func newRefreshToken(family string) (string, error) {
+	var err error
+	if family == "" {
+		family, err = randomToken()
+		if err != nil {
+			return "", err
+		}
+	}
+	credential, err := randomToken()
+	if err != nil {
+		return "", err
+	}
+	return family + "." + credential, nil
+}
+
+func parseRefreshToken(token string) (familyHash, refreshHash, family string, ok bool) {
+	if len(token) != refreshTokenLength || token[tokenPartLength] != '.' {
+		return "", "", "", false
+	}
+	family = token[:tokenPartLength]
+	return tokenHash(family), tokenHash(token), family, true
+}
+
 func tokenHash(token string) string {
 	v := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(v[:])

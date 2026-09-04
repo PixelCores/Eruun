@@ -205,8 +205,8 @@ type ConditionalCompareAndSwap interface {
 }
 
 // DatabaseClock exposes the datastore server's wall clock. Distributed leases
-// must use one authoritative clock instead of comparing timestamps produced by
-// different runtime processes.
+// and lifecycle decisions must use one authoritative clock instead of comparing
+// timestamps produced by different runtime processes.
 type DatabaseClock interface {
 	CurrentDatabaseTime(ctx context.Context) (time.Time, error)
 }

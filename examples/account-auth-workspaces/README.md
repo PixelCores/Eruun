@@ -104,7 +104,7 @@ unset LOGIN
 }
 ```
 
-刷新只使用 Cookie，不带旧的 Bearer；必须串行执行。成功后旧 access/refresh 都失效，立刻替换内存中的 access token：
+刷新只使用 Cookie，不带旧的 Bearer；必须用 single-flight 串行执行。成功后旧 access/refresh 都失效，立刻替换内存中的 access token：
 
 ```bash
 LOGIN=$(api '/auth/refresh' --request POST)
@@ -112,7 +112,7 @@ ACCESS_TOKEN=$(printf '%s' "$LOGIN" | jq -er 'select(.code == 0) | .data.accessT
 unset LOGIN
 ```
 
-刷新不会延长 30 天会话绝对期限，也不会重置“最近 5 分钟验证”时间。若失败，清空内存 token 并重新登录。初始管理员登录后若 `mustChangePassword=true`，先执行第 5 节改密，再重新登录。
+成功刷新会推进 7 天 refresh 空闲期限，但不会延长 30 天会话绝对期限，也不会重置“最近 5 分钟验证”时间。业务 API 请求不推进空闲期限。任一已轮换 refresh 再次出现时，服务端会撤销该会话当前的 access/refresh；这也适用于并发使用同一个 refresh 的情况。若刷新失败，清空内存 token 并重新登录，不要自动并发重试。初始管理员登录后若 `mustChangePassword=true`，先执行第 5 节改密，再重新登录。
 
 ## 4. GitHub / Google 浏览器授权
 
