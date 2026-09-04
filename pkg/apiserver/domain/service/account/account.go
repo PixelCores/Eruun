@@ -50,7 +50,25 @@ type Principal struct {
 }
 
 func (p *Principal) Recent(now time.Time) bool {
-	return p != nil && p.Session != nil && now.Sub(p.Session.AuthenticatedAt) <= recentAuthTTL
+	if p == nil || p.Session == nil {
+		return false
+	}
+	age := now.Sub(p.Session.AuthenticatedAt)
+	return age >= 0 && age <= recentAuthTTL
+}
+
+func (s *Service) requireRecentAuthentication(ctx context.Context, p *Principal) error {
+	if p == nil || p.Session == nil {
+		return bcode.ErrAccountRecentAuth
+	}
+	now, err := s.Repo.CurrentDatabaseTime(ctx)
+	if err != nil {
+		return err
+	}
+	if !p.Recent(now) {
+		return bcode.ErrAccountRecentAuth
+	}
+	return nil
 }
 
 func (s *Service) Bootstrap(ctx context.Context) error {
@@ -338,8 +356,8 @@ func (s *Service) Logout(ctx context.Context, p *Principal) error {
 }
 
 func (s *Service) ChangePassword(ctx context.Context, p *Principal, password string) error {
-	if !p.Recent(s.Now()) {
-		return bcode.ErrAccountRecentAuth
+	if err := s.requireRecentAuthentication(ctx, p); err != nil {
+		return err
 	}
 	if p.User.MustChangePassword && verifyPassword(p.User.PasswordHash, password) {
 		return bcode.ErrAccountInput
@@ -397,8 +415,8 @@ func (s *Service) Identities(ctx context.Context, p *Principal) ([]datastore.Ent
 }
 
 func (s *Service) Bind(ctx context.Context, p *Principal, provider, subject, code string) error {
-	if !p.Recent(s.Now()) {
-		return bcode.ErrAccountRecentAuth
+	if err := s.requireRecentAuthentication(ctx, p); err != nil {
+		return err
 	}
 	id, err := NormalizeIdentity(provider, subject)
 	if err != nil {
@@ -420,8 +438,8 @@ func (s *Service) Bind(ctx context.Context, p *Principal, provider, subject, cod
 }
 
 func (s *Service) Unbind(ctx context.Context, p *Principal, id string) error {
-	if !p.Recent(s.Now()) {
-		return bcode.ErrAccountRecentAuth
+	if err := s.requireRecentAuthentication(ctx, p); err != nil {
+		return err
 	}
 	return s.Repo.Transaction(ctx, func(r repository.Accounts) error {
 		u := &model.User{ID: p.User.ID}

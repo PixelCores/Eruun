@@ -28,7 +28,7 @@ type Session struct {
 	AccessHash        string    `json:"-" gorm:"type:char(64);not null;uniqueIndex"`
 	RefreshFamilyHash string    `json:"-" gorm:"type:char(64);not null;uniqueIndex"`
 	RefreshHash       string    `json:"-" gorm:"type:char(64);not null;uniqueIndex"`
-	AccessExpiresAt   time.Time `json:"-"`
+	AccessExpiresAt   time.Time `json:"-" gorm:"index:idx_session_idle_cleanup"`
 	ExpiresAt         time.Time `json:"expiresAt" gorm:"index"`
 	AuthenticatedAt   time.Time `json:"-"`
 	SecurityVersion   uint64    `json:"-"`

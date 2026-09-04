@@ -63,8 +63,10 @@ func (s *Service) OAuthStart(ctx context.Context, provider string, p *Principal)
 	if err != nil {
 		return "", "", err
 	}
-	if p != nil && !p.Recent(s.Now()) {
-		return "", "", bcode.ErrAccountRecentAuth
+	if p != nil {
+		if err := s.requireRecentAuthentication(ctx, p); err != nil {
+			return "", "", err
+		}
 	}
 	state, err := randomToken()
 	if err != nil {
@@ -118,8 +120,13 @@ func (s *Service) OAuthCallback(ctx context.Context, provider, code, state, brow
 	if code == "" {
 		return nil, bcode.ErrUnauthorized
 	}
-	if flow.UserID != "" && (p == nil || p.User.ID != flow.UserID || p.Session.ID != flow.SessionID || !p.Recent(s.Now())) {
-		return nil, bcode.ErrAccountRecentAuth
+	if flow.UserID != "" {
+		if p == nil || p.User.ID != flow.UserID || p.Session.ID != flow.SessionID {
+			return nil, bcode.ErrAccountRecentAuth
+		}
+		if err := s.requireRecentAuthentication(ctx, p); err != nil {
+			return nil, err
+		}
 	}
 	ctx = context.WithValue(ctx, oauth2.HTTPClient, s.HTTPClient)
 	token, err := cfg.Exchange(ctx, code, oauth2.VerifierOption(flow.Verifier))

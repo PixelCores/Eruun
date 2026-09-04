@@ -345,11 +345,31 @@ func TestSessionLifecycleUsesDatabaseClock(t *testing.T) {
 
 	second, err := s.Refresh(ctx, first.RefreshToken)
 	require.NoError(t, err)
-	_, err = s.Authenticate(ctx, second.AccessToken)
+	p, err := s.Authenticate(ctx, second.AccessToken)
 	require.NoError(t, err)
 	require.NoError(t, s.CleanupExpiredSessions(ctx))
 	_, err = s.Authenticate(ctx, second.AccessToken)
 	require.NoError(t, err)
+	require.NoError(t, s.ChangePassword(ctx, p, "database clock password"))
+}
+
+func TestRecentAuthenticationRejectsStaleOrFutureDatabaseTimestamps(t *testing.T) {
+	s, _, d := testAccounts(t)
+	ctx := context.Background()
+	_, p := registerTestUser(t, s, d, "email", "recent-database-clock@example.com")
+	now, err := s.Repo.CurrentDatabaseTime(ctx)
+	require.NoError(t, err)
+
+	// A lagging API node must not extend the database-authoritative recent-auth
+	// window, and a timestamp in the future must fail closed.
+	s.Now = func() time.Time { return now.Add(-24 * time.Hour) }
+	for _, authenticatedAt := range []time.Time{
+		now.Add(-recentAuthTTL - time.Second),
+		now.Add(time.Minute),
+	} {
+		p.Session.AuthenticatedAt = authenticatedAt
+		require.ErrorIs(t, s.ChangePassword(ctx, p, "rejected clock password"), bcode.ErrAccountRecentAuth)
+	}
 }
 
 func TestCleanupExpiredSessions(t *testing.T) {
