@@ -55,6 +55,9 @@ var businessRoutes = map[string]string{
 	"POST /api/v1/applications/convert":                                       "member",
 	"POST /api/v1/applications/import/namespace":                              "system",
 	"POST /api/v1/applications/import/namespace/try":                          "system",
+	"POST /api/v1/resource-import/jobs/scan":                                  "system",
+	"POST /api/v1/resource-import/jobs/manage":                                "system",
+	"GET /api/v1/resource-import/jobs/:taskID":                                "system",
 	"GET /api/v1/applications/:appID/workflows":                               "member",
 	"GET /api/v1/applications/:appID/status":                                  "viewer",
 	"GET /api/v1/applications/:appID/components":                              "member",
@@ -197,7 +200,9 @@ func Auth(opts AuthOptions) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		if minimum == "system" && !strings.HasPrefix(path, "/api/v1/applications/") {
+		if minimum == "system" &&
+			!strings.HasPrefix(path, "/api/v1/applications/") &&
+			!strings.HasPrefix(path, "/api/v1/resource-import/") {
 			c.Next()
 			return
 		}

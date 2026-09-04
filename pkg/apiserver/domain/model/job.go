@@ -13,6 +13,7 @@ type JobInfo struct {
 	Type           string               `json:"type" gorm:"type:varchar(64);column:type"`
 	WorkflowID     string               `json:"workflow_id" gorm:"type:varchar(64);column:workflow_id"`
 	ProductID      string               `json:"product_Id" gorm:"type:varchar(64);column:product_id"`
+	WorkspaceID    string               `json:"workspaceId,omitempty" gorm:"type:varchar(36);column:workspace_id;index"`
 	AppID          string               `json:"app_id" gorm:"type:varchar(64);column:app_id"`
 	TaskID         string               `json:"task_id" gorm:"type:varchar(255);column:task_id"`
 	Status         string               `json:"status" bson:"status" gorm:"type:varchar(32);column:status;index:idx_job_delay_pending,priority:1"`
@@ -39,6 +40,7 @@ type JobTask struct {
 	Namespace       string `json:"namespace"`
 	WorkflowID      string `json:"workflow_id"`
 	ProjectID       string `json:"project_id"`
+	WorkspaceID     string `json:"workspace_id"`
 	AppID           string `json:"app_id"`
 	ResourceAppName string `json:"resource_app_name,omitempty"`
 	TaskID          string
@@ -92,6 +94,9 @@ func (j *JobTask) ResourceAppNameOrID() string {
 
 func (j *JobInfo) Index() map[string]interface{} {
 	index := make(map[string]interface{})
+	if j.WorkspaceID != "" {
+		index["workspace_id"] = j.WorkspaceID
+	}
 	if j.TaskID != "" {
 		index["task_id"] = j.TaskID
 	}

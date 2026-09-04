@@ -14,6 +14,7 @@ const (
 
 type WorkflowQueue struct {
 	TaskID              string                  `json:"task_id" gorm:"primaryKey;type:varchar(255);column:task_id"`
+	WorkspaceID         string                  `json:"workspaceId,omitempty" gorm:"type:varchar(36);column:workspace_id;index"`
 	IdempotencyKey      *string                 `json:"idempotencyKey,omitempty" gorm:"type:varchar(255);column:idempotency_key;uniqueIndex:idx_workflow_queue_idempotency_key"`
 	ProjectID           string                  `json:"projectId" gorm:"type:varchar(64);column:project_id"`
 	WorkflowName        string                  `json:"workflow_name" gorm:"type:varchar(255);column:workflow_name"`
@@ -100,6 +101,9 @@ func (wq *WorkflowQueue) Index() map[string]interface{} {
 	index := make(map[string]interface{})
 	if wq.AppID != "" {
 		index["app_id"] = wq.AppID
+	}
+	if wq.WorkspaceID != "" {
+		index["workspace_id"] = wq.WorkspaceID
 	}
 	if wq.TaskID != "" {
 		index["task_id"] = wq.TaskID

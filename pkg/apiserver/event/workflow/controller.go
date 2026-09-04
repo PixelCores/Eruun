@@ -30,6 +30,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	signal "github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
@@ -80,13 +81,14 @@ type WorkflowCtl struct {
 	terminalReason           string
 	urlSecurityPolicy        *spec.URLSecurityPolicySpec
 	importSecretKeyring      *importsecret.Keyring
+	resourceImportExecutor   job.ResourceImportExecutor
 	runCancel                context.CancelCauseFunc
 	// ctx holds the workflow execution context for use in callbacks like updateWorkflowTask.
 	// This avoids using context.Background() which would break tracing and cancellation.
 	ctx context.Context
 }
 
-func NewWorkflowController(workflowTask *model.WorkflowQueue, client kubernetes.Interface, kubeConfig *rest.Config, store datastore.DataStore, cfg *config.Config, cache cache.ICache, urlSecurityPolicy *spec.URLSecurityPolicySpec) (*WorkflowCtl, error) {
+func NewWorkflowController(workflowTask *model.WorkflowQueue, client kubernetes.Interface, kubeConfig *rest.Config, store datastore.DataStore, cfg *config.Config, cache cache.ICache, urlSecurityPolicy *spec.URLSecurityPolicySpec, resourceImportExecutors ...job.ResourceImportExecutor) (*WorkflowCtl, error) {
 	if workflowTask == nil {
 		return nil, fmt.Errorf("workflow task is nil")
 	}
@@ -94,6 +96,10 @@ func NewWorkflowController(workflowTask *model.WorkflowQueue, client kubernetes.
 		return nil, fmt.Errorf("url security policy is required")
 	}
 	var importSecretKeyring *importsecret.Keyring
+	var resourceImportExecutor job.ResourceImportExecutor
+	if len(resourceImportExecutors) > 0 {
+		resourceImportExecutor = resourceImportExecutors[0]
+	}
 	if cfg != nil {
 		var err error
 		importSecretKeyring, err = importsecret.Load(cfg.ImportSecretKeyring, cfg.ImportSecretKeyringFile)
@@ -113,6 +119,7 @@ func NewWorkflowController(workflowTask *model.WorkflowQueue, client kubernetes.
 		callbackTimeoutMax:       workflowconfig.ResolveWorkflowCallbackTimeoutMax(cfg.WorkflowRuntime()),
 		urlSecurityPolicy:        urlSecurityPolicy,
 		importSecretKeyring:      importSecretKeyring,
+		resourceImportExecutor:   resourceImportExecutor,
 	}
 	if cfg != nil {
 		ctl.accountConfig = cfg.Accounts
@@ -501,7 +508,7 @@ func (w *WorkflowCtl) run(ctx context.Context, concurrency int) error {
 			stopOnFailure := !stepExec.Mode.IsParallel()
 			logger.Info("Executing workflow step", "workflowName", workflowName, "step", stepExec.Name, "mode", stepExec.Mode, "priority", priority, "jobCount", len(tasksInPriority), "concurrency", stepConcurrency, "stopOnFailure", stopOnFailure)
 
-			if err := job.RunJobs(ctx, tasksInPriority, stepConcurrency, w.Client, w.KubeConfig, w.Store, w.ack, stopOnFailure, w.Cache, w.urlSecurityPolicy, w.DelayQueue, w.ResourceWaiter, w.importSecretKeyring); err != nil {
+			if err := job.RunJobs(ctx, tasksInPriority, stepConcurrency, w.Client, w.KubeConfig, w.Store, w.ack, stopOnFailure, w.Cache, w.urlSecurityPolicy, w.DelayQueue, w.ResourceWaiter, w.resourceImportExecutor, w.importSecretKeyring); err != nil {
 				logger.Error(err, "Stopping workflow after job persistence failure", "step", stepExec.Name, "priority", priority)
 				return stopForJobInfrastructure(err)
 			}
@@ -660,7 +667,7 @@ func (w *WorkflowCtl) runWorkflowFailureCleanup(ctx context.Context, logger klog
 	cleanupCtx := klog.NewContext(ctx, logger.WithValues("failurePolicy", workflowconfig.WorkflowFailurePolicyCleanupAll))
 	cleanupCtx = job.WithTaskMetadata(cleanupCtx, task.TaskID)
 	logger.Info("Running workflow failure cleanup jobs", "appID", task.AppID, "taskID", task.TaskID, "jobCount", len(cleanupJobs))
-	if err := job.RunJobs(cleanupCtx, cleanupJobs, 1, w.Client, w.KubeConfig, w.Store, w.ack, false, w.Cache, w.urlSecurityPolicy, w.DelayQueue, w.ResourceWaiter, w.importSecretKeyring); err != nil {
+	if err := job.RunJobs(cleanupCtx, cleanupJobs, 1, w.Client, w.KubeConfig, w.Store, w.ack, false, w.Cache, w.urlSecurityPolicy, w.DelayQueue, w.ResourceWaiter, w.resourceImportExecutor, w.importSecretKeyring); err != nil {
 		return err
 	}
 	return workflowFailureCleanupError(cleanupJobs)
@@ -1020,7 +1027,7 @@ func (w *WorkflowCtl) triggerApprovalNotification(ctx context.Context, stepExec 
 	go func() {
 		defer cancel()
 		// Notification jobs should not mutate workflow queue state.
-		job.RunJobs(callbackCtx, []*model.JobTask{callbackJob}, 1, w.Client, w.KubeConfig, w.Store, func() {}, false, w.Cache, w.urlSecurityPolicy, w.DelayQueue, w.ResourceWaiter, w.importSecretKeyring)
+		job.RunJobs(callbackCtx, []*model.JobTask{callbackJob}, 1, w.Client, w.KubeConfig, w.Store, func() {}, false, w.Cache, w.urlSecurityPolicy, w.DelayQueue, w.ResourceWaiter, w.resourceImportExecutor, w.importSecretKeyring)
 	}()
 }
 
@@ -1269,7 +1276,7 @@ func (w *WorkflowCtl) triggerWorkflowCallback(ctx context.Context, status config
 	job.ApplyExecutionIdentity(callbackJob)
 	callbackCtx, cancel := callbackContext(ctx, callback.TimeoutSeconds, w.callbackTimeoutMax)
 	defer cancel()
-	job.RunJobs(callbackCtx, []*model.JobTask{callbackJob}, 1, w.Client, w.KubeConfig, w.Store, func() {}, false, w.Cache, w.urlSecurityPolicy, w.DelayQueue, w.ResourceWaiter, w.importSecretKeyring)
+	job.RunJobs(callbackCtx, []*model.JobTask{callbackJob}, 1, w.Client, w.KubeConfig, w.Store, func() {}, false, w.Cache, w.urlSecurityPolicy, w.DelayQueue, w.ResourceWaiter, w.resourceImportExecutor, w.importSecretKeyring)
 }
 
 func approvalUpdateContext(parent context.Context, mode approvalUpdateContextMode) (context.Context, context.CancelFunc) {
@@ -1359,19 +1366,36 @@ func (w *WorkflowCtl) prepareWorkspace(ctx context.Context) (context.Context, er
 	if w.accountConfig == nil {
 		return ctx, fmt.Errorf("workspace configuration is required")
 	}
-	app := &model.Applications{ID: w.snapshotTask().AppID}
-	if err := w.Store.Get(ctx, app); err != nil {
-		return ctx, err
+	task := w.snapshotTask()
+	workspaceID := ""
+	expectedNamespace := ""
+	if isResourceImportWorkflowTask(task.Type) {
+		workspaceID = strings.TrimSpace(task.WorkspaceID)
+		var info importcontract.TaskEnvelope
+		if err := json.Unmarshal([]byte(task.ResourceActionInfo), &info); err != nil {
+			return ctx, fmt.Errorf("decode resource import workspace: %w", err)
+		}
+		expectedNamespace = strings.TrimSpace(info.Namespace)
+	} else {
+		app := &model.Applications{ID: task.AppID}
+		if err := w.Store.Get(ctx, app); err != nil {
+			return ctx, err
+		}
+		if app.WorkspaceID == "" {
+			return ctx, fmt.Errorf("application has no workspace")
+		}
+		workspaceID = app.WorkspaceID
+		expectedNamespace = app.Namespace
 	}
-	if app.WorkspaceID == "" {
-		return ctx, fmt.Errorf("application has no workspace")
+	if workspaceID == "" {
+		return ctx, fmt.Errorf("workflow task has no workspace")
 	}
-	space := &model.Workspace{ID: app.WorkspaceID}
+	space := &model.Workspace{ID: workspaceID}
 	if err := w.Store.Get(ctx, space); err != nil {
 		return ctx, err
 	}
-	if app.Namespace != space.Namespace {
-		return ctx, fmt.Errorf("application namespace does not match workspace")
+	if expectedNamespace == "" || expectedNamespace != space.Namespace {
+		return ctx, fmt.Errorf("workflow task namespace does not match workspace")
 	}
 	manager := w.workspaceManager
 	if manager == nil {

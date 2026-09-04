@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"github.com/PixelCores/Eruun/pkg/apiserver/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/importsecret"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -229,11 +229,11 @@ func adoptedSnapshotResource(
 	t *testing.T,
 	object runtime.Object,
 	componentName, role, ownership, disposition string,
-) adoption.ResourceSnapshot {
+) importcontract.ResourceSnapshot {
 	t.Helper()
 	raw, err := runtime.DefaultUnstructuredConverter.ToUnstructured(object)
 	require.NoError(t, err)
-	snapshot, err := adoption.ResourceSnapshotFromObject(
+	snapshot, err := importcontract.ResourceSnapshotFromObject(
 		&unstructured.Unstructured{Object: raw},
 		componentName,
 		role,
@@ -247,10 +247,10 @@ func adoptedSnapshotResource(
 func adoptedApplication(
 	t *testing.T,
 	appID, namespace string,
-	resources ...adoption.ResourceSnapshot,
+	resources ...importcontract.ResourceSnapshot,
 ) *model.Applications {
 	t.Helper()
-	snapshot := adoption.NewSnapshot(namespace, resources)
+	snapshot := importcontract.NewSnapshot(namespace, resources)
 	raw, err := model.NewJSONStructByStruct(snapshot)
 	require.NoError(t, err)
 	return &model.Applications{
@@ -261,13 +261,13 @@ func adoptedApplication(
 	}
 }
 
-func decodeTestAdoptionSnapshot(t *testing.T, app *model.Applications) adoption.Snapshot {
+func decodeTestAdoptionSnapshot(t *testing.T, app *model.Applications) importcontract.Snapshot {
 	t.Helper()
 	require.NotNil(t, app)
 	require.NotNil(t, app.AdoptionSnapshot)
 	payload, err := json.Marshal(app.AdoptionSnapshot)
 	require.NoError(t, err)
-	var snapshot adoption.Snapshot
+	var snapshot importcontract.Snapshot
 	require.NoError(t, json.Unmarshal(payload, &snapshot))
 	return snapshot
 }
@@ -341,6 +341,6 @@ func newTestAdoptedSecretController(
 		locker.NewNoopLocker(shareLockerPrefix),
 		nil,
 	)
-	ctl.setRuntime(newJobRuntime(nil, nil, nil, nil, nil, keyring))
+	ctl.setRuntime(newJobRuntime(nil, nil, nil, nil, nil, nil, keyring))
 	return ctl
 }

@@ -14,12 +14,12 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
 )
 
 type cleanupOwnershipStore struct {
@@ -196,8 +196,8 @@ func TestAdoptedWorkloadFailureCleanupNeverDeletesSourceResources(t *testing.T) 
 			source,
 			"backend",
 			"workload",
-			adoption.OwnershipExclusive,
-			adoption.DispositionManaged,
+			importcontract.OwnershipExclusive,
+			importcontract.DispositionManaged,
 		)
 		client := fake.NewSimpleClientset(source.DeepCopy())
 		store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", snapshot)}
@@ -237,8 +237,8 @@ func TestAdoptedWorkloadFailureCleanupNeverDeletesSourceResources(t *testing.T) 
 			source,
 			"mysql",
 			"workload",
-			adoption.OwnershipExclusive,
-			adoption.DispositionManaged,
+			importcontract.OwnershipExclusive,
+			importcontract.DispositionManaged,
 		)
 		client := fake.NewSimpleClientset(source.DeepCopy())
 		store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", snapshot)}
@@ -300,7 +300,7 @@ func TestWorkloadFailureCleanupResolvesOwnershipWithCancelledParent(t *testing.T
 				app := &model.Applications{ID: "app-1", Namespace: "ops", ManagementMode: config.ManagementModeNative}
 				var datastoreErr error
 				if ownership == "adopted" {
-					snapshot := adoptedSnapshotResource(t, source, workload.componentName, "workload", adoption.OwnershipExclusive, adoption.DispositionManaged)
+					snapshot := adoptedSnapshotResource(t, source, workload.componentName, "workload", importcontract.OwnershipExclusive, importcontract.DispositionManaged)
 					app = adoptedApplication(t, "app-1", "ops", snapshot)
 				} else if ownership == "datastore-error" {
 					datastoreErr = errors.New("datastore unavailable")

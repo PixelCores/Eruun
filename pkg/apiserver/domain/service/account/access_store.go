@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -61,6 +62,33 @@ func (s *Store) Check(ctx context.Context, e datastore.Entity) error {
 		if v.Namespace != "" && v.Namespace != scope.Namespace {
 			return bcode.ErrForbidden
 		}
+	case *model.WorkflowQueue:
+		if v.AppID == "" {
+			if v.WorkspaceID != scope.WorkspaceID ||
+				(v.Type != config.WorkflowTaskTypeResourceImportScan && v.Type != config.WorkflowTaskTypeResourceImportManage) {
+				return bcode.ErrForbidden
+			}
+			return nil
+		}
+	case *model.JobInfo:
+		if v.AppID == "" && v.TaskID != "" && v.WorkspaceID == scope.WorkspaceID {
+			task := &model.WorkflowQueue{TaskID: v.TaskID}
+			if err := s.raw.Get(ctx, task); err != nil {
+				return err
+			}
+			if task.AppID != "" || task.WorkspaceID != scope.WorkspaceID ||
+				(task.Type != config.WorkflowTaskTypeResourceImportScan && task.Type != config.WorkflowTaskTypeResourceImportManage) {
+				return bcode.ErrForbidden
+			}
+			expectedJobType := config.JobResourceImportScan
+			if task.Type == config.WorkflowTaskTypeResourceImportManage {
+				expectedJobType = config.JobResourceImportManage
+			}
+			if v.Type != "" && v.Type != string(expectedJobType) {
+				return bcode.ErrForbidden
+			}
+			return nil
+		}
 	}
 	if id == "" {
 		return bcode.ErrForbidden
@@ -88,6 +116,12 @@ func (s *Store) options(ctx context.Context, e datastore.Entity, input *datastor
 	}
 	if isApp {
 		opts.In = append(opts.In, datastore.InQueryOption{Key: "workspaceid", Values: []string{scope.WorkspaceID}})
+		return &opts, nil
+	}
+	if job, ok := e.(*model.JobInfo); ok && job.AppID == "" && job.TaskID != "" && job.WorkspaceID == scope.WorkspaceID {
+		if err := s.Check(ctx, job); err != nil {
+			return nil, err
+		}
 		return &opts, nil
 	}
 	if appID != "" {
@@ -283,10 +317,14 @@ func (s *Store) CompareAndSwapWithConditions(ctx context.Context, e datastore.En
 	}
 	if scope, ok := FromContext(ctx); ok {
 		if _, _, scoped := runtimeEntity(e); scoped {
-			for _, key := range []string{"workspaceid", "namespace", "app_id"} {
+			for _, key := range []string{"workspaceid", "workspace_id", "namespace", "app_id"} {
 				if value, exists := updates[key]; exists {
 					switch key {
 					case "workspaceid":
+						if value != scope.WorkspaceID {
+							return false, bcode.ErrForbidden
+						}
+					case "workspace_id":
 						if value != scope.WorkspaceID {
 							return false, bcode.ErrForbidden
 						}

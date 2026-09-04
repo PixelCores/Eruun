@@ -1,6 +1,6 @@
-# Namespace adopted import 脱敏示例
+# Namespace 同步纳管兼容接口脱敏示例
 
-本目录展示显式接管流程。资源名、UID、摘要和指纹均为占位值，不能直接用于生产 apply。
+本目录展示保留给旧客户端的同步 `managementMode: "adopted"` 流程。新交互应使用 `examples/resource-import-jobs/` 的一次性扫描与异步纳管任务。资源名、UID、摘要和指纹均为占位值，不能直接用于生产 apply。
 
 1. 提交 `01-dry-run-request.json`，检查所有资源的 source、ownership 与 disposition。
 2. 保存响应中的 `data.planFingerprint`。

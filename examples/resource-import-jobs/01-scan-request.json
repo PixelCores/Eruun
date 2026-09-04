@@ -1,0 +1,13 @@
+{
+  "namespace": "production",
+  "rules": [
+    {
+      "kinds": [
+        "Deployment",
+        "StatefulSet"
+      ],
+      "nameRegex": "^payments-",
+      "labelSelector": "team=payments"
+    }
+  ]
+}

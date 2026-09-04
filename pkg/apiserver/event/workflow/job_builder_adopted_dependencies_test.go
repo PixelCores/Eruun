@@ -19,11 +19,11 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes/fake"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
 	traitsPlu "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
@@ -213,27 +213,27 @@ func TestGenerateJobTasks_ImportedAdoptionSnapshotProducesManagedDependencyClosu
 		Rules:      role.Rules,
 	}
 
-	snapshot := adoption.NewSnapshot(namespace, []adoption.ResourceSnapshot{
-		adoptedWorkflowSnapshotResource(t, backendSource, "apps/v1", "Deployment", "backend", "workload", adoption.OwnershipExclusive, adoption.DispositionManaged),
-		adoptedWorkflowSnapshotResource(t, frontendSource, "apps/v1", "Deployment", "frontend", "workload", adoption.OwnershipExclusive, adoption.DispositionManaged),
-		adoptedWorkflowSnapshotResource(t, socketSource, "apps/v1", "Deployment", "socket", "workload", adoption.OwnershipExclusive, adoption.DispositionManaged),
-		adoptedWorkflowSnapshotResource(t, mysqlSource, "apps/v1", "StatefulSet", "mysql", "workload", adoption.OwnershipExclusive, adoption.DispositionManaged),
-		adoptedWorkflowSnapshotResource(t, redisSource, "apps/v1", "StatefulSet", "redis", "workload", adoption.OwnershipExclusive, adoption.DispositionManaged),
-		adoptedWorkflowSnapshotResource(t, mysqlService, "v1", "Service", "mysql", "service", adoption.OwnershipExclusive, adoption.DispositionManaged),
-		adoptedWorkflowSnapshotResource(t, appWideService, "v1", "Service", "", "service", adoption.OwnershipExclusive, adoption.DispositionManaged),
-		adoptedWorkflowSnapshotResource(t, sharedBackendService, "v1", "Service", "backend", "service", adoption.OwnershipShared, adoption.DispositionSharedPreserved),
-		adoptedWorkflowSnapshotResource(t, sharedIngress, networkingv1.SchemeGroupVersion.String(), "Ingress", "backend", "ingress", adoption.OwnershipShared, adoption.DispositionSharedPreserved),
-		adoptedWorkflowSnapshotResource(t, mysqlConfig, "v1", "ConfigMap", "mysql", "configmap", adoption.OwnershipExclusive, adoption.DispositionManaged),
-		adoptedWorkflowSnapshotResource(t, registrySecret, "v1", "Secret", "", "secret", adoption.OwnershipExclusive, adoption.DispositionManaged),
-		adoptedWorkflowSnapshotResource(t, sharedSecret, "v1", "Secret", "", "secret", adoption.OwnershipShared, adoption.DispositionSharedPreserved),
-		adoptedWorkflowSnapshotResource(t, mysqlPVC, "v1", "PersistentVolumeClaim", "mysql", "pvc", adoption.OwnershipDataProtected, adoption.DispositionDataProtected),
-		adoptedWorkflowSnapshotResource(t, mysqlVCTPVC, "v1", "PersistentVolumeClaim", "mysql", "pvc", adoption.OwnershipDataProtected, adoption.DispositionDataProtected),
-		adoptedWorkflowSnapshotResource(t, serviceAccount, "v1", "ServiceAccount", "mysql", "serviceaccount", adoption.OwnershipExclusive, adoption.DispositionManaged),
-		adoptedWorkflowSnapshotResource(t, role, rbacv1.SchemeGroupVersion.String(), "Role", "mysql", "rbac", adoption.OwnershipExclusive, adoption.DispositionManaged),
-		adoptedWorkflowSnapshotResource(t, roleBinding, rbacv1.SchemeGroupVersion.String(), "RoleBinding", "mysql", "rbac", adoption.OwnershipExclusive, adoption.DispositionManaged),
-		adoptedWorkflowSnapshotResource(t, pdb, policyv1.SchemeGroupVersion.String(), "PodDisruptionBudget", "mysql", "pdb", adoption.OwnershipExclusive, adoption.DispositionManaged),
-		adoptedWorkflowSnapshotResource(t, networkPolicy, networkingv1.SchemeGroupVersion.String(), "NetworkPolicy", "mysql", "networkpolicy", adoption.OwnershipExclusive, adoption.DispositionManaged),
-		adoptedWorkflowSnapshotResource(t, clusterRole, rbacv1.SchemeGroupVersion.String(), "ClusterRole", "", "rbac", adoption.OwnershipExternal, adoption.DispositionSharedPreserved),
+	snapshot := importcontract.NewSnapshot(namespace, []importcontract.ResourceSnapshot{
+		adoptedWorkflowSnapshotResource(t, backendSource, "apps/v1", "Deployment", "backend", "workload", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
+		adoptedWorkflowSnapshotResource(t, frontendSource, "apps/v1", "Deployment", "frontend", "workload", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
+		adoptedWorkflowSnapshotResource(t, socketSource, "apps/v1", "Deployment", "socket", "workload", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
+		adoptedWorkflowSnapshotResource(t, mysqlSource, "apps/v1", "StatefulSet", "mysql", "workload", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
+		adoptedWorkflowSnapshotResource(t, redisSource, "apps/v1", "StatefulSet", "redis", "workload", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
+		adoptedWorkflowSnapshotResource(t, mysqlService, "v1", "Service", "mysql", "service", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
+		adoptedWorkflowSnapshotResource(t, appWideService, "v1", "Service", "", "service", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
+		adoptedWorkflowSnapshotResource(t, sharedBackendService, "v1", "Service", "backend", "service", importcontract.OwnershipShared, importcontract.DispositionSharedPreserved),
+		adoptedWorkflowSnapshotResource(t, sharedIngress, networkingv1.SchemeGroupVersion.String(), "Ingress", "backend", "ingress", importcontract.OwnershipShared, importcontract.DispositionSharedPreserved),
+		adoptedWorkflowSnapshotResource(t, mysqlConfig, "v1", "ConfigMap", "mysql", "configmap", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
+		adoptedWorkflowSnapshotResource(t, registrySecret, "v1", "Secret", "", "secret", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
+		adoptedWorkflowSnapshotResource(t, sharedSecret, "v1", "Secret", "", "secret", importcontract.OwnershipShared, importcontract.DispositionSharedPreserved),
+		adoptedWorkflowSnapshotResource(t, mysqlPVC, "v1", "PersistentVolumeClaim", "mysql", "pvc", importcontract.OwnershipDataProtected, importcontract.DispositionDataProtected),
+		adoptedWorkflowSnapshotResource(t, mysqlVCTPVC, "v1", "PersistentVolumeClaim", "mysql", "pvc", importcontract.OwnershipDataProtected, importcontract.DispositionDataProtected),
+		adoptedWorkflowSnapshotResource(t, serviceAccount, "v1", "ServiceAccount", "mysql", "serviceaccount", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
+		adoptedWorkflowSnapshotResource(t, role, rbacv1.SchemeGroupVersion.String(), "Role", "mysql", "rbac", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
+		adoptedWorkflowSnapshotResource(t, roleBinding, rbacv1.SchemeGroupVersion.String(), "RoleBinding", "mysql", "rbac", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
+		adoptedWorkflowSnapshotResource(t, pdb, policyv1.SchemeGroupVersion.String(), "PodDisruptionBudget", "mysql", "pdb", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
+		adoptedWorkflowSnapshotResource(t, networkPolicy, networkingv1.SchemeGroupVersion.String(), "NetworkPolicy", "mysql", "networkpolicy", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
+		adoptedWorkflowSnapshotResource(t, clusterRole, rbacv1.SchemeGroupVersion.String(), "ClusterRole", "", "rbac", importcontract.OwnershipExternal, importcontract.DispositionSharedPreserved),
 	})
 	snapshotJSON, err := model.NewJSONStructByStruct(snapshot)
 	require.NoError(t, err)
@@ -404,7 +404,7 @@ func TestAdoptedProtectedPVCJobRejectsExplicitStorageClassChange(t *testing.T) {
 			}},
 		},
 	}
-	snapshot := adoption.NewSnapshot(namespace, []adoption.ResourceSnapshot{
+	snapshot := importcontract.NewSnapshot(namespace, []importcontract.ResourceSnapshot{
 		adoptedWorkflowSnapshotResource(
 			t,
 			source,
@@ -412,8 +412,8 @@ func TestAdoptedProtectedPVCJobRejectsExplicitStorageClassChange(t *testing.T) {
 			"PersistentVolumeClaim",
 			"mysql",
 			"pvc",
-			adoption.OwnershipDataProtected,
-			adoption.DispositionDataProtected,
+			importcontract.OwnershipDataProtected,
+			importcontract.DispositionDataProtected,
 		),
 	})
 	otherClass := "replacement"
@@ -447,9 +447,9 @@ func TestAugmentAdoptedDependencyJobsPreservesComponentAndApprovalScope(t *testi
 		ObjectMeta: adoptedWorkflowObjectMeta("registry-credentials", namespace),
 		Data:       map[string][]byte{".dockerconfigjson": []byte(`{"auths":{}}`)},
 	}
-	snapshot := adoption.NewSnapshot(namespace, []adoption.ResourceSnapshot{
-		adoptedWorkflowSnapshotResource(t, mysqlConfig, "v1", "ConfigMap", "mysql", "configmap", adoption.OwnershipExclusive, adoption.DispositionManaged),
-		adoptedWorkflowSnapshotResource(t, globalSecret, "v1", "Secret", "", "secret", adoption.OwnershipExclusive, adoption.DispositionManaged),
+	snapshot := importcontract.NewSnapshot(namespace, []importcontract.ResourceSnapshot{
+		adoptedWorkflowSnapshotResource(t, mysqlConfig, "v1", "ConfigMap", "mysql", "configmap", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
+		adoptedWorkflowSnapshotResource(t, globalSecret, "v1", "Secret", "", "secret", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
 	})
 	snapshotJSON, err := model.NewJSONStructByStruct(snapshot)
 	require.NoError(t, err)
@@ -542,14 +542,14 @@ func adoptedWorkflowSnapshotResource(
 	t *testing.T,
 	object interface{},
 	apiVersion, kind, componentName, dependencyRole, ownership, disposition string,
-) adoption.ResourceSnapshot {
+) importcontract.ResourceSnapshot {
 	t.Helper()
 	raw, err := runtime.DefaultUnstructuredConverter.ToUnstructured(object)
 	require.NoError(t, err)
 	source := &unstructured.Unstructured{Object: raw}
 	source.SetAPIVersion(apiVersion)
 	source.SetKind(kind)
-	resource, err := adoption.ResourceSnapshotFromObject(
+	resource, err := importcontract.ResourceSnapshotFromObject(
 		source,
 		componentName,
 		dependencyRole,

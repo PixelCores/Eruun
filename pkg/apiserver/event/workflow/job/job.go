@@ -41,6 +41,17 @@ type JobCtl interface {
 	SaveInfo(ctx context.Context) error
 }
 
+// ResourceImportExecutor is implemented by the resource-import module. Keeping
+// this consumer-owned interface here lets the workflow runtime execute durable
+// import jobs without importing the module's service package.
+type ResourceImportExecutor interface {
+	ExecuteResourceImportJob(
+		context.Context,
+		config.WorkflowTaskType,
+		json.RawMessage,
+	) (json.RawMessage, error)
+}
+
 type GenerateServiceResult struct {
 	Service           interface{}
 	AdditionalObjects []client.Object
@@ -58,11 +69,12 @@ type jobRuntime struct {
 	kubeConfig              *rest.Config
 	archiveUploader         ArchiveUploader
 	importSecretKeyring     *importsecret.Keyring
+	resourceImportExecutor  ResourceImportExecutor
 	adoptionPersistenceOnce sync.Once
 	adoptionPersistenceGate chan struct{}
 }
 
-func newJobRuntime(cache cache.ICache, kubeConfig *rest.Config, urlSecurityPolicy *spec.URLSecurityPolicySpec, delayQueue msg.Queue, resourceWaiter informer.ComponentReadyObserver, keyrings ...*importsecret.Keyring) *jobRuntime {
+func newJobRuntime(cache cache.ICache, kubeConfig *rest.Config, urlSecurityPolicy *spec.URLSecurityPolicySpec, delayQueue msg.Queue, resourceWaiter informer.ComponentReadyObserver, resourceImportExecutor ResourceImportExecutor, keyrings ...*importsecret.Keyring) *jobRuntime {
 	var redisClient *redis.Client
 	if cache != nil {
 		redisClient = cache.GetRedisClient()
@@ -72,15 +84,16 @@ func newJobRuntime(cache cache.ICache, kubeConfig *rest.Config, urlSecurityPolic
 		importSecretKeyring = keyrings[0]
 	}
 	return &jobRuntime{
-		redisClient:         redisClient,
-		shareLocker:         newShareLocker(redisClient),
-		cache:               cache,
-		urlSecurityPolicy:   urlSecurityPolicy,
-		delayQueue:          delayQueue,
-		resourceWaiter:      resourceWaiter,
-		kubeConfig:          kubeConfig,
-		archiveUploader:     currentArchiveUploader(),
-		importSecretKeyring: importSecretKeyring,
+		redisClient:            redisClient,
+		shareLocker:            newShareLocker(redisClient),
+		cache:                  cache,
+		urlSecurityPolicy:      urlSecurityPolicy,
+		delayQueue:             delayQueue,
+		resourceWaiter:         resourceWaiter,
+		kubeConfig:             kubeConfig,
+		archiveUploader:        currentArchiveUploader(),
+		importSecretKeyring:    importSecretKeyring,
+		resourceImportExecutor: resourceImportExecutor,
 	}
 }
 
@@ -227,6 +240,12 @@ func initJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore
 		jobCtl = NewLogArchiveUploadJobCtl(job, client, store, ack)
 	case string(config.JobVersionRestart):
 		jobCtl = NewVersionRestartJobCtl(job, client, store, ack)
+	case string(config.JobResourceImportScan), string(config.JobResourceImportManage):
+		var executor ResourceImportExecutor
+		if runtime != nil {
+			executor = runtime.resourceImportExecutor
+		}
+		jobCtl = NewResourceImportJobCtl(job, store, executor)
 	default:
 		klog.ErrorS(fmt.Errorf("unknown job type"), "init job controller failed", "jobName", job.Name, "jobType", job.JobType)
 		return nil
@@ -237,7 +256,7 @@ func initJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore
 	return jobCtl
 }
 
-func RunJobs(ctx context.Context, jobs []*model.JobTask, concurrency int, client kubernetes.Interface, kubeConfig *rest.Config, store datastore.DataStore, ack func(), stopOnFailure bool, cache cache.ICache, urlSecurityPolicy *spec.URLSecurityPolicySpec, delayQueue msg.Queue, resourceWaiter informer.ComponentReadyObserver, keyrings ...*importsecret.Keyring) error {
+func RunJobs(ctx context.Context, jobs []*model.JobTask, concurrency int, client kubernetes.Interface, kubeConfig *rest.Config, store datastore.DataStore, ack func(), stopOnFailure bool, cache cache.ICache, urlSecurityPolicy *spec.URLSecurityPolicySpec, delayQueue msg.Queue, resourceWaiter informer.ComponentReadyObserver, resourceImportExecutor ResourceImportExecutor, keyrings ...*importsecret.Keyring) error {
 	logger := klog.FromContext(ctx)
 	if len(jobs) == 0 {
 		logger.Info("no jobs to run")
@@ -246,8 +265,17 @@ func RunJobs(ctx context.Context, jobs []*model.JobTask, concurrency int, client
 
 	if scope, ok := access.FromContext(ctx); ok {
 		for _, task := range jobs {
-			if task == nil || task.Namespace != scope.Namespace || task.AppID == "" {
+			if task == nil || task.Namespace != scope.Namespace {
 				return fmt.Errorf("job namespace does not match workspace")
+			}
+			if isResourceImportJobType(config.JobType(task.JobType)) {
+				if task.AppID != "" || task.WorkspaceID != scope.WorkspaceID {
+					return fmt.Errorf("resource import job workspace does not match execution scope")
+				}
+				continue
+			}
+			if task.AppID == "" {
+				return fmt.Errorf("job application is missing")
 			}
 			if err := access.NewStore(store).Get(ctx, &model.Applications{ID: task.AppID}); err != nil {
 				return err
@@ -258,7 +286,7 @@ func RunJobs(ctx context.Context, jobs []*model.JobTask, concurrency int, client
 			}
 		}
 	}
-	runtime := newJobRuntime(cache, kubeConfig, urlSecurityPolicy, delayQueue, resourceWaiter, keyrings...)
+	runtime := newJobRuntime(cache, kubeConfig, urlSecurityPolicy, delayQueue, resourceWaiter, resourceImportExecutor, keyrings...)
 	defer runtime.close()
 
 	if concurrency == 1 {

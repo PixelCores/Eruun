@@ -15,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
@@ -292,6 +293,7 @@ func versionUpdateCleanupJobInfoUpdates(jobInfo model.JobInfo, includeInternalIn
 		"type":             jobInfo.Type,
 		"workflow_id":      jobInfo.WorkflowID,
 		"product_id":       jobInfo.ProductID,
+		"workspace_id":     jobInfo.WorkspaceID,
 		"app_id":           jobInfo.AppID,
 		"task_id":          jobInfo.TaskID,
 		"status":           jobInfo.Status,
@@ -325,6 +327,7 @@ func copyJobInfoRecord(existing *model.JobInfo, jobInfo model.JobInfo) {
 	existing.Type = jobInfo.Type
 	existing.WorkflowID = jobInfo.WorkflowID
 	existing.ProductID = jobInfo.ProductID
+	existing.WorkspaceID = jobInfo.WorkspaceID
 	existing.AppID = jobInfo.AppID
 	existing.TaskID = jobInfo.TaskID
 	existing.Status = jobInfo.Status
@@ -510,6 +513,11 @@ func loadJobInfos(ctx context.Context, store datastore.DataStore, taskID, jobTyp
 		return nil, nil
 	}
 	query := &model.JobInfo{TaskID: strings.TrimSpace(taskID)}
+	if isResourceImportJobType(config.JobType(jobType)) {
+		if scope, ok := access.FromContext(ctx); ok {
+			query.WorkspaceID = scope.WorkspaceID
+		}
+	}
 	opts := datastore.ListOptions{
 		SortBy: []datastore.SortOption{
 			{Key: "create_time", Order: datastore.SortOrderDescending},
@@ -544,6 +552,7 @@ func buildJobInfoRecord(job *model.JobTask) model.JobInfo {
 		Type:           job.JobType,
 		WorkflowID:     job.WorkflowID,
 		ProductID:      job.ProjectID,
+		WorkspaceID:    job.WorkspaceID,
 		AppID:          job.AppID,
 		TaskID:         job.TaskID,
 		Status:         string(job.Status),

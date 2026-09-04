@@ -736,7 +736,7 @@ func TestRunJobsPreservesNonTerminalStateAfterRecreateOwnershipReadFailure(t *te
 
 				runErr := RunJobs(context.Background(), []*model.JobTask{jobTask}, concurrencyCase.concurrency, client, nil, store, func() {
 					ackCount++
-				}, true, nil, nil, nil, nil)
+				}, true, nil, nil, nil, nil, nil)
 
 				require.ErrorIs(t, runErr, signal.ErrInfrastructureStop)
 				require.ErrorIs(t, runErr, temporaryErr)

@@ -1,0 +1,19 @@
+{
+  "scanTaskId": "replace-with-completed-scan-task-id",
+  "applications": [
+    {
+      "name": "payments",
+      "alias": "payments",
+      "components": [
+        {
+          "name": "api",
+          "workload": {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "name": "payments-api"
+          }
+        }
+      ]
+    }
+  ]
+}

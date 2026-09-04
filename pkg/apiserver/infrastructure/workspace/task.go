@@ -42,6 +42,8 @@ func PrepareTask(task *model.JobTask, appID string, w *model.Workspace, cfg spec
 		resource = "cronjobs"
 	case config.JobDeployCallback, config.JobCleanupResources, config.JobDatabaseReset, config.JobLogArchiveUpload, config.JobVersionRestart:
 		return false, nil
+	case config.JobResourceImportScan, config.JobResourceImportManage:
+		return false, nil
 	default:
 		return false, bcode.ErrForbidden
 	}

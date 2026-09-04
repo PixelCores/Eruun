@@ -115,7 +115,7 @@ OAuth 前端先 POST start，再导航到 authorizationURL。回调页从当前 
 
 ## 空间与权限
 
-使用用户、身份、会话、空间、成员、邀请六类业务模型。Session 保存 refresh 族选择器和当前完整 refresh 值的哈希，不保存令牌原值，也不为每次轮换增加记录。个人和团队共用空间模型。用户、空间是稳定随机 ID，namespace 为 `eruun-ws-<无连字符空间UUID>`，不包含邮箱和手机号，创建后不可修改。应用只存一份必填 `workspaceID`，组件、工作流、任务通过所属 AppID 确定空间。系统管理员管理用户及集群配置；访问具体空间仍需成员资格。
+使用用户、身份、会话、空间、成员、邀请六类业务模型。Session 保存 refresh 族选择器和当前完整 refresh 值的哈希，不保存令牌原值，也不为每次轮换增加记录。个人和团队共用空间模型。用户、空间是稳定随机 ID，namespace 为 `eruun-ws-<无连字符空间UUID>`，不包含邮箱和手机号，创建后不可修改。应用只存一份必填 `workspaceID`，组件、工作流和普通任务通过所属 AppID 确定空间；app-less 的 resource import scan/manage 任务在 WorkflowQueue 与 JobInfo 上保存专用 `workspace_id`。系统管理员管理用户及集群配置；访问具体空间仍需成员资格。
 
 | 角色 | 资源 | 成员管理 |
 | --- | --- | --- |
@@ -151,7 +151,7 @@ API 资源操作及后台执行使用 namespace 内受限 `eruun-runner` 身份�
 
 延迟通知须与持久化检查点一致，不一致的通知仅确认消息，不修改检查点，正确任务仍可由数据库恢复。对已核实检查点的空间/工作负载校验失败，先按执行身份和当前状态原子写入失败终态，再确认消息；未创建的 Job 不标为已派发。失败写入或消息确认失败可重试，已有终态、新一代执行及已交给结果处理的任务不会被覆盖。
 
-网络默认仅允许同空间通信、DNS、公共 HTTP/HTTPS 出口和配置的入口控制器；排除其他私网及 `clusterCIDRs`。配额和 LimitRange 由部署配置统一控制。Kubernetes 原生准入与 NetworkPolicy 是实际隔离的一部分，需要真实集群验证其生效。后台任务从持久化应用加载空间，不使用用户 access token；请求退出不影响已排队任务归属。
+网络默认仅允许同空间通信、DNS、公共 HTTP/HTTPS 出口和配置的入口控制器；排除其他私网及 `clusterCIDRs`。配额和 LimitRange 由部署配置统一控制。Kubernetes 原生准入与 NetworkPolicy 是实际隔离的一部分，需要真实集群验证其生效。普通后台任务从持久化应用加载空间；resource import 任务从任务自身的 `workspace_id` 加载空间。两者都不使用用户 access token，请求退出不影响已排队任务归属。
 
 ## 错误与验证证据
 

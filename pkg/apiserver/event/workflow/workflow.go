@@ -47,7 +47,8 @@ type Workflow struct {
 	Cfg                       *config.Config `inject:""`
 	Cache                     cache.ICache   `inject:"cache"`
 	ResourceWaiter            informer.ComponentReadyObserver
-	URLSecurityPolicyProvider *urlpolicy.Provider `inject:""`
+	ResourceImportExecutor    job.ResourceImportExecutor `inject:""`
+	URLSecurityPolicyProvider *urlpolicy.Provider        `inject:""`
 	controllerLifecycleMu     sync.Mutex
 	schedulerLifecycleMu      sync.Mutex
 	workerLimiterOnce         sync.Once
@@ -292,7 +293,7 @@ func (w *Workflow) runWorkflowTask(ctx context.Context, workerRun *workflowWorke
 		}
 		acquired = true
 	}
-	controller, err := NewWorkflowController(task, w.KubeClient, w.KubeConfig, w.Store, w.Cfg, w.Cache, urlPolicy)
+	controller, err := NewWorkflowController(task, w.KubeClient, w.KubeConfig, w.Store, w.Cfg, w.Cache, urlPolicy, w.ResourceImportExecutor)
 	if err != nil {
 		runErr := fmt.Errorf("init workflow controller: %w", err)
 		w.markTaskRunStartFailure(ctx, task, runErr)
@@ -488,6 +489,7 @@ func (w *Workflow) runWorkflowControllerWithPersistenceRecovery(ctx context.Cont
 			w.Cfg,
 			w.Cache,
 			current.urlSecurityPolicy,
+			w.ResourceImportExecutor,
 		)
 		if err != nil {
 			return errors.Join(

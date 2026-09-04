@@ -19,11 +19,11 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 )
 
@@ -48,8 +48,8 @@ func TestVersionRestartJobCtlAdoptedDeploymentUsesSourceIdentity(t *testing.T) {
 		sourceDeployment,
 		"backend",
 		"workload",
-		adoption.OwnershipExclusive,
-		adoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	component := sourceComponent("app-1", "backend", "Deployment", sourceDeployment.Name, sourceDeployment.UID)
 	component.ComponentType = config.ServerJob
@@ -100,8 +100,8 @@ func TestVersionRestartJobCtlAdoptedDeploymentRejectsReplacementUID(t *testing.T
 		baseline,
 		"backend",
 		"workload",
-		adoption.OwnershipExclusive,
-		adoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	component := sourceComponent("app-1", "backend", "Deployment", sourceDeployment.Name, types.UID("expected-uid"))
 	component.ComponentType = config.ServerJob
@@ -132,8 +132,8 @@ func TestVersionRestartJobCtlAdoptedDeploymentRejectsPausedSource(t *testing.T) 
 		sourceDeployment,
 		"backend",
 		"workload",
-		adoption.OwnershipExclusive,
-		adoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	component := sourceComponent("app-1", "backend", "Deployment", sourceDeployment.Name, sourceDeployment.UID)
 	component.ComponentType = config.ServerJob
@@ -172,8 +172,8 @@ func TestVersionRestartJobCtlAdoptedStatefulSetRejectsDeleteOnScale(t *testing.T
 		statefulSet,
 		"mysql",
 		"workload",
-		adoption.OwnershipExclusive,
-		adoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	component := sourceComponent("app-1", "mysql", "StatefulSet", statefulSet.Name, statefulSet.UID)
 	component.ComponentType = config.StoreJob
@@ -234,8 +234,8 @@ func TestVersionRestartJobCtlAdoptedStatefulSetRejectsNonRollingRestartStrategie
 				statefulSet,
 				"mysql",
 				"workload",
-				adoption.OwnershipExclusive,
-				adoption.DispositionManaged,
+				importcontract.OwnershipExclusive,
+				importcontract.DispositionManaged,
 			)
 			component := sourceComponent("app-1", "mysql", "StatefulSet", statefulSet.Name, statefulSet.UID)
 			component.ComponentType = config.StoreJob

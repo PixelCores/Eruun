@@ -16,12 +16,12 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
 )
 
 type DeployPVCJobCtl struct {
@@ -134,9 +134,9 @@ func (c *DeployPVCJobCtl) reconcileAdoptedPVC(
 		return fmt.Errorf("adopted pvc desired resource and source binding are required")
 	}
 	resource := binding.resource
-	if resource.Disposition == adoption.DispositionDataProtected {
-		if resource.Ownership != adoption.OwnershipDataProtected &&
-			resource.Ownership != adoption.OwnershipExclusive {
+	if resource.Disposition == importcontract.DispositionDataProtected {
+		if resource.Ownership != importcontract.OwnershipDataProtected &&
+			resource.Ownership != importcontract.OwnershipExclusive {
 			return fmt.Errorf(
 				"adopted pvc %s/%s has unsafe ownership %q",
 				desired.Namespace,
@@ -204,7 +204,7 @@ func (c *DeployPVCJobCtl) reconcileAdoptedPVC(
 func (c *DeployPVCJobCtl) validateAdoptedPVCResize(
 	ctx context.Context,
 	current, desired *corev1.PersistentVolumeClaim,
-	snapshot *adoption.Snapshot,
+	snapshot *importcontract.Snapshot,
 ) (bool, error) {
 	if current == nil || desired == nil {
 		return false, fmt.Errorf("live and desired pvc are required")
@@ -270,7 +270,7 @@ func (c *DeployPVCJobCtl) validateAdoptedPVCResize(
 
 func pvcBelongsToStatefulSetVCT(
 	pvc *corev1.PersistentVolumeClaim,
-	snapshot *adoption.Snapshot,
+	snapshot *importcontract.Snapshot,
 ) bool {
 	if pvc == nil {
 		return false

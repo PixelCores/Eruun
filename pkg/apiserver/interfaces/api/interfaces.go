@@ -55,6 +55,7 @@ func GetRegisteredAPI() []Interface {
 
 func registerBuiltinAPIs() {
 	RegisterAPI(NewApplications())
+	RegisterAPI(NewResourceImports())
 	RegisterAPI(NewSettings())
 	RegisterAPI(NewProgrammingLanguages())
 	RegisterAPI(NewAccounts())

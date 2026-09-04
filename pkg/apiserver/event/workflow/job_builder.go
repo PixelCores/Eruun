@@ -36,6 +36,18 @@ const versionUpdateCleanupStepName = "cleanup-removed-components"
 
 func GenerateJobTasks(ctx context.Context, task *model.WorkflowQueue, ds datastore.DataStore, defaultJobTimeoutSeconds int64) ([]StepExecution, error) {
 	logger := klog.FromContext(ctx)
+	if execution, matched, resourceImportErr := buildResourceImportJobExecution(task, defaultJobTimeoutSeconds); matched {
+		if resourceImportErr != nil {
+			logger.Error(resourceImportErr, "Failed to prepare resource import job", "taskID", task.TaskID)
+			return []StepExecution{*failedWorkflowGenerationExecution(task, defaultJobTimeoutSeconds, resourceImportErr)}, nil
+		}
+		executions := []StepExecution{*execution}
+		applyWorkflowExecutionIdentity(executions, task)
+		if err := restoreCommittedJobExecutions(ctx, executions, task, ds); err != nil {
+			return nil, err
+		}
+		return executions, nil
+	}
 	workflowSteps, componentMap, err := loadWorkflowJobTaskInputs(ctx, task, ds)
 	if err != nil {
 		logger.Error(err, "Failed to prepare workflow job tasks", "workflowID", task.WorkflowID, "appID", task.AppID)
@@ -146,7 +158,11 @@ func restoreCommittedJobExecutions(ctx context.Context, executions []StepExecuti
 	if ds == nil {
 		return fmt.Errorf("restore committed job executions: datastore is nil")
 	}
-	entities, err := ds.List(ctx, &model.JobInfo{TaskID: task.TaskID}, &datastore.ListOptions{
+	query := &model.JobInfo{TaskID: task.TaskID}
+	if isResourceImportWorkflowTask(task.Type) {
+		query.WorkspaceID = task.WorkspaceID
+	}
+	entities, err := ds.List(ctx, query, &datastore.ListOptions{
 		FilterOptions: datastore.FilterOptions{
 			In: []datastore.InQueryOption{{
 				Key: "status",

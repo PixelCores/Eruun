@@ -8,7 +8,8 @@
 当前代码风格的核心取向是：
 
 - API Server 负责 HTTP 契约、服务装配、中间件和运行期生命周期。
-- Domain 承载应用、工作流、系统设置、校验、转换和导入等业务规则。
+- Domain 承载应用、工作流、系统设置、校验和转换等核心业务规则。
+- Resource Import 模块承载存量 Kubernetes 资源的一次性扫描、用户选择和纳管编排。
 - Workflow/Event 承载任务调度、队列消费、状态机推进和 Job 执行。
 - Infrastructure 承载 MySQL、Redis、Kafka、Kubernetes、Informer、Locker、Tracing 等外部系统适配。
 - OAM-style traits 负责把声明式组件扩展转换成 Kubernetes workload 变更。
@@ -22,13 +23,13 @@
 | `cmd/main.go` | API Server 主入口 | 保持薄入口，只做全局注册、命令构建和错误退出 |
 | `cmd/server/app` | 服务端 Cobra 命令、参数、启动生命周期 | 配置覆盖、校验和 server 运行应 fail-fast；初始化错误应携带操作上下文 |
 | `pkg/apiserver/config` | 进程配置入口与模块配置组合 | 负责启动参数、环境变量和模块配置装配；模块专属策略和资源契约由所属模块定义 |
-| `pkg/apiserver/adoption` | 既有 Kubernetes 资源接管的共享契约 | 保存 snapshot、资源 identity/digest 与跨生命周期/执行器复用的安全规则，不持有 Kubernetes 客户端 |
+| `pkg/apiserver/resourceimport` | 存量 Kubernetes 资源导入模块 | 根包编排一次性 scan/manage Job；`contract` 保存跨生命周期共享的 identity/snapshot 规则；`runtime` 承载 Kubernetes 侧协调。不把 `adoption` 作为模块名 |
 | `pkg/apiserver/interfaces/api` | 路由、请求绑定、响应封装、中间件 | Handler 只做 HTTP 契约处理和 Domain 委托，不直接写 DB 或 K8s |
 | `pkg/apiserver/interfaces/api/dto/v1` | API 请求和响应结构 | DTO 表达对外 JSON 契约，字段变化必须同步 assembler、examples 和 docs |
 | `pkg/apiserver/interfaces/api/assembler/v1` | Domain 到 DTO 的组装 | 负责展示字段、派生字段、兼容字段和脱敏，不放持久化或 K8s 调用 |
 | `pkg/apiserver/domain/model` | GORM 模型和领域实体 | 模型字段是 DB 主事实源之一，字段语义要和跨层契约文档一致 |
 | `pkg/apiserver/domain/repository` | 仓储接口和数据访问意图 | 新代码优先使用接口表达业务查询/写入意图，兼容函数保留但不扩大使用面 |
-| `pkg/apiserver/domain/service` | 领域服务 | 应用生命周期、校验、转换、导入、workflow 创建等规则集中在这里 |
+| `pkg/apiserver/domain/service` | 领域服务 | 应用生命周期、校验、转换、workflow 创建等核心规则集中在这里；存量资源导入由 `resourceimport` 模块负责 |
 | `pkg/apiserver/domain/spec` | 共享规格和值对象 | Traits、资源类型、Service 暴露类型、共享策略及系统设置、安全策略等跨 DTO/Domain 的语义结构优先放这里 |
 | `pkg/apiserver/event/workflow` | 工作流调度和控制器 | 以 DB 状态机为事实源，队列只承载分发，控制器负责状态推进和 ack |
 | `pkg/apiserver/event/workflow/job` | Kubernetes 资源 Job 控制器 | 每类资源独立控制器，生成、应用、等待、清理语义要保持一致 |
@@ -39,18 +40,18 @@
 | `pkg/apiserver/infrastructure` | 外部系统适配 | 实现连接、队列、存储、Informer、锁和可观测性，不反向承载业务规则 |
 | `pkg/apiserver/utils` | 技术工具 | 只放可复用技术 helper，不放应用生命周期、workflow 或 API 业务分支 |
 
-模块之间的默认方向是 `interfaces -> domain -> infrastructure`，workflow/event 由 domain 创建任务并由 worker 异步执行。跨层依赖应保持单向、显式和可测试。
+模块之间的默认方向是 `interfaces -> domain -> infrastructure`；`resourceimport` 作为明确的业务模块，由 API 提交任务、复用 domain/infrastructure 能力，并由 workflow worker 异步执行。跨层依赖应保持单向、显式和可测试。
 
-安全约束按其事实归属放置，不建立笼统的顶层 `security` 层：workspace scope 与 scoped datastore 属于账号/空间访问规则，动态 URL 策略加载属于 system setting，adopted Secret 加密与计划签名属于 infrastructure。跨模块共享的安全策略值对象仍位于 `domain/spec`。
+安全约束按其事实归属放置，不建立笼统的顶层 `security` 层：workspace scope 与 scoped datastore 属于账号/空间访问规则，动态 URL 策略加载属于 system setting，导入 Secret 加密与计划签名属于 infrastructure。跨模块共享的安全策略值对象仍位于 `domain/spec`。
 
 ## 3. 命名规范
 
 ### 3.1 Go 命名
 
-- 包路径使用小写短名，例如 `application`、`workflow`、`namespaceimport`、`systemsetting`。
+- 包路径使用小写短名，例如 `application`、`workflow`、`resourceimport`、`systemsetting`。
 - 导出类型、接口和函数使用 PascalCase，例如 `ApplicationsService`、`WorkflowService`、`NewWorkflowController`。
 - 非导出实现使用 camelCase，例如 `applicationsServiceImpl`、`workflowUpsertOptions`、`buildComponentServices`。
-- 接口名优先表达领域能力，例如 `ApplicationRepository`、`NamespaceImportService`、`TraitProcessor`。
+- 接口名优先表达业务能力，例如 `ApplicationRepository`、`ResourceImportService`、`TraitProcessor`。
 - 实现结构体通常以功能名加 `Impl` 或具体控制器命名，例如 `applicationsServiceImpl`、`DeployRoleJobCtl`、`CallbackJobCtl`。
 - 构造函数使用 `NewXxx`，注册函数使用 `RegisterXxx` 或 `InitXxxBean`。
 - 测试函数使用 `Test目标_场景` 或 `Test目标场景`，场景名应说明行为结果，例如 `TestApproveWorkflowTaskRejectsInvalidAction`。
