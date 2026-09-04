@@ -141,6 +141,7 @@
 
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
+| `login-token-authz-analysis-2026-09-04.md` | Historical / Audit | 当前 opaque 登录 Token、会话撤销、空间授权与 JWT 必要性评估；列出 refresh 重放检测等后续决策项 |
 | `go-idiomatic-code-quality-audit-2026-08-09.md` | Historical / Audit | 基于 `aaec6307` 的全仓 Go 惯用性、接口、并发、错误传播与测试组织审计 |
 | `existing-cluster-application-import-analysis-2026-08-03.md` | Historical / Audit | 现有集群应用进入 Eruun 的发现、observe/adopted 导入、source identity、执行边界与上线验收分析 |
 | `code-quality-audit-2026-05-20.md` | Historical / Audit | 全仓代码质量审计与后续简化重构建议 |
