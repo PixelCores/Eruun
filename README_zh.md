@@ -56,7 +56,7 @@ export ERUUN_AUTH_CONFIG_FILE='/secure/eruun/accounts.json'
 go run ./cmd/main.go
 ```
 
-服务端默认监听 `127.0.0.1:8000`。只有确实需要从 localhost 之外访问时，才设置 `ERUUN_BIND_ADDR=0.0.0.0:8000`。
+服务端本地运行时默认监听 `127.0.0.1:8001`。只有确实需要从 localhost 之外访问本地进程时，才设置 `ERUUN_BIND_ADDR=0.0.0.0:8001`；Kubernetes 部署路径会显式把监听端口覆盖为 `8000`。
 
 ## 运行架构
 

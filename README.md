@@ -56,7 +56,7 @@ export ERUUN_AUTH_CONFIG_FILE='/secure/eruun/accounts.json'
 go run ./cmd/main.go
 ```
 
-The server listens on `127.0.0.1:8000` by default. Set `ERUUN_BIND_ADDR=0.0.0.0:8000` only when the listener must be reachable beyond localhost.
+The server listens on `127.0.0.1:8001` by default. Set `ERUUN_BIND_ADDR=0.0.0.0:8001` only when the local process must be reachable beyond localhost. The Kubernetes deployment paths explicitly override the listener to port `8000`.
 
 ## Architecture
 
