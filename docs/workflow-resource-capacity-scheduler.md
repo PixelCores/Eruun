@@ -1,430 +1,95 @@
-# Workflow 资源补偿型 Scheduler 技术方案
+# Workflow 资源容量准入与补偿方向
 
-> 状态：Draft / Proposal。本文是容量补偿型 scheduler 方案，不代表当前运行链路已接入该 scheduler 层。
+> 状态：Draft / Proposal。本文描述 Workflow 执行前的资源容量准入与可选容量补偿边界；当前运行链路尚未实现该能力，本文不定义公共字段、CloudJob action、节点标签、状态值、默认策略或固定超时。
 
-## 1. 背景
+## 1. 当前事实
 
-当前 Eruun 的 Workflow 执行链路已经具备持久化队列、分布式派发、Worker 消费、Workflow Controller 编排和 Job 执行能力：
+Eruun 当前由 Scheduler 派发 waiting Workflow，由 Worker 执行 Workflow/Job。Pod 的最终放置仍由 Kubernetes Scheduler 决定；当资源或调度约束无法满足时，工作负载会进入 Pending。
 
-```text
-WorkflowQueue -> Dispatcher -> Redis/Kafka -> Worker -> WorkflowCtl -> Job
-```
+当前 `resources` Trait 只稳定表达 CPU、内存和 `nvidia.com/gpu`，`targetWorkEnv` 映射为 `nodeSelector`。Eruun 尚未在 Workflow 派发前聚合集群容量，也没有自动创建计算节点或扩容节点池的内置 CloudJob action。
 
-这条链路可以保证任务被可靠执行，但资源是否足够主要依赖 Kubernetes Scheduler 在 Pod 创建后处理。当集群资源不足时，Pod 可能长时间 Pending，用户只能在部署已经开始后才看到资源问题。
+## 2. 目标与非目标
 
-新的 Scheduler 层用于在 Workflow 部署前做资源准入和容量补偿：当集群现有资源不足时，先触发云资源创建动作，例如创建 ECS 并将其加入 Kubernetes 集群；所有部署任务等待新服务器成为 Ready Node 后，再继续执行原 Workflow。
+目标：
 
-## 2. 目标
+- 在开始创建工作负载前识别明显无法满足的资源需求。
+- 区分可立即执行、需要等待、需要人工处理和允许容量补偿的任务。
+- 在策略明确允许时，通过版本化 Provider action 请求外部容量并等待 Kubernetes 可调度资源就绪。
+- 保持决策、外部副作用、重试和最终结果可解释、可恢复、可审计。
 
-- 在 Workflow 执行部署前，统一评估所有 Pod 型工作负载的资源需求。
-- 第一版默认覆盖所有工作负载类型，包括 Deployment、StatefulSet、Job、CronJob 等。
-- 资源不足时自动触发容量补偿流程，而不是直接开始部署并让 Pod Pending。
-- 容量补偿复用现有 `cloudjob` provider/action 机制。
-- 云服务器创建完成不视为成功，必须等待 Kubernetes 中出现满足条件的 Ready Node。
-- 容量满足后，为工作负载注入软调度提示，优先使用新增节点，同时不覆盖用户已有硬约束。
-- Scheduler 决策需要可观测、可重试、可恢复，并且扩容动作必须幂等。
+非目标：
 
-## 3. 非目标
+- 替代 Kubernetes Scheduler 或直接把 Pod 绑定到 Node。
+- 依据实时使用率承诺调度结果。
+- 在没有预算、配额、身份和审批边界时自动购买云资源。
+- 把特定云实例、节点池 API、GPU 插件或调度算法写入 Eruun 公共契约。
 
-- 不替代 Kubernetes Scheduler，不直接绑定 Pod 到具体 Node。
-- 第一版不实现完整多云弹性伸缩平台，只定义并接入容量补偿动作。
-- 不新增独立调度 CRD 或复杂调度数据库实体，优先复用现有 Workflow、Job、CloudJob 机制。
-- 不在资源不足时静默降级继续部署。
+## 3. 容量准入边界
 
-## 4. 总体架构
+容量准入应使用最终将提交给 Kubernetes 的 workload 计划作为输入，而不是只读取原始 Application JSON。最低需要考虑：
 
-Scheduler 位于 Workflow Controller 生成 Job 计划之后、真正执行用户部署 Job 之前。
+- app container、init container、sidecar 的 resource requests。
+- Deployment/StatefulSet 副本和 Job 并行度。
+- nodeSelector、taint/toleration、affinity、拓扑和设备资源等硬约束。
+- Node Ready/可调度状态、allocatable 以及现有 Pod requests。
+- PVC zone、设备插件和 operator 等会影响可调度性的集群能力。
 
-```text
-WorkflowQueue
-  -> Dispatcher 派发任务
-  -> Worker 消费任务
-  -> WorkflowCtl 加载 Workflow 并生成 Job 计划
-  -> Scheduler 评估资源需求
-      -> 资源充足：生成 placement hint，继续执行原 Workflow
-      -> 资源不足：插入 capacity-provision 阶段
-          -> CloudJob 创建 ECS / 扩容节点池
-          -> 等待新 Node 注册并 Ready
-          -> 生成 placement hint
-  -> 执行原 Workflow Steps / Jobs
-```
+第一版只能把结果解释为准入判断，不能保证 Kubernetes 最终一定调度成功。容量快照和实际绑定之间存在竞争，正常 Pending、失败和取消路径仍必须保留。
 
-Scheduler 的职责是“容量保障”和“调度提示”，最终 Pod 放置仍由 Kubernetes Scheduler 决定。
+通用容量准入与 [Workflow 全局调度方向](workflow-global-scheduler-design.md) 串联，但职责不同：全局调度决定哪个 Workflow 获得执行机会，容量准入判断该 Workflow 的资源意图是否可满足。
 
-## 5. 核心流程
+## 4. 容量补偿
 
-### 5.1 资源充足流程
+容量补偿是可选的外部副作用，不是资源不足时的默认行为。只有满足以下条件才可启用：
 
-1. WorkflowCtl 根据 workflow steps 和 components 生成 Job 计划。
-2. Scheduler 从 Job 计划中提取所有 Pod 型工作负载。
-3. Scheduler 计算本次 Workflow 的资源需求。
-4. Scheduler 获取当前集群 Node 与 Pod 快照，计算可用资源。
-5. 如果资源足够，Scheduler 生成 placement hint。
-6. WorkflowCtl 按原有 Step / Priority 顺序继续执行。
+- workspace/project 已绑定允许使用的 Provider、区域、容量类型、配额和预算。
+- 调用者或平台策略有权触发对应动作，高成本动作可要求人工审批。
+- Provider action 提供幂等身份、异步状态、取消/补偿边界和审计结果。
+- 新容量加入集群的身份、bootstrap、标签、taint 和凭据流程已经过安全评审。
+- Eruun 能在 Worker 重启或消息重复后恢复等待，而不会重复创建不可控资源。
 
-### 5.2 资源不足流程
+外部资源创建成功不等于容量可用。补偿只有在目标资源已进入 Kubernetes、满足声明的硬约束并通过重新准入后，才可以让原 Workflow 继续。
 
-1. Scheduler 计算出资源缺口。
-2. Scheduler 根据策略生成 `capacityPlan`。
-3. WorkflowCtl 在原部署阶段前执行 `capacity-provision` 阶段。
-4. `capacity-provision` 通过 `cloudjob` provider/action 创建 ECS 或扩容节点池。
-5. Cloud action 轮询云侧状态和 Kubernetes Node 状态。
-6. 新节点注册进 Kubernetes 并处于 Ready 后，容量阶段完成。
-7. Scheduler 重新评估资源或使用新增节点快照生成 placement hint。
-8. WorkflowCtl 执行原部署 Job。
+具体 Provider/action 设计遵循 [AI Provider 集成方向](ai-provider-integration-design.md)。当前 CloudJob 内置能力只覆盖阿里云 NAS 与 StorageClass 引导，不能被描述成已经支持计算节点扩容。
 
-### 5.3 容量补偿失败流程
+## 5. 调度提示
 
-容量补偿失败或超时时，Workflow 直接失败，原部署 Job 不执行。错误原因需要明确记录为容量补偿失败，包括 provider、action、nodeProfile、资源缺口和底层错误信息。
+容量准备完成后，可以评估是否为 workload 增加软性 placement hint。任何 hint 都必须：
 
-## 6. 资源评估模型
+- 不覆盖用户已有的 nodeSelector、required affinity、toleration 或拓扑约束。
+- 不把某次任务身份、Provider 名称或内部计划字段升级为公共标签契约。
+- 在更新判断、回滚、状态展示和审计中可见。
+- 缺失时只影响优化效果，不改变权限或隔离边界。
 
-资源评估以 Kubernetes Pod 调度语义为准。
+硬性 placement 必须由调用方显式声明并通过验证，不能由容量补偿过程悄悄注入。
 
-### 6.1 输入对象
+## 6. 状态、所有权与恢复
 
-第一版覆盖所有 Pod 型工作负载：
+- 准入结果、容量预留和 Workflow ownership 必须以数据库事务/CAS 为权威边界。
+- 消息重复或 Leader 切换不能造成重复占用配额或绕过 generation/token fencing。
+- 外部容量请求使用稳定幂等键；结果未知时先查询，不盲目再次创建。
+- 容量等待需要可序列化 checkpoint，进程内 client 或 Token 不能成为恢复事实。
+- 取消要停止后续执行并记录外部资源是否仍存在；只有显式补偿能力才能宣称自动回收。
+- 日志与 trace 不包含 bootstrap 凭据、云密钥或加入集群的敏感材料。
 
-- Deployment
-- StatefulSet
-- Job
-- CronJob
-- 后续可扩展 DaemonSet、ReplicaSet 等
+## 7. 可观测性
 
-非 Pod 型资源不参与 CPU、Memory、GPU 计算：
+最低观测面包括：
 
-- Service
-- Ingress
-- ConfigMap
-- Secret
-- PVC
-- RBAC 资源
-- CloudJob 本身
+- 资源需求、候选节点集合、容量快照版本和准入结果。
+- 不可满足的资源或硬约束及其解释。
+- 配额/预算拒绝、审批等待和 Provider 调用状态。
+- 容量请求、幂等恢复、新资源就绪、重新准入和最终收敛。
+- 准入判断与 Kubernetes 实际 Pending 原因的偏差。
 
-### 6.2 单 Pod 资源计算
+高基数 workspace、task、node 和外部资源身份应进入结构化日志或 trace，不直接作为无界指标 label。
 
-普通 containers 的 requests 按资源类型求和：
+## 8. 实施门禁
 
-```text
-pod.cpu = sum(container.requests.cpu)
-pod.memory = sum(container.requests.memory)
-pod.gpu = sum(container.requests["nvidia.com/gpu"])
-```
+1. 先以只观察的 shadow 模式，从当前 workload 计划计算需求和候选节点，不改变执行结果。
+2. 用代表性 workload 对比准入判断与 Kubernetes 实际调度结果，记录误判边界。
+3. 增加不产生外部副作用的等待/拒绝策略，并验证 Leader 切换、消息重复、取消和回滚。
+4. 选择一个明确 Provider action 完成幂等容量补偿、安全、预算、审批和恢复闭环。
+5. 只有软性提示被真实负载证明有价值后，才增加 placement hint。
 
-init containers 按 Kubernetes 调度语义取同类资源最大值：
-
-```text
-pod.resource = max(sum(app containers), max(init containers))
-```
-
-sidecar 按普通 container 参与求和。
-
-### 6.3 副本数放大
-
-Deployment、StatefulSet 按 replicas 放大：
-
-```text
-workload.resource = pod.resource * replicas
-```
-
-Job、CronJob 第一版按模板单次并发 Pod 数计算；如果后续支持 parallelism，应按 `parallelism` 参与计算。
-
-### 6.4 未声明 requests 的处理
-
-第一版建议按 0 处理，以保持与当前 traits 行为兼容。后续可以通过 scheduler policy 或全局配置增加默认 requests，例如：
-
-```json
-{
-  "defaultRequests": {
-    "cpu": "100m",
-    "memory": "128Mi"
-  }
-}
-```
-
-如果 GPU 未声明，则不参与 GPU 容量计算。
-
-## 7. 集群容量计算
-
-Scheduler 需要读取：
-
-- Node allocatable
-- Node labels
-- Node taints
-- Node Ready 状态
-- 当前 Pods 的 resource requests
-- Pod 的 nodeName、nodeSelector、affinity、tolerations
-
-单节点可用量：
-
-```text
-nodeAvailable = node.allocatable - sum(existingPod.requests on node)
-```
-
-集群可用量：
-
-```text
-clusterAvailable = sum(nodeAvailable for schedulable Ready nodes)
-```
-
-如果工作负载已有硬约束，例如 `targetWorkEnv`、nodeSelector、required nodeAffinity、tolerations，则只能在匹配节点集合内计算容量。
-
-## 8. 容量补偿设计
-
-### 8.1 CapacityPlan
-
-当资源不足时，Scheduler 生成容量计划：
-
-```json
-{
-  "planId": "<taskID>",
-  "reason": "insufficient cpu/memory/gpu",
-  "required": {
-    "cpu": "8",
-    "memory": "32Gi",
-    "gpu": "1"
-  },
-  "available": {
-    "cpu": "2",
-    "memory": "8Gi",
-    "gpu": "0"
-  },
-  "deficit": {
-    "cpu": "6",
-    "memory": "24Gi",
-    "gpu": "1"
-  },
-  "nodeProfile": "default",
-  "minReadyNodes": 1
-}
-```
-
-### 8.2 CloudJob Action
-
-容量补偿复用现有 cloudjob provider/action 体系。建议新增云动作：
-
-```text
-aliyun.ecs.ensureNodeCapacity
-```
-
-或定义更通用的动作名：
-
-```text
-cloud.node.ensureCapacity
-```
-
-推荐参数：
-
-```json
-{
-  "provider": "aliyun",
-  "action": "aliyun.ecs.ensureNodeCapacity",
-  "params": {
-    "planId": "<taskID>",
-    "nodeProfile": "default",
-    "cpu": "8",
-    "memory": "32Gi",
-    "gpu": "1",
-    "minReadyNodes": 1,
-    "waitNodeReadyTimeout": "15m"
-  }
-}
-```
-
-### 8.3 NodeProfile
-
-云资源细节不建议散落在 Workflow 中，应放入系统配置或云 provider setting 中，由 Workflow 只引用 `nodeProfile`。
-
-NodeProfile 应包含：
-
-- 云厂商和地域配置
-- 实例规格或规格选择策略
-- 镜像 ID
-- VPC、VSwitch、安全组
-- 登录或 bootstrap 配置
-- Kubernetes join 方式
-- 节点标签
-- 最大扩容节点数
-- 成本或配额限制
-
-### 8.4 完成条件
-
-容量补偿成功条件必须同时满足：
-
-1. 云侧 ECS 创建或节点池扩容成功。
-2. 节点完成 bootstrap 并加入 Kubernetes。
-3. Kubernetes Node 处于 Ready。
-4. Node labels/taints 满足本次工作负载约束。
-5. 新增或可用节点容量足以覆盖缺口。
-
-只创建 ECS 不算成功。
-
-## 9. Placement Hint 注入
-
-容量满足后，Scheduler 可以为 PodTemplate 注入软调度提示。
-
-新增节点建议打标签：
-
-```text
-eruun.io/scheduler-plan-id=<taskID>
-eruun.io/scheduler-node-profile=<profile>
-```
-
-工作负载默认注入 soft nodeAffinity：
-
-```yaml
-affinity:
-  nodeAffinity:
-    preferredDuringSchedulingIgnoredDuringExecution:
-      - weight: 100
-        preference:
-          matchExpressions:
-            - key: eruun.io/scheduler-plan-id
-              operator: In
-              values:
-                - <taskID>
-```
-
-约束规则：
-
-- 不覆盖用户已有 `targetWorkEnv`。
-- 不覆盖用户已有 nodeSelector。
-- 不覆盖用户已有 required nodeAffinity。
-- 自动注入默认使用 soft affinity。
-- 只有用户显式配置硬约束策略时，才允许注入 required affinity 或 nodeSelector。
-
-## 10. Workflow 状态与可观测性
-
-建议在任务状态或任务阶段中体现调度过程：
-
-- `scheduling`：正在评估资源。
-- `provisioning_capacity`：正在创建云资源。
-- `waiting_node_ready`：云资源已创建，等待 Node Ready。
-- `queued`：容量满足，等待 Worker 执行。
-- `running`：原 Workflow 正在执行。
-- `failed`：容量补偿失败或超时。
-
-调度摘要应记录：
-
-- 调度策略是否启用。
-- 资源需求、可用资源和缺口。
-- 使用的 provider/action/nodeProfile。
-- capacity-provision Job 的执行结果。
-- 新增节点名称或节点标签。
-- placement hint 是否注入。
-
-## 11. 幂等与恢复
-
-容量补偿必须以 `taskID` 或 `planId` 作为幂等键。
-
-要求：
-
-- 同一 `taskID` 重试时复用同一个 capacity plan。
-- Cloud action 重复执行时，不重复创建不可控 ECS。
-- 如果 ECS 已创建但 Node 未 Ready，继续等待，而不是盲目再次创建。
-- 进程重启后通过 cloudjob checkpoint 恢复执行状态。
-- 如果 provider runtime 快照缺失且无法安全恢复，应 fail-fast 并要求重新执行任务。
-
-## 12. 策略配置
-
-建议在 Workflow 中增加可选 scheduler policy：
-
-```json
-{
-  "schedulerPolicy": {
-    "enabled": true,
-    "scope": "allWorkloads",
-    "admission": {
-      "onInsufficient": "provisionCapacity"
-    },
-    "capacityProvisioning": {
-      "provider": "aliyun",
-      "action": "aliyun.ecs.ensureNodeCapacity",
-      "nodeProfile": "default",
-      "waitNodeReadyTimeout": "15m"
-    },
-    "placement": {
-      "type": "softAffinity",
-      "optimizeFor": "binpack"
-    }
-  }
-}
-```
-
-默认建议：
-
-- 第一版默认覆盖所有 Pod 型工作负载。
-- 资源不足默认触发容量补偿。
-- placement 默认使用 soft affinity。
-- 扩容失败默认使 Workflow 失败。
-- 如果 scheduler policy 启用但云配置缺失，应直接失败，不静默跳过。
-
-## 13. 与现有模块的关系
-
-### 13.1 WorkflowQueue
-
-`WorkflowQueue` 继续作为任务持久化队列。Scheduler 不需要替换队列模型，但可以在任务内部记录调度摘要或阶段状态。
-
-### 13.2 Dispatcher
-
-Dispatcher 仍负责将 waiting task 发布到 Redis/Kafka。容量补偿逻辑不建议放在 Dispatcher 中，否则会把云资源创建和队列派发耦合过深。
-
-### 13.3 WorkflowCtl
-
-WorkflowCtl 是最合适的第一版接入点，因为它已经能生成完整 Job 计划，也能控制 Step / Priority 执行顺序。
-
-### 13.4 CloudJob
-
-CloudJob 是容量补偿动作的承载层。ECS 创建、节点池扩容、等待节点 Ready 都应通过 CloudJob action 的可恢复执行模型完成。
-
-## 14. 风险与约束
-
-- 自动创建 ECS 会带来成本风险，必须设置 nodeProfile 白名单、最大节点数和配额限制。
-- 节点加入 Kubernetes 涉及凭据和 bootstrap 安全，需要独立审计。
-- 用户已有硬调度约束时，新节点必须满足这些约束，否则扩容无意义。
-- 如果仅变更 PodTemplate 调度字段，Deployment/StatefulSet 的更新判断必须覆盖 nodeSelector、affinity、tolerations。
-- 资源评估只基于 requests，无法准确代表实时 CPU/Memory 使用率。
-- Kubernetes Scheduler 仍可能因为亲和性、污点、PVC zone 等约束导致 Pending，因此 Node Ready 后仍需保留原部署失败路径。
-
-## 15. 测试与验收
-
-必须覆盖：
-
-- Deployment、StatefulSet、Job、CronJob 的资源估算。
-- replicas、sidecar、init container、GPU 的资源计算。
-- 用户 nodeSelector / targetWorkEnv 约束下的节点集合过滤。
-- 资源充足时不触发 capacity-provision。
-- 资源不足时先执行 capacity-provision，原部署 Job 不提前执行。
-- ECS 创建成功但 Node 未 Ready 时保持等待。
-- Node Ready 后继续执行原 Workflow。
-- 扩容失败、超时、provider 配置缺失时 Workflow 明确失败。
-- placement hint 不覆盖用户已有硬约束。
-- 重试或进程重启后不会重复创建 ECS。
-
-## 16. 分阶段实施建议
-
-### Phase 1：资源评估与容量补偿闭环
-
-- 从 Job 计划提取 PodTemplate。
-- 计算 Workflow 总资源需求。
-- 查询 Node / Pod 快照并判断资源缺口。
-- 资源不足时插入 capacity-provision 阶段。
-- 通过 CloudJob 执行 ECS 创建和 Node Ready 等待。
-
-### Phase 2：Placement Hint
-
-- 为新增节点打确定性标签。
-- 对工作负载注入 soft nodeAffinity。
-- 修正 Deployment/StatefulSet 更新判断，确保调度字段变化会触发更新。
-
-### Phase 3：策略与成本控制
-
-- 增加 nodeProfile 管理。
-- 增加最大节点数、最大预算、最大等待时间。
-- 增加 scheduler 决策指标和事件日志。
-
-### Phase 4：多云扩展
-
-- 抽象通用 `ensureNodeCapacity` action。
-- 支持更多 cloud provider。
-- 支持不同节点池和异构资源类型。
+升级为 Current 前必须提供实现与测试、公共契约（如有）、Provider 版本矩阵、真实集群验收、成本与安全控制、故障恢复和运维指标。

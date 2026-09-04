@@ -1,5 +1,6 @@
 # Eruun 工作流引擎架构详解
 
+> 状态：Implemented Reference。本文描述当前 Workflow/Job 内部执行结构；公开路由与配置仍以 Current 专题和代码为准。
 
 > 企业角色拆分、双 Leader Election、数据库 generation/token lease 与 60 秒恢复边界见 [企业级分布式运行时设计](enterprise-distributed-runtime-design.md)；本文仍聚焦 Workflow/Job 内部执行结构。
 
