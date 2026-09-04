@@ -8,7 +8,8 @@
 
 当前版本提供：
 
-- 统一契约层（`contracts`）约束 provider/action/runtime 行为
+- `cloudjob.CloudProvider` 直接约束每个云厂商必须实现的 provider 行为
+- `contracts` 只保留 provider 执行所需的 request/action/runtime 数据与行为契约
 - provider 通过统一 `CloudRuntime` 接口适配不同云厂商运行时依赖
 - 运行时只自动注册内置 `aliyun` provider（目录化拆分 action 实现）
 - provider 未注册或 action 不在白名单时统一 fail-fast
@@ -18,9 +19,19 @@
 
 ## 代码组织
 
-- `pkg/apiserver/event/workflow/cloudjob/contracts`：接口、请求/响应、进度结构、通用参数拷贝
-- `pkg/apiserver/event/workflow/cloudjob`：provider 注册中心与内置 provider 装配
-- `pkg/apiserver/event/workflow/cloudjob/aliyun`：aliyun provider、action registry、action 分文件实现
+- `pkg/apiserver/event/workflow/cloudjob`：云厂商 `CloudProvider` 接口与 provider 注册中心，不反向依赖具体厂商
+- `pkg/apiserver/event/workflow/cloudjob/contracts`：请求/响应、action/runtime 执行契约与通用参数拷贝
+- `pkg/apiserver/event/workflow/cloudjob/aliyun`：aliyun provider、内部 action 映射与 action 分文件实现
+- `pkg/apiserver/event/workflow/job/cloud_provider_bridge.go`：在工作流执行层装配内置 provider
+
+每个云厂商 provider 必须直接实现同一组方法：
+
+- `Name`：返回唯一 provider 名称
+- `NewRuntime`：为一次 cloudjob 执行初始化厂商依赖
+- `ResolveAction`：从本 provider 的严格白名单解析 action
+- `SupportedActions`：返回本 provider 支持的 action 列表
+
+action 映射是 provider 的内部数据，不再通过独立的 `ActionRegistry` 对象暴露给调用方。
 
 ## 组件类型与字段
 
@@ -70,7 +81,7 @@
 ## 执行行为
 
 - `cloudjob` 通过 `provider + action` 分发到 provider 实现
-- provider 先初始化对应云厂商 runtime（统一接口），再通过 `ActionRegistry` 解析 action
+- 调用方直接通过统一 `CloudProvider` 接口解析 action，再初始化对应云厂商 runtime
 - action 支持状态机推进（`state + requeueAfter`），可表达多阶段流程
 - provider 未注册或 action 不在 provider 白名单会返回错误并标记任务失败
 - 执行记录会写入 `job.Info` 并持久化到任务记录

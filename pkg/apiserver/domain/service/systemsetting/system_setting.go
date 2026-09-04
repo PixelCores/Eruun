@@ -12,13 +12,12 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	wfcloudjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob"
 	wfaliyun "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob/aliyun"
-	wfcloudcontract "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob/contracts"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
-var builtinSystemSettingSupports = map[string]wfcloudcontract.CloudProviderSettingSupport{
+var builtinSystemSettingSupports = map[string]wfcloudjob.CloudProviderSettingSupport{
 	model.SystemSettingTypeAliyunCloud: wfaliyun.NewProvider(),
 }
 
@@ -351,7 +350,7 @@ func getSystemSettingCodec(settingType string) (systemSettingCodec, bool) {
 	return systemSettingCodec{}, false
 }
 
-func getSystemSettingSupport(settingType string) (wfcloudcontract.CloudProviderSettingSupport, bool) {
+func getSystemSettingSupport(settingType string) (wfcloudjob.CloudProviderSettingSupport, bool) {
 	normalized := strings.TrimSpace(settingType)
 	if normalized == "" {
 		return nil, false

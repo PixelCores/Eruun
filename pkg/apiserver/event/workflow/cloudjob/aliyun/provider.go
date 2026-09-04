@@ -9,14 +9,20 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob/contracts"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
 type Provider struct {
-	registry                  contracts.CloudActionRegistry
+	actions                   map[string]contracts.CloudActionFactory
 	connectivityClientFactory func(spec.AliyunCloudSettingSpec) (nasClient, error)
 }
+
+var (
+	_ cloudjob.CloudProvider               = (*Provider)(nil)
+	_ cloudjob.CloudProviderSettingSupport = (*Provider)(nil)
+)
 
 type runtimeAliyunSnapshot struct {
 	Endpoint  string `json:"endpoint,omitempty"`
@@ -29,12 +35,10 @@ type runtimeAliyunSnapshot struct {
 func NewProvider() *Provider {
 	return &Provider{
 		connectivityClientFactory: newConnectivityNASClient,
-		registry: &actionRegistry{
-			factories: map[string]contracts.CloudActionFactory{
-				ActionNasEnsureFilesystem:   newNasEnsureFilesystemAction,
-				ActionNasEnsureMountTarget:  newNasEnsureMountTargetAction,
-				ActionK8sEnsureStorageClass: newK8sEnsureStorageClassAction,
-			},
+		actions: map[string]contracts.CloudActionFactory{
+			ActionNasEnsureFilesystem:   newNasEnsureFilesystemAction,
+			ActionNasEnsureMountTarget:  newNasEnsureMountTargetAction,
+			ActionK8sEnsureStorageClass: newK8sEnsureStorageClassAction,
 		},
 	}
 }
@@ -114,35 +118,24 @@ func applyRuntimeAliyunSnapshot(config spec.AliyunCloudSettingSpec, snapshot *ru
 	return config
 }
 
-func (p *Provider) ActionRegistry() contracts.CloudActionRegistry {
-	if p == nil {
-		return nil
-	}
-	return p.registry
-}
-
-type actionRegistry struct {
-	factories map[string]contracts.CloudActionFactory
-}
-
-func (r *actionRegistry) ResolveAction(action string) (contracts.CloudAction, bool) {
+func (p *Provider) ResolveAction(action string) (contracts.CloudAction, bool) {
 	normalized := strings.TrimSpace(action)
-	if normalized == "" || r == nil {
+	if normalized == "" || p == nil {
 		return nil, false
 	}
-	factory, ok := r.factories[normalized]
+	factory, ok := p.actions[normalized]
 	if !ok || factory == nil {
 		return nil, false
 	}
 	return factory(), true
 }
 
-func (r *actionRegistry) SupportedActions() []string {
-	if r == nil || len(r.factories) == 0 {
+func (p *Provider) SupportedActions() []string {
+	if p == nil || len(p.actions) == 0 {
 		return nil
 	}
-	actions := make([]string, 0, len(r.factories))
-	for action := range r.factories {
+	actions := make([]string, 0, len(p.actions))
+	for action := range p.actions {
 		actions = append(actions, action)
 	}
 	sort.Strings(actions)

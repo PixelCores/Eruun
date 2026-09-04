@@ -23,7 +23,7 @@ type fakeCloudProvider struct {
 	runtime    CloudRuntime
 	runtimeErr error
 	req        *CloudJobRequest
-	registry   CloudActionRegistry
+	registry   *fakeCloudActionRegistry
 	newRuntime func(context.Context, *CloudJobRequest) (CloudRuntime, error)
 }
 
@@ -78,8 +78,18 @@ func TestCloudJobCtlRunInjectsDataStoreIntoProviderContext(t *testing.T) {
 	require.Same(t, store, wfcloudcontract.DataStoreFromContext(provider.ctx))
 }
 
-func (f *fakeCloudProvider) ActionRegistry() CloudActionRegistry {
-	return f.registry
+func (f *fakeCloudProvider) ResolveAction(action string) (CloudAction, bool) {
+	if f == nil || f.registry == nil {
+		return nil, false
+	}
+	return f.registry.ResolveAction(action)
+}
+
+func (f *fakeCloudProvider) SupportedActions() []string {
+	if f == nil || f.registry == nil {
+		return nil
+	}
+	return f.registry.SupportedActions()
 }
 
 type fakeCloudActionRegistry struct {
@@ -104,6 +114,32 @@ func (r *fakeCloudActionRegistry) SupportedActions() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+func TestRegisterBuiltinCloudProvidersPreservesRegisteredReplacement(t *testing.T) {
+	resetCloudProvidersForTest()
+	defer restoreBuiltinCloudProvidersForTest()
+
+	replacement := &fakeCloudProvider{name: "aliyun"}
+	RegisterCloudProvider(replacement)
+	registerBuiltinCloudProviders()
+
+	provider, exists := getCloudProvider("aliyun")
+	require.True(t, exists)
+	require.Same(t, replacement, provider)
+}
+
+func TestRegisterBuiltinCloudProvidersRegistersAliyunWhenMissing(t *testing.T) {
+	resetCloudProvidersForTest()
+	defer restoreBuiltinCloudProvidersForTest()
+
+	registerBuiltinCloudProviders()
+
+	provider, exists := getCloudProvider("aliyun")
+	require.True(t, exists)
+	require.NotNil(t, provider)
+	require.Equal(t, "aliyun", provider.Name())
+	require.NotEmpty(t, provider.SupportedActions())
 }
 
 type fakeCloudRuntime struct {

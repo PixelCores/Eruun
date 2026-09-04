@@ -8,26 +8,18 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob/aliyun"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob/contracts"
 )
 
-func TestRestoreBuiltinCloudProvidersForTestRegistersAliyun(t *testing.T) {
+func TestRegisterCloudProvider(t *testing.T) {
 	ResetCloudProvidersForTest()
-	defer RestoreBuiltinCloudProvidersForTest()
+	defer ResetCloudProvidersForTest()
 
-	_, ok := GetCloudProvider(aliyun.ProviderName)
-	require.False(t, ok)
-
-	RestoreBuiltinCloudProvidersForTest()
-	provider, ok := GetCloudProvider(aliyun.ProviderName)
+	registered := &registryTestProvider{name: " TestCloud "}
+	RegisterCloudProvider(registered)
+	provider, ok := GetCloudProvider("testcloud")
 	require.True(t, ok)
-	require.NotNil(t, provider)
-	require.NotNil(t, provider.ActionRegistry())
-
-	settingSupport, ok := GetCloudProviderSettingSupport(model.SystemSettingTypeAliyunCloud)
-	require.True(t, ok)
-	require.NotNil(t, settingSupport)
+	require.Same(t, registered, provider)
 }
 
 type registryTestProvider struct {
@@ -42,7 +34,11 @@ func (p *registryTestProvider) NewRuntime(context.Context, *contracts.CloudJobRe
 	return nil, nil
 }
 
-func (p *registryTestProvider) ActionRegistry() contracts.CloudActionRegistry {
+func (p *registryTestProvider) ResolveAction(string) (contracts.CloudAction, bool) {
+	return nil, false
+}
+
+func (p *registryTestProvider) SupportedActions() []string {
 	return nil
 }
 
@@ -69,10 +65,10 @@ func (p *registryTestProviderWithSettingSupport) ValidateSystemSettingConnectivi
 
 func TestRegisterCloudProviderReplacesAndRemovesStaleSettingSupport(t *testing.T) {
 	ResetCloudProvidersForTest()
-	defer RestoreBuiltinCloudProvidersForTest()
+	defer ResetCloudProvidersForTest()
 
 	RegisterCloudProvider(&registryTestProviderWithSettingSupport{
-		registryTestProvider: registryTestProvider{name: aliyun.ProviderName},
+		registryTestProvider: registryTestProvider{name: "testcloud"},
 		settingType:          model.SystemSettingTypeAliyunCloud,
 	})
 
@@ -80,7 +76,7 @@ func TestRegisterCloudProviderReplacesAndRemovesStaleSettingSupport(t *testing.T
 	require.True(t, ok)
 	require.NotNil(t, settingSupport)
 
-	RegisterCloudProvider(&registryTestProvider{name: aliyun.ProviderName})
+	RegisterCloudProvider(&registryTestProvider{name: "testcloud"})
 
 	_, ok = GetCloudProviderSettingSupport(model.SystemSettingTypeAliyunCloud)
 	require.False(t, ok)
@@ -88,16 +84,16 @@ func TestRegisterCloudProviderReplacesAndRemovesStaleSettingSupport(t *testing.T
 
 func TestRegisterCloudProviderReplacesSettingSupportType(t *testing.T) {
 	ResetCloudProvidersForTest()
-	defer RestoreBuiltinCloudProvidersForTest()
+	defer ResetCloudProvidersForTest()
 
 	RegisterCloudProvider(&registryTestProviderWithSettingSupport{
-		registryTestProvider: registryTestProvider{name: aliyun.ProviderName},
+		registryTestProvider: registryTestProvider{name: "testcloud"},
 		settingType:          model.SystemSettingTypeAliyunCloud,
 	})
 
 	newSettingType := "mockCloud"
 	RegisterCloudProvider(&registryTestProviderWithSettingSupport{
-		registryTestProvider: registryTestProvider{name: aliyun.ProviderName},
+		registryTestProvider: registryTestProvider{name: "testcloud"},
 		settingType:          newSettingType,
 	})
 
