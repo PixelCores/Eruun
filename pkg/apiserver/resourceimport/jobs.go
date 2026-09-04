@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -24,12 +25,19 @@ const (
 	maxResourceImportScanRules   = 32
 	maxResourceImportRegexLength = 512
 	resourceImportCandidate      = "candidate"
+	resourceImportCheckpointV1   = 1
 )
 
 type compiledScanRule struct {
 	kinds         map[string]struct{}
 	name          *regexp.Regexp
 	labelSelector labels.Selector
+}
+
+type resourceImportManageCheckpoint struct {
+	Version      int                                       `json:"version"`
+	ScanTaskID   string                                    `json:"scanTaskId"`
+	ApplyRequest apisv1.ImportNamespaceApplicationsRequest `json:"applyRequest"`
 }
 
 func (s *serviceImpl) SubmitScanJob(
@@ -86,6 +94,11 @@ func (s *serviceImpl) GetJob(ctx context.Context, taskID string) (*apisv1.Resour
 			response.Result = json.RawMessage(raw)
 		}
 	}
+	if response.Error == "" &&
+		task.Status == config.StatusFailed &&
+		strings.TrimSpace(task.SchedulingReason) == importcontract.PreExecutionFailureReason {
+		response.Error = importcontract.PreExecutionFailureReason
+	}
 	return response, nil
 }
 
@@ -98,6 +111,7 @@ func (s *serviceImpl) ExecuteResourceImportJob(
 	ctx context.Context,
 	taskType config.WorkflowTaskType,
 	request json.RawMessage,
+	checkpoint json.RawMessage,
 ) (json.RawMessage, error) {
 	if s.KubeClient == nil {
 		return nil, fmt.Errorf("resource import Kubernetes client is nil")
@@ -115,11 +129,34 @@ func (s *serviceImpl) ExecuteResourceImportJob(
 		if err := decodeResourceImportRequest(request, &req); err != nil {
 			return nil, err
 		}
-		result, err := s.executeManage(ctx, req)
+		result, err := s.executeManage(ctx, req, checkpoint)
 		return marshalResourceImportResult(result, err)
 	default:
 		return nil, fmt.Errorf("unsupported resource import task type %q", taskType)
 	}
+}
+
+func (s *serviceImpl) PrepareResourceImportJob(
+	ctx context.Context,
+	taskType config.WorkflowTaskType,
+	request json.RawMessage,
+) (json.RawMessage, error) {
+	if taskType != config.WorkflowTaskTypeResourceImportManage {
+		return nil, nil
+	}
+	var req apisv1.ResourceImportManageJobRequest
+	if err := decodeResourceImportRequest(request, &req); err != nil {
+		return nil, err
+	}
+	checkpoint, err := s.prepareManageCheckpoint(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := json.Marshal(checkpoint)
+	if err != nil {
+		return nil, fmt.Errorf("marshal resource import management checkpoint: %w", err)
+	}
+	return raw, nil
 }
 
 func (s *serviceImpl) submitJob(
@@ -158,7 +195,20 @@ func (s *serviceImpl) submitJob(
 		Type:                taskType,
 		ResourceActionInfo:  string(envelope),
 	}
-	if err := s.Store.Add(ctx, task); err != nil {
+	transactional, ok := s.Store.(datastore.Transactional)
+	if !ok {
+		return nil, fmt.Errorf("resource import datastore does not support transactions")
+	}
+	if err := transactional.WithTransaction(ctx, func(tx datastore.DataStore) error {
+		locker, ok := tx.(datastore.RowLocker)
+		if !ok {
+			return fmt.Errorf("resource import datastore does not support row locking")
+		}
+		if err := locker.GetForUpdate(ctx, &model.Workspace{ID: scope.WorkspaceID}); err != nil {
+			return fmt.Errorf("lock resource import workspace: %w", err)
+		}
+		return tx.Add(ctx, task)
+	}); err != nil {
 		return nil, fmt.Errorf("create resource import job: %w", err)
 	}
 	return &apisv1.ResourceImportJobAcceptedResponse{
@@ -222,12 +272,15 @@ func (s *serviceImpl) executeScan(
 	return result, nil
 }
 
-func (s *serviceImpl) executeManage(
+func (s *serviceImpl) prepareManageCheckpoint(
 	ctx context.Context,
 	req apisv1.ResourceImportManageJobRequest,
-) (*apisv1.ImportNamespaceApplicationsResponse, error) {
+) (*resourceImportManageCheckpoint, error) {
 	scan, err := s.loadScanResult(ctx, strings.TrimSpace(req.ScanTaskID))
 	if err != nil {
+		return nil, err
+	}
+	if err := validateResourceImportNamespace(ctx, scan.Namespace); err != nil {
 		return nil, err
 	}
 	if err := validateSelectedScanResources(scan, req.Applications); err != nil {
@@ -243,17 +296,96 @@ func (s *serviceImpl) executeManage(
 	if err != nil {
 		return nil, fmt.Errorf("plan resource import management: %w", err)
 	}
+	if err := validateResourceImportManagementResult(dryRun, false); err != nil {
+		return nil, fmt.Errorf("plan resource import management: %w", err)
+	}
 	if err := validateScanIdentityDrift(scan, dryRun, req.Applications); err != nil {
 		return nil, err
 	}
 	applyRequest := dryRunRequest
 	applyRequest.Mode = importModeApply
 	applyRequest.PlanFingerprint = dryRun.PlanFingerprint
-	result, err := s.ImportNamespaceResources(ctx, applyRequest)
+	return &resourceImportManageCheckpoint{
+		Version:      resourceImportCheckpointV1,
+		ScanTaskID:   strings.TrimSpace(req.ScanTaskID),
+		ApplyRequest: applyRequest,
+	}, nil
+}
+
+func (s *serviceImpl) executeManage(
+	ctx context.Context,
+	req apisv1.ResourceImportManageJobRequest,
+	rawCheckpoint json.RawMessage,
+) (*apisv1.ImportNamespaceApplicationsResponse, error) {
+	scan, err := s.loadScanResult(ctx, strings.TrimSpace(req.ScanTaskID))
+	if err != nil {
+		return nil, err
+	}
+	if err := validateResourceImportNamespace(ctx, scan.Namespace); err != nil {
+		return nil, err
+	}
+	if err := validateSelectedScanResources(scan, req.Applications); err != nil {
+		return nil, err
+	}
+	checkpoint, err := decodeResourceImportManageCheckpoint(rawCheckpoint, req, scan.Namespace)
+	if err != nil {
+		return nil, err
+	}
+	result, err := s.ImportNamespaceResources(ctx, checkpoint.ApplyRequest)
 	if err != nil {
 		return nil, fmt.Errorf("apply resource import management: %w", err)
 	}
+	if err := validateResourceImportManagementResult(result, true); err != nil {
+		return nil, fmt.Errorf("apply resource import management: %w", err)
+	}
 	return result, nil
+}
+
+func decodeResourceImportManageCheckpoint(
+	raw json.RawMessage,
+	req apisv1.ResourceImportManageJobRequest,
+	namespace string,
+) (*resourceImportManageCheckpoint, error) {
+	if len(raw) == 0 || !json.Valid(raw) {
+		return nil, fmt.Errorf("resource import management checkpoint is missing or invalid")
+	}
+	var checkpoint resourceImportManageCheckpoint
+	if err := json.Unmarshal(raw, &checkpoint); err != nil {
+		return nil, fmt.Errorf("decode resource import management checkpoint: %w", err)
+	}
+	applyRequest := checkpoint.ApplyRequest
+	if checkpoint.Version != resourceImportCheckpointV1 ||
+		strings.TrimSpace(checkpoint.ScanTaskID) != strings.TrimSpace(req.ScanTaskID) ||
+		strings.TrimSpace(applyRequest.Namespace) != strings.TrimSpace(namespace) ||
+		!strings.EqualFold(strings.TrimSpace(applyRequest.Mode), importModeApply) ||
+		applyRequest.ManagementMode != config.ManagementModeAdopted ||
+		strings.TrimSpace(applyRequest.PlanFingerprint) == "" ||
+		!reflect.DeepEqual(applyRequest.Applications, req.Applications) {
+		return nil, fmt.Errorf("resource import management checkpoint does not match the task request")
+	}
+	return &checkpoint, nil
+}
+
+func validateResourceImportManagementResult(result *apisv1.ImportNamespaceApplicationsResponse, applied bool) error {
+	if result == nil || len(result.Apps) != 1 {
+		return fmt.Errorf("resource import management returned an invalid application result")
+	}
+	if message := strings.TrimSpace(result.Apps[0].Error); message != "" {
+		return fmt.Errorf("application %q failed: %s", result.Apps[0].Name, message)
+	}
+	for _, resource := range result.ResourceResults {
+		if strings.EqualFold(strings.TrimSpace(resource.Status), importResourceStatusFailed) {
+			message := strings.TrimSpace(resource.Error)
+			if message == "" {
+				message = "resource operation failed"
+			}
+			return fmt.Errorf("resource %s/%s failed: %s", resource.Kind, resource.Name, message)
+		}
+	}
+	if applied && result.Summary.AppsApplied != 1 {
+		return fmt.Errorf("resource import management did not apply the selected application")
+	}
+	return nil
 }
 
 func (s *serviceImpl) loadScanResult(ctx context.Context, taskID string) (*apisv1.ResourceImportScanResult, error) {

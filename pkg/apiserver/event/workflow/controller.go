@@ -163,6 +163,10 @@ func (w *WorkflowCtl) updateWorkflowTask() {
 		"approval_pending":      taskSnapshot.ApprovalPending,
 		"pending_approval_step": taskSnapshot.PendingApprovalStep,
 	}
+	if isResourceImportWorkflowTask(taskSnapshot.Type) &&
+		taskSnapshot.SchedulingReason == importcontract.PreExecutionFailureReason {
+		updates["scheduling_reason"] = importcontract.PreExecutionFailureReason
+	}
 	authoritativeTask, err := w.persistWorkflowTaskSnapshot(persistCtx, taskSnapshot, expectedStatus, updates)
 	if err != nil {
 		w.stopTaskPersistence(nil, true, false)
@@ -244,6 +248,11 @@ func workflowTaskPersistenceFieldsEqual(left, right *model.WorkflowQueue) bool {
 		left.CurrentStep == right.CurrentStep &&
 		left.ApprovalPending == right.ApprovalPending &&
 		left.PendingApprovalStep == right.PendingApprovalStep
+	if fieldsEqual &&
+		isResourceImportWorkflowTask(right.Type) &&
+		right.SchedulingReason == importcontract.PreExecutionFailureReason {
+		fieldsEqual = left.SchedulingReason == right.SchedulingReason
+	}
 	if !fieldsEqual {
 		return false
 	}
@@ -282,7 +291,12 @@ func (w *WorkflowCtl) Run(ctx context.Context, concurrency int) error {
 	if err != nil {
 		w.resetTaskPersistenceForRun()
 		w.ctx = ctx
-		w.mutateTask(func(task *model.WorkflowQueue) { task.Status = config.StatusFailed })
+		w.mutateTask(func(task *model.WorkflowQueue) {
+			task.Status = config.StatusFailed
+			if isResourceImportWorkflowTask(task.Type) {
+				task.SchedulingReason = importcontract.PreExecutionFailureReason
+			}
+		})
 		w.ack()
 		return fmt.Errorf("prepare workflow workspace: %w", err)
 	}

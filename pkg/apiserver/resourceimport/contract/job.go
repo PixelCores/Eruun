@@ -2,7 +2,10 @@ package contract
 
 import "encoding/json"
 
-const TaskEnvelopeVersion = 1
+const (
+	TaskEnvelopeVersion       = 1
+	PreExecutionFailureReason = "resource import job failed before execution"
+)
 
 // TaskEnvelope is the durable input contract for a one-time resource import
 // job. The task type determines whether Request contains scan or manage input;

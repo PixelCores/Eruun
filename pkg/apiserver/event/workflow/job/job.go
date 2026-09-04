@@ -45,9 +45,15 @@ type JobCtl interface {
 // this consumer-owned interface here lets the workflow runtime execute durable
 // import jobs without importing the module's service package.
 type ResourceImportExecutor interface {
+	PrepareResourceImportJob(
+		context.Context,
+		config.WorkflowTaskType,
+		json.RawMessage,
+	) (json.RawMessage, error)
 	ExecuteResourceImportJob(
 		context.Context,
 		config.WorkflowTaskType,
+		json.RawMessage,
 		json.RawMessage,
 	) (json.RawMessage, error)
 }

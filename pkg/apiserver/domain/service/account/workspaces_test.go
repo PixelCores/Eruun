@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/stretchr/testify/require"
@@ -109,8 +110,32 @@ func TestWorkspaceDeleteRequiresEmptyResources(t *testing.T) {
 	require.ErrorIs(t, s.DeleteWorkspace(ctx, p, w.ID, remove), bcode.ErrWorkspaceNotEmpty)
 	require.Zero(t, calls)
 	require.NoError(t, s.Repo.Store.Delete(ctx, app))
+	task := &model.WorkflowQueue{
+		TaskID:      "resource-import-task",
+		WorkspaceID: w.ID,
+		Type:        config.WorkflowTaskTypeResourceImportScan,
+		Status:      config.StatusWaiting,
+	}
+	require.NoError(t, s.Repo.Store.Add(ctx, task))
+	require.ErrorIs(t, s.DeleteWorkspace(ctx, p, w.ID, remove), bcode.ErrWorkspaceNotEmpty)
+	require.Zero(t, calls)
+	task.Status = config.StatusCompleted
+	require.NoError(t, s.Repo.Store.Put(ctx, task))
+	require.NoError(t, s.Repo.Store.Add(ctx, &model.JobInfo{
+		ID:          100,
+		TaskID:      task.TaskID,
+		WorkspaceID: w.ID,
+		Type:        string(config.JobResourceImportScan),
+		Status:      string(config.StatusCompleted),
+	}))
 	require.NoError(t, s.DeleteWorkspace(ctx, p, w.ID, remove))
 	require.Equal(t, 1, calls)
+	n, err := s.Repo.Store.Count(ctx, &model.WorkflowQueue{WorkspaceID: w.ID}, nil)
+	require.NoError(t, err)
+	require.Zero(t, n)
+	n, err = s.Repo.Store.Count(ctx, &model.JobInfo{WorkspaceID: w.ID}, nil)
+	require.NoError(t, err)
+	require.Zero(t, n)
 	_, err = s.Workspace(ctx, p, w.ID)
 	require.Error(t, err)
 }

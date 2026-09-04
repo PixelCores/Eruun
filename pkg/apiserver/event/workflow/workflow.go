@@ -24,6 +24,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	signal "github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
@@ -569,15 +570,18 @@ func (w *Workflow) markTaskRunStartFailure(ctx context.Context, task *model.Work
 	}
 	expectedStatus := task.Status
 	task.Status = config.StatusFailed
+	updates := map[string]interface{}{"status": config.StatusFailed}
+	if isResourceImportWorkflowTask(task.Type) {
+		task.SchedulingReason = importcontract.PreExecutionFailureReason
+		updates["scheduling_reason"] = importcontract.PreExecutionFailureReason
+	}
 	baseCtx := ctx
 	if baseCtx == nil || baseCtx.Err() != nil {
 		baseCtx = context.Background()
 	}
 	persistCtx, cancel := context.WithTimeout(baseCtx, config.TaskStateTransitionTimeout)
 	defer cancel()
-	updated, err := repository.UpdateTaskFieldsIfOwned(persistCtx, w.Store, task, expectedStatus, map[string]interface{}{
-		"status": config.StatusFailed,
-	})
+	updated, err := repository.UpdateTaskFieldsIfOwned(persistCtx, w.Store, task, expectedStatus, updates)
 	if err != nil {
 		klog.Errorf("mark workflow task %s failed before run: %v (cause: %v)", task.TaskID, err, runErr)
 		return

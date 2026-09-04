@@ -24,8 +24,10 @@ import (
 
 type resourceImportJobStore struct {
 	*inMemoryAppStore
-	tasks map[string]*model.WorkflowQueue
-	jobs  []*model.JobInfo
+	tasks            map[string]*model.WorkflowQueue
+	jobs             []*model.JobInfo
+	workspaceLocks   int
+	workspaceLockErr error
 }
 
 func newResourceImportJobStore() *resourceImportJobStore {
@@ -89,6 +91,23 @@ func (s *resourceImportJobStore) Add(ctx context.Context, entity datastore.Entit
 	}
 }
 
+func (s *resourceImportJobStore) WithTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	return fn(s)
+}
+
+func (s *resourceImportJobStore) GetForUpdate(_ context.Context, entity datastore.Entity) error {
+	if s.workspaceLockErr != nil {
+		return s.workspaceLockErr
+	}
+	workspace, ok := entity.(*model.Workspace)
+	if !ok || workspace.ID != "workspace-1" {
+		return datastore.ErrRecordNotExist
+	}
+	s.workspaceLocks++
+	workspace.Namespace = "team-production"
+	return nil
+}
+
 func resourceImportTestContext() context.Context {
 	return access.WithScope(context.Background(), access.Scope{
 		UserID:      "user-1",
@@ -133,6 +152,7 @@ func TestExecuteResourceImportScanAppliesUserRules(t *testing.T) {
 		resourceImportTestContext(),
 		config.WorkflowTaskTypeResourceImportScan,
 		request,
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -163,6 +183,7 @@ func TestSubmitResourceImportJobsSeparatesScanFromManagement(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, config.WorkflowTaskTypeResourceImportScan, scanAccepted.Type)
 	assert.Equal(t, string(config.StatusWaiting), scanAccepted.Status)
+	assert.Equal(t, 1, store.workspaceLocks)
 
 	scanTask := store.tasks[scanAccepted.TaskID]
 	require.NotNil(t, scanTask)
@@ -219,6 +240,7 @@ func TestSubmitResourceImportJobsSeparatesScanFromManagement(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, config.WorkflowTaskTypeResourceImportManage, manageAccepted.Type)
+	assert.Equal(t, 2, store.workspaceLocks)
 	assert.NotEqual(t, scanAccepted.TaskID, manageAccepted.TaskID)
 	manageTask := store.tasks[manageAccepted.TaskID]
 	require.NotNil(t, manageTask)
@@ -257,4 +279,72 @@ func TestSubmitManageJobRejectsResourceOutsideScan(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Len(t, store.tasks, 1)
+}
+
+func TestGetResourceImportJobExposesSafePreExecutionFailure(t *testing.T) {
+	store := newResourceImportJobStore()
+	store.tasks["scan-failed"] = &model.WorkflowQueue{
+		TaskID:           "scan-failed",
+		WorkspaceID:      "workspace-1",
+		Type:             config.WorkflowTaskTypeResourceImportScan,
+		Status:           config.StatusFailed,
+		SchedulingReason: importcontract.PreExecutionFailureReason,
+	}
+	service := &serviceImpl{Store: store}
+
+	response, err := service.GetJob(resourceImportTestContext(), "scan-failed")
+	require.NoError(t, err)
+	assert.Equal(t, string(config.StatusFailed), response.Status)
+	assert.Equal(t, importcontract.PreExecutionFailureReason, response.Error)
+
+	store.tasks["scan-failed"].SchedulingReason = "database connection included private details"
+	response, err = service.GetJob(resourceImportTestContext(), "scan-failed")
+	require.NoError(t, err)
+	assert.Empty(t, response.Error)
+}
+
+func TestSubmitResourceImportJobDoesNotPersistAfterWorkspaceDeletionWins(t *testing.T) {
+	store := newResourceImportJobStore()
+	store.workspaceLockErr = datastore.ErrRecordNotExist
+	service := &serviceImpl{Store: store}
+
+	_, err := service.SubmitScanJob(resourceImportTestContext(), apisv1.ResourceImportScanJobRequest{
+		Namespace: "team-production",
+		Rules:     []apisv1.ResourceImportScanRule{{Kinds: []string{"Deployment"}}},
+	})
+	require.Error(t, err)
+	assert.Empty(t, store.tasks)
+}
+
+func TestValidateResourceImportManagementResultRejectsEncodedFailures(t *testing.T) {
+	tests := []struct {
+		name   string
+		result *apisv1.ImportNamespaceApplicationsResponse
+	}{
+		{
+			name: "application error",
+			result: &apisv1.ImportNamespaceApplicationsResponse{Apps: []apisv1.ImportNamespaceAppResult{{
+				Name:  "payments",
+				Error: "application create failed",
+			}}},
+		},
+		{
+			name: "resource error",
+			result: &apisv1.ImportNamespaceApplicationsResponse{
+				Apps: []apisv1.ImportNamespaceAppResult{{Name: "payments"}},
+				ResourceResults: []apisv1.ImportNamespaceResourceResult{{
+					Kind:   "Deployment",
+					Name:   "payments-api",
+					Status: importResourceStatusFailed,
+					Error:  "patch failed",
+				}},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Error(t, validateResourceImportManagementResult(tt.result, true))
+		})
+	}
 }

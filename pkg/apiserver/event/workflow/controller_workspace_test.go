@@ -10,6 +10,7 @@ import (
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
 )
@@ -87,4 +88,23 @@ func TestWorkflowRequiresPersistedWorkspaceBeforeExecution(t *testing.T) {
 	require.Equal(t, "system:serviceaccount:default:eruun-runner", ctl.KubeConfig.Impersonate.UserName)
 	// Resolving ownership does not create a namespace or require a live client.
 	require.Nil(t, ctl.workspaceManager.Client)
+}
+
+func TestResourceImportWorkspacePreparationFailurePersistsSafeClientReason(t *testing.T) {
+	task := &model.WorkflowQueue{
+		TaskID:      "resource-import-prepare-failure",
+		WorkspaceID: "workspace",
+		Type:        config.WorkflowTaskTypeResourceImportScan,
+		Status:      config.StatusQueued,
+	}
+	store := &controllerTestStore{}
+	ctl := newTestWorkflowController(t, task, nil, store)
+	ctl.accountConfig = nil
+
+	require.ErrorContains(t, ctl.Run(context.Background(), 1), "workspace configuration is required")
+	require.Equal(t, config.StatusFailed, ctl.snapshotTask().Status)
+	require.Equal(t, importcontract.PreExecutionFailureReason, ctl.snapshotTask().SchedulingReason)
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	require.Equal(t, importcontract.PreExecutionFailureReason, store.task.SchedulingReason)
 }

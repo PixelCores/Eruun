@@ -115,7 +115,7 @@ OAuth 前端先 POST start，再导航到 authorizationURL。回调页从当前 
 
 ## 空间与权限
 
-使用用户、身份、会话、空间、成员、邀请六类业务模型。Session 保存 refresh 族选择器和当前完整 refresh 值的哈希，不保存令牌原值，也不为每次轮换增加记录。个人和团队共用空间模型。用户、空间是稳定随机 ID，namespace 为 `eruun-ws-<无连字符空间UUID>`，不包含邮箱和手机号，创建后不可修改。应用只存一份必填 `workspaceID`，组件、工作流和普通任务通过所属 AppID 确定空间；app-less 的 resource import scan/manage 任务在 WorkflowQueue 与 JobInfo 上保存专用 `workspace_id`。系统管理员管理用户及集群配置；访问具体空间仍需成员资格。
+使用用户、身份、会话、空间、成员、邀请六类业务模型。Session 保存 refresh 族选择器和当前完整 refresh 值的哈希，不保存令牌原值，也不为每次轮换增加记录。个人和团队共用空间模型。用户、空间是稳定随机 ID，namespace 为 `eruun-ws-<无连字符空间UUID>`，不包含邮箱和手机号，创建后不可修改。应用只存一份必填 `workspaceID`，组件、工作流和普通任务通过所属 AppID 确定空间；app-less 的 resource import scan/manage 任务在 WorkflowQueue 与 JobInfo 上保存专用 `workspace_id`。提交导入任务和删除空间会串行锁定同一 workspace：存在未终态导入任务时拒绝删除，删除成功时清理该空间已终态的任务与 JobInfo。系统管理员管理用户及集群配置；访问具体空间仍需成员资格。
 
 | 角色 | 资源 | 成员管理 |
 | --- | --- | --- |

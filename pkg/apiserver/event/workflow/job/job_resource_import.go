@@ -3,12 +3,15 @@ package job
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
 
 type ResourceImportJobCtl struct {
@@ -46,12 +49,65 @@ func (c *ResourceImportJobCtl) Run(ctx context.Context) error {
 	if !ok {
 		return fmt.Errorf("unsupported resource import job type %q", c.job.JobType)
 	}
-	result, err := c.executor.ExecuteResourceImportJob(ctx, taskType, info.Request)
+	var checkpoint json.RawMessage
+	if taskType == config.WorkflowTaskTypeResourceImportManage {
+		checkpoint, err = c.loadManageCheckpoint(ctx)
+		if err != nil {
+			return errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("load resource import management checkpoint: %w", err))
+		}
+		if len(checkpoint) == 0 {
+			checkpoint, err = c.executor.PrepareResourceImportJob(ctx, taskType, info.Request)
+			if err != nil {
+				return err
+			}
+			if len(checkpoint) == 0 || !json.Valid(checkpoint) {
+				return fmt.Errorf("resource import management checkpoint is invalid")
+			}
+			previousInternalInfo := c.job.InternalInfo
+			c.job.InternalInfo = string(checkpoint)
+			if err := c.SaveInfo(ctx); err != nil {
+				c.job.InternalInfo = previousInternalInfo
+				return errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("persist resource import management checkpoint: %w", err))
+			}
+		}
+	}
+	result, err := c.executor.ExecuteResourceImportJob(ctx, taskType, info.Request, checkpoint)
 	if err != nil {
 		return err
 	}
 	c.job.Info = string(result)
 	return nil
+}
+
+func (c *ResourceImportJobCtl) loadManageCheckpoint(ctx context.Context) (json.RawMessage, error) {
+	if c == nil || c.job == nil {
+		return nil, fmt.Errorf("resource import job is nil")
+	}
+	if raw := strings.TrimSpace(c.job.InternalInfo); raw != "" {
+		if !json.Valid([]byte(raw)) {
+			return nil, fmt.Errorf("persisted resource import management checkpoint is invalid")
+		}
+		return json.RawMessage(raw), nil
+	}
+	jobInfos, err := loadJobInfos(ctx, c.store, c.job.TaskID, c.job.JobType, "")
+	if err != nil {
+		return nil, err
+	}
+	for _, jobInfo := range jobInfos {
+		if jobInfo == nil {
+			continue
+		}
+		raw := strings.TrimSpace(jobInfo.InternalInfo)
+		if raw == "" {
+			continue
+		}
+		if !json.Valid([]byte(raw)) {
+			return nil, fmt.Errorf("persisted resource import management checkpoint is invalid")
+		}
+		c.job.InternalInfo = raw
+		return json.RawMessage(raw), nil
+	}
+	return nil, nil
 }
 
 func resourceImportTaskType(jobType config.JobType) (config.WorkflowTaskType, bool) {
