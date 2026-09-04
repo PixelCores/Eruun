@@ -19,8 +19,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	domainadoption "github.com/PixelCores/Eruun/pkg/apiserver/domain/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 
@@ -45,8 +45,8 @@ func TestAdoptedDependencyRecreationMergesSnapshotUpdatesFromSharedRuntime(t *te
 		t,
 		"app-1",
 		"ops",
-		adoptedSnapshotResource(t, firstSource, "api", "configmap", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
-		adoptedSnapshotResource(t, secondSource, "worker", "configmap", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
+		adoptedSnapshotResource(t, firstSource, "api", "configmap", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
+		adoptedSnapshotResource(t, secondSource, "worker", "configmap", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
 	)}
 	firstBinding, adopted, err := adoptedResourceForJob(
 		ctx,
@@ -135,10 +135,10 @@ func TestPendingAdoptedRecreationWrongTokenFailsClosed(t *testing.T) {
 		source,
 		"backend",
 		"role",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
-	saved.PendingRecreation = &domainadoption.RecreationClaim{Token: "expected-token"}
+	saved.PendingRecreation = &importcontract.RecreationClaim{Token: "expected-token"}
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 	replacement := source.DeepCopy()
 	replacement.UID = types.UID("foreign-role")
@@ -172,7 +172,7 @@ func TestAdoptedDependencyRecreationPersistenceFailureRetainsLiveObjectAndPendin
 		ObjectMeta: metav1.ObjectMeta{Name: "backend-config", Namespace: "ops", UID: oldUID},
 		Data:       map[string]string{"application.yaml": "source"},
 	}
-	saved := adoptedSnapshotResource(t, source, "backend", "configmap", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged)
+	saved := adoptedSnapshotResource(t, source, "backend", "configmap", importcontract.OwnershipExclusive, importcontract.DispositionManaged)
 	store := &adoptedSourceStore{
 		app:                        adoptedApplication(t, "app-1", "ops", saved),
 		applicationCASErrOnAttempt: 2,
@@ -228,7 +228,7 @@ func TestAdoptedWorkloadRecreationPersistenceFailureRetainsLiveObjectAndPendingC
 			},
 		},
 	}
-	saved := adoptedSnapshotResource(t, source, "backend", "workload", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged)
+	saved := adoptedSnapshotResource(t, source, "backend", "workload", importcontract.OwnershipExclusive, importcontract.DispositionManaged)
 	component := sourceComponent("app-1", "backend", "Deployment", source.Name, oldUID)
 	store := &adoptedSourceStore{
 		component:            component,

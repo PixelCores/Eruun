@@ -11,13 +11,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
-	"github.com/PixelCores/Eruun/pkg/apiserver/security/access"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
@@ -28,7 +28,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-func middlewareAccounts(t *testing.T) (*account.Service, *access.Store) {
+func middlewareAccounts(t *testing.T) (*account.Service, *account.Store) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "auth.db")), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, TranslateError: true, Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
@@ -36,7 +36,7 @@ func middlewareAccounts(t *testing.T) (*account.Service, *access.Store) {
 	require.NoError(t, err)
 	conn.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = conn.Close() })
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Session{}, &model.Workspace{}, &model.WorkspaceMember{}, &model.Applications{}, &model.WorkflowQueue{}, &model.ApplicationComponent{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Session{}, &model.Workspace{}, &model.WorkspaceMember{}, &model.Applications{}, &model.WorkflowQueue{}, &model.JobInfo{}, &model.ApplicationComponent{}))
 	r := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: r.Addr()})
 	t.Cleanup(func() { _ = client.Close() })
@@ -54,7 +54,7 @@ func middlewareAccounts(t *testing.T) (*account.Service, *access.Store) {
 			require.NoError(t, raw.Add(ctx, e))
 		}
 	}
-	return s, access.NewStore(raw)
+	return s, account.NewStore(raw)
 }
 
 func TestAuthRouteMatrixAndImmediateMembershipChanges(t *testing.T) {
@@ -111,7 +111,7 @@ func TestAuthRouteMatrixAndImmediateMembershipChanges(t *testing.T) {
 
 func TestScopedStoreFiltersBeforePaginationAndDeniesWrites(t *testing.T) {
 	s, store := middlewareAccounts(t)
-	ctx := access.WithScope(context.Background(), access.Scope{UserID: "a", WorkspaceID: "personal-a", Namespace: "ns-a", Role: "owner"})
+	ctx := account.WithScope(context.Background(), account.Scope{UserID: "a", WorkspaceID: "personal-a", Namespace: "ns-a", Role: "owner"})
 	rows, err := store.List(ctx, &model.Applications{}, &datastore.ListOptions{Page: 1, PageSize: 1})
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
@@ -143,6 +143,38 @@ func TestScopedStoreFiltersBeforePaginationAndDeniesWrites(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 	require.Equal(t, "task-a", rows[0].(*model.WorkflowQueue).TaskID)
+
+	resourceImportTask := &model.WorkflowQueue{
+		TaskID:      "resource-import-a",
+		WorkspaceID: "personal-a",
+		Type:        config.WorkflowTaskTypeResourceImportScan,
+		Status:      config.StatusWaiting,
+	}
+	require.ErrorIs(t, store.Add(ctx, &model.WorkflowQueue{
+		TaskID:      "invalid-app-less-task",
+		WorkspaceID: "personal-a",
+		Type:        config.WorkflowTaskTypeWorkflow,
+	}), bcode.ErrForbidden)
+	require.NoError(t, store.Add(ctx, resourceImportTask))
+	resourceImportJob := &model.JobInfo{
+		TaskID:      resourceImportTask.TaskID,
+		WorkspaceID: resourceImportTask.WorkspaceID,
+		Type:        string(config.JobResourceImportScan),
+		Status:      string(config.StatusCompleted),
+	}
+	require.ErrorIs(t, store.Add(ctx, &model.JobInfo{
+		TaskID:      resourceImportTask.TaskID,
+		WorkspaceID: resourceImportTask.WorkspaceID,
+		Type:        string(config.JobDeploy),
+	}), bcode.ErrForbidden)
+	require.NoError(t, store.Add(ctx, resourceImportJob))
+	rows, err = store.List(ctx, &model.JobInfo{TaskID: resourceImportTask.TaskID, WorkspaceID: resourceImportTask.WorkspaceID}, nil)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	require.Equal(t, resourceImportTask.TaskID, rows[0].(*model.JobInfo).TaskID)
+
+	otherWorkspace := account.WithScope(context.Background(), account.Scope{UserID: "b", WorkspaceID: "personal-b", Namespace: "ns-b", Role: "owner"})
+	require.ErrorIs(t, store.Get(otherWorkspace, &model.WorkflowQueue{TaskID: resourceImportTask.TaskID}), bcode.ErrForbidden)
 }
 
 func TestAuthFailsClosedWithoutDependencies(t *testing.T) {

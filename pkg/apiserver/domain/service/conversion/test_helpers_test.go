@@ -6,10 +6,10 @@ import (
 	"testing"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	validationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/validation"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	"github.com/PixelCores/Eruun/pkg/apiserver/security/urlpolicy"
 )
 
 func NewValidationService() ValidationService {

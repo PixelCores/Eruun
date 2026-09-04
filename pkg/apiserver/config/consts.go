@@ -113,6 +113,8 @@ const (
 	JobDatabaseReset             JobType = "database_reset"
 	JobLogArchiveUpload          JobType = "log_archive_upload"
 	JobVersionRestart            JobType = "version_restart"
+	JobResourceImportScan        JobType = "resource_import_scan"
+	JobResourceImportManage      JobType = "resource_import_manage"
 )
 
 const (
@@ -121,17 +123,19 @@ const (
 )
 
 const (
-	WorkflowTaskTypeWorkflow         WorkflowTaskType = "workflow"
-	WorkflowTaskTypeTesting          WorkflowTaskType = "test"
-	WorkflowTaskTypeScanning         WorkflowTaskType = "scan"
-	WorkflowTaskTypeDelivery         WorkflowTaskType = "delivery"
-	WorkflowTaskTypeUpdate           WorkflowTaskType = "update"
-	WorkflowTaskTypeCleanup          WorkflowTaskType = "cleanup"
-	WorkflowTaskTypeRestart          WorkflowTaskType = "restart"
-	WorkflowTaskTypeStop             WorkflowTaskType = "stop"
-	WorkflowTaskTypeStart            WorkflowTaskType = "start"
-	WorkflowTaskTypeDatabaseReset    WorkflowTaskType = "database_reset"
-	WorkflowTaskTypeLogArchiveUpload WorkflowTaskType = "log_archive_upload"
+	WorkflowTaskTypeWorkflow             WorkflowTaskType = "workflow"
+	WorkflowTaskTypeTesting              WorkflowTaskType = "test"
+	WorkflowTaskTypeScanning             WorkflowTaskType = "scan"
+	WorkflowTaskTypeDelivery             WorkflowTaskType = "delivery"
+	WorkflowTaskTypeUpdate               WorkflowTaskType = "update"
+	WorkflowTaskTypeCleanup              WorkflowTaskType = "cleanup"
+	WorkflowTaskTypeRestart              WorkflowTaskType = "restart"
+	WorkflowTaskTypeStop                 WorkflowTaskType = "stop"
+	WorkflowTaskTypeStart                WorkflowTaskType = "start"
+	WorkflowTaskTypeDatabaseReset        WorkflowTaskType = "database_reset"
+	WorkflowTaskTypeLogArchiveUpload     WorkflowTaskType = "log_archive_upload"
+	WorkflowTaskTypeResourceImportScan   WorkflowTaskType = "resource_import_scan"
+	WorkflowTaskTypeResourceImportManage WorkflowTaskType = "resource_import_manage"
 
 	WorkflowModeStepByStep WorkflowMode = "StepByStep"
 	WorkflowModeDAG        WorkflowMode = "DAG"

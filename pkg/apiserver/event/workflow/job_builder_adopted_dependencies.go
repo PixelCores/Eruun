@@ -17,11 +17,11 @@ import (
 	applyv1 "k8s.io/client-go/applyconfigurations/core/v1"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -240,7 +240,7 @@ func augmentAdoptedDependencyJobs(
 		return stepGroups, nil
 	}
 
-	resources := append([]adoption.ResourceSnapshot(nil), snapshot.Resources...)
+	resources := append([]importcontract.ResourceSnapshot(nil), snapshot.Resources...)
 	sort.SliceStable(resources, func(i, j int) bool {
 		left := adoptedSnapshotResourceKey(snapshot, &resources[i])
 		right := adoptedSnapshotResourceKey(snapshot, &resources[j])
@@ -288,7 +288,7 @@ func augmentAdoptedDependencyJobs(
 	return stepGroups, nil
 }
 
-func workflowAdoptionSnapshot(app *model.Applications) (*adoption.Snapshot, error) {
+func workflowAdoptionSnapshot(app *model.Applications) (*importcontract.Snapshot, error) {
 	if app == nil || app.AdoptionSnapshot == nil {
 		return nil, fmt.Errorf("adopted application %q has no adoption snapshot", applicationIdentifier(app))
 	}
@@ -296,7 +296,7 @@ func workflowAdoptionSnapshot(app *model.Applications) (*adoption.Snapshot, erro
 	if err != nil {
 		return nil, fmt.Errorf("marshal adopted application %s snapshot: %w", app.ID, err)
 	}
-	var snapshot adoption.Snapshot
+	var snapshot importcontract.Snapshot
 	if err := json.Unmarshal(payload, &snapshot); err != nil {
 		return nil, fmt.Errorf("decode adopted application %s snapshot: %w", app.ID, err)
 	}
@@ -323,10 +323,10 @@ func orderedJobPriorities(buckets map[int][]*model.JobTask) []int {
 }
 
 func findSnapshotResourceForGeneratedJob(
-	snapshot *adoption.Snapshot,
+	snapshot *importcontract.Snapshot,
 	kind string,
 	jobTask *model.JobTask,
-) (*adoption.ResourceSnapshot, error) {
+) (*importcontract.ResourceSnapshot, error) {
 	if snapshot == nil || jobTask == nil {
 		return nil, nil
 	}
@@ -335,7 +335,7 @@ func findSnapshotResourceForGeneratedJob(
 		namespace = strings.TrimSpace(snapshot.Namespace)
 	}
 	name := strings.TrimSpace(jobTask.Name)
-	var matches []*adoption.ResourceSnapshot
+	var matches []*importcontract.ResourceSnapshot
 	for index := range snapshot.Resources {
 		resource := &snapshot.Resources[index]
 		if !strings.EqualFold(strings.TrimSpace(resource.Source.Kind), kind) {
@@ -369,24 +369,24 @@ func findSnapshotResourceForGeneratedJob(
 	}
 }
 
-func adoptedResourceIsWritable(resource *adoption.ResourceSnapshot) bool {
+func adoptedResourceIsWritable(resource *importcontract.ResourceSnapshot) bool {
 	return resource != nil &&
-		strings.EqualFold(strings.TrimSpace(resource.Ownership), adoption.OwnershipExclusive) &&
-		strings.EqualFold(strings.TrimSpace(resource.Disposition), adoption.DispositionManaged)
+		strings.EqualFold(strings.TrimSpace(resource.Ownership), importcontract.OwnershipExclusive) &&
+		strings.EqualFold(strings.TrimSpace(resource.Disposition), importcontract.DispositionManaged)
 }
 
 func adoptedResourceIsProtectedStandalonePVC(
-	snapshot *adoption.Snapshot,
-	resource *adoption.ResourceSnapshot,
+	snapshot *importcontract.Snapshot,
+	resource *importcontract.ResourceSnapshot,
 ) (bool, error) {
 	if resource == nil ||
 		!strings.EqualFold(strings.TrimSpace(resource.Source.Kind), "PersistentVolumeClaim") ||
-		!strings.EqualFold(strings.TrimSpace(resource.Disposition), adoption.DispositionDataProtected) {
+		!strings.EqualFold(strings.TrimSpace(resource.Disposition), importcontract.DispositionDataProtected) {
 		return false, nil
 	}
 	ownership := strings.TrimSpace(resource.Ownership)
-	if !strings.EqualFold(ownership, adoption.OwnershipDataProtected) &&
-		!strings.EqualFold(ownership, adoption.OwnershipExclusive) {
+	if !strings.EqualFold(ownership, importcontract.OwnershipDataProtected) &&
+		!strings.EqualFold(ownership, importcontract.OwnershipExclusive) {
 		return false, nil
 	}
 
@@ -439,8 +439,8 @@ func adoptedResourceIsProtectedStandalonePVC(
 }
 
 func adoptedProtectedPVCJob(
-	resource *adoption.ResourceSnapshot,
-	snapshot *adoption.Snapshot,
+	resource *importcontract.ResourceSnapshot,
+	snapshot *importcontract.Snapshot,
 	task *model.WorkflowQueue,
 	resourceAppName string,
 	defaultJobTimeoutSeconds int64,
@@ -522,7 +522,7 @@ func adoptedPVCStorageRequest(jobTask *model.JobTask) string {
 	return requested.String()
 }
 
-func adoptedSnapshotResourceNamespace(snapshot *adoption.Snapshot, resource *adoption.ResourceSnapshot) string {
+func adoptedSnapshotResourceNamespace(snapshot *importcontract.Snapshot, resource *importcontract.ResourceSnapshot) string {
 	if resource == nil {
 		return ""
 	}
@@ -535,7 +535,7 @@ func adoptedSnapshotResourceNamespace(snapshot *adoption.Snapshot, resource *ado
 	return strings.TrimSpace(snapshot.Namespace)
 }
 
-func adoptedSnapshotResourceKey(snapshot *adoption.Snapshot, resource *adoption.ResourceSnapshot) string {
+func adoptedSnapshotResourceKey(snapshot *importcontract.Snapshot, resource *importcontract.ResourceSnapshot) string {
 	if resource == nil {
 		return ""
 	}
@@ -576,8 +576,8 @@ func adoptedWorkloadExecutionAnchors(stepGroups [][]StepExecution) (*StepExecuti
 }
 
 func adoptedSnapshotDependencyJob(
-	resource *adoption.ResourceSnapshot,
-	snapshot *adoption.Snapshot,
+	resource *importcontract.ResourceSnapshot,
+	snapshot *importcontract.Snapshot,
 	spec adoptedDependencyJobSpec,
 	task *model.WorkflowQueue,
 	resourceAppName string,
@@ -622,7 +622,7 @@ func adoptedSnapshotDependencyJob(
 }
 
 func decodeAdoptedDependencyManifest(
-	resource *adoption.ResourceSnapshot,
+	resource *importcontract.ResourceSnapshot,
 	namespace, name string,
 ) (interface{}, error) {
 	if len(resource.Manifest) == 0 {

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -332,7 +333,8 @@ func (s *Service) RevokeInvitation(ctx context.Context, p *Principal, id, invita
 }
 
 // Namespace removal is injected by the API assembly, keeping Kubernetes IO out
-// of the account model. The workspace lock also serializes application creation.
+// of the account model. The workspace lock also serializes application creation
+// and app-less resource-import task submission.
 func (s *Service) DeleteWorkspace(ctx context.Context, p *Principal, id string, deleteNamespace func(context.Context, *model.Workspace) error) error {
 	if err := s.requireRecentAuthentication(ctx, p); err != nil {
 		return err
@@ -348,17 +350,49 @@ func (s *Service) DeleteWorkspace(ctx context.Context, p *Principal, id string, 
 		if n != 0 {
 			return bcode.ErrWorkspaceNotEmpty
 		}
+		tasks, e := r.Store.List(ctx, &model.WorkflowQueue{WorkspaceID: id}, &datastore.ListOptions{})
+		if e != nil {
+			return e
+		}
+		for _, entity := range tasks {
+			task, ok := entity.(*model.WorkflowQueue)
+			if !ok || task == nil {
+				continue
+			}
+			if !workspaceTaskTerminal(task.Status) {
+				return bcode.ErrWorkspaceNotEmpty
+			}
+		}
 		if deleteNamespace == nil {
 			return fmt.Errorf("namespace deletion is unavailable")
 		}
 		if e = deleteNamespace(ctx, w); e != nil {
 			return e
 		}
-		for _, entity := range []datastore.Entity{&model.WorkspaceInvitation{WorkspaceID: id}, &model.WorkspaceMember{WorkspaceID: id}} {
+		for _, entity := range []datastore.Entity{
+			&model.JobInfo{WorkspaceID: id},
+			&model.WorkflowQueue{WorkspaceID: id},
+			&model.WorkspaceInvitation{WorkspaceID: id},
+			&model.WorkspaceMember{WorkspaceID: id},
+		} {
 			if e = r.Store.DeleteByFilter(ctx, entity, nil); e != nil {
 				return e
 			}
 		}
 		return r.Store.Delete(ctx, w)
 	})
+}
+
+func workspaceTaskTerminal(status config.Status) bool {
+	switch status {
+	case config.StatusCompleted,
+		config.StatusPassed,
+		config.StatusFailed,
+		config.StatusTimeout,
+		config.StatusReject,
+		config.StatusCancelled:
+		return true
+	default:
+		return false
+	}
 }

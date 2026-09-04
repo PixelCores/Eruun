@@ -22,9 +22,9 @@ import (
 	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	domainadoption "github.com/PixelCores/Eruun/pkg/apiserver/domain/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
 )
 
 func TestDeployJobCtlRunAdoptedNoopPreservesUnknownLiveFields(t *testing.T) {
@@ -51,8 +51,8 @@ func TestDeployJobCtlRunAdoptedNoopPreservesUnknownLiveFields(t *testing.T) {
 		live,
 		"backend",
 		"workload",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	store := &adoptedSourceStore{
 		component: sourceComponent("app-1", "backend", "Deployment", live.Name, uid),
@@ -156,8 +156,8 @@ func TestDeployJobCtlRunAdoptedRejectsUIDReplacementWithoutWrite(t *testing.T) {
 		baseline,
 		"backend",
 		"workload",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	store := &adoptedSourceStore{
 		component: sourceComponent("app-1", "backend", "Deployment", live.Name, types.UID("original")),
@@ -199,8 +199,8 @@ func TestDeployJobCtlRunAdoptedMapsLogicalComponentToFirstContainer(t *testing.T
 		live,
 		"backend",
 		"workload",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	component := sourceComponent("app-1", "backend", "Deployment", live.Name, uid)
 	store := &adoptedSourceStore{
@@ -257,8 +257,8 @@ func TestDeployJobCtlRunAdoptedMissingSourceBindingNeverFallsBackToGeneratedName
 		source,
 		"backend",
 		"workload",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	corruptBinding := &model.ApplicationComponent{
 		ID:            7,
@@ -333,8 +333,8 @@ func TestStatefulSetAdoptedPreservesIdentityAndIgnoresSyntheticImmutableFields(t
 		live,
 		"mysql",
 		"workload",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	store := &adoptedSourceStore{
 		component: sourceComponent("app-1", "mysql", "StatefulSet", live.Name, uid),
@@ -380,8 +380,8 @@ func TestDeployJobCtlRunAdoptedRecreatesOriginalNameAndPersistsNewUID(t *testing
 		baseline,
 		"backend",
 		"workload",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	component := sourceComponent("app-1", "backend", "Deployment", baseline.Name, oldUID)
 	store := &adoptedSourceStore{
@@ -453,7 +453,7 @@ func TestDeployJobCtlRunAdoptedDoesNotOverwriteConcurrentComponentUpdate(t *test
 			t,
 			"app-1",
 			"ops",
-			adoptedSnapshotResource(t, source, "backend", "workload", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
+			adoptedSnapshotResource(t, source, "backend", "workload", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
 		),
 		beforeWorkloadComponentCAS: func(current *model.ApplicationComponent) {
 			current.Status = string(config.ComponentStatusStopped)
@@ -536,8 +536,8 @@ func TestDeployStatefulSetJobCtlRunAdoptedRecreatesWithOriginalStorageIdentity(t
 		baseline,
 		"mysql",
 		"workload",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	store := &adoptedSourceStore{
 		component: sourceComponent("app-1", "mysql", "StatefulSet", baseline.Name, oldUID),
@@ -604,8 +604,8 @@ func TestDeployPVCJobCtlRunAdoptedExpandsStandaloneBoundPVC(t *testing.T) {
 		live,
 		"mysql",
 		"pvc",
-		domainadoption.OwnershipDataProtected,
-		domainadoption.DispositionDataProtected,
+		importcontract.OwnershipDataProtected,
+		importcontract.DispositionDataProtected,
 	)
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", snapshotResource)}
 	allowExpansion := true
@@ -711,13 +711,13 @@ func TestDeployPVCJobCtlRunAdoptedRejectsUnsafeChanges(t *testing.T) {
 				},
 				Status: corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound},
 			}
-			resources := []domainadoption.ResourceSnapshot{adoptedSnapshotResource(
+			resources := []importcontract.ResourceSnapshot{adoptedSnapshotResource(
 				t,
 				live,
 				"mysql",
 				"pvc",
-				domainadoption.OwnershipDataProtected,
-				domainadoption.DispositionDataProtected,
+				importcontract.OwnershipDataProtected,
+				importcontract.DispositionDataProtected,
 			)}
 			if testCase.withVCTSTS {
 				statefulSet := &appsv1.StatefulSet{
@@ -732,8 +732,8 @@ func TestDeployPVCJobCtlRunAdoptedRejectsUnsafeChanges(t *testing.T) {
 					statefulSet,
 					"mysql",
 					"workload",
-					domainadoption.OwnershipExclusive,
-					domainadoption.DispositionManaged,
+					importcontract.OwnershipExclusive,
+					importcontract.DispositionManaged,
 				))
 			}
 			store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", resources...)}
@@ -783,8 +783,8 @@ func TestDeployPVCJobCtlRunAdoptedMissingPVCNeverRecreates(t *testing.T) {
 		source,
 		"mysql",
 		"pvc",
-		domainadoption.OwnershipDataProtected,
-		domainadoption.DispositionDataProtected,
+		importcontract.OwnershipDataProtected,
+		importcontract.DispositionDataProtected,
 	)
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", snapshotResource)}
 	client := fake.NewSimpleClientset()
@@ -842,8 +842,8 @@ func TestDeployServiceJobCtlRunAdoptedUsesLiveBaselineAndSkipsNoop(t *testing.T)
 		live,
 		"backend",
 		"service",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", resourceSnapshot)}
 	desired := applyv1.Service(live.Name, live.Namespace).
@@ -891,8 +891,8 @@ func TestDeployServiceJobCtlRunAdoptedSharedDependencyIsNeverWritten(t *testing.
 		live,
 		"backend",
 		"service",
-		domainadoption.OwnershipShared,
-		domainadoption.DispositionSharedPreserved,
+		importcontract.OwnershipShared,
+		importcontract.DispositionSharedPreserved,
 	)
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", resourceSnapshot)}
 	desired := applyv1.Service(live.Name, live.Namespace).
@@ -923,8 +923,8 @@ func TestDeployServiceJobCtlRunAdoptedRejectsReplacementUID(t *testing.T) {
 		source,
 		"backend",
 		"service",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	replacement := source.DeepCopy()
 	replacement.UID = types.UID("replacement-uid")
@@ -989,8 +989,8 @@ func TestDeployIngressJobCtlRunAdoptedPreservesUnspecifiedLiveFields(t *testing.
 		live,
 		"backend",
 		"ingress",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", resourceSnapshot)}
 	desired := live.DeepCopy()
@@ -1045,8 +1045,8 @@ func TestDeployConfigMapJobCtlRunAdoptedPreservesUnknownLiveFields(t *testing.T)
 		live,
 		"backend",
 		"configmap",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", resourceSnapshot)}
 	desired := &corev1.ConfigMap{
@@ -1101,7 +1101,7 @@ func TestAdoptedStatefulSetRecreationPersistenceFailureRetainsPendingClaimAndRet
 			},
 		},
 	}
-	saved := adoptedSnapshotResource(t, source, "mysql", "workload", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged)
+	saved := adoptedSnapshotResource(t, source, "mysql", "workload", importcontract.OwnershipExclusive, importcontract.DispositionManaged)
 	store := &adoptedSourceStore{
 		component:            sourceComponent("app-1", "mysql", "StatefulSet", source.Name, oldUID),
 		app:                  adoptedApplication(t, "app-1", "ops", saved),

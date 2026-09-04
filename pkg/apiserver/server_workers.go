@@ -13,8 +13,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
+	importruntime "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/runtime"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
 
@@ -409,7 +409,7 @@ func (s *restServer) onStartedControllerLeading(ctx context.Context, errChan cha
 	}
 	s.startControllerEventWorkers(run, errChan)
 	if s.KubeClient != nil && s.dataStore != nil {
-		coordinator := adoption.NewPodCoordinator(s.KubeClient, adoption.NewDataStoreBindingLoader(s.dataStore))
+		coordinator := importruntime.NewPodCoordinator(s.KubeClient, importruntime.NewDataStoreBindingLoader(s.dataStore))
 		run.start(coordinator.Run)
 	}
 	run.markStarted()

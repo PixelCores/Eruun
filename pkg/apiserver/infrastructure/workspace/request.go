@@ -3,8 +3,8 @@ package workspace
 import (
 	"net/http"
 
+	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/security/access"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )

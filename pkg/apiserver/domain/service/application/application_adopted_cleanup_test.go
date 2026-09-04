@@ -20,9 +20,9 @@ import (
 	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	domainadoption "github.com/PixelCores/Eruun/pkg/apiserver/domain/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
@@ -32,9 +32,9 @@ func TestAdoptedCleanupPlanApplyDeletesExclusiveAndRetainsPVC(t *testing.T) {
 		Namespace: "prod", Name: "data-db-0", UID: types.UID("pvc-uid"), ResourceVersion: "4",
 	}}
 	service, store := adoptedCleanupService(t, deployment, pvc)
-	store.apps["app-1"] = adoptedCleanupApplication(t, []domainadoption.ResourceSnapshot{
-		adoptedCleanupSnapshotResource("apps/v1", "Deployment", deployment.Name, string(deployment.UID), "workload", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
-		adoptedCleanupSnapshotResource("v1", "PersistentVolumeClaim", pvc.Name, string(pvc.UID), "pvc", domainadoption.OwnershipDataProtected, domainadoption.DispositionDataProtected),
+	store.apps["app-1"] = adoptedCleanupApplication(t, []importcontract.ResourceSnapshot{
+		adoptedCleanupSnapshotResource("apps/v1", "Deployment", deployment.Name, string(deployment.UID), "workload", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
+		adoptedCleanupSnapshotResource("v1", "PersistentVolumeClaim", pvc.Name, string(pvc.UID), "pvc", importcontract.OwnershipDataProtected, importcontract.DispositionDataProtected),
 	})
 
 	plan, err := service.PlanApplicationResourceCleanup(context.Background(), "app-1")
@@ -75,15 +75,15 @@ func TestAdoptedCleanupWaitsForDependencyDeletionBeforeReportingSuccess(t *testi
 		Finalizers:      []string{"example.test/cleanup"},
 	}}
 	service, store := adoptedCleanupService(t, secret)
-	store.apps["app-1"] = adoptedCleanupApplication(t, []domainadoption.ResourceSnapshot{
+	store.apps["app-1"] = adoptedCleanupApplication(t, []importcontract.ResourceSnapshot{
 		adoptedCleanupSnapshotResource(
 			"v1",
 			"Secret",
 			secret.Name,
 			string(secret.UID),
 			"secret",
-			domainadoption.OwnershipExclusive,
-			domainadoption.DispositionManaged,
+			importcontract.OwnershipExclusive,
+			importcontract.DispositionManaged,
 		),
 	})
 	plan, err := service.PlanApplicationResourceCleanup(context.Background(), "app-1")
@@ -112,7 +112,7 @@ func TestAdoptedCleanupDeletesSignedRuntimeChildren(t *testing.T) {
 	testCases := []struct {
 		name                      string
 		root                      runtime.Object
-		rootSnapshot              domainadoption.ResourceSnapshot
+		rootSnapshot              importcontract.ResourceSnapshot
 		rootResource              string
 		runtimeControllerResource string
 		children                  []runtime.Object
@@ -127,8 +127,8 @@ func TestAdoptedCleanupDeletesSignedRuntimeChildren(t *testing.T) {
 				"backend",
 				"deployment-uid",
 				"workload",
-				domainadoption.OwnershipExclusive,
-				domainadoption.DispositionManaged,
+				importcontract.OwnershipExclusive,
+				importcontract.DispositionManaged,
 			),
 			rootResource:              "deployments",
 			runtimeControllerResource: "replicasets",
@@ -179,8 +179,8 @@ func TestAdoptedCleanupDeletesSignedRuntimeChildren(t *testing.T) {
 				"mysql",
 				"statefulset-uid",
 				"workload",
-				domainadoption.OwnershipExclusive,
-				domainadoption.DispositionManaged,
+				importcontract.OwnershipExclusive,
+				importcontract.DispositionManaged,
 			),
 			rootResource:              "statefulsets",
 			runtimeControllerResource: "controllerrevisions",
@@ -223,7 +223,7 @@ func TestAdoptedCleanupDeletesSignedRuntimeChildren(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			objects := append([]runtime.Object{testCase.root}, testCase.children...)
 			service, store := adoptedCleanupService(t, objects...)
-			store.apps["app-1"] = adoptedCleanupApplication(t, []domainadoption.ResourceSnapshot{
+			store.apps["app-1"] = adoptedCleanupApplication(t, []importcontract.ResourceSnapshot{
 				testCase.rootSnapshot,
 			})
 
@@ -295,15 +295,15 @@ func TestAdoptedCleanupRejectsFingerprintAfterRuntimeChildDrift(t *testing.T) {
 		}},
 	}}
 	service, store := adoptedCleanupService(t, deployment, replicaSet)
-	store.apps["app-1"] = adoptedCleanupApplication(t, []domainadoption.ResourceSnapshot{
+	store.apps["app-1"] = adoptedCleanupApplication(t, []importcontract.ResourceSnapshot{
 		adoptedCleanupSnapshotResource(
 			"apps/v1",
 			"Deployment",
 			deployment.Name,
 			string(deployment.UID),
 			"workload",
-			domainadoption.OwnershipExclusive,
-			domainadoption.DispositionManaged,
+			importcontract.OwnershipExclusive,
+			importcontract.DispositionManaged,
 		),
 	})
 
@@ -344,9 +344,9 @@ func TestAdoptedCleanupRescansSharingAfterRootDeletion(t *testing.T) {
 		Namespace: "prod", Name: "backend-config", UID: types.UID("secret-uid"), ResourceVersion: "2",
 	}}
 	service, store := adoptedCleanupService(t, deployment, secret)
-	store.apps["app-1"] = adoptedCleanupApplication(t, []domainadoption.ResourceSnapshot{
-		adoptedCleanupSnapshotResource("apps/v1", "Deployment", deployment.Name, string(deployment.UID), "workload", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
-		adoptedCleanupSnapshotResource("v1", "Secret", secret.Name, string(secret.UID), "secret", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
+	store.apps["app-1"] = adoptedCleanupApplication(t, []importcontract.ResourceSnapshot{
+		adoptedCleanupSnapshotResource("apps/v1", "Deployment", deployment.Name, string(deployment.UID), "workload", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
+		adoptedCleanupSnapshotResource("v1", "Secret", secret.Name, string(secret.UID), "secret", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
 	})
 
 	client := service.KubeClient.(*fake.Clientset)
@@ -389,8 +389,8 @@ func TestAdoptedCleanupRescansSharingAfterRootDeletion(t *testing.T) {
 func TestAdoptedCleanupRejectsFingerprintAfterLiveDriftBeforeDeleting(t *testing.T) {
 	deployment := adoptedCleanupDeployment()
 	service, store := adoptedCleanupService(t, deployment)
-	store.apps["app-1"] = adoptedCleanupApplication(t, []domainadoption.ResourceSnapshot{
-		adoptedCleanupSnapshotResource("apps/v1", "Deployment", deployment.Name, string(deployment.UID), "workload", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
+	store.apps["app-1"] = adoptedCleanupApplication(t, []importcontract.ResourceSnapshot{
+		adoptedCleanupSnapshotResource("apps/v1", "Deployment", deployment.Name, string(deployment.UID), "workload", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
 	})
 	plan, err := service.PlanApplicationResourceCleanup(context.Background(), "app-1")
 	require.NoError(t, err)
@@ -423,13 +423,13 @@ func TestAdoptedCleanupBlocksStatefulSetWhenDeletedPolicy(t *testing.T) {
 		},
 	}
 	service, store := adoptedCleanupService(t, statefulSet)
-	store.apps["app-1"] = adoptedCleanupApplication(t, []domainadoption.ResourceSnapshot{
-		adoptedCleanupSnapshotResource("apps/v1", "StatefulSet", statefulSet.Name, string(statefulSet.UID), "workload", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
+	store.apps["app-1"] = adoptedCleanupApplication(t, []importcontract.ResourceSnapshot{
+		adoptedCleanupSnapshotResource("apps/v1", "StatefulSet", statefulSet.Name, string(statefulSet.UID), "workload", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
 	})
 
 	plan, err := service.PlanApplicationResourceCleanup(context.Background(), "app-1")
 	require.NoError(t, err)
-	require.Equal(t, domainadoption.DispositionBlocked, plan.ResourceResults[0].Disposition)
+	require.Equal(t, importcontract.DispositionBlocked, plan.ResourceResults[0].Disposition)
 
 	_, err = service.ApplyApplicationResourceCleanup(context.Background(), "app-1", apisv1.CleanupApplicationResourcesRequest{
 		PlanFingerprint: plan.PlanFingerprint,
@@ -454,13 +454,13 @@ func TestAdoptedCleanupBlocksStatefulSetWhenScaledPolicy(t *testing.T) {
 		},
 	}
 	service, store := adoptedCleanupService(t, statefulSet)
-	store.apps["app-1"] = adoptedCleanupApplication(t, []domainadoption.ResourceSnapshot{
-		adoptedCleanupSnapshotResource("apps/v1", "StatefulSet", statefulSet.Name, string(statefulSet.UID), "workload", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
+	store.apps["app-1"] = adoptedCleanupApplication(t, []importcontract.ResourceSnapshot{
+		adoptedCleanupSnapshotResource("apps/v1", "StatefulSet", statefulSet.Name, string(statefulSet.UID), "workload", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
 	})
 
 	plan, err := service.PlanApplicationResourceCleanup(context.Background(), "app-1")
 	require.NoError(t, err)
-	require.Equal(t, domainadoption.DispositionBlocked, plan.ResourceResults[0].Disposition)
+	require.Equal(t, importcontract.DispositionBlocked, plan.ResourceResults[0].Disposition)
 
 	_, err = service.ApplyApplicationResourceCleanup(context.Background(), "app-1", apisv1.CleanupApplicationResourcesRequest{
 		PlanFingerprint: plan.PlanFingerprint,
@@ -494,15 +494,15 @@ func TestAdoptedCleanupRetainsSecretThatBecameSharedAfterImport(t *testing.T) {
 		}},
 	}
 	service, store := adoptedCleanupService(t, secret, external)
-	store.apps["app-1"] = adoptedCleanupApplication(t, []domainadoption.ResourceSnapshot{
-		adoptedCleanupSnapshotResource("v1", "Secret", secret.Name, string(secret.UID), "secret", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
+	store.apps["app-1"] = adoptedCleanupApplication(t, []importcontract.ResourceSnapshot{
+		adoptedCleanupSnapshotResource("v1", "Secret", secret.Name, string(secret.UID), "secret", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
 	})
 
 	plan, err := service.PlanApplicationResourceCleanup(context.Background(), "app-1")
 	require.NoError(t, err)
 	require.Len(t, plan.ResourceResults, 1)
-	require.Equal(t, domainadoption.OwnershipShared, plan.ResourceResults[0].Ownership)
-	require.Equal(t, domainadoption.DispositionSharedPreserved, plan.ResourceResults[0].Disposition)
+	require.Equal(t, importcontract.OwnershipShared, plan.ResourceResults[0].Ownership)
+	require.Equal(t, importcontract.DispositionSharedPreserved, plan.ResourceResults[0].Disposition)
 
 	response, err := service.ApplyApplicationResourceCleanup(context.Background(), "app-1", apisv1.CleanupApplicationResourcesRequest{
 		PlanFingerprint: plan.PlanFingerprint,
@@ -535,15 +535,15 @@ func TestAdoptedCleanupRetainsSecretReferencedByExternalAzureFileVolume(t *testi
 		}},
 	}
 	service, store := adoptedCleanupService(t, secret, external)
-	store.apps["app-1"] = adoptedCleanupApplication(t, []domainadoption.ResourceSnapshot{
-		adoptedCleanupSnapshotResource("v1", "Secret", secret.Name, string(secret.UID), "secret", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
+	store.apps["app-1"] = adoptedCleanupApplication(t, []importcontract.ResourceSnapshot{
+		adoptedCleanupSnapshotResource("v1", "Secret", secret.Name, string(secret.UID), "secret", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
 	})
 
 	plan, err := service.PlanApplicationResourceCleanup(context.Background(), "app-1")
 	require.NoError(t, err)
 	require.Len(t, plan.ResourceResults, 1)
-	require.Equal(t, domainadoption.OwnershipShared, plan.ResourceResults[0].Ownership)
-	require.Equal(t, domainadoption.DispositionSharedPreserved, plan.ResourceResults[0].Disposition)
+	require.Equal(t, importcontract.OwnershipShared, plan.ResourceResults[0].Ownership)
+	require.Equal(t, importcontract.DispositionSharedPreserved, plan.ResourceResults[0].Disposition)
 
 	response, err := service.ApplyApplicationResourceCleanup(context.Background(), "app-1", apisv1.CleanupApplicationResourcesRequest{
 		PlanFingerprint: plan.PlanFingerprint,
@@ -577,17 +577,17 @@ func TestAdoptedCleanupRetainsSecretReferencedByExternalServiceAccount(t *testin
 		}},
 	}
 	service, store := adoptedCleanupService(t, secret, serviceAccount, external)
-	store.apps["app-1"] = adoptedCleanupApplication(t, []domainadoption.ResourceSnapshot{
-		adoptedCleanupSnapshotResource("v1", "Secret", secret.Name, string(secret.UID), "secret", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
-		adoptedCleanupSnapshotResource("v1", "ServiceAccount", serviceAccount.Name, string(serviceAccount.UID), "service-account", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
+	store.apps["app-1"] = adoptedCleanupApplication(t, []importcontract.ResourceSnapshot{
+		adoptedCleanupSnapshotResource("v1", "Secret", secret.Name, string(secret.UID), "secret", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
+		adoptedCleanupSnapshotResource("v1", "ServiceAccount", serviceAccount.Name, string(serviceAccount.UID), "service-account", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
 	})
 
 	plan, err := service.PlanApplicationResourceCleanup(context.Background(), "app-1")
 	require.NoError(t, err)
 	require.Len(t, plan.ResourceResults, 2)
 	for _, result := range plan.ResourceResults {
-		require.Equal(t, domainadoption.OwnershipShared, result.Ownership)
-		require.Equal(t, domainadoption.DispositionSharedPreserved, result.Disposition)
+		require.Equal(t, importcontract.OwnershipShared, result.Ownership)
+		require.Equal(t, importcontract.DispositionSharedPreserved, result.Disposition)
 	}
 
 	response, err := service.ApplyApplicationResourceCleanup(context.Background(), "app-1", apisv1.CleanupApplicationResourcesRequest{
@@ -670,15 +670,15 @@ func TestAdoptedCleanupRetainsServiceAccountReferencedByExternalRBAC(t *testing.
 				serviceAccount,
 				testCase.binding(serviceAccount.Name),
 			)
-			store.apps["app-1"] = adoptedCleanupApplication(t, []domainadoption.ResourceSnapshot{
+			store.apps["app-1"] = adoptedCleanupApplication(t, []importcontract.ResourceSnapshot{
 				adoptedCleanupSnapshotResource(
 					"v1",
 					"Secret",
 					secret.Name,
 					string(secret.UID),
 					"secret",
-					domainadoption.OwnershipExclusive,
-					domainadoption.DispositionManaged,
+					importcontract.OwnershipExclusive,
+					importcontract.DispositionManaged,
 				),
 				adoptedCleanupSnapshotResource(
 					"v1",
@@ -686,8 +686,8 @@ func TestAdoptedCleanupRetainsServiceAccountReferencedByExternalRBAC(t *testing.
 					serviceAccount.Name,
 					string(serviceAccount.UID),
 					"service-account",
-					domainadoption.OwnershipExclusive,
-					domainadoption.DispositionManaged,
+					importcontract.OwnershipExclusive,
+					importcontract.DispositionManaged,
 				),
 			})
 
@@ -695,8 +695,8 @@ func TestAdoptedCleanupRetainsServiceAccountReferencedByExternalRBAC(t *testing.
 			require.NoError(t, err)
 			require.Len(t, plan.ResourceResults, 2)
 			for _, result := range plan.ResourceResults {
-				require.Equal(t, domainadoption.OwnershipShared, result.Ownership)
-				require.Equal(t, domainadoption.DispositionSharedPreserved, result.Disposition)
+				require.Equal(t, importcontract.OwnershipShared, result.Ownership)
+				require.Equal(t, importcontract.DispositionSharedPreserved, result.Disposition)
 			}
 
 			response, err := service.ApplyApplicationResourceCleanup(
@@ -747,18 +747,18 @@ func TestAdoptedCleanupRetainsRoleReferencedThroughNewClusterBinding(t *testing.
 		},
 	}
 	service, store := adoptedCleanupService(t, serviceAccount, role, roleBinding, clusterBinding)
-	store.apps["app-1"] = adoptedCleanupApplication(t, []domainadoption.ResourceSnapshot{
-		adoptedCleanupSnapshotResource("v1", "ServiceAccount", serviceAccount.Name, string(serviceAccount.UID), "service-account", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
-		adoptedCleanupSnapshotResource("rbac.authorization.k8s.io/v1", "Role", role.Name, string(role.UID), "rbac", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
-		adoptedCleanupSnapshotResource("rbac.authorization.k8s.io/v1", "RoleBinding", roleBinding.Name, string(roleBinding.UID), "rbac", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
+	store.apps["app-1"] = adoptedCleanupApplication(t, []importcontract.ResourceSnapshot{
+		adoptedCleanupSnapshotResource("v1", "ServiceAccount", serviceAccount.Name, string(serviceAccount.UID), "service-account", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
+		adoptedCleanupSnapshotResource("rbac.authorization.k8s.io/v1", "Role", role.Name, string(role.UID), "rbac", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
+		adoptedCleanupSnapshotResource("rbac.authorization.k8s.io/v1", "RoleBinding", roleBinding.Name, string(roleBinding.UID), "rbac", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
 	})
 
 	plan, err := service.PlanApplicationResourceCleanup(context.Background(), "app-1")
 	require.NoError(t, err)
 	require.Len(t, plan.ResourceResults, 3)
 	for _, result := range plan.ResourceResults {
-		require.Equal(t, domainadoption.OwnershipShared, result.Ownership)
-		require.Equal(t, domainadoption.DispositionSharedPreserved, result.Disposition)
+		require.Equal(t, importcontract.OwnershipShared, result.Ownership)
+		require.Equal(t, importcontract.DispositionSharedPreserved, result.Disposition)
 	}
 }
 
@@ -808,14 +808,14 @@ func TestAdoptedCleanupRetainsSecretReferencedByStandalonePodOrReplicaSet(t *tes
 				Namespace: "prod", Name: "shared-runtime", UID: types.UID("secret-uid"), ResourceVersion: "9",
 			}}
 			service, store := adoptedCleanupService(t, secret, testCase.workload(secret.Name))
-			store.apps["app-1"] = adoptedCleanupApplication(t, []domainadoption.ResourceSnapshot{
-				adoptedCleanupSnapshotResource("v1", "Secret", secret.Name, string(secret.UID), "secret", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
+			store.apps["app-1"] = adoptedCleanupApplication(t, []importcontract.ResourceSnapshot{
+				adoptedCleanupSnapshotResource("v1", "Secret", secret.Name, string(secret.UID), "secret", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
 			})
 
 			plan, err := service.PlanApplicationResourceCleanup(context.Background(), "app-1")
 			require.NoError(t, err)
 			require.Len(t, plan.ResourceResults, 1)
-			require.Equal(t, domainadoption.DispositionSharedPreserved, plan.ResourceResults[0].Disposition)
+			require.Equal(t, importcontract.DispositionSharedPreserved, plan.ResourceResults[0].Disposition)
 		})
 	}
 }
@@ -832,14 +832,14 @@ func TestAdoptedCleanupRetainsTLSSecretReferencedByExternalIngress(t *testing.T)
 		}}},
 	}
 	service, store := adoptedCleanupService(t, secret, ingress)
-	store.apps["app-1"] = adoptedCleanupApplication(t, []domainadoption.ResourceSnapshot{
-		adoptedCleanupSnapshotResource("v1", "Secret", secret.Name, string(secret.UID), "secret", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
+	store.apps["app-1"] = adoptedCleanupApplication(t, []importcontract.ResourceSnapshot{
+		adoptedCleanupSnapshotResource("v1", "Secret", secret.Name, string(secret.UID), "secret", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
 	})
 
 	plan, err := service.PlanApplicationResourceCleanup(context.Background(), "app-1")
 	require.NoError(t, err)
 	require.Len(t, plan.ResourceResults, 1)
-	require.Equal(t, domainadoption.DispositionSharedPreserved, plan.ResourceResults[0].Disposition)
+	require.Equal(t, importcontract.DispositionSharedPreserved, plan.ResourceResults[0].Disposition)
 }
 
 func TestAdoptedCleanupRetainsTLSSecretWhenAdoptedIngressBecomesShared(t *testing.T) {
@@ -880,18 +880,18 @@ func TestAdoptedCleanupRetainsTLSSecretWhenAdoptedIngressBecomesShared(t *testin
 		Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "backend", Image: "nginx"}}},
 	}
 	service, store := adoptedCleanupService(t, secret, serviceResource, ingress, externalPod)
-	store.apps["app-1"] = adoptedCleanupApplication(t, []domainadoption.ResourceSnapshot{
-		adoptedCleanupSnapshotResource("v1", "Secret", secret.Name, string(secret.UID), "secret", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
-		adoptedCleanupSnapshotResource("v1", "Service", serviceResource.Name, string(serviceResource.UID), "service", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
-		adoptedCleanupSnapshotResource("networking.k8s.io/v1", "Ingress", ingress.Name, string(ingress.UID), "ingress", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
+	store.apps["app-1"] = adoptedCleanupApplication(t, []importcontract.ResourceSnapshot{
+		adoptedCleanupSnapshotResource("v1", "Secret", secret.Name, string(secret.UID), "secret", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
+		adoptedCleanupSnapshotResource("v1", "Service", serviceResource.Name, string(serviceResource.UID), "service", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
+		adoptedCleanupSnapshotResource("networking.k8s.io/v1", "Ingress", ingress.Name, string(ingress.UID), "ingress", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
 	})
 
 	plan, err := service.PlanApplicationResourceCleanup(context.Background(), "app-1")
 	require.NoError(t, err)
 	require.Len(t, plan.ResourceResults, 3)
 	for _, result := range plan.ResourceResults {
-		require.Equal(t, domainadoption.OwnershipShared, result.Ownership)
-		require.Equal(t, domainadoption.DispositionSharedPreserved, result.Disposition)
+		require.Equal(t, importcontract.OwnershipShared, result.Ownership)
+		require.Equal(t, importcontract.DispositionSharedPreserved, result.Disposition)
 	}
 }
 
@@ -901,9 +901,9 @@ func TestAdoptedCleanupRetainsDependenciesWhenRootDeleteFails(t *testing.T) {
 		Namespace: "prod", Name: "backend-config", UID: types.UID("secret-uid"), ResourceVersion: "9",
 	}}
 	service, store := adoptedCleanupService(t, deployment, secret)
-	store.apps["app-1"] = adoptedCleanupApplication(t, []domainadoption.ResourceSnapshot{
-		adoptedCleanupSnapshotResource("apps/v1", "Deployment", deployment.Name, string(deployment.UID), "workload", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
-		adoptedCleanupSnapshotResource("v1", "Secret", secret.Name, string(secret.UID), "secret", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
+	store.apps["app-1"] = adoptedCleanupApplication(t, []importcontract.ResourceSnapshot{
+		adoptedCleanupSnapshotResource("apps/v1", "Deployment", deployment.Name, string(deployment.UID), "workload", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
+		adoptedCleanupSnapshotResource("v1", "Secret", secret.Name, string(secret.UID), "secret", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
 	})
 	plan, err := service.PlanApplicationResourceCleanup(context.Background(), "app-1")
 	require.NoError(t, err)
@@ -946,9 +946,9 @@ func TestAdoptedCleanupRetainsDependenciesWhenRuntimeChildDeleteFails(t *testing
 		Namespace: "prod", Name: "backend-config", UID: types.UID("secret-uid"), ResourceVersion: "9",
 	}}
 	service, store := adoptedCleanupService(t, deployment, replicaSet, secret)
-	store.apps["app-1"] = adoptedCleanupApplication(t, []domainadoption.ResourceSnapshot{
-		adoptedCleanupSnapshotResource("apps/v1", "Deployment", deployment.Name, string(deployment.UID), "workload", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
-		adoptedCleanupSnapshotResource("v1", "Secret", secret.Name, string(secret.UID), "secret", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
+	store.apps["app-1"] = adoptedCleanupApplication(t, []importcontract.ResourceSnapshot{
+		adoptedCleanupSnapshotResource("apps/v1", "Deployment", deployment.Name, string(deployment.UID), "workload", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
+		adoptedCleanupSnapshotResource("v1", "Secret", secret.Name, string(secret.UID), "secret", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
 	})
 	plan, err := service.PlanApplicationResourceCleanup(context.Background(), "app-1")
 	require.NoError(t, err)
@@ -1036,8 +1036,8 @@ func TestAdoptedCleanupRetainsRuntimeOwnerChainWhenPodDeleteFails(t *testing.T) 
 		}},
 	}}
 	service, store := adoptedCleanupService(t, deployment, replicaSet, pod)
-	store.apps["app-1"] = adoptedCleanupApplication(t, []domainadoption.ResourceSnapshot{
-		adoptedCleanupSnapshotResource("apps/v1", "Deployment", deployment.Name, string(deployment.UID), "workload", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
+	store.apps["app-1"] = adoptedCleanupApplication(t, []importcontract.ResourceSnapshot{
+		adoptedCleanupSnapshotResource("apps/v1", "Deployment", deployment.Name, string(deployment.UID), "workload", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
 	})
 	plan, err := service.PlanApplicationResourceCleanup(context.Background(), "app-1")
 	require.NoError(t, err)
@@ -1116,8 +1116,8 @@ func TestAdoptedCleanupKeepsRootWhenRuntimeChildAppearsDuringDeletion(t *testing
 		}},
 	}}
 	service, store := adoptedCleanupService(t, deployment, replicaSet, pod)
-	store.apps["app-1"] = adoptedCleanupApplication(t, []domainadoption.ResourceSnapshot{
-		adoptedCleanupSnapshotResource("apps/v1", "Deployment", deployment.Name, string(deployment.UID), "workload", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
+	store.apps["app-1"] = adoptedCleanupApplication(t, []importcontract.ResourceSnapshot{
+		adoptedCleanupSnapshotResource("apps/v1", "Deployment", deployment.Name, string(deployment.UID), "workload", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
 	})
 	plan, err := service.PlanApplicationResourceCleanup(context.Background(), "app-1")
 	require.NoError(t, err)
@@ -1252,8 +1252,8 @@ func TestAdoptedCleanupKeepsRootWhenPodAppearsWhileControllersQuiesce(t *testing
 		}},
 	}}
 	service, store := adoptedCleanupService(t, deployment, replicaSet, pod)
-	store.apps["app-1"] = adoptedCleanupApplication(t, []domainadoption.ResourceSnapshot{
-		adoptedCleanupSnapshotResource("apps/v1", "Deployment", deployment.Name, string(deployment.UID), "workload", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged),
+	store.apps["app-1"] = adoptedCleanupApplication(t, []importcontract.ResourceSnapshot{
+		adoptedCleanupSnapshotResource("apps/v1", "Deployment", deployment.Name, string(deployment.UID), "workload", importcontract.OwnershipExclusive, importcontract.DispositionManaged),
 	})
 	plan, err := service.PlanApplicationResourceCleanup(context.Background(), "app-1")
 	require.NoError(t, err)
@@ -1327,9 +1327,9 @@ func adoptedCleanupService(t *testing.T, objects ...runtime.Object) (*applicatio
 	return service, store
 }
 
-func adoptedCleanupApplication(t *testing.T, resources []domainadoption.ResourceSnapshot) *model.Applications {
+func adoptedCleanupApplication(t *testing.T, resources []importcontract.ResourceSnapshot) *model.Applications {
 	t.Helper()
-	snapshot := domainadoption.NewSnapshot("prod", resources)
+	snapshot := importcontract.NewSnapshot("prod", resources)
 	raw, err := model.NewJSONStructByStruct(snapshot)
 	require.NoError(t, err)
 	return &model.Applications{
@@ -1343,9 +1343,9 @@ func adoptedCleanupApplication(t *testing.T, resources []domainadoption.Resource
 
 func adoptedCleanupSnapshotResource(
 	apiVersion, kind, name, uid, role, ownership, disposition string,
-) domainadoption.ResourceSnapshot {
-	return domainadoption.ResourceSnapshot{
-		Source: domainadoption.ResourceIdentity{
+) importcontract.ResourceSnapshot {
+	return importcontract.ResourceSnapshot{
+		Source: importcontract.ResourceIdentity{
 			APIVersion: apiVersion,
 			Kind:       kind,
 			Namespace:  "prod",

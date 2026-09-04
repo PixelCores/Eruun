@@ -886,7 +886,7 @@ func TestRunJob_ConfigMapInvalidatesComponentsCache(t *testing.T) {
 		},
 	}
 
-	runtime := newJobRuntime(cacheStore, nil, nil, nil, nil)
+	runtime := newJobRuntime(cacheStore, nil, nil, nil, nil, nil)
 	runJob(context.Background(), jobTask, fake.NewSimpleClientset(), store, func() {}, runtime)
 
 	require.False(t, cacheStore.Exists(cacheKey))
@@ -918,7 +918,7 @@ func TestRunJob_SecretFailureInvalidatesComponentsCache(t *testing.T) {
 		JobInfo:   "bad-job-info-type",
 	}
 
-	runtime := newJobRuntime(cacheStore, nil, nil, nil, nil)
+	runtime := newJobRuntime(cacheStore, nil, nil, nil, nil, nil)
 	runJob(context.Background(), jobTask, fake.NewSimpleClientset(), store, func() {}, runtime)
 
 	require.False(t, cacheStore.Exists(cacheKey))
@@ -994,7 +994,7 @@ func TestRunJob_ConfigMapDoesNotInvalidateCacheWhenStatusPersistFails(t *testing
 		},
 	}
 
-	runtime := newJobRuntime(cacheStore, nil, nil, nil, nil)
+	runtime := newJobRuntime(cacheStore, nil, nil, nil, nil, nil)
 	runJob(context.Background(), jobTask, fake.NewSimpleClientset(), store, func() {}, runtime)
 
 	require.True(t, cacheStore.Exists(cacheKey))
@@ -1027,7 +1027,7 @@ func TestRunJob_DeployStartInvalidatesComponentsCache(t *testing.T) {
 		JobInfo:   "bad-deploy-job-info",
 	}
 
-	runtime := newJobRuntime(cacheStore, nil, nil, nil, nil)
+	runtime := newJobRuntime(cacheStore, nil, nil, nil, nil, nil)
 	runJob(context.Background(), jobTask, fake.NewSimpleClientset(), store, func() {}, runtime)
 
 	require.False(t, cacheStore.Exists(cacheKey))
@@ -1062,7 +1062,7 @@ func TestRunJob_DeployStartDoesNotInvalidateCacheWhenStatusPersistFails(t *testi
 		JobInfo:   "bad-deploy-job-info",
 	}
 
-	runtime := newJobRuntime(cacheStore, nil, nil, nil, nil)
+	runtime := newJobRuntime(cacheStore, nil, nil, nil, nil, nil)
 	runJob(context.Background(), jobTask, fake.NewSimpleClientset(), store, func() {}, runtime)
 
 	require.True(t, cacheStore.Exists(cacheKey))

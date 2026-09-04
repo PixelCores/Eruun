@@ -22,8 +22,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	domainadoption "github.com/PixelCores/Eruun/pkg/apiserver/domain/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 
@@ -43,8 +43,8 @@ func TestAdoptedRoleRecreationPersistsClaimBeforeCreate(t *testing.T) {
 		source,
 		"backend",
 		"role",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 	client := fake.NewSimpleClientset()
@@ -92,8 +92,8 @@ func TestAdoptedRoleRecreationAlreadyExistsWithSameTokenFinalizesClaim(t *testin
 		source,
 		"backend",
 		"role",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 	client := fake.NewSimpleClientset()
@@ -150,8 +150,8 @@ func TestAdoptedRoleRecreationClaimCASFailureDoesNotCreate(t *testing.T) {
 		source,
 		"backend",
 		"role",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	store := &adoptedSourceStore{
 		app:    adoptedApplication(t, "app-1", "ops", saved),
@@ -249,10 +249,10 @@ func TestPendingAdoptedRecreationRecoversNamespacedRBACAndPolicyResources(t *tes
 				source,
 				"backend",
 				testCase.role,
-				domainadoption.OwnershipExclusive,
-				domainadoption.DispositionManaged,
+				importcontract.OwnershipExclusive,
+				importcontract.DispositionManaged,
 			)
-			saved.PendingRecreation = &domainadoption.RecreationClaim{Token: token}
+			saved.PendingRecreation = &importcontract.RecreationClaim{Token: token}
 			store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 			client := fake.NewSimpleClientset(replacement)
 			job := &model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobInfo: source}
@@ -316,8 +316,8 @@ func TestDeployServiceAccountJobCtlRunAdoptedPreservesUnknownFieldsAndSkipsNoop(
 		live,
 		"backend",
 		"service-account",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 	desired := &corev1.ServiceAccount{
@@ -366,8 +366,8 @@ func TestDeployRoleJobCtlRunAdoptedUsesSourceUIDAndLiveBaseline(t *testing.T) {
 		live,
 		"backend",
 		"role",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 	desired := &rbacv1.Role{
@@ -412,23 +412,23 @@ func TestDeployNamespacedRBACJobCtlRunAdoptedPreservedDispositionNeverTouchesKub
 	}{
 		{
 			name:        "shared",
-			ownership:   domainadoption.OwnershipShared,
-			disposition: domainadoption.DispositionSharedPreserved,
+			ownership:   importcontract.OwnershipShared,
+			disposition: importcontract.DispositionSharedPreserved,
 		},
 		{
 			name:        "external excluded",
-			ownership:   domainadoption.OwnershipExternal,
-			disposition: domainadoption.DispositionExcluded,
+			ownership:   importcontract.OwnershipExternal,
+			disposition: importcontract.DispositionExcluded,
 		},
 		{
 			name:        "data protected",
-			ownership:   domainadoption.OwnershipDataProtected,
-			disposition: domainadoption.DispositionDataProtected,
+			ownership:   importcontract.OwnershipDataProtected,
+			disposition: importcontract.DispositionDataProtected,
 		},
 		{
 			name:        "blocked",
-			ownership:   domainadoption.OwnershipExclusive,
-			disposition: domainadoption.DispositionBlocked,
+			ownership:   importcontract.OwnershipExclusive,
+			disposition: importcontract.DispositionBlocked,
 			wantError:   true,
 		},
 	}
@@ -472,8 +472,8 @@ func TestDeployRoleJobCtlRunAdoptedRejectsReplacementUID(t *testing.T) {
 		source,
 		"backend",
 		"role",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	replacement := source.DeepCopy()
 	replacement.UID = types.UID("replacement-uid")
@@ -506,8 +506,8 @@ func TestDeployRoleJobCtlRunAdoptedNeverFallsBackToGeneratedName(t *testing.T) {
 		source,
 		"backend",
 		"role",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 	client := fake.NewSimpleClientset(source)
@@ -544,8 +544,8 @@ func TestDeployRoleBindingJobCtlRunAdoptedRejectsImmutableRoleRefChange(t *testi
 		source,
 		"backend",
 		"role-binding",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 	desired := source.DeepCopy()
@@ -587,8 +587,8 @@ func TestDeployRoleBindingJobCtlRunAdoptedUsesLiveBaselineAndSkipsSecondUpdate(t
 		source,
 		"backend",
 		"role-binding",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 	desired := &rbacv1.RoleBinding{
@@ -632,7 +632,7 @@ func TestAdoptedNamespacedRBACRecreateFromSnapshotAndRotateUID(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "legacy-sa", Namespace: "ops", UID: oldUID},
 			Secrets:    []corev1.ObjectReference{{Name: "preserved-reference"}},
 		}
-		saved := adoptedSnapshotResource(t, source, "backend", "service-account", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged)
+		saved := adoptedSnapshotResource(t, source, "backend", "service-account", importcontract.OwnershipExclusive, importcontract.DispositionManaged)
 		store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 		client := fake.NewSimpleClientset()
 		client.Fake.PrependReactor("create", "serviceaccounts", func(action k8stesting.Action) (bool, runtime.Object, error) {
@@ -667,7 +667,7 @@ func TestAdoptedNamespacedRBACRecreateFromSnapshotAndRotateUID(t *testing.T) {
 			RoleRef:    rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "Role", Name: "legacy-role"},
 			Subjects:   []rbacv1.Subject{{Kind: "ServiceAccount", Name: "legacy-sa", Namespace: "ops"}},
 		}
-		saved := adoptedSnapshotResource(t, source, "backend", "role-binding", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged)
+		saved := adoptedSnapshotResource(t, source, "backend", "role-binding", importcontract.OwnershipExclusive, importcontract.DispositionManaged)
 		store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 		client := fake.NewSimpleClientset()
 		client.Fake.PrependReactor("create", "rolebindings", func(action k8stesting.Action) (bool, runtime.Object, error) {
@@ -706,7 +706,7 @@ func TestAdoptedRoleRecreationPersistenceFailureRetainsLiveObjectAndPendingClaim
 			Verbs:     []string{"get"},
 		}},
 	}
-	saved := adoptedSnapshotResource(t, source, "backend", "role", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged)
+	saved := adoptedSnapshotResource(t, source, "backend", "role", importcontract.OwnershipExclusive, importcontract.DispositionManaged)
 	store := &adoptedSourceStore{
 		app:                        adoptedApplication(t, "app-1", "ops", saved),
 		applicationCASErrOnAttempt: 2,
@@ -756,8 +756,8 @@ func TestAdoptedClusterScopedRBACJobsAreExternalZeroWrite(t *testing.T) {
 		source,
 		"backend",
 		"service-account",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 

@@ -17,17 +17,17 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	domainadoption "github.com/PixelCores/Eruun/pkg/apiserver/domain/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
 )
 
 type adoptedResourceBinding struct {
 	application *model.Applications
-	snapshot    *domainadoption.Snapshot
-	resource    *domainadoption.ResourceSnapshot
+	snapshot    *importcontract.Snapshot
+	resource    *importcontract.ResourceSnapshot
 }
 
 type adoptedWorkloadRecreation struct {
@@ -164,7 +164,7 @@ func adoptedApplicationForJob(
 	ctx context.Context,
 	store datastore.DataStore,
 	job *model.JobTask,
-) (*model.Applications, *domainadoption.Snapshot, bool, error) {
+) (*model.Applications, *importcontract.Snapshot, bool, error) {
 	if store == nil || job == nil || strings.TrimSpace(job.AppID) == "" {
 		return nil, nil, false, nil
 	}
@@ -192,7 +192,7 @@ func adoptedRecoveryContext(ctx context.Context) (context.Context, context.Cance
 	return context.WithTimeout(context.WithoutCancel(ctx), config.DelTimeOut)
 }
 
-func decodeAdoptionSnapshot(app *model.Applications) (*domainadoption.Snapshot, error) {
+func decodeAdoptionSnapshot(app *model.Applications) (*importcontract.Snapshot, error) {
 	if app == nil || app.AdoptionSnapshot == nil {
 		return nil, fmt.Errorf("adopted application %q has no adoption snapshot", applicationID(app))
 	}
@@ -200,7 +200,7 @@ func decodeAdoptionSnapshot(app *model.Applications) (*domainadoption.Snapshot, 
 	if err != nil {
 		return nil, fmt.Errorf("marshal adoption snapshot: %w", err)
 	}
-	var snapshot domainadoption.Snapshot
+	var snapshot importcontract.Snapshot
 	if err := json.Unmarshal(payload, &snapshot); err != nil {
 		return nil, fmt.Errorf("decode adoption snapshot: %w", err)
 	}
@@ -218,7 +218,7 @@ func applicationID(app *model.Applications) string {
 }
 
 func adoptedRecreationClaimMatches(
-	resource *domainadoption.ResourceSnapshot,
+	resource *importcontract.ResourceSnapshot,
 	objectMeta metav1.Object,
 ) (bool, error) {
 	if resource == nil || objectMeta == nil {
@@ -246,7 +246,7 @@ func adoptedRecreationClaimMatches(
 }
 
 func adoptedRecreationAlreadyPersisted(
-	resource *domainadoption.ResourceSnapshot,
+	resource *importcontract.ResourceSnapshot,
 	objectMeta metav1.Object,
 ) (bool, error) {
 	if resource == nil || objectMeta == nil {
@@ -262,9 +262,9 @@ func adoptedRecreationAlreadyPersisted(
 	return strings.TrimSpace(resource.Source.UID) == uid, nil
 }
 
-func cloneAdoptionSnapshot(snapshot *domainadoption.Snapshot) domainadoption.Snapshot {
+func cloneAdoptionSnapshot(snapshot *importcontract.Snapshot) importcontract.Snapshot {
 	cloned := *snapshot
-	cloned.Resources = append([]domainadoption.ResourceSnapshot(nil), snapshot.Resources...)
+	cloned.Resources = append([]importcontract.ResourceSnapshot(nil), snapshot.Resources...)
 	for index := range cloned.Resources {
 		if cloned.Resources[index].PendingRecreation != nil {
 			claim := *cloned.Resources[index].PendingRecreation
@@ -275,8 +275,8 @@ func cloneAdoptionSnapshot(snapshot *domainadoption.Snapshot) domainadoption.Sna
 }
 
 func adoptedRecreationResourceIndex(
-	snapshot *domainadoption.Snapshot,
-	resource *domainadoption.ResourceSnapshot,
+	snapshot *importcontract.Snapshot,
+	resource *importcontract.ResourceSnapshot,
 ) int {
 	if snapshot == nil || resource == nil {
 		return -1
@@ -342,8 +342,8 @@ func (b *adoptedResourceBinding) prepareRecreationCandidate(
 				return fmt.Errorf("adopted recreation snapshot binding disappeared")
 			}
 			token = uuid.NewString()
-			snapshot.Version = domainadoption.SnapshotVersion
-			snapshot.Resources[resourceIndex].PendingRecreation = &domainadoption.RecreationClaim{Token: token}
+			snapshot.Version = importcontract.SnapshotVersion
+			snapshot.Resources[resourceIndex].PendingRecreation = &importcontract.RecreationClaim{Token: token}
 			if err := snapshot.Validate(); err != nil {
 				return fmt.Errorf("validate adopted recreation claim snapshot: %w", err)
 			}
@@ -432,9 +432,9 @@ func (b *adoptedResourceBinding) validateCanonicalWorkloadComponent(
 }
 
 func findAdoptedSnapshotResource(
-	snapshot *domainadoption.Snapshot,
+	snapshot *importcontract.Snapshot,
 	componentName, kind, namespace, name string,
-) (*domainadoption.ResourceSnapshot, error) {
+) (*importcontract.ResourceSnapshot, error) {
 	if snapshot == nil {
 		return nil, fmt.Errorf("adoption snapshot is required")
 	}
@@ -442,7 +442,7 @@ func findAdoptedSnapshotResource(
 	if namespace == "" {
 		namespace = strings.TrimSpace(snapshot.Namespace)
 	}
-	var matches []*domainadoption.ResourceSnapshot
+	var matches []*importcontract.ResourceSnapshot
 	for index := range snapshot.Resources {
 		resource := &snapshot.Resources[index]
 		sourceNamespace := strings.TrimSpace(resource.Source.Namespace)
@@ -471,10 +471,10 @@ func findAdoptedSnapshotResource(
 }
 
 func findGeneratedAdoptedIngressResource(
-	snapshot *domainadoption.Snapshot,
+	snapshot *importcontract.Snapshot,
 	job *model.JobTask,
 	namespace, generatedName string,
-) (*domainadoption.ResourceSnapshot, error) {
+) (*importcontract.ResourceSnapshot, error) {
 	if snapshot == nil || job == nil {
 		return nil, fmt.Errorf("adoption snapshot and job are required")
 	}
@@ -483,7 +483,7 @@ func findGeneratedAdoptedIngressResource(
 		namespace = strings.TrimSpace(snapshot.Namespace)
 	}
 	componentName := componentNameFromJobInfo(job.JobInfo)
-	var matches []*domainadoption.ResourceSnapshot
+	var matches []*importcontract.ResourceSnapshot
 	for index := range snapshot.Resources {
 		resource := &snapshot.Resources[index]
 		sourceNamespace := strings.TrimSpace(resource.Source.Namespace)
@@ -514,14 +514,14 @@ func adoptedResourceAllowsWrite(binding *adoptedResourceBinding) (bool, error) {
 		return false, fmt.Errorf("adopted resource binding is required")
 	}
 	resource := binding.resource
-	if resource.Disposition == domainadoption.DispositionManaged &&
-		resource.Ownership == domainadoption.OwnershipExclusive {
+	if resource.Disposition == importcontract.DispositionManaged &&
+		resource.Ownership == importcontract.OwnershipExclusive {
 		return true, nil
 	}
 	switch resource.Disposition {
-	case domainadoption.DispositionSharedPreserved,
-		domainadoption.DispositionDataProtected,
-		domainadoption.DispositionExcluded:
+	case importcontract.DispositionSharedPreserved,
+		importcontract.DispositionDataProtected,
+		importcontract.DispositionExcluded:
 		return false, nil
 	default:
 		return false, fmt.Errorf(
@@ -1557,8 +1557,8 @@ func compareAndSwapRecreatedAdoptionSnapshot(
 }
 
 func prepareRecreatedSnapshotState(
-	resource *domainadoption.ResourceSnapshot,
-	savedSnapshot *domainadoption.Snapshot,
+	resource *importcontract.ResourceSnapshot,
+	savedSnapshot *importcontract.Snapshot,
 	savedApp *model.Applications,
 	created runtime.Object,
 	objectMeta metav1.Object,
@@ -1599,7 +1599,7 @@ func prepareRecreatedSnapshotState(
 	if err != nil {
 		return "", nil, nil, fmt.Errorf("convert recreated adopted resource: %w", err)
 	}
-	digest, err := domainadoption.DigestObject(&unstructured.Unstructured{Object: unstructuredObject})
+	digest, err := importcontract.DigestObject(&unstructured.Unstructured{Object: unstructuredObject})
 	if err != nil {
 		return "", nil, nil, fmt.Errorf("digest recreated adopted resource: %w", err)
 	}
@@ -1613,7 +1613,7 @@ func prepareRecreatedSnapshotState(
 	if newUID == strings.TrimSpace(resource.Source.UID) {
 		return "", nil, nil, fmt.Errorf("recreated adopted resource returned the existing source UID")
 	}
-	snapshot.Version = domainadoption.SnapshotVersion
+	snapshot.Version = importcontract.SnapshotVersion
 	snapshot.Resources[index].Source.UID = newUID
 	snapshot.Resources[index].Source.ResourceVersion = objectMeta.GetResourceVersion()
 	snapshot.Resources[index].Source.SpecDigest = digest

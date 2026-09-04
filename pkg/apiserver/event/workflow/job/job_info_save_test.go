@@ -16,10 +16,14 @@ type jobInfoSaveStore struct {
 	existing  []*model.JobInfo
 	added     *model.JobInfo
 	updated   *model.JobInfo
+	addErr    error
 	beforeCAS func()
 }
 
 func (s *jobInfoSaveStore) Add(_ context.Context, entity datastore.Entity) error {
+	if s.addErr != nil {
+		return s.addErr
+	}
 	jobInfo, ok := entity.(*model.JobInfo)
 	if !ok || jobInfo == nil {
 		return datastore.ErrEntityInvalid

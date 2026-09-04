@@ -17,16 +17,16 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	domainadoption "github.com/PixelCores/Eruun/pkg/apiserver/domain/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	applyv1 "k8s.io/client-go/applyconfigurations/core/v1"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/importsecret"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
-	"github.com/PixelCores/Eruun/pkg/apiserver/security/importsecret"
 )
 
 func TestDeploySecretJobCtlRunAdoptedRejectsPlaintextTaskWrite(t *testing.T) {
@@ -43,8 +43,8 @@ func TestDeploySecretJobCtlRunAdoptedRejectsPlaintextTaskWrite(t *testing.T) {
 		live,
 		"mysql",
 		"secret",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		importcontract.OwnershipExclusive,
+		importcontract.DispositionManaged,
 	)
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", resourceSnapshot)}
 	desired := live.DeepCopy()
@@ -81,7 +81,7 @@ func TestAdoptedNonSecretDependenciesRecreateFromSnapshotAndRotateUID(t *testing
 				Ports:     []corev1.ServicePort{{Name: "http", Port: 80, TargetPort: intstr.FromInt32(8080)}},
 			},
 		}
-		saved := adoptedSnapshotResource(t, source, "backend", "service", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged)
+		saved := adoptedSnapshotResource(t, source, "backend", "service", importcontract.OwnershipExclusive, importcontract.DispositionManaged)
 		store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 		client := fake.NewSimpleClientset()
 		client.Fake.PrependReactor("create", "services", func(action k8stesting.Action) (bool, runtime.Object, error) {
@@ -133,7 +133,7 @@ func TestAdoptedNonSecretDependenciesRecreateFromSnapshotAndRotateUID(t *testing
 				}},
 			}}},
 		}
-		saved := adoptedSnapshotResource(t, source, "backend", "ingress", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged)
+		saved := adoptedSnapshotResource(t, source, "backend", "ingress", importcontract.OwnershipExclusive, importcontract.DispositionManaged)
 		store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 		client := fake.NewSimpleClientset()
 		client.Fake.PrependReactor("create", "ingresses", func(action k8stesting.Action) (bool, runtime.Object, error) {
@@ -166,7 +166,7 @@ func TestAdoptedNonSecretDependenciesRecreateFromSnapshotAndRotateUID(t *testing
 			ObjectMeta: metav1.ObjectMeta{Name: "backend-config", Namespace: "ops", UID: oldUID},
 			Data:       map[string]string{"application.yaml": "source", "external.conf": "preserved"},
 		}
-		saved := adoptedSnapshotResource(t, source, "backend", "configmap", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged)
+		saved := adoptedSnapshotResource(t, source, "backend", "configmap", importcontract.OwnershipExclusive, importcontract.DispositionManaged)
 		store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 		client := fake.NewSimpleClientset()
 		client.Fake.PrependReactor("create", "configmaps", func(action k8stesting.Action) (bool, runtime.Object, error) {
@@ -211,7 +211,7 @@ func TestDeploySecretJobCtlRunAdoptedPreviousKeyRotatesOnKubernetesNoop(t *testi
 		Type:       corev1.SecretTypeOpaque,
 		Data:       map[string][]byte{"password": []byte("source-password")},
 	}
-	saved := adoptedSnapshotResource(t, source, "mysql", "secret", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged)
+	saved := adoptedSnapshotResource(t, source, "mysql", "secret", importcontract.OwnershipExclusive, importcontract.DispositionManaged)
 	component := adoptedSecretComponent(t, oldKeyring, appID, "mysql", source)
 	store := &adoptedSourceStore{
 		app:       adoptedApplication(t, appID, "ops", saved),
@@ -342,7 +342,7 @@ func TestDeploySecretJobCtlRunAdoptedPreviousKeyRotationPersistenceFailureIsNotI
 		Type:       corev1.SecretTypeOpaque,
 		Data:       map[string][]byte{"password": []byte("source-password")},
 	}
-	saved := adoptedSnapshotResource(t, source, "mysql", "secret", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged)
+	saved := adoptedSnapshotResource(t, source, "mysql", "secret", importcontract.OwnershipExclusive, importcontract.DispositionManaged)
 	component := adoptedSecretComponent(t, oldKeyring, appID, "mysql", source)
 	store := &adoptedSourceStore{
 		app:       adoptedApplication(t, appID, "ops", saved),
@@ -380,7 +380,7 @@ func TestDeploySecretJobCtlRunAdoptedSharedByTargetComponentsRotatesEveryHolder(
 		Type:       corev1.SecretTypeOpaque,
 		Data:       map[string][]byte{"password": []byte("source-password")},
 	}
-	saved := adoptedSnapshotResource(t, source, "", "secret", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged)
+	saved := adoptedSnapshotResource(t, source, "", "secret", importcontract.OwnershipExclusive, importcontract.DispositionManaged)
 	backend := adoptedSecretComponent(t, oldKeyring, appID, "backend", source)
 	mysql := adoptedSecretComponent(t, oldKeyring, appID, "mysql", source)
 	mysql.ID = backend.ID + 1
@@ -436,7 +436,7 @@ func TestDeploySecretJobCtlRunAdoptedRejectsCiphertextFailureBeforeKubernetesAcc
 				Type:       corev1.SecretTypeOpaque,
 				Data:       map[string][]byte{"password": []byte("source-password")},
 			}
-			saved := adoptedSnapshotResource(t, source, "mysql", "secret", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged)
+			saved := adoptedSnapshotResource(t, source, "mysql", "secret", importcontract.OwnershipExclusive, importcontract.DispositionManaged)
 			component := adoptedSecretComponent(t, keyring, appID, "mysql", source)
 			payload, err := decodeAdoptedSecretEnvelopes(component.AdoptedSecretData)
 			require.NoError(t, err)
@@ -477,7 +477,7 @@ func TestDeploySecretJobCtlRunAdoptedPreservesUnknownFieldsAndRepairsManagedKeys
 		Type:       corev1.SecretTypeOpaque,
 		Data:       map[string][]byte{"password": []byte("source-password")},
 	}
-	saved := adoptedSnapshotResource(t, source, "mysql", "secret", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged)
+	saved := adoptedSnapshotResource(t, source, "mysql", "secret", importcontract.OwnershipExclusive, importcontract.DispositionManaged)
 	component := adoptedSecretComponent(t, keyring, appID, "mysql", source)
 	store := &adoptedSourceStore{
 		app:       adoptedApplication(t, appID, "ops", saved),
@@ -526,7 +526,7 @@ func TestDeploySecretJobCtlRunAdoptedRejectsUIDReplacement(t *testing.T) {
 		Type:       corev1.SecretTypeOpaque,
 		Data:       map[string][]byte{"password": []byte("source-password")},
 	}
-	saved := adoptedSnapshotResource(t, source, "mysql", "secret", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged)
+	saved := adoptedSnapshotResource(t, source, "mysql", "secret", importcontract.OwnershipExclusive, importcontract.DispositionManaged)
 	store := &adoptedSourceStore{
 		app:       adoptedApplication(t, appID, "ops", saved),
 		component: adoptedSecretComponent(t, keyring, appID, "mysql", source),
@@ -588,7 +588,7 @@ func TestDeploySecretJobCtlRunAdoptedRejectsImmutableDifferences(t *testing.T) {
 				Immutable:  &immutable,
 				Data:       map[string][]byte{"password": []byte("source-password")},
 			}
-			saved := adoptedSnapshotResource(t, source, "mysql", "secret", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged)
+			saved := adoptedSnapshotResource(t, source, "mysql", "secret", importcontract.OwnershipExclusive, importcontract.DispositionManaged)
 			store := &adoptedSourceStore{
 				app:       adoptedApplication(t, appID, "ops", saved),
 				component: adoptedSecretComponent(t, keyring, appID, "mysql", source),
@@ -625,7 +625,7 @@ func TestDeploySecretJobCtlRunAdoptedMissingRecreatesAndAtomicallyRotatesBinding
 		Type:       corev1.SecretTypeOpaque,
 		Data:       map[string][]byte{"password": []byte("source-password")},
 	}
-	saved := adoptedSnapshotResource(t, source, "mysql", "secret", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged)
+	saved := adoptedSnapshotResource(t, source, "mysql", "secret", importcontract.OwnershipExclusive, importcontract.DispositionManaged)
 	store := &adoptedSourceStore{
 		app:       adoptedApplication(t, appID, "ops", saved),
 		component: adoptedSecretComponent(t, keyring, appID, "mysql", source),
@@ -677,7 +677,7 @@ func TestDeploySecretJobCtlRunAdoptedRecreationPersistenceFailureRetainsLiveObje
 		Type:       corev1.SecretTypeOpaque,
 		Data:       map[string][]byte{"password": []byte("source-password")},
 	}
-	saved := adoptedSnapshotResource(t, source, "mysql", "secret", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged)
+	saved := adoptedSnapshotResource(t, source, "mysql", "secret", importcontract.OwnershipExclusive, importcontract.DispositionManaged)
 	store := &adoptedSourceStore{
 		app:                   adoptedApplication(t, appID, "ops", saved),
 		component:             adoptedSecretComponent(t, keyring, appID, "mysql", source),
@@ -725,18 +725,18 @@ func TestDeploySecretJobCtlRunAdoptedDispositionGatePreventsKubernetesWrites(t *
 	}{
 		{
 			name:        "shared",
-			ownership:   domainadoption.OwnershipShared,
-			disposition: domainadoption.DispositionSharedPreserved,
+			ownership:   importcontract.OwnershipShared,
+			disposition: importcontract.DispositionSharedPreserved,
 		},
 		{
 			name:        "external",
-			ownership:   domainadoption.OwnershipExternal,
-			disposition: domainadoption.DispositionExcluded,
+			ownership:   importcontract.OwnershipExternal,
+			disposition: importcontract.DispositionExcluded,
 		},
 		{
 			name:        "blocked",
-			ownership:   domainadoption.OwnershipExclusive,
-			disposition: domainadoption.DispositionBlocked,
+			ownership:   importcontract.OwnershipExclusive,
+			disposition: importcontract.DispositionBlocked,
 			wantError:   true,
 		},
 	}
@@ -778,7 +778,7 @@ func TestDeploySecretJobCtlRunAdoptedRejectsPlaintextJobInfoBeforeNetworkOrKuber
 		Type:       corev1.SecretTypeOpaque,
 		Data:       map[string][]byte{"password": []byte("source-password")},
 	}
-	saved := adoptedSnapshotResource(t, source, "mysql", "secret", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged)
+	saved := adoptedSnapshotResource(t, source, "mysql", "secret", importcontract.OwnershipExclusive, importcontract.DispositionManaged)
 	testCases := []struct {
 		name    string
 		jobInfo interface{}
@@ -844,7 +844,7 @@ func TestInitJobCtlInjectsImportSecretKeyringWithoutMutatingJobInfo(t *testing.T
 		JobType:   string(config.JobDeploySecret),
 		JobInfo:   jobInfo,
 	}
-	runtime := newJobRuntime(nil, nil, nil, nil, nil, keyring)
+	runtime := newJobRuntime(nil, nil, nil, nil, nil, nil, keyring)
 	defer runtime.close()
 
 	controller := initJobCtl(

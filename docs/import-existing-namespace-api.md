@@ -1,8 +1,155 @@
-# Namespace 存量资源导入与显式接管 API
+# Resource Import：一次性扫描与纳管任务
 
-> 状态：Current。主路由为 `POST /api/v1/applications/import/namespace`；`/try` 保留旧分组规则的只读预览能力。
+> 状态：Current。推荐入口是 `POST /api/v1/resource-import/jobs/scan` 与 `POST /api/v1/resource-import/jobs/manage`。扫描和纳管都是持久化异步任务，客户端通过 `GET /api/v1/resource-import/jobs/:taskID` 查询结果；它们不是持续监听器。
 
-## 两种管理模式
+`resourceimport` 是一个独立业务模块，表示“按用户规则发现已有 Kubernetes 资源，再由用户明确选择并纳入 Eruun 管理”的完整流程。`adoption` 不再作为包或模块名称；现有数据库与应用 API 中的 `managementMode: "adopted"` 仅保留为已发布的应用管理模式取值。
+
+## 任务流程
+
+1. 用户提交一次扫描任务，并定义本次扫描规则。
+2. API 立即返回 HTTP 202 和 `taskId`；worker 先验证持久化的 workspace/namespace，再由 resource import 模块执行扫描。
+3. 客户端轮询任务，直到扫描完成，再从候选结果中选择 root workload 并给出应用/组件映射。
+4. 用户提交独立的纳管任务，引用已完成的 `scanTaskId`。
+5. worker 在真正写入前重新规划并校验资源是否在扫描后发生漂移，把已签名的 apply 请求作为 Job 检查点持久化，然后完成纳管。
+
+扫描和纳管所需时间都不由客户端预估，也不占用原 HTTP 请求。任务状态以数据库中的 `WorkflowQueue` / `JobInfo` 为事实源，进程恢复后仍可由现有 workflow worker 继续处理。两个提交接口都是 system-admin 操作；执行器只接受任务中已验证的 workspace namespace，集群级依赖也会按该 namespace 的引用关系过滤。
+
+## 提交一次扫描任务
+
+```http
+POST /api/v1/resource-import/jobs/scan
+Content-Type: application/json
+```
+
+```json
+{
+  "namespace": "production",
+  "rules": [
+    {
+      "kinds": ["Deployment", "StatefulSet"],
+      "nameRegex": "^payments-",
+      "labelSelector": "team=payments"
+    },
+    {
+      "kinds": ["Service"],
+      "labelSelector": "import.eruun.io/enabled=true"
+    }
+  ]
+}
+```
+
+规则约束：
+
+- `namespace` 必须是当前 workspace 的 namespace，且不能是 `default`。
+- `rules` 必须包含 1–32 条规则。
+- 多条规则之间是 OR；同一条规则内的 `kinds`、`nameRegex`、`labelSelector` 是 AND。
+- `nameRegex` 使用 Go RE2 语义，最长 512 字符；`labelSelector` 使用 Kubernetes label selector 语义。
+- 单条规则至少设置一个筛选字段。省略 `kinds` 表示该规则覆盖模块支持的所有资源类型。
+
+提交成功返回：
+
+```json
+{
+  "code": 0,
+  "message": "",
+  "data": {
+    "taskId": "scan-task-id",
+    "type": "resource_import_scan",
+    "status": "waiting"
+  }
+}
+```
+
+扫描结果只保存候选资源的 `apiVersion/kind/namespace/name/uid/resourceVersion/specDigest`。它不保存完整 Kubernetes manifest，也不会返回或持久化 Secret 内容。
+
+## 查询扫描或纳管任务
+
+```http
+GET /api/v1/resource-import/jobs/:taskID
+```
+
+完成的扫描任务示例：
+
+```json
+{
+  "code": 0,
+  "message": "",
+  "data": {
+    "taskId": "scan-task-id",
+    "type": "resource_import_scan",
+    "status": "completed",
+    "result": {
+      "namespace": "production",
+      "resources": [
+        {
+          "kind": "Deployment",
+          "namespace": "production",
+          "name": "payments-api",
+          "source": {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "namespace": "production",
+            "name": "payments-api",
+            "uid": "source-uid",
+            "resourceVersion": "42",
+            "specDigest": "sha256-digest"
+          },
+          "status": "candidate"
+        }
+      ]
+    }
+  }
+}
+```
+
+执行中的任务没有 `result`；执行失败统一返回 `resource import job failed`。如果失败发生在 JobInfo 创建前（例如 URL 策略、控制器或 workspace 初始化失败），任务仍会通过 WorkflowQueue 返回 `resource import job failed before execution`。两种错误都不会暴露基础设施详情。
+
+## 提交纳管任务
+
+```http
+POST /api/v1/resource-import/jobs/manage
+Content-Type: application/json
+```
+
+```json
+{
+  "scanTaskId": "scan-task-id",
+  "applications": [
+    {
+      "name": "payments",
+      "alias": "payments",
+      "components": [
+        {
+          "name": "api",
+          "workload": {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "name": "payments-api"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+当前纳管任务要求：
+
+- `scanTaskId` 必须指向当前 workspace 中已完成的扫描任务。
+- `applications` 当前必须且只能包含一个应用映射。
+- 用户直接选择的是扫描结果中的 root workload；首版 root workload 支持 `apps/v1` Deployment 与 StatefulSet。
+- 模块会根据所选 root workload 计算 Service、ConfigMap、Secret、PVC、RBAC 等依赖闭包，并沿用已有 shared / external / data-protected 安全边界。
+- 执行前会重新 dry-run，并比较所选 workload 的 UID、resourceVersion 与 spec digest。任一资源在扫描后变化，任务会 fail closed；用户需要重新扫描和选择。
+
+提交成功同样返回 HTTP 202，任务类型为 `resource_import_manage`。纳管任务内部完成重新规划、签名指纹生成与 apply，客户端不需要在两个同步 HTTP 请求之间保存短期指纹。签名后的 apply 请求会在任何纳管副作用发生前写入 JobInfo；进程若在 apply 后、终态落库前退出，恢复执行会复用该检查点，并通过既有指纹与 snapshot 语义幂等收敛，而不是重新用原始请求 dry-run。
+
+资源导入任务直接归属 workspace，不依赖 AppID。删除团队空间时，有任一未终态的扫描或纳管任务都会拒绝删除；空间删除成功后，其已终态 WorkflowQueue 与 JobInfo 会一并清理，避免留下无法再访问的扫描结果。
+
+## 兼容的同步导入接口
+
+现有 `POST /api/v1/applications/import/namespace` 与 `/try` 仍保留，供旧客户端使用。新交互应使用上面的异步 resource import jobs。
+
+### 两种底层应用管理模式
 
 | 模式 | 进入方式 | 行为边界 |
 | --- | --- | --- |
@@ -160,7 +307,12 @@ native 应用原有无请求体 `DELETE .../resources` 行为保持兼容；obse
 
 ## 脱敏示例
 
-完整请求和响应位于 `examples/namespace-import/`：
+异步任务请求位于 `examples/resource-import-jobs/`：
+
+- `01-scan-request.json`
+- `02-manage-request.json`
+
+兼容同步请求和响应位于 `examples/namespace-import/`：
 
 - `01-dry-run-request.json`
 - `02-apply-request.json`
@@ -168,4 +320,3 @@ native 应用原有无请求体 `DELETE .../resources` 行为保持兼容；obse
 - `04-dry-run-response.json`
 
 示例 UID、resourceVersion、digest 和 fingerprint 都是占位值；生产 apply 必须使用当前环境新生成的 dry-run 指纹。
-

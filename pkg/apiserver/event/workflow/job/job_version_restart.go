@@ -18,12 +18,12 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	domainadoption "github.com/PixelCores/Eruun/pkg/apiserver/domain/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -320,7 +320,7 @@ func (c *VersionRestartJobCtl) validateAdoptedStatefulSetRestart(
 	if statefulSet == nil {
 		return fmt.Errorf("statefulset is nil")
 	}
-	if err := domainadoption.ValidateStatefulSetRestartStrategy(statefulSet); err != nil {
+	if err := importcontract.ValidateStatefulSetRestartStrategy(statefulSet); err != nil {
 		return err
 	}
 	retention := statefulSet.Spec.PersistentVolumeClaimRetentionPolicy

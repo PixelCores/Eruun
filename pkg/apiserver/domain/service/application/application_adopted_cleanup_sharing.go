@@ -12,7 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
-	domainadoption "github.com/PixelCores/Eruun/pkg/apiserver/domain/adoption"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
 )
 
 // adoptedCleanupSharingState is rebuilt from live resources for every cleanup
@@ -37,7 +37,7 @@ type adoptedCleanupSharingState struct {
 
 func (c *applicationsServiceImpl) scanAdoptedCleanupSharing(
 	ctx context.Context,
-	snapshot *domainadoption.Snapshot,
+	snapshot *importcontract.Snapshot,
 ) (*adoptedCleanupSharingState, error) {
 	if c.KubeClient == nil {
 		return nil, fmt.Errorf("kube client is nil")
@@ -63,14 +63,14 @@ func (c *applicationsServiceImpl) scanAdoptedCleanupSharing(
 		uid := strings.TrimSpace(resource.Source.UID)
 		if uid != "" {
 			state.snapshotUIDs[uid] = struct{}{}
-			if strings.EqualFold(resource.Ownership, domainadoption.OwnershipExclusive) &&
-				strings.EqualFold(resource.Disposition, domainadoption.DispositionManaged) {
+			if strings.EqualFold(resource.Ownership, importcontract.OwnershipExclusive) &&
+				strings.EqualFold(resource.Disposition, importcontract.DispositionManaged) {
 				state.managedSnapshotUIDs[uid] = struct{}{}
 			}
 		}
 		if strings.EqualFold(resource.Source.Kind, "ServiceAccount") &&
-			resource.Ownership == domainadoption.OwnershipExclusive &&
-			resource.Disposition == domainadoption.DispositionManaged {
+			resource.Ownership == importcontract.OwnershipExclusive &&
+			resource.Disposition == importcontract.DispositionManaged {
 			state.adoptedServiceAccounts[strings.TrimSpace(resource.Source.Name)] = struct{}{}
 		}
 		if strings.EqualFold(resource.DependencyRole, "workload") &&
@@ -443,7 +443,7 @@ func (s *adoptedCleanupSharingState) addExternalServiceAccountSubjects(
 }
 
 func (s *adoptedCleanupSharingState) blockReason(
-	saved domainadoption.ResourceSnapshot,
+	saved importcontract.ResourceSnapshot,
 ) string {
 	if _, found := s.hpaTargets[cleanupKindNameKey(saved.Source.Kind, saved.Source.Name)]; found {
 		return "live HorizontalPodAutoscaler targets this adopted workload"
@@ -452,7 +452,7 @@ func (s *adoptedCleanupSharingState) blockReason(
 }
 
 func (s *adoptedCleanupSharingState) sharedReason(
-	saved domainadoption.ResourceSnapshot,
+	saved importcontract.ResourceSnapshot,
 	live metav1.Object,
 ) string {
 	name := strings.TrimSpace(saved.Source.Name)

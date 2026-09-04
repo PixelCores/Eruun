@@ -77,7 +77,18 @@ func testAccounts(t *testing.T) (*Service, *miniredis.Miniredis, *testDelivery) 
 	require.NoError(t, err)
 	conn.SetMaxOpenConns(1)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Identity{}, &model.Session{}, &model.Workspace{}, &model.WorkspaceMember{}, &model.WorkspaceInvitation{}, &model.SystemSetting{}, &model.Applications{}))
+	require.NoError(t, db.AutoMigrate(
+		&model.User{},
+		&model.Identity{},
+		&model.Session{},
+		&model.Workspace{},
+		&model.WorkspaceMember{},
+		&model.WorkspaceInvitation{},
+		&model.SystemSetting{},
+		&model.Applications{},
+		&model.WorkflowQueue{},
+		&model.JobInfo{},
+	))
 	r := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: r.Addr()})
 	t.Cleanup(func() { _ = client.Close() })

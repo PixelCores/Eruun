@@ -4,7 +4,7 @@
 
 ## 账号与空间归属
 
-应用存在未停止任务时保留归属并拒绝删除。应用 `workspaceID` 为必填且不可跨空间修改；namespace 从空间派生。组件、工作流、任务只通过所属应用追溯空间。HTTP 通过 X-Eruun-Workspace-ID 和成员关系授权，后台从持久化应用确定空间。注册/保存不创建 Kubernetes 资源，首次部署先完成安全基线。完整契约见 [账号与空间](account-auth-workspaces.md)。
+应用存在未停止任务时保留归属并拒绝删除。应用 `workspaceID` 为必填且不可跨空间修改；namespace 从空间派生。组件、工作流和普通任务通过所属应用追溯空间；不属于某个应用的 resource import scan/manage 任务则在 `WorkflowQueue.WorkspaceID` 和 `JobInfo.WorkspaceID` 显式保存空间归属。HTTP 通过 X-Eruun-Workspace-ID 和成员关系授权，后台从持久化应用或任务自身的 workspace identity 确定空间。注册/保存不创建 Kubernetes 资源，首次部署先完成安全基线。完整契约见 [账号与空间](account-auth-workspaces.md)。
 
 ## 背景
 
@@ -62,6 +62,7 @@ flowchart LR
 | `namespace` | 应用/组件响应 `namespace` | `Applications.Namespace`、`ApplicationComponent.Namespace` | 缓存内组件对象 `namespace` | 对象 metadata.namespace | 原样字符串 | DB 主事实源；K8s 为运行落地位置 |
 | `workflowId` | 响应 `workflowId` | `Workflow.ID`、`WorkflowQueue.WorkflowID` | 列表缓存中会携带默认 workflow ID | 无直接标签 | 原样字符串 | DB 主事实源 |
 | `taskId` | 执行/取消/查询链路返回 `taskId` | `WorkflowQueue.TaskID`，`JobInfo.TaskID` | 无常驻缓存键 | Job 注解 `eruun.job/taskId`（间接） | 原样字符串 | `eruun_workflow_queue` 主事实源，`eruun_job` 为执行明细 |
+| resource import `workspaceId` | 提交接口从认证 workspace scope 获取，不接受请求体覆盖 | `WorkflowQueue.WorkspaceID`、`JobInfo.WorkspaceID`（`workspace_id`） | 无 | scan/manage 执行前解析为唯一 workspace namespace | 不对用户输入开放；非敏感 | 任务表是 app-less import Job 的空间归属事实源；JobInfo 必须与对应 task 一致 |
 | `component.status` | 组件响应 `status` | `ApplicationComponent.Status`（`eruun_app_components.status`） | 缓存会存储纠正后的状态快照 | Informer 依据 Pod 快照推导 Running/Pending/Failed/Unknown | 非敏感，不脱敏 | 读路径以 DB 为准；Informer 仅回写运行态 |
 | `component.readyReplicas` | 组件响应 `readyReplicas` | `ApplicationComponent.ReadyReplicas` | 缓存随组件对象缓存 | 由 Pod Ready 数推导 | 整型，不脱敏 | DB 主事实源（由 informer 回写） |
 | `component.lastAbnormal` | 组件响应 `lastAbnormal` | `ApplicationComponent.LastAbnormal` | 缓存随组件对象缓存 | 从 Pod 异常摘要提取 | 可包含敏感上下文，日志需谨慎 | DB 主事实源（由 informer 回写） |
@@ -136,7 +137,7 @@ K8s 不是组件查询实时事实源，而是通过 informer 异步回写 DB。
 - 组件 API 组装与 credential 解析：`pkg/apiserver/interfaces/api/assembler/v1/component.go`
 - 状态同步：`pkg/apiserver/infrastructure/informer/waiter.go`、`pkg/apiserver/server.go`
 - Secret 落地与编码边界：`pkg/apiserver/event/workflow/job/job_secret.go`
-- Adoption snapshot 版本、校验与 digest 归一化：`pkg/apiserver/domain/adoption/snapshot.go`
+- 纳管 snapshot 版本、校验与 digest 归一化：`pkg/apiserver/resourceimport/contract/snapshot.go`
 - Adopted 重建 claim、恢复与 finalize：`pkg/apiserver/event/workflow/job/job_adopted_source.go`
 - Recreation token annotation 常量：`pkg/apiserver/config/consts.go`
 - 模型与表映射：`pkg/apiserver/domain/model/*.go`

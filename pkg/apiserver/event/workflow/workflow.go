@@ -18,12 +18,13 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
+	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
-	"github.com/PixelCores/Eruun/pkg/apiserver/security/urlpolicy"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	signal "github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
@@ -47,7 +48,8 @@ type Workflow struct {
 	Cfg                       *config.Config `inject:""`
 	Cache                     cache.ICache   `inject:"cache"`
 	ResourceWaiter            informer.ComponentReadyObserver
-	URLSecurityPolicyProvider *urlpolicy.Provider `inject:""`
+	ResourceImportExecutor    job.ResourceImportExecutor `inject:""`
+	URLSecurityPolicyProvider *urlpolicy.Provider        `inject:""`
 	controllerLifecycleMu     sync.Mutex
 	schedulerLifecycleMu      sync.Mutex
 	workerLimiterOnce         sync.Once
@@ -292,7 +294,7 @@ func (w *Workflow) runWorkflowTask(ctx context.Context, workerRun *workflowWorke
 		}
 		acquired = true
 	}
-	controller, err := NewWorkflowController(task, w.KubeClient, w.KubeConfig, w.Store, w.Cfg, w.Cache, urlPolicy)
+	controller, err := NewWorkflowController(task, w.KubeClient, w.KubeConfig, w.Store, w.Cfg, w.Cache, urlPolicy, w.ResourceImportExecutor)
 	if err != nil {
 		runErr := fmt.Errorf("init workflow controller: %w", err)
 		w.markTaskRunStartFailure(ctx, task, runErr)
@@ -488,6 +490,7 @@ func (w *Workflow) runWorkflowControllerWithPersistenceRecovery(ctx context.Cont
 			w.Cfg,
 			w.Cache,
 			current.urlSecurityPolicy,
+			w.ResourceImportExecutor,
 		)
 		if err != nil {
 			return errors.Join(
@@ -567,15 +570,18 @@ func (w *Workflow) markTaskRunStartFailure(ctx context.Context, task *model.Work
 	}
 	expectedStatus := task.Status
 	task.Status = config.StatusFailed
+	updates := map[string]interface{}{"status": config.StatusFailed}
+	if isResourceImportWorkflowTask(task.Type) {
+		task.SchedulingReason = importcontract.PreExecutionFailureReason
+		updates["scheduling_reason"] = importcontract.PreExecutionFailureReason
+	}
 	baseCtx := ctx
 	if baseCtx == nil || baseCtx.Err() != nil {
 		baseCtx = context.Background()
 	}
 	persistCtx, cancel := context.WithTimeout(baseCtx, config.TaskStateTransitionTimeout)
 	defer cancel()
-	updated, err := repository.UpdateTaskFieldsIfOwned(persistCtx, w.Store, task, expectedStatus, map[string]interface{}{
-		"status": config.StatusFailed,
-	})
+	updated, err := repository.UpdateTaskFieldsIfOwned(persistCtx, w.Store, task, expectedStatus, updates)
 	if err != nil {
 		klog.Errorf("mark workflow task %s failed before run: %v (cause: %v)", task.TaskID, err, runErr)
 		return

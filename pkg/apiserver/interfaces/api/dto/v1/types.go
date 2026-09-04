@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -146,9 +147,8 @@ type ImportNamespaceAppResult struct {
 	Error            string   `json:"error,omitempty"`
 }
 
-// ImportNamespaceResourceIdentity is shared by internal adoption planning
-// contracts. Public observe imports leave it nil until explicit adoption is
-// activated by the dedicated import API.
+// ImportNamespaceResourceIdentity binds a selected import candidate to the
+// exact Kubernetes object observed by a scan or management plan.
 type ImportNamespaceResourceIdentity struct {
 	APIVersion      string `json:"apiVersion"`
 	Kind            string `json:"kind"`
@@ -182,6 +182,44 @@ type ImportNamespaceApplicationsResponse struct {
 	Apps            []ImportNamespaceAppResult      `json:"apps,omitempty"`
 	ResourceResults []ImportNamespaceResourceResult `json:"resourceResults,omitempty"`
 	Warnings        []string                        `json:"warnings,omitempty"`
+}
+
+// ResourceImportScanRule selects candidates for one scan. Rules are ORed;
+// fields inside one rule are ANDed.
+type ResourceImportScanRule struct {
+	Kinds         []string `json:"kinds,omitempty"`
+	NameRegex     string   `json:"nameRegex,omitempty"`
+	LabelSelector string   `json:"labelSelector,omitempty"`
+}
+
+type ResourceImportScanJobRequest struct {
+	Namespace string                   `json:"namespace"`
+	Rules     []ResourceImportScanRule `json:"rules"`
+}
+
+type ResourceImportManageJobRequest struct {
+	ScanTaskID   string                              `json:"scanTaskId"`
+	Applications []ImportNamespaceApplicationMapping `json:"applications"`
+}
+
+type ResourceImportJobAcceptedResponse struct {
+	TaskID string                  `json:"taskId"`
+	Type   config.WorkflowTaskType `json:"type"`
+	Status string                  `json:"status"`
+}
+
+type ResourceImportScanResult struct {
+	Namespace string                          `json:"namespace"`
+	Resources []ImportNamespaceResourceResult `json:"resources"`
+	Warnings  []string                        `json:"warnings,omitempty"`
+}
+
+type ResourceImportJobResponse struct {
+	TaskID string                  `json:"taskId"`
+	Type   config.WorkflowTaskType `json:"type"`
+	Status string                  `json:"status"`
+	Error  string                  `json:"error,omitempty"`
+	Result json.RawMessage         `json:"result,omitempty"`
 }
 
 type TryImportNamespaceApplicationsRequest struct {

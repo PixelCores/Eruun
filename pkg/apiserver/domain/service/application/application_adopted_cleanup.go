@@ -19,12 +19,12 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	domainadoption "github.com/PixelCores/Eruun/pkg/apiserver/domain/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/importsecret"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	"github.com/PixelCores/Eruun/pkg/apiserver/security/importsecret"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
@@ -129,7 +129,7 @@ func (c *applicationsServiceImpl) ApplyApplicationResourceCleanup(
 		var dependencies []apisv1.ImportNamespaceResourceResult
 		for _, resource := range plan.response.ResourceResults {
 			ref := cleanupResourceRef(resource)
-			if resource.Disposition != domainadoption.DispositionManaged || resource.Status != "planned" {
+			if resource.Disposition != importcontract.DispositionManaged || resource.Status != "planned" {
 				response.RetainedResources = append(response.RetainedResources, ref)
 				continue
 			}
@@ -291,7 +291,7 @@ func (c *applicationsServiceImpl) ApplyApplicationResourceCleanup(
 						resource.Source == nil ||
 						refreshed.Source == nil ||
 						refreshed.Source.UID != resource.Source.UID ||
-						refreshed.Disposition != domainadoption.DispositionManaged ||
+						refreshed.Disposition != importcontract.DispositionManaged ||
 						refreshed.Status != "planned" {
 						response.RetainedResources = append(response.RetainedResources, ref)
 						continue
@@ -556,7 +556,7 @@ func (c *applicationsServiceImpl) refreshQuiescedAdoptedCleanupRoot(
 	if resource.Source == nil {
 		return resource, fmt.Errorf("cleanup root source identity is missing")
 	}
-	source := domainadoption.ResourceIdentity{
+	source := importcontract.ResourceIdentity{
 		APIVersion: resource.Source.APIVersion,
 		Kind:       resource.Source.Kind,
 		Namespace:  resource.Source.Namespace,
@@ -637,7 +637,7 @@ func (c *applicationsServiceImpl) waitForAdoptedCleanupResourcesDeleted(
 				if resource.Source == nil {
 					return false, fmt.Errorf("wait cleanup resource %s: source identity is missing", ref)
 				}
-				_, err := c.getAdoptedCleanupResource(pollCtx, domainadoption.ResourceIdentity{
+				_, err := c.getAdoptedCleanupResource(pollCtx, importcontract.ResourceIdentity{
 					APIVersion: resource.Source.APIVersion,
 					Kind:       resource.Source.Kind,
 					Namespace:  resource.Source.Namespace,
@@ -716,12 +716,12 @@ func (c *applicationsServiceImpl) buildAdoptedCleanupPlan(
 		result, isBlocked := c.planAdoptedCleanupResource(ctx, saved, sharing)
 		var runtimeChildren []apisv1.ImportNamespaceResourceResult
 		if !isBlocked &&
-			result.Disposition == domainadoption.DispositionManaged &&
+			result.Disposition == importcontract.DispositionManaged &&
 			result.Status == "planned" &&
 			cleanupResourceIsRootWorkload(result) {
 			runtimeChildren, err = c.planAdoptedCleanupRuntimeChildren(ctx, result)
 			if err != nil {
-				result.Disposition = domainadoption.DispositionBlocked
+				result.Disposition = importcontract.DispositionBlocked
 				result.Status = "blocked"
 				result.Error = err.Error()
 				isBlocked = true
@@ -914,7 +914,7 @@ func buildAdoptedCleanupRuntimeResult(
 	if err != nil {
 		return apisv1.ImportNamespaceResourceResult{}, fmt.Errorf("convert cleanup runtime %s: %w", kind, err)
 	}
-	digest, err := domainadoption.DigestObject(&unstructured.Unstructured{Object: content})
+	digest, err := importcontract.DigestObject(&unstructured.Unstructured{Object: content})
 	if err != nil {
 		return apisv1.ImportNamespaceResourceResult{}, fmt.Errorf("digest cleanup runtime %s: %w", kind, err)
 	}
@@ -938,8 +938,8 @@ func buildAdoptedCleanupRuntimeResult(
 		Name:           source.Name,
 		ComponentName:  componentName,
 		DependencyRole: dependencyRole,
-		Ownership:      domainadoption.OwnershipExclusive,
-		Disposition:    domainadoption.DispositionManaged,
+		Ownership:      importcontract.OwnershipExclusive,
+		Disposition:    importcontract.DispositionManaged,
 		Status:         "planned",
 		Source:         source,
 	}, nil
@@ -952,7 +952,7 @@ func adoptedCleanupRuntimeDeleteOrder(resource apisv1.ImportNamespaceResourceRes
 	return 1
 }
 
-func decodeApplicationAdoptionSnapshot(app *model.Applications) (*domainadoption.Snapshot, error) {
+func decodeApplicationAdoptionSnapshot(app *model.Applications) (*importcontract.Snapshot, error) {
 	if app == nil || app.AdoptionSnapshot == nil {
 		return nil, fmt.Errorf("%w: application has no adoption snapshot", bcode.ErrApplicationManagementMode)
 	}
@@ -960,7 +960,7 @@ func decodeApplicationAdoptionSnapshot(app *model.Applications) (*domainadoption
 	if err != nil {
 		return nil, fmt.Errorf("marshal application adoption snapshot: %w", err)
 	}
-	var snapshot domainadoption.Snapshot
+	var snapshot importcontract.Snapshot
 	if err := json.Unmarshal(payload, &snapshot); err != nil {
 		return nil, fmt.Errorf("decode application adoption snapshot: %w", err)
 	}
@@ -972,7 +972,7 @@ func decodeApplicationAdoptionSnapshot(app *model.Applications) (*domainadoption
 
 func (c *applicationsServiceImpl) planAdoptedCleanupResource(
 	ctx context.Context,
-	saved domainadoption.ResourceSnapshot,
+	saved importcontract.ResourceSnapshot,
 	sharing *adoptedCleanupSharingState,
 ) (apisv1.ImportNamespaceResourceResult, bool) {
 	source := saved.Source
@@ -997,41 +997,41 @@ func (c *applicationsServiceImpl) planAdoptedCleanupResource(
 	}
 	if cleanupResourceIsAlwaysRetained(saved) {
 		if strings.EqualFold(source.Kind, "PersistentVolumeClaim") || strings.EqualFold(source.Kind, "PersistentVolume") {
-			result.Ownership = domainadoption.OwnershipDataProtected
-			result.Disposition = domainadoption.DispositionDataProtected
+			result.Ownership = importcontract.OwnershipDataProtected
+			result.Disposition = importcontract.DispositionDataProtected
 		}
 		return result, false
 	}
 
 	live, err := c.getAdoptedCleanupResource(ctx, source)
 	if apierrors.IsNotFound(err) {
-		result.Disposition = domainadoption.DispositionExcluded
+		result.Disposition = importcontract.DispositionExcluded
 		result.Status = "missing"
 		result.Source.ResourceVersion = ""
 		return result, false
 	}
 	if err != nil {
-		result.Disposition = domainadoption.DispositionBlocked
+		result.Disposition = importcontract.DispositionBlocked
 		result.Status = "blocked"
 		result.Error = err.Error()
 		return result, true
 	}
 	if string(live.GetUID()) != strings.TrimSpace(source.UID) {
-		result.Disposition = domainadoption.DispositionBlocked
+		result.Disposition = importcontract.DispositionBlocked
 		result.Status = "blocked"
 		result.Error = fmt.Sprintf("source UID changed: expected %q, got %q", source.UID, live.GetUID())
 		return result, true
 	}
 	unstructuredLive, err := runtime.DefaultUnstructuredConverter.ToUnstructured(live)
 	if err != nil {
-		result.Disposition = domainadoption.DispositionBlocked
+		result.Disposition = importcontract.DispositionBlocked
 		result.Status = "blocked"
 		result.Error = fmt.Sprintf("convert live resource: %v", err)
 		return result, true
 	}
-	digest, err := domainadoption.DigestObject(&unstructured.Unstructured{Object: unstructuredLive})
+	digest, err := importcontract.DigestObject(&unstructured.Unstructured{Object: unstructuredLive})
 	if err != nil {
-		result.Disposition = domainadoption.DispositionBlocked
+		result.Disposition = importcontract.DispositionBlocked
 		result.Status = "blocked"
 		result.Error = err.Error()
 		return result, true
@@ -1041,14 +1041,14 @@ func (c *applicationsServiceImpl) planAdoptedCleanupResource(
 
 	if sharing != nil {
 		if reason := sharing.blockReason(saved); reason != "" {
-			result.Disposition = domainadoption.DispositionBlocked
+			result.Disposition = importcontract.DispositionBlocked
 			result.Status = "blocked"
 			result.Error = reason
 			return result, true
 		}
 		if reason := sharing.sharedReason(saved, live); reason != "" {
-			result.Ownership = domainadoption.OwnershipShared
-			result.Disposition = domainadoption.DispositionSharedPreserved
+			result.Ownership = importcontract.OwnershipShared
+			result.Disposition = importcontract.DispositionSharedPreserved
 			result.Status = "retained"
 			result.Error = reason
 			return result, false
@@ -1056,20 +1056,20 @@ func (c *applicationsServiceImpl) planAdoptedCleanupResource(
 	}
 	if statefulSet, ok := live.(*appsv1.StatefulSet); ok {
 		if err := validateAdoptedCleanupStatefulSetScaleSafety(statefulSet); err != nil {
-			result.Disposition = domainadoption.DispositionBlocked
+			result.Disposition = importcontract.DispositionBlocked
 			result.Status = "blocked"
 			result.Error = err.Error()
 			return result, true
 		}
 	}
-	result.Disposition = domainadoption.DispositionManaged
+	result.Disposition = importcontract.DispositionManaged
 	result.Status = "planned"
 	return result, false
 }
 
-func cleanupResourceIsAlwaysRetained(resource domainadoption.ResourceSnapshot) bool {
-	if resource.Disposition != domainadoption.DispositionManaged ||
-		resource.Ownership != domainadoption.OwnershipExclusive {
+func cleanupResourceIsAlwaysRetained(resource importcontract.ResourceSnapshot) bool {
+	if resource.Disposition != importcontract.DispositionManaged ||
+		resource.Ownership != importcontract.OwnershipExclusive {
 		return true
 	}
 	switch strings.ToLower(strings.TrimSpace(resource.Source.Kind)) {
@@ -1082,7 +1082,7 @@ func cleanupResourceIsAlwaysRetained(resource domainadoption.ResourceSnapshot) b
 
 func (c *applicationsServiceImpl) getAdoptedCleanupResource(
 	ctx context.Context,
-	source domainadoption.ResourceIdentity,
+	source importcontract.ResourceIdentity,
 ) (metav1.Object, error) {
 	namespace := source.Namespace
 	name := source.Name

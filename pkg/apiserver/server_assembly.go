@@ -15,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event"
 	workflowevent "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow"
@@ -26,8 +27,6 @@ import (
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api"
-	"github.com/PixelCores/Eruun/pkg/apiserver/security/access"
-	"github.com/PixelCores/Eruun/pkg/apiserver/security/urlpolicy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
@@ -79,7 +78,7 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 	default:
 		return fmt.Errorf("not support datastore type %s", s.cfg.Datastore.Type)
 	}
-	s.dataStore = access.NewStore(ds)
+	s.dataStore = account.NewStore(ds)
 	if err := s.runBootstrapStep(ctx, s.ensureDefaultURLSecurityPolicySetting); err != nil {
 		return err
 	}

@@ -12,6 +12,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	miniredis "github.com/alicebob/miniredis/v2"
@@ -493,4 +494,26 @@ func TestWorkflowRunStartFailureTerminalizesPrecreatedCleanupJobs(t *testing.T) 
 	require.Equal(t, string(config.StatusFailed), store.jobs[0].Status)
 	require.Equal(t, "load url security policy", store.jobs[0].Error)
 	require.NotZero(t, store.jobs[0].EndTime)
+}
+
+func TestResourceImportRunStartFailurePersistsSafeClientReason(t *testing.T) {
+	task := &model.WorkflowQueue{
+		TaskID:        "resource-import-start-failure",
+		WorkspaceID:   "workspace-1",
+		Type:          config.WorkflowTaskTypeResourceImportScan,
+		Status:        config.StatusRunning,
+		RunGeneration: 1,
+		RunToken:      "run-token-1",
+		WorkerID:      "worker-1",
+	}
+	store := &controllerTestStore{task: cloneWorkflowQueue(task)}
+	runner := &Workflow{Store: store}
+
+	runner.markTaskRunStartFailure(context.Background(), task, errors.New("database connection included private details"))
+
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	require.Equal(t, config.StatusFailed, store.task.Status)
+	require.Equal(t, importcontract.PreExecutionFailureReason, store.task.SchedulingReason)
+	require.NotContains(t, store.task.SchedulingReason, "database connection")
 }

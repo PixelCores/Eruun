@@ -8,8 +8,8 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
+	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	"github.com/PixelCores/Eruun/pkg/apiserver/security/access"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/gin-gonic/gin"
 	"k8s.io/klog/v2"

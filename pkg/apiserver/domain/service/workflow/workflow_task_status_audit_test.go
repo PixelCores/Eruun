@@ -26,6 +26,28 @@ func TestCreateWorkflowTaskPropagatesStoreError(t *testing.T) {
 	require.ErrorIs(t, err, storeErr)
 }
 
+func TestGenericWorkflowReadsHideResourceImportTasks(t *testing.T) {
+	for _, taskType := range []config.WorkflowTaskType{
+		config.WorkflowTaskTypeResourceImportScan,
+		config.WorkflowTaskTypeResourceImportManage,
+	} {
+		t.Run(string(taskType), func(t *testing.T) {
+			store := &statusDataStore{task: &model.WorkflowQueue{
+				TaskID: "resource-import-task",
+				Type:   taskType,
+				Status: config.StatusRunning,
+			}}
+			svc := &workflowServiceImpl{Store: store}
+
+			_, err := svc.GetTaskStatus(context.Background(), store.task.TaskID)
+			require.ErrorIs(t, err, bcode.ErrWorkflowTaskNotExist)
+
+			_, err = svc.GetTaskStages(context.Background(), store.task.TaskID)
+			require.ErrorIs(t, err, bcode.ErrWorkflowTaskNotExist)
+		})
+	}
+}
+
 func TestGetTaskStatusIncludesAllComponents(t *testing.T) {
 	steps := &model.WorkflowSteps{
 		Steps: []*model.WorkflowStep{
