@@ -21,9 +21,11 @@ import (
 )
 
 const (
-	accessTTL     = 15 * time.Minute
-	sessionTTL    = 30 * 24 * time.Hour
-	recentAuthTTL = 5 * time.Minute
+	accessTTL       = 15 * time.Minute
+	sessionTTL      = 30 * 24 * time.Hour
+	sessionIdleTTL  = 7 * 24 * time.Hour
+	recentAuthTTL   = 5 * time.Minute
+	cleanupInterval = time.Hour
 )
 
 var mainlandPhone = regexp.MustCompile(`^1[3-9][0-9]{9}$`)

@@ -36,7 +36,7 @@ func middlewareAccounts(t *testing.T) (*account.Service, *access.Store) {
 	require.NoError(t, err)
 	conn.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = conn.Close() })
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Session{}, &model.Workspace{}, &model.WorkspaceMember{}, &model.Applications{}, &model.WorkflowQueue{}, &model.ApplicationComponent{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Session{}, &model.SessionRefreshToken{}, &model.Workspace{}, &model.WorkspaceMember{}, &model.Applications{}, &model.WorkflowQueue{}, &model.ApplicationComponent{}))
 	r := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: r.Addr()})
 	t.Cleanup(func() { _ = client.Close() })

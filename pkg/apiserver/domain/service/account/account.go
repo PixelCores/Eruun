@@ -15,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"k8s.io/klog/v2"
 )
 
 type Delivery interface {
@@ -188,6 +189,14 @@ func (s *Service) issueSession(ctx context.Context, r repository.Accounts, u *mo
 	return &Login{AccessToken: a, TokenType: "Bearer", ExpiresIn: int64(accessTTL.Seconds()), User: u, RefreshToken: refresh}, nil
 }
 
+func sessionIdleExpired(session *model.Session, now time.Time) bool {
+	// AccessExpiresAt is set on issuance and then advanced only by a successful
+	// refresh. Subtracting the fixed access lifetime reconstructs the last
+	// refresh time without adding a write to every authenticated request or
+	// migrating existing sessions.
+	return !session.AccessExpiresAt.Add(sessionIdleTTL - accessTTL).After(now)
+}
+
 func (s *Service) Authenticate(ctx context.Context, token string) (*Principal, error) {
 	if len(token) != 43 {
 		return nil, bcode.ErrUnauthorized
@@ -201,7 +210,7 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Principal, e
 		return nil, authLookupError(err)
 	}
 	now := s.Now()
-	if u.Disabled || u.SecurityVersion != session.SecurityVersion || !session.AccessExpiresAt.After(now) || !session.ExpiresAt.After(now) {
+	if u.Disabled || u.SecurityVersion != session.SecurityVersion || !session.AccessExpiresAt.After(now) || !session.ExpiresAt.After(now) || sessionIdleExpired(session, now) {
 		return nil, bcode.ErrUnauthorized
 	}
 	return &Principal{User: u, Session: session}, nil
@@ -211,18 +220,39 @@ func (s *Service) Refresh(ctx context.Context, token string) (*Login, error) {
 	if len(token) != 43 {
 		return nil, bcode.ErrUnauthorized
 	}
-	session := &model.Session{RefreshHash: tokenHash(token)}
+	refreshHash := tokenHash(token)
+	session := &model.Session{RefreshHash: refreshHash}
 	if err := s.Repo.One(ctx, session); err != nil {
-		return nil, authLookupError(err)
+		if !errors.Is(err, datastore.ErrRecordNotExist) {
+			return nil, err
+		}
+		revokedSessionID, revokeErr := s.revokeRefreshReplay(ctx, refreshHash)
+		if revokeErr != nil {
+			return nil, revokeErr
+		}
+		if revokedSessionID != "" {
+			logRefreshReplay(revokedSessionID)
+		}
+		return nil, bcode.ErrUnauthorized
 	}
 	var result *Login
+	replayedSessionID := ""
 	err := s.Repo.Transaction(ctx, func(r repository.Accounts) error {
 		u := &model.User{ID: session.UserID}
 		if e := r.Lock(ctx, u); e != nil {
 			return e
 		}
-		if u.Disabled || u.SecurityVersion != session.SecurityVersion || !session.ExpiresAt.After(s.Now()) {
+		current := &model.Session{ID: session.ID}
+		if e := r.Lock(ctx, current); e != nil {
+			return authLookupError(e)
+		}
+		now := s.Now().UTC()
+		if current.UserID != u.ID || u.Disabled || u.SecurityVersion != current.SecurityVersion || !current.ExpiresAt.After(now) || sessionIdleExpired(current, now) {
 			return bcode.ErrUnauthorized
+		}
+		if current.RefreshHash != refreshHash {
+			replayedSessionID = current.ID
+			return deleteSessionFamily(ctx, r, current)
 		}
 		a, e := randomToken()
 		if e != nil {
@@ -232,17 +262,102 @@ func (s *Service) Refresh(ctx context.Context, token string) (*Login, error) {
 		if e != nil {
 			return e
 		}
-		ok, e := r.Store.CompareAndSwap(ctx, session, "refreshhash", tokenHash(token), map[string]interface{}{"accesshash": tokenHash(a), "refreshhash": tokenHash(refresh), "accessexpiresat": s.Now().UTC().Add(accessTTL)})
+		used := &model.SessionRefreshToken{TokenHash: refreshHash, SessionID: current.ID, ExpiresAt: current.ExpiresAt}
+		if e = r.Store.Add(ctx, used); e != nil {
+			return fmt.Errorf("retain used refresh token: %w", e)
+		}
+		ok, e := r.Store.CompareAndSwap(ctx, current, "refreshhash", refreshHash, map[string]interface{}{"accesshash": tokenHash(a), "refreshhash": tokenHash(refresh), "accessexpiresat": now.Add(accessTTL)})
 		if e != nil {
 			return e
 		}
 		if !ok {
-			return bcode.ErrUnauthorized
+			replayedSessionID = current.ID
+			return deleteSessionFamily(ctx, r, current)
 		}
 		result = &Login{AccessToken: a, TokenType: "Bearer", ExpiresIn: int64(accessTTL.Seconds()), User: u, RefreshToken: refresh}
 		return nil
 	})
+	if err == nil && replayedSessionID != "" {
+		logRefreshReplay(replayedSessionID)
+		return nil, bcode.ErrUnauthorized
+	}
 	return result, err
+}
+
+func (s *Service) revokeRefreshReplay(ctx context.Context, refreshHash string) (string, error) {
+	used := &model.SessionRefreshToken{TokenHash: refreshHash}
+	if err := s.Repo.One(ctx, used); err != nil {
+		if errors.Is(err, datastore.ErrRecordNotExist) {
+			return "", nil
+		}
+		return "", err
+	}
+	revokedSessionID := ""
+	err := s.Repo.Transaction(ctx, func(r repository.Accounts) error {
+		current := &model.Session{ID: used.SessionID}
+		if e := r.Lock(ctx, current); e != nil {
+			if errors.Is(e, datastore.ErrRecordNotExist) {
+				return r.Store.Delete(ctx, used)
+			}
+			return e
+		}
+		revokedSessionID = current.ID
+		return deleteSessionFamily(ctx, r, current)
+	})
+	return revokedSessionID, err
+}
+
+func logRefreshReplay(sessionID string) {
+	reference := tokenHash(sessionID)
+	klog.InfoS("refresh token replay detected; revoked session", "sessionRef", reference[:16])
+}
+
+func deleteSessionFamily(ctx context.Context, r repository.Accounts, session *model.Session) error {
+	if err := r.Store.DeleteByFilter(ctx, &model.SessionRefreshToken{SessionID: session.ID}, nil); err != nil {
+		return fmt.Errorf("delete used refresh tokens: %w", err)
+	}
+	if err := r.Store.Delete(ctx, session); err != nil {
+		return fmt.Errorf("delete session: %w", err)
+	}
+	return nil
+}
+
+// CleanupExpiredSessions removes sessions that reached either the absolute or
+// refresh-idle deadline, plus expired replay-detection records.
+func (s *Service) CleanupExpiredSessions(ctx context.Context) error {
+	now := s.Now().UTC()
+	idleCutoff := now.Add(-(sessionIdleTTL - accessTTL))
+	return s.Repo.Transaction(ctx, func(r repository.Accounts) error {
+		if err := r.Store.DeleteByFilter(ctx, &model.SessionRefreshToken{}, &datastore.FilterOptions{LessThan: []datastore.ComparisonQueryOption{{Key: "expiresat", Value: now}}}); err != nil {
+			return fmt.Errorf("delete expired refresh replay records: %w", err)
+		}
+		if err := r.Store.DeleteByFilter(ctx, &model.Session{}, &datastore.FilterOptions{LessThan: []datastore.ComparisonQueryOption{{Key: "expiresat", Value: now}}}); err != nil {
+			return fmt.Errorf("delete absolutely expired sessions: %w", err)
+		}
+		if err := r.Store.DeleteByFilter(ctx, &model.Session{}, &datastore.FilterOptions{LessThan: []datastore.ComparisonQueryOption{{Key: "accessexpiresat", Value: idleCutoff}}}); err != nil {
+			return fmt.Errorf("delete idle sessions: %w", err)
+		}
+		return nil
+	})
+}
+
+// RunSessionCleanup periodically bounds persisted session and replay state.
+func (s *Service) RunSessionCleanup(ctx context.Context) {
+	ticker := time.NewTicker(cleanupInterval)
+	defer ticker.Stop()
+	for {
+		if err := s.CleanupExpiredSessions(ctx); err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			klog.ErrorS(err, "clean up expired account sessions")
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
 }
 
 func (s *Service) Logout(ctx context.Context, p *Principal) error {

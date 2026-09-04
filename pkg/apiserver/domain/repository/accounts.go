@@ -26,6 +26,8 @@ func (r Accounts) One(ctx context.Context, query datastore.Entity) error {
 		*q = *rows[0].(*model.Identity)
 	case *model.Session:
 		*q = *rows[0].(*model.Session)
+	case *model.SessionRefreshToken:
+		*q = *rows[0].(*model.SessionRefreshToken)
 	case *model.Workspace:
 		*q = *rows[0].(*model.Workspace)
 	case *model.WorkspaceMember:

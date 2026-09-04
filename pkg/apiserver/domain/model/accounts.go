@@ -34,6 +34,15 @@ type Session struct {
 	BaseModel
 }
 
+// SessionRefreshToken retains a used refresh-token hash until the parent
+// session's absolute expiry so replay can revoke the current token pair.
+type SessionRefreshToken struct {
+	TokenHash string    `json:"-" gorm:"primaryKey;type:char(64)"`
+	SessionID string    `json:"-" gorm:"type:varchar(36);not null;index"`
+	ExpiresAt time.Time `json:"-" gorm:"index"`
+	BaseModel
+}
+
 // OwnerID is the sole source of ownership; owner is an effective membership role.
 type Workspace struct {
 	ID        string `json:"id" gorm:"primaryKey;type:varchar(36)"`
@@ -112,6 +121,20 @@ func (m *Session) Index() map[string]interface{} {
 	}
 	if m.RefreshHash != "" {
 		out["refreshhash"] = m.RefreshHash
+	}
+	return out
+}
+
+func (m *SessionRefreshToken) PrimaryKey() string   { return m.TokenHash }
+func (*SessionRefreshToken) TableName() string      { return tableNamePrefix + "session_refresh_tokens" }
+func (*SessionRefreshToken) ShortTableName() string { return "session_refresh_tokens" }
+func (m *SessionRefreshToken) Index() map[string]interface{} {
+	out := map[string]interface{}{}
+	if m.TokenHash != "" {
+		out["tokenhash"] = m.TokenHash
+	}
+	if m.SessionID != "" {
+		out["sessionid"] = m.SessionID
 	}
 	return out
 }

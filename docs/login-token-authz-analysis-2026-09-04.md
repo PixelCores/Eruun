@@ -1,6 +1,6 @@
 # 登录 Token 与授权机制评估
 
-> 状态：Historical / Audit。基于 `main` 提交 `b3f3848aa5b24e851474b983a21692001337ce56` 的只读审计。本文记录当前实现、风险与待评估选项，不代表已经决定或实现 JWT、会话模型变更或新的公开 API。
+> 状态：Historical / Audit。基于 `main` 提交 `b3f3848aa5b24e851474b983a21692001337ce56` 的只读审计；“当前认证与授权链路”“缺口”等章节保留该基线事实。本文末尾记录同一 PR 后续实施的处置，不代表引入 JWT 或新的公开 API。
 
 ## 结论
 
@@ -13,7 +13,16 @@
 
 因此，**当前阶段不建议仅因为 JWT 更常见就把本地 access token 改为 JWT**。JWT 是令牌表示格式，不等于授权机制。对于当前单一 Eruun API、要求权限变更和账号停用立即生效的模型，服务端 opaque session 更直接，且避免签名密钥轮换、声明过期、跨服务 audience 和撤销列表等额外复杂度。
 
-当前最值得优先评估的安全改进与 JWT 无关：refresh token 已轮换，但没有保留足以识别旧 refresh token 所属会话族的信息，因而无法在旧值被重放时撤销攻击者已经换取的新 token。建议下一步优先设计 refresh token reuse detection；其余候选是空闲超时、过期会话清理和路由策略完整性自动检查。
+该基线审计识别出的优先改进与 JWT 无关：refresh token 重放检测、空闲超时、过期会话清理和路由策略完整性自动检查。同一 PR 的后续提交已按下述处置实施，仍保留 opaque access token。
+
+## 后续处置
+
+- 每次成功 refresh 都把旧 refresh 的 SHA-256 哈希及其 Session 关系保留到会话 30 天绝对期限；任一旧代 refresh 被重放时，在事务内撤销该 Session 当前 access/refresh，并记录不含令牌值的安全事件。
+- 同一个 refresh 的并发请求仍至多一个返回成功，但后续请求会触发重放响应，因此第一次返回的 token 也会失效；客户端必须保持 single-flight refresh。
+- 增加 7 天 refresh idle timeout。成功 refresh 是活动信号，业务 API 请求不写 Session；30 天绝对期限不滑动。
+- API 角色启动时立即清理绝对或 idle 过期 Session，之后每小时执行；已使用 refresh 哈希在对应绝对期限后清理。
+- 增加基于实际 Gin 注册结果的完整性测试，要求每条路由恰好属于一个授权类别或显式健康检查例外。
+- 未引入 JWT；原审计关于 JWT 适用边界的结论不变。
 
 ## 审计范围与事实边界
 
@@ -36,7 +45,7 @@
 
 Google 登录过程中确实会验证上游 OIDC `id_token`（JWT）的 RS256 签名、issuer、audience、有效期和 nonce；它只用于一次登录时确认 Google 身份，不是 Eruun 签发给客户端的本地 access token。
 
-不在本次范围内：真实 GitHub/Google OAuth 联调、真实 SMTP/SMS、生产 ingress/TLS/APM 配置、渗透测试、实现修复或迁移现有会话。
+不在本次范围内：真实 GitHub/Google OAuth 联调、真实 SMTP/SMS、生产 ingress/TLS/APM 配置、渗透测试或迁移现有会话 token 格式。
 
 ## 当前认证与授权链路
 
@@ -163,24 +172,22 @@ Session 只有 30 天绝对期限，没有“连续一段时间未刷新即失�
 
 这会改变公开认证契约、密钥运维、灾难恢复和撤销语义，应单独设计与迁移，不能作为本次加固的顺手修改。
 
-## 建议的后续顺序
+## 原建议顺序与处置结果
 
-1. 先确认客户端与撤销需求，评审 refresh reuse detection 的行为矩阵。
-2. 用独立实现 PR 补重放检测、原子撤销、并发刷新测试和审计日志；保持 access token 为 opaque。
-3. 决定是否需要 idle timeout，并在相同会话模型中实现；单独增加过期 Session 清理。
-4. 增加全路由授权策略完整性测试。
-5. 仅在多资源服务、外部生态或实测性能需求成立时，另开 JWT 架构设计。
+1. 已确认重放响应为撤销整个 Session 并要求重新登录。
+2. 已补重放检测、原子撤销、多代与并发刷新测试和安全日志；access token 保持 opaque。
+3. 已采用统一 7 天 refresh idle timeout，并增加 API 角色每小时清理。
+4. 已增加全路由授权策略完整性测试。
+5. JWT 仍只在多资源服务、外部生态或实测性能需求成立时另行设计。
 
-## 待共同确认的问题
+## 后续架构仍待确认的问题
 
 1. 生产客户端是否只有 Eruun 自有 Web 控制台，还是已经有/近期会有第三方 CLI、SDK 或 API 客户？
 2. 是否会有多个独立服务直接接受用户 access token，并要求离线验证？
 3. 账号停用、成员移除和登出的目标撤销延迟是否必须接近即时，还是可接受 5–15 分钟窗口？
 4. 当前或目标规模下，认证相关数据库查询的 QPS、p95/p99 和错误率是否已有数据？
-5. 对 refresh 重放，是否接受“检测到旧 token 后撤销整个会话并要求重新登录”的安全行为？
-6. 希望的 idle timeout 是多少，是否按普通用户和 system admin 区分？
 
-在这些答案明确前，本审计建议不修改 token 格式。
+重放响应与空闲期限已在本 PR 确认为“撤销整个 Session”及普通用户/system admin 统一 7 天。其余答案明确前，本审计仍建议不修改 token 格式。
 
 ## 验证证据
 
@@ -190,7 +197,12 @@ Session 只有 30 天绝对期限，没有“连续一段时间未刷新即失�
 - `go test -race ./pkg/apiserver/interfaces/api/middleware`：通过；
 - 静态路由清点：86 个注册路由 = 82 个策略路由 + 4 个显式 health/readiness 跳过路由。
 
-本 PR 仅增加审计文档和索引，不改变运行行为，因此没有新增 Go 测试。
+后续修复验证于 2026-09-04 执行：
+
+- `go vet ./...`：通过；
+- `go test ./... -race -cover`：通过；
+- `go test -race ./pkg/apiserver/domain/service/account ./pkg/apiserver/interfaces/api/middleware ./pkg/apiserver/domain/model ./pkg/apiserver`：通过；
+- refresh 多代重放、并发重放、idle 边界、过期清理及真实路由授权完整性均有新增测试。
 
 ## 参考标准
 
