@@ -1,3 +1,6 @@
+// Package adoption defines the shared contract for taking control of
+// explicitly selected existing Kubernetes resources. It is consumed by the
+// namespace import, application lifecycle, and workflow runtime paths.
 package adoption
 
 import (

@@ -18,8 +18,8 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	domainadoption "github.com/PixelCores/Eruun/pkg/apiserver/domain/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
@@ -105,8 +105,8 @@ func TestPrepareRecreationCandidateReleasesGuardOnPanic(t *testing.T) {
 		source,
 		"backend",
 		"configmap",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		adoption.OwnershipExclusive,
+		adoption.DispositionManaged,
 	)
 	baseStore := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 	binding, adopted, err := adoptedResourceForJob(
@@ -170,11 +170,11 @@ func TestPrepareRecreatedSnapshotStateFallsBackToSnapshotNamespace(t *testing.T)
 		source,
 		"backend",
 		"configmap",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		adoption.OwnershipExclusive,
+		adoption.DispositionManaged,
 	)
 	saved.Source.Namespace = ""
-	saved.PendingRecreation = &domainadoption.RecreationClaim{Token: token}
+	saved.PendingRecreation = &adoption.RecreationClaim{Token: token}
 	savedApp := adoptedApplication(t, "app-1", "ops", saved)
 	savedSnapshot := decodeTestAdoptionSnapshot(t, savedApp)
 	created := source.DeepCopy()
@@ -215,8 +215,8 @@ func TestAdoptedConfigMapLegacyNamespaceRecreationAlreadyExistsWithClaimConverge
 		source,
 		"backend",
 		"configmap",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		adoption.OwnershipExclusive,
+		adoption.DispositionManaged,
 	)
 	saved.Source.Namespace = ""
 	app := adoptedApplication(t, "app-1", "ops", saved)
@@ -275,7 +275,7 @@ func TestAdoptedConfigMapLegacyNamespaceRecreationAlreadyExistsWithClaimConverge
 	require.Equal(t, newUID, replacement.UID)
 	require.Equal(t, "updated", replacement.Data["application.yaml"])
 	persisted := decodeTestAdoptionSnapshot(t, store.app)
-	require.Equal(t, domainadoption.SnapshotVersion, persisted.Version)
+	require.Equal(t, adoption.SnapshotVersion, persisted.Version)
 	require.Empty(t, persisted.Resources[0].Source.Namespace)
 	require.Equal(t, string(newUID), persisted.Resources[0].Source.UID)
 	require.Nil(t, persisted.Resources[0].PendingRecreation)
@@ -299,8 +299,8 @@ func TestAdoptedRecreationLockRejectsStaleClaimantAfterFinalization(t *testing.T
 		source,
 		"backend",
 		"configmap",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		adoption.OwnershipExclusive,
+		adoption.DispositionManaged,
 	)
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 	job := &model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops"}
@@ -391,8 +391,8 @@ func TestAdoptedRecreationClaimFailsClosedWithoutLocker(t *testing.T) {
 		source,
 		"backend",
 		"configmap",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		adoption.OwnershipExclusive,
+		adoption.DispositionManaged,
 	)
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 	binding, adopted, err := adoptedResourceForJob(
@@ -440,10 +440,10 @@ func TestAdoptedRecreationRecoverySerializesStaleCreator(t *testing.T) {
 		source,
 		"backend",
 		"configmap",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		adoption.OwnershipExclusive,
+		adoption.DispositionManaged,
 	)
-	saved.PendingRecreation = &domainadoption.RecreationClaim{Token: token}
+	saved.PendingRecreation = &adoption.RecreationClaim{Token: token}
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 	job := &model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops"}
 	recoveryBinding, adopted, err := adoptedResourceForJob(ctx, store, job, "ConfigMap", "ops", source.Name)
@@ -543,8 +543,8 @@ func TestRecoverPendingAdoptedDependencyReloadsStaleBinding(t *testing.T) {
 		source,
 		"backend",
 		"configmap",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		adoption.OwnershipExclusive,
+		adoption.DispositionManaged,
 	)
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 	job := &model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops"}
@@ -554,7 +554,7 @@ func TestRecoverPendingAdoptedDependencyReloadsStaleBinding(t *testing.T) {
 	require.Nil(t, binding.resource.PendingRecreation)
 
 	canonical := decodeTestAdoptionSnapshot(t, store.app)
-	canonical.Resources[0].PendingRecreation = &domainadoption.RecreationClaim{Token: token}
+	canonical.Resources[0].PendingRecreation = &adoption.RecreationClaim{Token: token}
 	canonicalJSON, err := model.NewJSONStructByStruct(canonical)
 	require.NoError(t, err)
 	store.app.AdoptionSnapshot = canonicalJSON
@@ -594,8 +594,8 @@ func TestRecoverPendingAdoptedWorkloadAcceptsConcurrentFinalization(t *testing.T
 		source,
 		"backend",
 		"workload",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		adoption.OwnershipExclusive,
+		adoption.DispositionManaged,
 	)
 	saved.Source.UID = string(newUID)
 	saved.Source.ResourceVersion = "2"
@@ -643,8 +643,8 @@ func TestAdoptedConfigMapConcurrentFinalizationPreventsRollback(t *testing.T) {
 		source,
 		"backend",
 		"configmap",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		adoption.OwnershipExclusive,
+		adoption.DispositionManaged,
 	)
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 	client := fake.NewSimpleClientset()
@@ -707,8 +707,8 @@ func TestAdoptedConfigMapUnconfirmedPersistenceSkipsRollback(t *testing.T) {
 		source,
 		"backend",
 		"configmap",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		adoption.OwnershipExclusive,
+		adoption.DispositionManaged,
 	)
 	confirmationErr := errors.New("confirmation database unavailable")
 	baseStore := &adoptedSourceStore{

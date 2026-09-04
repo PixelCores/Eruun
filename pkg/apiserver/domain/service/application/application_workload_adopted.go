@@ -13,8 +13,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	domainadoption "github.com/PixelCores/Eruun/pkg/apiserver/domain/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
@@ -313,7 +313,7 @@ func (c *applicationsServiceImpl) resolveAdoptedLifecycleTarget(
 			}
 		} else if operation == adoptedLifecycleRestart {
 			if shouldMutate {
-				if err := domainadoption.ValidateStatefulSetRestartStrategy(statefulSet); err != nil {
+				if err := adoption.ValidateStatefulSetRestartStrategy(statefulSet); err != nil {
 					return nil, fmt.Errorf("preflight adopted %s %s: %w", operation, formatResource(target.kind, target.namespace, target.name), err)
 				}
 			}

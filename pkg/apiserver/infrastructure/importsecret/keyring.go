@@ -1,3 +1,5 @@
+// Package importsecret provides encryption and integrity primitives for
+// adopted Kubernetes Secret payloads and import plans.
 package importsecret
 
 import (

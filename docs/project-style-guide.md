@@ -22,6 +22,7 @@
 | `cmd/main.go` | API Server 主入口 | 保持薄入口，只做全局注册、命令构建和错误退出 |
 | `cmd/server/app` | 服务端 Cobra 命令、参数、启动生命周期 | 配置覆盖、校验和 server 运行应 fail-fast；初始化错误应携带操作上下文 |
 | `pkg/apiserver/config` | 进程配置入口与模块配置组合 | 负责启动参数、环境变量和模块配置装配；模块专属策略和资源契约由所属模块定义 |
+| `pkg/apiserver/adoption` | 既有 Kubernetes 资源接管的共享契约 | 保存 snapshot、资源 identity/digest 与跨生命周期/执行器复用的安全规则，不持有 Kubernetes 客户端 |
 | `pkg/apiserver/interfaces/api` | 路由、请求绑定、响应封装、中间件 | Handler 只做 HTTP 契约处理和 Domain 委托，不直接写 DB 或 K8s |
 | `pkg/apiserver/interfaces/api/dto/v1` | API 请求和响应结构 | DTO 表达对外 JSON 契约，字段变化必须同步 assembler、examples 和 docs |
 | `pkg/apiserver/interfaces/api/assembler/v1` | Domain 到 DTO 的组装 | 负责展示字段、派生字段、兼容字段和脱敏，不放持久化或 K8s 调用 |
@@ -39,6 +40,8 @@
 | `pkg/apiserver/utils` | 技术工具 | 只放可复用技术 helper，不放应用生命周期、workflow 或 API 业务分支 |
 
 模块之间的默认方向是 `interfaces -> domain -> infrastructure`，workflow/event 由 domain 创建任务并由 worker 异步执行。跨层依赖应保持单向、显式和可测试。
+
+安全约束按其事实归属放置，不建立笼统的顶层 `security` 层：workspace scope 与 scoped datastore 属于账号/空间访问规则，动态 URL 策略加载属于 system setting，adopted Secret 加密与计划签名属于 infrastructure。跨模块共享的安全策略值对象仍位于 `domain/spec`。
 
 ## 3. 命名规范
 

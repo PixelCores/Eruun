@@ -19,8 +19,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/importsecret"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
-	"github.com/PixelCores/Eruun/pkg/apiserver/security/importsecret"
 )
 
 // DeploySecretJobCtl creates or updates a Secret resource in the target namespace.

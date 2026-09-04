@@ -20,11 +20,11 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	domainadoption "github.com/PixelCores/Eruun/pkg/apiserver/domain/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/importsecret"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
-	"github.com/PixelCores/Eruun/pkg/apiserver/security/importsecret"
 )
 
 func TestAdoptedRecreationAlreadyExistsPreservesFollowupGetError(t *testing.T) {
@@ -178,8 +178,8 @@ func TestAdoptedRecreationAlreadyExistsPreservesFollowupGetError(t *testing.T) {
 				testCase.source,
 				"backend",
 				testCase.role,
-				domainadoption.OwnershipExclusive,
-				domainadoption.DispositionManaged,
+				adoption.OwnershipExclusive,
+				adoption.DispositionManaged,
 			)
 			store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", snapshot)}
 			var component *model.ApplicationComponent
@@ -231,7 +231,7 @@ func TestAdoptedDeploymentRecreationAlreadyExistsReconcilesCurrentDesiredAndRead
 	}
 	desired := source.DeepCopy()
 	desired.Spec.Template.Spec.Containers[0].Image = "api:v2"
-	saved := adoptedSnapshotResource(t, source, "backend", "workload", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged)
+	saved := adoptedSnapshotResource(t, source, "backend", "workload", adoption.OwnershipExclusive, adoption.DispositionManaged)
 	component := sourceComponent("app-1", "backend", "Deployment", source.Name, oldUID)
 	store := &adoptedSourceStore{
 		app:       adoptedApplication(t, "app-1", "ops", saved),
@@ -288,7 +288,7 @@ func TestAdoptedStatefulSetRecreationAlreadyExistsRestoresRetentionAndReconciles
 	}
 	desired := source.DeepCopy()
 	desired.Spec.Template.Spec.Containers[0].Image = "db:v2"
-	saved := adoptedSnapshotResource(t, source, "database", "workload", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged)
+	saved := adoptedSnapshotResource(t, source, "database", "workload", adoption.OwnershipExclusive, adoption.DispositionManaged)
 	component := sourceComponent("app-1", "database", "StatefulSet", source.Name, oldUID)
 	store := &adoptedSourceStore{
 		app:       adoptedApplication(t, "app-1", "ops", saved),
@@ -337,7 +337,7 @@ func TestAdoptedSecretRecreationAlreadyExistsRepairsCiphertextManagedData(t *tes
 		Type:       corev1.SecretTypeOpaque,
 		Data:       map[string][]byte{"password": []byte("source-password")},
 	}
-	saved := adoptedSnapshotResource(t, source, "database", "secret", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged)
+	saved := adoptedSnapshotResource(t, source, "database", "secret", adoption.OwnershipExclusive, adoption.DispositionManaged)
 	store := &adoptedSourceStore{
 		app:       adoptedApplication(t, appID, "ops", saved),
 		component: adoptedSecretComponent(t, keyring, appID, "database", source),

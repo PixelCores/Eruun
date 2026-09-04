@@ -15,8 +15,8 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	domainadoption "github.com/PixelCores/Eruun/pkg/apiserver/domain/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
@@ -50,8 +50,8 @@ func TestDeployAdoptedPodDisruptionBudgetUsesLiveBaselineAndSkipsSecondUpdate(t 
 		live,
 		"backend",
 		"pdb",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		adoption.OwnershipExclusive,
+		adoption.DispositionManaged,
 	)
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 	maxUnavailable := intstr.FromInt32(1)
@@ -115,8 +115,8 @@ func TestDeployAdoptedPodDisruptionBudgetEnforcesSnapshotWriteGateAndUID(t *test
 			source,
 			"backend",
 			"pdb",
-			domainadoption.OwnershipShared,
-			domainadoption.DispositionSharedPreserved,
+			adoption.OwnershipShared,
+			adoption.DispositionSharedPreserved,
 		)
 		store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 		desired := source.DeepCopy()
@@ -157,8 +157,8 @@ func TestDeployAdoptedPodDisruptionBudgetEnforcesSnapshotWriteGateAndUID(t *test
 			source,
 			"backend",
 			"pdb",
-			domainadoption.OwnershipExclusive,
-			domainadoption.DispositionManaged,
+			adoption.OwnershipExclusive,
+			adoption.DispositionManaged,
 		)
 		store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 		replacement := source.DeepCopy()
@@ -203,8 +203,8 @@ func TestDeployAdoptedPodDisruptionBudgetEnforcesSnapshotWriteGateAndUID(t *test
 			source,
 			"backend",
 			"pdb",
-			domainadoption.OwnershipExclusive,
-			domainadoption.DispositionManaged,
+			adoption.OwnershipExclusive,
+			adoption.DispositionManaged,
 		)
 		store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 		desired := source.DeepCopy()
@@ -256,8 +256,8 @@ func TestDeployAdoptedPodDisruptionBudgetRecreatesOriginalNameAndRotatesSnapshot
 		source,
 		"backend",
 		"pdb",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		adoption.OwnershipExclusive,
+		adoption.DispositionManaged,
 	)
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 	maxUnavailable := intstr.FromInt32(1)
@@ -334,8 +334,8 @@ func TestDeployAdoptedNetworkPolicyUsesLiveBaselineAndSkipsSecondUpdate(t *testi
 		live,
 		"backend",
 		"network-policy",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		adoption.OwnershipExclusive,
+		adoption.DispositionManaged,
 	)
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 	desired := live.DeepCopy()
@@ -400,8 +400,8 @@ func TestDeployAdoptedNetworkPolicyBlockedDispositionRejectsWithoutKubernetesReq
 		source,
 		"backend",
 		"network-policy",
-		domainadoption.OwnershipExternal,
-		domainadoption.DispositionBlocked,
+		adoption.OwnershipExternal,
+		adoption.DispositionBlocked,
 	)
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", saved)}
 	client := fake.NewSimpleClientset(source)
@@ -448,8 +448,8 @@ func TestDeployAdoptedNetworkPolicyRecreationPersistenceFailureRetainsLiveObject
 		source,
 		"backend",
 		"network-policy",
-		domainadoption.OwnershipExclusive,
-		domainadoption.DispositionManaged,
+		adoption.OwnershipExclusive,
+		adoption.DispositionManaged,
 	)
 	store := &adoptedSourceStore{
 		app:                        adoptedApplication(t, "app-1", "ops", saved),

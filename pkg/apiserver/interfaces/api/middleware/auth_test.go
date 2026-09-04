@@ -17,7 +17,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
-	"github.com/PixelCores/Eruun/pkg/apiserver/security/access"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
@@ -28,7 +27,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-func middlewareAccounts(t *testing.T) (*account.Service, *access.Store) {
+func middlewareAccounts(t *testing.T) (*account.Service, *account.Store) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "auth.db")), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, TranslateError: true, Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
@@ -54,7 +53,7 @@ func middlewareAccounts(t *testing.T) (*account.Service, *access.Store) {
 			require.NoError(t, raw.Add(ctx, e))
 		}
 	}
-	return s, access.NewStore(raw)
+	return s, account.NewStore(raw)
 }
 
 func TestAuthRouteMatrixAndImmediateMembershipChanges(t *testing.T) {
@@ -111,7 +110,7 @@ func TestAuthRouteMatrixAndImmediateMembershipChanges(t *testing.T) {
 
 func TestScopedStoreFiltersBeforePaginationAndDeniesWrites(t *testing.T) {
 	s, store := middlewareAccounts(t)
-	ctx := access.WithScope(context.Background(), access.Scope{UserID: "a", WorkspaceID: "personal-a", Namespace: "ns-a", Role: "owner"})
+	ctx := account.WithScope(context.Background(), account.Scope{UserID: "a", WorkspaceID: "personal-a", Namespace: "ns-a", Role: "owner"})
 	rows, err := store.List(ctx, &model.Applications{}, &datastore.ListOptions{Page: 1, PageSize: 1})
 	require.NoError(t, err)
 	require.Len(t, rows, 1)

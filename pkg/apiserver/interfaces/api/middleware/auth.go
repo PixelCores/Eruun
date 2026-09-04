@@ -6,7 +6,6 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
-	"github.com/PixelCores/Eruun/pkg/apiserver/security/access"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/gin-gonic/gin"
 )
@@ -213,11 +212,11 @@ func Auth(opts AuthOptions) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		scope := access.Scope{UserID: p.User.ID, WorkspaceID: a.Workspace.ID, Namespace: a.Workspace.Namespace, Role: a.Role, SystemAdmin: p.User.SystemAdmin}
+		scope := account.Scope{UserID: p.User.ID, WorkspaceID: a.Workspace.ID, Namespace: a.Workspace.Namespace, Role: a.Role, SystemAdmin: p.User.SystemAdmin}
 		scope.ClusterOperation = minimum == "system"
-		ctx := access.WithScope(c.Request.Context(), scope)
+		ctx := account.WithScope(c.Request.Context(), scope)
 		c.Request = c.Request.WithContext(ctx)
-		guard := access.NewStore(s.Repo.Store)
+		guard := account.NewStore(s.Repo.Store)
 		if appID := c.Param("appID"); appID != "" {
 			if err = guard.Get(ctx, &model.Applications{ID: appID}); err != nil {
 				bcode.ReturnError(c, err)

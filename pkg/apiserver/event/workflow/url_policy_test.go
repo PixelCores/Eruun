@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	"github.com/PixelCores/Eruun/pkg/apiserver/security/urlpolicy"
 )
 
 type workflowURLPolicyStore struct {

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/security/access"
+	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	"k8s.io/klog/v2"
 )

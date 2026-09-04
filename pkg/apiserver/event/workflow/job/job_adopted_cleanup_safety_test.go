@@ -14,8 +14,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	domainadoption "github.com/PixelCores/Eruun/pkg/apiserver/domain/adoption"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -196,8 +196,8 @@ func TestAdoptedWorkloadFailureCleanupNeverDeletesSourceResources(t *testing.T) 
 			source,
 			"backend",
 			"workload",
-			domainadoption.OwnershipExclusive,
-			domainadoption.DispositionManaged,
+			adoption.OwnershipExclusive,
+			adoption.DispositionManaged,
 		)
 		client := fake.NewSimpleClientset(source.DeepCopy())
 		store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", snapshot)}
@@ -237,8 +237,8 @@ func TestAdoptedWorkloadFailureCleanupNeverDeletesSourceResources(t *testing.T) 
 			source,
 			"mysql",
 			"workload",
-			domainadoption.OwnershipExclusive,
-			domainadoption.DispositionManaged,
+			adoption.OwnershipExclusive,
+			adoption.DispositionManaged,
 		)
 		client := fake.NewSimpleClientset(source.DeepCopy())
 		store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", snapshot)}
@@ -300,7 +300,7 @@ func TestWorkloadFailureCleanupResolvesOwnershipWithCancelledParent(t *testing.T
 				app := &model.Applications{ID: "app-1", Namespace: "ops", ManagementMode: config.ManagementModeNative}
 				var datastoreErr error
 				if ownership == "adopted" {
-					snapshot := adoptedSnapshotResource(t, source, workload.componentName, "workload", domainadoption.OwnershipExclusive, domainadoption.DispositionManaged)
+					snapshot := adoptedSnapshotResource(t, source, workload.componentName, "workload", adoption.OwnershipExclusive, adoption.DispositionManaged)
 					app = adoptedApplication(t, "app-1", "ops", snapshot)
 				} else if ownership == "datastore-error" {
 					datastoreErr = errors.New("datastore unavailable")
