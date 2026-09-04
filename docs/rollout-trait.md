@@ -1,5 +1,6 @@
 # Rollout Trait
 
+> 状态：Current。本文说明当前 `traits.rollout` 的公开字段、适用组件与 Kubernetes 更新策略映射。
 
 `rollout` 是组件级 trait，用于控制长期运行 workload 的发布/更新策略。
 

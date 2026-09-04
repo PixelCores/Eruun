@@ -1,6 +1,8 @@
 # Gateway Trait 抽象化实施方案（Ingress -> Istio/多 Provider）
 
-> 状态：Draft / Proposal / Implementation Design。本文是 Gateway Trait 演进实施计划，描述计划实现的 Gateway Trait 抽象；当前生产行为仍以现有 Ingress/Istio trait 代码为准。
+> 状态：Draft / Proposal。本文是 Gateway Trait 演进实施计划，描述计划实现的 Gateway Trait 抽象；当前生产行为仍以现有 Ingress Trait 代码为准。
+
+> 示例说明：本文代码、JSON、YAML 和路由均为概念伪代码，不代表当前已注册接口或可直接执行的配置。
 
 ## 1. 文档信息
 

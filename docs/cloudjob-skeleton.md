@@ -4,15 +4,17 @@
 
 ## 背景
 
-`cloudjob` 是一个新的组件类型，用于在工作流中执行云厂商 API 调用（例如先创建云侧基础资源，再执行后续配置/部署步骤）。
+`cloudjob` 是当前已实现的组件类型，用于在 Application Workflow 中执行代码内已注册的云 Provider/Action。它不是任意云 API 代理，也不代表 Eruun 已经支持托管模型、embedding、评测或通用多云编排；后续 AI 云能力边界见 [AI Provider 集成方向](ai-provider-integration-design.md)。
 
 当前版本提供：
 
 - 统一契约层（`contracts`）约束 provider/action/runtime 行为
 - provider 通过统一 `CloudRuntime` 接口适配不同云厂商运行时依赖
-- 内置 `aliyun` provider（目录化拆分 action 实现）
+- 运行时只自动注册内置 `aliyun` provider（目录化拆分 action 实现）
 - provider 未注册或 action 不在白名单时统一 fail-fast
 - `aliyun` provider 已接入真实阿里云 NAS SDK 和 Kubernetes StorageClass 创建逻辑
+
+仓库中的 `custom` provider 是扩展模板，不会自动注册。当前 Provider 都是进程内 Go 实现；新增或替换实现需要重新编译和重启，不存在动态插件加载或热更新。
 
 ## 代码组织
 
@@ -37,15 +39,16 @@
 
 ```json
 {
-  "name": "bootstrap-cloud",
+  "name": "ensure-model-storage",
   "type": "cloudjob",
   "properties": {
     "cloud": {
       "provider": "aliyun",
-      "action": "create-ecs",
+      "action": "aliyun.nas.ensure_filesystem",
       "params": {
-        "region": "cn-hangzhou",
-        "instanceType": "ecs.g6.large"
+        "tenantId": "example-tenant",
+        "storageType": "Capacity",
+        "protocolType": "NFS"
       }
     }
   }
@@ -128,6 +131,9 @@
 
 ## 边界（当前版本）
 
+- 只自动注册 `aliyun` provider；`custom` 只是未注册模板
+- 不提供托管模型、embedding、Agent evaluation 或其他通用 AI Provider action
+- 不支持运行时插件发现、独立插件进程、RPC、热更新或版本选择
 - 不做跨步骤变量透传（建议按 `tenantId` 从云侧状态来源读取）
 - 不引入云资源反向清理逻辑
 - 当前只实现 NAS 文件系统、挂载点以及对应的 Kubernetes StorageClass 引导链路

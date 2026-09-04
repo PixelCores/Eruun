@@ -1,6 +1,6 @@
 # CloudJob Custom Provider 扩展指南
 
-> 状态：Implemented Reference。当前内置 custom provider 位于 `pkg/apiserver/event/workflow/cloudjob/custom`。
+> 状态：Implemented Reference。当前 custom provider 模板位于 `pkg/apiserver/event/workflow/cloudjob/custom`，但不会自动注册为运行时 Provider。
 
 ## 目标
 

@@ -2,15 +2,27 @@
 
 > 状态：Current。本文是 `docs/` 的导航入口，按当前 `main` 代码事实整理文档状态，并为维护者和 LLM 提供需求定位路径。
 
+## 产品方向与能力成熟度
+
+Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运行时；当前可用产品仍是 Kubernetes Application/Workflow Runtime。文档中的愿景不能覆盖代码事实。
+
+| 阶段 | 能力 | 文档解释 |
+| --- | --- | --- |
+| Current | Application、Component、Traits、Workflow、四角色运行时、Kubernetes 调和、认证与空间 | 可按文档直接使用，必须与 `main` 一致 |
+| Next | Kubernetes 自托管 Agent、MCP/CLI 工具边界、凭据/权限、审计、Agent 评测 | 方向已明确，公共契约尚未冻结 |
+| Later | 模型服务、GPU 感知调度、向量化、托管 AI Provider、云或多集群能力 | 探索阶段 |
+
+[AI Runtime 愿景](ai-runtime-vision.md) 是未来方向的唯一总纲。任何专题 Proposal 中出现的名称或示例，除非另有 Current 实现和测试，不构成 API、JSON、数据库或部署承诺。
+
 ## 推荐阅读顺序
 
 1. `AGENTS.md`：仓库协作规则、构建测试命令、提交和 PR 要求。
 2. 本文档：目录分层、需求定位、当前代码事实和文档索引。
-3. `core-module-boundary-and-cross-layer-contracts.md`：API、Domain、DB、Cache、K8s 的核心字段契约。
-4. `workflow-architecture-guide.md`：工作流调度、队列、Job 执行和状态机。
-5. `enterprise-distributed-runtime-design.md`：四类运行角色、双 Leader、Workflow 数据库租约和部署拓扑。
-6. `distributed-runtime-hardening-merge-guide.md`：分布式运行时加固 PR 集、设计理由、保留边界与合并验收指南。
-7. `architecture-diagrams.md`：架构图、DDD 分层图、消息队列、Informer、Traits 和目录结构。
+3. `架构文档.md` 与 `architecture-diagrams.md`：当前角色、数据、Component、Trait 和 Workflow 边界。
+4. `core-module-boundary-and-cross-layer-contracts.md`：API、Domain、DB、Cache、K8s 的核心字段契约。
+5. `workflow-architecture-guide.md`：工作流调度、队列、Job 执行和状态机。
+6. `enterprise-distributed-runtime-design.md`：四类运行角色、双 Leader、Workflow 数据库租约和部署拓扑。
+7. `ai-runtime-vision.md`：AI Runtime 目标、路线图和 Proposal 进入实现的门禁。
 
 ## 状态约定
 
@@ -24,18 +36,20 @@
 
 - `Implemented Reference` 可用于理解实现背景和内部结构，但写入 CONTEXT、ADR 或对外说明前，必须用代码、命令输出或 `Current` 专题文档二次确认。
 - `Draft / Proposal`、`Historical / Audit`、`Deprecated` 只能作为设计背景、迁移线索或审计证据，不得改写为当前已暴露能力。
+- Proposal 中的路由、字段、默认值和伪代码不得用于生成客户端或部署；只有 Current 文档和代码才是可执行契约。
 - `devlogs/` 记录一次 PR/主题的当时决策，可能被后续 devlog 或 `Current` 文档 supersede；当前事实以代码与 `docs/` 中的 `Current` 文档为准。
 
 ## 当前代码事实速查
 
 - API 前缀：`/api/v1`。
-- 服务进程默认监听：`127.0.0.1:8000`；`deploy/eruun-stack.yaml` 会通过 `ERUUN_BIND_ADDR=0.0.0.0:8000` 暴露集群内服务。
+- 服务进程本地默认监听：`127.0.0.1:8001`；`deploy/eruun-stack.yaml` 会通过 `ERUUN_BIND_ADDR=0.0.0.0:8000` 覆盖该默认值并暴露集群内服务。
 - MySQL 默认 DSN 是 `127.0.0.1:3306/eruun` 的本地连接模板，必须替换密码占位符；Kafka 默认 Broker 为 `localhost:9092`，消息后端仍默认 Redis。字段与覆盖方式见 [`config/apiserver-default.yaml`](../config/apiserver-default.yaml) 和 [Kafka 配置说明](kafka-queue-implementation.md#4-配置说明)。
 - 服务端角色通过 `--role` / `ERUUN_ROLE` 显式选择 `api/controller/scheduler/worker`；直接运行默认是 `api`，不存在聚合 `all` 角色。
 - Workflow 固定使用 v2 generation/token ownership 与数据库执行租约，Worker 不再获取 Redis 执行锁；不存在关闭 fencing 或处理 v1 dispatch 的运行模式。
 - 顶层 `/workflow`、`/workflow/exec`、`/workflow/cancel` 路由不再注册；应用维度 workflow API 是当前主路径。
 - 业务 API 强制 Bearer 登录并按个人/团队空间授权；账号配置由 `ERUUN_AUTH_CONFIG_FILE` 加载，所有认证依赖失败时保持拒绝访问。
 - 应用必须属于一个空间；namespace 在首次实际部署时初始化，账号注册和应用保存不创建 Kubernetes 资源。
+- 当前没有 Agent、MCP、Agent evaluation、向量化、vLLM/HAMi 或通用托管 AI Provider 公共 API。
 
 ## 目录层级速查
 
@@ -73,6 +87,7 @@
 | 认证、授权、OAuth、团队空间 | `pkg/apiserver/domain/service/account` | account、middleware、security/access、infrastructure/workspace | `account-auth-workspaces.md` |
 | 配置、系统设置、安全策略 | `pkg/apiserver/config`, `pkg/apiserver/domain/spec` | config defaults、validation、system setting service | `system-setting.md`, `url-security-policy.md` |
 | 消息队列或分布式执行 | `pkg/apiserver/infrastructure/messaging`, `pkg/apiserver/domain/repository/workflow_lease.go` | 运行角色、Redis Streams、Kafka、workflow worker、DB lease/fencing | `enterprise-distributed-runtime-design.md`, `leader-informer-recovery.md`, `kafka-queue-implementation.md`, `workflow-architecture-guide.md` |
+| Agent、MCP、评测、模型或 AI Provider 方向 | 先读 `ai-runtime-vision.md` | 先校准 Current 能力与 Proposal 门禁，再决定是否进入实现 | 对应 AI 专题 Proposal；不得把草案字段当成现有契约 |
 
 ## 当前能力入口
 
@@ -125,16 +140,16 @@
 | --- | --- | --- |
 | `workflow-architecture-guide.md` | Implemented Reference | 工作流引擎架构详解 |
 | `enterprise-distributed-runtime-design.md` | Implemented Reference | 分布式运行时：角色依赖、API Redis readiness、Leader Election、数据库 lease/fencing、延迟任务恢复与通知去重、Cron 有界分页与失败计划重试、Worker observer 和 Helm 拓扑 |
-| `架构文档.md` | Implemented Reference | 架构与 OAM Traits 汇总 |
-| `architecture-diagrams.md` | Implemented Reference | 架构图与流程图 |
+| `架构文档.md` | Implemented Reference | 当前四角色、数据所有权、Component、Workflow 与 Trait 边界 |
+| `architecture-diagrams.md` | Implemented Reference | 当前四角色、Workflow execution 和 Trait 映射图 |
 | `kafka-queue-implementation.md` | Implemented Reference | Kafka 队列实现 |
 | `cloudjob-skeleton.md` | Implemented Reference | CloudJob 基础说明 |
 | `cloudjob-custom-provider-template.md` | Implemented Reference | Custom CloudJob Provider 扩展 |
 | `core-module-boundary-and-cross-layer-contracts.md` | Implemented Reference | 核心模块边界与跨层字段契约 |
 | `project-style-guide.md` | Implemented Reference | 项目命名、模块边界与架构风格维护基线 |
-| `devlogs/2026-08-03-explicit-namespace-adoption-api.md` | Implemented Reference | 显式 adopted import/cleanup API 激活决策与安全边界 |
 | `statefulset-pvc-volume-naming.md` | Implemented Reference | StatefulSet PVC 命名分析 |
 | `template-instantiation-from-tem-id.md` | Implemented Reference | 基于模板 ID 的实例化 |
+| `template-storage-identity-fix-plan.md` | Implemented Reference | 模板持久化存储 Identity 的当前实现与回归验证 |
 | `workflow-task-deduplication-zh.md` | Implemented Reference | 工作流任务去重方案 |
 
 ## 测试与审计
@@ -145,7 +160,7 @@
 | `go-idiomatic-code-quality-audit-2026-08-09.md` | Historical / Audit | 基于 `aaec6307` 的全仓 Go 惯用性、接口、并发、错误传播与测试组织审计 |
 | `existing-cluster-application-import-analysis-2026-08-03.md` | Historical / Audit | 现有集群应用进入 Eruun 的发现、observe/adopted 导入、source identity、执行边界与上线验收分析 |
 | `code-quality-audit-2026-05-20.md` | Historical / Audit | 全仓代码质量审计与后续简化重构建议 |
-| `master-hidden-issues-audit-2026-07-10.md` | Historical / Audit | 当前 master 未记录 Bug、潜在问题、严重级别、代码证据与修复建议 |
+| `master-hidden-issues-audit-2026-07-10.md` | Historical / Audit | 当时 master 基线的未记录 Bug、潜在问题、严重级别、代码证据与修复建议 |
 | `workflow-testing-guide.md` | Historical / Audit | 工作流手工测试指南 |
 | `version-update-testing.md` | Historical / Audit | 版本更新测试流程 |
 | `master-code-review-open-items.md` | Historical / Audit | 代码评审遗留项 |
@@ -156,18 +171,18 @@
 
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
-| `agent-evaluation-job-design.md` | Draft / Proposal | Agent evaluation Job 的执行、隔离与结果契约 |
+| `ai-runtime-vision.md` | Draft / Proposal | AI Runtime 产品方向、能力分层、路线图和实施门禁 |
+| `agent-evaluation-job-design.md` | Draft / Proposal | Agent 评测输入、执行、制品、隔离和质量门禁方向 |
 | `architecture-refactor-plan.md` | Draft / Proposal | 架构演进方案 |
-| `cloudjob-hotplug-provider-design.md` | Draft / Proposal | CloudJob 热插拔 Provider |
+| `ai-provider-integration-design.md` | Draft / Proposal | 托管模型、对象存储、计算及 AI 云 Provider 集成边界 |
 | `design-custom-update-workflow.md` | Draft / Proposal | 自定义更新工作流 |
 | `gateway-abstraction-design.md` | Draft / Proposal | Gateway 抽象层草案 |
 | `gateway-trait-implementation-plan.md` | Draft / Proposal | Gateway Trait 实施计划 |
-| `template-storage-identity-fix-plan.md` | Draft / Proposal | 模板同名 persistent storage 复用与重复 PVC 修复执行方案 |
-| `vectorization-job-design.md` | Draft / Proposal | 向量化 Job 设计 |
-| `vllm-hami-distributed-inference-design.md` | Draft / Proposal | vLLM + HAMi 单节点与跨节点多 GPU 推理工作流设计 |
+| `vectorization-job-design.md` | Draft / Proposal | Provider-neutral 向量化批处理方向 |
+| `vllm-hami-distributed-inference-design.md` | Draft / Proposal | 自托管模型服务、GPU、vLLM/HAMi 与多节点 adapter 方向 |
 | `workflow-conditional-branching-design.md` | Draft / Proposal | 条件分支设计 |
-| `workflow-global-scheduler-design.md` | Draft / Proposal | Workflow 全局调度器与跨 Worker 协调设计 |
-| `workflow-resource-capacity-scheduler.md` | Draft / Proposal | 资源容量调度器设计 |
+| `workflow-global-scheduler-design.md` | Draft / Proposal | Workflow 优先级、公平性、配额、容量准入和可抢占方向 |
+| `workflow-resource-capacity-scheduler.md` | Draft / Proposal | Workflow 资源容量准入与可选容量补偿边界 |
 
 ## 图源与资产
 
@@ -179,3 +194,5 @@
 - 新增文档后，把它加入本文档对应分组，并在需要时从 `README.md` 或 `README_zh.md` 链接。
 - 文档描述事实，不替代码补偿行为；如果代码契约和文档冲突，先以代码为准，再修正文档。
 - 示例请求/响应放在 `examples/`，专题设计和契约说明放在 `docs/`。
+- 每个 Markdown 文档在一级标题后必须使用本页五种状态之一；索引状态必须与正文一致。
+- Proposal 不固定未经实现验证的路由、字段、默认值或厂商机制；如需概念示例，必须明确说明不可直接执行。

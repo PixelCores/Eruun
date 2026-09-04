@@ -1,6 +1,6 @@
 # 显式 Reset Workflow
 
-> 状态：Deprecated / Compatibility Reference。本文仅作为“指定组件 reset workflow”兼容参考；新接入不要把它当作全量清理或全量重建主路径。
+> 状态：Deprecated。本文仅作为“指定组件 reset workflow”兼容参考；新接入不要把它当作全量清理或全量重建主路径。
 
 显式 Reset Workflow 仍可用于“清理指定组件资源，再重新部署指定组件”的顺序。全量清理、全量部署或清理后重建的主路径是 `/api/v1/applications/:appID/version` 的保留组件动作（`remove cleanup_all` / `add all`），由 `/version` 在提交版本、组件变更和 workflow task 时统一处理。
 

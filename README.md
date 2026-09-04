@@ -4,16 +4,26 @@
 
 A distributed runtime for agents, models, and AI workloads.
 
-Eruun is an open-source Kubernetes application runtime built around declarative components, traits, and durable workflows. The current release provides the API server, distributed controller/scheduler/worker roles, Kubernetes reconciliation, lifecycle workflows, validation, status, and operational APIs.
+Eruun is evolving from a Kubernetes workflow runtime into an open-source runtime for self-hosted AI workloads. Its implemented foundation already provides declarative applications, durable workflows, isolated workspaces, and distributed Kubernetes reconciliation. Agent tools, evaluation, vectorization, and model-serving capabilities remain proposals until the documentation index marks them Current.
 
-Agent evaluation, vectorization, and distributed model-serving documents are design proposals unless they are explicitly marked Current in the documentation index.
+## Capability maturity
 
-## What Eruun provides
+| Stage | Scope | Status |
+| --- | --- | --- |
+| Current | Application and component lifecycle, traits, StepByStep and DAG workflows, API/controller/scheduler/worker roles, Redis or Kafka dispatch, MySQL execution leases, Kubernetes reconciliation, validation, status, logs, files, shell access, authentication, and workspace isolation | Implemented on `main` |
+| Next | Containerized agent workloads, MCP and CLI tool bindings, credential and permission boundaries, audit evidence, and workflow-backed agent evaluation | Direction; contracts are not yet frozen |
+| Later | Self-hosted model serving, GPU-aware placement, vectorization pipelines, managed AI provider integration, and broader cloud or multi-cluster execution | Exploration |
+
+The roadmap deliberately starts with Kubernetes-hosted agents and their security boundary. It does not introduce a separate top-level Agent resource or promise speculative APIs. See [AI runtime vision](docs/ai-runtime-vision.md) for the intended capability layers and decision gates.
+
+## Current runtime
+
+Eruun currently provides:
 
 - An OAM-inspired application model composed of components, traits, and workflows.
-- REST APIs for application lifecycle, workflow execution, validation, status, logs, files, shell execution, settings, and namespace adoption.
+- REST APIs for application lifecycle, workflow execution, validation, status, logs, files, shell execution, settings, authentication, workspaces, and namespace adoption.
 - StepByStep and DAG workflow execution backed by Redis Streams or Kafka.
-- Dedicated API, controller, scheduler, and worker runtime roles with database leases and fencing.
+- Separate `api`, `controller`, `scheduler`, and `worker` runtime roles with database leases and fencing.
 - Kubernetes reconciliation for workloads, Services, storage, RBAC, ingress, probes, sidecars, init containers, rollout policies, and shared resources.
 - Helm and standalone-manifest deployment paths.
 
@@ -21,13 +31,13 @@ Eruun ships only the server runtime. It does not include a client command-line a
 
 ## Quick start
 
-Configure the required account Secret from [accounts.example.json](deploy/accounts.example.json) before starting. GitHub/Google login, email/phone accounts, personal/team spaces, HTTPS integration and Kubernetes isolation requirements are described in [Account and workspace integration](docs/account-auth-workspaces.md). Kubernetes must support Restricted v1.34 Pod Security and enforce NetworkPolicy.
+Prerequisites: Go 1.25, GNU Make, `kubectl`, Helm, and access to a Kubernetes cluster.
 
-Prerequisites: Go 1.25, GNU Make, kubectl, Helm, and access to a Kubernetes cluster.
+Configure the required account Secret from [accounts.example.json](deploy/accounts.example.json) before starting. Authentication, personal and team workspaces, HTTPS integration, and Kubernetes isolation requirements are documented in [Account and workspace integration](docs/account-auth-workspaces.md).
 
 The installer generates MySQL and Redis credentials locally when they are not supplied. Generated values are held only in protected temporary files and Kubernetes Secrets.
 
-~~~bash
+```bash
 AUTH_CONFIG_FILE=/secure/eruun/accounts.json SKIP_CONFIRM=true INSTALL_MODE=helm \
   ./deploy/all_in_one_install_quickstart.sh
 
@@ -35,70 +45,47 @@ kubectl -n eruun-system port-forward svc/eruun 8000:8000
 
 curl --fail http://127.0.0.1:8000/api/v1/healthz
 curl --fail http://127.0.0.1:8000/api/v1/readyz
-~~~
+```
 
-To run the server locally:
+For local development, start MySQL, Redis, and Kafka with the [local dependencies guide](docs/local-docker-dependencies.md), then run:
 
-Start MySQL, Redis, and Kafka together with the [local Docker dependencies guide](docs/local-docker-dependencies.md). The Compose project keeps its data in named volumes and exposes ports only on localhost.
-
-~~~bash
+```bash
 export ERUUN_DATASTORE_URL='eruun:__REPLACE_WITH_MYSQL_PASSWORD__@tcp(127.0.0.1:3306)/eruun?charset=utf8mb4&parseTime=true'
 export ERUUN_CACHE_PASSWORD='__REPLACE_WITH_REDIS_PASSWORD__'
 export ERUUN_AUTH_CONFIG_FILE='/secure/eruun/accounts.json'
 go run ./cmd/main.go
-~~~
+```
 
-The server listens on 127.0.0.1:8000 by default. Set ERUUN_BIND_ADDR=0.0.0.0:8000 only when the listener must be reachable beyond localhost.
+The server listens on `127.0.0.1:8001` by default. Set `ERUUN_BIND_ADDR=0.0.0.0:8001` only when the local process must be reachable beyond localhost. The Kubernetes deployment paths explicitly override the listener to port `8000`.
 
 ## Architecture
 
-Eruun runs as one of four explicit runtime roles. The Helm and standalone manifests deploy all four roles independently:
+The same server binary starts as exactly one role selected by `--role` or `ERUUN_ROLE`:
 
-- api: HTTP routes, request validation, and response contracts.
-- controller: Kubernetes observation and runtime-state synchronization.
-- scheduler: workflow scheduling and dispatch.
-- worker: workflow jobs and Kubernetes resource reconciliation.
+- `api` owns HTTP contracts, authentication, authorization, validation, and task creation.
+- `controller` observes Kubernetes and projects runtime state back into the database.
+- `scheduler` claims waiting workflow runs and publishes versioned dispatch messages.
+- `worker` consumes dispatches and executes workflows and Kubernetes jobs.
 
-The server defaults to the `api` role for direct local runs. There is no combined `all` role.
+MySQL is the durable source of truth for workflow state and execution ownership. Redis is required for cache, application-mutation locks, cancellation signaling, and the default Redis Streams transport. Kafka can replace Redis Streams for workflow messaging, but it does not replace MySQL ownership or Redis-backed application coordination.
 
-MySQL is the durable state store and the authoritative owner of workflow execution leases. Redis is required for distributed application-mutation locks and is the default Redis Streams message transport. Kafka can be selected for workflow messaging while Redis remains the cache and application-lock backend; workflow workers do not take a second Redis execution lock.
+## Documentation
 
-## Configuration
-
-Every server flag has an ERUUN_ environment-variable equivalent generated from its flag name. Common settings include:
-
-- ERUUN_BIND_ADDR
-- ERUUN_DATASTORE_URL
-- ERUUN_CACHE_HOST, ERUUN_CACHE_PORT, and ERUUN_CACHE_PASSWORD
-- ERUUN_MSG_TYPE and ERUUN_MSG_KAFKA_BROKERS
-- ERUUN_AUTH_CONFIG_FILE
-- ERUUN_ROLE
-
-Run the following command for the complete server contract:
-
-~~~bash
-go run ./cmd/main.go --help
-~~~
-
-Default configuration is documented in config/apiserver-default.yaml.
+- [Documentation index](docs/README.md) — status-aware navigation and current code facts.
+- [AI runtime vision](docs/ai-runtime-vision.md) — target capability layers and roadmap; not an implemented contract.
+- [Architecture overview](docs/架构文档.md) — current component, trait, workflow, and runtime boundaries.
+- [Workflow architecture](docs/workflow-architecture-guide.md) — current workflow execution model.
+- [Distributed runtime](docs/enterprise-distributed-runtime-design.md) — current roles, leases, fencing, and recovery.
 
 ## Development
 
-~~~bash
+```bash
 make build
 make test
 go test ./... -race -cover
 go vet ./...
-~~~
-
-Key documentation:
-
-- docs/README.md — status-aware documentation index
-- docs/workflow-architecture-guide.md — workflow engine architecture
-- docs/enterprise-distributed-runtime-design.md — distributed runtime roles and leases
-- docs/core-module-boundary-and-cross-layer-contracts.md — API, domain, persistence, and Kubernetes boundaries
-- examples/ — HTTP request payloads and operational examples
+```
 
 ## License
 
-Eruun is licensed under the MIT License. See LICENSE.
+Eruun is licensed under the MIT License. See [LICENSE](LICENSE).
