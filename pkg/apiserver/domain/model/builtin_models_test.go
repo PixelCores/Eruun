@@ -22,7 +22,7 @@ func TestBuiltinModelsReturnsOrderedIsolatedSnapshots(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, []string{
-		"eruun_users", "eruun_identities", "eruun_sessions", "eruun_session_refresh_tokens", "eruun_workspaces", "eruun_workspace_members", "eruun_workspace_invitations",
+		"eruun_users", "eruun_identities", "eruun_sessions", "eruun_workspaces", "eruun_workspace_members", "eruun_workspace_invitations",
 		"eruun_applications",
 		"eruun_app_components",
 		"eruun_workflow",
@@ -64,7 +64,7 @@ func TestBuiltinModelsSupportsConcurrentSnapshots(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			models, err := BuiltinModels()
-			if err == nil && len(models) != 17 {
+			if err == nil && len(models) != 16 {
 				err = &unexpectedBuiltinModelCount{count: len(models)}
 			}
 			errors <- err

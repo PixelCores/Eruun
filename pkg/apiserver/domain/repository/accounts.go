@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -26,8 +27,6 @@ func (r Accounts) One(ctx context.Context, query datastore.Entity) error {
 		*q = *rows[0].(*model.Identity)
 	case *model.Session:
 		*q = *rows[0].(*model.Session)
-	case *model.SessionRefreshToken:
-		*q = *rows[0].(*model.SessionRefreshToken)
 	case *model.Workspace:
 		*q = *rows[0].(*model.Workspace)
 	case *model.WorkspaceMember:
@@ -38,6 +37,18 @@ func (r Accounts) One(ctx context.Context, query datastore.Entity) error {
 		return fmt.Errorf("unsupported account query %T", query)
 	}
 	return nil
+}
+
+func (r Accounts) CurrentDatabaseTime(ctx context.Context) (time.Time, error) {
+	clock, ok := r.Store.(datastore.DatabaseClock)
+	if !ok {
+		return time.Time{}, fmt.Errorf("accounts require database clock")
+	}
+	now, err := clock.CurrentDatabaseTime(ctx)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("read accounts database clock: %w", err)
+	}
+	return now.UTC(), nil
 }
 
 func (r Accounts) Transaction(ctx context.Context, fn func(Accounts) error) error {

@@ -29,6 +29,31 @@ type testDelivery struct {
 	fail             bool
 }
 
+type refreshLookupBarrierStore struct {
+	datastore.DataStore
+	arrived chan<- struct{}
+	release <-chan struct{}
+}
+
+func (s *refreshLookupBarrierStore) List(ctx context.Context, entity datastore.Entity, options *datastore.ListOptions) ([]datastore.Entity, error) {
+	rows, err := s.DataStore.List(ctx, entity, options)
+	if err == nil {
+		if session, ok := entity.(*model.Session); ok && session.RefreshFamilyHash != "" {
+			s.arrived <- struct{}{}
+			<-s.release
+		}
+	}
+	return rows, err
+}
+
+func (s *refreshLookupBarrierStore) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	return s.DataStore.(datastore.ReadCommittedTransactional).WithReadCommittedTransaction(ctx, fn)
+}
+
+func (s *refreshLookupBarrierStore) CurrentDatabaseTime(ctx context.Context) (time.Time, error) {
+	return s.DataStore.(datastore.DatabaseClock).CurrentDatabaseTime(ctx)
+}
+
 func (d *testDelivery) SendCode(_ context.Context, _, _, code string) error {
 	d.code = code
 	if d.fail {
@@ -52,7 +77,7 @@ func testAccounts(t *testing.T) (*Service, *miniredis.Miniredis, *testDelivery) 
 	require.NoError(t, err)
 	conn.SetMaxOpenConns(1)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Identity{}, &model.Session{}, &model.SessionRefreshToken{}, &model.Workspace{}, &model.WorkspaceMember{}, &model.WorkspaceInvitation{}, &model.SystemSetting{}, &model.Applications{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Identity{}, &model.Session{}, &model.Workspace{}, &model.WorkspaceMember{}, &model.WorkspaceInvitation{}, &model.SystemSetting{}, &model.Applications{}))
 	r := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: r.Addr()})
 	t.Cleanup(func() { _ = client.Close() })
@@ -211,14 +236,30 @@ func TestSessionRotationResetAndDisable(t *testing.T) {
 	require.Equal(t, other.User.ID, remaining.User.ID, "revoking one user's sessions must preserve another user's sessions")
 }
 
-func TestRefreshReplayRevokesLatestSessionGeneration(t *testing.T) {
+func TestRefreshRotationKeepsConstantStateAndReplayRevokesLatestGeneration(t *testing.T) {
 	s, _, d := testAccounts(t)
 	ctx := context.Background()
 	first, _ := registerTestUser(t, s, d, "email", "replay@example.com")
-	second, err := s.Refresh(ctx, first.RefreshToken)
+	familyHash, _, family, ok := parseRefreshToken(first.RefreshToken)
+	require.True(t, ok)
+	require.Len(t, first.RefreshToken, refreshTokenLength)
+	latest := first
+	for range 100 {
+		var err error
+		latest, err = s.Refresh(ctx, latest.RefreshToken)
+		require.NoError(t, err)
+		_, _, rotatedFamily, valid := parseRefreshToken(latest.RefreshToken)
+		require.True(t, valid)
+		require.Equal(t, family, rotatedFamily)
+	}
+
+	sessions, err := s.Repo.Store.Count(ctx, &model.Session{}, nil)
 	require.NoError(t, err)
-	latest, err := s.Refresh(ctx, second.RefreshToken)
-	require.NoError(t, err)
+	require.EqualValues(t, 1, sessions)
+	current := &model.Session{RefreshFamilyHash: familyHash}
+	require.NoError(t, s.Repo.One(ctx, current))
+	require.Equal(t, tokenHash(latest.RefreshToken), current.RefreshHash)
+	require.NotEqual(t, latest.RefreshToken, current.RefreshHash)
 
 	_, err = s.Refresh(ctx, first.RefreshToken)
 	require.ErrorIs(t, err, bcode.ErrUnauthorized)
@@ -227,12 +268,9 @@ func TestRefreshReplayRevokesLatestSessionGeneration(t *testing.T) {
 	_, err = s.Refresh(ctx, latest.RefreshToken)
 	require.ErrorIs(t, err, bcode.ErrUnauthorized)
 
-	sessions, err := s.Repo.Store.Count(ctx, &model.Session{}, nil)
+	sessions, err = s.Repo.Store.Count(ctx, &model.Session{}, nil)
 	require.NoError(t, err)
 	require.Zero(t, sessions)
-	used, err := s.Repo.Store.Count(ctx, &model.SessionRefreshToken{}, nil)
-	require.NoError(t, err)
-	require.Zero(t, used)
 }
 
 func TestConcurrentRefreshReplayRevokesWinner(t *testing.T) {
@@ -240,7 +278,9 @@ func TestConcurrentRefreshReplayRevokesWinner(t *testing.T) {
 	ctx := context.Background()
 	first, _ := registerTestUser(t, s, d, "email", "concurrent-replay@example.com")
 
-	start := make(chan struct{})
+	arrived := make(chan struct{}, 2)
+	release := make(chan struct{})
+	s.Repo.Store = &refreshLookupBarrierStore{DataStore: s.Repo.Store, arrived: arrived, release: release}
 	results := make([]*Login, 2)
 	errs := make([]error, 2)
 	var wg sync.WaitGroup
@@ -248,11 +288,19 @@ func TestConcurrentRefreshReplayRevokesWinner(t *testing.T) {
 		wg.Add(1)
 		go func(index int) {
 			defer wg.Done()
-			<-start
 			results[index], errs[index] = s.Refresh(ctx, first.RefreshToken)
 		}(i)
 	}
-	close(start)
+	for range results {
+		select {
+		case <-arrived:
+		case <-time.After(5 * time.Second):
+			close(release)
+			wg.Wait()
+			t.Fatal("refresh requests did not both complete the stale pre-transaction lookup")
+		}
+	}
+	close(release)
 	wg.Wait()
 
 	winners := 0
@@ -271,29 +319,48 @@ func TestConcurrentRefreshReplayRevokesWinner(t *testing.T) {
 func TestRefreshIdleTimeout(t *testing.T) {
 	s, _, d := testAccounts(t)
 	ctx := context.Background()
-	now := time.Date(2026, 9, 4, 0, 0, 0, 0, time.UTC)
-	s.Now = func() time.Time { return now }
 	first, _ := registerTestUser(t, s, d, "email", "idle@example.com")
+	familyHash, _, _, ok := parseRefreshToken(first.RefreshToken)
+	require.True(t, ok)
+	session := &model.Session{RefreshFamilyHash: familyHash}
+	require.NoError(t, s.Repo.One(ctx, session))
+	now, err := s.Repo.CurrentDatabaseTime(ctx)
+	require.NoError(t, err)
+	require.NoError(t, s.Repo.Update(ctx, session, map[string]interface{}{"accessexpiresat": now.Add(-(sessionIdleTTL - accessTTL) + time.Second)}))
 
-	now = now.Add(sessionIdleTTL - time.Second)
 	second, err := s.Refresh(ctx, first.RefreshToken)
 	require.NoError(t, err)
-	now = now.Add(sessionIdleTTL)
+	now, err = s.Repo.CurrentDatabaseTime(ctx)
+	require.NoError(t, err)
+	require.NoError(t, s.Repo.Update(ctx, session, map[string]interface{}{"accessexpiresat": now.Add(-(sessionIdleTTL - accessTTL))}))
 	_, err = s.Refresh(ctx, second.RefreshToken)
 	require.ErrorIs(t, err, bcode.ErrUnauthorized)
+}
+
+func TestSessionLifecycleUsesDatabaseClock(t *testing.T) {
+	s, _, d := testAccounts(t)
+	ctx := context.Background()
+	first, _ := registerTestUser(t, s, d, "email", "database-clock@example.com")
+	s.Now = func() time.Time { return time.Now().UTC().Add(365 * 24 * time.Hour) }
+
+	second, err := s.Refresh(ctx, first.RefreshToken)
+	require.NoError(t, err)
+	_, err = s.Authenticate(ctx, second.AccessToken)
+	require.NoError(t, err)
+	require.NoError(t, s.CleanupExpiredSessions(ctx))
+	_, err = s.Authenticate(ctx, second.AccessToken)
+	require.NoError(t, err)
 }
 
 func TestCleanupExpiredSessions(t *testing.T) {
 	s, _, _ := testAccounts(t)
 	ctx := context.Background()
-	now := time.Date(2026, 9, 4, 0, 0, 0, 0, time.UTC)
-	s.Now = func() time.Time { return now }
+	now, err := s.Repo.CurrentDatabaseTime(ctx)
+	require.NoError(t, err)
 	entities := []datastore.Entity{
-		&model.Session{ID: "live", UserID: "user", AccessHash: strings.Repeat("a", 64), RefreshHash: strings.Repeat("b", 64), AccessExpiresAt: now.Add(accessTTL), ExpiresAt: now.Add(sessionTTL)},
-		&model.Session{ID: "idle", UserID: "user", AccessHash: strings.Repeat("c", 64), RefreshHash: strings.Repeat("d", 64), AccessExpiresAt: now.Add(-(sessionIdleTTL - accessTTL) - time.Second), ExpiresAt: now.Add(sessionTTL)},
-		&model.Session{ID: "absolute", UserID: "user", AccessHash: strings.Repeat("e", 64), RefreshHash: strings.Repeat("f", 64), AccessExpiresAt: now.Add(accessTTL), ExpiresAt: now.Add(-time.Second)},
-		&model.SessionRefreshToken{TokenHash: strings.Repeat("1", 64), SessionID: "live", ExpiresAt: now.Add(sessionTTL)},
-		&model.SessionRefreshToken{TokenHash: strings.Repeat("2", 64), SessionID: "absolute", ExpiresAt: now.Add(-time.Second)},
+		&model.Session{ID: "live", UserID: "user", AccessHash: strings.Repeat("a", 64), RefreshFamilyHash: strings.Repeat("b", 64), RefreshHash: strings.Repeat("c", 64), AccessExpiresAt: now.Add(accessTTL), ExpiresAt: now.Add(sessionTTL)},
+		&model.Session{ID: "idle", UserID: "user", AccessHash: strings.Repeat("d", 64), RefreshFamilyHash: strings.Repeat("e", 64), RefreshHash: strings.Repeat("f", 64), AccessExpiresAt: now.Add(-(sessionIdleTTL - accessTTL) - time.Second), ExpiresAt: now.Add(sessionTTL)},
+		&model.Session{ID: "absolute", UserID: "user", AccessHash: strings.Repeat("1", 64), RefreshFamilyHash: strings.Repeat("2", 64), RefreshHash: strings.Repeat("3", 64), AccessExpiresAt: now.Add(accessTTL), ExpiresAt: now.Add(-time.Second)},
 	}
 	for _, entity := range entities {
 		require.NoError(t, s.Repo.Store.Add(ctx, entity))
@@ -303,8 +370,6 @@ func TestCleanupExpiredSessions(t *testing.T) {
 	require.NoError(t, s.Repo.Store.Get(ctx, &model.Session{ID: "live"}))
 	require.ErrorIs(t, s.Repo.Store.Get(ctx, &model.Session{ID: "idle"}), datastore.ErrRecordNotExist)
 	require.ErrorIs(t, s.Repo.Store.Get(ctx, &model.Session{ID: "absolute"}), datastore.ErrRecordNotExist)
-	require.NoError(t, s.Repo.Store.Get(ctx, &model.SessionRefreshToken{TokenHash: strings.Repeat("1", 64)}))
-	require.ErrorIs(t, s.Repo.Store.Get(ctx, &model.SessionRefreshToken{TokenHash: strings.Repeat("2", 64)}), datastore.ErrRecordNotExist)
 }
 
 func TestPasswordsAndIdentityBinding(t *testing.T) {

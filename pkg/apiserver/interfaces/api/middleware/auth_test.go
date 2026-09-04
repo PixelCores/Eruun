@@ -36,7 +36,7 @@ func middlewareAccounts(t *testing.T) (*account.Service, *access.Store) {
 	require.NoError(t, err)
 	conn.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = conn.Close() })
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Session{}, &model.SessionRefreshToken{}, &model.Workspace{}, &model.WorkspaceMember{}, &model.Applications{}, &model.WorkflowQueue{}, &model.ApplicationComponent{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Session{}, &model.Workspace{}, &model.WorkspaceMember{}, &model.Applications{}, &model.WorkflowQueue{}, &model.ApplicationComponent{}))
 	r := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: r.Addr()})
 	t.Cleanup(func() { _ = client.Close() })
@@ -47,9 +47,10 @@ func middlewareAccounts(t *testing.T) (*account.Service, *access.Store) {
 		u := &model.User{ID: id}
 		token := strings.Repeat(id, 43)
 		sum := sha256.Sum256([]byte(token))
+		refreshFamily := sha256.Sum256([]byte("refresh-family" + token))
 		refresh := sha256.Sum256([]byte("refresh" + token))
 		uid := u.ID
-		for _, e := range []datastore.Entity{u, &model.Session{ID: id, UserID: id, AccessHash: hex.EncodeToString(sum[:]), RefreshHash: hex.EncodeToString(refresh[:]), AccessExpiresAt: time.Now().Add(time.Hour), ExpiresAt: time.Now().Add(time.Hour), AuthenticatedAt: time.Now()}, &model.Workspace{ID: "personal-" + id, OwnerID: id, PersonalUserID: &uid, Kind: "personal", Namespace: "ns-" + id}, &model.WorkspaceMember{ID: "personal-" + id, WorkspaceID: "personal-" + id, UserID: id, Role: "admin"}, &model.Workspace{ID: "team-" + id, OwnerID: id, Kind: "team", Namespace: "team-ns-" + id}, &model.WorkspaceMember{ID: "team-" + id, WorkspaceID: "team-" + id, UserID: id, Role: "admin"}, &model.Applications{ID: "app-" + id, Name: "app-" + id, WorkspaceID: "personal-" + id, Namespace: "ns-" + id}, &model.WorkflowQueue{TaskID: "task-" + id, AppID: "app-" + id}} {
+		for _, e := range []datastore.Entity{u, &model.Session{ID: id, UserID: id, AccessHash: hex.EncodeToString(sum[:]), RefreshFamilyHash: hex.EncodeToString(refreshFamily[:]), RefreshHash: hex.EncodeToString(refresh[:]), AccessExpiresAt: time.Now().Add(time.Hour), ExpiresAt: time.Now().Add(time.Hour), AuthenticatedAt: time.Now()}, &model.Workspace{ID: "personal-" + id, OwnerID: id, PersonalUserID: &uid, Kind: "personal", Namespace: "ns-" + id}, &model.WorkspaceMember{ID: "personal-" + id, WorkspaceID: "personal-" + id, UserID: id, Role: "admin"}, &model.Workspace{ID: "team-" + id, OwnerID: id, Kind: "team", Namespace: "team-ns-" + id}, &model.WorkspaceMember{ID: "team-" + id, WorkspaceID: "team-" + id, UserID: id, Role: "admin"}, &model.Applications{ID: "app-" + id, Name: "app-" + id, WorkspaceID: "personal-" + id, Namespace: "ns-" + id}, &model.WorkflowQueue{TaskID: "task-" + id, AppID: "app-" + id}} {
 			require.NoError(t, raw.Add(ctx, e))
 		}
 	}

@@ -9,7 +9,7 @@ import (
 // BuiltinModels returns a validated, ordered snapshot of models owned by the server.
 func BuiltinModels() ([]Interface, error) {
 	return validateModelSet([]Interface{
-		&User{}, &Identity{}, &Session{}, &SessionRefreshToken{}, &Workspace{}, &WorkspaceMember{}, &WorkspaceInvitation{},
+		&User{}, &Identity{}, &Session{}, &Workspace{}, &WorkspaceMember{}, &WorkspaceInvitation{},
 		&Applications{},
 		&ApplicationComponent{},
 		&Workflow{},

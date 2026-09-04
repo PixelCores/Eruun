@@ -6,7 +6,7 @@
 
 当前项目已经具备常规的认证、会话和授权能力，并非“只有登录 Token、没有授权”：
 
-- 登录后签发 256 bit CSPRNG 随机 opaque access token 和 refresh token；客户端只得到原值，数据库只保存 SHA-256 哈希。
+- 登录后签发 256 bit CSPRNG 随机 opaque access token；refresh token 由稳定的 256 bit 随机族选择器和轮换的 256 bit 随机凭证组成，数据库只保存 SHA-256 哈希。
 - access token 通过 `Authorization: Bearer` 传递，15 分钟过期；refresh token 使用 `Secure`、`HttpOnly`、`SameSite=Lax` Cookie，服务器端会话绝对期限为 30 天。
 - 每次请求从数据库重新读取用户、停用状态、`SecurityVersion` 和空间成员关系；登出撤销当前会话，改密、重置密码和停用账号撤销全部会话。
 - 路由按公开账号接口、私有账号接口、业务接口和健康检查分类；未知业务路由默认拒绝。业务资源还在共享 datastore 边界按 workspace、namespace、AppID 和 taskID 校验归属。
@@ -17,10 +17,10 @@
 
 ## 后续处置
 
-- 每次成功 refresh 都把旧 refresh 的 SHA-256 哈希及其 Session 关系保留到会话 30 天绝对期限；任一旧代 refresh 被重放时，在事务内撤销该 Session 当前 access/refresh，并记录不含令牌值的安全事件。
+- Session 保存稳定的 refresh 族选择器哈希和当前完整 refresh 值哈希；轮换只替换当前值，不新增历史记录。任一旧代 refresh 仍能定位同一 Session，并在完整值哈希不匹配时于事务内撤销当前 access/refresh，同时记录不含令牌值的安全事件。
 - 同一个 refresh 的并发请求仍至多一个返回成功，但后续请求会触发重放响应，因此第一次返回的 token 也会失效；客户端必须保持 single-flight refresh。
 - 增加 7 天 refresh idle timeout。成功 refresh 是活动信号，业务 API 请求不写 Session；30 天绝对期限不滑动。
-- API 角色启动时立即清理绝对或 idle 过期 Session，之后每小时执行；已使用 refresh 哈希在对应绝对期限后清理。
+- API 角色启动时立即清理绝对或 idle 过期 Session，之后每小时执行；签发、认证、刷新和清理统一使用数据库 UTC 时钟。
 - 增加基于实际 Gin 注册结果的完整性测试，要求每条路由恰好属于一个授权类别或显式健康检查例外。
 - 未引入 JWT；原审计关于 JWT 适用边界的结论不变。
 
@@ -175,8 +175,8 @@ Session 只有 30 天绝对期限，没有“连续一段时间未刷新即失�
 ## 原建议顺序与处置结果
 
 1. 已确认重放响应为撤销整个 Session 并要求重新登录。
-2. 已补重放检测、原子撤销、多代与并发刷新测试和安全日志；access token 保持 opaque。
-3. 已采用统一 7 天 refresh idle timeout，并增加 API 角色每小时清理。
+2. 已用 Session 内稳定随机族选择器实现常量级重放检测，并补充原子撤销、多代与确定性并发刷新测试和安全日志；access token 保持 opaque。
+3. 已采用统一 7 天 refresh idle timeout，增加 API 角色每小时清理，并让 Session 生命周期统一使用数据库 UTC 时钟。
 4. 已增加全路由授权策略完整性测试。
 5. JWT 仍只在多资源服务、外部生态或实测性能需求成立时另行设计。
 
@@ -187,7 +187,7 @@ Session 只有 30 天绝对期限，没有“连续一段时间未刷新即失�
 3. 账号停用、成员移除和登出的目标撤销延迟是否必须接近即时，还是可接受 5–15 分钟窗口？
 4. 当前或目标规模下，认证相关数据库查询的 QPS、p95/p99 和错误率是否已有数据？
 
-重放响应与空闲期限已在本 PR 确认为“撤销整个 Session”及普通用户/system admin 统一 7 天。其余答案明确前，本审计仍建议不修改 token 格式。
+重放响应与空闲期限已在本 PR 确认为“撤销整个 Session”及普通用户/system admin 统一 7 天。refresh 已改为不承载业务含义的双随机值格式，以常量级 Session 状态关联令牌族；其余答案明确前，仍不建议把 access token 改为 JWT。
 
 ## 验证证据
 
@@ -202,7 +202,7 @@ Session 只有 30 天绝对期限，没有“连续一段时间未刷新即失�
 - `go vet ./...`：通过；
 - `go test ./... -race -cover`：通过；
 - `go test -race ./pkg/apiserver/domain/service/account ./pkg/apiserver/interfaces/api/middleware ./pkg/apiserver/domain/model ./pkg/apiserver`：通过；
-- refresh 多代重放、并发重放、idle 边界、过期清理及真实路由授权完整性均有新增测试。
+- refresh 常量级持久化、多代重放、确定性并发重放、数据库时钟偏差、idle 边界、过期清理及真实路由授权完整性均有新增测试。
 
 ## 参考标准
 

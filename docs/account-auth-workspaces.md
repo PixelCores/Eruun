@@ -34,7 +34,7 @@ helm upgrade --install eruun deploy/helm/eruun -n eruun-system \
   -f /secure/eruun/values.yaml
 ```
 
-安装脚本使用 `AUTH_CONFIG_FILE=/secure/eruun/accounts.json`，会在目标 namespace 创建同名 Secret；静态清单也引用该 Secret。Helm 拒绝空/占位 Secret 名或空 key；Secret 的内容由每个进程在启动时严格验证。schema migration Job 只迁移数据库，不引导账号、不连接 OAuth。refresh 重放检测新增内部表 `eruun_session_refresh_tokens`；升级时必须先让 Helm pre-upgrade migration Job（或等价的 `migrate-only` 运行）建表，随后处于 `validate` 模式的 API 才会启动。
+安装脚本使用 `AUTH_CONFIG_FILE=/secure/eruun/accounts.json`，会在目标 namespace 创建同名 Secret；静态清单也引用该 Secret。Helm 拒绝空/占位 Secret 名或空 key；Secret 的内容由每个进程在启动时严格验证。schema migration Job 只迁移数据库，不引导账号、不连接 OAuth。refresh 重放检测直接使用 Session 中的族选择器哈希与当前完整 refresh 值哈希，不创建逐次增长的 refresh 历史表。
 
 集群须启用 Pod Security Admission，支持 Restricted v1.34，以及真正执行 NetworkPolicy 的 CNI。本 PR 不安装 CNI 或容器运行时。服务端控制身份有建立空间安全基线、受限 ServiceAccount impersonation 的权限，以及用于空空间检查的资源清单读取权限；普通空间不能控制该身份。
 
@@ -61,9 +61,9 @@ helm upgrade --install eruun deploy/helm/eruun -n eruun-system \
 
 验证码为随机六位数字，5 分钟有效，最多 5 次验证。Redis 原子执行尝试计数、一次性消费和限流：目标 60 秒间隔、10 次/小时，发送 IP 20 次/小时，认证 API IP 60 次/分钟，密码/验证码登录目标 10 次/15 分钟。发送失败明确返回上游错误并删除验证码，不报告已发送。不同用途不能混用验证码。
 
-登录结果的 `data` 包含 `accessToken`、`tokenType: Bearer`、`expiresIn: 900`、`user`。随机令牌在数据库只保存 SHA-256 哈希；access 默认 15 分钟，会话有 7 天 refresh 空闲期限和 30 天绝对期限，成功刷新只推进空闲期限，不延长绝对期限。业务 API 访问不写 Session，也不推进空闲期限。refresh 位于 `__Secure-eruun-refresh` Cookie，Path `/api/v1/auth`，HttpOnly、Secure、SameSite=Lax。每次成功轮换会将旧 refresh 哈希与 Session 的关系保留到绝对期限；任一旧值被重放时，服务端原子撤销该 Session 当前的 access/refresh，并记录不含令牌值的安全事件。因此客户端必须对 refresh 做 single-flight，不能把并发刷新当成普通重试。角色和停用状态每次请求从服务端读取，移除或降权影响后续请求。登出撤销当前会话，改密、重置或停用撤销全部会话。刷新不更新“近期身份验证”时间；敏感操作过期时重新登录。
+登录结果的 `data` 包含 `accessToken`、`tokenType: Bearer`、`expiresIn: 900`、`user`。随机令牌在数据库只保存 SHA-256 哈希；access 默认 15 分钟，会话有 7 天 refresh 空闲期限和 30 天绝对期限，成功刷新只推进空闲期限，不延长绝对期限。业务 API 访问不写 Session，也不推进空闲期限。refresh 位于 `__Secure-eruun-refresh` Cookie，Path `/api/v1/auth`，HttpOnly、Secure、SameSite=Lax。refresh 由稳定的随机族选择器和每次轮换的随机凭证组成；Session 只保存族选择器和当前完整 refresh 值的哈希，轮换不会新增历史行。任一旧值仍能通过族选择器定位当前 Session，随后因完整值哈希不匹配触发原子撤销，并记录不含令牌值的安全事件。因此客户端必须对 refresh 做 single-flight，不能把并发刷新当成普通重试。角色和停用状态每次请求从服务端读取，移除或降权影响后续请求。登出撤销当前会话，改密、重置或停用撤销全部会话。刷新不更新“近期身份验证”时间；敏感操作过期时重新登录。
 
-API 角色启动后立即清理绝对过期或 refresh 空闲过期的 Session，之后每小时重复执行；已使用 refresh 哈希在对应会话的 30 天绝对期限后清理。清理失败会记录错误并在下一周期重试，不改变认证时的 fail-closed 过期判断。
+API 角色启动后立即清理绝对过期或 refresh 空闲过期的 Session，之后每小时重复执行。签发、认证、刷新与清理均使用数据库 UTC 时钟，避免 API 副本时钟偏差提前撤销共享 Session。清理失败会记录错误并在下一周期重试，不改变认证时的 fail-closed 过期判断。
 
 GitHub/Google 使用授权码、PKCE S256、随机 state、浏览器绑定。Google 校验 RS256 签名、issuer、audience、有效期和 nonce；GitHub 每次重新读取稳定数字 ID，不以用户名标识账号。首次第三方登录创建个人空间，仅将提供方确认验证的邮箱绑定为邮箱身份。邮箱与现有账号重复时返回 33002，要求登录原账号再绑定；不会按同名邮箱静默合并账号。第三方凭据或错误正文不返回客户端。
 
@@ -115,7 +115,7 @@ OAuth 前端先 POST start，再导航到 authorizationURL。回调页从当前 
 
 ## 空间与权限
 
-使用用户、身份、会话、空间、成员、邀请六类业务模型；另用内部 Session refresh 记录保留已轮换令牌哈希与会话关系，不保存令牌原值。个人和团队共用空间模型。用户、空间是稳定随机 ID，namespace 为 `eruun-ws-<无连字符空间UUID>`，不包含邮箱和手机号，创建后不可修改。应用只存一份必填 `workspaceID`，组件、工作流、任务通过所属 AppID 确定空间。系统管理员管理用户及集群配置；访问具体空间仍需成员资格。
+使用用户、身份、会话、空间、成员、邀请六类业务模型。Session 保存 refresh 族选择器和当前完整 refresh 值的哈希，不保存令牌原值，也不为每次轮换增加记录。个人和团队共用空间模型。用户、空间是稳定随机 ID，namespace 为 `eruun-ws-<无连字符空间UUID>`，不包含邮箱和手机号，创建后不可修改。应用只存一份必填 `workspaceID`，组件、工作流、任务通过所属 AppID 确定空间。系统管理员管理用户及集群配置；访问具体空间仍需成员资格。
 
 | 角色 | 资源 | 成员管理 |
 | --- | --- | --- |
@@ -157,7 +157,7 @@ API 资源操作及后台执行使用 namespace 内受限 `eruun-runner` 身份�
 
 沿用 [统一错误契约](api-error-response-contract.md)。401 表示登录/令牌无效，403 为权限不足；33000 输入错误，33001 身份/空间冲突，33002 先登录原账号绑定，33003 验证码无效/过期，33004 限流（429），33005 需近期登录（403），33006 首次改密（403），33007 发送失败（502），33008 空间非空（409）。其他上游失败返回统一 502，内部错误脱敏。
 
-自动化证据覆盖 SQLite 事务与唯一索引、refresh 多代/并发重放撤销、7 天空闲边界、过期会话清理、实际 Gin 路由授权完整性、Redis Lua 消费/并发/过期/限流、两提供方的 HTTP/JWKS 模拟、团队角色及邀请、HTTP 认证与空间过滤、Kubernetes fake client 基线和最终请求校验、延迟任务跨空间拒绝及受限身份、Deployment/StatefulSet 重复部署幂等性、部署模板与安装脚本。SMTP/阿里云通过适配器测试验证协议及失败，不消耗真实消息额度。
+自动化证据覆盖 SQLite 事务与唯一索引、refresh 常量级持久化、多代重放撤销、确定性的并发陈旧预读、数据库时钟偏差、7 天空闲边界、过期会话清理、实际 Gin 路由授权完整性、Redis Lua 消费/并发/过期/限流、两提供方的 HTTP/JWKS 模拟、团队角色及邀请、HTTP 认证与空间过滤、Kubernetes fake client 基线和最终请求校验、延迟任务跨空间拒绝及受限身份、Deployment/StatefulSet 重复部署幂等性、部署模板与安装脚本。SMTP/阿里云通过适配器测试验证协议及失败，不消耗真实消息额度。
 
 真实 GitHub/Google 应用、SMTP/阿里云账号和 Kubernetes 集群由部署环境提供，本地模拟不能代替真实联调。部署验收应分别记录：两提供方真实回调、邮件/短信实际投递、两个空间的网络互拒及公共出口、SA impersonation/Pod Security 拒绝、配额、并发首次部署、删除空 namespace。配置 Secret 不纳入 PR，不自动操作现有开发数据库。
 
