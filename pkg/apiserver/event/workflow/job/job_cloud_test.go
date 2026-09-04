@@ -116,6 +116,32 @@ func (r *fakeCloudActionRegistry) SupportedActions() []string {
 	return out
 }
 
+func TestRegisterBuiltinCloudProvidersPreservesRegisteredReplacement(t *testing.T) {
+	resetCloudProvidersForTest()
+	defer restoreBuiltinCloudProvidersForTest()
+
+	replacement := &fakeCloudProvider{name: "aliyun"}
+	RegisterCloudProvider(replacement)
+	registerBuiltinCloudProviders()
+
+	provider, exists := getCloudProvider("aliyun")
+	require.True(t, exists)
+	require.Same(t, replacement, provider)
+}
+
+func TestRegisterBuiltinCloudProvidersRegistersAliyunWhenMissing(t *testing.T) {
+	resetCloudProvidersForTest()
+	defer restoreBuiltinCloudProvidersForTest()
+
+	registerBuiltinCloudProviders()
+
+	provider, exists := getCloudProvider("aliyun")
+	require.True(t, exists)
+	require.NotNil(t, provider)
+	require.Equal(t, "aliyun", provider.Name())
+	require.NotEmpty(t, provider.SupportedActions())
+}
+
 type fakeCloudRuntime struct {
 	result *CloudJobResult
 	err    error

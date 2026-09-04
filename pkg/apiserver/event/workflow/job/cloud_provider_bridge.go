@@ -11,6 +11,9 @@ func init() {
 }
 
 func registerBuiltinCloudProviders() {
+	if _, exists := wfcloudjob.GetCloudProvider(wfaliyun.ProviderName); exists {
+		return
+	}
 	wfcloudjob.RegisterCloudProvider(wfaliyun.NewProvider())
 }
 
