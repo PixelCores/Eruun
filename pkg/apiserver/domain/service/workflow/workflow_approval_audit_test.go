@@ -2,29 +2,15 @@ package workflow
 
 import (
 	"context"
-
-	"sync/atomic"
 	"testing"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/stretchr/testify/require"
-
-	approvaltimeout "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/approvaltimeout"
-
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	"github.com/stretchr/testify/require"
 )
 
 func TestApproveWorkflowTaskContinue(t *testing.T) {
-	var timeoutCancelled int32
-	timerID := approvaltimeout.Register("task-approve-1", func() {
-		atomic.AddInt32(&timeoutCancelled, 1)
-	})
-	require.NotZero(t, timerID)
-	t.Cleanup(func() {
-		approvaltimeout.Cancel("task-approve-1")
-	})
-
 	store := &statusDataStore{
 		task: &model.WorkflowQueue{
 			TaskID:              "task-approve-1",
@@ -45,7 +31,6 @@ func TestApproveWorkflowTaskContinue(t *testing.T) {
 	require.Equal(t, 2, store.task.CurrentStep)
 	require.False(t, store.task.ApprovalPending)
 	require.Equal(t, "", store.task.PendingApprovalStep)
-	require.Equal(t, int32(1), atomic.LoadInt32(&timeoutCancelled))
 }
 
 func TestApproveWorkflowTaskHidesResourceImportTasks(t *testing.T) {

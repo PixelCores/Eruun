@@ -20,7 +20,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/cancelsignal"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
-	approvaltimeout "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/approvaltimeout"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
@@ -1124,7 +1123,6 @@ func (w *workflowServiceImpl) ApproveWorkflowTask(ctx context.Context, taskID, a
 		if !swapped {
 			return nil, bcode.ErrWorkflowTaskNotAwaitingApproval
 		}
-		approvaltimeout.Cancel(taskID)
 		return &apis.TaskApprovalResponse{
 			TaskID: task.TaskID,
 			Action: normalizedAction,
@@ -1159,7 +1157,6 @@ func (w *workflowServiceImpl) ApproveWorkflowTask(ctx context.Context, taskID, a
 	}); err != nil {
 		return nil, err
 	}
-	approvaltimeout.Cancel(taskID)
 	task.Status = config.StatusCancelled
 	task.ApprovalPending = false
 	task.PendingApprovalStep = ""
@@ -1251,7 +1248,6 @@ func (w *workflowServiceImpl) cancelWorkflowTaskIfStatus(ctx context.Context, ta
 	task.CancelSource = config.CancelSourceUser
 	task.ApprovalPending = false
 	task.PendingApprovalStep = ""
-	approvaltimeout.Cancel(task.TaskID)
 	if redisClient == nil {
 		var err error
 		redisClient, err = cancelsignal.RedisClientForCancelSignal(ctx, w.Cache)
