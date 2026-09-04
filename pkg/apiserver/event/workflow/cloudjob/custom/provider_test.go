@@ -25,18 +25,16 @@ func (f *fakeCloudRuntime) Call(_ context.Context, action string, params map[str
 
 func TestProviderResolveActionAndWhitelist(t *testing.T) {
 	provider := NewProvider()
-	registry := provider.ActionRegistry()
-	require.NotNil(t, registry)
 
-	action, ok := registry.ResolveAction(ActionEcho)
+	action, ok := provider.ResolveAction(ActionEcho)
 	require.True(t, ok)
 	require.NotNil(t, action)
 
-	unknown, found := registry.ResolveAction("custom.unknown")
+	unknown, found := provider.ResolveAction("custom.unknown")
 	require.False(t, found)
 	require.Nil(t, unknown)
 
-	require.ElementsMatch(t, []string{ActionEcho}, registry.SupportedActions())
+	require.ElementsMatch(t, []string{ActionEcho}, provider.SupportedActions())
 }
 
 func TestProviderRuntimeTemplateReturnsNotImplemented(t *testing.T) {

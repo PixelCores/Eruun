@@ -23,7 +23,7 @@ type fakeCloudProvider struct {
 	runtime    CloudRuntime
 	runtimeErr error
 	req        *CloudJobRequest
-	registry   CloudActionRegistry
+	registry   *fakeCloudActionRegistry
 	newRuntime func(context.Context, *CloudJobRequest) (CloudRuntime, error)
 }
 
@@ -78,8 +78,18 @@ func TestCloudJobCtlRunInjectsDataStoreIntoProviderContext(t *testing.T) {
 	require.Same(t, store, wfcloudcontract.DataStoreFromContext(provider.ctx))
 }
 
-func (f *fakeCloudProvider) ActionRegistry() CloudActionRegistry {
-	return f.registry
+func (f *fakeCloudProvider) ResolveAction(action string) (CloudAction, bool) {
+	if f == nil || f.registry == nil {
+		return nil, false
+	}
+	return f.registry.ResolveAction(action)
+}
+
+func (f *fakeCloudProvider) SupportedActions() []string {
+	if f == nil || f.registry == nil {
+		return nil
+	}
+	return f.registry.SupportedActions()
 }
 
 type fakeCloudActionRegistry struct {

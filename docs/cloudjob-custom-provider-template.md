@@ -15,7 +15,7 @@
 建议按如下结构组织自定义 provider：
 
 - `constants.go`：provider/action/param/state 常量
-- `provider.go`：实现 `CloudProvider` 与 `ActionRegistry`
+- `provider.go`：实现 `cloudjob.CloudProvider`，并在 provider 内维护 action 白名单
 - `runtime.go`：provider runtime 适配占位实现
 - `action_*.go`：每个 action 一个文件（避免聚合大文件）
 - `*_test.go`：provider/action 单测
@@ -31,7 +31,7 @@
 ## 接入步骤
 
 1. 复制 `custom` 包作为你的 provider 起点，重命名 `ProviderName` 和 action 常量。
-2. 在 `provider.go` 的 `factories` 中显式注册你允许的 action。
+2. 在 `provider.go` 的 action map 中显式注册你允许的 action，并通过 `ResolveAction` / `SupportedActions` 暴露统一行为。
 3. 在 `runtime.go` 中接入真实依赖，并实现 `CloudRuntime.Call`。
 4. 按 action 维度拆分文件，在 `Run` 中维护 `state + requeueAfter` 状态机。
 5. 在初始化入口注册 provider：`cloudjob.RegisterCloudProvider(yourprovider.NewProvider())`。
@@ -72,7 +72,7 @@ func init() {
 ## 扩展约束与建议
 
 - action 命名建议：`<provider>.<domain>.<verb>`，例如 `custom.storage.ensure_bucket`。
-- 强约束白名单：只允许 `ActionRegistry` 注册过的 action。
+- 强约束白名单：只允许 provider action map 注册过的 action。
 - `Validate` 中提前校验必填参数，避免把参数错误推迟到 SDK 侧。
 - `Run` 中显式处理三类返回：
   - 完成：`Done=true`

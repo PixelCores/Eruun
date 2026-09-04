@@ -2,7 +2,6 @@ package contracts
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 )
 
@@ -59,27 +58,6 @@ type CloudAction interface {
 
 // CloudActionFactory builds a CloudAction implementation on demand.
 type CloudActionFactory func() CloudAction
-
-// CloudActionRegistry defines action lookup behavior for one provider.
-type CloudActionRegistry interface {
-	ResolveAction(action string) (CloudAction, bool)
-	SupportedActions() []string
-}
-
-// CloudProvider defines the provider-facing factory contract.
-type CloudProvider interface {
-	Name() string
-	NewRuntime(ctx context.Context, req *CloudJobRequest) (CloudRuntime, error)
-	ActionRegistry() CloudActionRegistry
-}
-
-// CloudProviderSettingSupport defines optional system_setting integration for one cloud provider.
-type CloudProviderSettingSupport interface {
-	SystemSettingType() string
-	NormalizeSystemSettingValue(value json.RawMessage) (json.RawMessage, error)
-	SanitizeSystemSettingValue(value json.RawMessage) json.RawMessage
-	ValidateSystemSettingConnectivity(ctx context.Context, value json.RawMessage) error
-}
 
 func CloneCloudParams(src map[string]interface{}) map[string]interface{} {
 	if len(src) == 0 {

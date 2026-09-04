@@ -81,7 +81,11 @@ func (f *fakeCloudSettingProvider) NewRuntime(context.Context, *wfcloudcontract.
 	return nil, nil
 }
 
-func (f *fakeCloudSettingProvider) ActionRegistry() wfcloudcontract.CloudActionRegistry {
+func (f *fakeCloudSettingProvider) ResolveAction(string) (wfcloudcontract.CloudAction, bool) {
+	return nil, false
+}
+
+func (f *fakeCloudSettingProvider) SupportedActions() []string {
 	return nil
 }
 
@@ -119,14 +123,14 @@ func registerAliyunCloudSettingProvider(t *testing.T, connectivityErr error) *fa
 	}
 	wfcloudjob.ResetCloudProvidersForTest()
 	wfcloudjob.RegisterCloudProvider(provider)
-	t.Cleanup(wfcloudjob.RestoreBuiltinCloudProvidersForTest)
+	t.Cleanup(wfcloudjob.ResetCloudProvidersForTest)
 	return provider
 }
 
 func resetCloudProviderRegistryForTest(t *testing.T) {
 	t.Helper()
 	wfcloudjob.ResetCloudProvidersForTest()
-	t.Cleanup(wfcloudjob.RestoreBuiltinCloudProvidersForTest)
+	t.Cleanup(wfcloudjob.ResetCloudProvidersForTest)
 }
 
 func TestSystemSettingService_CreateAndGet(t *testing.T) {

@@ -2,8 +2,17 @@ package job
 
 import (
 	wfcloudjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob"
+	wfaliyun "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob/aliyun"
 	wfcloudcontract "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob/contracts"
 )
+
+func init() {
+	registerBuiltinCloudProviders()
+}
+
+func registerBuiltinCloudProviders() {
+	wfcloudjob.RegisterCloudProvider(wfaliyun.NewProvider())
+}
 
 type CloudJobInfo = wfcloudcontract.CloudJobInfo
 type CloudJobRequest = wfcloudcontract.CloudJobRequest
@@ -12,8 +21,7 @@ type CloudJobResult = wfcloudcontract.CloudJobResult
 type CloudRuntime = wfcloudcontract.CloudRuntime
 type CloudActionProgress = wfcloudcontract.CloudActionProgress
 type CloudAction = wfcloudcontract.CloudAction
-type CloudActionRegistry = wfcloudcontract.CloudActionRegistry
-type CloudProvider = wfcloudcontract.CloudProvider
+type CloudProvider = wfcloudjob.CloudProvider
 
 var (
 	errCloudProviderNotFound = wfcloudjob.ErrCloudProviderNotFound
@@ -37,5 +45,6 @@ func resetCloudProvidersForTest() {
 }
 
 func restoreBuiltinCloudProvidersForTest() {
-	wfcloudjob.RestoreBuiltinCloudProvidersForTest()
+	wfcloudjob.ResetCloudProvidersForTest()
+	registerBuiltinCloudProviders()
 }

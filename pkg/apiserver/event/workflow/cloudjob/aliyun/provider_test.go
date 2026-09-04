@@ -180,20 +180,18 @@ func int64Ptr(value int64) *int64 {
 
 func TestProviderResolveActionBuiltins(t *testing.T) {
 	provider := NewProvider()
-	registry := provider.ActionRegistry()
-	require.NotNil(t, registry)
 
 	for _, actionName := range []string{
 		ActionNasEnsureFilesystem,
 		ActionNasEnsureMountTarget,
 		ActionK8sEnsureStorageClass,
 	} {
-		action, ok := registry.ResolveAction(actionName)
+		action, ok := provider.ResolveAction(actionName)
 		require.True(t, ok)
 		require.NotNil(t, action)
 	}
 
-	supported := registry.SupportedActions()
+	supported := provider.SupportedActions()
 	require.ElementsMatch(t, []string{
 		ActionNasEnsureFilesystem,
 		ActionNasEnsureMountTarget,
@@ -203,10 +201,8 @@ func TestProviderResolveActionBuiltins(t *testing.T) {
 
 func TestProviderResolveActionUnknownStrictWhitelist(t *testing.T) {
 	provider := NewProvider()
-	registry := provider.ActionRegistry()
-	require.NotNil(t, registry)
 
-	action, ok := registry.ResolveAction("custom.action")
+	action, ok := provider.ResolveAction("custom.action")
 	require.False(t, ok)
 	require.Nil(t, action)
 }

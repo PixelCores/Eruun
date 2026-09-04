@@ -96,15 +96,7 @@ func (c *CloudJobCtl) Run(ctx context.Context) error {
 		c.job.Status = config.StatusFailed
 		return err
 	}
-	registry := provider.ActionRegistry()
-	if registry == nil {
-		err := fmt.Errorf("cloud provider %q action registry is nil", providerName)
-		setCloudJobCheckpoint(c.job, info, request, nil, nil, config.StatusFailed, err)
-		c.job.Status = config.StatusFailed
-		return err
-	}
-
-	cloudAction, found := registry.ResolveAction(action)
+	cloudAction, found := provider.ResolveAction(action)
 	if !found || cloudAction == nil {
 		err := fmt.Errorf("%w: %s/%s", errCloudActionNotFound, providerName, action)
 		setCloudJobCheckpoint(c.job, info, request, nil, nil, config.StatusFailed, err)
