@@ -102,7 +102,7 @@ GET /api/v1/resource-import/jobs/:taskID
 }
 ```
 
-执行中的任务没有 `result`；失败任务返回终态 `status` 和脱敏后的 `error`。如果失败发生在 JobInfo 创建前（例如 URL 策略、控制器或 workspace 初始化失败），任务仍会通过 WorkflowQueue 返回统一的 `resource import job failed before execution`，不会暴露基础设施错误详情。
+执行中的任务没有 `result`；执行失败统一返回 `resource import job failed`。如果失败发生在 JobInfo 创建前（例如 URL 策略、控制器或 workspace 初始化失败），任务仍会通过 WorkflowQueue 返回 `resource import job failed before execution`。两种错误都不会暴露基础设施详情。
 
 ## 提交纳管任务
 

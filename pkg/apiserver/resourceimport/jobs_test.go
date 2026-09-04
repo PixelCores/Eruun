@@ -303,6 +303,29 @@ func TestGetResourceImportJobExposesSafePreExecutionFailure(t *testing.T) {
 	assert.Empty(t, response.Error)
 }
 
+func TestGetResourceImportJobRedactsExecutionFailure(t *testing.T) {
+	store := newResourceImportJobStore()
+	store.tasks["scan-failed"] = &model.WorkflowQueue{
+		TaskID:      "scan-failed",
+		WorkspaceID: "workspace-1",
+		Type:        config.WorkflowTaskTypeResourceImportScan,
+		Status:      config.StatusFailed,
+	}
+	store.jobs = append(store.jobs, &model.JobInfo{
+		ID:          1,
+		TaskID:      "scan-failed",
+		WorkspaceID: "workspace-1",
+		Status:      string(config.StatusFailed),
+		Error:       "dial tcp mysql.internal:3306: connection refused",
+	})
+	service := &serviceImpl{Store: store}
+
+	response, err := service.GetJob(resourceImportTestContext(), "scan-failed")
+	require.NoError(t, err)
+	assert.Equal(t, importcontract.ExecutionFailureReason, response.Error)
+	assert.NotContains(t, response.Error, "mysql.internal")
+}
+
 func TestSubmitResourceImportJobDoesNotPersistAfterWorkspaceDeletionWins(t *testing.T) {
 	store := newResourceImportJobStore()
 	store.workspaceLockErr = datastore.ErrRecordNotExist

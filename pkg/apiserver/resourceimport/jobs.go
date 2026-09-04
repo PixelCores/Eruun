@@ -89,7 +89,9 @@ func (s *serviceImpl) GetJob(ctx context.Context, taskID string) (*apisv1.Resour
 		Status: string(task.Status),
 	}
 	if jobInfo != nil {
-		response.Error = strings.TrimSpace(jobInfo.Error)
+		if strings.TrimSpace(jobInfo.Error) != "" {
+			response.Error = importcontract.ExecutionFailureReason
+		}
 		if raw := strings.TrimSpace(jobInfo.Info); raw != "" && json.Valid([]byte(raw)) {
 			response.Result = json.RawMessage(raw)
 		}

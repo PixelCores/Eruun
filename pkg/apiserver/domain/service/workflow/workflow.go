@@ -178,6 +178,9 @@ func (w *workflowServiceImpl) GetTaskStatus(ctx context.Context, taskID string) 
 		}
 		return nil, err
 	}
+	if isResourceImportTaskType(task.Type) {
+		return nil, bcode.ErrWorkflowTaskNotExist
+	}
 
 	componentAggregates := make(map[string]*apis.ComponentTaskStatus)
 	jobEntities, err := w.Store.List(ctx, &model.JobInfo{TaskID: taskID}, &datastore.ListOptions{
@@ -271,6 +274,9 @@ func (w *workflowServiceImpl) GetTaskStages(ctx context.Context, taskID string) 
 			return nil, bcode.ErrWorkflowTaskNotExist
 		}
 		return nil, err
+	}
+	if isResourceImportTaskType(task.Type) {
+		return nil, bcode.ErrWorkflowTaskNotExist
 	}
 
 	jobEntities, err := w.Store.List(ctx, &model.JobInfo{TaskID: taskID}, &datastore.ListOptions{
@@ -1083,6 +1089,9 @@ func (w *workflowServiceImpl) ApproveWorkflowTask(ctx context.Context, taskID, a
 		}
 		return nil, err
 	}
+	if isResourceImportTaskType(task.Type) {
+		return nil, bcode.ErrWorkflowTaskNotExist
+	}
 	if !task.ApprovalPending {
 		return nil, bcode.ErrWorkflowTaskNotAwaitingApproval
 	}
@@ -1162,6 +1171,11 @@ func (w *workflowServiceImpl) ApproveWorkflowTask(ctx context.Context, taskID, a
 		Action: normalizedAction,
 		Status: string(config.StatusCancelled),
 	}, nil
+}
+
+func isResourceImportTaskType(taskType config.WorkflowTaskType) bool {
+	return taskType == config.WorkflowTaskTypeResourceImportScan ||
+		taskType == config.WorkflowTaskTypeResourceImportManage
 }
 
 func (w *workflowServiceImpl) cancelWorkflowTask(ctx context.Context, task *model.WorkflowQueue, userName, reason string) error {

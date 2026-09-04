@@ -5,6 +5,7 @@ import "encoding/json"
 const (
 	TaskEnvelopeVersion       = 1
 	PreExecutionFailureReason = "resource import job failed before execution"
+	ExecutionFailureReason    = "resource import job failed"
 )
 
 // TaskEnvelope is the durable input contract for a one-time resource import

@@ -431,7 +431,12 @@ func (w *WorkflowCtl) run(ctx context.Context, concurrency int) error {
 					if _, err := workspace.PrepareTask(task, taskForGeneration.AppID, w.workspace, w.accountConfig.Workspace); err != nil {
 						failureReason = err.Error()
 						suppressTerminalCallback = true
-						w.mutateTask(func(t *model.WorkflowQueue) { t.Status = config.StatusFailed })
+						w.mutateTask(func(t *model.WorkflowQueue) {
+							t.Status = config.StatusFailed
+							if isResourceImportWorkflowTask(t.Type) {
+								t.SchedulingReason = importcontract.PreExecutionFailureReason
+							}
+						})
 						return err
 					}
 				}
