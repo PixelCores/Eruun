@@ -195,7 +195,7 @@ func (s *Service) TransferWorkspace(ctx context.Context, p *Principal, id, userI
 		if e := r.Update(ctx, previous, map[string]interface{}{"role": "admin"}); e != nil {
 			return e
 		}
-		return r.Update(ctx, w, map[string]interface{}{"owner_id": userID})
+		return r.Update(ctx, w, map[string]interface{}{"ownerid": userID})
 	})
 }
 
@@ -233,7 +233,7 @@ func (s *Service) Invite(ctx context.Context, p *Principal, id, email, role stri
 			if !canAssign(actor, existing.Role) {
 				return bcode.ErrForbidden
 			}
-			if e = r.Update(ctx, existing, map[string]interface{}{"accepted_by": "", "role": role, "token_hash": tokenHash(token), "expires_at": s.Now().UTC().Add(7 * 24 * time.Hour)}); e != nil {
+			if e = r.Update(ctx, existing, map[string]interface{}{"acceptedby": "", "role": role, "tokenhash": tokenHash(token), "expiresat": s.Now().UTC().Add(7 * 24 * time.Hour)}); e != nil {
 				return e
 			}
 			existing.Role = role
@@ -309,7 +309,7 @@ func (s *Service) AcceptInvitation(ctx context.Context, p *Principal, token stri
 		} else if e != nil {
 			return e
 		}
-		if e = r.Update(ctx, current, map[string]interface{}{"accepted_by": p.User.ID}); e != nil {
+		if e = r.Update(ctx, current, map[string]interface{}{"acceptedby": p.User.ID}); e != nil {
 			return e
 		}
 		result = w

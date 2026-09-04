@@ -85,7 +85,7 @@ func (m *Identity) Index() map[string]interface{} {
 		out["id"] = m.ID
 	}
 	if m.UserID != "" {
-		out["user_id"] = m.UserID
+		out["userid"] = m.UserID
 	}
 	if m.Provider != "" {
 		out["provider"] = m.Provider
@@ -105,13 +105,13 @@ func (m *Session) Index() map[string]interface{} {
 		out["id"] = m.ID
 	}
 	if m.UserID != "" {
-		out["user_id"] = m.UserID
+		out["userid"] = m.UserID
 	}
 	if m.AccessHash != "" {
-		out["access_hash"] = m.AccessHash
+		out["accesshash"] = m.AccessHash
 	}
 	if m.RefreshHash != "" {
-		out["refresh_hash"] = m.RefreshHash
+		out["refreshhash"] = m.RefreshHash
 	}
 	return out
 }
@@ -125,7 +125,7 @@ func (m *Workspace) Index() map[string]interface{} {
 		out["id"] = m.ID
 	}
 	if m.OwnerID != "" {
-		out["owner_id"] = m.OwnerID
+		out["ownerid"] = m.OwnerID
 	}
 	if m.Kind != "" {
 		out["kind"] = m.Kind
@@ -145,10 +145,10 @@ func (m *WorkspaceMember) Index() map[string]interface{} {
 		out["id"] = m.ID
 	}
 	if m.WorkspaceID != "" {
-		out["workspace_id"] = m.WorkspaceID
+		out["workspaceid"] = m.WorkspaceID
 	}
 	if m.UserID != "" {
-		out["user_id"] = m.UserID
+		out["userid"] = m.UserID
 	}
 	return out
 }
@@ -162,13 +162,13 @@ func (m *WorkspaceInvitation) Index() map[string]interface{} {
 		out["id"] = m.ID
 	}
 	if m.WorkspaceID != "" {
-		out["workspace_id"] = m.WorkspaceID
+		out["workspaceid"] = m.WorkspaceID
 	}
 	if m.Email != "" {
 		out["email"] = m.Email
 	}
 	if m.TokenHash != "" {
-		out["token_hash"] = m.TokenHash
+		out["tokenhash"] = m.TokenHash
 	}
 	return out
 }

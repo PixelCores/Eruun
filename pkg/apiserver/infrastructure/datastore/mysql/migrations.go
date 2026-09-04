@@ -84,9 +84,11 @@ func migrateApplicationManagementMode(ctx context.Context, db *gorm.DB) error {
 }
 
 func migrateApplicationManagementModeTx(tx *gorm.DB) error {
+	now := tx.NowFunc()
 	marker := &model.SystemSetting{
-		Type:  applicationManagementModeMigrationMarker,
-		Value: json.RawMessage(`{"completed":true}`),
+		Type:      applicationManagementModeMigrationMarker,
+		Value:     json.RawMessage(`{"completed":true}`),
+		BaseModel: model.BaseModel{CreateTime: now, UpdateTime: now},
 	}
 	if err := tx.Create(marker).Error; err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
@@ -198,9 +200,11 @@ func migrateTextOnlySecretSchema(ctx context.Context, db *gorm.DB) error {
 }
 
 func writeSchemaMigrationMarker(ctx context.Context, db *gorm.DB) error {
+	now := db.NowFunc()
 	marker := &model.SystemSetting{
-		Type:  schemaMigrationMarker,
-		Value: json.RawMessage(completedSchemaMigrationJSON),
+		Type:      schemaMigrationMarker,
+		Value:     json.RawMessage(completedSchemaMigrationJSON),
+		BaseModel: model.BaseModel{CreateTime: now, UpdateTime: now},
 	}
 	if err := db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "type"}},
@@ -258,7 +262,12 @@ func migrateSettingFromTable[T any](ctx context.Context, db *gorm.DB, tableName,
 		return nil
 	}
 
-	setting := &model.SystemSetting{Type: settingType, Value: value}
+	now := db.NowFunc()
+	setting := &model.SystemSetting{
+		Type:      settingType,
+		Value:     value,
+		BaseModel: model.BaseModel{CreateTime: now, UpdateTime: now},
+	}
 	if err := db.WithContext(ctx).Create(setting).Error; err != nil {
 		return err
 	}

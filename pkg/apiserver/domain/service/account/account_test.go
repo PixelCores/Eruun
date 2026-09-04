@@ -14,6 +14,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
@@ -45,7 +46,7 @@ func (d *testDelivery) SendInvitation(_ context.Context, _, link string) error {
 
 func testAccounts(t *testing.T) (*Service, *miniredis.Miniredis, *testDelivery) {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "accounts.db")), &gorm.Config{TranslateError: true, Logger: logger.Default.LogMode(logger.Silent)})
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "accounts.db")), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, TranslateError: true, Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
 	conn, err := db.DB()
 	require.NoError(t, err)
@@ -162,6 +163,11 @@ func TestSessionRotationResetAndDisable(t *testing.T) {
 	s, r, d := testAccounts(t)
 	ctx := context.Background()
 	l, p := registerTestUser(t, s, d, "email", "session@example.com")
+	otherLogin, other := registerTestUser(t, s, d, "email", "other@example.com")
+	spaces, err := s.Workspaces(ctx, p)
+	require.NoError(t, err)
+	require.Len(t, spaces, 1)
+	require.Equal(t, p.User.ID, spaces[0].Workspace.OwnerID)
 	newLogin, err := s.Refresh(ctx, l.RefreshToken)
 	require.NoError(t, err)
 	_, err = s.Refresh(ctx, l.RefreshToken)
@@ -194,6 +200,9 @@ func TestSessionRotationResetAndDisable(t *testing.T) {
 	require.ErrorIs(t, err, bcode.ErrUnauthorized)
 	_, err = s.Refresh(ctx, l.RefreshToken)
 	require.ErrorIs(t, err, bcode.ErrUnauthorized)
+	remaining, err := s.Authenticate(ctx, otherLogin.AccessToken)
+	require.NoError(t, err)
+	require.Equal(t, other.User.ID, remaining.User.ID, "revoking one user's sessions must preserve another user's sessions")
 }
 
 func TestPasswordsAndIdentityBinding(t *testing.T) {
@@ -236,10 +245,16 @@ func TestBootstrapDoesNotOverwriteAccounts(t *testing.T) {
 	p, err := s.Authenticate(ctx, first.AccessToken)
 	require.NoError(t, err)
 	require.NoError(t, s.ChangePassword(ctx, p, "changed admin password"))
+	_, err = s.Authenticate(ctx, first.AccessToken)
+	require.ErrorIs(t, err, bcode.ErrUnauthorized)
+	_, err = s.Refresh(ctx, first.RefreshToken)
+	require.ErrorIs(t, err, bcode.ErrUnauthorized)
 	s.Config.BootstrapAdmin.Password = "another deployment password"
 	require.NoError(t, s.Bootstrap(ctx))
-	_, err = s.Login(ctx, "email", "admin@example.com", "changed admin password", "")
+	changed, err := s.Login(ctx, "email", "admin@example.com", "changed admin password", "")
 	require.NoError(t, err)
+	require.False(t, changed.User.MustChangePassword)
+	require.Equal(t, first.User.SecurityVersion+1, changed.User.SecurityVersion)
 	n, err := s.Repo.Store.Count(ctx, &model.User{}, nil)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, n)

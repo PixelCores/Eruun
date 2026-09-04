@@ -232,7 +232,7 @@ func (s *Service) Refresh(ctx context.Context, token string) (*Login, error) {
 		if e != nil {
 			return e
 		}
-		ok, e := r.Store.CompareAndSwap(ctx, session, "refresh_hash", tokenHash(token), map[string]interface{}{"access_hash": tokenHash(a), "refresh_hash": tokenHash(refresh), "access_expires_at": s.Now().UTC().Add(accessTTL)})
+		ok, e := r.Store.CompareAndSwap(ctx, session, "refreshhash", tokenHash(token), map[string]interface{}{"accesshash": tokenHash(a), "refreshhash": tokenHash(refresh), "accessexpiresat": s.Now().UTC().Add(accessTTL)})
 		if e != nil {
 			return e
 		}
@@ -297,7 +297,7 @@ func (s *Service) setPassword(ctx context.Context, userID, hash string, expected
 				return bcode.ErrUnauthorized
 			}
 		}
-		if e := r.Update(ctx, u, map[string]interface{}{"password_hash": hash, "must_change_password": false, "security_version": u.SecurityVersion + 1}); e != nil {
+		if e := r.Update(ctx, u, map[string]interface{}{"passwordhash": hash, "mustchangepassword": false, "securityversion": u.SecurityVersion + 1}); e != nil {
 			return e
 		}
 		return r.Store.DeleteByFilter(ctx, &model.Session{UserID: u.ID}, nil)
@@ -387,7 +387,7 @@ func (s *Service) SetDisabled(ctx context.Context, p *Principal, userID string, 
 		if u.SystemAdmin {
 			return bcode.ErrForbidden
 		}
-		if e := r.Update(ctx, u, map[string]interface{}{"disabled": disabled, "security_version": u.SecurityVersion + 1}); e != nil {
+		if e := r.Update(ctx, u, map[string]interface{}{"disabled": disabled, "securityversion": u.SecurityVersion + 1}); e != nil {
 			return e
 		}
 		return r.Store.DeleteByFilter(ctx, &model.Session{UserID: userID}, nil)

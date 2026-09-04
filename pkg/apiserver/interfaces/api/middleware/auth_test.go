@@ -16,7 +16,9 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/security/access"
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -28,7 +30,7 @@ import (
 
 func middlewareAccounts(t *testing.T) (*account.Service, *access.Store) {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "auth.db")), &gorm.Config{TranslateError: true, Logger: logger.Default.LogMode(logger.Silent)})
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "auth.db")), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, TranslateError: true, Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
 	conn, err := db.DB()
 	require.NoError(t, err)
@@ -101,7 +103,7 @@ func TestAuthRouteMatrixAndImmediateMembershipChanges(t *testing.T) {
 	require.NoError(t, s.Repo.Store.Delete(ctx, member))
 	require.Equal(t, 403, request("GET", "/api/v1/applications", a, "team-b", ""))
 	user := &model.User{ID: "a"}
-	require.NoError(t, s.Repo.Update(ctx, user, map[string]interface{}{"system_admin": true}))
+	require.NoError(t, s.Repo.Update(ctx, user, map[string]interface{}{"systemadmin": true}))
 	require.Equal(t, 403, request("GET", "/api/v1/new-unclassified-route", a, "", ""))
 	require.Equal(t, 200, request("GET", "/api/v1/settings", a, "", ""))
 }
@@ -125,8 +127,11 @@ func TestScopedStoreFiltersBeforePaginationAndDeniesWrites(t *testing.T) {
 	}
 	require.Error(t, store.Add(ctx, &model.ApplicationComponent{Name: "bad", AppID: "app-b", Namespace: "ns-b"}))
 	require.Error(t, store.Add(ctx, &model.ApplicationComponent{Name: "bad", AppID: "app-a", Namespace: "ns-b"}))
-	_, err = store.CompareAndSwap(ctx, &model.Applications{ID: "app-a"}, "id", "app-a", map[string]interface{}{"workspace_id": "personal-b"})
-	require.Error(t, err)
+	_, err = store.CompareAndSwap(ctx, &model.Applications{ID: "app-a"}, "id", "app-a", map[string]interface{}{"workspaceid": "personal-b"})
+	require.ErrorIs(t, err, bcode.ErrForbidden)
+	app := &model.Applications{ID: "app-a"}
+	require.NoError(t, s.Repo.Store.Get(context.Background(), app))
+	require.Equal(t, "personal-a", app.WorkspaceID)
 	n, err := s.Repo.Store.Count(context.Background(), &model.Applications{}, nil)
 	require.NoError(t, err)
 	require.EqualValues(t, 2, n)

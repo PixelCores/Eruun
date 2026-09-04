@@ -132,3 +132,37 @@ func TestGzipCompressesOtherRoutes(t *testing.T) {
 		t.Fatalf("unexpected decompressed body: %q", string(data))
 	}
 }
+
+func TestGzipPreservesResponseStatus(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	r := gin.New()
+	r.Use(Gzip())
+	r.GET("/unauthorized", func(c *gin.Context) {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": http.StatusUnauthorized})
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/unauthorized", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	resp := httptest.NewRecorder()
+	r.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusUnauthorized {
+		t.Fatalf("expected HTTP %d, got %d", http.StatusUnauthorized, resp.Code)
+	}
+	if got := resp.Header().Get("Content-Encoding"); got != "gzip" {
+		t.Fatalf("expected gzip content-encoding, got %q", got)
+	}
+	gz, err := gzip.NewReader(resp.Body)
+	if err != nil {
+		t.Fatalf("create gzip reader: %v", err)
+	}
+	defer gz.Close()
+	data, err := io.ReadAll(gz)
+	if err != nil {
+		t.Fatalf("read gzip body: %v", err)
+	}
+	if string(data) != `{"code":401}` {
+		t.Fatalf("unexpected decompressed body: %q", string(data))
+	}
+}
