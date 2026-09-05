@@ -19,11 +19,13 @@ Start with `docs/README.md` before broad exploration.
 - Traits and naming: `pkg/apiserver/workflow/traits` and `pkg/apiserver/workflow/naming`.
 - External adapters: `pkg/apiserver/infrastructure`.
 - Deployment: `deploy/eruun-stack.yaml`, `deploy/helm/eruun`, and `deploy/all_in_one_install_quickstart.sh`.
-- Tests are colocated as `*_test.go`; behavior/config changes require focused docs and an index update.
+- Tests are colocated as `*_test.go`; documentation requirements are defined under Version and Delivery.
 
 Eruun does not ship a client command-line application. API examples use `curl`, Helm, or Kubernetes tools.
 
 ## Build and Validation
+
+Choose checks by the affected behavior and failure risk. For narrow changes, format touched Go files and run focused package tests. Expand testing for shared contracts or cross-package behavior, and use race testing for affected concurrency or shared state. Run installer and Helm checks when their contracts are affected; required repository and CI checks still apply. After checks pass, broaden or repeat them only for new changes, failures, or unresolved concerns.
 
 - `go run ./cmd/main.go` — run the API server.
 - `go build -o eruun-server ./cmd/main.go` — build the server binary.
@@ -63,7 +65,7 @@ Eruun does not ship a client command-line application. API examples use `curl`, 
 
 ## Version and Delivery
 
-- Behavior, API, configuration, workflow, or deployment changes require docs updates.
+- Update focused docs/examples when public behavior, API, configuration, workflow contracts, deployment, or operational usage changes. Update `docs/README.md` when documents are added, moved, removed, or their navigation/status changes. Internal refactors, tests, formatting, and fixes that restore an already documented contract do not require new docs or index edits.
 - Increment `EruunVersion`, Chart version, appVersion, and the default image tag together for a release change.
 - Commits use `type: short description`. PR text states what/why, risk, and test evidence.
 - Do not commit, push, publish images, create releases, or change repository settings without explicit authorization.
