@@ -1,96 +1,126 @@
-# Eruun Workflow 全局调度方向
+# Eruun Job 全局调度与失败策略
 
-> 状态：Draft / Proposal。本文描述跨 Workflow Run 的优先级、公平性、配额、容量准入和可抢占需求；当前 Scheduler 尚未实现这些策略，本文不定义路由、表字段、固定默认值或唯一算法。
+> 状态：Implemented Reference。本文描述已实现的 Job 级准入与 OOM 失败策略，保留原 Workflow 执行与 ownership 边界。
 
-## 1. 当前事实
+## 1. 适用性结论
 
-当前 Scheduler Leader 周期处理 waiting Workflow，通过数据库 CAS 生成新的 generation/token 后发布 dispatch。Worker 消费消息、认领数据库 lease、执行 Workflow 并维护 heartbeat；Scheduler reaper 回收过期 ownership。
+原设计的数据库事实源、generation/token fencing、Worker heartbeat 和 Scheduler Leader 适用 Eruun，继续使用。原先只以 Workflow Run 为准入单位，不能满足跨 Workflow 排列每一个 Job：长 Workflow 会持续占用执行机会，内部 ready Job 无法与其他 Workflow 竞争。因此本实现把**执行机会的选择下沉到依赖已就绪的 Eruun JobTask**，保留 Workflow 的调度、步骤、审批、取消和恢复 ownership。
 
-当前已经具备：
+不新增 Scheduler 服务、CRD、顶层队列表或另一套执行租约。既有 `JobInfo` 同时保存 Job 执行记录和调度状态；既有 `SystemSetting` 的 `workflow_scheduler` 行保存全局策略，并作为准入事务的串行锁。当前 `scheduler` 角色负责放行，`worker` 负责提交 ready Job、等待准入、执行和释放；API 处理审批取消或拒绝产生的终态回调，也登记并等待同一准入。
 
-- 数据库作为任务状态和执行 ownership 事实源。
-- Redis Streams 或 Kafka 的 at-least-once 派发。
-- generation/token fencing、Worker heartbeat 和过期恢复。
-- Workflow 内部的 StepByStep/DAG、Job priority bucket、审批和取消。
-- 每个 Worker 进程内的并发限制。
+## 2. 开源策略取舍
 
-当前没有跨 Workflow Run 的业务优先级、项目公平性、持久化全局配额、GPU 容量准入或协作式抢占。
+| 参考 | 采用的思想 | Eruun 的选择 |
+| --- | --- | --- |
+| [Kueue ClusterQueue](https://kueue.sigs.k8s.io/docs/concepts/cluster_queue/) | 优先级、FIFO、准入；跳过暂时不能准入的工作 | 空间达到并发上限时可以选择其他空间的 Job，避免队头阻塞 |
+| [Kueue WorkloadPriorityClass](https://kueue.sigs.k8s.io/docs/concepts/workload_priority_class/) | 业务执行优先级独立于 Pod 放置优先级 | `schedulingClass` 控制 Eruun 的执行机会，不映射为 Kubernetes 抢占 |
+| [Volcano Scheduler](https://volcano.sh/docs/scheduler/overview/) | 对 eligible task 分阶段排队和分配 | 保留当前依赖就绪门禁；不引入节点绑定、gang、插件链和另一套资源对象 |
+| [Kubernetes non-preempting priority](https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/#non-preempting-priorityclass) | 高优先级先排队且不驱逐正在执行的工作 | 当前调度非抢占，已获准执行的 Job 可以完成 |
+| [Kubernetes Pod failure policy](https://kubernetes.io/docs/concepts/workloads/controllers/job/#pod-failure-policy) | 按明确的失败原因决定重试或结束 | OOM 以本次 Job 所属 Pod 的容器终止原因识别；重试预算和资源调整由 Eruun 的持久 checkpoint 控制 |
 
-## 2. 设计原则
+以上是策略参考，并不声明 Eruun 实现了 Kueue 的资源公平共享或 Volcano 的 gang scheduling。Eruun 还执行 ConfigMap、PVC、Deployment、清理、回调和资源导入等控制操作，整体引入面向 Pod 的批处理调度器会增加一套队列及 ownership，不能统一覆盖这些工作。
 
-- 调度单位优先保持为 Workflow Run，不把每个 Step、Job 或 Pod 复制到第二份顶层队列。
-- 状态与 slot/配额预留必须以数据库事务或 CAS 为准，不能以消息队列或单个 Scheduler 内存为事实源。
-- 策略影响“谁先执行”，不改变 Workflow 内部步骤、审批、失败清理和 callback 语义。
-- 项目隔离、优先级和容量选择必须可解释，调度原因要进入查询、日志或 trace。
-- 不在没有代表性负载数据时固定全局并发、老化间隔、重试次数或具体公平算法。
+## 3. 调度范围与标记
 
-## 3. 目标能力
+Workflow 中每个 component step 可写 `schedulingClass`，subStep 可覆盖父 step；未指定使用 `normal`。字段随现有 Workflow JSON 保存、查询和生成传播。一个 component 生成的 Service、ConfigMap、PVC、workload 等 Job 都继承该标记。
 
-### 优先级与公平性
+```json
+{
+  "name": "deploy",
+  "workflow": [{
+    "name": "services",
+    "mode": "DAG",
+    "schedulingClass": "high",
+    "subSteps": [
+      {"name": "api", "jobType": "deploy", "components": ["api"]},
+      {"name": "batch", "jobType": "deploy", "components": ["batch"], "schedulingClass": "background"}
+    ]
+  }]
+}
+```
 
-调用方可以表达有限的业务优先级，平台保留系统恢复优先级。相同优先级下，不同 workspace/project 应长期获得与其策略一致的执行份额，单个高流量项目不能永久阻塞其他项目。
+| class | 基础分值 |
+| --- | ---: |
+| `background` | 0 |
+| `normal`（默认） | 50 |
+| `high` | 100 |
 
-老化、防饥饿和权重是候选机制，具体算法必须通过确定性模拟和负载测试选择。公共 API 不应暴露算法内部计数器。
+三类取值固定，未知值拒绝；不新增优先级类管理实体。当前调用方可以在自己的空间中选择任一类，空间并发上限独立于优先级。
 
-### 配额与并发
+原 `JobPriority*` bucket 表达资源依赖顺序，保持不变。Job 只有在前置步骤、审批、资源 bucket 和 Worker 本地并发条件允许执行时才进入全局 ready 队列。优先级不能把后置 Job 提到依赖之前，也不替换当前 StepByStep/DAG 语义。队列排序覆盖已经登记的 ready Job；尚未由 Worker 接管的 Workflow 或尚未到达的步骤没有提前占用 Job 槽位。
 
-平台需要可持久化地约束全局及项目活跃 Workflow 数量。哪些状态占用 slot、审批等待是否释放、Leader 切换后如何重建，都必须成为单一状态机的一部分。
+覆盖范围：普通生成 Job、失败清理、审批通知、终态 callback、资源扫描/纳管、到期 delayed Job 的实际分发。审批通知继承审批 step 的 class；没有用户标记的内部 Job 使用 `normal`。Kubernetes CronJob 创建的后续 batch Job/Pod 属于 Kubernetes 控制器，不是新的 Eruun JobTask。
 
-配额配置的默认值和覆盖范围由部署规模决定；非法或无法执行的策略要明确失败，不能静默退回无限并发。
+## 4. 全局策略与选择规则
 
-### 容量准入
+管理员通过现有系统设置 API 管理 `workflow_scheduler`，无需增加配置接口或每个 Worker 独立配置。启动时仅在缺少该行时初始化默认值，已有值必须合法。该行不能通过系统设置 API 删除。
 
-队列调度回答“哪个 Workflow 获得执行机会”；容量准入回答“该 Workflow 请求的 CPU、内存、GPU、存储或特定设备能否运行”。两者可以串联，但不应耦合成一个不可测试的控制器。
+```json
+{
+  "strategy": "priority",
+  "maxConcurrentJobs": 100,
+  "maxConcurrentJobsPerWorkspace": 10,
+  "agingSeconds": 60
+}
+```
 
-首个容量准入只需要识别明确不可满足或需要等待的平台能力，不替代 Kubernetes Scheduler，也不直接决定 Pod 绑定节点。
+- `strategy`: `priority` 或 `fifo`。
+- 全局并发：1..10000；空间并发：1..全局并发。
+- `agingSeconds`: 1..86400。默认值是明确的保守初值，运维应按 Worker 数量和控制面延迟调整。
+- `priority`: 有效分值 = 基础分值 + floor(数据库等待秒数 / agingSeconds)。分值不封顶，较老的低优先级 Job 可以超过新到的高优先级 Job。
+- 有效分值相同，优先选择当前活动 Job 较少的空间；再按首次入队时间和 Job ID 排 FIFO。这是简单的并发公平规则，不承诺按运行时间或资源消耗加权分配。
+- `fifo`: 按首次入队时间、Job ID 选择；仍跳过达到空间上限的 Job。
+- 两种策略都遵守全局与空间并发上限；每轮最多新放行 100 个 Job。扫描分页，父 Workflow 在同轮复用已读状态。
 
-### Deadline 与取消
+降低上限不终止已有 Job，只阻止后续超额准入。Job 结束或失去 ownership 后释放逻辑槽位。同一调度 generation/status 内的队列重入保留等待时间，不能通过反复消息投递刷新 FIFO 或逃避老化。
 
-任务可以有明确 deadline 或平台排队上限。超过 deadline 的任务进入可解释终态；基础设施恢复、用户取消和业务失败必须保持不同原因，不能互相覆盖。
+**槽位约束的是 Eruun Job 控制器执行并发，不是存量 Pod 的 CPU/内存配额。** Deployment 就绪、CronJob 配置完成或 delayed Job 分发结束后，它们创建的 Kubernetes 资源可以继续存在。Pod 的节点选择、资源可满足性和 ResourceQuota 仍由 Kubernetes 决定。
 
-## 4. Agent 评测与抢占
+## 5. 数据库、恢复和取消
 
-评测可能是长期、低优先级且可以 checkpoint 的任务，但“Agent evaluation”这个名称本身不能赋予可抢占性。
+`JobInfo` 的调度状态为 `queued → admitted → released`，独立于现有业务 `status`。记录 class、基础优先级、首次入队时间、调度原因、当前 Workflow owner generation/status，以及有界 detached 操作的 deadline。沿用既有唯一 `execution_key`，不复制 Job payload 到第二张表。
 
-只有同时满足以下条件才允许设计协作式抢占：
+准入事务先锁定系统策略行，然后在 READ COMMITTED 下读取有效活动数、选择候选和写入 admitted。这样两个 Scheduler 即使在任期切换附近并发运行，也必须顺序重新计算剩余容量。MySQL 使用 matched-row CAS 语义，不能把同毫秒相同值写入产生的零 changed rows 当作 ownership 丢失。
 
-- 任务没有不可补偿的外部副作用。
-- Runner 能生成与输入、目标和执行版本绑定的可验证 checkpoint。
-- 在途请求重复的影响已记录并可接受。
-- 原 Worker 在 checkpoint 成功前继续持有 ownership 和容量。
-- checkpoint 失败时能够恢复原执行，而不是丢失任务或释放仍在使用的资源。
+普通 Job 的入队、准入确认、释放遵守父 Workflow generation/token/worker/status fencing；新准入及执行确认要求有效 running lease。已获准执行的槽位，在同代父 Workflow 仍为 running 时不会只因心跳短暂过期而释放，须等待现有 reaper 撤销 ownership，避免原 Worker 续租后与新 Job 同时占用一个槽位。Callback 可以在 `wait_for_approval` 或终态执行，使用既有 callback timeout 作为有界 deadline。Worker 回调匹配该代 ownership；服务层审批取消/拒绝/超时回调也经过相同准入，即使父任务从未被 Worker 接管，仍按真实父记录的终态、generation、token 和 worker 精确 CAS，不能用空身份绕过。两条终态回调路径共用同一执行键。
 
-具体状态、时限、次数和控制协议由评测实现与负载数据决定，不在本文预设。
+Delayed Job 只有在数据库中存在到期且 pending 的 checkpoint 时才可独立进入队列。它不再依赖已经结束的父 Workflow lease，使用 checkpoint identity 和短期限准入；排队等待沿用已有 dispatcher 轮询，不消耗基础设施失败的指数退避次数。过期 deadline 的重新准入不能被旧 dispatcher 释放。
 
-## 5. 状态与所有权约束
+Worker 等待准入时响应取消与基础设施停止；失去 ownership 后不执行资源操作。Scheduler 会回收已终止、过期或不再属于该代的调度记录。此恢复沿用既有 at-least-once/Kubernetes identity 幂等语义，不承诺外部操作 exactly-once。
 
-任何实现都必须保持：
+## 6. OOM 失败策略
 
-- Scheduler 的选择、容量预留和任务状态变更使用同一个权威数据库边界。
-- dispatch 失败可重试，但不会绕过 generation/token 或重复占用配额。
-- Worker 只有持有当前 ownership 才能写入进度和终态。
-- Leader 切换后可从数据库重建调度视图；内存游标丢失最多影响短期公平性，不影响正确性。
-- 旧任务的迁移和回滚模式需要显式定义，不能让两个 Scheduler 同时生产。
+现有 Workflow `failurePolicy=cleanup_failed|cleanup_all` 仍决定**最终失败后的清理**。新的 component `properties.jobRetryPolicy` 决定立即执行的 `job` 组件在 OOM 后停止、原资源重试或扩容重试：
 
-## 6. 可观测性
+```json
+{
+  "onOOM": "resize",
+  "maxRetries": 2,
+  "backoffSeconds": 5,
+  "memoryGrowthFactor": 2,
+  "cpuGrowthFactor": 2,
+  "maxResources": {"memory": "2Gi", "cpu": "2"}
+}
+```
 
-最低观测面包括：
+- 未配置时保留已有 Kubernetes Job 行为；显式 `{"onOOM":"stop"}` 将 OOM 明确终止。
+- `retry` 要求 `maxRetries` 1..10、`backoffSeconds` 1..3600，资源保持不变。
+- `resize` 另要求 `memoryGrowthFactor` 为 2..4 和 `maxResources.memory`；只增长发生 OOM 的容器的 memory requests/limits。
+- `cpuGrowthFactor` 省略、0 或 1 时 CPU 保持不变；显式设为 2..4 才同步增长 CPU requests/limits，且必须提供 CPU 上限。CPU limit 超额通常触发 throttling，OOM 本身不是 CPU 不足的证据，见 [Kubernetes 资源说明](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/#requests-and-limits)。
+- requests/limits 必须有效，增长不能溢出或突破绝对上限；达到上限、耗尽次数、非 OOM、取消或总 deadline 到达后停止。
+- OOM 判断匹配当前 Job UID/controller owner 和容器的本次 `terminated.reason=OOMKilled`；单独 exit code 137、旧 Pod、`lastTerminationState` 不构成扩容依据。
+- 仅支持同步立即执行的 `job` 组件；scheduled、未来 `startTime`、不适用组件或嵌套容器上的策略显式拒绝，不能静默忽略。
 
-- 各优先级的排队深度和等待时间。
-- 全局及项目 slot/配额使用率。
-- 任务选择、拒绝、等待和恢复原因。
-- dispatch 重试、ownership 冲突、lease 恢复和 Leader 任期。
-- 容量准入的资源类型与不可满足原因。
-- 若实现抢占，其请求、成功、回退和重复工作量。
+显式策略使用 `backoffLimit=0` 和 `restartPolicy=Never`，避免 Kubernetes 与 Eruun 重复计算业务重试。Eruun 在 `JobInfo.InternalInfo` 中保存 attempt、资源快照、旧/当前 UID、退避时间和总 deadline，再删除匹配 UID 的失败 Job，等待旧 Job/Pod 停止后创建下一次尝试。重试期间保留同一逻辑调度槽位，总执行超时包含退避，不为每次尝试重置。
 
-workspace/project 等高基数身份默认进入结构化日志或 trace，不直接作为无界 Prometheus label。
+Workflow lease 恢复会读取已持久的运行中 retry checkpoint，保留原 execution identity、次数、资源与 deadline；不能因为新 generation 而重置预算或再次增长。最终失败才调用既有 Job/Workflow 清理。显式策略执行中不使用 Job TTL 提前删除终态证据，避免数据库结果落盘前丢失 UID 后不确定重放。
 
-## 7. 实施顺序
+## 7. 可观测性和交付边界
 
-1. 采集当前排队、执行时长和资源需求，不改变调度结果。
-2. 增加可持久化的优先级和项目并发策略，以 shadow 模式对比当前选择。
-3. 用确定性测试和代表性负载选择公平算法，再启用强制模式。
-4. 把通用容量准入作为独立门禁接入。
-5. 只有评测 checkpoint 闭环完成并出现真实资源争用后，才增加协作式抢占。
+现有 task stages 查询的 `info` 展示每个已登记 Job 的调度状态、class、首次排队时间与原因。Job 记录保存 attempt 和最终错误；结构化日志说明 OOM 决策与调度错误。Workspace 身份不作为无界 Prometheus label。
 
-升级为 Current 需要 schema/API（如有）、并发 CAS、Leader 切换、消息重复、配额、老化、公平性、deadline、回滚和负载测试证据。
+升级需要先完成 schema migration，再统一升级四角色；新增调度列使用可空字段或明确的零值默认值，不改旧 Job 业务状态。回滚前应停止接收新任务并排空已启用 retry policy 的运行中 Job；旧 Worker 不理解新的准入与 checkpoint，不能混跑并声称全局上限有效。
+
+本实现不包括 GPU/设备容量预留、节点放置、按资源量的配额、gang scheduling、checkpoint 抢占或任务 deadline 公共 API。需要这些能力时再基于明确负载与 Kubernetes 侧资源事实设计，不能把本次逻辑并发槽位解释为这些功能。
+
+验收应覆盖：请求/查询标记、依赖不变、跨 Workflow 顺序与空间上限、老化、重复投递、并发 Scheduler、MySQL matched-row/事务行为、ownership 变化、callback/delay 路径、OOM 识别/资源上限/持久化失败/恢复预算、格式/vet/race/build、部署及既有回归。

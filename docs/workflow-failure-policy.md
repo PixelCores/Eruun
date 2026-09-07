@@ -1,6 +1,6 @@
 # Workflow Failure Policy
 
-> 状态：Current。本文描述 workflow 部署失败后的资源清理策略。该策略只影响部署 job `failed` / `timeout` 的运行时清理，不删除 App、Workflow 或 Component DB 实体。
+> 状态：Current。本文描述 workflow 部署失败后的资源清理，以及即时 Job 的有界 OOM 重试。清理策略影响部署 job `failed` / `timeout` 的运行时资源，不删除 App、Workflow 或 Component DB 实体。
 
 ## 字段
 
@@ -38,6 +38,60 @@
 - `runPolicy` 与 `failurePolicy` 相互独立：前者控制同名 Kubernetes Job 的重建/复用，后者只控制失败后是否扩大为 workflow 全量清理。
 - 字段随现有 Component `properties` JSON 持久化，不新增数据库列或 Kubernetes annotation。
 - 模板 Job 覆盖遵循字段存在性：请求省略 `failurePolicy` 时保留模板值，显式传空值时清除模板 override 并继承 workflow，显式传 `cleanup_failed` 时覆盖模板值。
+
+### 即时 Job 的 OOM 重试
+
+即时 `type=job` 组件可通过 `properties.jobRetryPolicy` 显式启用失败策略。省略该对象时保持原有 Kubernetes Job 运行行为。此字段与最终失败后的 `failurePolicy` 清理范围相互独立；只有重试耗尽、资源上限阻止增长、非 OOM 失败或超时后，才进入最终失败处理。
+
+| 字段 | 取值与行为 |
+| --- | --- |
+| `onOOM` | `stop`：停止；`retry`：保持原资源重试；`resize`：增大资源后重试。其他失败始终停止。 |
+| `maxRetries` | `retry` / `resize` 必填，1–10 次额外执行；总执行次数最多为该值加 1。 |
+| `backoffSeconds` | `retry` / `resize` 必填，1–3600 秒，固定退避。退避、执行和恢复等待均计入同一个持久化的绝对 Job 超时。 |
+| `memoryGrowthFactor` | `resize` 必填，整数 2–4，增长 OOM 容器的 memory requests 和 limits。 |
+| `cpuGrowthFactor` | 可选整数 0–4；省略、0、1 均保持 CPU 不变，2–4 才显式增长 OOM 容器的 CPU requests 和 limits。 |
+| `maxResources` | Kubernetes quantity 对象，仅支持 `memory`、`cpu`。`resize` 必须提供正值 memory 上限；CPU 增长时还必须提供正值 cpu 上限。上限分别约束每个容器的 requests 和 limits。 |
+
+`stop` 不接受其余重试或增长字段；`retry` 不接受资源增长字段。`resize` 要求 Job 模板中每个普通容器与 init container 对待增长资源都预先设置正数 requests 和 limits，并满足 requests ≤ limits ≤ 对应上限。下一次资源按当前值乘以相应因子；任何增长超过上限就停止，不缩减因子或静默截断。只修改本次 OOM 容器，其他容器及未显式选择增长的 CPU 保持原值。
+
+下面的 Job 首次请求 128Mi 内存、限制 256Mi；两次 OOM 后分别变为 256Mi/512Mi、512Mi/1Gi，CPU 保持 100m/200m：
+
+```json
+{
+  "action": "add",
+  "name": "memory-batch",
+  "type": "job",
+  "image": "example/batch:1.0.0",
+  "properties": {
+    "runPolicy": "recreate",
+    "failurePolicy": "cleanup_failed",
+    "jobRetryPolicy": {
+      "onOOM": "resize",
+      "maxRetries": 2,
+      "backoffSeconds": 10,
+      "memoryGrowthFactor": 2,
+      "maxResources": { "memory": "1Gi" }
+    }
+  },
+  "traits": {
+    "resources": {
+      "cpu": "100m",
+      "cpuLimit": "200m",
+      "memory": "128Mi",
+      "memoryLimit": "256Mi"
+    }
+  }
+}
+```
+
+- `jobRetryPolicy` 只支持顶层即时 Job。`startTime` 非零、`scheduledjob`、CloudJob、Deployment 等组件，以及 init container properties 中的该字段，均被写入校验拒绝。Job 中的 init container 若确实 OOM，可由顶层策略增长其资源。
+- OOM 证据必须来自同一个 Job UID 控制的 Failed Pod，且当前容器终止原因是 `OOMKilled`。单独的退出码 137、CPU throttling、eviction、上一次重启的 OOM、同名但其他 Job UID 的 Pod 均不会触发增长。注入到 Pod、但不存在于提交的 Job 模板中的 OOM 容器无法 resize，执行停止。
+- 显式启用后设置 Kubernetes `backoffLimit=0`、`restartPolicy=Never`，由 Eruun 统一计数。已有未完成 Job 若要切换到该策略，必须显式 `runPolicy=recreate`；已完成 Job 仍可由 `skip_if_completed` 跳过。
+- 策略随 Component properties 持久化并写入 `eruun.io/job-retry-policy` annotation；每次执行写入 `eruun.io/job-attempt`。实际资源与次数保存在原有 `JobInfo.InternalInfo` / `Attempt`，不会回写 Component 配置或修改 Deployment、StatefulSet、CronJob。
+- 首次创建和每次重试之前保存受 workflow generation/token 保护的 checkpoint。恢复保留目标 Job、次数、退避时间、超时及 UID；删除旧 Job 使用 UID/resourceVersion 前置条件，等待旧 UID Job 消失及其 Pod 终止后才创建下一次。已确认创建的 UID 消失或被同名其他对象替换时拒绝自动重放，进入基础设施恢复处理。
+- 启用策略的 Job 关闭自动 TTL 删除，保留成功 Job 及 Pod 作为恢复证据；失败时仍执行原有清理，成功资源由后续 `runPolicy` 或显式组件清理回收。策略省略时原有 TTL 默认值保持不变。
+- 重试会再次运行该 Job 的完整程序；程序须自行保证外部写入可安全重复。调度器不能撤销一次失败执行已经写出的数据库、文件或第三方服务副作用。
+- 模板请求省略 `jobRetryPolicy` 时保留模板策略，传入对象时整体覆盖；`/version update` 沿用 Properties 整体替换语义，显式提供的 properties 不含该对象时清除已有策略。
 
 ## 请求格式
 

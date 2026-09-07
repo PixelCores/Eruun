@@ -34,6 +34,49 @@ type resultOutboxTestStore struct {
 	rejectTransitions map[string]int
 }
 
+// These result/dispatcher tests assume available scheduler capacity. Admission
+// policy and transaction isolation are exercised against SQL in repository tests.
+func (s *resultOutboxTestStore) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return fn(s)
+}
+
+func (s *resultOutboxTestStore) CurrentDatabaseTime(ctx context.Context) (time.Time, error) {
+	return time.Now().UTC(), ctx.Err()
+}
+
+func seedCommittedDelayTestCheckpoint(t *testing.T, store *resultOutboxTestStore, payload *DelayJobPayload) {
+	t.Helper()
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	var record *model.JobInfo
+	for _, existing := range store.jobInfos {
+		if jobInfoExecutionKey(*existing) == payload.ExecutionKey {
+			record = existing
+			break
+		}
+	}
+	if record == nil {
+		id := len(store.jobInfos) + 1
+		for store.jobInfos[id] != nil {
+			id++
+		}
+		key := payload.ExecutionKey
+		record = &model.JobInfo{ID: id, TaskID: payload.TaskID, ExecutionKey: &key, RunGeneration: payload.RunGeneration, Type: payload.JobType, ServiceName: payload.ServiceName, Status: string(config.StatusDistributed)}
+		store.jobInfos[id] = record
+	}
+	if record.WorkspaceID == "" {
+		record.WorkspaceID = "test-workspace"
+	}
+	record.DelayState = config.JobDelayStatePending
+	record.DelayExecuteAt = payload.ExecuteAt
+	record.DelayPayload = string(raw)
+}
+
 type contextCheckingResultOutboxStore struct {
 	*resultOutboxTestStore
 }
@@ -397,7 +440,11 @@ func (s *resultOutboxTestStore) CompareAndSwapWithConditions(_ context.Context, 
 					return false, nil
 				}
 			case "execution_key":
-				if jobInfoExecutionKey(*current) != fmt.Sprint(value) {
+				key := fmt.Sprint(value)
+				if ptr, ok := value.(*string); ok && ptr != nil {
+					key = *ptr
+				}
+				if jobInfoExecutionKey(*current) != key {
 					return false, nil
 				}
 			case "run_generation":
@@ -408,6 +455,29 @@ func (s *resultOutboxTestStore) CompareAndSwapWithConditions(_ context.Context, 
 				if string(current.DelayState) != strings.TrimSpace(fmt.Sprint(value)) {
 					return false, nil
 				}
+			case "scheduling_state":
+				if current.SchedulingState != fmt.Sprint(value) {
+					return false, nil
+				}
+			case "scheduling_generation":
+				if fmt.Sprint(current.SchedulingGeneration) != fmt.Sprint(value) {
+					return false, nil
+				}
+			case "scheduling_owner_status":
+				if string(current.SchedulingOwnerStatus) != fmt.Sprint(value) {
+					return false, nil
+				}
+			case "scheduling_expires_at":
+				if value == nil {
+					if current.SchedulingExpiresAt != nil {
+						return false, nil
+					}
+				} else {
+					deadline, ok := value.(time.Time)
+					if !ok || current.SchedulingExpiresAt == nil || !current.SchedulingExpiresAt.Equal(deadline) {
+						return false, nil
+					}
+				}
 			default:
 				return false, datastore.ErrEntityInvalid
 			}
@@ -416,6 +486,33 @@ func (s *resultOutboxTestStore) CompareAndSwapWithConditions(_ context.Context, 
 			current.DelayState = config.JobDelayState(state)
 		} else if state, ok := updates["delay_state"].(config.JobDelayState); ok {
 			current.DelayState = state
+		}
+		if state, ok := updates["scheduling_state"].(string); ok {
+			current.SchedulingState = state
+			if state == workflowconfig.JobSchedulingQueued {
+				current.SchedulingState = workflowconfig.JobSchedulingAdmitted
+			}
+		}
+		if value, ok := updates["scheduling_class"].(string); ok {
+			current.SchedulingClass = value
+		}
+		if value, ok := updates["scheduling_priority"].(int); ok {
+			current.SchedulingPriority = value
+		}
+		if value, ok := updates["scheduling_generation"].(uint64); ok {
+			current.SchedulingGeneration = value
+		}
+		if value, ok := updates["scheduling_owner_status"].(config.Status); ok {
+			current.SchedulingOwnerStatus = value
+		}
+		if value, ok := updates["scheduling_queued_at"].(*time.Time); ok {
+			current.SchedulingQueuedAt = value
+		}
+		if value, ok := updates["scheduling_expires_at"].(*time.Time); ok {
+			current.SchedulingExpiresAt = value
+		}
+		if value, ok := updates["scheduling_reason"].(string); ok {
+			current.SchedulingReason = value
 		}
 		if status, ok := updates["status"].(string); ok {
 			current.Status = status
@@ -703,6 +800,7 @@ func TestDelayDispatcherPreservesCommittedDelayedJobAcrossWorkflowGeneration(t *
 		}},
 	}
 
+	seedCommittedDelayTestCheckpoint(t, store.resultOutboxTestStore, payload)
 	require.NoError(t, dispatcher.dispatchJob(context.Background(), &delayItem{payload: payload}, client))
 	_, err := client.BatchV1().Jobs("default").Get(context.Background(), "delay-job-committed", metav1.GetOptions{})
 	require.NoError(t, err)
@@ -789,6 +887,7 @@ func TestDelayDispatcherAcceptsCurrentGenerationWithCompatibleToken(t *testing.T
 				}},
 			}
 
+			seedCommittedDelayTestCheckpoint(t, store.resultOutboxTestStore, payload)
 			require.NoError(t, dispatcher.dispatchJob(context.Background(), &delayItem{payload: payload}, client))
 			_, err := client.BatchV1().Jobs("default").Get(context.Background(), "delay-job-current", metav1.GetOptions{})
 			require.NoError(t, err)
@@ -847,6 +946,7 @@ func TestDelayDispatcherDoesNotBindOutboxToDifferentJobExecution(t *testing.T) {
 				}},
 			}
 
+			seedCommittedDelayTestCheckpoint(t, store.resultOutboxTestStore, payload)
 			err := dispatcher.dispatchJob(context.Background(), &delayItem{payload: payload}, client)
 			require.ErrorContains(t, err, "belongs to another execution")
 			require.ErrorIs(t, err, errDelayDispatchNoRetry)
@@ -904,6 +1004,7 @@ func TestDelayDispatcherDoesNotRecreateWhenResultSettlesBetweenReads(t *testing.
 	client := fake.NewSimpleClientset(payload.Job.DeepCopy())
 	dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
 
+	seedCommittedDelayTestCheckpoint(t, store.resultOutboxTestStore, payload)
 	require.NoError(t, dispatcher.dispatchJob(context.Background(), &delayItem{payload: payload}, client))
 	require.Empty(t, client.Actions(), "a result that settles concurrently must prevent Kubernetes recreation")
 	require.Equal(t, string(config.StatusCompleted), store.jobInfos[1].Status)
@@ -958,6 +1059,7 @@ func TestDelayDispatcherDispatchPersistsResultOutboxWithoutQueueDependency(t *te
 		},
 	}
 
+	seedCommittedDelayTestCheckpoint(t, store.resultOutboxTestStore, item.payload)
 	require.NoError(t, dispatcher.dispatchJob(context.Background(), item, client))
 
 	resultPayload := newJobResultPayloadFromDelay(item.payload, jobObj)
@@ -1007,6 +1109,7 @@ func TestDelayDispatcherRecoversDueCheckpointWithoutQueue(t *testing.T) {
 	item, wait := dispatcher.nextItem()
 	require.NotNil(t, item)
 	require.Zero(t, wait)
+	seedCommittedDelayTestCheckpoint(t, store, item.payload)
 	require.NoError(t, dispatcher.dispatchJob(context.Background(), item, client))
 	dispatcher.finish(context.Background(), item)
 
@@ -1042,6 +1145,7 @@ func TestDelayDispatcherDispatchDoesNotPersistOutboxBeforeJobExists(t *testing.T
 		},
 	}
 
+	seedCommittedDelayTestCheckpoint(t, store.resultOutboxTestStore, item.payload)
 	err := dispatcher.dispatchJob(context.Background(), item, client)
 	require.EqualError(t, err, "create failed before job persisted")
 
@@ -1092,6 +1196,7 @@ func TestDelayDispatcherDispatchPersistsOutboxWhenCreateErrorLeavesJobPresent(t 
 		},
 	}
 
+	seedCommittedDelayTestCheckpoint(t, store.resultOutboxTestStore, item.payload)
 	require.NoError(t, dispatcher.dispatchJob(context.Background(), item, client))
 
 	resultPayload := newJobResultPayloadFromDelay(item.payload, jobObj)
@@ -1136,9 +1241,10 @@ func TestDelayDispatcherDispatchRejectsDifferentJobAfterCreateError(t *testing.T
 	}
 	resultPayload := newJobResultPayloadFromDelay(payload, jobObj)
 	jobInfo := testResultJobInfo(4, resultPayload)
-	jobInfo.Status = string(config.StatusWaiting)
+	jobInfo.Status = string(config.StatusDistributed)
 	require.NoError(t, store.Add(context.Background(), jobInfo))
 
+	seedCommittedDelayTestCheckpoint(t, store.resultOutboxTestStore, payload)
 	err := dispatcher.dispatchJob(context.Background(), &delayItem{payload: payload}, client)
 	require.ErrorIs(t, err, errDelayDispatchNoRetry)
 	require.ErrorContains(t, err, "foreign-task")
@@ -1173,6 +1279,7 @@ func TestDelayDispatcherDispatchDoesNotRecreateWhenResultOutboxPendingAndJobMiss
 	resultPayload := newJobResultPayloadFromDelay(payload, jobObj)
 	require.NoError(t, store.Add(context.Background(), buildJobResultOutbox(resultPayload, config.JobResultOutboxStateResultPending)))
 
+	seedCommittedDelayTestCheckpoint(t, store.resultOutboxTestStore, payload)
 	err := dispatcher.dispatchJob(context.Background(), &delayItem{payload: payload}, client)
 	require.NoError(t, err)
 	require.Empty(t, client.Actions())

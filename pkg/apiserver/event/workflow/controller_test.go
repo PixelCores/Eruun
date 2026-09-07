@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 
 	"strings"
 	"sync"
@@ -134,10 +135,22 @@ func (s *controlledWorkflowCASStore) CompareAndSwapWithConditions(
 }
 
 func (s *controllerTestStore) Add(_ context.Context, entity datastore.Entity) error {
-	if _, ok := entity.(*model.JobInfo); ok && s.jobInfoAddErr != nil {
-		return s.jobInfoAddErr
+	if info, ok := entity.(*model.JobInfo); ok {
+		if info.Status != string(config.StatusPrepare) && s.jobInfoAddErr != nil {
+			return s.jobInfoAddErr
+		}
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		info.ID = len(s.jobs) + 1
+		cp := *info
+		s.jobs = append(s.jobs, &cp)
 	}
 	return nil
+}
+
+// Test transactions preserve the fixture's existing synchronization and scope.
+func (s *controllerTestStore) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	return s.WithTransaction(ctx, fn)
 }
 
 func (s *controllerTestStore) WithTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
@@ -192,6 +205,11 @@ func (s *controllerTestStore) Get(_ context.Context, entity datastore.Entity) er
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	switch e := entity.(type) {
+	case *model.JobInfo:
+		if info := s.findJobInfoLocked(e); info != nil {
+			*e = *info
+			return nil
+		}
 	case *model.Applications:
 		if s.application != nil && e.ID == s.application.ID {
 			*e = *s.application
@@ -211,7 +229,7 @@ func (s *controllerTestStore) Get(_ context.Context, entity datastore.Entity) er
 	return datastore.ErrRecordNotExist
 }
 
-func (s *controllerTestStore) List(_ context.Context, query datastore.Entity, _ *datastore.ListOptions) ([]datastore.Entity, error) {
+func (s *controllerTestStore) List(_ context.Context, query datastore.Entity, opts *datastore.ListOptions) ([]datastore.Entity, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	switch q := query.(type) {
@@ -236,6 +254,17 @@ func (s *controllerTestStore) List(_ context.Context, query datastore.Entity, _ 
 			}
 			if q.TaskID != "" && jobInfo.TaskID != q.TaskID {
 				continue
+			}
+			if opts != nil {
+				matched := true
+				for _, filter := range opts.In {
+					if filter.Key == "execution_key" && (jobInfo.ExecutionKey == nil || len(filter.Values) != 1 || *jobInfo.ExecutionKey != filter.Values[0]) {
+						matched = false
+					}
+				}
+				if !matched {
+					continue
+				}
 			}
 			cp := *jobInfo
 			result = append(result, &cp)
@@ -297,6 +326,29 @@ func (s *controllerTestStore) CompareAndSwapWithConditions(_ context.Context, en
 	defer s.mu.Unlock()
 	if s.compareAndSwapWithConditionsErr != nil {
 		return false, s.compareAndSwapWithConditionsErr
+	}
+	if e, ok := entity.(*model.JobInfo); ok {
+		info := s.findJobInfoLocked(e)
+		if info == nil {
+			return false, nil
+		}
+		for key, value := range conditions {
+			if !matchJobInfoField(info, key, value) {
+				return false, nil
+			}
+		}
+		if status, ok := updates["status"].(string); ok && status != string(config.StatusPrepare) && s.jobInfoAddErr != nil {
+			return false, s.jobInfoAddErr
+		}
+		for key, value := range updates {
+			applyJobInfoUpdate(info, key, value)
+		}
+		// Controller tests use immediate admission; repository tests exercise the
+		// real scheduler's ordering, quotas, transactions and waiting behavior.
+		if info.SchedulingState == "queued" {
+			info.SchedulingState = "admitted"
+		}
+		return true, nil
 	}
 
 	if componentEntity, ok := entity.(*model.ApplicationComponent); ok && componentEntity != nil {
@@ -444,7 +496,20 @@ func matchJobInfoField(jobInfo *model.JobInfo, field string, condition interface
 		expected, ok := condition.(string)
 		return ok && jobInfo.ServiceName == expected
 	default:
-		return false
+		value := testJobInfoColumn(jobInfo, field)
+		if !value.IsValid() {
+			return false
+		}
+		if value.Kind() == reflect.Pointer {
+			if value.IsNil() {
+				return condition == nil
+			}
+			value = value.Elem()
+		}
+		if expected := reflect.ValueOf(condition); expected.IsValid() && expected.Kind() == reflect.Pointer && !expected.IsNil() {
+			condition = expected.Elem().Interface()
+		}
+		return reflect.DeepEqual(value.Interface(), condition)
 	}
 }
 
@@ -516,6 +581,18 @@ func applyJobInfoUpdate(jobInfo *model.JobInfo, key string, value interface{}) {
 	if jobInfo == nil {
 		return
 	}
+	field := testJobInfoColumn(jobInfo, key)
+	if field.IsValid() && field.CanSet() {
+		if value == nil {
+			field.SetZero()
+			return
+		}
+		v := reflect.ValueOf(value)
+		if v.Type().AssignableTo(field.Type()) {
+			field.Set(v)
+			return
+		}
+	}
 	switch strings.ToLower(strings.TrimSpace(key)) {
 	case "status":
 		if v, ok := value.(string); ok {
@@ -535,6 +612,13 @@ func applyJobInfoUpdate(jobInfo *model.JobInfo, key string, value interface{}) {
 func ensureTestWorkflowExecutionIdentity(task *model.WorkflowQueue) {
 	if task == nil {
 		return
+	}
+	if task.WorkspaceID == "" {
+		task.WorkspaceID = "test-workspace"
+	}
+	if task.LeaseExpiresAt == nil {
+		deadline := time.Now().Add(time.Minute)
+		task.LeaseExpiresAt = &deadline
 	}
 	if task.RunGeneration == 0 {
 		task.RunGeneration = 1
@@ -563,4 +647,16 @@ func mustVersionUpdateCleanupInternalInfo(t *testing.T, component *model.Applica
 	}{Source: config.JobInfoSourceVersionUpdateRemove})
 	require.NoError(t, err)
 	return string(payload)
+}
+
+func testJobInfoColumn(job *model.JobInfo, column string) reflect.Value {
+	value := reflect.ValueOf(job).Elem()
+	for i := 0; i < value.NumField(); i++ {
+		for _, tag := range strings.Split(value.Type().Field(i).Tag.Get("gorm"), ";") {
+			if tag == "column:"+column {
+				return value.Field(i)
+			}
+		}
+	}
+	return reflect.Value{}
 }

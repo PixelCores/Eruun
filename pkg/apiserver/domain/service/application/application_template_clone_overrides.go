@@ -29,6 +29,11 @@ func applyPropertyOverrides(props *apisv1.Properties, override apisv1.Properties
 		failurePolicy := *override.FailurePolicy
 		props.FailurePolicy = &failurePolicy
 	}
+	if override.JobRetryPolicy != nil {
+		policy := *override.JobRetryPolicy
+		policy.MaxResources = override.JobRetryPolicy.MaxResources.DeepCopy()
+		props.JobRetryPolicy = &policy
+	}
 }
 
 func applyTraitOverrides(traits *apisv1.Traits, override apisv1.Traits) {

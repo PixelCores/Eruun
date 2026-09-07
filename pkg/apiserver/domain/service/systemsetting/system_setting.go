@@ -15,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 var builtinSystemSettingSupports = map[string]wfcloudjob.CloudProviderSettingSupport{
@@ -33,6 +34,10 @@ type jsonFieldMask struct {
 }
 
 var builtinSystemSettingCodecs = map[string]systemSettingCodec{
+	model.SystemSettingTypeWorkflowScheduler: {
+		accept:    isJSONObject,
+		normalize: workflowconfig.NormalizeJobSchedulerPolicyValue,
+	},
 	model.SystemSettingTypeNodeSelector: {
 		normalize: normalizeRawSystemSettingValue,
 	},
@@ -130,6 +135,9 @@ func (s *systemSettingServiceImpl) Update(ctx context.Context, settingType strin
 
 func (s *systemSettingServiceImpl) Delete(ctx context.Context, settingType string) error {
 	settingType = strings.TrimSpace(settingType)
+	if settingType == model.SystemSettingTypeWorkflowScheduler {
+		return bcode.ErrSystemSettingTypeInvalid
+	}
 	if err := validateSettingType(settingType); err != nil {
 		return err
 	}

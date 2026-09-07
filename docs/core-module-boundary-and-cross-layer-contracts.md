@@ -66,6 +66,9 @@ flowchart LR
 | `component.status` | 组件响应 `status` | `ApplicationComponent.Status`（`eruun_app_components.status`） | 缓存会存储纠正后的状态快照 | Informer 依据 Pod 快照推导 Running/Pending/Failed/Unknown | 非敏感，不脱敏 | 读路径以 DB 为准；Informer 仅回写运行态 |
 | `component.readyReplicas` | 组件响应 `readyReplicas` | `ApplicationComponent.ReadyReplicas` | 缓存随组件对象缓存 | 由 Pod Ready 数推导 | 整型，不脱敏 | DB 主事实源（由 informer 回写） |
 | `component.lastAbnormal` | 组件响应 `lastAbnormal` | `ApplicationComponent.LastAbnormal` | 缓存随组件对象缓存 | 从 Pod 异常摘要提取 | 可包含敏感上下文，日志需谨慎 | DB 主事实源（由 informer 回写） |
+| `schedulingClass` | Workflow step/subStep 请求和详情，`background/normal/high` | Workflow JSON → JobTask → JobInfo `scheduling_class`；省略继承父步骤/默认 normal | 无 | 不映射为 Pod priorityClass | 未知类拒绝 | DB 的已提交执行记录在恢复时保留原类；资源依赖顺序不变 |
+| Job 调度状态 | task stages 的 `info` 展示状态、类、排队时间和原因 | JobInfo `scheduling_state/priority/queued_at/generation/owner_status/expires_at/reason` | 无 | 无 | ownership/deadline 仅内部使用 | JobInfo 队列 + SystemSetting `workflow_scheduler` 事务锁；独立于业务 status |
+| `properties.jobRetryPolicy` | 同步立即执行 job 组件的 `onOOM`、次数、退避及资源增长上限 | Component Properties → Job annotation；JobInfo `internal_info` 保存尝试和资源快照 | 无 | `eruun.io/job-retry-policy` / `eruun.io/job-attempt`；UID 保护删除重建 | checkpoint 不作为公共请求字段 | DB checkpoint 保留跨 generation 预算和 deadline；详见 [失败策略](workflow-failure-policy.md) |
 | `workflow_queue.status` | 任务状态相关 API 输出 | `WorkflowQueue.Status`（`eruun_workflow_queue.status`） | 无 | 无 | 非敏感 | `eruun_workflow_queue` 主事实源 |
 | `workflow_queue.cancel_source` | 取消任务响应可见 | `WorkflowQueue.CancelSource`（`eruun_workflow_queue.cancel_source`） | 无 | 无 | 非敏感 | `eruun_workflow_queue` 主事实源 |
 | `templateEnabled` | `ApplicationBase.templateEnabled` | `Applications.TemplateEnabled`（`eruun_applications.tmp_enable`） | `app:list:v3` / `app:template:list:v4` | 无 | 布尔值 | DB 主事实源，缓存只做加速 |

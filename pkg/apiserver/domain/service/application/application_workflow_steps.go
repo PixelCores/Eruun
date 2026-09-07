@@ -196,11 +196,12 @@ func convertWorkflowStepsFromRequest(steps []apisv1.CreateWorkflowStepRequest, c
 	for _, reqStep := range steps {
 		stepType := config.ParseWorkflowStepType(string(reqStep.StepType))
 		step := &model.WorkflowStep{
-			Name:         reqStep.Name,
-			StepType:     stepType,
-			WorkflowType: reqStep.WorkflowType,
-			Mode:         config.ParseWorkflowMode(reqStep.Mode),
-			Approval:     convertWorkflowStepApprovalFromRequest(reqStep.Approval),
+			SchedulingClass: reqStep.SchedulingClass,
+			Name:            reqStep.Name,
+			StepType:        stepType,
+			WorkflowType:    reqStep.WorkflowType,
+			Mode:            config.ParseWorkflowMode(reqStep.Mode),
+			Approval:        convertWorkflowStepApprovalFromRequest(reqStep.Approval),
 		}
 		if stepType == config.WorkflowStepTypeApproval {
 			workflowSteps.Steps = append(workflowSteps.Steps, step)
@@ -217,8 +218,9 @@ func convertWorkflowStepsFromRequest(steps []apisv1.CreateWorkflowStepRequest, c
 		)
 		for _, subReq := range reqStep.SubSteps {
 			subStep := &model.WorkflowSubStep{
-				Name:         subReq.Name,
-				WorkflowType: subReq.WorkflowType,
+				SchedulingClass: subReq.SchedulingClass,
+				Name:            subReq.Name,
+				WorkflowType:    subReq.WorkflowType,
 			}
 			subStep.Properties = workflowModelPoliciesFromRequest(
 				subReq.Name,
@@ -453,6 +455,14 @@ func workflowComponentTypesFromModels(components []*model.ApplicationComponent) 
 
 func validateWorkflowComponentRefs(steps []apisv1.CreateWorkflowStepRequest, existing map[string]config.JobType) error {
 	for _, step := range steps {
+		if err := workflowconfig.ValidateJobSchedulingClass(step.SchedulingClass); err != nil {
+			return fmt.Errorf("%w: step %q: %v", bcode.ErrWorkflowConfig, step.Name, err)
+		}
+		for _, sub := range step.SubSteps {
+			if err := workflowconfig.ValidateJobSchedulingClass(sub.SchedulingClass); err != nil {
+				return fmt.Errorf("%w: substep %q: %v", bcode.ErrWorkflowConfig, sub.Name, err)
+			}
+		}
 		stepType := config.WorkflowStepType(strings.ToLower(strings.TrimSpace(string(step.StepType))))
 		if stepType == "" {
 			stepType = config.WorkflowStepTypeComponent

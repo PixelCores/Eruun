@@ -92,10 +92,11 @@ func TestUpdateVersionNoopAutoExecTriggersTaskCallbackWithoutWorkflow(t *testing
 
 	store := newInMemoryAppStore()
 	store.apps["app-1"] = &model.Applications{
-		ID:        "app-1",
-		Name:      "DemoApp",
-		Version:   "1.0.0",
-		Namespace: "default",
+		ID:          "app-1",
+		Name:        "DemoApp",
+		Version:     "1.0.0",
+		Namespace:   "default",
+		WorkspaceID: "callback-space",
 	}
 	store.components["backend"] = &model.ApplicationComponent{
 		Name:     "backend",
@@ -106,7 +107,9 @@ func TestUpdateVersionNoopAutoExecTriggersTaskCallbackWithoutWorkflow(t *testing
 	}
 	setTestURLSecurityPolicy(t, store, spec.URLSecurityPolicySpec{AllowPrivateByDefault: true})
 
+	callbackStore := newApplicationCallbackStore(t, store.apps["app-1"], store.components["backend"])
 	svc := newMockServiceWithStore(store)
+	svc.Store = callbackStore
 	resp, err := svc.UpdateVersion(context.Background(), "app-1", apisv1.UpdateVersionRequest{
 		Version: "1.1.0",
 		Components: []apisv1.ComponentUpdateSpec{{
@@ -118,15 +121,18 @@ func TestUpdateVersionNoopAutoExecTriggersTaskCallbackWithoutWorkflow(t *testing
 
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.TaskID)
-	require.Equal(t, "1.1.0", store.apps["app-1"].Version)
+	updatedApp := &model.Applications{ID: "app-1"}
+	require.NoError(t, callbackStore.Get(context.Background(), updatedApp))
+	require.Equal(t, "1.1.0", updatedApp.Version)
 	require.Equal(t, "backend:v1", store.components["backend"].Image)
 	require.Empty(t, resp.UpdatedComponents)
-	task := store.tasks[resp.TaskID]
-	require.NotNil(t, task)
+	task := &model.WorkflowQueue{TaskID: resp.TaskID}
+	require.NoError(t, callbackStore.Get(context.Background(), task))
 	require.Equal(t, config.WorkflowTaskTypeUpdate, task.Type)
 	require.Empty(t, task.WorkflowID)
 	requireWorkflowCallbackSuccess(t, task.Callback, callbackServer.URL)
 
+	admitApplicationCallback(t, callbackStore)
 	var callbackBody string
 	select {
 	case callbackBody = <-callbackReceived:
@@ -240,10 +246,11 @@ func TestUpdateVersionNoopAutoExecPropagatesRequestedWorkflowIDToCallback(t *tes
 
 	store := newInMemoryAppStore()
 	store.apps["app-1"] = &model.Applications{
-		ID:        "app-1",
-		Name:      "DemoApp",
-		Version:   "1.0.0",
-		Namespace: "default",
+		ID:          "app-1",
+		Name:        "DemoApp",
+		Version:     "1.0.0",
+		Namespace:   "default",
+		WorkspaceID: "callback-space",
 	}
 	store.components["backend"] = &model.ApplicationComponent{
 		Name:     "backend",
@@ -261,7 +268,9 @@ func TestUpdateVersionNoopAutoExecPropagatesRequestedWorkflowIDToCallback(t *tes
 	}
 	setTestURLSecurityPolicy(t, store, spec.URLSecurityPolicySpec{AllowPrivateByDefault: true})
 
+	callbackStore := newApplicationCallbackStore(t, store.apps["app-1"], store.components["backend"], store.workflows["wf-1"])
 	svc := newMockServiceWithStore(store)
+	svc.Store = callbackStore
 	resp, err := svc.UpdateVersion(context.Background(), "app-1", apisv1.UpdateVersionRequest{
 		Version:    "1.1.0",
 		WorkflowID: "wf-1",
@@ -275,11 +284,12 @@ func TestUpdateVersionNoopAutoExecPropagatesRequestedWorkflowIDToCallback(t *tes
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.TaskID)
 	require.Equal(t, "wf-1", resp.WorkflowID)
-	task := store.tasks[resp.TaskID]
-	require.NotNil(t, task)
+	task := &model.WorkflowQueue{TaskID: resp.TaskID}
+	require.NoError(t, callbackStore.Get(context.Background(), task))
 	require.Equal(t, config.WorkflowTaskTypeUpdate, task.Type)
 	require.Equal(t, "wf-1", task.WorkflowID)
 
+	admitApplicationCallback(t, callbackStore)
 	var callbackBody string
 	select {
 	case callbackBody = <-callbackReceived:

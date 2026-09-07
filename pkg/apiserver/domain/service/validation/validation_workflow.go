@@ -103,6 +103,9 @@ func (v *validationServiceImpl) validateWorkflowSteps(steps []apisv1.CreateWorkf
 
 	for i, step := range steps {
 		stepField := fmt.Sprintf("%s[%d]", fieldPrefix, i)
+		if err := workflowconfig.ValidateJobSchedulingClass(step.SchedulingClass); err != nil {
+			errors = append(errors, apisv1.ValidationError{Field: stepField + ".schedulingClass", Code: apisv1.ErrCodeInvalidWorkflowStepType, Message: err.Error()})
+		}
 		stepType := config.WorkflowStepType(strings.ToLower(strings.TrimSpace(string(step.StepType))))
 		if stepType == "" {
 			stepType = config.WorkflowStepTypeComponent
@@ -192,6 +195,9 @@ func (v *validationServiceImpl) validateWorkflowSteps(steps []apisv1.CreateWorkf
 		// Validate substeps
 		for j, subStep := range step.SubSteps {
 			subStepField := fmt.Sprintf("%s.subSteps[%d]", stepField, j)
+			if err := workflowconfig.ValidateJobSchedulingClass(subStep.SchedulingClass); err != nil {
+				errors = append(errors, apisv1.ValidationError{Field: subStepField + ".schedulingClass", Code: apisv1.ErrCodeInvalidWorkflowStepType, Message: err.Error()})
+			}
 			if !config.IsSupportedWorkflowJobType(subStep.WorkflowType) {
 				errors = append(errors, apisv1.ValidationError{
 					Field:   fmt.Sprintf("%s.jobType", subStepField),

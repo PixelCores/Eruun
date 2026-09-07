@@ -37,6 +37,17 @@ func TestCallbackContextCapsTimeoutByMax(t *testing.T) {
 	require.WithinDuration(t, time.Now().Add(72*time.Hour), deadline, 2*time.Second)
 }
 
+func TestCallbackContextBoundsAdmissionWithLiveParent(t *testing.T) {
+	parent, cancelParent := context.WithCancel(context.Background())
+	ctx, cancel := callbackContext(parent, 2, time.Minute)
+	defer cancel()
+	deadline, ok := ctx.Deadline()
+	require.True(t, ok)
+	require.WithinDuration(t, time.Now().Add(2*time.Second), deadline, time.Second)
+	cancelParent()
+	require.ErrorIs(t, ctx.Err(), context.Canceled)
+}
+
 func TestTriggerWorkflowCallbackUsesTaskCallbackBeforeWorkflowCallback(t *testing.T) {
 	var taskCallbackCount int32
 	taskCallbackReceived := make(chan struct{}, 1)

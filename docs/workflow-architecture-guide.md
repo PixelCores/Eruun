@@ -4,6 +4,8 @@
 
 > 企业角色拆分、双 Leader Election、数据库 generation/token lease 与 60 秒恢复边界见 [企业级分布式运行时设计](enterprise-distributed-runtime-design.md)；本文仍聚焦 Workflow/Job 内部执行结构。
 
+> Job 在依赖就绪后还须经过全局准入，支持步骤优先级、空间并发上限和等待老化；原资源依赖 bucket 不变。见 [Job 全局调度与失败策略](workflow-global-scheduler-design.md)。
+
 ## 目录
 
 - [1. 概述与背景](#1-概述与背景)

@@ -29,14 +29,15 @@ type WorkflowSteps struct {
 }
 
 type WorkflowStep struct {
-	Name         string                  `json:"name"`
-	StepType     config.WorkflowStepType `json:"stepType,omitempty"`
-	Level        int                     `json:"level,omitempty"`
-	WorkflowType config.JobType          `json:"workflowType,omitempty"`
-	Mode         config.WorkflowMode     `json:"mode,omitempty"`
-	Approval     *WorkflowStepApproval   `json:"approval,omitempty"`
-	Properties   []Policies              `json:"properties,omitempty"`
-	SubSteps     []*WorkflowSubStep      `json:"subSteps,omitempty"`
+	SchedulingClass string                  `json:"schedulingClass,omitempty"`
+	Name            string                  `json:"name"`
+	StepType        config.WorkflowStepType `json:"stepType,omitempty"`
+	Level           int                     `json:"level,omitempty"`
+	WorkflowType    config.JobType          `json:"workflowType,omitempty"`
+	Mode            config.WorkflowMode     `json:"mode,omitempty"`
+	Approval        *WorkflowStepApproval   `json:"approval,omitempty"`
+	Properties      []Policies              `json:"properties,omitempty"`
+	SubSteps        []*WorkflowSubStep      `json:"subSteps,omitempty"`
 }
 
 type WorkflowStepApproval struct {
@@ -48,9 +49,10 @@ type WorkflowStepApproval struct {
 }
 
 type WorkflowSubStep struct {
-	Name         string         `json:"name"`
-	WorkflowType config.JobType `json:"workflowType,omitempty"`
-	Properties   []Policies     `json:"properties,omitempty"`
+	SchedulingClass string         `json:"schedulingClass,omitempty"`
+	Name            string         `json:"name"`
+	WorkflowType    config.JobType `json:"workflowType,omitempty"`
+	Properties      []Policies     `json:"properties,omitempty"`
 }
 
 type WorkflowCallback struct {

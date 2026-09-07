@@ -453,6 +453,13 @@ func (v *validationServiceImpl) validateProbeTrait(probe spec.ProbeTraitsSpec, f
 // validateInitTrait validates an init container trait
 func (v *validationServiceImpl) validateInitTrait(init spec.InitTraitSpec, field string, isNested bool) []apisv1.ValidationError {
 	var errors []apisv1.ValidationError
+	if init.Properties.JobRetryPolicy != nil {
+		errors = append(errors, apisv1.ValidationError{
+			Field:   fmt.Sprintf("%s.properties.jobRetryPolicy", field),
+			Code:    apisv1.ErrCodeInvalidJobFailurePolicy,
+			Message: "jobRetryPolicy is only supported for top-level job component properties",
+		})
+	}
 	if init.Properties.FailurePolicy != nil {
 		errors = append(errors, apisv1.ValidationError{
 			Field:   fmt.Sprintf("%s.properties.failurePolicy", field),
@@ -501,6 +508,13 @@ func validateNestedJobFailurePolicies(traits apisv1.Traits, fieldPrefix string) 
 	var errors []apisv1.ValidationError
 	for i, init := range traits.Init {
 		field := fmt.Sprintf("%s.init[%d]", fieldPrefix, i)
+		if init.Properties.JobRetryPolicy != nil {
+			errors = append(errors, apisv1.ValidationError{
+				Field:   fmt.Sprintf("%s.properties.jobRetryPolicy", field),
+				Code:    apisv1.ErrCodeInvalidJobFailurePolicy,
+				Message: "jobRetryPolicy is only supported for top-level job component properties",
+			})
+		}
 		if init.Properties.FailurePolicy != nil {
 			errors = append(errors, apisv1.ValidationError{
 				Field:   fmt.Sprintf("%s.properties.failurePolicy", field),

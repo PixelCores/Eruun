@@ -8,6 +8,7 @@ const (
 	SystemSettingTypeAliyunCloud       = "aliyunCloud"
 	SystemSettingTypeURLSecurityPolicy = "urlSecurityPolicy"
 	SystemSettingTypePodRestartMonitor = "podRestartMonitor"
+	SystemSettingTypeWorkflowScheduler = "workflow_scheduler"
 )
 
 // SystemSetting stores system-level settings in a single table.

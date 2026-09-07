@@ -276,14 +276,15 @@ type TemplateRef struct {
 }
 
 type CreateWorkflowStepRequest struct {
-	Name         string                         `json:"name"`
-	StepType     config.WorkflowStepType        `json:"stepType,omitempty"`
-	WorkflowType config.JobType                 `json:"jobType,omitempty"`
-	Approval     *WorkflowStepApproval          `json:"approval,omitempty"`
-	Properties   WorkflowProperties             `json:"properties,omitempty"`
-	Components   []string                       `json:"components,omitempty"`
-	Mode         string                         `json:"mode,omitempty"`
-	SubSteps     []CreateWorkflowSubStepRequest `json:"subSteps,omitempty"`
+	SchedulingClass string                         `json:"schedulingClass,omitempty"`
+	Name            string                         `json:"name"`
+	StepType        config.WorkflowStepType        `json:"stepType,omitempty"`
+	WorkflowType    config.JobType                 `json:"jobType,omitempty"`
+	Approval        *WorkflowStepApproval          `json:"approval,omitempty"`
+	Properties      WorkflowProperties             `json:"properties,omitempty"`
+	Components      []string                       `json:"components,omitempty"`
+	Mode            string                         `json:"mode,omitempty"`
+	SubSteps        []CreateWorkflowSubStepRequest `json:"subSteps,omitempty"`
 
 	propertiesList      []WorkflowProperties
 	propertiesFromArray bool

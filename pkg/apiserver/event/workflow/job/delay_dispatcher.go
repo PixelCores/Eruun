@@ -31,6 +31,8 @@ import (
 
 var errDelayDispatchNoRetry = errors.New("delay dispatch no retry")
 
+var errDelayWaitingAdmission = errors.New("delayed job waiting for admission")
+
 const (
 	delayRecoveryPollInterval = workflowconfig.DefaultDispatchPollInterval
 	delayRecoveryBatchSize    = 100
@@ -261,6 +263,11 @@ func (d *DelayDispatcher) scheduleLoop(ctx context.Context) {
 		case <-timer.C:
 		}
 		if err := d.dispatch(ctx, item); err != nil {
+			if errors.Is(err, errDelayWaitingAdmission) {
+				item.executeAt = time.Now().Add(delayRecoveryPollInterval).Unix()
+				d.requeue(item)
+				continue
+			}
 			if errors.Is(err, errDelayDispatchNoRetry) {
 				klog.ErrorS(err, "delay dispatcher dispatch failed without retry", "msgID", item.msgID, "attempts", item.attempts)
 				d.acknowledge(ctx, item)
@@ -595,7 +602,7 @@ func (d *DelayDispatcher) rejectCheckpoint(ctx context.Context, checkpoint *mode
 
 // dispatchJob handles execution fencing and outbox recovery after its caller
 // has selected the workspace client and prepared the workload.
-func (d *DelayDispatcher) dispatchJob(ctx context.Context, item *delayItem, client kubernetes.Interface) error {
+func (d *DelayDispatcher) dispatchJob(ctx context.Context, item *delayItem, client kubernetes.Interface) (resultErr error) {
 	if item == nil || item.payload == nil || item.payload.Job == nil {
 		return fmt.Errorf("delay item is nil")
 	}
@@ -649,6 +656,35 @@ func (d *DelayDispatcher) dispatchJob(ctx context.Context, item *delayItem, clie
 		if !current {
 			return nil
 		}
+	}
+	checkpoint, err := d.findDelayCheckpoint(ctx, item.payload)
+	if err != nil {
+		return err
+	}
+	if checkpoint == nil {
+		return fmt.Errorf("delayed job admission requires its committed checkpoint")
+	}
+	deadline := time.Now().Add(jobDeleteTimeout)
+	if err := repository.EnqueueJobForScheduling(ctx, d.store, nil, checkpoint, &deadline); err != nil {
+		return fmt.Errorf("queue due delayed job: %w", err)
+	}
+	admitted, err := repository.IsJobAdmitted(ctx, d.store, nil, item.payload.ExecutionKey, checkpoint.SchedulingExpiresAt)
+	if err != nil {
+		return err
+	}
+	if !admitted {
+		return errDelayWaitingAdmission
+	}
+	ctx, cancel := context.WithDeadline(ctx, *checkpoint.SchedulingExpiresAt)
+	defer cancel()
+	defer func() {
+		releaseCtx, releaseCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer releaseCancel()
+		if err := repository.ReleaseJobAdmission(releaseCtx, d.store, nil, item.payload.ExecutionKey, "delayed job dispatch returned", checkpoint.SchedulingExpiresAt); err != nil {
+			resultErr = errors.Join(resultErr, err)
+		}
+	}()
+	if resultPayload != nil {
 		existingJob, exists, err := jobExists(ctx, client, namespace, jobObj.Name)
 		if err != nil {
 			return err

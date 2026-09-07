@@ -107,7 +107,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `validation-api-guide.md` | Current | Try/DryRun 校验 API |
 | `create-and-exec-application-api.md` | Current | 创建并执行应用 API |
 | `app-workflow-callback.md` | Current | App 与 Workflow Callback 优先级 |
-| `workflow-failure-policy.md` | Current | Workflow `cleanup_failed` / `cleanup_all` 策略与 Job 级失败清理例外 |
+| `workflow-failure-policy.md` | Current | Workflow 失败清理、Job 级清理例外与有界 OOM 停止/重试/资源增长策略 |
 | `leader-informer-recovery.md` | Current | Controller/Scheduler 双 Leader、Informer 重建、Worker 独立观察、数据库执行租约恢复与 UTC 时钟回归验证 |
 | `batch-applications-api.md` | Current | 批量应用详情查询 API |
 | `application-management-mode.md` | Current | 应用 `native` / `observe` 写权限边界与历史导入迁移契约 |
@@ -141,6 +141,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
 | `workflow-architecture-guide.md` | Implemented Reference | 工作流引擎架构详解 |
+| `workflow-global-scheduler-design.md` | Implemented Reference | Job 全局优先级、FIFO、等待老化、空间并发上限、ownership 准入与 OOM 策略 |
 | `enterprise-distributed-runtime-design.md` | Implemented Reference | 分布式运行时：角色依赖、API Redis readiness、Leader Election、数据库 lease/fencing、延迟任务恢复与通知去重、Cron 有界分页与失败计划重试、Worker observer 和 Helm 拓扑 |
 | `架构文档.md` | Implemented Reference | 当前四角色、数据所有权、Component、Workflow 与 Trait 边界 |
 | `architecture-diagrams.md` | Implemented Reference | 当前四角色、Workflow execution 和 Trait 映射图 |
@@ -183,7 +184,6 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `vectorization-job-design.md` | Draft / Proposal | Provider-neutral 向量化批处理方向 |
 | `vllm-hami-distributed-inference-design.md` | Draft / Proposal | 自托管模型服务、GPU、vLLM/HAMi 与多节点 adapter 方向 |
 | `workflow-conditional-branching-design.md` | Draft / Proposal | 条件分支设计 |
-| `workflow-global-scheduler-design.md` | Draft / Proposal | Workflow 优先级、公平性、配额、容量准入和可抢占方向 |
 | `workflow-resource-capacity-scheduler.md` | Draft / Proposal | Workflow 资源容量准入与可选容量补偿边界 |
 
 ## 图源与资产

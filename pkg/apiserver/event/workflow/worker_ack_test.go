@@ -27,6 +27,7 @@ import (
 )
 
 type workflowAckTestStore struct {
+	jobStore                controllerTestStore
 	mu                      sync.RWMutex
 	workflow                *model.Workflow
 	task                    *model.WorkflowQueue
@@ -39,7 +40,15 @@ type workflowAckTestStore struct {
 	failCompareAndSwapError error
 }
 
-func (s *workflowAckTestStore) Add(context.Context, datastore.Entity) error { return nil }
+func (s *workflowAckTestStore) Add(ctx context.Context, entity datastore.Entity) error {
+	return s.jobStore.Add(ctx, entity)
+}
+
+// Test transactions preserve the fixture's existing synchronization and scope.
+func (s *workflowAckTestStore) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	return s.WithTransaction(ctx, fn)
+}
+
 func (s *workflowAckTestStore) WithTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
 	return fn(s)
 }
@@ -67,6 +76,8 @@ func (s *workflowAckTestStore) Get(ctx context.Context, entity datastore.Entity)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	switch e := entity.(type) {
+	case *model.JobInfo:
+		return s.jobStore.Get(ctx, entity)
 	case *model.Workflow:
 		if s.workflow == nil {
 			return fmt.Errorf("workflow not configured")
@@ -92,7 +103,10 @@ func (s *workflowAckTestStore) Get(ctx context.Context, entity datastore.Entity)
 	return nil
 }
 
-func (s *workflowAckTestStore) List(ctx context.Context, query datastore.Entity, _ *datastore.ListOptions) ([]datastore.Entity, error) {
+func (s *workflowAckTestStore) List(ctx context.Context, query datastore.Entity, opts *datastore.ListOptions) ([]datastore.Entity, error) {
+	if _, ok := query.(*model.JobInfo); ok {
+		return s.jobStore.List(ctx, query, opts)
+	}
 	if _, ok := query.(*model.ApplicationComponent); ok {
 		return []datastore.Entity{}, nil
 	}
@@ -123,6 +137,9 @@ func (s *workflowAckTestStore) CompareAndSwapWithConditions(_ context.Context, e
 }
 
 func (s *workflowAckTestStore) compareAndSwapWithConditionsLocked(entity datastore.Entity, conditions map[string]interface{}, updates map[string]interface{}) (bool, error) {
+	if _, ok := entity.(*model.JobInfo); ok {
+		return s.jobStore.CompareAndSwapWithConditions(context.Background(), entity, conditions, updates)
+	}
 	task, ok := entity.(*model.WorkflowQueue)
 	if !ok || task == nil || s.task == nil || task.TaskID != s.task.TaskID {
 		return false, nil
@@ -225,6 +242,7 @@ func newWorkflowForAckTests(t testing.TB, updateOK bool) *Workflow {
 		},
 		task: &model.WorkflowQueue{
 			TaskID:        "task-1",
+			WorkspaceID:   "test-workspace",
 			WorkflowID:    "wf-1",
 			AppID:         "app-1",
 			ProjectID:     "proj-1",
@@ -235,6 +253,8 @@ func newWorkflowForAckTests(t testing.TB, updateOK bool) *Workflow {
 			WorkerID:      "test-worker",
 		},
 	}
+
+	ensureTestWorkflowExecutionIdentity(store.task)
 
 	return &Workflow{
 		KubeClient:                fake.NewSimpleClientset(),

@@ -111,6 +111,7 @@ type Properties struct {
 	Schedule                   string                                `json:"schedule,omitempty"`
 	StartTime                  int64                                 `json:"startTime,omitempty"`
 	RunPolicy                  string                                `json:"runPolicy,omitempty"`
+	JobRetryPolicy             *workflowconfig.JobRetryPolicy        `json:"jobRetryPolicy,omitempty"`
 	FailurePolicy              *workflowconfig.WorkflowFailurePolicy `json:"failurePolicy,omitempty"`
 	SuccessfulJobsHistoryLimit *int32                                `json:"successfulJobsHistoryLimit,omitempty"`
 	FailedJobsHistoryLimit     *int32                                `json:"failedJobsHistoryLimit,omitempty"`

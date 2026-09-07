@@ -4,11 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -22,6 +27,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
@@ -684,7 +691,7 @@ func TestImmediateJobControllersRejectReplacementAfterRecreateWait(t *testing.T)
 
 func TestRunJobsPreservesNonTerminalStateAfterRecreateOwnershipReadFailure(t *testing.T) {
 	currentOwner := model.WorkflowQueue{
-		TaskID: "task-1", Status: config.StatusRunning, RunGeneration: 1, RunToken: "token-1", WorkerID: "worker-old",
+		TaskID: "task-1", WorkspaceID: "test-workspace", Status: config.StatusRunning, RunGeneration: 1, RunToken: "token-1", WorkerID: "worker-old",
 	}
 	for _, concurrencyCase := range []struct {
 		name        string
@@ -701,16 +708,35 @@ func TestRunJobsPreservesNonTerminalStateAfterRecreateOwnershipReadFailure(t *te
 					Annotations: map[string]string{config.AnnotationJobRunPolicy: string(workflowconfig.JobRunPolicyRecreate)},
 				}}
 				jobTask := &model.JobTask{
-					Name: "demo", Namespace: "default", TaskID: "task-1", JobType: string(jobType), JobInfo: desired,
+					Name: "demo", Namespace: "default", TaskID: "task-1", WorkspaceID: currentOwner.WorkspaceID, JobType: string(jobType), JobInfo: desired,
 					ExecutionKey: "execution-1", RunGeneration: 1, RunToken: "token-1",
 					OwnerRunGeneration: 1, WorkerID: "worker-old",
 				}
-				store := &workflowOwnershipStore{
-					noopStore: &noopStore{},
-					task:      currentOwner,
-					tasks:     []model.WorkflowQueue{currentOwner, currentOwner},
-					errs:      []error{nil, temporaryErr},
-				}
+				db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "ownership.db")), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, Logger: logger.Default.LogMode(logger.Silent)})
+				require.NoError(t, err)
+				connection, err := db.DB()
+				require.NoError(t, err)
+				t.Cleanup(func() { require.NoError(t, connection.Close()) })
+				require.NoError(t, db.AutoMigrate(&model.JobInfo{}, &model.WorkflowQueue{}, &model.Applications{}, &model.ApplicationComponent{}))
+				store := &sqlstore.Driver{Client: *db}
+				now := time.Now().UTC()
+				lease := now.Add(time.Minute)
+				owner := currentOwner
+				owner.LeaseExpiresAt = &lease
+				require.NoError(t, store.Add(context.Background(), &owner))
+				record := buildJobInfoRecord(jobTask)
+				record.Status = string(config.StatusPrepare)
+				record.SchedulingState = workflowconfig.JobSchedulingAdmitted
+				record.SchedulingOwnerStatus = config.StatusRunning
+				record.SchedulingGeneration = owner.RunGeneration
+				record.SchedulingQueuedAt = &now
+				require.NoError(t, store.Add(context.Background(), &record))
+				var deletionStarted atomic.Bool
+				require.NoError(t, db.Callback().Query().Before("gorm:query").Register("fail-ownership-read-after-recreate", func(tx *gorm.DB) {
+					if _, ok := tx.Statement.Dest.(*model.WorkflowQueue); ok && deletionStarted.Load() {
+						tx.AddError(temporaryErr)
+					}
+				}))
 				oldJob := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
 					Name: "demo", Namespace: "default", UID: "old-job-uid",
 					Annotations: map[string]string{
@@ -730,6 +756,7 @@ func TestRunJobsPreservesNonTerminalStateAfterRecreateOwnershipReadFailure(t *te
 					return true, replacement.DeepCopy(), nil
 				})
 				client.PrependReactor("delete", "jobs", func(k8stesting.Action) (bool, runtime.Object, error) {
+					deletionStarted.Store(true)
 					return true, nil, nil
 				})
 				ackCount := 0
@@ -739,7 +766,8 @@ func TestRunJobsPreservesNonTerminalStateAfterRecreateOwnershipReadFailure(t *te
 				}, true, nil, nil, nil, nil, nil)
 
 				require.ErrorIs(t, runErr, signal.ErrInfrastructureStop)
-				require.ErrorIs(t, runErr, temporaryErr)
+				require.ErrorContains(t, runErr, temporaryErr.Error())
+				require.True(t, deletionStarted.Load(), "ownership failure must be injected after Job deletion")
 				require.Equal(t, config.StatusPrepare, jobTask.Status)
 				require.Empty(t, jobTask.Error)
 				require.Zero(t, jobTask.EndTime)

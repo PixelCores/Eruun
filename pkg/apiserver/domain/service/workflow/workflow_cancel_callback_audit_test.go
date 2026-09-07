@@ -421,7 +421,7 @@ func TestCancelWorkflowTaskForAppApprovalPausedTriggersCallback(t *testing.T) {
 			Callback: callback,
 		},
 	}
-	svc := withAllowPrivateURLPolicy(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
+	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
 
 	err = svc.CancelWorkflowTaskForApp(context.Background(), "app-1", "approver", "task-cancel-approval", "manual cancel")
 	require.NoError(t, err)
@@ -491,7 +491,7 @@ func TestCancelWorkflowTaskForAppApprovalQueuedTriggersCallback(t *testing.T) {
 			Callback: callback,
 		},
 	}
-	svc := withAllowPrivateURLPolicy(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
+	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
 
 	err = svc.CancelWorkflowTaskForApp(context.Background(), "app-1", "approver", "task-cancel-approval-queued", "manual cancel")
 	require.NoError(t, err)
@@ -543,7 +543,7 @@ func TestTriggerWorkflowTerminalCallbackOnApprovalActionAsyncRunsWithCanceledPar
 		},
 		respectContextErr: true,
 	}
-	svc := withAllowPrivateURLPolicy(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
+	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
 	task := &model.WorkflowQueue{
 		TaskID:       "task-cancelled-parent-ctx",
 		AppID:        "app-1",
@@ -558,6 +558,7 @@ func TestTriggerWorkflowTerminalCallbackOnApprovalActionAsyncRunsWithCanceledPar
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
+	prepareTerminalCallbackFixture(t, svc, store, task, config.StatusCancelled)
 	svc.triggerWorkflowTerminalCallbackOnApprovalActionAsync(ctx, task, config.StatusCancelled, "manual cancel")
 
 	select {
@@ -602,6 +603,7 @@ func TestTriggerWorkflowTerminalCallbackOnApprovalActionFailsWhenURLSecurityPoli
 		},
 	}
 
+	prepareTerminalCallbackFixture(t, svc, store, task, config.StatusCancelled)
 	svc.triggerWorkflowTerminalCallbackOnApprovalAction(context.Background(), task, config.StatusCancelled, "manual cancel")
 
 	require.Equal(t, int32(0), atomic.LoadInt32(&callbackCount))
@@ -639,7 +641,7 @@ func TestTriggerWorkflowTerminalCallbackOnApprovalActionFallsBackToAppCallback(t
 			Name:  "approval-workflow",
 		},
 	}
-	svc := withAllowPrivateURLPolicy(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
+	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
 	task := &model.WorkflowQueue{
 		TaskID:       "task-app-callback",
 		AppID:        "app-1",
@@ -652,6 +654,7 @@ func TestTriggerWorkflowTerminalCallbackOnApprovalActionFallsBackToAppCallback(t
 		},
 	}
 
+	prepareTerminalCallbackFixture(t, svc, store, task, config.StatusCancelled)
 	svc.triggerWorkflowTerminalCallbackOnApprovalAction(context.Background(), task, config.StatusCancelled, "manual cancel")
 
 	select {
@@ -695,7 +698,7 @@ func TestTriggerWorkflowTerminalCallbackOnApprovalActionUsesTaskCallbackBeforeWo
 			Callback: workflowCallback,
 		},
 	}
-	svc := withAllowPrivateURLPolicy(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
+	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
 	task := &model.WorkflowQueue{
 		TaskID:       "task-callback-priority",
 		AppID:        "app-1",
@@ -709,6 +712,7 @@ func TestTriggerWorkflowTerminalCallbackOnApprovalActionUsesTaskCallbackBeforeWo
 		},
 	}
 
+	prepareTerminalCallbackFixture(t, svc, store, task, config.StatusCancelled)
 	svc.triggerWorkflowTerminalCallbackOnApprovalAction(context.Background(), task, config.StatusCancelled, "manual cancel")
 
 	select {
@@ -737,7 +741,7 @@ func TestTriggerWorkflowTerminalCallbackOnApprovalActionUsesTaskCallbackWhenWork
 	require.NoError(t, err)
 
 	store := &statusDataStore{}
-	svc := withAllowPrivateURLPolicy(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
+	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
 	task := &model.WorkflowQueue{
 		TaskID:       "task-callback-without-workflow",
 		AppID:        "app-1",
@@ -751,6 +755,7 @@ func TestTriggerWorkflowTerminalCallbackOnApprovalActionUsesTaskCallbackWhenWork
 		},
 	}
 
+	prepareTerminalCallbackFixture(t, svc, store, task, config.StatusCancelled)
 	svc.triggerWorkflowTerminalCallbackOnApprovalAction(context.Background(), task, config.StatusCancelled, "manual cancel")
 
 	select {
@@ -778,7 +783,7 @@ func TestTriggerWorkflowTerminalCallbackOnApprovalActionUsesTaskCallbackWithoutW
 	require.NoError(t, err)
 
 	store := &statusDataStore{}
-	svc := withAllowPrivateURLPolicy(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
+	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
 	task := &model.WorkflowQueue{
 		TaskID:       "task-callback-without-workflow-id",
 		AppID:        "app-1",
@@ -791,6 +796,7 @@ func TestTriggerWorkflowTerminalCallbackOnApprovalActionUsesTaskCallbackWithoutW
 		},
 	}
 
+	prepareTerminalCallbackFixture(t, svc, store, task, config.StatusCompleted)
 	svc.triggerWorkflowTerminalCallbackOnApprovalAction(context.Background(), task, config.StatusCompleted, "")
 
 	select {
@@ -839,6 +845,7 @@ func TestTriggerWorkflowTerminalCallbackOnApprovalActionAsyncPropagatesParentCon
 	}
 
 	ctx := context.WithValue(context.Background(), traceKey, traceValue)
+	prepareTerminalCallbackFixture(t, svc, store, task, config.StatusCancelled)
 	svc.triggerWorkflowTerminalCallbackOnApprovalActionAsync(ctx, task, config.StatusCancelled, "manual cancel")
 
 	select {
@@ -895,6 +902,7 @@ func TestTriggerWorkflowTerminalCallbackOnApprovalActionAsyncKeepsTimeoutAfterPa
 
 	parentCtx, cancel := context.WithCancel(context.Background())
 	cancel()
+	prepareTerminalCallbackFixture(t, svc, store, task, config.StatusCancelled)
 	svc.triggerWorkflowTerminalCallbackOnApprovalActionAsync(parentCtx, task, config.StatusCancelled, "manual cancel")
 
 	select {
@@ -944,6 +952,7 @@ func TestTriggerWorkflowTerminalCallbackOnApprovalActionHonorsCanceledParentCont
 
 	parentCtx, cancel := context.WithCancel(context.Background())
 	cancel()
+	prepareTerminalCallbackFixture(t, svc, store, task, config.StatusCancelled)
 	svc.triggerWorkflowTerminalCallbackOnApprovalAction(parentCtx, task, config.StatusCancelled, "manual cancel")
 
 	select {
@@ -1002,7 +1011,11 @@ func TestCancelWorkflowTaskForAppApprovalPausedIgnoresSignalErrorAndStillTrigger
 		_ = redisClient.Close()
 	})
 
-	svc := withAllowPrivateURLPolicy(t, &workflowServiceImpl{
+	// A closed client fails the signal immediately without consuming the
+	// caller deadline in Redis transport retries.
+	require.NoError(t, redisClient.Close())
+
+	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{
 		Store: store,
 		Cache: cache.NewWithClient(false, cache.CacheTypeMem, redisClient),
 		Cfg:   &config.Config{AllowPrivateURLTargets: true},
@@ -1072,7 +1085,11 @@ func TestCancelWorkflowTaskForAppApprovalQueuedIgnoresSignalErrorAndStillTrigger
 		_ = redisClient.Close()
 	})
 
-	svc := withAllowPrivateURLPolicy(t, &workflowServiceImpl{
+	// A closed client fails the signal immediately without consuming the
+	// caller deadline in Redis transport retries.
+	require.NoError(t, redisClient.Close())
+
+	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{
 		Store: store,
 		Cache: cache.NewWithClient(false, cache.CacheTypeMem, redisClient),
 		Cfg:   &config.Config{AllowPrivateURLTargets: true},
@@ -1410,7 +1427,7 @@ func TestApproveWorkflowTaskCancelTriggersCallback(t *testing.T) {
 			Callback: callback,
 		},
 	}
-	svc := withAllowPrivateURLPolicy(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
+	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
 
 	resp, err := svc.ApproveWorkflowTask(context.Background(), "task-approve-callback", "cancel", "approver", "reject")
 	require.NoError(t, err)
@@ -1472,7 +1489,7 @@ func TestApproveWorkflowTaskCancelReturnsBeforeSlowCallbackCompletes(t *testing.
 			Callback: callback,
 		},
 	}
-	svc := withAllowPrivateURLPolicy(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
+	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
 
 	resultCh := make(chan struct {
 		resp *apis.TaskApprovalResponse

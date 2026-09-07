@@ -184,7 +184,7 @@ func initJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore
 		klog.ErrorS(fmt.Errorf("job is nil"), "init job controller failed")
 		return nil
 	}
-	if client == nil {
+	if client == nil && job.JobType != string(config.JobDeployCallback) {
 		klog.ErrorS(fmt.Errorf("client is nil"), "init job controller failed", "jobName", job.Name, "jobType", job.JobType)
 		return nil
 	}
@@ -406,26 +406,7 @@ func runJob(ctx context.Context, job *model.JobTask, client kubernetes.Interface
 		return
 	}
 	jobCtl := initJobCtl(job, client, store, ack, runtime)
-	if jobRequiresApplicationWritePermission(job.JobType) {
-		if err := validateApplicationManagementModeForWrite(ctx, store, job.AppID, true); err != nil {
-			if signal.IsInfrastructureStop(ctx) {
-				logger.Info("Skip management mode failure after infrastructure stop", "cause", context.Cause(ctx))
-				return
-			}
-			job.Status = config.StatusFailed
-			job.Error = err.Error()
-			job.StartTime = time.Now().Unix()
-			job.EndTime = job.StartTime
-			if ack != nil {
-				ack()
-			}
-			span.SetStatus(codes.Error, "Application management mode rejected job")
-			span.RecordError(err)
-			logger.Error(err, "Refusing job for application management mode")
-			persistTerminalJobState(ctx, jobCtl, job, store, runtime)
-			return
-		}
-	}
+
 	job.Status = config.StatusPrepare
 	job.Error = ""
 	job.StartTime = time.Now().Unix()
@@ -490,6 +471,43 @@ func runJob(ctx context.Context, job *model.JobTask, client kubernetes.Interface
 		logger.Info("Skip job execution after infrastructure stop", "cause", context.Cause(jobCtx))
 		return context.Cause(jobCtx)
 	}
+	releaseAdmission, admissionErr := waitForJobAdmission(jobCtx, store, job)
+	defer func() {
+		if err := releaseAdmission(); err != nil {
+			resultErr = errors.Join(resultErr, signal.ErrInfrastructureStop, err)
+		}
+	}()
+	if admissionErr != nil {
+		if jobCtx.Err() != nil && !signal.IsInfrastructureStop(jobCtx) {
+			job.Status = config.StatusCancelled
+			job.Error = jobCtx.Err().Error()
+			job.EndTime = time.Now().Unix()
+			return persistTerminalJobState(jobCtx, jobCtl, job, store, runtime)
+		}
+		return errors.Join(signal.ErrInfrastructureStop, admissionErr)
+	}
+	// Admission may wait while an application changes management mode. Check
+	// write permission after that wait, immediately before execution side effects.
+	if jobRequiresApplicationWritePermission(job.JobType) {
+		if err := validateApplicationManagementModeForWrite(jobCtx, store, job.AppID, true); err != nil {
+			if signal.IsInfrastructureStop(jobCtx) {
+				logger.Info("Skip management mode failure after infrastructure stop", "cause", context.Cause(jobCtx))
+				return
+			}
+			job.Status = config.StatusFailed
+			job.Error = err.Error()
+			job.StartTime = time.Now().Unix()
+			job.EndTime = job.StartTime
+			if ack != nil {
+				ack()
+			}
+			span.SetStatus(codes.Error, "Application management mode rejected job")
+			span.RecordError(err)
+			logger.Error(err, "Refusing job for application management mode")
+			persistTerminalJobState(jobCtx, jobCtl, job, store, runtime)
+			return
+		}
+	}
 	persistCtx, persistCancel := persistenceContext(jobCtx)
 	var startStatusAppID string
 	ownershipErr := withJobInfoOwnership(persistCtx, store, job, func(writeStore datastore.DataStore) error {
@@ -536,7 +554,7 @@ func runJob(ctx context.Context, job *model.JobTask, client kubernetes.Interface
 		ack()
 		logger.Info("Updating job info in db...")
 		persistErr := persistTerminalJobState(jobCtx, jobCtl, job, store, runtime)
-		if persistErr != nil && (job.Status == config.StatusDistributed || job.RunToken != "") {
+		if persistErr != nil && (job.Status == config.StatusDistributed || job.RunToken != "" || job.ExecutionKey != "") {
 			resultErr = errors.Join(
 				resultErr,
 				signal.ErrInfrastructureStop,

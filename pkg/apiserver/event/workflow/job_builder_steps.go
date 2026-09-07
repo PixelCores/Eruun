@@ -22,6 +22,9 @@ func buildWorkflowStepExecutionGroups(
 	stepGroups := make([][]StepExecution, len(workflowSteps.Steps))
 	for stepIndex, step := range workflowSteps.Steps {
 		stepGroups[stepIndex] = buildWorkflowStepExecutions(ctx, stepIndex, step, componentMap, task, defaultJobTimeoutSeconds)
+		for i := range stepGroups[stepIndex] {
+			applyExecutionSchedulingClass(&stepGroups[stepIndex][i], step.SchedulingClass)
+		}
 	}
 	return stepGroups
 }
@@ -101,9 +104,10 @@ func buildParallelSubStepExecution(
 	buckets := newJobBuckets()
 	for subStepIndex, sub := range step.SubSteps {
 		componentNames := sub.ComponentNames()
+		subBuckets := newJobBuckets()
 		appendComponentGroup(
 			ctx,
-			buckets,
+			subBuckets,
 			componentNames,
 			sub.WorkflowType,
 			sub.Properties,
@@ -114,6 +118,9 @@ func buildParallelSubStepExecution(
 				return workflowSubStepExecutionKey(stepIndex, subStepIndex, componentIndex)
 			},
 		)
+		subExecution := StepExecution{Jobs: subBuckets}
+		applyExecutionSchedulingClass(&subExecution, sub.SchedulingClass)
+		mergeJobBuckets(buckets, subBuckets)
 	}
 	if bucketsEmpty(buckets) {
 		return nil
@@ -137,11 +144,27 @@ func buildSequentialSubStepExecution(ctx context.Context, componentNames []strin
 		displayName = componentNames[0]
 	}
 	return []StepExecution{{
-		Name:     displayName,
-		Mode:     config.WorkflowModeStepByStep,
-		StepType: config.WorkflowStepTypeComponent,
-		Jobs:     buckets,
+		Name:            displayName,
+		SchedulingClass: sub.SchedulingClass,
+		Mode:            config.WorkflowModeStepByStep,
+		StepType:        config.WorkflowStepTypeComponent,
+		Jobs:            buckets,
 	}}
+}
+
+// Scheduling classes order ready jobs; resource priority buckets still express
+// prerequisites. A sub-step's explicit class takes precedence over its parent.
+func applyExecutionSchedulingClass(execution *StepExecution, class string) {
+	if execution.SchedulingClass == "" {
+		execution.SchedulingClass = class
+	}
+	for _, jobs := range execution.Jobs {
+		for _, task := range jobs {
+			if task != nil && task.SchedulingClass == "" {
+				task.SchedulingClass = execution.SchedulingClass
+			}
+		}
+	}
 }
 
 func buildParallelComponentExecution(

@@ -2,6 +2,7 @@ package job
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -69,6 +70,19 @@ func buildJob(component *model.ApplicationComponent, properties *model.Propertie
 				},
 			},
 		},
+	}
+	if properties != nil && properties.JobRetryPolicy != nil {
+		policy, err := json.Marshal(properties.JobRetryPolicy)
+		if err != nil {
+			klog.ErrorS(err, "encode job retry policy", "component", component.Name)
+			return nil
+		}
+		job.Annotations[workflowconfig.AnnotationJobRetryPolicy] = string(policy)
+		backoffLimit := int32(0)
+		job.Spec.BackoffLimit = &backoffLimit
+		// A recovering worker needs the terminal Job and its Pod evidence until
+		// its result is durably recorded; automatic TTL deletion could replay it.
+		job.Spec.TTLSecondsAfterFinished = nil
 	}
 	return job
 }

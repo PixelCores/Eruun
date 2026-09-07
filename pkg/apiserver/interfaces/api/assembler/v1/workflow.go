@@ -22,13 +22,14 @@ func convertWorkflowSteps(raw *model.JSONStruct) (workflowconfig.WorkflowFailure
 			continue
 		}
 		detail := apisv1.WorkflowStepDetail{
-			Name:         step.Name,
-			StepType:     step.StepType,
-			WorkflowType: step.WorkflowType,
-			Mode:         step.Mode,
-			Approval:     convertWorkflowStepApproval(step.Approval),
-			Components:   flattenPolicies(step.Properties),
-			Properties:   convertWorkflowProperties(step.Properties),
+			SchedulingClass: step.SchedulingClass,
+			Name:            step.Name,
+			StepType:        step.StepType,
+			WorkflowType:    step.WorkflowType,
+			Mode:            step.Mode,
+			Approval:        convertWorkflowStepApproval(step.Approval),
+			Components:      flattenPolicies(step.Properties),
+			Properties:      convertWorkflowProperties(step.Properties),
 		}
 		if len(step.SubSteps) > 0 {
 			subDetails := make([]apisv1.WorkflowSubStepDetail, 0, len(step.SubSteps))
@@ -37,10 +38,11 @@ func convertWorkflowSteps(raw *model.JSONStruct) (workflowconfig.WorkflowFailure
 					continue
 				}
 				subDetails = append(subDetails, apisv1.WorkflowSubStepDetail{
-					Name:         sub.Name,
-					WorkflowType: sub.WorkflowType,
-					Components:   flattenPolicies(sub.Properties),
-					Properties:   convertWorkflowProperties(sub.Properties),
+					SchedulingClass: sub.SchedulingClass,
+					Name:            sub.Name,
+					WorkflowType:    sub.WorkflowType,
+					Components:      flattenPolicies(sub.Properties),
+					Properties:      convertWorkflowProperties(sub.Properties),
 				})
 			}
 			detail.SubSteps = subDetails

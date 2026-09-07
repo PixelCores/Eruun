@@ -296,6 +296,19 @@ func applyVersionUpdateWorkflowStepSync(
 			return err
 		}
 		rebuilt := convertWorkflowStepByTemplatePhasesFromComponents(currentComponents)
+		var schedulingClasses [templatePhaseCount]string
+		for _, step := range steps.Steps {
+			if step != nil {
+				if phase, ok := templatePhaseIndexByName(step.Name); ok {
+					schedulingClasses[phase] = step.SchedulingClass
+				}
+			}
+		}
+		for _, step := range rebuilt.Steps {
+			if phase, ok := templatePhaseIndexByName(step.Name); ok {
+				step.SchedulingClass = schedulingClasses[phase]
+			}
+		}
 		applyWorkflowFailurePolicy(rebuilt, steps.FailurePolicy)
 		newSteps, err := model.NewJSONStructByStruct(rebuilt)
 		if err != nil {

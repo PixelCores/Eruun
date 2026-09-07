@@ -354,6 +354,13 @@ func (s *Store) WithTransaction(ctx context.Context, fn func(datastore.DataStore
 	}
 	return tx.WithTransaction(ctx, func(raw datastore.DataStore) error { return fn(NewStore(raw)) })
 }
+func (s *Store) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	tx, ok := s.raw.(datastore.ReadCommittedTransactional)
+	if !ok {
+		return fmt.Errorf("scoped datastore requires read-committed transactions")
+	}
+	return tx.WithReadCommittedTransaction(ctx, func(raw datastore.DataStore) error { return fn(NewStore(raw)) })
+}
 func (s *Store) CurrentDatabaseTime(ctx context.Context) (time.Time, error) {
 	clock, ok := s.raw.(datastore.DatabaseClock)
 	if !ok {

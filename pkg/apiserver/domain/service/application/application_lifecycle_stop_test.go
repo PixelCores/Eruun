@@ -110,9 +110,10 @@ func TestStopApplicationDeploymentsScalesDeploymentsToZero(t *testing.T) {
 func TestStopApplicationDeploymentsTriggersRequestCallback(t *testing.T) {
 	callbackServer, received := newLifecycleCallbackServer(t)
 	app := &model.Applications{
-		ID:        "app-stop-callback",
-		Name:      "demo-stop-callback",
-		Namespace: "default",
+		ID:          "app-stop-callback",
+		Name:        "demo-stop-callback",
+		Namespace:   "default",
+		WorkspaceID: "callback-space",
 	}
 	web := &model.ApplicationComponent{
 		Name:          "web",
@@ -141,11 +142,12 @@ func TestStopApplicationDeploymentsTriggersRequestCallback(t *testing.T) {
 			Spec:       appsv1.DeploymentSpec{Replicas: &replicas},
 		},
 	)
-	queueRepo := &mockWorkflowQueueRepo{}
+	callbackStore := newApplicationCallbackStore(t, app, web)
+	queueRepo := &mockWorkflowQueueRepo{store: callbackStore}
 	svc := &applicationsServiceImpl{
 		ScheduleLocker:            locker.NewMemoryLocker("test-app-schedule"),
 		KubeClient:                clientset,
-		Store:                     store,
+		Store:                     callbackStore,
 		AppRepo:                   &mockCleanupAppRepo{store: store},
 		ComponentRepo:             &mockCleanupComponentRepo{store: store},
 		WorkflowQueueRepo:         queueRepo,
@@ -162,6 +164,7 @@ func TestStopApplicationDeploymentsTriggersRequestCallback(t *testing.T) {
 	require.Equal(t, resp.TaskID, queueRepo.lastQueue.TaskID)
 	require.Equal(t, config.WorkflowTaskTypeStop, queueRepo.lastQueue.Type)
 	requireWorkflowCallbackSuccess(t, queueRepo.lastQueue.Callback, callbackServer.URL)
+	admitApplicationCallback(t, callbackStore)
 	requireLifecycleCallback(t, received, "success", string(config.StatusCompleted), resp.TaskID, config.WorkflowTaskTypeStop)
 }
 
