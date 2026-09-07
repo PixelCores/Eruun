@@ -540,7 +540,8 @@ func (d *DelayDispatcher) dispatch(ctx context.Context, item *delayItem) error {
 		}
 		return fmt.Errorf("load delayed workspace: %w", err)
 	}
-	if space.Namespace == "" || app.Namespace != space.Namespace || item.payload.Namespace != space.Namespace {
+	if space.Namespace == "" || app.Namespace != space.Namespace || item.payload.Namespace != space.Namespace ||
+		(checkpoint.WorkspaceID != "" && checkpoint.WorkspaceID != space.ID) {
 		return d.rejectCheckpoint(ctx, checkpoint, bcode.ErrForbidden)
 	}
 	payload := *item.payload
@@ -562,9 +563,43 @@ func (d *DelayDispatcher) dispatch(ctx context.Context, item *delayItem) error {
 	if err != nil {
 		return err
 	}
+	ctx = access.WithScope(ctx, access.ForWorkspace(space))
+	if checkpoint.WorkspaceID == "" {
+		if err := d.backfillDelayCheckpointWorkspace(ctx, checkpoint, space.ID); err != nil {
+			return err
+		}
+	}
 	scopedItem := *item
 	scopedItem.payload = &payload
-	return d.dispatchJob(access.WithScope(ctx, access.ForWorkspace(space)), &scopedItem, client)
+	return d.dispatchJob(ctx, &scopedItem, client)
+}
+
+// Older application Jobs did not store workspace_id. Backfill only after the
+// committed payload, application, namespace owner and tenant client are checked.
+func (d *DelayDispatcher) backfillDelayCheckpointWorkspace(ctx context.Context, checkpoint *model.JobInfo, workspaceID string) error {
+	conditional, ok := d.store.(datastore.ConditionalCompareAndSwap)
+	if !ok {
+		return fmt.Errorf("backfill delayed workspace: conditional updates are required")
+	}
+	conditions := map[string]interface{}{
+		"app_id": checkpoint.AppID, "execution_key": jobInfoExecutionKey(*checkpoint),
+		"run_generation": checkpoint.RunGeneration, "status": string(config.StatusDistributed),
+		"delay_state": string(config.JobDelayStatePending), "delay_payload": checkpoint.DelayPayload,
+	}
+	// The existing nullable column can contain either an empty string or NULL.
+	// Neither predicate can replace a concurrently assigned workspace identity.
+	for _, empty := range []interface{}{"", nil} {
+		conditions["workspace_id"] = empty
+		updated, err := conditional.CompareAndSwapWithConditions(ctx, checkpoint, conditions, map[string]interface{}{"workspace_id": workspaceID})
+		if err != nil {
+			return fmt.Errorf("backfill delayed workspace: %w", err)
+		}
+		if updated {
+			checkpoint.WorkspaceID = workspaceID
+			return nil
+		}
+	}
+	return fmt.Errorf("backfill delayed workspace: %w", repository.ErrWorkflowOwnershipLost)
 }
 
 // Only a matching, still-pending committed execution can be failed. Persistence
