@@ -15,7 +15,7 @@ import (
 
 func TestNewConfigHasSequentialConcurrencyDefault(t *testing.T) {
 	cfg := NewConfig()
-	require.Equal(t, "127.0.0.1:8000", cfg.BindAddr)
+	require.Equal(t, "127.0.0.1:8001", cfg.BindAddr)
 	require.Equal(t, 1, cfg.Workflow.SequentialMaxConcurrency)
 	require.Equal(t, workflowconfig.DefaultWorkflowCallbackTimeoutMax, cfg.Workflow.CallbackTimeoutMax)
 	require.Equal(t, 1, cfg.Messaging.KafkaTopicPartitions)
