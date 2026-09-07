@@ -113,7 +113,7 @@ Worker 等待准入时响应取消与基础设施停止；失去 ownership 后�
 
 显式策略使用 `backoffLimit=0` 和 `restartPolicy=Never`，避免 Kubernetes 与 Eruun 重复计算业务重试。Eruun 在 `JobInfo.InternalInfo` 中保存 attempt、资源快照、旧/当前 UID、退避时间和总 deadline，再删除匹配 UID 的失败 Job，等待旧 Job/Pod 停止后创建下一次尝试。重试期间保留同一逻辑调度槽位，总执行超时包含退避，不为每次尝试重置。
 
-Workflow lease 恢复会读取已持久的运行中 retry checkpoint，保留原 execution identity、次数、资源与 deadline；不能因为新 generation 而重置预算或再次增长。最终失败才调用既有 Job/Workflow 清理。显式策略执行中不使用 Job TTL 提前删除终态证据，避免数据库结果落盘前丢失 UID 后不确定重放。
+Workflow lease 恢复会读取已持久的运行中 retry checkpoint，保留原 execution identity、次数、资源与 deadline；不能因为新 generation 而重置预算或再次增长。最终失败才调用既有 Job/Workflow 清理。成功时先采集日志、持久化结果，再删除当前 UID；保存失败保留证据供恢复。创建前设置的 Job TTL 覆盖剩余 deadline 加原有一小时清理余量，确保恢复期限内不提前删除证据，并在保存后进程退出或清理失败时最终回收资源。历史无 TTL 的检查点恢复时补齐期限。同一 lease 的父工作流已取消时，控制器无需等待取消信号即可停止，并清理对应 UID；新 lease 或其他 UID 仍被隔离。
 
 ## 7. 可观测性和交付边界
 

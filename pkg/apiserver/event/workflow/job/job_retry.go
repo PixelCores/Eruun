@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -111,6 +112,53 @@ func retryPolicyFromJob(job *batchv1.Job) (*workflowconfig.JobRetryPolicy, error
 	return &policy, nil
 }
 
+func (c *InstantJobCtl) ensureRetryWorkflowOwnership(ctx context.Context) error {
+	status, err := currentJobWorkflowOwnershipStatus(ctx, c.store, c.job)
+	if err != nil {
+		return err
+	}
+	switch status {
+	case config.StatusRunning:
+		return nil
+	case config.StatusCancelled:
+		// Cancellation is committed before its signal is published. Recognize
+		// it while polling too, and retain the same lease fence for final save.
+		c.job.OwnerStatus = config.StatusCancelled
+		return context.Canceled
+	default:
+		return errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("%w: workflow is %s", errWorkflowJobOwnershipChanged, status))
+	}
+}
+
+func retryJobRetentionSeconds(deadline int64, earliestTermination time.Time) (int32, error) {
+	if earliestTermination.IsZero() {
+		earliestTermination = time.Now()
+	}
+	remaining := time.Unix(0, deadline).Sub(earliestTermination)
+	seconds := int64(config.DefaultJobTTLSeconds)
+	if remaining > 0 {
+		seconds += int64(remaining/time.Second) + 1
+	}
+	if seconds > math.MaxInt32 {
+		return 0, fmt.Errorf("Job retry recovery deadline exceeds the Kubernetes TTL range")
+	}
+	return int32(seconds), nil
+}
+
+func (c *InstantJobCtl) retainRetryCheckpoint(ctx context.Context, cp *instantJobRetryCheckpoint, createdAt time.Time) error {
+	if cp.Job.Spec.TTLSecondsAfterFinished != nil {
+		return nil
+	}
+	// Kubernetes counts TTL from termination, which can precede recovery.
+	// Creation is a conservative lower bound for an old attempt's termination.
+	ttl, err := retryJobRetentionSeconds(cp.Deadline, createdAt)
+	if err != nil {
+		return errors.Join(signal.ErrInfrastructureStop, err)
+	}
+	cp.Job.Spec.TTLSecondsAfterFinished = &ttl
+	return c.persistRetryCheckpoint(ctx, cp)
+}
+
 func (c *InstantJobCtl) runWithRetryPolicy(ctx context.Context, desired *batchv1.Job, policy *workflowconfig.JobRetryPolicy) error {
 	var cp *instantJobRetryCheckpoint
 	if c.job.InternalInfo != "" {
@@ -127,7 +175,7 @@ func (c *InstantJobCtl) runWithRetryPolicy(ctx context.Context, desired *batchv1
 		if c.store == nil || !retryJobMatchesTask(desired, c.job) {
 			return fmt.Errorf("jobRetryPolicy requires datastore and workflow execution identity")
 		}
-		if err := ensureCurrentJobWorkflowOwnership(ctx, c.store, c.job); err != nil {
+		if err := c.ensureRetryWorkflowOwnership(ctx); err != nil {
 			return err
 		}
 		// Reusing an active Job with a different policy would keep Kubernetes'
@@ -158,6 +206,11 @@ func (c *InstantJobCtl) runWithRetryPolicy(ctx context.Context, desired *batchv1
 			Kind: "instant_job_retry", Version: 1, Attempt: 1,
 			Deadline: time.Now().Add(time.Duration(timeout) * time.Second).UnixNano(), Job: desired.DeepCopy(),
 		}
+		ttl, err := retryJobRetentionSeconds(cp.Deadline, time.Now())
+		if err != nil {
+			return err
+		}
+		cp.Job.Spec.TTLSecondsAfterFinished = &ttl
 		cp.Job.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
 		if err := c.persistRetryCheckpoint(ctx, cp); err != nil {
 			return err
@@ -247,7 +300,7 @@ func (c *InstantJobCtl) ensureRetryAttempt(ctx context.Context, cp *instantJobRe
 		case <-timer.C:
 		}
 	}
-	if err := ensureCurrentJobWorkflowOwnership(ctx, c.store, c.job); err != nil {
+	if err := c.ensureRetryWorkflowOwnership(ctx); err != nil {
 		return err
 	}
 	live, exists, err := jobExists(ctx, c.client, cp.Job.Namespace, cp.Job.Name)
@@ -261,6 +314,20 @@ func (c *InstantJobCtl) ensureRetryAttempt(ctx context.Context, cp *instantJobRe
 		if live.Annotations[workflowconfig.AnnotationJobAttempt] == strconv.FormatUint(uint64(cp.Attempt), 10) {
 			if cp.CurrentUID != "" && live.UID != cp.CurrentUID {
 				return errors.Join(signal.ErrInfrastructureStop, errJobExecutionIdentityChanged)
+			}
+			if err := c.retainRetryCheckpoint(ctx, cp, live.CreationTimestamp.Time); err != nil {
+				return err
+			}
+			if live.Spec.TTLSecondsAfterFinished == nil || *live.Spec.TTLSecondsAfterFinished < *cp.Job.Spec.TTLSecondsAfterFinished {
+				if err := c.ensureRetryWorkflowOwnership(ctx); err != nil {
+					return err
+				}
+				updated := live.DeepCopy()
+				updated.Spec.TTLSecondsAfterFinished = cp.Job.Spec.TTLSecondsAfterFinished
+				live, err = c.client.BatchV1().Jobs(updated.Namespace).Update(ctx, updated, metav1.UpdateOptions{})
+				if err != nil {
+					return errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("retain Job retry recovery evidence: %w", err))
+				}
 			}
 			return c.persistRetryAttemptUID(ctx, cp, live)
 		}
@@ -279,7 +346,10 @@ func (c *InstantJobCtl) ensureRetryAttempt(ctx context.Context, cp *instantJobRe
 			return err
 		}
 	}
-	if err := ensureCurrentJobWorkflowOwnership(ctx, c.store, c.job); err != nil {
+	if err := c.ensureRetryWorkflowOwnership(ctx); err != nil {
+		return err
+	}
+	if err := c.retainRetryCheckpoint(ctx, cp, time.Now()); err != nil {
 		return err
 	}
 	created, err := c.client.BatchV1().Jobs(cp.Job.Namespace).Create(ctx, cp.Job.DeepCopy(), metav1.CreateOptions{})
@@ -325,7 +395,7 @@ func retryJobFailed(job *batchv1.Job) bool {
 func (c *InstantJobCtl) waitRetryAttempt(ctx context.Context, cp *instantJobRetryCheckpoint) (*batchv1.Job, error) {
 	var terminal *batchv1.Job
 	err := wait.PollUntilContextCancel(ctx, jobPollInterval, true, func(ctx context.Context) (bool, error) {
-		if err := ensureCurrentJobWorkflowOwnership(ctx, c.store, c.job); err != nil {
+		if err := c.ensureRetryWorkflowOwnership(ctx); err != nil {
 			return false, err
 		}
 		live, err := c.client.BatchV1().Jobs(cp.Job.Namespace).Get(ctx, cp.Job.Name, metav1.GetOptions{})
@@ -346,7 +416,7 @@ func (c *InstantJobCtl) waitRetryAttempt(ctx context.Context, cp *instantJobRetr
 }
 
 func (c *InstantJobCtl) deleteRetryJob(ctx context.Context, live *batchv1.Job) error {
-	if err := ensureCurrentJobWorkflowOwnership(ctx, c.store, c.job); err != nil {
+	if err := c.ensureRetryWorkflowOwnership(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		return err
 	}
 	if live.UID == "" || !retryJobMatchesTask(live, c.job) {
@@ -401,7 +471,7 @@ func (c *InstantJobCtl) waitPreviousRetryAttempt(ctx context.Context, cp *instan
 	previous := cp.Job.DeepCopy()
 	previous.UID = cp.PreviousUID
 	return wait.PollUntilContextCancel(ctx, jobPollInterval, true, func(ctx context.Context) (bool, error) {
-		if err := ensureCurrentJobWorkflowOwnership(ctx, c.store, c.job); err != nil {
+		if err := c.ensureRetryWorkflowOwnership(ctx); err != nil {
 			return false, err
 		}
 		live, exists, err := jobExists(ctx, c.client, previous.Namespace, previous.Name)

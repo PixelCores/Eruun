@@ -21,6 +21,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
@@ -58,6 +59,7 @@ func (s *retryCheckpointStore) CompareAndSwapWithConditions(_ context.Context, _
 	record := *s.record
 	record.Attempt = updates["attempt"].(uint)
 	record.Status = updates["status"].(string)
+	record.Info = updates["info"].(string)
 	record.InternalInfo = updates["internal_info"].(string)
 	if s.afterSave != nil {
 		if err := s.afterSave(&record); err != nil {
@@ -473,4 +475,177 @@ func TestRetryRuntimeResumesOldGenerationUnderCurrentLease(t *testing.T) {
 	require.Equal(t, uint64(4), task.OwnerRunGeneration)
 	require.Positive(t, store.ownershipChecks)
 	require.Equal(t, "512Mi", created[0].Spec.Template.Spec.Containers[0].Resources.Limits.Memory().String())
+}
+
+func TestRetryCancellationRecognizesCommittedParentBeforeSignal(t *testing.T) {
+	for _, signalReceived := range []bool{false, true} {
+		t.Run(strconv.FormatBool(signalReceived), func(t *testing.T) {
+			task := retryTestTask(t, retryTestPolicy())
+			task.OwnerRunGeneration, task.RunToken, task.WorkerID = 1, "token-1", "worker-1"
+			desired := task.JobInfo.(*batchv1.Job)
+			desired.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
+			live := desired.DeepCopy()
+			live.UID = "owned"
+			cp := &instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: desired, Attempt: 1,
+				CurrentUID: live.UID, Deadline: time.Now().Add(time.Hour).UnixNano()}
+			raw, err := json.Marshal(cp)
+			require.NoError(t, err)
+			task.InternalInfo = string(raw)
+			store := &retryOwnedCheckpointStore{owner: model.WorkflowQueue{TaskID: task.TaskID, Status: config.StatusCancelled,
+				RunGeneration: 1, RunToken: task.RunToken, WorkerID: task.WorkerID}}
+			client := fake.NewSimpleClientset(live)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if signalReceived {
+				cancel()
+			} else {
+				// The polling loop can observe Cancelled before Redis delivers it.
+				_, err := NewInstantJobCtl(task, client, store, func() {}).waitRetryAttempt(ctx, cp)
+				require.ErrorIs(t, err, context.Canceled)
+				require.NotErrorIs(t, err, signal.ErrInfrastructureStop)
+			}
+			ctl := NewInstantJobCtl(task, client, store, func() {})
+			ctl.Clean(ctx)
+			require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
+			require.Equal(t, config.StatusCancelled, task.OwnerStatus)
+			task.Status = config.StatusCancelled
+			require.NoError(t, persistTerminalJobState(context.Background(), ctl, task, store, nil))
+			require.Equal(t, string(config.StatusCancelled), store.record.Status)
+		})
+	}
+}
+
+func TestRetryCancellationCleanupRejectsDifferentLease(t *testing.T) {
+	for _, changed := range []string{"generation", "token", "worker"} {
+		t.Run(changed, func(t *testing.T) {
+			task := retryTestTask(t, retryTestPolicy())
+			task.OwnerRunGeneration, task.RunToken, task.WorkerID = 1, "token-1", "worker-1"
+			owner := model.WorkflowQueue{TaskID: task.TaskID, Status: config.StatusCancelled, RunGeneration: 1,
+				RunToken: task.RunToken, WorkerID: task.WorkerID}
+			switch changed {
+			case "generation":
+				owner.RunGeneration++
+			case "token":
+				owner.RunToken = "token-2"
+			case "worker":
+				owner.WorkerID = "worker-2"
+			}
+			live := task.JobInfo.(*batchv1.Job).DeepCopy()
+			live.UID = "owned"
+			client := fake.NewSimpleClientset(live)
+			store := &retryOwnedCheckpointStore{owner: owner}
+			err := NewInstantJobCtl(task, client, store, func() {}).deleteRetryJob(context.Background(), live)
+			require.ErrorIs(t, err, signal.ErrInfrastructureStop)
+			require.Zero(t, countClientActions(client, "delete", "jobs"))
+		})
+	}
+}
+
+func TestRetryCancellationDuringCreatedUIDCheckpoint(t *testing.T) {
+	task := retryTestTask(t, retryTestPolicy())
+	task.OwnerRunGeneration, task.RunToken, task.WorkerID = 1, "token-1", "worker-1"
+	store := &retryOwnedCheckpointStore{owner: model.WorkflowQueue{TaskID: task.TaskID, Status: config.StatusRunning,
+		RunGeneration: 1, RunToken: task.RunToken, WorkerID: task.WorkerID}}
+	store.afterSave = func(record *model.JobInfo) error {
+		var cp instantJobRetryCheckpoint
+		require.NoError(t, json.Unmarshal([]byte(record.InternalInfo), &cp))
+		if cp.CurrentUID != "" && record.Status == string(config.StatusRunning) {
+			store.owner.Status = config.StatusCancelled
+			return repository.ErrWorkflowOwnershipLost
+		}
+		return nil
+	}
+	client := fake.NewSimpleClientset()
+	client.PrependReactor("create", "jobs", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		live := action.(k8stesting.CreateAction).GetObject().(*batchv1.Job).DeepCopy()
+		live.UID = "created-before-cancel"
+		require.NoError(t, client.Tracker().Add(live))
+		return true, live, nil
+	})
+	ctl := NewInstantJobCtl(task, client, store, func() {})
+	err := ctl.Run(context.Background())
+	require.ErrorIs(t, err, context.Canceled)
+	require.NotErrorIs(t, err, signal.ErrInfrastructureStop)
+	require.Equal(t, config.StatusCancelled, task.OwnerStatus)
+	ctl.Clean(context.Background())
+	require.Equal(t, 1, countClientActions(client, "create", "jobs"))
+	require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
+	task.Status = config.StatusCancelled
+	require.NoError(t, persistTerminalJobState(context.Background(), ctl, task, store, nil))
+	require.Equal(t, string(config.StatusCancelled), store.record.Status)
+}
+
+func TestRetrySuccessKeepsEvidenceUntilResultAndLogsAreSaved(t *testing.T) {
+	task := retryTestTask(t, retryTestPolicy())
+	task.OwnerRunGeneration, task.RunToken, task.WorkerID = 1, "token-1", "worker-1"
+	client := fake.NewSimpleClientset()
+	var created []*batchv1.Job
+	installRetryJobReactor(t, client, 0, "", &created)
+	store := &retryOwnedCheckpointStore{owner: model.WorkflowQueue{TaskID: task.TaskID, Status: config.StatusRunning,
+		RunGeneration: 1, RunToken: task.RunToken, WorkerID: task.WorkerID}}
+	ctl := NewInstantJobCtl(task, client, store, func() {})
+	require.NoError(t, ctl.Run(context.Background()))
+	var cp instantJobRetryCheckpoint
+	require.NoError(t, json.Unmarshal([]byte(store.record.InternalInfo), &cp))
+	require.Equal(t, created[0].UID, cp.CurrentUID)
+	require.Equal(t, string(config.StatusRunning), store.record.Status)
+	require.NotNil(t, created[0].Spec.TTLSecondsAfterFinished)
+	require.GreaterOrEqual(t, int64(*created[0].Spec.TTLSecondsAfterFinished), task.Timeout+int64(config.DefaultJobTTLSeconds))
+	pod := retryTestPod(created[0], "Completed")
+	pod.Status.Phase = corev1.PodSucceeded
+	pod.Spec.Containers = created[0].Spec.Template.Spec.Containers
+	require.NoError(t, client.Tracker().Add(pod))
+	finalizeCompletedJobIfNeeded(context.Background(), client, task)
+	require.NotEmpty(t, task.Info)
+	require.Zero(t, countClientActions(client, "delete", "jobs"))
+	store.afterSave = func(*model.JobInfo) error { return errors.New("database unavailable during terminal save") }
+	require.ErrorContains(t, persistTerminalJobState(context.Background(), ctl, task, store, nil), "database unavailable")
+	require.Equal(t, string(config.StatusRunning), store.record.Status)
+	require.Zero(t, countClientActions(client, "delete", "jobs"))
+	store.afterSave = nil
+
+	// A new lease resumes the same execution and completed attempt without a
+	// create, resource increase, fresh deadline, or fresh retry budget.
+	recovered := retryTestTask(t, retryTestPolicy())
+	recovered.ExecutionKey, recovered.RunGeneration = *store.record.ExecutionKey, store.record.RunGeneration
+	recovered.OwnerRunGeneration, recovered.RunToken, recovered.WorkerID = 2, "token-2", "worker-2"
+	store.owner.RunGeneration, store.owner.RunToken, store.owner.WorkerID = 2, recovered.RunToken, recovered.WorkerID
+	recovered.InternalInfo, recovered.Attempt = store.record.InternalInfo, store.record.Attempt
+	require.NoError(t, RestoreInstantJobRetryCheckpoint(recovered))
+	recoveredCtl := NewInstantJobCtl(recovered, client, store, func() {})
+	require.NoError(t, recoveredCtl.Run(context.Background()))
+	finalizeCompletedJobIfNeeded(context.Background(), client, recovered)
+	require.Zero(t, countClientActions(client, "delete", "jobs"))
+	require.Equal(t, task.Info, recovered.Info)
+	require.NoError(t, persistTerminalJobState(context.Background(), recoveredCtl, recovered, store, nil))
+	require.Equal(t, string(config.StatusCompleted), store.record.Status)
+	require.Equal(t, recovered.Info, store.record.Info)
+	require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
+	require.Len(t, created, 1)
+	var restored instantJobRetryCheckpoint
+	require.NoError(t, json.Unmarshal([]byte(store.record.InternalInfo), &restored))
+	require.Equal(t, cp.Deadline, restored.Deadline)
+	require.Equal(t, cp.Attempt, restored.Attempt)
+	require.Equal(t, cp.CurrentUID, restored.CurrentUID)
+}
+
+func TestRetryRecoveryAddsRetentionToExistingCheckpointAndJob(t *testing.T) {
+	task := retryTestTask(t, retryTestPolicy())
+	desired := task.JobInfo.(*batchv1.Job)
+	desired.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
+	live := desired.DeepCopy()
+	live.UID = "old-worker-job"
+	live.CreationTimestamp = metav1.NewTime(time.Now().Add(-2 * time.Hour))
+	cp := &instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: desired, Attempt: 1,
+		CurrentUID: live.UID, Deadline: time.Now().Add(time.Hour).UnixNano()}
+	client := fake.NewSimpleClientset(live)
+	store := &retryCheckpointStore{}
+	require.NoError(t, NewInstantJobCtl(task, client, store, func() {}).ensureRetryAttempt(context.Background(), cp))
+	retained, err := client.BatchV1().Jobs(live.Namespace).Get(context.Background(), live.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.NotNil(t, retained.Spec.TTLSecondsAfterFinished)
+	require.GreaterOrEqual(t, *retained.Spec.TTLSecondsAfterFinished, int32(3*time.Hour/time.Second)+config.DefaultJobTTLSeconds)
+	require.Equal(t, cp.Job.Spec.TTLSecondsAfterFinished, retained.Spec.TTLSecondsAfterFinished)
+	require.Equal(t, cp.CurrentUID, retained.UID)
+	require.Zero(t, countClientActions(client, "create", "jobs"))
 }

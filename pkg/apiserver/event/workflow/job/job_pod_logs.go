@@ -47,6 +47,11 @@ func finalizeCompletedJob(ctx context.Context, client kubernetes.Interface, jobT
 	} else if logs != "" {
 		jobTask.Info = logs
 	}
+	if jobTask.JobType == string(config.JobDeployInstant) && jobTask.InternalInfo != "" {
+		// InstantJobCtl.SaveInfo removes retry attempts only after committing
+		// this result and its logs. Other Jobs keep their existing lifecycle.
+		return
+	}
 
 	if err := deleteCompletedJobAndPods(ctx, client, namespace, name, jobObj); err != nil {
 		klog.Warningf("clean completed job %s/%s failed: %v", namespace, name, err)

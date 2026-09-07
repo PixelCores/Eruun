@@ -17,6 +17,7 @@ import (
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 	traitsPlu "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
@@ -79,6 +80,21 @@ func (c *InstantJobCtl) Clean(ctx context.Context) {
 	}, k8serrors.IsNotFound, "after failure")
 }
 
+func (c *InstantJobCtl) SaveInfo(ctx context.Context) error {
+	if err := saveJobInfo(ctx, c.store, c.job); err != nil {
+		return err
+	}
+	// Retry recovery needs the exact live UID until its completed result,
+	// including collected logs, has been committed. Its TTL handles an exit
+	// after this commit but before cleanup.
+	if c.job.Status == config.StatusCompleted && c.job.InternalInfo != "" {
+		if err := c.cleanRetryAttempt(ctx); err != nil && !k8serrors.IsNotFound(err) {
+			klog.ErrorS(err, "clean completed instant Job retry attempt", "taskID", c.job.TaskID)
+		}
+	}
+	return nil
+}
+
 func (c *InstantJobCtl) Run(ctx context.Context) error {
 	c.job.Status = config.StatusRunning
 	c.job.Error = ""
@@ -91,6 +107,17 @@ func (c *InstantJobCtl) Run(ctx context.Context) error {
 		policy, err := retryPolicyFromJob(desired)
 		if err == nil {
 			err = c.runWithRetryPolicy(ctx, desired, policy)
+		}
+		if errors.Is(err, signal.ErrInfrastructureStop) && !signal.IsInfrastructureStop(ctx) {
+			// Cancellation can win the checkpoint CAS after a successful create,
+			// before its signal arrives. A matching cancelled lease still owns
+			// cleanup; a replacement lease or unavailable datastore does not.
+			ownershipCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			ownershipErr := c.ensureRetryWorkflowOwnership(ownershipCtx)
+			cancel()
+			if errors.Is(ownershipErr, context.Canceled) && !errors.Is(ownershipErr, signal.ErrInfrastructureStop) {
+				err = context.Canceled
+			}
 		}
 		if err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
