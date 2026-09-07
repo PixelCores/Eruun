@@ -55,7 +55,7 @@ func EnqueueJobForScheduling(ctx context.Context, store datastore.DataStore, own
 		return err
 	}
 	return withJobSchedulingOwner(ctx, store, owner, func(tx datastore.DataStore) error {
-		current, err := scheduledJobByExecutionKey(ctx, tx, *job.ExecutionKey)
+		current, err := scheduledJobByExecutionKey(ctx, tx, owner, *job.ExecutionKey)
 		if errors.Is(err, datastore.ErrRecordNotExist) && owner != nil {
 			current = new(model.JobInfo)
 			*current = *job
@@ -148,7 +148,7 @@ func IsJobAdmitted(ctx context.Context, store datastore.DataStore, owner *model.
 	}
 	var admitted bool
 	err := withJobSchedulingOwner(ctx, store, owner, func(tx datastore.DataStore) error {
-		job, err := scheduledJobByExecutionKey(ctx, tx, executionKey)
+		job, err := scheduledJobByExecutionKey(ctx, tx, owner, executionKey)
 		if err != nil {
 			return err
 		}
@@ -189,8 +189,21 @@ func ReleaseJobAdmission(ctx context.Context, store datastore.DataStore, owner *
 	if err := validateJobSchedulingOwner(owner); err != nil {
 		return err
 	}
-	return withJobSchedulingOwner(ctx, store, owner, func(tx datastore.DataStore) error {
-		job, err := scheduledJobByExecutionKey(ctx, tx, executionKey)
+	releaseOwner := owner
+	if owner != nil && (owner.Status == "" || owner.Status == config.StatusRunning) {
+		current := &model.WorkflowQueue{TaskID: owner.TaskID}
+		if err := store.Get(ctx, current); err != nil {
+			return fmt.Errorf("load job admission release owner: %w", err)
+		}
+		if current.Status == config.StatusCancelled && current.RunGeneration == owner.RunGeneration &&
+			current.RunToken == owner.RunToken && current.WorkerID == owner.WorkerID {
+			// Cancellation ends execution permission, but the same owner must
+			// still be able to release its original running admission after cleanup.
+			releaseOwner = current
+		}
+	}
+	return withJobSchedulingOwner(ctx, store, releaseOwner, func(tx datastore.DataStore) error {
+		job, err := scheduledJobByExecutionKey(ctx, tx, owner, executionKey)
 		if err != nil {
 			return err
 		}
@@ -212,7 +225,7 @@ func ReleaseJobAdmission(ctx context.Context, store datastore.DataStore, owner *
 		}
 		// A scheduler may have released the completed Job after our read. Only
 		// that same admission is idempotent; a new deadline/generation is fenced.
-		latest, loadErr := scheduledJobByExecutionKey(ctx, tx, executionKey)
+		latest, loadErr := scheduledJobByExecutionKey(ctx, tx, owner, executionKey)
 		if loadErr != nil {
 			return loadErr
 		}
@@ -520,11 +533,17 @@ func jobSchedulingTerminal(status string) bool {
 	return false
 }
 
-func scheduledJobByExecutionKey(ctx context.Context, store datastore.DataStore, key string) (*model.JobInfo, error) {
+func scheduledJobByExecutionKey(ctx context.Context, store datastore.DataStore, owner *model.WorkflowQueue, key string) (*model.JobInfo, error) {
 	if key == "" {
 		return nil, datastore.ErrPrimaryEmpty
 	}
-	entities, err := store.List(ctx, &model.JobInfo{}, &datastore.ListOptions{Page: 1, PageSize: 2, FilterOptions: datastore.FilterOptions{In: []datastore.InQueryOption{{Key: "execution_key", Values: []string{key}}}}})
+	query := &model.JobInfo{}
+	if owner != nil && owner.AppID == "" {
+		// Resource import Jobs have no application. Their task and workspace
+		// let the access store validate the parent before querying these rows.
+		query.TaskID, query.WorkspaceID = owner.TaskID, owner.WorkspaceID
+	}
+	entities, err := store.List(ctx, query, &datastore.ListOptions{Page: 1, PageSize: 2, FilterOptions: datastore.FilterOptions{In: []datastore.InQueryOption{{Key: "execution_key", Values: []string{key}}}}})
 	if err != nil {
 		return nil, fmt.Errorf("load scheduled job: %w", err)
 	}

@@ -24,6 +24,7 @@ func waitForJobAdmission(ctx context.Context, store datastore.DataStore, task *m
 	}
 	owner := &model.WorkflowQueue{
 		TaskID: task.TaskID, RunGeneration: jobOwnerGeneration(task),
+		AppID: task.AppID, WorkspaceID: task.WorkspaceID,
 		RunToken: task.RunToken, WorkerID: task.WorkerID, Status: task.OwnerStatus,
 	}
 	if owner.Status == "" {

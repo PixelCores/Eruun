@@ -234,6 +234,49 @@ func TestJobSchedulerCallbackAndDetachedBoundaries(t *testing.T) {
 	require.ErrorIs(t, EnqueueJobForScheduling(ctx, store, nil, &missing, &deadline), datastore.ErrRecordNotExist)
 }
 
+func TestJobSchedulerCancelledOwnerCanReleaseOnlyItsRunningAdmission(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		change func(*model.WorkflowQueue)
+		wantOK bool
+	}{
+		{name: "same cancelled owner", wantOK: true},
+		{name: "new generation", change: func(owner *model.WorkflowQueue) { owner.RunGeneration++ }},
+		{name: "new token", change: func(owner *model.WorkflowQueue) { owner.RunToken = "replacement" }},
+		{name: "new worker", change: func(owner *model.WorkflowQueue) { owner.WorkerID = "replacement" }},
+		{name: "completed owner", change: func(owner *model.WorkflowQueue) { owner.Status = config.StatusCompleted }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newJobSchedulerTestStore(t)
+			ctx := context.Background()
+			owner, job := schedulerTestJob(t, store, "work", "space", "normal")
+			_, err := AdmitQueuedJobs(ctx, store)
+			require.NoError(t, err)
+			cancelled := *owner
+			cancelled.Status = config.StatusCancelled
+			if tc.change != nil {
+				tc.change(&cancelled)
+			}
+			require.NoError(t, store.Put(ctx, &cancelled))
+			_, err = IsJobAdmitted(ctx, store, owner, *job.ExecutionKey)
+			require.ErrorIs(t, err, ErrWorkflowOwnershipLost, "cancellation must not restore execution permission")
+			err = ReleaseJobAdmission(ctx, store, owner, *job.ExecutionKey, "cancelled job cleanup finished")
+			if tc.wantOK {
+				require.NoError(t, err)
+				require.NoError(t, ReleaseJobAdmission(ctx, store, owner, *job.ExecutionKey, "cancelled job cleanup finished"))
+			} else {
+				require.ErrorIs(t, err, ErrWorkflowOwnershipLost)
+			}
+			require.NoError(t, store.Get(ctx, job))
+			if tc.wantOK {
+				require.Equal(t, wfc.JobSchedulingReleased, job.SchedulingState)
+			} else {
+				require.Equal(t, wfc.JobSchedulingAdmitted, job.SchedulingState)
+			}
+		})
+	}
+}
+
 type failedAdmissionStore struct{ datastore.DataStore }
 
 func (s failedAdmissionStore) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
@@ -337,7 +380,7 @@ func testTerminalCallbackScheduling(t *testing.T, store *sqlstore.Driver) {
 		job := &model.JobInfo{TaskID: owner.TaskID, WorkspaceID: owner.WorkspaceID, ExecutionKey: &key, Type: string(config.JobDeployService), Status: string(config.StatusWaiting)}
 		deadline := time.Now().UTC().Add(time.Minute)
 		require.ErrorContains(t, EnqueueJobForScheduling(ctx, store, owner, job, &deadline), "bounded callback")
-		_, err := scheduledJobByExecutionKey(ctx, store, key)
+		_, err := scheduledJobByExecutionKey(ctx, store, owner, key)
 		require.ErrorIs(t, err, datastore.ErrRecordNotExist, "rejected registration rolls back its initial Job row")
 	})
 	for _, status := range []config.Status{config.StatusRunning, config.StatusWaiting, config.StatusWaitingApprove} {

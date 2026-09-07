@@ -3,10 +3,13 @@ package account
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
@@ -19,6 +22,112 @@ type accessReadCommittedTestStore struct {
 func (s *accessReadCommittedTestStore) WithReadCommittedTransaction(_ context.Context, fn func(datastore.DataStore) error) error {
 	s.called = true
 	return fn(s)
+}
+
+func TestScopedJobAdmissionLifecycle(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		workflow config.WorkflowTaskType
+		job      config.JobType
+		app      bool
+		terminal bool
+		detached bool
+	}{
+		{name: "import scan", workflow: config.WorkflowTaskTypeResourceImportScan, job: config.JobResourceImportScan},
+		{name: "import manage", workflow: config.WorkflowTaskTypeResourceImportManage, job: config.JobResourceImportManage},
+		{name: "application", job: config.JobDeployService, app: true},
+		{name: "terminal callback", job: config.JobDeployCallback, app: true, terminal: true},
+		{name: "detached job", job: config.JobDeployInstant, app: true, detached: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service, _, _ := testAccounts(t)
+			raw, ctx := service.Repo.Store, context.Background()
+			store := NewStore(raw)
+			scopedCtx := WithScope(ctx, Scope{WorkspaceID: "allowed", Namespace: "allowed-ns"})
+			require.NoError(t, repository.EnsureJobSchedulerPolicy(ctx, store))
+			lease := time.Now().Add(time.Hour)
+			owner := &model.WorkflowQueue{TaskID: "task", WorkspaceID: "allowed", Type: tc.workflow,
+				Status: config.StatusRunning, RunGeneration: 1, RunToken: "token", WorkerID: "worker", LeaseExpiresAt: &lease}
+			if tc.app {
+				owner.AppID = "app"
+				require.NoError(t, raw.Add(ctx, &model.Applications{ID: owner.AppID, WorkspaceID: "allowed", Namespace: "allowed-ns"}))
+			}
+			var deadline *time.Time
+			if tc.terminal || tc.detached {
+				owner.Status = config.StatusCompleted
+				deadline = &lease
+			}
+			require.NoError(t, raw.Add(ctx, owner))
+			key := "execution"
+			job := &model.JobInfo{TaskID: owner.TaskID, AppID: owner.AppID, WorkspaceID: owner.WorkspaceID,
+				Type: string(tc.job), Status: string(config.StatusPrepare), ExecutionKey: &key, RunGeneration: 1}
+			if tc.detached {
+				job.Status, job.DelayState = string(config.StatusDistributed), config.JobDelayStatePending
+				job.DelayPayload, job.DelayExecuteAt = `{"committed":true}`, time.Now().Add(-time.Minute).Unix()
+				require.NoError(t, raw.Add(ctx, job))
+				owner = nil
+			}
+			require.NoError(t, repository.EnqueueJobForScheduling(scopedCtx, store, owner, job, deadline))
+			admitted, err := repository.IsJobAdmitted(scopedCtx, store, owner, key, job.SchedulingExpiresAt)
+			require.NoError(t, err)
+			require.False(t, admitted)
+			if !tc.terminal {
+				require.NoError(t, repository.EnqueueJobForScheduling(scopedCtx, store, owner, job, deadline), "repeated registration must find the same Job")
+			}
+			n, err := repository.AdmitQueuedJobs(ctx, store)
+			require.NoError(t, err)
+			require.Equal(t, 1, n)
+			admitted, err = repository.IsJobAdmitted(scopedCtx, store, owner, key, job.SchedulingExpiresAt)
+			require.NoError(t, err)
+			require.True(t, admitted)
+			require.NoError(t, repository.ReleaseJobAdmission(scopedCtx, store, owner, key, "finished", job.SchedulingExpiresAt))
+			require.NoError(t, repository.ReleaseJobAdmission(scopedCtx, store, owner, key, "finished", job.SchedulingExpiresAt))
+			require.NoError(t, raw.Get(ctx, job))
+			require.Equal(t, "released", job.SchedulingState)
+		})
+	}
+}
+
+func TestScopedImportAdmissionRejectsForeignAndForgedOwners(t *testing.T) {
+	service, _, _ := testAccounts(t)
+	raw, ctx := service.Repo.Store, context.Background()
+	store := NewStore(raw)
+	require.NoError(t, repository.EnsureJobSchedulerPolicy(ctx, store))
+	lease := time.Now().Add(time.Hour)
+	owner := &model.WorkflowQueue{TaskID: "import", WorkspaceID: "allowed", Type: config.WorkflowTaskTypeResourceImportScan,
+		Status: config.StatusRunning, RunGeneration: 1, RunToken: "token", WorkerID: "worker", LeaseExpiresAt: &lease}
+	require.NoError(t, raw.Add(ctx, owner))
+	other := *owner
+	other.TaskID = "other-import"
+	require.NoError(t, raw.Add(ctx, &other))
+	key := "import-execution"
+	job := &model.JobInfo{TaskID: owner.TaskID, WorkspaceID: owner.WorkspaceID, Type: string(config.JobResourceImportScan),
+		Status: string(config.StatusPrepare), ExecutionKey: &key, RunGeneration: 1}
+	require.NoError(t, repository.EnqueueJobForScheduling(ctx, store, owner, job, nil))
+	_, err := repository.AdmitQueuedJobs(ctx, store)
+	require.NoError(t, err)
+	forged := *owner
+	forged.WorkspaceID = "foreign"
+	for _, tc := range []struct {
+		name, workspace string
+		owner           model.WorkflowQueue
+	}{
+		{name: "foreign workspace", workspace: "foreign", owner: *owner},
+		{name: "different task with same execution identity", workspace: "allowed", owner: other},
+		{name: "forged workspace", workspace: "foreign", owner: forged},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			scopedCtx := WithScope(ctx, Scope{WorkspaceID: tc.workspace, Namespace: tc.workspace + "-ns"})
+			copy := *job
+			require.Error(t, repository.EnqueueJobForScheduling(scopedCtx, store, &tc.owner, &copy, nil))
+			admitted, err := repository.IsJobAdmitted(scopedCtx, store, &tc.owner, key)
+			require.Error(t, err)
+			require.False(t, admitted)
+			require.Error(t, repository.ReleaseJobAdmission(scopedCtx, store, &tc.owner, key, "forged release"))
+			require.NoError(t, raw.Get(ctx, job))
+			require.Equal(t, "admitted", job.SchedulingState)
+		})
+	}
 }
 
 func TestScopedStoreReadCommittedTransactionPreservesScope(t *testing.T) {
