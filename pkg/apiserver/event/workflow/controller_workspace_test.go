@@ -46,6 +46,11 @@ func (s *workspaceControllerTestStore) Get(ctx context.Context, e datastore.Enti
 	return nil
 }
 
+// Test transactions preserve the fixture's existing synchronization and scope.
+func (s *workspaceControllerTestStore) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	return s.WithTransaction(ctx, fn)
+}
+
 func (s *workspaceControllerTestStore) WithTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
 	return s.DataStore.(datastore.Transactional).WithTransaction(ctx, func(tx datastore.DataStore) error {
 		return fn(&workspaceControllerTestStore{DataStore: tx, appID: s.appID})
@@ -80,11 +85,20 @@ func TestWorkflowRequiresPersistedWorkspaceBeforeExecution(t *testing.T) {
 	ctl.accountConfig = &spec.AccountConfig{}
 	ctl.KubeConfig = &rest.Config{Host: "https://kubernetes.example.invalid"}
 	ctl.Store = &workspaceControllerTestStore{DataStore: store, appID: "app"}
+	ctl.mutateTask(func(task *model.WorkflowQueue) { task.WorkspaceID = "" })
 	ctx, err := ctl.prepareWorkspace(context.Background())
 	require.NoError(t, err)
 	scope, ok := access.FromContext(ctx)
 	require.True(t, ok)
 	require.Equal(t, "workspace", scope.WorkspaceID)
+	require.Equal(t, "workspace", ctl.snapshotTask().WorkspaceID)
+	resolved := ctl.snapshotTask()
+	execution := failedWorkflowGenerationExecution(&resolved, 1, context.Canceled)
+	for _, jobs := range execution.Jobs {
+		for _, job := range jobs {
+			require.Equal(t, "workspace", job.WorkspaceID)
+		}
+	}
 	require.Empty(t, scope.UserID)
 	require.Equal(t, "system:serviceaccount:default:eruun-runner", ctl.KubeConfig.Impersonate.UserName)
 	// Resolving ownership does not create a namespace or require a live client.

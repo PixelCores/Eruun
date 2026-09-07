@@ -4,11 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,7 +24,11 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
 
@@ -186,13 +198,17 @@ func TestRunJobsReturnsInfrastructureStopWhenTerminalPersistenceFails(t *testing
 	for _, concurrency := range []int{1, 2} {
 		t.Run(fmt.Sprintf("concurrency-%d", concurrency), func(t *testing.T) {
 			persistErr := errors.New("injected terminal persistence failure")
-			store := &ownedCheckpointFailureStore{
-				jobInfoStore: &jobInfoStore{addErr: persistErr},
-			}
+			db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "terminal.db")), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, Logger: logger.Default.LogMode(logger.Silent)})
+			require.NoError(t, err)
+			connection, err := db.DB()
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, connection.Close()) })
+			require.NoError(t, db.AutoMigrate(&model.JobInfo{}, &model.WorkflowQueue{}, &model.Applications{}, &model.ApplicationComponent{}))
+			store := &sqlstore.Driver{Client: *db}
 			task := &model.JobTask{
 				Name:          "app-config",
 				Namespace:     "default",
-				AppID:         "app-1",
+				WorkspaceID:   "test-space",
 				TaskID:        "task-1",
 				JobType:       string(config.JobDeployConfigMap),
 				ExecutionKey:  "execution-1",
@@ -203,13 +219,31 @@ func TestRunJobsReturnsInfrastructureStopWhenTerminalPersistenceFails(t *testing
 					Name: "app-config", Namespace: "default",
 				}},
 			}
-
-			err := RunJobs(context.Background(), []*model.JobTask{task}, concurrency, fake.NewSimpleClientset(), nil, store, func() {}, true, nil, nil, nil, nil, nil)
+			now := time.Now().UTC()
+			lease := now.Add(time.Minute)
+			require.NoError(t, store.Add(context.Background(), &model.WorkflowQueue{TaskID: task.TaskID, WorkspaceID: task.WorkspaceID, Status: config.StatusRunning, RunGeneration: task.RunGeneration, RunToken: task.RunToken, WorkerID: task.WorkerID, LeaseExpiresAt: &lease}))
+			record := buildJobInfoRecord(task)
+			record.Status = string(config.StatusPrepare)
+			record.SchedulingState = "admitted"
+			record.SchedulingOwnerStatus = config.StatusRunning
+			record.SchedulingGeneration = task.RunGeneration
+			record.SchedulingQueuedAt = &now
+			require.NoError(t, store.Add(context.Background(), &record))
+			require.NoError(t, db.Callback().Update().Before("gorm:update").Register("fail-terminal-job-write", func(tx *gorm.DB) {
+				if _, ok := tx.Statement.Model.(*model.JobInfo); !ok {
+					return
+				}
+				if updates, ok := tx.Statement.Dest.(map[string]interface{}); ok && fmt.Sprint(updates["status"]) == string(config.StatusCompleted) {
+					tx.AddError(persistErr)
+				}
+			}))
+			err = RunJobs(context.Background(), []*model.JobTask{task}, concurrency, fake.NewSimpleClientset(), nil, store, func() {}, true, nil, nil, nil, nil, nil)
 
 			require.ErrorIs(t, err, signal.ErrInfrastructureStop)
-			require.ErrorIs(t, err, persistErr)
+			require.ErrorContains(t, err, persistErr.Error())
 			require.Equal(t, config.StatusCompleted, task.Status)
-			require.Equal(t, 1, store.addCount)
+			require.NoError(t, store.Get(context.Background(), &record))
+			require.NotEqual(t, string(config.StatusCompleted), record.Status)
 		})
 	}
 }
@@ -235,6 +269,68 @@ func TestRunJobsKeepsLegacyTerminalPersistenceBestEffort(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, config.StatusCompleted, task.Status)
 	require.Equal(t, 1, store.addCount)
+}
+
+func TestRunJobsReturnsTerminalCallbackPersistenceFailureWithoutWorker(t *testing.T) {
+	for _, concurrency := range []int{1, 2} {
+		t.Run(fmt.Sprintf("concurrency-%d", concurrency), func(t *testing.T) {
+			db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "callback.db")), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, Logger: logger.Default.LogMode(logger.Silent)})
+			require.NoError(t, err)
+			connection, err := db.DB()
+			require.NoError(t, err)
+			connection.SetMaxOpenConns(1)
+			t.Cleanup(func() { require.NoError(t, connection.Close()) })
+			require.NoError(t, db.AutoMigrate(&model.JobInfo{}, &model.WorkflowQueue{}, &model.Applications{}, &model.ApplicationComponent{}, &model.SystemSetting{}))
+			store := &sqlstore.Driver{Client: *db}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			require.NoError(t, repository.EnsureJobSchedulerPolicy(ctx, store))
+			owner := &model.WorkflowQueue{TaskID: "cancelled-before-worker", WorkspaceID: "workspace", Status: config.StatusCancelled}
+			require.NoError(t, store.Add(ctx, owner))
+			var requests atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				requests.Add(1)
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+			task := &model.JobTask{Name: "callback", WorkspaceID: owner.WorkspaceID, TaskID: owner.TaskID,
+				ExecutionKey: TerminalCallbackExecutionKey(owner.TaskID, 0, "cancelled"), OwnerStatus: owner.Status,
+				JobType: string(config.JobDeployCallback), JobInfo: &CallbackJobInfo{Event: "cancelled", URL: server.URL}}
+			persistErr := errors.New("injected callback terminal persistence failure")
+			require.NoError(t, db.Callback().Update().Before("gorm:update").Register("fail-terminal-callback-write", func(tx *gorm.DB) {
+				if _, ok := tx.Statement.Model.(*model.JobInfo); !ok {
+					return
+				}
+				if updates, ok := tx.Statement.Dest.(map[string]interface{}); ok && fmt.Sprint(updates["status"]) == string(config.StatusCompleted) {
+					tx.AddError(persistErr)
+				}
+			}))
+			result := make(chan error, 1)
+			go func() {
+				result <- RunJobs(ctx, []*model.JobTask{task}, concurrency, nil, nil, store, func() {}, true, nil, &spec.URLSecurityPolicySpec{AllowPrivateByDefault: true}, nil, nil, nil)
+			}()
+			require.Eventually(t, func() bool {
+				var count int64
+				return db.Model(&model.JobInfo{}).Where("execution_key = ? AND scheduling_state = ?", task.ExecutionKey, "queued").Count(&count).Error == nil && count == 1
+			}, time.Second, 10*time.Millisecond)
+			admitted, err := repository.AdmitQueuedJobs(ctx, store)
+			require.NoError(t, err)
+			require.Equal(t, 1, admitted)
+			select {
+			case err = <-result:
+			case <-ctx.Done():
+				t.Fatal("terminal callback did not finish")
+			}
+			require.Equal(t, int32(1), requests.Load())
+			require.ErrorIs(t, err, signal.ErrInfrastructureStop)
+			require.ErrorContains(t, err, persistErr.Error())
+			require.Equal(t, config.StatusCompleted, task.Status)
+			var stored model.JobInfo
+			require.NoError(t, db.Where("execution_key = ?", task.ExecutionKey).First(&stored).Error)
+			require.Equal(t, string(config.StatusPrepare), stored.Status, "a failed write must not fabricate a committed callback result")
+			require.Equal(t, "released", stored.SchedulingState)
+		})
+	}
 }
 
 func TestRunJobsInfrastructureStopDoesNotPersistCancelledState(t *testing.T) {
@@ -337,9 +433,9 @@ func TestRunJobInfrastructureStopDuringManagementModeCheckDoesNotPersistFailure(
 	cancel(signal.ErrInfrastructureStop)
 	requireClosed(t, done)
 
-	require.Equal(t, config.StatusQueued, job.Status)
+	require.Equal(t, config.StatusPrepare, job.Status)
 	require.Empty(t, job.Error)
-	require.Equal(t, 0, ackCount)
+	require.Equal(t, 1, ackCount)
 	require.Empty(t, store.jobInfos)
 	require.Nil(t, store.updated)
 }

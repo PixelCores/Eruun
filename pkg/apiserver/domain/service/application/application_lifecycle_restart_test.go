@@ -93,9 +93,10 @@ func TestRestartApplicationWorkloadsRestartsWorkloads(t *testing.T) {
 func TestRestartApplicationWorkloadsTriggersRequestCallback(t *testing.T) {
 	callbackServer, received := newLifecycleCallbackServer(t)
 	app := &model.Applications{
-		ID:        "app-restart-callback",
-		Name:      "demo-restart-callback",
-		Namespace: "default",
+		ID:          "app-restart-callback",
+		Name:        "demo-restart-callback",
+		Namespace:   "default",
+		WorkspaceID: "callback-space",
 	}
 	web := &model.ApplicationComponent{
 		Name:          "web",
@@ -119,11 +120,12 @@ func TestRestartApplicationWorkloadsTriggersRequestCallback(t *testing.T) {
 	clientset := fake.NewSimpleClientset(
 		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: deployName, Namespace: "default"}},
 	)
-	queueRepo := &mockWorkflowQueueRepo{}
+	callbackStore := newApplicationCallbackStore(t, app, web)
+	queueRepo := &mockWorkflowQueueRepo{store: callbackStore}
 	svc := &applicationsServiceImpl{
 		ScheduleLocker:            locker.NewMemoryLocker("test-app-schedule"),
 		KubeClient:                clientset,
-		Store:                     store,
+		Store:                     callbackStore,
 		AppRepo:                   &mockCleanupAppRepo{store: store},
 		ComponentRepo:             &mockCleanupComponentRepo{store: store},
 		WorkflowQueueRepo:         queueRepo,
@@ -140,6 +142,7 @@ func TestRestartApplicationWorkloadsTriggersRequestCallback(t *testing.T) {
 	require.Equal(t, resp.TaskID, queueRepo.lastQueue.TaskID)
 	require.Equal(t, config.WorkflowTaskTypeRestart, queueRepo.lastQueue.Type)
 	requireWorkflowCallbackSuccess(t, queueRepo.lastQueue.Callback, callbackServer.URL)
+	admitApplicationCallback(t, callbackStore)
 	requireLifecycleCallback(t, received, "success", string(config.StatusCompleted), resp.TaskID, config.WorkflowTaskTypeRestart)
 }
 

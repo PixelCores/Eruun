@@ -1,7 +1,9 @@
 package workflow
 
 import (
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
@@ -78,6 +80,16 @@ func (s *stageAggregate) add(job *model.JobInfo) {
 		Type:    job.Type,
 		Message: publicStageInfoMessage(job),
 	})
+	if job.SchedulingState != "" {
+		queuedAt := ""
+		if job.SchedulingQueuedAt != nil {
+			queuedAt = job.SchedulingQueuedAt.UTC().Format(time.RFC3339)
+		}
+		appendUniqueMessage(&s.infoMessages, s.infoSeen, apis.TaskStageMessage{
+			Type:    job.Type,
+			Message: fmt.Sprintf("scheduling: %s; class: %s; queuedAt: %s; %s", job.SchedulingState, job.SchedulingClass, queuedAt, job.SchedulingReason),
+		})
+	}
 	appendUniqueMessage(&s.errorMessages, s.errorSeen, apis.TaskStageMessage{
 		Component: s.detail.Name,
 		Message:   job.Error,

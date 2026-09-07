@@ -1537,6 +1537,30 @@ func (w *workflowServiceImpl) triggerWorkflowTerminalCallbackOnApprovalAction(ct
 	if targetURL == "" {
 		return
 	}
+	// API-side callbacks also execute under a persisted parent. An approval
+	// cancellation may have no active Worker, including generation zero, but
+	// must still match the terminal state that actually committed.
+	loadCtx, loadCancel := inheritWorkflowCallbackTimeout(parentCtx, 5*time.Second)
+	defer loadCancel()
+	parent := &model.WorkflowQueue{TaskID: task.TaskID}
+	if err := w.Store.Get(loadCtx, parent); err != nil {
+		klog.ErrorS(err, "load terminal callback workflow", "taskID", task.TaskID)
+		return
+	}
+	if parent.Status != status || parent.RunGeneration != task.RunGeneration || parent.AppID != task.AppID {
+		klog.ErrorS(repository.ErrWorkflowOwnershipLost, "terminal callback workflow changed", "taskID", task.TaskID)
+		return
+	}
+	app := &model.Applications{ID: parent.AppID}
+	if err := w.Store.Get(loadCtx, app); err != nil {
+		klog.ErrorS(err, "load terminal callback application", "taskID", task.TaskID, "appID", parent.AppID)
+		return
+	}
+	if app.WorkspaceID == "" || app.Namespace == "" || (parent.WorkspaceID != "" && parent.WorkspaceID != app.WorkspaceID) {
+		klog.ErrorS(repository.ErrWorkflowOwnershipLost, "terminal callback application workspace is invalid", "taskID", task.TaskID, "appID", parent.AppID)
+		return
+	}
+	task = parent
 	method := callbackMethodForTerminalEvent(&callback, event)
 	payload := workflowjob.CallbackPayload{
 		Event:        event,
@@ -1553,12 +1577,19 @@ func (w *workflowServiceImpl) triggerWorkflowTerminalCallbackOnApprovalAction(ct
 	callbackTimeoutMax := workflowconfig.ResolveWorkflowCallbackTimeoutMax(w.Cfg.WorkflowRuntime())
 	callbackTimeoutSeconds := workflowconfig.ClampWorkflowCallbackTimeoutSeconds(callback.TimeoutSeconds, callbackTimeoutMax)
 	callbackJob := &model.JobTask{
-		Name:       fmt.Sprintf("workflow-callback-%s", task.TaskID),
-		WorkflowID: task.WorkflowID,
-		ProjectID:  task.ProjectID,
-		AppID:      task.AppID,
-		TaskID:     task.TaskID,
-		JobType:    string(config.JobDeployCallback),
+		Name:          fmt.Sprintf("workflow-callback-%s", task.TaskID),
+		Namespace:     app.Namespace,
+		WorkspaceID:   app.WorkspaceID,
+		WorkflowID:    task.WorkflowID,
+		ProjectID:     task.ProjectID,
+		AppID:         task.AppID,
+		TaskID:        task.TaskID,
+		JobType:       string(config.JobDeployCallback),
+		ExecutionKey:  workflowjob.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, event),
+		RunGeneration: task.RunGeneration,
+		OwnerStatus:   task.Status,
+		RunToken:      task.RunToken,
+		WorkerID:      task.WorkerID,
 		JobInfo: &workflowjob.CallbackJobInfo{
 			Event:          event,
 			URL:            targetURL,
@@ -1569,7 +1600,7 @@ func (w *workflowServiceImpl) triggerWorkflowTerminalCallbackOnApprovalAction(ct
 			TimeoutMaxNS:   int64(callbackTimeoutMax),
 			Payload:        payload,
 		},
-		Status: config.StatusRunning,
+		Status: config.StatusWaiting,
 	}
 	callbackTimeout := workflowconfig.ResolveWorkflowCallbackTimeout(callback.TimeoutSeconds, callbackTimeoutMax)
 	runCtx, runCancel := inheritWorkflowCallbackTimeout(parentCtx, callbackTimeout)
@@ -1588,24 +1619,11 @@ func (w *workflowServiceImpl) triggerWorkflowTerminalCallbackOnApprovalAction(ct
 		}
 		return
 	}
-	callbackCtl := workflowjob.NewCallbackJobCtl(callbackJob, w.Store, urlPolicy)
-	if callbackCtl == nil {
-		klog.Warningf("init callback job controller failed for workflow %s task %s", task.WorkflowID, task.TaskID)
-		return
-	}
-	if err := callbackCtl.Run(runCtx); err != nil {
-		callbackJob.Error = err.Error()
-		if callbackJob.Status == config.StatusRunning {
-			callbackJob.Status = config.StatusFailed
-		}
-	} else if callbackJob.Status == config.StatusRunning {
-		callbackJob.Status = config.StatusCompleted
-	}
-	callbackJob.EndTime = time.Now().Unix()
-	saveCtx, saveCancel := inheritWorkflowCallbackTimeout(parentCtx, 5*time.Second)
-	defer saveCancel()
-	if err := callbackCtl.SaveInfo(saveCtx); err != nil {
-		klog.Warningf("save callback job info failed for workflow %s task %s: %v", task.WorkflowID, task.TaskID, err)
+	// The cancellation signal applies to application work, not to its terminal
+	// notification. The callback keeps its own bounded timeout and parent fence.
+	runCtx = workflowjob.WithTaskMetadata(runCtx, "")
+	if err := workflowjob.RunJobs(runCtx, []*model.JobTask{callbackJob}, 1, nil, nil, w.Store, func() {}, false, w.Cache, urlPolicy, nil, nil, nil); err != nil {
+		klog.ErrorS(err, "run terminal workflow callback", "taskID", task.TaskID, "jobName", callbackJob.Name)
 	}
 }
 

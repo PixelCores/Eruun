@@ -125,6 +125,10 @@ type delayedWorkspaceStore struct {
 	spaces map[string]*model.Workspace
 }
 
+func (s *delayedWorkspaceStore) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	return fn(s)
+}
+
 func (s *delayedWorkspaceStore) Get(ctx context.Context, e datastore.Entity) error {
 	switch v := e.(type) {
 	case *model.Applications:
@@ -175,6 +179,7 @@ func delayedWorkspaceFixture(t *testing.T) (*delayedWorkspaceStore, *workspace.M
 		raw, err := json.Marshal(payload)
 		require.NoError(t, err)
 		store.jobInfos[id].AppID, store.jobInfos[id].DelayPayload = app.ID, string(raw)
+		store.jobInfos[id].WorkspaceID = app.WorkspaceID
 		payloads = append(payloads, payload)
 	}
 	root.ClearActions()

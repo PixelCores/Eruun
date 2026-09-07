@@ -255,6 +255,10 @@ func (r *CreateWorkflowStepRequest) UnmarshalJSON(data []byte) error {
 
 	for name, raw := range fields {
 		switch name {
+		case "schedulingClass":
+			if err := decodeStrictJSON(raw, &r.SchedulingClass); err != nil {
+				return err
+			}
 		case "name":
 			if err := decodeStrictJSON(raw, &r.Name); err != nil {
 				return err
@@ -312,6 +316,10 @@ func (r *CreateWorkflowSubStepRequest) UnmarshalJSON(data []byte) error {
 
 	for name, raw := range fields {
 		switch name {
+		case "schedulingClass":
+			if err := decodeStrictJSON(raw, &r.SchedulingClass); err != nil {
+				return err
+			}
 		case "name":
 			if err := decodeStrictJSON(raw, &r.Name); err != nil {
 				return err

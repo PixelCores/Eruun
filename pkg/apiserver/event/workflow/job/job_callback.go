@@ -3,6 +3,7 @@ package job
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -31,6 +32,13 @@ const (
 )
 
 var callbackHTTPClient = &http.Client{}
+
+// TerminalCallbackExecutionKey gives API and Worker callbacks the same durable
+// identity for a workflow generation and terminal event.
+func TerminalCallbackExecutionKey(taskID string, generation uint64, event string) string {
+	identity := fmt.Sprintf("%s|%d|-1|0|0|workflow-callback-%s|%s|%s", taskID, generation, taskID, event, config.JobDeployCallback)
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(identity)))
+}
 
 type CallbackPayload struct {
 	Event        string                  `json:"event"`

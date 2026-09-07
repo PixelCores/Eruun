@@ -44,10 +44,11 @@ type CreateWorkflowStepsRequest struct {
 }
 
 type CreateWorkflowSubStepRequest struct {
-	Name         string             `json:"name"`
-	WorkflowType config.JobType     `json:"jobType,omitempty"`
-	Properties   WorkflowProperties `json:"properties,omitempty"`
-	Components   []string           `json:"components,omitempty"`
+	SchedulingClass string             `json:"schedulingClass,omitempty"`
+	Name            string             `json:"name"`
+	WorkflowType    config.JobType     `json:"jobType,omitempty"`
+	Properties      WorkflowProperties `json:"properties,omitempty"`
+	Components      []string           `json:"components,omitempty"`
 
 	propertiesList      []WorkflowProperties
 	propertiesFromArray bool
@@ -308,21 +309,23 @@ type ApplicationWorkflow struct {
 }
 
 type WorkflowStepDetail struct {
-	Name         string                  `json:"name"`
-	StepType     config.WorkflowStepType `json:"stepType,omitempty"`
-	WorkflowType config.JobType          `json:"workflowType,omitempty"`
-	Mode         config.WorkflowMode     `json:"mode,omitempty"`
-	Approval     *WorkflowStepApproval   `json:"approval,omitempty"`
-	Components   []string                `json:"components,omitempty"`
-	Properties   []WorkflowProperties    `json:"properties,omitempty"`
-	SubSteps     []WorkflowSubStepDetail `json:"subSteps,omitempty"`
+	SchedulingClass string                  `json:"schedulingClass,omitempty"`
+	Name            string                  `json:"name"`
+	StepType        config.WorkflowStepType `json:"stepType,omitempty"`
+	WorkflowType    config.JobType          `json:"workflowType,omitempty"`
+	Mode            config.WorkflowMode     `json:"mode,omitempty"`
+	Approval        *WorkflowStepApproval   `json:"approval,omitempty"`
+	Components      []string                `json:"components,omitempty"`
+	Properties      []WorkflowProperties    `json:"properties,omitempty"`
+	SubSteps        []WorkflowSubStepDetail `json:"subSteps,omitempty"`
 }
 
 type WorkflowSubStepDetail struct {
-	Name         string               `json:"name"`
-	WorkflowType config.JobType       `json:"workflowType,omitempty"`
-	Components   []string             `json:"components,omitempty"`
-	Properties   []WorkflowProperties `json:"properties,omitempty"`
+	SchedulingClass string               `json:"schedulingClass,omitempty"`
+	Name            string               `json:"name"`
+	WorkflowType    config.JobType       `json:"workflowType,omitempty"`
+	Components      []string             `json:"components,omitempty"`
+	Properties      []WorkflowProperties `json:"properties,omitempty"`
 }
 
 type CronJobInfo struct {

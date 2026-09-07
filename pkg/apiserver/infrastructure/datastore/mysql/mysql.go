@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	mysqldsn "github.com/go-sql-driver/mysql"
 	mysqlgorm "gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -76,7 +77,11 @@ func MigrateSchema(ctx context.Context, cfg datastore.Config, models []model.Int
 }
 
 func openDatabase(cfg datastore.Config) (*gorm.DB, *stdsql.DB, error) {
-	db, err := gorm.Open(mysqlgorm.Open(cfg.URL), &gorm.Config{
+	dsn, err := matchedRowsDSN(cfg.URL)
+	if err != nil {
+		return nil, nil, err
+	}
+	db, err := gorm.Open(mysqlgorm.Open(dsn), &gorm.Config{
 		NamingStrategy: sqlnamer.SQLNamer{},
 		Logger:         logger.Default.LogMode(logger.Silent),
 		TranslateError: true,
@@ -103,6 +108,18 @@ func openDatabase(cfg datastore.Config) (*gorm.DB, *stdsql.DB, error) {
 	}
 
 	return db, sqlDB, nil
+}
+
+// Conditional updates report whether their predicates matched. A same-value
+// update still acquires the row lock and must succeed, including two ownership
+// touches within the precision of the persisted update_time column.
+func matchedRowsDSN(raw string) (string, error) {
+	options, err := mysqldsn.ParseDSN(raw)
+	if err != nil {
+		return "", fmt.Errorf("parse MySQL connection options: %w", err)
+	}
+	options.ClientFoundRows = true
+	return options.FormatDSN(), nil
 }
 
 func initializeSchema(ctx context.Context, db *gorm.DB, models []model.Interface, schemaMode SchemaMode) error {

@@ -42,7 +42,7 @@ func TestRunJobRechecksObserveModeBeforeKubernetesWrite(t *testing.T) {
 
 	require.Equal(t, config.StatusFailed, task.Status)
 	require.Contains(t, task.Error, "observe mode")
-	require.Equal(t, 1, ackCount)
+	require.Equal(t, 2, ackCount)
 	require.Empty(t, client.Actions(), "an already queued observe job must not access Kubernetes")
 	require.Len(t, store.jobInfos, 1)
 	require.Equal(t, string(config.StatusFailed), store.jobInfos[0].Status)

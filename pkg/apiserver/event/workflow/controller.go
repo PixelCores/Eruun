@@ -1014,17 +1014,19 @@ func (w *WorkflowCtl) triggerApprovalNotification(ctx context.Context, stepExec 
 	}
 	callbackName := fmt.Sprintf("workflow-approval-notify-%s", task.TaskID)
 	callbackJob := &model.JobTask{
-		Name:          callbackName,
-		WorkflowID:    task.WorkflowID,
-		ProjectID:     task.ProjectID,
-		AppID:         task.AppID,
-		TaskID:        task.TaskID,
-		JobType:       string(config.JobDeployCallback),
-		ExecutionKey:  workflowJobExecutionKey(&task, -1, 0, 0, callbackName+"|"+stepName, string(config.JobDeployCallback)),
-		RunGeneration: task.RunGeneration,
-		OwnerStatus:   task.Status,
-		RunToken:      task.RunToken,
-		WorkerID:      task.WorkerID,
+		Name:            callbackName,
+		SchedulingClass: stepExec.SchedulingClass,
+		WorkspaceID:     task.WorkspaceID,
+		WorkflowID:      task.WorkflowID,
+		ProjectID:       task.ProjectID,
+		AppID:           task.AppID,
+		TaskID:          task.TaskID,
+		JobType:         string(config.JobDeployCallback),
+		ExecutionKey:    workflowJobExecutionKey(&task, -1, 0, 0, callbackName+"|"+stepName, string(config.JobDeployCallback)),
+		RunGeneration:   task.RunGeneration,
+		OwnerStatus:     task.Status,
+		RunToken:        task.RunToken,
+		WorkerID:        task.WorkerID,
 		JobInfo: &job.CallbackJobInfo{
 			Event:          approvalEventName,
 			URL:            targetURL,
@@ -1045,7 +1047,9 @@ func (w *WorkflowCtl) triggerApprovalNotification(ctx context.Context, stepExec 
 	go func() {
 		defer cancel()
 		// Notification jobs should not mutate workflow queue state.
-		job.RunJobs(callbackCtx, []*model.JobTask{callbackJob}, 1, w.Client, w.KubeConfig, w.Store, func() {}, false, w.Cache, w.urlSecurityPolicy, w.DelayQueue, w.ResourceWaiter, w.resourceImportExecutor, w.importSecretKeyring)
+		if err := job.RunJobs(callbackCtx, []*model.JobTask{callbackJob}, 1, w.Client, w.KubeConfig, w.Store, func() {}, false, w.Cache, w.urlSecurityPolicy, w.DelayQueue, w.ResourceWaiter, w.resourceImportExecutor, w.importSecretKeyring); err != nil {
+			klog.ErrorS(err, "workflow callback execution failed", "taskID", callbackJob.TaskID, "jobName", callbackJob.Name)
+		}
 	}()
 }
 
@@ -1262,12 +1266,13 @@ func (w *WorkflowCtl) triggerWorkflowCallback(ctx context.Context, status config
 	callbackName := fmt.Sprintf("workflow-callback-%s", task.TaskID)
 	callbackJob := &model.JobTask{
 		Name:          callbackName,
+		WorkspaceID:   task.WorkspaceID,
 		WorkflowID:    task.WorkflowID,
 		ProjectID:     task.ProjectID,
 		AppID:         task.AppID,
 		TaskID:        task.TaskID,
 		JobType:       string(config.JobDeployCallback),
-		ExecutionKey:  workflowJobExecutionKey(&task, -1, 0, 0, callbackName+"|"+event, string(config.JobDeployCallback)),
+		ExecutionKey:  job.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, event),
 		RunGeneration: task.RunGeneration,
 		OwnerStatus:   status,
 		RunToken:      task.RunToken,
@@ -1290,7 +1295,9 @@ func (w *WorkflowCtl) triggerWorkflowCallback(ctx context.Context, status config
 	job.ApplyExecutionIdentity(callbackJob)
 	callbackCtx, cancel := callbackContext(ctx, callback.TimeoutSeconds, w.callbackTimeoutMax)
 	defer cancel()
-	job.RunJobs(callbackCtx, []*model.JobTask{callbackJob}, 1, w.Client, w.KubeConfig, w.Store, func() {}, false, w.Cache, w.urlSecurityPolicy, w.DelayQueue, w.ResourceWaiter, w.resourceImportExecutor, w.importSecretKeyring)
+	if err := job.RunJobs(callbackCtx, []*model.JobTask{callbackJob}, 1, w.Client, w.KubeConfig, w.Store, func() {}, false, w.Cache, w.urlSecurityPolicy, w.DelayQueue, w.ResourceWaiter, w.resourceImportExecutor, w.importSecretKeyring); err != nil {
+		klog.ErrorS(err, "workflow callback execution failed", "taskID", callbackJob.TaskID, "jobName", callbackJob.Name)
+	}
 }
 
 func approvalUpdateContext(parent context.Context, mode approvalUpdateContextMode) (context.Context, context.CancelFunc) {
@@ -1316,10 +1323,10 @@ func approvalNotificationContext(ctx context.Context, timeout time.Duration) (co
 }
 
 func callbackContext(ctx context.Context, timeoutSeconds int64, timeoutMax time.Duration) (context.Context, context.CancelFunc) {
-	if ctx != nil && ctx.Err() == nil {
-		return ctx, func() {}
-	}
 	timeout := workflowconfig.ResolveWorkflowCallbackTimeout(timeoutSeconds, timeoutMax)
+	if ctx != nil && ctx.Err() == nil {
+		return context.WithTimeout(ctx, timeout)
+	}
 	parent := context.Background()
 	if ctx != nil {
 		parent = job.WithTaskMetadata(context.WithoutCancel(ctx), "")
@@ -1416,6 +1423,9 @@ func (w *WorkflowCtl) prepareWorkspace(ctx context.Context) (context.Context, er
 		manager = &workspace.Manager{Client: w.Client, RESTConfig: w.KubeConfig, Config: w.accountConfig.Workspace}
 	}
 	w.workspaceManager, w.workspace = manager, space
+	// Ordinary workflow queues predate explicit workspace IDs. Resolve the
+	// canonical application workspace before generating any Job or callback.
+	w.mutateTask(func(task *model.WorkflowQueue) { task.WorkspaceID = space.ID })
 	client, restConfig, err := manager.TenantClient(space)
 	if err != nil {
 		return ctx, err

@@ -288,6 +288,36 @@ func TestCreateWorkflowSubStepRequestRejectsJobTypeAliasConflict(t *testing.T) {
 	require.Contains(t, err.Error(), "cannot both be set")
 }
 
+func TestWorkflowSchedulingClassJSONContract(t *testing.T) {
+	const steps = `[{"name":"deploy","schedulingClass":"high","subSteps":[{"name":"background","schedulingClass":"background"},{"name":"inherited"},{"name":"explicit-default","schedulingClass":"normal"}]}]`
+	for _, workflow := range []string{steps, `{"steps":` + steps + `}`} {
+		var request CreateApplicationsRequest
+		require.NoError(t, json.Unmarshal([]byte(`{"name":"app","workflow":`+workflow+`}`), &request))
+		require.Len(t, request.WorkflowSteps, 1)
+		step := request.WorkflowSteps[0]
+		require.Equal(t, "high", step.SchedulingClass)
+		require.Len(t, step.SubSteps, 3)
+		require.Equal(t, "background", step.SubSteps[0].SchedulingClass)
+		require.Empty(t, step.SubSteps[1].SchedulingClass)
+		require.Equal(t, "normal", step.SubSteps[2].SchedulingClass)
+	}
+	for _, input := range []string{
+		`{"schedulingClass":123}`,
+		`{"schedulingClass":true}`,
+		`{"schedulingClass":{}}`,
+		`{"schedulingClass":[]}`,
+		`{"SchedulingClass":"high"}`,
+		`{"scheduling_class":"high"}`,
+	} {
+		t.Run(input, func(t *testing.T) {
+			var step CreateWorkflowStepRequest
+			require.Error(t, json.Unmarshal([]byte(input), &step))
+			var substep CreateWorkflowSubStepRequest
+			require.Error(t, json.Unmarshal([]byte(input), &substep))
+		})
+	}
+}
+
 func TestUpdateApplicationWorkflowRequestAcceptsStepsAlias(t *testing.T) {
 	input := `{"workflowId":"wf-1","workflowType":"update","failurePolicy":"cleanup_all","steps":[{"name":"deploy-web","jobType":"deploy","components":["web"]}]}`
 

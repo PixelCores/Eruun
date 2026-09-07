@@ -497,6 +497,7 @@ func TestWorkflowRunApprovalTimeoutCallbackSentOnce(t *testing.T) {
 
 	var callbackCount int32
 	var releaseOnce sync.Once
+	defer releaseOnce.Do(func() { close(releaseNotify) })
 	timeoutCallbackServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&callbackCount, 1)
 		releaseOnce.Do(func() {

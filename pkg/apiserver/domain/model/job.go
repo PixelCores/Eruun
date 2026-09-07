@@ -3,34 +3,43 @@ package model
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 type JobInfo struct {
-	ID             int                  `json:"id" gorm:"primaryKey;column:id"`
-	Type           string               `json:"type" gorm:"type:varchar(64);column:type"`
-	WorkflowID     string               `json:"workflow_id" gorm:"type:varchar(64);column:workflow_id"`
-	ProductID      string               `json:"product_Id" gorm:"type:varchar(64);column:product_id"`
-	WorkspaceID    string               `json:"workspaceId,omitempty" gorm:"type:varchar(36);column:workspace_id;index"`
-	AppID          string               `json:"app_id" gorm:"type:varchar(64);column:app_id"`
-	TaskID         string               `json:"task_id" gorm:"type:varchar(255);column:task_id"`
-	Status         string               `json:"status" bson:"status" gorm:"type:varchar(32);column:status;index:idx_job_delay_pending,priority:1"`
-	StartTime      int64                `json:"start_time" bson:"start_time" gorm:"column:start_time"`
-	EndTime        int64                `json:"end_time" bson:"end_time" gorm:"column:end_time"`
-	Info           string               `json:"service_type" gorm:"type:longtext;column:info"`
-	InternalInfo   string               `json:"-" gorm:"type:longtext;column:internal_info"`
-	ServiceName    string               `json:"service_name" gorm:"type:varchar(255);column:service_name"`
-	Error          string               `json:"error" gorm:"type:text;column:error"`
-	Production     bool                 `json:"production" gorm:"column:production"`                  // 是否生产
-	TargetEnv      string               `json:"target_env" gorm:"type:varchar(64);column:target_env"` //目标环境
-	ExecutionKey   *string              `json:"execution_key,omitempty" gorm:"type:varchar(255);column:execution_key;uniqueIndex:idx_job_execution_key"`
-	RunGeneration  uint64               `json:"run_generation,omitempty" gorm:"column:run_generation;not null;default:0"`
-	Attempt        uint                 `json:"attempt,omitempty" gorm:"column:attempt;not null;default:0"`
-	DelayState     config.JobDelayState `json:"-" gorm:"type:varchar(32);column:delay_state;index:idx_job_delay_pending,priority:2"`
-	DelayExecuteAt int64                `json:"-" gorm:"column:delay_execute_at;index:idx_job_delay_pending,priority:3"`
-	DelayPayload   string               `json:"-" gorm:"type:longtext;column:delay_payload"`
+	ID                    int                  `json:"id" gorm:"primaryKey;column:id"`
+	Type                  string               `json:"type" gorm:"type:varchar(64);column:type"`
+	WorkflowID            string               `json:"workflow_id" gorm:"type:varchar(64);column:workflow_id"`
+	ProductID             string               `json:"product_Id" gorm:"type:varchar(64);column:product_id"`
+	WorkspaceID           string               `json:"workspaceId,omitempty" gorm:"type:varchar(36);column:workspace_id;index"`
+	AppID                 string               `json:"app_id" gorm:"type:varchar(64);column:app_id"`
+	TaskID                string               `json:"task_id" gorm:"type:varchar(255);column:task_id"`
+	Status                string               `json:"status" bson:"status" gorm:"type:varchar(32);column:status;index:idx_job_delay_pending,priority:1"`
+	StartTime             int64                `json:"start_time" bson:"start_time" gorm:"column:start_time"`
+	EndTime               int64                `json:"end_time" bson:"end_time" gorm:"column:end_time"`
+	Info                  string               `json:"service_type" gorm:"type:longtext;column:info"`
+	InternalInfo          string               `json:"-" gorm:"type:longtext;column:internal_info"`
+	ServiceName           string               `json:"service_name" gorm:"type:varchar(255);column:service_name"`
+	Error                 string               `json:"error" gorm:"type:text;column:error"`
+	Production            bool                 `json:"production" gorm:"column:production"`                  // 是否生产
+	TargetEnv             string               `json:"target_env" gorm:"type:varchar(64);column:target_env"` //目标环境
+	ExecutionKey          *string              `json:"execution_key,omitempty" gorm:"type:varchar(255);column:execution_key;uniqueIndex:idx_job_execution_key"`
+	RunGeneration         uint64               `json:"run_generation,omitempty" gorm:"column:run_generation;not null;default:0"`
+	Attempt               uint                 `json:"attempt,omitempty" gorm:"column:attempt;not null;default:0"`
+	SchedulingState       string               `json:"schedulingState,omitempty" gorm:"type:varchar(16);column:scheduling_state;index:idx_job_scheduling,priority:1"`
+	SchedulingClass       string               `json:"schedulingClass,omitempty" gorm:"type:varchar(64);column:scheduling_class"`
+	SchedulingPriority    int                  `json:"schedulingPriority,omitempty" gorm:"column:scheduling_priority;not null;default:0"`
+	SchedulingQueuedAt    *time.Time           `json:"schedulingQueuedAt,omitempty" gorm:"column:scheduling_queued_at;index:idx_job_scheduling,priority:2"`
+	SchedulingGeneration  uint64               `json:"-" gorm:"column:scheduling_generation;not null;default:0"`
+	SchedulingOwnerStatus config.Status        `json:"-" gorm:"type:varchar(32);column:scheduling_owner_status"`
+	SchedulingExpiresAt   *time.Time           `json:"-" gorm:"column:scheduling_expires_at"`
+	SchedulingReason      string               `json:"schedulingReason,omitempty" gorm:"type:varchar(255);column:scheduling_reason"`
+	DelayState            config.JobDelayState `json:"-" gorm:"type:varchar(32);column:delay_state;index:idx_job_delay_pending,priority:2"`
+	DelayExecuteAt        int64                `json:"-" gorm:"column:delay_execute_at;index:idx_job_delay_pending,priority:3"`
+	DelayPayload          string               `json:"-" gorm:"type:longtext;column:delay_payload"`
 	BaseModel
 }
 
@@ -54,7 +63,8 @@ type JobTask struct {
 	InternalInfo    string
 	Error           string
 	Timeout         int64
-	RetryCount      int //重试次数
+	RetryCount      int    //重试次数
+	SchedulingClass string `json:"schedulingClass,omitempty"`
 	ExecutionKey    string
 	RunGeneration   uint64
 	// OwnerRunGeneration identifies the current WorkflowQueue lease owner.

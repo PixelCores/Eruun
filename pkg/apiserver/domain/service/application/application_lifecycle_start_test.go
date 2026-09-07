@@ -110,9 +110,10 @@ func TestStartApplicationDeploymentsRestoresStoredReplicas(t *testing.T) {
 func TestStartApplicationDeploymentsTriggersRequestCallback(t *testing.T) {
 	callbackServer, received := newLifecycleCallbackServer(t)
 	app := &model.Applications{
-		ID:        "app-start-callback",
-		Name:      "demo-start-callback",
-		Namespace: "default",
+		ID:          "app-start-callback",
+		Name:        "demo-start-callback",
+		Namespace:   "default",
+		WorkspaceID: "callback-space",
 	}
 	web := &model.ApplicationComponent{
 		Name:          "web",
@@ -141,11 +142,12 @@ func TestStartApplicationDeploymentsTriggersRequestCallback(t *testing.T) {
 			Spec:       appsv1.DeploymentSpec{Replicas: &replicas},
 		},
 	)
-	queueRepo := &mockWorkflowQueueRepo{}
+	callbackStore := newApplicationCallbackStore(t, app, web)
+	queueRepo := &mockWorkflowQueueRepo{store: callbackStore}
 	svc := &applicationsServiceImpl{
 		ScheduleLocker:            locker.NewMemoryLocker("test-app-schedule"),
 		KubeClient:                clientset,
-		Store:                     store,
+		Store:                     callbackStore,
 		AppRepo:                   &mockCleanupAppRepo{store: store},
 		ComponentRepo:             &mockCleanupComponentRepo{store: store},
 		WorkflowQueueRepo:         queueRepo,
@@ -162,6 +164,7 @@ func TestStartApplicationDeploymentsTriggersRequestCallback(t *testing.T) {
 	require.Equal(t, resp.TaskID, queueRepo.lastQueue.TaskID)
 	require.Equal(t, config.WorkflowTaskTypeStart, queueRepo.lastQueue.Type)
 	requireWorkflowCallbackSuccess(t, queueRepo.lastQueue.Callback, callbackServer.URL)
+	admitApplicationCallback(t, callbackStore)
 	requireLifecycleCallback(t, received, "success", string(config.StatusCompleted), resp.TaskID, config.WorkflowTaskTypeStart)
 }
 
@@ -290,9 +293,10 @@ func TestStartApplicationDeploymentsRejectsMissingStoredReplicas(t *testing.T) {
 func TestStartApplicationDeploymentsTriggersFailureCallbackForPartialFailure(t *testing.T) {
 	callbackServer, received := newLifecycleCallbackServer(t)
 	app := &model.Applications{
-		ID:        "app-start-failure-callback",
-		Name:      "demo-start-failure-callback",
-		Namespace: "default",
+		ID:          "app-start-failure-callback",
+		Name:        "demo-start-failure-callback",
+		Namespace:   "default",
+		WorkspaceID: "callback-space",
 	}
 	web := &model.ApplicationComponent{
 		Name:          "web",
@@ -321,11 +325,12 @@ func TestStartApplicationDeploymentsTriggersFailureCallbackForPartialFailure(t *
 			Spec:       appsv1.DeploymentSpec{Replicas: &deployReplicas},
 		},
 	)
-	queueRepo := &mockWorkflowQueueRepo{}
+	callbackStore := newApplicationCallbackStore(t, app, web)
+	queueRepo := &mockWorkflowQueueRepo{store: callbackStore}
 	svc := &applicationsServiceImpl{
 		ScheduleLocker:            locker.NewMemoryLocker("test-app-schedule"),
 		KubeClient:                clientset,
-		Store:                     store,
+		Store:                     callbackStore,
 		AppRepo:                   &mockCleanupAppRepo{store: store},
 		ComponentRepo:             &mockCleanupComponentRepo{store: store},
 		WorkflowQueueRepo:         queueRepo,
@@ -345,6 +350,7 @@ func TestStartApplicationDeploymentsTriggersFailureCallbackForPartialFailure(t *
 	var callback model.WorkflowCallback
 	require.NoError(t, decodeJSONStruct(queueRepo.lastQueue.Callback, &callback))
 	require.Equal(t, callbackServer.URL, callback.Failure)
+	admitApplicationCallback(t, callbackStore)
 	requireLifecycleCallback(t, received, "failure", string(config.StatusFailed), resp.TaskID, config.WorkflowTaskTypeStart)
 }
 

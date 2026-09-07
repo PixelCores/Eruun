@@ -33,7 +33,8 @@ func seedDelayRecoveryCheckpoint(t *testing.T, store *resultOutboxTestStore, id 
 	raw, err := json.Marshal(payload)
 	require.NoError(t, err)
 	store.jobInfos[id] = &model.JobInfo{
-		ID: id, Type: payload.JobType, TaskID: payload.TaskID, ServiceName: name,
+		WorkspaceID: "test-workspace",
+		ID:          id, Type: payload.JobType, TaskID: payload.TaskID, ServiceName: name,
 		Status: string(config.StatusDistributed), ExecutionKey: &payload.ExecutionKey, RunGeneration: 1,
 		DelayState: config.JobDelayStatePending, DelayExecuteAt: executeAt, DelayPayload: string(raw),
 	}

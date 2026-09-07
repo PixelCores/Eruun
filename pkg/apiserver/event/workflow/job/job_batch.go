@@ -2,6 +2,7 @@ package job
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -69,6 +70,19 @@ func buildJob(component *model.ApplicationComponent, properties *model.Propertie
 				},
 			},
 		},
+	}
+	if properties != nil && properties.JobRetryPolicy != nil {
+		policy, err := json.Marshal(properties.JobRetryPolicy)
+		if err != nil {
+			klog.ErrorS(err, "encode job retry policy", "component", component.Name)
+			return nil
+		}
+		job.Annotations[workflowconfig.AnnotationJobRetryPolicy] = string(policy)
+		backoffLimit := int32(0)
+		job.Spec.BackoffLimit = &backoffLimit
+		// The retry controller sets a TTL covering its persisted recovery
+		// deadline before creation, once the JobTask timeout is known.
+		job.Spec.TTLSecondsAfterFinished = nil
 	}
 	return job
 }
@@ -337,31 +351,44 @@ func jobOwnerGeneration(jobTask *model.JobTask) uint64 {
 }
 
 func ensureCurrentJobWorkflowOwnership(ctx context.Context, store datastore.DataStore, jobTask *model.JobTask) error {
+	status, err := currentJobWorkflowOwnershipStatus(ctx, store, jobTask)
+	if err != nil {
+		return err
+	}
+	if status != config.StatusRunning {
+		return errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("%w: workflow is %s", errWorkflowJobOwnershipChanged, status))
+	}
+	return nil
+}
+
+// Status is returned only after the complete lease identity matches. Retry
+// cancellation may clean that same lease's resources after the API changes the
+// parent status, while ordinary execution still requires Running.
+func currentJobWorkflowOwnershipStatus(ctx context.Context, store datastore.DataStore, jobTask *model.JobTask) (config.Status, error) {
 	if jobTask == nil || (jobTask.OwnerRunGeneration == 0 && strings.TrimSpace(jobTask.WorkerID) == "") {
-		return nil
+		return config.StatusRunning, nil
 	}
 	generation := jobOwnerGeneration(jobTask)
 	if store == nil || strings.TrimSpace(jobTask.TaskID) == "" || generation == 0 ||
 		strings.TrimSpace(jobTask.RunToken) == "" || strings.TrimSpace(jobTask.WorkerID) == "" {
-		return errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("%w: incomplete ownership identity", errWorkflowJobOwnershipChanged))
+		return "", errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("%w: incomplete ownership identity", errWorkflowJobOwnershipChanged))
 	}
 	task, err := repository.TaskByID(ctx, store, strings.TrimSpace(jobTask.TaskID))
 	if err != nil {
-		return errors.Join(
+		return "", errors.Join(
 			signal.ErrInfrastructureStop,
 			fmt.Errorf("load workflow ownership before Kubernetes update: %w", err),
 		)
 	}
-	if task.Status != config.StatusRunning ||
-		task.RunGeneration != generation ||
+	if task.RunGeneration != generation ||
 		task.RunToken != jobTask.RunToken ||
 		task.WorkerID != jobTask.WorkerID {
-		return errors.Join(
+		return "", errors.Join(
 			signal.ErrInfrastructureStop,
 			fmt.Errorf("%w: task %s generation %d is no longer owned by worker %s", errWorkflowJobOwnershipChanged, jobTask.TaskID, generation, jobTask.WorkerID),
 		)
 	}
-	return nil
+	return task.Status, nil
 }
 
 func ensureJobWorkflowOwnership(ctx context.Context, jobTask *model.JobTask, store datastore.DataStore, operation string) error {

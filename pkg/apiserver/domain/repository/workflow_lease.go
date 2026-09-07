@@ -193,20 +193,31 @@ func WithWorkflowTaskOwnership(
 	if persist == nil {
 		return fmt.Errorf("workflow ownership persistence callback is nil")
 	}
-	if task.RunToken == "" {
+	// Terminal API callbacks may precede any worker claim. They still lock
+	// the exact parent snapshot, including its empty token and worker fields.
+	terminal := jobSchedulingTerminal(string(task.Status))
+	if task.RunToken == "" && !terminal {
 		return persist(store)
 	}
 	if task.TaskID == "" {
 		return datastore.ErrPrimaryEmpty
 	}
-	if task.RunGeneration == 0 || task.WorkerID == "" {
+	if !terminal && (task.RunGeneration == 0 || task.WorkerID == "") {
 		return fmt.Errorf("workflow ownership requires generation, token, and worker identity")
 	}
 	transactional, ok := store.(datastore.Transactional)
 	if !ok {
 		return ErrWorkflowFencingUnsupported
 	}
-	return transactional.WithTransaction(ctx, func(tx datastore.DataStore) error {
+	runTransaction := transactional.WithTransaction
+	if current, ok := store.(datastore.ReadCommittedTransactional); ok {
+		// Access wrappers may read before taking the ownership row lock. SQL
+		// callers need fresh reads after waiting for that lock, including Job
+		// admission and idempotent release checks. Production SQL stores expose
+		// this capability; simpler non-SQL stores retain their transaction API.
+		runTransaction = current.WithReadCommittedTransaction
+	}
+	return runTransaction(ctx, func(tx datastore.DataStore) error {
 		expectedStatus := task.Status
 		if expectedStatus == "" {
 			expectedStatus = config.StatusRunning

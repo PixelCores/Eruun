@@ -316,6 +316,7 @@ func TestWorkflowRunRetriesOriginalStepWhenDistributedCheckpointFails(t *testing
 
 	newController := func(t *testing.T, workflowTask *model.WorkflowQueue) *WorkflowCtl {
 		t.Helper()
+		ensureTestWorkflowExecutionIdentity(workflowTask)
 		ctl, err := NewWorkflowController(
 			workflowTask,
 			kubefake.NewSimpleClientset(),

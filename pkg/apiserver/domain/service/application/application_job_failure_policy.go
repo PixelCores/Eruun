@@ -12,7 +12,19 @@ import (
 )
 
 func normalizeJobFailurePolicyForWrite(componentType config.JobType, properties *apisv1.Properties, field string) error {
-	if properties == nil || properties.FailurePolicy == nil {
+	if properties == nil {
+		return nil
+	}
+	if properties.JobRetryPolicy != nil {
+		retryField := strings.TrimSuffix(field, "failurePolicy") + "jobRetryPolicy"
+		if componentType != config.InstantJob || properties.StartTime != 0 {
+			return fmt.Errorf("%w: %s only supports immediate job components without startTime", bcode.ErrInvalidProperties, retryField)
+		}
+		if err := properties.JobRetryPolicy.Validate(); err != nil {
+			return fmt.Errorf("%w: %s: %v", bcode.ErrInvalidProperties, retryField, err)
+		}
+	}
+	if properties.FailurePolicy == nil {
 		return nil
 	}
 	if componentType != config.InstantJob {
@@ -34,7 +46,7 @@ func normalizeVersionUpdateJobFailurePolicies(specs []apisv1.ComponentUpdateSpec
 	normalized := append([]apisv1.ComponentUpdateSpec(nil), specs...)
 	for i := range normalized {
 		spec := &normalized[i]
-		if spec.Properties == nil || spec.Properties.FailurePolicy == nil {
+		if spec.Properties == nil || (spec.Properties.FailurePolicy == nil && spec.Properties.JobRetryPolicy == nil) {
 			continue
 		}
 		action, err := parseVersionUpdateComponentAction(*spec)
@@ -42,7 +54,7 @@ func normalizeVersionUpdateJobFailurePolicies(specs []apisv1.ComponentUpdateSpec
 			return nil, err
 		}
 		if action != config.ComponentActionAdd && action != config.ComponentActionUpdate {
-			return nil, fmt.Errorf("%w: components[%d].properties.failurePolicy is only supported for add or update actions", bcode.ErrInvalidProperties, i)
+			return nil, fmt.Errorf("%w: components[%d].properties.failurePolicy/jobRetryPolicy is only supported for add or update actions", bcode.ErrInvalidProperties, i)
 		}
 
 		componentType := spec.ComponentType
@@ -65,6 +77,9 @@ func normalizeVersionUpdateJobFailurePolicies(specs []apisv1.ComponentUpdateSpec
 func validateNoNestedJobFailurePoliciesForWrite(traits apisv1.Traits, fieldPrefix string) error {
 	for i, initTrait := range traits.Init {
 		field := fmt.Sprintf("%s.init[%d].properties.failurePolicy", fieldPrefix, i)
+		if initTrait.Properties.JobRetryPolicy != nil {
+			return fmt.Errorf("%w: %s.init[%d].properties.jobRetryPolicy is only supported for top-level job component properties", bcode.ErrInvalidProperties, fieldPrefix, i)
+		}
 		if initTrait.Properties.FailurePolicy != nil {
 			return fmt.Errorf("%w: %s is only supported for top-level job component properties", bcode.ErrInvalidProperties, field)
 		}

@@ -350,6 +350,7 @@ func newTestURLSecurityPolicyProvider(t testing.TB, policy spec.URLSecurityPolic
 
 // mockWorkflowQueueRepo implements repository.WorkflowQueueRepository for tests
 type mockWorkflowQueueRepo struct {
+	store        datastore.DataStore
 	lastQueue    *model.WorkflowQueue
 	queues       []*model.WorkflowQueue
 	createErr    error
@@ -362,6 +363,11 @@ func (m *mockWorkflowQueueRepo) Create(ctx context.Context, queue *model.Workflo
 	}
 	if m.createErr != nil {
 		return m.createErr
+	}
+	if m.store != nil {
+		if err := m.store.Add(ctx, queue); err != nil {
+			return err
+		}
 	}
 	if queue != nil {
 		m.lastQueue = queue

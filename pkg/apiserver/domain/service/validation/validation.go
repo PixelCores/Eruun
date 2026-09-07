@@ -418,6 +418,21 @@ func (v *validationServiceImpl) validateJobProperties(comp apisv1.CreateComponen
 	schedule := strings.TrimSpace(props.Schedule)
 	runPolicy := strings.TrimSpace(props.RunPolicy)
 	startTime := props.StartTime
+	if props.JobRetryPolicy != nil {
+		var policyErr error
+		if comp.ComponentType != config.InstantJob || startTime != 0 {
+			policyErr = fmt.Errorf("jobRetryPolicy is only supported for immediate job components without startTime")
+		} else {
+			policyErr = props.JobRetryPolicy.Validate()
+		}
+		if policyErr != nil {
+			errors = append(errors, apisv1.ValidationError{
+				Field:   fmt.Sprintf("%s.properties.jobRetryPolicy", fieldPrefix),
+				Code:    apisv1.ErrCodeInvalidJobFailurePolicy,
+				Message: policyErr.Error(),
+			})
+		}
+	}
 
 	if props.FailurePolicy != nil {
 		failurePolicy := strings.TrimSpace(string(*props.FailurePolicy))

@@ -16,12 +16,13 @@ import (
 )
 
 type StepExecution struct {
-	Name          string
-	Mode          config.WorkflowMode
-	StepType      config.WorkflowStepType
-	FailurePolicy workflowconfig.WorkflowFailurePolicy
-	Approval      *ApprovalExecution
-	Jobs          map[int][]*model.JobTask
+	SchedulingClass string
+	Name            string
+	Mode            config.WorkflowMode
+	StepType        config.WorkflowStepType
+	FailurePolicy   workflowconfig.WorkflowFailurePolicy
+	Approval        *ApprovalExecution
+	Jobs            map[int][]*model.JobTask
 }
 
 type ApprovalExecution struct {
@@ -77,6 +78,16 @@ func GenerateJobTasks(ctx context.Context, task *model.WorkflowQueue, ds datasto
 		logger.Error(err, "Failed to prepare workflow job tasks", "workflowID", task.WorkflowID, "appID", task.AppID)
 		return []StepExecution{*failedWorkflowGenerationExecution(task, defaultJobTimeoutSeconds, err)}, nil
 	}
+	for _, step := range workflowSteps.Steps {
+		if err := workflowconfig.ValidateJobSchedulingClass(step.SchedulingClass); err != nil {
+			return []StepExecution{*failedWorkflowGenerationExecution(task, defaultJobTimeoutSeconds, err)}, nil
+		}
+		for _, sub := range step.SubSteps {
+			if err := workflowconfig.ValidateJobSchedulingClass(sub.SchedulingClass); err != nil {
+				return []StepExecution{*failedWorkflowGenerationExecution(task, defaultJobTimeoutSeconds, err)}, nil
+			}
+		}
+	}
 
 	stepGroups := buildWorkflowStepExecutionGroups(ctx, workflowSteps, componentMap, task, defaultJobTimeoutSeconds)
 	stepGroups, err = augmentAdoptedDependencyJobs(ctx, stepGroups, task, ds, defaultJobTimeoutSeconds)
@@ -99,6 +110,9 @@ func GenerateJobTasks(ctx context.Context, task *model.WorkflowQueue, ds datasto
 		}
 	}
 	applyWorkflowFailurePolicyToExecutions(executions, failurePolicy)
+	for i := range executions {
+		applyExecutionSchedulingClass(&executions[i], executions[i].SchedulingClass)
+	}
 	applyWorkflowExecutionIdentity(executions, task)
 	if err := restoreCommittedJobExecutions(ctx, executions, task, ds); err != nil {
 		logger.Error(err, "Failed to restore committed job executions", "workflowID", task.WorkflowID, "appID", task.AppID)
@@ -129,6 +143,9 @@ func applyWorkflowJobExecutionIdentity(jobs []*model.JobTask, task *model.Workfl
 			continue
 		}
 		jobTask.ExecutionKey = workflowJobExecutionKey(task, stepIndex, priority, jobIndex, jobTask.Name, jobTask.JobType)
+		if jobTask.WorkspaceID == "" {
+			jobTask.WorkspaceID = task.WorkspaceID
+		}
 		jobTask.RunGeneration = task.RunGeneration
 		jobTask.OwnerRunGeneration = task.RunGeneration
 		jobTask.OwnerStatus = task.Status
@@ -167,6 +184,7 @@ func restoreCommittedJobExecutions(ctx context.Context, executions []StepExecuti
 			In: []datastore.InQueryOption{{
 				Key: "status",
 				Values: []string{
+					string(config.StatusRunning),
 					string(config.StatusDistributed), string(config.StatusCompleted),
 					string(config.StatusPassed), string(config.StatusSkipped),
 					string(config.StatusFailed), string(config.StatusTimeout),
@@ -191,7 +209,8 @@ func restoreCommittedJobExecutions(ctx context.Context, executions []StepExecuti
 						return datastore.ErrEntityInvalid
 					}
 					status := config.Status(strings.TrimSpace(jobInfo.Status))
-					if !isRestorableCommittedJobStatus(jobTask, status) || jobInfo.ExecutionKey == nil ||
+					retryCheckpoint := status == config.StatusRunning && workflowjob.HasInstantJobRetryCheckpoint(jobInfo)
+					if (!isRestorableCommittedJobStatus(jobTask, status) && !retryCheckpoint) || jobInfo.ExecutionKey == nil ||
 						jobInfo.RunGeneration == 0 || jobInfo.RunGeneration > task.RunGeneration {
 						continue
 					}
@@ -213,8 +232,16 @@ func restoreCommittedJobExecutions(ctx context.Context, executions []StepExecuti
 					jobTask.DelayState = selected.DelayState
 					jobTask.DelayExecuteAt = selected.DelayExecuteAt
 					jobTask.DelayPayload = selected.DelayPayload
+					if selected.SchedulingClass != "" {
+						jobTask.SchedulingClass = selected.SchedulingClass
+					}
 					if selected.Attempt > 0 {
 						jobTask.Attempt = selected.Attempt
+					}
+					if jobTask.Status == config.StatusRunning && workflowjob.HasInstantJobRetryCheckpoint(selected) {
+						if err := workflowjob.RestoreInstantJobRetryCheckpoint(jobTask); err != nil {
+							return fmt.Errorf("restore instant job retry: %w", err)
+						}
 					}
 				}
 			}

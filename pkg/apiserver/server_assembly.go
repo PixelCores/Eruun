@@ -85,6 +85,11 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 	if err := s.runBootstrapStep(ctx, s.ensureDefaultPodRestartMonitorSetting); err != nil {
 		return err
 	}
+	if err := s.runBootstrapStep(ctx, func(ctx context.Context) error {
+		return repository.EnsureJobSchedulerPolicy(ctx, s.dataStore)
+	}); err != nil {
+		return err
+	}
 
 	s.urlSecurityPolicyProvider = urlpolicy.NewProvider(s.dataStore, time.Minute)
 	if err := s.beanContainer.Provides(s.urlSecurityPolicyProvider); err != nil {

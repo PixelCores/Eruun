@@ -22,6 +22,35 @@ func (s *transactionalWorkflowOwnershipStore) WithTransaction(ctx context.Contex
 
 var _ datastore.Transactional = (*transactionalWorkflowOwnershipStore)(nil)
 
+type readCommittedWorkflowOwnershipStore struct {
+	*transactionalWorkflowOwnershipStore
+	readCommittedCalls int
+	readCommittedError error
+}
+
+func (s *readCommittedWorkflowOwnershipStore) WithReadCommittedTransaction(_ context.Context, fn func(datastore.DataStore) error) error {
+	s.readCommittedCalls++
+	if s.readCommittedError != nil {
+		return s.readCommittedError
+	}
+	return fn(s.repositoryTestStore)
+}
+
+func TestWithWorkflowTaskOwnershipUsesReadCommittedWhenSupported(t *testing.T) {
+	task := &model.WorkflowQueue{TaskID: "task", RunGeneration: 1, RunToken: "token", WorkerID: "worker"}
+	store := &readCommittedWorkflowOwnershipStore{transactionalWorkflowOwnershipStore: &transactionalWorkflowOwnershipStore{repositoryTestStore: &repositoryTestStore{casWithConditionsSwapped: true}}}
+	called := false
+	require.NoError(t, WithWorkflowTaskOwnership(context.Background(), store, task, func(datastore.DataStore) error { called = true; return nil }))
+	require.True(t, called)
+	require.Equal(t, 1, store.readCommittedCalls)
+	require.Zero(t, store.transactionCalls)
+	store.readCommittedError = ErrWorkflowFencingUnsupported
+	called = false
+	require.ErrorIs(t, WithWorkflowTaskOwnership(context.Background(), store, task, func(datastore.DataStore) error { called = true; return nil }), ErrWorkflowFencingUnsupported)
+	require.False(t, called)
+	require.Zero(t, store.transactionCalls, "a failed production read-committed transaction must never downgrade")
+}
+
 func TestWithWorkflowTaskOwnershipFencesSideEffectWrites(t *testing.T) {
 	task := &model.WorkflowQueue{
 		TaskID:        "task-1",

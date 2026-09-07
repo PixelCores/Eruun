@@ -2,6 +2,7 @@ package job
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -15,6 +16,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 	traitsPlu "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
@@ -66,15 +69,64 @@ func NewInstantJobCtl(job *model.JobTask, client kubernetes.Interface, store dat
 }
 
 func (c *InstantJobCtl) Clean(ctx context.Context) {
+	if c.job.InternalInfo != "" {
+		if err := c.cleanRetryAttempt(ctx); err != nil && !k8serrors.IsNotFound(err) {
+			klog.ErrorS(err, "clean instant Job retry attempt", "taskID", c.job.TaskID)
+		}
+		return
+	}
 	c.cleanCreated(ctx, domainspec.ResourceJob, "job", func(ctx context.Context, namespace, name string) error {
 		return c.client.BatchV1().Jobs(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	}, k8serrors.IsNotFound, "after failure")
+}
+
+func (c *InstantJobCtl) SaveInfo(ctx context.Context) error {
+	if err := saveJobInfo(ctx, c.store, c.job); err != nil {
+		return err
+	}
+	// Retry recovery needs the exact live UID until its completed result,
+	// including collected logs, has been committed. Its TTL handles an exit
+	// after this commit but before cleanup.
+	if c.job.Status == config.StatusCompleted && c.job.InternalInfo != "" {
+		if err := c.cleanRetryAttempt(ctx); err != nil && !k8serrors.IsNotFound(err) {
+			klog.ErrorS(err, "clean completed instant Job retry attempt", "taskID", c.job.TaskID)
+		}
+	}
+	return nil
 }
 
 func (c *InstantJobCtl) Run(ctx context.Context) error {
 	c.job.Status = config.StatusRunning
 	c.job.Error = ""
 	c.ack()
+	if desired, ok := optionalJobInfo[*batchv1.Job](c.job); ok && (desired.Annotations[workflowconfig.AnnotationJobRetryPolicy] != "" || c.job.InternalInfo != "") {
+		if desired.Namespace == "" {
+			desired.Namespace = c.namespace
+		}
+		stampJobExecutionIdentity(c.job, desired)
+		policy, err := retryPolicyFromJob(desired)
+		if err == nil {
+			err = c.runWithRetryPolicy(ctx, desired, policy)
+		}
+		if (errors.Is(err, context.Canceled) || errors.Is(err, signal.ErrInfrastructureStop)) && !signal.IsInfrastructureStop(ctx) {
+			// A signal between attempts or cancellation winning a checkpoint CAS
+			// still needs the same lease's parent status for terminal persistence.
+			// Resolve it even when no live Job remains for cleanup to inspect.
+			ownershipCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			ownershipErr := c.ensureRetryWorkflowOwnership(ownershipCtx)
+			cancel()
+			if errors.Is(ownershipErr, context.Canceled) && !errors.Is(ownershipErr, signal.ErrInfrastructureStop) {
+				err = context.Canceled
+			}
+		}
+		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				err = NewStatusError(config.StatusTimeout, err)
+			}
+			applyJobError(c.job, err, "")
+		}
+		return err
+	}
 
 	if err := c.run(ctx); err != nil {
 		applyJobError(c.job, err, "")

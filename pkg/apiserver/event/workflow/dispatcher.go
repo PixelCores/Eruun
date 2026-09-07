@@ -67,6 +67,14 @@ func (w *Workflow) Dispatcher(ctx context.Context) {
 		case <-ticker.C:
 		}
 
+		if _, err := repository.AdmitQueuedJobs(ctx, w.Store); err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			klog.ErrorS(err, "admit ready workflow jobs")
+			continue
+		}
+
 		waitingTasks, err := w.waitingTasks(ctx)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || ctx.Err() != nil {
