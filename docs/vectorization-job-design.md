@@ -10,6 +10,8 @@
 
 它应复用 Eruun 的 Workflow、Job、权限、取消、超时、日志和执行 ownership，不创建第二套调度器。当前 `main` 只有通用 Application/Workflow 和 Kubernetes Job 基础，还没有向量化专用实现。
 
+任务身份与归属遵循 [AI Runtime 的共用原则](ai-runtime-vision.md#41-任务执行身份与应用归属)：独立向量化执行必须有已授权并持久化的 WorkspaceID，由服务端生成 TaskID，不强制绑定 AppID 或创建占位应用。作为应用 Workflow 步骤运行时则继承已有归属和 TaskID。数据源、embedding 端点和目标存储是需单独授权的输入引用，不决定任务所有权；该路径仍须实现并验证。
+
 ## 2. 目标与非目标
 
 目标：
@@ -46,7 +48,7 @@ resolve authorized source
 
 最小输入概念包括：
 
-- workspace/project 归属。
+- 经服务端校验的 workspace 归属和调用者身份；其他业务关联按场景提供。
 - 数据源引用及不可变 revision、ETag 或内容摘要。
 - 解析与分块策略的版本化引用。
 - embedding endpoint、模型 revision 和凭据引用。
@@ -97,7 +99,7 @@ Embedding Provider 只需要表达批量输入、模型 revision、维度、用�
 - Runner 默认不获得 Kubernetes API Token；必要访问使用任务作用域 ServiceAccount。
 - 出站网络只开放声明的数据源、embedding、目标存储和制品端点。
 - 原文、chunk 和 embedding 默认不写入日志或指标 label。
-- 报告下载、删除和保留必须重新校验 workspace/project 权限。
+- 报告下载、删除和保留必须重新校验任务所属 workspace 权限，不能只凭 TaskID 或输入引用授权。
 - 数据源许可、个人信息和保留策略属于调用方治理输入，Eruun 不因技术可访问而自动获得使用授权。
 
 ## 8. 与现有 Eruun 的映射
