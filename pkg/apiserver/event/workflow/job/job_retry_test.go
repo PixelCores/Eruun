@@ -575,6 +575,81 @@ func TestRetryCancellationDuringCreatedUIDCheckpoint(t *testing.T) {
 	require.Equal(t, string(config.StatusCancelled), store.record.Status)
 }
 
+func TestRetryCancellationWithoutLiveJobPersistsTerminal(t *testing.T) {
+	for _, attempt := range []uint{1, 2} {
+		for _, tc := range []struct {
+			name               string
+			changeOwner        func(*model.WorkflowQueue)
+			infrastructureStop bool
+			wantOwnerStatus    config.Status
+			wantStoredStatus   config.Status
+			wantSaveErr        error
+		}{
+			{name: "cancelled owner", wantOwnerStatus: config.StatusCancelled, wantStoredStatus: config.StatusCancelled},
+			{name: "running owner", changeOwner: func(owner *model.WorkflowQueue) { owner.Status = config.StatusRunning },
+				wantOwnerStatus: config.StatusRunning, wantStoredStatus: config.StatusCancelled},
+			{name: "new generation", changeOwner: func(owner *model.WorkflowQueue) { owner.RunGeneration++ },
+				wantOwnerStatus: config.StatusRunning, wantStoredStatus: config.StatusRunning, wantSaveErr: repository.ErrWorkflowOwnershipLost},
+			{name: "new token", changeOwner: func(owner *model.WorkflowQueue) { owner.RunToken = "replacement" },
+				wantOwnerStatus: config.StatusRunning, wantStoredStatus: config.StatusRunning, wantSaveErr: repository.ErrWorkflowOwnershipLost},
+			{name: "new worker", changeOwner: func(owner *model.WorkflowQueue) { owner.WorkerID = "replacement" },
+				wantOwnerStatus: config.StatusRunning, wantStoredStatus: config.StatusRunning, wantSaveErr: repository.ErrWorkflowOwnershipLost},
+			{name: "infrastructure stop", infrastructureStop: true,
+				wantOwnerStatus: config.StatusRunning, wantStoredStatus: config.StatusRunning},
+		} {
+			t.Run(fmt.Sprintf("attempt-%d/%s", attempt, tc.name), func(t *testing.T) {
+				task := retryTestTask(t, retryTestPolicy())
+				task.OwnerRunGeneration, task.RunToken, task.WorkerID = 1, "token-1", "worker-1"
+				task.OwnerStatus, task.Status, task.Attempt = config.StatusRunning, config.StatusRunning, attempt
+				desired := task.JobInfo.(*batchv1.Job)
+				desired.Annotations[workflowconfig.AnnotationJobAttempt] = strconv.FormatUint(uint64(attempt), 10)
+				cp := &instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: desired,
+					Attempt: attempt, Deadline: time.Now().Add(time.Hour).UnixNano()}
+				if attempt > 1 {
+					cp.PreviousUID, cp.RetryAt = "deleted-attempt-1", time.Now().Add(-time.Second).UnixNano()
+				}
+				raw, err := json.Marshal(cp)
+				require.NoError(t, err)
+				task.InternalInfo = string(raw)
+				record := buildJobInfoRecord(task)
+				store := &retryOwnedCheckpointStore{retryCheckpointStore: retryCheckpointStore{record: &record},
+					owner: model.WorkflowQueue{TaskID: task.TaskID, Status: config.StatusCancelled,
+						RunGeneration: 1, RunToken: task.RunToken, WorkerID: task.WorkerID}}
+				if tc.changeOwner != nil {
+					tc.changeOwner(&store.owner)
+				}
+				client := fake.NewSimpleClientset()
+				ctl := NewInstantJobCtl(task, client, store, func() {})
+				ctx, cancel := context.WithCancelCause(context.Background())
+				if tc.infrastructureStop {
+					cancel(signal.ErrInfrastructureStop)
+				} else {
+					cancel(context.Canceled)
+				}
+				// The signal arrives between attempts: the checkpoint exists,
+				// but no live Job can trigger cleanup's ownership check.
+				require.ErrorIs(t, ctl.Run(ctx), context.Canceled)
+				if !tc.infrastructureStop {
+					ctl.Clean(ctx)
+					// runJob sets the terminal cancellation status after cleanup.
+					task.Status = config.StatusCancelled
+				}
+				err = persistTerminalJobState(ctx, ctl, task, store, nil)
+				if tc.wantSaveErr != nil {
+					require.ErrorIs(t, err, tc.wantSaveErr)
+				} else {
+					require.NoError(t, err)
+				}
+				require.Equal(t, tc.wantOwnerStatus, task.OwnerStatus)
+				require.Equal(t, string(tc.wantStoredStatus), store.record.Status)
+				require.Equal(t, attempt, store.record.Attempt)
+				require.Zero(t, countClientActions(client, "create", "jobs"))
+				require.Zero(t, countClientActions(client, "delete", "jobs"))
+			})
+		}
+	}
+}
+
 func TestRetrySuccessKeepsEvidenceUntilResultAndLogsAreSaved(t *testing.T) {
 	task := retryTestTask(t, retryTestPolicy())
 	task.OwnerRunGeneration, task.RunToken, task.WorkerID = 1, "token-1", "worker-1"

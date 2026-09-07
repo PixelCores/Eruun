@@ -108,10 +108,10 @@ func (c *InstantJobCtl) Run(ctx context.Context) error {
 		if err == nil {
 			err = c.runWithRetryPolicy(ctx, desired, policy)
 		}
-		if errors.Is(err, signal.ErrInfrastructureStop) && !signal.IsInfrastructureStop(ctx) {
-			// Cancellation can win the checkpoint CAS after a successful create,
-			// before its signal arrives. A matching cancelled lease still owns
-			// cleanup; a replacement lease or unavailable datastore does not.
+		if (errors.Is(err, context.Canceled) || errors.Is(err, signal.ErrInfrastructureStop)) && !signal.IsInfrastructureStop(ctx) {
+			// A signal between attempts or cancellation winning a checkpoint CAS
+			// still needs the same lease's parent status for terminal persistence.
+			// Resolve it even when no live Job remains for cleanup to inspect.
 			ownershipCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 			ownershipErr := c.ensureRetryWorkflowOwnership(ownershipCtx)
 			cancel()
