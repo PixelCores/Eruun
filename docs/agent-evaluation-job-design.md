@@ -8,7 +8,7 @@
 
 [AI Runtime 愿景](ai-runtime-vision.md) 把评测放在 Kubernetes 自托管 Agent 与权限边界之后。Eruun 当前有 Application Workflow、一次性 Kubernetes Job、任务状态、日志、取消、超时和数据库执行租约，但没有 Agent evaluation 专用路由、领域模型或 Runner。
 
-评测能力应优先复用统一 Workflow 执行链路，不因为需要报告和指标就复制一套 Scheduler、消息队列或任务状态机。是否需要独立公共入口或内部任务类型，由最小实现验证后决定。
+Agent 评测任务与用户自定义任务是同一空间 namespace 中执行的不同 Job，通过一个 Job 类型区分。两者复用统一 Workflow/Job 执行链路，评测所需的输入、Runner 配置、指标和报告由该类型的处理逻辑负责。类型的共用规则见 [同一命名空间中的 Job 类型](ai-runtime-vision.md#42-同一命名空间中的-job-类型)；本草案不新增独立的评测任务实体、Scheduler、消息队列或状态机。
 
 ### 1.1 独立评测与应用内评测
 
@@ -45,6 +45,7 @@
 
 首个实现应只覆盖能够形成闭环的输入：
 
+- Job 类型选择 Agent 评测；具体枚举名称由实现确定。用户自定义 Job 使用同一模型的另一类型，不要求填写评测专用的目标、数据集或评分字段。
 - 经服务端校验的 workspace 归属和调用者身份；不把 ProjectID、AppID 或 Component 作为所有评测的通用必填信息。
 - 不可变的目标引用；它可以是部署后的 Agent、模型端点或后续定义的运行配置。
 - 带版本或内容摘要的数据集引用。
@@ -69,14 +70,15 @@ TaskID 属于服务端生成的执行元数据，不是调用方需要预先填�
 
 ## 5. 执行与状态
 
-推荐的最小路径是一个 Workflow Run 驱动一个隔离的 Kubernetes Job：
+推荐的最小路径是复用统一任务提交与执行链路，由一个 Workflow Run 驱动所属空间 namespace 中的 Kubernetes Job，类型决定评测输入与结果处理：
 
 ```text
-submit evaluation intent
-  -> authorize workspace and evaluation inputs
+submit Job intent with an evaluation type
+  -> authorize workspace and resolve its namespace
+  -> validate Job type and evaluation inputs
   -> allocate TaskID for a new standalone execution
-  -> persist workflow-owned task
-  -> run isolated evaluation workload
+  -> persist workflow-owned task and typed Job execution
+  -> run evaluation workload through shared Kubernetes Job execution
   -> publish progress and artifacts
   -> calculate verdict
   -> complete workflow and expose summary
@@ -85,6 +87,8 @@ submit evaluation intent
 该图是方向说明，不代表已经存在对应路由或 JobType。
 
 图中分配 TaskID 的步骤面向新提交的独立评测；作为应用 Workflow 中的步骤运行时，评测复用已存在的 TaskID。任务持久化成功后才能返回接受结果并进入调度。单个评测 Job 和后续按需拆分的数据准备、执行、报告 Job 都应复用这一任务身份，不建立第二套评测状态机。
+
+用户自定义 Job 走同一执行链路，按其类型校验镜像、命令和输入输出，不进入评测专用的评分流程。同一 namespace 中分别提交的评测和自定义任务各自获得 TaskID；若被编排在同一次 Workflow 执行中，则共享 TaskID 并以 Job 身份区分。类型只说明 Job 做什么，不决定任务归属，也不改变命名空间或替代执行身份。
 
 执行必须遵循现有 generation/token fencing。Runner 上报只能影响当前执行代；旧执行的迟到进度和报告不能覆盖新执行。网络不确定时，单个 case 的模型请求可能重复，报告需要能够标记这种不确定性。
 
@@ -113,7 +117,7 @@ submit evaluation intent
 
 ## 8. 隔离和权限
 
-- 评测 Pod 使用任务作用域身份，不复用 Eruun 控制面 ServiceAccount。
+- 评测和自定义 Job 在同一空间 namespace 中执行，各自使用任务作用域身份，不复用 Eruun 控制面 ServiceAccount；共用 namespace 不表示可以访问其他 Job 的凭据或制品。
 - 默认不挂载 Kubernetes API Token；确有集群 API 需求时使用最小 RBAC。
 - 出站网络只允许目标端点、数据源、ArtifactStore 和必要授权端点。
 - Judge 和被测目标使用彼此独立的凭据引用。
@@ -128,9 +132,9 @@ checkpoint 至少需要绑定任务、数据集、目标、Runner 版本和已�
 
 ## 10. 实施门禁
 
-1. 先完成一个无需创建 Application、固定目标、固定数据集、确定性 scorer 的端到端实验，验证服务端生成 TaskID 并持久化空间归属。
+1. 先在同一空间 namespace 中运行一个用户自定义 Job 和一个固定目标、固定数据集、确定性 scorer 的评测 Job，验证统一模型与类型分发、无需创建 Application、服务端生成 TaskID 并持久化空间归属。
 2. 再加入受控制品、权限校验和可观察进度。
-3. 根据实验决定是否需要专用 API/任务类型，而不是预先创建新实体。
+3. 根据实验确定单一 Job 类型的枚举与输入映射，补齐现有类型分发、调度、恢复和清理路径，不增加平行任务实体。
 4. 增加 Judge、并发和质量门禁，并验证预算与失败语义。
 5. 只有出现可度量的资源争用后才评估优先级、配额和抢占。
 
@@ -138,6 +142,8 @@ checkpoint 至少需要绑定任务、数据集、目标、Runner 版本和已�
 
 | 场景 | 必须验证的结果 |
 | --- | --- |
+| 同一 namespace 中运行两类 Job | 一个类型字段区分评测与自定义任务；复用调度与生命周期；自定义任务不要求评测专用字段；不按类型创建新 namespace |
+| 类型校验与恢复 | 类型缺失、未知或无权使用时明确拒绝；已接受 Job 的类型在持久化、执行、状态查询和恢复中保持一致，不退化为默认类型 |
 | 无 AppID 的独立提交 | 经空间和输入授权后生成 TaskID；不创建占位 Application、Component 或 Workflow 定义；持久化失败不返回接受结果 |
 | 空间归属缺失或跨空间访问 | 提交、执行、查询、取消及制品访问拒绝未授权操作；不能凭 TaskID 或目标 AppID 绕过 |
 | 相同输入再次运行与故障恢复 | 新运行产生新 TaskID；恢复沿用原 TaskID；旧执行代的迟到结果不能覆盖当前结果 |
