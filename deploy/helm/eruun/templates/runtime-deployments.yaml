@@ -41,6 +41,10 @@ spec:
           env:
             - name: ERUUN_AUTH_CONFIG_FILE
               value: /var/run/secrets/eruun/accounts/accounts.json
+            {{- if $root.Values.jobs.existingSecret }}
+            - name: ERUUN_JOBS_CONFIG_FILE
+              value: /var/run/secrets/eruun/jobs/jobs.json
+            {{- end }}
             - name: ERUUN_ROLE
               value: {{ $role | quote }}
             - name: ERUUN_DATASTORE_SCHEMA_MODE
@@ -93,6 +97,11 @@ spec:
             - name: accounts
               mountPath: /var/run/secrets/eruun/accounts
               readOnly: true
+          {{- if $root.Values.jobs.existingSecret }}
+            - name: jobs-config
+              mountPath: /var/run/secrets/eruun/jobs
+              readOnly: true
+          {{- end }}
           {{- if $usesImportSecretKeyring }}
             - name: import-secret-keyring
               mountPath: /var/run/secrets/eruun/import-secret-keyring
@@ -121,6 +130,15 @@ spec:
           resources:
             {{- toYaml $roleValues.resources | nindent 12 }}
       volumes:
+      {{- if $root.Values.jobs.existingSecret }}
+        - name: jobs-config
+          secret:
+            secretName: {{ $root.Values.jobs.existingSecret | quote }}
+            defaultMode: 0440
+            items:
+              - key: {{ required "jobs.key is required when jobs.existingSecret is set" $root.Values.jobs.key | quote }}
+                path: jobs.json
+      {{- end }}
         - name: accounts
           secret:
             secretName: {{ $root.Values.auth.existingSecret | quote }}

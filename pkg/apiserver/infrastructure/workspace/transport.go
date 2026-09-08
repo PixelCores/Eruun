@@ -65,7 +65,17 @@ func (t *tenantTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			if json.Unmarshal(raw, &obj) != nil || obj == nil {
 				return nil, bcode.ErrForbidden
 			}
-			if err = t.prepare(resource, obj); err != nil {
+			access, evaluation := req.Context().Value(evaluationRunnerKey{}).(evaluationRunnerAccess)
+			if evaluation && resource == "jobs" && mapAt(mapAt(obj, "spec"), "template") != nil {
+				if namespace, ok := mapAt(obj, "metadata")["namespace"].(string); ok && namespace != "" && namespace != t.namespace {
+					err = bcode.ErrForbidden
+				} else {
+					err = prepareEvaluationJob(obj, access)
+				}
+			} else {
+				err = t.prepare(resource, obj)
+			}
+			if err != nil {
 				return nil, err
 			}
 			raw, err = json.Marshal(obj)
@@ -310,6 +320,9 @@ func (m *Manager) checkEmptyResource(ctx context.Context, w *model.Workspace, gr
 		}
 		for _, item := range list.Items {
 			name := item.Metadata.Name
+			if name == EvaluationRunnerName && item.Metadata.Labels[OwnerLabel] == w.ID && (resource == "serviceaccounts" || resource == "roles" || resource == "rolebindings" || resource == "networkpolicies") {
+				continue
+			}
 			baseline := (resource == "serviceaccounts" && (name == "default" || name == runnerName)) || (resource == "configmaps" && name == "kube-root-ca.crt") || ((resource == "roles" || resource == "rolebindings") && name == runnerName) || ((resource == "networkpolicies" || resource == "resourcequotas" || resource == "limitranges") && name == baselineName)
 			if !baseline {
 				return bcode.ErrWorkspaceNotEmpty

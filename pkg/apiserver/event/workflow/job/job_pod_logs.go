@@ -47,7 +47,7 @@ func finalizeCompletedJob(ctx context.Context, client kubernetes.Interface, jobT
 	} else if logs != "" {
 		jobTask.Info = logs
 	}
-	if jobTask.JobType == string(config.JobDeployInstant) && jobTask.InternalInfo != "" {
+	if config.IsInstantJobType(config.JobType(jobTask.JobType)) && jobTask.InternalInfo != "" {
 		// InstantJobCtl.SaveInfo removes retry attempts only after committing
 		// this result and its logs. Other Jobs keep their existing lifecycle.
 		return
@@ -73,7 +73,7 @@ func completedJobForFinalize(jobTask *model.JobTask) (*batchv1.Job, bool) {
 	if jobTask.Status != config.StatusCompleted {
 		return nil, false
 	}
-	if jobTask.JobType != string(config.JobDeployInstant) && jobTask.JobType != string(config.JobDeployScheduled) {
+	if !config.IsInstantJobType(config.JobType(jobTask.JobType)) && jobTask.JobType != string(config.JobDeployScheduled) {
 		return nil, false
 	}
 	jobObj, err := batchJobFromJobInfo(jobTask)

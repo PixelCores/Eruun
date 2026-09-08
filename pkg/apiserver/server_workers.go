@@ -289,6 +289,9 @@ func (s *restServer) startControllerEventWorkers(run *workerRun, errChan chan er
 	if run == nil {
 		return
 	}
+	if s.jobs != nil {
+		run.start(s.jobs.Maintain)
+	}
 	for _, worker := range append([]event.Worker(nil), s.eventWorkers...) {
 		controllerWorker, ok := worker.(event.ControllerWorker)
 		if !ok || controllerWorker == nil {

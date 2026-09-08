@@ -41,7 +41,7 @@ type instantJobRetryCheckpoint struct {
 // closed instead of silently granting a fresh retry budget. Instant Jobs do not
 // use InternalInfo for other checkpoint kinds.
 func HasInstantJobRetryCheckpoint(record *model.JobInfo) bool {
-	return record != nil && record.Type == string(config.JobDeployInstant) && strings.TrimSpace(record.InternalInfo) != ""
+	return record != nil && config.IsInstantJobType(config.JobType(record.Type)) && strings.TrimSpace(record.InternalInfo) != ""
 }
 
 func RestoreInstantJobRetryCheckpoint(task *model.JobTask) error {
@@ -51,6 +51,27 @@ func RestoreInstantJobRetryCheckpoint(task *model.JobTask) error {
 	}
 	task.JobInfo = cp.Job.DeepCopy()
 	task.Attempt = cp.Attempt
+	return nil
+}
+
+// ValidateInstantJobRetryExecution binds a live Kubernetes Job to its durable
+// checkpoint. A just-created Job can authenticate before its returned UID has
+// been checkpointed, using the exact intended attempt and execution identity.
+func ValidateInstantJobRetryExecution(record *model.JobInfo, live *batchv1.Job) error {
+	if record == nil || record.ExecutionKey == nil || !HasInstantJobRetryCheckpoint(record) || live == nil || live.UID == "" {
+		return fmt.Errorf("Job execution checkpoint identity is incomplete")
+	}
+	task := &model.JobTask{TaskID: record.TaskID, ExecutionKey: *record.ExecutionKey, RunGeneration: record.RunGeneration,
+		Attempt: record.Attempt, InternalInfo: record.InternalInfo}
+	cp, err := decodeInstantJobRetryCheckpoint(task)
+	if err != nil {
+		return err
+	}
+	if live.Namespace != cp.Job.Namespace || live.Name != cp.Job.Name || !retryJobMatchesTask(live, task) ||
+		live.Annotations[workflowconfig.AnnotationJobAttempt] != strconv.FormatUint(uint64(cp.Attempt), 10) ||
+		(cp.CurrentUID != "" && cp.CurrentUID != live.UID) || live.UID == cp.PreviousUID {
+		return errJobExecutionIdentityChanged
+	}
 	return nil
 }
 
@@ -190,7 +211,7 @@ func (c *InstantJobCtl) runWithRetryPolicy(ctx context.Context, desired *batchv1
 				return fmt.Errorf("enabling jobRetryPolicy on an existing unfinished Job requires runPolicy recreate")
 			}
 		}
-		action, err := applyJobRunPolicy(ctx, c.client, c.store, desired, config.JobDeployInstant)
+		action, err := applyJobRunPolicy(ctx, c.client, c.store, desired, jobTypeForTask(c.job, config.JobDeployInstant))
 		if err != nil {
 			return err
 		}
@@ -210,7 +231,9 @@ func (c *InstantJobCtl) runWithRetryPolicy(ctx context.Context, desired *batchv1
 		if err != nil {
 			return err
 		}
-		cp.Job.Spec.TTLSecondsAfterFinished = &ttl
+		if cp.Job.Spec.TTLSecondsAfterFinished == nil || *cp.Job.Spec.TTLSecondsAfterFinished < ttl {
+			cp.Job.Spec.TTLSecondsAfterFinished = &ttl
+		}
 		cp.Job.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
 		if err := c.persistRetryCheckpoint(ctx, cp); err != nil {
 			return err

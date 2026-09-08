@@ -216,6 +216,7 @@ func ApplyExecutionIdentity(job *model.JobTask) {
 		annotations[config.AnnotationJobExecutionKey] = job.ExecutionKey
 		annotations[config.AnnotationJobRunGeneration] = strconv.FormatUint(job.RunGeneration, 10)
 		jobObj.SetAnnotations(annotations)
+		stampWorkspaceJobPodIdentity(job, jobObj)
 	}
 	if info, ok := optionalJobInfo[*CallbackJobInfo](job); ok {
 		info.Payload.ExecutionKey = job.ExecutionKey

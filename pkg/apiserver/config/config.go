@@ -36,6 +36,8 @@ const (
 type Config struct {
 	AuthConfigFile string
 	Accounts       *spec.AccountConfig
+	JobsConfigFile string
+	Jobs           *spec.JobsRuntimeConfig
 	// Role selects the explicit runtime responsibility for this process.
 	Role RuntimeRole
 
@@ -317,6 +319,7 @@ func (c *Config) Validate() []error {
 // AddFlags adds flags to the specified FlagSet
 func (c *Config) AddFlags(fs *pflag.FlagSet, configParameter *Config) {
 	fs.StringVar(&c.AuthConfigFile, "auth-config-file", c.AuthConfigFile, "Mounted Secret JSON containing account and workspace configuration (required)")
+	fs.StringVar(&c.JobsConfigFile, "jobs-config-file", c.JobsConfigFile, "Mounted Secret JSON configuring Harbor Runner and optional MinIO result storage")
 	c.Role = configParameter.Role
 	fs.Var((*runtimeRoleValue)(&c.Role), "role", "runtime role: api|controller|scheduler|worker")
 	fs.StringVar(&c.BindAddr, "bind-addr", configParameter.BindAddr, "The bind address used to serve the http APIs.")

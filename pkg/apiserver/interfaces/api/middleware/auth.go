@@ -45,6 +45,20 @@ var privateAccountRoutes = map[string]bool{
 // Each registered business route must make an explicit authorization decision.
 // A route added without a policy remains denied, including for administrators.
 var businessRoutes = map[string]string{
+	"POST /api/v1/jobs":                                                       "member",
+	"GET /api/v1/jobs/:taskID":                                                "viewer",
+	"POST /api/v1/jobs/:taskID/cancel":                                        "member",
+	"GET /api/v1/jobs/:taskID/results":                                        "viewer",
+	"GET /api/v1/jobs/:taskID/results/:artifactID/download":                   "viewer",
+	"GET /api/v1/jobs/:taskID/deliveries/:target/download":                    "viewer",
+	"POST /api/v1/jobs/:taskID/deliveries/:target/retry":                      "member",
+	"PUT /api/v1/jobs/:taskID/retention":                                      "member",
+	"GET /api/v1/job-storage-policy":                                          "viewer",
+	"PUT /api/v1/job-storage-policy":                                          "member",
+	"POST /api/v1/job-datasets":                                               "member",
+	"GET /api/v1/job-datasets":                                                "viewer",
+	"GET /api/v1/job-datasets/:datasetID":                                     "viewer",
+	"GET /api/v1/job-datasets/:datasetID/download":                            "viewer",
 	"GET /api/v1/applications":                                                "viewer",
 	"GET /api/v1/applications/templates":                                      "member",
 	"GET /api/v1/cronjobs":                                                    "member",
@@ -105,6 +119,11 @@ var businessRoutes = map[string]string{
 	"GET /api/v1/admin/users":                                                 "system", "PATCH /api/v1/admin/users/:userID": "system",
 }
 
+var runnerRoutes = map[string]bool{
+	"GET /api/v1/job-runners/:taskID/dataset":  true,
+	"POST /api/v1/job-runners/:taskID/results": true,
+}
+
 // HasAuthPolicy reports whether a registered route belongs to exactly one
 // explicit authorization class, including health/readiness bypasses.
 func HasAuthPolicy(method, path string) bool {
@@ -127,6 +146,9 @@ func HasAuthPolicy(method, path string) bool {
 	if _, known := businessRoutes[route]; known {
 		classes++
 	}
+	if runnerRoutes[route] {
+		classes++
+	}
 	return classes == 1
 }
 
@@ -134,6 +156,13 @@ func Auth(opts AuthOptions) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.FullPath()
 		route := c.Request.Method + " " + path
+		if runnerRoutes[route] {
+			// The handler validates a task capability plus the current Pod UID and
+			// execution checkpoint. A user session is never sufficient here.
+			c.Header("Cache-Control", "no-store")
+			c.Next()
+			return
+		}
 		for _, health := range DefaultAuthSkipPaths() {
 			if path == health && c.Request.Method == "GET" {
 				c.Next()

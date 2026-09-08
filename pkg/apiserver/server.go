@@ -22,6 +22,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api"
+	"github.com/PixelCores/Eruun/pkg/apiserver/jobs"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/container"
 )
@@ -32,6 +33,7 @@ type APIServer interface {
 
 type restServer struct {
 	accounts                  *account.Service
+	jobs                      *jobs.Service
 	webContainer              *gin.Engine
 	beanContainer             *container.Container
 	cfg                       config.Config

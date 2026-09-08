@@ -115,6 +115,8 @@ const (
 	JobVersionRestart            JobType = "version_restart"
 	JobResourceImportScan        JobType = "resource_import_scan"
 	JobResourceImportManage      JobType = "resource_import_manage"
+	JobCommand                   JobType = "command"
+	JobAgentEvaluation           JobType = "agent_evaluation"
 )
 
 const (
@@ -136,6 +138,7 @@ const (
 	WorkflowTaskTypeLogArchiveUpload     WorkflowTaskType = "log_archive_upload"
 	WorkflowTaskTypeResourceImportScan   WorkflowTaskType = "resource_import_scan"
 	WorkflowTaskTypeResourceImportManage WorkflowTaskType = "resource_import_manage"
+	WorkflowTaskTypeJob                  WorkflowTaskType = "job"
 
 	WorkflowModeStepByStep WorkflowMode = "StepByStep"
 	WorkflowModeDAG        WorkflowMode = "DAG"
@@ -420,4 +423,14 @@ func ParseComponentAction(action string) ComponentAction {
 	default:
 		return ComponentActionUpdate
 	}
+}
+
+// IsWorkspaceJobType identifies the public, app-less executable Job types.
+func IsWorkspaceJobType(value JobType) bool {
+	return value == JobCommand || value == JobAgentEvaluation
+}
+
+// IsInstantJobType identifies workloads sharing the durable Kubernetes Job lifecycle.
+func IsInstantJobType(value JobType) bool {
+	return value == JobDeployInstant || IsWorkspaceJobType(value)
 }

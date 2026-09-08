@@ -226,7 +226,7 @@ func initJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore
 		jobCtl = NewDeployAdoptedPodDisruptionBudgetJobCtl(job, client, store, ack, shareLocker)
 	case string(config.JobDeployNetworkPolicy):
 		jobCtl = NewDeployAdoptedNetworkPolicyJobCtl(job, client, store, ack, shareLocker)
-	case string(config.JobDeployInstant):
+	case string(config.JobDeployInstant), string(config.JobCommand), string(config.JobAgentEvaluation):
 		jobCtl = NewInstantJobCtl(job, client, store, ack)
 	case string(config.JobDeployScheduled):
 		jobCtl = NewScheduledJobCtl(job, client, store, ack)
@@ -277,6 +277,17 @@ func RunJobs(ctx context.Context, jobs []*model.JobTask, concurrency int, client
 			if isResourceImportJobType(config.JobType(task.JobType)) {
 				if task.AppID != "" || task.WorkspaceID != scope.WorkspaceID {
 					return fmt.Errorf("resource import job workspace does not match execution scope")
+				}
+				continue
+			}
+			if config.IsWorkspaceJobType(config.JobType(task.JobType)) {
+				if task.AppID != "" || task.TaskID == "" || task.WorkspaceID != scope.WorkspaceID {
+					return fmt.Errorf("job workspace does not match execution scope")
+				}
+				if err := access.NewStore(store).Check(ctx, &model.JobInfo{
+					TaskID: task.TaskID, WorkspaceID: task.WorkspaceID, Type: task.JobType,
+				}); err != nil {
+					return fmt.Errorf("authorize workspace job: %w", err)
 				}
 				continue
 			}
@@ -621,7 +632,7 @@ func jobExecutionAlreadySettled(job *model.JobTask) bool {
 		return true
 	case config.StatusDistributed:
 		jobType := config.JobType(job.JobType)
-		return jobType == config.JobDeployInstant || jobType == config.JobDeployScheduled
+		return config.IsInstantJobType(jobType) || jobType == config.JobDeployScheduled
 	default:
 		return false
 	}

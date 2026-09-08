@@ -7,6 +7,9 @@
 # Required account/OAuth/delivery/workspace Secret JSON, read by all roles.
 # Flag --auth-config-file, environment ERUUN_AUTH_CONFIG_FILE.
 authConfigFile: /var/run/secrets/eruun/accounts/accounts.json
+# Optional Harbor Runner / MinIO configuration mounted from a Secret.
+# Flag --jobs-config-file, environment ERUUN_JOBS_CONFIG_FILE.
+jobsConfigFile: ""
 
 # Local MySQL connection template. Replace the password placeholder via
 # --datastore-url / ERUUN_DATASTORE_URL; startup rejects unchanged placeholders.

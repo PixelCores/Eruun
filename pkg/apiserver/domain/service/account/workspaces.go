@@ -2,6 +2,7 @@ package account
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -11,6 +12,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/google/uuid"
@@ -77,6 +79,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, p *Principal, name string
 		return nil, bcode.ErrAccountInput
 	}
 	w := &model.Workspace{ID: uuid.NewString(), Name: name, Kind: "team", OwnerID: p.User.ID}
+	w.JobResultPolicy, _ = json.Marshal(spec.DefaultJobResultPolicy())
 	w.Namespace = "eruun-ws-" + strings.ReplaceAll(w.ID, "-", "")
 	err := s.Repo.Transaction(ctx, func(r repository.Accounts) error {
 		u := &model.User{ID: p.User.ID}
@@ -366,10 +369,20 @@ func (s *Service) DeleteWorkspace(ctx context.Context, p *Principal, id string, 
 		if deleteNamespace == nil {
 			return fmt.Errorf("namespace deletion is unavailable")
 		}
+		pending, e := r.Store.Count(ctx, &model.JobDelivery{WorkspaceID: id}, &datastore.FilterOptions{In: []datastore.InQueryOption{{Key: "state", Values: []string{"pending", "running"}}}})
+		if e != nil {
+			return e
+		}
+		if pending > 0 {
+			return bcode.ErrWorkspaceNotEmpty
+		}
 		if e = deleteNamespace(ctx, w); e != nil {
 			return e
 		}
 		for _, entity := range []datastore.Entity{
+			&model.ArtifactChunk{WorkspaceID: id},
+			&model.JobDelivery{WorkspaceID: id},
+			&model.JobArtifact{WorkspaceID: id},
 			&model.JobInfo{WorkspaceID: id},
 			&model.WorkflowQueue{WorkspaceID: id},
 			&model.WorkspaceInvitation{WorkspaceID: id},
