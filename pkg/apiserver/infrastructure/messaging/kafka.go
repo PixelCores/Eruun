@@ -582,11 +582,7 @@ func (k *KafkaQueue) resetPending() {
 }
 
 // Stats returns queue stats for the consumer group.
-func (k *KafkaQueue) Stats(ctx context.Context, group string) (backlog int64, pending int64, err error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
+func (k *KafkaQueue) Stats(_ context.Context, group string) (backlog int64, pending int64, err error) {
 	k.mu.RLock()
 	reader := k.reader
 	k.mu.RUnlock()

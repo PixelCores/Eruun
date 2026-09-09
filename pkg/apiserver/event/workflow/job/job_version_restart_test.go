@@ -145,7 +145,7 @@ func TestVersionRestartJobCtlAdoptedDeploymentRejectsPausedSource(t *testing.T) 
 	ctl := NewVersionRestartJobCtl(versionRestartTask(component), client, store, nil)
 
 	_, err := ctl.restartDeployment(context.Background(), component, "2026-07-27T18:00:00Z", nil)
-	require.ErrorContains(t, err, "Deployment is paused")
+	require.ErrorContains(t, err, "deployment is paused")
 	require.Equal(t, 0, countClientActions(client, "update", "deployments"))
 }
 

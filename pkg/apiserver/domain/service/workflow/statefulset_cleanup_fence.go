@@ -142,26 +142,8 @@ func applyStatefulSetCleanupFenceAttempt(
 	}
 	task := attempt.task
 	cleanupInfo := attempt.cleanupInfo
-	hasRequiredContract := false
-	hasPVCDeletionContract := false
-	for _, component := range cleanupInfo.Components {
-		if !component.RequireStatefulSetDeletion {
-			continue
-		}
-		hasRequiredContract = true
-		componentVersion, err := statefulSetCleanupFenceComponentVersion(task, cleanupInfo.Version, component)
-		if err != nil {
-			return err
-		}
-		if componentVersion == model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion {
-			hasPVCDeletionContract = true
-		}
-	}
-	if !hasRequiredContract {
-		return fmt.Errorf("task %s cleanup info version %d has no required StatefulSet deletion contract", task.TaskID, cleanupInfo.Version)
-	}
-	if cleanupInfo.Version == model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion && !hasPVCDeletionContract {
-		return fmt.Errorf("task %s cleanup info version %d has no StatefulSet PVC deletion contract", task.TaskID, cleanupInfo.Version)
+	if err := validateStatefulSetCleanupFenceContract(task, cleanupInfo); err != nil {
+		return err
 	}
 	taskStatus := config.Status(strings.TrimSpace(string(task.Status)))
 	if taskStatus == "" || isWorkflowActiveStatus(taskStatus) {
@@ -196,26 +178,7 @@ func applyStatefulSetCleanupFenceAttempt(
 		}
 		switch {
 		case jobStatus == config.StatusCompleted && taskCompleted:
-			resolved := pending[key]
-			if resolved == nil {
-				continue
-			}
-			if componentVersion == model.VersionUpdateCleanupInfoVersionStatefulSetDeletion {
-				if resolved.version == model.VersionUpdateCleanupInfoVersionStatefulSetDeletion {
-					delete(pending, key)
-				}
-				continue
-			}
-			if resolved.version == model.VersionUpdateCleanupInfoVersionStatefulSetDeletion {
-				delete(pending, key)
-				continue
-			}
-			for _, template := range templates {
-				delete(resolved.templates, template)
-			}
-			if len(resolved.templates) == 0 {
-				delete(pending, key)
-			}
+			resolvePendingStatefulSetCleanup(pending, key, componentVersion, templates)
 		case jobMissing,
 			taskRequiresRetry && shouldTerminalizePrecreatedCleanupStatus(jobStatus),
 			jobStatus == config.StatusCompleted && taskRequiresRetry,
@@ -253,6 +216,54 @@ func applyStatefulSetCleanupFenceAttempt(
 				jobStatus,
 			)
 		}
+	}
+	return nil
+}
+
+func resolvePendingStatefulSetCleanup(pending map[string]*pendingStatefulSetCleanup, key string, componentVersion int, templates []string) {
+	resolved := pending[key]
+	if resolved == nil {
+		return
+	}
+	if componentVersion == model.VersionUpdateCleanupInfoVersionStatefulSetDeletion {
+		if resolved.version == model.VersionUpdateCleanupInfoVersionStatefulSetDeletion {
+			delete(pending, key)
+		}
+		return
+	}
+	if resolved.version == model.VersionUpdateCleanupInfoVersionStatefulSetDeletion {
+		delete(pending, key)
+		return
+	}
+	for _, template := range templates {
+		delete(resolved.templates, template)
+	}
+	if len(resolved.templates) == 0 {
+		delete(pending, key)
+	}
+}
+
+func validateStatefulSetCleanupFenceContract(task *model.WorkflowQueue, cleanupInfo model.VersionUpdateCleanupInfo) error {
+	hasRequiredContract := false
+	hasPVCDeletionContract := false
+	for _, component := range cleanupInfo.Components {
+		if !component.RequireStatefulSetDeletion {
+			continue
+		}
+		hasRequiredContract = true
+		componentVersion, err := statefulSetCleanupFenceComponentVersion(task, cleanupInfo.Version, component)
+		if err != nil {
+			return err
+		}
+		if componentVersion == model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion {
+			hasPVCDeletionContract = true
+		}
+	}
+	if !hasRequiredContract {
+		return fmt.Errorf("task %s cleanup info version %d has no required StatefulSet deletion contract", task.TaskID, cleanupInfo.Version)
+	}
+	if cleanupInfo.Version == model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion && !hasPVCDeletionContract {
+		return fmt.Errorf("task %s cleanup info version %d has no StatefulSet PVC deletion contract", task.TaskID, cleanupInfo.Version)
 	}
 	return nil
 }

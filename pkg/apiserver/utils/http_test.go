@@ -646,6 +646,7 @@ func TestNewURLPolicyHTTPClientRejectsDefaultTransportTLSServerName(t *testing.T
 func TestNewURLPolicyHTTPClientRejectsTLSNextProtoAddedAfterHTTP2Configuration(t *testing.T) {
 	baseTransport := http.DefaultTransport.(*http.Transport).Clone()
 	baseTransport.DialContext = nil
+	//lint:ignore SA1019 Reject or clear legacy dial hooks that could bypass the URL security policy.
 	baseTransport.Dial = nil
 	baseTransport.CloseIdleConnections()
 	if baseTransport.TLSNextProto == nil {
@@ -664,6 +665,7 @@ func TestNewURLPolicyHTTPClientRejectsTLSNextProtoAddedAfterHTTP2Configuration(t
 func TestNewURLPolicyHTTPClientAllowsAutomaticallyConfiguredDefaultHTTP2Transport(t *testing.T) {
 	baseTransport := http.DefaultTransport.(*http.Transport).Clone()
 	baseTransport.DialContext = nil
+	//lint:ignore SA1019 Reject or clear legacy dial hooks that could bypass the URL security policy.
 	baseTransport.Dial = nil
 	baseTransport.CloseIdleConnections()
 	if baseTransport.TLSNextProto == nil {
@@ -751,6 +753,7 @@ func TestURLPolicyTransportDisablesProxyAndBlocksPrivateTarget(t *testing.T) {
 	dialCalled := false
 	baseTransport := http.DefaultTransport.(*http.Transport).Clone()
 	baseTransport.DialContext = nil
+	//lint:ignore SA1019 Reject or clear legacy dial hooks that could bypass the URL security policy.
 	baseTransport.Dial = nil
 	baseTransport.Proxy = func(*http.Request) (*url.URL, error) {
 		proxyCalled = true
@@ -774,6 +777,7 @@ func TestURLPolicyTransportDisablesProxyAndBlocksPrivateTarget(t *testing.T) {
 	if transport.Proxy != nil {
 		t.Fatal("policy transport must disable proxy routing")
 	}
+	//lint:ignore SA1019 Reject or clear legacy dial hooks that could bypass the URL security policy.
 	if transport.Dial != nil {
 		t.Fatal("policy transport must clear the legacy Dial hook")
 	}
@@ -810,6 +814,7 @@ func TestURLPolicyClientPreservesHostAndTLSSNI(t *testing.T) {
 	policy := &spec.URLSecurityPolicySpec{AllowedHostPatterns: []string{"origin.example.com"}}
 	baseTransport := server.Client().Transport.(*http.Transport).Clone()
 	baseTransport.DialContext = nil
+	//lint:ignore SA1019 Reject or clear legacy dial hooks that could bypass the URL security policy.
 	baseTransport.Dial = nil
 	client, err := newURLPolicyHTTPClient(
 		&http.Client{Transport: baseTransport},

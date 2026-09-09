@@ -12,7 +12,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
@@ -337,20 +336,6 @@ func (c *applicationsServiceImpl) mergeComponentEnv(comp *model.ApplicationCompo
 	}
 	comp.Properties = newProps
 	return true, nil
-}
-
-func newWorkflowQueueTask(workflow *model.Workflow, executeAt int64) *model.WorkflowQueue {
-	return &model.WorkflowQueue{
-		TaskID:              utils.RandStringByNumLowercase(24),
-		AppID:               workflow.AppID,
-		WorkflowID:          workflow.ID,
-		ProjectID:           workflow.ProjectID,
-		WorkflowName:        workflow.Name,
-		WorkflowDisplayName: workflow.Alias,
-		Type:                workflow.WorkflowType,
-		Status:              config.StatusWaiting,
-		ExecuteAt:           executeAt,
-	}
 }
 
 // incrementVersion 递增版本号 (如 1.0.0 -> 1.0.1)

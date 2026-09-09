@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/fatih/color"
@@ -277,8 +279,8 @@ func GenerateWebService(component *model.ApplicationComponent, properties *model
 	}
 
 	var envs []corev1.EnvVar
-	for k, v := range properties.Env {
-		envs = append(envs, corev1.EnvVar{Name: k, Value: v})
+	for _, name := range slices.Sorted(maps.Keys(properties.Env)) {
+		envs = append(envs, corev1.EnvVar{Name: name, Value: properties.Env[name]})
 	}
 
 	labels := BuildLabels(component, properties)
@@ -529,11 +531,7 @@ func isDeploymentChanged(current, desired *appsv1.Deployment) bool {
 
 	currentPodSpec := normalizePodSpecForCompare(current.Spec.Template.Spec)
 	updatePodSpec := normalizePodSpecForCompare(update.Spec.Template.Spec)
-	if !apiequality.Semantic.DeepEqual(currentPodSpec, updatePodSpec) {
-		return true
-	}
-
-	return false
+	return !apiequality.Semantic.DeepEqual(currentPodSpec, updatePodSpec)
 }
 
 func deploymentPodTemplateChanged(current, desired *appsv1.Deployment) bool {

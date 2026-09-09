@@ -224,7 +224,7 @@ func (c *VersionRestartJobCtl) restartAdoptedDeployment(
 			return err
 		}
 		if latest.Spec.Paused {
-			return fmt.Errorf("Deployment is paused")
+			return fmt.Errorf("deployment is paused")
 		}
 		candidate := latest.DeepCopy()
 		applyAdoptedRestartMetadata(&candidate.Spec.Template, source, restartedAt)

@@ -58,7 +58,7 @@ func (f *fakeDataStore) Get(ctx context.Context, entity datastore.Entity) error 
 }
 
 func (f *fakeDataStore) List(ctx context.Context, query datastore.Entity, _ *datastore.ListOptions) ([]datastore.Entity, error) {
-	switch query.(type) {
+	switch query := query.(type) {
 	case *model.ApplicationComponent:
 		result := make([]datastore.Entity, len(f.components))
 		for i, c := range f.components {
@@ -74,10 +74,8 @@ func (f *fakeDataStore) List(ctx context.Context, query datastore.Entity, _ *dat
 			if jobInfo == nil {
 				continue
 			}
-			if q, ok := query.(*model.JobInfo); ok {
-				if q.TaskID != "" && jobInfo.TaskID != q.TaskID {
-					continue
-				}
+			if query.TaskID != "" && jobInfo.TaskID != query.TaskID {
+				continue
 			}
 			result = append(result, jobInfo)
 		}

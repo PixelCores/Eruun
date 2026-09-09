@@ -1057,14 +1057,6 @@ func sanitizeImportManagedLabels(labels map[string]string) map[string]string {
 	return filtered
 }
 
-func (s *serviceImpl) loadExistingAppIDMap(ctx context.Context, namespace string) (map[string]string, error) {
-	indexByName, _, _, err := s.loadExistingAppIndex(ctx, namespace)
-	if err != nil {
-		return nil, err
-	}
-	return indexByName, nil
-}
-
 func (s *serviceImpl) loadExistingAppIndex(ctx context.Context, namespace string) (map[string]string, map[string]struct{}, map[string]string, error) {
 	if s.AppRepo == nil {
 		return nil, nil, nil, fmt.Errorf("application repository is nil")
@@ -2825,22 +2817,6 @@ func buildImportLabels(res *importResource, appID, stableAppKey, componentName s
 	}
 
 	return labels
-}
-
-func isImportRBACKind(res *importResource) bool {
-	if res == nil {
-		return false
-	}
-	switch res.kindKey {
-	case importKindServiceAccounts,
-		importKindRoles,
-		importKindRoleBindings,
-		importKindClusterRoles,
-		importKindClusterRoleBindings:
-		return true
-	default:
-		return false
-	}
 }
 
 func (s *serviceImpl) patchResourceLabels(ctx context.Context, res *importResource, labels map[string]string) error {

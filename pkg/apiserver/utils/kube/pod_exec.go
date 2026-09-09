@@ -513,7 +513,7 @@ func copyTarEntryToZip(zw *zip.Writer, tr *tar.Reader, hdr *tar.Header, hardLink
 			name += "/"
 		}
 		return createZipDirectory(zw, hdr, name)
-	case tar.TypeReg, tar.TypeRegA:
+	case tar.TypeReg:
 		return copyTarRegularEntryToZip(zw, tr, hdr, name, hardLinkCache)
 	case tar.TypeSymlink:
 		return createZipFile(zw, strings.NewReader(hdr.Linkname), hdr, name)

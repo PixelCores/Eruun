@@ -72,22 +72,7 @@ func (s *Store) Check(ctx context.Context, e datastore.Entity) error {
 		}
 	case *model.JobInfo:
 		if v.AppID == "" && v.TaskID != "" && v.WorkspaceID == scope.WorkspaceID {
-			task := &model.WorkflowQueue{TaskID: v.TaskID}
-			if err := s.raw.Get(ctx, task); err != nil {
-				return err
-			}
-			if task.AppID != "" || task.WorkspaceID != scope.WorkspaceID ||
-				(task.Type != config.WorkflowTaskTypeResourceImportScan && task.Type != config.WorkflowTaskTypeResourceImportManage) {
-				return bcode.ErrForbidden
-			}
-			expectedJobType := config.JobResourceImportScan
-			if task.Type == config.WorkflowTaskTypeResourceImportManage {
-				expectedJobType = config.JobResourceImportManage
-			}
-			if v.Type != "" && v.Type != string(expectedJobType) {
-				return bcode.ErrForbidden
-			}
-			return nil
+			return s.checkResourceImportJob(ctx, v, scope)
 		}
 	}
 	if id == "" {
@@ -98,6 +83,25 @@ func (s *Store) Check(ctx context.Context, e datastore.Entity) error {
 		return err
 	}
 	return s.Check(ctx, app)
+}
+
+func (s *Store) checkResourceImportJob(ctx context.Context, v *model.JobInfo, scope Scope) error {
+	task := &model.WorkflowQueue{TaskID: v.TaskID}
+	if err := s.raw.Get(ctx, task); err != nil {
+		return err
+	}
+	if task.AppID != "" || task.WorkspaceID != scope.WorkspaceID ||
+		(task.Type != config.WorkflowTaskTypeResourceImportScan && task.Type != config.WorkflowTaskTypeResourceImportManage) {
+		return bcode.ErrForbidden
+	}
+	expectedJobType := config.JobResourceImportScan
+	if task.Type == config.WorkflowTaskTypeResourceImportManage {
+		expectedJobType = config.JobResourceImportManage
+	}
+	if v.Type != "" && v.Type != string(expectedJobType) {
+		return bcode.ErrForbidden
+	}
+	return nil
 }
 
 func (s *Store) options(ctx context.Context, e datastore.Entity, input *datastore.ListOptions) (*datastore.ListOptions, error) {

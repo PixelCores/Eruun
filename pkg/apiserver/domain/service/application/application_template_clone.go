@@ -26,6 +26,11 @@ type componentOverride struct {
 	sourceIndex         int
 }
 
+type templateOverrideState struct {
+	componentOverride
+	used bool
+}
+
 type templateRequest struct {
 	baseName  string
 	overrides []componentOverride
@@ -185,47 +190,9 @@ func (c *applicationsServiceImpl) cloneComponentsFromTemplate(ctx context.Contex
 		baseName = templateApp.Name
 	}
 
-	type ovState struct {
-		componentOverride
-		used bool
-	}
-	overrides := make([]ovState, len(tr.overrides))
+	overrides := make([]templateOverrideState, len(tr.overrides))
 	for i, o := range tr.overrides {
-		overrides[i] = ovState{componentOverride: o}
-	}
-
-	pickTargetOverrides := func(templateName string, jobType config.JobType) ([]*componentOverride, error) {
-		var selected []*componentOverride
-		for i := range overrides {
-			if overrides[i].used {
-				continue
-			}
-			if overrides[i].target != "" && templateOverrideTargetsComponent(overrides[i].target, templateName) {
-				if overrides[i].compType != "" && overrides[i].compType != jobType {
-					return nil, bcode.ErrTemplateTargetNotFound
-				}
-				overrides[i].used = true
-				selected = append(selected, &overrides[i].componentOverride)
-			}
-		}
-		return selected, nil
-	}
-
-	pickFallbackOverride := func(jobType config.JobType) (*componentOverride, error) {
-		for i := range overrides {
-			if overrides[i].used {
-				continue
-			}
-			if overrides[i].target != "" {
-				continue
-			}
-			if overrides[i].compType != "" && overrides[i].compType != jobType {
-				continue
-			}
-			overrides[i].used = true
-			return &overrides[i].componentOverride, nil
-		}
-		return nil, nil
+		overrides[i] = templateOverrideState{componentOverride: o}
 	}
 
 	plans := make([]templateComponentPlan, 0, len(templateComponents))
@@ -234,15 +201,12 @@ func (c *applicationsServiceImpl) cloneComponentsFromTemplate(ctx context.Contex
 		if templateComp == nil {
 			continue
 		}
-		selectedOverrides, err := pickTargetOverrides(templateComp.Name, templateComp.ComponentType)
+		selectedOverrides, err := pickTemplateTargetOverrides(overrides, templateComp.Name, templateComp.ComponentType)
 		if err != nil {
 			return nil, nil, err
 		}
 		if len(selectedOverrides) == 0 {
-			override, err := pickFallbackOverride(templateComp.ComponentType)
-			if err != nil {
-				return nil, nil, err
-			}
+			override := pickTemplateFallbackOverride(overrides, templateComp.ComponentType)
 			selectedOverrides = append(selectedOverrides, override)
 		}
 
@@ -299,6 +263,40 @@ func (c *applicationsServiceImpl) cloneComponentsFromTemplate(ctx context.Contex
 		}
 	}
 	return clones, cloneSourceIndexes, nil
+}
+
+func pickTemplateTargetOverrides(overrides []templateOverrideState, templateName string, jobType config.JobType) ([]*componentOverride, error) {
+	var selected []*componentOverride
+	for i := range overrides {
+		if overrides[i].used {
+			continue
+		}
+		if overrides[i].target != "" && templateOverrideTargetsComponent(overrides[i].target, templateName) {
+			if overrides[i].compType != "" && overrides[i].compType != jobType {
+				return nil, bcode.ErrTemplateTargetNotFound
+			}
+			overrides[i].used = true
+			selected = append(selected, &overrides[i].componentOverride)
+		}
+	}
+	return selected, nil
+}
+
+func pickTemplateFallbackOverride(overrides []templateOverrideState, jobType config.JobType) *componentOverride {
+	for i := range overrides {
+		if overrides[i].used {
+			continue
+		}
+		if overrides[i].target != "" {
+			continue
+		}
+		if overrides[i].compType != "" && overrides[i].compType != jobType {
+			continue
+		}
+		overrides[i].used = true
+		return &overrides[i].componentOverride
+	}
+	return nil
 }
 
 func convertComponentFromTemplate(templateComp *model.ApplicationComponent, newName, baseName, namespace string, overrideProps apisv1.Properties, overrideTraits apisv1.Traits, defaultStorageClass string, rewriteMap *templateRewriteMap) (*apisv1.CreateComponentRequest, error) {

@@ -10,10 +10,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/segmentio/kafka-go"
 	"github.com/stretchr/testify/require"
-	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
@@ -115,60 +112,6 @@ func (w *blockingServerWorker) StartWorker(_ context.Context, _ context.Context,
 		defer stopped()
 	}
 	<-w.release
-}
-
-type readinessServerWorker struct {
-	started          chan struct{}
-	allowReady       chan struct{}
-	stopConsuming    chan struct{}
-	consumingStopped chan struct{}
-	release          chan struct{}
-}
-
-func (w *readinessServerWorker) Start(context.Context, chan error) {}
-
-func (w *readinessServerWorker) StartWorker(_ context.Context, _ context.Context, _ chan error, ready, stopped func()) {
-	close(w.started)
-	<-w.allowReady
-	if ready != nil {
-		ready()
-	}
-	<-w.stopConsuming
-	if stopped != nil {
-		stopped()
-	}
-	close(w.consumingStopped)
-	<-w.release
-}
-
-func newThreeReplicaTestServer(t *testing.T, worker event.Worker) *restServer {
-	t.Helper()
-	const (
-		podName   = "eruun-0"
-		namespace = "default"
-	)
-	t.Setenv("POD_NAME", podName)
-	t.Setenv("POD_NAMESPACE", namespace)
-
-	replicas := int32(3)
-	statefulSet := &appsv1.StatefulSet{
-		ObjectMeta: metav1.ObjectMeta{Name: "eruun", Namespace: namespace},
-		Spec:       appsv1.StatefulSetSpec{Replicas: &replicas},
-	}
-	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      podName,
-			Namespace: namespace,
-			OwnerReferences: []metav1.OwnerReference{{
-				Kind: "StatefulSet",
-				Name: statefulSet.Name,
-			}},
-		},
-	}
-	return &restServer{
-		KubeClient:   fake.NewSimpleClientset(statefulSet, pod),
-		eventWorkers: []event.Worker{worker},
-	}
 }
 
 type testLeaderElectionLock struct {
@@ -691,12 +634,15 @@ func TestServerLifecycleRejectsNilContext(t *testing.T) {
 	server := &restServer{}
 
 	require.PanicsWithValue(t, "create worker run: nil context", func() {
+		//lint:ignore SA1012 Verify the lifecycle API rejects a nil context.
 		newWorkerRun(nil)
 	})
 	require.PanicsWithValue(t, "start workers: nil context", func() {
+		//lint:ignore SA1012 Verify the lifecycle API rejects a nil context.
 		server.startWorkers(nil, nil)
 	})
 	require.PanicsWithValue(t, "stop workers: nil context", func() {
+		//lint:ignore SA1012 Verify the lifecycle API rejects a nil context.
 		server.stopWorkers(nil)
 	})
 }

@@ -136,34 +136,39 @@ func (t *tenantTransport) prepare(kind string, obj map[string]interface{}) error
 	case "persistentvolumeclaims":
 		return t.pvc(specification)
 	case "ingresses":
-		if t.config.IngressDomain == "" {
-			return bcode.ErrForbidden
-		}
-		if meta := mapAt(obj, "metadata"); meta != nil && len(mapAt(meta, "annotations")) != 0 {
-			return bcode.ErrForbidden
-		}
-		if v, _ := specification["ingressClassName"].(string); v != t.config.IngressClass || specification["defaultBackend"] != nil {
-			return bcode.ErrForbidden
-		}
-		if lenValue(specification["rules"]) == 0 {
-			return bcode.ErrForbidden
-		}
-		for _, field := range []string{"rules", "tls"} {
-			items, _ := specification[field].([]interface{})
-			for _, item := range items {
-				v, _ := item.(map[string]interface{})
-				if field == "rules" {
-					host, _ := v["host"].(string)
-					if !t.allowedHost(host) {
-						return bcode.ErrForbidden
-					}
+		return t.prepareIngress(obj, specification)
+	}
+	return nil
+}
+
+func (t *tenantTransport) prepareIngress(obj, specification map[string]interface{}) error {
+	if t.config.IngressDomain == "" {
+		return bcode.ErrForbidden
+	}
+	if meta := mapAt(obj, "metadata"); meta != nil && len(mapAt(meta, "annotations")) != 0 {
+		return bcode.ErrForbidden
+	}
+	if v, _ := specification["ingressClassName"].(string); v != t.config.IngressClass || specification["defaultBackend"] != nil {
+		return bcode.ErrForbidden
+	}
+	if lenValue(specification["rules"]) == 0 {
+		return bcode.ErrForbidden
+	}
+	for _, field := range []string{"rules", "tls"} {
+		items, _ := specification[field].([]interface{})
+		for _, item := range items {
+			v, _ := item.(map[string]interface{})
+			if field == "rules" {
+				host, _ := v["host"].(string)
+				if !t.allowedHost(host) {
+					return bcode.ErrForbidden
 				}
-				hosts, _ := v["hosts"].([]interface{})
-				for _, host := range hosts {
-					h, _ := host.(string)
-					if !t.allowedHost(h) {
-						return bcode.ErrForbidden
-					}
+			}
+			hosts, _ := v["hosts"].([]interface{})
+			for _, host := range hosts {
+				h, _ := host.(string)
+				if !t.allowedHost(h) {
+					return bcode.ErrForbidden
 				}
 			}
 		}
@@ -203,6 +208,33 @@ func securePodMap(object map[string]interface{}) error {
 	if json.Unmarshal(raw, &pod) != nil {
 		return bcode.ErrForbidden
 	}
+	if err := validatePodSecurity(&pod); err != nil {
+		return err
+	}
+	object["automountServiceAccountToken"] = false
+	// Only populate present containers. Strategic merge patches that update a
+	// field such as replicas must not manufacture or replace container arrays.
+	for _, key := range []string{"containers", "initContainers"} {
+		items, _ := object[key].([]interface{})
+		for _, item := range items {
+			c, _ := item.(map[string]interface{})
+			if c == nil {
+				return bcode.ErrForbidden
+			}
+			security := mapAt(c, "securityContext")
+			if security == nil {
+				security = map[string]interface{}{}
+				c["securityContext"] = security
+			}
+			security["allowPrivilegeEscalation"] = false
+			security["runAsNonRoot"] = true
+			security["capabilities"] = map[string]interface{}{"drop": []string{"ALL"}}
+			security["seccompProfile"] = map[string]interface{}{"type": "RuntimeDefault"}
+		}
+	}
+	return nil
+}
+func validatePodSecurity(pod *corev1.PodSpec) error {
 	if pod.HostNetwork || pod.HostPID || pod.HostIPC || (pod.ServiceAccountName != "" && pod.ServiceAccountName != "default") || pod.NodeName != "" {
 		return bcode.ErrForbidden
 	}
@@ -234,7 +266,7 @@ func securePodMap(object map[string]interface{}) error {
 	}
 	for _, containers := range [][]corev1.Container{pod.Containers, pod.InitContainers} {
 		for _, c := range containers {
-			if err = validateContainerSecurity(c.SecurityContext); err != nil {
+			if err := validateContainerSecurity(c.SecurityContext); err != nil {
 				return err
 			}
 			for _, p := range c.Ports {
@@ -247,29 +279,9 @@ func securePodMap(object map[string]interface{}) error {
 	if len(pod.EphemeralContainers) != 0 {
 		return bcode.ErrForbidden
 	}
-	object["automountServiceAccountToken"] = false
-	// Only populate present containers. Strategic merge patches that update a
-	// field such as replicas must not manufacture or replace container arrays.
-	for _, key := range []string{"containers", "initContainers"} {
-		items, _ := object[key].([]interface{})
-		for _, item := range items {
-			c, _ := item.(map[string]interface{})
-			if c == nil {
-				return bcode.ErrForbidden
-			}
-			security := mapAt(c, "securityContext")
-			if security == nil {
-				security = map[string]interface{}{}
-				c["securityContext"] = security
-			}
-			security["allowPrivilegeEscalation"] = false
-			security["runAsNonRoot"] = true
-			security["capabilities"] = map[string]interface{}{"drop": []string{"ALL"}}
-			security["seccompProfile"] = map[string]interface{}{"type": "RuntimeDefault"}
-		}
-	}
 	return nil
 }
+
 func validateContainerSecurity(s *corev1.SecurityContext) error {
 	if s == nil {
 		return nil
@@ -366,6 +378,25 @@ func ValidateTraits(namespace, name string, traits *spec.Traits, properties *spe
 			return bcode.ErrForbidden
 		}
 	}
+	if err := prepareTraitIngresses(namespace, name, traits, cfg); err != nil {
+		return err
+	}
+	for i := range traits.Init {
+		c := &traits.Init[i]
+		if err := ValidateTraits(namespace, name, &c.Traits, &c.Properties, cfg); err != nil {
+			return err
+		}
+	}
+	for i := range traits.Sidecar {
+		c := &traits.Sidecar[i]
+		if err := ValidateTraits(namespace, name, &c.Traits, nil, cfg); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func prepareTraitIngresses(namespace, name string, traits *spec.Traits, cfg spec.WorkspaceConfig) error {
 	for i := range traits.Ingress {
 		v := &traits.Ingress[i]
 		if cfg.IngressDomain == "" || len(v.Annotations) > 0 || (v.Namespace != "" && v.Namespace != namespace) || (v.IngressClassName != "" && v.IngressClassName != cfg.IngressClass) {
@@ -398,18 +429,6 @@ func ValidateTraits(namespace, name string, traits *spec.Traits, properties *spe
 					return bcode.ErrForbidden
 				}
 			}
-		}
-	}
-	for i := range traits.Init {
-		c := &traits.Init[i]
-		if err := ValidateTraits(namespace, name, &c.Traits, &c.Properties, cfg); err != nil {
-			return err
-		}
-	}
-	for i := range traits.Sidecar {
-		c := &traits.Sidecar[i]
-		if err := ValidateTraits(namespace, name, &c.Traits, nil, cfg); err != nil {
-			return err
 		}
 	}
 	return nil

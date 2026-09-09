@@ -167,6 +167,10 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 		return fmt.Errorf("fail to provides the config bean to the container: %w", err)
 	}
 
+	return s.provideDomainAndEventBeans(runtimeQueues)
+}
+
+func (s *restServer) provideDomainAndEventBeans(runtimeQueues *msg.RuntimeQueues) error {
 	programmingLanguageRepository, err := repository.NewProgrammingLanguageRepositoryWithStore(s.dataStore)
 	if err != nil {
 		return err

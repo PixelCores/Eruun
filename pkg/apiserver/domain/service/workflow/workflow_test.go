@@ -395,10 +395,6 @@ func (s *statusDataStore) matchTaskConditionFor(task *model.WorkflowQueue, field
 	}
 }
 
-func (s *statusDataStore) matchTaskCondition(field string, value interface{}) bool {
-	return s.matchTaskConditionFor(s.task, field, value)
-}
-
 func matchJobInfoCondition(job *model.JobInfo, field string, value interface{}) bool {
 	if job == nil {
 		return false
@@ -466,10 +462,6 @@ func applyJobInfoUpdates(job *model.JobInfo, updates map[string]interface{}) {
 			}
 		}
 	}
-}
-
-func (s *statusDataStore) applyTaskUpdates(updates map[string]interface{}) {
-	s.applyTaskUpdatesTo(s.task, updates)
 }
 
 func (s *statusDataStore) CompareAndSwap(_ context.Context, entity datastore.Entity, conditionField string, conditionValue interface{}, updates map[string]interface{}) (bool, error) {
@@ -684,62 +676,7 @@ func (s *scheduleDataStore) Get(_ context.Context, entity datastore.Entity) erro
 func (s *scheduleDataStore) List(_ context.Context, query datastore.Entity, opts *datastore.ListOptions) ([]datastore.Entity, error) {
 	switch q := query.(type) {
 	case *model.WorkflowSchedule:
-		var out []datastore.Entity
-		for _, schedule := range s.schedules {
-			if schedule == nil {
-				continue
-			}
-			if q.AppID != "" && schedule.AppID != q.AppID {
-				continue
-			}
-			if q.WorkflowID != "" && schedule.WorkflowID != q.WorkflowID {
-				continue
-			}
-			if q.Enabled && !schedule.Enabled {
-				continue
-			}
-			if opts != nil {
-				excluded := false
-				for _, filter := range opts.LessThan {
-					if filter.Key == "next_run" && schedule.NextRun >= filter.Value.(int64) {
-						excluded = true
-					}
-				}
-				if excluded {
-					continue
-				}
-			}
-			out = append(out, schedule)
-		}
-		if opts != nil {
-			sort.SliceStable(out, func(i, j int) bool {
-				a, b := out[i].(*model.WorkflowSchedule), out[j].(*model.WorkflowSchedule)
-				for _, order := range opts.SortBy {
-					var comparison int
-					switch order.Key {
-					case "next_run":
-						comparison = cmp.Compare(a.NextRun, b.NextRun)
-					case "id":
-						comparison = cmp.Compare(a.ID, b.ID)
-					case "create_time":
-						comparison = a.CreateTime.Compare(b.CreateTime)
-					}
-					if comparison != 0 {
-						if order.Order == datastore.SortOrderDescending {
-							return comparison > 0
-						}
-						return comparison < 0
-					}
-				}
-				return false
-			})
-			if opts.Page > 0 && opts.PageSize > 0 {
-				start := min(opts.PageSize*(opts.Page-1), len(out))
-				out = out[start:min(start+opts.PageSize, len(out))]
-			}
-		}
-		s.scheduleListSize = len(out)
-		return out, nil
+		return s.listWorkflowSchedules(q, opts)
 	case *model.WorkflowQueue:
 		var out []datastore.Entity
 		for _, task := range s.tasks {
@@ -789,6 +726,65 @@ func (s *scheduleDataStore) List(_ context.Context, query datastore.Entity, opts
 		return []datastore.Entity{&model.ApplicationComponent{Name: "dummy", AppID: q.AppID}}, nil
 	}
 	return nil, nil
+}
+
+func (s *scheduleDataStore) listWorkflowSchedules(q *model.WorkflowSchedule, opts *datastore.ListOptions) ([]datastore.Entity, error) {
+	var out []datastore.Entity
+	for _, schedule := range s.schedules {
+		if schedule == nil {
+			continue
+		}
+		if q.AppID != "" && schedule.AppID != q.AppID {
+			continue
+		}
+		if q.WorkflowID != "" && schedule.WorkflowID != q.WorkflowID {
+			continue
+		}
+		if q.Enabled && !schedule.Enabled {
+			continue
+		}
+		if opts != nil {
+			excluded := false
+			for _, filter := range opts.LessThan {
+				if filter.Key == "next_run" && schedule.NextRun >= filter.Value.(int64) {
+					excluded = true
+				}
+			}
+			if excluded {
+				continue
+			}
+		}
+		out = append(out, schedule)
+	}
+	if opts != nil {
+		sort.SliceStable(out, func(i, j int) bool {
+			a, b := out[i].(*model.WorkflowSchedule), out[j].(*model.WorkflowSchedule)
+			for _, order := range opts.SortBy {
+				var comparison int
+				switch order.Key {
+				case "next_run":
+					comparison = cmp.Compare(a.NextRun, b.NextRun)
+				case "id":
+					comparison = cmp.Compare(a.ID, b.ID)
+				case "create_time":
+					comparison = a.CreateTime.Compare(b.CreateTime)
+				}
+				if comparison != 0 {
+					if order.Order == datastore.SortOrderDescending {
+						return comparison > 0
+					}
+					return comparison < 0
+				}
+			}
+			return false
+		})
+		if opts.Page > 0 && opts.PageSize > 0 {
+			start := min(opts.PageSize*(opts.Page-1), len(out))
+			out = out[start:min(start+opts.PageSize, len(out))]
+		}
+	}
+	s.scheduleListSize = len(out)
+	return out, nil
 }
 
 func (s *scheduleDataStore) Count(context.Context, datastore.Entity, *datastore.FilterOptions) (int64, error) {
