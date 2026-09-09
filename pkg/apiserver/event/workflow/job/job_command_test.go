@@ -162,6 +162,8 @@ func TestEvaluationCleanupRetainsResultsUntilArchiveIsCommitted(t *testing.T) {
 			require.Zero(t, countClientActions(client, "delete", "jobs"), "diagnostic-only archive cannot replace native outputs")
 			store.artifact.Summary = json.RawMessage(`{"collectionComplete":true}`)
 			ctl.Clean(context.Background())
+			require.Zero(t, countClientActions(client, "delete", "jobs"), "complete outputs still require a committed execution result")
+			require.NoError(t, ctl.SaveInfo(context.Background()))
 			require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
 		})
 	}

@@ -7,10 +7,13 @@ Commands which actually require root fail normally in the restricted Pod.
 """
 
 import asyncio
+from contextlib import asynccontextmanager
+import json
 from pathlib import Path
 import shlex
 import tarfile
 import tempfile
+import uuid
 
 from harbor.environments.ack import ACKEnvironment
 from kubernetes.stream import stream
@@ -19,6 +22,77 @@ MAX_TRANSFER_BYTES = 2 * 1024 * 1024 * 1024
 
 
 class WorkspaceEnvironment(ACKEnvironment):
+    def __init__(self, *, collection_state_dir, **kwargs):
+        super().__init__(**kwargs)
+        # This directory is outside every task and downloaded trial directory.
+        # Persist before each operation so a killed process or failed write
+        # cannot turn an unfinished transfer into complete collection.
+        directory = Path(collection_state_dir)
+        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self._collection_path = directory / (uuid.uuid4().hex + ".json")
+        self._collection = {"podName": self.pod_name, "namespace": self.namespace,
+                            "trialDirectory": str(self.trial_paths.trial_dir),
+                            "started": False, "stopped": False, "pending": 0,
+                            "errorCount": 0, "errors": []}
+        self._save_collection()
+
+    def _save_collection(self):
+        temporary = self._collection_path.with_suffix(".tmp")
+        try:
+            temporary.write_text(json.dumps(self._collection))
+            temporary.replace(self._collection_path)
+        except OSError:
+            self._collection["errorCount"] += 1
+            if len(self._collection["errors"]) < 100:
+                self._collection["errors"].append({"path": "collection", "reason": "state_write_failed"})
+            raise
+
+    @asynccontextmanager
+    async def _collecting(self, source):
+        self._collection["pending"] += 1
+        self._save_collection()
+        try:
+            yield
+        except BaseException as exc:
+            self._collection["errorCount"] += 1
+            if len(self._collection["errors"]) < 100:
+                self._collection["errors"].append({"path": str(source)[:1024], "reason": type(exc).__name__})
+            raise
+        finally:
+            self._collection["pending"] -= 1
+            self._save_collection()
+
+    async def start(self, force_build):
+        await super().start(force_build)
+        # Harbor's implicit artifact source is optional. An empty convention
+        # directory is a successful collection, including task images which
+        # only pre-create /logs; absent user-declared artifacts still fail.
+        result = await self.exec("mkdir -p /logs/artifacts")
+        if result.return_code != 0:
+            raise RuntimeError("cannot prepare sandbox artifact directory")
+        self._collection["started"] = True
+        self._save_collection()
+
+    async def stop(self, delete):
+        # Free completed trials promptly so a large dataset cannot exhaust the
+        # namespace's running-Pod quota. A failed transfer retains its source
+        # Pod; successful transfers retain all original bytes in the Runner
+        # even if the later final archive or API upload fails.
+        complete = self._collection["started"] and self._collection["pending"] == 0 and self._collection["errorCount"] == 0
+        try:
+            manifest = self.trial_paths.artifacts_dir / "manifest.json"
+            if manifest.stat().st_size > 1024 * 1024:
+                raise ValueError("oversized artifact manifest")
+            entries = json.loads(manifest.read_text())
+            if not isinstance(entries, list) or not entries:
+                raise ValueError("invalid artifact manifest")
+            complete = complete and all(entry["status"] in {"ok", "empty"} for entry in entries)
+        except (OSError, ValueError, KeyError, TypeError):
+            complete = False
+        await super().stop(delete=complete)
+        self._collection["stopped"] = True
+        self._save_collection()
+
     @staticmethod
     def type():
         return "eruun-kubernetes"
@@ -76,11 +150,24 @@ class WorkspaceEnvironment(ACKEnvironment):
                     archive.extractall(destination, members=members, filter="data")
 
     async def download_file(self, source_path, target_path):
-        await self._ensure_client()
-        target = Path(target_path)
-        await asyncio.to_thread(self._download_tar, ["tar", "cf", "-", source_path], target.parent, target.name)
+        async with self._collecting(source_path):
+            await self._ensure_client()
+            target = Path(target_path)
+            await asyncio.to_thread(self._download_tar, ["tar", "cf", "-", source_path], target.parent, target.name)
 
     async def download_dir(self, source_dir, target_dir):
-        await self._ensure_client()
-        await asyncio.to_thread(self._download_tar,
-                                ["sh", "-c", f"cd {shlex.quote(source_dir)} && tar cf - ."], Path(target_dir))
+        async with self._collecting(source_dir):
+            await self._ensure_client()
+            await asyncio.to_thread(self._download_tar,
+                                    ["sh", "-c", f"cd {shlex.quote(source_dir)} && tar cf - ."], Path(target_dir))
+
+    async def download_dir_with_exclusions(self, *, source_dir, target_dir, exclude):
+        # Include archive creation/extraction failures which happen outside
+        # download_file in Harbor's higher-level transfer implementation.
+        async with self._collecting(source_dir):
+            await super().download_dir_with_exclusions(source_dir=source_dir, target_dir=target_dir, exclude=exclude)
+
+    async def download_dir_filtered(self, *, source_dir, target_dir, include=None, exclude=None, protect=None):
+        async with self._collecting(source_dir):
+            await super().download_dir_filtered(source_dir=source_dir, target_dir=target_dir,
+                                                 include=include, exclude=exclude, protect=protect)

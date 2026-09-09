@@ -205,8 +205,9 @@ def harbor_config(config, tasks, output, pod_name, pod_uid):
         "agents": [{"name": config["agent"]["name"], "model_name": config["agent"].get("model")}],
         "tasks": [{"path": str(p), "source": "uploaded"} for p in tasks],
         "environment": {
-            "import_path": "eruun_environment:WorkspaceEnvironment", "force_build": False, "delete": True,
+            "import_path": "eruun_environment:WorkspaceEnvironment", "force_build": False, "delete": False,
             "kwargs": {
+                "collection_state_dir": str(output.parent / "collection"),
                 "namespace": config["namespace"], "skip_image_check": True,
                 "use_sandbox_claim": False, "service_account": config["sandboxServiceAccount"],
                 "pod_overrides": {
@@ -294,11 +295,50 @@ def manifest_entry_size(path, size, link=None):
     return len(encoded.encode())
 
 
+def collection_error(report, path, reason, count=1):
+    report["collectionErrorCount"] = report.get("collectionErrorCount", 0) + count
+    errors = report.setdefault("collectionErrors", [])
+    if len(errors) < 100:
+        errors.append({"path": str(path)[:1024], "reason": reason})
+
+
+def check_sandbox_collection(output, expected_trials, report):
+    """Account for data which Harbor failed to transfer into local outputs."""
+    try:
+        records = list((output.parent / "collection").glob("*.json"))
+        if len(records) != expected_trials:
+            collection_error(report, "trials", "missing_trial_collection_state")
+        for path in records:
+            try:
+                if path.stat().st_size > 1024 * 1024:
+                    raise ValueError("oversized collection state")
+                state = json.loads(path.read_text())
+                if state["started"] is not True or state["stopped"] is not True or state["pending"] != 0:
+                    collection_error(report, state.get("podName", "trial"), "unfinished_sandbox_collection")
+                if state["errorCount"]:
+                    collection_error(report, state.get("podName", "trial"), "sandbox_download_failed", state["errorCount"])
+                trial = Path(state["trialDirectory"])
+                trial.resolve().relative_to(output.resolve())
+                manifest_path = trial / "artifacts" / "manifest.json"
+                if manifest_path.stat().st_size > 1024 * 1024:
+                    raise ValueError("oversized artifact manifest")
+                entries = json.loads(manifest_path.read_text())
+                if not isinstance(entries, list) or not entries:
+                    raise ValueError("invalid artifact manifest")
+                for entry in entries:
+                    if entry["status"] not in {"ok", "empty"}:
+                        collection_error(report, entry["source"], "native_artifact_collection_failed")
+            except (OSError, ValueError, KeyError, TypeError):
+                collection_error(report, "trial", "unreadable_collection_state_or_manifest")
+    except OSError:
+        collection_error(report, "trials", "unreadable_collection_state")
+
+
 def archive_results(output, archive_path, report):
     """Keep original bytes and safe links, surfacing every omitted entry."""
     entries = [output]
-    issues = []
-    issue_count = 0
+    issues = list(report.get("collectionErrors", []))
+    issue_count = report.get("collectionErrorCount", 0)
     total = 0
     # JSON array delimiters and the reserved platform summary entry. Report
     # contents do not enter the manifest; only its size and digest do.
@@ -464,6 +504,8 @@ def upload_with_retry(config, archive, status):
 def execute(config, work, cancel):
     output = work / "outputs"
     output.mkdir()
+    (work / "collection").mkdir(mode=0o700)
+    expected_trials = 0
     report = {"taskId": config["taskId"], "framework": {"name": "harbor", "version": FRAMEWORK_VERSION},
               "datasetDigest": config["datasetDigest"], "executionStatus": "failed", "frameworkExitCode": None}
     try:
@@ -474,6 +516,7 @@ def execute(config, work, cancel):
         dataset = work / "dataset"
         extract_package(source, dataset)
         tasks = native_tasks(dataset)
+        expected_trials = len(tasks) * config["options"]["attempts"]
         generated = harbor_config(config, tasks, output, os.environ.get("POD_NAME"), os.environ.get("POD_UID"))
         config_path = work / "harbor-config.json"
         config_path.write_text(json.dumps(generated))
@@ -485,11 +528,13 @@ def execute(config, work, cancel):
         if interrupted:
             report["executionStatus"] = "failed"
             report["interruption"] = interrupted
+            collection_error(report, "trials", "framework_interrupted")
     except Exception as exc:
         # Exception values may contain environment-expanded credentials; retain the category only.
         report["error"] = type(exc).__name__
         if isinstance(exc, RunnerError):
             report["error"] = str(exc)
+    check_sandbox_collection(output, expected_trials, report)
     archive = work / "results.tar.gz"
     try:
         archive_results(output, archive, report)

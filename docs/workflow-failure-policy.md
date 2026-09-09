@@ -89,7 +89,7 @@
 - 显式启用后设置 Kubernetes `backoffLimit=0`、`restartPolicy=Never`，由 Eruun 统一计数。已有未完成 Job 若要切换到该策略，必须显式 `runPolicy=recreate`；已完成 Job 仍可由 `skip_if_completed` 跳过。
 - 策略随 Component properties 持久化并写入 `eruun.io/job-retry-policy` annotation；每次执行写入 `eruun.io/job-attempt`。实际资源与次数保存在原有 `JobInfo.InternalInfo` / `Attempt`，不会回写 Component 配置或修改 Deployment、StatefulSet、CronJob。
 - 首次创建和每次重试之前保存受 workflow generation/token 保护的 checkpoint。恢复保留目标 Job、次数、退避时间、超时及 UID；删除旧 Job 使用 UID/resourceVersion 前置条件，等待旧 UID Job 消失及其 Pod 终止后才创建下一次。已确认创建的 UID 消失或被同名其他对象替换时拒绝自动重放，进入基础设施恢复处理。
-- 启用策略的 Job 在创建前设置覆盖剩余绝对超时加原有一小时清理余量的 TTL，确保整个恢复期限内保留 Job 及 Pod 证据。成功后先采集日志并持久化结果，再立即清理；保存失败保留原 UID 供新 Worker 恢复，保存后进程退出或清理失败则由 TTL 最终回收。历史无 TTL 的检查点在恢复时补齐该期限。策略省略时原有成功清理与 TTL 默认值保持不变。
+- 启用策略的 Job 在创建前设置覆盖剩余绝对超时加原有一小时清理余量的 TTL，确保整个恢复期限内保留 Job 及 Pod 证据。执行成功或已确定失败后，先采集日志并持久化终态，再立即清理；保存失败保留原 UID 供新 Worker 恢复，保存后进程退出或清理失败则由 TTL 最终回收。取消或超时仍及时停止活动资源。历史无 TTL 的检查点在恢复时补齐该期限。策略省略时原有成功清理与 TTL 默认值保持不变。
 - 用户取消会先落盘父工作流状态，再发布取消信号。重试控制器识别同一 generation/token/worker 的 `cancelled` 状态并停止执行，按检查点 UID 清理当前尝试；执行租约改变或同名资源 UID 不匹配时仍拒绝删除。
 - 重试会再次运行该 Job 的完整程序；程序须自行保证外部写入可安全重复。调度器不能撤销一次失败执行已经写出的数据库、文件或第三方服务副作用。
 - 模板请求省略 `jobRetryPolicy` 时保留模板策略，传入对象时整体覆盖；`/version update` 沿用 Properties 整体替换语义，显式提供的 properties 不含该对象时清除已有策略。

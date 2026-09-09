@@ -44,7 +44,7 @@ HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
 '''
 
 
-def smoke(kubeconfig, runner_image, task_image, result_path, fail_verifier=False):
+def smoke(kubeconfig, runner_image, task_image, result_path, fail_verifier=False, fail_collection=False):
     namespace = "harbor-smoke-" + uuid.uuid4().hex[:8]
 
     def kubectl(*args, data=None, check=True):
@@ -64,6 +64,9 @@ def smoke(kubeconfig, runner_image, task_image, result_path, fail_verifier=False
                            "python -c \"from pathlib import Path; Path('/logs/artifacts/binary.bin').write_bytes(bytes(range(256))*17)\"\n")
         if fail_verifier:
             (task / "tests/test.sh").write_text("#!/bin/sh\nprintf 'intentional verifier failure\\n'\nexit 7\n")
+        if fail_collection:
+            with (task / "solution/solve.sh").open("a") as solution:
+                solution.write("\nln -s /etc/passwd /logs/artifacts/unsafe\n")
         buffer = io.BytesIO()
         with tarfile.open(fileobj=buffer, mode="w:gz") as bundle:
             bundle.add(task, arcname="greeting")
@@ -121,14 +124,14 @@ def smoke(kubeconfig, runner_image, task_image, result_path, fail_verifier=False
         raise RuntimeError("runner did not finish within 360 seconds")
     raw = kubectl("exec", "source", "--", "cat", "/work/raw.tar.gz", check=False)
     result_path.write_bytes(raw)
-    expected_phase = "Failed" if fail_verifier else "Succeeded"
+    expected_phase = "Failed" if fail_verifier or fail_collection else "Succeeded"
     if state["status"]["phase"] != expected_phase:
         logs = kubectl("logs", "runner", check=False).decode(errors="replace")
         raise RuntimeError(f"runner failed; raw diagnostics saved to {result_path}: {logs}")
     with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as archive:
         report = json.load(archive.extractfile("result.json"))
         native = json.load(archive.extractfile("outputs/run/result.json"))
-        assert report["collectionComplete"], report
+        assert report["collectionComplete"] == (not fail_collection), report
         expected_status = "failed" if fail_verifier else "succeeded"
         assert report["executionStatus"] == expected_status, report
         if fail_verifier:
@@ -137,15 +140,29 @@ def smoke(kubeconfig, runner_image, task_image, result_path, fail_verifier=False
             assert any(member.name.endswith("exception.txt") for member in archive)
         else:
             assert native["stats"]["n_completed_trials"] == 1 and native["stats"]["n_errored_trials"] == 0, native
-        binary = next(member for member in archive if member.name.endswith("/binary.bin"))
-        assert archive.extractfile(binary).read() == bytes(range(256)) * 17
+        if fail_collection:
+            assert "sandbox_download_failed" in {entry["reason"] for entry in report["collectionErrors"]}, report
+            manifests = [json.load(archive.extractfile(member)) for member in archive if member.name.endswith("/artifacts/manifest.json")]
+            assert any(entry["status"] == "failed" for manifest in manifests for entry in manifest)
+        else:
+            binary = next(member for member in archive if member.name.endswith("/binary.bin"))
+            assert archive.extractfile(binary).read() == bytes(range(256)) * 17
         if not fail_verifier:
             reward = next(member for member in archive if member.name.endswith("/reward.txt"))
             assert archive.extractfile(reward).read().strip() == b"1"
-    assert kubectl("exec", "source", "--", "cat", "/work/received-status") == expected_status.encode()
+    transfer_status = "failed" if fail_collection else expected_status
+    assert kubectl("exec", "source", "--", "cat", "/work/received-status") == transfer_status.encode()
     trial_pods = json.loads(kubectl("get", "pods", "-l", "eruun.io/task-id=oracle-smoke", "-o", "json"))
-    assert not trial_pods["items"], "native trial Pods were not cleaned up"
-    outcome = "native verifier failure correctly detected" if fail_verifier else "reward=1"
+    if fail_collection:
+        assert len(trial_pods["items"]) == 1, "failed collection must retain its source Pod"
+        retained = trial_pods["items"][0]
+        assert retained["spec"]["activeDeadlineSeconds"] == 300
+        assert retained["metadata"]["ownerReferences"][0]["uid"] == state["metadata"]["uid"]
+        assert kubectl("exec", retained["metadata"]["name"], "--", "cat", "/logs/artifacts/binary.bin") == bytes(range(256)) * 17
+        outcome = "incomplete collection reported and source Pod retained"
+    else:
+        assert not trial_pods["items"], "native trial Pods were not cleaned up"
+        outcome = "native verifier failure correctly detected" if fail_verifier else "reward=1"
     print(f"Harbor 0.22.0 oracle smoke passed: {outcome}, restricted Pod, original binary preserved; archive: {result_path}")
 
 
@@ -165,6 +182,8 @@ def main():
             smoke(kubeconfig, args.runner_image, args.task_image, args.result)
             failure_result = args.result.with_name(args.result.name.removesuffix(".tar.gz") + "-failed.tar.gz")
             smoke(kubeconfig, args.runner_image, args.task_image, failure_result, fail_verifier=True)
+            incomplete_result = args.result.with_name(args.result.name.removesuffix(".tar.gz") + "-incomplete.tar.gz")
+            smoke(kubeconfig, args.runner_image, args.task_image, incomplete_result, fail_collection=True)
         finally:
             subprocess.run([args.kind, "delete", "cluster", "--name", name, "--kubeconfig", str(kubeconfig)], check=True)
 

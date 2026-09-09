@@ -130,7 +130,7 @@ func TestJobRunnerWaitsForGlobalPriorityAdmission(t *testing.T) {
 
 func TestJobAdmissionWaitExitReleasesQueueWithoutKubernetesEffects(t *testing.T) {
 	for _, concurrency := range []int{1, 2} {
-		for _, reason := range []string{"cancel", "infrastructure stop", "ownership transfer"} {
+		for _, reason := range []string{"cancel", "cancel after database commit", "database cancellation before signal", "infrastructure stop", "ownership transfer", "cancel after ownership transfer"} {
 			t.Run(fmt.Sprintf("%d/%s", concurrency, reason), func(t *testing.T) {
 				db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, Logger: logger.Default.LogMode(logger.Silent)})
 				require.NoError(t, err)
@@ -163,14 +163,23 @@ func TestJobAdmissionWaitExitReleasesQueueWithoutKubernetesEffects(t *testing.T)
 				switch reason {
 				case "cancel":
 					cancel(context.Canceled)
+				case "cancel after database commit", "database cancellation before signal":
+					require.NoError(t, db.Model(owner).Update("status", config.StatusCancelled).Error)
+					if reason == "cancel after database commit" {
+						cancel(context.Canceled)
+					}
 				case "infrastructure stop":
 					cancel(signal.ErrInfrastructureStop)
-				case "ownership transfer":
+				case "ownership transfer", "cancel after ownership transfer":
 					require.NoError(t, db.Model(owner).Updates(map[string]interface{}{"run_generation": 2, "run_token": "new-token", "worker_id": "new-worker"}).Error)
+					if reason == "cancel after ownership transfer" {
+						cancel(context.Canceled)
+					}
 				}
+				cancelled := reason == "cancel" || reason == "cancel after database commit" || reason == "database cancellation before signal"
 				select {
 				case err := <-result:
-					if reason == "cancel" {
+					if cancelled {
 						require.NoError(t, err)
 					} else {
 						require.ErrorIs(t, err, signal.ErrInfrastructureStop)
@@ -181,12 +190,12 @@ func TestJobAdmissionWaitExitReleasesQueueWithoutKubernetesEffects(t *testing.T)
 				require.Empty(t, client.Actions(), "a waiting job must never run Kubernetes operations")
 				var stored model.JobInfo
 				require.NoError(t, db.Where("execution_key = ?", task.ExecutionKey).First(&stored).Error)
-				if reason == "cancel" {
+				if cancelled {
 					require.Equal(t, string(config.StatusCancelled), stored.Status)
 				} else {
 					require.Equal(t, string(config.StatusPrepare), stored.Status)
 				}
-				if reason != "ownership transfer" {
+				if reason != "ownership transfer" && reason != "cancel after ownership transfer" {
 					require.Equal(t, "released", stored.SchedulingState, "exiting a queue wait must release the owned scheduling entry")
 				}
 				admitted, err := repository.AdmitQueuedJobs(context.Background(), store)

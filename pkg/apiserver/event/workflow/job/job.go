@@ -489,11 +489,35 @@ func runJob(ctx context.Context, job *model.JobTask, client kubernetes.Interface
 		}
 	}()
 	if admissionErr != nil {
-		if jobCtx.Err() != nil && !signal.IsInfrastructureStop(jobCtx) {
-			job.Status = config.StatusCancelled
-			job.Error = jobCtx.Err().Error()
-			job.EndTime = time.Now().Unix()
-			return persistTerminalJobState(jobCtx, jobCtl, job, store, runtime)
+		if !suppressTerminalJobPersistence(jobCtx) {
+			// The API commits cancellation before publishing its signal. A queue
+			// poll can see that state first; only the same lease may finish this
+			// unstarted Job under the cancelled parent instead of running it.
+			ownershipCtx, cancel := context.WithTimeout(context.WithoutCancel(jobCtx), 5*time.Second)
+			status, ownershipErr := currentJobWorkflowOwnershipStatus(ownershipCtx, store, job)
+			cancel()
+			if ownershipErr != nil {
+				return errors.Join(signal.ErrInfrastructureStop, admissionErr, ownershipErr)
+			}
+			cancelled := jobCtx.Err() != nil
+			if status == config.StatusCancelled && (job.OwnerStatus == "" || job.OwnerStatus == config.StatusRunning) {
+				job.OwnerStatus = config.StatusCancelled
+				cancelled = true
+			}
+			if cancelled {
+				job.Status = config.StatusCancelled
+				job.Error = context.Canceled.Error()
+				if jobCtx.Err() != nil {
+					job.Error = jobCtx.Err().Error()
+				}
+				job.EndTime = time.Now().Unix()
+				if config.IsInstantJobType(config.JobType(job.JobType)) && job.InternalInfo != "" {
+					// Recovery can wait for admission while its checkpoint still
+					// owns a live attempt. Cancellation must stop that attempt too.
+					jobCtl.Clean(jobCtx)
+				}
+				return persistTerminalJobState(jobCtx, jobCtl, job, store, runtime)
+			}
 		}
 		return errors.Join(signal.ErrInfrastructureStop, admissionErr)
 	}

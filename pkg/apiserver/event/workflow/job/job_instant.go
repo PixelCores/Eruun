@@ -82,6 +82,12 @@ func (c *InstantJobCtl) Clean(ctx context.Context) {
 		return
 	}
 	if c.job.InternalInfo != "" {
+		// A settled attempt is the durable checkpoint's recovery evidence until
+		// SaveInfo commits its outcome. Cancellation, timeout and panic cleanup
+		// still stop active work immediately through the same fenced deletion.
+		if c.job.Status == config.StatusCompleted || c.job.Status == config.StatusFailed {
+			return
+		}
 		if err := c.cleanRetryAttempt(ctx); err != nil && !k8serrors.IsNotFound(err) {
 			klog.ErrorS(err, "clean instant Job retry attempt", "taskID", c.job.TaskID)
 		}
@@ -96,12 +102,12 @@ func (c *InstantJobCtl) SaveInfo(ctx context.Context) error {
 	if err := saveJobInfo(ctx, c.store, c.job); err != nil {
 		return err
 	}
-	// Retry recovery needs the exact live UID until its completed result,
+	// Retry recovery needs the exact live UID until its terminal result,
 	// including collected logs, has been committed. Its TTL handles an exit
 	// after this commit but before cleanup.
-	if c.job.Status == config.StatusCompleted && c.job.InternalInfo != "" && c.allowEvaluationTerminalCleanup(ctx) {
+	if (c.job.Status == config.StatusCompleted || c.job.Status == config.StatusFailed) && c.job.InternalInfo != "" && c.allowEvaluationTerminalCleanup(ctx) {
 		if err := c.cleanRetryAttempt(ctx); err != nil && !k8serrors.IsNotFound(err) {
-			klog.ErrorS(err, "clean completed instant Job retry attempt", "taskID", c.job.TaskID)
+			klog.ErrorS(err, "clean terminal instant Job retry attempt", "taskID", c.job.TaskID)
 		}
 	}
 	return nil
@@ -140,7 +146,9 @@ func (c *InstantJobCtl) Run(ctx context.Context) error {
 			}
 		}
 		if err != nil {
-			if errors.Is(err, context.DeadlineExceeded) {
+			if errors.Is(err, context.Canceled) {
+				err = NewStatusError(config.StatusCancelled, err)
+			} else if errors.Is(err, context.DeadlineExceeded) {
 				err = NewStatusError(config.StatusTimeout, err)
 			}
 			applyJobError(c.job, err, "")

@@ -3,8 +3,10 @@ import hashlib
 import importlib.util
 import io
 import json
+import logging
 import os
 from pathlib import Path
+from types import SimpleNamespace
 import shutil
 import subprocess
 import tarfile
@@ -36,6 +38,18 @@ def result():
         "n_running_trials": 0, "n_cancelled_trials": 0,
         "evals": {"oracle__uploaded": {"metrics": [{"mean": 0.0}]}},
     }}
+
+
+def collected_trial(output, name="trial", **changes):
+    trial = output / "run" / name
+    (trial / "artifacts").mkdir(parents=True, exist_ok=True)
+    (trial / "artifacts/manifest.json").write_text(json.dumps([
+        {"source": "/logs/artifacts", "destination": "artifacts/logs/artifacts", "type": "directory", "status": "ok"}]))
+    states = output.parent / "collection"
+    states.mkdir(exist_ok=True)
+    (states / (name + ".json")).write_text(json.dumps({
+        "podName": name, "namespace": "workspace-test", "trialDirectory": str(trial),
+        "started": True, "stopped": True, "pending": 0, "errorCount": 0, "errors": [], **changes}))
 
 
 class RunnerTest(unittest.TestCase):
@@ -269,6 +283,7 @@ class RunnerTest(unittest.TestCase):
         def framework(cfg, output, cancel, timeout):
             (output / "run/trial").mkdir(parents=True)
             (output / "run/trial/diagnostic.log").write_bytes(b"original diagnostics")
+            collected_trial(output)
             failed = result()
             failed["stats"]["n_errored_trials"] = 1
             (output / "run/result.json").write_text(json.dumps(failed))
@@ -291,9 +306,25 @@ class RunnerTest(unittest.TestCase):
             with tarfile.open(path) as archive:
                 report = json.load(archive.extractfile("result.json"))
                 self.assertEqual(report["interruption"], "cancelled")
+                self.assertFalse(report["collectionComplete"])
                 self.assertEqual(archive.extractfile("outputs/partial.log").read(), b"before termination")
         with patch.object(runner.importlib.metadata, "version", return_value=runner.FRAMEWORK_VERSION), patch.object(runner, "download_package", side_effect=download), patch.object(runner, "run_framework", side_effect=framework), patch.object(runner, "upload_results", side_effect=upload):
             self.assertEqual(runner.execute(config(), self.root, threading.Event()), 1)
+
+    def test_unfinished_or_missing_collection_state_is_not_complete(self):
+        output = self.root / "outputs"
+        output.mkdir()
+        for changes in ({"stopped": False}, {"pending": 1}, {"started": False}, {"errorCount": 1}):
+            with self.subTest(changes=changes):
+                collected_trial(output, **changes)
+                report = {"executionStatus": "failed"}
+                runner.check_sandbox_collection(output, 1, report)
+                runner.archive_results(output, self.root / "result.tar.gz", report)
+                self.assertFalse(report["collectionComplete"])
+        collected_trial(output)
+        report = {}
+        runner.check_sandbox_collection(output, 2, report)
+        self.assertIn("missing_trial_collection_state", {e["reason"] for e in report["collectionErrors"]})
 
     def test_framework_process_cannot_expand_transfer_token(self):
         output = self.root / "outputs"
@@ -310,6 +341,126 @@ class RunnerTest(unittest.TestCase):
 
 @unittest.skipUnless(importlib.util.find_spec("harbor") and importlib.util.find_spec("kubernetes"), "install pinned requirements to exercise Harbor")
 class NativeHarborTest(unittest.TestCase):
+    def environment(self, directory, name="trial"):
+        from harbor.models.task.config import EnvironmentConfig
+        from harbor.models.trial.paths import TrialPaths
+        from eruun_environment import WorkspaceEnvironment
+
+        output = Path(directory) / "outputs"
+        output.mkdir(exist_ok=True)
+        generated = runner.harbor_config(config(), [EXAMPLE], output, "runner-pod", "runner-uid")
+        environment = WorkspaceEnvironment(
+            environment_dir=EXAMPLE / "environment", environment_name="greeting",
+            session_id=name, trial_paths=TrialPaths(output / "run" / name),
+            task_env_config=EnvironmentConfig(docker_image="example.com/task:1.0.0"),
+            **generated["environment"]["kwargs"],
+        )
+        environment._ensure_client = AsyncMock()
+        environment._collection["started"] = True
+        environment._save_collection()
+        return environment, output
+
+    def test_harbor_swallowed_download_failure_retains_source_and_marks_incomplete(self):
+        from harbor.environments.ack import ACKEnvironment
+        from harbor.trial.artifact_handler import ArtifactHandler
+
+        with tempfile.TemporaryDirectory() as directory:
+            environment, output = self.environment(directory)
+            environment.service_is_dir = AsyncMock(return_value=True)
+            environment._download_tar = MagicMock(side_effect=RuntimeError("transfer failed"))
+            manifest = asyncio.run(ArtifactHandler(artifacts=[], logger=logging.getLogger("test")).download_artifacts(
+                environment, environment.trial_paths.artifacts_dir, source_artifacts_dir=Path("/logs/artifacts")))
+            self.assertEqual(manifest.entries[0].status, "failed")
+            # A later successful call cannot erase an earlier missing source.
+            environment._download_tar.side_effect = None
+            asyncio.run(environment.download_dir("/logs/artifacts", output / "later"))
+            with patch.object(ACKEnvironment, "stop", new_callable=AsyncMock) as stop:
+                asyncio.run(environment.stop(delete=True))
+                stop.assert_awaited_once_with(delete=False)
+            (output / "run/result.json").write_text(json.dumps(result()))
+            report = {"executionStatus": runner.framework_status(output / "run/result.json", 0)}
+            runner.check_sandbox_collection(output, 1, report)
+            runner.archive_results(output, Path(directory) / "result.tar.gz", report)
+            self.assertEqual(report["executionStatus"], "succeeded")  # reward=0 is valid.
+            self.assertFalse(report["collectionComplete"])
+            reasons = {error["reason"] for error in report["collectionErrors"]}
+            self.assertIn("sandbox_download_failed", reasons)
+            self.assertIn("native_artifact_collection_failed", reasons)
+
+    def test_harbor_swallowed_agent_log_and_filtered_transfer_failures_are_recorded(self):
+        from harbor.environments.base import ExecResult
+        from harbor.trial.trial import Trial
+
+        with tempfile.TemporaryDirectory() as directory:
+            environment, output = self.environment(directory)
+            environment._download_tar = MagicMock(side_effect=RuntimeError("disconnected"))
+            trial = SimpleNamespace(agent_environment=environment, logger=MagicMock())
+            asyncio.run(Trial._download_role_logs(trial,
+                agent_config=SimpleNamespace(include_logs=[], exclude_logs=[]),
+                source_dir=Path("/logs/agent"), target_dir=output / "agent"))
+            self.assertEqual(environment._collection["errorCount"], 1)
+            # Fail before download_file, inside Harbor's filtering/tar setup.
+            environment.exec = AsyncMock(return_value=ExecResult(return_code=1))
+            for operation in (environment.download_dir_filtered, environment.download_dir_with_exclusions):
+                with self.subTest(operation=operation.__name__), self.assertRaises(RuntimeError):
+                    asyncio.run(operation(source_dir="/logs/artifacts", target_dir=output / "filtered", exclude=["*.tmp"]))
+            self.assertEqual(environment._collection["errorCount"], 3)
+
+    def test_complete_trials_release_pods_and_empty_artifacts_are_valid(self):
+        from harbor.environments.ack import ACKEnvironment
+        from harbor.trial.artifact_handler import ArtifactHandler
+
+        with tempfile.TemporaryDirectory() as directory:
+            for name in ("first", "second"):
+                environment, output = self.environment(directory, name)
+                environment.service_is_dir = AsyncMock(return_value=True)
+                environment._download_tar = MagicMock()
+                manifest = asyncio.run(ArtifactHandler(artifacts=[], logger=logging.getLogger("test")).download_artifacts(
+                    environment, environment.trial_paths.artifacts_dir, source_artifacts_dir=Path("/logs/artifacts")))
+                self.assertEqual(manifest.entries[0].status, "ok")
+                with patch.object(ACKEnvironment, "stop", new_callable=AsyncMock) as stop:
+                    asyncio.run(environment.stop(delete=False))
+                    stop.assert_awaited_once_with(delete=True)
+            report = {"executionStatus": "succeeded"}
+            runner.check_sandbox_collection(output, 2, report)
+            runner.archive_results(output, Path(directory) / "result.tar.gz", report)
+            self.assertTrue(report["collectionComplete"])
+
+    def test_missing_or_invalid_manifest_prevents_source_deletion(self):
+        from harbor.environments.ack import ACKEnvironment
+
+        with tempfile.TemporaryDirectory() as directory:
+            environment, output = self.environment(directory)
+            manifest = environment.trial_paths.artifacts_dir / "manifest.json"
+            manifest.parent.mkdir(parents=True)
+            for contents in (None, "not json", "[]", '[{"status":"failed","source":"/logs/artifacts"}]'):
+                if contents is not None:
+                    manifest.write_text(contents)
+                with self.subTest(contents=contents), patch.object(ACKEnvironment, "stop", new_callable=AsyncMock) as stop:
+                    asyncio.run(environment.stop(delete=True))
+                    stop.assert_awaited_once_with(delete=False)
+                    report = {}
+                    runner.check_sandbox_collection(output, 1, report)
+                    self.assertGreater(report["collectionErrorCount"], 0)
+
+    def test_failed_state_write_and_cancelled_transfer_fail_closed(self):
+        from harbor.environments.ack import ACKEnvironment
+
+        with tempfile.TemporaryDirectory() as directory:
+            environment, output = self.environment(directory)
+            environment._ensure_client.side_effect = asyncio.CancelledError()
+            with self.assertRaises(asyncio.CancelledError):
+                asyncio.run(environment.download_file("/logs/agent/log", output / "log"))
+            self.assertEqual(environment._collection["errorCount"], 1)
+            with patch.object(Path, "write_text", side_effect=OSError("disk full")), self.assertRaises(OSError):
+                environment._save_collection()
+            with patch.object(ACKEnvironment, "stop", new_callable=AsyncMock) as stop:
+                asyncio.run(environment.stop(delete=True))
+                stop.assert_awaited_once_with(delete=False)
+            persisted = json.loads(environment._collection_path.read_text())
+            self.assertEqual(persisted["errorCount"], 2)
+            self.assertEqual(persisted["pending"], 0)
+
     def test_kubernetes_download_preserves_binary_frames(self):
         from eruun_environment import WorkspaceEnvironment
         import eruun_environment
@@ -343,7 +494,7 @@ class NativeHarborTest(unittest.TestCase):
         from eruun_environment import WorkspaceEnvironment
 
         with tempfile.TemporaryDirectory() as directory:
-            generated = runner.harbor_config(config(), [EXAMPLE], Path(directory), "runner-pod", "runner-uid")
+            generated = runner.harbor_config(config(), [EXAMPLE], Path(directory) / "outputs", "runner-pod", "runner-uid")
             model = JobConfig.model_validate(generated)
             self.assertEqual(model.environment.import_path, "eruun_environment:WorkspaceEnvironment")
             environment = WorkspaceEnvironment(

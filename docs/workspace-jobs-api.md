@@ -92,7 +92,7 @@ curl -X POST "$ERUUN_URL/api/v1/job-datasets?name=harbor-demo" \
 
 `GET /api/v1/jobs/:taskID` 分别返回队列执行 `status`、`executions`、`collectionState`、`results` 和 `deliveries`。`collectionState` 为 `pending`、`collected`、`incomplete`、`unavailable` 或 `expired`。原始结果的 `summary.executionStatus` 保留框架事实，`summary.collectionComplete` 表示采集完整性。
 
-原始结果是完整 tar.gz：根 `result.json` 描述采集；`outputs/` 保留 Harbor 的结果、trial、奖励、轨迹、日志、产物及其他文件。文件清单和摘要便于查询，下载仍提供完整归档。原生失败、取消、采集失败和无法上传分别可辨认；reward 为 0 本身不是运行失败。
+原始结果是完整 tar.gz：根 `result.json` 描述采集；`outputs/` 保留 Harbor 的结果、trial、奖励、轨迹、日志、产物及其他文件。文件清单和摘要便于查询，下载仍提供完整归档。采集完整性同时检查试验 Pod 的下载和 Runner 本地归档，Harbor 内部吞掉的下载异常也会标记为不完整。原生失败、取消、采集失败和无法上传分别可辨认；reward 为 0 本身不是运行失败。
 
 源数据被事务性保存后，各目标记录为 `pending`。Controller 自动执行保存，状态独立为 `pending/running/succeeded/failed`，失败记录 `lastError`。用户仅需重试失败目标；成功目标重复重试为幂等操作，不重复评测。相同源归档重复上传被接受，不同内容不可覆盖已发布源。
 
@@ -108,7 +108,7 @@ curl -X POST "$ERUUN_URL/api/v1/job-datasets?name=harbor-demo" \
 
 默认策略为 `retentionDays: 90` 和 `database/full`。`GET /api/v1/job-storage-policy` 返回可用目标及当前策略；`PUT` 使用与 `resultPolicy` 相同的 JSON 更新默认值，范围 1–3650 天。提交时快照化所选策略；省略 `resultPolicy` 使用空间默认值。修改默认策略只影响新任务。
 
-原始数据保留期从采集成功开始计算。`PUT /api/v1/jobs/:taskID/retention` 接收 `{"retentionDays":30}`，将尚未过期的原始数据改为从本次操作起再保留 30 天。周期清理只删除源字节，保留可查询的过期元数据，**不删除 MinIO 或数据库保存副本**。失败且未完整采集的 Runner Pod 暂留供诊断，按提交时保留期限自动清理。
+原始数据保留期从采集成功开始计算。`PUT /api/v1/jobs/:taskID/retention` 接收 `{"retentionDays":30}`，将尚未过期的原始数据改为从本次操作起再保留 30 天。周期清理只删除源字节，保留可查询的过期元数据，**不删除 MinIO 或数据库保存副本**。每个 trial 的原始数据完整下载到 Runner 后可清理其试验 Pod；下载失败的试验 Pod 随未完整采集的 Runner Pod 保留供诊断，仍受执行截止时间约束，并随 Runner 的保留期限到期回收。最终归档或上传失败时，Runner 中已有的原始文件继续保留。
 
 显式删除整个团队空间沿用“资源必须为空”的规则，且要求没有等待或正在保存的目标。空间删除会删除其数据库数据和索引；MinIO 已保存对象不由原始结果保留策略或空间删除 API 清除，需要存储管理员独立管理。
 
