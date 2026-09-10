@@ -328,28 +328,7 @@ func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, 
 		}
 		reporter.record("Job", jobNS, jobName, c.deleteJob(ctx, jobNS, jobName))
 	case config.ScheduledJob:
-		schedule := strings.TrimSpace(props.Schedule)
-		if schedule != "" {
-			normalized, err := utils.NormalizeCronSchedule(schedule)
-			if err != nil {
-				klog.Errorf("cleanup scheduled job cron normalize failed: %v", err)
-			}
-			result := job.GenerateScheduledCronJob(componentPtr, &props, normalized)
-			cronNS := componentPtr.Namespace
-			cronName := naming.CronJobName(component.Name, component.ResourceNameKey())
-			if result != nil {
-				if cronObj, ok := result.Service.(*batchv1.CronJob); ok && cronObj != nil {
-					if cronObj.Namespace != "" {
-						cronNS = cronObj.Namespace
-					}
-					if cronObj.Name != "" {
-						cronName = cronObj.Name
-					}
-				}
-				c.deleteAdditionalObjects(ctx, componentPtr.Namespace, result.AdditionalObjects, reporter)
-			}
-			reporter.record("CronJob", cronNS, cronName, c.deleteCronJob(ctx, cronNS, cronName))
-		}
+		c.deleteScheduledJobForComponent(ctx, componentPtr, &props, reporter)
 	case config.CloudJob:
 		// cloudjob is API-invocation only in v1 skeleton, no Kubernetes resources to delete.
 		return nil
@@ -584,15 +563,6 @@ func (c *applicationsServiceImpl) deleteSecret(ctx context.Context, namespace, n
 	})
 }
 
-func (c *applicationsServiceImpl) deletePVC(ctx context.Context, namespace, name string) error {
-	if name == "" {
-		return nil
-	}
-	return c.deleteNamespaced(ctx, namespace, func(opCtx context.Context, ns string) error {
-		return c.KubeClient.CoreV1().PersistentVolumeClaims(ns).Delete(opCtx, name, metav1.DeleteOptions{})
-	})
-}
-
 func (c *applicationsServiceImpl) deleteIngress(ctx context.Context, namespace, name string) error {
 	if name == "" {
 		return nil
@@ -610,16 +580,6 @@ func (c *applicationsServiceImpl) deleteNamespaced(ctx context.Context, namespac
 	opCtx, cancel := context.WithTimeout(ctx, config.DefaultApplicationCleanupTimeout)
 	defer cancel()
 	err := fn(opCtx, ns)
-	if err != nil && !k8serrors.IsNotFound(err) {
-		return err
-	}
-	return nil
-}
-
-func (c *applicationsServiceImpl) deleteCluster(ctx context.Context, fn func(context.Context) error) error {
-	opCtx, cancel := context.WithTimeout(ctx, config.DefaultApplicationCleanupTimeout)
-	defer cancel()
-	err := fn(opCtx)
 	if err != nil && !k8serrors.IsNotFound(err) {
 		return err
 	}
@@ -677,4 +637,29 @@ func pickNamespace(candidate, fallback string) string {
 		return fallback
 	}
 	return config.DefaultNamespace
+}
+
+func (c *applicationsServiceImpl) deleteScheduledJobForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, reporter *cleanupReporter) {
+	schedule := strings.TrimSpace(props.Schedule)
+	if schedule != "" {
+		normalized, err := utils.NormalizeCronSchedule(schedule)
+		if err != nil {
+			klog.Errorf("cleanup scheduled job cron normalize failed: %v", err)
+		}
+		result := job.GenerateScheduledCronJob(component, props, normalized)
+		cronNS := component.Namespace
+		cronName := naming.CronJobName(component.Name, component.ResourceNameKey())
+		if result != nil {
+			if cronObj, ok := result.Service.(*batchv1.CronJob); ok && cronObj != nil {
+				if cronObj.Namespace != "" {
+					cronNS = cronObj.Namespace
+				}
+				if cronObj.Name != "" {
+					cronName = cronObj.Name
+				}
+			}
+			c.deleteAdditionalObjects(ctx, component.Namespace, result.AdditionalObjects, reporter)
+		}
+		reporter.record("CronJob", cronNS, cronName, c.deleteCronJob(ctx, cronNS, cronName))
+	}
 }

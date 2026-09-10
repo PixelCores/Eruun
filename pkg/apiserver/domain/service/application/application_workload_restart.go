@@ -143,56 +143,7 @@ func (c *applicationsServiceImpl) restartApplicationWorkloadsLocked(ctx context.
 		if err != nil {
 			return nil, err
 		}
-		for _, component := range components {
-			if component == nil {
-				continue
-			}
-			if component.Status == string(config.ComponentStatusStopped) {
-				recordRestartSkippedResource(component, reporter)
-				klog.Infof("restart: skip stopped component %s/%s", component.Namespace, component.Name)
-				continue
-			}
-			if strategy, shared := SharedLifecycleStrategyForComponent(component); shared {
-				recordRestartSkippedResource(component, reporter)
-				klog.Infof("restart: skip shared component %s/%s (strategy=%s)", component.Namespace, component.Name, strategy)
-				continue
-			}
-			switch component.ComponentType {
-			case config.ServerJob:
-				componentCopy := *component
-				if componentCopy.Namespace == "" {
-					componentCopy.Namespace = config.DefaultNamespace
-				}
-				deployNS, deployName := resolveDeploymentTarget(&componentCopy)
-				skipped, err := c.restartDeployment(ctx, deployNS, deployName, patch)
-				reporter.record("Deployment", deployNS, deployName, skipped, err)
-				if err == nil && !skipped {
-					restartedComponents = append(restartedComponents, component.Name)
-				}
-			case config.StoreJob:
-				componentCopy := *component
-				if componentCopy.Namespace == "" {
-					componentCopy.Namespace = config.DefaultNamespace
-				}
-				statefulNS := componentCopy.Namespace
-				statefulName := naming.StoreServerName(component.Name, component.ResourceNameKey())
-				if result := job.GenerateStoreService(&componentCopy); result != nil {
-					if sts, ok := result.Service.(*appsv1.StatefulSet); ok && sts != nil {
-						if sts.Namespace != "" {
-							statefulNS = sts.Namespace
-						}
-						if sts.Name != "" {
-							statefulName = sts.Name
-						}
-					}
-				}
-				skipped, err := c.restartStatefulSet(ctx, statefulNS, statefulName, patch)
-				reporter.record("StatefulSet", statefulNS, statefulName, skipped, err)
-				if err == nil && !skipped {
-					restartedComponents = append(restartedComponents, component.Name)
-				}
-			}
-		}
+		restartedComponents = c.restartNativeApplicationComponents(ctx, components, patch, reporter)
 	}
 
 	if !adopted && len(restartedComponents) > 0 {
@@ -230,6 +181,61 @@ func (c *applicationsServiceImpl) restartApplicationWorkloadsLocked(ctx context.
 		return resp, markErr
 	}
 	return resp, nil
+}
+
+func (c *applicationsServiceImpl) restartNativeApplicationComponents(ctx context.Context, components []*model.ApplicationComponent, patch []byte, reporter *restartReporter) []string {
+	restartedComponents := make([]string, 0, len(components))
+	for _, component := range components {
+		if component == nil {
+			continue
+		}
+		if component.Status == string(config.ComponentStatusStopped) {
+			recordRestartSkippedResource(component, reporter)
+			klog.Infof("restart: skip stopped component %s/%s", component.Namespace, component.Name)
+			continue
+		}
+		if strategy, shared := SharedLifecycleStrategyForComponent(component); shared {
+			recordRestartSkippedResource(component, reporter)
+			klog.Infof("restart: skip shared component %s/%s (strategy=%s)", component.Namespace, component.Name, strategy)
+			continue
+		}
+		switch component.ComponentType {
+		case config.ServerJob:
+			componentCopy := *component
+			if componentCopy.Namespace == "" {
+				componentCopy.Namespace = config.DefaultNamespace
+			}
+			deployNS, deployName := resolveDeploymentTarget(&componentCopy)
+			skipped, err := c.restartDeployment(ctx, deployNS, deployName, patch)
+			reporter.record("Deployment", deployNS, deployName, skipped, err)
+			if err == nil && !skipped {
+				restartedComponents = append(restartedComponents, component.Name)
+			}
+		case config.StoreJob:
+			componentCopy := *component
+			if componentCopy.Namespace == "" {
+				componentCopy.Namespace = config.DefaultNamespace
+			}
+			statefulNS := componentCopy.Namespace
+			statefulName := naming.StoreServerName(component.Name, component.ResourceNameKey())
+			if result := job.GenerateStoreService(&componentCopy); result != nil {
+				if sts, ok := result.Service.(*appsv1.StatefulSet); ok && sts != nil {
+					if sts.Namespace != "" {
+						statefulNS = sts.Namespace
+					}
+					if sts.Name != "" {
+						statefulName = sts.Name
+					}
+				}
+			}
+			skipped, err := c.restartStatefulSet(ctx, statefulNS, statefulName, patch)
+			reporter.record("StatefulSet", statefulNS, statefulName, skipped, err)
+			if err == nil && !skipped {
+				restartedComponents = append(restartedComponents, component.Name)
+			}
+		}
+	}
+	return restartedComponents
 }
 
 func formatWorkloadRestartAt(now time.Time) string {

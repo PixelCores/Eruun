@@ -138,15 +138,6 @@ func componentSecretKey(namespace, name string) string {
 	return pickComponentNamespace(namespace) + "/" + name
 }
 
-func sortedMapKeys(values map[string]string) []string {
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
 func pickComponentNamespace(namespace string) string {
 	if namespace = strings.TrimSpace(namespace); namespace != "" {
 		return namespace

@@ -52,7 +52,7 @@ func (c *CleanupResourcesJobCtl) waitForCleanup(ctx context.Context, component *
 		}
 		return true, nil
 	})
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, wait.ErrWaitTimeout) {
+	if wait.Interrupted(err) && !errors.Is(err, context.Canceled) {
 		return NewStatusError(config.StatusTimeout, fmt.Errorf("cleanup resources for component %s timeout", component.Name))
 	}
 	return err

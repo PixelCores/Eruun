@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -26,11 +27,6 @@ type systemSettingCodec struct {
 	accept    func(interface{}) bool
 	normalize func(json.RawMessage) (json.RawMessage, error)
 	sanitize  func(json.RawMessage) json.RawMessage
-}
-
-type jsonFieldMask struct {
-	path        []string
-	replacement interface{}
 }
 
 var builtinSystemSettingCodecs = map[string]systemSettingCodec{
@@ -85,7 +81,7 @@ func (s *systemSettingServiceImpl) Create(ctx context.Context, req apisv1.Create
 	if _, ok := getSystemSettingSupport(settingType); ok {
 		if _, err := s.SettingRepo.FindByType(ctx, settingType); err == nil {
 			return nil, bcode.ErrSystemSettingExists
-		} else if err != datastore.ErrRecordNotExist {
+		} else if !errors.Is(err, datastore.ErrRecordNotExist) {
 			return nil, err
 		}
 		if err := validateProviderSettingConnectivity(ctx, settingType, normalizedValue); err != nil {
@@ -98,7 +94,7 @@ func (s *systemSettingServiceImpl) Create(ctx context.Context, req apisv1.Create
 		Value: normalizedValue,
 	}
 	if err := s.SettingRepo.Create(ctx, setting); err != nil {
-		if err == datastore.ErrRecordExist {
+		if errors.Is(err, datastore.ErrRecordExist) {
 			return nil, bcode.ErrSystemSettingExists
 		}
 		return nil, err
@@ -118,7 +114,7 @@ func (s *systemSettingServiceImpl) Update(ctx context.Context, settingType strin
 
 	setting, err := s.SettingRepo.FindByType(ctx, settingType)
 	if err != nil {
-		if err == datastore.ErrRecordNotExist {
+		if errors.Is(err, datastore.ErrRecordNotExist) {
 			return nil, bcode.ErrSystemSettingNotFound
 		}
 		return nil, err
@@ -143,7 +139,7 @@ func (s *systemSettingServiceImpl) Delete(ctx context.Context, settingType strin
 	}
 	setting := &model.SystemSetting{Type: settingType}
 	if err := s.SettingRepo.Delete(ctx, setting); err != nil {
-		if err == datastore.ErrRecordNotExist {
+		if errors.Is(err, datastore.ErrRecordNotExist) {
 			return bcode.ErrSystemSettingNotFound
 		}
 		return err
@@ -158,7 +154,7 @@ func (s *systemSettingServiceImpl) Get(ctx context.Context, settingType string) 
 	}
 	setting, err := s.SettingRepo.FindByType(ctx, settingType)
 	if err != nil {
-		if err == datastore.ErrRecordNotExist {
+		if errors.Is(err, datastore.ErrRecordNotExist) {
 			return nil, bcode.ErrSystemSettingNotFound
 		}
 		return nil, err
@@ -277,67 +273,6 @@ func sanitizeSystemSettingValue(settingType string, value json.RawMessage) json.
 		return json.RawMessage(value)
 	}
 	return codec.sanitize(value)
-}
-
-func sanitizeJSONObjectValue(value json.RawMessage, masks ...jsonFieldMask) json.RawMessage {
-	var obj map[string]interface{}
-	if err := json.Unmarshal(value, &obj); err != nil {
-		return json.RawMessage(`{}`)
-	}
-
-	for _, mask := range masks {
-		_ = maskNestedFieldCaseInsensitive(obj, mask.path, mask.replacement)
-	}
-
-	sanitized, err := json.Marshal(obj)
-	if err != nil {
-		return json.RawMessage(`{}`)
-	}
-	return json.RawMessage(sanitized)
-}
-
-func maskNestedFieldCaseInsensitive(obj map[string]interface{}, path []string, replacement interface{}) bool {
-	if len(path) == 0 || obj == nil {
-		return false
-	}
-
-	if len(path) == 1 {
-		masked := false
-		target := strings.TrimSpace(path[0])
-		for key := range obj {
-			if strings.EqualFold(strings.TrimSpace(key), target) {
-				obj[key] = replacement
-				masked = true
-			}
-		}
-		return masked
-	}
-
-	masked := false
-	target := strings.TrimSpace(path[0])
-	for key, value := range obj {
-		if !strings.EqualFold(strings.TrimSpace(key), target) {
-			continue
-		}
-
-		switch node := value.(type) {
-		case map[string]interface{}:
-			if maskNestedFieldCaseInsensitive(node, path[1:], replacement) {
-				masked = true
-			}
-		case []interface{}:
-			for _, item := range node {
-				child, ok := item.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				if maskNestedFieldCaseInsensitive(child, path[1:], replacement) {
-					masked = true
-				}
-			}
-		}
-	}
-	return masked
 }
 
 func getSystemSettingCodec(settingType string) (systemSettingCodec, bool) {

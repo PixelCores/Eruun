@@ -490,6 +490,10 @@ func applyTraitResultToWorkload(result *TraitResult, workload runtime.Object, ma
 		}
 	}
 
+	return applyVolumeClaimTemplates(result, workload, podTemplate, mainContainerName)
+}
+
+func applyVolumeClaimTemplates(result *TraitResult, workload runtime.Object, podTemplate *corev1.PodTemplateSpec, mainContainerName string) error {
 	// Handle AdditionalObjects, with special logic for PVCs.
 	var remainingObjects []client.Object
 	// Track PVC names that are converted to volumeClaimTemplates (for StatefulSets)

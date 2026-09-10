@@ -55,33 +55,9 @@ func EnqueueJobForScheduling(ctx context.Context, store datastore.DataStore, own
 		return err
 	}
 	return withJobSchedulingOwner(ctx, store, owner, func(tx datastore.DataStore) error {
-		current, err := scheduledJobByExecutionKey(ctx, tx, owner, *job.ExecutionKey)
-		if errors.Is(err, datastore.ErrRecordNotExist) && owner != nil {
-			current = new(model.JobInfo)
-			*current = *job
-			if err = tx.Add(ctx, current); err != nil {
-				return fmt.Errorf("create queued job: %w", err)
-			}
-		}
+		current, err := loadQueuedJobCheckpoint(ctx, tx, owner, job)
 		if err != nil {
-			return fmt.Errorf("load queued job: %w", err)
-		}
-		if owner == nil {
-			// Detached dispatchers have no parent row to serialize their polls.
-			// Lock the existing checkpoint, then re-read under READ COMMITTED.
-			locked, err := tx.CompareAndSwap(ctx, current, "execution_key", *job.ExecutionKey, nil)
-			if err != nil {
-				return fmt.Errorf("lock delayed job checkpoint: %w", err)
-			}
-			if !locked {
-				return ErrWorkflowOwnershipLost
-			}
-			if err := tx.Get(ctx, current); err != nil {
-				return err
-			}
-		}
-		if current.ExecutionKey == nil || *current.ExecutionKey != *job.ExecutionKey || current.RunGeneration != job.RunGeneration {
-			return ErrWorkflowOwnershipLost
+			return err
 		}
 		now, err := currentWorkflowDatabaseTime(ctx, tx)
 		if err != nil {
@@ -140,6 +116,38 @@ func EnqueueJobForScheduling(ctx context.Context, store datastore.DataStore, own
 		*job = *current
 		return nil
 	})
+}
+
+func loadQueuedJobCheckpoint(ctx context.Context, tx datastore.DataStore, owner *model.WorkflowQueue, job *model.JobInfo) (*model.JobInfo, error) {
+	current, err := scheduledJobByExecutionKey(ctx, tx, owner, *job.ExecutionKey)
+	if errors.Is(err, datastore.ErrRecordNotExist) && owner != nil {
+		current = new(model.JobInfo)
+		*current = *job
+		if err = tx.Add(ctx, current); err != nil {
+			return nil, fmt.Errorf("create queued job: %w", err)
+		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load queued job: %w", err)
+	}
+	if owner == nil {
+		// Detached dispatchers have no parent row to serialize their polls.
+		// Lock the existing checkpoint, then re-read under READ COMMITTED.
+		locked, err := tx.CompareAndSwap(ctx, current, "execution_key", *job.ExecutionKey, nil)
+		if err != nil {
+			return nil, fmt.Errorf("lock delayed job checkpoint: %w", err)
+		}
+		if !locked {
+			return nil, ErrWorkflowOwnershipLost
+		}
+		if err := tx.Get(ctx, current); err != nil {
+			return nil, err
+		}
+	}
+	if current.ExecutionKey == nil || *current.ExecutionKey != *job.ExecutionKey || current.RunGeneration != job.RunGeneration {
+		return nil, ErrWorkflowOwnershipLost
+	}
+	return current, nil
 }
 
 func IsJobAdmitted(ctx context.Context, store datastore.DataStore, owner *model.WorkflowQueue, executionKey string, expectedDeadline ...*time.Time) (bool, error) {

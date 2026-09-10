@@ -1,12 +1,10 @@
 package cache
 
 import (
-	"runtime/debug"
 	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"k8s.io/klog/v2"
 )
 
 type item struct {
@@ -19,16 +17,28 @@ type MemCache struct {
 	items       map[string]*item
 	mu          sync.Mutex
 	ttl         time.Duration
+	nextCleanup time.Time
 	redisClient *redis.Client
 }
 
 func (m *MemCache) Store(key string, data string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	now := time.Now()
+	// Reclaim stale entries on writes instead of retaining every cache instance
+	// through an unbounded background goroutine. Limit full scans to once a second.
+	if !now.Before(m.nextCleanup) {
+		for k, v := range m.items {
+			if v.expired(now) {
+				delete(m.items, k)
+			}
+		}
+		m.nextCleanup = now.Add(time.Second)
+	}
 	// Upsert and refresh expiry
 	expiresAt := time.Time{}
 	if m.ttl > 0 {
-		expiresAt = time.Now().Add(m.ttl)
+		expiresAt = now.Add(m.ttl)
 	}
 	m.items[key] = &item{
 		value:     data,
@@ -70,7 +80,12 @@ func (m *MemCache) List() ([]string, error) {
 	var ret []string
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for _, v := range m.items {
+	now := time.Now()
+	for k, v := range m.items {
+		if v.expired(now) {
+			delete(m.items, k)
+			continue
+		}
 		ret = append(ret, v.value)
 	}
 	return ret, nil
@@ -110,7 +125,7 @@ func (i *item) expired(now time.Time) bool {
 	if i.expiresAt.IsZero() {
 		return false
 	}
-	return now.After(i.expiresAt)
+	return !now.Before(i.expiresAt)
 }
 
 func NewMemCache(noCache bool) ICache {
@@ -119,34 +134,10 @@ func NewMemCache(noCache bool) ICache {
 
 // NewMemCacheWithClient returns a MemCache and carries an optional Redis client for DI.
 func NewMemCacheWithClient(noCache bool, redisClient *redis.Client) ICache {
-	c := &MemCache{
+	return &MemCache{
 		noCache:     noCache,
 		items:       make(map[string]*item),
 		ttl:         24 * time.Hour, // 默认设置过期时间为1天
 		redisClient: redisClient,
 	}
-	go func() {
-		defer func() {
-			if err := recover(); err != nil {
-				klog.Errorf("memcache cleaner panic: %v", err)
-				debug.PrintStack()
-			}
-		}()
-
-		t := time.NewTicker(time.Second)
-		defer t.Stop()
-		for {
-			select {
-			case <-t.C:
-				c.mu.Lock()
-				for k, v := range c.items {
-					if v.expired(time.Now()) {
-						delete(c.items, k)
-					}
-				}
-				c.mu.Unlock()
-			}
-		}
-	}()
-	return c
 }

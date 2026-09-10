@@ -14,6 +14,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	applyv1 "k8s.io/client-go/applyconfigurations/core/v1"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -155,6 +156,65 @@ func augmentAdoptedDependencyJobs(
 	}
 
 	resourceAppName := naming.ApplicationResourceKey(app.Name, "", false)
+	seen, err := filterAdoptedDependencyJobs(stepGroups, snapshot, task, resourceAppName, defaultJobTimeoutSeconds)
+	if err != nil {
+		return nil, err
+	}
+
+	anchor, anchorsByComponent := adoptedWorkloadExecutionAnchors(stepGroups)
+	if anchor == nil {
+		return stepGroups, nil
+	}
+
+	resources := append([]importcontract.ResourceSnapshot(nil), snapshot.Resources...)
+	sort.SliceStable(resources, func(i, j int) bool {
+		left := adoptedSnapshotResourceKey(snapshot, &resources[i])
+		right := adoptedSnapshotResourceKey(snapshot, &resources[j])
+		return left < right
+	})
+	for index := range resources {
+		resource := &resources[index]
+		protectedPVC, err := adoptedResourceIsProtectedStandalonePVC(snapshot, resource)
+		if err != nil {
+			return nil, err
+		}
+		if !adoptedResourceIsWritable(resource) && !protectedPVC {
+			continue
+		}
+		kind := strings.ToLower(strings.TrimSpace(resource.Source.Kind))
+		spec, supported := adoptedDependencyJobSpecs[kind]
+		if !supported {
+			continue
+		}
+		key := adoptedSnapshotResourceKey(snapshot, resource)
+		if _, alreadyPresent := seen[key]; alreadyPresent {
+			continue
+		}
+		jobTask, err := adoptedSnapshotDependencyJob(
+			resource,
+			snapshot,
+			spec,
+			task,
+			resourceAppName,
+			defaultJobTimeoutSeconds,
+		)
+		if err != nil {
+			return nil, err
+		}
+		target := anchor
+		if componentName := strings.TrimSpace(resource.ComponentName); componentName != "" {
+			target = anchorsByComponent[componentName]
+			if target == nil {
+				continue
+			}
+		}
+		target.Jobs[spec.priority] = append(target.Jobs[spec.priority], jobTask)
+		seen[key] = struct{}{}
+	}
+	return stepGroups, nil
+}
+
+func filterAdoptedDependencyJobs(stepGroups [][]StepExecution, snapshot *importcontract.Snapshot, task *model.WorkflowQueue, resourceAppName string, defaultJobTimeoutSeconds int64) (map[string]struct{}, error) {
 	seen := make(map[string]struct{})
 	protectedPVCRequests := make(map[string]string)
 	for groupIndex := range stepGroups {
@@ -235,57 +295,7 @@ func augmentAdoptedDependencyJobs(
 		}
 	}
 
-	anchor, anchorsByComponent := adoptedWorkloadExecutionAnchors(stepGroups)
-	if anchor == nil {
-		return stepGroups, nil
-	}
-
-	resources := append([]importcontract.ResourceSnapshot(nil), snapshot.Resources...)
-	sort.SliceStable(resources, func(i, j int) bool {
-		left := adoptedSnapshotResourceKey(snapshot, &resources[i])
-		right := adoptedSnapshotResourceKey(snapshot, &resources[j])
-		return left < right
-	})
-	for index := range resources {
-		resource := &resources[index]
-		protectedPVC, err := adoptedResourceIsProtectedStandalonePVC(snapshot, resource)
-		if err != nil {
-			return nil, err
-		}
-		if !adoptedResourceIsWritable(resource) && !protectedPVC {
-			continue
-		}
-		kind := strings.ToLower(strings.TrimSpace(resource.Source.Kind))
-		spec, supported := adoptedDependencyJobSpecs[kind]
-		if !supported {
-			continue
-		}
-		key := adoptedSnapshotResourceKey(snapshot, resource)
-		if _, alreadyPresent := seen[key]; alreadyPresent {
-			continue
-		}
-		jobTask, err := adoptedSnapshotDependencyJob(
-			resource,
-			snapshot,
-			spec,
-			task,
-			resourceAppName,
-			defaultJobTimeoutSeconds,
-		)
-		if err != nil {
-			return nil, err
-		}
-		target := anchor
-		if componentName := strings.TrimSpace(resource.ComponentName); componentName != "" {
-			target = anchorsByComponent[componentName]
-			if target == nil {
-				continue
-			}
-		}
-		target.Jobs[spec.priority] = append(target.Jobs[spec.priority], jobTask)
-		seen[key] = struct{}{}
-	}
-	return stepGroups, nil
+	return seen, nil
 }
 
 func workflowAdoptionSnapshot(app *model.Applications) (*importcontract.Snapshot, error) {
@@ -654,6 +664,7 @@ func decodeAdoptedDependencyManifest(
 		return nil
 	}
 
+	var object metav1.Object
 	switch strings.ToLower(strings.TrimSpace(resource.Source.Kind)) {
 	case "service":
 		var object applyv1.ServiceApplyConfiguration
@@ -668,91 +679,36 @@ func decodeAdoptedDependencyManifest(
 		}
 		return &object, nil
 	case "ingress":
-		var object networkingv1.Ingress
-		if err := decode(&object); err != nil {
-			return nil, err
-		}
-		if err := validate(object.Namespace, object.Name); err != nil {
-			return nil, err
-		}
-		return &object, nil
+		object = &networkingv1.Ingress{}
 	case "persistentvolumeclaim":
-		var object corev1.PersistentVolumeClaim
-		if err := decode(&object); err != nil {
-			return nil, err
-		}
-		if err := validate(object.Namespace, object.Name); err != nil {
-			return nil, err
-		}
-		return &object, nil
+		object = &corev1.PersistentVolumeClaim{}
 	case "configmap":
-		var object corev1.ConfigMap
-		if err := decode(&object); err != nil {
-			return nil, err
-		}
-		if err := validate(object.Namespace, object.Name); err != nil {
-			return nil, err
-		}
-		return &object, nil
+		object = &corev1.ConfigMap{}
 	case "secret":
-		var object corev1.Secret
-		if err := decode(&object); err != nil {
-			return nil, err
-		}
-		if err := validate(object.Namespace, object.Name); err != nil {
-			return nil, err
-		}
-		// Snapshot manifests deliberately contain no Secret payload. Runtime
-		// decryption is performed only inside the adopted Secret controller.
-		object.Data = nil
-		object.StringData = nil
-		return &object, nil
+		object = &corev1.Secret{}
 	case "serviceaccount":
-		var object corev1.ServiceAccount
-		if err := decode(&object); err != nil {
-			return nil, err
-		}
-		if err := validate(object.Namespace, object.Name); err != nil {
-			return nil, err
-		}
-		return &object, nil
+		object = &corev1.ServiceAccount{}
 	case "role":
-		var object rbacv1.Role
-		if err := decode(&object); err != nil {
-			return nil, err
-		}
-		if err := validate(object.Namespace, object.Name); err != nil {
-			return nil, err
-		}
-		return &object, nil
+		object = &rbacv1.Role{}
 	case "rolebinding":
-		var object rbacv1.RoleBinding
-		if err := decode(&object); err != nil {
-			return nil, err
-		}
-		if err := validate(object.Namespace, object.Name); err != nil {
-			return nil, err
-		}
-		return &object, nil
+		object = &rbacv1.RoleBinding{}
 	case "poddisruptionbudget":
-		var object policyv1.PodDisruptionBudget
-		if err := decode(&object); err != nil {
-			return nil, err
-		}
-		if err := validate(object.Namespace, object.Name); err != nil {
-			return nil, err
-		}
-		return &object, nil
+		object = &policyv1.PodDisruptionBudget{}
 	case "networkpolicy":
-		var object networkingv1.NetworkPolicy
-		if err := decode(&object); err != nil {
-			return nil, err
-		}
-		if err := validate(object.Namespace, object.Name); err != nil {
-			return nil, err
-		}
-		return &object, nil
+		object = &networkingv1.NetworkPolicy{}
 	default:
 		return nil, fmt.Errorf("unsupported adopted dependency kind %q", resource.Source.Kind)
 	}
+	if err := decode(object); err != nil {
+		return nil, err
+	}
+	if err := validate(object.GetNamespace(), object.GetName()); err != nil {
+		return nil, err
+	}
+	if secret, ok := object.(*corev1.Secret); ok {
+		// Snapshot manifests contain no payload; only the adopted Secret controller decrypts it.
+		secret.Data = nil
+		secret.StringData = nil
+	}
+	return object, nil
 }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -549,8 +551,8 @@ func GenerateStoreService(component *model.ApplicationComponent) *GenerateServic
 
 	// 构建环境变量
 	var envs []corev1.EnvVar
-	for k, v := range properties.Env {
-		envs = append(envs, corev1.EnvVar{Name: k, Value: v})
+	for _, name := range slices.Sorted(maps.Keys(properties.Env)) {
+		envs = append(envs, corev1.EnvVar{Name: name, Value: properties.Env[name]})
 	}
 
 	serviceName, err := statefulSetServiceName(component)

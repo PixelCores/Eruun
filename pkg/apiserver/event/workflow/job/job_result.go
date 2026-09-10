@@ -515,17 +515,7 @@ func processJobResult(ctx context.Context, client kubernetes.Interface, store da
 		klog.InfoS("discard stale job result after Kubernetes Job identity changed", "namespace", namespace, "name", payload.Name, "taskID", payload.TaskID, "runGeneration", payload.RunGeneration)
 		return nil
 	}
-	if status == "" {
-		if err == nil {
-			status = config.StatusFailed
-			message = "job status unknown"
-		} else {
-			status = statusFromError(err)
-			message = jobErrorMessage(err, message)
-		}
-	} else if err != nil {
-		message = jobErrorMessage(err, message)
-	}
+	status, message = jobCompletionResult(status, message, err)
 
 	jobObj, getErr := client.BatchV1().Jobs(namespace).Get(ctx, payload.Name, metav1.GetOptions{})
 	if getErr != nil && !k8serrors.IsNotFound(getErr) {
@@ -570,6 +560,22 @@ func processJobResult(ctx context.Context, client kubernetes.Interface, store da
 		return err
 	}
 	return nil
+}
+
+func jobCompletionResult(status config.Status, message string, err error) (config.Status, string) {
+	if status == "" {
+		if err == nil {
+			status = config.StatusFailed
+			message = "job status unknown"
+		} else {
+			status = statusFromError(err)
+			message = jobErrorMessage(err, message)
+		}
+	} else if err != nil {
+		message = jobErrorMessage(err, message)
+	}
+
+	return status, message
 }
 
 func stampJobExecutionIdentity(jobTask *model.JobTask, jobObj *batchv1.Job) {

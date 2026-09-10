@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
@@ -10,8 +11,6 @@ import (
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
-	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 type fakeWorkflowService struct {
@@ -412,25 +411,6 @@ func (s batchComponentStatusApplicationService) HasImmediateActiveVersionUpdateT
 		return false, nil
 	}
 	return s.activeTaskByAppID[appID], nil
-}
-
-func testVersionUpdateTaskMarker(t *testing.T) string {
-	t.Helper()
-	payload, err := json.Marshal(model.VersionUpdateResourceActionInfo{
-		Source:  config.JobInfoSourceVersionUpdateAction,
-		Version: 1,
-	})
-	require.NoError(t, err)
-	return string(payload)
-}
-
-func testVersionUpdateTask(t *testing.T, status config.Status) *model.WorkflowQueue {
-	t.Helper()
-	return &model.WorkflowQueue{
-		TaskID:             "task-version",
-		Status:             status,
-		ResourceActionInfo: testVersionUpdateTaskMarker(t),
-	}
 }
 
 type componentCacheSyncStore struct {

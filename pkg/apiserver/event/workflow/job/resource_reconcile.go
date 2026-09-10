@@ -38,35 +38,6 @@ type trackedResourceReconcileOptions[T any] struct {
 	isAlreadyExists func(error) bool
 }
 
-// getOrCreateResource returns an existing resource or creates a new one when missing.
-func getOrCreateResource[T any](
-	ctx context.Context,
-	getFn getResourceFunc[T],
-	createFn createResourceFunc[T],
-	isNotFound func(error) bool,
-	isAlreadyExists func(error) bool,
-) (*T, bool, error) {
-	existing, err := getFn(ctx)
-	if err == nil {
-		return existing, false, nil
-	}
-	if !isNotFound(err) {
-		return nil, false, err
-	}
-	created, err := createFn(ctx)
-	if err == nil {
-		return created, true, nil
-	}
-	if isAlreadyExists(err) {
-		existing, err := getFn(ctx)
-		if err != nil {
-			return nil, false, err
-		}
-		return existing, false, nil
-	}
-	return nil, false, err
-}
-
 // createOrUpdateResource updates an existing resource or creates a new one when missing.
 func createOrUpdateResource[T any](
 	ctx context.Context,

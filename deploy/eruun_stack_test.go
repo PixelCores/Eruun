@@ -142,36 +142,19 @@ func TestEruunStackUsesFixedDistributedRuntime(t *testing.T) {
 	require.Len(t, deployments, len(roles))
 	require.Len(t, serviceAccounts, len(roles))
 	require.Len(t, pdbs, len(roles))
-	numberValue := func(object map[string]interface{}, fields ...string) int64 {
-		value, found, err := unstructured.NestedFieldNoCopy(object, fields...)
-		require.NoError(t, err)
-		require.True(t, found)
-		switch number := value.(type) {
-		case int64:
-			return number
-		case float64:
-			converted := int64(number)
-			require.Equal(t, number, float64(converted))
-			return converted
-		case int:
-			return int64(number)
-		default:
-			t.Fatalf("%s must be numeric, got %T", fields, value)
-			return 0
-		}
-	}
+
 	for _, role := range roles {
 		deployment, found := deployments[role]
 		require.True(t, found, "missing %s Deployment", role)
 		name, _, _ := unstructured.NestedString(deployment, "metadata", "name")
 		require.Equal(t, "eruun-"+role, name)
-		replicas := numberValue(deployment, "spec", "replicas")
+		replicas := stackNumberValue(t, deployment, "spec", "replicas")
 		require.Greater(t, replicas, int64(0))
 		serviceAccountName, found, err := unstructured.NestedString(deployment, "spec", "template", "spec", "serviceAccountName")
 		require.NoError(t, err)
 		require.True(t, found)
 		require.Equal(t, "eruun-"+role, serviceAccountName)
-		grace := numberValue(deployment, "spec", "template", "spec", "terminationGracePeriodSeconds")
+		grace := stackNumberValue(t, deployment, "spec", "template", "spec", "terminationGracePeriodSeconds")
 		require.Equal(t, int64(90), grace)
 
 		containers, found, err := unstructured.NestedSlice(deployment, "spec", "template", "spec", "containers")
@@ -217,23 +200,9 @@ func TestEruunStackUsesFixedDistributedRuntime(t *testing.T) {
 	require.NotContains(t, data, "ERUUN_WORKFLOW_LEASE_FENCING_ENABLED")
 	require.NotContains(t, data, "ERUUN_LOCK_NAME")
 
-	subjectNames := func(binding map[string]interface{}) []string {
-		subjects, found, err := unstructured.NestedSlice(binding, "subjects")
-		require.NoError(t, err)
-		require.True(t, found)
-		names := make([]string, 0, len(subjects))
-		for _, subject := range subjects {
-			entry, ok := subject.(map[string]interface{})
-			require.True(t, ok)
-			name, ok := entry["name"].(string)
-			require.True(t, ok)
-			names = append(names, name)
-		}
-		return names
-	}
-	require.ElementsMatch(t, []string{"eruun-controller", "eruun-scheduler"}, subjectNames(leaderBinding))
-	require.ElementsMatch(t, []string{"eruun-api", "eruun-worker"}, subjectNames(clusterBindings["eruun-platform-runtime"]))
-	require.Equal(t, []string{"eruun-controller"}, subjectNames(clusterBindings["eruun-controller-observer"]))
+	require.ElementsMatch(t, []string{"eruun-controller", "eruun-scheduler"}, stackSubjectNames(t, leaderBinding))
+	require.ElementsMatch(t, []string{"eruun-api", "eruun-worker"}, stackSubjectNames(t, clusterBindings["eruun-platform-runtime"]))
+	require.Equal(t, []string{"eruun-controller"}, stackSubjectNames(t, clusterBindings["eruun-controller-observer"]))
 
 	roleRefName := func(binding map[string]interface{}) string {
 		name, found, err := unstructured.NestedString(binding, "roleRef", "name")
@@ -244,6 +213,11 @@ func TestEruunStackUsesFixedDistributedRuntime(t *testing.T) {
 	require.Equal(t, "eruun-platform-runtime", roleRefName(clusterBindings["eruun-platform-runtime"]))
 	require.Equal(t, "eruun-controller-observer", roleRefName(clusterBindings["eruun-controller-observer"]))
 
+	assertControllerRuntimePermissions(t, clusterRoles)
+}
+
+func assertControllerRuntimePermissions(t *testing.T, clusterRoles map[string]map[string]interface{}) {
+	t.Helper()
 	verbsFor := func(role map[string]interface{}, apiGroup, resource string) []string {
 		rules, found, err := unstructured.NestedSlice(role, "rules")
 		require.NoError(t, err)
@@ -339,4 +313,40 @@ func TestDockerBuildUsesDefaultDeploymentImageWithoutPublishing(t *testing.T) {
 	require.Contains(t, string(makefile), "IMAGE           ?= ghcr.io/pixelcores/eruun:0.1.0")
 	require.Contains(t, string(makefile), "$(DOCKER) tag $(IMAGE)-linux-amd64 $(IMAGE)")
 	require.NotContains(t, string(makefile), "$(DOCKER) push")
+}
+
+func stackNumberValue(t *testing.T, object map[string]interface{}, fields ...string) int64 {
+	t.Helper()
+	value, found, err := unstructured.NestedFieldNoCopy(object, fields...)
+	require.NoError(t, err)
+	require.True(t, found)
+	switch number := value.(type) {
+	case int64:
+		return number
+	case float64:
+		converted := int64(number)
+		require.Equal(t, number, float64(converted))
+		return converted
+	case int:
+		return int64(number)
+	default:
+		t.Fatalf("%s must be numeric, got %T", fields, value)
+		return 0
+	}
+}
+
+func stackSubjectNames(t *testing.T, binding map[string]interface{}) []string {
+	t.Helper()
+	subjects, found, err := unstructured.NestedSlice(binding, "subjects")
+	require.NoError(t, err)
+	require.True(t, found)
+	names := make([]string, 0, len(subjects))
+	for _, subject := range subjects {
+		entry, ok := subject.(map[string]interface{})
+		require.True(t, ok)
+		name, ok := entry["name"].(string)
+		require.True(t, ok)
+		names = append(names, name)
+	}
+	return names
 }

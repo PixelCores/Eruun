@@ -484,10 +484,7 @@ func (c *DeployIngressJobCtl) timeout() int64 {
 }
 
 func ingressReady(ing *networkingv1.Ingress) bool {
-	if ing == nil {
-		return false
-	}
-	return true
+	return ing != nil
 }
 
 func ingressNeedsUpdate(current, desired *networkingv1.Ingress) bool {

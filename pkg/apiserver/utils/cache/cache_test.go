@@ -59,6 +59,37 @@ func TestMemCache_Delete(t *testing.T) {
 	require.Equal(t, "", got)
 }
 
+func TestMemCache_ListExcludesExpiredEntries(t *testing.T) {
+	c := NewMemCache(false).(*MemCache)
+	c.mu.Lock()
+	c.items["expired"] = &item{value: "stale", expiresAt: time.Now().Add(-time.Second)}
+	c.items["live"] = &item{value: "current", expiresAt: time.Now().Add(time.Hour)}
+	c.items["permanent"] = &item{value: "permanent"}
+	c.mu.Unlock()
+
+	values, err := c.List()
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"current", "permanent"}, values)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	require.NotContains(t, c.items, "expired")
+}
+
+func TestMemCache_StoreReclaimsExpiredEntries(t *testing.T) {
+	c := NewMemCache(false).(*MemCache)
+	c.mu.Lock()
+	c.items["expired"] = &item{value: "stale", expiresAt: time.Now().Add(-time.Second)}
+	c.items["permanent"] = &item{value: "permanent"}
+	c.mu.Unlock()
+
+	require.NoError(t, c.Store("new", "current"))
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	require.NotContains(t, c.items, "expired")
+	require.Contains(t, c.items, "permanent")
+	require.Contains(t, c.items, "new")
+}
+
 func TestMemCache_ConsumeIsAtomic(t *testing.T) {
 	c := NewMemCache(false)
 	require.NoError(t, c.Store("k", "v"))

@@ -712,41 +712,9 @@ func (c *CleanupResourcesJobCtl) refreshRequiredStatefulSetPodTargets(ctx contex
 	if err != nil {
 		return fmt.Errorf("list namespace pods before required StatefulSet deletion: %w", err)
 	}
-	liveTargets := make(map[string]*corev1.Pod, len(list.Items))
-	for i := range list.Items {
-		pod := &list.Items[i]
-		name := strings.TrimSpace(pod.Name)
-		if name == "" {
-			continue
-		}
-		expectedUID, remembered := target.podUIDs[name]
-		if remembered {
-			if expectedUID != pod.UID {
-				return requiredStatefulSetPodConflict(ref, name, fmt.Sprintf("Pod UID changed from %q to %q", expectedUID, pod.UID))
-			}
-			liveTargets[name] = pod
-			continue
-		}
-
-		ownedByTarget, unprovenTargetOwner := requiredStatefulSetPodOwnership(pod, ref.name, target.statefulSetUID)
-		ordinal := isStatefulSetOrdinalPodName(ref.name, name)
-		labelMatched := selector.Matches(labels.Set(pod.Labels))
-		if unprovenTargetOwner && (ordinal || labelMatched) {
-			return requiredStatefulSetPodConflict(ref, name, "Pod owner does not match the pinned StatefulSet UID")
-		}
-		if ordinal && !ownedByTarget {
-			return requiredStatefulSetPodConflict(ref, name, "ordinal Pod identity cannot be proven from the pinned StatefulSet UID")
-		}
-		if !ownedByTarget && !labelMatched {
-			continue
-		}
-		if ownedByTarget && pod.UID == "" {
-			return requiredStatefulSetPodConflict(ref, name, "owned Pod has an empty UID")
-		}
-		target.podUIDs[name] = pod.UID
-		target.ownerJobsCaptured = false
-		target.checkpointPersisted = false
-		liveTargets[name] = pod
+	liveTargets, err := c.captureRequiredStatefulSetPods(ref, selector, list)
+	if err != nil {
+		return err
 	}
 	for _, name := range c.requiredStatefulSetPodNames() {
 		pod, exists := liveTargets[name]
@@ -769,6 +737,47 @@ func (c *CleanupResourcesJobCtl) refreshRequiredStatefulSetPodTargets(ctx contex
 		target.checkpointPersisted = false
 	}
 	return c.persistRequiredStatefulSetPodTarget(ctx)
+}
+
+func (c *CleanupResourcesJobCtl) captureRequiredStatefulSetPods(ref cleanupResourceRef, selector labels.Selector, list *corev1.PodList) (map[string]*corev1.Pod, error) {
+	target := c.requiredStatefulSetPodTarget
+	liveTargets := make(map[string]*corev1.Pod, len(list.Items))
+	for i := range list.Items {
+		pod := &list.Items[i]
+		name := strings.TrimSpace(pod.Name)
+		if name == "" {
+			continue
+		}
+		expectedUID, remembered := target.podUIDs[name]
+		if remembered {
+			if expectedUID != pod.UID {
+				return nil, requiredStatefulSetPodConflict(ref, name, fmt.Sprintf("Pod UID changed from %q to %q", expectedUID, pod.UID))
+			}
+			liveTargets[name] = pod
+			continue
+		}
+
+		ownedByTarget, unprovenTargetOwner := requiredStatefulSetPodOwnership(pod, ref.name, target.statefulSetUID)
+		ordinal := isStatefulSetOrdinalPodName(ref.name, name)
+		labelMatched := selector.Matches(labels.Set(pod.Labels))
+		if unprovenTargetOwner && (ordinal || labelMatched) {
+			return nil, requiredStatefulSetPodConflict(ref, name, "Pod owner does not match the pinned StatefulSet UID")
+		}
+		if ordinal && !ownedByTarget {
+			return nil, requiredStatefulSetPodConflict(ref, name, "ordinal Pod identity cannot be proven from the pinned StatefulSet UID")
+		}
+		if !ownedByTarget && !labelMatched {
+			continue
+		}
+		if ownedByTarget && pod.UID == "" {
+			return nil, requiredStatefulSetPodConflict(ref, name, "owned Pod has an empty UID")
+		}
+		target.podUIDs[name] = pod.UID
+		target.ownerJobsCaptured = false
+		target.checkpointPersisted = false
+		liveTargets[name] = pod
+	}
+	return liveTargets, nil
 }
 
 const requiredStatefulSetPodCheckpointKey = "statefulSetPodDeletionTarget"
@@ -1106,25 +1115,11 @@ func requiredStatefulSetPodCheckpointIsSubset(
 		return false
 	}
 
-	podUIDs := func(checkpoint requiredStatefulSetPodDeletionCheckpoint) (map[string]types.UID, bool) {
-		result := make(map[string]types.UID, len(checkpoint.Pods))
-		for _, pod := range checkpoint.Pods {
-			name := strings.TrimSpace(pod.Name)
-			if name == "" {
-				return nil, false
-			}
-			if _, duplicate := result[name]; duplicate {
-				return nil, false
-			}
-			result[name] = pod.UID
-		}
-		return result, true
-	}
-	subsetPods, valid := podUIDs(subset)
+	subsetPods, valid := requiredStatefulSetCheckpointPodUIDs(subset)
 	if !valid {
 		return false
 	}
-	supersetPods, valid := podUIDs(superset)
+	supersetPods, valid := requiredStatefulSetCheckpointPodUIDs(superset)
 	if !valid {
 		return false
 	}
@@ -1186,6 +1181,21 @@ func requiredStatefulSetPodCheckpointIsSubset(
 		}
 	}
 	return true
+}
+
+func requiredStatefulSetCheckpointPodUIDs(checkpoint requiredStatefulSetPodDeletionCheckpoint) (map[string]types.UID, bool) {
+	result := make(map[string]types.UID, len(checkpoint.Pods))
+	for _, pod := range checkpoint.Pods {
+		name := strings.TrimSpace(pod.Name)
+		if name == "" {
+			return nil, false
+		}
+		if _, duplicate := result[name]; duplicate {
+			return nil, false
+		}
+		result[name] = pod.UID
+	}
+	return result, true
 }
 
 func requiredStatefulSetPodCheckpointsEqual(a, b requiredStatefulSetPodDeletionCheckpoint) bool {

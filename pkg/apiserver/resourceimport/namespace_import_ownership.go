@@ -61,19 +61,7 @@ func assignInitialResourceOwners(namespace string, resources []*importResource, 
 			res.appID = sharedAppID
 		}
 
-		if res.componentName == "" {
-			if existing := strings.TrimSpace(res.labels[config.LabelComponentName]); existing != "" {
-				res.componentName = existing
-			} else if res.kindKey == importKindDeployments ||
-				res.kindKey == importKindStatefulSets ||
-				res.kindKey == importKindDaemonSets ||
-				res.kindKey == importKindJobs ||
-				res.kindKey == importKindCronJobs ||
-				res.kindKey == importKindConfigMaps ||
-				res.kindKey == importKindSecrets {
-				res.componentName = res.name
-			}
-		}
+		assignInitialComponentName(res)
 
 		if res.appID != sharedAppID && prefix != "" {
 			if _, ok := prefixVotes[res.appID]; !ok {
@@ -83,6 +71,22 @@ func assignInitialResourceOwners(namespace string, resources []*importResource, 
 		}
 	}
 	return prefixVotes, warnings
+}
+
+func assignInitialComponentName(res *importResource) {
+	if res.componentName == "" {
+		if existing := strings.TrimSpace(res.labels[config.LabelComponentName]); existing != "" {
+			res.componentName = existing
+		} else if res.kindKey == importKindDeployments ||
+			res.kindKey == importKindStatefulSets ||
+			res.kindKey == importKindDaemonSets ||
+			res.kindKey == importKindJobs ||
+			res.kindKey == importKindCronJobs ||
+			res.kindKey == importKindConfigMaps ||
+			res.kindKey == importKindSecrets {
+			res.componentName = res.name
+		}
+	}
 }
 
 func buildImportWorkloadReferences(resources []*importResource, warnings []string) (map[string][]workloadRef, []string) {
@@ -189,6 +193,11 @@ func assignReferenceDerivedOwners(namespace string, resources []*importResource,
 		}
 	}
 
+	assignIngressReferenceOwners(resources, sharedAppID, serviceByName)
+	assignRBACReferenceOwners(namespace, resources, sharedAppID, serviceAccountOwners, serviceAccountComponents)
+}
+
+func assignIngressReferenceOwners(resources []*importResource, sharedAppID string, serviceByName map[string]*importResource) {
 	for _, res := range resources {
 		if res.kindKey != importKindIngresses {
 			continue
@@ -209,7 +218,9 @@ func assignReferenceDerivedOwners(namespace string, resources []*importResource,
 			}
 		}
 	}
+}
 
+func assignRBACReferenceOwners(namespace string, resources []*importResource, sharedAppID string, serviceAccountOwners, serviceAccountComponents map[string]map[string]struct{}) {
 	for _, res := range resources {
 		if res.kindKey != importKindRoleBindings {
 			continue

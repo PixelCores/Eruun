@@ -2,6 +2,8 @@ package traits
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
@@ -52,8 +54,8 @@ func (s *SidecarProcessor) Process(ctx *TraitContext) (*TraitResult, error) {
 
 		// Convert env map to env vars
 		var envVars []corev1.EnvVar
-		for k, v := range sidecarSpec.Env {
-			envVars = append(envVars, corev1.EnvVar{Name: k, Value: v})
+		for _, name := range slices.Sorted(maps.Keys(sidecarSpec.Env)) {
+			envVars = append(envVars, corev1.EnvVar{Name: name, Value: sidecarSpec.Env[name]})
 		}
 
 		// Recursively apply nested traits, excluding pod-level traits and recursive container traits.

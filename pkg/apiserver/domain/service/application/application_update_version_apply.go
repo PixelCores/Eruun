@@ -43,7 +43,6 @@ func (c *applicationsServiceImpl) commitAutoExecVersionUpdate(
 		addedComponents     []string
 		removedComponents   []string
 		restartedComponents []string
-		cleanupInfo         *model.VersionUpdateCleanupInfo
 		resourceActionInfo  *model.VersionUpdateResourceActionInfo
 		taskID              string
 	)
@@ -55,51 +54,9 @@ func (c *applicationsServiceImpl) commitAutoExecVersionUpdate(
 			if err := validateWorkflowTaskEnqueue(lockCtx, tx, workflow, false); err != nil {
 				return autoExecWorkflowValidationError(err)
 			}
-			pendingStatefulSetPVCDeletions, err := pendingVersionUpdateStatefulSetPVCDeletionsForRequest(
-				lockCtx,
-				tx,
-				app.ID,
-				req.Components,
-				resourceActions.fullCleanup && resourceActions.deployAll,
-			)
+			cleanupInfo, cleanupInfoJSON, err := prepareAutoExecVersionCleanup(lockCtx, tx, app.ID, componentMap, req, workflow, resourceActions)
 			if err != nil {
-				return fmt.Errorf("auto exec pending StatefulSet PVC migration: %w", err)
-			}
-
-			if resourceActions.fullCleanup {
-				insertBeforeStepIndex, err := versionUpdateFullCleanupInsertStepIndex(workflow)
-				if err != nil {
-					return fmt.Errorf("auto exec cleanup placement: %w", err)
-				}
-				cleanupOnly := !resourceActions.deployAll && len(req.Components) == 0
-				cleanupInfo, err = buildVersionUpdateFullCleanupInfo(
-					componentMap,
-					req.Components,
-					insertBeforeStepIndex,
-					cleanupOnly,
-					resourceActions.deployAll,
-				)
-				if err != nil {
-					return fmt.Errorf("auto exec cleanup state: %w", err)
-				}
-				if resourceActions.deployAll {
-					if err := mergePendingVersionUpdateStatefulSetPVCDeletions(req.Components, cleanupInfo, pendingStatefulSetPVCDeletions); err != nil {
-						return fmt.Errorf("auto exec cleanup retry state: %w", err)
-					}
-				}
-			} else {
-				cleanupStepIndexes, cleanupAppendStepIndex, err := versionUpdateCleanupStepIndexes(workflow, req.Components, componentMap)
-				if err != nil {
-					return fmt.Errorf("auto exec cleanup placement: %w", err)
-				}
-				cleanupInfo, err = buildVersionUpdateCleanupInfo(req.Components, componentMap, cleanupStepIndexes, cleanupAppendStepIndex)
-				if err != nil {
-					return fmt.Errorf("auto exec cleanup state: %w", err)
-				}
-			}
-			cleanupInfoJSON, err := marshalVersionUpdateCleanupInfo(cleanupInfo)
-			if err != nil {
-				return fmt.Errorf("auto exec cleanup state: %w", err)
+				return err
 			}
 			restartedComponents = append([]string{}, resourceActions.restartComponents...)
 			if len(restartedComponents) > 0 || len(readyComponents) > 0 {
@@ -125,28 +82,9 @@ func (c *applicationsServiceImpl) commitAutoExecVersionUpdate(
 				return nil
 			}
 
-			workflowForTask, err := repository.WorkflowByID(lockCtx, tx, workflow.ID)
+			workflowForTask, err := reloadAutoExecVersionWorkflow(lockCtx, tx, app.ID, workflow.ID, resourceActions.deployAll, cleanupInfo != nil)
 			if err != nil {
-				return fmt.Errorf("reload workflow for auto exec: %w", err)
-			}
-			if err := validateVersionUpdateWorkflowJobTypes(workflowForTask); err != nil {
 				return err
-			}
-			if resourceActions.deployAll {
-				currentComponents, err := repository.FindComponentsByAppID(lockCtx, tx, app.ID)
-				if err != nil && !errors.Is(err, datastore.ErrRecordNotExist) {
-					return fmt.Errorf("list components for deploy all: %w", err)
-				}
-				if err := validateVersionUpdateDeployAllWorkflow(workflowForTask, currentComponents); err != nil {
-					return err
-				}
-				if err := validateWorkflowTaskEnqueue(lockCtx, tx, workflowForTask, false); err != nil {
-					return autoExecWorkflowValidationError(err)
-				}
-			} else if cleanupInfo == nil {
-				if err := validateWorkflowTaskEnqueue(lockCtx, tx, workflowForTask, false); err != nil {
-					return autoExecWorkflowValidationError(err)
-				}
 			}
 			if executionScope == config.VersionUpdateExecutionScopeChangedComponents {
 				executionComponents := versionUpdateExecutionComponents(updatedComponents, addedComponents)
@@ -195,6 +133,84 @@ func (c *applicationsServiceImpl) commitAutoExecVersionUpdate(
 		return nil, nil, nil, nil, "", err
 	}
 	return updatedComponents, addedComponents, removedComponents, restartedComponents, taskID, nil
+}
+
+func prepareAutoExecVersionCleanup(ctx context.Context, store datastore.DataStore, appID string, componentMap map[string]*model.ApplicationComponent, req apisv1.UpdateVersionRequest, workflow *model.Workflow, resourceActions versionUpdateResourceActions) (*model.VersionUpdateCleanupInfo, string, error) {
+	var cleanupInfo *model.VersionUpdateCleanupInfo
+	pendingStatefulSetPVCDeletions, err := pendingVersionUpdateStatefulSetPVCDeletionsForRequest(
+		ctx,
+		store,
+		appID,
+		req.Components,
+		resourceActions.fullCleanup && resourceActions.deployAll,
+	)
+	if err != nil {
+		return nil, "", fmt.Errorf("auto exec pending StatefulSet PVC migration: %w", err)
+	}
+
+	if resourceActions.fullCleanup {
+		insertBeforeStepIndex, err := versionUpdateFullCleanupInsertStepIndex(workflow)
+		if err != nil {
+			return nil, "", fmt.Errorf("auto exec cleanup placement: %w", err)
+		}
+		cleanupOnly := !resourceActions.deployAll && len(req.Components) == 0
+		cleanupInfo, err = buildVersionUpdateFullCleanupInfo(
+			componentMap,
+			req.Components,
+			insertBeforeStepIndex,
+			cleanupOnly,
+			resourceActions.deployAll,
+		)
+		if err != nil {
+			return nil, "", fmt.Errorf("auto exec cleanup state: %w", err)
+		}
+		if resourceActions.deployAll {
+			if err := mergePendingVersionUpdateStatefulSetPVCDeletions(req.Components, cleanupInfo, pendingStatefulSetPVCDeletions); err != nil {
+				return nil, "", fmt.Errorf("auto exec cleanup retry state: %w", err)
+			}
+		}
+	} else {
+		cleanupStepIndexes, cleanupAppendStepIndex, err := versionUpdateCleanupStepIndexes(workflow, req.Components, componentMap)
+		if err != nil {
+			return nil, "", fmt.Errorf("auto exec cleanup placement: %w", err)
+		}
+		cleanupInfo, err = buildVersionUpdateCleanupInfo(req.Components, componentMap, cleanupStepIndexes, cleanupAppendStepIndex)
+		if err != nil {
+			return nil, "", fmt.Errorf("auto exec cleanup state: %w", err)
+		}
+	}
+	cleanupInfoJSON, err := marshalVersionUpdateCleanupInfo(cleanupInfo)
+	if err != nil {
+		return nil, "", fmt.Errorf("auto exec cleanup state: %w", err)
+	}
+	return cleanupInfo, cleanupInfoJSON, nil
+}
+
+func reloadAutoExecVersionWorkflow(ctx context.Context, store datastore.DataStore, appID, workflowID string, deployAll, hasCleanup bool) (*model.Workflow, error) {
+	workflowForTask, err := repository.WorkflowByID(ctx, store, workflowID)
+	if err != nil {
+		return nil, fmt.Errorf("reload workflow for auto exec: %w", err)
+	}
+	if err := validateVersionUpdateWorkflowJobTypes(workflowForTask); err != nil {
+		return nil, err
+	}
+	if deployAll {
+		currentComponents, err := repository.FindComponentsByAppID(ctx, store, appID)
+		if err != nil && !errors.Is(err, datastore.ErrRecordNotExist) {
+			return nil, fmt.Errorf("list components for deploy all: %w", err)
+		}
+		if err := validateVersionUpdateDeployAllWorkflow(workflowForTask, currentComponents); err != nil {
+			return nil, err
+		}
+		if err := validateWorkflowTaskEnqueue(ctx, store, workflowForTask, false); err != nil {
+			return nil, autoExecWorkflowValidationError(err)
+		}
+	} else if !hasCleanup {
+		if err := validateWorkflowTaskEnqueue(ctx, store, workflowForTask, false); err != nil {
+			return nil, autoExecWorkflowValidationError(err)
+		}
+	}
+	return workflowForTask, nil
 }
 
 func autoExecWorkflowValidationError(err error) error {
