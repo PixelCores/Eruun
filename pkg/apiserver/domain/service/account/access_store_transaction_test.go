@@ -33,6 +33,8 @@ func TestScopedJobAdmissionLifecycle(t *testing.T) {
 		terminal bool
 		detached bool
 	}{
+		{name: "command", workflow: config.WorkflowTaskTypeJob, job: config.JobCommand},
+		{name: "agent evaluation", workflow: config.WorkflowTaskTypeJob, job: config.JobAgentEvaluation},
 		{name: "import scan", workflow: config.WorkflowTaskTypeResourceImportScan, job: config.JobResourceImportScan},
 		{name: "import manage", workflow: config.WorkflowTaskTypeResourceImportManage, job: config.JobResourceImportManage},
 		{name: "application", job: config.JobDeployService, app: true},
@@ -48,6 +50,9 @@ func TestScopedJobAdmissionLifecycle(t *testing.T) {
 			lease := time.Now().Add(time.Hour)
 			owner := &model.WorkflowQueue{TaskID: "task", WorkspaceID: "allowed", Type: tc.workflow,
 				Status: config.StatusRunning, RunGeneration: 1, RunToken: "token", WorkerID: "worker", LeaseExpiresAt: &lease}
+			if tc.workflow == config.WorkflowTaskTypeJob {
+				owner.JobSpec = `{"type":"` + string(tc.job) + `"}`
+			}
 			if tc.app {
 				owner.AppID = "app"
 				require.NoError(t, raw.Add(ctx, &model.Applications{ID: owner.AppID, WorkspaceID: "allowed", Namespace: "allowed-ns"}))
@@ -202,6 +207,83 @@ func TestScopedJobAdmissionTransactionUsesCanonicalApplicationWorkspace(t *testi
 			} else {
 				require.Equal(t, "queued", stored.SchedulingState)
 			}
+		})
+	}
+}
+
+func TestWorkspaceJobScopeRequiresMatchingPersistedParent(t *testing.T) {
+	service, _, _ := testAccounts(t)
+	ctx := WithScope(context.Background(), Scope{WorkspaceID: "allowed", Namespace: "allowed-ns"})
+	raw := service.Repo.Store
+	store := NewStore(raw)
+	parent := &model.WorkflowQueue{TaskID: "command-parent", WorkspaceID: "allowed", Type: config.WorkflowTaskTypeJob, JobSpec: `{"type":"command"}`}
+	require.NoError(t, raw.Add(context.Background(), parent))
+	for _, tc := range []struct {
+		name      string
+		workspace string
+		jobType   string
+		wantError bool
+	}{
+		{"matching command", "allowed", "command", false},
+		{"scoped query", "allowed", "", false},
+		{"wrong workspace", "other", "command", true},
+		{"wrong type", "allowed", "agent_evaluation", true},
+		{"internal operation", "allowed", "cleanup_resources", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := store.Check(ctx, &model.JobInfo{TaskID: parent.TaskID, WorkspaceID: tc.workspace, Type: tc.jobType})
+			if tc.wantError {
+				require.ErrorIs(t, err, bcode.ErrForbidden)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+	for _, snapshot := range []string{"", "{", `{"type":"cleanup_resources"}`, `{"type":""}`} {
+		candidate := *parent
+		candidate.JobSpec = snapshot
+		require.ErrorIs(t, store.Check(ctx, &candidate), bcode.ErrForbidden)
+	}
+}
+
+func TestJobArtifactsStayInTheirWorkspaceAcrossStoreOperations(t *testing.T) {
+	for _, newEntity := range []struct {
+		name  string
+		build func(string, string) datastore.Entity
+	}{
+		{"artifact", func(id, workspaceID string) datastore.Entity {
+			return &model.JobArtifact{ID: id, WorkspaceID: workspaceID, Kind: "dataset"}
+		}},
+		{"chunk", func(id, workspaceID string) datastore.Entity {
+			return &model.ArtifactChunk{ID: id, ArtifactID: id, WorkspaceID: workspaceID}
+		}},
+		{"delivery", func(id, workspaceID string) datastore.Entity {
+			return &model.JobDelivery{ID: id, WorkspaceID: workspaceID, State: "pending"}
+		}},
+	} {
+		t.Run(newEntity.name, func(t *testing.T) {
+			service, _, _ := testAccounts(t)
+			raw, ctx := service.Repo.Store, context.Background()
+			store := NewStore(raw)
+			scoped := WithScope(ctx, Scope{WorkspaceID: "allowed", Namespace: "allowed-ns"})
+			require.NoError(t, raw.Add(ctx, newEntity.build("foreign-record", "foreign")))
+			require.NoError(t, store.Add(scoped, newEntity.build("allowed-record", "allowed")))
+			require.ErrorIs(t, store.Add(scoped, newEntity.build("forged-record", "foreign")), bcode.ErrForbidden)
+			rows, err := store.List(scoped, newEntity.build("", ""), &datastore.ListOptions{Page: 1, PageSize: 1})
+			require.NoError(t, err)
+			require.Len(t, rows, 1)
+			require.Equal(t, "allowed-record", rows[0].PrimaryKey())
+			count, err := store.Count(scoped, newEntity.build("", ""), nil)
+			require.NoError(t, err)
+			require.EqualValues(t, 1, count)
+			require.ErrorIs(t, store.Get(scoped, newEntity.build("foreign-record", "")), bcode.ErrForbidden)
+			require.ErrorIs(t, store.Put(scoped, newEntity.build("allowed-record", "foreign")), bcode.ErrForbidden)
+			require.ErrorIs(t, store.Put(scoped, newEntity.build("foreign-record", "allowed")), bcode.ErrForbidden)
+			require.ErrorIs(t, store.Delete(scoped, newEntity.build("foreign-record", "")), bcode.ErrForbidden)
+			_, err = store.CompareAndSwap(scoped, newEntity.build("allowed-record", ""), "workspace_id", "allowed", map[string]interface{}{"workspace_id": "foreign"})
+			require.ErrorIs(t, err, bcode.ErrForbidden)
+			require.NoError(t, store.DeleteByFilter(scoped, newEntity.build("", ""), nil))
+			require.NoError(t, raw.Get(ctx, newEntity.build("foreign-record", "")))
 		})
 	}
 }

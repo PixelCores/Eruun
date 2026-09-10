@@ -48,6 +48,9 @@ func Gzip() gin.HandlerFunc {
 
 func shouldSkipGzip(c *gin.Context) bool {
 	fullPath := c.FullPath()
+	if strings.HasPrefix(fullPath, "/api/v1/job-runners/") || (strings.HasPrefix(fullPath, "/api/v1/jobs/") || strings.HasPrefix(fullPath, "/api/v1/job-datasets/")) && strings.HasSuffix(fullPath, "/download") {
+		return true
+	}
 	return strings.HasSuffix(fullPath, gzipSkipComponentFilesExportSuffix) ||
 		strings.HasSuffix(fullPath, gzipSkipComponentLogsSuffix) ||
 		strings.HasSuffix(fullPath, gzipSkipComponentShellStreamSuffix) ||

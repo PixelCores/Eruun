@@ -217,7 +217,7 @@ func initJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore
 		jobCtl = NewDeployAdoptedPodDisruptionBudgetJobCtl(job, client, store, ack, shareLocker)
 	case string(config.JobDeployNetworkPolicy):
 		jobCtl = NewDeployAdoptedNetworkPolicyJobCtl(job, client, store, ack, shareLocker)
-	case string(config.JobDeployInstant):
+	case string(config.JobDeployInstant), string(config.JobCommand), string(config.JobAgentEvaluation):
 		jobCtl = NewInstantJobCtl(job, client, store, ack)
 	case string(config.JobDeployScheduled):
 		jobCtl = NewScheduledJobCtl(job, client, store, ack)
@@ -285,6 +285,17 @@ func RunJobs(ctx context.Context, jobs []*model.JobTask, concurrency int, client
 			if isResourceImportJobType(config.JobType(task.JobType)) {
 				if task.AppID != "" || task.WorkspaceID != scope.WorkspaceID {
 					return fmt.Errorf("resource import job workspace does not match execution scope")
+				}
+				continue
+			}
+			if config.IsWorkspaceJobType(config.JobType(task.JobType)) {
+				if task.AppID != "" || task.TaskID == "" || task.WorkspaceID != scope.WorkspaceID {
+					return fmt.Errorf("job workspace does not match execution scope")
+				}
+				if err := access.NewStore(store).Check(ctx, &model.JobInfo{
+					TaskID: task.TaskID, WorkspaceID: task.WorkspaceID, Type: task.JobType,
+				}); err != nil {
+					return fmt.Errorf("authorize workspace job: %w", err)
 				}
 				continue
 			}
@@ -486,11 +497,35 @@ func runJob(ctx context.Context, job *model.JobTask, client kubernetes.Interface
 		}
 	}()
 	if admissionErr != nil {
-		if jobCtx.Err() != nil && !signal.IsInfrastructureStop(jobCtx) {
-			job.Status = config.StatusCancelled
-			job.Error = jobCtx.Err().Error()
-			job.EndTime = time.Now().Unix()
-			return persistTerminalJobState(jobCtx, jobCtl, job, store, runtime)
+		if !suppressTerminalJobPersistence(jobCtx) {
+			// The API commits cancellation before publishing its signal. A queue
+			// poll can see that state first; only the same lease may finish this
+			// unstarted Job under the cancelled parent instead of running it.
+			ownershipCtx, cancel := context.WithTimeout(context.WithoutCancel(jobCtx), 5*time.Second)
+			status, ownershipErr := currentJobWorkflowOwnershipStatus(ownershipCtx, store, job)
+			cancel()
+			if ownershipErr != nil {
+				return errors.Join(signal.ErrInfrastructureStop, admissionErr, ownershipErr)
+			}
+			cancelled := jobCtx.Err() != nil
+			if status == config.StatusCancelled && (job.OwnerStatus == "" || job.OwnerStatus == config.StatusRunning) {
+				job.OwnerStatus = config.StatusCancelled
+				cancelled = true
+			}
+			if cancelled {
+				job.Status = config.StatusCancelled
+				job.Error = context.Canceled.Error()
+				if jobCtx.Err() != nil {
+					job.Error = jobCtx.Err().Error()
+				}
+				job.EndTime = time.Now().Unix()
+				if config.IsInstantJobType(config.JobType(job.JobType)) && job.InternalInfo != "" {
+					// Recovery can wait for admission while its checkpoint still
+					// owns a live attempt. Cancellation must stop that attempt too.
+					jobCtl.Clean(jobCtx)
+				}
+				return persistTerminalJobState(jobCtx, jobCtl, job, store, runtime)
+			}
 		}
 		return errors.Join(signal.ErrInfrastructureStop, admissionErr)
 	}
@@ -634,7 +669,7 @@ func jobExecutionAlreadySettled(job *model.JobTask) bool {
 		return true
 	case config.StatusDistributed:
 		jobType := config.JobType(job.JobType)
-		return jobType == config.JobDeployInstant || jobType == config.JobDeployScheduled
+		return config.IsInstantJobType(jobType) || jobType == config.JobDeployScheduled
 	default:
 		return false
 	}

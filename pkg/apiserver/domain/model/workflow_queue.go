@@ -33,6 +33,8 @@ type WorkflowQueue struct {
 	Callback            *JSONStruct             `json:"callback,omitempty" gorm:"serializer:json"`
 	CleanupInfo         string                  `json:"-" gorm:"type:longtext;column:cleanup_info"`
 	ResourceActionInfo  string                  `json:"-" gorm:"type:longtext;column:resource_action_info"`
+	JobSpec             string                  `json:"-" gorm:"type:longtext;column:job_spec"`
+	JobToken            string                  `json:"-" gorm:"type:varchar(64);column:job_token"`
 	RunGeneration       uint64                  `json:"runGeneration,omitempty" gorm:"column:run_generation;not null;default:0;index:idx_workflow_queue_run_lease,priority:2"`
 	RunToken            string                  `json:"-" gorm:"type:varchar(64);column:run_token;index:idx_workflow_queue_run_lease,priority:3"`
 	WorkerID            string                  `json:"workerId,omitempty" gorm:"type:varchar(255);column:worker_id;index"`

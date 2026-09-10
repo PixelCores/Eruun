@@ -4,7 +4,7 @@
 
 ## 账号与空间归属
 
-应用存在未停止任务时保留归属并拒绝删除。应用 `workspaceID` 为必填且不可跨空间修改；namespace 从空间派生。组件、工作流和普通任务通过所属应用追溯空间；不属于某个应用的 resource import scan/manage 任务则在 `WorkflowQueue.WorkspaceID` 和 `JobInfo.WorkspaceID` 显式保存空间归属。HTTP 通过 X-Eruun-Workspace-ID 和成员关系授权，后台从持久化应用或任务自身的 workspace identity 确定空间。注册/保存不创建 Kubernetes 资源，首次部署先完成安全基线。完整契约见 [账号与空间](account-auth-workspaces.md)。
+应用存在未停止任务时保留归属并拒绝删除。应用 `workspaceID` 为必填且不可跨空间修改；namespace 从空间派生。组件和应用工作流任务通过所属应用追溯空间；不属于某个应用的 resource import scan/manage 与独立 `command` / `agent_evaluation` 任务在 `WorkflowQueue.WorkspaceID` 和 `JobInfo.WorkspaceID` 显式保存空间归属。HTTP 通过 X-Eruun-Workspace-ID 和成员关系授权，后台从持久化应用或任务自身的 workspace identity 确定空间。注册/保存不创建 Kubernetes 资源，首次部署先完成安全基线。完整契约见 [账号与空间](account-auth-workspaces.md) 和 [空间 Job](workspace-jobs-api.md)。
 
 ## 背景
 
@@ -63,6 +63,8 @@ flowchart LR
 | `workflowId` | 响应 `workflowId` | `Workflow.ID`、`WorkflowQueue.WorkflowID` | 列表缓存中会携带默认 workflow ID | 无直接标签 | 原样字符串 | DB 主事实源 |
 | `taskId` | 执行/取消/查询链路返回 `taskId` | `WorkflowQueue.TaskID`，`JobInfo.TaskID` | 无常驻缓存键 | Job 注解 `eruun.job/taskId`（间接） | 原样字符串 | `eruun_workflow_queue` 主事实源，`eruun_job` 为执行明细 |
 | resource import `workspaceId` | 提交接口从认证 workspace scope 获取，不接受请求体覆盖 | `WorkflowQueue.WorkspaceID`、`JobInfo.WorkspaceID`（`workspace_id`） | 无 | scan/manage 执行前解析为唯一 workspace namespace | 不对用户输入开放；非敏感 | 任务表是 app-less import Job 的空间归属事实源；JobInfo 必须与对应 task 一致 |
+| 独立 Job `type/spec/traits/resultPolicy` | `POST /jobs` 请求；workspaceId 必须匹配认证空间 | `WorkflowQueue.Type=job`，`JobSpec` 保存已校验规格；`JobInfo.Type` 为 command/agent_evaluation | 无 | 固定空间 namespace，TaskID/执行代映射 Job 与 Pod 注解 | `JobToken` 与执行 checkpoint 不对用户序列化 | 复用队列与一次性 Job；不创建占位应用或平行调度器 |
+| 评测原始结果与保存目标 | 结果查询/下载与单目标重试 API | `JobArtifact` 描述任务包/源/DB副本，`ArtifactChunk` 保存完整字节，`JobDelivery` 保存每个目标独立状态与租约 | 无 | Runner 在退出前上传，按 Pod/Job UID 与已提交执行身份验证 | 凭据限内部传输，MinIO连接限管理员配置 | 原始源默认90天，清理不影响保存副本；保存重试不再次执行Agent |
 | `component.status` | 组件响应 `status` | `ApplicationComponent.Status`（`eruun_app_components.status`） | 缓存会存储纠正后的状态快照 | Informer 依据 Pod 快照推导 Running/Pending/Failed/Unknown | 非敏感，不脱敏 | 读路径以 DB 为准；Informer 仅回写运行态 |
 | `component.readyReplicas` | 组件响应 `readyReplicas` | `ApplicationComponent.ReadyReplicas` | 缓存随组件对象缓存 | 由 Pod Ready 数推导 | 整型，不脱敏 | DB 主事实源（由 informer 回写） |
 | `component.lastAbnormal` | 组件响应 `lastAbnormal` | `ApplicationComponent.LastAbnormal` | 缓存随组件对象缓存 | 从 Pod 异常摘要提取 | 可包含敏感上下文，日志需谨慎 | DB 主事实源（由 informer 回写） |

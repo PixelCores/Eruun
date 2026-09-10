@@ -2,6 +2,7 @@ package job
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -69,7 +70,24 @@ func NewInstantJobCtl(job *model.JobTask, client kubernetes.Interface, store dat
 }
 
 func (c *InstantJobCtl) Clean(ctx context.Context) {
+	if config.IsWorkspaceJobType(config.JobType(c.job.JobType)) {
+		logCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		logs, err := collectJobPodLogs(logCtx, c.client, c.namespace, c.job.Name)
+		cancel()
+		if err == nil && logs != "" {
+			c.job.Info = logs
+		}
+	}
+	if !c.allowEvaluationTerminalCleanup(ctx) {
+		return
+	}
 	if c.job.InternalInfo != "" {
+		// A settled attempt is the durable checkpoint's recovery evidence until
+		// SaveInfo commits its outcome. Cancellation, timeout and panic cleanup
+		// still stop active work immediately through the same fenced deletion.
+		if c.job.Status == config.StatusCompleted || c.job.Status == config.StatusFailed {
+			return
+		}
 		if err := c.cleanRetryAttempt(ctx); err != nil && !k8serrors.IsNotFound(err) {
 			klog.ErrorS(err, "clean instant Job retry attempt", "taskID", c.job.TaskID)
 		}
@@ -84,12 +102,12 @@ func (c *InstantJobCtl) SaveInfo(ctx context.Context) error {
 	if err := saveJobInfo(ctx, c.store, c.job); err != nil {
 		return err
 	}
-	// Retry recovery needs the exact live UID until its completed result,
+	// Retry recovery needs the exact live UID until its terminal result,
 	// including collected logs, has been committed. Its TTL handles an exit
 	// after this commit but before cleanup.
-	if c.job.Status == config.StatusCompleted && c.job.InternalInfo != "" {
+	if (c.job.Status == config.StatusCompleted || c.job.Status == config.StatusFailed) && c.job.InternalInfo != "" && c.allowEvaluationTerminalCleanup(ctx) {
 		if err := c.cleanRetryAttempt(ctx); err != nil && !k8serrors.IsNotFound(err) {
-			klog.ErrorS(err, "clean completed instant Job retry attempt", "taskID", c.job.TaskID)
+			klog.ErrorS(err, "clean terminal instant Job retry attempt", "taskID", c.job.TaskID)
 		}
 	}
 	return nil
@@ -119,8 +137,18 @@ func (c *InstantJobCtl) Run(ctx context.Context) error {
 				err = context.Canceled
 			}
 		}
+		if err == nil && c.job.JobType == string(config.JobAgentEvaluation) && c.job.Status == config.StatusCompleted {
+			ready, sourceErr := c.evaluationSourceReady(ctx)
+			if sourceErr != nil {
+				err = errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("verify evaluation result collection: %w", sourceErr))
+			} else if !ready {
+				err = fmt.Errorf("evaluation runner completed without a collected result archive")
+			}
+		}
 		if err != nil {
-			if errors.Is(err, context.DeadlineExceeded) {
+			if errors.Is(err, context.Canceled) {
+				err = NewStatusError(config.StatusCancelled, err)
+			} else if errors.Is(err, context.DeadlineExceeded) {
 				err = NewStatusError(config.StatusTimeout, err)
 			}
 			applyJobError(c.job, err, "")
@@ -198,7 +226,7 @@ func (c *InstantJobCtl) run(ctx context.Context) error {
 	if err := ensureCurrentJobWorkflowOwnership(ctx, c.store, c.job); err != nil {
 		return err
 	}
-	action, err := applyJobRunPolicy(ctx, c.client, c.store, jobObj, config.JobDeployInstant, validateExistingJobExecutionIdentity(ctx, c.store, jobObj))
+	action, err := applyJobRunPolicy(ctx, c.client, c.store, jobObj, jobTypeForTask(c.job, config.JobDeployInstant), validateExistingJobExecutionIdentity(ctx, c.store, jobObj))
 	if err != nil {
 		return err
 	}
@@ -248,4 +276,42 @@ func (c *InstantJobCtl) wait(ctx context.Context) (config.Status, string, error)
 		}
 	}
 	return waitForJobCompletion(waitCtx, c.client, namespace, name)
+}
+
+// Terminal evaluation Pods are retained until the complete source archive is
+// committed. Cancellation and timeout still stop active work through the normal
+// fenced deletion path; the runner's termination grace allows a final upload.
+func (c *InstantJobCtl) allowEvaluationTerminalCleanup(ctx context.Context) bool {
+	if c.job.JobType != string(config.JobAgentEvaluation) ||
+		(c.job.Status != config.StatusCompleted && c.job.Status != config.StatusFailed) || ctx.Err() != nil {
+		return true
+	}
+	ready, err := c.evaluationSourceReady(ctx)
+	if err != nil {
+		klog.ErrorS(err, "retain evaluation Job after result collection lookup failed", "taskID", c.job.TaskID)
+	}
+	return err == nil && ready
+}
+
+func (c *InstantJobCtl) evaluationSourceReady(ctx context.Context) (bool, error) {
+	if c.store == nil || c.job.WorkspaceID == "" || c.job.TaskID == "" {
+		return false, fmt.Errorf("evaluation result collection identity is incomplete")
+	}
+	rows, err := c.store.List(ctx, &model.JobArtifact{WorkspaceID: c.job.WorkspaceID, TaskID: c.job.TaskID, Kind: "source"}, &datastore.ListOptions{Page: 1, PageSize: 1})
+	if err != nil {
+		return false, err
+	}
+	for _, row := range rows {
+		artifact, ok := row.(*model.JobArtifact)
+		if ok && artifact.WorkspaceID == c.job.WorkspaceID && artifact.TaskID == c.job.TaskID && artifact.Kind == "source" {
+			var summary struct {
+				CollectionComplete bool `json:"collectionComplete"`
+			}
+			if err := json.Unmarshal(artifact.Summary, &summary); err != nil {
+				return false, nil
+			}
+			return summary.CollectionComplete, nil
+		}
+	}
+	return false, nil
 }

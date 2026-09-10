@@ -145,3 +145,22 @@ func TestResourceImportGenerationFailurePersistsSafeClientReason(t *testing.T) {
 	defer store.mu.Unlock()
 	require.Equal(t, importcontract.PreExecutionFailureReason, store.task.SchedulingReason)
 }
+
+func TestStandaloneJobResolvesWorkspaceWithoutApplication(t *testing.T) {
+	task := &model.WorkflowQueue{TaskID: "command-task", WorkspaceID: "workspace", Type: config.WorkflowTaskTypeJob,
+		JobSpec: `{"name":"command","type":"command","spec":{"image":"busybox:1.37.0","command":["true"]}}`}
+	ctl := newTestWorkflowController(t, task, nil, &controllerTestStore{})
+	ctl.accountConfig = &spec.AccountConfig{}
+	ctl.KubeConfig = &rest.Config{Host: "https://kubernetes.example.invalid"}
+	ctl.Store = &workspaceControllerTestStore{DataStore: &controllerTestStore{}, appID: "never-load-this"}
+	ctx, err := ctl.prepareWorkspace(context.Background())
+	require.NoError(t, err)
+	scope, ok := access.FromContext(ctx)
+	require.True(t, ok)
+	require.Equal(t, "workspace", scope.WorkspaceID)
+	require.Equal(t, config.DefaultNamespace, scope.Namespace)
+	require.Empty(t, ctl.snapshotTask().AppID)
+	ctl.mutateTask(func(task *model.WorkflowQueue) { task.AppID = "forged-app" })
+	_, err = ctl.prepareWorkspace(context.Background())
+	require.ErrorContains(t, err, "workspace Job has application or workflow ownership")
+}

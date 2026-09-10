@@ -2,6 +2,7 @@ package account
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -113,6 +114,7 @@ func (s *Service) createUser(ctx context.Context, r repository.Accounts, provide
 	}
 	u := &model.User{ID: uuid.NewString(), Name: strings.TrimSpace(name), PasswordHash: password, SystemAdmin: admin, MustChangePassword: admin}
 	space := &model.Workspace{ID: uuid.NewString(), Name: "Personal", Kind: "personal", OwnerID: u.ID, PersonalUserID: &u.ID}
+	space.JobResultPolicy, _ = json.Marshal(spec.DefaultJobResultPolicy())
 	space.Namespace = "eruun-ws-" + strings.ReplaceAll(space.ID, "-", "")
 	for _, e := range []datastore.Entity{u, &model.Identity{ID: uuid.NewString(), UserID: u.ID, Provider: provider, Subject: subject}, space, &model.WorkspaceMember{ID: uuid.NewString(), WorkspaceID: space.ID, UserID: u.ID, Role: "admin"}} {
 		if err := r.Store.Add(ctx, e); err != nil {

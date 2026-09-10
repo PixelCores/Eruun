@@ -704,6 +704,86 @@ func TestRetrySuccessKeepsEvidenceUntilResultAndLogsAreSaved(t *testing.T) {
 	require.Equal(t, cp.CurrentUID, restored.CurrentUID)
 }
 
+func TestRetryFailureKeepsEvidenceUntilResultIsSaved(t *testing.T) {
+	for _, interruption := range []string{"none", "terminal save failure", "process exit before save"} {
+		t.Run(interruption, func(t *testing.T) {
+			policy := &workflowconfig.JobRetryPolicy{OnOOM: "stop"}
+			task := retryTestTask(t, policy)
+			task.OwnerRunGeneration, task.RunToken, task.WorkerID = 1, "token-1", "worker-1"
+			client := fake.NewSimpleClientset()
+			var created []*batchv1.Job
+			installRetryJobReactor(t, client, 1, "OOMKilled", &created)
+			store := &retryOwnedCheckpointStore{owner: model.WorkflowQueue{TaskID: task.TaskID, Status: config.StatusRunning,
+				RunGeneration: 1, RunToken: task.RunToken, WorkerID: task.WorkerID}}
+			ctl := NewInstantJobCtl(task, client, store, func() {})
+			require.ErrorContains(t, ctl.Run(context.Background()), "job failed after attempt 1")
+			require.Equal(t, config.StatusFailed, task.Status)
+			originalCheckpoint := store.record.InternalInfo
+			// runJob invokes Clean before its deferred terminal persistence.
+			ctl.Clean(context.Background())
+			require.Zero(t, countClientActions(client, "delete", "jobs"))
+			require.Equal(t, string(config.StatusRunning), store.record.Status)
+
+			if interruption == "terminal save failure" {
+				store.afterSave = func(*model.JobInfo) error { return errors.New("database unavailable during terminal save") }
+				require.ErrorContains(t, persistTerminalJobState(context.Background(), ctl, task, store, nil), "database unavailable")
+				require.Equal(t, string(config.StatusRunning), store.record.Status)
+				require.Zero(t, countClientActions(client, "delete", "jobs"))
+				store.afterSave = nil
+			}
+			if interruption != "none" {
+				recovered := retryTestTask(t, policy)
+				recovered.ExecutionKey, recovered.RunGeneration = *store.record.ExecutionKey, store.record.RunGeneration
+				recovered.OwnerRunGeneration, recovered.RunToken, recovered.WorkerID = 2, "token-2", "worker-2"
+				store.owner.RunGeneration, store.owner.RunToken, store.owner.WorkerID = 2, recovered.RunToken, recovered.WorkerID
+				recovered.InternalInfo, recovered.Attempt = store.record.InternalInfo, store.record.Attempt
+				require.NoError(t, RestoreInstantJobRetryCheckpoint(recovered))
+				ctl = NewInstantJobCtl(recovered, client, store, func() {})
+				err := ctl.Run(context.Background())
+				require.ErrorContains(t, err, "job failed after attempt 1")
+				require.NotErrorIs(t, err, signal.ErrInfrastructureStop)
+				require.Equal(t, task.Error, recovered.Error)
+				ctl.Clean(context.Background())
+				task = recovered
+			}
+			require.Equal(t, originalCheckpoint, task.InternalInfo, "recovery must keep its attempt, UID, resources and deadline")
+			require.Zero(t, countClientActions(client, "delete", "jobs"))
+			require.NoError(t, persistTerminalJobState(context.Background(), ctl, task, store, nil))
+			require.Equal(t, string(config.StatusFailed), store.record.Status)
+			require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
+			require.Len(t, created, 1, "terminal recovery must not execute the workload again")
+		})
+	}
+}
+
+func TestRetryFailedTerminalSaveRejectsDifferentLease(t *testing.T) {
+	for _, changed := range []string{"generation", "token", "worker"} {
+		t.Run(changed, func(t *testing.T) {
+			task := retryTestTask(t, &workflowconfig.JobRetryPolicy{OnOOM: "stop"})
+			task.OwnerRunGeneration, task.RunToken, task.WorkerID = 1, "token-1", "worker-1"
+			client := fake.NewSimpleClientset()
+			var created []*batchv1.Job
+			installRetryJobReactor(t, client, 1, "OOMKilled", &created)
+			store := &retryOwnedCheckpointStore{owner: model.WorkflowQueue{TaskID: task.TaskID, Status: config.StatusRunning,
+				RunGeneration: 1, RunToken: task.RunToken, WorkerID: task.WorkerID}}
+			ctl := NewInstantJobCtl(task, client, store, func() {})
+			require.ErrorContains(t, ctl.Run(context.Background()), "job failed after attempt 1")
+			switch changed {
+			case "generation":
+				store.owner.RunGeneration++
+			case "token":
+				store.owner.RunToken = "token-2"
+			case "worker":
+				store.owner.WorkerID = "worker-2"
+			}
+			ctl.Clean(context.Background())
+			require.ErrorIs(t, persistTerminalJobState(context.Background(), ctl, task, store, nil), repository.ErrWorkflowOwnershipLost)
+			require.Equal(t, string(config.StatusRunning), store.record.Status)
+			require.Zero(t, countClientActions(client, "delete", "jobs"))
+		})
+	}
+}
+
 func TestRetryRecoveryAddsRetentionToExistingCheckpointAndJob(t *testing.T) {
 	task := retryTestTask(t, retryTestPolicy())
 	desired := task.JobInfo.(*batchv1.Job)

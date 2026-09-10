@@ -1,0 +1,15 @@
+{
+  "workspaceId": "<WORKSPACE_ID>",
+  "name": "hello",
+  "type": "command",
+  "spec": {
+    "image": "busybox:1.37.0",
+    "command": ["sh", "-c"],
+    "args": ["echo hello"],
+    "timeoutSeconds": 300
+  },
+  "traits": {
+    "securityPolicy": {"runAsUser": 1000, "runAsNonRoot": true},
+    "resources": {"cpu": "100m", "memory": "128Mi"}
+  }
+}

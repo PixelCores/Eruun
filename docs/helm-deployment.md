@@ -6,6 +6,8 @@
 
 先按 [账号与空间部署文档](account-auth-workspaces.md) 创建 `eruun-account-config` Secret，并设置 `auth.existingSecret=eruun-account-config`；`auth.key` 默认为 `accounts.json`。所有运行角色只读挂载该 JSON。脚本安装须指定 `AUTH_CONFIG_FILE`。需要支持 NetworkPolicy 的 CNI 和 Restricted v1.34 Pod Security Admission，正确填写集群网络范围；注册/保存应用不会创建 namespace。
 
+独立 `command` Job 不需要附加配置。启用 Harbor 评测时，另创建含 `jobs.json` 的 Secret，通过 `jobs.existingSecret`（及可选 `jobs.key`）挂载到四个角色；配置 Runner 镜像、平台 API 地址、精确 API 出站规则与可选 MinIO 连接，见 [空间 Job 部署](workspace-jobs-api.md#管理员配置与部署)。Chart 不创建此 Secret 或发布 Runner 镜像。新增制品表和任务规格字段仍由既有 schema 迁移流程管理。
+
 Chart 部署 Eruun 的 API、Controller、Scheduler、Worker 四类运行角色，以及 MySQL 和 Redis。默认密码是占位符，安装时必须通过受控 values 文件提供真实值，不要把密码直接写入命令历史或提交到仓库。
 
 ```yaml

@@ -2,6 +2,7 @@ package account
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"time"
@@ -14,10 +15,23 @@ import (
 
 // Store applies workspace predicates before pagination and validates writes at
 // the shared persistence boundary. Trusted runtime contexts still explicitly
-// obtain their scope from the persisted application before executing jobs.
+// obtain their scope from the persisted application or workspace task before executing jobs.
 type Store struct{ raw datastore.DataStore }
 
 func NewStore(raw datastore.DataStore) *Store { return &Store{raw: raw} }
+
+func artifactWorkspace(e datastore.Entity) (string, bool) {
+	switch value := e.(type) {
+	case *model.JobArtifact:
+		return value.WorkspaceID, true
+	case *model.ArtifactChunk:
+		return value.WorkspaceID, true
+	case *model.JobDelivery:
+		return value.WorkspaceID, true
+	default:
+		return "", false
+	}
+}
 
 func runtimeEntity(e datastore.Entity) (appID string, application bool, scoped bool) {
 	switch v := e.(type) {
@@ -42,6 +56,12 @@ func (s *Store) Check(ctx context.Context, e datastore.Entity) error {
 	if !ok {
 		return nil
 	}
+	if workspaceID, scoped := artifactWorkspace(e); scoped {
+		if workspaceID == "" || workspaceID != scope.WorkspaceID {
+			return bcode.ErrForbidden
+		}
+		return nil
+	}
 	id, isApp, scoped := runtimeEntity(e)
 	if !scoped {
 		return nil
@@ -64,15 +84,14 @@ func (s *Store) Check(ctx context.Context, e datastore.Entity) error {
 		}
 	case *model.WorkflowQueue:
 		if v.AppID == "" {
-			if v.WorkspaceID != scope.WorkspaceID ||
-				(v.Type != config.WorkflowTaskTypeResourceImportScan && v.Type != config.WorkflowTaskTypeResourceImportManage) {
+			if v.WorkspaceID != scope.WorkspaceID || !workspaceOwnedTask(v) {
 				return bcode.ErrForbidden
 			}
 			return nil
 		}
 	case *model.JobInfo:
 		if v.AppID == "" && v.TaskID != "" && v.WorkspaceID == scope.WorkspaceID {
-			return s.checkResourceImportJob(ctx, v, scope)
+			return s.checkWorkspaceJob(ctx, v, scope)
 		}
 	}
 	if id == "" {
@@ -85,19 +104,42 @@ func (s *Store) Check(ctx context.Context, e datastore.Entity) error {
 	return s.Check(ctx, app)
 }
 
-func (s *Store) checkResourceImportJob(ctx context.Context, v *model.JobInfo, scope Scope) error {
+// workspaceTaskJobType binds an app-less execution record to the type accepted
+// in its durable parent snapshot. Runtime or request fields cannot widen this.
+func workspaceTaskJobType(task *model.WorkflowQueue) config.JobType {
+	if task == nil || task.AppID != "" {
+		return ""
+	}
+	switch task.Type {
+	case config.WorkflowTaskTypeResourceImportScan:
+		return config.JobResourceImportScan
+	case config.WorkflowTaskTypeResourceImportManage:
+		return config.JobResourceImportManage
+	case config.WorkflowTaskTypeJob:
+		var snapshot struct {
+			Type config.JobType `json:"type"`
+		}
+		if json.Unmarshal([]byte(task.JobSpec), &snapshot) == nil &&
+			config.IsWorkspaceJobType(snapshot.Type) {
+			return snapshot.Type
+		}
+	}
+	return ""
+}
+
+func workspaceOwnedTask(task *model.WorkflowQueue) bool {
+	return workspaceTaskJobType(task) != ""
+}
+
+func (s *Store) checkWorkspaceJob(ctx context.Context, v *model.JobInfo, scope Scope) error {
 	task := &model.WorkflowQueue{TaskID: v.TaskID}
 	if err := s.raw.Get(ctx, task); err != nil {
 		return err
 	}
-	if task.AppID != "" || task.WorkspaceID != scope.WorkspaceID ||
-		(task.Type != config.WorkflowTaskTypeResourceImportScan && task.Type != config.WorkflowTaskTypeResourceImportManage) {
+	if task.AppID != "" || task.WorkspaceID != scope.WorkspaceID || !workspaceOwnedTask(task) {
 		return bcode.ErrForbidden
 	}
-	expectedJobType := config.JobResourceImportScan
-	if task.Type == config.WorkflowTaskTypeResourceImportManage {
-		expectedJobType = config.JobResourceImportManage
-	}
+	expectedJobType := workspaceTaskJobType(task)
 	if v.Type != "" && v.Type != string(expectedJobType) {
 		return bcode.ErrForbidden
 	}
@@ -114,6 +156,13 @@ func (s *Store) options(ctx context.Context, e datastore.Entity, input *datastor
 	if !ok {
 		return &opts, nil
 	}
+	if workspaceID, scoped := artifactWorkspace(e); scoped {
+		if workspaceID != "" && workspaceID != scope.WorkspaceID {
+			return nil, bcode.ErrForbidden
+		}
+		opts.In = append(opts.In, datastore.InQueryOption{Key: "workspace_id", Values: []string{scope.WorkspaceID}})
+		return &opts, nil
+	}
 	appID, isApp, scoped := runtimeEntity(e)
 	if !scoped {
 		return &opts, nil
@@ -122,11 +171,21 @@ func (s *Store) options(ctx context.Context, e datastore.Entity, input *datastor
 		opts.In = append(opts.In, datastore.InQueryOption{Key: "workspaceid", Values: []string{scope.WorkspaceID}})
 		return &opts, nil
 	}
-	if job, ok := e.(*model.JobInfo); ok && job.AppID == "" && job.TaskID != "" && job.WorkspaceID == scope.WorkspaceID {
-		if err := s.Check(ctx, job); err != nil {
-			return nil, err
+	if job, ok := e.(*model.JobInfo); ok && job.AppID == "" && job.TaskID != "" {
+		query := *job
+		if query.WorkspaceID == "" {
+			parent := &model.WorkflowQueue{TaskID: query.TaskID}
+			if s.raw.Get(ctx, parent) == nil && workspaceOwnedTask(parent) {
+				query.WorkspaceID = parent.WorkspaceID
+			}
 		}
-		return &opts, nil
+		if query.WorkspaceID != "" {
+			if err := s.Check(ctx, &query); err != nil {
+				return nil, err
+			}
+			opts.In = append(opts.In, datastore.InQueryOption{Key: "workspace_id", Values: []string{scope.WorkspaceID}})
+			return &opts, nil
+		}
 	}
 	if appID != "" {
 		if err := s.Check(ctx, e); err != nil {
@@ -276,7 +335,8 @@ func (s *Store) checkExisting(ctx context.Context, e datastore.Entity) error {
 		return nil
 	}
 	_, _, scoped := runtimeEntity(e)
-	if !scoped {
+	_, artifactScoped := artifactWorkspace(e)
+	if !scoped && !artifactScoped {
 		return nil
 	}
 	copy, err := datastore.NewEntity(e)
@@ -320,7 +380,8 @@ func (s *Store) CompareAndSwapWithConditions(ctx context.Context, e datastore.En
 		return false, err
 	}
 	if scope, ok := FromContext(ctx); ok {
-		if _, _, scoped := runtimeEntity(e); scoped {
+		_, artifactScoped := artifactWorkspace(e)
+		if _, _, scoped := runtimeEntity(e); scoped || artifactScoped {
 			for _, key := range []string{"workspaceid", "workspace_id", "namespace", "app_id"} {
 				if value, exists := updates[key]; exists {
 					switch key {
@@ -337,6 +398,24 @@ func (s *Store) CompareAndSwapWithConditions(ctx context.Context, e datastore.En
 							return false, bcode.ErrForbidden
 						}
 					case "app_id":
+						if value == "" {
+							switch entity := e.(type) {
+							case *model.JobInfo:
+								if entity.AppID == "" && s.Check(ctx, entity) == nil {
+									if changed, ok := updates["task_id"]; ok && changed != entity.TaskID {
+										return false, bcode.ErrForbidden
+									}
+									if changed, ok := updates["type"]; ok && changed != entity.Type {
+										return false, bcode.ErrForbidden
+									}
+									continue
+								}
+							case *model.WorkflowQueue:
+								if workspaceOwnedTask(entity) && s.Check(ctx, entity) == nil {
+									continue
+								}
+							}
+						}
 						if err := s.Check(ctx, &model.Workflow{AppID: fmt.Sprint(value)}); err != nil {
 							return false, err
 						}

@@ -80,6 +80,7 @@ type WorkflowCtl struct {
 	terminalReason           string
 	urlSecurityPolicy        *spec.URLSecurityPolicySpec
 	importSecretKeyring      *importsecret.Keyring
+	runtimeConfig            *config.Config
 	resourceImportExecutor   job.ResourceImportExecutor
 	runCancel                context.CancelCauseFunc
 	// ctx holds the workflow execution context for use in callbacks like updateWorkflowTask.
@@ -108,6 +109,7 @@ func NewWorkflowController(workflowTask *model.WorkflowQueue, client kubernetes.
 	}
 	ctl := &WorkflowCtl{
 		workflowTask:             workflowTask,
+		runtimeConfig:            cfg,
 		persistedTaskStatus:      workflowTask.Status,
 		Store:                    store,
 		Client:                   client,
@@ -431,7 +433,7 @@ func (r *workflowRun) run(concurrency int) error {
 	}()
 
 	taskForGeneration := r.snapshotTask()
-	stepExecutions, err := GenerateJobTasks(ctx, &taskForGeneration, r.Store, r.defaultJobTimeoutSeconds)
+	stepExecutions, err := GenerateJobTasks(ctx, &taskForGeneration, r.Store, r.defaultJobTimeoutSeconds, r.runtimeConfig)
 	if err != nil {
 		runErr := errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("restore workflow job executions: %w", err))
 		r.skipExitAck = true
@@ -445,7 +447,7 @@ func (r *workflowRun) run(concurrency int) error {
 		for _, step := range stepExecutions {
 			for _, tasks := range step.Jobs {
 				for _, task := range tasks {
-					if _, err := workspace.PrepareTask(task, taskForGeneration.AppID, r.workspace, r.accountConfig.Workspace); err != nil {
+					if _, err := r.prepareJobTask(task, taskForGeneration.AppID); err != nil {
 						r.failureReason = err.Error()
 						r.suppressTerminalCallback = true
 						r.mutateTask(func(t *model.WorkflowQueue) {
@@ -608,7 +610,7 @@ func (r *workflowRun) ensureWorkspaceForJobs(tasks []*model.JobTask, appID strin
 	}
 	requiresNamespace := false
 	for _, task := range tasks {
-		deploy, _ := workspace.PrepareTask(task, appID, r.workspace, r.accountConfig.Workspace)
+		deploy, _ := r.prepareJobTask(task, appID)
 		requiresNamespace = requiresNamespace || deploy
 	}
 	if !requiresNamespace {
@@ -619,6 +621,18 @@ func (r *workflowRun) ensureWorkspaceForJobs(tasks []*model.JobTask, appID strin
 		r.suppressTerminalCallback = true
 		r.mutateTask(func(t *model.WorkflowQueue) { t.Status = config.StatusFailed })
 		return false, fmt.Errorf("initialize workspace before deployment: %w", err)
+	}
+	if r.snapshotTask().Type == config.WorkflowTaskTypeJob {
+		for _, task := range tasks {
+			if task.JobType == string(config.JobAgentEvaluation) {
+				if err := r.workspaceManager.EnsureEvaluationRunner(r.ctx, r.workspace, r.runtimeConfig.Jobs.RunnerEgress...); err != nil {
+					r.failureReason = err.Error()
+					r.suppressTerminalCallback = true
+					r.mutateTask(func(t *model.WorkflowQueue) { t.Status = config.StatusFailed })
+					return false, fmt.Errorf("initialize evaluation runner: %w", err)
+				}
+			}
+		}
 	}
 	return true, nil
 }
@@ -1428,6 +1442,11 @@ func (w *WorkflowCtl) prepareWorkspace(ctx context.Context) (context.Context, er
 			return ctx, fmt.Errorf("decode resource import workspace: %w", err)
 		}
 		expectedNamespace = strings.TrimSpace(info.Namespace)
+	} else if task.Type == config.WorkflowTaskTypeJob {
+		if task.AppID != "" || task.WorkflowID != "" {
+			return ctx, fmt.Errorf("workspace Job has application or workflow ownership")
+		}
+		workspaceID = strings.TrimSpace(task.WorkspaceID)
 	} else {
 		app := &model.Applications{ID: task.AppID}
 		if err := w.Store.Get(ctx, app); err != nil {
@@ -1446,6 +1465,9 @@ func (w *WorkflowCtl) prepareWorkspace(ctx context.Context) (context.Context, er
 	if err := w.Store.Get(ctx, space); err != nil {
 		return ctx, err
 	}
+	if task.Type == config.WorkflowTaskTypeJob {
+		expectedNamespace = space.Namespace
+	}
 	if expectedNamespace == "" || expectedNamespace != space.Namespace {
 		return ctx, fmt.Errorf("workflow task namespace does not match workspace")
 	}
@@ -1463,5 +1485,31 @@ func (w *WorkflowCtl) prepareWorkspace(ctx context.Context) (context.Context, er
 	}
 	w.Client, w.KubeConfig = client, restConfig
 	w.Store = access.NewStore(w.Store)
-	return access.WithScope(ctx, access.ForWorkspace(space)), nil
+	ctx = access.WithScope(ctx, access.ForWorkspace(space))
+	if task.Type == config.WorkflowTaskTypeJob {
+		var definition spec.JobSpec
+		if err := spec.DecodeJobJSON([]byte(task.JobSpec), &definition); err != nil {
+			return ctx, fmt.Errorf("decode workspace Job definition: %w", err)
+		}
+		if err := definition.Normalize(); err != nil {
+			return ctx, fmt.Errorf("validate workspace Job definition: %w", err)
+		}
+		if definition.Type == string(config.JobAgentEvaluation) {
+			if w.runtimeConfig == nil || w.runtimeConfig.Jobs == nil || w.runtimeConfig.Jobs.RunnerImage == "" {
+				return ctx, fmt.Errorf("evaluation runner configuration is required")
+			}
+			ctx = workspace.WithEvaluationRunner(ctx, task.TaskID, w.runtimeConfig.Jobs.RunnerImage)
+		}
+	}
+	return ctx, nil
+}
+
+func (w *WorkflowCtl) prepareJobTask(task *model.JobTask, appID string) (bool, error) {
+	if task.JobType == string(config.JobAgentEvaluation) {
+		if w.runtimeConfig == nil || w.runtimeConfig.Jobs == nil {
+			return false, fmt.Errorf("evaluation runner configuration is required")
+		}
+		return true, workspace.PrepareEvaluationTask(task, w.workspace, w.accountConfig.Workspace, w.runtimeConfig.Jobs.RunnerImage)
+	}
+	return workspace.PrepareTask(task, appID, w.workspace, w.accountConfig.Workspace)
 }

@@ -1,0 +1,14 @@
+schema_version = "1.4"
+
+[environment]
+docker_image = "example.com/your-team/eruun-greeting-task:1.0.0"
+workdir = "/app"
+cpus = 1
+memory_mb = 1024
+storage_mb = 2048
+
+[agent]
+timeout_sec = 120
+
+[verifier]
+timeout_sec = 30
