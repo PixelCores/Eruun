@@ -20,7 +20,7 @@ import (
 )
 
 func TestCallbackContextUsesDefaultWhenTimeoutIsZero(t *testing.T) {
-	ctx, cancel := callbackContext(nil, 0, 72*time.Hour)
+	ctx, cancel := callbackContext(context.Background(), 0, 72*time.Hour)
 	defer cancel()
 
 	deadline, ok := ctx.Deadline()
@@ -29,7 +29,7 @@ func TestCallbackContextUsesDefaultWhenTimeoutIsZero(t *testing.T) {
 }
 
 func TestCallbackContextCapsTimeoutByMax(t *testing.T) {
-	ctx, cancel := callbackContext(nil, int64((96*time.Hour)/time.Second), 72*time.Hour)
+	ctx, cancel := callbackContext(context.Background(), int64((96*time.Hour)/time.Second), 72*time.Hour)
 	defer cancel()
 
 	deadline, ok := ctx.Deadline()

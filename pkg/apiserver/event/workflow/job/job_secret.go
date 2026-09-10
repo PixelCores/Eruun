@@ -772,9 +772,6 @@ func clearSecretData(data map[string][]byte) {
 	}
 }
 
-// wait is a no-op for Secret objects.
-func (c *DeploySecretJobCtl) wait(ctx context.Context) {}
-
 // equalSecretPayload compares update-relevant fields of two Secret objects without exposing data.
 func equalSecretPayload(a, b *corev1.Secret) bool {
 	if a == nil || b == nil {

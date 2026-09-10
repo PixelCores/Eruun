@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -18,7 +19,10 @@ import (
 )
 
 type mockSystemSettingRepo struct {
-	items map[string]*model.SystemSetting
+	items     map[string]*model.SystemSetting
+	lookupErr error
+	createErr error
+	deleteErr error
 }
 
 func newMockSystemSettingRepo() *mockSystemSettingRepo {
@@ -26,6 +30,9 @@ func newMockSystemSettingRepo() *mockSystemSettingRepo {
 }
 
 func (m *mockSystemSettingRepo) FindByType(_ context.Context, settingType string) (*model.SystemSetting, error) {
+	if m.lookupErr != nil {
+		return nil, m.lookupErr
+	}
 	item, ok := m.items[settingType]
 	if !ok {
 		return nil, datastore.ErrRecordNotExist
@@ -34,6 +41,9 @@ func (m *mockSystemSettingRepo) FindByType(_ context.Context, settingType string
 }
 
 func (m *mockSystemSettingRepo) Create(_ context.Context, setting *model.SystemSetting) error {
+	if m.createErr != nil {
+		return m.createErr
+	}
 	if _, ok := m.items[setting.Type]; ok {
 		return datastore.ErrRecordExist
 	}
@@ -52,6 +62,9 @@ func (m *mockSystemSettingRepo) Update(_ context.Context, setting *model.SystemS
 }
 
 func (m *mockSystemSettingRepo) Delete(_ context.Context, setting *model.SystemSetting) error {
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
 	if _, ok := m.items[setting.Type]; !ok {
 		return datastore.ErrRecordNotExist
 	}
@@ -149,6 +162,57 @@ func TestSystemSettingService_CreateAndGet(t *testing.T) {
 	got, err := svc.Get(ctx, model.SystemSettingTypeNodeSelector)
 	require.NoError(t, err)
 	require.JSONEq(t, string(value), string(got.Value))
+}
+
+func TestSystemSettingServiceMapsWrappedRepositoryErrors(t *testing.T) {
+	for _, operation := range []string{"create", "get", "update", "delete"} {
+		for _, wrapped := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/wrapped=%t", operation, wrapped), func(t *testing.T) {
+				repoErr := error(datastore.ErrRecordNotExist)
+				wantErr := error(bcode.ErrSystemSettingNotFound)
+				if operation == "create" {
+					repoErr = datastore.ErrRecordExist
+					wantErr = bcode.ErrSystemSettingExists
+				}
+				if wrapped {
+					repoErr = fmt.Errorf("system setting repository: %w", repoErr)
+				}
+				repo := newMockSystemSettingRepo()
+				repo.lookupErr, repo.createErr, repo.deleteErr = repoErr, repoErr, repoErr
+				svc := &systemSettingServiceImpl{SettingRepo: repo}
+				ctx := context.Background()
+				settingType := model.SystemSettingTypeNodeSelector
+				var err error
+				switch operation {
+				case "create":
+					_, err = svc.Create(ctx, apisv1.CreateSystemSettingRequest{Type: settingType, Value: json.RawMessage(`{}`)})
+				case "get":
+					_, err = svc.Get(ctx, settingType)
+				case "update":
+					_, err = svc.Update(ctx, settingType, apisv1.UpdateSystemSettingRequest{Value: json.RawMessage(`{}`)})
+				case "delete":
+					err = svc.Delete(ctx, settingType)
+				}
+				require.ErrorIs(t, err, wantErr)
+			})
+		}
+	}
+}
+
+func TestSystemSettingServiceCreateProviderHandlesWrappedLookupErrors(t *testing.T) {
+	provider := registerAliyunCloudSettingProvider(t, nil)
+	repo := newMockSystemSettingRepo()
+	repo.lookupErr = fmt.Errorf("load setting: %w", datastore.ErrRecordNotExist)
+	svc := &systemSettingServiceImpl{SettingRepo: repo}
+	req := apisv1.CreateSystemSettingRequest{Type: model.SystemSettingTypeAliyunCloud, Value: buildValidAliyunCloudSettingValue(t)}
+	_, err := svc.Create(context.Background(), req)
+	require.NoError(t, err)
+	require.Equal(t, 1, provider.connectivityChecks)
+
+	repo.lookupErr = fmt.Errorf("load setting: %w", context.DeadlineExceeded)
+	_, err = svc.Create(context.Background(), req)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Equal(t, 1, provider.connectivityChecks, "an unavailable repository must stop provider validation")
 }
 
 func TestSystemSettingServiceListHidesInternalRows(t *testing.T) {

@@ -236,33 +236,6 @@ func (s *restServer) trackDrainingWorkerRun(run *workerRun) {
 	}()
 }
 
-func (s *restServer) finishWorkerDrain(ctx context.Context, run *workerRun) {
-	if run == nil {
-		return
-	}
-	if !run.waitUntil(ctx) {
-		run.stopExecution()
-	}
-	run.stopExecution()
-	run.wait()
-	s.workersMu.Lock()
-	delete(s.drainingWorkerRuns, run)
-	s.workersMu.Unlock()
-}
-
-func (s *restServer) stopDrainingWorkers() {
-	s.workersMu.Lock()
-	runs := make([]*workerRun, 0, len(s.drainingWorkerRuns))
-	for run := range s.drainingWorkerRuns {
-		runs = append(runs, run)
-	}
-	s.workersMu.Unlock()
-
-	for _, run := range runs {
-		run.stopExecution()
-	}
-}
-
 func reportableInformerStartError(ctx context.Context, err error) error {
 	if err == nil || (ctx != nil && ctx.Err() != nil) {
 		return nil
@@ -444,10 +417,6 @@ func (s *restServer) onStartedSchedulerLeading(ctx context.Context, errChan chan
 		}
 	}
 	s.schedulerReady.Store(true)
-}
-
-func (s *restServer) startQueueMetrics(ctx context.Context) {
-	go s.runQueueMetrics(ctx)
 }
 
 func (s *restServer) runQueueMetrics(ctx context.Context) {

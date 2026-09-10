@@ -239,6 +239,31 @@ func (c *Config) Validate() []error {
 	} else if c.APIRateLimitQPS > 0 && c.APIRateLimitBurst <= 0 {
 		errs = append(errs, fmt.Errorf("api rate limit burst must be > 0 when api rate limit qps is enabled"))
 	}
+	errs = append(errs, c.validateLeaderElection()...)
+	if c.Datastore.Type == MYSQL && strings.TrimSpace(c.Datastore.URL) == "" {
+		errs = append(errs, fmt.Errorf("mysql url cannot be empty"))
+	}
+	if c.Datastore.Type == MYSQL && strings.Contains(c.Datastore.URL, "__REPLACE_") {
+		errs = append(errs, fmt.Errorf("mysql url contains placeholder value, please replace it with real credentials"))
+	}
+	cacheType := strings.ToLower(strings.TrimSpace(c.Cache.CacheType))
+	if cacheType != REDIS {
+		errs = append(errs, fmt.Errorf("distributed application mutation locking requires cache-type=redis"))
+	} else if strings.TrimSpace(c.Cache.CacheHost) == "" || c.Cache.CacheProt <= 0 {
+		errs = append(errs, fmt.Errorf("redis cache host/port is invalid"))
+	}
+	errs = append(errs, c.Workflow.Validate()...)
+	if strings.TrimSpace(c.ImportSecretKeyring) != "" || strings.TrimSpace(c.ImportSecretKeyringFile) != "" {
+		if _, err := importsecret.Load(c.ImportSecretKeyring, c.ImportSecretKeyringFile); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	errs = append(errs, c.validateMessaging()...)
+	return errs
+}
+
+func (c *Config) validateLeaderElection() []error {
+	var errs []error
 	if c.LeaderConfig.Duration < minLeaderLeaseDuration {
 		errs = append(errs, fmt.Errorf("leader election lease duration must be >= 4s, got %s", c.LeaderConfig.Duration))
 	}
@@ -264,24 +289,11 @@ func (c *Config) Validate() []error {
 	if controllerLockName != "" && controllerLockName == schedulerLockName {
 		errs = append(errs, fmt.Errorf("controller and scheduler leader election lock names must be distinct"))
 	}
-	if c.Datastore.Type == MYSQL && strings.TrimSpace(c.Datastore.URL) == "" {
-		errs = append(errs, fmt.Errorf("mysql url cannot be empty"))
-	}
-	if c.Datastore.Type == MYSQL && strings.Contains(c.Datastore.URL, "__REPLACE_") {
-		errs = append(errs, fmt.Errorf("mysql url contains placeholder value, please replace it with real credentials"))
-	}
-	cacheType := strings.ToLower(strings.TrimSpace(c.Cache.CacheType))
-	if cacheType != REDIS {
-		errs = append(errs, fmt.Errorf("distributed application mutation locking requires cache-type=redis"))
-	} else if strings.TrimSpace(c.Cache.CacheHost) == "" || c.Cache.CacheProt <= 0 {
-		errs = append(errs, fmt.Errorf("redis cache host/port is invalid"))
-	}
-	errs = append(errs, c.Workflow.Validate()...)
-	if strings.TrimSpace(c.ImportSecretKeyring) != "" || strings.TrimSpace(c.ImportSecretKeyringFile) != "" {
-		if _, err := importsecret.Load(c.ImportSecretKeyring, c.ImportSecretKeyringFile); err != nil {
-			errs = append(errs, err)
-		}
-	}
+	return errs
+}
+
+func (c *Config) validateMessaging() []error {
+	var errs []error
 	// messaging basic checks
 	msgType := strings.ToLower(strings.TrimSpace(c.Messaging.Type))
 	switch msgType {

@@ -184,54 +184,7 @@ func (s *cleanupComponentStore) CompareAndSwapWithConditions(_ context.Context, 
 				return false, nil
 			}
 		}
-		for key, value := range updates {
-			switch key {
-			case "type":
-				s.jobInfo.Type, _ = value.(string)
-			case "workflow_id":
-				s.jobInfo.WorkflowID, _ = value.(string)
-			case "product_id":
-				s.jobInfo.ProductID, _ = value.(string)
-			case "app_id":
-				s.jobInfo.AppID, _ = value.(string)
-			case "task_id":
-				s.jobInfo.TaskID, _ = value.(string)
-			case "status":
-				s.jobInfo.Status, _ = value.(string)
-			case "start_time":
-				s.jobInfo.StartTime, _ = value.(int64)
-			case "end_time":
-				s.jobInfo.EndTime, _ = value.(int64)
-			case "info":
-				s.jobInfo.Info, _ = value.(string)
-			case "internal_info":
-				s.jobInfo.InternalInfo, _ = value.(string)
-			case "service_name":
-				s.jobInfo.ServiceName, _ = value.(string)
-			case "error":
-				s.jobInfo.Error, _ = value.(string)
-			case "production":
-				s.jobInfo.Production, _ = value.(bool)
-			case "target_env":
-				s.jobInfo.TargetEnv, _ = value.(string)
-			case "execution_key":
-				switch executionKey := value.(type) {
-				case nil:
-					s.jobInfo.ExecutionKey = nil
-				case string:
-					executionKeyCopy := executionKey
-					s.jobInfo.ExecutionKey = &executionKeyCopy
-				}
-			case "run_generation":
-				if generation, ok := value.(uint64); ok {
-					s.jobInfo.RunGeneration = generation
-				}
-			case "attempt":
-				if attempt, ok := value.(uint); ok {
-					s.jobInfo.Attempt = attempt
-				}
-			}
-		}
+		s.applyJobInfoUpdates(updates)
 		jobInfoCopy := *s.jobInfo
 		s.casJobInfo = &jobInfoCopy
 		return true, nil
@@ -247,6 +200,57 @@ func (s *cleanupComponentStore) CompareAndSwapWithConditions(_ context.Context, 
 	componentCopy := *s.component
 	s.putComponent = &componentCopy
 	return true, nil
+}
+
+func (s *cleanupComponentStore) applyJobInfoUpdates(updates map[string]interface{}) {
+	for key, value := range updates {
+		switch key {
+		case "type":
+			s.jobInfo.Type, _ = value.(string)
+		case "workflow_id":
+			s.jobInfo.WorkflowID, _ = value.(string)
+		case "product_id":
+			s.jobInfo.ProductID, _ = value.(string)
+		case "app_id":
+			s.jobInfo.AppID, _ = value.(string)
+		case "task_id":
+			s.jobInfo.TaskID, _ = value.(string)
+		case "status":
+			s.jobInfo.Status, _ = value.(string)
+		case "start_time":
+			s.jobInfo.StartTime, _ = value.(int64)
+		case "end_time":
+			s.jobInfo.EndTime, _ = value.(int64)
+		case "info":
+			s.jobInfo.Info, _ = value.(string)
+		case "internal_info":
+			s.jobInfo.InternalInfo, _ = value.(string)
+		case "service_name":
+			s.jobInfo.ServiceName, _ = value.(string)
+		case "error":
+			s.jobInfo.Error, _ = value.(string)
+		case "production":
+			s.jobInfo.Production, _ = value.(bool)
+		case "target_env":
+			s.jobInfo.TargetEnv, _ = value.(string)
+		case "execution_key":
+			switch executionKey := value.(type) {
+			case nil:
+				s.jobInfo.ExecutionKey = nil
+			case string:
+				executionKeyCopy := executionKey
+				s.jobInfo.ExecutionKey = &executionKeyCopy
+			}
+		case "run_generation":
+			if generation, ok := value.(uint64); ok {
+				s.jobInfo.RunGeneration = generation
+			}
+		case "attempt":
+			if attempt, ok := value.(uint); ok {
+				s.jobInfo.Attempt = attempt
+			}
+		}
+	}
 }
 
 func versionUpdateRemoveCleanupInternalInfo() string {

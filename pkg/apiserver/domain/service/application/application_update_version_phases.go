@@ -221,25 +221,8 @@ func (c *applicationsServiceImpl) preflightVersionUpdateRun(
 	if err != nil {
 		return err
 	}
-	if scope, scoped := access.FromContext(ctx); scoped {
-		if c.Cfg == nil || c.Cfg.Accounts == nil {
-			return bcode.ErrServiceUnavailable
-		}
-		for i := range resolvedComponents {
-			component := &resolvedComponents[i]
-			if (component.Namespace != "" && component.Namespace != scope.Namespace) || component.ComponentType == config.CloudJob {
-				return bcode.ErrForbidden
-			}
-			if err := workspace.ValidateTraits(scope.Namespace, component.Name, &component.Traits, &component.Properties, c.Cfg.Accounts.Workspace); err != nil {
-				return err
-			}
-			for j := range run.normalReq.Components {
-				patch := &run.normalReq.Components[j]
-				if strings.EqualFold(patch.Name, component.Name) && (patch.Traits != nil || patch.Action == "add") {
-					patch.Traits = &component.Traits
-				}
-			}
-		}
+	if err := c.validateVersionUpdateWorkspaceComponents(ctx, run, resolvedComponents); err != nil {
+		return err
 	}
 	if err := c.validateApplicationResourceNames(ctx, &validationApp, resolvedComponents); err != nil {
 		return err
@@ -432,4 +415,28 @@ func (c *applicationsServiceImpl) finalizeVersionUpdateRun(ctx context.Context, 
 		response.TaskID,
 	)
 	return response
+}
+
+func (c *applicationsServiceImpl) validateVersionUpdateWorkspaceComponents(ctx context.Context, run *versionUpdateRun, resolvedComponents []apisv1.CreateComponentRequest) error {
+	if scope, scoped := access.FromContext(ctx); scoped {
+		if c.Cfg == nil || c.Cfg.Accounts == nil {
+			return bcode.ErrServiceUnavailable
+		}
+		for i := range resolvedComponents {
+			component := &resolvedComponents[i]
+			if (component.Namespace != "" && component.Namespace != scope.Namespace) || component.ComponentType == config.CloudJob {
+				return bcode.ErrForbidden
+			}
+			if err := workspace.ValidateTraits(scope.Namespace, component.Name, &component.Traits, &component.Properties, c.Cfg.Accounts.Workspace); err != nil {
+				return err
+			}
+			for j := range run.normalReq.Components {
+				patch := &run.normalReq.Components[j]
+				if strings.EqualFold(patch.Name, component.Name) && (patch.Traits != nil || patch.Action == "add") {
+					patch.Traits = &component.Traits
+				}
+			}
+		}
+	}
+	return nil
 }

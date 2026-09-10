@@ -332,77 +332,95 @@ func (w *WorkflowCtl) run(ctx context.Context, concurrency int) error {
 
 	// Store context for use in callbacks (e.g., updateWorkflowTask)
 	w.ctx = ctx
-	failureReason := ""
-	skipExitAck := false
-	suppressTerminalCallback := false
-	stopForInfrastructureStop := func() (bool, error) {
-		if !signal.IsInfrastructureStop(ctx) {
-			return false, nil
-		}
-		cause := context.Cause(ctx)
-		skipExitAck = true
-		suppressTerminalCallback = true
-		span.RecordError(cause)
-		span.SetStatus(codes.Error, "Workflow stopped for infrastructure stop")
-		logger.Info("Stopping workflow for infrastructure stop")
-		return true, cause
+	run := &workflowRun{WorkflowCtl: w, ctx: ctx, span: span, cancel: cancel}
+	return run.run(concurrency)
+}
+
+type workflowRun struct {
+	*WorkflowCtl
+	ctx                      context.Context
+	span                     trace.Span
+	cancel                   context.CancelCauseFunc
+	failureReason            string
+	skipExitAck              bool
+	suppressTerminalCallback bool
+}
+
+func (r *workflowRun) stopForInfrastructureStop() (bool, error) {
+	logger := klog.FromContext(r.ctx)
+	if !signal.IsInfrastructureStop(r.ctx) {
+		return false, nil
 	}
-	stopForJobInfrastructure := func(err error) error {
-		skipExitAck = true
-		suppressTerminalCallback = true
-		failureReason = err.Error()
-		cancel(err)
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "Workflow job persistence stopped for infrastructure retry")
-		return err
+	cause := context.Cause(r.ctx)
+	r.skipExitAck = true
+	r.suppressTerminalCallback = true
+	r.span.RecordError(cause)
+	r.span.SetStatus(codes.Error, "Workflow stopped for infrastructure stop")
+	logger.Info("Stopping workflow for infrastructure stop")
+	return true, cause
+}
+
+func (r *workflowRun) stopForJobInfrastructure(err error) error {
+	r.skipExitAck = true
+	r.suppressTerminalCallback = true
+	r.failureReason = err.Error()
+	r.cancel(err)
+	r.span.RecordError(err)
+	r.span.SetStatus(codes.Error, "Workflow job persistence stopped for infrastructure retry")
+	return err
+}
+
+func (r *workflowRun) stopAfterPersistence() (bool, error) {
+	if r.ctx.Err() != nil {
+		r.stopTaskPersistence(nil, true, false)
 	}
-	stopAfterPersistence := func() (bool, error) {
-		if ctx.Err() != nil {
-			w.stopTaskPersistence(nil, true, false)
-		}
-		stopped, err := w.workflowRunStopResult()
-		if !stopped {
-			return false, nil
-		}
-		skipExitAck = true
-		if err != nil {
-			failureReason = err.Error()
-			span.RecordError(err)
-			span.SetStatus(codes.Error, "Workflow persistence state is uncertain")
-		}
-		return true, err
+	stopped, err := r.workflowRunStopResult()
+	if !stopped {
+		return false, nil
 	}
+	r.skipExitAck = true
+	if err != nil {
+		r.failureReason = err.Error()
+		r.span.RecordError(err)
+		r.span.SetStatus(codes.Error, "Workflow persistence state is uncertain")
+	}
+	return true, err
+}
+
+func (r *workflowRun) run(concurrency int) error {
+	ctx, span := r.ctx, r.span
+	logger := klog.FromContext(ctx)
 	defer func() {
-		if suppressTerminalCallback || w.terminalCallbackSuppressed() {
+		if r.suppressTerminalCallback || r.terminalCallbackSuppressed() {
 			return
 		}
-		status := w.snapshotTask().Status
-		w.triggerWorkflowCallbackOnce(ctx, status, failureReason)
+		status := r.snapshotTask().Status
+		r.triggerWorkflowCallbackOnce(ctx, status, r.failureReason)
 	}()
-	if stopped, err := stopForInfrastructureStop(); stopped {
+	if stopped, err := r.stopForInfrastructureStop(); stopped {
 		return err
 	}
 
 	// 将工作流的状态更改为运行中
-	w.mutateTask(func(task *model.WorkflowQueue) {
+	r.mutateTask(func(task *model.WorkflowQueue) {
 		task.Status = config.StatusRunning
 		if task.CreateTime.IsZero() {
 			task.CreateTime = time.Now()
 		}
 	})
-	w.ack()
-	if stopped, err := stopAfterPersistence(); stopped {
+	r.ack()
+	if stopped, err := r.stopAfterPersistence(); stopped {
 		return err
 	}
-	if stopped, err := stopForInfrastructureStop(); stopped {
+	if stopped, err := r.stopForInfrastructureStop(); stopped {
 		return err
 	}
-	logger.Info("Starting workflow", "status", w.snapshotTask().Status)
+	logger.Info("Starting workflow", "status", r.snapshotTask().Status)
 
 	defer func() {
-		finalTask := w.snapshotTask()
+		finalTask := r.snapshotTask()
 		logger.Info("Finished workflow", "status", finalTask.Status)
-		if skipExitAck {
+		if r.skipExitAck {
 			return
 		}
 		// Approval checkpoint is already persisted in pauseAtApprovalStep.
@@ -411,28 +429,28 @@ func (w *WorkflowCtl) run(ctx context.Context, concurrency int) error {
 		if finalTask.Status == config.StatusWaitingApprove && finalTask.ApprovalPending {
 			return
 		}
-		w.ack()
+		r.ack()
 	}()
 
-	taskForGeneration := w.snapshotTask()
-	stepExecutions, err := GenerateJobTasks(ctx, &taskForGeneration, w.Store, w.defaultJobTimeoutSeconds, w.runtimeConfig)
+	taskForGeneration := r.snapshotTask()
+	stepExecutions, err := GenerateJobTasks(ctx, &taskForGeneration, r.Store, r.defaultJobTimeoutSeconds, r.runtimeConfig)
 	if err != nil {
 		runErr := errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("restore workflow job executions: %w", err))
-		skipExitAck = true
+		r.skipExitAck = true
 		span.RecordError(runErr)
 		span.SetStatus(codes.Error, "Failed to restore workflow job executions")
 		logger.Error(runErr, "Failed to restore workflow job executions")
-		failureReason = runErr.Error()
+		r.failureReason = runErr.Error()
 		return runErr
 	}
-	if w.workspaceManager != nil {
+	if r.workspaceManager != nil {
 		for _, step := range stepExecutions {
 			for _, tasks := range step.Jobs {
 				for _, task := range tasks {
-					if _, err := w.prepareJobTask(task, taskForGeneration.AppID); err != nil {
-						failureReason = err.Error()
-						suppressTerminalCallback = true
-						w.mutateTask(func(t *model.WorkflowQueue) {
+					if _, err := r.prepareJobTask(task, taskForGeneration.AppID); err != nil {
+						r.failureReason = err.Error()
+						r.suppressTerminalCallback = true
+						r.mutateTask(func(t *model.WorkflowQueue) {
 							t.Status = config.StatusFailed
 							if isResourceImportWorkflowTask(t.Type) {
 								t.SchedulingReason = importcontract.PreExecutionFailureReason
@@ -444,40 +462,41 @@ func (w *WorkflowCtl) run(ctx context.Context, concurrency int) error {
 			}
 		}
 	}
+	return r.runSteps(taskForGeneration, stepExecutions, concurrency)
+}
+
+func (r *workflowRun) runSteps(taskForGeneration model.WorkflowQueue, stepExecutions []StepExecution, concurrency int) error {
+	ctx, span := r.ctx, r.span
+	logger := klog.FromContext(ctx)
+	workflowName := taskForGeneration.WorkflowName
 	namespaceReady := false
-	seqLimit := 1
-	if concurrency > 0 {
-		seqLimit = concurrency
-	}
-	startStep := taskForGeneration.CurrentStep
-	if startStep < 0 {
-		startStep = 0
-	}
+	seqLimit := max(1, concurrency)
+	startStep := max(0, taskForGeneration.CurrentStep)
 	if startStep >= len(stepExecutions) {
-		if stopped, err := stopForInfrastructureStop(); stopped {
+		if stopped, err := r.stopForInfrastructureStop(); stopped {
 			return err
 		}
 		span.SetStatus(codes.Ok, "Workflow completed successfully")
-		w.updateWorkflowStatus(ctx)
-		if stopped, err := stopAfterPersistence(); stopped {
+		r.updateWorkflowStatus(ctx)
+		if stopped, err := r.stopAfterPersistence(); stopped {
 			return err
 		}
-		skipExitAck = true
+		r.skipExitAck = true
 		return nil
 	}
 
 	for stepIdx := startStep; stepIdx < len(stepExecutions); stepIdx++ {
-		if stopped, err := stopForInfrastructureStop(); stopped {
+		if stopped, err := r.stopForInfrastructureStop(); stopped {
 			return err
 		}
 		stepExec := stepExecutions[stepIdx]
 		if stepExec.StepType == config.WorkflowStepTypeApproval {
-			paused, pauseErr := w.pauseAtApprovalStep(ctx, &stepExec, stepIdx)
+			paused, pauseErr := r.pauseAtApprovalStep(ctx, &stepExec, stepIdx)
 			if pauseErr != nil {
-				skipExitAck = true
+				r.skipExitAck = true
 				span.RecordError(pauseErr)
 				span.SetStatus(codes.Error, "Failed to persist approval checkpoint")
-				failureReason = pauseErr.Error()
+				r.failureReason = pauseErr.Error()
 				return pauseErr
 			}
 			if paused {
@@ -485,17 +504,17 @@ func (w *WorkflowCtl) run(ctx context.Context, concurrency int) error {
 			} else {
 				// CAS condition mismatch means task state changed concurrently (e.g. cancelled).
 				// Skip exit ack to avoid writing stale in-memory snapshot back to store.
-				skipExitAck = true
+				r.skipExitAck = true
 			}
 			return nil
 		}
 		if stepExec.Jobs == nil {
-			if stopped, err := stopForInfrastructureStop(); stopped {
+			if stopped, err := r.stopForInfrastructureStop(); stopped {
 				return err
 			}
-			w.setCurrentStep(stepIdx + 1)
-			w.ack()
-			if stopped, err := stopAfterPersistence(); stopped {
+			r.setCurrentStep(stepIdx + 1)
+			r.ack()
+			if stopped, err := r.stopAfterPersistence(); stopped {
 				return err
 			}
 			continue
@@ -506,32 +525,11 @@ func (w *WorkflowCtl) run(ctx context.Context, concurrency int) error {
 			if len(tasksInPriority) == 0 {
 				continue
 			}
-			if w.workspaceManager != nil && !namespaceReady {
-				requiresNamespace := false
-				for _, task := range tasksInPriority {
-					deploy, _ := w.prepareJobTask(task, taskForGeneration.AppID)
-					requiresNamespace = requiresNamespace || deploy
-				}
-				if requiresNamespace {
-					if err := w.workspaceManager.Ensure(ctx, w.workspace); err != nil {
-						failureReason = err.Error()
-						suppressTerminalCallback = true
-						w.mutateTask(func(t *model.WorkflowQueue) { t.Status = config.StatusFailed })
-						return fmt.Errorf("initialize workspace before deployment: %w", err)
-					}
-					if taskForGeneration.Type == config.WorkflowTaskTypeJob {
-						for _, task := range tasksInPriority {
-							if task.JobType == string(config.JobAgentEvaluation) {
-								if err := w.workspaceManager.EnsureEvaluationRunner(ctx, w.workspace, w.runtimeConfig.Jobs.RunnerEgress...); err != nil {
-									failureReason = err.Error()
-									suppressTerminalCallback = true
-									w.mutateTask(func(t *model.WorkflowQueue) { t.Status = config.StatusFailed })
-									return fmt.Errorf("initialize evaluation runner: %w", err)
-								}
-							}
-						}
-					}
-					namespaceReady = true
+			if !namespaceReady {
+				var err error
+				namespaceReady, err = r.ensureWorkspaceForJobs(tasksInPriority, taskForGeneration.AppID)
+				if err != nil {
+					return err
 				}
 			}
 			stepConcurrency := determineStepConcurrency(stepExec.Mode, len(tasksInPriority), seqLimit)
@@ -540,14 +538,14 @@ func (w *WorkflowCtl) run(ctx context.Context, concurrency int) error {
 			stopOnFailure := !stepExec.Mode.IsParallel()
 			logger.Info("Executing workflow step", "workflowName", workflowName, "step", stepExec.Name, "mode", stepExec.Mode, "priority", priority, "jobCount", len(tasksInPriority), "concurrency", stepConcurrency, "stopOnFailure", stopOnFailure)
 
-			if err := job.RunJobs(ctx, tasksInPriority, stepConcurrency, w.Client, w.KubeConfig, w.Store, w.ack, stopOnFailure, w.Cache, w.urlSecurityPolicy, w.DelayQueue, w.ResourceWaiter, w.resourceImportExecutor, w.importSecretKeyring); err != nil {
+			if err := job.RunJobs(ctx, tasksInPriority, stepConcurrency, r.Client, r.KubeConfig, r.Store, r.ack, stopOnFailure, r.Cache, r.urlSecurityPolicy, r.DelayQueue, r.ResourceWaiter, r.resourceImportExecutor, r.importSecretKeyring); err != nil {
 				logger.Error(err, "Stopping workflow after job persistence failure", "step", stepExec.Name, "priority", priority)
-				return stopForJobInfrastructure(err)
+				return r.stopForJobInfrastructure(err)
 			}
-			if stopped, err := stopAfterPersistence(); stopped {
+			if stopped, err := r.stopAfterPersistence(); stopped {
 				return err
 			}
-			if stopped, err := stopForInfrastructureStop(); stopped {
+			if stopped, err := r.stopForInfrastructureStop(); stopped {
 				return err
 			}
 
@@ -556,14 +554,14 @@ func (w *WorkflowCtl) run(ctx context.Context, concurrency int) error {
 				if !isJobSuccessStatus(task) {
 					reason := workflowFailureReason(workflowName, task, cleanupTrigger)
 					if cleanupTrigger != nil {
-						cleanupErr := w.runWorkflowFailureCleanup(ctx, logger)
-						if stopped, err := stopAfterPersistence(); stopped {
+						cleanupErr := r.runWorkflowFailureCleanup(ctx, logger)
+						if stopped, err := r.stopAfterPersistence(); stopped {
 							return err
 						}
 						if cleanupErr != nil {
 							if errors.Is(cleanupErr, signal.ErrInfrastructureStop) {
 								logger.Error(cleanupErr, "Stopping workflow after cleanup job persistence failure")
-								return stopForJobInfrastructure(cleanupErr)
+								return r.stopForJobInfrastructure(cleanupErr)
 							}
 							reason = fmt.Sprintf("%s; cleanup_all failed: %v", reason, cleanupErr)
 						}
@@ -571,39 +569,72 @@ func (w *WorkflowCtl) run(ctx context.Context, concurrency int) error {
 					err := errors.New(reason)
 					logger.Error(err, "Workflow failed at job, aborting.", "step", stepExec.Name, "priority", priority, "jobName", task.Name, "jobStatus", task.Status)
 					if task.Status == config.StatusCancelled {
-						w.setTerminalStatus(config.StatusCancelled, reason)
+						r.setTerminalStatus(config.StatusCancelled, reason)
 						span.SetStatus(codes.Error, "Workflow cancelled")
 					} else {
-						w.setTerminalStatus(config.StatusFailed, reason)
+						r.setTerminalStatus(config.StatusFailed, reason)
 						span.SetStatus(codes.Error, "Workflow failed")
 					}
 					span.RecordError(err)
-					failureReason = w.snapshotTerminalReason()
+					r.failureReason = r.snapshotTerminalReason()
 					return err
 				}
 			}
 		}
-		if stopped, err := stopForInfrastructureStop(); stopped {
+		if stopped, err := r.stopForInfrastructureStop(); stopped {
 			return err
 		}
-		w.setCurrentStep(stepIdx + 1)
-		w.ack()
-		if stopped, err := stopAfterPersistence(); stopped {
+		r.setCurrentStep(stepIdx + 1)
+		r.ack()
+		if stopped, err := r.stopAfterPersistence(); stopped {
 			return err
 		}
 		logger.Info("Workflow step completed successfully", "workflowName", workflowName, "step", stepExec.Name)
 	}
 
-	if stopped, err := stopForInfrastructureStop(); stopped {
+	if stopped, err := r.stopForInfrastructureStop(); stopped {
 		return err
 	}
 	span.SetStatus(codes.Ok, "Workflow completed successfully")
-	w.updateWorkflowStatus(ctx)
-	if stopped, err := stopAfterPersistence(); stopped {
+	r.updateWorkflowStatus(ctx)
+	if stopped, err := r.stopAfterPersistence(); stopped {
 		return err
 	}
-	skipExitAck = true
+	r.skipExitAck = true
 	return nil
+}
+
+func (r *workflowRun) ensureWorkspaceForJobs(tasks []*model.JobTask, appID string) (bool, error) {
+	if r.workspaceManager == nil {
+		return false, nil
+	}
+	requiresNamespace := false
+	for _, task := range tasks {
+		deploy, _ := r.prepareJobTask(task, appID)
+		requiresNamespace = requiresNamespace || deploy
+	}
+	if !requiresNamespace {
+		return false, nil
+	}
+	if err := r.workspaceManager.Ensure(r.ctx, r.workspace); err != nil {
+		r.failureReason = err.Error()
+		r.suppressTerminalCallback = true
+		r.mutateTask(func(t *model.WorkflowQueue) { t.Status = config.StatusFailed })
+		return false, fmt.Errorf("initialize workspace before deployment: %w", err)
+	}
+	if r.snapshotTask().Type == config.WorkflowTaskTypeJob {
+		for _, task := range tasks {
+			if task.JobType == string(config.JobAgentEvaluation) {
+				if err := r.workspaceManager.EnsureEvaluationRunner(r.ctx, r.workspace, r.runtimeConfig.Jobs.RunnerEgress...); err != nil {
+					r.failureReason = err.Error()
+					r.suppressTerminalCallback = true
+					r.mutateTask(func(t *model.WorkflowQueue) { t.Status = config.StatusFailed })
+					return false, fmt.Errorf("initialize evaluation runner: %w", err)
+				}
+			}
+		}
+	}
+	return true, nil
 }
 
 func isJobSuccessStatus(task *model.JobTask) bool {
@@ -914,7 +945,7 @@ func (w *WorkflowCtl) persistApprovalCheckpoint(taskID, stepName string, stepInd
 		"approval_pending":      true,
 		"pending_approval_step": stepName,
 	}
-	updateCtx, cancel := approvalUpdateContext(nil, approvalUpdateContextDetached)
+	updateCtx, cancel := approvalUpdateContext(context.Background(), approvalUpdateContextDetached)
 	defer cancel()
 	taskSnapshot := w.snapshotTask()
 	if taskSnapshot.RunGeneration == 0 || taskSnapshot.RunToken == "" || taskSnapshot.WorkerID == "" {
@@ -940,7 +971,7 @@ func (w *WorkflowCtl) persistApprovalCheckpoint(taskID, stepName string, stepInd
 }
 
 func (w *WorkflowCtl) reloadTaskSnapshot(taskID string) error {
-	updateCtx, cancel := approvalUpdateContext(nil, approvalUpdateContextDetached)
+	updateCtx, cancel := approvalUpdateContext(context.Background(), approvalUpdateContextDetached)
 	defer cancel()
 	task, err := repository.TaskByID(updateCtx, w.Store, taskID)
 	if err != nil {
@@ -959,7 +990,7 @@ func (w *WorkflowCtl) reloadTaskSnapshot(taskID string) error {
 }
 
 func (w *WorkflowCtl) loadWorkflowTaskAfterPersistenceMiss(taskID string) (*model.WorkflowQueue, error) {
-	updateCtx, cancel := approvalUpdateContext(nil, approvalUpdateContextDetached)
+	updateCtx, cancel := approvalUpdateContext(context.Background(), approvalUpdateContextDetached)
 	defer cancel()
 	task, err := repository.TaskByID(updateCtx, w.Store, taskID)
 	if err != nil {
@@ -1109,7 +1140,7 @@ func (w *WorkflowCtl) isApprovalCheckpointPending(taskID, stepName string, stepI
 	if w == nil || w.Store == nil {
 		return false
 	}
-	updateCtx, cancel := approvalUpdateContext(nil, approvalUpdateContextDetached)
+	updateCtx, cancel := approvalUpdateContext(context.Background(), approvalUpdateContextDetached)
 	defer cancel()
 
 	task, err := repository.TaskByID(updateCtx, w.Store, taskID)
@@ -1130,7 +1161,7 @@ func (w *WorkflowCtl) isApprovalCheckpointPending(taskID, stepName string, stepI
 }
 
 func (w *WorkflowCtl) markApprovalTimeout(taskID, stepName string, stepIndex int, timeout time.Duration) {
-	updateCtx, cancel := approvalUpdateContext(nil, approvalUpdateContextDetached)
+	updateCtx, cancel := approvalUpdateContext(context.Background(), approvalUpdateContextDetached)
 	defer cancel()
 
 	task, err := repository.TaskByID(updateCtx, w.Store, taskID)

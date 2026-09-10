@@ -13,20 +13,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
-type workflowExecutionClaimStore struct {
-	*repositoryTestStore
-	reloadedTask model.WorkflowQueue
-}
-
-func (s *workflowExecutionClaimStore) Get(_ context.Context, entity datastore.Entity) error {
-	task, ok := entity.(*model.WorkflowQueue)
-	if !ok || task == nil {
-		return datastore.ErrEntityInvalid
-	}
-	*task = s.reloadedTask
-	return nil
-}
-
 func TestClaimWorkflowTaskForDispatchCreatesGenerationAndLease(t *testing.T) {
 	now := time.Unix(1700000000, 123000000).UTC()
 	store := &repositoryTestStore{casWithConditionsSwapped: true, databaseNow: now}

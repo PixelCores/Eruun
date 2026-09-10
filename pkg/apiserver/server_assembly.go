@@ -172,6 +172,18 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 		return fmt.Errorf("fail to provides the config bean to the container: %w", err)
 	}
 
+	s.jobs, err = jobs.New(ds, kubeClient, &s.cfg)
+	if err != nil {
+		return fmt.Errorf("initialize workspace Jobs: %w", err)
+	}
+	if err = s.beanContainer.Provides(s.jobs); err != nil {
+		return err
+	}
+
+	return s.provideDomainAndEventBeans(runtimeQueues)
+}
+
+func (s *restServer) provideDomainAndEventBeans(runtimeQueues *msg.RuntimeQueues) error {
 	programmingLanguageRepository, err := repository.NewProgrammingLanguageRepositoryWithStore(s.dataStore)
 	if err != nil {
 		return err
@@ -187,13 +199,6 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 	}
 
 	// domain - service (注入 Service，可依赖 Repository)
-	s.jobs, err = jobs.New(ds, kubeClient, &s.cfg)
-	if err != nil {
-		return fmt.Errorf("initialize workspace Jobs: %w", err)
-	}
-	if err = s.beanContainer.Provides(s.jobs); err != nil {
-		return err
-	}
 	services := service.InitServiceBean(programmingLanguageService)
 	for _, svc := range services {
 		if err := s.beanContainer.Provides(svc); err != nil {

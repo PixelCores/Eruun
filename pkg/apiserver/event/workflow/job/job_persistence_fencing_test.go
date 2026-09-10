@@ -373,6 +373,7 @@ func TestPersistTerminalJobStateSkipsInfrastructureCancellation(t *testing.T) {
 	require.Equal(t, 1, regularCancelledCtl.saveCalls)
 
 	nilContextCtl := &recordingTerminalJobCtl{}
+	//lint:ignore SA1012 Verify the supported nil-context fallback.
 	persistTerminalJobState(nil, nilContextCtl, job, store, nil)
 	require.Equal(t, 1, nilContextCtl.saveCalls)
 

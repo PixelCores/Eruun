@@ -1696,10 +1696,6 @@ func callbackMethodForTerminalEvent(callback *model.WorkflowCallback, event stri
 	return strings.ToUpper(strings.TrimSpace(method))
 }
 
-func (w *workflowServiceImpl) enqueueWorkflowTask(ctx context.Context, workflow *model.Workflow, executeAt int64) (*apis.ExecWorkflowResponse, error) {
-	return w.enqueueWorkflowTaskWithStore(ctx, w.Store, workflow, executeAt)
-}
-
 func (w *workflowServiceImpl) enqueueWorkflowTaskWithStore(ctx context.Context, store datastore.DataStore, workflow *model.Workflow, executeAt int64) (*apis.ExecWorkflowResponse, error) {
 	return w.enqueueWorkflowTaskWithStoreAndIdempotencyKey(ctx, store, workflow, executeAt, "")
 }

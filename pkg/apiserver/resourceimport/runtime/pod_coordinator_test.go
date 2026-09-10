@@ -15,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 
@@ -432,6 +433,69 @@ func TestPodCoordinatorRunWaitsForActiveWorkerOnLeaderCancellation(t *testing.T)
 	}
 }
 
+type blockingStopWatcher struct {
+	watch.Interface
+	stopStarted chan struct{}
+	releaseStop chan struct{}
+	stopOnce    sync.Once
+}
+
+func (w *blockingStopWatcher) Stop() {
+	w.stopOnce.Do(func() { close(w.stopStarted) })
+	<-w.releaseStop
+	w.Interface.Stop()
+}
+
+func TestPodCoordinatorRunWaitsForNamespaceWatchOnLeaderCancellation(t *testing.T) {
+	client := fake.NewClientset()
+	watcher := &blockingStopWatcher{
+		Interface:   watch.NewRaceFreeFake(),
+		stopStarted: make(chan struct{}),
+		releaseStop: make(chan struct{}),
+	}
+	var releaseOnce sync.Once
+	releaseWatch := func() { releaseOnce.Do(func() { close(watcher.releaseStop) }) }
+	t.Cleanup(releaseWatch)
+	watchStarted := make(chan struct{})
+	client.PrependWatchReactor("pods", func(k8stesting.Action) (bool, watch.Interface, error) {
+		close(watchStarted)
+		return true, watcher, nil
+	})
+	binding := testBinding("adopted", "StatefulSet", types.UID("statefulset-uid"))
+	c := NewPodCoordinator(client, func(context.Context) ([]SourceBinding, error) {
+		return []SourceBinding{binding}, nil
+	}, WithBindingReloadInterval(time.Hour))
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	runDone := make(chan struct{})
+	go func() {
+		c.Run(ctx)
+		close(runDone)
+	}()
+	select {
+	case <-watchStarted:
+	case <-time.After(time.Second):
+		t.Fatal("namespace watch did not start")
+	}
+	cancel()
+	select {
+	case <-watcher.stopStarted:
+	case <-time.After(time.Second):
+		t.Fatal("namespace watch did not begin stopping")
+	}
+	select {
+	case <-runDone:
+		t.Fatal("coordinator returned before the namespace watch stopped")
+	case <-time.After(50 * time.Millisecond):
+	}
+	releaseWatch()
+	select {
+	case <-runDone:
+	case <-time.After(time.Second):
+		t.Fatal("coordinator did not return after the namespace watch stopped")
+	}
+}
+
 func TestPodCoordinatorRetryRemainsCountedAgainstQueueCapacity(t *testing.T) {
 	const namespace = "adopted"
 	controllerUID := types.UID("statefulset-uid")
@@ -531,7 +595,7 @@ func TestPodCoordinatorNamespaceScanResumesAfterQueueCapacityReturns(t *testing.
 		require.Len(t, c.pending, 1)
 		item, shutdown := c.queue.Get()
 		require.False(t, shutdown)
-		key := item.(string)
+		key := item
 		seen[key] = struct{}{}
 		c.queue.Done(item)
 		c.queue.Forget(item)

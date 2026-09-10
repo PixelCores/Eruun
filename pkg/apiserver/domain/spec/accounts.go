@@ -90,6 +90,19 @@ func LoadAccountConfig(path string) (*AccountConfig, error) {
 }
 
 func (c *AccountConfig) Validate() error {
+	if err := c.validateOriginsAndOAuth(); err != nil {
+		return err
+	}
+	if err := c.validateBootstrapAdmin(); err != nil {
+		return err
+	}
+	if err := c.validateDelivery(); err != nil {
+		return err
+	}
+	return c.validateWorkspace()
+}
+
+func (c *AccountConfig) validateOriginsAndOAuth() error {
 	for _, cidr := range c.TrustedProxyCIDRs {
 		if _, _, err := net.ParseCIDR(cidr); err != nil {
 			return fmt.Errorf("trustedProxyCIDRs must contain explicit proxy CIDRs")
@@ -112,6 +125,10 @@ func (c *AccountConfig) Validate() error {
 			return fmt.Errorf("%s OAuth credentials and allowed redirectURI are required", name)
 		}
 	}
+	return nil
+}
+
+func (c *AccountConfig) validateBootstrapAdmin() error {
 	if c.BootstrapAdmin.Email != "" {
 		address, err := mail.ParseAddress(c.BootstrapAdmin.Email)
 		if err != nil || address.Address != c.BootstrapAdmin.Email {
@@ -124,6 +141,10 @@ func (c *AccountConfig) Validate() error {
 	if c.BootstrapAdmin.Email == "" && c.BootstrapAdmin.Password != "" {
 		return fmt.Errorf("bootstrap administrator email is required with password")
 	}
+	return nil
+}
+
+func (c *AccountConfig) validateDelivery() error {
 	if c.SMTP.Host == "" && (c.SMTP.Port != 0 || c.SMTP.Username != "" || c.SMTP.Password != "" || c.SMTP.From != "" || c.SMTP.TLS != "") {
 		return fmt.Errorf("SMTP host is required with SMTP configuration")
 	}
@@ -145,6 +166,10 @@ func (c *AccountConfig) Validate() error {
 	if c.SMS.AccessKeyID == "" && (c.SMS.AccessKeySecret != "" || c.SMS.SignName != "" || c.SMS.TemplateCode != "") {
 		return fmt.Errorf("SMS accessKeyId is required with SMS configuration")
 	}
+	return nil
+}
+
+func (c *AccountConfig) validateWorkspace() error {
 	if len(c.Workspace.ClusterCIDRs) == 0 {
 		return fmt.Errorf("workspace.clusterCIDRs must include cluster pod, service, node and control-plane networks")
 	}

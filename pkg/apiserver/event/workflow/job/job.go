@@ -176,16 +176,7 @@ func TaskIDFromContext(ctx context.Context) string {
 }
 
 func initJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), runtime *jobRuntime) JobCtl {
-	if store == nil {
-		klog.ErrorS(fmt.Errorf("store is nil"), "init job controller failed")
-		return nil
-	}
-	if job == nil {
-		klog.ErrorS(fmt.Errorf("job is nil"), "init job controller failed")
-		return nil
-	}
-	if client == nil && job.JobType != string(config.JobDeployCallback) {
-		klog.ErrorS(fmt.Errorf("client is nil"), "init job controller failed", "jobName", job.Name, "jobType", job.JobType)
+	if !validJobControllerDependencies(job, client, store) {
 		return nil
 	}
 
@@ -260,6 +251,23 @@ func initJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore
 		aware.setRuntime(runtime)
 	}
 	return jobCtl
+}
+
+func validJobControllerDependencies(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore) bool {
+	if store == nil {
+		klog.ErrorS(fmt.Errorf("store is nil"), "init job controller failed")
+		return false
+	}
+	if job == nil {
+		klog.ErrorS(fmt.Errorf("job is nil"), "init job controller failed")
+		return false
+	}
+	if client == nil && job.JobType != string(config.JobDeployCallback) {
+		klog.ErrorS(fmt.Errorf("client is nil"), "init job controller failed", "jobName", job.Name, "jobType", job.JobType)
+		return false
+	}
+
+	return true
 }
 
 func RunJobs(ctx context.Context, jobs []*model.JobTask, concurrency int, client kubernetes.Interface, kubeConfig *rest.Config, store datastore.DataStore, ack func(), stopOnFailure bool, cache cache.ICache, urlSecurityPolicy *spec.URLSecurityPolicySpec, delayQueue msg.Queue, resourceWaiter informer.ComponentReadyObserver, resourceImportExecutor ResourceImportExecutor, keyrings ...*importsecret.Keyring) error {
@@ -521,6 +529,11 @@ func runJob(ctx context.Context, job *model.JobTask, client kubernetes.Interface
 		}
 		return errors.Join(signal.ErrInfrastructureStop, admissionErr)
 	}
+	return runAdmittedJob(jobCtx, jobCtl, job, client, store, ack, runtime, span)
+}
+
+func runAdmittedJob(jobCtx context.Context, jobCtl JobCtl, job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), runtime *jobRuntime, span trace.Span) (resultErr error) {
+	logger := klog.FromContext(jobCtx)
 	// Admission may wait while an application changes management mode. Check
 	// write permission after that wait, immediately before execution side effects.
 	if jobRequiresApplicationWritePermission(job.JobType) {

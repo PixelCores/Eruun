@@ -43,10 +43,6 @@ func createWorkflowQueueTaskWithCleanupInfo(ctx context.Context, store datastore
 	return workflowservice.CreateWorkflowQueueTaskWithCleanupInfo(ctx, store, workflow, executeAt, idempotencyKey, cleanupInfo)
 }
 
-func createWorkflowQueueTaskWithCallback(ctx context.Context, store datastore.DataStore, workflow *model.Workflow, executeAt int64, idempotencyKey, cleanupInfo string, callback *model.JSONStruct) (*model.WorkflowQueue, error) {
-	return workflowservice.CreateWorkflowQueueTaskWithCallback(ctx, store, workflow, executeAt, idempotencyKey, cleanupInfo, callback)
-}
-
 func createWorkflowQueueTaskWithResourceActionInfoAndCallback(ctx context.Context, store datastore.DataStore, workflow *model.Workflow, executeAt int64, idempotencyKey, cleanupInfo, resourceActionInfo string, callback *model.JSONStruct) (*model.WorkflowQueue, error) {
 	return workflowservice.CreateWorkflowQueueTaskWithResourceActionInfoAndCallback(ctx, store, workflow, executeAt, idempotencyKey, cleanupInfo, resourceActionInfo, callback)
 }

@@ -429,58 +429,8 @@ func (s *resultOutboxTestStore) CompareAndSwapWithConditions(_ context.Context, 
 		if !exists {
 			return false, nil
 		}
-		for field, value := range conditions {
-			switch field {
-			case "status":
-				if current.Status != fmt.Sprint(value) {
-					return false, nil
-				}
-			case "app_id":
-				if current.AppID != fmt.Sprint(value) {
-					return false, nil
-				}
-			case "execution_key":
-				key := fmt.Sprint(value)
-				if ptr, ok := value.(*string); ok && ptr != nil {
-					key = *ptr
-				}
-				if jobInfoExecutionKey(*current) != key {
-					return false, nil
-				}
-			case "run_generation":
-				if fmt.Sprint(current.RunGeneration) != fmt.Sprint(value) {
-					return false, nil
-				}
-			case "delay_state":
-				if string(current.DelayState) != strings.TrimSpace(fmt.Sprint(value)) {
-					return false, nil
-				}
-			case "scheduling_state":
-				if current.SchedulingState != fmt.Sprint(value) {
-					return false, nil
-				}
-			case "scheduling_generation":
-				if fmt.Sprint(current.SchedulingGeneration) != fmt.Sprint(value) {
-					return false, nil
-				}
-			case "scheduling_owner_status":
-				if string(current.SchedulingOwnerStatus) != fmt.Sprint(value) {
-					return false, nil
-				}
-			case "scheduling_expires_at":
-				if value == nil {
-					if current.SchedulingExpiresAt != nil {
-						return false, nil
-					}
-				} else {
-					deadline, ok := value.(time.Time)
-					if !ok || current.SchedulingExpiresAt == nil || !current.SchedulingExpiresAt.Equal(deadline) {
-						return false, nil
-					}
-				}
-			default:
-				return false, datastore.ErrEntityInvalid
-			}
+		if matched, err := resultOutboxJobInfoMatchesConditions(current, conditions); !matched || err != nil {
+			return matched, err
 		}
 		if state, ok := updates["delay_state"].(string); ok {
 			current.DelayState = config.JobDelayState(state)
@@ -563,6 +513,63 @@ func (s *resultOutboxTestStore) CompareAndSwapWithConditions(_ context.Context, 
 	}
 	applyOutboxUpdates(current, updates)
 	current.UpdateTime = time.Now()
+	return true, nil
+}
+
+func resultOutboxJobInfoMatchesConditions(current *model.JobInfo, conditions map[string]interface{}) (bool, error) {
+	for field, value := range conditions {
+		switch field {
+		case "status":
+			if current.Status != fmt.Sprint(value) {
+				return false, nil
+			}
+		case "app_id":
+			if current.AppID != fmt.Sprint(value) {
+				return false, nil
+			}
+		case "execution_key":
+			key := fmt.Sprint(value)
+			if ptr, ok := value.(*string); ok && ptr != nil {
+				key = *ptr
+			}
+			if jobInfoExecutionKey(*current) != key {
+				return false, nil
+			}
+		case "run_generation":
+			if fmt.Sprint(current.RunGeneration) != fmt.Sprint(value) {
+				return false, nil
+			}
+		case "delay_state":
+			if string(current.DelayState) != strings.TrimSpace(fmt.Sprint(value)) {
+				return false, nil
+			}
+		case "scheduling_state":
+			if current.SchedulingState != fmt.Sprint(value) {
+				return false, nil
+			}
+		case "scheduling_generation":
+			if fmt.Sprint(current.SchedulingGeneration) != fmt.Sprint(value) {
+				return false, nil
+			}
+		case "scheduling_owner_status":
+			if string(current.SchedulingOwnerStatus) != fmt.Sprint(value) {
+				return false, nil
+			}
+		case "scheduling_expires_at":
+			if value == nil {
+				if current.SchedulingExpiresAt != nil {
+					return false, nil
+				}
+			} else {
+				deadline, ok := value.(time.Time)
+				if !ok || current.SchedulingExpiresAt == nil || !current.SchedulingExpiresAt.Equal(deadline) {
+					return false, nil
+				}
+			}
+		default:
+			return false, datastore.ErrEntityInvalid
+		}
+	}
 	return true, nil
 }
 

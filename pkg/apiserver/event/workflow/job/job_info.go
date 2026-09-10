@@ -82,24 +82,6 @@ func compareAndSwapJobInfoIfWorkflowOwned(
 	return updated, err
 }
 
-func compareAndSwapJobInfoFieldIfWorkflowOwned(
-	ctx context.Context,
-	store datastore.DataStore,
-	job *model.JobTask,
-	jobInfo *model.JobInfo,
-	field string,
-	value interface{},
-	updates map[string]interface{},
-) (bool, error) {
-	var updated bool
-	err := withJobInfoOwnership(ctx, store, job, func(tx datastore.DataStore) error {
-		var err error
-		updated, err = tx.CompareAndSwap(ctx, jobInfo, field, value, updates)
-		return err
-	})
-	return updated, err
-}
-
 // saveJobInfo persists the normalized job snapshot used by workflow queries.
 func saveJobInfo(ctx context.Context, store datastore.DataStore, job *model.JobTask) error {
 	if strings.TrimSpace(job.ExecutionKey) == "" {
@@ -495,17 +477,6 @@ func validateVersionUpdateCleanupInternalInfo(raw string, component *model.Appli
 	default:
 		return fmt.Errorf("unsupported version update cleanup job info version %d", marker.Version)
 	}
-}
-
-func loadLatestJobInfo(ctx context.Context, store datastore.DataStore, taskID, jobType, serviceName string) (*model.JobInfo, error) {
-	jobInfos, err := loadJobInfos(ctx, store, taskID, jobType, serviceName)
-	if err != nil {
-		return nil, err
-	}
-	if len(jobInfos) == 0 {
-		return nil, nil
-	}
-	return jobInfos[0], nil
 }
 
 func loadJobInfos(ctx context.Context, store datastore.DataStore, taskID, jobType, serviceName string) ([]*model.JobInfo, error) {

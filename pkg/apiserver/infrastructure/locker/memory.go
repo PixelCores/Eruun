@@ -161,7 +161,7 @@ func (m *MemoryMutex) Unlock(ctx context.Context) error {
 	m.entry.mu.Lock()
 	defer m.entry.mu.Unlock()
 
-	if !m.entry.held || m.entry.owner != m.ownerID {
+	if !m.entry.held || m.entry.owner != m.ownerID || !time.Now().Before(m.entry.expiresAt) {
 		return ErrLockNotHeld
 	}
 
@@ -182,7 +182,7 @@ func (m *MemoryMutex) Extend(ctx context.Context) error {
 	m.entry.mu.Lock()
 	defer m.entry.mu.Unlock()
 
-	if !m.entry.held || m.entry.owner != m.ownerID {
+	if !m.entry.held || m.entry.owner != m.ownerID || !time.Now().Before(m.entry.expiresAt) {
 		return ErrLockNotHeld
 	}
 

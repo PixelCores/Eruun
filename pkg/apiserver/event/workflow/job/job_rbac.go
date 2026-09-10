@@ -136,8 +136,6 @@ func (c *DeployServiceAccountJobCtl) run(ctx context.Context) error {
 	return nil
 }
 
-func (c *DeployServiceAccountJobCtl) wait(ctx context.Context) {}
-
 // DeployRoleJobCtl reconciles namespace-scoped Role objects.
 type DeployRoleJobCtl struct {
 	deployNamespacedResourceJobBase

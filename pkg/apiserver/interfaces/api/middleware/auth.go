@@ -179,15 +179,7 @@ func Auth(opts AuthOptions) gin.HandlerFunc {
 		if strings.HasPrefix(path, "/api/v1/auth/") {
 			c.Header("Cache-Control", "no-store")
 			c.Header("Pragma", "no-cache")
-			if c.Request.Method != "GET" {
-				origin := c.GetHeader("Origin")
-				if !s.Config.AllowedOrigin(origin) {
-					bcode.ReturnError(c, bcode.ErrForbidden)
-					c.Abort()
-					return
-				}
-			}
-			if err := s.RateLimit(c.Request.Context(), "auth-ip:"+c.ClientIP(), 60, time.Minute); err != nil {
+			if err := validateAuthEndpointRequest(c, s); err != nil {
 				bcode.ReturnError(c, err)
 				c.Abort()
 				return
@@ -267,6 +259,13 @@ func Auth(opts AuthOptions) gin.HandlerFunc {
 		}
 		c.Next()
 	}
+}
+
+func validateAuthEndpointRequest(c *gin.Context, s *account.Service) error {
+	if c.Request.Method != "GET" && !s.Config.AllowedOrigin(c.GetHeader("Origin")) {
+		return bcode.ErrForbidden
+	}
+	return s.RateLimit(c.Request.Context(), "auth-ip:"+c.ClientIP(), 60, time.Minute)
 }
 
 func extractBearerToken(raw string) string {

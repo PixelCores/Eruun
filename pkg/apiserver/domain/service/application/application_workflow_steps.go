@@ -507,26 +507,8 @@ func validateWorkflowComponentRefs(steps []apisv1.CreateWorkflowStepRequest, exi
 				}
 			}
 		case config.WorkflowStepTypeApproval:
-			if len(stepComponents) > 0 || len(step.SubSteps) > 0 {
-				return fmt.Errorf("%w: approval step %q cannot contain components/properties/substeps", bcode.ErrWorkflowConfig, step.Name)
-			}
-			if step.Approval == nil || strings.TrimSpace(step.Approval.NotifyURL) == "" {
-				return fmt.Errorf("%w: approval step %q requires approval.notifyUrl", bcode.ErrWorkflowConfig, step.Name)
-			}
-			parsed, err := url.ParseRequestURI(strings.TrimSpace(step.Approval.NotifyURL))
-			if err != nil || parsed == nil || parsed.Host == "" {
-				return fmt.Errorf("%w: approval step %q notifyUrl is invalid", bcode.ErrWorkflowConfig, step.Name)
-			}
-			scheme := strings.ToLower(parsed.Scheme)
-			if scheme != "http" && scheme != "https" {
-				return fmt.Errorf("%w: approval step %q notifyUrl must use http or https", bcode.ErrWorkflowConfig, step.Name)
-			}
-			method := strings.ToUpper(strings.TrimSpace(step.Approval.Method))
-			if method != "" && method != "GET" && method != "POST" && method != "PUT" && method != "DELETE" {
-				return fmt.Errorf("%w: approval step %q method is invalid", bcode.ErrWorkflowConfig, step.Name)
-			}
-			if step.Approval.TimeoutSeconds < 0 {
-				return fmt.Errorf("%w: approval step %q timeoutSeconds must be >= 0", bcode.ErrWorkflowConfig, step.Name)
+			if err := validateApprovalWorkflowStep(step, stepComponents); err != nil {
+				return err
 			}
 			continue
 		default:
@@ -653,6 +635,31 @@ func ensureComponentsExist(names []string, existing map[string]config.JobType) e
 		if _, ok := existing[lower]; !ok {
 			return fmt.Errorf("%w: component %q not found", bcode.ErrWorkflowConfig, name)
 		}
+	}
+	return nil
+}
+
+func validateApprovalWorkflowStep(step apisv1.CreateWorkflowStepRequest, stepComponents []string) error {
+	if len(stepComponents) > 0 || len(step.SubSteps) > 0 {
+		return fmt.Errorf("%w: approval step %q cannot contain components/properties/substeps", bcode.ErrWorkflowConfig, step.Name)
+	}
+	if step.Approval == nil || strings.TrimSpace(step.Approval.NotifyURL) == "" {
+		return fmt.Errorf("%w: approval step %q requires approval.notifyUrl", bcode.ErrWorkflowConfig, step.Name)
+	}
+	parsed, err := url.ParseRequestURI(strings.TrimSpace(step.Approval.NotifyURL))
+	if err != nil || parsed == nil || parsed.Host == "" {
+		return fmt.Errorf("%w: approval step %q notifyUrl is invalid", bcode.ErrWorkflowConfig, step.Name)
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return fmt.Errorf("%w: approval step %q notifyUrl must use http or https", bcode.ErrWorkflowConfig, step.Name)
+	}
+	method := strings.ToUpper(strings.TrimSpace(step.Approval.Method))
+	if method != "" && method != "GET" && method != "POST" && method != "PUT" && method != "DELETE" {
+		return fmt.Errorf("%w: approval step %q method is invalid", bcode.ErrWorkflowConfig, step.Name)
+	}
+	if step.Approval.TimeoutSeconds < 0 {
+		return fmt.Errorf("%w: approval step %q timeoutSeconds must be >= 0", bcode.ErrWorkflowConfig, step.Name)
 	}
 	return nil
 }

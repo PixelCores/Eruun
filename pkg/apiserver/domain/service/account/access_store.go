@@ -91,18 +91,7 @@ func (s *Store) Check(ctx context.Context, e datastore.Entity) error {
 		}
 	case *model.JobInfo:
 		if v.AppID == "" && v.TaskID != "" && v.WorkspaceID == scope.WorkspaceID {
-			task := &model.WorkflowQueue{TaskID: v.TaskID}
-			if err := s.raw.Get(ctx, task); err != nil {
-				return err
-			}
-			if task.AppID != "" || task.WorkspaceID != scope.WorkspaceID || !workspaceOwnedTask(task) {
-				return bcode.ErrForbidden
-			}
-			expectedJobType := workspaceTaskJobType(task)
-			if v.Type != "" && v.Type != string(expectedJobType) {
-				return bcode.ErrForbidden
-			}
-			return nil
+			return s.checkWorkspaceJob(ctx, v, scope)
 		}
 	}
 	if id == "" {
@@ -140,6 +129,21 @@ func workspaceTaskJobType(task *model.WorkflowQueue) config.JobType {
 
 func workspaceOwnedTask(task *model.WorkflowQueue) bool {
 	return workspaceTaskJobType(task) != ""
+}
+
+func (s *Store) checkWorkspaceJob(ctx context.Context, v *model.JobInfo, scope Scope) error {
+	task := &model.WorkflowQueue{TaskID: v.TaskID}
+	if err := s.raw.Get(ctx, task); err != nil {
+		return err
+	}
+	if task.AppID != "" || task.WorkspaceID != scope.WorkspaceID || !workspaceOwnedTask(task) {
+		return bcode.ErrForbidden
+	}
+	expectedJobType := workspaceTaskJobType(task)
+	if v.Type != "" && v.Type != string(expectedJobType) {
+		return bcode.ErrForbidden
+	}
+	return nil
 }
 
 func (s *Store) options(ctx context.Context, e datastore.Entity, input *datastore.ListOptions) (*datastore.ListOptions, error) {

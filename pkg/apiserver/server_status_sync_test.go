@@ -34,8 +34,6 @@ type statusSyncStore struct {
 	casCalls      int
 	casComp       *model.ApplicationComponent
 	casConditions map[string]interface{}
-	casField      string
-	casValue      interface{}
 	casUpdates    map[string]interface{}
 }
 

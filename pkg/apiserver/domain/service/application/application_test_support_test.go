@@ -481,28 +481,7 @@ func (s *inMemoryAppStore) Get(_ context.Context, entity datastore.Entity) error
 func (s *inMemoryAppStore) List(_ context.Context, query datastore.Entity, opts *datastore.ListOptions) ([]datastore.Entity, error) {
 	switch q := query.(type) {
 	case *model.Applications:
-		apps := make([]*model.Applications, 0, len(s.apps))
-		for _, app := range s.apps {
-			if q.ID != "" && app.ID != q.ID {
-				continue
-			}
-			if q.Name != "" && app.Name != q.Name {
-				continue
-			}
-			if q.Version != "" && app.Version != q.Version {
-				continue
-			}
-			if q.Project != "" && app.Project != q.Project {
-				continue
-			}
-			if q.TemplateEnabled && !app.TemplateEnabled {
-				continue
-			}
-			cp := *app
-			apps = append(apps, &cp)
-		}
-		sortApplicationsForList(apps, opts)
-		return paginateApplicationsForList(apps, opts), nil
+		return s.listApplications(q, opts)
 	case *model.Workflow:
 		var result []datastore.Entity
 		for _, wf := range s.workflows {
@@ -922,4 +901,29 @@ func mustJSONStruct(v interface{}) *model.JSONStruct {
 		panic(err)
 	}
 	return js
+}
+
+func (s *inMemoryAppStore) listApplications(q *model.Applications, opts *datastore.ListOptions) ([]datastore.Entity, error) {
+	apps := make([]*model.Applications, 0, len(s.apps))
+	for _, app := range s.apps {
+		if q.ID != "" && app.ID != q.ID {
+			continue
+		}
+		if q.Name != "" && app.Name != q.Name {
+			continue
+		}
+		if q.Version != "" && app.Version != q.Version {
+			continue
+		}
+		if q.Project != "" && app.Project != q.Project {
+			continue
+		}
+		if q.TemplateEnabled && !app.TemplateEnabled {
+			continue
+		}
+		cp := *app
+		apps = append(apps, &cp)
+	}
+	sortApplicationsForList(apps, opts)
+	return paginateApplicationsForList(apps, opts), nil
 }
