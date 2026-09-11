@@ -30,6 +30,7 @@ func TestRedisStreamsIntegrationRecreatesMissingGroupFromBacklog(t *testing.T) {
 		_, err = queue.Enqueue(ctx, []byte(payload))
 		require.NoError(t, err)
 	}
+	require.NoError(t, queue.EnsureGroup(ctx, "workers"))
 
 	messages, err := queue.ReadGroup(ctx, "workers", "worker-1", 10, 100*time.Millisecond)
 	require.NoError(t, err)
@@ -39,11 +40,14 @@ func TestRedisStreamsIntegrationRecreatesMissingGroupFromBacklog(t *testing.T) {
 	require.EqualValues(t, 1, client.XGroupDestroy(ctx, key, "workers").Val())
 	_, err = queue.Enqueue(ctx, []byte("after-group-loss"))
 	require.NoError(t, err)
+	recoveredQueue, err := NewRedisStreamsWithClient(client, key, 0)
+	require.NoError(t, err)
+	require.NoError(t, recoveredQueue.EnsureGroup(ctx, "workers"))
 
-	messages, err = queue.ReadGroup(ctx, "workers", "worker-2", 10, 100*time.Millisecond)
+	messages, err = recoveredQueue.ReadGroup(ctx, "workers", "worker-2", 10, 100*time.Millisecond)
 	require.NoError(t, err)
 	require.Contains(t, messagePayloads(messages), "after-group-loss")
-	require.NoError(t, queue.Ack(ctx, "workers", messageIDs(messages)...))
+	require.NoError(t, recoveredQueue.Ack(ctx, "workers", messageIDs(messages)...))
 }
 
 func TestRedisStreamsIntegrationAutoClaimAdvancesCursor(t *testing.T) {

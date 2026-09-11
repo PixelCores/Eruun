@@ -52,7 +52,7 @@ func NewRedisStreamsWithClient(cli redisCommander, key string, maxLen int64) (*R
 }
 
 func (r *RedisStreams) EnsureGroup(ctx context.Context, group string) error {
-	return r.ensureGroup(ctx, group, "$")
+	return r.ensureGroup(ctx, group, "0")
 }
 
 func (r *RedisStreams) ensureGroup(ctx context.Context, group, start string) error {

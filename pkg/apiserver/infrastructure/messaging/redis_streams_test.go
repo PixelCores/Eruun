@@ -171,6 +171,9 @@ func TestRedisStreams_WithCommanderBasic(t *testing.T) {
 	if err := rs.EnsureGroup(ctx, "g"); err != nil {
 		t.Fatalf("EnsureGroup error: %v", err)
 	}
+	if len(f.groupStarts) != 1 || f.groupStarts[0] != "0" {
+		t.Fatalf("EnsureGroup must preserve existing backlog, starts=%v", f.groupStarts)
+	}
 	// Enqueue
 	if id, err := rs.Enqueue(ctx, []byte("hello")); err != nil || id == "" {
 		t.Fatalf("Enqueue err=%v id=%q", err, id)

@@ -13,7 +13,7 @@
 | ID | 失败证据与影响 | 修复 | 验证 |
 | --- | --- | --- | --- |
 | D01 | Kafka pending 以 correlation ID 为唯一键；同分区 `A/B/A` 会覆盖第一条 A 的物理位置，乱序确认可能越过未确认的 B 提交 offset。 | pending 改为按 partition/offset 保存独立物理记录，逻辑 ID 仅用于定位候选；只提交每个分区连续确认的最高 offset，提交失败回滚本地确认状态。 | 单元测试覆盖重复 ID、分区隔离、乱序 ACK、提交失败；真实 Kafka 覆盖乱序确认和 stale pending 重领。 |
-| D02 | Redis 消费组被删除后，普通读取和 reclaim 返回 `NOGROUP`，原实现不能从已有 backlog 恢复。 | 仅识别明确的 `NOGROUP` 后从 `0` 重建组并有界重试；认证、网络和协议错误原样传播。 | 单元测试覆盖错误分类/重试边界；真实 Redis 删除消费组后恢复已有消息。 |
+| D02 | Redis 消费组被删除后，普通读取和 reclaim 返回 `NOGROUP`，原实现不能从已有 backlog 恢复。初次修复仍让启动时的 `EnsureGroup` 从流尾创建组，使预先存在的消息绕过 `NOGROUP` 恢复分支而被永久跳过。 | 所有缺失消费组统一从 `0` 创建；仅识别明确的 `NOGROUP` 后重建并有界重试，认证、网络和协议错误原样传播。 | 单元测试覆盖创建起点、错误分类和重试边界；真实 Redis 按“写入 backlog、启动时建组、读取”顺序验证初次启动及删组重启恢复。 |
 | D03 | Redis `XAUTOCLAIM` 每次从 `0-0` 开始，较前的 pending 会使较后的消息长期饥饿。 | 按 stream/group 保存并推进服务端返回的 next cursor，扫描结束后回绕。 | 单元测试覆盖 cursor 推进、隔离和回绕；真实 Redis 构造不同 idle 时间的 pending 并验证后续页可达。 |
 | D04 | delay/result dispatcher 结束任期时只停止循环，已交给 handler 但尚未 ACK 的消息仍标记为 in-flight，不能由继任者及时重领。 | 停止接收后等待本任期处理退出，并释放仍未完成的本地 in-flight 记录。 | race 测试覆盖取消期间的释放、重投和重复结果去重。 |
 | D05 | Job 的部分提前终止路径忽略终态持久化错误，父 Workflow 可能正常结束，而数据库仍保留运行态。 | 具有分布式执行身份或 ownership 的 Job 终态写入错误向上传播；保存时继续校验 generation、token、owner，旧 attempt 不能覆盖新 owner。无执行身份的旧式本地调用保留既有 best-effort 行为。 | 故障注入覆盖正常、skipped、启动前取消、watcher 初始化失败、ownership 丢失和旧 attempt 结果拒绝；相关包 race 测试通过。 |
@@ -44,6 +44,7 @@
 | 8 | Leader、informer、关闭顺序和 goroutine 生命周期 | 确认 D07、D08；为首次 sync 设上限，等待选举循环退出后释放 Lease，并 fence 晚到 callback。独立复审及 race 测试通过；kind 中实际删除双 Leader 后完成接管。 |
 | 9 | readiness、迁移、Helm、安装升级和 RBAC | 确认 D09、D10、D13–D15。独立复审先后发现迁移 probe 隐藏错误、Controller 缺 CronJob 读删权限、持久凭据在 reinstall/长名/自定义端口下的缺口；逐项修复。最终复审确认不再修改不可变的 volumeClaimTemplate，main Chart 到当前 Chart 的真实升级通过。 |
 | 10 | 最终差异、集成故障验收与 Go 简洁性 | 独立终审发现并修复四组相邻缺口：skipped/启动前取消/watcher 失败仍忽略身份化终态保存错误；同名旧 Job 遮蔽当前 CronJob 取消清理；Controller 缺 CronJob 精确删除权限；旧 Chart Secret 缺 database 元数据及卸载后 fullname 身份丢失。新增状态转换、Quickstart、Helm 和 kind 证据后重新审查，最终结论为 **CLEARED**，无未解决实质问题。 |
+| 11 | PR 行级复审与 Redis 真实启动顺序 | 复审发现 D02 的初次修复被启动前 `EnsureGroup("$")` 绕过；改为统一从 backlog 起点建组，并用真实 Redis 覆盖预存 backlog 和删组后新实例启动。修复后聚焦复审无未解决实质问题。 |
 
 ## 验证环境与证据
 
