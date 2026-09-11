@@ -28,6 +28,10 @@ helm upgrade --install eruun deploy/helm/eruun \
 
 `deploy/all_in_one_install_quickstart.sh` 使用同一套四角色拓扑。Helm 安装时，Quickstart 把密码写入权限为 `0600` 的临时 values 文件并在退出时清理；manifest 安装时使用 `deploy/eruun-stack.yaml` 中的四类 Deployment。
 
+再次运行 Quickstart 会读取并复用当前安装的 MySQL、Redis 凭据；如果 Secret 缺失、字段损坏或持久资源与 Secret 不一致，安装会停止，不会为已有持久卷生成新密码。Chart 内置 MySQL 的 `rootPassword`、`database`、`servicePort`、资源 fullname，以及 Redis 的 `password`、`servicePort` 和资源 fullname 在已有工作负载上不可直接更改；Helm upgrade 会在 hook 前拒绝这类变化。首次安装可通过 `mysql.servicePort` 和 `redis.servicePort` 设置进程及 Service 的监听端口。需要轮换凭据、改库名或服务地址时，应先使用独立的数据迁移/凭据轮换流程同步更新数据库、缓存和 Secret，再执行升级。
+
+内置 MySQL、Redis 的凭据 Secret 与 PVC 使用相同的持久化生命周期：Chart 通过 `helm.sh/resource-policy: keep` 在 `helm uninstall` 后保留这两个 Secret，用于识别原数据卷、阻止 fullname 漂移并支持后续人工恢复。彻底销毁某次安装的数据时，操作者应在确认不再需要恢复后，显式删除该 release 对应的 MySQL/Redis PVC 和同名 Secret；只删除 Secret 会使保留的数据卷无法由 Chart 安全重装。
+
 manifest 安装会先用 server-side dry-run 验证四角色清单，再把旧单进程 `Deployment/eruun` 缩容到零并保留为回滚点。四类 Deployment 全部 ready 后才清理旧 Deployment 和 `ServiceAccount/eruun-platform`；应用、覆盖或 readiness 失败时会删除本轮角色 Deployment 并恢复旧副本数。旧 ServiceAccount 清理失败只记录告警，不会把已经 ready 的新运行时判为安装失败；迁移过程不会删除 MySQL、Redis 或其持久化数据。
 
 ## 运行契约
@@ -116,7 +120,7 @@ Chart 只把该 Secret 挂载到实际使用 keyring 的 API 和 Worker，路径
 | `serviceAccount.automountServiceAccountToken` | `true` | 控制 Chart 创建账号的 token 自动挂载。 |
 | `rbac.create` | `true` | 创建 Lease Role/RoleBinding、资源管理 ClusterRole 及 Controller 专用 ClusterRole。 |
 
-Controller 和 Scheduler 绑定 namespace-scoped Leader Election Role；API 与 Worker 绑定资源管理 ClusterRole；Controller 的专用角色允许 Pod `get/list/watch/patch/delete`、Pod 日志 `get`、Job `get/create/update/delete` 和 ReplicaSet `get`；Scheduler 不绑定任何 ClusterRole。Controller 除了 Pod 观察和 adopted metadata 标签协调，还运行延时 Job 分发、结果处理和 outbox 恢复，因此需要创建/复用 Job、收集日志及清理已完成的 Job/Pod。使用已有账号时，Controller 名称必须不同于 API/Worker，Scheduler 名称必须不同于其余三类角色，防止共享身份重新扩大权限；API 与 Worker 可以有意复用同一个资源管理身份。
+Controller 和 Scheduler 绑定 namespace-scoped Leader Election Role；API 与 Worker 绑定资源管理 ClusterRole；Controller 的专用角色允许 Pod `get/list/watch/patch/delete`、Pod 日志 `get`、Job `get/create/update/delete`、CronJob `get/delete` 和 ReplicaSet `get`；Scheduler 不绑定任何 ClusterRole。Controller 除了 Pod 观察和 adopted metadata 标签协调，还运行延时 Job 分发、结果处理、outbox 恢复和取消后的定时资源恢复，因此需要创建/复用 Job、收集日志，以及按 task/execution/generation/attempt 和 UID 精确清理 Job、CronJob、Pod。使用已有账号时，Controller 名称必须不同于 API/Worker，Scheduler 名称必须不同于其余三类角色，防止共享身份重新扩大权限；API 与 Worker 可以有意复用同一个资源管理身份。
 
 默认资源管理 ClusterRole 只包含当前 Eruun 管理 Kubernetes 工作负载、Pod 日志与 exec、Namespace、Service/Secret/ConfigMap/PVC、StorageClass、Ingress 和 RBAC Trait 所需的显式资源权限，不绑定内置 `cluster-admin`。Pods 的 `patch` 只用于 adopted source owner 链校验成功后补 metadata 管理标签；Controller 专用角色不授予 Secret 读取、Pod exec、Deployment/StatefulSet 管理或 RBAC 管理权限。Job `update` 用于复用未完成 Job 时更新 task/execution key/run generation，支持 Worker 接管新的执行代次。资源管理角色中的 ReplicaSet `update` 只用于 signed cleanup quiesce，ReplicaSet/ControllerRevision `delete` 只用于签名计划覆盖且 UID 匹配的 runtime child。PV 与 HPA 权限保持只读；PDB、NetworkPolicy 和 PVC update 用于 source-aware 调和。RBAC Trait 所需的 `roles`、`clusterroles` 规则包含 Kubernetes 要求的 `bind`、`escalate` verbs。
 

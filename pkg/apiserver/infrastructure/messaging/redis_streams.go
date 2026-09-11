@@ -3,7 +3,9 @@ package messaging
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -31,6 +33,9 @@ type RedisStreams struct {
 	// maxLen limits the stream length via XADD MAXLEN to avoid unbounded growth.
 	// When <= 0, no trimming is applied.
 	maxLen int64
+
+	claimMu    sync.Mutex
+	claimStart map[string]string
 }
 
 // NewRedisStreamsWithClient builds a RedisStreams using a shared go-redis client (or any compatible implementation).
@@ -43,11 +48,15 @@ func NewRedisStreamsWithClient(cli redisCommander, key string, maxLen int64) (*R
 	if key == "" {
 		return nil, errors.New("redis streams requires key")
 	}
-	return &RedisStreams{cli: cli, key: key, maxLen: maxLen}, nil
+	return &RedisStreams{cli: cli, key: key, maxLen: maxLen, claimStart: make(map[string]string)}, nil
 }
 
 func (r *RedisStreams) EnsureGroup(ctx context.Context, group string) error {
-	err := r.cli.XGroupCreateMkStream(ctx, r.key, group, "$").Err()
+	return r.ensureGroup(ctx, group, "$")
+}
+
+func (r *RedisStreams) ensureGroup(ctx context.Context, group, start string) error {
+	err := r.cli.XGroupCreateMkStream(ctx, r.key, group, start).Err()
 	if err == nil {
 		return nil
 	}
@@ -59,8 +68,16 @@ func (r *RedisStreams) EnsureGroup(ctx context.Context, group string) error {
 }
 
 func isConsumerGroupExistsErr(err error) bool {
+	return hasRedisErrorPrefix(err, "BUSYGROUP")
+}
+
+func isConsumerGroupMissingErr(err error) bool {
+	return hasRedisErrorPrefix(err, "NOGROUP")
+}
+
+func hasRedisErrorPrefix(err error, prefix string) bool {
 	for current := err; current != nil; current = errors.Unwrap(current) {
-		if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(current.Error())), "BUSYGROUP") {
+		if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(current.Error())), prefix) {
 			return true
 		}
 	}
@@ -79,14 +96,21 @@ func (r *RedisStreams) Enqueue(ctx context.Context, payload []byte) (string, err
 }
 
 func (r *RedisStreams) ReadGroup(ctx context.Context, group, consumer string, count int, block time.Duration) ([]Message, error) {
-	res, err := r.cli.XReadGroup(ctx, &redis.XReadGroupArgs{
+	args := &redis.XReadGroupArgs{
 		Group:    group,
 		Consumer: consumer,
 		Streams:  []string{r.key, ">"},
 		Count:    int64(count),
 		Block:    block,
 		NoAck:    false,
-	}).Result()
+	}
+	res, err := r.cli.XReadGroup(ctx, args).Result()
+	if isConsumerGroupMissingErr(err) {
+		if createErr := r.ensureGroup(ctx, group, "0"); createErr != nil {
+			return nil, fmt.Errorf("recreate redis consumer group: %w", createErr)
+		}
+		res, err = r.cli.XReadGroup(ctx, args).Result()
+	}
 	if err != nil && !errors.Is(redis.Nil, err) {
 		return nil, err
 	}
@@ -119,18 +143,38 @@ func (r *RedisStreams) Ack(ctx context.Context, group string, ids ...string) err
 }
 
 func (r *RedisStreams) AutoClaim(ctx context.Context, group, consumer string, minIdle time.Duration, count int) ([]Message, error) {
-	// Use XAutoClaim to claim stale messages. Start from 0-0 each time for simplicity.
-	start := "0-0"
-	res, _, err := r.cli.XAutoClaim(ctx, &redis.XAutoClaimArgs{
+	r.claimMu.Lock()
+	defer r.claimMu.Unlock()
+
+	start := r.claimStart[group]
+	if start == "" {
+		start = "0-0"
+	}
+	args := &redis.XAutoClaimArgs{
 		Stream:   r.key,
 		Group:    group,
 		Consumer: consumer,
 		MinIdle:  minIdle,
 		Start:    start,
 		Count:    int64(count),
-	}).Result()
+	}
+	res, next, err := r.cli.XAutoClaim(ctx, args).Result()
+	if isConsumerGroupMissingErr(err) {
+		if createErr := r.ensureGroup(ctx, group, "0"); createErr != nil {
+			return nil, fmt.Errorf("recreate redis consumer group: %w", createErr)
+		}
+		args.Start = "0-0"
+		res, next, err = r.cli.XAutoClaim(ctx, args).Result()
+	}
 	if err != nil && !errors.Is(err, redis.Nil) {
 		return nil, err
+	}
+	if err == nil {
+		if next == "" || next == "0-0" {
+			delete(r.claimStart, group)
+		} else {
+			r.claimStart[group] = next
+		}
 	}
 	var msgs []Message
 	for _, m := range res {

@@ -248,6 +248,63 @@ func TestRunJobsReturnsInfrastructureStopWhenTerminalPersistenceFails(t *testing
 	}
 }
 
+func TestRunJobReturnsInfrastructureStopWhenEarlyTerminalPersistenceFails(t *testing.T) {
+	persistErr := errors.New("injected early terminal persistence failure")
+	for _, tc := range []struct {
+		name   string
+		status config.Status
+		ctx    func() (context.Context, context.CancelFunc)
+	}{
+		{
+			name:   "skipped",
+			status: config.StatusSkipped,
+			ctx: func() (context.Context, context.CancelFunc) {
+				return context.Background(), func() {}
+			},
+		},
+		{
+			name: "cancelled before start",
+			ctx: func() (context.Context, context.CancelFunc) {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx, func() {}
+			},
+		},
+		{
+			name: "cancellation watcher unavailable",
+			ctx: func() (context.Context, context.CancelFunc) {
+				return WithTaskMetadata(context.Background(), "task-early-terminal"), func() {}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &ownedCheckpointFailureStore{jobInfoStore: &jobInfoStore{addErr: persistErr}}
+			task := &model.JobTask{
+				Name:          "app-config",
+				Namespace:     "default",
+				TaskID:        "task-early-terminal",
+				JobType:       string(config.JobDeployConfigMap),
+				Status:        tc.status,
+				ExecutionKey:  "execution-1",
+				RunGeneration: 1,
+				RunToken:      "run-1",
+				WorkerID:      "worker-1",
+				JobInfo: &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{
+					Name: "app-config", Namespace: "default",
+				}},
+			}
+			ctx, cancel := tc.ctx()
+			defer cancel()
+
+			err := runJob(ctx, task, fake.NewSimpleClientset(), store, func() {}, nil)
+
+			require.ErrorIs(t, err, signal.ErrInfrastructureStop)
+			require.ErrorIs(t, err, persistErr)
+			require.Equal(t, 1, store.addCount)
+		})
+	}
+}
+
 func TestRunJobsKeepsLegacyTerminalPersistenceBestEffort(t *testing.T) {
 	persistErr := errors.New("injected legacy terminal persistence failure")
 	store := &ownedCheckpointFailureStore{

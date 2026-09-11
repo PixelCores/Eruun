@@ -277,6 +277,59 @@ func TestJobSchedulerCancelledOwnerCanReleaseOnlyItsRunningAdmission(t *testing.
 	}
 }
 
+func TestJobSchedulerCancelledOwnerRetainsCapacityUntilCleanupRelease(t *testing.T) {
+	store := newJobSchedulerTestStore(t)
+	ctx := context.Background()
+	setSchedulerTestPolicy(t, store, `{"maxConcurrentJobs":1,"maxConcurrentJobsPerWorkspace":1}`)
+	owner, running := schedulerTestJob(t, store, "running", "a", "normal")
+	_, err := AdmitQueuedJobs(ctx, store)
+	require.NoError(t, err)
+	_, waiting := schedulerTestJob(t, store, "waiting", "b", "normal")
+
+	cancelled := *owner
+	cancelled.Status = config.StatusCancelled
+	require.NoError(t, store.Put(ctx, &cancelled))
+	n, err := AdmitQueuedJobs(ctx, store)
+	require.NoError(t, err)
+	require.Zero(t, n)
+	require.NoError(t, store.Get(ctx, running))
+	require.Equal(t, wfc.JobSchedulingAdmitted, running.SchedulingState)
+	require.NoError(t, store.Get(ctx, waiting))
+	require.Equal(t, wfc.JobSchedulingQueued, waiting.SchedulingState)
+
+	require.NoError(t, ReleaseJobAdmission(ctx, store, owner, *running.ExecutionKey, "cancelled job cleanup finished"))
+	n, err = AdmitQueuedJobs(ctx, store)
+	require.NoError(t, err)
+	require.Equal(t, 1, n)
+	require.NoError(t, store.Get(ctx, waiting))
+	require.Equal(t, wfc.JobSchedulingAdmitted, waiting.SchedulingState)
+}
+
+func TestJobSchedulerRetainsCancelledKubernetesAdmissionAfterCleanupLeaseExpires(t *testing.T) {
+	store := newJobSchedulerTestStore(t)
+	ctx := context.Background()
+	setSchedulerTestPolicy(t, store, `{"maxConcurrentJobs":1,"maxConcurrentJobsPerWorkspace":1}`)
+	owner, running := schedulerTestJob(t, store, "running-expired", "a", "normal")
+	running.Type = string(config.JobDeployInstant)
+	require.NoError(t, store.Put(ctx, running))
+	_, err := AdmitQueuedJobs(ctx, store)
+	require.NoError(t, err)
+	_, waiting := schedulerTestJob(t, store, "waiting-after-expiry", "b", "normal")
+
+	expired := time.Now().UTC().Add(-time.Second)
+	owner.Status = config.StatusCancelled
+	owner.LeaseExpiresAt = &expired
+	require.NoError(t, store.Put(ctx, owner))
+	n, err := AdmitQueuedJobs(ctx, store)
+
+	require.NoError(t, err)
+	require.Zero(t, n)
+	require.NoError(t, store.Get(ctx, running))
+	require.Equal(t, wfc.JobSchedulingAdmitted, running.SchedulingState)
+	require.NoError(t, store.Get(ctx, waiting))
+	require.Equal(t, wfc.JobSchedulingQueued, waiting.SchedulingState)
+}
+
 type failedAdmissionStore struct{ datastore.DataStore }
 
 func (s failedAdmissionStore) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {

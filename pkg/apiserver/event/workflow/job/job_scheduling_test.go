@@ -176,7 +176,7 @@ func TestJobAdmissionWaitExitReleasesQueueWithoutKubernetesEffects(t *testing.T)
 						cancel(context.Canceled)
 					}
 				}
-				cancelled := reason == "cancel" || reason == "cancel after database commit" || reason == "database cancellation before signal"
+				cancelled := reason == "cancel after database commit" || reason == "database cancellation before signal"
 				select {
 				case err := <-result:
 					if cancelled {

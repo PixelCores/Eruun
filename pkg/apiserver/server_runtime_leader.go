@@ -3,6 +3,7 @@ package apiserver
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"k8s.io/client-go/tools/leaderelection"
@@ -85,6 +86,9 @@ func (s *restServer) buildRuntimeLeaderElectionConfig(ctx context.Context, scope
 		Name:            "eruun-" + string(scope),
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(leaderCtx context.Context) {
+				if ctx.Err() != nil || leaderCtx.Err() != nil {
+					return
+				}
 				switch scope {
 				case controllerLeaderScope:
 					s.onStartedControllerLeading(leaderCtx, errChan)
@@ -114,9 +118,58 @@ func (s *restServer) buildRuntimeLeaderElectionConfig(ctx context.Context, scope
 	}
 }
 
+func (s *restServer) startRuntimeLeaderElections(ctx context.Context, elections []runtimeLeaderElection) <-chan struct{} {
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(len(elections))
+	for _, election := range elections {
+		election := election
+		go func() {
+			defer wg.Done()
+			s.runRuntimeLeaderElection(ctx, election)
+		}()
+	}
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	return done
+}
+
 func (s *restServer) runRuntimeLeaderElection(ctx context.Context, election runtimeLeaderElection) {
 	for ctx.Err() == nil {
-		runLeaderElector(ctx, election.config)
+		leaderConfig := election.config
+		callbacks := leaderConfig.Callbacks
+		var termMu sync.Mutex
+		started := false
+		stopped := false
+		startedDone := make(chan struct{})
+		leaderConfig.Callbacks.OnStartedLeading = func(leaderCtx context.Context) {
+			termMu.Lock()
+			if stopped {
+				termMu.Unlock()
+				return
+			}
+			started = true
+			termMu.Unlock()
+			defer close(startedDone)
+			if callbacks.OnStartedLeading != nil {
+				callbacks.OnStartedLeading(leaderCtx)
+			}
+		}
+		leaderConfig.Callbacks.OnStoppedLeading = func() {
+			termMu.Lock()
+			stopped = true
+			waitForStart := started
+			termMu.Unlock()
+			if waitForStart {
+				<-startedDone
+			}
+			if callbacks.OnStoppedLeading != nil {
+				callbacks.OnStoppedLeading()
+			}
+		}
+		runLeaderElector(ctx, leaderConfig)
 		if ctx.Err() != nil {
 			return
 		}

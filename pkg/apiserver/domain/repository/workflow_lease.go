@@ -12,6 +12,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 var (
@@ -138,6 +139,34 @@ func RenewWorkflowTaskLease(ctx context.Context, store datastore.DataStore, task
 	})
 }
 
+// RenewCancelledWorkflowTaskLease gives the owning worker a bounded window to
+// finish cleanup after API cancellation. If the worker crashes, the lease
+// expires and the scheduler can release its remaining admissions.
+func RenewCancelledWorkflowTaskLease(ctx context.Context, store datastore.DataStore, taskID string, generation uint64, token, workerID string, leaseDuration time.Duration) (bool, error) {
+	if err := validateWorkflowExecutionIdentity(taskID, generation, token); err != nil {
+		return false, err
+	}
+	if strings.TrimSpace(workerID) == "" {
+		return false, fmt.Errorf("%w: workflow cleanup lease requires worker identity", ErrWorkflowOwnershipRequired)
+	}
+	if leaseDuration <= 0 {
+		return false, fmt.Errorf("workflow cleanup lease duration must be positive")
+	}
+	now, err := currentWorkflowDatabaseTime(ctx, store)
+	if err != nil {
+		return false, err
+	}
+	return compareWorkflowTaskWithConditions(ctx, store, taskID, map[string]interface{}{
+		"status":         config.StatusCancelled,
+		"run_generation": generation,
+		"run_token":      token,
+		"worker_id":      workerID,
+	}, map[string]interface{}{
+		"heartbeat_at":     now,
+		"lease_expires_at": now.Add(leaseDuration),
+	})
+}
+
 func ExpireWorkflowTaskLease(ctx context.Context, store datastore.DataStore, taskID string, generation uint64, token, workerID string) (bool, error) {
 	if err := validateWorkflowExecutionIdentity(taskID, generation, token); err != nil {
 		return false, err
@@ -177,6 +206,10 @@ func UpdateTaskFieldsIfOwned(ctx context.Context, store datastore.DataStore, tas
 		"worker_id":      task.WorkerID,
 	}
 	return compareWorkflowTaskWithConditions(ctx, store, task.TaskID, conditions, updates)
+}
+
+func UpdateTaskFieldsIfConditions(ctx context.Context, store datastore.DataStore, taskID string, conditions, updates map[string]interface{}) (bool, error) {
+	return compareWorkflowTaskWithConditions(ctx, store, taskID, conditions, updates)
 }
 
 // WithWorkflowTaskOwnership serializes a fenced side-effect write with ownership
@@ -316,6 +349,154 @@ func RecoverExpiredWorkflowTasks(ctx context.Context, store datastore.DataStore)
 		}
 	}
 	return recovered, nil
+}
+
+// RecoverExpiredCancelledWorkflowTasks converges jobs left behind when a
+// worker dies after cancellation commits. The parent fence and child updates
+// share one transaction, so a live worker cannot persist through the recovery.
+func RecoverExpiredCancelledWorkflowTasks(ctx context.Context, store datastore.DataStore) (int, error) {
+	now, err := currentWorkflowDatabaseTime(ctx, store)
+	if err != nil {
+		return 0, err
+	}
+	entities, err := store.List(ctx, &model.WorkflowQueue{Status: config.StatusCancelled}, &datastore.ListOptions{
+		FilterOptions: datastore.FilterOptions{
+			NotEqual: []datastore.ComparisonQueryOption{{Key: "run_token", Value: ""}},
+			LessThan: []datastore.ComparisonQueryOption{{Key: "lease_expires_at", Value: now}},
+		},
+		Page:     1,
+		PageSize: workflowLeaseRecoveryBatchSize,
+		SortBy: []datastore.SortOption{{
+			Key: "lease_expires_at", Order: datastore.SortOrderAscending,
+		}},
+	})
+	if err != nil {
+		return 0, err
+	}
+	if len(entities) > workflowLeaseRecoveryBatchSize {
+		entities = entities[:workflowLeaseRecoveryBatchSize]
+	}
+	recovered := 0
+	for _, entity := range entities {
+		task, ok := entity.(*model.WorkflowQueue)
+		if !ok || task == nil {
+			continue
+		}
+		if err := validateWorkflowExecutionIdentity(task.TaskID, task.RunGeneration, task.RunToken); err != nil {
+			return recovered, fmt.Errorf("cancelled workflow task has invalid execution identity: %w", err)
+		}
+		if task.LeaseExpiresAt == nil {
+			return recovered, fmt.Errorf("cancelled workflow task %s has incomplete cleanup lease", task.TaskID)
+		}
+		if task.LeaseExpiresAt.After(now) {
+			continue
+		}
+		converged := false
+		err := withWorkflowRecoveryTransaction(ctx, store, func(tx datastore.DataStore) error {
+			conditions := map[string]interface{}{
+				"status":           config.StatusCancelled,
+				"run_generation":   task.RunGeneration,
+				"run_token":        task.RunToken,
+				"worker_id":        task.WorkerID,
+				"lease_expires_at": *task.LeaseExpiresAt,
+			}
+			owned, err := compareWorkflowTaskWithConditions(ctx, tx, task.TaskID, conditions, map[string]interface{}{})
+			if err != nil {
+				return err
+			}
+			if !owned {
+				return nil
+			}
+			if err := TerminalizeCancelledWorkflowJobs(ctx, tx, task.TaskID, "worker cleanup lease expired", ""); err != nil {
+				return err
+			}
+			cleared, err := compareWorkflowTaskWithConditions(ctx, tx, task.TaskID, conditions, map[string]interface{}{
+				"run_token": "", "worker_id": "", "heartbeat_at": nil, "lease_expires_at": nil,
+			})
+			if err != nil {
+				return err
+			}
+			if !cleared {
+				return fmt.Errorf("%w: cancelled workflow task %s changed during recovery", ErrWorkflowOwnershipLost, task.TaskID)
+			}
+			converged = true
+			return nil
+		})
+		if err != nil {
+			return recovered, err
+		}
+		if converged {
+			recovered++
+		}
+	}
+	return recovered, nil
+}
+
+// TerminalizeCancelledWorkflowJobs releases nonterminal child records after
+// their parent cancellation is fenced. preserveCallbackKey reserves the one
+// deterministic terminal callback that is allowed to complete afterwards.
+func TerminalizeCancelledWorkflowJobs(ctx context.Context, store datastore.DataStore, taskID, reason, preserveCallbackKey string) error {
+	conditional, ok := store.(datastore.ConditionalCompareAndSwap)
+	if !ok {
+		return ErrWorkflowFencingUnsupported
+	}
+	entities, err := store.List(ctx, &model.JobInfo{TaskID: taskID}, &datastore.ListOptions{})
+	if err != nil {
+		if errors.Is(err, datastore.ErrRecordNotExist) {
+			return nil
+		}
+		return fmt.Errorf("list cancelled workflow jobs: %w", err)
+	}
+	for _, entity := range entities {
+		job, ok := entity.(*model.JobInfo)
+		if !ok || job == nil {
+			return datastore.ErrEntityInvalid
+		}
+		if jobSchedulingTerminal(job.Status) {
+			continue
+		}
+		executionKey := ""
+		if job.ExecutionKey != nil {
+			executionKey = strings.TrimSpace(*job.ExecutionKey)
+		}
+		if job.Type == string(config.JobDeployCallback) && (preserveCallbackKey == "" || executionKey == preserveCallbackKey) {
+			continue
+		}
+		conditions := map[string]interface{}{
+			"status":         job.Status,
+			"run_generation": job.RunGeneration,
+			"attempt":        job.Attempt,
+		}
+		if executionKey != "" {
+			conditions["execution_key"] = executionKey
+		}
+		updates := map[string]interface{}{
+			"status": string(config.StatusCancelled), "error": strings.TrimSpace(reason), "end_time": time.Now().Unix(),
+			"scheduling_reason": "parent workflow cancelled",
+		}
+		if !recoverableKubernetesJobInfo(job) && job.SchedulingState != "" && job.SchedulingState != workflowconfig.JobSchedulingReleased {
+			updates["scheduling_state"] = workflowconfig.JobSchedulingReleased
+		}
+		updated, err := conditional.CompareAndSwapWithConditions(ctx, job, conditions, updates)
+		if err != nil {
+			return fmt.Errorf("terminalize cancelled workflow job %d: %w", job.ID, err)
+		}
+		if !updated {
+			return fmt.Errorf("%w: cancelled workflow job %d changed during recovery", ErrWorkflowOwnershipLost, job.ID)
+		}
+	}
+	return nil
+}
+
+func withWorkflowRecoveryTransaction(ctx context.Context, store datastore.DataStore, fn func(datastore.DataStore) error) error {
+	transactional, ok := store.(datastore.Transactional)
+	if !ok {
+		return ErrWorkflowFencingUnsupported
+	}
+	if current, ok := store.(datastore.ReadCommittedTransactional); ok {
+		return current.WithReadCommittedTransaction(ctx, fn)
+	}
+	return transactional.WithTransaction(ctx, fn)
 }
 
 func currentWorkflowDatabaseTime(ctx context.Context, store datastore.DataStore) (time.Time, error) {

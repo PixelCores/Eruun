@@ -71,9 +71,10 @@ type KafkaQueue struct {
 	reader      kafkaReader
 	readerGroup string
 
-	// pendingMessages tracks messages that have been read but not yet committed.
+	// pendingMessages tracks physical Kafka records by their logical message ID.
+	// A producer retry may write the same correlation ID at multiple offsets.
 	pendingMu          sync.Mutex
-	pendingMessages    map[string]*pendingMessage
+	pendingMessages    map[string][]*pendingMessage
 	pendingByPartition map[int]map[int64]*pendingMessage
 }
 
@@ -108,7 +109,7 @@ func NewKafkaQueue(cfg KafkaConfig) (*KafkaQueue, error) {
 	return &KafkaQueue{
 		cfg:                cfg,
 		writer:             kafkaWriterFactory(cfg),
-		pendingMessages:    make(map[string]*pendingMessage),
+		pendingMessages:    make(map[string][]*pendingMessage),
 		pendingByPartition: make(map[int]map[int64]*pendingMessage),
 	}, nil
 }
@@ -251,22 +252,36 @@ func (k *KafkaQueue) storePending(id string, msg kafka.Message) {
 	now := time.Now()
 	k.pendingMu.Lock()
 	defer k.pendingMu.Unlock()
+	k.upsertPendingLocked(id, msg, false, now)
+}
 
-	rec, exists := k.pendingMessages[id]
-	if !exists || rec == nil {
-		rec = &pendingMessage{id: id}
-		k.pendingMessages[id] = rec
-	}
-	rec.msg = msg
-	rec.acked = false
-	rec.inFlight = true
-	rec.fetchedAt = now
-	rec.lastDeliveredAt = now
-
+func (k *KafkaQueue) upsertPendingLocked(id string, msg kafka.Message, acked bool, now time.Time) *pendingMessage {
 	if _, ok := k.pendingByPartition[msg.Partition]; !ok {
 		k.pendingByPartition[msg.Partition] = make(map[int64]*pendingMessage)
 	}
+	if rec := k.pendingByPartition[msg.Partition][msg.Offset]; rec != nil {
+		if rec.id != id {
+			k.removePendingLocked(rec)
+			rec.id = id
+			k.pendingMessages[id] = append(k.pendingMessages[id], rec)
+		}
+		rec.msg = msg
+		rec.acked = rec.acked || acked
+		rec.inFlight = !rec.acked
+		rec.lastDeliveredAt = now
+		return rec
+	}
+	rec := &pendingMessage{
+		id:              id,
+		msg:             msg,
+		acked:           acked,
+		inFlight:        !acked,
+		fetchedAt:       now,
+		lastDeliveredAt: now,
+	}
+	k.pendingMessages[id] = append(k.pendingMessages[id], rec)
 	k.pendingByPartition[msg.Partition][msg.Offset] = rec
+	return rec
 }
 
 func (k *KafkaQueue) ackInternalMessage(ctx context.Context, reader kafkaReader, msg kafka.Message) error {
@@ -276,21 +291,7 @@ func (k *KafkaQueue) ackInternalMessage(ctx context.Context, reader kafkaReader,
 	k.pendingMu.Lock()
 	defer k.pendingMu.Unlock()
 
-	rec, exists := k.pendingMessages[id]
-	if !exists || rec == nil {
-		rec = &pendingMessage{id: id}
-		k.pendingMessages[id] = rec
-	}
-	rec.msg = msg
-	rec.acked = true
-	rec.inFlight = false
-	rec.fetchedAt = now
-	rec.lastDeliveredAt = now
-
-	if _, ok := k.pendingByPartition[msg.Partition]; !ok {
-		k.pendingByPartition[msg.Partition] = make(map[int64]*pendingMessage)
-	}
-	k.pendingByPartition[msg.Partition][msg.Offset] = rec
+	k.upsertPendingLocked(id, msg, true, now)
 
 	candidate, ok := k.commitCandidateLocked(msg.Partition)
 	if !ok || candidate == nil {
@@ -313,12 +314,13 @@ func (k *KafkaQueue) MarkMessageHandlingStart(id string) {
 	now := time.Now()
 	k.pendingMu.Lock()
 	defer k.pendingMu.Unlock()
-	rec, ok := k.pendingMessages[id]
-	if !ok || rec == nil {
-		return
+	for _, rec := range k.pendingMessages[id] {
+		if rec == nil || rec.acked {
+			continue
+		}
+		rec.inFlight = true
+		rec.lastDeliveredAt = now
 	}
-	rec.inFlight = true
-	rec.lastDeliveredAt = now
 }
 
 // MarkMessageHandlingDone marks active handling completion.
@@ -330,15 +332,15 @@ func (k *KafkaQueue) MarkMessageHandlingDone(id string, acked bool) {
 	now := time.Now()
 	k.pendingMu.Lock()
 	defer k.pendingMu.Unlock()
-	rec, ok := k.pendingMessages[id]
-	if !ok || rec == nil {
-		return
+	for _, rec := range k.pendingMessages[id] {
+		if rec == nil || rec.acked {
+			continue
+		}
+		rec.inFlight = false
+		if !acked {
+			rec.lastDeliveredAt = now
+		}
 	}
-	rec.inFlight = false
-	if acked {
-		return
-	}
-	rec.lastDeliveredAt = now
 }
 
 // Ack acknowledges processed messages by committing contiguous offsets.
@@ -360,16 +362,21 @@ func (k *KafkaQueue) Ack(ctx context.Context, group string, ids ...string) error
 	partitions := make(map[int]struct{})
 	previousAckState := make(map[*pendingMessage]bool)
 	for _, id := range ids {
-		rec, ok := k.pendingMessages[id]
-		if !ok || rec == nil {
+		records := k.pendingMessages[id]
+		if len(records) == 0 {
 			klog.V(4).Infof("kafka ack: message %s not found in pending, may be already acked", id)
 			continue
 		}
-		if _, exists := previousAckState[rec]; !exists {
-			previousAckState[rec] = rec.acked
+		for _, rec := range records {
+			if rec == nil {
+				continue
+			}
+			if _, exists := previousAckState[rec]; !exists {
+				previousAckState[rec] = rec.acked
+			}
+			rec.acked = true
+			partitions[rec.msg.Partition] = struct{}{}
 		}
-		rec.acked = true
-		partitions[rec.msg.Partition] = struct{}{}
 	}
 
 	var commitErrs []error
@@ -440,9 +447,7 @@ func (k *KafkaQueue) clearCommittedLocked(partition int, committedOffset int64) 
 			continue
 		}
 		delete(records, offset)
-		if rec != nil {
-			delete(k.pendingMessages, rec.id)
-		}
+		k.removePendingLocked(rec)
 	}
 	if len(records) == 0 {
 		delete(k.pendingByPartition, partition)
@@ -488,9 +493,7 @@ func (k *KafkaQueue) compactAckedPendingLocked(partition int) {
 			continue
 		}
 
-		if prev := records[previousAckedOffset]; prev != nil {
-			delete(k.pendingMessages, prev.id)
-		}
+		k.removePendingLocked(records[previousAckedOffset])
 		delete(records, previousAckedOffset)
 		previousAckedOffset = offset
 	}
@@ -509,18 +512,17 @@ func (k *KafkaQueue) AutoClaim(ctx context.Context, group, consumer string, minI
 	k.pendingMu.Lock()
 	defer k.pendingMu.Unlock()
 
-	candidates := make([]*pendingMessage, 0, len(k.pendingMessages))
-	for _, rec := range k.pendingMessages {
-		if rec == nil || rec.acked {
-			continue
+	var candidates []*pendingMessage
+	for _, records := range k.pendingMessages {
+		for _, rec := range records {
+			if rec == nil || rec.acked || rec.inFlight {
+				continue
+			}
+			if now.Sub(rec.lastDeliveredAt) < minIdle {
+				continue
+			}
+			candidates = append(candidates, rec)
 		}
-		if rec.inFlight {
-			continue
-		}
-		if now.Sub(rec.lastDeliveredAt) < minIdle {
-			continue
-		}
-		candidates = append(candidates, rec)
 	}
 
 	sort.Slice(candidates, func(i, j int) bool {
@@ -544,6 +546,25 @@ func (k *KafkaQueue) AutoClaim(ctx context.Context, group, consumer string, minI
 		messages = append(messages, Message{ID: rec.id, Payload: rec.msg.Value})
 	}
 	return messages, nil
+}
+
+func (k *KafkaQueue) removePendingLocked(target *pendingMessage) {
+	if target == nil {
+		return
+	}
+	records := k.pendingMessages[target.id]
+	for i, rec := range records {
+		if rec != target {
+			continue
+		}
+		records = append(records[:i], records[i+1:]...)
+		break
+	}
+	if len(records) == 0 {
+		delete(k.pendingMessages, target.id)
+		return
+	}
+	k.pendingMessages[target.id] = records
 }
 
 // Close releases the Kafka writer and reader resources.
@@ -577,7 +598,7 @@ func (k *KafkaQueue) Close(ctx context.Context) error {
 func (k *KafkaQueue) resetPending() {
 	k.pendingMu.Lock()
 	defer k.pendingMu.Unlock()
-	k.pendingMessages = make(map[string]*pendingMessage)
+	k.pendingMessages = make(map[string][]*pendingMessage)
 	k.pendingByPartition = make(map[int]map[int64]*pendingMessage)
 }
 
@@ -595,7 +616,9 @@ func (k *KafkaQueue) Stats(_ context.Context, group string) (backlog int64, pend
 	}
 
 	k.pendingMu.Lock()
-	pending = int64(len(k.pendingMessages))
+	for _, records := range k.pendingMessages {
+		pending += int64(len(records))
+	}
 	k.pendingMu.Unlock()
 
 	return backlog, pending, nil

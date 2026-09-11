@@ -489,10 +489,19 @@ func matchJobSchedulingDeadline(job *model.JobInfo, owner *model.WorkflowQueue, 
 }
 
 func jobSchedulingCurrent(ctx context.Context, store datastore.DataStore, job *model.JobInfo, now time.Time, parents map[string]*model.WorkflowQueue, retainRunningAdmission bool) (bool, error) {
-	if job.WorkspaceID == "" || job.SchedulingQueuedAt == nil || jobAdmissionExpired(job, now) || jobSchedulingTerminal(job.Status) {
+	if job.WorkspaceID == "" || job.SchedulingQueuedAt == nil {
+		return false, nil
+	}
+	if cancelledKubernetesCleanupPending(job) {
+		return job.SchedulingState == workflowconfig.JobSchedulingAdmitted, nil
+	}
+	if jobSchedulingTerminal(job.Status) {
 		return false, nil
 	}
 	if job.SchedulingOwnerStatus == "" {
+		if jobAdmissionExpired(job, now) {
+			return false, nil
+		}
 		return job.DelayState == config.JobDelayStatePending && job.DelayPayload != "" && job.Status == string(config.StatusDistributed) && job.DelayExecuteAt <= now.Unix() && job.SchedulingGeneration == job.RunGeneration && job.SchedulingExpiresAt != nil, nil
 	}
 	parent, cached := parents[job.TaskID]
@@ -511,7 +520,26 @@ func jobSchedulingCurrent(ctx context.Context, store datastore.DataStore, job *m
 	if parent == nil {
 		return false, nil
 	}
-	if parent.RunGeneration != job.SchedulingGeneration || parent.Status != job.SchedulingOwnerStatus {
+	if parent.RunGeneration != job.SchedulingGeneration {
+		return false, nil
+	}
+	if parent.Status == config.StatusCancelled && job.SchedulingOwnerStatus == config.StatusRunning &&
+		job.SchedulingState == workflowconfig.JobSchedulingAdmitted && recoverableKubernetesJobInfo(job) {
+		return true, nil
+	}
+	if jobAdmissionExpired(job, now) {
+		return false, nil
+	}
+	if parent.Status != job.SchedulingOwnerStatus {
+		// Cancellation revokes execution permission immediately, but the admitted
+		// Kubernetes workload still consumes capacity until exact cleanup finishes.
+		if parent.Status == config.StatusCancelled &&
+			job.SchedulingOwnerStatus == config.StatusRunning &&
+			job.SchedulingState == workflowconfig.JobSchedulingAdmitted &&
+			parent.RunToken != "" && parent.WorkerID != "" &&
+			parent.LeaseExpiresAt != nil && parent.LeaseExpiresAt.After(now) {
+			return true, nil
+		}
 		return false, nil
 	}
 	if !jobSchedulingTerminal(string(parent.Status)) && (parent.RunToken == "" || parent.WorkerID == "") {
@@ -527,6 +555,18 @@ func jobSchedulingCurrent(ctx context.Context, store datastore.DataStore, job *m
 		return parent.LeaseExpiresAt != nil && parent.LeaseExpiresAt.After(now), nil
 	}
 	return job.Type == string(config.JobDeployCallback) && job.SchedulingExpiresAt != nil, nil
+}
+
+func recoverableKubernetesJobInfo(job *model.JobInfo) bool {
+	if job == nil {
+		return false
+	}
+	return config.IsInstantJobType(config.JobType(job.Type)) || job.Type == string(config.JobDeployScheduled)
+}
+
+func cancelledKubernetesCleanupPending(job *model.JobInfo) bool {
+	return recoverableKubernetesJobInfo(job) && job.Status == string(config.StatusCancelled) &&
+		job.SchedulingReason == "parent workflow cancelled"
 }
 
 func jobAdmissionExpired(job *model.JobInfo, now time.Time) bool {
