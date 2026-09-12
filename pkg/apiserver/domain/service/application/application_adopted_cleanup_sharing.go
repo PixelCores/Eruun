@@ -81,9 +81,30 @@ func (c *applicationsServiceImpl) scanAdoptedCleanupSharing(
 		}
 	}
 
+	if err := c.scanAdoptedCleanupWorkloadReferences(ctx, state, rootUIDs); err != nil {
+		return nil, err
+	}
+	if err := c.scanAdoptedCleanupNetworkReferences(ctx, state); err != nil {
+		return nil, err
+	}
+	if err := c.scanAdoptedCleanupRBACReferences(ctx, state); err != nil {
+		return nil, err
+	}
+	hpas, err := c.KubeClient.AutoscalingV2().HorizontalPodAutoscalers(state.namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("scan cleanup HPA targets: %w", err)
+	}
+	for index := range hpas.Items {
+		target := hpas.Items[index].Spec.ScaleTargetRef
+		state.hpaTargets[cleanupKindNameKey(target.Kind, target.Name)] = struct{}{}
+	}
+	return state, nil
+}
+
+func (c *applicationsServiceImpl) scanAdoptedCleanupWorkloadReferences(ctx context.Context, state *adoptedCleanupSharingState, rootUIDs map[string]struct{}) error {
 	deployments, err := c.KubeClient.AppsV1().Deployments(state.namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("scan cleanup Deployment references: %w", err)
+		return fmt.Errorf("scan cleanup Deployment references: %w", err)
 	}
 	for index := range deployments.Items {
 		workload := &deployments.Items[index]
@@ -92,7 +113,7 @@ func (c *applicationsServiceImpl) scanAdoptedCleanupSharing(
 	adoptedReplicaSetUIDs := make(map[string]struct{})
 	replicaSets, err := c.KubeClient.AppsV1().ReplicaSets(state.namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("scan cleanup ReplicaSet references: %w", err)
+		return fmt.Errorf("scan cleanup ReplicaSet references: %w", err)
 	}
 	for index := range replicaSets.Items {
 		replicaSet := &replicaSets.Items[index]
@@ -107,7 +128,7 @@ func (c *applicationsServiceImpl) scanAdoptedCleanupSharing(
 	}
 	statefulSets, err := c.KubeClient.AppsV1().StatefulSets(state.namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("scan cleanup StatefulSet references: %w", err)
+		return fmt.Errorf("scan cleanup StatefulSet references: %w", err)
 	}
 	for index := range statefulSets.Items {
 		workload := &statefulSets.Items[index]
@@ -115,28 +136,28 @@ func (c *applicationsServiceImpl) scanAdoptedCleanupSharing(
 	}
 	daemonSets, err := c.KubeClient.AppsV1().DaemonSets(state.namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("scan cleanup DaemonSet references: %w", err)
+		return fmt.Errorf("scan cleanup DaemonSet references: %w", err)
 	}
 	for index := range daemonSets.Items {
 		state.addExternalPodTemplate(string(daemonSets.Items[index].UID), rootUIDs, daemonSets.Items[index].Spec.Template)
 	}
 	jobs, err := c.KubeClient.BatchV1().Jobs(state.namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("scan cleanup Job references: %w", err)
+		return fmt.Errorf("scan cleanup Job references: %w", err)
 	}
 	for index := range jobs.Items {
 		state.addExternalPodTemplate(string(jobs.Items[index].UID), rootUIDs, jobs.Items[index].Spec.Template)
 	}
 	cronJobs, err := c.KubeClient.BatchV1().CronJobs(state.namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("scan cleanup CronJob references: %w", err)
+		return fmt.Errorf("scan cleanup CronJob references: %w", err)
 	}
 	for index := range cronJobs.Items {
 		state.addExternalPodTemplate(string(cronJobs.Items[index].UID), rootUIDs, cronJobs.Items[index].Spec.JobTemplate.Spec.Template)
 	}
 	pods, err := c.KubeClient.CoreV1().Pods(state.namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("scan cleanup Pod references: %w", err)
+		return fmt.Errorf("scan cleanup Pod references: %w", err)
 	}
 	for index := range pods.Items {
 		pod := &pods.Items[index]
@@ -148,9 +169,13 @@ func (c *applicationsServiceImpl) scanAdoptedCleanupSharing(
 		}
 		state.addPodSpecReferences(pod.Spec)
 	}
+	return nil
+}
+
+func (c *applicationsServiceImpl) scanAdoptedCleanupNetworkReferences(ctx context.Context, state *adoptedCleanupSharingState) error {
 	ingresses, err := c.KubeClient.NetworkingV1().Ingresses(state.namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("scan cleanup Ingress references: %w", err)
+		return fmt.Errorf("scan cleanup Ingress references: %w", err)
 	}
 	for index := range ingresses.Items {
 		ingress := &ingresses.Items[index]
@@ -166,7 +191,7 @@ func (c *applicationsServiceImpl) scanAdoptedCleanupSharing(
 	}
 	services, err := c.KubeClient.CoreV1().Services(state.namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("scan cleanup Service selectors: %w", err)
+		return fmt.Errorf("scan cleanup Service selectors: %w", err)
 	}
 	for index := range services.Items {
 		service := &services.Items[index]
@@ -197,13 +222,17 @@ func (c *applicationsServiceImpl) scanAdoptedCleanupSharing(
 		}
 	}
 
+	return nil
+}
+
+func (c *applicationsServiceImpl) scanAdoptedCleanupRBACReferences(ctx context.Context, state *adoptedCleanupSharingState) error {
 	roleBindings, err := c.KubeClient.RbacV1().RoleBindings(state.namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("scan cleanup RoleBinding references: %w", err)
+		return fmt.Errorf("scan cleanup RoleBinding references: %w", err)
 	}
 	clusterRoleBindings, err := c.KubeClient.RbacV1().ClusterRoleBindings().List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("scan cleanup ClusterRoleBinding references: %w", err)
+		return fmt.Errorf("scan cleanup ClusterRoleBinding references: %w", err)
 	}
 	for index := range clusterRoleBindings.Items {
 		binding := &clusterRoleBindings.Items[index]
@@ -241,18 +270,10 @@ func (c *applicationsServiceImpl) scanAdoptedCleanupSharing(
 		}
 	}
 	if err := c.addExternalServiceAccountSecretReferences(ctx, state); err != nil {
-		return nil, err
+		return err
 	}
 
-	hpas, err := c.KubeClient.AutoscalingV2().HorizontalPodAutoscalers(state.namespace).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("scan cleanup HPA targets: %w", err)
-	}
-	for index := range hpas.Items {
-		target := hpas.Items[index].Spec.ScaleTargetRef
-		state.hpaTargets[cleanupKindNameKey(target.Kind, target.Name)] = struct{}{}
-	}
-	return state, nil
+	return nil
 }
 
 func (c *applicationsServiceImpl) addExternalServiceAccountSecretReferences(

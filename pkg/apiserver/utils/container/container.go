@@ -49,7 +49,7 @@ func (c *Container) ProvideWithName(name string, bean interface{}) error {
 func (c *Container) Populate() error {
 	start := time.Now()
 	defer func() {
-		klog.Infof("populate the bean container take time %s", time.Now().Sub(start))
+		klog.Infof("populate the bean container take time %s", time.Since(start))
 	}()
 	return c.graph.Populate()
 }

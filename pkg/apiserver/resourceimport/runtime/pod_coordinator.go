@@ -96,8 +96,9 @@ type PodCoordinator struct {
 	maxQueueItems  int
 	observe        PodObservationFunc
 
-	queue workqueue.RateLimitingInterface
+	queue workqueue.TypedRateLimitingInterface[string]
 
+	watchers         sync.WaitGroup
 	observeMu        sync.Mutex
 	mu               sync.RWMutex
 	bindingsByNS     map[string]map[string]SourceBinding
@@ -144,11 +145,14 @@ func WithPodObservationFunc(observe PodObservationFunc) PodCoordinatorOption {
 // and returns when its context is cancelled (for example on leader loss).
 func NewPodCoordinator(client kubernetes.Interface, loader BindingLoader, opts ...PodCoordinatorOption) *PodCoordinator {
 	c := &PodCoordinator{
-		client:           client,
-		load:             loader,
-		reloadInterval:   defaultBindingReloadInterval,
-		maxQueueItems:    defaultMaxQueueItems,
-		queue:            workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "namespace-adoption-pod-labeler"),
+		client:         client,
+		load:           loader,
+		reloadInterval: defaultBindingReloadInterval,
+		maxQueueItems:  defaultMaxQueueItems,
+		queue: workqueue.NewTypedRateLimitingQueueWithConfig(
+			workqueue.DefaultTypedControllerRateLimiter[string](),
+			workqueue.TypedRateLimitingQueueConfig[string]{Name: "namespace-adoption-pod-labeler"},
+		),
 		bindingsByNS:     make(map[string]map[string]SourceBinding),
 		labelClaimsByNS:  make(map[string]map[string]struct{}),
 		namespaceCancels: make(map[string]context.CancelFunc),
@@ -201,6 +205,7 @@ func (c *PodCoordinator) shutdown() {
 	}
 	c.mu.Unlock()
 	c.queue.ShutDown()
+	c.watchers.Wait()
 }
 
 func (c *PodCoordinator) reload(ctx context.Context) {
@@ -356,7 +361,13 @@ func (c *PodCoordinator) ensureNamespaceWatch(parent context.Context, namespace 
 		return
 	}
 
-	go factory.Start(ctx.Done())
+	factory.Start(ctx.Done())
+	c.watchers.Add(1)
+	go func() {
+		defer c.watchers.Done()
+		<-ctx.Done()
+		factory.Shutdown()
+	}()
 }
 
 func (c *PodCoordinator) enqueueNamespacePods(ctx context.Context, namespace string) {
@@ -459,27 +470,22 @@ func (c *PodCoordinator) runWorker(ctx context.Context) {
 }
 
 func (c *PodCoordinator) processNext(ctx context.Context) bool {
-	item, shutdown := c.queue.Get()
+	key, shutdown := c.queue.Get()
 	if shutdown {
 		return false
 	}
-	defer c.queue.Done(item)
-	key, ok := item.(string)
-	if !ok {
-		c.queue.Forget(item)
-		return true
-	}
+	defer c.queue.Done(key)
 	c.mu.RLock()
 	generation := c.pending[key]
 	c.mu.RUnlock()
 	if err := c.reconcilePod(ctx, key); err != nil {
-		if c.queue.NumRequeues(item) < maxPodLabelRetries && ctx.Err() == nil {
-			c.queue.AddRateLimited(item)
+		if c.queue.NumRequeues(key) < maxPodLabelRetries && ctx.Err() == nil {
+			c.queue.AddRateLimited(key)
 			return true
 		}
 		klog.ErrorS(err, "reconcile adopted pod labels", "pod", key)
 	}
-	c.queue.Forget(item)
+	c.queue.Forget(key)
 	if c.finishPendingAttempt(key, generation) {
 		c.queue.Add(key)
 	}

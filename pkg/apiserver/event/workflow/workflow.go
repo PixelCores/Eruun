@@ -19,6 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
+	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
@@ -63,6 +64,8 @@ type workflowWorkerRun struct {
 	limiter      *semaphore.Weighted
 }
 
+type workflowRuntimeContextKey struct{}
+
 func newWorkflowWorkerRun(executionCtx context.Context, limiter *semaphore.Weighted) *workflowWorkerRun {
 	if executionCtx == nil {
 		executionCtx = context.Background()
@@ -102,6 +105,8 @@ func (w *Workflow) StartController(ctx context.Context, errChan chan error) {
 	w.startDelayDispatcher(ctx, &wg)
 	w.startResultDispatcher(ctx, &wg)
 	w.startResultOutboxDispatcher(ctx, &wg)
+	w.startCancelledWorkflowRecovery(ctx, &wg)
+	w.startTerminalCallbackRecovery(ctx, &wg)
 	<-ctx.Done()
 	wg.Wait()
 }
@@ -145,10 +150,143 @@ func (w *Workflow) startLeaseReaper(ctx context.Context, wg *sync.WaitGroup) {
 			cancel()
 			if err != nil {
 				klog.ErrorS(err, "recover expired workflow execution leases")
-				continue
-			}
-			if recovered > 0 {
+			} else if recovered > 0 {
 				klog.InfoS("recovered expired workflow execution leases", "count", recovered)
+			}
+		}
+	}
+	if wg == nil {
+		go run()
+		return
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		run()
+	}()
+}
+
+func (w *Workflow) startCancelledWorkflowRecovery(ctx context.Context, wg *sync.WaitGroup) {
+	run := func() {
+		ticker := time.NewTicker(w.workflowLeaseReaperInterval())
+		defer ticker.Stop()
+		cleanupPage := 1
+		for {
+			recoveryCtx, cancel := context.WithTimeout(ctx, config.TaskStateTransitionTimeout)
+			recovered, err := repository.RecoverExpiredCancelledWorkflowTasks(recoveryCtx, w.Store)
+			cancel()
+			if err != nil {
+				klog.ErrorS(err, "recover expired cancelled workflow executions")
+			} else if recovered > 0 {
+				klog.InfoS("recovered expired cancelled workflow executions", "count", recovered)
+			}
+
+			cleanupCtx, cleanupCancel := context.WithTimeout(ctx, config.DelTimeOut)
+			cleaned, examined, cleanupErr := job.CleanupRecoveredCancelledJobsPage(cleanupCtx, w.KubeClient, w.Store, cleanupPage, 100)
+			cleanupCancel()
+			if examined < 100 {
+				cleanupPage = 1
+			} else {
+				cleanupPage++
+			}
+			if cleanupErr != nil {
+				klog.ErrorS(cleanupErr, "cleanup recovered cancelled Kubernetes Jobs")
+			} else if cleaned > 0 {
+				klog.InfoS("cleaned recovered cancelled Kubernetes Jobs", "count", cleaned)
+			}
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}
+	if wg == nil {
+		go run()
+		return
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		run()
+	}()
+}
+
+type terminalCallbackRecoveryResult struct {
+	taskID string
+	done   bool
+	err    error
+}
+
+func (w *Workflow) startTerminalCallbackRecovery(ctx context.Context, wg *sync.WaitGroup) {
+	const (
+		batchSize = 100
+		maxActive = 8
+	)
+	run := func() {
+		ticker := time.NewTicker(w.workflowLeaseReaperInterval())
+		defer ticker.Stop()
+		results := make(chan terminalCallbackRecoveryResult, maxActive)
+		active := make(map[string]struct{}, maxActive)
+		page := 1
+		schedule := func() {
+			queryCtx, cancel := context.WithTimeout(ctx, config.TaskStateTransitionTimeout)
+			tasks, err := workflowservice.PendingWorkflowTerminalCallbacks(queryCtx, w.Store, page, batchSize)
+			cancel()
+			if err != nil {
+				klog.ErrorS(err, "list pending workflow terminal callbacks", "page", page)
+				return
+			}
+			if len(tasks) < batchSize {
+				page = 1
+			} else {
+				page++
+			}
+			for _, task := range tasks {
+				if len(active) >= maxActive {
+					break
+				}
+				if task == nil || task.TaskID == "" {
+					continue
+				}
+				if _, running := active[task.TaskID]; running {
+					continue
+				}
+				active[task.TaskID] = struct{}{}
+				taskSnapshot := *task
+				if wg != nil {
+					wg.Add(1)
+				}
+				go func() {
+					if wg != nil {
+						defer wg.Done()
+					}
+					done, err := workflowservice.ReconcileWorkflowTerminalCallback(
+						ctx, w.Store, w.Cfg, w.URLSecurityPolicyProvider, &taskSnapshot,
+					)
+					select {
+					case results <- terminalCallbackRecoveryResult{taskID: taskSnapshot.TaskID, done: done, err: err}:
+					case <-ctx.Done():
+					}
+				}()
+			}
+		}
+
+		schedule()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case result := <-results:
+				delete(active, result.taskID)
+				if result.err != nil {
+					klog.ErrorS(result.err, "reconcile workflow terminal callback", "taskID", result.taskID)
+				} else if result.done {
+					klog.InfoS("reconciled workflow terminal callback", "taskID", result.taskID)
+				}
+			case <-ticker.C:
+				schedule()
 			}
 		}
 	}
@@ -269,6 +407,7 @@ func (w *Workflow) runWorkflowTask(ctx context.Context, workerRun *workflowWorke
 		workflowLimiter = workerRun.limiter
 	}
 	taskCtx, cancelTask := context.WithCancelCause(runnerCtx)
+	taskCtx = context.WithValue(taskCtx, workflowRuntimeContextKey{}, runnerCtx)
 	heartbeatDone := w.startWorkflowTaskHeartbeat(taskCtx, cancelTask, task)
 	stopHeartbeat := func() {
 		cancelTask(nil)

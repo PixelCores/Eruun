@@ -27,6 +27,7 @@ import (
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api"
+	"github.com/PixelCores/Eruun/pkg/apiserver/jobs"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
@@ -37,6 +38,10 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 		return fmt.Errorf("load authentication configuration: %w", err)
 	}
 	s.cfg.Accounts = accountsConfig
+	s.cfg.Jobs, err = spec.LoadJobsRuntimeConfig(s.cfg.JobsConfigFile)
+	if err != nil {
+		return fmt.Errorf("load Jobs configuration: %w", err)
+	}
 	builtinModels, err := model.BuiltinModels()
 	if err != nil {
 		return fmt.Errorf("build model set: %w", err)
@@ -167,6 +172,18 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 		return fmt.Errorf("fail to provides the config bean to the container: %w", err)
 	}
 
+	s.jobs, err = jobs.New(ds, kubeClient, &s.cfg)
+	if err != nil {
+		return fmt.Errorf("initialize workspace Jobs: %w", err)
+	}
+	if err = s.beanContainer.Provides(s.jobs); err != nil {
+		return err
+	}
+
+	return s.provideDomainAndEventBeans(runtimeQueues)
+}
+
+func (s *restServer) provideDomainAndEventBeans(runtimeQueues *msg.RuntimeQueues) error {
 	programmingLanguageRepository, err := repository.NewProgrammingLanguageRepositoryWithStore(s.dataStore)
 	if err != nil {
 		return err

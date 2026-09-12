@@ -10,8 +10,10 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/jobs"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
@@ -35,8 +37,30 @@ type ApprovalExecution struct {
 
 const versionUpdateCleanupStepName = "cleanup-removed-components"
 
-func GenerateJobTasks(ctx context.Context, task *model.WorkflowQueue, ds datastore.DataStore, defaultJobTimeoutSeconds int64) ([]StepExecution, error) {
+func GenerateJobTasks(ctx context.Context, task *model.WorkflowQueue, ds datastore.DataStore, defaultJobTimeoutSeconds int64, configs ...*config.Config) ([]StepExecution, error) {
 	logger := klog.FromContext(ctx)
+	if task != nil && task.Type == config.WorkflowTaskTypeJob {
+		scope, ok := access.FromContext(ctx)
+		if !ok || task.AppID != "" || scope.WorkspaceID != task.WorkspaceID || scope.Namespace == "" {
+			return nil, fmt.Errorf("workspace Job requires its persisted workspace execution scope")
+		}
+		var cfg *config.Config
+		if len(configs) > 0 {
+			cfg = configs[0]
+		}
+		jobTask, err := jobs.BuildTask(ctx, ds, cfg, task, scope.Namespace)
+		if err != nil {
+			return []StepExecution{*failedWorkflowGenerationExecution(task, defaultJobTimeoutSeconds, err)}, nil
+		}
+		executions := []StepExecution{{Name: jobTask.Name, Mode: config.WorkflowModeStepByStep,
+			StepType: config.WorkflowStepTypeComponent, FailurePolicy: workflowconfig.WorkflowFailurePolicyCleanupFailed,
+			Jobs: map[int][]*model.JobTask{config.JobPriorityNormal: {jobTask}}}}
+		applyWorkflowExecutionIdentity(executions, task)
+		if err := restoreCommittedJobExecutions(ctx, executions, task, ds); err != nil {
+			return nil, err
+		}
+		return executions, nil
+	}
 	if execution, matched, resourceImportErr := buildResourceImportJobExecution(task, defaultJobTimeoutSeconds); matched {
 		if resourceImportErr != nil {
 			logger.Error(resourceImportErr, "Failed to prepare resource import job", "taskID", task.TaskID)
@@ -176,7 +200,7 @@ func restoreCommittedJobExecutions(ctx context.Context, executions []StepExecuti
 		return fmt.Errorf("restore committed job executions: datastore is nil")
 	}
 	query := &model.JobInfo{TaskID: task.TaskID}
-	if isResourceImportWorkflowTask(task.Type) {
+	if isResourceImportWorkflowTask(task.Type) || task.Type == config.WorkflowTaskTypeJob {
 		query.WorkspaceID = task.WorkspaceID
 	}
 	entities, err := ds.List(ctx, query, &datastore.ListOptions{
@@ -265,7 +289,7 @@ func isRestorableCommittedJobStatus(jobTask *model.JobTask, status config.Status
 			return false
 		}
 		jobType := config.JobType(jobTask.JobType)
-		return jobType == config.JobDeployInstant || jobType == config.JobDeployScheduled
+		return config.IsInstantJobType(jobType) || jobType == config.JobDeployScheduled
 	default:
 		return false
 	}

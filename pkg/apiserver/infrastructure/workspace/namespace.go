@@ -39,28 +39,10 @@ func (m *Manager) ensure(ctx context.Context, w *model.Workspace) error {
 	if m == nil || m.Client == nil || w == nil || w.ID == "" || w.Namespace == "" {
 		return fmt.Errorf("workspace namespace dependencies are incomplete")
 	}
-	namespaces := m.Client.CoreV1().Namespaces()
-	ns, err := namespaces.Get(ctx, w.Namespace, metav1.GetOptions{})
-	if apierrors.IsNotFound(err) {
-		ns, err = namespaces.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: w.Namespace, Labels: map[string]string{OwnerLabel: w.ID, "pod-security.kubernetes.io/enforce": "restricted", "pod-security.kubernetes.io/enforce-version": "v1.34"}}}, metav1.CreateOptions{})
-		if apierrors.IsAlreadyExists(err) {
-			ns, err = namespaces.Get(ctx, w.Namespace, metav1.GetOptions{})
-		}
+	if err := m.ensureNamespaceSecurity(ctx, w); err != nil {
+		return err
 	}
-	if err != nil {
-		return fmt.Errorf("ensure workspace namespace: %w", err)
-	}
-	if ns.Labels[OwnerLabel] != w.ID || ns.DeletionTimestamp != nil {
-		return bcode.ErrAccountConflict
-	}
-	if ns.Labels["pod-security.kubernetes.io/enforce"] != "restricted" || ns.Labels["pod-security.kubernetes.io/enforce-version"] != "v1.34" {
-		ns = ns.DeepCopy()
-		ns.Labels["pod-security.kubernetes.io/enforce"] = "restricted"
-		ns.Labels["pod-security.kubernetes.io/enforce-version"] = "v1.34"
-		if _, err = namespaces.Update(ctx, ns, metav1.UpdateOptions{}); err != nil {
-			return fmt.Errorf("enforce workspace Pod Security: %w", err)
-		}
-	}
+	var err error
 	meta := func(name string) metav1.ObjectMeta {
 		return metav1.ObjectMeta{Name: name, Namespace: w.Namespace, Labels: map[string]string{OwnerLabel: w.ID}}
 	}
@@ -141,6 +123,32 @@ func (m *Manager) ensure(ctx context.Context, w *model.Workspace) error {
 	}
 	if err != nil {
 		return fmt.Errorf("ensure workspace network policy: %w", err)
+	}
+	return nil
+}
+
+func (m *Manager) ensureNamespaceSecurity(ctx context.Context, w *model.Workspace) error {
+	namespaces := m.Client.CoreV1().Namespaces()
+	ns, err := namespaces.Get(ctx, w.Namespace, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		ns, err = namespaces.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: w.Namespace, Labels: map[string]string{OwnerLabel: w.ID, "pod-security.kubernetes.io/enforce": "restricted", "pod-security.kubernetes.io/enforce-version": "v1.34"}}}, metav1.CreateOptions{})
+		if apierrors.IsAlreadyExists(err) {
+			ns, err = namespaces.Get(ctx, w.Namespace, metav1.GetOptions{})
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("ensure workspace namespace: %w", err)
+	}
+	if ns.Labels[OwnerLabel] != w.ID || ns.DeletionTimestamp != nil {
+		return bcode.ErrAccountConflict
+	}
+	if ns.Labels["pod-security.kubernetes.io/enforce"] != "restricted" || ns.Labels["pod-security.kubernetes.io/enforce-version"] != "v1.34" {
+		ns = ns.DeepCopy()
+		ns.Labels["pod-security.kubernetes.io/enforce"] = "restricted"
+		ns.Labels["pod-security.kubernetes.io/enforce-version"] = "v1.34"
+		if _, err = namespaces.Update(ctx, ns, metav1.UpdateOptions{}); err != nil {
+			return fmt.Errorf("enforce workspace Pod Security: %w", err)
+		}
 	}
 	return nil
 }

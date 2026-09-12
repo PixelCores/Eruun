@@ -236,38 +236,21 @@ func (s *restServer) trackDrainingWorkerRun(run *workerRun) {
 	}()
 }
 
-func (s *restServer) finishWorkerDrain(ctx context.Context, run *workerRun) {
-	if run == nil {
-		return
-	}
-	if !run.waitUntil(ctx) {
-		run.stopExecution()
-	}
-	run.stopExecution()
-	run.wait()
-	s.workersMu.Lock()
-	delete(s.drainingWorkerRuns, run)
-	s.workersMu.Unlock()
-}
-
-func (s *restServer) stopDrainingWorkers() {
-	s.workersMu.Lock()
-	runs := make([]*workerRun, 0, len(s.drainingWorkerRuns))
-	for run := range s.drainingWorkerRuns {
-		runs = append(runs, run)
-	}
-	s.workersMu.Unlock()
-
-	for _, run := range runs {
-		run.stopExecution()
-	}
-}
-
 func reportableInformerStartError(ctx context.Context, err error) error {
 	if err == nil || (ctx != nil && ctx.Err() != nil) {
 		return nil
 	}
 	return fmt.Errorf("start informer manager: %w", err)
+}
+
+func reportWorkerStartupError(ctx context.Context, errChan chan error, err error) {
+	if err == nil || errChan == nil {
+		return
+	}
+	select {
+	case errChan <- err:
+	case <-ctx.Done():
+	}
 }
 
 func (s *restServer) ensureQueueGroup(ctx context.Context) error {
@@ -288,6 +271,9 @@ func (s *restServer) ensureQueueGroup(ctx context.Context) error {
 func (s *restServer) startControllerEventWorkers(run *workerRun, errChan chan error) {
 	if run == nil {
 		return
+	}
+	if s.jobs != nil {
+		run.start(s.jobs.Maintain)
 	}
 	for _, worker := range append([]event.Worker(nil), s.eventWorkers...) {
 		controllerWorker, ok := worker.(event.ControllerWorker)
@@ -400,9 +386,7 @@ func (s *restServer) onStartedControllerLeading(ctx context.Context, errChan cha
 	run := s.beginControllerRun(ctx)
 	if s.InformerManager != nil {
 		if err := s.InformerManager.Start(run.ctx); err != nil {
-			if reportable := reportableInformerStartError(run.ctx, err); reportable != nil && errChan != nil {
-				errChan <- reportable
-			}
+			reportWorkerStartupError(run.ctx, errChan, reportableInformerStartError(run.ctx, err))
 			run.markStarted()
 			return
 		}
@@ -421,8 +405,8 @@ func (s *restServer) onStartedSchedulerLeading(ctx context.Context, errChan chan
 	s.schedulerReady.Store(false)
 	run := s.beginSchedulerRun(ctx)
 	if err := s.ensureQueueGroup(run.ctx); err != nil {
-		if run.ctx.Err() == nil && errChan != nil {
-			errChan <- fmt.Errorf("ensure queue group %s: %w", config.WorkflowWorkerQueueGroup, err)
+		if run.ctx.Err() == nil {
+			reportWorkerStartupError(run.ctx, errChan, fmt.Errorf("ensure queue group %s: %w", config.WorkflowWorkerQueueGroup, err))
 		}
 		run.markStarted()
 		return
@@ -441,10 +425,6 @@ func (s *restServer) onStartedSchedulerLeading(ctx context.Context, errChan chan
 		}
 	}
 	s.schedulerReady.Store(true)
-}
-
-func (s *restServer) startQueueMetrics(ctx context.Context) {
-	go s.runQueueMetrics(ctx)
 }
 
 func (s *restServer) runQueueMetrics(ctx context.Context) {

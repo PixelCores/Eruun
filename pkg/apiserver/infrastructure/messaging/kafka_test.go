@@ -260,6 +260,53 @@ func TestKafkaQueueAckCommitsContiguousOffsetsOnly(t *testing.T) {
 	require.Empty(t, kq.pendingMessages)
 }
 
+func TestKafkaQueueAckDuplicateCorrelationDoesNotCommitPastGap(t *testing.T) {
+	useMockKafkaWriterFactory(t)
+
+	kq, err := NewKafkaQueue(KafkaConfig{Brokers: []string{"localhost:9092"}, Topic: "test-topic"})
+	require.NoError(t, err)
+	reader := &mockKafkaReader{}
+	kq.reader = reader
+
+	kq.storePending("same", kafka.Message{Partition: 0, Offset: 1, Value: []byte("first")})
+	kq.storePending("middle", kafka.Message{Partition: 0, Offset: 2, Value: []byte("middle")})
+	kq.storePending("same", kafka.Message{Partition: 0, Offset: 3, Value: []byte("retry")})
+
+	require.NoError(t, kq.Ack(context.Background(), "group", "same"))
+	require.Len(t, reader.commitCalls, 1)
+	require.EqualValues(t, 1, reader.commitCalls[0].Offset)
+	require.Contains(t, kq.pendingByPartition[0], int64(2))
+	require.Contains(t, kq.pendingByPartition[0], int64(3))
+
+	require.NoError(t, kq.Ack(context.Background(), "group", "middle"))
+	require.Len(t, reader.commitCalls, 2)
+	require.EqualValues(t, 3, reader.commitCalls[1].Offset)
+	require.Empty(t, kq.pendingMessages)
+}
+
+func TestKafkaQueueDeduplicatesRepeatedPhysicalOffset(t *testing.T) {
+	useMockKafkaWriterFactory(t)
+
+	kq, err := NewKafkaQueue(KafkaConfig{Brokers: []string{"localhost:9092"}, Topic: "test-topic"})
+	require.NoError(t, err)
+	reader := &mockKafkaReader{}
+	kq.reader = reader
+	record := kafka.Message{Partition: 0, Offset: 7, Value: []byte("payload")}
+
+	kq.storePending("same", record)
+	kq.storePending("same", record)
+
+	require.Len(t, kq.pendingMessages["same"], 1)
+	_, pending, err := kq.Stats(context.Background(), "group")
+	require.NoError(t, err)
+	require.EqualValues(t, 1, pending)
+	require.NoError(t, kq.Ack(context.Background(), "group", "same"))
+	require.Len(t, reader.commitCalls, 1)
+	require.EqualValues(t, 7, reader.commitCalls[0].Offset)
+	require.Empty(t, kq.pendingMessages)
+	require.Empty(t, kq.pendingByPartition)
+}
+
 func TestKafkaQueueAckCommitsPerPartitionIndependently(t *testing.T) {
 	useMockKafkaWriterFactory(t)
 
@@ -326,7 +373,7 @@ func TestKafkaQueueAckCommitFailureKeepsPending(t *testing.T) {
 	err = kq.Ack(context.Background(), "group", "0:1")
 	require.Error(t, err)
 	require.Contains(t, kq.pendingMessages, "0:1")
-	require.False(t, kq.pendingMessages["0:1"].acked)
+	require.False(t, kq.pendingMessages["0:1"][0].acked)
 
 	kq.MarkMessageHandlingDone("0:1", false)
 	claimed, claimErr := kq.AutoClaim(context.Background(), "group", "consumer", 0, 1)
@@ -344,10 +391,10 @@ func TestKafkaQueueAutoClaimStaleMessagesAndRefreshIdle(t *testing.T) {
 	kq.storePending("0:1", kafka.Message{Partition: 0, Offset: 1, Value: []byte("old")})
 	kq.storePending("0:2", kafka.Message{Partition: 0, Offset: 2, Value: []byte("new")})
 
-	kq.pendingMessages["0:1"].lastDeliveredAt = time.Now().Add(-2 * time.Minute)
-	kq.pendingMessages["0:2"].lastDeliveredAt = time.Now()
-	kq.pendingMessages["0:1"].inFlight = false
-	kq.pendingMessages["0:2"].inFlight = false
+	kq.pendingMessages["0:1"][0].lastDeliveredAt = time.Now().Add(-2 * time.Minute)
+	kq.pendingMessages["0:2"][0].lastDeliveredAt = time.Now()
+	kq.pendingMessages["0:1"][0].inFlight = false
+	kq.pendingMessages["0:2"][0].inFlight = false
 
 	claimed, err := kq.AutoClaim(context.Background(), "group", "consumer", time.Minute, 10)
 	require.NoError(t, err)
@@ -367,10 +414,10 @@ func TestKafkaQueueAutoClaimSkipsInFlightMessages(t *testing.T) {
 
 	kq.storePending("0:1", kafka.Message{Partition: 0, Offset: 1, Value: []byte("active")})
 	kq.storePending("0:2", kafka.Message{Partition: 0, Offset: 2, Value: []byte("stale")})
-	kq.pendingMessages["0:1"].lastDeliveredAt = time.Now().Add(-2 * time.Minute)
-	kq.pendingMessages["0:2"].lastDeliveredAt = time.Now().Add(-2 * time.Minute)
-	kq.pendingMessages["0:1"].inFlight = true
-	kq.pendingMessages["0:2"].inFlight = false
+	kq.pendingMessages["0:1"][0].lastDeliveredAt = time.Now().Add(-2 * time.Minute)
+	kq.pendingMessages["0:2"][0].lastDeliveredAt = time.Now().Add(-2 * time.Minute)
+	kq.pendingMessages["0:1"][0].inFlight = true
+	kq.pendingMessages["0:2"][0].inFlight = false
 
 	claimed, err := kq.AutoClaim(context.Background(), "group", "consumer", time.Minute, 10)
 	require.NoError(t, err)
@@ -385,15 +432,15 @@ func TestKafkaQueueMarkMessageHandlingDoneRefreshesIdleWindow(t *testing.T) {
 	require.NoError(t, err)
 
 	kq.storePending("0:1", kafka.Message{Partition: 0, Offset: 1, Value: []byte("payload")})
-	kq.pendingMessages["0:1"].lastDeliveredAt = time.Now().Add(-2 * time.Minute)
-	kq.pendingMessages["0:1"].inFlight = false
+	kq.pendingMessages["0:1"][0].lastDeliveredAt = time.Now().Add(-2 * time.Minute)
+	kq.pendingMessages["0:1"][0].inFlight = false
 
 	claimed, err := kq.AutoClaim(context.Background(), "group", "consumer", time.Minute, 1)
 	require.NoError(t, err)
 	require.Len(t, claimed, 1)
 
 	kq.MarkMessageHandlingDone("0:1", false)
-	rec := kq.pendingMessages["0:1"]
+	rec := kq.pendingMessages["0:1"][0]
 	require.NotNil(t, rec)
 	require.False(t, rec.inFlight)
 	require.WithinDuration(t, time.Now(), rec.lastDeliveredAt, time.Second)
@@ -495,7 +542,7 @@ func TestKafkaQueueReadGroupReadinessProbeDoesNotCommitPastUnackedBusinessMessag
 	require.Empty(t, reader.commitCalls, "probe offset must not commit past earlier unacked business message")
 	require.Contains(t, kq.pendingMessages, "task-1")
 	require.Contains(t, kq.pendingMessages, "0:11")
-	require.True(t, kq.pendingMessages["0:11"].acked)
+	require.True(t, kq.pendingMessages["0:11"][0].acked)
 
 	require.NoError(t, kq.Ack(context.Background(), "group", "task-1"))
 	require.Len(t, reader.commitCalls, 1)

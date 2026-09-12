@@ -146,20 +146,62 @@ func rewriteTraitsForTemplateWithPersistentStorageIdentities(traits *apisv1.Trai
 		return name
 	}
 
-	rewriteServiceReference := func(name, field string) (string, error) {
-		if rewriteMap == nil {
-			return name, nil
-		}
-		if mapped, ok := rewriteMap.serviceValue(name); ok {
-			return mapped, nil
-		}
-		if candidates, ok := rewriteMap.ambiguousServiceCandidates(name); ok {
-			return "", fmt.Errorf("%w: %s references ambiguous template service %q; candidates after clone: %s",
-				bcode.ErrApplicationConfig, field, name, strings.Join(candidates, ", "))
-		}
-		return name, nil
+	rewriteTemplateStorageTraits(traits, oldName, newName, baseName, rewriteNameCandidate, persistentStorageIdentities, collectTopLevelStorageIdentities)
+	if err := rewriteTemplateNetworkTraits(traits, oldName, newName, baseName, namespace, rewriteMap, rewriteNameCandidate, originalPodLabels, rewrittenPodLabels); err != nil {
+		return err
 	}
 
+	for i := range traits.RBAC {
+		policy := &traits.RBAC[i]
+		// RBAC 资源保持名称不变，但命名空间与组件命名空间对齐（为空则用默认命名空间）。
+		if namespace != "" {
+			policy.Namespace = namespace
+		} else if policy.Namespace == "" {
+			policy.Namespace = config.DefaultNamespace
+		}
+	}
+
+	for i := range traits.EnvFrom {
+		traits.EnvFrom[i].SourceName = rewriteNameCandidate(traits.EnvFrom[i].SourceName)
+	}
+
+	for i := range traits.Envs {
+		env := &traits.Envs[i]
+		if env.ValueFrom.Secret != nil {
+			env.ValueFrom.Secret.Name = rewriteNameCandidate(env.ValueFrom.Secret.Name)
+		}
+		if env.ValueFrom.Config != nil {
+			env.ValueFrom.Config.Name = rewriteNameCandidate(env.ValueFrom.Config.Name)
+		}
+	}
+
+	for i := range traits.Init {
+		initTrait := &traits.Init[i]
+		if initTrait.Name == "" || initTrait.Name == oldName {
+			initTrait.Name = fmt.Sprintf("%s-init-%d", newName, i+1)
+		}
+		rewritePropertiesForTemplateSkippingEnv(&initTrait.Properties, rewriteMap, initEnvOverrideKeys[i])
+		if err := rewriteTraitsForTemplateWithPersistentStorageIdentities(&initTrait.Traits, oldName, newName, baseName, namespace, rewriteMap, nil, nil, nil, persistentStorageIdentities, false); err != nil {
+			return err
+		}
+	}
+
+	for i := range traits.Sidecar {
+		sidecar := &traits.Sidecar[i]
+		if sidecar.Name == "" || sidecar.Name == oldName {
+			sidecar.Name = fmt.Sprintf("%s-sidecar-%d", newName, i+1)
+		}
+		rewriteStringMapValues(sidecar.Env, rewriteMap.rewriteText)
+		rewriteStringSlice(sidecar.Command, rewriteMap.rewriteText)
+		rewriteStringSlice(sidecar.Args, rewriteMap.rewriteText)
+		if err := rewriteTraitsForTemplateWithPersistentStorageIdentities(&sidecar.Traits, oldName, newName, baseName, namespace, rewriteMap, nil, nil, nil, persistentStorageIdentities, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func rewriteTemplateStorageTraits(traits *apisv1.Traits, oldName, newName, baseName string, rewriteNameCandidate func(string) string, persistentStorageIdentities map[string]spec.StorageTraitSpec, collectTopLevelStorageIdentities bool) {
 	rewriteStorageName := func(name string) (string, bool) {
 		if name == "" || name == oldName {
 			return newName, true
@@ -222,6 +264,23 @@ func rewriteTraitsForTemplateWithPersistentStorageIdentities(traits *apisv1.Trai
 		}
 	}
 
+}
+
+func rewriteTemplateNetworkTraits(traits *apisv1.Traits, oldName, newName, baseName, namespace string, rewriteMap *templateRewriteMap, rewriteNameCandidate func(string) string, originalPodLabels, rewrittenPodLabels map[string]string) error {
+	rewriteServiceReference := func(name, field string) (string, error) {
+		if rewriteMap == nil {
+			return name, nil
+		}
+		if mapped, ok := rewriteMap.serviceValue(name); ok {
+			return mapped, nil
+		}
+		if candidates, ok := rewriteMap.ambiguousServiceCandidates(name); ok {
+			return "", fmt.Errorf("%w: %s references ambiguous template service %q; candidates after clone: %s",
+				bcode.ErrApplicationConfig, field, name, strings.Join(candidates, ", "))
+		}
+		return name, nil
+	}
+
 	for i := range traits.Ingress {
 		ingress := &traits.Ingress[i]
 		if ingress.Name == "" || ingress.Name == oldName {
@@ -265,53 +324,6 @@ func rewriteTraitsForTemplateWithPersistentStorageIdentities(traits *apisv1.Trai
 		service.ExternalName = rewriteMap.rewriteText(service.ExternalName)
 	}
 
-	for i := range traits.RBAC {
-		policy := &traits.RBAC[i]
-		// RBAC 资源保持名称不变，但命名空间与组件命名空间对齐（为空则用默认命名空间）。
-		if namespace != "" {
-			policy.Namespace = namespace
-		} else if policy.Namespace == "" {
-			policy.Namespace = config.DefaultNamespace
-		}
-	}
-
-	for i := range traits.EnvFrom {
-		traits.EnvFrom[i].SourceName = rewriteNameCandidate(traits.EnvFrom[i].SourceName)
-	}
-
-	for i := range traits.Envs {
-		env := &traits.Envs[i]
-		if env.ValueFrom.Secret != nil {
-			env.ValueFrom.Secret.Name = rewriteNameCandidate(env.ValueFrom.Secret.Name)
-		}
-		if env.ValueFrom.Config != nil {
-			env.ValueFrom.Config.Name = rewriteNameCandidate(env.ValueFrom.Config.Name)
-		}
-	}
-
-	for i := range traits.Init {
-		initTrait := &traits.Init[i]
-		if initTrait.Name == "" || initTrait.Name == oldName {
-			initTrait.Name = fmt.Sprintf("%s-init-%d", newName, i+1)
-		}
-		rewritePropertiesForTemplateSkippingEnv(&initTrait.Properties, rewriteMap, initEnvOverrideKeys[i])
-		if err := rewriteTraitsForTemplateWithPersistentStorageIdentities(&initTrait.Traits, oldName, newName, baseName, namespace, rewriteMap, nil, nil, nil, persistentStorageIdentities, false); err != nil {
-			return err
-		}
-	}
-
-	for i := range traits.Sidecar {
-		sidecar := &traits.Sidecar[i]
-		if sidecar.Name == "" || sidecar.Name == oldName {
-			sidecar.Name = fmt.Sprintf("%s-sidecar-%d", newName, i+1)
-		}
-		rewriteStringMapValues(sidecar.Env, rewriteMap.rewriteText)
-		rewriteStringSlice(sidecar.Command, rewriteMap.rewriteText)
-		rewriteStringSlice(sidecar.Args, rewriteMap.rewriteText)
-		if err := rewriteTraitsForTemplateWithPersistentStorageIdentities(&sidecar.Traits, oldName, newName, baseName, namespace, rewriteMap, nil, nil, nil, persistentStorageIdentities, false); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 

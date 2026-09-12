@@ -178,14 +178,21 @@ func (c *CallbackJobCtl) Run(ctx context.Context) error {
 	}
 	defer resp.Body.Close()
 
-	respBody, _ := readCallbackBody(resp.Body)
-	c.job.Info = recordCallbackJobInfo(info, resp.StatusCode, respBody, nil)
+	respBody, err := readCallbackBody(resp.Body)
+	if err != nil {
+		err = fmt.Errorf("read callback response: %w", err)
+		c.job.Info = recordCallbackJobInfo(info, resp.StatusCode, respBody, err)
+		klog.ErrorS(err, "workflow callback response read failed", callbackLogValues(info, method, requestURL, string(payloadBytes), requestBody, resp.StatusCode, respBody)...)
+		return err
+	}
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		err := fmt.Errorf("callback request failed with status: %d", resp.StatusCode)
+		c.job.Info = recordCallbackJobInfo(info, resp.StatusCode, respBody, err)
 		klog.ErrorS(err, "workflow callback response received", callbackLogValues(info, method, requestURL, string(payloadBytes), requestBody, resp.StatusCode, respBody)...)
 		return err
 	}
+	c.job.Info = recordCallbackJobInfo(info, resp.StatusCode, respBody, nil)
 	klog.InfoS("workflow callback response received", callbackLogValues(info, method, requestURL, string(payloadBytes), requestBody, resp.StatusCode, respBody)...)
 	return nil
 }
@@ -397,6 +404,9 @@ func sanitizeCallbackURL(rawURL string) string {
 	if err != nil {
 		return rawURL
 	}
+	if parsed.User != nil {
+		parsed.User = url.User(callbackLogRedacted)
+	}
 	values := parsed.Query()
 	for key := range values {
 		if isSensitiveCallbackQueryParam(key) {
@@ -409,7 +419,7 @@ func sanitizeCallbackURL(rawURL string) string {
 
 func isSensitiveCallbackHeader(name string) bool {
 	compact := compactCallbackLogKey(name)
-	if compact == "authorization" || compact == "proxyauthorization" {
+	if compact == "authorization" || compact == "proxyauthorization" || compact == "cookie" || compact == "setcookie" {
 		return true
 	}
 	return strings.Contains(compact, "token") ||
@@ -443,8 +453,5 @@ func readCallbackBody(reader io.Reader) (string, error) {
 		return "", nil
 	}
 	data, err := io.ReadAll(io.LimitReader(reader, callbackResponseMaxBytes))
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(data)), nil
+	return strings.TrimSpace(string(data)), err
 }

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -81,9 +82,6 @@ func Run(s *options.ServerRunOptions) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Start the analysis service
-	go profiling.StartProfilingServer(errChan)
-
 	// Start log cleanup service
 	logDir := flag.Lookup("log_dir").Value.String()
 
@@ -91,7 +89,13 @@ func Run(s *options.ServerRunOptions) error {
 	if err := ensureLogDir(logDir); err != nil {
 		return err
 	}
-	go utils.StartLogCleanup(logDir, 7*24*time.Hour)
+	var background sync.WaitGroup
+	defer func() {
+		cancel()
+		background.Wait()
+	}()
+	background.Go(func() { profiling.StartProfilingServer(ctx, errChan) })
+	background.Go(func() { utils.StartLogCleanup(ctx, logDir, 7*24*time.Hour) })
 
 	runErrChan := make(chan error, 1)
 	go func() {
@@ -216,7 +220,9 @@ func run(ctx context.Context, s *options.ServerRunOptions, errChan chan error) e
 			return fmt.Errorf("failed to init tracer provider: %w", err)
 		}
 		defer func() {
-			if err := shutdown(context.Background()); err != nil {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := shutdown(shutdownCtx); err != nil {
 				klog.ErrorS(err, "Failed to shutdown tracer provider")
 			}
 		}()

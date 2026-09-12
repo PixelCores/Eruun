@@ -2,6 +2,8 @@ package traits
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
@@ -48,8 +50,8 @@ func (i *InitProcessor) Process(ctx *TraitContext) (*TraitResult, error) {
 
 		// Convert env map to env vars
 		var envVars []corev1.EnvVar
-		for k, v := range initTrait.Properties.Env {
-			envVars = append(envVars, corev1.EnvVar{Name: k, Value: v})
+		for _, name := range slices.Sorted(maps.Keys(initTrait.Properties.Env)) {
+			envVars = append(envVars, corev1.EnvVar{Name: name, Value: initTrait.Properties.Env[name]})
 		}
 
 		// Recursively apply nested traits, excluding pod-level traits and recursive container traits.

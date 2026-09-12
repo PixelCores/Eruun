@@ -18,6 +18,7 @@ const (
 	applicationManagementModeMigrationMarker = "migration.application-management-mode.v1"
 	schemaMigrationMarker                    = "migration.schema.v1"
 	completedSchemaMigrationJSON             = `{"completed":true}`
+	incompleteSchemaMigrationJSON            = `{"completed":false}`
 )
 
 type schemaMigrationState struct {
@@ -132,7 +133,11 @@ func migrateSystemSettings(ctx context.Context, db *gorm.DB) error {
 	nodeTable := (&model.NodeSelectorProfile{}).TableName()
 	rbacTable := (&model.RBACProfile{}).TableName()
 
-	if !migrator.HasTable(settingsTable) {
+	hasSettingsTable, err := schemaTableExists(ctx, db, settingsTable)
+	if err != nil {
+		return fmt.Errorf("inspect system settings table: %w", err)
+	}
+	if !hasSettingsTable {
 		if err := db.WithContext(ctx).AutoMigrate(&model.SystemSetting{}); err != nil {
 			return err
 		}
@@ -166,12 +171,20 @@ func migrateSystemSettings(ctx context.Context, db *gorm.DB) error {
 		return rbacErr
 	}
 
-	if migrator.HasTable(nodeTable) {
+	hasNodeTable, err := schemaTableExists(ctx, db, nodeTable)
+	if err != nil {
+		return fmt.Errorf("inspect legacy node selector table: %w", err)
+	}
+	if hasNodeTable {
 		if err := migrator.DropTable(nodeTable); err != nil {
 			return err
 		}
 	}
-	if migrator.HasTable(rbacTable) {
+	hasRBACTable, err := schemaTableExists(ctx, db, rbacTable)
+	if err != nil {
+		return fmt.Errorf("inspect legacy RBAC table: %w", err)
+	}
+	if hasRBACTable {
 		if err := migrator.DropTable(rbacTable); err != nil {
 			return err
 		}
@@ -186,10 +199,18 @@ func migrateTextOnlySecretSchema(ctx context.Context, db *gorm.DB) error {
 	componentsTable := (&model.ApplicationComponent{}).TableName()
 	const legacySecretEncodingColumn = "secret_values_base64_encoded"
 
-	if !migrator.HasTable(componentsTable) {
+	hasComponentsTable, err := schemaTableExists(ctx, db, componentsTable)
+	if err != nil {
+		return fmt.Errorf("inspect application components table: %w", err)
+	}
+	if !hasComponentsTable {
 		return nil
 	}
-	if !migrator.HasColumn(componentsTable, legacySecretEncodingColumn) {
+	hasLegacyColumn, err := schemaColumnExists(ctx, db, componentsTable, legacySecretEncodingColumn)
+	if err != nil {
+		return fmt.Errorf("inspect legacy secret encoding column: %w", err)
+	}
+	if !hasLegacyColumn {
 		return nil
 	}
 	if err := migrator.DropColumn(componentsTable, legacySecretEncodingColumn); err != nil {
@@ -199,11 +220,117 @@ func migrateTextOnlySecretSchema(ctx context.Context, db *gorm.DB) error {
 	return nil
 }
 
+func runSchemaMigration(ctx context.Context, db *gorm.DB, migrate func() error) error {
+	if db == nil {
+		return fmt.Errorf("gorm db is nil")
+	}
+	if migrate == nil {
+		return fmt.Errorf("schema migration function is nil")
+	}
+	hasMarkerTable, err := schemaMigrationMarkerTableExists(ctx, db)
+	if err != nil {
+		return fmt.Errorf("inspect schema migration marker table: %w", err)
+	}
+	if hasMarkerTable {
+		if err := writeSchemaMigrationState(ctx, db, incompleteSchemaMigrationJSON); err != nil {
+			return fmt.Errorf("invalidate schema migration marker: %w", err)
+		}
+	}
+	if err := migrate(); err != nil {
+		return err
+	}
+	return writeSchemaMigrationMarker(ctx, db)
+}
+
+func schemaMigrationMarkerTableExists(ctx context.Context, db *gorm.DB) (bool, error) {
+	return schemaTableExists(ctx, db, (&model.SystemSetting{}).TableName())
+}
+
+func schemaTableExists(ctx context.Context, db *gorm.DB, table string) (bool, error) {
+	if db == nil {
+		return false, fmt.Errorf("gorm db is nil")
+	}
+	var count int64
+	switch db.Dialector.Name() {
+	case "mysql":
+		var database string
+		if err := db.WithContext(ctx).Raw("SELECT DATABASE()").Scan(&database).Error; err != nil {
+			return false, err
+		}
+		if err := db.WithContext(ctx).Raw(
+			"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = ? AND table_name = ?",
+			database, table,
+		).Scan(&count).Error; err != nil {
+			return false, err
+		}
+	case "sqlite":
+		if err := db.WithContext(ctx).Raw(
+			"SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?", table,
+		).Scan(&count).Error; err != nil {
+			return false, err
+		}
+	default:
+		tables, err := db.WithContext(ctx).Migrator().GetTables()
+		if err != nil {
+			return false, err
+		}
+		for _, candidate := range tables {
+			if candidate == table {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	return count > 0, nil
+}
+
+func schemaColumnExists(ctx context.Context, db *gorm.DB, table, column string) (bool, error) {
+	if db == nil {
+		return false, fmt.Errorf("gorm db is nil")
+	}
+	var count int64
+	switch db.Dialector.Name() {
+	case "mysql":
+		var database string
+		if err := db.WithContext(ctx).Raw("SELECT DATABASE()").Scan(&database).Error; err != nil {
+			return false, err
+		}
+		if err := db.WithContext(ctx).Raw(
+			"SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = ?",
+			database, table, column,
+		).Scan(&count).Error; err != nil {
+			return false, err
+		}
+	case "sqlite":
+		if err := db.WithContext(ctx).Raw(
+			"SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?", table, column,
+		).Scan(&count).Error; err != nil {
+			return false, err
+		}
+	default:
+		columns, err := db.WithContext(ctx).Migrator().ColumnTypes(table)
+		if err != nil {
+			return false, err
+		}
+		for _, candidate := range columns {
+			if candidate.Name() == column {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	return count > 0, nil
+}
+
 func writeSchemaMigrationMarker(ctx context.Context, db *gorm.DB) error {
+	return writeSchemaMigrationState(ctx, db, completedSchemaMigrationJSON)
+}
+
+func writeSchemaMigrationState(ctx context.Context, db *gorm.DB, value string) error {
 	now := db.NowFunc()
 	marker := &model.SystemSetting{
 		Type:      schemaMigrationMarker,
-		Value:     json.RawMessage(completedSchemaMigrationJSON),
+		Value:     json.RawMessage(value),
 		BaseModel: model.BaseModel{CreateTime: now, UpdateTime: now},
 	}
 	if err := db.WithContext(ctx).Clauses(clause.OnConflict{
@@ -235,8 +362,11 @@ func validateSchemaMigrationMarker(ctx context.Context, db *gorm.DB) error {
 }
 
 func migrateSettingFromTable[T any](ctx context.Context, db *gorm.DB, tableName, settingType string, buildValue func([]T) (json.RawMessage, error)) error {
-	migrator := db.Migrator()
-	if !migrator.HasTable(tableName) {
+	hasTable, err := schemaTableExists(ctx, db, tableName)
+	if err != nil {
+		return fmt.Errorf("inspect legacy setting table %s: %w", tableName, err)
+	}
+	if !hasTable {
 		return nil
 	}
 

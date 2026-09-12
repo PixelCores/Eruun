@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -20,8 +21,8 @@ const (
 	defaultMaxLogAge     = 7 * 24 * time.Hour // 7 days
 )
 
-// StartLogCleanup starts a goroutine that periodically cleans up old log files in the specified directory.
-func StartLogCleanup(logDir string, maxAge time.Duration) {
+// StartLogCleanup periodically removes old log files until ctx is canceled.
+func StartLogCleanup(ctx context.Context, logDir string, maxAge time.Duration) {
 	if logDir == "" {
 		klog.Warningf("Log cleanup is disabled because log_dir is not set.")
 		return
@@ -33,19 +34,24 @@ func StartLogCleanup(logDir string, maxAge time.Duration) {
 
 	klog.Infof("Starting log cleanup service for directory %s, with max age %v", logDir, maxAge)
 
-	go func() {
-		// Run cleanup immediately on start, then tick every 24 hours.
-		cleanup(logDir, maxAge)
-		ticker := time.NewTicker(cleanupCheckInterval)
-		defer ticker.Stop()
-
-		for range ticker.C {
-			cleanup(logDir, maxAge)
+	// Run cleanup immediately on start, then tick every 24 hours.
+	if ctx.Err() != nil {
+		return
+	}
+	cleanup(ctx, logDir, maxAge)
+	ticker := time.NewTicker(cleanupCheckInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			cleanup(ctx, logDir, maxAge)
 		}
-	}()
+	}
 }
 
-func cleanup(logDir string, maxAge time.Duration) {
+func cleanup(ctx context.Context, logDir string, maxAge time.Duration) {
 	klog.V(4).Infof("Running log cleanup in directory: %s", logDir)
 	entries, err := os.ReadDir(logDir)
 	if err != nil {
@@ -57,6 +63,9 @@ func cleanup(logDir string, maxAge time.Duration) {
 	filesDeleted := 0
 
 	for _, entry := range entries {
+		if ctx.Err() != nil {
+			return
+		}
 		if entry.IsDir() {
 			continue
 		}

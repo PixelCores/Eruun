@@ -140,184 +140,14 @@ func (c *applicationsServiceImpl) ApplyApplicationResourceCleanup(
 			}
 		}
 
-		rootDeleteFailed := false
-		acceptedRoots := make([]apisv1.ImportNamespaceResourceResult, 0, len(roots))
-		for _, resource := range roots {
-			ref := cleanupResourceRef(resource)
-			children := plan.runtimeChildrenByRoot[ref]
-			if err := c.quiesceAdoptedCleanupRoot(lockCtx, resource); err != nil {
-				response.FailedResources = append(response.FailedResources, ref)
-				response.RetainedResources = append(response.RetainedResources, ref)
-				rootDeleteFailed = true
-				for _, child := range children {
-					response.RetainedResources = append(response.RetainedResources, cleanupResourceRef(child))
-				}
-				continue
-			}
-			quiescedChildren, err := c.planAdoptedCleanupRuntimeChildren(lockCtx, resource)
-			if err != nil {
-				response.FailedResources = append(response.FailedResources, ref)
-				response.RetainedResources = append(response.RetainedResources, ref)
-				rootDeleteFailed = true
-				continue
-			}
-			unsignedChildren := unsignedAdoptedCleanupRuntimeChildren(children, quiescedChildren)
-			if len(unsignedChildren) > 0 {
-				response.RetainedResources = append(response.RetainedResources, ref)
-				for _, child := range quiescedChildren {
-					response.RetainedResources = append(response.RetainedResources, cleanupResourceRef(child))
-				}
-				for _, child := range unsignedChildren {
-					response.FailedResources = append(response.FailedResources, cleanupResourceRef(child))
-				}
-				rootDeleteFailed = true
-				continue
-			}
-
-			childDeleteFailed := false
-			attemptedChildren := make(map[string]struct{}, len(children))
-			for phase := 0; phase <= 1 && !childDeleteFailed; phase++ {
-				acceptedChildren := make([]apisv1.ImportNamespaceResourceResult, 0, len(children))
-				for _, child := range children {
-					if adoptedCleanupRuntimeDeleteOrder(child) != phase {
-						continue
-					}
-					childRef := cleanupResourceRef(child)
-					attemptedChildren[childRef] = struct{}{}
-					if err := c.deleteAdoptedCleanupRuntimeChild(lockCtx, child); err != nil {
-						response.FailedResources = append(response.FailedResources, childRef)
-						childDeleteFailed = true
-						continue
-					}
-					acceptedChildren = append(acceptedChildren, child)
-				}
-				if len(acceptedChildren) > 0 {
-					pending, waitErr := c.waitForAdoptedCleanupResourcesDeleted(lockCtx, acceptedChildren)
-					for _, child := range acceptedChildren {
-						childRef := cleanupResourceRef(child)
-						if _, found := pending[childRef]; found {
-							response.FailedResources = append(response.FailedResources, childRef)
-							childDeleteFailed = true
-							continue
-						}
-						response.DeletedResources = append(response.DeletedResources, childRef)
-					}
-					if waitErr != nil {
-						childDeleteFailed = true
-					}
-				}
-			}
-			if childDeleteFailed {
-				response.RetainedResources = append(response.RetainedResources, ref)
-				for _, child := range children {
-					childRef := cleanupResourceRef(child)
-					if _, attempted := attemptedChildren[childRef]; !attempted {
-						response.RetainedResources = append(response.RetainedResources, childRef)
-					}
-				}
-				rootDeleteFailed = true
-				continue
-			}
-
-			remainingChildren, err := c.planAdoptedCleanupRuntimeChildren(lockCtx, resource)
-			if err != nil {
-				response.FailedResources = append(response.FailedResources, ref)
-				response.RetainedResources = append(response.RetainedResources, ref)
-				rootDeleteFailed = true
-				continue
-			}
-			if len(remainingChildren) > 0 {
-				response.RetainedResources = append(response.RetainedResources, ref)
-				for _, child := range remainingChildren {
-					response.FailedResources = append(response.FailedResources, cleanupResourceRef(child))
-				}
-				rootDeleteFailed = true
-				continue
-			}
-
-			refreshedRoot, err := c.refreshQuiescedAdoptedCleanupRoot(lockCtx, resource)
-			if err != nil {
-				response.FailedResources = append(response.FailedResources, ref)
-				response.RetainedResources = append(response.RetainedResources, ref)
-				rootDeleteFailed = true
-				continue
-			}
-			if err := c.deleteAdoptedCleanupResource(lockCtx, refreshedRoot); err != nil {
-				response.FailedResources = append(response.FailedResources, ref)
-				response.RetainedResources = append(response.RetainedResources, ref)
-				rootDeleteFailed = true
-				continue
-			}
-			acceptedRoots = append(acceptedRoots, refreshedRoot)
-		}
-		if len(acceptedRoots) > 0 {
-			pending, waitErr := c.waitForAdoptedCleanupResourcesDeleted(lockCtx, acceptedRoots)
-			for _, resource := range acceptedRoots {
-				ref := cleanupResourceRef(resource)
-				if _, found := pending[ref]; found {
-					response.FailedResources = append(response.FailedResources, ref)
-					rootDeleteFailed = true
-					continue
-				}
-				response.DeletedResources = append(response.DeletedResources, ref)
-			}
-			if waitErr != nil {
-				rootDeleteFailed = true
-			}
-		}
+		rootDeleteFailed := c.deleteAdoptedCleanupRoots(lockCtx, roots, plan.runtimeChildrenByRoot, response)
 		if rootDeleteFailed {
 			for _, resource := range dependencies {
 				response.RetainedResources = append(response.RetainedResources, cleanupResourceRef(resource))
 			}
 		} else {
-			deletableDependencies := dependencies
-			if len(dependencies) > 0 {
-				refreshedPlan, refreshErr := c.buildAdoptedCleanupPlan(lockCtx, current, keyring)
-				if refreshErr != nil {
-					for _, resource := range dependencies {
-						response.RetainedResources = append(response.RetainedResources, cleanupResourceRef(resource))
-					}
-					return fmt.Errorf("refresh adopted cleanup sharing before dependency deletion: %w", refreshErr)
-				}
-				refreshedByRef := make(map[string]apisv1.ImportNamespaceResourceResult, len(refreshedPlan.response.ResourceResults))
-				for _, resource := range refreshedPlan.response.ResourceResults {
-					refreshedByRef[cleanupResourceRef(resource)] = resource
-				}
-				deletableDependencies = make([]apisv1.ImportNamespaceResourceResult, 0, len(dependencies))
-				for _, resource := range dependencies {
-					ref := cleanupResourceRef(resource)
-					refreshed, found := refreshedByRef[ref]
-					if !found ||
-						resource.Source == nil ||
-						refreshed.Source == nil ||
-						refreshed.Source.UID != resource.Source.UID ||
-						refreshed.Disposition != importcontract.DispositionManaged ||
-						refreshed.Status != "planned" {
-						response.RetainedResources = append(response.RetainedResources, ref)
-						continue
-					}
-					deletableDependencies = append(deletableDependencies, resource)
-				}
-			}
-			acceptedDependencies := make([]apisv1.ImportNamespaceResourceResult, 0, len(deletableDependencies))
-			for _, resource := range deletableDependencies {
-				ref := cleanupResourceRef(resource)
-				if err := c.deleteAdoptedCleanupResource(lockCtx, resource); err != nil {
-					response.FailedResources = append(response.FailedResources, ref)
-					continue
-				}
-				acceptedDependencies = append(acceptedDependencies, resource)
-			}
-			if len(acceptedDependencies) > 0 {
-				pending, _ := c.waitForAdoptedCleanupResourcesDeleted(lockCtx, acceptedDependencies)
-				for _, resource := range acceptedDependencies {
-					ref := cleanupResourceRef(resource)
-					if _, found := pending[ref]; found {
-						response.FailedResources = append(response.FailedResources, ref)
-						continue
-					}
-					response.DeletedResources = append(response.DeletedResources, ref)
-				}
+			if err := c.deleteAdoptedCleanupDependencies(lockCtx, current, keyring, dependencies, response); err != nil {
+				return err
 			}
 		}
 		if len(response.FailedResources) > 0 {
@@ -329,6 +159,195 @@ func (c *applicationsServiceImpl) ApplyApplicationResourceCleanup(
 		return response, err
 	}
 	return response, nil
+}
+
+func (c *applicationsServiceImpl) deleteAdoptedCleanupRoots(ctx context.Context, roots []apisv1.ImportNamespaceResourceResult, runtimeChildrenByRoot map[string][]apisv1.ImportNamespaceResourceResult, response *apisv1.CleanupApplicationResourcesResponse) bool {
+	rootDeleteFailed := false
+	acceptedRoots := make([]apisv1.ImportNamespaceResourceResult, 0, len(roots))
+	for _, resource := range roots {
+		ref := cleanupResourceRef(resource)
+		children := runtimeChildrenByRoot[ref]
+		if err := c.quiesceAdoptedCleanupRoot(ctx, resource); err != nil {
+			response.FailedResources = append(response.FailedResources, ref)
+			response.RetainedResources = append(response.RetainedResources, ref)
+			rootDeleteFailed = true
+			for _, child := range children {
+				response.RetainedResources = append(response.RetainedResources, cleanupResourceRef(child))
+			}
+			continue
+		}
+		quiescedChildren, err := c.planAdoptedCleanupRuntimeChildren(ctx, resource)
+		if err != nil {
+			response.FailedResources = append(response.FailedResources, ref)
+			response.RetainedResources = append(response.RetainedResources, ref)
+			rootDeleteFailed = true
+			continue
+		}
+		unsignedChildren := unsignedAdoptedCleanupRuntimeChildren(children, quiescedChildren)
+		if len(unsignedChildren) > 0 {
+			response.RetainedResources = append(response.RetainedResources, ref)
+			for _, child := range quiescedChildren {
+				response.RetainedResources = append(response.RetainedResources, cleanupResourceRef(child))
+			}
+			for _, child := range unsignedChildren {
+				response.FailedResources = append(response.FailedResources, cleanupResourceRef(child))
+			}
+			rootDeleteFailed = true
+			continue
+		}
+
+		if c.deleteAdoptedCleanupRuntimeChildren(ctx, ref, children, response) {
+			rootDeleteFailed = true
+			continue
+		}
+
+		remainingChildren, err := c.planAdoptedCleanupRuntimeChildren(ctx, resource)
+		if err != nil {
+			response.FailedResources = append(response.FailedResources, ref)
+			response.RetainedResources = append(response.RetainedResources, ref)
+			rootDeleteFailed = true
+			continue
+		}
+		if len(remainingChildren) > 0 {
+			response.RetainedResources = append(response.RetainedResources, ref)
+			for _, child := range remainingChildren {
+				response.FailedResources = append(response.FailedResources, cleanupResourceRef(child))
+			}
+			rootDeleteFailed = true
+			continue
+		}
+
+		refreshedRoot, err := c.refreshQuiescedAdoptedCleanupRoot(ctx, resource)
+		if err != nil {
+			response.FailedResources = append(response.FailedResources, ref)
+			response.RetainedResources = append(response.RetainedResources, ref)
+			rootDeleteFailed = true
+			continue
+		}
+		if err := c.deleteAdoptedCleanupResource(ctx, refreshedRoot); err != nil {
+			response.FailedResources = append(response.FailedResources, ref)
+			response.RetainedResources = append(response.RetainedResources, ref)
+			rootDeleteFailed = true
+			continue
+		}
+		acceptedRoots = append(acceptedRoots, refreshedRoot)
+	}
+	if len(acceptedRoots) > 0 {
+		pending, waitErr := c.waitForAdoptedCleanupResourcesDeleted(ctx, acceptedRoots)
+		for _, resource := range acceptedRoots {
+			ref := cleanupResourceRef(resource)
+			if _, found := pending[ref]; found {
+				response.FailedResources = append(response.FailedResources, ref)
+				rootDeleteFailed = true
+				continue
+			}
+			response.DeletedResources = append(response.DeletedResources, ref)
+		}
+		if waitErr != nil {
+			rootDeleteFailed = true
+		}
+	}
+	return rootDeleteFailed
+}
+
+func (c *applicationsServiceImpl) deleteAdoptedCleanupRuntimeChildren(ctx context.Context, ref string, children []apisv1.ImportNamespaceResourceResult, response *apisv1.CleanupApplicationResourcesResponse) bool {
+	childDeleteFailed := false
+	attemptedChildren := make(map[string]struct{}, len(children))
+	for phase := 0; phase <= 1 && !childDeleteFailed; phase++ {
+		acceptedChildren := make([]apisv1.ImportNamespaceResourceResult, 0, len(children))
+		for _, child := range children {
+			if adoptedCleanupRuntimeDeleteOrder(child) != phase {
+				continue
+			}
+			childRef := cleanupResourceRef(child)
+			attemptedChildren[childRef] = struct{}{}
+			if err := c.deleteAdoptedCleanupRuntimeChild(ctx, child); err != nil {
+				response.FailedResources = append(response.FailedResources, childRef)
+				childDeleteFailed = true
+				continue
+			}
+			acceptedChildren = append(acceptedChildren, child)
+		}
+		if len(acceptedChildren) > 0 {
+			pending, waitErr := c.waitForAdoptedCleanupResourcesDeleted(ctx, acceptedChildren)
+			for _, child := range acceptedChildren {
+				childRef := cleanupResourceRef(child)
+				if _, found := pending[childRef]; found {
+					response.FailedResources = append(response.FailedResources, childRef)
+					childDeleteFailed = true
+					continue
+				}
+				response.DeletedResources = append(response.DeletedResources, childRef)
+			}
+			if waitErr != nil {
+				childDeleteFailed = true
+			}
+		}
+	}
+	if childDeleteFailed {
+		response.RetainedResources = append(response.RetainedResources, ref)
+		for _, child := range children {
+			childRef := cleanupResourceRef(child)
+			if _, attempted := attemptedChildren[childRef]; !attempted {
+				response.RetainedResources = append(response.RetainedResources, childRef)
+			}
+		}
+		return true
+	}
+	return false
+}
+
+func (c *applicationsServiceImpl) deleteAdoptedCleanupDependencies(ctx context.Context, current *model.Applications, keyring *importsecret.Keyring, dependencies []apisv1.ImportNamespaceResourceResult, response *apisv1.CleanupApplicationResourcesResponse) error {
+	deletableDependencies := dependencies
+	if len(dependencies) > 0 {
+		refreshedPlan, refreshErr := c.buildAdoptedCleanupPlan(ctx, current, keyring)
+		if refreshErr != nil {
+			for _, resource := range dependencies {
+				response.RetainedResources = append(response.RetainedResources, cleanupResourceRef(resource))
+			}
+			return fmt.Errorf("refresh adopted cleanup sharing before dependency deletion: %w", refreshErr)
+		}
+		refreshedByRef := make(map[string]apisv1.ImportNamespaceResourceResult, len(refreshedPlan.response.ResourceResults))
+		for _, resource := range refreshedPlan.response.ResourceResults {
+			refreshedByRef[cleanupResourceRef(resource)] = resource
+		}
+		deletableDependencies = make([]apisv1.ImportNamespaceResourceResult, 0, len(dependencies))
+		for _, resource := range dependencies {
+			ref := cleanupResourceRef(resource)
+			refreshed, found := refreshedByRef[ref]
+			if !found ||
+				resource.Source == nil ||
+				refreshed.Source == nil ||
+				refreshed.Source.UID != resource.Source.UID ||
+				refreshed.Disposition != importcontract.DispositionManaged ||
+				refreshed.Status != "planned" {
+				response.RetainedResources = append(response.RetainedResources, ref)
+				continue
+			}
+			deletableDependencies = append(deletableDependencies, resource)
+		}
+	}
+	acceptedDependencies := make([]apisv1.ImportNamespaceResourceResult, 0, len(deletableDependencies))
+	for _, resource := range deletableDependencies {
+		ref := cleanupResourceRef(resource)
+		if err := c.deleteAdoptedCleanupResource(ctx, resource); err != nil {
+			response.FailedResources = append(response.FailedResources, ref)
+			continue
+		}
+		acceptedDependencies = append(acceptedDependencies, resource)
+	}
+	if len(acceptedDependencies) > 0 {
+		pending, _ := c.waitForAdoptedCleanupResourcesDeleted(ctx, acceptedDependencies)
+		for _, resource := range acceptedDependencies {
+			ref := cleanupResourceRef(resource)
+			if _, found := pending[ref]; found {
+				response.FailedResources = append(response.FailedResources, ref)
+				continue
+			}
+			response.DeletedResources = append(response.DeletedResources, ref)
+		}
+	}
+	return nil
 }
 
 func cleanupResourceIsRootWorkload(resource apisv1.ImportNamespaceResourceResult) bool {

@@ -4,12 +4,38 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 )
+
+const (
+	terminalCallbackPendingPrefix    = "terminal callback pending: "
+	TerminalCallbackReconciledReason = "terminal callback reconciled"
+)
+
+// TerminalCallbackPendingReason stores a bounded, durable callback intent on
+// the workflow row before cancellation can outlive its current process.
+func TerminalCallbackPendingReason(reason string) string {
+	normalized := strings.TrimSpace(reason)
+	limit := 255 - len(terminalCallbackPendingPrefix)
+	for len(normalized) > limit {
+		_, size := utf8.DecodeLastRuneInString(normalized)
+		normalized = normalized[:len(normalized)-size]
+	}
+	return terminalCallbackPendingPrefix + normalized
+}
+
+func IsTerminalCallbackPending(reason string) bool {
+	return strings.HasPrefix(reason, terminalCallbackPendingPrefix)
+}
+
+func TerminalCallbackReason(reason string) string {
+	return strings.TrimSpace(strings.TrimPrefix(reason, terminalCallbackPendingPrefix))
+}
 
 // LintWorkflow 验证工作流是否符合标准
 func LintWorkflow(workflow *model.Workflow) error {

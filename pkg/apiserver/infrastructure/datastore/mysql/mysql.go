@@ -208,24 +208,23 @@ func releaseSchemaMigrationLock(ctx context.Context, db *gorm.DB) error {
 }
 
 func migrateSchema(ctx context.Context, db *gorm.DB, models []model.Interface) error {
-	for _, v := range models {
-		if err := db.WithContext(ctx).AutoMigrate(v); err != nil {
-			return fmt.Errorf("auto-migrate %T: %w", v, err)
+	return runSchemaMigration(ctx, db, func() error {
+		for _, v := range models {
+			if err := db.WithContext(ctx).AutoMigrate(v); err != nil {
+				return fmt.Errorf("auto-migrate %T: %w", v, err)
+			}
 		}
-	}
-	if err := migrateApplicationComponentRuntimeStatus(ctx, db.WithContext(ctx)); err != nil {
-		return err
-	}
-	if err := migrateApplicationManagementMode(ctx, db.WithContext(ctx)); err != nil {
-		return err
-	}
-	if err := migrateSystemSettings(ctx, db.WithContext(ctx)); err != nil {
-		return err
-	}
-	if err := migrateTextOnlySecretSchema(ctx, db.WithContext(ctx)); err != nil {
-		return err
-	}
-	return writeSchemaMigrationMarker(ctx, db)
+		if err := migrateApplicationComponentRuntimeStatus(ctx, db.WithContext(ctx)); err != nil {
+			return err
+		}
+		if err := migrateApplicationManagementMode(ctx, db.WithContext(ctx)); err != nil {
+			return err
+		}
+		if err := migrateSystemSettings(ctx, db.WithContext(ctx)); err != nil {
+			return err
+		}
+		return migrateTextOnlySecretSchema(ctx, db.WithContext(ctx))
+	})
 }
 
 func validateSchema(ctx context.Context, db *gorm.DB, models []model.Interface) error {

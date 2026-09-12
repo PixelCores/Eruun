@@ -636,7 +636,7 @@ func (c *DatabaseResetJobCtl) waitStatefulSetPodsGone(ctx context.Context, names
 		}
 		return len(list.Items) == 0, nil
 	})
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, wait.ErrWaitTimeout) {
+	if wait.Interrupted(err) && !errors.Is(err, context.Canceled) {
 		return NewStatusError(config.StatusTimeout, fmt.Errorf("wait database pods gone for component %s timeout", component.Name))
 	}
 	return err
@@ -696,7 +696,7 @@ func (c *DatabaseResetJobCtl) waitPVCDeleted(ctx context.Context, namespace, nam
 		}
 		return false, err
 	})
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, wait.ErrWaitTimeout) {
+	if wait.Interrupted(err) && !errors.Is(err, context.Canceled) {
 		return NewStatusError(config.StatusTimeout, fmt.Errorf("wait pvc %s/%s deleted timeout", namespace, name))
 	}
 	return err
@@ -722,7 +722,7 @@ func (c *DatabaseResetJobCtl) waitDatabaseComponentReady(ctx context.Context, na
 		}
 		return current.Status.ReadyReplicas >= desiredReplicas, nil
 	})
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, wait.ErrWaitTimeout) {
+	if wait.Interrupted(err) && !errors.Is(err, context.Canceled) {
 		return NewStatusError(config.StatusTimeout, fmt.Errorf("wait database component %s ready timeout", component.Name))
 	}
 	return err

@@ -57,6 +57,72 @@ func (c *applicationsServiceImpl) DiffUpdateVersion(ctx context.Context, targetA
 		return nil, bcode.ErrApplicationConfig
 	}
 
+	diff, err := c.buildApplicationVersionDiff(ctx, sourceApp, targetApp, targetOnlyStrategy)
+	if err != nil {
+		return nil, err
+	}
+	updateReq := buildDiffUpdateVersionRequest(sourceVersion, req, diff, targetOnlyStrategy)
+	executable := len(diff.blocked) == 0 &&
+		(targetOnlyStrategy != apisv1.DiffUpdateTargetOnlyStrategyBlock || len(diff.extra) == 0)
+	if req.DryRun && executable && len(updateReq.Components) > 0 {
+		blocked, err := blockDiffUpdateForPendingStatefulSetCleanup(ctx, c.Store, targetApp.ID, updateReq.Components, diff)
+		if err != nil {
+			return nil, err
+		}
+		executable = !blocked
+	}
+
+	resp := &apisv1.DiffUpdateVersionResponse{
+		TargetAppID:           targetApp.ID,
+		SourceAppID:           sourceApp.ID,
+		TargetPreviousVersion: targetApp.Version,
+		TargetVersion:         sourceVersion,
+		SourceVersion:         sourceVersion,
+		DryRun:                req.DryRun,
+		TargetOnlyStrategy:    targetOnlyStrategy,
+		VersionChanged:        targetApp.Version != sourceVersion,
+		Executable:            executable,
+		UpdatedComponents:     diff.updated,
+		AddedComponents:       diff.added,
+		ExtraComponents:       diff.extra,
+		BlockedComponents:     diff.blocked,
+	}
+	resp.HasChanges = resp.VersionChanged ||
+		len(resp.UpdatedComponents) > 0 ||
+		len(resp.AddedComponents) > 0 ||
+		len(resp.ExtraComponents) > 0 ||
+		len(resp.BlockedComponents) > 0
+
+	return c.applyApplicationVersionDiff(ctx, resp, diff, updateReq, targetOnlyStrategy)
+}
+
+func (c *applicationsServiceImpl) applyApplicationVersionDiff(ctx context.Context, resp *apisv1.DiffUpdateVersionResponse, diff *versionDiffResult, updateReq apisv1.UpdateVersionRequest, targetOnlyStrategy string) (*apisv1.DiffUpdateVersionResponse, error) {
+	if resp.DryRun {
+		return resp, nil
+	}
+	if !resp.Executable {
+		if diff.blockedErr != nil {
+			return nil, diff.blockedErr
+		}
+		return nil, bcode.ErrApplicationConfig
+	}
+	shouldRemoveTargetOnly := targetOnlyStrategy == apisv1.DiffUpdateTargetOnlyStrategyRemove && len(resp.ExtraComponents) > 0
+	if !resp.VersionChanged && len(resp.UpdatedComponents) == 0 && len(resp.AddedComponents) == 0 && !shouldRemoveTargetOnly {
+		return resp, nil
+	}
+
+	updateResp, err := c.UpdateVersion(ctx, resp.TargetAppID, updateReq)
+	if err != nil {
+		return nil, err
+	}
+	resp.UpdateResult = updateResp
+	if updateResp != nil {
+		resp.TargetVersion = updateResp.Version
+	}
+	return resp, nil
+}
+
+func (c *applicationsServiceImpl) buildApplicationVersionDiff(ctx context.Context, sourceApp, targetApp *model.Applications, targetOnlyStrategy string) (*versionDiffResult, error) {
 	sourceComponents, err := c.ComponentRepo.FindByAppID(ctx, sourceApp.ID)
 	if err != nil {
 		return nil, err
@@ -93,61 +159,7 @@ func (c *applicationsServiceImpl) DiffUpdateVersion(ctx context.Context, targetA
 	if err := blockNonExecutableStatefulSetVersionDiffs(targetComponentMap, diff); err != nil {
 		return nil, err
 	}
-	updateReq := buildDiffUpdateVersionRequest(sourceVersion, req, diff, targetOnlyStrategy)
-	executable := len(diff.blocked) == 0 &&
-		(targetOnlyStrategy != apisv1.DiffUpdateTargetOnlyStrategyBlock || len(diff.extra) == 0)
-	if req.DryRun && executable && len(updateReq.Components) > 0 {
-		blocked, err := blockDiffUpdateForPendingStatefulSetCleanup(ctx, c.Store, targetApp.ID, updateReq.Components, diff)
-		if err != nil {
-			return nil, err
-		}
-		executable = !blocked
-	}
-
-	resp := &apisv1.DiffUpdateVersionResponse{
-		TargetAppID:           targetApp.ID,
-		SourceAppID:           sourceApp.ID,
-		TargetPreviousVersion: targetApp.Version,
-		TargetVersion:         sourceVersion,
-		SourceVersion:         sourceVersion,
-		DryRun:                req.DryRun,
-		TargetOnlyStrategy:    targetOnlyStrategy,
-		VersionChanged:        targetApp.Version != sourceVersion,
-		Executable:            executable,
-		UpdatedComponents:     diff.updated,
-		AddedComponents:       diff.added,
-		ExtraComponents:       diff.extra,
-		BlockedComponents:     diff.blocked,
-	}
-	resp.HasChanges = resp.VersionChanged ||
-		len(resp.UpdatedComponents) > 0 ||
-		len(resp.AddedComponents) > 0 ||
-		len(resp.ExtraComponents) > 0 ||
-		len(resp.BlockedComponents) > 0
-
-	if req.DryRun {
-		return resp, nil
-	}
-	if !resp.Executable {
-		if diff.blockedErr != nil {
-			return nil, diff.blockedErr
-		}
-		return nil, bcode.ErrApplicationConfig
-	}
-	shouldRemoveTargetOnly := targetOnlyStrategy == apisv1.DiffUpdateTargetOnlyStrategyRemove && len(resp.ExtraComponents) > 0
-	if !resp.VersionChanged && len(resp.UpdatedComponents) == 0 && len(resp.AddedComponents) == 0 && !shouldRemoveTargetOnly {
-		return resp, nil
-	}
-
-	updateResp, err := c.UpdateVersion(ctx, targetApp.ID, updateReq)
-	if err != nil {
-		return nil, err
-	}
-	resp.UpdateResult = updateResp
-	if updateResp != nil {
-		resp.TargetVersion = updateResp.Version
-	}
-	return resp, nil
+	return diff, nil
 }
 
 func blockDiffUpdateForPendingStatefulSetCleanup(

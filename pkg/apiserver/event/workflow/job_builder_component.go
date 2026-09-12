@@ -685,9 +685,7 @@ func appendBatchJob(
 		if err != nil {
 			logger.Error(err, "Failed to create additional resource jobs", "componentName", component.Name)
 		} else {
-			for _, jt := range jobs {
-				buckets[config.JobPriorityHigh] = append(buckets[config.JobPriorityHigh], jt)
-			}
+			buckets[config.JobPriorityHigh] = append(buckets[config.JobPriorityHigh], jobs...)
 		}
 	}
 
