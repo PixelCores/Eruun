@@ -258,13 +258,6 @@ func (c *CleanupResourcesJobCtl) deleteSecret(ctx context.Context, namespace, na
 	return c.client.CoreV1().Secrets(namespaceOrDefault(namespace)).Delete(ctx, name, metav1.DeleteOptions{})
 }
 
-func (c *CleanupResourcesJobCtl) deletePVC(ctx context.Context, namespace, name string) error {
-	if strings.TrimSpace(name) == "" {
-		return nil
-	}
-	return c.client.CoreV1().PersistentVolumeClaims(namespaceOrDefault(namespace)).Delete(ctx, name, metav1.DeleteOptions{})
-}
-
 func (c *CleanupResourcesJobCtl) deleteIngress(ctx context.Context, namespace, name string) error {
 	if strings.TrimSpace(name) == "" {
 		return nil

@@ -97,6 +97,7 @@ func TestApprovalUpdateContextInheritHonorsParentCancellation(t *testing.T) {
 }
 
 func TestApprovalUpdateContextInheritUsesDefaultWhenParentNil(t *testing.T) {
+	//lint:ignore SA1012 Verify the supported nil-context fallback.
 	ctx, cancel := approvalUpdateContext(nil, approvalUpdateContextInherit)
 	defer cancel()
 

@@ -377,6 +377,7 @@ func cloneURLPolicyTransport(base http.RoundTripper, policy spec.URLSecurityPoli
 		if typed == nil {
 			return nil, errors.New("url policy requires a non-nil *http.Transport")
 		}
+		//lint:ignore SA1019 Reject or clear legacy dial hooks that could bypass the URL security policy.
 		if typed.DialContext != nil || typed.Dial != nil {
 			return nil, errors.New("url policy does not support custom transport DialContext or Dial")
 		}
@@ -390,6 +391,7 @@ func cloneURLPolicyTransport(base http.RoundTripper, policy spec.URLSecurityPoli
 	// the Transport's internal once, and generated protocol hooks are then
 	// distinguishable from caller-supplied hooks retained by the clone.
 	transport := sourceTransport.Clone()
+	//lint:ignore SA1019 Reject or clear legacy dial hooks that could bypass the URL security policy.
 	if transport.DialTLSContext != nil || transport.DialTLS != nil {
 		return nil, errors.New("url policy does not support custom transport DialTLSContext or DialTLS")
 	}
@@ -409,9 +411,11 @@ func cloneURLPolicyTransport(base http.RoundTripper, policy spec.URLSecurityPoli
 	// Environment proxies are not a trusted security boundary. Policy-bound
 	// requests connect directly until an explicit trusted-proxy policy exists.
 	transport.Proxy = nil
+	//lint:ignore SA1019 Reject or clear legacy dial hooks that could bypass the URL security policy.
 	transport.Dial = nil
 	transport.DialContext = urlPolicyDialContext(policy, resolver, dial)
 	// Custom TLS dialers could bypass the policy DialContext.
+	//lint:ignore SA1019 Reject or clear legacy dial hooks that could bypass the URL security policy.
 	transport.DialTLS = nil
 	transport.DialTLSContext = nil
 	return transport, nil

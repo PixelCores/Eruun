@@ -151,6 +151,21 @@ func (d *DelayDispatcher) runLoops(ctx context.Context) {
 		d.recoveryLoop(ctx)
 	}()
 	wg.Wait()
+	d.releasePendingMessages()
+}
+
+func (d *DelayDispatcher) releasePendingMessages() {
+	d.mu.Lock()
+	items := d.items
+	d.items = nil
+	d.pending = make(map[string]struct{})
+	d.mu.Unlock()
+
+	for _, item := range items {
+		if item != nil {
+			msg.MarkMessageHandlingDone(d.queue, item.msgID, false)
+		}
+	}
 }
 
 func (d *DelayDispatcher) readLoop(ctx context.Context) {
@@ -255,6 +270,7 @@ func (d *DelayDispatcher) scheduleLoop(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			timer.Stop()
+			d.requeue(item)
 			return
 		case <-d.wake:
 			timer.Stop()
@@ -497,17 +513,9 @@ func (d *DelayDispatcher) dispatch(ctx context.Context, item *delayItem) error {
 		return fmt.Errorf("%w: delayed checkpoint is missing", errDelayDispatchNoRetry)
 	}
 	// A notification cannot fail or replace a different persisted workload.
-	committed, err := d.decodePayload([]byte(checkpoint.DelayPayload))
+	committed, err := d.validateCheckpointNotification(checkpoint, item.payload)
 	if err != nil {
-		return fmt.Errorf("decode committed delayed workload: %w", err)
-	}
-	expected, err := json.Marshal(committed)
-	if err != nil {
-		return fmt.Errorf("encode committed delayed workload: %w", err)
-	}
-	actual, err := json.Marshal(item.payload)
-	if err != nil || !bytes.Equal(expected, actual) {
-		return fmt.Errorf("%w: notification differs from delayed checkpoint", errDelayDispatchNoRetry)
+		return err
 	}
 	// A previously created Job is already owned by result processing. Replaying
 	// its notification must not fail it because the workspace changed afterward.
@@ -520,29 +528,9 @@ func (d *DelayDispatcher) dispatch(ctx context.Context, item *delayItem) error {
 	if checkpoint.DelayState == config.JobDelayStateDispatched {
 		return nil
 	}
-	if checkpoint.AppID == "" {
-		return d.rejectCheckpoint(ctx, checkpoint, fmt.Errorf("delayed checkpoint has no application"))
-	}
-	app := &model.Applications{ID: checkpoint.AppID}
-	if err = d.store.Get(ctx, app); err != nil {
-		if errors.Is(err, datastore.ErrRecordNotExist) {
-			return d.rejectCheckpoint(ctx, checkpoint, fmt.Errorf("delayed application no longer exists"))
-		}
-		return fmt.Errorf("load delayed application: %w", err)
-	}
-	if app.WorkspaceID == "" {
-		return d.rejectCheckpoint(ctx, checkpoint, bcode.ErrForbidden)
-	}
-	space := &model.Workspace{ID: app.WorkspaceID}
-	if err = d.store.Get(ctx, space); err != nil {
-		if errors.Is(err, datastore.ErrRecordNotExist) {
-			return d.rejectCheckpoint(ctx, checkpoint, fmt.Errorf("delayed workspace no longer exists"))
-		}
-		return fmt.Errorf("load delayed workspace: %w", err)
-	}
-	if space.Namespace == "" || app.Namespace != space.Namespace || item.payload.Namespace != space.Namespace ||
-		(checkpoint.WorkspaceID != "" && checkpoint.WorkspaceID != space.ID) {
-		return d.rejectCheckpoint(ctx, checkpoint, bcode.ErrForbidden)
+	app, space, err := d.checkpointWorkspace(ctx, checkpoint, item.payload)
+	if err != nil {
+		return err
 	}
 	payload := *item.payload
 	payload.Job = payload.Job.DeepCopy()
@@ -572,6 +560,50 @@ func (d *DelayDispatcher) dispatch(ctx context.Context, item *delayItem) error {
 	scopedItem := *item
 	scopedItem.payload = &payload
 	return d.dispatchJob(ctx, &scopedItem, client)
+}
+
+func (d *DelayDispatcher) checkpointWorkspace(ctx context.Context, checkpoint *model.JobInfo, payload *DelayJobPayload) (*model.Applications, *model.Workspace, error) {
+	if checkpoint.AppID == "" {
+		return nil, nil, d.rejectCheckpoint(ctx, checkpoint, fmt.Errorf("delayed checkpoint has no application"))
+	}
+	app := &model.Applications{ID: checkpoint.AppID}
+	if err := d.store.Get(ctx, app); err != nil {
+		if errors.Is(err, datastore.ErrRecordNotExist) {
+			return nil, nil, d.rejectCheckpoint(ctx, checkpoint, fmt.Errorf("delayed application no longer exists"))
+		}
+		return nil, nil, fmt.Errorf("load delayed application: %w", err)
+	}
+	if app.WorkspaceID == "" {
+		return nil, nil, d.rejectCheckpoint(ctx, checkpoint, bcode.ErrForbidden)
+	}
+	space := &model.Workspace{ID: app.WorkspaceID}
+	if err := d.store.Get(ctx, space); err != nil {
+		if errors.Is(err, datastore.ErrRecordNotExist) {
+			return nil, nil, d.rejectCheckpoint(ctx, checkpoint, fmt.Errorf("delayed workspace no longer exists"))
+		}
+		return nil, nil, fmt.Errorf("load delayed workspace: %w", err)
+	}
+	if space.Namespace == "" || app.Namespace != space.Namespace || payload.Namespace != space.Namespace ||
+		(checkpoint.WorkspaceID != "" && checkpoint.WorkspaceID != space.ID) {
+		return nil, nil, d.rejectCheckpoint(ctx, checkpoint, bcode.ErrForbidden)
+	}
+	return app, space, nil
+}
+
+func (d *DelayDispatcher) validateCheckpointNotification(checkpoint *model.JobInfo, payload *DelayJobPayload) (*DelayJobPayload, error) {
+	committed, err := d.decodePayload([]byte(checkpoint.DelayPayload))
+	if err != nil {
+		return nil, fmt.Errorf("decode committed delayed workload: %w", err)
+	}
+	expected, err := json.Marshal(committed)
+	if err != nil {
+		return nil, fmt.Errorf("encode committed delayed workload: %w", err)
+	}
+	actual, err := json.Marshal(payload)
+	if err != nil || !bytes.Equal(expected, actual) {
+		return nil, fmt.Errorf("%w: notification differs from delayed checkpoint", errDelayDispatchNoRetry)
+	}
+	return committed, nil
 }
 
 // Older application Jobs did not store workspace_id. Backfill only after the
@@ -719,14 +751,8 @@ func (d *DelayDispatcher) dispatchJob(ctx context.Context, item *delayItem, clie
 			resultErr = errors.Join(resultErr, err)
 		}
 	}()
-	if resultPayload != nil {
-		existingJob, exists, err := jobExists(ctx, client, namespace, jobObj.Name)
-		if err != nil {
-			return err
-		}
-		if exists && !jobResultMatchesExecutionIdentity(resultPayload, existingJob) {
-			return d.failDelayedJobIdentityMismatch(ctx, resultPayload, existingJob)
-		}
+	if err := d.verifyDelayedJobIdentity(ctx, client, resultPayload); err != nil {
+		return err
 	}
 
 	action, err := applyJobRunPolicy(ctx, client, d.store, jobObj, jobType)
@@ -746,6 +772,25 @@ func (d *DelayDispatcher) dispatchJob(ctx context.Context, item *delayItem, clie
 		return nil
 	}
 
+	return d.createDelayedJob(ctx, client, jobObj, resultPayload)
+}
+
+func (d *DelayDispatcher) verifyDelayedJobIdentity(ctx context.Context, client kubernetes.Interface, resultPayload *JobResultPayload) error {
+	if resultPayload != nil {
+		existingJob, exists, err := jobExists(ctx, client, resultPayload.Namespace, resultPayload.Name)
+		if err != nil {
+			return err
+		}
+		if exists && !jobResultMatchesExecutionIdentity(resultPayload, existingJob) {
+			return d.failDelayedJobIdentityMismatch(ctx, resultPayload, existingJob)
+		}
+	}
+
+	return nil
+}
+
+func (d *DelayDispatcher) createDelayedJob(ctx context.Context, client kubernetes.Interface, jobObj *batchv1.Job, resultPayload *JobResultPayload) error {
+	namespace := jobObj.Namespace
 	liveJob, _, err := createOrUpdateResource(ctx, func(ctx context.Context) (*batchv1.Job, error) {
 		return client.BatchV1().Jobs(namespace).Get(ctx, jobObj.Name, metav1.GetOptions{})
 	}, func(ctx context.Context) (*batchv1.Job, error) {

@@ -41,7 +41,7 @@ type instantJobRetryCheckpoint struct {
 // closed instead of silently granting a fresh retry budget. Instant Jobs do not
 // use InternalInfo for other checkpoint kinds.
 func HasInstantJobRetryCheckpoint(record *model.JobInfo) bool {
-	return record != nil && record.Type == string(config.JobDeployInstant) && strings.TrimSpace(record.InternalInfo) != ""
+	return record != nil && config.IsInstantJobType(config.JobType(record.Type)) && strings.TrimSpace(record.InternalInfo) != ""
 }
 
 func RestoreInstantJobRetryCheckpoint(task *model.JobTask) error {
@@ -51,6 +51,27 @@ func RestoreInstantJobRetryCheckpoint(task *model.JobTask) error {
 	}
 	task.JobInfo = cp.Job.DeepCopy()
 	task.Attempt = cp.Attempt
+	return nil
+}
+
+// ValidateInstantJobRetryExecution binds a live Kubernetes Job to its durable
+// checkpoint. A just-created Job can authenticate before its returned UID has
+// been checkpointed, using the exact intended attempt and execution identity.
+func ValidateInstantJobRetryExecution(record *model.JobInfo, live *batchv1.Job) error {
+	if record == nil || record.ExecutionKey == nil || !HasInstantJobRetryCheckpoint(record) || live == nil || live.UID == "" {
+		return fmt.Errorf("Job execution checkpoint identity is incomplete")
+	}
+	task := &model.JobTask{TaskID: record.TaskID, ExecutionKey: *record.ExecutionKey, RunGeneration: record.RunGeneration,
+		Attempt: record.Attempt, InternalInfo: record.InternalInfo}
+	cp, err := decodeInstantJobRetryCheckpoint(task)
+	if err != nil {
+		return err
+	}
+	if live.Namespace != cp.Job.Namespace || live.Name != cp.Job.Name || !retryJobMatchesTask(live, task) ||
+		live.Annotations[workflowconfig.AnnotationJobAttempt] != strconv.FormatUint(uint64(cp.Attempt), 10) ||
+		(cp.CurrentUID != "" && cp.CurrentUID != live.UID) || live.UID == cp.PreviousUID {
+		return errJobExecutionIdentityChanged
+	}
 	return nil
 }
 
@@ -140,7 +161,7 @@ func retryJobRetentionSeconds(deadline int64, earliestTermination time.Time) (in
 		seconds += int64(remaining/time.Second) + 1
 	}
 	if seconds > math.MaxInt32 {
-		return 0, fmt.Errorf("Job retry recovery deadline exceeds the Kubernetes TTL range")
+		return 0, fmt.Errorf("job retry recovery deadline exceeds the Kubernetes TTL range")
 	}
 	return int32(seconds), nil
 }
@@ -172,47 +193,9 @@ func (c *InstantJobCtl) runWithRetryPolicy(ctx context.Context, desired *batchv1
 			return errors.Join(signal.ErrInfrastructureStop, err)
 		}
 	} else {
-		if c.store == nil || !retryJobMatchesTask(desired, c.job) {
-			return fmt.Errorf("jobRetryPolicy requires datastore and workflow execution identity")
-		}
-		if err := c.ensureRetryWorkflowOwnership(ctx); err != nil {
-			return err
-		}
-		// Reusing an active Job with a different policy would keep Kubernetes'
-		// old Pod retry budget. Require an explicit recreate for that transition.
-		existing, exists, err := jobExists(ctx, c.client, desired.Namespace, desired.Name)
-		if err != nil {
-			return err
-		}
-		if exists && runPolicyFromJob(desired) != workflowconfig.JobRunPolicyRecreate {
-			status, _, done := jobTerminalStatus(existing)
-			if !(done && status == config.StatusCompleted) {
-				return fmt.Errorf("enabling jobRetryPolicy on an existing unfinished Job requires runPolicy recreate")
-			}
-		}
-		action, err := applyJobRunPolicy(ctx, c.client, c.store, desired, config.JobDeployInstant)
-		if err != nil {
-			return err
-		}
-		if action == runPolicyActionSkip {
-			c.job.Status = config.StatusSkipped
-			return nil
-		}
-		timeout := c.job.Timeout
-		if timeout <= 0 {
-			timeout = int64(config.DefaultJobTaskTimeout.Seconds())
-		}
-		cp = &instantJobRetryCheckpoint{
-			Kind: "instant_job_retry", Version: 1, Attempt: 1,
-			Deadline: time.Now().Add(time.Duration(timeout) * time.Second).UnixNano(), Job: desired.DeepCopy(),
-		}
-		ttl, err := retryJobRetentionSeconds(cp.Deadline, time.Now())
-		if err != nil {
-			return err
-		}
-		cp.Job.Spec.TTLSecondsAfterFinished = &ttl
-		cp.Job.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
-		if err := c.persistRetryCheckpoint(ctx, cp); err != nil {
+		var err error
+		cp, err = c.newRetryCheckpoint(ctx, desired)
+		if err != nil || cp == nil {
 			return err
 		}
 	}
@@ -271,6 +254,55 @@ func (c *InstantJobCtl) runWithRetryPolicy(ctx context.Context, desired *batchv1
 	}
 }
 
+func (c *InstantJobCtl) newRetryCheckpoint(ctx context.Context, desired *batchv1.Job) (*instantJobRetryCheckpoint, error) {
+	if c.store == nil || !retryJobMatchesTask(desired, c.job) {
+		return nil, fmt.Errorf("jobRetryPolicy requires datastore and workflow execution identity")
+	}
+	if err := c.ensureRetryWorkflowOwnership(ctx); err != nil {
+		return nil, err
+	}
+	// Reusing an active Job with a different policy would keep Kubernetes'
+	// old Pod retry budget. Require an explicit recreate for that transition.
+	existing, exists, err := jobExists(ctx, c.client, desired.Namespace, desired.Name)
+	if err != nil {
+		return nil, err
+	}
+	if exists && runPolicyFromJob(desired) != workflowconfig.JobRunPolicyRecreate {
+		status, _, done := jobTerminalStatus(existing)
+		if !(done && status == config.StatusCompleted) {
+			return nil, fmt.Errorf("enabling jobRetryPolicy on an existing unfinished Job requires runPolicy recreate")
+		}
+	}
+	action, err := applyJobRunPolicy(ctx, c.client, c.store, desired, jobTypeForTask(c.job, config.JobDeployInstant))
+	if err != nil {
+		return nil, err
+	}
+	if action == runPolicyActionSkip {
+		c.job.Status = config.StatusSkipped
+		return nil, nil
+	}
+	timeout := c.job.Timeout
+	if timeout <= 0 {
+		timeout = int64(config.DefaultJobTaskTimeout.Seconds())
+	}
+	cp := &instantJobRetryCheckpoint{
+		Kind: "instant_job_retry", Version: 1, Attempt: 1,
+		Deadline: time.Now().Add(time.Duration(timeout) * time.Second).UnixNano(), Job: desired.DeepCopy(),
+	}
+	ttl, err := retryJobRetentionSeconds(cp.Deadline, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	if cp.Job.Spec.TTLSecondsAfterFinished == nil || *cp.Job.Spec.TTLSecondsAfterFinished < ttl {
+		cp.Job.Spec.TTLSecondsAfterFinished = &ttl
+	}
+	cp.Job.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
+	if err := c.persistRetryCheckpoint(ctx, cp); err != nil {
+		return nil, err
+	}
+	return cp, nil
+}
+
 func (c *InstantJobCtl) persistRetryCheckpoint(ctx context.Context, cp *instantJobRetryCheckpoint) error {
 	raw, err := json.Marshal(cp)
 	if err != nil {
@@ -312,24 +344,7 @@ func (c *InstantJobCtl) ensureRetryAttempt(ctx context.Context, cp *instantJobRe
 			return errors.Join(signal.ErrInfrastructureStop, errJobExecutionIdentityChanged)
 		}
 		if live.Annotations[workflowconfig.AnnotationJobAttempt] == strconv.FormatUint(uint64(cp.Attempt), 10) {
-			if cp.CurrentUID != "" && live.UID != cp.CurrentUID {
-				return errors.Join(signal.ErrInfrastructureStop, errJobExecutionIdentityChanged)
-			}
-			if err := c.retainRetryCheckpoint(ctx, cp, live.CreationTimestamp.Time); err != nil {
-				return err
-			}
-			if live.Spec.TTLSecondsAfterFinished == nil || *live.Spec.TTLSecondsAfterFinished < *cp.Job.Spec.TTLSecondsAfterFinished {
-				if err := c.ensureRetryWorkflowOwnership(ctx); err != nil {
-					return err
-				}
-				updated := live.DeepCopy()
-				updated.Spec.TTLSecondsAfterFinished = cp.Job.Spec.TTLSecondsAfterFinished
-				live, err = c.client.BatchV1().Jobs(updated.Namespace).Update(ctx, updated, metav1.UpdateOptions{})
-				if err != nil {
-					return errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("retain Job retry recovery evidence: %w", err))
-				}
-			}
-			return c.persistRetryAttemptUID(ctx, cp, live)
+			return c.retainLiveRetryAttempt(ctx, cp, live)
 		}
 		if cp.PreviousUID == "" || live.UID != cp.PreviousUID || live.Annotations[workflowconfig.AnnotationJobAttempt] != strconv.FormatUint(uint64(cp.Attempt-1), 10) || !retryJobFailed(live) {
 			return errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("%w: refusing to replace unrecognized Job attempt", errJobExecutionIdentityChanged))
@@ -339,7 +354,7 @@ func (c *InstantJobCtl) ensureRetryAttempt(ctx context.Context, cp *instantJobRe
 		}
 	}
 	if cp.CurrentUID != "" {
-		return errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("Job attempt %d with UID %s disappeared; refusing to replay it", cp.Attempt, cp.CurrentUID))
+		return errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("job attempt %d with UID %s disappeared; refusing to replay it", cp.Attempt, cp.CurrentUID))
 	}
 	if cp.PreviousUID != "" {
 		if err := c.waitPreviousRetryAttempt(ctx, cp); err != nil {
@@ -369,6 +384,28 @@ func (c *InstantJobCtl) ensureRetryAttempt(ctx context.Context, cp *instantJobRe
 		return errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("create Job retry attempt: %w", err))
 	}
 	return c.persistRetryAttemptUID(ctx, cp, created)
+}
+
+func (c *InstantJobCtl) retainLiveRetryAttempt(ctx context.Context, cp *instantJobRetryCheckpoint, live *batchv1.Job) error {
+	if cp.CurrentUID != "" && live.UID != cp.CurrentUID {
+		return errors.Join(signal.ErrInfrastructureStop, errJobExecutionIdentityChanged)
+	}
+	if err := c.retainRetryCheckpoint(ctx, cp, live.CreationTimestamp.Time); err != nil {
+		return err
+	}
+	if live.Spec.TTLSecondsAfterFinished == nil || *live.Spec.TTLSecondsAfterFinished < *cp.Job.Spec.TTLSecondsAfterFinished {
+		if err := c.ensureRetryWorkflowOwnership(ctx); err != nil {
+			return err
+		}
+		updated := live.DeepCopy()
+		updated.Spec.TTLSecondsAfterFinished = cp.Job.Spec.TTLSecondsAfterFinished
+		var err error
+		live, err = c.client.BatchV1().Jobs(updated.Namespace).Update(ctx, updated, metav1.UpdateOptions{})
+		if err != nil {
+			return errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("retain Job retry recovery evidence: %w", err))
+		}
+	}
+	return c.persistRetryAttemptUID(ctx, cp, live)
 }
 
 func (c *InstantJobCtl) persistRetryAttemptUID(ctx context.Context, cp *instantJobRetryCheckpoint, live *batchv1.Job) error {

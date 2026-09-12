@@ -1,12 +1,14 @@
 package profiling
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/pprof"
 	"runtime"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/errhandler"
 	"k8s.io/klog/v2"
 )
 
@@ -30,15 +32,35 @@ func NewProfilingHandler() http.Handler {
 	return mux
 }
 
-// StartProfilingServer listen to the pprofAddr and export the profiling results.
-// It reports startup/runtime errors to errChan; if errChan is nil, it logs and returns.
-func StartProfilingServer(errChan chan error) {
-	if Addr == "" {
+// StartProfilingServer serves profiling requests until ctx is canceled.
+// Startup/runtime errors are reported to errChan, or logged when it is nil.
+func StartProfilingServer(ctx context.Context, errChan chan error) {
+	if Addr == "" || ctx.Err() != nil {
 		return
 	}
-	klog.Infof("start profiling server at %s", Addr)
-	err := http.ListenAndServe(Addr, NewProfilingHandler())
-	errhandler.NotifyWithFallback(errChan, func(runErr error) {
-		klog.ErrorS(runErr, "profiling server exited")
-	})(err)
+	klog.InfoS("starting profiling server", "address", Addr)
+	server := &http.Server{Addr: Addr, Handler: NewProfilingHandler()}
+	shutdownDone := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		defer close(shutdownDone)
+		if err := server.Close(); err != nil {
+			klog.ErrorS(err, "close profiling server failed")
+		}
+	})
+	defer func() {
+		if !stop() {
+			<-shutdownDone
+		}
+	}()
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		err = fmt.Errorf("serve profiling: %w", err)
+		if errChan == nil {
+			klog.ErrorS(err, "profiling server exited")
+			return
+		}
+		select {
+		case errChan <- err:
+		case <-ctx.Done():
+		}
+	}
 }

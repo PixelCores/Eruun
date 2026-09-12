@@ -36,6 +36,8 @@ const (
 type Config struct {
 	AuthConfigFile string
 	Accounts       *spec.AccountConfig
+	JobsConfigFile string
+	Jobs           *spec.JobsRuntimeConfig
 	// Role selects the explicit runtime responsibility for this process.
 	Role RuntimeRole
 
@@ -237,6 +239,31 @@ func (c *Config) Validate() []error {
 	} else if c.APIRateLimitQPS > 0 && c.APIRateLimitBurst <= 0 {
 		errs = append(errs, fmt.Errorf("api rate limit burst must be > 0 when api rate limit qps is enabled"))
 	}
+	errs = append(errs, c.validateLeaderElection()...)
+	if c.Datastore.Type == MYSQL && strings.TrimSpace(c.Datastore.URL) == "" {
+		errs = append(errs, fmt.Errorf("mysql url cannot be empty"))
+	}
+	if c.Datastore.Type == MYSQL && strings.Contains(c.Datastore.URL, "__REPLACE_") {
+		errs = append(errs, fmt.Errorf("mysql url contains placeholder value, please replace it with real credentials"))
+	}
+	cacheType := strings.ToLower(strings.TrimSpace(c.Cache.CacheType))
+	if cacheType != REDIS {
+		errs = append(errs, fmt.Errorf("distributed application mutation locking requires cache-type=redis"))
+	} else if strings.TrimSpace(c.Cache.CacheHost) == "" || c.Cache.CacheProt <= 0 {
+		errs = append(errs, fmt.Errorf("redis cache host/port is invalid"))
+	}
+	errs = append(errs, c.Workflow.Validate()...)
+	if strings.TrimSpace(c.ImportSecretKeyring) != "" || strings.TrimSpace(c.ImportSecretKeyringFile) != "" {
+		if _, err := importsecret.Load(c.ImportSecretKeyring, c.ImportSecretKeyringFile); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	errs = append(errs, c.validateMessaging()...)
+	return errs
+}
+
+func (c *Config) validateLeaderElection() []error {
+	var errs []error
 	if c.LeaderConfig.Duration < minLeaderLeaseDuration {
 		errs = append(errs, fmt.Errorf("leader election lease duration must be >= 4s, got %s", c.LeaderConfig.Duration))
 	}
@@ -262,24 +289,11 @@ func (c *Config) Validate() []error {
 	if controllerLockName != "" && controllerLockName == schedulerLockName {
 		errs = append(errs, fmt.Errorf("controller and scheduler leader election lock names must be distinct"))
 	}
-	if c.Datastore.Type == MYSQL && strings.TrimSpace(c.Datastore.URL) == "" {
-		errs = append(errs, fmt.Errorf("mysql url cannot be empty"))
-	}
-	if c.Datastore.Type == MYSQL && strings.Contains(c.Datastore.URL, "__REPLACE_") {
-		errs = append(errs, fmt.Errorf("mysql url contains placeholder value, please replace it with real credentials"))
-	}
-	cacheType := strings.ToLower(strings.TrimSpace(c.Cache.CacheType))
-	if cacheType != REDIS {
-		errs = append(errs, fmt.Errorf("distributed application mutation locking requires cache-type=redis"))
-	} else if strings.TrimSpace(c.Cache.CacheHost) == "" || c.Cache.CacheProt <= 0 {
-		errs = append(errs, fmt.Errorf("redis cache host/port is invalid"))
-	}
-	errs = append(errs, c.Workflow.Validate()...)
-	if strings.TrimSpace(c.ImportSecretKeyring) != "" || strings.TrimSpace(c.ImportSecretKeyringFile) != "" {
-		if _, err := importsecret.Load(c.ImportSecretKeyring, c.ImportSecretKeyringFile); err != nil {
-			errs = append(errs, err)
-		}
-	}
+	return errs
+}
+
+func (c *Config) validateMessaging() []error {
+	var errs []error
 	// messaging basic checks
 	msgType := strings.ToLower(strings.TrimSpace(c.Messaging.Type))
 	switch msgType {
@@ -317,6 +331,7 @@ func (c *Config) Validate() []error {
 // AddFlags adds flags to the specified FlagSet
 func (c *Config) AddFlags(fs *pflag.FlagSet, configParameter *Config) {
 	fs.StringVar(&c.AuthConfigFile, "auth-config-file", c.AuthConfigFile, "Mounted Secret JSON containing account and workspace configuration (required)")
+	fs.StringVar(&c.JobsConfigFile, "jobs-config-file", c.JobsConfigFile, "Mounted Secret JSON configuring Harbor Runner and optional MinIO result storage")
 	c.Role = configParameter.Role
 	fs.Var((*runtimeRoleValue)(&c.Role), "role", "runtime role: api|controller|scheduler|worker")
 	fs.StringVar(&c.BindAddr, "bind-addr", configParameter.BindAddr, "The bind address used to serve the http APIs.")

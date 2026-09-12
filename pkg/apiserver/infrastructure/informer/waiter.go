@@ -786,23 +786,10 @@ func (t *podTracker) snapshotLocked(componentKey string, options ComponentReadyW
 	return snapshot, found
 }
 
-func (t *podTracker) snapshot(componentKey string) (componentSnapshot, bool) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.snapshotLocked(componentKey, ComponentReadyWaitOptions{})
-}
-
 func (t *podTracker) snapshotForOptions(componentKey string, options ComponentReadyWaitOptions) (componentSnapshot, bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.snapshotLocked(componentKey, options)
-}
-
-func (w *ResourceReadyWaiter) componentSnapshot(appID, componentName string) (componentSnapshot, bool) {
-	if w.pods == nil {
-		return componentSnapshot{}, false
-	}
-	return w.pods.snapshot(buildComponentKey(appID, componentName))
 }
 
 func (w *ResourceReadyWaiter) componentSnapshotForOptions(appID, componentName string, options ComponentReadyWaitOptions) (componentSnapshot, bool) {

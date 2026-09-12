@@ -236,7 +236,7 @@ func (c *CleanupResourcesJobCtl) ensureStatefulSetPVCRetention(ctx context.Conte
 		lastRetryableErr = nil
 		return converged, nil
 	})
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, wait.ErrWaitTimeout) {
+	if wait.Interrupted(err) && !errors.Is(err, context.Canceled) {
 		if lastRetryableErr != nil {
 			return NewStatusError(config.StatusTimeout, fmt.Errorf("wait for StatefulSet %s PVC retention convergence: %w", cleanupResourceDisplayName(ref), lastRetryableErr))
 		}

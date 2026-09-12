@@ -67,7 +67,7 @@ func mustFindPlan(t *testing.T, plans []importAppPlan, appID string) *importAppP
 func mustFindPlanComponent(t *testing.T, plan *importAppPlan, componentName string) *apisv1.CreateComponentRequest {
 	t.Helper()
 	if plan == nil {
-		require.FailNow(t, "missing plan", "plan is nil")
+		t.Fatal("missing plan: plan is nil")
 	}
 	for i := range plan.components {
 		if strings.EqualFold(strings.TrimSpace(plan.components[i].Name), strings.TrimSpace(componentName)) {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -131,8 +132,8 @@ func buildJobContainer(component *model.ApplicationComponent, properties *model.
 	}
 	var envs []corev1.EnvVar
 	if properties != nil {
-		for k, v := range properties.Env {
-			envs = append(envs, corev1.EnvVar{Name: k, Value: v})
+		for _, name := range slices.Sorted(maps.Keys(properties.Env)) {
+			envs = append(envs, corev1.EnvVar{Name: name, Value: properties.Env[name]})
 		}
 	}
 	container := corev1.Container{

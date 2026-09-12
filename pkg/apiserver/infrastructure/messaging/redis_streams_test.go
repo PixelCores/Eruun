@@ -12,21 +12,28 @@ import (
 
 // fakeRedis implements redisCommander for testing without a real Redis.
 type fakeRedis struct {
-	closed    bool
-	xGroupErr error
+	closed      bool
+	xGroupErr   error
+	groupStarts []string
 
 	xAddID  string
 	xAddErr error
 
 	xReadStreams []redis.XStream
 	xReadErr     error
+	xReadErrs    []error
+	xReadCalls   int
 	lastReadArgs *redis.XReadGroupArgs
 
 	xAckErr error
 
 	xAutoClaimMessages []redis.XMessage
 	xAutoClaimErr      error
+	xAutoClaimErrs     []error
+	xAutoClaimNext     []string
+	xAutoClaimCalls    int
 	lastAutoClaimArgs  *redis.XAutoClaimArgs
+	autoClaimStarts    []string
 
 	xLenVal int64
 	xLenErr error
@@ -42,6 +49,7 @@ func (f *fakeRedis) Ping(ctx context.Context) *redis.StatusCmd {
 }
 
 func (f *fakeRedis) XGroupCreateMkStream(ctx context.Context, stream, group, start string) *redis.StatusCmd {
+	f.groupStarts = append(f.groupStarts, start)
 	cmd := redis.NewStatusCmd(ctx)
 	if f.xGroupErr != nil {
 		cmd.SetErr(f.xGroupErr)
@@ -68,6 +76,16 @@ func (f *fakeRedis) XAdd(ctx context.Context, a *redis.XAddArgs) *redis.StringCm
 func (f *fakeRedis) XReadGroup(ctx context.Context, a *redis.XReadGroupArgs) *redis.XStreamSliceCmd {
 	f.lastReadArgs = a
 	cmd := redis.NewXStreamSliceCmd(ctx)
+	if f.xReadCalls < len(f.xReadErrs) {
+		err := f.xReadErrs[f.xReadCalls]
+		f.xReadCalls++
+		if err != nil {
+			cmd.SetErr(err)
+			return cmd
+		}
+	} else {
+		f.xReadCalls++
+	}
 	if f.xReadErr != nil {
 		cmd.SetErr(f.xReadErr)
 		return cmd
@@ -88,12 +106,23 @@ func (f *fakeRedis) XAck(ctx context.Context, stream, group string, ids ...strin
 
 func (f *fakeRedis) XAutoClaim(ctx context.Context, a *redis.XAutoClaimArgs) *redis.XAutoClaimCmd {
 	f.lastAutoClaimArgs = a
+	f.autoClaimStarts = append(f.autoClaimStarts, a.Start)
 	cmd := redis.NewXAutoClaimCmd(ctx)
+	call := f.xAutoClaimCalls
+	f.xAutoClaimCalls++
+	if call < len(f.xAutoClaimErrs) && f.xAutoClaimErrs[call] != nil {
+		cmd.SetErr(f.xAutoClaimErrs[call])
+		return cmd
+	}
 	if f.xAutoClaimErr != nil {
 		cmd.SetErr(f.xAutoClaimErr)
 		return cmd
 	}
-	cmd.SetVal(f.xAutoClaimMessages, "0-0")
+	next := "0-0"
+	if call < len(f.xAutoClaimNext) {
+		next = f.xAutoClaimNext[call]
+	}
+	cmd.SetVal(f.xAutoClaimMessages, next)
 	return cmd
 }
 
@@ -141,6 +170,9 @@ func TestRedisStreams_WithCommanderBasic(t *testing.T) {
 	// EnsureGroup
 	if err := rs.EnsureGroup(ctx, "g"); err != nil {
 		t.Fatalf("EnsureGroup error: %v", err)
+	}
+	if len(f.groupStarts) != 1 || f.groupStarts[0] != "0" {
+		t.Fatalf("EnsureGroup must preserve existing backlog, starts=%v", f.groupStarts)
 	}
 	// Enqueue
 	if id, err := rs.Enqueue(ctx, []byte("hello")); err != nil || id == "" {
@@ -263,6 +295,30 @@ func TestRedisStreams_ReadGroupHandlesNilAndError(t *testing.T) {
 	}
 }
 
+func TestRedisStreams_ReadGroupRecreatesMissingGroupFromBacklog(t *testing.T) {
+	f := &fakeRedis{
+		xReadErrs: []error{errors.New("NOGROUP No such key or consumer group"), nil},
+		xReadStreams: []redis.XStream{{Messages: []redis.XMessage{
+			{ID: "1-0", Values: map[string]interface{}{"p": "backlog"}},
+		}}},
+	}
+	rs, err := NewRedisStreamsWithClient(f, "test-stream", 0)
+	if err != nil {
+		t.Fatalf("new redis streams: %v", err)
+	}
+
+	messages, err := rs.ReadGroup(context.Background(), "group", "consumer", 1, time.Second)
+	if err != nil {
+		t.Fatalf("read after group recreation: %v", err)
+	}
+	if len(messages) != 1 || string(messages[0].Payload) != "backlog" {
+		t.Fatalf("unexpected messages: %+v", messages)
+	}
+	if f.xReadCalls != 2 || len(f.groupStarts) != 1 || f.groupStarts[0] != "0" {
+		t.Fatalf("expected one backlog group recreation and retry, calls=%d starts=%v", f.xReadCalls, f.groupStarts)
+	}
+}
+
 func TestRedisStreams_AutoClaimDecodesPayloadAndHandlesErrors(t *testing.T) {
 	f := &fakeRedis{
 		xAutoClaimMessages: []redis.XMessage{
@@ -307,6 +363,45 @@ func TestRedisStreams_AutoClaimDecodesPayloadAndHandlesErrors(t *testing.T) {
 	}
 	if _, err := rsErr.AutoClaim(context.Background(), "group", "consumer", time.Second, 1); err == nil {
 		t.Fatalf("expected autoclaim error")
+	}
+}
+
+func TestRedisStreams_AutoClaimAdvancesCursorPerGroup(t *testing.T) {
+	f := &fakeRedis{xAutoClaimNext: []string{"25-0", "0-0", "9-0"}}
+	rs, err := NewRedisStreamsWithClient(f, "test-stream", 0)
+	if err != nil {
+		t.Fatalf("new redis streams: %v", err)
+	}
+
+	for _, group := range []string{"group-a", "group-a", "group-b"} {
+		if _, err := rs.AutoClaim(context.Background(), group, "consumer", time.Second, 10); err != nil {
+			t.Fatalf("auto claim %s: %v", group, err)
+		}
+	}
+	want := []string{"0-0", "25-0", "0-0"}
+	if fmt.Sprint(f.autoClaimStarts) != fmt.Sprint(want) {
+		t.Fatalf("unexpected cursor sequence: got %v want %v", f.autoClaimStarts, want)
+	}
+}
+
+func TestRedisStreams_AutoClaimRecreatesMissingGroupOnce(t *testing.T) {
+	f := &fakeRedis{
+		xAutoClaimErrs: []error{errors.New("NOGROUP group was deleted"), nil},
+		xAutoClaimNext: []string{"", "4-0"},
+	}
+	rs, err := NewRedisStreamsWithClient(f, "test-stream", 0)
+	if err != nil {
+		t.Fatalf("new redis streams: %v", err)
+	}
+
+	if _, err := rs.AutoClaim(context.Background(), "group", "consumer", time.Second, 10); err != nil {
+		t.Fatalf("auto claim after group recreation: %v", err)
+	}
+	if f.xAutoClaimCalls != 2 || len(f.groupStarts) != 1 || f.groupStarts[0] != "0" {
+		t.Fatalf("expected one backlog group recreation and retry, calls=%d starts=%v", f.xAutoClaimCalls, f.groupStarts)
+	}
+	if len(f.autoClaimStarts) != 2 || f.autoClaimStarts[1] != "0-0" {
+		t.Fatalf("retry must restart scan, got %v", f.autoClaimStarts)
 	}
 }
 

@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // User is the local account. Provider subjects are stored separately in Identity.
 type User struct {
@@ -43,7 +46,8 @@ type Workspace struct {
 	OwnerID   string `json:"ownerId" gorm:"type:varchar(36);not null;index"`
 	Namespace string `json:"namespace" gorm:"type:varchar(63);not null;uniqueIndex"`
 	// PersonalUserID is NULL for teams, providing one personal space per user.
-	PersonalUserID *string `json:"-" gorm:"type:varchar(36);uniqueIndex"`
+	PersonalUserID  *string         `json:"-" gorm:"type:varchar(36);uniqueIndex"`
+	JobResultPolicy json.RawMessage `json:"-" gorm:"type:text;column:job_result_policy"`
 	BaseModel
 }
 

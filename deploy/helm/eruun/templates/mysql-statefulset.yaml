@@ -2,12 +2,31 @@
 {{- if hasPrefix "__REPLACE_" $mysqlPassword -}}
 {{- fail "mysql.rootPassword must not contain placeholder text" -}}
 {{- end -}}
+{{- $mysqlSecretName := include "eruun.suffixedName" (dict "root" . "suffix" "mysql") -}}
+{{- $mysqlDatastoreURL := printf "root:%s@tcp(%s:%v)/%s?charset=utf8&parseTime=true" .Values.mysql.rootPassword $mysqlSecretName .Values.mysql.servicePort .Values.mysql.database -}}
+{{- $existingMysqlName := include "eruun.persistentWorkloadName" (dict "root" . "component" "mysql" "currentName" $mysqlSecretName) -}}
+{{- if $existingMysqlName -}}
+{{- if ne $existingMysqlName $mysqlSecretName -}}
+{{- fail "fullname is immutable for an existing bundled MySQL volume; use a separate data migration procedure" -}}
+{{- end -}}
+{{- $existingMysqlSecret := lookup "v1" "Secret" .Release.Namespace $existingMysqlName -}}
+{{- if not $existingMysqlSecret -}}
+{{- fail "the bundled MySQL workload exists but its credential Secret is missing" -}}
+{{- end -}}
+{{- $existingMysqlData := default dict $existingMysqlSecret.data -}}
+{{- $existingMysqlPassword := (default "" (index $existingMysqlData "password")) | b64dec -}}
+{{- $existingDatastoreURL := (default "" (index $existingMysqlData "datastore-url")) | b64dec -}}
+{{- if or (ne $existingMysqlPassword .Values.mysql.rootPassword) (ne $existingDatastoreURL $mysqlDatastoreURL) -}}
+{{- fail "mysql.rootPassword, mysql.database, and mysql.servicePort are immutable for an existing bundled MySQL volume; use a separate credential or database migration procedure" -}}
+{{- end -}}
+{{- end -}}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "eruun.fullname" . }}-mysql
+  name: {{ $mysqlSecretName }}
   labels:
     {{- include "eruun.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mysql
 spec:
   clusterIP: None
   ports:
@@ -21,11 +40,12 @@ spec:
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "eruun.fullname" . }}-mysql
+  name: {{ $mysqlSecretName }}
   labels:
     {{- include "eruun.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mysql
 spec:
-  serviceName: {{ include "eruun.fullname" . }}-mysql
+  serviceName: {{ $mysqlSecretName }}
   replicas: 1
   selector:
     matchLabels:
@@ -41,6 +61,7 @@ spec:
         - name: mysql
           image: {{ .Values.mysql.image }}
           imagePullPolicy: Always
+          args: ["--port={{ .Values.mysql.servicePort }}"]
           ports:
             - name: mysql
               containerPort: {{ .Values.mysql.servicePort }}
@@ -48,18 +69,18 @@ spec:
             - name: MYSQL_ROOT_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "eruun.fullname" . }}-mysql
+                  name: {{ $mysqlSecretName }}
                   key: password
             - name: MYSQL_DATABASE
               value: {{ .Values.mysql.database }}
           readinessProbe:
             exec:
-              command: ["/bin/sh", "-c", "mysqladmin ping -h 127.0.0.1 -p$MYSQL_ROOT_PASSWORD"]
+              command: ["/bin/sh", "-c", "mysqladmin ping -h 127.0.0.1 -P {{ .Values.mysql.servicePort }} -p$MYSQL_ROOT_PASSWORD"]
             initialDelaySeconds: 10
             periodSeconds: 5
           livenessProbe:
             exec:
-              command: ["/bin/sh", "-c", "mysqladmin ping -h 127.0.0.1 -p$MYSQL_ROOT_PASSWORD"]
+              command: ["/bin/sh", "-c", "mysqladmin ping -h 127.0.0.1 -P {{ .Values.mysql.servicePort }} -p$MYSQL_ROOT_PASSWORD"]
             initialDelaySeconds: 30
             periodSeconds: 10
           volumeMounts:
@@ -79,10 +100,14 @@ spec:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: {{ include "eruun.fullname" . }}-mysql
+  name: {{ $mysqlSecretName }}
+  annotations:
+    "helm.sh/resource-policy": keep
   labels:
     {{- include "eruun.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mysql
 type: Opaque
 data:
   password: {{ .Values.mysql.rootPassword | b64enc }}
-  datastore-url: {{ printf "root:%s@tcp(%s-mysql:%v)/%s?charset=utf8&parseTime=true" .Values.mysql.rootPassword (include "eruun.fullname" .) .Values.mysql.servicePort .Values.mysql.database | b64enc }}
+  database: {{ .Values.mysql.database | b64enc }}
+  datastore-url: {{ $mysqlDatastoreURL | b64enc }}

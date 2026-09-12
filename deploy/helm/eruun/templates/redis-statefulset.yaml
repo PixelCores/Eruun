@@ -2,10 +2,43 @@
 {{- if hasPrefix "__REPLACE_" $redisPassword -}}
 {{- fail "redis.password must not contain placeholder text" -}}
 {{- end -}}
+{{- $redisSecretName := include "eruun.suffixedName" (dict "root" . "suffix" "redis") -}}
+{{- $existingRedisName := include "eruun.persistentWorkloadName" (dict "root" . "component" "redis" "currentName" $redisSecretName) -}}
+{{- if $existingRedisName -}}
+{{- if ne $existingRedisName $redisSecretName -}}
+{{- fail "fullname is immutable for an existing bundled Redis volume; use a separate data migration procedure" -}}
+{{- end -}}
+{{- $existingRedisSecret := lookup "v1" "Secret" .Release.Namespace $existingRedisName -}}
+{{- if not $existingRedisSecret -}}
+{{- fail "the bundled Redis workload exists but its credential Secret is missing" -}}
+{{- end -}}
+{{- $existingRedisData := default dict $existingRedisSecret.data -}}
+{{- $existingRedisPassword := (default "" (index $existingRedisData "password")) | b64dec -}}
+{{- if ne $existingRedisPassword .Values.redis.password -}}
+{{- fail "redis.password is immutable for an existing bundled Redis volume; use a separate credential rotation procedure" -}}
+{{- end -}}
+{{- $existingRedisService := lookup "v1" "Service" .Release.Namespace $existingRedisName -}}
+{{- $existingRedisPort := 0 -}}
+{{- if $existingRedisService -}}
+{{- $existingRedisPorts := default (list) $existingRedisService.spec.ports -}}
+{{- if ne (len $existingRedisPorts) 1 -}}
+{{- fail "the bundled Redis Service has an invalid port contract" -}}
+{{- end -}}
+{{- $existingRedisPort = int (get (index $existingRedisPorts 0) "port") -}}
+{{- else -}}
+{{- $existingRedisPortData := default "" (index $existingRedisData "service-port") -}}
+{{- if $existingRedisPortData -}}
+{{- $existingRedisPort = int ($existingRedisPortData | b64dec) -}}
+{{- end -}}
+{{- end -}}
+{{- if or (eq $existingRedisPort 0) (ne $existingRedisPort (int .Values.redis.servicePort)) -}}
+{{- fail "redis.servicePort is immutable for an existing bundled Redis volume; use a separate data migration procedure" -}}
+{{- end -}}
+{{- end -}}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "eruun.fullname" . }}-redis
+  name: {{ $redisSecretName }}
   labels:
     {{- include "eruun.labels" . | nindent 4 }}
 spec:
@@ -21,21 +54,26 @@ spec:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: {{ include "eruun.fullname" . }}-redis
+  name: {{ $redisSecretName }}
+  annotations:
+    "helm.sh/resource-policy": keep
   labels:
     {{- include "eruun.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
 type: Opaque
 data:
   password: {{ .Values.redis.password | b64enc }}
+  service-port: {{ .Values.redis.servicePort | toString | b64enc }}
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "eruun.fullname" . }}-redis
+  name: {{ $redisSecretName }}
   labels:
     {{- include "eruun.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
 spec:
-  serviceName: {{ include "eruun.fullname" . }}-redis
+  serviceName: {{ $redisSecretName }}
   replicas: 1
   selector:
     matchLabels:
@@ -55,7 +93,7 @@ spec:
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "eruun.fullname" . }}-redis
+                  name: {{ $redisSecretName }}
                   key: password
           ports:
             - name: redis
@@ -83,7 +121,7 @@ spec:
             - /bin/sh
             - -ec
           args:
-            - exec redis-server --appendonly yes --requirepass "$REDIS_PASSWORD"
+            - exec redis-server --port {{ .Values.redis.servicePort }} --appendonly yes --requirepass "$REDIS_PASSWORD"
           resources:
             {{- toYaml .Values.redis.resources | nindent 12 }}
   volumeClaimTemplates:

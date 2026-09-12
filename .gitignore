@@ -37,3 +37,5 @@
 .gocache/
 .buildx-cache/
 /.buildx-cache/
+__pycache__/
+*.pyc

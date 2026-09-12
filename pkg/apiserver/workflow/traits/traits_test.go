@@ -13,7 +13,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/yaml"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -151,9 +151,9 @@ func TestSecurityPolicyTrait(t *testing.T) {
 		Image: "main-app:v1",
 		Traits: toJSONStruct(model.Traits{
 			SecurityPolicy: &corev1.SecurityContext{
-				RunAsUser:                pointer.Int64(1000),
-				RunAsGroup:               pointer.Int64(1000),
-				AllowPrivilegeEscalation: pointer.Bool(false),
+				RunAsUser:                ptr.To[int64](1000),
+				RunAsGroup:               ptr.To[int64](1000),
+				AllowPrivilegeEscalation: ptr.To(false),
 			},
 			Init: []model.InitTrait{
 				{
@@ -161,8 +161,8 @@ func TestSecurityPolicyTrait(t *testing.T) {
 					Image: "init:v1",
 					Traits: model.Traits{
 						SecurityPolicy: &corev1.SecurityContext{
-							RunAsUser:  pointer.Int64(0),
-							RunAsGroup: pointer.Int64(0),
+							RunAsUser:  ptr.To[int64](0),
+							RunAsGroup: ptr.To[int64](0),
 						},
 					},
 				},
@@ -173,7 +173,7 @@ func TestSecurityPolicyTrait(t *testing.T) {
 					Image: "log-agent:v1",
 					Traits: model.Traits{
 						SecurityPolicy: &corev1.SecurityContext{
-							RunAsUser: pointer.Int64(2000),
+							RunAsUser: ptr.To[int64](2000),
 						},
 					},
 				},

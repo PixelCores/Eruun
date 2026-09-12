@@ -11,21 +11,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
-
-type workflowExecutionClaimStore struct {
-	*repositoryTestStore
-	reloadedTask model.WorkflowQueue
-}
-
-func (s *workflowExecutionClaimStore) Get(_ context.Context, entity datastore.Entity) error {
-	task, ok := entity.(*model.WorkflowQueue)
-	if !ok || task == nil {
-		return datastore.ErrEntityInvalid
-	}
-	*task = s.reloadedTask
-	return nil
-}
 
 func TestClaimWorkflowTaskForDispatchCreatesGenerationAndLease(t *testing.T) {
 	now := time.Unix(1700000000, 123000000).UTC()
@@ -61,6 +48,24 @@ func TestWorkflowLeaseRejectsIncompleteIdentity(t *testing.T) {
 
 	_, err = ExpireWorkflowTaskLease(context.Background(), store, "task-1", 0, "token-1", "worker-1")
 	require.ErrorContains(t, err, "execution identity")
+}
+
+func TestRenewCancelledWorkflowTaskLeaseUsesDatabaseTimeAndExactOwner(t *testing.T) {
+	now := time.Unix(1700000100, 0).UTC()
+	store := &repositoryTestStore{casWithConditionsSwapped: true, databaseNow: now}
+
+	renewed, err := RenewCancelledWorkflowTaskLease(
+		context.Background(), store, "task-cancelled", 7, "token-7", "worker-7", 30*time.Second,
+	)
+
+	require.NoError(t, err)
+	require.True(t, renewed)
+	require.Equal(t, map[string]interface{}{
+		"status": config.StatusCancelled, "run_generation": uint64(7),
+		"run_token": "token-7", "worker_id": "worker-7",
+	}, store.casConditions)
+	require.Equal(t, now, store.casUpdates["heartbeat_at"])
+	require.Equal(t, now.Add(30*time.Second), store.casUpdates["lease_expires_at"])
 }
 
 func TestRenewWorkflowTaskLeaseUsesFullOwnershipFence(t *testing.T) {
@@ -149,6 +154,50 @@ func TestRecoverExpiredWorkflowTasksBoundsOneReaperBatch(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, workflowLeaseRecoveryBatchSize, recovered)
 	require.Equal(t, workflowLeaseRecoveryBatchSize, store.compareAndSwapCalls)
+}
+
+func TestRecoverExpiredCancelledWorkflowTasksConvergesChildrenAndClearsOwner(t *testing.T) {
+	store := newJobSchedulerTestStore(t)
+	ctx := context.Background()
+	owner, active := schedulerTestJob(t, store, "cancel-recovery", "space-a", "normal")
+	_, err := AdmitQueuedJobs(ctx, store)
+	require.NoError(t, err)
+	expired := time.Now().UTC().Add(-time.Minute)
+	owner.Status = config.StatusCancelled
+	owner.LeaseExpiresAt = &expired
+	owner.SchedulingReason = "terminal callback pending: manual cancel"
+	require.NoError(t, store.Put(ctx, owner))
+	callbackKey := "callback-key"
+	callback := &model.JobInfo{
+		TaskID: owner.TaskID, WorkspaceID: owner.WorkspaceID, Type: string(config.JobDeployCallback),
+		Status: string(config.StatusWaiting), ExecutionKey: &callbackKey, RunGeneration: owner.RunGeneration,
+	}
+	require.NoError(t, store.Add(ctx, callback))
+	completedKey := "completed-key"
+	completed := &model.JobInfo{
+		TaskID: owner.TaskID, WorkspaceID: owner.WorkspaceID, Type: string(config.JobDeployService),
+		Status: string(config.StatusCompleted), ExecutionKey: &completedKey, RunGeneration: owner.RunGeneration,
+	}
+	require.NoError(t, store.Add(ctx, completed))
+
+	recovered, err := RecoverExpiredCancelledWorkflowTasks(ctx, store)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, recovered)
+	latestOwner := &model.WorkflowQueue{TaskID: owner.TaskID}
+	require.NoError(t, store.Get(ctx, latestOwner))
+	require.Empty(t, latestOwner.RunToken)
+	require.Empty(t, latestOwner.WorkerID)
+	require.Nil(t, latestOwner.HeartbeatAt)
+	require.Nil(t, latestOwner.LeaseExpiresAt)
+	require.Equal(t, "terminal callback pending: manual cancel", latestOwner.SchedulingReason)
+	require.NoError(t, store.Get(ctx, active))
+	require.Equal(t, string(config.StatusCancelled), active.Status)
+	require.Equal(t, workflowconfig.JobSchedulingReleased, active.SchedulingState)
+	require.NoError(t, store.Get(ctx, callback))
+	require.Equal(t, string(config.StatusWaiting), callback.Status)
+	require.NoError(t, store.Get(ctx, completed))
+	require.Equal(t, string(config.StatusCompleted), completed.Status)
 }
 
 func TestWorkflowLeaseRequiresDatabaseClock(t *testing.T) {

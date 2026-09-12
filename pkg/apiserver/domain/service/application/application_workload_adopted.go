@@ -276,54 +276,8 @@ func (c *applicationsServiceImpl) resolveAdoptedLifecycleTarget(
 			}
 		}
 	case "StatefulSet":
-		statefulSet, err := c.KubeClient.AppsV1().StatefulSets(target.namespace).Get(opCtx, target.name, metav1.GetOptions{})
-		if err != nil {
-			return nil, adoptedLifecycleGetError(operation, target, err)
-		}
-		if err := validateAdoptedLifecycleUID(target, statefulSet); err != nil {
-			return nil, fmt.Errorf("preflight adopted %s: %w", operation, err)
-		}
-		if operation == adoptedLifecycleStop {
-			target.liveReplicas = adoptedLiveReplicas(statefulSet.Spec.Replicas)
-			target.resumeReplicas, err = adoptedResumeReplicas(component, target.liveReplicas)
-			if err != nil {
-				return nil, fmt.Errorf("preflight adopted %s %s: %w", operation, formatResource(target.kind, target.namespace, target.name), err)
-			}
-			if err := c.validateAdoptedStatefulSetStop(opCtx, statefulSet, target.resumeReplicas); err != nil {
-				return nil, fmt.Errorf("preflight adopted %s %s: %w", operation, formatResource(target.kind, target.namespace, target.name), err)
-			}
-		} else if operation == adoptedLifecycleStart {
-			if shouldMutate {
-				if component.ResumeReplicas == nil || *component.ResumeReplicas <= 0 {
-					return nil, fmt.Errorf(
-						"preflight adopted %s %s: resume replicas must be greater than 0",
-						operation,
-						formatResource(target.kind, target.namespace, target.name),
-					)
-				}
-				target.resumeReplicas = *component.ResumeReplicas
-			} else {
-				target.resumeReplicas, err = adoptedStatefulSetValidationReplicas(component, statefulSet)
-				if err != nil {
-					return nil, fmt.Errorf("preflight adopted %s %s: %w", operation, formatResource(target.kind, target.namespace, target.name), err)
-				}
-			}
-			if err := c.validateAdoptedStatefulSetStop(opCtx, statefulSet, target.resumeReplicas); err != nil {
-				return nil, fmt.Errorf("preflight adopted %s %s: %w", operation, formatResource(target.kind, target.namespace, target.name), err)
-			}
-		} else if operation == adoptedLifecycleRestart {
-			if shouldMutate {
-				if err := importcontract.ValidateStatefulSetRestartStrategy(statefulSet); err != nil {
-					return nil, fmt.Errorf("preflight adopted %s %s: %w", operation, formatResource(target.kind, target.namespace, target.name), err)
-				}
-			}
-			target.resumeReplicas, err = adoptedStatefulSetValidationReplicas(component, statefulSet)
-			if err != nil {
-				return nil, fmt.Errorf("preflight adopted %s %s: %w", operation, formatResource(target.kind, target.namespace, target.name), err)
-			}
-			if err := c.validateAdoptedStatefulSetStop(opCtx, statefulSet, target.resumeReplicas); err != nil {
-				return nil, fmt.Errorf("preflight adopted %s %s: %w", operation, formatResource(target.kind, target.namespace, target.name), err)
-			}
+		if err := c.resolveAdoptedStatefulSetLifecycleTarget(opCtx, component, target, operation, shouldMutate); err != nil {
+			return nil, err
 		}
 	default:
 		return nil, fmt.Errorf("preflight adopted %s component %q: unsupported source kind %q", operation, component.Name, target.kind)
@@ -340,6 +294,59 @@ func (c *applicationsServiceImpl) resolveAdoptedLifecycleTarget(
 		target.resumeReplicas = *component.ResumeReplicas
 	}
 	return target, nil
+}
+
+func (c *applicationsServiceImpl) resolveAdoptedStatefulSetLifecycleTarget(ctx context.Context, component *model.ApplicationComponent, target *adoptedLifecycleTarget, operation adoptedLifecycleOperation, shouldMutate bool) error {
+	statefulSet, err := c.KubeClient.AppsV1().StatefulSets(target.namespace).Get(ctx, target.name, metav1.GetOptions{})
+	if err != nil {
+		return adoptedLifecycleGetError(operation, target, err)
+	}
+	if err := validateAdoptedLifecycleUID(target, statefulSet); err != nil {
+		return fmt.Errorf("preflight adopted %s: %w", operation, err)
+	}
+	if operation == adoptedLifecycleStop {
+		target.liveReplicas = adoptedLiveReplicas(statefulSet.Spec.Replicas)
+		target.resumeReplicas, err = adoptedResumeReplicas(component, target.liveReplicas)
+		if err != nil {
+			return fmt.Errorf("preflight adopted %s %s: %w", operation, formatResource(target.kind, target.namespace, target.name), err)
+		}
+		if err := c.validateAdoptedStatefulSetStop(ctx, statefulSet, target.resumeReplicas); err != nil {
+			return fmt.Errorf("preflight adopted %s %s: %w", operation, formatResource(target.kind, target.namespace, target.name), err)
+		}
+	} else if operation == adoptedLifecycleStart {
+		if shouldMutate {
+			if component.ResumeReplicas == nil || *component.ResumeReplicas <= 0 {
+				return fmt.Errorf(
+					"preflight adopted %s %s: resume replicas must be greater than 0",
+					operation,
+					formatResource(target.kind, target.namespace, target.name),
+				)
+			}
+			target.resumeReplicas = *component.ResumeReplicas
+		} else {
+			target.resumeReplicas, err = adoptedStatefulSetValidationReplicas(component, statefulSet)
+			if err != nil {
+				return fmt.Errorf("preflight adopted %s %s: %w", operation, formatResource(target.kind, target.namespace, target.name), err)
+			}
+		}
+		if err := c.validateAdoptedStatefulSetStop(ctx, statefulSet, target.resumeReplicas); err != nil {
+			return fmt.Errorf("preflight adopted %s %s: %w", operation, formatResource(target.kind, target.namespace, target.name), err)
+		}
+	} else if operation == adoptedLifecycleRestart {
+		if shouldMutate {
+			if err := importcontract.ValidateStatefulSetRestartStrategy(statefulSet); err != nil {
+				return fmt.Errorf("preflight adopted %s %s: %w", operation, formatResource(target.kind, target.namespace, target.name), err)
+			}
+		}
+		target.resumeReplicas, err = adoptedStatefulSetValidationReplicas(component, statefulSet)
+		if err != nil {
+			return fmt.Errorf("preflight adopted %s %s: %w", operation, formatResource(target.kind, target.namespace, target.name), err)
+		}
+		if err := c.validateAdoptedStatefulSetStop(ctx, statefulSet, target.resumeReplicas); err != nil {
+			return fmt.Errorf("preflight adopted %s %s: %w", operation, formatResource(target.kind, target.namespace, target.name), err)
+		}
+	}
+	return nil
 }
 
 func adoptedLifecycleGetError(operation adoptedLifecycleOperation, target *adoptedLifecycleTarget, err error) error {
