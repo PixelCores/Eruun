@@ -243,6 +243,16 @@ func reportableInformerStartError(ctx context.Context, err error) error {
 	return fmt.Errorf("start informer manager: %w", err)
 }
 
+func reportWorkerStartupError(ctx context.Context, errChan chan error, err error) {
+	if err == nil || errChan == nil {
+		return
+	}
+	select {
+	case errChan <- err:
+	case <-ctx.Done():
+	}
+}
+
 func (s *restServer) ensureQueueGroup(ctx context.Context) error {
 	if s.Queue == nil {
 		return nil
@@ -376,9 +386,7 @@ func (s *restServer) onStartedControllerLeading(ctx context.Context, errChan cha
 	run := s.beginControllerRun(ctx)
 	if s.InformerManager != nil {
 		if err := s.InformerManager.Start(run.ctx); err != nil {
-			if reportable := reportableInformerStartError(run.ctx, err); reportable != nil && errChan != nil {
-				errChan <- reportable
-			}
+			reportWorkerStartupError(run.ctx, errChan, reportableInformerStartError(run.ctx, err))
 			run.markStarted()
 			return
 		}
@@ -397,8 +405,8 @@ func (s *restServer) onStartedSchedulerLeading(ctx context.Context, errChan chan
 	s.schedulerReady.Store(false)
 	run := s.beginSchedulerRun(ctx)
 	if err := s.ensureQueueGroup(run.ctx); err != nil {
-		if run.ctx.Err() == nil && errChan != nil {
-			errChan <- fmt.Errorf("ensure queue group %s: %w", config.WorkflowWorkerQueueGroup, err)
+		if run.ctx.Err() == nil {
+			reportWorkerStartupError(run.ctx, errChan, fmt.Errorf("ensure queue group %s: %w", config.WorkflowWorkerQueueGroup, err))
 		}
 		run.markStarted()
 		return

@@ -75,13 +75,13 @@ spec:
             - name: ERUUN_CACHE_TYPE
               value: redis
             - name: ERUUN_CACHE_HOST
-              value: {{ include "eruun.fullname" $root }}-redis
+              value: {{ include "eruun.suffixedName" (dict "root" $root "suffix" "redis") }}
             - name: ERUUN_CACHE_PORT
               value: {{ $root.Values.redis.servicePort | quote }}
             - name: ERUUN_CACHE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "eruun.fullname" $root }}-redis
+                  name: {{ include "eruun.suffixedName" (dict "root" $root "suffix" "redis") }}
                   key: password
             - name: ERUUN_MSG_TYPE
               value: redis

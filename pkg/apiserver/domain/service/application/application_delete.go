@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -12,9 +13,11 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/cancelsignal"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
+	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	wf "github.com/PixelCores/Eruun/pkg/apiserver/workflow"
 )
 
 func (c *applicationsServiceImpl) DeleteApplicationCascade(ctx context.Context, appID string, req apisv1.DeleteApplicationRequest) (*apisv1.DeleteApplicationResponse, error) {
@@ -173,6 +176,10 @@ func (c *applicationsServiceImpl) filterActiveTasks(ctx context.Context, tasks [
 		if status != config.StatusCancelled {
 			continue
 		}
+		if wf.IsTerminalCallbackPending(task.SchedulingReason) {
+			active = append(active, task)
+			continue
+		}
 		hasJobs, err := taskHasActiveJobs(ctx, c.Store, task.TaskID)
 		if err != nil {
 			return nil, err
@@ -192,14 +199,112 @@ func (c *applicationsServiceImpl) cancelTaskForAppDelete(ctx context.Context, ta
 	if err != nil {
 		return err
 	}
-	task.TaskRevoker = config.DefaultTaskRevoker
-	task.Status = config.StatusCancelled
-	task.CancelSource = config.CancelSourceSystem
-	if err := repository.UpdateTask(ctx, c.Store, task); err != nil {
+	callbackPending, err := c.cancelledTaskCallbackConfigured(ctx, task)
+	if err != nil {
 		return err
 	}
+	callbackState := wf.TerminalCallbackReconciledReason
+	if callbackPending {
+		callbackState = wf.TerminalCallbackPendingReason(reason)
+	}
+	current := *task
+	for attempt := 0; attempt < 3; attempt++ {
+		if current.Status == config.StatusCancelled {
+			cancelReason := strings.TrimSpace(reason)
+			if wf.IsTerminalCallbackPending(current.SchedulingReason) {
+				cancelReason = wf.TerminalCallbackReason(current.SchedulingReason)
+			}
+			*task = current
+			return cancelsignal.PublishWorkflowCancelSignal(ctx, task.TaskID, cancelReason, redisClient)
+		}
+		if current.Status != "" && !isWorkflowActiveStatus(current.Status) {
+			return nil
+		}
+		conditions := map[string]interface{}{
+			"status": current.Status, "run_generation": current.RunGeneration,
+			"run_token": current.RunToken, "worker_id": current.WorkerID,
+		}
+		updates := map[string]interface{}{
+			"task_revoker": config.DefaultTaskRevoker, "status": config.StatusCancelled,
+			"cancel_source": config.CancelSourceSystem, "approval_pending": false,
+			"pending_approval_step": "", "scheduling_reason": callbackState,
+		}
+		transactional, ok := c.Store.(datastore.Transactional)
+		if !ok {
+			return fmt.Errorf("cancel application task: datastore does not support transactions")
+		}
+		updated := false
+		err := transactional.WithTransaction(ctx, func(tx datastore.DataStore) error {
+			var updateErr error
+			updated, updateErr = repository.UpdateTaskFieldsIfConditions(ctx, tx, current.TaskID, conditions, updates)
+			if updateErr != nil || !updated {
+				return updateErr
+			}
+			return terminalizeUnclaimedAppDeleteTaskJobs(ctx, tx, &current, reason)
+		})
+		if err != nil {
+			return err
+		}
+		if updated {
+			current.TaskRevoker = config.DefaultTaskRevoker
+			current.Status = config.StatusCancelled
+			current.CancelSource = config.CancelSourceSystem
+			current.ApprovalPending = false
+			current.PendingApprovalStep = ""
+			current.SchedulingReason = callbackState
+			*task = current
+			return cancelsignal.PublishWorkflowCancelSignal(ctx, task.TaskID, reason, redisClient)
+		}
+		latest, err := repository.TaskByID(ctx, c.Store, current.TaskID)
+		if err != nil {
+			return err
+		}
+		current = *latest
+	}
+	return repository.ErrWorkflowOwnershipLost
+}
 
-	return cancelsignal.PublishWorkflowCancelSignal(ctx, task.TaskID, reason, redisClient)
+func terminalizeUnclaimedAppDeleteTaskJobs(ctx context.Context, store datastore.DataStore, task *model.WorkflowQueue, reason string) error {
+	if task == nil || task.Status != config.StatusWaiting || task.DispatchAttempts != 0 || task.RunToken != "" || task.WorkerID != "" {
+		return nil
+	}
+	return repository.TerminalizeCancelledWorkflowJobs(
+		ctx, store, task.TaskID, strings.TrimSpace(reason),
+		workflowjob.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, "cancelled"),
+	)
+}
+
+func (c *applicationsServiceImpl) cancelledTaskCallbackConfigured(ctx context.Context, task *model.WorkflowQueue) (bool, error) {
+	if task == nil {
+		return false, nil
+	}
+	var workflow *model.Workflow
+	if task.WorkflowID != "" {
+		workflow = &model.Workflow{ID: task.WorkflowID}
+		if err := c.Store.Get(ctx, workflow); err != nil && !errors.Is(err, datastore.ErrRecordNotExist) {
+			return false, fmt.Errorf("load workflow cancellation callback: %w", err)
+		}
+	}
+	var app *model.Applications
+	if task.AppID != "" {
+		app = &model.Applications{ID: task.AppID}
+		if err := c.Store.Get(ctx, app); err != nil && !errors.Is(err, datastore.ErrRecordNotExist) {
+			return false, fmt.Errorf("load application cancellation callback: %w", err)
+		}
+	}
+	source := model.WorkflowCallbackSource(task, workflow, app)
+	if source == nil {
+		return false, nil
+	}
+	data, err := json.Marshal(source)
+	if err != nil {
+		return false, err
+	}
+	var callback model.WorkflowCallback
+	if err := json.Unmarshal(data, &callback); err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(callback.Cancelled) != "" || strings.TrimSpace(callback.Failure) != "", nil
 }
 
 func (c *applicationsServiceImpl) waitForAppTasksTermination(ctx context.Context, appID string, wait time.Duration) ([]string, error) {

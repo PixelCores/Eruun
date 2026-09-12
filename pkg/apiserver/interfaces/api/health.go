@@ -1,13 +1,16 @@
 package api
 
 import (
+	"context"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
@@ -15,16 +18,19 @@ import (
 
 var checkKafkaReadiness = clients.CheckKafkaReadiness
 
+const databaseReadinessTimeout = 2 * time.Second
+
 type RuntimeReadiness interface {
 	RuntimeReady() (bool, string)
 }
 
 // health provides health check endpoints for Kubernetes probes.
 type health struct {
-	Queues  *msg.RuntimeQueues `inject:""`
-	Cache   cache.ICache       `inject:"cache"`
-	Cfg     *config.Config     `inject:""`
-	Runtime RuntimeReadiness   `inject:"runtimeReadiness"`
+	Queues   *msg.RuntimeQueues      `inject:""`
+	Cache    cache.ICache            `inject:"cache"`
+	Cfg      *config.Config          `inject:""`
+	Runtime  RuntimeReadiness        `inject:"runtimeReadiness"`
+	Database datastore.DatabaseClock `inject:"datastore"`
 }
 
 // GetName returns the API name for registration.
@@ -55,6 +61,16 @@ func (h *health) readinessCheck(c *gin.Context) {
 	if h.Runtime != nil {
 		if ready, reason := h.Runtime.RuntimeReady(); !ready {
 			bcode.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: "+reason)
+			return
+		}
+	}
+	if h.Database != nil {
+		databaseCtx, cancel := context.WithTimeout(ctx, databaseReadinessTimeout)
+		_, err := h.Database.CurrentDatabaseTime(databaseCtx)
+		cancel()
+		if err != nil {
+			klog.V(4).InfoS("readiness check failed", "dependency", "database", "err", err)
+			bcode.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: database connection failed")
 			return
 		}
 	}

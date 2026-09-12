@@ -203,6 +203,28 @@ func TestOnStartedSchedulerLeadingReportsQueueGroupError(t *testing.T) {
 	}
 }
 
+func TestOnStartedSchedulerLeadingUnblocksErrorReportOnShutdown(t *testing.T) {
+	server := &restServer{
+		Queue: &testServerQueue{ensureGroupErr: errors.New("ensure group failed")},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		server.onStartedSchedulerLeading(ctx, make(chan error))
+	}()
+
+	require.Eventually(t, func() bool {
+		return server.ensureQueueGroupFailures.Load() == 1
+	}, time.Second, time.Millisecond)
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("scheduler startup remained blocked reporting an error during shutdown")
+	}
+}
+
 func TestReportableInformerStartError(t *testing.T) {
 	canceledCtx, cancel := context.WithCancel(context.Background())
 	cancel()

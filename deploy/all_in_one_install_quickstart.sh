@@ -33,8 +33,10 @@ IMAGE_PULL_POLICY="${IMAGE_PULL_POLICY:-}"
 REPLICA_COUNT="${REPLICA_COUNT:-}"
 MYSQL_IMAGE="${MYSQL_IMAGE:-}"
 MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-}"
+MYSQL_USER_INPUT_SET="${MYSQL_USER+x}"
 MYSQL_USER="${MYSQL_USER:-eruun}"
 MYSQL_PASSWORD="${MYSQL_PASSWORD:-}"
+MYSQL_DATABASE_INPUT_SET="${MYSQL_DATABASE+x}"
 MYSQL_DATABASE="${MYSQL_DATABASE:-eruun}"
 MYSQL_STORAGE="${MYSQL_STORAGE:-}"
 MYSQL_SERVICE_PORT="${MYSQL_SERVICE_PORT:-}"
@@ -131,6 +133,154 @@ ensureCredential() {
   generatePassword
 }
 
+resourceExists() {
+  local kind="$1"
+  local name="$2"
+  local output
+  if output=$("${KUBECTL_BIN}" -n "${NAMESPACE}" get "${kind}" "${name}" -o name 2>&1); then
+    return 0
+  fi
+  case "${output}" in
+    *NotFound*|*"not found"*) return 1 ;;
+    *) bail "cannot inspect existing ${kind} ${name}" ;;
+  esac
+}
+
+readSecretValue() {
+  local secret_name="$1"
+  local key="$2"
+  local workload_kind="$3"
+  local workload_name="$4"
+  local pvc_name="$5"
+  local allow_missing_key="${6:-false}"
+  local encoded
+  if ! encoded=$("${KUBECTL_BIN}" -n "${NAMESPACE}" get secret "${secret_name}" -o "go-template={{ index .data \"${key}\" }}" 2>&1); then
+    case "${encoded}" in
+      *NotFound*|*"not found"*)
+        if resourceExists "${workload_kind}" "${workload_name}" || resourceExists persistentvolumeclaim "${pvc_name}"; then
+          bail "credential Secret ${secret_name} is missing while persistent resources still exist"
+        fi
+        return 0
+        ;;
+      *) bail "cannot read existing Secret ${secret_name}" ;;
+    esac
+  fi
+  case "${encoded}" in
+    ""|"<no value>")
+      if isTrue "${allow_missing_key}"; then
+        return 0
+      fi
+      bail "existing Secret ${secret_name} is missing required key ${key}"
+      ;;
+  esac
+  printf '%s' "${encoded}" | "${OPENSSL_BIN}" base64 -d -A 2>/dev/null || bail "cannot decode existing ${secret_name}/${key}"
+}
+
+readStatefulSetEnvValue() {
+  local workload_name="$1"
+  local container_name="$2"
+  local env_name="$3"
+  local value
+  if ! value=$("${KUBECTL_BIN}" -n "${NAMESPACE}" get statefulset "${workload_name}" -o "jsonpath={.spec.template.spec.containers[?(@.name=='${container_name}')].env[?(@.name=='${env_name}')].value}" 2>&1); then
+    bail "cannot recover ${env_name} from existing StatefulSet ${workload_name}"
+  fi
+  [ -n "${value}" ] || bail "existing StatefulSet ${workload_name} is missing required ${env_name} value"
+  printf '%s' "${value}"
+}
+
+resolvePersistentCredential() {
+  local variable_name="$1"
+  local supplied="$2"
+  local existing="$3"
+  if [ -z "${existing}" ]; then
+    ensureCredential "${variable_name}" "${supplied}"
+    return
+  fi
+  if [ -n "${supplied}" ] && [ "${supplied}" != "${existing}" ]; then
+    bail "${variable_name} differs from the existing persistent installation; use a separate credential rotation procedure"
+  fi
+  printf '%s' "${existing}"
+}
+
+resolvePersistentSetting() {
+  local variable_name="$1"
+  local supplied_flag="$2"
+  local supplied="$3"
+  local existing="$4"
+  if [ -z "${existing}" ]; then
+    printf '%s' "${supplied}"
+    return
+  fi
+  if [ -n "${supplied_flag}" ] && [ "${supplied}" != "${existing}" ]; then
+    bail "${variable_name} differs from the existing persistent installation; migrate the bundled database before changing it"
+  fi
+  printf '%s' "${existing}"
+}
+
+helmBaseName() {
+  local name
+  if [ -n "${FULLNAME_OVERRIDE}" ]; then
+    name="${FULLNAME_OVERRIDE}"
+  else
+    name="${RELEASE_NAME}-eruun"
+  fi
+  name="${name:0:63}"
+  printf '%s' "${name%-}"
+}
+
+helmSuffixedName() {
+  local suffix="$1"
+  local name max_base_length
+  name=$(helmBaseName)
+  max_base_length=$((62 - ${#suffix}))
+  name="${name:0:${max_base_length}}"
+  name="${name%-}"
+  printf '%s-%s' "${name}" "${suffix}"
+}
+
+reusePersistentCredentials() {
+  local mysql_secret redis_secret
+  local mysql_workload redis_workload mysql_pvc redis_pvc
+  local existing_mysql_root existing_mysql_user existing_mysql_password existing_mysql_database existing_redis_password
+  if [ "${INSTALL_MODE}" = "helm" ]; then
+    mysql_secret=$(helmSuffixedName mysql)
+    redis_secret=$(helmSuffixedName redis)
+    mysql_workload="${mysql_secret}"
+    redis_workload="${redis_secret}"
+    mysql_pvc="data-${mysql_workload}-0"
+    redis_pvc="data-${redis_workload}-0"
+    existing_mysql_root=$(readSecretValue "${mysql_secret}" password statefulset "${mysql_workload}" "${mysql_pvc}")
+    existing_mysql_database=$(readSecretValue "${mysql_secret}" database statefulset "${mysql_workload}" "${mysql_pvc}" true)
+    if [ -n "${existing_mysql_root}" ] && [ -z "${existing_mysql_database}" ]; then
+      existing_mysql_database=$(readStatefulSetEnvValue "${mysql_workload}" mysql MYSQL_DATABASE)
+    fi
+  else
+    mysql_secret="eruun-mysql-secret"
+    redis_secret="eruun-secret"
+    mysql_workload="eruun-mysql"
+    redis_workload="eruun-redis"
+    mysql_pvc="data-eruun-mysql-0"
+    redis_pvc="data-eruun-redis-0"
+    existing_mysql_root=$(readSecretValue "${mysql_secret}" mysql-root-password statefulset "${mysql_workload}" "${mysql_pvc}")
+    existing_mysql_user=$(readSecretValue "${mysql_secret}" mysql-user statefulset "${mysql_workload}" "${mysql_pvc}")
+    existing_mysql_password=$(readSecretValue "${mysql_secret}" mysql-password statefulset "${mysql_workload}" "${mysql_pvc}")
+    existing_mysql_database=$(readSecretValue "${mysql_secret}" mysql-database statefulset "${mysql_workload}" "${mysql_pvc}")
+  fi
+  if [ "${INSTALL_MODE}" = "helm" ]; then
+    existing_redis_password=$(readSecretValue "${redis_secret}" password statefulset "${redis_workload}" "${redis_pvc}")
+  else
+    existing_redis_password=$(readSecretValue "${redis_secret}" cache-password statefulset "${redis_workload}" "${redis_pvc}")
+  fi
+
+  MYSQL_ROOT_PASSWORD=$(resolvePersistentCredential MYSQL_ROOT_PASSWORD "${MYSQL_ROOT_PASSWORD}" "${existing_mysql_root}")
+  REDIS_PASSWORD=$(resolvePersistentCredential REDIS_PASSWORD "${REDIS_PASSWORD}" "${existing_redis_password}")
+  MYSQL_DATABASE=$(resolvePersistentSetting MYSQL_DATABASE "${MYSQL_DATABASE_INPUT_SET}" "${MYSQL_DATABASE}" "${existing_mysql_database}")
+  if [ "${INSTALL_MODE}" = "manifest" ]; then
+    MYSQL_USER=$(resolvePersistentSetting MYSQL_USER "${MYSQL_USER_INPUT_SET}" "${MYSQL_USER}" "${existing_mysql_user}")
+    MYSQL_PASSWORD=$(resolvePersistentCredential MYSQL_PASSWORD "${MYSQL_PASSWORD}" "${existing_mysql_password}")
+  fi
+}
+
 confirmInstall() {
   if isTrue "${SKIP_CONFIRM}" || [ ! -t 0 ]; then
     return 0
@@ -148,7 +298,7 @@ resolveServiceName() {
     return 0
   fi
   if [ "${INSTALL_MODE}" = "helm" ]; then
-    SERVICE_NAME="${FULLNAME_OVERRIDE:-${RELEASE_NAME}-eruun}"
+    SERVICE_NAME=$(helmBaseName)
   else
     SERVICE_NAME="eruun"
   fi
@@ -187,11 +337,7 @@ preflightCheck() {
 
   "${KUBECTL_BIN}" cluster-info >/dev/null 2>&1 || bail "Kubernetes cluster is not reachable"
 
-  MYSQL_ROOT_PASSWORD=$(ensureCredential MYSQL_ROOT_PASSWORD "${MYSQL_ROOT_PASSWORD}")
-  REDIS_PASSWORD=$(ensureCredential REDIS_PASSWORD "${REDIS_PASSWORD}")
-  if [ "${INSTALL_MODE}" = "manifest" ]; then
-    MYSQL_PASSWORD=$(ensureCredential MYSQL_PASSWORD "${MYSQL_PASSWORD}")
-  fi
+  reusePersistentCredentials
 
   resolveServiceName
 }
@@ -359,15 +505,19 @@ waitForReady() {
   fi
 
   local role
-  local base="${FULLNAME_OVERRIDE:-${RELEASE_NAME}-eruun}"
-  if [ "${INSTALL_MODE}" = "manifest" ]; then
-    base="${DEPLOYMENT_NAME}"
+  if [ "${INSTALL_MODE}" = "helm" ]; then
+    for role in api controller scheduler worker; do
+      runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" rollout status "deployment/$(helmSuffixedName "${role}")" --timeout="${WAIT_TIMEOUT}"
+    done
+    runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" rollout status "statefulset/$(helmSuffixedName mysql)" --timeout="${WAIT_TIMEOUT}"
+    runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" rollout status "statefulset/$(helmSuffixedName redis)" --timeout="${WAIT_TIMEOUT}"
+    return 0
   fi
   for role in api controller scheduler worker; do
-    runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" rollout status "deployment/${base}-${role}" --timeout="${WAIT_TIMEOUT}"
+    runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" rollout status "deployment/${DEPLOYMENT_NAME}-${role}" --timeout="${WAIT_TIMEOUT}"
   done
-  runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" rollout status "statefulset/${base}-mysql" --timeout="${WAIT_TIMEOUT}"
-  runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" rollout status "${REDIS_WORKLOAD_KIND}/${base}-redis" --timeout="${WAIT_TIMEOUT}"
+  runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" rollout status "statefulset/${DEPLOYMENT_NAME}-mysql" --timeout="${WAIT_TIMEOUT}"
+  runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" rollout status "${REDIS_WORKLOAD_KIND}/${DEPLOYMENT_NAME}-redis" --timeout="${WAIT_TIMEOUT}"
 }
 
 startPortForward() {

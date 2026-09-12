@@ -54,6 +54,12 @@ type WorkflowService interface {
 
 const cancelWorkflowTaskCASMaxAttempts = 3
 
+const terminalCallbackReconciledReason = wf.TerminalCallbackReconciledReason
+
+func terminalCallbackPendingReason(reason string) string {
+	return wf.TerminalCallbackPendingReason(reason)
+}
+
 type workflowServiceImpl struct {
 	Store                     datastore.DataStore  `inject:"datastore"`
 	KubeClient                kubernetes.Interface `inject:"kubeClient"`
@@ -1144,6 +1150,11 @@ func (w *workflowServiceImpl) ApproveWorkflowTask(ctx context.Context, taskID, a
 		"status":                config.StatusCancelled,
 		"task_revoker":          user,
 		"cancel_source":         config.CancelSourceUser,
+		"run_token":             "",
+		"worker_id":             "",
+		"heartbeat_at":          nil,
+		"lease_expires_at":      nil,
+		"scheduling_reason":     wf.TerminalCallbackPendingReason(cancelReason),
 	}
 	if err := runCancelledTaskStoreUpdate(ctx, w.Store, taskID, cancelReason, func(store datastore.DataStore) error {
 		swapped, err := repository.ApproveTaskCAS(ctx, store, taskID, expectedCondition, cancelUpdates)
@@ -1153,7 +1164,10 @@ func (w *workflowServiceImpl) ApproveWorkflowTask(ctx context.Context, taskID, a
 		if !swapped {
 			return bcode.ErrWorkflowTaskNotAwaitingApproval
 		}
-		return nil
+		return repository.TerminalizeCancelledWorkflowJobs(
+			ctx, store, task.TaskID, cancelReason,
+			workflowjob.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, "cancelled"),
+		)
 	}); err != nil {
 		return nil, err
 	}
@@ -1162,6 +1176,11 @@ func (w *workflowServiceImpl) ApproveWorkflowTask(ctx context.Context, taskID, a
 	task.PendingApprovalStep = ""
 	task.TaskRevoker = user
 	task.CancelSource = config.CancelSourceUser
+	task.RunToken = ""
+	task.WorkerID = ""
+	task.HeartbeatAt = nil
+	task.LeaseExpiresAt = nil
+	task.SchedulingReason = wf.TerminalCallbackPendingReason(cancelReason)
 	w.triggerWorkflowTerminalCallbackOnApprovalActionAsync(ctx, task, config.StatusCancelled, cancelReason)
 	return &apis.TaskApprovalResponse{
 		TaskID: task.TaskID,
@@ -1191,9 +1210,15 @@ func (w *workflowServiceImpl) cancelWorkflowTaskIfStatus(ctx context.Context, ta
 		klog.Warningf("AUDIT: cancel workflow task rejected due terminal status taskID=%s user=%s status=%s", task.TaskID, userName, task.Status)
 		return bcode.ErrWorkflowTaskNotCancellable
 	}
-	approvalPausedForCallback := shouldTriggerTerminalCallbackOnCancel(task)
+	callbackWithoutWorker := false
+	if expectedStatus == "" {
+		callbackWithoutWorker, err = shouldTriggerTerminalCallbackWithoutWorker(ctx, w.Store, task)
+		if err != nil {
+			return err
+		}
+	}
 	redisClient, cancelSignalErr := cancelsignal.RedisClientForCancelSignal(ctx, w.Cache)
-	if cancelSignalErr != nil && !approvalPausedForCallback {
+	if cancelSignalErr != nil && !callbackWithoutWorker {
 		if expectedStatus != "" && conflictErr != nil {
 			current, stateErr := repository.TaskByID(ctx, w.Store, task.TaskID)
 			switch {
@@ -1210,20 +1235,26 @@ func (w *workflowServiceImpl) cancelWorkflowTaskIfStatus(ctx context.Context, ta
 		klog.Errorf("AUDIT: cancel workflow task missing cancel signal backend taskID=%s user=%s error=%v", task.TaskID, userName, cancelSignalErr)
 		return cancelSignalErr
 	}
+	if reason == "" {
+		reason = fmt.Sprintf("cancelled by %s", userName)
+	}
+	pendingReason := wf.TerminalCallbackPendingReason(reason)
 	updates := map[string]interface{}{
 		"task_revoker":          userName,
 		"status":                config.StatusCancelled,
 		"cancel_source":         config.CancelSourceUser,
 		"approval_pending":      false,
 		"pending_approval_step": "",
+		"scheduling_reason":     pendingReason,
 	}
-	if reason == "" {
-		reason = fmt.Sprintf("cancelled by %s", userName)
-	}
-	cancelledFromApprovalPause := approvalPausedForCallback
+	cancelledWithoutWorker := callbackWithoutWorker
 	if err := runCancelledTaskStoreUpdate(ctx, w.Store, task.TaskID, reason, func(store datastore.DataStore) error {
 		if expectedStatus != "" {
-			swapped, err := repository.UpdateTaskFieldsIfStatus(ctx, store, task.TaskID, expectedStatus, updates)
+			expectedUpdates := cloneWorkflowTaskUpdates(updates)
+			if callbackWithoutWorker {
+				clearWorkflowExecutionOwner(expectedUpdates)
+			}
+			swapped, err := repository.UpdateTaskFieldsIfStatus(ctx, store, task.TaskID, expectedStatus, expectedUpdates)
 			if err != nil {
 				return err
 			}
@@ -1233,29 +1264,42 @@ func (w *workflowServiceImpl) cancelWorkflowTaskIfStatus(ctx context.Context, ta
 				}
 				return datastore.ErrRecordNotExist
 			}
+			if callbackWithoutWorker {
+				return repository.TerminalizeCancelledWorkflowJobs(
+					ctx, store, task.TaskID, reason,
+					workflowjob.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, "cancelled"),
+				)
+			}
 			return nil
 		}
 		var err error
-		cancelledFromApprovalPause, err = w.cancelWorkflowTaskState(ctx, store, task, userName, updates, cancelSignalErr)
+		cancelledWithoutWorker, err = w.cancelWorkflowTaskState(ctx, store, task, userName, updates, cancelSignalErr)
 		return err
 	}); err != nil {
 		klog.Errorf("AUDIT: cancel workflow task failed taskID=%s user=%s error=%v", task.TaskID, userName, err)
 		return err
 	}
-	approvalPausedForCallback = cancelledFromApprovalPause
+	callbackWithoutWorker = cancelledWithoutWorker
 	task.TaskRevoker = userName
 	task.Status = config.StatusCancelled
 	task.CancelSource = config.CancelSourceUser
 	task.ApprovalPending = false
 	task.PendingApprovalStep = ""
+	task.SchedulingReason = pendingReason
+	if callbackWithoutWorker {
+		task.RunToken = ""
+		task.WorkerID = ""
+		task.HeartbeatAt = nil
+		task.LeaseExpiresAt = nil
+	}
 	if redisClient == nil {
 		var err error
 		redisClient, err = cancelsignal.RedisClientForCancelSignal(ctx, w.Cache)
 		if err != nil {
-			// Approval-paused tasks are already terminally cancelled in storage.
-			// Best-effort signal publish failure should not fail API response or suppress callbacks.
-			klog.Warningf("AUDIT: signal cancel skipped for approval-paused task taskID=%s user=%s error=%v", task.TaskID, userName, err)
-			if approvalPausedForCallback {
+			// Tasks cancelled before a worker claim are terminal in storage. A missing
+			// signal backend must not suppress their only terminal callback path.
+			klog.Warningf("AUDIT: signal cancel skipped for unclaimed task taskID=%s user=%s error=%v", task.TaskID, userName, err)
+			if callbackWithoutWorker {
 				w.triggerWorkflowTerminalCallbackOnApprovalActionAsync(ctx, task, config.StatusCancelled, reason)
 			}
 			klog.Infof("AUDIT: cancel workflow task completed taskID=%s user=%s", task.TaskID, userName)
@@ -1263,16 +1307,15 @@ func (w *workflowServiceImpl) cancelWorkflowTaskIfStatus(ctx context.Context, ta
 		}
 	}
 	if err := cancelsignal.PublishWorkflowCancelSignal(ctx, task.TaskID, reason, redisClient); err != nil {
-		if approvalPausedForCallback {
-			// Approval-paused tasks are already terminally cancelled in storage.
-			// Best-effort signal publish failure should not fail API response or suppress callbacks.
-			klog.Warningf("AUDIT: signal cancel skipped for approval-paused task taskID=%s user=%s error=%v", task.TaskID, userName, err)
+		if callbackWithoutWorker {
+			// Tasks cancelled before a worker claim are already terminal in storage.
+			klog.Warningf("AUDIT: signal cancel skipped for unclaimed task taskID=%s user=%s error=%v", task.TaskID, userName, err)
 		} else {
 			klog.Errorf("AUDIT: signal cancel failed taskID=%s user=%s error=%v", task.TaskID, userName, err)
 			return err
 		}
 	}
-	if approvalPausedForCallback {
+	if callbackWithoutWorker {
 		w.triggerWorkflowTerminalCallbackOnApprovalActionAsync(ctx, task, config.StatusCancelled, reason)
 	}
 
@@ -1302,28 +1345,43 @@ func (w *workflowServiceImpl) cancelWorkflowTaskState(
 			return false, nil
 		}
 
-		cancelledFromApprovalPause := current.ApprovalPending
-		if !cancelledFromApprovalPause && cancelSignalErr != nil {
+		callbackWithoutWorker, err := shouldTriggerTerminalCallbackWithoutWorker(ctx, store, current)
+		if err != nil {
+			return false, err
+		}
+		if !callbackWithoutWorker && cancelSignalErr != nil {
 			return false, cancelSignalErr
 		}
 
+		attemptUpdates := cloneWorkflowTaskUpdates(updates)
+		if callbackWithoutWorker {
+			clearWorkflowExecutionOwner(attemptUpdates)
+		}
 		var swapped bool
-		if cancelledFromApprovalPause {
+		if current.ApprovalPending {
 			expectedCondition := repository.ApproveTaskCondition{
 				ApprovalPending:     true,
 				Status:              current.Status,
 				CurrentStep:         current.CurrentStep,
 				PendingApprovalStep: current.PendingApprovalStep,
 			}
-			swapped, err = repository.ApproveTaskCAS(ctx, store, current.TaskID, expectedCondition, updates)
+			swapped, err = repository.ApproveTaskCAS(ctx, store, current.TaskID, expectedCondition, attemptUpdates)
 		} else {
-			swapped, err = repository.UpdateTaskFieldsIfStatus(ctx, store, current.TaskID, current.Status, updates)
+			swapped, err = repository.UpdateTaskFieldsIfStatus(ctx, store, current.TaskID, current.Status, attemptUpdates)
 		}
 		if err != nil {
 			return false, err
 		}
 		if swapped {
-			return cancelledFromApprovalPause, nil
+			if callbackWithoutWorker {
+				if err := repository.TerminalizeCancelledWorkflowJobs(
+					ctx, store, current.TaskID, wf.TerminalCallbackReason(attemptUpdates["scheduling_reason"].(string)),
+					workflowjob.TerminalCallbackExecutionKey(current.TaskID, current.RunGeneration, "cancelled"),
+				); err != nil {
+					return false, err
+				}
+			}
+			return callbackWithoutWorker, nil
 		}
 
 		latest, err := repository.TaskByID(ctx, store, current.TaskID)
@@ -1348,6 +1406,21 @@ func (w *workflowServiceImpl) cancelWorkflowTaskState(
 		}
 	}
 	return false, bcode.ErrWorkflowTaskCancelConflict
+}
+
+func clearWorkflowExecutionOwner(updates map[string]interface{}) {
+	updates["run_token"] = ""
+	updates["worker_id"] = ""
+	updates["heartbeat_at"] = nil
+	updates["lease_expires_at"] = nil
+}
+
+func cloneWorkflowTaskUpdates(updates map[string]interface{}) map[string]interface{} {
+	cloned := make(map[string]interface{}, len(updates)+4)
+	for key, value := range updates {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func workflowTaskCancellationMatches(task *model.WorkflowQueue, userName string) bool {
@@ -1467,16 +1540,50 @@ func shouldTerminalizePrecreatedCleanupTargetStatus(status config.Status) bool {
 	}
 }
 
-func shouldTriggerTerminalCallbackOnCancel(task *model.WorkflowQueue) bool {
-	if task == nil || !task.ApprovalPending {
-		return false
+func shouldTriggerTerminalCallbackWithoutWorker(ctx context.Context, store datastore.DataStore, task *model.WorkflowQueue) (bool, error) {
+	if task == nil {
+		return false, nil
 	}
 	switch task.Status {
-	case config.StatusWaitingApprove, config.StatusWaiting, config.StatusQueued:
-		return true
+	case config.StatusWaitingApprove:
+		return task.ApprovalPending, nil
+	case config.StatusQueued:
+		if task.WorkerID != "" {
+			return false, nil
+		}
+	case config.StatusWaiting:
+		if task.DispatchAttempts > 0 || task.RunToken != "" || task.WorkerID != "" {
+			return false, nil
+		}
 	default:
-		return false
+		return false, nil
 	}
+	active, err := hasNonterminalWorkflowJobs(ctx, store, task.TaskID)
+	return !active, err
+}
+
+func hasNonterminalWorkflowJobs(ctx context.Context, store datastore.DataStore, taskID string) (bool, error) {
+	entities, err := store.List(ctx, &model.JobInfo{TaskID: taskID}, &datastore.ListOptions{})
+	if err != nil {
+		if errors.Is(err, datastore.ErrRecordNotExist) {
+			return false, nil
+		}
+		return false, fmt.Errorf("list workflow jobs before cancellation: %w", err)
+	}
+	for _, entity := range entities {
+		jobInfo, ok := entity.(*model.JobInfo)
+		if !ok || jobInfo == nil {
+			return false, datastore.ErrEntityInvalid
+		}
+		switch config.Status(jobInfo.Status) {
+		case config.StatusCompleted, config.StatusPassed, config.StatusSkipped, config.StatusFailed,
+			config.StatusTimeout, config.StatusCancelled, config.StatusReject, config.StatusNotRun:
+			continue
+		default:
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (w *workflowServiceImpl) triggerWorkflowTerminalCallbackOnApprovalActionAsync(ctx context.Context, task *model.WorkflowQueue, status config.Status, reason string) {
@@ -1485,7 +1592,11 @@ func (w *workflowServiceImpl) triggerWorkflowTerminalCallbackOnApprovalActionAsy
 	}
 	taskSnapshot := *task
 	callbackCtx := detachWorkflowCallbackParentContext(ctx)
-	go w.triggerWorkflowTerminalCallbackOnApprovalAction(callbackCtx, &taskSnapshot, status, reason)
+	go func() {
+		if _, err := w.reconcileWorkflowTerminalCallback(callbackCtx, &taskSnapshot, status, reason); err != nil {
+			klog.ErrorS(err, "reconcile terminal workflow callback", "taskID", taskSnapshot.TaskID)
+		}
+	}()
 }
 
 func TriggerWorkflowTerminalCallbackAsync(ctx context.Context, store datastore.DataStore, cfg *config.Config, provider *urlpolicy.Provider, task *model.WorkflowQueue, status config.Status, reason string) {
@@ -1497,45 +1608,45 @@ func TriggerWorkflowTerminalCallbackAsync(ctx context.Context, store datastore.D
 	svc.triggerWorkflowTerminalCallbackOnApprovalActionAsync(ctx, task, status, reason)
 }
 
-func (w *workflowServiceImpl) triggerWorkflowTerminalCallbackOnApprovalAction(ctx context.Context, task *model.WorkflowQueue, status config.Status, reason string) {
+func (w *workflowServiceImpl) triggerWorkflowTerminalCallbackOnApprovalAction(ctx context.Context, task *model.WorkflowQueue, status config.Status, reason string) error {
 	if w == nil || w.Store == nil || task == nil {
-		return
+		return nil
 	}
 	workflowID := strings.TrimSpace(task.WorkflowID)
 	parentCtx := inheritWorkflowCallbackParentContext(ctx)
 	callbackSource := model.WorkflowCallbackSource(task, nil, nil)
 	if callbackSource == nil {
 		if workflowID == "" {
-			return
+			return nil
 		}
 		workflow := &model.Workflow{ID: workflowID}
 		loadCtx, cancel := inheritWorkflowCallbackTimeout(parentCtx, 5*time.Second)
 		defer cancel()
 		if err := w.Store.Get(loadCtx, workflow); err != nil {
 			klog.Errorf("load workflow %s for callback failed: %v", workflowID, err)
-			return
+			return fmt.Errorf("load workflow %s for callback: %w", workflowID, err)
 		}
 		callbackSource = model.WorkflowCallbackSource(nil, workflow, nil)
 		if callbackSource == nil && strings.TrimSpace(task.AppID) != "" {
 			app := &model.Applications{ID: task.AppID}
 			if err := w.Store.Get(loadCtx, app); err != nil {
 				klog.Errorf("load application %s for callback failed: %v", task.AppID, err)
-				return
+				return fmt.Errorf("load application %s for callback: %w", task.AppID, err)
 			}
 			callbackSource = model.WorkflowCallbackSource(nil, workflow, app)
 		}
 	}
 	if callbackSource == nil {
-		return
+		return nil
 	}
 	var callback model.WorkflowCallback
 	if err := decodeWorkflowCallbackForTerminal(callbackSource, &callback); err != nil {
 		klog.Errorf("decode workflow %s callback failed: %v", workflowID, err)
-		return
+		return nil
 	}
 	event, targetURL := callbackTargetForTerminalStatus(&callback, status)
 	if targetURL == "" {
-		return
+		return nil
 	}
 	// API-side callbacks also execute under a persisted parent. An approval
 	// cancellation may have no active Worker, including generation zero, but
@@ -1545,20 +1656,20 @@ func (w *workflowServiceImpl) triggerWorkflowTerminalCallbackOnApprovalAction(ct
 	parent := &model.WorkflowQueue{TaskID: task.TaskID}
 	if err := w.Store.Get(loadCtx, parent); err != nil {
 		klog.ErrorS(err, "load terminal callback workflow", "taskID", task.TaskID)
-		return
+		return fmt.Errorf("load terminal callback workflow %s: %w", task.TaskID, err)
 	}
 	if parent.Status != status || parent.RunGeneration != task.RunGeneration || parent.AppID != task.AppID {
 		klog.ErrorS(repository.ErrWorkflowOwnershipLost, "terminal callback workflow changed", "taskID", task.TaskID)
-		return
+		return repository.ErrWorkflowOwnershipLost
 	}
 	app := &model.Applications{ID: parent.AppID}
 	if err := w.Store.Get(loadCtx, app); err != nil {
 		klog.ErrorS(err, "load terminal callback application", "taskID", task.TaskID, "appID", parent.AppID)
-		return
+		return fmt.Errorf("load terminal callback application %s: %w", parent.AppID, err)
 	}
 	if app.WorkspaceID == "" || app.Namespace == "" || (parent.WorkspaceID != "" && parent.WorkspaceID != app.WorkspaceID) {
 		klog.ErrorS(repository.ErrWorkflowOwnershipLost, "terminal callback application workspace is invalid", "taskID", task.TaskID, "appID", parent.AppID)
-		return
+		return repository.ErrWorkflowOwnershipLost
 	}
 	task = parent
 	method := callbackMethodForTerminalEvent(&callback, event)
@@ -1615,16 +1726,201 @@ func (w *workflowServiceImpl) triggerWorkflowTerminalCallbackOnApprovalAction(ct
 		if callbackCtl != nil {
 			if saveErr := callbackCtl.SaveInfo(parentCtx); saveErr != nil {
 				klog.Warningf("save callback job info failed for workflow %s task %s: %v", task.WorkflowID, task.TaskID, saveErr)
+				return fmt.Errorf("save callback policy failure: %w", saveErr)
 			}
 		}
-		return
+		return nil
 	}
 	// The cancellation signal applies to application work, not to its terminal
 	// notification. The callback keeps its own bounded timeout and parent fence.
 	runCtx = workflowjob.WithTaskMetadata(runCtx, "")
 	if err := workflowjob.RunJobs(runCtx, []*model.JobTask{callbackJob}, 1, nil, nil, w.Store, func() {}, false, w.Cache, urlPolicy, nil, nil, nil); err != nil {
 		klog.ErrorS(err, "run terminal workflow callback", "taskID", task.TaskID, "jobName", callbackJob.Name)
+		return err
 	}
+	return nil
+}
+
+func (w *workflowServiceImpl) reconcileWorkflowTerminalCallback(ctx context.Context, task *model.WorkflowQueue, status config.Status, reason string) (bool, error) {
+	if status != config.StatusCancelled || task == nil || !wf.IsTerminalCallbackPending(task.SchedulingReason) {
+		return true, w.triggerWorkflowTerminalCallbackOnApprovalAction(ctx, task, status, reason)
+	}
+	current := &model.WorkflowQueue{TaskID: task.TaskID}
+	if err := w.Store.Get(ctx, current); err != nil {
+		return false, fmt.Errorf("load pending terminal callback task: %w", err)
+	}
+	if current.Status != config.StatusCancelled ||
+		current.RunGeneration != task.RunGeneration ||
+		!wf.IsTerminalCallbackPending(current.SchedulingReason) {
+		return false, nil
+	}
+	if current.RunToken != "" || current.WorkerID != "" {
+		return false, nil
+	}
+	callbackReason := wf.TerminalCallbackReason(current.SchedulingReason)
+	callbackKey := workflowjob.TerminalCallbackExecutionKey(current.TaskID, current.RunGeneration, "cancelled")
+	active, err := workflowHasActiveChildExecution(ctx, w.Store, current.TaskID)
+	if err != nil {
+		return false, err
+	}
+	if active {
+		return false, nil
+	}
+	if err := repository.TerminalizeCancelledWorkflowJobs(ctx, w.Store, current.TaskID, callbackReason, callbackKey); err != nil {
+		return false, err
+	}
+	settled, err := terminalCallbackJobSettled(ctx, w.Store, current.TaskID, current.RunGeneration, callbackKey)
+	if err != nil {
+		return false, err
+	}
+	if !settled {
+		if err := w.triggerWorkflowTerminalCallbackOnApprovalAction(ctx, current, status, callbackReason); err != nil {
+			return false, err
+		}
+	}
+	updated, err := repository.UpdateTaskFieldsIfConditions(ctx, w.Store, current.TaskID, map[string]interface{}{
+		"status":            config.StatusCancelled,
+		"run_generation":    current.RunGeneration,
+		"run_token":         "",
+		"worker_id":         "",
+		"scheduling_reason": current.SchedulingReason,
+	}, map[string]interface{}{
+		"scheduling_reason": wf.TerminalCallbackReconciledReason,
+	})
+	if err != nil {
+		return false, fmt.Errorf("complete terminal callback marker: %w", err)
+	}
+	if !updated {
+		return false, repository.ErrWorkflowOwnershipLost
+	}
+	return true, nil
+}
+
+// ReconcileWorkflowTerminalCallbacks replays durable cancellation callbacks
+// whose worker cleanup has completed or expired.
+func ReconcileWorkflowTerminalCallbacks(ctx context.Context, store datastore.DataStore, cfg *config.Config, provider *urlpolicy.Provider) (int, error) {
+	tasks, err := PendingWorkflowTerminalCallbacks(ctx, store, 1, 100)
+	if err != nil {
+		return 0, err
+	}
+	reconciled := 0
+	var reconcileErr error
+	for _, task := range tasks {
+		done, err := ReconcileWorkflowTerminalCallback(ctx, store, cfg, provider, task)
+		if err != nil {
+			reconcileErr = errors.Join(reconcileErr, fmt.Errorf("task %s: %w", task.TaskID, err))
+			continue
+		}
+		if done {
+			reconciled++
+		}
+	}
+	return reconciled, reconcileErr
+}
+
+// PendingWorkflowTerminalCallbacks returns one stable page for the controller
+// replay loop. The caller rotates pages so one failing callback cannot starve
+// newer cancellation intents.
+func PendingWorkflowTerminalCallbacks(ctx context.Context, store datastore.DataStore, page, pageSize int) ([]*model.WorkflowQueue, error) {
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 || pageSize > 100 {
+		pageSize = 100
+	}
+	entities, err := store.List(ctx, &model.WorkflowQueue{Status: config.StatusCancelled}, &datastore.ListOptions{
+		FilterOptions: datastore.FilterOptions{Queries: []datastore.FuzzyQueryOption{{
+			Key: "scheduling_reason", Query: wf.TerminalCallbackPendingReason(""),
+		}}},
+		Page:     page,
+		PageSize: pageSize,
+		SortBy: []datastore.SortOption{{
+			Key: "update_time", Order: datastore.SortOrderAscending,
+		}},
+	})
+	if err != nil {
+		if errors.Is(err, datastore.ErrRecordNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	tasks := make([]*model.WorkflowQueue, 0, len(entities))
+	for _, entity := range entities {
+		task, ok := entity.(*model.WorkflowQueue)
+		if !ok || task == nil || !wf.IsTerminalCallbackPending(task.SchedulingReason) {
+			continue
+		}
+		tasks = append(tasks, task)
+	}
+	return tasks, nil
+}
+
+// ReconcileWorkflowTerminalCallback replays one durable cancellation callback.
+func ReconcileWorkflowTerminalCallback(ctx context.Context, store datastore.DataStore, cfg *config.Config, provider *urlpolicy.Provider, task *model.WorkflowQueue) (bool, error) {
+	if task == nil || task.RunToken != "" || task.WorkerID != "" {
+		return false, nil
+	}
+	svc := &workflowServiceImpl{Store: store, Cfg: cfg, URLSecurityPolicyProvider: provider}
+	return svc.reconcileWorkflowTerminalCallback(ctx, task, config.StatusCancelled, "")
+}
+
+func workflowHasActiveChildExecution(ctx context.Context, store datastore.DataStore, taskID string) (bool, error) {
+	entities, err := store.List(ctx, &model.JobInfo{TaskID: taskID}, &datastore.ListOptions{})
+	if err != nil {
+		if errors.Is(err, datastore.ErrRecordNotExist) {
+			return false, nil
+		}
+		return false, fmt.Errorf("list cancelled workflow jobs before callback: %w", err)
+	}
+	for _, entity := range entities {
+		jobInfo, ok := entity.(*model.JobInfo)
+		if !ok || jobInfo == nil {
+			return false, datastore.ErrEntityInvalid
+		}
+		if jobInfo.Type == string(config.JobDeployCallback) {
+			continue
+		}
+		if workflowjob.IsCancelledJobCleanupPending(jobInfo) {
+			return true, nil
+		}
+		if config.Status(jobInfo.Status) == config.StatusRunning || jobInfo.SchedulingState == workflowconfig.JobSchedulingAdmitted {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// terminalCallbackJobSettled reports whether the callback has a durable final
+// disposition. Callback delivery remains single-attempt: a persisted failure
+// is observable, but recovery does not turn it into an automatic retry loop.
+func terminalCallbackJobSettled(ctx context.Context, store datastore.DataStore, taskID string, generation uint64, executionKey string) (bool, error) {
+	entities, err := store.List(ctx, &model.JobInfo{TaskID: taskID}, &datastore.ListOptions{
+		Page: 1, PageSize: 2,
+		FilterOptions: datastore.FilterOptions{In: []datastore.InQueryOption{{
+			Key: "execution_key", Values: []string{executionKey},
+		}}},
+	})
+	if err != nil {
+		if errors.Is(err, datastore.ErrRecordNotExist) {
+			return false, nil
+		}
+		return false, fmt.Errorf("load terminal callback job: %w", err)
+	}
+	for _, entity := range entities {
+		jobInfo, ok := entity.(*model.JobInfo)
+		if !ok || jobInfo == nil {
+			return false, datastore.ErrEntityInvalid
+		}
+		if jobInfo.RunGeneration != generation || jobInfo.ExecutionKey == nil || *jobInfo.ExecutionKey != executionKey {
+			continue
+		}
+		switch config.Status(jobInfo.Status) {
+		case config.StatusCompleted, config.StatusPassed, config.StatusSkipped, config.StatusFailed,
+			config.StatusTimeout, config.StatusCancelled, config.StatusReject, config.StatusNotRun:
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func inheritWorkflowCallbackParentContext(ctx context.Context) context.Context {
