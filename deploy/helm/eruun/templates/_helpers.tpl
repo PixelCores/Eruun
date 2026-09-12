@@ -31,6 +31,46 @@ app.kubernetes.io/managed-by: eruun
 {{- printf "%s-%s" $base $suffix | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
+{{- define "eruun.persistentWorkloadName" -}}
+{{- $root := index . "root" -}}
+{{- $component := required "component is required for a persistent Eruun workload" (index . "component") | toString -}}
+{{- $currentName := required "currentName is required for a persistent Eruun workload" (index . "currentName") | toString -}}
+{{- $identities := dict -}}
+{{- $statefulSets := lookup "apps/v1" "StatefulSet" $root.Release.Namespace "" -}}
+{{- range $candidate := default (list) (get $statefulSets "items") -}}
+{{- $labels := default dict $candidate.metadata.labels -}}
+{{- $selectorLabels := default dict $candidate.spec.selector.matchLabels -}}
+{{- if and (eq (get $labels "app.kubernetes.io/instance") $root.Release.Name) (eq (get $selectorLabels "app.kubernetes.io/component") $component) -}}
+{{- $_ := set $identities (get $candidate.metadata "name") true -}}
+{{- end -}}
+{{- end -}}
+{{- $secrets := lookup "v1" "Secret" $root.Release.Namespace "" -}}
+{{- range $candidate := default (list) (get $secrets "items") -}}
+{{- $labels := default dict $candidate.metadata.labels -}}
+{{- $name := default "" (get $candidate.metadata "name") -}}
+{{- if and (eq (get $labels "app.kubernetes.io/instance") $root.Release.Name) (hasSuffix (printf "-%s" $component) $name) -}}
+{{- $_ := set $identities $name true -}}
+{{- end -}}
+{{- end -}}
+{{- $claims := lookup "v1" "PersistentVolumeClaim" $root.Release.Namespace "" -}}
+{{- range $claim := default (list) (get $claims "items") -}}
+{{- $labels := default dict $claim.metadata.labels -}}
+{{- if and (eq (get $labels "app.kubernetes.io/instance") $root.Release.Name) (eq (get $labels "app.kubernetes.io/component") $component) -}}
+{{- $_ := set $identities (trimSuffix "-0" (trimPrefix "data-" (get $claim.metadata "name"))) true -}}
+{{- end -}}
+{{- end -}}
+{{- $currentClaim := lookup "v1" "PersistentVolumeClaim" $root.Release.Namespace (printf "data-%s-0" $currentName) -}}
+{{- if $currentClaim -}}
+{{- $_ := set $identities $currentName true -}}
+{{- end -}}
+{{- if gt (len $identities) 1 -}}
+{{- fail (printf "multiple bundled %s persistent workload identities exist; use a separate data migration procedure" $component) -}}
+{{- end -}}
+{{- if eq (len $identities) 1 -}}
+{{- first (keys $identities) -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "eruun.runtimeLockName" -}}
 {{- $root := index . "root" -}}
 {{- $role := index . "role" -}}
@@ -42,16 +82,16 @@ app.kubernetes.io/managed-by: eruun
 - name: ERUUN_DATASTORE_URL
   valueFrom:
     secretKeyRef:
-      name: {{ include "eruun.fullname" . }}-mysql
+      name: {{ include "eruun.suffixedName" (dict "root" . "suffix" "mysql") }}
       key: datastore-url
 - name: MYSQL_HOST
-  value: {{ include "eruun.fullname" . }}-mysql
+  value: {{ include "eruun.suffixedName" (dict "root" . "suffix" "mysql") }}
 - name: MYSQL_PORT
   value: {{ .Values.mysql.servicePort | quote }}
 - name: MYSQL_PASSWORD
   valueFrom:
     secretKeyRef:
-      name: {{ include "eruun.fullname" . }}-mysql
+      name: {{ include "eruun.suffixedName" (dict "root" . "suffix" "mysql") }}
       key: password
 - name: MYSQL_DATABASE
   value: {{ .Values.mysql.database | quote }}

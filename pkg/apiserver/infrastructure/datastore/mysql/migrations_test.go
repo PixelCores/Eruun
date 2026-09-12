@@ -64,6 +64,109 @@ func TestWriteSchemaMigrationMarkerIsIdempotent(t *testing.T) {
 	require.Contains(t, statement, "`value`=VALUES(`value`)")
 }
 
+func TestRunSchemaMigrationInvalidatesPreviousSuccessBeforeFailure(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+		NamingStrategy: sqlnamer.SQLNamer{},
+		TranslateError: true,
+		Logger:         logger.Default.LogMode(logger.Silent),
+	})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
+	require.NoError(t, db.AutoMigrate(&model.SystemSetting{}))
+	require.NoError(t, writeSchemaMigrationMarker(context.Background(), db))
+	require.NoError(t, validateSchemaMigrationMarker(context.Background(), db))
+	migrationErr := errors.New("later migration failed")
+
+	err = runSchemaMigration(context.Background(), db, func() error { return migrationErr })
+
+	require.ErrorIs(t, err, migrationErr)
+	require.ErrorContains(t, validateSchemaMigrationMarker(context.Background(), db), "is incomplete")
+}
+
+func TestRunSchemaMigrationMarksSuccessfulRetryComplete(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+		NamingStrategy: sqlnamer.SQLNamer{},
+		TranslateError: true,
+		Logger:         logger.Default.LogMode(logger.Silent),
+	})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
+	require.NoError(t, db.AutoMigrate(&model.SystemSetting{}))
+	require.NoError(t, writeSchemaMigrationState(context.Background(), db, incompleteSchemaMigrationJSON))
+
+	require.NoError(t, runSchemaMigration(context.Background(), db, func() error { return nil }))
+	require.NoError(t, validateSchemaMigrationMarker(context.Background(), db))
+}
+
+func TestRunSchemaMigrationStopsWhenMarkerTableProbeFails(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+		NamingStrategy: sqlnamer.SQLNamer{}, TranslateError: true,
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	migrated := false
+
+	err = runSchemaMigration(ctx, db, func() error {
+		migrated = true
+		return nil
+	})
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.False(t, migrated)
+}
+
+func TestRunSchemaMigrationKeepsMarkerIncompleteWhenMigrationProbeFails(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+		NamingStrategy: sqlnamer.SQLNamer{}, TranslateError: true,
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
+	require.NoError(t, db.AutoMigrate(&model.SystemSetting{}))
+	require.NoError(t, writeSchemaMigrationMarker(context.Background(), db))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	err = runSchemaMigration(ctx, db, func() error {
+		cancel()
+		return migrateSystemSettings(ctx, db)
+	})
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.ErrorContains(t, validateSchemaMigrationMarker(context.Background(), db), "is incomplete")
+}
+
+func TestSchemaColumnExistsPropagatesProbeFailure(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+		NamingStrategy: sqlnamer.SQLNamer{}, TranslateError: true,
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
+	require.NoError(t, db.Exec("CREATE TABLE probe_columns (id TEXT, legacy_value TEXT)").Error)
+
+	exists, err := schemaColumnExists(context.Background(), db, "probe_columns", "legacy_value")
+	require.NoError(t, err)
+	require.True(t, exists)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = schemaColumnExists(ctx, db, "probe_columns", "legacy_value")
+	require.ErrorIs(t, err, context.Canceled)
+}
+
 func TestMigrationSettingsHaveTimestamps(t *testing.T) {
 	for _, tc := range []struct {
 		name, settingType string

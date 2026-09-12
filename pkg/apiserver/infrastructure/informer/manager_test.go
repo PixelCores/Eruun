@@ -7,8 +7,32 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 )
+
+func TestManagerBoundsInitialCacheSync(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	releaseList := make(chan struct{})
+	client.PrependReactor("list", "pods", func(k8stesting.Action) (bool, runtime.Object, error) {
+		<-releaseList
+		return false, nil, nil
+	})
+	manager := NewManager(client, WithSyncTimeout(20*time.Millisecond))
+	t.Cleanup(func() {
+		close(releaseList)
+		manager.Stop()
+	})
+
+	started := time.Now()
+	err := manager.Start(context.Background())
+
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.ErrorContains(t, err, "sync informer cache")
+	require.Less(t, time.Since(started), time.Second)
+	require.False(t, manager.IsStarted())
+}
 
 func TestManagerCanRestartAfterStop(t *testing.T) {
 	manager := NewManager(fake.NewSimpleClientset())

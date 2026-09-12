@@ -169,6 +169,11 @@ func TestRunnerCapabilityAcceptsRecoveredPodAndRejectsSpoofedIdentity(t *testing
 			_, err := f.service.Kube.BatchV1().Jobs(f.workload.Namespace).Update(context.Background(), f.workload, metav1.UpdateOptions{})
 			require.NoError(t, err)
 		}},
+		{"parent recovered to waiting", func(t *testing.T, f *runnerFixture) {
+			f.parent.Status = config.StatusWaiting
+			f.parent.RunToken, f.parent.WorkerID, f.parent.LeaseExpiresAt = "", "", nil
+			require.NoError(t, f.raw.Put(context.Background(), f.parent))
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newRunnerFixture(t)
@@ -214,6 +219,8 @@ func TestRunnerResultPublicationFencesCheckpointAndAllowsCancellationUpload(t *t
 	t.Run("cancelled same Pod", func(t *testing.T) {
 		f := newRunnerFixture(t)
 		f.parent.Status = config.StatusCancelled
+		lease := time.Now().Add(time.Minute)
+		f.parent.LeaseExpiresAt = &lease
 		require.NoError(t, f.raw.Put(context.Background(), f.parent))
 		data := resultArchive(t)
 		result, err := f.service.RunnerResult(context.Background(), f.identity, bytes.NewReader(data))
@@ -224,10 +231,33 @@ func TestRunnerResultPublicationFencesCheckpointAndAllowsCancellationUpload(t *t
 		require.NoError(t, err)
 		require.Equal(t, result.ID, again.ID)
 	})
+	t.Run("recovered terminal checkpoint", func(t *testing.T) {
+		f := newRunnerFixture(t)
+		f.parent.Status = config.StatusCancelled
+		f.record.Status = string(config.StatusCancelled)
+		require.NoError(t, f.raw.Put(context.Background(), f.parent))
+		require.NoError(t, f.raw.Put(context.Background(), f.record))
+
+		_, err := f.service.RunnerResult(context.Background(), f.identity, bytes.NewReader(resultArchive(t)))
+
+		require.ErrorIs(t, err, bcode.ErrUnauthorized)
+	})
 	t.Run("checkpoint changes during transfer", func(t *testing.T) {
 		f := newRunnerFixture(t)
 		reader := &readHook{Reader: bytes.NewReader(resultArchive(t)), hook: func() {
 			f.record.InternalInfo += " "
+			require.NoError(t, f.raw.Put(context.Background(), f.record))
+		}}
+		_, err := f.service.RunnerResult(context.Background(), f.identity, reader)
+		require.ErrorIs(t, err, bcode.ErrUnauthorized)
+		count, err := f.raw.Count(context.Background(), &model.JobArtifact{TaskID: f.parent.TaskID, Kind: artifacts.KindSource}, nil)
+		require.NoError(t, err)
+		require.Zero(t, count)
+	})
+	t.Run("checkpoint becomes terminal during transfer", func(t *testing.T) {
+		f := newRunnerFixture(t)
+		reader := &readHook{Reader: bytes.NewReader(resultArchive(t)), hook: func() {
+			f.record.Status = string(config.StatusCancelled)
 			require.NoError(t, f.raw.Put(context.Background(), f.record))
 		}}
 		_, err := f.service.RunnerResult(context.Background(), f.identity, reader)

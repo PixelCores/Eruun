@@ -262,6 +262,7 @@ func assertControllerRuntimePermissions(t *testing.T, clusterRoles map[string]ma
 	require.ElementsMatch(t, []string{"get", "list", "watch", "patch", "delete"}, verbsFor(controllerRole, "", "pods"), "Controller must observe, label, and clean up completed Job Pods")
 	require.Equal(t, []string{"get"}, verbsFor(controllerRole, "", "pods/log"), "ResultDispatcher must collect completed Job logs")
 	require.ElementsMatch(t, []string{"get", "create", "update", "delete"}, verbsFor(controllerRole, "batch", "jobs"), "Controller must dispatch delayed Jobs, adopt execution identities, and clean up completed Jobs")
+	require.ElementsMatch(t, []string{"get", "delete"}, verbsFor(controllerRole, "batch", "cronjobs"), "Controller cancellation recovery must delete only the exact scheduled execution")
 	require.Equal(t, []string{"get"}, verbsFor(controllerRole, "apps", "replicasets"))
 	for _, resource := range []struct{ apiGroup, name string }{
 		{"", "secrets"},

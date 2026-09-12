@@ -390,6 +390,18 @@ func (s *statusDataStore) matchTaskConditionFor(task *model.WorkflowQueue, field
 	case "pending_approval_step":
 		expected, ok := value.(string)
 		return ok && task.PendingApprovalStep == expected
+	case "run_generation":
+		expected, ok := value.(uint64)
+		return ok && task.RunGeneration == expected
+	case "run_token":
+		expected, ok := value.(string)
+		return ok && task.RunToken == expected
+	case "worker_id":
+		expected, ok := value.(string)
+		return ok && task.WorkerID == expected
+	case "scheduling_reason":
+		expected, ok := value.(string)
+		return ok && task.SchedulingReason == expected
 	default:
 		return false
 	}
@@ -415,6 +427,15 @@ func matchJobInfoCondition(job *model.JobInfo, field string, value interface{}) 
 	case "service_name":
 		expected, ok := value.(string)
 		return ok && job.ServiceName == expected
+	case "execution_key":
+		expected, ok := value.(string)
+		return ok && job.ExecutionKey != nil && *job.ExecutionKey == expected
+	case "run_generation":
+		expected, ok := value.(uint64)
+		return ok && job.RunGeneration == expected
+	case "attempt":
+		expected, ok := value.(uint)
+		return ok && job.Attempt == expected
 	default:
 		return false
 	}
@@ -438,6 +459,16 @@ func (s *statusDataStore) applyTaskUpdatesTo(task *model.WorkflowQueue, updates 
 			task.TaskRevoker, _ = v.(string)
 		case "cancel_source":
 			task.CancelSource, _ = v.(string)
+		case "run_token":
+			task.RunToken, _ = v.(string)
+		case "worker_id":
+			task.WorkerID, _ = v.(string)
+		case "heartbeat_at":
+			task.HeartbeatAt, _ = v.(*time.Time)
+		case "lease_expires_at":
+			task.LeaseExpiresAt, _ = v.(*time.Time)
+		case "scheduling_reason":
+			task.SchedulingReason, _ = v.(string)
 		}
 	}
 }
@@ -460,6 +491,10 @@ func applyJobInfoUpdates(job *model.JobInfo, updates map[string]interface{}) {
 			if message, ok := v.(string); ok {
 				job.Error = message
 			}
+		case "scheduling_state":
+			job.SchedulingState, _ = v.(string)
+		case "scheduling_reason":
+			job.SchedulingReason, _ = v.(string)
 		}
 	}
 }
@@ -498,6 +533,19 @@ func (s *statusDataStore) CompareAndSwapWithConditions(
 	conditions map[string]interface{},
 	updates map[string]interface{},
 ) (bool, error) {
+	if job, ok := entity.(*model.JobInfo); ok {
+		current := s.findJobInfo(job)
+		if current == nil {
+			return false, nil
+		}
+		for field, value := range conditions {
+			if !matchJobInfoCondition(current, field, value) {
+				return false, nil
+			}
+		}
+		applyJobInfoUpdates(current, updates)
+		return true, nil
+	}
 	wq, ok := entity.(*model.WorkflowQueue)
 	if !ok {
 		return false, nil

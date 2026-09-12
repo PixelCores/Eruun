@@ -230,6 +230,16 @@ func (s *restServer) Run(ctx context.Context, errChan chan error) error {
 	// graceful shutdown. shutdown cancels runCtx only after workers have drained.
 	runCtx, runCancel := newRuntimeLifecycleContext(ctx)
 	defer runCancel()
+	electionCtx, electionCancel := context.WithCancel(ctx)
+	defer electionCancel()
+	elections, err := s.setupRuntimeLeaderElections(electionCtx, errChan)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil
+		}
+		return err
+	}
+	electionsDone := s.startRuntimeLeaderElections(electionCtx, elections)
 	var shutdownOnce sync.Once
 	var runtimeLifecycleMu sync.Mutex
 	shutdown := func() {
@@ -237,6 +247,10 @@ func (s *restServer) Run(ctx context.Context, errChan chan error) error {
 			runtimeLifecycleMu.Lock()
 			defer runtimeLifecycleMu.Unlock()
 
+			// Leadership must stop before worker drain. This fences late callbacks
+			// while already-running worker executions use their separate context.
+			electionCancel()
+			<-electionsDone
 			drainTimeout := s.cfg.Workflow.WorkerDrainTimeout
 			if drainTimeout <= 0 {
 				drainTimeout = workflowconfig.DefaultWorkerDrainTimeout
@@ -255,13 +269,6 @@ func (s *restServer) Run(ctx context.Context, errChan chan error) error {
 		go s.accounts.RunSessionCleanup(runCtx)
 	}
 
-	elections, err := s.setupRuntimeLeaderElections(runCtx, errChan)
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil
-		}
-		return err
-	}
 	if s.cfg.RunsWorker() {
 		if s.resourceObserver == nil {
 			return fmt.Errorf("worker resource observer is not configured")
@@ -277,10 +284,6 @@ func (s *restServer) Run(ctx context.Context, errChan chan error) error {
 			s.startWorkers(runCtx, errChan)
 		}
 		runtimeLifecycleMu.Unlock()
-	}
-	for _, election := range elections {
-		election := election
-		go s.runRuntimeLeaderElection(runCtx, election)
 	}
 	klog.InfoS("Eruun runtime started", "role", s.cfg.NormalizedRole(), "leaderElections", len(elections))
 
