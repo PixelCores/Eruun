@@ -204,7 +204,11 @@ func updateCancelledJobCleanup(ctx context.Context, store datastore.DataStore, j
 			conditions["scheduling_reason"] = expectedReason
 		}
 		updates := map[string]interface{}{"scheduling_reason": outcome}
-		if outcome != cancelledJobCleanupPending && record.SchedulingState != "" {
+		if outcome == cancelledJobCleanupPending {
+			updates["status"] = string(config.StatusCancelled)
+			updates["error"] = job.Error
+			updates["end_time"] = job.EndTime
+		} else if record.SchedulingState != "" {
 			updates["scheduling_state"] = workflowconfig.JobSchedulingReleased
 		}
 		updated, err := conditional.CompareAndSwapWithConditions(ctx, record, conditions, updates)

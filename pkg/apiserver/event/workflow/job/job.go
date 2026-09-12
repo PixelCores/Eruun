@@ -646,21 +646,22 @@ func runAdmittedJob(jobCtx context.Context, jobCtl JobCtl, job *model.JobTask, c
 		if !cancelledOwner {
 			return errors.Join(signal.ErrInfrastructureStop, context.Canceled)
 		}
+		cancelErr := runErr
+		if cancelErr == nil {
+			cancelErr = jobCtx.Err()
+		}
+		reason := signal.ReasonFromContext(jobCtx)
+		applyJobError(job, cancelErr, reason)
+		job.Status = config.StatusCancelled
+		job.EndTime = time.Now().Unix()
+		span.SetStatus(codes.Error, "Job execution cancelled")
+		span.RecordError(cancelErr)
 		if !cleaned {
 			if cleanupErr := cleanCancelledJob(jobCtx, jobCtl, store, job); cleanupErr != nil {
 				return errors.Join(signal.ErrInfrastructureStop, cleanupErr)
 			}
 			cleaned = true
 		}
-		span.SetStatus(codes.Error, "Job execution cancelled")
-		cancelErr := runErr
-		if cancelErr == nil {
-			cancelErr = jobCtx.Err()
-		}
-		span.RecordError(cancelErr)
-		reason := signal.ReasonFromContext(jobCtx)
-		applyJobError(job, cancelErr, reason)
-		job.Status = config.StatusCancelled
 	} else if runErr != nil {
 		if !cleaned {
 			jobCtl.Clean(jobCtx)

@@ -27,6 +27,7 @@ Redis/Kafka 消息确认保持 at-least-once 语义，数据库 ownership 和 fe
 | D13 | Controller 取消恢复需要读取并删除精确匹配的 CronJob，但部署 RBAC 缺少对应权限，恢复会永久停在 pending。 | Helm 与静态清单为 Controller 增加仅限 CronJob `get/delete` 的权限；删除仍受 execution identity 和 UID precondition 约束。 | 静态部署测试、Helm 渲染测试和取消恢复测试通过。 |
 | D14 | Quickstart 每次生成新数据库/Redis 密码；已有 PVC 且 Secret 丢失时可创建不匹配凭据。Chart 也允许持久卷存在时修改 fullname、端口、数据库或密码，长 release 名还会产生超长依赖名。 | Quickstart 复用现存 Secret，并从旧 Chart StatefulSet 恢复缺失的 database 元数据；Chart 保留凭据 Secret 作为 PVC 身份 marker，lookup 现存 StatefulSet/PVC/Secret 并拒绝不兼容安装或升级；所有依赖名统一使用 63 字符 suffix-aware helper。 | Shell/Helm 测试覆盖旧 Secret、读取错误、PVC 检测、长名和端口；kind 覆盖 main Chart 升级、卸载保留数据后的 fullname 防漂移和四角色健康。 |
 | D15 | 配置自定义 MySQL/Redis servicePort 只改变 Service 和探针，容器进程仍监听默认端口。 | 显式把端口传给 MySQL/Redis 进程并让 probe 使用同一端口。 | kind 分别以 MySQL `13306`、Redis `16379` 启动，Pod ready，进程级 `mysqladmin`/`redis-cli` 检查通过。 |
+| D16 | 在线取消的 Kubernetes Job 在删除失败时尚未归一为 `Cancelled`；非重试等待路径通常先得到 `Timeout`，外层 defer 因而释放 admission。数据库 cleanup intent 也只写 reason，不能被取消清理扫描器立即选中。活的 Job/CronJob 可在 lease recovery 前与新任务共用同一全局或空间并发槽。 | 在删除副作用前先归一内存终态，并以同一个 ownership-fenced CAS 原子持久化 `Cancelled` 状态和 cleanup pending reason；删除完成后才释放 admission。 | 故障注入覆盖首次 Kubernetes 删除失败、admission 保持、后续任务不能越过配额，以及无需等待父 lease 过期即可由恢复循环删除并释放。 |
 
 ## 十轮连续审查记录
 
@@ -46,6 +47,7 @@ Redis/Kafka 消息确认保持 at-least-once 语义，数据库 ownership 和 fe
 | 10 | 最终差异、集成故障验收与 Go 简洁性 | 独立终审发现并修复四组相邻缺口：skipped/启动前取消/watcher 失败仍忽略身份化终态保存错误；同名旧 Job 遮蔽当前 CronJob 取消清理；Controller 缺 CronJob 精确删除权限；旧 Chart Secret 缺 database 元数据及卸载后 fullname 身份丢失。新增状态转换、Quickstart、Helm 和 kind 证据后重新审查，最终结论为 **CLEARED**，无未解决实质问题。 |
 | 11 | PR 行级复审与 Redis 真实启动顺序 | 复审发现 D02 的初次修复被启动前 `EnsureGroup("$")` 绕过；改为统一从 backlog 起点建组，并用真实 Redis 覆盖预存 backlog 和删组后新实例启动。修复后聚焦复审无未解决实质问题。 |
 | 12 | Callback pending 语义与恢复边界 | 先撤回“仅成功送达才能清除 pending”的过强结论，再核对基线代码和 Current 文档；确认 callback 保持单次投递，pending 表示尚未形成持久化终局，而不是尚未收到 `2xx`。收紧审计文档的 at-least-once 表述，并增加 HTTP 503 失败终态不自动重发的回归测试。 |
+| 13 | 在线取消清理与 admission | 先纠正评审中的状态描述：普通 Kubernetes 等待取消通常先映射为 `Timeout`，风险来自清理失败时状态仍不是 `Cancelled`，并非固定为 `Failed`。确认 D16 后，将取消终态和 cleanup intent 合并为删除前的 fenced 持久化状态；删除失败时保留 admission，恢复器可立即重试。 |
 
 ## 验证环境与证据
 
