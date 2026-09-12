@@ -142,6 +142,7 @@ func (d *ResultDispatcher) runLoops(ctx context.Context) {
 	}()
 	loopWG.Wait()
 	processingWG.Wait()
+	d.releaseInFlightMessages()
 }
 
 func (d *ResultDispatcher) readLoop(ctx context.Context, slots chan struct{}, processingWG *sync.WaitGroup) {
@@ -188,7 +189,7 @@ func (d *ResultDispatcher) claimLoop(ctx context.Context, slots chan struct{}, p
 }
 
 func (d *ResultDispatcher) dispatchMessages(ctx context.Context, messages []msg.Message, slots chan struct{}, processingWG *sync.WaitGroup) {
-	for _, message := range messages {
+	for i, message := range messages {
 		if !d.markMessageInFlight(message.ID) {
 			klog.V(4).InfoS("skip result message already being handled", "msgID", message.ID)
 			continue
@@ -196,7 +197,9 @@ func (d *ResultDispatcher) dispatchMessages(ctx context.Context, messages []msg.
 		select {
 		case slots <- struct{}{}:
 		case <-ctx.Done():
-			d.markMessageDone(message.ID)
+			for _, pending := range messages[i+1:] {
+				d.markMessageInFlight(pending.ID)
+			}
 			return
 		}
 		message := message
@@ -210,6 +213,20 @@ func (d *ResultDispatcher) dispatchMessages(ctx context.Context, messages []msg.
 				msg.MarkMessageHandlingDone(d.queue, message.ID, false)
 			}
 		}()
+	}
+}
+
+func (d *ResultDispatcher) releaseInFlightMessages() {
+	d.inFlightMu.Lock()
+	ids := make([]string, 0, len(d.inFlight))
+	for id := range d.inFlight {
+		ids = append(ids, id)
+	}
+	d.inFlight = nil
+	d.inFlightMu.Unlock()
+
+	for _, id := range ids {
+		msg.MarkMessageHandlingDone(d.queue, id, false)
 	}
 }
 
@@ -595,7 +612,31 @@ func stampJobExecutionIdentity(jobTask *model.JobTask, jobObj *batchv1.Job) {
 	if jobTask.RunGeneration > 0 {
 		jobObj.Annotations[config.AnnotationJobRunGeneration] = strconv.FormatUint(jobTask.RunGeneration, 10)
 	}
+	attempt := jobTask.Attempt
+	if attempt == 0 {
+		attempt = uint(jobTask.RetryCount + 1)
+	}
+	jobObj.Annotations[workflowconfig.AnnotationJobAttempt] = strconv.FormatUint(uint64(attempt), 10)
 	stampWorkspaceJobPodIdentity(jobTask, jobObj)
+}
+
+func stampCronJobExecutionIdentity(jobTask *model.JobTask, cron *batchv1.CronJob) {
+	if jobTask == nil || cron == nil {
+		return
+	}
+	if cron.Annotations == nil {
+		cron.Annotations = make(map[string]string)
+	}
+	cron.Annotations[config.AnnotationJobTaskID] = strings.TrimSpace(jobTask.TaskID)
+	cron.Annotations[config.AnnotationJobExecutionKey] = strings.TrimSpace(jobTask.ExecutionKey)
+	if jobTask.RunGeneration > 0 {
+		cron.Annotations[config.AnnotationJobRunGeneration] = strconv.FormatUint(jobTask.RunGeneration, 10)
+	}
+	attempt := jobTask.Attempt
+	if attempt == 0 {
+		attempt = uint(jobTask.RetryCount + 1)
+	}
+	cron.Annotations[workflowconfig.AnnotationJobAttempt] = strconv.FormatUint(uint64(attempt), 10)
 }
 
 func stampWorkspaceJobPodIdentity(task *model.JobTask, workload *batchv1.Job) {

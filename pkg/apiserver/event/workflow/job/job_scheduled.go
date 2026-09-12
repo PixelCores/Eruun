@@ -116,6 +116,7 @@ func (c *ScheduledJobCtl) runCronJob(ctx context.Context, cron *batchv1.CronJob)
 		namespace = c.namespace
 		cron.Namespace = namespace
 	}
+	stampCronJobExecutionIdentity(c.job, cron)
 	updateCronJob := func(ctx context.Context, existing *batchv1.CronJob) error {
 		cron.ResourceVersion = existing.ResourceVersion
 		_, err := c.client.BatchV1().CronJobs(namespace).Update(ctx, cron, metav1.UpdateOptions{})

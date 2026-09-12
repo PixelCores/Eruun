@@ -12,6 +12,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -1113,9 +1114,14 @@ func TestCancelWorkflowTaskForAppApprovalQueuedIgnoresSignalErrorAndStillTrigger
 
 func TestCancelWorkflowTaskForAppRetriesAfterApprovalResume(t *testing.T) {
 	var callbackCount int32
+	callbackReceived := make(chan struct{}, 1)
 	callbackServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&callbackCount, 1)
 		w.WriteHeader(http.StatusOK)
+		select {
+		case callbackReceived <- struct{}{}:
+		default:
+		}
 	}))
 	defer callbackServer.Close()
 
@@ -1151,11 +1157,11 @@ func TestCancelWorkflowTaskForAppRetriesAfterApprovalResume(t *testing.T) {
 			task.PendingApprovalStep = ""
 		},
 	}
-	svc := &workflowServiceImpl{
+	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{
 		Store: store,
 		Cache: newTestWorkflowCancelSignalCache(t),
 		Cfg:   &config.Config{AllowPrivateURLTargets: true},
-	}
+	})
 
 	err = svc.CancelWorkflowTaskForApp(context.Background(), "app-1", "approver", "task-cancel-approval-race", "manual cancel")
 	require.NoError(t, err)
@@ -1164,10 +1170,66 @@ func TestCancelWorkflowTaskForAppRetriesAfterApprovalResume(t *testing.T) {
 	require.False(t, store.task.ApprovalPending)
 	require.Equal(t, "", store.task.PendingApprovalStep)
 	require.Equal(t, "approver", store.task.TaskRevoker)
-	require.Equal(t, int32(0), atomic.LoadInt32(&callbackCount))
+	select {
+	case <-callbackReceived:
+	case <-time.After(2 * time.Second):
+		t.Fatal("cancel callback not received after task resumed before worker claim")
+	}
+	require.Equal(t, int32(1), atomic.LoadInt32(&callbackCount))
 }
 
-func TestCancelWorkflowTaskForAppNonApprovalTaskDoesNotTriggerCallback(t *testing.T) {
+func TestCancelWorkflowTaskForAppUnclaimedTaskTriggersCallback(t *testing.T) {
+	for _, status := range []config.Status{config.StatusWaiting, config.StatusQueued} {
+		t.Run(string(status), func(t *testing.T) {
+			var callbackCount int32
+			callbackReceived := make(chan struct{}, 1)
+			callbackServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				atomic.AddInt32(&callbackCount, 1)
+				w.WriteHeader(http.StatusOK)
+				select {
+				case callbackReceived <- struct{}{}:
+				default:
+				}
+			}))
+			defer callbackServer.Close()
+
+			callback, err := model.NewJSONStructByStruct(&model.WorkflowCallback{Cancelled: callbackServer.URL})
+			require.NoError(t, err)
+
+			store := &statusDataStore{
+				task: &model.WorkflowQueue{
+					TaskID:       "task-cancel-" + string(status),
+					AppID:        "app-1",
+					WorkflowID:   "wf-cancel-" + string(status),
+					WorkflowName: "unclaimed-workflow",
+					ProjectID:    "project-1",
+					Type:         config.WorkflowTaskTypeWorkflow,
+					Status:       status,
+				},
+				workflow: &model.Workflow{
+					ID:       "wf-cancel-" + string(status),
+					AppID:    "app-1",
+					Name:     "unclaimed-workflow",
+					Callback: callback,
+				},
+			}
+			svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
+
+			err = svc.CancelWorkflowTaskForApp(context.Background(), "app-1", "operator", store.task.TaskID, "manual cancel")
+			require.NoError(t, err)
+			require.Equal(t, config.StatusCancelled, store.task.Status)
+
+			select {
+			case <-callbackReceived:
+			case <-time.After(2 * time.Second):
+				t.Fatal("cancel callback not received for unclaimed task")
+			}
+			require.Equal(t, int32(1), atomic.LoadInt32(&callbackCount))
+		})
+	}
+}
+
+func TestCancelWorkflowTaskForAppRunningTaskDoesNotTriggerCallback(t *testing.T) {
 	var callbackCount int32
 	callbackServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&callbackCount, 1)
@@ -1206,6 +1268,150 @@ func TestCancelWorkflowTaskForAppNonApprovalTaskDoesNotTriggerCallback(t *testin
 
 	time.Sleep(300 * time.Millisecond)
 	require.Equal(t, int32(0), atomic.LoadInt32(&callbackCount))
+}
+
+func TestReconcileWorkflowTerminalCallbacksCompletesSettledIntentWithoutResending(t *testing.T) {
+	var callbackCount int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&callbackCount, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	callback, err := model.NewJSONStructByStruct(&model.WorkflowCallback{Cancelled: server.URL})
+	require.NoError(t, err)
+	task := &model.WorkflowQueue{
+		TaskID: "task-settled-marker", AppID: "app-1", WorkflowID: "wf-settled-marker",
+		WorkflowName: "settled-marker", Type: config.WorkflowTaskTypeWorkflow,
+		Status: config.StatusCancelled, RunGeneration: 3,
+		SchedulingReason: terminalCallbackPendingReason("manual cancel"),
+	}
+	store := &statusDataStore{workflow: &model.Workflow{ID: task.WorkflowID, AppID: task.AppID, Callback: callback}}
+	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
+	prepareTerminalCallbackFixture(t, svc, store, task, config.StatusCancelled)
+	key := workflowjob.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, "cancelled")
+	require.NoError(t, svc.Store.Add(context.Background(), &model.JobInfo{
+		TaskID: task.TaskID, WorkspaceID: "callback-space", Type: string(config.JobDeployCallback),
+		Status: string(config.StatusCompleted), ExecutionKey: &key, RunGeneration: task.RunGeneration,
+	}))
+
+	reconciled, err := ReconcileWorkflowTerminalCallbacks(context.Background(), svc.Store, svc.Cfg, svc.URLSecurityPolicyProvider)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, reconciled)
+	require.Equal(t, int32(0), atomic.LoadInt32(&callbackCount))
+	require.Equal(t, terminalCallbackReconciledReason, store.task.SchedulingReason)
+}
+
+func TestReconcileWorkflowTerminalCallbacksCompletesFailedAttemptWithoutRetry(t *testing.T) {
+	var callbackCount int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&callbackCount, 1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	callback, err := model.NewJSONStructByStruct(&model.WorkflowCallback{Cancelled: server.URL})
+	require.NoError(t, err)
+	task := &model.WorkflowQueue{
+		TaskID: "task-failed-marker", AppID: "app-1", WorkflowID: "wf-failed-marker",
+		WorkflowName: "failed-marker", Type: config.WorkflowTaskTypeWorkflow,
+		Status: config.StatusCancelled, RunGeneration: 3,
+		SchedulingReason: terminalCallbackPendingReason("manual cancel"),
+	}
+	store := &statusDataStore{workflow: &model.Workflow{ID: task.WorkflowID, AppID: task.AppID, Callback: callback}}
+	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
+	prepareTerminalCallbackFixture(t, svc, store, task, config.StatusCancelled)
+
+	reconciled, err := ReconcileWorkflowTerminalCallbacks(context.Background(), svc.Store, svc.Cfg, svc.URLSecurityPolicyProvider)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, reconciled)
+	require.Equal(t, int32(1), atomic.LoadInt32(&callbackCount))
+	require.Equal(t, terminalCallbackReconciledReason, store.task.SchedulingReason)
+	require.Len(t, store.jobs, 1)
+	require.Equal(t, string(config.StatusFailed), store.jobs[0].Status)
+	require.Contains(t, store.jobs[0].Error, "status: 503")
+
+	reconciled, err = ReconcileWorkflowTerminalCallbacks(context.Background(), svc.Store, svc.Cfg, svc.URLSecurityPolicyProvider)
+
+	require.NoError(t, err)
+	require.Zero(t, reconciled)
+	require.Equal(t, int32(1), atomic.LoadInt32(&callbackCount))
+}
+
+func TestReconcileWorkflowTerminalCallbacksWaitsForActiveChild(t *testing.T) {
+	var callbackCount int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&callbackCount, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	callback, err := model.NewJSONStructByStruct(&model.WorkflowCallback{Cancelled: server.URL})
+	require.NoError(t, err)
+	task := &model.WorkflowQueue{
+		TaskID: "task-active-child", AppID: "app-1", WorkflowID: "wf-active-child",
+		WorkflowName: "active-child", Type: config.WorkflowTaskTypeWorkflow,
+		Status: config.StatusCancelled, RunGeneration: 2,
+		SchedulingReason: terminalCallbackPendingReason("manual cancel"),
+	}
+	store := &statusDataStore{workflow: &model.Workflow{ID: task.WorkflowID, AppID: task.AppID, Callback: callback}}
+	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
+	prepareTerminalCallbackFixture(t, svc, store, task, config.StatusCancelled)
+	key := "active-cleanup"
+	require.NoError(t, svc.Store.Add(context.Background(), &model.JobInfo{
+		TaskID: task.TaskID, WorkspaceID: "callback-space", Type: string(config.JobCleanupResources),
+		Status: string(config.StatusRunning), ExecutionKey: &key, RunGeneration: task.RunGeneration,
+	}))
+
+	reconciled, err := ReconcileWorkflowTerminalCallbacks(context.Background(), svc.Store, svc.Cfg, svc.URLSecurityPolicyProvider)
+
+	require.NoError(t, err)
+	require.Zero(t, reconciled)
+	require.Equal(t, int32(0), atomic.LoadInt32(&callbackCount))
+	require.Equal(t, terminalCallbackPendingReason("manual cancel"), store.task.SchedulingReason)
+	jobs, err := svc.Store.List(context.Background(), &model.JobInfo{TaskID: task.TaskID}, &datastore.ListOptions{})
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	require.Equal(t, string(config.StatusRunning), jobs[0].(*model.JobInfo).Status)
+}
+
+func TestReconcileWorkflowTerminalCallbacksCancelsOlderCallbackWithoutSelfLock(t *testing.T) {
+	var callbackCount int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&callbackCount, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	callback, err := model.NewJSONStructByStruct(&model.WorkflowCallback{Cancelled: server.URL})
+	require.NoError(t, err)
+	task := &model.WorkflowQueue{
+		TaskID: "task-old-callback", AppID: "app-1", WorkflowID: "wf-old-callback",
+		WorkflowName: "old-callback", Type: config.WorkflowTaskTypeWorkflow,
+		Status: config.StatusCancelled, RunGeneration: 4,
+		SchedulingReason: terminalCallbackPendingReason("manual cancel"),
+	}
+	store := &statusDataStore{workflow: &model.Workflow{ID: task.WorkflowID, AppID: task.AppID, Callback: callback}}
+	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
+	prepareTerminalCallbackFixture(t, svc, store, task, config.StatusCancelled)
+	oldKey := "approval-notification"
+	require.NoError(t, svc.Store.Add(context.Background(), &model.JobInfo{
+		TaskID: task.TaskID, WorkspaceID: "callback-space", Type: string(config.JobDeployCallback),
+		Status: string(config.StatusRunning), ExecutionKey: &oldKey, RunGeneration: task.RunGeneration,
+		SchedulingState: "admitted",
+	}))
+
+	reconciled, err := ReconcileWorkflowTerminalCallbacks(context.Background(), svc.Store, svc.Cfg, svc.URLSecurityPolicyProvider)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, reconciled)
+	require.Equal(t, int32(1), atomic.LoadInt32(&callbackCount))
+	jobs, err := svc.Store.List(context.Background(), &model.JobInfo{TaskID: task.TaskID}, &datastore.ListOptions{})
+	require.NoError(t, err)
+	for _, entity := range jobs {
+		jobInfo := entity.(*model.JobInfo)
+		if jobInfo.ExecutionKey != nil && *jobInfo.ExecutionKey == oldKey {
+			require.Equal(t, string(config.StatusCancelled), jobInfo.Status)
+		}
+	}
 }
 
 func TestCancelWorkflowTaskForAppRejectsHistoricalTerminalStatus(t *testing.T) {

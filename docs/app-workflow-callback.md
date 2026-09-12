@@ -93,6 +93,8 @@ Workflow 终态回调优先读取 `task.callback`，再读取 `workflow.callback
 
 Callback URL 仍受 `urlSecurityPolicy` 约束；私网、回环和重定向目标按现有出站 URL 安全策略校验。Callback 只跟随同 origin 重定向：scheme、host 或有效端口发生变化时请求直接失败，配置的自定义 Header 不会发送到跨 origin 目标。
 
+Callback 保持单次投递语义。持久化的 callback Job 终态表示该次投递已有可审计结果；`failed`、`timeout` 等失败结果不会由运行时自动重试。取消恢复只会重放尚未形成持久化终态的 callback，并复用同一 `Idempotency-Key`，以便接收方在结果不确定时去重。
+
 示例：
 
 - `examples/workflow-callback/create-app-default-callback-request.json`

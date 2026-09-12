@@ -78,6 +78,7 @@ func TestJobAdmissionCancellationStopsRecoveredInstantExecution(t *testing.T) {
 				require.Empty(t, client.Actions(), "recovery must not rerun the live workload while waiting")
 
 				staleOwner := reason == "new generation" || reason == "new token" || reason == "new worker"
+				ownerStillRunning := reason == "signal first"
 				switch reason {
 				case "database first", "database before signal":
 					require.NoError(t, db.Model(owner).Update("status", config.StatusCancelled).Error)
@@ -93,7 +94,7 @@ func TestJobAdmissionCancellationStopsRecoveredInstantExecution(t *testing.T) {
 				}
 				select {
 				case err := <-result:
-					if staleOwner {
+					if staleOwner || ownerStillRunning {
 						require.ErrorIs(t, err, signal.ErrInfrastructureStop)
 					} else {
 						require.NoError(t, err)
@@ -104,7 +105,7 @@ func TestJobAdmissionCancellationStopsRecoveredInstantExecution(t *testing.T) {
 
 				var saved model.JobInfo
 				require.NoError(t, db.Where("execution_key = ?", task.ExecutionKey).First(&saved).Error)
-				if staleOwner {
+				if staleOwner || ownerStillRunning {
 					require.Equal(t, string(config.StatusRunning), saved.Status)
 					require.Empty(t, client.Actions(), "a stale owner cannot stop the current execution")
 				} else {

@@ -2,6 +2,7 @@ package job
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -10,9 +11,12 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
@@ -20,6 +24,7 @@ import (
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
 
@@ -128,6 +133,102 @@ func TestJobRunnerWaitsForGlobalPriorityAdmission(t *testing.T) {
 	require.Zero(t, active)
 }
 
+func TestCancelledKubernetesJobKeepsAdmissionWhenOnlineCleanupFails(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	connection, err := db.DB()
+	require.NoError(t, err)
+	connection.SetMaxOpenConns(1)
+	t.Cleanup(func() { require.NoError(t, connection.Close()) })
+	require.NoError(t, db.AutoMigrate(&model.SystemSetting{}, &model.WorkflowQueue{}, &model.JobInfo{}, &model.Workspace{}, &model.ApplicationComponent{}, &model.Applications{}))
+	store := &sqlstore.Driver{Client: *db}
+	ctx := context.Background()
+	require.NoError(t, repository.EnsureJobSchedulerPolicy(ctx, store))
+	require.NoError(t, db.Model(&model.SystemSetting{Type: model.SystemSettingTypeWorkflowScheduler}).Update("value", `{"strategy":"priority","maxConcurrentJobs":1,"maxConcurrentJobsPerWorkspace":1,"agingSeconds":60}`).Error)
+	require.NoError(t, store.Add(ctx, &model.Workspace{ID: "workspace", Namespace: "default"}))
+
+	lease := time.Now().Add(time.Minute)
+	owner := &model.WorkflowQueue{
+		TaskID: "cancelled-task", WorkspaceID: "workspace", Status: config.StatusRunning,
+		RunGeneration: 1, RunToken: "cancelled-token", WorkerID: "cancelled-worker", LeaseExpiresAt: &lease,
+	}
+	require.NoError(t, store.Add(ctx, owner))
+	desired := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "cancelled-job", Namespace: "default", UID: "cancelled-job-uid"}}
+	task := &model.JobTask{
+		Name: desired.Name, Namespace: desired.Namespace, TaskID: owner.TaskID, WorkspaceID: owner.WorkspaceID,
+		ExecutionKey: "cancelled-execution", RunGeneration: 1, OwnerRunGeneration: 1,
+		OwnerStatus: config.StatusRunning, RunToken: owner.RunToken, WorkerID: owner.WorkerID,
+		JobType: string(config.JobDeployInstant), JobInfo: desired,
+	}
+	cleanupErr := errors.New("kubernetes API unavailable")
+	deleteAttempts := 0
+	client := fake.NewSimpleClientset()
+	client.PrependReactor("delete", "jobs", func(k8stesting.Action) (bool, runtime.Object, error) {
+		deleteAttempts++
+		if deleteAttempts == 1 {
+			return true, nil, cleanupErr
+		}
+		return false, nil, nil
+	})
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
+	result := make(chan error, 1)
+	go func() { result <- runJob(runCtx, task, client, store, func() {}, nil) }()
+	require.Eventually(t, func() bool {
+		var count int64
+		return db.Model(&model.JobInfo{}).Where("execution_key = ? AND scheduling_state = ?", task.ExecutionKey, workflowconfig.JobSchedulingQueued).Count(&count).Error == nil && count == 1
+	}, time.Second, 10*time.Millisecond)
+	admitted, err := repository.AdmitQueuedJobs(ctx, store)
+	require.NoError(t, err)
+	require.Equal(t, 1, admitted)
+	require.Eventually(t, func() bool {
+		_, err := client.BatchV1().Jobs(desired.Namespace).Get(ctx, desired.Name, metav1.GetOptions{})
+		return err == nil
+	}, time.Second, 10*time.Millisecond)
+
+	require.NoError(t, db.Model(owner).Update("status", config.StatusCancelled).Error)
+	cancelRun()
+	select {
+	case err := <-result:
+		require.ErrorIs(t, err, signal.ErrInfrastructureStop)
+		require.ErrorIs(t, err, cleanupErr)
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancelled job did not return after cleanup failure")
+	}
+	require.Equal(t, config.StatusCancelled, task.Status)
+	var saved model.JobInfo
+	require.NoError(t, db.Where("execution_key = ?", task.ExecutionKey).First(&saved).Error)
+	require.Equal(t, string(config.StatusCancelled), saved.Status)
+	require.Equal(t, workflowconfig.JobSchedulingAdmitted, saved.SchedulingState)
+	require.Equal(t, cancelledJobCleanupPending, saved.SchedulingReason)
+	_, err = client.BatchV1().Jobs(desired.Namespace).Get(ctx, desired.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+
+	waitingOwner := &model.WorkflowQueue{
+		TaskID: "waiting-task", WorkspaceID: "other-workspace", Status: config.StatusRunning,
+		RunGeneration: 1, RunToken: "waiting-token", WorkerID: "waiting-worker", LeaseExpiresAt: &lease,
+	}
+	require.NoError(t, store.Add(ctx, waitingOwner))
+	waitingKey := "waiting-execution"
+	waiting := &model.JobInfo{
+		TaskID: waitingOwner.TaskID, WorkspaceID: waitingOwner.WorkspaceID, Type: string(config.JobDeployInstant),
+		Status: string(config.StatusPrepare), ExecutionKey: &waitingKey, RunGeneration: 1,
+	}
+	require.NoError(t, repository.EnqueueJobForScheduling(ctx, store, waitingOwner, waiting, nil))
+	admitted, err = repository.AdmitQueuedJobs(ctx, store)
+	require.NoError(t, err)
+	require.Zero(t, admitted, "a live cancelled workload must keep consuming its admission")
+	require.NoError(t, db.Where("execution_key = ?", waitingKey).First(waiting).Error)
+	require.Equal(t, workflowconfig.JobSchedulingQueued, waiting.SchedulingState)
+
+	cleaned, err := CleanupRecoveredCancelledJobs(ctx, client, store)
+	require.NoError(t, err)
+	require.Equal(t, 1, cleaned)
+	require.NoError(t, db.Where("execution_key = ?", task.ExecutionKey).First(&saved).Error)
+	require.Equal(t, workflowconfig.JobSchedulingReleased, saved.SchedulingState)
+	require.Equal(t, cancelledJobCleanupComplete, saved.SchedulingReason)
+}
+
 func TestJobAdmissionWaitExitReleasesQueueWithoutKubernetesEffects(t *testing.T) {
 	for _, concurrency := range []int{1, 2} {
 		for _, reason := range []string{"cancel", "cancel after database commit", "database cancellation before signal", "infrastructure stop", "ownership transfer", "cancel after ownership transfer"} {
@@ -176,7 +277,7 @@ func TestJobAdmissionWaitExitReleasesQueueWithoutKubernetesEffects(t *testing.T)
 						cancel(context.Canceled)
 					}
 				}
-				cancelled := reason == "cancel" || reason == "cancel after database commit" || reason == "database cancellation before signal"
+				cancelled := reason == "cancel after database commit" || reason == "database cancellation before signal"
 				select {
 				case err := <-result:
 					if cancelled {
