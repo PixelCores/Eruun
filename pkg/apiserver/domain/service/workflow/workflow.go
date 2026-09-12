@@ -1890,6 +1890,9 @@ func workflowHasActiveChildExecution(ctx context.Context, store datastore.DataSt
 	return false, nil
 }
 
+// terminalCallbackJobSettled reports whether the callback has a durable final
+// disposition. Callback delivery remains single-attempt: a persisted failure
+// is observable, but recovery does not turn it into an automatic retry loop.
 func terminalCallbackJobSettled(ctx context.Context, store datastore.DataStore, taskID string, generation uint64, executionKey string) (bool, error) {
 	entities, err := store.List(ctx, &model.JobInfo{TaskID: taskID}, &datastore.ListOptions{
 		Page: 1, PageSize: 2,

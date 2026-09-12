@@ -6,7 +6,7 @@
 
 本次审查覆盖 API、Controller、Scheduler、Worker 四种运行角色，以及应用 Workflow、空间独立 Job、数据库执行租约、Redis/Kafka 消息、延迟任务、结果恢复、Leader 切换、schema 迁移和 Helm/Quickstart 部署。修复保留现有 `/api/v1`、JSON、v2 dispatch、数据库 ownership 和执行身份契约，没有引入新的业务实体、协调服务或兼容别名。
 
-消息确认、数据库状态与外部副作用继续采用现有的 at-least-once、幂等键和 fencing 语义：失败或任期切换时允许安全重投，旧 owner 的结果必须被拒绝；外部系统是否严格幂等仍由对应适配器和目标系统保证。
+Redis/Kafka 消息确认保持 at-least-once 语义，数据库 ownership 和 fencing 拒绝旧 owner 的结果。外部副作用使用稳定幂等键容忍结果不确定时的重复执行，其严格幂等仍由对应适配器和目标系统保证。Workflow callback 保持现有单次投递语义；恢复只重放尚未持久化终态的 callback，不会自动重试已记录的失败。
 
 ## 已确认问题与处置
 
@@ -17,13 +17,13 @@
 | D03 | Redis `XAUTOCLAIM` 每次从 `0-0` 开始，较前的 pending 会使较后的消息长期饥饿。 | 按 stream/group 保存并推进服务端返回的 next cursor，扫描结束后回绕。 | 单元测试覆盖 cursor 推进、隔离和回绕；真实 Redis 构造不同 idle 时间的 pending 并验证后续页可达。 |
 | D04 | delay/result dispatcher 结束任期时只停止循环，已交给 handler 但尚未 ACK 的消息仍标记为 in-flight，不能由继任者及时重领。 | 停止接收后等待本任期处理退出，并释放仍未完成的本地 in-flight 记录。 | race 测试覆盖取消期间的释放、重投和重复结果去重。 |
 | D05 | Job 的部分提前终止路径忽略终态持久化错误，父 Workflow 可能正常结束，而数据库仍保留运行态。 | 具有分布式执行身份或 ownership 的 Job 终态写入错误向上传播；保存时继续校验 generation、token、owner，旧 attempt 不能覆盖新 owner。无执行身份的旧式本地调用保留既有 best-effort 行为。 | 故障注入覆盖正常、skipped、启动前取消、watcher 初始化失败、ownership 丢失和旧 attempt 结果拒绝；相关包 race 测试通过。 |
-| D06 | 未被 Worker 认领的任务取消后没有执行 callback 的 owner；运行中取消若 Worker 在提交取消后崩溃，子 Job 和 callback 可能永久残留。 | 将取消 callback 状态持久化到现有 scheduling reason，增加有界分页的恢复循环；取消先终态化子 Job，再执行带唯一 execution key 的 callback；长 callback 续租，按执行身份和 UID 精确清理 Job/CronJob，身份不匹配的既有资源保持不动。 | 测试覆盖认领前取消、运行中取消、Worker 崩溃、callback 超时/重放/去重、旧 callback owner、同名异身份 Job/CronJob、子 Job 收敛和 UID 删除。独立复审补充了缺失取消原因的回退。 |
+| D06 | 未被 Worker 认领的任务取消后没有执行 callback 的 owner；运行中取消若 Worker 在提交取消后崩溃，子 Job 和 callback 可能永久残留。 | 将取消 callback 状态持久化到现有 scheduling reason，增加有界分页的恢复循环；取消先终态化子 Job，再执行带唯一 execution key 的 callback；长 callback 续租，按执行身份和 UID 精确清理 Job/CronJob，身份不匹配的既有资源保持不动。 | 测试覆盖认领前取消、运行中取消、Worker 崩溃、callback 超时与终态记录前的恢复重放、已记录失败不重发、稳定 execution key、旧 callback owner、同名异身份 Job/CronJob、子 Job 收敛和 UID 删除。独立复审补充了缺失取消原因的回退。 |
 | D07 | Controller 首次 informer cache sync 可无限等待，Leader 无法退出，后继任期也无法接管。 | 初次同步设置默认 30 秒的有界超时；超时返回错误并结束当前任期。 | 单元测试覆盖成功、超时和 context 取消；Leader 生命周期 race 测试通过。 |
 | D08 | server 关闭未完整等待选举循环，可能先释放数据库 Lease；晚到的 `OnStartedLeading` 也可能重新启动已经失效的任期。 | 关闭顺序先撤销任期并等待选举/角色 goroutine，再释放 Lease；callback 在进入和返回边界检查任期 token。 | 测试覆盖晚到 start、leadership lost、关闭等待与 Lease 释放顺序；kind 中删除 Controller/Scheduler leader 后均由新 Pod 取得新 holder identity。 |
 | D09 | readiness 只反映进程和部分外部依赖，数据库中断时仍可能接流量；将同一检查放入 liveness 会造成重启风暴。 | readiness 增加 2 秒超时的数据库时钟查询；liveness 保持进程存活语义。 | 单元测试覆盖成功、超时和查询失败；真实 MySQL 停止期间 readiness 失败、Pod 保持 Running 且 restart count 不变，恢复后重新 ready。 |
 | D10 | 再次迁移开始前保留旧成功 marker；若迁移中途失败，validate 可能接受半完成 schema。GORM `HasTable/HasColumn` 还会把探测错误折叠成 false。 | 持锁后先将 marker 标记 incomplete，迁移成功才写 complete；使用显式、可传播错误的 table/column probe，并保留既有迁移锁。 | SQLite 故障注入和真实 MySQL 覆盖失败 marker、重试完成、探测错误及两个实例并发迁移（最大并发执行数为 1）。 |
 | D11 | 空间独立评测 Job 的 Runner 上传先校验 Pod/Job 身份，再写入结果；两步之间父任务或执行 checkpoint 可能已被恢复流程终态化，旧 Pod 仍可发布。 | 授权时要求父任务正在运行，或由同一未过期租约执行取消收尾；结果事务内锁定并复查父任务、token 和 Job checkpoint，终态 checkpoint 一律拒绝。 | 单元测试覆盖传输期间父状态/checkpoint 改变、旧 Pod/旧 UID/旧 generation、取消期同一活跃 Pod 及过期租约。 |
-| D12 | 应用级联删除与 Workflow 取消分散写入，进程失败可能留下可调度任务、未终态子 Job 或待发送 callback。 | 在已有事务和 CAS 契约中原子收敛应用/Workflow 状态，复用 durable callback marker 与子 Job 终态化路径。 | 故障注入覆盖并发状态改变、事务失败、callback 保留和恢复重放。 |
+| D12 | 应用级联删除与 Workflow 取消分散写入，进程失败可能留下可调度任务、未终态子 Job 或待发送 callback。 | 在已有事务和 CAS 契约中原子收敛应用/Workflow 状态，复用 durable callback marker 与子 Job 终态化路径。 | 故障注入覆盖并发状态改变、事务失败、callback 意图保留和未形成终态记录时的恢复重放。 |
 | D13 | Controller 取消恢复需要读取并删除精确匹配的 CronJob，但部署 RBAC 缺少对应权限，恢复会永久停在 pending。 | Helm 与静态清单为 Controller 增加仅限 CronJob `get/delete` 的权限；删除仍受 execution identity 和 UID precondition 约束。 | 静态部署测试、Helm 渲染测试和取消恢复测试通过。 |
 | D14 | Quickstart 每次生成新数据库/Redis 密码；已有 PVC 且 Secret 丢失时可创建不匹配凭据。Chart 也允许持久卷存在时修改 fullname、端口、数据库或密码，长 release 名还会产生超长依赖名。 | Quickstart 复用现存 Secret，并从旧 Chart StatefulSet 恢复缺失的 database 元数据；Chart 保留凭据 Secret 作为 PVC 身份 marker，lookup 现存 StatefulSet/PVC/Secret 并拒绝不兼容安装或升级；所有依赖名统一使用 63 字符 suffix-aware helper。 | Shell/Helm 测试覆盖旧 Secret、读取错误、PVC 检测、长名和端口；kind 覆盖 main Chart 升级、卸载保留数据后的 fullname 防漂移和四角色健康。 |
 | D15 | 配置自定义 MySQL/Redis servicePort 只改变 Service 和探针，容器进程仍监听默认端口。 | 显式把端口传给 MySQL/Redis 进程并让 probe 使用同一端口。 | kind 分别以 MySQL `13306`、Redis `16379` 启动，Pod ready，进程级 `mysqladmin`/`redis-cli` 检查通过。 |
@@ -45,6 +45,7 @@
 | 9 | readiness、迁移、Helm、安装升级和 RBAC | 确认 D09、D10、D13–D15。独立复审先后发现迁移 probe 隐藏错误、Controller 缺 CronJob 读删权限、持久凭据在 reinstall/长名/自定义端口下的缺口；逐项修复。最终复审确认不再修改不可变的 volumeClaimTemplate，main Chart 到当前 Chart 的真实升级通过。 |
 | 10 | 最终差异、集成故障验收与 Go 简洁性 | 独立终审发现并修复四组相邻缺口：skipped/启动前取消/watcher 失败仍忽略身份化终态保存错误；同名旧 Job 遮蔽当前 CronJob 取消清理；Controller 缺 CronJob 精确删除权限；旧 Chart Secret 缺 database 元数据及卸载后 fullname 身份丢失。新增状态转换、Quickstart、Helm 和 kind 证据后重新审查，最终结论为 **CLEARED**，无未解决实质问题。 |
 | 11 | PR 行级复审与 Redis 真实启动顺序 | 复审发现 D02 的初次修复被启动前 `EnsureGroup("$")` 绕过；改为统一从 backlog 起点建组，并用真实 Redis 覆盖预存 backlog 和删组后新实例启动。修复后聚焦复审无未解决实质问题。 |
+| 12 | Callback pending 语义与恢复边界 | 先撤回“仅成功送达才能清除 pending”的过强结论，再核对基线代码和 Current 文档；确认 callback 保持单次投递，pending 表示尚未形成持久化终局，而不是尚未收到 `2xx`。收紧审计文档的 at-least-once 表述，并增加 HTTP 503 失败终态不自动重发的回归测试。 |
 
 ## 验证环境与证据
 
@@ -76,6 +77,6 @@
 ## 保留边界
 
 - Kafka/Redis 故障后的目标是避免越过未确认消息并允许安全重投；重复投递仍是允许且必须被幂等处理的结果。
-- callback 使用持久化 execution key、ownership 和数据库状态收敛重复执行，但无法替外部 HTTP 服务提供事务性 exactly-once。
+- callback 恢复保证取消意图最终形成一个可审计的单次投递结果，不保证目标端成功处理，也不自动重试已持久化的失败。结果不确定时的重放复用同一 `Idempotency-Key`，但无法替外部 HTTP 服务提供事务性 exactly-once。
 - kind 与本地真实依赖验证覆盖本次定义的故障触发，不代表所有生产网络分区、存储故障或多集群拓扑均已认证。
 - 本次没有合并 PR、发布镜像或创建 Release。

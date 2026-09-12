@@ -1302,6 +1302,42 @@ func TestReconcileWorkflowTerminalCallbacksCompletesSettledIntentWithoutResendin
 	require.Equal(t, terminalCallbackReconciledReason, store.task.SchedulingReason)
 }
 
+func TestReconcileWorkflowTerminalCallbacksCompletesFailedAttemptWithoutRetry(t *testing.T) {
+	var callbackCount int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&callbackCount, 1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	callback, err := model.NewJSONStructByStruct(&model.WorkflowCallback{Cancelled: server.URL})
+	require.NoError(t, err)
+	task := &model.WorkflowQueue{
+		TaskID: "task-failed-marker", AppID: "app-1", WorkflowID: "wf-failed-marker",
+		WorkflowName: "failed-marker", Type: config.WorkflowTaskTypeWorkflow,
+		Status: config.StatusCancelled, RunGeneration: 3,
+		SchedulingReason: terminalCallbackPendingReason("manual cancel"),
+	}
+	store := &statusDataStore{workflow: &model.Workflow{ID: task.WorkflowID, AppID: task.AppID, Callback: callback}}
+	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
+	prepareTerminalCallbackFixture(t, svc, store, task, config.StatusCancelled)
+
+	reconciled, err := ReconcileWorkflowTerminalCallbacks(context.Background(), svc.Store, svc.Cfg, svc.URLSecurityPolicyProvider)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, reconciled)
+	require.Equal(t, int32(1), atomic.LoadInt32(&callbackCount))
+	require.Equal(t, terminalCallbackReconciledReason, store.task.SchedulingReason)
+	require.Len(t, store.jobs, 1)
+	require.Equal(t, string(config.StatusFailed), store.jobs[0].Status)
+	require.Contains(t, store.jobs[0].Error, "status: 503")
+
+	reconciled, err = ReconcileWorkflowTerminalCallbacks(context.Background(), svc.Store, svc.Cfg, svc.URLSecurityPolicyProvider)
+
+	require.NoError(t, err)
+	require.Zero(t, reconciled)
+	require.Equal(t, int32(1), atomic.LoadInt32(&callbackCount))
+}
+
 func TestReconcileWorkflowTerminalCallbacksWaitsForActiveChild(t *testing.T) {
 	var callbackCount int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
