@@ -151,6 +151,21 @@ func (d *DelayDispatcher) runLoops(ctx context.Context) {
 		d.recoveryLoop(ctx)
 	}()
 	wg.Wait()
+	d.releasePendingMessages()
+}
+
+func (d *DelayDispatcher) releasePendingMessages() {
+	d.mu.Lock()
+	items := d.items
+	d.items = nil
+	d.pending = make(map[string]struct{})
+	d.mu.Unlock()
+
+	for _, item := range items {
+		if item != nil {
+			msg.MarkMessageHandlingDone(d.queue, item.msgID, false)
+		}
+	}
 }
 
 func (d *DelayDispatcher) readLoop(ctx context.Context) {
@@ -255,6 +270,7 @@ func (d *DelayDispatcher) scheduleLoop(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			timer.Stop()
+			d.requeue(item)
 			return
 		case <-d.wake:
 			timer.Stop()

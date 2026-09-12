@@ -163,6 +163,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
+| `distributed-runtime-audit-2026-09-10.md` | Historical / Audit | 分布式运行时问题、连续十轮复审及隔离故障验收记录 |
 | `login-token-authz-analysis-2026-09-04.md` | Historical / Audit | opaque 登录 Token、会话撤销、空间授权与 JWT 必要性评估；记录 refresh 重放检测、空闲超时、清理和路由策略测试的后续处置 |
 | `go-idiomatic-code-quality-audit-2026-08-09.md` | Historical / Audit | 基于 `aaec6307` 的全仓 Go 惯用性、接口、并发、错误传播与测试组织审计 |
 | `existing-cluster-application-import-analysis-2026-08-03.md` | Historical / Audit | 现有集群应用进入 Eruun 的发现、observe/adopted 导入、source identity、执行边界与上线验收分析 |

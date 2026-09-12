@@ -10,6 +10,7 @@ import (
 
 	miniredis "github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
@@ -22,6 +23,7 @@ import (
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
+	wf "github.com/PixelCores/Eruun/pkg/apiserver/workflow"
 )
 
 func newTestApplicationDeleteCancelSignalCache(t *testing.T) cache.ICache {
@@ -182,6 +184,67 @@ func TestDeleteApplicationCascadePreservesOwnershipWhenActiveTasksRemain(t *test
 	if len(store.tasks) != 1 || len(store.jobs) != 1 {
 		t.Fatalf("running task/job metadata must be retained")
 	}
+}
+
+func TestDeleteApplicationCascadeWaitsForCancelledCallbackBeforeDeletingMetadata(t *testing.T) {
+	store := newCascadeDeleteStore()
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "demo", Namespace: "default"}
+	store.workflows["wf-1"] = &model.Workflow{
+		ID: "wf-1", AppID: "app-1", Name: "deploy",
+		Callback: mustJSONStruct(model.WorkflowCallback{Cancelled: "https://callback.example.invalid/cancelled"}),
+	}
+	store.tasks["task-1"] = &model.WorkflowQueue{
+		TaskID: "task-1", AppID: "app-1", WorkflowID: "wf-1", WorkflowName: "deploy",
+		Status: config.StatusRunning, RunGeneration: 2, RunToken: "token-2", WorkerID: "worker-2",
+	}
+	svc := &applicationsServiceImpl{
+		KubeClient: fake.NewSimpleClientset(), Store: store,
+		AppRepo: &cascadeAppRepo{store: store}, ComponentRepo: &cascadeComponentRepo{store: store},
+		WorkflowQueueRepo: &mockWorkflowQueueRepo{}, ScheduleLocker: locker.NewNoopLocker("test-app-schedule"),
+		Cache: newTestApplicationDeleteCancelSignalCache(t),
+	}
+
+	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{WaitSeconds: int64Ptr(0)})
+
+	require.Error(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, []string{"task-1"}, resp.ActiveTaskIDs)
+	require.Contains(t, store.apps, "app-1")
+	require.Contains(t, store.tasks, "task-1")
+	require.Equal(t, config.StatusCancelled, store.tasks["task-1"].Status)
+	require.True(t, wf.IsTerminalCallbackPending(store.tasks["task-1"].SchedulingReason))
+}
+
+func TestDeleteApplicationCascadeTerminalizesUnclaimedCleanupJob(t *testing.T) {
+	store := newCascadeDeleteStore()
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "demo", Namespace: "default"}
+	store.workflows["wf-1"] = &model.Workflow{ID: "wf-1", AppID: "app-1", Name: "deploy"}
+	store.tasks["task-1"] = &model.WorkflowQueue{
+		TaskID: "task-1", AppID: "app-1", WorkflowID: "wf-1", WorkflowName: "deploy",
+		Status: config.StatusWaiting, ExecuteAt: time.Now().Add(time.Hour).Unix(),
+	}
+	key := "cleanup-1"
+	store.jobs[1] = &model.JobInfo{
+		ID: 1, TaskID: "task-1", AppID: "app-1", WorkflowID: "wf-1",
+		Type: string(config.JobCleanupResources), Status: string(config.StatusQueued),
+		ExecutionKey: &key, InternalInfo: `{"source":"version_update_remove"}`,
+	}
+	store.nextJobID = 1
+	svc := &applicationsServiceImpl{
+		KubeClient: fake.NewSimpleClientset(), Store: store,
+		AppRepo: &cascadeAppRepo{store: store}, ComponentRepo: &cascadeComponentRepo{store: store},
+		WorkflowQueueRepo: &mockWorkflowQueueRepo{}, ScheduleLocker: locker.NewNoopLocker("test-app-schedule"),
+		Cache: newTestApplicationDeleteCancelSignalCache(t),
+	}
+
+	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{WaitSeconds: int64Ptr(0)})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Contains(t, resp.CancelledTaskIDs, "task-1")
+	require.NotContains(t, store.apps, "app-1")
+	require.Empty(t, store.tasks)
+	require.Empty(t, store.jobs)
 }
 
 func TestDeleteApplicationCascadeCountsExcludeCleanupOperationLogs(t *testing.T) {
@@ -800,6 +863,46 @@ func (s *cascadeDeleteStore) CompareAndSwap(context.Context, datastore.Entity, s
 }
 
 func (s *cascadeDeleteStore) CompareAndSwapWithConditions(_ context.Context, entity datastore.Entity, conditions map[string]interface{}, updates map[string]interface{}) (bool, error) {
+	if task, ok := entity.(*model.WorkflowQueue); ok {
+		current := s.tasks[task.TaskID]
+		if current == nil || conditions["status"] != current.Status || conditions["run_generation"] != current.RunGeneration ||
+			conditions["run_token"] != current.RunToken || conditions["worker_id"] != current.WorkerID {
+			return false, nil
+		}
+		current.Status = updates["status"].(config.Status)
+		current.TaskRevoker = updates["task_revoker"].(string)
+		current.CancelSource = updates["cancel_source"].(string)
+		current.ApprovalPending = updates["approval_pending"].(bool)
+		current.PendingApprovalStep = updates["pending_approval_step"].(string)
+		current.SchedulingReason = updates["scheduling_reason"].(string)
+		return true, nil
+	}
+	if job, ok := entity.(*model.JobInfo); ok {
+		current := s.jobs[job.ID]
+		if current == nil || conditions["status"] != current.Status || conditions["run_generation"] != current.RunGeneration ||
+			conditions["attempt"] != current.Attempt {
+			return false, nil
+		}
+		if expected, ok := conditions["execution_key"]; ok && (current.ExecutionKey == nil || expected != *current.ExecutionKey) {
+			return false, nil
+		}
+		if status, ok := updates["status"].(string); ok {
+			current.Status = status
+		}
+		if reason, ok := updates["scheduling_reason"].(string); ok {
+			current.SchedulingReason = reason
+		}
+		if state, ok := updates["scheduling_state"].(string); ok {
+			current.SchedulingState = state
+		}
+		if endTime, ok := updates["end_time"].(int64); ok {
+			current.EndTime = endTime
+		}
+		if jobErr, ok := updates["error"].(string); ok {
+			current.Error = jobErr
+		}
+		return true, nil
+	}
 	if _, ok := entity.(*model.ApplicationComponent); !ok {
 		return false, nil
 	}

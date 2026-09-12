@@ -31,6 +31,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
+	wf "github.com/PixelCores/Eruun/pkg/apiserver/workflow"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	signal "github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
@@ -163,6 +164,9 @@ func (w *WorkflowCtl) updateWorkflowTask() {
 		"current_step":          taskSnapshot.CurrentStep,
 		"approval_pending":      taskSnapshot.ApprovalPending,
 		"pending_approval_step": taskSnapshot.PendingApprovalStep,
+	}
+	if taskSnapshot.Status == config.StatusCancelled && wf.IsTerminalCallbackPending(taskSnapshot.SchedulingReason) {
+		updates["scheduling_reason"] = taskSnapshot.SchedulingReason
 	}
 	if isResourceImportWorkflowTask(taskSnapshot.Type) &&
 		taskSnapshot.SchedulingReason == importcontract.PreExecutionFailureReason {
@@ -878,6 +882,9 @@ func (w *WorkflowCtl) setTerminalStatus(status config.Status, reason string) {
 	defer w.workflowTaskMutex.Unlock()
 	w.workflowTask.Status = status
 	w.terminalReason = strings.TrimSpace(reason)
+	if status == config.StatusCancelled {
+		w.workflowTask.SchedulingReason = wf.TerminalCallbackPendingReason(reason)
+	}
 }
 
 func (w *WorkflowCtl) snapshotTerminalReason() string {
@@ -1256,6 +1263,9 @@ func (w *WorkflowCtl) triggerWorkflowCallback(ctx context.Context, status config
 		return
 	}
 	task := w.snapshotTask()
+	if status == config.StatusCancelled && strings.TrimSpace(reason) == "" && wf.IsTerminalCallbackPending(task.SchedulingReason) {
+		reason = wf.TerminalCallbackReason(task.SchedulingReason)
+	}
 	workflowID := strings.TrimSpace(task.WorkflowID)
 	if workflowID == "" {
 		return
@@ -1338,11 +1348,94 @@ func (w *WorkflowCtl) triggerWorkflowCallback(ctx context.Context, status config
 		callbackJob.Namespace = w.workspace.Namespace
 	}
 	job.ApplyExecutionIdentity(callbackJob)
-	callbackCtx, cancel := callbackContext(ctx, callback.TimeoutSeconds, w.callbackTimeoutMax)
+	callbackParent, stopCallbackParent := terminalCallbackParentContext(ctx, status)
+	defer stopCallbackParent()
+	callbackCtx, cancel := callbackContext(callbackParent, callback.TimeoutSeconds, w.callbackTimeoutMax)
 	defer cancel()
-	if err := job.RunJobs(callbackCtx, []*model.JobTask{callbackJob}, 1, w.Client, w.KubeConfig, w.Store, func() {}, false, w.Cache, w.urlSecurityPolicy, w.DelayQueue, w.ResourceWaiter, w.resourceImportExecutor, w.importSecretKeyring); err != nil {
+	if err := w.runTerminalCallbackJob(callbackCtx, &task, callbackJob); err != nil {
 		klog.ErrorS(err, "workflow callback execution failed", "taskID", callbackJob.TaskID, "jobName", callbackJob.Name)
 	}
+}
+
+func terminalCallbackParentContext(ctx context.Context, status config.Status) (context.Context, context.CancelFunc) {
+	if status != config.StatusCancelled || ctx == nil {
+		return ctx, func() {}
+	}
+	runtimeCtx, ok := ctx.Value(workflowRuntimeContextKey{}).(context.Context)
+	if !ok || runtimeCtx == nil {
+		return ctx, func() {}
+	}
+	parent, cancel := context.WithCancelCause(context.WithoutCancel(ctx))
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-runtimeCtx.Done():
+			cancel(context.Cause(runtimeCtx))
+		case <-done:
+		}
+	}()
+	return parent, func() {
+		close(done)
+		cancel(nil)
+	}
+}
+
+func (w *WorkflowCtl) runTerminalCallbackJob(ctx context.Context, task *model.WorkflowQueue, callbackJob *model.JobTask) error {
+	run := func(runCtx context.Context) error {
+		return job.RunJobs(runCtx, []*model.JobTask{callbackJob}, 1, w.Client, w.KubeConfig, w.Store, func() {}, false, w.Cache, w.urlSecurityPolicy, w.DelayQueue, w.ResourceWaiter, w.resourceImportExecutor, w.importSecretKeyring)
+	}
+	if task == nil || task.Status != config.StatusCancelled || task.RunGeneration == 0 || task.RunToken == "" || task.WorkerID == "" {
+		return run(ctx)
+	}
+	leaseDuration := workflowconfig.DefaultWorkflowLeaseDuration
+	if w.runtimeConfig != nil && w.runtimeConfig.Workflow.LeaseDuration > 0 {
+		leaseDuration = w.runtimeConfig.Workflow.LeaseDuration
+	}
+	renew := func(renewCtx context.Context) error {
+		renewed, err := repository.RenewCancelledWorkflowTaskLease(
+			renewCtx, w.Store, task.TaskID, task.RunGeneration, task.RunToken, task.WorkerID, leaseDuration,
+		)
+		if err != nil {
+			return err
+		}
+		if !renewed {
+			return repository.ErrWorkflowOwnershipLost
+		}
+		return nil
+	}
+	if err := renew(ctx); err != nil {
+		return fmt.Errorf("renew cancelled workflow callback lease: %w", err)
+	}
+	runCtx, cancel := context.WithCancelCause(ctx)
+	done := make(chan error, 1)
+	interval := leaseDuration / 3
+	if interval <= 0 {
+		interval = time.Millisecond
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-runCtx.Done():
+				done <- nil
+				return
+			case <-ticker.C:
+				renewCtx, renewCancel := context.WithTimeout(runCtx, config.TaskStateTransitionTimeout)
+				err := renew(renewCtx)
+				renewCancel()
+				if err != nil {
+					wrapped := fmt.Errorf("renew cancelled workflow callback lease: %w", err)
+					cancel(errors.Join(signal.ErrInfrastructureStop, wrapped))
+					done <- wrapped
+					return
+				}
+			}
+		}
+	}()
+	runErr := run(runCtx)
+	cancel(nil)
+	return errors.Join(runErr, <-done)
 }
 
 func approvalUpdateContext(parent context.Context, mode approvalUpdateContextMode) (context.Context, context.CancelFunc) {

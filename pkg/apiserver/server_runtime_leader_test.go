@@ -141,6 +141,142 @@ func TestRuntimeLeaderDoesNotReportShutdownAsLeaderLoss(t *testing.T) {
 	}
 }
 
+func TestRuntimeLeaderIgnoresStartAfterShutdown(t *testing.T) {
+	cfg := config.NewConfig()
+	server := &restServer{cfg: *cfg}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	leaderConfig := server.buildRuntimeLeaderElectionConfig(
+		ctx,
+		controllerLeaderScope,
+		&testLeaderElectionLock{identity: cfg.LeaderConfig.ID},
+		nil,
+	)
+
+	leaderConfig.Callbacks.OnStartedLeading(context.Background())
+
+	require.False(t, server.controllerLeading.Load())
+	require.Nil(t, server.controllerRun)
+}
+
+func TestRuntimeLeaderIgnoresLateStartWhileRuntimeDrainContextIsActive(t *testing.T) {
+	cfg := config.NewConfig()
+	server := &restServer{cfg: *cfg}
+	parentCtx, cancelParent := context.WithCancel(context.Background())
+	runtimeCtx, cancelRuntime := newRuntimeLifecycleContext(parentCtx)
+	defer cancelRuntime()
+	electionCtx, cancelElection := context.WithCancel(parentCtx)
+	defer cancelElection()
+	leaderConfig := server.buildRuntimeLeaderElectionConfig(
+		electionCtx,
+		controllerLeaderScope,
+		&testLeaderElectionLock{identity: cfg.LeaderConfig.ID},
+		nil,
+	)
+
+	cancelParent()
+	select {
+	case <-electionCtx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("leader election context remained active after shutdown started")
+	}
+	require.NoError(t, runtimeCtx.Err(), "runtime context should remain active during worker drain")
+	leaderConfig.Callbacks.OnStartedLeading(context.Background())
+
+	require.False(t, server.controllerLeading.Load())
+	require.Nil(t, server.controllerRun)
+}
+
+func TestStartRuntimeLeaderElectionsTracksEveryLoop(t *testing.T) {
+	oldRunner := runLeaderElector
+	t.Cleanup(func() {
+		runLeaderElector = oldRunner
+	})
+	started := make(chan struct{}, 2)
+	runLeaderElector = func(ctx context.Context, _ leaderelection.LeaderElectionConfig) {
+		started <- struct{}{}
+		<-ctx.Done()
+	}
+	server := &restServer{cfg: config.Config{ExitOnLostLeader: true}}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := server.startRuntimeLeaderElections(ctx, []runtimeLeaderElection{{}, {}})
+
+	for range 2 {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("leader election loop did not start")
+		}
+	}
+	select {
+	case <-done:
+		t.Fatal("leader election loops completed before cancellation")
+	default:
+	}
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("leader election loops did not stop after cancellation")
+	}
+}
+
+func TestRunRuntimeLeaderElectionWaitsForStartedCallbackBeforeStop(t *testing.T) {
+	oldRunner := runLeaderElector
+	t.Cleanup(func() {
+		runLeaderElector = oldRunner
+	})
+	started := make(chan struct{})
+	releaseStart := make(chan struct{})
+	stopped := make(chan struct{})
+	runLeaderElector = func(ctx context.Context, cfg leaderelection.LeaderElectionConfig) {
+		leaderCtx, cancel := context.WithCancel(ctx)
+		go cfg.Callbacks.OnStartedLeading(leaderCtx)
+		<-started
+		cancel()
+		cfg.Callbacks.OnStoppedLeading()
+	}
+	server := &restServer{cfg: config.Config{ExitOnLostLeader: true}}
+	election := runtimeLeaderElection{config: leaderelection.LeaderElectionConfig{
+		Callbacks: leaderelection.LeaderCallbacks{
+			OnStartedLeading: func(context.Context) {
+				close(started)
+				<-releaseStart
+			},
+			OnStoppedLeading: func() { close(stopped) },
+		},
+	}}
+	done := make(chan struct{})
+	go func() {
+		server.runRuntimeLeaderElection(context.Background(), election)
+		close(done)
+	}()
+
+	select {
+	case <-stopped:
+		t.Fatal("stopped callback ran before started callback returned")
+	case <-time.After(20 * time.Millisecond):
+	}
+	select {
+	case <-done:
+		t.Fatal("leader election loop returned before started callback completed")
+	default:
+	}
+
+	close(releaseStart)
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("stopped callback did not run")
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("leader election loop did not return")
+	}
+}
+
 func TestRunRuntimeLeaderElectionDoesNotRetryWhenExitEnabled(t *testing.T) {
 	oldRunner := runLeaderElector
 	t.Cleanup(func() {

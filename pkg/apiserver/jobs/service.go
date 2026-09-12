@@ -304,7 +304,8 @@ func (s *Service) Get(ctx context.Context, taskID string) (*Detail, error) {
 
 func terminal(status config.Status) bool {
 	switch status {
-	case config.StatusCompleted, config.StatusPassed, config.StatusFailed, config.StatusTimeout, config.StatusCancelled:
+	case config.StatusCompleted, config.StatusPassed, config.StatusSkipped, config.StatusFailed,
+		config.StatusTimeout, config.StatusCancelled, config.StatusReject, config.StatusNotRun:
 		return true
 	}
 	return false
@@ -326,6 +327,9 @@ func (s *Service) authorizeRunner(ctx context.Context, identity RunnerIdentity) 
 		return nil, bcode.ErrUnauthorized
 	}
 	if task.Type != config.WorkflowTaskTypeJob || task.AppID != "" || subtle.ConstantTimeCompare([]byte(task.JobToken), []byte(identity.Token)) != 1 {
+		return nil, bcode.ErrUnauthorized
+	}
+	if err := runnerParentAuthorized(ctx, s.Store, task); err != nil {
 		return nil, bcode.ErrUnauthorized
 	}
 	var declared spec.JobSpec
@@ -350,7 +354,7 @@ func (s *Service) authorizeRunner(ctx context.Context, identity RunnerIdentity) 
 	}
 	for _, row := range rows {
 		job := row.(*model.JobInfo)
-		if job.Type != string(config.JobAgentEvaluation) || job.ExecutionKey == nil || job.InternalInfo == "" {
+		if terminal(config.Status(job.Status)) || job.Type != string(config.JobAgentEvaluation) || job.ExecutionKey == nil || job.InternalInfo == "" {
 			continue
 		}
 		if pod.Annotations[config.AnnotationJobExecutionKey] != *job.ExecutionKey || pod.Annotations[config.AnnotationJobRunGeneration] != strconv.FormatUint(job.RunGeneration, 10) {
@@ -409,17 +413,41 @@ func (s *Service) RunnerResult(ctx context.Context, identity RunnerIdentity, r i
 		if task.WorkspaceID != auth.task.WorkspaceID || task.JobToken != auth.task.JobToken || task.JobSpec != auth.task.JobSpec {
 			return bcode.ErrUnauthorized
 		}
+		if err := runnerParentAuthorized(ctx, tx, task); err != nil {
+			return bcode.ErrUnauthorized
+		}
 		// A recovered owner may adopt the same immutable execution checkpoint.
 		// A replacement execution may never publish under the old Pod identity.
 		job := &model.JobInfo{ID: auth.job.ID}
 		if err := locker.GetForUpdate(ctx, job); err != nil {
 			return err
 		}
-		if job.ExecutionKey == nil || *job.ExecutionKey != *auth.job.ExecutionKey || job.RunGeneration != auth.job.RunGeneration || job.Attempt != auth.job.Attempt || job.InternalInfo != auth.job.InternalInfo {
+		if terminal(config.Status(job.Status)) || job.ExecutionKey == nil || *job.ExecutionKey != *auth.job.ExecutionKey || job.RunGeneration != auth.job.RunGeneration || job.Attempt != auth.job.Attempt || job.InternalInfo != auth.job.InternalInfo {
 			return bcode.ErrUnauthorized
 		}
 		return nil
 	})
+}
+
+func runnerParentAuthorized(ctx context.Context, store datastore.DataStore, task *model.WorkflowQueue) error {
+	if task == nil {
+		return bcode.ErrUnauthorized
+	}
+	if task.Status == config.StatusRunning {
+		return nil
+	}
+	if task.Status != config.StatusCancelled || task.RunToken == "" || task.WorkerID == "" || task.LeaseExpiresAt == nil {
+		return bcode.ErrUnauthorized
+	}
+	clock, ok := store.(datastore.DatabaseClock)
+	if !ok {
+		return bcode.ErrUnauthorized
+	}
+	now, err := clock.CurrentDatabaseTime(ctx)
+	if err != nil || !task.LeaseExpiresAt.After(now) {
+		return bcode.ErrUnauthorized
+	}
+	return nil
 }
 
 // Maintain runs within the controller leader's existing lifecycle. Delivery
