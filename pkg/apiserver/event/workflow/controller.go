@@ -31,6 +31,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
+	wf "github.com/PixelCores/Eruun/pkg/apiserver/workflow"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	signal "github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
@@ -80,6 +81,7 @@ type WorkflowCtl struct {
 	terminalReason           string
 	urlSecurityPolicy        *spec.URLSecurityPolicySpec
 	importSecretKeyring      *importsecret.Keyring
+	runtimeConfig            *config.Config
 	resourceImportExecutor   job.ResourceImportExecutor
 	runCancel                context.CancelCauseFunc
 	// ctx holds the workflow execution context for use in callbacks like updateWorkflowTask.
@@ -108,6 +110,7 @@ func NewWorkflowController(workflowTask *model.WorkflowQueue, client kubernetes.
 	}
 	ctl := &WorkflowCtl{
 		workflowTask:             workflowTask,
+		runtimeConfig:            cfg,
 		persistedTaskStatus:      workflowTask.Status,
 		Store:                    store,
 		Client:                   client,
@@ -161,6 +164,9 @@ func (w *WorkflowCtl) updateWorkflowTask() {
 		"current_step":          taskSnapshot.CurrentStep,
 		"approval_pending":      taskSnapshot.ApprovalPending,
 		"pending_approval_step": taskSnapshot.PendingApprovalStep,
+	}
+	if taskSnapshot.Status == config.StatusCancelled && wf.IsTerminalCallbackPending(taskSnapshot.SchedulingReason) {
+		updates["scheduling_reason"] = taskSnapshot.SchedulingReason
 	}
 	if isResourceImportWorkflowTask(taskSnapshot.Type) &&
 		taskSnapshot.SchedulingReason == importcontract.PreExecutionFailureReason {
@@ -330,77 +336,95 @@ func (w *WorkflowCtl) run(ctx context.Context, concurrency int) error {
 
 	// Store context for use in callbacks (e.g., updateWorkflowTask)
 	w.ctx = ctx
-	failureReason := ""
-	skipExitAck := false
-	suppressTerminalCallback := false
-	stopForInfrastructureStop := func() (bool, error) {
-		if !signal.IsInfrastructureStop(ctx) {
-			return false, nil
-		}
-		cause := context.Cause(ctx)
-		skipExitAck = true
-		suppressTerminalCallback = true
-		span.RecordError(cause)
-		span.SetStatus(codes.Error, "Workflow stopped for infrastructure stop")
-		logger.Info("Stopping workflow for infrastructure stop")
-		return true, cause
+	run := &workflowRun{WorkflowCtl: w, ctx: ctx, span: span, cancel: cancel}
+	return run.run(concurrency)
+}
+
+type workflowRun struct {
+	*WorkflowCtl
+	ctx                      context.Context
+	span                     trace.Span
+	cancel                   context.CancelCauseFunc
+	failureReason            string
+	skipExitAck              bool
+	suppressTerminalCallback bool
+}
+
+func (r *workflowRun) stopForInfrastructureStop() (bool, error) {
+	logger := klog.FromContext(r.ctx)
+	if !signal.IsInfrastructureStop(r.ctx) {
+		return false, nil
 	}
-	stopForJobInfrastructure := func(err error) error {
-		skipExitAck = true
-		suppressTerminalCallback = true
-		failureReason = err.Error()
-		cancel(err)
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "Workflow job persistence stopped for infrastructure retry")
-		return err
+	cause := context.Cause(r.ctx)
+	r.skipExitAck = true
+	r.suppressTerminalCallback = true
+	r.span.RecordError(cause)
+	r.span.SetStatus(codes.Error, "Workflow stopped for infrastructure stop")
+	logger.Info("Stopping workflow for infrastructure stop")
+	return true, cause
+}
+
+func (r *workflowRun) stopForJobInfrastructure(err error) error {
+	r.skipExitAck = true
+	r.suppressTerminalCallback = true
+	r.failureReason = err.Error()
+	r.cancel(err)
+	r.span.RecordError(err)
+	r.span.SetStatus(codes.Error, "Workflow job persistence stopped for infrastructure retry")
+	return err
+}
+
+func (r *workflowRun) stopAfterPersistence() (bool, error) {
+	if r.ctx.Err() != nil {
+		r.stopTaskPersistence(nil, true, false)
 	}
-	stopAfterPersistence := func() (bool, error) {
-		if ctx.Err() != nil {
-			w.stopTaskPersistence(nil, true, false)
-		}
-		stopped, err := w.workflowRunStopResult()
-		if !stopped {
-			return false, nil
-		}
-		skipExitAck = true
-		if err != nil {
-			failureReason = err.Error()
-			span.RecordError(err)
-			span.SetStatus(codes.Error, "Workflow persistence state is uncertain")
-		}
-		return true, err
+	stopped, err := r.workflowRunStopResult()
+	if !stopped {
+		return false, nil
 	}
+	r.skipExitAck = true
+	if err != nil {
+		r.failureReason = err.Error()
+		r.span.RecordError(err)
+		r.span.SetStatus(codes.Error, "Workflow persistence state is uncertain")
+	}
+	return true, err
+}
+
+func (r *workflowRun) run(concurrency int) error {
+	ctx, span := r.ctx, r.span
+	logger := klog.FromContext(ctx)
 	defer func() {
-		if suppressTerminalCallback || w.terminalCallbackSuppressed() {
+		if r.suppressTerminalCallback || r.terminalCallbackSuppressed() {
 			return
 		}
-		status := w.snapshotTask().Status
-		w.triggerWorkflowCallbackOnce(ctx, status, failureReason)
+		status := r.snapshotTask().Status
+		r.triggerWorkflowCallbackOnce(ctx, status, r.failureReason)
 	}()
-	if stopped, err := stopForInfrastructureStop(); stopped {
+	if stopped, err := r.stopForInfrastructureStop(); stopped {
 		return err
 	}
 
 	// 将工作流的状态更改为运行中
-	w.mutateTask(func(task *model.WorkflowQueue) {
+	r.mutateTask(func(task *model.WorkflowQueue) {
 		task.Status = config.StatusRunning
 		if task.CreateTime.IsZero() {
 			task.CreateTime = time.Now()
 		}
 	})
-	w.ack()
-	if stopped, err := stopAfterPersistence(); stopped {
+	r.ack()
+	if stopped, err := r.stopAfterPersistence(); stopped {
 		return err
 	}
-	if stopped, err := stopForInfrastructureStop(); stopped {
+	if stopped, err := r.stopForInfrastructureStop(); stopped {
 		return err
 	}
-	logger.Info("Starting workflow", "status", w.snapshotTask().Status)
+	logger.Info("Starting workflow", "status", r.snapshotTask().Status)
 
 	defer func() {
-		finalTask := w.snapshotTask()
+		finalTask := r.snapshotTask()
 		logger.Info("Finished workflow", "status", finalTask.Status)
-		if skipExitAck {
+		if r.skipExitAck {
 			return
 		}
 		// Approval checkpoint is already persisted in pauseAtApprovalStep.
@@ -409,28 +433,28 @@ func (w *WorkflowCtl) run(ctx context.Context, concurrency int) error {
 		if finalTask.Status == config.StatusWaitingApprove && finalTask.ApprovalPending {
 			return
 		}
-		w.ack()
+		r.ack()
 	}()
 
-	taskForGeneration := w.snapshotTask()
-	stepExecutions, err := GenerateJobTasks(ctx, &taskForGeneration, w.Store, w.defaultJobTimeoutSeconds)
+	taskForGeneration := r.snapshotTask()
+	stepExecutions, err := GenerateJobTasks(ctx, &taskForGeneration, r.Store, r.defaultJobTimeoutSeconds, r.runtimeConfig)
 	if err != nil {
 		runErr := errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("restore workflow job executions: %w", err))
-		skipExitAck = true
+		r.skipExitAck = true
 		span.RecordError(runErr)
 		span.SetStatus(codes.Error, "Failed to restore workflow job executions")
 		logger.Error(runErr, "Failed to restore workflow job executions")
-		failureReason = runErr.Error()
+		r.failureReason = runErr.Error()
 		return runErr
 	}
-	if w.workspaceManager != nil {
+	if r.workspaceManager != nil {
 		for _, step := range stepExecutions {
 			for _, tasks := range step.Jobs {
 				for _, task := range tasks {
-					if _, err := workspace.PrepareTask(task, taskForGeneration.AppID, w.workspace, w.accountConfig.Workspace); err != nil {
-						failureReason = err.Error()
-						suppressTerminalCallback = true
-						w.mutateTask(func(t *model.WorkflowQueue) {
+					if _, err := r.prepareJobTask(task, taskForGeneration.AppID); err != nil {
+						r.failureReason = err.Error()
+						r.suppressTerminalCallback = true
+						r.mutateTask(func(t *model.WorkflowQueue) {
 							t.Status = config.StatusFailed
 							if isResourceImportWorkflowTask(t.Type) {
 								t.SchedulingReason = importcontract.PreExecutionFailureReason
@@ -442,40 +466,41 @@ func (w *WorkflowCtl) run(ctx context.Context, concurrency int) error {
 			}
 		}
 	}
+	return r.runSteps(taskForGeneration, stepExecutions, concurrency)
+}
+
+func (r *workflowRun) runSteps(taskForGeneration model.WorkflowQueue, stepExecutions []StepExecution, concurrency int) error {
+	ctx, span := r.ctx, r.span
+	logger := klog.FromContext(ctx)
+	workflowName := taskForGeneration.WorkflowName
 	namespaceReady := false
-	seqLimit := 1
-	if concurrency > 0 {
-		seqLimit = concurrency
-	}
-	startStep := taskForGeneration.CurrentStep
-	if startStep < 0 {
-		startStep = 0
-	}
+	seqLimit := max(1, concurrency)
+	startStep := max(0, taskForGeneration.CurrentStep)
 	if startStep >= len(stepExecutions) {
-		if stopped, err := stopForInfrastructureStop(); stopped {
+		if stopped, err := r.stopForInfrastructureStop(); stopped {
 			return err
 		}
 		span.SetStatus(codes.Ok, "Workflow completed successfully")
-		w.updateWorkflowStatus(ctx)
-		if stopped, err := stopAfterPersistence(); stopped {
+		r.updateWorkflowStatus(ctx)
+		if stopped, err := r.stopAfterPersistence(); stopped {
 			return err
 		}
-		skipExitAck = true
+		r.skipExitAck = true
 		return nil
 	}
 
 	for stepIdx := startStep; stepIdx < len(stepExecutions); stepIdx++ {
-		if stopped, err := stopForInfrastructureStop(); stopped {
+		if stopped, err := r.stopForInfrastructureStop(); stopped {
 			return err
 		}
 		stepExec := stepExecutions[stepIdx]
 		if stepExec.StepType == config.WorkflowStepTypeApproval {
-			paused, pauseErr := w.pauseAtApprovalStep(ctx, &stepExec, stepIdx)
+			paused, pauseErr := r.pauseAtApprovalStep(ctx, &stepExec, stepIdx)
 			if pauseErr != nil {
-				skipExitAck = true
+				r.skipExitAck = true
 				span.RecordError(pauseErr)
 				span.SetStatus(codes.Error, "Failed to persist approval checkpoint")
-				failureReason = pauseErr.Error()
+				r.failureReason = pauseErr.Error()
 				return pauseErr
 			}
 			if paused {
@@ -483,17 +508,17 @@ func (w *WorkflowCtl) run(ctx context.Context, concurrency int) error {
 			} else {
 				// CAS condition mismatch means task state changed concurrently (e.g. cancelled).
 				// Skip exit ack to avoid writing stale in-memory snapshot back to store.
-				skipExitAck = true
+				r.skipExitAck = true
 			}
 			return nil
 		}
 		if stepExec.Jobs == nil {
-			if stopped, err := stopForInfrastructureStop(); stopped {
+			if stopped, err := r.stopForInfrastructureStop(); stopped {
 				return err
 			}
-			w.setCurrentStep(stepIdx + 1)
-			w.ack()
-			if stopped, err := stopAfterPersistence(); stopped {
+			r.setCurrentStep(stepIdx + 1)
+			r.ack()
+			if stopped, err := r.stopAfterPersistence(); stopped {
 				return err
 			}
 			continue
@@ -504,20 +529,11 @@ func (w *WorkflowCtl) run(ctx context.Context, concurrency int) error {
 			if len(tasksInPriority) == 0 {
 				continue
 			}
-			if w.workspaceManager != nil && !namespaceReady {
-				requiresNamespace := false
-				for _, task := range tasksInPriority {
-					deploy, _ := workspace.PrepareTask(task, taskForGeneration.AppID, w.workspace, w.accountConfig.Workspace)
-					requiresNamespace = requiresNamespace || deploy
-				}
-				if requiresNamespace {
-					if err := w.workspaceManager.Ensure(ctx, w.workspace); err != nil {
-						failureReason = err.Error()
-						suppressTerminalCallback = true
-						w.mutateTask(func(t *model.WorkflowQueue) { t.Status = config.StatusFailed })
-						return fmt.Errorf("initialize workspace before deployment: %w", err)
-					}
-					namespaceReady = true
+			if !namespaceReady {
+				var err error
+				namespaceReady, err = r.ensureWorkspaceForJobs(tasksInPriority, taskForGeneration.AppID)
+				if err != nil {
+					return err
 				}
 			}
 			stepConcurrency := determineStepConcurrency(stepExec.Mode, len(tasksInPriority), seqLimit)
@@ -526,14 +542,14 @@ func (w *WorkflowCtl) run(ctx context.Context, concurrency int) error {
 			stopOnFailure := !stepExec.Mode.IsParallel()
 			logger.Info("Executing workflow step", "workflowName", workflowName, "step", stepExec.Name, "mode", stepExec.Mode, "priority", priority, "jobCount", len(tasksInPriority), "concurrency", stepConcurrency, "stopOnFailure", stopOnFailure)
 
-			if err := job.RunJobs(ctx, tasksInPriority, stepConcurrency, w.Client, w.KubeConfig, w.Store, w.ack, stopOnFailure, w.Cache, w.urlSecurityPolicy, w.DelayQueue, w.ResourceWaiter, w.resourceImportExecutor, w.importSecretKeyring); err != nil {
+			if err := job.RunJobs(ctx, tasksInPriority, stepConcurrency, r.Client, r.KubeConfig, r.Store, r.ack, stopOnFailure, r.Cache, r.urlSecurityPolicy, r.DelayQueue, r.ResourceWaiter, r.resourceImportExecutor, r.importSecretKeyring); err != nil {
 				logger.Error(err, "Stopping workflow after job persistence failure", "step", stepExec.Name, "priority", priority)
-				return stopForJobInfrastructure(err)
+				return r.stopForJobInfrastructure(err)
 			}
-			if stopped, err := stopAfterPersistence(); stopped {
+			if stopped, err := r.stopAfterPersistence(); stopped {
 				return err
 			}
-			if stopped, err := stopForInfrastructureStop(); stopped {
+			if stopped, err := r.stopForInfrastructureStop(); stopped {
 				return err
 			}
 
@@ -542,14 +558,14 @@ func (w *WorkflowCtl) run(ctx context.Context, concurrency int) error {
 				if !isJobSuccessStatus(task) {
 					reason := workflowFailureReason(workflowName, task, cleanupTrigger)
 					if cleanupTrigger != nil {
-						cleanupErr := w.runWorkflowFailureCleanup(ctx, logger)
-						if stopped, err := stopAfterPersistence(); stopped {
+						cleanupErr := r.runWorkflowFailureCleanup(ctx, logger)
+						if stopped, err := r.stopAfterPersistence(); stopped {
 							return err
 						}
 						if cleanupErr != nil {
 							if errors.Is(cleanupErr, signal.ErrInfrastructureStop) {
 								logger.Error(cleanupErr, "Stopping workflow after cleanup job persistence failure")
-								return stopForJobInfrastructure(cleanupErr)
+								return r.stopForJobInfrastructure(cleanupErr)
 							}
 							reason = fmt.Sprintf("%s; cleanup_all failed: %v", reason, cleanupErr)
 						}
@@ -557,39 +573,72 @@ func (w *WorkflowCtl) run(ctx context.Context, concurrency int) error {
 					err := errors.New(reason)
 					logger.Error(err, "Workflow failed at job, aborting.", "step", stepExec.Name, "priority", priority, "jobName", task.Name, "jobStatus", task.Status)
 					if task.Status == config.StatusCancelled {
-						w.setTerminalStatus(config.StatusCancelled, reason)
+						r.setTerminalStatus(config.StatusCancelled, reason)
 						span.SetStatus(codes.Error, "Workflow cancelled")
 					} else {
-						w.setTerminalStatus(config.StatusFailed, reason)
+						r.setTerminalStatus(config.StatusFailed, reason)
 						span.SetStatus(codes.Error, "Workflow failed")
 					}
 					span.RecordError(err)
-					failureReason = w.snapshotTerminalReason()
+					r.failureReason = r.snapshotTerminalReason()
 					return err
 				}
 			}
 		}
-		if stopped, err := stopForInfrastructureStop(); stopped {
+		if stopped, err := r.stopForInfrastructureStop(); stopped {
 			return err
 		}
-		w.setCurrentStep(stepIdx + 1)
-		w.ack()
-		if stopped, err := stopAfterPersistence(); stopped {
+		r.setCurrentStep(stepIdx + 1)
+		r.ack()
+		if stopped, err := r.stopAfterPersistence(); stopped {
 			return err
 		}
 		logger.Info("Workflow step completed successfully", "workflowName", workflowName, "step", stepExec.Name)
 	}
 
-	if stopped, err := stopForInfrastructureStop(); stopped {
+	if stopped, err := r.stopForInfrastructureStop(); stopped {
 		return err
 	}
 	span.SetStatus(codes.Ok, "Workflow completed successfully")
-	w.updateWorkflowStatus(ctx)
-	if stopped, err := stopAfterPersistence(); stopped {
+	r.updateWorkflowStatus(ctx)
+	if stopped, err := r.stopAfterPersistence(); stopped {
 		return err
 	}
-	skipExitAck = true
+	r.skipExitAck = true
 	return nil
+}
+
+func (r *workflowRun) ensureWorkspaceForJobs(tasks []*model.JobTask, appID string) (bool, error) {
+	if r.workspaceManager == nil {
+		return false, nil
+	}
+	requiresNamespace := false
+	for _, task := range tasks {
+		deploy, _ := r.prepareJobTask(task, appID)
+		requiresNamespace = requiresNamespace || deploy
+	}
+	if !requiresNamespace {
+		return false, nil
+	}
+	if err := r.workspaceManager.Ensure(r.ctx, r.workspace); err != nil {
+		r.failureReason = err.Error()
+		r.suppressTerminalCallback = true
+		r.mutateTask(func(t *model.WorkflowQueue) { t.Status = config.StatusFailed })
+		return false, fmt.Errorf("initialize workspace before deployment: %w", err)
+	}
+	if r.snapshotTask().Type == config.WorkflowTaskTypeJob {
+		for _, task := range tasks {
+			if task.JobType == string(config.JobAgentEvaluation) {
+				if err := r.workspaceManager.EnsureEvaluationRunner(r.ctx, r.workspace, r.runtimeConfig.Jobs.RunnerEgress...); err != nil {
+					r.failureReason = err.Error()
+					r.suppressTerminalCallback = true
+					r.mutateTask(func(t *model.WorkflowQueue) { t.Status = config.StatusFailed })
+					return false, fmt.Errorf("initialize evaluation runner: %w", err)
+				}
+			}
+		}
+	}
+	return true, nil
 }
 
 func isJobSuccessStatus(task *model.JobTask) bool {
@@ -833,6 +882,9 @@ func (w *WorkflowCtl) setTerminalStatus(status config.Status, reason string) {
 	defer w.workflowTaskMutex.Unlock()
 	w.workflowTask.Status = status
 	w.terminalReason = strings.TrimSpace(reason)
+	if status == config.StatusCancelled {
+		w.workflowTask.SchedulingReason = wf.TerminalCallbackPendingReason(reason)
+	}
 }
 
 func (w *WorkflowCtl) snapshotTerminalReason() string {
@@ -900,7 +952,7 @@ func (w *WorkflowCtl) persistApprovalCheckpoint(taskID, stepName string, stepInd
 		"approval_pending":      true,
 		"pending_approval_step": stepName,
 	}
-	updateCtx, cancel := approvalUpdateContext(nil, approvalUpdateContextDetached)
+	updateCtx, cancel := approvalUpdateContext(context.Background(), approvalUpdateContextDetached)
 	defer cancel()
 	taskSnapshot := w.snapshotTask()
 	if taskSnapshot.RunGeneration == 0 || taskSnapshot.RunToken == "" || taskSnapshot.WorkerID == "" {
@@ -926,7 +978,7 @@ func (w *WorkflowCtl) persistApprovalCheckpoint(taskID, stepName string, stepInd
 }
 
 func (w *WorkflowCtl) reloadTaskSnapshot(taskID string) error {
-	updateCtx, cancel := approvalUpdateContext(nil, approvalUpdateContextDetached)
+	updateCtx, cancel := approvalUpdateContext(context.Background(), approvalUpdateContextDetached)
 	defer cancel()
 	task, err := repository.TaskByID(updateCtx, w.Store, taskID)
 	if err != nil {
@@ -945,7 +997,7 @@ func (w *WorkflowCtl) reloadTaskSnapshot(taskID string) error {
 }
 
 func (w *WorkflowCtl) loadWorkflowTaskAfterPersistenceMiss(taskID string) (*model.WorkflowQueue, error) {
-	updateCtx, cancel := approvalUpdateContext(nil, approvalUpdateContextDetached)
+	updateCtx, cancel := approvalUpdateContext(context.Background(), approvalUpdateContextDetached)
 	defer cancel()
 	task, err := repository.TaskByID(updateCtx, w.Store, taskID)
 	if err != nil {
@@ -1095,7 +1147,7 @@ func (w *WorkflowCtl) isApprovalCheckpointPending(taskID, stepName string, stepI
 	if w == nil || w.Store == nil {
 		return false
 	}
-	updateCtx, cancel := approvalUpdateContext(nil, approvalUpdateContextDetached)
+	updateCtx, cancel := approvalUpdateContext(context.Background(), approvalUpdateContextDetached)
 	defer cancel()
 
 	task, err := repository.TaskByID(updateCtx, w.Store, taskID)
@@ -1116,7 +1168,7 @@ func (w *WorkflowCtl) isApprovalCheckpointPending(taskID, stepName string, stepI
 }
 
 func (w *WorkflowCtl) markApprovalTimeout(taskID, stepName string, stepIndex int, timeout time.Duration) {
-	updateCtx, cancel := approvalUpdateContext(nil, approvalUpdateContextDetached)
+	updateCtx, cancel := approvalUpdateContext(context.Background(), approvalUpdateContextDetached)
 	defer cancel()
 
 	task, err := repository.TaskByID(updateCtx, w.Store, taskID)
@@ -1211,6 +1263,9 @@ func (w *WorkflowCtl) triggerWorkflowCallback(ctx context.Context, status config
 		return
 	}
 	task := w.snapshotTask()
+	if status == config.StatusCancelled && strings.TrimSpace(reason) == "" && wf.IsTerminalCallbackPending(task.SchedulingReason) {
+		reason = wf.TerminalCallbackReason(task.SchedulingReason)
+	}
 	workflowID := strings.TrimSpace(task.WorkflowID)
 	if workflowID == "" {
 		return
@@ -1293,11 +1348,94 @@ func (w *WorkflowCtl) triggerWorkflowCallback(ctx context.Context, status config
 		callbackJob.Namespace = w.workspace.Namespace
 	}
 	job.ApplyExecutionIdentity(callbackJob)
-	callbackCtx, cancel := callbackContext(ctx, callback.TimeoutSeconds, w.callbackTimeoutMax)
+	callbackParent, stopCallbackParent := terminalCallbackParentContext(ctx, status)
+	defer stopCallbackParent()
+	callbackCtx, cancel := callbackContext(callbackParent, callback.TimeoutSeconds, w.callbackTimeoutMax)
 	defer cancel()
-	if err := job.RunJobs(callbackCtx, []*model.JobTask{callbackJob}, 1, w.Client, w.KubeConfig, w.Store, func() {}, false, w.Cache, w.urlSecurityPolicy, w.DelayQueue, w.ResourceWaiter, w.resourceImportExecutor, w.importSecretKeyring); err != nil {
+	if err := w.runTerminalCallbackJob(callbackCtx, &task, callbackJob); err != nil {
 		klog.ErrorS(err, "workflow callback execution failed", "taskID", callbackJob.TaskID, "jobName", callbackJob.Name)
 	}
+}
+
+func terminalCallbackParentContext(ctx context.Context, status config.Status) (context.Context, context.CancelFunc) {
+	if status != config.StatusCancelled || ctx == nil {
+		return ctx, func() {}
+	}
+	runtimeCtx, ok := ctx.Value(workflowRuntimeContextKey{}).(context.Context)
+	if !ok || runtimeCtx == nil {
+		return ctx, func() {}
+	}
+	parent, cancel := context.WithCancelCause(context.WithoutCancel(ctx))
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-runtimeCtx.Done():
+			cancel(context.Cause(runtimeCtx))
+		case <-done:
+		}
+	}()
+	return parent, func() {
+		close(done)
+		cancel(nil)
+	}
+}
+
+func (w *WorkflowCtl) runTerminalCallbackJob(ctx context.Context, task *model.WorkflowQueue, callbackJob *model.JobTask) error {
+	run := func(runCtx context.Context) error {
+		return job.RunJobs(runCtx, []*model.JobTask{callbackJob}, 1, w.Client, w.KubeConfig, w.Store, func() {}, false, w.Cache, w.urlSecurityPolicy, w.DelayQueue, w.ResourceWaiter, w.resourceImportExecutor, w.importSecretKeyring)
+	}
+	if task == nil || task.Status != config.StatusCancelled || task.RunGeneration == 0 || task.RunToken == "" || task.WorkerID == "" {
+		return run(ctx)
+	}
+	leaseDuration := workflowconfig.DefaultWorkflowLeaseDuration
+	if w.runtimeConfig != nil && w.runtimeConfig.Workflow.LeaseDuration > 0 {
+		leaseDuration = w.runtimeConfig.Workflow.LeaseDuration
+	}
+	renew := func(renewCtx context.Context) error {
+		renewed, err := repository.RenewCancelledWorkflowTaskLease(
+			renewCtx, w.Store, task.TaskID, task.RunGeneration, task.RunToken, task.WorkerID, leaseDuration,
+		)
+		if err != nil {
+			return err
+		}
+		if !renewed {
+			return repository.ErrWorkflowOwnershipLost
+		}
+		return nil
+	}
+	if err := renew(ctx); err != nil {
+		return fmt.Errorf("renew cancelled workflow callback lease: %w", err)
+	}
+	runCtx, cancel := context.WithCancelCause(ctx)
+	done := make(chan error, 1)
+	interval := leaseDuration / 3
+	if interval <= 0 {
+		interval = time.Millisecond
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-runCtx.Done():
+				done <- nil
+				return
+			case <-ticker.C:
+				renewCtx, renewCancel := context.WithTimeout(runCtx, config.TaskStateTransitionTimeout)
+				err := renew(renewCtx)
+				renewCancel()
+				if err != nil {
+					wrapped := fmt.Errorf("renew cancelled workflow callback lease: %w", err)
+					cancel(errors.Join(signal.ErrInfrastructureStop, wrapped))
+					done <- wrapped
+					return
+				}
+			}
+		}
+	}()
+	runErr := run(runCtx)
+	cancel(nil)
+	return errors.Join(runErr, <-done)
 }
 
 func approvalUpdateContext(parent context.Context, mode approvalUpdateContextMode) (context.Context, context.CancelFunc) {
@@ -1397,6 +1535,11 @@ func (w *WorkflowCtl) prepareWorkspace(ctx context.Context) (context.Context, er
 			return ctx, fmt.Errorf("decode resource import workspace: %w", err)
 		}
 		expectedNamespace = strings.TrimSpace(info.Namespace)
+	} else if task.Type == config.WorkflowTaskTypeJob {
+		if task.AppID != "" || task.WorkflowID != "" {
+			return ctx, fmt.Errorf("workspace Job has application or workflow ownership")
+		}
+		workspaceID = strings.TrimSpace(task.WorkspaceID)
 	} else {
 		app := &model.Applications{ID: task.AppID}
 		if err := w.Store.Get(ctx, app); err != nil {
@@ -1415,6 +1558,9 @@ func (w *WorkflowCtl) prepareWorkspace(ctx context.Context) (context.Context, er
 	if err := w.Store.Get(ctx, space); err != nil {
 		return ctx, err
 	}
+	if task.Type == config.WorkflowTaskTypeJob {
+		expectedNamespace = space.Namespace
+	}
 	if expectedNamespace == "" || expectedNamespace != space.Namespace {
 		return ctx, fmt.Errorf("workflow task namespace does not match workspace")
 	}
@@ -1432,5 +1578,31 @@ func (w *WorkflowCtl) prepareWorkspace(ctx context.Context) (context.Context, er
 	}
 	w.Client, w.KubeConfig = client, restConfig
 	w.Store = access.NewStore(w.Store)
-	return access.WithScope(ctx, access.ForWorkspace(space)), nil
+	ctx = access.WithScope(ctx, access.ForWorkspace(space))
+	if task.Type == config.WorkflowTaskTypeJob {
+		var definition spec.JobSpec
+		if err := spec.DecodeJobJSON([]byte(task.JobSpec), &definition); err != nil {
+			return ctx, fmt.Errorf("decode workspace Job definition: %w", err)
+		}
+		if err := definition.Normalize(); err != nil {
+			return ctx, fmt.Errorf("validate workspace Job definition: %w", err)
+		}
+		if definition.Type == string(config.JobAgentEvaluation) {
+			if w.runtimeConfig == nil || w.runtimeConfig.Jobs == nil || w.runtimeConfig.Jobs.RunnerImage == "" {
+				return ctx, fmt.Errorf("evaluation runner configuration is required")
+			}
+			ctx = workspace.WithEvaluationRunner(ctx, task.TaskID, w.runtimeConfig.Jobs.RunnerImage)
+		}
+	}
+	return ctx, nil
+}
+
+func (w *WorkflowCtl) prepareJobTask(task *model.JobTask, appID string) (bool, error) {
+	if task.JobType == string(config.JobAgentEvaluation) {
+		if w.runtimeConfig == nil || w.runtimeConfig.Jobs == nil {
+			return false, fmt.Errorf("evaluation runner configuration is required")
+		}
+		return true, workspace.PrepareEvaluationTask(task, w.workspace, w.accountConfig.Workspace, w.runtimeConfig.Jobs.RunnerImage)
+	}
+	return workspace.PrepareTask(task, appID, w.workspace, w.accountConfig.Workspace)
 }

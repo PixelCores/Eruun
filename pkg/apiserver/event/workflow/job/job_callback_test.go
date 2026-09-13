@@ -3,6 +3,7 @@ package job
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -138,6 +139,44 @@ func TestCallbackJobCtlRunGetSuccess(t *testing.T) {
 	require.NotNil(t, ctl)
 	err := ctl.Run(context.Background())
 	require.NoError(t, err)
+}
+
+func TestCallbackJobCtlRunRecordsResponseFailures(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		status    int
+		truncated bool
+		wantError string
+	}{
+		{name: "truncated success", status: http.StatusOK, truncated: true, wantError: "read callback response"},
+		{name: "HTTP failure", status: http.StatusBadGateway, wantError: "callback request failed with status: 502"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := newCallbackTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+				if tc.truncated {
+					w.Header().Set("Content-Length", "100")
+				}
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte("partial response"))
+			})
+			defer server.Close()
+			jobTask := &model.JobTask{
+				JobInfo: &CallbackJobInfo{Event: "success", URL: server.URL, Method: http.MethodPost},
+			}
+			ctl := NewCallbackJobCtl(jobTask, nil, &spec.URLSecurityPolicySpec{AllowPrivateByDefault: true})
+
+			err := ctl.Run(context.Background())
+			require.ErrorContains(t, err, tc.wantError)
+			if tc.truncated {
+				require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+			}
+			var record CallbackJobRecord
+			require.NoError(t, json.Unmarshal([]byte(jobTask.Info), &record))
+			require.Equal(t, tc.status, record.StatusCode)
+			require.Equal(t, "partial response", record.Response)
+			require.Equal(t, err.Error(), record.Error)
+		})
+	}
 }
 
 func TestCallbackJobCtlRunRejectsPrivateTargetWhenDisabled(t *testing.T) {
@@ -361,6 +400,8 @@ func TestCallbackTimeoutCapsToSubSecondMax(t *testing.T) {
 func TestSanitizeCallbackHeadersRedactsSensitiveValues(t *testing.T) {
 	headers := sanitizeCallbackHeaders(map[string]string{
 		"Authorization": "Bearer secret-token",
+		"Cookie":        "session=session-value",
+		"Set-Cookie":    "session=response-value; HttpOnly",
 		"X-Api-Key":     "api-key-value",
 		"X-Trace-ID":    "trace-1",
 		" secret ":      "hidden",
@@ -368,6 +409,8 @@ func TestSanitizeCallbackHeadersRedactsSensitiveValues(t *testing.T) {
 	})
 
 	require.Equal(t, callbackLogRedacted, headers["Authorization"])
+	require.Equal(t, callbackLogRedacted, headers["Cookie"])
+	require.Equal(t, callbackLogRedacted, headers["Set-Cookie"])
 	require.Equal(t, callbackLogRedacted, headers["X-Api-Key"])
 	require.Equal(t, callbackLogRedacted, headers["secret"])
 	require.Equal(t, "trace-1", headers["X-Trace-ID"])
@@ -385,4 +428,17 @@ func TestSanitizeCallbackURLRedactsSensitiveQueryValues(t *testing.T) {
 	require.Equal(t, callbackLogRedacted, values.Get("key"))
 	require.Equal(t, "wf-1", values.Get("workflowId"))
 	require.Equal(t, "success", values.Get("event"))
+}
+
+func TestSanitizeCallbackURLRedactsUserInfo(t *testing.T) {
+	sanitized := sanitizeCallbackURL("https://callback-user:callback-password@example.com/callback?event=success")
+	parsed, err := url.Parse(sanitized)
+	require.NoError(t, err)
+	require.Equal(t, callbackLogRedacted, parsed.User.Username())
+	_, hasPassword := parsed.User.Password()
+	require.False(t, hasPassword)
+	require.Equal(t, "example.com", parsed.Host)
+	require.Equal(t, "success", parsed.Query().Get("event"))
+	require.NotContains(t, sanitized, "callback-user")
+	require.NotContains(t, sanitized, "callback-password")
 }

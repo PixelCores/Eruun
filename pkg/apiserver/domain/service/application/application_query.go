@@ -383,19 +383,6 @@ func applicationListSortOptions() []datastore.SortOption {
 	}
 }
 
-func (c *applicationsServiceImpl) defaultWorkflowIDByAppID(ctx context.Context, appID string) (string, error) {
-	appID = strings.TrimSpace(appID)
-	if appID == "" {
-		return "", nil
-	}
-
-	workflowIDs, err := c.defaultWorkflowIDsByAppIDs(ctx, []string{appID})
-	if err != nil {
-		return "", err
-	}
-	return workflowIDs[appID], nil
-}
-
 func (c *applicationsServiceImpl) defaultWorkflowIDsByAppIDs(ctx context.Context, appIDs []string) (map[string]string, error) {
 	uniqueAppIDs := make([]string, 0, len(appIDs))
 	requested := make(map[string]struct{}, len(appIDs))

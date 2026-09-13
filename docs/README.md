@@ -8,8 +8,8 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 
 | 阶段 | 能力 | 文档解释 |
 | --- | --- | --- |
-| Current | Application、Component、Traits、Workflow、四角色运行时、Kubernetes 调和、认证与空间 | 可按文档直接使用，必须与 `main` 一致 |
-| Next | Kubernetes 自托管 Agent、MCP/CLI 工具边界、凭据/权限、审计、Agent 评测 | 方向已明确，公共契约尚未冻结 |
+| Current | Application、Component、Traits、Workflow、四角色运行时、Kubernetes 调和、认证与空间、独立 command/Harbor 评测 Job | 可按文档直接使用，必须与实现一致 |
+| Next | Kubernetes 自托管 Agent、MCP/CLI 工具边界、凭据/权限、审计、更多评测框架 | 方向已明确，公共契约尚未冻结 |
 | Later | 模型服务、GPU 感知调度、向量化、托管 AI Provider、云或多集群能力 | 探索阶段 |
 
 [AI Runtime 愿景](ai-runtime-vision.md) 是未来方向的唯一总纲。任何专题 Proposal 中出现的名称或示例，除非另有 Current 实现和测试，不构成 API、JSON、数据库或部署承诺。
@@ -49,7 +49,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 - 顶层 `/workflow`、`/workflow/exec`、`/workflow/cancel` 路由不再注册；应用维度 workflow API 是当前主路径。
 - 业务 API 强制 Bearer 登录并按个人/团队空间授权；账号配置由 `ERUUN_AUTH_CONFIG_FILE` 加载，所有认证依赖失败时保持拒绝访问。
 - 应用必须属于一个空间；namespace 在首次实际部署时初始化，账号注册和应用保存不创建 Kubernetes 资源。
-- 当前没有 Agent、MCP、Agent evaluation、向量化、vLLM/HAMi 或通用托管 AI Provider 公共 API。
+- 独立 `command` / `agent_evaluation` Job 使用空间授权与平台生成的 TaskID，首版评测框架为 Harbor 0.22.0；见 `workspace-jobs-api.md`。当前没有通用 Agent 注册、MCP、向量化、vLLM/HAMi 或托管 AI Provider 公共 API。
 
 ## 目录层级速查
 
@@ -57,6 +57,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | --- | --- | --- | --- |
 | `cmd/main.go`, `cmd/server/app` | API Server 启动、参数、服务装配 | 新增启动参数、调整初始化顺序 | 配置问题优先 fail-fast，不要静默降级 |
 | `pkg/apiserver/resourceimport` | 存量 Kubernetes 资源的一次性导入模块 | 用户规则扫描、候选快照、用户选择、异步纳管任务、资源 identity/digest 与运行期协调 | 扫描与纳管是两个独立持久化 Job，不做持续监听；共享契约在 `contract`，Kubernetes 侧协调在 `runtime` |
+| `pkg/apiserver/jobs` | 空间独立 Job 与评测数据 | command、Harbor 提交、原生任务包、完整结果、独立保存及保留策略 | 复用现有 WorkflowQueue、JobInfo 和执行租约；公共规格在 `domain/spec`，框架 Runner 在 `runners/harbor` |
 | `pkg/apiserver/interfaces/api` | HTTP 路由、参数绑定、响应封装、中间件 | 新接口、接口校验、认证授权、流式能力 | 不直接写 DB/K8s，业务逻辑下沉到 Domain |
 | `pkg/apiserver/interfaces/api/dto/v1` | API DTO 与请求/响应结构 | 字段增删、响应形态调整 | 同步 assembler、文档和 examples |
 | `pkg/apiserver/interfaces/api/assembler/v1` | Domain 对象到 DTO 的组装 | 响应字段推导、脱敏、兼容字段 | 不放持久化或 K8s 调用逻辑 |
@@ -89,13 +90,15 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | 认证、授权、OAuth、团队空间 | `pkg/apiserver/domain/service/account` | account、middleware、account workspace scope、infrastructure/workspace | `account-auth-workspaces.md` |
 | 配置、系统设置、安全策略 | `pkg/apiserver/config`, `pkg/apiserver/domain/spec` | config defaults、validation、system setting service | `system-setting.md`, `url-security-policy.md` |
 | 消息队列或分布式执行 | `pkg/apiserver/infrastructure/messaging`, `pkg/apiserver/domain/repository/workflow_lease.go` | 运行角色、Redis Streams、Kafka、workflow worker、DB lease/fencing | `enterprise-distributed-runtime-design.md`, `leader-informer-recovery.md`, `kafka-queue-implementation.md`, `workflow-architecture-guide.md` |
-| Agent、MCP、评测、模型或 AI Provider 方向 | 先读 `ai-runtime-vision.md` | 先校准 Current 能力与 Proposal 门禁，再决定是否进入实现 | 对应 AI 专题 Proposal；不得把草案字段当成现有契约 |
+| 独立 Job 与 Harbor 评测 | `pkg/apiserver/jobs`, `runners/harbor` | 提交、执行身份、任务包、结果保存与空间策略 | `workspace-jobs-api.md`, `workspace-jobs-and-harbor-requirements.md` |
+| 更多 Agent、MCP、评测框架、模型或 AI Provider 方向 | 先读 `ai-runtime-vision.md` | 先校准 Current 能力与 Proposal 门禁，再决定是否进入实现 | 对应 AI 专题 Proposal；不得把草案字段当成现有契约 |
 
 ## 当前能力入口
 
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
 | `local-docker-dependencies.md` | Current | MySQL、Redis、Kafka 本地 Compose 分组、凭据、连接配置、健康检查和数据保留 |
+| `workspace-jobs-api.md` | Current | 无 AppID 的 command/Harbor 评测 Job、原生任务包、完整结果与 MinIO/数据库独立保存、空间策略和部署配置 |
 | `distributed-runtime-hardening-merge-guide.md` | Current | 已合并的 7 个分布式运行时加固 PR、实现边界、合并记录与待完成的真实集群验收清单 |
 | `account-auth-workspaces.md` | Current | GitHub/Google、邮箱/手机号登录、会话、团队权限、延迟任务隔离与失败收尾、重复部署幂等性、前端与部署接入 |
 | [`../examples/account-auth-workspaces/README.md`](../examples/account-auth-workspaces/README.md) | Current | 账号与团队 API 实操：curl 注册/登录/刷新、OAuth 浏览器回调、身份绑定、邀请和空间资源访问 |
@@ -141,6 +144,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
 | `workflow-architecture-guide.md` | Implemented Reference | 工作流引擎架构详解 |
+| `workspace-jobs-and-harbor-requirements.md` | Implemented Reference | 先于实现确认的统一 Job 与 Harbor 需求基线：任务包、空间授权、全部输出、多目标保存与原始结果保留 |
 | `workflow-global-scheduler-design.md` | Implemented Reference | Job 全局优先级、FIFO、等待老化、空间并发上限、ownership 准入与 OOM 策略 |
 | `enterprise-distributed-runtime-design.md` | Implemented Reference | 分布式运行时：角色依赖、API Redis readiness、Leader Election、数据库 lease/fencing、延迟任务恢复与通知去重、Cron 有界分页与失败计划重试、Worker observer 和 Helm 拓扑 |
 | `架构文档.md` | Implemented Reference | 当前四角色、数据所有权、Component、Workflow 与 Trait 边界 |
@@ -159,6 +163,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
+| `distributed-runtime-audit-2026-09-10.md` | Historical / Audit | 分布式运行时问题、连续十轮复审及隔离故障验收记录 |
 | `login-token-authz-analysis-2026-09-04.md` | Historical / Audit | opaque 登录 Token、会话撤销、空间授权与 JWT 必要性评估；记录 refresh 重放检测、空闲超时、清理和路由策略测试的后续处置 |
 | `go-idiomatic-code-quality-audit-2026-08-09.md` | Historical / Audit | 基于 `aaec6307` 的全仓 Go 惯用性、接口、并发、错误传播与测试组织审计 |
 | `existing-cluster-application-import-analysis-2026-08-03.md` | Historical / Audit | 现有集群应用进入 Eruun 的发现、observe/adopted 导入、source identity、执行边界与上线验收分析 |

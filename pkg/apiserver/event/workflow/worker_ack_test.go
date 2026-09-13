@@ -185,18 +185,6 @@ func (s *workflowAckTestStore) taskSnapshot() *model.WorkflowQueue {
 	return &cp
 }
 
-func (s *workflowAckTestStore) taskGetsCount() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.taskGets
-}
-
-func (s *workflowAckTestStore) setFailGetAt(at int) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.failGetAt = at
-}
-
 func (s *workflowAckTestStore) compareAndSwapCallsCount() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

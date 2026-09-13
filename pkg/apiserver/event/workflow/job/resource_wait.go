@@ -19,24 +19,32 @@ type pollWaitOptions struct {
 }
 
 func waitForPolledResource(ctx context.Context, opts pollWaitOptions) error {
-	timeout := time.After(opts.timeout)
+	waitCtx, cancel := context.WithTimeout(ctx, opts.timeout)
+	defer cancel()
 	ticker := time.NewTicker(opts.interval)
 	defer ticker.Stop()
 
 	for {
-		select {
-		case <-ctx.Done():
+		if err := ctx.Err(); err != nil {
 			if opts.onCancel != nil {
-				return opts.onCancel(ctx.Err())
+				return opts.onCancel(err)
 			}
-			return ctx.Err()
-		case <-timeout:
+			return err
+		}
+		if waitCtx.Err() != nil {
 			if opts.onTimeout != nil {
 				return opts.onTimeout()
 			}
-			return nil
+			return waitCtx.Err()
+		}
+		select {
+		case <-waitCtx.Done():
+			continue
 		case <-ticker.C:
-			ready, err := opts.poll(ctx)
+			ready, err := opts.poll(waitCtx)
+			if waitCtx.Err() != nil {
+				continue
+			}
 			if err != nil {
 				if opts.onError != nil {
 					return opts.onError(err)

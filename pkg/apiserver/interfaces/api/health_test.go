@@ -29,6 +29,22 @@ type mockRuntimeReadiness struct {
 	reason string
 }
 
+type mockHealthDatabase struct {
+	err            error
+	waitForContext bool
+}
+
+func (m *mockHealthDatabase) CurrentDatabaseTime(ctx context.Context) (time.Time, error) {
+	if m.waitForContext {
+		<-ctx.Done()
+		return time.Time{}, ctx.Err()
+	}
+	if m.err != nil {
+		return time.Time{}, m.err
+	}
+	return time.Now().UTC(), nil
+}
+
 func (m mockRuntimeReadiness) RuntimeReady() (bool, string) {
 	return m.ready, m.reason
 }
@@ -107,6 +123,37 @@ func TestReadinessCheckWithHealthyQueue(t *testing.T) {
 	var payload map[string]string
 	requireSuccessResponse(t, resp.Body.Bytes(), &payload)
 	require.Equal(t, "ready", payload["status"])
+}
+
+func TestReadinessCheckDatabaseOutageTimeoutAndRecovery(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	database := &mockHealthDatabase{err: errors.New("database unavailable")}
+	h := &health{Database: database}
+	r := gin.New()
+	r.GET("/ready", h.readinessCheck)
+
+	check := func(ctx context.Context, wantStatus int) {
+		t.Helper()
+		resp := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/ready", nil).WithContext(ctx)
+		r.ServeHTTP(resp, req)
+		require.Equal(t, wantStatus, resp.Code)
+	}
+
+	check(context.Background(), http.StatusServiceUnavailable)
+	database.err = nil
+	check(context.Background(), http.StatusOK)
+	database.waitForContext = true
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	check(ctx, http.StatusServiceUnavailable)
+	require.Less(t, time.Since(started), time.Second)
+
+	resp := httptest.NewRecorder()
+	r.GET("/health", h.healthCheck)
+	r.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/health", nil))
+	require.Equal(t, http.StatusOK, resp.Code)
 }
 
 func TestReadinessCheckReportsRuntimeRole(t *testing.T) {

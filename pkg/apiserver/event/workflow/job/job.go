@@ -65,6 +65,12 @@ type GenerateServiceResult struct {
 
 type taskIDKey struct{}
 
+const (
+	cancelledJobCleanupTimeout       = 4 * config.DelTimeOut
+	cancelledJobCleanupLeaseDuration = config.DelTimeOut
+	cancelledJobCleanupRenewInterval = config.DelTimeOut / 3
+)
+
 type jobRuntime struct {
 	redisClient             *redis.Client
 	shareLocker             locker.Locker
@@ -176,16 +182,7 @@ func TaskIDFromContext(ctx context.Context) string {
 }
 
 func initJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), runtime *jobRuntime) JobCtl {
-	if store == nil {
-		klog.ErrorS(fmt.Errorf("store is nil"), "init job controller failed")
-		return nil
-	}
-	if job == nil {
-		klog.ErrorS(fmt.Errorf("job is nil"), "init job controller failed")
-		return nil
-	}
-	if client == nil && job.JobType != string(config.JobDeployCallback) {
-		klog.ErrorS(fmt.Errorf("client is nil"), "init job controller failed", "jobName", job.Name, "jobType", job.JobType)
+	if !validJobControllerDependencies(job, client, store) {
 		return nil
 	}
 
@@ -226,7 +223,7 @@ func initJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore
 		jobCtl = NewDeployAdoptedPodDisruptionBudgetJobCtl(job, client, store, ack, shareLocker)
 	case string(config.JobDeployNetworkPolicy):
 		jobCtl = NewDeployAdoptedNetworkPolicyJobCtl(job, client, store, ack, shareLocker)
-	case string(config.JobDeployInstant):
+	case string(config.JobDeployInstant), string(config.JobCommand), string(config.JobAgentEvaluation):
 		jobCtl = NewInstantJobCtl(job, client, store, ack)
 	case string(config.JobDeployScheduled):
 		jobCtl = NewScheduledJobCtl(job, client, store, ack)
@@ -262,6 +259,23 @@ func initJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore
 	return jobCtl
 }
 
+func validJobControllerDependencies(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore) bool {
+	if store == nil {
+		klog.ErrorS(fmt.Errorf("store is nil"), "init job controller failed")
+		return false
+	}
+	if job == nil {
+		klog.ErrorS(fmt.Errorf("job is nil"), "init job controller failed")
+		return false
+	}
+	if client == nil && job.JobType != string(config.JobDeployCallback) {
+		klog.ErrorS(fmt.Errorf("client is nil"), "init job controller failed", "jobName", job.Name, "jobType", job.JobType)
+		return false
+	}
+
+	return true
+}
+
 func RunJobs(ctx context.Context, jobs []*model.JobTask, concurrency int, client kubernetes.Interface, kubeConfig *rest.Config, store datastore.DataStore, ack func(), stopOnFailure bool, cache cache.ICache, urlSecurityPolicy *spec.URLSecurityPolicySpec, delayQueue msg.Queue, resourceWaiter informer.ComponentReadyObserver, resourceImportExecutor ResourceImportExecutor, keyrings ...*importsecret.Keyring) error {
 	logger := klog.FromContext(ctx)
 	if len(jobs) == 0 {
@@ -277,6 +291,17 @@ func RunJobs(ctx context.Context, jobs []*model.JobTask, concurrency int, client
 			if isResourceImportJobType(config.JobType(task.JobType)) {
 				if task.AppID != "" || task.WorkspaceID != scope.WorkspaceID {
 					return fmt.Errorf("resource import job workspace does not match execution scope")
+				}
+				continue
+			}
+			if config.IsWorkspaceJobType(config.JobType(task.JobType)) {
+				if task.AppID != "" || task.TaskID == "" || task.WorkspaceID != scope.WorkspaceID {
+					return fmt.Errorf("job workspace does not match execution scope")
+				}
+				if err := access.NewStore(store).Check(ctx, &model.JobInfo{
+					TaskID: task.TaskID, WorkspaceID: task.WorkspaceID, Type: task.JobType,
+				}); err != nil {
+					return fmt.Errorf("authorize workspace job: %w", err)
 				}
 				continue
 			}
@@ -391,8 +416,7 @@ func runJob(ctx context.Context, job *model.JobTask, client kubernetes.Interface
 			logger.Error(nil, "Failed to initialize job controller for skipped job")
 			return
 		}
-		persistTerminalJobState(ctx, jobCtl, job, store, runtime)
-		return
+		return terminalJobPersistenceFailure(job, "persist skipped job state", persistTerminalJobState(ctx, jobCtl, job, store, runtime))
 	}
 	if store == nil {
 		job.Status = config.StatusFailed
@@ -421,8 +445,7 @@ func runJob(ctx context.Context, job *model.JobTask, client kubernetes.Interface
 		job.Status = config.StatusCancelled
 		job.Error = ctx.Err().Error()
 		job.EndTime = time.Now().Unix()
-		persistTerminalJobState(ctx, jobCtl, job, store, runtime)
-		return
+		return terminalJobPersistenceFailure(job, "persist cancelled job state", persistTerminalJobState(ctx, jobCtl, job, store, runtime))
 	}
 
 	logger.Info("Starting job", "jobType", job.JobType, "status", job.Status)
@@ -460,8 +483,7 @@ func runJob(ctx context.Context, job *model.JobTask, client kubernetes.Interface
 			span.SetStatus(codes.Error, "Failed to activate cancellation watcher")
 			span.RecordError(err)
 			ack()
-			persistTerminalJobState(ctx, jobCtl, job, store, runtime)
-			return
+			return terminalJobPersistenceFailure(job, "persist cancellation watcher failure", persistTerminalJobState(ctx, jobCtl, job, store, runtime))
 		}
 		jobCtx = watcherCtx
 		cancelFn = watcherCancel
@@ -473,19 +495,52 @@ func runJob(ctx context.Context, job *model.JobTask, client kubernetes.Interface
 	}
 	releaseAdmission, admissionErr := waitForJobAdmission(jobCtx, store, job)
 	defer func() {
+		if errors.Is(resultErr, signal.ErrInfrastructureStop) && job.Status == config.StatusCancelled && recoverableKubernetesJobType(job.JobType) {
+			return
+		}
 		if err := releaseAdmission(); err != nil {
 			resultErr = errors.Join(resultErr, signal.ErrInfrastructureStop, err)
 		}
 	}()
 	if admissionErr != nil {
-		if jobCtx.Err() != nil && !signal.IsInfrastructureStop(jobCtx) {
-			job.Status = config.StatusCancelled
-			job.Error = jobCtx.Err().Error()
-			job.EndTime = time.Now().Unix()
-			return persistTerminalJobState(jobCtx, jobCtl, job, store, runtime)
+		if !suppressTerminalJobPersistence(jobCtx) {
+			// The API commits cancellation before publishing its signal. A queue
+			// poll can see that state first; only the same lease may finish this
+			// unstarted Job under the cancelled parent instead of running it.
+			ownershipCtx, cancel := context.WithTimeout(context.WithoutCancel(jobCtx), 5*time.Second)
+			status, ownershipErr := currentJobWorkflowOwnershipStatus(ownershipCtx, store, job)
+			cancel()
+			if ownershipErr != nil {
+				return errors.Join(signal.ErrInfrastructureStop, admissionErr, ownershipErr)
+			}
+			cancelled := status == config.StatusCancelled
+			if status == config.StatusCancelled && (job.OwnerStatus == "" || job.OwnerStatus == config.StatusRunning) {
+				job.OwnerStatus = config.StatusCancelled
+			}
+			if cancelled {
+				job.Status = config.StatusCancelled
+				job.Error = context.Canceled.Error()
+				if jobCtx.Err() != nil {
+					job.Error = jobCtx.Err().Error()
+				}
+				job.EndTime = time.Now().Unix()
+				if config.IsInstantJobType(config.JobType(job.JobType)) && job.InternalInfo != "" {
+					// Recovery can wait for admission while its checkpoint still
+					// owns a live attempt. Cancellation must stop that attempt too.
+					if err := cleanCancelledJob(jobCtx, jobCtl, store, job); err != nil {
+						return errors.Join(signal.ErrInfrastructureStop, err)
+					}
+				}
+				return persistTerminalJobState(jobCtx, jobCtl, job, store, runtime)
+			}
 		}
 		return errors.Join(signal.ErrInfrastructureStop, admissionErr)
 	}
+	return runAdmittedJob(jobCtx, jobCtl, job, client, store, ack, runtime, span)
+}
+
+func runAdmittedJob(jobCtx context.Context, jobCtl JobCtl, job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), runtime *jobRuntime, span trace.Span) (resultErr error) {
+	logger := klog.FromContext(jobCtx)
 	// Admission may wait while an application changes management mode. Check
 	// write permission after that wait, immediately before execution side effects.
 	if jobRequiresApplicationWritePermission(job.JobType) {
@@ -504,8 +559,7 @@ func runJob(ctx context.Context, job *model.JobTask, client kubernetes.Interface
 			span.SetStatus(codes.Error, "Application management mode rejected job")
 			span.RecordError(err)
 			logger.Error(err, "Refusing job for application management mode")
-			persistTerminalJobState(jobCtx, jobCtl, job, store, runtime)
-			return
+			return terminalJobPersistenceFailure(job, "persist rejected job state", persistTerminalJobState(jobCtx, jobCtl, job, store, runtime))
 		}
 	}
 	persistCtx, persistCancel := persistenceContext(jobCtx)
@@ -553,14 +607,11 @@ func runJob(ctx context.Context, job *model.JobTask, client kubernetes.Interface
 		}
 		ack()
 		logger.Info("Updating job info in db...")
-		persistErr := persistTerminalJobState(jobCtx, jobCtl, job, store, runtime)
-		if persistErr != nil && (job.Status == config.StatusDistributed || job.RunToken != "" || job.ExecutionKey != "") {
-			resultErr = errors.Join(
-				resultErr,
-				signal.ErrInfrastructureStop,
-				fmt.Errorf("persist terminal job state: %w", persistErr),
-			)
-		}
+		resultErr = errors.Join(resultErr, terminalJobPersistenceFailure(
+			job,
+			"persist terminal job state",
+			persistTerminalJobState(jobCtx, jobCtl, job, store, runtime),
+		))
 	}()
 
 	statusBeforeRun := job.Status
@@ -568,30 +619,59 @@ func runJob(ctx context.Context, job *model.JobTask, client kubernetes.Interface
 	endTimeBeforeRun := job.EndTime
 	runErr := jobCtl.Run(jobCtx)
 	if signal.IsInfrastructureStop(jobCtx) || errors.Is(runErr, signal.ErrInfrastructureStop) || errors.Is(runErr, repository.ErrWorkflowOwnershipLost) {
-		job.Status = statusBeforeRun
-		job.Error = errorBeforeRun
-		job.EndTime = endTimeBeforeRun
-		if signal.IsInfrastructureStop(jobCtx) {
-			return context.Cause(jobCtx)
+		ownershipCtx, cancel := context.WithTimeout(context.WithoutCancel(jobCtx), 5*time.Second)
+		status, ownershipErr := currentJobWorkflowOwnershipStatus(ownershipCtx, store, job)
+		cancel()
+		if ownershipErr == nil && status == config.StatusCancelled {
+			job.OwnerStatus = config.StatusCancelled
+			runErr = context.Canceled
+		} else {
+			job.Status = statusBeforeRun
+			job.Error = errorBeforeRun
+			job.EndTime = endTimeBeforeRun
+			if signal.IsInfrastructureStop(jobCtx) {
+				return context.Cause(jobCtx)
+			}
+			return errors.Join(signal.ErrInfrastructureStop, runErr, ownershipErr)
 		}
-		return errors.Join(signal.ErrInfrastructureStop, runErr)
 	}
-	if runErr != nil {
+	cancelled := errors.Is(runErr, context.Canceled) || errors.Is(jobCtx.Err(), context.Canceled)
+	if cancelled {
+		ownershipCtx, cancel := context.WithTimeout(context.WithoutCancel(jobCtx), 5*time.Second)
+		cancelledOwner, ownershipErr := adoptCancelledWorkflowOwner(ownershipCtx, store, job)
+		cancel()
+		if ownershipErr != nil {
+			return errors.Join(signal.ErrInfrastructureStop, ownershipErr)
+		}
+		if !cancelledOwner {
+			return errors.Join(signal.ErrInfrastructureStop, context.Canceled)
+		}
+		cancelErr := runErr
+		if cancelErr == nil {
+			cancelErr = jobCtx.Err()
+		}
+		reason := signal.ReasonFromContext(jobCtx)
+		applyJobError(job, cancelErr, reason)
+		job.Status = config.StatusCancelled
+		job.EndTime = time.Now().Unix()
+		span.SetStatus(codes.Error, "Job execution cancelled")
+		span.RecordError(cancelErr)
+		if !cleaned {
+			if cleanupErr := cleanCancelledJob(jobCtx, jobCtl, store, job); cleanupErr != nil {
+				return errors.Join(signal.ErrInfrastructureStop, cleanupErr)
+			}
+			cleaned = true
+		}
+	} else if runErr != nil {
 		if !cleaned {
 			jobCtl.Clean(jobCtx)
 			cleaned = true
 		}
 		span.SetStatus(codes.Error, "Job execution failed")
 		span.RecordError(runErr)
-		if errors.Is(runErr, context.Canceled) {
-			reason := signal.ReasonFromContext(jobCtx)
-			applyJobError(job, runErr, reason)
-			job.Status = config.StatusCancelled
-		} else {
-			applyJobError(job, runErr, job.Error)
-			if job.Status != config.StatusFailed && job.Status != config.StatusCancelled && job.Status != config.StatusTimeout {
-				job.Status = config.StatusFailed
-			}
+		applyJobError(job, runErr, job.Error)
+		if job.Status != config.StatusFailed && job.Status != config.StatusCancelled && job.Status != config.StatusTimeout {
+			job.Status = config.StatusFailed
 		}
 	} else if job.Status == config.StatusPrepare || job.Status == config.StatusRunning {
 		job.Status = config.StatusCompleted
@@ -603,6 +683,93 @@ func runJob(ctx context.Context, job *model.JobTask, client kubernetes.Interface
 
 	if !cleaned && jobStatusFailed(job.Status) {
 		jobCtl.Clean(jobCtx)
+	}
+	return nil
+}
+
+func adoptCancelledWorkflowOwner(ctx context.Context, store datastore.DataStore, job *model.JobTask) (bool, error) {
+	status, err := currentJobWorkflowOwnershipStatus(ctx, store, job)
+	if err != nil {
+		return false, err
+	}
+	switch status {
+	case config.StatusRunning:
+		return false, nil
+	case config.StatusCancelled:
+		job.OwnerStatus = config.StatusCancelled
+		return true, nil
+	default:
+		return false, fmt.Errorf("%w: workflow is %s", errWorkflowJobOwnershipChanged, status)
+	}
+}
+
+func cleanCancelledJob(ctx context.Context, jobCtl JobCtl, store datastore.DataStore, job *model.JobTask) error {
+	cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(ctx), cancelledJobCleanupTimeout)
+	defer cleanupCancel()
+	if err := renewCancelledJobCleanupLease(cleanupCtx, store, job); err != nil {
+		return err
+	}
+	if err := beginCancelledJobCleanup(cleanupCtx, store, job); err != nil {
+		return fmt.Errorf("persist cancelled job cleanup intent: %w", err)
+	}
+	renewCtx, stopRenew := context.WithCancel(cleanupCtx)
+	renewDone := make(chan error, 1)
+	go func() {
+		ticker := time.NewTicker(cancelledJobCleanupRenewInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-renewCtx.Done():
+				renewDone <- nil
+				return
+			case <-ticker.C:
+				renewCallCtx, cancel := context.WithTimeout(renewCtx, 5*time.Second)
+				err := renewCancelledJobCleanupLease(renewCallCtx, store, job)
+				cancel()
+				if err != nil {
+					cleanupCancel()
+					renewDone <- err
+					return
+				}
+			}
+		}
+	}()
+	outcome := cancelledJobCleanupComplete
+	if cleaner, ok := jobCtl.(cancelledJobCleaner); ok {
+		var err error
+		outcome, err = cleaner.CleanCancelled(cleanupCtx)
+		if err != nil {
+			stopRenew()
+			<-renewDone
+			return err
+		}
+	} else {
+		jobCtl.Clean(cleanupCtx)
+	}
+	if err := finishOnlineCancelledJobCleanup(cleanupCtx, store, job, outcome); err != nil {
+		stopRenew()
+		<-renewDone
+		return fmt.Errorf("complete cancelled job cleanup intent: %w", err)
+	}
+	stopRenew()
+	if err := <-renewDone; err != nil {
+		return err
+	}
+	if err := cleanupCtx.Err(); err != nil {
+		return fmt.Errorf("clean cancelled job: %w", err)
+	}
+	return nil
+}
+
+func renewCancelledJobCleanupLease(ctx context.Context, store datastore.DataStore, job *model.JobTask) error {
+	renewed, err := repository.RenewCancelledWorkflowTaskLease(
+		ctx, store, job.TaskID, jobOwnerGeneration(job), job.RunToken, job.WorkerID, cancelledJobCleanupLeaseDuration,
+	)
+	if err != nil {
+		return fmt.Errorf("renew cancelled workflow cleanup lease: %w", err)
+	}
+	if !renewed {
+		return fmt.Errorf("%w: cancelled workflow cleanup lease changed", errWorkflowJobOwnershipChanged)
 	}
 	return nil
 }
@@ -621,7 +788,7 @@ func jobExecutionAlreadySettled(job *model.JobTask) bool {
 		return true
 	case config.StatusDistributed:
 		jobType := config.JobType(job.JobType)
-		return jobType == config.JobDeployInstant || jobType == config.JobDeployScheduled
+		return config.IsInstantJobType(jobType) || jobType == config.JobDeployScheduled
 	default:
 		return false
 	}
@@ -900,6 +1067,16 @@ func persistTerminalJobState(ctx context.Context, jobCtl JobCtl, job *model.JobT
 		return err
 	}
 	return nil
+}
+
+func terminalJobPersistenceFailure(job *model.JobTask, operation string, err error) error {
+	if err == nil || job == nil {
+		return nil
+	}
+	if job.Status != config.StatusDistributed && job.RunToken == "" && job.ExecutionKey == "" {
+		return nil
+	}
+	return errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("%s: %w", operation, err))
 }
 
 func suppressTerminalJobPersistence(ctx context.Context) bool {

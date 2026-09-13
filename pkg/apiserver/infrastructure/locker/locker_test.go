@@ -232,6 +232,32 @@ func TestMemoryLockerExpiration(t *testing.T) {
 	mutex2.Unlock(ctx)
 }
 
+func TestMemoryLockerExpiredOwnerCannotExtendOrUnlock(t *testing.T) {
+	for _, operation := range []string{"extend", "unlock"} {
+		t.Run(operation, func(t *testing.T) {
+			locker := NewMemoryLocker("")
+			defer locker.Close()
+			ctx := context.Background()
+			mutex := locker.NewMutex("key").(*MemoryMutex)
+			require.NoError(t, mutex.Lock(ctx))
+			mutex.entry.mu.Lock()
+			mutex.entry.expiresAt = time.Now().Add(-time.Second)
+			mutex.entry.mu.Unlock()
+
+			if operation == "extend" {
+				require.ErrorIs(t, mutex.Extend(ctx), ErrLockNotHeld)
+			} else {
+				require.ErrorIs(t, mutex.Unlock(ctx), ErrLockNotHeld)
+			}
+			successor := locker.NewMutex("key")
+			require.NoError(t, successor.TryLock(ctx))
+			require.ErrorIs(t, mutex.Extend(ctx), ErrLockNotHeld)
+			require.ErrorIs(t, mutex.Unlock(ctx), ErrLockNotHeld)
+			require.NoError(t, successor.Unlock(ctx))
+		})
+	}
+}
+
 // TestNoopLocker tests NoopLocker behavior.
 func TestNoopLocker(t *testing.T) {
 	locker := NewNoopLocker("")

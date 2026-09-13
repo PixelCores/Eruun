@@ -24,8 +24,11 @@ type Manager struct {
 	started          bool
 	waiterGeneration uint64
 	resyncPeriod     time.Duration
+	syncTimeout      time.Duration
 	labelSelector    string
 }
+
+const defaultManagerSyncTimeout = 30 * time.Second
 
 // ManagerOption 配置选项
 type ManagerOption func(*Manager)
@@ -34,6 +37,13 @@ type ManagerOption func(*Manager)
 func WithResyncPeriod(d time.Duration) ManagerOption {
 	return func(m *Manager) {
 		m.resyncPeriod = d
+	}
+}
+
+// WithSyncTimeout bounds the initial informer snapshot wait.
+func WithSyncTimeout(d time.Duration) ManagerOption {
+	return func(m *Manager) {
+		m.syncTimeout = d
 	}
 }
 
@@ -50,6 +60,7 @@ func NewManager(client kubernetes.Interface, opts ...ManagerOption) *Manager {
 		client:       client,
 		waiter:       NewResourceReadyWaiter(),
 		resyncPeriod: 30 * time.Second,
+		syncTimeout:  defaultManagerSyncTimeout,
 	}
 
 	for _, opt := range opts {
@@ -147,12 +158,21 @@ func (m *Manager) Start(ctx context.Context) error {
 
 	// 等待缓存同步
 	klog.Info("Waiting for informer caches to sync...")
-	synced := factory.WaitForCacheSync(stopCh)
+	syncTimeout := m.syncTimeout
+	if syncTimeout <= 0 {
+		syncTimeout = defaultManagerSyncTimeout
+	}
+	syncCtx, cancelSync := context.WithTimeout(ctx, syncTimeout)
+	defer cancelSync()
+	synced := factory.WaitForCacheSync(syncCtx.Done())
 	for typ, ok := range synced {
 		if !ok {
 			m.stopGeneration(generation)
 			if ctx.Err() != nil {
 				return ctx.Err()
+			}
+			if syncCtx.Err() != nil {
+				return fmt.Errorf("sync informer cache for %v within %s: %w", typ, syncTimeout, syncCtx.Err())
 			}
 			return fmt.Errorf("failed to sync cache for %v", typ)
 		}
@@ -208,5 +228,6 @@ func (m *Manager) GetStats() map[string]interface{} {
 		"pendingKeys":    m.waiter.GetPendingKeys(),
 		"labelSelector":  m.labelSelector,
 		"resyncPeriod":   m.resyncPeriod.String(),
+		"syncTimeout":    m.syncTimeout.String(),
 	}
 }

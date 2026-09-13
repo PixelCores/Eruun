@@ -19,6 +19,10 @@ func PrepareTask(task *model.JobTask, appID string, w *model.Workspace, cfg spec
 	if task == nil || w == nil || task.AppID != appID || task.Namespace != w.Namespace {
 		return false, bcode.ErrForbidden
 	}
+	if (task.JobType == string(config.JobCommand) || task.JobType == string(config.JobAgentEvaluation)) &&
+		(task.AppID != "" || task.TaskID == "" || task.WorkspaceID != w.ID) {
+		return false, bcode.ErrForbidden
+	}
 	resource := ""
 	switch config.JobType(task.JobType) {
 	case config.JobDeploy:
@@ -35,7 +39,7 @@ func PrepareTask(task *model.JobTask, appID string, w *model.Workspace, cfg spec
 		resource = "secrets"
 	case config.JobDeployIngress:
 		resource = "ingresses"
-	case config.JobDeployInstant:
+	case config.JobDeployInstant, config.JobCommand, config.JobAgentEvaluation:
 		resource = "jobs"
 	case config.JobDeployScheduled:
 		// Scheduled execution supports CronJob and one-shot Job payloads.

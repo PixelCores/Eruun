@@ -141,8 +141,12 @@ func (s *Service) OAuthCallback(ctx context.Context, provider, code, state, brow
 	if err != nil {
 		return nil, err
 	}
+	return s.completeOAuthIdentity(ctx, provider, subject, email, name, flow, p)
+}
+
+func (s *Service) completeOAuthIdentity(ctx context.Context, provider, subject, email, name string, flow oauthState, p *Principal) (*Login, error) {
 	var result *Login
-	err = s.Repo.Transaction(ctx, func(r repository.Accounts) error {
+	err := s.Repo.Transaction(ctx, func(r repository.Accounts) error {
 		identity := &model.Identity{Provider: provider, Subject: subject}
 		lookup := r.One(ctx, identity)
 		if lookup != nil && !errors.Is(lookup, datastore.ErrRecordNotExist) {

@@ -210,14 +210,6 @@ func persistedCleanupJobTask(cleanupRecord persistedCleanupJobInfo, task *model.
 	return jobTask
 }
 
-func versionUpdateCleanupComponentsFromTask(task *model.WorkflowQueue) ([]model.VersionUpdateCleanupComponent, bool, error) {
-	cleanupInfo, ok, err := versionUpdateCleanupInfoFromTask(task)
-	if err != nil || !ok {
-		return nil, ok, err
-	}
-	return cleanupInfo.Components, true, nil
-}
-
 func versionUpdateCleanupOnlyFromTask(task *model.WorkflowQueue) bool {
 	cleanupInfo, ok, err := versionUpdateCleanupInfoFromTask(task)
 	return err == nil && ok && cleanupInfo.CleanupOnly

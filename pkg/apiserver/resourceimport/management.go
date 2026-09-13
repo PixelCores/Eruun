@@ -538,21 +538,10 @@ func (s *serviceImpl) buildAdoptedImportPlanning(
 			plan.applyErrorStatus = importResourceStatusSkipped
 		}
 
-		snapshotResources := make([]importcontract.ResourceSnapshot, 0, len(plan.resources))
-		for _, resource := range plan.resources {
-			snapshot, snapshotErr := importcontract.ResourceSnapshotFromObject(
-				resource.object,
-				resource.componentName,
-				resource.dependencyRole,
-				resource.ownership,
-				resource.disposition,
-			)
-			if snapshotErr != nil {
-				return nil, snapshotErr
-			}
-			snapshotResources = append(snapshotResources, snapshot)
+		plan.adopted.snapshot, err = buildAdoptedPlanSnapshot(namespace, plan.resources)
+		if err != nil {
+			return nil, err
 		}
-		plan.adopted.snapshot = importcontract.NewSnapshot(namespace, snapshotResources)
 		plans = append(plans, plan)
 	}
 
@@ -581,6 +570,24 @@ func (s *serviceImpl) buildAdoptedImportPlanning(
 		}
 	}
 	return planning, nil
+}
+
+func buildAdoptedPlanSnapshot(namespace string, resources []*importResource) (importcontract.Snapshot, error) {
+	snapshotResources := make([]importcontract.ResourceSnapshot, 0, len(resources))
+	for _, resource := range resources {
+		snapshot, snapshotErr := importcontract.ResourceSnapshotFromObject(
+			resource.object,
+			resource.componentName,
+			resource.dependencyRole,
+			resource.ownership,
+			resource.disposition,
+		)
+		if snapshotErr != nil {
+			return importcontract.Snapshot{}, snapshotErr
+		}
+		snapshotResources = append(snapshotResources, snapshot)
+	}
+	return importcontract.NewSnapshot(namespace, snapshotResources), nil
 }
 
 func (s *serviceImpl) findAdoptedOwnershipConflicts(
@@ -636,17 +643,6 @@ func (s *serviceImpl) findAdoptedOwnershipConflicts(
 	})
 	conflicts := make(map[string][]string)
 	targetNamespace := applicationservice.PickNamespace(strings.TrimSpace(namespace), config.DefaultNamespace)
-	blockUnverifiableSnapshot := func(appID string, snapshotErr error) {
-		for planKey, allowedOwner := range allowedOwnerByPlan {
-			if allowedOwner == appID {
-				continue
-			}
-			conflicts[planKey] = append(
-				conflicts[planKey],
-				fmt.Sprintf("cannot verify adopted ownership for app %s: %v", appID, snapshotErr),
-			)
-		}
-	}
 	for _, app := range apps {
 		if app == nil || strings.TrimSpace(app.ID) == "" {
 			continue
@@ -659,87 +655,106 @@ func (s *serviceImpl) findAdoptedOwnershipConflicts(
 		if err != nil {
 			return nil, fmt.Errorf("list components for adopted UID ownership app %q: %w", app.ID, err)
 		}
-		sort.SliceStable(components, func(i, j int) bool {
-			if components[i] == nil {
-				return false
-			}
-			if components[j] == nil {
-				return true
-			}
-			return components[i].Name < components[j].Name
-		})
-		for _, component := range components {
-			if component == nil || component.SourceWorkloadUID == nil {
-				continue
-			}
-			uid := strings.TrimSpace(*component.SourceWorkloadUID)
-			for _, root := range rootsByUID[uid] {
-				if root == nil || allowedOwnerByPlan[root.planKey] == app.ID {
-					continue
-				}
-				conflicts[root.planKey] = append(
-					conflicts[root.planKey],
-					fmt.Sprintf(
-						"workload %s/%s UID %s is already adopted by app %s component %s",
-						root.resource.kind,
-						root.resource.name,
-						uid,
-						app.ID,
-						component.Name,
-					),
-				)
-			}
-		}
-		if app.EffectiveManagementMode() != config.ManagementModeAdopted {
-			continue
-		}
-		snapshot, err := decodeAdoptionSnapshot(app.AdoptionSnapshot)
-		if err != nil {
-			blockUnverifiableSnapshot(app.ID, err)
-			continue
-		}
-		if err := snapshot.Validate(); err != nil {
-			blockUnverifiableSnapshot(app.ID, err)
-			continue
-		}
-		for _, persisted := range snapshot.Resources {
-			if persisted.Ownership != importcontract.OwnershipExclusive ||
-				persisted.Disposition != importcontract.DispositionManaged {
-				continue
-			}
-			persistedNamespace := strings.TrimSpace(persisted.Source.Namespace)
-			if persistedNamespace == "" {
-				persistedNamespace = strings.TrimSpace(snapshot.Namespace)
-			}
-			member := plannedDependencies[adoptedOwnershipIdentityKey(
-				persisted.Source.Kind,
-				persistedNamespace,
-				persisted.Source.Name,
-			)]
-			if member == nil || member.resource == nil {
-				continue
-			}
-			for planKey := range member.appComponents {
-				if allowedOwnerByPlan[planKey] == app.ID {
-					continue
-				}
-				conflicts[planKey] = append(
-					conflicts[planKey],
-					fmt.Sprintf(
-						"resource %s/%s is already managed exclusively by adopted app %s (snapshot UID %s)",
-						member.resource.kind,
-						member.resource.name,
-						app.ID,
-						strings.TrimSpace(persisted.Source.UID),
-					),
-				)
-			}
-		}
+		collectAdoptedWorkloadUIDConflicts(app.ID, components, rootsByUID, allowedOwnerByPlan, conflicts)
+		collectAdoptedSnapshotConflicts(app, plannedDependencies, allowedOwnerByPlan, conflicts)
 	}
 	for planKey := range conflicts {
 		conflicts[planKey] = uniqueSortedStrings(conflicts[planKey])
 	}
 	return conflicts, nil
+}
+
+func collectAdoptedWorkloadUIDConflicts(appID string, components []*model.ApplicationComponent, rootsByUID map[string][]*adoptedRoot, allowedOwnerByPlan map[string]string, conflicts map[string][]string) {
+	sort.SliceStable(components, func(i, j int) bool {
+		if components[i] == nil {
+			return false
+		}
+		if components[j] == nil {
+			return true
+		}
+		return components[i].Name < components[j].Name
+	})
+	for _, component := range components {
+		if component == nil || component.SourceWorkloadUID == nil {
+			continue
+		}
+		uid := strings.TrimSpace(*component.SourceWorkloadUID)
+		for _, root := range rootsByUID[uid] {
+			if root == nil || allowedOwnerByPlan[root.planKey] == appID {
+				continue
+			}
+			conflicts[root.planKey] = append(
+				conflicts[root.planKey],
+				fmt.Sprintf(
+					"workload %s/%s UID %s is already adopted by app %s component %s",
+					root.resource.kind,
+					root.resource.name,
+					uid,
+					appID,
+					component.Name,
+				),
+			)
+		}
+	}
+}
+
+func collectAdoptedSnapshotConflicts(app *model.Applications, plannedDependencies map[string]*adoptedMembership, allowedOwnerByPlan map[string]string, conflicts map[string][]string) {
+	blockUnverifiableSnapshot := func(appID string, snapshotErr error) {
+		for planKey, allowedOwner := range allowedOwnerByPlan {
+			if allowedOwner == appID {
+				continue
+			}
+			conflicts[planKey] = append(
+				conflicts[planKey],
+				fmt.Sprintf("cannot verify adopted ownership for app %s: %v", appID, snapshotErr),
+			)
+		}
+	}
+	if app.EffectiveManagementMode() != config.ManagementModeAdopted {
+		return
+	}
+	snapshot, err := decodeAdoptionSnapshot(app.AdoptionSnapshot)
+	if err != nil {
+		blockUnverifiableSnapshot(app.ID, err)
+		return
+	}
+	if err := snapshot.Validate(); err != nil {
+		blockUnverifiableSnapshot(app.ID, err)
+		return
+	}
+	for _, persisted := range snapshot.Resources {
+		if persisted.Ownership != importcontract.OwnershipExclusive ||
+			persisted.Disposition != importcontract.DispositionManaged {
+			continue
+		}
+		persistedNamespace := strings.TrimSpace(persisted.Source.Namespace)
+		if persistedNamespace == "" {
+			persistedNamespace = strings.TrimSpace(snapshot.Namespace)
+		}
+		member := plannedDependencies[adoptedOwnershipIdentityKey(
+			persisted.Source.Kind,
+			persistedNamespace,
+			persisted.Source.Name,
+		)]
+		if member == nil || member.resource == nil {
+			continue
+		}
+		for planKey := range member.appComponents {
+			if allowedOwnerByPlan[planKey] == app.ID {
+				continue
+			}
+			conflicts[planKey] = append(
+				conflicts[planKey],
+				fmt.Sprintf(
+					"resource %s/%s is already managed exclusively by adopted app %s (snapshot UID %s)",
+					member.resource.kind,
+					member.resource.name,
+					app.ID,
+					strings.TrimSpace(persisted.Source.UID),
+				),
+			)
+		}
+	}
 }
 
 func adoptedOwnershipIdentityKey(kind, namespace, name string) string {
@@ -1378,14 +1393,6 @@ func appendAdoptedPodLabelConflict(
 	}
 }
 
-func adoptedObjectIsControlledByRoot(
-	object metav1.Object,
-	roots []*adoptedRoot,
-	allowedKindKeys ...string,
-) bool {
-	return adoptedControllingRoot(object, roots, allowedKindKeys...) != nil
-}
-
 func adoptedControllingRoot(
 	object metav1.Object,
 	roots []*adoptedRoot,
@@ -1696,6 +1703,10 @@ func propagateAdoptedRBACSharing(
 		}
 	}
 
+	propagateAdoptedReferencedRoleSharing(resources, resourceByKindAndName, membership)
+}
+
+func propagateAdoptedReferencedRoleSharing(resources []*importResource, resourceByKindAndName map[string]*importResource, membership map[string]*adoptedMembership) {
 	for _, resource := range resources {
 		if resource == nil || resource.object == nil {
 			continue
@@ -2768,16 +2779,4 @@ func encryptAdoptedSecretResources(
 		payload[resource.name] = envelopes
 	}
 	return model.NewJSONStructByStruct(payload)
-}
-
-func adoptedResourceCanBeLabeled(resource *importResource) bool {
-	if resource == nil || resource.disposition != importcontract.DispositionManaged {
-		return false
-	}
-	switch resource.kindKey {
-	case importKindDeployments, importKindStatefulSets:
-		return false
-	default:
-		return true
-	}
 }

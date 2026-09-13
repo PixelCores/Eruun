@@ -315,6 +315,10 @@ assertEqual \
   "get create update delete" \
   "Controller must dispatch delayed Jobs, adopt execution identities, and clean up completed Jobs"
 assertEqual \
+  "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" batch cronjobs)" \
+  "get delete" \
+  "Controller cancellation recovery must delete only the exact scheduled execution"
+assertEqual \
   "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" apps replicasets)" \
   "get" \
   "Controller must only read ReplicaSet owners"
@@ -444,6 +448,12 @@ grep -q 'key: "keys.json"' "${keyring_manifest}" ||
 default_deployment_manifest="${TEST_ROOT}/default-deployment.yaml"
 runHelm template eruun "${TEST_DIR}" \
   --namespace eruun-system > "${default_deployment_manifest}"
+assertEqual \
+  "$(grep -c '"helm.sh/resource-policy": keep' "${default_deployment_manifest}")" \
+  "2" \
+  "bundled datastore credential Secrets must be retained with their persistent volumes"
+grep -q 'service-port:' "${default_deployment_manifest}" ||
+  fail "retained Redis credentials must preserve the immutable service port"
 if grep -q 'ERUUN_IMPORT_SECRET_KEYRING_FILE' "${default_deployment_manifest}"; then
   fail "default deployment must not configure an import keyring"
 fi
@@ -454,6 +464,24 @@ assertEqual \
   "$(grep -c 'terminationGracePeriodSeconds: 90' "${default_deployment_manifest}")" \
   "4" \
   "default runtime deployments must use the safe termination grace"
+
+custom_dependency_ports_manifest="${TEST_ROOT}/custom-dependency-ports.yaml"
+runHelm template eruun "${TEST_DIR}" \
+  --namespace eruun-system \
+  --set mysql.servicePort=13306 \
+  --set redis.servicePort=16379 > "${custom_dependency_ports_manifest}"
+grep -q 'args: \["--port=13306"\]' "${custom_dependency_ports_manifest}" ||
+  fail "bundled MySQL must listen on mysql.servicePort"
+assertEqual \
+  "$(grep -c 'mysqladmin ping -h 127.0.0.1 -P 13306' "${custom_dependency_ports_manifest}")" \
+  "2" \
+  "bundled MySQL probes must use mysql.servicePort"
+grep -q 'exec redis-server --port 16379 ' "${custom_dependency_ports_manifest}" ||
+  fail "bundled Redis must listen on redis.servicePort"
+assertEqual \
+  "$(grep -c 'redis-cli -h 127.0.0.1 -p 16379' "${custom_dependency_ports_manifest}")" \
+  "2" \
+  "bundled Redis probes must use redis.servicePort"
 
 if runHelm template eruun "${TEST_DIR}" \
   --namespace eruun-system \
@@ -659,6 +687,21 @@ runHelm template eruun "${TEST_DIR}" \
 for kind in Deployment ServiceAccount PodDisruptionBudget; do
   assertUniqueRoleNames "${kind}" "${long_runtime_manifest}"
 done
+
+for kind in Service StatefulSet Secret; do
+  names=$(resourceNames "${kind}" "${long_runtime_manifest}")
+  count=$(printf '%s\n' "${names}" | awk 'NF { count++ } END { print count + 0 }')
+  unique_count=$(printf '%s\n' "${names}" | awk 'NF && !seen[$0]++ { count++ } END { print count + 0 }')
+  assertEqual "${unique_count}" "${count}" "long fullnameOverride must keep ${kind} names unique"
+  while IFS= read -r name; do
+    [ -n "${name}" ] || continue
+    [ "${#name}" -le 63 ] || fail "${kind} name exceeds 63 characters: ${name}"
+  done <<< "${names}"
+done
+grep -q -- '-mysql$' <<< "$(resourceNames StatefulSet "${long_runtime_manifest}")" ||
+  fail "long fullnameOverride must preserve the MySQL suffix"
+grep -q -- '-redis$' <<< "$(resourceNames StatefulSet "${long_runtime_manifest}")" ||
+  fail "long fullnameOverride must preserve the Redis suffix"
 
 for role in api controller scheduler worker; do
   grep -q "value: \"${role}\"" "${runtime_manifest}" ||

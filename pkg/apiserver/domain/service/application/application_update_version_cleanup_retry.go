@@ -537,20 +537,9 @@ func updatePendingStatefulSetDeletion(
 	if !cleanupComponent.RequireStatefulSetDeletion {
 		return false, nil
 	}
-	switch cleanupInfoVersion {
-	case model.VersionUpdateCleanupInfoVersionStatefulSetDeletion:
-		if len(templates) > 0 {
-			return false, fmt.Errorf("task %s cleanup info v2 cannot contain a StatefulSet PVC deletion plan", task.TaskID)
-		}
-	case model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion:
-		// v3 is the task-wide maximum contract version. Components without a
-		// PVC plan still carry their v2 marker in a mixed v2/v3 task.
-	default:
-		return false, fmt.Errorf("task %s has unsupported cleanup info version %d", task.TaskID, cleanupInfoVersion)
-	}
-	planVersion := model.VersionUpdateCleanupInfoVersionStatefulSetDeletion
-	if len(templates) > 0 {
-		planVersion = model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion
+	planVersion, err := statefulSetCleanupPlanVersion(task.TaskID, cleanupInfoVersion, templates)
+	if err != nil {
+		return false, err
 	}
 	if component == nil {
 		return false, fmt.Errorf("task %s StatefulSet cleanup contract is missing its component descriptor", task.TaskID)
@@ -596,37 +585,9 @@ func updatePendingStatefulSetDeletion(
 	}
 	switch {
 	case status == config.StatusCompleted && taskCompleted:
-		if plan == nil {
-			return true, nil
-		}
-		if len(templates) == 0 {
-			if plan.cleanupVersion == model.VersionUpdateCleanupInfoVersionStatefulSetDeletion {
-				delete(plans, identity)
-				if len(plans) == 0 {
-					delete(pending, key)
-				}
-			}
-			return true, nil
-		}
-		for _, template := range templates {
-			delete(plan.templates, template)
-		}
-		if len(plan.templates) == 0 {
-			delete(plans, identity)
-			if len(plans) == 0 {
-				delete(pending, key)
-			}
-		}
+		resolvePendingStatefulSetDeletion(pending, key, identity, templates)
 		return true, nil
-	case jobMissing,
-		taskRequiresRetry && isPreStartVersionUpdateCleanupStatus(status),
-		status == config.StatusCompleted && taskRequiresRetry,
-		status == config.StatusPassed,
-		status == config.StatusSkipped,
-		status == config.StatusFailed,
-		status == config.StatusTimeout,
-		status == config.StatusCancelled,
-		status == config.StatusReject:
+	case shouldRetryStatefulSetCleanup(status, taskRequiresRetry, jobMissing):
 		if plan == nil {
 			if plans == nil {
 				plans = make(map[string]*pendingStatefulSetPVCDeletion)
@@ -660,6 +621,63 @@ func updatePendingStatefulSetDeletion(
 			return false, bcode.ErrWorkflowTaskRunning
 		}
 		return false, fmt.Errorf("task %s component %s cleanup job is %q; wait for it to finish before retrying StatefulSet PVC migration", task.TaskID, component.Name, job.Status)
+	}
+}
+
+func statefulSetCleanupPlanVersion(taskID string, cleanupInfoVersion int, templates []string) (int, error) {
+	switch cleanupInfoVersion {
+	case model.VersionUpdateCleanupInfoVersionStatefulSetDeletion:
+		if len(templates) > 0 {
+			return 0, fmt.Errorf("task %s cleanup info v2 cannot contain a StatefulSet PVC deletion plan", taskID)
+		}
+	case model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion:
+		// v3 is the task-wide maximum contract version. Components without a
+		// PVC plan still carry their v2 marker in a mixed v2/v3 task.
+	default:
+		return 0, fmt.Errorf("task %s has unsupported cleanup info version %d", taskID, cleanupInfoVersion)
+	}
+	planVersion := model.VersionUpdateCleanupInfoVersionStatefulSetDeletion
+	if len(templates) > 0 {
+		planVersion = model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion
+	}
+	return planVersion, nil
+}
+
+func resolvePendingStatefulSetDeletion(pending map[string]map[string]*pendingStatefulSetPVCDeletion, key, identity string, templates []string) {
+	plans := pending[key]
+	plan := plans[identity]
+	if plan == nil {
+		return
+	}
+	if len(templates) == 0 {
+		if plan.cleanupVersion == model.VersionUpdateCleanupInfoVersionStatefulSetDeletion {
+			delete(plans, identity)
+			if len(plans) == 0 {
+				delete(pending, key)
+			}
+		}
+		return
+	}
+	for _, template := range templates {
+		delete(plan.templates, template)
+	}
+	if len(plan.templates) == 0 {
+		delete(plans, identity)
+		if len(plans) == 0 {
+			delete(pending, key)
+		}
+	}
+}
+
+func shouldRetryStatefulSetCleanup(status config.Status, taskRequiresRetry, jobMissing bool) bool {
+	if jobMissing || taskRequiresRetry && isPreStartVersionUpdateCleanupStatus(status) || status == config.StatusCompleted && taskRequiresRetry {
+		return true
+	}
+	switch status {
+	case config.StatusPassed, config.StatusSkipped, config.StatusFailed, config.StatusTimeout, config.StatusCancelled, config.StatusReject:
+		return true
+	default:
+		return false
 	}
 }
 

@@ -111,6 +111,12 @@ importSecretKeyring:
   existingSecret: ""
   key: keyring.json
 
+jobs:
+  # User-managed Secret with the Harbor Runner and optional MinIO JSON config.
+  # Leave empty to keep command Jobs available without enabling evaluation.
+  existingSecret: ""
+  key: jobs.json
+
 env:
   # Example extra environment variables for the application
   # - name: SOME_ENV

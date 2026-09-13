@@ -128,62 +128,42 @@ func decodeCreateApplicationsRequest(data []byte, req *CreateApplicationsRequest
 		}
 		seen[canonicalName] = name
 
-		switch fieldName {
-		case "id":
-			if err := decodeStrictJSON(raw, &req.ID); err != nil {
-				return err
-			}
-		case "name":
-			if err := decodeStrictJSON(raw, &req.Name); err != nil {
-				return err
-			}
-		case "namespace":
-			if err := decodeStrictJSON(raw, &req.Namespace); err != nil {
-				return err
-			}
-		case "alias":
-			if err := decodeStrictJSON(raw, &req.Alias); err != nil {
-				return err
-			}
-		case "version":
-			if err := decodeStrictJSON(raw, &req.Version); err != nil {
-				return err
-			}
-		case "project":
-			if err := decodeStrictJSON(raw, &req.Project); err != nil {
-				return err
-			}
-		case "description":
-			if err := decodeStrictJSON(raw, &req.Description); err != nil {
-				return err
-			}
-		case "icon":
-			if err := decodeStrictJSON(raw, &req.Icon); err != nil {
-				return err
-			}
-		case "component", "components":
-			if err := decodeStrictJSON(raw, &req.Component); err != nil {
-				return err
-			}
-		case "workflow":
-			if err := decodeCreateApplicationWorkflow(raw, req); err != nil {
-				return err
-			}
-		case "callback":
-			if err := decodeStrictJSON(raw, &req.Callback); err != nil {
-				return err
-			}
-		case "templateEnabled":
-			if err := decodeStrictJSON(raw, &req.TemplateEnabled); err != nil {
-				return err
-			}
-		default:
-			if err := extra[fieldName](raw); err != nil {
-				return err
-			}
+		if err := decodeCreateApplicationField(fieldName, raw, req, extra); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func decodeCreateApplicationField(fieldName string, raw json.RawMessage, req *CreateApplicationsRequest, extra map[string]func(json.RawMessage) error) error {
+	switch fieldName {
+	case "id":
+		return decodeStrictJSON(raw, &req.ID)
+	case "name":
+		return decodeStrictJSON(raw, &req.Name)
+	case "namespace":
+		return decodeStrictJSON(raw, &req.Namespace)
+	case "alias":
+		return decodeStrictJSON(raw, &req.Alias)
+	case "version":
+		return decodeStrictJSON(raw, &req.Version)
+	case "project":
+		return decodeStrictJSON(raw, &req.Project)
+	case "description":
+		return decodeStrictJSON(raw, &req.Description)
+	case "icon":
+		return decodeStrictJSON(raw, &req.Icon)
+	case "component", "components":
+		return decodeStrictJSON(raw, &req.Component)
+	case "workflow":
+		return decodeCreateApplicationWorkflow(raw, req)
+	case "callback":
+		return decodeStrictJSON(raw, &req.Callback)
+	case "templateEnabled":
+		return decodeStrictJSON(raw, &req.TemplateEnabled)
+	default:
+		return extra[fieldName](raw)
+	}
 }
 
 func canonicalCreateApplicationsRequestField(name string) string {

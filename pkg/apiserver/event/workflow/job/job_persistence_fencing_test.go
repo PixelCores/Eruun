@@ -5,13 +5,16 @@ import (
 	"errors"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
 
 type workflowOwnedJobInfoStore struct {
@@ -28,6 +31,19 @@ type workflowOwnedJobInfoStore struct {
 func (s *workflowOwnedJobInfoStore) WithTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
 	s.transactionCalls++
 	return fn(s)
+}
+
+func (*workflowOwnedJobInfoStore) CurrentDatabaseTime(context.Context) (time.Time, error) {
+	return time.Now().UTC(), nil
+}
+
+func (s *workflowOwnedJobInfoStore) Get(_ context.Context, entity datastore.Entity) error {
+	workflowTask, ok := entity.(*model.WorkflowQueue)
+	if !ok || workflowTask == nil || s.workflowTask == nil || workflowTask.TaskID != s.workflowTask.TaskID {
+		return datastore.ErrRecordNotExist
+	}
+	*workflowTask = *s.workflowTask
+	return nil
 }
 
 func (s *workflowOwnedJobInfoStore) Add(_ context.Context, entity datastore.Entity) error {
@@ -120,6 +136,9 @@ func (s *workflowOwnedJobInfoStore) CompareAndSwapWithConditions(
 			conditions["worker_id"] != s.workflowTask.WorkerID {
 			return false, nil
 		}
+		if status, ok := conditions["status"]; ok && status != s.workflowTask.Status {
+			return false, nil
+		}
 		return true, nil
 	case *model.JobInfo:
 		if typed == nil {
@@ -175,6 +194,7 @@ var _ datastore.ConditionalCompareAndSwap = (*workflowOwnedJobInfoStore)(nil)
 func TestSaveJobInfoUsesWorkflowOwnershipFence(t *testing.T) {
 	current := &model.WorkflowQueue{
 		TaskID:        "task-1",
+		Status:        config.StatusRunning,
 		RunGeneration: 2,
 		RunToken:      "token-2",
 		WorkerID:      "worker-b",
@@ -221,6 +241,7 @@ func TestSaveJobInfoUsesWorkflowOwnershipFence(t *testing.T) {
 func TestUpdateJobInfoStatusUsesExecutionOwnershipFence(t *testing.T) {
 	current := &model.WorkflowQueue{
 		TaskID:        "task-result",
+		Status:        config.StatusRunning,
 		RunGeneration: 2,
 		RunToken:      "token-2",
 		WorkerID:      "worker-b",
@@ -341,13 +362,21 @@ func TestUpdateJobInfoStatusUsesLegacyExecutionKeyWithoutFencing(t *testing.T) {
 }
 
 type recordingTerminalJobCtl struct {
-	saveCalls int
-	saveErr   error
-	onSave    func()
+	runErr     error
+	onRun      func()
+	cleanCalls int
+	saveCalls  int
+	saveErr    error
+	onSave     func()
 }
 
-func (*recordingTerminalJobCtl) Run(context.Context) error { return nil }
-func (*recordingTerminalJobCtl) Clean(context.Context)     {}
+func (c *recordingTerminalJobCtl) Run(context.Context) error {
+	if c.onRun != nil {
+		c.onRun()
+	}
+	return c.runErr
+}
+func (c *recordingTerminalJobCtl) Clean(context.Context) { c.cleanCalls++ }
 func (c *recordingTerminalJobCtl) SaveInfo(context.Context) error {
 	c.saveCalls++
 	if c.onSave != nil {
@@ -373,12 +402,90 @@ func TestPersistTerminalJobStateSkipsInfrastructureCancellation(t *testing.T) {
 	require.Equal(t, 1, regularCancelledCtl.saveCalls)
 
 	nilContextCtl := &recordingTerminalJobCtl{}
+	//lint:ignore SA1012 Verify the supported nil-context fallback.
 	persistTerminalJobState(nil, nilContextCtl, job, store, nil)
 	require.Equal(t, 1, nilContextCtl.saveCalls)
 
 	activeCtl := &recordingTerminalJobCtl{}
 	persistTerminalJobState(context.Background(), activeCtl, job, store, nil)
 	require.Equal(t, 1, activeCtl.saveCalls)
+}
+
+func TestRunAdmittedJobReturnsRejectedStatePersistenceFailure(t *testing.T) {
+	persistErr := errors.New("database unavailable")
+	controller := &recordingTerminalJobCtl{saveErr: persistErr}
+	store := &componentStatusStore{managementMode: config.ManagementModeObserve}
+	job := &model.JobTask{
+		AppID:        "app-1",
+		TaskID:       "task-1",
+		JobType:      string(config.JobDeployConfigMap),
+		ExecutionKey: "execution-1",
+		RunToken:     "token-1",
+	}
+	ackCount := 0
+	ctx := context.Background()
+
+	err := runAdmittedJob(ctx, controller, job, nil, store, func() { ackCount++ }, nil, trace.SpanFromContext(ctx))
+
+	require.ErrorIs(t, err, signal.ErrInfrastructureStop)
+	require.ErrorIs(t, err, persistErr)
+	require.Equal(t, config.StatusFailed, job.Status)
+	require.Equal(t, 1, controller.saveCalls)
+	require.Equal(t, 1, ackCount)
+}
+
+func TestRunAdmittedJobAdoptsCancelledWorkflowBeforeTerminalPersistence(t *testing.T) {
+	parent := &model.WorkflowQueue{
+		TaskID: "task-cancelled", Status: config.StatusRunning, RunGeneration: 3,
+		RunToken: "token-3", WorkerID: "worker-3",
+	}
+	store := &workflowOwnedJobInfoStore{workflowTask: parent}
+	controller := &recordingTerminalJobCtl{
+		runErr: context.Canceled,
+		onRun:  func() { parent.Status = config.StatusCancelled },
+	}
+	job := &model.JobTask{
+		TaskID: parent.TaskID, JobType: string(config.JobDeployCallback), Status: config.StatusPrepare,
+		ExecutionKey: "execution-3", RunGeneration: 3, OwnerRunGeneration: 3,
+		OwnerStatus: config.StatusRunning, RunToken: parent.RunToken, WorkerID: parent.WorkerID,
+	}
+
+	err := runAdmittedJob(context.Background(), controller, job, nil, store, func() {}, nil, trace.SpanFromContext(context.Background()))
+
+	require.NoError(t, err)
+	require.Equal(t, config.StatusCancelled, job.Status)
+	require.Equal(t, config.StatusCancelled, job.OwnerStatus)
+	require.Equal(t, 1, controller.cleanCalls)
+	require.Equal(t, 1, controller.saveCalls)
+}
+
+func TestRunAdmittedJobLeavesCancelledAttemptRecoverableAfterOwnershipDrift(t *testing.T) {
+	parent := &model.WorkflowQueue{
+		TaskID: "task-drift", Status: config.StatusRunning, RunGeneration: 4,
+		RunToken: "token-4", WorkerID: "worker-4",
+	}
+	store := &workflowOwnedJobInfoStore{workflowTask: parent}
+	controller := &recordingTerminalJobCtl{
+		runErr: errors.New("request interrupted"),
+		onRun: func() {
+			parent.Status = config.StatusCancelled
+			parent.RunToken = "new-token"
+		},
+	}
+	job := &model.JobTask{
+		TaskID: parent.TaskID, JobType: string(config.JobDeployCallback), Status: config.StatusPrepare,
+		ExecutionKey: "execution-4", RunGeneration: 4, OwnerRunGeneration: 4,
+		OwnerStatus: config.StatusRunning, RunToken: "token-4", WorkerID: parent.WorkerID,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := runAdmittedJob(ctx, controller, job, nil, store, func() {}, nil, trace.SpanFromContext(ctx))
+
+	require.ErrorIs(t, err, signal.ErrInfrastructureStop)
+	require.ErrorIs(t, err, errWorkflowJobOwnershipChanged)
+	require.Zero(t, controller.cleanCalls)
+	require.Zero(t, controller.saveCalls)
 }
 
 func TestPersistTerminalJobStateDoesNotProjectComponentAfterSaveFailure(t *testing.T) {

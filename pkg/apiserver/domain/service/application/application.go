@@ -24,7 +24,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
-	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 const (
@@ -240,70 +239,14 @@ func (c *applicationsServiceImpl) createApplications(
 		return nil, err
 	}
 
-	var (
-		application *model.Applications
-		err         error
-	)
 	if c.Store == nil {
 		return nil, fmt.Errorf("datastore is not initialized")
 	}
-	templateEnabled := req.TemplateEnabled != nil && *req.TemplateEnabled
+	application, refreshTransaction, err := c.prepareApplicationForCreate(ctx, req, mutation != nil)
+	if err != nil {
+		return nil, err
+	}
 	refreshAppID := strings.TrimSpace(req.ID)
-	var refreshTransaction datastore.Transactional
-	if refreshAppID != "" {
-		var ok bool
-		refreshTransaction, ok = c.Store.(datastore.Transactional)
-		if !ok {
-			return nil, fmt.Errorf("application refresh requires transactional datastore")
-		}
-		if err := EnsureAppWorkflowIdle(ctx, c.Store, refreshAppID); err != nil {
-			return nil, err
-		}
-		if err := EnsureNoPendingStatefulSetCleanup(ctx, c.Store, refreshAppID); err != nil {
-			return nil, err
-		}
-		application, err = c.refreshExistingApplication(ctx, c.Store, req, mutation != nil)
-		if err != nil {
-			return nil, err
-		}
-		if application.ID != refreshAppID {
-			return nil, bcode.ErrApplicationNotExist
-		}
-	} else {
-		targetNamespace := serviceNamespaceOrDefault(req.Namespace)
-		if !templateEnabled {
-			if err := c.ensureStandardApplicationNameAvailable(ctx, targetNamespace, req.Name, ""); err != nil {
-				return nil, err
-			}
-		}
-		application = model.NewApplications(
-			utils.RandStringByNumLowercase(24),
-			req.Name,
-			req.Namespace,
-			req.Version,
-			req.Alias,
-			req.Project,
-			req.Description,
-			req.Icon,
-			templateEnabled,
-		)
-	}
-	if mutation == nil && !req.ImportAsObserve && application.EffectiveManagementMode() != config.ManagementModeNative {
-		return nil, fmt.Errorf(
-			"%w: generic application replacement is disabled for %s applications",
-			bcode.ErrApplicationManagementMode,
-			application.EffectiveManagementMode(),
-		)
-	}
-	if req.ImportAsObserve {
-		application.ManagementMode = config.ManagementModeObserve
-	}
-	if application.Namespace == "" {
-		application.Namespace = config.DefaultNamespace
-	}
-	if scope, ok := access.FromContext(ctx); ok {
-		application.WorkspaceID = scope.WorkspaceID
-	}
 
 	callbackSelection, err := c.resolveCreateApplicationCallback(ctx, req)
 	if err != nil {
@@ -374,70 +317,8 @@ func (c *applicationsServiceImpl) createApplications(
 				return err
 			}
 		}
-		managementModeBeforeMutation := application.EffectiveManagementMode()
-		if mutation != nil {
-			if err := mutation(ctx, store, application, components); err != nil {
-				return err
-			}
-			if application.EffectiveManagementMode() != config.ManagementModeAdopted {
-				return fmt.Errorf(
-					"%w: adopted application mutation produced %s mode",
-					bcode.ErrApplicationManagementMode,
-					application.EffectiveManagementMode(),
-				)
-			}
-		}
-		if err := repository.CreateApplications(ctx, store, application); err != nil {
-			return err
-		}
-		if callbackSelection.setCallback && callbackSelection.callback == nil {
-			if err := updateApplicationCallbackField(ctx, store, application.ID, nil); err != nil {
-				return err
-			}
-		}
-		if err := repository.DelComponentsByAppID(ctx, store, application.ID); err != nil {
-			klog.Errorf("pre-cleanup components for application %s failed: %v", application.ID, err)
-			return bcode.ErrComponentBuild
-		}
-		if err := batchAddComponents(ctx, store, components); err != nil {
-			klog.Errorf("batch create components for application %s failed: %v", application.ID, err)
-			return bcode.ErrCreateComponents
-		}
-		syncWorkflowDisabled := mutation != nil &&
-			refreshAppID != "" &&
-			managementModeBeforeMutation == config.ManagementModeObserve
-		wf, err := c.upsertDefaultWorkflow(ctx, store, application, req, resolvedComponents, callbackSelection, syncWorkflowDisabled)
-		if err != nil {
-			return err
-		}
-		workflow = wf
-		if _, err := c.upsertUpdateWorkflow(ctx, store, application, req, resolvedComponents, callbackSelection, syncWorkflowDisabled); err != nil {
-			return err
-		}
-		if application.EffectiveManagementMode() == config.ManagementModeObserve {
-			workflows, err := repository.FindWorkflowsByAppID(ctx, store, application.ID)
-			if err != nil {
-				return err
-			}
-			for _, managedWorkflow := range workflows {
-				if managedWorkflow == nil || managedWorkflow.Disabled {
-					continue
-				}
-				managedWorkflow.Disabled = true
-				if err := store.Put(ctx, managedWorkflow); err != nil {
-					return err
-				}
-			}
-			if err := repository.DeleteWorkflowSchedulesByAppID(ctx, store, application.ID); err != nil {
-				return fmt.Errorf("delete observe application workflow schedules: %w", err)
-			}
-		}
-		if callbackSelection.overwriteAll {
-			if err := updateWorkflowCallbacksForApp(ctx, store, application.ID, callbackSelection.callback); err != nil {
-				return err
-			}
-		}
-		return nil
+		workflow, err = c.persistCreatedApplication(ctx, store, application, components, req, resolvedComponents, callbackSelection, mutation, refreshAppID)
+		return err
 	}
 
 	if refreshTransaction != nil {
@@ -459,6 +340,138 @@ func (c *applicationsServiceImpl) createApplications(
 	c.invalidateApplicationListCaches(ctx)
 	c.invalidateApplicationComponentsCache(application.ID)
 	return base, nil
+}
+
+func (c *applicationsServiceImpl) prepareApplicationForCreate(ctx context.Context, req apisv1.CreateApplicationsRequest, hasMutation bool) (*model.Applications, datastore.Transactional, error) {
+	var (
+		application *model.Applications
+		err         error
+	)
+	templateEnabled := req.TemplateEnabled != nil && *req.TemplateEnabled
+	refreshAppID := strings.TrimSpace(req.ID)
+	var refreshTransaction datastore.Transactional
+	if refreshAppID != "" {
+		var ok bool
+		refreshTransaction, ok = c.Store.(datastore.Transactional)
+		if !ok {
+			return nil, nil, fmt.Errorf("application refresh requires transactional datastore")
+		}
+		if err := EnsureAppWorkflowIdle(ctx, c.Store, refreshAppID); err != nil {
+			return nil, nil, err
+		}
+		if err := EnsureNoPendingStatefulSetCleanup(ctx, c.Store, refreshAppID); err != nil {
+			return nil, nil, err
+		}
+		application, err = c.refreshExistingApplication(ctx, c.Store, req, hasMutation)
+		if err != nil {
+			return nil, nil, err
+		}
+		if application.ID != refreshAppID {
+			return nil, nil, bcode.ErrApplicationNotExist
+		}
+	} else {
+		targetNamespace := serviceNamespaceOrDefault(req.Namespace)
+		if !templateEnabled {
+			if err := c.ensureStandardApplicationNameAvailable(ctx, targetNamespace, req.Name, ""); err != nil {
+				return nil, nil, err
+			}
+		}
+		application = model.NewApplications(
+			utils.RandStringByNumLowercase(24),
+			req.Name,
+			req.Namespace,
+			req.Version,
+			req.Alias,
+			req.Project,
+			req.Description,
+			req.Icon,
+			templateEnabled,
+		)
+	}
+	if !hasMutation && !req.ImportAsObserve && application.EffectiveManagementMode() != config.ManagementModeNative {
+		return nil, nil, fmt.Errorf(
+			"%w: generic application replacement is disabled for %s applications",
+			bcode.ErrApplicationManagementMode,
+			application.EffectiveManagementMode(),
+		)
+	}
+	if req.ImportAsObserve {
+		application.ManagementMode = config.ManagementModeObserve
+	}
+	if application.Namespace == "" {
+		application.Namespace = config.DefaultNamespace
+	}
+	if scope, ok := access.FromContext(ctx); ok {
+		application.WorkspaceID = scope.WorkspaceID
+	}
+
+	return application, refreshTransaction, nil
+}
+
+func (c *applicationsServiceImpl) persistCreatedApplication(ctx context.Context, store datastore.DataStore, application *model.Applications, components []*model.ApplicationComponent, req apisv1.CreateApplicationsRequest, resolvedComponents []apisv1.CreateComponentRequest, callbackSelection applicationCallbackSelection, mutation ApplicationCreateMutation, refreshAppID string) (*model.Workflow, error) {
+	managementModeBeforeMutation := application.EffectiveManagementMode()
+	if mutation != nil {
+		if err := mutation(ctx, store, application, components); err != nil {
+			return nil, err
+		}
+		if application.EffectiveManagementMode() != config.ManagementModeAdopted {
+			return nil, fmt.Errorf(
+				"%w: adopted application mutation produced %s mode",
+				bcode.ErrApplicationManagementMode,
+				application.EffectiveManagementMode(),
+			)
+		}
+	}
+	if err := repository.CreateApplications(ctx, store, application); err != nil {
+		return nil, err
+	}
+	if callbackSelection.setCallback && callbackSelection.callback == nil {
+		if err := updateApplicationCallbackField(ctx, store, application.ID, nil); err != nil {
+			return nil, err
+		}
+	}
+	if err := repository.DelComponentsByAppID(ctx, store, application.ID); err != nil {
+		klog.Errorf("pre-cleanup components for application %s failed: %v", application.ID, err)
+		return nil, bcode.ErrComponentBuild
+	}
+	if err := batchAddComponents(ctx, store, components); err != nil {
+		klog.Errorf("batch create components for application %s failed: %v", application.ID, err)
+		return nil, bcode.ErrCreateComponents
+	}
+	syncWorkflowDisabled := mutation != nil &&
+		refreshAppID != "" &&
+		managementModeBeforeMutation == config.ManagementModeObserve
+	wf, err := c.upsertDefaultWorkflow(ctx, store, application, req, resolvedComponents, callbackSelection, syncWorkflowDisabled)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := c.upsertUpdateWorkflow(ctx, store, application, req, resolvedComponents, callbackSelection, syncWorkflowDisabled); err != nil {
+		return nil, err
+	}
+	if application.EffectiveManagementMode() == config.ManagementModeObserve {
+		workflows, err := repository.FindWorkflowsByAppID(ctx, store, application.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, managedWorkflow := range workflows {
+			if managedWorkflow == nil || managedWorkflow.Disabled {
+				continue
+			}
+			managedWorkflow.Disabled = true
+			if err := store.Put(ctx, managedWorkflow); err != nil {
+				return nil, err
+			}
+		}
+		if err := repository.DeleteWorkflowSchedulesByAppID(ctx, store, application.ID); err != nil {
+			return nil, fmt.Errorf("delete observe application workflow schedules: %w", err)
+		}
+	}
+	if callbackSelection.overwriteAll {
+		if err := updateWorkflowCallbacksForApp(ctx, store, application.ID, callbackSelection.callback); err != nil {
+			return nil, err
+		}
+	}
+	return wf, nil
 }
 
 func batchAddComponents(ctx context.Context, store datastore.DataStore, components []*model.ApplicationComponent) error {
@@ -911,18 +924,6 @@ func prepareComponents(appID, namespace string, reqComponents []apisv1.CreateCom
 	return components, nil
 }
 
-func stringMapEqual(left, right map[string]string) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for key, value := range left {
-		if right[key] != value {
-			return false
-		}
-	}
-	return true
-}
-
 func copyStringMap(source map[string]string) map[string]string {
 	if source == nil {
 		return nil
@@ -946,45 +947,6 @@ func validateExplicitServiceTraitNames(traits apisv1.Traits, fieldPrefix string)
 			continue
 		}
 		return fmt.Errorf("%w: %s", bcode.ErrApplicationConfig, validationErrors[0].Message)
-	}
-	return nil
-}
-
-type resolvedServiceTraitRef struct {
-	componentIndex int
-	componentName  string
-	serviceIndex   int
-}
-
-func validateResolvedServiceTraitNames(appName, namespace string, components []apisv1.CreateComponentRequest) error {
-	namespace = strings.TrimSpace(namespace)
-	if namespace == "" {
-		namespace = config.DefaultNamespace
-	}
-	seen := make(map[string]resolvedServiceTraitRef)
-	for componentIndex, component := range components {
-		componentName := strings.TrimSpace(component.Name)
-		for serviceIndex, serviceTrait := range component.Traits.Service {
-			serviceName := strings.TrimSpace(serviceTrait.Name)
-			if serviceName == "" {
-				serviceName = naming.ServiceName(componentName, appName)
-			}
-			if serviceName == "" {
-				continue
-			}
-			key := namespace + "\x00" + serviceName
-			current := resolvedServiceTraitRef{
-				componentIndex: componentIndex,
-				componentName:  componentName,
-				serviceIndex:   serviceIndex,
-			}
-			if previous, ok := seen[key]; ok {
-				return fmt.Errorf("%w: component[%d] %q traits.service[%d] resolves to duplicate service name %q in namespace %s already used by component[%d] %q traits.service[%d]",
-					bcode.ErrApplicationConfig, current.componentIndex, current.componentName, current.serviceIndex, serviceName, namespace,
-					previous.componentIndex, previous.componentName, previous.serviceIndex)
-			}
-			seen[key] = current
-		}
 	}
 	return nil
 }
@@ -1060,17 +1022,8 @@ func (c *applicationsServiceImpl) UpdateApplicationWorkflow(ctx context.Context,
 }
 
 func (c *applicationsServiceImpl) updateApplicationWorkflowLocked(ctx context.Context, appID string, req apisv1.UpdateApplicationWorkflowRequest) (*apisv1.UpdateWorkflowResponse, error) {
-	if appID == "" {
-		return nil, bcode.ErrApplicationNotExist
-	}
-	if len(req.Workflow) == 0 {
-		return nil, bcode.ErrWorkflowConfig
-	}
-	workflowType := config.NormalizeWorkflowTaskType(req.WorkflowType)
-	if workflowType != "" && !config.IsSupportedWorkflowTaskType(workflowType) {
-		return nil, bcode.ErrWorkflowConfig
-	}
-	if err := validateWorkflowFailurePolicy(req.FailurePolicy); err != nil {
+	workflowType, err := validateUpdateApplicationWorkflowRequest(appID, req)
+	if err != nil {
 		return nil, err
 	}
 	app, err := c.AppRepo.FindByID(ctx, appID)
@@ -1113,28 +1066,9 @@ func (c *applicationsServiceImpl) updateApplicationWorkflowLocked(ctx context.Co
 		return nil, err
 	}
 
-	targetName := strings.ToLower(strings.TrimSpace(req.Name))
-	var target *model.Workflow
-	if req.WorkflowID != "" {
-		wf, err := c.WorkflowRepo.FindByID(ctx, req.WorkflowID)
-		if err != nil {
-			if errors.Is(err, datastore.ErrRecordNotExist) {
-				return nil, bcode.ErrWorkflowNotExist
-			}
-			return nil, err
-		}
-		if wf.AppID != app.ID {
-			return nil, bcode.ErrWorkflowConfig
-		}
-		target = wf
-		if targetName == "" {
-			targetName = target.Name
-		}
-	} else {
-		if targetName == "" {
-			targetName = fmt.Sprintf("%s-workflow", strings.ToLower(app.Name))
-		}
-		targetName = ensureUniqueWorkflowName(targetName, workflows)
+	target, targetName, err := c.resolveWorkflowUpdateTarget(ctx, app, req, workflows)
+	if err != nil {
+		return nil, err
 	}
 
 	workflowSteps := convertWorkflowStepsFromRequest(req.Workflow, workflowComponentNamesFromModels(components))
@@ -1200,12 +1134,47 @@ func (c *applicationsServiceImpl) updateApplicationWorkflowLocked(ctx context.Co
 	return &apisv1.UpdateWorkflowResponse{WorkflowID: target.ID}, nil
 }
 
-// rollbackApplicationCreation 回滚应用创建过程中的组件创建
-func (c *applicationsServiceImpl) rollbackApplicationCreation(ctx context.Context, application *model.Applications) {
-	if application == nil {
-		return
+func validateUpdateApplicationWorkflowRequest(appID string, req apisv1.UpdateApplicationWorkflowRequest) (config.WorkflowTaskType, error) {
+	if appID == "" {
+		return "", bcode.ErrApplicationNotExist
 	}
-	if err := c.ComponentRepo.DeleteByAppID(ctx, application.ID); err != nil {
-		klog.Errorf("cleanup components for application %s failed: %v", application.ID, err)
+	if len(req.Workflow) == 0 {
+		return "", bcode.ErrWorkflowConfig
 	}
+	workflowType := config.NormalizeWorkflowTaskType(req.WorkflowType)
+	if workflowType != "" && !config.IsSupportedWorkflowTaskType(workflowType) {
+		return "", bcode.ErrWorkflowConfig
+	}
+	if err := validateWorkflowFailurePolicy(req.FailurePolicy); err != nil {
+		return "", err
+	}
+	return workflowType, nil
+}
+
+func (c *applicationsServiceImpl) resolveWorkflowUpdateTarget(ctx context.Context, app *model.Applications, req apisv1.UpdateApplicationWorkflowRequest, workflows []*model.Workflow) (*model.Workflow, string, error) {
+	targetName := strings.ToLower(strings.TrimSpace(req.Name))
+	var target *model.Workflow
+	if req.WorkflowID != "" {
+		wf, err := c.WorkflowRepo.FindByID(ctx, req.WorkflowID)
+		if err != nil {
+			if errors.Is(err, datastore.ErrRecordNotExist) {
+				return nil, "", bcode.ErrWorkflowNotExist
+			}
+			return nil, "", err
+		}
+		if wf.AppID != app.ID {
+			return nil, "", bcode.ErrWorkflowConfig
+		}
+		target = wf
+		if targetName == "" {
+			targetName = target.Name
+		}
+	} else {
+		if targetName == "" {
+			targetName = fmt.Sprintf("%s-workflow", strings.ToLower(app.Name))
+		}
+		targetName = ensureUniqueWorkflowName(targetName, workflows)
+	}
+
+	return target, targetName, nil
 }
