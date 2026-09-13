@@ -12,6 +12,7 @@ import subprocess
 import tarfile
 import tempfile
 import threading
+import time
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -25,6 +26,7 @@ def config():
     return {
         "taskId": "task-test", "namespace": "workspace-test",
         "datasetURL": "http://platform.test/input", "resultURL": "http://platform.test/result",
+        "eventURL": "http://platform.test/events",
         "token": "private-transfer-token", "datasetDigest": "a" * 64,
         "agent": {"name": "oracle"}, "options": {"attempts": 1, "concurrency": 1},
         "resources": {"cpu": "1", "memory": "1Gi", "cpuLimit": "2", "memoryLimit": "2Gi"},
@@ -197,8 +199,10 @@ class RunnerTest(unittest.TestCase):
         source.write_bytes(b"complete raw archive")
         connection = MagicMock()
         connection.getresponse.return_value.status = 201
+        connection.getresponse.return_value.read.return_value = json.dumps({"data": {"id": "a" * 64, "digest": "b" * 64}}).encode()
         with patch.object(runner.http.client, "HTTPConnection", return_value=connection):
-            runner.upload_results(config(), source, "failed")
+            artifact = runner.upload_results(config(), source, "failed")
+        self.assertEqual(artifact["id"], "a" * 64)
         connection.putrequest.assert_called_once_with("POST", "/result")
         connection.putheader.assert_any_call("X-Eruun-Runner-Pod-UID", "runner-uid")
         connection.putheader.assert_any_call("X-Eruun-Evaluation-Status", "failed")
@@ -206,6 +210,107 @@ class RunnerTest(unittest.TestCase):
         connection.getresponse.return_value.status = 409
         with patch.object(runner.http.client, "HTTPConnection", return_value=connection), self.assertRaises(runner.RunnerError):
             runner.upload_results(config(), source, "succeeded")
+
+    def test_runner_event_ack_retry_replays_exact_sequence(self):
+        observed = []
+
+        def post(cfg, event, deadline):
+            observed.append(dict(event))
+            if len(observed) == 1:
+                raise ConnectionResetError("ack lost")
+            return "continue"
+
+        reporter = runner.StatusReporter(config(), threading.Event(), time.monotonic() + 5)
+        with patch.object(runner, "post_runner_event", side_effect=post), patch.object(reporter.stop, "wait", return_value=False):
+            reporter.claim()
+            reporter.close()
+        self.assertEqual([event["sequence"] for event in observed], [1, 1])
+        self.assertEqual(observed[0], observed[1])
+
+    def test_runner_event_retries_temporary_platform_failure(self):
+        observed = []
+
+        def post(cfg, event, deadline):
+            observed.append(dict(event))
+            if len(observed) < 3:
+                raise runner.RetryableTransferError("temporary API or database failure")
+            return "continue"
+
+        reporter = runner.StatusReporter(config(), threading.Event(), time.monotonic() + 5)
+        with patch.object(runner, "post_runner_event", side_effect=post), patch.object(reporter.stop, "wait", return_value=False):
+            reporter.claim()
+            reporter.close()
+        self.assertEqual([event["sequence"] for event in observed], [1, 1, 1])
+        self.assertTrue(all(event == observed[0] for event in observed))
+
+    def test_heartbeat_stop_cancels_framework_control(self):
+        cancel = threading.Event()
+        kinds = []
+
+        def post(cfg, event, deadline):
+            kinds.append(event["kind"])
+            return "stop" if event["kind"] == "heartbeat" else "continue"
+
+        reporter = runner.StatusReporter(config(), cancel, time.monotonic() + 5)
+        with patch.object(runner, "HEARTBEAT_SECONDS", 0.01), patch.object(runner, "post_runner_event", side_effect=post):
+            reporter.claim()
+            self.assertTrue(cancel.wait(1))
+            reporter.close()
+        self.assertIn("heartbeat", kinds)
+
+    def test_main_claims_before_starting_evaluation(self):
+        claimed = []
+        reporter = MagicMock()
+        reporter.claim.side_effect = lambda: claimed.append(True)
+
+        def execute(*args, **kwargs):
+            self.assertTrue(claimed)
+            return 0
+
+        with patch.dict(os.environ, {"ERUUN_JOB_CONFIG": json.dumps(config())}), \
+                patch.object(runner, "StatusReporter", return_value=reporter), \
+                patch.object(runner.Path, "mkdir"), \
+                patch.object(runner.tempfile, "mkdtemp", return_value=str(self.root)), \
+                patch.object(runner, "execute", side_effect=execute):
+            self.assertEqual(runner.main(), 0)
+        reporter.claim.assert_called_once()
+
+    def test_conflicting_claim_stops_before_dataset_or_harbor(self):
+        reporter = MagicMock()
+        reporter.claim.side_effect = runner.RunnerError("platform rejected runner event with HTTP 409")
+        with patch.dict(os.environ, {"ERUUN_JOB_CONFIG": json.dumps(config())}), \
+                patch.object(runner, "StatusReporter", return_value=reporter), \
+                patch.object(runner, "execute") as execute:
+            self.assertEqual(runner.main(), 1)
+        execute.assert_not_called()
+
+    def test_result_is_uploaded_before_terminal_ack(self):
+        package = self.example_package()
+        calls = []
+        reporter = MagicMock()
+        reporter.shorten_deadline.side_effect = lambda deadline: deadline
+        reporter.emit.side_effect = lambda kind, **fields: calls.append((kind, fields))
+        reporter.terminal.side_effect = lambda terminal: calls.append(("terminal", terminal))
+
+        def framework(cfg, output, cancel, timeout):
+            (output / "run").mkdir()
+            (output / "run/result.json").write_text(json.dumps(result()))
+            collected_trial(output)
+            return 0, None
+
+        def upload(cfg, path, status, **kwargs):
+            calls.append(("upload", status))
+            return {"id": "a" * 64, "digest": "b" * 64}
+
+        with patch.object(runner.importlib.metadata, "version", return_value=runner.FRAMEWORK_VERSION), \
+                patch.object(runner, "download_package", side_effect=lambda cfg, dest: shutil.copyfile(package, dest)), \
+                patch.object(runner, "run_framework", side_effect=framework), \
+                patch.object(runner, "upload_results", side_effect=upload):
+            code = runner.execute(config(), self.root, threading.Event(), reporter=reporter, final_deadline=time.monotonic() + 10)
+        self.assertEqual(code, 0)
+        names = [call[0] for call in calls]
+        self.assertLess(names.index("upload"), names.index("terminal"))
+        self.assertEqual(calls[-1][1]["artifactId"], "a" * 64)
 
     def test_network_retry_reuses_exact_archive_bytes(self):
         path = self.root / "result.tar.gz"

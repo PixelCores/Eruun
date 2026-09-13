@@ -64,9 +64,10 @@ func BuildTask(ctx context.Context, store datastore.DataStore, cfg *config.Confi
 		runner.WorkingDir = "/work"
 		runner.SecurityContext = &corev1.SecurityContext{RunAsUser: ptr.To(int64(1000)), RunAsNonRoot: ptr.To(true), AllowPrivilegeEscalation: ptr.To(false), ReadOnlyRootFilesystem: ptr.To(true), Capabilities: &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}}, SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault}}
 		configJSON, marshalErr := json.Marshal(map[string]any{
-			"taskId": task.TaskID, "namespace": namespace, "datasetURL": cfg.Jobs.APIURL + "/api/v1/job-runners/" + task.TaskID + "/dataset", "resultURL": cfg.Jobs.APIURL + "/api/v1/job-runners/" + task.TaskID + "/results", "token": task.JobToken, "datasetDigest": dataset.Digest,
+			"taskId": task.TaskID, "namespace": namespace, "datasetURL": cfg.Jobs.APIURL + "/api/v1/job-runners/" + task.TaskID + "/dataset", "resultURL": cfg.Jobs.APIURL + "/api/v1/job-runners/" + task.TaskID + "/results", "eventURL": cfg.Jobs.APIURL + "/api/v1/job-runners/" + task.TaskID + "/events", "token": task.JobToken, "datasetDigest": dataset.Digest,
 			"agent": spec.EvaluationAgent{Name: evaluation.Agent.Name, Model: evaluation.Agent.Model}, "options": evaluation.Options, "resources": declaration.Traits.Resources, "sandboxServiceAccount": "default", "timeoutSeconds": timeout,
-			"transferTimeoutSeconds": spec.JobArchiveTimeoutSeconds,
+			"transferTimeoutSeconds":     spec.JobArchiveTimeoutSeconds,
+			"finalizationTimeoutSeconds": spec.EvaluationCollectionGraceSeconds,
 		})
 		if marshalErr != nil {
 			return nil, marshalErr

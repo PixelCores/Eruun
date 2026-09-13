@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -21,6 +22,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	batchv1 "k8s.io/api/batch/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
@@ -64,6 +67,7 @@ type Detail struct {
 	Results         []*model.JobArtifact `json:"results"`
 	Deliveries      []*model.JobDelivery `json:"deliveries"`
 	CollectionState string               `json:"collectionState,omitempty"`
+	RunnerStatus    *RunnerStatus        `json:"runnerStatus,omitempty"`
 }
 
 type StoragePolicy struct {
@@ -279,6 +283,10 @@ func (s *Service) Get(ctx context.Context, taskID string) (*Detail, error) {
 		return nil, err
 	}
 	if declaration.Type == string(config.JobAgentEvaluation) {
+		out.RunnerStatus, err = latestRunnerStatus(ctx, s.Store, out.Executions)
+		if err != nil {
+			return nil, err
+		}
 		out.CollectionState = "pending"
 		if terminal(task.Status) {
 			out.CollectionState = "unavailable"
@@ -315,7 +323,10 @@ type RunnerIdentity struct{ TaskID, Token, PodName, PodUID string }
 type runnerAuthorization struct {
 	task      *model.WorkflowQueue
 	job       *model.JobInfo
+	liveJob   *batchv1.Job
 	namespace string
+	jobUID    string
+	identity  RunnerIdentity
 }
 
 func (s *Service) authorizeRunner(ctx context.Context, identity RunnerIdentity) (*runnerAuthorization, error) {
@@ -324,21 +335,26 @@ func (s *Service) authorizeRunner(ctx context.Context, identity RunnerIdentity) 
 	}
 	task := &model.WorkflowQueue{TaskID: identity.TaskID}
 	if err := s.Store.Get(ctx, task); err != nil {
-		return nil, bcode.ErrUnauthorized
+		if errors.Is(err, datastore.ErrRecordNotExist) {
+			return nil, bcode.ErrUnauthorized
+		}
+		return nil, err
 	}
 	if task.Type != config.WorkflowTaskTypeJob || task.AppID != "" || subtle.ConstantTimeCompare([]byte(task.JobToken), []byte(identity.Token)) != 1 {
 		return nil, bcode.ErrUnauthorized
 	}
 	if err := runnerParentAuthorized(ctx, s.Store, task); err != nil {
-		return nil, bcode.ErrUnauthorized
+		return nil, err
 	}
-	var declared spec.JobSpec
-	if json.Unmarshal([]byte(task.JobSpec), &declared) != nil || declared.Type != string(config.JobAgentEvaluation) {
+	if !validateRunnerDeclaration(task.JobSpec) {
 		return nil, bcode.ErrUnauthorized
 	}
 	space := &model.Workspace{ID: task.WorkspaceID}
 	if err := s.Store.Get(ctx, space); err != nil {
-		return nil, bcode.ErrUnauthorized
+		if errors.Is(err, datastore.ErrRecordNotExist) {
+			return nil, bcode.ErrUnauthorized
+		}
+		return nil, err
 	}
 	rows, err := s.Store.List(ctx, &model.JobInfo{TaskID: task.TaskID, WorkspaceID: task.WorkspaceID}, &datastore.ListOptions{})
 	if err != nil {
@@ -347,7 +363,10 @@ func (s *Service) authorizeRunner(ctx context.Context, identity RunnerIdentity) 
 	scoped := account.WithScope(ctx, account.Scope{WorkspaceID: space.ID, Namespace: space.Namespace, Role: "member"})
 	pod, err := s.Kube.CoreV1().Pods(space.Namespace).Get(scoped, identity.PodName, metav1.GetOptions{})
 	if err != nil {
-		return nil, bcode.ErrUnauthorized
+		if k8serrors.IsNotFound(err) {
+			return nil, bcode.ErrUnauthorized
+		}
+		return nil, err
 	}
 	if string(pod.UID) != identity.PodUID || pod.Spec.ServiceAccountName != workspace.EvaluationRunnerName || len(pod.Spec.Containers) != 1 || pod.Spec.Containers[0].Name != "runner" || pod.Annotations[config.AnnotationJobTaskID] != task.TaskID {
 		return nil, bcode.ErrUnauthorized
@@ -363,13 +382,19 @@ func (s *Service) authorizeRunner(ctx context.Context, identity RunnerIdentity) 
 		for _, owner := range pod.OwnerReferences {
 			if owner.Kind == "Job" && owner.Name == job.ServiceName && owner.Controller != nil && *owner.Controller {
 				live, err := s.Kube.BatchV1().Jobs(space.Namespace).Get(scoped, owner.Name, metav1.GetOptions{})
-				if err != nil || live.UID != owner.UID {
+				if err != nil {
+					if k8serrors.IsNotFound(err) {
+						return nil, bcode.ErrUnauthorized
+					}
+					return nil, err
+				}
+				if live.UID != owner.UID {
 					return nil, bcode.ErrUnauthorized
 				}
 				if workflowjob.ValidateInstantJobRetryExecution(job, live) != nil {
 					return nil, bcode.ErrUnauthorized
 				}
-				return &runnerAuthorization{task: task, job: job, namespace: space.Namespace}, nil
+				return &runnerAuthorization{task: task, job: job, liveJob: live, namespace: space.Namespace, jobUID: string(live.UID), identity: identity}, nil
 			}
 		}
 	}
@@ -380,6 +405,10 @@ func (s *Service) RunnerDataset(ctx context.Context, identity RunnerIdentity, w 
 	auth, err := s.authorizeRunner(ctx, identity)
 	if err != nil {
 		return err
+	}
+	state, _, err := decodeRunnerState(auth.job)
+	if err != nil || !runnerOwnerMatches(state, auth) {
+		return bcode.ErrUnauthorized
 	}
 	var declared spec.JobSpec
 	var evaluation spec.AgentEvaluationSpec
@@ -396,6 +425,10 @@ func (s *Service) RunnerResult(ctx context.Context, identity RunnerIdentity, r i
 	auth, err := s.authorizeRunner(ctx, identity)
 	if err != nil {
 		return nil, err
+	}
+	state, _, err := decodeRunnerState(auth.job)
+	if err != nil || !runnerOwnerMatches(state, auth) {
+		return nil, bcode.ErrUnauthorized
 	}
 	var declared spec.JobSpec
 	if err = json.Unmarshal([]byte(auth.task.JobSpec), &declared); err != nil || declared.ResultPolicy == nil {
@@ -414,7 +447,7 @@ func (s *Service) RunnerResult(ctx context.Context, identity RunnerIdentity, r i
 			return bcode.ErrUnauthorized
 		}
 		if err := runnerParentAuthorized(ctx, tx, task); err != nil {
-			return bcode.ErrUnauthorized
+			return err
 		}
 		// A recovered owner may adopt the same immutable execution checkpoint.
 		// A replacement execution may never publish under the old Pod identity.
@@ -422,7 +455,11 @@ func (s *Service) RunnerResult(ctx context.Context, identity RunnerIdentity, r i
 		if err := locker.GetForUpdate(ctx, job); err != nil {
 			return err
 		}
-		if terminal(config.Status(job.Status)) || job.ExecutionKey == nil || *job.ExecutionKey != *auth.job.ExecutionKey || job.RunGeneration != auth.job.RunGeneration || job.Attempt != auth.job.Attempt || job.InternalInfo != auth.job.InternalInfo {
+		if err := validateLockedRunnerJob(job, auth); err != nil {
+			return err
+		}
+		state, _, err := decodeRunnerState(job)
+		if err != nil || !runnerOwnerMatches(state, auth) {
 			return bcode.ErrUnauthorized
 		}
 		return nil
@@ -444,7 +481,10 @@ func runnerParentAuthorized(ctx context.Context, store datastore.DataStore, task
 		return bcode.ErrUnauthorized
 	}
 	now, err := clock.CurrentDatabaseTime(ctx)
-	if err != nil || !task.LeaseExpiresAt.After(now) {
+	if err != nil {
+		return err
+	}
+	if !task.LeaseExpiresAt.After(now) {
 		return bcode.ErrUnauthorized
 	}
 	return nil

@@ -1,6 +1,6 @@
 # Eruun Agent 评测任务演进方向
 
-> 状态：Draft / Proposal。`main` 已实现 Harbor `agent_evaluation` 空间 Job；当前公共 API、默认参数与运行边界以 [空间 Job API](workspace-jobs-api.md) 和 [Harbor Runner](../runners/harbor/README.md) 为准。本文只描述单实例认领、阶段状态、更多目标与质量能力的后续演进。
+> 状态：Draft / Proposal。`main` 已实现 Harbor `agent_evaluation` 空间 Job 及其单实例认领、阶段/心跳/进度/终态协议；当前公共 API、默认参数与运行边界以 [空间 Job API](workspace-jobs-api.md)、[Harbor Runner](../runners/harbor/README.md) 和 [Runner 实现参考](agent-evaluation-runner-service-design.md) 为准。本文保留更多目标、Judge、质量门禁和其他 Agent 能力的后续演进。
 
 > 示例说明：本文中的后续流程块仅是概念伪代码，不可直接执行；已注册类型与接口不得由本文重新定义。
 
@@ -70,7 +70,7 @@ TaskID 属于服务端生成的执行元数据，不是调用方需要预先填�
 
 ## 5. 执行与状态
 
-当前路径复用统一任务提交与执行链路，由一个 WorkflowQueue 任务驱动所属空间 namespace 中的 `batch/v1 Job`。后续只在现有 Runner 与内部 HTTP 边界增加阶段状态：
+当前路径复用统一任务提交与执行链路，由一个 WorkflowQueue 任务驱动所属空间 namespace 中的 `batch/v1 Job`，并在现有 Runner 与内部 HTTP 边界报告阶段状态：
 
 ```text
 submit agent_evaluation Job
@@ -79,13 +79,15 @@ submit agent_evaluation Job
   -> allocate TaskID and persist WorkflowQueue/Job intent
   -> establish execution generation and Worker ownership
   -> build batch/v1 Job with the fixed Harbor Runner image
+  -> Runner claims the current attempt
   -> Runner downloads the dataset and supervises harbor run
-  -> Runner publishes phase/heartbeat events (proposal)
-  -> Runner uploads the final native result archive (current)
+  -> Runner publishes phase/heartbeat/progress events
+  -> Runner uploads the final native result archive
+  -> Runner publishes terminal referencing the persisted artifact
   -> Kubernetes Job exits and Eruun exposes status/results
 ```
 
-图中的提交、构建、Runner 和最终结果上传是 Current；阶段与心跳事件是本 Proposal 的新增部分。
+图中的 claim、阶段、心跳、进度、结果和 terminal 闭环均已实现；本文后续提出的更多目标与质量能力仍是 Proposal。
 
 API 已在接受事务中持久化 WorkspaceID、服务端生成的 TaskID、版本化 JobSpec 和任务绑定能力；Worker 随后建立 ExecutionKey、Job RunGeneration 与 Attempt，并创建与 TaskID 绑定的 Kubernetes Job。阶段事件应复用这些身份及现有 Pod 名称/UID 校验，不创建 RunnerTask、claim 表或平行状态机。为覆盖 Kubernetes 在 Pod terminating 等窗口创建 replacement Pod 的可能性，Runner 必须在启动 Harbor 前通过同一内部状态协议，以 CAS 把当前 execution identity/attempt 原子认领给一个 Pod UID；认领 checkpoint 保存在现有 JobInfo/InternalInfo 事务边界中。
 
@@ -133,15 +135,15 @@ Runner 上报必须匹配持久化的 `JobInfo` 执行身份、attempt、Pod UID
 
 checkpoint 至少需要绑定任务、数据集、目标、Runner 版本和已完成 case 游标。具体控制接口、等待时间和重试次数留给实现 PR，不在本 Proposal 固定。
 
-## 10. 单实例认领与阶段状态增强门禁
+## 10. 已实现的单实例认领与阶段状态基线
 
 1. 在现有 Harbor Runner 上增加有界 phase/heartbeat/terminal 事件，不改变 `agent_evaluation` 的公共提交与结果 API。
 2. 复用当前任务能力、Pod 名称/UID、ExecutionKey、RunGeneration 和 Attempt 完成认证与迟到写入隔离；在现有 JobInfo/InternalInfo 中增加单实例 CAS 认领，不新增 claim 表或顶层实体。
 3. 验证子进程失败时 Runner 能先上传诊断和终态再退出，Runner 整体 OOM 时由 Kubernetes 证据兜底。
 4. 保持现有完整原始结果、ArtifactStore、空间授权、取消、超时和保留策略不退化。
-5. 再根据真实需要增加 Judge、质量门禁、更细进度或 checkpoint；只有出现可度量资源争用后才评估抢占。
+5. Judge、质量门禁、更细 checkpoint 和抢占仍只在真实需求和资源数据支持后另行设计。
 
-单实例认领与阶段状态增强须覆盖以下验收场景；未实现部分不表示当前已通过：
+单实例认领与阶段状态基线须持续覆盖以下验收场景；其中生产环境和未来能力仍以实际证据为准：
 
 | 场景 | 必须验证的结果 |
 | --- | --- |
@@ -157,4 +159,4 @@ checkpoint 至少需要绑定任务、数据集、目标、Runner 版本和已�
 | 提交与空间删除并发 | 不在已删除空间中接受任务；未完成任务继续约束空间删除；制品清理与保留规则有验证证据 |
 | 目标失效与清理 | 引用应用被删除或权限撤销时明确收敛；不改测其他版本、不误删目标资源；已产生结果按原空间权限和保留策略处理 |
 
-只有 claim/phase/heartbeat/terminal 的代码、持久化、认证、故障注入、部署和运维证据形成闭环后，才把这些增强写入 Current 文档；现有 Harbor API 与结果上传能力继续由 Current 文档描述。
+claim/phase/heartbeat/progress/terminal 的可执行契约已进入 Current 文档。下表同时保留未来扩展必须继续满足的回归边界；未完成的生产集群故障矩阵仍是 Draft PR 转 Ready 的交付门禁，不改变协议已经实现的事实。

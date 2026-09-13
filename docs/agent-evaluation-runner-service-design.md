@@ -1,8 +1,8 @@
-# Harbor Runner 单实例认领与阶段状态增量设计
+# Harbor Runner 单实例认领与阶段状态协议
 
-> 状态：Draft / Proposal。`main` 已实现 Harbor 0.22.0 Runner、空间 `agent_evaluation` Job、任务包下载、最终结果上传和 ArtifactStore。本文只设计现有 Runner 的单实例认领、阶段、心跳与终态上报增强，不代表这些增强已经可用。
+> 状态：Implemented Reference。`main` 已实现 Harbor 0.22.0 Runner、空间 `agent_evaluation` Job、任务包下载、最终结果上传、ArtifactStore，以及本文记录的单实例认领、阶段、心跳、进度与终态协议。Current 对外契约以 [空间 Job API](workspace-jobs-api.md) 和 [Harbor Runner](../runners/harbor/README.md) 为准。
 
-> 当前可执行契约以 [空间 Job API](workspace-jobs-api.md) 和 [Harbor Runner](../runners/harbor/README.md) 为准。本文中的事件名称、字段和入口均为概念设计，最终形式必须由实现、迁移和测试确定。
+> 本文解释实现边界和故障模型；更广的 Agent、MCP、Judge 与质量门禁仍见 Proposal 文档，不属于本状态协议。
 
 ## 1. 定位与已确认决策
 
@@ -35,7 +35,7 @@ Kubernetes 工作负载状态与评测业务状态并不等价：Pod `Running` �
 - 结果归档、内容摘要、完整性判断、MinIO/数据库保存、保留、下载与空间授权已经实现。
 - Runner Pod 使用 namespace 级专用 ServiceAccount；当前 Role 为创建、观察、exec 和删除 trial Pods 提供 namespace 范围的 Pod 权限，且不允许读取 Secret。trial Pod 使用不挂载 API Token 的低权限身份。
 
-### 2.2 尚未实现的增强
+### 2.2 已实现的增强
 
 - Runner 主动上报 preparing、running、finalizing 等内部阶段。
 - Runner 心跳、单调进度序号和控制面取消/停止响应。
@@ -43,7 +43,7 @@ Kubernetes 工作负载状态与评测业务状态并不等价：Pod `Running` �
 - replacement Pod 与原 Pod 可能并存时，启动 Harbor 前的单实例 CAS 认领。
 - 状态事件的幂等、迟到写入隔离、持久化映射与运维指标。
 
-首个增强不新增公共 Job 状态枚举、RunnerTask 表、消息队列消费者、反向 Pod RPC、Service 或 Ingress。claim owner 与事件游标写入现有 JobInfo/InternalInfo checkpoint；只有并发与故障测试证明这个事务边界仍不足时，才评估新的内部持久化结构。
+这些增强未新增公共 Job 状态枚举、RunnerTask 表、消息队列消费者、反向 Pod RPC、Service 或 Ingress。claim owner 与事件游标写入现有 JobInfo/InternalInfo checkpoint；只有并发与故障测试证明这个事务边界仍不足时，才评估新的内部持久化结构。
 
 ## 3. 目标与非目标
 
@@ -65,7 +65,7 @@ Kubernetes 工作负载状态与评测业务状态并不等价：Pod `Running` �
 - 不通过状态事件传输任务包、模型完整响应、无限日志或结果归档。
 - 不让 terminal 事件绕过现有结果完整性校验和 Kubernetes Job 收敛。
 - 不承诺外部模型调用或 Harbor trial 的 exactly-once。
-- 不在 Proposal 中冻结新路由、数据库列、超时默认值或事件字段。
+- 不借状态协议增加新的公共 Job 类型、数据库列或独立状态机。
 
 ## 4. 总体架构
 
@@ -87,8 +87,8 @@ flowchart LR
     Job --> Runner
     Runner --> Harbor
     Harbor --> Trial
-    Runner -->|dataset / results Current| API
-    Runner -->|claim / phase / heartbeat / terminal Proposal| API
+    Runner -->|dataset / results| API
+    Runner -->|claim / phase / heartbeat / progress / terminal| API
     API --> Artifacts
     Observer -->|OOM / exit / eviction / deadline| Worker
 ```
@@ -169,41 +169,35 @@ succeeded/failed 属于 terminal outcome，不是可反复更新的 phase；即�
 - workspace、execution identity 和权限从服务端记录派生，不相信请求体声明。
 - 状态入口必须版本化、限制请求体大小，并复用当前 URL 安全和超时策略。
 
-为避免端点膨胀，首个实现优先使用一个版本化内部事件入口承载 claim、phase、heartbeat、progress 和 terminal；具体路径与方法由实现 PR 确定，现有 dataset/results 接口保持不变。
+为避免端点膨胀，实现使用单一版本化内部事件入口 `POST /api/v1/job-runners/:taskID/events` 承载 claim、phase、heartbeat、progress 和 terminal；现有 dataset/results 接口路径保持不变，并增加 claim owner 门禁。
 
-### 7.2 概念事件
+### 7.2 v1 事件
 
 ```json
 {
-  "protocolVersion": "concept-v1",
+  "protocolVersion": "v1",
   "sequence": 12,
   "kind": "progress",
-  "phase": "running",
-  "observedAt": "runner diagnostic time",
   "progress": {
     "completedTrials": 2,
     "totalTrials": 5
-  },
-  "diagnostic": {
-    "reason": "bounded stable reason code",
-    "message": "redacted bounded summary"
   }
 }
 ```
 
-TaskID 和 Pod identity 已在 URL、认证与请求头中携带，不需要在请求体复制并信任。claim 以当前 execution identity、attempt 和 Pod UID 作为 owner；同一 owner 重放幂等，不同 Pod UID 的 claim 返回权威冲突。claim 成功后的 `sequence` 在该 owner 内单调递增；服务端接收时间用于排序和审计，Runner 时间只作诊断。
+内部入口固定为 `POST /api/v1/job-runners/:taskID/events`，请求体上限 64 KiB。TaskID 和 Pod identity 已在 URL、认证与请求头中携带，不在请求体复制并信任。kind 为 `claim/phase/heartbeat/progress/terminal`；claim 以当前 execution identity、attempt、Pod UID 和 live Job UID 作为 owner；同一 owner 重放幂等，不同 Pod UID 的 claim 返回 HTTP 409。claim 必须是 sequence 1，后续 `sequence` 在该 owner 内单调递增；服务端数据库接收时间用于排序、心跳和 stale 计算。
 
-terminal 事件可以补充 outcome、子进程 exit code/signal、结果归档摘要或已确认 artifact ID，以及独立 quality verdict。大型结果、完整日志、提示词、模型响应、Secret 和 Token 不进入事件体。
+phase 只允许 `preparing/running/finalizing`。progress 只包含非负且单调的 `completedTrials/totalTrials`。terminal outcome 为 `succeeded/failed/cancelled/timed_out`，引用 results API 已确认的 artifact ID 与 digest，包含 `collectionComplete`，并可补充退出码、signal、最长 64 字符稳定 reason 与最长 512 字符脱敏 message。大型结果、完整日志、提示词、模型响应、Secret 和 Token 不进入事件体。
 
 ### 7.3 幂等与 ACK
 
 - 相同 sequence 与相同内容重复提交，返回相同接受结果。
-- 更旧 sequence 忽略或拒绝，并返回最后已确认序号。
+- 更旧 sequence 作为无操作确认，并返回最后已确认序号。
 - 同一 execution identity/attempt 的 claim 以 CAS 只接受一个 Pod UID；同一 owner 重放返回原结果，不同 Pod 不得夺取仍有效的认领。
 - 相同 terminal 重放幂等；不同 terminal、不同归档摘要或已被取代的执行返回权威冲突。
 - 服务端只在事件已经持久化后 ACK；数据库失败、超时或不明确 5xx 不能当作成功。
 - Runner 在绝对 deadline 内有界重试；重试不能延长任务期限，也不能重新启动 Harbor。
-- 任务已取消、超时或 execution identity 已被替换时，响应要求 Runner 停止新工作并进入现有收尾路径。
+- ACK 的 `data` 固定返回 `acceptedSequence` 与 `action: continue|stop`。任务已取消、到达 checkpoint 绝对 deadline 时返回 stop；execution identity 已被替换时鉴权失败。
 
 `restartPolicy: Never` 只禁止 kubelet 重启已退出容器，`backoffLimit: 0` 只禁止 Job 在失败已计数后继续重试；当前 Job 未配置可消除 terminating replacement 窗口的额外单实例机制。因此 claim 是本增强的前置门禁，而不是可选优化。服务端在现有 JobInfo/InternalInfo 事务边界保存 owner Pod UID 及其 execution identity/attempt，不新建 claim 表或 RunnerTask 实体。
 
@@ -304,14 +298,12 @@ Runner Pod 使用 `eruun-evaluation-runner` ServiceAccount，并为该 Pod 显�
 
 ## 13. 可观察性
 
-新增观测面最终名称由实现确定，至少覆盖：
+实现的观测面包括：
 
-- 当前 phase、最后接受 sequence、最后 heartbeat 接收时间和状态陈旧时长。
-- progress/terminal 成功、幂等重放、冲突和旧执行拒绝计数。
-- Harbor 子进程启动次数；同一 Job attempt 超过一次必须告警并使验收失败。
-- 子进程退出码/信号、Runner OOM、Pod 驱逐和镜像/调度失败分类。
-- 状态上报延迟、重试次数、请求大小和服务端拒绝原因。
-- 结果归档成功、采集不完整、上传失败以及 terminal 与归档不一致计数。
+- 公共查询中的当前 phase、最后接受 sequence、最后 heartbeat 接收时间、stale、progress 与 terminal。
+- OpenTelemetry `eruun.job_runner.events`、`eruun.job_runner.conflicts`、`eruun.job_runner.harbor.starts` 计数器，以及 `eruun.job_runner.event.receive_latency` 直方图。
+- 服务端结构化 klog 记录事件接受、旧事件/重放、claim 或 terminal 冲突及 terminal/result 不一致；Runner 结构化日志记录 Harbor 启动和事件重试。
+- Kubernetes Job/Pod 仍提供子进程非零退出后的 Runner 失败、OOM、Pod 驱逐和镜像/调度失败事实。
 
 指标 label 不包含 TaskID、Pod UID、目标 URL、提示词或其他高基数/敏感数据。单任务调查通过受控日志、Job 查询与审计记录完成。
 
@@ -330,21 +322,21 @@ Runner Pod 使用 `eruun-evaluation-runner` ServiceAccount，并为该 Pod 显�
 
 ## 15. 实施阶段
 
-### 阶段一：最小事件闭环
+### 已实现：最小事件闭环
 
-- 在现有 Runner 配置中加入概念上的状态入口，并实现 claim、preparing/running/finalizing/terminal。
+- 在现有 Runner 配置中加入状态入口，并实现 claim、preparing/running/finalizing/terminal。
 - 复用当前 Runner identity 完成鉴权、单实例 CAS 认领、严格解码、请求大小限制和幂等 sequence。
 - 保持 dataset/results、Runner 退出码和 Kubernetes Job 行为不变。
 
-### 阶段二：心跳与恢复
+### 已实现：心跳与恢复
 
-- 增加 heartbeat、状态陈旧判断和 continue/cancel/stop 响应。
+- 增加 heartbeat、状态陈旧判断和 continue/stop 响应。
 - 验证 API/DB 暂时故障、响应丢失、重复事件、Worker 接管和迟到旧 Pod。
 - 确认状态重试不延长 deadline、不重新启动 Harbor。
 
-### 阶段三：故障注入与运维
+### 验收脚本与运维门禁
 
-- 验证 Harbor 子进程失败、Runner OOM、Pod 驱逐、节点故障、取消和超时。
+- Kind smoke 覆盖 Harbor 子进程失败、Runner OOM、replacement claim 和一次状态入口中断恢复；Pod 驱逐、节点故障、控制面重启、取消和超时仍需在目标集群验证。
 - 增加状态、冲突、上传完整性和兜底来源的指标、日志与告警。
 - 只有真实需求证明必要时，再设计 checkpoint 或更细粒度进度。
 
@@ -370,16 +362,16 @@ Runner Pod 使用 `eruun-evaluation-runner` ServiceAccount，并为该 Pod 显�
 
 真实集群验收至少覆盖一次 Runner OOM、Pod 删除、控制面重启和网络中断。仅使用 fake client 不足以证明 Kubernetes 生命周期和事件顺序。
 
-## 17. 升级为 Current 的门禁
+## 17. 实现状态与发布门禁
 
-本文的单实例认领与阶段状态增强升级为 Current 前必须具备：
+本实现已经具备：
 
 1. Runner 事件客户端和服务端接收实现，协议有明确版本、大小和超时边界。
 2. 事件认证、claim CAS、sequence/terminal 幂等、执行 fencing、replacement Pod 和迟到写入隔离测试。
 3. Current dataset/results、ArtifactStore、保存策略和完整性判断的回归证据。
 4. Never、零 backoff、deadline、取消、超时和显式重试语义的回归证据。
-5. Harbor 子进程失败、Runner OOM、Pod/节点故障、API/DB 恢复的故障注入证据。
+5. Harbor 子进程失败、Runner OOM、replacement Pod 与状态 API 暂时失败的 Kind smoke 场景；生产集群仍应补做节点故障和控制面重启矩阵。
 6. Runner SA、trial SA、NetworkPolicy、Secret 脱敏和日志安全验证。
 7. 公共查询映射、运维指标、告警、升级与回滚文档。
 
-未满足这些门禁前，Current 文档不能声称支持 phase、heartbeat 或 terminal 查询；但也不能否认已经存在的 Harbor Runner、内部 dataset/results 接口和结果制品能力。
+协议采用严格切换：发布前停止新评测并等待或取消全部旧 `agent_evaluation` Job，确认旧 Runner 已排空后再升级服务和镜像。真实集群矩阵未完成时 PR 保持 Draft；单元测试或 fake client 不能替代生产 CNI、节点故障和控制面恢复验证。

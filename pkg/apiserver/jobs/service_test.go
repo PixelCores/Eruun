@@ -6,9 +6,11 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -129,6 +131,15 @@ func newRunnerFixture(t *testing.T) *runnerFixture {
 		identity: RunnerIdentity{TaskID: parent.TaskID, Token: parent.JobToken, PodName: pod.Name, PodUID: string(pod.UID)}}
 }
 
+func claimRunner(t *testing.T, f *runnerFixture) {
+	t.Helper()
+	ack, err := f.service.RunnerEvent(context.Background(), f.identity, RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 1, Kind: "claim"})
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), ack.AcceptedSequence)
+	require.Equal(t, "continue", ack.Action)
+	require.NoError(t, f.raw.Get(context.Background(), f.record))
+}
+
 func TestRunnerCapabilityAcceptsRecoveredPodAndRejectsSpoofedIdentity(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -168,6 +179,10 @@ func TestRunnerCapabilityAcceptsRecoveredPodAndRejectsSpoofedIdentity(t *testing
 			f.workload.Annotations[config.AnnotationJobRunGeneration] = "3"
 			_, err := f.service.Kube.BatchV1().Jobs(f.workload.Namespace).Update(context.Background(), f.workload, metav1.UpdateOptions{})
 			require.NoError(t, err)
+		}},
+		{"attempt", func(t *testing.T, f *runnerFixture) {
+			f.record.Attempt = 2
+			require.NoError(t, f.raw.Put(context.Background(), f.record))
 		}},
 		{"parent recovered to waiting", func(t *testing.T, f *runnerFixture) {
 			f.parent.Status = config.StatusWaiting
@@ -218,6 +233,7 @@ func (r *readHook) Read(p []byte) (int, error) {
 func TestRunnerResultPublicationFencesCheckpointAndAllowsCancellationUpload(t *testing.T) {
 	t.Run("cancelled same Pod", func(t *testing.T) {
 		f := newRunnerFixture(t)
+		claimRunner(t, f)
 		f.parent.Status = config.StatusCancelled
 		lease := time.Now().Add(time.Minute)
 		f.parent.LeaseExpiresAt = &lease
@@ -233,6 +249,7 @@ func TestRunnerResultPublicationFencesCheckpointAndAllowsCancellationUpload(t *t
 	})
 	t.Run("recovered terminal checkpoint", func(t *testing.T) {
 		f := newRunnerFixture(t)
+		claimRunner(t, f)
 		f.parent.Status = config.StatusCancelled
 		f.record.Status = string(config.StatusCancelled)
 		require.NoError(t, f.raw.Put(context.Background(), f.parent))
@@ -244,8 +261,14 @@ func TestRunnerResultPublicationFencesCheckpointAndAllowsCancellationUpload(t *t
 	})
 	t.Run("checkpoint changes during transfer", func(t *testing.T) {
 		f := newRunnerFixture(t)
+		claimRunner(t, f)
 		reader := &readHook{Reader: bytes.NewReader(resultArchive(t)), hook: func() {
-			f.record.InternalInfo += " "
+			var checkpoint map[string]any
+			require.NoError(t, json.Unmarshal([]byte(f.record.InternalInfo), &checkpoint))
+			checkpoint["currentUID"] = "replacement-job"
+			raw, err := json.Marshal(checkpoint)
+			require.NoError(t, err)
+			f.record.InternalInfo = string(raw)
 			require.NoError(t, f.raw.Put(context.Background(), f.record))
 		}}
 		_, err := f.service.RunnerResult(context.Background(), f.identity, reader)
@@ -256,6 +279,7 @@ func TestRunnerResultPublicationFencesCheckpointAndAllowsCancellationUpload(t *t
 	})
 	t.Run("checkpoint becomes terminal during transfer", func(t *testing.T) {
 		f := newRunnerFixture(t)
+		claimRunner(t, f)
 		reader := &readHook{Reader: bytes.NewReader(resultArchive(t)), hook: func() {
 			f.record.Status = string(config.StatusCancelled)
 			require.NoError(t, f.raw.Put(context.Background(), f.record))
@@ -266,6 +290,168 @@ func TestRunnerResultPublicationFencesCheckpointAndAllowsCancellationUpload(t *t
 		require.NoError(t, err)
 		require.Zero(t, count)
 	})
+}
+
+func TestRunnerEventsClaimSequenceProgressTerminalAndPublicStatus(t *testing.T) {
+	f := newRunnerFixture(t)
+	err := f.service.RunnerDataset(context.Background(), f.identity, io.Discard)
+	require.ErrorIs(t, err, bcode.ErrUnauthorized)
+	claimRunner(t, f)
+
+	phase := RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 2, Kind: "phase", Phase: "running"}
+	ack, err := f.service.RunnerEvent(context.Background(), f.identity, phase)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), ack.AcceptedSequence)
+	ack, err = f.service.RunnerEvent(context.Background(), f.identity, phase)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), ack.AcceptedSequence)
+	ack, err = f.service.RunnerEvent(context.Background(), f.identity, RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 1, Kind: "claim"})
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), ack.AcceptedSequence)
+
+	_, err = f.service.RunnerEvent(context.Background(), f.identity, RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 2, Kind: "phase", Phase: "finalizing"})
+	require.ErrorIs(t, err, ErrRunnerConflict)
+	_, err = f.service.RunnerEvent(context.Background(), f.identity, RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 3, Kind: "progress", Progress: &RunnerProgress{CompletedTrials: 2, TotalTrials: 4}})
+	require.NoError(t, err)
+	_, err = f.service.RunnerEvent(context.Background(), f.identity, RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 4, Kind: "progress", Progress: &RunnerProgress{CompletedTrials: 1, TotalTrials: 4}})
+	require.ErrorIs(t, err, ErrRunnerConflict)
+	_, err = f.service.RunnerEvent(context.Background(), f.identity, RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 5, Kind: "phase", Phase: "preparing"})
+	require.ErrorIs(t, err, ErrRunnerConflict)
+	_, err = f.service.RunnerEvent(context.Background(), f.identity, RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 6, Kind: "phase", Phase: "finalizing"})
+	require.NoError(t, err)
+
+	artifact, err := f.service.RunnerResult(context.Background(), f.identity, bytes.NewReader(resultArchive(t)))
+	require.NoError(t, err)
+	complete := true
+	terminal := RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 7, Kind: "terminal", Terminal: &RunnerTerminal{
+		Outcome: "succeeded", ArtifactID: artifact.ID, ArtifactDigest: artifact.Digest, CollectionComplete: &complete, Reason: "evaluation_succeeded",
+	}}
+	ack, err = f.service.RunnerEvent(context.Background(), f.identity, terminal)
+	require.NoError(t, err)
+	require.Equal(t, uint64(7), ack.AcceptedSequence)
+	ack, err = f.service.RunnerEvent(context.Background(), f.identity, terminal)
+	require.NoError(t, err)
+	require.Equal(t, uint64(7), ack.AcceptedSequence)
+	conflictingTerminal := terminal
+	conflictingTerminal.Sequence = 8
+	conflictingTerminal.Terminal = &RunnerTerminal{
+		Outcome: "failed", ArtifactID: artifact.ID, ArtifactDigest: artifact.Digest, CollectionComplete: &complete, Reason: "evaluation_failed",
+	}
+	_, err = f.service.RunnerEvent(context.Background(), f.identity, conflictingTerminal)
+	require.ErrorIs(t, err, ErrRunnerConflict)
+	_, err = f.service.RunnerEvent(context.Background(), f.identity, RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 9, Kind: "heartbeat"})
+	require.ErrorIs(t, err, ErrRunnerConflict)
+
+	ctx := account.WithScope(context.Background(), account.Scope{WorkspaceID: "space", Namespace: "space-ns", Role: "viewer"})
+	detail, err := f.service.Get(ctx, f.parent.TaskID)
+	require.NoError(t, err)
+	require.NotNil(t, detail.RunnerStatus)
+	require.Equal(t, "finalizing", detail.RunnerStatus.Phase)
+	require.Equal(t, uint64(7), detail.RunnerStatus.Sequence)
+	require.False(t, detail.RunnerStatus.Stale)
+	require.Equal(t, "succeeded", detail.RunnerStatus.Terminal.Outcome)
+	encoded, err := json.Marshal(detail.RunnerStatus)
+	require.NoError(t, err)
+	require.NotContains(t, string(encoded), f.identity.Token)
+	require.NotContains(t, string(encoded), f.identity.PodUID)
+	require.NotContains(t, string(encoded), string(f.workload.UID))
+}
+
+func TestRunnerEventsConcurrentClaimHasOneOwner(t *testing.T) {
+	f := newRunnerFixture(t)
+	replacement := f.pod.DeepCopy()
+	replacement.Name = f.pod.Name + "-replacement"
+	replacement.UID = "replacement-pod"
+	require.NoError(t, f.service.Kube.(*fake.Clientset).Tracker().Add(replacement))
+	replacementIdentity := f.identity
+	replacementIdentity.PodName, replacementIdentity.PodUID = replacement.Name, string(replacement.UID)
+
+	identities := []RunnerIdentity{f.identity, replacementIdentity}
+	errorsSeen := make([]error, len(identities))
+	var wait sync.WaitGroup
+	for index := range identities {
+		wait.Add(1)
+		go func(index int) {
+			defer wait.Done()
+			_, errorsSeen[index] = f.service.RunnerEvent(context.Background(), identities[index], RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 1, Kind: "claim"})
+		}(index)
+	}
+	wait.Wait()
+	winners, conflicts := 0, 0
+	for _, err := range errorsSeen {
+		if err == nil {
+			winners++
+		} else if errors.Is(err, ErrRunnerConflict) {
+			conflicts++
+		}
+	}
+	require.Equal(t, 1, winners)
+	require.Equal(t, 1, conflicts)
+}
+
+func TestRunnerEventsStopAndStaleUseDatabaseReceiveTime(t *testing.T) {
+	f := newRunnerFixture(t)
+	claimRunner(t, f)
+	state, _, err := decodeRunnerState(f.record)
+	require.NoError(t, err)
+	state.ClaimedAt = time.Now().Add(-RunnerStaleAfter - time.Second)
+	state.LastReceivedAt = state.ClaimedAt
+	raw, err := json.Marshal(state)
+	require.NoError(t, err)
+	require.NoError(t, workflowjob.SetEvaluationRunnerCheckpoint(f.record, raw))
+	require.NoError(t, f.raw.Put(context.Background(), f.record))
+	ctx := account.WithScope(context.Background(), account.Scope{WorkspaceID: "space", Namespace: "space-ns", Role: "viewer"})
+	detail, err := f.service.Get(ctx, f.parent.TaskID)
+	require.NoError(t, err)
+	require.True(t, detail.RunnerStatus.Stale)
+	_, err = f.service.RunnerEvent(context.Background(), f.identity, RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 2, Kind: "phase", Phase: "running"})
+	require.NoError(t, err)
+	detail, err = f.service.Get(ctx, f.parent.TaskID)
+	require.NoError(t, err)
+	require.False(t, detail.RunnerStatus.Stale)
+	require.Nil(t, detail.RunnerStatus.LastHeartbeatAt)
+
+	f.parent.Status = config.StatusCancelled
+	lease := time.Now().Add(time.Minute)
+	f.parent.LeaseExpiresAt = &lease
+	require.NoError(t, f.raw.Put(context.Background(), f.parent))
+	ack, err := f.service.RunnerEvent(context.Background(), f.identity, RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 3, Kind: "heartbeat"})
+	require.NoError(t, err)
+	require.Equal(t, "stop", ack.Action)
+
+	deadlineFixture := newRunnerFixture(t)
+	var checkpoint map[string]any
+	require.NoError(t, json.Unmarshal([]byte(deadlineFixture.record.InternalInfo), &checkpoint))
+	checkpoint["deadline"] = time.Now().Add(-time.Second).UnixNano()
+	checkpointJSON, err := json.Marshal(checkpoint)
+	require.NoError(t, err)
+	deadlineFixture.record.InternalInfo = string(checkpointJSON)
+	require.NoError(t, deadlineFixture.raw.Put(context.Background(), deadlineFixture.record))
+	ack, err = deadlineFixture.service.RunnerEvent(context.Background(), deadlineFixture.identity, RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 1, Kind: "claim"})
+	require.NoError(t, err)
+	require.Equal(t, "stop", ack.Action)
+}
+
+func TestRunnerEventValidation(t *testing.T) {
+	complete := true
+	validTerminal := &RunnerTerminal{Outcome: "succeeded", ArtifactID: strings.Repeat("a", 64), ArtifactDigest: strings.Repeat("b", 64), CollectionComplete: &complete}
+	for _, event := range []RunnerEvent{
+		{},
+		{ProtocolVersion: "v2", Sequence: 1, Kind: "claim"},
+		{ProtocolVersion: RunnerProtocolVersion, Sequence: 0, Kind: "claim"},
+		{ProtocolVersion: RunnerProtocolVersion, Sequence: 1, Kind: "unknown"},
+		{ProtocolVersion: RunnerProtocolVersion, Sequence: 1, Kind: "phase", Phase: "done"},
+		{ProtocolVersion: RunnerProtocolVersion, Sequence: 1, Kind: "progress", Progress: &RunnerProgress{CompletedTrials: 2, TotalTrials: 1}},
+		{ProtocolVersion: RunnerProtocolVersion, Sequence: 1, Kind: "terminal", Terminal: &RunnerTerminal{Outcome: "succeeded"}},
+		{ProtocolVersion: RunnerProtocolVersion, Sequence: 1, Kind: "terminal", Terminal: func() *RunnerTerminal {
+			value := *validTerminal
+			value.Message = strings.Repeat("x", 513)
+			return &value
+		}()},
+	} {
+		require.Error(t, event.validate())
+	}
+	require.NoError(t, (RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 1, Kind: "terminal", Terminal: validTerminal}).validate())
 }
 
 func TestCommandRuntimePersistsCheckpointAndTerminalResultThroughScopedStore(t *testing.T) {

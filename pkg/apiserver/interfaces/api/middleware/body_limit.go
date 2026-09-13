@@ -46,6 +46,16 @@ func RequestBodyLimit(maxBytes int64) gin.HandlerFunc {
 			return
 		}
 		archiveLimit := int64(0)
+		if c.Request.Method == http.MethodPost && c.FullPath() == "/api/v1/job-runners/:taskID/events" {
+			const eventLimit = int64(64 << 10)
+			if c.Request.ContentLength > eventLimit {
+				c.AbortWithStatus(http.StatusRequestEntityTooLarge)
+				return
+			}
+			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, eventLimit)
+			c.Next()
+			return
+		}
 		if c.Request.Method == http.MethodPost {
 			switch c.FullPath() {
 			case "/api/v1/job-datasets":

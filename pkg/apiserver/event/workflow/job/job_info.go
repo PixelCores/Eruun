@@ -93,12 +93,13 @@ func saveJobInfo(ctx context.Context, store datastore.DataStore, job *model.JobT
 
 func saveExecutionJobInfo(ctx context.Context, store datastore.DataStore, job *model.JobTask) error {
 	return withJobInfoOwnership(ctx, store, job, func(tx datastore.DataStore) error {
-		desired := buildJobInfoRecord(job)
+		desiredBase := buildJobInfoRecord(job)
 		conditionalStore, ok := tx.(datastore.ConditionalCompareAndSwap)
 		if !ok {
 			return fmt.Errorf("save job info: datastore does not support conditional compare-and-swap")
 		}
 		for attempt := 1; attempt <= jobInfoSaveMaxAttempts; attempt++ {
+			desired := desiredBase
 			existing, err := findExistingJobInfo(ctx, tx, job)
 			if err != nil {
 				return err
@@ -118,11 +119,15 @@ func saveExecutionJobInfo(ctx context.Context, store datastore.DataStore, job *m
 			if shouldKeepExistingJobInfoStatus(existing.Status, config.Status(desired.Status)) {
 				return nil
 			}
+			if err := preserveEvaluationRunnerCheckpoint(existing, &desired); err != nil {
+				return fmt.Errorf("save job info: %w", err)
+			}
 			updated, err := conditionalStore.CompareAndSwapWithConditions(
 				ctx,
 				existing,
 				map[string]interface{}{
 					"status":         existing.Status,
+					"internal_info":  existing.InternalInfo,
 					"execution_key":  jobInfoExecutionKey(*existing),
 					"run_generation": existing.RunGeneration,
 					"attempt":        existing.Attempt,
@@ -138,6 +143,22 @@ func saveExecutionJobInfo(ctx context.Context, store datastore.DataStore, job *m
 		}
 		return fmt.Errorf("save job info: concurrent execution state changes did not converge after %d attempts", jobInfoSaveMaxAttempts)
 	})
+}
+
+func preserveEvaluationRunnerCheckpoint(existing, desired *model.JobInfo) error {
+	if existing == nil || desired == nil || existing.Type != string(config.JobAgentEvaluation) ||
+		desired.Type != string(config.JobAgentEvaluation) || existing.Attempt != desired.Attempt ||
+		existing.RunGeneration != desired.RunGeneration || jobInfoExecutionKey(*existing) != jobInfoExecutionKey(*desired) {
+		return nil
+	}
+	state, _, err := EvaluationRunnerCheckpoint(existing)
+	if err != nil {
+		return err
+	}
+	if len(state) == 0 {
+		return nil
+	}
+	return SetEvaluationRunnerCheckpoint(desired, state)
 }
 
 func saveOrUpdateJobInfo(ctx context.Context, store datastore.DataStore, job *model.JobTask) error {

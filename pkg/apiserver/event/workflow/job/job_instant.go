@@ -297,6 +297,17 @@ func (c *InstantJobCtl) evaluationSourceReady(ctx context.Context) (bool, error)
 	if c.store == nil || c.job.WorkspaceID == "" || c.job.TaskID == "" {
 		return false, fmt.Errorf("evaluation result collection identity is incomplete")
 	}
+	record, err := findExistingJobInfo(ctx, c.store, c.job)
+	if err != nil {
+		return false, err
+	}
+	outcome, terminalComplete, err := EvaluationRunnerTerminal(record)
+	if err != nil {
+		return false, err
+	}
+	if outcome == "" || !terminalComplete || (c.job.Status == config.StatusCompleted && outcome != "succeeded") {
+		return false, nil
+	}
 	rows, err := c.store.List(ctx, &model.JobArtifact{WorkspaceID: c.job.WorkspaceID, TaskID: c.job.TaskID, Kind: "source"}, &datastore.ListOptions{Page: 1, PageSize: 1})
 	if err != nil {
 		return false, err

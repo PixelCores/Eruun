@@ -27,14 +27,81 @@ import (
 )
 
 type instantJobRetryCheckpoint struct {
-	Kind        string       `json:"kind"`
-	Version     int          `json:"version"`
-	Attempt     uint         `json:"attempt"`
-	PreviousUID types.UID    `json:"previousUID,omitempty"`
-	CurrentUID  types.UID    `json:"currentUID,omitempty"`
-	RetryAt     int64        `json:"retryAt,omitempty"`
-	Deadline    int64        `json:"deadline"`
-	Job         *batchv1.Job `json:"job"`
+	Kind        string          `json:"kind"`
+	Version     int             `json:"version"`
+	Attempt     uint            `json:"attempt"`
+	PreviousUID types.UID       `json:"previousUID,omitempty"`
+	CurrentUID  types.UID       `json:"currentUID,omitempty"`
+	RetryAt     int64           `json:"retryAt,omitempty"`
+	Deadline    int64           `json:"deadline"`
+	Job         *batchv1.Job    `json:"job"`
+	Runner      json.RawMessage `json:"runner,omitempty"`
+}
+
+// EvaluationRunnerTerminal returns the accepted terminal outcome and whether
+// its referenced result was complete. Owner identity remains internal.
+func EvaluationRunnerTerminal(record *model.JobInfo) (string, bool, error) {
+	raw, _, err := EvaluationRunnerCheckpoint(record)
+	if err != nil || len(raw) == 0 {
+		return "", false, err
+	}
+	var state struct {
+		Terminal *struct {
+			Outcome            string `json:"outcome"`
+			CollectionComplete bool   `json:"collectionComplete"`
+		} `json:"terminal"`
+	}
+	if err := json.Unmarshal(raw, &state); err != nil {
+		return "", false, fmt.Errorf("decode evaluation runner terminal: %w", err)
+	}
+	if state.Terminal == nil {
+		return "", false, nil
+	}
+	return state.Terminal.Outcome, state.Terminal.CollectionComplete, nil
+}
+
+// EvaluationRunnerCheckpoint returns the runner-owned extension embedded in
+// the durable instant Job checkpoint together with that attempt's deadline.
+// The caller owns the returned bytes.
+func EvaluationRunnerCheckpoint(record *model.JobInfo) (json.RawMessage, int64, error) {
+	if record == nil || record.Type != string(config.JobAgentEvaluation) || record.ExecutionKey == nil {
+		return nil, 0, fmt.Errorf("evaluation runner checkpoint identity is incomplete")
+	}
+	task := &model.JobTask{
+		TaskID: record.TaskID, ExecutionKey: *record.ExecutionKey, RunGeneration: record.RunGeneration,
+		Attempt: record.Attempt, InternalInfo: record.InternalInfo,
+	}
+	cp, err := decodeInstantJobRetryCheckpoint(task)
+	if err != nil {
+		return nil, 0, err
+	}
+	return append(json.RawMessage(nil), cp.Runner...), cp.Deadline, nil
+}
+
+// SetEvaluationRunnerCheckpoint replaces only the runner-owned extension and
+// preserves the retry controller's workload identity and deadline.
+func SetEvaluationRunnerCheckpoint(record *model.JobInfo, state json.RawMessage) error {
+	if len(state) == 0 || !json.Valid(state) {
+		return fmt.Errorf("evaluation runner state is invalid")
+	}
+	if record == nil || record.Type != string(config.JobAgentEvaluation) || record.ExecutionKey == nil {
+		return fmt.Errorf("evaluation runner checkpoint identity is incomplete")
+	}
+	task := &model.JobTask{
+		TaskID: record.TaskID, ExecutionKey: *record.ExecutionKey, RunGeneration: record.RunGeneration,
+		Attempt: record.Attempt, InternalInfo: record.InternalInfo,
+	}
+	cp, err := decodeInstantJobRetryCheckpoint(task)
+	if err != nil {
+		return err
+	}
+	cp.Runner = append(json.RawMessage(nil), state...)
+	raw, err := json.Marshal(cp)
+	if err != nil {
+		return fmt.Errorf("encode evaluation runner checkpoint: %w", err)
+	}
+	record.InternalInfo = string(raw)
+	return nil
 }
 
 // HasInstantJobRetryCheckpoint includes malformed snapshots so recovery fails
