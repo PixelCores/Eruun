@@ -77,7 +77,9 @@ submit Job intent with an evaluation type
   -> authorize workspace and resolve its namespace
   -> validate Job type and evaluation inputs
   -> allocate TaskID for a new standalone execution
-  -> persist workflow-owned task and typed Job execution
+  -> persist WorkflowQueue and the versioned typed Job intent
+  -> establish Workflow execution generation and Worker ownership
+  -> derive and atomically persist the typed JobInfo execution identity
   -> create a Deployment with the selected execution image
   -> let the image create and run the one-off evaluation task
   -> publish progress and artifacts
@@ -87,11 +89,11 @@ submit Job intent with an evaluation type
 
 该图是方向说明，不代表已经存在对应路由或 JobType。
 
-图中分配 TaskID 的步骤面向新提交的独立评测；作为应用 Workflow 中的步骤运行时，评测复用已存在的 TaskID。任务持久化成功后才能返回接受结果并进入调度。单个评测 Job 和后续按需拆分的数据准备、执行、报告 Job 都应复用这一任务身份，不建立第二套评测状态机；每个需要独立运行载体的 Job 创建并管理自己的 Deployment。
+图中分配 TaskID 的步骤面向新提交的独立评测；作为应用 Workflow 中的步骤运行时，评测复用已存在的 TaskID。API 接受请求的事务先持久化父 WorkflowQueue 与版本化的 typed Job intent，但此时不能把 intent 暴露为可由 Runner 认领的 committed JobInfo execution identity；具体字段和存储映射由实现 PR 确定，不新增平行顶层任务实体。Scheduler 建立 Workflow execution generation、Worker 取得对应 ownership 后，控制器才能派生 ExecutionKey、Job RunGeneration 和 Attempt，并原子提交 JobInfo 执行身份。单个评测 Job 和后续按需拆分的数据准备、执行、报告 Job 都应复用这一任务身份，不建立第二套评测状态机；每个需要独立运行载体的 Job 创建并管理自己的 Deployment。
 
 用户自定义 Job 走同一执行链路，按其类型校验镜像、命令和输入输出，选择相应执行镜像并创建 Deployment，不进入评测专用的评分流程。同一 namespace 中分别提交的评测和自定义任务各自获得 TaskID；若被编排在同一次 Workflow 执行中，则共享 TaskID 并以 Job 身份区分。类型只说明 Job 做什么，不决定任务归属，也不改变命名空间或替代执行身份。`custom` 不使用 Agent Evaluation Runner；它的完成信号、防重复执行和结果协议须由独立设计确定，不能从评测 Runner 契约推导。
 
-Agent 评测不能把 Deployment Ready 作为完成信号。评测开始前，Runner 必须以 TaskID、Job 身份、Job 执行代和 attempt 原子认领当前执行；只有认领成功的实例可以运行评测，容器重启或 ReplicaSet 重建 Pod 后的实例不得重复执行同一次 attempt。Runner 通过受 fencing 保护的结果协议上报进度和终态证据；证据持久化后，控制器必须先将对应 Deployment 缩容到 0 再按 UID 删除，或直接按 UID 删除，并等待资源消失。该约束只适用于 Agent 评测 Deployment，不改变普通 Deployment，也不定义 `custom` 的重启和完成语义。
+Agent 评测不能把 Deployment Ready 作为完成信号。评测开始前，Runner 必须以 TaskID、Job 身份、Job 执行代和 attempt 原子认领当前执行；只有认领成功的实例可以运行评测，容器重启或 ReplicaSet 重建 Pod 后的实例不得重复执行同一次 attempt。Runner 通过受 fencing 保护的结果协议上报进度和终态证据；证据持久化后，Job 必须保留可恢复的 cleanup-pending 内部检查点，控制器再将对应 Deployment 缩容到 0 后按 UID 删除，或直接按 UID 删除，并等待资源消失。Deployment 消失前，通用终态短路逻辑不能把该 Job 当作已经完全收敛。该约束只适用于 Agent 评测 Deployment，不改变普通 Deployment，也不定义 `custom` 的重启和完成语义。
 
 Runner 上报必须匹配持久化的 `JobInfo` 执行身份、attempt 和 claim owner；Workflow Worker ownership 换代不应使仍被恢复的已提交 Job 执行失效。Worker 推进状态和清理资源则必须继续通过当前 `WorkflowQueue` generation/token/worker ownership fence。被新 Job 执行或 attempt 取代的迟到进度和报告不能覆盖当前执行。网络不确定时，单个 case 的模型请求可能重复，报告需要能够标记这种不确定性。
 

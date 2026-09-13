@@ -160,19 +160,24 @@ Kubernetes 状态与评测状态必须分别解释：
 | Pod Running，Runner Ready | preparing/running/finalizing | Runner 可通信；具体评测阶段来自持久化 Runner 事件 |
 | Pod Running，Runner Ready | failed/succeeded | 评测已经结束但 Runner 正等待终态确认或 Deployment 清理 |
 | Pod Running，Runner NotReady | 任意或未知 | Runner 服务异常；结合心跳、探针和 deadline 判断，不推断成功 |
-| 容器 OOMKilled/Error | 无法继续上报 | Kubernetes 基础设施证据触发失败或显式新 attempt 策略 |
+| 容器 OOMKilled/Error | 无法继续上报且未持久化终态证据 | Kubernetes 基础设施证据触发失败或显式新 attempt 策略 |
 | Pod Failed/Evicted/消失 | 未持久化终态 | 当前 attempt 不得由 replacement Pod 自动重放；按恢复策略收敛 |
 
-Runner phase 是内部进度，不要求增加新的公共 Job 状态枚举。建议映射到现有粗粒度状态：
+Runner phase 是内部进度，不要求增加新的公共 Job 状态枚举。建议按以下方式映射到现有粗粒度 JobInfo 状态：
 
-| Runner 阶段 | JobInfo 方向 |
+| Runner 阶段或证据 | JobInfo 状态方向 |
 | --- | --- |
 | claiming/preparing | `prepare` 或 `running`，由实现统一选择 |
 | running/finalizing | `running` |
-| succeeded | `completed` |
-| failed | `failed` |
-| cancelled | `cancelled` |
-| timed_out | `timeout` |
+| succeeded terminal 已持久化、资源未收敛 | cleanup-pending 内部 checkpoint；不能被当作 settled Job 跳过 |
+| failed terminal 已持久化、资源未收敛 | cleanup-pending 内部 checkpoint；不能被当作 settled Job 跳过 |
+| cancelled/timed_out terminal 已持久化、资源未收敛 | cleanup-pending 内部 checkpoint；不能被当作 settled Job 跳过 |
+| succeeded 且资源已收敛 | `completed` |
+| failed 且资源已收敛 | `failed` |
+| cancelled 且资源已收敛 | `cancelled` |
+| timed_out 且资源已收敛 | `timeout` |
+
+Runner 的 terminal 被接受，只表示终态证据已经可靠持久化，不表示 Job 已完成资源收敛。证据持久化到 Deployment 确认消失之间，JobInfo 必须保存可恢复的 cleanup-pending 内部检查点，并保持能被 Agent 评测控制器恢复；可以使用非终态粗粒度状态配合版本化内部 checkpoint，或由该类型显式识别尚未清理的终态 checkpoint，但不能被现有通用终态短路逻辑跳过。只有 Deployment 与所属 Pod 已消失，才能提交表中的最终 JobInfo 状态并推进父 Workflow。
 
 `finalizing` 表示子进程已经停止、Runner 正在上传和核验结果。它仍属于运行态；不能在关键制品尚未落盘时提前对外显示 `completed`。质量 `verdict` 单独保存，不能用 `failed` 代替阈值未通过，除非调用方显式启用质量门禁。
 
@@ -297,8 +302,11 @@ Runner 只有收到终态已持久化的明确 ACK 后，才进入等待 Deploym
 
 ```text
 API authorize request
-  -> persist WorkflowQueue and agent_evaluation JobInfo
-  -> Worker claims workflow execution
+  -> persist WorkflowQueue and versioned agent_evaluation Job intent
+  -> Scheduler claims dispatch and establishes Workflow RunGeneration/RunToken
+  -> Worker claims that workflow execution generation
+  -> controller derives ExecutionKey/Job RunGeneration/Attempt
+  -> controller atomically persists the committed agent_evaluation JobInfo identity
   -> controller creates identity-bound Deployment
   -> Runner starts and claims the attempt
   -> Runner starts evaluation child process
@@ -311,7 +319,9 @@ API authorize request
   -> controller commits/exposes final Job and Workflow result
 ```
 
-Runner 终态证据必须先于资源清理持久化，避免 Deployment 删除后失去唯一结果。缩容到 0 只是阻止继续运行的中间步骤，不是最终清理结果；首个实现不永久保留已缩容的 Deployment。父 Workflow 不应在必要终态证据尚未持久化或任务 Deployment 尚未删除时提前成功。后续若需要为诊断暂时保留 Deployment，必须提供显式的有界保留期限、可恢复 GC 和 workspace 删除联动，不能无限累积对象。
+API 提交阶段在同一接受事务中持久化父 WorkflowQueue 与版本化的 typed Job intent，不新增顶层 intent 实体。具体字段和存储映射由实现 PR 确定；如果选择先复用 JobInfo 保存 intent，该记录必须处于明确的未提交、不可认领状态，并在 Workflow execution generation 和 Worker ownership 建立后通过 CAS 转为 committed execution identity。只有 committed JobInfo 已包含 ExecutionKey、Job RunGeneration 和 Attempt 后，才能创建 Deployment 或签发 Runner 凭据。
+
+Runner 终态证据必须先于资源清理持久化，避免 Deployment 删除后失去唯一结果。此时写入的是可恢复的 cleanup-pending 内部 checkpoint，不是已经完全收敛的最终 JobInfo 状态。缩容到 0 只是阻止继续运行的中间步骤，不是最终清理结果；首个实现不永久保留已缩容的 Deployment。父 Workflow 不应在必要终态证据尚未持久化或任务 Deployment 尚未删除时提前成功。后续若需要为诊断暂时保留 Deployment，必须提供显式的有界保留期限、可恢复 GC 和 workspace 删除联动，不能无限累积对象。
 
 ### 9.2 Worker 或控制面重启
 
@@ -336,7 +346,7 @@ Runner 终态证据必须先于资源清理持久化，避免 Deployment 删除�
 | 评测子进程返回非零退出码 | Runner `wait` 结果 | 收集有界 stderr/退出码，上传已有制品，上报 failed；Runner 保持存活等待 ACK |
 | 评测程序返回结构化业务错误 | Runner 协议 | 保存稳定 reason code 和脱敏摘要，不依赖 Pod 失败 |
 | 子进程 panic/信号退出 | Runner 进程监督 | 上报 failed；不得因 Runner 仍 Ready 而标记成功 |
-| 整个容器 OOMKilled | Kubernetes 容器终止状态 | Observer 以当前 Deployment/Pod UID 为证据收敛基础设施失败；不能等待不存在的 HTTP 终态 |
+| 整个容器 OOMKilled | Kubernetes 容器终止状态与同一执行的持久化终态证据 | 尚无终态证据时，Observer 以当前 Deployment/Pod UID 为证据收敛基础设施失败；已有终态证据时保留原 outcome，只恢复资源清理，不能用后续 OOM 覆盖 |
 | 只有子进程被内核杀死、Runner 存活 | 子进程 signal，必要时结合可验证的 cgroup 证据 | 没有可靠 OOM 证据时标记为进程被杀，不能仅凭 137 推断 OOM；仍以 failed 收敛 |
 | 镜像拉取、挂载、调度或启动失败 | Pod condition/Event | Runner 尚未 claim；控制器按启动 deadline 失败，不创建伪业务终态 |
 | Runner 心跳中断但 Pod 仍 Running | 最后心跳、探针、Pod 状态 | 在有界窗口内诊断；超过 deadline 后 fence 当前 attempt 并清理，不能推断成功 |
@@ -498,7 +508,7 @@ Runner 自身可以作为一个独立构建产物，但不注册为用户 CLI。
 | DB 故障 | 服务端无法持久化 terminal | 不返回成功 ACK；恢复后相同 terminal 幂等写入 |
 | 凭据生命周期 | 任务运行超过短周期凭据 TTL，且一次轮换响应丢失 | Runner 仍能在绝对 deadline 与 finalization 窗口内认证并提交终态；旧凭据在有界重叠后失效，任务期限不延长 |
 | Worker 恢复 | Workflow ownership generation 增加；已提交 Job 执行代保持不变，或 terminal 已存但 Deployment 未清理 | Runner 仍能按原 Job 执行身份上报；新 Worker 只有通过当前 generation/token/worker ownership fence 后才能继续状态推进和精确清理，最终结果不重复提交 |
-| OOM | 整个容器 OOMKilled | Kubernetes 证据绑定当前 Pod UID，任务失败收敛且不自动重跑 |
+| OOM | 整个容器 OOMKilled | 未持久化终态时，Kubernetes 证据绑定当前 Pod UID，任务失败收敛且不自动重跑；已持久化终态时 outcome 不变，只恢复精确清理 |
 | 子进程被杀 | 只有子进程收到 SIGKILL | Runner 上报可证明的原因；没有证据时不误报 OOM |
 | 取消 | running/finalizing 时取消 | 停止新工作、终止子进程、保存允许的部分结果、Deployment 收敛 |
 | 超时 | 控制面或本地观察到 deadline | 旧结果不能覆盖 timeout，任务资源被精确清理 |
