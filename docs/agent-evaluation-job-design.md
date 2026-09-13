@@ -8,7 +8,7 @@
 
 [AI Runtime 愿景](ai-runtime-vision.md) 把评测放在 Kubernetes 自托管 Agent 与权限边界之后。Eruun 当前有 Application Workflow、Deployment 与一次性 Kubernetes Job、任务状态、日志、取消、超时和数据库执行租约，但没有 Agent evaluation 专用路由、领域模型或 Runner。
 
-Agent 评测任务与用户自定义任务是同一空间 namespace 中执行的不同 Eruun Job，通过一个 Job 类型区分。两者都由相应控制器按类型和输入选择指定执行镜像并创建 Kubernetes Deployment，由该镜像创建并运行一次性任务；它们不使用 Kubernetes `batch/v1 Job`。两者复用统一 Workflow/Job 执行链路，评测所需的输入、Runner 配置、指标和报告由该类型的处理逻辑负责。类型的共用规则见 [同一命名空间中的 Job 类型](ai-runtime-vision.md#42-同一命名空间中的-job-类型)；本草案不新增独立的评测任务实体、Scheduler、消息队列或状态机。
+Agent 评测任务与用户自定义任务是同一空间 namespace 中执行的不同 Eruun Job，通过一个 Job 类型区分。两者都由相应控制器按类型和输入选择指定执行镜像并创建 Kubernetes Deployment，由该镜像创建并运行一次性任务；它们不使用 Kubernetes `batch/v1 Job`。两者复用统一 Workflow/Job 执行链路，评测所需的输入、Runner 配置、指标和报告由该类型的处理逻辑负责。类型的共用规则见 [同一命名空间中的 Job 类型](ai-runtime-vision.md#42-同一命名空间中的-job-类型)；评测镜像内的小型监督进程、HTTP 状态和故障收敛见 [Agent Evaluation Runner 设计](agent-evaluation-runner-service-design.md)。该 Runner 只用于 `agent_evaluation`，不包装 `custom` 用户镜像。本草案不新增独立的评测任务实体、Scheduler、消息队列或状态机。
 
 ### 1.1 独立评测与应用内评测
 
@@ -89,9 +89,9 @@ submit Job intent with an evaluation type
 
 图中分配 TaskID 的步骤面向新提交的独立评测；作为应用 Workflow 中的步骤运行时，评测复用已存在的 TaskID。任务持久化成功后才能返回接受结果并进入调度。单个评测 Job 和后续按需拆分的数据准备、执行、报告 Job 都应复用这一任务身份，不建立第二套评测状态机；每个需要独立运行载体的 Job 创建并管理自己的 Deployment。
 
-用户自定义 Job 走同一执行链路，按其类型校验镜像、命令和输入输出，选择相应执行镜像并创建 Deployment，不进入评测专用的评分流程。同一 namespace 中分别提交的评测和自定义任务各自获得 TaskID；若被编排在同一次 Workflow 执行中，则共享 TaskID 并以 Job 身份区分。类型只说明 Job 做什么，不决定任务归属，也不改变命名空间或替代执行身份。
+用户自定义 Job 走同一执行链路，按其类型校验镜像、命令和输入输出，选择相应执行镜像并创建 Deployment，不进入评测专用的评分流程。同一 namespace 中分别提交的评测和自定义任务各自获得 TaskID；若被编排在同一次 Workflow 执行中，则共享 TaskID 并以 Job 身份区分。类型只说明 Job 做什么，不决定任务归属，也不改变命名空间或替代执行身份。`custom` 不使用 Agent Evaluation Runner；它的完成信号、防重复执行和结果协议须由独立设计确定，不能从评测 Runner 契约推导。
 
-Deployment Ready 不能作为一次性任务完成信号。执行镜像必须通过实现时确定的结果协议上报进度和终态，且上报需绑定当前 TaskID、Job 身份和执行代；控制器在任务成功、失败、取消或超时收敛后停止并清理对应 Deployment。若镜像主进程随任务完成而退出，还必须避免 Deployment 自动重启容器并重复执行任务。
+Agent 评测不能把 Deployment Ready 作为完成信号。评测开始前，Runner 必须以 TaskID、Job 身份、执行代和 attempt 原子认领当前执行；只有认领成功的实例可以运行评测，容器重启或 ReplicaSet 重建 Pod 后的实例不得重复执行同一次 attempt。Runner 通过受 fencing 保护的结果协议上报进度和终态证据；证据持久化后，控制器必须先将对应 Deployment 缩容到 0 再按 UID 删除，或直接按 UID 删除，并等待资源消失。该约束只适用于 Agent 评测 Deployment，不改变普通 Deployment，也不定义 `custom` 的重启和完成语义。
 
 执行必须遵循现有 generation/token fencing。Runner 上报只能影响当前执行代；旧执行的迟到进度和报告不能覆盖新执行。网络不确定时，单个 case 的模型请求可能重复，报告需要能够标记这种不确定性。
 
@@ -146,7 +146,8 @@ checkpoint 至少需要绑定任务、数据集、目标、Runner 版本和已�
 | 场景 | 必须验证的结果 |
 | --- | --- |
 | 同一 namespace 中运行两类 Job | 一个类型字段区分评测与自定义任务；各自以指定执行镜像创建 Deployment；Deployment 身份绑定 TaskID 与 Job 且不会碰撞或交叉清理；复用调度与生命周期；自定义任务不要求评测专用字段；不按类型创建新 namespace |
-| Deployment 完成与清理 | Ready 不作为任务完成；结果上报绑定 TaskID、Job 身份与执行代；成功、失败、取消和超时后停止并清理对应 Deployment；执行镜像退出时不产生重复执行 |
+| Agent 评测 Deployment 完成与清理 | Ready 不作为评测完成；执行前以 TaskID、Job 身份、执行代和 attempt 原子认领；重启或 Pod 重建不重复执行；结果上报绑定当前执行身份；终态证据持久化后先缩容到 0 再按 UID 删除，或直接按 UID 删除，并等待资源消失 |
+| custom Deployment 完成语义 | 不复用 Agent Evaluation Runner；实现前单独定义完成信号、防重复执行、结果恢复和终态清理，并证明不能把 Ready 或任意用户进程退出直接解释为任务成功 |
 | 类型校验与恢复 | 类型缺失、未知或无权使用时明确拒绝；已接受 Job 的类型在持久化、执行、状态查询和恢复中保持一致，不退化为默认类型 |
 | 无 AppID 的独立提交 | 经空间和输入授权后生成 TaskID；不创建占位 Application、Component 或 Workflow 定义；持久化失败不返回接受结果 |
 | 空间归属缺失或跨空间访问 | 提交、执行、查询、取消及制品访问拒绝未授权操作；不能凭 TaskID 或目标 AppID 绕过 |

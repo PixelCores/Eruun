@@ -115,7 +115,7 @@ Embedding Provider 只需要表达批量输入、模型 revision、维度、用�
 需要实现并验证：
 
 - 版本化任务输入和结果摘要。
-- 一次性任务的 Deployment 构建、完成上报与终态清理协议。
+- `custom` 一次性任务的 Deployment 构建、完成信号、防重复执行、结果恢复和最终删除协议；该协议尚未定义，不能直接复用只服务于 `agent_evaluation` 的 Runner，也不能仅凭 Deployment Ready 宣称向量化完成。
 - Runner 或步骤间制品协议。
 - Provider 接口与能力发现。
 - 进度、checkpoint、目标写入幂等和数据删除。

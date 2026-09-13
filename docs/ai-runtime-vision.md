@@ -122,7 +122,7 @@ flowchart LR
 
 ### 4.2 同一命名空间中的 Job 类型
 
-目标设计以 Job 的 `type` 作为区分 Agent 评测与用户自定义任务的唯一分类。同一空间中的两类任务都由对应 Job 控制器在该空间已确定的 namespace 中创建任务执行 Deployment：控制器按类型和输入选择指定执行镜像，由该镜像创建并运行一次性任务。两类任务共用执行记录模型、调度器、队列、取消、超时、重试和清理机制；不按类型另建 namespace 或任务实体。不同空间仍保持隔离，namespace 由服务端根据授权空间解析，不能通过切换类型或任意填写 namespace 越过空间边界。首次运行所需的 namespace 就绪与安全基线也应由空间路径完成，不依赖创建占位应用。Deployment 的名称、selector、追踪元数据和清理条件必须绑定所属 TaskID 与 Job 身份，不能依赖空 AppID，也不能与同一 namespace 中的其他任务发生碰撞或交叉清理。
+目标设计以 Job 的 `type` 作为区分 Agent 评测与用户自定义任务的唯一分类。同一空间中的两类任务都由对应 Job 控制器在该空间已确定的 namespace 中创建任务执行 Deployment：控制器按类型和输入选择指定执行镜像，由该镜像创建并运行一次性任务。两类任务共用执行记录模型、调度器、队列、取消、超时、重试和清理机制；不按类型另建 namespace 或任务实体。不同空间仍保持隔离，namespace 由服务端根据授权空间解析，不能通过切换类型或任意填写 namespace 越过空间边界。首次运行所需的 namespace 就绪与安全基线也应由空间路径完成，不依赖创建占位应用。Deployment 的名称、selector、追踪元数据和清理条件必须绑定所属 TaskID 与 Job 身份，不能依赖空 AppID，也不能与同一 namespace 中的其他任务发生碰撞或交叉清理。这些资源身份与清理隔离规则由两类任务共用；完成信号、防重复执行和结果协议则由各自的 Job 类型负责，不改变应用组件、常驻 Agent 或其他普通 Deployment 的重启和调和语义。
 
 以下类型值只是概念示例，尚未注册或冻结为 API 枚举：
 
@@ -135,7 +135,7 @@ flowchart LR
 
 现有代码已有 [config.JobType](../pkg/apiserver/config/consts.go)，通过 `JobTask.JobType` 选择 [Job 控制器](../pkg/apiserver/event/workflow/job/job.go)，并写入 `JobInfo.Type`。实现应优先扩展这条类型链路，让两类 Job 复用 Deployment 的创建、观察、重试和清理基础；不再增加含义重复的 category、purpose 或评测标记。`WorkflowQueue.Type` 的 `WorkflowTaskType` 表达父任务编排用途，不承载这两类 Job 的重复分类；同一个 TaskID 下可以按需编排不同类型的 Job。Eruun Job 类型与 Kubernetes 资源 `kind` 是不同概念；两类任务的底层资源均为 Deployment。
 
-Deployment Ready 只表示执行载体就绪，不能表示其中的一次性任务已经完成。执行镜像必须通过后续实现确定的结果协议上报进度和终态，控制器只接受当前 TaskID、Job 身份及执行代的结果；成功、失败、取消或超时收敛后，应按任务生命周期停止并清理对应 Deployment。若执行镜像的主进程会在任务完成后退出，实现还必须避免 Deployment 将其自动重启为新的执行。
+Deployment Ready 只表示执行载体就绪，不能表示其中的一次性任务已经完成。`agent_evaluation` 通过专用 Runner 在任务开始前以 TaskID、Job 身份、执行代和 attempt 原子认领当前执行；只有认领成功的实例可以运行评测，容器重启或 ReplicaSet 重建 Pod 后的实例不得重复执行同一次 attempt。Runner 通过受 fencing 保护的结果协议上报进度和终态证据；证据持久化后，控制器必须先将对应 Deployment 缩容到 0 再按 UID 删除，或直接按 UID 删除，并等待资源消失。具体协议见 [Agent Evaluation Runner 小型进程服务](agent-evaluation-runner-service-design.md)。`custom` 不使用该 Runner，本 Proposal 尚未定义其完成信号和防重复执行协议；实现不得把 Agent 评测协议强加给用户镜像，也不能仅凭 Ready 或镜像进程退出就宣称 `custom` 已完成。`custom` 的独立控制器契约完成并通过恢复与清理验收前，不能宣称支持该类型。
 
 当前 `instant_job` 等类型参与调度准入、延迟执行、结果恢复、重试和清理的判断，不能只新增枚举和分发分支就认为接入完成。新增类型需核对上述路径以及无 AppID 的空间解析和持久化授权，并通过同一 namespace 内混合运行两类 Job 的验收。具体枚举名称、请求与存储映射由实现 PR 确定，但单一 Job 类型分类与共用执行边界是本草案的设计选择。
 
