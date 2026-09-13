@@ -92,7 +92,7 @@ flowchart LR
 
 - API 负责身份、授权、输入校验和任务持久化，不直接执行 Agent 工具。
 - Scheduler 负责 Workflow Run 的派发和过期租约恢复；消息队列不拥有任务状态。
-- Worker 执行 Workflow/Job，并通过 generation/token 防止旧执行覆盖新状态。
+- Worker 执行 Workflow/Job，并通过 `WorkflowQueue` generation/token/worker ownership fence 防止失去 lease 的旧 Worker 覆盖新状态；Job 自身的已提交执行代单独标识 Runner 或工作负载执行。
 - Kubernetes 承载容器和资源隔离；外部系统的副作用仍需幂等键或补偿，不能宣称 exactly-once。
 - Controller 观察 Kubernetes 并更新运行状态，不替代 Worker 的执行控制。
 
@@ -110,7 +110,7 @@ flowchart LR
 | WorkflowID、组件及其他业务信息 | 按任务语义提供 | 独立任务不应被迫创建持久化 Workflow 定义、Component，或填写占位 ProjectID/ProductID；任务输入仍须完整、版本化且可校验 |
 | Job 执行明细身份 | 复用现有 Job 身份机制 | 一个 TaskID 可以关联多个 Job；不因为评测或向量化就增加平行的顶层 Task、Run 或专用队列表 |
 
-同一任务的执行重试或租约恢复沿用 TaskID，由现有 generation/token 与 Job attempt 管理执行所有权和尝试，不能借恢复重置任务预算或截止时间；用户主动再次运行，即使输入相同，也属于新的 TaskID。如果提供提交幂等能力，同一个已接受请求的重复提交应返回原 TaskID，作用域和输入冲突规则必须在实现中明确。TaskID 本身不保证外部副作用只发生一次，也不是访问凭据。
+同一任务的执行重试或租约恢复沿用 TaskID。`JobInfo.RunGeneration` 标识已提交的 Job 执行，Workflow Worker 接管时可以继续恢复该执行；`WorkflowQueue.RunGeneration`、`RunToken` 和 `WorkerID` 则约束当前 Worker ownership，不能与 Job 执行代混为一个 fence。Job attempt 管理明确授权的执行尝试。恢复不能重置任务预算或截止时间；用户主动再次运行，即使输入相同，也属于新的 TaskID。如果提供提交幂等能力，同一个已接受请求的重复提交应返回原 TaskID，作用域和输入冲突规则必须在实现中明确。TaskID 本身不保证外部副作用只发生一次，也不是访问凭据。
 
 独立任务可以通过目标引用关联某个应用及其版本，但该引用不改变任务的空间归属。当前模型中的 AppID 用于应用所有权，不能直接把它当作无生命周期影响的展示关联；目标引用的具体承载方式留给实现验证。任务操作须校验空间权限，执行时还须校验实际访问的目标、数据和凭据；缺少有效空间归属时应拒绝执行，不能退到默认空间。
 
@@ -135,7 +135,7 @@ flowchart LR
 
 现有代码已有 [config.JobType](../pkg/apiserver/config/consts.go)，通过 `JobTask.JobType` 选择 [Job 控制器](../pkg/apiserver/event/workflow/job/job.go)，并写入 `JobInfo.Type`。实现应优先扩展这条类型链路，让两类 Job 复用 Deployment 的创建、观察、重试和清理基础；不再增加含义重复的 category、purpose 或评测标记。`WorkflowQueue.Type` 的 `WorkflowTaskType` 表达父任务编排用途，不承载这两类 Job 的重复分类；同一个 TaskID 下可以按需编排不同类型的 Job。Eruun Job 类型与 Kubernetes 资源 `kind` 是不同概念；两类任务的底层资源均为 Deployment。
 
-Deployment Ready 只表示执行载体就绪，不能表示其中的一次性任务已经完成。`agent_evaluation` 通过专用 Runner 在任务开始前以 TaskID、Job 身份、执行代和 attempt 原子认领当前执行；只有认领成功的实例可以运行评测，容器重启或 ReplicaSet 重建 Pod 后的实例不得重复执行同一次 attempt。Runner 通过受 fencing 保护的结果协议上报进度和终态证据；证据持久化后，控制器必须先将对应 Deployment 缩容到 0 再按 UID 删除，或直接按 UID 删除，并等待资源消失。具体协议见 [Agent Evaluation Runner 小型进程服务](agent-evaluation-runner-service-design.md)。`custom` 不使用该 Runner，本 Proposal 尚未定义其完成信号和防重复执行协议；实现不得把 Agent 评测协议强加给用户镜像，也不能仅凭 Ready 或镜像进程退出就宣称 `custom` 已完成。`custom` 的独立控制器契约完成并通过恢复与清理验收前，不能宣称支持该类型。
+Deployment Ready 只表示执行载体就绪，不能表示其中的一次性任务已经完成。`agent_evaluation` 通过专用 Runner 在任务开始前以 TaskID、Job 身份、Job 执行代和 attempt 原子认领当前执行；只有认领成功的实例可以运行评测，容器重启或 ReplicaSet 重建 Pod 后的实例不得重复执行同一次 attempt。Runner 上报按持久化 Job 执行身份校验；Worker 的状态推进、Deployment 缩容和删除另行受当前 Workflow ownership generation/token/worker fence 保护。终态证据持久化后，控制器必须先将对应 Deployment 缩容到 0 再按 UID 删除，或直接按 UID 删除，并等待资源消失。具体协议见 [Agent Evaluation Runner 小型进程服务](agent-evaluation-runner-service-design.md)。`custom` 不使用该 Runner，本 Proposal 尚未定义其完成信号和防重复执行协议；实现不得把 Agent 评测协议强加给用户镜像，也不能仅凭 Ready 或镜像进程退出就宣称 `custom` 已完成。`custom` 的独立控制器契约完成并通过恢复与清理验收前，不能宣称支持该类型。
 
 当前 `instant_job` 等类型参与调度准入、延迟执行、结果恢复、重试和清理的判断，不能只新增枚举和分发分支就认为接入完成。新增类型需核对上述路径以及无 AppID 的空间解析和持久化授权，并通过同一 namespace 内混合运行两类 Job 的验收。具体枚举名称、请求与存储映射由实现 PR 确定，但单一 Job 类型分类与共用执行边界是本草案的设计选择。
 

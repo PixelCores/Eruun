@@ -20,7 +20,7 @@ Agent 评测任务与用户自定义任务是同一空间 namespace 中执行的
 | 独立评测 Eruun 中的应用 | 任务属于提交时确定的空间，以目标引用记录被测应用及版本；引用不自动变成应用所有权 | 新执行由服务端生成 TaskID，不以目标 AppID 代替 |
 | 应用部署 Workflow 中的评测步骤 | 继承应用归属与所在 Workflow 执行上下文，使用该路径原有的 AppID | 复用所在执行的 TaskID，以 Job 身份区分评测步骤 |
 
-独立评测的报告、状态、取消与审计围绕 TaskID 关联；数据集、目标 revision 和 case ID 用于说明测了什么，不能替代任务执行身份。相同输入再次发起一次评测应获得新的 TaskID；同一次执行的恢复和重试沿用 TaskID，并受当前执行代约束。
+独立评测的报告、状态、取消与审计围绕 TaskID 关联；数据集、目标 revision 和 case ID 用于说明测了什么，不能替代任务执行身份。相同输入再次发起一次评测应获得新的 TaskID；同一次执行的恢复和重试沿用 TaskID，并分别受 Job 执行身份与 Workflow Worker ownership fence 约束。
 
 这些场景是目标设计。当前无应用任务的实现先例是资源导入扫描与纳管，评测仍需补齐独立输入、执行构建、授权、调度和结果协议，不能直接将现有应用执行请求中的 AppID 留空来调用。
 
@@ -91,9 +91,9 @@ submit Job intent with an evaluation type
 
 用户自定义 Job 走同一执行链路，按其类型校验镜像、命令和输入输出，选择相应执行镜像并创建 Deployment，不进入评测专用的评分流程。同一 namespace 中分别提交的评测和自定义任务各自获得 TaskID；若被编排在同一次 Workflow 执行中，则共享 TaskID 并以 Job 身份区分。类型只说明 Job 做什么，不决定任务归属，也不改变命名空间或替代执行身份。`custom` 不使用 Agent Evaluation Runner；它的完成信号、防重复执行和结果协议须由独立设计确定，不能从评测 Runner 契约推导。
 
-Agent 评测不能把 Deployment Ready 作为完成信号。评测开始前，Runner 必须以 TaskID、Job 身份、执行代和 attempt 原子认领当前执行；只有认领成功的实例可以运行评测，容器重启或 ReplicaSet 重建 Pod 后的实例不得重复执行同一次 attempt。Runner 通过受 fencing 保护的结果协议上报进度和终态证据；证据持久化后，控制器必须先将对应 Deployment 缩容到 0 再按 UID 删除，或直接按 UID 删除，并等待资源消失。该约束只适用于 Agent 评测 Deployment，不改变普通 Deployment，也不定义 `custom` 的重启和完成语义。
+Agent 评测不能把 Deployment Ready 作为完成信号。评测开始前，Runner 必须以 TaskID、Job 身份、Job 执行代和 attempt 原子认领当前执行；只有认领成功的实例可以运行评测，容器重启或 ReplicaSet 重建 Pod 后的实例不得重复执行同一次 attempt。Runner 通过受 fencing 保护的结果协议上报进度和终态证据；证据持久化后，控制器必须先将对应 Deployment 缩容到 0 再按 UID 删除，或直接按 UID 删除，并等待资源消失。该约束只适用于 Agent 评测 Deployment，不改变普通 Deployment，也不定义 `custom` 的重启和完成语义。
 
-执行必须遵循现有 generation/token fencing。Runner 上报只能影响当前执行代；旧执行的迟到进度和报告不能覆盖新执行。网络不确定时，单个 case 的模型请求可能重复，报告需要能够标记这种不确定性。
+Runner 上报必须匹配持久化的 `JobInfo` 执行身份、attempt 和 claim owner；Workflow Worker ownership 换代不应使仍被恢复的已提交 Job 执行失效。Worker 推进状态和清理资源则必须继续通过当前 `WorkflowQueue` generation/token/worker ownership fence。被新 Job 执行或 attempt 取代的迟到进度和报告不能覆盖当前执行。网络不确定时，单个 case 的模型请求可能重复，报告需要能够标记这种不确定性。
 
 ## 6. 评分、指标和 verdict
 
@@ -146,12 +146,12 @@ checkpoint 至少需要绑定任务、数据集、目标、Runner 版本和已�
 | 场景 | 必须验证的结果 |
 | --- | --- |
 | 同一 namespace 中运行两类 Job | 一个类型字段区分评测与自定义任务；各自以指定执行镜像创建 Deployment；Deployment 身份绑定 TaskID 与 Job 且不会碰撞或交叉清理；复用调度与生命周期；自定义任务不要求评测专用字段；不按类型创建新 namespace |
-| Agent 评测 Deployment 完成与清理 | Ready 不作为评测完成；执行前以 TaskID、Job 身份、执行代和 attempt 原子认领；重启或 Pod 重建不重复执行；结果上报绑定当前执行身份；终态证据持久化后先缩容到 0 再按 UID 删除，或直接按 UID 删除，并等待资源消失 |
+| Agent 评测 Deployment 完成与清理 | Ready 不作为评测完成；执行前以 TaskID、Job 身份、Job 执行代和 attempt 原子认领；重启或 Pod 重建不重复执行；结果上报绑定持久化 Job 执行身份；Worker 状态推进和清理另行校验当前 Workflow ownership；终态证据持久化后先缩容到 0 再按 UID 删除，或直接按 UID 删除，并等待资源消失 |
 | custom Deployment 完成语义 | 不复用 Agent Evaluation Runner；实现前单独定义完成信号、防重复执行、结果恢复和终态清理，并证明不能把 Ready 或任意用户进程退出直接解释为任务成功 |
 | 类型校验与恢复 | 类型缺失、未知或无权使用时明确拒绝；已接受 Job 的类型在持久化、执行、状态查询和恢复中保持一致，不退化为默认类型 |
 | 无 AppID 的独立提交 | 经空间和输入授权后生成 TaskID；不创建占位 Application、Component 或 Workflow 定义；持久化失败不返回接受结果 |
 | 空间归属缺失或跨空间访问 | 提交、执行、查询、取消及制品访问拒绝未授权操作；不能凭 TaskID 或目标 AppID 绕过 |
-| 相同输入再次运行与故障恢复 | 新运行产生新 TaskID；恢复沿用原 TaskID；旧执行代的迟到结果不能覆盖当前结果 |
+| 相同输入再次运行与故障恢复 | 新运行产生新 TaskID；恢复沿用原 TaskID；Worker ownership 换代可继续观察原已提交 Job 执行；被新 Job 执行或 attempt 取代的迟到结果不能覆盖当前结果 |
 | 多个 Job 或应用内评测 | 多个 Job 共享所属执行的 TaskID，明细可区分；应用工作流原有 AppID 校验和生命周期保持有效 |
 | 无应用任务的后台执行 | 空间调度配额、取消、超时、状态/回调和清理均能从持久化任务确定归属，不依赖伪造 AppID |
 | 提交与空间删除并发 | 不在已删除空间中接受任务；未完成任务继续约束空间删除；制品清理与保留规则有验证证据 |

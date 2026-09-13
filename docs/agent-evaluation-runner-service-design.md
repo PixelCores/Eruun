@@ -52,8 +52,8 @@ Runner 解决的是 Kubernetes 工作负载状态与评测业务状态不等价�
 
 当前 Eruun 已有以下可复用能力：
 
-- `WorkflowQueue.TaskID` 标识一次整体执行，`JobInfo` 保存 Job 类型、状态、WorkspaceID、TaskID、ExecutionKey、RunGeneration 和 Attempt。
-- Workflow Worker 使用数据库 lease 和 generation/token fencing；旧执行不能覆盖当前执行。
+- `WorkflowQueue.TaskID` 标识一次整体执行，`JobInfo` 保存 Job 类型、状态、WorkspaceID、TaskID、ExecutionKey、Job 执行代 `RunGeneration` 和 Attempt。
+- Workflow Worker 使用 `WorkflowQueue.RunGeneration`、`RunToken` 和 `WorkerID` 作为数据库 lease ownership fence；控制器中的 `OwnerRunGeneration` 与 `JobInfo.RunGeneration` 分离，因为新 Worker 可能恢复旧执行代中已经提交的 Job。
 - Job 控制器能够创建、观察和清理 Deployment。
 - Kubernetes 诊断能够从当前或上一次容器终止状态识别 `OOMKilled`、`Error` 和非零退出码，并采集相关日志。
 - 取消、超时、调度准入、结果 outbox 和回调已有统一执行链路。
@@ -184,11 +184,13 @@ Runner 协议至少绑定以下已有概念：
 
 - TaskID：一次整体任务执行。
 - ExecutionKey：当前 Job 在 TaskID 下的稳定执行身份。
-- RunGeneration：当前已提交 Job 执行代，不与旧执行混用。
+- Job RunGeneration：`JobInfo.RunGeneration`，标识当前被恢复或继续观察的已提交 Job 执行；Workflow Worker 接管后，它可以小于当前 `WorkflowQueue.RunGeneration`。
 - Attempt：Eruun 明确授权的执行尝试。
 - WorkspaceID：授权、配额和制品归属，由服务端确定。
 
-Runner 不应获得或复用 Workflow Worker 的数据库 lease token。控制面应签发仅允许当前评测执行进行 claim、状态上报和制品授权的有界任务凭据，并把凭据绑定到 workspace、TaskID、ExecutionKey、RunGeneration、Attempt 和允许的操作。凭据的 `not-after` 必须覆盖服务端持久化的绝对任务 deadline 和有界 finalization 窗口，确保 Runner 能在任务期限内完成 terminal ACK；它不能依赖某个短于任务期限的固定 TTL。若实现选择更短周期的凭据，heartbeat 必须在旧凭据有效时安全轮换下一凭据，服务端只接受当前或有界重叠期内的凭据，且轮换不能延长任务 deadline。制品上传授权可以更短，但 Runner 必须能使用仍有效的任务凭据按需换取新的受限上传授权。
+Job 执行身份与 Workflow Worker ownership 是两层独立 fence。Runner 请求由 API 对照持久化的 `JobInfo` 执行身份、Attempt 和 claim owner 校验，不能因为 Worker 接管使 `WorkflowQueue.RunGeneration` 增加，就拒绝仍属于当前已提交 Job 的 Runner。控制器推进 Job/Workflow 状态、缩容或删除 Deployment 时，则必须同时持有当前 `WorkflowQueue.RunGeneration`、`RunToken` 和 `WorkerID`，并匹配 Job 执行身份与资源 UID；旧 Worker 不能凭旧 ownership 或本地 Job 快照执行这些操作。
+
+Runner 不应获得或复用 Workflow Worker 的数据库 lease token。控制面应签发仅允许当前评测执行进行 claim、状态上报和制品授权的有界任务凭据，并把凭据绑定到 workspace、TaskID、ExecutionKey、Job RunGeneration、Attempt 和允许的操作。凭据的 `not-after` 必须覆盖服务端持久化的绝对任务 deadline 和有界 finalization 窗口，确保 Runner 能在任务期限内完成 terminal ACK；它不能依赖某个短于任务期限的固定 TTL。若实现选择更短周期的凭据，heartbeat 必须在旧凭据有效时安全轮换下一凭据，服务端只接受当前或有界重叠期内的凭据，且轮换不能延长任务 deadline。制品上传授权可以更短，但 Runner 必须能使用仍有效的任务凭据按需换取新的受限上传授权。
 
 ### 7.2 Runner 实例身份
 
@@ -204,12 +206,12 @@ boot ID 不写入跨重启共享位置。它用于区分执行实例，不代替
 
 服务端必须通过持久化事务或条件更新完成 claim：
 
-1. 任务、Job、执行代和 attempt 必须存在且仍允许执行。
+1. 任务、Job、Job 执行代和 attempt 必须存在，匹配服务端当前保留的已提交 Job 执行身份，且仍允许执行。
 2. workspace 和任务凭据必须匹配服务端持久化归属。
 3. 尚未被认领时，记录当前 Runner 实例并返回 accepted。
 4. 已由同一实例认领时，幂等返回 accepted。
 5. 已由不同实例认领时，返回权威冲突；新实例保持空闲并等待清理，不启动评测。
-6. Job 已取消、超时、终态或执行代失效时，拒绝 claim 并返回停止指令。
+6. Job 已取消、超时、终态，或该 Job 执行身份已被明确取代时，拒绝 claim 并返回停止指令；Workflow Worker ownership 单独换代不使已提交 Job 执行身份失效。
 
 同一 attempt 不进行自动 claim 转移。Runner 或 Pod 在 claim 后丢失时，本次 attempt 按基础设施失败收敛；只有控制面依据显式策略增加 Attempt 并创建新的执行载体后，评测才能再次运行。这样保证同一 attempt at-most-once，但不声称外部调用 exactly-once。
 
@@ -316,7 +318,9 @@ Runner 终态证据必须先于资源清理持久化，避免 Deployment 删除�
 - Runner 继续使用已经认领的 attempt 上报，不因 Worker 进程更换而重启评测。
 - 新 Worker 从 JobInfo 的 claim、最后序号、终态证据和 Deployment UID 恢复观察。
 - 已持久化终态但尚未清理时，新 Worker 只继续缩容并删除或直接删除，再等待资源消失，不重新执行。
-- ownership 已变化的旧 Worker 不能凭本地快照提交终态或删除不属于当前身份的 Deployment；Runner 事件由 API 根据持久化的 Job 执行身份独立校验。
+- Runner 事件由 API 根据持久化的 `JobInfo` 执行身份、Attempt 和 claim owner 独立校验；Workflow Worker ownership 换代本身不使仍在运行的 Runner 失效。
+- 新 Worker 对 Job/Workflow 的状态推进、Deployment 缩容和删除仍须使用当前 `WorkflowQueue.RunGeneration`、`RunToken` 和 `WorkerID` 通过 ownership fence，并同时匹配持久化的 Job 执行身份和 Deployment UID。
+- ownership 已变化的旧 Worker 不能凭本地快照提交终态、缩容或删除 Deployment。
 
 ### 9.3 Pod 或 Runner 重启
 
@@ -341,7 +345,7 @@ Runner 终态证据必须先于资源清理持久化，避免 Deployment 删除�
 | Eruun 数据库暂时不可用 | API 返回临时失败 | 不 ACK 未持久化事件；恢复后相同 sequence/terminal 幂等重试 |
 | 终态已持久化但控制器崩溃 | JobInfo 内部终态证据 | 新 Worker 继续停止并删除同 UID Deployment，再推进最终状态 |
 | Deployment 清理失败 | Kubernetes API 错误与资源 UID | 保留可恢复清理状态并有界重试；禁止删除同名 replacement，也不能把永久缩容到 0 当作清理成功 |
-| 旧 Runner 迟到上报 | generation/attempt/claim owner 不匹配 | 拒绝且不改变当前 JobInfo、制品清单或 verdict |
+| 被取代的 Runner 迟到上报 | Job 执行身份、attempt 或 claim owner 不匹配 | 拒绝且不改变当前 JobInfo、制品清单或 verdict；不能仅因 Workflow ownership 换代而拒绝仍有效的 Runner |
 | 目标端点或凭据失效 | Runner 的受控错误分类 | failed 收敛；不切换到其他目标版本或凭据 |
 
 HTTP 状态增强了可观察性，但不能保证在硬 OOM、节点丢失或进程被强杀前获得最后一条业务事件。对不可丢失的数据，唯一可靠策略是运行期间阶段性持久化。
@@ -418,7 +422,7 @@ Agent 评测 Deployment 至少需要满足以下目标约束：
 ### 14.3 状态完整性
 
 - 状态转换由服务端校验，不允许 Runner 从未 claim 直接提交成功。
-- sequence、claim owner、执行代和 attempt 同时匹配后才能更新进度。
+- sequence、claim owner、Job 执行代和 attempt 同时匹配后才能更新进度；该校验不把 Workflow ownership generation 当作 Runner generation。
 - terminal 只能写入一次；相同内容幂等，不同内容冲突并记录审计。
 - verdict、指标和制品引用必须绑定同一 execution identity，不能跨任务拼接。
 - 用户可见错误信息脱敏；详细诊断进入受权限控制的日志或制品。
@@ -489,11 +493,11 @@ Runner 自身可以作为一个独立构建产物，但不注册为用户 CLI。
 | 质量失败 | 执行成功但 verdict 未通过 | execution 与 verdict 分离；只在显式 gate 下影响父 Workflow |
 | Claim 幂等 | claim 响应丢失后重试 | 同一实例获得相同结果，只启动一次子进程 |
 | 重复实例 | 容器重启或 ReplicaSet 新建 Pod | 新实例 claim 冲突，不能启动相同 attempt |
-| 旧执行 | 旧 generation/attempt 迟到 progress/terminal | 请求被拒绝，当前状态、制品和 verdict 不变 |
+| 被取代的 Job 执行 | 已不再是当前已提交 Job 身份的 generation/attempt 迟到 progress/terminal | 请求被拒绝，当前状态、制品和 verdict 不变 |
 | HTTP 故障 | progress/terminal 请求超时或 5xx | 有界退避重试；未 ACK 终态不丢失、不重跑 |
 | DB 故障 | 服务端无法持久化 terminal | 不返回成功 ACK；恢复后相同 terminal 幂等写入 |
 | 凭据生命周期 | 任务运行超过短周期凭据 TTL，且一次轮换响应丢失 | Runner 仍能在绝对 deadline 与 finalization 窗口内认证并提交终态；旧凭据在有界重叠后失效，任务期限不延长 |
-| Worker 恢复 | terminal 已存但 Deployment 未清理 | 新 Worker 只继续删除并等待资源消失，最终结果不重复提交 |
+| Worker 恢复 | Workflow ownership generation 增加；已提交 Job 执行代保持不变，或 terminal 已存但 Deployment 未清理 | Runner 仍能按原 Job 执行身份上报；新 Worker 只有通过当前 generation/token/worker ownership fence 后才能继续状态推进和精确清理，最终结果不重复提交 |
 | OOM | 整个容器 OOMKilled | Kubernetes 证据绑定当前 Pod UID，任务失败收敛且不自动重跑 |
 | 子进程被杀 | 只有子进程收到 SIGKILL | Runner 上报可证明的原因；没有证据时不误报 OOM |
 | 取消 | running/finalizing 时取消 | 停止新工作、终止子进程、保存允许的部分结果、Deployment 收敛 |
