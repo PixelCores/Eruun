@@ -65,7 +65,7 @@ vLLM、HAMi、Ray/KubeRay、LeaderWorkerSet 或其他 operator 都是可选择�
 
 ### 3.5 Agent 评测
 
-评测与用户自定义任务使用统一的 Job 模型，通过一个 Job 类型区分，并在所属空间的同一 namespace 中执行。评测需要版本化数据集、目标 Agent/模型引用、确定性评分器、可选 Judge、进度、用量、延迟、逐 case 结果、报告和质量门禁。
+评测与用户自定义任务使用统一的 Job 模型，通过一个 Job 类型区分，并在所属空间的同一 namespace 中执行。这里的 Job 是 Eruun 的任务执行单位；两类任务的 Kubernetes 载体都是按类型和输入选择指定执行镜像后创建的 Deployment，而不是 Kubernetes `batch/v1 Job`。评测需要版本化数据集、目标 Agent/模型引用、确定性评分器、可选 Judge、进度、用量、延迟、逐 case 结果、报告和质量门禁。
 
 评测的输入校验、执行配置和结果解释由其 Job 类型表达，持久化、调度和生命周期继续使用统一 Workflow/Job 链路。公共入口与可抢占协议的具体设计，要在最小实现和真实负载验证后决定；Job 类型边界见下文 4.2。
 
@@ -122,18 +122,20 @@ flowchart LR
 
 ### 4.2 同一命名空间中的 Job 类型
 
-目标设计以 Job 的 `type` 作为区分 Agent 评测与用户自定义任务的唯一分类。同一空间中的两类任务都作为 Kubernetes Job 运行在该空间已确定的 namespace 中，共用执行记录模型、调度器、队列、取消、超时、重试和清理机制；不按类型另建 namespace 或任务实体。不同空间仍保持隔离，namespace 由服务端根据授权空间解析，不能通过切换类型或任意填写 namespace 越过空间边界。首次运行所需的 namespace 就绪与安全基线也应由空间路径完成，不依赖创建占位应用。
+目标设计以 Job 的 `type` 作为区分 Agent 评测与用户自定义任务的唯一分类。同一空间中的两类任务都由对应 Job 控制器在该空间已确定的 namespace 中创建任务执行 Deployment：控制器按类型和输入选择指定执行镜像，由该镜像创建并运行一次性任务。两类任务共用执行记录模型、调度器、队列、取消、超时、重试和清理机制；不按类型另建 namespace 或任务实体。不同空间仍保持隔离，namespace 由服务端根据授权空间解析，不能通过切换类型或任意填写 namespace 越过空间边界。首次运行所需的 namespace 就绪与安全基线也应由空间路径完成，不依赖创建占位应用。Deployment 的名称、selector、追踪元数据和清理条件必须绑定所属 TaskID 与 Job 身份，不能依赖空 AppID，也不能与同一 namespace 中的其他任务发生碰撞或交叉清理。
 
 以下类型值只是概念示例，尚未注册或冻结为 API 枚举：
 
 | Job `type` 示意 | 类型负责的差异 | 共用执行边界 |
 | --- | --- | --- |
-| `agent_evaluation` | 校验目标、数据集和评分配置，准备评测 Runner，解释指标、报告和 verdict | 所属空间的 namespace、TaskID/Job 身份、容器执行与生命周期 |
-| `custom` | 校验用户声明的镜像、命令、参数及输入输出，执行用户自定义程序并记录退出结果与制品 | 所属空间的 namespace、TaskID/Job 身份、容器执行与生命周期 |
+| `agent_evaluation` | 校验目标、数据集和评分配置，选择评测执行镜像，解释指标、报告和 verdict | 所属空间的 namespace、TaskID/Job 身份、Deployment 执行与生命周期 |
+| `custom` | 校验用户声明的镜像、命令、参数及输入输出，选择自定义任务执行镜像并记录退出结果与制品 | 所属空间的 namespace、TaskID/Job 身份、Deployment 执行与生命周期 |
 
-镜像、命令、资源和凭据引用等容器执行信息应复用共用能力；类型只决定必要的输入规则、运行配置和结果语义，不引入第二套执行器生命周期。用户自定义的是任务内容，不是任意注册控制面类型或调用内部清理、回调等 Job。提交时应校验允许使用的类型及相应输入；缺失、未知或无权使用的类型明确拒绝，不能静默按 custom 执行。接受后，Job 类型须随执行记录持久化并在恢复时保持一致。
+镜像、命令、资源和凭据引用等容器执行信息应复用共用能力；类型决定必要的输入规则、执行镜像、Deployment 运行配置和结果语义，不引入第二套执行器生命周期。用户自定义的是任务内容，不是任意注册控制面类型或调用内部清理、回调等 Job。提交时应校验允许使用的类型及相应输入；缺失、未知或无权使用的类型明确拒绝，不能静默按 custom 执行。接受后，Job 类型须随执行记录持久化并在恢复时保持一致。
 
-现有代码已有 [config.JobType](../pkg/apiserver/config/consts.go)，通过 `JobTask.JobType` 选择 [Job 控制器](../pkg/apiserver/event/workflow/job/job.go)，并写入 `JobInfo.Type`。实现应优先扩展这条类型链路，让两类 Job 复用 Kubernetes Job 的创建、等待、重试和清理逻辑；不再增加含义重复的 category、purpose 或评测标记。`WorkflowQueue.Type` 的 `WorkflowTaskType` 表达父任务编排用途，不承载这两类 Job 的重复分类；同一个 TaskID 下可以按需编排不同类型的 Job。Job 类型与 Kubernetes `kind: Job` 也不同，两类任务的 Kubernetes 资源种类相同。
+现有代码已有 [config.JobType](../pkg/apiserver/config/consts.go)，通过 `JobTask.JobType` 选择 [Job 控制器](../pkg/apiserver/event/workflow/job/job.go)，并写入 `JobInfo.Type`。实现应优先扩展这条类型链路，让两类 Job 复用 Deployment 的创建、观察、重试和清理基础；不再增加含义重复的 category、purpose 或评测标记。`WorkflowQueue.Type` 的 `WorkflowTaskType` 表达父任务编排用途，不承载这两类 Job 的重复分类；同一个 TaskID 下可以按需编排不同类型的 Job。Eruun Job 类型与 Kubernetes 资源 `kind` 是不同概念；两类任务的底层资源均为 Deployment。
+
+Deployment Ready 只表示执行载体就绪，不能表示其中的一次性任务已经完成。执行镜像必须通过后续实现确定的结果协议上报进度和终态，控制器只接受当前 TaskID、Job 身份及执行代的结果；成功、失败、取消或超时收敛后，应按任务生命周期停止并清理对应 Deployment。若执行镜像的主进程会在任务完成后退出，实现还必须避免 Deployment 将其自动重启为新的执行。
 
 当前 `instant_job` 等类型参与调度准入、延迟执行、结果恢复、重试和清理的判断，不能只新增枚举和分发分支就认为接入完成。新增类型需核对上述路径以及无 AppID 的空间解析和持久化授权，并通过同一 namespace 内混合运行两类 Job 的验收。具体枚举名称、请求与存储映射由实现 PR 确定，但单一 Job 类型分类与共用执行边界是本草案的设计选择。
 
@@ -155,7 +157,7 @@ flowchart LR
 ### Phase 3：评测与可观测性
 
 - 以一个小型、确定性数据集完成提交、执行、进度、报告和质量门禁闭环。
-- 在同一空间 namespace 中同时运行 Agent 评测和用户自定义 Job，验证由一个类型区分、共用调度与生命周期且执行资源互不混淆。
+- 在同一空间 namespace 中同时运行 Agent 评测和用户自定义 Job，验证由一个类型区分、各自创建任务执行 Deployment、共用调度与生命周期且执行资源互不混淆。
 - 验证不创建 Application 的独立评测能够生成 TaskID、持久化空间归属并完成调度、取消和清理；应用工作流中的评测保留原有归属与生命周期。
 - 验证敏感输入与逐 case 制品的访问控制、保留和删除策略。
 - 用最小实现确定 Job 类型的枚举与输入映射，用真实数据决定是否需要进一步扩展 API 或抢占能力。

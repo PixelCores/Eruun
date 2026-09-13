@@ -8,11 +8,11 @@
 
 向量化是 AI Runtime 的批处理数据能力：从受控数据源读取内容，完成解析、切分和 embedding，把向量与可追溯元数据写入目标存储，并产出可查询、可审计的结果摘要。
 
-它应复用 Eruun 的 Workflow、Job、权限、取消、超时、日志和执行 ownership，不创建第二套调度器。当前 `main` 只有通用 Application/Workflow 和 Kubernetes Job 基础，还没有向量化专用实现。
+它应复用 Eruun 的 Workflow、Job、权限、取消、超时、日志和执行 ownership，不创建第二套调度器。当前 `main` 只有通用 Application/Workflow 以及 Kubernetes `Deployment` 和 `batch/v1 Job` 执行基础，还没有向量化专用实现。
 
 任务身份与归属遵循 [AI Runtime 的共用原则](ai-runtime-vision.md#41-任务执行身份与应用归属)：独立向量化执行必须有已授权并持久化的 WorkspaceID，由服务端生成 TaskID，不强制绑定 AppID 或创建占位应用。作为应用 Workflow 步骤运行时则继承已有归属和 TaskID。数据源、embedding 端点和目标存储是需单独授权的输入引用，不决定任务所有权；该路径仍须实现并验证。
 
-向量化同样遵循 [统一 Job 类型与 namespace 边界](ai-runtime-vision.md#42-同一命名空间中的-job-类型)：初期可由用户自定义 Job 承载向量化程序，与评测 Job 在同一空间 namespace 中执行，不因处理内容不同而新增任务实体或命名空间。只有专用校验和结果语义确有需要时，才扩展同一 Job 类型体系，不增加第二个分类字段。
+向量化同样遵循 [统一 Job 类型与 namespace 边界](ai-runtime-vision.md#42-同一命名空间中的-job-类型)：初期可由用户自定义 Job 承载向量化程序，通过指定执行镜像创建 Deployment，并与评测 Job 的 Deployment 在同一空间 namespace 中执行；不因处理内容不同而新增任务实体或命名空间。只有专用校验和结果语义确有需要时，才扩展同一 Job 类型体系，不增加第二个分类字段。
 
 ## 2. 目标与非目标
 
@@ -109,12 +109,13 @@ Embedding Provider 只需要表达批量输入、模型 revision、维度、用�
 可直接复用：
 
 - Workflow 的步骤、取消、超时、审批、回调、lease 和 fencing。
-- Kubernetes `job`、Secret/envFrom、storage、resources 和 securityPolicy。
+- Kubernetes Deployment 执行基础、Secret/envFrom、storage、resources 和 securityPolicy。
 - 账号、workspace 授权和统一错误响应。
 
 需要实现并验证：
 
 - 版本化任务输入和结果摘要。
+- 一次性任务的 Deployment 构建、完成上报与终态清理协议。
 - Runner 或步骤间制品协议。
 - Provider 接口与能力发现。
 - 进度、checkpoint、目标写入幂等和数据删除。

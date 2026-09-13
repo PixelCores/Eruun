@@ -6,9 +6,9 @@
 
 ## 1. 与 AI Runtime 的关系
 
-[AI Runtime 愿景](ai-runtime-vision.md) 把评测放在 Kubernetes 自托管 Agent 与权限边界之后。Eruun 当前有 Application Workflow、一次性 Kubernetes Job、任务状态、日志、取消、超时和数据库执行租约，但没有 Agent evaluation 专用路由、领域模型或 Runner。
+[AI Runtime 愿景](ai-runtime-vision.md) 把评测放在 Kubernetes 自托管 Agent 与权限边界之后。Eruun 当前有 Application Workflow、Deployment 与一次性 Kubernetes Job、任务状态、日志、取消、超时和数据库执行租约，但没有 Agent evaluation 专用路由、领域模型或 Runner。
 
-Agent 评测任务与用户自定义任务是同一空间 namespace 中执行的不同 Job，通过一个 Job 类型区分。两者复用统一 Workflow/Job 执行链路，评测所需的输入、Runner 配置、指标和报告由该类型的处理逻辑负责。类型的共用规则见 [同一命名空间中的 Job 类型](ai-runtime-vision.md#42-同一命名空间中的-job-类型)；本草案不新增独立的评测任务实体、Scheduler、消息队列或状态机。
+Agent 评测任务与用户自定义任务是同一空间 namespace 中执行的不同 Eruun Job，通过一个 Job 类型区分。两者都由相应控制器按类型和输入选择指定执行镜像并创建 Kubernetes Deployment，由该镜像创建并运行一次性任务；它们不使用 Kubernetes `batch/v1 Job`。两者复用统一 Workflow/Job 执行链路，评测所需的输入、Runner 配置、指标和报告由该类型的处理逻辑负责。类型的共用规则见 [同一命名空间中的 Job 类型](ai-runtime-vision.md#42-同一命名空间中的-job-类型)；本草案不新增独立的评测任务实体、Scheduler、消息队列或状态机。
 
 ### 1.1 独立评测与应用内评测
 
@@ -70,7 +70,7 @@ TaskID 属于服务端生成的执行元数据，不是调用方需要预先填�
 
 ## 5. 执行与状态
 
-推荐的最小路径是复用统一任务提交与执行链路，由一个 Workflow Run 驱动所属空间 namespace 中的 Kubernetes Job，类型决定评测输入与结果处理：
+推荐的最小路径是复用统一任务提交与执行链路，由一个 Workflow Run 驱动所属空间 namespace 中的任务执行 Deployment，类型决定评测输入、执行镜像与结果处理：
 
 ```text
 submit Job intent with an evaluation type
@@ -78,7 +78,8 @@ submit Job intent with an evaluation type
   -> validate Job type and evaluation inputs
   -> allocate TaskID for a new standalone execution
   -> persist workflow-owned task and typed Job execution
-  -> run evaluation workload through shared Kubernetes Job execution
+  -> create a Deployment with the selected execution image
+  -> let the image create and run the one-off evaluation task
   -> publish progress and artifacts
   -> calculate verdict
   -> complete workflow and expose summary
@@ -86,9 +87,11 @@ submit Job intent with an evaluation type
 
 该图是方向说明，不代表已经存在对应路由或 JobType。
 
-图中分配 TaskID 的步骤面向新提交的独立评测；作为应用 Workflow 中的步骤运行时，评测复用已存在的 TaskID。任务持久化成功后才能返回接受结果并进入调度。单个评测 Job 和后续按需拆分的数据准备、执行、报告 Job 都应复用这一任务身份，不建立第二套评测状态机。
+图中分配 TaskID 的步骤面向新提交的独立评测；作为应用 Workflow 中的步骤运行时，评测复用已存在的 TaskID。任务持久化成功后才能返回接受结果并进入调度。单个评测 Job 和后续按需拆分的数据准备、执行、报告 Job 都应复用这一任务身份，不建立第二套评测状态机；每个需要独立运行载体的 Job 创建并管理自己的 Deployment。
 
-用户自定义 Job 走同一执行链路，按其类型校验镜像、命令和输入输出，不进入评测专用的评分流程。同一 namespace 中分别提交的评测和自定义任务各自获得 TaskID；若被编排在同一次 Workflow 执行中，则共享 TaskID 并以 Job 身份区分。类型只说明 Job 做什么，不决定任务归属，也不改变命名空间或替代执行身份。
+用户自定义 Job 走同一执行链路，按其类型校验镜像、命令和输入输出，选择相应执行镜像并创建 Deployment，不进入评测专用的评分流程。同一 namespace 中分别提交的评测和自定义任务各自获得 TaskID；若被编排在同一次 Workflow 执行中，则共享 TaskID 并以 Job 身份区分。类型只说明 Job 做什么，不决定任务归属，也不改变命名空间或替代执行身份。
+
+Deployment Ready 不能作为一次性任务完成信号。执行镜像必须通过实现时确定的结果协议上报进度和终态，且上报需绑定当前 TaskID、Job 身份和执行代；控制器在任务成功、失败、取消或超时收敛后停止并清理对应 Deployment。若镜像主进程随任务完成而退出，还必须避免 Deployment 自动重启容器并重复执行任务。
 
 执行必须遵循现有 generation/token fencing。Runner 上报只能影响当前执行代；旧执行的迟到进度和报告不能覆盖新执行。网络不确定时，单个 case 的模型请求可能重复，报告需要能够标记这种不确定性。
 
@@ -117,7 +120,7 @@ submit Job intent with an evaluation type
 
 ## 8. 隔离和权限
 
-- 评测和自定义 Job 在同一空间 namespace 中执行，各自使用任务作用域身份，不复用 Eruun 控制面 ServiceAccount；共用 namespace 不表示可以访问其他 Job 的凭据或制品。
+- 评测和自定义 Job 的 Deployment 在同一空间 namespace 中执行，各自使用任务作用域身份，不复用 Eruun 控制面 ServiceAccount；共用 namespace 不表示可以访问其他 Job 的凭据或制品。
 - 默认不挂载 Kubernetes API Token；确有集群 API 需求时使用最小 RBAC。
 - 出站网络只允许目标端点、数据源、ArtifactStore 和必要授权端点。
 - Judge 和被测目标使用彼此独立的凭据引用。
@@ -132,7 +135,7 @@ checkpoint 至少需要绑定任务、数据集、目标、Runner 版本和已�
 
 ## 10. 实施门禁
 
-1. 先在同一空间 namespace 中运行一个用户自定义 Job 和一个固定目标、固定数据集、确定性 scorer 的评测 Job，验证统一模型与类型分发、无需创建 Application、服务端生成 TaskID 并持久化空间归属。
+1. 先在同一空间 namespace 中通过各自的 Deployment 运行一个用户自定义 Job 和一个固定目标、固定数据集、确定性 scorer 的评测 Job，验证统一模型与类型分发、无需创建 Application、服务端生成 TaskID 并持久化空间归属。
 2. 再加入受控制品、权限校验和可观察进度。
 3. 根据实验确定单一 Job 类型的枚举与输入映射，补齐现有类型分发、调度、恢复和清理路径，不增加平行任务实体。
 4. 增加 Judge、并发和质量门禁，并验证预算与失败语义。
@@ -142,7 +145,8 @@ checkpoint 至少需要绑定任务、数据集、目标、Runner 版本和已�
 
 | 场景 | 必须验证的结果 |
 | --- | --- |
-| 同一 namespace 中运行两类 Job | 一个类型字段区分评测与自定义任务；复用调度与生命周期；自定义任务不要求评测专用字段；不按类型创建新 namespace |
+| 同一 namespace 中运行两类 Job | 一个类型字段区分评测与自定义任务；各自以指定执行镜像创建 Deployment；Deployment 身份绑定 TaskID 与 Job 且不会碰撞或交叉清理；复用调度与生命周期；自定义任务不要求评测专用字段；不按类型创建新 namespace |
+| Deployment 完成与清理 | Ready 不作为任务完成；结果上报绑定 TaskID、Job 身份与执行代；成功、失败、取消和超时后停止并清理对应 Deployment；执行镜像退出时不产生重复执行 |
 | 类型校验与恢复 | 类型缺失、未知或无权使用时明确拒绝；已接受 Job 的类型在持久化、执行、状态查询和恢复中保持一致，不退化为默认类型 |
 | 无 AppID 的独立提交 | 经空间和输入授权后生成 TaskID；不创建占位 Application、Component 或 Workflow 定义；持久化失败不返回接受结果 |
 | 空间归属缺失或跨空间访问 | 提交、执行、查询、取消及制品访问拒绝未授权操作；不能凭 TaskID 或目标 AppID 绕过 |
