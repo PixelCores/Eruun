@@ -1,6 +1,6 @@
 # Eruun AI Runtime 愿景与演进边界
 
-> 状态：Draft / Proposal。本文说明 Eruun 的产品方向、能力分层和实施门禁，不代表 `main` 已经提供 Agent、MCP、评测、向量化、模型服务或通用 AI 云平台 API。
+> 状态：Draft / Proposal。本文说明 Eruun 的产品方向、能力分层和实施门禁。`main` 已提供独立 `command` / Harbor `agent_evaluation` Job；本文其余 Agent、MCP、向量化、模型服务和通用 AI 云平台能力仍是后续方向。
 
 > 示例说明：本文图示仅用于表达概念边界，不是可执行部署清单或公共契约。
 
@@ -19,7 +19,7 @@ Eruun 已经是一套可运行的 Kubernetes 应用与工作流运行时，但�
 | 扩展能力 | 已实现 storage、env、resources、securityPolicy、RBAC、probes、init、sidecar、ingress、service、share、rollout 等 Traits | 增加 Agent 所需能力前先判断能否组合已有 Trait，避免按产品名新增专用 Trait |
 | 安全 | 账号与空间授权、Kubernetes RBAC、容器 SecurityContext、Secret/ConfigMap 引用和 URL 安全策略 | 增加工具授权、出站访问、凭据委派、审批、审计和撤销的一致边界 |
 | 执行 | Workflow 支持 StepByStep/DAG、审批、取消、超时、回调、租约和 fencing | 承载 Agent 任务、评测、数据处理及模型制品准备 |
-| AI 专用能力 | 尚无 Agent、MCP、评测、向量化、vLLM 或通用托管模型 API | 按本文路线图逐层设计、实现和标记 Current |
+| AI 专用能力 | 已有无 AppID 的 `command` / Harbor `agent_evaluation` Job、任务包和结果制品；尚无通用 Agent、MCP、向量化、vLLM 或托管模型 API | 在现有空间 Job 和 Harbor Runner 上增量演进，其余能力按路线图逐层实现并标记 Current |
 
 ## 3. 六类目标能力
 
@@ -65,9 +65,9 @@ vLLM、HAMi、Ray/KubeRay、LeaderWorkerSet 或其他 operator 都是可选择�
 
 ### 3.5 Agent 评测
 
-评测与用户自定义任务使用统一的 Job 模型，通过一个 Job 类型区分，并在所属空间的同一 namespace 中执行。这里的 Job 是 Eruun 的任务执行单位；两类任务的 Kubernetes 载体都是按类型和输入选择指定执行镜像后创建的 Deployment，而不是 Kubernetes `batch/v1 Job`。评测需要版本化数据集、目标 Agent/模型引用、确定性评分器、可选 Judge、进度、用量、延迟、逐 case 结果、报告和质量门禁。
+当前 `command` 与 `agent_evaluation` 使用统一的空间 Job 模型，在所属空间的同一 namespace 中执行。这里的 Eruun Job 是任务执行单位，两类任务当前都构建 Kubernetes `batch/v1 Job`，Pod 使用 `restartPolicy: Never` 且 Job `backoffLimit: 0`；`agent_evaluation` 由固定 Harbor Runner 镜像驱动任务环境、采集框架原始结果并通过内部 HTTP 上传。评测的后续方向是在这条现有链路上增加阶段、心跳和终态证据，而不是改用 Deployment 或增加第二套调度器。
 
-评测的输入校验、执行配置和结果解释由其 Job 类型表达，持久化、调度和生命周期继续使用统一 Workflow/Job 链路。公共入口与可抢占协议的具体设计，要在最小实现和真实负载验证后决定；Job 类型边界见下文 4.2。
+评测的输入校验、执行配置和结果解释由 `agent_evaluation` 规格及构建路径表达，持久化、调度和生命周期继续使用统一 Workflow/Job 链路。公共入口与 Harbor 首版边界以 [空间 Job API](workspace-jobs-api.md) 为准；尚未实现的阶段状态协议见 [Agent Evaluation Runner 小型进程服务](agent-evaluation-runner-service-design.md)。
 
 ### 3.6 数据、向量化与云平台
 
@@ -98,16 +98,16 @@ flowchart LR
 
 ### 4.1 任务执行身份与应用归属
 
-当前实现提供两种参考：应用 Workflow 执行会生成 `WorkflowQueue.TaskID`，其中多个 Job 共享这个 TaskID，各自以 `JobInfo.ID` 标识执行明细；[资源导入扫描与纳管任务](import-existing-namespace-api.md)则已经能够不绑定 AppID，直接保存 WorkspaceID 并生成 TaskID。对应实现见 [Workflow 创建](../pkg/apiserver/domain/service/workflow/workflow.go)、[Job 模型](../pkg/apiserver/domain/model/job.go)和[资源导入提交](../pkg/apiserver/resourceimport/jobs.go)。资源导入有专用的构建、执行和授权路径，这不代表任意 Job 已可通过通用入口省略 AppID。
+当前实现同时支持应用 Workflow 与独立空间 Job。应用 Workflow 生成 `WorkflowQueue.TaskID`，其中多个 Job 共享 TaskID 并以 `JobInfo` 执行身份区分；独立 `command` / `agent_evaluation` 则通过 `/api/v1/jobs` 提交，服务端持久化 WorkspaceID、生成 TaskID，且不要求 AppID、Component 或占位 Application。对应事实见 [空间 Job API](workspace-jobs-api.md)、[Job 服务](../pkg/apiserver/jobs/service.go)和 [Job 模型](../pkg/apiserver/domain/model/job.go)。
 
-以下是评测、向量化及其他独立批处理任务应遵循的设计原则，不是新增 API、表结构或 Runner 环境变量契约：
+以下身份规则已经用于独立空间 Job；向量化等后续批处理能力应复用这些规则。表中不新增 API、表结构或 Runner 环境变量：
 
 | 信息 | 设计要求 | 语义与边界 |
 | --- | --- | --- |
 | TaskID | 每次新任务执行必需，由服务端生成，持久化成功后返回 | 标识一次整体执行，用于状态、取消、日志和结果关联；不是 Workflow 定义 ID，也不是每个子 Job 单独生成的 ID |
 | WorkspaceID 与调用者身份 | 必需；由服务端根据认证和授权上下文确定 | 独立任务直接持久化空间归属，供后台调度、授权、配额和清理使用；不能依赖 AppID 反查或相信未经授权的客户端值 |
 | AppID | 应用工作流必需；独立任务不强制要求 | 表达任务的应用归属；不能为了满足执行器字段而创建占位应用 |
-| WorkflowID、组件及其他业务信息 | 按任务语义提供 | 独立任务不应被迫创建持久化 Workflow 定义、Component，或填写占位 ProjectID/ProductID；任务输入仍须完整、版本化且可校验 |
+| WorkflowID、组件及其他业务信息 | 按任务语义提供 | 独立空间 Job 不创建持久化 Workflow 定义、Component，也不填写占位 ProjectID/ProductID；类型专属输入仍须完整、版本化且可校验 |
 | Job 执行明细身份 | 复用现有 Job 身份机制 | 一个 TaskID 可以关联多个 Job；不因为评测或向量化就增加平行的顶层 Task、Run 或专用队列表 |
 
 同一任务的执行重试或租约恢复沿用 TaskID。`JobInfo.RunGeneration` 标识已提交的 Job 执行，Workflow Worker 接管时可以继续恢复该执行；`WorkflowQueue.RunGeneration`、`RunToken` 和 `WorkerID` 则约束当前 Worker ownership，不能与 Job 执行代混为一个 fence。Job attempt 管理明确授权的执行尝试。恢复不能重置任务预算或截止时间；用户主动再次运行，即使输入相同，也属于新的 TaskID。如果提供提交幂等能力，同一个已接受请求的重复提交应返回原 TaskID，作用域和输入冲突规则必须在实现中明确。TaskID 本身不保证外部副作用只发生一次，也不是访问凭据。
@@ -118,26 +118,22 @@ flowchart LR
 
 独立任务仍受空间生命周期约束。当前空间删除会拒绝未完成任务并清理终态任务记录；新提交路径须与空间删除协调，防止在已删除空间中创建任务，并验证外部制品的保留与清理。资源导入提交时锁定空间记录是现有实现参考。
 
-实现独立任务需要逐项检查现有执行链路中依赖 AppID 的入口校验、Job 构建、空间解析、持久化授权、调度准入、状态查询、回调和清理。现有调度器、队列与状态机应继续复用，子 Job 仍须关联持久化父任务，并遵循已有 ownership/fencing、调度准入及各执行路径的 deadline 规则；不能仅放宽请求字段校验，就宣称已支持无应用任务。TaskID 是否传入 Runner、采用何种传输方式，应由最小执行协议验证，不预先承诺 `APP_ID` 或 `TASK_ID` 环境变量。
+独立空间 Job 已完成入口校验、Job 构建、空间解析、持久化授权、调度准入、状态查询、取消和清理闭环，并复用现有调度器、队列与状态机。后续类型仍须逐项核对这些路径，关联持久化父任务，并遵循已有 ownership/fencing、调度准入和 deadline；不能仅增加枚举或放宽 AppID 校验就宣称可用。Runner 的当前内部输入和传输协议以 [Harbor Runner](../runners/harbor/README.md) 为准。
 
 ### 4.2 同一命名空间中的 Job 类型
 
-目标设计以 Job 的 `type` 作为区分 Agent 评测与用户自定义任务的唯一分类。同一空间中的两类任务都由对应 Job 控制器在该空间已确定的 namespace 中创建任务执行 Deployment：控制器按类型和输入选择指定执行镜像，由该镜像创建并运行一次性任务。两类任务共用执行记录模型、调度器、队列、取消、超时、重试和清理机制；不按类型另建 namespace 或任务实体。不同空间仍保持隔离，namespace 由服务端根据授权空间解析，不能通过切换类型或任意填写 namespace 越过空间边界。首次运行所需的 namespace 就绪与安全基线也应由空间路径完成，不依赖创建占位应用。Deployment 的名称、selector、追踪元数据和清理条件必须绑定所属 TaskID 与 Job 身份，不能依赖空 AppID，也不能与同一 namespace 中的其他任务发生碰撞或交叉清理。这些资源身份与清理隔离规则由两类任务共用；完成信号、防重复执行和结果协议则由各自的 Job 类型负责，不改变应用组件、常驻 Agent 或其他普通 Deployment 的重启和调和语义。
+当前公共 `type` 已固定为 `command` 与 `agent_evaluation`。它们在同一空间 namespace 中共享 WorkflowQueue、JobInfo、调度、执行租约、取消、超时、重试和清理机制，不按类型另建 namespace 或任务实体。namespace 由服务端从已授权 WorkspaceID 解析，调用方不能任意选择；首次运行所需的安全基线也由空间路径完成，不依赖占位应用。
 
-以下类型值只是概念示例，尚未注册或冻结为 API 枚举：
-
-| Job `type` 示意 | 类型负责的差异 | 共用执行边界 |
+| Job `type` | 类型专属职责 | 共用执行边界 |
 | --- | --- | --- |
-| `agent_evaluation` | 校验目标、数据集和评分配置，选择评测执行镜像，解释指标、报告和 verdict | 所属空间的 namespace、TaskID/Job 身份、Deployment 执行与生命周期 |
-| `custom` | 校验用户声明的镜像、命令、参数及输入输出，选择自定义任务执行镜像并记录退出结果与制品 | 所属空间的 namespace、TaskID/Job 身份、Deployment 执行与生命周期 |
+| `command` | 校验用户声明的镜像、命令、参数和允许的 Traits，以进程退出及 Kubernetes Job 状态形成执行结果 | WorkspaceID、TaskID/Job 身份、`batch/v1 Job`、调度和生命周期 |
+| `agent_evaluation` | 校验 Harbor、任务包、Agent、模型和结果策略，选择固定 Runner 镜像，解释评测结果与制品 | WorkspaceID、TaskID/Job 身份、`batch/v1 Job`、调度和生命周期 |
 
-镜像、命令、资源和凭据引用等容器执行信息应复用共用能力；类型决定必要的输入规则、执行镜像、Deployment 运行配置和结果语义，不引入第二套执行器生命周期。用户自定义的是任务内容，不是任意注册控制面类型或调用内部清理、回调等 Job。提交时应校验允许使用的类型及相应输入；缺失、未知或无权使用的类型明确拒绝，不能静默按 custom 执行。接受后，Job 类型须随执行记录持久化并在恢复时保持一致。
+两类任务都由 [Job builder](../pkg/apiserver/jobs/builder.go) 构建 `batch/v1 Job`，复用 [InstantJobCtl](../pkg/apiserver/event/workflow/job/job_instant.go) 生命周期。Pod 使用 `restartPolicy: Never`，Job 使用 `backoffLimit: 0`：前者禁止 kubelet 重启已退出容器，后者禁止 Job 在已计入失败后继续重试；它们不能单独排除 Pod terminating 时出现 replacement Pod 的并发窗口。Job 名称和追踪元数据绑定 TaskID，Runner 的数据与结果请求还绑定任务能力、Pod 名称和 UID；`agent_evaluation` 的阶段状态增强须在启动 Harbor 前增加绑定 execution identity/attempt 与 Pod UID 的 CAS 认领，才能把同一次评测限制为一个实际执行者。显式恢复或重试必须建立新的执行身份/attempt。
 
-现有代码已有 [config.JobType](../pkg/apiserver/config/consts.go)，通过 `JobTask.JobType` 选择 [Job 控制器](../pkg/apiserver/event/workflow/job/job.go)，并写入 `JobInfo.Type`。实现应优先扩展这条类型链路，让两类 Job 复用 Deployment 的创建、观察、重试和清理基础；不再增加含义重复的 category、purpose 或评测标记。`WorkflowQueue.Type` 的 `WorkflowTaskType` 表达父任务编排用途，不承载这两类 Job 的重复分类；同一个 TaskID 下可以按需编排不同类型的 Job。Eruun Job 类型与 Kubernetes 资源 `kind` 是不同概念；两类任务的底层资源均为 Deployment。
+`config.JobType` 是现有控制器分派键，同时保存已接受任务的公开业务类型；不再增加 `custom`、category、purpose 或评测布尔标记复制同一分类。Kubernetes 资源 `kind` 是 builder 的执行输出，不应被编码成第二个业务类型字段。缺失、未知或无权使用的类型明确拒绝，不能静默按 `command` 执行；接受后，类型须在请求快照、JobTask、JobInfo 和恢复路径中保持一致。
 
-Deployment Ready 只表示执行载体就绪，不能表示其中的一次性任务已经完成。`agent_evaluation` 通过专用 Runner 在任务开始前以 TaskID、Job 身份、Job 执行代和 attempt 原子认领当前执行；只有认领成功的实例可以运行评测，容器重启或 ReplicaSet 重建 Pod 后的实例不得重复执行同一次 attempt。Runner 上报按持久化 Job 执行身份校验；Worker 的状态推进、Deployment 缩容和删除另行受当前 Workflow ownership generation/token/worker fence 保护。终态证据持久化后，控制器必须先将对应 Deployment 缩容到 0 再按 UID 删除，或直接按 UID 删除，并等待资源消失。具体协议见 [Agent Evaluation Runner 小型进程服务](agent-evaluation-runner-service-design.md)。`custom` 不使用该 Runner，本 Proposal 尚未定义其完成信号和防重复执行协议；实现不得把 Agent 评测协议强加给用户镜像，也不能仅凭 Ready 或镜像进程退出就宣称 `custom` 已完成。`custom` 的独立控制器契约完成并通过恢复与清理验收前，不能宣称支持该类型。
-
-当前 `instant_job` 等类型参与调度准入、延迟执行、结果恢复、重试和清理的判断，不能只新增枚举和分发分支就认为接入完成。新增类型需核对上述路径以及无 AppID 的空间解析和持久化授权，并通过同一 namespace 内混合运行两类 Job 的验收。具体枚举名称、请求与存储映射由实现 PR 确定，但单一 Job 类型分类与共用执行边界是本草案的设计选择。
+当前 Harbor Runner 已上传最终原始结果，但 Kubernetes Job/Pod 状态仍不能表达评测内部的 preparing、running、finalizing 等阶段，也不能单靠 Never 与零 backoff 提供 replacement Pod 间的单实例认领。后续状态协议只扩展 `agent_evaluation` Runner：Runner 继续作为 Job Pod 的主进程，在启动 Harbor 前原子认领当前 execution identity/attempt，并主动通过 HTTP 上报有界阶段、心跳和终态证据；Kubernetes 仍负责 OOM、容器退出、调度和节点故障兜底。该增强不改变 `command` 镜像入口，不增加 Deployment 控制器，也不把普通应用 Deployment 的 Ready 或重启语义用于一次性评测。
 
 ## 5. 路线图与进入条件
 
@@ -156,11 +152,11 @@ Deployment Ready 只表示执行载体就绪，不能表示其中的一次性任
 
 ### Phase 3：评测与可观测性
 
-- 以一个小型、确定性数据集完成提交、执行、进度、报告和质量门禁闭环。
-- 在同一空间 namespace 中同时运行 Agent 评测和用户自定义 Job，验证由一个类型区分、各自创建任务执行 Deployment、共用调度与生命周期且执行资源互不混淆。
-- 验证不创建 Application 的独立评测能够生成 TaskID、持久化空间归属并完成调度、取消和清理；应用工作流中的评测保留原有归属与生命周期。
+- 在现有 Harbor `agent_evaluation` 上补充单实例 CAS 认领、阶段、心跳和终态证据，保持最终原始结果上传与质量结果语义不变。
+- 在同一空间 namespace 中同时运行 `command` 和 `agent_evaluation`，验证两者复用 `batch/v1 Job` 调度与生命周期且执行资源互不混淆。
+- 继续验证不创建 Application 的独立评测能够生成 TaskID、持久化空间归属并完成调度、取消和清理；若后续增加应用 Workflow 内评测，再明确其归属与生命周期。
 - 验证敏感输入与逐 case 制品的访问控制、保留和删除策略。
-- 用最小实现确定 Job 类型的枚举与输入映射，用真实数据决定是否需要进一步扩展 API 或抢占能力。
+- 保持现有 Job 类型和输入映射，用真实数据决定是否需要进一步扩展阶段查询、质量门禁或抢占能力。
 
 ### Phase 4：模型服务与 GPU
 
