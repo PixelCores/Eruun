@@ -1,6 +1,6 @@
 # Harbor 评测 Job 示例
 
-本目录提供一个不依赖模型凭据的 Harbor `0.22.0` 端到端示例。示例使用 `oracle` 执行参考解，适合先验证任务镜像、原生任务包、`agent_evaluation` Job、结果采集和数据库保存链路；它不代表模型能力分数。
+> 状态：Current。提供一个不依赖模型凭据的 Harbor `0.22.0` 端到端示例。示例使用 `oracle` 执行参考解，适合先验证任务镜像、原生任务包、`agent_evaluation` Job、结果采集和数据库保存链路；它不代表模型能力分数。
 
 完整 API、权限和运行边界见 [空间 Job 与 Harbor 评测 API](../../docs/workspace-jobs-api.md)。
 
@@ -20,7 +20,7 @@ export ERUUN_WORKSPACE_ID='<目标空间 ID>'
 export HARBOR_TASK_IMAGE='example.com/your-team/eruun-greeting-task:1.0.0'
 ```
 
-`HARBOR_TASK_IMAGE` 必须使用显式标签或 digest，并替换为目标集群实际可拉取的地址。
+`HARBOR_TASK_IMAGE` 会直接传给 `docker build -t` 和 `docker push`，因此必须使用显式且非 `latest` 的标签，并替换为目标集群实际可拉取的地址。本例不演示如何在推送后将 `task.toml` 固定为镜像 digest。
 
 ## 1. 构建并推送任务环境镜像
 
