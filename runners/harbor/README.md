@@ -53,7 +53,7 @@ python3 runners/harbor/smoke_kind.py --result /tmp/harbor-smoke-results.tar.gz
 
 上述是内部 Runner 协议，不是用户提交接口。`token` 只用于平台的 Bearer 下载、上传和状态请求，不传给 Harbor 子进程，不写入输出。请求同时携带 `X-Eruun-Runner-Pod-Name` 和 `X-Eruun-Runner-Pod-UID`。平台验证任务、Pod、live Job UID、ExecutionKey、RunGeneration 与 Attempt，并在持久化后才返回 2xx。下载拒绝重定向，上传不跟随重定向。
 
-Runner 启动后的第一个网络动作是同步提交 `claim`（`v1` sequence 1）；认领失败时绝不下载任务包、启动 Harbor 或上传结果。同一后台串行循环为后续 preparing/running/finalizing、15 秒 heartbeat 和有界 trial progress 分配 sequence，并对不确定 ACK 重放完全相同的事件。ACK `action=stop` 设置现有取消事件，终止 Harbor 进程组并进入收尾；如果停止状态恰好先于 terminal 持久化，Runner 按 409 返回的权威 `stopOutcome` 使用相同 sequence 重投。terminal 确认后事件循环立即结束；状态入口故障不会重新启动 Harbor。服务端连续 60 秒未接收任何 Runner 事件时只使查询状态变为 stale。
+Runner 启动后的第一个网络动作是同步提交 `claim`（`v1` sequence 1）；认领失败时绝不下载任务包、启动 Harbor 或上传结果。同一后台串行循环为后续 preparing/running/finalizing、15 秒 heartbeat 和有界 trial progress 分配 sequence，并对不确定 ACK 重放完全相同的事件。ACK `action=stop` 同时携带权威的 `stopOutcome`，Runner 保存该原因、设置现有取消事件、终止 Harbor 进程组并据此生成 terminal；如果停止状态恰好先于 terminal 持久化，Runner 按 409 返回的同一权威原因使用相同 sequence 重投。terminal 确认后事件循环立即结束；状态入口故障不会重新启动 Harbor。服务端连续 60 秒未接收任何 Runner 事件时只使查询状态变为 stale。
 
 `POST resultURL` 发送 `application/gzip`，头 `X-Eruun-Evaluation-Status` 为 `succeeded` 或 `failed`，并解析平台返回的持久化 artifact ID/digest。归档的根 `result.json` 是平台采集说明；`outputs/` 包含原始 Harbor 文件，包括原生 `outputs/run/result.json`、各 trial 的日志、轨迹、奖励、制品和框架附带文件。保留隐藏文件及二进制原文；安全的相对符号链接保留元数据，不解引用。危险链接、特殊文件、不可读文件记录在 `collectionErrors`，并设置 `collectionComplete=false`。
 

@@ -134,7 +134,7 @@ curl -X POST "$ERUUN_URL/api/v1/job-datasets?name=harbor-demo" \
 
 事件请求上限 64 KiB，固定使用 `protocolVersion: "v1"`、正整数 `sequence` 与 `kind`。`kind` 为 `claim`、`phase`、`heartbeat`、`progress` 或 `terminal`；phase 只允许 `preparing/running/finalizing`；progress 只包含非负、单调且不超过总量的 `completedTrials/totalTrials`。terminal 使用 `succeeded/failed/cancelled/timed_out` outcome，引用 results 接口已确认的 64 字符 artifact ID 和 SHA-256 digest，并携带 `collectionComplete`；可选 exit code、signal、最长 64 字符稳定 reason 和最长 512 字符脱敏 message。
 
-ACK 的 `data` 为 `{"acceptedSequence": 12, "action": "continue"}` 或 `action: "stop"`。相同 sequence 和内容重放是幂等操作，更旧 sequence 返回当前确认游标；同 sequence 不同内容、阶段/进度倒退、terminal 冲突或不同 owner 返回业务错误 `34004`（HTTP 409）。如果冲突仅由父任务已取消或到达绝对 deadline、而 terminal outcome 与权威状态不一致引起，409 的 `data.stopOutcome` 返回 `cancelled` 或 `timed_out`，Runner 使用相同 sequence 按该 outcome 重投；其他冲突不返回停止原因。服务端接收时间是心跳和状态陈旧计算的事实源。claim owner、最后事件摘要、sequence、phase、进度和 terminal 保存在当前 JobInfo `internal_info` 的 `runner` 子对象，不增加表或数据库列。
+ACK 的 `data` 为 `{"acceptedSequence": 12, "action": "continue"}`，或在停止时额外返回 `"stopOutcome": "cancelled"|"timed_out"`。Runner 保存该权威原因并用它生成后续 terminal。相同 sequence 和内容重放是幂等操作，更旧 sequence 返回当前确认游标；同 sequence 不同内容、阶段/进度倒退、terminal 冲突或不同 owner 返回业务错误 `34004`（HTTP 409）。如果冲突仅由父任务已取消或到达绝对 deadline、而 terminal outcome 与权威状态不一致引起，409 的 `data.stopOutcome` 同样返回 `cancelled` 或 `timed_out`，Runner 使用相同 sequence 按该 outcome 重投；其他冲突不返回停止原因。服务端接收时间是心跳和状态陈旧计算的事实源。claim owner、最后事件摘要、sequence、phase、进度和 terminal 保存在当前 JobInfo `internal_info` 的 `runner` 子对象，不增加表或数据库列。
 
 结果完整、`succeeded` terminal 获得 ACK、Runner 以 0 退出且 Kubernetes Job 成功，四项证据同时满足后控制面才能完成评测。状态 API 或数据库短暂故障只触发有界重试，不重启 Harbor；无法确认 terminal 时 Runner 非零退出，由 Kubernetes 证据收敛。
 

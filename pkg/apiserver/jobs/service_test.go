@@ -137,6 +137,7 @@ func claimRunner(t *testing.T, f *runnerFixture) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), ack.AcceptedSequence)
 	require.Equal(t, "continue", ack.Action)
+	require.Empty(t, ack.StopOutcome)
 	require.NoError(t, f.raw.Get(context.Background(), f.record))
 }
 
@@ -262,6 +263,7 @@ func TestRunnerResultPublicationFencesCheckpointAndAllowsCancellationUpload(t *t
 		require.NoError(t, err)
 		require.Equal(t, uint64(2), ack.AcceptedSequence)
 		require.Equal(t, "stop", ack.Action)
+		require.Equal(t, "cancelled", ack.StopOutcome)
 	})
 	t.Run("cancelled cleanup pending survives released workflow lease", func(t *testing.T) {
 		f := newRunnerFixture(t)
@@ -277,6 +279,7 @@ func TestRunnerResultPublicationFencesCheckpointAndAllowsCancellationUpload(t *t
 		ack, err := f.service.RunnerEvent(context.Background(), f.identity, RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 2, Kind: "heartbeat"})
 		require.NoError(t, err)
 		require.Equal(t, "stop", ack.Action)
+		require.Equal(t, "cancelled", ack.StopOutcome)
 
 		result, err := f.service.RunnerResult(context.Background(), f.identity, bytes.NewReader(resultArchive(t)))
 		require.NoError(t, err)
@@ -287,6 +290,7 @@ func TestRunnerResultPublicationFencesCheckpointAndAllowsCancellationUpload(t *t
 		require.NoError(t, err)
 		require.Equal(t, uint64(3), ack.AcceptedSequence)
 		require.Equal(t, "stop", ack.Action)
+		require.Equal(t, "cancelled", ack.StopOutcome)
 	})
 	t.Run("recovered terminal checkpoint", func(t *testing.T) {
 		f := newRunnerFixture(t)
@@ -474,6 +478,7 @@ func TestRunnerEventsStopAndStaleUseDatabaseReceiveTime(t *testing.T) {
 	ack, err := f.service.RunnerEvent(context.Background(), f.identity, RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 3, Kind: "heartbeat"})
 	require.NoError(t, err)
 	require.Equal(t, "stop", ack.Action)
+	require.Equal(t, "cancelled", ack.StopOutcome)
 
 	deadlineFixture := newRunnerFixture(t)
 	var checkpoint map[string]any
@@ -486,6 +491,7 @@ func TestRunnerEventsStopAndStaleUseDatabaseReceiveTime(t *testing.T) {
 	ack, err = deadlineFixture.service.RunnerEvent(context.Background(), deadlineFixture.identity, RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 1, Kind: "claim"})
 	require.NoError(t, err)
 	require.Equal(t, "stop", ack.Action)
+	require.Equal(t, "timed_out", ack.StopOutcome)
 	artifact, err := deadlineFixture.service.RunnerResult(context.Background(), deadlineFixture.identity, bytes.NewReader(resultArchive(t)))
 	require.NoError(t, err)
 	complete := true
@@ -496,11 +502,35 @@ func TestRunnerEventsStopAndStaleUseDatabaseReceiveTime(t *testing.T) {
 	var stopConflict *RunnerStopConflictError
 	require.ErrorAs(t, err, &stopConflict)
 	require.Equal(t, "timed_out", stopConflict.Outcome)
+	terminal.Terminal.Outcome = "cancelled"
+	terminal.Terminal.Reason = "evaluation_cancelled"
+	_, err = deadlineFixture.service.RunnerEvent(context.Background(), deadlineFixture.identity, terminal)
+	require.ErrorAs(t, err, &stopConflict)
+	require.Equal(t, "timed_out", stopConflict.Outcome)
 	terminal.Terminal.Outcome = "timed_out"
 	terminal.Terminal.Reason = "evaluation_timed_out"
 	ack, err = deadlineFixture.service.RunnerEvent(context.Background(), deadlineFixture.identity, terminal)
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), ack.AcceptedSequence)
+	require.Equal(t, "timed_out", ack.StopOutcome)
+}
+
+func TestGetQueuedEvaluationOmitsRunnerStatusUntilRetryCheckpointExists(t *testing.T) {
+	f := newRunnerFixture(t)
+	f.record.Status = string(config.StatusWaiting)
+	f.record.SchedulingState = workflowconfig.JobSchedulingQueued
+	f.record.InternalInfo = ""
+	require.NoError(t, f.raw.Put(context.Background(), f.record))
+	ctx := account.WithScope(context.Background(), account.Scope{WorkspaceID: "space", Namespace: "space-ns", Role: "viewer"})
+
+	detail, err := f.service.Get(ctx, f.parent.TaskID)
+	require.NoError(t, err)
+	require.Nil(t, detail.RunnerStatus)
+
+	f.record.InternalInfo = "{"
+	require.NoError(t, f.raw.Put(context.Background(), f.record))
+	_, err = f.service.Get(ctx, f.parent.TaskID)
+	require.ErrorContains(t, err, "decode instant Job retry checkpoint")
 }
 
 func TestRunnerEventValidation(t *testing.T) {

@@ -564,11 +564,15 @@ def post_runner_event(config, event, deadline):
             data = response_data["data"]
             accepted = data["acceptedSequence"]
             action = data["action"]
+            stop_outcome = data.get("stopOutcome")
         except (KeyError, TypeError):
             raise RunnerError("invalid runner event acknowledgment") from None
         if isinstance(accepted, bool) or not isinstance(accepted, int) or accepted < event["sequence"] or action not in {"continue", "stop"}:
             raise RunnerError("invalid runner event acknowledgment")
-        return action
+        if ((action == "stop" and stop_outcome not in {"cancelled", "timed_out"})
+                or (action == "continue" and stop_outcome is not None)):
+            raise RunnerError("invalid runner event acknowledgment")
+        return action, stop_outcome
     finally:
         connection.close()
 
@@ -601,24 +605,25 @@ class StatusReporter:
         self.progress_source = None
         self.last_progress = None
         self.thread = None
+        self.stop_outcome = None
 
     def _send_with_retry(self, event):
         attempt = 0
-        stop_outcome = None
         while True:
             if self.stop.is_set():
                 raise RunnerError("runner event reporter stopped")
-            if event["kind"] == "terminal" and stop_outcome is None and self.cancel.is_set():
-                stop_outcome = "cancelled"
-            if (event["kind"] == "terminal" and stop_outcome is not None
-                    and event["terminal"]["outcome"] != stop_outcome):
-                reason = "evaluation_cancelled" if stop_outcome == "cancelled" else "evaluation_timed_out"
-                terminal = {**event["terminal"], "outcome": stop_outcome, "reason": reason}
+            if event["kind"] == "terminal" and self.stop_outcome is None and self.cancel.is_set():
+                self.stop_outcome = "cancelled"
+            if (event["kind"] == "terminal" and self.stop_outcome is not None
+                    and event["terminal"]["outcome"] != self.stop_outcome):
+                reason = "evaluation_cancelled" if self.stop_outcome == "cancelled" else "evaluation_timed_out"
+                terminal = {**event["terminal"], "outcome": self.stop_outcome, "reason": reason}
                 event = {**event, "terminal": terminal}
             remaining_time(self.deadline)
             try:
-                action = post_runner_event(self.config, event, self.deadline)
+                action, stop_outcome = post_runner_event(self.config, event, self.deadline)
                 if action == "stop":
+                    self.stop_outcome = stop_outcome
                     self.cancel.set()
                 return
             except (OSError, http.client.HTTPException, RetryableTransferError):
@@ -632,12 +637,12 @@ class StatusReporter:
                 # with the authoritative stop outcome.
                 if event["kind"] == "terminal" and exc.stop_outcome is not None:
                     self.cancel.set()
-                    stop_outcome = exc.stop_outcome
-                elif event["kind"] == "terminal" and self.cancel.is_set():
-                    stop_outcome = "cancelled"
+                    self.stop_outcome = exc.stop_outcome
+                elif event["kind"] == "terminal" and self.stop_outcome is None and self.cancel.is_set():
+                    self.stop_outcome = "cancelled"
                 else:
                     raise
-                if event["terminal"]["outcome"] != stop_outcome:
+                if event["terminal"]["outcome"] != self.stop_outcome:
                     continue
                 raise
 

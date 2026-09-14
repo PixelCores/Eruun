@@ -218,7 +218,7 @@ class RunnerTest(unittest.TestCase):
             observed.append(dict(event))
             if len(observed) == 1:
                 raise ConnectionResetError("ack lost")
-            return "continue"
+            return "continue", None
 
         reporter = runner.StatusReporter(config(), threading.Event(), time.monotonic() + 5)
         with patch.object(runner, "post_runner_event", side_effect=post), patch.object(reporter.stop, "wait", return_value=False):
@@ -234,7 +234,7 @@ class RunnerTest(unittest.TestCase):
             observed.append(dict(event))
             if len(observed) < 3:
                 raise runner.RetryableTransferError("temporary API or database failure")
-            return "continue"
+            return "continue", None
 
         reporter = runner.StatusReporter(config(), threading.Event(), time.monotonic() + 5)
         with patch.object(runner, "post_runner_event", side_effect=post), patch.object(reporter.stop, "wait", return_value=False):
@@ -276,6 +276,25 @@ class RunnerTest(unittest.TestCase):
 
         connection.request.assert_called_once()
 
+    def test_runner_event_rejects_inconsistent_stop_outcome(self):
+        for data in (
+                {"acceptedSequence": 1, "action": "stop"},
+                {"acceptedSequence": 1, "action": "stop", "stopOutcome": "failed"},
+                {"acceptedSequence": 1, "action": "continue", "stopOutcome": "timed_out"},
+        ):
+            with self.subTest(data=data):
+                invalid = MagicMock(status=200)
+                invalid.read.return_value = json.dumps({"data": data}).encode()
+                connection = MagicMock()
+                connection.getresponse.return_value = invalid
+                reporter = runner.StatusReporter(config(), threading.Event(), time.monotonic() + 5)
+
+                with patch.object(runner.http.client, "HTTPConnection", return_value=connection), \
+                        self.assertRaises(runner.RunnerError):
+                    reporter.claim()
+
+                connection.request.assert_called_once()
+
     def test_runner_event_stop_interrupts_retry_backoff(self):
         reporter = runner.StatusReporter(config(), threading.Event(), time.monotonic() + 5)
         attempts = []
@@ -297,7 +316,7 @@ class RunnerTest(unittest.TestCase):
 
         def post(cfg, event, deadline):
             kinds.append(event["kind"])
-            return "stop" if event["kind"] == "heartbeat" else "continue"
+            return ("stop", "timed_out") if event["kind"] == "heartbeat" else ("continue", None)
 
         reporter = runner.StatusReporter(config(), cancel, time.monotonic() + 5)
         with patch.object(runner, "HEARTBEAT_SECONDS", 0.01), patch.object(runner, "post_runner_event", side_effect=post):
@@ -305,6 +324,28 @@ class RunnerTest(unittest.TestCase):
             self.assertTrue(cancel.wait(1))
             reporter.close()
         self.assertIn("heartbeat", kinds)
+
+    def test_heartbeat_stop_preserves_authoritative_terminal_outcome(self):
+        cancel = threading.Event()
+        reporter = runner.StatusReporter(config(), cancel, time.monotonic() + 5)
+        observed = []
+
+        def post(cfg, event, deadline):
+            observed.append(event)
+            return "stop", "timed_out"
+
+        terminal = {"protocolVersion": "v1", "sequence": 3, "kind": "terminal", "terminal": {
+            "outcome": "succeeded", "artifactId": "a" * 64, "artifactDigest": "b" * 64,
+            "collectionComplete": True, "reason": "evaluation_succeeded",
+        }}
+        with patch.object(runner, "post_runner_event", side_effect=post):
+            reporter._send_with_retry({"protocolVersion": "v1", "sequence": 2, "kind": "heartbeat"})
+            reporter._send_with_retry(terminal)
+
+        self.assertTrue(cancel.is_set())
+        self.assertEqual(reporter.stop_outcome, "timed_out")
+        self.assertEqual(observed[-1]["terminal"]["outcome"], "timed_out")
+        self.assertEqual(observed[-1]["terminal"]["reason"], "evaluation_timed_out")
 
     def test_terminal_cancel_race_retries_cancelled_outcome(self):
         cancel = threading.Event()
@@ -316,7 +357,7 @@ class RunnerTest(unittest.TestCase):
             if len(observed) == 1:
                 cancel.set()
                 raise runner.RunnerEventConflictError("platform rejected runner event with HTTP 409")
-            return "stop"
+            return "stop", "cancelled"
 
         event = {"protocolVersion": "v1", "sequence": 2, "kind": "terminal", "terminal": {
             "outcome": "succeeded", "artifactId": "a" * 64, "artifactDigest": "b" * 64,
@@ -337,7 +378,7 @@ class RunnerTest(unittest.TestCase):
                 }).encode()
                 accepted = MagicMock(status=200)
                 accepted.read.return_value = json.dumps({"data": {
-                    "acceptedSequence": 2, "action": "stop",
+                    "acceptedSequence": 2, "action": "stop", "stopOutcome": stop_outcome,
                 }}).encode()
                 connection = MagicMock()
                 connection.getresponse.side_effect = [conflict, accepted]

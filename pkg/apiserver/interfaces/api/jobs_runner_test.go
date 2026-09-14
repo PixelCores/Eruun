@@ -63,3 +63,23 @@ func TestRunnerEventStopConflictReturnsAuthoritativeOutcome(t *testing.T) {
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &generic))
 	require.Nil(t, generic["data"])
 }
+
+func TestRunnerEventStopAckReturnsAuthoritativeOutcome(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	runnerEventResponse(c, &jobs.RunnerEventAck{AcceptedSequence: 3, Action: "stop", StopOutcome: "timed_out"}, nil)
+
+	require.Equal(t, http.StatusOK, response.Code)
+	var body struct {
+		Data struct {
+			AcceptedSequence uint64 `json:"acceptedSequence"`
+			Action           string `json:"action"`
+			StopOutcome      string `json:"stopOutcome"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	require.Equal(t, uint64(3), body.Data.AcceptedSequence)
+	require.Equal(t, "stop", body.Data.Action)
+	require.Equal(t, "timed_out", body.Data.StopOutcome)
+}

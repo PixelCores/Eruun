@@ -72,6 +72,7 @@ type RunnerEvent struct {
 type RunnerEventAck struct {
 	AcceptedSequence uint64 `json:"acceptedSequence"`
 	Action           string `json:"action"`
+	StopOutcome      string `json:"stopOutcome,omitempty"`
 }
 
 type RunnerTerminalStatus struct {
@@ -294,7 +295,7 @@ func (s *Service) RunnerEvent(ctx context.Context, identity RunnerIdentity, even
 			if !runnerOwnerMatches(state, auth) {
 				return ErrRunnerConflict
 			}
-			ack = RunnerEventAck{AcceptedSequence: state.LastSequence, Action: action}
+			ack = RunnerEventAck{AcceptedSequence: state.LastSequence, Action: action, StopOutcome: stopOutcome}
 			if event.Sequence < state.LastSequence {
 				result = "old"
 				return nil
@@ -323,8 +324,7 @@ func (s *Service) RunnerEvent(ctx context.Context, identity RunnerIdentity, even
 			}
 		}
 		if event.Kind == "terminal" && stopOutcome != "" {
-			allowed := event.Terminal.Outcome == stopOutcome || (stopOutcome == "timed_out" && event.Terminal.Outcome == "cancelled")
-			if !allowed {
+			if event.Terminal.Outcome != stopOutcome {
 				return &RunnerStopConflictError{Outcome: stopOutcome}
 			}
 		}
@@ -348,7 +348,7 @@ func (s *Service) RunnerEvent(ctx context.Context, identity RunnerIdentity, even
 		if err := tx.Put(ctx, record); err != nil {
 			return err
 		}
-		ack = RunnerEventAck{AcceptedSequence: state.LastSequence, Action: action}
+		ack = RunnerEventAck{AcceptedSequence: state.LastSequence, Action: action, StopOutcome: stopOutcome}
 		return nil
 	})
 	if err != nil {
@@ -485,6 +485,9 @@ func latestRunnerStatus(ctx context.Context, store datastore.DataStore, records 
 		}
 	}
 	if latest == nil {
+		return nil, nil
+	}
+	if latest.InternalInfo == "" {
 		return nil, nil
 	}
 	clock, ok := store.(datastore.DatabaseClock)
