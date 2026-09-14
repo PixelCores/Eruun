@@ -37,6 +37,13 @@ var (
 	runnerReasonRE    = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
 )
 
+type RunnerStopConflictError struct {
+	Outcome string
+}
+
+func (e *RunnerStopConflictError) Error() string { return ErrRunnerConflict.Error() }
+func (e *RunnerStopConflictError) Unwrap() error { return ErrRunnerConflict }
+
 type RunnerProgress struct {
 	CompletedTrials int `json:"completedTrials"`
 	TotalTrials     int `json:"totalTrials"`
@@ -318,7 +325,7 @@ func (s *Service) RunnerEvent(ctx context.Context, identity RunnerIdentity, even
 		if event.Kind == "terminal" && stopOutcome != "" {
 			allowed := event.Terminal.Outcome == stopOutcome || (stopOutcome == "timed_out" && event.Terminal.Outcome == "cancelled")
 			if !allowed {
-				return ErrRunnerConflict
+				return &RunnerStopConflictError{Outcome: stopOutcome}
 			}
 		}
 		if err := s.applyRunnerEvent(ctx, tx, auth, state, event); err != nil {

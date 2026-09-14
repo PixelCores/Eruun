@@ -310,5 +310,15 @@ func (a *workspaceJobs) runnerEvent(c *gin.Context) {
 		return
 	}
 	result, err := a.Service.RunnerEvent(c.Request.Context(), runnerIdentity(c), request)
+	runnerEventResponse(c, result, err)
+}
+
+func runnerEventResponse(c *gin.Context, result *jobs.RunnerEventAck, err error) {
+	var stopConflict *jobs.RunnerStopConflictError
+	if errors.As(err, &stopConflict) && (stopConflict.Outcome == "cancelled" || stopConflict.Outcome == "timed_out") {
+		bcode.ReturnResponse(c, http.StatusConflict, bcode.ErrJobRunnerConflict.BusinessCode,
+			bcode.ErrJobRunnerConflict.Message, gin.H{"stopOutcome": stopConflict.Outcome})
+		return
+	}
 	jobResponse(c, http.StatusOK, result, err)
 }

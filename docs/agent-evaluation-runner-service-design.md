@@ -197,7 +197,7 @@ phase 只允许 `preparing/running/finalizing`。progress 只包含非负且单�
 - 相同 terminal 重放幂等；不同 terminal、不同归档摘要或已被取代的执行返回权威冲突。
 - 服务端只在事件已经持久化后 ACK；数据库失败、超时或不明确 5xx 不能当作成功。
 - Runner 在绝对 deadline 内有界重试；重试不能延长任务期限，也不能重新启动 Harbor。
-- ACK 的 `data` 固定返回 `acceptedSequence` 与 `action: continue|stop`。任务已取消、到达 checkpoint 绝对 deadline 时返回 stop；execution identity 已被替换时鉴权失败。
+- ACK 的 `data` 固定返回 `acceptedSequence` 与 `action: continue|stop`。任务已取消、到达 checkpoint 绝对 deadline 时返回 stop；如果 terminal outcome 与该权威停止状态冲突，HTTP 409/业务码 `34004` 的 `data.stopOutcome` 返回 `cancelled|timed_out`，Runner 使用未推进的相同 sequence 按权威 outcome 重投。其他冲突不返回停止原因；execution identity 已被替换时鉴权失败。
 
 `restartPolicy: Never` 只禁止 kubelet 重启已退出容器，`backoffLimit: 0` 只禁止 Job 在失败已计数后继续重试；当前 Job 未配置可消除 terminating replacement 窗口的额外单实例机制。因此 claim 是本增强的前置门禁，而不是可选优化。服务端在现有 JobInfo/InternalInfo 事务边界保存 owner Pod UID 及其 execution identity/attempt，不新建 claim 表或 RunnerTask 实体。
 

@@ -44,7 +44,9 @@ class RetryableTransferError(RunnerError):
 
 
 class RunnerEventConflictError(RunnerError):
-    pass
+    def __init__(self, message, stop_outcome=None):
+        super().__init__(message)
+        self.stop_outcome = stop_outcome
 
 
 def integer(value, name, minimum, maximum):
@@ -540,16 +542,29 @@ def post_runner_event(config, event, deadline):
         if response.status >= 500 or response.status in {408, 429}:
             raise RetryableTransferError("platform temporarily rejected runner event")
         if response.status == 409:
-            raise RunnerEventConflictError("platform rejected runner event with HTTP 409")
+            stop_outcome = None
+            if len(body) <= MAX_EVENT_RESPONSE_BYTES:
+                try:
+                    conflict = json.loads(body)
+                    candidate = conflict["data"]["stopOutcome"]
+                    if conflict["code"] == 34004 and candidate in {"cancelled", "timed_out"}:
+                        stop_outcome = candidate
+                except (ValueError, KeyError, TypeError):
+                    pass
+            raise RunnerEventConflictError("platform rejected runner event with HTTP 409", stop_outcome)
         if not 200 <= response.status < 300:
             raise RunnerError(f"platform rejected runner event with HTTP {response.status}")
         if len(body) > MAX_EVENT_RESPONSE_BYTES:
             raise RunnerError("runner event acknowledgment is too large")
         try:
-            data = json.loads(body)["data"]
+            response_data = json.loads(body)
+        except ValueError:
+            raise RetryableTransferError("runner event acknowledgment could not be decoded") from None
+        try:
+            data = response_data["data"]
             accepted = data["acceptedSequence"]
             action = data["action"]
-        except (ValueError, KeyError, TypeError):
+        except (KeyError, TypeError):
             raise RunnerError("invalid runner event acknowledgment") from None
         if isinstance(accepted, bool) or not isinstance(accepted, int) or accepted < event["sequence"] or action not in {"continue", "stop"}:
             raise RunnerError("invalid runner event acknowledgment")
@@ -589,12 +604,16 @@ class StatusReporter:
 
     def _send_with_retry(self, event):
         attempt = 0
+        stop_outcome = None
         while True:
             if self.stop.is_set():
                 raise RunnerError("runner event reporter stopped")
-            if (event["kind"] == "terminal" and self.cancel.is_set()
-                    and event["terminal"]["outcome"] != "cancelled"):
-                terminal = {**event["terminal"], "outcome": "cancelled", "reason": "evaluation_cancelled"}
+            if event["kind"] == "terminal" and stop_outcome is None and self.cancel.is_set():
+                stop_outcome = "cancelled"
+            if (event["kind"] == "terminal" and stop_outcome is not None
+                    and event["terminal"]["outcome"] != stop_outcome):
+                reason = "evaluation_cancelled" if stop_outcome == "cancelled" else "evaluation_timed_out"
+                terminal = {**event["terminal"], "outcome": stop_outcome, "reason": reason}
                 event = {**event, "terminal": terminal}
             remaining_time(self.deadline)
             try:
@@ -607,12 +626,18 @@ class StatusReporter:
                 log_runner_event("event_retry", kind=event["kind"], attempt=attempt)
                 if self.stop.wait(min(5, 0.25 * (2 ** min(attempt, 4)), remaining_time(self.deadline))):
                     raise RunnerError("runner event reporter stopped")
-            except RunnerEventConflictError:
-                # Cancellation may race the first terminal request. A rejected
+            except RunnerEventConflictError as exc:
+                # An authoritative stop may race the first terminal request. A rejected
                 # event did not advance the server sequence, so retry it once
-                # with the authoritative cancelled outcome.
-                if (event["kind"] == "terminal" and self.cancel.is_set()
-                        and event["terminal"]["outcome"] != "cancelled"):
+                # with the authoritative stop outcome.
+                if event["kind"] == "terminal" and exc.stop_outcome is not None:
+                    self.cancel.set()
+                    stop_outcome = exc.stop_outcome
+                elif event["kind"] == "terminal" and self.cancel.is_set():
+                    stop_outcome = "cancelled"
+                else:
+                    raise
+                if event["terminal"]["outcome"] != stop_outcome:
                     continue
                 raise
 
@@ -665,6 +690,8 @@ class StatusReporter:
                     self._send_with_retry(self._next_event(event))
                     if completed is not None:
                         completed.set()
+                    if event["kind"] == "terminal":
+                        return
                 if time.monotonic() >= next_heartbeat and not self.stop.is_set():
                     self._send_with_retry(self._next_event({"kind": "heartbeat"}))
                     self._send_progress()
@@ -725,8 +752,12 @@ def upload_results(config, archive_path, status, deadline=None):
         if len(body) > MAX_EVENT_RESPONSE_BYTES:
             raise RunnerError("source acknowledgment is too large")
         try:
-            artifact = json.loads(body)["data"]
-        except (ValueError, KeyError, TypeError):
+            response_data = json.loads(body)
+        except ValueError:
+            raise RetryableTransferError("source acknowledgment could not be decoded") from None
+        try:
+            artifact = response_data["data"]
+        except (KeyError, TypeError):
             raise RunnerError("invalid source acknowledgment") from None
         if not isinstance(artifact, dict) or not isinstance(artifact.get("id"), str) or not isinstance(artifact.get("digest"), str):
             raise RunnerError("invalid source acknowledgment")

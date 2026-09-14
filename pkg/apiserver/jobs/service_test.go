@@ -246,6 +246,22 @@ func TestRunnerResultPublicationFencesCheckpointAndAllowsCancellationUpload(t *t
 		again, err := f.service.RunnerResult(context.Background(), f.identity, bytes.NewReader(data))
 		require.NoError(t, err)
 		require.Equal(t, result.ID, again.ID)
+
+		complete := true
+		terminal := RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 2, Kind: "terminal", Terminal: &RunnerTerminal{
+			Outcome: "succeeded", ArtifactID: result.ID, ArtifactDigest: result.Digest, CollectionComplete: &complete, Reason: "evaluation_succeeded",
+		}}
+		_, err = f.service.RunnerEvent(context.Background(), f.identity, terminal)
+		var stopConflict *RunnerStopConflictError
+		require.ErrorAs(t, err, &stopConflict)
+		require.Equal(t, "cancelled", stopConflict.Outcome)
+
+		terminal.Terminal.Outcome = "cancelled"
+		terminal.Terminal.Reason = "evaluation_cancelled"
+		ack, err := f.service.RunnerEvent(context.Background(), f.identity, terminal)
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), ack.AcceptedSequence)
+		require.Equal(t, "stop", ack.Action)
 	})
 	t.Run("cancelled cleanup pending survives released workflow lease", func(t *testing.T) {
 		f := newRunnerFixture(t)
@@ -470,6 +486,21 @@ func TestRunnerEventsStopAndStaleUseDatabaseReceiveTime(t *testing.T) {
 	ack, err = deadlineFixture.service.RunnerEvent(context.Background(), deadlineFixture.identity, RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 1, Kind: "claim"})
 	require.NoError(t, err)
 	require.Equal(t, "stop", ack.Action)
+	artifact, err := deadlineFixture.service.RunnerResult(context.Background(), deadlineFixture.identity, bytes.NewReader(resultArchive(t)))
+	require.NoError(t, err)
+	complete := true
+	terminal := RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 2, Kind: "terminal", Terminal: &RunnerTerminal{
+		Outcome: "succeeded", ArtifactID: artifact.ID, ArtifactDigest: artifact.Digest, CollectionComplete: &complete, Reason: "evaluation_succeeded",
+	}}
+	_, err = deadlineFixture.service.RunnerEvent(context.Background(), deadlineFixture.identity, terminal)
+	var stopConflict *RunnerStopConflictError
+	require.ErrorAs(t, err, &stopConflict)
+	require.Equal(t, "timed_out", stopConflict.Outcome)
+	terminal.Terminal.Outcome = "timed_out"
+	terminal.Terminal.Reason = "evaluation_timed_out"
+	ack, err = deadlineFixture.service.RunnerEvent(context.Background(), deadlineFixture.identity, terminal)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), ack.AcceptedSequence)
 }
 
 func TestRunnerEventValidation(t *testing.T) {
