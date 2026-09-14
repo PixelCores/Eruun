@@ -86,7 +86,7 @@ curl -X POST "$ERUUN_URL/api/v1/job-datasets?name=harbor-demo" \
   -H 'Content-Type: application/gzip' --data-binary @task-package.tar.gz
 ```
 
-先按 [示例镜像说明](../examples/agent-evaluation/harbor-task/README.md) 构建并调整镜像引用，再打包。Task 包压缩上限 64 MiB、展开上限 256 MiB；结果分别为 512 MiB、2 GiB；最多 10,000 条目。拒绝路径逃逸、重复歧义条目、任务包链接及特殊文件。超过边界会明确失败，不宣称已完整采集。
+完整的构建、上传、提交、查询和结果下载流程见 [Harbor 评测 Job 示例](../examples/agent-evaluation/README.md)。先按 [示例镜像说明](../examples/agent-evaluation/harbor-task/README.md) 构建并调整镜像引用，再打包。Task 包压缩上限 64 MiB、展开上限 256 MiB；结果分别为 512 MiB、2 GiB；最多 10,000 条目。拒绝路径逃逸、重复歧义条目、任务包链接及特殊文件。超过边界会明确失败，不宣称已完整采集。
 
 ## 结果与保存
 

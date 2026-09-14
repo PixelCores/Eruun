@@ -99,6 +99,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | --- | --- | --- |
 | `local-docker-dependencies.md` | Current | MySQL、Redis、Kafka 本地 Compose 分组、凭据、连接配置、健康检查和数据保留 |
 | `workspace-jobs-api.md` | Current | 无 AppID 的 command/Harbor 评测 Job、原生任务包、完整结果与 MinIO/数据库独立保存、空间策略和部署配置 |
+| [`../examples/agent-evaluation/README.md`](../examples/agent-evaluation/README.md) | Current | Harbor 评测 Job 端到端示例：镜像、任务包、dataset 上传、Job 提交、状态查询与结果下载 |
 | `distributed-runtime-hardening-merge-guide.md` | Current | 已合并的 7 个分布式运行时加固 PR、实现边界、合并记录与待完成的真实集群验收清单 |
 | `account-auth-workspaces.md` | Current | GitHub/Google、邮箱/手机号登录、会话、团队权限、延迟任务隔离与失败收尾、重复部署幂等性、前端与部署接入 |
 | [`../examples/account-auth-workspaces/README.md`](../examples/account-auth-workspaces/README.md) | Current | 账号与团队 API 实操：curl 注册/登录/刷新、OAuth 浏览器回调、身份绑定、邀请和空间资源访问 |
