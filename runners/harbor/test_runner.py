@@ -243,6 +243,21 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual([event["sequence"] for event in observed], [1, 1, 1])
         self.assertTrue(all(event == observed[0] for event in observed))
 
+    def test_runner_event_stop_interrupts_retry_backoff(self):
+        reporter = runner.StatusReporter(config(), threading.Event(), time.monotonic() + 5)
+        attempts = []
+
+        def post(cfg, event, deadline):
+            attempts.append(dict(event))
+            reporter.stop.set()
+            raise ConnectionRefusedError("platform unavailable")
+
+        with patch.object(runner, "post_runner_event", side_effect=post), \
+                patch.object(runner, "log_runner_event"), \
+                self.assertRaisesRegex(runner.RunnerError, "reporter stopped"):
+            reporter._send_with_retry({"protocolVersion": "v1", "sequence": 1, "kind": "claim"})
+        self.assertEqual(len(attempts), 1)
+
     def test_heartbeat_stop_cancels_framework_control(self):
         cancel = threading.Event()
         kinds = []

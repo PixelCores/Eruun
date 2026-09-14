@@ -415,11 +415,13 @@ func (s *Service) applyRunnerEvent(ctx context.Context, store datastore.DataStor
 			return err
 		}
 		var summary struct {
-			CollectionComplete *bool `json:"collectionComplete"`
+			CollectionComplete *bool  `json:"collectionComplete"`
+			ExecutionStatus    string `json:"executionStatus"`
 		}
 		if artifact.WorkspaceID != auth.task.WorkspaceID || artifact.TaskID != auth.task.TaskID || artifact.Kind != artifacts.KindSource || artifact.Expired || artifact.Digest != event.Terminal.ArtifactDigest ||
 			json.Unmarshal(artifact.Summary, &summary) != nil || summary.CollectionComplete == nil || *summary.CollectionComplete != *event.Terminal.CollectionComplete ||
-			(event.Terminal.Outcome == "succeeded" && !*summary.CollectionComplete) {
+			(summary.ExecutionStatus != "succeeded" && summary.ExecutionStatus != "failed") ||
+			(event.Terminal.Outcome == "succeeded" && (!*summary.CollectionComplete || summary.ExecutionStatus != "succeeded")) {
 			klog.InfoS("evaluation terminal does not match persisted result", "taskID", auth.task.TaskID, "outcome", event.Terminal.Outcome)
 			return ErrRunnerConflict
 		}

@@ -357,6 +357,21 @@ func TestRunnerEventsClaimSequenceProgressTerminalAndPublicStatus(t *testing.T) 
 	require.NotContains(t, string(encoded), string(f.workload.UID))
 }
 
+func TestRunnerSucceededTerminalRequiresSucceededArtifact(t *testing.T) {
+	f := newRunnerFixture(t)
+	claimRunner(t, f)
+	artifact, err := f.service.RunnerResult(context.Background(), f.identity, bytes.NewReader(resultArchive(t)))
+	require.NoError(t, err)
+	artifact.Summary = []byte(`{"collectionComplete":true,"executionStatus":"failed"}`)
+	require.NoError(t, f.raw.Put(context.Background(), artifact))
+
+	complete := true
+	_, err = f.service.RunnerEvent(context.Background(), f.identity, RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 2, Kind: "terminal", Terminal: &RunnerTerminal{
+		Outcome: "succeeded", ArtifactID: artifact.ID, ArtifactDigest: artifact.Digest, CollectionComplete: &complete, Reason: "evaluation_succeeded",
+	}})
+	require.ErrorIs(t, err, ErrRunnerConflict)
+}
+
 func TestRunnerEventsConcurrentClaimHasOneOwner(t *testing.T) {
 	f := newRunnerFixture(t)
 	replacement := f.pod.DeepCopy()

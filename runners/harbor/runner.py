@@ -530,6 +530,8 @@ class StatusReporter:
     def _send_with_retry(self, event):
         attempt = 0
         while True:
+            if self.stop.is_set():
+                raise RunnerError("runner event reporter stopped")
             remaining_time(self.deadline)
             try:
                 action = post_runner_event(self.config, event, self.deadline)
@@ -539,7 +541,8 @@ class StatusReporter:
             except (OSError, http.client.HTTPException, RetryableTransferError):
                 attempt += 1
                 log_runner_event("event_retry", kind=event["kind"], attempt=attempt)
-                self.stop.wait(min(5, 0.25 * (2 ** min(attempt, 4)), remaining_time(self.deadline)))
+                if self.stop.wait(min(5, 0.25 * (2 ** min(attempt, 4)), remaining_time(self.deadline))):
+                    raise RunnerError("runner event reporter stopped")
 
     def claim(self):
         event = {"protocolVersion": "v1", "sequence": 1, "kind": "claim"}
