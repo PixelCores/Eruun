@@ -12,6 +12,7 @@ import subprocess
 import tarfile
 import tempfile
 import threading
+import time
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -25,6 +26,7 @@ def config():
     return {
         "taskId": "task-test", "namespace": "workspace-test",
         "datasetURL": "http://platform.test/input", "resultURL": "http://platform.test/result",
+        "eventURL": "http://platform.test/events",
         "token": "private-transfer-token", "datasetDigest": "a" * 64,
         "agent": {"name": "oracle"}, "options": {"attempts": 1, "concurrency": 1},
         "resources": {"cpu": "1", "memory": "1Gi", "cpuLimit": "2", "memoryLimit": "2Gi"},
@@ -197,8 +199,10 @@ class RunnerTest(unittest.TestCase):
         source.write_bytes(b"complete raw archive")
         connection = MagicMock()
         connection.getresponse.return_value.status = 201
+        connection.getresponse.return_value.read.return_value = json.dumps({"data": {"id": "a" * 64, "digest": "b" * 64}}).encode()
         with patch.object(runner.http.client, "HTTPConnection", return_value=connection):
-            runner.upload_results(config(), source, "failed")
+            artifact = runner.upload_results(config(), source, "failed")
+        self.assertEqual(artifact["id"], "a" * 64)
         connection.putrequest.assert_called_once_with("POST", "/result")
         connection.putheader.assert_any_call("X-Eruun-Runner-Pod-UID", "runner-uid")
         connection.putheader.assert_any_call("X-Eruun-Evaluation-Status", "failed")
@@ -206,6 +210,314 @@ class RunnerTest(unittest.TestCase):
         connection.getresponse.return_value.status = 409
         with patch.object(runner.http.client, "HTTPConnection", return_value=connection), self.assertRaises(runner.RunnerError):
             runner.upload_results(config(), source, "succeeded")
+
+    def test_runner_event_ack_retry_replays_exact_sequence(self):
+        observed = []
+
+        def post(cfg, event, deadline):
+            observed.append(dict(event))
+            if len(observed) == 1:
+                raise ConnectionResetError("ack lost")
+            return "continue", None
+
+        reporter = runner.StatusReporter(config(), threading.Event(), time.monotonic() + 5)
+        with patch.object(runner, "post_runner_event", side_effect=post), patch.object(reporter.stop, "wait", return_value=False):
+            reporter.claim()
+            reporter.close()
+        self.assertEqual([event["sequence"] for event in observed], [1, 1])
+        self.assertEqual(observed[0], observed[1])
+
+    def test_runner_event_retries_temporary_platform_failure(self):
+        observed = []
+
+        def post(cfg, event, deadline):
+            observed.append(dict(event))
+            if len(observed) < 3:
+                raise runner.RetryableTransferError("temporary API or database failure")
+            return "continue", None
+
+        reporter = runner.StatusReporter(config(), threading.Event(), time.monotonic() + 5)
+        with patch.object(runner, "post_runner_event", side_effect=post), patch.object(reporter.stop, "wait", return_value=False):
+            reporter.claim()
+            reporter.close()
+        self.assertEqual([event["sequence"] for event in observed], [1, 1, 1])
+        self.assertTrue(all(event == observed[0] for event in observed))
+
+    def test_runner_event_retries_incomplete_success_ack(self):
+        incomplete = MagicMock(status=200)
+        incomplete.read.return_value = b'{"data":'
+        accepted = MagicMock(status=200)
+        accepted.read.return_value = json.dumps({"data": {
+            "acceptedSequence": 1, "action": "continue",
+        }}).encode()
+        connection = MagicMock()
+        connection.getresponse.side_effect = [incomplete, accepted]
+        reporter = runner.StatusReporter(config(), threading.Event(), time.monotonic() + 5)
+
+        with patch.object(runner.http.client, "HTTPConnection", return_value=connection), \
+                patch.object(reporter.stop, "wait", return_value=False):
+            reporter.claim()
+            reporter.close()
+
+        bodies = [call.kwargs["body"] for call in connection.request.call_args_list]
+        self.assertEqual(len(bodies), 2)
+        self.assertEqual(bodies[0], bodies[1])
+
+    def test_runner_event_does_not_retry_invalid_success_ack(self):
+        invalid = MagicMock(status=200)
+        invalid.read.return_value = json.dumps({"data": {"action": "continue"}}).encode()
+        connection = MagicMock()
+        connection.getresponse.return_value = invalid
+        reporter = runner.StatusReporter(config(), threading.Event(), time.monotonic() + 5)
+
+        with patch.object(runner.http.client, "HTTPConnection", return_value=connection), \
+                self.assertRaises(runner.RunnerError):
+            reporter.claim()
+
+        connection.request.assert_called_once()
+
+    def test_runner_event_rejects_inconsistent_stop_outcome(self):
+        for data in (
+                {"acceptedSequence": 1, "action": "stop"},
+                {"acceptedSequence": 1, "action": "stop", "stopOutcome": "failed"},
+                {"acceptedSequence": 1, "action": "continue", "stopOutcome": "timed_out"},
+        ):
+            with self.subTest(data=data):
+                invalid = MagicMock(status=200)
+                invalid.read.return_value = json.dumps({"data": data}).encode()
+                connection = MagicMock()
+                connection.getresponse.return_value = invalid
+                reporter = runner.StatusReporter(config(), threading.Event(), time.monotonic() + 5)
+
+                with patch.object(runner.http.client, "HTTPConnection", return_value=connection), \
+                        self.assertRaises(runner.RunnerError):
+                    reporter.claim()
+
+                connection.request.assert_called_once()
+
+    def test_runner_event_stop_interrupts_retry_backoff(self):
+        reporter = runner.StatusReporter(config(), threading.Event(), time.monotonic() + 5)
+        attempts = []
+
+        def post(cfg, event, deadline):
+            attempts.append(dict(event))
+            reporter.stop.set()
+            raise ConnectionRefusedError("platform unavailable")
+
+        with patch.object(runner, "post_runner_event", side_effect=post), \
+                patch.object(runner, "log_runner_event"), \
+                self.assertRaisesRegex(runner.RunnerError, "reporter stopped"):
+            reporter._send_with_retry({"protocolVersion": "v1", "sequence": 1, "kind": "claim"})
+        self.assertEqual(len(attempts), 1)
+
+    def test_heartbeat_stop_cancels_framework_control(self):
+        cancel = threading.Event()
+        kinds = []
+
+        def post(cfg, event, deadline):
+            kinds.append(event["kind"])
+            return ("stop", "timed_out") if event["kind"] == "heartbeat" else ("continue", None)
+
+        reporter = runner.StatusReporter(config(), cancel, time.monotonic() + 5)
+        with patch.object(runner, "HEARTBEAT_SECONDS", 0.01), patch.object(runner, "post_runner_event", side_effect=post):
+            reporter.claim()
+            self.assertTrue(cancel.wait(1))
+            reporter.close()
+        self.assertIn("heartbeat", kinds)
+
+    def test_heartbeat_stop_preserves_authoritative_terminal_outcome(self):
+        cancel = threading.Event()
+        reporter = runner.StatusReporter(config(), cancel, time.monotonic() + 5)
+        observed = []
+
+        def post(cfg, event, deadline):
+            observed.append(event)
+            return "stop", "timed_out"
+
+        terminal = {"protocolVersion": "v1", "sequence": 3, "kind": "terminal", "terminal": {
+            "outcome": "succeeded", "artifactId": "a" * 64, "artifactDigest": "b" * 64,
+            "collectionComplete": True, "reason": "evaluation_succeeded",
+        }}
+        with patch.object(runner, "post_runner_event", side_effect=post):
+            reporter._send_with_retry({"protocolVersion": "v1", "sequence": 2, "kind": "heartbeat"})
+            reporter._send_with_retry(terminal)
+
+        self.assertTrue(cancel.is_set())
+        self.assertEqual(reporter.stop_outcome, "timed_out")
+        self.assertEqual(observed[-1]["terminal"]["outcome"], "timed_out")
+        self.assertEqual(observed[-1]["terminal"]["reason"], "evaluation_timed_out")
+
+    def test_terminal_cancel_race_retries_cancelled_outcome(self):
+        cancel = threading.Event()
+        reporter = runner.StatusReporter(config(), cancel, time.monotonic() + 5)
+        observed = []
+
+        def post(cfg, event, deadline):
+            observed.append(event)
+            if len(observed) == 1:
+                cancel.set()
+                raise runner.RunnerEventConflictError("platform rejected runner event with HTTP 409")
+            return "stop", "cancelled"
+
+        event = {"protocolVersion": "v1", "sequence": 2, "kind": "terminal", "terminal": {
+            "outcome": "succeeded", "artifactId": "a" * 64, "artifactDigest": "b" * 64,
+            "collectionComplete": True, "reason": "evaluation_succeeded",
+        }}
+        with patch.object(runner, "post_runner_event", side_effect=post):
+            reporter._send_with_retry(event)
+        self.assertEqual([item["terminal"]["outcome"] for item in observed], ["succeeded", "cancelled"])
+        self.assertEqual(observed[-1]["terminal"]["reason"], "evaluation_cancelled")
+
+    def test_terminal_stop_conflict_retries_authoritative_outcome(self):
+        for stop_outcome, reason in (("cancelled", "evaluation_cancelled"),
+                                     ("timed_out", "evaluation_timed_out")):
+            with self.subTest(stop_outcome=stop_outcome):
+                conflict = MagicMock(status=409)
+                conflict.read.return_value = json.dumps({
+                    "code": 34004, "message": "runner conflict", "data": {"stopOutcome": stop_outcome},
+                }).encode()
+                accepted = MagicMock(status=200)
+                accepted.read.return_value = json.dumps({"data": {
+                    "acceptedSequence": 2, "action": "stop", "stopOutcome": stop_outcome,
+                }}).encode()
+                connection = MagicMock()
+                connection.getresponse.side_effect = [conflict, accepted]
+                cancel = threading.Event()
+                reporter = runner.StatusReporter(config(), cancel, time.monotonic() + 5)
+                event = {"protocolVersion": "v1", "sequence": 2, "kind": "terminal", "terminal": {
+                    "outcome": "succeeded", "artifactId": "a" * 64, "artifactDigest": "b" * 64,
+                    "collectionComplete": True, "reason": "evaluation_succeeded",
+                }}
+
+                with patch.object(runner.http.client, "HTTPConnection", return_value=connection):
+                    reporter._send_with_retry(event)
+
+                sent = [json.loads(call.kwargs["body"])["terminal"]
+                        for call in connection.request.call_args_list]
+                self.assertEqual([item["outcome"] for item in sent], ["succeeded", stop_outcome])
+                self.assertEqual(sent[-1]["reason"], reason)
+                self.assertTrue(cancel.is_set())
+
+    def test_terminal_generic_conflict_does_not_guess_stop_outcome(self):
+        conflict = MagicMock(status=409)
+        conflict.read.return_value = json.dumps({
+            "code": 34004, "message": "runner conflict", "data": None,
+        }).encode()
+        connection = MagicMock()
+        connection.getresponse.return_value = conflict
+        reporter = runner.StatusReporter(config(), threading.Event(), time.monotonic() + 5)
+        event = {"protocolVersion": "v1", "sequence": 2, "kind": "terminal", "terminal": {
+            "outcome": "succeeded", "artifactId": "a" * 64, "artifactDigest": "b" * 64,
+            "collectionComplete": True, "reason": "evaluation_succeeded",
+        }}
+
+        with patch.object(runner.http.client, "HTTPConnection", return_value=connection), \
+                self.assertRaises(runner.RunnerEventConflictError):
+            reporter._send_with_retry(event)
+
+        connection.request.assert_called_once()
+
+    def test_terminal_event_ends_reporter_before_due_heartbeat(self):
+        reporter = runner.StatusReporter(config(), threading.Event(), time.monotonic() + 60)
+        completed = threading.Event()
+        reporter.events.put(({"kind": "terminal", "terminal": {
+            "outcome": "succeeded", "artifactId": "a" * 64, "artifactDigest": "b" * 64,
+            "collectionComplete": True, "reason": "evaluation_succeeded",
+        }}, completed))
+        observed = []
+
+        def send(event):
+            observed.append(event["kind"])
+            if event["kind"] == "heartbeat":
+                reporter.stop.set()
+
+        with patch.object(runner.time, "monotonic", side_effect=[0, 0, 16, 16]), \
+                patch.object(reporter, "_send_with_retry", side_effect=send):
+            reporter._run()
+
+        self.assertEqual(observed, ["terminal"])
+        self.assertTrue(completed.is_set())
+        self.assertIsNone(reporter.failure)
+
+    def test_main_claims_before_starting_evaluation(self):
+        claimed = []
+        reporter = MagicMock()
+        reporter.claim.side_effect = lambda: claimed.append(True)
+
+        def execute(*args, **kwargs):
+            self.assertTrue(claimed)
+            return 0
+
+        with patch.dict(os.environ, {"ERUUN_JOB_CONFIG": json.dumps(config())}), \
+                patch.object(runner, "StatusReporter", return_value=reporter), \
+                patch.object(runner.Path, "mkdir"), \
+                patch.object(runner.tempfile, "mkdtemp", return_value=str(self.root)), \
+                patch.object(runner, "execute", side_effect=execute):
+            self.assertEqual(runner.main(), 0)
+        reporter.claim.assert_called_once()
+
+    def test_conflicting_claim_stops_before_dataset_or_harbor(self):
+        reporter = MagicMock()
+        reporter.claim.side_effect = runner.RunnerError("platform rejected runner event with HTTP 409")
+        with patch.dict(os.environ, {"ERUUN_JOB_CONFIG": json.dumps(config())}), \
+                patch.object(runner, "StatusReporter", return_value=reporter), \
+                patch.object(runner, "execute") as execute:
+            self.assertEqual(runner.main(), 1)
+        execute.assert_not_called()
+
+    def test_result_is_uploaded_before_terminal_ack(self):
+        package = self.example_package()
+        calls = []
+        reporter = MagicMock()
+        reporter.shorten_deadline.side_effect = lambda deadline: deadline
+        reporter.emit.side_effect = lambda kind, **fields: calls.append((kind, fields))
+        reporter.terminal.side_effect = lambda terminal: calls.append(("terminal", terminal))
+
+        def framework(cfg, output, cancel, timeout):
+            (output / "run").mkdir()
+            (output / "run/result.json").write_text(json.dumps(result()))
+            collected_trial(output)
+            return 0, None
+
+        def upload(cfg, path, status, **kwargs):
+            calls.append(("upload", status))
+            return {"id": "a" * 64, "digest": "b" * 64}
+
+        with patch.object(runner.importlib.metadata, "version", return_value=runner.FRAMEWORK_VERSION), \
+                patch.object(runner, "download_package", side_effect=lambda cfg, dest: shutil.copyfile(package, dest)), \
+                patch.object(runner, "run_framework", side_effect=framework), \
+                patch.object(runner, "upload_results", side_effect=upload):
+            code = runner.execute(config(), self.root, threading.Event(), reporter=reporter, final_deadline=time.monotonic() + 10)
+        self.assertEqual(code, 0)
+        names = [call[0] for call in calls]
+        self.assertLess(names.index("upload"), names.index("terminal"))
+        self.assertEqual(calls[-1][1]["artifactId"], "a" * 64)
+
+    def test_cancel_during_result_upload_overrides_success_terminal(self):
+        package = self.example_package()
+        cancel = threading.Event()
+        reporter = MagicMock()
+        reporter.shorten_deadline.side_effect = lambda deadline: deadline
+
+        def framework(cfg, output, cancel, timeout):
+            (output / "run").mkdir()
+            (output / "run/result.json").write_text(json.dumps(result()))
+            collected_trial(output)
+            return 0, None
+
+        def upload(cfg, path, status, **kwargs):
+            cancel.set()
+            return {"id": "a" * 64, "digest": "b" * 64}
+
+        with patch.object(runner.importlib.metadata, "version", return_value=runner.FRAMEWORK_VERSION), \
+                patch.object(runner, "download_package", side_effect=lambda cfg, dest: shutil.copyfile(package, dest)), \
+                patch.object(runner, "run_framework", side_effect=framework), \
+                patch.object(runner, "upload_results", side_effect=upload):
+            code = runner.execute(config(), self.root, cancel, reporter=reporter, final_deadline=time.monotonic() + 10)
+        self.assertEqual(code, 1)
+        terminal = reporter.terminal.call_args.args[0]
+        self.assertEqual(terminal["outcome"], "cancelled")
+        self.assertEqual(terminal["reason"], "evaluation_cancelled")
 
     def test_network_retry_reuses_exact_archive_bytes(self):
         path = self.root / "result.tar.gz"
@@ -218,6 +530,40 @@ class RunnerTest(unittest.TestCase):
         with patch.object(runner, "upload_results", side_effect=upload), patch.object(runner.time, "sleep"):
             runner.upload_with_retry(config(), path, "succeeded")
         self.assertEqual(observed, [b"immutable source bytes"] * 3)
+
+    def test_upload_retries_incomplete_success_ack_with_same_archive(self):
+        path = self.root / "result.tar.gz"
+        path.write_bytes(b"immutable source bytes")
+        incomplete = MagicMock(status=201)
+        incomplete.read.return_value = b'{"data":'
+        accepted = MagicMock(status=201)
+        accepted.read.return_value = json.dumps({"data": {
+            "id": "a" * 64, "digest": "b" * 64,
+        }}).encode()
+        connection = MagicMock()
+        connection.getresponse.side_effect = [incomplete, accepted]
+
+        with patch.object(runner.http.client, "HTTPConnection", return_value=connection), \
+                patch.object(runner.time, "sleep"):
+            artifact = runner.upload_with_retry(config(), path, "succeeded")
+
+        self.assertEqual(artifact["id"], "a" * 64)
+        self.assertEqual([call.args[0] for call in connection.send.call_args_list],
+                         [b"immutable source bytes", b"immutable source bytes"])
+
+    def test_upload_does_not_retry_invalid_success_ack(self):
+        path = self.root / "result.tar.gz"
+        path.write_bytes(b"immutable source bytes")
+        invalid = MagicMock(status=201)
+        invalid.read.return_value = json.dumps({"data": {"id": "a" * 64}}).encode()
+        connection = MagicMock()
+        connection.getresponse.return_value = invalid
+
+        with patch.object(runner.http.client, "HTTPConnection", return_value=connection), \
+                self.assertRaises(runner.RunnerError):
+            runner.upload_with_retry(config(), path, "succeeded")
+
+        connection.send.assert_called_once_with(b"immutable source bytes")
 
     def test_upload_retries_share_one_total_time_budget(self):
         path = self.root / "archive"
@@ -239,6 +585,47 @@ class RunnerTest(unittest.TestCase):
             runner.archive_results(output, self.root / "archive", report)
         self.assertFalse(report["collectionComplete"])
         self.assertEqual(report["collectionErrors"][0]["reason"], "too_many_entries")
+
+    def test_archive_deadline_expires_while_copying_large_file(self):
+        output = self.root / "outputs"
+        output.mkdir()
+        payload = output / "large.bin"
+        payload.write_bytes(b"x" * (1024 * 1024 + 1))
+        expired = threading.Event()
+        original_open = Path.open
+
+        class ExpiringSource:
+            def __init__(self, source):
+                self.source = source
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                self.source.close()
+
+            def read(self, size=-1):
+                contents = self.source.read(size)
+                expired.set()
+                return contents
+
+        def open_path(path, *args, **kwargs):
+            source = original_open(path, *args, **kwargs)
+            if path == payload and args and args[0] == "rb":
+                return ExpiringSource(source)
+            return source
+
+        report = {"executionStatus": "succeeded"}
+        with patch.object(runner.Path, "open", new=open_path), \
+                patch.object(runner.time, "monotonic", side_effect=lambda: 1 if expired.is_set() else 0), \
+                self.assertRaisesRegex(TimeoutError, "total time budget"):
+            runner.archive_results(output, self.root / "archive", report, deadline=0.5)
+
+    def test_sandbox_collection_observes_finalization_deadline(self):
+        output = self.root / "outputs"
+        output.mkdir()
+        with self.assertRaisesRegex(TimeoutError, "total time budget"):
+            runner.check_sandbox_collection(output, 0, {}, deadline=time.monotonic() - 1)
 
     def test_many_long_paths_obey_the_api_manifest_budget(self):
         output = self.root / "outputs"

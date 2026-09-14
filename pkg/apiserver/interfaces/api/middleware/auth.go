@@ -122,6 +122,7 @@ var businessRoutes = map[string]string{
 var runnerRoutes = map[string]bool{
 	"GET /api/v1/job-runners/:taskID/dataset":  true,
 	"POST /api/v1/job-runners/:taskID/results": true,
+	"POST /api/v1/job-runners/:taskID/events":  true,
 }
 
 // HasAuthPolicy reports whether a registered route belongs to exactly one

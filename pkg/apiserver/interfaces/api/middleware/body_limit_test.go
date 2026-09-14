@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -86,4 +87,30 @@ func TestRequestBodyLimit_WithCORSHeadersWhenCORSRunsFirst(t *testing.T) {
 	router.ServeHTTP(resp, req)
 	require.Equal(t, http.StatusRequestEntityTooLarge, resp.Code)
 	require.Equal(t, "*", resp.Header().Get("Access-Control-Allow-Origin"))
+}
+
+func TestRequestBodyLimitCapsRunnerEventsAt64KiB(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(RequestBodyLimit(24 << 20))
+	router.POST("/api/v1/job-runners/:taskID/events", func(c *gin.Context) {
+		if _, err := io.ReadAll(c.Request.Body); err != nil {
+			var tooLarge *http.MaxBytesError
+			if errors.As(err, &tooLarge) {
+				c.Status(http.StatusRequestEntityTooLarge)
+				return
+			}
+		}
+		c.Status(http.StatusOK)
+	})
+
+	for _, tc := range []struct {
+		size int
+		want int
+	}{{64 << 10, http.StatusOK}, {(64 << 10) + 1, http.StatusRequestEntityTooLarge}} {
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/job-runners/task/events", strings.NewReader(strings.Repeat("x", tc.size)))
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		require.Equal(t, tc.want, response.Code)
+	}
 }

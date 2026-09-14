@@ -69,6 +69,7 @@ func TestEvaluationBuilderUsesBoundedRunnerIdentityAndDownwardAPI(t *testing.T) 
 			require.NoError(t, json.Unmarshal([]byte(env.Value), &runtimeConfig))
 			require.Equal(t, f.parent.JobToken, runtimeConfig["token"])
 			require.Equal(t, "default", runtimeConfig["sandboxServiceAccount"])
+			require.Equal(t, f.service.Config.Jobs.APIURL+"/api/v1/job-runners/"+f.parent.TaskID+"/events", runtimeConfig["eventURL"])
 		} else if env.ValueFrom != nil && env.ValueFrom.FieldRef != nil {
 			require.Empty(t, env.Value)
 			fields[env.Name] = env.ValueFrom.FieldRef.FieldPath

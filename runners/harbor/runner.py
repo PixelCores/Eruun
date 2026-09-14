@@ -9,6 +9,7 @@ import io
 import json
 import os
 from pathlib import Path, PurePosixPath
+import queue
 import re
 import signal
 import stat
@@ -28,6 +29,8 @@ MAX_RESULT_EXPANDED_BYTES = 2 * 1024 * 1024 * 1024
 MAX_FILES = 10_000
 MAX_MANIFEST_BYTES = 2 * 1024 * 1024
 TRANSFER_SECONDS = 300
+HEARTBEAT_SECONDS = 15
+MAX_EVENT_RESPONSE_BYTES = 64 * 1024
 # Installed adapters execute in the trial sandbox, rather than importing user code.
 AGENTS = frozenset({"claude-code", "codex", "terminus-2", "oracle"})
 
@@ -38,6 +41,12 @@ class RunnerError(Exception):
 
 class RetryableTransferError(RunnerError):
     pass
+
+
+class RunnerEventConflictError(RunnerError):
+    def __init__(self, message, stop_outcome=None):
+        super().__init__(message)
+        self.stop_outcome = stop_outcome
 
 
 def integer(value, name, minimum, maximum):
@@ -63,6 +72,7 @@ def validate_config(config):
             raise RunnerError(f"invalid {key}")
     endpoint(config.get("datasetURL"))
     endpoint(config.get("resultURL"))
+    endpoint(config.get("eventURL"))
     digest = config.get("datasetDigest", "")
     if not isinstance(digest, str):
         raise RunnerError("datasetDigest must be SHA-256")
@@ -85,6 +95,8 @@ def validate_config(config):
         "concurrency": integer(options.get("concurrency", 1), "concurrency", 1, 32),
     }
     integer(config.get("timeoutSeconds"), "timeoutSeconds", 1, 86400)
+    integer(config.get("transferTimeoutSeconds", TRANSFER_SECONDS), "transferTimeoutSeconds", 1, 3600)
+    integer(config.get("finalizationTimeoutSeconds", 360), "finalizationTimeoutSeconds", 1, 3600)
     resources = config.get("resources")
     if not isinstance(resources, dict) or set(resources) != {"cpu", "memory", "cpuLimit", "memoryLimit"}:
         raise RunnerError("resources must contain requests and limits")
@@ -302,17 +314,50 @@ def collection_error(report, path, reason, count=1):
         errors.append({"path": str(path)[:1024], "reason": reason})
 
 
-def check_sandbox_collection(output, expected_trials, report):
+def remaining_time(deadline):
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("runner operation exceeded its total time budget")
+    return remaining
+
+
+def ensure_deadline(deadline):
+    if deadline is not None:
+        remaining_time(deadline)
+
+
+class _DeadlineReader:
+    """Make tarfile's otherwise blocking copy loop observe the shared deadline."""
+
+    def __init__(self, source, deadline):
+        self.source = source
+        self.deadline = deadline
+
+    def read(self, size=-1):
+        ensure_deadline(self.deadline)
+        contents = self.source.read(size)
+        ensure_deadline(self.deadline)
+        return contents
+
+
+def check_sandbox_collection(output, expected_trials, report, deadline=None):
     """Account for data which Harbor failed to transfer into local outputs."""
     try:
-        records = list((output.parent / "collection").glob("*.json"))
+        records = []
+        for path in (output.parent / "collection").glob("*.json"):
+            ensure_deadline(deadline)
+            records.append(path)
         if len(records) != expected_trials:
             collection_error(report, "trials", "missing_trial_collection_state")
         for path in records:
+            ensure_deadline(deadline)
             try:
                 if path.stat().st_size > 1024 * 1024:
                     raise ValueError("oversized collection state")
-                state = json.loads(path.read_text())
+                state_contents = path.read_text()
+                ensure_deadline(deadline)
+                state = json.loads(state_contents)
+                ensure_deadline(deadline)
                 if state["started"] is not True or state["stopped"] is not True or state["pending"] != 0:
                     collection_error(report, state.get("podName", "trial"), "unfinished_sandbox_collection")
                 if state["errorCount"]:
@@ -322,20 +367,30 @@ def check_sandbox_collection(output, expected_trials, report):
                 manifest_path = trial / "artifacts" / "manifest.json"
                 if manifest_path.stat().st_size > 1024 * 1024:
                     raise ValueError("oversized artifact manifest")
-                entries = json.loads(manifest_path.read_text())
+                manifest_contents = manifest_path.read_text()
+                ensure_deadline(deadline)
+                entries = json.loads(manifest_contents)
+                ensure_deadline(deadline)
                 if not isinstance(entries, list) or not entries:
                     raise ValueError("invalid artifact manifest")
                 for entry in entries:
+                    ensure_deadline(deadline)
                     if entry["status"] not in {"ok", "empty"}:
                         collection_error(report, entry["source"], "native_artifact_collection_failed")
+            except TimeoutError:
+                raise
             except (OSError, ValueError, KeyError, TypeError):
                 collection_error(report, "trial", "unreadable_collection_state_or_manifest")
+    except TimeoutError:
+        raise
     except OSError:
         collection_error(report, "trials", "unreadable_collection_state")
+    ensure_deadline(deadline)
 
 
-def archive_results(output, archive_path, report):
+def archive_results(output, archive_path, report, deadline=None):
     """Keep original bytes and safe links, surfacing every omitted entry."""
+    ensure_deadline(deadline)
     entries = [output]
     issues = list(report.get("collectionErrors", []))
     issue_count = report.get("collectionErrorCount", 0)
@@ -351,10 +406,13 @@ def archive_results(output, archive_path, report):
             issues.append({"path": str(path)[:1024], "reason": reason})
 
     def walk_error(error):
+        ensure_deadline(deadline)
         issue(error.filename or ".", "unreadable_directory")
 
     for directory, directories, files in os.walk(output, onerror=walk_error, followlinks=False):
+        ensure_deadline(deadline)
         for name in sorted(directories + files):
+            ensure_deadline(deadline)
             path = Path(directory) / name
             relative = path.relative_to(output).as_posix()
             try:
@@ -391,14 +449,22 @@ def archive_results(output, archive_path, report):
                     manifest_size += entry_size
                 total += size
                 entries.append(path)
+            except TimeoutError:
+                raise
             except (ValueError, OSError, RuntimeError):
                 issue(relative, "unsafe_or_unreadable_entry")
 
+    ensure_deadline(deadline)
     with tarfile.open(archive_path, "w:gz", dereference=False) as archive:
         saved = set()
         # Links follow all ordinary entries, so they cannot refer to an omitted file.
-        entries.sort(key=lambda p: p.is_symlink())
+        def link_order(path):
+            ensure_deadline(deadline)
+            return path.is_symlink()
+
+        entries.sort(key=link_order)
         for path in entries:
+            ensure_deadline(deadline)
             relative = path.relative_to(output).as_posix()
             try:
                 info = archive.gettarinfo(str(path), arcname="outputs" if path == output else "outputs/" + relative)
@@ -412,22 +478,29 @@ def archive_results(output, archive_path, report):
                     # OS hardlinks become regular entries with the same original bytes.
                     info.type, info.linkname, info.size = tarfile.REGTYPE, "", path.stat().st_size
                     with source:
-                        archive.addfile(info, source)
+                        archive.addfile(info, _DeadlineReader(source, deadline))
                 else:
                     archive.addfile(info)
                 saved.add(path)
+            except TimeoutError:
+                raise
             except OSError:
                 issue(relative, "unreadable_file")
+        ensure_deadline(deadline)
         report["collectionComplete"] = issue_count == 0
         if issue_count:
             report["collectionErrors"] = issues
             report["collectionErrorCount"] = issue_count
         report_bytes = json.dumps(report, ensure_ascii=False, allow_nan=False).encode()
+        ensure_deadline(deadline)
         info = tarfile.TarInfo("result.json")
         info.size, info.mode = len(report_bytes), 0o600
-        archive.addfile(info, io.BytesIO(report_bytes))
+        archive.addfile(info, _DeadlineReader(io.BytesIO(report_bytes), deadline))
+        ensure_deadline(deadline)
+    ensure_deadline(deadline)
     if archive_path.stat().st_size > MAX_RESULT_BYTES:
         raise RunnerError("complete result archive exceeds 512 MiB")
+    ensure_deadline(deadline)
 
 
 def transfer_headers(config):
@@ -438,11 +511,9 @@ def transfer_headers(config):
             "X-Eruun-Runner-Pod-Name": pod_name, "X-Eruun-Runner-Pod-UID": pod_uid}
 
 
-def remaining_time(deadline):
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
-        raise TimeoutError("platform transfer exceeded its total time budget")
-    return remaining
+def log_runner_event(event, **fields):
+    record = {"component": "harbor-runner", "event": event, **fields}
+    print(json.dumps(record, sort_keys=True, separators=(",", ":")), flush=True)
 
 
 def transfer_connection(endpoint_url, deadline):
@@ -457,6 +528,207 @@ def transfer_timeout(connection, deadline):
     remaining = remaining_time(deadline)
     if connection.sock is not None:
         connection.sock.settimeout(remaining)
+
+
+def post_runner_event(config, event, deadline):
+    connection, target = transfer_connection(config["eventURL"], deadline)
+    encoded = json.dumps(event, separators=(",", ":")).encode()
+    try:
+        connection.request("POST", target, body=encoded,
+                           headers=transfer_headers(config) | {"Content-Type": "application/json"})
+        transfer_timeout(connection, deadline)
+        response = connection.getresponse()
+        body = response.read(MAX_EVENT_RESPONSE_BYTES + 1)
+        if response.status >= 500 or response.status in {408, 429}:
+            raise RetryableTransferError("platform temporarily rejected runner event")
+        if response.status == 409:
+            stop_outcome = None
+            if len(body) <= MAX_EVENT_RESPONSE_BYTES:
+                try:
+                    conflict = json.loads(body)
+                    candidate = conflict["data"]["stopOutcome"]
+                    if conflict["code"] == 34004 and candidate in {"cancelled", "timed_out"}:
+                        stop_outcome = candidate
+                except (ValueError, KeyError, TypeError):
+                    pass
+            raise RunnerEventConflictError("platform rejected runner event with HTTP 409", stop_outcome)
+        if not 200 <= response.status < 300:
+            raise RunnerError(f"platform rejected runner event with HTTP {response.status}")
+        if len(body) > MAX_EVENT_RESPONSE_BYTES:
+            raise RunnerError("runner event acknowledgment is too large")
+        try:
+            response_data = json.loads(body)
+        except ValueError:
+            raise RetryableTransferError("runner event acknowledgment could not be decoded") from None
+        try:
+            data = response_data["data"]
+            accepted = data["acceptedSequence"]
+            action = data["action"]
+            stop_outcome = data.get("stopOutcome")
+        except (KeyError, TypeError):
+            raise RunnerError("invalid runner event acknowledgment") from None
+        if isinstance(accepted, bool) or not isinstance(accepted, int) or accepted < event["sequence"] or action not in {"continue", "stop"}:
+            raise RunnerError("invalid runner event acknowledgment")
+        if ((action == "stop" and stop_outcome not in {"cancelled", "timed_out"})
+                or (action == "continue" and stop_outcome is not None)):
+            raise RunnerError("invalid runner event acknowledgment")
+        return action, stop_outcome
+    finally:
+        connection.close()
+
+
+def collection_progress(collection, total):
+    completed = 0
+    try:
+        for path in list(collection.glob("*.json"))[:MAX_FILES]:
+            try:
+                if path.stat().st_size <= 1024 * 1024 and json.loads(path.read_text()).get("stopped") is True:
+                    completed += 1
+            except (OSError, ValueError, TypeError):
+                continue
+    except OSError:
+        pass
+    return {"completedTrials": min(completed, total), "totalTrials": total}
+
+
+class StatusReporter:
+    """Serialize event sequence allocation and retry without supervising Harbor."""
+
+    def __init__(self, config, cancel, deadline):
+        self.config = config
+        self.cancel = cancel
+        self.deadline = deadline
+        self.events = queue.Queue(maxsize=16)
+        self.stop = threading.Event()
+        self.failure = None
+        self.sequence = 1
+        self.progress_source = None
+        self.last_progress = None
+        self.thread = None
+        self.stop_outcome = None
+
+    def _send_with_retry(self, event):
+        attempt = 0
+        while True:
+            if self.stop.is_set():
+                raise RunnerError("runner event reporter stopped")
+            if event["kind"] == "terminal" and self.stop_outcome is None and self.cancel.is_set():
+                self.stop_outcome = "cancelled"
+            if (event["kind"] == "terminal" and self.stop_outcome is not None
+                    and event["terminal"]["outcome"] != self.stop_outcome):
+                reason = "evaluation_cancelled" if self.stop_outcome == "cancelled" else "evaluation_timed_out"
+                terminal = {**event["terminal"], "outcome": self.stop_outcome, "reason": reason}
+                event = {**event, "terminal": terminal}
+            remaining_time(self.deadline)
+            try:
+                action, stop_outcome = post_runner_event(self.config, event, self.deadline)
+                if action == "stop":
+                    self.stop_outcome = stop_outcome
+                    self.cancel.set()
+                return
+            except (OSError, http.client.HTTPException, RetryableTransferError):
+                attempt += 1
+                log_runner_event("event_retry", kind=event["kind"], attempt=attempt)
+                if self.stop.wait(min(5, 0.25 * (2 ** min(attempt, 4)), remaining_time(self.deadline))):
+                    raise RunnerError("runner event reporter stopped")
+            except RunnerEventConflictError as exc:
+                # An authoritative stop may race the first terminal request. A rejected
+                # event did not advance the server sequence, so retry it once
+                # with the authoritative stop outcome.
+                if event["kind"] == "terminal" and exc.stop_outcome is not None:
+                    self.cancel.set()
+                    self.stop_outcome = exc.stop_outcome
+                elif event["kind"] == "terminal" and self.stop_outcome is None and self.cancel.is_set():
+                    self.stop_outcome = "cancelled"
+                else:
+                    raise
+                if event["terminal"]["outcome"] != self.stop_outcome:
+                    continue
+                raise
+
+    def claim(self):
+        event = {"protocolVersion": "v1", "sequence": 1, "kind": "claim"}
+        self._send_with_retry(event)
+        if self.cancel.is_set():
+            raise RunnerError("platform stopped evaluation after claim")
+        self.thread = threading.Thread(target=self._run, name="runner-events", daemon=True)
+        self.thread.start()
+
+    def emit(self, kind, **fields):
+        if self.failure is not None:
+            return
+        try:
+            self.events.put_nowait(({"kind": kind, **fields}, None))
+        except queue.Full:
+            self.failure = RunnerError("runner event queue is full")
+
+    def track_progress(self, collection, total):
+        self.progress_source = (collection, total)
+
+    def shorten_deadline(self, deadline):
+        self.deadline = min(self.deadline, deadline)
+        return self.deadline
+
+    def _next_event(self, event):
+        self.sequence += 1
+        return {"protocolVersion": "v1", "sequence": self.sequence, **event}
+
+    def _send_progress(self):
+        if self.progress_source is None:
+            return
+        progress = collection_progress(*self.progress_source)
+        if progress == self.last_progress:
+            return
+        self._send_with_retry(self._next_event({"kind": "progress", "progress": progress}))
+        self.last_progress = progress
+
+    def _run(self):
+        next_heartbeat = time.monotonic() + HEARTBEAT_SECONDS
+        try:
+            while not self.stop.is_set():
+                timeout = max(0, min(1, next_heartbeat - time.monotonic()))
+                try:
+                    event, completed = self.events.get(timeout=timeout)
+                except queue.Empty:
+                    event = completed = None
+                if event is not None:
+                    self._send_with_retry(self._next_event(event))
+                    if completed is not None:
+                        completed.set()
+                    if event["kind"] == "terminal":
+                        return
+                if time.monotonic() >= next_heartbeat and not self.stop.is_set():
+                    self._send_with_retry(self._next_event({"kind": "heartbeat"}))
+                    self._send_progress()
+                    next_heartbeat = time.monotonic() + HEARTBEAT_SECONDS
+        except Exception as exc:
+            self.failure = exc
+            while True:
+                try:
+                    _, completed = self.events.get_nowait()
+                    if completed is not None:
+                        completed.set()
+                except queue.Empty:
+                    break
+
+    def terminal(self, terminal):
+        if self.failure is not None:
+            raise self.failure
+        completed = threading.Event()
+        try:
+            self.events.put_nowait(({"kind": "terminal", "terminal": terminal}, completed))
+        except queue.Full:
+            raise RunnerError("runner event queue is full") from None
+        while not completed.wait(min(1, remaining_time(self.deadline))):
+            if self.failure is not None:
+                raise self.failure
+        if self.failure is not None:
+            raise self.failure
+
+    def close(self):
+        self.stop.set()
+        if self.thread is not None:
+            self.thread.join(timeout=max(0, min(5, self.deadline - time.monotonic())))
 
 
 def upload_results(config, archive_path, status, deadline=None):
@@ -481,27 +753,40 @@ def upload_results(config, archive_path, status, deadline=None):
             if response.status >= 500 or response.status in {408, 429}:
                 raise RetryableTransferError("platform temporarily rejected source upload")
             raise RunnerError(f"platform rejected source archive with HTTP {response.status}")
-        response.read(4096)
+        body = response.read(MAX_EVENT_RESPONSE_BYTES + 1)
+        if len(body) > MAX_EVENT_RESPONSE_BYTES:
+            raise RunnerError("source acknowledgment is too large")
+        try:
+            response_data = json.loads(body)
+        except ValueError:
+            raise RetryableTransferError("source acknowledgment could not be decoded") from None
+        try:
+            artifact = response_data["data"]
+        except (KeyError, TypeError):
+            raise RunnerError("invalid source acknowledgment") from None
+        if not isinstance(artifact, dict) or not isinstance(artifact.get("id"), str) or not isinstance(artifact.get("digest"), str):
+            raise RunnerError("invalid source acknowledgment")
+        return artifact
     finally:
         connection.close()
 
 
-def upload_with_retry(config, archive, status):
+def upload_with_retry(config, archive, status, deadline=None):
     # The first durable source is immutable. Retries must send this same file,
     # without rebuilding gzip (which could change metadata and its digest).
-    deadline = time.monotonic() + TRANSFER_SECONDS
+    if deadline is None:
+        deadline = time.monotonic() + TRANSFER_SECONDS
     for attempt in range(3):
         try:
             remaining_time(deadline)
-            upload_results(config, archive, status, deadline=deadline)
-            return
+            return upload_results(config, archive, status, deadline=deadline)
         except (OSError, http.client.HTTPException, RetryableTransferError):
             if attempt == 2:
                 raise
             time.sleep(min(attempt + 1, remaining_time(deadline)))
 
 
-def execute(config, work, cancel):
+def execute(config, work, cancel, reporter=None, final_deadline=None):
     output = work / "outputs"
     output.mkdir()
     (work / "collection").mkdir(mode=0o700)
@@ -509,6 +794,8 @@ def execute(config, work, cancel):
     report = {"taskId": config["taskId"], "framework": {"name": "harbor", "version": FRAMEWORK_VERSION},
               "datasetDigest": config["datasetDigest"], "executionStatus": "failed", "frameworkExitCode": None}
     try:
+        if reporter is not None:
+            reporter.emit("phase", phase="preparing")
         if importlib.metadata.version("harbor") != FRAMEWORK_VERSION:
             raise RunnerError("installed Harbor version does not match the pinned runner")
         source = work / "tasks.tar.gz"
@@ -517,11 +804,16 @@ def execute(config, work, cancel):
         extract_package(source, dataset)
         tasks = native_tasks(dataset)
         expected_trials = len(tasks) * config["options"]["attempts"]
+        if reporter is not None:
+            reporter.track_progress(work / "collection", expected_trials)
         generated = harbor_config(config, tasks, output, os.environ.get("POD_NAME"), os.environ.get("POD_UID"))
         config_path = work / "harbor-config.json"
         config_path.write_text(json.dumps(generated))
         if cancel.is_set():
             raise RunnerError("cancelled before framework start")
+        if reporter is not None:
+            reporter.emit("phase", phase="running")
+        log_runner_event("harbor_start")
         code, interrupted = run_framework(config_path, output, cancel, config["timeoutSeconds"])
         report["frameworkExitCode"] = code
         report["executionStatus"] = framework_status(output / "run" / "result.json", code)
@@ -534,10 +826,21 @@ def execute(config, work, cancel):
         report["error"] = type(exc).__name__
         if isinstance(exc, RunnerError):
             report["error"] = str(exc)
-    check_sandbox_collection(output, expected_trials, report)
+        if cancel.is_set() and "interruption" not in report:
+            report["interruption"] = "cancelled"
+            collection_error(report, "trials", "framework_interrupted")
+    finalization_deadline = time.monotonic() + config.get("finalizationTimeoutSeconds", 360)
+    if final_deadline is not None:
+        finalization_deadline = min(finalization_deadline, final_deadline)
+    if reporter is not None:
+        finalization_deadline = reporter.shorten_deadline(finalization_deadline)
+        reporter.emit("phase", phase="finalizing")
+    check_sandbox_collection(output, expected_trials, report, deadline=finalization_deadline)
     archive = work / "results.tar.gz"
     try:
-        archive_results(output, archive, report)
+        archive_results(output, archive, report, deadline=finalization_deadline)
+    except TimeoutError:
+        raise
     except (RunnerError, OSError, tarfile.TarError) as exc:
         # Preserve the local originals for Pod retention and make missing source
         # explicit; never label a diagnostic-only archive as full collection.
@@ -546,13 +849,46 @@ def execute(config, work, cancel):
         report["collectionErrorCount"] = 1
         report["diagnosticOnly"] = True
         contents = json.dumps(report, ensure_ascii=False).encode()
+        ensure_deadline(finalization_deadline)
         with tarfile.open(archive, "w:gz") as target:
             info = tarfile.TarInfo("result.json")
             info.size, info.mode = len(contents), 0o600
-            target.addfile(info, io.BytesIO(contents))
-    status = report["executionStatus"] if report["collectionComplete"] else "failed"
-    upload_with_retry(config, archive, status)
-    return 0 if report["executionStatus"] == "succeeded" and report["collectionComplete"] else 1
+            target.addfile(info, _DeadlineReader(io.BytesIO(contents), finalization_deadline))
+        ensure_deadline(finalization_deadline)
+    status = report["executionStatus"] if report["collectionComplete"] and not cancel.is_set() else "failed"
+    artifact = upload_with_retry(config, archive, status, deadline=finalization_deadline)
+    succeeded = not cancel.is_set() and report["executionStatus"] == "succeeded" and report["collectionComplete"]
+    if reporter is not None:
+        if cancel.is_set():
+            succeeded = False
+            outcome = "cancelled"
+        else:
+            outcome = "succeeded" if succeeded else report.get("interruption", "failed")
+        if outcome not in {"timed_out", "cancelled", "succeeded"}:
+            outcome = "failed"
+        if succeeded:
+            reason = "evaluation_succeeded"
+        elif outcome == "cancelled":
+            reason = "evaluation_cancelled"
+        else:
+            reason = "evaluation_failed"
+        exit_code = report.get("frameworkExitCode")
+        terminal = {
+            "outcome": outcome,
+            "artifactId": artifact["id"],
+            "artifactDigest": artifact["digest"],
+            "collectionComplete": bool(report["collectionComplete"]),
+            "reason": reason,
+        }
+        if isinstance(exit_code, int) and exit_code >= 0:
+            terminal["exitCode"] = min(exit_code, 255)
+        elif isinstance(exit_code, int) and exit_code < 0:
+            try:
+                terminal["signal"] = signal.Signals(-exit_code).name
+            except ValueError:
+                terminal["signal"] = "UNKNOWN"
+        reporter.terminal(terminal)
+    return 0 if succeeded and not cancel.is_set() else 1
 
 
 def main():
@@ -561,11 +897,18 @@ def main():
     signal.signal(signal.SIGINT, lambda *_: cancel.set())
     try:
         config = validate_config(json.loads(os.environ["ERUUN_JOB_CONFIG"]))
+        started = time.monotonic()
+        final_deadline = started + config["timeoutSeconds"] + config.get("finalizationTimeoutSeconds", 360)
+        reporter = StatusReporter(config, cancel, final_deadline)
+        reporter.claim()
         Path("/work/home").mkdir(parents=True, exist_ok=True)
         # Leave raw output and the exact final archive in the Pod until the
         # platform's retention policy removes it, including failed uploads.
         directory = tempfile.mkdtemp(prefix="evaluation-", dir="/work")
-        return execute(config, Path(directory), cancel)
+        try:
+            return execute(config, Path(directory), cancel, reporter=reporter, final_deadline=final_deadline)
+        finally:
+            reporter.close()
     except Exception as exc:
         # Do not print transfer URLs, tokens, request snapshots or untrusted exception bodies.
         print(f"Harbor runner failed: {type(exc).__name__}", flush=True)

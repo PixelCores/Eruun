@@ -91,8 +91,12 @@ func TestWorkspaceJobCleanupWaitsForCommittedResult(t *testing.T) {
 			live.UID, live.ResourceVersion = "owned-job", "1"
 			live.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
 			live.Status.Conditions = []batchv1.JobCondition{{Type: batchv1.JobComplete, Status: corev1.ConditionTrue}}
-			raw, err := json.Marshal(instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Attempt: 1,
-				Deadline: time.Now().Add(time.Hour).UnixNano(), Job: live, CurrentUID: live.UID})
+			checkpoint := instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Attempt: 1,
+				Deadline: time.Now().Add(time.Hour).UnixNano(), Job: live, CurrentUID: live.UID}
+			if jobType == config.JobAgentEvaluation {
+				checkpoint.Runner = json.RawMessage(`{"terminal":{"outcome":"succeeded","collectionComplete":true}}`)
+			}
+			raw, err := json.Marshal(checkpoint)
 			require.NoError(t, err)
 			task.InternalInfo, task.Status = string(raw), config.StatusCompleted
 			task.JobInfo = live
@@ -140,8 +144,13 @@ func TestEvaluationCleanupRetainsResultsUntilArchiveIsCommitted(t *testing.T) {
 			live := task.JobInfo.(*batchv1.Job).DeepCopy()
 			live.UID, live.ResourceVersion = "owned-job", "1"
 			live.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
+			outcome := "failed"
+			if status == config.StatusCompleted {
+				outcome = "succeeded"
+			}
 			raw, err := json.Marshal(instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Attempt: 1,
-				Deadline: time.Now().Add(time.Hour).UnixNano(), Job: live, CurrentUID: live.UID})
+				Deadline: time.Now().Add(time.Hour).UnixNano(), Job: live, CurrentUID: live.UID,
+				Runner: json.RawMessage(`{"terminal":{"outcome":"` + outcome + `","collectionComplete":true}}`)})
 			require.NoError(t, err)
 			task.InternalInfo, task.JobInfo = string(raw), live
 			client := fake.NewSimpleClientset(live)

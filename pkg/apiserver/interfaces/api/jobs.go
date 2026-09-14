@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -42,6 +43,7 @@ func (a *workspaceJobs) RegisterRoutes(group *gin.RouterGroup) {
 	// current Kubernetes execution identity in the service, never user sessions.
 	group.GET("/job-runners/:taskID/dataset", a.runnerDataset)
 	group.POST("/job-runners/:taskID/results", a.runnerResult)
+	group.POST("/job-runners/:taskID/events", a.runnerEvent)
 }
 
 func jobError(err error) error {
@@ -60,6 +62,8 @@ func jobError(err error) error {
 		return bcode.ErrJobResultConflict
 	case errors.Is(err, artifacts.ErrDestinationUnavailable):
 		return bcode.ErrServiceUnavailable
+	case errors.Is(err, jobs.ErrRunnerConflict):
+		return bcode.ErrJobRunnerConflict
 	default:
 		return err
 	}
@@ -287,4 +291,34 @@ func (a *workspaceJobs) runnerResult(c *gin.Context) {
 	}
 	result, err := a.Service.RunnerResult(c.Request.Context(), runnerIdentity(c), c.Request.Body)
 	jobResponse(c, http.StatusCreated, result, err)
+}
+func (a *workspaceJobs) runnerEvent(c *gin.Context) {
+	var request jobs.RunnerEvent
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			jobResponse(c, 0, nil, bcode.ErrJobTooLarge)
+		} else {
+			jobResponse(c, 0, nil, bcode.ErrJobInput)
+		}
+		return
+	}
+	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
+		jobResponse(c, 0, nil, bcode.ErrJobInput)
+		return
+	}
+	result, err := a.Service.RunnerEvent(c.Request.Context(), runnerIdentity(c), request)
+	runnerEventResponse(c, result, err)
+}
+
+func runnerEventResponse(c *gin.Context, result *jobs.RunnerEventAck, err error) {
+	var stopConflict *jobs.RunnerStopConflictError
+	if errors.As(err, &stopConflict) && (stopConflict.Outcome == "cancelled" || stopConflict.Outcome == "timed_out") {
+		bcode.ReturnResponse(c, http.StatusConflict, bcode.ErrJobRunnerConflict.BusinessCode,
+			bcode.ErrJobRunnerConflict.Message, gin.H{"stopOutcome": stopConflict.Outcome})
+		return
+	}
+	jobResponse(c, http.StatusOK, result, err)
 }

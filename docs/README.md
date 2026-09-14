@@ -145,6 +145,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | --- | --- | --- |
 | `workflow-architecture-guide.md` | Implemented Reference | 工作流引擎架构详解 |
 | `workspace-jobs-and-harbor-requirements.md` | Implemented Reference | 先于实现确认的统一 Job 与 Harbor 需求基线：任务包、空间授权、全部输出、多目标保存与原始结果保留 |
+| `agent-evaluation-runner-service-design.md` | Implemented Reference | Harbor Runner 单实例 claim、v1 阶段/心跳/进度/终态事件、结果门禁与 Kubernetes 故障兜底 |
 | `workflow-global-scheduler-design.md` | Implemented Reference | Job 全局优先级、FIFO、等待老化、空间并发上限、ownership 准入与 OOM 策略 |
 | `enterprise-distributed-runtime-design.md` | Implemented Reference | 分布式运行时：角色依赖、API Redis readiness、Leader Election、数据库 lease/fencing、延迟任务恢复与通知去重、Cron 有界分页与失败计划重试、Worker observer 和 Helm 拓扑 |
 | `架构文档.md` | Implemented Reference | 当前四角色、数据所有权、Component、Workflow 与 Trait 边界 |
@@ -181,7 +182,6 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | --- | --- | --- |
 | `ai-runtime-vision.md` | Draft / Proposal | AI Runtime 产品方向、能力分层、路线图和实施门禁 |
 | `agent-evaluation-job-design.md` | Draft / Proposal | Agent 评测输入、执行、制品、隔离和质量门禁方向 |
-| `agent-evaluation-runner-service-design.md` | Draft / Proposal | 在现有 Harbor Runner 与 `batch/v1 Job` 上增加单实例认领、阶段、心跳和终态上报，复用当前执行身份、结果协议与 Kubernetes 故障兜底 |
 | `architecture-refactor-plan.md` | Draft / Proposal | 架构演进方案 |
 | `ai-provider-integration-design.md` | Draft / Proposal | 托管模型、对象存储、计算及 AI 云 Provider 集成边界 |
 | `design-custom-update-workflow.md` | Draft / Proposal | 自定义更新工作流 |

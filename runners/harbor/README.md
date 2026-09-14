@@ -24,7 +24,7 @@ docker build -t eruun-harbor-task:1.0.0-local examples/agent-evaluation/harbor-t
 python3 runners/harbor/smoke_kind.py --result /tmp/harbor-smoke-results.tar.gz
 ```
 
-该验收使用 restricted PodSecurity、无权限试验身份和本地镜像，真实运行 Harbor 到 oracle reward=1，并逐字节检查包含非 UTF-8 内容的制品及完整归档上传。另运行 verifier 故意失败的任务，验证 Harbor 退出码为 0、原生错误计数大于 0 时 Runner 失败且诊断仍完整回传；最后制造被安全解包拒绝的制品，验证 Harbor 本身成功时 Runner 仍报告采集不完整，并保留含原始二进制数据的试验 Pod。它使用模拟的平台传输服务，不覆盖生产 API 的鉴权、结果保存目的地或收费模型。
+该验收使用 restricted PodSecurity、无权限试验身份和本地镜像，真实运行 Harbor 到 oracle reward=1，并逐字节检查包含非 UTF-8 内容的制品及完整归档上传。它对状态入口注入连接中断和 HTTP 503，验证同 sequence 恢复；另运行 verifier 故意失败和被安全解包拒绝的制品场景，验证诊断回传及原始 Pod 保留。最后使已 claim 的 Runner OOM，并验证 replacement Pod 无法重新认领或下载数据。它使用模拟的平台传输服务，不覆盖生产 API 的鉴权、结果保存目的地、收费模型或生产集群故障矩阵。
 
 镜像入口为 `python /opt/eruun/runner.py`，以 UID/GID `1000` 运行。挂载可写 `/work`，并提供 `POD_NAME`、`POD_UID` 的 Downward API 值。Runner 的 Kubernetes ServiceAccount 由平台限定权限；试验 Pod 使用另外的无权限 ServiceAccount。
 
@@ -39,25 +39,29 @@ python3 runners/harbor/smoke_kind.py --result /tmp/harbor-smoke-results.tar.gz
   "datasetURL": "<平台任务包下载地址>",
   "datasetDigest": "<tar.gz 文件的 SHA-256>",
   "resultURL": "<平台原始结果上传地址>",
+  "eventURL": "<平台 Runner 事件地址>",
   "token": "<本次任务绑定的传输能力>",
   "agent": {"name": "oracle"},
   "options": {"attempts": 1, "concurrency": 1},
   "resources": {"cpu": "1", "memory": "1Gi", "cpuLimit": "2", "memoryLimit": "2Gi"},
   "sandboxServiceAccount": "<平台创建的无权限身份>",
   "timeoutSeconds": 600,
-  "transferTimeoutSeconds": 300
+  "transferTimeoutSeconds": 300,
+  "finalizationTimeoutSeconds": 360
 }
 ```
 
-上述是内部 Runner 协议，不是用户提交接口。`token` 只用于平台的 Bearer 下载/上传请求，不传给 Harbor 子进程，不写入输出。请求同时携带 `X-Eruun-Runner-Pod-Name` 和 `X-Eruun-Runner-Pod-UID`。平台须验证身份与当前执行代，并在持久化原始数据后才返回 2xx。下载拒绝重定向，上传不跟随重定向。
+上述是内部 Runner 协议，不是用户提交接口。`token` 只用于平台的 Bearer 下载、上传和状态请求，不传给 Harbor 子进程，不写入输出。请求同时携带 `X-Eruun-Runner-Pod-Name` 和 `X-Eruun-Runner-Pod-UID`。平台验证任务、Pod、live Job UID、ExecutionKey、RunGeneration 与 Attempt，并在持久化后才返回 2xx。下载拒绝重定向，上传不跟随重定向。
 
-`POST resultURL` 发送 `application/gzip`，头 `X-Eruun-Evaluation-Status` 为 `succeeded` 或 `failed`。归档的根 `result.json` 是平台采集说明；`outputs/` 包含原始 Harbor 文件，包括原生 `outputs/run/result.json`、各 trial 的日志、轨迹、奖励、制品和框架附带文件。保留隐藏文件及二进制原文；安全的相对符号链接保留元数据，不解引用。危险链接、特殊文件、不可读文件记录在 `collectionErrors`，并设置 `collectionComplete=false`。
+Runner 启动后的第一个网络动作是同步提交 `claim`（`v1` sequence 1）；认领失败时绝不下载任务包、启动 Harbor 或上传结果。同一后台串行循环为后续 preparing/running/finalizing、15 秒 heartbeat 和有界 trial progress 分配 sequence，并对不确定 ACK 重放完全相同的事件。ACK `action=stop` 同时携带权威的 `stopOutcome`，Runner 保存该原因、设置现有取消事件、终止 Harbor 进程组并据此生成 terminal；如果停止状态恰好先于 terminal 持久化，Runner 按 409 返回的同一权威原因使用相同 sequence 重投。terminal 确认后事件循环立即结束；状态入口故障不会重新启动 Harbor。服务端连续 60 秒未接收任何 Runner 事件时只使查询状态变为 stale。
+
+`POST resultURL` 发送 `application/gzip`，头 `X-Eruun-Evaluation-Status` 为 `succeeded` 或 `failed`，并解析平台返回的持久化 artifact ID/digest。归档的根 `result.json` 是平台采集说明；`outputs/` 包含原始 Harbor 文件，包括原生 `outputs/run/result.json`、各 trial 的日志、轨迹、奖励、制品和框架附带文件。保留隐藏文件及二进制原文；安全的相对符号链接保留元数据，不解引用。危险链接、特殊文件、不可读文件记录在 `collectionErrors`，并设置 `collectionComplete=false`。
 
 采集完整性同时覆盖试验 Pod 到 Runner 的下载和最终本地归档。适配器在任务目录与下载目录之外的 `/work/evaluation-*/collection` 原子记录每次下载、环境启动与收尾；Harbor 吞掉的日志/制品下载异常、过滤或解包失败、未结束的下载、缺失或损坏的记录、原生制品清单的失败/跳过条目都会使 `collectionComplete=false`。记录写入失败也不会降级为成功。正常的空制品目录允许完整采集；声明的制品实际缺失仍报告失败。
 
 原生 `n_errored_trials`、未完成试验或缺失/损坏的结果都使执行失败，即使 Harbor 进程退出码为 0。正常完成且 reward 为 0 属于评测得到低分，仍是执行成功。SIGTERM/超时会终止 Harbor 进程组，并尝试上传已经收集的本地输出。框架被强杀、节点丢失或网络不可用时无法保证最后一次上传；平台不能因此声称输出已保存。
 
-任务包上限为压缩 64 MiB、展开 256 MiB、10,000 个条目；结果归档上限为压缩 512 MiB、展开 2 GiB、10,000 个条目、路径 1,024 字节，API 文件清单最多 2 MiB。无法完整采集时明确设置 `collectionComplete=false` 并以失败状态退出；若连归档也无法生成，则回传 `diagnosticOnly=true` 的说明包。两者都不表示原始输出已经完整保存。本地原文件保留在 `/work/evaluation-*/outputs`，等待平台按 Pod 保留策略处理。下载总预算为 300 秒，最多三次上传尝试共用另外的 300 秒预算；重试复用完全相同的归档字节。保存到用户所选目的地属于 API 接受原始结果之后的独立阶段。
+任务包上限为压缩 64 MiB、展开 256 MiB、10,000 个条目；结果归档上限为压缩 512 MiB、展开 2 GiB、10,000 个条目、路径 1,024 字节，API 文件清单最多 2 MiB。无法完整采集时明确设置 `collectionComplete=false` 并以失败状态退出；若连归档也无法生成，则回传 `diagnosticOnly=true` 的说明包。两者都不表示原始输出已经完整保存。本地原文件保留在 `/work/evaluation-*/outputs`，等待平台按 Pod 保留策略处理。下载总预算为 300 秒；进入 finalizing 后，结果采集、上传和 terminal 确认共享不超过 360 秒且不晚于任务启动时固定的绝对 deadline，重试复用完全相同的归档或事件字节。只有结果上传已确认、匹配 artifact 的 terminal 已 ACK 且执行与采集均成功，Runner 才返回 0。保存到用户所选目的地属于 API 接受原始结果之后的独立阶段。
 
 ## 框架与镜像边界
 

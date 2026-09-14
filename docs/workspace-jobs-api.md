@@ -68,7 +68,7 @@
 
 允许 `terminus-2`、`codex`、`claude-code` 和 `oracle`。`oracle` 执行任务包的参考解答，用于验证任务与平台链路，不代表模型能力；使用它时省略 `model` 和 `credentials`。其他 Agent 必须指定模型。支持的凭据环境名为 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`GEMINI_API_KEY`、`GOOGLE_API_KEY`、`OPENROUTER_API_KEY`、`AZURE_API_KEY`，均引用当前空间已有 Secret 的键；平台不返回 Secret 内容。
 
-`attempts` 为每个任务的评测次数，默认 1，范围 1–10；`concurrency` 为 Harbor 同时执行的 trial 数，默认 1，范围 1–16。它们不改变 Eruun 的 Job 调度器并发策略。评测默认超时 3600 秒，范围 60–86400 秒，另预留 360 秒停止和归档时间；归档传输的总预算为 300 秒，普通 API 仍保留原来的超时限制。
+`attempts` 为每个任务的评测次数，默认 1，范围 1–10；`concurrency` 为 Harbor 同时执行的 trial 数，默认 1，范围 1–16。它们不改变 Eruun 的 Job 调度器并发策略。评测默认超时 3600 秒，范围 60–86400 秒，另预留 360 秒停止和归档时间；任务包下载预算为 300 秒，进入 finalizing 后结果采集、上传和 terminal 确认共享最多 360 秒，普通 API 仍保留原来的超时限制。
 
 评测只支持 `resources` Trait；省略时默认请求 1 CPU/2 GiB、限制 2 CPU/4 GiB。这组值应用于 Runner 和每个任务环境，实际总资源随并发数增加，仍受空间配额约束。框架参数位于 `spec`，不增加 Harbor Trait。不能提交任意 Python 适配器、环境 kwargs、命名空间、ServiceAccount 或 Pod 覆盖。
 
@@ -90,7 +90,7 @@ curl -X POST "$ERUUN_URL/api/v1/job-datasets?name=harbor-demo" \
 
 ## 结果与保存
 
-`GET /api/v1/jobs/:taskID` 分别返回队列执行 `status`、`executions`、`collectionState`、`results` 和 `deliveries`。`collectionState` 为 `pending`、`collected`、`incomplete`、`unavailable` 或 `expired`。原始结果的 `summary.executionStatus` 保留框架事实，`summary.collectionComplete` 表示采集完整性。
+`GET /api/v1/jobs/:taskID` 分别返回队列执行 `status`、`executions`、`collectionState`、`results` 和 `deliveries`。`agent_evaluation` 在 Runner 已认领后还返回可选 `runnerStatus`：`phase`、已接受的 `sequence`、`lastHeartbeatAt`、`stale`、单调 trial 进度和不可变 terminal。该对象不包含任务 Token、Pod/Job UID 或执行密钥。心跳按 15 秒发送；服务端连续 60 秒未接收任何 Runner 事件时只将 `stale` 标为 true，不据此推断成功或失败，`lastHeartbeatAt` 仍只记录最后一次已接收心跳。`collectionState` 为 `pending`、`collected`、`incomplete`、`unavailable` 或 `expired`。原始结果的 `summary.executionStatus` 保留框架事实，`summary.collectionComplete` 表示采集完整性。
 
 原始结果是完整 tar.gz：根 `result.json` 描述采集；`outputs/` 保留 Harbor 的结果、trial、奖励、轨迹、日志、产物及其他文件。文件清单和摘要便于查询，下载仍提供完整归档。采集完整性同时检查试验 Pod 的下载和 Runner 本地归档，Harbor 内部吞掉的下载异常也会标记为不完整。原生失败、取消、采集失败和无法上传分别可辨认；reward 为 0 本身不是运行失败。
 
@@ -130,7 +130,13 @@ curl -X POST "$ERUUN_URL/api/v1/job-datasets?name=harbor-demo" \
 | `PUT /jobs/:taskID/retention` | 修改已采集、未过期源数据的保留时间 |
 | `GET/PUT /job-storage-policy` | 获取或修改空间默认策略 |
 
-`/job-runners/:taskID/dataset` 和 `/job-runners/:taskID/results` 是内部传输接口：校验任务能力凭据、Pod UID、所属 Job UID、持久化执行代与恢复记录，登录 Token 不能代替 Runner 身份。旧执行者不能覆盖新执行结果。
+`/job-runners/:taskID/dataset`、`/job-runners/:taskID/results` 和 `POST /job-runners/:taskID/events` 是内部 Runner 接口：校验任务能力凭据、Pod 名称/UID、所属 live Job UID、ExecutionKey、RunGeneration、Attempt 与持久化 checkpoint，登录 Token 不能代替 Runner 身份。Runner 必须先成功提交 `claim`，才能下载任务包或上传结果；同一 attempt 只有一个 Pod owner，不同 Pod 的认领返回 HTTP 409。旧执行者不能覆盖新执行结果。
+
+事件请求上限 64 KiB，固定使用 `protocolVersion: "v1"`、正整数 `sequence` 与 `kind`。`kind` 为 `claim`、`phase`、`heartbeat`、`progress` 或 `terminal`；phase 只允许 `preparing/running/finalizing`；progress 只包含非负、单调且不超过总量的 `completedTrials/totalTrials`。terminal 使用 `succeeded/failed/cancelled/timed_out` outcome，引用 results 接口已确认的 64 字符 artifact ID 和 SHA-256 digest，并携带 `collectionComplete`；可选 exit code、signal、最长 64 字符稳定 reason 和最长 512 字符脱敏 message。
+
+ACK 的 `data` 为 `{"acceptedSequence": 12, "action": "continue"}`，或在停止时额外返回 `"stopOutcome": "cancelled"|"timed_out"`。Runner 保存该权威原因并用它生成后续 terminal。相同 sequence 和内容重放是幂等操作，更旧 sequence 返回当前确认游标；同 sequence 不同内容、阶段/进度倒退、terminal 冲突或不同 owner 返回业务错误 `34004`（HTTP 409）。如果冲突仅由父任务已取消或到达绝对 deadline、而 terminal outcome 与权威状态不一致引起，409 的 `data.stopOutcome` 同样返回 `cancelled` 或 `timed_out`，Runner 使用相同 sequence 按该 outcome 重投；其他冲突不返回停止原因。服务端接收时间是心跳和状态陈旧计算的事实源。claim owner、最后事件摘要、sequence、phase、进度和 terminal 保存在当前 JobInfo `internal_info` 的 `runner` 子对象，不增加表或数据库列。
+
+结果完整、`succeeded` terminal 获得 ACK、Runner 以 0 退出且 Kubernetes Job 成功，四项证据同时满足后控制面才能完成评测。状态 API 或数据库短暂故障只触发有界重试，不重启 Harbor；无法确认 terminal 时 Runner 非零退出，由 Kubernetes 证据收敛。
 
 ## 管理员配置与部署
 
@@ -162,12 +168,14 @@ Runner 使用固定、无 Secret 读权限的空间 ServiceAccount，只获得 P
 
 Helm 使用 `jobs.existingSecret` 和 `jobs.key` 挂载用户已创建的 Secret，Chart 不生成或公开存储凭据。四种角色需要相同配置；Controller 执行结果保存及过期清理，Worker 执行 Harbor Job。先升级数据库 schema，再升级各角色。提供的单文件安装清单不默认启用 Harbor；使用 Helm 或为清单各角色手动挂载同一 Secret。
 
+本协议采用严格切换，不保留无 claim 的旧 Runner 兼容分支。部署前必须停止接受新的 `agent_evaluation`，等待所有旧评测结束，或明确取消并确认其 Kubernetes Job 已停止；随后再部署新 API/Worker 和 Runner 镜像并恢复提交。`command` 不进入此排空要求。若在旧评测仍运行时升级，旧 Runner 的 dataset/results 请求会因缺少 claim 被拒绝。
+
 ## 验证
 
 Go 测试覆盖类型校验、空间授权、Runner 执行身份和恢复、完整归档、并发发布、独立保存及过期。存储集成测试使用真实 MySQL 8.4 和 MinIO；运行方式：
 
 ```sh
-go test -race -tags=integration ./pkg/apiserver/jobs/artifacts
+go test -race -tags=integration ./pkg/apiserver/jobs ./pkg/apiserver/jobs/artifacts
 ```
 
-需要 `MYSQL_TEST_DSN` 和 `MINIO_TEST_CONFIG` 指向隔离环境；未配置时集成部分跳过，不能作为真实数据库验证。Python 测试和本地镜像构建见 [Runner README](../runners/harbor/README.md)。不同付费模型、私有镜像仓库和生产 CNI 网络规则仍需部署方验证。
+需要 `MYSQL_TEST_DSN` 和 `MINIO_TEST_CONFIG` 指向隔离环境；未配置时集成部分跳过，不能作为真实数据库验证。Runner claim 的 MySQL 测试验证行锁下只有一个 Pod 获胜。Python 测试和本地镜像构建见 [Runner README](../runners/harbor/README.md)。不同付费模型、私有镜像仓库、生产 CNI 网络规则，以及真实集群 OOM/网络恢复矩阵仍需部署方验证。
