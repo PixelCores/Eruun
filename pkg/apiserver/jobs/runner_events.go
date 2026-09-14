@@ -253,14 +253,14 @@ func (s *Service) RunnerEvent(ctx context.Context, identity RunnerIdentity, even
 		if err := locker.GetForUpdate(ctx, task); err != nil {
 			return err
 		}
-		if err := validateLockedRunnerTask(ctx, tx, task, auth); err != nil {
+		if err := validateLockedRunnerTask(task, auth); err != nil {
 			return err
 		}
 		record := &model.JobInfo{ID: auth.job.ID}
 		if err := locker.GetForUpdate(ctx, record); err != nil {
 			return err
 		}
-		if err := validateLockedRunnerJob(record, auth); err != nil {
+		if err := validateLockedRunnerJob(record, auth, task.Status); err != nil {
 			return err
 		}
 		state, deadline, err := decodeRunnerState(record)
@@ -368,21 +368,21 @@ func (s *Service) RunnerEvent(ctx context.Context, identity RunnerIdentity, even
 	return &ack, nil
 }
 
-func validateLockedRunnerTask(ctx context.Context, store datastore.DataStore, task *model.WorkflowQueue, auth *runnerAuthorization) error {
+func validateLockedRunnerTask(task *model.WorkflowQueue, auth *runnerAuthorization) error {
 	if task == nil || auth == nil || task.Type != config.WorkflowTaskTypeJob || task.AppID != "" ||
 		task.WorkspaceID != auth.task.WorkspaceID || task.JobSpec != auth.task.JobSpec ||
 		subtleTokenMismatch(task.JobToken, auth.task.JobToken) {
 		return bcode.ErrUnauthorized
 	}
-	return runnerParentAuthorized(ctx, store, task)
+	return runnerParentAuthorized(task)
 }
 
 func subtleTokenMismatch(left, right string) bool {
 	return len(left) != len(right) || subtle.ConstantTimeCompare([]byte(left), []byte(right)) != 1
 }
 
-func validateLockedRunnerJob(record *model.JobInfo, auth *runnerAuthorization) error {
-	if record == nil || auth == nil || terminal(config.Status(record.Status)) || record.Type != string(config.JobAgentEvaluation) ||
+func validateLockedRunnerJob(record *model.JobInfo, auth *runnerAuthorization, parentStatus config.Status) error {
+	if record == nil || auth == nil || !runnerJobStatusAuthorized(record, parentStatus) || record.Type != string(config.JobAgentEvaluation) ||
 		record.WorkspaceID != auth.job.WorkspaceID || record.TaskID != auth.job.TaskID || record.ExecutionKey == nil || auth.job.ExecutionKey == nil ||
 		*record.ExecutionKey != *auth.job.ExecutionKey || record.RunGeneration != auth.job.RunGeneration || record.Attempt != auth.job.Attempt {
 		return bcode.ErrUnauthorized
@@ -391,6 +391,19 @@ func validateLockedRunnerJob(record *model.JobInfo, auth *runnerAuthorization) e
 		return bcode.ErrUnauthorized
 	}
 	return nil
+}
+
+func runnerJobStatusAuthorized(record *model.JobInfo, parentStatus config.Status) bool {
+	if record == nil {
+		return false
+	}
+	if !terminal(config.Status(record.Status)) {
+		return true
+	}
+	// Workflow cleanup ownership may expire before Kubernetes finishes deleting
+	// the runner Pod. Keep the exact claimed attempt authorized only while its
+	// durable cancellation cleanup intent remains pending.
+	return parentStatus == config.StatusCancelled && workflowjob.IsCancelledJobCleanupPending(record)
 }
 
 func (s *Service) applyRunnerEvent(ctx context.Context, store datastore.DataStore, auth *runnerAuthorization, state *evaluationRunnerState, event RunnerEvent) error {

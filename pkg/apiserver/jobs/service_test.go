@@ -247,6 +247,31 @@ func TestRunnerResultPublicationFencesCheckpointAndAllowsCancellationUpload(t *t
 		require.NoError(t, err)
 		require.Equal(t, result.ID, again.ID)
 	})
+	t.Run("cancelled cleanup pending survives released workflow lease", func(t *testing.T) {
+		f := newRunnerFixture(t)
+		claimRunner(t, f)
+		f.parent.Status = config.StatusCancelled
+		f.parent.RunToken, f.parent.WorkerID, f.parent.LeaseExpiresAt = "", "", nil
+		f.record.Status = string(config.StatusCancelled)
+		f.record.SchedulingReason = "parent workflow cancelled"
+		require.True(t, workflowjob.IsCancelledJobCleanupPending(f.record))
+		require.NoError(t, f.raw.Put(context.Background(), f.parent))
+		require.NoError(t, f.raw.Put(context.Background(), f.record))
+
+		ack, err := f.service.RunnerEvent(context.Background(), f.identity, RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 2, Kind: "heartbeat"})
+		require.NoError(t, err)
+		require.Equal(t, "stop", ack.Action)
+
+		result, err := f.service.RunnerResult(context.Background(), f.identity, bytes.NewReader(resultArchive(t)))
+		require.NoError(t, err)
+		complete := true
+		ack, err = f.service.RunnerEvent(context.Background(), f.identity, RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 3, Kind: "terminal", Terminal: &RunnerTerminal{
+			Outcome: "cancelled", ArtifactID: result.ID, ArtifactDigest: result.Digest, CollectionComplete: &complete, Reason: "evaluation_cancelled",
+		}})
+		require.NoError(t, err)
+		require.Equal(t, uint64(3), ack.AcceptedSequence)
+		require.Equal(t, "stop", ack.Action)
+	})
 	t.Run("recovered terminal checkpoint", func(t *testing.T) {
 		f := newRunnerFixture(t)
 		claimRunner(t, f)

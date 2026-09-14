@@ -343,7 +343,7 @@ func (s *Service) authorizeRunner(ctx context.Context, identity RunnerIdentity) 
 	if task.Type != config.WorkflowTaskTypeJob || task.AppID != "" || subtle.ConstantTimeCompare([]byte(task.JobToken), []byte(identity.Token)) != 1 {
 		return nil, bcode.ErrUnauthorized
 	}
-	if err := runnerParentAuthorized(ctx, s.Store, task); err != nil {
+	if err := runnerParentAuthorized(task); err != nil {
 		return nil, err
 	}
 	if !validateRunnerDeclaration(task.JobSpec) {
@@ -373,7 +373,7 @@ func (s *Service) authorizeRunner(ctx context.Context, identity RunnerIdentity) 
 	}
 	for _, row := range rows {
 		job := row.(*model.JobInfo)
-		if terminal(config.Status(job.Status)) || job.Type != string(config.JobAgentEvaluation) || job.ExecutionKey == nil || job.InternalInfo == "" {
+		if !runnerJobStatusAuthorized(job, task.Status) || job.Type != string(config.JobAgentEvaluation) || job.ExecutionKey == nil || job.InternalInfo == "" {
 			continue
 		}
 		if pod.Annotations[config.AnnotationJobExecutionKey] != *job.ExecutionKey || pod.Annotations[config.AnnotationJobRunGeneration] != strconv.FormatUint(job.RunGeneration, 10) {
@@ -446,7 +446,7 @@ func (s *Service) RunnerResult(ctx context.Context, identity RunnerIdentity, r i
 		if task.WorkspaceID != auth.task.WorkspaceID || task.JobToken != auth.task.JobToken || task.JobSpec != auth.task.JobSpec {
 			return bcode.ErrUnauthorized
 		}
-		if err := runnerParentAuthorized(ctx, tx, task); err != nil {
+		if err := runnerParentAuthorized(task); err != nil {
 			return err
 		}
 		// A recovered owner may adopt the same immutable execution checkpoint.
@@ -455,7 +455,7 @@ func (s *Service) RunnerResult(ctx context.Context, identity RunnerIdentity, r i
 		if err := locker.GetForUpdate(ctx, job); err != nil {
 			return err
 		}
-		if err := validateLockedRunnerJob(job, auth); err != nil {
+		if err := validateLockedRunnerJob(job, auth, task.Status); err != nil {
 			return err
 		}
 		state, _, err := decodeRunnerState(job)
@@ -466,28 +466,14 @@ func (s *Service) RunnerResult(ctx context.Context, identity RunnerIdentity, r i
 	})
 }
 
-func runnerParentAuthorized(ctx context.Context, store datastore.DataStore, task *model.WorkflowQueue) error {
+func runnerParentAuthorized(task *model.WorkflowQueue) error {
 	if task == nil {
 		return bcode.ErrUnauthorized
 	}
-	if task.Status == config.StatusRunning {
+	if task.Status == config.StatusRunning || task.Status == config.StatusCancelled {
 		return nil
 	}
-	if task.Status != config.StatusCancelled || task.RunToken == "" || task.WorkerID == "" || task.LeaseExpiresAt == nil {
-		return bcode.ErrUnauthorized
-	}
-	clock, ok := store.(datastore.DatabaseClock)
-	if !ok {
-		return bcode.ErrUnauthorized
-	}
-	now, err := clock.CurrentDatabaseTime(ctx)
-	if err != nil {
-		return err
-	}
-	if !task.LeaseExpiresAt.After(now) {
-		return bcode.ErrUnauthorized
-	}
-	return nil
+	return bcode.ErrUnauthorized
 }
 
 // Maintain runs within the controller leader's existing lifecycle. Delivery

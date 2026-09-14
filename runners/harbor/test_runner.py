@@ -273,6 +273,27 @@ class RunnerTest(unittest.TestCase):
             reporter.close()
         self.assertIn("heartbeat", kinds)
 
+    def test_terminal_cancel_race_retries_cancelled_outcome(self):
+        cancel = threading.Event()
+        reporter = runner.StatusReporter(config(), cancel, time.monotonic() + 5)
+        observed = []
+
+        def post(cfg, event, deadline):
+            observed.append(event)
+            if len(observed) == 1:
+                cancel.set()
+                raise runner.RunnerEventConflictError("platform rejected runner event with HTTP 409")
+            return "stop"
+
+        event = {"protocolVersion": "v1", "sequence": 2, "kind": "terminal", "terminal": {
+            "outcome": "succeeded", "artifactId": "a" * 64, "artifactDigest": "b" * 64,
+            "collectionComplete": True, "reason": "evaluation_succeeded",
+        }}
+        with patch.object(runner, "post_runner_event", side_effect=post):
+            reporter._send_with_retry(event)
+        self.assertEqual([item["terminal"]["outcome"] for item in observed], ["succeeded", "cancelled"])
+        self.assertEqual(observed[-1]["terminal"]["reason"], "evaluation_cancelled")
+
     def test_main_claims_before_starting_evaluation(self):
         claimed = []
         reporter = MagicMock()
@@ -327,6 +348,32 @@ class RunnerTest(unittest.TestCase):
         self.assertLess(names.index("upload"), names.index("terminal"))
         self.assertEqual(calls[-1][1]["artifactId"], "a" * 64)
 
+    def test_cancel_during_result_upload_overrides_success_terminal(self):
+        package = self.example_package()
+        cancel = threading.Event()
+        reporter = MagicMock()
+        reporter.shorten_deadline.side_effect = lambda deadline: deadline
+
+        def framework(cfg, output, cancel, timeout):
+            (output / "run").mkdir()
+            (output / "run/result.json").write_text(json.dumps(result()))
+            collected_trial(output)
+            return 0, None
+
+        def upload(cfg, path, status, **kwargs):
+            cancel.set()
+            return {"id": "a" * 64, "digest": "b" * 64}
+
+        with patch.object(runner.importlib.metadata, "version", return_value=runner.FRAMEWORK_VERSION), \
+                patch.object(runner, "download_package", side_effect=lambda cfg, dest: shutil.copyfile(package, dest)), \
+                patch.object(runner, "run_framework", side_effect=framework), \
+                patch.object(runner, "upload_results", side_effect=upload):
+            code = runner.execute(config(), self.root, cancel, reporter=reporter, final_deadline=time.monotonic() + 10)
+        self.assertEqual(code, 1)
+        terminal = reporter.terminal.call_args.args[0]
+        self.assertEqual(terminal["outcome"], "cancelled")
+        self.assertEqual(terminal["reason"], "evaluation_cancelled")
+
     def test_network_retry_reuses_exact_archive_bytes(self):
         path = self.root / "result.tar.gz"
         path.write_bytes(b"immutable source bytes")
@@ -359,6 +406,47 @@ class RunnerTest(unittest.TestCase):
             runner.archive_results(output, self.root / "archive", report)
         self.assertFalse(report["collectionComplete"])
         self.assertEqual(report["collectionErrors"][0]["reason"], "too_many_entries")
+
+    def test_archive_deadline_expires_while_copying_large_file(self):
+        output = self.root / "outputs"
+        output.mkdir()
+        payload = output / "large.bin"
+        payload.write_bytes(b"x" * (1024 * 1024 + 1))
+        expired = threading.Event()
+        original_open = Path.open
+
+        class ExpiringSource:
+            def __init__(self, source):
+                self.source = source
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                self.source.close()
+
+            def read(self, size=-1):
+                contents = self.source.read(size)
+                expired.set()
+                return contents
+
+        def open_path(path, *args, **kwargs):
+            source = original_open(path, *args, **kwargs)
+            if path == payload and args and args[0] == "rb":
+                return ExpiringSource(source)
+            return source
+
+        report = {"executionStatus": "succeeded"}
+        with patch.object(runner.Path, "open", new=open_path), \
+                patch.object(runner.time, "monotonic", side_effect=lambda: 1 if expired.is_set() else 0), \
+                self.assertRaisesRegex(TimeoutError, "total time budget"):
+            runner.archive_results(output, self.root / "archive", report, deadline=0.5)
+
+    def test_sandbox_collection_observes_finalization_deadline(self):
+        output = self.root / "outputs"
+        output.mkdir()
+        with self.assertRaisesRegex(TimeoutError, "total time budget"):
+            runner.check_sandbox_collection(output, 0, {}, deadline=time.monotonic() - 1)
 
     def test_many_long_paths_obey_the_api_manifest_budget(self):
         output = self.root / "outputs"
