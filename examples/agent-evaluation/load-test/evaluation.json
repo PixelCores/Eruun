@@ -1,10 +1,7 @@
 {
-  "workspaceId": "<WORKSPACE_ID>",
   "name": "harbor-load",
-  "type": "agent_evaluation",
+  "type": "eval",
   "spec": {
-    "framework": "harbor",
-    "frameworkVersion": "0.22.0",
     "datasetId": "<UPLOADED_DATASET_ID>",
     "agent": {"name": "oracle"},
     "options": {"attempts": 1, "concurrency": 1},

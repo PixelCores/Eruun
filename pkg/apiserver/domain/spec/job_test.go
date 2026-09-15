@@ -16,11 +16,13 @@ func TestJobContractNormalization(t *testing.T) {
 	}{
 		{"command", `{"name":"daily","type":"command","spec":{"image":"busybox:1.37.0","command":["echo","ok"]}}`, true},
 		{"evaluation", `{"name":"agent","type":"agent_evaluation","spec":{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}}`, true},
+		{"eval with defaults", `{"name":"agent","type":"eval","spec":{"datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}}`, true},
 		{"old ambiguous type", `{"name":"daily","type":"custom","spec":{}}`, false},
 		{"application identity", `{"name":"daily","type":"command","appId":"app","spec":{}}`, false},
 		{"unbounded image", `{"name":"daily","type":"command","spec":{"image":"busybox:latest","command":["true"]}}`, false},
 		{"unknown command input", `{"name":"daily","type":"command","spec":{"image":"busybox:1","command":["true"],"cron":"* * * * *"}}`, false},
 		{"foreign framework", `{"name":"agent","type":"agent_evaluation","spec":{"framework":"other","frameworkVersion":"1","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}}`, false},
+		{"unsupported explicit version", `{"name":"agent","type":"eval","spec":{"frameworkVersion":"0.21.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}}`, false},
 		{"root code import", `{"name":"agent","type":"agent_evaluation","spec":{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle","import_path":"evil.Agent"}}}`, false},
 		{"credential interpreter injection", `{"name":"agent","type":"agent_evaluation","spec":{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle","credentials":[{"name":"PYTHONPATH","secretKeyRef":{"name":"secret","key":"key"}}]}}}`, false},
 		{"runtime env override", `{"name":"agent","type":"agent_evaluation","spec":{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}},"traits":{"envs":[{"name":"PATH","valueFrom":{"static":"evil"}}]}}`, false},
@@ -45,6 +47,16 @@ func TestJobContractNormalization(t *testing.T) {
 			require.JSONEq(t, string(first), string(second))
 		})
 	}
+}
+
+func TestEvalDefaultsPersistInNormalizedSpec(t *testing.T) {
+	job := JobSpec{Name: "agent", Type: "eval", Spec: json.RawMessage(`{"datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}`)}
+	require.NoError(t, job.Normalize())
+	var evaluation AgentEvaluationSpec
+	require.NoError(t, DecodeJobJSON(job.Spec, &evaluation))
+	require.Equal(t, "harbor", evaluation.Framework)
+	require.Equal(t, HarborVersion, evaluation.FrameworkVersion)
+	require.Equal(t, "eval", job.Type)
 }
 
 func TestResultPolicyPreservesFullData(t *testing.T) {

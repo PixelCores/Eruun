@@ -4,7 +4,7 @@
 
 ## 目标与测量边界
 
-在隔离的 Eruun 四角色部署中，向一个空间提交 **1000 个 `agent_evaluation` Job**，每个 Job 包含一个 Harbor 0.22.0 `oracle` trial。使用 [可构建的合成任务镜像和批量提交器](../examples/agent-evaluation/load-test/README.md)：试验 Pod 同时启动五个休眠时长不同的线程，每个 Job 的最长线程由试验容器 hostname 确定为 **60–300 秒**，最大值为 Sleep 300。这是真实的 Eruun API、数据库、调度、Kubernetes Job/Pod、Harbor Runner、状态事件和结果保存链路；任务内容和等待时间是合成的，没有模型调用、模型凭据或真实评测工作量。只在客户端伪造请求响应无法测量后半段链路的上限。
+在隔离的 Eruun 四角色部署中，向一个空间提交 **1000 个 `eval` Job**，每个 Job 包含一个 Harbor 0.22.0 `oracle` trial。使用 [可构建的合成任务镜像和批量提交器](../examples/agent-evaluation/load-test/README.md)：试验 Pod 同时启动五个休眠时长不同的线程，每个 Job 的最长线程由试验容器 hostname 确定为 **60–300 秒**，最大值为 Sleep 300。这是真实的 Eruun API、数据库、调度、Kubernetes Job/Pod、Harbor Runner、状态事件和结果保存链路；任务内容和等待时间是合成的，没有模型调用、模型凭据或真实评测工作量。只在客户端伪造请求响应无法测量后半段链路的上限。
 
 分别回答三个问题：一次能可靠接收多少待执行 Job；在目标提交速率下，排队与提交延迟如何变化；每个空间及整个部署能稳定执行多少个并发 trial，以及制品保存何时追不上完成速率。报告只对记录的集群、角色副本、数据库、队列后端、镜像、资源配额和结果策略成立；不能从一次 1000 Job 实验推断其他配置或真实模型任务的上限。
 

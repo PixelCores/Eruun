@@ -49,7 +49,7 @@ func New(store datastore.DataStore, kube kubernetes.Interface, cfg *config.Confi
 }
 
 type SubmitRequest struct {
-	WorkspaceID string `json:"workspaceId"`
+	WorkspaceID string `json:"workspaceId,omitempty"`
 	spec.JobSpec
 }
 
@@ -156,7 +156,7 @@ func (s *Service) Submit(ctx context.Context, request SubmitRequest) (*Accepted,
 	if err != nil {
 		return nil, err
 	}
-	if request.WorkspaceID != scope.WorkspaceID {
+	if request.WorkspaceID != "" && request.WorkspaceID != scope.WorkspaceID {
 		return nil, bcode.ErrForbidden
 	}
 	if err = request.JobSpec.Normalize(); err != nil {
@@ -165,7 +165,7 @@ func (s *Service) Submit(ctx context.Context, request SubmitRequest) (*Accepted,
 	if s.Config == nil || s.Config.Accounts == nil {
 		return nil, bcode.ErrServiceUnavailable
 	}
-	if request.Type == string(config.JobAgentEvaluation) {
+	if spec.IsEvaluationType(request.Type) {
 		if s.Config.Jobs == nil {
 			return nil, bcode.WithSafeClientMessage(bcode.ErrServiceUnavailable, "Harbor Runner is not configured")
 		}
@@ -214,7 +214,7 @@ func (s *Service) Submit(ctx context.Context, request SubmitRequest) (*Accepted,
 		return nil, invalid(err)
 	}
 	space := &model.Workspace{ID: scope.WorkspaceID, Namespace: scope.Namespace}
-	if request.Type == string(config.JobAgentEvaluation) {
+	if spec.IsEvaluationType(request.Type) {
 		err = workspace.PrepareEvaluationTask(job, space, s.Config.Accounts.Workspace, s.Config.Jobs.RunnerImage)
 	} else {
 		_, err = workspace.PrepareTask(job, "", space, s.Config.Accounts.Workspace)
@@ -282,7 +282,7 @@ func (s *Service) Get(ctx context.Context, taskID string) (*Detail, error) {
 	if err != nil {
 		return nil, err
 	}
-	if declaration.Type == string(config.JobAgentEvaluation) {
+	if spec.IsEvaluationType(declaration.Type) {
 		out.RunnerStatus, err = latestRunnerStatus(ctx, s.Store, out.Executions)
 		if err != nil {
 			return nil, err

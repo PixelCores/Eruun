@@ -503,5 +503,5 @@ func latestRunnerStatus(ctx context.Context, store datastore.DataStore, records 
 
 func validateRunnerDeclaration(raw string) bool {
 	var declaration spec.JobSpec
-	return json.Unmarshal([]byte(raw), &declaration) == nil && declaration.Type == string(config.JobAgentEvaluation)
+	return json.Unmarshal([]byte(raw), &declaration) == nil && spec.IsEvaluationType(declaration.Type)
 }

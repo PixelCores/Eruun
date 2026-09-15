@@ -4,15 +4,14 @@
 
 ## 身份与提交
 
-独立任务通过 `type` 区分 `command` 和 `agent_evaluation`。两种类型都在当前授权空间的 namespace 执行，平台生成 `taskId`，不要求 `appId`、应用组件或用户提供的 TaskID。执行复用 WorkflowQueue、JobInfo、现有调度和执行租约。
+独立任务通过 `type` 区分 `command` 和 `eval`。旧的 `agent_evaluation` 请求及已保存任务仍可读取和执行。两种任务都在当前授权空间的 namespace 执行，平台生成 `taskId`，不要求 `appId`、应用组件或用户提供的 TaskID。执行复用 WorkflowQueue、JobInfo、现有调度和执行租约。
 
-业务接口使用登录 Bearer Token 和 `X-Eruun-Workspace-ID`。读取需要空间成员权限，viewer 可读取；提交、上传、修改策略、取消及重试要求 member 或更高角色。创建请求的 `workspaceId` 必须与当前空间一致。
+业务接口使用登录 Bearer Token 和 `X-Eruun-Workspace-ID`。读取需要空间成员权限，viewer 可读取；提交、上传、修改策略、取消及重试要求 member 或更高角色。创建请求可省略 `workspaceId`，由已授权的请求空间决定；若显式填写，必须与该空间一致。空间 ID 在创建空间时生成，不会为每个 Job 新建空间。
 
 普通命令：
 
 ```json
 {
-  "workspaceId": "<当前空间 ID>",
   "name": "hello",
   "type": "command",
   "spec": {
@@ -32,16 +31,13 @@
 
 ## Harbor 评测 JSON
 
-首版固定 Harbor **0.22.0**。上传原生任务包后，用返回的 `id` 提交：
+首版固定 Harbor **0.22.0**。`spec` 配置评测执行方式；实际任务内容、镜像、参考解答和 verifier 在上传的 Harbor 任务包中。上传原生任务包后，用返回的 `id` 提交：
 
 ```json
 {
-  "workspaceId": "<当前空间 ID>",
   "name": "agent-capability-evaluation",
-  "type": "agent_evaluation",
+  "type": "eval",
   "spec": {
-    "framework": "harbor",
-    "frameworkVersion": "0.22.0",
     "datasetId": "<任务包上传返回的 ID>",
     "agent": {
       "name": "terminus-2",
@@ -66,7 +62,9 @@
 }
 ```
 
-允许 `terminus-2`、`codex`、`claude-code` 和 `oracle`。`oracle` 执行任务包的参考解答，用于验证任务与平台链路，不代表模型能力；使用它时省略 `model` 和 `credentials`。其他 Agent 必须指定模型。支持的凭据环境名为 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`GEMINI_API_KEY`、`GOOGLE_API_KEY`、`OPENROUTER_API_KEY`、`AZURE_API_KEY`，均引用当前空间已有 Secret 的键；平台不返回 Secret 内容。
+`framework` 和 `frameworkVersion` 可省略，服务端分别补为 `harbor` 和 `0.22.0` 并保存在 Job 快照中；显式填入其他值仍会拒绝。`datasetId` 是当前空间内已上传任务包返回的 ID，不是每次提交都要新建的数据集；同一任务包可供 1000 个 Job 复用。
+
+允许 `terminus-2`、`codex`、`claude-code` 和 `oracle`。`agent.name` 指定 Harbor 执行 trial 的 Agent；`oracle` 执行任务包的参考解答，用于验证任务与平台链路，不代表模型能力；使用它时省略 `model` 和 `credentials`，无需模型调用或模型费用。其他 Agent 必须指定模型。支持的凭据环境名为 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`GEMINI_API_KEY`、`GOOGLE_API_KEY`、`OPENROUTER_API_KEY`、`AZURE_API_KEY`，均引用当前空间已有 Secret 的键；平台不返回 Secret 内容。
 
 `attempts` 为每个任务的评测次数，默认 1，范围 1–10；`concurrency` 为 Harbor 同时执行的 trial 数，默认 1，范围 1–16。它们不改变 Eruun 的 Job 调度器并发策略。评测默认超时 3600 秒，范围 60–86400 秒，另预留 360 秒停止和归档时间；任务包下载预算为 300 秒，进入 finalizing 后结果采集、上传和 terminal 确认共享最多 360 秒，普通 API 仍保留原来的超时限制。
 
@@ -90,7 +88,7 @@ curl -X POST "$ERUUN_URL/api/v1/job-datasets?name=harbor-demo" \
 
 ## 结果与保存
 
-`GET /api/v1/jobs/:taskID` 分别返回队列执行 `status`、`executions`、`collectionState`、`results` 和 `deliveries`。`agent_evaluation` 在 Runner 已认领后还返回可选 `runnerStatus`：`phase`、已接受的 `sequence`、`lastHeartbeatAt`、`stale`、单调 trial 进度和不可变 terminal。该对象不包含任务 Token、Pod/Job UID 或执行密钥。心跳按 15 秒发送；服务端连续 60 秒未接收任何 Runner 事件时只将 `stale` 标为 true，不据此推断成功或失败，`lastHeartbeatAt` 仍只记录最后一次已接收心跳。`collectionState` 为 `pending`、`collected`、`incomplete`、`unavailable` 或 `expired`。原始结果的 `summary.executionStatus` 保留框架事实，`summary.collectionComplete` 表示采集完整性。
+`GET /api/v1/jobs/:taskID` 分别返回队列执行 `status`、`executions`、`collectionState`、`results` 和 `deliveries`。评测 Job 在 Runner 已认领后还返回可选 `runnerStatus`：`phase`、已接受的 `sequence`、`lastHeartbeatAt`、`stale`、单调 trial 进度和不可变 terminal。该对象不包含任务 Token、Pod/Job UID 或执行密钥。心跳按 15 秒发送；服务端连续 60 秒未接收任何 Runner 事件时只将 `stale` 标为 true，不据此推断成功或失败，`lastHeartbeatAt` 仍只记录最后一次已接收心跳。`collectionState` 为 `pending`、`collected`、`incomplete`、`unavailable` 或 `expired`。原始结果的 `summary.executionStatus` 保留框架事实，`summary.collectionComplete` 表示采集完整性。
 
 原始结果是完整 tar.gz：根 `result.json` 描述采集；`outputs/` 保留 Harbor 的结果、trial、奖励、轨迹、日志、产物及其他文件。文件清单和摘要便于查询，下载仍提供完整归档。采集完整性同时检查试验 Pod 的下载和 Runner 本地归档，Harbor 内部吞掉的下载异常也会标记为不完整。原生失败、取消、采集失败和无法上传分别可辨认；reward 为 0 本身不是运行失败。
 
@@ -168,7 +166,7 @@ Runner 使用固定、无 Secret 读权限的空间 ServiceAccount，只获得 P
 
 Helm 使用 `jobs.existingSecret` 和 `jobs.key` 挂载用户已创建的 Secret，Chart 不生成或公开存储凭据。四种角色需要相同配置；Controller 执行结果保存及过期清理，Worker 执行 Harbor Job。先升级数据库 schema，再升级各角色。提供的单文件安装清单不默认启用 Harbor；使用 Helm 或为清单各角色手动挂载同一 Secret。
 
-本协议采用严格切换，不保留无 claim 的旧 Runner 兼容分支。部署前必须停止接受新的 `agent_evaluation`，等待所有旧评测结束，或明确取消并确认其 Kubernetes Job 已停止；随后再部署新 API/Worker 和 Runner 镜像并恢复提交。`command` 不进入此排空要求。若在旧评测仍运行时升级，旧 Runner 的 dataset/results 请求会因缺少 claim 被拒绝。
+本协议采用严格切换，不保留无 claim 的旧 Runner 兼容分支。部署前必须停止接受新的评测 Job，等待所有旧评测结束，或明确取消并确认其 Kubernetes Job 已停止；随后再部署新 API/Worker 和 Runner 镜像并恢复提交。`command` 不进入此排空要求。若在旧评测仍运行时升级，旧 Runner 的 dataset/results 请求会因缺少 claim 被拒绝。
 
 ## 验证
 

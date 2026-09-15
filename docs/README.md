@@ -49,7 +49,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 - 顶层 `/workflow`、`/workflow/exec`、`/workflow/cancel` 路由不再注册；应用维度 workflow API 是当前主路径。
 - 业务 API 强制 Bearer 登录并按个人/团队空间授权；账号配置由 `ERUUN_AUTH_CONFIG_FILE` 加载，所有认证依赖失败时保持拒绝访问。
 - 应用必须属于一个空间；namespace 在首次实际部署时初始化，账号注册和应用保存不创建 Kubernetes 资源。
-- 独立 `command` / `agent_evaluation` Job 使用空间授权与平台生成的 TaskID，首版评测框架为 Harbor 0.22.0；见 `workspace-jobs-api.md`。当前没有通用 Agent 注册、MCP、向量化、vLLM/HAMi 或托管 AI Provider 公共 API。
+- 独立 `command` / `eval` Job 使用空间授权与平台生成的 TaskID（旧 `agent_evaluation` 仍可用），首版评测框架为 Harbor 0.22.0；见 `workspace-jobs-api.md`。当前没有通用 Agent 注册、MCP、向量化、vLLM/HAMi 或托管 AI Provider 公共 API。
 
 ## 目录层级速查
 

@@ -26,15 +26,17 @@ func (s *accessReadCommittedTestStore) WithReadCommittedTransaction(_ context.Co
 
 func TestScopedJobAdmissionLifecycle(t *testing.T) {
 	for _, tc := range []struct {
-		name     string
-		workflow config.WorkflowTaskType
-		job      config.JobType
-		app      bool
-		terminal bool
-		detached bool
+		name         string
+		workflow     config.WorkflowTaskType
+		job          config.JobType
+		snapshotType string
+		app          bool
+		terminal     bool
+		detached     bool
 	}{
 		{name: "command", workflow: config.WorkflowTaskTypeJob, job: config.JobCommand},
 		{name: "agent evaluation", workflow: config.WorkflowTaskTypeJob, job: config.JobAgentEvaluation},
+		{name: "eval", workflow: config.WorkflowTaskTypeJob, job: config.JobAgentEvaluation, snapshotType: "eval"},
 		{name: "import scan", workflow: config.WorkflowTaskTypeResourceImportScan, job: config.JobResourceImportScan},
 		{name: "import manage", workflow: config.WorkflowTaskTypeResourceImportManage, job: config.JobResourceImportManage},
 		{name: "application", job: config.JobDeployService, app: true},
@@ -51,7 +53,11 @@ func TestScopedJobAdmissionLifecycle(t *testing.T) {
 			owner := &model.WorkflowQueue{TaskID: "task", WorkspaceID: "allowed", Type: tc.workflow,
 				Status: config.StatusRunning, RunGeneration: 1, RunToken: "token", WorkerID: "worker", LeaseExpiresAt: &lease}
 			if tc.workflow == config.WorkflowTaskTypeJob {
-				owner.JobSpec = `{"type":"` + string(tc.job) + `"}`
+				snapshotType := string(tc.job)
+				if tc.snapshotType != "" {
+					snapshotType = tc.snapshotType
+				}
+				owner.JobSpec = `{"type":"` + snapshotType + `"}`
 			}
 			if tc.app {
 				owner.AppID = "app"

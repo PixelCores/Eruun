@@ -89,6 +89,32 @@ func TestSubmitCommandUsesWorkspaceQueueWithoutApplication(t *testing.T) {
 	require.ErrorIs(t, err, bcode.ErrForbidden)
 }
 
+func TestSubmitEvalUsesAuthorizedWorkspaceAndKeepsInternalJobType(t *testing.T) {
+	service, raw, ctx := testJobService(t)
+	datasetID := "11111111-1111-1111-1111-111111111111"
+	require.NoError(t, raw.Add(ctx, &model.JobArtifact{ID: datasetID, WorkspaceID: "space", Kind: artifacts.KindDataset, Digest: strings.Repeat("a", 64)}))
+	request := SubmitRequest{JobSpec: spec.JobSpec{Name: "sleep", Type: "eval", Spec: json.RawMessage(`{"datasetId":"` + datasetID + `","agent":{"name":"oracle"}}`)}}
+	accepted, err := service.Submit(ctx, request)
+	require.NoError(t, err)
+	require.Equal(t, "space", accepted.WorkspaceID)
+	require.Equal(t, "eval", accepted.Type)
+	parent := &model.WorkflowQueue{TaskID: accepted.TaskID}
+	require.NoError(t, raw.Get(ctx, parent))
+	require.Equal(t, "space", parent.WorkspaceID)
+	require.True(t, validateRunnerDeclaration(parent.JobSpec))
+	task, err := BuildTask(ctx, service.Store, service.Config, parent, "space-ns")
+	require.NoError(t, err)
+	require.Equal(t, string(config.JobAgentEvaluation), task.JobType)
+	detail, err := service.Get(ctx, accepted.TaskID)
+	require.NoError(t, err)
+	require.Equal(t, "eval", detail.Type)
+	require.Equal(t, "pending", detail.CollectionState)
+
+	request.WorkspaceID = "other"
+	_, err = service.Submit(ctx, request)
+	require.ErrorIs(t, err, bcode.ErrForbidden)
+}
+
 type runnerFixture struct {
 	service  *Service
 	raw      *sqlstore.Driver

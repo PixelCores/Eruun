@@ -45,6 +45,11 @@ type AgentEvaluationSpec struct {
 	TimeoutSeconds   int64           `json:"timeoutSeconds,omitempty"`
 }
 
+// IsEvaluationType recognizes the public eval type and stored evaluation Jobs.
+func IsEvaluationType(jobType string) bool {
+	return jobType == "eval" || jobType == "agent_evaluation"
+}
+
 type EvaluationAgent struct {
 	Name        string            `json:"name"`
 	Model       string            `json:"model,omitempty"`
@@ -129,7 +134,7 @@ func (j *JobSpec) Normalize() error {
 	if len(j.Spec) == 0 || bytes.Equal(bytes.TrimSpace(j.Spec), []byte("null")) {
 		return fmt.Errorf("spec is required")
 	}
-	if err := validateJobTraits(j.Traits, j.Type == "agent_evaluation"); err != nil {
+	if err := validateJobTraits(j.Traits, IsEvaluationType(j.Type)); err != nil {
 		return err
 	}
 	switch j.Type {
@@ -148,13 +153,19 @@ func (j *JobSpec) Normalize() error {
 			return fmt.Errorf("timeoutSeconds must be between 1 and 86400")
 		}
 		if j.ResultPolicy != nil {
-			return fmt.Errorf("resultPolicy applies to agent_evaluation")
+			return fmt.Errorf("resultPolicy applies to eval")
 		}
 		j.Spec, _ = json.Marshal(command)
-	case "agent_evaluation":
+	case "eval", "agent_evaluation":
 		var evaluation AgentEvaluationSpec
 		if err := DecodeJobJSON(j.Spec, &evaluation); err != nil {
-			return fmt.Errorf("agent_evaluation spec: %w", err)
+			return fmt.Errorf("eval spec: %w", err)
+		}
+		if evaluation.Framework == "" {
+			evaluation.Framework = "harbor"
+		}
+		if evaluation.FrameworkVersion == "" {
+			evaluation.FrameworkVersion = HarborVersion
 		}
 		if evaluation.Framework != "harbor" || evaluation.FrameworkVersion != HarborVersion {
 			return fmt.Errorf("supported framework is harbor %s", HarborVersion)
@@ -208,7 +219,7 @@ func (j *JobSpec) Normalize() error {
 		}
 		j.Spec, _ = json.Marshal(evaluation)
 	default:
-		return fmt.Errorf("type must be command or agent_evaluation")
+		return fmt.Errorf("type must be command or eval")
 	}
 	if j.Traits.Resources == nil {
 		j.Traits.Resources = &ResourceTraitsSpec{CPU: "1", Memory: "2Gi", CPULimit: "2", MemoryLimit: "4Gi"}
