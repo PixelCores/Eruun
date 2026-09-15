@@ -3,14 +3,28 @@
   "namespace": "default",
   "version": "1.0.0",
   "description": "多 Volume StatefulSet 测试 - 验证多个 tmpCreate volume",
-  "component": [
+  "workflow": [
+    {
+      "name": "deploy-postgres",
+      "mode": "StepByStep",
+      "components": [
+        "postgres-db"
+      ]
+    }
+  ],
+  "components": [
     {
       "name": "postgres-db",
       "type": "store",
       "image": "postgres:15",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 5432, "expose": true}],
+        "ports": [
+          {
+            "port": 5432,
+            "expose": true
+          }
+        ],
         "env": {
           "POSTGRES_PASSWORD": "__REPLACE_WITH_SECRET__",
           "PGDATA": "/var/lib/postgresql/data/pgdata"
@@ -42,13 +56,5 @@
         ]
       }
     }
-  ],
-  "workflow": [
-    {
-      "name": "deploy-postgres",
-      "mode": "StepByStep",
-      "components": ["postgres-db"]
-    }
   ]
 }
-

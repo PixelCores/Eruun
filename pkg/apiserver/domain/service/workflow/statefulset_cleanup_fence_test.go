@@ -27,7 +27,7 @@ func TestExecWorkflowTaskForAppBlocksPendingStatefulSetCleanup(t *testing.T) {
 				ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
 			}
 
-			resp, err := svc.ExecWorkflowTaskForApp(context.Background(), workflow.AppID, workflow.ID, 0)
+			resp, err := svc.ExecWorkflowTaskForApp(context.Background(), workflow.AppID, workflow.ID, 0, "")
 
 			require.Nil(t, resp)
 			require.ErrorIs(t, err, bcode.ErrApplicationConfig)
@@ -78,7 +78,7 @@ func TestStatefulSetCleanupFenceTracksMixedV2V3Components(t *testing.T) {
 		ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
 	}
 
-	resp, err := svc.ExecWorkflowTaskForApp(context.Background(), workflow.AppID, workflow.ID, 0)
+	resp, err := svc.ExecWorkflowTaskForApp(context.Background(), workflow.AppID, workflow.ID, 0, "")
 
 	require.Nil(t, resp)
 	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
@@ -394,7 +394,7 @@ func TestExecWorkflowTaskForAppAllowsCompletedStatefulSetCleanup(t *testing.T) {
 		ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
 	}
 
-	resp, err := svc.ExecWorkflowTaskForApp(context.Background(), workflow.AppID, workflow.ID, 0)
+	resp, err := svc.ExecWorkflowTaskForApp(context.Background(), workflow.AppID, workflow.ID, 0, "")
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
@@ -409,7 +409,7 @@ func TestExecWorkflowTaskForAppUsesApplicationScheduleLock(t *testing.T) {
 	t.Cleanup(func() { _ = held.Unlock(context.Background()) })
 	svc := &workflowServiceImpl{Store: store, ScheduleLocker: lockProvider}
 
-	resp, err := svc.ExecWorkflowTaskForApp(context.Background(), workflow.AppID, workflow.ID, 0)
+	resp, err := svc.ExecWorkflowTaskForApp(context.Background(), workflow.AppID, workflow.ID, 0, "")
 
 	require.Nil(t, resp)
 	require.ErrorIs(t, err, bcode.ErrApplicationOperationLocked)

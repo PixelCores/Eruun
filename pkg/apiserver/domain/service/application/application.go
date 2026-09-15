@@ -41,6 +41,7 @@ type ApplicationsService interface {
 	MarkInitialDeployingWorkflowComponents(context.Context, string, string) error
 	HasImmediateActiveVersionUpdateTask(context.Context, string, int64) (bool, error)
 	GetApplication(ctx context.Context, appName string) (*model.Applications, error)
+	GetApplicationSpec(ctx context.Context, appID string) (*apisv1.CreateApplicationsRequest, error)
 	ListApplications(ctx context.Context, opts ListApplicationsOptions) ([]*apisv1.ApplicationBase, error)
 	ListTemplateApplications(ctx context.Context, opts ListApplicationsOptions) ([]*apisv1.ApplicationBase, error)
 	BatchGetApplications(ctx context.Context, appIDs []string) (*apisv1.BatchGetApplicationsResponse, error)
@@ -235,7 +236,7 @@ func (c *applicationsServiceImpl) createApplications(
 	if req.Version == "" {
 		req.Version = "1.0.0"
 	}
-	if err := validateWorkflowFailurePolicy(req.WorkflowFailurePolicy); err != nil {
+	if err := validateWorkflowFailurePolicy(req.FailurePolicy); err != nil {
 		return nil, err
 	}
 
@@ -256,12 +257,12 @@ func (c *applicationsServiceImpl) createApplications(
 		application.Callback = callbackSelection.callback
 	}
 
-	if err := validateTemplateRequestJobFailurePolicyOverrides(req.Component); err != nil {
+	if err := validateTemplateRequestJobFailurePolicyOverrides(req.Components); err != nil {
 		return nil, err
 	}
 
 	//分解所有的组件
-	resolvedComponents, err := c.resolveComponents(ctx, application.Namespace, application.Name, req.Component)
+	resolvedComponents, err := c.resolveComponents(ctx, application.Namespace, application.Name, req.Components)
 	if err != nil {
 		return nil, err
 	}
@@ -273,8 +274,8 @@ func (c *applicationsServiceImpl) createApplications(
 	if err != nil {
 		return nil, err
 	}
-	if len(req.WorkflowSteps) > 0 {
-		if err := validateWorkflowComponentRefs(req.WorkflowSteps, workflowComponentTypesFromRequests(resolvedComponents)); err != nil {
+	if len(req.Workflow) > 0 {
+		if err := validateWorkflowComponentRefs(req.Workflow, workflowComponentTypesFromRequests(resolvedComponents)); err != nil {
 			klog.Errorf("create application workflow steps validation failed app=%s: %v", req.Name, err)
 			return nil, err
 		}

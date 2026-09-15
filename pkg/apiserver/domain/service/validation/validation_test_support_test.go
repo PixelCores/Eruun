@@ -14,7 +14,7 @@ func validCallbackTryApplicationRequest() apisv1.CreateApplicationsRequest {
 		Name:      "callback-app",
 		Namespace: "default",
 		Version:   "1.0.0",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -23,7 +23,7 @@ func validCallbackTryApplicationRequest() apisv1.CreateApplicationsRequest {
 				Replicas:      1,
 			},
 		},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{
+		Workflow: []apisv1.CreateWorkflowStepRequest{
 			{
 				Name:         "deploy-backend",
 				WorkflowType: config.JobDeploy,

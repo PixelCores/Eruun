@@ -5,7 +5,17 @@
   "version": "1.0.0",
   "project": "default",
   "description": "share strategy default demo",
-  "component": [
+  "workflow": [
+    {
+      "name": "share-default-step",
+      "mode": "StepByStep",
+      "components": [
+        "cm-default",
+        "cm-no-share"
+      ]
+    }
+  ],
+  "components": [
     {
       "name": "cm-default",
       "type": "config",
@@ -32,16 +42,6 @@
           "app.yaml": "mode: no-share\n"
         }
       }
-    }
-  ],
-  "workflow": [
-    {
-      "name": "share-default-step",
-      "mode": "StepByStep",
-      "components": [
-        "cm-default",
-        "cm-no-share"
-      ]
     }
   ]
 }

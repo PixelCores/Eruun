@@ -748,7 +748,7 @@ func TestDiffUpdateVersionUsesMaterializedTemplateComponents(t *testing.T) {
 		Name:      "source",
 		Namespace: "default",
 		Version:   "1.0.1",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "db",
 			ComponentType: config.StoreJob,
 			Template:      &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"},

@@ -28,9 +28,6 @@ func (c *applicationsServiceImpl) resolveCreateApplicationCallback(ctx context.C
 	}
 
 	callback := req.Callback
-	if !selection.overwriteAll && len(req.WorkflowSteps) > 0 && !callbackIsEmpty(req.WorkflowCallback) {
-		callback = req.WorkflowCallback
-	}
 	if callback == nil {
 		return selection, nil
 	}

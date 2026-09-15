@@ -90,34 +90,41 @@ log_archive_upload
 {
   "name": "log-archive-upload",
   "workflowType": "log_archive_upload",
-  "steps": [
+  "workflow": [
     {
       "name": "archive-api",
       "jobType": "log_archive_upload",
       "mode": "StepByStep",
-      "components": ["api"],
-      "properties": {
-        "path": "/var/log/api",
-        "container": "api"
-      }
+      "components": [
+        "api"
+      ],
+      "properties": [
+        {
+          "policies": [
+            "api"
+          ],
+          "path": "/var/log/api",
+          "container": "api"
+        }
+      ]
     }
   ]
 }
 ```
 
-历史 `workflow` 步骤字段仍兼容接收；新接入建议使用 `steps`。读接口返回的 `workflowType` step 字段也可作为 `jobType` 的兼容输入，`steps[].properties[]` / `subSteps[].properties[]` 数组可直接作为更新请求输入，用于支持读后编辑再提交。
+根级步骤字段只使用 `workflow`。规范 Step 使用 `jobType` 和 `properties[]`；`GET /api/v1/applications/:appID/workflows` 返回的 `spec` 可直接用于更新或 Try，以支持读后编辑再提交。
 
 兼容简写：当 `jobType=log_archive_upload` 且省略 `components` / `properties.policies` 时，step 或 subStep 的 `name` 会被视为组件名；这种写法仍必须提供 `properties.path`。
 
 ## Workflow Read Response
 
-通过 `GET /api/v1/applications/:appID/workflows` 读取 workflow 时，`steps[].properties[]` 和 `subSteps[].properties[]` 会返回持久化的归档配置：
+通过 `GET /api/v1/applications/:appID/workflows` 读取 workflow 时，`spec.workflow[].properties[]` 和 `spec.workflow[].subSteps[].properties[]` 会返回持久化的归档配置：
 
 - `policies` 保留该 properties 项关联的组件名。
 - `path` 保留该组件本次归档路径。
 - `container` 保留可选容器名。
 
-响应同时保留兼容字段 `steps[].components` / `subSteps[].components`，其值仍是从 `properties[].policies` 扁平化得到的组件名列表。
+规范 `spec` 同时包含 `workflow[].components` / `workflow[].subSteps[].components`，其值仍是从 `properties[].policies` 扁平化得到的组件名列表。
 
 ## Uploader Boundary
 

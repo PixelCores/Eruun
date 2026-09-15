@@ -79,8 +79,8 @@ func (c *conversionServiceImpl) ConvertKubeResources(ctx context.Context, req v1
 	}
 	if validate && c.ValidationService != nil {
 		validation := c.ValidationService.TryApplication(ctx, v1.CreateApplicationsRequest{
-			Name:      defaultConvertAppName,
-			Component: components,
+			Name:       defaultConvertAppName,
+			Components: components,
 		})
 		if validation != nil {
 			resp.Valid = validation.Valid

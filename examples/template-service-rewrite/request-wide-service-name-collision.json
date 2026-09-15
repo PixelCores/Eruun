@@ -4,7 +4,7 @@
   "alias": "service-name-collision-clone",
   "version": "1.0.0",
   "description": "Request should fail fast because a template-cloned Service collides with a regular component Service.",
-  "component": [
+  "components": [
     {
       "name": "worker",
       "type": "webservice",

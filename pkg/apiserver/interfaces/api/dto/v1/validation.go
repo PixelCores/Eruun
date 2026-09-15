@@ -7,29 +7,31 @@ import (
 
 // ValidationError represents a single validation error with field path and details
 type ValidationError struct {
-	// Field is the JSON path to the invalid field (e.g., "component[0].name")
-	Field string `json:"field"`
+	// Field is the internal validation path. API responses expose its canonical
+	// RFC 6901 representation through Path.
+	Field string `json:"-"`
+	// Path is the canonical JSON Pointer to the invalid value.
+	Path string `json:"path"`
 	// Code is the error code for programmatic handling
 	Code string `json:"code"`
 	// Message is the human-readable error description
 	Message string `json:"message"`
 }
 
-// TryApplicationRequest is the same as CreateApplicationsRequest
-// It accepts an optional appId to validate only workflow steps against an existing application.
-// When appId is provided, the request is treated as a workflow validation request using the
-// workflow steps from CreateApplicationsRequest.WorkflowSteps.
-type TryApplicationRequest struct {
-	AppID string `json:"appId,omitempty"`
-	CreateApplicationsRequest
-}
+// TryApplicationRequest is exactly the canonical Application write model.
+// Existing-application workflow validation uses the dedicated :appID/workflow/try endpoint.
+type TryApplicationRequest = CreateApplicationsRequest
 
 // TryApplicationResponse is the response for the try application validation API
 type TryApplicationResponse struct {
 	// Valid indicates whether the application configuration passes all validations
 	Valid bool `json:"valid"`
 	// Errors contains all validation errors found during validation
-	Errors []ValidationError `json:"errors,omitempty"`
+	Errors []ValidationError `json:"errors"`
+	// NormalizedSpec is accepted by the application write APIs without reshaping.
+	NormalizedSpec *CreateApplicationsRequest `json:"normalizedSpec,omitempty"`
+	// Plan is the ordered logical execution plan derived from NormalizedSpec.
+	Plan *ExecutionPlan `json:"plan,omitempty"`
 }
 
 // TryWorkflowRequest is the request for the try workflow validation API
@@ -46,7 +48,7 @@ type TryWorkflowRequest struct {
 	Callback *WorkflowCallback `json:"callback,omitempty"`
 	// FailurePolicy controls cleanup behavior when a deploy job fails or times out
 	FailurePolicy workflowconfig.WorkflowFailurePolicy `json:"failurePolicy,omitempty"`
-	// Workflow contains the workflow steps to validate
+	// Workflow contains the workflow steps to validate.
 	Workflow []CreateWorkflowStepRequest `json:"workflow" validate:"required,min=1,dive"`
 }
 
@@ -55,7 +57,25 @@ type TryWorkflowResponse struct {
 	// Valid indicates whether the workflow configuration passes all validations
 	Valid bool `json:"valid"`
 	// Errors contains all validation errors found during validation
-	Errors []ValidationError `json:"errors,omitempty"`
+	Errors []ValidationError `json:"errors"`
+	// NormalizedSpec is accepted by the workflow update API without reshaping.
+	NormalizedSpec *UpdateApplicationWorkflowRequest `json:"normalizedSpec,omitempty"`
+	// Plan is the ordered logical execution plan derived from NormalizedSpec.
+	Plan *ExecutionPlan `json:"plan,omitempty"`
+}
+
+type ExecutionPlan struct {
+	Actions []PlanAction `json:"actions"`
+}
+
+type PlanAction struct {
+	Order      int            `json:"order"`
+	Action     string         `json:"action"`
+	Target     string         `json:"target"`
+	TargetType string         `json:"targetType"`
+	JobType    config.JobType `json:"jobType,omitempty"`
+	Components []string       `json:"components,omitempty"`
+	Mode       string         `json:"mode,omitempty"`
 }
 
 // Validation error codes

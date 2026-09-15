@@ -27,15 +27,30 @@ Workflow 中每个 component step 可写 `schedulingClass`，subStep 可覆盖�
 ```json
 {
   "name": "deploy",
-  "workflow": [{
-    "name": "services",
-    "mode": "DAG",
-    "schedulingClass": "high",
-    "subSteps": [
-      {"name": "api", "jobType": "deploy", "components": ["api"]},
-      {"name": "batch", "jobType": "deploy", "components": ["batch"], "schedulingClass": "background"}
-    ]
-  }]
+  "workflow": [
+    {
+      "name": "services",
+      "mode": "DAG",
+      "schedulingClass": "high",
+      "subSteps": [
+        {
+          "name": "api",
+          "jobType": "deploy",
+          "components": [
+            "api"
+          ]
+        },
+        {
+          "name": "batch",
+          "jobType": "deploy",
+          "components": [
+            "batch"
+          ],
+          "schedulingClass": "background"
+        }
+      ]
+    }
+  ]
 }
 ```
 

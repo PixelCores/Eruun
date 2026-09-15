@@ -246,7 +246,7 @@ spec:
 ```json
 {
   "name": "demo",
-  "component": [
+  "components": [
     {
       "name": "web",
       "type": "webservice",

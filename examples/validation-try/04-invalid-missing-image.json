@@ -3,7 +3,23 @@
   "name": "my-app",
   "namespace": "default",
   "version": "1.0.0",
-  "component": [
+  "workflow": [
+    {
+      "name": "deploy",
+      "mode": "StepByStep",
+      "components": [
+        "backend"
+      ]
+    }
+  ],
+  "_expected_errors": [
+    {
+      "path": "/components/0/image",
+      "code": "MISSING_IMAGE",
+      "message": "image is required for webservice and store component types"
+    }
+  ],
+  "components": [
     {
       "name": "backend",
       "type": "webservice",
@@ -11,21 +27,5 @@
       "namespace": "default",
       "replicas": 1
     }
-  ],
-  "workflow": [
-    {
-      "name": "deploy",
-      "mode": "StepByStep",
-      "components": ["backend"]
-    }
-  ],
-  "_expected_errors": [
-    {
-      "field": "component[0].image",
-      "code": "MISSING_IMAGE",
-      "message": "image is required for webservice and store component types"
-    }
   ]
 }
-
-

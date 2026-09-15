@@ -3,7 +3,30 @@
   "name": "my-app",
   "namespace": "default",
   "version": "1.0.0",
-  "component": [
+  "workflow": [
+    {
+      "name": "deploy-all",
+      "mode": "StepByStep",
+      "components": [
+        "backend",
+        "frontend",
+        "database"
+      ]
+    }
+  ],
+  "_expected_errors": [
+    {
+      "path": "/workflow/0/components/1",
+      "code": "COMPONENT_NOT_FOUND",
+      "message": "component 'frontend' not found in application"
+    },
+    {
+      "path": "/workflow/0/components/2",
+      "code": "COMPONENT_NOT_FOUND",
+      "message": "component 'database' not found in application"
+    }
+  ],
+  "components": [
     {
       "name": "backend",
       "type": "webservice",
@@ -11,26 +34,5 @@
       "namespace": "default",
       "replicas": 1
     }
-  ],
-  "workflow": [
-    {
-      "name": "deploy-all",
-      "mode": "StepByStep",
-      "components": ["backend", "frontend", "database"]
-    }
-  ],
-  "_expected_errors": [
-    {
-      "field": "workflow[0].components[1]",
-      "code": "COMPONENT_NOT_FOUND",
-      "message": "component 'frontend' not found in application"
-    },
-    {
-      "field": "workflow[0].components[2]",
-      "code": "COMPONENT_NOT_FOUND",
-      "message": "component 'database' not found in application"
-    }
   ]
 }
-
-

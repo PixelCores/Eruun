@@ -380,7 +380,7 @@ func (s *serviceImpl) prepareAdoptedPlansForExecution(
 			Version:     "imported",
 			Project:     "imported",
 			Description: fmt.Sprintf("adopted from namespace %s", namespace),
-			Component:   sanitizeAdoptedImportComponentsForCreate(plan.components),
+			Components:  sanitizeAdoptedImportComponentsForCreate(plan.components),
 		}
 		if err := s.tryValidateImportCreateRequest(ctx, createReq); err != nil {
 			plan.err = err

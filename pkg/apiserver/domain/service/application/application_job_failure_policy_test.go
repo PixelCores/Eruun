@@ -338,7 +338,7 @@ func TestCreateApplicationsFromTemplateMergesJobFailurePolicyOverride(t *testing
 			svc := newMockServiceWithStore(store)
 			resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 				Name: "cloned-app",
-				Component: []apisv1.CreateComponentRequest{{
+				Components: []apisv1.CreateComponentRequest{{
 					Name:       "mysql-update-job",
 					Template:   &apisv1.TemplateRef{ID: "tmpl-1", Target: "template-component"},
 					Properties: apisv1.Properties{FailurePolicy: tt.overridePolicy},
@@ -379,7 +379,7 @@ func TestCreateApplicationsFromTemplateRejectsInvalidJobFailurePolicyOverride(t 
 			svc := newMockServiceWithStore(store)
 			resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 				Name: "cloned-app",
-				Component: []apisv1.CreateComponentRequest{{
+				Components: []apisv1.CreateComponentRequest{{
 					Name:       "component",
 					Template:   &apisv1.TemplateRef{ID: "tmpl-1", Target: "template-component"},
 					Properties: apisv1.Properties{FailurePolicy: jobFailurePolicyPointer(tt.policy)},
@@ -398,7 +398,7 @@ func TestCreateApplicationsFromTemplateRejectsNestedJobFailurePolicyOverride(t *
 
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "cloned-app",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:     "mysql-update-job",
 			Template: &apisv1.TemplateRef{ID: "tmpl-1", Target: "template-component"},
 			Traits: apisv1.Traits{Init: []spec.InitTraitSpec{{

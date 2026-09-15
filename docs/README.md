@@ -104,6 +104,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `account-auth-workspaces.md` | Current | GitHub/Google、邮箱/手机号登录、会话、团队权限、延迟任务隔离与失败收尾、重复部署幂等性、前端与部署接入 |
 | [`../examples/account-auth-workspaces/README.md`](../examples/account-auth-workspaces/README.md) | Current | 账号与团队 API 实操：curl 注册/登录/刷新、OAuth 浏览器回调、身份绑定、邀请和空间资源访问 |
 | `api-error-response-contract.md` | Current | API 统一错误响应与通用错误脱敏契约 |
+| `canonical-json-profile.md` | Current | 面向 Agent 的唯一 Application/Workflow JSON、Schema、Try、read-edit-submit、幂等与 allowedActions 契约 |
 | `system-setting.md` | Current | 系统设置类型、API 与默认初始化 |
 | `settings-page-api.md` | Current | 前端设置页字段归属、请求参数与保存策略 |
 | `programming-language-api.md` | Current | 管理员维护编程语言选项的 CRUD API |
@@ -192,7 +193,6 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `vllm-hami-distributed-inference-design.md` | Draft / Proposal | 自托管模型服务、GPU、vLLM/HAMi 与多节点 adapter 方向 |
 | `workflow-conditional-branching-design.md` | Draft / Proposal | 条件分支设计 |
 | `workflow-resource-capacity-scheduler.md` | Draft / Proposal | Workflow 资源容量准入与可选容量补偿边界 |
-| `api-request-field-canonicalization-plan.md` | Draft / Proposal | Application `components` 与 Workflow `steps` 请求字段严格收敛方案 |
 
 ## 图源与资产
 

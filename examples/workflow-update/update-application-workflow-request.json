@@ -3,7 +3,7 @@
   "alias": "Update Flow",
   "workflowType": "update",
   "failurePolicy": "cleanup_all",
-  "steps": [
+  "workflow": [
     {
       "name": "manual-approval",
       "stepType": "approval",
@@ -18,17 +18,23 @@
     {
       "name": "precheck",
       "mode": "StepByStep",
-      "components": ["config"]
+      "components": [
+        "config"
+      ]
     },
     {
       "name": "migrate-data",
       "mode": "StepByStep",
-      "components": ["mysql"]
+      "components": [
+        "mysql"
+      ]
     },
     {
       "name": "deploy-backend",
       "mode": "StepByStep",
-      "components": ["backend"]
+      "components": [
+        "backend"
+      ]
     }
   ]
 }

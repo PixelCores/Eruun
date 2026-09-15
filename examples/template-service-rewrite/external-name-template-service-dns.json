@@ -4,7 +4,7 @@
   "alias": "external-name-service-dns-clone",
   "version": "1.0.0",
   "description": "ExternalName hosts that point at template Services should be rewritten during clone.",
-  "component": [
+  "components": [
     {
       "name": "new-mysql",
       "type": "store",

@@ -54,25 +54,20 @@ type NameAlias struct {
 }
 
 type CreateApplicationsRequest struct {
-	ID            string                      `json:"id"`
-	Name          string                      `json:"name" validate:"checkname"`
-	Namespace     string                      `json:"namespace"`
-	Alias         string                      `json:"alias"`
-	Version       string                      `json:"version"`
-	Project       string                      `json:"project"`
-	Description   string                      `json:"description" optional:"true"`
-	Icon          string                      `json:"icon"`
-	Component     []CreateComponentRequest    `json:"component"`
-	WorkflowSteps []CreateWorkflowStepRequest `json:"workflow"`
-	Callback      *WorkflowCallback           `json:"callback,omitempty"`
-
-	// WorkflowCallback is populated from the new workflow object request shape:
-	// {"workflow":{"callback":{...},"steps":[...]}}.
-	WorkflowCallback *WorkflowCallback `json:"-"`
-
-	// WorkflowFailurePolicy is populated from the workflow object request shape:
-	// {"workflow":{"failurePolicy":"cleanup_all","steps":[...]}}.
-	WorkflowFailurePolicy workflowconfig.WorkflowFailurePolicy `json:"-"`
+	ID          string                      `json:"id,omitempty"`
+	Name        string                      `json:"name" validate:"checkname"`
+	Namespace   string                      `json:"namespace,omitempty"`
+	Alias       string                      `json:"alias,omitempty"`
+	Version     string                      `json:"version,omitempty"`
+	Project     string                      `json:"project,omitempty"`
+	Description string                      `json:"description,omitempty" optional:"true"`
+	Icon        string                      `json:"icon,omitempty"`
+	Components  []CreateComponentRequest    `json:"components"`
+	Workflow    []CreateWorkflowStepRequest `json:"workflow,omitempty"`
+	Callback    *WorkflowCallback           `json:"callback,omitempty"`
+	// FailurePolicy applies to the Application's workflow. Workflow-specific
+	// callback overrides remain available through the Workflow update API.
+	FailurePolicy workflowconfig.WorkflowFailurePolicy `json:"failurePolicy,omitempty"`
 
 	// TemplateEnabled 标记该应用是否允许作为模板被引用
 	TemplateEnabled *bool `json:"templateEnabled,omitempty"`

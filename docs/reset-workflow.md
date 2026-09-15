@@ -16,13 +16,17 @@
       "name": "cleanup-web",
       "jobType": "cleanup_resources",
       "mode": "StepByStep",
-      "components": ["web"]
+      "components": [
+        "web"
+      ]
     },
     {
       "name": "deploy-web",
       "jobType": "deploy",
       "mode": "StepByStep",
-      "components": ["web"]
+      "components": [
+        "web"
+      ]
     }
   ]
 }

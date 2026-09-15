@@ -29,3 +29,5 @@ var ErrWorkflowCancelSignalUnavailable = NewBcode(503, 20012, "workflow cancel s
 var ErrWorkflowTaskNotCancellable = NewBcode(409, 20013, "workflow task cannot be cancelled in current status")
 
 var ErrWorkflowTaskCancelConflict = NewBcode(409, 20014, "workflow task state changed while cancelling; retry")
+
+var ErrWorkflowIdempotencyConflict = NewBcode(409, 20015, "idempotency key was already used with a different workflow submission")

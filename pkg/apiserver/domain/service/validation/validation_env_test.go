@@ -19,7 +19,7 @@ func TestValidationService_TryApplication_ValidEnvFromConfig(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -56,7 +56,7 @@ func TestValidationService_TryApplication_InvalidEnvFromType(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -94,7 +94,7 @@ func TestValidationService_TryApplication_ValidEnvsConfig(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -150,7 +150,7 @@ func TestValidationService_TryApplication_InvalidEnvValueSource(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -187,7 +187,7 @@ func TestValidationService_TryApplication_TargetWorkEnvValid(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "demo-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -198,7 +198,7 @@ func TestValidationService_TryApplication_TargetWorkEnvValid(t *testing.T) {
 				},
 			},
 		},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{
+		Workflow: []apisv1.CreateWorkflowStepRequest{
 			{Name: "deploy", WorkflowType: config.JobDeploy, Components: []string{"backend"}},
 		},
 	}
@@ -215,7 +215,7 @@ func TestValidationService_TryApplication_TargetWorkEnvNestedRejected(t *testing
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "demo-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -234,7 +234,7 @@ func TestValidationService_TryApplication_TargetWorkEnvNestedRejected(t *testing
 				},
 			},
 		},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{
+		Workflow: []apisv1.CreateWorkflowStepRequest{
 			{Name: "deploy", WorkflowType: config.JobDeploy, Components: []string{"backend"}},
 		},
 	}
@@ -258,7 +258,7 @@ func TestValidationService_TryApplication_TargetWorkEnvInvalidSelector(t *testin
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "demo-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -272,7 +272,7 @@ func TestValidationService_TryApplication_TargetWorkEnvInvalidSelector(t *testin
 				},
 			},
 		},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{
+		Workflow: []apisv1.CreateWorkflowStepRequest{
 			{Name: "deploy", WorkflowType: config.JobDeploy, Components: []string{"backend"}},
 		},
 	}
@@ -300,7 +300,7 @@ func TestValidationService_TryApplication_TargetWorkEnvStringRejected(t *testing
 	err := json.Unmarshal([]byte(`{
 		"name": "demo-app",
 		"namespace": "default",
-		"component": [
+		"components": [
 			{
 				"name": "backend",
 				"type": "server",

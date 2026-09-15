@@ -3,7 +3,23 @@
   "name": "my-app",
   "namespace": "default",
   "version": "1.0.0",
-  "component": [
+  "workflow": [
+    {
+      "name": "deploy",
+      "mode": "StepByStep",
+      "components": [
+        "backend"
+      ]
+    }
+  ],
+  "_expected_errors": [
+    {
+      "path": "/components/0/traits/probes/0",
+      "code": "INVALID_PROBE_CONFIG",
+      "message": "probe must specify exactly one of exec, httpGet, or tcpSocket"
+    }
+  ],
+  "components": [
     {
       "name": "backend",
       "type": "webservice",
@@ -20,21 +36,5 @@
         ]
       }
     }
-  ],
-  "workflow": [
-    {
-      "name": "deploy",
-      "mode": "StepByStep",
-      "components": ["backend"]
-    }
-  ],
-  "_expected_errors": [
-    {
-      "field": "component[0].traits.probes[0]",
-      "code": "INVALID_PROBE_CONFIG",
-      "message": "probe must specify exactly one of exec, httpGet, or tcpSocket"
-    }
   ]
 }
-
-

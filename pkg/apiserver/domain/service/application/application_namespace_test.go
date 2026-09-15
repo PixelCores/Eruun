@@ -22,7 +22,7 @@ func TestCreateApplicationsDoesNotCreateNamespace(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "ns-create-demo",
 		Namespace: "tenant-a",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "cfg",
 				ComponentType: config.ConfJob,

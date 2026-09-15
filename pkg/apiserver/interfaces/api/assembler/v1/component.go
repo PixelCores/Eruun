@@ -42,6 +42,26 @@ func ConvertComponentModelToDTO(component *model.ApplicationComponent) (*apisv1.
 	return dto, nil
 }
 
+func ConvertComponentModelToCreateRequest(component *model.ApplicationComponent) (*apisv1.CreateComponentRequest, error) {
+	if component == nil {
+		return nil, nil
+	}
+	request := &apisv1.CreateComponentRequest{
+		Name:          component.Name,
+		ComponentType: component.ComponentType,
+		Image:         component.Image,
+		Namespace:     component.Namespace,
+		Replicas:      component.Replicas,
+	}
+	if err := decodeJSONStruct(component.Properties, &request.Properties); err != nil {
+		return nil, fmt.Errorf("convert component %s properties: %w", component.Name, err)
+	}
+	if err := decodeJSONStruct(component.Traits, &request.Traits); err != nil {
+		return nil, fmt.Errorf("convert component %s traits: %w", component.Name, err)
+	}
+	return request, nil
+}
+
 func convertComponentModelToDTOBase(component *model.ApplicationComponent) (*apisv1.ApplicationComponent, error) {
 	if component == nil {
 		return nil, nil

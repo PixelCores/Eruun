@@ -32,7 +32,7 @@ func TestCreateApplicationsAllowsNormalNameUsedByTemplate(t *testing.T) {
 	svc := newMockServiceWithStore(store)
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "mysql",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "mysql-config",
 			ComponentType: config.ConfJob,
 			Properties: apisv1.Properties{
@@ -72,7 +72,7 @@ func TestCreateApplicationsAllowsTemplateResourceNamesUsedByNormalApp(t *testing
 		Name:            "mysql",
 		Version:         "8.0.41",
 		TemplateEnabled: boolPtr(true),
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "mysql-api",
 			ComponentType: config.ServerJob,
 			Image:         "nginx:latest",
@@ -131,7 +131,7 @@ func TestCreateApplicationsAllowsStandalonePVCNameAcrossNamespacesAndClaimTempla
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name:      "beta",
 		Namespace: "team-b",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "worker",
 				ComponentType: config.ServerJob,
@@ -187,7 +187,7 @@ func TestCreateApplicationsFromTemplateSuffixesDuplicateTargets(t *testing.T) {
 	svc := newMockServiceWithStore(store)
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "game",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{Template: &apisv1.TemplateRef{ID: "tmpl-1", Target: "mysql-config"}},
 			{Template: &apisv1.TemplateRef{ID: "tmpl-1", Target: "mysql-config"}},
 		},
@@ -316,7 +316,7 @@ func TestCreateApplicationsAllowsTemplateVersionsWithSameName(t *testing.T) {
 		Name:            "mysql",
 		Version:         "8.0.41",
 		TemplateEnabled: boolPtr(true),
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "mysql-config-80",
 			ComponentType: config.ConfJob,
 			Properties: apisv1.Properties{
@@ -331,7 +331,7 @@ func TestCreateApplicationsAllowsTemplateVersionsWithSameName(t *testing.T) {
 		Name:            "mysql",
 		Version:         "8.4.0",
 		TemplateEnabled: boolPtr(true),
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "mysql-config-84",
 			ComponentType: config.ConfJob,
 			Properties: apisv1.Properties{
@@ -366,7 +366,7 @@ func TestCreateApplicationsUpsertsTemplateByNameAndVersion(t *testing.T) {
 		Version:         "8.0.41",
 		Alias:           "new-alias",
 		TemplateEnabled: boolPtr(true),
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "mysql-config",
 			ComponentType: config.ConfJob,
 			Properties: apisv1.Properties{
@@ -402,7 +402,7 @@ func TestCreateApplicationsDoesNotUpsertTemplateAcrossNamespaces(t *testing.T) {
 		Namespace:       "team-b",
 		Alias:           "team-b-template",
 		TemplateEnabled: boolPtr(true),
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "mysql-config",
 			ComponentType: config.ConfJob,
 			Properties: apisv1.Properties{
@@ -472,7 +472,7 @@ func TestCreateApplicationsAllowsTemplateRenameToUnusedKey(t *testing.T) {
 		Name:            "mysql",
 		Version:         "8.4.0",
 		TemplateEnabled: boolPtr(true),
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "mysql-config-84",
 			ComponentType: config.ConfJob,
 			Properties: apisv1.Properties{
@@ -502,7 +502,7 @@ func TestCreateApplicationsFromTemplateRequiresEnable(t *testing.T) {
 	svc := newMockServiceWithStore(store)
 	req := apisv1.CreateApplicationsRequest{
 		Name: "new-app",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "new-comp",
 			ComponentType: config.StoreJob,
 			Template:      &apisv1.TemplateRef{ID: templateApp.ID},
@@ -647,7 +647,7 @@ func TestCreateApplicationsFromTemplateClonesTraitsAndNames(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:  "cloned-app",
 		Alias: "cloned-app",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "new-mysql",
 				ComponentType: config.StoreJob,
@@ -804,7 +804,7 @@ func TestCreateApplicationsFromTemplateSharesTopLevelPersistentStorageWithNested
 	svc := newMockServiceWithStore(store)
 	req := apisv1.CreateApplicationsRequest{
 		Name: "tenant-a-mysql-app",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "tenant-a-mysql",
 				ComponentType: config.StoreJob,

@@ -40,12 +40,12 @@ var legacyTemplatePhaseNameAliases = map[string]int{
 
 func defaultWorkflowBodyForCreate(req apisv1.CreateApplicationsRequest, resolvedComponents []apisv1.CreateComponentRequest) interface{} {
 	var workflowSteps *model.WorkflowSteps
-	if len(req.WorkflowSteps) > 0 {
-		workflowSteps = convertWorkflowStepsFromRequest(req.WorkflowSteps, workflowComponentNamesFromRequests(resolvedComponents))
+	if len(req.Workflow) > 0 {
+		workflowSteps = convertWorkflowStepsFromRequest(req.Workflow, workflowComponentNamesFromRequests(resolvedComponents))
 	} else {
 		workflowSteps = convertWorkflowStepByTemplatePhases(resolvedComponents)
 	}
-	applyWorkflowFailurePolicy(workflowSteps, req.WorkflowFailurePolicy)
+	applyWorkflowFailurePolicy(workflowSteps, req.FailurePolicy)
 	return workflowSteps
 }
 

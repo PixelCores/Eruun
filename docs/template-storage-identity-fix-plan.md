@@ -4,7 +4,7 @@
 
 ## 问题与边界
 
-调用方可以在模板实例化请求中传入 `component[].tmp.defaultStorageClass`。Eruun 的职责是把该值应用到模板展开后的 persistent storage，并保证同一逻辑存储只生成一个 PVC。
+调用方可以在模板实例化请求中传入 `components[].tmp.defaultStorageClass`。Eruun 的职责是把该值应用到模板展开后的 persistent storage，并保证同一逻辑存储只生成一个 PVC。
 
 原问题发生在 MySQL 模板同时定义以下存储时：
 

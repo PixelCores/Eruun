@@ -5,7 +5,18 @@
   "version": "1.0.0",
   "project": "default",
   "description": "share trait ui test",
-  "component": [
+  "workflow": [
+    {
+      "name": "share-test",
+      "mode": "StepByStep",
+      "components": [
+        "cm-default",
+        "cm-ignore",
+        "cm-force"
+      ]
+    }
+  ],
+  "components": [
     {
       "name": "cm-default",
       "type": "config",
@@ -53,17 +64,6 @@
           "strategy": "force"
         }
       }
-    }
-  ],
-  "workflow": [
-    {
-      "name": "share-test",
-      "mode": "StepByStep",
-      "components": [
-        "cm-default",
-        "cm-ignore",
-        "cm-force"
-      ]
     }
   ]
 }

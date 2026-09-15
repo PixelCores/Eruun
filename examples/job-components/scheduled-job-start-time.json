@@ -4,7 +4,16 @@
   "version": "1.0.0",
   "project": "demo-project",
   "description": "Job (startTime) demo",
-  "component": [
+  "workflow": [
+    {
+      "name": "create-delay-task",
+      "mode": "StepByStep",
+      "components": [
+        "delay-task"
+      ]
+    }
+  ],
+  "components": [
     {
       "name": "delay-task",
       "type": "job",
@@ -14,16 +23,13 @@
       "properties": {
         "startTime": 1893456000,
         "runPolicy": "skip_if_completed",
-        "command": ["/bin/sh", "-c", "echo delayed job"]
+        "command": [
+          "/bin/sh",
+          "-c",
+          "echo delayed job"
+        ]
       },
       "traits": {}
-    }
-  ],
-  "workflow": [
-    {
-      "name": "create-delay-task",
-      "mode": "StepByStep",
-      "components": ["delay-task"]
     }
   ]
 }

@@ -110,7 +110,7 @@ func TestCreateApplicationsWithMutationCommitsInternalStateAtomically(t *testing
 		apisv1.CreateApplicationsRequest{
 			Name:      "adopted-app",
 			Namespace: config.DefaultNamespace,
-			Component: []apisv1.CreateComponentRequest{{
+			Components: []apisv1.CreateComponentRequest{{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
 				Image:         "nginx:stable",
@@ -136,9 +136,9 @@ func TestCreateApplicationsWithMutationCommitsInternalStateAtomically(t *testing
 	_, err = svc.CreateApplicationsWithMutation(
 		context.Background(),
 		apisv1.CreateApplicationsRequest{
-			Name:      "rolled-back-app",
-			Namespace: config.DefaultNamespace,
-			Component: []apisv1.CreateComponentRequest{{Name: "worker", ComponentType: config.ServerJob, Image: "nginx:stable"}},
+			Name:       "rolled-back-app",
+			Namespace:  config.DefaultNamespace,
+			Components: []apisv1.CreateComponentRequest{{Name: "worker", ComponentType: config.ServerJob, Image: "nginx:stable"}},
 		},
 		func(context.Context, datastore.DataStore, *model.Applications, []*model.ApplicationComponent) error {
 			return mutationErr
@@ -203,7 +203,7 @@ func TestCreateApplicationsWithMutationRefreshesManagedApplication(t *testing.T)
 					Namespace: config.DefaultNamespace,
 					Version:   "imported",
 					Project:   "imported",
-					Component: []apisv1.CreateComponentRequest{{
+					Components: []apisv1.CreateComponentRequest{{
 						Name:          "backend",
 						ComponentType: config.ServerJob,
 						Image:         "nginx:stable",
@@ -358,7 +358,7 @@ func TestCreateApplicationsObserveModeDisablesWorkflowsAtomically(t *testing.T) 
 		Name:            "observed-app",
 		Namespace:       config.DefaultNamespace,
 		ImportAsObserve: true,
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "backend",
 			ComponentType: config.ServerJob,
 			Image:         "nginx:stable",
@@ -458,7 +458,7 @@ func TestCreateApplicationsAllowsDuplicateNormalNameAcrossNamespaces(t *testing.
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name:      "demo",
 		Namespace: "team-b",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "demo-config",
 			ComponentType: config.ConfJob,
 			Properties: apisv1.Properties{
@@ -484,7 +484,7 @@ func TestCreateApplicationsReturnsMainComponentResourceSummary(t *testing.T) {
 		Name:            "mysql",
 		Namespace:       config.DefaultNamespace,
 		TemplateEnabled: &templateEnabled,
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "mysql-config",
 				ComponentType: config.ConfJob,
@@ -532,7 +532,7 @@ func TestCreateApplicationsResourceSummaryKeepsZeroValuesWhenMainComponentHasNoR
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name:      "demo",
 		Namespace: config.DefaultNamespace,
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "api",
 			ComponentType: config.ServerJob,
 			Image:         "nginx:latest",
@@ -556,7 +556,7 @@ func TestCreateApplicationsRejectsGeneratedResourceNameCollisionWithinApp(t *tes
 
 	_, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "game",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "api",
 				ComponentType: config.ServerJob,
@@ -588,7 +588,7 @@ func TestCreateApplicationsAllowsStandalonePVCReuseWithinApp(t *testing.T) {
 
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "game",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "api",
 				ComponentType: config.ServerJob,
@@ -626,7 +626,7 @@ func TestCreateApplicationsAllowsSameComponentStandalonePVCReuseAcrossTraitScope
 
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "game",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "api",
 			ComponentType: config.ServerJob,
 			Image:         "nginx:latest",
@@ -661,7 +661,7 @@ func TestCreateApplicationsRejectsInvalidStandalonePVCName(t *testing.T) {
 
 	_, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "game",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "api",
 			ComponentType: config.ServerJob,
 			Image:         "nginx:latest",
@@ -682,7 +682,7 @@ func TestCreateApplicationsRejectsStorageSubPathAndSubPathExpr(t *testing.T) {
 
 	_, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "game",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "api",
 			ComponentType: config.ServerJob,
 			Image:         "nginx:latest",
@@ -725,7 +725,7 @@ func TestCreateApplicationsRejectsGeneratedResourceNameCollisionAcrossApps(t *te
 	svc := newMockServiceWithStore(store)
 	_, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "foo-bar",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "baz",
 			ComponentType: config.ServerJob,
 			Image:         "nginx:latest",
@@ -767,7 +767,7 @@ func TestCreateApplicationsAllowsDuplicateSafeShareResourceNameCollisionAcrossAp
 			svc.KubeClient = fake.NewSimpleClientset()
 			resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 				Name: "beta",
-				Component: []apisv1.CreateComponentRequest{{
+				Components: []apisv1.CreateComponentRequest{{
 					Name:          "backend",
 					ComponentType: config.ServerJob,
 					Image:         "nginx:latest",
@@ -811,7 +811,7 @@ func TestCreateApplicationsRejectsForceShareResourceNameCollisionAcrossApps(t *t
 	svc := newMockServiceWithStore(store)
 	_, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "beta",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "backend",
 			ComponentType: config.ServerJob,
 			Image:         "nginx:latest",
@@ -851,7 +851,7 @@ func TestCreateApplicationsAllowsStandalonePVCReuseAcrossApps(t *testing.T) {
 	svc.KubeClient = fake.NewSimpleClientset()
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "beta",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "worker",
 			ComponentType: config.ServerJob,
 			Image:         "nginx:latest",
@@ -889,7 +889,7 @@ func TestCreateApplicationsAllowsGeneratedResourceNameCollisionAcrossNamespaces(
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name:      "foo-bar",
 		Namespace: "team-b",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "baz",
 			ComponentType: config.ServerJob,
 			Image:         "nginx:latest",
@@ -931,7 +931,7 @@ func TestCreateApplications_RejectsReservedPropertiesLabels(t *testing.T) {
 
 	req := apisv1.CreateApplicationsRequest{
 		Name: "new-app",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "backend",
 			ComponentType: config.ServerJob,
 			Image:         "nginx:latest",
@@ -954,7 +954,7 @@ func TestCreateApplicationsAllowsEmptySecretValues(t *testing.T) {
 
 	req := apisv1.CreateApplicationsRequest{
 		Name: "new-app",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "app-secret",
 			ComponentType: config.SecretJob,
 			Properties: apisv1.Properties{
@@ -982,7 +982,7 @@ func TestCreateApplicationsKeepsBase64LookingSecretTextFromRequest(t *testing.T)
 
 	req := apisv1.CreateApplicationsRequest{
 		Name: "imported-app",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "app-secret",
 			ComponentType: config.SecretJob,
 			Properties: apisv1.Properties{
@@ -1009,7 +1009,7 @@ func TestCreateApplicationsStoresConvertedSecretAsPlainText(t *testing.T) {
 	createResp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name:      "converted-app",
 		Namespace: config.DefaultNamespace,
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "app-secret",
 				ComponentType: config.SecretJob,
@@ -1105,7 +1105,7 @@ func TestCreateApplicationsRoundTripsSecretTextFromComponentResponse(t *testing.
 		Namespace: config.DefaultNamespace,
 		Version:   "2.0.0",
 		Project:   "proj",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          secretDTO.Name,
 			ComponentType: secretDTO.ComponentType,
 			Namespace:     secretDTO.Namespace,
@@ -1194,7 +1194,7 @@ func TestCreateApplicationsPreservesBase64LookingSecretTextDuringRefresh(t *test
 		Namespace: config.DefaultNamespace,
 		Version:   "2.0.0",
 		Project:   "proj",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "imported-secret",
 				ComponentType: config.SecretJob,
@@ -1230,7 +1230,7 @@ func TestCreateApplicationsRejectsInvalidExplicitServiceTraitName(t *testing.T) 
 
 	req := apisv1.CreateApplicationsRequest{
 		Name: "new-app",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "backend",
 			ComponentType: config.ServerJob,
 			Image:         "nginx:latest",
@@ -1287,7 +1287,7 @@ func TestCreateApplicationsRejectsInvalidIngressNameAndHost(t *testing.T) {
 
 			req := apisv1.CreateApplicationsRequest{
 				Name: "new-app",
-				Component: []apisv1.CreateComponentRequest{{
+				Components: []apisv1.CreateComponentRequest{{
 					Name:          "backend",
 					ComponentType: config.ServerJob,
 					Image:         "nginx:latest",

@@ -4,7 +4,7 @@
   "alias": "tenant-a-template-app",
   "version": "1.0.0",
   "description": "Auto staged workflow example for tmp.id multi-component references",
-  "component": [
+  "components": [
     {
       "name": "tenant-a-config",
       "type": "config",
@@ -55,4 +55,3 @@
     }
   ]
 }
-

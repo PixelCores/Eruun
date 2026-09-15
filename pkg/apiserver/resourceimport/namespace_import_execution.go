@@ -328,16 +328,16 @@ func (s *serviceImpl) applyNamespaceImportRun(ctx context.Context, r *namespaceI
 					mergeErr         error
 				)
 				if alreadyApplied || isFullImportKinds(includeKinds) {
-					mergedComponents, mergeErr = s.mergeCreateComponentsWithAllExisting(ctx, createReq.ID, createReq.Name, createReq.Namespace, createReq.Component)
+					mergedComponents, mergeErr = s.mergeCreateComponentsWithAllExisting(ctx, createReq.ID, createReq.Name, createReq.Namespace, createReq.Components)
 				} else {
-					mergedComponents, mergeErr = s.mergeCreateComponentsWithExisting(ctx, createReq.ID, createReq.Name, createReq.Namespace, createReq.Component, includeKinds)
+					mergedComponents, mergeErr = s.mergeCreateComponentsWithExisting(ctx, createReq.ID, createReq.Name, createReq.Namespace, createReq.Components, includeKinds)
 				}
 				if mergeErr != nil {
 					resp.Apps[appIdx].Error = mergeErr.Error()
 					s.markPlanResourcesFailed(resp, resourceResultIndex, plan.resources, mergeErr)
 					continue
 				}
-				createReq.Component = mergedComponents
+				createReq.Components = mergedComponents
 			}
 		}
 

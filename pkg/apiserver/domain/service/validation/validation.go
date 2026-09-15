@@ -134,29 +134,31 @@ func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.C
 			Message: err.Error(),
 		})
 		return &apisv1.TryApplicationResponse{
-			Valid:  false,
-			Errors: errors,
+			Valid:          false,
+			Errors:         apisv1.FinalizeValidationErrors(errors, apisv1.ValidationPathApplication),
+			NormalizedSpec: &req,
+			Plan:           apisv1.NewApplicationExecutionPlan(req),
 		}
 	}
 
 	// 1. Validate application name
 	errors = append(errors, v.validateName(effectiveReq.Name, "name")...)
-	if _, ok := workflowconfig.NormalizeWorkflowFailurePolicy(effectiveReq.WorkflowFailurePolicy); !ok {
+	if _, ok := workflowconfig.NormalizeWorkflowFailurePolicy(effectiveReq.FailurePolicy); !ok {
 		errors = append(errors, apisv1.ValidationError{
-			Field:   "workflow.failurePolicy",
+			Field:   "failurePolicy",
 			Code:    apisv1.ErrCodeInvalidWorkflowFailurePolicy,
-			Message: fmt.Sprintf("unsupported workflow failurePolicy: %s", effectiveReq.WorkflowFailurePolicy),
+			Message: fmt.Sprintf("unsupported workflow failurePolicy: %s", effectiveReq.FailurePolicy),
 		})
 	}
-	errors = append(errors, validateTemplateRequestNestedJobFailurePolicies(effectiveReq.Component)...)
+	errors = append(errors, validateTemplateRequestNestedJobFailurePolicies(effectiveReq.Components)...)
 
-	resolvedComponents := effectiveReq.Component
+	resolvedComponents := effectiveReq.Components
 	resolvedComponentSourceIndexes := make([]int, len(resolvedComponents))
 	for i := range resolvedComponentSourceIndexes {
 		resolvedComponentSourceIndexes[i] = i
 	}
 	componentsResolved := true
-	if requestUsesTemplate(effectiveReq.Component) {
+	if requestUsesTemplate(effectiveReq.Components) {
 		if v.AppRepo == nil || v.ComponentRepo == nil {
 			componentsResolved = false
 			errors = append(errors, apisv1.ValidationError{
@@ -165,7 +167,7 @@ func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.C
 				Message: "template repositories are required to validate template components",
 			})
 		} else {
-			components, sourceIndexes, err := applicationservice.ResolveComponentsWithSourceIndexes(ctx, v.AppRepo, v.ComponentRepo, applicationservice.ServiceNamespaceOrDefault(effectiveReq.Namespace), effectiveReq.Name, effectiveReq.Component, v.Cfg)
+			components, sourceIndexes, err := applicationservice.ResolveComponentsWithSourceIndexes(ctx, v.AppRepo, v.ComponentRepo, applicationservice.ServiceNamespaceOrDefault(effectiveReq.Namespace), effectiveReq.Name, effectiveReq.Components, v.Cfg)
 			if err != nil {
 				componentsResolved = false
 				errors = append(errors, apisv1.ValidationError{
@@ -181,6 +183,7 @@ func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.C
 	}
 
 	if componentsResolved {
+		effectiveReq.Components = resolvedComponents
 		// 2. Validate resolved components. Template requests are overrides until
 		// resolution, so type/image/traits must be checked on the cloned output.
 		componentNames := make(map[string]bool)
@@ -205,7 +208,7 @@ func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.C
 		}
 
 		// 3. Validate workflow steps and component references against resolved names.
-		errors = append(errors, v.validateWorkflowSteps(effectiveReq.WorkflowSteps, workflowComponentIndexFromCreateComponents(resolvedComponents), "workflow")...)
+		errors = append(errors, v.validateWorkflowSteps(effectiveReq.Workflow, workflowComponentIndexFromCreateComponents(resolvedComponents), "workflow")...)
 		if resourceErr := v.validateTryApplicationResourceNames(ctx, effectiveReq, resolvedComponents); resourceErr != nil {
 			errors = append(errors, apisv1.ValidationError{
 				Field:   "component",
@@ -218,8 +221,10 @@ func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.C
 	errors = append(errors, v.validateApplicationCallback(ctx, effectiveReq)...)
 
 	return &apisv1.TryApplicationResponse{
-		Valid:  len(errors) == 0,
-		Errors: errors,
+		Valid:          len(errors) == 0,
+		Errors:         apisv1.FinalizeValidationErrors(errors, apisv1.ValidationPathApplication),
+		NormalizedSpec: &effectiveReq,
+		Plan:           apisv1.NewApplicationExecutionPlan(effectiveReq),
 	}
 }
 
@@ -237,12 +242,6 @@ func (v *validationServiceImpl) validateApplicationCallback(ctx context.Context,
 }
 
 func applicationCallbackValidationField(req apisv1.CreateApplicationsRequest) string {
-	if strings.TrimSpace(req.ID) != "" && req.Callback != nil {
-		return "callback"
-	}
-	if len(req.WorkflowSteps) > 0 && !applicationservice.WorkflowCallbackIsEmpty(req.WorkflowCallback) {
-		return "workflow.callback"
-	}
 	return "callback"
 }
 

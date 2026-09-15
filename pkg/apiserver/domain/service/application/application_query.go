@@ -460,6 +460,85 @@ func (c *applicationsServiceImpl) GetApplication(ctx context.Context, appName st
 	return app, nil
 }
 
+func (c *applicationsServiceImpl) GetApplicationSpec(ctx context.Context, appID string) (*apisv1.CreateApplicationsRequest, error) {
+	if scope, ok := access.FromContext(ctx); ok && scope.Role == "viewer" {
+		return nil, bcode.ErrForbidden
+	}
+	appID = strings.TrimSpace(appID)
+	if appID == "" {
+		return nil, bcode.ErrApplicationNotExist
+	}
+	apps, err := c.applicationsByIDs(ctx, []string{appID})
+	if err != nil {
+		return nil, err
+	}
+	app := apps[appID]
+	if app == nil {
+		return nil, bcode.ErrApplicationNotExist
+	}
+	if app.EffectiveManagementMode() != config.ManagementModeNative {
+		return nil, fmt.Errorf("%w: only native applications have a resubmittable canonical spec", bcode.ErrApplicationManagementMode)
+	}
+
+	components, err := c.ComponentRepo.FindByAppID(ctx, appID)
+	if err != nil && !errors.Is(err, datastore.ErrRecordNotExist) {
+		return nil, err
+	}
+	sort.SliceStable(components, func(i, j int) bool {
+		if components[i] == nil || components[j] == nil {
+			return components[j] != nil
+		}
+		return components[i].Name < components[j].Name
+	})
+	componentSpecs := make([]apisv1.CreateComponentRequest, 0, len(components))
+	for _, component := range components {
+		componentSpec, err := assembler.ConvertComponentModelToCreateRequest(component)
+		if err != nil {
+			return nil, err
+		}
+		if componentSpec != nil {
+			componentSpecs = append(componentSpecs, *componentSpec)
+		}
+	}
+
+	templateEnabled := app.TemplateEnabled
+	spec := &apisv1.CreateApplicationsRequest{
+		ID:              app.ID,
+		Name:            app.Name,
+		Namespace:       app.Namespace,
+		Alias:           app.Alias,
+		Version:         app.Version,
+		Project:         app.Project,
+		Description:     app.Description,
+		Icon:            app.Icon,
+		Components:      componentSpecs,
+		TemplateEnabled: &templateEnabled,
+	}
+	if app.Callback != nil {
+		var callback apisv1.WorkflowCallback
+		if err := decodeJSONStruct(app.Callback, &callback); err != nil {
+			return nil, fmt.Errorf("decode application %s callback: %w", appID, err)
+		}
+		spec.Callback = &callback
+	}
+
+	workflows, err := c.WorkflowRepo.FindByAppID(ctx, appID)
+	if err != nil && !errors.Is(err, datastore.ErrRecordNotExist) {
+		return nil, err
+	}
+	if workflow := pickDefaultWorkflow(workflows, "", ""); workflow != nil {
+		workflowSpec, err := assembler.ConvertWorkflowModelToUpdateRequest(workflow)
+		if err != nil {
+			return nil, fmt.Errorf("convert application %s workflow spec: %w", appID, err)
+		}
+		if workflowSpec != nil {
+			spec.Workflow = workflowSpec.Workflow
+			spec.FailurePolicy = workflowSpec.FailurePolicy
+		}
+	}
+	return spec, nil
+}
+
 // DeleteApplication delete application
 func (c *applicationsServiceImpl) DeleteApplication(ctx context.Context, app *model.Applications) error {
 	if err := c.AppRepo.Delete(ctx, app); err != nil {

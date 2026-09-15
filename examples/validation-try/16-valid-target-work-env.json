@@ -1,7 +1,15 @@
 {
   "name": "demo-target-work-env",
   "namespace": "default",
-  "component": [
+  "workflow": [
+    {
+      "name": "deploy-backend",
+      "components": [
+        "backend"
+      ]
+    }
+  ],
+  "components": [
     {
       "name": "backend",
       "type": "webservice",
@@ -19,14 +27,6 @@
           "app": "lab"
         }
       }
-    }
-  ],
-  "workflow": [
-    {
-      "name": "deploy-backend",
-      "components": [
-        "backend"
-      ]
     }
   ]
 }

@@ -2,14 +2,27 @@
   "name": "ingress-derive-service-trait",
   "namespace": "default",
   "version": "1.0.0",
-  "component": [
+  "workflow": [
+    {
+      "name": "deploy-backend",
+      "mode": "StepByStep",
+      "components": [
+        "backend"
+      ]
+    }
+  ],
+  "components": [
     {
       "name": "backend",
       "type": "webservice",
       "image": "nginx:1.24",
       "namespace": "default",
       "properties": {
-        "ports": [{"port": 8080}]
+        "ports": [
+          {
+            "port": 8080
+          }
+        ]
       },
       "traits": {
         "service": [
@@ -41,13 +54,6 @@
           }
         ]
       }
-    }
-  ],
-  "workflow": [
-    {
-      "name": "deploy-backend",
-      "mode": "StepByStep",
-      "components": ["backend"]
     }
   ]
 }

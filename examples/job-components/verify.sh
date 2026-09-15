@@ -45,7 +45,7 @@ case "$mode" in
   "version": "1.0.0",
   "project": "demo-project",
   "description": "Job (startTime) demo",
-  "component": [
+  "components": [
     {
       "name": "delay-task",
       "type": "job",

@@ -11,7 +11,7 @@ import (
 )
 
 func TestCreateApplicationsRequestJSONTags(t *testing.T) {
-	input := `{"name":"demo","namespace":"default","templateEnabled":true,"component":[{"name":"web","type":"webservice","namespace":"comp-ns","replicas":1,"properties":{},"traits":{}}]}`
+	input := `{"name":"demo","namespace":"default","templateEnabled":true,"components":[{"name":"web","type":"webservice","namespace":"comp-ns","replicas":1,"properties":{},"traits":{}}]}`
 
 	var req CreateApplicationsRequest
 	err := json.Unmarshal([]byte(input), &req)
@@ -19,8 +19,8 @@ func TestCreateApplicationsRequestJSONTags(t *testing.T) {
 	require.Equal(t, "default", req.Namespace)
 	require.NotNil(t, req.TemplateEnabled)
 	require.True(t, *req.TemplateEnabled)
-	require.Len(t, req.Component, 1)
-	require.Equal(t, "comp-ns", req.Component[0].Namespace)
+	require.Len(t, req.Components, 1)
+	require.Equal(t, "comp-ns", req.Components[0].Namespace)
 }
 
 func TestDatabaseResetRequestDistinguishesOmittedAndProvidedInitSQLURL(t *testing.T) {
@@ -95,9 +95,9 @@ func TestCreateApplicationsRequestDecodesExplicitEmptyJobFailurePolicy(t *testin
 
 	var req CreateApplicationsRequest
 	require.NoError(t, json.Unmarshal([]byte(input), &req))
-	require.Len(t, req.Component, 1)
-	require.NotNil(t, req.Component[0].Properties.FailurePolicy)
-	require.Empty(t, *req.Component[0].Properties.FailurePolicy)
+	require.Len(t, req.Components, 1)
+	require.NotNil(t, req.Components[0].Properties.FailurePolicy)
+	require.Empty(t, *req.Components[0].Properties.FailurePolicy)
 }
 
 func TestUpdateVersionRequestDecodesJobFailurePolicy(t *testing.T) {
@@ -149,23 +149,23 @@ func jobFailurePolicyPointer(policy workflowconfig.WorkflowFailurePolicy) *workf
 	return &policy
 }
 
-func TestCreateApplicationsRequestAcceptsComponentsAlias(t *testing.T) {
+func TestCreateApplicationsRequestAcceptsCanonicalComponents(t *testing.T) {
 	input := `{"name":"demo","namespace":"default","components":[{"name":"web","type":"webservice","namespace":"comp-ns","replicas":1,"properties":{},"traits":{}}]}`
 
 	var req CreateApplicationsRequest
 	err := json.Unmarshal([]byte(input), &req)
 	require.NoError(t, err)
-	require.Len(t, req.Component, 1)
-	require.Equal(t, "web", req.Component[0].Name)
+	require.Len(t, req.Components, 1)
+	require.Equal(t, "web", req.Components[0].Name)
 }
 
-func TestCreateApplicationsRequestRejectsComponentAliasConflict(t *testing.T) {
-	input := `{"name":"demo","component":[],"components":[]}`
+func TestCreateApplicationsRequestRejectsLegacyComponentField(t *testing.T) {
+	input := `{"name":"demo","component":[]}`
 
 	var req CreateApplicationsRequest
 	err := json.Unmarshal([]byte(input), &req)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "cannot both be set")
+	require.Contains(t, err.Error(), `unknown field "component"`)
 }
 
 func TestCreateApplicationsRequestUsesCamelCaseID(t *testing.T) {
@@ -223,40 +223,50 @@ func TestCreateApplicationsRequestRejectsLegacyIDCaseVariants(t *testing.T) {
 	}
 }
 
-func TestCreateApplicationsRequestWorkflowArrayShape(t *testing.T) {
+func TestCreateApplicationsRequestAcceptsWorkflowArrayShape(t *testing.T) {
 	input := `{"name":"demo","workflow":[{"name":"deploy-web","components":["web"]}]}`
 
 	var req CreateApplicationsRequest
 	err := json.Unmarshal([]byte(input), &req)
 	require.NoError(t, err)
-	require.Len(t, req.WorkflowSteps, 1)
-	require.Equal(t, "deploy-web", req.WorkflowSteps[0].Name)
-	require.Nil(t, req.WorkflowCallback)
-	require.Empty(t, req.WorkflowFailurePolicy)
+	require.Len(t, req.Workflow, 1)
+	require.Equal(t, "deploy-web", req.Workflow[0].Name)
 }
 
-func TestCreateApplicationsRequestWorkflowObjectShape(t *testing.T) {
-	input := `{"name":"demo","callback":{"success":"https://example.com/app"},"workflow":{"callback":{"success":"https://example.com/workflow"},"failurePolicy":"cleanup_all","steps":[{"name":"deploy-web","components":["web"]}]}}`
+func TestCreateApplicationsRequestAcceptsRootWorkflowOptions(t *testing.T) {
+	input := `{"name":"demo","callback":{"success":"https://example.com/app"},"failurePolicy":"cleanup_all","workflow":[{"name":"deploy-web","components":["web"]}]}`
 
 	var req CreateApplicationsRequest
 	err := json.Unmarshal([]byte(input), &req)
 	require.NoError(t, err)
 	require.NotNil(t, req.Callback)
 	require.Equal(t, "https://example.com/app", req.Callback.Success)
-	require.NotNil(t, req.WorkflowCallback)
-	require.Equal(t, "https://example.com/workflow", req.WorkflowCallback.Success)
-	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, req.WorkflowFailurePolicy)
-	require.Len(t, req.WorkflowSteps, 1)
-	require.Equal(t, "deploy-web", req.WorkflowSteps[0].Name)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, req.FailurePolicy)
+	require.Len(t, req.Workflow, 1)
+	require.Equal(t, "deploy-web", req.Workflow[0].Name)
 }
 
-func TestCreateApplicationsRequestWorkflowObjectRejectsUnknownField(t *testing.T) {
+func TestCreateApplicationsRequestRejectsWorkflowObjectShape(t *testing.T) {
 	input := `{"name":"demo","workflow":{"steps":[],"extra":true}}`
 
 	var req CreateApplicationsRequest
 	err := json.Unmarshal([]byte(input), &req)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "unknown field")
+	require.Contains(t, err.Error(), "workflow must be an array")
+}
+
+func TestCreateApplicationsRequestRejectsLegacyRootStepsField(t *testing.T) {
+	var req CreateApplicationsRequest
+	err := json.Unmarshal([]byte(`{"name":"demo","components":[],"steps":[]}`), &req)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `unknown field "steps"`)
+}
+
+func TestTryApplicationRequestRejectsWorkflowOnlyAppIDShape(t *testing.T) {
+	var req TryApplicationRequest
+	err := json.Unmarshal([]byte(`{"appId":"app-1","workflow":[]}`), &req)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `unknown field "appId"`)
 }
 
 func TestCreateWorkflowStepRequestAcceptsWorkflowTypeAlias(t *testing.T) {
@@ -290,17 +300,15 @@ func TestCreateWorkflowSubStepRequestRejectsJobTypeAliasConflict(t *testing.T) {
 
 func TestWorkflowSchedulingClassJSONContract(t *testing.T) {
 	const steps = `[{"name":"deploy","schedulingClass":"high","subSteps":[{"name":"background","schedulingClass":"background"},{"name":"inherited"},{"name":"explicit-default","schedulingClass":"normal"}]}]`
-	for _, workflow := range []string{steps, `{"steps":` + steps + `}`} {
-		var request CreateApplicationsRequest
-		require.NoError(t, json.Unmarshal([]byte(`{"name":"app","workflow":`+workflow+`}`), &request))
-		require.Len(t, request.WorkflowSteps, 1)
-		step := request.WorkflowSteps[0]
-		require.Equal(t, "high", step.SchedulingClass)
-		require.Len(t, step.SubSteps, 3)
-		require.Equal(t, "background", step.SubSteps[0].SchedulingClass)
-		require.Empty(t, step.SubSteps[1].SchedulingClass)
-		require.Equal(t, "normal", step.SubSteps[2].SchedulingClass)
-	}
+	var request CreateApplicationsRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"name":"app","workflow":`+steps+`}`), &request))
+	require.Len(t, request.Workflow, 1)
+	step := request.Workflow[0]
+	require.Equal(t, "high", step.SchedulingClass)
+	require.Len(t, step.SubSteps, 3)
+	require.Equal(t, "background", step.SubSteps[0].SchedulingClass)
+	require.Empty(t, step.SubSteps[1].SchedulingClass)
+	require.Equal(t, "normal", step.SubSteps[2].SchedulingClass)
 	for _, input := range []string{
 		`{"schedulingClass":123}`,
 		`{"schedulingClass":true}`,
@@ -318,8 +326,8 @@ func TestWorkflowSchedulingClassJSONContract(t *testing.T) {
 	}
 }
 
-func TestUpdateApplicationWorkflowRequestAcceptsStepsAlias(t *testing.T) {
-	input := `{"workflowId":"wf-1","workflowType":"update","failurePolicy":"cleanup_all","steps":[{"name":"deploy-web","jobType":"deploy","components":["web"]}]}`
+func TestUpdateApplicationWorkflowRequestAcceptsCanonicalWorkflow(t *testing.T) {
+	input := `{"workflowId":"wf-1","workflowType":"update","failurePolicy":"cleanup_all","workflow":[{"name":"deploy-web","jobType":"deploy","components":["web"]}]}`
 
 	var req UpdateApplicationWorkflowRequest
 	err := json.Unmarshal([]byte(input), &req)
@@ -341,19 +349,19 @@ func TestUpdateApplicationWorkflowRequestTracksFailurePolicyPresence(t *testing.
 	}{
 		{
 			name:           "omitted",
-			input:          `{"workflowId":"wf-1","steps":[{"name":"deploy-web","jobType":"deploy","components":["web"]}]}`,
+			input:          `{"workflowId":"wf-1","workflow":[{"name":"deploy-web","jobType":"deploy","components":["web"]}]}`,
 			expectedPolicy: "",
 			expectedSet:    false,
 		},
 		{
 			name:           "cleanup all",
-			input:          `{"workflowId":"wf-1","failurePolicy":"cleanup_all","steps":[{"name":"deploy-web","jobType":"deploy","components":["web"]}]}`,
+			input:          `{"workflowId":"wf-1","failurePolicy":"cleanup_all","workflow":[{"name":"deploy-web","jobType":"deploy","components":["web"]}]}`,
 			expectedPolicy: workflowconfig.WorkflowFailurePolicyCleanupAll,
 			expectedSet:    true,
 		},
 		{
 			name:           "explicit empty",
-			input:          `{"workflowId":"wf-1","failurePolicy":"","steps":[{"name":"deploy-web","jobType":"deploy","components":["web"]}]}`,
+			input:          `{"workflowId":"wf-1","failurePolicy":"","workflow":[{"name":"deploy-web","jobType":"deploy","components":["web"]}]}`,
 			expectedPolicy: "",
 			expectedSet:    true,
 		},
@@ -371,7 +379,7 @@ func TestUpdateApplicationWorkflowRequestTracksFailurePolicyPresence(t *testing.
 }
 
 func TestUpdateApplicationWorkflowRequestAcceptsReadResponsePropertiesArray(t *testing.T) {
-	input := `{"workflowId":"wf-1","workflowType":"log_archive_upload","steps":[{"name":"archive-api","workflowType":"log_archive_upload","components":["api"],"properties":[{"policies":["api"],"path":"/var/log/api","container":"api"}],"subSteps":[{"name":"archive-worker","workflowType":"log_archive_upload","components":["worker"],"properties":[{"policies":["worker"],"path":"/var/log/worker"}]}]}]}`
+	input := `{"workflowId":"wf-1","workflowType":"log_archive_upload","workflow":[{"name":"archive-api","workflowType":"log_archive_upload","components":["api"],"properties":[{"policies":["api"],"path":"/var/log/api","container":"api"}],"subSteps":[{"name":"archive-worker","workflowType":"log_archive_upload","components":["worker"],"properties":[{"policies":["worker"],"path":"/var/log/worker"}]}]}]}`
 
 	var req UpdateApplicationWorkflowRequest
 	err := json.Unmarshal([]byte(input), &req)
@@ -409,13 +417,20 @@ func TestCreateWorkflowStepRequestRejectsPropertiesArrayUnknownField(t *testing.
 	require.Contains(t, err.Error(), "unknown field")
 }
 
-func TestUpdateApplicationWorkflowRequestRejectsWorkflowAliasConflict(t *testing.T) {
-	input := `{"workflow":[{"name":"deploy-web"}],"steps":[{"name":"deploy-web"}]}`
+func TestUpdateApplicationWorkflowRequestRejectsLegacyStepsField(t *testing.T) {
+	input := `{"steps":[{"name":"deploy-web"}]}`
 
 	var req UpdateApplicationWorkflowRequest
 	err := json.Unmarshal([]byte(input), &req)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "cannot both be set")
+	require.Contains(t, err.Error(), `unknown field "steps"`)
+}
+
+func TestUpdateApplicationWorkflowRequestRejectsWorkflowObject(t *testing.T) {
+	var req UpdateApplicationWorkflowRequest
+	err := json.Unmarshal([]byte(`{"workflow":{"steps":[]}}`), &req)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "workflow must be an array")
 }
 
 func TestApplicationBaseJSONTags(t *testing.T) {

@@ -47,17 +47,26 @@ Eruun 工作流引擎是整个应用交付系统的核心组件，负责将用�
     {
       "name": "config-step",
       "mode": "StepByStep",
-      "components": ["config", "secret"]
+      "components": [
+        "config",
+        "secret"
+      ]
     },
     {
       "name": "database",
       "mode": "DAG",
-      "components": ["mysql", "redis"]
+      "components": [
+        "mysql",
+        "redis"
+      ]
     },
     {
       "name": "services",
       "mode": "StepByStep",
-      "components": ["backend", "frontend"]
+      "components": [
+        "backend",
+        "frontend"
+      ]
     }
   ]
 }
@@ -1048,7 +1057,7 @@ Workflow Steps 定义:
   "version": "1.0.0",
   "project": "demo-project",
   "description": "StepByStep 模式示例应用",
-  "component": [
+  "components": [
     {
       "name": "app-config-1",
       "type": "config",
@@ -1095,7 +1104,12 @@ Workflow Steps 定义:
       "namespace": "default",
       "replicas": 2,
       "properties": {
-        "ports": [{"port": 8080, "expose": true}],
+        "ports": [
+          {
+            "port": 8080,
+            "expose": true
+          }
+        ],
         "env": {
           "APP_ENV": "production"
         }
@@ -1109,7 +1123,12 @@ Workflow Steps 定义:
       "namespace": "default",
       "replicas": 2,
       "properties": {
-        "ports": [{"port": 80, "expose": true}],
+        "ports": [
+          {
+            "port": 80,
+            "expose": true
+          }
+        ],
         "env": {
           "API_URL": "http://backend:8080"
         }
@@ -1121,7 +1140,13 @@ Workflow Steps 定义:
     {
       "name": "deploy-all",
       "mode": "StepByStep",
-      "components": ["app-config-1", "app-config-2", "app-config-3", "backend", "frontend"]
+      "components": [
+        "app-config-1",
+        "app-config-2",
+        "app-config-3",
+        "backend",
+        "frontend"
+      ]
     }
   ]
 }
@@ -1209,7 +1234,7 @@ Priority 10 (Deployment):        ↓
   "version": "1.0.0",
   "project": "demo-project",
   "description": "多 Step 组合执行示例",
-  "component": [
+  "components": [
     {
       "name": "config",
       "type": "config",
@@ -1230,7 +1255,12 @@ Priority 10 (Deployment):        ↓
       "namespace": "default",
       "replicas": 2,
       "properties": {
-        "ports": [{"port": 8080, "expose": true}],
+        "ports": [
+          {
+            "port": 8080,
+            "expose": true
+          }
+        ],
         "env": {
           "SERVICE_NAME": "api"
         }
@@ -1244,7 +1274,12 @@ Priority 10 (Deployment):        ↓
       "namespace": "default",
       "replicas": 2,
       "properties": {
-        "ports": [{"port": 80, "expose": true}],
+        "ports": [
+          {
+            "port": 80,
+            "expose": true
+          }
+        ],
         "env": {
           "API_URL": "http://api:8080"
         }
@@ -1256,12 +1291,17 @@ Priority 10 (Deployment):        ↓
     {
       "name": "config-step",
       "mode": "StepByStep",
-      "components": ["config"]
+      "components": [
+        "config"
+      ]
     },
     {
       "name": "services",
       "mode": "DAG",
-      "components": ["api", "web"]
+      "components": [
+        "api",
+        "web"
+      ]
     }
   ]
 }

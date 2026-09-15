@@ -96,21 +96,20 @@
 
 ## 请求格式
 
-创建应用时支持新的 workflow 对象写法。`workflow.steps[].components` 引用的组件必须同时出现在 `components` 中：
+创建应用时，根级 `workflow[].components` 引用的组件必须同时出现在 `components` 中，策略通过同级 `failurePolicy` 声明：
 
 ```json
 {
   "name": "cleanup-all-app",
-  "workflow": {
-    "failurePolicy": "cleanup_all",
-    "steps": [
-      {
-        "name": "deploy-api",
-        "mode": "DAG",
-        "components": ["api"]
-      }
-    ]
-  },
+  "workflow": [
+    {
+      "name": "deploy-api",
+      "mode": "DAG",
+      "components": [
+        "api"
+      ]
+    }
+  ],
   "components": [
     {
       "name": "api",
@@ -120,11 +119,12 @@
       "properties": {},
       "traits": {}
     }
-  ]
+  ],
+  "failurePolicy": "cleanup_all"
 }
 ```
 
-历史数组写法继续兼容；因为没有显式 `failurePolicy`，现在等价于默认 `cleanup_all`：
+省略 `failurePolicy` 时默认使用 `cleanup_all`：
 
 ```json
 {
@@ -133,7 +133,11 @@
     {
       "name": "deploy-all",
       "mode": "DAG",
-      "components": ["api", "worker", "mysql"]
+      "components": [
+        "api",
+        "worker",
+        "mysql"
+      ]
     }
   ]
 }
@@ -145,11 +149,15 @@
 {
   "name": "deploy-cleanup-all",
   "failurePolicy": "cleanup_all",
-  "steps": [
+  "workflow": [
     {
       "name": "deploy-all",
       "mode": "DAG",
-      "components": ["api", "worker", "mysql"]
+      "components": [
+        "api",
+        "worker",
+        "mysql"
+      ]
     }
   ]
 }

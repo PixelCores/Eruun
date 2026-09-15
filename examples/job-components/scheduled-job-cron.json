@@ -4,7 +4,16 @@
   "version": "1.0.0",
   "project": "demo-project",
   "description": "Scheduled job (cron) demo",
-  "component": [
+  "workflow": [
+    {
+      "name": "create-cron-task",
+      "mode": "StepByStep",
+      "components": [
+        "cron-task"
+      ]
+    }
+  ],
+  "components": [
     {
       "name": "cron-task",
       "type": "scheduledjob",
@@ -13,16 +22,13 @@
       "replicas": 1,
       "properties": {
         "schedule": "0 0 * * *",
-        "command": ["/bin/sh", "-c", "date"]
+        "command": [
+          "/bin/sh",
+          "-c",
+          "date"
+        ]
       },
       "traits": {}
-    }
-  ],
-  "workflow": [
-    {
-      "name": "create-cron-task",
-      "mode": "StepByStep",
-      "components": ["cron-task"]
     }
   ]
 }

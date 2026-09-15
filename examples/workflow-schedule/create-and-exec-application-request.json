@@ -23,12 +23,14 @@
       "components": [
         "api"
       ],
-      "properties": {
-        "policies": [
-          "api"
-        ]
-      },
-      "mode": "step-by-step"
+      "properties": [
+        {
+          "policies": [
+            "api"
+          ]
+        }
+      ],
+      "mode": "StepByStep"
     }
   ],
   "workflowId": "wf-default-123",

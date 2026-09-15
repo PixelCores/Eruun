@@ -4,7 +4,31 @@
   "version": "1.0.0",
   "project": "demo-project",
   "description": "Complete demo application with all traits",
-  "component": [
+  "workflow": [
+    {
+      "name": "config-step",
+      "mode": "StepByStep",
+      "components": [
+        "app-config",
+        "app-secret"
+      ]
+    },
+    {
+      "name": "database-step",
+      "mode": "DAG",
+      "components": [
+        "mysql"
+      ]
+    },
+    {
+      "name": "services-step",
+      "mode": "DAG",
+      "components": [
+        "backend"
+      ]
+    }
+  ],
+  "components": [
     {
       "name": "app-config",
       "type": "config",
@@ -39,7 +63,11 @@
       "namespace": "default",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 3306}],
+        "ports": [
+          {
+            "port": 3306
+          }
+        ],
         "env": {
           "MYSQL_ROOT_PASSWORD": "root123"
         }
@@ -82,7 +110,11 @@
       "namespace": "default",
       "replicas": 3,
       "properties": {
-        "ports": [{"port": 8080}],
+        "ports": [
+          {
+            "port": 8080
+          }
+        ],
         "env": {
           "APP_ENV": "production"
         }
@@ -148,7 +180,9 @@
             "name": "backend-ingress",
             "namespace": "default",
             "ingressClassName": "nginx",
-            "hosts": ["api.example.com"],
+            "hosts": [
+              "api.example.com"
+            ],
             "routes": [
               {
                 "path": "/api",
@@ -166,37 +200,34 @@
             "serviceAccount": "backend-sa",
             "rules": [
               {
-                "apiGroups": [""],
-                "resources": ["pods", "services"],
-                "verbs": ["get", "list", "watch"]
+                "apiGroups": [
+                  ""
+                ],
+                "resources": [
+                  "pods",
+                  "services"
+                ],
+                "verbs": [
+                  "get",
+                  "list",
+                  "watch"
+                ]
               },
               {
-                "apiGroups": [""],
-                "resources": ["configmaps"],
-                "verbs": ["get"]
+                "apiGroups": [
+                  ""
+                ],
+                "resources": [
+                  "configmaps"
+                ],
+                "verbs": [
+                  "get"
+                ]
               }
             ]
           }
         ]
       }
     }
-  ],
-  "workflow": [
-    {
-      "name": "config-step",
-      "mode": "StepByStep",
-      "components": ["app-config", "app-secret"]
-    },
-    {
-      "name": "database-step",
-      "mode": "DAG",
-      "components": ["mysql"]
-    },
-    {
-      "name": "services-step",
-      "mode": "DAG",
-      "components": ["backend"]
-    }
   ]
 }
-

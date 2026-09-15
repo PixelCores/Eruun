@@ -255,7 +255,7 @@ func TestUpdateApplicationWorkflowCanonicalizesMixedCaseComponentRefs(t *testing
 	require.NoError(t, json.Unmarshal([]byte(`{
 		"name": "custom-flow",
 		"workflowType": "workflow",
-		"steps": [
+		"workflow": [
 			{
 				"name": "deploy-web",
 				"workflowType": "deploy",

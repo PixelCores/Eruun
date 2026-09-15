@@ -14,43 +14,44 @@ import (
 )
 
 type fakeWorkflowService struct {
-	execResp            *apis.ExecWorkflowResponse
-	execErr             error
-	execForAppCalled    bool
-	lastExecAppID       string
-	lastExecWorkflowID  string
-	lastExecExecuteAt   int64
-	scheduleUpsertResp  *apis.UpsertWorkflowScheduleResponse
-	scheduleUpsertErr   error
-	scheduleUpsertReq   apis.UpsertWorkflowScheduleRequest
-	scheduleUpsertApp   string
-	scheduleListResp    []apis.WorkflowSchedule
-	scheduleListErr     error
-	scheduleListApp     string
-	scheduleDeleteErr   error
-	scheduleDeleteApp   string
-	scheduleDeleteID    string
-	cancelForAppCalled  bool
-	cancelForAppErr     error
-	cancelAllCalled     bool
-	cancelAllResp       []string
-	cancelAllErr        error
-	cancelDelayedCalled bool
-	lastCancelAppID     string
-	lastCancelUser      string
-	lastCancelReason    string
-	lastCancelTaskID    string
-	cancelDelayedErr    error
-	cancelCalled        bool
-	lastUser            string
-	lastReason          string
-	lastApprovalTaskID  string
-	lastApprovalAction  string
-	approveCalled       bool
-	approveErr          error
-	approveResp         *apis.TaskApprovalResponse
-	taskStatusResp      *apis.TaskStatusResponse
-	taskStagesResp      *apis.TaskStagesResponse
+	execResp               *apis.ExecWorkflowResponse
+	execErr                error
+	execForAppCalled       bool
+	lastExecAppID          string
+	lastExecWorkflowID     string
+	lastExecExecuteAt      int64
+	lastExecIdempotencyKey string
+	scheduleUpsertResp     *apis.UpsertWorkflowScheduleResponse
+	scheduleUpsertErr      error
+	scheduleUpsertReq      apis.UpsertWorkflowScheduleRequest
+	scheduleUpsertApp      string
+	scheduleListResp       []apis.WorkflowSchedule
+	scheduleListErr        error
+	scheduleListApp        string
+	scheduleDeleteErr      error
+	scheduleDeleteApp      string
+	scheduleDeleteID       string
+	cancelForAppCalled     bool
+	cancelForAppErr        error
+	cancelAllCalled        bool
+	cancelAllResp          []string
+	cancelAllErr           error
+	cancelDelayedCalled    bool
+	lastCancelAppID        string
+	lastCancelUser         string
+	lastCancelReason       string
+	lastCancelTaskID       string
+	cancelDelayedErr       error
+	cancelCalled           bool
+	lastUser               string
+	lastReason             string
+	lastApprovalTaskID     string
+	lastApprovalAction     string
+	approveCalled          bool
+	approveErr             error
+	approveResp            *apis.TaskApprovalResponse
+	taskStatusResp         *apis.TaskStatusResponse
+	taskStagesResp         *apis.TaskStagesResponse
 }
 
 func (f *fakeWorkflowService) CreateWorkflowTask(context.Context, apis.CreateWorkflowRequest) (*apis.CreateWorkflowResponse, error) {
@@ -61,11 +62,12 @@ func (f *fakeWorkflowService) ExecWorkflowTask(context.Context, string, int64) (
 	return nil, nil
 }
 
-func (f *fakeWorkflowService) ExecWorkflowTaskForApp(_ context.Context, appID, workflowID string, executeAt int64) (*apis.ExecWorkflowResponse, error) {
+func (f *fakeWorkflowService) ExecWorkflowTaskForApp(_ context.Context, appID, workflowID string, executeAt int64, idempotencyKey string) (*apis.ExecWorkflowResponse, error) {
 	f.execForAppCalled = true
 	f.lastExecAppID = appID
 	f.lastExecWorkflowID = workflowID
 	f.lastExecExecuteAt = executeAt
+	f.lastExecIdempotencyKey = idempotencyKey
 	if f.execErr != nil {
 		return nil, f.execErr
 	}
@@ -222,6 +224,9 @@ func (noopApplicationsService) HasImmediateActiveVersionUpdateTask(context.Conte
 }
 
 func (noopApplicationsService) GetApplication(context.Context, string) (*model.Applications, error) {
+	return nil, nil
+}
+func (noopApplicationsService) GetApplicationSpec(context.Context, string) (*apis.CreateApplicationsRequest, error) {
 	return nil, nil
 }
 

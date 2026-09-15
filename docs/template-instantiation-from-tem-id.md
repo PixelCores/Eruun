@@ -1,8 +1,8 @@
 # 基于 tmp.id 的应用模板实例化设计
 
-> 状态：Implemented Reference。当前 `component[].tmp.id` 模板实例化能力已落地，本文保留设计背景、当前行为契约与后续演进问题。
+> 状态：Implemented Reference。当前 `components[].tmp.id` 模板实例化能力已落地，本文保留设计背景、当前行为契约与后续演进问题。
 
-> 术语边界：`component[].tmp.id` 是应用模板引用；`templateEnabled` / `tmp_enable` 是应用是否可被引用为模板的标记；storage trait 的 `tmpCreate` 只控制 PVC 创建模式，不是模板发现或模板启用标记。
+> 术语边界：`components[].tmp.id` 是应用模板引用；`templateEnabled` / `tmp_enable` 是应用是否可被引用为模板的标记；storage trait 的 `tmpCreate` 只控制 PVC 创建模式，不是模板发现或模板启用标记。
 
 ## 背景与目标
 - 支持用户在请求体中提供 `tmp:{id:{{app_id}}}`，以数据库 `eruun_applications` 中已有应用作为模板，快速创建多个相同形态的新应用（如多套 MySQL）。
@@ -18,7 +18,7 @@
   "version": "1.0.0",
   "project": "",
   "description": "Create tmp Mysql",
-  "component": [
+  "components": [
     {
       "name": "fnlz2z1lxe85k3me66og",
       "tmp": { "id": "4tbupjg43ln3yj249l0v0fv8", "target": "mysql" }
@@ -34,7 +34,7 @@
   "namespace": "mysql",
   "alias": "tenant-a-mysql",
   "version": "1.0.7",
-  "component": [
+  "components": [
     {
       "name": "tenant-a-mysql",
       "type": "store",
@@ -80,7 +80,7 @@
   - 特征中的资源名（例：PVC/Storage 名、Service 名、Deployment 名称前缀）以新组件名为前缀/整体替换，保持命名约定。
   - 持久化存储 identity：顶层 `type=persistent` storage 是声明源；init/sidecar 中原始 `name`（`TrimSpace` 后）相同的 persistent storage 继承其 `name`、`tmpCreate`、`claimName`、`size` 与 `storageClass`，只保留自身挂载选项。这样同一逻辑存储只生成一个 PVC；多个容器可以各自将这个 volume 挂载到同一路径，但每个容器只会有一个对应的 `VolumeMount`。不同名称表示独立 PVC。
   - 存储创建策略：`tmpCreate=true` 视为使用 volumeClaimTemplates 风格创建 PVC（按重写后的存储名生成模板，并在主容器/init/sidecar 以同名卷挂载，`claimName` 可留空）；`tmpCreate=false` 使用 standalone PVC，实例化后优先使用显式 `claimName`，未提供时使用重写后的 `name` 作为 PVC 名；同名 PVC 已存在时部署阶段不更新其 spec。
-  - 模板默认 StorageClass：请求侧可在 `component[].tmp.defaultStorageClass` 传入本次模板引用的默认 StorageClass。Eruun 会在模板 traits 解码后、资源名重写前，把该值递归写入 `traits.storage`、`traits.init[].traits.storage`、`traits.sidecar[].traits.storage` 中 `type=persistent` 且 `storageClass` 为空的 storage；模板已有显式 `storageClass` 不覆盖，非 persistent storage 不处理。
+  - 模板默认 StorageClass：请求侧可在 `components[].tmp.defaultStorageClass` 传入本次模板引用的默认 StorageClass。Eruun 会在模板 traits 解码后、资源名重写前，把该值递归写入 `traits.storage`、`traits.init[].traits.storage`、`traits.sidecar[].traits.storage` 中 `type=persistent` 且 `storageClass` 为空的 storage；模板已有显式 `storageClass` 不覆盖，非 persistent storage 不处理。
   - 若模板包含副本数/计算资源等可调参数，可允许用户覆盖；未提供则沿用模板默认。
   - 支持显式覆盖：`properties.env` 可用用户输入覆盖模板同名环境变量；`properties.secret` 仅对 `type=secret` 的组件生效，用于覆盖模板的 Secret 数据；`properties.failurePolicy` 仅对 `type=job` 生效，省略时保留模板值、空值时清除模板 override、`cleanup_failed` 时覆盖模板值。
   - init env 覆盖：当 `component.traits.init[].name` 匹配模板 init 容器名时，仅合并 `traits.init[].properties.env`，同名 key 以请求侧为准；若未提供 `name`，默认作用于模板的第一个 init 容器（无 init 则忽略）。
@@ -127,7 +127,7 @@
 - 正常路径：基于模板成功创建应用，组件名称和存储名被正确替换。
 - 存储重写：主组件及 init/sidecar 中原始 `name` 相同的 persistent storage 共享一个重写 identity 和 PVC 创建策略；不同名称继续独立重写，顶层非 persistent storage 不参与 persistent identity 匹配。
 - 存储创建策略：`tmpCreate=true` 的模板实例化后应生成 volumeClaimTemplate 并挂载同名卷；`tmpCreate=false` 的模板实例化后会按显式 `claimName` 或重写后的 `name` 生成 standalone PVC target，同名 PVC 已存在时部署阶段不更新其 spec。
-- 模板默认 StorageClass：`component[].tmp.defaultStorageClass` 会补齐模板内空的 persistent `storageClass`，覆盖顶层 storage 以及 init/sidecar nested storage；已有显式 `storageClass` 和非 persistent storage 保持不变。
+- 模板默认 StorageClass：`components[].tmp.defaultStorageClass` 会补齐模板内空的 persistent `storageClass`，覆盖顶层 storage 以及 init/sidecar nested storage；已有显式 `storageClass` 和非 persistent storage 保持不变。
 - 重复提交：相同 `name` 依赖现有应用创建唯一性约束处理；当前模板实例化请求不提供独立的幂等 token。
 - 冲突：端口/名称冲突时返回 409，不产生脏资源；资源名冲突会在创建和 `/applications/try` 阶段提前报错。
 - 重复 target：同一次请求多次引用同一个 `tmp.id + target` 时，会为后续克隆组件追加 `-1`、`-2` 等后缀，并按每个 clone 独立重写 Service selector、label、env、Ingress backend 等引用，避免串到第一个 clone。
@@ -145,7 +145,7 @@
     "version": "1.0.0",
     "project": "demo",
     "description": "mysql base template",
-    "component": [
+    "components": [
       {
         "name": "mysql",
         "type": "store",
@@ -169,7 +169,7 @@
     "name": "tenant-game-app",
     "namespace": "tenant-a",
     "version": "1.0.0",
-    "component": [
+    "components": [
       {
         "name": "tenant-mysql",
         "type": "store",
@@ -201,7 +201,7 @@
     "alias": "tenant-a-mysql",
     "version": "1.0.1",
     "description": "mysql cloned from template",
-    "component": [
+    "components": [
       { "name": "tenant-a-mysql", "type": "store", "tmp": { "id": "tmpl-mysql-id" } }
     ]
   }

@@ -29,6 +29,7 @@ func NewApplications() Interface {
 }
 
 func (app *applications) RegisterRoutes(group *gin.RouterGroup) {
+	group.GET("/schemas/v1/canonical.json", app.getCanonicalJSONSchema)
 	group.GET("/applications", app.listApplications)
 	group.GET("/applications/templates", app.listTemplateApplications)
 	group.GET("/cronjobs", app.listCronJobs)
@@ -40,6 +41,7 @@ func (app *applications) RegisterRoutes(group *gin.RouterGroup) {
 	group.POST("/applications/import/namespace", app.importNamespaceApplications)
 	group.POST("/applications/import/namespace/try", app.tryImportNamespaceApplications)
 	group.GET("/applications/:appID/workflows", app.listApplicationWorkflows)
+	group.GET("/applications/:appID/spec", app.getApplicationSpec)
 	group.GET("/applications/:appID/status", app.getApplicationStatus)
 	group.GET("/applications/:appID/components", app.listApplicationComponents)
 	group.GET("/applications/:appID/components/status", app.getApplicationComponentStatus)

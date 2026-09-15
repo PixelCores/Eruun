@@ -64,9 +64,20 @@ func (v *validationServiceImpl) TryWorkflow(ctx context.Context, appID string, r
 		errors = append(errors, v.validateWorkflowSteps(req.Workflow, componentIndex, "workflow")...)
 	}
 
+	normalized := &apisv1.UpdateApplicationWorkflowRequest{
+		WorkflowID:    req.WorkflowID,
+		Name:          req.Name,
+		Alias:         req.Alias,
+		Callback:      req.Callback,
+		WorkflowType:  workflowType,
+		FailurePolicy: req.FailurePolicy,
+		Workflow:      req.Workflow,
+	}
 	return &apisv1.TryWorkflowResponse{
-		Valid:  len(errors) == 0,
-		Errors: errors,
+		Valid:          len(errors) == 0,
+		Errors:         apisv1.FinalizeValidationErrors(errors, apisv1.ValidationPathWorkflow),
+		NormalizedSpec: normalized,
+		Plan:           apisv1.NewWorkflowExecutionPlan(req.Workflow),
 	}
 }
 
