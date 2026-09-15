@@ -76,7 +76,7 @@ def main() -> None:
     if not token:
         parser.error("set ERUUN_TOKEN in the environment")
     template = json.loads(args.template.read_text())
-    if template.get("type") not in ("eval", "agent_evaluation") or template.get("spec", {}).get("agent", {}).get("name") != "oracle":
+    if template.get("type") != "eval" or template.get("spec", {}).get("agent", {}).get("name") != "oracle":
         parser.error("template must submit oracle eval Jobs")
 
     url = args.api_url.rstrip("/") + "/api/v1/jobs"

@@ -4,7 +4,9 @@
 
 ## 身份与提交
 
-独立任务通过 `type` 区分 `command` 和 `eval`。旧的 `agent_evaluation` 请求及已保存任务仍可读取和执行。两种任务都在当前授权空间的 namespace 执行，平台生成 `taskId`，不要求 `appId`、应用组件或用户提供的 TaskID。执行复用 WorkflowQueue、JobInfo、现有调度和执行租约。
+独立任务通过 `type` 区分 `command` 和 `eval`。两种任务都在当前授权空间的 namespace 执行，平台生成 `taskId`，不要求 `appId`、应用组件或用户提供的 TaskID。执行复用 WorkflowQueue、JobInfo、现有调度和执行租约。
+
+本版本不支持原 `agent_evaluation` 类型的提交、查询或执行记录恢复。升级前应排空或取消仍在运行的旧评测 Job；需要保留的历史结果应在升级前导出。
 
 业务接口使用登录 Bearer Token 和 `X-Eruun-Workspace-ID`。读取需要空间成员权限，viewer 可读取；提交、上传、修改策略、取消及重试要求 member 或更高角色。创建请求可省略 `workspaceId`，由已授权的请求空间决定；若显式填写，必须与该空间一致。空间 ID 在创建空间时生成，不会为每个 Job 新建空间。
 
@@ -62,7 +64,7 @@
 }
 ```
 
-`framework` 和 `frameworkVersion` 可省略，服务端分别补为 `harbor` 和 `0.22.0` 并保存在 Job 快照中；显式填入其他值仍会拒绝。`datasetId` 是当前空间内已上传任务包返回的 ID，不是每次提交都要新建的数据集；同一任务包可供 1000 个 Job 复用。
+`framework` 和 `frameworkVersion` 可省略，服务端分别补为 `harbor` 和 `0.22.0` 并保存在 Job 快照中；显式填入其他值仍会拒绝。上传任务包时，Eruun 自动生成 UUID 并在响应的 `data.id` 返回；提交时把它填入 `datasetId`。这个字段指向当前空间内的任务包归档，并非每次提交都要新建的数据集；同一任务包可供 1000 个 Job 复用。
 
 允许 `terminus-2`、`codex`、`claude-code` 和 `oracle`。`agent.name` 指定 Harbor 执行 trial 的 Agent；`oracle` 执行任务包的参考解答，用于验证任务与平台链路，不代表模型能力；使用它时省略 `model` 和 `credentials`，无需模型调用或模型费用。其他 Agent 必须指定模型。支持的凭据环境名为 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`GEMINI_API_KEY`、`GOOGLE_API_KEY`、`OPENROUTER_API_KEY`、`AZURE_API_KEY`，均引用当前空间已有 Secret 的键；平台不返回 Secret 内容。
 

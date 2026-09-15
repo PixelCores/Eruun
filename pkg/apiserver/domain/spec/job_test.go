@@ -15,17 +15,18 @@ func TestJobContractNormalization(t *testing.T) {
 		valid      bool
 	}{
 		{"command", `{"name":"daily","type":"command","spec":{"image":"busybox:1.37.0","command":["echo","ok"]}}`, true},
-		{"evaluation", `{"name":"agent","type":"agent_evaluation","spec":{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}}`, true},
+		{"evaluation", `{"name":"agent","type":"eval","spec":{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}}`, true},
 		{"eval with defaults", `{"name":"agent","type":"eval","spec":{"datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}}`, true},
+		{"removed evaluation type", `{"name":"agent","type":"agent_evaluation","spec":{"datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}}`, false},
 		{"old ambiguous type", `{"name":"daily","type":"custom","spec":{}}`, false},
 		{"application identity", `{"name":"daily","type":"command","appId":"app","spec":{}}`, false},
 		{"unbounded image", `{"name":"daily","type":"command","spec":{"image":"busybox:latest","command":["true"]}}`, false},
 		{"unknown command input", `{"name":"daily","type":"command","spec":{"image":"busybox:1","command":["true"],"cron":"* * * * *"}}`, false},
-		{"foreign framework", `{"name":"agent","type":"agent_evaluation","spec":{"framework":"other","frameworkVersion":"1","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}}`, false},
+		{"foreign framework", `{"name":"agent","type":"eval","spec":{"framework":"other","frameworkVersion":"1","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}}`, false},
 		{"unsupported explicit version", `{"name":"agent","type":"eval","spec":{"frameworkVersion":"0.21.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}}`, false},
-		{"root code import", `{"name":"agent","type":"agent_evaluation","spec":{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle","import_path":"evil.Agent"}}}`, false},
-		{"credential interpreter injection", `{"name":"agent","type":"agent_evaluation","spec":{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle","credentials":[{"name":"PYTHONPATH","secretKeyRef":{"name":"secret","key":"key"}}]}}}`, false},
-		{"runtime env override", `{"name":"agent","type":"agent_evaluation","spec":{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}},"traits":{"envs":[{"name":"PATH","valueFrom":{"static":"evil"}}]}}`, false},
+		{"root code import", `{"name":"agent","type":"eval","spec":{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle","import_path":"evil.Agent"}}}`, false},
+		{"credential interpreter injection", `{"name":"agent","type":"eval","spec":{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle","credentials":[{"name":"PYTHONPATH","secretKeyRef":{"name":"secret","key":"key"}}]}}}`, false},
+		{"runtime env override", `{"name":"agent","type":"eval","spec":{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}},"traits":{"envs":[{"name":"PATH","valueFrom":{"static":"evil"}}]}}`, false},
 		{"no input object", `{"name":"daily","type":"command","spec":null}`, false},
 		{"concatenated JSON", `{"name":"daily","type":"command","spec":{}} {}`, false},
 	} {
@@ -85,7 +86,7 @@ func TestResultPolicyPreservesFullData(t *testing.T) {
 }
 
 func TestEvaluationResourceRequestsNormalizeForRunner(t *testing.T) {
-	job := JobSpec{Name: "evaluation", Type: "agent_evaluation", Spec: json.RawMessage(`{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}`), Traits: Traits{Resources: &ResourceTraitsSpec{CPU: "1", Memory: "2Gi"}}}
+	job := JobSpec{Name: "evaluation", Type: "eval", Spec: json.RawMessage(`{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}`), Traits: Traits{Resources: &ResourceTraitsSpec{CPU: "1", Memory: "2Gi"}}}
 	require.NoError(t, job.Normalize())
 	require.Equal(t, "1", job.Traits.Resources.CPULimit)
 	require.Equal(t, "2Gi", job.Traits.Resources.MemoryLimit)

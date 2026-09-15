@@ -628,7 +628,7 @@ func (r *workflowRun) ensureWorkspaceForJobs(tasks []*model.JobTask, appID strin
 	}
 	if r.snapshotTask().Type == config.WorkflowTaskTypeJob {
 		for _, task := range tasks {
-			if task.JobType == string(config.JobAgentEvaluation) {
+			if task.JobType == string(config.JobEval) {
 				if err := r.workspaceManager.EnsureEvaluationRunner(r.ctx, r.workspace, r.runtimeConfig.Jobs.RunnerEgress...); err != nil {
 					r.failureReason = err.Error()
 					r.suppressTerminalCallback = true
@@ -1587,7 +1587,7 @@ func (w *WorkflowCtl) prepareWorkspace(ctx context.Context) (context.Context, er
 		if err := definition.Normalize(); err != nil {
 			return ctx, fmt.Errorf("validate workspace Job definition: %w", err)
 		}
-		if spec.IsEvaluationType(definition.Type) {
+		if definition.Type == string(config.JobEval) {
 			if w.runtimeConfig == nil || w.runtimeConfig.Jobs == nil || w.runtimeConfig.Jobs.RunnerImage == "" {
 				return ctx, fmt.Errorf("evaluation runner configuration is required")
 			}
@@ -1598,7 +1598,7 @@ func (w *WorkflowCtl) prepareWorkspace(ctx context.Context) (context.Context, er
 }
 
 func (w *WorkflowCtl) prepareJobTask(task *model.JobTask, appID string) (bool, error) {
-	if task.JobType == string(config.JobAgentEvaluation) {
+	if task.JobType == string(config.JobEval) {
 		if w.runtimeConfig == nil || w.runtimeConfig.Jobs == nil {
 			return false, fmt.Errorf("evaluation runner configuration is required")
 		}

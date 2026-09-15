@@ -91,13 +91,9 @@ func BuildTask(ctx context.Context, store datastore.DataStore, cfg *config.Confi
 	if err != nil {
 		return nil, err
 	}
-	if spec.IsEvaluationType(declaration.Type) {
+	if declaration.Type == string(config.JobEval) {
 		timeout += spec.EvaluationCollectionGraceSeconds // Allow the trusted runner to collect and upload its outputs.
 	}
 	workload.Spec.ActiveDeadlineSeconds = ptr.To(timeout)
-	jobType := declaration.Type
-	if spec.IsEvaluationType(jobType) {
-		jobType = string(config.JobAgentEvaluation)
-	}
-	return &model.JobTask{Name: name, Namespace: namespace, WorkspaceID: task.WorkspaceID, TaskID: task.TaskID, JobType: jobType, Timeout: timeout, Status: config.StatusQueued, JobInfo: workload}, nil
+	return &model.JobTask{Name: name, Namespace: namespace, WorkspaceID: task.WorkspaceID, TaskID: task.TaskID, JobType: declaration.Type, Timeout: timeout, Status: config.StatusQueued, JobInfo: workload}, nil
 }

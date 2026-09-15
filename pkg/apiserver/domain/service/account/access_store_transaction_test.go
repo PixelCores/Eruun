@@ -26,17 +26,15 @@ func (s *accessReadCommittedTestStore) WithReadCommittedTransaction(_ context.Co
 
 func TestScopedJobAdmissionLifecycle(t *testing.T) {
 	for _, tc := range []struct {
-		name         string
-		workflow     config.WorkflowTaskType
-		job          config.JobType
-		snapshotType string
-		app          bool
-		terminal     bool
-		detached     bool
+		name     string
+		workflow config.WorkflowTaskType
+		job      config.JobType
+		app      bool
+		terminal bool
+		detached bool
 	}{
 		{name: "command", workflow: config.WorkflowTaskTypeJob, job: config.JobCommand},
-		{name: "agent evaluation", workflow: config.WorkflowTaskTypeJob, job: config.JobAgentEvaluation},
-		{name: "eval", workflow: config.WorkflowTaskTypeJob, job: config.JobAgentEvaluation, snapshotType: "eval"},
+		{name: "eval", workflow: config.WorkflowTaskTypeJob, job: config.JobEval},
 		{name: "import scan", workflow: config.WorkflowTaskTypeResourceImportScan, job: config.JobResourceImportScan},
 		{name: "import manage", workflow: config.WorkflowTaskTypeResourceImportManage, job: config.JobResourceImportManage},
 		{name: "application", job: config.JobDeployService, app: true},
@@ -53,11 +51,7 @@ func TestScopedJobAdmissionLifecycle(t *testing.T) {
 			owner := &model.WorkflowQueue{TaskID: "task", WorkspaceID: "allowed", Type: tc.workflow,
 				Status: config.StatusRunning, RunGeneration: 1, RunToken: "token", WorkerID: "worker", LeaseExpiresAt: &lease}
 			if tc.workflow == config.WorkflowTaskTypeJob {
-				snapshotType := string(tc.job)
-				if tc.snapshotType != "" {
-					snapshotType = tc.snapshotType
-				}
-				owner.JobSpec = `{"type":"` + snapshotType + `"}`
+				owner.JobSpec = `{"type":"` + string(tc.job) + `"}`
 			}
 			if tc.app {
 				owner.AppID = "app"
@@ -218,6 +212,8 @@ func TestScopedJobAdmissionTransactionUsesCanonicalApplicationWorkspace(t *testi
 }
 
 func TestWorkspaceJobScopeRequiresMatchingPersistedParent(t *testing.T) {
+	legacy := &model.WorkflowQueue{Type: config.WorkflowTaskTypeJob, JobSpec: `{"type":"agent_evaluation"}`}
+	require.Empty(t, workspaceTaskJobType(legacy))
 	service, _, _ := testAccounts(t)
 	ctx := WithScope(context.Background(), Scope{WorkspaceID: "allowed", Namespace: "allowed-ns"})
 	raw := service.Repo.Store
@@ -233,7 +229,7 @@ func TestWorkspaceJobScopeRequiresMatchingPersistedParent(t *testing.T) {
 		{"matching command", "allowed", "command", false},
 		{"scoped query", "allowed", "", false},
 		{"wrong workspace", "other", "command", true},
-		{"wrong type", "allowed", "agent_evaluation", true},
+		{"wrong type", "allowed", "eval", true},
 		{"internal operation", "allowed", "cleanup_resources", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

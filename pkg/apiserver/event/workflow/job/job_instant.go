@@ -137,7 +137,7 @@ func (c *InstantJobCtl) Run(ctx context.Context) error {
 				err = context.Canceled
 			}
 		}
-		if err == nil && c.job.JobType == string(config.JobAgentEvaluation) && c.job.Status == config.StatusCompleted {
+		if err == nil && c.job.JobType == string(config.JobEval) && c.job.Status == config.StatusCompleted {
 			ready, sourceErr := c.evaluationSourceReady(ctx)
 			if sourceErr != nil {
 				err = errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("verify evaluation result collection: %w", sourceErr))
@@ -282,7 +282,7 @@ func (c *InstantJobCtl) wait(ctx context.Context) (config.Status, string, error)
 // committed. Cancellation and timeout still stop active work through the normal
 // fenced deletion path; the runner's termination grace allows a final upload.
 func (c *InstantJobCtl) allowEvaluationTerminalCleanup(ctx context.Context) bool {
-	if c.job.JobType != string(config.JobAgentEvaluation) ||
+	if c.job.JobType != string(config.JobEval) ||
 		(c.job.Status != config.StatusCompleted && c.job.Status != config.StatusFailed) || ctx.Err() != nil {
 		return true
 	}

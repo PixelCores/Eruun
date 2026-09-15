@@ -165,7 +165,7 @@ func (s *Service) Submit(ctx context.Context, request SubmitRequest) (*Accepted,
 	if s.Config == nil || s.Config.Accounts == nil {
 		return nil, bcode.ErrServiceUnavailable
 	}
-	if spec.IsEvaluationType(request.Type) {
+	if request.Type == string(config.JobEval) {
 		if s.Config.Jobs == nil {
 			return nil, bcode.WithSafeClientMessage(bcode.ErrServiceUnavailable, "Harbor Runner is not configured")
 		}
@@ -214,7 +214,7 @@ func (s *Service) Submit(ctx context.Context, request SubmitRequest) (*Accepted,
 		return nil, invalid(err)
 	}
 	space := &model.Workspace{ID: scope.WorkspaceID, Namespace: scope.Namespace}
-	if spec.IsEvaluationType(request.Type) {
+	if request.Type == string(config.JobEval) {
 		err = workspace.PrepareEvaluationTask(job, space, s.Config.Accounts.Workspace, s.Config.Jobs.RunnerImage)
 	} else {
 		_, err = workspace.PrepareTask(job, "", space, s.Config.Accounts.Workspace)
@@ -282,7 +282,7 @@ func (s *Service) Get(ctx context.Context, taskID string) (*Detail, error) {
 	if err != nil {
 		return nil, err
 	}
-	if spec.IsEvaluationType(declaration.Type) {
+	if declaration.Type == string(config.JobEval) {
 		out.RunnerStatus, err = latestRunnerStatus(ctx, s.Store, out.Executions)
 		if err != nil {
 			return nil, err
@@ -373,7 +373,7 @@ func (s *Service) authorizeRunner(ctx context.Context, identity RunnerIdentity) 
 	}
 	for _, row := range rows {
 		job := row.(*model.JobInfo)
-		if !runnerJobStatusAuthorized(job, task.Status) || job.Type != string(config.JobAgentEvaluation) || job.ExecutionKey == nil || job.InternalInfo == "" {
+		if !runnerJobStatusAuthorized(job, task.Status) || job.Type != string(config.JobEval) || job.ExecutionKey == nil || job.InternalInfo == "" {
 			continue
 		}
 		if pod.Annotations[config.AnnotationJobExecutionKey] != *job.ExecutionKey || pod.Annotations[config.AnnotationJobRunGeneration] != strconv.FormatUint(job.RunGeneration, 10) {

@@ -11,6 +11,8 @@ python3 examples/agent-evaluation/load-test/task/environment/simulate.py \
   /tmp/eruun-load-timing.json --min-seconds 1 --max-seconds 2
 ```
 
+这里的“任务包”是上传到 `/api/v1/job-datasets` 的 tar.gz：包含 `instruction.md`（任务说明）、`task.toml`（镜像和超时）、`environment/Dockerfile`（本机构建镜像用）、`solution/solve.sh`（oracle 执行的参考脚本）和 `tests/test.sh`（验证完成）。Harbor 的 `oracle` 模式不会向模型提问，而是运行 `solve.sh`；该脚本调用镜像里的 `simulate.py`，五个线程休眠后生成时长文件，verifier 检查文件并给出 reward。上传时 Eruun 自动生成任务包 ID，响应的 `data.id` 就是提交 JSON 中的 `datasetId`。
+
 使用目标集群可拉取的显式镜像标签构建和推送环境镜像，然后在临时副本中替换 `task.toml` 的占位 `docker_image`，再打包并上传。Dockerfile 只在本机用于构建；Eruun 不负责构建用户镜像。
 
 先设置隔离环境的 API 地址、空间 ID 和有 member 权限的 Bearer Token：

@@ -45,11 +45,6 @@ type AgentEvaluationSpec struct {
 	TimeoutSeconds   int64           `json:"timeoutSeconds,omitempty"`
 }
 
-// IsEvaluationType recognizes the public eval type and stored evaluation Jobs.
-func IsEvaluationType(jobType string) bool {
-	return jobType == "eval" || jobType == "agent_evaluation"
-}
-
 type EvaluationAgent struct {
 	Name        string            `json:"name"`
 	Model       string            `json:"model,omitempty"`
@@ -134,7 +129,7 @@ func (j *JobSpec) Normalize() error {
 	if len(j.Spec) == 0 || bytes.Equal(bytes.TrimSpace(j.Spec), []byte("null")) {
 		return fmt.Errorf("spec is required")
 	}
-	if err := validateJobTraits(j.Traits, IsEvaluationType(j.Type)); err != nil {
+	if err := validateJobTraits(j.Traits, j.Type == "eval"); err != nil {
 		return err
 	}
 	switch j.Type {
@@ -156,7 +151,7 @@ func (j *JobSpec) Normalize() error {
 			return fmt.Errorf("resultPolicy applies to eval")
 		}
 		j.Spec, _ = json.Marshal(command)
-	case "eval", "agent_evaluation":
+	case "eval":
 		var evaluation AgentEvaluationSpec
 		if err := DecodeJobJSON(j.Spec, &evaluation); err != nil {
 			return fmt.Errorf("eval spec: %w", err)
