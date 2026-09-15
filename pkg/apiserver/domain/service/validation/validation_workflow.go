@@ -204,7 +204,7 @@ func (v *validationServiceImpl) validateWorkflowSteps(steps []apisv1.CreateWorkf
 		}
 
 		for _, item := range propertyItems {
-			errors = append(errors, validateWorkflowPropertyInitSQLURL(step.WorkflowType, item)...)
+			errors = append(errors, validateWorkflowPropertyInitSQLURL(step.WorkflowType, item, len(step.SubSteps) == 0)...)
 			errors = append(errors, validateLogArchiveUploadWorkflowStep(step.WorkflowType, item.properties, item.componentRefs, componentIndex, item.propertiesField)...)
 			errors = append(errors, validateWorkflowComponentRefs(item.componentRefs, componentIndex)...)
 		}
@@ -241,7 +241,7 @@ func (v *validationServiceImpl) validateWorkflowSteps(steps []apisv1.CreateWorkf
 			errors = append(errors, subPropertyErrors...)
 
 			for _, item := range subPropertyItems {
-				errors = append(errors, validateWorkflowPropertyInitSQLURL(subStep.WorkflowType, item)...)
+				errors = append(errors, validateWorkflowPropertyInitSQLURL(subStep.WorkflowType, item, true)...)
 				errors = append(errors, validateLogArchiveUploadWorkflowStep(subStep.WorkflowType, item.properties, item.componentRefs, componentIndex, item.propertiesField)...)
 				errors = append(errors, validateWorkflowComponentRefs(item.componentRefs, componentIndex)...)
 			}
@@ -251,8 +251,8 @@ func (v *validationServiceImpl) validateWorkflowSteps(steps []apisv1.CreateWorkf
 	return errors
 }
 
-func validateWorkflowPropertyInitSQLURL(jobType config.JobType, item workflowPropertiesValidationItem) []apisv1.ValidationError {
-	if err := applicationservice.ValidateWorkflowInitSQLURL(jobType, item.properties.InitSQLURL); err != nil {
+func validateWorkflowPropertyInitSQLURL(jobType config.JobType, item workflowPropertiesValidationItem, executable bool) []apisv1.ValidationError {
+	if err := applicationservice.ValidateWorkflowInitSQLURL(jobType, item.properties.InitSQLURL, len(item.componentRefs) > 0, executable); err != nil {
 		return []apisv1.ValidationError{{
 			Field:   item.propertiesField + ".initSqlUrl",
 			Code:    apisv1.ErrCodeInvalidWorkflowStepType,

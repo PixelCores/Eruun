@@ -103,6 +103,77 @@ func TestUpdateApplicationWorkflowRejectsInvalidInitSQLURL(t *testing.T) {
 	require.Empty(t, store.workflows)
 }
 
+func TestUpdateApplicationWorkflowRejectsParentOrUntargetedInitSQLURLWithSubSteps(t *testing.T) {
+	store := newInMemoryAppStore()
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "demo", Namespace: "default"}
+	store.components["mysql"] = &model.ApplicationComponent{
+		Name: "mysql", AppID: "app-1", ComponentType: config.StoreJob,
+	}
+	var req apisv1.UpdateApplicationWorkflowRequest
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"name":"reset-flow",
+		"workflow":[{
+			"name":"database-reset",
+			"jobType":"database_reset",
+			"properties":[{"initSqlUrl":"https://files.example/game.sql"}],
+			"subSteps":[{"name":"reset-mysql","jobType":"database_reset","components":["mysql"]}]
+		}]
+	}`), &req))
+
+	svc := newMockServiceWithStore(store)
+	_, err := svc.UpdateApplicationWorkflow(context.Background(), "app-1", req)
+	require.ErrorIs(t, err, bcode.ErrWorkflowConfig)
+	require.Contains(t, err.Error(), "initSqlUrl cannot be set on a parent step with subSteps")
+	require.Empty(t, store.workflows)
+
+	req.Workflow[0].SetWorkflowPropertiesList(nil)
+	req.Workflow[0].Components = []string{"mysql"}
+	req.Workflow[0].SubSteps[0].Components = nil
+	req.Workflow[0].SubSteps[0].SetWorkflowPropertiesList([]apisv1.WorkflowProperties{{InitSQLURL: "https://files.example/game.sql"}})
+	_, err = svc.UpdateApplicationWorkflow(context.Background(), "app-1", req)
+	require.ErrorIs(t, err, bcode.ErrWorkflowConfig)
+	require.Contains(t, err.Error(), "initSqlUrl requires a target component")
+	require.Empty(t, store.workflows)
+
+	req.Workflow[0].SetWorkflowPropertiesList([]apisv1.WorkflowProperties{{InitSQLURL: "https://files.example/game.sql"}})
+	req.Workflow[0].SubSteps[0].SetWorkflowPropertiesList(nil)
+	req.Workflow[0].SubSteps[0].Components = []string{"mysql"}
+	_, err = svc.UpdateApplicationWorkflow(context.Background(), "app-1", req)
+	require.ErrorIs(t, err, bcode.ErrWorkflowConfig)
+	require.Contains(t, err.Error(), "initSqlUrl cannot be set on a parent step with subSteps")
+	require.Empty(t, store.workflows)
+}
+
+func TestUpdateApplicationWorkflowPreservesInitSQLURLOnTargetedSubStep(t *testing.T) {
+	const initSQLURL = "https://files.example/game.sql"
+	store := newInMemoryAppStore()
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "demo", Namespace: "default"}
+	store.components["mysql"] = &model.ApplicationComponent{
+		Name: "mysql", AppID: "app-1", ComponentType: config.StoreJob,
+	}
+	var req apisv1.UpdateApplicationWorkflowRequest
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"name":"reset-flow",
+		"workflow":[{
+			"name":"database-reset",
+			"jobType":"database_reset",
+			"subSteps":[{
+				"name":"reset-mysql","jobType":"database_reset","components":["mysql"],
+				"properties":[{"initSqlUrl":"https://files.example/game.sql"}]
+			}]
+		}]
+	}`), &req))
+
+	svc := newMockServiceWithStore(store)
+	resp, err := svc.UpdateApplicationWorkflow(context.Background(), "app-1", req)
+	require.NoError(t, err)
+	stored := decodeWorkflowSteps(t, store.workflows[resp.WorkflowID].Steps)
+	require.Len(t, stored.Steps, 1)
+	require.Len(t, stored.Steps[0].SubSteps, 1)
+	require.Len(t, stored.Steps[0].SubSteps[0].Properties, 1)
+	require.Equal(t, initSQLURL, stored.Steps[0].SubSteps[0].Properties[0].InitSQLURL)
+}
+
 func TestUpdateApplicationWorkflowRejectsInitSQLURLOnApprovalStep(t *testing.T) {
 	store := newInMemoryAppStore()
 	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "demo", Namespace: "default"}

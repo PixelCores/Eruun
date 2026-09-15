@@ -158,6 +158,69 @@ func TestValidationService_TryWorkflowChecksDatabaseResetInitSQLURL(t *testing.T
 	}
 }
 
+func TestValidationService_TryWorkflowRejectsParentOrUntargetedInitSQLURLWithSubSteps(t *testing.T) {
+	store := newInMemoryAppStore()
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "test-app", Namespace: "default"}
+	store.components["mysql"] = &model.ApplicationComponent{
+		AppID: "app-1", Name: "mysql", Namespace: "default", ComponentType: config.StoreJob,
+	}
+	repos := newMockServiceWithStore(store)
+	svc := &validationServiceImpl{AppRepo: repos.AppRepo, ComponentRepo: repos.ComponentRepo}
+	req := tryWorkflowRequestFromUpdateJSON(t, `{
+		"name":"reset-flow",
+		"workflow":[{
+			"name":"database-reset",
+			"jobType":"database_reset",
+			"properties":[{"initSqlUrl":"https://files.example/game.sql"}],
+			"subSteps":[{"name":"reset-mysql","jobType":"database_reset","components":["mysql"]}]
+		}]
+	}`)
+
+	resp := svc.TryWorkflow(context.Background(), "app-1", req)
+	require.False(t, resp.Valid)
+	requireValidationPath(t, resp.Errors, "/workflow/0/properties/0/initSqlUrl", apisv1.ErrCodeInvalidWorkflowStepType)
+
+	req.Workflow[0].SetWorkflowPropertiesList(nil)
+	req.Workflow[0].Components = []string{"mysql"}
+	req.Workflow[0].SubSteps[0].Components = nil
+	req.Workflow[0].SubSteps[0].SetWorkflowPropertiesList([]apisv1.WorkflowProperties{{InitSQLURL: "https://files.example/game.sql"}})
+	resp = svc.TryWorkflow(context.Background(), "app-1", req)
+	require.False(t, resp.Valid)
+	requireValidationPath(t, resp.Errors, "/workflow/0/subSteps/0/properties/0/initSqlUrl", apisv1.ErrCodeInvalidWorkflowStepType)
+
+	req.Workflow[0].SetWorkflowPropertiesList([]apisv1.WorkflowProperties{{InitSQLURL: "https://files.example/game.sql"}})
+	req.Workflow[0].SubSteps[0].SetWorkflowPropertiesList(nil)
+	req.Workflow[0].SubSteps[0].Components = []string{"mysql"}
+	resp = svc.TryWorkflow(context.Background(), "app-1", req)
+	require.False(t, resp.Valid)
+	requireValidationPath(t, resp.Errors, "/workflow/0/properties/0/initSqlUrl", apisv1.ErrCodeInvalidWorkflowStepType)
+}
+
+func TestValidationService_TryWorkflowAllowsTargetedSubStepInitSQLURL(t *testing.T) {
+	store := newInMemoryAppStore()
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "test-app", Namespace: "default"}
+	store.components["mysql"] = &model.ApplicationComponent{
+		AppID: "app-1", Name: "mysql", Namespace: "default", ComponentType: config.StoreJob,
+	}
+	repos := newMockServiceWithStore(store)
+	svc := &validationServiceImpl{AppRepo: repos.AppRepo, ComponentRepo: repos.ComponentRepo}
+	req := tryWorkflowRequestFromUpdateJSON(t, `{
+		"name":"reset-flow",
+		"workflow":[{
+			"name":"database-reset",
+			"jobType":"database_reset",
+			"subSteps":[{
+				"name":"reset-mysql","jobType":"database_reset","components":["mysql"],
+				"properties":[{"initSqlUrl":"https://files.example/game.sql"}]
+			}]
+		}]
+	}`)
+
+	resp := svc.TryWorkflow(context.Background(), "app-1", req)
+	require.True(t, resp.Valid, "%+v", resp.Errors)
+	require.Equal(t, "https://files.example/game.sql", resp.NormalizedSpec.Workflow[0].SubSteps[0].WorkflowPropertiesList()[0].InitSQLURL)
+}
+
 func TestValidationService_TryWorkflowRejectsInitSQLURLOnApprovalStep(t *testing.T) {
 	svc := &validationServiceImpl{}
 	step := apisv1.CreateWorkflowStepRequest{

@@ -112,7 +112,7 @@ Application 的组件列表只使用根级 `components`，工作流步骤只使�
 
 Schema 和所有服务端规范化输出只生成这一形态。请求解码器对本版本尚未移除的旧 Step 表示保持现有行为；新调用方不得依赖未出现在 Schema 中的表示。
 
-`database_reset` Step 的 `properties[]` 可带可选 `initSqlUrl`，用于保留数据库重置 Workflow 的 SQL 快照地址。非空时必须是绝对 HTTP(S) URL，且只能用于 `database_reset`；回读、Try 和原样重提会保留该值。详见 [数据库重置 Workflow](database-reset-workflow.md)。
+`database_reset` Step 的 `properties[]` 可带可选 `initSqlUrl`，用于保留数据库重置 Workflow 的 SQL 快照地址。非空时必须是绝对 HTTP(S) URL，且只能用于 `database_reset`，并绑定实际执行的 Step 或 SubStep 的目标组件；父步骤有 `subSteps` 时只能在目标子步骤配置 URL。回读、Try 和原样重提会保留该值。详见 [数据库重置 Workflow](database-reset-workflow.md)。
 
 ## 3. JSON Schema
 
