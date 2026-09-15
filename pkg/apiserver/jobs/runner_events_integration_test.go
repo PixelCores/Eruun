@@ -65,7 +65,7 @@ func TestMySQLRunnerClaimRowLockHasOneWinner(t *testing.T) {
 	datasetID := uuid.NewString()
 	require.NoError(t, driver.Add(ctx, &model.JobArtifact{ID: datasetID, WorkspaceID: workspaceID, Kind: artifacts.KindDataset, Digest: strings.Repeat("a", 64)}))
 	declaration := spec.JobSpec{
-		Name: "evaluation", Type: string(config.JobAgentEvaluation),
+		Name: "evaluation", Type: string(config.JobEval),
 		Spec: json.RawMessage(`{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"` + datasetID + `","agent":{"name":"oracle"}}`),
 	}
 	policy := spec.DefaultJobResultPolicy()

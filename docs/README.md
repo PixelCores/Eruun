@@ -49,7 +49,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 - 顶层 `/workflow`、`/workflow/exec`、`/workflow/cancel` 路由不再注册；应用维度 workflow API 是当前主路径。
 - 业务 API 强制 Bearer 登录并按个人/团队空间授权；账号配置由 `ERUUN_AUTH_CONFIG_FILE` 加载，所有认证依赖失败时保持拒绝访问。
 - 应用必须属于一个空间；namespace 在首次实际部署时初始化，账号注册和应用保存不创建 Kubernetes 资源。
-- 独立 `command` / `agent_evaluation` Job 使用空间授权与平台生成的 TaskID，首版评测框架为 Harbor 0.22.0；见 `workspace-jobs-api.md`。当前没有通用 Agent 注册、MCP、向量化、vLLM/HAMi 或托管 AI Provider 公共 API。
+- 独立 `command` / `eval` Job 使用空间授权与平台生成的 TaskID，首版评测框架为 Harbor 0.22.0；见 `workspace-jobs-api.md`。当前没有通用 Agent 注册、MCP、向量化、vLLM/HAMi 或托管 AI Provider 公共 API。
 
 ## 目录层级速查
 
@@ -193,6 +193,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `vllm-hami-distributed-inference-design.md` | Draft / Proposal | 自托管模型服务、GPU、vLLM/HAMi 与多节点 adapter 方向 |
 | `workflow-conditional-branching-design.md` | Draft / Proposal | 条件分支设计 |
 | `workflow-resource-capacity-scheduler.md` | Draft / Proposal | Workflow 资源容量准入与可选容量补偿边界 |
+| `harbor-job-load-test-plan.md` | Draft / Proposal | 可构建的合成镜像、1000 个 Harbor Job 的批量提交与 60–300 秒休眠压测矩阵、数据口径和容量判定 |
 
 ## 图源与资产
 
