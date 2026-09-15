@@ -513,7 +513,7 @@ message AppDTOCreateWorkflowStepRequest {
   string step_type = 3 [json_name = "stepType"];
   string workflow_type = 4 [json_name = "jobType"];
   AppDTOWorkflowStepApproval approval = 5 [json_name = "approval"];
-  AppDTOWorkflowProperties properties = 6 [json_name = "properties"];
+  repeated AppDTOWorkflowProperties properties = 6 [json_name = "properties"];
   repeated string components = 7 [json_name = "components"];
   string mode = 8 [json_name = "mode"];
   repeated AppDTOCreateWorkflowSubStepRequest sub_steps = 9 [json_name = "subSteps"];
@@ -523,13 +523,13 @@ message AppDTOCreateWorkflowSubStepRequest {
   string scheduling_class = 1 [json_name = "schedulingClass"];
   string name = 2 [json_name = "name"];
   string workflow_type = 3 [json_name = "jobType"];
-  AppDTOWorkflowProperties properties = 4 [json_name = "properties"];
+  repeated AppDTOWorkflowProperties properties = 4 [json_name = "properties"];
   repeated string components = 5 [json_name = "components"];
 }
 
 message AppDTODatabaseResetRequest {
   repeated string components = 1 [json_name = "components"];
-  string init_sqlurl = 2 [json_name = "initSqlUrl"];
+  optional string init_sqlurl = 2 [json_name = "initSqlUrl"];
 }
 
 message AppDTODatabaseResetResponse {
@@ -915,7 +915,7 @@ message AppDTOUpdateApplicationWorkflowRequest {
   string alias = 3 [json_name = "alias"];
   AppDTOWorkflowCallback callback = 4 [json_name = "callback"];
   string workflow_type = 5 [json_name = "workflowType"];
-  string failure_policy = 6 [json_name = "failurePolicy"];
+  optional string failure_policy = 6 [json_name = "failurePolicy"];
   repeated AppDTOCreateWorkflowStepRequest workflow = 7 [json_name = "workflow"];
 }
 

@@ -953,14 +953,15 @@ func (x *JobEnvFrom) GetSourceName() string {
 }
 
 type JobTraits struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Storage       []*JobStorageTrait     `protobuf:"bytes,1,rep,name=storage,proto3" json:"storage,omitempty"`
-	EnvFrom       []*JobEnvFrom          `protobuf:"bytes,2,rep,name=env_from,json=envFrom,proto3" json:"env_from,omitempty"`
-	Envs          []*JobEnv              `protobuf:"bytes,3,rep,name=envs,proto3" json:"envs,omitempty"`
-	TargetWorkEnv map[string]string      `protobuf:"bytes,4,rep,name=target_work_env,json=targetWorkEnv,proto3" json:"target_work_env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Resources     *JobResourceTrait      `protobuf:"bytes,5,opt,name=resources,proto3" json:"resources,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState      `protogen:"open.v1"`
+	Storage        []*JobStorageTrait          `protobuf:"bytes,1,rep,name=storage,proto3" json:"storage,omitempty"`
+	EnvFrom        []*JobEnvFrom               `protobuf:"bytes,2,rep,name=env_from,json=envFrom,proto3" json:"env_from,omitempty"`
+	Envs           []*JobEnv                   `protobuf:"bytes,3,rep,name=envs,proto3" json:"envs,omitempty"`
+	TargetWorkEnv  map[string]string           `protobuf:"bytes,4,rep,name=target_work_env,json=targetWorkEnv,proto3" json:"target_work_env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Resources      *JobResourceTrait           `protobuf:"bytes,5,opt,name=resources,proto3" json:"resources,omitempty"`
+	SecurityPolicy *AppKubeCoreSecurityContext `protobuf:"bytes,6,opt,name=security_policy,json=securityPolicy,proto3" json:"security_policy,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *JobTraits) Reset() {
@@ -1024,6 +1025,13 @@ func (x *JobTraits) GetTargetWorkEnv() map[string]string {
 func (x *JobTraits) GetResources() *JobResourceTrait {
 	if x != nil {
 		return x.Resources
+	}
+	return nil
+}
+
+func (x *JobTraits) GetSecurityPolicy() *AppKubeCoreSecurityContext {
+	if x != nil {
+		return x.SecurityPolicy
 	}
 	return nil
 }
@@ -2379,7 +2387,7 @@ var File_eruun_v1_jobs_proto protoreflect.FileDescriptor
 
 const file_eruun_v1_jobs_proto_rawDesc = "" +
 	"\n" +
-	"\x13eruun/v1/jobs.proto\x12\beruun.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\")\n" +
+	"\x13eruun/v1/jobs.proto\x12\beruun.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1beruun/v1/applications.proto\")\n" +
 	"\x0eJobTaskRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\"N\n" +
 	"\x12JobArtifactRequest\x12\x17\n" +
@@ -2454,13 +2462,14 @@ const file_eruun_v1_jobs_proto_rawDesc = "" +
 	"JobEnvFrom\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x1f\n" +
 	"\vsource_name\x18\x02 \x01(\tR\n" +
-	"sourceName\"\xe3\x02\n" +
+	"sourceName\"\xb2\x03\n" +
 	"\tJobTraits\x123\n" +
 	"\astorage\x18\x01 \x03(\v2\x19.eruun.v1.JobStorageTraitR\astorage\x12/\n" +
 	"\benv_from\x18\x02 \x03(\v2\x14.eruun.v1.JobEnvFromR\aenvFrom\x12$\n" +
 	"\x04envs\x18\x03 \x03(\v2\x10.eruun.v1.JobEnvR\x04envs\x12N\n" +
 	"\x0ftarget_work_env\x18\x04 \x03(\v2&.eruun.v1.JobTraits.TargetWorkEnvEntryR\rtargetWorkEnv\x128\n" +
-	"\tresources\x18\x05 \x01(\v2\x1a.eruun.v1.JobResourceTraitR\tresources\x1a@\n" +
+	"\tresources\x18\x05 \x01(\v2\x1a.eruun.v1.JobResourceTraitR\tresources\x12M\n" +
+	"\x0fsecurity_policy\x18\x06 \x01(\v2$.eruun.v1.AppKubeCoreSecurityContextR\x0esecurityPolicy\x1a@\n" +
 	"\x12TargetWorkEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xf6\x01\n" +
@@ -2634,42 +2643,43 @@ func file_eruun_v1_jobs_proto_rawDescGZIP() []byte {
 
 var file_eruun_v1_jobs_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
 var file_eruun_v1_jobs_proto_goTypes = []any{
-	(*JobTaskRequest)(nil),         // 0: eruun.v1.JobTaskRequest
-	(*JobArtifactRequest)(nil),     // 1: eruun.v1.JobArtifactRequest
-	(*JobDeliveryRequest)(nil),     // 2: eruun.v1.JobDeliveryRequest
-	(*JobDatasetRequest)(nil),      // 3: eruun.v1.JobDatasetRequest
-	(*SetJobRetentionRequest)(nil), // 4: eruun.v1.SetJobRetentionRequest
-	(*ListJobDatasetsRequest)(nil), // 5: eruun.v1.ListJobDatasetsRequest
-	(*JobResultTarget)(nil),        // 6: eruun.v1.JobResultTarget
-	(*JobResultPolicy)(nil),        // 7: eruun.v1.JobResultPolicy
-	(*JobStoragePolicy)(nil),       // 8: eruun.v1.JobStoragePolicy
-	(*JobStorageTrait)(nil),        // 9: eruun.v1.JobStorageTrait
-	(*JobResourceTrait)(nil),       // 10: eruun.v1.JobResourceTrait
-	(*JobSecretSelector)(nil),      // 11: eruun.v1.JobSecretSelector
-	(*JobConfigSelector)(nil),      // 12: eruun.v1.JobConfigSelector
-	(*JobValueSource)(nil),         // 13: eruun.v1.JobValueSource
-	(*JobEnv)(nil),                 // 14: eruun.v1.JobEnv
-	(*JobEnvFrom)(nil),             // 15: eruun.v1.JobEnvFrom
-	(*JobTraits)(nil),              // 16: eruun.v1.JobTraits
-	(*SubmitJobRequest)(nil),       // 17: eruun.v1.SubmitJobRequest
-	(*JobSpec)(nil),                // 18: eruun.v1.JobSpec
-	(*JobAccepted)(nil),            // 19: eruun.v1.JobAccepted
-	(*JobExecution)(nil),           // 20: eruun.v1.JobExecution
-	(*JobArtifact)(nil),            // 21: eruun.v1.JobArtifact
-	(*JobDelivery)(nil),            // 22: eruun.v1.JobDelivery
-	(*JobRunnerProgress)(nil),      // 23: eruun.v1.JobRunnerProgress
-	(*JobRunnerTerminal)(nil),      // 24: eruun.v1.JobRunnerTerminal
-	(*JobRunnerStatus)(nil),        // 25: eruun.v1.JobRunnerStatus
-	(*JobDetail)(nil),              // 26: eruun.v1.JobDetail
-	(*JobResults)(nil),             // 27: eruun.v1.JobResults
-	(*JobArtifacts)(nil),           // 28: eruun.v1.JobArtifacts
-	(*UploadDatasetHeader)(nil),    // 29: eruun.v1.UploadDatasetHeader
-	(*UploadDatasetPart)(nil),      // 30: eruun.v1.UploadDatasetPart
-	(*ArchiveChunk)(nil),           // 31: eruun.v1.ArchiveChunk
-	nil,                            // 32: eruun.v1.JobTraits.TargetWorkEnvEntry
-	(*structpb.Value)(nil),         // 33: google.protobuf.Value
-	(*timestamppb.Timestamp)(nil),  // 34: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),          // 35: google.protobuf.Empty
+	(*JobTaskRequest)(nil),             // 0: eruun.v1.JobTaskRequest
+	(*JobArtifactRequest)(nil),         // 1: eruun.v1.JobArtifactRequest
+	(*JobDeliveryRequest)(nil),         // 2: eruun.v1.JobDeliveryRequest
+	(*JobDatasetRequest)(nil),          // 3: eruun.v1.JobDatasetRequest
+	(*SetJobRetentionRequest)(nil),     // 4: eruun.v1.SetJobRetentionRequest
+	(*ListJobDatasetsRequest)(nil),     // 5: eruun.v1.ListJobDatasetsRequest
+	(*JobResultTarget)(nil),            // 6: eruun.v1.JobResultTarget
+	(*JobResultPolicy)(nil),            // 7: eruun.v1.JobResultPolicy
+	(*JobStoragePolicy)(nil),           // 8: eruun.v1.JobStoragePolicy
+	(*JobStorageTrait)(nil),            // 9: eruun.v1.JobStorageTrait
+	(*JobResourceTrait)(nil),           // 10: eruun.v1.JobResourceTrait
+	(*JobSecretSelector)(nil),          // 11: eruun.v1.JobSecretSelector
+	(*JobConfigSelector)(nil),          // 12: eruun.v1.JobConfigSelector
+	(*JobValueSource)(nil),             // 13: eruun.v1.JobValueSource
+	(*JobEnv)(nil),                     // 14: eruun.v1.JobEnv
+	(*JobEnvFrom)(nil),                 // 15: eruun.v1.JobEnvFrom
+	(*JobTraits)(nil),                  // 16: eruun.v1.JobTraits
+	(*SubmitJobRequest)(nil),           // 17: eruun.v1.SubmitJobRequest
+	(*JobSpec)(nil),                    // 18: eruun.v1.JobSpec
+	(*JobAccepted)(nil),                // 19: eruun.v1.JobAccepted
+	(*JobExecution)(nil),               // 20: eruun.v1.JobExecution
+	(*JobArtifact)(nil),                // 21: eruun.v1.JobArtifact
+	(*JobDelivery)(nil),                // 22: eruun.v1.JobDelivery
+	(*JobRunnerProgress)(nil),          // 23: eruun.v1.JobRunnerProgress
+	(*JobRunnerTerminal)(nil),          // 24: eruun.v1.JobRunnerTerminal
+	(*JobRunnerStatus)(nil),            // 25: eruun.v1.JobRunnerStatus
+	(*JobDetail)(nil),                  // 26: eruun.v1.JobDetail
+	(*JobResults)(nil),                 // 27: eruun.v1.JobResults
+	(*JobArtifacts)(nil),               // 28: eruun.v1.JobArtifacts
+	(*UploadDatasetHeader)(nil),        // 29: eruun.v1.UploadDatasetHeader
+	(*UploadDatasetPart)(nil),          // 30: eruun.v1.UploadDatasetPart
+	(*ArchiveChunk)(nil),               // 31: eruun.v1.ArchiveChunk
+	nil,                                // 32: eruun.v1.JobTraits.TargetWorkEnvEntry
+	(*AppKubeCoreSecurityContext)(nil), // 33: eruun.v1.AppKubeCoreSecurityContext
+	(*structpb.Value)(nil),             // 34: google.protobuf.Value
+	(*timestamppb.Timestamp)(nil),      // 35: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),              // 36: google.protobuf.Empty
 }
 var file_eruun_v1_jobs_proto_depIdxs = []int32{
 	6,  // 0: eruun.v1.JobResultPolicy.targets:type_name -> eruun.v1.JobResultTarget
@@ -2682,68 +2692,69 @@ var file_eruun_v1_jobs_proto_depIdxs = []int32{
 	14, // 7: eruun.v1.JobTraits.envs:type_name -> eruun.v1.JobEnv
 	32, // 8: eruun.v1.JobTraits.target_work_env:type_name -> eruun.v1.JobTraits.TargetWorkEnvEntry
 	10, // 9: eruun.v1.JobTraits.resources:type_name -> eruun.v1.JobResourceTrait
-	33, // 10: eruun.v1.SubmitJobRequest.spec:type_name -> google.protobuf.Value
-	16, // 11: eruun.v1.SubmitJobRequest.traits:type_name -> eruun.v1.JobTraits
-	7,  // 12: eruun.v1.SubmitJobRequest.result_policy:type_name -> eruun.v1.JobResultPolicy
-	33, // 13: eruun.v1.JobSpec.spec:type_name -> google.protobuf.Value
-	16, // 14: eruun.v1.JobSpec.traits:type_name -> eruun.v1.JobTraits
-	7,  // 15: eruun.v1.JobSpec.result_policy:type_name -> eruun.v1.JobResultPolicy
-	34, // 16: eruun.v1.JobExecution.scheduling_queued_at:type_name -> google.protobuf.Timestamp
-	34, // 17: eruun.v1.JobExecution.create_time:type_name -> google.protobuf.Timestamp
-	34, // 18: eruun.v1.JobExecution.update_time:type_name -> google.protobuf.Timestamp
-	33, // 19: eruun.v1.JobArtifact.manifest:type_name -> google.protobuf.Value
-	33, // 20: eruun.v1.JobArtifact.summary:type_name -> google.protobuf.Value
-	34, // 21: eruun.v1.JobArtifact.expires_at:type_name -> google.protobuf.Timestamp
-	34, // 22: eruun.v1.JobArtifact.create_time:type_name -> google.protobuf.Timestamp
-	34, // 23: eruun.v1.JobArtifact.update_time:type_name -> google.protobuf.Timestamp
-	34, // 24: eruun.v1.JobDelivery.create_time:type_name -> google.protobuf.Timestamp
-	34, // 25: eruun.v1.JobDelivery.update_time:type_name -> google.protobuf.Timestamp
-	34, // 26: eruun.v1.JobRunnerStatus.last_heartbeat_at:type_name -> google.protobuf.Timestamp
-	23, // 27: eruun.v1.JobRunnerStatus.progress:type_name -> eruun.v1.JobRunnerProgress
-	24, // 28: eruun.v1.JobRunnerStatus.terminal:type_name -> eruun.v1.JobRunnerTerminal
-	19, // 29: eruun.v1.JobDetail.accepted:type_name -> eruun.v1.JobAccepted
-	18, // 30: eruun.v1.JobDetail.job:type_name -> eruun.v1.JobSpec
-	20, // 31: eruun.v1.JobDetail.executions:type_name -> eruun.v1.JobExecution
-	21, // 32: eruun.v1.JobDetail.results:type_name -> eruun.v1.JobArtifact
-	22, // 33: eruun.v1.JobDetail.deliveries:type_name -> eruun.v1.JobDelivery
-	25, // 34: eruun.v1.JobDetail.runner_status:type_name -> eruun.v1.JobRunnerStatus
-	21, // 35: eruun.v1.JobResults.artifacts:type_name -> eruun.v1.JobArtifact
-	22, // 36: eruun.v1.JobResults.deliveries:type_name -> eruun.v1.JobDelivery
-	21, // 37: eruun.v1.JobArtifacts.artifacts:type_name -> eruun.v1.JobArtifact
-	29, // 38: eruun.v1.UploadDatasetPart.header:type_name -> eruun.v1.UploadDatasetHeader
-	17, // 39: eruun.v1.JobsService.SubmitJob:input_type -> eruun.v1.SubmitJobRequest
-	0,  // 40: eruun.v1.JobsService.GetJob:input_type -> eruun.v1.JobTaskRequest
-	0,  // 41: eruun.v1.JobsService.CancelJob:input_type -> eruun.v1.JobTaskRequest
-	0,  // 42: eruun.v1.JobsService.GetJobResults:input_type -> eruun.v1.JobTaskRequest
-	1,  // 43: eruun.v1.JobsService.DownloadJobResult:input_type -> eruun.v1.JobArtifactRequest
-	2,  // 44: eruun.v1.JobsService.DownloadJobDelivery:input_type -> eruun.v1.JobDeliveryRequest
-	2,  // 45: eruun.v1.JobsService.RetryJobDelivery:input_type -> eruun.v1.JobDeliveryRequest
-	4,  // 46: eruun.v1.JobsService.SetJobRetention:input_type -> eruun.v1.SetJobRetentionRequest
-	35, // 47: eruun.v1.JobsService.GetJobStoragePolicy:input_type -> google.protobuf.Empty
-	7,  // 48: eruun.v1.JobsService.SetJobStoragePolicy:input_type -> eruun.v1.JobResultPolicy
-	30, // 49: eruun.v1.JobsService.UploadJobDataset:input_type -> eruun.v1.UploadDatasetPart
-	5,  // 50: eruun.v1.JobsService.ListJobDatasets:input_type -> eruun.v1.ListJobDatasetsRequest
-	3,  // 51: eruun.v1.JobsService.GetJobDataset:input_type -> eruun.v1.JobDatasetRequest
-	3,  // 52: eruun.v1.JobsService.DownloadJobDataset:input_type -> eruun.v1.JobDatasetRequest
-	19, // 53: eruun.v1.JobsService.SubmitJob:output_type -> eruun.v1.JobAccepted
-	26, // 54: eruun.v1.JobsService.GetJob:output_type -> eruun.v1.JobDetail
-	35, // 55: eruun.v1.JobsService.CancelJob:output_type -> google.protobuf.Empty
-	27, // 56: eruun.v1.JobsService.GetJobResults:output_type -> eruun.v1.JobResults
-	31, // 57: eruun.v1.JobsService.DownloadJobResult:output_type -> eruun.v1.ArchiveChunk
-	31, // 58: eruun.v1.JobsService.DownloadJobDelivery:output_type -> eruun.v1.ArchiveChunk
-	35, // 59: eruun.v1.JobsService.RetryJobDelivery:output_type -> google.protobuf.Empty
-	35, // 60: eruun.v1.JobsService.SetJobRetention:output_type -> google.protobuf.Empty
-	8,  // 61: eruun.v1.JobsService.GetJobStoragePolicy:output_type -> eruun.v1.JobStoragePolicy
-	35, // 62: eruun.v1.JobsService.SetJobStoragePolicy:output_type -> google.protobuf.Empty
-	21, // 63: eruun.v1.JobsService.UploadJobDataset:output_type -> eruun.v1.JobArtifact
-	28, // 64: eruun.v1.JobsService.ListJobDatasets:output_type -> eruun.v1.JobArtifacts
-	21, // 65: eruun.v1.JobsService.GetJobDataset:output_type -> eruun.v1.JobArtifact
-	31, // 66: eruun.v1.JobsService.DownloadJobDataset:output_type -> eruun.v1.ArchiveChunk
-	53, // [53:67] is the sub-list for method output_type
-	39, // [39:53] is the sub-list for method input_type
-	39, // [39:39] is the sub-list for extension type_name
-	39, // [39:39] is the sub-list for extension extendee
-	0,  // [0:39] is the sub-list for field type_name
+	33, // 10: eruun.v1.JobTraits.security_policy:type_name -> eruun.v1.AppKubeCoreSecurityContext
+	34, // 11: eruun.v1.SubmitJobRequest.spec:type_name -> google.protobuf.Value
+	16, // 12: eruun.v1.SubmitJobRequest.traits:type_name -> eruun.v1.JobTraits
+	7,  // 13: eruun.v1.SubmitJobRequest.result_policy:type_name -> eruun.v1.JobResultPolicy
+	34, // 14: eruun.v1.JobSpec.spec:type_name -> google.protobuf.Value
+	16, // 15: eruun.v1.JobSpec.traits:type_name -> eruun.v1.JobTraits
+	7,  // 16: eruun.v1.JobSpec.result_policy:type_name -> eruun.v1.JobResultPolicy
+	35, // 17: eruun.v1.JobExecution.scheduling_queued_at:type_name -> google.protobuf.Timestamp
+	35, // 18: eruun.v1.JobExecution.create_time:type_name -> google.protobuf.Timestamp
+	35, // 19: eruun.v1.JobExecution.update_time:type_name -> google.protobuf.Timestamp
+	34, // 20: eruun.v1.JobArtifact.manifest:type_name -> google.protobuf.Value
+	34, // 21: eruun.v1.JobArtifact.summary:type_name -> google.protobuf.Value
+	35, // 22: eruun.v1.JobArtifact.expires_at:type_name -> google.protobuf.Timestamp
+	35, // 23: eruun.v1.JobArtifact.create_time:type_name -> google.protobuf.Timestamp
+	35, // 24: eruun.v1.JobArtifact.update_time:type_name -> google.protobuf.Timestamp
+	35, // 25: eruun.v1.JobDelivery.create_time:type_name -> google.protobuf.Timestamp
+	35, // 26: eruun.v1.JobDelivery.update_time:type_name -> google.protobuf.Timestamp
+	35, // 27: eruun.v1.JobRunnerStatus.last_heartbeat_at:type_name -> google.protobuf.Timestamp
+	23, // 28: eruun.v1.JobRunnerStatus.progress:type_name -> eruun.v1.JobRunnerProgress
+	24, // 29: eruun.v1.JobRunnerStatus.terminal:type_name -> eruun.v1.JobRunnerTerminal
+	19, // 30: eruun.v1.JobDetail.accepted:type_name -> eruun.v1.JobAccepted
+	18, // 31: eruun.v1.JobDetail.job:type_name -> eruun.v1.JobSpec
+	20, // 32: eruun.v1.JobDetail.executions:type_name -> eruun.v1.JobExecution
+	21, // 33: eruun.v1.JobDetail.results:type_name -> eruun.v1.JobArtifact
+	22, // 34: eruun.v1.JobDetail.deliveries:type_name -> eruun.v1.JobDelivery
+	25, // 35: eruun.v1.JobDetail.runner_status:type_name -> eruun.v1.JobRunnerStatus
+	21, // 36: eruun.v1.JobResults.artifacts:type_name -> eruun.v1.JobArtifact
+	22, // 37: eruun.v1.JobResults.deliveries:type_name -> eruun.v1.JobDelivery
+	21, // 38: eruun.v1.JobArtifacts.artifacts:type_name -> eruun.v1.JobArtifact
+	29, // 39: eruun.v1.UploadDatasetPart.header:type_name -> eruun.v1.UploadDatasetHeader
+	17, // 40: eruun.v1.JobsService.SubmitJob:input_type -> eruun.v1.SubmitJobRequest
+	0,  // 41: eruun.v1.JobsService.GetJob:input_type -> eruun.v1.JobTaskRequest
+	0,  // 42: eruun.v1.JobsService.CancelJob:input_type -> eruun.v1.JobTaskRequest
+	0,  // 43: eruun.v1.JobsService.GetJobResults:input_type -> eruun.v1.JobTaskRequest
+	1,  // 44: eruun.v1.JobsService.DownloadJobResult:input_type -> eruun.v1.JobArtifactRequest
+	2,  // 45: eruun.v1.JobsService.DownloadJobDelivery:input_type -> eruun.v1.JobDeliveryRequest
+	2,  // 46: eruun.v1.JobsService.RetryJobDelivery:input_type -> eruun.v1.JobDeliveryRequest
+	4,  // 47: eruun.v1.JobsService.SetJobRetention:input_type -> eruun.v1.SetJobRetentionRequest
+	36, // 48: eruun.v1.JobsService.GetJobStoragePolicy:input_type -> google.protobuf.Empty
+	7,  // 49: eruun.v1.JobsService.SetJobStoragePolicy:input_type -> eruun.v1.JobResultPolicy
+	30, // 50: eruun.v1.JobsService.UploadJobDataset:input_type -> eruun.v1.UploadDatasetPart
+	5,  // 51: eruun.v1.JobsService.ListJobDatasets:input_type -> eruun.v1.ListJobDatasetsRequest
+	3,  // 52: eruun.v1.JobsService.GetJobDataset:input_type -> eruun.v1.JobDatasetRequest
+	3,  // 53: eruun.v1.JobsService.DownloadJobDataset:input_type -> eruun.v1.JobDatasetRequest
+	19, // 54: eruun.v1.JobsService.SubmitJob:output_type -> eruun.v1.JobAccepted
+	26, // 55: eruun.v1.JobsService.GetJob:output_type -> eruun.v1.JobDetail
+	36, // 56: eruun.v1.JobsService.CancelJob:output_type -> google.protobuf.Empty
+	27, // 57: eruun.v1.JobsService.GetJobResults:output_type -> eruun.v1.JobResults
+	31, // 58: eruun.v1.JobsService.DownloadJobResult:output_type -> eruun.v1.ArchiveChunk
+	31, // 59: eruun.v1.JobsService.DownloadJobDelivery:output_type -> eruun.v1.ArchiveChunk
+	36, // 60: eruun.v1.JobsService.RetryJobDelivery:output_type -> google.protobuf.Empty
+	36, // 61: eruun.v1.JobsService.SetJobRetention:output_type -> google.protobuf.Empty
+	8,  // 62: eruun.v1.JobsService.GetJobStoragePolicy:output_type -> eruun.v1.JobStoragePolicy
+	36, // 63: eruun.v1.JobsService.SetJobStoragePolicy:output_type -> google.protobuf.Empty
+	21, // 64: eruun.v1.JobsService.UploadJobDataset:output_type -> eruun.v1.JobArtifact
+	28, // 65: eruun.v1.JobsService.ListJobDatasets:output_type -> eruun.v1.JobArtifacts
+	21, // 66: eruun.v1.JobsService.GetJobDataset:output_type -> eruun.v1.JobArtifact
+	31, // 67: eruun.v1.JobsService.DownloadJobDataset:output_type -> eruun.v1.ArchiveChunk
+	54, // [54:68] is the sub-list for method output_type
+	40, // [40:54] is the sub-list for method input_type
+	40, // [40:40] is the sub-list for extension type_name
+	40, // [40:40] is the sub-list for extension extendee
+	0,  // [0:40] is the sub-list for field type_name
 }
 
 func init() { file_eruun_v1_jobs_proto_init() }
@@ -2751,6 +2762,7 @@ func file_eruun_v1_jobs_proto_init() {
 	if File_eruun_v1_jobs_proto != nil {
 		return
 	}
+	file_eruun_v1_applications_proto_init()
 	file_eruun_v1_jobs_proto_msgTypes[5].OneofWrappers = []any{}
 	file_eruun_v1_jobs_proto_msgTypes[13].OneofWrappers = []any{}
 	file_eruun_v1_jobs_proto_msgTypes[20].OneofWrappers = []any{}

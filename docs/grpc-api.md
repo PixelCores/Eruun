@@ -64,6 +64,8 @@ make grpc-gen
 make grpc-gen-check
 ```
 
+Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交多个属性条目；`GetApplicationSpec` 和 `ListApplicationWorkflows` 返回的可编辑 `spec` 也保留完整数组。更新已有 Workflow 时，省略 `failure_policy` 会保留现有策略，显式提交空字符串会重置为默认 `cleanup_all`。数据库重置的 `init_sqlurl` 仅在省略时视为未提供；显式空字符串是无效 URL，调用会失败且不会创建任务。独立 `command` Job 的 `traits.security_policy` 可设置容器安全上下文，提交和读取 Job 时均保留该字段。
+
 ## HTTP 路由到 RPC 对照
 
 当前 HTTP 路由共 108 条；以下 99 条用户可调用路由各映射一个 RPC。表中全名与生成客户端方法一一对应，具体字段及请求/响应类型见各 `.proto` 文件。

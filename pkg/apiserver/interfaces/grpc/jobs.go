@@ -18,6 +18,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/structpb"
+	corev1 "k8s.io/api/core/v1"
 )
 
 const archiveChunkSize = 64 << 10
@@ -51,10 +52,10 @@ func jobPolicyOutput(p spec.JobResultPolicy) *eruunv1.JobResultPolicy {
 	return result
 }
 
-func jobTraitsInput(p *eruunv1.JobTraits) spec.Traits {
+func jobTraitsInput(p *eruunv1.JobTraits) (spec.Traits, error) {
 	result := spec.Traits{}
 	if p == nil {
-		return result
+		return result, nil
 	}
 	for _, storage := range p.Storage {
 		if storage == nil {
@@ -98,10 +99,17 @@ func jobTraitsInput(p *eruunv1.JobTraits) spec.Traits {
 	if p.Resources != nil {
 		result.Resources = &spec.ResourceTraitsSpec{CPU: p.Resources.Cpu, Memory: p.Resources.Memory, GPU: p.Resources.Gpu, CPULimit: p.Resources.CpuLimit, MemoryLimit: p.Resources.MemoryLimit}
 	}
-	return result
+	if p.SecurityPolicy != nil {
+		policy, err := decodeTypedRequest[corev1.SecurityContext](p.SecurityPolicy)
+		if err != nil {
+			return spec.Traits{}, fmt.Errorf("decode Job security policy: %w", err)
+		}
+		result.SecurityPolicy = &policy
+	}
+	return result, nil
 }
 
-func jobTraitsOutput(p spec.Traits) *eruunv1.JobTraits {
+func jobTraitsOutput(p spec.Traits) (*eruunv1.JobTraits, error) {
 	result := &eruunv1.JobTraits{TargetWorkEnv: p.TargetWorkEnv}
 	for _, storage := range p.Storage {
 		result.Storage = append(result.Storage, &eruunv1.JobStorageTrait{
@@ -134,7 +142,14 @@ func jobTraitsOutput(p spec.Traits) *eruunv1.JobTraits {
 	if p.Resources != nil {
 		result.Resources = &eruunv1.JobResourceTrait{Cpu: p.Resources.CPU, Memory: p.Resources.Memory, Gpu: p.Resources.GPU, CpuLimit: p.Resources.CPULimit, MemoryLimit: p.Resources.MemoryLimit}
 	}
-	return result
+	if p.SecurityPolicy != nil {
+		policy, err := encodeTypedResponse(p.SecurityPolicy, &eruunv1.AppKubeCoreSecurityContext{})
+		if err != nil {
+			return nil, fmt.Errorf("encode Job security policy: %w", err)
+		}
+		result.SecurityPolicy = policy
+	}
+	return result, nil
 }
 
 func jsonValue(raw []byte) (*structpb.Value, error) {
@@ -153,7 +168,11 @@ func jobSpecOutput(p spec.JobSpec) (*eruunv1.JobSpec, error) {
 	if err != nil {
 		return nil, err
 	}
-	result := &eruunv1.JobSpec{Name: p.Name, Type: p.Type, Spec: value, Traits: jobTraitsOutput(p.Traits)}
+	traits, err := jobTraitsOutput(p.Traits)
+	if err != nil {
+		return nil, err
+	}
+	result := &eruunv1.JobSpec{Name: p.Name, Type: p.Type, Spec: value, Traits: traits}
 	if p.ResultPolicy != nil {
 		result.ResultPolicy = jobPolicyOutput(*p.ResultPolicy)
 	}
@@ -220,7 +239,11 @@ func (s *JobsServer) SubmitJob(ctx context.Context, req *eruunv1.SubmitJobReques
 	if err != nil {
 		return nil, rpcError(bcode.ErrJobInput)
 	}
-	input := jobs.SubmitRequest{WorkspaceID: req.WorkspaceId, JobSpec: spec.JobSpec{Name: req.Name, Type: req.Type, Spec: raw, Traits: jobTraitsInput(req.Traits)}}
+	traits, err := jobTraitsInput(req.Traits)
+	if err != nil {
+		return nil, rpcError(bcode.ErrJobInput)
+	}
+	input := jobs.SubmitRequest{WorkspaceID: req.WorkspaceId, JobSpec: spec.JobSpec{Name: req.Name, Type: req.Type, Spec: raw, Traits: traits}}
 	if req.ResultPolicy != nil {
 		policy := jobPolicyInput(req.ResultPolicy)
 		input.ResultPolicy = &policy

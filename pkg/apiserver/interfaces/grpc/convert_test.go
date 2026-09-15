@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	assembler "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/assembler/v1"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	eruunv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1"
 	"github.com/stretchr/testify/require"
@@ -76,4 +78,85 @@ func TestTypedNestedDynamicFieldsAndEmbeddedRequest(t *testing.T) {
 	jsonBody, err := json.Marshal(copyJob.Spec.AsInterface())
 	require.NoError(t, err)
 	require.Contains(t, string(jsonBody), "timeoutSeconds")
+}
+
+func TestTypedWorkflowPropertiesArrayRoundTrip(t *testing.T) {
+	step := apis.CreateWorkflowStepRequest{Name: "archive"}
+	step.SetWorkflowPropertiesList([]apis.WorkflowProperties{
+		{Policies: []string{"api"}, Path: "/var/log/api"},
+		{Policies: []string{"worker"}, Path: "/var/log/worker"},
+	})
+	subStep := apis.CreateWorkflowSubStepRequest{Name: "archive-sidecar"}
+	subStep.SetWorkflowPropertiesList([]apis.WorkflowProperties{{Policies: []string{"sidecar"}, Container: "logs"}})
+	step.SubSteps = []apis.CreateWorkflowSubStepRequest{subStep}
+
+	applicationSpec := apis.CreateApplicationsRequest{Name: "demo", Workflow: []apis.CreateWorkflowStepRequest{step}}
+	message, err := encodeTypedResponse(applicationSpec, &eruunv1.AppDTOCreateApplicationsRequest{})
+	require.NoError(t, err)
+	require.Len(t, message.Workflow[0].Properties, 2)
+	require.Len(t, message.Workflow[0].SubSteps[0].Properties, 1)
+	decoded, err := decodeTypedRequest[apis.CreateApplicationsRequest](message)
+	require.NoError(t, err)
+	require.True(t, decoded.Workflow[0].WorkflowPropertiesFromArray())
+	require.Equal(t, step.WorkflowPropertiesList(), decoded.Workflow[0].WorkflowPropertiesList())
+	require.Equal(t, subStep.WorkflowPropertiesList(), decoded.Workflow[0].SubSteps[0].WorkflowPropertiesList())
+
+	// ListApplicationWorkflows includes a resubmittable spec assembled from the
+	// stored Workflow. Its canonical JSON also contains properties arrays.
+	storedSteps, err := model.NewJSONStructByStruct(model.WorkflowSteps{Steps: []*model.WorkflowStep{{
+		Name: "archive", Properties: []model.Policies{
+			{Policies: []string{"api"}, Path: "/var/log/api"},
+			{Policies: []string{"worker"}, Path: "/var/log/worker"},
+		},
+		SubSteps: []*model.WorkflowSubStep{{Name: "archive-sidecar", Properties: []model.Policies{{Policies: []string{"sidecar"}, Container: "logs"}}}},
+	}}})
+	require.NoError(t, err)
+	assembled, err := assembler.ConvertWorkflowModelToDTO(&model.Workflow{ID: "wf-1", Name: "demo", Steps: storedSteps})
+	require.NoError(t, err)
+	listed, err := encodeTypedResponse(apis.ListApplicationWorkflowsResponse{
+		Workflows: []*apis.ApplicationWorkflow{assembled},
+	}, &eruunv1.AppDTOListApplicationWorkflowsResponse{})
+	require.NoError(t, err)
+	require.Len(t, listed.Workflows[0].Spec.Workflow[0].Properties, 2)
+	require.Len(t, listed.Workflows[0].Spec.Workflow[0].SubSteps[0].Properties, 1)
+
+	withoutProperties := apis.CreateApplicationsRequest{Name: "plain", Workflow: []apis.CreateWorkflowStepRequest{{Name: "deploy"}}}
+	plain, err := encodeTypedResponse(withoutProperties, &eruunv1.AppDTOCreateApplicationsRequest{})
+	require.NoError(t, err)
+	require.Empty(t, plain.Workflow[0].Properties)
+}
+
+func TestTypedRequestPreservesExplicitEmptyOptionalStrings(t *testing.T) {
+	empty := ""
+	workflow := &eruunv1.AppDTOUpdateApplicationWorkflowRequest{FailurePolicy: &empty}
+	require.True(t, workflow.ProtoReflect().Has(workflow.ProtoReflect().Descriptor().Fields().ByName("failure_policy")))
+	updated, err := decodeTypedRequest[apis.UpdateApplicationWorkflowRequest](workflow)
+	require.NoError(t, err)
+	require.True(t, updated.FailurePolicySet)
+	require.Empty(t, updated.FailurePolicy)
+
+	omittedUpdate, err := decodeTypedRequest[apis.UpdateApplicationWorkflowRequest](&eruunv1.AppDTOUpdateApplicationWorkflowRequest{})
+	require.NoError(t, err)
+	require.False(t, omittedUpdate.FailurePolicySet)
+	selectedPolicy := "cleanup_failed"
+	selectedUpdate, err := decodeTypedRequest[apis.UpdateApplicationWorkflowRequest](&eruunv1.AppDTOUpdateApplicationWorkflowRequest{FailurePolicy: &selectedPolicy})
+	require.NoError(t, err)
+	require.True(t, selectedUpdate.FailurePolicySet)
+	require.Equal(t, selectedPolicy, string(selectedUpdate.FailurePolicy))
+
+	reset := &eruunv1.AppDTODatabaseResetRequest{Components: []string{"mysql"}, InitSqlurl: &empty}
+	require.True(t, reset.ProtoReflect().Has(reset.ProtoReflect().Descriptor().Fields().ByName("init_sqlurl")))
+	resetRequest, err := decodeTypedRequest[apis.DatabaseResetRequest](reset)
+	require.NoError(t, err)
+	require.True(t, resetRequest.InitSQLURLProvided())
+	require.Empty(t, resetRequest.InitSQLURL)
+
+	omittedReset, err := decodeTypedRequest[apis.DatabaseResetRequest](&eruunv1.AppDTODatabaseResetRequest{Components: []string{"mysql"}})
+	require.NoError(t, err)
+	require.False(t, omittedReset.InitSQLURLProvided())
+	url := "https://files.example/game.sql"
+	selectedReset, err := decodeTypedRequest[apis.DatabaseResetRequest](&eruunv1.AppDTODatabaseResetRequest{Components: []string{"mysql"}, InitSqlurl: &url})
+	require.NoError(t, err)
+	require.True(t, selectedReset.InitSQLURLProvided())
+	require.Equal(t, url, selectedReset.InitSQLURL)
 }

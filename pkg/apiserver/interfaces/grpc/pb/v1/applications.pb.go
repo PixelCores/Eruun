@@ -5117,7 +5117,7 @@ type AppDTOCreateWorkflowStepRequest struct {
 	StepType        string                                `protobuf:"bytes,3,opt,name=step_type,json=stepType,proto3" json:"step_type,omitempty"`
 	WorkflowType    string                                `protobuf:"bytes,4,opt,name=workflow_type,json=jobType,proto3" json:"workflow_type,omitempty"`
 	Approval        *AppDTOWorkflowStepApproval           `protobuf:"bytes,5,opt,name=approval,proto3" json:"approval,omitempty"`
-	Properties      *AppDTOWorkflowProperties             `protobuf:"bytes,6,opt,name=properties,proto3" json:"properties,omitempty"`
+	Properties      []*AppDTOWorkflowProperties           `protobuf:"bytes,6,rep,name=properties,proto3" json:"properties,omitempty"`
 	Components      []string                              `protobuf:"bytes,7,rep,name=components,proto3" json:"components,omitempty"`
 	Mode            string                                `protobuf:"bytes,8,opt,name=mode,proto3" json:"mode,omitempty"`
 	SubSteps        []*AppDTOCreateWorkflowSubStepRequest `protobuf:"bytes,9,rep,name=sub_steps,json=subSteps,proto3" json:"sub_steps,omitempty"`
@@ -5190,7 +5190,7 @@ func (x *AppDTOCreateWorkflowStepRequest) GetApproval() *AppDTOWorkflowStepAppro
 	return nil
 }
 
-func (x *AppDTOCreateWorkflowStepRequest) GetProperties() *AppDTOWorkflowProperties {
+func (x *AppDTOCreateWorkflowStepRequest) GetProperties() []*AppDTOWorkflowProperties {
 	if x != nil {
 		return x.Properties
 	}
@@ -5219,12 +5219,12 @@ func (x *AppDTOCreateWorkflowStepRequest) GetSubSteps() []*AppDTOCreateWorkflowS
 }
 
 type AppDTOCreateWorkflowSubStepRequest struct {
-	state           protoimpl.MessageState    `protogen:"open.v1"`
-	SchedulingClass string                    `protobuf:"bytes,1,opt,name=scheduling_class,json=schedulingClass,proto3" json:"scheduling_class,omitempty"`
-	Name            string                    `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	WorkflowType    string                    `protobuf:"bytes,3,opt,name=workflow_type,json=jobType,proto3" json:"workflow_type,omitempty"`
-	Properties      *AppDTOWorkflowProperties `protobuf:"bytes,4,opt,name=properties,proto3" json:"properties,omitempty"`
-	Components      []string                  `protobuf:"bytes,5,rep,name=components,proto3" json:"components,omitempty"`
+	state           protoimpl.MessageState      `protogen:"open.v1"`
+	SchedulingClass string                      `protobuf:"bytes,1,opt,name=scheduling_class,json=schedulingClass,proto3" json:"scheduling_class,omitempty"`
+	Name            string                      `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	WorkflowType    string                      `protobuf:"bytes,3,opt,name=workflow_type,json=jobType,proto3" json:"workflow_type,omitempty"`
+	Properties      []*AppDTOWorkflowProperties `protobuf:"bytes,4,rep,name=properties,proto3" json:"properties,omitempty"`
+	Components      []string                    `protobuf:"bytes,5,rep,name=components,proto3" json:"components,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -5280,7 +5280,7 @@ func (x *AppDTOCreateWorkflowSubStepRequest) GetWorkflowType() string {
 	return ""
 }
 
-func (x *AppDTOCreateWorkflowSubStepRequest) GetProperties() *AppDTOWorkflowProperties {
+func (x *AppDTOCreateWorkflowSubStepRequest) GetProperties() []*AppDTOWorkflowProperties {
 	if x != nil {
 		return x.Properties
 	}
@@ -5297,7 +5297,7 @@ func (x *AppDTOCreateWorkflowSubStepRequest) GetComponents() []string {
 type AppDTODatabaseResetRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Components    []string               `protobuf:"bytes,1,rep,name=components,proto3" json:"components,omitempty"`
-	InitSqlurl    string                 `protobuf:"bytes,2,opt,name=init_sqlurl,json=initSqlUrl,proto3" json:"init_sqlurl,omitempty"`
+	InitSqlurl    *string                `protobuf:"bytes,2,opt,name=init_sqlurl,json=initSqlUrl,proto3,oneof" json:"init_sqlurl,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5340,8 +5340,8 @@ func (x *AppDTODatabaseResetRequest) GetComponents() []string {
 }
 
 func (x *AppDTODatabaseResetRequest) GetInitSqlurl() string {
-	if x != nil {
-		return x.InitSqlurl
+	if x != nil && x.InitSqlurl != nil {
+		return *x.InitSqlurl
 	}
 	return ""
 }
@@ -8957,7 +8957,7 @@ type AppDTOUpdateApplicationWorkflowRequest struct {
 	Alias         string                             `protobuf:"bytes,3,opt,name=alias,proto3" json:"alias,omitempty"`
 	Callback      *AppDTOWorkflowCallback            `protobuf:"bytes,4,opt,name=callback,proto3" json:"callback,omitempty"`
 	WorkflowType  string                             `protobuf:"bytes,5,opt,name=workflow_type,json=workflowType,proto3" json:"workflow_type,omitempty"`
-	FailurePolicy string                             `protobuf:"bytes,6,opt,name=failure_policy,json=failurePolicy,proto3" json:"failure_policy,omitempty"`
+	FailurePolicy *string                            `protobuf:"bytes,6,opt,name=failure_policy,json=failurePolicy,proto3,oneof" json:"failure_policy,omitempty"`
 	Workflow      []*AppDTOCreateWorkflowStepRequest `protobuf:"bytes,7,rep,name=workflow,proto3" json:"workflow,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -9029,8 +9029,8 @@ func (x *AppDTOUpdateApplicationWorkflowRequest) GetWorkflowType() string {
 }
 
 func (x *AppDTOUpdateApplicationWorkflowRequest) GetFailurePolicy() string {
-	if x != nil {
-		return x.FailurePolicy
+	if x != nil && x.FailurePolicy != nil {
+		return *x.FailurePolicy
 	}
 	return ""
 }
@@ -13452,7 +13452,7 @@ const file_eruun_v1_applications_proto_rawDesc = "" +
 	"\rworkflow_type\x18\x04 \x01(\tR\ajobType\x12@\n" +
 	"\bapproval\x18\x05 \x01(\v2$.eruun.v1.AppDTOWorkflowStepApprovalR\bapproval\x12B\n" +
 	"\n" +
-	"properties\x18\x06 \x01(\v2\".eruun.v1.AppDTOWorkflowPropertiesR\n" +
+	"properties\x18\x06 \x03(\v2\".eruun.v1.AppDTOWorkflowPropertiesR\n" +
 	"properties\x12\x1e\n" +
 	"\n" +
 	"components\x18\a \x03(\tR\n" +
@@ -13464,17 +13464,18 @@ const file_eruun_v1_applications_proto_rawDesc = "" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1e\n" +
 	"\rworkflow_type\x18\x03 \x01(\tR\ajobType\x12B\n" +
 	"\n" +
-	"properties\x18\x04 \x01(\v2\".eruun.v1.AppDTOWorkflowPropertiesR\n" +
+	"properties\x18\x04 \x03(\v2\".eruun.v1.AppDTOWorkflowPropertiesR\n" +
 	"properties\x12\x1e\n" +
 	"\n" +
 	"components\x18\x05 \x03(\tR\n" +
-	"components\"]\n" +
+	"components\"r\n" +
 	"\x1aAppDTODatabaseResetRequest\x12\x1e\n" +
 	"\n" +
 	"components\x18\x01 \x03(\tR\n" +
-	"components\x12\x1f\n" +
-	"\vinit_sqlurl\x18\x02 \x01(\tR\n" +
-	"initSqlUrl\"\xce\x01\n" +
+	"components\x12$\n" +
+	"\vinit_sqlurl\x18\x02 \x01(\tH\x00R\n" +
+	"initSqlUrl\x88\x01\x01B\x0e\n" +
+	"\f_init_sqlurl\"\xce\x01\n" +
 	"\x1bAppDTODatabaseResetResponse\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12\x1f\n" +
 	"\vworkflow_id\x18\x02 \x01(\tR\n" +
@@ -13791,16 +13792,17 @@ const file_eruun_v1_applications_proto_rawDesc = "" +
 	"\x05valid\x18\x01 \x01(\bR\x05valid\x12:\n" +
 	"\x06errors\x18\x02 \x03(\v2\".eruun.v1.AppDTOTryValidationErrorR\x06errors\x12Y\n" +
 	"\x0fnormalized_spec\x18\x03 \x01(\v20.eruun.v1.AppDTOUpdateApplicationWorkflowRequestR\x0enormalizedSpec\x121\n" +
-	"\x04plan\x18\x04 \x01(\v2\x1d.eruun.v1.AppDTOExecutionPlanR\x04plan\"\xc4\x02\n" +
+	"\x04plan\x18\x04 \x01(\v2\x1d.eruun.v1.AppDTOExecutionPlanR\x04plan\"\xdc\x02\n" +
 	"&AppDTOUpdateApplicationWorkflowRequest\x12\x1f\n" +
 	"\vworkflow_id\x18\x01 \x01(\tR\n" +
 	"workflowId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
 	"\x05alias\x18\x03 \x01(\tR\x05alias\x12<\n" +
 	"\bcallback\x18\x04 \x01(\v2 .eruun.v1.AppDTOWorkflowCallbackR\bcallback\x12#\n" +
-	"\rworkflow_type\x18\x05 \x01(\tR\fworkflowType\x12%\n" +
-	"\x0efailure_policy\x18\x06 \x01(\tR\rfailurePolicy\x12E\n" +
-	"\bworkflow\x18\a \x03(\v2).eruun.v1.AppDTOCreateWorkflowStepRequestR\bworkflow\"\xcf\x03\n" +
+	"\rworkflow_type\x18\x05 \x01(\tR\fworkflowType\x12*\n" +
+	"\x0efailure_policy\x18\x06 \x01(\tH\x00R\rfailurePolicy\x88\x01\x01\x12E\n" +
+	"\bworkflow\x18\a \x03(\v2).eruun.v1.AppDTOCreateWorkflowStepRequestR\bworkflowB\x11\n" +
+	"\x0f_failure_policy\"\xcf\x03\n" +
 	"\x1aAppDTOUpdateVersionRequest\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\x12\x1a\n" +
 	"\bstrategy\x18\x02 \x01(\tR\bstrategy\x12'\n" +
@@ -14816,8 +14818,10 @@ func file_eruun_v1_applications_proto_init() {
 	file_eruun_v1_applications_proto_msgTypes[64].OneofWrappers = []any{}
 	file_eruun_v1_applications_proto_msgTypes[66].OneofWrappers = []any{}
 	file_eruun_v1_applications_proto_msgTypes[67].OneofWrappers = []any{}
+	file_eruun_v1_applications_proto_msgTypes[71].OneofWrappers = []any{}
 	file_eruun_v1_applications_proto_msgTypes[73].OneofWrappers = []any{}
 	file_eruun_v1_applications_proto_msgTypes[77].OneofWrappers = []any{}
+	file_eruun_v1_applications_proto_msgTypes[121].OneofWrappers = []any{}
 	file_eruun_v1_applications_proto_msgTypes[122].OneofWrappers = []any{}
 	file_eruun_v1_applications_proto_msgTypes[125].OneofWrappers = []any{}
 	file_eruun_v1_applications_proto_msgTypes[137].OneofWrappers = []any{}

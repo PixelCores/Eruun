@@ -7,6 +7,7 @@ option go_package = "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/p
 import "google/protobuf/empty.proto";
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
+import "eruun/v1/applications.proto";
 
 // JobsService is the user-session API. Runner capability callbacks are HTTP-only.
 service JobsService {
@@ -73,6 +74,7 @@ message JobTraits {
   repeated JobEnv envs = 3;
   map<string, string> target_work_env = 4;
   JobResourceTrait resources = 5;
+  AppKubeCoreSecurityContext security_policy = 6 [json_name = "securityPolicy"];
 }
 
 message SubmitJobRequest {
