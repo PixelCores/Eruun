@@ -193,7 +193,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `vllm-hami-distributed-inference-design.md` | Draft / Proposal | 自托管模型服务、GPU、vLLM/HAMi 与多节点 adapter 方向 |
 | `workflow-conditional-branching-design.md` | Draft / Proposal | 条件分支设计 |
 | `workflow-resource-capacity-scheduler.md` | Draft / Proposal | Workflow 资源容量准入与可选容量补偿边界 |
-| `harbor-job-load-test-plan.md` | Draft / Proposal | 1000 个合成 Harbor Job、每个等待 180 秒的压测矩阵、数据口径与容量判定 |
+| `harbor-job-load-test-plan.md` | Draft / Proposal | 可构建的合成镜像、1000 个 Harbor Job 的批量提交与 60–300 秒休眠压测矩阵、数据口径和容量判定 |
 
 ## 图源与资产
 

@@ -1,0 +1,20 @@
+{
+  "workspaceId": "<WORKSPACE_ID>",
+  "name": "harbor-load",
+  "type": "agent_evaluation",
+  "spec": {
+    "framework": "harbor",
+    "frameworkVersion": "0.22.0",
+    "datasetId": "<UPLOADED_DATASET_ID>",
+    "agent": {"name": "oracle"},
+    "options": {"attempts": 1, "concurrency": 1},
+    "timeoutSeconds": 900
+  },
+  "traits": {
+    "resources": {"cpu": "1", "memory": "2Gi", "cpuLimit": "2", "memoryLimit": "4Gi"}
+  },
+  "resultPolicy": {
+    "retentionDays": 1,
+    "targets": [{"type": "database", "mode": "full"}]
+  }
+}
