@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package eruun.v1;
+
+option go_package = "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1;eruunv1";
+
+import "google/protobuf/struct.proto";
+
+service ResourceImportService {
+  rpc SubmitResourceImportScan(ResourceImportScanJobRequest) returns (ResourceImportJobAcceptedResponse);
+  rpc SubmitResourceImportManage(ResourceImportManageJobRequest) returns (ResourceImportJobAcceptedResponse);
+  rpc GetResourceImportJob(ResourceImportJobIDRequest) returns (ResourceImportJobResponse);
+}
+
+message ResourceImportScanRule {
+  repeated string kinds = 1;
+  string name_regex = 2;
+  string label_selector = 3;
+}
+
+message ResourceImportScanJobRequest {
+  string namespace = 1;
+  repeated ResourceImportScanRule rules = 2;
+}
+
+message ImportNamespaceWorkloadReference {
+  string api_version = 1;
+  string kind = 2;
+  string name = 3;
+}
+
+message ImportNamespaceComponentMapping {
+  string name = 1;
+  ImportNamespaceWorkloadReference workload = 2;
+}
+
+message ImportNamespaceApplicationMapping {
+  string name = 1;
+  string alias = 2;
+  string target_app_id = 3;
+  repeated ImportNamespaceComponentMapping components = 4;
+}
+
+message ResourceImportManageJobRequest {
+  string scan_task_id = 1;
+  repeated ImportNamespaceApplicationMapping applications = 2;
+}
+
+message ResourceImportJobAcceptedResponse {
+  string task_id = 1;
+  string type = 2;
+  string status = 3;
+}
+
+message ResourceImportJobIDRequest { string task_id = 1; }
+
+message ResourceImportJobResponse {
+  string task_id = 1;
+  string type = 2;
+  string status = 3;
+  string error = 4;
+  // The job-specific JSON result is intentionally dynamic.
+  google.protobuf.Value result = 5;
+}

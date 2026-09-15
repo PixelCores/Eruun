@@ -42,6 +42,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 ## 当前代码事实速查
 
 - API 前缀：`/api/v1`。
+- 用户业务 gRPC v1 与 HTTP 并行：仅 API 角色在本地默认监听 `127.0.0.1:9001`，集群内 API Pod/Service 使用 9000；见 [`grpc-api.md`](grpc-api.md)。
 - 服务进程本地默认监听：`127.0.0.1:8001`；`deploy/eruun-stack.yaml` 会通过 `ERUUN_BIND_ADDR=0.0.0.0:8000` 覆盖该默认值并暴露集群内服务。
 - MySQL 默认 DSN 是 `127.0.0.1:3306/eruun` 的本地连接模板，必须替换密码占位符；Kafka 默认 Broker 为 `localhost:9092`，消息后端仍默认 Redis。字段与覆盖方式见 [`config/apiserver-default.yaml`](../config/apiserver-default.yaml) 和 [Kafka 配置说明](kafka-queue-implementation.md#4-配置说明)。
 - 服务端角色通过 `--role` / `ERUUN_ROLE` 显式选择 `api/controller/scheduler/worker`；直接运行默认是 `api`，不存在聚合 `all` 角色。
@@ -59,6 +60,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `pkg/apiserver/resourceimport` | 存量 Kubernetes 资源的一次性导入模块 | 用户规则扫描、候选快照、用户选择、异步纳管任务、资源 identity/digest 与运行期协调 | 扫描与纳管是两个独立持久化 Job，不做持续监听；共享契约在 `contract`，Kubernetes 侧协调在 `runtime` |
 | `pkg/apiserver/jobs` | 空间独立 Job 与评测数据 | command、Harbor 提交、原生任务包、完整结果、独立保存及保留策略 | 复用现有 WorkflowQueue、JobInfo 和执行租约；公共规格在 `domain/spec`，框架 Runner 在 `runners/harbor` |
 | `pkg/apiserver/interfaces/api` | HTTP 路由、参数绑定、响应封装、中间件 | 新接口、接口校验、认证授权、流式能力 | 不直接写 DB/K8s，业务逻辑下沉到 Domain |
+| `pkg/apiserver/interfaces/grpc`, `proto/eruun/v1` | 用户业务 gRPC 适配与版本化 Protobuf 契约 | RPC、强类型字段、metadata 认证、流式传输 | 复用 Domain 服务；不经进程内 HTTP 转发；路由对照见 `grpc-api.md` |
 | `pkg/apiserver/interfaces/api/dto/v1` | API DTO 与请求/响应结构 | 字段增删、响应形态调整 | 同步 assembler、文档和 examples |
 | `pkg/apiserver/interfaces/api/assembler/v1` | Domain 对象到 DTO 的组装 | 响应字段推导、脱敏、兼容字段 | 不放持久化或 K8s 调用逻辑 |
 | `pkg/apiserver/domain/model` | GORM 模型和领域实体 | 新表字段、状态字段、业务实体 | 字段语义必须同步跨层契约文档 |
@@ -104,6 +106,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `account-auth-workspaces.md` | Current | GitHub/Google、邮箱/手机号登录、会话、团队权限、延迟任务隔离与失败收尾、重复部署幂等性、前端与部署接入 |
 | [`../examples/account-auth-workspaces/README.md`](../examples/account-auth-workspaces/README.md) | Current | 账号与团队 API 实操：curl 注册/登录/刷新、OAuth 浏览器回调、身份绑定、邀请和空间资源访问 |
 | `api-error-response-contract.md` | Current | API 统一错误响应与通用错误脱敏契约 |
+| `grpc-api.md` | Current | gRPC v1 启动、认证、流式边界、Go 客户端示例及 99 条 HTTP 路由—RPC 对照 |
 | `canonical-json-profile.md` | Current | 面向 Agent 的唯一 Application/Workflow JSON、Schema、Try、read-edit-submit、幂等与 allowedActions 契约 |
 | `system-setting.md` | Current | 系统设置类型、API 与默认初始化 |
 | `settings-page-api.md` | Current | 前端设置页字段归属、请求参数与保存策略 |

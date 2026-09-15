@@ -1,0 +1,1334 @@
+syntax = "proto3";
+
+package eruun.v1;
+
+option go_package = "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1;eruunv1";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+// ApplicationService mirrors the user-facing application and Workflow routes.
+service ApplicationService {
+  rpc GetCanonicalJSONSchema(google.protobuf.Empty) returns (CanonicalJSONSchema);
+  rpc ListApplications(ApplicationListRequest) returns (AppDTOListApplicationResponse);
+  rpc ListTemplateApplications(ApplicationListRequest) returns (AppDTOListApplicationResponse);
+  rpc ListCronJobs(google.protobuf.Empty) returns (ApplicationCronJobs);
+  rpc ListScheduledJobs(google.protobuf.Empty) returns (ApplicationScheduledJobs);
+  rpc CreateApplications(AppDTOCreateApplicationsRequest) returns (AppDTOApplicationBase);
+  rpc CreateAndExecApplications(AppDTOCreateAndExecApplicationRequest) returns (AppDTOCreateAndExecApplicationResponse);
+  rpc BatchGetApplications(AppDTOBatchGetApplicationsRequest) returns (AppDTOBatchGetApplicationsResponse);
+  rpc ConvertApplications(AppDTOConvertApplicationsRequest) returns (AppDTOConvertApplicationsResponse);
+  rpc ImportNamespaceApplications(AppDTOImportNamespaceApplicationsRequest) returns (AppDTOImportNamespaceApplicationsResponse);
+  rpc TryImportNamespaceApplications(AppDTOTryImportNamespaceApplicationsRequest) returns (AppDTOTryImportNamespaceApplicationsResponse);
+  rpc ListApplicationWorkflows(ApplicationIDRequest) returns (AppDTOListApplicationWorkflowsResponse);
+  rpc GetApplicationSpec(ApplicationIDRequest) returns (AppDTOCreateApplicationsRequest);
+  rpc GetApplicationStatus(ApplicationIDRequest) returns (AppDTOApplicationStatusResponse);
+  rpc ListApplicationComponents(ApplicationIDRequest) returns (AppDTOListApplicationComponentsResponse);
+  rpc GetApplicationComponentStatus(ApplicationIDRequest) returns (AppDTOApplicationComponentStatusResponse);
+  rpc ListComponentContainers(ApplicationComponentRequest) returns (AppDTOComponentContainersResponse);
+  rpc BatchApplicationComponentStatus(AppDTOBatchApplicationComponentStatusRequest) returns (AppDTOBatchApplicationComponentStatusResponse);
+  rpc StreamComponentLogs(ComponentLogsRequest) returns (stream ComponentLogLine);
+  rpc ExportComponentFiles(ComponentFilesRequest) returns (stream ComponentFileChunk);
+  rpc ExecComponentShell(ComponentShellRequest) returns (AppDTOExecComponentShellScriptResponse);
+  rpc StreamComponentShell(ComponentShellRequest) returns (stream ComponentShellEvent);
+  rpc DeleteApplication(DeleteApplicationRPCRequest) returns (AppDTODeleteApplicationResponse);
+  rpc UpdateApplicationWorkflow(UpdateApplicationWorkflowRPCRequest) returns (AppDTOUpdateWorkflowResponse);
+  rpc ListWorkflowSchedules(ApplicationIDRequest) returns (AppDTOListWorkflowSchedulesResponse);
+  rpc UpsertWorkflowSchedule(UpsertWorkflowScheduleRPCRequest) returns (AppDTOUpsertWorkflowScheduleResponse);
+  rpc DeleteWorkflowSchedule(ApplicationWorkflowRequest) returns (AppDTODeleteWorkflowScheduleResponse);
+  rpc PlanApplicationResourceCleanup(ApplicationIDRequest) returns (AppDTOCleanupApplicationResourcesPlanResponse);
+  rpc ApplyApplicationResourceCleanup(CleanupApplicationRPCRequest) returns (AppDTOCleanupApplicationResourcesResponse);
+  rpc ResetApplicationDatabases(ResetApplicationDatabasesRPCRequest) returns (AppDTODatabaseResetResponse);
+  rpc DownloadLogArchive(LogArchiveRPCRequest) returns (stream ComponentFileChunk);
+  rpc RestartApplicationWorkloads(ApplicationLifecycleRPCRequest) returns (AppDTORestartApplicationWorkloadsResponse);
+  rpc StopApplicationDeployments(ApplicationLifecycleRPCRequest) returns (AppDTOStopApplicationDeploymentsResponse);
+  rpc StartApplicationDeployments(ApplicationLifecycleRPCRequest) returns (AppDTOStartApplicationDeploymentsResponse);
+  rpc ExecApplicationWorkflow(ExecWorkflowRPCRequest) returns (AppDTOExecWorkflowResponse);
+  rpc CancelApplicationWorkflow(CancelWorkflowRPCRequest) returns (AppDTOCancelWorkflowResponse);
+  rpc CancelAllApplicationWorkflows(ApplicationIDRequest) returns (AppDTOCancelAllApplicationWorkflowsResponse);
+  rpc ListApplicationTasks(ApplicationIDRequest) returns (AppDTOListApplicationTasksResponse);
+  rpc ApproveWorkflowTask(TaskApprovalRPCRequest) returns (AppDTOTaskApprovalResponse);
+  rpc GetWorkflowTaskStatus(WorkflowTaskIDRequest) returns (AppDTOTaskStatusResponse);
+  rpc GetWorkflowTaskStages(WorkflowTaskIDRequest) returns (AppDTOTaskStagesResponse);
+  rpc UpdateApplicationVersion(UpdateVersionRPCRequest) returns (AppDTOUpdateVersionResponse);
+  rpc DiffUpdateApplicationVersion(DiffUpdateVersionRPCRequest) returns (AppDTODiffUpdateVersionResponse);
+  rpc CancelDelayedVersionUpdate(CancelWorkflowRPCRequest) returns (AppDTOCancelWorkflowResponse);
+  rpc TryApplication(AppDTOCreateApplicationsRequest) returns (AppDTOTryApplicationResponse);
+  rpc TryWorkflow(UpdateApplicationWorkflowRPCRequest) returns (AppDTOTryWorkflowResponse);
+}
+
+// JSON Schema is an original document, not a dynamic JSON request envelope.
+message CanonicalJSONSchema { bytes json_schema = 1; }
+message ApplicationListRequest { optional int32 page = 1; optional int32 page_size = 2; }
+message ApplicationIDRequest { string app_id = 1; }
+message WorkflowTaskIDRequest { string task_id = 1; }
+message ApplicationWorkflowRequest { string app_id = 1; string workflow_id = 2; }
+message ApplicationComponentRequest { string app_id = 1; string component_name = 2; }
+message ApplicationCronJobs { repeated AppDTOCronJobInfo jobs = 1; }
+message ApplicationScheduledJobs { repeated AppDTOScheduledJobInfo jobs = 1; }
+
+message ComponentLogsRequest { string app_id = 1; string component_name = 2; string container = 3; }
+message ComponentLogLine {
+  string pod_name = 1;
+  string container_name = 2;
+  bytes data = 3;
+  // True when a logical log line continues in the next chunk.
+  bool continuation = 4;
+}
+message ComponentFilesRequest {
+  string app_id = 1;
+  string component_name = 2;
+  AppDTOExportComponentFilesRequest request = 3;
+}
+message ComponentShellRequest {
+  string app_id = 1;
+  string component_name = 2;
+  AppDTOExecComponentShellScriptRequest request = 3;
+}
+message ComponentShellEvent {
+  string pod_name = 1;
+  string container_name = 2;
+  string type = 3;
+  bytes chunk = 4;
+  optional int32 exit_code = 5;
+  optional bool succeeded = 6;
+  string message = 7;
+}
+message ComponentFileChunk {
+  bytes data = 1;
+  string file_name = 2;
+  string content_type = 3;
+  string pod_name = 4;
+  string container_name = 5;
+}
+message DeleteApplicationRPCRequest { string app_id = 1; AppDTODeleteApplicationRequest request = 2; }
+message UpdateApplicationWorkflowRPCRequest { string app_id = 1; AppDTOUpdateApplicationWorkflowRequest request = 2; }
+message UpsertWorkflowScheduleRPCRequest { string app_id = 1; AppDTOUpsertWorkflowScheduleRequest request = 2; }
+message CleanupApplicationRPCRequest { string app_id = 1; AppDTOCleanupApplicationResourcesRequest request = 2; }
+message ResetApplicationDatabasesRPCRequest { string app_id = 1; AppDTODatabaseResetRequest request = 2; }
+message LogArchiveRPCRequest { string app_id = 1; AppDTOLogArchiveDownloadRequest request = 2; }
+message ApplicationLifecycleRPCRequest { string app_id = 1; AppDTOApplicationLifecycleRequest request = 2; }
+message ExecWorkflowRPCRequest { string app_id = 1; AppDTOExecWorkflowRequest request = 2; }
+message CancelWorkflowRPCRequest { string app_id = 1; AppDTOCancelWorkflowRequest request = 2; }
+message TaskApprovalRPCRequest { string task_id = 1; AppDTOTaskApprovalRequest request = 2; }
+message UpdateVersionRPCRequest { string app_id = 1; AppDTOUpdateVersionRequest request = 2; }
+message DiffUpdateVersionRPCRequest { string app_id = 1; AppDTODiffUpdateVersionRequest request = 2; }
+message AppDTOCreateAndExecApplicationResponse {
+  AppDTOApplicationBase application = 1 [json_name = "application"];
+  string workflow_id = 2 [json_name = "workflowId"];
+  string task_id = 3 [json_name = "taskId"];
+  string exec_status = 4 [json_name = "execStatus"];
+  string exec_error = 5 [json_name = "execError"];
+  repeated AppDTOAllowedAction allowed_actions = 6 [json_name = "allowedActions"];
+}
+
+message AppDTOCronJobInfo {
+  string name = 1 [json_name = "name"];
+  string namespace = 2 [json_name = "namespace"];
+  string schedule = 3 [json_name = "schedule"];
+  bool suspend = 4 [json_name = "suspend"];
+  string concurrency_policy = 5 [json_name = "concurrencyPolicy"];
+  optional int32 successful_jobs_history_limit = 6 [json_name = "successfulJobsHistoryLimit"];
+  optional int32 failed_jobs_history_limit = 7 [json_name = "failedJobsHistoryLimit"];
+  google.protobuf.Timestamp last_schedule_time = 8 [json_name = "lastScheduleTime"];
+  google.protobuf.Timestamp last_successful_time = 9 [json_name = "lastSuccessfulTime"];
+  google.protobuf.Timestamp create_time = 10 [json_name = "createTime"];
+}
+
+message AppDTOScheduledJobInfo {
+  string app_id = 1 [json_name = "appId"];
+  string app_name = 2 [json_name = "appName"];
+  string app_namespace = 3 [json_name = "appNamespace"];
+  string component_name = 4 [json_name = "componentName"];
+  string component_namespace = 5 [json_name = "componentNamespace"];
+  string image = 6 [json_name = "image"];
+  string schedule = 7 [json_name = "schedule"];
+  int64 start_time = 8 [json_name = "startTime"];
+  string run_policy = 9 [json_name = "runPolicy"];
+  google.protobuf.Timestamp create_time = 10 [json_name = "createTime"];
+  google.protobuf.Timestamp update_time = 11 [json_name = "updateTime"];
+}
+message AppDTOAllowedAction {
+  string name = 1 [json_name = "name"];
+  string method = 2 [json_name = "method"];
+  string path = 3 [json_name = "path"];
+  google.protobuf.Struct body = 4 [json_name = "body"];
+}
+
+message AppDTOApplicationBase {
+  string workspace_id = 1 [json_name = "workspaceID"];
+  string id = 2 [json_name = "id"];
+  string name = 3 [json_name = "name"];
+  string namespace = 4 [json_name = "namespace"];
+  string alias = 5 [json_name = "alias"];
+  string project = 6 [json_name = "project"];
+  string version = 7 [json_name = "version"];
+  string description = 8 [json_name = "description"];
+  google.protobuf.Timestamp create_time = 9 [json_name = "createTime"];
+  google.protobuf.Timestamp update_time = 10 [json_name = "updateTime"];
+  string icon = 11 [json_name = "icon"];
+  string workflow_id = 12 [json_name = "workflowId"];
+  bool template_enabled = 13 [json_name = "templateEnabled"];
+  string management_mode = 14 [json_name = "managementMode"];
+  AppDTOApplicationResources resources = 15 [json_name = "resources"];
+}
+
+message AppDTOApplicationComponent {
+  int32 id = 1 [json_name = "id"];
+  string app_id = 2 [json_name = "appId"];
+  string name = 3 [json_name = "name"];
+  string namespace = 4 [json_name = "namespace"];
+  string image = 5 [json_name = "image"];
+  int32 replicas = 6 [json_name = "replicas"];
+  string component_type = 7 [json_name = "type"];
+  AppSpecProperties properties = 8 [json_name = "properties"];
+  AppSpecTraits traits = 9 [json_name = "traits"];
+  repeated AppSpecSidecarTraitsSpec sidecars = 10 [json_name = "sidecars"];
+  repeated AppDTOComponentServiceInfo services = 11 [json_name = "services"];
+  repeated AppDTOComponentIngressInfo ingresses = 12 [json_name = "ingresses"];
+  repeated AppDTOComponentResourceConfig resource_configs = 13 [json_name = "resourceConfigs"];
+  repeated AppDTOComponentCredentialInfo credentials = 14 [json_name = "credentials"];
+  string status = 15 [json_name = "status"];
+  string last_abnormal = 16 [json_name = "lastAbnormal"];
+  repeated AppDTOExternalLink external_links = 17 [json_name = "externalLinks"];
+  google.protobuf.Timestamp create_time = 18 [json_name = "createTime"];
+  google.protobuf.Timestamp update_time = 19 [json_name = "updateTime"];
+}
+
+message AppDTOApplicationComponentStatus {
+  string name = 1 [json_name = "name"];
+  string namespace = 2 [json_name = "namespace"];
+  string type = 3 [json_name = "type"];
+  string status = 4 [json_name = "status"];
+  int32 replicas = 5 [json_name = "replicas"];
+  int32 ready_replicas = 6 [json_name = "readyReplicas"];
+  string last_abnormal = 7 [json_name = "lastAbnormal"];
+}
+
+message AppDTOApplicationComponentStatusResponse {
+  string app_id = 1 [json_name = "appId"];
+  repeated AppDTOApplicationComponentStatus components = 2 [json_name = "components"];
+}
+
+message AppDTOApplicationLifecycleRequest {
+  AppDTOWorkflowCallback callback = 1 [json_name = "callback"];
+}
+
+message AppDTOApplicationResources {
+  string cpu_req = 1 [json_name = "cpuReq"];
+  string mem_req = 2 [json_name = "memReq"];
+  string cpu_limit = 3 [json_name = "cpuLimit"];
+  string mem_limit = 4 [json_name = "memLimit"];
+  int32 replicas = 5 [json_name = "replicas"];
+}
+
+message AppDTOApplicationStatusResponse {
+  string app_id = 1 [json_name = "appId"];
+  string status = 2 [json_name = "status"];
+}
+
+message AppDTOApplicationTask {
+  string task_id = 1 [json_name = "taskId"];
+  string app_id = 2 [json_name = "appId"];
+  string workflow_id = 3 [json_name = "workflowId"];
+  string workflow_name = 4 [json_name = "workflowName"];
+  string workflow_display_name = 5 [json_name = "workflowDisplayName"];
+  string status = 6 [json_name = "status"];
+  string type = 7 [json_name = "type"];
+  string task_creator = 8 [json_name = "taskCreator"];
+  string task_revoker = 9 [json_name = "taskRevoker"];
+  google.protobuf.Timestamp create_time = 10 [json_name = "createTime"];
+  google.protobuf.Timestamp update_time = 11 [json_name = "updateTime"];
+  repeated AppDTOAllowedAction allowed_actions = 12 [json_name = "allowedActions"];
+}
+
+message AppDTOApplicationWithComponents {
+  string workspace_id = 1 [json_name = "workspaceID"];
+  string id = 2 [json_name = "id"];
+  string name = 3 [json_name = "name"];
+  string namespace = 4 [json_name = "namespace"];
+  string alias = 5 [json_name = "alias"];
+  string project = 6 [json_name = "project"];
+  string version = 7 [json_name = "version"];
+  string description = 8 [json_name = "description"];
+  google.protobuf.Timestamp create_time = 9 [json_name = "createTime"];
+  google.protobuf.Timestamp update_time = 10 [json_name = "updateTime"];
+  string icon = 11 [json_name = "icon"];
+  string workflow_id = 12 [json_name = "workflowId"];
+  bool template_enabled = 13 [json_name = "templateEnabled"];
+  string management_mode = 14 [json_name = "managementMode"];
+  AppDTOApplicationResources resources = 15 [json_name = "resources"];
+  repeated AppDTOBatchApplicationComponent components = 16 [json_name = "components"];
+}
+
+message AppDTOApplicationWorkflow {
+  string id = 1 [json_name = "id"];
+  string name = 2 [json_name = "name"];
+  string alias = 3 [json_name = "alias"];
+  string namespace = 4 [json_name = "namespace"];
+  string project_id = 5 [json_name = "projectId"];
+  string description = 6 [json_name = "description"];
+  string status = 7 [json_name = "status"];
+  bool disabled = 8 [json_name = "disabled"];
+  string failure_policy = 9 [json_name = "failurePolicy"];
+  repeated AppDTOWorkflowStepDetail steps = 10 [json_name = "steps"];
+  AppDTOWorkflowCallback callback = 11 [json_name = "callback"];
+  google.protobuf.Timestamp create_time = 12 [json_name = "createTime"];
+  google.protobuf.Timestamp update_time = 13 [json_name = "updateTime"];
+  string workflow_type = 14 [json_name = "workflowType"];
+  AppDTOUpdateApplicationWorkflowRequest spec = 15 [json_name = "spec"];
+}
+
+message AppDTOBatchApplicationComponent {
+  int32 id = 1 [json_name = "id"];
+  string app_id = 2 [json_name = "appId"];
+  string name = 3 [json_name = "name"];
+  string namespace = 4 [json_name = "namespace"];
+  int32 replicas = 5 [json_name = "replicas"];
+  string component_type = 6 [json_name = "type"];
+  AppDTOBatchApplicationComponentProperties properties = 7 [json_name = "properties"];
+}
+
+message AppDTOBatchApplicationComponentProperties {
+  repeated AppSpecPorts ports = 1 [json_name = "ports"];
+}
+
+message AppDTOBatchApplicationComponentStatusRequest {
+  repeated string app_i_ds = 1 [json_name = "appIds"];
+}
+
+message AppDTOBatchApplicationComponentStatusResponse {
+  repeated AppDTOBatchApplicationComponentStatusResult results = 1 [json_name = "results"];
+}
+
+message AppDTOBatchApplicationComponentStatusResult {
+  string app_id = 1 [json_name = "appId"];
+  string status = 2 [json_name = "status"];
+  string error = 3 [json_name = "error"];
+}
+
+message AppDTOBatchGetApplicationsRequest {
+  repeated string app_i_ds = 1 [json_name = "appIds"];
+}
+
+message AppDTOBatchGetApplicationsResponse {
+  repeated AppDTOApplicationWithComponents applications = 1 [json_name = "applications"];
+}
+
+message AppDTOCancelAllApplicationWorkflowsResponse {
+  string app_id = 1 [json_name = "appId"];
+  repeated string cancelled_task_i_ds = 2 [json_name = "cancelledTaskIds"];
+}
+
+message AppDTOCancelWorkflowRequest {
+  string task_id = 1 [json_name = "taskId"];
+  string user = 2 [json_name = "user"];
+  string reason = 3 [json_name = "reason"];
+}
+
+message AppDTOCancelWorkflowResponse {
+  string task_id = 1 [json_name = "taskId"];
+  string status = 2 [json_name = "status"];
+}
+
+message AppDTOCleanupApplicationResourcesPlanResponse {
+  string app_id = 1 [json_name = "appId"];
+  string plan_fingerprint = 2 [json_name = "planFingerprint"];
+  repeated AppDTOImportNamespaceResourceResult resource_results = 3 [json_name = "resourceResults"];
+  repeated string warnings = 4 [json_name = "warnings"];
+}
+
+message AppDTOCleanupApplicationResourcesRequest {
+  string plan_fingerprint = 1 [json_name = "planFingerprint"];
+}
+
+message AppDTOCleanupApplicationResourcesResponse {
+  string app_id = 1 [json_name = "appId"];
+  string task_id = 2 [json_name = "taskId"];
+  repeated string deleted_resources = 3 [json_name = "deletedResources"];
+  repeated string failed_resources = 4 [json_name = "failedResources"];
+  repeated string retained_resources = 5 [json_name = "retainedResources"];
+}
+
+message AppDTOComponentContainerInfo {
+  string name = 1 [json_name = "name"];
+  string image = 2 [json_name = "image"];
+  bool ready = 3 [json_name = "ready"];
+  int32 restart_count = 4 [json_name = "restartCount"];
+  string state = 5 [json_name = "state"];
+  string reason = 6 [json_name = "reason"];
+}
+
+message AppDTOComponentContainersResponse {
+  string app_id = 1 [json_name = "appId"];
+  string component_name = 2 [json_name = "componentName"];
+  string component_type = 3 [json_name = "componentType"];
+  repeated AppDTOComponentPodContainers pods = 4 [json_name = "pods"];
+}
+
+message AppDTOComponentCredentialInfo {
+  string source = 1 [json_name = "source"];
+  string env_name = 2 [json_name = "envName"];
+  string secret_name = 3 [json_name = "secretName"];
+  string key = 4 [json_name = "key"];
+  string value = 5 [json_name = "value"];
+  bool resolved = 6 [json_name = "resolved"];
+}
+
+message AppDTOComponentIngressInfo {
+  string name = 1 [json_name = "name"];
+  string namespace = 2 [json_name = "namespace"];
+  string ingress_class_name = 3 [json_name = "ingressClassName"];
+  map<string, string> annotations = 4 [json_name = "annotations"];
+  repeated AppSpecIngressTLSConfig tls = 5 [json_name = "tls"];
+  repeated AppDTOComponentIngressRouteInfo routes = 6 [json_name = "routes"];
+}
+
+message AppDTOComponentIngressRouteInfo {
+  string host = 1 [json_name = "host"];
+  string path = 2 [json_name = "path"];
+  string path_type = 3 [json_name = "pathType"];
+  string service_name = 4 [json_name = "serviceName"];
+  int32 service_port = 5 [json_name = "servicePort"];
+  int32 weight = 6 [json_name = "weight"];
+  map<string, string> headers = 7 [json_name = "headers"];
+  AppSpecRewritePolicy rewrite = 8 [json_name = "rewrite"];
+}
+
+message AppDTOComponentPodContainers {
+  string pod_name = 1 [json_name = "podName"];
+  string namespace = 2 [json_name = "namespace"];
+  string phase = 3 [json_name = "phase"];
+  repeated AppDTOComponentContainerInfo containers = 4 [json_name = "containers"];
+}
+
+message AppDTOComponentResourceConfig {
+  string scope = 1 [json_name = "scope"];
+  string name = 2 [json_name = "name"];
+  string cpu = 3 [json_name = "cpu"];
+  string memory = 4 [json_name = "memory"];
+  string cpu_limit = 5 [json_name = "cpuLimit"];
+  string memory_limit = 6 [json_name = "memoryLimit"];
+  string gpu = 7 [json_name = "gpu"];
+}
+
+message AppDTOComponentServiceInfo {
+  string name = 1 [json_name = "name"];
+  string namespace = 2 [json_name = "namespace"];
+  string type = 3 [json_name = "type"];
+  bool headless = 4 [json_name = "headless"];
+  string external_name = 5 [json_name = "externalName"];
+  repeated AppDTOComponentServicePortInfo ports = 6 [json_name = "ports"];
+}
+
+message AppDTOComponentServicePortInfo {
+  string name = 1 [json_name = "name"];
+  int32 port = 2 [json_name = "port"];
+  int32 target_port = 3 [json_name = "targetPort"];
+  string protocol = 4 [json_name = "protocol"];
+}
+
+message AppDTOComponentTaskStatus {
+  string name = 1 [json_name = "name"];
+  string type = 2 [json_name = "type"];
+  string status = 3 [json_name = "status"];
+  string error = 4 [json_name = "error"];
+  int64 start_time = 5 [json_name = "startTime"];
+  int64 end_time = 6 [json_name = "endTime"];
+}
+
+message AppDTOComponentUpdateSpec {
+  string action = 1 [json_name = "action"];
+  string name = 2 [json_name = "name"];
+  string image = 3 [json_name = "image"];
+  optional int32 replicas = 4 [json_name = "replicas"];
+  map<string, string> env = 5 [json_name = "env"];
+  string component_type = 6 [json_name = "type"];
+  AppSpecProperties properties = 7 [json_name = "properties"];
+  AppSpecTraits traits = 8 [json_name = "traits"];
+}
+
+message AppDTOConvertApplicationsRequest {
+  string yaml = 1 [json_name = "yaml"];
+  string file_url = 2 [json_name = "fileUrl"];
+  optional bool validate = 3 [json_name = "validate"];
+}
+
+message AppDTOConvertApplicationsResponse {
+  repeated AppDTOCreateComponentRequest components = 1 [json_name = "components"];
+  bool valid = 2 [json_name = "valid"];
+  repeated AppDTOValidationError errors = 3 [json_name = "errors"];
+  repeated string warnings = 4 [json_name = "warnings"];
+}
+
+message AppDTOCreateAndExecApplicationRequest {
+  string id = 1 [json_name = "id"];
+  string name = 2 [json_name = "name"];
+  string namespace = 3 [json_name = "namespace"];
+  string alias = 4 [json_name = "alias"];
+  string version = 5 [json_name = "version"];
+  string project = 6 [json_name = "project"];
+  string description = 7 [json_name = "description"];
+  string icon = 8 [json_name = "icon"];
+  repeated AppDTOCreateComponentRequest components = 9 [json_name = "components"];
+  repeated AppDTOCreateWorkflowStepRequest workflow = 10 [json_name = "workflow"];
+  AppDTOWorkflowCallback callback = 11 [json_name = "callback"];
+  string failure_policy = 12 [json_name = "failurePolicy"];
+  optional bool template_enabled = 13 [json_name = "templateEnabled"];
+  string workflow_id = 14 [json_name = "workflowId"];
+  int64 execute_at = 15 [json_name = "executeAt"];
+}
+
+message AppDTOCreateApplicationsRequest {
+  string id = 1 [json_name = "id"];
+  string name = 2 [json_name = "name"];
+  string namespace = 3 [json_name = "namespace"];
+  string alias = 4 [json_name = "alias"];
+  string version = 5 [json_name = "version"];
+  string project = 6 [json_name = "project"];
+  string description = 7 [json_name = "description"];
+  string icon = 8 [json_name = "icon"];
+  repeated AppDTOCreateComponentRequest components = 9 [json_name = "components"];
+  repeated AppDTOCreateWorkflowStepRequest workflow = 10 [json_name = "workflow"];
+  AppDTOWorkflowCallback callback = 11 [json_name = "callback"];
+  string failure_policy = 12 [json_name = "failurePolicy"];
+  optional bool template_enabled = 13 [json_name = "templateEnabled"];
+}
+
+message AppDTOCreateComponentRequest {
+  string name = 1 [json_name = "name"];
+  string component_type = 2 [json_name = "type"];
+  string image = 3 [json_name = "image"];
+  string namespace = 4 [json_name = "namespace"];
+  int32 replicas = 5 [json_name = "replicas"];
+  AppSpecProperties properties = 6 [json_name = "properties"];
+  AppSpecTraits traits = 7 [json_name = "traits"];
+  AppDTOTemplateRef template = 8 [json_name = "tmp"];
+}
+
+message AppDTOCreateWorkflowStepRequest {
+  string scheduling_class = 1 [json_name = "schedulingClass"];
+  string name = 2 [json_name = "name"];
+  string step_type = 3 [json_name = "stepType"];
+  string workflow_type = 4 [json_name = "jobType"];
+  AppDTOWorkflowStepApproval approval = 5 [json_name = "approval"];
+  AppDTOWorkflowProperties properties = 6 [json_name = "properties"];
+  repeated string components = 7 [json_name = "components"];
+  string mode = 8 [json_name = "mode"];
+  repeated AppDTOCreateWorkflowSubStepRequest sub_steps = 9 [json_name = "subSteps"];
+}
+
+message AppDTOCreateWorkflowSubStepRequest {
+  string scheduling_class = 1 [json_name = "schedulingClass"];
+  string name = 2 [json_name = "name"];
+  string workflow_type = 3 [json_name = "jobType"];
+  AppDTOWorkflowProperties properties = 4 [json_name = "properties"];
+  repeated string components = 5 [json_name = "components"];
+}
+
+message AppDTODatabaseResetRequest {
+  repeated string components = 1 [json_name = "components"];
+  string init_sqlurl = 2 [json_name = "initSqlUrl"];
+}
+
+message AppDTODatabaseResetResponse {
+  string app_id = 1 [json_name = "appId"];
+  string workflow_id = 2 [json_name = "workflowId"];
+  string task_id = 3 [json_name = "taskId"];
+  repeated string database_components = 4 [json_name = "databaseComponents"];
+  repeated string restart_components = 5 [json_name = "restartComponents"];
+}
+
+message AppDTODeleteApplicationRequest {
+  optional int64 wait_seconds = 1 [json_name = "waitSeconds"];
+}
+
+message AppDTODeleteApplicationResponse {
+  string app_id = 1 [json_name = "appId"];
+  repeated string cancelled_task_i_ds = 2 [json_name = "cancelledTaskIds"];
+  repeated string active_task_i_ds = 3 [json_name = "activeTaskIds"];
+  repeated string deleted_resources = 4 [json_name = "deletedResources"];
+  repeated string failed_resources = 5 [json_name = "failedResources"];
+  repeated string warnings = 6 [json_name = "warnings"];
+  AppDTODeleteResourceCount deleted_counts = 7 [json_name = "deletedCounts"];
+  bool resources_retained = 8 [json_name = "resourcesRetained"];
+}
+
+message AppDTODeleteResourceCount {
+  int64 schedules = 1 [json_name = "schedules"];
+  int64 workflows = 2 [json_name = "workflows"];
+  int64 components = 3 [json_name = "components"];
+  int64 tasks = 4 [json_name = "tasks"];
+  int64 jobs = 5 [json_name = "jobs"];
+  int64 apps = 6 [json_name = "apps"];
+}
+
+message AppDTODeleteWorkflowScheduleResponse {
+  string workflow_id = 1 [json_name = "workflowId"];
+}
+
+message AppDTODiffUpdateVersionRequest {
+  string source_app_id = 1 [json_name = "sourceAppId"];
+  bool dry_run = 2 [json_name = "dryRun"];
+  string target_only_strategy = 3 [json_name = "targetOnlyStrategy"];
+  string strategy = 4 [json_name = "strategy"];
+  string execution_scope = 5 [json_name = "executionScope"];
+  string workflow_id = 6 [json_name = "workflowId"];
+  int64 execute_at = 7 [json_name = "executeAt"];
+  optional bool auto_exec = 8 [json_name = "autoExec"];
+  string description = 9 [json_name = "description"];
+}
+
+message AppDTODiffUpdateVersionResponse {
+  string target_app_id = 1 [json_name = "targetAppId"];
+  string source_app_id = 2 [json_name = "sourceAppId"];
+  string target_previous_version = 3 [json_name = "targetPreviousVersion"];
+  string target_version = 4 [json_name = "targetVersion"];
+  string source_version = 5 [json_name = "sourceVersion"];
+  bool dry_run = 6 [json_name = "dryRun"];
+  string target_only_strategy = 7 [json_name = "targetOnlyStrategy"];
+  bool version_changed = 8 [json_name = "versionChanged"];
+  bool has_changes = 9 [json_name = "hasChanges"];
+  bool executable = 10 [json_name = "executable"];
+  repeated AppDTOVersionComponentDiff updated_components = 11 [json_name = "updatedComponents"];
+  repeated AppDTOVersionComponentDiff added_components = 12 [json_name = "addedComponents"];
+  repeated AppDTOVersionComponentDiff extra_components = 13 [json_name = "extraComponents"];
+  repeated AppDTOVersionComponentDiff blocked_components = 14 [json_name = "blockedComponents"];
+  AppDTOUpdateVersionResponse update_result = 15 [json_name = "updateResult"];
+}
+
+message AppDTOExecComponentShellScriptRequest {
+  string script = 1 [json_name = "script"];
+  string container = 2 [json_name = "container"];
+}
+
+message AppDTOExecComponentShellScriptResponse {
+  string namespace = 1 [json_name = "namespace"];
+  string pod_name = 2 [json_name = "podName"];
+  string container_name = 3 [json_name = "containerName"];
+  string stdout = 4 [json_name = "stdout"];
+  string stderr = 5 [json_name = "stderr"];
+  int32 exit_code = 6 [json_name = "exitCode"];
+  bool succeeded = 7 [json_name = "succeeded"];
+}
+
+message AppDTOExecWorkflowRequest {
+  string workflow_id = 1 [json_name = "workflowId"];
+  int64 execute_at = 2 [json_name = "executeAt"];
+}
+
+message AppDTOExecWorkflowResponse {
+  string task_id = 1 [json_name = "taskId"];
+  string status = 2 [json_name = "status"];
+  repeated AppDTOAllowedAction allowed_actions = 3 [json_name = "allowedActions"];
+}
+
+message AppDTOExecutionPlan {
+  repeated AppDTOPlanAction actions = 1 [json_name = "actions"];
+}
+
+message AppDTOExportComponentFilesRequest {
+  string path = 1 [json_name = "path"];
+  string container = 2 [json_name = "container"];
+}
+
+message AppDTOExternalLink {
+  string type = 1 [json_name = "type"];
+  string value = 2 [json_name = "value"];
+}
+
+message AppDTOImportNamespaceAppResult {
+  string app_id = 1 [json_name = "appId"];
+  string name = 2 [json_name = "name"];
+  bool workflow_disabled = 3 [json_name = "workflowDisabled"];
+  repeated string components = 4 [json_name = "components"];
+  string error = 5 [json_name = "error"];
+}
+
+message AppDTOImportNamespaceApplicationMapping {
+  string name = 1 [json_name = "name"];
+  string alias = 2 [json_name = "alias"];
+  string target_app_id = 3 [json_name = "targetAppId"];
+  repeated AppDTOImportNamespaceComponentMapping components = 4 [json_name = "components"];
+}
+
+message AppDTOImportNamespaceApplicationsRequest {
+  string namespace = 1 [json_name = "namespace"];
+  string mode = 2 [json_name = "mode"];
+  string management_mode = 3 [json_name = "managementMode"];
+  repeated AppDTOImportNamespaceApplicationMapping applications = 4 [json_name = "applications"];
+  string plan_fingerprint = 5 [json_name = "planFingerprint"];
+  repeated string include_kinds = 6 [json_name = "includeKinds"];
+}
+
+message AppDTOImportNamespaceApplicationsResponse {
+  string namespace = 1 [json_name = "namespace"];
+  string mode = 2 [json_name = "mode"];
+  string management_mode = 3 [json_name = "managementMode"];
+  string plan_fingerprint = 4 [json_name = "planFingerprint"];
+  AppDTOImportNamespaceSummary summary = 5 [json_name = "summary"];
+  repeated AppDTOImportNamespaceAppResult apps = 6 [json_name = "apps"];
+  repeated AppDTOImportNamespaceResourceResult resource_results = 7 [json_name = "resourceResults"];
+  repeated string warnings = 8 [json_name = "warnings"];
+}
+
+message AppDTOImportNamespaceComponentMapping {
+  string name = 1 [json_name = "name"];
+  AppDTOImportNamespaceWorkloadReference workload = 2 [json_name = "workload"];
+}
+
+message AppDTOImportNamespaceResourceIdentity {
+  string api_version = 1 [json_name = "apiVersion"];
+  string kind = 2 [json_name = "kind"];
+  string namespace = 3 [json_name = "namespace"];
+  string name = 4 [json_name = "name"];
+  string uid = 5 [json_name = "uid"];
+  string resource_version = 6 [json_name = "resourceVersion"];
+  string spec_digest = 7 [json_name = "specDigest"];
+}
+
+message AppDTOImportNamespaceResourceResult {
+  string kind = 1 [json_name = "kind"];
+  string namespace = 2 [json_name = "namespace"];
+  string name = 3 [json_name = "name"];
+  AppDTOImportNamespaceResourceIdentity source = 4 [json_name = "source"];
+  string app_id = 5 [json_name = "appId"];
+  string component_name = 6 [json_name = "componentName"];
+  string dependency_role = 7 [json_name = "dependencyRole"];
+  string ownership = 8 [json_name = "ownership"];
+  string disposition = 9 [json_name = "disposition"];
+  string status = 10 [json_name = "status"];
+  string error = 11 [json_name = "error"];
+}
+
+message AppDTOImportNamespaceSummary {
+  int32 apps_planned = 1 [json_name = "appsPlanned"];
+  int32 apps_applied = 2 [json_name = "appsApplied"];
+  int32 components_planned = 3 [json_name = "componentsPlanned"];
+  int32 components_applied = 4 [json_name = "componentsApplied"];
+  int32 resources_scanned = 5 [json_name = "resourcesScanned"];
+  int32 resources_labeled_success = 6 [json_name = "resourcesLabeledSuccess"];
+  int32 resources_labeled_failed = 7 [json_name = "resourcesLabeledFailed"];
+}
+
+message AppDTOImportNamespaceWorkloadReference {
+  string api_version = 1 [json_name = "apiVersion"];
+  string kind = 2 [json_name = "kind"];
+  string name = 3 [json_name = "name"];
+}
+
+message AppDTOListApplicationComponentsResponse {
+  repeated AppDTOApplicationComponent components = 1 [json_name = "components"];
+}
+
+message AppDTOListApplicationResponse {
+  repeated AppDTOApplicationBase applications = 1 [json_name = "applications"];
+}
+
+message AppDTOListApplicationTasksResponse {
+  repeated AppDTOApplicationTask tasks = 1 [json_name = "tasks"];
+}
+
+message AppDTOListApplicationWorkflowsResponse {
+  repeated AppDTOApplicationWorkflow workflows = 1 [json_name = "workflows"];
+}
+
+message AppDTOListWorkflowSchedulesResponse {
+  repeated AppDTOWorkflowSchedule schedules = 1 [json_name = "schedules"];
+}
+
+message AppDTOLogArchiveDownloadRequest {
+  string name = 1 [json_name = "name"];
+  string job_type = 2 [json_name = "jobType"];
+  string mode = 3 [json_name = "mode"];
+  repeated string components = 4 [json_name = "components"];
+  string path = 5 [json_name = "path"];
+  string container = 6 [json_name = "container"];
+}
+
+message AppDTOPlanAction {
+  int32 order = 1 [json_name = "order"];
+  string action = 2 [json_name = "action"];
+  string target = 3 [json_name = "target"];
+  string target_type = 4 [json_name = "targetType"];
+  string job_type = 5 [json_name = "jobType"];
+  repeated string components = 6 [json_name = "components"];
+  string mode = 7 [json_name = "mode"];
+}
+
+message AppDTORestartApplicationWorkloadsResponse {
+  string app_id = 1 [json_name = "appId"];
+  string task_id = 2 [json_name = "taskId"];
+  string restarted_at = 3 [json_name = "restartedAt"];
+  repeated string restarted_resources = 4 [json_name = "restartedResources"];
+  repeated string skipped_resources = 5 [json_name = "skippedResources"];
+  repeated string failed_resources = 6 [json_name = "failedResources"];
+}
+
+message AppDTOStartApplicationDeploymentsResponse {
+  string app_id = 1 [json_name = "appId"];
+  string task_id = 2 [json_name = "taskId"];
+  string started_at = 3 [json_name = "startedAt"];
+  repeated string started_resources = 4 [json_name = "startedResources"];
+  repeated string skipped_resources = 5 [json_name = "skippedResources"];
+  repeated string failed_resources = 6 [json_name = "failedResources"];
+}
+
+message AppDTOStopApplicationDeploymentsResponse {
+  string app_id = 1 [json_name = "appId"];
+  string task_id = 2 [json_name = "taskId"];
+  string stopped_at = 3 [json_name = "stoppedAt"];
+  repeated string stopped_resources = 4 [json_name = "stoppedResources"];
+  repeated string skipped_resources = 5 [json_name = "skippedResources"];
+  repeated string failed_resources = 6 [json_name = "failedResources"];
+}
+
+message AppDTOTaskApprovalRequest {
+  string action = 1 [json_name = "action"];
+  string user = 2 [json_name = "user"];
+  string reason = 3 [json_name = "reason"];
+}
+
+message AppDTOTaskApprovalResponse {
+  string task_id = 1 [json_name = "taskId"];
+  string action = 2 [json_name = "action"];
+  string status = 3 [json_name = "status"];
+}
+
+message AppDTOTaskStageDetail {
+  int32 id = 1 [json_name = "id"];
+  string name = 2 [json_name = "name"];
+  string type = 3 [json_name = "type"];
+  string status = 4 [json_name = "status"];
+  repeated AppDTOTaskStageMessage info = 5 [json_name = "info"];
+  repeated AppDTOTaskStageMessage error = 6 [json_name = "error"];
+  int64 start_time = 7 [json_name = "startTime"];
+  int64 end_time = 8 [json_name = "endTime"];
+}
+
+message AppDTOTaskStageMessage {
+  string component = 1 [json_name = "component"];
+  string type = 2 [json_name = "type"];
+  string message = 3 [json_name = "message"];
+}
+
+message AppDTOTaskStagesResponse {
+  string task_id = 1 [json_name = "taskId"];
+  string status = 2 [json_name = "status"];
+  string workflow_id = 3 [json_name = "workflowId"];
+  string workflow_name = 4 [json_name = "workflowName"];
+  string app_id = 5 [json_name = "appId"];
+  string type = 6 [json_name = "type"];
+  string pending_approval_step = 7 [json_name = "pendingApprovalStep"];
+  repeated AppDTOTaskStageDetail stages = 8 [json_name = "stages"];
+  repeated AppDTOAllowedAction allowed_actions = 9 [json_name = "allowedActions"];
+}
+
+message AppDTOTaskStatusResponse {
+  string task_id = 1 [json_name = "taskId"];
+  string status = 2 [json_name = "status"];
+  string workflow_id = 3 [json_name = "workflowId"];
+  string workflow_name = 4 [json_name = "workflowName"];
+  string app_id = 5 [json_name = "appId"];
+  string type = 6 [json_name = "type"];
+  string pending_approval_step = 7 [json_name = "pendingApprovalStep"];
+  repeated AppDTOComponentTaskStatus components = 8 [json_name = "components"];
+  repeated AppDTOAllowedAction allowed_actions = 9 [json_name = "allowedActions"];
+}
+
+message AppDTOTemplateRef {
+  string id = 1 [json_name = "id"];
+  string target = 2 [json_name = "target"];
+  string default_storage_class = 3 [json_name = "defaultStorageClass"];
+}
+
+message AppDTOTryApplicationResponse {
+  bool valid = 1 [json_name = "valid"];
+  repeated AppDTOTryValidationError errors = 2 [json_name = "errors"];
+  AppDTOCreateApplicationsRequest normalized_spec = 3 [json_name = "normalizedSpec"];
+  AppDTOExecutionPlan plan = 4 [json_name = "plan"];
+}
+
+message AppDTOTryImportNamespaceAppResult {
+  string app_id = 1 [json_name = "appId"];
+  string name = 2 [json_name = "name"];
+  repeated string scanned_components = 3 [json_name = "scannedComponents"];
+  repeated string orphan_component_names = 4 [json_name = "orphanComponentNames"];
+  string error = 5 [json_name = "error"];
+}
+
+message AppDTOTryImportNamespaceApplicationsRequest {
+  string namespace = 1 [json_name = "namespace"];
+  repeated string include_kinds = 2 [json_name = "includeKinds"];
+}
+
+message AppDTOTryImportNamespaceApplicationsResponse {
+  string namespace = 1 [json_name = "namespace"];
+  AppDTOTryImportNamespaceSummary summary = 2 [json_name = "summary"];
+  repeated AppDTOTryImportNamespaceAppResult apps = 3 [json_name = "apps"];
+  repeated AppDTOTryImportNamespaceOrphanComponent orphan_components = 4 [json_name = "orphanComponents"];
+  repeated string warnings = 5 [json_name = "warnings"];
+}
+
+message AppDTOTryImportNamespaceOrphanComponent {
+  string app_id = 1 [json_name = "appId"];
+  string app_name = 2 [json_name = "appName"];
+  string component_name = 3 [json_name = "componentName"];
+  string component_type = 4 [json_name = "componentType"];
+  string reason = 5 [json_name = "reason"];
+  repeated string matched_include_kinds = 6 [json_name = "matchedIncludeKinds"];
+}
+
+message AppDTOTryImportNamespaceSummary {
+  int32 resources_scanned = 1 [json_name = "resourcesScanned"];
+  int32 apps_matched = 2 [json_name = "appsMatched"];
+  int32 orphans_detected = 3 [json_name = "orphansDetected"];
+}
+
+message AppDTOTryValidationError {
+  string path = 1 [json_name = "path"];
+  string code = 2 [json_name = "code"];
+  string message = 3 [json_name = "message"];
+}
+
+message AppDTOTryWorkflowRequest {
+  string workflow_id = 1 [json_name = "workflowId"];
+  string name = 2 [json_name = "name"];
+  string alias = 3 [json_name = "alias"];
+  string workflow_type = 4 [json_name = "workflowType"];
+  AppDTOWorkflowCallback callback = 5 [json_name = "callback"];
+  string failure_policy = 6 [json_name = "failurePolicy"];
+  repeated AppDTOCreateWorkflowStepRequest workflow = 7 [json_name = "workflow"];
+}
+
+message AppDTOTryWorkflowResponse {
+  bool valid = 1 [json_name = "valid"];
+  repeated AppDTOTryValidationError errors = 2 [json_name = "errors"];
+  AppDTOUpdateApplicationWorkflowRequest normalized_spec = 3 [json_name = "normalizedSpec"];
+  AppDTOExecutionPlan plan = 4 [json_name = "plan"];
+}
+
+message AppDTOUpdateApplicationWorkflowRequest {
+  string workflow_id = 1 [json_name = "workflowId"];
+  string name = 2 [json_name = "name"];
+  string alias = 3 [json_name = "alias"];
+  AppDTOWorkflowCallback callback = 4 [json_name = "callback"];
+  string workflow_type = 5 [json_name = "workflowType"];
+  string failure_policy = 6 [json_name = "failurePolicy"];
+  repeated AppDTOCreateWorkflowStepRequest workflow = 7 [json_name = "workflow"];
+}
+
+message AppDTOUpdateVersionRequest {
+  string version = 1 [json_name = "version"];
+  string strategy = 2 [json_name = "strategy"];
+  string execution_scope = 3 [json_name = "executionScope"];
+  repeated AppDTOComponentUpdateSpec components = 4 [json_name = "components"];
+  string workflow_id = 5 [json_name = "workflowId"];
+  int64 execute_at = 6 [json_name = "executeAt"];
+  int64 image_ready_timeout_seconds = 7 [json_name = "imageReadyTimeoutSeconds"];
+  optional bool auto_exec = 8 [json_name = "autoExec"];
+  AppDTOWorkflowCallback callback = 9 [json_name = "callback"];
+  string description = 10 [json_name = "description"];
+}
+
+message AppDTOUpdateVersionResponse {
+  string app_id = 1 [json_name = "appId"];
+  string version = 2 [json_name = "version"];
+  string previous_version = 3 [json_name = "previousVersion"];
+  string strategy = 4 [json_name = "strategy"];
+  string execution_scope = 5 [json_name = "executionScope"];
+  string task_id = 6 [json_name = "taskId"];
+  string workflow_id = 7 [json_name = "workflowId"];
+  repeated string updated_components = 8 [json_name = "updatedComponents"];
+  repeated string added_components = 9 [json_name = "addedComponents"];
+  repeated string removed_components = 10 [json_name = "removedComponents"];
+  repeated string restarted_components = 11 [json_name = "restartedComponents"];
+}
+
+message AppDTOUpdateWorkflowResponse {
+  string workflow_id = 1 [json_name = "workflowId"];
+}
+
+message AppDTOUpsertWorkflowScheduleRequest {
+  string workflow_id = 1 [json_name = "workflowId"];
+  string cron = 2 [json_name = "cron"];
+  optional bool enabled = 3 [json_name = "enabled"];
+}
+
+message AppDTOUpsertWorkflowScheduleResponse {
+  AppDTOWorkflowSchedule schedule = 1 [json_name = "schedule"];
+}
+
+message AppDTOValidationError {
+  string field = 1 [json_name = "field"];
+  string code = 2 [json_name = "code"];
+  string message = 3 [json_name = "message"];
+}
+
+message AppDTOVersionComponentDiff {
+  string action = 1 [json_name = "action"];
+  string name = 2 [json_name = "name"];
+  string type = 3 [json_name = "type"];
+  string reason = 4 [json_name = "reason"];
+  repeated AppDTOVersionComponentField fields = 5 [json_name = "fields"];
+  AppDTOVersionComponentState before = 6 [json_name = "before"];
+  AppDTOVersionComponentState after = 7 [json_name = "after"];
+}
+
+message AppDTOVersionComponentField {
+  string field = 1 [json_name = "field"];
+  google.protobuf.Value before = 2 [json_name = "before"];
+  google.protobuf.Value after = 3 [json_name = "after"];
+}
+
+message AppDTOVersionComponentState {
+  string name = 1 [json_name = "name"];
+  string type = 2 [json_name = "type"];
+  string image = 3 [json_name = "image"];
+  int32 replicas = 4 [json_name = "replicas"];
+  AppSpecProperties properties = 5 [json_name = "properties"];
+  AppSpecTraits traits = 6 [json_name = "traits"];
+}
+
+message AppDTOWorkflowCallback {
+  string success = 1 [json_name = "success"];
+  string failure = 2 [json_name = "failure"];
+  string timeout = 3 [json_name = "timeout"];
+  string reject = 4 [json_name = "reject"];
+  string cancelled = 5 [json_name = "cancelled"];
+  map<string, string> methods = 6 [json_name = "methods"];
+  map<string, string> headers = 7 [json_name = "headers"];
+  int64 timeout_seconds = 8 [json_name = "timeoutSeconds"];
+}
+
+message AppDTOWorkflowProperties {
+  repeated string policies = 1 [json_name = "policies"];
+  string path = 2 [json_name = "path"];
+  string container = 3 [json_name = "container"];
+  string init_sqlurl = 4 [json_name = "initSqlUrl"];
+}
+
+message AppDTOWorkflowSchedule {
+  string id = 1 [json_name = "id"];
+  string app_id = 2 [json_name = "appId"];
+  string workflow_id = 3 [json_name = "workflowId"];
+  string workflow_name = 4 [json_name = "workflowName"];
+  string workflow_alias = 5 [json_name = "workflowAlias"];
+  string cron = 6 [json_name = "cron"];
+  bool enabled = 7 [json_name = "enabled"];
+  int64 next_run = 8 [json_name = "nextRun"];
+  int64 last_run = 9 [json_name = "lastRun"];
+  google.protobuf.Timestamp create_time = 10 [json_name = "createTime"];
+  google.protobuf.Timestamp update_time = 11 [json_name = "updateTime"];
+}
+
+message AppDTOWorkflowStepApproval {
+  string notify_url = 1 [json_name = "notifyUrl"];
+  string message = 2 [json_name = "message"];
+  string method = 3 [json_name = "method"];
+  map<string, string> headers = 4 [json_name = "headers"];
+  int64 timeout_seconds = 5 [json_name = "timeoutSeconds"];
+}
+
+message AppDTOWorkflowStepDetail {
+  string scheduling_class = 1 [json_name = "schedulingClass"];
+  string name = 2 [json_name = "name"];
+  string step_type = 3 [json_name = "stepType"];
+  string workflow_type = 4 [json_name = "workflowType"];
+  string mode = 5 [json_name = "mode"];
+  AppDTOWorkflowStepApproval approval = 6 [json_name = "approval"];
+  repeated string components = 7 [json_name = "components"];
+  repeated AppDTOWorkflowProperties properties = 8 [json_name = "properties"];
+  repeated AppDTOWorkflowSubStepDetail sub_steps = 9 [json_name = "subSteps"];
+}
+
+message AppDTOWorkflowSubStepDetail {
+  string scheduling_class = 1 [json_name = "schedulingClass"];
+  string name = 2 [json_name = "name"];
+  string workflow_type = 3 [json_name = "workflowType"];
+  repeated string components = 4 [json_name = "components"];
+  repeated AppDTOWorkflowProperties properties = 5 [json_name = "properties"];
+}
+
+message AppKubeCoreAppArmorProfile {
+  string type = 1 [json_name = "type"];
+  optional string localhost_profile = 2 [json_name = "localhostProfile"];
+}
+
+message AppKubeCoreCapabilities {
+  repeated string add = 1 [json_name = "add"];
+  repeated string drop = 2 [json_name = "drop"];
+}
+
+message AppKubeCoreSELinuxOptions {
+  string user = 1 [json_name = "user"];
+  string role = 2 [json_name = "role"];
+  string type = 3 [json_name = "type"];
+  string level = 4 [json_name = "level"];
+}
+
+message AppKubeCoreSeccompProfile {
+  string type = 1 [json_name = "type"];
+  optional string localhost_profile = 2 [json_name = "localhostProfile"];
+}
+
+message AppKubeCoreSecurityContext {
+  AppKubeCoreCapabilities capabilities = 1 [json_name = "capabilities"];
+  optional bool privileged = 2 [json_name = "privileged"];
+  AppKubeCoreSELinuxOptions se_linux_options = 3 [json_name = "seLinuxOptions"];
+  AppKubeCoreWindowsSecurityContextOptions windows_options = 4 [json_name = "windowsOptions"];
+  optional int64 run_as_user = 5 [json_name = "runAsUser"];
+  optional int64 run_as_group = 6 [json_name = "runAsGroup"];
+  optional bool run_as_non_root = 7 [json_name = "runAsNonRoot"];
+  optional bool read_only_root_filesystem = 8 [json_name = "readOnlyRootFilesystem"];
+  optional bool allow_privilege_escalation = 9 [json_name = "allowPrivilegeEscalation"];
+  optional string proc_mount = 10 [json_name = "procMount"];
+  AppKubeCoreSeccompProfile seccomp_profile = 11 [json_name = "seccompProfile"];
+  AppKubeCoreAppArmorProfile app_armor_profile = 12 [json_name = "appArmorProfile"];
+}
+
+message AppKubeCoreWindowsSecurityContextOptions {
+  optional string gmsa_credential_spec_name = 1 [json_name = "gmsaCredentialSpecName"];
+  optional string gmsa_credential_spec = 2 [json_name = "gmsaCredentialSpec"];
+  optional string run_as_user_name = 3 [json_name = "runAsUserName"];
+  optional bool host_process = 4 [json_name = "hostProcess"];
+}
+
+message AppSpecCloudSpec {
+  string provider = 1 [json_name = "provider"];
+  string action = 2 [json_name = "action"];
+  google.protobuf.Struct params = 3 [json_name = "params"];
+}
+
+message AppSpecConfigMapSelectorSpec {
+  string name = 1 [json_name = "name"];
+  string key = 2 [json_name = "key"];
+}
+
+message AppSpecEnvFromSourceSpec {
+  string type = 1 [json_name = "type"];
+  string source_name = 2 [json_name = "sourceName"];
+}
+
+message AppSpecExecProbe {
+  repeated string command = 1 [json_name = "command"];
+}
+
+message AppSpecHTTPGetProbe {
+  string path = 1 [json_name = "path"];
+  int32 port = 2 [json_name = "port"];
+  string host = 3 [json_name = "host"];
+  string scheme = 4 [json_name = "scheme"];
+}
+
+message AppSpecIngressRoute {
+  string service_name = 1 [json_name = "serviceName"];
+  int32 service_port = 2 [json_name = "servicePort"];
+  int32 weight = 3 [json_name = "weight"];
+  map<string, string> headers = 4 [json_name = "headers"];
+}
+
+message AppSpecIngressRoutes {
+  string path = 1 [json_name = "path"];
+  string path_type = 2 [json_name = "pathType"];
+  string host = 3 [json_name = "host"];
+  AppSpecIngressRoute backend = 4 [json_name = "backend"];
+  AppSpecRewritePolicy rewrite = 5 [json_name = "rewrite"];
+}
+
+message AppSpecIngressTLSConfig {
+  string secret_name = 1 [json_name = "secretName"];
+  repeated string hosts = 2 [json_name = "hosts"];
+}
+
+message AppSpecIngressTraitsSpec {
+  string name = 1 [json_name = "name"];
+  string namespace = 2 [json_name = "namespace"];
+  repeated string hosts = 3 [json_name = "hosts"];
+  map<string, string> label = 4 [json_name = "label"];
+  map<string, string> annotations = 5 [json_name = "annotations"];
+  string ingress_class_name = 6 [json_name = "ingressClassName"];
+  string default_path_type = 7 [json_name = "defaultPathType"];
+  repeated AppSpecIngressTLSConfig tls = 8 [json_name = "tls"];
+  repeated AppSpecIngressRoutes routes = 9 [json_name = "routes"];
+}
+
+message AppSpecInitTraitSpec {
+  string name = 1 [json_name = "name"];
+  string image = 2 [json_name = "image"];
+  AppSpecTraits traits = 3 [json_name = "traits"];
+  AppSpecProperties properties = 4 [json_name = "properties"];
+}
+
+message AppSpecPorts {
+  int32 port = 1 [json_name = "port"];
+}
+
+message AppSpecProbeTraitsSpec {
+  string type = 1 [json_name = "type"];
+  int32 initial_delay_seconds = 2 [json_name = "initialDelaySeconds"];
+  int32 period_seconds = 3 [json_name = "periodSeconds"];
+  int32 timeout_seconds = 4 [json_name = "timeoutSeconds"];
+  int32 failure_threshold = 5 [json_name = "failureThreshold"];
+  int32 success_threshold = 6 [json_name = "successThreshold"];
+  AppSpecExecProbe exec = 7 [json_name = "exec"];
+  AppSpecHTTPGetProbe http_get = 8 [json_name = "httpGet"];
+  AppSpecTCPSocketProbe tcp_socket = 9 [json_name = "tcpSocket"];
+}
+
+message AppSpecProperties {
+  repeated AppSpecPorts ports = 1 [json_name = "ports"];
+  map<string, string> env = 2 [json_name = "env"];
+  map<string, string> conf = 3 [json_name = "conf"];
+  map<string, string> secret = 4 [json_name = "secret"];
+  repeated string command = 5 [json_name = "command"];
+  map<string, string> labels = 6 [json_name = "labels"];
+  AppSpecCloudSpec cloud = 7 [json_name = "cloud"];
+  string schedule = 8 [json_name = "schedule"];
+  int64 start_time = 9 [json_name = "startTime"];
+  string run_policy = 10 [json_name = "runPolicy"];
+  AppWorkflowConfigJobRetryPolicy job_retry_policy = 11 [json_name = "jobRetryPolicy"];
+  optional string failure_policy = 12 [json_name = "failurePolicy"];
+  optional int32 successful_jobs_history_limit = 13 [json_name = "successfulJobsHistoryLimit"];
+  optional int32 failed_jobs_history_limit = 14 [json_name = "failedJobsHistoryLimit"];
+}
+
+message AppSpecRBACPolicySpec {
+  string service_account = 1 [json_name = "serviceAccount"];
+  string namespace = 2 [json_name = "namespace"];
+  bool cluster_scope = 3 [json_name = "clusterScope"];
+  string role_name = 4 [json_name = "roleName"];
+  string binding_name = 5 [json_name = "bindingName"];
+  map<string, string> service_account_labels = 6 [json_name = "serviceAccountLabels"];
+  map<string, string> service_account_annotations = 7 [json_name = "serviceAccountAnnotations"];
+  map<string, string> role_labels = 8 [json_name = "roleLabels"];
+  map<string, string> binding_labels = 9 [json_name = "bindingLabels"];
+  repeated AppSpecRBACRuleSpec rules = 10 [json_name = "rules"];
+  optional bool service_account_automount_sat = 11 [json_name = "automountServiceAccountToken"];
+}
+
+message AppSpecRBACRuleSpec {
+  repeated string api_groups = 1 [json_name = "apiGroups"];
+  repeated string resources = 2 [json_name = "resources"];
+  repeated string resource_names = 3 [json_name = "resourceNames"];
+  repeated string non_resource_ur_ls = 4 [json_name = "nonResourceURLs"];
+  repeated string verbs = 5 [json_name = "verbs"];
+}
+
+message AppSpecResourceTraitsSpec {
+  string cpu = 1 [json_name = "cpu"];
+  string memory = 2 [json_name = "memory"];
+  string gpu = 3 [json_name = "gpu"];
+  string cpu_limit = 4 [json_name = "cpuLimit"];
+  string memory_limit = 5 [json_name = "memoryLimit"];
+}
+
+message AppSpecRewritePolicy {
+  string type = 1 [json_name = "type"];
+  string match = 2 [json_name = "match"];
+  string replacement = 3 [json_name = "replacement"];
+}
+
+message AppSpecRolloutRollingUpdateSpec {
+  google.protobuf.Value max_surge = 1 [json_name = "maxSurge"];
+  google.protobuf.Value max_unavailable = 2 [json_name = "maxUnavailable"];
+  optional int32 partition = 3 [json_name = "partition"];
+}
+
+message AppSpecRolloutTraitSpec {
+  string type = 1 [json_name = "type"];
+  AppSpecRolloutRollingUpdateSpec rolling_update = 2 [json_name = "rollingUpdate"];
+}
+
+message AppSpecSecretSelectorSpec {
+  string name = 1 [json_name = "name"];
+  string key = 2 [json_name = "key"];
+}
+
+message AppSpecServicePortTraitSpec {
+  string name = 1 [json_name = "name"];
+  int32 port = 2 [json_name = "port"];
+  int32 target_port = 3 [json_name = "targetPort"];
+  string protocol = 4 [json_name = "protocol"];
+}
+
+message AppSpecServiceTraitSpec {
+  string name = 1 [json_name = "name"];
+  string type = 2 [json_name = "type"];
+  string external_name = 3 [json_name = "externalName"];
+  bool headless = 4 [json_name = "headless"];
+  map<string, string> selector = 5 [json_name = "selector"];
+  map<string, string> labels = 6 [json_name = "labels"];
+  repeated AppSpecServicePortTraitSpec ports = 7 [json_name = "ports"];
+}
+
+message AppSpecShareTraitSpec {
+  string strategy = 1 [json_name = "strategy"];
+}
+
+message AppSpecSidecarTraitsSpec {
+  string name = 1 [json_name = "name"];
+  string image = 2 [json_name = "image"];
+  repeated string command = 3 [json_name = "command"];
+  repeated string args = 4 [json_name = "args"];
+  map<string, string> env = 5 [json_name = "env"];
+  AppSpecTraits traits = 6 [json_name = "traits"];
+}
+
+message AppSpecSimplifiedEnvSpec {
+  string name = 1 [json_name = "name"];
+  AppSpecValueSource value_from = 2 [json_name = "valueFrom"];
+}
+
+message AppSpecStorageTraitSpec {
+  string name = 1 [json_name = "name"];
+  string type = 2 [json_name = "type"];
+  string mount_path = 3 [json_name = "mountPath"];
+  string sub_path = 4 [json_name = "subPath"];
+  string sub_path_expr = 5 [json_name = "subPathExpr"];
+  bool read_only = 6 [json_name = "readOnly"];
+  string source_name = 7 [json_name = "sourceName"];
+  bool tmp_create = 8 [json_name = "tmpCreate"];
+  string size = 9 [json_name = "size"];
+  string claim_name = 10 [json_name = "claimName"];
+  string storage_class = 11 [json_name = "storageClass"];
+}
+
+message AppSpecTCPSocketProbe {
+  int32 port = 1 [json_name = "port"];
+  string host = 2 [json_name = "host"];
+}
+
+message AppSpecTraits {
+  repeated AppSpecInitTraitSpec init = 1 [json_name = "init"];
+  repeated AppSpecStorageTraitSpec storage = 2 [json_name = "storage"];
+  repeated AppSpecSidecarTraitsSpec sidecar = 3 [json_name = "sidecar"];
+  repeated AppSpecIngressTraitsSpec ingress = 4 [json_name = "ingress"];
+  repeated AppSpecServiceTraitSpec service = 5 [json_name = "service"];
+  repeated AppSpecRBACPolicySpec rbac = 6 [json_name = "rbac"];
+  repeated AppSpecEnvFromSourceSpec env_from = 7 [json_name = "envFrom"];
+  repeated AppSpecSimplifiedEnvSpec envs = 8 [json_name = "envs"];
+  repeated AppSpecProbeTraitsSpec probes = 9 [json_name = "probes"];
+  map<string, string> target_work_env = 10 [json_name = "targetWorkEnv"];
+  AppSpecResourceTraitsSpec resources = 11 [json_name = "resources"];
+  AppKubeCoreSecurityContext security_policy = 12 [json_name = "securityPolicy"];
+  AppSpecShareTraitSpec share = 13 [json_name = "share"];
+  AppSpecRolloutTraitSpec rollout = 14 [json_name = "rollout"];
+}
+
+message AppSpecValueSource {
+  optional string static = 1 [json_name = "static"];
+  AppSpecSecretSelectorSpec secret = 2 [json_name = "secret"];
+  AppSpecConfigMapSelectorSpec config = 3 [json_name = "config"];
+  optional string field = 4 [json_name = "field"];
+}
+
+message AppWorkflowConfigJobRetryPolicy {
+  string on_oom = 1 [json_name = "onOOM"];
+  uint32 max_retries = 2 [json_name = "maxRetries"];
+  int64 backoff_seconds = 3 [json_name = "backoffSeconds"];
+  int64 memory_growth_factor = 4 [json_name = "memoryGrowthFactor"];
+  int64 cpu_growth_factor = 5 [json_name = "cpuGrowthFactor"];
+  map<string, string> max_resources = 6 [json_name = "maxResources"];
+}

@@ -35,62 +35,11 @@ func (app *applications) createAndExecApplications(c *gin.Context) {
 		return
 	}
 
-	ctx := c.Request.Context()
-	createdApp, err := app.ApplicationService.CreateApplications(ctx, req.CreateApplicationsRequest)
-	if err != nil {
-		bcode.ReturnError(c, err)
-		return
-	}
-	if createdApp == nil {
-		bcode.ReturnError(c, errors.New("create application returned empty response"))
-		return
-	}
-
-	workflowID := strings.TrimSpace(req.WorkflowID)
-	if workflowID == "" {
-		workflowID = strings.TrimSpace(createdApp.WorkflowID)
-	}
-
-	resp := &apis.CreateAndExecApplicationResponse{
-		Application:    createdApp,
-		WorkflowID:     workflowID,
-		ExecStatus:     apis.CreateAndExecStatusQueued,
-		AllowedActions: []apis.AllowedAction{},
-	}
-	if workflowID == "" {
-		resp.ExecStatus = apis.CreateAndExecStatusFailed
-		resp.ExecError = bcode.ErrWorkflowNotExist.Error()
-		bcode.ReturnSuccess(c, resp)
-		return
-	}
-
-	if req.ExecuteAt < 0 {
-		execErr := bcode.ErrWorkflowConfig
-		klog.ErrorS(execErr, "create and exec workflow failed", "appID", createdApp.ID, "workflowID", workflowID)
-		resp.ExecStatus = apis.CreateAndExecStatusFailed
-		resp.ExecError = execErr.Error()
-		bcode.ReturnSuccess(c, resp)
-		return
-	}
-
-	execResp, execErr := app.WorkflowService.ExecWorkflowTaskForApp(ctx, createdApp.ID, workflowID, req.ExecuteAt, idempotencyKey)
-	if execErr != nil {
-		klog.ErrorS(execErr, "create and exec workflow failed", "appID", createdApp.ID, "workflowID", workflowID)
-		resp.ExecStatus = apis.CreateAndExecStatusFailed
-		resp.ExecError = execErr.Error()
-		bcode.ReturnSuccess(c, resp)
-		return
-	}
-	if execResp != nil {
-		resp.TaskID = execResp.TaskID
-		resp.AllowedActions = workflowTaskAllowedActions(execResp.TaskID, createdApp.ID, execResp.Status, execResp.PendingApprovalStep)
-	}
-	if resp.TaskID != "" && shouldMarkCreateAndExecDeploying(req.ExecuteAt, time.Now()) {
-		if markErr := app.ApplicationService.MarkInitialDeployingWorkflowComponents(ctx, createdApp.ID, workflowID); markErr != nil {
-			klog.ErrorS(markErr, "mark initial deploy workflow components deploying failed", "appID", createdApp.ID, "workflowID", workflowID, "taskID", resp.TaskID)
-		}
-	}
-	bcode.ReturnSuccess(c, resp)
+	resp, err := service.ExecuteCreateAndExecApplication(
+		c.Request.Context(), app.ApplicationService, app.WorkflowService,
+		*req, idempotencyKey, func(err error) string { return err.Error() },
+	)
+	respondWithResult(c, resp, err)
 }
 
 func shouldMarkCreateAndExecDeploying(executeAt int64, now time.Time) bool {

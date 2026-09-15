@@ -16,6 +16,7 @@ import (
 func TestNewConfigHasSequentialConcurrencyDefault(t *testing.T) {
 	cfg := NewConfig()
 	require.Equal(t, "127.0.0.1:8001", cfg.BindAddr)
+	require.Equal(t, "127.0.0.1:9001", cfg.GRPCBindAddr)
 	require.Equal(t, 1, cfg.Workflow.SequentialMaxConcurrency)
 	require.Equal(t, workflowconfig.DefaultWorkflowCallbackTimeoutMax, cfg.Workflow.CallbackTimeoutMax)
 	require.Equal(t, 1, cfg.Messaging.KafkaTopicPartitions)
@@ -29,6 +30,23 @@ func TestNewConfigHasSequentialConcurrencyDefault(t *testing.T) {
 	require.Equal(t, 60*time.Second, cfg.Workflow.WorkerDrainTimeout)
 	require.Zero(t, cfg.APIRateLimitQPS)
 	require.Zero(t, cfg.APIRateLimitBurst)
+}
+
+func TestGRPCBindAddrFlagEnvironmentAndRoleValidation(t *testing.T) {
+	cfg := NewConfig()
+	flags := pflag.NewFlagSet("grpc-address", pflag.ContinueOnError)
+	cfg.AddFlags(flags, cfg)
+	t.Setenv("ERUUN_GRPC_BIND_ADDR", "127.0.0.1:9500")
+	require.NoError(t, flags.Parse(nil))
+	require.NoError(t, ApplyEnvOverrides(flags, EnvPrefix))
+	require.Equal(t, "127.0.0.1:9500", cfg.GRPCBindAddr)
+
+	cfg.GRPCBindAddr = cfg.BindAddr
+	require.Contains(t, errorsJoin(cfg.Validate()), "grpc bind address must differ from http")
+	cfg.GRPCBindAddr = ""
+	require.Contains(t, errorsJoin(cfg.Validate()), "grpc bind address cannot be empty")
+	cfg.Role = RuntimeRoleController
+	require.NotContains(t, errorsJoin(cfg.Validate()), "grpc bind address cannot be empty")
 }
 
 func TestWorkflowCallbackTimeoutConfigBoundary(t *testing.T) {
