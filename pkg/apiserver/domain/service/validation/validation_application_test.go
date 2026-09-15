@@ -1259,6 +1259,23 @@ func TestValidationService_TryApplication_TemplateInputErrorKeepsLocatableSpec(t
 	properties := init[0].(map[string]any)["properties"].(map[string]any)
 	require.Equal(t, string(workflowconfig.WorkflowFailurePolicyCleanupFailed), properties["failurePolicy"])
 
+	mixedReq := req
+	mixedReq.Components = append([]apisv1.CreateComponentRequest(nil), req.Components...)
+	mixedReq.Components[2].ComponentType = config.JobType("unsupported")
+	mixedResp := svc.TryApplication(context.Background(), mixedReq)
+	require.False(t, mixedResp.Valid)
+	requireValidationPath(t, mixedResp.Errors, "/components/1/traits/init/0/properties/failurePolicy", apisv1.ErrCodeInvalidJobFailurePolicy)
+	requireValidationPath(t, mixedResp.Errors, "/components/2/type", apisv1.ErrCodeInvalidComponentType)
+	require.Equal(t, "direct-after", mixedResp.NormalizedSpec.Components[2].Name)
+	require.NotNil(t, mixedResp.NormalizedSpec.Components[1].Template)
+
+	mixedReq.Components[1].Traits.Init = nil
+	resolvedResp := svc.TryApplication(context.Background(), mixedReq)
+	require.False(t, resolvedResp.Valid)
+	requireValidationPath(t, resolvedResp.Errors, "/components/1/type", apisv1.ErrCodeInvalidComponentType)
+	require.Equal(t, "direct-after", resolvedResp.NormalizedSpec.Components[1].Name)
+	require.Nil(t, resolvedResp.NormalizedSpec.Components[2].Template)
+
 	req.Components[1].Traits.Init = nil
 	validResp := svc.TryApplication(context.Background(), req)
 	require.True(t, validResp.Valid, "%+v", validResp.Errors)

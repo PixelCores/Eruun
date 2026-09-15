@@ -186,10 +186,15 @@ func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.C
 
 	if componentsResolved {
 		effectiveReq.Components = resolvedComponents
-		// 2. Validate resolved components. Template requests are overrides until
-		// resolution, so type/image/traits must be checked on the cloned output.
+	}
+	if componentsResolved || len(templateInputErrors) > 0 {
+		// Validate resolved components, or just the direct components when an
+		// invalid template override requires retaining the source indexes.
 		componentNames := make(map[string]bool)
-		for i, comp := range resolvedComponents {
+		for i, comp := range effectiveReq.Components {
+			if !componentsResolved && comp.Template != nil && strings.TrimSpace(comp.Template.ID) != "" {
+				continue
+			}
 			fieldPrefix := fmt.Sprintf("component[%d]", i)
 			if scope, ok := access.FromContext(ctx); ok {
 				var err error
@@ -204,8 +209,10 @@ func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.C
 			}
 			errors = append(errors, v.validateComponent(comp, fieldPrefix, componentNames)...)
 		}
+	}
 
-		// 3. Validate workflow steps and component references against resolved names.
+	if componentsResolved {
+		// Validate workflow steps and component references against resolved names.
 		errors = append(errors, v.validateWorkflowSteps(effectiveReq.Workflow, workflowComponentIndexFromCreateComponents(resolvedComponents), "workflow")...)
 		if resourceErr := v.validateTryApplicationResourceNames(ctx, effectiveReq, resolvedComponents); resourceErr != nil {
 			errors = append(errors, apisv1.ValidationError{

@@ -182,7 +182,7 @@ Try API 成功处理请求时统一返回：
 - `path` 是 RFC 6901 JSON Pointer，指向 `normalizedSpec` 中的规范字段。
 - `code` 用于程序分支，`message` 用于展示；客户端不应解析 message。
 - `normalizedSpec` 与对应写接口同构。Application Try 的结果可提交到 Application 创建入口；Workflow Try 的结果可提交到 Workflow 更新入口。Workflow 请求显式传入空 `failurePolicy` 时，规范输出使用等价的 `cleanup_all`，从而保留“重置为默认策略”而不是“省略并保留现值”的语义。
-- 模板覆盖项在展开前包含非法嵌套 Job 策略时，Application Try 保留覆盖项的原始 `components` 形态于 `normalizedSpec`，使错误路径仍能定位到需要修改的字段；修正后再次 Try 才会返回展开后的组件列表。
+- 模板覆盖项在展开前包含非法嵌套 Job 策略时，Application Try 保留覆盖项的原始 `components` 形态于 `normalizedSpec`，使错误路径仍能定位到需要修改的字段。此时直接组件的本地配置错误仍按原索引返回；模板相关校验待修正后再次 Try，届时才返回展开后的组件列表。
 - `plan.actions` 是有序的逻辑计划，不承诺 Kubernetes Job 名称或实际开始时间。
 
 JSON 绑定失败（未知字段、错误类型、多余 JSON 值）仍返回入口对应的 4xx 业务错误，因为此时无法构造可信的 `normalizedSpec`。
