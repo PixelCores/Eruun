@@ -4,7 +4,37 @@
   "version": "1.0.0",
   "project": "demo-project",
   "description": "Tenant bootstrap by cloudjob actions",
-  "component": [
+  "workflow": [
+    {
+      "name": "step-1-ensure-filesystem",
+      "mode": "StepByStep",
+      "components": [
+        "create-nas-filesystem"
+      ]
+    },
+    {
+      "name": "step-2-ensure-mount-target",
+      "mode": "StepByStep",
+      "components": [
+        "create-nas-mount-target"
+      ]
+    },
+    {
+      "name": "step-3-ensure-storage-class",
+      "mode": "StepByStep",
+      "components": [
+        "create-tenant-storage-class"
+      ]
+    },
+    {
+      "name": "step-4-deploy-api",
+      "mode": "StepByStep",
+      "components": [
+        "tenant-api"
+      ]
+    }
+  ],
+  "components": [
     {
       "name": "create-nas-filesystem",
       "type": "cloudjob",
@@ -73,36 +103,6 @@
         ]
       },
       "traits": {}
-    }
-  ],
-  "workflow": [
-    {
-      "name": "step-1-ensure-filesystem",
-      "mode": "StepByStep",
-      "components": [
-        "create-nas-filesystem"
-      ]
-    },
-    {
-      "name": "step-2-ensure-mount-target",
-      "mode": "StepByStep",
-      "components": [
-        "create-nas-mount-target"
-      ]
-    },
-    {
-      "name": "step-3-ensure-storage-class",
-      "mode": "StepByStep",
-      "components": [
-        "create-tenant-storage-class"
-      ]
-    },
-    {
-      "name": "step-4-deploy-api",
-      "mode": "StepByStep",
-      "components": [
-        "tenant-api"
-      ]
     }
   ]
 }

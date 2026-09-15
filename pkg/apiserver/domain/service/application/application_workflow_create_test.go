@@ -62,7 +62,7 @@ func TestCreateApplications_UpdatePreservesWorkflowID(t *testing.T) {
 		Name:      "demo",
 		Namespace: app.Namespace,
 		Version:   "2.0.0",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "c1",
 			ComponentType: config.ServerJob,
 			Image:         "nginx:latest",
@@ -70,7 +70,7 @@ func TestCreateApplications_UpdatePreservesWorkflowID(t *testing.T) {
 			Properties:    apisv1.Properties{},
 			Traits:        apisv1.Traits{},
 		}},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{{
+		Workflow: []apisv1.CreateWorkflowStepRequest{{
 			Name:         "step1",
 			WorkflowType: config.JobDeploy,
 			Components:   []string{"c1"},
@@ -114,14 +114,14 @@ func TestCreateApplicationsRejectsLogArchiveWorkflowForNonPodComponent(t *testin
 		Namespace: config.DefaultNamespace,
 		Version:   "1.0.0",
 		Project:   "proj-1",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "config",
 			ComponentType: config.ConfJob,
 			Properties: apisv1.Properties{
 				Conf: map[string]string{"app.yaml": "debug: true"},
 			},
 		}},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{{
+		Workflow: []apisv1.CreateWorkflowStepRequest{{
 			Name:         "archive-config",
 			WorkflowType: config.JobLogArchiveUpload,
 			Components:   []string{"config"},
@@ -148,7 +148,7 @@ func TestCreateApplicationsDefaultWorkflowsUseAppCallback(t *testing.T) {
 		Callback: &apisv1.WorkflowCallback{
 			Success: "https://example.com/app-success",
 		},
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "web",
 			ComponentType: config.ServerJob,
 			Image:         "nginx:latest",
@@ -171,7 +171,7 @@ func TestCreateApplicationsDefaultWorkflowsUseAppCallback(t *testing.T) {
 	}
 }
 
-func TestCreateApplicationsCustomWorkflowCallbackOverridesAppCallback(t *testing.T) {
+func TestCreateApplicationsRootCallbackAppliesToExplicitWorkflow(t *testing.T) {
 	store := newInMemoryAppStore()
 	svc := newMockServiceWithStore(store)
 
@@ -179,12 +179,9 @@ func TestCreateApplicationsCustomWorkflowCallbackOverridesAppCallback(t *testing
 		Name:      "demo-workflow-callback",
 		Namespace: config.DefaultNamespace,
 		Callback: &apisv1.WorkflowCallback{
-			Success: "ftp://ignored.example.com/app",
-		},
-		WorkflowCallback: &apisv1.WorkflowCallback{
 			Success: "https://example.com/workflow-success",
 		},
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "web",
 			ComponentType: config.ServerJob,
 			Image:         "nginx:latest",
@@ -192,7 +189,7 @@ func TestCreateApplicationsCustomWorkflowCallbackOverridesAppCallback(t *testing
 			Properties:    apisv1.Properties{},
 			Traits:        apisv1.Traits{},
 		}},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{{
+		Workflow: []apisv1.CreateWorkflowStepRequest{{
 			Name:         "deploy-web",
 			WorkflowType: config.JobDeploy,
 			Components:   []string{"web"},
@@ -218,10 +215,10 @@ func TestCreateApplicationsStoresAndEchoesWorkflowFailurePolicy(t *testing.T) {
 	svc := newMockServiceWithStore(store)
 
 	req := apisv1.CreateApplicationsRequest{
-		Name:                  "demo-failure-policy",
-		Namespace:             config.DefaultNamespace,
-		WorkflowFailurePolicy: workflowconfig.WorkflowFailurePolicyCleanupAll,
-		Component: []apisv1.CreateComponentRequest{{
+		Name:          "demo-failure-policy",
+		Namespace:     config.DefaultNamespace,
+		FailurePolicy: workflowconfig.WorkflowFailurePolicyCleanupAll,
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "web",
 			ComponentType: config.ServerJob,
 			Image:         "nginx:latest",
@@ -229,7 +226,7 @@ func TestCreateApplicationsStoresAndEchoesWorkflowFailurePolicy(t *testing.T) {
 			Properties:    apisv1.Properties{},
 			Traits:        apisv1.Traits{},
 		}},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{{
+		Workflow: []apisv1.CreateWorkflowStepRequest{{
 			Name:         "deploy-web",
 			WorkflowType: config.JobDeploy,
 			Components:   []string{"web"},
@@ -258,7 +255,7 @@ func TestCreateApplicationsDefaultsWorkflowFailurePolicyToCleanupAll(t *testing.
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "demo-default-failure-policy",
 		Namespace: config.DefaultNamespace,
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "web",
 			ComponentType: config.ServerJob,
 			Image:         "nginx:latest",
@@ -266,7 +263,7 @@ func TestCreateApplicationsDefaultsWorkflowFailurePolicyToCleanupAll(t *testing.
 			Properties:    apisv1.Properties{},
 			Traits:        apisv1.Traits{},
 		}},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{{
+		Workflow: []apisv1.CreateWorkflowStepRequest{{
 			Name:         "deploy-web",
 			WorkflowType: config.JobDeploy,
 			Components:   []string{"web"},
@@ -337,10 +334,7 @@ func TestCreateApplicationsUpdateAppCallbackOverwritesAllWorkflowCallbacks(t *te
 		Callback: &apisv1.WorkflowCallback{
 			Success: "https://example.com/new-success",
 		},
-		WorkflowCallback: &apisv1.WorkflowCallback{
-			Success: "https://example.com/ignored-workflow",
-		},
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "web",
 			ComponentType: config.ServerJob,
 			Image:         "nginx:latest",
@@ -348,7 +342,7 @@ func TestCreateApplicationsUpdateAppCallbackOverwritesAllWorkflowCallbacks(t *te
 			Properties:    apisv1.Properties{},
 			Traits:        apisv1.Traits{},
 		}},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{{
+		Workflow: []apisv1.CreateWorkflowStepRequest{{
 			Name:         "deploy-web",
 			WorkflowType: config.JobDeploy,
 			Components:   []string{"web"},
@@ -415,7 +409,7 @@ func TestCreateApplicationsUpdateEmptyAppCallbackClearsSQLStyleCallbacks(t *test
 		Namespace: app.Namespace,
 		Version:   "2.0.0",
 		Callback:  &apisv1.WorkflowCallback{},
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "web",
 			ComponentType: config.ServerJob,
 			Image:         "nginx:latest",
@@ -423,7 +417,7 @@ func TestCreateApplicationsUpdateEmptyAppCallbackClearsSQLStyleCallbacks(t *test
 			Properties:    apisv1.Properties{},
 			Traits:        apisv1.Traits{},
 		}},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{{
+		Workflow: []apisv1.CreateWorkflowStepRequest{{
 			Name:         "deploy-web",
 			WorkflowType: config.JobDeploy,
 			Components:   []string{"web"},
@@ -462,7 +456,7 @@ func TestCreateApplicationsUpdateBlockedWhenWorkflowTaskActive(t *testing.T) {
 		Name:      app.Name,
 		Namespace: app.Namespace,
 		Version:   "2.0.0",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "c1",
 			ComponentType: config.ServerJob,
 			Image:         "nginx:latest",
@@ -485,7 +479,7 @@ func TestCreateApplicationsCreatesUpdateWorkflow(t *testing.T) {
 		Namespace: config.DefaultNamespace,
 		Version:   "1.0.0",
 		Project:   "proj-1",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "c1",
 			ComponentType: config.ServerJob,
 			Image:         "nginx:latest",
@@ -527,7 +521,7 @@ func TestCreateApplicationsRejectsInvalidApprovalWorkflowStep(t *testing.T) {
 		Name:      "demo",
 		Namespace: config.DefaultNamespace,
 		Version:   "1.0.0",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "backend",
 			ComponentType: config.ServerJob,
 			Image:         "nginx:latest",
@@ -535,7 +529,7 @@ func TestCreateApplicationsRejectsInvalidApprovalWorkflowStep(t *testing.T) {
 			Properties:    apisv1.Properties{},
 			Traits:        apisv1.Traits{},
 		}},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{{
+		Workflow: []apisv1.CreateWorkflowStepRequest{{
 			Name:       "manual-check",
 			StepType:   config.WorkflowStepTypeApproval,
 			Mode:       string(config.WorkflowModeStepByStep),
@@ -601,7 +595,7 @@ func TestCreateApplications_TemplateWithoutWorkflow_GeneratesPhasedDefaultWorkfl
 	svc := newMockServiceWithStore(store)
 	req := apisv1.CreateApplicationsRequest{
 		Name: "phase-app",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{Name: "cfg", ComponentType: config.ConfJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "tpl-config"}},
 			{Name: "sec", ComponentType: config.SecretJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "tpl-secret"}},
 			{Name: "db", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "tpl-store"}},
@@ -672,14 +666,14 @@ func TestCreateApplications_TemplateWithExplicitWorkflow_DoesNotRewrite(t *testi
 	svc := newMockServiceWithStore(store)
 	req := apisv1.CreateApplicationsRequest{
 		Name: "explicit-app",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "tenant-store",
 				ComponentType: config.StoreJob,
 				Template:      &apisv1.TemplateRef{ID: templateApp.ID, Target: "tpl-store"},
 			},
 		},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{
+		Workflow: []apisv1.CreateWorkflowStepRequest{
 			{
 				Name:         "custom-step",
 				WorkflowType: config.JobDeploy,
@@ -711,13 +705,13 @@ func TestCreateApplicationsPreservesWorkflowComponentReferenceCasing(t *testing.
 		Namespace: config.DefaultNamespace,
 		Version:   "1.0.0",
 		Project:   "proj-1",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "Web",
 			ComponentType: config.ServerJob,
 			Image:         "nginx:latest",
 			Replicas:      1,
 		}},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{{
+		Workflow: []apisv1.CreateWorkflowStepRequest{{
 			Name:         "deploy-web",
 			WorkflowType: config.JobDeploy,
 			Components:   []string{" Web ", "WEB"},
@@ -743,7 +737,7 @@ func TestCreateApplications_NonTemplateWithoutWorkflow_GeneratesPhasedDefaultWor
 
 	req := apisv1.CreateApplicationsRequest{
 		Name: "phased-app",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{Name: "config-a", ComponentType: config.ConfJob},
 			{Name: "init-sql", ComponentType: config.InstantJob, Image: "busybox:1.36"},
 			{Name: "store-a", ComponentType: config.StoreJob, Image: "mysql:8.0"},

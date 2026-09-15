@@ -21,7 +21,7 @@
 
 **请求体**: 与创建应用的请求体相同 (`CreateApplicationsRequest`)
 
-Try Application 会校验 workflow 对象里的 `failurePolicy`。非法值返回 `INVALID_WORKFLOW_FAILURE_POLICY`，字段为 `workflow.failurePolicy`。
+Try Application 会校验根级 `failurePolicy`。非法值返回 `INVALID_WORKFLOW_FAILURE_POLICY`，错误路径为 `/failurePolicy`。
 
 Try Application 会执行与 `POST /api/v1/applications` 一致的资源名校验：提前计算 Deployment/StatefulSet/Service/Ingress/Job/CronJob/ConfigMap/Secret 等独占资源名，并检查同一请求内以及同命名空间普通应用之间的冲突。资源命名遵循当前运行时契约：非 shared 组件使用 `appName + componentName`，shared 组件使用 `componentName`，模板版本不参与运行时资源名。standalone PVC 只校验 Kubernetes 名称合法性，允许同命名空间内多个组件或应用共享；`tmpCreate: true` 的 StatefulSet `volumeClaimTemplates` 不作为 standalone PVC 参与冲突校验。
 
@@ -39,7 +39,7 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
     "name": "my-app",
     "namespace": "default",
     "version": "1.0.0",
-    "component": [...],
+    "components": [...],
     "workflow": [...]
   }'
 ```
@@ -50,7 +50,7 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
 
 **用途**: 验证工作流配置是否引用了存在的组件，并校验与真实更新接口一致的 workflow callback 规则
 
-**请求体**: 与 `PUT /api/v1/applications/:appID/workflow` 的更新工作流请求体兼容。历史字段 `workflow` 仍可用，读接口返回的 `steps` 也可直接作为步骤列表提交；如果包含 `callback`，Try Workflow 会按真实更新路径校验 method、URL、timeout 与 URL 安全策略，但不会写入 Workflow。Try Workflow 也会校验顶层 `failurePolicy`，非法值返回 `INVALID_WORKFLOW_FAILURE_POLICY`，字段为 `failurePolicy`。
+**请求体**: 与 `PUT /api/v1/applications/:appID/workflow` 的更新工作流请求体同构，步骤只使用根级 `workflow`。如果包含 `callback`，Try Workflow 会按真实更新路径校验 method、URL、timeout 与 URL 安全策略，但不会写入 Workflow。Try Workflow 也会校验顶层 `failurePolicy`，非法值返回 `INVALID_WORKFLOW_FAILURE_POLICY`，错误路径为 `/failurePolicy`；显式空值表示重置为默认策略，返回的 `normalizedSpec` 会将其写成 `cleanup_all`，而省略字段仍表示更新时保留现值。
 
 Workflow 的组件引用（`components`、`properties.policies`、`properties[].policies`、`subSteps[]` 以及 `log_archive_upload` 的 step name fallback）按大小写不敏感方式匹配已存在组件；真实创建或更新工作流时，持久化引用会使用组件自身 `Name` 的实际大小写。
 
@@ -66,7 +66,7 @@ curl -X POST http://localhost:8000/api/v1/applications/your-app-id/workflow/try 
   -H "Content-Type: application/json" \
   -d '{
     "name": "new-workflow",
-    "steps": [...]
+    "workflow": [...]
   }'
 ```
 
@@ -76,7 +76,14 @@ curl -X POST http://localhost:8000/api/v1/applications/your-app-id/workflow/try 
 ```json
 {
   "valid": true,
-  "errors": []
+  "errors": [],
+  "normalizedSpec": {
+    "name": "my-app",
+    "components": []
+  },
+  "plan": {
+    "actions": []
+  }
 }
 ```
 
@@ -86,23 +93,31 @@ curl -X POST http://localhost:8000/api/v1/applications/your-app-id/workflow/try 
   "valid": false,
   "errors": [
     {
-      "field": "component[0].name",
+      "path": "/components/0/name",
       "code": "INVALID_NAME_FORMAT",
       "message": "name must match DNS-1123 subdomain (lowercase alphanumeric, may contain hyphens, must start and end with alphanumeric)"
     },
     {
-      "field": "component[1].traits.probes[0]",
+      "path": "/components/1/traits/probes/0",
       "code": "INVALID_PROBE_CONFIG",
       "message": "probe must specify exactly one of exec, httpGet, or tcpSocket"
     },
     {
-      "field": "workflow[0].components[2]",
+      "path": "/workflow/0/components/2",
       "code": "COMPONENT_NOT_FOUND",
       "message": "component 'missing-comp' not found in application"
     }
-  ]
+  ],
+  "normalizedSpec": {
+    "name": "my-app",
+    "components": [],
+    "workflow": []
+  },
+  "plan": {"actions": []}
 }
 ```
+
+`errors` 始终返回数组。`path` 是指向 `normalizedSpec` 的 RFC 6901 JSON Pointer；`code` 用于程序判断，`message` 只用于展示。`normalizedSpec` 可直接提交到对应写接口，`plan.actions` 是根据规范化请求生成的有序逻辑动作。完整契约见 [Canonical JSON Profile](canonical-json-profile.md)。
 
 ## 组件类型补充说明
 
@@ -124,7 +139,7 @@ Job 组件暂时只支持最小集能力：
 - Cron 表达式支持 **5 段或 6 段**；6 段时秒字段必须为 0，系统会去掉秒字段用于 CronJob。
 - `properties.runPolicy` 可选，支持 `recreate` / `skip_if_completed`，默认 `skip_if_completed`。
 - `properties.failurePolicy` 仅支持顶层 `type=job` 组件，唯一显式值为 `cleanup_failed`；Job 空值继承 workflow，`cleanup_all`、未知值、其他组件类型（包括显式空值）和 init container 中使用时返回 `INVALID_JOB_FAILURE_POLICY`。
-- 模板请求会在展开后校验实际组件类型，但字段错误仍使用原始请求的 `component[i]` 下标；模板自动生成且没有对应 override 的组件继续使用展开后的下标。
+- 模板请求会在展开后校验实际组件类型，但错误路径仍使用原始请求的 `/components/{i}` 下标；模板自动生成且没有对应 override 的组件继续使用展开后的下标。
 - `scheduledjob` 可选 `properties.successfulJobsHistoryLimit` / `properties.failedJobsHistoryLimit` 控制 CronJob 保留历史数。
 
 ## Job 组件 JSON 示例
@@ -138,7 +153,7 @@ Job 组件暂时只支持最小集能力：
   "version": "1.0.0",
   "project": "demo-project",
   "description": "Instant job demo",
-  "component": [
+  "components": [
     {
       "name": "instant-task",
       "type": "job",
@@ -146,7 +161,11 @@ Job 组件暂时只支持最小集能力：
       "namespace": "default",
       "replicas": 1,
       "properties": {
-        "command": ["/bin/sh", "-c", "echo instant job"]
+        "command": [
+          "/bin/sh",
+          "-c",
+          "echo instant job"
+        ]
       },
       "traits": {}
     }
@@ -155,7 +174,9 @@ Job 组件暂时只支持最小集能力：
     {
       "name": "run-instant-task",
       "mode": "StepByStep",
-      "components": ["instant-task"]
+      "components": [
+        "instant-task"
+      ]
     }
   ]
 }
@@ -172,7 +193,7 @@ Job 组件暂时只支持最小集能力：
   "version": "1.0.0",
   "project": "demo-project",
   "description": "Job (startTime) demo",
-  "component": [
+  "components": [
     {
       "name": "delay-task",
       "type": "job",
@@ -182,7 +203,11 @@ Job 组件暂时只支持最小集能力：
       "properties": {
         "startTime": 1893456000,
         "runPolicy": "skip_if_completed",
-        "command": ["/bin/sh", "-c", "echo delayed job"]
+        "command": [
+          "/bin/sh",
+          "-c",
+          "echo delayed job"
+        ]
       },
       "traits": {}
     }
@@ -191,7 +216,9 @@ Job 组件暂时只支持最小集能力：
     {
       "name": "create-delay-task",
       "mode": "StepByStep",
-      "components": ["delay-task"]
+      "components": [
+        "delay-task"
+      ]
     }
   ]
 }
@@ -206,7 +233,7 @@ Job 组件暂时只支持最小集能力：
   "version": "1.0.0",
   "project": "demo-project",
   "description": "Scheduled job (cron) demo",
-  "component": [
+  "components": [
     {
       "name": "cron-task",
       "type": "scheduledjob",
@@ -217,7 +244,11 @@ Job 组件暂时只支持最小集能力：
         "schedule": "0 0 * * *",
         "successfulJobsHistoryLimit": 3,
         "failedJobsHistoryLimit": 3,
-        "command": ["/bin/sh", "-c", "date"]
+        "command": [
+          "/bin/sh",
+          "-c",
+          "date"
+        ]
       },
       "traits": {}
     }
@@ -226,7 +257,9 @@ Job 组件暂时只支持最小集能力：
     {
       "name": "create-cron-task",
       "mode": "StepByStep",
-      "components": ["cron-task"]
+      "components": [
+        "cron-task"
+      ]
     }
   ]
 }
@@ -251,7 +284,7 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
   "version": "1.0.0",
   "project": "demo-project",
   "description": "Simple backend application",
-  "component": [
+  "components": [
     {
       "name": "backend",
       "type": "webservice",
@@ -276,7 +309,9 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
     {
       "name": "deploy-backend",
       "mode": "StepByStep",
-      "components": ["backend"]
+      "components": [
+        "backend"
+      ]
     }
   ]
 }
@@ -291,7 +326,7 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
   "version": "1.0.0",
   "project": "demo-project",
   "description": "Complete demo application with all traits",
-  "component": [
+  "components": [
     {
       "name": "app-config",
       "type": "config",
@@ -311,8 +346,15 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
       "namespace": "default",
       "replicas": 3,
       "properties": {
-        "ports": [{"port": 8080, "expose": true}],
-        "env": {"APP_ENV": "production"}
+        "ports": [
+          {
+            "port": 8080,
+            "expose": true
+          }
+        ],
+        "env": {
+          "APP_ENV": "production"
+        }
       },
       "traits": {
         "probes": [
@@ -359,9 +401,17 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
             "serviceAccount": "backend-sa",
             "rules": [
               {
-                "apiGroups": [""],
-                "resources": ["pods"],
-                "verbs": ["get", "list", "watch"]
+                "apiGroups": [
+                  ""
+                ],
+                "resources": [
+                  "pods"
+                ],
+                "verbs": [
+                  "get",
+                  "list",
+                  "watch"
+                ]
               }
             ]
           }
@@ -388,12 +438,16 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
     {
       "name": "config-step",
       "mode": "StepByStep",
-      "components": ["app-config"]
+      "components": [
+        "app-config"
+      ]
     },
     {
       "name": "deploy-backend",
       "mode": "DAG",
-      "components": ["backend"]
+      "components": [
+        "backend"
+      ]
     }
   ]
 }
@@ -406,7 +460,7 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
   "name": "app-with-init-sidecar",
   "namespace": "default",
   "version": "1.0.0",
-  "component": [
+  "components": [
     {
       "name": "backend",
       "type": "webservice",
@@ -419,7 +473,11 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
             "name": "init-config",
             "image": "busybox:latest",
             "properties": {
-              "command": ["sh", "-c", "cp /config/* /app/config/"]
+              "command": [
+                "sh",
+                "-c",
+                "cp /config/* /app/config/"
+              ]
             },
             "traits": {
               "storage": [
@@ -456,7 +514,9 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
     {
       "name": "deploy",
       "mode": "StepByStep",
-      "components": ["backend"]
+      "components": [
+        "backend"
+      ]
     }
   ]
 }
@@ -473,17 +533,26 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
     {
       "name": "config-step",
       "mode": "StepByStep",
-      "components": ["app-config", "app-secret"]
+      "components": [
+        "app-config",
+        "app-secret"
+      ]
     },
     {
       "name": "database-step",
       "mode": "DAG",
-      "components": ["mysql", "redis"]
+      "components": [
+        "mysql",
+        "redis"
+      ]
     },
     {
       "name": "services-step",
       "mode": "DAG",
-      "components": ["backend", "frontend"]
+      "components": [
+        "backend",
+        "frontend"
+      ]
     }
   ]
 }
@@ -497,7 +566,7 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
 {
   "name": "My_Invalid_App",
   "namespace": "default",
-  "component": [...]
+  "components": [...]
 }
 ```
 
@@ -507,7 +576,7 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
   "valid": false,
   "errors": [
     {
-      "field": "name",
+      "path": "/name",
       "code": "INVALID_NAME_FORMAT",
       "message": "name must match DNS-1123 subdomain (lowercase alphanumeric, may contain hyphens, must start and end with alphanumeric)"
     }
@@ -520,7 +589,7 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
 ```json
 {
   "name": "my-app",
-  "component": [
+  "components": [
     {
       "name": "backend",
       "type": "webservice",
@@ -536,7 +605,7 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
   "valid": false,
   "errors": [
     {
-      "field": "component[0].image",
+      "path": "/components/0/image",
       "code": "MISSING_IMAGE",
       "message": "image is required for webservice and store component types"
     }
@@ -549,7 +618,7 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
 ```json
 {
   "name": "my-app",
-  "component": [
+  "components": [
     {
       "name": "backend",
       "type": "webservice",
@@ -572,7 +641,7 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
   "valid": false,
   "errors": [
     {
-      "field": "component[0].traits.probes[0]",
+      "path": "/components/0/traits/probes/0",
       "code": "INVALID_PROBE_CONFIG",
       "message": "probe must specify exactly one of exec, httpGet, or tcpSocket"
     }
@@ -585,7 +654,7 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
 ```json
 {
   "name": "my-app",
-  "component": [
+  "components": [
     {
       "name": "backend",
       "type": "webservice",
@@ -617,7 +686,7 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
   "valid": false,
   "errors": [
     {
-      "field": "component[0].traits.sidecar[0].traits.sidecar[0]",
+      "path": "/components/0/traits/sidecar/0/traits/sidecar/0",
       "code": "NESTED_TRAIT_FORBIDDEN",
       "message": "sidecar trait cannot be nested inside another init or sidecar trait"
     }
@@ -630,7 +699,7 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
 ```json
 {
   "name": "my-app",
-  "component": [
+  "components": [
     {
       "name": "backend",
       "type": "webservice",
@@ -641,7 +710,11 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
     {
       "name": "deploy-all",
       "mode": "StepByStep",
-      "components": ["backend", "frontend", "database"]
+      "components": [
+        "backend",
+        "frontend",
+        "database"
+      ]
     }
   ]
 }
@@ -653,12 +726,12 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
   "valid": false,
   "errors": [
     {
-      "field": "workflow[0].components[1]",
+      "path": "/workflow/0/components/1",
       "code": "COMPONENT_NOT_FOUND",
       "message": "component 'frontend' not found in application"
     },
     {
-      "field": "workflow[0].components[2]",
+      "path": "/workflow/0/components/2",
       "code": "COMPONENT_NOT_FOUND",
       "message": "component 'database' not found in application"
     }

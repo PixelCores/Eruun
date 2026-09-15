@@ -50,7 +50,7 @@ func TestCreateApplicationsFromTemplatePreservesEnvOverrideValuesDuringRewrite(t
 	svc := newMockServiceWithStore(store)
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "cloned-app",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "new-mysql",
 			ComponentType: config.StoreJob,
 			Properties: apisv1.Properties{
@@ -118,7 +118,7 @@ func TestCreateApplicationsFromTemplatePreservesInitEnvOverrideValuesDuringRewri
 	svc := newMockServiceWithStore(store)
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "cloned-app",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "new-mysql",
 			ComponentType: config.StoreJob,
 			Traits: apisv1.Traits{
@@ -218,7 +218,7 @@ func TestCreateApplicationsFromTemplateAppliesDefaultStorageClass(t *testing.T) 
 	svc := newMockServiceWithStore(store)
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "cloned-app",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "new-mysql",
 			ComponentType: config.StoreJob,
 			Template: &apisv1.TemplateRef{
@@ -294,7 +294,7 @@ func TestCreateApplicationsFromTemplatePreservesSecretTextOverrides(t *testing.T
 	svc := newMockServiceWithStore(store)
 	req := apisv1.CreateApplicationsRequest{
 		Name: "cloned-from-template",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "clone-app",
 				ComponentType: config.ServerJob,
@@ -402,7 +402,7 @@ func TestCreateApplicationsFromTemplateKeepsBase64LookingOverrideAsText(t *testi
 	encodedOverride := base64.StdEncoding.EncodeToString([]byte("override-secret"))
 	req := apisv1.CreateApplicationsRequest{
 		Name: "cloned-from-template-encoded-override",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "clone-app",
 				ComponentType: config.ServerJob,
@@ -496,7 +496,7 @@ func TestCreateApplicationsFromTemplateKeepsBase64LookingOverrideOnPlaintextSecr
 	encodedOverride := base64.StdEncoding.EncodeToString([]byte("override-secret"))
 	req := apisv1.CreateApplicationsRequest{
 		Name: "cloned-from-template-plain-override",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "clone-app",
 				ComponentType: config.ServerJob,
@@ -595,7 +595,7 @@ func TestCreateApplicationsFromTemplateOverridesInitEnv(t *testing.T) {
 	svc := newMockServiceWithStore(store)
 	req := apisv1.CreateApplicationsRequest{
 		Name: "cloned-app",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "new-mysql",
 			ComponentType: config.StoreJob,
 			Traits: apisv1.Traits{
@@ -684,7 +684,7 @@ func TestCreateApplicationsFromTemplateOverridesInitEnvDefaultFirst(t *testing.T
 	svc := newMockServiceWithStore(store)
 	req := apisv1.CreateApplicationsRequest{
 		Name: "cloned-app",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "new-mysql",
 			ComponentType: config.StoreJob,
 			Traits: apisv1.Traits{
@@ -773,7 +773,7 @@ func TestCreateApplicationsFromTemplateOverridesResources(t *testing.T) {
 			svc := newMockServiceWithStore(store)
 			resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 				Name: "cloned-app",
-				Component: []apisv1.CreateComponentRequest{{
+				Components: []apisv1.CreateComponentRequest{{
 					Name:          "new-mysql",
 					ComponentType: config.StoreJob,
 					Traits: apisv1.Traits{
@@ -819,7 +819,7 @@ func TestCreateApplicationsFromTemplateMergesTargetWorkEnv(t *testing.T) {
 	svc := newMockServiceWithStore(store)
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "cloned-app",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "new-mysql",
 			ComponentType: config.StoreJob,
 			Traits: apisv1.Traits{

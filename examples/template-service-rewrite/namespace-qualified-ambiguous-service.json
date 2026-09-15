@@ -4,7 +4,7 @@
   "alias": "ambiguous-service-dns-clone",
   "version": "1.0.0",
   "description": "Namespace-qualified Service DNS rewrite should not conflict with ambiguous short service names.",
-  "component": [
+  "components": [
     {
       "name": "new-mysql",
       "type": "store",

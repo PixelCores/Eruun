@@ -496,16 +496,16 @@ func (s *serviceImpl) prepareImportPlansForExecution(
 			continue
 		}
 		if createReq.ID != "" && !isFullImportKinds(includeKinds) {
-			mergedComponents, err := s.mergeCreateComponentsWithExisting(ctx, createReq.ID, createReq.Name, createReq.Namespace, createReq.Component, includeKinds)
+			mergedComponents, err := s.mergeCreateComponentsWithExisting(ctx, createReq.ID, createReq.Name, createReq.Namespace, createReq.Components, includeKinds)
 			if err != nil {
 				plan.err = err
 				plan.applyErrorStatus = importResourceStatusFailed
 				continue
 			}
-			// createReq.Component has already been sanitized for imported components in
+			// createReq.Components has already been sanitized for imported components in
 			// buildImportCreateRequest. For partial imports we must keep omitted existing
 			// components untouched to avoid mutating user-defined selectors/labels.
-			createReq.Component = mergedComponents
+			createReq.Components = mergedComponents
 		}
 		plan.createReq = createReq
 		if createReq.ID != "" && s.ComponentRepo != nil {
@@ -544,7 +544,7 @@ func buildImportCreateRequest(
 		Version:     "imported",
 		Project:     "imported",
 		Description: fmt.Sprintf("imported from namespace %s", namespace),
-		Component:   sanitizeImportComponentsForCreate(plan.components),
+		Components:  sanitizeImportComponentsForCreate(plan.components),
 	}
 
 	appKey := appNameNamespaceKey(plan.name, namespace)
@@ -905,7 +905,7 @@ func (s *serviceImpl) tryValidateImportCreateRequest(ctx context.Context, req ap
 	return fmt.Errorf("try application validation failed: %s", summarizeValidationErrors(resp.Errors))
 }
 
-func summarizeValidationErrors(errors []apisv1.ValidationError) string {
+func summarizeValidationErrors(errors []apisv1.TryValidationError) string {
 	if len(errors) == 0 {
 		return "invalid request"
 	}

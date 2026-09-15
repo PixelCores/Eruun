@@ -52,6 +52,69 @@ func convertWorkflowSteps(raw *model.JSONStruct) (workflowconfig.WorkflowFailure
 	return failurePolicy, result, nil
 }
 
+func ConvertWorkflowModelToUpdateRequest(workflow *model.Workflow) (*apisv1.UpdateApplicationWorkflowRequest, error) {
+	if workflow == nil {
+		return nil, nil
+	}
+	failurePolicy, details, err := convertWorkflowSteps(workflow.Steps)
+	if err != nil {
+		return nil, err
+	}
+	callback, err := workflowCallbackFromModel(workflow)
+	if err != nil {
+		return nil, err
+	}
+	return &apisv1.UpdateApplicationWorkflowRequest{
+		WorkflowID:       workflow.ID,
+		Name:             workflow.Name,
+		Alias:            workflow.Alias,
+		Callback:         callback,
+		WorkflowType:     workflow.WorkflowType,
+		FailurePolicy:    failurePolicy,
+		FailurePolicySet: true,
+		Workflow:         workflowDetailsToCreateRequests(details),
+	}, nil
+}
+
+func workflowDetailsToCreateRequests(details []apisv1.WorkflowStepDetail) []apisv1.CreateWorkflowStepRequest {
+	steps := make([]apisv1.CreateWorkflowStepRequest, 0, len(details))
+	for _, detail := range details {
+		step := apisv1.CreateWorkflowStepRequest{
+			SchedulingClass: detail.SchedulingClass,
+			Name:            detail.Name,
+			StepType:        detail.StepType,
+			WorkflowType:    detail.WorkflowType,
+			Approval:        detail.Approval,
+			Components:      append([]string(nil), detail.Components...),
+			Mode:            string(detail.Mode),
+		}
+		step.SetWorkflowPropertiesList(detail.Properties)
+		for _, subDetail := range detail.SubSteps {
+			subStep := apisv1.CreateWorkflowSubStepRequest{
+				SchedulingClass: subDetail.SchedulingClass,
+				Name:            subDetail.Name,
+				WorkflowType:    subDetail.WorkflowType,
+				Components:      append([]string(nil), subDetail.Components...),
+			}
+			subStep.SetWorkflowPropertiesList(subDetail.Properties)
+			step.SubSteps = append(step.SubSteps, subStep)
+		}
+		steps = append(steps, step)
+	}
+	return steps
+}
+
+func workflowCallbackFromModel(workflow *model.Workflow) (*apisv1.WorkflowCallback, error) {
+	if workflow == nil || workflow.Callback == nil {
+		return nil, nil
+	}
+	var callback apisv1.WorkflowCallback
+	if err := decodeJSONStruct(workflow.Callback, &callback); err != nil {
+		return nil, err
+	}
+	return &callback, nil
+}
+
 func convertWorkflowStepApproval(approval *model.WorkflowStepApproval) *apisv1.WorkflowStepApproval {
 	if approval == nil {
 		return nil
@@ -71,13 +134,14 @@ func convertWorkflowProperties(policies []model.Policies) []apisv1.WorkflowPrope
 	}
 	result := make([]apisv1.WorkflowProperties, 0, len(policies))
 	for _, policy := range policies {
-		if len(policy.Policies) == 0 && policy.Path == "" && policy.Container == "" {
+		if len(policy.Policies) == 0 && policy.Path == "" && policy.Container == "" && policy.InitSQLURL == "" {
 			continue
 		}
 		result = append(result, apisv1.WorkflowProperties{
-			Policies:  append([]string(nil), policy.Policies...),
-			Path:      policy.Path,
-			Container: policy.Container,
+			Policies:   append([]string(nil), policy.Policies...),
+			Path:       policy.Path,
+			Container:  policy.Container,
+			InitSQLURL: policy.InitSQLURL,
 		})
 	}
 	if len(result) == 0 {

@@ -329,7 +329,7 @@ func createRefreshRequest(appID, version string) apisv1.CreateApplicationsReques
 	return apisv1.CreateApplicationsRequest{
 		ID: appID, Name: "shop", Namespace: config.DefaultNamespace, Version: version,
 		Description: "refreshed",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name: "mysql", ComponentType: config.StoreJob, Image: "mysql:9", Replicas: 1,
 			Traits: statefulSetDeletionV2Traits("mysql-headless-v2"),
 		}},

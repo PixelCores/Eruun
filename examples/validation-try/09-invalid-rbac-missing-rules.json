@@ -3,7 +3,23 @@
   "name": "my-app",
   "namespace": "default",
   "version": "1.0.0",
-  "component": [
+  "workflow": [
+    {
+      "name": "deploy",
+      "mode": "StepByStep",
+      "components": [
+        "backend"
+      ]
+    }
+  ],
+  "_expected_errors": [
+    {
+      "path": "/components/0/traits/rbac/0/rules",
+      "code": "MISSING_RBAC_RULES",
+      "message": "rbac rules are required"
+    }
+  ],
+  "components": [
     {
       "name": "backend",
       "type": "webservice",
@@ -19,21 +35,5 @@
         ]
       }
     }
-  ],
-  "workflow": [
-    {
-      "name": "deploy",
-      "mode": "StepByStep",
-      "components": ["backend"]
-    }
-  ],
-  "_expected_errors": [
-    {
-      "field": "component[0].traits.rbac[0].rules",
-      "code": "MISSING_RBAC_RULES",
-      "message": "rbac rules are required"
-    }
   ]
 }
-
-

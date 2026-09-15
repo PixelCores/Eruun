@@ -55,7 +55,7 @@
   "version": "1.0.0",
   "project": "",
   "description": "Create Nginx",
-  "component": [
+  "components": [
     {
       "name": "nginx",
       "type": "webservice",
@@ -173,14 +173,18 @@ curl -X POST \
   "version": "1.0.0",
   "project": "",
   "description": "Create MySQL store",
-  "component": [
+  "components": [
     {
       "name": "mysql-primary",
       "type": "store",
       "replicas": 1,
       "image": "mysql:8.0.36",
       "properties": {
-        "ports": [{"port": 3306}],
+        "ports": [
+          {
+            "port": 3306
+          }
+        ],
         "env": {
           "MYSQL_ROOT_PASSWORD": "__REPLACE_WITH_SECRET__",
           "MYSQL_DATABASE": "demo",
@@ -319,7 +323,7 @@ curl -X POST \
     "version": "1.0.0",
     "project": "",
     "description": "TC003 config component creation",
-    "component": [
+    "components": [
       {
         "name": "app-config",
         "type": "config",
@@ -446,7 +450,7 @@ curl -X POST \
   "namespace": "default",
   "version": "1.0.0",
   "description": "TC004 secret component creation",
-  "component": [
+  "components": [
     {
       "name": "app-secret",
       "type": "secret",
@@ -466,7 +470,9 @@ curl -X POST \
     {
       "name": "secret-step",
       "mode": "StepByStep",
-      "components": ["app-secret"]
+      "components": [
+        "app-secret"
+      ]
     }
   ]
 }
@@ -528,14 +534,19 @@ curl -X POST \
   "namespace": "default",
   "version": "1.0.0",
   "description": "TC005 nginx deployment for image update test",
-  "component": [
+  "components": [
     {
       "name": "nginx-deployment",
       "type": "webservice",
       "image": "nginx:1.21",
       "replicas": 2,
       "properties": {
-        "ports": [{"port": 80, "expose": true}]
+        "ports": [
+          {
+            "port": 80,
+            "expose": true
+          }
+        ]
       }
     }
   ],
@@ -543,7 +554,9 @@ curl -X POST \
     {
       "name": "deploy-nginx",
       "mode": "StepByStep",
-      "components": ["nginx-deployment"]
+      "components": [
+        "nginx-deployment"
+      ]
     }
   ]
 }
@@ -612,14 +625,18 @@ curl -X POST \
   "namespace": "default",
   "version": "1.0.0",
   "description": "TC006 app deployment for env update test",
-  "component": [
+  "components": [
     {
       "name": "app-deployment",
       "type": "webservice",
       "image": "nginx:latest",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 80}],
+        "ports": [
+          {
+            "port": 80
+          }
+        ],
         "env": {
           "ENV": "production"
         }
@@ -630,7 +647,9 @@ curl -X POST \
     {
       "name": "deploy-app",
       "mode": "StepByStep",
-      "components": ["app-deployment"]
+      "components": [
+        "app-deployment"
+      ]
     }
   ]
 }
@@ -695,14 +714,18 @@ traits:
   "namespace": "default",
   "version": "1.0.0",
   "description": "TC007 PVC mount test",
-  "component": [
+  "components": [
     {
       "name": "app-with-pvc",
       "type": "webservice",
       "image": "nginx:latest",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 80}]
+        "ports": [
+          {
+            "port": 80
+          }
+        ]
       },
       "traits": {
         "storage": [
@@ -722,7 +745,9 @@ traits:
     {
       "name": "deploy-with-pvc",
       "mode": "StepByStep",
-      "components": ["app-with-pvc"]
+      "components": [
+        "app-with-pvc"
+      ]
     }
   ]
 }
@@ -772,7 +797,7 @@ traits:
   "namespace": "default",
   "version": "1.0.0",
   "description": "TC008 ConfigMap mount test",
-  "component": [
+  "components": [
     {
       "name": "app-config",
       "type": "config",
@@ -789,7 +814,11 @@ traits:
       "image": "nginx:latest",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 80}]
+        "ports": [
+          {
+            "port": 80
+          }
+        ]
       },
       "traits": {
         "storage": [
@@ -808,12 +837,16 @@ traits:
     {
       "name": "config-step",
       "mode": "StepByStep",
-      "components": ["app-config"]
+      "components": [
+        "app-config"
+      ]
     },
     {
       "name": "app-step",
       "mode": "StepByStep",
-      "components": ["app-with-configmap"]
+      "components": [
+        "app-with-configmap"
+      ]
     }
   ]
 }
@@ -875,7 +908,7 @@ traits:
   "namespace": "default",
   "version": "1.0.0",
   "description": "TC009 Secret mount test",
-  "component": [
+  "components": [
     {
       "name": "app-secret",
       "type": "secret",
@@ -893,7 +926,11 @@ traits:
       "image": "nginx:latest",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 80}]
+        "ports": [
+          {
+            "port": 80
+          }
+        ]
       },
       "traits": {
         "storage": [
@@ -912,12 +949,16 @@ traits:
     {
       "name": "secret-step",
       "mode": "StepByStep",
-      "components": ["app-secret"]
+      "components": [
+        "app-secret"
+      ]
     },
     {
       "name": "app-step",
       "mode": "StepByStep",
-      "components": ["app-with-secret"]
+      "components": [
+        "app-with-secret"
+      ]
     }
   ]
 }
@@ -986,14 +1027,19 @@ traits:
   "namespace": "default",
   "version": "1.0.0",
   "description": "TC010 Ingress configuration test",
-  "component": [
+  "components": [
     {
       "name": "app-with-ingress",
       "type": "webservice",
       "image": "nginx:latest",
       "replicas": 2,
       "properties": {
-        "ports": [{"port": 8080, "expose": true}]
+        "ports": [
+          {
+            "port": 8080,
+            "expose": true
+          }
+        ]
       },
       "traits": {
         "ingress": [
@@ -1001,7 +1047,9 @@ traits:
             "name": "app-ingress",
             "namespace": "default",
             "ingressClassName": "nginx",
-            "hosts": ["app.example.com"],
+            "hosts": [
+              "app.example.com"
+            ],
             "routes": [
               {
                 "path": "/",
@@ -1025,7 +1073,9 @@ traits:
             "tls": [
               {
                 "secretName": "app-tls",
-                "hosts": ["app.example.com"]
+                "hosts": [
+                  "app.example.com"
+                ]
               }
             ]
           }
@@ -1037,7 +1087,9 @@ traits:
     {
       "name": "deploy-with-ingress",
       "mode": "StepByStep",
-      "components": ["app-with-ingress"]
+      "components": [
+        "app-with-ingress"
+      ]
     }
   ]
 }
@@ -1123,14 +1175,18 @@ traits:
   "namespace": "default",
   "version": "1.0.0",
   "description": "TC011 RBAC ServiceAccount configuration test",
-  "component": [
+  "components": [
     {
       "name": "app-with-rbac",
       "type": "webservice",
       "image": "nginx:latest",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 80}]
+        "ports": [
+          {
+            "port": 80
+          }
+        ]
       },
       "traits": {
         "rbac": [
@@ -1141,14 +1197,29 @@ traits:
             "bindingName": "app-role-binding",
             "rules": [
               {
-                "apiGroups": [""],
-                "resources": ["pods", "services"],
-                "verbs": ["get", "list", "watch"]
+                "apiGroups": [
+                  ""
+                ],
+                "resources": [
+                  "pods",
+                  "services"
+                ],
+                "verbs": [
+                  "get",
+                  "list",
+                  "watch"
+                ]
               },
               {
-                "apiGroups": [""],
-                "resources": ["configmaps"],
-                "verbs": ["get"]
+                "apiGroups": [
+                  ""
+                ],
+                "resources": [
+                  "configmaps"
+                ],
+                "verbs": [
+                  "get"
+                ]
               }
             ]
           }
@@ -1160,7 +1231,9 @@ traits:
     {
       "name": "deploy-with-rbac",
       "mode": "StepByStep",
-      "components": ["app-with-rbac"]
+      "components": [
+        "app-with-rbac"
+      ]
     }
   ]
 }
@@ -1229,7 +1302,7 @@ traits:
   "namespace": "default",
   "version": "1.0.0",
   "description": "TC012 Sequential dependency test",
-  "component": [
+  "components": [
     {
       "name": "app-config",
       "type": "config",
@@ -1259,7 +1332,12 @@ traits:
       "image": "mysql:8.0",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 3306, "expose": true}],
+        "ports": [
+          {
+            "port": 3306,
+            "expose": true
+          }
+        ],
         "env": {
           "MYSQL_ROOT_PASSWORD": "__REPLACE_WITH_SECRET__",
           "MYSQL_DATABASE": "appdb"
@@ -1284,7 +1362,12 @@ traits:
       "image": "myregistry/backend:v1.0.0",
       "replicas": 2,
       "properties": {
-        "ports": [{"port": 8080, "expose": true}],
+        "ports": [
+          {
+            "port": 8080,
+            "expose": true
+          }
+        ],
         "env": {
           "DB_HOST": "mysql-db",
           "DB_PORT": "3306"
@@ -1292,8 +1375,14 @@ traits:
       },
       "traits": {
         "envFrom": [
-          {"type": "configMap", "sourceName": "app-config"},
-          {"type": "secret", "sourceName": "app-secret"}
+          {
+            "type": "configMap",
+            "sourceName": "app-config"
+          },
+          {
+            "type": "secret",
+            "sourceName": "app-secret"
+          }
         ]
       }
     }
@@ -1302,22 +1391,30 @@ traits:
     {
       "name": "step1-config",
       "mode": "StepByStep",
-      "components": ["app-config"]
+      "components": [
+        "app-config"
+      ]
     },
     {
       "name": "step2-secret",
       "mode": "StepByStep",
-      "components": ["app-secret"]
+      "components": [
+        "app-secret"
+      ]
     },
     {
       "name": "step3-database",
       "mode": "StepByStep",
-      "components": ["mysql-db"]
+      "components": [
+        "mysql-db"
+      ]
     },
     {
       "name": "step4-app",
       "mode": "StepByStep",
-      "components": ["backend-app"]
+      "components": [
+        "backend-app"
+      ]
     }
   ]
 }
@@ -1392,15 +1489,21 @@ traits:
   "namespace": "default",
   "version": "1.0.0",
   "description": "TC014 Parallel component test",
-  "component": [
+  "components": [
     {
       "name": "service-a",
       "type": "webservice",
       "image": "nginx:latest",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 80}],
-        "env": {"SERVICE_NAME": "service-a"}
+        "ports": [
+          {
+            "port": 80
+          }
+        ],
+        "env": {
+          "SERVICE_NAME": "service-a"
+        }
       }
     },
     {
@@ -1409,8 +1512,14 @@ traits:
       "image": "nginx:latest",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 80}],
-        "env": {"SERVICE_NAME": "service-b"}
+        "ports": [
+          {
+            "port": 80
+          }
+        ],
+        "env": {
+          "SERVICE_NAME": "service-b"
+        }
       }
     },
     {
@@ -1419,7 +1528,12 @@ traits:
       "image": "redis:7-alpine",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 6379, "expose": true}]
+        "ports": [
+          {
+            "port": 6379,
+            "expose": true
+          }
+        ]
       }
     },
     {
@@ -1428,7 +1542,12 @@ traits:
       "image": "redis:7-alpine",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 6379, "expose": true}]
+        "ports": [
+          {
+            "port": 6379,
+            "expose": true
+          }
+        ]
       }
     }
   ],
@@ -1436,12 +1555,18 @@ traits:
     {
       "name": "parallel-group-1",
       "mode": "DAG",
-      "components": ["service-a", "service-b"]
+      "components": [
+        "service-a",
+        "service-b"
+      ]
     },
     {
       "name": "parallel-group-2",
       "mode": "DAG",
-      "components": ["redis-c", "redis-d"]
+      "components": [
+        "redis-c",
+        "redis-d"
+      ]
     }
   ]
 }
@@ -1479,7 +1604,7 @@ traits:
   "namespace": "default",
   "version": "1.0.0",
   "description": "TC015 Microservices application test",
-  "component": [
+  "components": [
     {
       "name": "app-config",
       "type": "config",
@@ -1498,7 +1623,12 @@ traits:
       "image": "redis:7-alpine",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 6379, "expose": true}]
+        "ports": [
+          {
+            "port": 6379,
+            "expose": true
+          }
+        ]
       }
     },
     {
@@ -1507,7 +1637,12 @@ traits:
       "image": "mysql:8.0",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 3306, "expose": true}],
+        "ports": [
+          {
+            "port": 3306,
+            "expose": true
+          }
+        ],
         "env": {
           "MYSQL_ROOT_PASSWORD": "rootpwd",
           "MYSQL_DATABASE": "userdb"
@@ -1532,7 +1667,12 @@ traits:
       "image": "mysql:8.0",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 3306, "expose": true}],
+        "ports": [
+          {
+            "port": 3306,
+            "expose": true
+          }
+        ],
         "env": {
           "MYSQL_ROOT_PASSWORD": "rootpwd",
           "MYSQL_DATABASE": "orderdb"
@@ -1557,7 +1697,12 @@ traits:
       "image": "myregistry/user-service:v1.0.0",
       "replicas": 2,
       "properties": {
-        "ports": [{"port": 8080, "expose": true}],
+        "ports": [
+          {
+            "port": 8080,
+            "expose": true
+          }
+        ],
         "env": {
           "DB_HOST": "user-db",
           "REDIS_HOST": "message-queue"
@@ -1570,7 +1715,12 @@ traits:
       "image": "myregistry/order-service:v1.0.0",
       "replicas": 2,
       "properties": {
-        "ports": [{"port": 8080, "expose": true}],
+        "ports": [
+          {
+            "port": 8080,
+            "expose": true
+          }
+        ],
         "env": {
           "DB_HOST": "order-db",
           "REDIS_HOST": "message-queue"
@@ -1583,7 +1733,12 @@ traits:
       "image": "myregistry/api-gateway:v1.0.0",
       "replicas": 2,
       "properties": {
-        "ports": [{"port": 8080, "expose": true}],
+        "ports": [
+          {
+            "port": 8080,
+            "expose": true
+          }
+        ],
         "env": {
           "USER_SERVICE_URL": "http://user-service:8080",
           "ORDER_SERVICE_URL": "http://order-service:8080"
@@ -1596,7 +1751,12 @@ traits:
       "image": "myregistry/frontend:v1.0.0",
       "replicas": 2,
       "properties": {
-        "ports": [{"port": 80, "expose": true}],
+        "ports": [
+          {
+            "port": 80,
+            "expose": true
+          }
+        ],
         "env": {
           "API_GATEWAY_URL": "http://api-gateway:8080"
         }
@@ -1607,7 +1767,9 @@ traits:
             "name": "frontend-ingress",
             "namespace": "default",
             "ingressClassName": "nginx",
-            "hosts": ["app.example.com"],
+            "hosts": [
+              "app.example.com"
+            ],
             "routes": [
               {
                 "path": "/",
@@ -1629,7 +1791,12 @@ traits:
       "image": "prom/prometheus:latest",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 9090, "expose": true}]
+        "ports": [
+          {
+            "port": 9090,
+            "expose": true
+          }
+        ]
       }
     }
   ],
@@ -1637,27 +1804,41 @@ traits:
     {
       "name": "step1-infrastructure",
       "mode": "DAG",
-      "components": ["app-config", "message-queue"]
+      "components": [
+        "app-config",
+        "message-queue"
+      ]
     },
     {
       "name": "step2-databases",
       "mode": "DAG",
-      "components": ["user-db", "order-db"]
+      "components": [
+        "user-db",
+        "order-db"
+      ]
     },
     {
       "name": "step3-services",
       "mode": "DAG",
-      "components": ["user-service", "order-service"]
+      "components": [
+        "user-service",
+        "order-service"
+      ]
     },
     {
       "name": "step4-gateway-frontend",
       "mode": "DAG",
-      "components": ["api-gateway", "frontend"]
+      "components": [
+        "api-gateway",
+        "frontend"
+      ]
     },
     {
       "name": "step5-monitoring",
       "mode": "StepByStep",
-      "components": ["monitoring"]
+      "components": [
+        "monitoring"
+      ]
     }
   ]
 }
@@ -1696,14 +1877,18 @@ traits:
   "namespace": "default",
   "version": "1.0.0",
   "description": "TC016 Image pull failure handling test",
-  "component": [
+  "components": [
     {
       "name": "bad-image-deployment",
       "type": "webservice",
       "image": "nonexistent-registry.example.com/nonexistent/image:v999",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 80}]
+        "ports": [
+          {
+            "port": 80
+          }
+        ]
       }
     }
   ],
@@ -1711,7 +1896,9 @@ traits:
     {
       "name": "deploy-bad-image",
       "mode": "StepByStep",
-      "components": ["bad-image-deployment"]
+      "components": [
+        "bad-image-deployment"
+      ]
     }
   ]
 }
@@ -1752,14 +1939,18 @@ traits:
   "namespace": "default",
   "version": "1.0.0",
   "description": "TC017 Resource insufficient handling test",
-  "component": [
+  "components": [
     {
       "name": "high-resource-app",
       "type": "webservice",
       "image": "nginx:latest",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 80}]
+        "ports": [
+          {
+            "port": 80
+          }
+        ]
       },
       "traits": {
         "resources": {
@@ -1773,7 +1964,9 @@ traits:
     {
       "name": "deploy-high-resource",
       "mode": "StepByStep",
-      "components": ["high-resource-app"]
+      "components": [
+        "high-resource-app"
+      ]
     }
   ]
 }
@@ -1812,14 +2005,18 @@ traits:
   "namespace": "default",
   "version": "1.0.0",
   "description": "TC018 Conflict update handling test",
-  "component": [
+  "components": [
     {
       "name": "conflict-app",
       "type": "webservice",
       "image": "nginx:1.21",
       "replicas": 2,
       "properties": {
-        "ports": [{"port": 80}],
+        "ports": [
+          {
+            "port": 80
+          }
+        ],
         "env": {
           "VERSION": "1.0.0"
         }
@@ -1830,7 +2027,9 @@ traits:
     {
       "name": "deploy-conflict-app",
       "mode": "StepByStep",
-      "components": ["conflict-app"]
+      "components": [
+        "conflict-app"
+      ]
     }
   ]
 }
@@ -1904,7 +2103,7 @@ wait
   "namespace": "default",
   "version": "1.0.0",
   "description": "TC019 Workflow rollback test - middle step fails",
-  "component": [
+  "components": [
     {
       "name": "config-success",
       "type": "config",
@@ -1931,7 +2130,11 @@ wait
       "image": "nonexistent-registry.example.com/bad/image:v999",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 80}]
+        "ports": [
+          {
+            "port": 80
+          }
+        ]
       }
     },
     {
@@ -1940,7 +2143,11 @@ wait
       "image": "nginx:latest",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 80}]
+        "ports": [
+          {
+            "port": 80
+          }
+        ]
       }
     }
   ],
@@ -1948,22 +2155,30 @@ wait
     {
       "name": "step1-config",
       "mode": "StepByStep",
-      "components": ["config-success"]
+      "components": [
+        "config-success"
+      ]
     },
     {
       "name": "step2-secret",
       "mode": "StepByStep",
-      "components": ["secret-success"]
+      "components": [
+        "secret-success"
+      ]
     },
     {
       "name": "step3-bad-deployment",
       "mode": "StepByStep",
-      "components": ["bad-deployment"]
+      "components": [
+        "bad-deployment"
+      ]
     },
     {
       "name": "step4-dependent",
       "mode": "StepByStep",
-      "components": ["dependent-app"]
+      "components": [
+        "dependent-app"
+      ]
     }
   ]
 }
@@ -2005,15 +2220,21 @@ wait
   "namespace": "default",
   "version": "1.0.0",
   "description": "TC020 Large scale component test (10 components demo)",
-  "component": [
+  "components": [
     {
       "name": "service-01",
       "type": "webservice",
       "image": "nginx:latest",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 80}],
-        "env": {"SERVICE_ID": "01"}
+        "ports": [
+          {
+            "port": 80
+          }
+        ],
+        "env": {
+          "SERVICE_ID": "01"
+        }
       }
     },
     {
@@ -2022,8 +2243,14 @@ wait
       "image": "nginx:latest",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 80}],
-        "env": {"SERVICE_ID": "02"}
+        "ports": [
+          {
+            "port": 80
+          }
+        ],
+        "env": {
+          "SERVICE_ID": "02"
+        }
       }
     },
     {
@@ -2032,8 +2259,14 @@ wait
       "image": "nginx:latest",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 80}],
-        "env": {"SERVICE_ID": "03"}
+        "ports": [
+          {
+            "port": 80
+          }
+        ],
+        "env": {
+          "SERVICE_ID": "03"
+        }
       }
     },
     {
@@ -2042,8 +2275,14 @@ wait
       "image": "nginx:latest",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 80}],
-        "env": {"SERVICE_ID": "04"}
+        "ports": [
+          {
+            "port": 80
+          }
+        ],
+        "env": {
+          "SERVICE_ID": "04"
+        }
       }
     },
     {
@@ -2052,8 +2291,14 @@ wait
       "image": "nginx:latest",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 80}],
-        "env": {"SERVICE_ID": "05"}
+        "ports": [
+          {
+            "port": 80
+          }
+        ],
+        "env": {
+          "SERVICE_ID": "05"
+        }
       }
     },
     {
@@ -2061,7 +2306,9 @@ wait
       "type": "config",
       "replicas": 1,
       "properties": {
-        "conf": {"key": "value-01"}
+        "conf": {
+          "key": "value-01"
+        }
       }
     },
     {
@@ -2069,7 +2316,9 @@ wait
       "type": "config",
       "replicas": 1,
       "properties": {
-        "conf": {"key": "value-02"}
+        "conf": {
+          "key": "value-02"
+        }
       }
     },
     {
@@ -2078,7 +2327,12 @@ wait
       "image": "redis:7-alpine",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 6379, "expose": true}]
+        "ports": [
+          {
+            "port": 6379,
+            "expose": true
+          }
+        ]
       }
     },
     {
@@ -2087,7 +2341,12 @@ wait
       "image": "redis:7-alpine",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 6379, "expose": true}]
+        "ports": [
+          {
+            "port": 6379,
+            "expose": true
+          }
+        ]
       }
     },
     {
@@ -2095,7 +2354,9 @@ wait
       "type": "secret",
       "replicas": 1,
       "properties": {
-        "secret": {"api-key": "__REPLACE_WITH_API_KEY__"}
+        "secret": {
+          "api-key": "__REPLACE_WITH_API_KEY__"
+        }
       }
     }
   ],
@@ -2103,17 +2364,30 @@ wait
     {
       "name": "step1-configs",
       "mode": "DAG",
-      "components": ["config-01", "config-02", "secret-01"]
+      "components": [
+        "config-01",
+        "config-02",
+        "secret-01"
+      ]
     },
     {
       "name": "step2-stores",
       "mode": "DAG",
-      "components": ["redis-01", "redis-02"]
+      "components": [
+        "redis-01",
+        "redis-02"
+      ]
     },
     {
       "name": "step3-services",
       "mode": "DAG",
-      "components": ["service-01", "service-02", "service-03", "service-04", "service-05"]
+      "components": [
+        "service-01",
+        "service-02",
+        "service-03",
+        "service-04",
+        "service-05"
+      ]
     }
   ]
 }
@@ -2153,7 +2427,7 @@ wait
   "namespace": "default",
   "version": "1.0.0",
   "description": "TC021 Large capacity configuration test",
-  "component": [
+  "components": [
     {
       "name": "large-config",
       "type": "config",
@@ -2179,7 +2453,11 @@ wait
       "image": "nginx:latest",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 80}],
+        "ports": [
+          {
+            "port": 80
+          }
+        ],
         "env": {
           "ENV_VAR_001": "value001",
           "ENV_VAR_002": "value002",
@@ -2228,7 +2506,10 @@ wait
           }
         ],
         "envFrom": [
-          {"type": "configMap", "sourceName": "large-config"}
+          {
+            "type": "configMap",
+            "sourceName": "large-config"
+          }
         ]
       }
     }
@@ -2237,12 +2518,16 @@ wait
     {
       "name": "step1-config",
       "mode": "StepByStep",
-      "components": ["large-config"]
+      "components": [
+        "large-config"
+      ]
     },
     {
       "name": "step2-app",
       "mode": "StepByStep",
-      "components": ["app-with-many-envs"]
+      "components": [
+        "app-with-many-envs"
+      ]
     }
   ]
 }
@@ -2277,7 +2562,7 @@ wait
   "namespace": "default",
   "version": "1.0.0",
   "description": "TC022 Special character handling test",
-  "component": [
+  "components": [
     {
       "name": "config-with-dashes",
       "type": "config",
@@ -2307,7 +2592,11 @@ wait
       "image": "nginx:latest",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 80}],
+        "ports": [
+          {
+            "port": 80
+          }
+        ],
         "env": {
           "CONFIG_NAME": "config-with-dashes",
           "SECRET_NAME": "secret-with-dashes"
@@ -2315,8 +2604,14 @@ wait
       },
       "traits": {
         "envFrom": [
-          {"type": "configMap", "sourceName": "config-with-dashes"},
-          {"type": "secret", "sourceName": "secret-with-dashes"}
+          {
+            "type": "configMap",
+            "sourceName": "config-with-dashes"
+          },
+          {
+            "type": "secret",
+            "sourceName": "secret-with-dashes"
+          }
         ]
       }
     }
@@ -2325,12 +2620,17 @@ wait
     {
       "name": "step1-configs",
       "mode": "DAG",
-      "components": ["config-with-dashes", "secret-with-dashes"]
+      "components": [
+        "config-with-dashes",
+        "secret-with-dashes"
+      ]
     },
     {
       "name": "step2-app",
       "mode": "StepByStep",
-      "components": ["app-with-special-name"]
+      "components": [
+        "app-with-special-name"
+      ]
     }
   ]
 }
@@ -2345,14 +2645,18 @@ wait
   "namespace": "default",
   "version": "1.0.0",
   "description": "TC022 Invalid naming test - should fail",
-  "component": [
+  "components": [
     {
       "name": "invalid_name_with@special#chars",
       "type": "webservice",
       "image": "nginx:latest",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 80}]
+        "ports": [
+          {
+            "port": 80
+          }
+        ]
       }
     }
   ],
@@ -2360,7 +2664,9 @@ wait
     {
       "name": "deploy",
       "mode": "StepByStep",
-      "components": ["invalid_name_with@special#chars"]
+      "components": [
+        "invalid_name_with@special#chars"
+      ]
     }
   ]
 }
@@ -2402,7 +2708,7 @@ wait
   "alias": "tenant-a-mysql",
   "version": "1.0.3",
   "description": "mysql cloned from template",
-  "component": [
+  "components": [
     { "name": "tenant-a-mysql", "type": "store", "tmp": { "id": "tmpl-mysql-id" }, "properties": { "env": { "MYSQL_DATABASE": "demo" } } },
     { "name": "tenant-a-config", "type": "secret", "properties": { "secret": { "MYSQL_ROOT_PASSWORD": "__REPLACE_WITH_SECRET__" } }, "tmp": { "id": "tmpl-mysql-id" } }
   ]
@@ -2437,7 +2743,7 @@ wait
   "namespace": "default",
   "version": "1.0.0",
   "description": "My backend application",
-  "component": [
+  "components": [
     {
       "name": "backend",
       "type": "webservice",

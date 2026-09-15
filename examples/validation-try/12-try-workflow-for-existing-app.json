@@ -1,10 +1,13 @@
 {
-  "appId": "app-123",
+  "_comment": "POST /api/v1/applications/app-123/workflow/try",
+  "name": "release-app-123",
   "workflow": [
     {
       "name": "release",
       "mode": "StepByStep",
-      "components": ["backend"]
+      "components": [
+        "backend"
+      ]
     }
   ]
 }

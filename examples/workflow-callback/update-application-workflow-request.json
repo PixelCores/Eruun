@@ -13,11 +13,13 @@
     },
     "timeoutSeconds": 5
   },
-  "steps": [
+  "workflow": [
     {
       "name": "deploy-nginx",
       "mode": "StepByStep",
-      "components": ["nginx"]
+      "components": [
+        "nginx"
+      ]
     }
   ]
 }

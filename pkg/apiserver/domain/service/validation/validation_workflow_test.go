@@ -12,6 +12,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 func tryWorkflowRequestFromUpdateJSON(t *testing.T, input string) apisv1.TryWorkflowRequest {
@@ -19,44 +20,28 @@ func tryWorkflowRequestFromUpdateJSON(t *testing.T, input string) apisv1.TryWork
 	var req apisv1.UpdateApplicationWorkflowRequest
 	require.NoError(t, json.Unmarshal([]byte(input), &req))
 	return apisv1.TryWorkflowRequest{
-		WorkflowID:    req.WorkflowID,
-		Name:          req.Name,
-		Alias:         req.Alias,
-		WorkflowType:  req.WorkflowType,
-		Callback:      req.Callback,
-		FailurePolicy: req.FailurePolicy,
-		Workflow:      req.Workflow,
+		WorkflowID:       req.WorkflowID,
+		Name:             req.Name,
+		Alias:            req.Alias,
+		WorkflowType:     req.WorkflowType,
+		Callback:         req.Callback,
+		FailurePolicy:    req.FailurePolicy,
+		FailurePolicySet: req.FailurePolicySet,
+		Workflow:         req.Workflow,
 	}
 }
 
 func TestValidationService_TryApplication_RejectsInvalidWorkflowCallback(t *testing.T) {
 	svc := &validationServiceImpl{}
 	req := validCallbackTryApplicationRequest()
-	req.WorkflowCallback = &apisv1.WorkflowCallback{
+	req.Callback = &apisv1.WorkflowCallback{
 		Methods: map[string]string{"success": "PATCH"},
 	}
 
 	resp := svc.TryApplication(context.Background(), req)
 
 	require.False(t, resp.Valid)
-	requireValidationError(t, resp.Errors, "workflow.callback", apisv1.ErrCodeInvalidTraitConfig)
-}
-
-func TestValidationService_TryApplication_WorkflowCallbackOverridesInvalidAppCallback(t *testing.T) {
-	svc := &validationServiceImpl{
-		URLSecurityPolicyProvider: newTestURLSecurityPolicyProvider(t, spec.URLSecurityPolicySpec{AllowPrivateByDefault: true}),
-	}
-	req := validCallbackTryApplicationRequest()
-	req.Callback = &apisv1.WorkflowCallback{
-		Methods: map[string]string{"success": "PATCH"},
-	}
-	req.WorkflowCallback = &apisv1.WorkflowCallback{
-		Success: "http://127.0.0.1:8080/callback",
-	}
-
-	resp := svc.TryApplication(context.Background(), req)
-
-	require.True(t, resp.Valid, "expected workflow callback to override app callback: %+v", resp.Errors)
+	requireValidationError(t, resp.Errors, "callback", apisv1.ErrCodeInvalidTraitConfig)
 }
 
 func TestValidationService_TryWorkflowRejectsInvalidCallbackMethod(t *testing.T) {
@@ -87,6 +72,195 @@ func TestValidationService_TryWorkflowRejectsInvalidCallbackMethod(t *testing.T)
 
 	require.False(t, resp.Valid)
 	requireValidationError(t, resp.Errors, "callback", apisv1.ErrCodeInvalidTraitConfig)
+}
+
+func TestValidationService_TryWorkflowReturnsResubmittableSpecAndPlan(t *testing.T) {
+	store := newInMemoryAppStore()
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "test-app", Namespace: "default"}
+	store.components["backend"] = &model.ApplicationComponent{
+		AppID: "app-1", Name: "backend", Namespace: "default", ComponentType: config.ServerJob, Image: "nginx:latest",
+	}
+	repos := newMockServiceWithStore(store)
+	svc := &validationServiceImpl{AppRepo: repos.AppRepo, ComponentRepo: repos.ComponentRepo}
+
+	resp := svc.TryWorkflow(context.Background(), "app-1", apisv1.TryWorkflowRequest{
+		WorkflowID: "wf-1",
+		Name:       "deploy-backend",
+		Workflow: []apisv1.CreateWorkflowStepRequest{{
+			Name: "deploy-backend", WorkflowType: config.JobDeploy, Mode: "StepByStep", Components: []string{"backend"},
+		}},
+	})
+
+	require.True(t, resp.Valid, "%+v", resp.Errors)
+	require.NotNil(t, resp.Errors)
+	require.NotNil(t, resp.NormalizedSpec)
+	require.Len(t, resp.Plan.Actions, 1)
+	raw, err := json.Marshal(resp.NormalizedSpec)
+	require.NoError(t, err)
+	var resubmitted apisv1.UpdateApplicationWorkflowRequest
+	require.NoError(t, json.Unmarshal(raw, &resubmitted))
+	require.Equal(t, resp.NormalizedSpec.Workflow, resubmitted.Workflow)
+}
+
+func TestValidationService_TryWorkflowNormalizesWorkflowNameForSchema(t *testing.T) {
+	store := newInMemoryAppStore()
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "test-app", Namespace: "default"}
+	store.components["backend"] = &model.ApplicationComponent{
+		AppID: "app-1", Name: "backend", Namespace: "default", ComponentType: config.ServerJob, Image: "nginx:latest",
+	}
+	repos := newMockServiceWithStore(store)
+	svc := &validationServiceImpl{AppRepo: repos.AppRepo, ComponentRepo: repos.ComponentRepo}
+
+	resp := svc.TryWorkflow(context.Background(), "app-1", apisv1.TryWorkflowRequest{
+		Name: "Deploy-Flow",
+		Workflow: []apisv1.CreateWorkflowStepRequest{{
+			Name: "deploy-backend", WorkflowType: config.JobDeploy, Components: []string{"backend"},
+		}},
+	})
+	require.True(t, resp.Valid, "%+v", resp.Errors)
+	require.Equal(t, "deploy-flow", resp.NormalizedSpec.Name)
+}
+
+func TestValidationService_TryWorkflowChecksDatabaseResetInitSQLURL(t *testing.T) {
+	store := newInMemoryAppStore()
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "test-app", Namespace: "default"}
+	store.components["mysql"] = &model.ApplicationComponent{
+		AppID: "app-1", Name: "mysql", Namespace: "default", ComponentType: config.StoreJob,
+	}
+	repos := newMockServiceWithStore(store)
+	svc := &validationServiceImpl{AppRepo: repos.AppRepo, ComponentRepo: repos.ComponentRepo}
+	tests := []struct {
+		name    string
+		jobType config.JobType
+		url     string
+		valid   bool
+	}{
+		{name: "valid database reset URL", jobType: config.JobDatabaseReset, url: "https://files.example/game.sql", valid: true},
+		{name: "invalid scheme", jobType: config.JobDatabaseReset, url: "ftp://files.example/game.sql"},
+		{name: "whitespace URL", jobType: config.JobDatabaseReset, url: "   "},
+		{name: "URL on unrelated job", jobType: config.JobDeploy, url: "https://files.example/game.sql"},
+		{name: "omitted URL", jobType: config.JobDatabaseReset, valid: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			step := apisv1.CreateWorkflowStepRequest{
+				Name: "reset-mysql", WorkflowType: tt.jobType, Components: []string{"mysql"},
+			}
+			step.SetWorkflowPropertiesList([]apisv1.WorkflowProperties{{Policies: []string{"mysql"}, InitSQLURL: tt.url}})
+			resp := svc.TryWorkflow(context.Background(), "app-1", apisv1.TryWorkflowRequest{
+				Workflow: []apisv1.CreateWorkflowStepRequest{step},
+			})
+			require.Equal(t, tt.valid, resp.Valid, "%+v", resp.Errors)
+			if !tt.valid {
+				requireValidationPath(t, resp.Errors, "/workflow/0/properties/0/initSqlUrl", apisv1.ErrCodeInvalidWorkflowStepType)
+			}
+		})
+	}
+}
+
+func TestValidationService_TryWorkflowRejectsParentOrUntargetedInitSQLURLWithSubSteps(t *testing.T) {
+	store := newInMemoryAppStore()
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "test-app", Namespace: "default"}
+	store.components["mysql"] = &model.ApplicationComponent{
+		AppID: "app-1", Name: "mysql", Namespace: "default", ComponentType: config.StoreJob,
+	}
+	repos := newMockServiceWithStore(store)
+	svc := &validationServiceImpl{AppRepo: repos.AppRepo, ComponentRepo: repos.ComponentRepo}
+	req := tryWorkflowRequestFromUpdateJSON(t, `{
+		"name":"reset-flow",
+		"workflow":[{
+			"name":"database-reset",
+			"jobType":"database_reset",
+			"properties":[{"initSqlUrl":"https://files.example/game.sql"}],
+			"subSteps":[{"name":"reset-mysql","jobType":"database_reset","components":["mysql"]}]
+		}]
+	}`)
+
+	resp := svc.TryWorkflow(context.Background(), "app-1", req)
+	require.False(t, resp.Valid)
+	requireValidationPath(t, resp.Errors, "/workflow/0/properties/0/initSqlUrl", apisv1.ErrCodeInvalidWorkflowStepType)
+
+	req.Workflow[0].SetWorkflowPropertiesList(nil)
+	req.Workflow[0].Components = []string{"mysql"}
+	req.Workflow[0].SubSteps[0].Components = nil
+	req.Workflow[0].SubSteps[0].SetWorkflowPropertiesList([]apisv1.WorkflowProperties{{InitSQLURL: "https://files.example/game.sql"}})
+	resp = svc.TryWorkflow(context.Background(), "app-1", req)
+	require.False(t, resp.Valid)
+	requireValidationPath(t, resp.Errors, "/workflow/0/subSteps/0/properties/0/initSqlUrl", apisv1.ErrCodeInvalidWorkflowStepType)
+
+	req.Workflow[0].SetWorkflowPropertiesList([]apisv1.WorkflowProperties{{InitSQLURL: "https://files.example/game.sql"}})
+	req.Workflow[0].SubSteps[0].SetWorkflowPropertiesList(nil)
+	req.Workflow[0].SubSteps[0].Components = []string{"mysql"}
+	resp = svc.TryWorkflow(context.Background(), "app-1", req)
+	require.False(t, resp.Valid)
+	requireValidationPath(t, resp.Errors, "/workflow/0/properties/0/initSqlUrl", apisv1.ErrCodeInvalidWorkflowStepType)
+}
+
+func TestValidationService_TryWorkflowAllowsTargetedSubStepInitSQLURL(t *testing.T) {
+	store := newInMemoryAppStore()
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "test-app", Namespace: "default"}
+	store.components["mysql"] = &model.ApplicationComponent{
+		AppID: "app-1", Name: "mysql", Namespace: "default", ComponentType: config.StoreJob,
+	}
+	repos := newMockServiceWithStore(store)
+	svc := &validationServiceImpl{AppRepo: repos.AppRepo, ComponentRepo: repos.ComponentRepo}
+	req := tryWorkflowRequestFromUpdateJSON(t, `{
+		"name":"reset-flow",
+		"workflow":[{
+			"name":"database-reset",
+			"jobType":"database_reset",
+			"subSteps":[{
+				"name":"reset-mysql","jobType":"database_reset","components":["mysql"],
+				"properties":[{"initSqlUrl":"https://files.example/game.sql"}]
+			}]
+		}]
+	}`)
+
+	resp := svc.TryWorkflow(context.Background(), "app-1", req)
+	require.True(t, resp.Valid, "%+v", resp.Errors)
+	require.Equal(t, "https://files.example/game.sql", resp.NormalizedSpec.Workflow[0].SubSteps[0].WorkflowPropertiesList()[0].InitSQLURL)
+}
+
+func TestValidationService_TryWorkflowRejectsInitSQLURLOnApprovalStep(t *testing.T) {
+	svc := &validationServiceImpl{}
+	step := apisv1.CreateWorkflowStepRequest{
+		Name: "approve-reset", StepType: config.WorkflowStepTypeApproval, WorkflowType: config.JobDatabaseReset,
+		Approval: &apisv1.WorkflowStepApproval{NotifyURL: "https://example.com/approve"},
+	}
+	step.SetWorkflowPropertiesList([]apisv1.WorkflowProperties{{InitSQLURL: "https://files.example/game.sql"}})
+	resp := svc.TryWorkflow(context.Background(), "", apisv1.TryWorkflowRequest{
+		Workflow: []apisv1.CreateWorkflowStepRequest{step},
+	})
+	require.False(t, resp.Valid)
+	requireValidationPath(t, resp.Errors, "/workflow/0", apisv1.ErrCodeInvalidApprovalConfig)
+}
+
+func TestValidationService_TryWorkflowPreservesExplicitFailurePolicyReset(t *testing.T) {
+	store := newInMemoryAppStore()
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "test-app", Namespace: "default"}
+	store.components["backend"] = &model.ApplicationComponent{
+		AppID: "app-1", Name: "backend", Namespace: "default", ComponentType: config.ServerJob, Image: "nginx:latest",
+	}
+	repos := newMockServiceWithStore(store)
+	svc := &validationServiceImpl{AppRepo: repos.AppRepo, ComponentRepo: repos.ComponentRepo}
+
+	req := tryWorkflowRequestFromUpdateJSON(t, `{
+		"workflowId":"wf-1",
+		"failurePolicy":"",
+		"workflow":[{"name":"deploy-backend","jobType":"deploy","components":["backend"]}]
+	}`)
+	resp := svc.TryWorkflow(context.Background(), "app-1", req)
+
+	require.True(t, resp.Valid, "%+v", resp.Errors)
+	require.NotNil(t, resp.NormalizedSpec)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, resp.NormalizedSpec.FailurePolicy)
+	raw, err := json.Marshal(resp.NormalizedSpec)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"failurePolicy":"cleanup_all"`)
+	var resubmitted apisv1.UpdateApplicationWorkflowRequest
+	require.NoError(t, json.Unmarshal(raw, &resubmitted))
+	require.True(t, resubmitted.FailurePolicySet)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, resubmitted.FailurePolicy)
 }
 
 func TestValidationService_TryWorkflowRejectsInvalidFailurePolicy(t *testing.T) {
@@ -173,10 +347,10 @@ func TestValidationService_TryApplication_WorkflowUsesResolvedTemplateComponentN
 	resp := svc.TryApplication(context.Background(), apisv1.CreateApplicationsRequest{
 		Name:      "game",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Template: &apisv1.TemplateRef{ID: "tmpl-1", Target: "api"},
 		}},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{{
+		Workflow: []apisv1.CreateWorkflowStepRequest{{
 			Name:         "deploy-step",
 			WorkflowType: config.JobDeploy,
 			Mode:         "StepByStep",
@@ -204,14 +378,14 @@ func TestValidationService_TryApplication_WorkflowComponentNotFound(t *testing.T
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
 				Image:         "nginx:latest",
 			},
 		},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{
+		Workflow: []apisv1.CreateWorkflowStepRequest{
 			{
 				Name:         "deploy-step",
 				WorkflowType: config.JobDeploy,
@@ -241,14 +415,14 @@ func TestValidationService_TryApplication_InvalidWorkflowMode(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
 				Image:         "nginx:latest",
 			},
 		},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{
+		Workflow: []apisv1.CreateWorkflowStepRequest{
 			{
 				Name:         "deploy-step",
 				WorkflowType: config.JobDeploy,
@@ -278,14 +452,14 @@ func TestValidationService_TryApplication_WorkflowSubStepComponentNotFound(t *te
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
 				Image:         "nginx:latest",
 			},
 		},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{
+		Workflow: []apisv1.CreateWorkflowStepRequest{
 			{
 				Name:         "deploy-step",
 				WorkflowType: config.JobDeploy,
@@ -322,14 +496,14 @@ func TestValidationService_TryApplication_DuplicateWorkflowStepName(t *testing.T
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
 				Image:         "nginx:latest",
 			},
 		},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{
+		Workflow: []apisv1.CreateWorkflowStepRequest{
 			{
 				Name:         "deploy-step",
 				WorkflowType: config.JobDeploy,
@@ -365,14 +539,14 @@ func TestValidationService_TryApplication_EmptyWorkflowStep(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
 				Image:         "nginx:latest",
 			},
 		},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{
+		Workflow: []apisv1.CreateWorkflowStepRequest{
 			{
 				Name:         "empty-step",
 				WorkflowType: config.JobDeploy,
@@ -503,12 +677,12 @@ func TestValidationService_TryApplication_LogArchiveUploadRequiresPath(t *testin
 	resp := svc.TryApplication(context.Background(), apisv1.CreateApplicationsRequest{
 		Name:      "log-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "api",
 			ComponentType: config.ServerJob,
 			Image:         "nginx:latest",
 		}},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{{
+		Workflow: []apisv1.CreateWorkflowStepRequest{{
 			Name:         "archive-api",
 			WorkflowType: config.JobLogArchiveUpload,
 			Mode:         "StepByStep",
@@ -526,12 +700,12 @@ func TestValidationService_TryApplication_LogArchiveUploadAllowsNameBasedStep(t 
 	resp := svc.TryApplication(context.Background(), apisv1.CreateApplicationsRequest{
 		Name:      "log-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "api",
 			ComponentType: config.ServerJob,
 			Image:         "nginx:latest",
 		}},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{{
+		Workflow: []apisv1.CreateWorkflowStepRequest{{
 			Name:         "api",
 			WorkflowType: config.JobLogArchiveUpload,
 			Mode:         "StepByStep",
@@ -550,14 +724,14 @@ func TestValidationService_TryApplication_LogArchiveUploadRejectsNonPodComponent
 	resp := svc.TryApplication(context.Background(), apisv1.CreateApplicationsRequest{
 		Name:      "log-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "app-config",
 			ComponentType: config.ConfJob,
 			Properties: apisv1.Properties{
 				Conf: map[string]string{"app.yaml": "debug: true"},
 			},
 		}},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{{
+		Workflow: []apisv1.CreateWorkflowStepRequest{{
 			Name:         "archive-config",
 			WorkflowType: config.JobLogArchiveUpload,
 			Mode:         "StepByStep",
@@ -681,7 +855,7 @@ func TestValidationService_TryWorkflow_PropertiesArrayValidatesEveryLogArchivePa
 
 	req := tryWorkflowRequestFromUpdateJSON(t, `{
 		"name": "log-flow",
-		"steps": [{
+		"workflow": [{
 			"name": "archive",
 			"workflowType": "log_archive_upload",
 			"mode": "StepByStep",
@@ -713,7 +887,7 @@ func TestValidationService_TryWorkflow_PropertiesArrayValidatesEveryComponentRef
 
 	req := tryWorkflowRequestFromUpdateJSON(t, `{
 		"name": "log-flow",
-		"steps": [{
+		"workflow": [{
 			"name": "archive",
 			"workflowType": "log_archive_upload",
 			"mode": "StepByStep",
@@ -745,7 +919,7 @@ func TestValidationService_TryWorkflow_PropertiesArrayRejectsDuplicatePolicies(t
 
 	req := tryWorkflowRequestFromUpdateJSON(t, `{
 		"name": "deploy-flow",
-		"steps": [{
+		"workflow": [{
 			"name": "deploy-api",
 			"workflowType": "deploy",
 			"mode": "StepByStep",
@@ -779,7 +953,7 @@ func TestValidationService_TryWorkflow_PropertiesArrayRejectsComponentsMismatch(
 
 	req := tryWorkflowRequestFromUpdateJSON(t, `{
 		"name": "deploy-flow",
-		"steps": [{
+		"workflow": [{
 			"name": "deploy-components",
 			"workflowType": "deploy",
 			"mode": "StepByStep",
@@ -814,7 +988,7 @@ func TestValidationService_TryWorkflow_PropertiesArrayAllowsMatchingComponents(t
 
 	req := tryWorkflowRequestFromUpdateJSON(t, `{
 		"name": "deploy-flow",
-		"steps": [{
+		"workflow": [{
 			"name": "deploy-components",
 			"workflowType": "deploy",
 			"mode": "StepByStep",
@@ -853,7 +1027,7 @@ func TestValidationService_TryWorkflow_SubStepPropertiesArrayValidatesEveryLogAr
 
 	req := tryWorkflowRequestFromUpdateJSON(t, `{
 		"name": "log-flow",
-		"steps": [{
+		"workflow": [{
 			"name": "archive-group",
 			"mode": "StepByStep",
 			"subSteps": [{
@@ -888,7 +1062,7 @@ func TestValidationService_TryWorkflow_SinglePropertiesArrayMergesExplicitCompon
 
 	req := tryWorkflowRequestFromUpdateJSON(t, `{
 		"name": "log-flow",
-		"steps": [{
+		"workflow": [{
 			"name": "archive-api",
 			"workflowType": "log_archive_upload",
 			"mode": "StepByStep",

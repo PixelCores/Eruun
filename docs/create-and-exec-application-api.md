@@ -20,11 +20,13 @@
 - `workflowId`: 指定执行的工作流 ID
 - `executeAt`: 延迟执行时间（Unix 秒）
 
-创建应用主路径推荐使用 `components` 传入组件列表；历史字段 `component` 仍被兼容接收，但不能和 `components` 同时出现。
+组件列表只使用 `components`。根级 `component` 会作为未知字段拒绝。
 
-因为该接口继承 `CreateApplicationsRequest`，所以创建应用时支持的 workflow 对象写法也适用，包括 `workflow.failurePolicy`。失败清理策略详见 `workflow-failure-policy.md`。
+因为该接口继承 `CreateApplicationsRequest`，工作流步骤固定使用根级数组 `workflow: [...]`，工作流配置使用同级的 `failurePolicy` 和 `callback`。根级 `steps` 与 `workflow: {"steps": [...]}` 均不接受。完整规范见 [Canonical JSON Profile](canonical-json-profile.md)，失败清理策略详见 `workflow-failure-policy.md`。
 
 当未提供 `workflowId` 时，默认使用创建接口返回的 `workflowId`。
+
+调用方可提供 `Idempotency-Key` header。键必须为 1 到 128 个字母、数字、点、下划线、冒号或连字符。对相同 workspace、Application、键、Workflow 和等价 `executeAt` 的重试，服务端复用第一次创建的 workflow task；同一个键改用于不同 Workflow 或 `executeAt` 时执行阶段冲突。该接口仍会先按现有声明式 upsert 语义创建或刷新 Application；幂等边界是 workflow task 入队。
 
 ## Namespace 生命周期
 
@@ -43,6 +45,7 @@
 - `taskId`: 执行成功时返回的任务 ID
 - `execStatus`: `queued` 或 `failed`
 - `execError`: 执行失败原因（仅 `execStatus=failed` 时返回）
+- `allowedActions`: 当前任务可执行的结构化 HTTP 动作；普通排队或运行任务通常返回 `cancel`，无可执行动作时返回 `[]`
 
 示例响应见：
 
@@ -53,6 +56,7 @@
 - 创建失败：返回业务错误（与 `POST /applications` 一致）。
 - 当请求携带既有应用 ID，或 template key 命中既有应用时，创建阶段实际是受 app-scoped 锁保护的整体刷新。如果该应用仍有未完成的 cleanup v2/v3 StatefulSet 迁移，刷新会在替换组件或 workflow 前返回 `400/10000`，不会改变组件 numeric ID，也不会继续调用 workflow 执行。
 - 创建成功但执行失败：接口整体返回成功，`execStatus=failed`，并在 `execError` 中返回失败原因。
+- 同一幂等作用域的键与不同 `executeAt` 冲突：workflow 执行阶段返回幂等冲突；Application 创建/刷新阶段已按上述 upsert 语义完成。
 
 该设计避免“请求失败但应用已创建”的歧义，便于调用方进行补偿或重试执行。
 

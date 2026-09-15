@@ -21,7 +21,7 @@ func TestValidationService_TryApplication_RolloutValid(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "demo-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -38,7 +38,7 @@ func TestValidationService_TryApplication_RolloutValid(t *testing.T) {
 				},
 			},
 		},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{
+		Workflow: []apisv1.CreateWorkflowStepRequest{
 			{Name: "deploy", WorkflowType: config.JobDeploy, Components: []string{"backend"}},
 		},
 	}
@@ -55,7 +55,7 @@ func TestValidationService_TryApplication_RolloutRollingUpdateRequiresConfig(t *
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "demo-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -66,7 +66,7 @@ func TestValidationService_TryApplication_RolloutRollingUpdateRequiresConfig(t *
 				},
 			},
 		},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{
+		Workflow: []apisv1.CreateWorkflowStepRequest{
 			{Name: "deploy", WorkflowType: config.JobDeploy, Components: []string{"backend"}},
 		},
 	}
@@ -127,7 +127,7 @@ func TestValidationService_TryApplication_RolloutRollingUpdateRequiresFields(t *
 			req := apisv1.CreateApplicationsRequest{
 				Name:      "demo-app",
 				Namespace: "default",
-				Component: []apisv1.CreateComponentRequest{
+				Components: []apisv1.CreateComponentRequest{
 					{
 						Name:          "backend",
 						ComponentType: config.ServerJob,
@@ -141,7 +141,7 @@ func TestValidationService_TryApplication_RolloutRollingUpdateRequiresFields(t *
 						},
 					},
 				},
-				WorkflowSteps: []apisv1.CreateWorkflowStepRequest{
+				Workflow: []apisv1.CreateWorkflowStepRequest{
 					{Name: "deploy", WorkflowType: config.JobDeploy, Components: []string{"backend"}},
 				},
 			}
@@ -172,7 +172,7 @@ func TestValidationService_TryApplication_RolloutRejectsStringZeroVariants(t *te
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "demo-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -203,7 +203,7 @@ func TestValidationService_TryApplication_RolloutRejectsStringZeroVariants(t *te
 				},
 			},
 		},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{
+		Workflow: []apisv1.CreateWorkflowStepRequest{
 			{Name: "deploy", WorkflowType: config.JobDeploy, Components: []string{"backend", "store"}},
 		},
 	}
@@ -276,7 +276,7 @@ func TestValidationService_TryApplication_RolloutRejectsNumericStrings(t *testin
 			req := apisv1.CreateApplicationsRequest{
 				Name:      "demo-app",
 				Namespace: "default",
-				Component: []apisv1.CreateComponentRequest{
+				Components: []apisv1.CreateComponentRequest{
 					{
 						Name:          "backend",
 						ComponentType: tc.componentType,
@@ -290,7 +290,7 @@ func TestValidationService_TryApplication_RolloutRejectsNumericStrings(t *testin
 						},
 					},
 				},
-				WorkflowSteps: []apisv1.CreateWorkflowStepRequest{
+				Workflow: []apisv1.CreateWorkflowStepRequest{
 					{Name: "deploy", WorkflowType: config.JobDeploy, Components: []string{"backend"}},
 				},
 			}
@@ -318,7 +318,7 @@ func TestValidationService_TryApplication_RolloutRejectsUnsupportedComponent(t *
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "demo-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "task",
 				ComponentType: config.InstantJob,
@@ -329,7 +329,7 @@ func TestValidationService_TryApplication_RolloutRejectsUnsupportedComponent(t *
 				},
 			},
 		},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{
+		Workflow: []apisv1.CreateWorkflowStepRequest{
 			{Name: "run", Components: []string{"task"}},
 		},
 	}
@@ -348,7 +348,7 @@ func TestValidationService_TryApplication_RolloutNestedRejected(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "demo-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -367,7 +367,7 @@ func TestValidationService_TryApplication_RolloutNestedRejected(t *testing.T) {
 				},
 			},
 		},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{
+		Workflow: []apisv1.CreateWorkflowStepRequest{
 			{Name: "deploy", WorkflowType: config.JobDeploy, Components: []string{"backend"}},
 		},
 	}

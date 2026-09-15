@@ -8,7 +8,7 @@
     "failure": "https://example.com/app/failure",
     "timeoutSeconds": 5
   },
-  "component": [
+  "components": [
     {
       "name": "web",
       "type": "webservice",

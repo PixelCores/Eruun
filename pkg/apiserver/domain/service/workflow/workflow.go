@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/cancelsignal"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
@@ -34,7 +36,7 @@ import (
 type WorkflowService interface {
 	CreateWorkflowTask(ctx context.Context, workflow apis.CreateWorkflowRequest) (*apis.CreateWorkflowResponse, error)
 	ExecWorkflowTask(ctx context.Context, workflowID string, executeAt int64) (*apis.ExecWorkflowResponse, error)
-	ExecWorkflowTaskForApp(ctx context.Context, appID, workflowID string, executeAt int64) (*apis.ExecWorkflowResponse, error)
+	ExecWorkflowTaskForApp(ctx context.Context, appID, workflowID string, executeAt int64, idempotencyKey string) (*apis.ExecWorkflowResponse, error)
 	WaitingTasks(ctx context.Context) ([]*model.WorkflowQueue, error)
 	UpdateTask(ctx context.Context, queue *model.WorkflowQueue) bool
 	TaskRunning(ctx context.Context) ([]*model.WorkflowQueue, error)
@@ -168,7 +170,7 @@ func (w *workflowServiceImpl) ExecWorkflowTask(ctx context.Context, workflowID s
 	if err != nil {
 		return nil, err
 	}
-	return w.execWorkflowTaskForAppLocked(ctx, workflow.AppID, workflowID, executeAt)
+	return w.execWorkflowTaskForAppLocked(ctx, workflow.AppID, workflowID, executeAt, "")
 }
 
 func (w *workflowServiceImpl) GetTaskStatus(ctx context.Context, taskID string) (*apis.TaskStatusResponse, error) {
@@ -499,11 +501,12 @@ func defaultComponentStatus(taskStatus config.Status) string {
 	}
 }
 
-func (w *workflowServiceImpl) ExecWorkflowTaskForApp(ctx context.Context, appID, workflowID string, executeAt int64) (*apis.ExecWorkflowResponse, error) {
-	return w.execWorkflowTaskForAppLocked(ctx, appID, workflowID, executeAt)
+func (w *workflowServiceImpl) ExecWorkflowTaskForApp(ctx context.Context, appID, workflowID string, executeAt int64, idempotencyKey string) (*apis.ExecWorkflowResponse, error) {
+	return w.execWorkflowTaskForAppLocked(ctx, appID, workflowID, executeAt, idempotencyKey)
 }
 
-func (w *workflowServiceImpl) execWorkflowTaskForAppLocked(ctx context.Context, appID, workflowID string, executeAt int64) (*apis.ExecWorkflowResponse, error) {
+func (w *workflowServiceImpl) execWorkflowTaskForAppLocked(ctx context.Context, appID, workflowID string, executeAt int64, idempotencyKey string) (*apis.ExecWorkflowResponse, error) {
+	requestedExecuteAt := executeAt
 	normalized, err := normalizeExecuteAt(executeAt)
 	if err != nil {
 		return nil, err
@@ -526,13 +529,31 @@ func (w *workflowServiceImpl) execWorkflowTaskForAppLocked(ctx context.Context, 
 			if workflow.AppID == "" || workflow.AppID != appID {
 				return bcode.ErrWorkflowNotExist
 			}
+			scopedIdempotencyKey := workflowSubmissionIdempotencyKey(lockCtx, appID, idempotencyKey)
+			if scopedIdempotencyKey != "" {
+				existing, lookupErr := repository.TaskByIdempotencyKey(lockCtx, tx, scopedIdempotencyKey)
+				switch {
+				case lookupErr == nil:
+					if existing.AppID != appID || existing.WorkflowID != workflowID || !equivalentWorkflowExecuteAt(existing.ExecuteAt, requestedExecuteAt, normalized) {
+						return bcode.ErrWorkflowIdempotencyConflict
+					}
+					resp = &apis.ExecWorkflowResponse{
+						TaskID:              existing.TaskID,
+						Status:              string(existing.Status),
+						PendingApprovalStep: existing.PendingApprovalStep,
+					}
+					return nil
+				case !errors.Is(lookupErr, datastore.ErrRecordNotExist):
+					return fmt.Errorf("lookup workflow submission idempotency key: %w", lookupErr)
+				}
+			}
 			if err := EnsureAppWorkflowIdle(lockCtx, tx, appID); err != nil {
 				return err
 			}
 			if err := EnsureNoPendingStatefulSetCleanup(lockCtx, tx, appID); err != nil {
 				return err
 			}
-			resp, err = w.enqueueWorkflowTaskWithStore(lockCtx, tx, workflow, normalized)
+			resp, err = w.enqueueWorkflowTaskWithStoreAndIdempotencyKey(lockCtx, tx, workflow, normalized, scopedIdempotencyKey)
 			return err
 		})
 	})
@@ -540,6 +561,23 @@ func (w *workflowServiceImpl) execWorkflowTaskForAppLocked(ctx context.Context, 
 		return nil, err
 	}
 	return resp, nil
+}
+
+func workflowSubmissionIdempotencyKey(ctx context.Context, appID, clientKey string) string {
+	clientKey = strings.TrimSpace(clientKey)
+	if clientKey == "" {
+		return ""
+	}
+	workspaceID := ""
+	if scope, ok := access.FromContext(ctx); ok {
+		workspaceID = strings.TrimSpace(scope.WorkspaceID)
+	}
+	digest := sha256.Sum256([]byte(workspaceID + "\x00" + strings.TrimSpace(appID) + "\x00" + clientKey))
+	return fmt.Sprintf("api:workflow:%x", digest[:])
+}
+
+func equivalentWorkflowExecuteAt(existing, requested, normalized int64) bool {
+	return existing == normalized || (existing > 0 && existing == requested)
 }
 
 func (w *workflowServiceImpl) UpsertWorkflowSchedule(ctx context.Context, appID string, req apis.UpsertWorkflowScheduleRequest) (*apis.UpsertWorkflowScheduleResponse, error) {
@@ -2005,7 +2043,7 @@ func (w *workflowServiceImpl) enqueueWorkflowTaskWithStoreAndIdempotencyKey(ctx 
 	if err != nil {
 		return nil, err
 	}
-	return &apis.ExecWorkflowResponse{TaskID: workflowTask.TaskID}, nil
+	return &apis.ExecWorkflowResponse{TaskID: workflowTask.TaskID, Status: string(workflowTask.Status)}, nil
 }
 
 func validateWorkflowTaskEnqueue(ctx context.Context, store datastore.DataStore, workflow *model.Workflow, requireComponentInventory bool) error {

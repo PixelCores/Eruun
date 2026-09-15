@@ -32,7 +32,7 @@ curl -sS -X POST "${ERUUN_API_URL:-http://127.0.0.1:8000}/api/v1/applications" \
   "version": "5.7.2",
   "project": "Mysql 5.7.2",
   "description": "Mysql:5.7.2",
-  "component": [
+  "components": [
     {
       "name": "mysql-config",
       "type": "config",
@@ -394,7 +394,7 @@ curl -sS -X POST "${ERUUN_API_URL:-http://127.0.0.1:8000}/api/v1/applications" \
   "alias": "tenant-a-mysql",
   "version": "1.0.7",
   "description": "mysql cloned from template",
-  "component": [
+  "components": [
     {
       "name": "tenant-a-secret",
       "type": "secret",
@@ -463,7 +463,7 @@ curl -sS -X POST "${ERUUN_API_URL:-http://127.0.0.1:8000}/api/v1/applications" \
   "version": "6.2.17",
   "project": "redis 6.2.17",
   "description": "Redis 6.2.17",
-  "component": [
+  "components": [
     {
       "name": "tmp-redis-config",
       "type": "config",
@@ -556,7 +556,7 @@ curl -sS -X POST "${ERUUN_API_URL:-http://127.0.0.1:8000}/api/v1/applications" \
   "alias": "tenant-a-redis",
   "version": "1.0.0",
   "description": "redis cloned from template",
-  "component": [
+  "components": [
     {
       "name": "tenant-a-redis-config",
       "type": "config",

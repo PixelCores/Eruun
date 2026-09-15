@@ -3,14 +3,28 @@
   "namespace": "default",
   "version": "1.0.0",
   "description": "基本 StatefulSet PVC 测试 - tmpCreate 模式",
-  "component": [
+  "workflow": [
+    {
+      "name": "deploy-mysql",
+      "mode": "StepByStep",
+      "components": [
+        "mysql-primary"
+      ]
+    }
+  ],
+  "components": [
     {
       "name": "mysql-primary",
       "type": "store",
       "image": "mysql:8.0",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 3306, "expose": true}],
+        "ports": [
+          {
+            "port": 3306,
+            "expose": true
+          }
+        ],
         "env": {
           "MYSQL_ROOT_PASSWORD": "__REPLACE_WITH_SECRET__",
           "MYSQL_DATABASE": "testdb"
@@ -28,13 +42,5 @@
         ]
       }
     }
-  ],
-  "workflow": [
-    {
-      "name": "deploy-mysql",
-      "mode": "StepByStep",
-      "components": ["mysql-primary"]
-    }
   ]
 }
-

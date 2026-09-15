@@ -18,7 +18,7 @@ func (v *validationServiceImpl) TryWorkflow(ctx context.Context, appID string, r
 
 	// 1. Validate workflow name if provided
 	if req.Name != "" {
-		errors = append(errors, v.validateName(req.Name, "name")...)
+		errors = append(errors, v.validateName(req.Name, "name", maxNameLength, true)...)
 	}
 	workflowType := config.NormalizeWorkflowTaskType(req.WorkflowType)
 	if workflowType != "" && !config.IsSupportedWorkflowTaskType(workflowType) {
@@ -64,9 +64,25 @@ func (v *validationServiceImpl) TryWorkflow(ctx context.Context, appID string, r
 		errors = append(errors, v.validateWorkflowSteps(req.Workflow, componentIndex, "workflow")...)
 	}
 
+	normalizedFailurePolicy := req.FailurePolicy
+	if policy, ok := workflowconfig.NormalizeWorkflowFailurePolicy(req.FailurePolicy); ok &&
+		(req.FailurePolicySet || strings.TrimSpace(string(req.FailurePolicy)) != "") {
+		normalizedFailurePolicy = policy
+	}
+	normalized := &apisv1.UpdateApplicationWorkflowRequest{
+		WorkflowID:    req.WorkflowID,
+		Name:          strings.ToLower(req.Name),
+		Alias:         req.Alias,
+		Callback:      req.Callback,
+		WorkflowType:  workflowType,
+		FailurePolicy: normalizedFailurePolicy,
+		Workflow:      req.Workflow,
+	}
 	return &apisv1.TryWorkflowResponse{
-		Valid:  len(errors) == 0,
-		Errors: errors,
+		Valid:          len(errors) == 0,
+		Errors:         apisv1.FinalizeValidationErrors(errors, apisv1.ValidationPathWorkflow),
+		NormalizedSpec: normalized,
+		Plan:           apisv1.NewWorkflowExecutionPlan(req.Workflow),
 	}
 }
 
@@ -113,7 +129,7 @@ func (v *validationServiceImpl) validateWorkflowSteps(steps []apisv1.CreateWorkf
 
 		// Validate step name
 		if step.Name != "" {
-			nameErrors := v.validateName(step.Name, fmt.Sprintf("%s.name", stepField))
+			nameErrors := v.validateName(step.Name, fmt.Sprintf("%s.name", stepField), maxNameLength, true)
 			errors = append(errors, nameErrors...)
 
 			// Check for duplicate step names
@@ -147,7 +163,7 @@ func (v *validationServiceImpl) validateWorkflowSteps(steps []apisv1.CreateWorkf
 		}
 
 		if stepType == config.WorkflowStepTypeApproval {
-			if len(step.Components) > 0 || len(step.Properties.Policies) > 0 || len(step.SubSteps) > 0 {
+			if len(step.Components) > 0 || len(step.Properties.Policies) > 0 || len(step.SubSteps) > 0 || step.HasWorkflowInitSQLURL() {
 				errors = append(errors, apisv1.ValidationError{
 					Field:   stepField,
 					Code:    apisv1.ErrCodeInvalidApprovalConfig,
@@ -188,6 +204,7 @@ func (v *validationServiceImpl) validateWorkflowSteps(steps []apisv1.CreateWorkf
 		}
 
 		for _, item := range propertyItems {
+			errors = append(errors, validateWorkflowPropertyInitSQLURL(step.WorkflowType, item, len(step.SubSteps) == 0)...)
 			errors = append(errors, validateLogArchiveUploadWorkflowStep(step.WorkflowType, item.properties, item.componentRefs, componentIndex, item.propertiesField)...)
 			errors = append(errors, validateWorkflowComponentRefs(item.componentRefs, componentIndex)...)
 		}
@@ -209,7 +226,7 @@ func (v *validationServiceImpl) validateWorkflowSteps(steps []apisv1.CreateWorkf
 
 			// Validate substep name
 			if subStep.Name != "" {
-				errors = append(errors, v.validateName(subStep.Name, fmt.Sprintf("%s.name", subStepField))...)
+				errors = append(errors, v.validateName(subStep.Name, fmt.Sprintf("%s.name", subStepField), maxNameLength, true)...)
 			}
 
 			subPropertyItems, subPropertyErrors := workflowPropertiesValidationItems(
@@ -224,6 +241,7 @@ func (v *validationServiceImpl) validateWorkflowSteps(steps []apisv1.CreateWorkf
 			errors = append(errors, subPropertyErrors...)
 
 			for _, item := range subPropertyItems {
+				errors = append(errors, validateWorkflowPropertyInitSQLURL(subStep.WorkflowType, item, true)...)
 				errors = append(errors, validateLogArchiveUploadWorkflowStep(subStep.WorkflowType, item.properties, item.componentRefs, componentIndex, item.propertiesField)...)
 				errors = append(errors, validateWorkflowComponentRefs(item.componentRefs, componentIndex)...)
 			}
@@ -231,6 +249,17 @@ func (v *validationServiceImpl) validateWorkflowSteps(steps []apisv1.CreateWorkf
 	}
 
 	return errors
+}
+
+func validateWorkflowPropertyInitSQLURL(jobType config.JobType, item workflowPropertiesValidationItem, executable bool) []apisv1.ValidationError {
+	if err := applicationservice.ValidateWorkflowInitSQLURL(jobType, item.properties.InitSQLURL, len(item.componentRefs) > 0, executable); err != nil {
+		return []apisv1.ValidationError{{
+			Field:   item.propertiesField + ".initSqlUrl",
+			Code:    apisv1.ErrCodeInvalidWorkflowStepType,
+			Message: err.Error(),
+		}}
+	}
+	return nil
 }
 
 type workflowComponentValidationRef struct {

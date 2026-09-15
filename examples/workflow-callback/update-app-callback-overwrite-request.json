@@ -7,7 +7,16 @@
     "success": "https://example.com/app-updated/success",
     "failure": "https://example.com/app-updated/failure"
   },
-  "component": [
+  "workflow": [
+    {
+      "name": "deploy-web",
+      "components": [
+        "web"
+      ],
+      "mode": "StepByStep"
+    }
+  ],
+  "components": [
     {
       "name": "web",
       "type": "webservice",
@@ -21,13 +30,6 @@
         ]
       },
       "traits": {}
-    }
-  ],
-  "workflow": [
-    {
-      "name": "deploy-web",
-      "components": ["web"],
-      "mode": "StepByStep"
     }
   ]
 }

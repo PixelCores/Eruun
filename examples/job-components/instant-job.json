@@ -4,7 +4,16 @@
   "version": "1.0.0",
   "project": "demo-project",
   "description": "Instant job demo",
-  "component": [
+  "workflow": [
+    {
+      "name": "run-instant-task",
+      "mode": "StepByStep",
+      "components": [
+        "instant-task"
+      ]
+    }
+  ],
+  "components": [
     {
       "name": "instant-task",
       "type": "job",
@@ -12,16 +21,13 @@
       "namespace": "default",
       "replicas": 1,
       "properties": {
-        "command": ["/bin/sh", "-c", "echo instant job"]
+        "command": [
+          "/bin/sh",
+          "-c",
+          "echo instant job"
+        ]
       },
       "traits": {}
-    }
-  ],
-  "workflow": [
-    {
-      "name": "run-instant-task",
-      "mode": "StepByStep",
-      "components": ["instant-task"]
     }
   ]
 }

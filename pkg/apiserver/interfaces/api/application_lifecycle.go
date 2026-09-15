@@ -26,6 +26,10 @@ func (app *applications) createApplications(c *gin.Context) {
 }
 
 func (app *applications) createAndExecApplications(c *gin.Context) {
+	idempotencyKey, ok := bindIdempotencyKey(c, bcode.ErrApplicationConfig)
+	if !ok {
+		return
+	}
 	req, ok := bindAndValidateStrictJSON[apis.CreateAndExecApplicationRequest](c, bcode.ErrApplicationConfig, true)
 	if !ok {
 		return
@@ -48,9 +52,10 @@ func (app *applications) createAndExecApplications(c *gin.Context) {
 	}
 
 	resp := &apis.CreateAndExecApplicationResponse{
-		Application: createdApp,
-		WorkflowID:  workflowID,
-		ExecStatus:  apis.CreateAndExecStatusQueued,
+		Application:    createdApp,
+		WorkflowID:     workflowID,
+		ExecStatus:     apis.CreateAndExecStatusQueued,
+		AllowedActions: []apis.AllowedAction{},
 	}
 	if workflowID == "" {
 		resp.ExecStatus = apis.CreateAndExecStatusFailed
@@ -68,7 +73,7 @@ func (app *applications) createAndExecApplications(c *gin.Context) {
 		return
 	}
 
-	execResp, execErr := app.WorkflowService.ExecWorkflowTaskForApp(ctx, createdApp.ID, workflowID, req.ExecuteAt)
+	execResp, execErr := app.WorkflowService.ExecWorkflowTaskForApp(ctx, createdApp.ID, workflowID, req.ExecuteAt, idempotencyKey)
 	if execErr != nil {
 		klog.ErrorS(execErr, "create and exec workflow failed", "appID", createdApp.ID, "workflowID", workflowID)
 		resp.ExecStatus = apis.CreateAndExecStatusFailed
@@ -78,6 +83,7 @@ func (app *applications) createAndExecApplications(c *gin.Context) {
 	}
 	if execResp != nil {
 		resp.TaskID = execResp.TaskID
+		resp.AllowedActions = workflowTaskAllowedActions(execResp.TaskID, createdApp.ID, execResp.Status, execResp.PendingApprovalStep)
 	}
 	if resp.TaskID != "" && shouldMarkCreateAndExecDeploying(req.ExecuteAt, time.Now()) {
 		if markErr := app.ApplicationService.MarkInitialDeployingWorkflowComponents(ctx, createdApp.ID, workflowID); markErr != nil {

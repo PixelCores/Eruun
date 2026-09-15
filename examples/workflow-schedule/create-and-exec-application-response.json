@@ -19,5 +19,15 @@
   },
   "workflowId": "wf-default-123",
   "taskId": "task-123",
-  "execStatus": "queued"
+  "execStatus": "queued",
+  "allowedActions": [
+    {
+      "name": "cancel",
+      "method": "POST",
+      "path": "/api/v1/applications/app-123/workflow/cancel",
+      "body": {
+        "taskId": "task-123"
+      }
+    }
+  ]
 }

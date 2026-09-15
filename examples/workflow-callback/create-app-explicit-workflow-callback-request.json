@@ -4,25 +4,22 @@
   "alias": "Callback Custom Workflow App",
   "version": "1.0.0",
   "callback": {
-    "success": "https://example.com/app/success"
+    "success": "https://example.com/workflow/success",
+    "failure": "https://example.com/workflow/failure",
+    "methods": {
+      "success": "POST",
+      "failure": "PUT"
+    }
   },
-  "workflow": {
-    "callback": {
-      "success": "https://example.com/workflow/success",
-      "failure": "https://example.com/workflow/failure",
-      "methods": {
-        "success": "POST",
-        "failure": "PUT"
-      }
-    },
-    "steps": [
-      {
-        "name": "deploy-web",
-        "components": ["web"],
-        "mode": "StepByStep"
-      }
-    ]
-  },
+  "workflow": [
+    {
+      "name": "deploy-web",
+      "components": [
+        "web"
+      ],
+      "mode": "StepByStep"
+    }
+  ],
   "components": [
     {
       "name": "web",

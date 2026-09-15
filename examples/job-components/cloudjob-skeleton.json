@@ -3,7 +3,7 @@
   "namespace": "default",
   "version": "1.0.0",
   "description": "CloudJob skeleton demo",
-  "component": [
+  "components": [
     {
       "name": "bootstrap-cloud",
       "type": "cloudjob",

@@ -42,9 +42,9 @@ func TestImportNamespaceResourcesPreservesEncodedSecretProvenance(t *testing.T) 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.Len(t, appService.createReqs, 1)
-	require.Len(t, appService.createReqs[0].Component, 1)
-	require.Equal(t, "backend-secret", appService.createReqs[0].Component[0].Name)
-	require.Equal(t, "secret-pwd", appService.createReqs[0].Component[0].Properties.Secret["password"])
+	require.Len(t, appService.createReqs[0].Components, 1)
+	require.Equal(t, "backend-secret", appService.createReqs[0].Components[0].Name)
+	require.Equal(t, "secret-pwd", appService.createReqs[0].Components[0].Properties.Secret["password"])
 }
 
 func TestImportNamespaceResources_PersistsObserveModeAtomically(t *testing.T) {
@@ -321,17 +321,17 @@ func TestImportNamespaceResources_ApplyWithFilteredKindsPreservesExistingOmitted
 	assert.Equal(t, existingAppID, appService.createReqs[0].ID)
 	assert.Equal(t, 1, resp.Summary.ComponentsPlanned)
 	assert.Equal(t, 1, resp.Summary.ComponentsApplied)
-	componentNames := make([]string, 0, len(appService.createReqs[0].Component))
-	for _, comp := range appService.createReqs[0].Component {
+	componentNames := make([]string, 0, len(appService.createReqs[0].Components))
+	for _, comp := range appService.createReqs[0].Components {
 		componentNames = append(componentNames, comp.Name)
 	}
 	assert.Contains(t, componentNames, "existing-config")
 	assert.Contains(t, componentNames, deploymentName)
 
 	var preserved *apisv1.CreateComponentRequest
-	for i := range appService.createReqs[0].Component {
-		if appService.createReqs[0].Component[i].Name == "existing-config" {
-			preserved = &appService.createReqs[0].Component[i]
+	for i := range appService.createReqs[0].Components {
+		if appService.createReqs[0].Components[i].Name == "existing-config" {
+			preserved = &appService.createReqs[0].Components[i]
 			break
 		}
 	}
@@ -420,8 +420,8 @@ func TestImportNamespaceResources_ApplyWithFilteredKindsDropsStaleIncludedCompon
 	require.Len(t, resp.Apps, 1)
 
 	assert.Equal(t, existingAppID, appService.createReqs[0].ID)
-	componentNames := make([]string, 0, len(appService.createReqs[0].Component))
-	for _, comp := range appService.createReqs[0].Component {
+	componentNames := make([]string, 0, len(appService.createReqs[0].Components))
+	for _, comp := range appService.createReqs[0].Components {
 		componentNames = append(componentNames, comp.Name)
 	}
 	assert.Contains(t, componentNames, currentConfig)
@@ -519,8 +519,8 @@ func TestImportNamespaceResources_ApplyWithTraitKindsKeepsExistingWorkloadCompon
 	require.Lenf(t, appService.createReqs, 1, "app error: %s", resp.Apps[0].Error)
 
 	assert.Equal(t, existingAppID, appService.createReqs[0].ID)
-	componentNames := make([]string, 0, len(appService.createReqs[0].Component))
-	for _, comp := range appService.createReqs[0].Component {
+	componentNames := make([]string, 0, len(appService.createReqs[0].Components))
+	for _, comp := range appService.createReqs[0].Components {
 		componentNames = append(componentNames, comp.Name)
 	}
 	assert.Contains(t, componentNames, currentConfig)
@@ -605,8 +605,8 @@ func TestImportNamespaceResources_ApplyWithDeploymentsOnlyKeepsAmbiguousExisting
 	require.Len(t, resp.Apps, 1)
 	require.Lenf(t, appService.createReqs, 1, "app error: %s", resp.Apps[0].Error)
 
-	componentNames := make([]string, 0, len(appService.createReqs[0].Component))
-	for _, comp := range appService.createReqs[0].Component {
+	componentNames := make([]string, 0, len(appService.createReqs[0].Components))
+	for _, comp := range appService.createReqs[0].Components {
 		componentNames = append(componentNames, comp.Name)
 	}
 	assert.Contains(t, componentNames, currentWorkload)
@@ -1201,8 +1201,8 @@ func TestImportNamespaceResources_ApplyRecomputesIDForCollapsedAppNames(t *testi
 		}
 	}
 	assert.Equal(t, 1, emptyIDCount)
-	secondReqComponentNames := make([]string, 0, len(appService.createReqs[1].Component))
-	for _, component := range appService.createReqs[1].Component {
+	secondReqComponentNames := make([]string, 0, len(appService.createReqs[1].Components))
+	for _, component := range appService.createReqs[1].Components {
 		secondReqComponentNames = append(secondReqComponentNames, component.Name)
 	}
 	assert.ElementsMatch(t, []string{"backend-one", "backend-two"}, secondReqComponentNames)
@@ -1279,9 +1279,9 @@ func TestImportNamespaceResources_ApplyStripsReservedLabelsBeforeCreate(t *testi
 	})
 	require.NoError(t, err)
 	require.Len(t, appService.createReqs, 1)
-	require.NotEmpty(t, appService.createReqs[0].Component)
+	require.NotEmpty(t, appService.createReqs[0].Components)
 
-	labels := appService.createReqs[0].Component[0].Properties.Labels
+	labels := appService.createReqs[0].Components[0].Properties.Labels
 	assert.NotContains(t, labels, config.LabelManagedBy)
 	assert.NotContains(t, labels, config.LabelAppID)
 	assert.NotContains(t, labels, config.LabelComponentID)

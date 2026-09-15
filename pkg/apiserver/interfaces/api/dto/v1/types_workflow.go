@@ -24,9 +24,10 @@ type Properties = spec.Properties
 type Traits = spec.Traits
 
 type WorkflowProperties struct {
-	Policies  []string `json:"policies"`
-	Path      string   `json:"path,omitempty"`
-	Container string   `json:"container,omitempty"`
+	Policies   []string `json:"policies"`
+	Path       string   `json:"path,omitempty"`
+	Container  string   `json:"container,omitempty"`
+	InitSQLURL string   `json:"initSqlUrl,omitempty"`
 }
 
 type WorkflowTraits struct {
@@ -65,6 +66,30 @@ func (r CreateWorkflowStepRequest) WorkflowPropertiesFromArray() bool {
 	return r.propertiesFromArray
 }
 
+func (r CreateWorkflowStepRequest) HasWorkflowInitSQLURL() bool {
+	if r.Properties.InitSQLURL != "" {
+		return true
+	}
+	for _, properties := range r.WorkflowPropertiesList() {
+		if properties.InitSQLURL != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *CreateWorkflowStepRequest) SetWorkflowPropertiesList(properties []WorkflowProperties) {
+	if r == nil {
+		return
+	}
+	r.propertiesFromArray = true
+	r.propertiesList = append([]WorkflowProperties(nil), properties...)
+	r.Properties = WorkflowProperties{}
+	if len(properties) > 0 {
+		r.Properties = properties[0]
+	}
+}
+
 func (r CreateWorkflowSubStepRequest) WorkflowPropertiesList() []WorkflowProperties {
 	if !r.propertiesFromArray {
 		return nil
@@ -74,6 +99,18 @@ func (r CreateWorkflowSubStepRequest) WorkflowPropertiesList() []WorkflowPropert
 
 func (r CreateWorkflowSubStepRequest) WorkflowPropertiesFromArray() bool {
 	return r.propertiesFromArray
+}
+
+func (r *CreateWorkflowSubStepRequest) SetWorkflowPropertiesList(properties []WorkflowProperties) {
+	if r == nil {
+		return
+	}
+	r.propertiesFromArray = true
+	r.propertiesList = append([]WorkflowProperties(nil), properties...)
+	r.Properties = WorkflowProperties{}
+	if len(properties) > 0 {
+		r.Properties = properties[0]
+	}
 }
 
 type CreateConfigMapFromMapRequest struct {
@@ -145,7 +182,11 @@ type ExecWorkflowRequest struct {
 }
 
 type ExecWorkflowResponse struct {
-	TaskID string `json:"taskId"`
+	TaskID         string          `json:"taskId"`
+	Status         string          `json:"status"`
+	AllowedActions []AllowedAction `json:"allowedActions"`
+
+	PendingApprovalStep string `json:"-"`
 }
 
 const (
@@ -154,11 +195,12 @@ const (
 )
 
 type CreateAndExecApplicationResponse struct {
-	Application *ApplicationBase `json:"application,omitempty"`
-	WorkflowID  string           `json:"workflowId,omitempty"`
-	TaskID      string           `json:"taskId,omitempty"`
-	ExecStatus  string           `json:"execStatus"`
-	ExecError   string           `json:"execError,omitempty"`
+	Application    *ApplicationBase `json:"application,omitempty"`
+	WorkflowID     string           `json:"workflowId,omitempty"`
+	TaskID         string           `json:"taskId,omitempty"`
+	ExecStatus     string           `json:"execStatus"`
+	ExecError      string           `json:"execError,omitempty"`
+	AllowedActions []AllowedAction  `json:"allowedActions"`
 }
 
 type UpsertWorkflowScheduleRequest struct {
@@ -218,6 +260,7 @@ type TaskStatusResponse struct {
 	Type                config.WorkflowTaskType `json:"type,omitempty"`
 	PendingApprovalStep string                  `json:"pendingApprovalStep,omitempty"`
 	Components          []ComponentTaskStatus   `json:"components,omitempty"`
+	AllowedActions      []AllowedAction         `json:"allowedActions"`
 }
 
 type TaskStagesResponse struct {
@@ -229,6 +272,14 @@ type TaskStagesResponse struct {
 	Type                config.WorkflowTaskType `json:"type,omitempty"`
 	PendingApprovalStep string                  `json:"pendingApprovalStep,omitempty"`
 	Stages              []TaskStageDetail       `json:"stages,omitempty"`
+	AllowedActions      []AllowedAction         `json:"allowedActions"`
+}
+
+type AllowedAction struct {
+	Name   string         `json:"name"`
+	Method string         `json:"method"`
+	Path   string         `json:"path"`
+	Body   map[string]any `json:"body,omitempty"`
 }
 
 type TaskApprovalRequest struct {
@@ -281,6 +332,7 @@ type ApplicationTask struct {
 	TaskRevoker         string                  `json:"taskRevoker,omitempty"`
 	CreateTime          time.Time               `json:"createTime"`
 	UpdateTime          time.Time               `json:"updateTime"`
+	AllowedActions      []AllowedAction         `json:"allowedActions"`
 }
 
 type ListApplicationTasksResponse struct {
@@ -306,6 +358,7 @@ type ApplicationWorkflow struct {
 	CreateTime    time.Time                            `json:"createTime"`
 	UpdateTime    time.Time                            `json:"updateTime"`
 	WorkflowType  config.WorkflowTaskType              `json:"workflowType"`
+	Spec          *UpdateApplicationWorkflowRequest    `json:"spec,omitempty"`
 }
 
 type WorkflowStepDetail struct {

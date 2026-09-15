@@ -839,7 +839,7 @@ func TestExecWorkflowTaskForAppSerializesIdleCheckAndTaskInsert(t *testing.T) {
 
 	firstResult := make(chan error, 1)
 	go func() {
-		_, execErr := svc.ExecWorkflowTaskForApp(context.Background(), "app-1", "wf-1", 0)
+		_, execErr := svc.ExecWorkflowTaskForApp(context.Background(), "app-1", "wf-1", 0, "")
 		firstResult <- execErr
 	}()
 	select {
@@ -848,9 +848,46 @@ func TestExecWorkflowTaskForAppSerializesIdleCheckAndTaskInsert(t *testing.T) {
 		t.Fatal("first execution did not reach task insert")
 	}
 
-	_, secondErr := svc.ExecWorkflowTaskForApp(context.Background(), "app-1", "wf-1", 0)
+	_, secondErr := svc.ExecWorkflowTaskForApp(context.Background(), "app-1", "wf-1", 0, "")
 	require.ErrorIs(t, secondErr, bcode.ErrApplicationOperationLocked)
 	close(store.releaseTaskAdd)
 	require.NoError(t, <-firstResult)
 	require.Len(t, store.tasks, 1)
+}
+
+func TestExecWorkflowTaskForAppIdempotencyReturnsOriginalTask(t *testing.T) {
+	steps, err := model.NewJSONStructByStruct(&model.WorkflowSteps{Steps: []*model.WorkflowStep{{
+		Name:     "manual-check",
+		StepType: config.WorkflowStepTypeApproval,
+	}}})
+	require.NoError(t, err)
+	store := &transactionalScheduleDataStore{scheduleDataStore: &scheduleDataStore{
+		app: &model.Applications{ID: "app-1", Name: "demo"},
+		workflows: []*model.Workflow{
+			{ID: "wf-1", AppID: "app-1", Steps: steps},
+			{ID: "wf-2", AppID: "app-1", Steps: steps},
+		},
+	}}
+	svc := &workflowServiceImpl{Store: store, ScheduleLocker: locker.NewMemoryLocker("manual-idempotency-test")}
+
+	first, err := svc.ExecWorkflowTaskForApp(context.Background(), "app-1", "wf-1", 0, "submission-1")
+	require.NoError(t, err)
+	second, err := svc.ExecWorkflowTaskForApp(context.Background(), "app-1", "wf-1", 0, "submission-1")
+	require.NoError(t, err)
+	require.Equal(t, first.TaskID, second.TaskID)
+	require.Len(t, store.queues, 1)
+	store.queues[0].Status = config.StatusWaitingApprove
+	store.queues[0].PendingApprovalStep = "manual-check"
+	approvalRetry, err := svc.ExecWorkflowTaskForApp(context.Background(), "app-1", "wf-1", 0, "submission-1")
+	require.NoError(t, err)
+	require.Equal(t, config.StatusWaitingApprove, config.Status(approvalRetry.Status))
+	require.Equal(t, "manual-check", approvalRetry.PendingApprovalStep)
+
+	_, err = svc.ExecWorkflowTaskForApp(context.Background(), "app-1", "wf-1", time.Now().Add(time.Hour).Unix(), "submission-1")
+	require.ErrorIs(t, err, bcode.ErrWorkflowIdempotencyConflict)
+	require.Len(t, store.queues, 1)
+
+	_, err = svc.ExecWorkflowTaskForApp(context.Background(), "app-1", "wf-2", 0, "submission-1")
+	require.ErrorIs(t, err, bcode.ErrWorkflowIdempotencyConflict)
+	require.Len(t, store.queues, 1)
 }

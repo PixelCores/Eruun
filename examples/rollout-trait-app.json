@@ -3,7 +3,7 @@
   "namespace": "default",
   "version": "1.0.0",
   "description": "Rollout trait demo for Deployment and StatefulSet",
-  "component": [
+  "components": [
     {
       "name": "api",
       "type": "webservice",

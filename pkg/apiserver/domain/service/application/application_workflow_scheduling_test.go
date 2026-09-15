@@ -18,7 +18,7 @@ func TestWorkflowSchedulingClassRequestPersistenceAndResponse(t *testing.T) {
 	store.components["web"] = &model.ApplicationComponent{Name: "web", AppID: "app-1", ComponentType: config.ServerJob}
 	svc := newMockServiceWithStore(store)
 	var req apis.UpdateApplicationWorkflowRequest
-	require.NoError(t, json.Unmarshal([]byte(`{"name":"schedule","workflow":[{"name":"deploy","mode":"DAG","schedulingClass":"high","subSteps":[{"name":"web","jobType":"deploy","schedulingClass":"background","components":["web"]}]}]}`), &req))
+	require.NoError(t, json.Unmarshal([]byte(`{"name":"schedule","workflow": [{"name":"deploy","mode":"DAG","schedulingClass":"high","subSteps":[{"name":"web","jobType":"deploy","schedulingClass":"background","components":["web"]}]}]}`), &req))
 	resp, err := svc.UpdateApplicationWorkflow(context.Background(), "app-1", req)
 	require.NoError(t, err)
 	stored := store.workflows[resp.WorkflowID]

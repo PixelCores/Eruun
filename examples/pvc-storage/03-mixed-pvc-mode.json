@@ -3,14 +3,28 @@
   "namespace": "default",
   "version": "1.0.0",
   "description": "混合 PVC 模式测试 - tmpCreate + 引用已有 PVC",
-  "component": [
+  "workflow": [
+    {
+      "name": "deploy-app",
+      "mode": "StepByStep",
+      "components": [
+        "app-server"
+      ]
+    }
+  ],
+  "components": [
     {
       "name": "app-server",
       "type": "store",
       "image": "nginx:alpine",
       "replicas": 2,
       "properties": {
-        "ports": [{"port": 80, "expose": true}]
+        "ports": [
+          {
+            "port": 80,
+            "expose": true
+          }
+        ]
       },
       "traits": {
         "storage": [
@@ -31,13 +45,5 @@
         ]
       }
     }
-  ],
-  "workflow": [
-    {
-      "name": "deploy-app",
-      "mode": "StepByStep",
-      "components": ["app-server"]
-    }
   ]
 }
-

@@ -3,14 +3,28 @@
   "namespace": "default",
   "version": "1.0.0",
   "description": "Deployment 只使用 ephemeral volume (推荐方式)",
-  "component": [
+  "workflow": [
+    {
+      "name": "deploy-web",
+      "mode": "StepByStep",
+      "components": [
+        "web-app"
+      ]
+    }
+  ],
+  "components": [
     {
       "name": "web-app",
       "type": "webservice",
       "image": "nginx:alpine",
       "replicas": 3,
       "properties": {
-        "ports": [{"port": 80, "expose": true}]
+        "ports": [
+          {
+            "port": 80,
+            "expose": true
+          }
+        ]
       },
       "traits": {
         "storage": [
@@ -27,13 +41,5 @@
         ]
       }
     }
-  ],
-  "workflow": [
-    {
-      "name": "deploy-web",
-      "mode": "StepByStep",
-      "components": ["web-app"]
-    }
   ]
 }
-

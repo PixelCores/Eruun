@@ -3,16 +3,17 @@
   "namespace": "default",
   "alias": "Cleanup All App",
   "version": "1.0.0",
-  "workflow": {
-    "failurePolicy": "cleanup_all",
-    "steps": [
-      {
-        "name": "deploy-runtime-components",
-        "mode": "DAG",
-        "components": ["api", "worker", "mysql"]
-      }
-    ]
-  },
+  "workflow": [
+    {
+      "name": "deploy-runtime-components",
+      "mode": "DAG",
+      "components": [
+        "api",
+        "worker",
+        "mysql"
+      ]
+    }
+  ],
   "components": [
     {
       "name": "api",
@@ -44,5 +45,6 @@
       "properties": {},
       "traits": {}
     }
-  ]
+  ],
+  "failurePolicy": "cleanup_all"
 }

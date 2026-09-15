@@ -216,14 +216,19 @@ if vol.TmpCreate {
   "namespace": "default",
   "version": "1.0.0",
   "description": "基本 StatefulSet PVC 测试 - tmpCreate 模式",
-  "component": [
+  "components": [
     {
       "name": "mysql-primary",
       "type": "store",
       "image": "mysql:8.0",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 3306, "expose": true}],
+        "ports": [
+          {
+            "port": 3306,
+            "expose": true
+          }
+        ],
         "env": {
           "MYSQL_ROOT_PASSWORD": "__REPLACE_WITH_SECRET__",
           "MYSQL_DATABASE": "testdb"
@@ -247,7 +252,9 @@ if vol.TmpCreate {
     {
       "name": "deploy-mysql",
       "mode": "StepByStep",
-      "components": ["mysql-primary"]
+      "components": [
+        "mysql-primary"
+      ]
     }
   ]
 }
@@ -286,14 +293,19 @@ kubectl get pvc
   "namespace": "default",
   "version": "1.0.0",
   "description": "多 Volume StatefulSet 测试",
-  "component": [
+  "components": [
     {
       "name": "postgres-db",
       "type": "store",
       "image": "postgres:15",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 5432, "expose": true}],
+        "ports": [
+          {
+            "port": 5432,
+            "expose": true
+          }
+        ],
         "env": {
           "POSTGRES_PASSWORD": "__REPLACE_WITH_SECRET__"
         }
@@ -329,7 +341,9 @@ kubectl get pvc
     {
       "name": "deploy-postgres",
       "mode": "StepByStep",
-      "components": ["postgres-db"]
+      "components": [
+        "postgres-db"
+      ]
     }
   ]
 }
@@ -367,14 +381,19 @@ kubectl get pvc | grep -E "pg-data|pg-wal"
   "namespace": "default",
   "version": "1.0.0",
   "description": "混合 PVC 模式测试",
-  "component": [
+  "components": [
     {
       "name": "app-server",
       "type": "store",
       "image": "nginx:alpine",
       "replicas": 2,
       "properties": {
-        "ports": [{"port": 80, "expose": true}]
+        "ports": [
+          {
+            "port": 80,
+            "expose": true
+          }
+        ]
       },
       "traits": {
         "storage": [
@@ -400,7 +419,9 @@ kubectl get pvc | grep -E "pg-data|pg-wal"
     {
       "name": "deploy-app",
       "mode": "StepByStep",
-      "components": ["app-server"]
+      "components": [
+        "app-server"
+      ]
     }
   ]
 }
@@ -440,14 +461,19 @@ EOF
   "namespace": "default",
   "version": "1.0.0",
   "description": "Deployment PVC 测试 (负面场景)",
-  "component": [
+  "components": [
     {
       "name": "web-app",
       "type": "webservice",
       "image": "nginx:alpine",
       "replicas": 2,
       "properties": {
-        "ports": [{"port": 80, "expose": true}]
+        "ports": [
+          {
+            "port": 80,
+            "expose": true
+          }
+        ]
       },
       "traits": {
         "storage": [
@@ -466,7 +492,9 @@ EOF
     {
       "name": "deploy-web",
       "mode": "StepByStep",
-      "components": ["web-app"]
+      "components": [
+        "web-app"
+      ]
     }
   ]
 }
@@ -492,14 +520,19 @@ EOF
   "namespace": "default",
   "version": "1.0.0",
   "description": "多容器共享 Volume 测试",
-  "component": [
+  "components": [
     {
       "name": "mysql-cluster",
       "type": "store",
       "image": "mysql:8.0",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 3306, "expose": true}],
+        "ports": [
+          {
+            "port": 3306,
+            "expose": true
+          }
+        ],
         "env": {
           "MYSQL_ROOT_PASSWORD": "__REPLACE_WITH_SECRET__"
         }
@@ -519,7 +552,10 @@ EOF
           {
             "name": "xtrabackup",
             "image": "percona/percona-xtrabackup:8.0",
-            "command": ["sleep", "infinity"],
+            "command": [
+              "sleep",
+              "infinity"
+            ],
             "traits": {
               "storage": [
                 {
@@ -536,7 +572,11 @@ EOF
           {
             "name": "init-mysql",
             "image": "busybox:latest",
-            "command": ["sh", "-c", "echo 'Initializing...'"],
+            "command": [
+              "sh",
+              "-c",
+              "echo 'Initializing...'"
+            ],
             "traits": {
               "storage": [
                 {
@@ -556,7 +596,9 @@ EOF
     {
       "name": "deploy-mysql-cluster",
       "mode": "StepByStep",
-      "components": ["mysql-cluster"]
+      "components": [
+        "mysql-cluster"
+      ]
     }
   ]
 }
@@ -588,7 +630,7 @@ kubectl get pod <pod-name> -o jsonpath='{range .spec.initContainers[*]}{.name}: 
   "namespace": "default",
   "version": "1.0.0",
   "description": "依赖链中的 StatefulSet PVC 测试",
-  "component": [
+  "components": [
     {
       "name": "app-config",
       "type": "config",
@@ -616,7 +658,12 @@ kubectl get pod <pod-name> -o jsonpath='{range .spec.initContainers[*]}{.name}: 
       "image": "mysql:8.0",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 3306, "expose": true}],
+        "ports": [
+          {
+            "port": 3306,
+            "expose": true
+          }
+        ],
         "env": {
           "MYSQL_ROOT_PASSWORD": "__REPLACE_WITH_SECRET__"
         }
@@ -640,15 +687,26 @@ kubectl get pod <pod-name> -o jsonpath='{range .spec.initContainers[*]}{.name}: 
       "image": "myregistry/backend:v1.0.0",
       "replicas": 2,
       "properties": {
-        "ports": [{"port": 8080, "expose": true}],
+        "ports": [
+          {
+            "port": 8080,
+            "expose": true
+          }
+        ],
         "env": {
           "DB_HOST": "mysql-db"
         }
       },
       "traits": {
         "envFrom": [
-          {"type": "configMap", "sourceName": "app-config"},
-          {"type": "secret", "sourceName": "app-secret"}
+          {
+            "type": "configMap",
+            "sourceName": "app-config"
+          },
+          {
+            "type": "secret",
+            "sourceName": "app-secret"
+          }
         ]
       }
     }
@@ -657,22 +715,30 @@ kubectl get pod <pod-name> -o jsonpath='{range .spec.initContainers[*]}{.name}: 
     {
       "name": "step1-config",
       "mode": "StepByStep",
-      "components": ["app-config"]
+      "components": [
+        "app-config"
+      ]
     },
     {
       "name": "step2-secret",
       "mode": "StepByStep",
-      "components": ["app-secret"]
+      "components": [
+        "app-secret"
+      ]
     },
     {
       "name": "step3-database",
       "mode": "StepByStep",
-      "components": ["mysql-db"]
+      "components": [
+        "mysql-db"
+      ]
     },
     {
       "name": "step4-app",
       "mode": "StepByStep",
-      "components": ["backend-app"]
+      "components": [
+        "backend-app"
+      ]
     }
   ]
 }

@@ -839,9 +839,9 @@ func TestImportNamespaceResources_AdoptedPreservesExternalManagedByServiceSelect
 	_, err = svc.ImportNamespaceResources(context.Background(), request)
 	require.NoError(t, err)
 	require.Len(t, appService.createReqs, 1)
-	require.Len(t, appService.createReqs[0].Component, 1)
-	require.Len(t, appService.createReqs[0].Component[0].Traits.Service, 1)
-	assert.Equal(t, serviceSelector, appService.createReqs[0].Component[0].Traits.Service[0].Selector)
+	require.Len(t, appService.createReqs[0].Components, 1)
+	require.Len(t, appService.createReqs[0].Components[0].Traits.Service, 1)
+	assert.Equal(t, serviceSelector, appService.createReqs[0].Components[0].Traits.Service[0].Selector)
 	assertKubeActionsReadOnly(t, client.Actions())
 }
 

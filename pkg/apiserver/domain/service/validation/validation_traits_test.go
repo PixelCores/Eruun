@@ -19,7 +19,7 @@ func TestValidationService_TryApplication_InvalidProbeConfig(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -56,7 +56,7 @@ func TestValidationService_TryApplication_ValidProbeConfig(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -137,7 +137,7 @@ func TestValidationService_TryApplication_ResourcesLimitMustNotBeBelowRequest(t 
 			req := apisv1.CreateApplicationsRequest{
 				Name:      "my-app",
 				Namespace: "default",
-				Component: []apisv1.CreateComponentRequest{
+				Components: []apisv1.CreateComponentRequest{
 					{
 						Name:          "backend",
 						ComponentType: config.ServerJob,
@@ -168,7 +168,7 @@ func TestValidationService_TryApplication_NestedTraitForbidden(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -214,7 +214,7 @@ func TestValidationService_TryApplication_InvalidStorageType(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -251,7 +251,7 @@ func TestValidationService_TryApplication_MissingRBACRules(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -288,7 +288,7 @@ func TestValidationService_TryApplication_MissingIngressRoutes(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -328,7 +328,7 @@ func TestValidationService_TryApplication_MultipleProbeTypes(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -371,7 +371,7 @@ func TestValidationService_TryApplication_MissingStorageMountPath(t *testing.T) 
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -409,7 +409,7 @@ func TestValidationService_TryApplication_StorageSubPathAndSubPathExprMutuallyEx
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -442,7 +442,7 @@ func TestValidationService_TryApplication_InvalidStorageSize(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -482,7 +482,7 @@ func TestValidationService_TryApplication_MissingRBACVerbs(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -525,7 +525,7 @@ func TestValidationService_TryApplication_ValidRBACConfig(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -564,7 +564,7 @@ func TestValidationService_TryApplication_AllowsMissingIngressServiceName(t *tes
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -601,7 +601,7 @@ func TestValidationService_TryApplication_RejectsMissingIngressServiceNameWithMu
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -667,7 +667,7 @@ func TestValidationService_TryApplication_ValidIngressConfig(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -811,7 +811,7 @@ func TestValidationService_TryApplication_InvalidIngressNameAndHosts(t *testing.
 			resp := svc.TryApplication(context.Background(), apisv1.CreateApplicationsRequest{
 				Name:      "my-app",
 				Namespace: "default",
-				Component: []apisv1.CreateComponentRequest{
+				Components: []apisv1.CreateComponentRequest{
 					{
 						Name:          "backend",
 						ComponentType: config.ServerJob,
@@ -843,7 +843,7 @@ func TestValidationService_TryApplication_ValidWildcardIngressHost(t *testing.T)
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -881,7 +881,7 @@ func TestValidationService_TryApplication_InitContainerMissingImage(t *testing.T
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -918,7 +918,7 @@ func TestValidationService_TryApplication_SidecarMissingImage(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -954,7 +954,7 @@ func TestValidationService_TryApplication_ValidServiceTrait(t *testing.T) {
 
 	req := apisv1.CreateApplicationsRequest{
 		Name: "my-app",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -988,7 +988,7 @@ func TestValidationService_TryApplication_InvalidServiceTraitMissingPorts(t *tes
 
 	req := apisv1.CreateApplicationsRequest{
 		Name: "my-app",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -1026,7 +1026,7 @@ func TestValidationService_TryApplication_InvalidServiceTraitHeadlessType(t *tes
 
 	req := apisv1.CreateApplicationsRequest{
 		Name: "my-app",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -1068,7 +1068,7 @@ func TestValidationService_TryApplication_ValidServiceTraitLegacyType(t *testing
 
 	req := apisv1.CreateApplicationsRequest{
 		Name: "my-app",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -1101,7 +1101,7 @@ func TestValidationService_TryApplication_InvalidReservedServiceTraitLabels(t *t
 
 	req := apisv1.CreateApplicationsRequest{
 		Name: "my-app",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -1146,7 +1146,7 @@ func TestValidationService_TryApplication_InvalidReservedIngressTraitLabel(t *te
 
 	req := apisv1.CreateApplicationsRequest{
 		Name: "my-app",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -1193,7 +1193,7 @@ func TestValidationService_TryApplication_InvalidExternalServiceTraitMissingExte
 
 	req := apisv1.CreateApplicationsRequest{
 		Name: "my-app",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -1231,7 +1231,7 @@ func TestValidationService_TryApplication_ValidExternalServiceTrait(t *testing.T
 
 	req := apisv1.CreateApplicationsRequest{
 		Name: "my-app",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -1262,7 +1262,7 @@ func TestValidationService_TryApplication_InvalidServiceTraitNameFormat(t *testi
 
 	req := apisv1.CreateApplicationsRequest{
 		Name: "my-app",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,

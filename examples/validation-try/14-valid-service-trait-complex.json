@@ -1,7 +1,7 @@
 {
   "name": "service-trait-demo",
   "namespace": "nvg",
-  "component": [
+  "components": [
     {
       "name": "mysql",
       "type": "store",
@@ -9,7 +9,11 @@
       "namespace": "nvg",
       "replicas": 1,
       "properties": {
-        "ports": [{"port": 3306}],
+        "ports": [
+          {
+            "port": 3306
+          }
+        ],
         "env": {
           "MYSQL_ROOT_PASSWORD": "root123"
         }

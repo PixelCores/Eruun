@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -12,6 +13,28 @@ import (
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
+
+func TestConvertDatabaseResetWorkflowSpecKeepsInitSQLURL(t *testing.T) {
+	const initSQLURL = "https://files.example/game-1.0.8.sql"
+	steps, err := model.NewJSONStructByStruct(&model.WorkflowSteps{Steps: []*model.WorkflowStep{{
+		Name: "database-reset", WorkflowType: config.JobDatabaseReset,
+		Properties: []model.Policies{{Policies: []string{"mysql"}, InitSQLURL: initSQLURL}},
+	}}})
+	require.NoError(t, err)
+
+	dto, err := ConvertWorkflowModelToDTO(&model.Workflow{
+		ID: "wf-reset", AppID: "app-1", WorkflowType: config.WorkflowTaskTypeDatabaseReset, Steps: steps,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, dto.Spec)
+	raw, err := json.Marshal(dto.Spec)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"initSqlUrl":"`+initSQLURL+`"`)
+	var submitted apisv1.UpdateApplicationWorkflowRequest
+	require.NoError(t, json.Unmarshal(raw, &submitted))
+	require.Len(t, submitted.Workflow, 1)
+	require.Len(t, submitted.Workflow[0].WorkflowPropertiesList(), 1)
+}
 
 func TestConvertComponentModelToDTOStatusDefault(t *testing.T) {
 	component := &model.ApplicationComponent{

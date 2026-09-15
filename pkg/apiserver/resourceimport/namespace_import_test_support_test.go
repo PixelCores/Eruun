@@ -500,9 +500,9 @@ func (s *namespaceImportAppServiceStub) createApplications(
 			app.Alias = req.Alias
 		}
 	}
-	components := make([]*model.ApplicationComponent, 0, len(req.Component))
+	components := make([]*model.ApplicationComponent, 0, len(req.Components))
 	nextComponentID := s.componentIDSeed
-	for _, component := range req.Component {
+	for _, component := range req.Components {
 		properties, err := model.NewJSONStructByStruct(component.Properties)
 		if err != nil {
 			return nil, err

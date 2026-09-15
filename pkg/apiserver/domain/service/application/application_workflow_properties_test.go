@@ -27,7 +27,7 @@ func TestUpdateApplicationWorkflowPreservesComponentsForEmptyPropertiesArray(t *
 	var req apisv1.UpdateApplicationWorkflowRequest
 	require.NoError(t, json.Unmarshal([]byte(`{
 		"name": "custom-flow",
-		"steps": [
+		"workflow": [
 			{
 				"name": "deploy-web",
 				"workflowType": "deploy",
@@ -73,7 +73,7 @@ func TestUpdateApplicationWorkflowValidatesComponentsForEmptyPropertiesArray(t *
 	var req apisv1.UpdateApplicationWorkflowRequest
 	require.NoError(t, json.Unmarshal([]byte(`{
 		"name": "custom-flow",
-		"steps": [
+		"workflow": [
 			{
 				"name": "deploy-web",
 				"workflowType": "deploy",
@@ -110,7 +110,7 @@ func TestUpdateApplicationWorkflowAcceptsReadResponsePropertiesArray(t *testing.
 	require.NoError(t, json.Unmarshal([]byte(`{
 		"name": "log-archive-upload",
 		"workflowType": "log_archive_upload",
-		"steps": [
+		"workflow": [
 			{
 				"name": "archive-pods",
 				"workflowType": "log_archive_upload",
@@ -171,7 +171,7 @@ func TestUpdateApplicationWorkflowRejectsComponentsMismatchForPropertiesArray(t 
 	require.NoError(t, json.Unmarshal([]byte(`{
 		"name": "deploy-flow",
 		"workflowType": "workflow",
-		"steps": [
+		"workflow": [
 			{
 				"name": "deploy-components",
 				"workflowType": "deploy",
@@ -212,7 +212,7 @@ func TestUpdateApplicationWorkflowAcceptsPropertiesArrayWithoutExplicitComponent
 	require.NoError(t, json.Unmarshal([]byte(`{
 		"name": "deploy-flow",
 		"workflowType": "workflow",
-		"steps": [
+		"workflow": [
 			{
 				"name": "deploy-components",
 				"workflowType": "deploy",
@@ -256,7 +256,7 @@ func TestUpdateApplicationWorkflowRejectsAmbiguousPropertiesArray(t *testing.T) 
 	require.NoError(t, json.Unmarshal([]byte(`{
 		"name": "log-archive-upload",
 		"workflowType": "log_archive_upload",
-		"steps": [
+		"workflow": [
 			{
 				"name": "archive-pods",
 				"workflowType": "log_archive_upload",
@@ -294,7 +294,7 @@ func TestUpdateApplicationWorkflowRejectsDuplicatePropertiesArrayPolicies(t *tes
 	require.NoError(t, json.Unmarshal([]byte(`{
 		"name": "deploy-flow",
 		"workflowType": "workflow",
-		"steps": [
+		"workflow": [
 			{
 				"name": "deploy-api",
 				"workflowType": "deploy",
@@ -331,7 +331,7 @@ func TestUpdateApplicationWorkflowRejectsDuplicateSubStepPropertiesArrayPolicies
 	require.NoError(t, json.Unmarshal([]byte(`{
 		"name": "deploy-flow",
 		"workflowType": "workflow",
-		"steps": [
+		"workflow": [
 			{
 				"name": "deploy-group",
 				"mode": "StepByStep",
@@ -376,7 +376,7 @@ func TestUpdateApplicationWorkflowRejectsSubStepComponentsMismatchForPropertiesA
 	require.NoError(t, json.Unmarshal([]byte(`{
 		"name": "deploy-flow",
 		"workflowType": "workflow",
-		"steps": [
+		"workflow": [
 			{
 				"name": "deploy-group",
 				"mode": "StepByStep",

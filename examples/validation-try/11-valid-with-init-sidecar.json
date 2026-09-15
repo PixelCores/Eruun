@@ -4,7 +4,16 @@
   "version": "1.0.0",
   "project": "demo-project",
   "description": "Application with init container and sidecar",
-  "component": [
+  "workflow": [
+    {
+      "name": "deploy",
+      "mode": "StepByStep",
+      "components": [
+        "backend"
+      ]
+    }
+  ],
+  "components": [
     {
       "name": "backend",
       "type": "webservice",
@@ -12,7 +21,11 @@
       "namespace": "default",
       "replicas": 2,
       "properties": {
-        "ports": [{"port": 8080}]
+        "ports": [
+          {
+            "port": 8080
+          }
+        ]
       },
       "traits": {
         "init": [
@@ -20,7 +33,11 @@
             "name": "init-config",
             "image": "busybox:latest",
             "properties": {
-              "command": ["sh", "-c", "cp /config/* /app/config/"]
+              "command": [
+                "sh",
+                "-c",
+                "cp /config/* /app/config/"
+              ]
             },
             "traits": {
               "storage": [
@@ -71,14 +88,5 @@
         ]
       }
     }
-  ],
-  "workflow": [
-    {
-      "name": "deploy",
-      "mode": "StepByStep",
-      "components": ["backend"]
-    }
   ]
 }
-
-

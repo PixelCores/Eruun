@@ -277,7 +277,7 @@ func TestNormalizeWorkflowStepsAppliesNodeRulesToStepsAndSubSteps(t *testing.T) 
 	require.Equal(t, "POST", steps[1].Approval.Method)
 }
 
-func TestTryWorkflowAcceptsStepsAlias(t *testing.T) {
+func TestTryWorkflowAcceptsCanonicalWorkflow(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	validationSvc := &recordingValidationService{}
 	appHandler := &applications{
@@ -291,10 +291,10 @@ func TestTryWorkflowAcceptsStepsAlias(t *testing.T) {
 		"name": "archive-flow",
 		"workflowType": "log_archive_upload",
 		"callback": {"success": "https://example.com/archive/success"},
-		"steps": [
+		"workflow": [
 			{
 				"name": "Archive-API",
-				"workflowType": "log_archive_upload",
+				"jobType": "log_archive_upload",
 				"components": ["API"],
 				"properties": [
 					{"policies": ["API"], "path": "/var/log/api", "container": "api"}
@@ -327,7 +327,28 @@ func TestTryWorkflowAcceptsStepsAlias(t *testing.T) {
 	require.Equal(t, []string{"API"}, validationSvc.workflow.Workflow[0].WorkflowPropertiesList()[0].Policies)
 }
 
-func TestTryWorkflowRejectsWorkflowStepsAliasConflict(t *testing.T) {
+func TestTryWorkflowPreservesExplicitEmptyFailurePolicy(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	validationSvc := &recordingValidationService{}
+	appHandler := &applications{ValidationService: validationSvc}
+	r := gin.New()
+	r.POST("/applications/:appID/workflow/try", appHandler.tryWorkflow)
+
+	req := httptest.NewRequest(http.MethodPost, "/applications/app-1/workflow/try", strings.NewReader(`{
+		"workflowId":"wf-1",
+		"failurePolicy":"",
+		"workflow":[{"name":"deploy-api","jobType":"deploy","components":["api"]}]
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+
+	r.ServeHTTP(resp, req)
+
+	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
+	require.True(t, validationSvc.workflow.FailurePolicySet)
+}
+
+func TestTryWorkflowRejectsLegacyStepsField(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	validationSvc := &recordingValidationService{}
 	appHandler := &applications{
@@ -394,7 +415,7 @@ func TestCreateApplicationsAcceptsStorageSubPathExpr(t *testing.T) {
 	body := `{
 		"name":"demo-app",
 		"namespace":"default",
-		"component":[
+		"components": [
 			{
 				"name":"backend",
 				"type":"webservice",
@@ -421,9 +442,9 @@ func TestCreateApplicationsAcceptsStorageSubPathExpr(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, resp.Code)
 	require.Equal(t, 1, appSvc.createCalls)
-	require.Len(t, appSvc.lastCreate.Component, 1)
-	require.Len(t, appSvc.lastCreate.Component[0].Traits.Storage, 1)
-	storage := appSvc.lastCreate.Component[0].Traits.Storage[0]
+	require.Len(t, appSvc.lastCreate.Components, 1)
+	require.Len(t, appSvc.lastCreate.Components[0].Traits.Storage, 1)
+	storage := appSvc.lastCreate.Components[0].Traits.Storage[0]
 	require.Equal(t, "/app/log", storage.MountPath)
 	require.Empty(t, storage.SubPath)
 	require.Equal(t, "$(TZ)/game/$(INSTANCE_ID)/$(SERVER_NAME)/$(POD_IP)", storage.SubPathExpr)
@@ -439,7 +460,7 @@ func TestCreateApplicationsRejectsLegacySecretMetaField(t *testing.T) {
 
 	body := `{
 		"name":"demo",
-		"component":[
+		"components": [
 			{
 				"name":"app-secret",
 				"type":"secret",
@@ -470,7 +491,7 @@ func TestCreateApplicationsRejectsComponentPropertiesImageField(t *testing.T) {
 
 	body := `{
 		"name":"demo",
-		"component":[
+		"components": [
 			{
 				"name":"api",
 				"type":"webservice",

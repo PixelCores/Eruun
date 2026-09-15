@@ -2,6 +2,9 @@ package validation
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,7 +26,7 @@ func TestValidationService_TryApplication_ValidConfig(t *testing.T) {
 		Name:      "my-app",
 		Namespace: "default",
 		Version:   "1.0.0",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -32,7 +35,7 @@ func TestValidationService_TryApplication_ValidConfig(t *testing.T) {
 				Replicas:      1,
 			},
 		},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{
+		Workflow: []apisv1.CreateWorkflowStepRequest{
 			{
 				Name:         "deploy-step",
 				WorkflowType: config.JobDeploy,
@@ -46,6 +49,41 @@ func TestValidationService_TryApplication_ValidConfig(t *testing.T) {
 
 	assert.True(t, resp.Valid, "Expected valid application config")
 	assert.Empty(t, resp.Errors, "Expected no validation errors")
+	require.NotNil(t, resp.Errors)
+	require.NotNil(t, resp.NormalizedSpec)
+	require.NotNil(t, resp.Plan)
+	require.Len(t, resp.Plan.Actions, 2)
+	raw, err := json.Marshal(resp.NormalizedSpec)
+	require.NoError(t, err)
+	var resubmitted apisv1.CreateApplicationsRequest
+	require.NoError(t, json.Unmarshal(raw, &resubmitted))
+	require.Equal(t, resp.NormalizedSpec.Components, resubmitted.Components)
+	require.Equal(t, resp.NormalizedSpec.Workflow, resubmitted.Workflow)
+}
+
+func TestValidationService_TryApplication_EmitsComponentsArray(t *testing.T) {
+	tests := []struct {
+		name  string
+		req   apisv1.CreateApplicationsRequest
+		valid bool
+	}{
+		{name: "omitted components", req: apisv1.CreateApplicationsRequest{Name: "ab"}, valid: true},
+		{name: "explicit empty components", req: apisv1.CreateApplicationsRequest{Name: "ab", Components: []apisv1.CreateComponentRequest{}}, valid: true},
+		{name: "name at write limit", req: apisv1.CreateApplicationsRequest{Name: strings.Repeat("a", 31)}, valid: true},
+		{name: "repository error", req: apisv1.CreateApplicationsRequest{ID: "missing", Name: "ab"}, valid: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := (&validationServiceImpl{}).TryApplication(context.Background(), tt.req)
+			require.Equal(t, tt.valid, resp.Valid, "%+v", resp.Errors)
+			require.NotNil(t, resp.NormalizedSpec)
+			require.NotNil(t, resp.NormalizedSpec.Components)
+			raw, err := json.Marshal(resp.NormalizedSpec)
+			require.NoError(t, err)
+			require.Contains(t, string(raw), `"components":[]`)
+		})
+	}
 }
 
 func TestValidationService_TryApplication_RejectsInvalidAppCallbackURL(t *testing.T) {
@@ -97,7 +135,7 @@ func TestValidationService_TryApplication_CreateChecksExistingAppResourceCollisi
 	resp := svc.TryApplication(context.Background(), apisv1.CreateApplicationsRequest{
 		Name:      "game",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "api",
 				ComponentType: config.ServerJob,
@@ -132,7 +170,7 @@ func TestValidationService_TryApplication_CreateIgnoresTemplateAppResourceCollis
 	resp := svc.TryApplication(context.Background(), apisv1.CreateApplicationsRequest{
 		Name:      "game",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "api",
 				ComponentType: config.ServerJob,
@@ -166,7 +204,7 @@ func TestValidationService_TryApplication_UpsertSkipsCurrentAppResources(t *test
 		ID:        "app-1",
 		Name:      "demo",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "api",
 				ComponentType: config.ServerJob,
@@ -205,7 +243,7 @@ func TestValidationService_TryApplication_UpsertUsesPersistedNamespaceWhenOmitte
 	resp := svc.TryApplication(context.Background(), apisv1.CreateApplicationsRequest{
 		ID:   "app-1",
 		Name: "demo",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "api",
 				ComponentType: config.ServerJob,
@@ -245,7 +283,7 @@ func TestValidationService_TryApplication_UpsertUsesExplicitNamespaceOverride(t 
 		ID:        "app-1",
 		Name:      "demo",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "api",
 				ComponentType: config.ServerJob,
@@ -281,7 +319,7 @@ func TestValidationService_TryApplication_DoesNotUseTemplateVersionForResourceVa
 		Name:            "mysql",
 		Namespace:       "default",
 		TemplateEnabled: &templateEnabled,
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "api",
 				ComponentType: config.ServerJob,
@@ -321,7 +359,7 @@ func TestValidationService_TryApplication_UpsertUsesPersistedTemplateMetadata(t 
 	resp := svc.TryApplication(context.Background(), apisv1.CreateApplicationsRequest{
 		ID:   "tmpl-1",
 		Name: "mysql",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "api",
 				ComponentType: config.ServerJob,
@@ -357,7 +395,7 @@ func TestValidationService_TryApplication_TemplateUpsertUsesExistingTemplateIden
 		Name:            "mysql",
 		Namespace:       "default",
 		TemplateEnabled: &templateEnabled,
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "api",
 				ComponentType: config.ServerJob,
@@ -395,10 +433,10 @@ func TestValidationService_TryApplication_ResolvesTemplateBeforeComponentValidat
 	resp := svc.TryApplication(context.Background(), apisv1.CreateApplicationsRequest{
 		Name:      "game",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Template: &apisv1.TemplateRef{ID: "tmpl-1", Target: "api"},
 		}},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{{
+		Workflow: []apisv1.CreateWorkflowStepRequest{{
 			Name:         "deploy-step",
 			WorkflowType: config.JobDeploy,
 			Mode:         "StepByStep",
@@ -431,7 +469,7 @@ func TestValidationService_TryApplication_TemplateResolveErrorSkipsStubValidatio
 	resp := svc.TryApplication(context.Background(), apisv1.CreateApplicationsRequest{
 		Name:      "game",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Template: &apisv1.TemplateRef{ID: "tmpl-1", Target: "missing"},
 		}},
 	})
@@ -455,6 +493,8 @@ func TestValidationService_TryApplication_InvalidName(t *testing.T) {
 	}{
 		{"empty name", "", apisv1.ErrCodeMissingRequiredField},
 		{"name too short", "a", apisv1.ErrCodeNameTooShort},
+		{"name beyond write limit", strings.Repeat("a", 32), apisv1.ErrCodeNameTooLong},
+		{"uppercase canonical name", "DemoApp", apisv1.ErrCodeInvalidNameFormat},
 		{"invalid characters", "My_App", apisv1.ErrCodeInvalidNameFormat},
 		{"starts with hyphen", "-app", apisv1.ErrCodeInvalidNameFormat},
 		{"ends with hyphen", "app-", apisv1.ErrCodeInvalidNameFormat},
@@ -463,8 +503,8 @@ func TestValidationService_TryApplication_InvalidName(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			req := apisv1.CreateApplicationsRequest{
-				Name:      tc.appName,
-				Component: []apisv1.CreateComponentRequest{},
+				Name:       tc.appName,
+				Components: []apisv1.CreateComponentRequest{},
 			}
 
 			resp := svc.TryApplication(ctx, req)
@@ -491,7 +531,7 @@ func TestValidationService_TryApplication_DuplicateComponentName(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -524,7 +564,7 @@ func TestValidationService_TryApplication_DuplicateGeneratedResourceName(t *test
 
 	req := apisv1.CreateApplicationsRequest{
 		Name: "game",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "api",
 				ComponentType: config.ServerJob,
@@ -557,7 +597,7 @@ func TestValidationService_TryApplication_RejectsForceShareServiceNameCollision(
 
 	req := apisv1.CreateApplicationsRequest{
 		Name: "game",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "api",
 				ComponentType: config.ServerJob,
@@ -609,7 +649,7 @@ func TestValidationService_TryApplication_AllowsUnknownShareStrategyServiceNameC
 
 	req := apisv1.CreateApplicationsRequest{
 		Name: "game",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "api",
 				ComponentType: config.ServerJob,
@@ -652,7 +692,7 @@ func TestValidationService_TryApplication_AllowsStandalonePVCReuse(t *testing.T)
 
 	req := apisv1.CreateApplicationsRequest{
 		Name: "game",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "api",
 				ComponentType: config.ServerJob,
@@ -690,7 +730,7 @@ func TestValidationService_TryApplication_MissingImage(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -719,7 +759,7 @@ func TestValidationService_TryApplication_InvalidComponentType(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: "invalid-type",
@@ -889,9 +929,9 @@ func TestValidationService_TryApplication_JobProperties(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			req := apisv1.CreateApplicationsRequest{
-				Name:      "my-app",
-				Namespace: "default",
-				Component: []apisv1.CreateComponentRequest{tc.component},
+				Name:       "my-app",
+				Namespace:  "default",
+				Components: []apisv1.CreateComponentRequest{tc.component},
 			}
 			resp := svc.TryApplication(ctx, req)
 			assert.False(t, resp.Valid, "Expected invalid due to job property validation")
@@ -912,7 +952,7 @@ func TestValidationService_TryApplication_JobAllowsFailurePolicyOptOut(t *testin
 	resp := svc.TryApplication(context.Background(), apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "job",
 			ComponentType: config.InstantJob,
 			Image:         "busybox:latest",
@@ -943,7 +983,7 @@ func TestValidationService_TryApplication_JobFailurePolicyPresence(t *testing.T)
 			resp := (&validationServiceImpl{}).TryApplication(context.Background(), apisv1.CreateApplicationsRequest{
 				Name:      "my-app",
 				Namespace: "default",
-				Component: []apisv1.CreateComponentRequest{{
+				Components: []apisv1.CreateComponentRequest{{
 					Name:          "component",
 					ComponentType: tt.componentType,
 					Image:         "image:latest",
@@ -1033,7 +1073,7 @@ func TestValidationService_TryApplication_TemplateJobFailurePolicyOverrides(t *t
 			resp := svc.TryApplication(context.Background(), apisv1.CreateApplicationsRequest{
 				Name:      "cloned-app",
 				Namespace: "default",
-				Component: []apisv1.CreateComponentRequest{{
+				Components: []apisv1.CreateComponentRequest{{
 					Name:       "component",
 					Template:   &apisv1.TemplateRef{ID: "tmpl-1", Target: "template-component"},
 					Properties: apisv1.Properties{FailurePolicy: tt.policy},
@@ -1048,7 +1088,7 @@ func TestValidationService_TryApplication_TemplateJobFailurePolicyOverrides(t *t
 	}
 }
 
-func TestValidationService_TryApplication_TemplateValidationUsesRequestComponentIndex(t *testing.T) {
+func TestValidationService_TryApplication_TemplateValidationUsesNormalizedComponentIndex(t *testing.T) {
 	store := newInMemoryAppStore()
 	store.apps["tmpl-source-index"] = &model.Applications{
 		ID:              "tmpl-source-index",
@@ -1091,7 +1131,7 @@ func TestValidationService_TryApplication_TemplateValidationUsesRequestComponent
 		name          string
 		components    []apisv1.CreateComponentRequest
 		valid         bool
-		expectedField string
+		invalidTarget string
 	}{
 		{
 			name: "first request component targets second template job",
@@ -1103,7 +1143,7 @@ func TestValidationService_TryApplication_TemplateValidationUsesRequestComponent
 				},
 				directComponent("direct-job"),
 			},
-			expectedField: "component[0].properties.failurePolicy",
+			invalidTarget: "sql-job",
 		},
 		{
 			name: "non job override keeps nonzero request index",
@@ -1116,7 +1156,7 @@ func TestValidationService_TryApplication_TemplateValidationUsesRequestComponent
 				},
 				directComponent("direct-after"),
 			},
-			expectedField: "component[1].properties.failurePolicy",
+			invalidTarget: "api",
 		},
 		{
 			name: "valid job override keeps mixed request valid",
@@ -1136,9 +1176,9 @@ func TestValidationService_TryApplication_TemplateValidationUsesRequestComponent
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resp := svc.TryApplication(context.Background(), apisv1.CreateApplicationsRequest{
-				Name:      "cloned-app",
-				Namespace: "default",
-				Component: tt.components,
+				Name:       "cloned-app",
+				Namespace:  "default",
+				Components: tt.components,
 			})
 
 			require.Equal(t, tt.valid, resp.Valid, "unexpected validation errors: %+v", resp.Errors)
@@ -1146,18 +1186,105 @@ func TestValidationService_TryApplication_TemplateValidationUsesRequestComponent
 				return
 			}
 
-			requireValidationError(t, resp.Errors, tt.expectedField, apisv1.ErrCodeInvalidJobFailurePolicy)
+			require.NotNil(t, resp.NormalizedSpec)
+			normalizedIndex := -1
+			for i, component := range resp.NormalizedSpec.Components {
+				if component.Name == tt.invalidTarget {
+					normalizedIndex = i
+					break
+				}
+			}
+			require.NotEqual(t, -1, normalizedIndex, "invalid target missing from normalizedSpec")
+			expectedField := fmt.Sprintf("component[%d].properties.failurePolicy", normalizedIndex)
+			expectedPath := fmt.Sprintf("/components/%d/properties/failurePolicy", normalizedIndex)
+			requireValidationError(t, resp.Errors, expectedField, apisv1.ErrCodeInvalidJobFailurePolicy)
+			requireValidationPath(t, resp.Errors, expectedPath, apisv1.ErrCodeInvalidJobFailurePolicy)
 			failurePolicyErrors := 0
 			for _, validationErr := range resp.Errors {
 				if validationErr.Code != apisv1.ErrCodeInvalidJobFailurePolicy {
 					continue
 				}
 				failurePolicyErrors++
-				require.Equal(t, tt.expectedField, validationErr.Field)
+				require.Equal(t, expectedField, validationErr.Field)
 			}
 			require.Equal(t, 1, failurePolicyErrors)
 		})
 	}
+}
+
+func TestValidationService_TryApplication_TemplateInputErrorKeepsLocatableSpec(t *testing.T) {
+	store := newInMemoryAppStore()
+	store.apps["tmpl-nested"] = &model.Applications{
+		ID: "tmpl-nested", Name: "template", Namespace: "default", Version: "1.0.0", TemplateEnabled: true,
+	}
+	store.components["template-api"] = &model.ApplicationComponent{
+		Name: "template-api", AppID: "tmpl-nested", Namespace: "default",
+		ComponentType: config.ServerJob, Image: "nginx:latest",
+		Properties: mustJSONStruct(&apisv1.Properties{Ports: []spec.Ports{{Port: 8080}}}),
+		Traits:     mustJSONStruct(&apisv1.Traits{}),
+	}
+	appSvc := newMockServiceWithStore(store)
+	svc := &validationServiceImpl{AppRepo: appSvc.AppRepo, ComponentRepo: appSvc.ComponentRepo}
+	direct := func(name string) apisv1.CreateComponentRequest {
+		return apisv1.CreateComponentRequest{Name: name, ComponentType: config.InstantJob, Image: "busybox:latest"}
+	}
+	req := apisv1.CreateApplicationsRequest{
+		Name: "cloned-app", Namespace: "default",
+		Components: []apisv1.CreateComponentRequest{
+			direct("direct-before"),
+			{
+				Name: "api", Template: &apisv1.TemplateRef{ID: "tmpl-nested", Target: "template-api"},
+				Traits: apisv1.Traits{Init: []spec.InitTraitSpec{{
+					Name: "migrate", Properties: spec.Properties{FailurePolicy: jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupFailed)},
+				}}},
+			},
+			direct("direct-after"),
+		},
+	}
+
+	resp := svc.TryApplication(context.Background(), req)
+	require.False(t, resp.Valid)
+	requireValidationPath(t, resp.Errors, "/components/1/traits/init/0/properties/failurePolicy", apisv1.ErrCodeInvalidJobFailurePolicy)
+	require.NotNil(t, resp.NormalizedSpec)
+	require.Len(t, resp.NormalizedSpec.Components, 3)
+	require.Equal(t, "api", resp.NormalizedSpec.Components[1].Name)
+	require.NotNil(t, resp.NormalizedSpec.Components[1].Template)
+	raw, err := json.Marshal(resp.NormalizedSpec)
+	require.NoError(t, err)
+	var normalized map[string]any
+	require.NoError(t, json.Unmarshal(raw, &normalized))
+	components := normalized["components"].([]any)
+	traits := components[1].(map[string]any)["traits"].(map[string]any)
+	init := traits["init"].([]any)
+	properties := init[0].(map[string]any)["properties"].(map[string]any)
+	require.Equal(t, string(workflowconfig.WorkflowFailurePolicyCleanupFailed), properties["failurePolicy"])
+
+	mixedReq := req
+	mixedReq.Components = append([]apisv1.CreateComponentRequest(nil), req.Components...)
+	mixedReq.Components[2].ComponentType = config.JobType("unsupported")
+	mixedResp := svc.TryApplication(context.Background(), mixedReq)
+	require.False(t, mixedResp.Valid)
+	requireValidationPath(t, mixedResp.Errors, "/components/1/traits/init/0/properties/failurePolicy", apisv1.ErrCodeInvalidJobFailurePolicy)
+	requireValidationPath(t, mixedResp.Errors, "/components/2/type", apisv1.ErrCodeInvalidComponentType)
+	require.Equal(t, "direct-after", mixedResp.NormalizedSpec.Components[2].Name)
+	require.NotNil(t, mixedResp.NormalizedSpec.Components[1].Template)
+
+	mixedReq.Components[1].Traits.Init = nil
+	resolvedResp := svc.TryApplication(context.Background(), mixedReq)
+	require.False(t, resolvedResp.Valid)
+	requireValidationPath(t, resolvedResp.Errors, "/components/1/type", apisv1.ErrCodeInvalidComponentType)
+	require.Equal(t, "direct-after", resolvedResp.NormalizedSpec.Components[1].Name)
+	require.Nil(t, resolvedResp.NormalizedSpec.Components[2].Template)
+
+	req.Components[1].Traits.Init = nil
+	validResp := svc.TryApplication(context.Background(), req)
+	require.True(t, validResp.Valid, "%+v", validResp.Errors)
+	require.Equal(t, []string{"direct-before", "direct-after", "api"}, []string{
+		validResp.NormalizedSpec.Components[0].Name,
+		validResp.NormalizedSpec.Components[1].Name,
+		validResp.NormalizedSpec.Components[2].Name,
+	})
+	require.Nil(t, validResp.NormalizedSpec.Components[2].Template)
 }
 
 func jobFailurePolicyPointer(policy workflowconfig.WorkflowFailurePolicy) *workflowconfig.WorkflowFailurePolicy {
@@ -1171,7 +1298,7 @@ func TestValidationService_TryApplication_JobAllowsStartTime(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "job",
 				ComponentType: config.InstantJob,
@@ -1240,9 +1367,9 @@ func TestValidationService_TryApplication_CloudJobProperties(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			req := apisv1.CreateApplicationsRequest{
-				Name:      "my-app",
-				Namespace: "default",
-				Component: []apisv1.CreateComponentRequest{tc.component},
+				Name:       "my-app",
+				Namespace:  "default",
+				Components: []apisv1.CreateComponentRequest{tc.component},
 			}
 			resp := svc.TryApplication(ctx, req)
 			assert.False(t, resp.Valid, "Expected invalid due to cloudjob property validation")
@@ -1265,7 +1392,7 @@ func TestValidationService_TryApplication_CloudJobWithoutImage(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "infra",
 				ComponentType: config.CloudJob,
@@ -1291,14 +1418,14 @@ func TestValidationService_TryApplication_ApprovalStepValid(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
 				Image:         "nginx:latest",
 			},
 		},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{
+		Workflow: []apisv1.CreateWorkflowStepRequest{
 			{
 				Name:     "approval-step",
 				Mode:     "StepByStep",
@@ -1330,14 +1457,14 @@ func TestValidationService_TryApplication_ApprovalStepInvalidConfig(t *testing.T
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
 				Image:         "nginx:latest",
 			},
 		},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{
+		Workflow: []apisv1.CreateWorkflowStepRequest{
 			{
 				Name:       "approval-step",
 				Mode:       "StepByStep",
@@ -1375,7 +1502,7 @@ func TestValidationService_TryApplication_CompleteValidConfig(t *testing.T) {
 		Version:     "1.0.0",
 		Project:     "demo-project",
 		Description: "A complete demo application",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "app-config",
 				ComponentType: config.ConfJob,
@@ -1445,7 +1572,7 @@ func TestValidationService_TryApplication_CompleteValidConfig(t *testing.T) {
 				},
 			},
 		},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{
+		Workflow: []apisv1.CreateWorkflowStepRequest{
 			{
 				Name:         "config-step",
 				WorkflowType: config.JobDeploy,
@@ -1479,7 +1606,7 @@ func TestValidationService_TryApplication_MissingEnvSourceName(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -1516,7 +1643,7 @@ func TestValidationService_TryApplication_NestedInitForbidden(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -1562,14 +1689,14 @@ func TestValidationService_TryApplication_UnsupportedWorkflowJobTypeIsRejected(t
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
 				Image:         "nginx:latest",
 			},
 		},
-		WorkflowSteps: []apisv1.CreateWorkflowStepRequest{
+		Workflow: []apisv1.CreateWorkflowStepRequest{
 			{
 				Name:         "unsupported-step",
 				WorkflowType: config.JobType("unsupported_job_type"),
@@ -1592,7 +1719,7 @@ func TestValidationService_TryApplication_ConfigTypeNoImageRequired(t *testing.T
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "app-config",
 				ComponentType: config.ConfJob,
@@ -1624,7 +1751,7 @@ func TestValidationService_TryApplication_SecretTypeNoImageRequired(t *testing.T
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "app-secret",
 				ComponentType: config.SecretJob,
@@ -1655,7 +1782,7 @@ func TestValidationService_TryApplication_AllowsEmptySecretValues(t *testing.T) 
 	req := apisv1.CreateApplicationsRequest{
 		Name:      "my-app",
 		Namespace: "default",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "app-secret",
 				ComponentType: config.SecretJob,
@@ -1682,7 +1809,7 @@ func TestValidationService_TryApplication_InvalidReservedPropertiesLabels(t *tes
 
 	req := apisv1.CreateApplicationsRequest{
 		Name: "my-app",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,
@@ -1715,7 +1842,7 @@ func TestValidationService_TryApplication_ValidCustomPropertiesLabels(t *testing
 
 	req := apisv1.CreateApplicationsRequest{
 		Name: "my-app",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "backend",
 				ComponentType: config.ServerJob,

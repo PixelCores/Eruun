@@ -5,7 +5,16 @@
   "version": "1.0.0",
   "project": "default",
   "description": "share strategy ignore demo",
-  "component": [
+  "workflow": [
+    {
+      "name": "share-ignore-step",
+      "mode": "StepByStep",
+      "components": [
+        "cm-ignore"
+      ]
+    }
+  ],
+  "components": [
     {
       "name": "cm-ignore",
       "type": "config",
@@ -21,15 +30,6 @@
           "strategy": "ignore"
         }
       }
-    }
-  ],
-  "workflow": [
-    {
-      "name": "share-ignore-step",
-      "mode": "StepByStep",
-      "components": [
-        "cm-ignore"
-      ]
     }
   ]
 }

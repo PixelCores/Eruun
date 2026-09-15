@@ -27,6 +27,7 @@ func TestExecApplicationWorkflowEndpoint(t *testing.T) {
 	body := `{"workflowId":"wf-123","executeAt":1735689600}`
 	req := httptest.NewRequest(http.MethodPost, "/applications/app-1/workflow/exec", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "deploy-2026-09-15")
 	resp := httptest.NewRecorder()
 
 	r.ServeHTTP(resp, req)
@@ -43,6 +44,26 @@ func TestExecApplicationWorkflowEndpoint(t *testing.T) {
 	if !svc.execForAppCalled || svc.lastExecAppID != "app-1" || svc.lastExecWorkflowID != "wf-123" || svc.lastExecExecuteAt != 1735689600 {
 		t.Fatalf("expected exec workflow for app to be invoked")
 	}
+	require.Equal(t, "deploy-2026-09-15", svc.lastExecIdempotencyKey)
+	require.Len(t, payload.AllowedActions, 1)
+	require.Equal(t, "cancel", payload.AllowedActions[0].Name)
+}
+
+func TestExecApplicationWorkflowEndpointRejectsInvalidIdempotencyKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &fakeWorkflowService{}
+	handler := &applications{ApplicationService: noopApplicationsService{}, WorkflowService: svc}
+	router := gin.New()
+	router.POST("/applications/:appID/workflow/exec", handler.execApplicationWorkflow)
+
+	request := httptest.NewRequest(http.MethodPost, "/applications/app-1/workflow/exec", strings.NewReader(`{"workflowId":"wf-123"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "contains whitespace")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	require.Equal(t, http.StatusBadRequest, response.Code)
+	require.False(t, svc.execForAppCalled)
 }
 
 func TestCreateAndExecApplicationsEndpoint(t *testing.T) {
@@ -70,9 +91,10 @@ func TestCreateAndExecApplicationsEndpoint(t *testing.T) {
 	r.POST("/applications/create-and-exec", appHandler.createAndExecApplications)
 
 	futureExecuteAt := time.Now().Add(time.Hour).Unix()
-	body := fmt.Sprintf(`{"name":"demoapp","component":[],"workflow":[],"workflowId":"wf123","executeAt":%d}`, futureExecuteAt)
+	body := fmt.Sprintf(`{"name":"demoapp","components":[],"workflow":[],"workflowId":"wf123","executeAt":%d}`, futureExecuteAt)
 	req := httptest.NewRequest(http.MethodPost, "/applications/create-and-exec", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "create-demo-2026-09-15")
 	resp := httptest.NewRecorder()
 
 	r.ServeHTTP(resp, req)
@@ -105,6 +127,7 @@ func TestCreateAndExecApplicationsEndpoint(t *testing.T) {
 	if !wfSvc.execForAppCalled || wfSvc.lastExecAppID != "app-1" || wfSvc.lastExecWorkflowID != "wf123" || wfSvc.lastExecExecuteAt != futureExecuteAt {
 		t.Fatalf("expected create-and-exec workflow call")
 	}
+	require.Equal(t, "create-demo-2026-09-15", wfSvc.lastExecIdempotencyKey)
 	require.Zero(t, appSvc.markCalls)
 	if appSvc.lastCreate.Name != "demoapp" {
 		t.Fatalf("unexpected create request name: %s", appSvc.lastCreate.Name)
@@ -128,7 +151,7 @@ func TestCreateAndExecApplicationsEndpointUsesDefaultWorkflow(t *testing.T) {
 	r := gin.New()
 	r.POST("/applications/create-and-exec", appHandler.createAndExecApplications)
 
-	body := `{"name":"demoapp","component":[],"workflow":[]}`
+	body := `{"name":"demoapp","components":[],"workflow":[]}`
 	req := httptest.NewRequest(http.MethodPost, "/applications/create-and-exec", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
@@ -174,7 +197,7 @@ func TestCreateAndExecApplicationsEndpointMarksDeployingForExplicitWorkflow(t *t
 	r := gin.New()
 	r.POST("/applications/create-and-exec", appHandler.createAndExecApplications)
 
-	body := `{"name":"demoapp","component":[],"workflow":[],"workflowId":"wf-custom"}`
+	body := `{"name":"demoapp","components":[],"workflow":[],"workflowId":"wf-custom"}`
 	req := httptest.NewRequest(http.MethodPost, "/applications/create-and-exec", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
@@ -213,7 +236,7 @@ func TestCreateAndExecApplicationsEndpointDoesNotMarkDeployingForDelayedExec(t *
 	r.POST("/applications/create-and-exec", appHandler.createAndExecApplications)
 
 	futureExecuteAt := time.Now().Add(time.Hour).Unix()
-	body := fmt.Sprintf(`{"name":"demoapp","component":[],"workflow":[],"executeAt":%d}`, futureExecuteAt)
+	body := fmt.Sprintf(`{"name":"demoapp","components":[],"workflow":[],"executeAt":%d}`, futureExecuteAt)
 	req := httptest.NewRequest(http.MethodPost, "/applications/create-and-exec", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
@@ -247,7 +270,7 @@ func TestCreateAndExecApplicationsEndpointMarksDeployingForPastExecuteAt(t *test
 	r.POST("/applications/create-and-exec", appHandler.createAndExecApplications)
 
 	pastExecuteAt := time.Now().Add(-time.Minute).Unix()
-	body := fmt.Sprintf(`{"name":"demoapp","component":[],"workflow":[],"executeAt":%d}`, pastExecuteAt)
+	body := fmt.Sprintf(`{"name":"demoapp","components":[],"workflow":[],"executeAt":%d}`, pastExecuteAt)
 	req := httptest.NewRequest(http.MethodPost, "/applications/create-and-exec", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
@@ -336,7 +359,7 @@ func TestCreateAndExecApplicationsEndpointInvalidExecuteAtDoesNotExecOrMark(t *t
 	r := gin.New()
 	r.POST("/applications/create-and-exec", appHandler.createAndExecApplications)
 
-	body := `{"name":"demoapp","component":[],"workflow":[],"executeAt":-1}`
+	body := `{"name":"demoapp","components":[],"workflow":[],"executeAt":-1}`
 	req := httptest.NewRequest(http.MethodPost, "/applications/create-and-exec", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
@@ -353,7 +376,7 @@ func TestCreateAndExecApplicationsEndpointInvalidExecuteAtDoesNotExecOrMark(t *t
 	require.Zero(t, appSvc.markCalls)
 }
 
-func TestCreateAndExecApplicationsEndpointAcceptsWorkflowObject(t *testing.T) {
+func TestCreateAndExecApplicationsEndpointAcceptsWorkflowArray(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	appSvc := &fakeCreateAndExecApplicationService{
 		createResp: &apis.ApplicationBase{
@@ -370,7 +393,7 @@ func TestCreateAndExecApplicationsEndpointAcceptsWorkflowObject(t *testing.T) {
 	r := gin.New()
 	r.POST("/applications/create-and-exec", appHandler.createAndExecApplications)
 
-	body := `{"name":"demoapp","component":[],"callback":{"success":"https://example.com/app"},"workflow":{"callback":{"success":"https://example.com/workflow"},"steps":[{"name":"deploy-web","components":["web"]}]}}`
+	body := `{"name":"demoapp","components":[],"callback":{"success":"https://example.com/app"},"workflow":[{"name":"deploy-web","components":["web"]}]}`
 	req := httptest.NewRequest(http.MethodPost, "/applications/create-and-exec", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
@@ -385,10 +408,8 @@ func TestCreateAndExecApplicationsEndpointAcceptsWorkflowObject(t *testing.T) {
 	require.Equal(t, "wfdefault", payload.WorkflowID)
 	require.NotNil(t, appSvc.lastCreate.Callback)
 	require.Equal(t, "https://example.com/app", appSvc.lastCreate.Callback.Success)
-	require.NotNil(t, appSvc.lastCreate.WorkflowCallback)
-	require.Equal(t, "https://example.com/workflow", appSvc.lastCreate.WorkflowCallback.Success)
-	require.Len(t, appSvc.lastCreate.WorkflowSteps, 1)
-	require.Equal(t, "deploy-web", appSvc.lastCreate.WorkflowSteps[0].Name)
+	require.Len(t, appSvc.lastCreate.Workflow, 1)
+	require.Equal(t, "deploy-web", appSvc.lastCreate.Workflow[0].Name)
 }
 
 func TestCreateAndExecApplicationsEndpointExecFailureReturnsSuccess(t *testing.T) {
@@ -408,7 +429,7 @@ func TestCreateAndExecApplicationsEndpointExecFailureReturnsSuccess(t *testing.T
 	r := gin.New()
 	r.POST("/applications/create-and-exec", appHandler.createAndExecApplications)
 
-	body := `{"name":"demoapp","component":[],"workflow":[]}`
+	body := `{"name":"demoapp","components":[],"workflow":[]}`
 	req := httptest.NewRequest(http.MethodPost, "/applications/create-and-exec", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
@@ -450,7 +471,7 @@ func TestCreateAndExecApplicationsEndpointPendingCleanupRefreshFailureDoesNotExe
 	r := gin.New()
 	r.POST("/applications/create-and-exec", appHandler.createAndExecApplications)
 
-	body := `{"name":"demoapp","component":[],"workflow":[]}`
+	body := `{"name":"demoapp","components":[],"workflow":[]}`
 	req := httptest.NewRequest(http.MethodPost, "/applications/create-and-exec", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
@@ -483,7 +504,7 @@ func TestCreateAndExecApplicationsEndpointFailsWhenWorkflowUnavailable(t *testin
 	r := gin.New()
 	r.POST("/applications/create-and-exec", appHandler.createAndExecApplications)
 
-	body := `{"name":"demoapp","component":[],"workflow":[]}`
+	body := `{"name":"demoapp","components":[],"workflow":[]}`
 	req := httptest.NewRequest(http.MethodPost, "/applications/create-and-exec", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()

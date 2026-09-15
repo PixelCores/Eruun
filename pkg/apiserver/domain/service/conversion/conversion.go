@@ -79,12 +79,19 @@ func (c *conversionServiceImpl) ConvertKubeResources(ctx context.Context, req v1
 	}
 	if validate && c.ValidationService != nil {
 		validation := c.ValidationService.TryApplication(ctx, v1.CreateApplicationsRequest{
-			Name:      defaultConvertAppName,
-			Component: components,
+			Name:       defaultConvertAppName,
+			Components: components,
 		})
 		if validation != nil {
 			resp.Valid = validation.Valid
-			resp.Errors = validation.Errors
+			resp.Errors = make([]v1.ValidationError, len(validation.Errors))
+			for i, validationErr := range validation.Errors {
+				resp.Errors[i] = v1.ValidationError{
+					Field:   validationErr.Field,
+					Code:    validationErr.Code,
+					Message: validationErr.Message,
+				}
+			}
 		}
 	}
 

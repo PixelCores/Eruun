@@ -38,13 +38,9 @@ func ConvertWorkflowModelToDTO(workflow *model.Workflow) (*apisv1.ApplicationWor
 	if err != nil {
 		return nil, fmt.Errorf("convert workflow %s steps: %w", workflow.ID, err)
 	}
-	var callback *apisv1.WorkflowCallback
-	if workflow.Callback != nil {
-		var cfg apisv1.WorkflowCallback
-		if err := decodeJSONStruct(workflow.Callback, &cfg); err != nil {
-			return nil, fmt.Errorf("convert workflow %s callback: %w", workflow.ID, err)
-		}
-		callback = &cfg
+	callback, err := workflowCallbackFromModel(workflow)
+	if err != nil {
+		return nil, fmt.Errorf("convert workflow %s callback: %w", workflow.ID, err)
 	}
 	return &apisv1.ApplicationWorkflow{
 		ID:            workflow.ID,
@@ -61,6 +57,16 @@ func ConvertWorkflowModelToDTO(workflow *model.Workflow) (*apisv1.ApplicationWor
 		CreateTime:    workflow.CreateTime,
 		UpdateTime:    workflow.UpdateTime,
 		WorkflowType:  workflow.WorkflowType,
+		Spec: &apisv1.UpdateApplicationWorkflowRequest{
+			WorkflowID:       workflow.ID,
+			Name:             workflow.Name,
+			Alias:            workflow.Alias,
+			Callback:         callback,
+			WorkflowType:     workflow.WorkflowType,
+			FailurePolicy:    failurePolicy,
+			FailurePolicySet: true,
+			Workflow:         workflowDetailsToCreateRequests(steps),
+		},
 	}, nil
 }
 

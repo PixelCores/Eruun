@@ -4,7 +4,16 @@
   "version": "1.0.0",
   "project": "default",
   "description": "Converted from ConfigMap vector-logs",
-  "component": [
+  "workflow": [
+    {
+      "name": "deploy",
+      "mode": "StepByStep",
+      "components": [
+        "vector-logs"
+      ]
+    }
+  ],
+  "components": [
     {
       "name": "vector-logs",
       "type": "config",
@@ -20,13 +29,6 @@
           "strategy": "default"
         }
       }
-    }
-  ],
-  "workflow": [
-    {
-      "name": "deploy",
-      "mode": "StepByStep",
-      "components": ["vector-logs"]
     }
   ]
 }

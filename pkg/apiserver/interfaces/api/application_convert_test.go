@@ -65,6 +65,37 @@ func TestConvertApplicationsEndpoint(t *testing.T) {
 	}
 }
 
+func TestConvertApplicationsEndpointPreservesLegacyValidationErrorField(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	fakeSvc := &fakeConversionService{resp: &apis.ConvertApplicationsResponse{
+		Components: []apis.CreateComponentRequest{},
+		Valid:      false,
+		Errors: []apis.ValidationError{{
+			Field:   "component[0].name",
+			Code:    apis.ErrCodeInvalidComponentName,
+			Message: "invalid component name",
+		}},
+	}}
+	appHandler := &applications{ConversionService: fakeSvc}
+	r := gin.New()
+	r.POST("/applications/convert", appHandler.convertApplications)
+
+	req := httptest.NewRequest(http.MethodPost, "/applications/convert", bytes.NewReader([]byte(`{"yaml":"kind: ConfigMap"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	r.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("unexpected status code: %d", resp.Code)
+	}
+	if !bytes.Contains(resp.Body.Bytes(), []byte(`"field":"component[0].name"`)) {
+		t.Fatalf("legacy field missing from response: %s", resp.Body.String())
+	}
+	if bytes.Contains(resp.Body.Bytes(), []byte(`"path":`)) {
+		t.Fatalf("Try-only path leaked into convert response: %s", resp.Body.String())
+	}
+}
+
 func TestConvertApplicationsEndpoint_FileURL(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	fakeSvc := &fakeConversionService{

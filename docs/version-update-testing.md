@@ -22,7 +22,7 @@
   "namespace": "default",
   "version": "1.0.0",
   "description": "My backend application",
-  "component": [
+  "components": [
     {
       "name": "backend",
       "type": "webservice",
@@ -665,7 +665,7 @@ curl -X POST "http://localhost:8000/api/v1/applications" \
     "name": "my-backend-app",
     "namespace": "default",
     "version": "1.0.0",
-    "component": [
+    "components": [
       {
         "name": "backend",
         "type": "webservice",

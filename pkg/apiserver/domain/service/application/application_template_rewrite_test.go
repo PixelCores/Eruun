@@ -54,7 +54,7 @@ func TestCreateApplicationsFromTemplateKeepsDuplicateCloneRewritesPerClone(t *te
 	svc := newMockServiceWithStore(store)
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "tenant-db",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "mysql",
 				ComponentType: config.StoreJob,
@@ -124,7 +124,7 @@ func TestCreateApplicationsFromTemplateRejectsRewrittenServiceTraitNameTooLong(t
 	svc := newMockServiceWithStore(store)
 	_, err = svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "tenant-alpha-game-db",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "game-db-mysql-component",
 			ComponentType: config.StoreJob,
 			Template:      &apisv1.TemplateRef{ID: templateApp.ID, Target: "db"},
@@ -173,7 +173,7 @@ func TestCreateApplicationsFromTemplateRejectsRewrittenServiceTraitNameCollision
 	svc := newMockServiceWithStore(store)
 	_, err = svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "cloned-app",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "new-mysql",
 			ComponentType: config.StoreJob,
 			Template:      &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"},
@@ -219,7 +219,7 @@ func TestCreateApplicationsFromTemplateRejectsRewrittenServiceTraitNameCollision
 	svc := newMockServiceWithStore(store)
 	_, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "cloned-app",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{Name: "foo", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "foo"}},
 			{Name: "foo-bar", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "foo-bar"}},
 		},
@@ -260,7 +260,7 @@ func TestCreateApplicationsRejectsResolvedServiceTraitNameCollisionWithNonTempla
 	svc := newMockServiceWithStore(store)
 	_, err = svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "cloned-app",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "worker",
 				ComponentType: config.ServerJob,
@@ -317,7 +317,7 @@ func TestCreateApplicationsRejectsResolvedServiceTraitNameCollisionAcrossTemplat
 	svc := newMockServiceWithStore(store)
 	_, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "cloned-app",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{Name: "new-mysql", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: "tmpl-request-service-collision-a", Target: "mysql"}},
 			{Name: "new", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: "tmpl-request-service-collision-b", Target: "other"}},
 		},
@@ -370,7 +370,7 @@ func TestCreateApplicationsFromTemplateDoesNotRewriteBareServiceNameText(t *test
 	svc := newMockServiceWithStore(store)
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "cloned-app",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "new-mysql",
 			ComponentType: config.StoreJob,
 			Template:      &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"},
@@ -433,7 +433,7 @@ func TestCreateApplicationsFromTemplatePreservesUndeclaredIngressBackend(t *test
 	svc := newMockServiceWithStore(store)
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "cloned-app",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "new-mysql",
 			ComponentType: config.StoreJob,
 			Template:      &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"},
@@ -515,7 +515,7 @@ func TestCreateApplicationsFromTemplateRejectsAmbiguousIngressBackendServiceRefe
 	svc := newMockServiceWithStore(store)
 	_, err = svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "cloned-app",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{Name: "new-mysql", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"}},
 			{Name: "new-redis", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "redis"}},
 			{Name: "new-gateway", ComponentType: config.ServerJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "gateway"}},
@@ -581,7 +581,7 @@ func TestCreateApplicationsFromTemplatePreservesAmbiguousServiceDNSInText(t *tes
 	svc := newMockServiceWithStore(store)
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "cloned-app",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{Name: "new-mysql", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"}},
 			{Name: "new-redis", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "redis"}},
 			{Name: "new-gateway", ComponentType: config.ServerJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "gateway"}},
@@ -660,7 +660,7 @@ func TestCreateApplicationsFromTemplateRewritesNamespaceQualifiedAmbiguousServic
 	svc := newMockServiceWithStore(store)
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "cloned-app",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{Name: "new-mysql", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"}},
 			{Name: "new-redis", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "redis"}},
 			{Name: "new-gateway", ComponentType: config.ServerJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "gateway"}},
@@ -745,7 +745,7 @@ func TestCreateApplicationsFromTemplateRewritesExternalNameServiceDNS(t *testing
 	svc := newMockServiceWithStore(store)
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "cloned-app",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{Name: "new-mysql", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"}},
 			{Name: "new-proxy", ComponentType: config.ServerJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "proxy"}},
 		},
@@ -831,7 +831,7 @@ func TestCreateApplicationsFromTemplateKeepsServiceNamesOutOfResourceReferenceRe
 	svc := newMockServiceWithStore(store)
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "cloned-app",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{Name: "new-mysql", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"}},
 			{Name: "new-primary-secret", ComponentType: config.SecretJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "primary"}},
 		},
@@ -930,7 +930,7 @@ func TestCreateApplicationsFromTemplatePreservesUndeclaredResourceReferenceMatch
 	svc := newMockServiceWithStore(store)
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "cloned-app",
-		Component: []apisv1.CreateComponentRequest{{
+		Components: []apisv1.CreateComponentRequest{{
 			Name:          "new-mysql",
 			ComponentType: config.StoreJob,
 			Template:      &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"},
@@ -1011,7 +1011,7 @@ func TestCreateApplicationsFromTemplateScopesDuplicateServiceTraitNames(t *testi
 	svc := newMockServiceWithStore(store)
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
 		Name: "game-db",
-		Component: []apisv1.CreateComponentRequest{
+		Components: []apisv1.CreateComponentRequest{
 			{Name: "new-mysql", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "mysql"}},
 			{Name: "new-redis", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "redis"}},
 		},

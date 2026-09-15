@@ -5,7 +5,16 @@
   "version": "1.0.0",
   "project": "default",
   "description": "share strategy force demo",
-  "component": [
+  "workflow": [
+    {
+      "name": "share-force-step",
+      "mode": "StepByStep",
+      "components": [
+        "cm-force"
+      ]
+    }
+  ],
+  "components": [
     {
       "name": "cm-force",
       "type": "config",
@@ -21,15 +30,6 @@
           "strategy": "force"
         }
       }
-    }
-  ],
-  "workflow": [
-    {
-      "name": "share-force-step",
-      "mode": "StepByStep",
-      "components": [
-        "cm-force"
-      ]
     }
   ]
 }

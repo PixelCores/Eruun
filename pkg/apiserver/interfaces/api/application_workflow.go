@@ -31,6 +31,10 @@ func (app *applications) listApplicationWorkflows(c *gin.Context) {
 	respondWithResult(c, apis.ListApplicationWorkflowsResponse{Workflows: resp}, err)
 }
 
+func (app *applications) getApplicationSpec(c *gin.Context) {
+	handlePathResult(c, appIDPathParam, app.ApplicationService.GetApplicationSpec)
+}
+
 func convertDTOList[S any, D any](items []*S, convert func(*S) (*D, error), onConvertErr func(*S, error) error) ([]*D, error) {
 	result := make([]*D, 0, len(items))
 	for _, item := range items {
@@ -151,12 +155,20 @@ func trimWorkflowStringList(values []string) {
 }
 
 func (app *applications) execApplicationWorkflow(c *gin.Context) {
+	idempotencyKey, ok := bindIdempotencyKey(c, bcode.ErrWorkflowConfig)
+	if !ok {
+		return
+	}
 	handlePathBoundResult(
 		c,
 		appIDPathParam,
 		validatedRequestBody[apis.ExecWorkflowRequest](bcode.ErrWorkflowConfig, true),
 		func(ctx context.Context, appID string, req *apis.ExecWorkflowRequest) (*apis.ExecWorkflowResponse, error) {
-			return app.WorkflowService.ExecWorkflowTaskForApp(ctx, appID, req.WorkflowID, req.ExecuteAt)
+			resp, err := app.WorkflowService.ExecWorkflowTaskForApp(ctx, appID, req.WorkflowID, req.ExecuteAt, idempotencyKey)
+			if resp != nil {
+				resp.AllowedActions = workflowTaskAllowedActions(resp.TaskID, appID, resp.Status, resp.PendingApprovalStep)
+			}
+			return resp, err
 		},
 	)
 }
@@ -237,17 +249,30 @@ func (app *applications) listApplicationTasks(c *gin.Context) {
 			TaskRevoker:         task.TaskRevoker,
 			CreateTime:          task.CreateTime,
 			UpdateTime:          task.UpdateTime,
+			AllowedActions:      workflowTaskAllowedActions(task.TaskID, task.AppID, string(task.Status), task.PendingApprovalStep),
 		})
 	}
 	bcode.ReturnSuccess(c, apis.ListApplicationTasksResponse{Tasks: resp})
 }
 
 func (app *applications) getWorkflowTaskStatus(c *gin.Context) {
-	handlePathResult(c, taskIDPathParam, app.WorkflowService.GetTaskStatus)
+	handlePathResult(c, taskIDPathParam, func(ctx context.Context, taskID string) (*apis.TaskStatusResponse, error) {
+		resp, err := app.WorkflowService.GetTaskStatus(ctx, taskID)
+		if resp != nil {
+			resp.AllowedActions = workflowTaskAllowedActions(resp.TaskID, resp.AppID, resp.Status, resp.PendingApprovalStep)
+		}
+		return resp, err
+	})
 }
 
 func (app *applications) getWorkflowTaskStages(c *gin.Context) {
-	handlePathResult(c, taskIDPathParam, app.WorkflowService.GetTaskStages)
+	handlePathResult(c, taskIDPathParam, func(ctx context.Context, taskID string) (*apis.TaskStagesResponse, error) {
+		resp, err := app.WorkflowService.GetTaskStages(ctx, taskID)
+		if resp != nil {
+			resp.AllowedActions = workflowTaskAllowedActions(resp.TaskID, resp.AppID, resp.Status, resp.PendingApprovalStep)
+		}
+		return resp, err
+	})
 }
 
 func (app *applications) cancelDelayedVersionUpdate(c *gin.Context) {
@@ -288,7 +313,7 @@ func (app *applications) cancelWorkflow(
 // @Tags applications
 // @Accept json
 // @Produce json
-// @Param request body apis.TryApplicationRequest true "Application configuration to validate (optional appId to validate workflow against an existing application)"
+// @Param request body apis.TryApplicationRequest true "Canonical Application configuration to validate"
 // @Success 200 {object} apis.TryApplicationResponse "Validation result with detailed errors if any"
 // @Router /applications/try [post]
 func (app *applications) tryApplication(c *gin.Context) {
@@ -297,27 +322,15 @@ func (app *applications) tryApplication(c *gin.Context) {
 		return
 	}
 
-	for i := range req.Component {
-		req.Component[i].Name = strings.ToLower(strings.TrimSpace(req.Component[i].Name))
+	for i := range req.Components {
+		req.Components[i].Name = strings.ToLower(strings.TrimSpace(req.Components[i].Name))
 	}
-	normalizeWorkflowSteps(req.WorkflowSteps)
+	normalizeWorkflowSteps(req.Workflow)
 
 	ctx := c.Request.Context()
-	if strings.TrimSpace(req.AppID) != "" {
-		appID := strings.TrimSpace(req.AppID)
-		klog.V(2).InfoS("try validation request received", "appID", appID, "steps", len(req.WorkflowSteps))
+	klog.V(2).InfoS("try application validation request received", "name", req.Name, "components", len(req.Components), "workflows", len(req.Workflow))
 
-		wfResp := app.ValidationService.TryWorkflow(ctx, appID, apis.TryWorkflowRequest{
-			FailurePolicy: req.WorkflowFailurePolicy,
-			Workflow:      req.WorkflowSteps,
-		})
-		bcode.ReturnSuccess(c, apis.TryApplicationResponse{Valid: wfResp.Valid, Errors: wfResp.Errors})
-		return
-	}
-
-	klog.V(2).InfoS("try application validation request received", "name", req.Name, "components", len(req.Component), "workflows", len(req.WorkflowSteps))
-
-	resp := app.ValidationService.TryApplication(ctx, req.CreateApplicationsRequest)
+	resp := app.ValidationService.TryApplication(ctx, *req)
 
 	klog.V(2).InfoS("try application validation completed", "name", req.Name, "valid", resp.Valid, "errorCount", len(resp.Errors))
 
@@ -345,15 +358,17 @@ func (app *applications) tryWorkflow(c *gin.Context) {
 		return
 	}
 
+	req.WorkflowType = config.WorkflowTaskType(strings.ToLower(strings.TrimSpace(string(req.WorkflowType))))
 	normalizeWorkflowSteps(req.Workflow)
 	tryReq := apis.TryWorkflowRequest{
-		WorkflowID:    req.WorkflowID,
-		Name:          req.Name,
-		Alias:         req.Alias,
-		WorkflowType:  req.WorkflowType,
-		Callback:      req.Callback,
-		FailurePolicy: req.FailurePolicy,
-		Workflow:      req.Workflow,
+		WorkflowID:       req.WorkflowID,
+		Name:             req.Name,
+		Alias:            req.Alias,
+		WorkflowType:     req.WorkflowType,
+		Callback:         req.Callback,
+		FailurePolicy:    req.FailurePolicy,
+		FailurePolicySet: req.FailurePolicySet,
+		Workflow:         req.Workflow,
 	}
 
 	ctx := c.Request.Context()
