@@ -64,7 +64,7 @@
 }
 ```
 
-`framework` 和 `frameworkVersion` 可省略，服务端分别补为 `harbor` 和 `0.22.0` 并保存在 Job 快照中；显式填入其他值仍会拒绝。上传任务包时，Eruun 自动生成 UUID 并在响应的 `data.id` 返回；提交时把它填入 `datasetId`。这个字段指向当前空间内的任务包归档，并非每次提交都要新建的数据集；同一任务包可供 1000 个 Job 复用。
+`framework` 和 `frameworkVersion` 可省略，服务端分别补为 `harbor` 和 `0.22.0` 并保存在 Job 快照中；显式填入其他值仍会拒绝。上传任务包时，Eruun 自动生成 UUID 并在响应的 `data.id` 返回；提交时把它填入 `datasetId`。**这个 ID 是 Eruun 的任务包归档句柄，不是 Harbor 的数据集名称、版本或原生任务 ID。** Runner 按 ID 下载并解包，然后把本地任务路径交给 Harbor；当前 Eruun API 不支持直接引用 Harbor 注册数据集。同一任务包可供 1000 个 Job 复用。Harbor 对任务与数据集的区分见 [官方数据集说明](https://www.harborframework.com/docs/datasets)。
 
 允许 `terminus-2`、`codex`、`claude-code` 和 `oracle`。`agent.name` 指定 Harbor 执行 trial 的 Agent；`oracle` 执行任务包的参考解答，用于验证任务与平台链路，不代表模型能力；使用它时省略 `model` 和 `credentials`，无需模型调用或模型费用。其他 Agent 必须指定模型。支持的凭据环境名为 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`GEMINI_API_KEY`、`GOOGLE_API_KEY`、`OPENROUTER_API_KEY`、`AZURE_API_KEY`，均引用当前空间已有 Secret 的键；平台不返回 Secret 内容。
 
