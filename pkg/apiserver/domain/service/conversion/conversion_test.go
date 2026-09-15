@@ -2,6 +2,7 @@ package conversion
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -16,6 +17,41 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
+
+type conversionValidationStub struct {
+	response *apis.TryApplicationResponse
+}
+
+func (s conversionValidationStub) TryApplication(context.Context, apis.CreateApplicationsRequest) *apis.TryApplicationResponse {
+	return s.response
+}
+
+func TestConvertKubeResourcesPreservesLegacyValidationErrors(t *testing.T) {
+	svc := &conversionServiceImpl{ValidationService: conversionValidationStub{response: &apis.TryApplicationResponse{
+		Valid: false,
+		Errors: []apis.TryValidationError{{
+			Field:   "component[0].name",
+			Path:    "/components/0/name",
+			Code:    apis.ErrCodeInvalidComponentName,
+			Message: "invalid component name",
+		}},
+	}}}
+
+	resp, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: demo
+`})
+
+	require.NoError(t, err)
+	require.False(t, resp.Valid)
+	require.Equal(t, "component[0].name", resp.Errors[0].Field)
+	raw, err := json.Marshal(resp)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"field":"component[0].name"`)
+	require.NotContains(t, string(raw), `"path":`)
+}
 
 func TestConvertKubeResources_StatefulSetWithService(t *testing.T) {
 	yamlText := `

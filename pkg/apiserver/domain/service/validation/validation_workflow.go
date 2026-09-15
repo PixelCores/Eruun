@@ -64,13 +64,18 @@ func (v *validationServiceImpl) TryWorkflow(ctx context.Context, appID string, r
 		errors = append(errors, v.validateWorkflowSteps(req.Workflow, componentIndex, "workflow")...)
 	}
 
+	normalizedFailurePolicy := req.FailurePolicy
+	if policy, ok := workflowconfig.NormalizeWorkflowFailurePolicy(req.FailurePolicy); ok &&
+		(req.FailurePolicySet || strings.TrimSpace(string(req.FailurePolicy)) != "") {
+		normalizedFailurePolicy = policy
+	}
 	normalized := &apisv1.UpdateApplicationWorkflowRequest{
 		WorkflowID:    req.WorkflowID,
 		Name:          req.Name,
 		Alias:         req.Alias,
 		Callback:      req.Callback,
 		WorkflowType:  workflowType,
-		FailurePolicy: req.FailurePolicy,
+		FailurePolicy: normalizedFailurePolicy,
 		Workflow:      req.Workflow,
 	}
 	return &apisv1.TryWorkflowResponse{

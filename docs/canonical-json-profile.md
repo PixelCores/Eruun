@@ -179,7 +179,7 @@ Try API 成功处理请求时统一返回：
 - `errors` 始终是数组；无错误时返回 `[]`。
 - `path` 是 RFC 6901 JSON Pointer，指向 `normalizedSpec` 中的规范字段。
 - `code` 用于程序分支，`message` 用于展示；客户端不应解析 message。
-- `normalizedSpec` 与对应写接口同构。Application Try 的结果可提交到 Application 创建入口；Workflow Try 的结果可提交到 Workflow 更新入口。
+- `normalizedSpec` 与对应写接口同构。Application Try 的结果可提交到 Application 创建入口；Workflow Try 的结果可提交到 Workflow 更新入口。Workflow 请求显式传入空 `failurePolicy` 时，规范输出使用等价的 `cleanup_all`，从而保留“重置为默认策略”而不是“省略并保留现值”的语义。
 - `plan.actions` 是有序的逻辑计划，不承诺 Kubernetes Job 名称或实际开始时间。
 
 JSON 绑定失败（未知字段、错误类型、多余 JSON 值）仍返回入口对应的 4xx 业务错误，因为此时无法构造可信的 `normalizedSpec`。
@@ -197,6 +197,8 @@ GET /api/v1/applications/:appID/spec
 ```text
 GET spec -> 编辑 data -> POST /applications/try -> 取 normalizedSpec -> POST /applications
 ```
+
+带 `ID` 的 Application 写入只在根级显式提供 `callback` 时覆盖 App 及其全部 Workflow callback。为了保证原样重提不会抹掉某个 Workflow 的独立 callback，当任一已存 Workflow callback 与 App callback 不一致或依赖 App fallback 时，GET spec 会省略根级 `callback`；省略该字段会保留现有 App/Workflow callback。需要统一覆盖全部 callback 时由调用方显式加入根级 `callback`，只修改单个 Workflow 时使用 Workflow `spec`。
 
 只有 `native` 管理模式的 Application 支持该接口；observe/adopted 资源不是 Eruun 完整拥有的声明，因此不会伪造可重提 spec。该响应可能包含组件 credential 或 secret 属性，viewer 角色不能读取，调用方也不得记录或公开原始响应。
 

@@ -87,6 +87,7 @@ Application 根级还可以声明 `failurePolicy`；它只控制部署失败后�
 - 创建 App 时如果 `workflow` 为空或未提供，服务端生成的默认 workflow 使用根级 `callback`。
 - 创建 App 时如果根级 `workflow` 非空，显式 workflow 同样使用根级 `callback`。
 - 通过带 `ID` 的 `POST /api/v1/applications` 更新 App 时，如果根级 `callback` 非空或为 `{}`，服务端会把它写入 App，并覆盖该 App 下全部 workflow callback；`{}` 表示清空。
+- `GET /api/v1/applications/:appID/spec` 只有在全部已存 workflow callback 都与 App callback 一致时才返回根级 `callback`。存在独立 callback 或依赖 App fallback 的 workflow 时省略该字段，确保原样重提不会触发上述全量覆盖；调用方仍可显式加入根级 `callback` 请求统一覆盖。
 - `PUT /api/v1/applications/:appID/workflow` 仍只更新目标 workflow 的 callback，不更新 App callback。
 - `POST /api/v1/applications/:appID/version` 可提供本次版本更新 task 级 `callback`；它只覆盖本次自动执行产生的 workflow task，不写入 App 或 Workflow。
 - `POST /api/v1/applications/:appID/start|stop|restart` 可提供本次生命周期操作 task 级 `callback`；它只覆盖本次 operation task，不写入 App 或 Workflow。

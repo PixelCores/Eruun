@@ -327,6 +327,27 @@ func TestTryWorkflowAcceptsCanonicalWorkflow(t *testing.T) {
 	require.Equal(t, []string{"API"}, validationSvc.workflow.Workflow[0].WorkflowPropertiesList()[0].Policies)
 }
 
+func TestTryWorkflowPreservesExplicitEmptyFailurePolicy(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	validationSvc := &recordingValidationService{}
+	appHandler := &applications{ValidationService: validationSvc}
+	r := gin.New()
+	r.POST("/applications/:appID/workflow/try", appHandler.tryWorkflow)
+
+	req := httptest.NewRequest(http.MethodPost, "/applications/app-1/workflow/try", strings.NewReader(`{
+		"workflowId":"wf-1",
+		"failurePolicy":"",
+		"workflow":[{"name":"deploy-api","jobType":"deploy","components":["api"]}]
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+
+	r.ServeHTTP(resp, req)
+
+	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
+	require.True(t, validationSvc.workflow.FailurePolicySet)
+}
+
 func TestTryWorkflowRejectsLegacyStepsField(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	validationSvc := &recordingValidationService{}

@@ -12,14 +12,20 @@ const (
 	ValidationPathWorkflow    ValidationPathScope = "workflow"
 )
 
-func FinalizeValidationErrors(errors []ValidationError, scope ValidationPathScope) []ValidationError {
+func FinalizeValidationErrors(errors []ValidationError, scope ValidationPathScope) []TryValidationError {
 	if len(errors) == 0 {
-		return []ValidationError{}
+		return []TryValidationError{}
 	}
-	for i := range errors {
-		errors[i].Path = validationJSONPointer(errors[i].Field, scope)
+	result := make([]TryValidationError, len(errors))
+	for i, validationErr := range errors {
+		result[i] = TryValidationError{
+			Field:   validationErr.Field,
+			Path:    validationJSONPointer(validationErr.Field, scope),
+			Code:    validationErr.Code,
+			Message: validationErr.Message,
+		}
 	}
-	return errors
+	return result
 }
 
 func NewApplicationExecutionPlan(spec CreateApplicationsRequest) *ExecutionPlan {

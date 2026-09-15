@@ -14,7 +14,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
-func TestGetApplicationSpecReturnsCreateCompatibleCanonicalState(t *testing.T) {
+func TestGetApplicationSpecRoundTripPreservesIndependentWorkflowCallback(t *testing.T) {
 	store := newInMemoryAppStore()
 	store.apps["app-1"] = &model.Applications{
 		ID: "app-1", Name: "demo", Namespace: "default", Version: "1.2.3", TemplateEnabled: true,
@@ -35,16 +35,15 @@ func TestGetApplicationSpecReturnsCreateCompatibleCanonicalState(t *testing.T) {
 		Steps: mustJSONStruct(steps), Callback: mustJSONStruct(&model.WorkflowCallback{Failure: "https://example.com/workflow-failure"}),
 	}
 
-	spec, err := newMockServiceWithStore(store).GetApplicationSpec(context.Background(), "app-1")
+	svc := newMockServiceWithStore(store)
+	spec, err := svc.GetApplicationSpec(context.Background(), "app-1")
 	require.NoError(t, err)
 	require.Equal(t, "app-1", spec.ID)
 	require.Len(t, spec.Components, 1)
 	require.Equal(t, "nginx:1.27", spec.Components[0].Image)
 	require.Len(t, spec.Workflow, 1)
 	require.Equal(t, config.JobDeploy, spec.Workflow[0].WorkflowType)
-	require.NotNil(t, spec.Callback)
-	require.Equal(t, "https://example.com/app-success", spec.Callback.Success)
-	require.Empty(t, spec.Callback.Failure)
+	require.Nil(t, spec.Callback, "a root callback would overwrite the independent workflow callback on resubmission")
 
 	raw, err := json.Marshal(spec)
 	require.NoError(t, err)
@@ -53,6 +52,33 @@ func TestGetApplicationSpecReturnsCreateCompatibleCanonicalState(t *testing.T) {
 	require.Equal(t, spec.ID, resubmitted.ID)
 	require.Equal(t, spec.Components, resubmitted.Components)
 	require.Len(t, resubmitted.Workflow, 1)
+
+	_, err = svc.CreateApplications(context.Background(), resubmitted)
+	require.NoError(t, err)
+	var appCallback apisv1.WorkflowCallback
+	require.NoError(t, decodeJSONStruct(store.apps["app-1"].Callback, &appCallback))
+	require.Equal(t, "https://example.com/app-success", appCallback.Success)
+	var workflowCallback apisv1.WorkflowCallback
+	require.NoError(t, decodeJSONStruct(store.workflows["wf-1"].Callback, &workflowCallback))
+	require.Equal(t, "https://example.com/workflow-failure", workflowCallback.Failure)
+}
+
+func TestGetApplicationSpecIncludesUniformCallback(t *testing.T) {
+	callback := mustJSONStruct(&model.WorkflowCallback{Success: "https://example.com/success"})
+	store := newInMemoryAppStore()
+	store.apps["app-1"] = &model.Applications{
+		ID: "app-1", Name: "demo", Namespace: "default", Callback: callback,
+	}
+	store.workflows["wf-1"] = &model.Workflow{
+		ID: "wf-1", AppID: "app-1", Name: "demo-default", Callback: mustJSONStruct(&model.WorkflowCallback{Success: "https://example.com/success"}),
+		Steps: mustJSONStruct(&model.WorkflowSteps{}),
+	}
+
+	spec, err := newMockServiceWithStore(store).GetApplicationSpec(context.Background(), "app-1")
+
+	require.NoError(t, err)
+	require.NotNil(t, spec.Callback)
+	require.Equal(t, "https://example.com/success", spec.Callback.Success)
 }
 
 func TestGetApplicationSpecRejectsNonNativeApplication(t *testing.T) {

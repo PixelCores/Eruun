@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -22,6 +23,10 @@ func TestFinalizeValidationErrorsUsesCanonicalJSONPointers(t *testing.T) {
 
 	workflowErrors := FinalizeValidationErrors([]ValidationError{{Field: "workflow[0].name"}}, ValidationPathWorkflow)
 	require.Equal(t, "/workflow/0/name", workflowErrors[0].Path)
+
+	raw, err := json.Marshal(workflowErrors[0])
+	require.NoError(t, err)
+	require.JSONEq(t, `{"path":"/workflow/0/name","code":"","message":""}`, string(raw))
 }
 
 func TestEmptyValidationErrorsRemainAnArray(t *testing.T) {

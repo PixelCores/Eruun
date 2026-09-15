@@ -153,10 +153,6 @@ func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.C
 	errors = append(errors, validateTemplateRequestNestedJobFailurePolicies(effectiveReq.Components)...)
 
 	resolvedComponents := effectiveReq.Components
-	resolvedComponentSourceIndexes := make([]int, len(resolvedComponents))
-	for i := range resolvedComponentSourceIndexes {
-		resolvedComponentSourceIndexes[i] = i
-	}
 	componentsResolved := true
 	if requestUsesTemplate(effectiveReq.Components) {
 		if v.AppRepo == nil || v.ComponentRepo == nil {
@@ -167,7 +163,7 @@ func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.C
 				Message: "template repositories are required to validate template components",
 			})
 		} else {
-			components, sourceIndexes, err := applicationservice.ResolveComponentsWithSourceIndexes(ctx, v.AppRepo, v.ComponentRepo, applicationservice.ServiceNamespaceOrDefault(effectiveReq.Namespace), effectiveReq.Name, effectiveReq.Components, v.Cfg)
+			components, _, err := applicationservice.ResolveComponentsWithSourceIndexes(ctx, v.AppRepo, v.ComponentRepo, applicationservice.ServiceNamespaceOrDefault(effectiveReq.Namespace), effectiveReq.Name, effectiveReq.Components, v.Cfg)
 			if err != nil {
 				componentsResolved = false
 				errors = append(errors, apisv1.ValidationError{
@@ -177,7 +173,6 @@ func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.C
 				})
 			} else {
 				resolvedComponents = components
-				resolvedComponentSourceIndexes = sourceIndexes
 			}
 		}
 	}
@@ -188,11 +183,7 @@ func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.C
 		// resolution, so type/image/traits must be checked on the cloned output.
 		componentNames := make(map[string]bool)
 		for i, comp := range resolvedComponents {
-			fieldIndex := i
-			if i < len(resolvedComponentSourceIndexes) && resolvedComponentSourceIndexes[i] >= 0 {
-				fieldIndex = resolvedComponentSourceIndexes[i]
-			}
-			fieldPrefix := fmt.Sprintf("component[%d]", fieldIndex)
+			fieldPrefix := fmt.Sprintf("component[%d]", i)
 			if scope, ok := access.FromContext(ctx); ok {
 				var err error
 				if v.Cfg == nil || v.Cfg.Accounts == nil || comp.ComponentType == config.CloudJob || (comp.Namespace != "" && comp.Namespace != scope.Namespace) {

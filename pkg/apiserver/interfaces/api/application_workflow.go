@@ -361,13 +361,14 @@ func (app *applications) tryWorkflow(c *gin.Context) {
 	req.WorkflowType = config.WorkflowTaskType(strings.ToLower(strings.TrimSpace(string(req.WorkflowType))))
 	normalizeWorkflowSteps(req.Workflow)
 	tryReq := apis.TryWorkflowRequest{
-		WorkflowID:    req.WorkflowID,
-		Name:          req.Name,
-		Alias:         req.Alias,
-		WorkflowType:  req.WorkflowType,
-		Callback:      req.Callback,
-		FailurePolicy: req.FailurePolicy,
-		Workflow:      req.Workflow,
+		WorkflowID:       req.WorkflowID,
+		Name:             req.Name,
+		Alias:            req.Alias,
+		WorkflowType:     req.WorkflowType,
+		Callback:         req.Callback,
+		FailurePolicy:    req.FailurePolicy,
+		FailurePolicySet: req.FailurePolicySet,
+		Workflow:         req.Workflow,
 	}
 
 	ctx := c.Request.Context()

@@ -905,7 +905,7 @@ func (s *serviceImpl) tryValidateImportCreateRequest(ctx context.Context, req ap
 	return fmt.Errorf("try application validation failed: %s", summarizeValidationErrors(resp.Errors))
 }
 
-func summarizeValidationErrors(errors []apisv1.ValidationError) string {
+func summarizeValidationErrors(errors []apisv1.TryValidationError) string {
 	if len(errors) == 0 {
 		return "invalid request"
 	}

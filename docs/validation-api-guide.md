@@ -50,7 +50,7 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
 
 **用途**: 验证工作流配置是否引用了存在的组件，并校验与真实更新接口一致的 workflow callback 规则
 
-**请求体**: 与 `PUT /api/v1/applications/:appID/workflow` 的更新工作流请求体同构，步骤只使用根级 `workflow`。如果包含 `callback`，Try Workflow 会按真实更新路径校验 method、URL、timeout 与 URL 安全策略，但不会写入 Workflow。Try Workflow 也会校验顶层 `failurePolicy`，非法值返回 `INVALID_WORKFLOW_FAILURE_POLICY`，错误路径为 `/failurePolicy`。
+**请求体**: 与 `PUT /api/v1/applications/:appID/workflow` 的更新工作流请求体同构，步骤只使用根级 `workflow`。如果包含 `callback`，Try Workflow 会按真实更新路径校验 method、URL、timeout 与 URL 安全策略，但不会写入 Workflow。Try Workflow 也会校验顶层 `failurePolicy`，非法值返回 `INVALID_WORKFLOW_FAILURE_POLICY`，错误路径为 `/failurePolicy`；显式空值表示重置为默认策略，返回的 `normalizedSpec` 会将其写成 `cleanup_all`，而省略字段仍表示更新时保留现值。
 
 Workflow 的组件引用（`components`、`properties.policies`、`properties[].policies`、`subSteps[]` 以及 `log_archive_upload` 的 step name fallback）按大小写不敏感方式匹配已存在组件；真实创建或更新工作流时，持久化引用会使用组件自身 `Name` 的实际大小写。
 

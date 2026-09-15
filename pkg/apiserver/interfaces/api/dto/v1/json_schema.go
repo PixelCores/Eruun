@@ -161,8 +161,14 @@ func (b *schemaBuilder) structSchema(t reflect.Type) map[string]any {
 		}
 		fieldSchema := b.schemaFor(field.Type)
 		b.applyFieldConstraints(name, jsonName, fieldSchema)
+		requiredField := b.requiredField(name, jsonName, field.Tag.Get("validate"), options)
+		if !requiredField && marshalsNull(field.Type, options) {
+			fieldSchema = map[string]any{
+				"anyOf": []any{fieldSchema, map[string]any{"type": "null"}},
+			}
+		}
 		properties[jsonName] = fieldSchema
-		if b.requiredField(name, jsonName, field.Tag.Get("validate"), options) {
+		if requiredField {
 			required = append(required, jsonName)
 		}
 	}
@@ -209,7 +215,7 @@ func (b *schemaBuilder) requiredField(definition, field, validation string, opti
 
 func (b *schemaBuilder) applyFieldConstraints(definition, field string, schema map[string]any) {
 	switch {
-	case (definition == "Application" || definition == "Component" || definition == "WorkflowStep" || definition == "WorkflowSubStep") && field == "name":
+	case (definition == "Application" || definition == "Component" || definition == "Workflow" || definition == "WorkflowStep" || definition == "WorkflowSubStep") && field == "name":
 		schema["pattern"] = `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
 		schema["minLength"] = 2
 		schema["maxLength"] = 63
@@ -237,6 +243,18 @@ func (b *schemaBuilder) applyFieldConstraints(definition, field string, schema m
 		}
 	case definition == "Workflow" && field == "workflow":
 		schema["minItems"] = 1
+	}
+}
+
+func marshalsNull(t reflect.Type, options map[string]bool) bool {
+	if options["omitempty"] {
+		return false
+	}
+	switch t.Kind() {
+	case reflect.Pointer, reflect.Slice, reflect.Map, reflect.Interface:
+		return true
+	default:
+		return false
 	}
 }
 

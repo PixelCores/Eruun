@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -514,17 +515,22 @@ func (c *applicationsServiceImpl) GetApplicationSpec(ctx context.Context, appID 
 		Components:      componentSpecs,
 		TemplateEnabled: &templateEnabled,
 	}
+	workflows, err := c.WorkflowRepo.FindByAppID(ctx, appID)
+	if err != nil && !errors.Is(err, datastore.ErrRecordNotExist) {
+		return nil, err
+	}
 	if app.Callback != nil {
 		var callback apisv1.WorkflowCallback
 		if err := decodeJSONStruct(app.Callback, &callback); err != nil {
 			return nil, fmt.Errorf("decode application %s callback: %w", appID, err)
 		}
-		spec.Callback = &callback
-	}
-
-	workflows, err := c.WorkflowRepo.FindByAppID(ctx, appID)
-	if err != nil && !errors.Is(err, datastore.ErrRecordNotExist) {
-		return nil, err
+		resubmittable, err := applicationCallbackIsResubmittable(workflows, callback)
+		if err != nil {
+			return nil, err
+		}
+		if resubmittable {
+			spec.Callback = &callback
+		}
 	}
 	if workflow := pickDefaultWorkflow(workflows, "", ""); workflow != nil {
 		workflowSpec, err := assembler.ConvertWorkflowModelToUpdateRequest(workflow)
@@ -537,6 +543,25 @@ func (c *applicationsServiceImpl) GetApplicationSpec(ctx context.Context, appID 
 		}
 	}
 	return spec, nil
+}
+
+func applicationCallbackIsResubmittable(workflows []*model.Workflow, appCallback apisv1.WorkflowCallback) (bool, error) {
+	for _, workflow := range workflows {
+		if workflow == nil {
+			continue
+		}
+		if workflow.Callback == nil {
+			return false, nil
+		}
+		var workflowCallback apisv1.WorkflowCallback
+		if err := decodeJSONStruct(workflow.Callback, &workflowCallback); err != nil {
+			return false, fmt.Errorf("decode workflow %s callback: %w", workflow.ID, err)
+		}
+		if !reflect.DeepEqual(appCallback, workflowCallback) {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 // DeleteApplication delete application

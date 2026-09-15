@@ -3,6 +3,7 @@ package validation
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -1059,7 +1060,7 @@ func TestValidationService_TryApplication_TemplateJobFailurePolicyOverrides(t *t
 	}
 }
 
-func TestValidationService_TryApplication_TemplateValidationUsesRequestComponentIndex(t *testing.T) {
+func TestValidationService_TryApplication_TemplateValidationUsesNormalizedComponentIndex(t *testing.T) {
 	store := newInMemoryAppStore()
 	store.apps["tmpl-source-index"] = &model.Applications{
 		ID:              "tmpl-source-index",
@@ -1102,7 +1103,7 @@ func TestValidationService_TryApplication_TemplateValidationUsesRequestComponent
 		name          string
 		components    []apisv1.CreateComponentRequest
 		valid         bool
-		expectedField string
+		invalidTarget string
 	}{
 		{
 			name: "first request component targets second template job",
@@ -1114,7 +1115,7 @@ func TestValidationService_TryApplication_TemplateValidationUsesRequestComponent
 				},
 				directComponent("direct-job"),
 			},
-			expectedField: "component[0].properties.failurePolicy",
+			invalidTarget: "sql-job",
 		},
 		{
 			name: "non job override keeps nonzero request index",
@@ -1127,7 +1128,7 @@ func TestValidationService_TryApplication_TemplateValidationUsesRequestComponent
 				},
 				directComponent("direct-after"),
 			},
-			expectedField: "component[1].properties.failurePolicy",
+			invalidTarget: "api",
 		},
 		{
 			name: "valid job override keeps mixed request valid",
@@ -1157,14 +1158,26 @@ func TestValidationService_TryApplication_TemplateValidationUsesRequestComponent
 				return
 			}
 
-			requireValidationError(t, resp.Errors, tt.expectedField, apisv1.ErrCodeInvalidJobFailurePolicy)
+			require.NotNil(t, resp.NormalizedSpec)
+			normalizedIndex := -1
+			for i, component := range resp.NormalizedSpec.Components {
+				if component.Name == tt.invalidTarget {
+					normalizedIndex = i
+					break
+				}
+			}
+			require.NotEqual(t, -1, normalizedIndex, "invalid target missing from normalizedSpec")
+			expectedField := fmt.Sprintf("component[%d].properties.failurePolicy", normalizedIndex)
+			expectedPath := fmt.Sprintf("/components/%d/properties/failurePolicy", normalizedIndex)
+			requireValidationError(t, resp.Errors, expectedField, apisv1.ErrCodeInvalidJobFailurePolicy)
+			requireValidationPath(t, resp.Errors, expectedPath, apisv1.ErrCodeInvalidJobFailurePolicy)
 			failurePolicyErrors := 0
 			for _, validationErr := range resp.Errors {
 				if validationErr.Code != apisv1.ErrCodeInvalidJobFailurePolicy {
 					continue
 				}
 				failurePolicyErrors++
-				require.Equal(t, tt.expectedField, validationErr.Field)
+				require.Equal(t, expectedField, validationErr.Field)
 			}
 			require.Equal(t, 1, failurePolicyErrors)
 		})

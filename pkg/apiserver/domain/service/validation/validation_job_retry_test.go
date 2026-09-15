@@ -33,7 +33,7 @@ func TestValidateJobRetryPolicyScope(t *testing.T) {
 			if tt.valid {
 				require.Empty(t, errors)
 			} else {
-				requireValidationError(t, errors, "component[0].properties.jobRetryPolicy", apisv1.ErrCodeInvalidJobFailurePolicy)
+				requireInternalValidationError(t, errors, "component[0].properties.jobRetryPolicy", apisv1.ErrCodeInvalidJobFailurePolicy)
 			}
 		})
 	}

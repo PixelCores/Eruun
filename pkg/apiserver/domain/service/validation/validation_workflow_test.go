@@ -12,6 +12,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 func tryWorkflowRequestFromUpdateJSON(t *testing.T, input string) apisv1.TryWorkflowRequest {
@@ -19,13 +20,14 @@ func tryWorkflowRequestFromUpdateJSON(t *testing.T, input string) apisv1.TryWork
 	var req apisv1.UpdateApplicationWorkflowRequest
 	require.NoError(t, json.Unmarshal([]byte(input), &req))
 	return apisv1.TryWorkflowRequest{
-		WorkflowID:    req.WorkflowID,
-		Name:          req.Name,
-		Alias:         req.Alias,
-		WorkflowType:  req.WorkflowType,
-		Callback:      req.Callback,
-		FailurePolicy: req.FailurePolicy,
-		Workflow:      req.Workflow,
+		WorkflowID:       req.WorkflowID,
+		Name:             req.Name,
+		Alias:            req.Alias,
+		WorkflowType:     req.WorkflowType,
+		Callback:         req.Callback,
+		FailurePolicy:    req.FailurePolicy,
+		FailurePolicySet: req.FailurePolicySet,
+		Workflow:         req.Workflow,
 	}
 }
 
@@ -98,6 +100,34 @@ func TestValidationService_TryWorkflowReturnsResubmittableSpecAndPlan(t *testing
 	var resubmitted apisv1.UpdateApplicationWorkflowRequest
 	require.NoError(t, json.Unmarshal(raw, &resubmitted))
 	require.Equal(t, resp.NormalizedSpec.Workflow, resubmitted.Workflow)
+}
+
+func TestValidationService_TryWorkflowPreservesExplicitFailurePolicyReset(t *testing.T) {
+	store := newInMemoryAppStore()
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "test-app", Namespace: "default"}
+	store.components["backend"] = &model.ApplicationComponent{
+		AppID: "app-1", Name: "backend", Namespace: "default", ComponentType: config.ServerJob, Image: "nginx:latest",
+	}
+	repos := newMockServiceWithStore(store)
+	svc := &validationServiceImpl{AppRepo: repos.AppRepo, ComponentRepo: repos.ComponentRepo}
+
+	req := tryWorkflowRequestFromUpdateJSON(t, `{
+		"workflowId":"wf-1",
+		"failurePolicy":"",
+		"workflow":[{"name":"deploy-backend","jobType":"deploy","components":["backend"]}]
+	}`)
+	resp := svc.TryWorkflow(context.Background(), "app-1", req)
+
+	require.True(t, resp.Valid, "%+v", resp.Errors)
+	require.NotNil(t, resp.NormalizedSpec)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, resp.NormalizedSpec.FailurePolicy)
+	raw, err := json.Marshal(resp.NormalizedSpec)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"failurePolicy":"cleanup_all"`)
+	var resubmitted apisv1.UpdateApplicationWorkflowRequest
+	require.NoError(t, json.Unmarshal(raw, &resubmitted))
+	require.True(t, resubmitted.FailurePolicySet)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, resubmitted.FailurePolicy)
 }
 
 func TestValidationService_TryWorkflowRejectsInvalidFailurePolicy(t *testing.T) {

@@ -27,17 +27,31 @@ func TestCanonicalJSONSchemaDefinesStrictPublicProfiles(t *testing.T) {
 	workflowProperties := definitions["Workflow"].(map[string]any)["properties"].(map[string]any)
 	require.Contains(t, workflowProperties, "workflow")
 	require.NotContains(t, workflowProperties, "steps")
+	require.Equal(t, `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`, workflowProperties["name"].(map[string]any)["pattern"])
+	require.Equal(t, float64(2), workflowProperties["name"].(map[string]any)["minLength"])
+	require.Equal(t, float64(63), workflowProperties["name"].(map[string]any)["maxLength"])
 	require.ElementsMatch(t, []any{"workflow", "update", "test", "scan", "delivery", "database_reset", "log_archive_upload"}, workflowProperties["workflowType"].(map[string]any)["enum"])
 	stepProperties := definitions["WorkflowStep"].(map[string]any)["properties"].(map[string]any)
 	require.Equal(t, "array", stepProperties["properties"].(map[string]any)["type"])
 	require.ElementsMatch(t, []any{"name", "type"}, definitions["Component"].(map[string]any)["required"])
+
+	propertiesDefinition := definitions["Properties"].(map[string]any)["properties"].(map[string]any)
+	portsAlternatives := propertiesDefinition["ports"].(map[string]any)["anyOf"].([]any)
+	require.Equal(t, "array", portsAlternatives[0].(map[string]any)["type"])
+	require.Equal(t, "null", portsAlternatives[1].(map[string]any)["type"])
+	envAlternatives := propertiesDefinition["env"].(map[string]any)["anyOf"].([]any)
+	require.Equal(t, "object", envAlternatives[0].(map[string]any)["type"])
+	require.Equal(t, "null", envAlternatives[1].(map[string]any)["type"])
 }
 
 func TestCanonicalApplicationMarshalProducesOnlyCanonicalFields(t *testing.T) {
 	request := CreateApplicationsRequest{
-		Name:       "demo",
-		Components: []CreateComponentRequest{},
-		Workflow:   []CreateWorkflowStepRequest{{Name: "deploy", Components: []string{"web"}}},
+		Name: "demo",
+		Components: []CreateComponentRequest{{
+			Name:          "web",
+			ComponentType: "webservice",
+		}},
+		Workflow: []CreateWorkflowStepRequest{{Name: "deploy", Components: []string{"web"}}},
 	}
 	raw, err := json.Marshal(request)
 	require.NoError(t, err)
@@ -47,4 +61,8 @@ func TestCanonicalApplicationMarshalProducesOnlyCanonicalFields(t *testing.T) {
 	require.Contains(t, payload, "components")
 	require.NotContains(t, payload, "component")
 	require.IsType(t, []any{}, payload["workflow"])
+	components := payload["components"].([]any)
+	properties := components[0].(map[string]any)["properties"].(map[string]any)
+	require.Contains(t, properties, "ports")
+	require.Nil(t, properties["ports"], "zero-value Properties currently marshal nil containers as null")
 }
