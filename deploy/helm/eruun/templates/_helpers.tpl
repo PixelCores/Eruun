@@ -109,6 +109,9 @@ app.kubernetes.io/managed-by: eruun
 {{- end -}}
 
 {{- define "eruun.validateRuntime" -}}
+{{- if eq (int .Values.service.port) (int .Values.service.grpcPort) -}}
+{{- fail "service.grpcPort must differ from service.port" -}}
+{{- end -}}
 {{- if or (empty .Values.auth.existingSecret) (contains "REPLACE" .Values.auth.existingSecret) (eq .Values.auth.existingSecret "******") -}}
 {{- fail "auth.existingSecret is required and must reference a configured account Secret" -}}
 {{- end -}}
@@ -137,7 +140,7 @@ app.kubernetes.io/managed-by: eruun
 {{- end -}}
 {{- range $env := .Values.env -}}
 {{- $name := trim (default "" $env.name) -}}
-{{- if or (eq $name "ERUUN_AUTH_CONFIG_FILE") (eq $name "ERUUN_ROLE") (eq $name "ERUUN_ID") (eq $name "ERUUN_EXIT_ON_LOST_LEADER") (eq $name "ERUUN_WORKFLOW_WORKER_DRAIN_TIMEOUT") (eq $name "ERUUN_DATASTORE_SCHEMA_MODE") -}}
+{{- if or (eq $name "ERUUN_AUTH_CONFIG_FILE") (eq $name "ERUUN_ROLE") (eq $name "ERUUN_ID") (eq $name "ERUUN_EXIT_ON_LOST_LEADER") (eq $name "ERUUN_WORKFLOW_WORKER_DRAIN_TIMEOUT") (eq $name "ERUUN_DATASTORE_SCHEMA_MODE") (eq $name "ERUUN_GRPC_BIND_ADDR") -}}
 {{- fail (printf "env must not override Chart-managed variable %s" $name) -}}
 {{- end -}}
 {{- end -}}

@@ -37,6 +37,7 @@ manifest 安装会先用 server-side dry-run 验证四角色清单，再把旧�
 ## 运行契约
 
 - API 监听 `0.0.0.0:<service.port>`，默认 Service 和容器端口都是 `8000`；Service 只选择 API Pod。
+- API 另以 `ERUUN_GRPC_BIND_ADDR=0.0.0.0:<service.grpcPort>` 监听用户业务 gRPC，默认 `service.grpcPort=9000`；同一 ClusterIP Service 添加名为 `grpc` 的端口，仅 API Pod 提供。Controller、Scheduler、Worker 不监听 gRPC。HTTP Ingress 与探针不变；集群外调用须由部署方配置支持 HTTP/2 的 TLS 网关，参见 [`grpc-api.md`](grpc-api.md)。
 - Controller 和 Scheduler 分别竞争 `runtime.controllerLockName`、`runtime.schedulerLockName` 指定的 Lease。
 - readiness/liveness 路由为 `/api/v1/readyz` 和 `/api/v1/healthz`。
 - 四类 Deployment 和 ServiceAccount 使用 `-api`、`-controller`、`-scheduler`、`-worker` 后缀。
@@ -69,7 +70,7 @@ generation/token ownership 与数据库 execution lease 是唯一执行协议，
 
 所有运行角色默认使用 90 秒 `terminationGracePeriodSeconds`，覆盖 60 秒 Worker drain；终止宽限期必须严格大于 `workerDrainTimeoutSeconds`。每个角色都使用最长 150 秒的 `startupProbe` 窗口，首次安装的 API schema 初始化或 Worker informer cache 同步期间不会提前触发 liveness 重启。Controller、Scheduler 和 Worker 副本数可以独立调整，不要求奇数。
 
-`env` 只用于追加应用配置，不允许设置由 Chart 管理的 `ERUUN_ROLE`、`ERUUN_ID`、`ERUUN_DATASTORE_SCHEMA_MODE` 或 `ERUUN_WORKFLOW_WORKER_DRAIN_TIMEOUT`。Worker drain 必须通过 `runtime.workerDrainTimeoutSeconds` 配置，这样 Chart 才能同时校验 `terminationGracePeriodSeconds`。旧单进程顶层键 `replicaCount` 和 `resources` 会被 schema 拒绝；副本数与资源必须分别配置在 `runtime.roles.<role>.replicas` 和 `runtime.roles.<role>.resources`。
+`env` 只用于追加应用配置，不允许设置由 Chart 管理的 `ERUUN_ROLE`、`ERUUN_ID`、`ERUUN_DATASTORE_SCHEMA_MODE`、`ERUUN_GRPC_BIND_ADDR` 或 `ERUUN_WORKFLOW_WORKER_DRAIN_TIMEOUT`。Worker drain 必须通过 `runtime.workerDrainTimeoutSeconds` 配置，这样 Chart 才能同时校验 `terminationGracePeriodSeconds`。旧单进程顶层键 `replicaCount` 和 `resources` 会被 schema 拒绝；副本数与资源必须分别配置在 `runtime.roles.<role>.replicas` 和 `runtime.roles.<role>.resources`。
 
 数据库 schema 的写入所有权与普通运行时启动分离：
 

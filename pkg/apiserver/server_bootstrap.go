@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+	"golang.org/x/sync/errgroup"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -21,6 +22,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api"
 	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/middleware"
+	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/ratelimit"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
@@ -65,10 +67,14 @@ func (s *restServer) registerAPIRoutes(healthOnly bool) {
 		MaxAge:           12 * time.Hour,
 	}))
 	if s.cfg.APIRateLimitQPS > 0 {
+		if s.apiRateLimiter == nil {
+			s.apiRateLimiter = ratelimit.New(s.cfg.APIRateLimitQPS, s.cfg.APIRateLimitBurst)
+		}
 		s.webContainer.Use(middleware.RateLimit(middleware.RateLimitOptions{
 			QPS:       s.cfg.APIRateLimitQPS,
 			Burst:     s.cfg.APIRateLimitBurst,
 			SkipPaths: middleware.DefaultRateLimitSkipPaths(),
+			Shared:    s.apiRateLimiter,
 		}))
 	}
 	s.webContainer.Use(middleware.RequestBodyLimit(config.DefaultRequestBodyLimitBytes))
@@ -287,5 +293,11 @@ func (s *restServer) Run(ctx context.Context, errChan chan error) error {
 	}
 	klog.InfoS("Eruun runtime started", "role", s.cfg.NormalizedRole(), "leaderElections", len(elections))
 
-	return s.startHTTP(ctx)
+	if !s.cfg.RunsAPI() {
+		return s.startHTTP(ctx)
+	}
+	serveGroup, serveCtx := errgroup.WithContext(ctx)
+	serveGroup.Go(func() error { return s.startHTTP(serveCtx) })
+	serveGroup.Go(func() error { return s.startGRPC(serveCtx) })
+	return serveGroup.Wait()
 }

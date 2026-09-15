@@ -448,6 +448,13 @@ grep -q 'key: "keys.json"' "${keyring_manifest}" ||
 default_deployment_manifest="${TEST_ROOT}/default-deployment.yaml"
 runHelm template eruun "${TEST_DIR}" \
   --namespace eruun-system > "${default_deployment_manifest}"
+assertEqual "$(grep -c 'name: ERUUN_GRPC_BIND_ADDR' "${default_deployment_manifest}")" "1" "only API must configure the gRPC listener"
+grep -q 'value: "0.0.0.0:9000"' "${default_deployment_manifest}" ||
+  fail "API gRPC listener must bind the Pod network interface"
+assertEqual "$(grep -c 'containerPort: 9000' "${default_deployment_manifest}")" "1" "only API must expose a gRPC container port"
+grep -A 2 'name: grpc' "${default_deployment_manifest}" | grep -q 'port: 9000' ||
+  fail "ClusterIP Service must publish the gRPC port"
+assertEqual "$(grep -c 'port: http' "${default_deployment_manifest}")" "12" "all runtime HTTP probes must remain on the HTTP port"
 assertEqual \
   "$(grep -c '"helm.sh/resource-policy": keep' "${default_deployment_manifest}")" \
   "2" \
@@ -546,6 +553,17 @@ if runHelm template eruun "${TEST_DIR}" \
   --set-string "env[0].name=ERUUN_DATASTORE_SCHEMA_MODE" \
   --set-string "env[0].value=migrate" >/dev/null 2>&1; then
   fail "env must not override Chart-managed datastore schema mode"
+fi
+if runHelm template eruun "${TEST_DIR}" \
+  --namespace eruun-system \
+  --set-string "env[0].name=ERUUN_GRPC_BIND_ADDR" \
+  --set-string "env[0].value=0.0.0.0:9001" >/dev/null 2>&1; then
+  fail "env must not override Chart-managed gRPC bind address"
+fi
+if runHelm template eruun "${TEST_DIR}" \
+  --namespace eruun-system \
+  --set service.grpcPort=8000 >/dev/null 2>&1; then
+  fail "gRPC and HTTP Service ports must differ"
 fi
 runHelm template eruun "${TEST_DIR}" \
   --namespace eruun-system > "${runtime_manifest}"

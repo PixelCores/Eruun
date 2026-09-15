@@ -6,6 +6,7 @@ image:
 service:
   type: ClusterIP
   port: 8000
+  grpcPort: 9000
 
 log:
   dir: ./logs

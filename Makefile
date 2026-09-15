@@ -31,7 +31,7 @@ ifeq ($(OS),Windows_NT)
   DEVNULL := NUL
 endif
 
-.PHONY: all build build-linux build-darwin build-windows clean test tidy fmt vet staticcheck gocyclo quality run docker-build docker-build-linux docker-build-arm docker-build-macos docker-builder-init
+.PHONY: all build build-linux build-darwin build-windows clean test tidy fmt vet staticcheck gocyclo quality run docker-build docker-build-linux docker-build-arm docker-build-macos docker-builder-init grpc-gen grpc-gen-check
 
 all: build
 
@@ -54,6 +54,12 @@ run:
 
 test:
 	$(GO) test ./...
+
+grpc-gen:
+	bash scripts/generate_grpc.sh generate
+
+grpc-gen-check:
+	bash scripts/generate_grpc.sh check
 
 fmt:
 	$(GO) fmt ./...

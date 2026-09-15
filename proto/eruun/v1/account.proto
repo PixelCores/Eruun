@@ -1,0 +1,200 @@
+syntax = "proto3";
+
+package eruun.v1;
+
+option go_package = "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1;eruunv1";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+// AccountService exposes the non-browser account and workspace operations.
+// OAuth browser start/callback remain HTTP-only.
+service AccountService {
+  rpc GetAuthMethods(google.protobuf.Empty) returns (AuthMethodsResponse);
+  rpc SendAuthCode(AuthCodeRequest) returns (google.protobuf.Empty);
+  rpc Register(RegisterRequest) returns (LoginResponse);
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc Refresh(RefreshRequest) returns (LoginResponse);
+  rpc Logout(google.protobuf.Empty) returns (google.protobuf.Empty);
+  rpc GetMe(google.protobuf.Empty) returns (MeResponse);
+  rpc ChangePassword(ChangePasswordRequest) returns (google.protobuf.Empty);
+  rpc ResetPassword(ResetPasswordRequest) returns (google.protobuf.Empty);
+  rpc ListIdentities(google.protobuf.Empty) returns (ListIdentitiesResponse);
+  rpc BindIdentity(BindIdentityRequest) returns (google.protobuf.Empty);
+  rpc UnbindIdentity(IdentityIDRequest) returns (google.protobuf.Empty);
+
+  rpc ListWorkspaces(google.protobuf.Empty) returns (ListWorkspacesResponse);
+  rpc CreateWorkspace(WorkspaceNameRequest) returns (Workspace);
+  rpc GetWorkspace(WorkspaceIDRequest) returns (WorkspaceAccess);
+  rpc RenameWorkspace(RenameWorkspaceRequest) returns (google.protobuf.Empty);
+  rpc DeleteWorkspace(WorkspaceIDRequest) returns (google.protobuf.Empty);
+  rpc ListWorkspaceMembers(WorkspaceIDRequest) returns (ListWorkspaceMembersResponse);
+  rpc UpdateWorkspaceMember(UpdateWorkspaceMemberRequest) returns (google.protobuf.Empty);
+  rpc RemoveWorkspaceMember(WorkspaceMemberIDRequest) returns (google.protobuf.Empty);
+  rpc TransferWorkspace(TransferWorkspaceRequest) returns (google.protobuf.Empty);
+  rpc InviteWorkspaceMember(InviteWorkspaceMemberRequest) returns (WorkspaceInvitation);
+  rpc RevokeWorkspaceInvitation(WorkspaceInvitationIDRequest) returns (google.protobuf.Empty);
+  rpc AcceptWorkspaceInvitation(AcceptWorkspaceInvitationRequest) returns (Workspace);
+
+  rpc ListAdminUsers(ListAdminUsersRequest) returns (ListAdminUsersResponse);
+  rpc SetAdminUserDisabled(SetAdminUserDisabledRequest) returns (google.protobuf.Empty);
+}
+
+message AuthMethodsResponse {
+  bool password = 1;
+  bool email = 2;
+  bool phone = 3;
+  bool google = 4;
+  bool github = 5;
+}
+
+message AuthCodeRequest {
+  string purpose = 1;
+  string provider = 2;
+  string identifier = 3;
+}
+
+message RegisterRequest {
+  string provider = 1;
+  string identifier = 2;
+  string code = 3;
+  string password = 4;
+  string name = 5;
+}
+
+message LoginRequest {
+  string provider = 1;
+  string identifier = 2;
+  string password = 3;
+  string code = 4;
+}
+
+message RefreshRequest { string refresh_token = 1; }
+
+message LoginResponse {
+  string access_token = 1;
+  string token_type = 2;
+  int64 expires_in = 3;
+  User user = 4;
+  // The non-browser client must store this secret and single-flight refresh.
+  string refresh_token = 5;
+}
+
+message User {
+  string id = 1;
+  string name = 2;
+  bool system_admin = 3;
+  bool disabled = 4;
+  bool must_change_password = 5;
+  google.protobuf.Timestamp create_time = 6;
+  google.protobuf.Timestamp update_time = 7;
+}
+
+message MeResponse {
+  User user = 1;
+  repeated WorkspaceAccess workspaces = 2;
+}
+
+message ChangePasswordRequest { string password = 1; }
+
+message ResetPasswordRequest {
+  string provider = 1;
+  string identifier = 2;
+  string code = 3;
+  string password = 4;
+}
+
+message Identity {
+  string id = 1;
+  string provider = 2;
+  string subject = 3;
+  google.protobuf.Timestamp create_time = 4;
+  google.protobuf.Timestamp update_time = 5;
+}
+
+message ListIdentitiesResponse { repeated Identity identities = 1; }
+message BindIdentityRequest {
+  string provider = 1;
+  string identifier = 2;
+  string code = 3;
+}
+message IdentityIDRequest { string identity_id = 1; }
+
+message Workspace {
+  string id = 1;
+  string name = 2;
+  string kind = 3;
+  string owner_id = 4;
+  string namespace = 5;
+  google.protobuf.Timestamp create_time = 6;
+  google.protobuf.Timestamp update_time = 7;
+}
+
+message WorkspaceAccess {
+  Workspace workspace = 1;
+  string role = 2;
+}
+
+message ListWorkspacesResponse { repeated WorkspaceAccess workspaces = 1; }
+message WorkspaceIDRequest { string workspace_id = 1; }
+message WorkspaceNameRequest { string name = 1; }
+message RenameWorkspaceRequest {
+  string workspace_id = 1;
+  string name = 2;
+}
+
+message WorkspaceMember {
+  string id = 1;
+  string workspace_id = 2;
+  string user_id = 3;
+  string role = 4;
+  google.protobuf.Timestamp create_time = 5;
+  google.protobuf.Timestamp update_time = 6;
+}
+
+message ListWorkspaceMembersResponse { repeated WorkspaceMember members = 1; }
+message UpdateWorkspaceMemberRequest {
+  string workspace_id = 1;
+  string user_id = 2;
+  string role = 3;
+}
+message WorkspaceMemberIDRequest {
+  string workspace_id = 1;
+  string user_id = 2;
+}
+message TransferWorkspaceRequest {
+  string workspace_id = 1;
+  string user_id = 2;
+}
+message InviteWorkspaceMemberRequest {
+  string workspace_id = 1;
+  string email = 2;
+  string role = 3;
+}
+
+message WorkspaceInvitation {
+  string id = 1;
+  string workspace_id = 2;
+  string email = 3;
+  string role = 4;
+  google.protobuf.Timestamp expires_at = 5;
+  string accepted_by = 6;
+  google.protobuf.Timestamp create_time = 7;
+  google.protobuf.Timestamp update_time = 8;
+}
+
+message WorkspaceInvitationIDRequest {
+  string workspace_id = 1;
+  string invitation_id = 2;
+}
+message AcceptWorkspaceInvitationRequest { string token = 1; }
+
+message ListAdminUsersRequest {
+  optional int32 page = 1;
+  optional int32 page_size = 2;
+}
+message ListAdminUsersResponse { repeated User users = 1; }
+message SetAdminUserDisabledRequest {
+  string user_id = 1;
+  optional bool disabled = 2;
+}

@@ -428,6 +428,7 @@ metadata:
 data:
   ERUUN_AUTH_CONFIG_FILE: "/var/run/secrets/eruun/accounts/accounts.json"
   ERUUN_BIND_ADDR: "0.0.0.0:8000"
+  ERUUN_GRPC_BIND_ADDR: "0.0.0.0:9000"
   ERUUN_CONTROLLER_LOCK_NAME: "eruun-controller"
   ERUUN_SCHEDULER_LOCK_NAME: "eruun-scheduler"
   ERUUN_DURATION: "5m"
@@ -471,6 +472,9 @@ spec:
     - name: http
       port: 8000
       targetPort: http
+    - name: grpc
+      port: 9000
+      targetPort: grpc
   selector:
     app: eruun
     app.kubernetes.io/component: api
@@ -510,6 +514,8 @@ spec:
           ports:
             - containerPort: 8000
               name: http
+            - containerPort: 9000
+              name: grpc
           envFrom:
             - configMapRef:
                 name: eruun-flags
