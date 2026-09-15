@@ -11,6 +11,7 @@ import (
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
@@ -125,6 +126,9 @@ func (v *validationServiceImpl) WithRepositories(appRepo repository.ApplicationR
 
 // TryApplication validates an application creation request
 func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.CreateApplicationsRequest) *apisv1.TryApplicationResponse {
+	if req.Components == nil {
+		req.Components = []apisv1.CreateComponentRequest{}
+	}
 	var errors []apisv1.ValidationError
 	effectiveReq, err := v.effectiveTryApplicationRequest(ctx, req)
 	if err != nil {
@@ -142,7 +146,7 @@ func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.C
 	}
 
 	// 1. Validate application name
-	errors = append(errors, v.validateName(effectiveReq.Name, "name")...)
+	errors = append(errors, v.validateName(effectiveReq.Name, "name", datastore.PrimaryKeyMaxLength, false)...)
 	if _, ok := workflowconfig.NormalizeWorkflowFailurePolicy(effectiveReq.FailurePolicy); !ok {
 		errors = append(errors, apisv1.ValidationError{
 			Field:   "failurePolicy",
@@ -150,11 +154,14 @@ func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.C
 			Message: fmt.Sprintf("unsupported workflow failurePolicy: %s", effectiveReq.FailurePolicy),
 		})
 	}
-	errors = append(errors, validateTemplateRequestNestedJobFailurePolicies(effectiveReq.Components)...)
+	templateInputErrors := validateTemplateRequestNestedJobFailurePolicies(effectiveReq.Components)
+	errors = append(errors, templateInputErrors...)
 
 	resolvedComponents := effectiveReq.Components
-	componentsResolved := true
-	if requestUsesTemplate(effectiveReq.Components) {
+	// Invalid template overrides can be discarded during expansion. Keep the
+	// source components in normalizedSpec so their error paths remain locatable.
+	componentsResolved := len(templateInputErrors) == 0
+	if componentsResolved && requestUsesTemplate(effectiveReq.Components) {
 		if v.AppRepo == nil || v.ComponentRepo == nil {
 			componentsResolved = false
 			errors = append(errors, apisv1.ValidationError{
@@ -285,8 +292,8 @@ func (v *validationServiceImpl) validateTryApplicationResourceNames(ctx context.
 	return applicationservice.ValidateTryApplicationResourceNames(ctx, v.AppRepo, v.ComponentRepo, req, components)
 }
 
-// validateName validates a name against DNS-1123 subdomain rules
-func (v *validationServiceImpl) validateName(name, field string) []apisv1.ValidationError {
+// validateName validates a name against the requested length and case rules.
+func (v *validationServiceImpl) validateName(name, field string, maxLength int, allowUppercase bool) []apisv1.ValidationError {
 	var errors []apisv1.ValidationError
 
 	if name == "" {
@@ -306,17 +313,19 @@ func (v *validationServiceImpl) validateName(name, field string) []apisv1.Valida
 		})
 	}
 
-	if len(name) > maxNameLength {
+	if len(name) > maxLength {
 		errors = append(errors, apisv1.ValidationError{
 			Field:   field,
 			Code:    apisv1.ErrCodeNameTooLong,
-			Message: fmt.Sprintf("%s must be at most %d characters", field, maxNameLength),
+			Message: fmt.Sprintf("%s must be at most %d characters", field, maxLength),
 		})
 	}
 
-	// Convert to lowercase for validation (names should be lowercase)
-	lowerName := strings.ToLower(name)
-	if !nameRegexp.MatchString(lowerName) {
+	checkedName := name
+	if allowUppercase {
+		checkedName = strings.ToLower(name)
+	}
+	if !nameRegexp.MatchString(checkedName) {
 		errors = append(errors, apisv1.ValidationError{
 			Field:   field,
 			Code:    apisv1.ErrCodeInvalidNameFormat,
@@ -333,7 +342,7 @@ func (v *validationServiceImpl) validateComponent(comp apisv1.CreateComponentReq
 
 	// Validate component name
 	nameField := fmt.Sprintf("%s.name", fieldPrefix)
-	errors = append(errors, v.validateName(comp.Name, nameField)...)
+	errors = append(errors, v.validateName(comp.Name, nameField, maxNameLength, true)...)
 
 	// Check for duplicate component names
 	lowerName := strings.ToLower(comp.Name)

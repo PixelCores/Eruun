@@ -24,6 +24,8 @@ func TestCanonicalJSONSchemaDefinesStrictPublicProfiles(t *testing.T) {
 	applicationProperties := definitions["Application"].(map[string]any)["properties"].(map[string]any)
 	require.Contains(t, applicationProperties, "components")
 	require.NotContains(t, applicationProperties, "component")
+	require.Equal(t, float64(31), applicationProperties["name"].(map[string]any)["maxLength"])
+	require.Equal(t, "array", applicationProperties["components"].(map[string]any)["type"])
 	workflowProperties := definitions["Workflow"].(map[string]any)["properties"].(map[string]any)
 	require.Contains(t, workflowProperties, "workflow")
 	require.NotContains(t, workflowProperties, "steps")

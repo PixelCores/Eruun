@@ -134,6 +134,8 @@ https://eruun.io/schemas/v1/canonical-profile.json
 
 对象默认使用 `additionalProperties: false`；业务上本来就是键值集合的字段，例如 labels、annotations、env 和 secret data，按字段值类型开放动态键。Schema 包含现有枚举、必填字段与数组下限，适用于编辑器提示、预提交校验和 Agent constrained decoding。
 
+规范 Application 的 `name` 为 2–31 字符的小写 DNS-1123 名称；`components` 必须输出为数组，即使没有组件也使用 `[]`。
+
 Schema 是规范 profile，不是历史输入兼容表。未出现在 Schema 中的字段或表示不应由新客户端生成。
 
 ## 4. Try：规范化、计划与结构化错误
@@ -180,6 +182,7 @@ Try API 成功处理请求时统一返回：
 - `path` 是 RFC 6901 JSON Pointer，指向 `normalizedSpec` 中的规范字段。
 - `code` 用于程序分支，`message` 用于展示；客户端不应解析 message。
 - `normalizedSpec` 与对应写接口同构。Application Try 的结果可提交到 Application 创建入口；Workflow Try 的结果可提交到 Workflow 更新入口。Workflow 请求显式传入空 `failurePolicy` 时，规范输出使用等价的 `cleanup_all`，从而保留“重置为默认策略”而不是“省略并保留现值”的语义。
+- 模板覆盖项在展开前包含非法嵌套 Job 策略时，Application Try 保留覆盖项的原始 `components` 形态于 `normalizedSpec`，使错误路径仍能定位到需要修改的字段；修正后再次 Try 才会返回展开后的组件列表。
 - `plan.actions` 是有序的逻辑计划，不承诺 Kubernetes Job 名称或实际开始时间。
 
 JSON 绑定失败（未知字段、错误类型、多余 JSON 值）仍返回入口对应的 4xx 业务错误，因为此时无法构造可信的 `normalizedSpec`。

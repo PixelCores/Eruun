@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
@@ -219,6 +220,9 @@ func (b *schemaBuilder) applyFieldConstraints(definition, field string, schema m
 		schema["pattern"] = `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
 		schema["minLength"] = 2
 		schema["maxLength"] = 63
+		if definition == "Application" {
+			schema["maxLength"] = datastore.PrimaryKeyMaxLength
+		}
 	case definition == "Component" && field == "type":
 		schema["enum"] = []string{"webservice", "store", "config", "secret", "cloudjob", "job", "scheduledjob"}
 	case (definition == "WorkflowStep" || definition == "WorkflowSubStep") && field == "jobType":

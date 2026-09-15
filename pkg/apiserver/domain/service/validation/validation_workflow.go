@@ -18,7 +18,7 @@ func (v *validationServiceImpl) TryWorkflow(ctx context.Context, appID string, r
 
 	// 1. Validate workflow name if provided
 	if req.Name != "" {
-		errors = append(errors, v.validateName(req.Name, "name")...)
+		errors = append(errors, v.validateName(req.Name, "name", maxNameLength, true)...)
 	}
 	workflowType := config.NormalizeWorkflowTaskType(req.WorkflowType)
 	if workflowType != "" && !config.IsSupportedWorkflowTaskType(workflowType) {
@@ -129,7 +129,7 @@ func (v *validationServiceImpl) validateWorkflowSteps(steps []apisv1.CreateWorkf
 
 		// Validate step name
 		if step.Name != "" {
-			nameErrors := v.validateName(step.Name, fmt.Sprintf("%s.name", stepField))
+			nameErrors := v.validateName(step.Name, fmt.Sprintf("%s.name", stepField), maxNameLength, true)
 			errors = append(errors, nameErrors...)
 
 			// Check for duplicate step names
@@ -225,7 +225,7 @@ func (v *validationServiceImpl) validateWorkflowSteps(steps []apisv1.CreateWorkf
 
 			// Validate substep name
 			if subStep.Name != "" {
-				errors = append(errors, v.validateName(subStep.Name, fmt.Sprintf("%s.name", subStepField))...)
+				errors = append(errors, v.validateName(subStep.Name, fmt.Sprintf("%s.name", subStepField), maxNameLength, true)...)
 			}
 
 			subPropertyItems, subPropertyErrors := workflowPropertiesValidationItems(
