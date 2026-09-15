@@ -112,6 +112,8 @@ Application 的组件列表只使用根级 `components`，工作流步骤只使�
 
 Schema 和所有服务端规范化输出只生成这一形态。请求解码器对本版本尚未移除的旧 Step 表示保持现有行为；新调用方不得依赖未出现在 Schema 中的表示。
 
+`database_reset` Step 的 `properties[]` 可带可选 `initSqlUrl`，用于保留数据库重置 Workflow 的 SQL 快照地址。非空时必须是绝对 HTTP(S) URL，且只能用于 `database_reset`；回读、Try 和原样重提会保留该值。详见 [数据库重置 Workflow](database-reset-workflow.md)。
+
 ## 3. JSON Schema
 
 ```http
@@ -182,6 +184,7 @@ Try API 成功处理请求时统一返回：
 - `path` 是 RFC 6901 JSON Pointer，指向 `normalizedSpec` 中的规范字段。
 - `code` 用于程序分支，`message` 用于展示；客户端不应解析 message。
 - `normalizedSpec` 与对应写接口同构。Application Try 的结果可提交到 Application 创建入口；Workflow Try 的结果可提交到 Workflow 更新入口。Workflow 请求显式传入空 `failurePolicy` 时，规范输出使用等价的 `cleanup_all`，从而保留“重置为默认策略”而不是“省略并保留现值”的语义。
+- 通过校验的 Workflow 名称在 Try 的 `normalizedSpec` 中按写入口规则转换为小写 DNS 名称，与 canonical Schema 一致。
 - 模板覆盖项在展开前包含非法嵌套 Job 策略时，Application Try 保留覆盖项的原始 `components` 形态于 `normalizedSpec`，使错误路径仍能定位到需要修改的字段。此时直接组件的本地配置错误仍按原索引返回；模板相关校验待修正后再次 Try，届时才返回展开后的组件列表。
 - `plan.actions` 是有序的逻辑计划，不承诺 Kubernetes Job 名称或实际开始时间。
 

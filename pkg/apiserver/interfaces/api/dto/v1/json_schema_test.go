@@ -35,6 +35,8 @@ func TestCanonicalJSONSchemaDefinesStrictPublicProfiles(t *testing.T) {
 	require.ElementsMatch(t, []any{"workflow", "update", "test", "scan", "delivery", "database_reset", "log_archive_upload"}, workflowProperties["workflowType"].(map[string]any)["enum"])
 	stepProperties := definitions["WorkflowStep"].(map[string]any)["properties"].(map[string]any)
 	require.Equal(t, "array", stepProperties["properties"].(map[string]any)["type"])
+	workflowPropertyFields := definitions["WorkflowProperties"].(map[string]any)["properties"].(map[string]any)
+	require.Contains(t, workflowPropertyFields, "initSqlUrl")
 	require.ElementsMatch(t, []any{"name", "type"}, definitions["Component"].(map[string]any)["required"])
 
 	propertiesDefinition := definitions["Properties"].(map[string]any)["properties"].(map[string]any)

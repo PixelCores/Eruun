@@ -55,6 +55,70 @@ func TestUpdateApplicationWorkflowCreatesWorkflow(t *testing.T) {
 	require.ElementsMatch(t, []string{"mysql-primary", "mysql-replica"}, steps.Steps[1].Properties[0].Policies)
 }
 
+func TestUpdateApplicationWorkflowResubmitsDatabaseResetSpecWithoutLosingInitSQLURL(t *testing.T) {
+	const initSQLURL = "https://files.example/game-1.0.8.sql"
+	store := newInMemoryAppStore()
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "demo", Namespace: "default"}
+	store.components["mysql"] = &model.ApplicationComponent{
+		Name: "mysql", AppID: "app-1", ComponentType: config.StoreJob,
+	}
+	steps, err := model.NewJSONStructByStruct(&model.WorkflowSteps{Steps: []*model.WorkflowStep{{
+		Name: "database-reset", WorkflowType: config.JobDatabaseReset,
+		Properties: []model.Policies{{Policies: []string{"mysql"}, InitSQLURL: initSQLURL}},
+	}}})
+	require.NoError(t, err)
+	store.workflows["wf-reset"] = &model.Workflow{
+		ID: "wf-reset", AppID: "app-1", Name: "database-reset",
+		WorkflowType: config.WorkflowTaskTypeDatabaseReset, Steps: steps,
+	}
+	svc := newMockServiceWithStore(store)
+
+	dto, err := assembler.ConvertWorkflowModelToDTO(store.workflows["wf-reset"])
+	require.NoError(t, err)
+	raw, err := json.Marshal(dto.Spec)
+	require.NoError(t, err)
+	var submitted apisv1.UpdateApplicationWorkflowRequest
+	require.NoError(t, json.Unmarshal(raw, &submitted))
+	_, err = svc.UpdateApplicationWorkflow(context.Background(), "app-1", submitted)
+	require.NoError(t, err)
+	stored := decodeWorkflowSteps(t, store.workflows["wf-reset"].Steps)
+	require.Equal(t, initSQLURL, stored.Steps[0].Properties[0].InitSQLURL)
+}
+
+func TestUpdateApplicationWorkflowRejectsInvalidInitSQLURL(t *testing.T) {
+	store := newInMemoryAppStore()
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "demo", Namespace: "default"}
+	store.components["mysql"] = &model.ApplicationComponent{
+		Name: "mysql", AppID: "app-1", ComponentType: config.StoreJob,
+	}
+	svc := newMockServiceWithStore(store)
+	step := apisv1.CreateWorkflowStepRequest{
+		Name: "database-reset", WorkflowType: config.JobDatabaseReset, Components: []string{"mysql"},
+	}
+	step.SetWorkflowPropertiesList([]apisv1.WorkflowProperties{{Policies: []string{"mysql"}, InitSQLURL: "ftp://files.example/game.sql"}})
+	_, err := svc.UpdateApplicationWorkflow(context.Background(), "app-1", apisv1.UpdateApplicationWorkflowRequest{
+		Name: "reset-flow", Workflow: []apisv1.CreateWorkflowStepRequest{step},
+	})
+	require.ErrorIs(t, err, bcode.ErrWorkflowConfig)
+	require.Empty(t, store.workflows)
+}
+
+func TestUpdateApplicationWorkflowRejectsInitSQLURLOnApprovalStep(t *testing.T) {
+	store := newInMemoryAppStore()
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "demo", Namespace: "default"}
+	svc := newMockServiceWithStore(store)
+	step := apisv1.CreateWorkflowStepRequest{
+		Name: "approve-reset", StepType: config.WorkflowStepTypeApproval, WorkflowType: config.JobDatabaseReset,
+		Approval: &apisv1.WorkflowStepApproval{NotifyURL: "https://example.com/approve"},
+	}
+	step.SetWorkflowPropertiesList([]apisv1.WorkflowProperties{{InitSQLURL: "https://files.example/game.sql"}})
+	_, err := svc.UpdateApplicationWorkflow(context.Background(), "app-1", apisv1.UpdateApplicationWorkflowRequest{
+		Name: "approval-flow", Workflow: []apisv1.CreateWorkflowStepRequest{step},
+	})
+	require.ErrorIs(t, err, bcode.ErrWorkflowConfig)
+	require.Empty(t, store.workflows)
+}
+
 func TestUpdateApplicationWorkflowStoresAndEchoesFailurePolicy(t *testing.T) {
 	store := newInMemoryAppStore()
 	store.apps["app-1"] = &model.Applications{

@@ -23,6 +23,23 @@ func TestCreateApplicationsRequestJSONTags(t *testing.T) {
 	require.Equal(t, "comp-ns", req.Components[0].Namespace)
 }
 
+func TestWorkflowStepCanonicalPropertiesKeepsSingleInitSQLURL(t *testing.T) {
+	var step CreateWorkflowStepRequest
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"name":"database-reset",
+		"jobType":"database_reset",
+		"properties":{"policies":["mysql"],"initSqlUrl":"https://files.example/game.sql"}
+	}`), &step))
+	require.True(t, step.HasWorkflowInitSQLURL())
+	raw, err := json.Marshal(step)
+	require.NoError(t, err)
+	require.JSONEq(t, `{
+		"name":"database-reset",
+		"jobType":"database_reset",
+		"properties":[{"policies":["mysql"],"initSqlUrl":"https://files.example/game.sql"}]
+	}`, string(raw))
+}
+
 func TestDatabaseResetRequestDistinguishesOmittedAndProvidedInitSQLURL(t *testing.T) {
 	tests := []struct {
 		name             string

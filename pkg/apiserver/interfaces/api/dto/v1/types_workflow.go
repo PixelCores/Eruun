@@ -24,9 +24,10 @@ type Properties = spec.Properties
 type Traits = spec.Traits
 
 type WorkflowProperties struct {
-	Policies  []string `json:"policies"`
-	Path      string   `json:"path,omitempty"`
-	Container string   `json:"container,omitempty"`
+	Policies   []string `json:"policies"`
+	Path       string   `json:"path,omitempty"`
+	Container  string   `json:"container,omitempty"`
+	InitSQLURL string   `json:"initSqlUrl,omitempty"`
 }
 
 type WorkflowTraits struct {
@@ -63,6 +64,18 @@ func (r CreateWorkflowStepRequest) WorkflowPropertiesList() []WorkflowProperties
 
 func (r CreateWorkflowStepRequest) WorkflowPropertiesFromArray() bool {
 	return r.propertiesFromArray
+}
+
+func (r CreateWorkflowStepRequest) HasWorkflowInitSQLURL() bool {
+	if r.Properties.InitSQLURL != "" {
+		return true
+	}
+	for _, properties := range r.WorkflowPropertiesList() {
+		if properties.InitSQLURL != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *CreateWorkflowStepRequest) SetWorkflowPropertiesList(properties []WorkflowProperties) {

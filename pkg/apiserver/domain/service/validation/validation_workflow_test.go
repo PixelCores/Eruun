@@ -102,6 +102,76 @@ func TestValidationService_TryWorkflowReturnsResubmittableSpecAndPlan(t *testing
 	require.Equal(t, resp.NormalizedSpec.Workflow, resubmitted.Workflow)
 }
 
+func TestValidationService_TryWorkflowNormalizesWorkflowNameForSchema(t *testing.T) {
+	store := newInMemoryAppStore()
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "test-app", Namespace: "default"}
+	store.components["backend"] = &model.ApplicationComponent{
+		AppID: "app-1", Name: "backend", Namespace: "default", ComponentType: config.ServerJob, Image: "nginx:latest",
+	}
+	repos := newMockServiceWithStore(store)
+	svc := &validationServiceImpl{AppRepo: repos.AppRepo, ComponentRepo: repos.ComponentRepo}
+
+	resp := svc.TryWorkflow(context.Background(), "app-1", apisv1.TryWorkflowRequest{
+		Name: "Deploy-Flow",
+		Workflow: []apisv1.CreateWorkflowStepRequest{{
+			Name: "deploy-backend", WorkflowType: config.JobDeploy, Components: []string{"backend"},
+		}},
+	})
+	require.True(t, resp.Valid, "%+v", resp.Errors)
+	require.Equal(t, "deploy-flow", resp.NormalizedSpec.Name)
+}
+
+func TestValidationService_TryWorkflowChecksDatabaseResetInitSQLURL(t *testing.T) {
+	store := newInMemoryAppStore()
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "test-app", Namespace: "default"}
+	store.components["mysql"] = &model.ApplicationComponent{
+		AppID: "app-1", Name: "mysql", Namespace: "default", ComponentType: config.StoreJob,
+	}
+	repos := newMockServiceWithStore(store)
+	svc := &validationServiceImpl{AppRepo: repos.AppRepo, ComponentRepo: repos.ComponentRepo}
+	tests := []struct {
+		name    string
+		jobType config.JobType
+		url     string
+		valid   bool
+	}{
+		{name: "valid database reset URL", jobType: config.JobDatabaseReset, url: "https://files.example/game.sql", valid: true},
+		{name: "invalid scheme", jobType: config.JobDatabaseReset, url: "ftp://files.example/game.sql"},
+		{name: "whitespace URL", jobType: config.JobDatabaseReset, url: "   "},
+		{name: "URL on unrelated job", jobType: config.JobDeploy, url: "https://files.example/game.sql"},
+		{name: "omitted URL", jobType: config.JobDatabaseReset, valid: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			step := apisv1.CreateWorkflowStepRequest{
+				Name: "reset-mysql", WorkflowType: tt.jobType, Components: []string{"mysql"},
+			}
+			step.SetWorkflowPropertiesList([]apisv1.WorkflowProperties{{Policies: []string{"mysql"}, InitSQLURL: tt.url}})
+			resp := svc.TryWorkflow(context.Background(), "app-1", apisv1.TryWorkflowRequest{
+				Workflow: []apisv1.CreateWorkflowStepRequest{step},
+			})
+			require.Equal(t, tt.valid, resp.Valid, "%+v", resp.Errors)
+			if !tt.valid {
+				requireValidationPath(t, resp.Errors, "/workflow/0/properties/0/initSqlUrl", apisv1.ErrCodeInvalidWorkflowStepType)
+			}
+		})
+	}
+}
+
+func TestValidationService_TryWorkflowRejectsInitSQLURLOnApprovalStep(t *testing.T) {
+	svc := &validationServiceImpl{}
+	step := apisv1.CreateWorkflowStepRequest{
+		Name: "approve-reset", StepType: config.WorkflowStepTypeApproval, WorkflowType: config.JobDatabaseReset,
+		Approval: &apisv1.WorkflowStepApproval{NotifyURL: "https://example.com/approve"},
+	}
+	step.SetWorkflowPropertiesList([]apisv1.WorkflowProperties{{InitSQLURL: "https://files.example/game.sql"}})
+	resp := svc.TryWorkflow(context.Background(), "", apisv1.TryWorkflowRequest{
+		Workflow: []apisv1.CreateWorkflowStepRequest{step},
+	})
+	require.False(t, resp.Valid)
+	requireValidationPath(t, resp.Errors, "/workflow/0", apisv1.ErrCodeInvalidApprovalConfig)
+}
+
 func TestValidationService_TryWorkflowPreservesExplicitFailurePolicyReset(t *testing.T) {
 	store := newInMemoryAppStore()
 	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "test-app", Namespace: "default"}

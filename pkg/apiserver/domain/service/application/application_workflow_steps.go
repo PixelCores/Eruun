@@ -256,9 +256,10 @@ func workflowModelPoliciesFromRequest(name string, jobType config.JobType, expli
 			continue
 		}
 		result = append(result, model.Policies{
-			Policies:  policyComponentNames,
-			Path:      strings.TrimSpace(item.Path),
-			Container: strings.TrimSpace(item.Container),
+			Policies:   policyComponentNames,
+			Path:       strings.TrimSpace(item.Path),
+			Container:  strings.TrimSpace(item.Container),
+			InitSQLURL: strings.TrimSpace(item.InitSQLURL),
 		})
 	}
 	return result
@@ -270,9 +271,10 @@ func workflowModelPoliciesFromSingleProperty(name string, jobType config.JobType
 		return nil
 	}
 	return []model.Policies{{
-		Policies:  policyComponentNames,
-		Path:      strings.TrimSpace(properties.Path),
-		Container: strings.TrimSpace(properties.Container),
+		Policies:   policyComponentNames,
+		Path:       strings.TrimSpace(properties.Path),
+		Container:  strings.TrimSpace(properties.Container),
+		InitSQLURL: strings.TrimSpace(properties.InitSQLURL),
 	}}
 }
 
@@ -547,6 +549,15 @@ func validateWorkflowComponentRefs(steps []apisv1.CreateWorkflowStepRequest, exi
 }
 
 func validateWorkflowRequestProperties(name string, jobType config.JobType, explicit []string, properties apisv1.WorkflowProperties, propertiesList []apisv1.WorkflowProperties, fromArray bool) ([]model.Policies, error) {
+	if fromArray {
+		for _, item := range propertiesList {
+			if err := ValidateWorkflowInitSQLURL(jobType, item.InitSQLURL); err != nil {
+				return nil, fmt.Errorf("workflow step %q: %w", name, err)
+			}
+		}
+	} else if err := ValidateWorkflowInitSQLURL(jobType, properties.InitSQLURL); err != nil {
+		return nil, fmt.Errorf("workflow step %q: %w", name, err)
+	}
 	if fromArray && len(propertiesList) > 1 {
 		seen := make(map[string]struct{})
 		var propertyComponents []string
@@ -568,6 +579,21 @@ func validateWorkflowRequestProperties(name string, jobType config.JobType, expl
 		}
 	}
 	return workflowModelPoliciesFromRequest(name, jobType, explicit, properties, propertiesList, fromArray, nil), nil
+}
+
+// ValidateWorkflowInitSQLURL keeps database reset parameters within the same
+// HTTP(S) URL contract as the database reset submission endpoint.
+func ValidateWorkflowInitSQLURL(jobType config.JobType, raw string) error {
+	if raw == "" {
+		return nil
+	}
+	if jobType != config.JobDatabaseReset {
+		return fmt.Errorf("%w: initSqlUrl is only supported for database_reset jobType", bcode.ErrWorkflowConfig)
+	}
+	if _, err := normalizeDatabaseResetInitSQLURL(raw, true); err != nil {
+		return fmt.Errorf("%w: initSqlUrl must be a non-empty absolute HTTP(S) URL", bcode.ErrWorkflowConfig)
+	}
+	return nil
 }
 
 func validateWorkflowComponentsMatchProperties(name string, explicit []string, properties []string) error {
@@ -640,7 +666,7 @@ func ensureComponentsExist(names []string, existing map[string]config.JobType) e
 }
 
 func validateApprovalWorkflowStep(step apisv1.CreateWorkflowStepRequest, stepComponents []string) error {
-	if len(stepComponents) > 0 || len(step.SubSteps) > 0 {
+	if len(stepComponents) > 0 || len(step.SubSteps) > 0 || step.HasWorkflowInitSQLURL() {
 		return fmt.Errorf("%w: approval step %q cannot contain components/properties/substeps", bcode.ErrWorkflowConfig, step.Name)
 	}
 	if step.Approval == nil || strings.TrimSpace(step.Approval.NotifyURL) == "" {
