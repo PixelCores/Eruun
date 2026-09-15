@@ -192,6 +192,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `vllm-hami-distributed-inference-design.md` | Draft / Proposal | 自托管模型服务、GPU、vLLM/HAMi 与多节点 adapter 方向 |
 | `workflow-conditional-branching-design.md` | Draft / Proposal | 条件分支设计 |
 | `workflow-resource-capacity-scheduler.md` | Draft / Proposal | Workflow 资源容量准入与可选容量补偿边界 |
+| `api-request-field-canonicalization-plan.md` | Draft / Proposal | Application `components` 与 Workflow `steps` 请求字段严格收敛方案 |
 
 ## 图源与资产
 
