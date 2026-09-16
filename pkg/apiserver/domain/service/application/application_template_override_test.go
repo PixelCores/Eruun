@@ -401,7 +401,7 @@ func TestCreateApplicationsFromTemplateKeepsBase64LookingOverrideAsText(t *testi
 	svc := newMockServiceWithStore(store)
 	encodedOverride := base64.StdEncoding.EncodeToString([]byte("override-secret"))
 	req := apisv1.CreateApplicationsRequest{
-		Name: "cloned-from-template-encoded-override",
+		Name: "clone-encoded-override",
 		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "clone-app",
@@ -495,7 +495,7 @@ func TestCreateApplicationsFromTemplateKeepsBase64LookingOverrideOnPlaintextSecr
 	svc := newMockServiceWithStore(store)
 	encodedOverride := base64.StdEncoding.EncodeToString([]byte("override-secret"))
 	req := apisv1.CreateApplicationsRequest{
-		Name: "cloned-from-template-plain-override",
+		Name: "clone-plain-override",
 		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "clone-app",

@@ -38,6 +38,10 @@ spec:
           ports:
             - name: http
               containerPort: {{ $root.Values.service.port }}
+            {{- if eq $role "api" }}
+            - name: grpc
+              containerPort: {{ $root.Values.service.grpcPort }}
+            {{- end }}
           env:
             - name: ERUUN_AUTH_CONFIG_FILE
               value: /var/run/secrets/eruun/accounts/accounts.json
@@ -57,6 +61,10 @@ spec:
                   fieldPath: metadata.name
             - name: ERUUN_BIND_ADDR
               value: {{ printf "0.0.0.0:%v" $root.Values.service.port | quote }}
+            {{- if eq $role "api" }}
+            - name: ERUUN_GRPC_BIND_ADDR
+              value: {{ printf "0.0.0.0:%v" $root.Values.service.grpcPort | quote }}
+            {{- end }}
             - name: ERUUN_LEADER_NAMESPACE
               value: {{ $root.Release.Namespace | quote }}
             - name: ERUUN_CONTROLLER_LOCK_NAME

@@ -21,7 +21,10 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api"
+	grpcapi "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc"
+	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/ratelimit"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/container"
@@ -33,6 +36,11 @@ type APIServer interface {
 
 type restServer struct {
 	accounts                  *account.Service
+	workspaceManager          *workspace.Manager
+	grpcAdministration        *grpcapi.AdministrationServer
+	grpcJobs                  *grpcapi.JobsServer
+	grpcApplications          *grpcapi.ApplicationsServer
+	apiRateLimiter            *ratelimit.Limiter
 	jobs                      *jobs.Service
 	webContainer              *gin.Engine
 	beanContainer             *container.Container

@@ -5,6 +5,12 @@
   "properties": {
     "replicaCount": false,
     "resources": false,
+    "service": {
+      "type": "object",
+      "properties": {
+        "grpcPort": {"type": "integer", "minimum": 1, "maximum": 65535}
+      }
+    },
     "runtime": {
       "type": "object",
       "additionalProperties": false,

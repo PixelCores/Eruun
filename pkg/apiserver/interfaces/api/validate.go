@@ -23,6 +23,7 @@ import (
 	"sync"
 	"unicode"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 
 	"github.com/go-playground/validator/v10"
@@ -35,7 +36,6 @@ var (
 )
 
 var (
-	nameRegexp  = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
 	emailRegexp = regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,63}$`)
 )
 
@@ -66,11 +66,7 @@ func registerValidators() {
 
 // ValidateName custom check name field
 func ValidateName(fl validator.FieldLevel) bool {
-	value := fl.Field().String()
-	if len(value) > datastore.PrimaryKeyMaxLength || len(value) < 2 {
-		return false
-	}
-	return nameRegexp.MatchString(value)
+	return spec.ValidAPIName(fl.Field().String(), datastore.PrimaryKeyMaxLength)
 }
 
 // ValidateAlias custom check alias field

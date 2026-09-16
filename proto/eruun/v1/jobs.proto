@@ -1,0 +1,201 @@
+syntax = "proto3";
+
+package eruun.v1;
+
+option go_package = "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1;eruunv1";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "eruun/v1/applications.proto";
+
+// JobsService is the user-session API. Runner capability callbacks are HTTP-only.
+service JobsService {
+  rpc SubmitJob(SubmitJobRequest) returns (JobAccepted);
+  rpc GetJob(JobTaskRequest) returns (JobDetail);
+  rpc CancelJob(JobTaskRequest) returns (google.protobuf.Empty);
+  rpc GetJobResults(JobTaskRequest) returns (JobResults);
+  rpc DownloadJobResult(JobArtifactRequest) returns (stream ArchiveChunk);
+  rpc DownloadJobDelivery(JobDeliveryRequest) returns (stream ArchiveChunk);
+  rpc RetryJobDelivery(JobDeliveryRequest) returns (google.protobuf.Empty);
+  rpc SetJobRetention(SetJobRetentionRequest) returns (google.protobuf.Empty);
+  rpc GetJobStoragePolicy(google.protobuf.Empty) returns (JobStoragePolicy);
+  rpc SetJobStoragePolicy(JobResultPolicy) returns (google.protobuf.Empty);
+  rpc UploadJobDataset(stream UploadDatasetPart) returns (JobArtifact);
+  rpc ListJobDatasets(ListJobDatasetsRequest) returns (JobArtifacts);
+  rpc GetJobDataset(JobDatasetRequest) returns (JobArtifact);
+  rpc DownloadJobDataset(JobDatasetRequest) returns (stream ArchiveChunk);
+}
+
+message JobTaskRequest { string task_id = 1; }
+message JobArtifactRequest { string task_id = 1; string artifact_id = 2; }
+message JobDeliveryRequest { string task_id = 1; string target = 2; }
+message JobDatasetRequest { string dataset_id = 1; }
+message SetJobRetentionRequest { string task_id = 1; int32 retention_days = 2; }
+message ListJobDatasetsRequest { optional int32 page = 1; optional int32 page_size = 2; }
+
+message JobResultTarget { string type = 1; string mode = 2; }
+message JobResultPolicy { int32 retention_days = 1; repeated JobResultTarget targets = 2; }
+message JobStoragePolicy { repeated string available_targets = 1; JobResultPolicy policy = 2; }
+
+message JobStorageTrait {
+  string name = 1;
+  string type = 2;
+  string mount_path = 3;
+  string sub_path = 4;
+  string sub_path_expr = 5;
+  bool read_only = 6;
+  string source_name = 7;
+  bool tmp_create = 8;
+  string size = 9;
+  string claim_name = 10;
+  string storage_class = 11;
+}
+message JobResourceTrait {
+  string cpu = 1;
+  string memory = 2;
+  string gpu = 3;
+  string cpu_limit = 4;
+  string memory_limit = 5;
+}
+message JobSecretSelector { string name = 1; string key = 2; }
+message JobConfigSelector { string name = 1; string key = 2; }
+message JobValueSource {
+  optional string static = 1;
+  JobSecretSelector secret = 2;
+  JobConfigSelector config = 3;
+  optional string field = 4;
+}
+message JobEnv { string name = 1; JobValueSource value_from = 2; }
+message JobEnvFrom { string type = 1; string source_name = 2; }
+message JobTraits {
+  repeated JobStorageTrait storage = 1;
+  repeated JobEnvFrom env_from = 2;
+  repeated JobEnv envs = 3;
+  map<string, string> target_work_env = 4;
+  JobResourceTrait resources = 5;
+  AppKubeCoreSecurityContext security_policy = 6 [json_name = "securityPolicy"];
+}
+
+message SubmitJobRequest {
+  string workspace_id = 1;
+  string name = 2;
+  string type = 3;
+  // Command/agent-evaluation type-specific fields are dynamically shaped in HTTP.
+  google.protobuf.Value spec = 4;
+  JobTraits traits = 5;
+  JobResultPolicy result_policy = 6;
+}
+message JobSpec {
+  string name = 1;
+  string type = 2;
+  google.protobuf.Value spec = 3;
+  JobTraits traits = 4;
+  JobResultPolicy result_policy = 5;
+}
+message JobAccepted {
+  string task_id = 1;
+  string workspace_id = 2;
+  string type = 3;
+  string status = 4;
+}
+message JobExecution {
+  int64 id = 1;
+  string type = 2;
+  string workflow_id = 3;
+  string product_id = 4;
+  string workspace_id = 5;
+  string app_id = 6;
+  string task_id = 7;
+  string status = 8;
+  int64 start_time = 9;
+  int64 end_time = 10;
+  string info = 11;
+  string service_name = 12;
+  string error = 13;
+  bool production = 14;
+  string target_env = 15;
+  optional string execution_key = 16;
+  uint64 run_generation = 17;
+  uint32 attempt = 18;
+  string scheduling_state = 19;
+  string scheduling_class = 20;
+  int32 scheduling_priority = 21;
+  google.protobuf.Timestamp scheduling_queued_at = 22;
+  string scheduling_reason = 23;
+  google.protobuf.Timestamp create_time = 24;
+  google.protobuf.Timestamp update_time = 25;
+}
+message JobArtifact {
+  string id = 1;
+  string workspace_id = 2;
+  string task_id = 3;
+  string kind = 4;
+  string name = 5;
+  string digest = 6;
+  int64 size = 7;
+  google.protobuf.Value manifest = 8;
+  google.protobuf.Value summary = 9;
+  string reference = 10;
+  google.protobuf.Timestamp expires_at = 11;
+  bool expired = 12;
+  google.protobuf.Timestamp create_time = 13;
+  google.protobuf.Timestamp update_time = 14;
+}
+message JobDelivery {
+  string id = 1;
+  string workspace_id = 2;
+  string task_id = 3;
+  string source_id = 4;
+  string target = 5;
+  string mode = 6;
+  string state = 7;
+  int32 attempts = 8;
+  string error = 9;
+  string reference = 10;
+  google.protobuf.Timestamp create_time = 11;
+  google.protobuf.Timestamp update_time = 12;
+}
+message JobRunnerProgress { int32 completed_trials = 1; int32 total_trials = 2; }
+message JobRunnerTerminal {
+  string outcome = 1;
+  optional int32 exit_code = 2;
+  string signal = 3;
+  string artifact_id = 4;
+  string artifact_digest = 5;
+  bool collection_complete = 6;
+  string reason = 7;
+  string message = 8;
+}
+message JobRunnerStatus {
+  string phase = 1;
+  uint64 sequence = 2;
+  google.protobuf.Timestamp last_heartbeat_at = 3;
+  bool stale = 4;
+  JobRunnerProgress progress = 5;
+  JobRunnerTerminal terminal = 6;
+}
+message JobDetail {
+  JobAccepted accepted = 1;
+  JobSpec job = 2;
+  repeated JobExecution executions = 3;
+  repeated JobArtifact results = 4;
+  repeated JobDelivery deliveries = 5;
+  string collection_state = 6;
+  JobRunnerStatus runner_status = 7;
+}
+message JobResults {
+  string collection_state = 1;
+  repeated JobArtifact artifacts = 2;
+  repeated JobDelivery deliveries = 3;
+}
+message JobArtifacts { repeated JobArtifact artifacts = 1; }
+
+message UploadDatasetHeader { string name = 1; }
+message UploadDatasetPart {
+  oneof part {
+    UploadDatasetHeader header = 1;
+    bytes chunk = 2;
+  }
+}
+message ArchiveChunk { bytes data = 1; }

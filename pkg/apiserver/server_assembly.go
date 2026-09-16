@@ -27,6 +27,7 @@ import (
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api"
+	grpcapi "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -110,7 +111,8 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 	if err := s.runBootstrapStep(ctx, s.accounts.Bootstrap); err != nil {
 		return err
 	}
-	if err := s.beanContainer.Provides(s.accounts, &workspace.Manager{Client: kubeClient, RESTConfig: kubeConfig, Config: accountsConfig.Workspace}); err != nil {
+	s.workspaceManager = &workspace.Manager{Client: kubeClient, RESTConfig: kubeConfig, Config: accountsConfig.Workspace}
+	if err := s.beanContainer.Provides(s.accounts, s.workspaceManager); err != nil {
 		return err
 	}
 
@@ -209,6 +211,12 @@ func (s *restServer) provideDomainAndEventBeans(runtimeQueues *msg.RuntimeQueues
 	// interfaces
 	if err := s.beanContainer.Provides(api.InitAPIBean()...); err != nil {
 		return fmt.Errorf("fail to provides the api bean to the container: %w", err)
+	}
+	s.grpcAdministration = &grpcapi.AdministrationServer{}
+	s.grpcJobs = &grpcapi.JobsServer{}
+	s.grpcApplications = &grpcapi.ApplicationsServer{}
+	if err := s.beanContainer.Provides(s.grpcAdministration, s.grpcJobs, s.grpcApplications); err != nil {
+		return fmt.Errorf("provide grpc business adapters: %w", err)
 	}
 
 	// event

@@ -4,19 +4,18 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/ratelimit"
 	"github.com/gin-gonic/gin"
-	"golang.org/x/time/rate"
 )
 
-const (
-	defaultRateLimitReadMultiplier = 5
-)
+const defaultRateLimitReadMultiplier = 5
 
 // RateLimitOptions configures API request throttling by operation class.
 type RateLimitOptions struct {
 	QPS       float64
 	Burst     int
 	SkipPaths []string
+	Shared    *ratelimit.Limiter
 }
 
 // DefaultRateLimitSkipPaths returns routes that should bypass request throttling.
@@ -31,14 +30,16 @@ func DefaultRateLimitSkipPaths() []string {
 
 // RateLimit throttles API requests by operation class.
 func RateLimit(opts RateLimitOptions) gin.HandlerFunc {
-	if opts.QPS <= 0 || opts.Burst <= 0 {
+	limiter := opts.Shared
+	if limiter == nil {
+		limiter = ratelimit.New(opts.QPS, opts.Burst)
+	}
+	if limiter == nil {
 		return func(c *gin.Context) {
 			c.Next()
 		}
 	}
 
-	expensiveLimiter := rate.NewLimiter(rate.Limit(opts.QPS), opts.Burst)
-	readLimiter := rate.NewLimiter(rate.Limit(opts.QPS*defaultRateLimitReadMultiplier), opts.Burst*defaultRateLimitReadMultiplier)
 	skipPathSet := toPathSet(opts.SkipPaths)
 
 	return func(c *gin.Context) {
@@ -56,11 +57,7 @@ func RateLimit(opts RateLimitOptions) gin.HandlerFunc {
 			return
 		}
 
-		limiter := readLimiter
-		if isExpensiveRateLimitRequest(method, fullPath) {
-			limiter = expensiveLimiter
-		}
-		if !limiter.Allow() {
+		if !limiter.Allow(isExpensiveRateLimitRequest(method, fullPath)) {
 			c.AbortWithStatus(http.StatusTooManyRequests)
 			return
 		}

@@ -43,6 +43,8 @@ type Config struct {
 
 	// api server bind address
 	BindAddr string
+	// GRPCBindAddr is the separate gRPC listener used by the api role.
+	GRPCBindAddr string
 
 	// APIRateLimitQPS limits expensive API operations. Set 0 to disable it.
 	APIRateLimitQPS float64
@@ -155,6 +157,7 @@ func NewConfig() *Config {
 	return &Config{
 		Role:              RuntimeRoleAPI,
 		BindAddr:          "127.0.0.1:8001",
+		GRPCBindAddr:      "127.0.0.1:9001",
 		APIRateLimitQPS:   0,
 		APIRateLimitBurst: 0,
 		LeaderConfig: leaderConfig{
@@ -232,6 +235,12 @@ func (c *Config) Validate() []error {
 	}
 	if strings.TrimSpace(c.BindAddr) == "" {
 		errs = append(errs, fmt.Errorf("bind address cannot be empty"))
+	}
+	if c.NormalizedRole() == RuntimeRoleAPI && strings.TrimSpace(c.GRPCBindAddr) == "" {
+		errs = append(errs, fmt.Errorf("grpc bind address cannot be empty"))
+	}
+	if c.NormalizedRole() == RuntimeRoleAPI && c.GRPCBindAddr == c.BindAddr {
+		errs = append(errs, fmt.Errorf("grpc bind address must differ from http bind address"))
 	}
 	apiRateLimitQPSValid := !math.IsNaN(c.APIRateLimitQPS) && !math.IsInf(c.APIRateLimitQPS, 0) && c.APIRateLimitQPS >= 0
 	if !apiRateLimitQPSValid {
@@ -335,6 +344,7 @@ func (c *Config) AddFlags(fs *pflag.FlagSet, configParameter *Config) {
 	c.Role = configParameter.Role
 	fs.Var((*runtimeRoleValue)(&c.Role), "role", "runtime role: api|controller|scheduler|worker")
 	fs.StringVar(&c.BindAddr, "bind-addr", configParameter.BindAddr, "The bind address used to serve the http APIs.")
+	fs.StringVar(&c.GRPCBindAddr, "grpc-bind-addr", configParameter.GRPCBindAddr, "The bind address used to serve gRPC APIs on the api role.")
 	fs.Float64Var(&c.APIRateLimitQPS, "api-rate-limit-qps", configParameter.APIRateLimitQPS, "API rate limit for expensive operations in requests per second (0 disables)")
 	fs.IntVar(&c.APIRateLimitBurst, "api-rate-limit-burst", configParameter.APIRateLimitBurst, "API rate limit burst size for expensive operations (required when api-rate-limit-qps > 0)")
 	fs.BoolVar(&c.AllowPrivateURLTargets, "allow-private-url-targets", configParameter.AllowPrivateURLTargets, "allow outbound URL targets that resolve to private/loopback/link-local addresses")

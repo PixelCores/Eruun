@@ -19,5 +19,6 @@ func TestInitValidator_RegistersCustomRules(t *testing.T) {
 	require.NoError(t, InitValidator())
 
 	require.NoError(t, validate.Struct(validateNameRequest{Name: "app-name"}))
+	require.NoError(t, validate.Struct(validateNameRequest{Name: "demo.app"}))
 	require.Error(t, validate.Struct(validateNameRequest{Name: "Invalid Name"}))
 }
