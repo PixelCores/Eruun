@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -98,6 +99,38 @@ func TestCreateApplicationsRejectsDuplicateName(t *testing.T) {
 	_, err := svc.CreateApplications(context.Background(), req)
 	require.ErrorIs(t, err, bcode.ErrApplicationExist)
 	require.Len(t, store.apps, 1)
+}
+
+func TestCreateApplicationsRejectsInvalidNameBeforeStoreWrite(t *testing.T) {
+	for _, name := range []string{"", "Invalid Name", strings.Repeat("a", datastore.PrimaryKeyMaxLength+1)} {
+		t.Run(name, func(t *testing.T) {
+			store := newInMemoryAppStore()
+			svc := newMockServiceWithStore(store)
+			resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{Name: name})
+			require.Nil(t, resp)
+			require.ErrorIs(t, err, bcode.ErrApplicationConfig)
+			require.Empty(t, store.apps)
+			require.Empty(t, store.workflows)
+		})
+	}
+
+	store := newInMemoryAppStore()
+	svc := newMockServiceWithStore(store)
+	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{Name: "demo.app"})
+	require.NoError(t, err)
+	require.Equal(t, "demo.app", store.apps[resp.ID].Name)
+}
+
+func TestCreateApplicationsObserveImportKeepsLongKubernetesName(t *testing.T) {
+	name := strings.Repeat("a", datastore.PrimaryKeyMaxLength+1)
+	store := newInMemoryAppStore()
+	svc := newMockServiceWithStore(store)
+	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
+		Name: name, ImportAsObserve: true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, name, store.apps[resp.ID].Name)
+	require.Equal(t, config.ManagementModeObserve, store.apps[resp.ID].ManagementMode)
 }
 
 func TestCreateApplicationsWithMutationCommitsInternalStateAtomically(t *testing.T) {

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"k8s.io/klog/v2"
@@ -22,6 +24,10 @@ func ExecuteCreateAndExecApplication(
 	idempotencyKey string,
 	execFailureMessage func(error) string,
 ) (*apis.CreateAndExecApplicationResponse, error) {
+	if !spec.ValidAPIName(req.Name, datastore.PrimaryKeyMaxLength) ||
+		(req.WorkflowID != "" && !spec.ValidAPIName(req.WorkflowID, datastore.PrimaryKeyMaxLength)) {
+		return nil, bcode.ErrApplicationConfig
+	}
 	created, err := applications.CreateApplications(ctx, req.CreateApplicationsRequest)
 	if err != nil {
 		return nil, err

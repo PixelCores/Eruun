@@ -17,6 +17,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/traitvalidation"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	assembler "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/assembler/v1"
@@ -130,6 +131,11 @@ func NewApplicationService() ApplicationsService {
 }
 
 func (c *applicationsServiceImpl) CreateApplications(ctx context.Context, req apisv1.CreateApplicationsRequest) (*apisv1.ApplicationBase, error) {
+	// Observe imports are trusted internal calls derived from existing Kubernetes
+	// resources; public HTTP/gRPC requests cannot set ImportAsObserve.
+	if !req.ImportAsObserve && !spec.ValidAPIName(req.Name, datastore.PrimaryKeyMaxLength) {
+		return nil, bcode.ErrApplicationConfig
+	}
 	return c.createApplicationsWithScheduleLock(ctx, req, nil, "create-or-replace-application")
 }
 

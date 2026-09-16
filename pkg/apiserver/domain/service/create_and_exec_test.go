@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/stretchr/testify/require"
 )
 
@@ -14,9 +15,11 @@ type createExecAppStub struct {
 	created *apis.ApplicationBase
 	err     error
 	marked  bool
+	called  bool
 }
 
 func (s *createExecAppStub) CreateApplications(context.Context, apis.CreateApplicationsRequest) (*apis.ApplicationBase, error) {
+	s.called = true
 	return s.created, s.err
 }
 func (s *createExecAppStub) MarkInitialDeployingWorkflowComponents(context.Context, string, string) error {
@@ -42,7 +45,6 @@ func TestExecuteCreateAndExecApplicationSharedOutcomes(t *testing.T) {
 		name         string
 		app          *createExecAppStub
 		workflow     *createExecWorkflowStub
-		input        apis.CreateAndExecApplicationRequest
 		wantErr      bool
 		wantStatus   string
 		wantTask     string
@@ -75,7 +77,8 @@ func TestExecuteCreateAndExecApplicationSharedOutcomes(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			resp, err := ExecuteCreateAndExecApplication(context.Background(), tc.app, tc.workflow, tc.input, "", message)
+			resp, err := ExecuteCreateAndExecApplication(context.Background(), tc.app, tc.workflow,
+				apis.CreateAndExecApplicationRequest{CreateApplicationsRequest: apis.CreateApplicationsRequest{Name: "sample"}}, "", message)
 			if tc.wantErr {
 				require.Error(t, err)
 				require.Nil(t, resp)
@@ -89,6 +92,31 @@ func TestExecuteCreateAndExecApplicationSharedOutcomes(t *testing.T) {
 			if tc.wantStatus == apis.CreateAndExecStatusFailed {
 				require.Equal(t, "safe failure", resp.ExecError)
 			}
+		})
+	}
+}
+
+func TestExecuteCreateAndExecApplicationRejectsInvalidRequestBeforeCreate(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		appName    string
+		workflowID string
+	}{
+		{name: "invalid application name", appName: "Invalid Name"},
+		{name: "invalid workflow ID", appName: "sample", workflowID: "Bad ID"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app := &createExecAppStub{created: &apis.ApplicationBase{ID: "app-a"}}
+			workflow := &createExecWorkflowStub{}
+			resp, err := ExecuteCreateAndExecApplication(context.Background(), app, workflow,
+				apis.CreateAndExecApplicationRequest{
+					CreateApplicationsRequest: apis.CreateApplicationsRequest{Name: tc.appName},
+					WorkflowID:                tc.workflowID,
+				}, "", func(error) string { return "safe failure" })
+			require.Nil(t, resp)
+			require.ErrorIs(t, err, bcode.ErrApplicationConfig)
+			require.False(t, app.called, "invalid requests must not create an application")
+			require.False(t, workflow.called)
 		})
 	}
 }
