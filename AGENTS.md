@@ -48,7 +48,7 @@ Choose checks by the affected behavior and failure risk. For narrow changes, for
 
 ## Code and Test Style
 
-- Target Go 1.25 and keep package paths lowercase.
+- Target Go 1.27 and keep package paths lowercase.
 - Use `k8s.io/klog/v2` structured logging for new logs.
 - Wrap errors with operation context, such as `fmt.Errorf("create pvc: %w", err)`.
 - Propagate `context.Context` into goroutines; prefer `errgroup` or `sync.WaitGroup`.

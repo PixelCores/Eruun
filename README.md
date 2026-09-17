@@ -31,7 +31,7 @@ Eruun ships only the server runtime. It does not include a client command-line a
 
 ## Quick start
 
-Prerequisites: Go 1.25, GNU Make, `kubectl`, Helm, and access to a Kubernetes cluster.
+Prerequisites: Go 1.27, GNU Make, `kubectl`, Helm, and access to a Kubernetes cluster.
 
 Configure the required account Secret from [accounts.example.json](deploy/accounts.example.json) before starting. Authentication, personal and team workspaces, HTTPS integration, and Kubernetes isolation requirements are documented in [Account and workspace integration](docs/account-auth-workspaces.md).
 

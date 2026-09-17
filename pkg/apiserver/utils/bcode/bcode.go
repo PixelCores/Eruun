@@ -60,7 +60,7 @@ func SafeClientMessage(err error) string {
 	return strings.TrimSpace(safeMessage.safeClientMessage())
 }
 
-func (b Bcode) Error() string {
+func (b *Bcode) Error() string {
 	return fmt.Sprintf("HTTPCode:%d BusinessCode:%d Message:%s", b.HTTPCode, b.BusinessCode, b.Message)
 }
 

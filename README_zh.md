@@ -31,7 +31,7 @@ Eruun 只提供服务端运行时，不包含客户端命令行应用。
 
 ## 快速开始
 
-前置条件：Go 1.25、GNU Make、`kubectl`、Helm，以及可访问的 Kubernetes 集群。
+前置条件：Go 1.27、GNU Make、`kubectl`、Helm，以及可访问的 Kubernetes 集群。
 
 启动前必须按照 [账号配置示例](deploy/accounts.example.json) 提供账号 Secret。认证、个人与团队空间、HTTPS 接入及 Kubernetes 隔离要求见 [账号与空间文档](docs/account-auth-workspaces.md)。
 
