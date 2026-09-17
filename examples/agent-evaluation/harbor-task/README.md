@@ -12,7 +12,7 @@ docker push example.com/your-team/eruun-greeting-task:1.0.0
 tar -C examples/agent-evaluation -czf /tmp/harbor-greeting.tar.gz harbor-task
 ```
 
-上面的域名是占位值，使用自己的可访问仓库替换。上传 `/tmp/harbor-greeting.tar.gz` 后，提交 `agent_evaluation`，框架选择 `harbor` / `0.22.0`，Agent 选择 `oracle`，无需模型凭据。完整输出应包含原生任务与 trial 结果、oracle 日志、verifier 日志、reward，以及 greeting 制品。
+上面的域名是占位值，使用自己的可访问仓库替换。上传 `/tmp/harbor-greeting.tar.gz` 后，提交 `eval`，框架选择 `harbor` / `0.22.0`，Agent 选择 `oracle`，无需模型凭据。完整输出应包含原生任务与 trial 结果、oracle 日志、verifier 日志、reward，以及 greeting 制品。
 
 示例镜像兼容平台固定的 UID `1000` 和禁止特权策略。若选择 `terminus-2`，提供模型和已授权 Secret 即可由 Harbor 驱动该任务；若选择 `codex` 或 `claude-code`，先扩展本地 Dockerfile，固定安装对应 CLI 及系统依赖，并保留所有工作目录对 UID `1000` 可写。
 

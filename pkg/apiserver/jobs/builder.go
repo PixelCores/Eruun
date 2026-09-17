@@ -91,7 +91,7 @@ func BuildTask(ctx context.Context, store datastore.DataStore, cfg *config.Confi
 	if err != nil {
 		return nil, err
 	}
-	if declaration.Type == string(config.JobAgentEvaluation) {
+	if declaration.Type == string(config.JobEval) {
 		timeout += spec.EvaluationCollectionGraceSeconds // Allow the trusted runner to collect and upload its outputs.
 	}
 	workload.Spec.ActiveDeadlineSeconds = ptr.To(timeout)

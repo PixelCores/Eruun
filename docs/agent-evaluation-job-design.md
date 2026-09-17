@@ -1,14 +1,14 @@
 # Eruun Agent 评测任务演进方向
 
-> 状态：Draft / Proposal。`main` 已实现 Harbor `agent_evaluation` 空间 Job 及其单实例认领、阶段/心跳/进度/终态协议；当前公共 API、默认参数与运行边界以 [空间 Job API](workspace-jobs-api.md)、[Harbor Runner](../runners/harbor/README.md) 和 [Runner 实现参考](agent-evaluation-runner-service-design.md) 为准。本文保留更多目标、Judge、质量门禁和其他 Agent 能力的后续演进。
+> 状态：Draft / Proposal。`main` 已实现 Harbor `eval` 空间 Job 及其单实例认领、阶段/心跳/进度/终态协议；当前公共 API、默认参数与运行边界以 [空间 Job API](workspace-jobs-api.md)、[Harbor Runner](../runners/harbor/README.md) 和 [Runner 实现参考](agent-evaluation-runner-service-design.md) 为准。本文保留更多目标、Judge、质量门禁和其他 Agent 能力的后续演进。
 
 > 示例说明：本文中的后续流程块仅是概念伪代码，不可直接执行；已注册类型与接口不得由本文重新定义。
 
 ## 1. 与 AI Runtime 的关系
 
-[AI Runtime 愿景](ai-runtime-vision.md) 把评测放在统一空间 Job、权限和制品边界中。Eruun 当前已经提供 `/api/v1/jobs`、`agent_evaluation` 规格、无 AppID 的 WorkspaceID/TaskID 持久化、Harbor 0.22.0 Runner、任务包与结果制品，以及一次性 Kubernetes Job 的状态、取消、超时和数据库执行租约。
+[AI Runtime 愿景](ai-runtime-vision.md) 把评测放在统一空间 Job、权限和制品边界中。Eruun 当前已经提供 `/api/v1/jobs`、`eval` 规格、无 AppID 的 WorkspaceID/TaskID 持久化、Harbor 0.22.0 Runner、任务包与结果制品，以及一次性 Kubernetes Job 的状态、取消、超时和数据库执行租约。
 
-`command` 与 `agent_evaluation` 是同一空间 namespace 中执行的两种 Eruun Job。两者都构建 Kubernetes `batch/v1 Job`，Pod 固定 `restartPolicy: Never`、Job 固定 `backoffLimit: 0`，并复用统一 Workflow/Job 执行链路；`agent_evaluation` 使用平台固定的 Harbor Runner 镜像，`command` 直接运行用户声明的镜像和命令。类型边界见 [同一命名空间中的 Job 类型](ai-runtime-vision.md#42-同一命名空间中的-job-类型)。[Runner 阶段状态增强](agent-evaluation-runner-service-design.md) 只服务 `agent_evaluation`，不包装 `command` 镜像，也不新增评测任务实体、Scheduler、消息队列或状态机。
+`command` 与 `eval` 是同一空间 namespace 中执行的两种 Eruun Job。两者都构建 Kubernetes `batch/v1 Job`，Pod 固定 `restartPolicy: Never`、Job 固定 `backoffLimit: 0`，并复用统一 Workflow/Job 执行链路；`eval` 使用平台固定的 Harbor Runner 镜像，`command` 直接运行用户声明的镜像和命令。类型边界见 [同一命名空间中的 Job 类型](ai-runtime-vision.md#42-同一命名空间中的-job-类型)。[Runner 阶段状态增强](agent-evaluation-runner-service-design.md) 只服务 `eval`，不包装 `command` 镜像，也不新增评测任务实体、Scheduler、消息队列或状态机。
 
 ### 1.1 独立评测与应用内评测
 
@@ -45,7 +45,7 @@
 
 当前 Harbor 实现已经定义的输入见 [空间 Job API](workspace-jobs-api.md)。后续扩展仍应保持最小闭环：
 
-- Job 类型继续使用已注册的 `agent_evaluation`；普通一次性命令继续使用 `command`，不增加语义重复的 `custom`。
+- Job 类型继续使用已注册的 `eval`；普通一次性命令继续使用 `command`，不增加语义重复的 `custom`。
 - 经服务端校验的 workspace 归属和调用者身份；不把 ProjectID、AppID 或 Component 作为所有评测的通用必填信息。
 - 不可变的目标引用；它可以是部署后的 Agent、模型端点或后续定义的运行配置。
 - 带版本或内容摘要的数据集引用。
@@ -73,7 +73,7 @@ TaskID 属于服务端生成的执行元数据，不是调用方需要预先填�
 当前路径复用统一任务提交与执行链路，由一个 WorkflowQueue 任务驱动所属空间 namespace 中的 `batch/v1 Job`，并在现有 Runner 与内部 HTTP 边界报告阶段状态：
 
 ```text
-submit agent_evaluation Job
+submit eval Job
   -> authorize workspace and resolve its namespace
   -> validate Harbor input, dataset, credentials and result policy
   -> allocate TaskID and persist WorkflowQueue/Job intent
@@ -122,7 +122,7 @@ Runner 上报必须匹配持久化的 `JobInfo` 执行身份、attempt、Pod UID
 
 ## 8. 隔离和权限
 
-- `command` 与 `agent_evaluation` 的 Kubernetes Job 在同一空间 namespace 中执行，各自绑定 TaskID；共用 namespace 不表示可以访问其他 Job 的凭据或制品。
+- `command` 与 `eval` 的 Kubernetes Job 在同一空间 namespace 中执行，各自绑定 TaskID；共用 namespace 不表示可以访问其他 Job 的凭据或制品。
 - `command` 默认不挂载 Kubernetes API Token。Harbor Runner 因需要创建、exec、观察和删除 trial Pods，使用平台管理的 namespace 级专用 ServiceAccount；当前 Role 的 Pod 与 pods/exec 权限作用于整个 namespace，不能描述成由 RBAC 强制限定为 trial Pods。trial Pod 使用独立的无权限 ServiceAccount。后续若要求平台强制“只能操作本任务 trial Pods”，必须增加可验证的 admission、代理或隔离边界。
 - 出站网络只允许目标端点、数据源、ArtifactStore 和必要授权端点。
 - Judge 和被测目标使用彼此独立的凭据引用。
@@ -137,7 +137,7 @@ checkpoint 至少需要绑定任务、数据集、目标、Runner 版本和已�
 
 ## 10. 已实现的单实例认领与阶段状态基线
 
-1. 在现有 Harbor Runner 上增加有界 phase/heartbeat/terminal 事件，不改变 `agent_evaluation` 的公共提交与结果 API。
+1. 在现有 Harbor Runner 上增加有界 phase/heartbeat/terminal 事件，不改变 `eval` 的公共提交与结果 API。
 2. 复用当前任务能力、Pod 名称/UID、ExecutionKey、RunGeneration 和 Attempt 完成认证与迟到写入隔离；在现有 JobInfo/InternalInfo 中增加单实例 CAS 认领，不新增 claim 表或顶层实体。
 3. 验证子进程失败时 Runner 能先上传诊断和终态再退出，Runner 整体 OOM 时由 Kubernetes 证据兜底。
 4. 保持现有完整原始结果、ArtifactStore、空间授权、取消、超时和保留策略不退化。
@@ -147,7 +147,7 @@ checkpoint 至少需要绑定任务、数据集、目标、Runner 版本和已�
 
 | 场景 | 必须验证的结果 |
 | --- | --- |
-| 同一 namespace 中运行两类 Job | `command` 与 `agent_evaluation` 各自创建 `batch/v1 Job`，身份绑定 TaskID 且不会碰撞或交叉清理；`command` 不被注入评测协议 |
+| 同一 namespace 中运行两类 Job | `command` 与 `eval` 各自创建 `batch/v1 Job`，身份绑定 TaskID 且不会碰撞或交叉清理；`command` 不被注入评测协议 |
 | Agent 评测状态与完成 | Pod Running 不作为评测完成；阶段和终态上报绑定当前执行与 Pod 身份；最终归档、进程退出和 Kubernetes Job 状态按明确顺序收敛 |
 | 自动防重 | `restartPolicy: Never`、`backoffLimit: 0` 保持有效；同一 execution identity/attempt 只允许一个 Pod UID 认领成功，replacement Pod 在启动 Harbor 前被拒绝；显式新 attempt 才能重新执行 |
 | 类型校验与恢复 | 类型缺失、未知或无权使用时明确拒绝；已接受 Job 的类型在持久化、执行、状态查询和恢复中保持一致，不退化为默认类型 |

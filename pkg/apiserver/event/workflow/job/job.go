@@ -223,7 +223,7 @@ func initJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore
 		jobCtl = NewDeployAdoptedPodDisruptionBudgetJobCtl(job, client, store, ack, shareLocker)
 	case string(config.JobDeployNetworkPolicy):
 		jobCtl = NewDeployAdoptedNetworkPolicyJobCtl(job, client, store, ack, shareLocker)
-	case string(config.JobDeployInstant), string(config.JobCommand), string(config.JobAgentEvaluation):
+	case string(config.JobDeployInstant), string(config.JobCommand), string(config.JobEval):
 		jobCtl = NewInstantJobCtl(job, client, store, ack)
 	case string(config.JobDeployScheduled):
 		jobCtl = NewScheduledJobCtl(job, client, store, ack)
