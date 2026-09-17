@@ -64,7 +64,7 @@ func EvaluationRunnerTerminal(record *model.JobInfo) (string, bool, error) {
 // the durable instant Job checkpoint together with that attempt's deadline.
 // The caller owns the returned bytes.
 func EvaluationRunnerCheckpoint(record *model.JobInfo) (json.RawMessage, int64, error) {
-	if record == nil || record.Type != string(config.JobAgentEvaluation) || record.ExecutionKey == nil {
+	if record == nil || record.Type != string(config.JobEval) || record.ExecutionKey == nil {
 		return nil, 0, fmt.Errorf("evaluation runner checkpoint identity is incomplete")
 	}
 	task := &model.JobTask{
@@ -84,7 +84,7 @@ func SetEvaluationRunnerCheckpoint(record *model.JobInfo, state json.RawMessage)
 	if len(state) == 0 || !json.Valid(state) {
 		return fmt.Errorf("evaluation runner state is invalid")
 	}
-	if record == nil || record.Type != string(config.JobAgentEvaluation) || record.ExecutionKey == nil {
+	if record == nil || record.Type != string(config.JobEval) || record.ExecutionKey == nil {
 		return fmt.Errorf("evaluation runner checkpoint identity is incomplete")
 	}
 	task := &model.JobTask{

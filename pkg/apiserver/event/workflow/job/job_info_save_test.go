@@ -115,7 +115,7 @@ func evaluationCheckpoint(t *testing.T, task *model.JobTask, sequence uint64) st
 
 func TestSaveJobInfoPreservesConcurrentEvaluationRunnerCheckpoint(t *testing.T) {
 	task := retryTestTask(t, &workflowconfig.JobRetryPolicy{OnOOM: "stop"})
-	task.JobType, task.WorkspaceID, task.Status = string(config.JobAgentEvaluation), "space", config.StatusCompleted
+	task.JobType, task.WorkspaceID, task.Status = string(config.JobEval), "space", config.StatusCompleted
 	task.InternalInfo = evaluationCheckpoint(t, task, 0)
 	executionKey := task.ExecutionKey
 	store := &jobInfoSaveStore{existing: []*model.JobInfo{{
@@ -136,7 +136,7 @@ func TestSaveJobInfoPreservesConcurrentEvaluationRunnerCheckpoint(t *testing.T) 
 
 func TestNewEvaluationAttemptDoesNotInheritRunnerCheckpoint(t *testing.T) {
 	task := retryTestTask(t, retryTestPolicy())
-	task.JobType, task.WorkspaceID = string(config.JobAgentEvaluation), "space"
+	task.JobType, task.WorkspaceID = string(config.JobEval), "space"
 	executionKey := task.ExecutionKey
 	existing := &model.JobInfo{Type: task.JobType, TaskID: task.TaskID, WorkspaceID: task.WorkspaceID, ExecutionKey: &executionKey,
 		RunGeneration: task.RunGeneration, Attempt: 1, InternalInfo: evaluationCheckpoint(t, task, 3)}

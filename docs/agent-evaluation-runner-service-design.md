@@ -1,18 +1,18 @@
 # Harbor Runner 单实例认领与阶段状态协议
 
-> 状态：Implemented Reference。`main` 已实现 Harbor 0.22.0 Runner、空间 `agent_evaluation` Job、任务包下载、最终结果上传、ArtifactStore，以及本文记录的单实例认领、阶段、心跳、进度与终态协议。Current 对外契约以 [空间 Job API](workspace-jobs-api.md) 和 [Harbor Runner](../runners/harbor/README.md) 为准。
+> 状态：Implemented Reference。`main` 已实现 Harbor 0.22.0 Runner、空间 `eval` Job、任务包下载、最终结果上传、ArtifactStore，以及本文记录的单实例认领、阶段、心跳、进度与终态协议。Current 对外契约以 [空间 Job API](workspace-jobs-api.md) 和 [Harbor Runner](../runners/harbor/README.md) 为准。
 
 > 本文解释实现边界和故障模型；更广的 Agent、MCP、Judge 与质量门禁仍见 Proposal 文档，不属于本状态协议。
 
 ## 1. 定位与已确认决策
 
-Harbor Runner 是 `agent_evaluation` Kubernetes Job Pod 中的主进程。它下载已验证的原生 Harbor 任务包，启动并监督 `harbor run`，收集原始输出，生成完整结果归档并通过 Eruun 内部 HTTP 接口上传。
+Harbor Runner 是 `eval` Kubernetes Job Pod 中的主进程。它下载已验证的原生 Harbor 任务包，启动并监督 `harbor run`，收集原始输出，生成完整结果归档并通过 Eruun 内部 HTTP 接口上传。
 
 Kubernetes 工作负载状态与评测业务状态并不等价：Pod `Running` 只说明 Runner 进程仍在运行，评测可能处于准备、执行或结果归档阶段，也可能已经发生可诊断的业务失败；Pod terminating 时还可能短暂出现 replacement Pod。增量协议先原子确定唯一执行者，再让 Runner 主动上报阶段状态；当整个 Runner OOM、崩溃、被驱逐或与节点一同丢失时，Eruun 仍使用 Kubernetes Job、Pod、容器终止状态和事件兜底。
 
 | 决策 | 选择 |
 | --- | --- |
-| 使用范围 | 只扩展 `agent_evaluation`；不包装、不约束 `command` 用户镜像 |
+| 使用范围 | 只扩展 `eval`；不包装、不约束 `command` 用户镜像 |
 | Kubernetes 载体 | 保持现有 `batch/v1 Job`，Pod `restartPolicy: Never`，Job `backoffLimit: 0` |
 | 镜像 | 演进现有 `runners/harbor` 镜像，不创建新的通用基础镜像或 Runner 实体 |
 | 进程模型 | Runner 作为容器主进程监督 Harbor 子进程，并主动向 Eruun 发出 HTTP 请求 |
@@ -21,13 +21,13 @@ Kubernetes 工作负载状态与评测业务状态并不等价：Pod `Running` �
 | 结果 | 继续使用现有 results 接口和 ArtifactStore；状态事件不传输大型结果、日志或数据集正文 |
 | 故障兜底 | Runner 能通信时提交业务证据；Runner 整体失效时由 Kubernetes 证据收敛 |
 
-本设计不把 `config.JobType`、Kubernetes resource kind 和 Runner 协议混成一个分类。公开业务类型仍是 `agent_evaluation`，Kubernetes 载体仍由现有 builder 生成。
+本设计不把 `config.JobType`、Kubernetes resource kind 和 Runner 协议混成一个分类。公开业务类型仍是 `eval`，Kubernetes 载体仍由现有 builder 生成。
 
 ## 2. Current 基线与增量缺口
 
 ### 2.1 已实现能力
 
-- `/api/v1/jobs` 接受 `agent_evaluation`，持久化认证空间的 WorkspaceID、服务端生成的 TaskID、JobSpec 和任务绑定能力。
+- `/api/v1/jobs` 接受 `eval`，持久化认证空间的 WorkspaceID、服务端生成的 TaskID、JobSpec 和任务绑定能力。
 - `pkg/apiserver/jobs/builder.go` 使用固定 Harbor Runner 镜像构建 `batch/v1 Job`，并设置执行 deadline 与结果归档宽限期。
 - `runners/harbor/runner.py` 已作为容器主进程处理信号、启动 Harbor 子进程、判断原生结果、生成完整归档并重试上传。
 - `GET /api/v1/job-runners/:taskID/dataset` 与 `POST /api/v1/job-runners/:taskID/results` 已提供任务包下载和最终结果上传。
@@ -108,7 +108,7 @@ Runner 只主动访问 Eruun，不需要 Eruun 连接短生命周期 Pod IP，�
 
 ## 5. 镜像与进程模型
 
-现有 `runners/harbor/Dockerfile` 是 `agent_evaluation` 专用执行镜像。镜像以 UID/GID 1000 运行，入口为 `python /opt/eruun/runner.py`；Runner 是容器主进程，Harbor 是它监督的子进程。
+现有 `runners/harbor/Dockerfile` 是 `eval` 专用执行镜像。镜像以 UID/GID 1000 运行，入口为 `python /opt/eruun/runner.py`；Runner 是容器主进程，Harbor 是它监督的子进程。
 
 如果后续引入 shell entrypoint，它只能校验只读启动文件并使用 `exec` 启动 Runner，不能承载状态机、HTTP 重试或子进程监督。例如：
 
@@ -206,7 +206,7 @@ phase 只允许 `preparing/running/finalizing`。progress 只包含非负且单�
 ### 8.1 正常执行
 
 ```text
-POST /api/v1/jobs (agent_evaluation)
+POST /api/v1/jobs (eval)
   -> persist WorkspaceID / TaskID / JobSpec / task capability
   -> Scheduler and Worker establish execution ownership
   -> persist JobInfo ExecutionKey / RunGeneration / Attempt
@@ -279,7 +279,7 @@ HTTP 增强只能缩小业务状态盲区，不能保证硬 OOM、节点丢失�
 
 ## 12. Kubernetes Job 与安全契约
 
-外层 `agent_evaluation` Job 保持以下 Current 约束：
+外层 `eval` Job 保持以下 Current 约束：
 
 - 使用 `batch/v1 Job`，Pod `restartPolicy: Never`，Job `backoffLimit: 0`。
 - 名称、labels、annotations、owner Job UID 和清理条件绑定 TaskID 与执行身份。
@@ -374,4 +374,4 @@ Runner Pod 使用 `eruun-evaluation-runner` ServiceAccount，并为该 Pod 显�
 6. Runner SA、trial SA、NetworkPolicy、Secret 脱敏和日志安全验证。
 7. 公共查询映射、运维指标、告警、升级与回滚文档。
 
-协议采用严格切换：发布前停止新评测并等待或取消全部旧 `agent_evaluation` Job，确认旧 Runner 已排空后再升级服务和镜像。真实集群矩阵未完成时 PR 保持 Draft；单元测试或 fake client 不能替代生产 CNI、节点故障和控制面恢复验证。
+协议采用严格切换：发布前停止新评测并等待或取消全部旧 `eval` Job，确认旧 Runner 已排空后再升级服务和镜像。真实集群矩阵未完成时 PR 保持 Draft；单元测试或 fake client 不能替代生产 CNI、节点故障和控制面恢复验证。

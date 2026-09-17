@@ -8,7 +8,7 @@
 
 向量化是 AI Runtime 的批处理数据能力：从受控数据源读取内容，完成解析、切分和 embedding，把向量与可追溯元数据写入目标存储，并产出可查询、可审计的结果摘要。
 
-它应复用 Eruun 的 Workflow、空间 Job、权限、取消、超时、日志和执行 ownership，不创建第二套调度器。当前 `main` 已提供无 AppID 的 `command` / `agent_evaluation`、Kubernetes `batch/v1 Job` 生命周期和评测制品基础，但还没有向量化专用输入、结果或 Provider 契约。
+它应复用 Eruun 的 Workflow、空间 Job、权限、取消、超时、日志和执行 ownership，不创建第二套调度器。当前 `main` 已提供无 AppID 的 `command` / `eval`、Kubernetes `batch/v1 Job` 生命周期和评测制品基础，但还没有向量化专用输入、结果或 Provider 契约。
 
 任务身份与归属遵循 [AI Runtime 的共用原则](ai-runtime-vision.md#41-任务执行身份与应用归属)：独立向量化原型可以使用现有 `command` Job，由服务端从认证上下文持久化 WorkspaceID、生成 TaskID，不绑定 AppID 或创建占位应用。数据源、embedding 端点和目标存储仍是需要单独授权的输入引用，不决定任务所有权。作为应用 Workflow 步骤运行属于后续范围，届时继承已有归属和 TaskID。
 
@@ -111,7 +111,7 @@ Embedding Provider 只需要表达批量输入、模型 revision、维度、用�
 - 独立 `command` 的 WorkspaceID/TaskID、取消、超时、lease、fencing 和状态查询。
 - Kubernetes `batch/v1 Job`、`restartPolicy: Never`、`backoffLimit: 0`，以及允许的 Secret/envFrom、storage、resources 和 securityPolicy。
 - 账号、workspace 授权和统一错误响应。
-- 已有评测 ArtifactStore 的空间授权、摘要、保留与多目标保存模式可作为结果治理参考，但不能直接复用仅服务 `agent_evaluation` 的内部 Runner 接口。
+- 已有评测 ArtifactStore 的空间授权、摘要、保留与多目标保存模式可作为结果治理参考，但不能直接复用仅服务 `eval` 的内部 Runner 接口。
 
 需要实现并验证：
 

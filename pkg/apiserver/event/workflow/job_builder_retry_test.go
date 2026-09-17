@@ -73,7 +73,7 @@ func TestRestoreRunningRetryCheckpointKeepsExecutionAndLeaseGenerationsSeparate(
 }
 
 func TestWorkspaceJobRecoveryPreservesExecutionIdentityAcrossLeaseReplacement(t *testing.T) {
-	for _, jobType := range []config.JobType{config.JobCommand, config.JobAgentEvaluation} {
+	for _, jobType := range []config.JobType{config.JobCommand, config.JobEval} {
 		t.Run(string(jobType), func(t *testing.T) {
 			const priority = config.JobPriorityNormal
 			task := &model.WorkflowQueue{TaskID: "workspace-task", WorkspaceID: "space", Type: config.WorkflowTaskTypeJob,

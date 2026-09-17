@@ -56,7 +56,7 @@ func CleanupRecoveredCancelledJobsPage(ctx context.Context, client kubernetes.In
 			In: []datastore.InQueryOption{{
 				Key: "type", Values: []string{
 					string(config.JobDeployInstant), string(config.JobCommand),
-					string(config.JobAgentEvaluation), string(config.JobDeployScheduled),
+					string(config.JobEval), string(config.JobDeployScheduled),
 				},
 			}},
 			Queries: []datastore.FuzzyQueryOption{{Key: "scheduling_reason", Query: cancelledJobCleanupPending}},
