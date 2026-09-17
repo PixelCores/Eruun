@@ -3,10 +3,12 @@ package clients
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/segmentio/kafka-go"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/kubernetes/fake"
@@ -622,4 +624,23 @@ func TestNewRedisClientPingFailure(t *testing.T) {
 		CacheDB:   0,
 	})
 	require.Error(t, err)
+}
+
+func TestNewRedisClientPreservesTimeoutAndRetryDefaults(t *testing.T) {
+	server := miniredis.RunT(t)
+	port, err := strconv.Atoi(server.Port())
+	require.NoError(t, err)
+
+	client, err := NewRedisClient(config.RedisCacheConfig{
+		CacheHost: server.Host(),
+		CacheProt: port,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, client.Close()) })
+
+	options := client.Options()
+	require.Equal(t, 3*time.Second, options.ReadTimeout)
+	require.Equal(t, 3*time.Second, options.WriteTimeout)
+	require.Equal(t, 8*time.Millisecond, options.MinRetryBackoff)
+	require.Equal(t, 512*time.Millisecond, options.MaxRetryBackoff)
 }
