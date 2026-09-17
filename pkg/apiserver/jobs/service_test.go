@@ -89,6 +89,32 @@ func TestSubmitCommandUsesWorkspaceQueueWithoutApplication(t *testing.T) {
 	require.ErrorIs(t, err, bcode.ErrForbidden)
 }
 
+func TestSubmitEvalUsesAuthorizedWorkspaceAndKeepsInternalJobType(t *testing.T) {
+	service, raw, ctx := testJobService(t)
+	datasetID := "11111111-1111-1111-1111-111111111111"
+	require.NoError(t, raw.Add(ctx, &model.JobArtifact{ID: datasetID, WorkspaceID: "space", Kind: artifacts.KindDataset, Digest: strings.Repeat("a", 64)}))
+	request := SubmitRequest{JobSpec: spec.JobSpec{Name: "sleep", Type: "eval", Spec: json.RawMessage(`{"datasetId":"` + datasetID + `","agent":{"name":"oracle"}}`)}}
+	accepted, err := service.Submit(ctx, request)
+	require.NoError(t, err)
+	require.Equal(t, "space", accepted.WorkspaceID)
+	require.Equal(t, "eval", accepted.Type)
+	parent := &model.WorkflowQueue{TaskID: accepted.TaskID}
+	require.NoError(t, raw.Get(ctx, parent))
+	require.Equal(t, "space", parent.WorkspaceID)
+	require.True(t, validateRunnerDeclaration(parent.JobSpec))
+	task, err := BuildTask(ctx, service.Store, service.Config, parent, "space-ns")
+	require.NoError(t, err)
+	require.Equal(t, string(config.JobEval), task.JobType)
+	detail, err := service.Get(ctx, accepted.TaskID)
+	require.NoError(t, err)
+	require.Equal(t, "eval", detail.Type)
+	require.Equal(t, "pending", detail.CollectionState)
+
+	request.WorkspaceID = "other"
+	_, err = service.Submit(ctx, request)
+	require.ErrorIs(t, err, bcode.ErrForbidden)
+}
+
 type runnerFixture struct {
 	service  *Service
 	raw      *sqlstore.Driver
@@ -104,7 +130,7 @@ func newRunnerFixture(t *testing.T) *runnerFixture {
 	service, raw, ctx := testJobService(t)
 	dataset := &model.JobArtifact{ID: "11111111-1111-1111-1111-111111111111", WorkspaceID: "space", Kind: artifacts.KindDataset, Digest: strings.Repeat("a", 64)}
 	require.NoError(t, raw.Add(ctx, dataset))
-	accepted, err := service.Submit(ctx, SubmitRequest{WorkspaceID: "space", JobSpec: spec.JobSpec{Name: "evaluate", Type: "agent_evaluation", Spec: json.RawMessage(`{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"11111111-1111-1111-1111-111111111111","agent":{"name":"oracle"}}`)}})
+	accepted, err := service.Submit(ctx, SubmitRequest{WorkspaceID: "space", JobSpec: spec.JobSpec{Name: "evaluate", Type: "eval", Spec: json.RawMessage(`{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"11111111-1111-1111-1111-111111111111","agent":{"name":"oracle"}}`)}})
 	require.NoError(t, err)
 	parent := &model.WorkflowQueue{TaskID: accepted.TaskID}
 	require.NoError(t, raw.Get(ctx, parent))
@@ -120,7 +146,7 @@ func newRunnerFixture(t *testing.T) *runnerFixture {
 	workload.UID = "original-job"
 	checkpoint, err := json.Marshal(map[string]any{"kind": "instant_job_retry", "version": 1, "attempt": 1, "job": workload, "currentUID": workload.UID, "deadline": time.Now().Add(time.Hour).UnixNano()})
 	require.NoError(t, err)
-	record := &model.JobInfo{Type: string(config.JobAgentEvaluation), TaskID: parent.TaskID, WorkspaceID: "space", ServiceName: workload.Name, Status: string(config.StatusRunning), ExecutionKey: ptr.To(task.ExecutionKey), RunGeneration: 2, Attempt: 1, InternalInfo: string(checkpoint)}
+	record := &model.JobInfo{Type: string(config.JobEval), TaskID: parent.TaskID, WorkspaceID: "space", ServiceName: workload.Name, Status: string(config.StatusRunning), ExecutionKey: ptr.To(task.ExecutionKey), RunGeneration: 2, Attempt: 1, InternalInfo: string(checkpoint)}
 	require.NoError(t, raw.Add(ctx, record))
 	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: workload.Name + "-pod", Namespace: workload.Namespace, UID: "original-pod", Annotations: workload.Spec.Template.Annotations,
 		OwnerReferences: []metav1.OwnerReference{{APIVersion: "batch/v1", Kind: "Job", Name: workload.Name, UID: workload.UID, Controller: ptr.To(true)}}}, Spec: workload.Spec.Template.Spec}

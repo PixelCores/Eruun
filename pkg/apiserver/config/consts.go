@@ -116,7 +116,7 @@ const (
 	JobResourceImportScan        JobType = "resource_import_scan"
 	JobResourceImportManage      JobType = "resource_import_manage"
 	JobCommand                   JobType = "command"
-	JobAgentEvaluation           JobType = "agent_evaluation"
+	JobEval                      JobType = "eval"
 )
 
 const (
@@ -427,7 +427,7 @@ func ParseComponentAction(action string) ComponentAction {
 
 // IsWorkspaceJobType identifies the public, app-less executable Job types.
 func IsWorkspaceJobType(value JobType) bool {
-	return value == JobCommand || value == JobAgentEvaluation
+	return value == JobCommand || value == JobEval
 }
 
 // IsInstantJobType identifies workloads sharing the durable Kubernetes Job lifecycle.

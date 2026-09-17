@@ -66,7 +66,7 @@ func prepareEvaluationJob(obj map[string]interface{}, access evaluationRunnerAcc
 }
 
 func PrepareEvaluationTask(task *model.JobTask, w *model.Workspace, cfg spec.WorkspaceConfig, image string) error {
-	if task == nil || w == nil || task.JobType != string(config.JobAgentEvaluation) || task.AppID != "" || task.WorkspaceID != w.ID || task.Namespace != w.Namespace {
+	if task == nil || w == nil || task.JobType != string(config.JobEval) || task.AppID != "" || task.WorkspaceID != w.ID || task.Namespace != w.Namespace {
 		return bcode.ErrForbidden
 	}
 	raw, err := json.Marshal(task.JobInfo)

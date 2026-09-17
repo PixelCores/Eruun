@@ -64,7 +64,7 @@ func TestBuildCommandJobRejectsAmbiguousOrUnsupportedTraits(t *testing.T) {
 }
 
 func TestWorkspaceJobTypesUseDurableStopCheckpoint(t *testing.T) {
-	for _, jobType := range []config.JobType{config.JobCommand, config.JobAgentEvaluation} {
+	for _, jobType := range []config.JobType{config.JobCommand, config.JobEval} {
 		t.Run(string(jobType), func(t *testing.T) {
 			task := retryTestTask(t, &workflowconfig.JobRetryPolicy{OnOOM: "stop"})
 			task.JobType, task.WorkspaceID = string(jobType), "space"
@@ -83,7 +83,7 @@ func TestWorkspaceJobTypesUseDurableStopCheckpoint(t *testing.T) {
 }
 
 func TestWorkspaceJobCleanupWaitsForCommittedResult(t *testing.T) {
-	for _, jobType := range []config.JobType{config.JobCommand, config.JobAgentEvaluation} {
+	for _, jobType := range []config.JobType{config.JobCommand, config.JobEval} {
 		t.Run(string(jobType), func(t *testing.T) {
 			task := retryTestTask(t, &workflowconfig.JobRetryPolicy{OnOOM: "stop"})
 			task.JobType, task.WorkspaceID = string(jobType), "space"
@@ -93,7 +93,7 @@ func TestWorkspaceJobCleanupWaitsForCommittedResult(t *testing.T) {
 			live.Status.Conditions = []batchv1.JobCondition{{Type: batchv1.JobComplete, Status: corev1.ConditionTrue}}
 			checkpoint := instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Attempt: 1,
 				Deadline: time.Now().Add(time.Hour).UnixNano(), Job: live, CurrentUID: live.UID}
-			if jobType == config.JobAgentEvaluation {
+			if jobType == config.JobEval {
 				checkpoint.Runner = json.RawMessage(`{"terminal":{"outcome":"succeeded","collectionComplete":true}}`)
 			}
 			raw, err := json.Marshal(checkpoint)
@@ -105,7 +105,7 @@ func TestWorkspaceJobCleanupWaitsForCommittedResult(t *testing.T) {
 			_, err = client.BatchV1().Jobs(live.Namespace).Get(context.Background(), live.Name, metav1.GetOptions{})
 			require.NoError(t, err, "finalization cannot delete before SaveInfo")
 			store := &workspaceJobArtifactStore{}
-			if jobType == config.JobAgentEvaluation {
+			if jobType == config.JobEval {
 				store.artifact = &model.JobArtifact{WorkspaceID: task.WorkspaceID, TaskID: task.TaskID, Kind: "source", Summary: json.RawMessage(`{"collectionComplete":true}`)}
 			}
 			ctl := NewInstantJobCtl(task, client, store, func() {})
@@ -140,7 +140,7 @@ func TestEvaluationCleanupRetainsResultsUntilArchiveIsCommitted(t *testing.T) {
 	for _, status := range []config.Status{config.StatusCompleted, config.StatusFailed, config.StatusCancelled, config.StatusTimeout} {
 		t.Run(string(status), func(t *testing.T) {
 			task := retryTestTask(t, &workflowconfig.JobRetryPolicy{OnOOM: "stop"})
-			task.JobType, task.WorkspaceID, task.Status = string(config.JobAgentEvaluation), "space", status
+			task.JobType, task.WorkspaceID, task.Status = string(config.JobEval), "space", status
 			live := task.JobInfo.(*batchv1.Job).DeepCopy()
 			live.UID, live.ResourceVersion = "owned-job", "1"
 			live.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
@@ -180,7 +180,7 @@ func TestEvaluationCleanupRetainsResultsUntilArchiveIsCommitted(t *testing.T) {
 
 func TestEvaluationExitWithoutArchiveIsFailedAndRetained(t *testing.T) {
 	task := retryTestTask(t, &workflowconfig.JobRetryPolicy{OnOOM: "stop"})
-	task.JobType, task.WorkspaceID = string(config.JobAgentEvaluation), "space"
+	task.JobType, task.WorkspaceID = string(config.JobEval), "space"
 	ttl := int32(90 * 86400)
 	task.JobInfo.(*batchv1.Job).Spec.TTLSecondsAfterFinished = &ttl
 	store := &workspaceJobArtifactStore{}
@@ -197,7 +197,7 @@ func TestEvaluationExitWithoutArchiveIsFailedAndRetained(t *testing.T) {
 }
 
 func TestWorkspaceJobPayloadCarriesRunnerExecutionIdentity(t *testing.T) {
-	for _, jobType := range []config.JobType{config.JobCommand, config.JobAgentEvaluation} {
+	for _, jobType := range []config.JobType{config.JobCommand, config.JobEval} {
 		task := retryTestTask(t, &workflowconfig.JobRetryPolicy{OnOOM: "stop"})
 		task.JobType = string(jobType)
 		ApplyExecutionIdentity(task)
