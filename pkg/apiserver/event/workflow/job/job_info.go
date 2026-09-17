@@ -146,8 +146,8 @@ func saveExecutionJobInfo(ctx context.Context, store datastore.DataStore, job *m
 }
 
 func preserveEvaluationRunnerCheckpoint(existing, desired *model.JobInfo) error {
-	if existing == nil || desired == nil || existing.Type != string(config.JobAgentEvaluation) ||
-		desired.Type != string(config.JobAgentEvaluation) || existing.Attempt != desired.Attempt ||
+	if existing == nil || desired == nil || existing.Type != string(config.JobEval) ||
+		desired.Type != string(config.JobEval) || existing.Attempt != desired.Attempt ||
 		existing.RunGeneration != desired.RunGeneration || jobInfoExecutionKey(*existing) != jobInfoExecutionKey(*desired) {
 		return nil
 	}

@@ -389,7 +389,7 @@ func subtleTokenMismatch(left, right string) bool {
 }
 
 func validateLockedRunnerJob(record *model.JobInfo, auth *runnerAuthorization, parentStatus config.Status) error {
-	if record == nil || auth == nil || !runnerJobStatusAuthorized(record, parentStatus) || record.Type != string(config.JobAgentEvaluation) ||
+	if record == nil || auth == nil || !runnerJobStatusAuthorized(record, parentStatus) || record.Type != string(config.JobEval) ||
 		record.WorkspaceID != auth.job.WorkspaceID || record.TaskID != auth.job.TaskID || record.ExecutionKey == nil || auth.job.ExecutionKey == nil ||
 		*record.ExecutionKey != *auth.job.ExecutionKey || record.RunGeneration != auth.job.RunGeneration || record.Attempt != auth.job.Attempt {
 		return bcode.ErrUnauthorized
@@ -475,7 +475,7 @@ func runnerStatus(record *model.JobInfo, now time.Time) (*RunnerStatus, error) {
 func latestRunnerStatus(ctx context.Context, store datastore.DataStore, records []*model.JobInfo) (*RunnerStatus, error) {
 	var latest *model.JobInfo
 	for _, record := range records {
-		if record == nil || record.Type != string(config.JobAgentEvaluation) || record.ExecutionKey == nil {
+		if record == nil || record.Type != string(config.JobEval) || record.ExecutionKey == nil {
 			continue
 		}
 		if latest == nil || record.RunGeneration > latest.RunGeneration ||
@@ -503,5 +503,5 @@ func latestRunnerStatus(ctx context.Context, store datastore.DataStore, records 
 
 func validateRunnerDeclaration(raw string) bool {
 	var declaration spec.JobSpec
-	return json.Unmarshal([]byte(raw), &declaration) == nil && declaration.Type == string(config.JobAgentEvaluation)
+	return json.Unmarshal([]byte(raw), &declaration) == nil && declaration.Type == string(config.JobEval)
 }

@@ -34,7 +34,7 @@ func TestScopedJobAdmissionLifecycle(t *testing.T) {
 		detached bool
 	}{
 		{name: "command", workflow: config.WorkflowTaskTypeJob, job: config.JobCommand},
-		{name: "agent evaluation", workflow: config.WorkflowTaskTypeJob, job: config.JobAgentEvaluation},
+		{name: "eval", workflow: config.WorkflowTaskTypeJob, job: config.JobEval},
 		{name: "import scan", workflow: config.WorkflowTaskTypeResourceImportScan, job: config.JobResourceImportScan},
 		{name: "import manage", workflow: config.WorkflowTaskTypeResourceImportManage, job: config.JobResourceImportManage},
 		{name: "application", job: config.JobDeployService, app: true},
@@ -212,6 +212,8 @@ func TestScopedJobAdmissionTransactionUsesCanonicalApplicationWorkspace(t *testi
 }
 
 func TestWorkspaceJobScopeRequiresMatchingPersistedParent(t *testing.T) {
+	legacy := &model.WorkflowQueue{Type: config.WorkflowTaskTypeJob, JobSpec: `{"type":"agent_evaluation"}`}
+	require.Empty(t, workspaceTaskJobType(legacy))
 	service, _, _ := testAccounts(t)
 	ctx := WithScope(context.Background(), Scope{WorkspaceID: "allowed", Namespace: "allowed-ns"})
 	raw := service.Repo.Store
@@ -227,7 +229,7 @@ func TestWorkspaceJobScopeRequiresMatchingPersistedParent(t *testing.T) {
 		{"matching command", "allowed", "command", false},
 		{"scoped query", "allowed", "", false},
 		{"wrong workspace", "other", "command", true},
-		{"wrong type", "allowed", "agent_evaluation", true},
+		{"wrong type", "allowed", "eval", true},
 		{"internal operation", "allowed", "cleanup_resources", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
