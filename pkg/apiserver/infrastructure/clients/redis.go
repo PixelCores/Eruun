@@ -13,10 +13,14 @@ import (
 func NewRedisClient(cfg config.RedisCacheConfig) (*redis.Client, error) {
 	addr := fmt.Sprintf("%s:%d", cfg.CacheHost, cfg.CacheProt)
 	cli := redis.NewClient(&redis.Options{
-		Addr:     addr,
-		Username: cfg.UserName,
-		Password: cfg.Password,
-		DB:       int(cfg.CacheDB),
+		Addr:            addr,
+		Username:        cfg.UserName,
+		Password:        cfg.Password,
+		DB:              int(cfg.CacheDB),
+		ReadTimeout:     3 * time.Second,
+		WriteTimeout:    3 * time.Second,
+		MinRetryBackoff: 8 * time.Millisecond,
+		MaxRetryBackoff: 512 * time.Millisecond,
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
