@@ -312,6 +312,10 @@ func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, 
 	case config.SecretJob:
 		c.deleteSecretForComponent(ctx, componentPtr, &props, reporter)
 	case config.InstantJob:
+		if component.Traits != nil && component.Traits.Properties()["evaluation"] != nil {
+			c.deleteEvaluationJobsForComponent(ctx, componentPtr, reporter)
+			break
+		}
 		result := job.GenerateInstantJob(componentPtr, &props, props.RunPolicy)
 		jobNS := componentPtr.Namespace
 		jobName := naming.JobName(component.Name, component.ResourceNameKey())
@@ -337,6 +341,38 @@ func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, 
 	c.deleteServiceForComponent(ctx, componentPtr, &props, reporter)
 	c.deleteIngressForComponent(ctx, componentPtr, reporter)
 	return nil
+}
+
+func (c *applicationsServiceImpl) deleteEvaluationJobsForComponent(ctx context.Context, component *model.ApplicationComponent, reporter *cleanupReporter) {
+	ns := component.Namespace
+	appID, componentName := strings.TrimSpace(component.AppID), strings.TrimSpace(component.Name)
+	if c.KubeClient == nil || appID == "" || componentName == "" {
+		reporter.record("Job", ns, component.Name, fmt.Errorf("evaluation cleanup requires a Kubernetes client and component identity"))
+		return
+	}
+	selector := labels.Set{
+		config.LabelAppID:         appID,
+		config.LabelComponentName: naming.BoundedLabelValue(componentName),
+	}.AsSelector().String()
+	opCtx, cancel := context.WithTimeout(ctx, config.DefaultApplicationCleanupTimeout)
+	jobs, err := c.KubeClient.BatchV1().Jobs(ns).List(opCtx, metav1.ListOptions{LabelSelector: selector})
+	cancel()
+	if err != nil {
+		reporter.record("Job", ns, component.Name, fmt.Errorf("list evaluation Jobs: %w", err))
+		return
+	}
+	for i := range jobs.Items {
+		item := &jobs.Items[i]
+		err := c.deleteNamespaced(ctx, ns, func(deleteCtx context.Context, namespace string) error {
+			propagation := metav1.DeletePropagationBackground
+			options := metav1.DeleteOptions{PropagationPolicy: &propagation}
+			if item.UID != "" {
+				options.Preconditions = &metav1.Preconditions{UID: &item.UID}
+			}
+			return c.KubeClient.BatchV1().Jobs(namespace).Delete(deleteCtx, item.Name, options)
+		})
+		reporter.record("Job", ns, item.Name, err)
+	}
 }
 
 func (c *applicationsServiceImpl) deleteServiceForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, reporter *cleanupReporter) {

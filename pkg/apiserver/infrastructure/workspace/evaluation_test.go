@@ -64,7 +64,7 @@ func TestEvaluationTransportLimitsServiceAccountException(t *testing.T) {
 			require.NoError(t, err)
 			ctx := context.Background()
 			if tc.trusted {
-				ctx = WithEvaluationRunner(ctx, "task", "runner:0.22.0")
+				ctx = WithEvaluationRunner(ctx, "eruun-job-task", "runner:0.22.0")
 			}
 			req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://cluster/apis/batch/v1/namespaces/space/jobs", bytes.NewReader(body))
 			require.NoError(t, err)
@@ -122,4 +122,41 @@ func TestEnsureEvaluationRunnerPreservesRestrictedNamespace(t *testing.T) {
 	ns, err := client.CoreV1().Namespaces().Get(ctx, space.Namespace, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Equal(t, "restricted", ns.Labels["pod-security.kubernetes.io/enforce"])
+}
+
+func TestEvaluationTransportScopesMultipleWorkflowJobs(t *testing.T) {
+	first := WithEvaluationRunner(context.Background(), "evaluation-first", "runner:0.22.0")
+	both := WithEvaluationRunner(first, "evaluation-second", "runner:0.22.0")
+	for _, tc := range []struct {
+		name        string
+		ctx         context.Context
+		jobName     string
+		wantAllowed bool
+	}{
+		{"first", both, "evaluation-first", true},
+		{"second", both, "evaluation-second", true},
+		{"foreign", both, "evaluation-other", false},
+		{"parent context stays immutable", first, "evaluation-second", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			obj := evaluationObject()
+			mapAt(obj, "metadata")["name"] = tc.jobName
+			raw, err := json.Marshal(obj)
+			require.NoError(t, err)
+			req, err := http.NewRequestWithContext(tc.ctx, http.MethodPost, "https://cluster/apis/batch/v1/namespaces/space/jobs", bytes.NewReader(raw))
+			require.NoError(t, err)
+			called := false
+			transport := &tenantTransport{namespace: "space", next: evaluationTransport(func(*http.Request) (*http.Response, error) {
+				called = true
+				return &http.Response{StatusCode: 201, Body: http.NoBody}, nil
+			})}
+			_, err = transport.RoundTrip(req)
+			require.Equal(t, tc.wantAllowed, called)
+			if tc.wantAllowed {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, bcode.ErrForbidden)
+			}
+		})
+	}
 }

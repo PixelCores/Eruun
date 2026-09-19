@@ -308,13 +308,13 @@ func (c *InstantJobCtl) evaluationSourceReady(ctx context.Context) (bool, error)
 	if outcome == "" || !terminalComplete || (c.job.Status == config.StatusCompleted && outcome != "succeeded") {
 		return false, nil
 	}
-	rows, err := c.store.List(ctx, &model.JobArtifact{WorkspaceID: c.job.WorkspaceID, TaskID: c.job.TaskID, Kind: "source"}, &datastore.ListOptions{Page: 1, PageSize: 1})
+	rows, err := c.store.List(ctx, &model.JobArtifact{WorkspaceID: c.job.WorkspaceID, TaskID: c.job.TaskID, ExecutionKey: c.job.ExecutionKey, Kind: "source"}, &datastore.ListOptions{Page: 1, PageSize: 1})
 	if err != nil {
 		return false, err
 	}
 	for _, row := range rows {
 		artifact, ok := row.(*model.JobArtifact)
-		if ok && artifact.WorkspaceID == c.job.WorkspaceID && artifact.TaskID == c.job.TaskID && artifact.Kind == "source" {
+		if ok && artifact.WorkspaceID == c.job.WorkspaceID && artifact.TaskID == c.job.TaskID && artifact.ExecutionKey == c.job.ExecutionKey && artifact.Kind == "source" {
 			var summary struct {
 				CollectionComplete bool `json:"collectionComplete"`
 			}

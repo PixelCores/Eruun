@@ -890,9 +890,12 @@ func (c *applicationsServiceImpl) findTemplateApplication(ctx context.Context, n
 func prepareComponents(appID, namespace string, reqComponents []apisv1.CreateComponentRequest) ([]*model.ApplicationComponent, error) {
 	components := make([]*model.ApplicationComponent, 0, len(reqComponents))
 	for idx, reqComponent := range reqComponents {
+		if err := spec.NormalizeComponentEvaluation(string(reqComponent.ComponentType), reqComponent.Image, reqComponent.Properties, &reqComponent.Traits); err != nil {
+			return nil, fmt.Errorf("%w: component[%d]: %v", bcode.ErrApplicationConfig, idx, err)
+		}
 		if (reqComponent.ComponentType == config.ServerJob ||
 			reqComponent.ComponentType == config.StoreJob ||
-			reqComponent.ComponentType == config.InstantJob ||
+			(reqComponent.ComponentType == config.InstantJob && reqComponent.Traits.Evaluation == nil) ||
 			reqComponent.ComponentType == config.ScheduledJob) && reqComponent.Image == "" {
 			return nil, bcode.ErrComponentNotImageSet
 		}
@@ -959,6 +962,9 @@ func validateExplicitServiceTraitNames(traits apisv1.Traits, fieldPrefix string)
 }
 
 func validateComponentTraitsForWrite(componentType config.JobType, traits apisv1.Traits, fieldPrefix string) error {
+	if err := spec.NormalizeComponentEvaluation(string(componentType), "", spec.Properties{}, &traits); err != nil {
+		return fmt.Errorf("%w: %s: %v", bcode.ErrApplicationConfig, fieldPrefix, err)
+	}
 	for i, ingress := range traits.Ingress {
 		if errors := traitvalidation.ValidateIngressTraitSpec(ingress, fmt.Sprintf("%s.ingress[%d]", fieldPrefix, i)); len(errors) > 0 {
 			return fmt.Errorf("%w: %s", bcode.ErrApplicationConfig, errors[0].Message)

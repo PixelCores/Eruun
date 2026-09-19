@@ -147,6 +147,7 @@ func saveExecutionJobInfo(ctx context.Context, store datastore.DataStore, job *m
 
 func preserveEvaluationRunnerCheckpoint(existing, desired *model.JobInfo) error {
 	if existing == nil || desired == nil || existing.Type != string(config.JobEval) ||
+		strings.TrimSpace(existing.InternalInfo) == "" ||
 		desired.Type != string(config.JobEval) || existing.Attempt != desired.Attempt ||
 		existing.RunGeneration != desired.RunGeneration || jobInfoExecutionKey(*existing) != jobInfoExecutionKey(*desired) {
 		return nil
@@ -303,6 +304,7 @@ func versionUpdateCleanupJobInfoUpdates(jobInfo model.JobInfo, includeInternalIn
 		"start_time":       jobInfo.StartTime,
 		"end_time":         jobInfo.EndTime,
 		"info":             jobInfo.Info,
+		"evaluation_info":  jobInfo.EvaluationInfo,
 		"service_name":     jobInfo.ServiceName,
 		"error":            jobInfo.Error,
 		"production":       jobInfo.Production,
@@ -338,6 +340,7 @@ func copyJobInfoRecord(existing *model.JobInfo, jobInfo model.JobInfo) {
 	existing.EndTime = jobInfo.EndTime
 	existing.Info = jobInfo.Info
 	existing.InternalInfo = jobInfo.InternalInfo
+	existing.EvaluationInfo = jobInfo.EvaluationInfo
 	existing.ServiceName = jobInfo.ServiceName
 	existing.Error = jobInfo.Error
 	existing.Production = jobInfo.Production
@@ -507,6 +510,15 @@ func loadJobInfos(ctx context.Context, store datastore.DataStore, taskID, jobTyp
 	query := &model.JobInfo{TaskID: strings.TrimSpace(taskID)}
 	if isResourceImportJobType(config.JobType(jobType)) || config.IsWorkspaceJobType(config.JobType(jobType)) {
 		if scope, ok := access.FromContext(ctx); ok {
+			if config.JobType(jobType) == config.JobEval {
+				parent := &model.WorkflowQueue{TaskID: query.TaskID}
+				if err := store.Get(ctx, parent); err != nil {
+					return nil, fmt.Errorf("resolve job parent scope: %w", err)
+				}
+				// Evaluation Jobs may belong to either an Application workflow or
+				// an independent Job. Preserve that persisted ownership distinction.
+				query.AppID = parent.AppID
+			}
 			query.WorkspaceID = scope.WorkspaceID
 		}
 	}
@@ -552,6 +564,7 @@ func buildJobInfoRecord(job *model.JobTask) model.JobInfo {
 		EndTime:        job.EndTime,
 		Info:           job.Info,
 		InternalInfo:   job.InternalInfo,
+		EvaluationInfo: job.EvaluationInfo,
 		Error:          job.Error,
 		ServiceName:    resolveJobServiceName(job),
 		RunGeneration:  job.RunGeneration,

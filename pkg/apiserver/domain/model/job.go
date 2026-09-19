@@ -22,6 +22,7 @@ type JobInfo struct {
 	EndTime               int64                `json:"end_time" bson:"end_time" gorm:"column:end_time"`
 	Info                  string               `json:"service_type" gorm:"type:longtext;column:info"`
 	InternalInfo          string               `json:"-" gorm:"type:longtext;column:internal_info"`
+	EvaluationInfo        string               `json:"-" gorm:"type:longtext;column:evaluation_info"`
 	ServiceName           string               `json:"service_name" gorm:"type:varchar(255);column:service_name"`
 	Error                 string               `json:"error" gorm:"type:text;column:error"`
 	Production            bool                 `json:"production" gorm:"column:production"`                  // 是否生产
@@ -61,6 +62,7 @@ type JobTask struct {
 	EndTime         int64
 	Info            string
 	InternalInfo    string
+	EvaluationInfo  string `json:"-"`
 	Error           string
 	Timeout         int64
 	RetryCount      int    //重试次数

@@ -65,7 +65,9 @@ func (t *tenantTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			if json.Unmarshal(raw, &obj) != nil || obj == nil {
 				return nil, bcode.ErrForbidden
 			}
-			access, evaluation := req.Context().Value(evaluationRunnerKey{}).(evaluationRunnerAccess)
+			entries, _ := req.Context().Value(evaluationRunnerKey{}).(map[string]evaluationRunnerAccess)
+			name, _ := mapAt(obj, "metadata")["name"].(string)
+			access, evaluation := entries[name]
 			if evaluation && resource == "jobs" && mapAt(mapAt(obj, "spec"), "template") != nil {
 				if namespace, ok := mapAt(obj, "metadata")["namespace"].(string); ok && namespace != "" && namespace != t.namespace {
 					err = bcode.ErrForbidden

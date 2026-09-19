@@ -295,15 +295,19 @@ func RunJobs(ctx context.Context, jobs []*model.JobTask, concurrency int, client
 				continue
 			}
 			if config.IsWorkspaceJobType(config.JobType(task.JobType)) {
-				if task.AppID != "" || task.TaskID == "" || task.WorkspaceID != scope.WorkspaceID {
+				if task.TaskID == "" || task.WorkspaceID != scope.WorkspaceID || (task.AppID != "" && task.JobType != string(config.JobEval)) {
 					return fmt.Errorf("job workspace does not match execution scope")
 				}
-				if err := access.NewStore(store).Check(ctx, &model.JobInfo{
-					TaskID: task.TaskID, WorkspaceID: task.WorkspaceID, Type: task.JobType,
-				}); err != nil {
-					return fmt.Errorf("authorize workspace job: %w", err)
+				if task.AppID == "" {
+					if err := access.NewStore(store).Check(ctx, &model.JobInfo{
+						TaskID: task.TaskID, WorkspaceID: task.WorkspaceID, Type: task.JobType,
+					}); err != nil {
+						return fmt.Errorf("authorize workspace job: %w", err)
+					}
+					continue
 				}
-				continue
+				// Application evaluations use the same application ownership check
+				// as other component executions below.
 			}
 			if task.AppID == "" {
 				return fmt.Errorf("job application is missing")

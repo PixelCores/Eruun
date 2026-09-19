@@ -7,6 +7,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
@@ -266,6 +267,9 @@ func componentUpdateSpecToResolvedComponent(spec apisv1.ComponentUpdateSpec) (ap
 		}
 		resolved.Traits = *spec.Traits
 	}
+	if err := domainspec.NormalizeComponentEvaluation(string(resolved.ComponentType), resolved.Image, resolved.Properties, &resolved.Traits); err != nil {
+		return apisv1.CreateComponentRequest{}, fmt.Errorf("%w: %v", bcode.ErrApplicationConfig, err)
+	}
 	return resolved, nil
 }
 
@@ -295,6 +299,9 @@ func applyComponentUpdateSpecToResolvedComponent(current apisv1.CreateComponentR
 			return apisv1.CreateComponentRequest{}, err
 		}
 		current.Traits = *spec.Traits
+	}
+	if err := domainspec.NormalizeComponentEvaluation(string(current.ComponentType), current.Image, current.Properties, &current.Traits); err != nil {
+		return apisv1.CreateComponentRequest{}, fmt.Errorf("%w: %v", bcode.ErrApplicationConfig, err)
 	}
 	return current, nil
 }

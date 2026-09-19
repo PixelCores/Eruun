@@ -1,12 +1,12 @@
-# 空间 Job 与 Harbor Agent 评测需求基线
+# 空间 Job 与 Harbor LLM 评测需求基线
 
-> 状态：Implemented Reference。2026-09-08 经需求讨论确认并先于实现落地，作为本次实现和验收依据。可执行契约与首版边界见 [空间 Job API](workspace-jobs-api.md)；此基线不扩张实现文档列出的框架支持范围。
+> 状态：Implemented Reference。2026-09-08 的需求基线于 2026-09-19 按 LLM 评测与共享 evaluation Trait 修订。可执行契约与首版边界见 [空间 Job API](workspace-jobs-api.md)；此基线不扩张实现文档列出的框架支持范围。
 
 ## 目标与边界
 
-用户在所属空间中提交一次性 Job。普通命令任务与 Agent 能力评测属于同一套任务生命周期，通过 `type` 区分为 `command` 和 `eval`。平台生成唯一 `taskId`；独立 Job 不要求 `appId`，不创建占位 Application 或 Component。
+用户在所属空间中提交一次性 Job。普通命令与 LLM 评测属于同一套生命周期。命令使用 `type: command` + `spec`，评测使用 `type: job` + `traits.evaluation`。同一评测 Trait 可用于 Application 顶层 job 组件，沿用所在 Workflow 的 AppID/TaskID，以 ExecutionKey 区分各评测。平台生成唯一 `taskId`；独立 Job 不要求 `appId`，不创建占位 Application 或 Component。
 
-复用现有 WorkflowQueue、JobInfo、调度、执行租约和取消机制。业务类型描述任务目的，执行框架描述评测方式；两者不混用。首版只接入 Harbor，后续框架通过评测规格扩展，不为每个框架增加 Trait 或平行调度器。
+复用现有 WorkflowQueue、JobInfo、调度、执行租约和取消机制。evaluation Trait 描述测评目的，model 与 agent 并列，后者是执行 harness。当前只接入 Harbor，env 采用 ack，框架版本由 Runner 固定和记录；不增加 framework 选择器或平行调度器。
 
 首版范围为后端 API、持久化、Kubernetes 执行、结果访问和保存。无需前端页面、人工作品审核流程、平台镜像构建或新的客户端 CLI。发布为新的实现 PR，原设计 PR 不作为实现完成的证据。
 
@@ -15,18 +15,18 @@
 1. 管理员预配置数据库及 MinIO 存储连接。用户注册后获得与所属空间权限一致的存储使用能力；连接凭据不交给用户。
 2. 用户上传包含题目、输入文件、任务环境定义和判定规则的原生 Harbor 任务包。任务包可复用，平台记录其内容摘要与空间归属。
 3. 用户在本地构建任务环境镜像并推送到集群可访问的仓库。任务包引用已构建镜像；平台不执行 Dockerfile 构建。
-4. 用户选择 Harbor 已适配的 Agent、模型和凭据，提交 `eval` Job，指定任务包、运行资源、结果保存目标及策略。
+4. 用户选择 Harbor 已适配的 Agent、模型和凭据，提交评测 Job，指定任务包、运行资源、结果保存目标及策略。
 5. 平台运行 Harbor，由 Harbor 驱动 Agent 执行任务并调用用户提供的 verifier，采集框架产生的全部数据。
 6. 评测执行结束后，平台自动启动结果保存。用户分别查看执行状态及各目标的保存状态，并下载被授权的数据。
 7. 保存失败时可单独重试保存，复用已有原始结果，不再次调用 Agent 或重新测评。
 
 ## Job 规格
 
-公共字段承载名称、类型与空间归属。`spec` 承载类型专属业务输入，`traits` 只描述已有资源、挂载、环境和安全等运行能力。
+公共字段承载名称、类型与空间归属。普通命令的镜像与命令保留在 `spec`；评测业务输入直接由 `traits.evaluation` 描述。资源和 Secret 环境变量使用已有 Trait，单个 trial 资源可在 `sandboxResources` 中单独配置。
 
-| 维度 | `command` | `eval` |
+| 维度 | `command` | `job` + `traits.evaluation` |
 | --- | --- | --- |
-| 业务输入 | 容器镜像与命令 | 框架、任务包、Agent、模型、框架运行参数 |
+| 业务输入 | 容器镜像与命令 | env、任务包、model、agent、尝试次数、并发和预算 |
 | 框架 | 无 | 首版 Harbor，固定受支持版本 |
 | 身份 | 平台生成 TaskID，所属空间 namespace | 同左 |
 | 应用关联 | 不需要 AppID | 不需要 AppID |
@@ -78,7 +78,7 @@ Harbor Runner 与它启动的任务环境均位于任务所属空间。具体容
 
 ## 验收依据
 
-- `command` 与 `eval` 在同一空间运行，各自获得平台生成的 TaskID，且不依赖 AppID。
+- 普通命令与评测 在同一空间运行，各自获得平台生成的 TaskID，且不依赖 AppID。
 - 原生 Harbor 任务包可以上传、复用；示例使用用户可在本机构建的预构建环境镜像与 Harbor 适配的 Agent。
 - Agent 执行、verifier 调用、框架错误、取消和超时均可观测，结果包含原始完整文件。
 - API 支持获取任务与保存状态、读取或下载结果、选择 MinIO/数据库及独立重试保存。

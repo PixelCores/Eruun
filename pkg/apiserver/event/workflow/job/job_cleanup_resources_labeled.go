@@ -51,7 +51,12 @@ func (c *CleanupResourcesJobCtl) deleteLabeledWorkloads(ctx context.Context, ns 
 		for i := range list.Items {
 			item := &list.Items[i]
 			c.deleteTrackedResource(ctx, deleted, domainspec.ResourceJob, item.Namespace, item.Name, false, func(deleteCtx context.Context) error {
-				return c.deleteJob(deleteCtx, item.Namespace, item.Name)
+				propagation := metav1.DeletePropagationBackground
+				options := metav1.DeleteOptions{PropagationPolicy: &propagation}
+				if item.UID != "" {
+					options.Preconditions = &metav1.Preconditions{UID: &item.UID}
+				}
+				return c.client.BatchV1().Jobs(item.Namespace).Delete(deleteCtx, item.Name, options)
 			})
 		}
 	}

@@ -12682,6 +12682,7 @@ type AppSpecTraits struct {
 	SecurityPolicy *AppKubeCoreSecurityContext `protobuf:"bytes,12,opt,name=security_policy,json=securityPolicy,proto3" json:"security_policy,omitempty"`
 	Share          *AppSpecShareTraitSpec      `protobuf:"bytes,13,opt,name=share,proto3" json:"share,omitempty"`
 	Rollout        *AppSpecRolloutTraitSpec    `protobuf:"bytes,14,opt,name=rollout,proto3" json:"rollout,omitempty"`
+	Evaluation     *EvaluationTrait            `protobuf:"bytes,15,opt,name=evaluation,proto3" json:"evaluation,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -12814,6 +12815,226 @@ func (x *AppSpecTraits) GetRollout() *AppSpecRolloutTraitSpec {
 	return nil
 }
 
+func (x *AppSpecTraits) GetEvaluation() *EvaluationTrait {
+	if x != nil {
+		return x.Evaluation
+	}
+	return nil
+}
+
+// Shared by standalone Job and Application component declarations.
+type EvaluationTrait struct {
+	state            protoimpl.MessageState     `protogen:"open.v1"`
+	Env              string                     `protobuf:"bytes,1,opt,name=env,proto3" json:"env,omitempty"`
+	Model            string                     `protobuf:"bytes,2,opt,name=model,proto3" json:"model,omitempty"`
+	Agent            string                     `protobuf:"bytes,3,opt,name=agent,proto3" json:"agent,omitempty"`
+	TaskPackageId    string                     `protobuf:"bytes,4,opt,name=task_package_id,json=taskPackageId,proto3" json:"task_package_id,omitempty"`
+	Attempts         int32                      `protobuf:"varint,5,opt,name=attempts,proto3" json:"attempts,omitempty"`
+	Concurrency      int32                      `protobuf:"varint,6,opt,name=concurrency,proto3" json:"concurrency,omitempty"`
+	TimeoutSeconds   int64                      `protobuf:"varint,7,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
+	SandboxResources *AppSpecResourceTraitsSpec `protobuf:"bytes,8,opt,name=sandbox_resources,json=sandboxResources,proto3" json:"sandbox_resources,omitempty"`
+	ResultPolicy     *JobResultPolicy           `protobuf:"bytes,9,opt,name=result_policy,json=resultPolicy,proto3" json:"result_policy,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *EvaluationTrait) Reset() {
+	*x = EvaluationTrait{}
+	mi := &file_eruun_v1_applications_proto_msgTypes[171]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EvaluationTrait) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EvaluationTrait) ProtoMessage() {}
+
+func (x *EvaluationTrait) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_applications_proto_msgTypes[171]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EvaluationTrait.ProtoReflect.Descriptor instead.
+func (*EvaluationTrait) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{171}
+}
+
+func (x *EvaluationTrait) GetEnv() string {
+	if x != nil {
+		return x.Env
+	}
+	return ""
+}
+
+func (x *EvaluationTrait) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *EvaluationTrait) GetAgent() string {
+	if x != nil {
+		return x.Agent
+	}
+	return ""
+}
+
+func (x *EvaluationTrait) GetTaskPackageId() string {
+	if x != nil {
+		return x.TaskPackageId
+	}
+	return ""
+}
+
+func (x *EvaluationTrait) GetAttempts() int32 {
+	if x != nil {
+		return x.Attempts
+	}
+	return 0
+}
+
+func (x *EvaluationTrait) GetConcurrency() int32 {
+	if x != nil {
+		return x.Concurrency
+	}
+	return 0
+}
+
+func (x *EvaluationTrait) GetTimeoutSeconds() int64 {
+	if x != nil {
+		return x.TimeoutSeconds
+	}
+	return 0
+}
+
+func (x *EvaluationTrait) GetSandboxResources() *AppSpecResourceTraitsSpec {
+	if x != nil {
+		return x.SandboxResources
+	}
+	return nil
+}
+
+func (x *EvaluationTrait) GetResultPolicy() *JobResultPolicy {
+	if x != nil {
+		return x.ResultPolicy
+	}
+	return nil
+}
+
+type JobResultTarget struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
+	Mode          string                 `protobuf:"bytes,2,opt,name=mode,proto3" json:"mode,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JobResultTarget) Reset() {
+	*x = JobResultTarget{}
+	mi := &file_eruun_v1_applications_proto_msgTypes[172]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobResultTarget) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobResultTarget) ProtoMessage() {}
+
+func (x *JobResultTarget) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_applications_proto_msgTypes[172]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobResultTarget.ProtoReflect.Descriptor instead.
+func (*JobResultTarget) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{172}
+}
+
+func (x *JobResultTarget) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *JobResultTarget) GetMode() string {
+	if x != nil {
+		return x.Mode
+	}
+	return ""
+}
+
+type JobResultPolicy struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RetentionDays int32                  `protobuf:"varint,1,opt,name=retention_days,json=retentionDays,proto3" json:"retention_days,omitempty"`
+	Targets       []*JobResultTarget     `protobuf:"bytes,2,rep,name=targets,proto3" json:"targets,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JobResultPolicy) Reset() {
+	*x = JobResultPolicy{}
+	mi := &file_eruun_v1_applications_proto_msgTypes[173]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobResultPolicy) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobResultPolicy) ProtoMessage() {}
+
+func (x *JobResultPolicy) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_applications_proto_msgTypes[173]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobResultPolicy.ProtoReflect.Descriptor instead.
+func (*JobResultPolicy) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{173}
+}
+
+func (x *JobResultPolicy) GetRetentionDays() int32 {
+	if x != nil {
+		return x.RetentionDays
+	}
+	return 0
+}
+
+func (x *JobResultPolicy) GetTargets() []*JobResultTarget {
+	if x != nil {
+		return x.Targets
+	}
+	return nil
+}
+
 type AppSpecValueSource struct {
 	state         protoimpl.MessageState        `protogen:"open.v1"`
 	Static        *string                       `protobuf:"bytes,1,opt,name=static,proto3,oneof" json:"static,omitempty"`
@@ -12826,7 +13047,7 @@ type AppSpecValueSource struct {
 
 func (x *AppSpecValueSource) Reset() {
 	*x = AppSpecValueSource{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[171]
+	mi := &file_eruun_v1_applications_proto_msgTypes[174]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12838,7 +13059,7 @@ func (x *AppSpecValueSource) String() string {
 func (*AppSpecValueSource) ProtoMessage() {}
 
 func (x *AppSpecValueSource) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[171]
+	mi := &file_eruun_v1_applications_proto_msgTypes[174]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12851,7 +13072,7 @@ func (x *AppSpecValueSource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecValueSource.ProtoReflect.Descriptor instead.
 func (*AppSpecValueSource) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{171}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{174}
 }
 
 func (x *AppSpecValueSource) GetStatic() string {
@@ -12896,7 +13117,7 @@ type AppWorkflowConfigJobRetryPolicy struct {
 
 func (x *AppWorkflowConfigJobRetryPolicy) Reset() {
 	*x = AppWorkflowConfigJobRetryPolicy{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[172]
+	mi := &file_eruun_v1_applications_proto_msgTypes[175]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12908,7 +13129,7 @@ func (x *AppWorkflowConfigJobRetryPolicy) String() string {
 func (*AppWorkflowConfigJobRetryPolicy) ProtoMessage() {}
 
 func (x *AppWorkflowConfigJobRetryPolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[172]
+	mi := &file_eruun_v1_applications_proto_msgTypes[175]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12921,7 +13142,7 @@ func (x *AppWorkflowConfigJobRetryPolicy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppWorkflowConfigJobRetryPolicy.ProtoReflect.Descriptor instead.
 func (*AppWorkflowConfigJobRetryPolicy) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{172}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{175}
 }
 
 func (x *AppWorkflowConfigJobRetryPolicy) GetOnOom() string {
@@ -14210,7 +14431,7 @@ const file_eruun_v1_applications_proto_rawDesc = "" +
 	"\rstorage_class\x18\v \x01(\tR\fstorageClass\"?\n" +
 	"\x15AppSpecTCPSocketProbe\x12\x12\n" +
 	"\x04port\x18\x01 \x01(\x05R\x04port\x12\x12\n" +
-	"\x04host\x18\x02 \x01(\tR\x04host\"\xbb\a\n" +
+	"\x04host\x18\x02 \x01(\tR\x04host\"\xf6\a\n" +
 	"\rAppSpecTraits\x122\n" +
 	"\x04init\x18\x01 \x03(\v2\x1e.eruun.v1.AppSpecInitTraitSpecR\x04init\x12;\n" +
 	"\astorage\x18\x02 \x03(\v2!.eruun.v1.AppSpecStorageTraitSpecR\astorage\x12<\n" +
@@ -14226,10 +14447,29 @@ const file_eruun_v1_applications_proto_rawDesc = "" +
 	"\tresources\x18\v \x01(\v2#.eruun.v1.AppSpecResourceTraitsSpecR\tresources\x12M\n" +
 	"\x0fsecurity_policy\x18\f \x01(\v2$.eruun.v1.AppKubeCoreSecurityContextR\x0esecurityPolicy\x125\n" +
 	"\x05share\x18\r \x01(\v2\x1f.eruun.v1.AppSpecShareTraitSpecR\x05share\x12;\n" +
-	"\arollout\x18\x0e \x01(\v2!.eruun.v1.AppSpecRolloutTraitSpecR\arollout\x1a@\n" +
+	"\arollout\x18\x0e \x01(\v2!.eruun.v1.AppSpecRolloutTraitSpecR\arollout\x129\n" +
+	"\n" +
+	"evaluation\x18\x0f \x01(\v2\x19.eruun.v1.EvaluationTraitR\n" +
+	"evaluation\x1a@\n" +
 	"\x12TargetWorkEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xde\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xf0\x02\n" +
+	"\x0fEvaluationTrait\x12\x10\n" +
+	"\x03env\x18\x01 \x01(\tR\x03env\x12\x14\n" +
+	"\x05model\x18\x02 \x01(\tR\x05model\x12\x14\n" +
+	"\x05agent\x18\x03 \x01(\tR\x05agent\x12&\n" +
+	"\x0ftask_package_id\x18\x04 \x01(\tR\rtaskPackageId\x12\x1a\n" +
+	"\battempts\x18\x05 \x01(\x05R\battempts\x12 \n" +
+	"\vconcurrency\x18\x06 \x01(\x05R\vconcurrency\x12'\n" +
+	"\x0ftimeout_seconds\x18\a \x01(\x03R\x0etimeoutSeconds\x12P\n" +
+	"\x11sandbox_resources\x18\b \x01(\v2#.eruun.v1.AppSpecResourceTraitsSpecR\x10sandboxResources\x12>\n" +
+	"\rresult_policy\x18\t \x01(\v2\x19.eruun.v1.JobResultPolicyR\fresultPolicy\"9\n" +
+	"\x0fJobResultTarget\x12\x12\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x12\x12\n" +
+	"\x04mode\x18\x02 \x01(\tR\x04mode\"m\n" +
+	"\x0fJobResultPolicy\x12%\n" +
+	"\x0eretention_days\x18\x01 \x01(\x05R\rretentionDays\x123\n" +
+	"\atargets\x18\x02 \x03(\v2\x19.eruun.v1.JobResultTargetR\atargets\"\xde\x01\n" +
 	"\x12AppSpecValueSource\x12\x1b\n" +
 	"\x06static\x18\x01 \x01(\tH\x00R\x06static\x88\x01\x01\x12;\n" +
 	"\x06secret\x18\x02 \x01(\v2#.eruun.v1.AppSpecSecretSelectorSpecR\x06secret\x12>\n" +
@@ -14308,7 +14548,7 @@ func file_eruun_v1_applications_proto_rawDescGZIP() []byte {
 	return file_eruun_v1_applications_proto_rawDescData
 }
 
-var file_eruun_v1_applications_proto_msgTypes = make([]protoimpl.MessageInfo, 195)
+var file_eruun_v1_applications_proto_msgTypes = make([]protoimpl.MessageInfo, 198)
 var file_eruun_v1_applications_proto_goTypes = []any{
 	(*CanonicalJSONSchema)(nil),                           // 0: eruun.v1.CanonicalJSONSchema
 	(*ApplicationListRequest)(nil),                        // 1: eruun.v1.ApplicationListRequest
@@ -14481,34 +14721,37 @@ var file_eruun_v1_applications_proto_goTypes = []any{
 	(*AppSpecStorageTraitSpec)(nil),                       // 168: eruun.v1.AppSpecStorageTraitSpec
 	(*AppSpecTCPSocketProbe)(nil),                         // 169: eruun.v1.AppSpecTCPSocketProbe
 	(*AppSpecTraits)(nil),                                 // 170: eruun.v1.AppSpecTraits
-	(*AppSpecValueSource)(nil),                            // 171: eruun.v1.AppSpecValueSource
-	(*AppWorkflowConfigJobRetryPolicy)(nil),               // 172: eruun.v1.AppWorkflowConfigJobRetryPolicy
-	nil,                                                   // 173: eruun.v1.AppDTOComponentIngressInfo.AnnotationsEntry
-	nil,                                                   // 174: eruun.v1.AppDTOComponentIngressRouteInfo.HeadersEntry
-	nil,                                                   // 175: eruun.v1.AppDTOComponentUpdateSpec.EnvEntry
-	nil,                                                   // 176: eruun.v1.AppDTOWorkflowCallback.MethodsEntry
-	nil,                                                   // 177: eruun.v1.AppDTOWorkflowCallback.HeadersEntry
-	nil,                                                   // 178: eruun.v1.AppDTOWorkflowStepApproval.HeadersEntry
-	nil,                                                   // 179: eruun.v1.AppSpecIngressRoute.HeadersEntry
-	nil,                                                   // 180: eruun.v1.AppSpecIngressTraitsSpec.LabelEntry
-	nil,                                                   // 181: eruun.v1.AppSpecIngressTraitsSpec.AnnotationsEntry
-	nil,                                                   // 182: eruun.v1.AppSpecProperties.EnvEntry
-	nil,                                                   // 183: eruun.v1.AppSpecProperties.ConfEntry
-	nil,                                                   // 184: eruun.v1.AppSpecProperties.SecretEntry
-	nil,                                                   // 185: eruun.v1.AppSpecProperties.LabelsEntry
-	nil,                                                   // 186: eruun.v1.AppSpecRBACPolicySpec.ServiceAccountLabelsEntry
-	nil,                                                   // 187: eruun.v1.AppSpecRBACPolicySpec.ServiceAccountAnnotationsEntry
-	nil,                                                   // 188: eruun.v1.AppSpecRBACPolicySpec.RoleLabelsEntry
-	nil,                                                   // 189: eruun.v1.AppSpecRBACPolicySpec.BindingLabelsEntry
-	nil,                                                   // 190: eruun.v1.AppSpecServiceTraitSpec.SelectorEntry
-	nil,                                                   // 191: eruun.v1.AppSpecServiceTraitSpec.LabelsEntry
-	nil,                                                   // 192: eruun.v1.AppSpecSidecarTraitsSpec.EnvEntry
-	nil,                                                   // 193: eruun.v1.AppSpecTraits.TargetWorkEnvEntry
-	nil,                                                   // 194: eruun.v1.AppWorkflowConfigJobRetryPolicy.MaxResourcesEntry
-	(*timestamppb.Timestamp)(nil),                         // 195: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),                               // 196: google.protobuf.Struct
-	(*structpb.Value)(nil),                                // 197: google.protobuf.Value
-	(*emptypb.Empty)(nil),                                 // 198: google.protobuf.Empty
+	(*EvaluationTrait)(nil),                               // 171: eruun.v1.EvaluationTrait
+	(*JobResultTarget)(nil),                               // 172: eruun.v1.JobResultTarget
+	(*JobResultPolicy)(nil),                               // 173: eruun.v1.JobResultPolicy
+	(*AppSpecValueSource)(nil),                            // 174: eruun.v1.AppSpecValueSource
+	(*AppWorkflowConfigJobRetryPolicy)(nil),               // 175: eruun.v1.AppWorkflowConfigJobRetryPolicy
+	nil,                                                   // 176: eruun.v1.AppDTOComponentIngressInfo.AnnotationsEntry
+	nil,                                                   // 177: eruun.v1.AppDTOComponentIngressRouteInfo.HeadersEntry
+	nil,                                                   // 178: eruun.v1.AppDTOComponentUpdateSpec.EnvEntry
+	nil,                                                   // 179: eruun.v1.AppDTOWorkflowCallback.MethodsEntry
+	nil,                                                   // 180: eruun.v1.AppDTOWorkflowCallback.HeadersEntry
+	nil,                                                   // 181: eruun.v1.AppDTOWorkflowStepApproval.HeadersEntry
+	nil,                                                   // 182: eruun.v1.AppSpecIngressRoute.HeadersEntry
+	nil,                                                   // 183: eruun.v1.AppSpecIngressTraitsSpec.LabelEntry
+	nil,                                                   // 184: eruun.v1.AppSpecIngressTraitsSpec.AnnotationsEntry
+	nil,                                                   // 185: eruun.v1.AppSpecProperties.EnvEntry
+	nil,                                                   // 186: eruun.v1.AppSpecProperties.ConfEntry
+	nil,                                                   // 187: eruun.v1.AppSpecProperties.SecretEntry
+	nil,                                                   // 188: eruun.v1.AppSpecProperties.LabelsEntry
+	nil,                                                   // 189: eruun.v1.AppSpecRBACPolicySpec.ServiceAccountLabelsEntry
+	nil,                                                   // 190: eruun.v1.AppSpecRBACPolicySpec.ServiceAccountAnnotationsEntry
+	nil,                                                   // 191: eruun.v1.AppSpecRBACPolicySpec.RoleLabelsEntry
+	nil,                                                   // 192: eruun.v1.AppSpecRBACPolicySpec.BindingLabelsEntry
+	nil,                                                   // 193: eruun.v1.AppSpecServiceTraitSpec.SelectorEntry
+	nil,                                                   // 194: eruun.v1.AppSpecServiceTraitSpec.LabelsEntry
+	nil,                                                   // 195: eruun.v1.AppSpecSidecarTraitsSpec.EnvEntry
+	nil,                                                   // 196: eruun.v1.AppSpecTraits.TargetWorkEnvEntry
+	nil,                                                   // 197: eruun.v1.AppWorkflowConfigJobRetryPolicy.MaxResourcesEntry
+	(*timestamppb.Timestamp)(nil),                         // 198: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),                               // 199: google.protobuf.Struct
+	(*structpb.Value)(nil),                                // 200: google.protobuf.Value
+	(*emptypb.Empty)(nil),                                 // 201: google.protobuf.Empty
 }
 var file_eruun_v1_applications_proto_depIdxs = []int32{
 	27,  // 0: eruun.v1.ApplicationCronJobs.jobs:type_name -> eruun.v1.AppDTOCronJobInfo
@@ -14529,14 +14772,14 @@ var file_eruun_v1_applications_proto_depIdxs = []int32{
 	77,  // 15: eruun.v1.DiffUpdateVersionRPCRequest.request:type_name -> eruun.v1.AppDTODiffUpdateVersionRequest
 	30,  // 16: eruun.v1.AppDTOCreateAndExecApplicationResponse.application:type_name -> eruun.v1.AppDTOApplicationBase
 	29,  // 17: eruun.v1.AppDTOCreateAndExecApplicationResponse.allowed_actions:type_name -> eruun.v1.AppDTOAllowedAction
-	195, // 18: eruun.v1.AppDTOCronJobInfo.last_schedule_time:type_name -> google.protobuf.Timestamp
-	195, // 19: eruun.v1.AppDTOCronJobInfo.last_successful_time:type_name -> google.protobuf.Timestamp
-	195, // 20: eruun.v1.AppDTOCronJobInfo.create_time:type_name -> google.protobuf.Timestamp
-	195, // 21: eruun.v1.AppDTOScheduledJobInfo.create_time:type_name -> google.protobuf.Timestamp
-	195, // 22: eruun.v1.AppDTOScheduledJobInfo.update_time:type_name -> google.protobuf.Timestamp
-	196, // 23: eruun.v1.AppDTOAllowedAction.body:type_name -> google.protobuf.Struct
-	195, // 24: eruun.v1.AppDTOApplicationBase.create_time:type_name -> google.protobuf.Timestamp
-	195, // 25: eruun.v1.AppDTOApplicationBase.update_time:type_name -> google.protobuf.Timestamp
+	198, // 18: eruun.v1.AppDTOCronJobInfo.last_schedule_time:type_name -> google.protobuf.Timestamp
+	198, // 19: eruun.v1.AppDTOCronJobInfo.last_successful_time:type_name -> google.protobuf.Timestamp
+	198, // 20: eruun.v1.AppDTOCronJobInfo.create_time:type_name -> google.protobuf.Timestamp
+	198, // 21: eruun.v1.AppDTOScheduledJobInfo.create_time:type_name -> google.protobuf.Timestamp
+	198, // 22: eruun.v1.AppDTOScheduledJobInfo.update_time:type_name -> google.protobuf.Timestamp
+	199, // 23: eruun.v1.AppDTOAllowedAction.body:type_name -> google.protobuf.Struct
+	198, // 24: eruun.v1.AppDTOApplicationBase.create_time:type_name -> google.protobuf.Timestamp
+	198, // 25: eruun.v1.AppDTOApplicationBase.update_time:type_name -> google.protobuf.Timestamp
 	35,  // 26: eruun.v1.AppDTOApplicationBase.resources:type_name -> eruun.v1.AppDTOApplicationResources
 	155, // 27: eruun.v1.AppDTOApplicationComponent.properties:type_name -> eruun.v1.AppSpecProperties
 	170, // 28: eruun.v1.AppDTOApplicationComponent.traits:type_name -> eruun.v1.AppSpecTraits
@@ -14546,21 +14789,21 @@ var file_eruun_v1_applications_proto_depIdxs = []int32{
 	59,  // 32: eruun.v1.AppDTOApplicationComponent.resource_configs:type_name -> eruun.v1.AppDTOComponentResourceConfig
 	55,  // 33: eruun.v1.AppDTOApplicationComponent.credentials:type_name -> eruun.v1.AppDTOComponentCredentialInfo
 	85,  // 34: eruun.v1.AppDTOApplicationComponent.external_links:type_name -> eruun.v1.AppDTOExternalLink
-	195, // 35: eruun.v1.AppDTOApplicationComponent.create_time:type_name -> google.protobuf.Timestamp
-	195, // 36: eruun.v1.AppDTOApplicationComponent.update_time:type_name -> google.protobuf.Timestamp
+	198, // 35: eruun.v1.AppDTOApplicationComponent.create_time:type_name -> google.protobuf.Timestamp
+	198, // 36: eruun.v1.AppDTOApplicationComponent.update_time:type_name -> google.protobuf.Timestamp
 	32,  // 37: eruun.v1.AppDTOApplicationComponentStatusResponse.components:type_name -> eruun.v1.AppDTOApplicationComponentStatus
 	131, // 38: eruun.v1.AppDTOApplicationLifecycleRequest.callback:type_name -> eruun.v1.AppDTOWorkflowCallback
-	195, // 39: eruun.v1.AppDTOApplicationTask.create_time:type_name -> google.protobuf.Timestamp
-	195, // 40: eruun.v1.AppDTOApplicationTask.update_time:type_name -> google.protobuf.Timestamp
+	198, // 39: eruun.v1.AppDTOApplicationTask.create_time:type_name -> google.protobuf.Timestamp
+	198, // 40: eruun.v1.AppDTOApplicationTask.update_time:type_name -> google.protobuf.Timestamp
 	29,  // 41: eruun.v1.AppDTOApplicationTask.allowed_actions:type_name -> eruun.v1.AppDTOAllowedAction
-	195, // 42: eruun.v1.AppDTOApplicationWithComponents.create_time:type_name -> google.protobuf.Timestamp
-	195, // 43: eruun.v1.AppDTOApplicationWithComponents.update_time:type_name -> google.protobuf.Timestamp
+	198, // 42: eruun.v1.AppDTOApplicationWithComponents.create_time:type_name -> google.protobuf.Timestamp
+	198, // 43: eruun.v1.AppDTOApplicationWithComponents.update_time:type_name -> google.protobuf.Timestamp
 	35,  // 44: eruun.v1.AppDTOApplicationWithComponents.resources:type_name -> eruun.v1.AppDTOApplicationResources
 	40,  // 45: eruun.v1.AppDTOApplicationWithComponents.components:type_name -> eruun.v1.AppDTOBatchApplicationComponent
 	135, // 46: eruun.v1.AppDTOApplicationWorkflow.steps:type_name -> eruun.v1.AppDTOWorkflowStepDetail
 	131, // 47: eruun.v1.AppDTOApplicationWorkflow.callback:type_name -> eruun.v1.AppDTOWorkflowCallback
-	195, // 48: eruun.v1.AppDTOApplicationWorkflow.create_time:type_name -> google.protobuf.Timestamp
-	195, // 49: eruun.v1.AppDTOApplicationWorkflow.update_time:type_name -> google.protobuf.Timestamp
+	198, // 48: eruun.v1.AppDTOApplicationWorkflow.create_time:type_name -> google.protobuf.Timestamp
+	198, // 49: eruun.v1.AppDTOApplicationWorkflow.update_time:type_name -> google.protobuf.Timestamp
 	121, // 50: eruun.v1.AppDTOApplicationWorkflow.spec:type_name -> eruun.v1.AppDTOUpdateApplicationWorkflowRequest
 	41,  // 51: eruun.v1.AppDTOBatchApplicationComponent.properties:type_name -> eruun.v1.AppDTOBatchApplicationComponentProperties
 	153, // 52: eruun.v1.AppDTOBatchApplicationComponentProperties.ports:type_name -> eruun.v1.AppSpecPorts
@@ -14568,14 +14811,14 @@ var file_eruun_v1_applications_proto_depIdxs = []int32{
 	38,  // 54: eruun.v1.AppDTOBatchGetApplicationsResponse.applications:type_name -> eruun.v1.AppDTOApplicationWithComponents
 	92,  // 55: eruun.v1.AppDTOCleanupApplicationResourcesPlanResponse.resource_results:type_name -> eruun.v1.AppDTOImportNamespaceResourceResult
 	58,  // 56: eruun.v1.AppDTOComponentContainersResponse.pods:type_name -> eruun.v1.AppDTOComponentPodContainers
-	173, // 57: eruun.v1.AppDTOComponentIngressInfo.annotations:type_name -> eruun.v1.AppDTOComponentIngressInfo.AnnotationsEntry
+	176, // 57: eruun.v1.AppDTOComponentIngressInfo.annotations:type_name -> eruun.v1.AppDTOComponentIngressInfo.AnnotationsEntry
 	150, // 58: eruun.v1.AppDTOComponentIngressInfo.tls:type_name -> eruun.v1.AppSpecIngressTLSConfig
 	57,  // 59: eruun.v1.AppDTOComponentIngressInfo.routes:type_name -> eruun.v1.AppDTOComponentIngressRouteInfo
-	174, // 60: eruun.v1.AppDTOComponentIngressRouteInfo.headers:type_name -> eruun.v1.AppDTOComponentIngressRouteInfo.HeadersEntry
+	177, // 60: eruun.v1.AppDTOComponentIngressRouteInfo.headers:type_name -> eruun.v1.AppDTOComponentIngressRouteInfo.HeadersEntry
 	159, // 61: eruun.v1.AppDTOComponentIngressRouteInfo.rewrite:type_name -> eruun.v1.AppSpecRewritePolicy
 	53,  // 62: eruun.v1.AppDTOComponentPodContainers.containers:type_name -> eruun.v1.AppDTOComponentContainerInfo
 	61,  // 63: eruun.v1.AppDTOComponentServiceInfo.ports:type_name -> eruun.v1.AppDTOComponentServicePortInfo
-	175, // 64: eruun.v1.AppDTOComponentUpdateSpec.env:type_name -> eruun.v1.AppDTOComponentUpdateSpec.EnvEntry
+	178, // 64: eruun.v1.AppDTOComponentUpdateSpec.env:type_name -> eruun.v1.AppDTOComponentUpdateSpec.EnvEntry
 	155, // 65: eruun.v1.AppDTOComponentUpdateSpec.properties:type_name -> eruun.v1.AppSpecProperties
 	170, // 66: eruun.v1.AppDTOComponentUpdateSpec.traits:type_name -> eruun.v1.AppSpecTraits
 	68,  // 67: eruun.v1.AppDTOConvertApplicationsResponse.components:type_name -> eruun.v1.AppDTOCreateComponentRequest
@@ -14638,15 +14881,15 @@ var file_eruun_v1_applications_proto_depIdxs = []int32{
 	129, // 124: eruun.v1.AppDTOVersionComponentDiff.fields:type_name -> eruun.v1.AppDTOVersionComponentField
 	130, // 125: eruun.v1.AppDTOVersionComponentDiff.before:type_name -> eruun.v1.AppDTOVersionComponentState
 	130, // 126: eruun.v1.AppDTOVersionComponentDiff.after:type_name -> eruun.v1.AppDTOVersionComponentState
-	197, // 127: eruun.v1.AppDTOVersionComponentField.before:type_name -> google.protobuf.Value
-	197, // 128: eruun.v1.AppDTOVersionComponentField.after:type_name -> google.protobuf.Value
+	200, // 127: eruun.v1.AppDTOVersionComponentField.before:type_name -> google.protobuf.Value
+	200, // 128: eruun.v1.AppDTOVersionComponentField.after:type_name -> google.protobuf.Value
 	155, // 129: eruun.v1.AppDTOVersionComponentState.properties:type_name -> eruun.v1.AppSpecProperties
 	170, // 130: eruun.v1.AppDTOVersionComponentState.traits:type_name -> eruun.v1.AppSpecTraits
-	176, // 131: eruun.v1.AppDTOWorkflowCallback.methods:type_name -> eruun.v1.AppDTOWorkflowCallback.MethodsEntry
-	177, // 132: eruun.v1.AppDTOWorkflowCallback.headers:type_name -> eruun.v1.AppDTOWorkflowCallback.HeadersEntry
-	195, // 133: eruun.v1.AppDTOWorkflowSchedule.create_time:type_name -> google.protobuf.Timestamp
-	195, // 134: eruun.v1.AppDTOWorkflowSchedule.update_time:type_name -> google.protobuf.Timestamp
-	178, // 135: eruun.v1.AppDTOWorkflowStepApproval.headers:type_name -> eruun.v1.AppDTOWorkflowStepApproval.HeadersEntry
+	179, // 131: eruun.v1.AppDTOWorkflowCallback.methods:type_name -> eruun.v1.AppDTOWorkflowCallback.MethodsEntry
+	180, // 132: eruun.v1.AppDTOWorkflowCallback.headers:type_name -> eruun.v1.AppDTOWorkflowCallback.HeadersEntry
+	198, // 133: eruun.v1.AppDTOWorkflowSchedule.create_time:type_name -> google.protobuf.Timestamp
+	198, // 134: eruun.v1.AppDTOWorkflowSchedule.update_time:type_name -> google.protobuf.Timestamp
+	181, // 135: eruun.v1.AppDTOWorkflowStepApproval.headers:type_name -> eruun.v1.AppDTOWorkflowStepApproval.HeadersEntry
 	134, // 136: eruun.v1.AppDTOWorkflowStepDetail.approval:type_name -> eruun.v1.AppDTOWorkflowStepApproval
 	132, // 137: eruun.v1.AppDTOWorkflowStepDetail.properties:type_name -> eruun.v1.AppDTOWorkflowProperties
 	136, // 138: eruun.v1.AppDTOWorkflowStepDetail.sub_steps:type_name -> eruun.v1.AppDTOWorkflowSubStepDetail
@@ -14656,12 +14899,12 @@ var file_eruun_v1_applications_proto_depIdxs = []int32{
 	142, // 142: eruun.v1.AppKubeCoreSecurityContext.windows_options:type_name -> eruun.v1.AppKubeCoreWindowsSecurityContextOptions
 	140, // 143: eruun.v1.AppKubeCoreSecurityContext.seccomp_profile:type_name -> eruun.v1.AppKubeCoreSeccompProfile
 	137, // 144: eruun.v1.AppKubeCoreSecurityContext.app_armor_profile:type_name -> eruun.v1.AppKubeCoreAppArmorProfile
-	196, // 145: eruun.v1.AppSpecCloudSpec.params:type_name -> google.protobuf.Struct
-	179, // 146: eruun.v1.AppSpecIngressRoute.headers:type_name -> eruun.v1.AppSpecIngressRoute.HeadersEntry
+	199, // 145: eruun.v1.AppSpecCloudSpec.params:type_name -> google.protobuf.Struct
+	182, // 146: eruun.v1.AppSpecIngressRoute.headers:type_name -> eruun.v1.AppSpecIngressRoute.HeadersEntry
 	148, // 147: eruun.v1.AppSpecIngressRoutes.backend:type_name -> eruun.v1.AppSpecIngressRoute
 	159, // 148: eruun.v1.AppSpecIngressRoutes.rewrite:type_name -> eruun.v1.AppSpecRewritePolicy
-	180, // 149: eruun.v1.AppSpecIngressTraitsSpec.label:type_name -> eruun.v1.AppSpecIngressTraitsSpec.LabelEntry
-	181, // 150: eruun.v1.AppSpecIngressTraitsSpec.annotations:type_name -> eruun.v1.AppSpecIngressTraitsSpec.AnnotationsEntry
+	183, // 149: eruun.v1.AppSpecIngressTraitsSpec.label:type_name -> eruun.v1.AppSpecIngressTraitsSpec.LabelEntry
+	184, // 150: eruun.v1.AppSpecIngressTraitsSpec.annotations:type_name -> eruun.v1.AppSpecIngressTraitsSpec.AnnotationsEntry
 	150, // 151: eruun.v1.AppSpecIngressTraitsSpec.tls:type_name -> eruun.v1.AppSpecIngressTLSConfig
 	149, // 152: eruun.v1.AppSpecIngressTraitsSpec.routes:type_name -> eruun.v1.AppSpecIngressRoutes
 	170, // 153: eruun.v1.AppSpecInitTraitSpec.traits:type_name -> eruun.v1.AppSpecTraits
@@ -14670,26 +14913,26 @@ var file_eruun_v1_applications_proto_depIdxs = []int32{
 	147, // 156: eruun.v1.AppSpecProbeTraitsSpec.http_get:type_name -> eruun.v1.AppSpecHTTPGetProbe
 	169, // 157: eruun.v1.AppSpecProbeTraitsSpec.tcp_socket:type_name -> eruun.v1.AppSpecTCPSocketProbe
 	153, // 158: eruun.v1.AppSpecProperties.ports:type_name -> eruun.v1.AppSpecPorts
-	182, // 159: eruun.v1.AppSpecProperties.env:type_name -> eruun.v1.AppSpecProperties.EnvEntry
-	183, // 160: eruun.v1.AppSpecProperties.conf:type_name -> eruun.v1.AppSpecProperties.ConfEntry
-	184, // 161: eruun.v1.AppSpecProperties.secret:type_name -> eruun.v1.AppSpecProperties.SecretEntry
-	185, // 162: eruun.v1.AppSpecProperties.labels:type_name -> eruun.v1.AppSpecProperties.LabelsEntry
+	185, // 159: eruun.v1.AppSpecProperties.env:type_name -> eruun.v1.AppSpecProperties.EnvEntry
+	186, // 160: eruun.v1.AppSpecProperties.conf:type_name -> eruun.v1.AppSpecProperties.ConfEntry
+	187, // 161: eruun.v1.AppSpecProperties.secret:type_name -> eruun.v1.AppSpecProperties.SecretEntry
+	188, // 162: eruun.v1.AppSpecProperties.labels:type_name -> eruun.v1.AppSpecProperties.LabelsEntry
 	143, // 163: eruun.v1.AppSpecProperties.cloud:type_name -> eruun.v1.AppSpecCloudSpec
-	172, // 164: eruun.v1.AppSpecProperties.job_retry_policy:type_name -> eruun.v1.AppWorkflowConfigJobRetryPolicy
-	186, // 165: eruun.v1.AppSpecRBACPolicySpec.service_account_labels:type_name -> eruun.v1.AppSpecRBACPolicySpec.ServiceAccountLabelsEntry
-	187, // 166: eruun.v1.AppSpecRBACPolicySpec.service_account_annotations:type_name -> eruun.v1.AppSpecRBACPolicySpec.ServiceAccountAnnotationsEntry
-	188, // 167: eruun.v1.AppSpecRBACPolicySpec.role_labels:type_name -> eruun.v1.AppSpecRBACPolicySpec.RoleLabelsEntry
-	189, // 168: eruun.v1.AppSpecRBACPolicySpec.binding_labels:type_name -> eruun.v1.AppSpecRBACPolicySpec.BindingLabelsEntry
+	175, // 164: eruun.v1.AppSpecProperties.job_retry_policy:type_name -> eruun.v1.AppWorkflowConfigJobRetryPolicy
+	189, // 165: eruun.v1.AppSpecRBACPolicySpec.service_account_labels:type_name -> eruun.v1.AppSpecRBACPolicySpec.ServiceAccountLabelsEntry
+	190, // 166: eruun.v1.AppSpecRBACPolicySpec.service_account_annotations:type_name -> eruun.v1.AppSpecRBACPolicySpec.ServiceAccountAnnotationsEntry
+	191, // 167: eruun.v1.AppSpecRBACPolicySpec.role_labels:type_name -> eruun.v1.AppSpecRBACPolicySpec.RoleLabelsEntry
+	192, // 168: eruun.v1.AppSpecRBACPolicySpec.binding_labels:type_name -> eruun.v1.AppSpecRBACPolicySpec.BindingLabelsEntry
 	157, // 169: eruun.v1.AppSpecRBACPolicySpec.rules:type_name -> eruun.v1.AppSpecRBACRuleSpec
-	197, // 170: eruun.v1.AppSpecRolloutRollingUpdateSpec.max_surge:type_name -> google.protobuf.Value
-	197, // 171: eruun.v1.AppSpecRolloutRollingUpdateSpec.max_unavailable:type_name -> google.protobuf.Value
+	200, // 170: eruun.v1.AppSpecRolloutRollingUpdateSpec.max_surge:type_name -> google.protobuf.Value
+	200, // 171: eruun.v1.AppSpecRolloutRollingUpdateSpec.max_unavailable:type_name -> google.protobuf.Value
 	160, // 172: eruun.v1.AppSpecRolloutTraitSpec.rolling_update:type_name -> eruun.v1.AppSpecRolloutRollingUpdateSpec
-	190, // 173: eruun.v1.AppSpecServiceTraitSpec.selector:type_name -> eruun.v1.AppSpecServiceTraitSpec.SelectorEntry
-	191, // 174: eruun.v1.AppSpecServiceTraitSpec.labels:type_name -> eruun.v1.AppSpecServiceTraitSpec.LabelsEntry
+	193, // 173: eruun.v1.AppSpecServiceTraitSpec.selector:type_name -> eruun.v1.AppSpecServiceTraitSpec.SelectorEntry
+	194, // 174: eruun.v1.AppSpecServiceTraitSpec.labels:type_name -> eruun.v1.AppSpecServiceTraitSpec.LabelsEntry
 	163, // 175: eruun.v1.AppSpecServiceTraitSpec.ports:type_name -> eruun.v1.AppSpecServicePortTraitSpec
-	192, // 176: eruun.v1.AppSpecSidecarTraitsSpec.env:type_name -> eruun.v1.AppSpecSidecarTraitsSpec.EnvEntry
+	195, // 176: eruun.v1.AppSpecSidecarTraitsSpec.env:type_name -> eruun.v1.AppSpecSidecarTraitsSpec.EnvEntry
 	170, // 177: eruun.v1.AppSpecSidecarTraitsSpec.traits:type_name -> eruun.v1.AppSpecTraits
-	171, // 178: eruun.v1.AppSpecSimplifiedEnvSpec.value_from:type_name -> eruun.v1.AppSpecValueSource
+	174, // 178: eruun.v1.AppSpecSimplifiedEnvSpec.value_from:type_name -> eruun.v1.AppSpecValueSource
 	152, // 179: eruun.v1.AppSpecTraits.init:type_name -> eruun.v1.AppSpecInitTraitSpec
 	168, // 180: eruun.v1.AppSpecTraits.storage:type_name -> eruun.v1.AppSpecStorageTraitSpec
 	166, // 181: eruun.v1.AppSpecTraits.sidecar:type_name -> eruun.v1.AppSpecSidecarTraitsSpec
@@ -14699,111 +14942,115 @@ var file_eruun_v1_applications_proto_depIdxs = []int32{
 	145, // 185: eruun.v1.AppSpecTraits.env_from:type_name -> eruun.v1.AppSpecEnvFromSourceSpec
 	167, // 186: eruun.v1.AppSpecTraits.envs:type_name -> eruun.v1.AppSpecSimplifiedEnvSpec
 	154, // 187: eruun.v1.AppSpecTraits.probes:type_name -> eruun.v1.AppSpecProbeTraitsSpec
-	193, // 188: eruun.v1.AppSpecTraits.target_work_env:type_name -> eruun.v1.AppSpecTraits.TargetWorkEnvEntry
+	196, // 188: eruun.v1.AppSpecTraits.target_work_env:type_name -> eruun.v1.AppSpecTraits.TargetWorkEnvEntry
 	158, // 189: eruun.v1.AppSpecTraits.resources:type_name -> eruun.v1.AppSpecResourceTraitsSpec
 	141, // 190: eruun.v1.AppSpecTraits.security_policy:type_name -> eruun.v1.AppKubeCoreSecurityContext
 	165, // 191: eruun.v1.AppSpecTraits.share:type_name -> eruun.v1.AppSpecShareTraitSpec
 	161, // 192: eruun.v1.AppSpecTraits.rollout:type_name -> eruun.v1.AppSpecRolloutTraitSpec
-	162, // 193: eruun.v1.AppSpecValueSource.secret:type_name -> eruun.v1.AppSpecSecretSelectorSpec
-	144, // 194: eruun.v1.AppSpecValueSource.config:type_name -> eruun.v1.AppSpecConfigMapSelectorSpec
-	194, // 195: eruun.v1.AppWorkflowConfigJobRetryPolicy.max_resources:type_name -> eruun.v1.AppWorkflowConfigJobRetryPolicy.MaxResourcesEntry
-	198, // 196: eruun.v1.ApplicationService.GetCanonicalJSONSchema:input_type -> google.protobuf.Empty
-	1,   // 197: eruun.v1.ApplicationService.ListApplications:input_type -> eruun.v1.ApplicationListRequest
-	1,   // 198: eruun.v1.ApplicationService.ListTemplateApplications:input_type -> eruun.v1.ApplicationListRequest
-	198, // 199: eruun.v1.ApplicationService.ListCronJobs:input_type -> google.protobuf.Empty
-	198, // 200: eruun.v1.ApplicationService.ListScheduledJobs:input_type -> google.protobuf.Empty
-	67,  // 201: eruun.v1.ApplicationService.CreateApplications:input_type -> eruun.v1.AppDTOCreateApplicationsRequest
-	66,  // 202: eruun.v1.ApplicationService.CreateAndExecApplications:input_type -> eruun.v1.AppDTOCreateAndExecApplicationRequest
-	45,  // 203: eruun.v1.ApplicationService.BatchGetApplications:input_type -> eruun.v1.AppDTOBatchGetApplicationsRequest
-	64,  // 204: eruun.v1.ApplicationService.ConvertApplications:input_type -> eruun.v1.AppDTOConvertApplicationsRequest
-	88,  // 205: eruun.v1.ApplicationService.ImportNamespaceApplications:input_type -> eruun.v1.AppDTOImportNamespaceApplicationsRequest
-	114, // 206: eruun.v1.ApplicationService.TryImportNamespaceApplications:input_type -> eruun.v1.AppDTOTryImportNamespaceApplicationsRequest
-	2,   // 207: eruun.v1.ApplicationService.ListApplicationWorkflows:input_type -> eruun.v1.ApplicationIDRequest
-	2,   // 208: eruun.v1.ApplicationService.GetApplicationSpec:input_type -> eruun.v1.ApplicationIDRequest
-	2,   // 209: eruun.v1.ApplicationService.GetApplicationStatus:input_type -> eruun.v1.ApplicationIDRequest
-	2,   // 210: eruun.v1.ApplicationService.ListApplicationComponents:input_type -> eruun.v1.ApplicationIDRequest
-	2,   // 211: eruun.v1.ApplicationService.GetApplicationComponentStatus:input_type -> eruun.v1.ApplicationIDRequest
-	5,   // 212: eruun.v1.ApplicationService.ListComponentContainers:input_type -> eruun.v1.ApplicationComponentRequest
-	42,  // 213: eruun.v1.ApplicationService.BatchApplicationComponentStatus:input_type -> eruun.v1.AppDTOBatchApplicationComponentStatusRequest
-	8,   // 214: eruun.v1.ApplicationService.StreamComponentLogs:input_type -> eruun.v1.ComponentLogsRequest
-	10,  // 215: eruun.v1.ApplicationService.ExportComponentFiles:input_type -> eruun.v1.ComponentFilesRequest
-	11,  // 216: eruun.v1.ApplicationService.ExecComponentShell:input_type -> eruun.v1.ComponentShellRequest
-	11,  // 217: eruun.v1.ApplicationService.StreamComponentShell:input_type -> eruun.v1.ComponentShellRequest
-	14,  // 218: eruun.v1.ApplicationService.DeleteApplication:input_type -> eruun.v1.DeleteApplicationRPCRequest
-	15,  // 219: eruun.v1.ApplicationService.UpdateApplicationWorkflow:input_type -> eruun.v1.UpdateApplicationWorkflowRPCRequest
-	2,   // 220: eruun.v1.ApplicationService.ListWorkflowSchedules:input_type -> eruun.v1.ApplicationIDRequest
-	16,  // 221: eruun.v1.ApplicationService.UpsertWorkflowSchedule:input_type -> eruun.v1.UpsertWorkflowScheduleRPCRequest
-	4,   // 222: eruun.v1.ApplicationService.DeleteWorkflowSchedule:input_type -> eruun.v1.ApplicationWorkflowRequest
-	2,   // 223: eruun.v1.ApplicationService.PlanApplicationResourceCleanup:input_type -> eruun.v1.ApplicationIDRequest
-	17,  // 224: eruun.v1.ApplicationService.ApplyApplicationResourceCleanup:input_type -> eruun.v1.CleanupApplicationRPCRequest
-	18,  // 225: eruun.v1.ApplicationService.ResetApplicationDatabases:input_type -> eruun.v1.ResetApplicationDatabasesRPCRequest
-	19,  // 226: eruun.v1.ApplicationService.DownloadLogArchive:input_type -> eruun.v1.LogArchiveRPCRequest
-	20,  // 227: eruun.v1.ApplicationService.RestartApplicationWorkloads:input_type -> eruun.v1.ApplicationLifecycleRPCRequest
-	20,  // 228: eruun.v1.ApplicationService.StopApplicationDeployments:input_type -> eruun.v1.ApplicationLifecycleRPCRequest
-	20,  // 229: eruun.v1.ApplicationService.StartApplicationDeployments:input_type -> eruun.v1.ApplicationLifecycleRPCRequest
-	21,  // 230: eruun.v1.ApplicationService.ExecApplicationWorkflow:input_type -> eruun.v1.ExecWorkflowRPCRequest
-	22,  // 231: eruun.v1.ApplicationService.CancelApplicationWorkflow:input_type -> eruun.v1.CancelWorkflowRPCRequest
-	2,   // 232: eruun.v1.ApplicationService.CancelAllApplicationWorkflows:input_type -> eruun.v1.ApplicationIDRequest
-	2,   // 233: eruun.v1.ApplicationService.ListApplicationTasks:input_type -> eruun.v1.ApplicationIDRequest
-	23,  // 234: eruun.v1.ApplicationService.ApproveWorkflowTask:input_type -> eruun.v1.TaskApprovalRPCRequest
-	3,   // 235: eruun.v1.ApplicationService.GetWorkflowTaskStatus:input_type -> eruun.v1.WorkflowTaskIDRequest
-	3,   // 236: eruun.v1.ApplicationService.GetWorkflowTaskStages:input_type -> eruun.v1.WorkflowTaskIDRequest
-	24,  // 237: eruun.v1.ApplicationService.UpdateApplicationVersion:input_type -> eruun.v1.UpdateVersionRPCRequest
-	25,  // 238: eruun.v1.ApplicationService.DiffUpdateApplicationVersion:input_type -> eruun.v1.DiffUpdateVersionRPCRequest
-	22,  // 239: eruun.v1.ApplicationService.CancelDelayedVersionUpdate:input_type -> eruun.v1.CancelWorkflowRPCRequest
-	67,  // 240: eruun.v1.ApplicationService.TryApplication:input_type -> eruun.v1.AppDTOCreateApplicationsRequest
-	15,  // 241: eruun.v1.ApplicationService.TryWorkflow:input_type -> eruun.v1.UpdateApplicationWorkflowRPCRequest
-	0,   // 242: eruun.v1.ApplicationService.GetCanonicalJSONSchema:output_type -> eruun.v1.CanonicalJSONSchema
-	96,  // 243: eruun.v1.ApplicationService.ListApplications:output_type -> eruun.v1.AppDTOListApplicationResponse
-	96,  // 244: eruun.v1.ApplicationService.ListTemplateApplications:output_type -> eruun.v1.AppDTOListApplicationResponse
-	6,   // 245: eruun.v1.ApplicationService.ListCronJobs:output_type -> eruun.v1.ApplicationCronJobs
-	7,   // 246: eruun.v1.ApplicationService.ListScheduledJobs:output_type -> eruun.v1.ApplicationScheduledJobs
-	30,  // 247: eruun.v1.ApplicationService.CreateApplications:output_type -> eruun.v1.AppDTOApplicationBase
-	26,  // 248: eruun.v1.ApplicationService.CreateAndExecApplications:output_type -> eruun.v1.AppDTOCreateAndExecApplicationResponse
-	46,  // 249: eruun.v1.ApplicationService.BatchGetApplications:output_type -> eruun.v1.AppDTOBatchGetApplicationsResponse
-	65,  // 250: eruun.v1.ApplicationService.ConvertApplications:output_type -> eruun.v1.AppDTOConvertApplicationsResponse
-	89,  // 251: eruun.v1.ApplicationService.ImportNamespaceApplications:output_type -> eruun.v1.AppDTOImportNamespaceApplicationsResponse
-	115, // 252: eruun.v1.ApplicationService.TryImportNamespaceApplications:output_type -> eruun.v1.AppDTOTryImportNamespaceApplicationsResponse
-	98,  // 253: eruun.v1.ApplicationService.ListApplicationWorkflows:output_type -> eruun.v1.AppDTOListApplicationWorkflowsResponse
-	67,  // 254: eruun.v1.ApplicationService.GetApplicationSpec:output_type -> eruun.v1.AppDTOCreateApplicationsRequest
-	36,  // 255: eruun.v1.ApplicationService.GetApplicationStatus:output_type -> eruun.v1.AppDTOApplicationStatusResponse
-	95,  // 256: eruun.v1.ApplicationService.ListApplicationComponents:output_type -> eruun.v1.AppDTOListApplicationComponentsResponse
-	33,  // 257: eruun.v1.ApplicationService.GetApplicationComponentStatus:output_type -> eruun.v1.AppDTOApplicationComponentStatusResponse
-	54,  // 258: eruun.v1.ApplicationService.ListComponentContainers:output_type -> eruun.v1.AppDTOComponentContainersResponse
-	43,  // 259: eruun.v1.ApplicationService.BatchApplicationComponentStatus:output_type -> eruun.v1.AppDTOBatchApplicationComponentStatusResponse
-	9,   // 260: eruun.v1.ApplicationService.StreamComponentLogs:output_type -> eruun.v1.ComponentLogLine
-	13,  // 261: eruun.v1.ApplicationService.ExportComponentFiles:output_type -> eruun.v1.ComponentFileChunk
-	80,  // 262: eruun.v1.ApplicationService.ExecComponentShell:output_type -> eruun.v1.AppDTOExecComponentShellScriptResponse
-	12,  // 263: eruun.v1.ApplicationService.StreamComponentShell:output_type -> eruun.v1.ComponentShellEvent
-	74,  // 264: eruun.v1.ApplicationService.DeleteApplication:output_type -> eruun.v1.AppDTODeleteApplicationResponse
-	124, // 265: eruun.v1.ApplicationService.UpdateApplicationWorkflow:output_type -> eruun.v1.AppDTOUpdateWorkflowResponse
-	99,  // 266: eruun.v1.ApplicationService.ListWorkflowSchedules:output_type -> eruun.v1.AppDTOListWorkflowSchedulesResponse
-	126, // 267: eruun.v1.ApplicationService.UpsertWorkflowSchedule:output_type -> eruun.v1.AppDTOUpsertWorkflowScheduleResponse
-	76,  // 268: eruun.v1.ApplicationService.DeleteWorkflowSchedule:output_type -> eruun.v1.AppDTODeleteWorkflowScheduleResponse
-	50,  // 269: eruun.v1.ApplicationService.PlanApplicationResourceCleanup:output_type -> eruun.v1.AppDTOCleanupApplicationResourcesPlanResponse
-	52,  // 270: eruun.v1.ApplicationService.ApplyApplicationResourceCleanup:output_type -> eruun.v1.AppDTOCleanupApplicationResourcesResponse
-	72,  // 271: eruun.v1.ApplicationService.ResetApplicationDatabases:output_type -> eruun.v1.AppDTODatabaseResetResponse
-	13,  // 272: eruun.v1.ApplicationService.DownloadLogArchive:output_type -> eruun.v1.ComponentFileChunk
-	102, // 273: eruun.v1.ApplicationService.RestartApplicationWorkloads:output_type -> eruun.v1.AppDTORestartApplicationWorkloadsResponse
-	104, // 274: eruun.v1.ApplicationService.StopApplicationDeployments:output_type -> eruun.v1.AppDTOStopApplicationDeploymentsResponse
-	103, // 275: eruun.v1.ApplicationService.StartApplicationDeployments:output_type -> eruun.v1.AppDTOStartApplicationDeploymentsResponse
-	82,  // 276: eruun.v1.ApplicationService.ExecApplicationWorkflow:output_type -> eruun.v1.AppDTOExecWorkflowResponse
-	49,  // 277: eruun.v1.ApplicationService.CancelApplicationWorkflow:output_type -> eruun.v1.AppDTOCancelWorkflowResponse
-	47,  // 278: eruun.v1.ApplicationService.CancelAllApplicationWorkflows:output_type -> eruun.v1.AppDTOCancelAllApplicationWorkflowsResponse
-	97,  // 279: eruun.v1.ApplicationService.ListApplicationTasks:output_type -> eruun.v1.AppDTOListApplicationTasksResponse
-	106, // 280: eruun.v1.ApplicationService.ApproveWorkflowTask:output_type -> eruun.v1.AppDTOTaskApprovalResponse
-	110, // 281: eruun.v1.ApplicationService.GetWorkflowTaskStatus:output_type -> eruun.v1.AppDTOTaskStatusResponse
-	109, // 282: eruun.v1.ApplicationService.GetWorkflowTaskStages:output_type -> eruun.v1.AppDTOTaskStagesResponse
-	123, // 283: eruun.v1.ApplicationService.UpdateApplicationVersion:output_type -> eruun.v1.AppDTOUpdateVersionResponse
-	78,  // 284: eruun.v1.ApplicationService.DiffUpdateApplicationVersion:output_type -> eruun.v1.AppDTODiffUpdateVersionResponse
-	49,  // 285: eruun.v1.ApplicationService.CancelDelayedVersionUpdate:output_type -> eruun.v1.AppDTOCancelWorkflowResponse
-	112, // 286: eruun.v1.ApplicationService.TryApplication:output_type -> eruun.v1.AppDTOTryApplicationResponse
-	120, // 287: eruun.v1.ApplicationService.TryWorkflow:output_type -> eruun.v1.AppDTOTryWorkflowResponse
-	242, // [242:288] is the sub-list for method output_type
-	196, // [196:242] is the sub-list for method input_type
-	196, // [196:196] is the sub-list for extension type_name
-	196, // [196:196] is the sub-list for extension extendee
-	0,   // [0:196] is the sub-list for field type_name
+	171, // 193: eruun.v1.AppSpecTraits.evaluation:type_name -> eruun.v1.EvaluationTrait
+	158, // 194: eruun.v1.EvaluationTrait.sandbox_resources:type_name -> eruun.v1.AppSpecResourceTraitsSpec
+	173, // 195: eruun.v1.EvaluationTrait.result_policy:type_name -> eruun.v1.JobResultPolicy
+	172, // 196: eruun.v1.JobResultPolicy.targets:type_name -> eruun.v1.JobResultTarget
+	162, // 197: eruun.v1.AppSpecValueSource.secret:type_name -> eruun.v1.AppSpecSecretSelectorSpec
+	144, // 198: eruun.v1.AppSpecValueSource.config:type_name -> eruun.v1.AppSpecConfigMapSelectorSpec
+	197, // 199: eruun.v1.AppWorkflowConfigJobRetryPolicy.max_resources:type_name -> eruun.v1.AppWorkflowConfigJobRetryPolicy.MaxResourcesEntry
+	201, // 200: eruun.v1.ApplicationService.GetCanonicalJSONSchema:input_type -> google.protobuf.Empty
+	1,   // 201: eruun.v1.ApplicationService.ListApplications:input_type -> eruun.v1.ApplicationListRequest
+	1,   // 202: eruun.v1.ApplicationService.ListTemplateApplications:input_type -> eruun.v1.ApplicationListRequest
+	201, // 203: eruun.v1.ApplicationService.ListCronJobs:input_type -> google.protobuf.Empty
+	201, // 204: eruun.v1.ApplicationService.ListScheduledJobs:input_type -> google.protobuf.Empty
+	67,  // 205: eruun.v1.ApplicationService.CreateApplications:input_type -> eruun.v1.AppDTOCreateApplicationsRequest
+	66,  // 206: eruun.v1.ApplicationService.CreateAndExecApplications:input_type -> eruun.v1.AppDTOCreateAndExecApplicationRequest
+	45,  // 207: eruun.v1.ApplicationService.BatchGetApplications:input_type -> eruun.v1.AppDTOBatchGetApplicationsRequest
+	64,  // 208: eruun.v1.ApplicationService.ConvertApplications:input_type -> eruun.v1.AppDTOConvertApplicationsRequest
+	88,  // 209: eruun.v1.ApplicationService.ImportNamespaceApplications:input_type -> eruun.v1.AppDTOImportNamespaceApplicationsRequest
+	114, // 210: eruun.v1.ApplicationService.TryImportNamespaceApplications:input_type -> eruun.v1.AppDTOTryImportNamespaceApplicationsRequest
+	2,   // 211: eruun.v1.ApplicationService.ListApplicationWorkflows:input_type -> eruun.v1.ApplicationIDRequest
+	2,   // 212: eruun.v1.ApplicationService.GetApplicationSpec:input_type -> eruun.v1.ApplicationIDRequest
+	2,   // 213: eruun.v1.ApplicationService.GetApplicationStatus:input_type -> eruun.v1.ApplicationIDRequest
+	2,   // 214: eruun.v1.ApplicationService.ListApplicationComponents:input_type -> eruun.v1.ApplicationIDRequest
+	2,   // 215: eruun.v1.ApplicationService.GetApplicationComponentStatus:input_type -> eruun.v1.ApplicationIDRequest
+	5,   // 216: eruun.v1.ApplicationService.ListComponentContainers:input_type -> eruun.v1.ApplicationComponentRequest
+	42,  // 217: eruun.v1.ApplicationService.BatchApplicationComponentStatus:input_type -> eruun.v1.AppDTOBatchApplicationComponentStatusRequest
+	8,   // 218: eruun.v1.ApplicationService.StreamComponentLogs:input_type -> eruun.v1.ComponentLogsRequest
+	10,  // 219: eruun.v1.ApplicationService.ExportComponentFiles:input_type -> eruun.v1.ComponentFilesRequest
+	11,  // 220: eruun.v1.ApplicationService.ExecComponentShell:input_type -> eruun.v1.ComponentShellRequest
+	11,  // 221: eruun.v1.ApplicationService.StreamComponentShell:input_type -> eruun.v1.ComponentShellRequest
+	14,  // 222: eruun.v1.ApplicationService.DeleteApplication:input_type -> eruun.v1.DeleteApplicationRPCRequest
+	15,  // 223: eruun.v1.ApplicationService.UpdateApplicationWorkflow:input_type -> eruun.v1.UpdateApplicationWorkflowRPCRequest
+	2,   // 224: eruun.v1.ApplicationService.ListWorkflowSchedules:input_type -> eruun.v1.ApplicationIDRequest
+	16,  // 225: eruun.v1.ApplicationService.UpsertWorkflowSchedule:input_type -> eruun.v1.UpsertWorkflowScheduleRPCRequest
+	4,   // 226: eruun.v1.ApplicationService.DeleteWorkflowSchedule:input_type -> eruun.v1.ApplicationWorkflowRequest
+	2,   // 227: eruun.v1.ApplicationService.PlanApplicationResourceCleanup:input_type -> eruun.v1.ApplicationIDRequest
+	17,  // 228: eruun.v1.ApplicationService.ApplyApplicationResourceCleanup:input_type -> eruun.v1.CleanupApplicationRPCRequest
+	18,  // 229: eruun.v1.ApplicationService.ResetApplicationDatabases:input_type -> eruun.v1.ResetApplicationDatabasesRPCRequest
+	19,  // 230: eruun.v1.ApplicationService.DownloadLogArchive:input_type -> eruun.v1.LogArchiveRPCRequest
+	20,  // 231: eruun.v1.ApplicationService.RestartApplicationWorkloads:input_type -> eruun.v1.ApplicationLifecycleRPCRequest
+	20,  // 232: eruun.v1.ApplicationService.StopApplicationDeployments:input_type -> eruun.v1.ApplicationLifecycleRPCRequest
+	20,  // 233: eruun.v1.ApplicationService.StartApplicationDeployments:input_type -> eruun.v1.ApplicationLifecycleRPCRequest
+	21,  // 234: eruun.v1.ApplicationService.ExecApplicationWorkflow:input_type -> eruun.v1.ExecWorkflowRPCRequest
+	22,  // 235: eruun.v1.ApplicationService.CancelApplicationWorkflow:input_type -> eruun.v1.CancelWorkflowRPCRequest
+	2,   // 236: eruun.v1.ApplicationService.CancelAllApplicationWorkflows:input_type -> eruun.v1.ApplicationIDRequest
+	2,   // 237: eruun.v1.ApplicationService.ListApplicationTasks:input_type -> eruun.v1.ApplicationIDRequest
+	23,  // 238: eruun.v1.ApplicationService.ApproveWorkflowTask:input_type -> eruun.v1.TaskApprovalRPCRequest
+	3,   // 239: eruun.v1.ApplicationService.GetWorkflowTaskStatus:input_type -> eruun.v1.WorkflowTaskIDRequest
+	3,   // 240: eruun.v1.ApplicationService.GetWorkflowTaskStages:input_type -> eruun.v1.WorkflowTaskIDRequest
+	24,  // 241: eruun.v1.ApplicationService.UpdateApplicationVersion:input_type -> eruun.v1.UpdateVersionRPCRequest
+	25,  // 242: eruun.v1.ApplicationService.DiffUpdateApplicationVersion:input_type -> eruun.v1.DiffUpdateVersionRPCRequest
+	22,  // 243: eruun.v1.ApplicationService.CancelDelayedVersionUpdate:input_type -> eruun.v1.CancelWorkflowRPCRequest
+	67,  // 244: eruun.v1.ApplicationService.TryApplication:input_type -> eruun.v1.AppDTOCreateApplicationsRequest
+	15,  // 245: eruun.v1.ApplicationService.TryWorkflow:input_type -> eruun.v1.UpdateApplicationWorkflowRPCRequest
+	0,   // 246: eruun.v1.ApplicationService.GetCanonicalJSONSchema:output_type -> eruun.v1.CanonicalJSONSchema
+	96,  // 247: eruun.v1.ApplicationService.ListApplications:output_type -> eruun.v1.AppDTOListApplicationResponse
+	96,  // 248: eruun.v1.ApplicationService.ListTemplateApplications:output_type -> eruun.v1.AppDTOListApplicationResponse
+	6,   // 249: eruun.v1.ApplicationService.ListCronJobs:output_type -> eruun.v1.ApplicationCronJobs
+	7,   // 250: eruun.v1.ApplicationService.ListScheduledJobs:output_type -> eruun.v1.ApplicationScheduledJobs
+	30,  // 251: eruun.v1.ApplicationService.CreateApplications:output_type -> eruun.v1.AppDTOApplicationBase
+	26,  // 252: eruun.v1.ApplicationService.CreateAndExecApplications:output_type -> eruun.v1.AppDTOCreateAndExecApplicationResponse
+	46,  // 253: eruun.v1.ApplicationService.BatchGetApplications:output_type -> eruun.v1.AppDTOBatchGetApplicationsResponse
+	65,  // 254: eruun.v1.ApplicationService.ConvertApplications:output_type -> eruun.v1.AppDTOConvertApplicationsResponse
+	89,  // 255: eruun.v1.ApplicationService.ImportNamespaceApplications:output_type -> eruun.v1.AppDTOImportNamespaceApplicationsResponse
+	115, // 256: eruun.v1.ApplicationService.TryImportNamespaceApplications:output_type -> eruun.v1.AppDTOTryImportNamespaceApplicationsResponse
+	98,  // 257: eruun.v1.ApplicationService.ListApplicationWorkflows:output_type -> eruun.v1.AppDTOListApplicationWorkflowsResponse
+	67,  // 258: eruun.v1.ApplicationService.GetApplicationSpec:output_type -> eruun.v1.AppDTOCreateApplicationsRequest
+	36,  // 259: eruun.v1.ApplicationService.GetApplicationStatus:output_type -> eruun.v1.AppDTOApplicationStatusResponse
+	95,  // 260: eruun.v1.ApplicationService.ListApplicationComponents:output_type -> eruun.v1.AppDTOListApplicationComponentsResponse
+	33,  // 261: eruun.v1.ApplicationService.GetApplicationComponentStatus:output_type -> eruun.v1.AppDTOApplicationComponentStatusResponse
+	54,  // 262: eruun.v1.ApplicationService.ListComponentContainers:output_type -> eruun.v1.AppDTOComponentContainersResponse
+	43,  // 263: eruun.v1.ApplicationService.BatchApplicationComponentStatus:output_type -> eruun.v1.AppDTOBatchApplicationComponentStatusResponse
+	9,   // 264: eruun.v1.ApplicationService.StreamComponentLogs:output_type -> eruun.v1.ComponentLogLine
+	13,  // 265: eruun.v1.ApplicationService.ExportComponentFiles:output_type -> eruun.v1.ComponentFileChunk
+	80,  // 266: eruun.v1.ApplicationService.ExecComponentShell:output_type -> eruun.v1.AppDTOExecComponentShellScriptResponse
+	12,  // 267: eruun.v1.ApplicationService.StreamComponentShell:output_type -> eruun.v1.ComponentShellEvent
+	74,  // 268: eruun.v1.ApplicationService.DeleteApplication:output_type -> eruun.v1.AppDTODeleteApplicationResponse
+	124, // 269: eruun.v1.ApplicationService.UpdateApplicationWorkflow:output_type -> eruun.v1.AppDTOUpdateWorkflowResponse
+	99,  // 270: eruun.v1.ApplicationService.ListWorkflowSchedules:output_type -> eruun.v1.AppDTOListWorkflowSchedulesResponse
+	126, // 271: eruun.v1.ApplicationService.UpsertWorkflowSchedule:output_type -> eruun.v1.AppDTOUpsertWorkflowScheduleResponse
+	76,  // 272: eruun.v1.ApplicationService.DeleteWorkflowSchedule:output_type -> eruun.v1.AppDTODeleteWorkflowScheduleResponse
+	50,  // 273: eruun.v1.ApplicationService.PlanApplicationResourceCleanup:output_type -> eruun.v1.AppDTOCleanupApplicationResourcesPlanResponse
+	52,  // 274: eruun.v1.ApplicationService.ApplyApplicationResourceCleanup:output_type -> eruun.v1.AppDTOCleanupApplicationResourcesResponse
+	72,  // 275: eruun.v1.ApplicationService.ResetApplicationDatabases:output_type -> eruun.v1.AppDTODatabaseResetResponse
+	13,  // 276: eruun.v1.ApplicationService.DownloadLogArchive:output_type -> eruun.v1.ComponentFileChunk
+	102, // 277: eruun.v1.ApplicationService.RestartApplicationWorkloads:output_type -> eruun.v1.AppDTORestartApplicationWorkloadsResponse
+	104, // 278: eruun.v1.ApplicationService.StopApplicationDeployments:output_type -> eruun.v1.AppDTOStopApplicationDeploymentsResponse
+	103, // 279: eruun.v1.ApplicationService.StartApplicationDeployments:output_type -> eruun.v1.AppDTOStartApplicationDeploymentsResponse
+	82,  // 280: eruun.v1.ApplicationService.ExecApplicationWorkflow:output_type -> eruun.v1.AppDTOExecWorkflowResponse
+	49,  // 281: eruun.v1.ApplicationService.CancelApplicationWorkflow:output_type -> eruun.v1.AppDTOCancelWorkflowResponse
+	47,  // 282: eruun.v1.ApplicationService.CancelAllApplicationWorkflows:output_type -> eruun.v1.AppDTOCancelAllApplicationWorkflowsResponse
+	97,  // 283: eruun.v1.ApplicationService.ListApplicationTasks:output_type -> eruun.v1.AppDTOListApplicationTasksResponse
+	106, // 284: eruun.v1.ApplicationService.ApproveWorkflowTask:output_type -> eruun.v1.AppDTOTaskApprovalResponse
+	110, // 285: eruun.v1.ApplicationService.GetWorkflowTaskStatus:output_type -> eruun.v1.AppDTOTaskStatusResponse
+	109, // 286: eruun.v1.ApplicationService.GetWorkflowTaskStages:output_type -> eruun.v1.AppDTOTaskStagesResponse
+	123, // 287: eruun.v1.ApplicationService.UpdateApplicationVersion:output_type -> eruun.v1.AppDTOUpdateVersionResponse
+	78,  // 288: eruun.v1.ApplicationService.DiffUpdateApplicationVersion:output_type -> eruun.v1.AppDTODiffUpdateVersionResponse
+	49,  // 289: eruun.v1.ApplicationService.CancelDelayedVersionUpdate:output_type -> eruun.v1.AppDTOCancelWorkflowResponse
+	112, // 290: eruun.v1.ApplicationService.TryApplication:output_type -> eruun.v1.AppDTOTryApplicationResponse
+	120, // 291: eruun.v1.ApplicationService.TryWorkflow:output_type -> eruun.v1.AppDTOTryWorkflowResponse
+	246, // [246:292] is the sub-list for method output_type
+	200, // [200:246] is the sub-list for method input_type
+	200, // [200:200] is the sub-list for extension type_name
+	200, // [200:200] is the sub-list for extension extendee
+	0,   // [0:200] is the sub-list for field type_name
 }
 
 func init() { file_eruun_v1_applications_proto_init() }
@@ -14831,14 +15078,14 @@ func file_eruun_v1_applications_proto_init() {
 	file_eruun_v1_applications_proto_msgTypes[155].OneofWrappers = []any{}
 	file_eruun_v1_applications_proto_msgTypes[156].OneofWrappers = []any{}
 	file_eruun_v1_applications_proto_msgTypes[160].OneofWrappers = []any{}
-	file_eruun_v1_applications_proto_msgTypes[171].OneofWrappers = []any{}
+	file_eruun_v1_applications_proto_msgTypes[174].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_eruun_v1_applications_proto_rawDesc), len(file_eruun_v1_applications_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   195,
+			NumMessages:   198,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

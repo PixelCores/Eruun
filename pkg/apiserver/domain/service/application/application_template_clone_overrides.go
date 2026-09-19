@@ -40,6 +40,9 @@ func applyTraitOverrides(traits *apisv1.Traits, override apisv1.Traits) {
 	if traits == nil {
 		return
 	}
+	if override.Evaluation != nil {
+		traits.Evaluation = cloneEvaluationTrait(override.Evaluation)
+	}
 	if override.Resources != nil && hasResourceOverride(override.Resources) {
 		if traits.Resources == nil {
 			resources := *override.Resources
@@ -140,4 +143,23 @@ func applyInitEnvOverrides(traits *apisv1.Traits, override apisv1.Traits) map[in
 		}
 	}
 	return overrideKeys
+}
+
+// Evaluation overrides replace the complete business input, without retaining
+// mutable resource or policy references owned by the template request.
+func cloneEvaluationTrait(source *spec.EvaluationTraitSpec) *spec.EvaluationTraitSpec {
+	if source == nil {
+		return nil
+	}
+	copied := *source
+	if source.SandboxResources != nil {
+		resources := *source.SandboxResources
+		copied.SandboxResources = &resources
+	}
+	if source.ResultPolicy != nil {
+		policy := *source.ResultPolicy
+		policy.Targets = append([]spec.JobResultTarget(nil), source.ResultPolicy.Targets...)
+		copied.ResultPolicy = &policy
+	}
+	return &copied
 }

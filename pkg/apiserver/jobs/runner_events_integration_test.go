@@ -64,18 +64,15 @@ func TestMySQLRunnerClaimRowLockHasOneWinner(t *testing.T) {
 	})
 	datasetID := uuid.NewString()
 	require.NoError(t, driver.Add(ctx, &model.JobArtifact{ID: datasetID, WorkspaceID: workspaceID, Kind: artifacts.KindDataset, Digest: strings.Repeat("a", 64)}))
-	declaration := spec.JobSpec{
-		Name: "evaluation", Type: string(config.JobEval),
-		Spec: json.RawMessage(`{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"` + datasetID + `","agent":{"name":"oracle"}}`),
-	}
+	declaration := evaluationDeclaration("evaluation", datasetID, "oracle", "")
 	policy := spec.DefaultJobResultPolicy()
-	declaration.ResultPolicy = &policy
+	declaration.Traits.Evaluation.ResultPolicy = &policy
 	require.NoError(t, declaration.Normalize())
 	declarationJSON, err := json.Marshal(declaration)
 	require.NoError(t, err)
 	parent := &model.WorkflowQueue{
 		TaskID: taskID, WorkspaceID: workspaceID, Type: config.WorkflowTaskTypeJob, Status: config.StatusRunning,
-		JobSpec: string(declarationJSON), JobToken: strings.Repeat("f", 64), RunGeneration: 1,
+		JobSpec: string(declarationJSON), RunGeneration: 1,
 	}
 	require.NoError(t, driver.Add(ctx, parent))
 	client := fake.NewSimpleClientset()
@@ -86,6 +83,9 @@ func TestMySQLRunnerClaimRowLockHasOneWinner(t *testing.T) {
 	task, err := BuildTask(scoped, service.Store, cfg, parent, namespace)
 	require.NoError(t, err)
 	task.ExecutionKey, task.RunGeneration, task.Attempt = "execution", 1, 1
+	require.NoError(t, BuildEvaluationTask(scoped, service.Store, cfg, task, spec.JobTraits{}))
+	info, err := decodeEvaluationInfo(task.EvaluationInfo)
+	require.NoError(t, err)
 	workflowjob.ApplyTaskIDAnnotation(task)
 	workflowjob.ApplyExecutionIdentity(task)
 	workload := task.JobInfo.(*batchv1.Job)
@@ -98,7 +98,7 @@ func TestMySQLRunnerClaimRowLockHasOneWinner(t *testing.T) {
 	require.NoError(t, err)
 	record := &model.JobInfo{
 		Type: task.JobType, TaskID: taskID, WorkspaceID: workspaceID, ServiceName: workload.Name,
-		Status: string(config.StatusRunning), ExecutionKey: ptr.To(task.ExecutionKey), RunGeneration: 1, Attempt: 1, InternalInfo: string(checkpoint),
+		Status: string(config.StatusRunning), ExecutionKey: ptr.To(task.ExecutionKey), RunGeneration: 1, Attempt: 1, InternalInfo: string(checkpoint), EvaluationInfo: task.EvaluationInfo,
 	}
 	require.NoError(t, driver.Add(ctx, record))
 	require.NoError(t, client.Tracker().Add(workload))
@@ -110,7 +110,7 @@ func TestMySQLRunnerClaimRowLockHasOneWinner(t *testing.T) {
 			OwnerReferences: []metav1.OwnerReference{{APIVersion: "batch/v1", Kind: "Job", Name: workload.Name, UID: workload.UID, Controller: ptr.To(true)}},
 		}, Spec: workload.Spec.Template.Spec}
 		require.NoError(t, client.Tracker().Add(pod))
-		identities[index] = RunnerIdentity{TaskID: taskID, Token: parent.JobToken, PodName: pod.Name, PodUID: string(pod.UID)}
+		identities[index] = RunnerIdentity{TaskID: taskID, Token: info.RunnerToken, PodName: pod.Name, PodUID: string(pod.UID)}
 	}
 
 	var wait sync.WaitGroup

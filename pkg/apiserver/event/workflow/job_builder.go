@@ -11,6 +11,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs"
@@ -39,14 +40,14 @@ const versionUpdateCleanupStepName = "cleanup-removed-components"
 
 func GenerateJobTasks(ctx context.Context, task *model.WorkflowQueue, ds datastore.DataStore, defaultJobTimeoutSeconds int64, configs ...*config.Config) ([]StepExecution, error) {
 	logger := klog.FromContext(ctx)
+	var cfg *config.Config
+	if len(configs) > 0 {
+		cfg = configs[0]
+	}
 	if task != nil && task.Type == config.WorkflowTaskTypeJob {
 		scope, ok := access.FromContext(ctx)
 		if !ok || task.AppID != "" || scope.WorkspaceID != task.WorkspaceID || scope.Namespace == "" {
 			return nil, fmt.Errorf("workspace Job requires its persisted workspace execution scope")
-		}
-		var cfg *config.Config
-		if len(configs) > 0 {
-			cfg = configs[0]
 		}
 		jobTask, err := jobs.BuildTask(ctx, ds, cfg, task, scope.Namespace)
 		if err != nil {
@@ -58,6 +59,9 @@ func GenerateJobTasks(ctx context.Context, task *model.WorkflowQueue, ds datasto
 		applyWorkflowExecutionIdentity(executions, task)
 		if err := restoreCommittedJobExecutions(ctx, executions, task, ds); err != nil {
 			return nil, err
+		}
+		if err := renderEvaluationExecutions(ctx, executions, ds, cfg); err != nil {
+			return []StepExecution{*failedWorkflowGenerationExecution(task, defaultJobTimeoutSeconds, err)}, nil
 		}
 		return executions, nil
 	}
@@ -142,9 +146,31 @@ func GenerateJobTasks(ctx context.Context, task *model.WorkflowQueue, ds datasto
 		logger.Error(err, "Failed to restore committed job executions", "workflowID", task.WorkflowID, "appID", task.AppID)
 		return nil, err
 	}
+	if err := renderEvaluationExecutions(ctx, executions, ds, cfg); err != nil {
+		return []StepExecution{*failedWorkflowGenerationExecution(task, defaultJobTimeoutSeconds, err)}, nil
+	}
 
 	logger.Info("Generated total jobs for workflow", "totalJobs", totalJobs, "workflowName", task.WorkflowName)
 	return executions, nil
+}
+
+// Render after recovering execution identity so a controller restart reuses the
+// original Runner capability and result destination.
+func renderEvaluationExecutions(ctx context.Context, executions []StepExecution, ds datastore.DataStore, cfg *config.Config) error {
+	for _, execution := range executions {
+		for _, tasks := range execution.Jobs {
+			for _, task := range tasks {
+				if task == nil || task.JobType != string(config.JobEval) || isWorkflowTerminal(task.Status) || task.Status == config.StatusSkipped {
+					continue
+				}
+				if err := jobs.BuildEvaluationTask(ctx, ds, cfg, task, spec.JobTraits{}); err != nil {
+					return fmt.Errorf("render evaluation %s: %w", task.Name, err)
+				}
+				workflowjob.ApplyExecutionIdentity(task)
+			}
+		}
+	}
+	return nil
 }
 
 func applyWorkflowExecutionIdentity(executions []StepExecution, task *model.WorkflowQueue) {
@@ -199,7 +225,7 @@ func restoreCommittedJobExecutions(ctx context.Context, executions []StepExecuti
 	if ds == nil {
 		return fmt.Errorf("restore committed job executions: datastore is nil")
 	}
-	query := &model.JobInfo{TaskID: task.TaskID}
+	query := &model.JobInfo{TaskID: task.TaskID, AppID: task.AppID}
 	if isResourceImportWorkflowTask(task.Type) || task.Type == config.WorkflowTaskTypeJob {
 		query.WorkspaceID = task.WorkspaceID
 	}
@@ -252,6 +278,7 @@ func restoreCommittedJobExecutions(ctx context.Context, executions []StepExecuti
 					jobTask.EndTime = selected.EndTime
 					jobTask.Info = selected.Info
 					jobTask.InternalInfo = selected.InternalInfo
+					jobTask.EvaluationInfo = selected.EvaluationInfo
 					jobTask.Error = selected.Error
 					jobTask.DelayState = selected.DelayState
 					jobTask.DelayExecuteAt = selected.DelayExecuteAt

@@ -23,6 +23,10 @@
 
 Try Application 会校验根级 `failurePolicy`。非法值返回 `INVALID_WORKFLOW_FAILURE_POLICY`，错误路径为 `/failurePolicy`。
 
+顶层 `type: "job"` 组件可使用与独立 Job 相同的 `traits.evaluation`。Try 会校验 `env: "ack"`、任务包 ID、模型、执行适配器和有界试验参数，并返回默认 attempts/concurrency/timeout 与 Runner、sandbox 各自的资源规格。该组件无需用户镜像，拒绝冲突的镜像、命令、明文环境变量、延时、Cron、runPolicy、重试覆盖及不支持的运行 Traits；其他组件类型、init 和 sidecar 不允许携带 evaluation。任务包的空间归属和凭据可用性仍由执行入口验证。
+
+`GET /api/v1/schemas/v1/canonical.json` 的 `$defs.Job` 描述独立 Job，`$defs.EvaluationTraitSpec` 描述两种入口共享的评测 Trait。独立 Job 的提交校验在 `POST /api/v1/jobs` 中执行；Try Application 仍接收完整 Application，不能直接提交独立 Job 请求。详见 [Canonical JSON Profile](canonical-json-profile.md)。
+
 Try Application 会执行与 `POST /api/v1/applications` 一致的资源名校验：提前计算 Deployment/StatefulSet/Service/Ingress/Job/CronJob/ConfigMap/Secret 等独占资源名，并检查同一请求内以及同命名空间普通应用之间的冲突。资源命名遵循当前运行时契约：非 shared 组件使用 `appName + componentName`，shared 组件使用 `componentName`，模板版本不参与运行时资源名。standalone PVC 只校验 Kubernetes 名称合法性，允许同命名空间内多个组件或应用共享；`tmpCreate: true` 的 StatefulSet `volumeClaimTemplates` 不作为 standalone PVC 参与冲突校验。
 
 当请求携带 `ID` 用于校验更新/upsert 时，Try Application 会先读取已保存的 App，并以其 `namespace`、`version`、`templateEnabled` 等元数据作为默认值；请求体中显式传入的字段会覆盖这些默认值。这样 dry-run 的资源名校验与真实创建/更新路径保持一致。
