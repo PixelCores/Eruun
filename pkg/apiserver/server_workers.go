@@ -14,7 +14,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
-	importruntime "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/runtime"
+	importruntime "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/runtime"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
 

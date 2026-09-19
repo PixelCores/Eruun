@@ -179,19 +179,20 @@ func (s *Service) Submit(ctx context.Context, request SubmitRequest) (*Accepted,
 		if err = s.validatePolicy(*request.ResultPolicy); err != nil {
 			return nil, err
 		}
-		var evaluation spec.AgentEvaluationSpec
-		if err = spec.DecodeJobJSON(request.Spec, &evaluation); err != nil {
-			return nil, invalid(err)
-		}
-		for _, credential := range evaluation.Agent.Credentials {
+		// Normalize already restricted evaluation envs to Secret references;
+		// confirm each one resolves in this workspace before accepting the Job.
+		for _, env := range request.Traits.Envs {
+			if env.ValueFrom.Secret == nil {
+				continue
+			}
 			if s.Kube == nil {
 				return nil, bcode.ErrServiceUnavailable
 			}
-			secret, err := s.Kube.CoreV1().Secrets(scope.Namespace).Get(ctx, credential.SecretKeyRef.Name, metav1.GetOptions{})
+			secret, err := s.Kube.CoreV1().Secrets(scope.Namespace).Get(ctx, env.ValueFrom.Secret.Name, metav1.GetOptions{})
 			if err != nil {
 				return nil, fmt.Errorf("resolve evaluation credential: %w", err)
 			}
-			if _, ok := secret.Data[credential.SecretKeyRef.Key]; !ok {
+			if _, ok := secret.Data[env.ValueFrom.Secret.Key]; !ok {
 				return nil, invalid(fmt.Errorf("credential Secret key is missing"))
 			}
 		}

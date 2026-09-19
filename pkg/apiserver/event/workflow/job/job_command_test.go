@@ -21,7 +21,7 @@ import (
 
 func TestBuildCommandJobUsesReferencesWithoutApplication(t *testing.T) {
 	value := "hello"
-	traits := spec.Traits{Resources: &spec.ResourceTraitsSpec{CPU: "1", Memory: "2Gi"},
+	traits := spec.JobTraits{Resources: &spec.ResourceTraitsSpec{CPU: "1", Memory: "2Gi"},
 		Envs: []spec.SimplifiedEnvSpec{{Name: "MESSAGE", ValueFrom: spec.ValueSource{Static: &value}},
 			{Name: "TOKEN", ValueFrom: spec.ValueSource{Secret: &spec.SecretSelectorSpec{Name: "credentials", Key: "token"}}}},
 		EnvFrom: []spec.EnvFromSourceSpec{{Type: "config", SourceName: "settings"}},
@@ -44,17 +44,19 @@ func TestBuildCommandJobUsesReferencesWithoutApplication(t *testing.T) {
 	require.Zero(t, policy.MaxRetries)
 }
 
+// Application-only traits (sidecar, ingress, rollout, ...) are absent from
+// spec.JobTraits, so they cannot reach this function at all. Their rejection is
+// covered at the decode boundary in TestJobSpecRejectsApplicationOnlyTraits.
 func TestBuildCommandJobRejectsAmbiguousOrUnsupportedTraits(t *testing.T) {
 	literal := "value"
 	for _, tc := range []struct {
 		name   string
-		traits spec.Traits
+		traits spec.JobTraits
 	}{
-		{"sidecar", spec.Traits{Sidecar: []spec.SidecarTraitsSpec{{Name: "extra"}}}},
-		{"dynamic storage", spec.Traits{Storage: []spec.StorageTraitSpec{{Name: "data", Type: "persistent", MountPath: "/data", TmpCreate: true}}}},
-		{"host mount", spec.Traits{Storage: []spec.StorageTraitSpec{{Name: "host", Type: "host-mounted", MountPath: "/host"}}}},
-		{"ambiguous env", spec.Traits{Envs: []spec.SimplifiedEnvSpec{{Name: "TOKEN", ValueFrom: spec.ValueSource{Static: &literal, Secret: &spec.SecretSelectorSpec{Name: "s", Key: "token"}}}}}},
-		{"invalid secret", spec.Traits{EnvFrom: []spec.EnvFromSourceSpec{{Type: "secret", SourceName: "../other"}}}},
+		{"dynamic storage", spec.JobTraits{Storage: []spec.StorageTraitSpec{{Name: "data", Type: "persistent", MountPath: "/data", TmpCreate: true}}}},
+		{"host mount", spec.JobTraits{Storage: []spec.StorageTraitSpec{{Name: "host", Type: "host-mounted", MountPath: "/host"}}}},
+		{"ambiguous env", spec.JobTraits{Envs: []spec.SimplifiedEnvSpec{{Name: "TOKEN", ValueFrom: spec.ValueSource{Static: &literal, Secret: &spec.SecretSelectorSpec{Name: "s", Key: "token"}}}}}},
+		{"invalid secret", spec.JobTraits{EnvFrom: []spec.EnvFromSourceSpec{{Type: "secret", SourceName: "../other"}}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := BuildCommandJob("command-task", "space", spec.CommandJobSpec{Image: "busybox:1.37.0", Command: []string{"true"}, TimeoutSeconds: 60}, tc.traits)

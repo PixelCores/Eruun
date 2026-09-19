@@ -86,10 +86,82 @@ func TestResultPolicyPreservesFullData(t *testing.T) {
 }
 
 func TestEvaluationResourceRequestsNormalizeForRunner(t *testing.T) {
-	job := JobSpec{Name: "evaluation", Type: "eval", Spec: json.RawMessage(`{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}`), Traits: Traits{Resources: &ResourceTraitsSpec{CPU: "1", Memory: "2Gi"}}}
+	job := JobSpec{Name: "evaluation", Type: "eval", Spec: json.RawMessage(`{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}`), Traits: JobTraits{Resources: &ResourceTraitsSpec{CPU: "1", Memory: "2Gi"}}}
 	require.NoError(t, job.Normalize())
 	require.Equal(t, "1", job.Traits.Resources.CPULimit)
 	require.Equal(t, "2Gi", job.Traits.Resources.MemoryLimit)
+}
+
+// Application-only traits are absent from JobTraits, so DisallowUnknownFields
+// rejects them at the decode boundary with no hand-written check.
+func TestJobSpecRejectsApplicationOnlyTraits(t *testing.T) {
+	for _, tc := range []struct{ name, trait string }{
+		{"sidecar", `"sidecar":[{"name":"extra","image":"busybox:1.37.0"}]`},
+		{"ingress", `"ingress":[{"host":"example.com"}]`},
+		{"service", `"service":[{"port":80}]`},
+		{"rbac", `"rbac":[{"name":"reader"}]`},
+		{"probes", `"probes":[{"type":"liveness"}]`},
+		{"init", `"init":[{"name":"setup","image":"busybox:1.37.0"}]`},
+		{"rollout", `"rollout":{"strategy":"RollingUpdate"}`},
+		{"share", `"share":{"enabled":true}`},
+		{"targetWorkEnv", `"targetWorkEnv":{"zone":"a"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"name":"j","type":"command","spec":{"image":"busybox:1.37.0","command":["true"]},"traits":{` + tc.trait + `}}`
+			var job JobSpec
+			err := DecodeJobJSON([]byte(body), &job)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "unknown field")
+		})
+	}
+}
+
+func TestEvaluationCredentialsUseUnifiedEnvTraits(t *testing.T) {
+	const evalSpec = `{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"terminus-2","model":"openai/gpt-4"}}`
+	secret := func(name string) JobTraits {
+		return JobTraits{Envs: []SimplifiedEnvSpec{{Name: name, ValueFrom: ValueSource{Secret: &SecretSelectorSpec{Name: "model", Key: "api-key"}}}}}
+	}
+	literal := "sk-plaintext"
+	for _, tc := range []struct {
+		name   string
+		traits JobTraits
+		valid  bool
+	}{
+		{"secret credential", secret("OPENAI_API_KEY"), true},
+		{"anthropic", secret("ANTHROPIC_API_KEY"), true},
+		{"no credential", JobTraits{}, true},
+		{"plaintext rejected", JobTraits{Envs: []SimplifiedEnvSpec{{Name: "OPENAI_API_KEY", ValueFrom: ValueSource{Static: &literal}}}}, false},
+		{"non-whitelisted name", secret("MY_OWN_KEY"), false},
+		{"platform name", secret("ERUUN_JOB_CONFIG"), false},
+		{"pod name", secret("POD_NAME"), false},
+		{"duplicate", JobTraits{Envs: []SimplifiedEnvSpec{
+			{Name: "OPENAI_API_KEY", ValueFrom: ValueSource{Secret: &SecretSelectorSpec{Name: "a", Key: "k"}}},
+			{Name: "OPENAI_API_KEY", ValueFrom: ValueSource{Secret: &SecretSelectorSpec{Name: "b", Key: "k"}}},
+		}}, false},
+		{"invalid secret reference", JobTraits{Envs: []SimplifiedEnvSpec{{Name: "OPENAI_API_KEY", ValueFrom: ValueSource{Secret: &SecretSelectorSpec{Name: "../other", Key: "k"}}}}}, false},
+		{"envFrom rejected", JobTraits{EnvFrom: []EnvFromSourceSpec{{Type: "secret", SourceName: "model"}}}, false},
+		{"storage rejected", JobTraits{Storage: []StorageTraitSpec{{Name: "d", Type: "persistent", MountPath: "/d"}}}, false},
+		{"security policy rejected", JobTraits{SecurityPolicy: &SecurityPolicySpec{}}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			job := JobSpec{Name: "evaluation", Type: "eval", Spec: json.RawMessage(evalSpec), Traits: tc.traits}
+			err := job.Normalize()
+			if tc.valid {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+			}
+		})
+	}
+}
+
+// The pre-unification spelling must fail loudly rather than be ignored.
+func TestEvaluationRejectsLegacyAgentCredentials(t *testing.T) {
+	body := `{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"terminus-2","model":"openai/gpt-4","credentials":[{"name":"OPENAI_API_KEY","secretKeyRef":{"name":"model","key":"api-key"}}]}}`
+	job := JobSpec{Name: "evaluation", Type: "eval", Spec: json.RawMessage(body)}
+	err := job.Normalize()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unknown field")
 }
 
 func TestJobRuntimeConfigurationFailsClosed(t *testing.T) {

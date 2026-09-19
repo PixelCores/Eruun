@@ -23,7 +23,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 

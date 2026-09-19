@@ -8,6 +8,8 @@
 
 本版本不支持原 `agent_evaluation` 类型的提交、查询或执行记录恢复。升级前应排空或取消仍在运行的旧评测 Job；需要保留的历史结果应在升级前导出。
 
+**0.22.0 升级提示**：eval Job 的模型凭据原来写在 `spec.agent.credentials[]` 下；现统一改为 `traits.envs[]`（见下方示例）。升级前提交的 in-flight eval Job 在执行时解码会失败，升级前请排空所有运行中的评测 Job。
+
 业务接口使用登录 Bearer Token 和 `X-Eruun-Workspace-ID`。读取需要空间成员权限，viewer 可读取；提交、上传、修改策略、取消及重试要求 member 或更高角色。创建请求可省略 `workspaceId`，由已授权的请求空间决定；若显式填写，必须与该空间一致。空间 ID 在创建空间时生成，不会为每个 Job 新建空间。
 
 普通命令：
@@ -43,16 +45,16 @@
     "datasetId": "<任务包上传返回的 ID>",
     "agent": {
       "name": "terminus-2",
-      "model": "<Harbor 支持的 provider/model>",
-      "credentials": [
-        {"name": "OPENAI_API_KEY", "secretKeyRef": {"name": "evaluation-model", "key": "api-key"}}
-      ]
+      "model": "<Harbor 支持的 provider/model>"
     },
     "options": {"attempts": 1, "concurrency": 1},
     "timeoutSeconds": 3600
   },
   "traits": {
-    "resources": {"cpu": "1", "memory": "2Gi", "cpuLimit": "2", "memoryLimit": "4Gi"}
+    "resources": {"cpu": "1", "memory": "2Gi", "cpuLimit": "2", "memoryLimit": "4Gi"},
+    "envs": [
+      {"name": "OPENAI_API_KEY", "valueFrom": {"secret": {"name": "evaluation-model", "key": "api-key"}}}
+    ]
   },
   "resultPolicy": {
     "retentionDays": 90,
@@ -66,7 +68,7 @@
 
 `framework` 和 `frameworkVersion` 可省略，服务端分别补为 `harbor` 和 `0.22.0` 并保存在 Job 快照中；显式填入其他值仍会拒绝。上传任务包时，Eruun 自动生成 UUID 并在响应的 `data.id` 返回；提交时把它填入 `datasetId`。**这个 ID 是 Eruun 的任务包归档句柄，不是 Harbor 的数据集名称、版本或原生任务 ID。** Runner 按 ID 下载并解包，然后把本地任务路径交给 Harbor；当前 Eruun API 不支持直接引用 Harbor 注册数据集。同一任务包可供 1000 个 Job 复用。Harbor 对任务与数据集的区分见 [官方数据集说明](https://www.harborframework.com/docs/datasets)。
 
-允许 `terminus-2`、`codex`、`claude-code` 和 `oracle`。`agent.name` 指定 Harbor 执行 trial 的 Agent；`oracle` 执行任务包的参考解答，用于验证任务与平台链路，不代表模型能力；使用它时省略 `model` 和 `credentials`，无需模型调用或模型费用。其他 Agent 必须指定模型。支持的凭据环境名为 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`GEMINI_API_KEY`、`GOOGLE_API_KEY`、`OPENROUTER_API_KEY`、`AZURE_API_KEY`，均引用当前空间已有 Secret 的键；平台不返回 Secret 内容。
+允许 `terminus-2`、`codex`、`claude-code` 和 `oracle`。`agent.name` 指定 Harbor 执行 trial 的 Agent；`oracle` 执行任务包的参考解答，用于验证任务与平台链路，不代表模型能力；使用它时省略 `model`，无需模型调用或模型费用。其他 Agent 必须指定模型。模型凭据通过 `traits.envs` 传入，支持的环境名为 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`GEMINI_API_KEY`、`GOOGLE_API_KEY`、`OPENROUTER_API_KEY`、`AZURE_API_KEY`，必须使用 `valueFrom.secret` 引用当前空间已有 Secret 的键；不接受 `valueFrom.static` 明文值，平台不返回 Secret 内容。
 
 `attempts` 为每个任务的评测次数，默认 1，范围 1–10；`concurrency` 为 Harbor 同时执行的 trial 数，默认 1，范围 1–16。它们不改变 Eruun 的 Job 调度器并发策略。评测默认超时 3600 秒，范围 60–86400 秒，另预留 360 秒停止和归档时间；任务包下载预算为 300 秒，进入 finalizing 后结果采集、上传和 terminal 确认共享最多 360 秒，普通 API 仍保留原来的超时限制。
 

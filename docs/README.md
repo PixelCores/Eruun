@@ -57,7 +57,6 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | 路径 | 职责 | 常见需求入口 | 注意事项 |
 | --- | --- | --- | --- |
 | `cmd/main.go`, `cmd/server/app` | API Server 启动、参数、服务装配 | 新增启动参数、调整初始化顺序 | 配置问题优先 fail-fast，不要静默降级 |
-| `pkg/apiserver/resourceimport` | 存量 Kubernetes 资源的一次性导入模块 | 用户规则扫描、候选快照、用户选择、异步纳管任务、资源 identity/digest 与运行期协调 | 扫描与纳管是两个独立持久化 Job，不做持续监听；共享契约在 `contract`，Kubernetes 侧协调在 `runtime` |
 | `pkg/apiserver/jobs` | 空间独立 Job 与评测数据 | command、Harbor 提交、原生任务包、完整结果、独立保存及保留策略 | 复用现有 WorkflowQueue、JobInfo 和执行租约；公共规格在 `domain/spec`，框架 Runner 在 `runners/harbor` |
 | `pkg/apiserver/interfaces/api` | HTTP 路由、参数绑定、响应封装、中间件 | 新接口、接口校验、认证授权、流式能力 | 不直接写 DB/K8s，业务逻辑下沉到 Domain |
 | `pkg/apiserver/interfaces/grpc`, `proto/eruun/v1` | 用户业务 gRPC 适配与版本化 Protobuf 契约 | RPC、强类型字段、metadata 认证、流式传输 | 复用 Domain 服务；不经进程内 HTTP 转发；路由对照见 `grpc-api.md` |
@@ -65,7 +64,8 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `pkg/apiserver/interfaces/api/assembler/v1` | Domain 对象到 DTO 的组装 | 响应字段推导、脱敏、兼容字段 | 不放持久化或 K8s 调用逻辑 |
 | `pkg/apiserver/domain/model` | GORM 模型和领域实体 | 新表字段、状态字段、业务实体 | 字段语义必须同步跨层契约文档 |
 | `pkg/apiserver/domain/repository` | 仓储接口和数据访问契约 | 查询/写入方法、事务边界 | 接口表达业务意图，不暴露上层 DTO |
-| `pkg/apiserver/domain/service` | 应用生命周期、转换、查询、工作流创建 | 创建/更新/删除应用、组件查询、K8s YAML 转换 | 保持核心领域规则集中；存量资源导入由独立 `resourceimport` 模块负责 |
+| `pkg/apiserver/domain/service` | 应用生命周期、转换、查询、工作流创建 | 创建/更新/删除应用、组件查询、K8s YAML 转换 | 保持核心领域规则集中；存量资源导入由子模块 `resourceimport` 负责 |
+| `pkg/apiserver/domain/service/resourceimport` | 存量 Kubernetes 资源的一次性导入模块 | 用户规则扫描、候选快照、用户选择、异步纳管任务、资源 identity/digest 与运行期协调 | 扫描与纳管是两个独立持久化 Job，不做持续监听；共享契约在 `contract`，Kubernetes 侧协调在 `runtime` |
 | `pkg/apiserver/domain/spec` | 共享规格、资源契约、策略和校验 | Auth、OAuth、URL 安全、云资源配置、资源类型、Service 暴露类型与共享策略 | 业务取值及归一化与对应规格集中定义 |
 | `pkg/apiserver/event/workflow` | Workflow 调度、分发、状态推进、审批/超时 | 任务状态、队列消费、分布式执行 | DB 状态机是任务事实源 |
 | `pkg/apiserver/event/workflow/job` | 具体 Job 控制器和 K8s 资源调和 | Deployment、StatefulSet、Service、PVC、Secret、RBAC 等资源执行 | 保持资源生成、等待和清理语义一致 |
@@ -86,7 +86,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | 应用创建/更新/删除流程 | `pkg/apiserver/domain/service/application*.go` | domain service、repository、workflow 触发点 | `create-and-exec-application-api.md`, `version-update-api.md`, `database-reset-workflow.md`；`reset-workflow.md` 仅作兼容/废弃参考 |
 | 工作流状态、队列或并发 | `pkg/apiserver/event/workflow` | dispatcher、controller、queue、job 状态推进 | `workflow-architecture-guide.md`, `workflow-testing-guide.md` |
 | Kubernetes 资源生成或等待 | `pkg/apiserver/event/workflow/job` | resource generation、job controller、waiter | `architecture-diagrams.md`, `statefulset-pvc-volume-naming.md` |
-| 存量 Kubernetes 资源导入 | `pkg/apiserver/resourceimport` | 一次性规则扫描、候选选择、异步纳管 Job、导入运行期协调 | `import-existing-namespace-api.md` |
+| 存量 Kubernetes 资源导入 | `pkg/apiserver/domain/service/resourceimport` | 一次性规则扫描、候选选择、异步纳管 Job、导入运行期协调 | `import-existing-namespace-api.md` |
 | Trait 能力 | `pkg/apiserver/workflow/traits` | trait processor、job builder、相关 API 示例 | `架构文档.md`, `share-trait.md`, `rollout-trait.md` |
 | 组件状态、Pod 日志/文件/执行 | `pkg/apiserver/domain/service`, `pkg/apiserver/interfaces/api` | component query、pod ops、logs/files/exec API、Log archive workflow | `application-status-api.md`, `component-log-stream-api.md`, `component-pod-file-exec-api.md`, `log-archive-upload-workflow.md`, `component-container-info-api.md` |
 | 认证、授权、OAuth、团队空间 | `pkg/apiserver/domain/service/account` | account、middleware、account workspace scope、infrastructure/workspace | `account-auth-workspaces.md` |

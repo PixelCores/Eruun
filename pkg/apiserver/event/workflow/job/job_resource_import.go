@@ -10,7 +10,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
 

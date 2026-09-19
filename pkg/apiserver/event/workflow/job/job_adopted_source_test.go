@@ -9,7 +9,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/importsecret"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"

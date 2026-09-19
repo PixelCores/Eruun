@@ -12,7 +12,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/validation"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	"github.com/PixelCores/Eruun/pkg/apiserver/resourceimport"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport"
 )
 
 type ApplicationsService = application.ApplicationsService

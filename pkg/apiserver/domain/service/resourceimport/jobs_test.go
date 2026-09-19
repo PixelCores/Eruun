@@ -19,7 +19,7 @@ import (
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 )
 
 type resourceImportJobStore struct {

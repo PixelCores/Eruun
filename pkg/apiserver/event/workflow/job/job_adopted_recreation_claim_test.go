@@ -22,7 +22,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 )
 
 type recreationConfirmationFailStore struct {
