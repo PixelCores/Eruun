@@ -21,7 +21,7 @@ Kubernetes 工作负载状态与评测业务状态并不等价：Pod `Running` �
 | 结果 | 继续使用现有 results 接口和 ArtifactStore；状态事件不传输大型结果、日志或数据集正文 |
 | 故障兜底 | Runner 能通信时提交业务证据；Runner 整体失效时由 Kubernetes 证据收敛 |
 
-本设计不把 `config.JobType`、Kubernetes resource kind 和 Runner 协议混成一个分类。公开业务类型仍是 `eval`，Kubernetes 载体仍由现有 builder 生成。
+本设计不把 `config.JobType`、Kubernetes resource kind 和 Runner 协议混成一个分类。公共声明使用 `type: job` + `traits.evaluation`；本文的 `eval` 指内部执行器标识，Kubernetes 载体由共享 builder 生成。
 
 ## 2. Current 基线与增量缺口
 

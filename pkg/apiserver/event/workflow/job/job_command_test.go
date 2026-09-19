@@ -108,7 +108,7 @@ func TestWorkspaceJobCleanupWaitsForCommittedResult(t *testing.T) {
 			require.NoError(t, err, "finalization cannot delete before SaveInfo")
 			store := &workspaceJobArtifactStore{}
 			if jobType == config.JobEval {
-				store.artifact = &model.JobArtifact{WorkspaceID: task.WorkspaceID, TaskID: task.TaskID, Kind: "source", Summary: json.RawMessage(`{"collectionComplete":true}`)}
+				store.artifact = &model.JobArtifact{WorkspaceID: task.WorkspaceID, TaskID: task.TaskID, ExecutionKey: task.ExecutionKey, Kind: "source", Summary: json.RawMessage(`{"collectionComplete":true}`)}
 			}
 			ctl := NewInstantJobCtl(task, client, store, func() {})
 			require.NoError(t, ctl.SaveInfo(context.Background()))
@@ -174,6 +174,9 @@ func TestEvaluationCleanupRetainsResultsUntilArchiveIsCommitted(t *testing.T) {
 			store.artifact.Summary = json.RawMessage(`{"collectionComplete":true}`)
 			ctl.Clean(context.Background())
 			require.Zero(t, countClientActions(client, "delete", "jobs"), "complete outputs still require a committed execution result")
+			require.NoError(t, ctl.SaveInfo(context.Background()))
+			require.Zero(t, countClientActions(client, "delete", "jobs"), "another execution's archive cannot authorize cleanup")
+			store.artifact.ExecutionKey = task.ExecutionKey
 			require.NoError(t, ctl.SaveInfo(context.Background()))
 			require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
 		})

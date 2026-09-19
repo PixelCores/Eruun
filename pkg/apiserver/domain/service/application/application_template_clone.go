@@ -10,6 +10,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
@@ -95,6 +96,9 @@ func (c *applicationsServiceImpl) resolveComponentsWithSourceIndexes(ctx context
 	templateMap := make(map[string]*templateRequest)
 
 	for sourceIndex, comp := range reqComponents {
+		if err := spec.ValidateNestedEvaluationTraits(&comp.Traits); err != nil {
+			return nil, nil, fmt.Errorf("%w: component[%d]: %v", bcode.ErrApplicationConfig, sourceIndex, err)
+		}
 		if scope, ok := access.FromContext(ctx); ok && comp.Namespace != "" && comp.Namespace != scope.Namespace {
 			return nil, nil, bcode.ErrForbidden
 		}
@@ -313,6 +317,9 @@ func convertComponentFromTemplate(templateComp *model.ApplicationComponent, newN
 	rewritePropertiesForTemplate(&properties, rewriteMap)
 	applyPropertyOverrides(&properties, overrideProps, templateComp.ComponentType)
 	applyTraitOverrides(&traits, overrideTraits)
+	if err := spec.NormalizeComponentEvaluation(string(templateComp.ComponentType), templateComp.Image, overrideProps, &traits); err != nil {
+		return nil, fmt.Errorf("%w: evaluation template override: %v", bcode.ErrApplicationConfig, err)
+	}
 	applyDefaultStorageClass(&traits, defaultStorageClass)
 	initEnvOverrideKeys := applyInitEnvOverrides(&traits, overrideTraits)
 	if err := rewriteTraitsForTemplate(&traits, templateComp.Name, newName, baseName, namespace, rewriteMap, originalPodLabels, properties.Labels, initEnvOverrideKeys); err != nil {

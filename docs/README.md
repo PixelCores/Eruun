@@ -8,7 +8,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 
 | 阶段 | 能力 | 文档解释 |
 | --- | --- | --- |
-| Current | Application、Component、Traits、Workflow、四角色运行时、Kubernetes 调和、认证与空间、独立 command/Harbor 评测 Job | 可按文档直接使用，必须与实现一致 |
+| Current | Application、Component、Traits、Workflow、四角色运行时、Kubernetes 调和、认证与空间、独立 command Job、独立与应用 Workflow 内 Harbor 评测 Job | 可按文档直接使用，必须与实现一致 |
 | Next | Kubernetes 自托管 Agent、MCP/CLI 工具边界、凭据/权限、审计、更多评测框架 | 方向已明确，公共契约尚未冻结 |
 | Later | 模型服务、GPU 感知调度、向量化、托管 AI Provider、云或多集群能力 | 探索阶段 |
 
@@ -50,7 +50,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 - 顶层 `/workflow`、`/workflow/exec`、`/workflow/cancel` 路由不再注册；应用维度 workflow API 是当前主路径。
 - 业务 API 强制 Bearer 登录并按个人/团队空间授权；账号配置由 `ERUUN_AUTH_CONFIG_FILE` 加载，所有认证依赖失败时保持拒绝访问。
 - 应用必须属于一个空间；namespace 在首次实际部署时初始化，账号注册和应用保存不创建 Kubernetes 资源。
-- 独立 `command` / `eval` Job 使用空间授权与平台生成的 TaskID，首版评测框架为 Harbor 0.22.0；见 `workspace-jobs-api.md`。当前没有通用 Agent 注册、MCP、向量化、vLLM/HAMi 或托管 AI Provider 公共 API。
+- 独立 `command` Job 与 `type: job` + `traits.evaluation` 评测使用空间授权；评测也支持 Application/Workflow 组件，Runner 使用 Harbor 0.22.0；见 `workspace-jobs-api.md`。当前没有通用 Agent 注册、MCP、向量化、vLLM/HAMi 或托管 AI Provider 公共 API。
 
 ## 目录层级速查
 
@@ -100,7 +100,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
 | `local-docker-dependencies.md` | Current | MySQL、Redis、Kafka 本地 Compose 分组、凭据、连接配置、健康检查和数据保留 |
-| `workspace-jobs-api.md` | Current | 无 AppID 的 command/Harbor 评测 Job、原生任务包、完整结果与 MinIO/数据库独立保存、空间策略和部署配置 |
+| `workspace-jobs-api.md` | Current | 独立 command Job、两种入口共享 evaluation Trait、原生任务包、完整结果与 MinIO/数据库独立保存、空间策略和部署配置 |
 | [`../examples/agent-evaluation/README.md`](../examples/agent-evaluation/README.md) | Current | Harbor 评测 Job 端到端示例：镜像、任务包、dataset 上传、Job 提交、状态查询与结果下载 |
 | `distributed-runtime-hardening-merge-guide.md` | Current | 已合并的 7 个分布式运行时加固 PR、实现边界、合并记录与待完成的真实集群验收清单 |
 | `account-auth-workspaces.md` | Current | GitHub/Google、邮箱/手机号登录、会话、团队权限、延迟任务隔离与失败收尾、重复部署幂等性、前端与部署接入 |

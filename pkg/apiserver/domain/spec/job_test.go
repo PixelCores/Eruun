@@ -15,18 +15,21 @@ func TestJobContractNormalization(t *testing.T) {
 		valid      bool
 	}{
 		{"command", `{"name":"daily","type":"command","spec":{"image":"busybox:1.37.0","command":["echo","ok"]}}`, true},
-		{"evaluation", `{"name":"agent","type":"eval","spec":{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}}`, true},
-		{"eval with defaults", `{"name":"agent","type":"eval","spec":{"datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}}`, true},
-		{"removed evaluation type", `{"name":"agent","type":"agent_evaluation","spec":{"datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}}`, false},
+		{"evaluation", `{"name":"model-eval","type":"job","traits":{"evaluation":{"env":"ack","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"}}}`, true},
+		{"legacy eval type", `{"name":"model-eval","type":"eval","spec":{"datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}}`, false},
 		{"old ambiguous type", `{"name":"daily","type":"custom","spec":{}}`, false},
 		{"application identity", `{"name":"daily","type":"command","appId":"app","spec":{}}`, false},
 		{"unbounded image", `{"name":"daily","type":"command","spec":{"image":"busybox:latest","command":["true"]}}`, false},
 		{"unknown command input", `{"name":"daily","type":"command","spec":{"image":"busybox:1","command":["true"],"cron":"* * * * *"}}`, false},
-		{"foreign framework", `{"name":"agent","type":"eval","spec":{"framework":"other","frameworkVersion":"1","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}}`, false},
-		{"unsupported explicit version", `{"name":"agent","type":"eval","spec":{"frameworkVersion":"0.21.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}}`, false},
-		{"root code import", `{"name":"agent","type":"eval","spec":{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle","import_path":"evil.Agent"}}}`, false},
-		{"credential interpreter injection", `{"name":"agent","type":"eval","spec":{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle","credentials":[{"name":"PYTHONPATH","secretKeyRef":{"name":"secret","key":"key"}}]}}}`, false},
-		{"runtime env override", `{"name":"agent","type":"eval","spec":{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}},"traits":{"envs":[{"name":"PATH","valueFrom":{"static":"evil"}}]}}`, false},
+		{"missing evaluation trait", `{"name":"model-eval","type":"job"}`, false},
+		{"evaluation spec rejected", `{"name":"model-eval","type":"job","spec":{},"traits":{"evaluation":{"env":"ack","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"}}}`, false},
+		{"null evaluation spec rejected", `{"name":"model-eval","type":"job","spec":null,"traits":{"evaluation":{"env":"ack","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"}}}`, false},
+		{"framework rejected", `{"name":"model-eval","type":"job","traits":{"evaluation":{"env":"ack","framework":"harbor","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"}}}`, false},
+		{"framework version rejected", `{"name":"model-eval","type":"job","traits":{"evaluation":{"env":"ack","frameworkVersion":"0.22.0","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"}}}`, false},
+		{"agent object rejected", `{"name":"model-eval","type":"job","traits":{"evaluation":{"env":"ack","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}}}`, false},
+		{"runtime env override", `{"name":"model-eval","type":"job","traits":{"evaluation":{"env":"ack","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"},"envs":[{"name":"PATH","valueFrom":{"static":"evil"}}]}}`, false},
+		{"top-level result policy rejected", `{"name":"model-eval","type":"job","resultPolicy":{"retentionDays":90,"targets":[{"type":"database","mode":"full"}]},"traits":{"evaluation":{"env":"ack","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"}}}`, false},
+		{"command with evaluation rejected", `{"name":"daily","type":"command","spec":{"image":"busybox:1","command":["true"]},"traits":{"evaluation":{"env":"ack","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"}}}`, false},
 		{"no input object", `{"name":"daily","type":"command","spec":null}`, false},
 		{"concatenated JSON", `{"name":"daily","type":"command","spec":{}} {}`, false},
 	} {
@@ -50,14 +53,49 @@ func TestJobContractNormalization(t *testing.T) {
 	}
 }
 
-func TestEvalDefaultsPersistInNormalizedSpec(t *testing.T) {
-	job := JobSpec{Name: "agent", Type: "eval", Spec: json.RawMessage(`{"datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}`)}
+func testEvaluationTrait() *EvaluationTraitSpec {
+	return &EvaluationTraitSpec{Env: "ack", TaskPackageID: "12345678-1234-1234-1234-123456789012", Agent: "oracle"}
+}
+
+func TestEvaluationDefaultsPersistInNormalizedTraits(t *testing.T) {
+	job := JobSpec{Name: "model-eval", Type: "job", Traits: JobTraits{Evaluation: testEvaluationTrait()}}
 	require.NoError(t, job.Normalize())
-	var evaluation AgentEvaluationSpec
-	require.NoError(t, DecodeJobJSON(job.Spec, &evaluation))
-	require.Equal(t, "harbor", evaluation.Framework)
-	require.Equal(t, HarborVersion, evaluation.FrameworkVersion)
-	require.Equal(t, "eval", job.Type)
+	require.Equal(t, 1, job.Traits.Evaluation.Attempts)
+	require.Equal(t, 1, job.Traits.Evaluation.Concurrency)
+	require.EqualValues(t, 3600, job.Traits.Evaluation.TimeoutSeconds)
+	require.Empty(t, job.Spec)
+	require.NotSame(t, job.Traits.Resources, job.Traits.Evaluation.SandboxResources)
+	require.Nil(t, job.Traits.Evaluation.ResultPolicy, "workspace policy is snapshotted by the submission service")
+}
+
+func TestEvaluationTraitRejectsInvalidInputs(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		change func(*EvaluationTraitSpec)
+	}{
+		{"missing env", func(e *EvaluationTraitSpec) { e.Env = "" }},
+		{"unsupported env", func(e *EvaluationTraitSpec) { e.Env = "daytona" }},
+		{"missing task package", func(e *EvaluationTraitSpec) { e.TaskPackageID = "" }},
+		{"unsupported agent", func(e *EvaluationTraitSpec) { e.Agent = "custom" }},
+		{"missing model", func(e *EvaluationTraitSpec) { e.Agent = "codex" }},
+		{"model newline", func(e *EvaluationTraitSpec) { e.Model = "model\nvalue" }},
+		{"attempts above limit", func(e *EvaluationTraitSpec) { e.Attempts = 11 }},
+		{"negative attempts", func(e *EvaluationTraitSpec) { e.Attempts = -1 }},
+		{"concurrency above limit", func(e *EvaluationTraitSpec) { e.Concurrency = 17 }},
+		{"negative concurrency", func(e *EvaluationTraitSpec) { e.Concurrency = -1 }},
+		{"timeout too short", func(e *EvaluationTraitSpec) { e.TimeoutSeconds = 59 }},
+		{"timeout too long", func(e *EvaluationTraitSpec) { e.TimeoutSeconds = 86401 }},
+		{"invalid sandbox resources", func(e *EvaluationTraitSpec) {
+			e.SandboxResources = &ResourceTraitsSpec{CPU: "2", Memory: "1Gi", CPULimit: "1"}
+		}},
+		{"invalid result policy", func(e *EvaluationTraitSpec) { e.ResultPolicy = &JobResultPolicy{} }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := testEvaluationTrait()
+			tc.change(e)
+			require.Error(t, e.Normalize())
+		})
+	}
 }
 
 func TestResultPolicyPreservesFullData(t *testing.T) {
@@ -86,7 +124,7 @@ func TestResultPolicyPreservesFullData(t *testing.T) {
 }
 
 func TestEvaluationResourceRequestsNormalizeForRunner(t *testing.T) {
-	job := JobSpec{Name: "evaluation", Type: "eval", Spec: json.RawMessage(`{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}`), Traits: JobTraits{Resources: &ResourceTraitsSpec{CPU: "1", Memory: "2Gi"}}}
+	job := JobSpec{Name: "evaluation", Type: "job", Traits: JobTraits{Evaluation: testEvaluationTrait(), Resources: &ResourceTraitsSpec{CPU: "1", Memory: "2Gi"}}}
 	require.NoError(t, job.Normalize())
 	require.Equal(t, "1", job.Traits.Resources.CPULimit)
 	require.Equal(t, "2Gi", job.Traits.Resources.MemoryLimit)
@@ -117,7 +155,6 @@ func TestJobSpecRejectsApplicationOnlyTraits(t *testing.T) {
 }
 
 func TestEvaluationCredentialsUseUnifiedEnvTraits(t *testing.T) {
-	const evalSpec = `{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"terminus-2","model":"openai/gpt-4"}}`
 	secret := func(name string) JobTraits {
 		return JobTraits{Envs: []SimplifiedEnvSpec{{Name: name, ValueFrom: ValueSource{Secret: &SecretSelectorSpec{Name: "model", Key: "api-key"}}}}}
 	}
@@ -144,7 +181,8 @@ func TestEvaluationCredentialsUseUnifiedEnvTraits(t *testing.T) {
 		{"security policy rejected", JobTraits{SecurityPolicy: &SecurityPolicySpec{}}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			job := JobSpec{Name: "evaluation", Type: "eval", Spec: json.RawMessage(evalSpec), Traits: tc.traits}
+			tc.traits.Evaluation = testEvaluationTrait()
+			job := JobSpec{Name: "evaluation", Type: "job", Traits: tc.traits}
 			err := job.Normalize()
 			if tc.valid {
 				require.NoError(t, err)
@@ -155,11 +193,10 @@ func TestEvaluationCredentialsUseUnifiedEnvTraits(t *testing.T) {
 	}
 }
 
-// The pre-unification spelling must fail loudly rather than be ignored.
 func TestEvaluationRejectsLegacyAgentCredentials(t *testing.T) {
-	body := `{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"terminus-2","model":"openai/gpt-4","credentials":[{"name":"OPENAI_API_KEY","secretKeyRef":{"name":"model","key":"api-key"}}]}}`
-	job := JobSpec{Name: "evaluation", Type: "eval", Spec: json.RawMessage(body)}
-	err := job.Normalize()
+	body := `{"env":"ack","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"codex","model":"openai/gpt-4","credentials":[{"name":"OPENAI_API_KEY","secretKeyRef":{"name":"model","key":"api-key"}}]}`
+	var evaluation EvaluationTraitSpec
+	err := DecodeJobJSON([]byte(body), &evaluation)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unknown field")
 }

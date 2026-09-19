@@ -425,7 +425,8 @@ func ParseComponentAction(action string) ComponentAction {
 	}
 }
 
-// IsWorkspaceJobType identifies the public, app-less executable Job types.
+// IsWorkspaceJobType identifies command/evaluation runtime handlers.
+// Evaluation may also belong to an Application workflow; this is not an ownership check.
 func IsWorkspaceJobType(value JobType) bool {
 	return value == JobCommand || value == JobEval
 }

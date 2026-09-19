@@ -22,6 +22,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -29,7 +30,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	wf "github.com/PixelCores/Eruun/pkg/apiserver/workflow"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -471,6 +471,15 @@ func (r *workflowRun) run(concurrency int) error {
 
 func (r *workflowRun) runSteps(taskForGeneration model.WorkflowQueue, stepExecutions []StepExecution, concurrency int) error {
 	ctx, span := r.ctx, r.span
+	for _, execution := range stepExecutions {
+		for _, tasks := range execution.Jobs {
+			for _, task := range tasks {
+				if task.JobType == string(config.JobEval) && task.EvaluationInfo != "" && r.runtimeConfig != nil && r.runtimeConfig.Jobs != nil {
+					ctx = workspace.WithEvaluationRunner(ctx, task.Name, r.runtimeConfig.Jobs.RunnerImage)
+				}
+			}
+		}
+	}
 	logger := klog.FromContext(ctx)
 	workflowName := taskForGeneration.WorkflowName
 	namespaceReady := false
@@ -535,6 +544,11 @@ func (r *workflowRun) runSteps(taskForGeneration model.WorkflowQueue, stepExecut
 				if err != nil {
 					return err
 				}
+			}
+			// Evaluation may occur after ordinary deployment steps have already
+			// initialized the namespace.
+			if err := r.ensureEvaluationRunner(tasksInPriority); err != nil {
+				return err
 			}
 			stepConcurrency := determineStepConcurrency(stepExec.Mode, len(tasksInPriority), seqLimit)
 			// Fix: StepByStep mode should stop on first failure (stopOnFailure=true)
@@ -626,19 +640,29 @@ func (r *workflowRun) ensureWorkspaceForJobs(tasks []*model.JobTask, appID strin
 		r.mutateTask(func(t *model.WorkflowQueue) { t.Status = config.StatusFailed })
 		return false, fmt.Errorf("initialize workspace before deployment: %w", err)
 	}
-	if r.snapshotTask().Type == config.WorkflowTaskTypeJob {
-		for _, task := range tasks {
-			if task.JobType == string(config.JobEval) {
-				if err := r.workspaceManager.EnsureEvaluationRunner(r.ctx, r.workspace, r.runtimeConfig.Jobs.RunnerEgress...); err != nil {
-					r.failureReason = err.Error()
-					r.suppressTerminalCallback = true
-					r.mutateTask(func(t *model.WorkflowQueue) { t.Status = config.StatusFailed })
-					return false, fmt.Errorf("initialize evaluation runner: %w", err)
-				}
-			}
-		}
-	}
 	return true, nil
+}
+
+func (r *workflowRun) ensureEvaluationRunner(tasks []*model.JobTask) error {
+	if r.workspaceManager == nil {
+		return nil
+	}
+	for _, task := range tasks {
+		if task.JobType != string(config.JobEval) || isWorkflowTerminal(task.Status) || task.Status == config.StatusSkipped {
+			continue
+		}
+		if r.runtimeConfig == nil || r.runtimeConfig.Jobs == nil {
+			return fmt.Errorf("evaluation runner configuration is required")
+		}
+		if err := r.workspaceManager.EnsureEvaluationRunner(r.ctx, r.workspace, r.runtimeConfig.Jobs.RunnerEgress...); err != nil {
+			r.failureReason = err.Error()
+			r.suppressTerminalCallback = true
+			r.mutateTask(func(t *model.WorkflowQueue) { t.Status = config.StatusFailed })
+			return fmt.Errorf("initialize evaluation runner: %w", err)
+		}
+		break
+	}
+	return nil
 }
 
 func isJobSuccessStatus(task *model.JobTask) bool {
@@ -1587,11 +1611,10 @@ func (w *WorkflowCtl) prepareWorkspace(ctx context.Context) (context.Context, er
 		if err := definition.Normalize(); err != nil {
 			return ctx, fmt.Errorf("validate workspace Job definition: %w", err)
 		}
-		if definition.Type == string(config.JobEval) {
+		if definition.Traits.Evaluation != nil {
 			if w.runtimeConfig == nil || w.runtimeConfig.Jobs == nil || w.runtimeConfig.Jobs.RunnerImage == "" {
 				return ctx, fmt.Errorf("evaluation runner configuration is required")
 			}
-			ctx = workspace.WithEvaluationRunner(ctx, task.TaskID, w.runtimeConfig.Jobs.RunnerImage)
 		}
 	}
 	return ctx, nil
@@ -1599,6 +1622,9 @@ func (w *WorkflowCtl) prepareWorkspace(ctx context.Context) (context.Context, er
 
 func (w *WorkflowCtl) prepareJobTask(task *model.JobTask, appID string) (bool, error) {
 	if task.JobType == string(config.JobEval) {
+		if isWorkflowTerminal(task.Status) || task.Status == config.StatusSkipped {
+			return false, nil
+		}
 		if w.runtimeConfig == nil || w.runtimeConfig.Jobs == nil {
 			return false, fmt.Errorf("evaluation runner configuration is required")
 		}

@@ -629,6 +629,7 @@ func versionComponentDiffUpdateSpec(item apisv1.VersionComponentDiff) (apisv1.Co
 
 func cloneVersionComponentTraitsForUpdate(source apisv1.Traits) apisv1.Traits {
 	copied := source
+	copied.Evaluation = cloneEvaluationTrait(source.Evaluation)
 	copied.Storage = append(source.Storage[:0:0], source.Storage...)
 	copied.Init = append(source.Init[:0:0], source.Init...)
 	for index := range copied.Init {

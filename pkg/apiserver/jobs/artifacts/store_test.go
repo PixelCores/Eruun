@@ -328,3 +328,47 @@ func TestDatasetPaginationIsStableAndScoped(t *testing.T) {
 	_, err := s.UploadDataset(ctx, "space-a", "", bytes.NewReader(nil))
 	require.ErrorIs(t, err, ErrInvalidInput)
 }
+
+func TestResultsAndDeliveriesAreIsolatedByExecution(t *testing.T) {
+	s, db := testStore(t)
+	ctx := context.Background()
+	firstBytes := resultBytes(t)
+	secondBytes := archiveBytes(t, testEntry{name: "result.json", content: `{"collectionComplete":true,"executionStatus":"failed"}`})
+	policy := spec.DefaultJobResultPolicy()
+	first, err := s.PutResult(ctx, "space-a", "task-a", policy, bytes.NewReader(firstBytes), "step-a")
+	require.NoError(t, err)
+	second, err := s.PutResult(ctx, "space-a", "task-a", policy, bytes.NewReader(secondBytes), "step-b")
+	require.NoError(t, err)
+	require.NotEqual(t, first.ID, second.ID)
+	require.Equal(t, "step-a", first.ExecutionKey)
+	require.Equal(t, "step-b", second.ExecutionKey)
+	replayed, err := s.PutResult(ctx, "space-a", "task-a", policy, bytes.NewReader(firstBytes), "step-a")
+	require.NoError(t, err)
+	require.Equal(t, first.ID, replayed.ID)
+	_, err = s.PutResult(ctx, "space-a", "task-a", policy, bytes.NewReader(secondBytes), "step-a")
+	require.ErrorIs(t, err, ErrConflict)
+
+	require.NoError(t, s.ReconcilePending(ctx, 10))
+	for _, key := range []string{"step-a", "step-b"} {
+		results, err := s.List(ctx, "space-a", "", "task-a", key)
+		require.NoError(t, err)
+		require.Len(t, results, 2, "each execution has its own source and database copy")
+		deliveries, err := s.Deliveries(ctx, "space-a", "task-a", key)
+		require.NoError(t, err)
+		require.Len(t, deliveries, 1)
+		require.Equal(t, key, deliveries[0].ExecutionKey)
+		require.Equal(t, DeliverySucceeded, deliveries[0].State)
+		for _, result := range results {
+			require.Equal(t, key, result.ExecutionKey)
+		}
+	}
+	var download bytes.Buffer
+	require.NoError(t, s.DownloadDelivery(ctx, "space-a", "task-a", "database", &download, "step-b"))
+	require.Equal(t, secondBytes, download.Bytes())
+	require.NoError(t, s.SetRetention(ctx, "space-a", "task-a", 1, "step-a"))
+	require.NoError(t, db.Get(ctx, first))
+	require.NoError(t, db.Get(ctx, second))
+	require.WithinDuration(t, time.Now().Add(24*time.Hour), *first.ExpiresAt, 2*time.Second)
+	require.WithinDuration(t, time.Now().Add(90*24*time.Hour), *second.ExpiresAt, 2*time.Second)
+	require.ErrorIs(t, s.Retry(ctx, "space-a", "task-a", "database", "missing"), datastore.ErrRecordNotExist)
+}

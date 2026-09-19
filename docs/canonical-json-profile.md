@@ -114,6 +114,32 @@ Schema 和所有服务端规范化输出只生成这一形态。请求解码器�
 
 `database_reset` Step 的 `properties[]` 可带可选 `initSqlUrl`，用于保留数据库重置 Workflow 的 SQL 快照地址。非空时必须是绝对 HTTP(S) URL，且只能用于 `database_reset`，并绑定实际执行的 Step 或 SubStep 的目标组件；父步骤有 `subSteps` 时只能在目标子步骤配置 URL。回读、Try 和原样重提会保留该值。详见 [数据库重置 Workflow](database-reset-workflow.md)。
 
+### 2.4 LLM 评测 Job
+
+独立 `POST /api/v1/jobs` 与 Application 的 `type: "job"` 组件共享 `traits.evaluation`，由 Trait 描述测评对象和执行方式：
+
+```json
+{
+  "name": "evaluate-model",
+  "type": "job",
+  "traits": {
+    "evaluation": {
+      "env": "ack",
+      "model": "openai/gpt-4",
+      "agent": "codex",
+      "taskPackageId": "12345678-1234-1234-1234-123456789012",
+      "attempts": 1,
+      "concurrency": 1,
+      "timeoutSeconds": 3600
+    }
+  }
+}
+```
+
+`taskPackageId` 必须替换为当前空间上传的任务包 ID。Application 将同一声明放入 `components`，Workflow 用 `jobType: "deploy"` 和 `components` 引用它。评测不接受用户 `image`、命令、延时、Cron、`runPolicy` 或重试覆盖；框架版本和 Runner 镜像由平台管理。`traits.resources` 控制 Runner，`traits.evaluation.sandboxResources` 控制每个试验环境；结果策略位于 `traits.evaluation.resultPolicy`。`evaluation` 不能放在其他组件类型、init 或 sidecar 中。
+
+独立普通命令仍使用 `type: "command"` 与 `spec`；评测不接受旧 `type: "eval"`、业务 `spec`、`framework`、`frameworkVersion`、`options` 或顶层 `resultPolicy`。完整输入与执行边界见 [空间 Job API](workspace-jobs-api.md)。
+
 ## 3. JSON Schema
 
 ```http
@@ -133,6 +159,9 @@ https://eruun.io/schemas/v1/canonical-profile.json
 - `Component`
 - `Trait`
 - `Workflow`
+- `Job`：独立 Job 请求，包含 command 与 evaluation 两个互斥分支
+
+`Trait` 与 `JobTraits` 均引用同一个 `EvaluationTraitSpec` 定义。Bundle 根使用 `anyOf`，因为不带空间字段的独立评测 Job 与 Application Job 组件可以具有相同形状；调用方也可直接选择对应 `$defs` 校验具体入口。
 
 对象默认使用 `additionalProperties: false`；业务上本来就是键值集合的字段，例如 labels、annotations、env 和 secret data，按字段值类型开放动态键。Schema 包含现有枚举、必填字段与数组下限，适用于编辑器提示、预提交校验和 Agent constrained decoding。
 

@@ -4,11 +4,11 @@
 
 ## 身份与提交
 
-独立任务通过 `type` 区分 `command` 和 `eval`。两种任务都在当前授权空间的 namespace 执行，平台生成 `taskId`，不要求 `appId`、应用组件或用户提供的 TaskID。执行复用 WorkflowQueue、JobInfo、现有调度和执行租约。
+普通命令使用 `type: command` 和 `spec`；LLM 评测使用 `type: job` 和 `traits.evaluation`。评测声明也可直接用于 Application 的 `type: job` 组件，两种入口共享规格、校验和 Harbor Runner。执行复用 WorkflowQueue、JobInfo、现有调度与执行租约。
 
-本版本不支持原 `agent_evaluation` 类型的提交、查询或执行记录恢复。升级前应排空或取消仍在运行的旧评测 Job；需要保留的历史结果应在升级前导出。
+独立 Job 由平台生成 `taskId`，不要求 `appId`，不创建占位应用。Application 内评测沿用所属 Workflow 的 AppID 和 TaskID，以各 Job 的 `executionKey` 区分配置、状态、结果与保存策略。
 
-**0.22.0 升级提示**：eval Job 的模型凭据原来写在 `spec.agent.credentials[]` 下；现统一改为 `traits.envs[]`（见下方示例）。升级前提交的 in-flight eval Job 在执行时解码会失败，升级前请排空所有运行中的评测 Job。
+**契约迁移**：不再接受旧 `type: eval`、评测 `spec`、`framework/frameworkVersion`、`datasetId`、嵌套 `agent.model`、`options` 或顶层 `resultPolicy`。升级前排空或取消旧评测并确认 Kubernetes Job 已停止，导出所需历史结果，然后升级数据库 schema 和各运行角色。普通 `command` 请求不变。
 
 业务接口使用登录 Bearer Token 和 `X-Eruun-Workspace-ID`。读取需要空间成员权限，viewer 可读取；提交、上传、修改策略、取消及重试要求 member 或更高角色。创建请求可省略 `workspaceId`，由已授权的请求空间决定；若显式填写，必须与该空间一致。空间 ID 在创建空间时生成，不会为每个 Job 新建空间。
 
@@ -35,44 +35,63 @@
 
 ## Harbor 评测 JSON
 
-首版固定 Harbor **0.22.0**。`spec` 配置评测执行方式；实际任务内容、镜像、参考解答和 verifier 在上传的 Harbor 任务包中。上传原生任务包后，用返回的 `id` 提交：
+`traits.evaluation` 描述测评任务；模型是被比较的对象，`agent` 是执行任务的 harness。任务内容、镜像、参考解答与 verifier 保存在原生任务包里，DSL 不再复制 Harbor JobConfig。当前 Runner 使用 Harbor **0.22.0**，输入只声明 `env: ack`；不接受 framework 或框架版本字段。
 
 ```json
 {
-  "name": "agent-capability-evaluation",
-  "type": "eval",
-  "spec": {
-    "datasetId": "<任务包上传返回的 ID>",
-    "agent": {
-      "name": "terminus-2",
-      "model": "<Harbor 支持的 provider/model>"
-    },
-    "options": {"attempts": 1, "concurrency": 1},
-    "timeoutSeconds": 3600
-  },
+  "name": "model-benchmark",
+  "type": "job",
   "traits": {
-    "resources": {"cpu": "1", "memory": "2Gi", "cpuLimit": "2", "memoryLimit": "4Gi"},
+    "evaluation": {
+      "env": "ack",
+      "model": "<provider/model>",
+      "agent": "terminus-2",
+      "taskPackageId": "<任务包上传返回的 ID>",
+      "attempts": 1,
+      "concurrency": 1,
+      "timeoutSeconds": 3600,
+      "resultPolicy": {
+        "retentionDays": 90,
+        "targets": [
+          {
+            "type": "database",
+            "mode": "full"
+          }
+        ]
+      }
+    },
+    "resources": {
+      "cpu": "1",
+      "memory": "2Gi"
+    },
     "envs": [
-      {"name": "OPENAI_API_KEY", "valueFrom": {"secret": {"name": "evaluation-model", "key": "api-key"}}}
-    ]
-  },
-  "resultPolicy": {
-    "retentionDays": 90,
-    "targets": [
-      {"type": "minio", "mode": "full"},
-      {"type": "database", "mode": "metadata"}
+      {
+        "name": "OPENAI_API_KEY",
+        "valueFrom": {
+          "secret": {
+            "name": "evaluation-model",
+            "key": "api-key"
+          }
+        }
+      }
     ]
   }
 }
 ```
 
-`framework` 和 `frameworkVersion` 可省略，服务端分别补为 `harbor` 和 `0.22.0` 并保存在 Job 快照中；显式填入其他值仍会拒绝。上传任务包时，Eruun 自动生成 UUID 并在响应的 `data.id` 返回；提交时把它填入 `datasetId`。**这个 ID 是 Eruun 的任务包归档句柄，不是 Harbor 的数据集名称、版本或原生任务 ID。** Runner 按 ID 下载并解包，然后把本地任务路径交给 Harbor；当前 Eruun API 不支持直接引用 Harbor 注册数据集。同一任务包可供 1000 个 Job 复用。Harbor 对任务与数据集的区分见 [官方数据集说明](https://www.harborframework.com/docs/datasets)。
+上传任务包后，把响应 `data.id` 填入 `taskPackageId`。这个 ID 是 Eruun 任务包归档句柄，不是 Harbor 的数据集名称、版本或原生 task ID。Runner 下载归档，将解包后的本地路径交给 Harbor；当前不支持直接引用 Harbor 注册数据集。相同任务包可供多个评测复用。
 
-允许 `terminus-2`、`codex`、`claude-code` 和 `oracle`。`agent.name` 指定 Harbor 执行 trial 的 Agent；`oracle` 执行任务包的参考解答，用于验证任务与平台链路，不代表模型能力；使用它时省略 `model`，无需模型调用或模型费用。其他 Agent 必须指定模型。模型凭据通过 `traits.envs` 传入，支持的环境名为 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`GEMINI_API_KEY`、`GOOGLE_API_KEY`、`OPENROUTER_API_KEY`、`AZURE_API_KEY`，必须使用 `valueFrom.secret` 引用当前空间已有 Secret 的键；不接受 `valueFrom.static` 明文值，平台不返回 Secret 内容。
+允许 `terminus-2`、`codex`、`claude-code` 和 `oracle`。`agent` 指定 Harbor 执行 trial 的 harness；`oracle` 执行任务包的参考解答，用于验证任务与平台链路，不代表模型能力；使用它时省略 `model`，无需模型调用或模型费用。其他 Agent 必须指定模型。模型凭据通过 `traits.envs` 传入，支持的环境名为 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`GEMINI_API_KEY`、`GOOGLE_API_KEY`、`OPENROUTER_API_KEY`、`AZURE_API_KEY`，必须使用 `valueFrom.secret` 引用当前空间已有 Secret 的键；不接受 `valueFrom.static` 明文值，平台不返回 Secret 内容。
 
 `attempts` 为每个任务的评测次数，默认 1，范围 1–10；`concurrency` 为 Harbor 同时执行的 trial 数，默认 1，范围 1–16。它们不改变 Eruun 的 Job 调度器并发策略。评测默认超时 3600 秒，范围 60–86400 秒，另预留 360 秒停止和归档时间；任务包下载预算为 300 秒，进入 finalizing 后结果采集、上传和 terminal 确认共享最多 360 秒，普通 API 仍保留原来的超时限制。
 
-评测只支持 `resources` Trait；省略时默认请求 1 CPU/2 GiB、限制 2 CPU/4 GiB。这组值应用于 Runner 和每个任务环境，实际总资源随并发数增加，仍受空间配额约束。框架参数位于 `spec`，不增加 Harbor Trait。不能提交任意 Python 适配器、环境 kwargs、命名空间、ServiceAccount 或 Pod 覆盖。
+`traits.resources` 只控制 Runner；`traits.evaluation.sandboxResources` 单独控制每个 trial 的任务环境。两者各自省略时默认请求 1 CPU/2 GiB、限制 2 CPU/4 GiB，总资源随 concurrency 增加，仍受空间配额约束。凭据使用 `traits.envs` 的 Secret 引用。评测不接受自定义 Runner image/command、挂载、envFrom、ServiceAccount、任意 Python adapter 或环境 kwargs。
+
+## Application / Workflow 中的评测
+
+Application 的顶层组件可使用同一段 `{"name":"model-benchmark","type":"job","traits":{...}}`，无需填写 image。Workflow 使用既有 `jobType: deploy` 引用该组件，不新增评测步骤类型或调度器。可执行结构见 [应用内评测示例](../examples/agent-evaluation/application.json)。原生 task 内的步骤、工具调用和 verifier 仍由 Harbor 执行，不拆成 Eruun Workflow steps。
+
+评测只适用于顶层 `job`；不能放在 webservice、initContainer 或 sidecar 中，也不能同时声明容器命令、端口、schedule、startTime、runPolicy 或 retry。Workflow 的执行顺序、并发与失败策略继续生效。取消应用内评测通过所属应用的 Workflow 取消接口；独立 `/jobs/:taskID/cancel` 不扩展为应用取消入口。
 
 ## 原生任务包
 
@@ -94,6 +113,8 @@ curl -X POST "$ERUUN_URL/api/v1/job-datasets?name=harbor-demo" \
 
 `GET /api/v1/jobs/:taskID` 分别返回队列执行 `status`、`executions`、`collectionState`、`results` 和 `deliveries`。评测 Job 在 Runner 已认领后还返回可选 `runnerStatus`：`phase`、已接受的 `sequence`、`lastHeartbeatAt`、`stale`、单调 trial 进度和不可变 terminal。该对象不包含任务 Token、Pod/Job UID 或执行密钥。心跳按 15 秒发送；服务端连续 60 秒未接收任何 Runner 事件时只将 `stale` 标为 true，不据此推断成功或失败，`lastHeartbeatAt` 仍只记录最后一次已接收心跳。`collectionState` 为 `pending`、`collected`、`incomplete`、`unavailable` 或 `expired`。原始结果的 `summary.executionStatus` 保留框架事实，`summary.collectionComplete` 表示采集完整性。
 
+Application 内评测使用 `GET /api/v1/jobs/:taskID?executionKey=<Job executionKey>`，结果下载、保存重试和保留期接口同样传 `executionKey`。键来自 Workflow 的 Job 执行记录，不能用组件名替代。独立评测只有一个执行时可省略；存在多个执行时必须显式选择。结果和 delivery 都记录该键，避免同一父任务内互相覆盖。所选执行的有效声明与框架版本作为可查询快照保存，Runner 能力 Token 不返回给用户。
+
 原始结果是完整 tar.gz：根 `result.json` 描述采集；`outputs/` 保留 Harbor 的结果、trial、奖励、轨迹、日志、产物及其他文件。文件清单和摘要便于查询，下载仍提供完整归档。采集完整性同时检查试验 Pod 的下载和 Runner 本地归档，Harbor 内部吞掉的下载异常也会标记为不完整。原生失败、取消、采集失败和无法上传分别可辨认；reward 为 0 本身不是运行失败。
 
 源数据被事务性保存后，各目标记录为 `pending`。Controller 自动执行保存，状态独立为 `pending/running/succeeded/failed`，失败记录 `lastError`。用户仅需重试失败目标；成功目标重复重试为幂等操作，不重复评测。相同源归档重复上传被接受，不同内容不可覆盖已发布源。
@@ -108,7 +129,7 @@ curl -X POST "$ERUUN_URL/api/v1/job-datasets?name=harbor-demo" \
 
 注册时初始化个人空间默认策略；团队空间创建时同样初始化。已有空间未存策略时使用同一默认值。通过现有空间成员授权使用管理员提供的数据库和 MinIO 能力，不另建用户身份系统。
 
-默认策略为 `retentionDays: 90` 和 `database/full`。`GET /api/v1/job-storage-policy` 返回可用目标及当前策略；`PUT` 使用与 `resultPolicy` 相同的 JSON 更新默认值，范围 1–3650 天。提交时快照化所选策略；省略 `resultPolicy` 使用空间默认值。修改默认策略只影响新任务。
+默认策略为 `retentionDays: 90` 和 `database/full`。`GET /api/v1/job-storage-policy` 返回可用目标及当前策略；`PUT` 使用与 `resultPolicy` 相同的 JSON 更新默认值，范围 1–3650 天。独立提交时、应用内评测首次生成执行时，快照化 `traits.evaluation.resultPolicy`；省略则使用当时的空间默认值。恢复沿用已持久化的策略。修改默认策略只影响后续执行。
 
 原始数据保留期从采集成功开始计算。`PUT /api/v1/jobs/:taskID/retention` 接收 `{"retentionDays":30}`，将尚未过期的原始数据改为从本次操作起再保留 30 天。周期清理只删除源字节，保留可查询的过期元数据，**不删除 MinIO 或数据库保存副本**。每个 trial 的原始数据完整下载到 Runner 后可清理其试验 Pod；下载失败的试验 Pod 随未完整采集的 Runner Pod 保留供诊断，仍受执行截止时间约束，并随 Runner 的保留期限到期回收。最终归档或上传失败时，Runner 中已有的原始文件继续保留。
 
@@ -132,7 +153,7 @@ curl -X POST "$ERUUN_URL/api/v1/job-datasets?name=harbor-demo" \
 | `PUT /jobs/:taskID/retention` | 修改已采集、未过期源数据的保留时间 |
 | `GET/PUT /job-storage-policy` | 获取或修改空间默认策略 |
 
-`/job-runners/:taskID/dataset`、`/job-runners/:taskID/results` 和 `POST /job-runners/:taskID/events` 是内部 Runner 接口：校验任务能力凭据、Pod 名称/UID、所属 live Job UID、ExecutionKey、RunGeneration、Attempt 与持久化 checkpoint，登录 Token 不能代替 Runner 身份。Runner 必须先成功提交 `claim`，才能下载任务包或上传结果；同一 attempt 只有一个 Pod owner，不同 Pod 的认领返回 HTTP 409。旧执行者不能覆盖新执行结果。
+`/job-runners/:taskID/dataset`、`/job-runners/:taskID/results` 和 `POST /job-runners/:taskID/events` 是内部 Runner 接口：校验对应 Job 的能力凭据、Pod 名称/UID、所属 live Job UID、ExecutionKey、RunGeneration、Attempt 与持久化 checkpoint，登录 Token 不能代替 Runner 身份。Runner 必须先成功提交 `claim`，才能下载任务包或上传结果；同一 attempt 只有一个 Pod owner，不同 Pod 的认领返回 HTTP 409。旧执行者不能覆盖新执行结果。
 
 事件请求上限 64 KiB，固定使用 `protocolVersion: "v1"`、正整数 `sequence` 与 `kind`。`kind` 为 `claim`、`phase`、`heartbeat`、`progress` 或 `terminal`；phase 只允许 `preparing/running/finalizing`；progress 只包含非负、单调且不超过总量的 `completedTrials/totalTrials`。terminal 使用 `succeeded/failed/cancelled/timed_out` outcome，引用 results 接口已确认的 64 字符 artifact ID 和 SHA-256 digest，并携带 `collectionComplete`；可选 exit code、signal、最长 64 字符稳定 reason 和最长 512 字符脱敏 message。
 

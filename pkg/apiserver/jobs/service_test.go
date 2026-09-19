@@ -59,6 +59,10 @@ func commandRequest() SubmitRequest {
 	return SubmitRequest{WorkspaceID: "space", JobSpec: spec.JobSpec{Name: "one command", Type: "command", Spec: json.RawMessage(`{"image":"busybox:1.37.0","command":["echo"],"args":["hello"]}`)}}
 }
 
+func evaluationDeclaration(name, taskPackageID, agent, modelName string) spec.JobSpec {
+	return spec.JobSpec{Name: name, Type: "job", Traits: spec.JobTraits{Evaluation: &spec.EvaluationTraitSpec{Env: "ack", TaskPackageID: taskPackageID, Agent: agent, Model: modelName}}}
+}
+
 func TestSubmitCommandUsesWorkspaceQueueWithoutApplication(t *testing.T) {
 	service, raw, ctx := testJobService(t)
 	accepted, err := service.Submit(ctx, commandRequest())
@@ -71,10 +75,9 @@ func TestSubmitCommandUsesWorkspaceQueueWithoutApplication(t *testing.T) {
 	require.Empty(t, parent.WorkflowID)
 	require.Equal(t, config.WorkflowTaskTypeJob, parent.Type)
 	require.Equal(t, "space", parent.WorkspaceID)
-	require.Len(t, parent.JobToken, 64)
 	encoded, err := json.Marshal(parent)
 	require.NoError(t, err)
-	require.NotContains(t, string(encoded), parent.JobToken)
+	require.NotContains(t, string(encoded), "jobToken")
 	count, err := raw.Count(ctx, &model.Applications{}, nil)
 	require.NoError(t, err)
 	require.Zero(t, count)
@@ -93,21 +96,21 @@ func TestSubmitEvalUsesAuthorizedWorkspaceAndKeepsInternalJobType(t *testing.T) 
 	service, raw, ctx := testJobService(t)
 	datasetID := "11111111-1111-1111-1111-111111111111"
 	require.NoError(t, raw.Add(ctx, &model.JobArtifact{ID: datasetID, WorkspaceID: "space", Kind: artifacts.KindDataset, Digest: strings.Repeat("a", 64)}))
-	request := SubmitRequest{JobSpec: spec.JobSpec{Name: "sleep", Type: "eval", Spec: json.RawMessage(`{"datasetId":"` + datasetID + `","agent":{"name":"oracle"}}`)}}
+	request := SubmitRequest{JobSpec: evaluationDeclaration("sleep", datasetID, "oracle", "")}
 	accepted, err := service.Submit(ctx, request)
 	require.NoError(t, err)
 	require.Equal(t, "space", accepted.WorkspaceID)
-	require.Equal(t, "eval", accepted.Type)
+	require.Equal(t, "job", accepted.Type)
 	parent := &model.WorkflowQueue{TaskID: accepted.TaskID}
 	require.NoError(t, raw.Get(ctx, parent))
 	require.Equal(t, "space", parent.WorkspaceID)
-	require.True(t, validateRunnerDeclaration(parent.JobSpec))
+	require.Contains(t, parent.JobSpec, `"evaluation"`)
 	task, err := BuildTask(ctx, service.Store, service.Config, parent, "space-ns")
 	require.NoError(t, err)
 	require.Equal(t, string(config.JobEval), task.JobType)
 	detail, err := service.Get(ctx, accepted.TaskID)
 	require.NoError(t, err)
-	require.Equal(t, "eval", detail.Type)
+	require.Equal(t, "job", detail.Type)
 	require.Equal(t, "pending", detail.CollectionState)
 
 	request.WorkspaceID = "other"
@@ -130,7 +133,7 @@ func newRunnerFixture(t *testing.T) *runnerFixture {
 	service, raw, ctx := testJobService(t)
 	dataset := &model.JobArtifact{ID: "11111111-1111-1111-1111-111111111111", WorkspaceID: "space", Kind: artifacts.KindDataset, Digest: strings.Repeat("a", 64)}
 	require.NoError(t, raw.Add(ctx, dataset))
-	accepted, err := service.Submit(ctx, SubmitRequest{WorkspaceID: "space", JobSpec: spec.JobSpec{Name: "evaluate", Type: "eval", Spec: json.RawMessage(`{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"11111111-1111-1111-1111-111111111111","agent":{"name":"oracle"}}`)}})
+	accepted, err := service.Submit(ctx, SubmitRequest{WorkspaceID: "space", JobSpec: evaluationDeclaration("evaluate", dataset.ID, "oracle", "")})
 	require.NoError(t, err)
 	parent := &model.WorkflowQueue{TaskID: accepted.TaskID}
 	require.NoError(t, raw.Get(ctx, parent))
@@ -139,6 +142,7 @@ func newRunnerFixture(t *testing.T) *runnerFixture {
 	task, err := BuildTask(ctx, service.Store, service.Config, parent, "space-ns")
 	require.NoError(t, err)
 	task.RunGeneration, task.OwnerRunGeneration, task.ExecutionKey = 2, 4, "original-execution"
+	require.NoError(t, BuildEvaluationTask(ctx, service.Store, service.Config, task, spec.JobTraits{}))
 	workflowjob.ApplyTaskIDAnnotation(task)
 	workflowjob.ApplyExecutionIdentity(task)
 	workload := task.JobInfo.(*batchv1.Job)
@@ -146,15 +150,17 @@ func newRunnerFixture(t *testing.T) *runnerFixture {
 	workload.UID = "original-job"
 	checkpoint, err := json.Marshal(map[string]any{"kind": "instant_job_retry", "version": 1, "attempt": 1, "job": workload, "currentUID": workload.UID, "deadline": time.Now().Add(time.Hour).UnixNano()})
 	require.NoError(t, err)
-	record := &model.JobInfo{Type: string(config.JobEval), TaskID: parent.TaskID, WorkspaceID: "space", ServiceName: workload.Name, Status: string(config.StatusRunning), ExecutionKey: ptr.To(task.ExecutionKey), RunGeneration: 2, Attempt: 1, InternalInfo: string(checkpoint)}
+	record := &model.JobInfo{Type: string(config.JobEval), TaskID: parent.TaskID, WorkspaceID: "space", ServiceName: workload.Name, Status: string(config.StatusRunning), ExecutionKey: ptr.To(task.ExecutionKey), RunGeneration: 2, Attempt: 1, InternalInfo: string(checkpoint), EvaluationInfo: task.EvaluationInfo}
 	require.NoError(t, raw.Add(ctx, record))
 	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: workload.Name + "-pod", Namespace: workload.Namespace, UID: "original-pod", Annotations: workload.Spec.Template.Annotations,
 		OwnerReferences: []metav1.OwnerReference{{APIVersion: "batch/v1", Kind: "Job", Name: workload.Name, UID: workload.UID, Controller: ptr.To(true)}}}, Spec: workload.Spec.Template.Spec}
 	client := service.Kube.(*fake.Clientset)
 	require.NoError(t, client.Tracker().Add(workload))
 	require.NoError(t, client.Tracker().Add(pod))
+	info, err := decodeEvaluationInfo(task.EvaluationInfo)
+	require.NoError(t, err)
 	return &runnerFixture{service: service, raw: raw, parent: parent, record: record, workload: workload, pod: pod,
-		identity: RunnerIdentity{TaskID: parent.TaskID, Token: parent.JobToken, PodName: pod.Name, PodUID: string(pod.UID)}}
+		identity: RunnerIdentity{TaskID: parent.TaskID, Token: info.RunnerToken, PodName: pod.Name, PodUID: string(pod.UID)}}
 }
 
 func claimRunner(t *testing.T, f *runnerFixture) {
@@ -186,6 +192,16 @@ func TestRunnerCapabilityAcceptsRecoveredPodAndRejectsSpoofedIdentity(t *testing
 		}},
 		{"owner UID", func(t *testing.T, f *runnerFixture) {
 			f.pod.OwnerReferences[0].UID = "different-job"
+			_, err := f.service.Kube.CoreV1().Pods(f.pod.Namespace).Update(context.Background(), f.pod, metav1.UpdateOptions{})
+			require.NoError(t, err)
+		}},
+		{"owner Job name", func(t *testing.T, f *runnerFixture) {
+			// Keep every copied execution annotation and UID identical: the
+			// checkpoint's Kubernetes name must still reject this different Job.
+			spoofed := f.workload.DeepCopy()
+			spoofed.Name = "different-job"
+			require.NoError(t, f.service.Kube.(*fake.Clientset).Tracker().Add(spoofed))
+			f.pod.OwnerReferences[0].Name = spoofed.Name
 			_, err := f.service.Kube.CoreV1().Pods(f.pod.Namespace).Update(context.Background(), f.pod, metav1.UpdateOptions{})
 			require.NoError(t, err)
 		}},
@@ -617,4 +633,105 @@ func TestCommandRuntimePersistsCheckpointAndTerminalResultThroughScopedStore(t *
 	require.True(t, workflowjob.HasInstantJobRetryCheckpoint(record))
 	_, err = client.BatchV1().Jobs(task.Namespace).Get(ctx, task.Name, metav1.GetOptions{})
 	require.Error(t, err, "terminal state must be committed before cleanup")
+}
+
+func TestApplicationEvaluationUsesItsExecutionCapabilityAndResultIdentity(t *testing.T) {
+	f := newRunnerFixture(t)
+	ctx := context.Background()
+	f.parent.AppID = "app"
+	f.parent.Type = config.WorkflowTaskTypeWorkflow
+	f.parent.JobSpec = ""
+	f.record.AppID = "app"
+	f.record.ServiceName = "model-benchmark"
+	require.NotEqual(t, f.workload.Name, f.record.ServiceName)
+	require.NoError(t, f.raw.Add(ctx, &model.Applications{ID: "app", WorkspaceID: "space", Namespace: "space-ns"}))
+	require.NoError(t, f.raw.Put(ctx, f.parent))
+	require.NoError(t, f.raw.Put(ctx, f.record))
+	claimRunner(t, f)
+
+	result, err := f.service.RunnerResult(ctx, f.identity, bytes.NewReader(resultArchive(t)))
+	require.NoError(t, err)
+	require.Equal(t, *f.record.ExecutionKey, result.ExecutionKey)
+	member := account.WithScope(ctx, account.Scope{WorkspaceID: "space", Namespace: "space-ns", Role: "member"})
+	_, err = f.service.Get(member, f.parent.TaskID)
+	require.ErrorIs(t, err, bcode.ErrNotFound, "App requests must select an execution")
+	detail, err := f.service.Get(member, f.parent.TaskID, *f.record.ExecutionKey)
+	require.NoError(t, err)
+	require.Equal(t, "job", detail.Type)
+	require.Equal(t, "model-benchmark", detail.Job.Name)
+	require.Equal(t, "ack", detail.Job.Traits.Evaluation.Env)
+	require.Equal(t, *f.record.ExecutionKey, detail.ExecutionKey)
+	require.Equal(t, spec.HarborVersion, detail.FrameworkVersion)
+	require.Len(t, detail.Executions, 1)
+	require.Len(t, detail.Results, 1)
+	publicJSON, err := json.Marshal(detail)
+	require.NoError(t, err)
+	require.NotContains(t, string(publicJSON), f.identity.Token)
+
+	foreign := &model.JobArtifact{ID: strings.Repeat("b", 64), WorkspaceID: "space", TaskID: f.parent.TaskID, ExecutionKey: "other-step", Kind: artifacts.KindSource, Digest: result.Digest, Summary: result.Summary}
+	require.NoError(t, f.raw.Add(ctx, foreign))
+	complete := true
+	_, err = f.service.RunnerEvent(ctx, f.identity, RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 2, Kind: "terminal", Terminal: &RunnerTerminal{Outcome: "succeeded", ArtifactID: foreign.ID, ArtifactDigest: foreign.Digest, CollectionComplete: &complete}})
+	require.ErrorIs(t, err, ErrRunnerConflict, "a sibling Job result cannot complete this execution")
+	_, err = f.service.Get(member, f.parent.TaskID, "other-step")
+	require.ErrorIs(t, err, bcode.ErrNotFound)
+	_, err = f.service.Get(account.WithScope(ctx, account.Scope{WorkspaceID: "other", Namespace: "other-ns", Role: "member"}), f.parent.TaskID, *f.record.ExecutionKey)
+	require.Error(t, err)
+}
+
+func TestResultPublicationRejectsChangedEvaluationSnapshot(t *testing.T) {
+	f := newRunnerFixture(t)
+	claimRunner(t, f)
+	reader := &readHook{Reader: bytes.NewReader(resultArchive(t)), hook: func() {
+		info, err := decodeEvaluationInfo(f.record.EvaluationInfo)
+		require.NoError(t, err)
+		info.RunnerToken = strings.Repeat("f", 64)
+		raw, err := json.Marshal(info)
+		require.NoError(t, err)
+		f.record.EvaluationInfo = string(raw)
+		require.NoError(t, f.raw.Put(context.Background(), f.record))
+	}}
+	_, err := f.service.RunnerResult(context.Background(), f.identity, reader)
+	require.ErrorIs(t, err, bcode.ErrUnauthorized)
+	count, err := f.raw.Count(context.Background(), &model.JobArtifact{TaskID: f.parent.TaskID, Kind: artifacts.KindSource}, nil)
+	require.NoError(t, err)
+	require.Zero(t, count)
+}
+
+func TestSiblingEvaluationRunnersCannotExchangeCapabilities(t *testing.T) {
+	f := newRunnerFixture(t)
+	ctx := context.Background()
+	other := &model.JobTask{Name: "evaluation-sibling", Namespace: "space-ns", WorkspaceID: "space", TaskID: f.parent.TaskID, ExecutionKey: "sibling-execution", RunGeneration: 2}
+	info, err := decodeEvaluationInfo(f.record.EvaluationInfo)
+	require.NoError(t, err)
+	require.NoError(t, BuildEvaluationTask(ctx, f.service.Store, f.service.Config, other, info.Traits))
+	workflowjob.ApplyTaskIDAnnotation(other)
+	workflowjob.ApplyExecutionIdentity(other)
+	workload := other.JobInfo.(*batchv1.Job)
+	workload.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
+	workload.UID = "sibling-job"
+	checkpoint, err := json.Marshal(map[string]any{"kind": "instant_job_retry", "version": 1, "attempt": 1, "job": workload, "currentUID": workload.UID, "deadline": time.Now().Add(time.Hour).UnixNano()})
+	require.NoError(t, err)
+	record := &model.JobInfo{Type: string(config.JobEval), TaskID: f.parent.TaskID, WorkspaceID: "space", ServiceName: workload.Name, Status: string(config.StatusRunning), ExecutionKey: ptr.To(other.ExecutionKey), RunGeneration: 2, Attempt: 1, InternalInfo: string(checkpoint), EvaluationInfo: other.EvaluationInfo}
+	require.NoError(t, f.raw.Add(ctx, record))
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: workload.Name + "-pod", Namespace: workload.Namespace, UID: "sibling-pod", Annotations: workload.Spec.Template.Annotations,
+		OwnerReferences: []metav1.OwnerReference{{APIVersion: "batch/v1", Kind: "Job", Name: workload.Name, UID: workload.UID, Controller: ptr.To(true)}}}, Spec: workload.Spec.Template.Spec}
+	client := f.service.Kube.(*fake.Clientset)
+	require.NoError(t, client.Tracker().Add(workload))
+	require.NoError(t, client.Tracker().Add(pod))
+	identity := RunnerIdentity{TaskID: f.parent.TaskID, Token: f.identity.Token, PodName: pod.Name, PodUID: string(pod.UID)}
+	_, err = f.service.RunnerEvent(ctx, identity, RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 1, Kind: "claim"})
+	require.ErrorIs(t, err, bcode.ErrUnauthorized)
+	otherInfo, err := decodeEvaluationInfo(other.EvaluationInfo)
+	require.NoError(t, err)
+	identity.Token = otherInfo.RunnerToken
+	_, err = f.service.RunnerEvent(ctx, identity, RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 1, Kind: "claim"})
+	require.NoError(t, err)
+	claimRunner(t, f)
+	member := account.WithScope(ctx, account.Scope{WorkspaceID: "space", Namespace: "space-ns", Role: "member"})
+	_, err = f.service.ResolveExecutionKey(member, f.parent.TaskID, "")
+	require.ErrorIs(t, err, bcode.ErrJobInput)
+	key, err := f.service.ResolveExecutionKey(member, f.parent.TaskID, other.ExecutionKey)
+	require.NoError(t, err)
+	require.Equal(t, other.ExecutionKey, key)
 }

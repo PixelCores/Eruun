@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
@@ -66,8 +67,16 @@ type canonicalWorkflowSubStepJSON struct {
 	Components      []string             `json:"components,omitempty"`
 }
 
+type canonicalJobJSON struct {
+	WorkspaceID string               `json:"workspaceId,omitempty"`
+	Name        string               `json:"name"`
+	Type        string               `json:"type"`
+	Spec        *spec.CommandJobSpec `json:"spec,omitempty"`
+	Traits      spec.JobTraits       `json:"traits,omitempty"`
+}
+
 // CanonicalJSONSchema returns the discoverable JSON Schema bundle for the
-// canonical Application, Component, Trait, and Workflow request profiles.
+// canonical Application, Component, Trait, Workflow, and standalone Job request profiles.
 func CanonicalJSONSchema() ([]byte, error) {
 	canonicalJSONSchemaOnce.Do(func() {
 		builder := newSchemaBuilder()
@@ -75,11 +84,12 @@ func CanonicalJSONSchema() ([]byte, error) {
 		componentRef := builder.schemaFor(reflect.TypeOf(CreateComponentRequest{}))
 		traitRef := builder.schemaFor(reflect.TypeOf(Traits{}))
 		workflowRef := builder.schemaFor(reflect.TypeOf(canonicalWorkflowJSON{}))
+		jobRef := builder.schemaFor(reflect.TypeOf(canonicalJobJSON{}))
 		schema := map[string]any{
 			"$schema": "https://json-schema.org/draft/2020-12/schema",
 			"$id":     CanonicalJSONSchemaID,
 			"title":   "Eruun canonical JSON profile",
-			"oneOf":   []any{applicationRef, componentRef, traitRef, workflowRef},
+			"anyOf":   []any{applicationRef, componentRef, traitRef, workflowRef, jobRef},
 			"$defs":   builder.definitions,
 		}
 		canonicalJSONSchemaData, canonicalJSONSchemaErr = json.MarshalIndent(schema, "", "  ")
@@ -95,6 +105,7 @@ type schemaBuilder struct {
 func newSchemaBuilder() *schemaBuilder {
 	b := &schemaBuilder{definitions: map[string]any{}, names: map[reflect.Type]string{}}
 	b.names[reflect.TypeOf(canonicalApplicationJSON{})] = "Application"
+	b.names[reflect.TypeOf(canonicalJobJSON{})] = "Job"
 	b.names[reflect.TypeOf(CreateComponentRequest{})] = "Component"
 	b.names[reflect.TypeOf(Traits{})] = "Trait"
 	b.names[reflect.TypeOf(canonicalWorkflowJSON{})] = "Workflow"
@@ -181,6 +192,7 @@ func (b *schemaBuilder) structSchema(t reflect.Type) map[string]any {
 	if len(required) > 0 {
 		definition["required"] = required
 	}
+	b.applyDefinitionConstraints(name, definition)
 	b.definitions[name] = definition
 	return map[string]any{"$ref": "#/$defs/" + name}
 }
@@ -210,12 +222,51 @@ func (b *schemaBuilder) requiredField(definition, field, validation string, opti
 		return field == "workflow"
 	case "WorkflowStep", "WorkflowSubStep":
 		return field == "name"
+	case "Job":
+		return field == "name" || field == "type"
+	case "EvaluationTraitSpec":
+		return field == "env" || field == "agent" || field == "taskPackageId"
+	case "CommandJobSpec":
+		return field == "image" || field == "command"
+	case "JobResultPolicy":
+		return field == "retentionDays" || field == "targets"
+	case "JobResultTarget":
+		return field == "type" || field == "mode"
 	}
 	return strings.Contains(validation, "required") && !options["omitempty"]
 }
 
 func (b *schemaBuilder) applyFieldConstraints(definition, field string, schema map[string]any) {
 	switch {
+	case definition == "Job" && field == "type":
+		schema["enum"] = []string{"command", "job"}
+	case definition == "Job" && field == "name":
+		schema["minLength"], schema["maxLength"] = 1, 128
+	case definition == "EvaluationTraitSpec" && field == "env":
+		schema["const"] = "ack"
+	case definition == "EvaluationTraitSpec" && field == "agent":
+		schema["enum"] = []string{"codex", "claude-code", "terminus-2", "oracle"}
+	case definition == "EvaluationTraitSpec" && field == "model":
+		schema["maxLength"] = 256
+	case definition == "EvaluationTraitSpec" && field == "taskPackageId":
+		schema["minLength"], schema["maxLength"] = 36, 36
+	case definition == "EvaluationTraitSpec" && field == "attempts":
+		schema["minimum"], schema["maximum"], schema["default"] = 1, 10, 1
+	case definition == "EvaluationTraitSpec" && field == "concurrency":
+		schema["minimum"], schema["maximum"], schema["default"] = 1, 16, 1
+	case definition == "EvaluationTraitSpec" && field == "timeoutSeconds":
+		schema["minimum"], schema["maximum"], schema["default"] = 60, 86400, 3600
+	case definition == "EvaluationTraitSpec" && field == "sandboxResources":
+		schema["required"] = []string{"cpu", "memory"}
+		schema["description"] = "Resources for each trial sandbox; traits.resources applies only to the Runner."
+	case definition == "JobResultPolicy" && field == "retentionDays":
+		schema["minimum"], schema["maximum"] = 1, 3650
+	case definition == "JobResultPolicy" && field == "targets":
+		schema["minItems"], schema["maxItems"] = 1, 2
+	case definition == "JobResultTarget" && field == "type":
+		schema["enum"] = []string{"database", "minio"}
+	case definition == "JobResultTarget" && field == "mode":
+		schema["enum"] = []string{"full", "metadata"}
 	case (definition == "Application" || definition == "Component" || definition == "Workflow" || definition == "WorkflowStep" || definition == "WorkflowSubStep") && field == "name":
 		schema["pattern"] = `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
 		schema["minLength"] = 2
@@ -247,6 +298,41 @@ func (b *schemaBuilder) applyFieldConstraints(definition, field string, schema m
 		}
 	case definition == "Workflow" && field == "workflow":
 		schema["minItems"] = 1
+	}
+}
+
+func (b *schemaBuilder) applyDefinitionConstraints(name string, definition map[string]any) {
+	switch name {
+	case "Job":
+		definition["oneOf"] = []any{
+			map[string]any{"required": []string{"spec"}, "properties": map[string]any{
+				"type":   map[string]any{"const": "command"},
+				"traits": map[string]any{"not": map[string]any{"required": []string{"evaluation"}}},
+			}},
+			map[string]any{"required": []string{"traits"}, "not": map[string]any{"required": []string{"spec"}}, "properties": map[string]any{
+				"type":   map[string]any{"const": "job"},
+				"traits": map[string]any{"required": []string{"evaluation"}},
+			}},
+		}
+	case "Component":
+		definition["allOf"] = []any{map[string]any{
+			"if": map[string]any{"required": []string{"traits"}, "properties": map[string]any{
+				"traits": map[string]any{"required": []string{"evaluation"}},
+			}},
+			"then": map[string]any{"properties": map[string]any{
+				"type": map[string]any{"const": "job"}, "image": map[string]any{"maxLength": 0},
+			}},
+		}}
+	case "EvaluationTraitSpec":
+		definition["description"] = "LLM evaluation shared by standalone Jobs and Application job components."
+		definition["allOf"] = []any{map[string]any{
+			"if":   map[string]any{"properties": map[string]any{"agent": map[string]any{"not": map[string]any{"const": "oracle"}}}},
+			"then": map[string]any{"required": []string{"model"}, "properties": map[string]any{"model": map[string]any{"minLength": 1}}},
+		}}
+	case "InitTraitSpec", "SidecarTraitsSpec":
+		definition["allOf"] = []any{map[string]any{"properties": map[string]any{
+			"traits": map[string]any{"not": map[string]any{"required": []string{"evaluation"}}},
+		}}}
 	}
 }
 

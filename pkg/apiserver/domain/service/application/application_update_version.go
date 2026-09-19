@@ -181,6 +181,17 @@ func (c *applicationsServiceImpl) updateComponentInStore(ctx context.Context, st
 }
 
 func (c *applicationsServiceImpl) applyComponentUpdate(comp *model.ApplicationComponent, spec apisv1.ComponentUpdateSpec) (bool, error) {
+	current, err := convertComponentModelToCreateRequest(comp)
+	if err != nil {
+		return false, err
+	}
+	resolved, err := applyComponentUpdateSpecToResolvedComponent(current, spec)
+	if err != nil {
+		return false, err
+	}
+	if spec.Traits != nil {
+		spec.Traits = &resolved.Traits
+	}
 	changed := false
 
 	// 更新镜像
@@ -265,6 +276,13 @@ func (c *applicationsServiceImpl) addComponentInStore(ctx context.Context, store
 }
 
 func newVersionUpdateComponent(app *model.Applications, spec apisv1.ComponentUpdateSpec) (*model.ApplicationComponent, error) {
+	resolved, err := componentUpdateSpecToResolvedComponent(spec)
+	if err != nil {
+		return nil, err
+	}
+	if spec.Traits != nil {
+		spec.Traits = &resolved.Traits
+	}
 	replicas := int32(1)
 	if spec.Replicas != nil {
 		replicas = *spec.Replicas

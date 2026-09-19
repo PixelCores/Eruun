@@ -1,17 +1,29 @@
 {
   "name": "harbor-oracle-check",
-  "type": "eval",
-  "spec": {
-    "datasetId": "<UPLOADED_DATASET_ID>",
-    "agent": {"name": "oracle"},
-    "options": {"attempts": 1, "concurrency": 1},
-    "timeoutSeconds": 300
-  },
+  "type": "job",
   "traits": {
-    "resources": {"cpu": "1", "memory": "2Gi", "cpuLimit": "2", "memoryLimit": "4Gi"}
-  },
-  "resultPolicy": {
-    "retentionDays": 90,
-    "targets": [{"type": "database", "mode": "full"}]
+    "evaluation": {
+      "env": "ack",
+      "agent": "oracle",
+      "taskPackageId": "<UPLOADED_DATASET_ID>",
+      "attempts": 1,
+      "concurrency": 1,
+      "timeoutSeconds": 300,
+      "resultPolicy": {
+        "retentionDays": 90,
+        "targets": [
+          {
+            "type": "database",
+            "mode": "full"
+          }
+        ]
+      }
+    },
+    "resources": {
+      "cpu": "1",
+      "memory": "2Gi",
+      "cpuLimit": "2",
+      "memoryLimit": "4Gi"
+    }
   }
 }
