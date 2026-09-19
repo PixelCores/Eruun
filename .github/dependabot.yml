@@ -4,6 +4,15 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # These releases require Go 1.26, while Eruun currently targets Go 1.25.
+    # Keep future releases visible instead of suppressing an entire version range.
+    ignore:
+      - dependency-name: golang.org/x/sync
+        versions: ["0.23.0"]
+      - dependency-name: golang.org/x/time
+        versions: ["0.16.0"]
+      - dependency-name: k8s.io/component-base
+        versions: ["0.37.0"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
