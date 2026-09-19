@@ -18,7 +18,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 )
 
 func TestDeployAdoptedPodDisruptionBudgetUsesLiveBaselineAndSkipsSecondUpdate(t *testing.T) {

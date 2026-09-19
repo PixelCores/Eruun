@@ -23,7 +23,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 )
 

@@ -25,7 +25,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	signal "github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"

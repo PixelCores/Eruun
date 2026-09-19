@@ -12,7 +12,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	miniredis "github.com/alicebob/miniredis/v2"

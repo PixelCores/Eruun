@@ -22,7 +22,7 @@ import (
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/resourceimport/contract"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
