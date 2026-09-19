@@ -12,7 +12,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/fatih/color v1.15.0
 	github.com/gin-gonic/gin v1.12.0
-	github.com/go-jose/go-jose/v4 v4.1.4
+	github.com/go-jose/go-jose/v4 v4.1.5
 	github.com/go-playground/validator/v10 v10.30.4
 	github.com/go-redsync/redsync/v4 v4.17.0
 	github.com/go-sql-driver/mysql v1.8.1
