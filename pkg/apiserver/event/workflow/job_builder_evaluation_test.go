@@ -9,6 +9,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/stretchr/testify/require"
 	batchv1 "k8s.io/api/batch/v1"
 )
@@ -34,6 +35,10 @@ func TestWorkflowEvaluationJobsHaveIndependentExecutionsAndRecoverSnapshots(t *t
 		Env: "ack", Agent: "oracle", TaskPackageID: "11111111-1111-1111-1111-111111111111",
 	}})
 	require.NoError(t, err)
+	properties, err := model.NewJSONStructByStruct(spec.Properties{Labels: map[string]string{
+		"team": "Model Team", workspace.EvaluationRunnerLabel: "false", "eruun.io/task-id": "spoof",
+	}})
+	require.NoError(t, err)
 	steps, err := model.NewJSONStructByStruct(model.WorkflowSteps{Steps: []*model.WorkflowStep{
 		{Name: "first", WorkflowType: config.JobDeploy, Properties: []model.Policies{{Policies: []string{"benchmark"}}}},
 		{Name: "second", WorkflowType: config.JobDeploy, Properties: []model.Policies{{Policies: []string{"benchmark"}}}},
@@ -42,7 +47,7 @@ func TestWorkflowEvaluationJobsHaveIndependentExecutionsAndRecoverSnapshots(t *t
 	store := &evaluationWorkflowStore{fakeDataStore: fakeDataStore{
 		workflow:    &model.Workflow{ID: "wf", Steps: steps},
 		application: &model.Applications{ID: "app", Name: "models", WorkspaceID: "space", Namespace: "space-ns"},
-		components:  []*model.ApplicationComponent{{Name: "benchmark", AppID: "app", Namespace: "space-ns", ComponentType: config.InstantJob, Traits: traits}},
+		components:  []*model.ApplicationComponent{{Name: "benchmark", AppID: "app", Namespace: "space-ns", ComponentType: config.InstantJob, Properties: properties, Traits: traits}},
 	}}
 	parent := &model.WorkflowQueue{AppID: "app", WorkflowID: "wf", WorkspaceID: "space", TaskID: "parent", RunGeneration: 1}
 	cfg := &config.Config{Jobs: &spec.JobsRuntimeConfig{RunnerImage: "example.com/runner:0.22.0", APIURL: "https://api.example.com"}}
@@ -57,6 +62,15 @@ func TestWorkflowEvaluationJobsHaveIndependentExecutionsAndRecoverSnapshots(t *t
 	require.NotEqual(t, a.EvaluationInfo, b.EvaluationInfo, "capabilities are per execution")
 	for _, task := range []*model.JobTask{a, b} {
 		workload := task.JobInfo.(*batchv1.Job)
+		for _, labels := range []map[string]string{workload.Labels, workload.Spec.Template.Labels} {
+			require.Equal(t, "model-team", labels["team"])
+			require.Equal(t, config.ManagedByEruun, labels[config.LabelManagedBy])
+			require.Equal(t, "app", labels[config.LabelAppID])
+		}
+		require.NotContains(t, workload.Labels, workspace.EvaluationRunnerLabel)
+		require.NotContains(t, workload.Labels, "eruun.io/task-id")
+		require.Equal(t, "true", workload.Spec.Template.Labels[workspace.EvaluationRunnerLabel])
+		require.Equal(t, parent.TaskID, workload.Spec.Template.Labels["eruun.io/task-id"])
 		require.Equal(t, task.ExecutionKey, workload.Spec.Template.Annotations[config.AnnotationJobExecutionKey])
 		require.Equal(t, parent.TaskID, workload.Spec.Template.Annotations[config.AnnotationJobTaskID])
 		require.Equal(t, cfg.Jobs.RunnerImage, workload.Spec.Template.Spec.Containers[0].Image)

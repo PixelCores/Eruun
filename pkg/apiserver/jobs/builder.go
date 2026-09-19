@@ -188,11 +188,12 @@ func BuildEvaluationTask(ctx context.Context, store datastore.DataStore, cfg *co
 		if workload.Labels == nil {
 			workload.Labels = map[string]string{}
 		}
-		for _, key := range []string{config.LabelAppID, config.LabelComponentName, config.LabelComponentID} {
-			if value := previous.Labels[key]; value != "" {
-				workload.Labels[key] = value
-				workload.Spec.Template.Labels[key] = value
+		for key, value := range previous.Labels {
+			if key == workspace.EvaluationRunnerLabel || key == "eruun.io/task-id" {
+				continue
 			}
+			workload.Labels[key] = value
+			workload.Spec.Template.Labels[key] = value
 		}
 		if name := previous.Annotations[config.AnnotationComponentName]; name != "" {
 			if workload.Annotations == nil {
