@@ -18,15 +18,12 @@ import (
 // BuildCommandJob renders a standalone workload without constructing an application
 // or component. Its fixed stop policy enables durable recovery without replaying
 // user commands after a failed attempt.
-func BuildCommandJob(name, namespace string, command spec.CommandJobSpec, traits spec.Traits) (*batchv1.Job, error) {
+func BuildCommandJob(name, namespace string, command spec.CommandJobSpec, traits spec.JobTraits) (*batchv1.Job, error) {
 	if len(validation.IsDNS1123Subdomain(name)) != 0 || len(validation.IsDNS1123Label(namespace)) != 0 {
 		return nil, fmt.Errorf("invalid Job name or namespace")
 	}
 	if !spec.ExplicitJobImage(command.Image) || len(command.Command) == 0 || command.Command[0] == "" || command.TimeoutSeconds <= 0 {
 		return nil, fmt.Errorf("command requires an explicit image, command and positive timeout")
-	}
-	if len(traits.Init)+len(traits.Sidecar)+len(traits.Ingress)+len(traits.Service)+len(traits.RBAC)+len(traits.Probes)+len(traits.TargetWorkEnv) > 0 || traits.Share != nil || traits.Rollout != nil {
-		return nil, fmt.Errorf("unsupported standalone Job trait")
 	}
 	container := corev1.Container{Name: "job", Image: command.Image, ImagePullPolicy: corev1.PullIfNotPresent,
 		Command: append([]string(nil), command.Command...), Args: append([]string(nil), command.Args...)}

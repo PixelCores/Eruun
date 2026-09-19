@@ -25,7 +25,7 @@ type JobSpec struct {
 	Name         string           `json:"name"`
 	Type         string           `json:"type"`
 	Spec         json.RawMessage  `json:"spec"`
-	Traits       Traits           `json:"traits,omitempty"`
+	Traits       JobTraits        `json:"traits,omitempty"`
 	ResultPolicy *JobResultPolicy `json:"resultPolicy,omitempty"`
 }
 
@@ -46,14 +46,8 @@ type AgentEvaluationSpec struct {
 }
 
 type EvaluationAgent struct {
-	Name        string            `json:"name"`
-	Model       string            `json:"model,omitempty"`
-	Credentials []EnvVarSecretRef `json:"credentials,omitempty"`
-}
-
-type EnvVarSecretRef struct {
-	Name         string             `json:"name"`
-	SecretKeyRef SecretSelectorSpec `json:"secretKeyRef"`
+	Name  string `json:"name"`
+	Model string `json:"model,omitempty"`
 }
 
 type HarborOptions struct {
@@ -177,21 +171,6 @@ func (j *JobSpec) Normalize() error {
 		if evaluation.Agent.Name != "oracle" && (strings.TrimSpace(evaluation.Agent.Model) == "" || len(evaluation.Agent.Model) > 256) {
 			return fmt.Errorf("model is required for this agent")
 		}
-		seen := map[string]bool{}
-		for _, credential := range evaluation.Agent.Credentials {
-			switch credential.Name {
-			case "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENROUTER_API_KEY", "AZURE_API_KEY":
-			default:
-				return fmt.Errorf("unsupported credential environment name")
-			}
-			if len(validation.IsEnvVarName(credential.Name)) != 0 || strings.HasPrefix(credential.Name, "ERUUN_") || strings.HasPrefix(credential.Name, "POD_") || seen[credential.Name] {
-				return fmt.Errorf("invalid or duplicate credential environment name")
-			}
-			if len(validation.IsDNS1123Subdomain(credential.SecretKeyRef.Name)) != 0 || len(validation.IsConfigMapKey(credential.SecretKeyRef.Key)) != 0 {
-				return fmt.Errorf("invalid credential Secret reference")
-			}
-			seen[credential.Name] = true
-		}
 		if evaluation.Options.Attempts == 0 {
 			evaluation.Options.Attempts = 1
 		}
@@ -240,12 +219,45 @@ func ExplicitJobImage(image string) bool {
 	return colon > 0 && colon < len(last)-1 && last[colon+1:] != "latest"
 }
 
-func validateJobTraits(t Traits, evaluation bool) error {
-	if len(t.Init)+len(t.Sidecar)+len(t.Ingress)+len(t.Service)+len(t.RBAC)+len(t.Probes)+len(t.TargetWorkEnv) > 0 || t.Share != nil || t.Rollout != nil {
-		return fmt.Errorf("unsupported standalone Job trait")
+// evaluationCredentialEnvs is the closed set of environment variables an
+// evaluation Job may declare. Because it is closed, platform-injected names
+// (ERUUN_JOB_CONFIG and the POD_* field refs the builder appends) stay
+// unreachable from user input without a separate prefix guard.
+var evaluationCredentialEnvs = map[string]bool{
+	"OPENAI_API_KEY": true, "ANTHROPIC_API_KEY": true, "GEMINI_API_KEY": true,
+	"GOOGLE_API_KEY": true, "OPENROUTER_API_KEY": true, "AZURE_API_KEY": true,
+}
+
+// validateEvaluationEnvs restricts evaluation env vars to model credentials
+// sourced from a Secret, so a plaintext key can never reach the Runner spec.
+func validateEvaluationEnvs(envs []SimplifiedEnvSpec) error {
+	seen := map[string]bool{}
+	for _, env := range envs {
+		if !evaluationCredentialEnvs[env.Name] || seen[env.Name] {
+			return fmt.Errorf("unsupported or duplicate credential environment name")
+		}
+		seen[env.Name] = true
+		source := env.ValueFrom
+		if source.Secret == nil || source.Static != nil || source.Config != nil || source.Field != nil {
+			return fmt.Errorf("evaluation credentials must come from exactly one Secret reference")
+		}
+		if len(validation.IsDNS1123Subdomain(source.Secret.Name)) != 0 || len(validation.IsConfigMapKey(source.Secret.Key)) != 0 {
+			return fmt.Errorf("invalid credential Secret reference")
+		}
 	}
-	if evaluation && (len(t.Storage)+len(t.Envs)+len(t.EnvFrom) > 0 || t.SecurityPolicy != nil) {
-		return fmt.Errorf("evaluation supports resources only; use agent.credentials for Secrets")
+	return nil
+}
+
+func validateJobTraits(t JobTraits, evaluation bool) error {
+	if evaluation {
+		// The Runner owns its security context, filesystem and envFrom sources;
+		// only resources and model credentials are user-controlled.
+		if len(t.Storage)+len(t.EnvFrom) > 0 || t.SecurityPolicy != nil {
+			return fmt.Errorf("evaluation supports resources and credential envs only")
+		}
+		if err := validateEvaluationEnvs(t.Envs); err != nil {
+			return err
+		}
 	}
 	for _, storage := range t.Storage {
 		if storage.TmpCreate || storage.Size != "" || storage.StorageClass != "" {

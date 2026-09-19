@@ -52,8 +52,8 @@ func jobPolicyOutput(p spec.JobResultPolicy) *eruunv1.JobResultPolicy {
 	return result
 }
 
-func jobTraitsInput(p *eruunv1.JobTraits) (spec.Traits, error) {
-	result := spec.Traits{}
+func jobTraitsInput(p *eruunv1.JobTraits) (spec.JobTraits, error) {
+	result := spec.JobTraits{}
 	if p == nil {
 		return result, nil
 	}
@@ -95,22 +95,26 @@ func jobTraitsInput(p *eruunv1.JobTraits) (spec.Traits, error) {
 		}
 		result.Envs = append(result.Envs, spec.SimplifiedEnvSpec{Name: env.Name, ValueFrom: value})
 	}
-	result.TargetWorkEnv = p.TargetWorkEnv
+	// target_work_env stays in the proto for field-number stability, but Jobs
+	// have never accepted it; reject it rather than dropping it silently.
+	if len(p.TargetWorkEnv) > 0 {
+		return spec.JobTraits{}, fmt.Errorf("unsupported standalone Job trait")
+	}
 	if p.Resources != nil {
 		result.Resources = &spec.ResourceTraitsSpec{CPU: p.Resources.Cpu, Memory: p.Resources.Memory, GPU: p.Resources.Gpu, CPULimit: p.Resources.CpuLimit, MemoryLimit: p.Resources.MemoryLimit}
 	}
 	if p.SecurityPolicy != nil {
 		policy, err := decodeTypedRequest[corev1.SecurityContext](p.SecurityPolicy)
 		if err != nil {
-			return spec.Traits{}, fmt.Errorf("decode Job security policy: %w", err)
+			return spec.JobTraits{}, fmt.Errorf("decode Job security policy: %w", err)
 		}
 		result.SecurityPolicy = &policy
 	}
 	return result, nil
 }
 
-func jobTraitsOutput(p spec.Traits) (*eruunv1.JobTraits, error) {
-	result := &eruunv1.JobTraits{TargetWorkEnv: p.TargetWorkEnv}
+func jobTraitsOutput(p spec.JobTraits) (*eruunv1.JobTraits, error) {
+	result := &eruunv1.JobTraits{}
 	for _, storage := range p.Storage {
 		result.Storage = append(result.Storage, &eruunv1.JobStorageTrait{
 			Name: storage.Name, Type: storage.Type, MountPath: storage.MountPath, SubPath: storage.SubPath,

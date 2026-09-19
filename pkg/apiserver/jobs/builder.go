@@ -72,12 +72,11 @@ func BuildTask(ctx context.Context, store datastore.DataStore, cfg *config.Confi
 		if marshalErr != nil {
 			return nil, marshalErr
 		}
-		runner.Env = []corev1.EnvVar{{Name: "ERUUN_JOB_CONFIG", Value: string(configJSON)}}
+		// BuildCommandJob already rendered the declared credential envs onto the
+		// container; append platform values instead of replacing that slice.
+		runner.Env = append(runner.Env, corev1.EnvVar{Name: "ERUUN_JOB_CONFIG", Value: string(configJSON)})
 		for _, field := range [][2]string{{"POD_NAME", "metadata.name"}, {"POD_UID", "metadata.uid"}, {"POD_NAMESPACE", "metadata.namespace"}} {
 			runner.Env = append(runner.Env, corev1.EnvVar{Name: field[0], ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{APIVersion: "v1", FieldPath: field[1]}}})
-		}
-		for _, credential := range evaluation.Agent.Credentials {
-			runner.Env = append(runner.Env, corev1.EnvVar{Name: credential.Name, ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: credential.SecretKeyRef.Name}, Key: credential.SecretKeyRef.Key}}})
 		}
 		runner.VolumeMounts = []corev1.VolumeMount{{Name: "work", MountPath: "/work"}}
 		workload.Spec.Template.Spec.Volumes = []corev1.Volume{{Name: "work", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{SizeLimit: nil}}}}

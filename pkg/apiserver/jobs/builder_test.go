@@ -3,17 +3,20 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
+	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
 )
 
 func TestCommandAndEvaluationRenderIntoTheSameWorkspaceNamespace(t *testing.T) {
@@ -41,6 +44,64 @@ func TestCommandAndEvaluationRenderIntoTheSameWorkspaceNamespace(t *testing.T) {
 	require.Equal(t, "2Gi", workload.Spec.Template.Spec.Containers[0].Resources.Requests.Memory().String())
 	require.Equal(t, "2", workload.Spec.Template.Spec.Containers[0].Resources.Limits.Cpu().String())
 	require.Equal(t, "4Gi", workload.Spec.Template.Spec.Containers[0].Resources.Limits.Memory().String())
+}
+
+// Credentials now arrive as traits.envs, which BuildCommandJob renders before
+// the evaluation branch appends its own values. Guards against the platform
+// envs replacing that slice and silently dropping the model credential.
+func TestEvaluationCredentialEnvsSurviveRunnerPlatformEnvs(t *testing.T) {
+	service, raw, ctx := testJobService(t)
+	dataset := &model.JobArtifact{ID: "11111111-1111-1111-1111-111111111111", WorkspaceID: "space", Kind: artifacts.KindDataset, Digest: strings.Repeat("a", 64)}
+	require.NoError(t, raw.Add(ctx, dataset))
+	_, err := service.Kube.CoreV1().Secrets("space-ns").Create(ctx,
+		&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "evaluation-model", Namespace: "space-ns"}, Data: map[string][]byte{"api-key": []byte("secret")}},
+		metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	accepted, err := service.Submit(ctx, SubmitRequest{WorkspaceID: "space", JobSpec: spec.JobSpec{
+		Name: "evaluate", Type: "eval",
+		Spec: json.RawMessage(`{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"11111111-1111-1111-1111-111111111111","agent":{"name":"terminus-2","model":"openai/gpt-4"}}`),
+		Traits: spec.JobTraits{Envs: []spec.SimplifiedEnvSpec{
+			{Name: "OPENAI_API_KEY", ValueFrom: spec.ValueSource{Secret: &spec.SecretSelectorSpec{Name: "evaluation-model", Key: "api-key"}}},
+		}},
+	}})
+	require.NoError(t, err)
+	parent := &model.WorkflowQueue{TaskID: accepted.TaskID}
+	require.NoError(t, raw.Get(ctx, parent))
+	task, err := BuildTask(ctx, service.Store, service.Config, parent, "space-ns")
+	require.NoError(t, err)
+
+	envs := map[string]corev1.EnvVar{}
+	for _, env := range task.JobInfo.(*batchv1.Job).Spec.Template.Spec.Containers[0].Env {
+		envs[env.Name] = env
+	}
+	credential, ok := envs["OPENAI_API_KEY"]
+	require.True(t, ok, "declared credential must reach the Runner container")
+	require.Equal(t, "evaluation-model", credential.ValueFrom.SecretKeyRef.Name)
+	require.Equal(t, "api-key", credential.ValueFrom.SecretKeyRef.Key)
+	require.Empty(t, credential.Value, "credential must stay a Secret reference")
+	require.Contains(t, envs, "ERUUN_JOB_CONFIG")
+	require.Contains(t, envs, "POD_NAME")
+}
+
+// Submission must fail when the referenced Secret or key is absent.
+func TestEvaluationCredentialPreflightRejectsMissingSecretKey(t *testing.T) {
+	service, raw, ctx := testJobService(t)
+	dataset := &model.JobArtifact{ID: "11111111-1111-1111-1111-111111111111", WorkspaceID: "space", Kind: artifacts.KindDataset, Digest: strings.Repeat("a", 64)}
+	require.NoError(t, raw.Add(ctx, dataset))
+	_, err := service.Kube.CoreV1().Secrets("space-ns").Create(ctx,
+		&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "evaluation-model", Namespace: "space-ns"}, Data: map[string][]byte{"other": []byte("secret")}},
+		metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	_, err = service.Submit(ctx, SubmitRequest{WorkspaceID: "space", JobSpec: spec.JobSpec{
+		Name: "evaluate", Type: "eval",
+		Spec: json.RawMessage(`{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"11111111-1111-1111-1111-111111111111","agent":{"name":"terminus-2","model":"openai/gpt-4"}}`),
+		Traits: spec.JobTraits{Envs: []spec.SimplifiedEnvSpec{
+			{Name: "OPENAI_API_KEY", ValueFrom: spec.ValueSource{Secret: &spec.SecretSelectorSpec{Name: "evaluation-model", Key: "api-key"}}},
+		}},
+	}})
+	require.Error(t, err)
 }
 
 func TestEvaluationBuilderUsesBoundedRunnerIdentityAndDownwardAPI(t *testing.T) {
