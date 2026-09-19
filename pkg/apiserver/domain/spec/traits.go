@@ -31,6 +31,18 @@ type Traits struct {
 	Rollout *RolloutTraitSpec `json:"rollout,omitempty"`
 }
 
+// JobTraits is the subset of traits a standalone Job can carry. Traits that
+// only decorate long-running workloads (init, sidecar, ingress, service, rbac,
+// probes, targetWorkEnv, share, rollout) are absent by construction, so the
+// decoder rejects them instead of each Job entry point re-checking for them.
+type JobTraits struct {
+	Storage        []StorageTraitSpec  `json:"storage,omitempty"`
+	EnvFrom        []EnvFromSourceSpec `json:"envFrom,omitempty"`
+	Envs           []SimplifiedEnvSpec `json:"envs,omitempty"`
+	Resources      *ResourceTraitsSpec `json:"resources,omitempty"`
+	SecurityPolicy *SecurityPolicySpec `json:"securityPolicy,omitempty"`
+}
+
 // InitTraitSpec describes an init container with its own nested traits.
 type InitTraitSpec struct {
 	Name       string     `json:"name"`
