@@ -10,14 +10,18 @@ import (
 	"os"
 	"strings"
 
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"k8s.io/apimachinery/pkg/api/resource"
 	validation "k8s.io/apimachinery/pkg/util/validation"
 )
 
 const (
-	HarborVersion                    = "0.22.0"
-	JobArchiveTimeoutSeconds         = 300
-	EvaluationCollectionGraceSeconds = 360
+	HarborVersion            = "0.22.0"
+	JobArchiveTimeoutSeconds = 300
+	// One ten-minute control-plane interruption plus the existing six-minute
+	// collection and delivery budget. This does not extend the trial runtime.
+	EvaluationCollectionGraceSeconds       = 960
+	DefaultRunnerWorkStorageMiB      int64 = 20480
 )
 
 // JobSpec describes one standalone command or a Job with an evaluation trait.
@@ -79,8 +83,8 @@ func (e *EvaluationTraitSpec) Normalize() error {
 	if e.TimeoutSeconds == 0 {
 		e.TimeoutSeconds = 3600
 	}
-	if e.TimeoutSeconds < 60 || e.TimeoutSeconds > 86400 {
-		return fmt.Errorf("evaluation timeoutSeconds must be 60..86400")
+	if e.TimeoutSeconds < 60 || e.TimeoutSeconds > workflowconfig.MaxEvaluationTimeoutSeconds {
+		return fmt.Errorf("evaluation timeoutSeconds must be 60..%d", workflowconfig.MaxEvaluationTimeoutSeconds)
 	}
 	if err := validateJobResources(e.SandboxResources); err != nil {
 		return fmt.Errorf("sandboxResources: %w", err)
@@ -303,10 +307,11 @@ func validateJobResources(resources *ResourceTraitsSpec) error {
 
 // JobsRuntimeConfig is administrator-owned configuration loaded from a mounted Secret.
 type JobsRuntimeConfig struct {
-	RunnerImage  string            `json:"runnerImage"`
-	APIURL       string            `json:"apiURL"`
-	MinIO        *MinIOConfig      `json:"minio,omitempty"`
-	RunnerEgress []JobRunnerEgress `json:"runnerEgress"`
+	RunnerImage          string            `json:"runnerImage"`
+	RunnerWorkStorageMiB int64             `json:"runnerWorkStorageMiB,omitempty"`
+	APIURL               string            `json:"apiURL"`
+	MinIO                *MinIOConfig      `json:"minio,omitempty"`
+	RunnerEgress         []JobRunnerEgress `json:"runnerEgress"`
 }
 
 type JobRunnerEgress struct {
@@ -337,6 +342,12 @@ func LoadJobsRuntimeConfig(path string) (*JobsRuntimeConfig, error) {
 	}
 	if !ExplicitJobImage(cfg.RunnerImage) {
 		return nil, fmt.Errorf("jobs runnerImage requires an explicit tag or digest")
+	}
+	if cfg.RunnerWorkStorageMiB == 0 {
+		cfg.RunnerWorkStorageMiB = DefaultRunnerWorkStorageMiB
+	}
+	if cfg.RunnerWorkStorageMiB < 1024 || cfg.RunnerWorkStorageMiB > 1048576 {
+		return nil, fmt.Errorf("jobs runnerWorkStorageMiB must be between 1024 and 1048576")
 	}
 	u, err := url.Parse(cfg.APIURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {

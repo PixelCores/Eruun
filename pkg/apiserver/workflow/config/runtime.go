@@ -46,26 +46,30 @@ type RuntimeConfig struct {
 	LeaseDuration time.Duration
 	// LeaseReaperInterval controls stale task recovery cadence.
 	LeaseReaperInterval time.Duration
+	// LeaseReaperBatchSize bounds one recovery pass; tune with recovery latency
+	// and database lock measurements rather than the number of server replicas.
+	LeaseReaperBatchSize int
 	// WorkerDrainTimeout bounds graceful shutdown before in-flight tasks are fenced.
 	WorkerDrainTimeout time.Duration
 }
 
 const (
-	DefaultDispatchPollInterval        = 3 * time.Second
-	DefaultWorkerStaleInterval         = 15 * time.Second
-	DefaultWorkerAutoClaimIdle         = 60 * time.Second
-	DefaultWorkerAutoClaimCount        = 50
-	DefaultWorkerReadCount             = 10
-	DefaultWorkerReadBlock             = 2 * time.Second
-	DefaultMaxConcurrentWorkflows      = 100
-	DefaultWorkflowHeartbeatInterval   = 10 * time.Second
-	DefaultWorkflowLeaseDuration       = 30 * time.Second
-	DefaultWorkflowLeaseReaperInterval = 10 * time.Second
-	DefaultWorkerDrainTimeout          = 60 * time.Second
-	DefaultWorkerBackoffMin            = 200 * time.Millisecond // 最小退避时间
-	DefaultWorkerBackoffMax            = 5 * time.Minute        // 最大退避时间
-	DefaultWorkerMaxReadFailures       = 10                     // 连续 10 次失败后退出
-	DefaultWorkerMaxClaimFailures      = 10                     // 连续 10 次失败后退出
+	DefaultDispatchPollInterval         = 3 * time.Second
+	DefaultWorkerStaleInterval          = 15 * time.Second
+	DefaultWorkerAutoClaimIdle          = 60 * time.Second
+	DefaultWorkerAutoClaimCount         = 50
+	DefaultWorkerReadCount              = 10
+	DefaultWorkerReadBlock              = 2 * time.Second
+	DefaultMaxConcurrentWorkflows       = 100
+	DefaultWorkflowHeartbeatInterval    = 10 * time.Second
+	DefaultWorkflowLeaseDuration        = 30 * time.Second
+	DefaultWorkflowLeaseReaperInterval  = 10 * time.Second
+	DefaultWorkflowLeaseReaperBatchSize = 100
+	DefaultWorkerDrainTimeout           = 60 * time.Second
+	DefaultWorkerBackoffMin             = 200 * time.Millisecond // 最小退避时间
+	DefaultWorkerBackoffMax             = 5 * time.Minute        // 最大退避时间
+	DefaultWorkerMaxReadFailures        = 10                     // 连续 10 次失败后退出
+	DefaultWorkerMaxClaimFailures       = 10                     // 连续 10 次失败后退出
 )
 
 // DefaultRuntimeConfig returns the server defaults for workflow execution.
@@ -88,6 +92,7 @@ func DefaultRuntimeConfig() RuntimeConfig {
 		HeartbeatInterval:        DefaultWorkflowHeartbeatInterval,
 		LeaseDuration:            DefaultWorkflowLeaseDuration,
 		LeaseReaperInterval:      DefaultWorkflowLeaseReaperInterval,
+		LeaseReaperBatchSize:     DefaultWorkflowLeaseReaperBatchSize,
 		WorkerDrainTimeout:       DefaultWorkerDrainTimeout,
 	}
 }
@@ -133,6 +138,9 @@ func (c RuntimeConfig) Validate() []error {
 	}
 	if c.LeaseReaperInterval <= 0 {
 		errs = append(errs, fmt.Errorf("workflow lease reaper interval must be > 0"))
+	}
+	if c.LeaseReaperBatchSize < 1 || c.LeaseReaperBatchSize > 10000 {
+		errs = append(errs, fmt.Errorf("workflow lease reaper batch size must be 1..10000"))
 	}
 	if c.WorkerDrainTimeout <= 0 {
 		errs = append(errs, fmt.Errorf("workflow worker drain timeout must be > 0"))

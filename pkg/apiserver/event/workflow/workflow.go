@@ -18,6 +18,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
@@ -25,7 +26,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	signal "github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
@@ -55,6 +55,7 @@ type Workflow struct {
 	schedulerLifecycleMu      sync.Mutex
 	workerLimiterOnce         sync.Once
 	workflowLimiter           *semaphore.Weighted
+	runtimeStats              workflowRuntimeCounters
 	errChan                   chan error
 }
 
@@ -146,7 +147,11 @@ func (w *Workflow) startLeaseReaper(ctx context.Context, wg *sync.WaitGroup) {
 			case <-ticker.C:
 			}
 			reaperCtx, cancel := context.WithTimeout(ctx, config.TaskStateTransitionTimeout)
-			recovered, err := repository.RecoverExpiredWorkflowTasks(reaperCtx, w.Store)
+			limit := workflowconfig.DefaultWorkflowLeaseReaperBatchSize
+			if w.Cfg != nil && w.Cfg.Workflow.LeaseReaperBatchSize > 0 {
+				limit = w.Cfg.Workflow.LeaseReaperBatchSize
+			}
+			recovered, err := repository.RecoverExpiredWorkflowTasks(reaperCtx, w.Store, limit)
 			cancel()
 			if err != nil {
 				klog.ErrorS(err, "recover expired workflow execution leases")
@@ -425,29 +430,22 @@ func (w *Workflow) runWorkflowTask(ctx context.Context, workerRun *workflowWorke
 		return false, runErr
 	}
 
-	acquired := false
-	if workflowLimiter != nil {
-		if err := workflowLimiter.Acquire(runnerCtx, 1); err != nil {
-			stopHeartbeat()
-			return false, fmt.Errorf("acquire workflow slot: %w", err)
-		}
-		acquired = true
+	releaseSlot, err := w.acquireWorkflowSlot(runnerCtx, workflowLimiter)
+	if err != nil {
+		stopHeartbeat()
+		return false, fmt.Errorf("acquire workflow slot: %w", err)
 	}
 	controller, err := NewWorkflowController(task, w.KubeClient, w.KubeConfig, w.Store, w.Cfg, w.Cache, urlPolicy, w.ResourceImportExecutor)
 	if err != nil {
 		runErr := fmt.Errorf("init workflow controller: %w", err)
 		w.markTaskRunStartFailure(ctx, task, runErr)
-		if acquired {
-			workflowLimiter.Release(1)
-		}
+		releaseSlot()
 		stopHeartbeat()
 		return false, runErr
 	}
 	runController := func() error {
 		defer stopHeartbeat()
-		if acquired {
-			defer workflowLimiter.Release(1)
-		}
+		defer releaseSlot()
 		err := w.runWorkflowControllerWithPersistenceRecovery(runnerCtx, controller, concurrency)
 		if err != nil {
 			w.reportTaskError(err)
@@ -489,8 +487,10 @@ func (w *Workflow) startWorkflowTaskHeartbeat(ctx context.Context, cancel contex
 	runGeneration := task.RunGeneration
 	runToken := task.RunToken
 	workerID := task.WorkerID
+	w.runtimeStats.heartbeats.Add(1)
 	go func() {
 		defer close(done)
+		defer w.runtimeStats.heartbeats.Add(-1)
 		ticker := time.NewTicker(w.workflowHeartbeatInterval())
 		defer ticker.Stop()
 		for {
@@ -505,16 +505,21 @@ func (w *Workflow) startWorkflowTaskHeartbeat(ctx context.Context, cancel contex
 			case <-ticker.C:
 			}
 			renewCtx, renewCancel := context.WithTimeout(ctx, config.TaskStateTransitionTimeout)
+			started := time.Now()
 			renewed, err := repository.RenewWorkflowTaskLease(
 				renewCtx, w.Store, taskID, runGeneration, runToken, workerID, w.workflowLeaseDuration(),
 			)
 			renewCancel()
+			w.runtimeStats.renewAttempts.Add(1)
+			w.runtimeStats.renewNanoseconds.Add(uint64(time.Since(started)))
 			if err != nil {
+				w.runtimeStats.renewErrors.Add(1)
 				klog.ErrorS(err, "renew workflow execution lease", "taskID", taskID, "generation", runGeneration)
 				cancel(errors.Join(signal.ErrInfrastructureStop, repository.ErrWorkflowLeaseRenewalFailed, err))
 				return
 			}
 			if !renewed {
+				w.runtimeStats.renewRejected.Add(1)
 				expected := &model.WorkflowQueue{
 					TaskID: taskID, RunGeneration: runGeneration, RunToken: runToken, WorkerID: workerID,
 				}

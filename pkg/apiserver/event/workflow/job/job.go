@@ -497,7 +497,7 @@ func runJob(ctx context.Context, job *model.JobTask, client kubernetes.Interface
 		logger.Info("Skip job execution after infrastructure stop", "cause", context.Cause(jobCtx))
 		return context.Cause(jobCtx)
 	}
-	releaseAdmission, admissionErr := waitForJobAdmission(jobCtx, store, job)
+	releaseAdmission, admissionErr := waitForJobAdmission(jobCtx, store, job, client)
 	defer func() {
 		if errors.Is(resultErr, signal.ErrInfrastructureStop) && job.Status == config.StatusCancelled && recoverableKubernetesJobType(job.JobType) {
 			return

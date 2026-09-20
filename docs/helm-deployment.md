@@ -34,6 +34,12 @@ helm upgrade --install eruun deploy/helm/eruun \
 
 manifest 安装会先用 server-side dry-run 验证四角色清单，再把旧单进程 `Deployment/eruun` 缩容到零并保留为回滚点。四类 Deployment 全部 ready 后才清理旧 Deployment 和 `ServiceAccount/eruun-platform`；应用、覆盖或 readiness 失败时会删除本轮角色 Deployment 并恢复旧副本数。旧 ServiceAccount 清理失败只记录告警，不会把已经 ready 的新运行时判为安装失败；迁移过程不会删除 MySQL、Redis 或其持久化数据。
 
+## 阶段一 Sandbox 与容量实验
+
+新 eval 使用按需 `agents.kruise.io/v1alpha1 Sandbox`；先安装并核验 ACK/ACS Agent Sandbox 能力，Chart 不安装云厂商控制器。新增 Sandbox ClusterRole 只绑定 API/Controller，Worker 保留 Job 执行和观察权限；任务环境仍使用空间默认 ServiceAccount 且不挂载 Token。数据库先迁移 JobSandbox、创建速率预算表和 Job 资源快照字段，再按 [读方先行的升级顺序](workspace-jobs-api.md#管理员配置与部署) 部署；已有 v1 Runner 和无 claim 的更旧协议需分别处理。
+
+单 Worker 固定资源的覆盖 values 与手动命令见 [容量阶梯](../examples/agent-evaluation/load-test/README.md#固定单-worker-的手动容量阶梯)。默认每 Worker 100 controller、全局准入 100、每空间 10、创建 5 QPS/突发 10、启动中 Sandbox 100 均是初始值，不是万级容量配置或副本建议。通过 `env` 传入 `ERUUN_WORKFLOW_LEASE_REAPER_BATCH_SIZE` 可调回收批次；与全局 scheduler 策略、真实 quota、Worker 资源和镜像拉取能力共同测量。实际部署和放量由操作者执行。
+
 ## 运行契约
 
 - API 监听 `0.0.0.0:<service.port>`，默认 Service 和容器端口都是 `8000`；Service 只选择 API Pod。

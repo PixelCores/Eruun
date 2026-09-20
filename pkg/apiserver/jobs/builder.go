@@ -5,10 +5,12 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -16,8 +18,11 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/utils/ptr"
 )
+
+var errEvaluationPolicyUnavailable = errors.New("evaluation timeout policy unavailable")
 
 // evaluationInfo is private execution metadata; it never appears in API JobInfo.
 // Each Job owns its declaration and capability even when a workflow has several evaluations.
@@ -114,6 +119,18 @@ func BuildEvaluationTask(ctx context.Context, store datastore.DataStore, cfg *co
 		return err
 	}
 	evaluation := info.Traits.Evaluation
+	// An online limit change governs newly rendered executions. A committed
+	// running/distributed execution retains its original bounded deadline during
+	// recovery; lowering the policy must not terminate healthy long-running work.
+	if job.Status != config.StatusRunning && job.Status != config.StatusDistributed {
+		policy, err := repository.LoadJobSchedulerPolicy(ctx, store)
+		if err != nil {
+			return fmt.Errorf("%w: %w", errEvaluationPolicyUnavailable, err)
+		}
+		if evaluation.TimeoutSeconds > policy.MaxEvaluationTimeoutSeconds {
+			return fmt.Errorf("evaluation timeoutSeconds exceeds the current maximum of %d", policy.MaxEvaluationTimeoutSeconds)
+		}
+	}
 	if evaluation.ResultPolicy == nil {
 		space := &model.Workspace{ID: job.WorkspaceID}
 		if err := store.Get(ctx, space); err != nil {
@@ -162,6 +179,7 @@ func BuildEvaluationTask(ctx context.Context, store datastore.DataStore, cfg *co
 		"datasetURL": cfg.Jobs.APIURL + "/api/v1/job-runners/" + job.TaskID + "/dataset",
 		"resultURL":  cfg.Jobs.APIURL + "/api/v1/job-runners/" + job.TaskID + "/results",
 		"eventURL":   cfg.Jobs.APIURL + "/api/v1/job-runners/" + job.TaskID + "/events",
+		"sandboxURL": cfg.Jobs.APIURL + "/api/v1/job-runners/" + job.TaskID + "/sandboxes",
 		"token":      info.RunnerToken, "datasetDigest": dataset.Digest,
 		"agent":     agent,
 		"options":   map[string]int{"attempts": evaluation.Attempts, "concurrency": evaluation.Concurrency},
@@ -176,7 +194,17 @@ func BuildEvaluationTask(ctx context.Context, store datastore.DataStore, cfg *co
 		runner.Env = append(runner.Env, corev1.EnvVar{Name: field[0], ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{APIVersion: "v1", FieldPath: field[1]}}})
 	}
 	runner.VolumeMounts = []corev1.VolumeMount{{Name: "work", MountPath: "/work"}}
-	workload.Spec.Template.Spec.Volumes = []corev1.Volume{{Name: "work", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}}}
+	// Bound the long-lived Runner's datasets, logs and archive staging. The
+	// kubelet enforces the Pod limit; exhaustion is a failed execution, never a
+	// reason to report a truncated archive as complete.
+	workStorageMiB := cfg.Jobs.RunnerWorkStorageMiB
+	if workStorageMiB == 0 {
+		workStorageMiB = spec.DefaultRunnerWorkStorageMiB
+	}
+	workStorage := *resource.NewQuantity(workStorageMiB*1024*1024, resource.BinarySI)
+	runner.Resources.Requests[corev1.ResourceEphemeralStorage] = workStorage.DeepCopy()
+	runner.Resources.Limits[corev1.ResourceEphemeralStorage] = workStorage.DeepCopy()
+	workload.Spec.Template.Spec.Volumes = []corev1.Volume{{Name: "work", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{SizeLimit: &workStorage}}}}
 	workload.Spec.Template.Spec.SecurityContext = &corev1.PodSecurityContext{FSGroup: ptr.To(int64(1000))}
 	workload.Spec.Template.Spec.ServiceAccountName = workspace.EvaluationRunnerName
 	workload.Spec.Template.Spec.AutomountServiceAccountToken = ptr.To(true)

@@ -74,7 +74,7 @@ func TestWorkspaceJobTypesUseDurableStopCheckpoint(t *testing.T) {
 			client := fake.NewSimpleClientset()
 			var created []*batchv1.Job
 			installRetryJobReactor(t, client, 1, "OOMKilled", &created)
-			ctl := NewInstantJobCtl(task, client, store, func() {})
+			ctl := newObservedInstantJobCtl(t, task, client, newRetryCreationBudgetStore(t, store), func() {})
 			err := ctl.Run(WithCleanupTracker(context.Background()))
 			require.ErrorContains(t, err, "job failed after attempt 1")
 			require.Len(t, created, 1)
@@ -192,7 +192,7 @@ func TestEvaluationExitWithoutArchiveIsFailedAndRetained(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	var created []*batchv1.Job
 	installRetryJobReactor(t, client, 0, "", &created)
-	ctl := NewInstantJobCtl(task, client, store, func() {})
+	ctl := newObservedInstantJobCtl(t, task, client, newRetryCreationBudgetStore(t, store), func() {})
 	require.ErrorContains(t, ctl.Run(context.Background()), "without a collected result archive")
 	require.Equal(t, config.StatusFailed, task.Status)
 	require.Len(t, created, 1)

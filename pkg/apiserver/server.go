@@ -53,6 +53,7 @@ type restServer struct {
 	runtimeQueues             *msg.RuntimeQueues
 	InformerManager           *informer.Manager // Informer 管理器，用于 List-Watch 机制
 	resourceObserver          *informer.KubernetesWorkloadObserver
+	sandboxObserver           *informer.KubernetesSandboxObserver
 	eventWorkers              []event.Worker
 	workersMu                 sync.Mutex
 	workersStarted            bool

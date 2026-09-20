@@ -31,6 +31,12 @@ Worker 注入独立的 `KubernetesWorkloadObserver`。每个 Worker 进程启动
 
 Worker observer 的 initial cache sync 最多等待 30 秒；持续 RBAC/List 错误或 API Server 不可达会返回启动错误并 fail-fast。
 
+独立 command、全部 eval 和采用 retry checkpoint 的 Application Job 另共享带 `app.kubernetes.io/managed-by=eruun` 的 typed Job List/Watch。通知按 namespace/name 合并到等待器的一槽唤醒通道；正常运行不再每 2 秒查询 Kubernetes Job 或父任务 DB。终态候选、缓存缺失及身份异常经权威 GET 与 UID/执行身份核验，提交结果仍须 DB fencing。存量无标签 Job 仅在确认原 UID 和 ownership 后补标，selector 退出不能当作删除证据。普通非 retry Application InstantJob 的原等待路径仍保留。
+
+配置 Harbor 时，每个 API/Controller 进程共享限定 `sandboxes.agents.kruise.io/v1alpha1` 的 dynamic informer 与 task-id Pod 缓存，Worker 不复制这些流。初始未同步返回不可用；缓存裁掉 managedFields，保留资源身份和状态。基础、派生 typed/dynamic/空间 client 共享本进程 RateLimiter；不同进程预算仍相加，Watch 事件处理与 DB 协调不按普通 HTTP QPS 计数。
+
+共享观察没有消除所有权威读取。`authorizeRunner` 每次有效事件仍 GET Runner Pod 和所属 Job，随后进行数据库身份与状态核验。按 10000 个 Runner、名义 15 秒一次 heartbeat 估算，仅这两次 GET 的请求需求约为 `10000 / 15 × 2 ≈ 1333/s`，还未包含 phase/progress、Sandbox 申请、结果上传、重连和其他 API 请求；实际节奏受响应时间与重试影响。这是待测流量估算，不是容量结论。`--kube-api-qps` / `ERUUN_KUBE_API_QPS` 默认每进程 100，Burst 默认 300；要按角色、API 副本分布及 ACK 控制面预算测量限速等待，不能只提高 Worker slot，或把 Watch 事件数当作 HTTP QPS。当前保留权威鉴权，不以缓存替代撤销和 UID 核验。
+
 ## Scheduler 与数据库租约
 
 Controller Leader 负责延迟 Job、结果消息和结果 outbox 协调；Scheduler Leader 负责 waiting task dispatcher、定时任务派发和数据库 lease reaper；Worker 独立消费并执行任务。执行协议固定如下：
@@ -43,7 +49,9 @@ Controller Leader 负责延迟 Job、结果消息和结果 outbox 协调；Sched
 - WorkflowQueue 状态写入结果不确定或执行 ownership 丢失时，本地取消使用基础设施接管原因；旧执行不写入 `cancelled` JobInfo，仍由当前 Worker 保留租约并按权威任务快照恢复。用户取消继续写入明确的 `cancelled` 终态。
 - 延迟 Job、结果消息和结果 outbox 透传 `executionKey/runGeneration`；结果写入按该身份精确查找 JobInfo，同名 Kubernetes Job 也用注解校验身份后才允许收集日志或删除。
 
-在 30 秒 lease 和 10 秒 reaper 默认值下，系统目标是在故障后 60 秒内让可恢复任务重新进入派发。消息队列提供 at-least-once 交付，Worker 通过数据库 CAS 认领执行 ownership，数据库 generation/token/worker 是执行与状态写入的 fencing 依据；Worker 不再获取 Redis task-run lock。
+默认 lease 为 30 秒、reaper 周期 10 秒、每轮最多回收 100 条；新增 `--workflow-lease-reaper-batch-size` / `ERUUN_WORKFLOW_LEASE_REAPER_BATCH_SIZE`，范围 1..10000。若 10000 条同时过期，默认批次仅回收就约需 100 轮，不能承诺 60 秒完成接管。调整批次前测 MySQL 锁与连接压力，并分别计量回收、派发、准入、健康资源重新关联。准入轮失败会记录错误，但不再直接跳过 Workflow 派发；每个派发仍通过既有 DB ownership，执行新 Job 仍须自己的准入门禁。消息队列保留 at-least-once 与 generation/token/worker fencing。
+
+Worker 每 30 秒记录 `workflow runtime stats`：controller/等待槽位/续租任务数量、累计槽位等待与续租耗时/失败、goroutine、Go heap 和 GC。计数反映 Workflow 管理开销，不代表 Kubernetes Job/trial 实际运行数；平均累计耗时不能代替 p99。固定资源下按 100/250/500/1000 controller 上限比较，见[手动容量阶梯](../examples/agent-evaluation/load-test/README.md#固定单-worker-的手动容量阶梯)。
 
 ## 运行建议
 

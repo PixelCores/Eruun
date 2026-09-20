@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -67,12 +68,18 @@ func (w *Workflow) Dispatcher(ctx context.Context) {
 		case <-ticker.C:
 		}
 
-		if _, err := repository.AdmitQueuedJobs(ctx, w.Store); err != nil {
+		var quota corev1.ResourceList
+		if w.Cfg != nil && w.Cfg.Accounts != nil {
+			quota = w.Cfg.Accounts.Workspace.Quota
+		}
+		if _, err := repository.AdmitQueuedJobs(ctx, w.Store, quota); err != nil {
 			if ctx.Err() != nil {
 				return
 			}
 			klog.ErrorS(err, "admit ready workflow jobs")
-			continue
+			// A failed admission pass must not suppress ownership recovery and
+			// dispatch of healthy existing executions. Every newly started Job
+			// still passes its own durable admission gate before creating work.
 		}
 
 		waitingTasks, err := w.waitingTasks(ctx)

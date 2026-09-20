@@ -44,6 +44,9 @@ func (a *workspaceJobs) RegisterRoutes(group *gin.RouterGroup) {
 	group.GET("/job-runners/:taskID/dataset", a.runnerDataset)
 	group.POST("/job-runners/:taskID/results", a.runnerResult)
 	group.POST("/job-runners/:taskID/events", a.runnerEvent)
+	group.POST("/job-runners/:taskID/sandboxes", a.runnerSandboxCreate)
+	group.GET("/job-runners/:taskID/sandboxes/:trialID", a.runnerSandboxGet)
+	group.POST("/job-runners/:taskID/sandboxes/:trialID/release", a.runnerSandboxRelease)
 }
 
 func jobError(err error) error {
@@ -300,6 +303,31 @@ func runnerIdentity(c *gin.Context) jobs.RunnerIdentity {
 		token = parts[1]
 	}
 	return jobs.RunnerIdentity{TaskID: c.Param("taskID"), Token: token, PodName: c.GetHeader("X-Eruun-Runner-Pod-Name"), PodUID: c.GetHeader("X-Eruun-Runner-Pod-UID")}
+}
+
+func (a *workspaceJobs) runnerSandboxCreate(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64<<10)
+	request, ok := bindStrictJSON[jobs.SandboxRequest](c, bcode.ErrJobInput, false)
+	if !ok {
+		return
+	}
+	result, err := a.Service.RunnerSandboxCreate(c.Request.Context(), runnerIdentity(c), *request)
+	jobResponse(c, http.StatusOK, result, err)
+}
+
+func (a *workspaceJobs) runnerSandboxGet(c *gin.Context) {
+	result, err := a.Service.RunnerSandboxGet(c.Request.Context(), runnerIdentity(c), c.Param("trialID"))
+	jobResponse(c, http.StatusOK, result, err)
+}
+
+func (a *workspaceJobs) runnerSandboxRelease(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64<<10)
+	request, ok := bindStrictJSON[jobs.SandboxReleaseRequest](c, bcode.ErrJobInput, false)
+	if !ok {
+		return
+	}
+	result, err := a.Service.RunnerSandboxRelease(c.Request.Context(), runnerIdentity(c), c.Param("trialID"), *request)
+	jobResponse(c, http.StatusOK, result, err)
 }
 func (a *workspaceJobs) runnerDataset(c *gin.Context) {
 	downloadArchive(c, func(w io.Writer) error { return a.Service.RunnerDataset(c.Request.Context(), runnerIdentity(c), w) })

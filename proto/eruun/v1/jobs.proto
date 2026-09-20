@@ -180,6 +180,20 @@ message JobRunnerStatus {
   JobRunnerProgress progress = 5;
   JobRunnerTerminal terminal = 6;
 }
+// Sandbox lifecycle observation; ready is not proof that a trial executed.
+message JobSandboxStatus {
+  string trial_id = 1;
+  string state = 2;
+  bool admitted = 3;
+  string namespace = 4;
+  string sandbox_name = 5;
+  string sandbox_uid = 6 [json_name = "sandboxUID"];
+  string pod_name = 7;
+  string pod_uid = 8 [json_name = "podUID"];
+  string container_name = 9;
+  google.protobuf.Timestamp retain_until = 10;
+  string reason = 11;
+}
 message JobDetail {
   JobAccepted accepted = 1;
   JobSpec job = 2;
@@ -190,6 +204,8 @@ message JobDetail {
   JobRunnerStatus runner_status = 7;
   string execution_key = 8;
   string framework_version = 9;
+  repeated JobSandboxStatus sandboxes = 10;
+  bool sandboxes_truncated = 11;
 }
 message JobResults {
   string collection_state = 1;

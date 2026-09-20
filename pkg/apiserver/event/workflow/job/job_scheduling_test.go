@@ -66,7 +66,7 @@ func TestJobAdmissionUsesTaskWorkspaceAndApplication(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, 1, n)
 			scopedCtx := access.WithScope(ctx, access.Scope{WorkspaceID: "workspace", Namespace: "namespace"})
-			release, err := waitForJobAdmission(scopedCtx, store, task)
+			release, err := waitForJobAdmission(scopedCtx, store, task, nil)
 			require.NoError(t, err)
 			require.NoError(t, release())
 			require.NoError(t, store.Get(scopedCtx, &record))
@@ -378,7 +378,7 @@ func TestJobAdmissionUnfencedCallsCannotImpersonateApprovalOwner(t *testing.T) {
 				JobType: string(config.JobDeployCallback), OwnerStatus: status}
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
-			release, err := waitForJobAdmission(ctx, &noopStore{}, task)
+			release, err := waitForJobAdmission(ctx, &noopStore{}, task, nil)
 			if status == config.StatusWaitingApprove {
 				require.ErrorIs(t, err, repository.ErrWorkflowOwnershipRequired)
 			} else {

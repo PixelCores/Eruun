@@ -1,0 +1,112 @@
+package jobs
+
+import (
+	"context"
+	"time"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+func (s *Service) reconcileSandboxes(ctx context.Context, limit int) error {
+	if s.SandboxClient == nil {
+		return nil
+	}
+	now, err := s.Store.(datastore.DatabaseClock).CurrentDatabaseTime(ctx)
+	if err != nil {
+		return err
+	}
+	rows, err := s.Store.List(ctx, &model.JobSandbox{}, &datastore.ListOptions{Page: 1, PageSize: limit,
+		FilterOptions: datastore.FilterOptions{NotEqual: []datastore.ComparisonQueryOption{{Key: "state", Value: sandboxReleased}}, LessThan: []datastore.ComparisonQueryOption{{Key: "reconcile_at", Value: now}}},
+		SortBy:        []datastore.SortOption{{Key: "reconcile_at", Order: datastore.SortOrderAscending}}})
+	if err != nil {
+		return err
+	}
+	var group errgroup.Group
+	group.SetLimit(8)
+	for _, entity := range rows {
+		row := entity.(*model.JobSandbox)
+		group.Go(func() error {
+			operation, cancel := context.WithTimeout(ctx, sandboxOperationTimeout)
+			defer cancel()
+			return s.maintainSandbox(operation, row)
+		})
+	}
+	return group.Wait()
+}
+
+func (s *Service) maintainSandbox(ctx context.Context, candidate *model.JobSandbox) error {
+	ctx = account.WithScope(ctx, account.Scope{WorkspaceID: candidate.WorkspaceID, Namespace: candidate.Namespace, Role: "member"})
+	stopped := ""
+	if !candidate.ReleaseRequested && candidate.SlotReserved {
+		pod, err := s.Kube.CoreV1().Pods(candidate.Namespace).Get(ctx, candidate.RunnerPodName, metav1.GetOptions{})
+		if k8serrors.IsNotFound(err) || (err == nil && string(pod.UID) != candidate.RunnerUID) {
+			stopped = "runner_lost"
+		} else if err != nil {
+			return err
+		}
+	}
+	advance := false
+	err := s.Store.(datastore.Transactional).WithTransaction(ctx, func(tx datastore.DataStore) error {
+		locker := tx.(datastore.RowLocker)
+		task := &model.WorkflowQueue{TaskID: candidate.TaskID}
+		if err := locker.GetForUpdate(ctx, task); err != nil {
+			return err
+		}
+		job := &model.JobInfo{ID: candidate.JobID}
+		if err := locker.GetForUpdate(ctx, job); err != nil {
+			return err
+		}
+		row := &model.JobSandbox{ID: candidate.ID}
+		if err := locker.GetForUpdate(ctx, row); err != nil {
+			return err
+		}
+		if row.WorkspaceID != candidate.WorkspaceID || row.Namespace != candidate.Namespace || row.RunnerUID != candidate.RunnerUID || row.JobID != job.ID || row.TaskID != task.TaskID || task.WorkspaceID != row.WorkspaceID || job.TaskID != task.TaskID || job.WorkspaceID != row.WorkspaceID || job.ExecutionKey == nil || *job.ExecutionKey != row.ExecutionKey {
+			return ErrRunnerConflict
+		}
+		now, err := tx.(datastore.DatabaseClock).CurrentDatabaseTime(ctx)
+		if err != nil {
+			return err
+		}
+		if row.LeaseUntil != nil && now.Before(*row.LeaseUntil) {
+			return nil
+		}
+		claim, _, claimErr := decodeRunnerState(job)
+		if claimErr != nil || claim == nil || claim.OwnerPodUID != row.RunnerUID || claim.OwnerPodName != row.RunnerPodName {
+			stopped = "runner_lost"
+		}
+		if task.Status == config.StatusCancelled {
+			stopped = "cancelled"
+		} else if !now.Before(row.Deadline) {
+			stopped = "execution_deadline"
+		} else if terminal(task.Status) || terminal(config.Status(job.Status)) {
+			stopped = "execution_finished"
+		}
+		if stopped != "" {
+			stopSandbox(row, now, stopped)
+		}
+		row.ReconcileAt = now.Add(15 * time.Second)
+		if row.State == sandboxFailed && !row.SlotReserved {
+			row.ReconcileAt = now.Add(sandboxRetention)
+		}
+		if row.ReleaseRequested && row.State != sandboxReleased {
+			until := now.Add(sandboxLeaseDuration)
+			row.LeaseToken, row.LeaseUntil, advance = uuid.NewString(), &until, true
+		}
+		if err := putSandbox(ctx, tx, row); err != nil {
+			return err
+		}
+		*candidate = *row
+		return nil
+	})
+	if err != nil || !advance {
+		return err
+	}
+	return s.cleanupSandbox(ctx, nil, candidate)
+}

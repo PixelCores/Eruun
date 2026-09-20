@@ -44,7 +44,7 @@ func newMySQLJobSchedulerTestStore(t *testing.T) *sqlstore.Driver {
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(20)
 	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
-	models := []interface{}{&model.JobInfo{}, &model.WorkflowQueue{}, &model.SystemSetting{}}
+	models := []interface{}{&model.JobInfo{}, &model.WorkflowQueue{}, &model.SystemSetting{}, &model.ResourceCreationBudget{}, &model.JobSandbox{}}
 	for _, entity := range models {
 		require.False(t, db.Migrator().HasTable(entity), "integration schema must be empty")
 	}
@@ -53,6 +53,10 @@ func newMySQLJobSchedulerTestStore(t *testing.T) *sqlstore.Driver {
 	store := &sqlstore.Driver{Client: *db}
 	require.NoError(t, EnsureJobSchedulerPolicy(context.Background(), store))
 	return store
+}
+
+func TestResourceCreationMySQLConcurrentBudget(t *testing.T) {
+	testResourceCreationConcurrentBudget(t, newMySQLJobSchedulerTestStore(t))
 }
 
 func TestJobSchedulerMySQLTerminalCallbacksWithoutWorker(t *testing.T) {
@@ -206,8 +210,8 @@ func TestJobSchedulerMySQLConcurrentAdmission(t *testing.T) {
 		n, err := AdmitQueuedJobs(ctx, counted)
 		require.NoError(t, err)
 		require.Equal(t, 100, n)
-		require.Equal(t, 11, counts.lists, "one keyset scan of 1000 jobs plus the final empty page")
-		require.Equal(t, 101, counts.gets, "one policy read and one read for each of 100 distinct parent workflows")
+		require.Equal(t, 12, counts.lists, "11 Job pages including the final empty page, plus one batch of 100 unique parents")
+		require.Equal(t, 1, counts.gets, "policy read only; parent ownership is fetched in a batch")
 		t.Logf("1000 queued Jobs / 100 Workflows: admitted %d in %s; datastore List=%d Get=%d", n, time.Since(started), counts.lists, counts.gets)
 	})
 	t.Run("concurrent cleanup keeps release idempotent", func(t *testing.T) {
@@ -358,4 +362,18 @@ func (s countedSchedulerStore) CurrentDatabaseTime(ctx context.Context) (time.Ti
 }
 func (s countedSchedulerStore) CompareAndSwapWithConditions(ctx context.Context, e datastore.Entity, c, u map[string]interface{}) (bool, error) {
 	return s.DataStore.(datastore.ConditionalCompareAndSwap).CompareAndSwapWithConditions(ctx, e, c, u)
+}
+
+func TestJobSchedulerMySQLConcurrentResourceBudget(t *testing.T) {
+	testJobSchedulerConcurrentResourceBudget(t, newMySQLJobSchedulerTestStore(t))
+}
+func TestJobSchedulerMySQLRetainedResources(t *testing.T) {
+	testJobSchedulerRetainedResources(t, newMySQLJobSchedulerTestStore(t))
+}
+func TestJobSchedulerMySQLLowerResourceQuota(t *testing.T) {
+	testJobSchedulerLowerResourceQuota(t, newMySQLJobSchedulerTestStore(t))
+}
+
+func TestJobSchedulerMySQLRecoveryPreservesCreatedReservation(t *testing.T) {
+	testJobSchedulerRecoveryPreservesCreatedReservation(t, newMySQLJobSchedulerTestStore(t))
 }

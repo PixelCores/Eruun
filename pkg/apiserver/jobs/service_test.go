@@ -28,11 +28,13 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -46,8 +48,9 @@ func testJobService(t *testing.T) (*Service, *sqlstore.Driver, context.Context) 
 	require.NoError(t, err)
 	conn.SetMaxOpenConns(1)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	require.NoError(t, db.AutoMigrate(&model.Workspace{}, &model.Applications{}, &model.WorkflowQueue{}, &model.JobInfo{}, &model.JobArtifact{}, &model.ArtifactChunk{}, &model.JobDelivery{}))
+	require.NoError(t, db.AutoMigrate(&model.Workspace{}, &model.Applications{}, &model.WorkflowQueue{}, &model.JobInfo{}, &model.JobArtifact{}, &model.ArtifactChunk{}, &model.JobDelivery{}, &model.SystemSetting{}, &model.ResourceCreationBudget{}, &model.JobSandbox{}))
 	raw := &sqlstore.Driver{Client: *db}
+	require.NoError(t, repository.EnsureJobSchedulerPolicy(context.Background(), raw))
 	require.NoError(t, raw.Add(context.Background(), &model.Workspace{ID: "space", Namespace: "space-ns"}))
 	cfg := &config.Config{Accounts: &spec.AccountConfig{}, Jobs: &spec.JobsRuntimeConfig{RunnerImage: "example.com/eruun-harbor:0.22.0", APIURL: "https://eruun.example.com"}}
 	service, err := New(account.NewStore(raw), fake.NewSimpleClientset(), cfg)
@@ -131,6 +134,11 @@ type runnerFixture struct {
 func newRunnerFixture(t *testing.T) *runnerFixture {
 	t.Helper()
 	service, raw, ctx := testJobService(t)
+	return newRunnerFixtureForService(t, service, raw, ctx)
+}
+
+func newRunnerFixtureForService(t *testing.T, service *Service, raw *sqlstore.Driver, ctx context.Context) *runnerFixture {
+	t.Helper()
 	dataset := &model.JobArtifact{ID: "11111111-1111-1111-1111-111111111111", WorkspaceID: "space", Kind: artifacts.KindDataset, Digest: strings.Repeat("a", 64)}
 	require.NoError(t, raw.Add(ctx, dataset))
 	accepted, err := service.Submit(ctx, SubmitRequest{WorkspaceID: "space", JobSpec: evaluationDeclaration("evaluate", dataset.ID, "oracle", "")})
@@ -240,6 +248,178 @@ func TestRunnerCapabilityAcceptsRecoveredPodAndRejectsSpoofedIdentity(t *testing
 			tc.mutate(t, f)
 			_, err = f.service.authorizeRunner(context.Background(), f.identity)
 			require.ErrorIs(t, err, bcode.ErrUnauthorized)
+		})
+	}
+}
+
+func TestRunnerRecoveryParentPausesClaimedExecutionUntilRunning(t *testing.T) {
+	for _, status := range []config.Status{config.StatusWaiting, config.StatusQueued} {
+		t.Run(string(status), func(t *testing.T) {
+			f, client := sandboxFixture(t, true)
+			ctx := context.Background()
+			checkpoint := f.record.InternalInfo
+			_, deadline, err := decodeRunnerState(f.record)
+			require.NoError(t, err)
+			f.parent.Status = status
+			f.parent.RunToken, f.parent.WorkerID, f.parent.LeaseExpiresAt = "", "", nil
+			require.NoError(t, f.raw.Put(ctx, f.parent))
+			event := RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 2, Kind: "heartbeat"}
+			ack, err := f.service.RunnerEvent(ctx, f.identity, event)
+			require.Nil(t, ack)
+			require.ErrorIs(t, err, bcode.ErrServiceUnavailable)
+			require.EqualValues(t, 503, bcode.ErrServiceUnavailable.HTTPCode)
+			require.ErrorIs(t, f.service.RunnerDataset(ctx, f.identity, io.Discard), bcode.ErrServiceUnavailable)
+			_, err = f.service.RunnerResult(ctx, f.identity, bytes.NewReader(resultArchive(t)))
+			require.ErrorIs(t, err, bcode.ErrServiceUnavailable)
+			_, err = f.service.RunnerSandboxCreate(ctx, f.identity, sandboxRequest("paused"))
+			require.ErrorIs(t, err, bcode.ErrServiceUnavailable)
+			for _, action := range client.Actions() {
+				require.NotEqual(t, "create", action.GetVerb())
+			}
+			require.NoError(t, f.raw.Get(ctx, f.record))
+			require.Equal(t, checkpoint, f.record.InternalInfo, "recovery cannot accept an event or move its deadline")
+			f.parent.Status = config.StatusRunning
+			f.parent.RunGeneration++
+			require.NoError(t, f.raw.Put(ctx, f.parent))
+			ack, err = f.service.RunnerEvent(ctx, f.identity, event)
+			require.NoError(t, err)
+			require.Equal(t, uint64(2), ack.AcceptedSequence)
+			require.Equal(t, "continue", ack.Action)
+			require.NoError(t, f.raw.Get(ctx, f.record))
+			_, recoveredDeadline, err := decodeRunnerState(f.record)
+			require.NoError(t, err)
+			require.Equal(t, deadline, recoveredDeadline)
+		})
+	}
+}
+
+func TestRunnerRecoveryNeverExemptsInvalidUnclaimedOrExpiredExecution(t *testing.T) {
+	for _, status := range []config.Status{config.StatusWaiting, config.StatusQueued} {
+		for _, change := range []string{"token", "pod UID", "same name replacement", "unclaimed", "generation", "checkpoint UID", "expired", "terminal parent"} {
+			t.Run(string(status)+"/"+change, func(t *testing.T) {
+				f := newRunnerFixture(t)
+				ctx := context.Background()
+				if change != "unclaimed" {
+					claimRunner(t, f)
+				}
+				f.parent.Status = status
+				switch change {
+				case "token":
+					f.identity.Token = strings.Repeat("0", 64)
+				case "pod UID":
+					f.identity.PodUID = "forged"
+				case "same name replacement":
+					f.pod.UID = "replacement"
+					_, err := f.service.Kube.CoreV1().Pods(f.pod.Namespace).Update(ctx, f.pod, metav1.UpdateOptions{})
+					require.NoError(t, err)
+				case "generation":
+					f.record.RunGeneration++
+					require.NoError(t, f.raw.Put(ctx, f.record))
+				case "checkpoint UID", "expired":
+					var checkpoint map[string]any
+					require.NoError(t, json.Unmarshal([]byte(f.record.InternalInfo), &checkpoint))
+					if change == "expired" {
+						checkpoint["deadline"] = time.Now().Add(-time.Minute).UnixNano()
+					} else {
+						checkpoint["currentUID"] = "replacement"
+					}
+					encoded, err := json.Marshal(checkpoint)
+					require.NoError(t, err)
+					f.record.InternalInfo = string(encoded)
+					require.NoError(t, f.raw.Put(ctx, f.record))
+				case "terminal parent":
+					f.parent.Status = config.StatusCompleted
+				}
+				require.NoError(t, f.raw.Put(ctx, f.parent))
+				auth, err := f.service.authorizeRunner(ctx, f.identity)
+				require.Nil(t, auth)
+				require.ErrorIs(t, err, bcode.ErrUnauthorized)
+			})
+		}
+	}
+}
+
+func TestRunnerEventRechecksRecoveryTransitionAfterLockingCurrentExecution(t *testing.T) {
+	for _, status := range []config.Status{config.StatusWaiting, config.StatusQueued} {
+		for _, change := range []string{"valid", "generation", "execution key", "checkpoint UID", "unclaimed", "expired"} {
+			t.Run(string(status)+"/"+change, func(t *testing.T) {
+				f := newRunnerFixture(t)
+				claimRunner(t, f)
+				ctx := context.Background()
+				var once sync.Once
+				checkpoint := ""
+				f.service.Kube.(*fake.Clientset).PrependReactor("get", "jobs", func(k8stesting.Action) (bool, runtime.Object, error) {
+					once.Do(func() {
+						// authorizeRunner has loaded Running and the old Job row.
+						// Change persistent state before its transaction acquires locks.
+						f.parent.Status = status
+						require.NoError(t, f.raw.Put(ctx, f.parent))
+						switch change {
+						case "generation":
+							f.record.RunGeneration++
+						case "execution key":
+							f.record.ExecutionKey = ptr.To("replacement")
+						case "checkpoint UID", "unclaimed", "expired":
+							var cp map[string]any
+							require.NoError(t, json.Unmarshal([]byte(f.record.InternalInfo), &cp))
+							if change == "checkpoint UID" {
+								cp["currentUID"] = "replacement"
+							} else if change == "unclaimed" {
+								delete(cp, "runner")
+							} else {
+								cp["deadline"] = time.Now().Add(-time.Minute).UnixNano()
+							}
+							encoded, err := json.Marshal(cp)
+							require.NoError(t, err)
+							f.record.InternalInfo = string(encoded)
+						}
+						require.NoError(t, f.raw.Put(ctx, f.record))
+						checkpoint = f.record.InternalInfo
+					})
+					return false, nil, nil
+				})
+				ack, err := f.service.RunnerEvent(ctx, f.identity, RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 2, Kind: "heartbeat"})
+				require.Nil(t, ack)
+				if change == "valid" {
+					require.ErrorIs(t, err, bcode.ErrServiceUnavailable)
+				} else {
+					require.ErrorIs(t, err, bcode.ErrUnauthorized)
+				}
+				require.NoError(t, f.raw.Get(ctx, f.record))
+				require.Equal(t, checkpoint, f.record.InternalInfo)
+			})
+		}
+	}
+}
+
+func TestRunnerTerminalLostAcknowledgmentWaitsForParentRecovery(t *testing.T) {
+	for _, status := range []config.Status{config.StatusWaiting, config.StatusQueued} {
+		t.Run(string(status), func(t *testing.T) {
+			f := newRunnerFixture(t)
+			claimRunner(t, f)
+			ctx := context.Background()
+			artifact, err := f.service.RunnerResult(ctx, f.identity, bytes.NewReader(resultArchive(t)))
+			require.NoError(t, err)
+			event := RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 2, Kind: "terminal", Terminal: &RunnerTerminal{
+				Outcome: "succeeded", ArtifactID: artifact.ID, ArtifactDigest: artifact.Digest,
+				CollectionComplete: ptr.To(true), Reason: "evaluation_succeeded",
+			}}
+			_, err = f.service.RunnerEvent(ctx, f.identity, event) // Persistence succeeded; the client lost this ACK.
+			require.NoError(t, err)
+			require.NoError(t, f.raw.Get(ctx, f.record))
+			checkpoint := f.record.InternalInfo
+			f.parent.Status = status
+			require.NoError(t, f.raw.Put(ctx, f.parent))
+			ack, err := f.service.RunnerEvent(ctx, f.identity, event)
+			require.Nil(t, ack)
+			require.ErrorIs(t, err, bcode.ErrServiceUnavailable)
+			f.parent.Status = config.StatusRunning
+			require.NoError(t, f.raw.Put(ctx, f.parent))
+			ack, err = f.service.RunnerEvent(ctx, f.identity, event)
+			require.NoError(t, err)
+			require.Equal(t, uint64(2), ack.AcceptedSequence)
+			require.NoError(t, f.raw.Get(ctx, f.record))
+			require.Equal(t, checkpoint, f.record.InternalInfo, "an ACK replay must not rewrite the accepted terminal")
 		})
 	}
 }
@@ -619,7 +799,11 @@ func TestCommandRuntimePersistsCheckpointAndTerminalResultThroughScopedStore(t *
 		require.NoError(t, client.Tracker().Add(live))
 		return true, live, nil
 	})
-	ctl := workflowjob.NewInstantJobCtl(task, service.Kube, service.Store, func() {})
+	observer := informer.NewKubernetesWorkloadObserver(client)
+	observerCtx, stopObserver := context.WithCancel(context.Background())
+	t.Cleanup(stopObserver)
+	require.NoError(t, observer.Start(observerCtx))
+	ctl := workflowjob.NewInstantJobCtl(task, service.Kube, service.Store, func() {}, observer)
 	require.NoError(t, ctl.Run(ctx))
 	require.Equal(t, config.StatusCompleted, task.Status)
 	require.NoError(t, ctl.SaveInfo(ctx))

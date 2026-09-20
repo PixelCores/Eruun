@@ -38,6 +38,7 @@ type JobInfo struct {
 	SchedulingOwnerStatus config.Status        `json:"-" gorm:"type:varchar(32);column:scheduling_owner_status"`
 	SchedulingExpiresAt   *time.Time           `json:"-" gorm:"column:scheduling_expires_at"`
 	SchedulingReason      string               `json:"schedulingReason,omitempty" gorm:"type:varchar(255);column:scheduling_reason"`
+	SchedulingResources   string               `json:"-" gorm:"type:text;column:scheduling_resources"`
 	DelayState            config.JobDelayState `json:"-" gorm:"type:varchar(32);column:delay_state;index:idx_job_delay_pending,priority:2"`
 	DelayExecuteAt        int64                `json:"-" gorm:"column:delay_execute_at;index:idx_job_delay_pending,priority:3"`
 	DelayPayload          string               `json:"-" gorm:"type:longtext;column:delay_payload"`

@@ -295,7 +295,14 @@ func (s *JobsServer) GetJob(ctx context.Context, req *eruunv1.JobTaskRequest) (*
 	}
 	resp := &eruunv1.JobDetail{
 		Accepted: &eruunv1.JobAccepted{TaskId: detail.TaskID, WorkspaceId: detail.WorkspaceID, Type: detail.Type, Status: string(detail.Status)},
-		Job:      job, Results: results, Deliveries: jobDeliveriesOutput(detail.Deliveries), CollectionState: detail.CollectionState, ExecutionKey: detail.ExecutionKey, FrameworkVersion: detail.FrameworkVersion,
+		Job:      job, Results: results, Deliveries: jobDeliveriesOutput(detail.Deliveries), CollectionState: detail.CollectionState, ExecutionKey: detail.ExecutionKey, FrameworkVersion: detail.FrameworkVersion, SandboxesTruncated: detail.SandboxesTruncated,
+	}
+	for _, sandbox := range detail.Sandboxes {
+		item := &eruunv1.JobSandboxStatus{TrialId: sandbox.TrialID, State: sandbox.State, Admitted: sandbox.Admitted, Namespace: sandbox.Namespace, SandboxName: sandbox.SandboxName, SandboxUid: sandbox.SandboxUID, PodName: sandbox.PodName, PodUid: sandbox.PodUID, ContainerName: sandbox.ContainerName, Reason: sandbox.Reason}
+		if sandbox.RetainUntil != nil {
+			item.RetainUntil = timeMessage(*sandbox.RetainUntil)
+		}
+		resp.Sandboxes = append(resp.Sandboxes, item)
 	}
 	for _, execution := range detail.Executions {
 		if execution == nil {

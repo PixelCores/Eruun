@@ -3,6 +3,7 @@ package grpcapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -47,6 +48,9 @@ func TestApplicationEvaluationResultsAreScopedToExecution(t *testing.T) {
 	}
 
 	for _, key := range []string{"eval-a", "eval-b"} {
+		require.NoError(t, store.Add(ctx, &model.JobSandbox{ID: "sandbox-" + key, WorkspaceID: task.WorkspaceID, TaskID: task.TaskID, ExecutionKey: key, TrialID: "trial-" + key, State: "retained", SandboxUID: "sandbox-uid-" + key, PodUID: "pod-uid-" + key, RunnerUID: "private-runner-uid", Image: "private-image:v1", RequestDigest: "private-digest"}))
+	}
+	for _, key := range []string{"eval-a", "eval-b"} {
 		t.Run(key, func(t *testing.T) {
 			req := &eruunv1.JobTaskRequest{TaskId: task.TaskID, ExecutionKey: key}
 			result, err := server.GetJobResults(ctx, req)
@@ -65,8 +69,29 @@ func TestApplicationEvaluationResultsAreScopedToExecution(t *testing.T) {
 			require.Equal(t, "job", detail.Job.Type)
 			require.Equal(t, "oracle", detail.Job.Traits.Eval.Agent)
 			require.Len(t, detail.Executions, 1)
+			require.Len(t, detail.Sandboxes, 1)
+			require.False(t, detail.SandboxesTruncated)
+			require.Equal(t, "trial-"+key, detail.Sandboxes[0].TrialId)
+			require.Equal(t, "sandbox-uid-"+key, detail.Sandboxes[0].SandboxUid)
+			encoded, err := json.Marshal(detail)
+			require.NoError(t, err)
+			for _, private := range []string{"private-runner-uid", "private-image", "private-digest"} {
+				require.NotContains(t, string(encoded), private)
+			}
 		})
 	}
+
+	for index := 0; index < 101; index++ {
+		require.NoError(t, store.Add(ctx, &model.JobSandbox{ID: fmt.Sprintf("history-%03d", index), TrialID: fmt.Sprintf("history-%03d", index), WorkspaceID: task.WorkspaceID, TaskID: task.TaskID, ExecutionKey: "eval-a", State: "released"}))
+	}
+	bounded, err := server.GetJob(ctx, &eruunv1.JobTaskRequest{TaskId: task.TaskID, ExecutionKey: "eval-a"})
+	require.NoError(t, err)
+	require.Len(t, bounded.Sandboxes, 100)
+	require.True(t, bounded.SandboxesTruncated)
+	unaffected, err := server.GetJob(ctx, &eruunv1.JobTaskRequest{TaskId: task.TaskID, ExecutionKey: "eval-b"})
+	require.NoError(t, err)
+	require.Len(t, unaffected.Sandboxes, 1)
+	require.False(t, unaffected.SandboxesTruncated)
 
 	for _, key := range []string{"", "unknown"} {
 		_, err := server.GetJobResults(ctx, &eruunv1.JobTaskRequest{TaskId: task.TaskID, ExecutionKey: key})

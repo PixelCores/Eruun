@@ -7,23 +7,102 @@ Commands which actually require root fail normally in the restricted Pod.
 """
 
 import asyncio
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, closing
+import http.client
 import json
+import math
 from pathlib import Path
+import re
 import shlex
+import stat
 import tarfile
 import tempfile
+import time
+import urllib.parse
 import uuid
 
 from harbor.environments.ack import ACKEnvironment
+from harbor.models.trial.paths import EnvironmentPaths
+from kubernetes import client as k8s_client
 from kubernetes.stream import stream
+
+from runner import (CONTROL_OUTAGE_SECONDS, CONTROL_STATE_MAX_AGE_SECONDS, EVENT_ATTEMPT_SECONDS, MAX_EVENT_RESPONSE_BYTES, RetryableTransferError,
+                    RunnerError, endpoint, integer, remaining_time, retry_delay, transfer_connection,
+                    transfer_deadline, transfer_headers, transfer_timeout)
 
 MAX_TRANSFER_BYTES = 2 * 1024 * 1024 * 1024
 
 
+class SandboxExecAPI(k8s_client.CoreV1Api):
+    """Keep Kubernetes stream's bound API method while pinning its target."""
+
+    def __init__(self, identity, core_api):
+        super().__init__(k8s_client.ApiClient())
+        self.identity = identity
+        self.core_api = core_api
+
+    def connect_get_namespaced_pod_exec(self, name, namespace, **kwargs):
+        if (name, namespace) != (self.identity["podName"], self.identity["namespace"]):
+            raise RunnerError("sandbox execution target changed")
+        # stream() temporarily replaces this API client's request transport;
+        # identity reads must use the separate ordinary CoreV1 client.
+        pod = self.core_api.read_namespaced_pod(name, namespace, _request_timeout=EVENT_ATTEMPT_SECONDS)
+        if pod.metadata.uid != self.identity["podUID"]:
+            raise RunnerError("sandbox Pod identity changed")
+        kwargs["container"] = self.identity["containerName"]
+        return super().connect_get_namespaced_pod_exec(name, namespace, **kwargs)
+
+
+def sandbox_request(control, method, suffix, payload, deadline):
+    deadline = min(deadline, time.monotonic() + EVENT_ATTEMPT_SECONDS)
+    connection, target = transfer_connection(control["sandboxURL"].rstrip("/") + suffix, deadline)
+    encoded = None if payload is None else json.dumps(payload, separators=(",", ":")).encode()
+    with transfer_deadline(connection, deadline):
+        connection.request(method, target, body=encoded,
+                           headers=transfer_headers(control) | {"Content-Type": "application/json"})
+        transfer_timeout(connection, deadline)
+        with closing(connection.getresponse()) as response:
+            body = response.read(MAX_EVENT_RESPONSE_BYTES + 1)
+        remaining_time(deadline)
+        if response.status >= 500 or response.status in {408, 429}:
+            raise RetryableTransferError("sandbox control is temporarily unavailable")
+        if not 200 <= response.status < 300:
+            raise RunnerError(f"platform rejected sandbox operation with HTTP {response.status}")
+        if len(body) > MAX_EVENT_RESPONSE_BYTES:
+            raise RunnerError("sandbox acknowledgment is too large")
+        try:
+            envelope = json.loads(body)
+        except ValueError:
+            raise RetryableTransferError("sandbox acknowledgment could not be decoded") from None
+        data = envelope.get("data") if isinstance(envelope, dict) else None
+        if (not isinstance(data, dict) or data.get("state") not in {"pending", "ready", "released", "retained", "failed"}
+                or not isinstance(data.get("admitted"), bool)):
+            raise RunnerError("invalid sandbox acknowledgment")
+        return data
+
+
 class WorkspaceEnvironment(ACKEnvironment):
-    def __init__(self, *, collection_state_dir, **kwargs):
+    def __init__(self, *, collection_state_dir, sandbox_control_file=None, **kwargs):
         super().__init__(**kwargs)
+        self._sandbox_control = None
+        self._sandbox_identity = None
+        self._sandbox_requested = False
+        if sandbox_control_file is not None:
+            path = Path(sandbox_control_file)
+            if not path.is_file() or stat.S_IMODE(path.stat().st_mode) != 0o600 or path.stat().st_size > 16 * 1024:
+                raise RunnerError("invalid sandbox control capability file")
+            control = json.loads(path.read_text())
+            endpoint(control.get("sandboxURL"))
+            if (not isinstance(control.get("token"), str) or not control["token"]
+                    or control.get("namespace") != self.namespace
+                    or not isinstance(control.get("executionDeadline"), (int, float))
+                    or not isinstance(control.get("finalizationDeadline"), (int, float))
+                    or not isinstance(control.get("admissionStateFile"), str)
+                    or not re.fullmatch(r"[a-zA-Z0-9_.-]{1,128}", self.session_id)):
+                raise RunnerError("invalid sandbox control capability")
+            if self.use_sandbox_claim:
+                raise RunnerError("sandbox control does not use a warm pool")
+            self._sandbox_control = control
         # This directory is outside every task and downloaded trial directory.
         # Persist before each operation so a killed process or failed write
         # cannot turn an unfinished transfer into complete collection.
@@ -62,8 +141,165 @@ class WorkspaceEnvironment(ACKEnvironment):
             self._collection["pending"] -= 1
             self._save_collection()
 
+    async def _ensure_client(self):
+        await super()._ensure_client()
+        if self._sandbox_identity is not None and not isinstance(self._exec_api, SandboxExecAPI):
+            if self._exec_api is not None:
+                self._exec_api.api_client.close()
+            self._exec_api = SandboxExecAPI(self._sandbox_identity, self._core_api)
+
+    async def _sandbox_operation(self, method, suffix, payload, deadline):
+        outage_started = None
+        attempt = 0
+        paused = 0.0
+        while True:
+            remaining_time(deadline)
+            started = time.monotonic()
+            attempt_deadline = deadline if outage_started is None else min(deadline, outage_started + CONTROL_OUTAGE_SECONDS)
+            try:
+                data = await asyncio.to_thread(sandbox_request, self._sandbox_control, method, suffix, payload, attempt_deadline)
+                if outage_started is not None:
+                    paused = time.monotonic() - outage_started
+                return data, paused
+            except (OSError, http.client.HTTPException, RetryableTransferError):
+                if outage_started is None:
+                    outage_started = started
+                attempt += 1
+                await asyncio.sleep(retry_delay(attempt, min(deadline, outage_started + CONTROL_OUTAGE_SECONDS)))
+
+    async def _wait_for_admission(self, deadline):
+        path = Path(self._sandbox_control["admissionStateFile"])
+        while True:
+            remaining_time(deadline)
+            try:
+                if stat.S_IMODE(path.stat().st_mode) != 0o600 or path.stat().st_size > 4096:
+                    raise ValueError()
+                state = json.loads(path.read_text())
+                now = time.monotonic()
+                if (not isinstance(state, dict) or not isinstance(state.get("healthy"), bool)
+                        or not isinstance(state.get("stopped"), bool)
+                        or isinstance(state.get("updatedAt"), bool)
+                        or not isinstance(state.get("updatedAt"), (float, int))
+                        or not math.isfinite(state["updatedAt"]) or state["updatedAt"] > now):
+                    raise ValueError()
+                if state["stopped"]:
+                    raise RunnerError("runner stopped new sandbox admission")
+                if state["healthy"]:
+                    if now - state["updatedAt"] > CONTROL_STATE_MAX_AGE_SECONDS:
+                        raise RunnerError("runner admission state expired")
+                    return
+                outage = state.get("outageStarted")
+                if (isinstance(outage, bool) or not isinstance(outage, (float, int))
+                        or not math.isfinite(outage) or outage > now):
+                    raise ValueError()
+            except (OSError, ValueError, TypeError):
+                raise RunnerError("runner admission state is unavailable") from None
+            await asyncio.sleep(min(0.25, remaining_time(min(deadline, outage + CONTROL_OUTAGE_SECONDS))))
+
+    def _accept_sandbox_identity(self, data):
+        if data.get("trialId") != self.session_id:
+            raise RunnerError("sandbox acknowledgment belongs to a different trial")
+        if data["state"] != "ready" and not all(data.get(key) for key in ("sandboxUID", "podUID")):
+            return
+        if (not data["admitted"] or data.get("namespace") != self.namespace or data.get("containerName") != "main"
+                or any(not isinstance(data.get(key), str) or not data[key]
+                       for key in ("sandboxName", "sandboxUID", "podName", "podUID"))):
+            raise RunnerError("invalid ready sandbox identity")
+        identity = {key: data[key] for key in
+                    ("namespace", "sandboxName", "sandboxUID", "podName", "podUID", "containerName")}
+        if self._sandbox_identity is not None and self._sandbox_identity != identity:
+            raise RunnerError("sandbox execution identity changed")
+        self._sandbox_identity = identity
+        self.pod_name = data["podName"]
+        self._collection.update(self._sandbox_identity)
+        self._save_collection()
+
+    async def _start_sandbox(self):
+        control = self._sandbox_control
+        deadline = control["executionDeadline"]
+        path = "/" + urllib.parse.quote(self.session_id, safe="")
+        payload = {"trialId": self.session_id, "image": self._get_image_url(),
+                   "storageMiB": integer(self.task_env_config.storage_mb, "task environment.storage_mb", 1, 1048576)}
+        method, suffix = "POST", ""
+        startup_remaining = float(self.task_env_config.build_timeout_sec)
+        admitted = False
+        while True:
+            if admitted and startup_remaining <= 0:
+                raise TimeoutError("sandbox startup exceeded task build timeout")
+            await self._wait_for_admission(deadline)
+            if not self._sandbox_requested:
+                self._sandbox_requested = True
+                self._collection["sandboxRequested"] = True
+                self._collection["trialId"] = self.session_id
+                self._save_collection()
+            started = time.monotonic()
+            data, outage = await self._sandbox_operation(method, suffix, payload, deadline)
+            elapsed = time.monotonic() - started
+            if admitted:
+                startup_remaining -= max(0, elapsed - outage)
+                if startup_remaining <= 0:
+                    raise TimeoutError("sandbox startup exceeded task build timeout")
+            self._accept_sandbox_identity(data)
+            if data["state"] == "ready":
+                return startup_remaining
+            if data["state"] != "pending":
+                raise RunnerError("sandbox did not become ready")
+            if admitted and not data["admitted"]:
+                raise RunnerError("sandbox admission moved backwards")
+            admitted = data["admitted"]
+            pause = min(1, remaining_time(deadline), startup_remaining if admitted else 1)
+            await asyncio.sleep(pause)
+            if admitted:
+                startup_remaining -= pause
+            method, suffix, payload = "GET", path, None
+
+    async def _release_sandbox(self, complete, deadline=None):
+        if not self._sandbox_requested:
+            return
+        identity = self._sandbox_identity or {}
+        payload = {"sandboxUID": identity.get("sandboxUID", ""), "podUID": identity.get("podUID", ""),
+                   "collectionComplete": complete}
+        deadline = deadline or self._sandbox_control["finalizationDeadline"]
+        self._collection["releasePending"] = True
+        self._save_collection()
+        while True:
+            data, _ = await self._sandbox_operation("POST", "/" + urllib.parse.quote(self.session_id, safe="") + "/release",
+                                                    payload, deadline)
+            if data.get("trialId") != self.session_id:
+                raise RunnerError("sandbox release belongs to a different trial")
+            if data["state"] in {"released", "retained"}:
+                break
+            if data["state"] != "pending" or data.get("reason") not in {"release_pending", "creation_outcome_unknown"}:
+                raise RunnerError("sandbox release was not confirmed")
+            await asyncio.sleep(min(1, remaining_time(deadline)))
+        self._collection["releasePending"] = False
+        self._collection["sandboxState"] = data["state"]
+        self._save_collection()
+
     async def start(self, force_build):
-        await super().start(force_build)
+        if self._sandbox_control is None:
+            await super().start(force_build)
+        else:
+            if force_build:
+                raise RunnerError("sandbox tasks require a prebuilt image")
+            try:
+                startup_remaining = await self._start_sandbox()
+                async with asyncio.timeout(min(startup_remaining, remaining_time(self._sandbox_control["executionDeadline"]))):
+                    await self._ensure_client()
+                    for command in (f"mkdir -p {EnvironmentPaths.agent_dir} {EnvironmentPaths.verifier_dir}",
+                                    f"chmod 777 {EnvironmentPaths.agent_dir} {EnvironmentPaths.verifier_dir}"):
+                        if (await self.exec(command)).return_code != 0:
+                            raise RunnerError("cannot prepare sandbox log directories")
+                    await self._upload_environment_dir_after_start()
+            except BaseException:
+                try:
+                    await self._release_sandbox(False, min(self._sandbox_control["finalizationDeadline"],
+                                                           time.monotonic() + EVENT_ATTEMPT_SECONDS))
+                except Exception as exc:
+                    self._collection["errorCount"] += 1
+                    self._collection["errors"].append({"path": "sandbox", "reason": type(exc).__name__})
+                    self._save_collection()
+                raise
         # Harbor's implicit artifact source is optional. An empty convention
         # directory is a successful collection, including task images which
         # only pre-create /logs; absent user-declared artifacts still fail.
@@ -89,7 +325,18 @@ class WorkspaceEnvironment(ACKEnvironment):
             complete = complete and all(entry["status"] in {"ok", "empty"} for entry in entries)
         except (OSError, ValueError, KeyError, TypeError):
             complete = False
-        await super().stop(delete=complete)
+        if self._sandbox_control is None:
+            await super().stop(delete=complete)
+        else:
+            try:
+                await self._release_sandbox(complete)
+            finally:
+                if self._exec_api is not None:
+                    self._exec_api.api_client.close()
+                    self._exec_api = None
+                if self._client_manager is not None:
+                    await self._client_manager.release_client()
+                    self._client_manager = self._core_api = self._dynamic_client = None
         self._collection["stopped"] = True
         self._save_collection()
 

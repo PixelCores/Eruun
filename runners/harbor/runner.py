@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+from contextlib import closing, contextmanager
 import hashlib
 import http.client
 import importlib.metadata
 import io
 import json
+import math
 import os
 from pathlib import Path, PurePosixPath
 import queue
+import random
 import re
 import signal
+import socket
 import stat
 import subprocess
 import tarfile
@@ -29,6 +33,13 @@ MAX_RESULT_EXPANDED_BYTES = 2 * 1024 * 1024 * 1024
 MAX_FILES = 10_000
 MAX_MANIFEST_BYTES = 2 * 1024 * 1024
 TRANSFER_SECONDS = 300
+FINALIZATION_SECONDS = 960
+MAX_EXECUTION_SECONDS = 14 * 24 * 60 * 60
+EVENT_ATTEMPT_SECONDS = 30
+COLLECTION_SECONDS = 60
+TERMINAL_RESERVE_SECONDS = 30
+CONTROL_OUTAGE_SECONDS = 600
+CONTROL_STATE_MAX_AGE_SECONDS = 60
 HEARTBEAT_SECONDS = 15
 MAX_EVENT_RESPONSE_BYTES = 64 * 1024
 # Installed adapters execute in the trial sandbox, rather than importing user code.
@@ -73,6 +84,8 @@ def validate_config(config):
     endpoint(config.get("datasetURL"))
     endpoint(config.get("resultURL"))
     endpoint(config.get("eventURL"))
+    if "sandboxURL" in config:
+        endpoint(config["sandboxURL"])
     digest = config.get("datasetDigest", "")
     if not isinstance(digest, str):
         raise RunnerError("datasetDigest must be SHA-256")
@@ -94,9 +107,9 @@ def validate_config(config):
         "attempts": integer(options.get("attempts", 1), "attempts", 1, 10),
         "concurrency": integer(options.get("concurrency", 1), "concurrency", 1, 32),
     }
-    integer(config.get("timeoutSeconds"), "timeoutSeconds", 1, 86400)
+    integer(config.get("timeoutSeconds"), "timeoutSeconds", 1, MAX_EXECUTION_SECONDS)
     integer(config.get("transferTimeoutSeconds", TRANSFER_SECONDS), "transferTimeoutSeconds", 1, 3600)
-    integer(config.get("finalizationTimeoutSeconds", 360), "finalizationTimeoutSeconds", 1, 3600)
+    integer(config.get("finalizationTimeoutSeconds", FINALIZATION_SECONDS), "finalizationTimeoutSeconds", 1, 3600)
     resources = config.get("resources")
     if not isinstance(resources, dict) or set(resources) != {"cpu", "memory", "cpuLimit", "memoryLimit"}:
         raise RunnerError("resources must contain requests and limits")
@@ -220,6 +233,8 @@ def harbor_config(config, tasks, output, pod_name, pod_uid):
             "import_path": "eruun_environment:WorkspaceEnvironment", "force_build": False, "delete": False,
             "kwargs": {
                 "collection_state_dir": str(output.parent / "collection"),
+                **({"sandbox_control_file": str(output.parent / "sandbox-control.json")}
+                   if config.get("sandboxURL") else {}),
                 "namespace": config["namespace"], "skip_image_check": True,
                 "use_sandbox_claim": False, "service_account": config["sandboxServiceAccount"],
                 "pod_overrides": {
@@ -530,15 +545,60 @@ def transfer_timeout(connection, deadline):
         connection.sock.settimeout(remaining)
 
 
+@contextmanager
+def transfer_deadline(connection, deadline):
+    """Interrupt socket I/O at an absolute deadline, including trickling peers.
+
+    Keep the connected socket: getresponse() can detach it from the connection
+    before reading a Connection: close response. DNS resolution remains subject
+    to the system resolver; the deadline is checked before sending any request.
+    """
+    connected_socket = None
+    expired = threading.Event()
+
+    def expire():
+        expired.set()
+        active_socket = connected_socket or connection.sock
+        if active_socket is not None:
+            try:
+                active_socket.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+    timer = threading.Timer(remaining_time(deadline), expire)
+    timer.daemon = True
+    timer.start()
+    try:
+        connection.connect()
+        connected_socket = connection.sock
+        remaining_time(deadline)
+        yield
+    finally:
+        timer.cancel()
+        timer.join()
+        connection.close()
+        if expired.is_set():
+            raise TimeoutError("runner HTTP attempt exceeded its total time budget") from None
+    remaining_time(deadline)
+
+
+def retry_delay(attempt, deadline):
+    # Equal jitter keeps retries spaced out, with a fixed five-second ceiling.
+    ceiling = min(5.0, 0.25 * 2 ** min(attempt, 5))
+    return min(random.uniform(ceiling / 2, ceiling), remaining_time(deadline))
+
+
 def post_runner_event(config, event, deadline):
+    deadline = min(deadline, time.monotonic() + EVENT_ATTEMPT_SECONDS)
     connection, target = transfer_connection(config["eventURL"], deadline)
     encoded = json.dumps(event, separators=(",", ":")).encode()
-    try:
+    with transfer_deadline(connection, deadline):
         connection.request("POST", target, body=encoded,
                            headers=transfer_headers(config) | {"Content-Type": "application/json"})
         transfer_timeout(connection, deadline)
-        response = connection.getresponse()
-        body = response.read(MAX_EVENT_RESPONSE_BYTES + 1)
+        with closing(connection.getresponse()) as response:
+            body = response.read(MAX_EVENT_RESPONSE_BYTES + 1)
+        remaining_time(deadline)
         if response.status >= 500 or response.status in {408, 429}:
             raise RetryableTransferError("platform temporarily rejected runner event")
         if response.status == 409:
@@ -573,8 +633,6 @@ def post_runner_event(config, event, deadline):
                 or (action == "continue" and stop_outcome is not None)):
             raise RunnerError("invalid runner event acknowledgment")
         return action, stop_outcome
-    finally:
-        connection.close()
 
 
 def collection_progress(collection, total):
@@ -598,7 +656,9 @@ class StatusReporter:
         self.config = config
         self.cancel = cancel
         self.deadline = deadline
+        self.snapshot_deadline = deadline
         self.events = queue.Queue(maxsize=16)
+        self.terminal_ready = threading.Event()
         self.stop = threading.Event()
         self.failure = None
         self.sequence = 1
@@ -606,30 +666,90 @@ class StatusReporter:
         self.last_progress = None
         self.thread = None
         self.stop_outcome = None
+        self.outage_started = None
+        self.outage_exhausted = False
+        self.finalizing = False
+        self.admission_path = None
+        self.admission_lock = threading.Lock()
+        self.admission_stopped = False
+
+    def configure_admission(self, path):
+        self.admission_path = path
+        self._publish_admission()
+
+    def _publish_admission(self):
+        if self.admission_path is None:
+            return
+        with self.admission_lock:
+            self.admission_stopped |= self.cancel.is_set() or self.failure is not None or self.finalizing
+            state = {"healthy": self.outage_started is None and not self.admission_stopped,
+                     "stopped": self.admission_stopped, "updatedAt": time.monotonic(),
+                     "outageStarted": self.outage_started}
+            temporary = self.admission_path.with_suffix(".tmp")
+            try:
+                descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with os.fdopen(descriptor, "w") as target:
+                    os.fchmod(target.fileno(), 0o600)
+                    json.dump(state, target)
+                temporary.replace(self.admission_path)
+            except OSError:
+                raise RunnerError("cannot persist runner admission state") from None
 
     def _send_with_retry(self, event):
         attempt = 0
+        may_update_terminal = True
         while True:
             if self.stop.is_set():
                 raise RunnerError("runner event reporter stopped")
-            if event["kind"] == "terminal" and self.stop_outcome is None and self.cancel.is_set():
+            if self.terminal_ready.is_set() and event["kind"] not in {"claim", "terminal"}:
+                return
+            deadline = self.deadline
+            if self.outage_started is not None and not self.finalizing:
+                deadline = min(deadline, self.outage_started + CONTROL_OUTAGE_SECONDS)
+            if event["kind"] not in {"claim", "terminal"}:
+                if time.monotonic() >= self.snapshot_deadline:
+                    return
+                deadline = min(deadline, self.snapshot_deadline)
+            if (may_update_terminal and event["kind"] == "terminal" and self.stop_outcome is None
+                    and self.cancel.is_set() and not self.outage_exhausted):
                 self.stop_outcome = "cancelled"
-            if (event["kind"] == "terminal" and self.stop_outcome is not None
+            if (may_update_terminal and event["kind"] == "terminal" and self.stop_outcome is not None
                     and event["terminal"]["outcome"] != self.stop_outcome):
                 reason = "evaluation_cancelled" if self.stop_outcome == "cancelled" else "evaluation_timed_out"
                 terminal = {**event["terminal"], "outcome": self.stop_outcome, "reason": reason}
                 event = {**event, "terminal": terminal}
-            remaining_time(self.deadline)
+            remaining_time(deadline)
             try:
-                action, stop_outcome = post_runner_event(self.config, event, self.deadline)
+                # A lost response may follow a committed terminal. Only an
+                # explicit rejection permits changing its digest at this sequence.
+                may_update_terminal = False
+                started = time.monotonic()
+                action, stop_outcome = post_runner_event(self.config, event, deadline)
+                self.outage_started = None
                 if action == "stop":
                     self.stop_outcome = stop_outcome
                     self.cancel.set()
+                self._publish_admission()
                 return
             except (OSError, http.client.HTTPException, RetryableTransferError):
+                if self.outage_started is None:
+                    self.outage_started = started
+                self._publish_admission()
+                if self.terminal_ready.is_set() and event["kind"] not in {"claim", "terminal"}:
+                    return
+                if self.finalizing:
+                    deadline = min(self.deadline, self.snapshot_deadline) if event["kind"] not in {"claim", "terminal"} else self.deadline
+                if event["kind"] not in {"claim", "terminal"} and time.monotonic() >= deadline:
+                    if deadline == self.snapshot_deadline:
+                        return
+                    raise TimeoutError("runner control outage exceeded its time budget") from None
+                # The framework's outage tolerance stops execution at 600s;
+                # result delivery uses the already fixed finalization window.
+                if not self.finalizing:
+                    deadline = min(deadline, self.outage_started + CONTROL_OUTAGE_SECONDS)
                 attempt += 1
                 log_runner_event("event_retry", kind=event["kind"], attempt=attempt)
-                if self.stop.wait(min(5, 0.25 * (2 ** min(attempt, 4)), remaining_time(self.deadline))):
+                if self.stop.wait(retry_delay(attempt, deadline)):
                     raise RunnerError("runner event reporter stopped")
             except RunnerEventConflictError as exc:
                 # An authoritative stop may race the first terminal request. A rejected
@@ -643,6 +763,7 @@ class StatusReporter:
                 else:
                     raise
                 if event["terminal"]["outcome"] != self.stop_outcome:
+                    may_update_terminal = True
                     continue
                 raise
 
@@ -666,7 +787,9 @@ class StatusReporter:
         self.progress_source = (collection, total)
 
     def shorten_deadline(self, deadline):
+        self.finalizing = True
         self.deadline = min(self.deadline, deadline)
+        self._publish_admission()
         return self.deadline
 
     def _next_event(self, event):
@@ -697,12 +820,19 @@ class StatusReporter:
                         completed.set()
                     if event["kind"] == "terminal":
                         return
-                if time.monotonic() >= next_heartbeat and not self.stop.is_set():
+                if time.monotonic() >= next_heartbeat and not self.stop.is_set() and not self.terminal_ready.is_set():
                     self._send_with_retry(self._next_event({"kind": "heartbeat"}))
                     self._send_progress()
                     next_heartbeat = time.monotonic() + HEARTBEAT_SECONDS
         except Exception as exc:
             self.failure = exc
+            self.outage_exhausted = (isinstance(exc, TimeoutError) and self.outage_started is not None
+                                     and time.monotonic() >= self.outage_started + CONTROL_OUTAGE_SECONDS)
+            self.cancel.set()
+            try:
+                self._publish_admission()
+            except RunnerError:
+                pass  # A stale admission record also fails closed in Harbor.
             while True:
                 try:
                     _, completed = self.events.get_nowait()
@@ -713,12 +843,26 @@ class StatusReporter:
 
     def terminal(self, terminal):
         if self.failure is not None:
-            raise self.failure
+            if not self.finalizing or not self.outage_exhausted:
+                raise self.failure
+            # The reporter stopped execution after a runtime outage. Join its
+            # sequence owner before delivering the failed final fact directly.
+            if self.thread is not None:
+                self.thread.join(timeout=min(EVENT_ATTEMPT_SECONDS, remaining_time(self.deadline)))
+                if self.thread.is_alive():
+                    raise self.failure
+            self._send_with_retry(self._next_event({"kind": "terminal", "terminal": terminal}))
+            self.failure = None
+            return
         completed = threading.Event()
         try:
             self.events.put_nowait(({"kind": "terminal", "terminal": terminal}, completed))
         except queue.Full:
             raise RunnerError("runner event queue is full") from None
+        # Phase/progress are snapshots, not an audit log. Once this fact is
+        # queued, finish the current HTTP attempt then skip older snapshots.
+        # _next_event still allocates a higher sequence for the terminal.
+        self.terminal_ready.set()
         while not completed.wait(min(1, remaining_time(self.deadline))):
             if self.failure is not None:
                 raise self.failure
@@ -734,8 +878,9 @@ class StatusReporter:
 def upload_results(config, archive_path, status, deadline=None):
     if deadline is None:
         deadline = time.monotonic() + TRANSFER_SECONDS
+    deadline = min(deadline, time.monotonic() + config.get("transferTimeoutSeconds", TRANSFER_SECONDS))
     connection, target = transfer_connection(config["resultURL"], deadline)
-    try:
+    with transfer_deadline(connection, deadline):
         connection.putrequest("POST", target)
         for name, value in transfer_headers(config).items():
             connection.putheader(name, value)
@@ -748,12 +893,13 @@ def upload_results(config, archive_path, status, deadline=None):
                 transfer_timeout(connection, deadline)
                 connection.send(chunk)
         transfer_timeout(connection, deadline)
-        response = connection.getresponse()
+        with closing(connection.getresponse()) as response:
+            body = response.read(MAX_EVENT_RESPONSE_BYTES + 1)
+        remaining_time(deadline)
         if not 200 <= response.status < 300:
             if response.status >= 500 or response.status in {408, 429}:
                 raise RetryableTransferError("platform temporarily rejected source upload")
             raise RunnerError(f"platform rejected source archive with HTTP {response.status}")
-        body = response.read(MAX_EVENT_RESPONSE_BYTES + 1)
         if len(body) > MAX_EVENT_RESPONSE_BYTES:
             raise RunnerError("source acknowledgment is too large")
         try:
@@ -767,8 +913,6 @@ def upload_results(config, archive_path, status, deadline=None):
         if not isinstance(artifact, dict) or not isinstance(artifact.get("id"), str) or not isinstance(artifact.get("digest"), str):
             raise RunnerError("invalid source acknowledgment")
         return artifact
-    finally:
-        connection.close()
 
 
 def upload_with_retry(config, archive, status, deadline=None):
@@ -776,14 +920,15 @@ def upload_with_retry(config, archive, status, deadline=None):
     # without rebuilding gzip (which could change metadata and its digest).
     if deadline is None:
         deadline = time.monotonic() + TRANSFER_SECONDS
-    for attempt in range(3):
+    attempt = 0
+    while True:
+        remaining_time(deadline)
         try:
-            remaining_time(deadline)
             return upload_results(config, archive, status, deadline=deadline)
         except (OSError, http.client.HTTPException, RetryableTransferError):
-            if attempt == 2:
-                raise
-            time.sleep(min(attempt + 1, remaining_time(deadline)))
+            attempt += 1
+            log_runner_event("upload_retry", attempt=attempt)
+            time.sleep(retry_delay(attempt, deadline))
 
 
 def execute(config, work, cancel, reporter=None, final_deadline=None):
@@ -807,9 +952,38 @@ def execute(config, work, cancel, reporter=None, final_deadline=None):
         if reporter is not None:
             reporter.track_progress(work / "collection", expected_trials)
         generated = harbor_config(config, tasks, output, os.environ.get("POD_NAME"), os.environ.get("POD_UID"))
+        if config.get("sandboxURL"):
+            if reporter is None:
+                raise RunnerError("sandbox execution requires a status reporter")
+            admission_path = work / "admission-state.json"
+            reporter.configure_admission(admission_path)
+            execution_deadline = time.monotonic() + config["timeoutSeconds"]
+            grace = config.get("finalizationTimeoutSeconds", FINALIZATION_SECONDS)
+            if final_deadline is not None:
+                execution_deadline = min(execution_deadline, final_deadline - grace)
+            budget = remaining_time(execution_deadline)
+            build_timeouts = [tomllib.loads((task / "task.toml").read_text()).get("environment", {}).get("build_timeout_sec", 600)
+                              for task in tasks]
+            if any(isinstance(value, bool) or not isinstance(value, (int, float))
+                   or not math.isfinite(value) or value <= 0 for value in build_timeouts):
+                raise RunnerError("task environment build timeout must be positive")
+            # Harbor wraps start() in a build timeout. Queue admission belongs
+            # to the Job budget; the adapter enforces each original build
+            # timeout only after the server admits that environment.
+            generated["environment_build_timeout_multiplier"] = max(1, budget / min(build_timeouts))
+            control = {key: config[key] for key in ("sandboxURL", "token", "taskId", "namespace")}
+            control["executionDeadline"] = execution_deadline
+            control["finalizationDeadline"] = execution_deadline + grace
+            control["admissionStateFile"] = str(admission_path)
+            descriptor = os.open(work / "sandbox-control.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(descriptor, "w") as target:
+                json.dump(control, target)
         config_path = work / "harbor-config.json"
         config_path.write_text(json.dumps(generated))
-        if cancel.is_set():
+        if cancel.is_set() and reporter.outage_exhausted is True:
+            succeeded = False
+            outcome = "failed"
+        elif cancel.is_set():
             raise RunnerError("cancelled before framework start")
         if reporter is not None:
             reporter.emit("phase", phase="running")
@@ -829,18 +1003,23 @@ def execute(config, work, cancel, reporter=None, final_deadline=None):
         if cancel.is_set() and "interruption" not in report:
             report["interruption"] = "cancelled"
             collection_error(report, "trials", "framework_interrupted")
-    finalization_deadline = time.monotonic() + config.get("finalizationTimeoutSeconds", 360)
+    finalization_deadline = time.monotonic() + config.get("finalizationTimeoutSeconds", FINALIZATION_SECONDS)
     if final_deadline is not None:
         finalization_deadline = min(finalization_deadline, final_deadline)
     if reporter is not None:
         finalization_deadline = reporter.shorten_deadline(finalization_deadline)
         reporter.emit("phase", phase="finalizing")
-    check_sandbox_collection(output, expected_trials, report, deadline=finalization_deadline)
+    budget = remaining_time(finalization_deadline)
+    terminal_reserve = min(TERMINAL_RESERVE_SECONDS, budget / 3)
+    upload_deadline = finalization_deadline - terminal_reserve
+    if reporter is not None:
+        # A snapshot HTTP retry must not occupy the terminal's reserved window.
+        reporter.snapshot_deadline = upload_deadline
+    collection_deadline = time.monotonic() + min(COLLECTION_SECONDS, budget / 6)
     archive = work / "results.tar.gz"
     try:
-        archive_results(output, archive, report, deadline=finalization_deadline)
-    except TimeoutError:
-        raise
+        check_sandbox_collection(output, expected_trials, report, deadline=collection_deadline)
+        archive_results(output, archive, report, deadline=collection_deadline)
     except (RunnerError, OSError, tarfile.TarError) as exc:
         # Preserve the local originals for Pod retention and make missing source
         # explicit; never label a diagnostic-only archive as full collection.
@@ -849,14 +1028,15 @@ def execute(config, work, cancel, reporter=None, final_deadline=None):
         report["collectionErrorCount"] = 1
         report["diagnosticOnly"] = True
         contents = json.dumps(report, ensure_ascii=False).encode()
-        ensure_deadline(finalization_deadline)
+        diagnostic_deadline = min(upload_deadline, time.monotonic() + 5)
+        ensure_deadline(diagnostic_deadline)
         with tarfile.open(archive, "w:gz") as target:
             info = tarfile.TarInfo("result.json")
             info.size, info.mode = len(contents), 0o600
-            target.addfile(info, _DeadlineReader(io.BytesIO(contents), finalization_deadline))
-        ensure_deadline(finalization_deadline)
+            target.addfile(info, _DeadlineReader(io.BytesIO(contents), diagnostic_deadline))
+        ensure_deadline(diagnostic_deadline)
     status = report["executionStatus"] if report["collectionComplete"] and not cancel.is_set() else "failed"
-    artifact = upload_with_retry(config, archive, status, deadline=finalization_deadline)
+    artifact = upload_with_retry(config, archive, status, deadline=upload_deadline)
     succeeded = not cancel.is_set() and report["executionStatus"] == "succeeded" and report["collectionComplete"]
     if reporter is not None:
         if cancel.is_set():
@@ -898,7 +1078,7 @@ def main():
     try:
         config = validate_config(json.loads(os.environ["ERUUN_JOB_CONFIG"]))
         started = time.monotonic()
-        final_deadline = started + config["timeoutSeconds"] + config.get("finalizationTimeoutSeconds", 360)
+        final_deadline = started + config["timeoutSeconds"] + config.get("finalizationTimeoutSeconds", FINALIZATION_SECONDS)
         reporter = StatusReporter(config, cancel, final_deadline)
         reporter.claim()
         Path("/work/home").mkdir(parents=True, exist_ok=True)
