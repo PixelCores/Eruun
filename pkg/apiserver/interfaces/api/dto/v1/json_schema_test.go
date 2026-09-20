@@ -64,7 +64,8 @@ func TestCanonicalSchemaDiscoversSharedEvaluationAndStandaloneJobs(t *testing.T)
 	require.NotContains(t, jobFields, "resultPolicy")
 	for _, name := range []string{"Trait", "JobTraits"} {
 		fields := definitions[name].(map[string]any)["properties"].(map[string]any)
-		require.Equal(t, "#/$defs/EvaluationTraitSpec", fields["evaluation"].(map[string]any)["$ref"])
+		require.Equal(t, "#/$defs/EvaluationTraitSpec", fields["eval"].(map[string]any)["$ref"])
+		require.NotContains(t, fields, "evaluation")
 	}
 	evaluation := definitions["EvaluationTraitSpec"].(map[string]any)
 	require.Equal(t, false, evaluation["additionalProperties"])
@@ -81,7 +82,7 @@ func TestCanonicalSchemaDiscoversSharedEvaluationAndStandaloneJobs(t *testing.T)
 }
 
 func TestApplicationEvaluationRejectsUnknownBusinessFields(t *testing.T) {
-	const body = `{"name":"evaluation-app","components":[{"name":"evaluate","type":"job","traits":{"evaluation":{"env":"ack","agent":"oracle","taskPackageId":"12345678-1234-1234-1234-123456789012"}}}]}`
+	const body = `{"name":"evaluation-app","components":[{"name":"evaluate","type":"job","traits":{"eval":{"env":"ack","agent":"oracle","taskPackageId":"12345678-1234-1234-1234-123456789012"}}}]}`
 	var request CreateApplicationsRequest
 	require.NoError(t, json.Unmarshal([]byte(body), &request))
 	require.Equal(t, "oracle", request.Components[0].Traits.Evaluation.Agent)
@@ -89,13 +90,20 @@ func TestApplicationEvaluationRejectsUnknownBusinessFields(t *testing.T) {
 	var payload map[string]any
 	require.NoError(t, json.Unmarshal([]byte(body), &payload))
 	component := payload["components"].([]any)[0].(map[string]any)
-	evaluation := component["traits"].(map[string]any)["evaluation"].(map[string]any)
+	evaluation := component["traits"].(map[string]any)["eval"].(map[string]any)
 	evaluation["framework"] = "harbor"
 	invalid, err := json.Marshal(payload)
 	require.NoError(t, err)
 	require.ErrorContains(t, json.Unmarshal(invalid, &request), "unknown field")
 	var standalone spec.JobSpec
-	require.ErrorContains(t, spec.DecodeJobJSON([]byte(`{"name":"evaluate","type":"job","traits":{"evaluation":{"env":"ack","agent":"oracle","taskPackageId":"12345678-1234-1234-1234-123456789012","framework":"harbor"}}}`), &standalone), "unknown field")
+	require.ErrorContains(t, spec.DecodeJobJSON([]byte(`{"name":"evaluate","type":"job","traits":{"eval":{"env":"ack","agent":"oracle","taskPackageId":"12345678-1234-1234-1234-123456789012","framework":"harbor"}}}`), &standalone), "unknown field")
+	delete(evaluation, "framework")
+	traits := component["traits"].(map[string]any)
+	traits["evaluation"] = traits["eval"]
+	delete(traits, "eval")
+	legacy, err := json.Marshal(payload)
+	require.NoError(t, err)
+	require.ErrorContains(t, json.Unmarshal(legacy, &request), `unknown field "evaluation"`)
 }
 
 func TestCanonicalApplicationMarshalProducesOnlyCanonicalFields(t *testing.T) {

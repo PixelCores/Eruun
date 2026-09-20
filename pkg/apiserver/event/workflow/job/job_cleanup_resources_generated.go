@@ -54,7 +54,7 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 	case config.SecretJob:
 		c.deleteSecretForComponent(ctx, component, props, deleted)
 	case config.InstantJob:
-		if component.Traits != nil && component.Traits.Properties()["evaluation"] != nil {
+		if component.Traits != nil && component.Traits.Properties()["eval"] != nil {
 			// Evaluation runners have execution-specific names and are removed
 			// through the component labels, not the ordinary Job naming rule.
 			break

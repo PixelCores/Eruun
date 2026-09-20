@@ -7,6 +7,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	eruunv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -53,10 +54,10 @@ func TestEvaluationTraitSharedAcrossJobAndApplication(t *testing.T) {
 		SandboxResources: &eruunv1.AppSpecResourceTraitsSpec{Cpu: "2", Memory: "4Gi", CpuLimit: "4", MemoryLimit: "8Gi"},
 		ResultPolicy:     &eruunv1.JobResultPolicy{RetentionDays: 30, Targets: []*eruunv1.JobResultTarget{{Type: "database", Mode: "full"}}},
 	}
-	standalone, err := jobSubmitInput(&eruunv1.SubmitJobRequest{Name: "evaluate", Type: "job", Traits: &eruunv1.JobTraits{Evaluation: evaluation}})
+	standalone, err := jobSubmitInput(&eruunv1.SubmitJobRequest{Name: "evaluate", Type: "job", Traits: &eruunv1.JobTraits{Eval: evaluation}})
 	require.NoError(t, err)
 	require.Empty(t, standalone.Spec)
-	app, err := decodeTypedRequest[spec.Traits](&eruunv1.AppSpecTraits{Evaluation: evaluation})
+	app, err := decodeTypedRequest[spec.Traits](&eruunv1.AppSpecTraits{Eval: evaluation})
 	require.NoError(t, err)
 	require.Equal(t, app.Evaluation, standalone.Traits.Evaluation)
 	require.Equal(t, int64(600), app.Evaluation.TimeoutSeconds)
@@ -66,11 +67,20 @@ func TestEvaluationTraitSharedAcrossJobAndApplication(t *testing.T) {
 	output, err := jobSpecOutput(standalone.JobSpec)
 	require.NoError(t, err)
 	require.Nil(t, output.Spec)
-	require.True(t, proto.Equal(evaluation, output.Traits.Evaluation))
+	require.True(t, proto.Equal(evaluation, output.Traits.Eval))
 	appOutput, err := encodeTypedResponse(app, &eruunv1.AppSpecTraits{})
 	require.NoError(t, err)
-	require.True(t, proto.Equal(output.Traits.Evaluation, appOutput.Evaluation))
+	require.True(t, proto.Equal(output.Traits.Eval, appOutput.Eval))
 	require.NoError(t, standalone.Normalize())
+	for _, traits := range []proto.Message{output.Traits, appOutput} {
+		encoded, err := protojson.Marshal(traits)
+		require.NoError(t, err)
+		require.Contains(t, string(encoded), `"eval":`)
+		require.NotContains(t, string(encoded), `"evaluation":`)
+	}
+	for _, traits := range []proto.Message{&eruunv1.JobTraits{}, &eruunv1.AppSpecTraits{}} {
+		require.Error(t, protojson.Unmarshal([]byte(`{"evaluation":{}}`), traits))
+	}
 }
 
 func TestJobSubmitInputDeclarationContract(t *testing.T) {

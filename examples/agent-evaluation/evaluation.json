@@ -2,7 +2,7 @@
   "name": "harbor-oracle-check",
   "type": "job",
   "traits": {
-    "evaluation": {
+    "eval": {
       "env": "ack",
       "agent": "oracle",
       "taskPackageId": "<UPLOADED_DATASET_ID>",

@@ -75,14 +75,14 @@ message JobTraits {
   map<string, string> target_work_env = 4;
   JobResourceTrait resources = 5;
   AppKubeCoreSecurityContext security_policy = 6 [json_name = "securityPolicy"];
-  EvaluationTrait evaluation = 7;
+  EvaluationTrait eval = 7;
 }
 
 message SubmitJobRequest {
   string workspace_id = 1;
   string name = 2;
   string type = 3;
-  // Command inputs only. Evaluation Jobs use traits.evaluation and omit spec.
+  // Command inputs only. Evaluation Jobs use traits.eval and omit spec.
   google.protobuf.Value spec = 4;
   JobTraits traits = 5;
   reserved 6;

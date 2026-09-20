@@ -4,9 +4,9 @@
 
 ## 目标与边界
 
-用户在所属空间中提交一次性 Job。普通命令与 LLM 评测属于同一套生命周期。命令使用 `type: command` + `spec`，评测使用 `type: job` + `traits.evaluation`。同一评测 Trait 可用于 Application 顶层 job 组件，沿用所在 Workflow 的 AppID/TaskID，以 ExecutionKey 区分各评测。平台生成唯一 `taskId`；独立 Job 不要求 `appId`，不创建占位 Application 或 Component。
+用户在所属空间中提交一次性 Job。普通命令与 LLM 评测属于同一套生命周期。命令使用 `type: command` + `spec`，评测使用 `type: job` + `traits.eval`。同一评测 Trait 可用于 Application 顶层 job 组件，沿用所在 Workflow 的 AppID/TaskID，以 ExecutionKey 区分各评测。平台生成唯一 `taskId`；独立 Job 不要求 `appId`，不创建占位 Application 或 Component。
 
-复用现有 WorkflowQueue、JobInfo、调度、执行租约和取消机制。evaluation Trait 描述测评目的，model 与 agent 并列，后者是执行 harness。当前只接入 Harbor，env 采用 ack，框架版本由 Runner 固定和记录；不增加 framework 选择器或平行调度器。
+复用现有 WorkflowQueue、JobInfo、调度、执行租约和取消机制。`eval` Trait 描述测评目的，model 与 agent 并列，后者是执行 harness。当前只接入 Harbor，env 采用 ack，框架版本由 Runner 固定和记录；不增加 framework 选择器或平行调度器。
 
 首版范围为后端 API、持久化、Kubernetes 执行、结果访问和保存。无需前端页面、人工作品审核流程、平台镜像构建或新的客户端 CLI。发布为新的实现 PR，原设计 PR 不作为实现完成的证据。
 
@@ -22,9 +22,9 @@
 
 ## Job 规格
 
-公共字段承载名称、类型与空间归属。普通命令的镜像与命令保留在 `spec`；评测业务输入直接由 `traits.evaluation` 描述。资源和 Secret 环境变量使用已有 Trait，单个 trial 资源可在 `sandboxResources` 中单独配置。
+公共字段承载名称、类型与空间归属。普通命令的镜像与命令保留在 `spec`；评测业务输入直接由 `traits.eval` 描述。资源和 Secret 环境变量使用已有 Trait，单个 trial 资源可在 `sandboxResources` 中单独配置。
 
-| 维度 | `command` | `job` + `traits.evaluation` |
+| 维度 | `command` | `job` + `traits.eval` |
 | --- | --- | --- |
 | 业务输入 | 容器镜像与命令 | env、任务包、model、agent、尝试次数、并发和预算 |
 | 框架 | 无 | 首版 Harbor，固定受支持版本 |

@@ -1,6 +1,6 @@
 # Harbor 评测 Job 示例
 
-> 状态：Current。提供一个不依赖模型凭据的 Harbor `0.22.0` 端到端示例。示例使用 `oracle` 执行参考解，适合先验证任务镜像、原生任务包、`traits.evaluation` Job、结果采集和数据库保存链路；它不代表模型能力分数。
+> 状态：Current。提供一个不依赖模型凭据的 Harbor `0.22.0` 端到端示例。示例使用 `oracle` 执行参考解，适合先验证任务镜像、原生任务包、`traits.eval` Job、结果采集和数据库保存链路；它不代表模型能力分数。
 
 完整 API、权限和运行边界见 [空间 Job 与 Harbor 评测 API](../../docs/workspace-jobs-api.md)。
 
@@ -72,7 +72,7 @@ DATASET_ID="$(printf '%s\n' "$DATASET_RESPONSE" | jq -er '.data.id')"
 ```bash
 jq \
   --arg datasetId "$DATASET_ID" \
-  '.traits.evaluation.taskPackageId = $datasetId' \
+  '.traits.eval.taskPackageId = $datasetId' \
   examples/agent-evaluation/evaluation.json \
   > "$HARBOR_EXAMPLE_DIR/evaluation.json"
 
@@ -154,7 +154,7 @@ curl -sS \
 
 ## Application 内运行
 
-`application.json` 将同一 `traits.evaluation` 放入顶层 Job 组件，由 Workflow 的 `deploy` 步骤执行。先替换任务包 ID，再按应用创建/执行 API 提交。模型评测时把 `agent` 改为受支持的 harness，填写并列的 `model` 字符串，并通过组件 `traits.envs` 引用凭据。应用内结果操作传入 `?executionKey=<该 Job 的执行键>`，取消通过所属应用 Workflow 接口完成。
+`application.json` 将同一 `traits.eval` 放入顶层 Job 组件，由 Workflow 的 `deploy` 步骤执行。先替换任务包 ID，再按应用创建/执行 API 提交。模型评测时把 `agent` 改为受支持的 harness，填写并列的 `model` 字符串，并通过组件 `traits.envs` 引用凭据。应用内结果操作传入 `?executionKey=<该 Job 的执行键>`，取消通过所属应用 Workflow 接口完成。
 
 ## 示例文件
 

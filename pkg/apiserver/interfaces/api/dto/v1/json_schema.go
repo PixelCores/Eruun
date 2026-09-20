@@ -307,17 +307,17 @@ func (b *schemaBuilder) applyDefinitionConstraints(name string, definition map[s
 		definition["oneOf"] = []any{
 			map[string]any{"required": []string{"spec"}, "properties": map[string]any{
 				"type":   map[string]any{"const": "command"},
-				"traits": map[string]any{"not": map[string]any{"required": []string{"evaluation"}}},
+				"traits": map[string]any{"not": map[string]any{"required": []string{"eval"}}},
 			}},
 			map[string]any{"required": []string{"traits"}, "not": map[string]any{"required": []string{"spec"}}, "properties": map[string]any{
 				"type":   map[string]any{"const": "job"},
-				"traits": map[string]any{"required": []string{"evaluation"}},
+				"traits": map[string]any{"required": []string{"eval"}},
 			}},
 		}
 	case "Component":
 		definition["allOf"] = []any{map[string]any{
 			"if": map[string]any{"required": []string{"traits"}, "properties": map[string]any{
-				"traits": map[string]any{"required": []string{"evaluation"}},
+				"traits": map[string]any{"required": []string{"eval"}},
 			}},
 			"then": map[string]any{"properties": map[string]any{
 				"type": map[string]any{"const": "job"}, "image": map[string]any{"maxLength": 0},
@@ -331,7 +331,7 @@ func (b *schemaBuilder) applyDefinitionConstraints(name string, definition map[s
 		}}
 	case "InitTraitSpec", "SidecarTraitsSpec":
 		definition["allOf"] = []any{map[string]any{"properties": map[string]any{
-			"traits": map[string]any{"not": map[string]any{"required": []string{"evaluation"}}},
+			"traits": map[string]any{"not": map[string]any{"required": []string{"eval"}}},
 		}}}
 	}
 }

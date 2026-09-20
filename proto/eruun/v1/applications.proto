@@ -1315,7 +1315,7 @@ message AppSpecTraits {
   AppKubeCoreSecurityContext security_policy = 12 [json_name = "securityPolicy"];
   AppSpecShareTraitSpec share = 13 [json_name = "share"];
   AppSpecRolloutTraitSpec rollout = 14 [json_name = "rollout"];
-  EvaluationTrait evaluation = 15 [json_name = "evaluation"];
+  EvaluationTrait eval = 15 [json_name = "eval"];
 }
 
 // Shared by standalone Job and Application component declarations.

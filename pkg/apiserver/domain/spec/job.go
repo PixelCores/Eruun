@@ -51,7 +51,7 @@ type EvaluationTraitSpec struct {
 
 func (e *EvaluationTraitSpec) Normalize() error {
 	if e == nil {
-		return fmt.Errorf("traits.evaluation is required")
+		return fmt.Errorf("traits.eval is required")
 	}
 	if e.Env != "ack" {
 		return fmt.Errorf("evaluation env must be ack")
@@ -185,7 +185,7 @@ func (j *JobSpec) Normalize() error {
 		normalizeJobResources(&j.Traits.Resources)
 	case "job":
 		if len(j.Spec) != 0 {
-			return fmt.Errorf("evaluation inputs belong in traits.evaluation; spec is not supported")
+			return fmt.Errorf("evaluation inputs belong in traits.eval; spec is not supported")
 		}
 		return NormalizeEvaluationTraits(&j.Traits)
 	default:
@@ -197,7 +197,7 @@ func (j *JobSpec) Normalize() error {
 // NormalizeEvaluationTraits is shared by standalone and Application evaluation Jobs.
 func NormalizeEvaluationTraits(t *JobTraits) error {
 	if t == nil || t.Evaluation == nil {
-		return fmt.Errorf("traits.evaluation is required")
+		return fmt.Errorf("traits.eval is required")
 	}
 	if len(t.Storage)+len(t.EnvFrom) > 0 || t.SecurityPolicy != nil {
 		return fmt.Errorf("evaluation supports resources and credential envs only")

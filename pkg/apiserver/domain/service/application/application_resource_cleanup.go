@@ -312,7 +312,7 @@ func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, 
 	case config.SecretJob:
 		c.deleteSecretForComponent(ctx, componentPtr, &props, reporter)
 	case config.InstantJob:
-		if component.Traits != nil && component.Traits.Properties()["evaluation"] != nil {
+		if component.Traits != nil && component.Traits.Properties()["eval"] != nil {
 			c.deleteEvaluationJobsForComponent(ctx, componentPtr, reporter)
 			break
 		}

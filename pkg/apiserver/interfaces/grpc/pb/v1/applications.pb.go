@@ -12682,7 +12682,7 @@ type AppSpecTraits struct {
 	SecurityPolicy *AppKubeCoreSecurityContext `protobuf:"bytes,12,opt,name=security_policy,json=securityPolicy,proto3" json:"security_policy,omitempty"`
 	Share          *AppSpecShareTraitSpec      `protobuf:"bytes,13,opt,name=share,proto3" json:"share,omitempty"`
 	Rollout        *AppSpecRolloutTraitSpec    `protobuf:"bytes,14,opt,name=rollout,proto3" json:"rollout,omitempty"`
-	Evaluation     *EvaluationTrait            `protobuf:"bytes,15,opt,name=evaluation,proto3" json:"evaluation,omitempty"`
+	Eval           *EvaluationTrait            `protobuf:"bytes,15,opt,name=eval,proto3" json:"eval,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -12815,9 +12815,9 @@ func (x *AppSpecTraits) GetRollout() *AppSpecRolloutTraitSpec {
 	return nil
 }
 
-func (x *AppSpecTraits) GetEvaluation() *EvaluationTrait {
+func (x *AppSpecTraits) GetEval() *EvaluationTrait {
 	if x != nil {
-		return x.Evaluation
+		return x.Eval
 	}
 	return nil
 }
@@ -14431,7 +14431,7 @@ const file_eruun_v1_applications_proto_rawDesc = "" +
 	"\rstorage_class\x18\v \x01(\tR\fstorageClass\"?\n" +
 	"\x15AppSpecTCPSocketProbe\x12\x12\n" +
 	"\x04port\x18\x01 \x01(\x05R\x04port\x12\x12\n" +
-	"\x04host\x18\x02 \x01(\tR\x04host\"\xf6\a\n" +
+	"\x04host\x18\x02 \x01(\tR\x04host\"\xea\a\n" +
 	"\rAppSpecTraits\x122\n" +
 	"\x04init\x18\x01 \x03(\v2\x1e.eruun.v1.AppSpecInitTraitSpecR\x04init\x12;\n" +
 	"\astorage\x18\x02 \x03(\v2!.eruun.v1.AppSpecStorageTraitSpecR\astorage\x12<\n" +
@@ -14447,10 +14447,8 @@ const file_eruun_v1_applications_proto_rawDesc = "" +
 	"\tresources\x18\v \x01(\v2#.eruun.v1.AppSpecResourceTraitsSpecR\tresources\x12M\n" +
 	"\x0fsecurity_policy\x18\f \x01(\v2$.eruun.v1.AppKubeCoreSecurityContextR\x0esecurityPolicy\x125\n" +
 	"\x05share\x18\r \x01(\v2\x1f.eruun.v1.AppSpecShareTraitSpecR\x05share\x12;\n" +
-	"\arollout\x18\x0e \x01(\v2!.eruun.v1.AppSpecRolloutTraitSpecR\arollout\x129\n" +
-	"\n" +
-	"evaluation\x18\x0f \x01(\v2\x19.eruun.v1.EvaluationTraitR\n" +
-	"evaluation\x1a@\n" +
+	"\arollout\x18\x0e \x01(\v2!.eruun.v1.AppSpecRolloutTraitSpecR\arollout\x12-\n" +
+	"\x04eval\x18\x0f \x01(\v2\x19.eruun.v1.EvaluationTraitR\x04eval\x1a@\n" +
 	"\x12TargetWorkEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xf0\x02\n" +
@@ -14947,7 +14945,7 @@ var file_eruun_v1_applications_proto_depIdxs = []int32{
 	141, // 190: eruun.v1.AppSpecTraits.security_policy:type_name -> eruun.v1.AppKubeCoreSecurityContext
 	165, // 191: eruun.v1.AppSpecTraits.share:type_name -> eruun.v1.AppSpecShareTraitSpec
 	161, // 192: eruun.v1.AppSpecTraits.rollout:type_name -> eruun.v1.AppSpecRolloutTraitSpec
-	171, // 193: eruun.v1.AppSpecTraits.evaluation:type_name -> eruun.v1.EvaluationTrait
+	171, // 193: eruun.v1.AppSpecTraits.eval:type_name -> eruun.v1.EvaluationTrait
 	158, // 194: eruun.v1.EvaluationTrait.sandbox_resources:type_name -> eruun.v1.AppSpecResourceTraitsSpec
 	173, // 195: eruun.v1.EvaluationTrait.result_policy:type_name -> eruun.v1.JobResultPolicy
 	172, // 196: eruun.v1.JobResultPolicy.targets:type_name -> eruun.v1.JobResultTarget

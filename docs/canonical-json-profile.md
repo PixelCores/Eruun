@@ -116,14 +116,14 @@ Schema 和所有服务端规范化输出只生成这一形态。请求解码器�
 
 ### 2.4 LLM 评测 Job
 
-独立 `POST /api/v1/jobs` 与 Application 的 `type: "job"` 组件共享 `traits.evaluation`，由 Trait 描述测评对象和执行方式：
+独立 `POST /api/v1/jobs` 与 Application 的 `type: "job"` 组件共享 `traits.eval`，由 Trait 描述测评对象和执行方式：
 
 ```json
 {
   "name": "evaluate-model",
   "type": "job",
   "traits": {
-    "evaluation": {
+    "eval": {
       "env": "ack",
       "model": "openai/gpt-4",
       "agent": "codex",
@@ -136,9 +136,9 @@ Schema 和所有服务端规范化输出只生成这一形态。请求解码器�
 }
 ```
 
-`taskPackageId` 必须替换为当前空间上传的任务包 ID。Application 将同一声明放入 `components`，Workflow 用 `jobType: "deploy"` 和 `components` 引用它。评测不接受用户 `image`、命令、延时、Cron、`runPolicy` 或重试覆盖；框架版本和 Runner 镜像由平台管理。`traits.resources` 控制 Runner，`traits.evaluation.sandboxResources` 控制每个试验环境；结果策略位于 `traits.evaluation.resultPolicy`。`evaluation` 不能放在其他组件类型、init 或 sidecar 中。
+`taskPackageId` 必须替换为当前空间上传的任务包 ID。Application 将同一声明放入 `components`，Workflow 用 `jobType: "deploy"` 和 `components` 引用它。评测不接受用户 `image`、命令、延时、Cron、`runPolicy` 或重试覆盖；框架版本和 Runner 镜像由平台管理。`traits.resources` 控制 Runner，`traits.eval.sandboxResources` 控制每个试验环境；结果策略位于 `traits.eval.resultPolicy`。`eval` 不能放在其他组件类型、init 或 sidecar 中。
 
-独立普通命令仍使用 `type: "command"` 与 `spec`；评测不接受旧 `type: "eval"`、业务 `spec`、`framework`、`frameworkVersion`、`options` 或顶层 `resultPolicy`。完整输入与执行边界见 [空间 Job API](workspace-jobs-api.md)。
+独立普通命令仍使用 `type: "command"` 与 `spec`；评测不接受旧 `traits.evaluation`、`type: "eval"`、业务 `spec`、`framework`、`frameworkVersion`、`options` 或顶层 `resultPolicy`。完整输入与执行边界见 [空间 Job API](workspace-jobs-api.md)。
 
 ## 3. JSON Schema
 

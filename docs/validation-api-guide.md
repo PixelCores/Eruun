@@ -23,7 +23,7 @@
 
 Try Application 会校验根级 `failurePolicy`。非法值返回 `INVALID_WORKFLOW_FAILURE_POLICY`，错误路径为 `/failurePolicy`。
 
-顶层 `type: "job"` 组件可使用与独立 Job 相同的 `traits.evaluation`。Try 会校验 `env: "ack"`、任务包 ID、模型、执行适配器和有界试验参数，并返回默认 attempts/concurrency/timeout 与 Runner、sandbox 各自的资源规格。该组件无需用户镜像，拒绝冲突的镜像、命令、明文环境变量、延时、Cron、runPolicy、重试覆盖及不支持的运行 Traits；其他组件类型、init 和 sidecar 不允许携带 evaluation。任务包的空间归属和凭据可用性仍由执行入口验证。
+顶层 `type: "job"` 组件可使用与独立 Job 相同的 `traits.eval`。Try 会校验 `env: "ack"`、任务包 ID、模型、执行适配器和有界试验参数，并返回默认 attempts/concurrency/timeout 与 Runner、sandbox 各自的资源规格。该组件无需用户镜像，拒绝冲突的镜像、命令、明文环境变量、延时、Cron、runPolicy、重试覆盖及不支持的运行 Traits；其他组件类型、init 和 sidecar 不允许携带 `eval`。任务包的空间归属和凭据可用性仍由执行入口验证。
 
 `GET /api/v1/schemas/v1/canonical.json` 的 `$defs.Job` 描述独立 Job，`$defs.EvaluationTraitSpec` 描述两种入口共享的评测 Trait。独立 Job 的提交校验在 `POST /api/v1/jobs` 中执行；Try Application 仍接收完整 Application，不能直接提交独立 Job 请求。详见 [Canonical JSON Profile](canonical-json-profile.md)。
 

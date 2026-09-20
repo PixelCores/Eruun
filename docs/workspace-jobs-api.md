@@ -4,11 +4,11 @@
 
 ## 身份与提交
 
-普通命令使用 `type: command` 和 `spec`；LLM 评测使用 `type: job` 和 `traits.evaluation`。评测声明也可直接用于 Application 的 `type: job` 组件，两种入口共享规格、校验和 Harbor Runner。执行复用 WorkflowQueue、JobInfo、现有调度与执行租约。
+普通命令使用 `type: command` 和 `spec`；LLM 评测使用 `type: job` 和 `traits.eval`。评测声明也可直接用于 Application 的 `type: job` 组件，两种入口共享规格、校验和 Harbor Runner。执行复用 WorkflowQueue、JobInfo、现有调度与执行租约。
 
 独立 Job 由平台生成 `taskId`，不要求 `appId`，不创建占位应用。Application 内评测沿用所属 Workflow 的 AppID 和 TaskID，以各 Job 的 `executionKey` 区分配置、状态、结果与保存策略。
 
-**契约迁移**：不再接受旧 `type: eval`、评测 `spec`、`framework/frameworkVersion`、`datasetId`、嵌套 `agent.model`、`options` 或顶层 `resultPolicy`。升级前排空或取消旧评测并确认 Kubernetes Job 已停止，导出所需历史结果，然后升级数据库 schema 和各运行角色。普通 `command` 请求不变。
+**契约迁移**：Trait 键由 `traits.evaluation` 改为 `traits.eval`，旧键不再接受；旧 `type: eval`、评测 `spec`、`framework/frameworkVersion`、`datasetId`、嵌套 `agent.model`、`options` 或顶层 `resultPolicy` 也不再接受。升级前排空或取消旧评测并确认 Kubernetes Job 已停止，导出所需历史结果，然后升级数据库 schema 和各运行角色。普通 `command` 请求不变。
 
 业务接口使用登录 Bearer Token 和 `X-Eruun-Workspace-ID`。读取需要空间成员权限，viewer 可读取；提交、上传、修改策略、取消及重试要求 member 或更高角色。创建请求可省略 `workspaceId`，由已授权的请求空间决定；若显式填写，必须与该空间一致。空间 ID 在创建空间时生成，不会为每个 Job 新建空间。
 
@@ -35,14 +35,14 @@
 
 ## Harbor 评测 JSON
 
-`traits.evaluation` 描述测评任务；模型是被比较的对象，`agent` 是执行任务的 harness。任务内容、镜像、参考解答与 verifier 保存在原生任务包里，DSL 不再复制 Harbor JobConfig。当前 Runner 使用 Harbor **0.22.0**，输入只声明 `env: ack`；不接受 framework 或框架版本字段。
+`traits.eval` 描述测评任务；模型是被比较的对象，`agent` 是执行任务的 harness。任务内容、镜像、参考解答与 verifier 保存在原生任务包里，DSL 不再复制 Harbor JobConfig。当前 Runner 使用 Harbor **0.22.0**，输入只声明 `env: ack`；不接受 framework 或框架版本字段。
 
 ```json
 {
   "name": "model-benchmark",
   "type": "job",
   "traits": {
-    "evaluation": {
+    "eval": {
       "env": "ack",
       "model": "<provider/model>",
       "agent": "terminus-2",
@@ -85,7 +85,7 @@
 
 `attempts` 为每个任务的评测次数，默认 1，范围 1–10；`concurrency` 为 Harbor 同时执行的 trial 数，默认 1，范围 1–16。它们不改变 Eruun 的 Job 调度器并发策略。评测默认超时 3600 秒，范围 60–86400 秒，另预留 360 秒停止和归档时间；任务包下载预算为 300 秒，进入 finalizing 后结果采集、上传和 terminal 确认共享最多 360 秒，普通 API 仍保留原来的超时限制。
 
-`traits.resources` 只控制 Runner；`traits.evaluation.sandboxResources` 单独控制每个 trial 的任务环境。两者各自省略时默认请求 1 CPU/2 GiB、限制 2 CPU/4 GiB，总资源随 concurrency 增加，仍受空间配额约束。凭据使用 `traits.envs` 的 Secret 引用。评测不接受自定义 Runner image/command、挂载、envFrom、ServiceAccount、任意 Python adapter 或环境 kwargs。
+`traits.resources` 只控制 Runner；`traits.eval.sandboxResources` 单独控制每个 trial 的任务环境。两者各自省略时默认请求 1 CPU/2 GiB、限制 2 CPU/4 GiB，总资源随 concurrency 增加，仍受空间配额约束。凭据使用 `traits.envs` 的 Secret 引用。评测不接受自定义 Runner image/command、挂载、envFrom、ServiceAccount、任意 Python adapter 或环境 kwargs。
 
 ## Application / Workflow 中的评测
 
@@ -129,7 +129,7 @@ Application 内评测使用 `GET /api/v1/jobs/:taskID?executionKey=<Job executio
 
 注册时初始化个人空间默认策略；团队空间创建时同样初始化。已有空间未存策略时使用同一默认值。通过现有空间成员授权使用管理员提供的数据库和 MinIO 能力，不另建用户身份系统。
 
-默认策略为 `retentionDays: 90` 和 `database/full`。`GET /api/v1/job-storage-policy` 返回可用目标及当前策略；`PUT` 使用与 `resultPolicy` 相同的 JSON 更新默认值，范围 1–3650 天。独立提交时、应用内评测首次生成执行时，快照化 `traits.evaluation.resultPolicy`；省略则使用当时的空间默认值。恢复沿用已持久化的策略。修改默认策略只影响后续执行。
+默认策略为 `retentionDays: 90` 和 `database/full`。`GET /api/v1/job-storage-policy` 返回可用目标及当前策略；`PUT` 使用与 `resultPolicy` 相同的 JSON 更新默认值，范围 1–3650 天。独立提交时、应用内评测首次生成执行时，快照化 `traits.eval.resultPolicy`；省略则使用当时的空间默认值。恢复沿用已持久化的策略。修改默认策略只影响后续执行。
 
 原始数据保留期从采集成功开始计算。`PUT /api/v1/jobs/:taskID/retention` 接收 `{"retentionDays":30}`，将尚未过期的原始数据改为从本次操作起再保留 30 天。周期清理只删除源字节，保留可查询的过期元数据，**不删除 MinIO 或数据库保存副本**。每个 trial 的原始数据完整下载到 Runner 后可清理其试验 Pod；下载失败的试验 Pod 随未完整采集的 Runner Pod 保留供诊断，仍受执行截止时间约束，并随 Runner 的保留期限到期回收。最终归档或上传失败时，Runner 中已有的原始文件继续保留。
 

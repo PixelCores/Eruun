@@ -21,13 +21,13 @@ Kubernetes 工作负载状态与评测业务状态并不等价：Pod `Running` �
 | 结果 | 继续使用现有 results 接口和 ArtifactStore；状态事件不传输大型结果、日志或数据集正文 |
 | 故障兜底 | Runner 能通信时提交业务证据；Runner 整体失效时由 Kubernetes 证据收敛 |
 
-本设计不把 `config.JobType`、Kubernetes resource kind 和 Runner 协议混成一个分类。公共声明使用 `type: job` + `traits.evaluation`；本文的 `eval` 指内部执行器标识，Kubernetes 载体由共享 builder 生成。
+本设计不把 `config.JobType`、Kubernetes resource kind 和 Runner 协议混成一个分类。公共声明使用 `type: job` + `traits.eval`；下文单独写 `eval` 时指内部执行器标识，Kubernetes 载体由共享 builder 生成。
 
 ## 2. Current 基线与增量缺口
 
 ### 2.1 已实现能力
 
-- `/api/v1/jobs` 接受 `eval`，持久化认证空间的 WorkspaceID、服务端生成的 TaskID、JobSpec 和任务绑定能力。
+- `/api/v1/jobs` 接受 `type: job` + `traits.eval`，持久化认证空间的 WorkspaceID、服务端生成的 TaskID、JobSpec 和任务绑定能力。
 - `pkg/apiserver/jobs/builder.go` 使用固定 Harbor Runner 镜像构建 `batch/v1 Job`，并设置执行 deadline 与结果归档宽限期。
 - `runners/harbor/runner.py` 已作为容器主进程处理信号、启动 Harbor 子进程、判断原生结果、生成完整归档并重试上传。
 - `GET /api/v1/job-runners/:taskID/dataset` 与 `POST /api/v1/job-runners/:taskID/results` 已提供任务包下载和最终结果上传。

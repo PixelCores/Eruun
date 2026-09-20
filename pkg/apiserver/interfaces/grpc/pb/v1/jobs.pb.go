@@ -890,7 +890,7 @@ type JobTraits struct {
 	TargetWorkEnv  map[string]string           `protobuf:"bytes,4,rep,name=target_work_env,json=targetWorkEnv,proto3" json:"target_work_env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Resources      *JobResourceTrait           `protobuf:"bytes,5,opt,name=resources,proto3" json:"resources,omitempty"`
 	SecurityPolicy *AppKubeCoreSecurityContext `protobuf:"bytes,6,opt,name=security_policy,json=securityPolicy,proto3" json:"security_policy,omitempty"`
-	Evaluation     *EvaluationTrait            `protobuf:"bytes,7,opt,name=evaluation,proto3" json:"evaluation,omitempty"`
+	Eval           *EvaluationTrait            `protobuf:"bytes,7,opt,name=eval,proto3" json:"eval,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -967,9 +967,9 @@ func (x *JobTraits) GetSecurityPolicy() *AppKubeCoreSecurityContext {
 	return nil
 }
 
-func (x *JobTraits) GetEvaluation() *EvaluationTrait {
+func (x *JobTraits) GetEval() *EvaluationTrait {
 	if x != nil {
-		return x.Evaluation
+		return x.Eval
 	}
 	return nil
 }
@@ -979,7 +979,7 @@ type SubmitJobRequest struct {
 	WorkspaceId string                 `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
 	Name        string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	Type        string                 `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"`
-	// Command inputs only. Evaluation Jobs use traits.evaluation and omit spec.
+	// Command inputs only. Evaluation Jobs use traits.eval and omit spec.
 	Spec          *structpb.Value `protobuf:"bytes,4,opt,name=spec,proto3" json:"spec,omitempty"`
 	Traits        *JobTraits      `protobuf:"bytes,5,opt,name=traits,proto3" json:"traits,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -2422,17 +2422,15 @@ const file_eruun_v1_jobs_proto_rawDesc = "" +
 	"JobEnvFrom\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x1f\n" +
 	"\vsource_name\x18\x02 \x01(\tR\n" +
-	"sourceName\"\xed\x03\n" +
+	"sourceName\"\xe1\x03\n" +
 	"\tJobTraits\x123\n" +
 	"\astorage\x18\x01 \x03(\v2\x19.eruun.v1.JobStorageTraitR\astorage\x12/\n" +
 	"\benv_from\x18\x02 \x03(\v2\x14.eruun.v1.JobEnvFromR\aenvFrom\x12$\n" +
 	"\x04envs\x18\x03 \x03(\v2\x10.eruun.v1.JobEnvR\x04envs\x12N\n" +
 	"\x0ftarget_work_env\x18\x04 \x03(\v2&.eruun.v1.JobTraits.TargetWorkEnvEntryR\rtargetWorkEnv\x128\n" +
 	"\tresources\x18\x05 \x01(\v2\x1a.eruun.v1.JobResourceTraitR\tresources\x12M\n" +
-	"\x0fsecurity_policy\x18\x06 \x01(\v2$.eruun.v1.AppKubeCoreSecurityContextR\x0esecurityPolicy\x129\n" +
-	"\n" +
-	"evaluation\x18\a \x01(\v2\x19.eruun.v1.EvaluationTraitR\n" +
-	"evaluation\x1a@\n" +
+	"\x0fsecurity_policy\x18\x06 \x01(\v2$.eruun.v1.AppKubeCoreSecurityContextR\x0esecurityPolicy\x12-\n" +
+	"\x04eval\x18\a \x01(\v2\x19.eruun.v1.EvaluationTraitR\x04eval\x1a@\n" +
 	"\x12TargetWorkEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xcb\x01\n" +
@@ -2658,7 +2656,7 @@ var file_eruun_v1_jobs_proto_depIdxs = []int32{
 	30, // 7: eruun.v1.JobTraits.target_work_env:type_name -> eruun.v1.JobTraits.TargetWorkEnvEntry
 	8,  // 8: eruun.v1.JobTraits.resources:type_name -> eruun.v1.JobResourceTrait
 	32, // 9: eruun.v1.JobTraits.security_policy:type_name -> eruun.v1.AppKubeCoreSecurityContext
-	33, // 10: eruun.v1.JobTraits.evaluation:type_name -> eruun.v1.EvaluationTrait
+	33, // 10: eruun.v1.JobTraits.eval:type_name -> eruun.v1.EvaluationTrait
 	34, // 11: eruun.v1.SubmitJobRequest.spec:type_name -> google.protobuf.Value
 	14, // 12: eruun.v1.SubmitJobRequest.traits:type_name -> eruun.v1.JobTraits
 	34, // 13: eruun.v1.JobSpec.spec:type_name -> google.protobuf.Value

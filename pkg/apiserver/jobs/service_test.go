@@ -104,7 +104,7 @@ func TestSubmitEvalUsesAuthorizedWorkspaceAndKeepsInternalJobType(t *testing.T) 
 	parent := &model.WorkflowQueue{TaskID: accepted.TaskID}
 	require.NoError(t, raw.Get(ctx, parent))
 	require.Equal(t, "space", parent.WorkspaceID)
-	require.Contains(t, parent.JobSpec, `"evaluation"`)
+	require.Contains(t, parent.JobSpec, `"eval"`)
 	task, err := BuildTask(ctx, service.Store, service.Config, parent, "space-ns")
 	require.NoError(t, err)
 	require.Equal(t, string(config.JobEval), task.JobType)

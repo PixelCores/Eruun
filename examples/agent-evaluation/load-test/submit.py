@@ -76,8 +76,8 @@ def main() -> None:
     if not token:
         parser.error("set ERUUN_TOKEN in the environment")
     template = json.loads(args.template.read_text())
-    if template.get("type") != "job" or template.get("traits", {}).get("evaluation", {}).get("agent") != "oracle":
-        parser.error("template must submit type=job with traits.evaluation.agent=oracle")
+    if template.get("type") != "job" or template.get("traits", {}).get("eval", {}).get("agent") != "oracle":
+        parser.error("template must submit type=job with traits.eval.agent=oracle")
 
     url = args.api_url.rstrip("/") + "/api/v1/jobs"
     run_id = secrets.token_hex(6)
@@ -102,7 +102,7 @@ def main() -> None:
                 time.sleep(max(0, scheduled - time.monotonic()))
                 body = copy.deepcopy(template)
                 body["name"] = f"harbor-load-{run_id}-{index:05d}"
-                body["traits"]["evaluation"]["taskPackageId"] = args.dataset_id
+                body["traits"]["eval"]["taskPackageId"] = args.dataset_id
                 futures.append(pool.submit(worker, body, epoch + index / args.rate))
             for future in futures:
                 future.result()

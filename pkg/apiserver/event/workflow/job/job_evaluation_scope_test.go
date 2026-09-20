@@ -46,7 +46,7 @@ func evaluationScopeTask(t *testing.T, store *access.Store, appID string) *model
 		RunGeneration: 1, RunToken: "run-token", WorkerID: "worker", LeaseExpiresAt: &lease}
 	if appID == "" {
 		parent.Type = config.WorkflowTaskTypeJob
-		parent.JobSpec = `{"type":"job","traits":{"evaluation":{"env":"ack","agent":"oracle","taskPackageId":"11111111-1111-1111-1111-111111111111"}}}`
+		parent.JobSpec = `{"type":"job","traits":{"eval":{"env":"ack","agent":"oracle","taskPackageId":"11111111-1111-1111-1111-111111111111"}}}`
 	} else {
 		require.NoError(t, store.Add(context.Background(), &model.Applications{ID: appID, WorkspaceID: "space", Namespace: "space-ns"}))
 	}

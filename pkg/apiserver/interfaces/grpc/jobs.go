@@ -111,8 +111,8 @@ func jobTraitsInput(p *eruunv1.JobTraits) (spec.JobTraits, error) {
 		}
 		result.SecurityPolicy = &policy
 	}
-	if p.Evaluation != nil {
-		evaluation, err := decodeTypedRequest[spec.EvaluationTraitSpec](p.Evaluation)
+	if p.Eval != nil {
+		evaluation, err := decodeTypedRequest[spec.EvaluationTraitSpec](p.Eval)
 		if err != nil {
 			return spec.JobTraits{}, fmt.Errorf("decode evaluation trait: %w", err)
 		}
@@ -166,7 +166,7 @@ func jobTraitsOutput(p spec.JobTraits) (*eruunv1.JobTraits, error) {
 		if err != nil {
 			return nil, fmt.Errorf("encode evaluation trait: %w", err)
 		}
-		result.Evaluation = evaluation
+		result.Eval = evaluation
 	}
 	return result, nil
 }

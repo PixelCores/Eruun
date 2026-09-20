@@ -53,7 +53,7 @@ func TestScopedJobAdmissionLifecycle(t *testing.T) {
 			if tc.workflow == config.WorkflowTaskTypeJob {
 				owner.JobSpec = `{"type":"` + string(tc.job) + `"}`
 				if tc.job == config.JobEval {
-					owner.JobSpec = `{"type":"job","traits":{"evaluation":{"env":"ack","agent":"oracle","taskPackageId":"11111111-1111-1111-1111-111111111111"}}}`
+					owner.JobSpec = `{"type":"job","traits":{"eval":{"env":"ack","agent":"oracle","taskPackageId":"11111111-1111-1111-1111-111111111111"}}}`
 				}
 			}
 			if tc.app {
@@ -244,7 +244,7 @@ func TestWorkspaceJobScopeRequiresMatchingPersistedParent(t *testing.T) {
 			}
 		})
 	}
-	for _, snapshot := range []string{"", "{", `{"type":"cleanup_resources"}`, `{"type":""}`, `{"type":"eval"}`, `{"type":"job"}`, `{"type":"job","traits":{"evaluation":{}}}`} {
+	for _, snapshot := range []string{"", "{", `{"type":"cleanup_resources"}`, `{"type":""}`, `{"type":"eval"}`, `{"type":"job"}`, `{"type":"job","traits":{"eval":{}}}`} {
 		candidate := *parent
 		candidate.JobSpec = snapshot
 		require.ErrorIs(t, store.Check(ctx, &candidate), bcode.ErrForbidden)

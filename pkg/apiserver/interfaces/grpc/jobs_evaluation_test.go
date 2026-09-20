@@ -63,7 +63,7 @@ func TestApplicationEvaluationResultsAreScopedToExecution(t *testing.T) {
 			require.Equal(t, spec.HarborVersion, detail.FrameworkVersion)
 			require.Equal(t, key, detail.Job.Name)
 			require.Equal(t, "job", detail.Job.Type)
-			require.Equal(t, "oracle", detail.Job.Traits.Evaluation.Agent)
+			require.Equal(t, "oracle", detail.Job.Traits.Eval.Agent)
 			require.Len(t, detail.Executions, 1)
 		})
 	}

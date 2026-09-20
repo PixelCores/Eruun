@@ -12,7 +12,7 @@ import (
 
 // Traits is the aggregate of all attachable traits for a component.
 type Traits struct {
-	Evaluation *EvaluationTraitSpec `json:"evaluation,omitempty"`
+	Evaluation *EvaluationTraitSpec `json:"eval,omitempty"`
 	Init       []InitTraitSpec      `json:"init,omitempty"`
 	Storage    []StorageTraitSpec   `json:"storage,omitempty"`
 	Sidecar    []SidecarTraitsSpec  `json:"sidecar,omitempty"`
@@ -37,7 +37,7 @@ type Traits struct {
 // probes, targetWorkEnv, share, rollout) are absent by construction, so the
 // decoder rejects them instead of each Job entry point re-checking for them.
 type JobTraits struct {
-	Evaluation     *EvaluationTraitSpec `json:"evaluation,omitempty"`
+	Evaluation     *EvaluationTraitSpec `json:"eval,omitempty"`
 	Storage        []StorageTraitSpec   `json:"storage,omitempty"`
 	EnvFrom        []EnvFromSourceSpec  `json:"envFrom,omitempty"`
 	Envs           []SimplifiedEnvSpec  `json:"envs,omitempty"`

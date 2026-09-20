@@ -68,7 +68,7 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 
 ## LLM 测评声明与结果选择
 
-独立 `SubmitJob` 与 Application 的 `type: "job"` 组件共用 `EvaluationTrait`：测评配置放在 `traits.evaluation`，包含 `env`、`model`、`agent`、`task_package_id`、试验次数、并发、超时、Sandbox 资源及结果保存策略。独立测评请求使用 `type: "job"` 并省略 `spec`；`command` 请求继续使用 `type: "command"` 和 `spec`。旧 `type: "eval"`、评测 `spec` 及顶层 `result_policy` 均不再接受；结果策略迁移至 `traits.evaluation.result_policy`。旧二进制客户端传入已删除的顶层结果策略也会被拒绝，不会静默忽略。框架版本由平台固定，`GetJob` 的 `framework_version` 返回所选执行实际冻结的版本。字段示例及约束见 [Job API](workspace-jobs-api.md)。
+独立 `SubmitJob` 与 Application 的 `type: "job"` 组件共用 `EvaluationTrait`：测评配置放在 `traits.eval`，包含 `env`、`model`、`agent`、`task_package_id`、试验次数、并发、超时、Sandbox 资源及结果保存策略。`JobTraits.eval` 和 `AppSpecTraits.eval` 沿用原字段号 7 和 15；二进制消息字段号不变，ProtoJSON 使用 `eval` 并拒绝旧 `evaluation` 键。独立测评请求使用 `type: "job"` 并省略 `spec`；`command` 请求继续使用 `type: "command"` 和 `spec`。旧 `type: "eval"`、评测 `spec` 及顶层 `result_policy` 均不再接受；结果策略迁移至 `traits.eval.result_policy`。旧二进制客户端传入已删除的顶层结果策略也会被拒绝，不会静默忽略。框架版本由平台固定，`GetJob` 的 `framework_version` 返回所选执行实际冻结的版本。字段示例及约束见 [Job API](workspace-jobs-api.md)。
 
 同一 Application Workflow 可以包含多个测评 Job。调用 `GetJob`、`GetJobResults`、结果/投递下载、投递重试和保留期更新时，Application 调用方必须同时提供父 `task_id` 与目标 Job 的 `execution_key`；响应中的 Job 明细、结果和投递也返回该标识。独立 Job 可以省略 `execution_key`，服务端在执行唯一时解析它。结果按执行分别保存，不能用一个执行的标识读取同一 Workflow 中另一个执行的制品。`CancelJob` 仅接受独立 Job 的父 `task_id`，不接受 `execution_key`；Application 仍通过 Workflow 取消接口取消任务。
 
