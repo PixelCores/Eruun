@@ -187,6 +187,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | --- | --- | --- |
 | `ai-runtime-vision.md` | Draft / Proposal | AI Runtime 产品方向、能力分层、路线图和实施门禁 |
 | `agent-evaluation-job-design.md` | Draft / Proposal | Agent 评测输入、执行、制品、隔离和质量门禁方向 |
+| [`harbor-runtime-stage2-plan.md`](harbor-runtime-stage2-plan.md) | Draft / Proposal | 第二阶段主 PR：Sandbox 文件系统 Checkpoint、Runner 进度持久化、一致恢复点、新执行接管与恢复验收 |
 | `architecture-refactor-plan.md` | Draft / Proposal | 架构演进方案 |
 | `ai-provider-integration-design.md` | Draft / Proposal | 托管模型、对象存储、计算及 AI 云 Provider 集成边界 |
 | `design-custom-update-workflow.md` | Draft / Proposal | 自定义更新工作流 |
