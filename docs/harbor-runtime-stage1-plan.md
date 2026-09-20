@@ -64,9 +64,11 @@ Eruun 部署在 ACK 内并管理同一集群，分批创建任务，目标是至
 ### P1-02：共享资源观察与有界状态协调
 
 - 工作：为独立 Job/Runner Pod 增加准确的归属选择器；原生 Job/Pod 使用 typed informer，Sandbox 使用限定 GVR 的 dynamic informer，复用集群内连接。按 namespace/name、UID 和任务归属建立必要索引；事件只触发对应任务的有界协调，合并重复事件。
+- 请求与事件预算：审计基础及派生租户 client 的 QPS/Burst/RateLimiter 作用域，避免配置相同却各自新建令牌桶；显式共享需要共享的进程内预算，并核算副本总量。当前 client-go v0.35.0 的 Watch 首次请求跳过普通 limiter，事件也不逐条计 QPS；初始化/重建、事件队列及 DB 写入需要独立约束。详见[讨论纪要第 5.4–5.7 节](harbor-runtime-stage1-discussion.md#54-kubernetes-qpsburst-的作用范围)。
 - Worker 完成判断继续独立于 Controller Leader；Controller 负责状态投影。每个进程按资源类型共享观察，测量 Worker 扩容导致的 Watch/缓存复制，达到瓶颈才决定 namespace/任务分片，不先建新事件总线。
 - 触点：`infrastructure/informer`、`server_assembly.go`、Job 等待路径、`jobs/service.go` 中 Runner 鉴权、Helm/stack/workspace RBAC。
 - 验收：重复/乱序通知、删除重建 UID、初始同步失败、断线及过期 resourceVersion 重建、跨空间访问全部覆盖；普通终态观察不再每任务每 2 秒远程 GET。授权与破坏性操作仍有明确的新鲜度、失败关闭和 ownership 校验，不能机械地把鉴权 GET 全换成 cache。
+- 容量验收同时覆盖目标对象规模的冷启动、多副本重建和集中完成；分别观测本地限流等待、服务端 APF/429、Watch 事件率、协调队列和端到端状态延迟。workqueue 去重/重试限速不自动提供硬容量上限，必须验证积压和内存边界。
 - 依赖与回退：依赖 P1-01；回退前先降低准入并排空不兼容资源，不设置静默轮询降级掩盖故障。
 
 ### P1-03：调度、执行租约和取消的规模化

@@ -153,6 +153,81 @@ Harbor v0.22.0 对环境 `start()` 使用环境启动超时。若适配层直接
 
 具体接入点及验证要求继续使用计划中的 P1-02/P1-03，连接现状见[Kubernetes client](../pkg/apiserver/infrastructure/clients/kube.go)。
 
+### 5.4 Kubernetes QPS/Burst 的作用范围
+
+用户补充指出：仅讨论 ACR 限速不足以覆盖控制平面压力，Kubernetes 客户端 QPS/Burst 和大规模生命周期同步必须进入阶段一方案。这涉及三个不同的预算：镜像仓库请求、客户端访问 kube-apiserver 的请求，以及 Eruun 消费状态变化并写入数据库的处理能力，不能共用一个 QPS 数值。
+
+client-go 的默认限流模型是令牌桶：QPS 表示令牌持续补充速率，Burst 表示桶容量，允许已有令牌支撑短时突发；Burst 不等于最大在途并发，也没有必须为 QPS 两倍的通用规则。显式提供 `RateLimiter` 时，其行为覆盖 QPS/Burst。[rest.Config](https://github.com/kubernetes/client-go/blob/v0.35.0/rest/config.go)。
+
+Eruun 当前默认 `KubeQPS=100`、`KubeBurst=300`，对应 `--kube-api-qps` 和 `--kube-api-burst`。这些值不是已经验证的万级容量配置，更不是集群或整个 Eruun 服务的总请求上限。[配置](../pkg/apiserver/config/config.go)。
+
+当前 client 的限流作用域存在需要解决的边界：基础配置只设置数值，没有显式设置共享 `RateLimiter`；API 包装 client 和 Workflow 的 `TenantClient` 会复制配置并调用 `NewForConfig`。当传入配置的 limiter 为空时，client-go 会在构造过程的局部副本里创建新桶，因此不同派生 client 可以各自拥有 100/300 的预算。相同配置对象、相同数值或复用底层连接，都不等于共享限流状态。[基础 client](../pkg/apiserver/infrastructure/clients/kube.go)、[API client](../pkg/apiserver/infrastructure/workspace/request.go)、[租户 client](../pkg/apiserver/infrastructure/workspace/namespace.go)、[Workflow 接入](../pkg/apiserver/event/workflow/controller.go)、[client-go 构造逻辑](https://github.com/kubernetes/client-go/blob/v0.35.0/kubernetes/clientset.go)。
+
+实施时需明确基础、租户、typed/dynamic client 的预算归属：同一进程内需要共享的请求显式共享 limiter，并保留租户 impersonation 和 namespace 约束；多个进程仍各自拥有本地状态，副本数、角色及额外 client 的总预算需要单独核算。Runner 的 Python Kubernetes client 也不会自动继承 Go 服务的 QPS/Burst。
+
+### 5.5 LIST、WATCH 和本地同步不能按同一种 QPS 计算
+
+以下按 Eruun 当前依赖的 client-go v0.35.0 区分；升级依赖或变更 ACK 服务端版本后需重新核对。
+
+| 操作 | 与客户端 QPS/Burst 的关系 | 仍需承担的成本 |
+| --- | --- | --- |
+| 普通 LIST、GET、CREATE、PATCH、DELETE 等请求 | 正常 REST 请求路径在发出前等待 limiter | 请求延迟、服务端处理、鉴权与存储；一个大 LIST 可能返回大量对象，不能只看请求次数 |
+| 发起 WATCH | `Request.Watch()` 的首次尝试刻意跳过普通请求的 limiter；部分 HTTP 重试路径仍会经过 limiter | 连接、服务端初始化、认证及后续事件分发；不能依赖 QPS/Burst 完整控制重连风暴 |
+| 已建立 WATCH 中的 ADDED/MODIFIED/DELETED 等事件 | 每条事件不会变成一个新的 HTTP 请求，也不会逐条扣除 QPS token | 带宽、解码、缓存更新、回调、状态协调及 DB 写入 |
+| informer 的本地 resync | 重放本地缓存，不等于定期全量远程 LIST | 可能再次触发大量回调和协调；是否产生远程请求取决于回调执行的工作 |
+| 初始同步或失效 resourceVersion 后重建 | 传统 LIST 路径受请求限流；WatchList 流式初始化属于 WATCH 路径，需检查实际启用情况 | 数据总量、对象大小、初始化 CPU/RSS 和多副本同时重建 |
+
+依据：[REST 请求与 Watch](https://github.com/kubernetes/client-go/blob/v0.35.0/rest/request.go)、[HTTP 重试](https://github.com/kubernetes/client-go/blob/v0.35.0/rest/with_retry.go)、[Reflector 的 List/Watch/Resync](https://github.com/kubernetes/client-go/blob/v0.35.0/tools/cache/reflector.go)。
+
+因此，`QPS=100` 不代表只能观察 100 个 Job，也不代表每秒最多接收 100 个状态变化。共享 Watch 可以承载大量对象的变化；实际瓶颈可能转移到事件分发、缓存和后续写入。现有逐任务每两秒查询在 10,000 个运行任务下产生约 5,000 次 Job GET/s 的理想需求，而事件驱动的目标是移除这类稳定重复读，不是把客户端 QPS 提到 5,000。[当前轮询](../pkg/apiserver/event/workflow/job/job_retry.go)。
+
+客户端本地等待和服务端 API Priority and Fairness（APF）应分别观察。APF 管理请求排队和并发，包含 WATCH 初始化；大 LIST 成本和 Watch 事件向多个观察者分发也会影响服务端预算。不能因 WATCH 跳过普通客户端 limiter 就认为其对控制平面没有成本。[Kubernetes APF](https://kubernetes.io/docs/concepts/cluster-administration/flow-control/)。
+
+### 5.6 万级生命周期同步的并发模型
+
+建议使用下面的处理链路，复用现有领域状态和执行租约；本图描述拟实现行为。
+
+```text
+少量共享 LIST/WATCH 流
+  → informer 本地缓存及资源身份索引
+  → 轻量回调，仅标记相关执行需要重新协调
+  → 按执行键合并重复通知
+  → 固定上限的协调 worker
+  → 读取最新快照并校验 UID / 当前执行归属
+  → 仅持久化有意义的状态变化，使用数据库条件更新
+```
+
+当前应用组件状态同步已经有按组件键合并的 lane 和 2 个 worker、256 个 executor 队列项，可作为复用边界的参考；这条路径尚不是独立 eval 的 Job/Sandbox 观察实现，而且 executor 队列长度不限制全部 lane 的数量。实现应先评估现有机制和 tracker 的全量扫描成本，再决定最小修改，不能简单宣称现有队列已具备万级容量。[组件状态同步](../pkg/apiserver/infrastructure/informer/waiter.go)、[写库路径](../pkg/apiserver/server_status_sync.go)。
+
+- **按资源集合观察。** 不为每个 Job 单独建立 Watch。同一资源类型、观察范围和过滤条件尽量复用流；也不能把全量数据每次事件都重新遍历一遍。
+- **回调快速返回。** 不在 informer 回调中等待数据库、上传制品或同步执行清理；不为每个事件无上限地创建 goroutine。
+- **同一执行有序，不同执行并行。** 同一逻辑执行的协调不同时运行；执行过程中收到新变化，完成后再协调一次。跨资源事件不能假设有全局顺序，旧 UID 的删除事件不得终止同名新实例。
+- **按状态收敛，不依赖逐条业务重放。** 读取最新 Job/Sandbox/Pod 快照，再与 DB 权威状态进行幂等协调。允许重复通知与可合并的中间变化，终态、取消和执行隔离继续受领域规则与 CAS 保护；需要保留的 Runner 结果事实继续走已有上报和持久化路径。
+- **处理并发和队列规模都要有预算。** client-go workqueue 的去重和重试退避不等于队列有硬容量上限。需要结合已准入资源规模限制待处理键数量，监控最老待处理时间；超限时停止新准入并保留可重新对账的依据，不能用静默丢通知或阻塞 Watch 回调解决积压。[workqueue 实现](https://github.com/kubernetes/client-go/blob/v0.35.0/util/workqueue/queue.go)。
+- **按存储能力增加 worker。** 调高本地协调并发之前，先测量 DB 连接、锁等待及单次协调耗时。稳定运行要求合并后的任务到达速率低于持续处理能力，并为集中完成留有余量；增加 goroutine 本身不能消除 DB 瓶颈。
+
+例如在每 Job 一个活跃 trial、没有遗留资源时，10,000 个 Runner Job、10,000 个 Sandbox 和 20,000 个 Pod 已约为 40,000 个对象。一个进程可能只需按 Job、Sandbox、Pod 维持少量资源流，但多个进程若重复观察全量范围，缓存和事件分发仍会随观察者增加。观察连接数主要由资源类型、范围/过滤条件、分片和进程数决定，不能用“只有三种资源”推断全服务始终只有三个 Watch。
+
+每进程共享只是第一步。应测量 Worker 副本扩容后的重复观察成本；需要时按 namespace 或稳定任务归属缩小观察范围，并定义分片迁移和接管重叠。跨进程的 DB 写入仍需现有 ownership/CAS 限制，不能让所有观察者重复写相同状态，也不提前引入新的事件总线。
+
+### 5.7 重连、冷启动和状态延迟验收
+
+普通断线尽量由 Reflector 从有效 resourceVersion 继续观察；历史版本失效时重新建立一致快照。继承 client-go 的退避、抖动及服务端 Retry-After 处理，避免额外叠加立即重试。分批启动观察者，限制同时初始化/重建的数量；分页 LIST 或 WatchList 应按实际客户端、ACK 版本和开关验证，不能假定所有初始化都采用流式方式。[API List/Watch 语义](https://kubernetes.io/docs/reference/using-api/api-concepts/)。
+
+重建期间只说明观察状态尚未收敛，不能因缓存中暂时没有对象而标为执行失败、完成或可以删除。降低新建准入时仍需为取消、清理、必要身份校验和控制面租约等操作保留请求预算；具体角色分配与额度在实测后冻结，不统一套用 Burst=2×QPS。
+
+P1-01/P1-02/P1-06 需要分别记录以下指标并验收：
+
+| 层次 | 指标与场景 |
+| --- | --- |
+| 客户端请求 | 按角色、client 作用域及资源/动词统计请求率、在途量、本地限流等待、deadline、429/5xx；核实真实 limiter 数量 |
+| LIST/WATCH | 初始快照对象/字节量、流数量、事件率、断线和 410、重建时长、同时重建数量；观测多副本重复分发 |
+| 本地协调 | 缓存 RSS、解码/回调耗时、去重后待处理键数、最老等待时间、worker 利用率、DB 延迟及条件更新冲突 |
+| 业务可见性 | Kubernetes 状态变化到 Eruun API 可见状态的端到端 p95/p99、取消收敛和完成波峰排空时长 |
+| 故障与规模 | 目标对象规模下冷启动、多个 Worker 滚动重启、Watch 断线/失效版本、服务端限流、慢 DB 和集中完成；证明不误报、不重复副作用、不持续积压 |
+
+已有计划的状态收敛 p99 ≤15s 仍是待冻结的建议值，并非已经确认或达成的 SLA。QPS/Burst、观察流数和 worker 数需结合上述证据选择；本次没有改动默认参数或执行真实集群压测。
+
 ## 6. 执行结果、采集和清理的边界
 
 三个维度分别推进：评测执行结果、结果采集/持久化、资源清理。Sandbox Running/Ready 或 Kubernetes Job Complete 都不能单独代表完整评测结果已保存；模型获得零分也可以是一次正常完成的评测。
@@ -195,11 +270,11 @@ trial 环境内产生数据
 
 | 工作包 | 本轮讨论补充 |
 | --- | --- |
-| P1-01 | 固定 Harbor 版本与 task 格式范围；分别定义 Job/trial/环境计数，记录可变任务量与并发组合，完成待答业务边界 |
-| P1-02 | 共享观察覆盖独立 eval 和 Sandbox；将创建、关联、保留及删除状态纳入按执行身份的协调 |
+| P1-01 | 固定 Harbor 版本与 task 格式范围；分别定义 Job/trial/环境计数，记录可变任务量与并发组合、Kubernetes client/limiter 作用域及状态延迟预算，完成待答业务边界 |
+| P1-02 | 共享观察覆盖独立 eval 和 Sandbox；明确请求限流、Watch 初始化/重建预算、按键合并及有界协调；将创建、关联、保留及删除状态纳入按执行身份的协调 |
 | P1-03 | 保持 DB ownership/fencing、空间公平和控制面接管语义；不复制 Harbor 内部 task 编排 |
 | P1-04 | 评估并冻结 Eruun 统一创建、Harbor 申请并使用环境的推荐路线；处理逐 trial 身份、采集和所有权 |
 | P1-05 | 与 P1-04 一起设计实际创建预算及等待协议，再实现限速、背压和结果保存吞吐；不能把配额作为事后补记账 |
-| P1-06 | 保留 10,000 个实际运行 Job 验收；额外记录内部 trial 并发、命令/文件传输、结果保存和遗留资源压力 |
+| P1-06 | 保留 10,000 个实际运行 Job 验收；额外验证目标对象规模的冷启动/重建与集中完成状态延迟，记录内部 trial 并发、命令/文件传输、结果保存和遗留资源压力 |
 
 本次仅增加讨论纪要和导航，不修改运行时、API、数据库、RBAC 或部署行为，不包含集群压测结果。下一步继续确认故障期间行为及保留策略，再将冻结后的决策同步回实施计划。
