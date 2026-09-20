@@ -13,7 +13,7 @@
 - Worker 不依赖 Controller Leader 的进程内 informer 才能等待资源就绪。
 - 关闭时先停止 HTTP intake 和 Worker intake，再在有限时间内排空已启动任务。
 
-当前边界不包含跨 Kubernetes 集群调度、跨地域多活、exactly-once 外部副作用、默认生产级 MySQL/Redis HA、NetworkPolicy 或指标驱动 HPA。
+当前边界不包含跨 Kubernetes 集群调度、跨地域多活、exactly-once 外部副作用、默认生产级 MySQL/Redis HA 或指标驱动 HPA。空间初始化已创建 NetworkPolicy；实际网络隔离依赖 CNI 支持与正确的集群网络配置，见 [账号与空间](account-auth-workspaces.md)。
 
 ## 2. 角色模型
 
@@ -21,8 +21,8 @@
 
 | 角色 | 职责 | Leader Election |
 | --- | --- | --- |
-| `api` | HTTP API、鉴权、任务持久化、查询和取消入口 | 否 |
-| `controller` | Informer 状态投影、延迟任务、结果队列和 outbox 协调 | Controller Lease |
+| `api` | HTTP/gRPC API、鉴权、任务持久化、查询和取消入口 | 否 |
+| `controller` | Informer 状态投影、延迟任务、结果队列和 outbox 协调、评测结果目标保存与到期清理 | Controller Lease |
 | `scheduler` | waiting task 派发和过期执行租约回收 | Scheduler Lease |
 | `worker` | 消费 dispatch、执行 Workflow 与 Job | 否 |
 

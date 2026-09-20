@@ -16,6 +16,8 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 
 ## 推荐阅读顺序
 
+初次了解产品，先读 [项目首页（中文）](../README_zh.md) / [English](../README.md)，了解适用场景、核心概念、四角色架构、能力边界与快速开始。以下顺序用于深入实现与维护：
+
 1. `AGENTS.md`：仓库协作规则、构建测试命令、提交和 PR 要求。
 2. 本文档：目录分层、需求定位、当前代码事实和文档索引。
 3. `架构文档.md` 与 `architecture-diagrams.md`：当前角色、数据、Component、Trait 和 Workflow 边界。
@@ -153,8 +155,8 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `agent-evaluation-runner-service-design.md` | Implemented Reference | Harbor Runner 单实例 claim、v1 阶段/心跳/进度/终态事件、结果门禁与 Kubernetes 故障兜底 |
 | `workflow-global-scheduler-design.md` | Implemented Reference | Job 全局优先级、FIFO、等待老化、空间并发上限、ownership 准入与 OOM 策略 |
 | `enterprise-distributed-runtime-design.md` | Implemented Reference | 分布式运行时：角色依赖、API Redis readiness、Leader Election、数据库 lease/fencing、延迟任务恢复与通知去重、Cron 有界分页与失败计划重试、Worker observer 和 Helm 拓扑 |
-| `架构文档.md` | Implemented Reference | 当前四角色、数据所有权、Component、Workflow 与 Trait 边界 |
-| `architecture-diagrams.md` | Implemented Reference | 当前四角色、Workflow execution 和 Trait 映射图 |
+| `架构文档.md` | Implemented Reference | 当前四角色、HTTP/gRPC、数据所有权、Component/Workflow、独立空间 Job、Traits 与空间权限边界 |
+| `architecture-diagrams.md` | Implemented Reference | 当前四角色、Workflow/独立 Job 执行、评测结果保存和 Trait 映射图 |
 | `kafka-queue-implementation.md` | Implemented Reference | Kafka 队列实现 |
 | `cloudjob-skeleton.md` | Implemented Reference | CloudJob 基础说明 |
 | `cloudjob-custom-provider-template.md` | Implemented Reference | Custom CloudJob Provider 扩展 |

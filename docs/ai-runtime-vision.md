@@ -65,9 +65,9 @@ vLLM、HAMi、Ray/KubeRay、LeaderWorkerSet 或其他 operator 都是可选择�
 
 ### 3.5 LLM 评测
 
-当前命令与 `traits.eval` 评测使用统一的空间 Job 生命周期，在所属空间的同一 namespace 中执行。这里的 Eruun Job 是任务执行单位，两类任务当前都构建 Kubernetes `batch/v1 Job`，Pod 使用 `restartPolicy: Never` 且 Job `backoffLimit: 0`；`eval` 由固定 Harbor Runner 镜像驱动任务环境、采集框架原始结果并通过内部 HTTP 上传。阶段、心跳和终态证据已沿此链路实现。模型是测评对象，harness 是测评条件；原生任务包中的指令、环境与 verifier 共同定义测评内容。
+当前命令与 `traits.eval` 评测使用统一的空间 Job 生命周期，在所属空间的同一 namespace 中执行。这里的 Eruun Job 是任务执行单位，两类任务当前都构建 Kubernetes `batch/v1 Job`，Pod 使用 `restartPolicy: Never` 且 Job `backoffLimit: 0`；评测由固定 Harbor Runner 镜像驱动任务环境、采集框架原始结果并通过内部 HTTP 上传。Runner 已提供单实例认领、阶段、心跳、进度和终态证据。模型是测评对象，harness 是测评条件；原生任务包中的指令、环境与 verifier 共同定义测评内容。
 
-评测的输入校验、执行配置和结果解释由 `traits.eval` 规格及共享构建路径表达，持久化、调度和生命周期继续使用统一 Workflow/Job 链路。公共入口与 Harbor 首版边界以 [空间 Job API](workspace-jobs-api.md) 为准；已实现的阶段状态协议见 [Agent Evaluation Runner 小型进程服务](agent-evaluation-runner-service-design.md)。
+评测的输入校验、执行配置和结果解释由 `traits.eval` 规格及共享构建路径表达，持久化、调度和生命周期继续使用统一 Workflow/Job 链路。公共入口与 Harbor 当前边界以 [空间 Job API](workspace-jobs-api.md) 为准；已实现的阶段状态协议见 [Agent Evaluation Runner 小型进程服务](agent-evaluation-runner-service-design.md)。
 
 ### 3.6 数据、向量化与云平台
 
@@ -129,11 +129,11 @@ flowchart LR
 | `command` | 校验用户声明的镜像、命令、参数和允许的 Traits，以进程退出及 Kubernetes Job 状态形成执行结果 | WorkspaceID、TaskID/Job 身份、`batch/v1 Job`、调度和生命周期 |
 | `job` + `traits.eval` | 校验 env、任务包、模型、harness 和结果策略，选择固定 Runner 镜像，解释评测结果与制品 | WorkspaceID、TaskID/Job 身份、`batch/v1 Job`、调度和生命周期 |
 
-两类任务都由 [Job builder](../pkg/apiserver/jobs/builder.go) 构建 `batch/v1 Job`，复用 [InstantJobCtl](../pkg/apiserver/event/workflow/job/job_instant.go) 生命周期。Pod 使用 `restartPolicy: Never`，Job 使用 `backoffLimit: 0`：前者禁止 kubelet 重启已退出容器，后者禁止 Job 在已计入失败后继续重试；它们不能单独排除 Pod terminating 时出现 replacement Pod 的并发窗口。Job 名称和追踪元数据绑定 TaskID，Runner 的数据与结果请求还绑定任务能力、Pod 名称和 UID；`eval` 的阶段状态增强须在启动 Harbor 前增加绑定 execution identity/attempt 与 Pod UID 的 CAS 认领，才能把同一次评测限制为一个实际执行者。显式恢复或重试必须建立新的执行身份/attempt。
+两类任务都由 [Job builder](../pkg/apiserver/jobs/builder.go) 构建 `batch/v1 Job`，复用 [InstantJobCtl](../pkg/apiserver/event/workflow/job/job_instant.go) 生命周期。Pod 使用 `restartPolicy: Never`，Job 使用 `backoffLimit: 0`：前者禁止 kubelet 重启已退出容器，后者禁止 Job 在已计入失败后继续重试；它们不能单独排除 Pod terminating 时出现 replacement Pod 的并发窗口。Job 名称和追踪元数据绑定 TaskID，Runner 的数据与结果请求还绑定任务能力、Pod 名称和 UID。当前评测 Runner 在启动 Harbor 前以 execution identity/attempt 与 Pod UID 原子认领，限制同一 attempt 只有一个 Pod owner；Worker 接管仍须遵循既有 Job 执行代和 ownership 恢复契约。
 
-`config.JobType` 是现有控制器分派键，同时保存已接受任务的公开业务类型；不再增加 `custom`、category、purpose 或评测布尔标记复制同一分类。Kubernetes 资源 `kind` 是 builder 的执行输出，不应被编码成第二个业务类型字段。缺失、未知或无权使用的类型明确拒绝，不能静默按 `command` 执行；接受后，类型须在请求快照、JobTask、JobInfo 和恢复路径中保持一致。
+`config.JobType` 是内部控制器分派键。评测的公开声明使用 `type: job` + `traits.eval`，共享构建路径将其映射为内部 `JobEval` 执行动作；公开声明与内部执行类型不能混用。Kubernetes 资源 `kind` 是 builder 的执行输出。缺失、未知或无权使用的类型明确拒绝，不能静默按 `command` 执行；请求快照保留公开声明，JobTask、JobInfo 和恢复路径保持一致的内部执行类型。
 
-当前 Harbor Runner 已上传最终原始结果，但 Kubernetes Job/Pod 状态仍不能表达评测内部的 preparing、running、finalizing 等阶段，也不能单靠 Never 与零 backoff 提供 replacement Pod 间的单实例认领。后续状态协议只扩展 `eval` Runner：Runner 继续作为 Job Pod 的主进程，在启动 Harbor 前原子认领当前 execution identity/attempt，并主动通过 HTTP 上报有界阶段、心跳和终态证据；Kubernetes 仍负责 OOM、容器退出、调度和节点故障兜底。该增强不改变 `command` 镜像入口，不增加 Deployment 控制器，也不把普通应用 Deployment 的 Ready 或重启语义用于一次性评测。
+当前 Harbor Runner 作为 Job Pod 的主进程，在启动 Harbor 前原子认领当前 execution identity/attempt，并通过 HTTP 上报 preparing、running、finalizing 阶段、心跳、进度和终态证据。API 的 `runnerStatus` 暴露这些状态，Kubernetes 负责 OOM、容器退出、调度和节点故障兜底。评测成功需要完整结果、成功终态 ACK、Runner 零退出及 Kubernetes Job 成功同时成立；具体门禁见 [空间 Job API](workspace-jobs-api.md)。该协议仅用于评测 Runner，不改变 `command` 镜像入口或普通应用 Deployment 的生命周期。
 
 ## 5. 路线图与进入条件
 
@@ -152,9 +152,9 @@ flowchart LR
 
 ### Phase 3：评测与可观测性
 
-- 在现有 Harbor `eval` 上补充单实例 CAS 认领、阶段、心跳和终态证据，保持最终原始结果上传与质量结果语义不变。
-- 在同一空间 namespace 中同时运行 `command` 和 `eval`，验证两者复用 `batch/v1 Job` 调度与生命周期且执行资源互不混淆。
-- 继续验证不创建 Application 的独立评测能够生成 TaskID、持久化空间归属并完成调度、取消和清理；若后续增加应用 Workflow 内评测，再明确其归属与生命周期。
+- 已实现基线：Harbor `traits.eval` 的单实例认领、阶段、心跳、进度和终态证据；后续扩展保持原始结果上传与质量结果语义。
+- 在同一空间 namespace 中同时运行 `command` 和带 `traits.eval` 的 `job`，验证两者复用 `batch/v1 Job` 调度与生命周期且执行资源互不混淆。
+- 继续验证不创建 Application 的独立评测能够生成 TaskID、持久化空间归属并完成调度、取消和清理；应用 Workflow 内评测沿用所属应用和父任务，以 Job executionKey 区分结果，并验证取消与清理边界。
 - 验证敏感输入与逐 case 制品的访问控制、保留和删除策略。
 - 保持现有 Job 类型和输入映射，用真实数据决定是否需要进一步扩展阶段查询、质量门禁或抢占能力。
 
