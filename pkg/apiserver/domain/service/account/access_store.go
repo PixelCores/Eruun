@@ -9,6 +9,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
@@ -117,11 +118,16 @@ func workspaceTaskJobType(task *model.WorkflowQueue) config.JobType {
 		return config.JobResourceImportManage
 	case config.WorkflowTaskTypeJob:
 		var snapshot struct {
-			Type config.JobType `json:"type"`
+			Type   config.JobType `json:"type"`
+			Traits spec.JobTraits `json:"traits"`
 		}
-		if json.Unmarshal([]byte(task.JobSpec), &snapshot) == nil &&
-			config.IsWorkspaceJobType(snapshot.Type) {
-			return snapshot.Type
+		if json.Unmarshal([]byte(task.JobSpec), &snapshot) == nil {
+			if snapshot.Type == config.JobCommand && snapshot.Traits.Evaluation == nil {
+				return config.JobCommand
+			}
+			if snapshot.Type == config.InstantJob && snapshot.Traits.Evaluation != nil && snapshot.Traits.Evaluation.Normalize() == nil {
+				return config.JobEval
+			}
 		}
 	}
 	return ""

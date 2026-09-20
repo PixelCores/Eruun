@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/stretchr/testify/require"
 )
 
@@ -46,6 +47,63 @@ func TestCanonicalJSONSchemaDefinesStrictPublicProfiles(t *testing.T) {
 	envAlternatives := propertiesDefinition["env"].(map[string]any)["anyOf"].([]any)
 	require.Equal(t, "object", envAlternatives[0].(map[string]any)["type"])
 	require.Equal(t, "null", envAlternatives[1].(map[string]any)["type"])
+}
+
+func TestCanonicalSchemaDiscoversSharedEvaluationAndStandaloneJobs(t *testing.T) {
+	raw, err := CanonicalJSONSchema()
+	require.NoError(t, err)
+	var schema map[string]any
+	require.NoError(t, json.Unmarshal(raw, &schema))
+	require.Len(t, schema["anyOf"], 5, "Job and Component profiles can share the same evaluation shape")
+	definitions := schema["$defs"].(map[string]any)
+	job := definitions["Job"].(map[string]any)
+	require.Equal(t, false, job["additionalProperties"])
+	require.Len(t, job["oneOf"], 2)
+	jobFields := job["properties"].(map[string]any)
+	require.Equal(t, "#/$defs/CommandJobSpec", jobFields["spec"].(map[string]any)["$ref"])
+	require.NotContains(t, jobFields, "resultPolicy")
+	for _, name := range []string{"Trait", "JobTraits"} {
+		fields := definitions[name].(map[string]any)["properties"].(map[string]any)
+		require.Equal(t, "#/$defs/EvaluationTraitSpec", fields["eval"].(map[string]any)["$ref"])
+		require.NotContains(t, fields, "evaluation")
+	}
+	evaluation := definitions["EvaluationTraitSpec"].(map[string]any)
+	require.Equal(t, false, evaluation["additionalProperties"])
+	require.ElementsMatch(t, []any{"env", "agent", "taskPackageId"}, evaluation["required"])
+	fields := evaluation["properties"].(map[string]any)
+	require.Equal(t, "ack", fields["env"].(map[string]any)["const"])
+	require.Equal(t, "string", fields["agent"].(map[string]any)["type"])
+	require.Equal(t, float64(16), fields["concurrency"].(map[string]any)["maximum"])
+	require.Contains(t, fields, "sandboxResources")
+	require.Contains(t, fields, "resultPolicy")
+	require.NotContains(t, fields, "framework")
+	require.NotContains(t, fields, "frameworkVersion")
+	require.NotContains(t, fields, "options")
+}
+
+func TestApplicationEvaluationRejectsUnknownBusinessFields(t *testing.T) {
+	const body = `{"name":"evaluation-app","components":[{"name":"evaluate","type":"job","traits":{"eval":{"env":"ack","agent":"oracle","taskPackageId":"12345678-1234-1234-1234-123456789012"}}}]}`
+	var request CreateApplicationsRequest
+	require.NoError(t, json.Unmarshal([]byte(body), &request))
+	require.Equal(t, "oracle", request.Components[0].Traits.Evaluation.Agent)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal([]byte(body), &payload))
+	component := payload["components"].([]any)[0].(map[string]any)
+	evaluation := component["traits"].(map[string]any)["eval"].(map[string]any)
+	evaluation["framework"] = "harbor"
+	invalid, err := json.Marshal(payload)
+	require.NoError(t, err)
+	require.ErrorContains(t, json.Unmarshal(invalid, &request), "unknown field")
+	var standalone spec.JobSpec
+	require.ErrorContains(t, spec.DecodeJobJSON([]byte(`{"name":"evaluate","type":"job","traits":{"eval":{"env":"ack","agent":"oracle","taskPackageId":"12345678-1234-1234-1234-123456789012","framework":"harbor"}}}`), &standalone), "unknown field")
+	delete(evaluation, "framework")
+	traits := component["traits"].(map[string]any)
+	traits["evaluation"] = traits["eval"]
+	delete(traits, "eval")
+	legacy, err := json.Marshal(payload)
+	require.NoError(t, err)
+	require.ErrorContains(t, json.Unmarshal(legacy, &request), `unknown field "evaluation"`)
 }
 
 func TestCanonicalApplicationMarshalProducesOnlyCanonicalFields(t *testing.T) {

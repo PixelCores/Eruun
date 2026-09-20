@@ -1315,7 +1315,24 @@ message AppSpecTraits {
   AppKubeCoreSecurityContext security_policy = 12 [json_name = "securityPolicy"];
   AppSpecShareTraitSpec share = 13 [json_name = "share"];
   AppSpecRolloutTraitSpec rollout = 14 [json_name = "rollout"];
+  EvaluationTrait eval = 15 [json_name = "eval"];
 }
+
+// Shared by standalone Job and Application component declarations.
+message EvaluationTrait {
+  string env = 1;
+  string model = 2;
+  string agent = 3;
+  string task_package_id = 4 [json_name = "taskPackageId"];
+  int32 attempts = 5;
+  int32 concurrency = 6;
+  int64 timeout_seconds = 7 [json_name = "timeoutSeconds"];
+  AppSpecResourceTraitsSpec sandbox_resources = 8 [json_name = "sandboxResources"];
+  JobResultPolicy result_policy = 9 [json_name = "resultPolicy"];
+}
+
+message JobResultTarget { string type = 1; string mode = 2; }
+message JobResultPolicy { int32 retention_days = 1; repeated JobResultTarget targets = 2; }
 
 message AppSpecValueSource {
   optional string static = 1 [json_name = "static"];

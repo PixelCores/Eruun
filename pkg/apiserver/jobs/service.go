@@ -4,7 +4,6 @@ package jobs
 import (
 	"context"
 	"crypto/rand"
-	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -62,12 +61,14 @@ type Accepted struct {
 
 type Detail struct {
 	Accepted
-	Job             spec.JobSpec         `json:"job"`
-	Executions      []*model.JobInfo     `json:"executions"`
-	Results         []*model.JobArtifact `json:"results"`
-	Deliveries      []*model.JobDelivery `json:"deliveries"`
-	CollectionState string               `json:"collectionState,omitempty"`
-	RunnerStatus    *RunnerStatus        `json:"runnerStatus,omitempty"`
+	ExecutionKey     string               `json:"executionKey,omitempty"`
+	FrameworkVersion string               `json:"frameworkVersion,omitempty"`
+	Job              spec.JobSpec         `json:"job"`
+	Executions       []*model.JobInfo     `json:"executions"`
+	Results          []*model.JobArtifact `json:"results"`
+	Deliveries       []*model.JobDelivery `json:"deliveries"`
+	CollectionState  string               `json:"collectionState,omitempty"`
+	RunnerStatus     *RunnerStatus        `json:"runnerStatus,omitempty"`
 }
 
 type StoragePolicy struct {
@@ -165,18 +166,18 @@ func (s *Service) Submit(ctx context.Context, request SubmitRequest) (*Accepted,
 	if s.Config == nil || s.Config.Accounts == nil {
 		return nil, bcode.ErrServiceUnavailable
 	}
-	if request.Type == string(config.JobEval) {
+	if request.Traits.Evaluation != nil {
 		if s.Config.Jobs == nil {
 			return nil, bcode.WithSafeClientMessage(bcode.ErrServiceUnavailable, "Harbor Runner is not configured")
 		}
-		if request.ResultPolicy == nil {
+		if request.Traits.Evaluation.ResultPolicy == nil {
 			p, err := s.Policy(ctx)
 			if err != nil {
 				return nil, err
 			}
-			request.ResultPolicy = &p.Policy
+			request.Traits.Evaluation.ResultPolicy = &p.Policy
 		}
-		if err = s.validatePolicy(*request.ResultPolicy); err != nil {
+		if err = s.validatePolicy(*request.Traits.Evaluation.ResultPolicy); err != nil {
 			return nil, err
 		}
 		// Normalize already restricted evaluation envs to Secret references;
@@ -197,17 +198,16 @@ func (s *Service) Submit(ctx context.Context, request SubmitRequest) (*Accepted,
 			}
 		}
 	}
-	random := make([]byte, 44)
+	random := make([]byte, 12)
 	if _, err = rand.Read(random); err != nil {
 		return nil, err
 	}
-	taskID := hex.EncodeToString(random[:12])
-	token := hex.EncodeToString(random[12:])
+	taskID := hex.EncodeToString(random)
 	declaration, err := json.Marshal(request.JobSpec)
 	if err != nil {
 		return nil, err
 	}
-	task := &model.WorkflowQueue{TaskID: taskID, WorkspaceID: scope.WorkspaceID, WorkflowName: request.Name, WorkflowDisplayName: request.Name, TaskCreator: scope.UserID, Type: config.WorkflowTaskTypeJob, Status: config.StatusWaiting, JobSpec: string(declaration), JobToken: token}
+	task := &model.WorkflowQueue{TaskID: taskID, WorkspaceID: scope.WorkspaceID, WorkflowName: request.Name, WorkflowDisplayName: request.Name, TaskCreator: scope.UserID, Type: config.WorkflowTaskTypeJob, Status: config.StatusWaiting, JobSpec: string(declaration)}
 	// Validate the exact renderer and workspace policy before enqueueing. Building
 	// does not create namespace, application, component, or Kubernetes resources.
 	job, err := BuildTask(ctx, s.Store, s.Config, task, scope.Namespace)
@@ -215,7 +215,10 @@ func (s *Service) Submit(ctx context.Context, request SubmitRequest) (*Accepted,
 		return nil, invalid(err)
 	}
 	space := &model.Workspace{ID: scope.WorkspaceID, Namespace: scope.Namespace}
-	if request.Type == string(config.JobEval) {
+	if request.Traits.Evaluation != nil {
+		if err := BuildEvaluationTask(ctx, s.Store, s.Config, job, spec.JobTraits{}); err != nil {
+			return nil, invalid(err)
+		}
 		err = workspace.PrepareEvaluationTask(job, space, s.Config.Accounts.Workspace, s.Config.Jobs.RunnerImage)
 	} else {
 		_, err = workspace.PrepareTask(job, "", space, s.Config.Accounts.Workspace)
@@ -243,69 +246,164 @@ func (s *Service) Submit(ctx context.Context, request SubmitRequest) (*Accepted,
 	return &Accepted{TaskID: taskID, WorkspaceID: scope.WorkspaceID, Type: request.Type, Status: task.Status}, nil
 }
 
-func (s *Service) Task(ctx context.Context, taskID string) (*model.WorkflowQueue, error) {
+// scopedTask authorizes only the parent workspace; public App reads additionally
+// select a concrete evaluation execution below.
+func (s *Service) scopedTask(ctx context.Context, taskID string) (*model.WorkflowQueue, error) {
 	scope, err := Scope(ctx, false)
 	if err != nil {
 		return nil, err
 	}
 	task := &model.WorkflowQueue{TaskID: taskID}
-	if err = s.Store.Get(ctx, task); err != nil {
+	if err := s.Store.Get(ctx, task); err != nil {
 		return nil, err
 	}
-	if task.Type != config.WorkflowTaskTypeJob || task.AppID != "" || task.WorkspaceID != scope.WorkspaceID {
+	if task.WorkspaceID != scope.WorkspaceID {
 		return nil, bcode.ErrNotFound
 	}
 	return task, nil
 }
 
-func (s *Service) Get(ctx context.Context, taskID string) (*Detail, error) {
-	task, err := s.Task(ctx, taskID)
+func (s *Service) evaluationExecution(ctx context.Context, task *model.WorkflowQueue, executionKey string) (*model.JobInfo, error) {
+	rows, err := s.Store.List(ctx, &model.JobInfo{TaskID: task.TaskID, WorkspaceID: task.WorkspaceID, AppID: task.AppID}, &datastore.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	var selected *model.JobInfo
+	for _, row := range rows {
+		record := row.(*model.JobInfo)
+		if record.Type != string(config.JobEval) || record.ExecutionKey == nil {
+			continue
+		}
+		if executionKey != "" && *record.ExecutionKey != executionKey {
+			continue
+		}
+		if selected != nil {
+			return nil, invalid(fmt.Errorf("executionKey is required to select one evaluation Job"))
+		}
+		selected = record
+	}
+	if selected == nil && executionKey != "" {
+		return nil, bcode.ErrNotFound
+	}
+	return selected, nil
+}
+
+func (s *Service) Task(ctx context.Context, taskID string, executionKey ...string) (*model.WorkflowQueue, error) {
+	task, err := s.scopedTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	key := ""
+	if len(executionKey) > 0 {
+		key = executionKey[0]
+	}
+	if key == "" {
+		if task.Type != config.WorkflowTaskTypeJob || task.AppID != "" {
+			return nil, bcode.ErrNotFound
+		}
+		return task, nil
+	}
+	if _, err := s.evaluationExecution(ctx, task, key); err != nil {
+		return nil, err
+	}
+	return task, nil
+}
+
+// ResolveExecutionKey binds result operations to one evaluation Job. Standalone
+// callers may omit the key only while their execution identity is unambiguous.
+func (s *Service) ResolveExecutionKey(ctx context.Context, taskID, executionKey string) (string, error) {
+	task, err := s.Task(ctx, taskID, executionKey)
+	if err != nil {
+		return "", err
+	}
+	record, err := s.evaluationExecution(ctx, task, executionKey)
+	if err != nil || record == nil {
+		return "", err
+	}
+	return *record.ExecutionKey, nil
+}
+
+func (s *Service) Get(ctx context.Context, taskID string, executionKey ...string) (*Detail, error) {
+	task, err := s.Task(ctx, taskID, executionKey...)
+	if err != nil {
+		return nil, err
+	}
+	key := ""
+	if len(executionKey) > 0 {
+		key = executionKey[0]
+	}
+	record, err := s.evaluationExecution(ctx, task, key)
 	if err != nil {
 		return nil, err
 	}
 	var declaration spec.JobSpec
-	if err = spec.DecodeJobJSON([]byte(task.JobSpec), &declaration); err != nil {
+	status := task.Status
+	if task.AppID != "" {
+		if record == nil {
+			return nil, bcode.ErrNotFound
+		}
+		info, err := decodeEvaluationInfo(record.EvaluationInfo)
+		if err != nil {
+			return nil, err
+		}
+		declaration = spec.JobSpec{Name: record.ServiceName, Type: "job", Traits: info.Traits}
+		status = config.Status(record.Status)
+	} else if err := spec.DecodeJobJSON([]byte(task.JobSpec), &declaration); err != nil {
 		return nil, err
 	}
-	out := &Detail{Accepted: Accepted{TaskID: task.TaskID, WorkspaceID: task.WorkspaceID, Type: declaration.Type, Status: task.Status}, Job: declaration, Executions: []*model.JobInfo{}}
-	rows, err := s.Store.List(ctx, &model.JobInfo{TaskID: task.TaskID, WorkspaceID: task.WorkspaceID}, &datastore.ListOptions{})
+	out := &Detail{Accepted: Accepted{TaskID: task.TaskID, WorkspaceID: task.WorkspaceID, Type: declaration.Type, Status: status}, Job: declaration, Executions: []*model.JobInfo{}}
+	if record != nil {
+		out.ExecutionKey = *record.ExecutionKey
+		out.Executions = append(out.Executions, record)
+		if record.EvaluationInfo != "" {
+			info, err := decodeEvaluationInfo(record.EvaluationInfo)
+			if err != nil {
+				return nil, err
+			}
+			out.Job.Traits = info.Traits
+			out.FrameworkVersion = info.FrameworkVersion
+		}
+	} else if declaration.Type == string(config.JobCommand) {
+		rows, err := s.Store.List(ctx, &model.JobInfo{TaskID: task.TaskID, WorkspaceID: task.WorkspaceID, AppID: task.AppID}, &datastore.ListOptions{})
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			out.Executions = append(out.Executions, row.(*model.JobInfo))
+		}
+	}
+	out.Results, err = s.Artifacts.List(ctx, task.WorkspaceID, "", task.TaskID, out.ExecutionKey)
 	if err != nil {
 		return nil, err
 	}
-	for _, row := range rows {
-		out.Executions = append(out.Executions, row.(*model.JobInfo))
-	}
-	out.Results, err = s.Artifacts.List(ctx, task.WorkspaceID, "", task.TaskID)
+	out.Deliveries, err = s.Artifacts.Deliveries(ctx, task.WorkspaceID, task.TaskID, out.ExecutionKey)
 	if err != nil {
 		return nil, err
 	}
-	out.Deliveries, err = s.Artifacts.Deliveries(ctx, task.WorkspaceID, task.TaskID)
-	if err != nil {
-		return nil, err
-	}
-	if declaration.Type == string(config.JobEval) {
+	if declaration.Traits.Evaluation != nil {
 		out.RunnerStatus, err = latestRunnerStatus(ctx, s.Store, out.Executions)
 		if err != nil {
 			return nil, err
 		}
 		out.CollectionState = "pending"
-		if terminal(task.Status) {
+		if terminal(status) {
 			out.CollectionState = "unavailable"
 		}
 		for _, result := range out.Results {
-			if result.Kind == artifacts.KindSource {
-				out.CollectionState = "collected"
-				var summary struct {
-					Complete bool `json:"collectionComplete"`
-				}
-				if json.Unmarshal(result.Summary, &summary) != nil || !summary.Complete {
-					out.CollectionState = "incomplete"
-				}
-				if result.Expired {
-					out.CollectionState = "expired"
-				}
-				break
+			if result.Kind != artifacts.KindSource {
+				continue
 			}
+			out.CollectionState = "collected"
+			var summary struct {
+				Complete bool `json:"collectionComplete"`
+			}
+			if json.Unmarshal(result.Summary, &summary) != nil || !summary.Complete {
+				out.CollectionState = "incomplete"
+			}
+			if result.Expired {
+				out.CollectionState = "expired"
+			}
+			break
 		}
 	}
 	return out, nil
@@ -322,12 +420,13 @@ func terminal(status config.Status) bool {
 
 type RunnerIdentity struct{ TaskID, Token, PodName, PodUID string }
 type runnerAuthorization struct {
-	task      *model.WorkflowQueue
-	job       *model.JobInfo
-	liveJob   *batchv1.Job
-	namespace string
-	jobUID    string
-	identity  RunnerIdentity
+	task       *model.WorkflowQueue
+	job        *model.JobInfo
+	liveJob    *batchv1.Job
+	namespace  string
+	jobUID     string
+	identity   RunnerIdentity
+	evaluation *evaluationInfo
 }
 
 func (s *Service) authorizeRunner(ctx context.Context, identity RunnerIdentity) (*runnerAuthorization, error) {
@@ -341,14 +440,11 @@ func (s *Service) authorizeRunner(ctx context.Context, identity RunnerIdentity) 
 		}
 		return nil, err
 	}
-	if task.Type != config.WorkflowTaskTypeJob || task.AppID != "" || subtle.ConstantTimeCompare([]byte(task.JobToken), []byte(identity.Token)) != 1 {
+	if task.WorkspaceID == "" {
 		return nil, bcode.ErrUnauthorized
 	}
 	if err := runnerParentAuthorized(task); err != nil {
 		return nil, err
-	}
-	if !validateRunnerDeclaration(task.JobSpec) {
-		return nil, bcode.ErrUnauthorized
 	}
 	space := &model.Workspace{ID: task.WorkspaceID}
 	if err := s.Store.Get(ctx, space); err != nil {
@@ -357,7 +453,7 @@ func (s *Service) authorizeRunner(ctx context.Context, identity RunnerIdentity) 
 		}
 		return nil, err
 	}
-	rows, err := s.Store.List(ctx, &model.JobInfo{TaskID: task.TaskID, WorkspaceID: task.WorkspaceID}, &datastore.ListOptions{})
+	rows, err := s.Store.List(ctx, &model.JobInfo{TaskID: task.TaskID, WorkspaceID: task.WorkspaceID, AppID: task.AppID}, &datastore.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -377,11 +473,15 @@ func (s *Service) authorizeRunner(ctx context.Context, identity RunnerIdentity) 
 		if !runnerJobStatusAuthorized(job, task.Status) || job.Type != string(config.JobEval) || job.ExecutionKey == nil || job.InternalInfo == "" {
 			continue
 		}
+		evaluation, err := decodeEvaluationInfo(job.EvaluationInfo)
+		if err != nil || subtleTokenMismatch(evaluation.RunnerToken, identity.Token) {
+			continue
+		}
 		if pod.Annotations[config.AnnotationJobExecutionKey] != *job.ExecutionKey || pod.Annotations[config.AnnotationJobRunGeneration] != strconv.FormatUint(job.RunGeneration, 10) {
 			continue
 		}
 		for _, owner := range pod.OwnerReferences {
-			if owner.Kind == "Job" && owner.Name == job.ServiceName && owner.Controller != nil && *owner.Controller {
+			if owner.Kind == "Job" && owner.Name != "" && owner.Controller != nil && *owner.Controller {
 				live, err := s.Kube.BatchV1().Jobs(space.Namespace).Get(scoped, owner.Name, metav1.GetOptions{})
 				if err != nil {
 					if k8serrors.IsNotFound(err) {
@@ -395,7 +495,7 @@ func (s *Service) authorizeRunner(ctx context.Context, identity RunnerIdentity) 
 				if workflowjob.ValidateInstantJobRetryExecution(job, live) != nil {
 					return nil, bcode.ErrUnauthorized
 				}
-				return &runnerAuthorization{task: task, job: job, liveJob: live, namespace: space.Namespace, jobUID: string(live.UID), identity: identity}, nil
+				return &runnerAuthorization{task: task, job: job, liveJob: live, namespace: space.Namespace, jobUID: string(live.UID), identity: identity, evaluation: evaluation}, nil
 			}
 		}
 	}
@@ -411,15 +511,7 @@ func (s *Service) RunnerDataset(ctx context.Context, identity RunnerIdentity, w 
 	if err != nil || !runnerOwnerMatches(state, auth) {
 		return bcode.ErrUnauthorized
 	}
-	var declared spec.JobSpec
-	var evaluation spec.AgentEvaluationSpec
-	if err = json.Unmarshal([]byte(auth.task.JobSpec), &declared); err != nil {
-		return err
-	}
-	if err = json.Unmarshal(declared.Spec, &evaluation); err != nil {
-		return err
-	}
-	return s.Artifacts.Download(ctx, auth.task.WorkspaceID, evaluation.DatasetID, w)
+	return s.Artifacts.Download(ctx, auth.task.WorkspaceID, auth.evaluation.Traits.Evaluation.TaskPackageID, w)
 }
 
 func (s *Service) RunnerResult(ctx context.Context, identity RunnerIdentity, r io.Reader) (*model.JobArtifact, error) {
@@ -431,11 +523,11 @@ func (s *Service) RunnerResult(ctx context.Context, identity RunnerIdentity, r i
 	if err != nil || !runnerOwnerMatches(state, auth) {
 		return nil, bcode.ErrUnauthorized
 	}
-	var declared spec.JobSpec
-	if err = json.Unmarshal([]byte(auth.task.JobSpec), &declared); err != nil || declared.ResultPolicy == nil {
+	policy := auth.evaluation.Traits.Evaluation.ResultPolicy
+	if policy == nil {
 		return nil, bcode.ErrJobInput
 	}
-	return s.Artifacts.PutResultGuarded(ctx, auth.task.WorkspaceID, auth.task.TaskID, *declared.ResultPolicy, r, func(tx datastore.DataStore) error {
+	return s.Artifacts.PutResultGuarded(ctx, auth.task.WorkspaceID, auth.task.TaskID, *policy, r, func(tx datastore.DataStore) error {
 		task := &model.WorkflowQueue{TaskID: auth.task.TaskID}
 		locker, ok := tx.(datastore.RowLocker)
 		if !ok {
@@ -444,10 +536,7 @@ func (s *Service) RunnerResult(ctx context.Context, identity RunnerIdentity, r i
 		if err := locker.GetForUpdate(ctx, task); err != nil {
 			return err
 		}
-		if task.WorkspaceID != auth.task.WorkspaceID || task.JobToken != auth.task.JobToken || task.JobSpec != auth.task.JobSpec {
-			return bcode.ErrUnauthorized
-		}
-		if err := runnerParentAuthorized(task); err != nil {
+		if err := validateLockedRunnerTask(task, auth); err != nil {
 			return err
 		}
 		// A recovered owner may adopt the same immutable execution checkpoint.
@@ -464,7 +553,7 @@ func (s *Service) RunnerResult(ctx context.Context, identity RunnerIdentity, r i
 			return bcode.ErrUnauthorized
 		}
 		return nil
-	})
+	}, *auth.job.ExecutionKey)
 }
 
 func runnerParentAuthorized(task *model.WorkflowQueue) error {

@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
@@ -110,6 +111,13 @@ func jobTraitsInput(p *eruunv1.JobTraits) (spec.JobTraits, error) {
 		}
 		result.SecurityPolicy = &policy
 	}
+	if p.Eval != nil {
+		evaluation, err := decodeTypedRequest[spec.EvaluationTraitSpec](p.Eval)
+		if err != nil {
+			return spec.JobTraits{}, fmt.Errorf("decode evaluation trait: %w", err)
+		}
+		result.Evaluation = &evaluation
+	}
 	return result, nil
 }
 
@@ -153,6 +161,13 @@ func jobTraitsOutput(p spec.JobTraits) (*eruunv1.JobTraits, error) {
 		}
 		result.SecurityPolicy = policy
 	}
+	if p.Evaluation != nil {
+		evaluation, err := encodeTypedResponse(p.Evaluation, &eruunv1.EvaluationTrait{})
+		if err != nil {
+			return nil, fmt.Errorf("encode evaluation trait: %w", err)
+		}
+		result.Eval = evaluation
+	}
 	return result, nil
 }
 
@@ -176,11 +191,7 @@ func jobSpecOutput(p spec.JobSpec) (*eruunv1.JobSpec, error) {
 	if err != nil {
 		return nil, err
 	}
-	result := &eruunv1.JobSpec{Name: p.Name, Type: p.Type, Spec: value, Traits: traits}
-	if p.ResultPolicy != nil {
-		result.ResultPolicy = jobPolicyOutput(*p.ResultPolicy)
-	}
-	return result, nil
+	return &eruunv1.JobSpec{Name: p.Name, Type: p.Type, Spec: value, Traits: traits}, nil
 }
 
 func jobArtifactOutput(item *model.JobArtifact) (*eruunv1.JobArtifact, error) {
@@ -196,7 +207,7 @@ func jobArtifactOutput(item *model.JobArtifact) (*eruunv1.JobArtifact, error) {
 		return nil, err
 	}
 	result := &eruunv1.JobArtifact{
-		Id: item.ID, WorkspaceId: item.WorkspaceID, TaskId: item.TaskID, Kind: item.Kind,
+		Id: item.ID, WorkspaceId: item.WorkspaceID, TaskId: item.TaskID, ExecutionKey: item.ExecutionKey, Kind: item.Kind,
 		Name: item.Name, Digest: item.Digest, Size: item.Size, Manifest: manifest, Summary: summary,
 		Reference: item.Reference, Expired: item.Expired,
 		CreateTime: timeMessage(item.CreateTime), UpdateTime: timeMessage(item.UpdateTime),
@@ -226,7 +237,7 @@ func jobDeliveriesOutput(items []*model.JobDelivery) []*eruunv1.JobDelivery {
 			continue
 		}
 		result = append(result, &eruunv1.JobDelivery{
-			Id: item.ID, WorkspaceId: item.WorkspaceID, TaskId: item.TaskID, SourceId: item.SourceID,
+			Id: item.ID, WorkspaceId: item.WorkspaceID, TaskId: item.TaskID, ExecutionKey: item.ExecutionKey, SourceId: item.SourceID,
 			Target: item.Target, Mode: item.Mode, State: item.State, Attempts: int32(item.Attempts),
 			Error: item.LastError, Reference: item.Reference,
 			CreateTime: timeMessage(item.CreateTime), UpdateTime: timeMessage(item.UpdateTime),
@@ -235,22 +246,29 @@ func jobDeliveriesOutput(items []*model.JobDelivery) []*eruunv1.JobDelivery {
 	return result
 }
 
-func (s *JobsServer) SubmitJob(ctx context.Context, req *eruunv1.SubmitJobRequest) (*eruunv1.JobAccepted, error) {
-	if req == nil || req.Spec == nil {
-		return nil, rpcError(bcode.ErrJobInput)
+func jobSubmitInput(req *eruunv1.SubmitJobRequest) (jobs.SubmitRequest, error) {
+	if req == nil || len(req.ProtoReflect().GetUnknown()) != 0 {
+		return jobs.SubmitRequest{}, bcode.ErrJobInput
 	}
-	raw, err := protojson.Marshal(req.Spec)
-	if err != nil {
-		return nil, rpcError(bcode.ErrJobInput)
+	var raw []byte
+	if req.Spec != nil {
+		var err error
+		raw, err = protojson.Marshal(req.Spec)
+		if err != nil {
+			return jobs.SubmitRequest{}, bcode.ErrJobInput
+		}
 	}
 	traits, err := jobTraitsInput(req.Traits)
 	if err != nil {
-		return nil, rpcError(bcode.ErrJobInput)
+		return jobs.SubmitRequest{}, bcode.ErrJobInput
 	}
-	input := jobs.SubmitRequest{WorkspaceID: req.WorkspaceId, JobSpec: spec.JobSpec{Name: req.Name, Type: req.Type, Spec: raw, Traits: traits}}
-	if req.ResultPolicy != nil {
-		policy := jobPolicyInput(req.ResultPolicy)
-		input.ResultPolicy = &policy
+	return jobs.SubmitRequest{WorkspaceID: req.WorkspaceId, JobSpec: spec.JobSpec{Name: req.Name, Type: req.Type, Spec: raw, Traits: traits}}, nil
+}
+
+func (s *JobsServer) SubmitJob(ctx context.Context, req *eruunv1.SubmitJobRequest) (*eruunv1.JobAccepted, error) {
+	input, err := jobSubmitInput(req)
+	if err != nil {
+		return nil, rpcError(err)
 	}
 	accepted, err := s.Jobs.Submit(ctx, input)
 	if err != nil {
@@ -263,7 +281,7 @@ func (s *JobsServer) GetJob(ctx context.Context, req *eruunv1.JobTaskRequest) (*
 	if req == nil || req.TaskId == "" {
 		return nil, rpcError(bcode.ErrJobInput)
 	}
-	detail, err := s.Jobs.Get(ctx, req.TaskId)
+	detail, err := s.Jobs.Get(ctx, req.TaskId, req.ExecutionKey)
 	if err != nil {
 		return nil, rpcError(jobFailure(err))
 	}
@@ -277,7 +295,7 @@ func (s *JobsServer) GetJob(ctx context.Context, req *eruunv1.JobTaskRequest) (*
 	}
 	resp := &eruunv1.JobDetail{
 		Accepted: &eruunv1.JobAccepted{TaskId: detail.TaskID, WorkspaceId: detail.WorkspaceID, Type: detail.Type, Status: string(detail.Status)},
-		Job:      job, Results: results, Deliveries: jobDeliveriesOutput(detail.Deliveries), CollectionState: detail.CollectionState,
+		Job:      job, Results: results, Deliveries: jobDeliveriesOutput(detail.Deliveries), CollectionState: detail.CollectionState, ExecutionKey: detail.ExecutionKey, FrameworkVersion: detail.FrameworkVersion,
 	}
 	for _, execution := range detail.Executions {
 		if execution == nil {
@@ -324,12 +342,16 @@ func (s *JobsServer) GetJob(ctx context.Context, req *eruunv1.JobTaskRequest) (*
 }
 
 func (s *JobsServer) CancelJob(ctx context.Context, req *eruunv1.JobTaskRequest) (*emptypb.Empty, error) {
-	if req == nil || req.TaskId == "" {
+	if req == nil || req.TaskId == "" || req.ExecutionKey != "" {
 		return nil, rpcError(bcode.ErrJobInput)
 	}
 	scope, err := jobs.Scope(ctx, true)
 	if err == nil {
-		_, err = s.Jobs.Task(ctx, req.TaskId)
+		var task *model.WorkflowQueue
+		task, err = s.Jobs.Task(ctx, req.TaskId)
+		if err == nil && (task.Type != config.WorkflowTaskTypeJob || task.AppID != "") {
+			err = bcode.ErrNotFound
+		}
 	}
 	if err == nil {
 		err = s.Workflow.CancelWorkflowTask(ctx, scope.UserID, req.TaskId, "cancelled by user")
@@ -341,12 +363,21 @@ func (s *JobsServer) GetJobResults(ctx context.Context, req *eruunv1.JobTaskRequ
 	if req == nil || req.TaskId == "" {
 		return nil, rpcError(bcode.ErrJobInput)
 	}
-	detail, err := s.Jobs.Get(ctx, req.TaskId)
+	detail, err := s.Jobs.Get(ctx, req.TaskId, req.ExecutionKey)
 	if err != nil {
 		return nil, rpcError(jobFailure(err))
 	}
 	items, err := jobArtifactsOutput(detail.Results)
-	return &eruunv1.JobResults{CollectionState: detail.CollectionState, Artifacts: items, Deliveries: jobDeliveriesOutput(detail.Deliveries)}, rpcError(err)
+	return &eruunv1.JobResults{CollectionState: detail.CollectionState, Artifacts: items, Deliveries: jobDeliveriesOutput(detail.Deliveries), ExecutionKey: detail.ExecutionKey}, rpcError(err)
+}
+
+func (s *JobsServer) resultTask(ctx context.Context, taskID, requestedKey string) (*model.WorkflowQueue, string, error) {
+	key, err := s.Jobs.ResolveExecutionKey(ctx, taskID, requestedKey)
+	if err != nil {
+		return nil, "", err
+	}
+	task, err := s.Jobs.Task(ctx, taskID, key)
+	return task, key, err
 }
 
 func (s *JobsServer) RetryJobDelivery(ctx context.Context, req *eruunv1.JobDeliveryRequest) (*emptypb.Empty, error) {
@@ -356,9 +387,10 @@ func (s *JobsServer) RetryJobDelivery(ctx context.Context, req *eruunv1.JobDeliv
 	_, err := jobs.Scope(ctx, true)
 	if err == nil {
 		var task *model.WorkflowQueue
-		task, err = s.Jobs.Task(ctx, req.TaskId)
+		var key string
+		task, key, err = s.resultTask(ctx, req.TaskId, req.ExecutionKey)
 		if err == nil {
-			err = s.Jobs.Artifacts.Retry(ctx, task.WorkspaceID, task.TaskID, req.Target)
+			err = s.Jobs.Artifacts.Retry(ctx, task.WorkspaceID, task.TaskID, req.Target, key)
 		}
 	}
 	return &emptypb.Empty{}, rpcError(jobFailure(err))
@@ -371,9 +403,10 @@ func (s *JobsServer) SetJobRetention(ctx context.Context, req *eruunv1.SetJobRet
 	_, err := jobs.Scope(ctx, true)
 	if err == nil {
 		var task *model.WorkflowQueue
-		task, err = s.Jobs.Task(ctx, req.TaskId)
+		var key string
+		task, key, err = s.resultTask(ctx, req.TaskId, req.ExecutionKey)
 		if err == nil {
-			err = s.Jobs.Artifacts.SetRetention(ctx, task.WorkspaceID, task.TaskID, int(req.RetentionDays))
+			err = s.Jobs.Artifacts.SetRetention(ctx, task.WorkspaceID, task.TaskID, int(req.RetentionDays), key)
 		}
 	}
 	return &emptypb.Empty{}, rpcError(jobFailure(err))
@@ -607,7 +640,7 @@ func (s *JobsServer) DownloadJobResult(req *eruunv1.JobArtifactRequest, stream e
 		return rpcError(bcode.ErrJobInput)
 	}
 	return streamArchive(stream.Context(), stream, func(ctx context.Context, w io.Writer) error {
-		task, err := s.Jobs.Task(ctx, req.TaskId)
+		task, key, err := s.resultTask(ctx, req.TaskId, req.ExecutionKey)
 		if err != nil {
 			return err
 		}
@@ -615,7 +648,7 @@ func (s *JobsServer) DownloadJobResult(req *eruunv1.JobArtifactRequest, stream e
 		if err != nil {
 			return err
 		}
-		if item.TaskID != task.TaskID {
+		if item.TaskID != task.TaskID || item.ExecutionKey != key || item.Kind == artifacts.KindDataset {
 			return bcode.ErrNotFound
 		}
 		return s.Jobs.Artifacts.Download(ctx, task.WorkspaceID, item.ID, w)
@@ -627,10 +660,10 @@ func (s *JobsServer) DownloadJobDelivery(req *eruunv1.JobDeliveryRequest, stream
 		return rpcError(bcode.ErrJobInput)
 	}
 	return streamArchive(stream.Context(), stream, func(ctx context.Context, w io.Writer) error {
-		task, err := s.Jobs.Task(ctx, req.TaskId)
+		task, key, err := s.resultTask(ctx, req.TaskId, req.ExecutionKey)
 		if err != nil {
 			return err
 		}
-		return s.Jobs.Artifacts.DownloadDelivery(ctx, task.WorkspaceID, task.TaskID, req.Target, w)
+		return s.Jobs.Artifacts.DownloadDelivery(ctx, task.WorkspaceID, task.TaskID, req.Target, w, key)
 	})
 }

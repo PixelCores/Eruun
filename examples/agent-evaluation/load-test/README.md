@@ -11,7 +11,7 @@ python3 examples/agent-evaluation/load-test/task/environment/simulate.py \
   /tmp/eruun-load-timing.json --min-seconds 1 --max-seconds 2
 ```
 
-这里的“任务包”是上传到 `/api/v1/job-datasets` 的 tar.gz：包含 `instruction.md`（任务说明）、`task.toml`（镜像和超时）、`environment/Dockerfile`（本机构建镜像用）、`solution/solve.sh`（oracle 执行的参考脚本）和 `tests/test.sh`（验证完成）。Harbor 的 `oracle` 模式不会向模型提问，而是运行 `solve.sh`；该脚本调用镜像里的 `simulate.py`，五个线程休眠后生成时长文件，verifier 检查文件并给出 reward。上传时 Eruun 自动生成任务包 ID，响应的 `data.id` 就是提交 JSON 中的 `datasetId`；这个字段是 Eruun 的上传归档 ID，Harbor 实际接收的是 Runner 解包后的本地任务路径。
+这里的“任务包”是上传到 `/api/v1/job-datasets` 的 tar.gz：包含 `instruction.md`（任务说明）、`task.toml`（镜像和超时）、`environment/Dockerfile`（本机构建镜像用）、`solution/solve.sh`（oracle 执行的参考脚本）和 `tests/test.sh`（验证完成）。Harbor 的 `oracle` 模式不会向模型提问，而是运行 `solve.sh`；该脚本调用镜像里的 `simulate.py`，五个线程休眠后生成时长文件，verifier 检查文件并给出 reward。上传时 Eruun 自动生成任务包 ID，响应的 `data.id` 就是提交 JSON 中的 `taskPackageId`；这个字段是 Eruun 的上传归档 ID，Harbor 实际接收的是 Runner 解包后的本地任务路径。
 
 使用目标集群可拉取的显式镜像标签构建和推送环境镜像，然后在临时副本中替换 `task.toml` 的占位 `docker_image`，再打包并上传。Dockerfile 只在本机用于构建；Eruun 不负责构建用户镜像。
 
@@ -74,4 +74,4 @@ python3 examples/agent-evaluation/load-test/submit.py \
 
 提交器读取环境变量 `ERUUN_TOKEN`，不把 Token 写入输出；每次运行生成唯一 `runId` 和 Job 名称。JSONL 含每条请求的计划/实际开始时间、完成时间、HTTP 状态、业务码、task ID 和接受判定，文件以 `0600` 创建；已有输出文件不会被覆盖。网络超时或 202 响应内容不完整时，脚本标为不确定并退出非零，**不会自动重试创建**。1000 个 task ID 是后续状态、Kubernetes 和结果指标的关联键；仅有 `accepted=1000/1000` 不能说明任务已运行或结果已保存。
 
-请求模板是同目录的 `evaluation.json`，使用 `type=eval`，由服务端默认选择 Harbor 0.22.0，并选择 `oracle`、单 trial、900 秒 Job 执行预算及隔离数据库上的 `database/full` 保存目标。请求体省略 `workspaceId`；批量提交器仍用 `X-Eruun-Workspace-ID` 指定已授权空间，1000 个 Job 复用上传任务包的 `datasetId`。默认资源 Trait 为 Runner 和任务环境分别请求 1 CPU/2 GiB；并发增大前请按压测计划确认空间配额和节点容量。`--template` 可指定经过人工核对的其他请求模板，以便固定不同的资源或保存策略。压测结束后保留 JSONL、任务状态和监控记录，并按隔离环境流程清理镜像、数据库完整副本与 Kubernetes 资源；源归档的一天保留期不会自动删除数据库保存副本。
+请求模板是同目录的 `evaluation.json`，使用 `type=job` 和 `traits.eval`，由平台 Runner 使用 Harbor 0.22.0，并选择 `oracle`、单 trial、900 秒 Job 执行预算及隔离数据库上的 `database/full` 保存目标。请求体省略 `workspaceId`；批量提交器仍用 `X-Eruun-Workspace-ID` 指定已授权空间，1000 个 Job 复用上传任务包的 `taskPackageId`。默认资源 Trait 为 Runner 和任务环境分别请求 1 CPU/2 GiB；并发增大前请按压测计划确认空间配额和节点容量。`--template` 可指定经过人工核对的其他请求模板，以便固定不同的资源或保存策略。压测结束后保留 JSONL、任务状态和监控记录，并按隔离环境流程清理镜像、数据库完整副本与 Kubernetes 资源；源归档的一天保留期不会自动删除数据库保存副本。

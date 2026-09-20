@@ -2,9 +2,12 @@ package workflow
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"strings"
 
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -15,6 +18,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	workspacejobs "github.com/PixelCores/Eruun/pkg/apiserver/jobs"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
@@ -547,6 +551,40 @@ func buildJobsForComponent(
 		setCloudJobTimeout(jobTask)
 		buckets[config.JobPriorityNormal] = append(buckets[config.JobPriorityNormal], jobTask)
 	case config.InstantJob:
+		var traits domainspec.Traits
+		if component.Traits != nil {
+			raw, err := json.Marshal(component.Traits)
+			if err == nil {
+				err = json.Unmarshal(raw, &traits)
+			}
+			if err != nil {
+				logger.Error(err, "Decode Job traits", "componentName", component.Name)
+			}
+		}
+		if traits.Evaluation != nil {
+			identity := sha256.Sum256([]byte(task.TaskID + "|" + cloudExecutionKey + "|" + component.Name))
+			name := fmt.Sprintf("eruun-eval-%x", identity[:16])
+			jobTask := NewJobTask(name, namespace, task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, resourceAppName)
+			jobTask.WorkspaceID = task.WorkspaceID
+			jobTask.JobType = string(config.JobEval)
+			workload := &batchv1.Job{}
+			workload.Labels = job.BuildLabels(component, &properties)
+			job.ApplyComponentAnnotationsToObject(workload, component)
+			jobTask.JobInfo = workload
+			jobTask.Info = buildResourceInfo(domainspec.ResourceJob, namespace, name)
+			err := domainspec.NormalizeComponentEvaluation(string(component.ComponentType), component.Image, properties, &traits)
+			if err == nil {
+				err = workspacejobs.SetEvaluationTraits(jobTask, domainspec.JobTraits{
+					Evaluation: traits.Evaluation, Resources: traits.Resources, Envs: traits.Envs,
+				})
+			}
+			if err != nil {
+				jobTask.Status, jobTask.Error = config.StatusFailed, err.Error()
+			}
+			applyJobFailurePolicyOverride(jobTask, properties.FailurePolicy)
+			buckets[config.JobPriorityNormal] = append(buckets[config.JobPriorityNormal], jobTask)
+			break
+		}
 		if properties.StartTime > 0 {
 			result := job.GenerateOneTimeJob(component, &properties, properties.RunPolicy, properties.StartTime)
 			fallbackName := naming.JobName(component.Name, resourceAppName)

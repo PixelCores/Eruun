@@ -15,7 +15,6 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
@@ -376,9 +375,8 @@ func (s *Service) RunnerEvent(ctx context.Context, identity RunnerIdentity, even
 }
 
 func validateLockedRunnerTask(task *model.WorkflowQueue, auth *runnerAuthorization) error {
-	if task == nil || auth == nil || task.Type != config.WorkflowTaskTypeJob || task.AppID != "" ||
-		task.WorkspaceID != auth.task.WorkspaceID || task.JobSpec != auth.task.JobSpec ||
-		subtleTokenMismatch(task.JobToken, auth.task.JobToken) {
+	if task == nil || auth == nil || task.Type != auth.task.Type || task.AppID != auth.task.AppID ||
+		task.WorkspaceID != auth.task.WorkspaceID {
 		return bcode.ErrUnauthorized
 	}
 	return runnerParentAuthorized(task)
@@ -391,7 +389,7 @@ func subtleTokenMismatch(left, right string) bool {
 func validateLockedRunnerJob(record *model.JobInfo, auth *runnerAuthorization, parentStatus config.Status) error {
 	if record == nil || auth == nil || !runnerJobStatusAuthorized(record, parentStatus) || record.Type != string(config.JobEval) ||
 		record.WorkspaceID != auth.job.WorkspaceID || record.TaskID != auth.job.TaskID || record.ExecutionKey == nil || auth.job.ExecutionKey == nil ||
-		*record.ExecutionKey != *auth.job.ExecutionKey || record.RunGeneration != auth.job.RunGeneration || record.Attempt != auth.job.Attempt {
+		*record.ExecutionKey != *auth.job.ExecutionKey || record.EvaluationInfo != auth.job.EvaluationInfo || record.RunGeneration != auth.job.RunGeneration || record.Attempt != auth.job.Attempt {
 		return bcode.ErrUnauthorized
 	}
 	if workflowjob.ValidateInstantJobRetryExecution(record, auth.liveJob) != nil {
@@ -438,7 +436,7 @@ func (s *Service) applyRunnerEvent(ctx context.Context, store datastore.DataStor
 			CollectionComplete *bool  `json:"collectionComplete"`
 			ExecutionStatus    string `json:"executionStatus"`
 		}
-		if artifact.WorkspaceID != auth.task.WorkspaceID || artifact.TaskID != auth.task.TaskID || artifact.Kind != artifacts.KindSource || artifact.Expired || artifact.Digest != event.Terminal.ArtifactDigest ||
+		if artifact.WorkspaceID != auth.task.WorkspaceID || artifact.TaskID != auth.task.TaskID || auth.job.ExecutionKey == nil || artifact.ExecutionKey != *auth.job.ExecutionKey || artifact.Kind != artifacts.KindSource || artifact.Expired || artifact.Digest != event.Terminal.ArtifactDigest ||
 			json.Unmarshal(artifact.Summary, &summary) != nil || summary.CollectionComplete == nil || *summary.CollectionComplete != *event.Terminal.CollectionComplete ||
 			(summary.ExecutionStatus != "succeeded" && summary.ExecutionStatus != "failed") ||
 			(event.Terminal.Outcome == "succeeded" && (!*summary.CollectionComplete || summary.ExecutionStatus != "succeeded")) {
@@ -499,9 +497,4 @@ func latestRunnerStatus(ctx context.Context, store datastore.DataStore, records 
 		return nil, err
 	}
 	return runnerStatus(latest, now)
-}
-
-func validateRunnerDeclaration(raw string) bool {
-	var declaration spec.JobSpec
-	return json.Unmarshal([]byte(raw), &declaration) == nil && declaration.Type == string(config.JobEval)
 }

@@ -12,15 +12,16 @@ import (
 
 // Traits is the aggregate of all attachable traits for a component.
 type Traits struct {
-	Init    []InitTraitSpec     `json:"init,omitempty"`
-	Storage []StorageTraitSpec  `json:"storage,omitempty"`
-	Sidecar []SidecarTraitsSpec `json:"sidecar,omitempty"`
-	Ingress []IngressTraitsSpec `json:"ingress,omitempty"`
-	Service []ServiceTraitSpec  `json:"service,omitempty"`
-	RBAC    []RBACPolicySpec    `json:"rbac,omitempty"`
-	EnvFrom []EnvFromSourceSpec `json:"envFrom,omitempty"`
-	Envs    []SimplifiedEnvSpec `json:"envs,omitempty"`
-	Probes  []ProbeTraitsSpec   `json:"probes,omitempty"`
+	Evaluation *EvaluationTraitSpec `json:"eval,omitempty"`
+	Init       []InitTraitSpec      `json:"init,omitempty"`
+	Storage    []StorageTraitSpec   `json:"storage,omitempty"`
+	Sidecar    []SidecarTraitsSpec  `json:"sidecar,omitempty"`
+	Ingress    []IngressTraitsSpec  `json:"ingress,omitempty"`
+	Service    []ServiceTraitSpec   `json:"service,omitempty"`
+	RBAC       []RBACPolicySpec     `json:"rbac,omitempty"`
+	EnvFrom    []EnvFromSourceSpec  `json:"envFrom,omitempty"`
+	Envs       []SimplifiedEnvSpec  `json:"envs,omitempty"`
+	Probes     []ProbeTraitsSpec    `json:"probes,omitempty"`
 	// TargetWorkEnv is rendered as Kubernetes nodeSelector labels on the pod template.
 	TargetWorkEnv map[string]string   `json:"targetWorkEnv,omitempty"`
 	Resources     *ResourceTraitsSpec `json:"resources,omitempty"`
@@ -36,11 +37,12 @@ type Traits struct {
 // probes, targetWorkEnv, share, rollout) are absent by construction, so the
 // decoder rejects them instead of each Job entry point re-checking for them.
 type JobTraits struct {
-	Storage        []StorageTraitSpec  `json:"storage,omitempty"`
-	EnvFrom        []EnvFromSourceSpec `json:"envFrom,omitempty"`
-	Envs           []SimplifiedEnvSpec `json:"envs,omitempty"`
-	Resources      *ResourceTraitsSpec `json:"resources,omitempty"`
-	SecurityPolicy *SecurityPolicySpec `json:"securityPolicy,omitempty"`
+	Evaluation     *EvaluationTraitSpec `json:"eval,omitempty"`
+	Storage        []StorageTraitSpec   `json:"storage,omitempty"`
+	EnvFrom        []EnvFromSourceSpec  `json:"envFrom,omitempty"`
+	Envs           []SimplifiedEnvSpec  `json:"envs,omitempty"`
+	Resources      *ResourceTraitsSpec  `json:"resources,omitempty"`
+	SecurityPolicy *SecurityPolicySpec  `json:"securityPolicy,omitempty"`
 }
 
 // InitTraitSpec describes an init container with its own nested traits.

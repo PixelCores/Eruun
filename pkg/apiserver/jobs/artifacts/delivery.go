@@ -17,11 +17,11 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
-func scopedDelivery(ctx context.Context, db datastore.DataStore, workspaceID, taskID, target string, lock bool) (*model.JobDelivery, error) {
+func scopedDelivery(ctx context.Context, db datastore.DataStore, workspaceID, taskID, target string, lock bool, executionKey ...string) (*model.JobDelivery, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return nil, err
 	}
-	d := &model.JobDelivery{ID: deliveryID(workspaceID, taskID, target)}
+	d := &model.JobDelivery{ID: deliveryID(workspaceID, taskID, target, executionKey...)}
 	var err error
 	if lock {
 		err = locked(ctx, db, d)
@@ -31,20 +31,20 @@ func scopedDelivery(ctx context.Context, db datastore.DataStore, workspaceID, ta
 	if err != nil {
 		return nil, err
 	}
-	if d.WorkspaceID != workspaceID || d.TaskID != taskID || d.Target != target {
+	if d.WorkspaceID != workspaceID || d.TaskID != taskID || d.Target != target || d.ExecutionKey != executionKeyValue(executionKey) {
 		return nil, datastore.ErrRecordNotExist
 	}
 	return d, nil
 }
 
-func (s *Store) Deliveries(ctx context.Context, workspaceID, taskID string) ([]*model.JobDelivery, error) {
+func (s *Store) Deliveries(ctx context.Context, workspaceID, taskID string, executionKey ...string) ([]*model.JobDelivery, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return nil, err
 	}
 	if taskID == "" {
 		return nil, fmt.Errorf("taskId is required")
 	}
-	records, err := s.db.List(ctx, &model.JobDelivery{WorkspaceID: workspaceID, TaskID: taskID}, nil)
+	records, err := s.db.List(ctx, &model.JobDelivery{WorkspaceID: workspaceID, TaskID: taskID, ExecutionKey: executionKeyValue(executionKey)}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +55,7 @@ func (s *Store) Deliveries(ctx context.Context, workspaceID, taskID string) ([]*
 	return result, nil
 }
 
-func (s *Store) Retry(ctx context.Context, workspaceID, taskID, target string) error {
+func (s *Store) Retry(ctx context.Context, workspaceID, taskID, target string, executionKey ...string) error {
 	return transaction(ctx, s.db, func(tx datastore.DataStore) error {
 		if err := requireWorkspace(workspaceID); err != nil {
 			return err
@@ -63,7 +63,7 @@ func (s *Store) Retry(ctx context.Context, workspaceID, taskID, target string) e
 		if err := locked(ctx, tx, &model.Workspace{ID: workspaceID}); err != nil {
 			return err
 		}
-		d, err := scopedDelivery(ctx, tx, workspaceID, taskID, target, true)
+		d, err := scopedDelivery(ctx, tx, workspaceID, taskID, target, true, executionKey...)
 		if err != nil {
 			return err
 		}
@@ -133,7 +133,7 @@ func (s *Store) deliver(ctx context.Context, candidate *model.JobDelivery) error
 		if err := locked(ctx, tx, &model.Workspace{ID: candidate.WorkspaceID}); err != nil {
 			return err
 		}
-		d, err = scopedDelivery(ctx, tx, candidate.WorkspaceID, candidate.TaskID, candidate.Target, true)
+		d, err = scopedDelivery(ctx, tx, candidate.WorkspaceID, candidate.TaskID, candidate.Target, true, candidate.ExecutionKey)
 		if err != nil {
 			return err
 		}
@@ -145,7 +145,7 @@ func (s *Store) deliver(ctx context.Context, candidate *model.JobDelivery) error
 			return nil
 		}
 		if d.Mode == "metadata" {
-			full, err := scopedDelivery(ctx, tx, d.WorkspaceID, d.TaskID, "minio", false)
+			full, err := scopedDelivery(ctx, tx, d.WorkspaceID, d.TaskID, "minio", false, d.ExecutionKey)
 			if err == nil && (full.State == DeliveryPending || full.State == DeliveryRunning) {
 				return nil
 			}
@@ -211,15 +211,15 @@ func (s *Store) copyMinIO(ctx context.Context, d *model.JobDelivery) (string, er
 	if _, err = file.Seek(0, io.SeekStart); err != nil {
 		return "", err
 	}
-	key := fmt.Sprintf("workspaces/%s/jobs/%s/%s.tar.gz", stableID(d.WorkspaceID), stableID(d.TaskID), source.Digest)
+	key := fmt.Sprintf("workspaces/%s/jobs/%s/%s.tar.gz", stableID(d.WorkspaceID), scopedID([]string{d.TaskID}, []string{d.ExecutionKey}), source.Digest)
 	return s.objects.Put(ctx, key, file, source.Size, source.Digest)
 }
 
 func (s *Store) copyDatabase(ctx context.Context, d *model.JobDelivery) (string, error) {
-	id := databaseID(d.WorkspaceID, d.TaskID)
+	id := databaseID(d.WorkspaceID, d.TaskID, d.ExecutionKey)
 	err := transaction(ctx, s.db, func(tx datastore.DataStore) error {
 		// Lock in the same order as Retry. Confirm the lease before publishing a copy.
-		current, err := scopedDelivery(ctx, tx, d.WorkspaceID, d.TaskID, d.Target, true)
+		current, err := scopedDelivery(ctx, tx, d.WorkspaceID, d.TaskID, d.Target, true, d.ExecutionKey)
 		if err != nil {
 			return err
 		}
@@ -250,7 +250,7 @@ func (s *Store) copyDatabase(ctx context.Context, d *model.JobDelivery) (string,
 		copy.Expired = false
 		copy.BaseModel = model.BaseModel{}
 		if d.Mode == "metadata" {
-			full, err := scopedDelivery(ctx, tx, d.WorkspaceID, d.TaskID, "minio", false)
+			full, err := scopedDelivery(ctx, tx, d.WorkspaceID, d.TaskID, "minio", false, d.ExecutionKey)
 			if err != nil || full.State != DeliverySucceeded || full.SourceID != source.ID {
 				return fmt.Errorf("metadata destination requires a successful MinIO copy")
 			}
@@ -286,8 +286,8 @@ func (s *Store) copyDatabase(ctx context.Context, d *model.JobDelivery) (string,
 	return id, nil
 }
 
-func (s *Store) DownloadDelivery(ctx context.Context, workspaceID, taskID, target string, w io.Writer) error {
-	d, err := scopedDelivery(ctx, s.db, workspaceID, taskID, target, false)
+func (s *Store) DownloadDelivery(ctx context.Context, workspaceID, taskID, target string, w io.Writer, executionKey ...string) error {
+	d, err := scopedDelivery(ctx, s.db, workspaceID, taskID, target, false, executionKey...)
 	if err != nil {
 		return err
 	}

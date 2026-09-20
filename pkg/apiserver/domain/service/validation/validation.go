@@ -11,6 +11,7 @@ import (
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
@@ -207,6 +208,9 @@ func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.C
 					errors = append(errors, apisv1.ValidationError{Field: fieldPrefix, Code: apisv1.ErrCodeInvalidTraitConfig, Message: err.Error()})
 				}
 			}
+			if err := spec.NormalizeComponentEvaluation(string(comp.ComponentType), comp.Image, comp.Properties, &comp.Traits); err == nil {
+				effectiveReq.Components[i] = comp
+			}
 			errors = append(errors, v.validateComponent(comp, fieldPrefix, componentNames)...)
 		}
 	}
@@ -372,10 +376,16 @@ func (v *validationServiceImpl) validateComponent(comp apisv1.CreateComponentReq
 		})
 	}
 
+	if comp.Traits.Evaluation != nil {
+		if err := spec.NormalizeComponentEvaluation(string(comp.ComponentType), comp.Image, comp.Properties, &comp.Traits); err != nil {
+			errors = append(errors, apisv1.ValidationError{Field: fieldPrefix + ".traits.eval", Code: apisv1.ErrCodeInvalidTraitConfig, Message: err.Error()})
+		}
+	}
+
 	// Validate image requirement for webservice and store types
 	if (comp.ComponentType == config.ServerJob ||
 		comp.ComponentType == config.StoreJob ||
-		comp.ComponentType == config.InstantJob ||
+		(comp.ComponentType == config.InstantJob && comp.Traits.Evaluation == nil) ||
 		comp.ComponentType == config.ScheduledJob) && comp.Image == "" {
 		errors = append(errors, apisv1.ValidationError{
 			Field:   fmt.Sprintf("%s.image", fieldPrefix),

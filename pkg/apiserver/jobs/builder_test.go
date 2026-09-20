@@ -59,9 +59,8 @@ func TestEvaluationCredentialEnvsSurviveRunnerPlatformEnvs(t *testing.T) {
 	require.NoError(t, err)
 
 	accepted, err := service.Submit(ctx, SubmitRequest{WorkspaceID: "space", JobSpec: spec.JobSpec{
-		Name: "evaluate", Type: "eval",
-		Spec: json.RawMessage(`{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"11111111-1111-1111-1111-111111111111","agent":{"name":"terminus-2","model":"openai/gpt-4"}}`),
-		Traits: spec.JobTraits{Envs: []spec.SimplifiedEnvSpec{
+		Name: "evaluate", Type: "job",
+		Traits: spec.JobTraits{Evaluation: &spec.EvaluationTraitSpec{Env: "ack", TaskPackageID: dataset.ID, Agent: "terminus-2", Model: "openai/gpt-4"}, Envs: []spec.SimplifiedEnvSpec{
 			{Name: "OPENAI_API_KEY", ValueFrom: spec.ValueSource{Secret: &spec.SecretSelectorSpec{Name: "evaluation-model", Key: "api-key"}}},
 		}},
 	}})
@@ -70,6 +69,7 @@ func TestEvaluationCredentialEnvsSurviveRunnerPlatformEnvs(t *testing.T) {
 	require.NoError(t, raw.Get(ctx, parent))
 	task, err := BuildTask(ctx, service.Store, service.Config, parent, "space-ns")
 	require.NoError(t, err)
+	require.NoError(t, BuildEvaluationTask(ctx, service.Store, service.Config, task, spec.JobTraits{}))
 
 	envs := map[string]corev1.EnvVar{}
 	for _, env := range task.JobInfo.(*batchv1.Job).Spec.Template.Spec.Containers[0].Env {
@@ -95,9 +95,8 @@ func TestEvaluationCredentialPreflightRejectsMissingSecretKey(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = service.Submit(ctx, SubmitRequest{WorkspaceID: "space", JobSpec: spec.JobSpec{
-		Name: "evaluate", Type: "eval",
-		Spec: json.RawMessage(`{"framework":"harbor","frameworkVersion":"0.22.0","datasetId":"11111111-1111-1111-1111-111111111111","agent":{"name":"terminus-2","model":"openai/gpt-4"}}`),
-		Traits: spec.JobTraits{Envs: []spec.SimplifiedEnvSpec{
+		Name: "evaluate", Type: "job",
+		Traits: spec.JobTraits{Evaluation: &spec.EvaluationTraitSpec{Env: "ack", TaskPackageID: dataset.ID, Agent: "terminus-2", Model: "openai/gpt-4"}, Envs: []spec.SimplifiedEnvSpec{
 			{Name: "OPENAI_API_KEY", ValueFrom: spec.ValueSource{Secret: &spec.SecretSelectorSpec{Name: "evaluation-model", Key: "api-key"}}},
 		}},
 	}})
@@ -128,7 +127,8 @@ func TestEvaluationBuilderUsesBoundedRunnerIdentityAndDownwardAPI(t *testing.T) 
 		if env.Name == "ERUUN_JOB_CONFIG" {
 			var runtimeConfig map[string]any
 			require.NoError(t, json.Unmarshal([]byte(env.Value), &runtimeConfig))
-			require.Equal(t, f.parent.JobToken, runtimeConfig["token"])
+			require.Equal(t, f.identity.Token, runtimeConfig["token"])
+			require.NotContains(t, runtimeConfig["agent"].(map[string]any), "model", "oracle does not submit an empty model to the Runner")
 			require.Equal(t, "default", runtimeConfig["sandboxServiceAccount"])
 			require.Equal(t, f.service.Config.Jobs.APIURL+"/api/v1/job-runners/"+f.parent.TaskID+"/events", runtimeConfig["eventURL"])
 		} else if env.ValueFrom != nil && env.ValueFrom.FieldRef != nil {
@@ -137,9 +137,50 @@ func TestEvaluationBuilderUsesBoundedRunnerIdentityAndDownwardAPI(t *testing.T) 
 		}
 	}
 	require.Equal(t, map[string]string{"POD_NAME": "metadata.name", "POD_UID": "metadata.uid", "POD_NAMESPACE": "metadata.namespace"}, fields)
-	task := &model.JobTask{Name: f.workload.Name, Namespace: "space-ns", WorkspaceID: "space", TaskID: f.parent.TaskID, JobType: string(config.JobEval), JobInfo: f.workload}
+	task := &model.JobTask{Name: f.workload.Name, Namespace: "space-ns", WorkspaceID: "space", TaskID: f.parent.TaskID, JobType: string(config.JobEval), JobInfo: f.workload, EvaluationInfo: f.record.EvaluationInfo}
 	require.NoError(t, workspace.PrepareEvaluationTask(task, &model.Workspace{ID: "space", Namespace: "space-ns"}, spec.WorkspaceConfig{}, runner.Image))
 	require.Equal(t, f.parent.TaskID, f.workload.Spec.Template.Annotations[config.AnnotationJobTaskID])
 	require.Equal(t, "original-execution", f.workload.Spec.Template.Annotations[config.AnnotationJobExecutionKey])
 	require.Equal(t, "2", f.workload.Spec.Template.Annotations[config.AnnotationJobRunGeneration])
+}
+
+func TestEvaluationBuilderSeparatesResourcesAndPreservesRecoveredSnapshot(t *testing.T) {
+	service, raw, ctx := testJobService(t)
+	dataset := &model.JobArtifact{ID: "11111111-1111-1111-1111-111111111111", WorkspaceID: "space", Kind: artifacts.KindDataset, Digest: strings.Repeat("a", 64)}
+	require.NoError(t, raw.Add(ctx, dataset))
+	traits := evaluationDeclaration("evaluate", dataset.ID, "terminus-2", "openai/model-a").Traits
+	traits.Resources = &spec.ResourceTraitsSpec{CPU: "1", Memory: "1Gi"}
+	traits.Evaluation.SandboxResources = &spec.ResourceTraitsSpec{CPU: "4", Memory: "8Gi"}
+	task := &model.JobTask{Name: "evaluation-component", Namespace: "space-ns", WorkspaceID: "space", AppID: "app", TaskID: "workflow-task", ExecutionKey: "step-execution", JobInfo: &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{config.LabelAppID: "app", config.LabelComponentName: "evaluation-component", config.LabelComponentID: "23"}, Annotations: map[string]string{config.AnnotationComponentName: "evaluation.component"}}}}
+	require.NoError(t, BuildEvaluationTask(ctx, service.Store, service.Config, task, traits))
+	snapshot := task.EvaluationInfo
+	workload := task.JobInfo.(*batchv1.Job)
+	require.Equal(t, "app", workload.Labels[config.LabelAppID])
+	require.Equal(t, "evaluation-component", workload.Spec.Template.Labels[config.LabelComponentName])
+	require.Equal(t, "23", workload.Labels[config.LabelComponentID])
+	require.Equal(t, "23", workload.Spec.Template.Labels[config.LabelComponentID])
+	require.Equal(t, "evaluation.component", workload.Annotations[config.AnnotationComponentName])
+	require.Equal(t, "evaluation.component", workload.Spec.Template.Annotations[config.AnnotationComponentName])
+	require.Equal(t, "1", workload.Spec.Template.Spec.Containers[0].Resources.Requests.Cpu().String())
+	for _, env := range workload.Spec.Template.Spec.Containers[0].Env {
+		if env.Name != "ERUUN_JOB_CONFIG" {
+			continue
+		}
+		var rendered struct {
+			Resources    spec.ResourceTraitsSpec `json:"resources"`
+			ExecutionKey string                  `json:"executionKey"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(env.Value), &rendered))
+		require.Equal(t, "4", rendered.Resources.CPU)
+		require.Equal(t, "8Gi", rendered.Resources.Memory)
+		require.Equal(t, task.ExecutionKey, rendered.ExecutionKey)
+	}
+	traits.Evaluation.Model = "openai/model-b"
+	require.NoError(t, BuildEvaluationTask(ctx, service.Store, service.Config, task, traits))
+	require.Equal(t, snapshot, task.EvaluationInfo, "recovery retains the committed declaration and capability")
+	require.Equal(t, "evaluation-component", task.JobInfo.(*batchv1.Job).Labels[config.LabelComponentName])
+	require.Equal(t, "evaluation.component", task.JobInfo.(*batchv1.Job).Annotations[config.AnnotationComponentName])
+	info, err := decodeEvaluationInfo(task.EvaluationInfo)
+	require.NoError(t, err)
+	require.Equal(t, "openai/model-a", info.Traits.Evaluation.Model)
 }

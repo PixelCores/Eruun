@@ -8,19 +8,20 @@ import (
 // JobArtifact describes an immutable archive. Source expiry removes its chunks,
 // while dataset and database destination copies have independent lifetimes.
 type JobArtifact struct {
-	ID          string          `json:"id" gorm:"primaryKey;type:varchar(64);column:id"`
-	WorkspaceID string          `json:"workspaceId" gorm:"type:varchar(64);column:workspace_id;index"`
-	TaskID      string          `json:"taskId,omitempty" gorm:"type:varchar(255);column:task_id;index"`
-	Kind        string          `json:"kind" gorm:"type:varchar(32);column:kind;index"`
-	Name        string          `json:"name" gorm:"type:varchar(255);column:name"`
-	Digest      string          `json:"digest" gorm:"type:varchar(64);column:digest"`
-	Size        int64           `json:"size" gorm:"column:size"`
-	Chunks      int             `json:"-" gorm:"column:chunks"`
-	Manifest    json.RawMessage `json:"manifest" gorm:"type:longtext;column:manifest"`
-	Summary     json.RawMessage `json:"summary,omitempty" gorm:"type:longtext;column:summary"`
-	Reference   string          `json:"reference,omitempty" gorm:"type:text;column:reference"`
-	ExpiresAt   *time.Time      `json:"expiresAt,omitempty" gorm:"column:expires_at;index"`
-	Expired     bool            `json:"expired" gorm:"column:expired;not null;default:false"`
+	ID           string          `json:"id" gorm:"primaryKey;type:varchar(64);column:id"`
+	WorkspaceID  string          `json:"workspaceId" gorm:"type:varchar(64);column:workspace_id;index"`
+	TaskID       string          `json:"taskId,omitempty" gorm:"type:varchar(255);column:task_id;index"`
+	ExecutionKey string          `json:"executionKey,omitempty" gorm:"type:varchar(255);column:execution_key;index;not null;default:''"`
+	Kind         string          `json:"kind" gorm:"type:varchar(32);column:kind;index"`
+	Name         string          `json:"name" gorm:"type:varchar(255);column:name"`
+	Digest       string          `json:"digest" gorm:"type:varchar(64);column:digest"`
+	Size         int64           `json:"size" gorm:"column:size"`
+	Chunks       int             `json:"-" gorm:"column:chunks"`
+	Manifest     json.RawMessage `json:"manifest" gorm:"type:longtext;column:manifest"`
+	Summary      json.RawMessage `json:"summary,omitempty" gorm:"type:longtext;column:summary"`
+	Reference    string          `json:"reference,omitempty" gorm:"type:text;column:reference"`
+	ExpiresAt    *time.Time      `json:"expiresAt,omitempty" gorm:"column:expires_at;index"`
+	Expired      bool            `json:"expired" gorm:"column:expired;not null;default:false"`
 	BaseModel
 }
 
@@ -37,6 +38,9 @@ func (a *JobArtifact) Index() map[string]interface{} {
 	}
 	if a.TaskID != "" {
 		m["task_id"] = a.TaskID
+	}
+	if a.ExecutionKey != "" {
+		m["execution_key"] = a.ExecutionKey
 	}
 	if a.Kind != "" {
 		m["kind"] = a.Kind
@@ -73,18 +77,19 @@ func (a *ArtifactChunk) Index() map[string]interface{} {
 
 // JobDelivery tracks one destination independently of evaluation execution.
 type JobDelivery struct {
-	ID          string     `json:"id" gorm:"primaryKey;type:varchar(64);column:id"`
-	WorkspaceID string     `json:"workspaceId" gorm:"type:varchar(64);column:workspace_id;index"`
-	TaskID      string     `json:"taskId" gorm:"type:varchar(255);column:task_id;index"`
-	SourceID    string     `json:"sourceId" gorm:"type:varchar(64);column:source_id"`
-	Target      string     `json:"target" gorm:"type:varchar(32);column:target"`
-	Mode        string     `json:"mode" gorm:"type:varchar(32);column:mode"`
-	State       string     `json:"state" gorm:"type:varchar(32);column:state;index"`
-	Attempts    int        `json:"attempts" gorm:"column:attempts"`
-	LastError   string     `json:"error,omitempty" gorm:"type:text;column:last_error"`
-	Reference   string     `json:"reference,omitempty" gorm:"type:text;column:reference"`
-	LeaseToken  string     `json:"-" gorm:"type:varchar(64);column:lease_token"`
-	LeaseUntil  *time.Time `json:"-" gorm:"column:lease_until"`
+	ID           string     `json:"id" gorm:"primaryKey;type:varchar(64);column:id"`
+	WorkspaceID  string     `json:"workspaceId" gorm:"type:varchar(64);column:workspace_id;index"`
+	TaskID       string     `json:"taskId" gorm:"type:varchar(255);column:task_id;index"`
+	ExecutionKey string     `json:"executionKey,omitempty" gorm:"type:varchar(255);column:execution_key;index;not null;default:''"`
+	SourceID     string     `json:"sourceId" gorm:"type:varchar(64);column:source_id"`
+	Target       string     `json:"target" gorm:"type:varchar(32);column:target"`
+	Mode         string     `json:"mode" gorm:"type:varchar(32);column:mode"`
+	State        string     `json:"state" gorm:"type:varchar(32);column:state;index"`
+	Attempts     int        `json:"attempts" gorm:"column:attempts"`
+	LastError    string     `json:"error,omitempty" gorm:"type:text;column:last_error"`
+	Reference    string     `json:"reference,omitempty" gorm:"type:text;column:reference"`
+	LeaseToken   string     `json:"-" gorm:"type:varchar(64);column:lease_token"`
+	LeaseUntil   *time.Time `json:"-" gorm:"column:lease_until"`
 	BaseModel
 }
 
@@ -101,6 +106,9 @@ func (d *JobDelivery) Index() map[string]interface{} {
 	}
 	if d.TaskID != "" {
 		m["task_id"] = d.TaskID
+	}
+	if d.ExecutionKey != "" {
+		m["execution_key"] = d.ExecutionKey
 	}
 	if d.State != "" {
 		m["state"] = d.State

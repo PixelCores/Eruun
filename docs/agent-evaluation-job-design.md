@@ -1,12 +1,14 @@
-# Eruun Agent 评测任务演进方向
+# Eruun LLM 评测任务演进方向
 
 > 状态：Draft / Proposal。`main` 已实现 Harbor `eval` 空间 Job 及其单实例认领、阶段/心跳/进度/终态协议；当前公共 API、默认参数与运行边界以 [空间 Job API](workspace-jobs-api.md)、[Harbor Runner](../runners/harbor/README.md) 和 [Runner 实现参考](agent-evaluation-runner-service-design.md) 为准。本文保留更多目标、Judge、质量门禁和其他 Agent 能力的后续演进。
+
+> 当前契约修订：评测已统一为 `type: job` + `traits.eval`，支持独立 Job 与应用 Workflow；model 是被测对象，agent 是 harness，env 使用 ack，框架版本属于执行快照。本文后文作为 Job 类型的 `eval` 是内部执行器/早期设计用语；公共请求类型仍是 `job`。后续被测应用引用、Judge 和质量门禁仍属 Proposal。
 
 > 示例说明：本文中的后续流程块仅是概念伪代码，不可直接执行；已注册类型与接口不得由本文重新定义。
 
 ## 1. 与 AI Runtime 的关系
 
-[AI Runtime 愿景](ai-runtime-vision.md) 把评测放在统一空间 Job、权限和制品边界中。Eruun 当前已经提供 `/api/v1/jobs`、`eval` 规格、无 AppID 的 WorkspaceID/TaskID 持久化、Harbor 0.22.0 Runner、任务包与结果制品，以及一次性 Kubernetes Job 的状态、取消、超时和数据库执行租约。
+[AI Runtime 愿景](ai-runtime-vision.md) 把评测放在统一空间 Job、权限和制品边界中。Eruun 当前已经提供 `/api/v1/jobs`、`traits.eval` 规格、无 AppID 的 WorkspaceID/TaskID 持久化、Harbor 0.22.0 Runner、任务包与结果制品，以及一次性 Kubernetes Job 的状态、取消、超时和数据库执行租约。
 
 `command` 与 `eval` 是同一空间 namespace 中执行的两种 Eruun Job。两者都构建 Kubernetes `batch/v1 Job`，Pod 固定 `restartPolicy: Never`、Job 固定 `backoffLimit: 0`，并复用统一 Workflow/Job 执行链路；`eval` 使用平台固定的 Harbor Runner 镜像，`command` 直接运行用户声明的镜像和命令。类型边界见 [同一命名空间中的 Job 类型](ai-runtime-vision.md#42-同一命名空间中的-job-类型)。[Runner 阶段状态增强](agent-evaluation-runner-service-design.md) 只服务 `eval`，不包装 `command` 镜像，也不新增评测任务实体、Scheduler、消息队列或状态机。
 
@@ -16,13 +18,13 @@
 
 | 场景 | 任务归属与应用关联 | 执行身份 |
 | --- | --- | --- |
-| 当前独立 Harbor 评测 | 必须有已授权的空间，不需要 AppID、Component 或占位 Application；按现有 Harbor 规格提交数据集、Agent 配置和选项 | 新执行由服务端生成 TaskID |
+| 当前独立 Harbor 评测 | 必须有已授权的空间，不需要 AppID、Component 或占位 Application；以 `eval` Trait 声明模型、harness、任务包和运行条件 | 新执行由服务端生成 TaskID |
 | 后续独立评测 Eruun 中的应用 | 任务属于提交时确定的空间；需要新增、校验并持久化被测应用及不可变版本引用 | 新执行由服务端生成 TaskID，不以目标 AppID 代替 |
-| 后续应用部署 Workflow 中的评测步骤 | 继承应用归属与所在 Workflow 执行上下文，使用该路径原有的 AppID | 复用所在执行的 TaskID，以 Job 身份区分评测步骤 |
+| 当前应用 Workflow 中的模型评测步骤 | 继承应用归属与所在 Workflow 执行上下文，使用该路径原有的 AppID | 复用所在执行的 TaskID，以 Job 身份区分评测步骤 |
 
 独立评测的报告、状态、取消与审计围绕 TaskID 关联；数据集、目标 revision 和 case ID 用于说明测了什么，不能替代任务执行身份。相同输入再次发起一次评测应获得新的 TaskID；同一次执行的恢复和重试沿用 TaskID，并分别受 Job 执行身份与 Workflow Worker ownership fence 约束。
 
-当前只有第一类 Harbor 评测由空间 Job API 承载；现有 `AgentEvaluationSpec` 没有 Eruun 应用目标或版本引用。后两类场景接入时必须补齐目标契约，并复用相应执行的身份和生命周期，不能把独立 Job 的 AppID 置空规则反向套用到应用 Workflow。
+当前独立评测与应用 Workflow 内的模型评测已经共用 `EvaluationTraitSpec`。应用内执行并不意味着被测对象就是该应用：被测 Eruun 应用及版本引用仍需后续目标契约，不应与承载评测的 AppID 混淆。
 
 ## 2. 目标与非目标
 
@@ -45,7 +47,7 @@
 
 当前 Harbor 实现已经定义的输入见 [空间 Job API](workspace-jobs-api.md)。后续扩展仍应保持最小闭环：
 
-- Job 类型继续使用已注册的 `eval`；普通一次性命令继续使用 `command`，不增加语义重复的 `custom`。
+- 评测继续使用 `type: job` 与 `traits.eval`；普通一次性命令继续使用 `command`，不增加语义重复的 `custom`。
 - 经服务端校验的 workspace 归属和调用者身份；不把 ProjectID、AppID 或 Component 作为所有评测的通用必填信息。
 - 不可变的目标引用；它可以是部署后的 Agent、模型端点或后续定义的运行配置。
 - 带版本或内容摘要的数据集引用。

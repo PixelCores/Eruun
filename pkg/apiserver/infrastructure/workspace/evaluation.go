@@ -23,17 +23,24 @@ const EvaluationRunnerName = "eruun-evaluation-runner"
 const EvaluationRunnerLabel = "eruun.io/evaluation-runner"
 
 type evaluationRunnerKey struct{}
-type evaluationRunnerAccess struct{ taskID, image string }
+type evaluationRunnerAccess struct{ jobName, image string }
 
-// WithEvaluationRunner is used only after loading and validating a persisted
-// evaluation task. It grants one trusted Runner image access to its bounded SA.
-func WithEvaluationRunner(ctx context.Context, taskID, image string) context.Context {
-	return context.WithValue(ctx, evaluationRunnerKey{}, evaluationRunnerAccess{taskID: taskID, image: image})
+// WithEvaluationRunner grants the generated Job name and trusted Runner image
+// access to its bounded SA. Each evaluation in a workflow has its own entry.
+func WithEvaluationRunner(ctx context.Context, jobName, image string) context.Context {
+	entries := make(map[string]evaluationRunnerAccess)
+	if current, ok := ctx.Value(evaluationRunnerKey{}).(map[string]evaluationRunnerAccess); ok {
+		for name, access := range current {
+			entries[name] = access
+		}
+	}
+	entries[jobName] = evaluationRunnerAccess{jobName: jobName, image: image}
+	return context.WithValue(ctx, evaluationRunnerKey{}, entries)
 }
 
 func prepareEvaluationJob(obj map[string]interface{}, access evaluationRunnerAccess) error {
 	meta := mapAt(obj, "metadata")
-	if access.taskID == "" || access.image == "" || meta["name"] != "eruun-job-"+access.taskID {
+	if access.jobName == "" || access.image == "" || meta["name"] != access.jobName {
 		return bcode.ErrForbidden
 	}
 	template := mapAt(mapAt(obj, "spec"), "template")
@@ -66,7 +73,7 @@ func prepareEvaluationJob(obj map[string]interface{}, access evaluationRunnerAcc
 }
 
 func PrepareEvaluationTask(task *model.JobTask, w *model.Workspace, cfg spec.WorkspaceConfig, image string) error {
-	if task == nil || w == nil || task.JobType != string(config.JobEval) || task.AppID != "" || task.WorkspaceID != w.ID || task.Namespace != w.Namespace {
+	if task == nil || w == nil || task.JobType != string(config.JobEval) || task.EvaluationInfo == "" || task.WorkspaceID != w.ID || task.Namespace != w.Namespace {
 		return bcode.ErrForbidden
 	}
 	raw, err := json.Marshal(task.JobInfo)
@@ -80,7 +87,7 @@ func PrepareEvaluationTask(task *model.JobTask, w *model.Workspace, cfg spec.Wor
 	if namespace, ok := mapAt(obj, "metadata")["namespace"].(string); ok && namespace != "" && namespace != w.Namespace {
 		return bcode.ErrForbidden
 	}
-	if err := prepareEvaluationJob(obj, evaluationRunnerAccess{taskID: task.TaskID, image: image}); err != nil {
+	if err := prepareEvaluationJob(obj, evaluationRunnerAccess{jobName: task.Name, image: image}); err != nil {
 		return err
 	}
 	raw, err = json.Marshal(obj)

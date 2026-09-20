@@ -66,6 +66,12 @@ make grpc-gen-check
 
 Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交多个属性条目；`GetApplicationSpec` 和 `ListApplicationWorkflows` 返回的可编辑 `spec` 也保留完整数组。更新已有 Workflow 时，省略 `failure_policy` 会保留现有策略，显式提交空字符串会重置为默认 `cleanup_all`。数据库重置的 `init_sqlurl` 仅在省略时视为未提供；显式空字符串是无效 URL，调用会失败且不会创建任务。独立 `command` Job 的 `traits.security_policy` 可设置容器安全上下文，提交和读取 Job 时均保留该字段。
 
+## LLM 测评声明与结果选择
+
+独立 `SubmitJob` 与 Application 的 `type: "job"` 组件共用 `EvaluationTrait`：测评配置放在 `traits.eval`，包含 `env`、`model`、`agent`、`task_package_id`、试验次数、并发、超时、Sandbox 资源及结果保存策略。`JobTraits.eval` 和 `AppSpecTraits.eval` 沿用原字段号 7 和 15；二进制消息字段号不变，ProtoJSON 使用 `eval` 并拒绝旧 `evaluation` 键。独立测评请求使用 `type: "job"` 并省略 `spec`；`command` 请求继续使用 `type: "command"` 和 `spec`。旧 `type: "eval"`、评测 `spec` 及顶层 `result_policy` 均不再接受；结果策略迁移至 `traits.eval.result_policy`。旧二进制客户端传入已删除的顶层结果策略也会被拒绝，不会静默忽略。框架版本由平台固定，`GetJob` 的 `framework_version` 返回所选执行实际冻结的版本。字段示例及约束见 [Job API](workspace-jobs-api.md)。
+
+同一 Application Workflow 可以包含多个测评 Job。调用 `GetJob`、`GetJobResults`、结果/投递下载、投递重试和保留期更新时，Application 调用方必须同时提供父 `task_id` 与目标 Job 的 `execution_key`；响应中的 Job 明细、结果和投递也返回该标识。独立 Job 可以省略 `execution_key`，服务端在执行唯一时解析它。结果按执行分别保存，不能用一个执行的标识读取同一 Workflow 中另一个执行的制品。`CancelJob` 仅接受独立 Job 的父 `task_id`，不接受 `execution_key`；Application 仍通过 Workflow 取消接口取消任务。
+
 ## HTTP 路由到 RPC 对照
 
 当前 HTTP 路由共 108 条；以下 99 条用户可调用路由各映射一个 RPC。表中全名与生成客户端方法一一对应，具体字段及请求/响应类型见各 `.proto` 文件。

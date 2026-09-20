@@ -20,13 +20,12 @@ const (
 	EvaluationCollectionGraceSeconds = 360
 )
 
-// JobSpec describes one standalone execution. Type-specific inputs are not Traits.
+// JobSpec describes one standalone command or a Job with an evaluation trait.
 type JobSpec struct {
-	Name         string           `json:"name"`
-	Type         string           `json:"type"`
-	Spec         json.RawMessage  `json:"spec"`
-	Traits       JobTraits        `json:"traits,omitempty"`
-	ResultPolicy *JobResultPolicy `json:"resultPolicy,omitempty"`
+	Name   string          `json:"name"`
+	Type   string          `json:"type"`
+	Spec   json.RawMessage `json:"spec,omitempty"`
+	Traits JobTraits       `json:"traits,omitempty"`
 }
 
 type CommandJobSpec struct {
@@ -36,23 +35,61 @@ type CommandJobSpec struct {
 	TimeoutSeconds int64    `json:"timeoutSeconds,omitempty"`
 }
 
-type AgentEvaluationSpec struct {
-	Framework        string          `json:"framework"`
-	FrameworkVersion string          `json:"frameworkVersion"`
-	DatasetID        string          `json:"datasetId"`
-	Agent            EvaluationAgent `json:"agent"`
-	Options          HarborOptions   `json:"options,omitempty"`
-	TimeoutSeconds   int64           `json:"timeoutSeconds,omitempty"`
+// EvaluationTraitSpec describes an LLM evaluation independently of its execution entry point.
+// The platform owns the pinned framework and Runner image.
+type EvaluationTraitSpec struct {
+	Env              string              `json:"env"`
+	Model            string              `json:"model,omitempty"`
+	Agent            string              `json:"agent"`
+	TaskPackageID    string              `json:"taskPackageId"`
+	Attempts         int                 `json:"attempts,omitempty"`
+	Concurrency      int                 `json:"concurrency,omitempty"`
+	TimeoutSeconds   int64               `json:"timeoutSeconds,omitempty"`
+	SandboxResources *ResourceTraitsSpec `json:"sandboxResources,omitempty"`
+	ResultPolicy     *JobResultPolicy    `json:"resultPolicy,omitempty"`
 }
 
-type EvaluationAgent struct {
-	Name  string `json:"name"`
-	Model string `json:"model,omitempty"`
-}
-
-type HarborOptions struct {
-	Attempts    int `json:"attempts,omitempty"`
-	Concurrency int `json:"concurrency,omitempty"`
+func (e *EvaluationTraitSpec) Normalize() error {
+	if e == nil {
+		return fmt.Errorf("traits.eval is required")
+	}
+	if e.Env != "ack" {
+		return fmt.Errorf("evaluation env must be ack")
+	}
+	if len(e.TaskPackageID) != 36 {
+		return fmt.Errorf("taskPackageId must reference an uploaded task package")
+	}
+	switch e.Agent {
+	case "terminus-2", "codex", "claude-code", "oracle":
+	default:
+		return fmt.Errorf("unsupported evaluation agent")
+	}
+	if ((e.Agent != "oracle" || e.Model != "") && strings.TrimSpace(e.Model) == "") || len(e.Model) > 256 || strings.ContainsAny(e.Model, "\r\n") {
+		return fmt.Errorf("model must identify the model for the selected agent")
+	}
+	if e.Attempts == 0 {
+		e.Attempts = 1
+	}
+	if e.Concurrency == 0 {
+		e.Concurrency = 1
+	}
+	if e.Attempts < 1 || e.Attempts > 10 || e.Concurrency < 1 || e.Concurrency > 16 {
+		return fmt.Errorf("attempts must be 1..10 and concurrency 1..16")
+	}
+	if e.TimeoutSeconds == 0 {
+		e.TimeoutSeconds = 3600
+	}
+	if e.TimeoutSeconds < 60 || e.TimeoutSeconds > 86400 {
+		return fmt.Errorf("evaluation timeoutSeconds must be 60..86400")
+	}
+	if err := validateJobResources(e.SandboxResources); err != nil {
+		return fmt.Errorf("sandboxResources: %w", err)
+	}
+	normalizeJobResources(&e.SandboxResources)
+	if e.ResultPolicy != nil {
+		return e.ResultPolicy.Validate()
+	}
+	return nil
 }
 
 type JobResultPolicy struct {
@@ -120,14 +157,17 @@ func (j *JobSpec) Normalize() error {
 	if j == nil || strings.TrimSpace(j.Name) == "" || len(j.Name) > 128 {
 		return fmt.Errorf("name must contain 1 to 128 bytes")
 	}
-	if len(j.Spec) == 0 || bytes.Equal(bytes.TrimSpace(j.Spec), []byte("null")) {
-		return fmt.Errorf("spec is required")
-	}
-	if err := validateJobTraits(j.Traits, j.Type == "eval"); err != nil {
-		return err
-	}
 	switch j.Type {
 	case "command":
+		if j.Traits.Evaluation != nil {
+			return fmt.Errorf("evaluation requires type job")
+		}
+		if len(j.Spec) == 0 || bytes.Equal(bytes.TrimSpace(j.Spec), []byte("null")) {
+			return fmt.Errorf("spec is required")
+		}
+		if err := validateJobTraits(j.Traits); err != nil {
+			return err
+		}
 		var command CommandJobSpec
 		if err := DecodeJobJSON(j.Spec, &command); err != nil {
 			return fmt.Errorf("command spec: %w", err)
@@ -141,70 +181,50 @@ func (j *JobSpec) Normalize() error {
 		if command.TimeoutSeconds < 1 || command.TimeoutSeconds > 86400 {
 			return fmt.Errorf("timeoutSeconds must be between 1 and 86400")
 		}
-		if j.ResultPolicy != nil {
-			return fmt.Errorf("resultPolicy applies to eval")
-		}
 		j.Spec, _ = json.Marshal(command)
-	case "eval":
-		var evaluation AgentEvaluationSpec
-		if err := DecodeJobJSON(j.Spec, &evaluation); err != nil {
-			return fmt.Errorf("eval spec: %w", err)
+		normalizeJobResources(&j.Traits.Resources)
+	case "job":
+		if len(j.Spec) != 0 {
+			return fmt.Errorf("evaluation inputs belong in traits.eval; spec is not supported")
 		}
-		if evaluation.Framework == "" {
-			evaluation.Framework = "harbor"
-		}
-		if evaluation.FrameworkVersion == "" {
-			evaluation.FrameworkVersion = HarborVersion
-		}
-		if evaluation.Framework != "harbor" || evaluation.FrameworkVersion != HarborVersion {
-			return fmt.Errorf("supported framework is harbor %s", HarborVersion)
-		}
-		if len(evaluation.DatasetID) != 36 {
-			return fmt.Errorf("datasetId must reference an uploaded task package")
-		}
-		// Built-in adapters, never arbitrary Python import paths or user commands.
-		switch evaluation.Agent.Name {
-		case "terminus-2", "codex", "claude-code", "oracle":
-		default:
-			return fmt.Errorf("unsupported Harbor agent")
-		}
-		if evaluation.Agent.Name != "oracle" && (strings.TrimSpace(evaluation.Agent.Model) == "" || len(evaluation.Agent.Model) > 256) {
-			return fmt.Errorf("model is required for this agent")
-		}
-		if evaluation.Options.Attempts == 0 {
-			evaluation.Options.Attempts = 1
-		}
-		if evaluation.Options.Concurrency == 0 {
-			evaluation.Options.Concurrency = 1
-		}
-		if evaluation.Options.Attempts < 1 || evaluation.Options.Attempts > 10 || evaluation.Options.Concurrency < 1 || evaluation.Options.Concurrency > 16 {
-			return fmt.Errorf("attempts must be 1..10 and concurrency 1..16")
-		}
-		if evaluation.TimeoutSeconds == 0 {
-			evaluation.TimeoutSeconds = 3600
-		}
-		if evaluation.TimeoutSeconds < 60 || evaluation.TimeoutSeconds > 86400 {
-			return fmt.Errorf("evaluation timeoutSeconds must be 60..86400")
-		}
-		if j.ResultPolicy != nil {
-			if err := j.ResultPolicy.Validate(); err != nil {
-				return err
-			}
-		}
-		j.Spec, _ = json.Marshal(evaluation)
+		return NormalizeEvaluationTraits(&j.Traits)
 	default:
-		return fmt.Errorf("type must be command or eval")
-	}
-	if j.Traits.Resources == nil {
-		j.Traits.Resources = &ResourceTraitsSpec{CPU: "1", Memory: "2Gi", CPULimit: "2", MemoryLimit: "4Gi"}
-	}
-	if j.Traits.Resources.CPULimit == "" {
-		j.Traits.Resources.CPULimit = j.Traits.Resources.CPU
-	}
-	if j.Traits.Resources.MemoryLimit == "" {
-		j.Traits.Resources.MemoryLimit = j.Traits.Resources.Memory
+		return fmt.Errorf("type must be command or job")
 	}
 	return nil
+}
+
+// NormalizeEvaluationTraits is shared by standalone and Application evaluation Jobs.
+func NormalizeEvaluationTraits(t *JobTraits) error {
+	if t == nil || t.Evaluation == nil {
+		return fmt.Errorf("traits.eval is required")
+	}
+	if len(t.Storage)+len(t.EnvFrom) > 0 || t.SecurityPolicy != nil {
+		return fmt.Errorf("evaluation supports resources and credential envs only")
+	}
+	if err := validateEvaluationEnvs(t.Envs); err != nil {
+		return err
+	}
+	if err := validateJobResources(t.Resources); err != nil {
+		return err
+	}
+	if err := t.Evaluation.Normalize(); err != nil {
+		return err
+	}
+	normalizeJobResources(&t.Resources)
+	return nil
+}
+
+func normalizeJobResources(resources **ResourceTraitsSpec) {
+	if *resources == nil {
+		*resources = &ResourceTraitsSpec{CPU: "1", Memory: "2Gi", CPULimit: "2", MemoryLimit: "4Gi"}
+	}
+	if (*resources).CPULimit == "" {
+		(*resources).CPULimit = (*resources).CPU
+	}
+	if (*resources).MemoryLimit == "" {
+		(*resources).MemoryLimit = (*resources).Memory
+	}
 }
 
 func ExplicitJobImage(image string) bool {
@@ -248,27 +268,21 @@ func validateEvaluationEnvs(envs []SimplifiedEnvSpec) error {
 	return nil
 }
 
-func validateJobTraits(t JobTraits, evaluation bool) error {
-	if evaluation {
-		// The Runner owns its security context, filesystem and envFrom sources;
-		// only resources and model credentials are user-controlled.
-		if len(t.Storage)+len(t.EnvFrom) > 0 || t.SecurityPolicy != nil {
-			return fmt.Errorf("evaluation supports resources and credential envs only")
-		}
-		if err := validateEvaluationEnvs(t.Envs); err != nil {
-			return err
-		}
-	}
+func validateJobTraits(t JobTraits) error {
 	for _, storage := range t.Storage {
 		if storage.TmpCreate || storage.Size != "" || storage.StorageClass != "" {
 			return fmt.Errorf("Job storage must reference an existing resource")
 		}
 	}
-	if t.Resources != nil {
-		if t.Resources.CPU == "" || t.Resources.Memory == "" {
+	return validateJobResources(t.Resources)
+}
+
+func validateJobResources(resources *ResourceTraitsSpec) error {
+	if resources != nil {
+		if resources.CPU == "" || resources.Memory == "" {
 			return fmt.Errorf("resources require cpu and memory requests")
 		}
-		for _, pair := range [][2]string{{t.Resources.CPU, t.Resources.CPULimit}, {t.Resources.Memory, t.Resources.MemoryLimit}} {
+		for _, pair := range [][2]string{{resources.CPU, resources.CPULimit}, {resources.Memory, resources.MemoryLimit}} {
 			request, err := resource.ParseQuantity(pair[0])
 			if err != nil || request.Sign() <= 0 {
 				return fmt.Errorf("invalid resource request")
@@ -280,7 +294,7 @@ func validateJobTraits(t JobTraits, evaluation bool) error {
 				}
 			}
 		}
-		if t.Resources.GPU != "" {
+		if resources.GPU != "" {
 			return fmt.Errorf("GPU Job resources are not supported in the first version")
 		}
 	}

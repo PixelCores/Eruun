@@ -7,6 +7,10 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	eruunv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/encoding/protowire"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/structpb"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/ptr"
 )
@@ -41,6 +45,80 @@ func TestJobSecurityPolicyTraitsRoundTrip(t *testing.T) {
 	require.Equal(t, input.SecurityPolicy.Capabilities.Drop, job.Traits.SecurityPolicy.Capabilities.Drop)
 	require.Equal(t, input.SecurityPolicy.SeccompProfile.Type, job.Traits.SecurityPolicy.SeccompProfile.Type)
 	require.Equal(t, "100m", job.Traits.Resources.Cpu)
+}
+
+func TestEvaluationTraitSharedAcrossJobAndApplication(t *testing.T) {
+	evaluation := &eruunv1.EvaluationTrait{
+		Env: "ack", Model: "openai/model", Agent: "terminus-2", TaskPackageId: "12345678-1234-1234-1234-123456789012",
+		Attempts: 2, Concurrency: 3, TimeoutSeconds: 600,
+		SandboxResources: &eruunv1.AppSpecResourceTraitsSpec{Cpu: "2", Memory: "4Gi", CpuLimit: "4", MemoryLimit: "8Gi"},
+		ResultPolicy:     &eruunv1.JobResultPolicy{RetentionDays: 30, Targets: []*eruunv1.JobResultTarget{{Type: "database", Mode: "full"}}},
+	}
+	standalone, err := jobSubmitInput(&eruunv1.SubmitJobRequest{Name: "evaluate", Type: "job", Traits: &eruunv1.JobTraits{Eval: evaluation}})
+	require.NoError(t, err)
+	require.Empty(t, standalone.Spec)
+	app, err := decodeTypedRequest[spec.Traits](&eruunv1.AppSpecTraits{Eval: evaluation})
+	require.NoError(t, err)
+	require.Equal(t, app.Evaluation, standalone.Traits.Evaluation)
+	require.Equal(t, int64(600), app.Evaluation.TimeoutSeconds)
+	require.Equal(t, "2", app.Evaluation.SandboxResources.CPU)
+	require.Equal(t, 30, app.Evaluation.ResultPolicy.RetentionDays)
+
+	output, err := jobSpecOutput(standalone.JobSpec)
+	require.NoError(t, err)
+	require.Nil(t, output.Spec)
+	require.True(t, proto.Equal(evaluation, output.Traits.Eval))
+	appOutput, err := encodeTypedResponse(app, &eruunv1.AppSpecTraits{})
+	require.NoError(t, err)
+	require.True(t, proto.Equal(output.Traits.Eval, appOutput.Eval))
+	require.NoError(t, standalone.Normalize())
+	for _, traits := range []proto.Message{output.Traits, appOutput} {
+		encoded, err := protojson.Marshal(traits)
+		require.NoError(t, err)
+		require.Contains(t, string(encoded), `"eval":`)
+		require.NotContains(t, string(encoded), `"evaluation":`)
+	}
+	for _, traits := range []proto.Message{&eruunv1.JobTraits{}, &eruunv1.AppSpecTraits{}} {
+		require.Error(t, protojson.Unmarshal([]byte(`{"evaluation":{}}`), traits))
+	}
+}
+
+func TestJobSubmitInputDeclarationContract(t *testing.T) {
+	command, err := structpb.NewValue(map[string]any{"image": "busybox:1.37.0", "command": []any{"true"}})
+	require.NoError(t, err)
+	for _, tc := range []struct {
+		name    string
+		request *eruunv1.SubmitJobRequest
+		valid   bool
+	}{
+		{name: "command", request: &eruunv1.SubmitJobRequest{Name: "run", Type: "command", Spec: command}, valid: true},
+		{name: "missing command spec", request: &eruunv1.SubmitJobRequest{Name: "run", Type: "command"}},
+		{name: "removed eval type", request: &eruunv1.SubmitJobRequest{Name: "run", Type: "eval", Spec: command}},
+		{name: "job requires evaluation trait", request: &eruunv1.SubmitJobRequest{Name: "run", Type: "job"}},
+		{name: "job rejects spec", request: &eruunv1.SubmitJobRequest{Name: "run", Type: "job", Spec: command}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			input, err := jobSubmitInput(tc.request)
+			require.NoError(t, err)
+			err = input.Normalize()
+			if tc.valid {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+			}
+		})
+	}
+}
+
+func TestJobSubmitRejectsRemovedResultPolicyWireField(t *testing.T) {
+	// Old binary clients can still transmit field 6 despite its reserved name.
+	// Reject it instead of silently replacing the requested policy with defaults.
+	wire := protowire.AppendTag(nil, 6, protowire.BytesType)
+	wire = protowire.AppendBytes(wire, []byte{8, 30})
+	request := &eruunv1.SubmitJobRequest{}
+	require.NoError(t, proto.Unmarshal(wire, request))
+	_, err := jobSubmitInput(request)
+	require.Error(t, err)
 }
 
 func TestJobTraitsWithoutSecurityPolicy(t *testing.T) {
