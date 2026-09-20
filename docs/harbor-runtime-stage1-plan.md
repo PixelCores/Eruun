@@ -2,7 +2,7 @@
 
 > 状态：Draft / Proposal。本文是第一阶段主 PR 的实施与验收计划，不代表万级容量、按需 Sandbox 或周级运行已实现。代码核查基线为 `8290fb1`；所有吞吐算式均为静态估算，真实容量待验证。
 
-> 后续细化见 [2026-09-20 方案讨论纪要](harbor-runtime-stage1-discussion.md)：补充虚拟节点部署、可变 task/trial 并发、真实创建预算和采集边界。本文第 4 节及 P1-04 最初按 Harbor 创建 Sandbox 描述；最新推荐路线为 Eruun 统一创建、Harbor 逐 trial 申请并使用环境，尚待冻结协议及故障/保留策略，不能把初稿分工视为最终决定。
+> 推荐路线为 Eruun 统一创建 Runner Job 与 trial Sandbox，Harbor 逐 trial 申请并使用环境；分配协议及故障/保留策略仍待冻结。详细依据与评审纠正见[讨论纪要第 9 节：评审核验结论与实施门禁](harbor-runtime-stage1-discussion.md#9-评审核验结论与实施门禁)。本次仅更新计划，未实现这些改动或执行真实集群压测。
 
 ## 1. 已确认目标与交付边界
 
@@ -30,6 +30,7 @@ Eruun 部署在 ACK 内并管理同一集群，分批创建任务，目标是至
 | Runner 每 15 秒心跳，事件鉴权读取 Pod 和 Job | 约 667 事件请求/s，另约 1,333 Kubernetes GET/s，还存在 DB 鉴权与事务成本 | [Runner](../runners/harbor/runner.py)、[事件鉴权](../pkg/apiserver/jobs/service.go) |
 | 每 Workflow 默认 10 秒续租；取消 watcher 每秒 GET Redis | 约 1,000 次续租/s 和 10,000 Redis GET/s；排队中已由 Worker 持有的任务还每 200ms 查询准入 | [租约](../pkg/apiserver/event/workflow/workflow.go)、[取消](../pkg/apiserver/workflow/signal/cancel.go)、[准入等待](../pkg/apiserver/event/workflow/job/job_scheduling.go) |
 | Scheduler 默认每 3 秒运行，单批最多准入 100，扫描全部 queued/admitted 并逐 task 查 parent | 长事务、全局策略行竞争与重复读取；100/3 仅为默认批次节奏估算 | [调度仓储](../pkg/apiserver/domain/repository/job_scheduler.go)、[Dispatcher](../pkg/apiserver/event/workflow/dispatcher.go) |
+| Scheduler Leader 的过期 lease 回收默认每 10 秒最多 100 条 | 若 10,000 条过期 WorkflowQueue 都经此路径，约需 100 轮、量级约 1,000s；回到 Waiting 尚未完成接管，增加主备副本不线性提升回收吞吐 | [回收批次](../pkg/apiserver/domain/repository/workflow_lease.go)、[选主调用链](../pkg/apiserver/server_runtime_leader.go)、[运行配置](../pkg/apiserver/workflow/config/runtime.go) |
 | 结果维护循环每 15 秒处理最多 20 个正常 pending 保存目标，串行执行 | 单目标结果正常处理节奏约 1.33 个/s 或更低，集中完成可积压；恢复过期目标另计 | [维护循环](../pkg/apiserver/jobs/service.go)、[保存](../pkg/apiserver/jobs/artifacts/delivery.go) |
 | eval 默认 1 小时、最多 24 小时，Runner 与 trial 也有 deadline | 周级任务当前不支持，不能只改一个 API 校验值 | [规格](../pkg/apiserver/domain/spec/job.go)、[构建](../pkg/apiserver/jobs/builder.go)、[Runner](../runners/harbor/runner.py) |
 | Runner 显式关闭 SandboxClaim；任务环境沿用 Harbor ACK Pod 后端 | 尚无按需 Sandbox CR 执行与生命周期适配 | [环境适配](../runners/harbor/eruun_environment.py)、[Runner 配置](../runners/harbor/runner.py) |
@@ -46,7 +47,7 @@ Eruun 部署在 ACK 内并管理同一集群，分批创建任务，目标是至
 | 任务生命周期和执行归属 | Scheduler/Worker 经数据库 CAS 写入 WorkflowQueue | 调度、接管、取消、终态写入 | 沿用 taskID、runGeneration、runToken、workerID；cache 不替代 ownership |
 | Job 执行与采集事实 | 当前执行写 JobInfo，Runner 经鉴权上报事件 | API 查询、结果保存、故障诊断 | 沿用 executionKey、attempt、事件顺序和结果完整性校验 |
 | Runner Kubernetes Job/Pod 身份 | Kubernetes 返回对象，Eruun 校验并关联 | 观察、Runner 鉴权、精确清理 | namespace/name 加 UID；同名重建不能继承旧执行身份 |
-| trial 对应 Sandbox/Pod 身份 | Harbor 环境适配负责创建，Sandbox controller 写实际状态 | Runner 执行、状态观察、第二阶段恢复 | 关联 task/execution/trial 与 Sandbox、Pod UID；具体存储形状在 P1-01 冻结 |
+| trial 对应 Sandbox/Pod 身份 | 推荐由 Eruun 持久化分配意图并创建 Sandbox，Sandbox controller 写实际状态；Harbor 申请/使用 | Runner 执行、状态观察、第二阶段恢复 | 关联 task/execution/trial 与 Sandbox、Pod UID；分配协议、存储形状与清理责任在 P1-01 冻结 |
 | Sandbox 基础设施状态 | 安装版本对应的 Sandbox controller | Eruun 只读观察及故障归因 | 保留 resourceVersion、conditions、删除状态与观察新鲜度；Running 不等于评测成功 |
 | 最终结果与保存目标状态 | Runner 完整上传，现有 artifacts 模块持久化与交付 | 用户查询、下载、保留策略 | 任务成功、采集完整、各目标保存成功分别记录，不互相替代 |
 
@@ -57,33 +58,42 @@ Eruun 部署在 ACK 内并管理同一集群，分批创建任务，目标是至
 ### P1-01：基线、契约与验收预算
 
 - 工作：复用现有压测目录增加完整完成观察能力；记录代码/镜像版本、每任务 RPC/SQL、调度轮耗时、运行槽位、缓存/队列长度和保存滞后。冻结 Job、trial、Sandbox、Runner 的计数口径、身份关联和最大执行时长。
+- 环境门禁：固定 ACK/ACS/Harbor/控制器版本，实测 Runner 与 trial 的虚拟算力 placement、NetworkPolicy 实际隔离、exec 与 tar 文件采集；绕过 Eruun 对 Sandbox controller 做独立分级调谐测试。确认算力、vSwitch/IP、网络连接/带宽、镜像与模型服务配额及费用预算后才逐级放量，不能用资源对象已创建代替能力验证。
+- 冻结空间拓扑和有效 ResourceQuota：空间数、任务分布/倾斜、每空间资源与准入上限、Runner/trial 规格及保留占用共同计量。按当前默认值且无其他占用，一个空间仅够一个 Runner 加一个活跃 trial；应规划实际配额，不以大量新建空间绕过容量规划。拓扑决定观察方案，必要的标签迁移再与协议兼容排期一起冻结。故障可容忍时长、继续执行/暂停新建策略、claim/heartbeat/phase+progress/upload+terminal 的预算与优先级仍需确认，本计划不替用户确定档位。
 - 触点：`examples/agent-evaluation/load-test`、现有 jobs/workflow 可观测性、本文及 Current 契约文档的后续变更清单。
 - 验收：1、10、100 个真实 Harbor Job 端到端正确；所有运行与完成计数可追溯到任务身份；冻结下文环境和 SLO 表。固定版本 Harbor 及 ACS 控制器兼容性由测试证明。
-- 依赖与退出：无。若 ACS 环境或指标缺失，记录具体阻塞与提供者；可继续纯代码优化，但不得填写真实集群结果。
+- 依赖与退出：无。环境能力、目标规模配额或指标不可得时，记录门禁、提供者及未验证范围；可继续纯代码优化和较小规模验证，不能降格宣告万级真实执行通过，也不自动改走放弃第二阶段能力的路线。
 
 ### P1-02：共享资源观察与有界状态协调
 
 - 工作：为独立 Job/Runner Pod 增加准确的归属选择器；原生 Job/Pod 使用 typed informer，Sandbox 使用限定 GVR 的 dynamic informer，复用集群内连接。按 namespace/name、UID 和任务归属建立必要索引；事件只触发对应任务的有界协调，合并重复事件。
+- 以共享全范围流加本地协调过滤为简单基线；本地回调过滤通常仍缓存全量。按 P1-01 拓扑测量后，再比较每个负责 namespace 独立流（数据少、流数多）和资源自身稳定分片 label 加服务端 selector（只接收分片数据），不预先强制分片。冻结标签继承、存量补标或临时兼容观察及退出条件，不默认等待最长 Runner 结束；标签退出 selector 不等于资源物理删除，须结合 UID、权威状态和对账判断。
+- 对缓存按字段使用评估 Transform 裁剪 managedFields/无用字段，保留身份、归属、resourceVersion 及所需 status；metadata-only 不能承担生命周期状态观察。裁剪前后检查消费者契约、缓存 RSS 和重建峰值。
 - 请求与事件预算：审计基础及派生租户 client 的 QPS/Burst/RateLimiter 作用域，避免配置相同却各自新建令牌桶；显式共享需要共享的进程内预算，并核算副本总量。当前 client-go v0.35.0 的 Watch 首次请求跳过普通 limiter，事件也不逐条计 QPS；初始化/重建、事件队列及 DB 写入需要独立约束。详见[讨论纪要第 5.4–5.7 节](harbor-runtime-stage1-discussion.md#54-kubernetes-qpsburst-的作用范围)。
 - Worker 完成判断继续独立于 Controller Leader；Controller 负责状态投影。每个进程按资源类型共享观察，测量 Worker 扩容导致的 Watch/缓存复制，达到瓶颈才决定 namespace/任务分片，不先建新事件总线。
 - 触点：`infrastructure/informer`、`server_assembly.go`、Job 等待路径、`jobs/service.go` 中 Runner 鉴权、Helm/stack/workspace RBAC。
 - 验收：重复/乱序通知、删除重建 UID、初始同步失败、断线及过期 resourceVersion 重建、跨空间访问全部覆盖；普通终态观察不再每任务每 2 秒远程 GET。授权与破坏性操作仍有明确的新鲜度、失败关闭和 ownership 校验，不能机械地把鉴权 GET 全换成 cache。
 - 容量验收同时覆盖目标对象规模的冷启动、多副本重建和集中完成；分别观测本地限流等待、服务端 APF/429、Watch 事件率、协调队列和端到端状态延迟。workqueue 去重/重试限速不自动提供硬容量上限，必须验证积压和内存边界。
+- 冻结延迟测量起止点：事件进入观察器后的处理延迟使用本进程单调时钟；端到端用受控任务与采样核对，记录时间源、时钟偏差和采样误差，不将 condition 时间戳无条件视为精确变化时刻。
 - 依赖与回退：依赖 P1-01；回退前先降低准入并排空不兼容资源，不设置静默轮询降级掩盖故障。
 
 ### P1-03：调度、执行租约和取消的规模化
 
 - 工作：去除每轮全部活动 Job 的 parent N+1 读取和 Worker 200ms 准入忙等；按候选批量读取、明确事务边界和索引。沿用优先级/FIFO/等待老化、空间公平和 DB CAS，批量化或事件唤醒只作为可测量的实现选择。
 - 测量长时间占用 Workflow controller 的内存与 goroutine；先削减外部重复轮询，再决定是否将等待改成按任务键协调。续租/取消可以合并批次，但必须逐任务保持 fencing，不能因为优化而接受已失效 owner。
+- 恢复预算分别约束 lease 回收、Workflow 派发、Job 准入和健康实例关联，冻结批次/并发、恢复覆盖范围、完成时限及与新任务的优先关系。同一 Scheduler Leader 中这些循环不共享固定令牌桶；默认回收的条件估算见第 3 节，不能把回到 Waiting 当作完成接管。Dispatcher 当前先准入再派发，准入报错会跳过当轮派发；按失败类型明确是否允许继续及必要前置条件，不绕过鉴权、ownership 或 Job 准入。
+- 为已启动 Runner 的 trial 保留可推进的资源/启动额度，避免 Runner 先耗尽全局或空间配额后 trial 无法启动；明确跨空间公平、取消、占位超时与回收。保留/清理中的环境仍计实际占用，控制面接管与重建分别计量，不能一概当作新的资源创建。
 - 触点：workflow dispatcher/controller、`domain/repository/job_scheduler.go`、workflow lease、`workflow/signal`、数据层索引。
 - 验收：目标负载下调度周期、锁等待、续租延迟符合预算；满并发、公平性、限额降低、用户取消、过期 lease 和旧 Worker 写入均正确；MySQL 集成验证真实锁与事务，不用 SQLite 替代。
 - 依赖与回退：依赖 P1-01，可与 P1-02 并行；默认策略及 wire 契约的任何改动须同步文档。回退需先排空或兼容读取新增状态。
 
 ### P1-04：按需 Sandbox 与长期执行
 
-- 工作：在现有 Harbor 环境适配中按需创建/关联 Sandbox，覆盖执行命令、文件传输、就绪/失败、取消和清理；固定可用 ACS/CRD/Harbor 版本，保留原有非 root、权限隔离和制品完整性边界。
+- 工作：按 P1-01 冻结的分工，由 Eruun 按需分配/创建 Sandbox，现有 Harbor 环境适配申请、关联、使用并请求释放；覆盖命令、文件、就绪/失败、取消和清理。固定可用 ACS/CRD/Harbor 版本，保留非 root、权限隔离和制品完整性边界；准入等待与环境启动超时分别定义，不能直接将全局等待塞入 Harbor 已有启动超时。
 - 将试验实际资源身份记录与 Runner 关联持久化；处理创建响应丢失、重复交付、同名对象替换和 OwnerReference/删除传播，确保控制面重启不会误删仍健康的环境。
 - 协同修改 Go/Python 校验、Runner/任务环境 deadline、Harbor task 内部超时、凭据有效期与结果保留；最大任务时长必须显式有界。已有资料未证明的 ACS 单实例时长/配额要在集群验证；不能仅去掉 24 小时校验。
+- 核算整个执行期的 Runner 工作目录、trial 文件、日志、归档与保留资源峰值，冻结容量、清理时机和磁盘耗尽行为；同时验证长任务中的身份凭据及模型/存储凭据续期，不能只验证结束时上传。
+- 先部署兼容读方，再启用扩展写方，按仍存活的 Runner 版本集合与排空策略验证混合版本。事件 `protocolVersion=v1` 不是已有协商；Runner 配置环境变量与事件 API 解码是不同契约。定义可接受扩展、必需字段和拒绝条件，不以统一关闭严格解码替代兼容设计；旧版本观察迁移也不默认等待最长任务结束。
 - 触点：`runners/harbor`、`jobs/builder.go`、domain/spec、HTTP/gRPC 校验/Schema、空间 RBAC、部署文档与示例。
 - 验收：真实 ACS 按需创建到完整结果保存；无需预热池；控制面重启后重新关联健康实例；Runner/任务环境丢失有明确结果。现有独立与 Application eval 契约均回归。第二阶段只预留可靠关联，不提前实现快照 API。
 - 依赖与回退：依赖 P1-01、P1-02。资源类型切换不能把存量 Pod 静默当作 Sandbox；停止新准入并按原契约排空存量后回退。具体暴露/启用方式由实现 PR 明确，本文不承诺新配置键。
@@ -92,6 +102,8 @@ Eruun 部署在 ACK 内并管理同一集群，分批创建任务，目标是至
 
 - 工作：服务端约束实际资源创建，分别管理运行容量、启动中容量、持续创建速率和突发额度；多个副本共享同一预算，重试、接管重建与 Runner 内多个 trial 的创建都计入，单纯限流 POST /jobs 不够。
 - 根据 Pending、镜像拉取错误/延迟、ACS 配额、API 429 和保存积压实施可解释背压；使用有界退避与抖动，取消应解除等待，重启不能丢失已准入/已启动事实。
+- 按 P1-01 冻结的事件类别与交付语义实现恢复策略，覆盖重试抖动及 API/DB 中断。可合并心跳等可替代通知，但执行/结果事实不得静默丢失；缓冲、落盘或背压策略须满足故障容忍要求。当前生产路径不能填满 16 槽事件队列，已撤回该故障推论；若新增生产者，再验证真实可达的积压与溢出边界。
+- 当前采集、归档、上传和确认共用默认 360s 收尾窗口，上传最多尝试 3 次，快失败可很快耗尽次数、慢阻塞可消耗大部分余量。上传改为 deadline 驱动的可重试循环，明确每次尝试/阻塞上限、总截止时间、terminal 最低预留与取消行为，按真实制品大小验证。上传或 terminal 响应丢失属于结果不确定，需身份/幂等核对及有界重放，不能直接当作未提交或评测失败；两段共同构成交付要求，但不是原子事务。
 - 扩展现有结果交付循环的有界吞吐、分页与 lease 协调，保留大制品流式处理、完整上传门禁、幂等保存及失败可重试语义；避免把大对象堆积在内存或全量数据库读取中。
 - 触点：调度策略和资源创建路径、Harbor 环境适配、artifacts delivery/保留、配置与监控。
 - 验收：突发提交及副本扩容均不越过冻结预算；多 trial 与恢复重建实测包含在预算内；集中完成后保存积压可排空；一个慢目标不拖死全部任务。
@@ -100,6 +112,7 @@ Eruun 部署在 ACK 内并管理同一集群，分批创建任务，目标是至
 ### P1-06：容量、长稳、故障与交付验收
 
 - 工作：执行下文矩阵，定位首个瓶颈、修复后仅复测受影响场景及最高通过档；将结果和配置快照附在主 PR。
+- 分别报告轻量负载的控制面容量、代表性真实任务的执行正确性和万级真实同时执行结果；前两类证据不能替代主目标。故障测试按已冻结的持续时间与积压量验证恢复、最终交付及费用停止线，不以单次 Pod Running 或成功受理作为完成证据。
 - 验收：满足全部阶段完成条件后更新 Current 文档、HTTP/gRPC 示例、安装/运维说明；版本号只在明确发布变更时按仓库规则共同更新。
 - 依赖与回退：依赖 P1-02 至 P1-05。未通过的档位停止注入，按任务身份排空/取消并保存证据，报告实际通过上限。
 
@@ -113,6 +126,8 @@ Eruun 部署在 ACK 内并管理同一集群，分批创建任务，目标是至
 
 在 concurrency=1、每 Job 一个活跃 trial 的情形，约需 10,000 Runner 加 10,000 trial 执行实例，另计系统资源、重试/回收重叠。按当前每侧默认 1 CPU/2 GiB request 粗算为约 20,000 CPU/40,000 GiB，属于资源请求估算而非必须固定的压测规格。降低合成负载资源时必须记录，不能替代真实负载验证。[资源默认值](../pkg/apiserver/domain/spec/job.go)。
 
+当前默认空间 quota 的 requests 为 2 CPU/4 GiB、limits 为 4 CPU/8 GiB；按每侧默认 request 1 CPU/2 GiB、limit 2 CPU/4 GiB 且无其他占用，仅够一个 Runner 加一个活跃 trial。`pods=20` 不是此时最紧的额度。实验必须记录有效 quota、空间拓扑及 Runner/trial 准入顺序；ACS 实际分配规格、计费资源和 Pod request 分开核验，不将 request 估算直接当作云侧费用。[空间默认值](../pkg/apiserver/domain/spec/accounts.go)。
+
 ACR 企业版标准版的官方分发规格为 500 拉取 QPS；此为实例规格，不是 500 Job/s。必须记录实际 ACR 规格、镜像层/大小、缓存命中、带宽与拉取延迟，再确定创建预算。稳态吞吐还受模型 Provider 配额、ACS 算力/网络配额、MySQL、Redis/Kafka 和结果存储制约。
 
 ### 6.2 执行前冻结的验收表
@@ -122,24 +137,29 @@ ACR 企业版标准版的官方分发规格为 500 拉取 QPS；此为实例规�
 | 项目 | 冻结内容 / 建议起点 | 责任与完成时点 |
 | --- | --- | --- |
 | 最大任务时长 | 明确覆盖目标周数的有界时长、单 trial 时限、采集余量与凭据周期 | 产品与运行时维护者，P1-01 |
+| 环境与空间拓扑 | 能力门禁、控制器独立分级基线、placement、空间数/倾斜、有效 quota、Runner/trial 规格与保留占用 | 环境与运行时负责人，P1-01 |
 | 10,000 稳态 | 建议每轮维持至少 2 小时，最高通过档独立重复两轮 | 压测负责人，P1-01 |
-| 状态收敛/取消/接管 | 建议 p99 状态收敛 ≤15s、取消确认 ≤30s；控制面失效后的重新接管目标 ≤60s，实际资源终止另测 | 运行时维护者，P1-01 |
+| 状态收敛/取消/接管 | 建议 p99 状态收敛 ≤15s、取消确认 ≤30s、重新接管 ≤60s；先冻结时间源、故障范围/起止点、回收至关联各阶段预算，实际资源终止另测 | 运行时维护者，P1-01 |
+| 故障容忍与最终交付 | 中断可容忍时长、已分配/待分配 trial 策略、事件积压上限、重试/上传/terminal 确认总 deadline；当前待产品确认，不预设固定档位 | 产品与运行时维护者，P1-01 |
 | 正确性 | 已接受任务全部可核对；不允许无法解释的丢失/重复副作用、旧身份写入或误报成功 | 各工作包共同保持 |
 | 长稳 | 建议先 72 小时稳定子集，再覆盖声明最大时长的代表性真实任务；伪时钟测试不替代长稳 | 运行时与环境负责人，P1-06 |
-| 结果排空 | 按平均/最大制品、保存目标数冻结最大积压量及排空时限；任务终态与全部目标成功分开计时 | 结果模块维护者，P1-01 |
-| 资源及停止线 | 集群/数据库/镜像服务配额、预算、连接/内存上限及 429/5xx/续租延迟停止阈值 | 环境负责人，注入前 |
+| 存储与结果排空 | 执行期文件/日志、归档和保留资源峰值；平均/最大制品、保存目标数、积压量及排空时限；任务终态、平台确认和全部目标成功分开计时 | 结果与运行时维护者，P1-01 |
+| 兼容与迁移 | 仍存活的 Runner 版本、读方先于写方的发布顺序、旧资源标签/观察迁移及兼容退出证据 | 运行时维护者，P1-01 |
+| 资源及费用停止线 | 配额、连接/内存上限及 429/5xx/续租延迟阈值；每轮费用上限、运行时限和费用异常停止条件，计入 ACS/ACR/模型/存储及停止注入后的在途和保留费用 | 环境负责人，注入前冻结具体值 |
 
 ### 6.3 实验矩阵
 
 | 实验 | 规模与变化 | 必须回答的问题 |
 | --- | --- | --- |
 | 功能基线 | 1、10、100 个真实 Harbor oracle 任务 | Sandbox、身份、命令/文件、结果、取消是否正确 |
+| 环境与拓扑 | 先做独立 Sandbox controller 分级测试；在固定总并发下改变空间数量/倾斜和配额 | 云侧调谐、策略隔离和 placement 是否通过，配额与观察成本在哪里饱和 |
 | 并发阶梯 | 100 → 1,000 → 3,000 → 10,000，逐档排空、固定其他条件 | 哪一层首先饱和，活跃 Job/Runner/trial 是否达到目标 |
 | 创建速率 | 固定并发预算，分段提升速率；冷镜像和缓存命中分别测 | 服务端背压、多 trial 创建及 ACR 限制是否真实受控 |
 | 稳态与完成波峰 | 长任务稳定驻留；分散完成和集中结束分别测 | 心跳、DB、Watch、内存及结果保存能否稳定、不持续积压 |
-| 故障 | Worker/API/Controller/Scheduler 分别滚动重启、Leader 切换、Watch 断线/重建、DB/队列短暂中断 | 健康执行能否接管，失效身份是否被隔离，取消是否收敛 |
+| 故障 | Worker/API/Controller/Scheduler 分别重启、Leader 切换、Watch 重建、API/DB/队列中断；按冻结时长和积压量注入 | 各阶段恢复吞吐、准入失败时派发策略、重试波峰和最终交付是否满足预算，是否隔离失效身份并保持 trial 可推进 |
 | 资源失败 | Runner/trial 丢失、ACS 配额不足、拉取失败、上传响应丢失、保存目标变慢 | 阶段一的失败结果是否可信，是否越权/重复创建/错误清理 |
-| 长时间与保留 | 跨日/周级 deadline、凭据轮换、结果保留/清理与慢采集 | 超时语义一致，无租约泄漏、资源泄漏或提前删除 |
+| 升级与观察迁移 | 新旧 Server/Runner 共存、扩展字段、标签补齐/移出 selector、旧无标签资源 | 读写顺序与拒绝边界是否兼容，标签变化是否被误当物理删除，旧资源能否持续观察并有界退出兼容 |
+| 长时间与保留 | 跨日/周级 deadline、凭据轮换、磁盘峰值/耗尽、保留清理与慢采集 | 超时语义一致，无租约泄漏、资源泄漏、虚假交付确认或提前删除 |
 
 复用 [现有压测计划](harbor-job-load-test-plan.md) 与 [提交器](../examples/agent-evaluation/load-test/submit.py)，增加服务端阶段时间与受控状态采样。现有 60–300 秒休眠任务只适合预检，必须扩展时长以覆盖爬坡和稳态窗口；提交器自身落后时该轮目标 QPS 不成立。独立提交当前没有客户端幂等键，响应不确定时先按运行记录核对，不能盲目重试创建。
 
@@ -149,7 +169,7 @@ ACR 企业版标准版的官方分发规格为 500 拉取 QPS；此为实例规�
 
 每个实现 PR 使用触及包的 Go/Python 行为测试；共享状态变更运行 race，MySQL 事务变更运行已配置隔离 MySQL 集成测试，接口变更同步 HTTP/gRPC/Schema/示例，RBAC/部署变更执行仓库安装器与 Helm 检查。假客户端可验证乱序/身份逻辑，但不能建立真实 Watch、ACS 或容量结论。遵循仓库 CI，不以计划提交代替实现验证。
 
-- [ ] P1-01 基线、资源环境、最大时长与 SLO 已冻结。
+- [ ] P1-01 环境门禁、空间拓扑、费用停止线、最大时长、故障容忍/交付及 SLO 测量口径已冻结。
 - [ ] P1-02 共享观察与身份/新鲜度边界通过。
 - [ ] P1-03 调度、续租、取消在目标规模和故障下正确。
 - [ ] P1-04 按需 Sandbox 与长期执行链路完成。

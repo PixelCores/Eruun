@@ -197,8 +197,8 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `workflow-conditional-branching-design.md` | Draft / Proposal | 条件分支设计 |
 | `workflow-resource-capacity-scheduler.md` | Draft / Proposal | Workflow 资源容量准入与可选容量补偿边界 |
 | `harbor-job-load-test-plan.md` | Draft / Proposal | 可构建的合成镜像、1000 个 Harbor Job 的批量提交与 60–300 秒休眠压测矩阵、数据口径和容量判定 |
-| [`harbor-runtime-stage1-plan.md`](harbor-runtime-stage1-plan.md) | Draft / Proposal | 第一阶段主 PR：按需 Sandbox、万级长期 Harbor 并发、创建限速、状态观察、调度与结果保存、故障及容量验收 |
-| [`harbor-runtime-stage1-discussion.md`](harbor-runtime-stage1-discussion.md) | Draft / Proposal | 第一阶段方案讨论：已确认需求、Harbor task/trial 编排、Sandbox 生命周期推荐分工、创建预算、采集边界及待答问题 |
+| [`harbor-runtime-stage1-plan.md`](harbor-runtime-stage1-plan.md) | Draft / Proposal | 第一阶段主 PR：万级长期 Harbor 运行；环境/空间门禁、共享观察、恢复吞吐、上传确认预算与分阶段验收 |
+| [`harbor-runtime-stage1-discussion.md`](harbor-runtime-stage1-discussion.md) | Draft / Proposal | 第一阶段讨论与评审核验：需求和代码依据、观察/标签迁移、协议发布、结果交付、纠正项及待冻结决策 |
 | [`harbor-runtime-stage2-plan.md`](harbor-runtime-stage2-plan.md) | Draft / Proposal | 第二阶段主 PR：Sandbox 文件系统 Checkpoint、Runner 进度持久化、一致恢复点、新执行接管与恢复验收 |
 
 ## 图源与资产
