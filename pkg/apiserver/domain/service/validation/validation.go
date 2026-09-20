@@ -376,8 +376,10 @@ func (v *validationServiceImpl) validateComponent(comp apisv1.CreateComponentReq
 		})
 	}
 
-	if err := spec.NormalizeComponentEvaluation(string(comp.ComponentType), comp.Image, comp.Properties, &comp.Traits); err != nil {
-		errors = append(errors, apisv1.ValidationError{Field: fieldPrefix + ".traits.eval", Code: apisv1.ErrCodeInvalidTraitConfig, Message: err.Error()})
+	if comp.Traits.Evaluation != nil {
+		if err := spec.NormalizeComponentEvaluation(string(comp.ComponentType), comp.Image, comp.Properties, &comp.Traits); err != nil {
+			errors = append(errors, apisv1.ValidationError{Field: fieldPrefix + ".traits.eval", Code: apisv1.ErrCodeInvalidTraitConfig, Message: err.Error()})
+		}
 	}
 
 	// Validate image requirement for webservice and store types

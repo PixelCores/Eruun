@@ -17,8 +17,10 @@ import (
 // validateTraits validates the traits configuration
 func (v *validationServiceImpl) validateTraits(traits apisv1.Traits, fieldPrefix string, isNested bool, componentType config.JobType) []apisv1.ValidationError {
 	var errors []apisv1.ValidationError
-	if err := spec.NormalizeComponentEvaluation(string(componentType), "", spec.Properties{}, &traits); err != nil {
-		errors = append(errors, apisv1.ValidationError{Field: fieldPrefix + ".evaluation", Code: apisv1.ErrCodeInvalidTraitConfig, Message: err.Error()})
+	if isNested && traits.Evaluation != nil {
+		if err := spec.NormalizeComponentEvaluation(string(componentType), "", spec.Properties{}, &traits); err != nil {
+			errors = append(errors, apisv1.ValidationError{Field: fieldPrefix + ".eval", Code: apisv1.ErrCodeInvalidTraitConfig, Message: err.Error()})
+		}
 	}
 
 	// Validate storage traits
