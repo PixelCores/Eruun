@@ -120,30 +120,54 @@ def validate_config(config):
 
 def download_package(config, destination):
     deadline = time.monotonic() + TRANSFER_SECONDS
-    connection, target = transfer_connection(config["datasetURL"], deadline)
-    digest = hashlib.sha256()
-    size = 0
-    try:
-        connection.request("GET", target, headers=transfer_headers(config))
-        transfer_timeout(connection, deadline)
-        response = connection.getresponse()
-        if response.status != 200:
-            raise RunnerError(f"platform rejected dataset download with HTTP {response.status}")
-        with destination.open("wb") as output:
-            while True:
+    attempt = 0
+    while True:
+        remaining_time(deadline)
+        connection, target = transfer_connection(config["datasetURL"], deadline)
+        digest = hashlib.sha256()
+        size = 0
+        try:
+            output = destination.open("wb")
+        except OSError:
+            connection.close()
+            raise
+        try:
+            # Every attempt owns a fresh target and digest; a partial response
+            # can never be appended to or mistaken for a later successful one.
+            with output:
+                connection.request("GET", target, headers=transfer_headers(config))
                 transfer_timeout(connection, deadline)
-                chunk = response.read1(1024 * 1024)
-                if not chunk:
-                    break
-                size += len(chunk)
-                if size > MAX_PACKAGE_BYTES:
-                    raise RunnerError("task package exceeds 64 MiB")
-                digest.update(chunk)
-                output.write(chunk)
-    finally:
-        connection.close()
-    if digest.hexdigest() != config["datasetDigest"]:
-        raise RunnerError("task package digest does not match submitted content")
+                with closing(connection.getresponse()) as response:
+                    if response.status >= 500 or response.status in {408, 429}:
+                        raise RetryableTransferError("platform temporarily rejected dataset download")
+                    if response.status != 200:
+                        raise RunnerError(f"platform rejected dataset download with HTTP {response.status}")
+                    while True:
+                        transfer_timeout(connection, deadline)
+                        chunk = response.read1(1024 * 1024)
+                        if not chunk:
+                            break
+                        size += len(chunk)
+                        if size > MAX_PACKAGE_BYTES:
+                            raise RunnerError("task package exceeds 64 MiB")
+                        digest.update(chunk)
+                        try:
+                            output.write(chunk)
+                        except OSError as exc:
+                            raise RunnerError("cannot write task package") from exc
+                    try:
+                        output.flush()
+                    except OSError as exc:
+                        raise RunnerError("cannot write task package") from exc
+            if digest.hexdigest() != config["datasetDigest"]:
+                raise RunnerError("task package digest does not match submitted content")
+            return
+        except (OSError, http.client.HTTPException, RetryableTransferError):
+            attempt += 1
+            log_runner_event("dataset_retry", attempt=attempt)
+            time.sleep(retry_delay(attempt, deadline))
+        finally:
+            connection.close()
 
 
 def extract_package(source, destination):
@@ -936,6 +960,7 @@ def execute(config, work, cancel, reporter=None, final_deadline=None):
     output.mkdir()
     (work / "collection").mkdir(mode=0o700)
     expected_trials = 0
+    execution_deadline = None
     report = {"taskId": config["taskId"], "framework": {"name": "harbor", "version": FRAMEWORK_VERSION},
               "datasetDigest": config["datasetDigest"], "executionStatus": "failed", "frameworkExitCode": None}
     try:
@@ -988,7 +1013,10 @@ def execute(config, work, cancel, reporter=None, final_deadline=None):
         if reporter is not None:
             reporter.emit("phase", phase="running")
         log_runner_event("harbor_start")
-        code, interrupted = run_framework(config_path, output, cancel, config["timeoutSeconds"])
+        framework_timeout = config["timeoutSeconds"]
+        if execution_deadline is not None:
+            framework_timeout = min(framework_timeout, remaining_time(execution_deadline))
+        code, interrupted = run_framework(config_path, output, cancel, framework_timeout)
         report["frameworkExitCode"] = code
         report["executionStatus"] = framework_status(output / "run" / "result.json", code)
         if interrupted:

@@ -17,7 +17,7 @@ Eruun 部署在 ACK 内并管理同一集群，分批创建任务，目标是至
 ## 2. 主 PR 与计划维护方式
 
 - 本主 PR 的目标分支为 `main`，初始提交只包含本文和文档索引；保持 Draft。
-- 下文 P1 工作包是后续子 PR 的拆分计划，本轮不创建额外子 PR 或 Issue。子 PR 合入本阶段主 PR 的集成分支；具体验收证据、子 PR 链接和完成状态统一维护在主 PR 描述中。
+- 下文 P1 工作包是后续子 PR 的拆分计划。Runner 的结构化失败诊断单独放在 `codex/harbor-runner-diagnostics` 子 PR（[创建/查看对比](https://github.com/PixelCores/Eruun/compare/codex/harbor-runtime-stage1...codex/harbor-runner-diagnostics?expand=1)，当前提交 `bd72e92`，基线为 `codex/harbor-runtime-stage1`）：它只扩展归档 `result.json` 与 terminal 的有界诊断字段，不改变事件状态机、安全隔离、绝对 deadline 或 checkpoint 语义。该子 PR 合入后，本主 PR 只引用其链接和验收证据，不复制第二套失败状态源；具体验收证据、子 PR 链接和完成状态统一维护在主 PR 描述中。
 - 第二阶段主 PR 同样以 `main` 为目标，其实施依赖本阶段身份、Sandbox、长期运行和状态观察契约稳定；主 PR 描述互相链接。
 - 每个工作包完成后更新事实、风险与验证结果。阶段完成后才将已实现内容迁入 Current 文档，并在主 PR 中给出最终容量报告；计划与压测结果不能互相替代。
 

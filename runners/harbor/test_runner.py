@@ -180,6 +180,61 @@ class RunnerTest(unittest.TestCase):
         with patch.object(runner.http.client, "HTTPConnection", return_value=connection), self.assertRaisesRegex(runner.RunnerError, "digest"):
             runner.download_package(config(), destination)
 
+    def test_download_retries_temporary_failures_and_replaces_partial_content(self):
+        payload = b"complete native bundle"
+        cfg = config() | {"datasetDigest": hashlib.sha256(payload).hexdigest()}
+
+        def success():
+            response = MagicMock(status=200)
+            response.read1.side_effect = [payload, b""]
+            connection = MagicMock()
+            connection.getresponse.return_value = response
+            return connection
+
+        for failure in (408, 429, 503, "connection"):
+            with self.subTest(failure=failure):
+                destination = self.root / f"download-{failure}"
+                destination.write_bytes(b"stale content")
+                first = MagicMock()
+                if failure == "connection":
+                    response = MagicMock(status=200)
+                    response.read1.side_effect = [b"partial", ConnectionResetError("connection reset")]
+                    first.getresponse.return_value = response
+                else:
+                    first.getresponse.return_value = MagicMock(status=failure)
+                second = success()
+                with patch.object(runner.http.client, "HTTPConnection", side_effect=[first, second]), \
+                        patch.object(runner.time, "sleep") as sleep, redirect_stdout(io.StringIO()):
+                    runner.download_package(cfg, destination)
+                self.assertEqual(destination.read_bytes(), payload)
+                sleep.assert_called_once()
+                first.close.assert_called_once()
+                second.close.assert_called_once()
+
+        rejected = MagicMock()
+        rejected.getresponse.return_value = MagicMock(status=401)
+        with patch.object(runner.http.client, "HTTPConnection", return_value=rejected), \
+                patch.object(runner.time, "sleep") as sleep, \
+                self.assertRaisesRegex(runner.RunnerError, "HTTP 401"):
+            runner.download_package(cfg, self.root / "rejected")
+        sleep.assert_not_called()
+
+    def test_download_retries_share_one_total_time_budget(self):
+        deadlines = []
+
+        def connect(_url, deadline):
+            deadlines.append(deadline)
+            connection = MagicMock()
+            connection.request.side_effect = ConnectionResetError("connection reset")
+            return connection, "/input"
+
+        with patch.object(runner.time, "monotonic", side_effect=[10, 10, 11, 12, 311]), \
+                patch.object(runner.time, "sleep"), \
+                patch.object(runner, "transfer_connection", side_effect=connect), \
+                redirect_stdout(io.StringIO()), self.assertRaises(TimeoutError):
+            runner.download_package(config(), self.root / "download-timeout")
+        self.assertEqual(deadlines, [310, 310])
+
     def test_zero_reward_is_execution_success_but_framework_errors_fail(self):
         path = self.root / "result.json"
         path.write_text(json.dumps(result()))
@@ -643,6 +698,38 @@ class RunnerTest(unittest.TestCase):
                 patch.object(reporter, "terminal"), \
                 patch.object(runner, "upload_results", side_effect=upload):
             self.assertEqual(runner.execute(cfg, self.root, reporter.cancel, reporter=reporter), 0)
+
+    def test_sandbox_preparation_consumes_framework_execution_budget(self):
+        package = self.example_package()
+        cfg = config() | {"sandboxURL": "http://platform.test/api/v1/job-runners/task-test/sandboxes"}
+        reporter = MagicMock()
+        reporter.shorten_deadline.side_effect = lambda deadline: deadline
+        now = [100.0]
+        observed_timeouts = []
+
+        def download(_cfg, destination):
+            shutil.copyfile(package, destination)
+            now[0] = 120.0
+
+        def framework(_config_path, output, _cancel, timeout):
+            observed_timeouts.append(timeout)
+            (output / "run").mkdir()
+            (output / "run/result.json").write_text(json.dumps(result()))
+            collected_trial(output)
+            return 0, None
+
+        with patch.object(runner.time, "monotonic", side_effect=lambda: now[0]), \
+                patch.object(runner.importlib.metadata, "version", return_value=runner.FRAMEWORK_VERSION), \
+                patch.object(runner, "download_package", side_effect=download), \
+                patch.object(runner, "run_framework", side_effect=framework), \
+                patch.object(runner, "upload_results", return_value={"id": "a" * 64, "digest": "b" * 64}):
+            code = runner.execute(cfg, self.root, threading.Event(), reporter=reporter, final_deadline=1120.0)
+
+        self.assertEqual(code, 0)
+        self.assertEqual(observed_timeouts, [40.0])
+        control = json.loads((self.root / "sandbox-control.json").read_text())
+        self.assertEqual(control["executionDeadline"], 160.0)
+        reporter.terminal.assert_called_once()
 
     def test_cancel_during_result_upload_overrides_success_terminal(self):
         package = self.example_package()
