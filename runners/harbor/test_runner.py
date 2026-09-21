@@ -722,6 +722,7 @@ class RunnerTest(unittest.TestCase):
         terminal = reporter.terminal.call_args.args[0]
         self.assertEqual(terminal["outcome"], "cancelled")
         self.assertEqual(terminal["reason"], "evaluation_cancelled")
+        self.assertIn("cancelled", terminal["message"])
 
     def test_network_retry_reuses_exact_archive_bytes(self):
         path = self.root / "result.tar.gz"

@@ -1080,8 +1080,12 @@ def execute(config, work, cancel, reporter=None, final_deadline=None):
             info.size, info.mode = len(contents), 0o600
             target.addfile(info, _DeadlineReader(io.BytesIO(contents), diagnostic_deadline))
         ensure_deadline(diagnostic_deadline)
+    if cancel.is_set():
+        set_failure_diagnostic(report, "framework", "cancelled")
     status = report["executionStatus"] if report["collectionComplete"] and not cancel.is_set() else "failed"
     artifact = upload_with_retry(config, archive, status, deadline=upload_deadline)
+    if cancel.is_set():
+        set_failure_diagnostic(report, "framework", "cancelled")
     succeeded = not cancel.is_set() and report["executionStatus"] == "succeeded" and report["collectionComplete"]
     if reporter is not None:
         if cancel.is_set():
