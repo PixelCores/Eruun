@@ -42,6 +42,7 @@ CONTROL_OUTAGE_SECONDS = 600
 CONTROL_STATE_MAX_AGE_SECONDS = 60
 HEARTBEAT_SECONDS = 15
 MAX_EVENT_RESPONSE_BYTES = 64 * 1024
+DIAGNOSTIC_MESSAGE_BYTES = 512
 # Installed adapters execute in the trial sandbox, rather than importing user code.
 AGENTS = frozenset({"claude-code", "codex", "terminus-2", "oracle"})
 
@@ -329,6 +330,37 @@ def collection_error(report, path, reason, count=1):
         errors.append({"path": str(path)[:1024], "reason": reason})
 
 
+def bounded_text(value, limit):
+    """Limit text by UTF-8 byte length without leaving an invalid suffix."""
+    return str(value).encode("utf-8")[:limit].decode("utf-8", "ignore")
+
+
+def set_failure_diagnostic(report, failure_class, reason, message=None):
+    """Record one stable, bounded failure diagnosis without exposing secrets."""
+    diagnostic = report.setdefault("diagnostics", {})
+    diagnostic.setdefault("failureClass", failure_class)
+    diagnostic.setdefault("failureReason", reason)
+    if message and "message" not in diagnostic:
+        text = " ".join(str(message).split())
+        text = re.sub(r"(?i)bearer\s+\S+", "Bearer [redacted]", text)
+        text = re.sub(r"(?i)\b(token|password|secret|api[_-]?key)\b(?:\s*[:=]\s*|\s+)\S+", r"\1=[redacted]", text)
+        diagnostic["message"] = bounded_text(text, DIAGNOSTIC_MESSAGE_BYTES)
+
+
+def exception_diagnostic(exc):
+    """Return only controlled RunnerError text; other exceptions stay type-only."""
+    return str(exc) if isinstance(exc, RunnerError) else type(exc).__name__
+
+
+def terminal_diagnostic_message(report):
+    diagnostic = report.get("diagnostics") or {}
+    if not diagnostic:
+        return None
+    parts = [diagnostic.get("failureClass"), diagnostic.get("failureReason"), diagnostic.get("message")]
+    message = ": ".join(str(part) for part in parts if part)
+    return bounded_text(message, DIAGNOSTIC_MESSAGE_BYTES) or None
+
+
 def remaining_time(deadline):
     remaining = deadline - time.monotonic()
     if remaining <= 0:
@@ -506,6 +538,8 @@ def archive_results(output, archive_path, report, deadline=None):
         if issue_count:
             report["collectionErrors"] = issues
             report["collectionErrorCount"] = issue_count
+            if report.get("executionStatus") == "succeeded":
+                set_failure_diagnostic(report, "collection", "collection_incomplete")
         report_bytes = json.dumps(report, ensure_ascii=False, allow_nan=False).encode()
         ensure_deadline(deadline)
         info = tarfile.TarInfo("result.json")
@@ -936,6 +970,7 @@ def execute(config, work, cancel, reporter=None, final_deadline=None):
     output.mkdir()
     (work / "collection").mkdir(mode=0o700)
     expected_trials = 0
+    phase = "preparing"
     report = {"taskId": config["taskId"], "framework": {"name": "harbor", "version": FRAMEWORK_VERSION},
               "datasetDigest": config["datasetDigest"], "executionStatus": "failed", "frameworkExitCode": None}
     try:
@@ -987,6 +1022,7 @@ def execute(config, work, cancel, reporter=None, final_deadline=None):
             raise RunnerError("cancelled before framework start")
         if reporter is not None:
             reporter.emit("phase", phase="running")
+        phase = "running"
         log_runner_event("harbor_start")
         code, interrupted = run_framework(config_path, output, cancel, config["timeoutSeconds"])
         report["frameworkExitCode"] = code
@@ -995,6 +1031,9 @@ def execute(config, work, cancel, reporter=None, final_deadline=None):
             report["executionStatus"] = "failed"
             report["interruption"] = interrupted
             collection_error(report, "trials", "framework_interrupted")
+            set_failure_diagnostic(report, "framework", f"interrupted_{interrupted}")
+        elif report["executionStatus"] != "succeeded":
+            set_failure_diagnostic(report, "framework", "result_incomplete")
     except Exception as exc:
         # Exception values may contain environment-expanded credentials; retain the category only.
         report["error"] = type(exc).__name__
@@ -1003,6 +1042,9 @@ def execute(config, work, cancel, reporter=None, final_deadline=None):
         if cancel.is_set() and "interruption" not in report:
             report["interruption"] = "cancelled"
             collection_error(report, "trials", "framework_interrupted")
+            set_failure_diagnostic(report, "framework", "cancelled")
+        else:
+            set_failure_diagnostic(report, phase, f"{phase}_error", exception_diagnostic(exc))
     finalization_deadline = time.monotonic() + config.get("finalizationTimeoutSeconds", FINALIZATION_SECONDS)
     if final_deadline is not None:
         finalization_deadline = min(finalization_deadline, final_deadline)
@@ -1019,6 +1061,8 @@ def execute(config, work, cancel, reporter=None, final_deadline=None):
     archive = work / "results.tar.gz"
     try:
         check_sandbox_collection(output, expected_trials, report, deadline=collection_deadline)
+        if report.get("executionStatus") == "succeeded" and report.get("collectionErrorCount"):
+            set_failure_diagnostic(report, "collection", "collection_incomplete")
         archive_results(output, archive, report, deadline=collection_deadline)
     except (RunnerError, OSError, tarfile.TarError) as exc:
         # Preserve the local originals for Pod retention and make missing source
@@ -1027,6 +1071,7 @@ def execute(config, work, cancel, reporter=None, final_deadline=None):
         report["collectionErrors"] = [{"path": "outputs", "reason": type(exc).__name__}]
         report["collectionErrorCount"] = 1
         report["diagnosticOnly"] = True
+        set_failure_diagnostic(report, "collection", "archive_error", exception_diagnostic(exc))
         contents = json.dumps(report, ensure_ascii=False).encode()
         diagnostic_deadline = min(upload_deadline, time.monotonic() + 5)
         ensure_deadline(diagnostic_deadline)
@@ -1060,6 +1105,9 @@ def execute(config, work, cancel, reporter=None, final_deadline=None):
             "collectionComplete": bool(report["collectionComplete"]),
             "reason": reason,
         }
+        message = terminal_diagnostic_message(report)
+        if message:
+            terminal["message"] = message
         if isinstance(exit_code, int) and exit_code >= 0:
             terminal["exitCode"] = min(exit_code, 255)
         elif isinstance(exit_code, int) and exit_code < 0:

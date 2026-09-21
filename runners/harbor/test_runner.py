@@ -198,6 +198,59 @@ class RunnerTest(unittest.TestCase):
         path.write_text("broken json")
         self.assertEqual(runner.framework_status(path, 0), "failed")
 
+    def test_failure_diagnostic_is_bounded_and_redacted(self):
+        report = {}
+        runner.set_failure_diagnostic(
+            report,
+            "preparing",
+            "preparing_error",
+            "Bearer secret-token password hunter2 api_key: private-value",
+        )
+        self.assertEqual(report["diagnostics"]["failureClass"], "preparing")
+        self.assertEqual(report["diagnostics"]["failureReason"], "preparing_error")
+        message = report["diagnostics"]["message"]
+        self.assertNotIn("secret-token", message)
+        self.assertNotIn("hunter2", message)
+        self.assertNotIn("private-value", message)
+        self.assertLessEqual(len(message.encode("utf-8")), runner.DIAGNOSTIC_MESSAGE_BYTES)
+        runner.set_failure_diagnostic(report, "other", "other_error", "ignored")
+        self.assertEqual(report["diagnostics"]["failureClass"], "preparing")
+        self.assertEqual(report["diagnostics"]["failureReason"], "preparing_error")
+
+        non_ascii = {}
+        runner.set_failure_diagnostic(
+            non_ascii,
+            "framework",
+            "result_incomplete",
+            "测" * runner.DIAGNOSTIC_MESSAGE_BYTES,
+        )
+        encoded = non_ascii["diagnostics"]["message"].encode("utf-8")
+        self.assertLessEqual(len(encoded), runner.DIAGNOSTIC_MESSAGE_BYTES)
+        encoded.decode("utf-8")
+        terminal_message = runner.terminal_diagnostic_message(non_ascii)
+        self.assertLessEqual(len(terminal_message.encode("utf-8")), runner.DIAGNOSTIC_MESSAGE_BYTES)
+        terminal_message.encode("utf-8").decode("utf-8")
+
+    def test_terminal_includes_structured_failure_diagnostic(self):
+        package = self.example_package()
+        reporter = MagicMock()
+        reporter.shorten_deadline.side_effect = lambda deadline: deadline
+
+        with patch.object(runner.importlib.metadata, "version", side_effect=runner.RunnerError("bad Harbor")), \
+                patch.object(runner, "download_package", side_effect=lambda cfg, dest: shutil.copyfile(package, dest)), \
+                patch.object(runner, "upload_results", return_value={"id": "a" * 64, "digest": "b" * 64}):
+            self.assertEqual(
+                runner.execute(config(), self.root, threading.Event(), reporter=reporter),
+                1,
+            )
+
+        terminal = reporter.terminal.call_args.args[0]
+        self.assertEqual(terminal["outcome"], "failed")
+        self.assertIn("preparing: preparing_error", terminal["message"])
+        with tarfile.open(self.root / "results.tar.gz") as archive:
+            report = json.load(archive.extractfile("result.json"))
+        self.assertEqual(report["diagnostics"]["failureReason"], "preparing_error")
+
     def test_raw_archive_keeps_binary_hidden_files_and_safe_links(self):
         output = self.root / "outputs"
         output.mkdir()
@@ -1049,6 +1102,10 @@ class RunnerTest(unittest.TestCase):
             runner.archive_results(output, self.root / "archive", report)
         self.assertFalse(report["collectionComplete"])
         self.assertEqual(report["collectionErrors"][0]["reason"], "too_many_entries")
+        self.assertEqual(report["diagnostics"]["failureReason"], "collection_incomplete")
+        with tarfile.open(self.root / "archive") as archive:
+            saved = json.load(archive.extractfile("result.json"))
+        self.assertEqual(saved["diagnostics"]["failureReason"], "collection_incomplete")
 
     def test_archive_deadline_expires_while_copying_large_file(self):
         output = self.root / "outputs"
@@ -1157,6 +1214,7 @@ class RunnerTest(unittest.TestCase):
             with tarfile.open(path) as archive:
                 report = json.load(archive.extractfile("result.json"))
                 self.assertEqual(report["interruption"], "cancelled")
+                self.assertEqual(report["diagnostics"]["failureReason"], "interrupted_cancelled")
                 self.assertFalse(report["collectionComplete"])
                 self.assertEqual(archive.extractfile("outputs/partial.log").read(), b"before termination")
         with patch.object(runner.importlib.metadata, "version", return_value=runner.FRAMEWORK_VERSION), patch.object(runner, "download_package", side_effect=download), patch.object(runner, "run_framework", side_effect=framework), patch.object(runner, "upload_results", side_effect=upload):
