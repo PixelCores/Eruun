@@ -3,12 +3,13 @@ package clients
 import (
 	"flag"
 	"fmt"
+	"path/filepath"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/client-go/util/homedir"
-	"path/filepath"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
 	apiConfig "github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -33,8 +34,23 @@ func setKubeConfig(conf *rest.Config) (err error) {
 			return err
 		}
 	}
+	conf = rest.CopyConfig(conf)
+	if conf.RateLimiter == nil && conf.QPS >= 0 {
+		qps, burst := conf.QPS, conf.Burst
+		if qps == 0 {
+			qps = rest.DefaultQPS
+			if burst == 0 {
+				burst = rest.DefaultBurst
+			}
+		}
+		if burst <= 0 {
+			return fmt.Errorf("configure Kubernetes client rate limiter: burst must be greater than 0 when QPS is positive")
+		}
+		// Config copies used by tenant, typed and dynamic clients retain this
+		// limiter, so creating a client does not create another request budget.
+		conf.RateLimiter = flowcontrol.NewTokenBucketRateLimiter(qps, burst)
+	}
 	kubeConfig = conf
-	//kubeConfig.Wrap(auth.NewImpersonatingRoundTripper)
 	return nil
 }
 
@@ -44,10 +60,9 @@ func SetKubeConfig(c apiConfig.Config) error {
 	if err != nil {
 		return err
 	}
-	kubeConfig = conf
-	kubeConfig.Burst = c.KubeBurst
-	kubeConfig.QPS = float32(c.KubeQPS)
-	return setKubeConfig(kubeConfig)
+	conf.Burst = c.KubeBurst
+	conf.QPS = float32(c.KubeQPS)
+	return setKubeConfig(conf)
 }
 
 // GetKubeClient create and return kube runtime rClient

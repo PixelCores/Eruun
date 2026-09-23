@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
+
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -47,7 +49,13 @@ func LoadJobSchedulerPolicy(ctx context.Context, store datastore.DataStore) (wor
 // EnqueueJobForScheduling registers only dependency-ready work. Repeated polls
 // retain the first queue time, so retrying a notification cannot defeat aging.
 // A nil owner is reserved for a committed, due delayed Job checkpoint.
-func EnqueueJobForScheduling(ctx context.Context, store datastore.DataStore, owner *model.WorkflowQueue, job *model.JobInfo, deadline *time.Time) error {
+// confirmedUID is supplied only after the caller freshly verifies an existing
+// stop-policy Job. It transfers that execution's reservation, never permission
+// to create a replacement workload.
+func EnqueueJobForScheduling(ctx context.Context, store datastore.DataStore, owner *model.WorkflowQueue, job *model.JobInfo, deadline *time.Time, confirmedUID ...string) error {
+	if len(confirmedUID) > 1 {
+		return fmt.Errorf("job admission recovery requires one confirmed UID")
+	}
 	if job == nil || job.ExecutionKey == nil || *job.ExecutionKey == "" {
 		return datastore.ErrPrimaryEmpty
 	}
@@ -75,6 +83,18 @@ func EnqueueJobForScheduling(ctx context.Context, store datastore.DataStore, own
 		}
 		if err := validateSchedulableJob(current, owner, now, deadline); err != nil {
 			return err
+		}
+		recoverAdmission := len(confirmedUID) == 1 && confirmedUID[0] != ""
+		if recoverAdmission {
+			persisted := jobAdmissionCheckpointIdentity(current, now)
+			supplied := jobAdmissionCheckpointIdentity(job, now)
+			if owner == nil || status != config.StatusRunning || persisted == nil || supplied == nil ||
+				confirmedUID[0] != persisted.UID || *persisted != *supplied {
+				return fmt.Errorf("%w: recovered Job admission checkpoint changed", ErrWorkflowOwnershipLost)
+			}
+			// An existing UID alone does not establish an earlier capacity
+			// reservation. Legacy/unconfirmed history still uses normal admission.
+			recoverAdmission = recoverableJobAdmission(current, now) != nil
 		}
 		class := job.SchedulingClass
 		if class == "" {
@@ -106,6 +126,14 @@ func EnqueueJobForScheduling(ctx context.Context, store datastore.DataStore, own
 			"scheduling_queued_at": queuedAt, "scheduling_generation": generation,
 			"scheduling_owner_status": status, "scheduling_expires_at": deadline,
 			"scheduling_reason": "waiting for global job admission",
+		}
+		if recoverAdmission {
+			updates["scheduling_state"] = workflowconfig.JobSchedulingAdmitted
+			updates["scheduling_reason"] = "reattached existing Job execution"
+			updates["scheduling_queued_at"] = current.SchedulingQueuedAt
+		}
+		if current.SchedulingResources == "" && job.SchedulingResources != "" {
+			updates["scheduling_resources"] = job.SchedulingResources
 		}
 		if err := updateJobScheduling(ctx, tx, current, conditions, updates); err != nil {
 			return err
@@ -224,6 +252,18 @@ func ReleaseJobAdmission(ctx context.Context, store datastore.DataStore, owner *
 		if job.SchedulingState == workflowconfig.JobSchedulingReleased {
 			return nil
 		}
+		if job.SchedulingState == workflowconfig.JobSchedulingAdmitted && job.InternalInfo != "" {
+			now, err := currentWorkflowDatabaseTime(ctx, tx)
+			if err != nil {
+				return err
+			}
+			if recoverableJobAdmission(job, now) != nil {
+				// The controller can return during an ownership transition while
+				// its immutable Kubernetes execution remains live. Keep the slot
+				// until that exact execution reattaches, terminates, or expires.
+				return nil
+			}
+		}
 		conditions := jobSchedulingConditions(job)
 		err = updateJobScheduling(ctx, tx, job, conditions, map[string]interface{}{
 			"scheduling_state": workflowconfig.JobSchedulingReleased, "scheduling_reason": reason,
@@ -247,13 +287,17 @@ func ReleaseJobAdmission(ctx context.Context, store datastore.DataStore, owner *
 // AdmitQueuedJobs serializes every admission decision on the existing policy
 // row. READ COMMITTED ensures a second scheduler counts the first one's writes
 // after waiting for this lock, including across scheduler leader changes.
-func AdmitQueuedJobs(ctx context.Context, store datastore.DataStore) (int, error) {
+func AdmitQueuedJobs(ctx context.Context, store datastore.DataStore, quotas ...corev1.ResourceList) (int, error) {
+	resources, err := newJobResourceBudget(quotas)
+	if err != nil {
+		return 0, err
+	}
 	transactional, ok := store.(datastore.ReadCommittedTransactional)
 	if !ok {
 		return 0, fmt.Errorf("job scheduling requires read-committed transactions")
 	}
 	admitted := 0
-	err := transactional.WithReadCommittedTransaction(ctx, func(tx datastore.DataStore) error {
+	err = transactional.WithReadCommittedTransaction(ctx, func(tx datastore.DataStore) error {
 		locked, err := tx.CompareAndSwap(ctx, &model.SystemSetting{Type: model.SystemSettingTypeWorkflowScheduler}, "type", model.SystemSettingTypeWorkflowScheduler, map[string]interface{}{})
 		if err != nil {
 			return fmt.Errorf("lock job scheduler policy: %w", err)
@@ -272,7 +316,7 @@ func AdmitQueuedJobs(ctx context.Context, store datastore.DataStore) (int, error
 		active, perWorkspace := 0, map[string]int{}
 		parents := map[string]*model.WorkflowQueue{}
 		var queued []*model.JobInfo
-		err = scanScheduledJobs(ctx, tx, []string{workflowconfig.JobSchedulingQueued, workflowconfig.JobSchedulingAdmitted}, func(job *model.JobInfo) error {
+		err = scanScheduledJobs(ctx, tx, []string{workflowconfig.JobSchedulingQueued, workflowconfig.JobSchedulingAdmitted}, parents, func(job *model.JobInfo) error {
 			valid, err := jobSchedulingCurrent(ctx, tx, job, now, parents, true)
 			if err != nil {
 				return err
@@ -289,20 +333,33 @@ func AdmitQueuedJobs(ctx context.Context, store datastore.DataStore) (int, error
 			if job.SchedulingState == workflowconfig.JobSchedulingAdmitted {
 				active++
 				perWorkspace[job.WorkspaceID]++
+				if resources != nil {
+					resources.add(job.WorkspaceID, scheduledJobResourceDemand(job))
+					if job.ExecutionKey != nil {
+						resources.activeExecutions[*job.ExecutionKey] = true
+					}
+				}
 			} else {
+				if resources != nil {
+					resources.candidates[job.ID] = scheduledJobResourceDemand(job)
+				}
 				// The queue snapshot retains only admission metadata. Large workload
 				// and delayed payloads do not survive their database page.
 				queued = append(queued, &model.JobInfo{
-					ID: job.ID, WorkspaceID: job.WorkspaceID, ExecutionKey: job.ExecutionKey, RunGeneration: job.RunGeneration,
+					ID: job.ID, Type: job.Type, WorkspaceID: job.WorkspaceID, ExecutionKey: job.ExecutionKey, RunGeneration: job.RunGeneration,
 					SchedulingState: job.SchedulingState, SchedulingGeneration: job.SchedulingGeneration,
 					SchedulingOwnerStatus: job.SchedulingOwnerStatus, SchedulingQueuedAt: job.SchedulingQueuedAt,
 					SchedulingPriority:  job.SchedulingPriority,
 					SchedulingExpiresAt: job.SchedulingExpiresAt,
+					SchedulingReason:    job.SchedulingReason,
 				})
 			}
 			return nil
 		})
 		if err != nil {
+			return err
+		}
+		if err := resources.addRetainedSandboxes(ctx, tx); err != nil {
 			return err
 		}
 		// Re-evaluate fairness in memory after each admission. Each Job and
@@ -312,6 +369,17 @@ func AdmitQueuedJobs(ctx context.Context, store datastore.DataStore) (int, error
 			for _, job := range queued {
 				if job.SchedulingState != workflowconfig.JobSchedulingQueued || perWorkspace[job.WorkspaceID] >= policy.MaxConcurrentJobsPerWorkspace {
 					continue
+				}
+				if resources != nil && (job.Type == string(config.JobCommand) || job.Type == string(config.JobEval)) {
+					if reason := resources.reason(job.WorkspaceID, resources.candidateDemand(job)); reason != "" {
+						if job.SchedulingReason != reason {
+							if err := updateJobScheduling(ctx, tx, job, jobSchedulingConditions(job), map[string]interface{}{"scheduling_reason": reason}); err != nil && !errors.Is(err, ErrWorkflowOwnershipLost) {
+								return err
+							}
+							job.SchedulingReason = reason
+						}
+						continue
+					}
 				}
 				if best == nil || preferScheduledJob(job, best, policy, now, perWorkspace) {
 					best = job
@@ -331,6 +399,9 @@ func AdmitQueuedJobs(ctx context.Context, store datastore.DataStore) (int, error
 				return err
 			}
 			active++
+			if resources != nil {
+				resources.add(best.WorkspaceID, resources.candidateDemand(best))
+			}
 			best.SchedulingState = workflowconfig.JobSchedulingAdmitted
 			perWorkspace[best.WorkspaceID]++
 			admitted++
@@ -362,7 +433,7 @@ func preferScheduledJob(a, b *model.JobInfo, p workflowconfig.JobSchedulerPolicy
 	return a.ID < b.ID
 }
 
-func scanScheduledJobs(ctx context.Context, store datastore.DataStore, states []string, visit func(*model.JobInfo) error) error {
+func scanScheduledJobs(ctx context.Context, store datastore.DataStore, states []string, parents map[string]*model.WorkflowQueue, visit func(*model.JobInfo) error) error {
 	lastID := 0
 	for {
 		opts := &datastore.ListOptions{
@@ -376,6 +447,42 @@ func scanScheduledJobs(ctx context.Context, store datastore.DataStore, states []
 		entities, err := store.List(ctx, &model.JobInfo{}, opts)
 		if err != nil {
 			return fmt.Errorf("list scheduled jobs: %w", err)
+		}
+		// Fetch parent ownership once per bounded page, not once per Job. Keep
+		// only fields used by admission; a parent can carry a large JobSpec.
+		ids := make([]string, 0, len(entities))
+		for _, entity := range entities {
+			job, ok := entity.(*model.JobInfo)
+			if !ok || job == nil {
+				return datastore.ErrEntityInvalid
+			}
+			if job.SchedulingOwnerStatus == "" {
+				continue
+			}
+			if _, exists := parents[job.TaskID]; !exists {
+				parents[job.TaskID] = nil
+				ids = append(ids, job.TaskID)
+			}
+		}
+		if len(ids) > 0 {
+			rows, err := store.List(ctx, &model.WorkflowQueue{}, &datastore.ListOptions{
+				Page: 1, PageSize: len(ids),
+				FilterOptions: datastore.FilterOptions{In: []datastore.InQueryOption{{Key: "task_id", Values: ids}}},
+			})
+			if err != nil {
+				return fmt.Errorf("load scheduling workflows: %w", err)
+			}
+			for _, row := range rows {
+				parent, ok := row.(*model.WorkflowQueue)
+				if !ok || parent == nil {
+					return datastore.ErrEntityInvalid
+				}
+				parents[parent.TaskID] = &model.WorkflowQueue{
+					TaskID: parent.TaskID, RunGeneration: parent.RunGeneration,
+					Status: parent.Status, RunToken: parent.RunToken, WorkerID: parent.WorkerID,
+					LeaseExpiresAt: parent.LeaseExpiresAt,
+				}
+			}
 		}
 		for _, entity := range entities {
 			job, ok := entity.(*model.JobInfo)
@@ -519,6 +626,14 @@ func jobSchedulingCurrent(ctx context.Context, store datastore.DataStore, job *m
 	}
 	if parent == nil {
 		return false, nil
+	}
+	if retainRunningAdmission && job.SchedulingState == workflowconfig.JobSchedulingAdmitted &&
+		(parent.Status == config.StatusWaiting || parent.Status == config.StatusQueued || parent.Status == config.StatusRunning) &&
+		recoverableJobAdmission(job, now) != nil {
+		// A lease transition does not destroy an existing Runner or its trial
+		// bundle. Count the reservation until the new owner confirms/reassociates
+		// that exact UID or the execution's persisted deadline expires.
+		return true, nil
 	}
 	if parent.RunGeneration != job.SchedulingGeneration {
 		return false, nil

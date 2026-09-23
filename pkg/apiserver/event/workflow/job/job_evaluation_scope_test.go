@@ -33,7 +33,7 @@ func evaluationScopeStore(t *testing.T) (*gorm.DB, *access.Store, context.Contex
 	require.NoError(t, err)
 	connection.SetMaxOpenConns(1)
 	t.Cleanup(func() { require.NoError(t, connection.Close()) })
-	require.NoError(t, db.AutoMigrate(&model.SystemSetting{}, &model.WorkflowQueue{}, &model.JobInfo{}, &model.JobArtifact{}, &model.Applications{}, &model.ApplicationComponent{}))
+	require.NoError(t, db.AutoMigrate(&model.SystemSetting{}, &model.WorkflowQueue{}, &model.JobInfo{}, &model.JobArtifact{}, &model.Applications{}, &model.ApplicationComponent{}, &model.ResourceCreationBudget{}))
 	store := access.NewStore(&sqlstore.Driver{Client: *db})
 	require.NoError(t, repository.EnsureJobSchedulerPolicy(context.Background(), store))
 	return db, store, access.WithScope(context.Background(), access.Scope{WorkspaceID: "space", Namespace: "space-ns"})
@@ -78,11 +78,13 @@ func TestEvaluationScopeRunsThroughAdmissionAndPersistsPrivateSnapshot(t *testin
 			client := fake.NewSimpleClientset()
 			var created []*batchv1.Job
 			installRetryJobReactor(t, client, 1, "OOMKilled", &created)
+			observer := startJobTestObserver(t, client)
+			client.ClearActions()
 			ctx, cancel := context.WithTimeout(scopedCtx, 5*time.Second)
 			defer cancel()
 			result := make(chan error, 1)
 			go func() {
-				result <- RunJobs(ctx, []*model.JobTask{task}, 1, client, nil, store, func() {}, true, nil, nil, nil, nil, nil)
+				result <- RunJobs(ctx, []*model.JobTask{task}, 1, client, nil, store, func() {}, true, nil, nil, nil, observer, nil)
 			}()
 			require.Eventually(t, func() bool {
 				var count int64

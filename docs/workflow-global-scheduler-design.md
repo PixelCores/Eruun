@@ -87,9 +87,15 @@ Workflow 中每个 component step 可写 `schedulingClass`，subStep 可覆盖�
 - `fifo`: 按首次入队时间、Job ID 选择；仍跳过达到空间上限的 Job。
 - 两种策略都遵守全局与空间并发上限；每轮最多新放行 100 个 Job。扫描分页，父 Workflow 在同轮复用已读状态。
 
-降低上限不终止已有 Job，只阻止后续超额准入。Job 结束或失去 ownership 后释放逻辑槽位。同一调度 generation/status 内的队列重入保留等待时间，不能通过反复消息投递刷新 FIFO 或逃避老化。
+降低上限不终止已有 Job，只阻止后续超额准入。Job 结束后释放逻辑槽位；ownership 失效时，已持久化资源 UID 的有效 stop-policy command/eval 保留原占位，供健康实例接管，其他记录回收。同一调度 generation/status 内的队列重入保留等待时间，不能通过反复消息投递刷新 FIFO 或逃避老化。
 
 **槽位约束的是 Eruun Job 控制器执行并发，不是存量 Pod 的 CPU/内存配额。** Deployment 就绪、CronJob 配置完成或 delayed Job 分发结束后，它们创建的 Kubernetes 资源可以继续存在。Pod 的节点选择、资源可满足性和 ResourceQuota 仍由 Kubernetes 决定。
+
+阶段一另对短期 command/eval 增加声明资源预算，复用账号配置的 `workspace.quota`，在同一准入事务中决策。command 保存实际提交 Pod 的资源数量快照；eval 预留 Runner 加 `concurrency` 个 trial 的 CPU/内存 requests、limits 和 Pod 数，避免先创建过多 Runner。归档/采集失败后仍保留的 Sandbox 在原 Job 释放准入后继续计账，健康执行重新关联时不重复预留同一 trial。缺少必要资源声明时明确等待并给出 `schedulingReason`，不能按零通过；配额降低不驱逐已运行执行。
+
+这是 Eruun 短期 Job 的声明账，不是完整集群资源账。已部署的长期 Application Pod、外部 Pod、其他 ResourceQuota、LimitRange、ACS 实际分配规格仍由 Kubernetes 限制。容量实验须使用短期 Job 独占空间，或先为预算外占用预留配额；直接修改集群 quota 而不更新账号配置不会自动更新此预算。长期 Application 控制器保留原准入行为，其活跃未知占用会阻止同空间新 command/eval；配置和清理控制操作继续执行。
+
+当前上传任务包未把未来每个 trial 的磁盘声明汇总成 Job 级资源包。因此配置了 requests/limits.ephemeral-storage 空间预算时，eval 会以资源声明未知等待，不能将该项按零预留；该组合尚不支持。Runner 和单 trial 仍各有明确磁盘 request/limit。创建速率、突发额度、启动中上限及在线时长上限见 [系统设置](system-setting.md#job-全局调度)，与上述数量/资源准入分别生效。
 
 ## 5. 数据库、恢复和取消
 
@@ -101,7 +107,9 @@ Workflow 中每个 component step 可写 `schedulingClass`，subStep 可覆盖�
 
 Delayed Job 只有在数据库中存在到期且 pending 的 checkpoint 时才可独立进入队列。它不再依赖已经结束的父 Workflow lease，使用 checkpoint identity 和短期限准入；排队等待沿用已有 dispatcher 轮询，不消耗基础设施失败的指数退避次数。过期 deadline 的重新准入不能被旧 dispatcher 释放。
 
-Worker 等待准入时响应取消与基础设施停止；失去 ownership 后不执行资源操作。Scheduler 会回收已终止、过期或不再属于该代的调度记录。此恢复沿用既有 at-least-once/Kubernetes identity 幂等语义，不承诺外部操作 exactly-once。
+Worker 等待准入时响应取消与基础设施停止；失去 ownership 后不执行资源操作。Scheduler 会回收已终止、过期或不再属于该代的调度记录，但已创建且未过期的 stop-policy command/eval 在父 Workflow Waiting/Queued/Running 接管期间继续计入原占位。新 Worker 必须重新 GET 并核对原 UID、执行键、代次和 checkpoint，才可转移这份占位；降低配额不会把健康接管变成新任务排队。缺失、替换、没有已存 UID、过期或需要 OOM resize 的执行没有此豁免，确认后资源再消失也不能借原占位创建替代实例。此恢复沿用既有 at-least-once/Kubernetes identity 幂等语义，不承诺外部操作 exactly-once。
+
+Worker 的准入查询从 200ms 逐步退避至默认调度周期 3s，取消立即唤醒。Scheduler 按每页候选批读父 Workflow，只保留 ownership 字段，去除逐 Job parent GET；仍会扫描 queued/admitted，不能把本优化描述为恒定时间调度。Job 级准入排队不启动执行计时；获得准入后的 Kubernetes 创建限速等待计入该执行 deadline，trial 的全局等待则与 Harbor 环境启动时限区分。
 
 ## 6. OOM 失败策略
 

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -12,6 +14,8 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 const (
@@ -119,6 +123,64 @@ func migrateApplicationManagementModeTx(tx *gorm.DB) error {
 			"observeRows", observed.RowsAffected)
 	}
 	return nil
+}
+
+// migrateResourceCreationBudgetIntervals upgrades budgets created before their
+// rate interval was persisted. The old interval cannot be reconstructed, so a
+// live debt is saturated at the current burst instead of granting new permits.
+func migrateResourceCreationBudgetIntervals(ctx context.Context, db *gorm.DB) error {
+	if db == nil {
+		return fmt.Errorf("gorm db is nil")
+	}
+	var pending int64
+	if err := db.WithContext(ctx).Model(&model.ResourceCreationBudget{}).Where("interval_micros = ?", 0).Count(&pending).Error; err != nil {
+		return fmt.Errorf("count resource creation budgets without intervals: %w", err)
+	}
+	if pending == 0 {
+		return nil
+	}
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var setting model.SystemSetting
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("type = ?", model.SystemSettingTypeWorkflowScheduler).
+			Take(&setting).Error; err != nil {
+			return fmt.Errorf("lock workflow scheduler policy for resource creation budget migration: %w", err)
+		}
+		policy, err := workflowconfig.ParseJobSchedulerPolicy(setting.Value)
+		if err != nil {
+			return fmt.Errorf("parse workflow scheduler policy for resource creation budget migration: %w", err)
+		}
+		interval := time.Duration(math.Ceil(1e6/policy.ResourceCreationQPS)) * time.Microsecond
+		clock := &sqlstore.Driver{Client: *tx}
+		now, err := clock.CurrentDatabaseTime(ctx)
+		if err != nil {
+			return fmt.Errorf("query resource creation budget migration clock: %w", err)
+		}
+
+		var budgets []model.ResourceCreationBudget
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("interval_micros = ?", 0).
+			Find(&budgets).Error; err != nil {
+			return fmt.Errorf("lock resource creation budgets without intervals: %w", err)
+		}
+		for i := range budgets {
+			budget := &budgets[i]
+			budget.InitializeUnknownInterval(now, interval, policy.ResourceCreationBurst)
+			result := tx.Model(&model.ResourceCreationBudget{}).
+				Where("id = ? AND interval_micros = ?", budget.ID, 0).
+				Updates(map[string]interface{}{
+					"available_at": budget.AvailableAt, "interval_micros": budget.IntervalMicros,
+				})
+			if result.Error != nil {
+				return fmt.Errorf("initialize resource creation budget %s interval: %w", budget.ID, result.Error)
+			}
+			if result.RowsAffected != 1 {
+				return fmt.Errorf("initialize resource creation budget %s interval: row changed concurrently", budget.ID)
+			}
+		}
+		klog.InfoS("initialized legacy resource creation budget intervals", "budgets", len(budgets))
+		return nil
+	})
 }
 
 func backfillApplicationComponentRuntimeNull(db *gorm.DB, table string, field applicationComponentRuntimeNullBackfill) *gorm.DB {

@@ -51,7 +51,7 @@ func grpcTestAccounts(t *testing.T) (*account.Service, *grpcTestDelivery) {
 		&model.User{}, &model.Identity{}, &model.Session{}, &model.Workspace{},
 		&model.WorkspaceMember{}, &model.WorkspaceInvitation{}, &model.SystemSetting{},
 		&model.Applications{}, &model.WorkflowQueue{}, &model.JobInfo{},
-		&model.JobArtifact{}, &model.ArtifactChunk{}, &model.JobDelivery{},
+		&model.JobArtifact{}, &model.ArtifactChunk{}, &model.JobDelivery{}, &model.JobSandbox{},
 	))
 	redisServer := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})

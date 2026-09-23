@@ -21,6 +21,13 @@ type Store struct{ raw datastore.DataStore }
 
 func NewStore(raw datastore.DataStore) *Store { return &Store{raw: raw} }
 
+// CountStartingSandboxes is a narrow internal aggregate for the shared start
+// budget. It exposes no cross-workspace identities or records. The reservation
+// caller must first authorize its own Sandbox within the same transaction.
+func (s *Store) CountStartingSandboxes(ctx context.Context) (int64, error) {
+	return s.raw.Count(ctx, &model.JobSandbox{StartReserved: true}, nil)
+}
+
 func artifactWorkspace(e datastore.Entity) (string, bool) {
 	switch value := e.(type) {
 	case *model.JobArtifact:
@@ -28,6 +35,8 @@ func artifactWorkspace(e datastore.Entity) (string, bool) {
 	case *model.ArtifactChunk:
 		return value.WorkspaceID, true
 	case *model.JobDelivery:
+		return value.WorkspaceID, true
+	case *model.JobSandbox:
 		return value.WorkspaceID, true
 	default:
 		return "", false

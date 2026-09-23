@@ -236,6 +236,28 @@ func (s *restServer) Run(ctx context.Context, errChan chan error) error {
 	// graceful shutdown. shutdown cancels runCtx only after workers have drained.
 	runCtx, runCancel := newRuntimeLifecycleContext(ctx)
 	defer runCancel()
+	if s.sandboxObserver != nil {
+		observerDone := make(chan struct{})
+		go func() {
+			defer close(observerDone)
+			s.sandboxObserver.Run(runCtx)
+		}()
+		defer func() {
+			runCancel()
+			<-observerDone
+		}()
+	}
+	if s.cfg.RunsWorker() {
+		metricsDone := make(chan struct{})
+		go func() {
+			defer close(metricsDone)
+			s.runWorkerRuntimeMetrics(runCtx)
+		}()
+		defer func() {
+			runCancel()
+			<-metricsDone
+		}()
+	}
 	electionCtx, electionCancel := context.WithCancel(ctx)
 	defer electionCancel()
 	elections, err := s.setupRuntimeLeaderElections(electionCtx, errChan)

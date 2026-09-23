@@ -279,13 +279,18 @@ grep -q '^appVersion: "0.1.0"$' "${TEST_DIR}/Chart.yaml" ||
 
 default_manifest=$(renderRBAC default eruun eruun-system)
 assertRBACClosure "${default_manifest}" eruun-system
-assertEqual "$(resourceNames ClusterRole "${default_manifest}" | wc -l | tr -d ' ')" "2" "RBAC must render resource-manager and controller-observer ClusterRoles"
-assertEqual "$(resourceNames ClusterRoleBinding "${default_manifest}" | wc -l | tr -d ' ')" "2" "RBAC must render one binding per ClusterRole"
+assertEqual "$(resourceNames ClusterRole "${default_manifest}" | wc -l | tr -d ' ')" "3" "RBAC must render resource-manager, controller-observer and Sandbox ClusterRoles"
+assertEqual "$(resourceNames ClusterRoleBinding "${default_manifest}" | wc -l | tr -d ' ')" "3" "RBAC must render one binding per ClusterRole"
 assertEqual \
   "$(resourceName ClusterRole "${default_manifest}")" \
   "eruun-eruun-eruun-system" \
   "default ClusterRole name must remain stable"
 controller_role_name="eruun-eruun-eruun-system-controller-observer"
+sandbox_role_name="eruun-eruun-eruun-system-sandbox-runtime"
+assertEqual "$(clusterRoleRuleFieldFor "${default_manifest}" "${sandbox_role_name}" agents.kruise.io sandboxes)" "get list watch create update patch delete" "Sandbox runtime must access only its named CRD resource"
+assertEqual "$(bindingRoleRefNameFor "${sandbox_role_name}" "${default_manifest}")" "${sandbox_role_name}" "Sandbox binding must reference its narrow role"
+assertEqual "$(bindingSubjectNamesFor "${sandbox_role_name}" "${default_manifest}" | sort | tr '\n' ' ' | sed 's/ $//')" "eruun-eruun-api eruun-eruun-controller" "only API and Controller consume Sandbox lifecycle state"
+assertEqual "$(clusterRoleRuleFieldFor "${default_manifest}" eruun-eruun-eruun-system agents.kruise.io sandboxes)" "" "Worker must not receive unused Sandbox privileges"
 assertEqual "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" "" namespaces)" "get" "Delayed dispatch must only read workspace namespaces"
 assertEqual "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" "" serviceaccounts)" "impersonate" "Delayed dispatch must use its workspace identity"
 assertEqual "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" "" serviceaccounts resourceNames)" "eruun-runner" "Controller impersonation must be restricted to workspace runners"
@@ -340,8 +345,8 @@ assertEqual \
   "Controller must not manage RBAC roles"
 assertEqual \
   "$(clusterRoleRuleVerbs "${default_manifest}" batch jobs)" \
-  "get list create update patch delete" \
-  "Worker must adopt reusable Jobs into a new execution generation"
+  "get list watch create update patch delete" \
+  "Worker must observe Jobs and adopt reusable Jobs into a new execution generation"
 assertEqual \
   "$(clusterRoleRuleVerbs "${default_manifest}" storage.k8s.io storageclasses)" \
   "get create" \

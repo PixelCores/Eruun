@@ -75,7 +75,10 @@ func TestJobAdmissionCancellationStopsRecoveredInstantExecution(t *testing.T) {
 					var count int64
 					return db.Model(&model.JobInfo{}).Where("execution_key = ? AND scheduling_state = ?", task.ExecutionKey, "queued").Count(&count).Error == nil && count == 1
 				}, time.Second, 10*time.Millisecond)
-				require.Empty(t, client.Actions(), "recovery must not rerun the live workload while waiting")
+				require.Equal(t, 1, countClientActions(client, "get", "jobs"), "verify the existing UID before ordinary admission")
+				for _, verb := range []string{"create", "update", "patch", "delete"} {
+					require.Zero(t, countClientActions(client, verb, "jobs"), "recovery must not mutate the live workload while waiting")
+				}
 
 				staleOwner := reason == "new generation" || reason == "new token" || reason == "new worker"
 				ownerStillRunning := reason == "signal first"
@@ -107,7 +110,9 @@ func TestJobAdmissionCancellationStopsRecoveredInstantExecution(t *testing.T) {
 				require.NoError(t, db.Where("execution_key = ?", task.ExecutionKey).First(&saved).Error)
 				if staleOwner || ownerStillRunning {
 					require.Equal(t, string(config.StatusRunning), saved.Status)
-					require.Empty(t, client.Actions(), "a stale owner cannot stop the current execution")
+					for _, verb := range []string{"create", "update", "patch", "delete"} {
+						require.Zero(t, countClientActions(client, verb, "jobs"), "a stale owner cannot mutate the current execution")
+					}
 				} else {
 					require.Equal(t, string(config.StatusCancelled), saved.Status)
 					require.Equal(t, 1, countClientActions(client, "delete", "jobs"))

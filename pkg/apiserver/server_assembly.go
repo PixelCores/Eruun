@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -64,6 +66,9 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// Sandbox lifecycle uses the platform identity after its own Runner claim
+	// checks. Preserve the shared limiter before APIClient adds tenant transport.
+	sandboxKubeConfig := rest.CopyConfig(kubeConfig)
 	// 获取k8s的连接
 	kubeClient, err := clients.GetKubeClient()
 	if err != nil {
@@ -177,6 +182,9 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 	s.jobs, err = jobs.New(ds, kubeClient, &s.cfg)
 	if err != nil {
 		return fmt.Errorf("initialize workspace Jobs: %w", err)
+	}
+	if err := s.initSandboxObserver(kubeClient, sandboxKubeConfig); err != nil {
+		return err
 	}
 	if err = s.beanContainer.Provides(s.jobs); err != nil {
 		return err
@@ -311,6 +319,27 @@ func (s *restServer) initRoleObservers(kubeClient kubernetes.Interface) {
 	if s.cfg.RunsWorker() {
 		s.resourceObserver = informer.NewKubernetesWorkloadObserver(kubeClient)
 	}
+}
+
+func (s *restServer) initSandboxObserver(kubeClient kubernetes.Interface, platformConfig *rest.Config) error {
+	if s.cfg.Jobs == nil || (!s.cfg.RunsAPI() && !s.cfg.RunsController()) {
+		return nil
+	}
+	if s.jobs == nil || platformConfig == nil {
+		return fmt.Errorf("Sandbox runtime requires Jobs service and Kubernetes REST config")
+	}
+	sandboxClient, err := dynamic.NewForConfig(platformConfig)
+	if err != nil {
+		return fmt.Errorf("initialize Sandbox Kubernetes client: %w", err)
+	}
+	observer, err := informer.NewKubernetesSandboxObserver(sandboxClient, kubeClient)
+	if err != nil {
+		return err
+	}
+	s.sandboxObserver = observer
+	s.jobs.SandboxClient = sandboxClient
+	s.jobs.SandboxObserver = observer
+	return nil
 }
 
 func configureWorkflowEventWorkers(workers []event.Worker, queues *msg.RuntimeQueues, observer informer.ComponentReadyObserver) {

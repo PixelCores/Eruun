@@ -8,10 +8,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	k8sinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	batchlisters "k8s.io/client-go/listers/batch/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 
@@ -24,14 +26,19 @@ const (
 	defaultWorkloadObserverSyncTimeout  = 30 * time.Second
 )
 
-// KubernetesWorkloadObserver observes readiness from one shared Pod informer
-// cache per worker process. This keeps Worker correctness independent from the
-// Controller leader without issuing a cluster-wide Pod List for every Job poll.
+// KubernetesWorkloadObserver shares application Pod readiness and managed Job
+// snapshots within a Worker, independently from the Controller leader.
 type KubernetesWorkloadObserver struct {
 	client       kubernetes.Interface
 	factory      k8sinformers.SharedInformerFactory
 	podInformer  cache.SharedIndexInformer
 	podLister    corelisters.PodLister
+	jobFactory   k8sinformers.SharedInformerFactory
+	jobInformer  cache.SharedIndexInformer
+	jobLister    batchlisters.JobLister
+	jobWaitersMu sync.Mutex
+	jobWaiters   map[string]map[chan struct{}]struct{}
+	runDone      <-chan struct{}
 	pollInterval time.Duration
 	syncTimeout  time.Duration
 	startOnce    sync.Once
@@ -52,23 +59,44 @@ func NewKubernetesWorkloadObserver(client kubernetes.Interface) *KubernetesWorkl
 		k8sinformers.WithTweakListOptions(func(options *metav1.ListOptions) {
 			options.LabelSelector = config.LabelAppID
 		}),
+		k8sinformers.WithTransform(stripObserverManagedFields),
 	)
 	pods := factory.Core().V1().Pods()
+	jobFactory := k8sinformers.NewSharedInformerFactoryWithOptions(client, 0,
+		k8sinformers.WithTweakListOptions(func(options *metav1.ListOptions) {
+			options.LabelSelector = labels.Set{config.LabelManagedBy: config.ManagedByEruun}.String()
+		}),
+		k8sinformers.WithTransform(stripObserverManagedFields),
+	)
+	jobs := jobFactory.Batch().V1().Jobs()
 	return &KubernetesWorkloadObserver{
 		client:       client,
 		factory:      factory,
 		podInformer:  pods.Informer(),
 		podLister:    pods.Lister(),
+		jobFactory:   jobFactory,
+		jobInformer:  jobs.Informer(),
+		jobLister:    jobs.Lister(),
+		jobWaiters:   make(map[string]map[chan struct{}]struct{}),
 		pollInterval: defaultWorkloadObserverPollInterval,
 		syncTimeout:  defaultWorkloadObserverSyncTimeout,
 	}
 }
 
-// Start begins the shared List/Watch and waits for the initial Pod snapshot.
+func stripObserverManagedFields(obj interface{}) (interface{}, error) {
+	accessor, err := meta.Accessor(obj)
+	if err != nil {
+		return nil, err
+	}
+	accessor.SetManagedFields(nil)
+	return obj, nil
+}
+
+// Start begins the shared List/Watch and waits for the initial Pod and Job snapshots.
 // A failed initial sync is fatal for a Worker because readiness decisions must
 // never be made from an uninitialized cache.
 func (o *KubernetesWorkloadObserver) Start(ctx context.Context) error {
-	if o == nil || o.client == nil || o.factory == nil || o.podInformer == nil || o.podLister == nil {
+	if o == nil || o.client == nil || o.factory == nil || o.podInformer == nil || o.podLister == nil || o.jobFactory == nil || o.jobInformer == nil {
 		return fmt.Errorf("kubernetes workload observer is not configured")
 	}
 	if ctx == nil {
@@ -79,11 +107,26 @@ func (o *KubernetesWorkloadObserver) Start(ctx context.Context) error {
 		syncTimeout = defaultWorkloadObserverSyncTimeout
 	}
 	o.startOnce.Do(func() {
+		o.runDone = ctx.Done()
+		_, err := o.jobInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    o.notifyJobWaiters,
+			UpdateFunc: func(_, obj interface{}) { o.notifyJobWaiters(obj) },
+			DeleteFunc: o.notifyJobWaiters,
+		})
+		if err != nil {
+			o.startErr = fmt.Errorf("register kubernetes Job observer: %w", err)
+			return
+		}
 		o.factory.Start(ctx.Done())
+		o.jobFactory.Start(ctx.Done())
 		syncCtx, cancelSync := context.WithTimeout(ctx, syncTimeout)
 		defer cancelSync()
 		if !cache.WaitForCacheSync(syncCtx.Done(), o.podInformer.HasSynced) {
 			o.startErr = fmt.Errorf("synchronize kubernetes workload observer pod cache within %s: %w", syncTimeout, syncCtx.Err())
+			return
+		}
+		if !cache.WaitForCacheSync(syncCtx.Done(), o.jobInformer.HasSynced) {
+			o.startErr = fmt.Errorf("synchronize kubernetes workload observer Job cache within %s: %w", syncTimeout, syncCtx.Err())
 			return
 		}
 		o.synced.Store(true)

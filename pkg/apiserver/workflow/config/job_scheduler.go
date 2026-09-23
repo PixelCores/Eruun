@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 )
 
 const (
@@ -13,21 +14,30 @@ const (
 	JobSchedulingQueued   = "queued"
 	JobSchedulingAdmitted = "admitted"
 	JobSchedulingReleased = "released"
+	// MaxEvaluationTimeoutSeconds is the supported two-week execution bound.
+	MaxEvaluationTimeoutSeconds int64 = 14 * 24 * 60 * 60
 )
 
 // JobSchedulerPolicy governs admission to Job execution across all workers.
 // It does not replace Kubernetes placement or its resource quotas.
 type JobSchedulerPolicy struct {
-	Strategy                      string `json:"strategy"`
-	MaxConcurrentJobs             int    `json:"maxConcurrentJobs"`
-	MaxConcurrentJobsPerWorkspace int    `json:"maxConcurrentJobsPerWorkspace"`
-	AgingSeconds                  int    `json:"agingSeconds"`
+	Strategy                      string  `json:"strategy"`
+	MaxConcurrentJobs             int     `json:"maxConcurrentJobs"`
+	MaxConcurrentJobsPerWorkspace int     `json:"maxConcurrentJobsPerWorkspace"`
+	AgingSeconds                  int     `json:"agingSeconds"`
+	MaxEvaluationTimeoutSeconds   int64   `json:"maxEvaluationTimeoutSeconds"`
+	ResourceCreationQPS           float64 `json:"resourceCreationQPS"`
+	ResourceCreationBurst         int     `json:"resourceCreationBurst"`
+	MaxStartingSandboxes          int     `json:"maxStartingSandboxes"`
 }
 
 func DefaultJobSchedulerPolicy() JobSchedulerPolicy {
 	return JobSchedulerPolicy{
 		Strategy: JobSchedulerPriority, MaxConcurrentJobs: 100,
 		MaxConcurrentJobsPerWorkspace: 10, AgingSeconds: 60,
+		MaxEvaluationTimeoutSeconds: MaxEvaluationTimeoutSeconds,
+		ResourceCreationQPS:         5, ResourceCreationBurst: 10,
+		MaxStartingSandboxes: 100,
 	}
 }
 
@@ -43,6 +53,18 @@ func (p JobSchedulerPolicy) Validate() error {
 	}
 	if p.AgingSeconds < 1 || p.AgingSeconds > 86400 {
 		return fmt.Errorf("agingSeconds must be between 1 and 86400")
+	}
+	if p.MaxEvaluationTimeoutSeconds < 60 || p.MaxEvaluationTimeoutSeconds > MaxEvaluationTimeoutSeconds {
+		return fmt.Errorf("maxEvaluationTimeoutSeconds must be between 60 and %d", MaxEvaluationTimeoutSeconds)
+	}
+	if math.IsNaN(p.ResourceCreationQPS) || math.IsInf(p.ResourceCreationQPS, 0) || p.ResourceCreationQPS < 0.1 || p.ResourceCreationQPS > 1000 {
+		return fmt.Errorf("resourceCreationQPS must be between 0.1 and 1000")
+	}
+	if p.ResourceCreationBurst < 1 || p.ResourceCreationBurst > 1000 {
+		return fmt.Errorf("resourceCreationBurst must be between 1 and 1000")
+	}
+	if p.MaxStartingSandboxes < 1 || p.MaxStartingSandboxes > 10000 {
+		return fmt.Errorf("maxStartingSandboxes must be between 1 and 10000")
 	}
 	return nil
 }

@@ -13,7 +13,7 @@
 | `aliyunCloud` | 云适配器配置；普通空间拒绝 CloudJob |
 | `urlSecurityPolicy` | 服务端出站 URL 私网白名单，见 [URL 安全策略](url-security-policy.md) |
 | `podRestartMonitor` | `{enabled,windowSeconds,threshold}`，默认 true、1800、3 |
-| `workflow_scheduler` | 全局 Job 准入策略：`{strategy,maxConcurrentJobs,maxConcurrentJobsPerWorkspace,agingSeconds}`，默认 `priority`、100、10、60；不可删除 |
+| `workflow_scheduler` | 全局 Job 准入、评测时长和创建速率策略，见下文；不可删除 |
 
 | 方法 / 路径 | 请求 / 返回 |
 | --- | --- |
@@ -40,10 +40,18 @@ curl --fail "$SERVER/api/v1/settings/urlSecurityPolicy" \
 
 `workflow_scheduler` 的 `strategy` 支持 `priority` 和 `fifo`；全局并发范围 1..10000，空间并发范围 1..全局并发，老化间隔范围 1..86400 秒。省略字段使用默认值，未知字段和 null 被拒绝。更新后下轮准入生效；降低上限不终止正在执行的 Job。
 
+`maxEvaluationTimeoutSeconds` 默认 1209600（14 天），管理员可在线设置为 60..1209600。每个评测的 `traits.eval.timeoutSeconds` 默认仍为 3600；提交和首次构建执行时检查当前上限。降低上限后，尚未构建的执行可能被拒绝，已提交运行检查点的执行在恢复时保留原期限。Harbor 任务作者设置的 agent/verifier 超时仍独立生效；普通 command 的 1..86400 秒范围不变。
+
+`resourceCreationQPS` 默认 5，范围 0.1..1000；`resourceCreationBurst` 默认 10，范围 1..1000。所有 API/Worker 副本的 command/评测 Runner Job 与 trial Sandbox 创建尝试共用数据库预算，重试也消耗额度，关联已存在资源不消耗创建额度。此预算与客户端发往 Kubernetes 的 QPS/Burst、已运行并发和空间 ResourceQuota 分别计量。预算债务持久化，重启或写入策略不会重新获得一轮突发额度；调小配置可能先等待已有债务消退。默认值是保守的部署起点，不能据此宣称 ACR 拉取速率或目标容量已验证。
+
 ```sh
 curl --fail --request PUT "$SERVER/api/v1/settings/workflow_scheduler" \
   -H "Authorization: Bearer $ACCESS_TOKEN" -H 'Content-Type: application/json' \
-  --data '{"value":{"strategy":"priority","maxConcurrentJobs":100,"maxConcurrentJobsPerWorkspace":10,"agingSeconds":60}}'
+  --data '{"value":{"strategy":"priority","maxConcurrentJobs":100,"maxConcurrentJobsPerWorkspace":10,"agingSeconds":60,"maxEvaluationTimeoutSeconds":1209600,"resourceCreationQPS":5,"resourceCreationBurst":10}}'
 ```
 
-该设置限制 Eruun Job 控制器的执行并发，不计算存量 Pod 的 CPU/内存。步骤 `schedulingClass` 的继承、排序、失败重试和升级边界见 [Job 全局调度](workflow-global-scheduler-design.md)。
+`maxStartingSandboxes` 默认 100，范围 1..10000，约束所有空间、副本的启动中 Sandbox。取得额度后，创建结果不确定、等待 Pod/Ready 时继续占位；Ready 或确定停止/清理后释放启动额度。保留中的环境仍占运行资源预算。下调不驱逐已有实例，在占用降至新限额前暂停新启动；响应中的 `starting_capacity` 与 `creation_rate_limited` 分别说明容量与速率等待。完整更新示例可在上述 value 中增加 `"maxStartingSandboxes":100`；省略使用默认值。
+
+并发槽位、声明资源预算和实际 Kubernetes 配额分别生效，不能把 `maxConcurrentJobs` 当作 Pod 数。步骤 `schedulingClass` 的继承、排序、失败重试和升级边界见 [Job 全局调度](workflow-global-scheduler-design.md)。
+
+升级时先完成所有 Server 读方升级，再保存新增字段并启用新 Runner。旧 Server 会拒绝不认识的策略字段；混用旧读方与新字段不能作为可用的滚动部署状态。更新是完整 value 替换，保留需要的现有字段，不把省略字段当 PATCH。

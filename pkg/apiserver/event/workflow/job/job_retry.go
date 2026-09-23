@@ -22,6 +22,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
@@ -234,16 +235,22 @@ func retryJobRetentionSeconds(deadline int64, earliestTermination time.Time) (in
 }
 
 func (c *InstantJobCtl) retainRetryCheckpoint(ctx context.Context, cp *instantJobRetryCheckpoint, createdAt time.Time) error {
-	if cp.Job.Spec.TTLSecondsAfterFinished != nil {
+	if cp.Job.Spec.TTLSecondsAfterFinished != nil && cp.Job.Labels[config.LabelManagedBy] == config.ManagedByEruun {
 		return nil
 	}
 	// Kubernetes counts TTL from termination, which can precede recovery.
 	// Creation is a conservative lower bound for an old attempt's termination.
-	ttl, err := retryJobRetentionSeconds(cp.Deadline, createdAt)
-	if err != nil {
-		return errors.Join(signal.ErrInfrastructureStop, err)
+	if cp.Job.Spec.TTLSecondsAfterFinished == nil {
+		ttl, err := retryJobRetentionSeconds(cp.Deadline, createdAt)
+		if err != nil {
+			return errors.Join(signal.ErrInfrastructureStop, err)
+		}
+		cp.Job.Spec.TTLSecondsAfterFinished = &ttl
 	}
-	cp.Job.Spec.TTLSecondsAfterFinished = &ttl
+	if cp.Job.Labels == nil {
+		cp.Job.Labels = make(map[string]string)
+	}
+	cp.Job.Labels[config.LabelManagedBy] = config.ManagedByEruun
 	return c.persistRetryCheckpoint(ctx, cp)
 }
 
@@ -270,6 +277,9 @@ func (c *InstantJobCtl) runWithRetryPolicy(ctx context.Context, desired *batchv1
 	defer cancel()
 	for {
 		if err := c.ensureRetryAttempt(runCtx, cp); err != nil {
+			if errors.Is(err, errJobAdmissionRecoveryExecutionLost) {
+				return releaseLostJobAdmission(ctx, c.store, c.job, err)
+			}
 			if runCtx.Err() != nil {
 				return runCtx.Err()
 			}
@@ -277,6 +287,9 @@ func (c *InstantJobCtl) runWithRetryPolicy(ctx context.Context, desired *batchv1
 		}
 		live, err := c.waitRetryAttempt(runCtx, cp)
 		if err != nil {
+			if errors.Is(err, errJobAdmissionRecoveryExecutionLost) {
+				return releaseLostJobAdmission(ctx, c.store, c.job, err)
+			}
 			if runCtx.Err() != nil {
 				return runCtx.Err()
 			}
@@ -408,20 +421,22 @@ func (c *InstantJobCtl) ensureRetryAttempt(ctx context.Context, cp *instantJobRe
 	}
 	if exists {
 		if !retryJobMatchesTask(live, c.job) {
-			return errors.Join(signal.ErrInfrastructureStop, errJobExecutionIdentityChanged)
+			return errors.Join(signal.ErrInfrastructureStop, c.markLostRetryExecution(cp, errJobExecutionIdentityChanged))
 		}
 		if live.Annotations[workflowconfig.AnnotationJobAttempt] == strconv.FormatUint(uint64(cp.Attempt), 10) {
-			return c.retainLiveRetryAttempt(ctx, cp, live)
+			err := c.retainLiveRetryAttempt(ctx, cp, live)
+			return c.markAuthoritativeLostRetryExecution(cp, err)
 		}
 		if cp.PreviousUID == "" || live.UID != cp.PreviousUID || live.Annotations[workflowconfig.AnnotationJobAttempt] != strconv.FormatUint(uint64(cp.Attempt-1), 10) || !retryJobFailed(live) {
-			return errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("%w: refusing to replace unrecognized Job attempt", errJobExecutionIdentityChanged))
+			return errors.Join(signal.ErrInfrastructureStop, c.markLostRetryExecution(cp, fmt.Errorf("%w: refusing to replace unrecognized Job attempt", errJobExecutionIdentityChanged)))
 		}
 		if err := c.deleteRetryJob(ctx, live); err != nil {
 			return err
 		}
 	}
 	if cp.CurrentUID != "" {
-		return errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("job attempt %d with UID %s disappeared; refusing to replay it", cp.Attempt, cp.CurrentUID))
+		return errors.Join(signal.ErrInfrastructureStop, c.markLostRetryExecution(cp,
+			fmt.Errorf("job attempt %d with UID %s disappeared; refusing to replay it", cp.Attempt, cp.CurrentUID)))
 	}
 	if cp.PreviousUID != "" {
 		if err := c.waitPreviousRetryAttempt(ctx, cp); err != nil {
@@ -432,6 +447,9 @@ func (c *InstantJobCtl) ensureRetryAttempt(ctx context.Context, cp *instantJobRe
 		return err
 	}
 	if err := c.retainRetryCheckpoint(ctx, cp, time.Now()); err != nil {
+		return err
+	}
+	if err := c.waitRetryCreationBudget(ctx); err != nil {
 		return err
 	}
 	created, err := c.client.BatchV1().Jobs(cp.Job.Namespace).Create(ctx, cp.Job.DeepCopy(), metav1.CreateOptions{})
@@ -453,19 +471,51 @@ func (c *InstantJobCtl) ensureRetryAttempt(ctx context.Context, cp *instantJobRe
 	return c.persistRetryAttemptUID(ctx, cp, created)
 }
 
+func (c *InstantJobCtl) markLostRetryExecution(cp *instantJobRetryCheckpoint, err error) error {
+	if c == nil || c.job == nil || cp == nil || cp.CurrentUID == "" || err == nil ||
+		(c.job.JobType != string(config.JobCommand) && c.job.JobType != string(config.JobEval)) {
+		return err
+	}
+	policy, policyErr := retryPolicyFromJob(cp.Job)
+	if policyErr != nil || policy == nil || policy.OnOOM != "stop" || cp.Attempt != 1 {
+		return err
+	}
+	return errors.Join(errJobAdmissionRecoveryExecutionLost, err)
+}
+
+func (c *InstantJobCtl) markAuthoritativeLostRetryExecution(cp *instantJobRetryCheckpoint, err error) error {
+	if !errors.Is(err, errJobExecutionIdentityChanged) && !k8serrors.IsNotFound(err) {
+		return err
+	}
+	return c.markLostRetryExecution(cp, err)
+}
+
 func (c *InstantJobCtl) retainLiveRetryAttempt(ctx context.Context, cp *instantJobRetryCheckpoint, live *batchv1.Job) error {
 	if cp.CurrentUID != "" && live.UID != cp.CurrentUID {
+		return errors.Join(signal.ErrInfrastructureStop, errJobExecutionIdentityChanged)
+	}
+	if live.UID == "" || !retryJobMatchesTask(live, c.job) {
+		return errors.Join(signal.ErrInfrastructureStop, errJobExecutionIdentityChanged)
+	}
+	if owner := live.Labels[config.LabelManagedBy]; owner != "" && owner != config.ManagedByEruun {
 		return errors.Join(signal.ErrInfrastructureStop, errJobExecutionIdentityChanged)
 	}
 	if err := c.retainRetryCheckpoint(ctx, cp, live.CreationTimestamp.Time); err != nil {
 		return err
 	}
-	if live.Spec.TTLSecondsAfterFinished == nil || *live.Spec.TTLSecondsAfterFinished < *cp.Job.Spec.TTLSecondsAfterFinished {
+	retainTTL := live.Spec.TTLSecondsAfterFinished == nil || *live.Spec.TTLSecondsAfterFinished < *cp.Job.Spec.TTLSecondsAfterFinished
+	if retainTTL || live.Labels[config.LabelManagedBy] != config.ManagedByEruun {
 		if err := c.ensureRetryWorkflowOwnership(ctx); err != nil {
 			return err
 		}
 		updated := live.DeepCopy()
-		updated.Spec.TTLSecondsAfterFinished = cp.Job.Spec.TTLSecondsAfterFinished
+		if retainTTL {
+			updated.Spec.TTLSecondsAfterFinished = cp.Job.Spec.TTLSecondsAfterFinished
+		}
+		if updated.Labels == nil {
+			updated.Labels = make(map[string]string)
+		}
+		updated.Labels[config.LabelManagedBy] = config.ManagedByEruun
 		var err error
 		live, err = c.client.BatchV1().Jobs(updated.Namespace).Update(ctx, updated, metav1.UpdateOptions{})
 		if err != nil {
@@ -497,25 +547,64 @@ func retryJobFailed(job *batchv1.Job) bool {
 }
 
 func (c *InstantJobCtl) waitRetryAttempt(ctx context.Context, cp *instantJobRetryCheckpoint) (*batchv1.Job, error) {
+	if err := c.ensureRetryWorkflowOwnership(ctx); err != nil {
+		return nil, err
+	}
+	observer, ok := c.resourceWaiter.(informer.JobObserver)
+	if !ok {
+		return nil, errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("shared Kubernetes Job observer is not configured"))
+	}
 	var terminal *batchv1.Job
-	err := wait.PollUntilContextCancel(ctx, jobPollInterval, true, func(ctx context.Context) (bool, error) {
-		if err := c.ensureRetryWorkflowOwnership(ctx); err != nil {
-			return false, err
+	var confirmedVersion string
+	var confirmedUID types.UID
+	err := observer.WaitForJob(ctx, cp.Job.Namespace, cp.Job.Name, func(snapshot *batchv1.Job) (bool, error) {
+		if snapshot != nil {
+			status, _, done := jobTerminalStatus(snapshot)
+			matches := retryJobMatchesTask(snapshot, c.job) && snapshot.UID == cp.CurrentUID && snapshot.Annotations[workflowconfig.AnnotationJobAttempt] == strconv.FormatUint(uint64(cp.Attempt), 10)
+			if matches && !(done && status == config.StatusCompleted) && !retryJobFailed(snapshot) {
+				return false, nil
+			}
+			if snapshot.ResourceVersion != "" && snapshot.ResourceVersion == confirmedVersion && snapshot.UID == confirmedUID {
+				return false, nil
+			}
 		}
+		// Terminal, absent and changed-identity snapshots are candidates for one
+		// authoritative check. Ordinary matching Running snapshots stay local.
+		// Never memoize absence: selector exit can otherwise hide later deletion.
 		live, err := c.client.BatchV1().Jobs(cp.Job.Namespace).Get(ctx, cp.Job.Name, metav1.GetOptions{})
 		if err != nil {
-			return false, errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("observe Job retry attempt: %w", err))
+			if k8serrors.IsNotFound(err) {
+				return false, errors.Join(signal.ErrInfrastructureStop, c.markLostRetryExecution(cp,
+					fmt.Errorf("confirm observed Job retry attempt: %w", err)))
+			}
+			return false, errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("confirm observed Job retry attempt: %w", err))
+		}
+		if snapshot != nil {
+			confirmedVersion, confirmedUID = snapshot.ResourceVersion, snapshot.UID
 		}
 		if !retryJobMatchesTask(live, c.job) || live.UID != cp.CurrentUID || live.Annotations[workflowconfig.AnnotationJobAttempt] != strconv.FormatUint(uint64(cp.Attempt), 10) {
-			return false, errors.Join(signal.ErrInfrastructureStop, errJobExecutionIdentityChanged)
+			return false, errors.Join(signal.ErrInfrastructureStop, c.markLostRetryExecution(cp, errJobExecutionIdentityChanged))
 		}
 		status, _, done := jobTerminalStatus(live)
 		if (done && status == config.StatusCompleted) || retryJobFailed(live) {
+			if err := c.ensureRetryWorkflowOwnership(ctx); err != nil {
+				return false, err
+			}
 			terminal = live
 			return true, nil
 		}
+		if live.Labels[config.LabelManagedBy] != config.ManagedByEruun {
+			// Repair a selector exit under the same ownership fence and resource
+			// version checks as recovery, so later changes remain observable.
+			if err := c.retainLiveRetryAttempt(ctx, cp, live); err != nil {
+				return false, c.markAuthoritativeLostRetryExecution(cp, err)
+			}
+		}
 		return false, nil
 	})
+	if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		err = errors.Join(signal.ErrInfrastructureStop, err)
+	}
 	return terminal, err
 }
 

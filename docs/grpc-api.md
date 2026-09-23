@@ -74,7 +74,7 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 
 ## HTTP 路由到 RPC 对照
 
-当前 HTTP 路由共 108 条；以下 99 条用户可调用路由各映射一个 RPC。表中全名与生成客户端方法一一对应，具体字段及请求/响应类型见各 `.proto` 文件。
+当前 HTTP 路由共 111 条；以下 99 条用户可调用路由各映射一个 RPC。表中全名与生成客户端方法一一对应，具体字段及请求/响应类型见各 `.proto` 文件。
 
 | HTTP 路由 | gRPC 方法全名 |
 | --- | --- |
@@ -178,4 +178,7 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 | `PUT /api/v1/programming-languages/:id` | `/eruun.v1.ProgrammingLanguagesService/UpdateProgrammingLanguage` |
 | `PUT /api/v1/settings/:type` | `/eruun.v1.SettingsService/UpdateSetting` |
 
-不映射的 9 条路由是四条 HTTP 健康路由（`/health`、`/healthz`、`/ready`、`/readyz`）、三条内部 Job Runner 回调（`/job-runners/:taskID/dataset`、`/results`、`/events`）以及两条浏览器 OAuth start/callback。该入口不涉及角色间通信、Runner 协议或 Agent/模型工作负载调用；现有 HTTP JSON 与 Cookie 契约不变。
+不映射的 12 条路由是四条 HTTP 健康路由（`/health`、`/healthz`、`/ready`、`/readyz`）、六条内部 Job Runner 接口（dataset/results/events 及 Sandbox 申请、查询、释放）以及两条浏览器 OAuth start/callback。该入口不涉及角色间通信、Runner 协议或 Agent/模型工作负载调用；现有 HTTP JSON 与 Cookie 契约不变。
+
+
+`JobsService/GetJob` 的 `JobDetail.sandboxes` 为所选 execution 的安全 Sandbox 生命周期投影，最多 100 条，优先仍占资源的记录；`sandboxes_truncated=true` 表示历史未全部返回。HTTP 对应 `sandboxesTruncated`，两者不提供完整事件审计或实际 trial 运行证明。

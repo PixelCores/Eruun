@@ -1,0 +1,20 @@
+# A fixed experiment point, not a production sizing recommendation.
+# Supply the verified server image repository/tag and existing auth/jobs Secrets
+# in the operator's deployment values/command. Keep resources fixed for a ladder.
+runtime:
+  roles:
+    worker:
+      replicas: 1
+      resources:
+        requests:
+          cpu: "4"
+          memory: 8Gi
+        limits:
+          cpu: "4"
+          memory: 8Gi
+
+# Helm replaces arrays: merge any existing env entries into a private copy first.
+# This setting is consumed by Workers; it does not change global/space admission.
+env:
+  - name: ERUUN_WORKFLOW_MAX_CONCURRENT
+    value: "100"

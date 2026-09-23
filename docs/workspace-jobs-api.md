@@ -83,9 +83,23 @@
 
 允许 `terminus-2`、`codex`、`claude-code` 和 `oracle`。`agent` 指定 Harbor 执行 trial 的 harness；`oracle` 执行任务包的参考解答，用于验证任务与平台链路，不代表模型能力；使用它时省略 `model`，无需模型调用或模型费用。其他 Agent 必须指定模型。模型凭据通过 `traits.envs` 传入，支持的环境名为 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`GEMINI_API_KEY`、`GOOGLE_API_KEY`、`OPENROUTER_API_KEY`、`AZURE_API_KEY`，必须使用 `valueFrom.secret` 引用当前空间已有 Secret 的键；不接受 `valueFrom.static` 明文值，平台不返回 Secret 内容。
 
-`attempts` 为每个任务的评测次数，默认 1，范围 1–10；`concurrency` 为 Harbor 同时执行的 trial 数，默认 1，范围 1–16。它们不改变 Eruun 的 Job 调度器并发策略。评测默认超时 3600 秒，范围 60–86400 秒，另预留 360 秒停止和归档时间；任务包下载预算为 300 秒，进入 finalizing 后结果采集、上传和 terminal 确认共享最多 360 秒，普通 API 仍保留原来的超时限制。
+`attempts` 为每个任务的评测次数，默认 1，范围 1–10；`concurrency` 为 Harbor 同时执行的 trial 数，默认 1，范围 1–16。它们不改变 Eruun 的 Job 调度器并发策略。评测默认超时 3600 秒，支持 60–1209600 秒（14 天），并受管理员在线设置的 `workflow_scheduler.maxEvaluationTimeoutSeconds` 约束。降低上限不会改变已运行执行的恢复期限。Harbor 任务自身的 agent/verifier 时限仍由任务作者设置，平台外层时长不会自动延长这些时限。
+
+新 Runner 另预留 960 秒收尾窗口，包含 600 秒控制面中断预算和原有 360 秒正常处理余量。任务包下载预算仍为 300 秒；进入 finalizing 后采集、归档、上传和 terminal 确认分享同一个有界窗口，按段截止并为确认保留最低余额。上传按 deadline 重试同一归档，不重新生成不同 digest；临时失败采用有上限的退避和抖动，单次 HTTP 发送、响应头与响应体读取受期限约束。Python 标准库 DNS 解析存在不能被 socket 截止直接打断的边界，须在部署中验证 DNS 稳定性。terminal 就绪后优先于未完成的旧心跳/进度通知，使用更高 sequence；claim 始终是执行门禁。窗口耗尽只能报告未确认交付，不能把已上传但 ACK 丢失当作尚未上传。显式旧 360 秒配置仍可读取；单次网络和 HTTP 入口超时仍分别生效，大制品应实测吞吐和整个收尾预算。
 
 `traits.resources` 只控制 Runner；`traits.eval.sandboxResources` 单独控制每个 trial 的任务环境。两者各自省略时默认请求 1 CPU/2 GiB、限制 2 CPU/4 GiB，总资源随 concurrency 增加，仍受空间配额约束。凭据使用 `traits.envs` 的 Secret 引用。评测不接受自定义 Runner image/command、挂载、envFrom、ServiceAccount、任意 Python adapter 或环境 kwargs。
+
+## 按需 Sandbox 与故障边界
+
+新建评测由 Eruun 创建 `agents.kruise.io/v1alpha1` 的 `Sandbox`，Harbor 通过内部 API 申请并使用实际 Pod。ACK 内部署使用本集群 ServiceAccount 连接；dynamic client 用于 CRD，不提供运行中切换集群。无需 SandboxClaim/SandboxSet 预热池，也不会在 Sandbox API 失败时改建普通 Pod。云侧需安装匹配的 Sandbox controller、ACS agent-sandbox 算力，并通过 NetworkPolicy、exec、文件传输与真实配额预检；CRD 缺失不阻塞普通 API，但新 Sandbox 请求返回不可用。
+
+每个 trial 保存 workspace/task/execution/trial、请求摘要、Runner UID、Sandbox UID、Pod UID。重复请求重用同一意图，变更镜像或规格返回冲突；同名替换不继承身份。Ready condition、observedGeneration 和真实 Pod 归属共同决定可连接状态；Sandbox Running 不等于评测成功。公开 Job 详情的 `sandboxes` 是生命周期投影，用户据此查看等待原因与保留时间，不能用投影代替执行或交付证明。 每次最多返回 100 条，优先仍占用资源的记录，其后按创建时间和 ID 倒序；`sandboxesTruncated=true` 表示还有未返回历史，此视图不是完整 trial 审计。数据库中的历史记录不会因响应截断而删除。
+
+API/DB 连续中断期间，已有健康 trial 继续执行，新环境暂停申请；恢复后补报。运行中连续故障超过 600 秒则停止 Harbor 并进入有界收尾；收尾的 upload 与 terminal 仍可在同一 960 秒窗口内重试，确认失败结果不恢复计算。全局准入等待受 Job 总期限约束，不消耗 task 的环境启动预算；实际接纳后再计环境启动时间，API 暂时不可用时暂停该启动计时。agent/verifier 自身时限仍然生效。
+
+任务结束后，未完整取回文件/日志的 Sandbox 保留 24 小时，记录 `retainUntil` 并同步云侧 `shutdownTime`，由 Eruun 维护循环和云侧自动清理共同约束。保留占用仍计容量；完整采集后请求 UID 条件删除，删除确认前不释放占用。Sandbox 不以 Runner 为 Kubernetes owner，避免 Runner 消失触发提前 GC。保留用于排查或人工补采，不代表第一阶段已经实现 Checkpoint 或计算恢复；结果归档的保存期限是另一套策略。
+
+Runner 工作目录使用有大小上限的 emptyDir，`runnerWorkStorageMiB` 默认 20480，同时用于 ephemeral-storage request/limit；可在管理员部署配置中设为 1024..1048576 MiB。预算覆盖任务包、展开文件、Harbor 输出、日志及归档临时副本，应在长稳前按任务规模确定。磁盘耗尽或被 kubelet 驱逐会留下失败/交付未确认状态，不会把截断结果报告为完整。每个 trial 的磁盘声明由原生 task 的 `storage_mb` 给出；实际 ACS 规格、计费与 quota 需独立核验。
 
 ## Application / Workflow 中的评测
 
@@ -93,11 +107,13 @@ Application 的顶层组件可使用同一段 `{"name":"model-benchmark","type":
 
 评测只适用于顶层 `job`；不能放在 webservice、initContainer 或 sidecar 中，也不能同时声明容器命令、端口、schedule、startTime、runPolicy 或 retry。Workflow 的执行顺序、并发与失败策略继续生效。取消应用内评测通过所属应用的 Workflow 取消接口；独立 `/jobs/:taskID/cancel` 不扩展为应用取消入口。
 
+保留 Sandbox 为补采维持容器；Runner 丢失后，内部进程可能继续运行并消耗算力，直到显式清理或云侧 shutdownTime。第一阶段不提供进程冻结，也不把 Job 的执行期限等同于控制面故障下所有云资源已经物理终止。
+
 ## 原生任务包
 
 上传格式为 `application/gzip` 的 tar.gz，支持根目录单个任务或多个任务目录。每个任务包含 `instruction.md`、`task.toml`、`environment/Dockerfile`、`tests/test.sh`，以及所需输入文件和可选 `solution/solve.sh`。用户定义 verifier 和评分规则，平台保留其奖励、日志与输出。
 
-`task.toml` 的 `[environment].docker_image` 必须引用显式标签或 digest 的预构建镜像。用户在本机构建并推送镜像，平台只拉取、执行，不构建 Dockerfile。任务包可重复用于不同 Job，不随某次结果到期删除。
+`task.toml` 的 `[environment].docker_image` 必须引用显式标签或 digest 的预构建镜像。Sandbox 路径还要求显式正整数 `storage_mb`（1..1048576 MiB）；不能依赖 Harbor 0.22.0 的空值作为默认磁盘。用户在本机构建并推送镜像，平台只拉取、执行，不构建 Dockerfile。任务包可重复用于不同 Job，不随某次结果到期删除。
 
 ```sh
 tar -czf task-package.tar.gz -C examples/agent-evaluation harbor-task
@@ -131,7 +147,7 @@ Application 内评测使用 `GET /api/v1/jobs/:taskID?executionKey=<Job executio
 
 默认策略为 `retentionDays: 90` 和 `database/full`。`GET /api/v1/job-storage-policy` 返回可用目标及当前策略；`PUT` 使用与 `resultPolicy` 相同的 JSON 更新默认值，范围 1–3650 天。独立提交时、应用内评测首次生成执行时，快照化 `traits.eval.resultPolicy`；省略则使用当时的空间默认值。恢复沿用已持久化的策略。修改默认策略只影响后续执行。
 
-原始数据保留期从采集成功开始计算。`PUT /api/v1/jobs/:taskID/retention` 接收 `{"retentionDays":30}`，将尚未过期的原始数据改为从本次操作起再保留 30 天。周期清理只删除源字节，保留可查询的过期元数据，**不删除 MinIO 或数据库保存副本**。每个 trial 的原始数据完整下载到 Runner 后可清理其试验 Pod；下载失败的试验 Pod 随未完整采集的 Runner Pod 保留供诊断，仍受执行截止时间约束，并随 Runner 的保留期限到期回收。最终归档或上传失败时，Runner 中已有的原始文件继续保留。
+原始数据保留期从采集成功开始计算。`PUT /api/v1/jobs/:taskID/retention` 接收 `{"retentionDays":30}`，将尚未过期的原始数据改为从本次操作起再保留 30 天。周期清理只删除源字节，保留可查询的过期元数据，**不删除 MinIO 或数据库保存副本**。每个 trial 的原始数据完整下载到 Runner 后可清理其 Sandbox 和关联 Pod；未完整取回文件或日志的 Sandbox 在任务结束后独立保留 24 小时，供诊断或人工补采，不随 Runner Pod 回收。最终归档或上传失败时，Runner 中已有的原始文件继续保留。
 
 显式删除整个团队空间沿用“资源必须为空”的规则，且要求没有等待或正在保存的目标。空间删除会删除其数据库数据和索引；MinIO 已保存对象不由原始结果保留策略或空间删除 API 清除，需要存储管理员独立管理。
 
@@ -155,11 +171,15 @@ Application 内评测使用 `GET /api/v1/jobs/:taskID?executionKey=<Job executio
 
 `/job-runners/:taskID/dataset`、`/job-runners/:taskID/results` 和 `POST /job-runners/:taskID/events` 是内部 Runner 接口：校验对应 Job 的能力凭据、Pod 名称/UID、所属 live Job UID、ExecutionKey、RunGeneration、Attempt 与持久化 checkpoint，登录 Token 不能代替 Runner 身份。Runner 必须先成功提交 `claim`，才能下载任务包或上传结果；同一 attempt 只有一个 Pod owner，不同 Pod 的认领返回 HTTP 409。旧执行者不能覆盖新执行结果。
 
+父 Workflow 在租约回收后暂处于 Waiting/Queued 时，只有已经 claim、完整身份核验通过且原执行尚未过期的 Runner 收到可重试 HTTP 503，等待恢复 Running；此期间不接纳事件、结果或新 Sandbox 分配。事务锁内会再次验证当前执行身份和父状态，防止鉴权后发生接管竞态。已持久化但 ACK 丢失的 terminal 同样可等待恢复后幂等确认；无效身份、未 claim、过期或父任务终态不获得恢复豁免，执行 deadline 不延长。
+
 事件请求上限 64 KiB，固定使用 `protocolVersion: "v1"`、正整数 `sequence` 与 `kind`。`kind` 为 `claim`、`phase`、`heartbeat`、`progress` 或 `terminal`；phase 只允许 `preparing/running/finalizing`；progress 只包含非负、单调且不超过总量的 `completedTrials/totalTrials`。terminal 使用 `succeeded/failed/cancelled/timed_out` outcome，引用 results 接口已确认的 64 字符 artifact ID 和 SHA-256 digest，并携带 `collectionComplete`；可选 exit code、signal、最长 64 字符稳定 reason 和最长 512 字符脱敏 message。
 
 ACK 的 `data` 为 `{"acceptedSequence": 12, "action": "continue"}`，或在停止时额外返回 `"stopOutcome": "cancelled"|"timed_out"`。Runner 保存该权威原因并用它生成后续 terminal。相同 sequence 和内容重放是幂等操作，更旧 sequence 返回当前确认游标；同 sequence 不同内容、阶段/进度倒退、terminal 冲突或不同 owner 返回业务错误 `34004`（HTTP 409）。如果冲突仅由父任务已取消或到达绝对 deadline、而 terminal outcome 与权威状态不一致引起，409 的 `data.stopOutcome` 同样返回 `cancelled` 或 `timed_out`，Runner 使用相同 sequence 按该 outcome 重投；其他冲突不返回停止原因。服务端接收时间是心跳和状态陈旧计算的事实源。claim owner、最后事件摘要、sequence、phase、进度和 terminal 保存在当前 JobInfo `internal_info` 的 `runner` 子对象，不增加表或数据库列。
 
 结果完整、`succeeded` terminal 获得 ACK、Runner 以 0 退出且 Kubernetes Job 成功，四项证据同时满足后控制面才能完成评测。状态 API 或数据库短暂故障只触发有界重试，不重启 Harbor；无法确认 terminal 时 Runner 非零退出，由 Kubernetes 证据收敛。
+
+同一鉴权边界下增加 `POST /job-runners/:taskID/sandboxes`（`trialId/image/storageMiB`）、`GET .../sandboxes/:trialID` 和 `POST .../sandboxes/:trialID/release`（`sandboxUID/podUID/collectionComplete`）。响应 `data` 返回 pending/ready/retained/released/failed、`admitted`、实际资源身份及保留期限；尚未创建的容量/速率等待为 `admitted=false`。创建和查询响应在有已持久化准入时间时还返回 `admissionAgeSeconds`，以数据库时钟从首次确认 Sandbox UID 起计时；Runner 首次见到 `admitted=true` 时只扣除当前请求中可确认的准入后耗时，并暂停可重试 API 中断时间。升级前已分配的记录或旧 API 不提供该字段时，Runner 沿用本地计时；应先部署包含新列的服务端，再更新 Runner。此为 Runner 私有 HTTP 协议，公共 HTTP/gRPC 只暴露授权后的生命周期投影，不返回准入年龄。Token 与准入门控文件位于 Runner 私有工作目录，不进入任务包或结果归档。
 
 ## 管理员配置与部署
 
@@ -168,6 +188,7 @@ ACK 的 `data` 为 `{"acceptedSequence": 12, "action": "continue"}`，或在停�
 ```json
 {
   "runnerImage": "registry.example.com/eruun-harbor-runner:0.22.0",
+  "runnerWorkStorageMiB": 20480,
   "apiURL": "http://eruun-api.eruun-system.svc:8000",
   "runnerEgress": [
     {"cidr": "192.0.2.10/32", "port": 443},
@@ -189,9 +210,11 @@ ACK 的 `data` 为 `{"acceptedSequence": 12, "action": "continue"}`，或在停�
 
 Runner 使用固定、无 Secret 读权限的空间 ServiceAccount，只获得 Pod 生命周期与 exec 能力。任务环境不挂载 API Token。空间仍强制 restricted Pod Security、UID 1000、禁止提权与 capabilities；见 [Runner 的镜像和适配边界](../runners/harbor/README.md)。
 
-Helm 使用 `jobs.existingSecret` 和 `jobs.key` 挂载用户已创建的 Secret，Chart 不生成或公开存储凭据。四种角色需要相同配置；Controller 执行结果保存及过期清理，Worker 执行 Harbor Job。先升级数据库 schema，再升级各角色。提供的单文件安装清单不默认启用 Harbor；使用 Helm 或为清单各角色手动挂载同一 Secret。
+Helm 使用 `jobs.existingSecret` 和 `jobs.key` 挂载用户已创建的 Secret，Chart 不生成或公开存储凭据。四种角色需要相同配置；Controller 执行结果保存和 Sandbox 保留清理，Worker 执行 Harbor Job。API/Controller 获得指定 Sandbox CR 的独立 RBAC；Worker 不需 Sandbox 写权限。提供的单文件清单不默认启用 Harbor；使用 Helm 或为清单各角色手动挂载配置。
 
-本协议采用严格切换，不保留无 claim 的旧 Runner 兼容分支。部署前必须停止接受新的评测 Job，等待所有旧评测结束，或明确取消并确认其 Kubernetes Job 已停止；随后再部署新 API/Worker 和 Runner 镜像并恢复提交。`command` 不进入此排空要求。若在旧评测仍运行时升级，旧 Runner 的 dataset/results 请求会因缺少 claim 被拒绝。
+阶段一升级顺序：先运行 schema 迁移并部署新 RBAC；完成所有 API/Controller 读方升级，确认旧 Runner 的 v1 事件与 Pod 路径仍可用；再部署支持两种配置的 Runner 镜像和新 Worker，后者为新执行生成 `sandboxURL`；全部 Server 升级后才写新增 scheduler/部署配置字段。旧配置无 `sandboxURL` 时，新 Runner 仍读取旧 Pod 协议；已经运行的旧 Runner 沿原资源完成，不能临时把它的 Pod 当作 Sandbox。禁止新 Worker 配旧 Runner 镜像，或新 Sandbox 请求落到旧 API。使用明确的新镜像 tag/digest，避免覆盖同名镜像。回滚前停止新准入并排空 Sandbox 执行和保留资源，不能将新字段交给旧版严格解码器。
+
+若来自更早的**无 claim 协议**版本，仍必须停止新评测并排空或明确取消旧评测、确认 Kubernetes Job 已停止，再升级并恢复提交；该版本不在上述已有 v1 Runner 的共存范围内。`command` 不进入此协议排空要求。
 
 ## 验证
 

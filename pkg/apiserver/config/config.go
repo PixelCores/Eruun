@@ -399,6 +399,7 @@ func (c *Config) AddFlags(fs *pflag.FlagSet, configParameter *Config) {
 	fs.DurationVar(&c.Workflow.HeartbeatInterval, "workflow-heartbeat-interval", configParameter.Workflow.HeartbeatInterval, "interval for renewing running workflow database leases")
 	fs.DurationVar(&c.Workflow.LeaseDuration, "workflow-lease-duration", configParameter.Workflow.LeaseDuration, "database lease duration for queued and running workflows")
 	fs.DurationVar(&c.Workflow.LeaseReaperInterval, "workflow-lease-reaper-interval", configParameter.Workflow.LeaseReaperInterval, "interval for recovering expired workflow leases")
+	fs.IntVar(&c.Workflow.LeaseReaperBatchSize, "workflow-lease-reaper-batch-size", configParameter.Workflow.LeaseReaperBatchSize, "maximum expired workflow leases recovered per pass (1..10000)")
 	fs.DurationVar(&c.Workflow.WorkerDrainTimeout, "workflow-worker-drain-timeout", configParameter.Workflow.WorkerDrainTimeout, "maximum graceful worker drain duration")
 	fs.StringVar(&c.ImportSecretKeyring, "import-secret-keyring", configParameter.ImportSecretKeyring, "inline JSON keyring for adopted Secret encryption and import plan fingerprints")
 	fs.StringVar(&c.ImportSecretKeyringFile, "import-secret-keyring-file", configParameter.ImportSecretKeyringFile, "mounted JSON keyring file for adopted Secret encryption and import plan fingerprints")

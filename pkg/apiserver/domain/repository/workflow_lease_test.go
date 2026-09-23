@@ -123,6 +123,26 @@ func TestRecoverExpiredWorkflowTasksFencesExactGeneration(t *testing.T) {
 	require.Nil(t, store.casUpdates["lease_expires_at"])
 }
 
+func TestRecoverExpiredWorkflowTasksRespectsConfiguredBatch(t *testing.T) {
+	now := time.Now().UTC()
+	expired := now.Add(-time.Minute)
+	store := &repositoryTestStore{databaseNow: now, casWithConditionsSwapped: true}
+	for i := range 3 {
+		store.listEntities = append(store.listEntities, &model.WorkflowQueue{
+			TaskID: fmt.Sprint("expired-", i), Status: config.StatusRunning,
+			RunGeneration: 1, RunToken: "token", WorkerID: "worker", LeaseExpiresAt: &expired,
+		})
+	}
+	n, err := RecoverExpiredWorkflowTasks(context.Background(), store, 2)
+	require.NoError(t, err)
+	require.Equal(t, 2, n)
+	require.Equal(t, 2, store.lastListOpts.PageSize)
+	for _, limit := range []int{0, -1, 10001} {
+		_, err := RecoverExpiredWorkflowTasks(context.Background(), store, limit)
+		require.Error(t, err)
+	}
+}
+
 type countingWorkflowLeaseStore struct {
 	*repositoryTestStore
 	compareAndSwapCalls int

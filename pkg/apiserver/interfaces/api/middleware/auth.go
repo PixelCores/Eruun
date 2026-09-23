@@ -122,9 +122,12 @@ var businessRoutes = map[string]string{
 }
 
 var runnerRoutes = map[string]bool{
-	"GET /api/v1/job-runners/:taskID/dataset":  true,
-	"POST /api/v1/job-runners/:taskID/results": true,
-	"POST /api/v1/job-runners/:taskID/events":  true,
+	"GET /api/v1/job-runners/:taskID/dataset":                     true,
+	"POST /api/v1/job-runners/:taskID/results":                    true,
+	"POST /api/v1/job-runners/:taskID/events":                     true,
+	"POST /api/v1/job-runners/:taskID/sandboxes":                  true,
+	"GET /api/v1/job-runners/:taskID/sandboxes/:trialID":          true,
+	"POST /api/v1/job-runners/:taskID/sandboxes/:trialID/release": true,
 }
 
 // HasAuthPolicy reports whether a registered route belongs to exactly one

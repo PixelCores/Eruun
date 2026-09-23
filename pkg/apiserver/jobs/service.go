@@ -18,21 +18,26 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	"golang.org/x/sync/errgroup"
 	batchv1 "k8s.io/api/batch/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 )
 
 type Service struct {
-	Store     datastore.DataStore
-	Artifacts *artifacts.Store
-	Kube      kubernetes.Interface
-	Config    *config.Config
+	Store           datastore.DataStore
+	Artifacts       *artifacts.Store
+	Kube            kubernetes.Interface
+	Config          *config.Config
+	SandboxClient   dynamic.Interface
+	SandboxObserver informer.SandboxObserver
 }
 
 func New(store datastore.DataStore, kube kubernetes.Interface, cfg *config.Config) (*Service, error) {
@@ -61,14 +66,16 @@ type Accepted struct {
 
 type Detail struct {
 	Accepted
-	ExecutionKey     string               `json:"executionKey,omitempty"`
-	FrameworkVersion string               `json:"frameworkVersion,omitempty"`
-	Job              spec.JobSpec         `json:"job"`
-	Executions       []*model.JobInfo     `json:"executions"`
-	Results          []*model.JobArtifact `json:"results"`
-	Deliveries       []*model.JobDelivery `json:"deliveries"`
-	CollectionState  string               `json:"collectionState,omitempty"`
-	RunnerStatus     *RunnerStatus        `json:"runnerStatus,omitempty"`
+	ExecutionKey       string               `json:"executionKey,omitempty"`
+	FrameworkVersion   string               `json:"frameworkVersion,omitempty"`
+	Job                spec.JobSpec         `json:"job"`
+	Executions         []*model.JobInfo     `json:"executions"`
+	Results            []*model.JobArtifact `json:"results"`
+	Deliveries         []*model.JobDelivery `json:"deliveries"`
+	CollectionState    string               `json:"collectionState,omitempty"`
+	Sandboxes          []*SandboxResponse   `json:"sandboxes,omitempty"`
+	SandboxesTruncated bool                 `json:"sandboxesTruncated"`
+	RunnerStatus       *RunnerStatus        `json:"runnerStatus,omitempty"`
 }
 
 type StoragePolicy struct {
@@ -217,6 +224,9 @@ func (s *Service) Submit(ctx context.Context, request SubmitRequest) (*Accepted,
 	space := &model.Workspace{ID: scope.WorkspaceID, Namespace: scope.Namespace}
 	if request.Traits.Evaluation != nil {
 		if err := BuildEvaluationTask(ctx, s.Store, s.Config, job, spec.JobTraits{}); err != nil {
+			if errors.Is(err, errEvaluationPolicyUnavailable) {
+				return nil, bcode.ErrServiceUnavailable
+			}
 			return nil, invalid(err)
 		}
 		err = workspace.PrepareEvaluationTask(job, space, s.Config.Accounts.Workspace, s.Config.Jobs.RunnerImage)
@@ -381,6 +391,12 @@ func (s *Service) Get(ctx context.Context, taskID string, executionKey ...string
 		return nil, err
 	}
 	if declaration.Traits.Evaluation != nil {
+		if out.ExecutionKey != "" {
+			out.Sandboxes, out.SandboxesTruncated, err = s.sandboxStatuses(ctx, task.WorkspaceID, task.TaskID, out.ExecutionKey)
+			if err != nil {
+				return nil, err
+			}
+		}
 		out.RunnerStatus, err = latestRunnerStatus(ctx, s.Store, out.Executions)
 		if err != nil {
 			return nil, err
@@ -443,9 +459,6 @@ func (s *Service) authorizeRunner(ctx context.Context, identity RunnerIdentity) 
 	if task.WorkspaceID == "" {
 		return nil, bcode.ErrUnauthorized
 	}
-	if err := runnerParentAuthorized(task); err != nil {
-		return nil, err
-	}
 	space := &model.Workspace{ID: task.WorkspaceID}
 	if err := s.Store.Get(ctx, space); err != nil {
 		if errors.Is(err, datastore.ErrRecordNotExist) {
@@ -495,7 +508,11 @@ func (s *Service) authorizeRunner(ctx context.Context, identity RunnerIdentity) 
 				if workflowjob.ValidateInstantJobRetryExecution(job, live) != nil {
 					return nil, bcode.ErrUnauthorized
 				}
-				return &runnerAuthorization{task: task, job: job, liveJob: live, namespace: space.Namespace, jobUID: string(live.UID), identity: identity, evaluation: evaluation}, nil
+				auth := &runnerAuthorization{task: task, job: job, liveJob: live, namespace: space.Namespace, jobUID: string(live.UID), identity: identity, evaluation: evaluation}
+				if err := runnerParentAuthorized(ctx, s.Store, task.Status, job, auth); err != nil {
+					return nil, err
+				}
+				return auth, nil
 			}
 		}
 	}
@@ -545,7 +562,7 @@ func (s *Service) RunnerResult(ctx context.Context, identity RunnerIdentity, r i
 		if err := locker.GetForUpdate(ctx, job); err != nil {
 			return err
 		}
-		if err := validateLockedRunnerJob(job, auth, task.Status); err != nil {
+		if err := validateLockedRunnerJob(ctx, tx, job, auth, task.Status); err != nil {
 			return err
 		}
 		state, _, err := decodeRunnerState(job)
@@ -556,32 +573,56 @@ func (s *Service) RunnerResult(ctx context.Context, identity RunnerIdentity, r i
 	}, *auth.job.ExecutionKey)
 }
 
-func runnerParentAuthorized(task *model.WorkflowQueue) error {
-	if task == nil {
-		return bcode.ErrUnauthorized
-	}
-	if task.Status == config.StatusRunning || task.Status == config.StatusCancelled {
+func runnerParentAuthorized(ctx context.Context, store datastore.DataStore, status config.Status, record *model.JobInfo, auth *runnerAuthorization) error {
+	if status == config.StatusRunning || status == config.StatusCancelled {
 		return nil
 	}
-	return bcode.ErrUnauthorized
+	if status != config.StatusWaiting && status != config.StatusQueued {
+		return bcode.ErrUnauthorized
+	}
+	// Reaping an expired workflow lease can temporarily queue the same live
+	// execution. Only its already claimed and fully fenced Runner may wait for
+	// recovery; no operation or new claim is accepted in this parent state.
+	state, deadline, err := decodeRunnerState(record)
+	if err != nil || !runnerOwnerMatches(state, auth) || deadline <= 0 {
+		return bcode.ErrUnauthorized
+	}
+	clock, ok := store.(datastore.DatabaseClock)
+	if !ok {
+		return fmt.Errorf("runner recovery authorization requires database clock")
+	}
+	now, err := clock.CurrentDatabaseTime(ctx)
+	if err != nil {
+		return err
+	}
+	if !now.Before(time.Unix(0, deadline)) {
+		return bcode.ErrUnauthorized
+	}
+	return bcode.ErrServiceUnavailable
 }
 
 // Maintain runs within the controller leader's existing lifecycle. Delivery
 // rows carry their own leases; no second Job execution scheduler is introduced.
 func (s *Service) Maintain(ctx context.Context) {
-	ticker := time.NewTicker(15 * time.Second)
-	defer ticker.Stop()
-	for {
-		if err := s.Artifacts.ReconcilePending(ctx, 20); err != nil && ctx.Err() == nil {
-			klog.ErrorS(err, "reconcile Job result destinations")
-		}
-		if err := s.Artifacts.CleanupExpired(ctx, 100); err != nil && ctx.Err() == nil {
-			klog.ErrorS(err, "expire original Job results")
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
+	var group errgroup.Group
+	run := func(interval time.Duration, operation string, work func(context.Context) error) {
+		group.Go(func() error {
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for {
+				if err := work(ctx); err != nil && ctx.Err() == nil {
+					klog.ErrorS(err, operation)
+				}
+				select {
+				case <-ctx.Done():
+					return nil
+				case <-ticker.C:
+				}
+			}
+		})
 	}
+	run(time.Second, "reconcile Job result destinations", func(ctx context.Context) error { return s.Artifacts.ReconcilePending(ctx, 100) })
+	run(15*time.Second, "expire original Job results", func(ctx context.Context) error { return s.Artifacts.CleanupExpired(ctx, 100) })
+	run(5*time.Second, "reconcile evaluation Sandboxes", func(ctx context.Context) error { return s.reconcileSandboxes(ctx, 100) })
+	_ = group.Wait() // Each loop exits without error only after ctx cancellation.
 }
