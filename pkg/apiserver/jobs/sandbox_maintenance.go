@@ -2,6 +2,8 @@ package jobs
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -35,10 +37,44 @@ func (s *Service) reconcileSandboxes(ctx context.Context, limit int) error {
 		group.Go(func() error {
 			operation, cancel := context.WithTimeout(ctx, sandboxOperationTimeout)
 			defer cancel()
-			return s.maintainSandbox(operation, row)
+			if err := s.maintainSandbox(operation, row); err != nil {
+				if ctx.Err() != nil {
+					return err
+				}
+				if retryErr := s.delayFailedSandbox(ctx, row); retryErr != nil {
+					return errors.Join(err, retryErr)
+				}
+				return err
+			}
+			return nil
 		})
 	}
 	return group.Wait()
+}
+
+// Move a failed row behind the current due backlog without changing its
+// reservation. Only the observed lifecycle version may receive this delay.
+func (s *Service) delayFailedSandbox(ctx context.Context, row *model.JobSandbox) error {
+	now, err := s.Store.(datastore.DatabaseClock).CurrentDatabaseTime(ctx)
+	if err != nil {
+		return fmt.Errorf("read failed Sandbox maintenance retry time: %w", err)
+	}
+	next := now.Add(15 * time.Second)
+	if !row.ReconcileAt.Before(next) {
+		return nil
+	}
+	conditional, ok := s.Store.(datastore.ConditionalCompareAndSwap)
+	if !ok {
+		return fmt.Errorf("delay failed Sandbox maintenance: conditional updates unavailable")
+	}
+	// A concurrent lifecycle change owns its own next reconcile time.
+	_, err = conditional.CompareAndSwapWithConditions(ctx, &model.JobSandbox{ID: row.ID},
+		map[string]interface{}{"reconcile_at": row.ReconcileAt, "lease_token": row.LeaseToken, "state": row.State},
+		map[string]interface{}{"reconcile_at": next})
+	if err != nil {
+		return fmt.Errorf("delay failed Sandbox maintenance: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) maintainSandbox(ctx context.Context, candidate *model.JobSandbox) error {

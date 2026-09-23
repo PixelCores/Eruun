@@ -1768,6 +1768,68 @@ class NativeHarborTest(unittest.TestCase):
             self.assertEqual(now[0], 2)
             self.assertEqual(request.call_count, 2)
 
+    def test_first_admitted_response_charges_server_startup_not_queue_or_gate(self):
+        import eruun_environment
+        for queued in (False, True):
+            with self.subTest(queued=queued), tempfile.TemporaryDirectory() as directory:
+                environment, _ = self.environment(directory, sandbox=True)
+                environment._sandbox_control["executionDeadline"] = 2000
+                environment.task_env_config.build_timeout_sec = 2
+                now = [0.0]
+                calls = [0]
+
+                async def wait_for_admission(_deadline):
+                    if queued and calls[0] == 1:
+                        now[0] += 100  # a closed Runner admission gate is paused
+
+                async def advance(delay):
+                    now[0] += delay
+
+                def request(*_args):
+                    calls[0] += 1
+                    if queued and calls[0] == 1:
+                        now[0] += 8  # server-side capacity wait before admission
+                        return self.sandbox_reply(state="pending", admitted=False, sandboxUID="", podUID="")
+                    now[0] += 5
+                    return self.sandbox_reply(admissionAgeSeconds=1 if queued else 3)
+
+                with patch.object(eruun_environment.time, "monotonic", side_effect=lambda: now[0]), \
+                        patch.object(eruun_environment.asyncio, "sleep", side_effect=advance), \
+                        patch.object(environment, "_wait_for_admission", side_effect=wait_for_admission), \
+                        patch.object(eruun_environment, "sandbox_request", side_effect=request):
+                    if queued:
+                        self.assertAlmostEqual(asyncio.run(environment._start_sandbox()), 1)
+                        self.assertEqual(now[0], 114)
+                    else:
+                        with self.assertRaisesRegex(TimeoutError, "task build timeout"):
+                            asyncio.run(environment._start_sandbox())
+                        self.assertEqual(now[0], 5)
+
+    def test_first_admission_after_lost_ack_pauses_api_outage(self):
+        import eruun_environment
+        with tempfile.TemporaryDirectory() as directory:
+            environment, _ = self.environment(directory, sandbox=True)
+            environment._sandbox_control["executionDeadline"] = 2000
+            environment.task_env_config.build_timeout_sec = 2
+            now = [0.0]
+            calls = [0]
+
+            async def advance(delay):
+                now[0] += delay
+
+            def request(*_args):
+                calls[0] += 1
+                if calls[0] == 1:
+                    now[0] += 3
+                    raise ConnectionResetError("response lost after admission")
+                return self.sandbox_reply(admissionAgeSeconds=now[0])
+
+            with patch.object(eruun_environment.time, "monotonic", side_effect=lambda: now[0]), \
+                    patch.object(eruun_environment.asyncio, "sleep", side_effect=advance), \
+                    patch.object(eruun_environment, "sandbox_request", side_effect=request):
+                self.assertAlmostEqual(asyncio.run(environment._start_sandbox()), 2)
+            self.assertEqual(calls[0], 2)
+
     def test_cancelled_sandbox_allocation_releases_unconfirmed_intent(self):
         import eruun_environment
         from harbor.environments.ack import ACKEnvironment
@@ -1815,14 +1877,17 @@ class NativeHarborTest(unittest.TestCase):
 
     def test_sandbox_http_rejects_unknown_states_and_wrong_ready_identity(self):
         import eruun_environment
-        for data in (self.sandbox_reply(state="unknown"), self.sandbox_reply(admitted=None)):
+        for data in (self.sandbox_reply(state="unknown"), self.sandbox_reply(admitted=None),
+                     self.sandbox_reply(admissionAgeSeconds=-1), self.sandbox_reply(admissionAgeSeconds=True),
+                     self.sandbox_reply(admissionAgeSeconds="1"),
+                     self.sandbox_reply(admitted=False, admissionAgeSeconds=1)):
             connection = MagicMock()
             connection.getresponse.return_value.status = 200
             connection.getresponse.return_value.read.return_value = json.dumps({"code": 0, "data": data}).encode()
             control = config() | {"sandboxURL": "http://platform.test/sandboxes"}
             with patch.dict(os.environ, {"POD_NAME": "runner", "POD_UID": "runner-uid"}), \
                     patch.object(runner.http.client, "HTTPConnection", return_value=connection), \
-                    self.assertRaisesRegex(runner.RunnerError, "invalid sandbox acknowledgment"):
+                    self.assertRaisesRegex(runner.RunnerError, "invalid sandbox"):
                 eruun_environment.sandbox_request(control, "POST", "", {"trialId": "trial"}, time.monotonic() + 5)
         with tempfile.TemporaryDirectory() as directory:
             environment, _ = self.environment(directory, sandbox=True)

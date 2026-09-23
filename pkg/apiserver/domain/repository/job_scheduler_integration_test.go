@@ -59,6 +59,30 @@ func TestResourceCreationMySQLConcurrentBudget(t *testing.T) {
 	testResourceCreationConcurrentBudget(t, newMySQLJobSchedulerTestStore(t))
 }
 
+func TestJobSchedulerMySQLSandboxReservationScanIndexUpgrade(t *testing.T) {
+	store := newMySQLJobSchedulerTestStore(t)
+	db := &store.Client
+	ctx := context.Background()
+	row := &model.JobSandbox{ID: "retained-before-index", SlotReserved: true, State: "retained", Deadline: time.Now().Add(time.Hour), ReconcileAt: time.Now()}
+	require.NoError(t, store.Add(ctx, row))
+
+	const indexName = "idx_sandbox_reservation_scan"
+	require.NoError(t, db.Migrator().DropIndex(&model.JobSandbox{}, indexName))
+	require.False(t, db.Migrator().HasIndex(&model.JobSandbox{}, indexName))
+	require.NoError(t, db.AutoMigrate(&model.JobSandbox{}))
+	require.True(t, db.Migrator().HasIndex(&model.JobSandbox{}, indexName))
+
+	var columns []struct{ ColumnName string }
+	require.NoError(t, db.Raw(`SELECT COLUMN_NAME FROM information_schema.statistics
+		WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ? ORDER BY seq_in_index`, row.TableName(), indexName).Scan(&columns).Error)
+	require.Len(t, columns, 2)
+	require.Equal(t, "slot_reserved", columns[0].ColumnName)
+	require.Equal(t, "id", columns[1].ColumnName)
+	restored := &model.JobSandbox{ID: row.ID}
+	require.NoError(t, store.Get(ctx, restored))
+	require.True(t, restored.SlotReserved)
+}
+
 func TestJobSchedulerMySQLTerminalCallbacksWithoutWorker(t *testing.T) {
 	testTerminalCallbackScheduling(t, newMySQLJobSchedulerTestStore(t))
 }

@@ -5,7 +5,7 @@ import "time"
 // JobSandbox is an execution-bound creation intent and immutable resource identity.
 // It contains no Runner capability, user environment, or task file contents.
 type JobSandbox struct {
-	ID               string     `json:"id" gorm:"primaryKey;type:varchar(64);column:id"`
+	ID               string     `json:"id" gorm:"primaryKey;type:varchar(64);column:id;index:idx_sandbox_reservation_scan,priority:2"`
 	WorkspaceID      string     `json:"workspaceId" gorm:"type:varchar(64);column:workspace_id;index:idx_sandbox_execution,priority:1"`
 	TaskID           string     `json:"taskId" gorm:"type:varchar(255);column:task_id;index"`
 	JobID            int        `json:"-" gorm:"column:job_id"`
@@ -17,6 +17,7 @@ type JobSandbox struct {
 	Namespace        string     `json:"namespace" gorm:"type:varchar(63);column:namespace"`
 	SandboxName      string     `json:"sandboxName" gorm:"type:varchar(63);column:sandbox_name"`
 	SandboxUID       string     `json:"sandboxUID" gorm:"type:varchar(64);column:sandbox_uid"`
+	AdmittedAt       *time.Time `json:"-" gorm:"column:admitted_at"`
 	PodName          string     `json:"podName" gorm:"type:varchar(253);column:pod_name"`
 	PodUID           string     `json:"podUID" gorm:"type:varchar(64);column:pod_uid"`
 	RunnerPodName    string     `json:"-" gorm:"type:varchar(253);column:runner_pod_name"`
@@ -26,7 +27,7 @@ type JobSandbox struct {
 	Deadline         time.Time  `json:"-" gorm:"column:deadline;not null"`
 	RetainUntil      *time.Time `json:"retainUntil,omitempty" gorm:"column:retain_until"`
 	StartReserved    bool       `json:"-" gorm:"column:start_reserved;not null;default:false;index"`
-	SlotReserved     bool       `json:"-" gorm:"column:slot_reserved;not null;default:false;index:idx_sandbox_execution,priority:3"`
+	SlotReserved     bool       `json:"-" gorm:"column:slot_reserved;not null;default:false;index:idx_sandbox_execution,priority:3;index:idx_sandbox_reservation_scan,priority:1"`
 	ReleaseRequested bool       `json:"-" gorm:"column:release_requested;not null;default:false"`
 	CreateAttempts   int        `json:"-" gorm:"column:create_attempts;not null;default:0"`
 	LeaseToken       string     `json:"-" gorm:"type:varchar(64);column:lease_token"`

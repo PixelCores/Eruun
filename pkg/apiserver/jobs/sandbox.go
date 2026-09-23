@@ -45,17 +45,18 @@ type SandboxReleaseRequest struct {
 }
 
 type SandboxResponse struct {
-	TrialID       string     `json:"trialId"`
-	State         string     `json:"state"`
-	Admitted      bool       `json:"admitted"`
-	Namespace     string     `json:"namespace"`
-	SandboxName   string     `json:"sandboxName"`
-	SandboxUID    string     `json:"sandboxUID"`
-	PodName       string     `json:"podName"`
-	PodUID        string     `json:"podUID"`
-	ContainerName string     `json:"containerName"`
-	RetainUntil   *time.Time `json:"retainUntil,omitempty"`
-	Reason        string     `json:"reason,omitempty"`
+	TrialID             string     `json:"trialId"`
+	State               string     `json:"state"`
+	Admitted            bool       `json:"admitted"`
+	AdmissionAgeSeconds *float64   `json:"admissionAgeSeconds,omitempty"`
+	Namespace           string     `json:"namespace"`
+	SandboxName         string     `json:"sandboxName"`
+	SandboxUID          string     `json:"sandboxUID"`
+	PodName             string     `json:"podName"`
+	PodUID              string     `json:"podUID"`
+	ContainerName       string     `json:"containerName"`
+	RetainUntil         *time.Time `json:"retainUntil,omitempty"`
+	Reason              string     `json:"reason,omitempty"`
 }
 
 func sandboxResponse(row *model.JobSandbox) *SandboxResponse {
@@ -196,11 +197,13 @@ func (s *Service) runnerSandbox(ctx context.Context, identity RunnerIdentity, tr
 	id := sandboxID(auth.task.WorkspaceID, *auth.job.ExecutionKey, trialID)
 	var row *model.JobSandbox
 	advance := false
+	var databaseNow, databaseSampledAt time.Time
 	err = s.Store.(datastore.Transactional).WithTransaction(ctx, func(tx datastore.DataStore) error {
 		now, deadline, stopped, err := lockSandboxRunner(ctx, tx, auth)
 		if err != nil {
 			return err
 		}
+		databaseNow, databaseSampledAt = now, time.Now()
 		row = &model.JobSandbox{ID: id}
 		err = tx.Get(ctx, row) // JobInfo lock serializes first-intent insertion.
 		create := errors.Is(err, datastore.ErrRecordNotExist)
@@ -287,7 +290,17 @@ func (s *Service) runnerSandbox(ctx context.Context, identity RunnerIdentity, tr
 		// not sufficient to issue fresh connection coordinates.
 		row.State, row.Reason = sandboxPending, "observation_pending"
 	}
-	return sandboxResponse(row), nil
+	response := sandboxResponse(row)
+	if release == nil && row.SandboxUID != "" && row.AdmittedAt != nil {
+		// Advance the sampled DB time with this process's monotonic clock.
+		// Replica wall clocks do not participate in the Runner's timeout.
+		age := databaseNow.Add(time.Since(databaseSampledAt)).Sub(*row.AdmittedAt).Seconds()
+		if age < 0 {
+			age = 0
+		}
+		response.AdmissionAgeSeconds = &age
+	}
+	return response, nil
 }
 
 // mutateSandbox uses the same JobInfo lock for slot acquisition and release.
@@ -325,8 +338,12 @@ func (s *Service) mutateSandbox(ctx context.Context, auth *runnerAuthorization, 
 		if stopped != "" {
 			stopSandbox(row, now, stopped)
 		}
+		hadUID := row.SandboxUID != ""
 		if err := fn(tx, row, now); err != nil {
 			return err
+		}
+		if !hadUID && row.SandboxUID != "" {
+			row.AdmittedAt = &now
 		}
 		if err := putSandbox(ctx, tx, row); err != nil {
 			return err
@@ -340,7 +357,7 @@ func (s *Service) mutateSandbox(ctx context.Context, auth *runnerAuthorization, 
 // Callers hold the parent, JobInfo, and (for existing rows) Sandbox locks.
 func putSandbox(ctx context.Context, tx datastore.DataStore, row *model.JobSandbox) error {
 	updated, err := tx.CompareAndSwap(ctx, row, "id", row.ID, map[string]interface{}{
-		"sandbox_uid": row.SandboxUID, "pod_name": row.PodName, "pod_uid": row.PodUID,
+		"sandbox_uid": row.SandboxUID, "admitted_at": row.AdmittedAt, "pod_name": row.PodName, "pod_uid": row.PodUID,
 		"state": row.State, "reason": row.Reason, "retain_until": row.RetainUntil,
 		"start_reserved": row.StartReserved, "slot_reserved": row.SlotReserved, "release_requested": row.ReleaseRequested,
 		"create_attempts": row.CreateAttempts, "lease_token": row.LeaseToken,

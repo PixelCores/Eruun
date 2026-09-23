@@ -78,6 +78,10 @@ def sandbox_request(control, method, suffix, payload, deadline):
         if (not isinstance(data, dict) or data.get("state") not in {"pending", "ready", "released", "retained", "failed"}
                 or not isinstance(data.get("admitted"), bool)):
             raise RunnerError("invalid sandbox acknowledgment")
+        age = data.get("admissionAgeSeconds")
+        if age is not None and (not data["admitted"] or isinstance(age, bool)
+                                or not isinstance(age, (int, float)) or not math.isfinite(age) or age < 0):
+            raise RunnerError("invalid sandbox admission age")
         return data
 
 
@@ -237,8 +241,13 @@ class WorkspaceEnvironment(ACKEnvironment):
             elapsed = time.monotonic() - started
             if admitted:
                 startup_remaining -= max(0, elapsed - outage)
-                if startup_remaining <= 0:
-                    raise TimeoutError("sandbox startup exceeded task build timeout")
+            elif data["admitted"] and data.get("admissionAgeSeconds") is not None:
+                # The server measures from its durable UID admission. Limit the
+                # charge to this operation so an earlier queue wait or closed
+                # admission gate is never mistaken for startup time.
+                startup_remaining -= max(0, min(elapsed, data["admissionAgeSeconds"]) - outage)
+            if startup_remaining <= 0:
+                raise TimeoutError("sandbox startup exceeded task build timeout")
             self._accept_sandbox_identity(data)
             if data["state"] == "ready":
                 return startup_remaining

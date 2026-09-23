@@ -83,6 +83,7 @@ func TestMySQLSandboxLifecycle(t *testing.T) {
 		}
 		row := sandboxRow(t, f, "same")
 		require.Equal(t, 1, row.CreateAttempts)
+		require.NotNil(t, row.AdmittedAt)
 		require.Empty(t, row.LeaseToken)
 		require.Nil(t, row.LeaseUntil)
 		makeSandboxReady(t, f, client, "same")

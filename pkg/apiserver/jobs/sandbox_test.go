@@ -27,6 +27,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/utils/ptr"
 )
@@ -140,9 +141,31 @@ func TestSandboxIdempotencyReadyAndUIDSafeRelease(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, sandboxPending, first.State)
 	require.True(t, first.Admitted)
+	require.NotNil(t, first.AdmissionAgeSeconds)
+	require.GreaterOrEqual(t, *first.AdmissionAgeSeconds, 0.0)
+	admittedAt := sandboxRow(t, f, "trial-1").AdmittedAt
+	require.NotNil(t, admittedAt)
 	second, err := f.service.RunnerSandboxCreate(ctx, f.identity, sandboxRequest("trial-1"))
 	require.NoError(t, err)
 	require.Equal(t, first.SandboxUID, second.SandboxUID)
+	require.Equal(t, admittedAt, sandboxRow(t, f, "trial-1").AdmittedAt)
+	prior := admittedAt.Add(-5 * time.Second)
+	updated, err := f.raw.CompareAndSwap(ctx, &model.JobSandbox{ID: sandboxID(f.parent.WorkspaceID, *f.record.ExecutionKey, "trial-1")},
+		"id", sandboxID(f.parent.WorkspaceID, *f.record.ExecutionKey, "trial-1"), map[string]interface{}{"admitted_at": &prior})
+	require.NoError(t, err)
+	require.True(t, updated)
+	aged, err := f.service.RunnerSandboxGet(ctx, f.identity, "trial-1")
+	require.NoError(t, err)
+	require.NotNil(t, aged.AdmissionAgeSeconds)
+	require.Greater(t, *aged.AdmissionAgeSeconds, 4.0)
+	public, truncated, err := f.service.sandboxStatuses(ctx, f.parent.WorkspaceID, f.parent.TaskID, *f.record.ExecutionKey)
+	require.NoError(t, err)
+	require.False(t, truncated)
+	require.Len(t, public, 1)
+	require.Nil(t, public[0].AdmissionAgeSeconds)
+	projection, err := json.Marshal(public[0])
+	require.NoError(t, err)
+	require.NotContains(t, string(projection), "admissionAgeSeconds")
 	creates := 0
 	for _, action := range client.Actions() {
 		if action.GetVerb() == "create" {
@@ -423,6 +446,52 @@ func TestSandboxDeleteAcknowledgementDoesNotReleaseCapacity(t *testing.T) {
 	require.Equal(t, sandboxPending, result.State)
 	require.Equal(t, "release_pending", result.Reason)
 	require.True(t, sandboxRow(t, f, "trial").SlotReserved)
+}
+
+func TestFailedSandboxMaintenanceDoesNotStarveLaterRows(t *testing.T) {
+	f, _ := sandboxFixture(t, true)
+	ctx := context.Background()
+	_, err := f.service.RunnerSandboxCreate(ctx, f.identity, sandboxRequest("first"))
+	require.NoError(t, err)
+	_, err = f.service.RunnerSandboxCreate(ctx, f.identity, sandboxRequest("second"))
+	require.NoError(t, err)
+	first := sandboxRow(t, f, "first")
+	second := sandboxRow(t, f, "second")
+	require.True(t, first.SlotReserved)
+	require.False(t, second.SlotReserved)
+	first.ReconcileAt = time.Now().UTC().Add(-2 * time.Minute)
+	second.ReconcileAt = time.Now().UTC().Add(-time.Minute)
+	require.NoError(t, f.raw.Put(ctx, first))
+	require.NoError(t, f.raw.Put(ctx, second))
+	first = sandboxRow(t, f, "first")
+	second = sandboxRow(t, f, "second")
+	f.parent.Status = config.StatusCancelled
+	require.NoError(t, f.raw.Put(ctx, f.parent))
+
+	failPodRead := true
+	f.service.Kube.(*fake.Clientset).PrependReactor("get", "pods", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		if failPodRead && action.(k8stesting.GetAction).GetName() == first.RunnerPodName {
+			return true, nil, errors.New("runner Pod temporarily unreadable")
+		}
+		return false, nil, nil
+	})
+	require.ErrorContains(t, f.service.reconcileSandboxes(ctx, 1), "runner Pod temporarily unreadable")
+	failed := sandboxRow(t, f, "first")
+	require.True(t, failed.SlotReserved)
+	require.True(t, failed.ReconcileAt.After(second.ReconcileAt))
+	require.Equal(t, sandboxPending, sandboxRow(t, f, "second").State)
+
+	require.NoError(t, f.service.reconcileSandboxes(ctx, 1))
+	require.Equal(t, sandboxReleased, sandboxRow(t, f, "second").State)
+	require.NoError(t, f.service.delayFailedSandbox(ctx, first))
+	require.Equal(t, failed.ReconcileAt, sandboxRow(t, f, "first").ReconcileAt,
+		"a stale failure must not replace a concurrent reconcile schedule")
+
+	failPodRead = false
+	failed.ReconcileAt = time.Now().UTC().Add(-time.Minute)
+	require.NoError(t, f.raw.Put(ctx, failed))
+	require.NoError(t, f.service.reconcileSandboxes(ctx, 1))
+	require.True(t, sandboxRow(t, f, "first").ReleaseRequested)
 }
 
 func TestSandboxCancellationAndLostRunnerRetainThenReap(t *testing.T) {

@@ -102,6 +102,32 @@ func TestJobSchedulerRetainedSandboxResources(t *testing.T) {
 	testJobSchedulerRetainedResources(t, newJobSchedulerTestStore(t))
 }
 
+func TestSandboxReservationScanIndexUpgrade(t *testing.T) {
+	store := newJobSchedulerTestStore(t)
+	ctx := context.Background()
+	row := &model.JobSandbox{ID: "retained-before-index", SlotReserved: true, State: "retained", Deadline: time.Now().Add(time.Hour), ReconcileAt: time.Now()}
+	require.NoError(t, store.Add(ctx, row))
+
+	const indexName = "idx_sandbox_reservation_scan"
+	db := &store.Client
+	require.NoError(t, db.Migrator().DropIndex(&model.JobSandbox{}, indexName))
+	require.False(t, db.Migrator().HasIndex(&model.JobSandbox{}, indexName))
+	require.NoError(t, db.AutoMigrate(&model.JobSandbox{}))
+	require.True(t, db.Migrator().HasIndex(&model.JobSandbox{}, indexName))
+
+	var columns []struct {
+		Seqno int
+		Name  string
+	}
+	require.NoError(t, db.Raw("PRAGMA index_info('idx_sandbox_reservation_scan')").Scan(&columns).Error)
+	require.Len(t, columns, 2)
+	require.Equal(t, "slot_reserved", columns[0].Name)
+	require.Equal(t, "id", columns[1].Name)
+	restored := &model.JobSandbox{ID: row.ID}
+	require.NoError(t, store.Get(ctx, restored))
+	require.True(t, restored.SlotReserved)
+}
+
 func testJobSchedulerLowerResourceQuota(t *testing.T, store datastore.DataStore) {
 	t.Helper()
 	ctx := context.Background()

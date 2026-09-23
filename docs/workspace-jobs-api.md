@@ -147,7 +147,7 @@ Application 内评测使用 `GET /api/v1/jobs/:taskID?executionKey=<Job executio
 
 默认策略为 `retentionDays: 90` 和 `database/full`。`GET /api/v1/job-storage-policy` 返回可用目标及当前策略；`PUT` 使用与 `resultPolicy` 相同的 JSON 更新默认值，范围 1–3650 天。独立提交时、应用内评测首次生成执行时，快照化 `traits.eval.resultPolicy`；省略则使用当时的空间默认值。恢复沿用已持久化的策略。修改默认策略只影响后续执行。
 
-原始数据保留期从采集成功开始计算。`PUT /api/v1/jobs/:taskID/retention` 接收 `{"retentionDays":30}`，将尚未过期的原始数据改为从本次操作起再保留 30 天。周期清理只删除源字节，保留可查询的过期元数据，**不删除 MinIO 或数据库保存副本**。每个 trial 的原始数据完整下载到 Runner 后可清理其试验 Pod；下载失败的试验 Pod 随未完整采集的 Runner Pod 保留供诊断，仍受执行截止时间约束，并随 Runner 的保留期限到期回收。最终归档或上传失败时，Runner 中已有的原始文件继续保留。
+原始数据保留期从采集成功开始计算。`PUT /api/v1/jobs/:taskID/retention` 接收 `{"retentionDays":30}`，将尚未过期的原始数据改为从本次操作起再保留 30 天。周期清理只删除源字节，保留可查询的过期元数据，**不删除 MinIO 或数据库保存副本**。每个 trial 的原始数据完整下载到 Runner 后可清理其 Sandbox 和关联 Pod；未完整取回文件或日志的 Sandbox 在任务结束后独立保留 24 小时，供诊断或人工补采，不随 Runner Pod 回收。最终归档或上传失败时，Runner 中已有的原始文件继续保留。
 
 显式删除整个团队空间沿用“资源必须为空”的规则，且要求没有等待或正在保存的目标。空间删除会删除其数据库数据和索引；MinIO 已保存对象不由原始结果保留策略或空间删除 API 清除，需要存储管理员独立管理。
 
@@ -179,7 +179,7 @@ ACK 的 `data` 为 `{"acceptedSequence": 12, "action": "continue"}`，或在停�
 
 结果完整、`succeeded` terminal 获得 ACK、Runner 以 0 退出且 Kubernetes Job 成功，四项证据同时满足后控制面才能完成评测。状态 API 或数据库短暂故障只触发有界重试，不重启 Harbor；无法确认 terminal 时 Runner 非零退出，由 Kubernetes 证据收敛。
 
-同一鉴权边界下增加 `POST /job-runners/:taskID/sandboxes`（`trialId/image/storageMiB`）、`GET .../sandboxes/:trialID` 和 `POST .../sandboxes/:trialID/release`（`sandboxUID/podUID/collectionComplete`）。响应 `data` 返回 pending/ready/retained/released/failed、`admitted`、实际资源身份及保留期限；尚未创建的容量/速率等待为 `admitted=false`。此为 Runner 私有 HTTP 协议，公共 HTTP/gRPC 只暴露授权后的生命周期投影。Token 与准入门控文件位于 Runner 私有工作目录，不进入任务包或结果归档。
+同一鉴权边界下增加 `POST /job-runners/:taskID/sandboxes`（`trialId/image/storageMiB`）、`GET .../sandboxes/:trialID` 和 `POST .../sandboxes/:trialID/release`（`sandboxUID/podUID/collectionComplete`）。响应 `data` 返回 pending/ready/retained/released/failed、`admitted`、实际资源身份及保留期限；尚未创建的容量/速率等待为 `admitted=false`。创建和查询响应在有已持久化准入时间时还返回 `admissionAgeSeconds`，以数据库时钟从首次确认 Sandbox UID 起计时；Runner 首次见到 `admitted=true` 时只扣除当前请求中可确认的准入后耗时，并暂停可重试 API 中断时间。升级前已分配的记录或旧 API 不提供该字段时，Runner 沿用本地计时；应先部署包含新列的服务端，再更新 Runner。此为 Runner 私有 HTTP 协议，公共 HTTP/gRPC 只暴露授权后的生命周期投影，不返回准入年龄。Token 与准入门控文件位于 Runner 私有工作目录，不进入任务包或结果归档。
 
 ## 管理员配置与部署
 
