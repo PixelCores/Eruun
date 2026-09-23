@@ -214,6 +214,9 @@ func migrateSchema(ctx context.Context, db *gorm.DB, models []model.Interface) e
 				return fmt.Errorf("auto-migrate %T: %w", v, err)
 			}
 		}
+		if err := migrateResourceCreationBudgetIntervals(ctx, db.WithContext(ctx)); err != nil {
+			return err
+		}
 		if err := migrateApplicationComponentRuntimeStatus(ctx, db.WithContext(ctx)); err != nil {
 			return err
 		}

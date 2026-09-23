@@ -7,6 +7,7 @@ import (
 	"math/rand/v2"
 	"time"
 
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
@@ -50,7 +51,7 @@ func waitForJobAdmission(ctx context.Context, store datastore.DataStore, task *m
 	}
 	confirmedUID, err := confirmJobAdmissionRecovery(ctx, client, task)
 	if err != nil {
-		return noop, errors.Join(signal.ErrInfrastructureStop, err)
+		return noop, releaseLostJobAdmission(ctx, store, task, errors.Join(signal.ErrInfrastructureStop, err))
 	}
 	if err := repository.EnqueueJobForScheduling(ctx, store, owner, &record, deadline, confirmedUID); err != nil {
 		return noop, fmt.Errorf("queue ready job: %w", err)
@@ -82,6 +83,29 @@ func waitForJobAdmission(ctx context.Context, store datastore.DataStore, task *m
 		delay = min(delay*2, workflowconfig.DefaultDispatchPollInterval)
 		timer.Reset(delay)
 	}
+}
+
+var errJobAdmissionRecoveryExecutionLost = errors.New("job admission recovery execution lost")
+
+func releaseLostJobAdmission(ctx context.Context, store datastore.DataStore, task *model.JobTask, cause error) error {
+	if !errors.Is(cause, errJobAdmissionRecoveryExecutionLost) {
+		return cause
+	}
+	owner := &model.WorkflowQueue{
+		TaskID: task.TaskID, RunGeneration: jobOwnerGeneration(task),
+		AppID: task.AppID, WorkspaceID: task.WorkspaceID,
+		RunToken: task.RunToken, WorkerID: task.WorkerID, Status: task.OwnerStatus,
+	}
+	if owner.Status == "" {
+		owner.Status = config.StatusRunning
+	}
+	record := buildJobInfoRecord(task)
+	releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := repository.ReleaseLostJobAdmission(releaseCtx, store, owner, &record, "recovered Kubernetes Job is missing or has a different execution identity"); err != nil {
+		return errors.Join(cause, signal.ErrInfrastructureStop, fmt.Errorf("release lost Job admission: %w", err))
+	}
+	return cause
 }
 
 // Healthy recovered resources take no creation permit. New standalone command
@@ -144,10 +168,16 @@ func confirmJobAdmissionRecovery(ctx context.Context, client kubernetes.Interfac
 	}
 	live, err := client.BatchV1().Jobs(cp.Job.Namespace).Get(ctx, cp.Job.Name, metav1.GetOptions{})
 	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return "", errors.Join(errJobAdmissionRecoveryExecutionLost, fmt.Errorf("confirm existing Job admission: %w", err))
+		}
 		return "", fmt.Errorf("confirm existing Job admission: %w", err)
 	}
 	record := buildJobInfoRecord(task)
 	if err := ValidateInstantJobRetryExecution(&record, live); err != nil {
+		if errors.Is(err, errJobExecutionIdentityChanged) {
+			return "", errors.Join(errJobAdmissionRecoveryExecutionLost, err)
+		}
 		return "", err
 	}
 	return string(cp.CurrentUID), nil

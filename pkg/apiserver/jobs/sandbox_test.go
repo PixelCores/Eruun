@@ -455,6 +455,101 @@ func TestSandboxCancellationAndLostRunnerRetainThenReap(t *testing.T) {
 	}
 }
 
+func TestSandboxMaintenanceRetainsThenReapsAfterOwnersAreDeleted(t *testing.T) {
+	f, client := sandboxFixture(t, true)
+	ctx := context.Background()
+	created, err := f.service.RunnerSandboxCreate(ctx, f.identity, sandboxRequest("trial"))
+	require.NoError(t, err)
+	require.NotEmpty(t, created.SandboxUID)
+
+	require.NoError(t, f.raw.Delete(ctx, f.parent))
+	require.NoError(t, f.raw.Delete(ctx, f.record))
+	row := sandboxRow(t, f, "trial")
+	row.ReconcileAt = time.Now().UTC().Add(-time.Minute)
+	require.NoError(t, f.raw.Put(ctx, row))
+
+	require.NoError(t, f.service.reconcileSandboxes(ctx, 100))
+	row = sandboxRow(t, f, "trial")
+	require.Equal(t, sandboxRetained, row.State)
+	require.Equal(t, "execution_finished", row.Reason)
+	require.True(t, row.ReleaseRequested)
+	require.True(t, row.SlotReserved)
+	_, err = client.Resource(SandboxGVR).Namespace(row.Namespace).Get(ctx, row.SandboxName, metav1.GetOptions{})
+	require.NoError(t, err)
+
+	past := time.Now().UTC().Add(-time.Minute)
+	row.RetainUntil, row.ReconcileAt = &past, past
+	require.NoError(t, f.raw.Put(ctx, row))
+	require.NoError(t, f.service.reconcileSandboxes(ctx, 100))
+	row = sandboxRow(t, f, "trial")
+	require.Equal(t, sandboxReleased, row.State)
+	require.False(t, row.SlotReserved)
+	_, err = client.Resource(SandboxGVR).Namespace(row.Namespace).Get(ctx, row.SandboxName, metav1.GetOptions{})
+	require.True(t, k8serrors.IsNotFound(err))
+}
+
+func TestOrphanedSandboxMaintenanceDoesNotDeleteReplacementUID(t *testing.T) {
+	f, client := sandboxFixture(t, true)
+	ctx := context.Background()
+	created, err := f.service.RunnerSandboxCreate(ctx, f.identity, sandboxRequest("trial"))
+	require.NoError(t, err)
+	object, err := client.Resource(SandboxGVR).Namespace(created.Namespace).Get(ctx, created.SandboxName, metav1.GetOptions{})
+	require.NoError(t, err)
+	object.SetUID("replacement-sandbox")
+	require.NoError(t, client.Tracker().Update(SandboxGVR, object, object.GetNamespace()))
+
+	require.NoError(t, f.raw.Delete(ctx, f.parent))
+	require.NoError(t, f.raw.Delete(ctx, f.record))
+	row := sandboxRow(t, f, "trial")
+	row.ReconcileAt = time.Now().UTC().Add(-time.Minute)
+	require.NoError(t, f.raw.Put(ctx, row))
+	require.NoError(t, f.service.reconcileSandboxes(ctx, 100))
+
+	row = sandboxRow(t, f, "trial")
+	require.Equal(t, sandboxFailed, row.State)
+	require.Equal(t, "sandbox_identity_changed", row.Reason)
+	require.False(t, row.SlotReserved)
+	replacement, err := client.Resource(SandboxGVR).Namespace(row.Namespace).Get(ctx, row.SandboxName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, types.UID("replacement-sandbox"), replacement.GetUID())
+}
+
+func TestSandboxMaintenanceValidatesRemainingOwnerWhenOneIsMissing(t *testing.T) {
+	for _, scenario := range []string{"task-missing", "job-missing"} {
+		t.Run(scenario, func(t *testing.T) {
+			f, _ := sandboxFixture(t, true)
+			ctx := context.Background()
+			_, err := f.service.RunnerSandboxCreate(ctx, f.identity, sandboxRequest("trial"))
+			require.NoError(t, err)
+			require.NoError(t, f.raw.Add(ctx, &model.Applications{ID: "app", WorkspaceID: f.parent.WorkspaceID, Namespace: "space-ns"}))
+			f.parent.AppID, f.record.AppID = "app", "app"
+			require.NoError(t, f.raw.Put(ctx, f.parent))
+			require.NoError(t, f.raw.Put(ctx, f.record))
+
+			switch scenario {
+			case "task-missing":
+				require.NoError(t, f.raw.Delete(ctx, f.parent))
+				remaining := *f.record
+				remaining.ExecutionKey = ptr.To("different-execution")
+				require.NoError(t, f.raw.Put(ctx, &remaining))
+			case "job-missing":
+				require.NoError(t, f.raw.Delete(ctx, f.record))
+				remaining := *f.parent
+				remaining.WorkspaceID = "different-workspace"
+				require.NoError(t, f.raw.Put(ctx, &remaining))
+			}
+			row := sandboxRow(t, f, "trial")
+			row.ReconcileAt = time.Now().UTC().Add(-time.Minute)
+			require.NoError(t, f.raw.Put(ctx, row))
+
+			require.ErrorIs(t, f.service.reconcileSandboxes(ctx, 100), ErrRunnerConflict)
+			row = sandboxRow(t, f, "trial")
+			require.True(t, row.SlotReserved)
+			require.False(t, row.ReleaseRequested)
+		})
+	}
+}
+
 func TestSandboxUncertainCreateStaysReservedAfterCancellation(t *testing.T) {
 	f, client := sandboxFixture(t, true)
 	ctx := context.Background()

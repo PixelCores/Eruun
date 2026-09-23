@@ -24,6 +24,8 @@ import (
 	mysqlgorm "gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
@@ -119,6 +121,32 @@ func TestMySQLSandboxLifecycle(t *testing.T) {
 			}
 		}
 		require.Equal(t, 1, creates)
+	})
+	t.Run("orphaned-owners-retain-then-release-capacity", func(t *testing.T) {
+		f, client := mysqlSandboxFixture(t)
+		ctx := context.Background()
+		created, err := f.service.RunnerSandboxCreate(ctx, f.identity, sandboxRequest("trial"))
+		require.NoError(t, err)
+		require.NoError(t, f.raw.Delete(ctx, f.parent))
+		require.NoError(t, f.raw.Delete(ctx, f.record))
+		row := sandboxRow(t, f, "trial")
+		row.ReconcileAt = time.Now().UTC().Add(-time.Minute)
+		require.NoError(t, f.raw.Put(ctx, row))
+
+		require.NoError(t, f.service.reconcileSandboxes(ctx, 100))
+		row = sandboxRow(t, f, "trial")
+		require.Equal(t, sandboxRetained, row.State)
+		require.True(t, row.SlotReserved)
+		past := time.Now().UTC().Add(-time.Minute)
+		row.RetainUntil, row.ReconcileAt = &past, past
+		require.NoError(t, f.raw.Put(ctx, row))
+		require.NoError(t, f.service.reconcileSandboxes(ctx, 100))
+		row = sandboxRow(t, f, "trial")
+		require.Equal(t, sandboxReleased, row.State)
+		require.False(t, row.SlotReserved)
+		_, err = client.Resource(SandboxGVR).Namespace(row.Namespace).Get(ctx, row.SandboxName, metav1.GetOptions{})
+		require.True(t, k8serrors.IsNotFound(err))
+		require.NotEmpty(t, created.SandboxUID)
 	})
 	t.Run("uncertain-response-cancel-late-create-and-old-lease", func(t *testing.T) {
 		f, client := mysqlSandboxFixture(t)

@@ -344,6 +344,7 @@ func TestRetryCheckpointCannotReplayMissingOrForeignJob(t *testing.T) {
 			}
 			err := NewInstantJobCtl(task, client, &retryCheckpointStore{}, func() {}).ensureRetryAttempt(context.Background(), cp)
 			require.ErrorIs(t, err, signal.ErrInfrastructureStop)
+			require.NotErrorIs(t, err, errJobAdmissionRecoveryExecutionLost, "resize retries do not use the stop-policy admission recovery exemption")
 			require.Zero(t, countClientActions(client, "delete", "jobs"))
 			require.Zero(t, countClientActions(client, "create", "jobs"))
 		})

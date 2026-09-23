@@ -252,6 +252,18 @@ func ReleaseJobAdmission(ctx context.Context, store datastore.DataStore, owner *
 		if job.SchedulingState == workflowconfig.JobSchedulingReleased {
 			return nil
 		}
+		if job.SchedulingState == workflowconfig.JobSchedulingAdmitted && job.InternalInfo != "" {
+			now, err := currentWorkflowDatabaseTime(ctx, tx)
+			if err != nil {
+				return err
+			}
+			if recoverableJobAdmission(job, now) != nil {
+				// The controller can return during an ownership transition while
+				// its immutable Kubernetes execution remains live. Keep the slot
+				// until that exact execution reattaches, terminates, or expires.
+				return nil
+			}
+		}
 		conditions := jobSchedulingConditions(job)
 		err = updateJobScheduling(ctx, tx, job, conditions, map[string]interface{}{
 			"scheduling_state": workflowconfig.JobSchedulingReleased, "scheduling_reason": reason,

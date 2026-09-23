@@ -780,8 +780,8 @@ class StatusReporter:
                 # event did not advance the server sequence, so retry it once
                 # with the authoritative stop outcome.
                 if event["kind"] == "terminal" and exc.stop_outcome is not None:
-                    self.cancel.set()
                     self.stop_outcome = exc.stop_outcome
+                    self.cancel.set()
                 elif event["kind"] == "terminal" and self.stop_outcome is None and self.cancel.is_set():
                     self.stop_outcome = "cancelled"
                 else:
@@ -955,6 +955,31 @@ def upload_with_retry(config, archive, status, deadline=None):
             time.sleep(retry_delay(attempt, deadline))
 
 
+def _reporter_stop_outcome(reporter):
+    if reporter is None:
+        return None
+    stop_outcome = getattr(reporter, "stop_outcome", None)
+    if stop_outcome in {"cancelled", "timed_out"}:
+        return stop_outcome
+    # failure is the reporter thread's local stop linearization point. It is
+    # intentionally published before the derived outage flag and shared cancel.
+    if reporter.outage_exhausted is True or isinstance(getattr(reporter, "failure", None), BaseException):
+        return "failed"
+    return None
+
+
+def _stop_snapshot(reporter, cancel):
+    # Reporter writers publish a specific cause before setting the shared
+    # cancellation event. If cancellation races the first cause read, read the
+    # cause again so a local outage or authoritative timeout is never reduced
+    # to a generic signal cancellation.
+    stop_outcome = _reporter_stop_outcome(reporter)
+    cancelled = cancel.is_set()
+    if cancelled:
+        stop_outcome = _reporter_stop_outcome(reporter) or stop_outcome or "cancelled"
+    return stop_outcome
+
+
 def execute(config, work, cancel, reporter=None, final_deadline=None):
     output = work / "outputs"
     output.mkdir()
@@ -1005,10 +1030,12 @@ def execute(config, work, cancel, reporter=None, final_deadline=None):
                 json.dump(control, target)
         config_path = work / "harbor-config.json"
         config_path.write_text(json.dumps(generated))
-        if cancel.is_set() and reporter.outage_exhausted is True:
-            succeeded = False
-            outcome = "failed"
-        elif cancel.is_set():
+        stop_outcome = _stop_snapshot(reporter, cancel)
+        if stop_outcome is not None:
+            if stop_outcome == "failed":
+                raise RunnerError("runner control outage exceeded its time budget")
+            if stop_outcome == "timed_out":
+                raise RunnerError("timed out before framework start")
             raise RunnerError("cancelled before framework start")
         if reporter is not None:
             reporter.emit("phase", phase="running")
@@ -1021,15 +1048,23 @@ def execute(config, work, cancel, reporter=None, final_deadline=None):
         report["executionStatus"] = framework_status(output / "run" / "result.json", code)
         if interrupted:
             report["executionStatus"] = "failed"
-            report["interruption"] = interrupted
+            stop_outcome = _stop_snapshot(reporter, cancel)
+            if stop_outcome == "failed":
+                report["interruption"] = "control_outage"
+            else:
+                report["interruption"] = stop_outcome or interrupted
             collection_error(report, "trials", "framework_interrupted")
     except Exception as exc:
         # Exception values may contain environment-expanded credentials; retain the category only.
         report["error"] = type(exc).__name__
         if isinstance(exc, RunnerError):
             report["error"] = str(exc)
-        if cancel.is_set() and "interruption" not in report:
-            report["interruption"] = "cancelled"
+        stop_outcome = _stop_snapshot(reporter, cancel)
+        if stop_outcome is not None and "interruption" not in report:
+            if stop_outcome == "failed":
+                report["interruption"] = "control_outage"
+            else:
+                report["interruption"] = stop_outcome or "cancelled"
             collection_error(report, "trials", "framework_interrupted")
     finalization_deadline = time.monotonic() + config.get("finalizationTimeoutSeconds", FINALIZATION_SECONDS)
     if final_deadline is not None:
@@ -1063,13 +1098,17 @@ def execute(config, work, cancel, reporter=None, final_deadline=None):
             info.size, info.mode = len(contents), 0o600
             target.addfile(info, _DeadlineReader(io.BytesIO(contents), diagnostic_deadline))
         ensure_deadline(diagnostic_deadline)
-    status = report["executionStatus"] if report["collectionComplete"] and not cancel.is_set() else "failed"
+    stop_outcome = _stop_snapshot(reporter, cancel)
+    stopped = stop_outcome is not None
+    status = report["executionStatus"] if report["collectionComplete"] and not stopped else "failed"
     artifact = upload_with_retry(config, archive, status, deadline=upload_deadline)
-    succeeded = not cancel.is_set() and report["executionStatus"] == "succeeded" and report["collectionComplete"]
+    stop_outcome = _stop_snapshot(reporter, cancel)
+    stopped = stop_outcome is not None
+    succeeded = not stopped and report["executionStatus"] == "succeeded" and report["collectionComplete"]
     if reporter is not None:
-        if cancel.is_set():
+        if stop_outcome is not None:
             succeeded = False
-            outcome = "cancelled"
+            outcome = stop_outcome
         else:
             outcome = "succeeded" if succeeded else report.get("interruption", "failed")
         if outcome not in {"timed_out", "cancelled", "succeeded"}:
@@ -1078,6 +1117,8 @@ def execute(config, work, cancel, reporter=None, final_deadline=None):
             reason = "evaluation_succeeded"
         elif outcome == "cancelled":
             reason = "evaluation_cancelled"
+        elif outcome == "timed_out":
+            reason = "evaluation_timed_out"
         else:
             reason = "evaluation_failed"
         exit_code = report.get("frameworkExitCode")
@@ -1096,7 +1137,7 @@ def execute(config, work, cancel, reporter=None, final_deadline=None):
             except ValueError:
                 terminal["signal"] = "UNKNOWN"
         reporter.terminal(terminal)
-    return 0 if succeeded and not cancel.is_set() else 1
+    return 0 if succeeded and _stop_snapshot(reporter, cancel) is None else 1
 
 
 def main():

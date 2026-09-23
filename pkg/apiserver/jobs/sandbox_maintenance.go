@@ -55,19 +55,15 @@ func (s *Service) maintainSandbox(ctx context.Context, candidate *model.JobSandb
 	advance := false
 	err := s.Store.(datastore.Transactional).WithTransaction(ctx, func(tx datastore.DataStore) error {
 		locker := tx.(datastore.RowLocker)
-		task := &model.WorkflowQueue{TaskID: candidate.TaskID}
-		if err := locker.GetForUpdate(ctx, task); err != nil {
-			return err
-		}
-		job := &model.JobInfo{ID: candidate.JobID}
-		if err := locker.GetForUpdate(ctx, job); err != nil {
+		task, job, orphaned, err := lockSandboxMaintenanceOwners(ctx, tx, candidate)
+		if err != nil {
 			return err
 		}
 		row := &model.JobSandbox{ID: candidate.ID}
 		if err := locker.GetForUpdate(ctx, row); err != nil {
 			return err
 		}
-		if row.WorkspaceID != candidate.WorkspaceID || row.Namespace != candidate.Namespace || row.RunnerUID != candidate.RunnerUID || row.JobID != job.ID || row.TaskID != task.TaskID || task.WorkspaceID != row.WorkspaceID || job.TaskID != task.TaskID || job.WorkspaceID != row.WorkspaceID || job.ExecutionKey == nil || *job.ExecutionKey != row.ExecutionKey {
+		if row.WorkspaceID != candidate.WorkspaceID || row.Namespace != candidate.Namespace || row.RunnerUID != candidate.RunnerUID || row.JobID != candidate.JobID || row.TaskID != candidate.TaskID || row.ExecutionKey != candidate.ExecutionKey {
 			return ErrRunnerConflict
 		}
 		now, err := tx.(datastore.DatabaseClock).CurrentDatabaseTime(ctx)
@@ -77,16 +73,20 @@ func (s *Service) maintainSandbox(ctx context.Context, candidate *model.JobSandb
 		if row.LeaseUntil != nil && now.Before(*row.LeaseUntil) {
 			return nil
 		}
-		claim, _, claimErr := decodeRunnerState(job)
-		if claimErr != nil || claim == nil || claim.OwnerPodUID != row.RunnerUID || claim.OwnerPodName != row.RunnerPodName {
-			stopped = "runner_lost"
-		}
-		if task.Status == config.StatusCancelled {
-			stopped = "cancelled"
-		} else if !now.Before(row.Deadline) {
-			stopped = "execution_deadline"
-		} else if terminal(task.Status) || terminal(config.Status(job.Status)) {
+		if orphaned {
 			stopped = "execution_finished"
+		} else {
+			claim, _, claimErr := decodeRunnerState(job)
+			if claimErr != nil || claim == nil || claim.OwnerPodUID != row.RunnerUID || claim.OwnerPodName != row.RunnerPodName {
+				stopped = "runner_lost"
+			}
+			if task.Status == config.StatusCancelled {
+				stopped = "cancelled"
+			} else if !now.Before(row.Deadline) {
+				stopped = "execution_deadline"
+			} else if terminal(task.Status) || terminal(config.Status(job.Status)) {
+				stopped = "execution_finished"
+			}
 		}
 		if stopped != "" {
 			stopSandbox(row, now, stopped)

@@ -3,6 +3,7 @@ package job
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -17,7 +18,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 func TestCreatedJobReattachesAfterOwnerAndQuotaChangeWithoutCreate(t *testing.T) {
@@ -64,9 +67,13 @@ func TestCreatedJobReattachesAfterOwnerAndQuotaChangeWithoutCreate(t *testing.T)
 	// Losing the resource after confirmation still cannot turn that permission
 	// into a replacement Create, even though admission has already transferred.
 	require.NoError(t, client.BatchV1().Jobs(live.Namespace).Delete(ctx, live.Name, metav1.DeleteOptions{}))
-	require.ErrorIs(t, ctl.ensureRetryAttempt(ctx, cp), signal.ErrInfrastructureStop)
+	policy, err := retryPolicyFromJob(cp.Job)
+	require.NoError(t, err)
+	require.ErrorIs(t, ctl.runWithRetryPolicy(ctx, cp.Job, policy), signal.ErrInfrastructureStop)
 	require.Zero(t, countClientActions(client, "create", "jobs"))
 	require.NoError(t, release())
+	require.NoError(t, store.Get(ctx, &record))
+	require.Equal(t, workflowconfig.JobSchedulingReleased, record.SchedulingState)
 }
 
 func TestJobAdmissionRecoveryRequiresConfirmedStopPolicyUID(t *testing.T) {
@@ -121,6 +128,79 @@ func TestJobAdmissionRecoveryRequiresConfirmedStopPolicyUID(t *testing.T) {
 				require.NoError(t, err)
 			}
 			require.Equal(t, tc.wantProof, uid != "")
+			require.Zero(t, countClientActions(client, "create", "jobs"))
+		})
+	}
+}
+
+func TestJobAdmissionRecoveryConfirmationReleasesOnlyAuthoritativeLoss(t *testing.T) {
+	transientErr := errors.New("temporary Kubernetes API failure")
+	for _, tc := range []struct {
+		name         string
+		missing      bool
+		replacement  bool
+		transient    bool
+		wantReleased bool
+	}{
+		{name: "missing", missing: true, wantReleased: true},
+		{name: "replacement", replacement: true, wantReleased: true},
+		{name: "transient API error", transient: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db, scopedStore, _ := evaluationScopeStore(t)
+			store := &sqlstore.Driver{Client: *db}
+			task := evaluationScopeTask(t, scopedStore, "")
+			task.Status, task.Attempt = config.StatusRunning, 1
+			live := task.JobInfo.(*batchv1.Job)
+			live.UID, live.ResourceVersion = "recorded-runner", "1"
+			stampJobExecutionIdentity(task, live)
+			owner := &model.WorkflowQueue{TaskID: task.TaskID}
+			ctx := context.Background()
+			require.NoError(t, store.Get(ctx, owner))
+			record := buildJobInfoRecord(task)
+			require.NoError(t, repository.EnqueueJobForScheduling(ctx, store, owner, &record, nil))
+			n, err := repository.AdmitQueuedJobs(ctx, store)
+			require.NoError(t, err)
+			require.Equal(t, 1, n)
+			cp := &instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: live.DeepCopy(), Attempt: 1,
+				CurrentUID: live.UID, Deadline: time.Now().Add(time.Hour).UnixNano()}
+			raw, err := json.Marshal(cp)
+			require.NoError(t, err)
+			task.InternalInfo = string(raw)
+			require.NoError(t, store.Get(ctx, &record))
+			record.InternalInfo, record.Attempt, record.Status = task.InternalInfo, task.Attempt, string(task.Status)
+			require.NoError(t, store.Put(ctx, &record))
+
+			owner.RunGeneration++
+			owner.RunToken, owner.WorkerID = "replacement-token", "replacement-worker"
+			require.NoError(t, store.Put(ctx, owner))
+			task.OwnerRunGeneration, task.RunToken, task.WorkerID = owner.RunGeneration, owner.RunToken, owner.WorkerID
+			client := fake.NewSimpleClientset()
+			if !tc.missing {
+				observed := live.DeepCopy()
+				if tc.replacement {
+					observed.UID = "replacement-runner"
+				}
+				require.NoError(t, client.Tracker().Add(observed))
+			}
+			if tc.transient {
+				client.PrependReactor("get", "jobs", func(k8stesting.Action) (bool, runtime.Object, error) {
+					return true, nil, transientErr
+				})
+			}
+
+			release, err := waitForJobAdmission(ctx, store, task, client)
+			require.ErrorIs(t, err, signal.ErrInfrastructureStop)
+			if tc.transient {
+				require.ErrorIs(t, err, transientErr)
+			}
+			require.NoError(t, release())
+			require.NoError(t, store.Get(ctx, &record))
+			if tc.wantReleased {
+				require.Equal(t, workflowconfig.JobSchedulingReleased, record.SchedulingState)
+			} else {
+				require.Equal(t, workflowconfig.JobSchedulingAdmitted, record.SchedulingState)
+			}
 			require.Zero(t, countClientActions(client, "create", "jobs"))
 		})
 	}

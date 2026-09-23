@@ -47,12 +47,20 @@ func ReserveResourceCreation(ctx context.Context, store datastore.DataStore) (ti
 		// Round upward to the database's microsecond precision so persistence
 		// cannot shorten the interval and exceed the configured rate.
 		interval := time.Duration(math.Ceil(1e6/policy.ResourceCreationQPS)) * time.Microsecond
-		next, delay := resourceCreationReservation(now, budget.AvailableAt, interval, policy.ResourceCreationBurst)
+		unknownInterval := !create && budget.IntervalMicros == 0
+		if unknownInterval {
+			budget.InitializeUnknownInterval(now, interval, policy.ResourceCreationBurst)
+		}
+		previousInterval := time.Duration(budget.IntervalMicros) * time.Microsecond
+		next, delay := resourceCreationReservation(now, budget.AvailableAt, previousInterval, interval, policy.ResourceCreationBurst)
 		wait = delay
-		if wait > 0 {
+		intervalMicros := int64(interval / time.Microsecond)
+		changed := create || unknownInterval || budget.IntervalMicros != intervalMicros || !budget.AvailableAt.Equal(next)
+		budget.AvailableAt = next
+		budget.IntervalMicros = intervalMicros
+		if !changed {
 			return nil
 		}
-		budget.AvailableAt = next
 		if create {
 			return tx.Add(ctx, budget)
 		}
@@ -64,9 +72,24 @@ func ReserveResourceCreation(ctx context.Context, store datastore.DataStore) (ti
 	return wait, nil
 }
 
-func resourceCreationReservation(now, available time.Time, interval time.Duration, burst int) (time.Time, time.Duration) {
+func resourceCreationReservation(now, available time.Time, previousInterval, interval time.Duration, burst int) (time.Time, time.Duration) {
 	if available.Before(now) {
 		available = now
+	} else if previousInterval > 0 && previousInterval != interval && available.After(now) {
+		// AvailableAt is virtual scheduling time expressed in units of the
+		// previous interval. Preserve the outstanding token debt, including
+		// fractional progress toward the next permit, when QPS changes online.
+		remaining := available.Sub(now)
+		whole, remainder := remaining/previousInterval, remaining%previousInterval
+		// Convert the fractional token in microseconds and round upward so the
+		// precision:6 column cannot shorten the rescaled debt on persistence.
+		previousMicros := int64(previousInterval / time.Microsecond)
+		intervalMicros := int64(interval / time.Microsecond)
+		remainderMicros := int64((remainder + time.Microsecond - 1) / time.Microsecond)
+		fractionMicros := (remainderMicros*intervalMicros + previousMicros - 1) / previousMicros
+		fraction := time.Duration(fractionMicros) * time.Microsecond
+		scaled := whole*interval + fraction
+		available = now.Add(scaled)
 	}
 	earliest := available.Add(-time.Duration(burst-1) * interval)
 	if earliest.After(now) {

@@ -225,6 +225,44 @@ func TestRetrySelectorExitRepairsObservationBeforeLaterDeletion(t *testing.T) {
 	require.Zero(t, countClientActions(client, "create", "jobs"))
 }
 
+func TestRetryObserverRepairMarksOnlyAuthoritativeExecutionLoss(t *testing.T) {
+	transientErr := errors.New("temporary update failure")
+	for _, tc := range []struct {
+		name      string
+		updateErr error
+		wantLost  bool
+	}{
+		{name: "transient update failure", updateErr: transientErr},
+		{name: "job disappeared during update", updateErr: apierrors.NewNotFound(schema.GroupResource{Group: "batch", Resource: "jobs"}, "retry-job"), wantLost: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			task := retryTestTask(t, &workflowconfig.JobRetryPolicy{OnOOM: "stop"})
+			task.JobType = string(config.JobEval)
+			live := task.JobInfo.(*batchv1.Job).DeepCopy()
+			live.UID, live.ResourceVersion, live.Labels = "owned", "10", nil
+			cp := &instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: live.DeepCopy(), Attempt: 1,
+				CurrentUID: live.UID, Deadline: time.Now().Add(time.Hour).UnixNano()}
+			client := fake.NewSimpleClientset(live)
+			client.PrependReactor("update", "jobs", func(ktesting.Action) (bool, runtime.Object, error) {
+				return true, nil, tc.updateErr
+			})
+			ctl := NewInstantJobCtl(task, client, &retryCheckpointStore{}, func() {})
+			ctl.resourceWaiter = scriptedJobObserver{observe: func(check func(*batchv1.Job) (bool, error)) error {
+				_, err := check(nil)
+				return err
+			}}
+			terminal, err := ctl.waitRetryAttempt(context.Background(), cp)
+			require.Nil(t, terminal)
+			require.ErrorIs(t, err, signal.ErrInfrastructureStop)
+			require.Equal(t, tc.wantLost, errors.Is(err, errJobAdmissionRecoveryExecutionLost))
+			if !tc.wantLost {
+				require.ErrorIs(t, err, transientErr)
+			}
+			require.Equal(t, 1, countClientActions(client, "update", "jobs"))
+		})
+	}
+}
+
 func TestRetryAddsObserverLabelOnlyToFencedOwnedJob(t *testing.T) {
 	for _, tc := range []struct {
 		name                           string

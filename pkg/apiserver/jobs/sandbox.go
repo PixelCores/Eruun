@@ -139,6 +139,36 @@ func lockSandboxRunner(ctx context.Context, tx datastore.DataStore, auth *runner
 	return now, end, stop, nil
 }
 
+// lockSandboxMaintenanceOwners preserves the task -> job -> sandbox lock order
+// used by runner mutations. Missing owners are allowed because application
+// deletion may remove them before the bounded Sandbox retention period ends.
+func lockSandboxMaintenanceOwners(ctx context.Context, tx datastore.DataStore, candidate *model.JobSandbox) (*model.WorkflowQueue, *model.JobInfo, bool, error) {
+	locker, ok := tx.(datastore.RowLocker)
+	if !ok {
+		return nil, nil, false, fmt.Errorf("sandbox maintenance requires row locking")
+	}
+	orphaned := false
+	task := &model.WorkflowQueue{TaskID: candidate.TaskID}
+	if err := locker.GetForUpdate(ctx, task); err != nil {
+		if !errors.Is(err, datastore.ErrRecordNotExist) {
+			return nil, nil, false, err
+		}
+		orphaned = true
+	} else if task.TaskID != candidate.TaskID || task.WorkspaceID != candidate.WorkspaceID {
+		return nil, nil, false, ErrRunnerConflict
+	}
+	job := &model.JobInfo{ID: candidate.JobID}
+	if err := locker.GetForUpdate(ctx, job); err != nil {
+		if !errors.Is(err, datastore.ErrRecordNotExist) {
+			return nil, nil, false, err
+		}
+		orphaned = true
+	} else if job.ID != candidate.JobID || job.TaskID != candidate.TaskID || job.WorkspaceID != candidate.WorkspaceID || job.ExecutionKey == nil || *job.ExecutionKey != candidate.ExecutionKey {
+		return nil, nil, false, ErrRunnerConflict
+	}
+	return task, job, orphaned, nil
+}
+
 func stopSandbox(row *model.JobSandbox, now time.Time, reason string) {
 	if row.ReleaseRequested || row.State == sandboxReleased {
 		return
@@ -273,11 +303,7 @@ func (s *Service) mutateSandbox(ctx context.Context, auth *runnerAuthorization, 
 				return err
 			}
 		} else {
-			locker := tx.(datastore.RowLocker)
-			if err := locker.GetForUpdate(ctx, &model.WorkflowQueue{TaskID: candidate.TaskID}); err != nil {
-				return err
-			}
-			if err := locker.GetForUpdate(ctx, &model.JobInfo{ID: candidate.JobID}); err != nil {
+			if _, _, _, err := lockSandboxMaintenanceOwners(ctx, tx, candidate); err != nil {
 				return err
 			}
 			var err error

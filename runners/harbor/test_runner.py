@@ -731,6 +731,186 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(control["executionDeadline"], 160.0)
         reporter.terminal.assert_called_once()
 
+    def test_stop_snapshot_rereads_cause_after_racing_cancel(self):
+        cases = (
+            ("reporter failure", TimeoutError("control reporter failed"), False, None, "failed"),
+            ("control outage", None, True, None, "failed"),
+            ("authoritative timeout", None, False, "timed_out", "timed_out"),
+            ("authoritative cancellation", None, False, "cancelled", "cancelled"),
+            ("signal cancellation", None, False, None, "cancelled"),
+        )
+        original_cause = runner._reporter_stop_outcome
+        for name, failure, outage_exhausted, stop_outcome, expected in cases:
+            with self.subTest(name=name):
+                reporter = SimpleNamespace(failure=None, outage_exhausted=False, stop_outcome=None)
+                cancel = threading.Event()
+                first_read = threading.Barrier(2)
+                cause_published = threading.Barrier(2)
+                cause_reads = []
+
+                def read_cause(current_reporter):
+                    cause = original_cause(current_reporter)
+                    cause_reads.append(cause)
+                    if len(cause_reads) == 1:
+                        first_read.wait(timeout=2)
+                        cause_published.wait(timeout=2)
+                    return cause
+
+                def publish_stop():
+                    first_read.wait(timeout=2)
+                    reporter.failure = failure
+                    reporter.outage_exhausted = outage_exhausted
+                    reporter.stop_outcome = stop_outcome
+                    cancel.set()
+                    cause_published.wait(timeout=2)
+
+                publisher = threading.Thread(target=publish_stop)
+                publisher.start()
+                with patch.object(runner, "_reporter_stop_outcome", side_effect=read_cause):
+                    observed = runner._stop_snapshot(reporter, cancel)
+                publisher.join(timeout=2)
+
+                self.assertFalse(publisher.is_alive())
+                self.assertEqual(observed, expected)
+                self.assertEqual(len(cause_reads), 2)
+
+    def test_execute_stops_before_framework_and_preserves_cancel_source(self):
+        package = self.example_package()
+        cases = (
+            ("control outage before shared cancel", None, True, None, False,
+             "failed", "evaluation_failed", "control_outage",
+             "runner control outage exceeded its time budget"),
+            ("reporter failure before derived cause", TimeoutError("control reporter failed"), False, None, False,
+             "failed", "evaluation_failed", "control_outage",
+             "runner control outage exceeded its time budget"),
+            ("authoritative cancellation before shared cancel", None, True, "cancelled", False,
+             "cancelled", "evaluation_cancelled", "cancelled",
+             "cancelled before framework start"),
+            ("authoritative timeout before shared cancel", None, True, "timed_out", False,
+             "timed_out", "evaluation_timed_out", "timed_out",
+             "timed out before framework start"),
+            ("signal cancellation", None, False, None, True,
+             "cancelled", "evaluation_cancelled", "cancelled",
+             "cancelled before framework start"),
+        )
+        for (name, failure, outage_exhausted, stop_outcome, set_cancel,
+             outcome, reason, interruption, error) in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                work = Path(directory)
+                cancel = threading.Event()
+                reporter = MagicMock()
+                reporter.failure = None
+                reporter.outage_exhausted = False
+                reporter.stop_outcome = None
+                reporter.shorten_deadline.side_effect = lambda deadline: deadline
+                archived = []
+
+                def download(_cfg, destination):
+                    shutil.copyfile(package, destination)
+                    reporter.failure = failure
+                    reporter.outage_exhausted = outage_exhausted
+                    reporter.stop_outcome = stop_outcome
+                    if set_cancel:
+                        cancel.set()
+
+                def upload(_cfg, path, status, **_kwargs):
+                    with tarfile.open(path) as archive:
+                        archived.append(json.load(archive.extractfile("result.json")))
+                    self.assertEqual(status, "failed")
+                    return {"id": "a" * 64, "digest": "b" * 64}
+
+                with patch.object(runner.importlib.metadata, "version", return_value=runner.FRAMEWORK_VERSION), \
+                        patch.object(runner, "download_package", side_effect=download), \
+                        patch.object(runner, "run_framework") as framework, \
+                        patch.object(runner, "upload_results", side_effect=upload):
+                    code = runner.execute(config(), work, cancel, reporter=reporter,
+                                          final_deadline=time.monotonic() + 10)
+
+                self.assertEqual(code, 1)
+                framework.assert_not_called()
+                terminal = reporter.terminal.call_args.args[0]
+                self.assertEqual((terminal["outcome"], terminal["reason"]), (outcome, reason))
+                self.assertEqual(archived[0]["interruption"], interruption)
+                self.assertEqual(archived[0]["error"], error)
+
+    def test_execute_runtime_control_outage_reports_failed_terminal(self):
+        package = self.example_package()
+        cancel = threading.Event()
+        reporter = MagicMock()
+        reporter.outage_exhausted = False
+        reporter.stop_outcome = None
+        reporter.shorten_deadline.side_effect = lambda deadline: deadline
+
+        def framework(_config_path, output, _cancel, _timeout):
+            (output / "partial.log").write_bytes(b"stopped by local control outage")
+            reporter.outage_exhausted = True
+            cancel.set()
+            return -signal.SIGTERM, "cancelled"
+
+        with patch.object(runner.importlib.metadata, "version", return_value=runner.FRAMEWORK_VERSION), \
+                patch.object(runner, "download_package", side_effect=lambda _cfg, dest: shutil.copyfile(package, dest)), \
+                patch.object(runner, "run_framework", side_effect=framework), \
+                patch.object(runner, "upload_results", return_value={"id": "a" * 64, "digest": "b" * 64}):
+            code = runner.execute(config(), self.root, cancel, reporter=reporter,
+                                  final_deadline=time.monotonic() + 10)
+
+        self.assertEqual(code, 1)
+        terminal = reporter.terminal.call_args.args[0]
+        self.assertEqual(terminal["outcome"], "failed")
+        self.assertEqual(terminal["reason"], "evaluation_failed")
+
+    def test_execute_stop_before_upload_cannot_mark_artifact_succeeded(self):
+        package = self.example_package()
+        archive_results = runner.archive_results
+        cases = (
+            ("control outage", None, True, None, "failed", "evaluation_failed"),
+            ("reporter failure before derived cause", TimeoutError("control reporter failed"), False, None,
+             "failed", "evaluation_failed"),
+            ("authoritative cancellation", None, True, "cancelled", "cancelled", "evaluation_cancelled"),
+            ("authoritative timeout", None, True, "timed_out", "timed_out", "evaluation_timed_out"),
+        )
+        for name, failure, outage_exhausted, stop_outcome, outcome, reason in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                work = Path(directory)
+                cancel = threading.Event()
+                reporter = MagicMock()
+                reporter.failure = None
+                reporter.outage_exhausted = False
+                reporter.stop_outcome = None
+                reporter.shorten_deadline.side_effect = lambda deadline: deadline
+                upload_statuses = []
+
+                def framework(_config_path, output, _cancel, _timeout):
+                    (output / "run").mkdir()
+                    (output / "run/result.json").write_text(json.dumps(result()))
+                    collected_trial(output)
+                    return 0, None
+
+                def archive(output, destination, report, **kwargs):
+                    archive_results(output, destination, report, **kwargs)
+                    reporter.failure = failure
+                    reporter.outage_exhausted = outage_exhausted
+                    reporter.stop_outcome = stop_outcome
+
+                def upload(_cfg, _path, status, **_kwargs):
+                    upload_statuses.append(status)
+                    return {"id": "a" * 64, "digest": "b" * 64}
+
+                with patch.object(runner.importlib.metadata, "version", return_value=runner.FRAMEWORK_VERSION), \
+                        patch.object(runner, "download_package",
+                                     side_effect=lambda _cfg, dest: shutil.copyfile(package, dest)), \
+                        patch.object(runner, "run_framework", side_effect=framework), \
+                        patch.object(runner, "archive_results", side_effect=archive), \
+                        patch.object(runner, "upload_results", side_effect=upload):
+                    code = runner.execute(config(), work, cancel, reporter=reporter,
+                                          final_deadline=time.monotonic() + 10)
+
+                self.assertFalse(cancel.is_set())
+                self.assertEqual(code, 1)
+                self.assertEqual(upload_statuses, ["failed"])
+                terminal = reporter.terminal.call_args.args[0]
+                self.assertEqual((terminal["outcome"], terminal["reason"]), (outcome, reason))
+
     def test_cancel_during_result_upload_overrides_success_terminal(self):
         package = self.example_package()
         cancel = threading.Event()
