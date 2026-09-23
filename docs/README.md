@@ -94,6 +94,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | 消息队列或分布式执行 | `pkg/apiserver/infrastructure/messaging`, `pkg/apiserver/domain/repository/workflow_lease.go` | 运行角色、Redis Streams、Kafka、workflow worker、DB lease/fencing | `enterprise-distributed-runtime-design.md`, `leader-informer-recovery.md`, `kafka-queue-implementation.md`, `workflow-architecture-guide.md` |
 | 独立 Job 与 Harbor 评测 | `pkg/apiserver/jobs`, `runners/harbor` | 提交、执行身份、任务包、结果保存与空间策略 | `workspace-jobs-api.md`, `workspace-jobs-and-harbor-requirements.md` |
 | 更多 Agent、MCP、评测框架、模型或 AI Provider 方向 | 先读 `ai-runtime-vision.md` | 先校准 Current 能力与 Proposal 门禁，再决定是否进入实现 | 对应 AI 专题 Proposal；不得把草案字段当成现有契约 |
+| 外部 LLM 端点动态监测与告警 | `llm-endpoint-monitoring-design.md` | 先确认目标登记、探测出口、凭据和告警归属，再评估独立探针服务 | Proposal；当前没有可调用的模型端点探针 API |
 
 ## 当前能力入口
 
@@ -187,6 +188,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | --- | --- | --- |
 | `ai-runtime-vision.md` | Draft / Proposal | AI Runtime 产品方向、能力分层、路线图和实施门禁 |
 | `agent-evaluation-job-design.md` | Draft / Proposal | Agent 评测输入、执行、制品、隔离和质量门禁方向 |
+| `llm-endpoint-monitoring-design.md` | Draft / Proposal | 用户指定模型 API 的动态登记、主动探测、告警、备选架构及后续任务准入/暂停边界 |
 | `architecture-refactor-plan.md` | Draft / Proposal | 架构演进方案 |
 | `ai-provider-integration-design.md` | Draft / Proposal | 托管模型、对象存储、计算及 AI 云 Provider 集成边界 |
 | `design-custom-update-workflow.md` | Draft / Proposal | 自定义更新工作流 |
