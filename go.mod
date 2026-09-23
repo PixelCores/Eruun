@@ -7,7 +7,7 @@ toolchain go1.27.1
 require (
 	github.com/alibabacloud-go/darabonba-openapi v0.2.1
 	github.com/alibabacloud-go/nas-20170626/v2 v2.0.2
-	github.com/alicebob/miniredis/v2 v2.38.0
+	github.com/alicebob/miniredis/v2 v2.39.0
 	github.com/barnettZQG/inject v0.0.1
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/fatih/color v1.19.0
