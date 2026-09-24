@@ -10,6 +10,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
@@ -255,7 +256,8 @@ func (b *schemaBuilder) applyFieldConstraints(definition, field string, schema m
 	case definition == "EvaluationTraitSpec" && field == "concurrency":
 		schema["minimum"], schema["maximum"], schema["default"] = 1, 16, 1
 	case definition == "EvaluationTraitSpec" && field == "timeoutSeconds":
-		schema["minimum"], schema["maximum"], schema["default"] = 60, 86400, 3600
+		schema["minimum"], schema["maximum"], schema["default"] = 60, workflowconfig.MaxEvaluationTimeoutSeconds, 3600
+		schema["description"] = "Evaluation runtime in seconds. New executions must also satisfy the administrator's current workflow_scheduler.maxEvaluationTimeoutSeconds limit."
 	case definition == "EvaluationTraitSpec" && field == "sandboxResources":
 		schema["required"] = []string{"cpu", "memory"}
 		schema["description"] = "Resources for each trial sandbox; traits.resources applies only to the Runner."

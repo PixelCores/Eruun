@@ -111,7 +111,7 @@ rules:
     verbs: ["get", "list", "delete"]
   - apiGroups: ["batch"]
     resources: ["jobs"]
-    verbs: ["get", "list", "create", "update", "patch", "delete"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: ["batch"]
     resources: ["cronjobs"]
     verbs: ["get", "list", "create", "update", "patch", "delete"]
@@ -191,6 +191,31 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: eruun-controller-observer
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: eruun-sandbox-runtime
+rules:
+  - apiGroups: ["agents.kruise.io"]
+    resources: ["sandboxes"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: eruun-sandbox-runtime
+subjects:
+  - kind: ServiceAccount
+    name: eruun-api
+    namespace: eruun-system
+  - kind: ServiceAccount
+    name: eruun-controller
+    namespace: eruun-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: eruun-sandbox-runtime
 ---
 apiVersion: v1
 kind: Service

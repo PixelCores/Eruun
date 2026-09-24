@@ -64,8 +64,9 @@ func TestEruunStackManifestUsesExplicitRBACBoundaries(t *testing.T) {
 	require.Equal(t, map[string]struct{}{
 		"eruun-platform-runtime":    {},
 		"eruun-controller-observer": {},
+		"eruun-sandbox-runtime":     {},
 	}, clusterRoles)
-	require.Len(t, clusterRoleBindings, 2)
+	require.Len(t, clusterRoleBindings, 3)
 	for name, binding := range clusterRoleBindings {
 		roleName, found, nestedErr := unstructured.NestedString(binding, "roleRef", "name")
 		require.NoError(t, nestedErr)
@@ -274,6 +275,9 @@ func assertControllerRuntimePermissions(t *testing.T, clusterRoles map[string]ma
 		require.Nil(t, verbsFor(controllerRole, resource.apiGroup, resource.name), "Controller must not manage %s", resource.name)
 	}
 	require.Contains(t, verbsFor(clusterRoles["eruun-platform-runtime"], "batch", "jobs"), "update", "Worker must adopt reusable Jobs into a new execution generation")
+	require.Contains(t, verbsFor(clusterRoles["eruun-platform-runtime"], "batch", "jobs"), "watch", "Worker must share Job List/Watch snapshots for execution status")
+	require.ElementsMatch(t, []string{"get", "list", "watch", "create", "update", "patch", "delete"}, verbsFor(clusterRoles["eruun-sandbox-runtime"], "agents.kruise.io", "sandboxes"))
+	require.Nil(t, verbsFor(clusterRoles["eruun-platform-runtime"], "agents.kruise.io", "sandboxes"), "Worker must not receive unused Sandbox privileges")
 }
 
 func TestHelmValuesUseTopLevelDistributedRuntime(t *testing.T) {

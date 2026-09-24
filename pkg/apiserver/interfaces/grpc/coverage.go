@@ -106,15 +106,19 @@ var routeRPC = map[string]string{
 }
 
 var grpcRouteExceptions = map[string]bool{
-	"POST /api/v1/auth/oauth2/:provider/start":    true,
-	"POST /api/v1/auth/oauth2/:provider/callback": true,
-	"GET /api/v1/job-runners/:taskID/dataset":     true,
-	"POST /api/v1/job-runners/:taskID/results":    true,
-	"POST /api/v1/job-runners/:taskID/events":     true,
-	"GET /api/v1/health":                          true,
-	"GET /api/v1/healthz":                         true,
-	"GET /api/v1/ready":                           true,
-	"GET /api/v1/readyz":                          true,
+	// Runner capability and Pod identity authentication is HTTP-only.
+	"POST /api/v1/job-runners/:taskID/sandboxes":                  true,
+	"GET /api/v1/job-runners/:taskID/sandboxes/:trialID":          true,
+	"POST /api/v1/job-runners/:taskID/sandboxes/:trialID/release": true,
+	"POST /api/v1/auth/oauth2/:provider/start":                    true,
+	"POST /api/v1/auth/oauth2/:provider/callback":                 true,
+	"GET /api/v1/job-runners/:taskID/dataset":                     true,
+	"POST /api/v1/job-runners/:taskID/results":                    true,
+	"POST /api/v1/job-runners/:taskID/events":                     true,
+	"GET /api/v1/health":                                          true,
+	"GET /api/v1/healthz":                                         true,
+	"GET /api/v1/ready":                                           true,
+	"GET /api/v1/readyz":                                          true,
 }
 
 // RouteRPCMappings returns a defensive copy for documentation and tests.

@@ -376,12 +376,20 @@ func (s *Service) DeleteWorkspace(ctx context.Context, p *Principal, id string, 
 		if pending > 0 {
 			return bcode.ErrWorkspaceNotEmpty
 		}
+		sandboxes, e := r.Store.Count(ctx, &model.JobSandbox{WorkspaceID: id, SlotReserved: true}, nil)
+		if e != nil {
+			return e
+		}
+		if sandboxes > 0 {
+			return bcode.ErrWorkspaceNotEmpty
+		}
 		if e = deleteNamespace(ctx, w); e != nil {
 			return e
 		}
 		for _, entity := range []datastore.Entity{
 			&model.ArtifactChunk{WorkspaceID: id},
 			&model.JobDelivery{WorkspaceID: id},
+			&model.JobSandbox{WorkspaceID: id},
 			&model.JobArtifact{WorkspaceID: id},
 			&model.JobInfo{WorkspaceID: id},
 			&model.WorkflowQueue{WorkspaceID: id},

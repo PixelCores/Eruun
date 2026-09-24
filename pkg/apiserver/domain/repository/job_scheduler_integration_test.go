@@ -44,7 +44,7 @@ func newMySQLJobSchedulerTestStore(t *testing.T) *sqlstore.Driver {
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(20)
 	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
-	models := []interface{}{&model.JobInfo{}, &model.WorkflowQueue{}, &model.SystemSetting{}}
+	models := []interface{}{&model.JobInfo{}, &model.WorkflowQueue{}, &model.SystemSetting{}, &model.ResourceCreationBudget{}, &model.JobSandbox{}}
 	for _, entity := range models {
 		require.False(t, db.Migrator().HasTable(entity), "integration schema must be empty")
 	}
@@ -53,6 +53,34 @@ func newMySQLJobSchedulerTestStore(t *testing.T) *sqlstore.Driver {
 	store := &sqlstore.Driver{Client: *db}
 	require.NoError(t, EnsureJobSchedulerPolicy(context.Background(), store))
 	return store
+}
+
+func TestResourceCreationMySQLConcurrentBudget(t *testing.T) {
+	testResourceCreationConcurrentBudget(t, newMySQLJobSchedulerTestStore(t))
+}
+
+func TestJobSchedulerMySQLSandboxReservationScanIndexUpgrade(t *testing.T) {
+	store := newMySQLJobSchedulerTestStore(t)
+	db := &store.Client
+	ctx := context.Background()
+	row := &model.JobSandbox{ID: "retained-before-index", SlotReserved: true, State: "retained", Deadline: time.Now().Add(time.Hour), ReconcileAt: time.Now()}
+	require.NoError(t, store.Add(ctx, row))
+
+	const indexName = "idx_sandbox_reservation_scan"
+	require.NoError(t, db.Migrator().DropIndex(&model.JobSandbox{}, indexName))
+	require.False(t, db.Migrator().HasIndex(&model.JobSandbox{}, indexName))
+	require.NoError(t, db.AutoMigrate(&model.JobSandbox{}))
+	require.True(t, db.Migrator().HasIndex(&model.JobSandbox{}, indexName))
+
+	var columns []struct{ ColumnName string }
+	require.NoError(t, db.Raw(`SELECT COLUMN_NAME FROM information_schema.statistics
+		WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ? ORDER BY seq_in_index`, row.TableName(), indexName).Scan(&columns).Error)
+	require.Len(t, columns, 2)
+	require.Equal(t, "slot_reserved", columns[0].ColumnName)
+	require.Equal(t, "id", columns[1].ColumnName)
+	restored := &model.JobSandbox{ID: row.ID}
+	require.NoError(t, store.Get(ctx, restored))
+	require.True(t, restored.SlotReserved)
 }
 
 func TestJobSchedulerMySQLTerminalCallbacksWithoutWorker(t *testing.T) {
@@ -206,8 +234,8 @@ func TestJobSchedulerMySQLConcurrentAdmission(t *testing.T) {
 		n, err := AdmitQueuedJobs(ctx, counted)
 		require.NoError(t, err)
 		require.Equal(t, 100, n)
-		require.Equal(t, 11, counts.lists, "one keyset scan of 1000 jobs plus the final empty page")
-		require.Equal(t, 101, counts.gets, "one policy read and one read for each of 100 distinct parent workflows")
+		require.Equal(t, 12, counts.lists, "11 Job pages including the final empty page, plus one batch of 100 unique parents")
+		require.Equal(t, 1, counts.gets, "policy read only; parent ownership is fetched in a batch")
 		t.Logf("1000 queued Jobs / 100 Workflows: admitted %d in %s; datastore List=%d Get=%d", n, time.Since(started), counts.lists, counts.gets)
 	})
 	t.Run("concurrent cleanup keeps release idempotent", func(t *testing.T) {
@@ -358,4 +386,18 @@ func (s countedSchedulerStore) CurrentDatabaseTime(ctx context.Context) (time.Ti
 }
 func (s countedSchedulerStore) CompareAndSwapWithConditions(ctx context.Context, e datastore.Entity, c, u map[string]interface{}) (bool, error) {
 	return s.DataStore.(datastore.ConditionalCompareAndSwap).CompareAndSwapWithConditions(ctx, e, c, u)
+}
+
+func TestJobSchedulerMySQLConcurrentResourceBudget(t *testing.T) {
+	testJobSchedulerConcurrentResourceBudget(t, newMySQLJobSchedulerTestStore(t))
+}
+func TestJobSchedulerMySQLRetainedResources(t *testing.T) {
+	testJobSchedulerRetainedResources(t, newMySQLJobSchedulerTestStore(t))
+}
+func TestJobSchedulerMySQLLowerResourceQuota(t *testing.T) {
+	testJobSchedulerLowerResourceQuota(t, newMySQLJobSchedulerTestStore(t))
+}
+
+func TestJobSchedulerMySQLRecoveryPreservesCreatedReservation(t *testing.T) {
+	testJobSchedulerRecoveryPreservesCreatedReservation(t, newMySQLJobSchedulerTestStore(t))
 }

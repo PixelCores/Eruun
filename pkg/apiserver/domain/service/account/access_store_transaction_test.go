@@ -19,6 +19,31 @@ type accessReadCommittedTestStore struct {
 	called bool
 }
 
+func TestStartingSandboxAggregateCountsAcrossSpacesWithoutExposingRows(t *testing.T) {
+	service, _, _ := testAccounts(t)
+	raw := service.Repo.Store
+	ctx := context.Background()
+	for _, row := range []*model.JobSandbox{
+		{ID: "allowed", WorkspaceID: "allowed", StartReserved: true},
+		{ID: "foreign", WorkspaceID: "foreign", StartReserved: true},
+		{ID: "ready", WorkspaceID: "foreign", StartReserved: false},
+	} {
+		require.NoError(t, raw.Add(ctx, row))
+	}
+	store := NewStore(raw)
+	scoped := WithScope(ctx, Scope{WorkspaceID: "allowed", Namespace: "allowed-ns"})
+	require.NoError(t, store.WithReadCommittedTransaction(scoped, func(tx datastore.DataStore) error {
+		count, err := tx.(*Store).CountStartingSandboxes(scoped)
+		require.NoError(t, err)
+		require.Equal(t, int64(2), count)
+		rows, err := tx.List(scoped, &model.JobSandbox{}, nil)
+		require.NoError(t, err)
+		require.Len(t, rows, 1)
+		require.ErrorIs(t, tx.Get(scoped, &model.JobSandbox{ID: "foreign"}), bcode.ErrForbidden)
+		return nil
+	}))
+}
+
 func (s *accessReadCommittedTestStore) WithReadCommittedTransaction(_ context.Context, fn func(datastore.DataStore) error) error {
 	s.called = true
 	return fn(s)
@@ -264,6 +289,9 @@ func TestJobArtifactsStayInTheirWorkspaceAcrossStoreOperations(t *testing.T) {
 		}},
 		{"delivery", func(id, workspaceID string) datastore.Entity {
 			return &model.JobDelivery{ID: id, WorkspaceID: workspaceID, State: "pending"}
+		}},
+		{"sandbox", func(id, workspaceID string) datastore.Entity {
+			return &model.JobSandbox{ID: id, WorkspaceID: workspaceID, State: "pending", Deadline: time.Now(), ReconcileAt: time.Now()}
 		}},
 	} {
 		t.Run(newEntity.name, func(t *testing.T) {

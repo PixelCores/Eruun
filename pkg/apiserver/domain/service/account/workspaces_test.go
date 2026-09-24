@@ -69,6 +69,30 @@ func TestWorkspaceRoleMatrix(t *testing.T) {
 	require.ErrorIs(t, s.TransferWorkspace(ctx, p, a.Workspace.ID, "another"), bcode.ErrForbidden)
 }
 
+func TestWorkspaceDeletionWaitsForSandboxAndOnlyDeletesItsRecords(t *testing.T) {
+	s, _, delivery := testAccounts(t)
+	ctx := context.Background()
+	_, owner := registerTestUser(t, s, delivery, "email", "sandbox-owner@example.com")
+	workspace, err := s.CreateWorkspace(ctx, owner, "Sandbox team")
+	require.NoError(t, err)
+	row := &model.JobSandbox{ID: "retained", WorkspaceID: workspace.ID, SlotReserved: true, State: "retained"}
+	require.NoError(t, s.Repo.Store.Add(ctx, row))
+	require.NoError(t, s.Repo.Store.Add(ctx, &model.JobSandbox{ID: "foreign", WorkspaceID: "foreign"}))
+	called := false
+	remove := func(context.Context, *model.Workspace) error { called = true; return nil }
+	require.ErrorIs(t, s.DeleteWorkspace(ctx, owner, workspace.ID, remove), bcode.ErrWorkspaceNotEmpty)
+	require.False(t, called)
+	updated, err := s.Repo.Store.CompareAndSwap(ctx, row, "id", row.ID, map[string]interface{}{"slot_reserved": false, "state": "released"})
+	require.NoError(t, err)
+	require.True(t, updated)
+	require.NoError(t, s.DeleteWorkspace(ctx, owner, workspace.ID, remove))
+	require.True(t, called)
+	count, err := s.Repo.Store.Count(ctx, &model.JobSandbox{WorkspaceID: workspace.ID}, nil)
+	require.NoError(t, err)
+	require.Zero(t, count)
+	require.NoError(t, s.Repo.Store.Get(ctx, &model.JobSandbox{ID: "foreign"}))
+}
+
 func TestInvitationResendExpiryAndFailedDelivery(t *testing.T) {
 	s, _, d := testAccounts(t)
 	ctx := context.Background()

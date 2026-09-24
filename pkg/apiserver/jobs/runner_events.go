@@ -267,7 +267,7 @@ func (s *Service) RunnerEvent(ctx context.Context, identity RunnerIdentity, even
 		if err := locker.GetForUpdate(ctx, record); err != nil {
 			return err
 		}
-		if err := validateLockedRunnerJob(record, auth, task.Status); err != nil {
+		if err := validateLockedRunnerJob(ctx, tx, record, auth, task.Status); err != nil {
 			return err
 		}
 		state, deadline, err := decodeRunnerState(record)
@@ -379,14 +379,16 @@ func validateLockedRunnerTask(task *model.WorkflowQueue, auth *runnerAuthorizati
 		task.WorkspaceID != auth.task.WorkspaceID {
 		return bcode.ErrUnauthorized
 	}
-	return runnerParentAuthorized(task)
+	// Parent lifecycle is checked only after the current Job row is locked and
+	// its execution identity has been validated, including recovery transitions.
+	return nil
 }
 
 func subtleTokenMismatch(left, right string) bool {
 	return len(left) != len(right) || subtle.ConstantTimeCompare([]byte(left), []byte(right)) != 1
 }
 
-func validateLockedRunnerJob(record *model.JobInfo, auth *runnerAuthorization, parentStatus config.Status) error {
+func validateLockedRunnerJob(ctx context.Context, store datastore.DataStore, record *model.JobInfo, auth *runnerAuthorization, parentStatus config.Status) error {
 	if record == nil || auth == nil || !runnerJobStatusAuthorized(record, parentStatus) || record.Type != string(config.JobEval) ||
 		record.WorkspaceID != auth.job.WorkspaceID || record.TaskID != auth.job.TaskID || record.ExecutionKey == nil || auth.job.ExecutionKey == nil ||
 		*record.ExecutionKey != *auth.job.ExecutionKey || record.EvaluationInfo != auth.job.EvaluationInfo || record.RunGeneration != auth.job.RunGeneration || record.Attempt != auth.job.Attempt {
@@ -395,7 +397,7 @@ func validateLockedRunnerJob(record *model.JobInfo, auth *runnerAuthorization, p
 	if workflowjob.ValidateInstantJobRetryExecution(record, auth.liveJob) != nil {
 		return bcode.ErrUnauthorized
 	}
-	return nil
+	return runnerParentAuthorized(ctx, store, parentStatus, record, auth)
 }
 
 func runnerJobStatusAuthorized(record *model.JobInfo, parentStatus config.Status) bool {

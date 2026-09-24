@@ -602,6 +602,10 @@ func stampJobExecutionIdentity(jobTask *model.JobTask, jobObj *batchv1.Job) {
 	if jobObj.Annotations == nil {
 		jobObj.Annotations = make(map[string]string)
 	}
+	if jobObj.Labels == nil {
+		jobObj.Labels = make(map[string]string)
+	}
+	jobObj.Labels[config.LabelManagedBy] = config.ManagedByEruun
 	if strings.TrimSpace(jobTask.TaskID) != "" {
 		jobObj.Annotations[config.AnnotationJobTaskID] = strings.TrimSpace(jobTask.TaskID)
 	}

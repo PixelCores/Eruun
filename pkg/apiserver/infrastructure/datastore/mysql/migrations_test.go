@@ -17,8 +17,16 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
+
+type legacyResourceCreationBudgetRow struct {
+	ID          string    `gorm:"primaryKey;type:varchar(32);column:id"`
+	AvailableAt time.Time `gorm:"precision:6;column:available_at;not null"`
+	model.BaseModel
+}
 
 func TestRunSchemaMigrationsOrdersLockAndMigration(t *testing.T) {
 	var events []string
@@ -100,6 +108,46 @@ func TestRunSchemaMigrationMarksSuccessfulRetryComplete(t *testing.T) {
 
 	require.NoError(t, runSchemaMigration(context.Background(), db, func() error { return nil }))
 	require.NoError(t, validateSchemaMigrationMarker(context.Background(), db))
+}
+
+func TestMigrateSchemaInitializesLegacyResourceCreationBudgetInterval(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+		NamingStrategy: sqlnamer.SQLNamer{}, TranslateError: true,
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
+	ctx := context.Background()
+	budgetTable := (&model.ResourceCreationBudget{}).TableName()
+	require.NoError(t, db.Table(budgetTable).AutoMigrate(&legacyResourceCreationBudgetRow{}))
+	require.False(t, db.Migrator().HasColumn(budgetTable, "interval_micros"))
+	require.NoError(t, db.AutoMigrate(&model.SystemSetting{}))
+	policy := workflowconfig.DefaultJobSchedulerPolicy()
+	policy.ResourceCreationQPS, policy.ResourceCreationBurst = 0.1, 3
+	encoded, err := json.Marshal(policy)
+	require.NoError(t, err)
+	require.NoError(t, db.Create(&model.SystemSetting{
+		Type: model.SystemSettingTypeWorkflowScheduler, Value: encoded,
+	}).Error)
+	clock := &sqlstore.Driver{Client: *db}
+	before, err := clock.CurrentDatabaseTime(ctx)
+	require.NoError(t, err)
+	require.NoError(t, db.Table(budgetTable).Create(&legacyResourceCreationBudgetRow{
+		ID: "jobs-and-sandboxes", AvailableAt: before.Add(3 * time.Second),
+	}).Error)
+	models, err := model.BuiltinModels()
+	require.NoError(t, err)
+
+	require.NoError(t, migrateSchema(ctx, db, models))
+	require.True(t, db.Migrator().HasColumn(budgetTable, "interval_micros"))
+	var budget model.ResourceCreationBudget
+	require.NoError(t, db.Where("id = ?", "jobs-and-sandboxes").Take(&budget).Error)
+	require.Equal(t, int64((10*time.Second)/time.Microsecond), budget.IntervalMicros)
+	require.True(t, budget.AvailableAt.After(before.Add(29*time.Second)), "migration must conservatively retain unknown live debt")
+	require.NoError(t, validateSchemaMigrationMarker(ctx, db))
 }
 
 func TestRunSchemaMigrationStopsWhenMarkerTableProbeFails(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/stretchr/testify/require"
 	batchv1 "k8s.io/api/batch/v1"
 )
@@ -18,6 +19,12 @@ type evaluationWorkflowStore struct{ fakeDataStore }
 
 func (s *evaluationWorkflowStore) Get(ctx context.Context, entity datastore.Entity) error {
 	switch value := entity.(type) {
+	case *model.SystemSetting:
+		if value.Type == model.SystemSettingTypeWorkflowScheduler {
+			value.Value, _ = json.Marshal(workflowconfig.DefaultJobSchedulerPolicy())
+			return nil
+		}
+		return s.fakeDataStore.Get(ctx, entity)
 	case *model.JobArtifact:
 		value.WorkspaceID, value.Kind, value.Digest = "space", "dataset", "digest"
 		return nil

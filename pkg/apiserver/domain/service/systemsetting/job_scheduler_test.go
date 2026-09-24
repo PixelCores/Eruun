@@ -18,7 +18,7 @@ func TestJobSchedulerSystemSettingValidationAndDeleteProtection(t *testing.T) {
 	ctx := context.Background()
 	setting, err := svc.Create(ctx, apisv1.CreateSystemSettingRequest{Type: model.SystemSettingTypeWorkflowScheduler, Value: json.RawMessage(`{}`)})
 	require.NoError(t, err)
-	require.JSONEq(t, `{"strategy":"priority","maxConcurrentJobs":100,"maxConcurrentJobsPerWorkspace":10,"agingSeconds":60}`, string(setting.Value))
+	require.JSONEq(t, `{"strategy":"priority","maxConcurrentJobs":100,"maxConcurrentJobsPerWorkspace":10,"agingSeconds":60,"maxEvaluationTimeoutSeconds":1209600,"resourceCreationQPS":5,"resourceCreationBurst":10,"maxStartingSandboxes":100}`, string(setting.Value))
 	_, err = svc.Update(ctx, model.SystemSettingTypeWorkflowScheduler, apisv1.UpdateSystemSettingRequest{Value: json.RawMessage(`{"strategy":"fifo","maxConcurrentJobs":3,"maxConcurrentJobsPerWorkspace":1}`)})
 	require.NoError(t, err)
 	_, err = svc.Update(ctx, model.SystemSettingTypeWorkflowScheduler, apisv1.UpdateSystemSettingRequest{Value: json.RawMessage(`{"unrecognized":true}`)})

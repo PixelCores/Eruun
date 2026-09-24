@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -85,7 +87,7 @@ func TestEvaluationTraitRejectsInvalidInputs(t *testing.T) {
 		{"concurrency above limit", func(e *EvaluationTraitSpec) { e.Concurrency = 17 }},
 		{"negative concurrency", func(e *EvaluationTraitSpec) { e.Concurrency = -1 }},
 		{"timeout too short", func(e *EvaluationTraitSpec) { e.TimeoutSeconds = 59 }},
-		{"timeout too long", func(e *EvaluationTraitSpec) { e.TimeoutSeconds = 86401 }},
+		{"timeout too long", func(e *EvaluationTraitSpec) { e.TimeoutSeconds = workflowconfig.MaxEvaluationTimeoutSeconds + 1 }},
 		{"invalid sandbox resources", func(e *EvaluationTraitSpec) {
 			e.SandboxResources = &ResourceTraitsSpec{CPU: "2", Memory: "1Gi", CPULimit: "1"}
 		}},
@@ -96,6 +98,15 @@ func TestEvaluationTraitRejectsInvalidInputs(t *testing.T) {
 			tc.change(e)
 			require.Error(t, e.Normalize())
 		})
+	}
+}
+
+func TestEvaluationSupportsBoundedLongRuntime(t *testing.T) {
+	for _, seconds := range []int64{60, 86401, workflowconfig.MaxEvaluationTimeoutSeconds} {
+		e := testEvaluationTrait()
+		e.TimeoutSeconds = seconds
+		require.NoError(t, e.Normalize())
+		require.Equal(t, seconds, e.TimeoutSeconds)
 	}
 }
 
@@ -209,6 +220,9 @@ func TestJobRuntimeConfigurationFailsClosed(t *testing.T) {
 		valid      bool
 	}{
 		{"valid", valid, true},
+		{"bounded work storage", strings.Replace(valid, `"runnerImage"`, `"runnerWorkStorageMiB":4096,"runnerImage"`, 1), true},
+		{"negative work storage", strings.Replace(valid, `"runnerImage"`, `"runnerWorkStorageMiB":-1,"runnerImage"`, 1), false},
+		{"excessive work storage", strings.Replace(valid, `"runnerImage"`, `"runnerWorkStorageMiB":1048577,"runnerImage"`, 1), false},
 		{"missing egress", `{"runnerImage":"runner:1","apiURL":"https://api.example.com"}`, false},
 		{"network range", `{"runnerImage":"runner:1","apiURL":"https://api.example.com","runnerEgress":[{"cidr":"0.0.0.0/0","port":443}]}`, false},
 		{"userinfo", `{"runnerImage":"runner:1","apiURL":"https://user:secret@api.example.com","runnerEgress":[{"cidr":"192.0.2.1/32","port":443}]}`, false},
@@ -220,6 +234,11 @@ func TestJobRuntimeConfigurationFailsClosed(t *testing.T) {
 			if tc.valid {
 				require.NoError(t, err)
 				require.NotNil(t, cfg)
+				if tc.name == "valid" {
+					require.EqualValues(t, DefaultRunnerWorkStorageMiB, cfg.RunnerWorkStorageMiB)
+				} else if tc.name == "bounded work storage" {
+					require.EqualValues(t, 4096, cfg.RunnerWorkStorageMiB)
+				}
 			} else {
 				require.Error(t, err)
 			}

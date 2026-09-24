@@ -9,9 +9,11 @@ import (
 	"io"
 	"os"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -112,17 +114,44 @@ func (s *Store) ReconcilePending(ctx context.Context, limit int) error {
 	sort.SliceStable(records, func(i, j int) bool {
 		return records[i].(*model.JobDelivery).Target > records[j].(*model.JobDelivery).Target
 	})
-	var failures []error
+	// Keep a source's MinIO upload before its metadata-only database reference,
+	// while allowing independent sources to progress concurrently.
+	groups := make([][]*model.JobDelivery, 0, len(records))
+	bySource := make(map[string]int, len(records))
 	for _, record := range records {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
 		d := record.(*model.JobDelivery)
-		if err := s.deliver(ctx, d); err != nil {
-			failures = append(failures, err)
+		index, exists := bySource[d.SourceID]
+		if !exists {
+			index = len(groups)
+			bySource[d.SourceID] = index
+			groups = append(groups, nil)
 		}
+		groups[index] = append(groups[index], d)
 	}
-	return errors.Join(failures...)
+	var failures []error
+	var failuresMu sync.Mutex
+	var deliveries errgroup.Group
+	// Preserve streaming and the database lease on each target. A single slow
+	// remote target no longer serializes every independent result in the batch.
+	// The bound also caps simultaneous archive readers and network transfers.
+	deliveries.SetLimit(4)
+	for _, group := range groups {
+		if err := ctx.Err(); err != nil {
+			break
+		}
+		deliveries.Go(func() error {
+			for _, d := range group {
+				if err := s.deliver(ctx, d); err != nil {
+					failuresMu.Lock()
+					failures = append(failures, err)
+					failuresMu.Unlock()
+				}
+			}
+			return nil
+		})
+	}
+	_ = deliveries.Wait()
+	return errors.Join(append(failures, ctx.Err())...)
 }
 
 func (s *Store) deliver(ctx context.Context, candidate *model.JobDelivery) error {

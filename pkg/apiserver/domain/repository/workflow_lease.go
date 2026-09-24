@@ -292,7 +292,17 @@ func ReleaseWorkflowDispatchClaim(ctx context.Context, store datastore.DataStore
 	})
 }
 
-func RecoverExpiredWorkflowTasks(ctx context.Context, store datastore.DataStore) (int, error) {
+func RecoverExpiredWorkflowTasks(ctx context.Context, store datastore.DataStore, limits ...int) (int, error) {
+	limit := workflowLeaseRecoveryBatchSize
+	if len(limits) > 1 {
+		return 0, fmt.Errorf("workflow recovery accepts one batch limit")
+	}
+	if len(limits) == 1 {
+		limit = limits[0]
+	}
+	if limit < 1 || limit > 10000 {
+		return 0, fmt.Errorf("workflow recovery batch limit must be 1..10000")
+	}
 	now, err := currentWorkflowDatabaseTime(ctx, store)
 	if err != nil {
 		return 0, err
@@ -306,7 +316,7 @@ func RecoverExpiredWorkflowTasks(ctx context.Context, store datastore.DataStore)
 			LessThan: []datastore.ComparisonQueryOption{{Key: "lease_expires_at", Value: now}},
 		},
 		Page:     1,
-		PageSize: workflowLeaseRecoveryBatchSize,
+		PageSize: limit,
 		SortBy: []datastore.SortOption{{
 			Key: "lease_expires_at", Order: datastore.SortOrderAscending,
 		}},
@@ -314,8 +324,8 @@ func RecoverExpiredWorkflowTasks(ctx context.Context, store datastore.DataStore)
 	if err != nil {
 		return 0, err
 	}
-	if len(entities) > workflowLeaseRecoveryBatchSize {
-		entities = entities[:workflowLeaseRecoveryBatchSize]
+	if len(entities) > limit {
+		entities = entities[:limit]
 	}
 	recovered := 0
 	for _, entity := range entities {
