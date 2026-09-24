@@ -51,6 +51,9 @@ func waitForJobAdmission(ctx context.Context, store datastore.DataStore, task *m
 	}
 	confirmedUID, err := confirmJobAdmissionRecovery(ctx, client, task)
 	if err != nil {
+		if statusErr, ok := ExtractStatusError(err); ok && statusErr.Status == config.StatusTimeout {
+			return noop, err
+		}
 		return noop, releaseLostJobAdmission(ctx, store, task, errors.Join(signal.ErrInfrastructureStop, err))
 	}
 	if err := repository.EnqueueJobForScheduling(ctx, store, owner, &record, deadline, confirmedUID); err != nil {
@@ -150,6 +153,11 @@ func confirmJobAdmissionRecovery(ctx context.Context, client kubernetes.Interfac
 	if err != nil {
 		return "", err
 	}
+	// Exhausted executions must settle without requesting another admission,
+	// including a create whose returned UID was never checkpointed.
+	if !time.Unix(0, cp.Deadline).After(time.Now()) {
+		return "", NewStatusError(config.StatusTimeout, context.DeadlineExceeded)
+	}
 	if cp.CurrentUID == "" {
 		return "", nil
 	}
@@ -159,9 +167,6 @@ func confirmJobAdmissionRecovery(ctx context.Context, client kubernetes.Interfac
 	}
 	if policy.OnOOM != "stop" {
 		return "", nil
-	}
-	if !time.Unix(0, cp.Deadline).After(time.Now()) {
-		return "", context.DeadlineExceeded
 	}
 	if client == nil {
 		return "", fmt.Errorf("confirm existing Job admission: Kubernetes client is required")

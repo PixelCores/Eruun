@@ -59,6 +59,34 @@ func TestValidateSchemaRequiresDatabase(t *testing.T) {
 	require.ErrorContains(t, validateSchema(context.Background(), nil, nil), "gorm db is nil")
 }
 
+func TestMigrateSchemaAddsRequiredCheckpointTable(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+		NamingStrategy: sqlnamer.SQLNamer{}, TranslateError: true,
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
+	models, err := model.BuiltinModels()
+	require.NoError(t, err)
+	legacy := make([]model.Interface, 0, len(models)-1)
+	for _, entity := range models {
+		if _, checkpoint := entity.(*model.JobCheckpoint); !checkpoint {
+			legacy = append(legacy, entity)
+		}
+	}
+	ctx := context.Background()
+	require.NoError(t, migrateSchema(ctx, db, legacy))
+	require.ErrorContains(t, validateSchema(ctx, db, models), "JobCheckpoint is missing")
+	require.NoError(t, migrateSchema(ctx, db, models))
+	require.NoError(t, validateSchema(ctx, db, models))
+	require.True(t, db.Migrator().HasIndex(&model.JobCheckpoint{}, "idx_checkpoint_execution"))
+	require.NoError(t, db.Migrator().DropColumn(&model.JobCheckpoint{}, "source_deadline"))
+	require.ErrorContains(t, validateSchema(ctx, db, models), "job_checkpoint.source_deadline is missing")
+}
+
 func TestWriteSchemaMigrationMarkerIsIdempotent(t *testing.T) {
 	db := newDryRunMySQL(t)
 	var statement string

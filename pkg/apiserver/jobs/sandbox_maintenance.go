@@ -109,6 +109,12 @@ func (s *Service) maintainSandbox(ctx context.Context, candidate *model.JobSandb
 		if row.LeaseUntil != nil && now.Before(*row.LeaseUntil) {
 			return nil
 		}
+		// Recovery owns the shutdown-to-terminal proof. Ordinary retention must
+		// never extend shutdownTime while that proof is in progress.
+		if row.Reason == "recovery_isolation" && !orphaned && task.Status == config.StatusRunning && now.Before(row.Deadline) {
+			row.ReconcileAt = now.Add(15 * time.Second)
+			return putSandbox(ctx, tx, row)
+		}
 		if orphaned {
 			stopped = "execution_finished"
 		} else {

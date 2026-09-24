@@ -234,6 +234,7 @@ func restoreCommittedJobExecutions(ctx context.Context, executions []StepExecuti
 			In: []datastore.InQueryOption{{
 				Key: "status",
 				Values: []string{
+					string(config.StatusQueued), string(config.StatusPrepare),
 					string(config.StatusRunning),
 					string(config.StatusDistributed), string(config.StatusCompleted),
 					string(config.StatusPassed), string(config.StatusSkipped),
@@ -247,8 +248,8 @@ func restoreCommittedJobExecutions(ctx context.Context, executions []StepExecuti
 		return fmt.Errorf("list committed jobs: %w", err)
 	}
 	for stepIndex := range executions {
-		for priority, jobs := range executions[stepIndex].Jobs {
-			for jobIndex, jobTask := range jobs {
+		for priority, jobTasks := range executions[stepIndex].Jobs {
+			for jobIndex, jobTask := range jobTasks {
 				if jobTask == nil {
 					continue
 				}
@@ -260,13 +261,28 @@ func restoreCommittedJobExecutions(ctx context.Context, executions []StepExecuti
 					}
 					status := config.Status(strings.TrimSpace(jobInfo.Status))
 					retryCheckpoint := status == config.StatusRunning && workflowjob.HasInstantJobRetryCheckpoint(jobInfo)
-					if (!isRestorableCommittedJobStatus(jobTask, status) && !retryCheckpoint) || jobInfo.ExecutionKey == nil ||
+					if jobInfo.ExecutionKey == nil ||
 						jobInfo.RunGeneration == 0 || jobInfo.RunGeneration > task.RunGeneration {
 						continue
 					}
 					expectedKey := workflowExecutionKey(task.TaskID, jobInfo.RunGeneration, stepIndex, priority, jobIndex, jobTask.Name, jobTask.JobType)
-					if *jobInfo.ExecutionKey != expectedKey || (selected != nil && selected.RunGeneration >= jobInfo.RunGeneration) {
+					rank, matches := jobs.EvaluationExecutionRank(jobInfo, expectedKey)
+					if !matches {
 						continue
+					}
+					// A recovery identity is committed before admission and before
+					// its first retry checkpoint. Keep that reservation on takeover
+					// instead of selecting the failed source execution again.
+					reservedRecovery := rank > 0 && (status == config.StatusQueued || status == config.StatusPrepare || status == config.StatusRunning)
+					if !isRestorableCommittedJobStatus(jobTask, status) && !retryCheckpoint && !reservedRecovery {
+						continue
+					}
+					if selected != nil {
+						selectedKey := workflowExecutionKey(task.TaskID, selected.RunGeneration, stepIndex, priority, jobIndex, jobTask.Name, jobTask.JobType)
+						selectedRank, _ := jobs.EvaluationExecutionRank(selected, selectedKey)
+						if selected.RunGeneration > jobInfo.RunGeneration || (selected.RunGeneration == jobInfo.RunGeneration && selectedRank >= rank) {
+							continue
+						}
 					}
 					selected = jobInfo
 				}

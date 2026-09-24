@@ -57,6 +57,7 @@ type SandboxResponse struct {
 	ContainerName       string     `json:"containerName"`
 	RetainUntil         *time.Time `json:"retainUntil,omitempty"`
 	Reason              string     `json:"reason,omitempty"`
+	Restored            bool       `json:"restored,omitempty"`
 }
 
 func sandboxResponse(row *model.JobSandbox) *SandboxResponse {
@@ -210,6 +211,15 @@ func (s *Service) runnerSandbox(ctx context.Context, identity RunnerIdentity, tr
 		if err != nil && !create {
 			return err
 		}
+		if auth.evaluation.Traits.Evaluation.Recovery != nil && (create || release != nil) {
+			pending, err := tx.Count(ctx, &model.JobCheckpoint{WorkspaceID: auth.task.WorkspaceID, ExecutionKey: *auth.job.ExecutionKey, State: sandboxPending}, nil)
+			if err != nil {
+				return err
+			}
+			if pending > 0 {
+				return ErrRunnerConflict
+			}
+		}
 		if create {
 			if request == nil {
 				return bcode.ErrNotFound
@@ -291,6 +301,22 @@ func (s *Service) runnerSandbox(ctx context.Context, identity RunnerIdentity, tr
 		row.State, row.Reason = sandboxPending, "observation_pending"
 	}
 	response := sandboxResponse(row)
+	if auth.evaluation.ResumeCheckpointID != "" {
+		point := &model.JobCheckpoint{ID: auth.evaluation.ResumeCheckpointID}
+		if err := s.Store.Get(ctx, point); err != nil {
+			return nil, err
+		}
+		members, err := checkpointMembers(point)
+		if err != nil {
+			return nil, err
+		}
+		for _, member := range members {
+			if member.TrialID == trialID {
+				response.Restored = true
+				break
+			}
+		}
+	}
 	if release == nil && row.SandboxUID != "" && row.AdmittedAt != nil {
 		// Advance the sampled DB time with this process's monotonic clock.
 		// Replica wall clocks do not participate in the Runner's timeout.

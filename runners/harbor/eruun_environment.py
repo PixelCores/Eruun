@@ -91,6 +91,8 @@ class WorkspaceEnvironment(ACKEnvironment):
         self._sandbox_control = None
         self._sandbox_identity = None
         self._sandbox_requested = False
+        self._restored = False
+        self._require_restored = False
         if sandbox_control_file is not None:
             path = Path(sandbox_control_file)
             if not path.is_file() or stat.S_IMODE(path.stat().st_mode) != 0o600 or path.stat().st_size > 16 * 1024:
@@ -250,6 +252,9 @@ class WorkspaceEnvironment(ACKEnvironment):
                 raise TimeoutError("sandbox startup exceeded task build timeout")
             self._accept_sandbox_identity(data)
             if data["state"] == "ready":
+                if self._require_restored and data.get("restored") is not True:
+                    raise RunnerError("recovery sandbox was not cloned from the bound checkpoint")
+                self._restored = data.get("restored") is True
                 return startup_remaining
             if data["state"] != "pending":
                 raise RunnerError("sandbox did not become ready")
@@ -299,7 +304,8 @@ class WorkspaceEnvironment(ACKEnvironment):
                                     f"chmod 777 {EnvironmentPaths.agent_dir} {EnvironmentPaths.verifier_dir}"):
                         if (await self.exec(command)).return_code != 0:
                             raise RunnerError("cannot prepare sandbox log directories")
-                    await self._upload_environment_dir_after_start()
+                    if not self._restored:
+                        await self._upload_environment_dir_after_start()
             except BaseException:
                 try:
                     await self._release_sandbox(False, min(self._sandbox_control["finalizationDeadline"],

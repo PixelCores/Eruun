@@ -1329,6 +1329,14 @@ message EvaluationTrait {
   int64 timeout_seconds = 7 [json_name = "timeoutSeconds"];
   AppSpecResourceTraitsSpec sandbox_resources = 8 [json_name = "sandboxResources"];
   JobResultPolicy result_policy = 9 [json_name = "resultPolicy"];
+  EvaluationRecovery recovery = 10;
+}
+
+// Omission disables recovery. Only the pinned native Agent versions accept it.
+message EvaluationRecovery {
+  string agent_version = 1 [json_name = "agentVersion"];
+  bool replay_safe = 2 [json_name = "replaySafe"];
+  int64 checkpoint_interval_seconds = 3 [json_name = "checkpointIntervalSeconds"];
 }
 
 message JobResultTarget { string type = 1; string mode = 2; }

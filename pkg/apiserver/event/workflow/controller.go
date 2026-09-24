@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
@@ -30,6 +31,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
+	evaluationjobs "github.com/PixelCores/Eruun/pkg/apiserver/jobs"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	wf "github.com/PixelCores/Eruun/pkg/apiserver/workflow"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -556,7 +558,20 @@ func (r *workflowRun) runSteps(taskForGeneration model.WorkflowQueue, stepExecut
 			stopOnFailure := !stepExec.Mode.IsParallel()
 			logger.Info("Executing workflow step", "workflowName", workflowName, "step", stepExec.Name, "mode", stepExec.Mode, "priority", priority, "jobCount", len(tasksInPriority), "concurrency", stepConcurrency, "stopOnFailure", stopOnFailure)
 
-			if err := job.RunJobs(ctx, tasksInPriority, stepConcurrency, r.Client, r.KubeConfig, r.Store, r.ack, stopOnFailure, r.Cache, r.urlSecurityPolicy, r.DelayQueue, r.ResourceWaiter, r.resourceImportExecutor, r.importSecretKeyring); err != nil {
+			recoveryCtx := job.WithEvaluationRecovery(ctx, func(recoveryCtx context.Context, task *model.JobTask) (bool, error) {
+				svc, err := evaluationjobs.New(r.Store, r.Client, r.runtimeConfig)
+				if err != nil {
+					return false, err
+				}
+				if r.KubeConfig != nil {
+					svc.SandboxClient, err = dynamic.NewForConfig(r.KubeConfig)
+					if err != nil {
+						return false, err
+					}
+				}
+				return svc.RecoverEvaluation(recoveryCtx, task)
+			})
+			if err := job.RunJobs(recoveryCtx, tasksInPriority, stepConcurrency, r.Client, r.KubeConfig, r.Store, r.ack, stopOnFailure, r.Cache, r.urlSecurityPolicy, r.DelayQueue, r.ResourceWaiter, r.resourceImportExecutor, r.importSecretKeyring); err != nil {
 				logger.Error(err, "Stopping workflow after job persistence failure", "step", stepExec.Name, "priority", priority)
 				return r.stopForJobInfrastructure(err)
 			}

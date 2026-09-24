@@ -2,7 +2,7 @@
 
 > 状态：Current。此目录实现 Harbor `0.22.0` 的空间 Job Runner；完整 API 以实现 PR 对应的空间 Job 文档为准。
 
-Runner 下载经过摘要验证的原生 Harbor `tar.gz` 任务包，调用真正的 `harbor run`，将框架生成的全部本地原始文件打包回传。它不构建用户镜像，不将任务包转换为 JSONL，也不替用户定义评分规则。
+Runner 下载经过摘要验证的原生 Harbor `tar.gz` 任务包，默认调用真正的 `harbor run`，将框架生成的全部本地原始文件打包回传。显式启用实验性恢复时使用本目录固定版本的 Harbor 生命周期入口。它不构建用户镜像，不将任务包转换为 JSONL，也不替用户定义评分规则。
 
 ## 构建与验证
 
@@ -89,3 +89,33 @@ Harbor 的无条件删除关闭。每个 trial 收尾时，只有下载记录及
 用户镜像必须预装 Agent 所需系统依赖，并让 UID `1000` 可写 `/home/agent`、`/app`、`/workspace`、`/logs`、`/tests`、`/solution`、`/installed-agent`。需要系统安装权限的命令会失败，平台不会放宽安全策略。建议在镜像内固定并预装 Codex/Claude Code 版本：Harbor 的适配器会识别已安装的二进制；未预装时其安装动作只能在用户可写路径成功。`terminus-2` 使用 Runner 中的 Harbor 实现驱动任务环境。
 
 这些限制比 Harbor 上游支持范围窄。上游依据：[固定版本配置](https://github.com/harbor-framework/harbor/blob/v0.22.0/src/harbor/models/job/config.py)、[ACK 后端](https://github.com/harbor-framework/harbor/blob/v0.22.0/src/harbor/environments/ack.py)、[原生任务](https://www.harborframework.com/docs/tasks)。
+
+## 恢复能力实验
+
+Runner 通过可选 `recovery` 配置支持固定 Codex/Claude Code 版本的恢复协议；部署、重放与隔离边界见[恢复文档](../../docs/harbor-runtime-recovery.md)。真实 ACS 验收尚未执行。安装本目录固定依赖后，在项目根目录运行 `python runners/harbor/recovery_probe.py`，可重复验证原生 Harbor 的恢复粒度：已完成 trial 跳过，未完成 trial 使用新身份重跑。退出码 `2` 表示实验完成但 trial 内恢复门禁失败；退出码 `1` 表示实验或依赖错误。
+
+该实验只操作临时 fixture，不运行 Agent 或访问集群。Codex、Claude Code 的原生会话恢复入口不能直接视为 Eruun 已支持故障恢复；适配范围、复现命令及后续 ACS 验收见[第二阶段计划](../../docs/harbor-runtime-stage2-plan.md#21-s2-1-本地能力实验)。
+
+另可在安装 Codex CLI `0.154.0` 与 Claude Code `2.1.281` 的本机运行 `python3 runners/harbor/native_resume_probe.py`，用回环模型服务验证强杀和目录迁移后的原生会话恢复。脚本不使用真实模型凭据、不执行工具；成功也不表示 Harbor 生命周期、写入屏障或 ACS 已验证。
+
+
+## 实验性原生会话恢复
+
+内部配置增加 `recovery: {agentVersion, replaySafe: true, checkpointIntervalSeconds}` 与 `checkpointURL`；当前组合为 Harbor `0.22.0` + Codex `0.154.0` 或 Claude Code `2.1.281`，间隔范围 60–3600 秒。任务必须允许未确认工具命令重放或提供业务幂等保证。恢复时平台另给出 `resumeCheckpointId`、原执行 `executionDeadline`（Unix 秒）和新能力凭据；下载、克隆等待、恢复与执行均受原截止时间约束。较短的 Agent 绝对截止时间也保存在恢复材料中，不因重启重置。
+
+`recovery_runtime.py` 保存原 trial 配置、任务摘要、完成结果、会话 UUID、Agent 剩余预算及采集状态。初次运行仅使用 `Job.create` 生成计划；恢复直接复原原 trial 身份，并用 Harbor `Trial` 执行未完成项，不调用会清理未完成目录的 stock Job resume。新工作目录显式重建任务/输出路径，完成 trial 不执行；未完成项必须获得 `restored: true` 的 Sandbox 确认，原生 CLI 使用确切 session ID 继续。任务镜像须预装 Python 3、固定版本 CLI 和 Linux `/proc`；恢复仅支持新的 OpenAI/Anthropic API key 环境注入，不复制已有登录态。
+
+每一批 trial 受原 concurrency 上限约束。Agent 在一个时间片后由 Sandbox 内 `native_checkpoint.py` 请求 SIGINT，随后终止其进程组；进程组之外残留的双重 fork、setsid 或后台任务也会被完整 `/proc` 身份扫描拒绝。仅接受平台创建的 PID 1 `sleep`；检查包含进程启动时间，避免 PID 重用误判。会话 JSONL 必须完整可解析，必要文件 fsync 后同步文件系统；单纯 exec 断流或 CLI 父进程消失不能形成恢复点。需要等本批 setup/verifier/采集结束或所有剩余 Agent 停止，才冻结全 Job 的参与集合，因此配置间隔不等于已验证的 RPO。
+
+屏障内上传 `POST checkpointURL/{id}` 的不可变 gzip 材料，重复请求复用同一 ID 和字节，并轮询 `GET` 至全部快照 `ready`。`pending` 不解除屏障，失败则结束本次执行，不继续运行可能仍在取快照的源。材料最多压缩 64 MiB、展开 256 MiB、10,000 个文件及 1 MiB manifest；逐文件 SHA-256、严格相对路径、版本、成员集合及采集状态校验失败都拒绝恢复。材料不包含平台能力文件或已知原生登录文件；运行配置与 lock 中的 Pod 身份及本地路径在新执行中重建，发现运行时凭据出现在材料中会失败关闭。新执行重新获得自己的 Sandbox 身份及凭据。真实 ACS 对文件系统/卷的覆盖、进程隔离和快照期间停止写入的保证仍需单独验证。
+
+本地测试使用真实 Harbor `Trial` 生命周期，覆盖并发完成/中断 trial、保存后删除源目录、恢复路径重建、完成 trial 跳过、显式会话恢复、损坏材料、凭据、屏障失败和原截止时间。生产原生命令也可使用固定 CLI 和回环模型 fixture 验证：
+
+```sh
+ERUUN_TEST_NATIVE_CODEX="$(command -v codex)" \
+ERUUN_TEST_NATIVE_CLAUDE="$(command -v claude)" \
+PYTHONDONTWRITEBYTECODE=1 LITELLM_LOCAL_MODEL_COST_MAP=True \
+/tmp/eruun-harbor-test/bin/python -m unittest discover -s runners/harbor -v
+```
+
+该命令不使用真实模型凭据或集群。原生命令 fixture 为跨平台运行替换 Linux `/proc` 检查，验证的只是生产 argv、受控中断和真实 CLI 会话读写；Linux 屏障、工具副作用、ACS 快照/克隆、真实模型及规模验收仍待完成。

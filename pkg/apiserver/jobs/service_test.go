@@ -48,7 +48,7 @@ func testJobService(t *testing.T) (*Service, *sqlstore.Driver, context.Context) 
 	require.NoError(t, err)
 	conn.SetMaxOpenConns(1)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	require.NoError(t, db.AutoMigrate(&model.Workspace{}, &model.Applications{}, &model.WorkflowQueue{}, &model.JobInfo{}, &model.JobArtifact{}, &model.ArtifactChunk{}, &model.JobDelivery{}, &model.SystemSetting{}, &model.ResourceCreationBudget{}, &model.JobSandbox{}))
+	require.NoError(t, db.AutoMigrate(&model.Workspace{}, &model.Applications{}, &model.WorkflowQueue{}, &model.JobInfo{}, &model.JobArtifact{}, &model.ArtifactChunk{}, &model.JobDelivery{}, &model.SystemSetting{}, &model.ResourceCreationBudget{}, &model.JobSandbox{}, &model.JobCheckpoint{}))
 	raw := &sqlstore.Driver{Client: *db}
 	require.NoError(t, repository.EnsureJobSchedulerPolicy(context.Background(), raw))
 	require.NoError(t, raw.Add(context.Background(), &model.Workspace{ID: "space", Namespace: "space-ns"}))

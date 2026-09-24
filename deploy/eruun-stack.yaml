@@ -59,6 +59,10 @@ kind: ClusterRole
 metadata:
   name: eruun-platform-runtime
 rules:
+  # Workers close the exact source Sandbox before starting a recovered Runner.
+  - apiGroups: ["agents.kruise.io"]
+    resources: ["sandboxes"]
+    verbs: ["get", "patch"]
   - apiGroups: [""]
     resources: ["namespaces"]
     verbs: ["get", "create", "update", "delete"]
@@ -200,6 +204,9 @@ rules:
   - apiGroups: ["agents.kruise.io"]
     resources: ["sandboxes"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["agents.kruise.io"]
+    resources: ["checkpoints"]
+    verbs: ["get", "list", "watch", "create", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

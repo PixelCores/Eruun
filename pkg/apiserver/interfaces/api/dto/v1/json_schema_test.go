@@ -76,9 +76,31 @@ func TestCanonicalSchemaDiscoversSharedEvaluationAndStandaloneJobs(t *testing.T)
 	require.Equal(t, float64(16), fields["concurrency"].(map[string]any)["maximum"])
 	require.Contains(t, fields, "sandboxResources")
 	require.Contains(t, fields, "resultPolicy")
+	require.Equal(t, "#/$defs/EvaluationRecoverySpec", fields["recovery"].(map[string]any)["$ref"])
+	recovery := definitions["EvaluationRecoverySpec"].(map[string]any)
+	require.Equal(t, false, recovery["additionalProperties"])
+	require.ElementsMatch(t, []any{"agentVersion", "replaySafe"}, recovery["required"])
+	recoveryFields := recovery["properties"].(map[string]any)
+	require.Equal(t, true, recoveryFields["replaySafe"].(map[string]any)["const"])
+	require.ElementsMatch(t, []any{spec.CodexRecoveryVersion, spec.ClaudeCodeRecoveryVersion}, recoveryFields["agentVersion"].(map[string]any)["enum"])
+	require.Equal(t, float64(spec.DefaultCheckpointIntervalSeconds), recoveryFields["checkpointIntervalSeconds"].(map[string]any)["default"])
+	require.Len(t, evaluation["allOf"], 2, "recovery must constrain the selected agent and version together")
 	require.NotContains(t, fields, "framework")
 	require.NotContains(t, fields, "frameworkVersion")
 	require.NotContains(t, fields, "options")
+}
+
+func TestApplicationAndJobDecodeRecoveryWithoutLosingReplayConsent(t *testing.T) {
+	const evaluation = `{"env":"ack","agent":"codex","model":"openai/model","taskPackageId":"12345678-1234-1234-1234-123456789012","recovery":{"agentVersion":"0.154.0","replaySafe":true}}`
+	var request CreateApplicationsRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"name":"evaluation-app","components":[{"name":"evaluate","type":"job","traits":{"eval":`+evaluation+`}}]}`), &request))
+	var standalone spec.JobSpec
+	require.NoError(t, spec.DecodeJobJSON([]byte(`{"name":"evaluate","type":"job","traits":{"eval":`+evaluation+`}}`), &standalone))
+	require.NoError(t, request.Components[0].Traits.Evaluation.Normalize())
+	require.NoError(t, standalone.Normalize())
+	require.Equal(t, standalone.Traits.Evaluation.Recovery, request.Components[0].Traits.Evaluation.Recovery)
+	require.True(t, standalone.Traits.Evaluation.Recovery.ReplaySafe)
+	require.Equal(t, spec.DefaultCheckpointIntervalSeconds, standalone.Traits.Evaluation.Recovery.CheckpointIntervalSeconds)
 }
 
 func TestApplicationEvaluationRejectsUnknownBusinessFields(t *testing.T) {
