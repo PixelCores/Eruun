@@ -330,7 +330,7 @@ func RunJobs(ctx context.Context, jobs []*model.JobTask, concurrency int, client
 				return infrastructureStopCause(ctx)
 			}
 			logger.Info("Job started", "jobName", job.Name, "jobType", job.JobType)
-			if err := runJob(ctx, job, client, store, ack, runtime); err != nil {
+			if err := runJobWithEvaluationRecovery(ctx, job, client, store, ack, runtime); err != nil {
 				return err
 			}
 			if ctx.Err() != nil {
@@ -536,6 +536,26 @@ func runJob(ctx context.Context, job *model.JobTask, client kubernetes.Interface
 					}
 				}
 				return persistTerminalJobState(jobCtx, jobCtl, job, store, runtime)
+			}
+			if statusErr, ok := ExtractStatusError(admissionErr); ok && statusErr.Status == config.StatusTimeout && status == config.StatusRunning {
+				// Expired checkpoints consume no new admission. Fence cleanup by
+				// the same DB ownership check as the admitted execution path.
+				ownershipCtx, cancel := persistenceContext(jobCtx)
+				ownershipErr := withJobInfoOwnership(ownershipCtx, store, job, func(datastore.DataStore) error { return nil })
+				cancel()
+				if ownershipErr != nil {
+					return errors.Join(signal.ErrInfrastructureStop, admissionErr, ownershipErr)
+				}
+				if signal.IsInfrastructureStop(jobCtx) {
+					return context.Cause(jobCtx)
+				}
+				applyJobError(job, statusErr, "")
+				job.EndTime = time.Now().Unix()
+				jobCtl.Clean(jobCtx)
+				if ack != nil {
+					ack()
+				}
+				return terminalJobPersistenceFailure(job, "persist expired job state", persistTerminalJobState(jobCtx, jobCtl, job, store, runtime))
 			}
 		}
 		return errors.Join(signal.ErrInfrastructureStop, admissionErr)
@@ -1165,7 +1185,7 @@ func (p *Pool) work() {
 			p.wg.Done()
 			continue
 		}
-		if err := runJob(p.ctx, job, p.client, p.store, p.ack, p.runtime); err != nil {
+		if err := runJobWithEvaluationRecovery(p.ctx, job, p.client, p.store, p.ack, p.runtime); err != nil {
 			p.runErrOnce.Do(func() {
 				p.runErr = err
 			})

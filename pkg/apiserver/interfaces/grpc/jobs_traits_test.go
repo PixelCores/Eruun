@@ -49,10 +49,11 @@ func TestJobSecurityPolicyTraitsRoundTrip(t *testing.T) {
 
 func TestEvaluationTraitSharedAcrossJobAndApplication(t *testing.T) {
 	evaluation := &eruunv1.EvaluationTrait{
-		Env: "ack", Model: "openai/model", Agent: "terminus-2", TaskPackageId: "12345678-1234-1234-1234-123456789012",
+		Env: "ack", Model: "openai/model", Agent: "codex", TaskPackageId: "12345678-1234-1234-1234-123456789012",
 		Attempts: 2, Concurrency: 3, TimeoutSeconds: 600,
 		SandboxResources: &eruunv1.AppSpecResourceTraitsSpec{Cpu: "2", Memory: "4Gi", CpuLimit: "4", MemoryLimit: "8Gi"},
 		ResultPolicy:     &eruunv1.JobResultPolicy{RetentionDays: 30, Targets: []*eruunv1.JobResultTarget{{Type: "database", Mode: "full"}}},
+		Recovery:         &eruunv1.EvaluationRecovery{AgentVersion: spec.CodexRecoveryVersion, ReplaySafe: true, CheckpointIntervalSeconds: 300},
 	}
 	standalone, err := jobSubmitInput(&eruunv1.SubmitJobRequest{Name: "evaluate", Type: "job", Traits: &eruunv1.JobTraits{Eval: evaluation}})
 	require.NoError(t, err)
@@ -63,6 +64,9 @@ func TestEvaluationTraitSharedAcrossJobAndApplication(t *testing.T) {
 	require.Equal(t, int64(600), app.Evaluation.TimeoutSeconds)
 	require.Equal(t, "2", app.Evaluation.SandboxResources.CPU)
 	require.Equal(t, 30, app.Evaluation.ResultPolicy.RetentionDays)
+	require.Equal(t, spec.CodexRecoveryVersion, app.Evaluation.Recovery.AgentVersion)
+	require.True(t, app.Evaluation.Recovery.ReplaySafe)
+	require.EqualValues(t, 300, app.Evaluation.Recovery.CheckpointIntervalSeconds)
 
 	output, err := jobSpecOutput(standalone.JobSpec)
 	require.NoError(t, err)
@@ -80,6 +84,35 @@ func TestEvaluationTraitSharedAcrossJobAndApplication(t *testing.T) {
 	}
 	for _, traits := range []proto.Message{&eruunv1.JobTraits{}, &eruunv1.AppSpecTraits{}} {
 		require.Error(t, protojson.Unmarshal([]byte(`{"evaluation":{}}`), traits))
+	}
+}
+
+func TestEvaluationRecoveryProtoRejectsUnapprovedReplayAndPreservesOmission(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		recovery  *eruunv1.EvaluationRecovery
+		wantError string
+	}{
+		{"omitted", nil, ""},
+		{"without replay consent", &eruunv1.EvaluationRecovery{AgentVersion: spec.CodexRecoveryVersion}, "replaySafe=true"},
+		{"unsupported version", &eruunv1.EvaluationRecovery{AgentVersion: "0.1.0", ReplaySafe: true}, "agentVersion"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			evaluation := &eruunv1.EvaluationTrait{Env: "ack", Agent: "codex", Model: "openai/model", TaskPackageId: "12345678-1234-1234-1234-123456789012", Recovery: tc.recovery}
+			input, err := jobSubmitInput(&eruunv1.SubmitJobRequest{Name: "evaluate", Type: "job", Traits: &eruunv1.JobTraits{Eval: evaluation}})
+			require.NoError(t, err)
+			app, err := decodeTypedRequest[spec.Traits](&eruunv1.AppSpecTraits{Eval: evaluation})
+			require.NoError(t, err)
+			for _, trait := range []*spec.EvaluationTraitSpec{input.Traits.Evaluation, app.Evaluation} {
+				err = trait.Normalize()
+				if tc.wantError != "" {
+					require.ErrorContains(t, err, tc.wantError)
+				} else {
+					require.NoError(t, err)
+					require.Nil(t, trait.Recovery)
+				}
+			}
+		})
 	}
 }
 

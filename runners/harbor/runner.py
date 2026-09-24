@@ -18,6 +18,7 @@ import signal
 import socket
 import stat
 import subprocess
+import sys
 import tarfile
 import tempfile
 import threading
@@ -115,11 +116,17 @@ def validate_config(config):
         raise RunnerError("resources must contain requests and limits")
     if any(not isinstance(v, str) or not v for v in resources.values()):
         raise RunnerError("invalid resources")
+    from recovery_runtime import validate_recovery
+    validate_recovery(config)
+    if "executionDeadline" in config:
+        value = config["executionDeadline"]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+            raise RunnerError("invalid absolute execution deadline")
     return config
 
 
-def download_package(config, destination):
-    deadline = time.monotonic() + TRANSFER_SECONDS
+def download_package(config, destination, deadline=None):
+    deadline = min(deadline, time.monotonic() + TRANSFER_SECONDS) if deadline is not None else time.monotonic() + TRANSFER_SECONDS
     attempt = 0
     while True:
         remaining_time(deadline)
@@ -251,7 +258,8 @@ def harbor_config(config, tasks, output, pod_name, pod_uid):
         "n_attempts": config["options"]["attempts"],
         "n_concurrent_trials": config["options"]["concurrency"],
         "retry": {"max_retries": 0}, "quiet": True,
-        "agents": [{"name": config["agent"]["name"], "model_name": config["agent"].get("model")}],
+        "agents": [{"name": config["agent"]["name"], "model_name": config["agent"].get("model"),
+                    **({"kwargs": {"version": config["recovery"]["agentVersion"]}} if config.get("recovery") else {})}],
         "tasks": [{"path": str(p), "source": "uploaded"} for p in tasks],
         "environment": {
             "import_path": "eruun_environment:WorkspaceEnvironment", "force_build": False, "delete": False,
@@ -314,7 +322,10 @@ def run_framework(config_path, output, cancel, timeout):
     child_env = {key: value for key, value in os.environ.items() if not key.startswith("ERUUN_")}
     child_env["HARBOR_TELEMETRY"] = "0"
     with (output / "harbor-console.log").open("wb") as log:
-        process = subprocess.Popen(["harbor", "run", "--config", str(config_path), "--yes"],
+        recovery_control = config_path.parent / "recovery-control.json"
+        command = ([sys.executable, str(Path(__file__).with_name("recovery_runtime.py")), str(config_path), str(recovery_control)]
+                   if recovery_control.exists() else ["harbor", "run", "--config", str(config_path), "--yes"])
+        process = subprocess.Popen(command,
                                    cwd=config_path.parent, env=child_env, stdout=log, stderr=subprocess.STDOUT,
                                    start_new_session=True)
         deadline = time.monotonic() + timeout
@@ -986,6 +997,10 @@ def execute(config, work, cancel, reporter=None, final_deadline=None):
     (work / "collection").mkdir(mode=0o700)
     expected_trials = 0
     execution_deadline = None
+    if config.get("recovery"):
+        execution_deadline = time.monotonic() + config["timeoutSeconds"]
+        if config.get("executionDeadline") is not None:
+            execution_deadline = min(execution_deadline, time.monotonic() + config["executionDeadline"] - time.time())
     report = {"taskId": config["taskId"], "framework": {"name": "harbor", "version": FRAMEWORK_VERSION},
               "datasetDigest": config["datasetDigest"], "executionStatus": "failed", "frameworkExitCode": None}
     try:
@@ -993,11 +1008,16 @@ def execute(config, work, cancel, reporter=None, final_deadline=None):
             reporter.emit("phase", phase="preparing")
         if importlib.metadata.version("harbor") != FRAMEWORK_VERSION:
             raise RunnerError("installed Harbor version does not match the pinned runner")
+        ensure_deadline(execution_deadline)
         source = work / "tasks.tar.gz"
-        download_package(config, source)
+        if config.get("recovery"):
+            download_package(config, source, deadline=execution_deadline)
+        else:
+            download_package(config, source)
         dataset = work / "dataset"
         extract_package(source, dataset)
         tasks = native_tasks(dataset)
+        ensure_deadline(execution_deadline)
         expected_trials = len(tasks) * config["options"]["attempts"]
         if reporter is not None:
             reporter.track_progress(work / "collection", expected_trials)
@@ -1007,7 +1027,8 @@ def execute(config, work, cancel, reporter=None, final_deadline=None):
                 raise RunnerError("sandbox execution requires a status reporter")
             admission_path = work / "admission-state.json"
             reporter.configure_admission(admission_path)
-            execution_deadline = time.monotonic() + config["timeoutSeconds"]
+            if execution_deadline is None:
+                execution_deadline = time.monotonic() + config["timeoutSeconds"]
             grace = config.get("finalizationTimeoutSeconds", FINALIZATION_SECONDS)
             if final_deadline is not None:
                 execution_deadline = min(execution_deadline, final_deadline - grace)
@@ -1028,6 +1049,12 @@ def execute(config, work, cancel, reporter=None, final_deadline=None):
             descriptor = os.open(work / "sandbox-control.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             with os.fdopen(descriptor, "w") as target:
                 json.dump(control, target)
+        if config.get("recovery"):
+            recovery_control = dict(config)
+            recovery_control["executionDeadlineMonotonic"] = execution_deadline
+            descriptor = os.open(work / "recovery-control.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(descriptor, "w") as target:
+                json.dump(recovery_control, target)
         config_path = work / "harbor-config.json"
         config_path.write_text(json.dumps(generated))
         stop_outcome = _stop_snapshot(reporter, cancel)
@@ -1147,7 +1174,10 @@ def main():
     try:
         config = validate_config(json.loads(os.environ["ERUUN_JOB_CONFIG"]))
         started = time.monotonic()
-        final_deadline = started + config["timeoutSeconds"] + config.get("finalizationTimeoutSeconds", FINALIZATION_SECONDS)
+        execution_budget = config["timeoutSeconds"]
+        if config.get("executionDeadline") is not None:
+            execution_budget = min(execution_budget, max(0, config["executionDeadline"] - time.time()))
+        final_deadline = started + execution_budget + config.get("finalizationTimeoutSeconds", FINALIZATION_SECONDS)
         reporter = StatusReporter(config, cancel, final_deadline)
         reporter.claim()
         Path("/work/home").mkdir(parents=True, exist_ok=True)

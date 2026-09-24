@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
@@ -27,9 +28,17 @@ var errEvaluationPolicyUnavailable = errors.New("evaluation timeout policy unava
 // evaluationInfo is private execution metadata; it never appears in API JobInfo.
 // Each Job owns its declaration and capability even when a workflow has several evaluations.
 type evaluationInfo struct {
-	Traits           spec.JobTraits `json:"traits"`
-	RunnerToken      string         `json:"runnerToken"`
-	FrameworkVersion string         `json:"frameworkVersion"`
+	Traits                 spec.JobTraits `json:"traits"`
+	RunnerToken            string         `json:"runnerToken"`
+	FrameworkVersion       string         `json:"frameworkVersion"`
+	ResumeCheckpointID     string         `json:"resumeCheckpointId,omitempty"`
+	RootExecutionKey       string         `json:"rootExecutionKey,omitempty"`
+	RecoveryOfExecutionKey string         `json:"recoveryOfExecutionKey,omitempty"`
+	RecoveryIndex          int            `json:"recoveryIndex,omitempty"`
+	ExecutionDeadline      int64          `json:"executionDeadline,omitempty"`
+	RecoveryRunnerStopped  bool           `json:"recoveryRunnerStopped,omitempty"`
+	RecoveryIsolated       bool           `json:"recoveryIsolated,omitempty"`
+	RecoveryName           string         `json:"recoveryName,omitempty"`
 }
 
 func decodeEvaluationInfo(raw string) (*evaluationInfo, error) {
@@ -118,11 +127,14 @@ func BuildEvaluationTask(ctx context.Context, store datastore.DataStore, cfg *co
 	if err != nil {
 		return err
 	}
+	if info.RecoveryName != "" {
+		job.Name = info.RecoveryName
+	}
 	evaluation := info.Traits.Evaluation
 	// An online limit change governs newly rendered executions. A committed
-	// running/distributed execution retains its original bounded deadline during
-	// recovery; lowering the policy must not terminate healthy long-running work.
-	if job.Status != config.StatusRunning && job.Status != config.StatusDistributed {
+	// running/distributed execution or recovery reservation retains its deadline;
+	// lowering the policy must not terminate healthy long-running work.
+	if info.ResumeCheckpointID == "" && job.Status != config.StatusRunning && job.Status != config.StatusDistributed {
 		policy, err := repository.LoadJobSchedulerPolicy(ctx, store)
 		if err != nil {
 			return fmt.Errorf("%w: %w", errEvaluationPolicyUnavailable, err)
@@ -174,7 +186,7 @@ func BuildEvaluationTask(ctx context.Context, store datastore.DataStore, cfg *co
 	if evaluation.Model != "" {
 		agent["model"] = evaluation.Model
 	}
-	configJSON, err := json.Marshal(map[string]any{
+	runnerConfig := map[string]any{
 		"taskId": job.TaskID, "executionKey": job.ExecutionKey, "namespace": job.Namespace,
 		"datasetURL": cfg.Jobs.APIURL + "/api/v1/job-runners/" + job.TaskID + "/dataset",
 		"resultURL":  cfg.Jobs.APIURL + "/api/v1/job-runners/" + job.TaskID + "/results",
@@ -185,7 +197,16 @@ func BuildEvaluationTask(ctx context.Context, store datastore.DataStore, cfg *co
 		"options":   map[string]int{"attempts": evaluation.Attempts, "concurrency": evaluation.Concurrency},
 		"resources": evaluation.SandboxResources, "sandboxServiceAccount": "default", "timeoutSeconds": evaluation.TimeoutSeconds,
 		"transferTimeoutSeconds": spec.JobArchiveTimeoutSeconds, "finalizationTimeoutSeconds": spec.EvaluationCollectionGraceSeconds,
-	})
+	}
+	if evaluation.Recovery != nil {
+		runnerConfig["recovery"] = evaluation.Recovery
+		runnerConfig["checkpointURL"] = cfg.Jobs.APIURL + "/api/v1/job-runners/" + job.TaskID + "/checkpoints"
+	}
+	if info.ResumeCheckpointID != "" {
+		runnerConfig["resumeCheckpointId"] = info.ResumeCheckpointID
+		runnerConfig["executionDeadline"] = time.Unix(0, info.ExecutionDeadline).Unix() - spec.EvaluationCollectionGraceSeconds
+	}
+	configJSON, err := json.Marshal(runnerConfig)
 	if err != nil {
 		return err
 	}
@@ -236,6 +257,16 @@ func BuildEvaluationTask(ctx context.Context, store datastore.DataStore, cfg *co
 	}
 	workload.Spec.TTLSecondsAfterFinished = ptr.To(int32(evaluation.ResultPolicy.RetentionDays * 86400))
 	job.Timeout = evaluation.TimeoutSeconds + spec.EvaluationCollectionGraceSeconds
+	if info.ExecutionDeadline > 0 {
+		job.Timeout = int64(time.Until(time.Unix(0, info.ExecutionDeadline)).Seconds())
+		if job.Timeout <= spec.EvaluationCollectionGraceSeconds {
+			return fmt.Errorf("evaluation recovery deadline elapsed")
+		}
+		if workload.Annotations == nil {
+			workload.Annotations = map[string]string{}
+		}
+		workload.Annotations[workflowjob.EvaluationDeadlineAnnotation] = fmt.Sprint(info.ExecutionDeadline)
+	}
 	workload.Spec.ActiveDeadlineSeconds = ptr.To(job.Timeout)
 	job.JobType = string(config.JobEval)
 	job.JobInfo = workload

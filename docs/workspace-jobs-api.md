@@ -83,6 +83,8 @@
 
 允许 `terminus-2`、`codex`、`claude-code` 和 `oracle`。`agent` 指定 Harbor 执行 trial 的 harness；`oracle` 执行任务包的参考解答，用于验证任务与平台链路，不代表模型能力；使用它时省略 `model`，无需模型调用或模型费用。其他 Agent 必须指定模型。模型凭据通过 `traits.envs` 传入，支持的环境名为 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`GEMINI_API_KEY`、`GOOGLE_API_KEY`、`OPENROUTER_API_KEY`、`AZURE_API_KEY`，必须使用 `valueFrom.secret` 引用当前空间已有 Secret 的键；不接受 `valueFrom.static` 明文值，平台不返回 Secret 内容。
 
+可选 `traits.eval.recovery` 启用实验性恢复，独立任务和 Application 共用同一契约。必须明确 `replaySafe: true`，并固定 Codex `0.154.0` 或 Claude Code `2.1.281`；`checkpointIntervalSeconds` 默认 300、范围 60–3600。省略则不开启，其他 Agent/版本拒绝恢复配置。具体隔离门禁、原期限、恢复预算、升级顺序和真实 ACS 待验收项见 [Harbor 评测恢复](harbor-runtime-recovery.md)。
+
 `attempts` 为每个任务的评测次数，默认 1，范围 1–10；`concurrency` 为 Harbor 同时执行的 trial 数，默认 1，范围 1–16。它们不改变 Eruun 的 Job 调度器并发策略。评测默认超时 3600 秒，支持 60–1209600 秒（14 天），并受管理员在线设置的 `workflow_scheduler.maxEvaluationTimeoutSeconds` 约束。降低上限不会改变已运行执行的恢复期限。Harbor 任务自身的 agent/verifier 时限仍由任务作者设置，平台外层时长不会自动延长这些时限。
 
 新 Runner 另预留 960 秒收尾窗口，包含 600 秒控制面中断预算和原有 360 秒正常处理余量。任务包下载预算仍为 300 秒；进入 finalizing 后采集、归档、上传和 terminal 确认分享同一个有界窗口，按段截止并为确认保留最低余额。上传按 deadline 重试同一归档，不重新生成不同 digest；临时失败采用有上限的退避和抖动，单次 HTTP 发送、响应头与响应体读取受期限约束。Python 标准库 DNS 解析存在不能被 socket 截止直接打断的边界，须在部署中验证 DNS 稳定性。terminal 就绪后优先于未完成的旧心跳/进度通知，使用更高 sequence；claim 始终是执行门禁。窗口耗尽只能报告未确认交付，不能把已上传但 ACK 丢失当作尚未上传。显式旧 360 秒配置仍可读取；单次网络和 HTTP 入口超时仍分别生效，大制品应实测吞吐和整个收尾预算。

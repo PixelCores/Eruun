@@ -227,6 +227,8 @@ func (b *schemaBuilder) requiredField(definition, field, validation string, opti
 		return field == "name" || field == "type"
 	case "EvaluationTraitSpec":
 		return field == "env" || field == "agent" || field == "taskPackageId"
+	case "EvaluationRecoverySpec":
+		return field == "agentVersion" || field == "replaySafe"
 	case "CommandJobSpec":
 		return field == "image" || field == "command"
 	case "JobResultPolicy":
@@ -261,6 +263,16 @@ func (b *schemaBuilder) applyFieldConstraints(definition, field string, schema m
 	case definition == "EvaluationTraitSpec" && field == "sandboxResources":
 		schema["required"] = []string{"cpu", "memory"}
 		schema["description"] = "Resources for each trial sandbox; traits.resources applies only to the Runner."
+	case definition == "EvaluationRecoverySpec" && field == "agentVersion":
+		schema["enum"] = []string{spec.CodexRecoveryVersion, spec.ClaudeCodeRecoveryVersion}
+	case definition == "EvaluationRecoverySpec" && field == "replaySafe":
+		schema["const"] = true
+	case definition == "EvaluationRecoverySpec" && field == "checkpointIntervalSeconds":
+		schema["anyOf"] = []any{
+			map[string]any{"const": 0},
+			map[string]any{"minimum": 60, "maximum": 3600},
+		}
+		schema["default"] = spec.DefaultCheckpointIntervalSeconds
 	case definition == "JobResultPolicy" && field == "retentionDays":
 		schema["minimum"], schema["maximum"] = 1, 3650
 	case definition == "JobResultPolicy" && field == "targets":
@@ -330,7 +342,21 @@ func (b *schemaBuilder) applyDefinitionConstraints(name string, definition map[s
 		definition["allOf"] = []any{map[string]any{
 			"if":   map[string]any{"properties": map[string]any{"agent": map[string]any{"not": map[string]any{"const": "oracle"}}}},
 			"then": map[string]any{"required": []string{"model"}, "properties": map[string]any{"model": map[string]any{"minLength": 1}}},
+		}, map[string]any{
+			"if": map[string]any{"required": []string{"recovery"}},
+			"then": map[string]any{"oneOf": []any{
+				map[string]any{"properties": map[string]any{
+					"agent":    map[string]any{"const": "codex"},
+					"recovery": map[string]any{"properties": map[string]any{"agentVersion": map[string]any{"const": spec.CodexRecoveryVersion}}},
+				}},
+				map[string]any{"properties": map[string]any{
+					"agent":    map[string]any{"const": "claude-code"},
+					"recovery": map[string]any{"properties": map[string]any{"agentVersion": map[string]any{"const": spec.ClaudeCodeRecoveryVersion}}},
+				}},
+			}},
 		}}
+	case "EvaluationRecoverySpec":
+		definition["description"] = "Opt-in filesystem and native Agent session recovery. replaySafe=true acknowledges that unconfirmed tool commands may execute again. Omit recovery to disable it; zero checkpointIntervalSeconds uses 300 seconds."
 	case "InitTraitSpec", "SidecarTraitsSpec":
 		definition["allOf"] = []any{map[string]any{"properties": map[string]any{
 			"traits": map[string]any{"not": map[string]any{"required": []string{"eval"}}},

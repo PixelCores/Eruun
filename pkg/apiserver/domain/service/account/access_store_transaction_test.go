@@ -293,6 +293,9 @@ func TestJobArtifactsStayInTheirWorkspaceAcrossStoreOperations(t *testing.T) {
 		{"sandbox", func(id, workspaceID string) datastore.Entity {
 			return &model.JobSandbox{ID: id, WorkspaceID: workspaceID, State: "pending", Deadline: time.Now(), ReconcileAt: time.Now()}
 		}},
+		{"checkpoint", func(id, workspaceID string) datastore.Entity {
+			return &model.JobCheckpoint{ID: id, WorkspaceID: workspaceID, State: "pending", SourceDeadline: time.Now(), ExpiresAt: time.Now(), ReconcileAt: time.Now()}
+		}},
 	} {
 		t.Run(newEntity.name, func(t *testing.T) {
 			service, _, _ := testAccounts(t)

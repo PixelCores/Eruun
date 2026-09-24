@@ -232,6 +232,9 @@ func (s *Service) advanceSandbox(ctx context.Context, auth *runnerAuthorization,
 		if err != nil {
 			return err
 		}
+		if _, err := s.checkpointRestore(ctx, auth, row, desired); err != nil {
+			return err
+		}
 		object, err = client.Create(ctx, desired, metav1.CreateOptions{})
 		if err != nil {
 			// Includes an uncertain create response: never use a guessed UID.
@@ -350,15 +353,33 @@ func (s *Service) cleanupSandbox(ctx context.Context, auth *runnerAuthorization,
 		return err
 	}
 	if row.RetainUntil != nil && now.Before(*row.RetainUntil) {
-		shutdown, _, _ := unstructured.NestedString(object.Object, "spec", "shutdownTime")
-		existing, parseErr := time.Parse(time.RFC3339, shutdown)
-		if parseErr != nil || !existing.Equal(row.RetainUntil.Truncate(time.Second)) {
-			patch, _ := json.Marshal(map[string]interface{}{"metadata": map[string]interface{}{"uid": row.SandboxUID, "resourceVersion": object.GetResourceVersion()}, "spec": map[string]interface{}{"shutdownTime": row.RetainUntil.UTC().Format(time.RFC3339)}})
-			if _, err := client.Patch(ctx, row.SandboxName, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
-				return fmt.Errorf("retain sandbox: %w", err)
-			}
-		}
 		return s.mutateSandbox(ctx, auth, row, func(_ datastore.DataStore, current *model.JobSandbox, now time.Time) error {
+			// Serialize the external extension with recovery's durable isolation
+			// marker. A stale lease cannot patch a newer resourceVersion and then
+			// discover only afterwards that its database mutation was fenced.
+			if current.Reason == "recovery_isolation" {
+				return ErrRunnerConflict
+			}
+			if current.RetainUntil == nil || !now.Before(*current.RetainUntil) {
+				current.State, current.Reason = sandboxPending, "release_pending"
+				current.LeaseToken, current.LeaseUntil, current.ReconcileAt = "", nil, now
+				return nil
+			}
+			live, err := client.Get(ctx, current.SandboxName, metav1.GetOptions{})
+			if err != nil {
+				return fmt.Errorf("get retained sandbox: %w", err)
+			}
+			if !ownedSandbox(current, live) || string(live.GetUID()) != current.SandboxUID {
+				return ErrRunnerConflict
+			}
+			shutdown, _, _ := unstructured.NestedString(live.Object, "spec", "shutdownTime")
+			existing, parseErr := time.Parse(time.RFC3339, shutdown)
+			if parseErr != nil || !existing.Equal(current.RetainUntil.Truncate(time.Second)) {
+				patch, _ := json.Marshal(map[string]interface{}{"metadata": map[string]interface{}{"uid": current.SandboxUID, "resourceVersion": live.GetResourceVersion()}, "spec": map[string]interface{}{"shutdownTime": current.RetainUntil.UTC().Format(time.RFC3339)}})
+				if _, err := client.Patch(ctx, current.SandboxName, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
+					return fmt.Errorf("retain sandbox: %w", err)
+				}
+			}
 			current.State, current.StartReserved = sandboxRetained, false
 			if current.Reason == "creation_outcome_unknown" {
 				current.Reason = "collection_incomplete"
@@ -367,6 +388,22 @@ func (s *Service) cleanupSandbox(ctx context.Context, auth *runnerAuthorization,
 			current.ReconcileAt = now.Add(15 * time.Second)
 			return nil
 		})
+	}
+	// Snapshots continue after CR deletion once running. Preserve the source
+	// until the snapshot reaches a terminal phase instead of treating deletion
+	// as cancellation. The existing absolute Sandbox shutdown remains bounded.
+	if auth != nil && auth.evaluation.Traits.Evaluation.Recovery != nil || auth == nil {
+		active, err := s.sandboxCheckpointActive(ctx, row)
+		if err != nil {
+			return err
+		}
+		if active {
+			return s.mutateSandbox(ctx, auth, row, func(_ datastore.DataStore, current *model.JobSandbox, now time.Time) error {
+				current.State, current.Reason = sandboxPending, "checkpoint_running"
+				current.LeaseToken, current.LeaseUntil, current.ReconcileAt = "", nil, now.Add(15*time.Second)
+				return nil
+			})
+		}
 	}
 	uid := types.UID(row.SandboxUID)
 	if err := client.Delete(ctx, row.SandboxName, metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &uid}}); err != nil && !k8serrors.IsNotFound(err) {

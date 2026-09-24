@@ -205,3 +205,115 @@ func TestJobAdmissionRecoveryConfirmationReleasesOnlyAuthoritativeLoss(t *testin
 		})
 	}
 }
+
+func TestExpiredRecoveredJobSettlesWithoutAdmission(t *testing.T) {
+	for _, kind := range []config.JobType{config.JobCommand, config.JobEval} {
+		for _, tc := range []struct {
+			name           string
+			noUID          bool
+			missing        bool
+			replacement    bool
+			cancelled      bool
+			expiredLease   bool
+			revokedOwner   bool
+			infrastructure bool
+		}{
+			{name: "confirmed UID"},
+			{name: "unconfirmed create", noUID: true},
+			{name: "never created", noUID: true, missing: true},
+			{name: "missing recorded execution", missing: true},
+			{name: "replacement object", replacement: true},
+			{name: "cancellation takes precedence", cancelled: true},
+			{name: "expired lease before reaper", expiredLease: true},
+			{name: "revoked lease", expiredLease: true, revokedOwner: true},
+			{name: "infrastructure stop", infrastructure: true},
+		} {
+			t.Run(string(kind)+"/"+tc.name, func(t *testing.T) {
+				db, scopedStore, _ := evaluationScopeStore(t)
+				store := &sqlstore.Driver{Client: *db}
+				task := evaluationScopeTask(t, scopedStore, "")
+				task.JobType = string(kind)
+				task.Status, task.Attempt = config.StatusRunning, 1
+				live := task.JobInfo.(*batchv1.Job)
+				live.UID, live.ResourceVersion = "original-execution", "1"
+				stampJobExecutionIdentity(task, live)
+				cp := &instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: live.DeepCopy(),
+					Attempt: 1, CurrentUID: live.UID, Deadline: time.Now().Add(-time.Second).UnixNano()}
+				if tc.noUID {
+					cp.CurrentUID = ""
+				}
+				raw, err := json.Marshal(cp)
+				require.NoError(t, err)
+				task.InternalInfo = string(raw)
+				record := buildJobInfoRecord(task)
+				ctx := context.Background()
+				require.NoError(t, store.Add(ctx, &record))
+				owner := &model.WorkflowQueue{TaskID: task.TaskID}
+				require.NoError(t, store.Get(ctx, owner))
+				owner.RunGeneration, owner.RunToken, owner.WorkerID = 2, "replacement-token", "replacement-worker"
+				task.OwnerRunGeneration, task.RunToken, task.WorkerID = owner.RunGeneration, owner.RunToken, owner.WorkerID
+				if tc.expiredLease {
+					expired := time.Now().Add(-time.Second)
+					owner.LeaseExpiresAt = &expired
+				}
+				if tc.revokedOwner {
+					owner.RunGeneration++
+					owner.RunToken, owner.WorkerID = "newer-token", "newer-worker"
+				}
+				if tc.cancelled {
+					owner.Status = config.StatusCancelled
+				}
+				require.NoError(t, store.Put(ctx, owner))
+				client := fake.NewSimpleClientset()
+				if !tc.missing {
+					observed := live.DeepCopy()
+					if tc.replacement {
+						observed.UID = "replacement-object"
+					}
+					require.NoError(t, client.Tracker().Add(observed))
+				}
+				if tc.infrastructure {
+					stopped, cancel := context.WithCancelCause(ctx)
+					cancel(signal.ErrInfrastructureStop)
+					ctx = stopped
+				}
+				err = runJob(ctx, task, client, store, func() {}, nil)
+				saved := &model.JobInfo{ID: record.ID}
+				require.NoError(t, store.Get(context.Background(), saved))
+				if tc.revokedOwner || tc.infrastructure {
+					if tc.revokedOwner {
+						require.ErrorIs(t, err, signal.ErrInfrastructureStop)
+					}
+					require.Equal(t, string(config.StatusRunning), saved.Status)
+					require.Zero(t, saved.EndTime)
+					require.Empty(t, client.Actions())
+					return
+				}
+				require.NoError(t, err)
+				wantStatus := config.StatusTimeout
+				if tc.cancelled {
+					wantStatus = config.StatusCancelled
+				}
+				require.Equal(t, wantStatus, task.Status)
+				require.Equal(t, string(wantStatus), saved.Status)
+				require.Positive(t, saved.EndTime)
+				require.Zero(t, countClientActions(client, "create", "jobs"))
+				if tc.replacement || tc.missing {
+					require.Zero(t, countClientActions(client, "delete", "jobs"))
+				} else {
+					require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
+					for _, action := range client.Actions() {
+						if action.GetVerb() == "delete" && action.GetResource().Resource == "jobs" {
+							options := action.(k8stesting.DeleteAction).GetDeleteOptions()
+							require.Equal(t, live.UID, *options.Preconditions.UID)
+						}
+					}
+				}
+				// Terminal persistence prevents another takeover from repeating work.
+				before := len(client.Actions())
+				require.NoError(t, runJob(ctx, task, client, store, func() {}, nil))
+				require.Len(t, client.Actions(), before)
+			})
+		}
+	}
+}

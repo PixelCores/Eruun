@@ -93,6 +93,30 @@ func TestWorkspaceDeletionWaitsForSandboxAndOnlyDeletesItsRecords(t *testing.T) 
 	require.NoError(t, s.Repo.Store.Get(ctx, &model.JobSandbox{ID: "foreign"}))
 }
 
+func TestWorkspaceDeletionWaitsForCheckpointCleanup(t *testing.T) {
+	s, _, delivery := testAccounts(t)
+	ctx := context.Background()
+	_, owner := registerTestUser(t, s, delivery, "email", "checkpoint-owner@example.com")
+	workspace, err := s.CreateWorkspace(ctx, owner, "Checkpoint team")
+	require.NoError(t, err)
+	row := &model.JobCheckpoint{ID: "retained", WorkspaceID: workspace.ID, State: "failed"}
+	require.NoError(t, s.Repo.Store.Add(ctx, row))
+	require.NoError(t, s.Repo.Store.Add(ctx, &model.JobCheckpoint{ID: "foreign", WorkspaceID: "foreign"}))
+	called := false
+	remove := func(context.Context, *model.Workspace) error { called = true; return nil }
+	require.ErrorIs(t, s.DeleteWorkspace(ctx, owner, workspace.ID, remove), bcode.ErrWorkspaceNotEmpty)
+	require.False(t, called, "a failed snapshot can still have running cloud resources")
+	updated, err := s.Repo.Store.CompareAndSwap(ctx, row, "id", row.ID, map[string]interface{}{"cleaned": true})
+	require.NoError(t, err)
+	require.True(t, updated)
+	require.NoError(t, s.DeleteWorkspace(ctx, owner, workspace.ID, remove))
+	require.True(t, called)
+	count, err := s.Repo.Store.Count(ctx, &model.JobCheckpoint{WorkspaceID: workspace.ID}, nil)
+	require.NoError(t, err)
+	require.Zero(t, count)
+	require.NoError(t, s.Repo.Store.Get(ctx, &model.JobCheckpoint{ID: "foreign"}))
+}
+
 func TestInvitationResendExpiryAndFailedDelivery(t *testing.T) {
 	s, _, d := testAccounts(t)
 	ctx := context.Background()

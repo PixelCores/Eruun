@@ -88,7 +88,7 @@ func testAccounts(t *testing.T) (*Service, *miniredis.Miniredis, *testDelivery) 
 		&model.Applications{},
 		&model.WorkflowQueue{},
 		&model.JobInfo{},
-		&model.JobArtifact{}, &model.ArtifactChunk{}, &model.JobDelivery{}, &model.JobSandbox{},
+		&model.JobArtifact{}, &model.ArtifactChunk{}, &model.JobDelivery{}, &model.JobSandbox{}, &model.JobCheckpoint{},
 	))
 	r := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: r.Addr()})
