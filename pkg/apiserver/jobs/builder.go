@@ -258,6 +258,12 @@ func BuildEvaluationTask(ctx context.Context, store datastore.DataStore, cfg *co
 	workload.Spec.TTLSecondsAfterFinished = ptr.To(int32(evaluation.ResultPolicy.RetentionDays * 86400))
 	job.Timeout = evaluation.TimeoutSeconds + spec.EvaluationCollectionGraceSeconds
 	if info.ExecutionDeadline > 0 {
+		if job.Status == config.StatusRunning && job.InternalInfo != "" {
+			// Takeover observes the committed attempt, including its collection
+			// window. Admission handles an elapsed absolute deadline as Timeout;
+			// only a new recovery must still have time to start its agent.
+			return workflowjob.RestoreInstantJobRetryCheckpoint(job)
+		}
 		job.Timeout = int64(time.Until(time.Unix(0, info.ExecutionDeadline)).Seconds())
 		if job.Timeout <= spec.EvaluationCollectionGraceSeconds {
 			return fmt.Errorf("evaluation recovery deadline elapsed")

@@ -103,6 +103,15 @@ func (s *Service) RecoverEvaluation(ctx context.Context, task *model.JobTask) (b
 	if err != nil {
 		return false, err
 	}
+	if source.InternalInfo == "" {
+		// Startup can fail before the first execution checkpoint is committed.
+		// There is no Runner to recover; malformed or lost checkpoints must
+		// still fail closed instead of being treated as an unstarted execution.
+		if task.InternalInfo != "" || source.Status != string(config.StatusFailed) {
+			return false, ErrRunnerConflict
+		}
+		return false, s.releaseRecoveryReference(ctx, task)
+	}
 	state, deadline, err := decodeRunnerState(source)
 	if err != nil {
 		return false, err
@@ -286,7 +295,7 @@ func (s *Service) isolateRecovery(ctx context.Context, task *model.JobTask, info
 		if !ok {
 			return datastore.ErrEntityInvalid
 		}
-		if row.State == sandboxReleased || row.Reason == "recovery_isolated" {
+		if row.Reason == "recovery_isolated" {
 			continue
 		}
 		if row.PodUID == "" {
@@ -295,6 +304,7 @@ func (s *Service) isolateRecovery(ctx context.Context, task *model.JobTask, info
 			}
 			continue
 		}
+		released := false
 		if err := recoveryOwnership(ctx, s.Store, task, func(tx datastore.DataStore) error {
 			locked := &model.JobSandbox{ID: row.ID}
 			if err := tx.(datastore.RowLocker).GetForUpdate(ctx, locked); err != nil {
@@ -307,7 +317,11 @@ func (s *Service) isolateRecovery(ctx context.Context, task *model.JobTask, info
 			if err != nil {
 				return err
 			}
-			locked.State, locked.Reason, locked.ReleaseRequested = sandboxRetained, "recovery_isolation", true
+			released = locked.State == sandboxReleased
+			if !released {
+				locked.State = sandboxRetained
+			}
+			locked.Reason, locked.ReleaseRequested = "recovery_isolation", true
 			locked.RetainUntil = &now
 			// Any older maintenance lease can no longer commit or extend retention.
 			locked.LeaseToken = ""
@@ -316,21 +330,27 @@ func (s *Service) isolateRecovery(ctx context.Context, task *model.JobTask, info
 		}); err != nil {
 			return err
 		}
-		obj, err := s.SandboxClient.Resource(SandboxGVR).Namespace(row.Namespace).Get(ctx, row.SandboxName, metav1.GetOptions{})
-		if err != nil {
-			return err
+		var waitForShutdown func() error
+		if !released {
+			obj, err := s.SandboxClient.Resource(SandboxGVR).Namespace(row.Namespace).Get(ctx, row.SandboxName, metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
+			if string(obj.GetUID()) != row.SandboxUID || !ownedSandbox(row, obj) {
+				return ErrRunnerConflict
+			}
+			patch, err := json.Marshal(map[string]any{"metadata": map[string]any{"uid": row.SandboxUID, "resourceVersion": obj.GetResourceVersion()}, "spec": map[string]any{"shutdownTime": time.Now().UTC().Format(time.RFC3339)}})
+			if err != nil {
+				return err
+			}
+			if _, err = s.SandboxClient.Resource(SandboxGVR).Namespace(row.Namespace).Patch(ctx, row.SandboxName, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
+				return err
+			}
+			waitForShutdown = func() error { return nil }
 		}
-		if string(obj.GetUID()) != row.SandboxUID || !ownedSandbox(row, obj) {
-			return ErrRunnerConflict
-		}
-		patch, err := json.Marshal(map[string]any{"metadata": map[string]any{"uid": row.SandboxUID, "resourceVersion": obj.GetResourceVersion()}, "spec": map[string]any{"shutdownTime": time.Now().UTC().Format(time.RFC3339)}})
-		if err != nil {
-			return err
-		}
-		if _, err = s.SandboxClient.Resource(SandboxGVR).Namespace(row.Namespace).Patch(ctx, row.SandboxName, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
-			return err
-		}
-		if err := s.confirmStoppedPod(ctx, row.Namespace, row.PodName, row.PodUID, func() error { return nil }); err != nil {
+		// Release only confirms the Sandbox CR is gone. Its exact Pod must
+		// still provide termination evidence before a clone can run.
+		if err := s.confirmStoppedPod(ctx, row.Namespace, row.PodName, row.PodUID, waitForShutdown); err != nil {
 			return fmt.Errorf("isolate source Sandbox %s: %w", row.TrialID, err)
 		}
 		if err := recoveryOwnership(ctx, s.Store, task, func(tx datastore.DataStore) error {

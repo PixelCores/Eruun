@@ -4,7 +4,10 @@ from http.server import BaseHTTPRequestHandler
 import json
 import os
 from pathlib import Path
+import shlex
 import shutil
+import subprocess
+import sys
 import tarfile
 import tempfile
 import threading
@@ -535,6 +538,65 @@ class RecoveryLifecycleTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(cancelled.is_set())
         self.assertLessEqual(requests[0]["seconds"], 0.02)
         self.assertNotIn("release", job.active["trial-a"])
+
+    async def test_native_launch_resolves_nvm_and_standard_cli_installations(self):
+        for agent, install in (("codex", ".nvm/versions/node/v22/bin"),
+                               ("codex", ".npm-global/bin"), ("claude-code", ".local/bin")):
+            with self.subTest(agent=agent, install=install):
+                directory = self.root / (agent + install.replace("/", "-"))
+                home = directory / "home"
+                binaries = directory / "bin"
+                binaries.mkdir(parents=True)
+                (binaries / "python3").symlink_to(sys.executable)
+                installed = home / install
+                installed.mkdir(parents=True)
+                if install.startswith(".nvm"):
+                    (home / ".nvm/nvm.sh").write_text('export PATH="$HOME/.nvm/versions/node/v22/bin:$PATH"\n')
+                    (home / ".bash_profile").write_text('. "$HOME/.nvm/nvm.sh"\n')
+                elif agent == "claude-code":
+                    (home / ".nvm").mkdir()
+                    (home / ".nvm/nvm.sh").write_text("exit 71\n")
+                identity = str(uuid.uuid4())
+                state_var, session_dir, key = (("CODEX_HOME", "sessions", "thread_id") if agent == "codex"
+                                               else ("CLAUDE_CONFIG_DIR", "projects", "session_id"))
+                cli = installed / ("codex" if agent == "codex" else "claude")
+                cli.write_text(
+                    "#!/bin/sh\n"
+                    f"if [ \"$1\" = --version ]; then printf '%s\\n' {shlex.quote(native.VERSIONS[agent])}; exit; fi\n"
+                    f'mkdir -p "${state_var}/{session_dir}"\n'
+                    f"printf '{{}}\\n' > \"${state_var}/{session_dir}/{identity}.jsonl\"\n"
+                    f"printf '%s\\n' '{json.dumps({key: identity})}'\n")
+                cli.chmod(0o755)
+                supervisor = directory / "supervisor.py"
+                # Exercise the real supervisor/CLI lookup without requiring a
+                # Linux PID namespace; quiescence has separate boundary tests.
+                supervisor.write_text(
+                    "import sys\nfrom pathlib import Path\nfrom unittest.mock import patch\n"
+                    f"sys.path.insert(0, {str(Path(native.__file__).parent)!r})\n"
+                    "import native_checkpoint as native\n"
+                    f"native.STATE = Path({str(directory / 'logs/native')!r})\n"
+                    "with patch.object(native, 'baseline_processes', return_value={}), "
+                    "patch.object(native, 'assert_quiescent'), patch.object(native.os, 'sync', create=True):\n"
+                    "    sys.exit(native.main())\n")
+                async def execute(command, env, timeout_sec):
+                    command = command.replace("/tmp/eruun-native-checkpoint.py", shlex.quote(str(supervisor)))
+                    # ACK executes sh -c wrapping bash -ic, so .bash_profile is
+                    # not loaded and cannot make the NVM fixture pass by itself.
+                    result = await asyncio.to_thread(
+                        subprocess.run, ["sh", "-c", "bash -ic " + shlex.quote(command)],
+                        env={"HOME": str(home), "PATH": str(binaries) + ":/usr/bin:/bin", **env},
+                        capture_output=True, text=True, timeout=timeout_sec)
+                    return SimpleNamespace(return_code=result.returncode, stdout=result.stdout)
+                environment = SimpleNamespace(upload_file=AsyncMock(), exec=execute)
+                trial = SimpleNamespace(config=SimpleNamespace(trial_name="trial-a"), agent=SimpleNamespace(
+                    model_connection=SimpleNamespace(api_key="fixture-key", configured_base_url=None),
+                    _resolve_auth_env=lambda: {"ANTHROPIC_API_KEY": "fixture-key"}))
+                job = recovery.RecoveryJob(config(agent), {}, directory)
+                job.active["trial-a"] = {"agentTimeoutSeconds": 10}
+                record = {"stage": "pending"}
+                await job.native_run(record, trial, "instruction", environment, None)
+                self.assertEqual(record["sessionId"], identity)
+                self.assertEqual(job.active["trial-a"]["state"], "finalizing")
 
     async def test_pending_checkpoint_keeps_all_native_agents_parked(self):
         job = recovery.RecoveryJob(config(), {}, self.root / "source")

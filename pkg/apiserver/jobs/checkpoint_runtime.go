@@ -13,6 +13,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	"golang.org/x/sync/errgroup"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -101,15 +102,44 @@ func (s *Service) advanceCheckpoint(ctx context.Context, auth *runnerAuthorizati
 	}
 	allReady := true
 	client := s.SandboxClient.Resource(CheckpointGVR).Namespace(row.Namespace)
-	for index := range members {
-		member := &members[index]
-		source, err := s.checkpointSource(ctx, row, *member)
-		if k8serrors.IsNotFound(err) || err == ErrRunnerConflict {
+	// Revalidate every member on each pass, including snapshots already observed
+	// as successful. Bound parallel reads so a complete set does not require the
+	// sum of all Kubernetes round trips to fit the operation and Runner deadlines.
+	// Writes stay serial and retain the claim/lease check before every mutation.
+	sources := make([]map[string]interface{}, len(members))
+	snapshots := make([]*unstructured.Unstructured, len(members))
+	group, observeCtx := errgroup.WithContext(ctx)
+	group.SetLimit(8)
+	for index, member := range members {
+		group.Go(func() error {
+			source, err := s.checkpointSource(observeCtx, row, member)
+			if k8serrors.IsNotFound(err) || err == ErrRunnerConflict {
+				return ErrRunnerConflict
+			}
+			if err != nil {
+				return fmt.Errorf("read checkpoint source: %w", err)
+			}
+			sources[index] = source
+			object, err := client.Get(observeCtx, member.SnapshotName, metav1.GetOptions{})
+			if k8serrors.IsNotFound(err) {
+				return nil
+			}
+			if err != nil {
+				return fmt.Errorf("observe checkpoint snapshot: %w", err)
+			}
+			snapshots[index] = object
+			return nil
+		})
+	}
+	if err := group.Wait(); err != nil {
+		if err == ErrRunnerConflict {
 			return s.checkpointFailed(ctx, auth, row, "source_identity_changed")
 		}
-		if err != nil {
-			return fmt.Errorf("read checkpoint source: %w", err)
-		}
+		return err
+	}
+	for index := range members {
+		member := &members[index]
+		source := sources[index]
 		if len(member.SandboxSpec) == 0 {
 			member.SandboxSpec, err = json.Marshal(source)
 			if err != nil {
@@ -137,8 +167,8 @@ func (s *Service) advanceCheckpoint(ctx context.Context, auth *runnerAuthorizati
 				return s.checkpointFailed(ctx, auth, row, "source_spec_changed")
 			}
 		}
-		object, err := client.Get(ctx, member.SnapshotName, metav1.GetOptions{})
-		if k8serrors.IsNotFound(err) {
+		object := snapshots[index]
+		if object == nil {
 			if member.SnapshotUID != "" {
 				return s.checkpointFailed(ctx, auth, row, "snapshot_missing")
 			}

@@ -387,6 +387,10 @@ class RecoveryJob:
         await asyncio.wait_for(
             environment.upload_file(Path(__file__).with_name("native_checkpoint.py"), "/tmp/eruun-native-checkpoint.py"),
             timeout=budget)
+        command = 'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"; '
+        if self.config["agent"]["name"] == "codex":
+            command += 'if [ -s ~/.nvm/nvm.sh ]; then . ~/.nvm/nvm.sh; fi; '
+        command += "python3 /tmp/eruun-native-checkpoint.py"
         while True:
             budget = remaining_time(active["agentDeadline"])
             request = {"agent": self.config["agent"]["name"], "model": self.config["agent"]["model"].split("/")[-1],
@@ -405,8 +409,7 @@ class RecoveryJob:
             native_env["ERUUN_NATIVE_REQUEST"] = json.dumps(request)
             active["state"] = "running"
             result = await asyncio.wait_for(
-                environment.exec('export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"; python3 /tmp/eruun-native-checkpoint.py',
-                                 env=native_env, timeout_sec=remaining_time(active["agentDeadline"])),
+                environment.exec(command, env=native_env, timeout_sec=remaining_time(active["agentDeadline"])),
                 timeout=remaining_time(active["agentDeadline"]))
             try:
                 value = json.loads(result.stdout)

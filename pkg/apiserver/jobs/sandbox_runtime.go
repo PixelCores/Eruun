@@ -318,6 +318,8 @@ func (s *Service) advanceSandbox(ctx context.Context, auth *runnerAuthorization,
 }
 
 func (s *Service) cleanupSandbox(ctx context.Context, auth *runnerAuthorization, row *model.JobSandbox) error {
+	// Cleanup progress must retain an existing recovery_isolated proof so a
+	// replacement Worker can resume after the terminated Pod is removed.
 	client := s.SandboxClient.Resource(SandboxGVR).Namespace(row.Namespace)
 	object, err := client.Get(ctx, row.SandboxName, metav1.GetOptions{})
 	if k8serrors.IsNotFound(err) {
@@ -325,7 +327,10 @@ func (s *Service) cleanupSandbox(ctx context.Context, auth *runnerAuthorization,
 			// A timed-out create may still arrive. Until its absolute shutdown
 			// bound, keep the intent and slot so maintenance can find the orphan.
 			if current.SandboxUID != "" || current.CreateAttempts == 0 || !now.Before(current.Deadline.Add(sandboxRetention)) {
-				current.State, current.SlotReserved, current.StartReserved, current.Reason = sandboxReleased, false, false, ""
+				current.State, current.SlotReserved, current.StartReserved = sandboxReleased, false, false
+				if current.Reason != "recovery_isolated" {
+					current.Reason = ""
+				}
 			} else {
 				current.State, current.Reason = sandboxPending, "creation_outcome_unknown"
 			}
@@ -361,7 +366,10 @@ func (s *Service) cleanupSandbox(ctx context.Context, auth *runnerAuthorization,
 				return ErrRunnerConflict
 			}
 			if current.RetainUntil == nil || !now.Before(*current.RetainUntil) {
-				current.State, current.Reason = sandboxPending, "release_pending"
+				current.State = sandboxPending
+				if current.Reason != "recovery_isolated" {
+					current.Reason = "release_pending"
+				}
 				current.LeaseToken, current.LeaseUntil, current.ReconcileAt = "", nil, now
 				return nil
 			}
@@ -399,7 +407,10 @@ func (s *Service) cleanupSandbox(ctx context.Context, auth *runnerAuthorization,
 		}
 		if active {
 			return s.mutateSandbox(ctx, auth, row, func(_ datastore.DataStore, current *model.JobSandbox, now time.Time) error {
-				current.State, current.Reason = sandboxPending, "checkpoint_running"
+				current.State = sandboxPending
+				if current.Reason != "recovery_isolated" {
+					current.Reason = "checkpoint_running"
+				}
 				current.LeaseToken, current.LeaseUntil, current.ReconcileAt = "", nil, now.Add(15*time.Second)
 				return nil
 			})
@@ -415,9 +426,15 @@ func (s *Service) cleanupSandbox(ctx context.Context, auth *runnerAuthorization,
 	}
 	return s.mutateSandbox(ctx, auth, row, func(_ datastore.DataStore, current *model.JobSandbox, now time.Time) error {
 		if k8serrors.IsNotFound(err) {
-			current.State, current.SlotReserved, current.StartReserved, current.Reason = sandboxReleased, false, false, ""
+			current.State, current.SlotReserved, current.StartReserved = sandboxReleased, false, false
+			if current.Reason != "recovery_isolated" {
+				current.Reason = ""
+			}
 		} else {
-			current.State, current.Reason = sandboxPending, "release_pending"
+			current.State = sandboxPending
+			if current.Reason != "recovery_isolated" {
+				current.Reason = "release_pending"
+			}
 		}
 		current.LeaseToken, current.LeaseUntil = "", nil
 		current.ReconcileAt = now.Add(15 * time.Second)

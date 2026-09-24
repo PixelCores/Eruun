@@ -7,12 +7,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	evaluationjobs "github.com/PixelCores/Eruun/pkg/apiserver/jobs"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/stretchr/testify/require"
+	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/utils/ptr"
 )
 
@@ -89,5 +94,64 @@ func TestRestoreDoesNotReuseUnstartedOriginalExecutions(t *testing.T) {
 				require.EqualValues(t, 2, task.RunGeneration)
 			})
 		}
+	}
+}
+
+func TestGenerateEvaluationTakeoverDuringCollectionPreservesAttempt(t *testing.T) {
+	for _, remaining := range []time.Duration{480 * time.Second, -time.Second} {
+		t.Run(remaining.String(), func(t *testing.T) {
+			ctx := account.WithScope(context.Background(), account.Scope{WorkspaceID: "space", Namespace: "space-ns", Role: "member"})
+			declaration := spec.JobSpec{Name: "evaluation", Type: "job", Traits: spec.JobTraits{Evaluation: &spec.EvaluationTraitSpec{
+				Env: "ack", Agent: "codex", Model: "openai/model", TaskPackageID: "11111111-1111-1111-1111-111111111111",
+				Recovery: &spec.EvaluationRecoverySpec{AgentVersion: spec.CodexRecoveryVersion, ReplaySafe: true},
+			}}}
+			raw, err := json.Marshal(declaration)
+			require.NoError(t, err)
+			parent := &model.WorkflowQueue{TaskID: "takeover", WorkspaceID: "space", Type: config.WorkflowTaskTypeJob,
+				JobSpec: string(raw), Status: config.StatusRunning, RunGeneration: 1, RunToken: "first-owner", WorkerID: "worker-1"}
+			store := &evaluationWorkflowStore{}
+			cfg := &config.Config{Jobs: &spec.JobsRuntimeConfig{RunnerImage: "example.com/runner:0.22.0", APIURL: "https://api.example.com"}}
+			executions, err := GenerateJobTasks(ctx, parent, store, 3600, cfg)
+			require.NoError(t, err)
+			original := executions[0].Jobs[config.JobPriorityNormal][0]
+			root := original.ExecutionKey
+			digest := sha256.Sum256([]byte(root + "/recovery/1"))
+			key := hex.EncodeToString(digest[:])
+			var metadata map[string]any
+			require.NoError(t, json.Unmarshal([]byte(original.EvaluationInfo), &metadata))
+			metadata["rootExecutionKey"], metadata["recoveryIndex"], metadata["resumeCheckpointId"] = root, 1, "complete-point"
+			metadata["recoveryName"], metadata["recoveryIsolated"] = "eruun-recovery-"+key[:32], true
+			deadline := time.Now().Add(remaining).UnixNano()
+			metadata["executionDeadline"] = deadline
+			raw, err = json.Marshal(metadata)
+			require.NoError(t, err)
+			original.Name, original.ExecutionKey = metadata["recoveryName"].(string), key
+			workload := original.JobInfo.(*batchv1.Job)
+			workload.Name = original.Name
+			workflowjob.ApplyTaskIDAnnotation(original)
+			workflowjob.ApplyExecutionIdentity(original)
+			workload.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
+			checkpoint, err := json.Marshal(map[string]any{"kind": "instant_job_retry", "version": 1, "attempt": 1,
+				"job": workload, "currentUID": "running-successor", "deadline": deadline})
+			require.NoError(t, err)
+			store.jobInfos = []*model.JobInfo{{Type: original.JobType, WorkspaceID: "space", TaskID: parent.TaskID,
+				Status: string(config.StatusRunning), ExecutionKey: &key, RunGeneration: 1, Attempt: 1,
+				InternalInfo: string(checkpoint), EvaluationInfo: string(raw)}}
+			parent.RunGeneration, parent.RunToken, parent.WorkerID = 2, "replacement-owner", "worker-2"
+			executions, err = GenerateJobTasks(ctx, parent, store, 3600, cfg)
+			require.NoError(t, err)
+			require.Len(t, executions, 1)
+			restored := executions[0].Jobs[config.JobPriorityNormal][0]
+			require.Equal(t, config.StatusRunning, restored.Status, "takeover must not generate a synthetic failure")
+			require.Equal(t, key, restored.ExecutionKey)
+			require.EqualValues(t, 2, restored.OwnerRunGeneration)
+			require.Equal(t, "replacement-owner", restored.RunToken)
+			wantWorkload, err := json.Marshal(workload)
+			require.NoError(t, err)
+			gotWorkload, err := json.Marshal(restored.JobInfo)
+			require.NoError(t, err)
+			require.JSONEq(t, string(wantWorkload), string(gotWorkload))
+			require.Equal(t, string(checkpoint), restored.InternalInfo)
+		})
 	}
 }

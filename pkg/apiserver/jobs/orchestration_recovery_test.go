@@ -442,3 +442,323 @@ func TestEvaluationExecutionRankRejectsUnrelatedLineage(t *testing.T) {
 	_, ok = EvaluationExecutionRank(successor, root)
 	require.False(t, ok)
 }
+
+func TestEvaluationRecoveryReleasedSandboxRequiresTermination(t *testing.T) {
+	for _, condition := range []string{"terminated", "running", "missing", "replaced", "unknown termination", "stale owner"} {
+		t.Run(condition, func(t *testing.T) {
+			f, task, _ := newRecoverableEvaluation(t)
+			ctx := context.Background()
+			row := &model.JobSandbox{ID: sandboxID(task.WorkspaceID, task.ExecutionKey, "trial-1"), WorkspaceID: task.WorkspaceID, TaskID: task.TaskID,
+				JobID: f.record.ID, ExecutionKey: task.ExecutionKey, TrialID: "trial-1", Namespace: task.Namespace, State: sandboxReady,
+				SandboxName: "source-sandbox", SandboxUID: "source-sandbox-uid", PodName: "source-trial", PodUID: "source-trial-uid",
+				RunnerUID: string(f.pod.UID), RunnerPodName: f.pod.Name, SlotReserved: true, Deadline: time.Now().Add(time.Hour)}
+			require.NoError(t, f.raw.Add(ctx, row))
+			pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: row.PodName, Namespace: row.Namespace, UID: "source-trial-uid"},
+				Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "main"}}},
+				Status: corev1.PodStatus{Phase: corev1.PodFailed, ContainerStatuses: []corev1.ContainerStatus{{Name: "main",
+					State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{FinishedAt: metav1.Now(), ExitCode: 1, Reason: "Error"}}}}}}
+			switch condition {
+			case "running":
+				pod.Status.Phase = corev1.PodRunning
+				pod.Status.ContainerStatuses[0].State = corev1.ContainerState{Running: &corev1.ContainerStateRunning{StartedAt: metav1.Now()}}
+			case "replaced":
+				pod.UID = "replacement-pod"
+			case "unknown termination":
+				pod.Status.ContainerStatuses[0].State.Terminated.Reason = "ContainerStatusUnknown"
+			}
+			client := f.service.Kube.(*fake.Clientset)
+			if condition != "missing" {
+				require.NoError(t, client.Tracker().Add(pod))
+			}
+			// A missing Sandbox CR causes ordinary maintenance to release its
+			// reservation even when the source Pod has not stopped.
+			require.NoError(t, f.service.maintainSandbox(ctx, row))
+			require.NoError(t, f.raw.Get(ctx, row))
+			require.Equal(t, sandboxReleased, row.State)
+			if condition == "stale owner" {
+				client.PrependReactor("get", "pods", func(action k8stesting.Action) (bool, runtime.Object, error) {
+					if action.(k8stesting.GetAction).GetName() != row.PodName {
+						return false, nil, nil
+					}
+					f.parent.RunToken = "new-owner-token"
+					return true, pod.DeepCopy(), f.raw.Put(ctx, f.parent)
+				})
+			}
+			again, err := f.service.RecoverEvaluation(ctx, task)
+			info, decodeErr := decodeEvaluationInfo(task.EvaluationInfo)
+			require.NoError(t, decodeErr)
+			require.NoError(t, f.raw.Get(ctx, row))
+			if condition != "terminated" {
+				require.Error(t, err)
+				require.False(t, again)
+				require.False(t, info.RecoveryIsolated)
+				require.NotEqual(t, "recovery_isolated", row.Reason)
+				if condition == "stale owner" {
+					require.ErrorIs(t, err, repository.ErrWorkflowOwnershipLost)
+				}
+				for _, action := range client.Actions() {
+					require.NotEqual(t, "create", action.GetVerb(), "unconfirmed source must not launch a Runner")
+					require.NotEqual(t, "delete", action.GetVerb(), "isolation must not force-delete the source")
+				}
+				return
+			}
+			require.NoError(t, err)
+			require.True(t, again)
+			require.True(t, info.RecoveryIsolated)
+			require.Equal(t, sandboxReleased, row.State)
+			require.Equal(t, "recovery_isolated", row.Reason)
+
+			// A crash after the member proof must not require a deleted Pod to
+			// reappear. The new owner resumes the same durable reservation.
+			reserved, err := evaluationRecord(ctx, f.service.Store, task, task.ExecutionKey)
+			require.NoError(t, err)
+			info.RecoveryIsolated = false
+			raw, err := json.Marshal(info)
+			require.NoError(t, err)
+			reserved.EvaluationInfo, task.EvaluationInfo = string(raw), string(raw)
+			require.NoError(t, f.raw.Put(ctx, reserved))
+			require.NoError(t, client.CoreV1().Pods(row.Namespace).Delete(ctx, row.PodName, metav1.DeleteOptions{}))
+			f.parent.RunGeneration++
+			f.parent.RunToken, f.parent.WorkerID = "takeover-token", "takeover-worker"
+			task.OwnerRunGeneration, task.RunToken, task.WorkerID = f.parent.RunGeneration, f.parent.RunToken, f.parent.WorkerID
+			require.NoError(t, f.raw.Put(ctx, f.parent))
+			again, err = f.service.RecoverEvaluation(ctx, task)
+			require.NoError(t, err)
+			require.False(t, again)
+			info, err = decodeEvaluationInfo(task.EvaluationInfo)
+			require.NoError(t, err)
+			require.True(t, info.RecoveryIsolated)
+		})
+	}
+}
+
+func TestEvaluationRecoveryWithoutPodRequiresUncreatedSandbox(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		state          string
+		sandboxUID     string
+		createAttempts int
+		allowed        bool
+	}{
+		{name: "released without create", state: sandboxReleased, allowed: true},
+		{name: "failed without create", state: sandboxFailed, allowed: true},
+		{name: "released after create", state: sandboxReleased, createAttempts: 1},
+		{name: "released with Sandbox UID", state: sandboxReleased, sandboxUID: "source-sandbox-uid"},
+		{name: "creation pending", state: sandboxPending},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, task, _ := newRecoverableEvaluation(t)
+			ctx := context.Background()
+			row := &model.JobSandbox{ID: sandboxID(task.WorkspaceID, task.ExecutionKey, "trial-1"), WorkspaceID: task.WorkspaceID, TaskID: task.TaskID,
+				JobID: f.record.ID, ExecutionKey: task.ExecutionKey, TrialID: "trial-1", Namespace: task.Namespace,
+				State: tc.state, SandboxUID: tc.sandboxUID, CreateAttempts: tc.createAttempts}
+			require.NoError(t, f.raw.Add(ctx, row))
+			again, err := f.service.RecoverEvaluation(ctx, task)
+			if tc.allowed {
+				require.NoError(t, err)
+				require.True(t, again)
+			} else {
+				require.ErrorContains(t, err, "source Sandbox creation is not settled")
+				require.False(t, again)
+			}
+		})
+	}
+}
+
+func TestEvaluationRecoveryCleanupPreservesSandboxTerminationProof(t *testing.T) {
+	for _, condition := range []string{"delete Sandbox", "Sandbox already missing", "delayed deletion", "snapshot running"} {
+		t.Run(condition, func(t *testing.T) {
+			f, task, _ := newRecoverableEvaluation(t)
+			ctx := context.Background()
+			row := &model.JobSandbox{ID: sandboxID(task.WorkspaceID, task.ExecutionKey, "trial-1"), WorkspaceID: task.WorkspaceID, TaskID: task.TaskID,
+				JobID: f.record.ID, ExecutionKey: task.ExecutionKey, TrialID: "trial-1", Namespace: task.Namespace, State: sandboxReady,
+				SandboxName: "source-sandbox", SandboxUID: "source-sandbox-uid", PodName: "source-trial", PodUID: "source-trial-uid",
+				RunnerUID: string(f.pod.UID), RunnerPodName: f.pod.Name, SlotReserved: true, Deadline: time.Now().Add(time.Hour)}
+			require.NoError(t, f.raw.Add(ctx, row))
+			pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: row.PodName, Namespace: row.Namespace, UID: "source-trial-uid"},
+				Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "main"}}},
+				Status: corev1.PodStatus{Phase: corev1.PodFailed, ContainerStatuses: []corev1.ContainerStatus{{Name: "main",
+					State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{FinishedAt: metav1.Now(), ExitCode: 1, Reason: "Error"}}}}}}
+			client := f.service.Kube.(*fake.Clientset)
+			require.NoError(t, client.Tracker().Add(pod))
+			sandbox := &unstructured.Unstructured{Object: map[string]any{
+				"apiVersion": "agents.kruise.io/v1alpha1", "kind": "Sandbox", "spec": map[string]any{},
+			}}
+			sandbox.SetName(row.SandboxName)
+			sandbox.SetNamespace(row.Namespace)
+			sandbox.SetUID("source-sandbox-uid")
+			sandbox.SetLabels(sandboxLabels(row))
+			sandbox.SetAnnotations(map[string]string{sandboxDigestAnnotation: row.RequestDigest, sandboxRunnerAnnotation: row.RunnerUID})
+			dynamicClient := f.service.SandboxClient.(*dynamicfake.FakeDynamicClient)
+			require.NoError(t, dynamicClient.Tracker().Create(SandboxGVR, sandbox, row.Namespace))
+			again, err := f.service.RecoverEvaluation(ctx, task)
+			require.NoError(t, err)
+			require.True(t, again)
+
+			// Model a Worker crash after the member proof and before the final
+			// all-members-isolated commit, while maintenance cleans its source.
+			reserved, err := evaluationRecord(ctx, f.service.Store, task, task.ExecutionKey)
+			require.NoError(t, err)
+			info, err := decodeEvaluationInfo(reserved.EvaluationInfo)
+			require.NoError(t, err)
+			info.RecoveryIsolated = false
+			raw, err := json.Marshal(info)
+			require.NoError(t, err)
+			reserved.EvaluationInfo, task.EvaluationInfo = string(raw), string(raw)
+			require.NoError(t, f.raw.Put(ctx, reserved))
+			var finishPending func()
+			switch condition {
+			case "Sandbox already missing":
+				require.NoError(t, dynamicClient.Resource(SandboxGVR).Namespace(row.Namespace).Delete(ctx, row.SandboxName, metav1.DeleteOptions{}))
+			case "delayed deletion":
+				deleteCalls := 0
+				dynamicClient.PrependReactor("delete", "sandboxes", func(k8stesting.Action) (bool, runtime.Object, error) {
+					deleteCalls++
+					return deleteCalls == 1, nil, nil
+				})
+				finishPending = func() { require.Equal(t, 1, deleteCalls) }
+			case "snapshot running":
+				member := CheckpointMember{TrialID: row.TrialID, SandboxID: row.ID, SandboxUID: row.SandboxUID,
+					PodName: row.PodName, PodUID: row.PodUID, SnapshotName: "pending-snapshot", SnapshotUID: "snapshot-uid", CreateRequested: true}
+				members, err := json.Marshal([]CheckpointMember{member})
+				require.NoError(t, err)
+				point := &model.JobCheckpoint{ID: "later-pending-point", WorkspaceID: row.WorkspaceID, TaskID: row.TaskID,
+					ExecutionKey: row.ExecutionKey, Namespace: row.Namespace, State: sandboxPending, Members: members,
+					SourceDeadline: row.Deadline, ExpiresAt: row.Deadline.Add(sandboxRetention)}
+				require.NoError(t, f.raw.Add(ctx, point))
+				snapshot := &unstructured.Unstructured{Object: map[string]any{
+					"apiVersion": "agents.kruise.io/v1alpha1", "kind": "Checkpoint",
+					"spec":   map[string]any{"podName": row.PodName, "keepRunning": true, "persistentContents": []any{"filesystem"}},
+					"status": map[string]any{"phase": "Running"},
+				}}
+				snapshot.SetName(member.SnapshotName)
+				snapshot.SetNamespace(row.Namespace)
+				snapshot.SetUID("snapshot-uid")
+				snapshot.SetLabels(map[string]string{config.LabelManagedBy: "eruun"})
+				snapshot.SetAnnotations(map[string]string{checkpointOwnerAnnotation: point.ID, checkpointPodAnnotation: row.PodUID})
+				require.NoError(t, dynamicClient.Tracker().Create(CheckpointGVR, snapshot, row.Namespace))
+				finishPending = func() {
+					require.NoError(t, unstructured.SetNestedField(snapshot.Object, "Succeeded", "status", "phase"))
+					_, err := dynamicClient.Resource(CheckpointGVR).Namespace(row.Namespace).Update(ctx, snapshot, metav1.UpdateOptions{})
+					require.NoError(t, err)
+				}
+			}
+			require.NoError(t, f.service.maintainSandbox(ctx, row))
+			require.NoError(t, f.raw.Get(ctx, row))
+			require.Equal(t, "recovery_isolated", row.Reason)
+			if finishPending != nil {
+				require.Equal(t, sandboxPending, row.State)
+				finishPending()
+				require.NoError(t, f.service.maintainSandbox(ctx, row))
+				require.NoError(t, f.raw.Get(ctx, row))
+			}
+			require.Equal(t, sandboxReleased, row.State)
+			require.Equal(t, "recovery_isolated", row.Reason)
+			require.NoError(t, client.CoreV1().Pods(row.Namespace).Delete(ctx, row.PodName, metav1.DeleteOptions{}))
+			f.parent.RunGeneration++
+			f.parent.RunToken, f.parent.WorkerID = "takeover-token", "takeover-worker"
+			task.OwnerRunGeneration, task.RunToken, task.WorkerID = f.parent.RunGeneration, f.parent.RunToken, f.parent.WorkerID
+			require.NoError(t, f.raw.Put(ctx, f.parent))
+			again, err = f.service.RecoverEvaluation(ctx, task)
+			require.NoError(t, err)
+			require.False(t, again)
+			info, err = decodeEvaluationInfo(task.EvaluationInfo)
+			require.NoError(t, err)
+			require.True(t, info.RecoveryIsolated)
+		})
+	}
+}
+
+func TestEvaluationRecoveryStartupFailureSettlesBeforeFirstCheckpoint(t *testing.T) {
+	f, task, _ := newRecoverableEvaluation(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	leaseUntil := time.Now().Add(time.Hour)
+	f.parent.LeaseExpiresAt = &leaseUntil
+	require.NoError(t, f.raw.Put(ctx, f.parent))
+	task.Status, task.InternalInfo = config.StatusQueued, ""
+	require.NoError(t, f.raw.Client.Model(&model.JobInfo{}).Where("id = ?", f.record.ID).
+		Updates(map[string]any{"status": string(config.StatusQueued), "internal_info": ""}).Error)
+	client := f.service.Kube.(*fake.Clientset)
+	client.PrependReactor("get", "jobs", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, k8serrors.NewServiceUnavailable("startup Kubernetes API unavailable")
+	})
+	ctx = workflowjob.WithEvaluationRecovery(ctx, f.service.RecoverEvaluation)
+	finished := make(chan error, 1)
+	go func() {
+		finished <- workflowjob.RunJobs(ctx, []*model.JobTask{task}, 1, client, nil, f.service.Store, func() {}, true, nil, nil, nil, nil, nil)
+	}()
+	require.Eventually(t, func() bool {
+		var count int64
+		return f.raw.Client.Model(&model.JobInfo{}).Where("task_id = ? AND scheduling_state = ?", f.parent.TaskID, "queued").Count(&count).Error == nil && count == 1
+	}, time.Second, 10*time.Millisecond)
+	count, err := repository.AdmitQueuedJobs(ctx, f.service.Store)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+	select {
+	case err := <-finished:
+		require.NoError(t, err, "startup failure must not become an infrastructure retry")
+	case <-ctx.Done():
+		t.Fatal("startup failure did not settle")
+	}
+	require.Equal(t, config.StatusFailed, task.Status)
+	require.Contains(t, task.Error, "startup Kubernetes API unavailable")
+	require.Empty(t, task.InternalInfo)
+	saved, err := evaluationRecord(ctx, f.service.Store, task, task.ExecutionKey)
+	require.NoError(t, err)
+	require.Equal(t, string(config.StatusFailed), saved.Status)
+	require.Empty(t, saved.InternalInfo)
+	require.Equal(t, "released", saved.SchedulingState)
+
+	// Re-entering with a new workflow lease must keep the committed failure.
+	f.parent.RunGeneration++
+	f.parent.RunToken, f.parent.WorkerID = "takeover-token", "takeover-worker"
+	task.OwnerRunGeneration, task.RunToken, task.WorkerID = f.parent.RunGeneration, f.parent.RunToken, f.parent.WorkerID
+	require.NoError(t, f.raw.Put(ctx, f.parent))
+	require.NoError(t, workflowjob.RunJobs(ctx, []*model.JobTask{task}, 1, client, nil, f.service.Store, func() {}, true, nil, nil, nil, nil, nil))
+	require.Equal(t, config.StatusFailed, task.Status)
+	for _, action := range client.Actions() {
+		require.NotEqual(t, "create", action.GetVerb())
+	}
+	jobCount, err := f.raw.Count(ctx, &model.JobInfo{TaskID: task.TaskID}, nil)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, jobCount)
+}
+
+func TestEvaluationRecoveryUnstartedFailureRejectsInvalidState(t *testing.T) {
+	for _, condition := range []string{"malformed checkpoint", "lost checkpoint", "running record", "stale owner"} {
+		t.Run(condition, func(t *testing.T) {
+			f, task, point := newRecoverableEvaluation(t)
+			ctx := context.Background()
+			persisted := ""
+			status := config.StatusFailed
+			if condition != "lost checkpoint" {
+				task.InternalInfo = ""
+			}
+			switch condition {
+			case "malformed checkpoint":
+				persisted, task.InternalInfo = "{", "{"
+			case "running record":
+				status = config.StatusRunning
+			case "stale owner":
+				task.RunToken = "old-owner-token"
+			}
+			require.NoError(t, f.raw.Client.Model(&model.JobInfo{}).Where("id = ?", f.record.ID).
+				Updates(map[string]any{"status": string(status), "internal_info": persisted}).Error)
+			point.ReferencedByExecutionKey = task.ExecutionKey
+			require.NoError(t, f.raw.Put(ctx, point))
+			again, err := f.service.RecoverEvaluation(ctx, task)
+			require.Error(t, err)
+			require.False(t, again)
+			if condition == "malformed checkpoint" {
+				require.ErrorContains(t, err, "decode instant Job retry checkpoint")
+			} else if condition == "stale owner" {
+				require.ErrorIs(t, err, repository.ErrWorkflowOwnershipLost)
+			} else {
+				require.ErrorIs(t, err, ErrRunnerConflict)
+			}
+			require.NoError(t, f.raw.Get(ctx, point))
+			require.Equal(t, task.ExecutionKey, point.ReferencedByExecutionKey)
+		})
+	}
+}

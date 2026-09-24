@@ -147,10 +147,10 @@ func (s *Service) maintainCheckpoint(ctx context.Context, candidate *model.JobCh
 	for _, member := range members {
 		object, err := client.Get(ctx, member.SnapshotName, metav1.GetOptions{})
 		if k8serrors.IsNotFound(err) {
-			// A timed-out request can still create its deterministic CR. Its
-			// deletion cannot establish that it never existed. Keep this discovery
-			// intent through the source's absolute retention bound.
-			if member.CreateRequested && member.SnapshotUID == "" {
+			// A timed-out request can still create its CR, and deleting a running
+			// CR does not stop the cloud snapshot. An observed UID is not terminal
+			// proof; keep the source until success or its absolute retention bound.
+			if member.CreateRequested && member.SnapshotID == "" {
 				now, err := s.Store.(datastore.DatabaseClock).CurrentDatabaseTime(ctx)
 				if err != nil {
 					return err
@@ -218,6 +218,7 @@ func (s *Service) sandboxCheckpointActive(ctx context.Context, row *model.JobSan
 	if err != nil {
 		return false, err
 	}
+	var now time.Time
 	for _, entity := range points {
 		point := entity.(*model.JobCheckpoint)
 		members, err := checkpointMembers(point)
@@ -230,6 +231,18 @@ func (s *Service) sandboxCheckpointActive(ctx context.Context, row *model.JobSan
 			}
 			object, err := s.SandboxClient.Resource(CheckpointGVR).Namespace(point.Namespace).Get(ctx, member.SnapshotName, metav1.GetOptions{})
 			if k8serrors.IsNotFound(err) {
+				// CR deletion cannot prove the cloud snapshot stopped.
+				if member.SnapshotID == "" {
+					if now.IsZero() {
+						now, err = s.Store.(datastore.DatabaseClock).CurrentDatabaseTime(ctx)
+						if err != nil {
+							return false, err
+						}
+					}
+					if now.Before(point.SourceDeadline.Add(sandboxRetention)) {
+						return true, nil
+					}
+				}
 				continue
 			}
 			if err != nil {
