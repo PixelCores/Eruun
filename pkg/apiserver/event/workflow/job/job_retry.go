@@ -369,6 +369,13 @@ func (c *InstantJobCtl) newRetryCheckpoint(ctx context.Context, desired *batchv1
 		Kind: "instant_job_retry", Version: 1, Attempt: 1,
 		Deadline: time.Now().Add(time.Duration(timeout) * time.Second).UnixNano(), Job: desired.DeepCopy(),
 	}
+	if raw := desired.Annotations[EvaluationDeadlineAnnotation]; raw != "" && c.job.JobType == string(config.JobEval) {
+		deadline, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || deadline <= time.Now().UnixNano() || deadline > cp.Deadline+int64(time.Second) {
+			return nil, fmt.Errorf("invalid evaluation recovery deadline")
+		}
+		cp.Deadline = deadline
+	}
 	ttl, err := retryJobRetentionSeconds(cp.Deadline, time.Now())
 	if err != nil {
 		return nil, err

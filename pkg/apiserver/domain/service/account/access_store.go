@@ -38,6 +38,8 @@ func artifactWorkspace(e datastore.Entity) (string, bool) {
 		return value.WorkspaceID, true
 	case *model.JobSandbox:
 		return value.WorkspaceID, true
+	case *model.JobCheckpoint:
+		return value.WorkspaceID, true
 	default:
 		return "", false
 	}

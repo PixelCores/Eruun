@@ -199,7 +199,8 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `harbor-job-load-test-plan.md` | Draft / Proposal | 可构建的合成镜像、1000 个 Harbor Job 的批量提交与 60–300 秒休眠压测矩阵、数据口径和容量判定 |
 | [`harbor-runtime-stage1-plan.md`](harbor-runtime-stage1-plan.md) | Draft / Proposal | 第一阶段主 PR（实施中）：代码与手工压测交付、共享观察、按需 Sandbox、预算和真实规模验收 |
 | [`harbor-runtime-stage1-discussion.md`](harbor-runtime-stage1-discussion.md) | Draft / Proposal | 第一阶段讨论与评审核验：需求和代码依据、观察/标签迁移、协议发布、结果交付、纠正项及待冻结决策 |
-| [`harbor-runtime-stage2-plan.md`](harbor-runtime-stage2-plan.md) | Draft / Proposal | 第二阶段主 PR：Sandbox 文件系统 Checkpoint、Runner 进度持久化、一致恢复点、新执行接管与恢复验收 |
+| [`harbor-runtime-recovery.md`](harbor-runtime-recovery.md) | Current / Experimental | 可选 Codex/Claude Code 会话恢复、完整恢复点、隔离与真实 ACS 待验收边界 |
+| [`harbor-runtime-stage2-plan.md`](harbor-runtime-stage2-plan.md) | Draft / Proposal | 第二阶段设计与实验记录；实现用法见恢复文档，真实 ACS 验收待完成 |
 
 ## 图源与资产
 

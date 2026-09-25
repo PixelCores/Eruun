@@ -69,6 +69,52 @@ func TestEvaluationDefaultsPersistInNormalizedTraits(t *testing.T) {
 	require.Empty(t, job.Spec)
 	require.NotSame(t, job.Traits.Resources, job.Traits.Evaluation.SandboxResources)
 	require.Nil(t, job.Traits.Evaluation.ResultPolicy, "workspace policy is snapshotted by the submission service")
+	require.Nil(t, job.Traits.Evaluation.Recovery, "recovery must remain opt-in")
+}
+
+func TestEvaluationRecoveryRequiresSupportedReplaySafeAgent(t *testing.T) {
+	for _, tc := range []struct {
+		name, agent, version string
+		replaySafe           bool
+		interval             int64
+		wantError            string
+	}{
+		{"codex default", "codex", CodexRecoveryVersion, true, 0, ""},
+		{"claude lower bound", "claude-code", ClaudeCodeRecoveryVersion, true, 60, ""},
+		{"codex upper bound", "codex", CodexRecoveryVersion, true, 3600, ""},
+		{"unsafe replay", "codex", CodexRecoveryVersion, false, 0, "replaySafe=true"},
+		{"missing version", "codex", "", true, 0, "agentVersion"},
+		{"unverified codex version", "codex", "0.155.0", true, 0, "agentVersion"},
+		{"wrong agent version", "claude-code", CodexRecoveryVersion, true, 0, "agentVersion"},
+		{"oracle unsupported", "oracle", CodexRecoveryVersion, true, 0, "does not support agent"},
+		{"terminus unsupported", "terminus-2", CodexRecoveryVersion, true, 0, "does not support agent"},
+		{"negative interval", "codex", CodexRecoveryVersion, true, -1, "checkpointIntervalSeconds"},
+		{"interval too short", "codex", CodexRecoveryVersion, true, 59, "checkpointIntervalSeconds"},
+		{"interval too long", "codex", CodexRecoveryVersion, true, 3601, "checkpointIntervalSeconds"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := testEvaluationTrait()
+			e.Agent, e.Model = tc.agent, "provider/model"
+			e.Recovery = &EvaluationRecoverySpec{AgentVersion: tc.version, ReplaySafe: tc.replaySafe, CheckpointIntervalSeconds: tc.interval}
+			err := e.Normalize()
+			if tc.wantError != "" {
+				require.ErrorContains(t, err, tc.wantError)
+				return
+			}
+			require.NoError(t, err)
+			wantInterval := tc.interval
+			if wantInterval == 0 {
+				wantInterval = DefaultCheckpointIntervalSeconds
+			}
+			require.Equal(t, wantInterval, e.Recovery.CheckpointIntervalSeconds)
+			encoded, err := json.Marshal(e)
+			require.NoError(t, err)
+			var roundTrip EvaluationTraitSpec
+			require.NoError(t, DecodeJobJSON(encoded, &roundTrip))
+			require.NoError(t, roundTrip.Normalize())
+			require.Equal(t, *e, roundTrip)
+		})
+	}
 }
 
 func TestEvaluationTraitRejectsInvalidInputs(t *testing.T) {

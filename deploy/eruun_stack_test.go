@@ -277,7 +277,9 @@ func assertControllerRuntimePermissions(t *testing.T, clusterRoles map[string]ma
 	require.Contains(t, verbsFor(clusterRoles["eruun-platform-runtime"], "batch", "jobs"), "update", "Worker must adopt reusable Jobs into a new execution generation")
 	require.Contains(t, verbsFor(clusterRoles["eruun-platform-runtime"], "batch", "jobs"), "watch", "Worker must share Job List/Watch snapshots for execution status")
 	require.ElementsMatch(t, []string{"get", "list", "watch", "create", "update", "patch", "delete"}, verbsFor(clusterRoles["eruun-sandbox-runtime"], "agents.kruise.io", "sandboxes"))
-	require.Nil(t, verbsFor(clusterRoles["eruun-platform-runtime"], "agents.kruise.io", "sandboxes"), "Worker must not receive unused Sandbox privileges")
+	require.ElementsMatch(t, []string{"get", "list", "watch", "create", "delete"}, verbsFor(clusterRoles["eruun-sandbox-runtime"], "agents.kruise.io", "checkpoints"))
+	require.Nil(t, verbsFor(clusterRoles["eruun-platform-runtime"], "agents.kruise.io", "checkpoints"), "Worker must not manage Checkpoints")
+	require.ElementsMatch(t, []string{"get", "patch"}, verbsFor(clusterRoles["eruun-platform-runtime"], "agents.kruise.io", "sandboxes"), "Worker only observes and shuts down source Sandboxes during recovery isolation")
 }
 
 func TestHelmValuesUseTopLevelDistributedRuntime(t *testing.T) {

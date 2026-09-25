@@ -22,6 +22,9 @@ const (
 	// collection and delivery budget. This does not extend the trial runtime.
 	EvaluationCollectionGraceSeconds       = 960
 	DefaultRunnerWorkStorageMiB      int64 = 20480
+	CodexRecoveryVersion                   = "0.154.0"
+	ClaudeCodeRecoveryVersion              = "2.1.281"
+	DefaultCheckpointIntervalSeconds int64 = 300
 )
 
 // JobSpec describes one standalone command or a Job with an evaluation trait.
@@ -42,15 +45,49 @@ type CommandJobSpec struct {
 // EvaluationTraitSpec describes an LLM evaluation independently of its execution entry point.
 // The platform owns the pinned framework and Runner image.
 type EvaluationTraitSpec struct {
-	Env              string              `json:"env"`
-	Model            string              `json:"model,omitempty"`
-	Agent            string              `json:"agent"`
-	TaskPackageID    string              `json:"taskPackageId"`
-	Attempts         int                 `json:"attempts,omitempty"`
-	Concurrency      int                 `json:"concurrency,omitempty"`
-	TimeoutSeconds   int64               `json:"timeoutSeconds,omitempty"`
-	SandboxResources *ResourceTraitsSpec `json:"sandboxResources,omitempty"`
-	ResultPolicy     *JobResultPolicy    `json:"resultPolicy,omitempty"`
+	Env              string                  `json:"env"`
+	Model            string                  `json:"model,omitempty"`
+	Agent            string                  `json:"agent"`
+	TaskPackageID    string                  `json:"taskPackageId"`
+	Attempts         int                     `json:"attempts,omitempty"`
+	Concurrency      int                     `json:"concurrency,omitempty"`
+	TimeoutSeconds   int64                   `json:"timeoutSeconds,omitempty"`
+	SandboxResources *ResourceTraitsSpec     `json:"sandboxResources,omitempty"`
+	ResultPolicy     *JobResultPolicy        `json:"resultPolicy,omitempty"`
+	Recovery         *EvaluationRecoverySpec `json:"recovery,omitempty"`
+}
+
+// EvaluationRecoverySpec explicitly opts replay-safe work into filesystem recovery.
+// A restored native Agent session can replay a tool command whose completion was not saved.
+type EvaluationRecoverySpec struct {
+	AgentVersion              string `json:"agentVersion"`
+	ReplaySafe                bool   `json:"replaySafe"`
+	CheckpointIntervalSeconds int64  `json:"checkpointIntervalSeconds,omitempty"`
+}
+
+func (r *EvaluationRecoverySpec) normalize(agent string) error {
+	if !r.ReplaySafe {
+		return fmt.Errorf("evaluation recovery requires replaySafe=true")
+	}
+	var supportedVersion string
+	switch agent {
+	case "codex":
+		supportedVersion = CodexRecoveryVersion
+	case "claude-code":
+		supportedVersion = ClaudeCodeRecoveryVersion
+	default:
+		return fmt.Errorf("evaluation recovery does not support agent %q", agent)
+	}
+	if r.AgentVersion != supportedVersion {
+		return fmt.Errorf("evaluation recovery for agent %q requires agentVersion %q", agent, supportedVersion)
+	}
+	if r.CheckpointIntervalSeconds == 0 {
+		r.CheckpointIntervalSeconds = DefaultCheckpointIntervalSeconds
+	}
+	if r.CheckpointIntervalSeconds < 60 || r.CheckpointIntervalSeconds > 3600 {
+		return fmt.Errorf("evaluation recovery checkpointIntervalSeconds must be 60..3600")
+	}
+	return nil
 }
 
 func (e *EvaluationTraitSpec) Normalize() error {
@@ -88,6 +125,11 @@ func (e *EvaluationTraitSpec) Normalize() error {
 	}
 	if err := validateJobResources(e.SandboxResources); err != nil {
 		return fmt.Errorf("sandboxResources: %w", err)
+	}
+	if e.Recovery != nil {
+		if err := e.Recovery.normalize(e.Agent); err != nil {
+			return err
+		}
 	}
 	normalizeJobResources(&e.SandboxResources)
 	if e.ResultPolicy != nil {

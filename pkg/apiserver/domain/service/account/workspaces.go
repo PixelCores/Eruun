@@ -383,6 +383,15 @@ func (s *Service) DeleteWorkspace(ctx context.Context, p *Principal, id string, 
 		if sandboxes > 0 {
 			return bcode.ErrWorkspaceNotEmpty
 		}
+		checkpoints, e := r.Store.Count(ctx, &model.JobCheckpoint{WorkspaceID: id}, &datastore.FilterOptions{
+			NotEqual: []datastore.ComparisonQueryOption{{Key: "cleaned", Value: true}},
+		})
+		if e != nil {
+			return e
+		}
+		if checkpoints > 0 {
+			return bcode.ErrWorkspaceNotEmpty
+		}
 		if e = deleteNamespace(ctx, w); e != nil {
 			return e
 		}
@@ -390,6 +399,7 @@ func (s *Service) DeleteWorkspace(ctx context.Context, p *Principal, id string, 
 			&model.ArtifactChunk{WorkspaceID: id},
 			&model.JobDelivery{WorkspaceID: id},
 			&model.JobSandbox{WorkspaceID: id},
+			&model.JobCheckpoint{WorkspaceID: id},
 			&model.JobArtifact{WorkspaceID: id},
 			&model.JobInfo{WorkspaceID: id},
 			&model.WorkflowQueue{WorkspaceID: id},

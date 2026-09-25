@@ -1,6 +1,6 @@
 # Harbor Runtime 第二阶段：基于文件系统 Checkpoint 的任务恢复计划
 
-> 状态：Draft / Proposal。代码事实基线为 `8290fb1`；本主 PR 先提交计划，不表示恢复能力已经实现，也不承诺尚未冻结的 API、字段或默认值。
+> 状态：Draft / Proposal。阶段一代码基线为 `5a3d75b`（PR #59）；本阶段已加入固定版本能力实验和可选恢复实现。当前实现及冻结契约见 [Harbor 评测恢复](harbor-runtime-recovery.md)；本文保留设计目标，真实 ACS 验收仍未执行。
 
 ## 1. 目标、依赖与边界
 
@@ -8,7 +8,7 @@
 
 Eruun 部署在 ACK 内管理同一集群；任务环境按需创建，使用支持 Checkpoint 的 ACS Agent Sandbox，不依赖 SandboxSet 预热池。工作负载是 Harbor eval 的 Runner 加任务环境，可能运行数周。第一阶段负责至少 1 万个 Harbor Job 并发的稳定运行、共享观察、限速、长期执行及控制面接管；第二阶段不另建调度器、队列或通用恢复平台。
 
-实施依赖第一阶段冻结的任务—执行—trial—Sandbox 身份关联、资源创建限速、状态观察和清理契约。可提前验证 Harbor/ACS 能力，生产实现需等这些契约稳定。本主 PR 与第一阶段主 PR 均以 `main` 为 base；后续实施子 PR 合入各自主 PR 的集成分支。第一阶段合入后将其更新纳入本分支，第二阶段通过验收后再合入 `main`。本轮不创建实施子 PR。
+实施复用第一阶段的任务—执行—trial—Sandbox 身份关联、资源创建限速、状态观察和清理契约。第一阶段已随 PR #59 合入 `main`，本阶段以该依赖为实现基线；第二阶段通过验收后再合入 `main`。本轮不创建实施子 PR。
 
 范围包括一致恢复点、Runner 状态持久化、快照与克隆、恢复执行身份、恢复准入及保留清理。跨集群/地域迁移、任意 Harbor Agent 自动恢复、进程内存恢复、外部服务数据快照和外部副作用的通用 exactly-once 均不在本阶段承诺内。允许恢复的 Harbor/Agent/任务组合必须逐一取得实验证据；不满足协议的任务明确标记不支持恢复。
 
@@ -18,13 +18,73 @@ Eruun 部署在 ACK 内管理同一集群；任务环境按需创建，使用支
 | --- | --- | --- |
 | `WorkflowQueue` 持有任务状态、空间及执行租约；`JobInfo` 持有执行记录与内部状态 | [`workflow_queue.go`](../pkg/apiserver/domain/model/workflow_queue.go)、[`job.go`](../pkg/apiserver/domain/model/job.go) | 沿用业务事实源与事务边界 |
 | Worker ownership 与既有资源执行身份可以不同，`OwnerRunGeneration` 已与 `RunGeneration` 区分 | [`job.go`](../pkg/apiserver/domain/model/job.go)、[`workflow_lease.go`](../pkg/apiserver/domain/repository/workflow_lease.go) | 接管健康执行不能等同于创建新恢复执行 |
-| Runner `/work` 使用 `EmptyDir`；采集状态和 outputs 在 Runner；启动创建新目录并调用 `harbor run` | [`builder.go`](../pkg/apiserver/jobs/builder.go)、[`runner.py`](../runners/harbor/runner.py) | Sandbox 快照不覆盖整个 Harbor Job，当前没有本计划所需的恢复协议 |
+| Runner `/work` 使用 `EmptyDir`；采集状态和 outputs 在 Runner；启动创建新目录并调用 `harbor run` | [`builder.go`](../pkg/apiserver/jobs/builder.go)、[`runner.py`](../runners/harbor/runner.py) | Sandbox 快照不覆盖整个 Harbor Job；可选恢复实现另存 Runner 材料 |
 | Runner claim、事件和结果写入已验证执行身份、Pod/Job UID，并在持久化边界校验 | [`runner_events.go`](../pkg/apiserver/jobs/runner_events.go)、[`service.go`](../pkg/apiserver/jobs/service.go) | 恢复须扩展现有 fencing，不能绕过 claim |
 | Harbor 当前固定版本，环境配置关闭 SandboxClaim | [`runner.py`](../runners/harbor/runner.py)、[`requirements.txt`](../runners/harbor/requirements.txt) | 不引入预热池；是否支持恢复由固定版本源码与实验验证 |
 
 [ACS 官方 Checkpoint 文档](https://help.aliyun.com/zh/cs/user-guide/clone-agent-sandbox-using-checkpoint) 当前限定：仅 ACS Agent Sandbox、仅文件系统；源 Pod 必须 Running 且 Ready；同一 Pod 同时只能有一个进行中的 Checkpoint；Running 后删除 CR 不能中断快照任务；克隆时 Pod spec 需与源保持一致。官方要求 `acs-virtual-node` 至少 v2.17.0。部署前重新核实地域、组件、CRD 版本和配额，以真实 ACS 验证为准。
 
 因此不能等源环境丢失后才补做快照，也不能把文件系统一致性当成 Runner 与多个 trial 的应用一致性。首个门禁必须证明：固定版本 Harbor 能跳过已完成 trial、重连或重建恢复环境，并让所选 Agent 从持久化进度启动。若只能重跑未完成 trial，应如实记录恢复粒度，不能称为该 trial 的断点续跑；不满足用户目标时停止后续恢复实现，提交最小适配方案及影响供决策。
+
+### 2.1 S2-1 本地能力实验
+
+实验入口为 [`recovery_probe.py`](../runners/harbor/recovery_probe.py)，使用 Runner 固定的 `harbor==0.22.0`、`kubernetes==32.0.1`。从项目根目录运行：
+
+```bash
+python3.13 -m venv /tmp/eruun-harbor-stage2-venv
+/tmp/eruun-harbor-stage2-venv/bin/python -m pip install -r runners/harbor/requirements.txt
+/tmp/eruun-harbor-stage2-venv/bin/python runners/harbor/recovery_probe.py
+/tmp/eruun-harbor-stage2-venv/bin/python -m unittest discover \
+  -s runners/harbor -p 'test_recovery_probe.py' -v
+```
+
+探针退出码 `2` 表示实验成功建立了证据，但运行中 trial 的恢复门禁失败；`1` 表示依赖错误或实验失败，不能视为已验证。安装依赖需要网络，探针本身不创建 Sandbox、不执行 Agent、不读取 Kubernetes 配置或凭据，也不请求模型。测试依赖缺失或版本不符时明确失败，不通过 skip 隐藏。
+
+实验用 Harbor 的真实 `Job.create` 恢复协调逻辑处理两个 trial：一个具有完整结果，另一个具有进度标记但没有完整结果。材料复制到新的临时根目录，重定位实验 fixture 中的绝对路径后删除源目录，再运行恢复协调。路径重定位仅是 fixture 准备，不是已实现的 Runner 持久化协议。
+
+| 未完成 trial 的结果文件 | 已完成 trial | 未完成 trial | 原进度文件 |
+| --- | --- | --- | --- |
+| 不存在 | 跳过，结果摘要不变 | 使用新 trial 身份重新排队 | 原 trial 目录被删除 |
+| 空文件 | 跳过，结果摘要不变 | 使用新 trial 身份重新排队 | 留在旧目录，但未载入 |
+| 截断 JSON | 跳过，结果摘要不变 | 使用新 trial 身份重新排队 | 留在旧目录，但未载入 |
+
+这是 **离线恢复协调实验**，不是实际 Runner 崩溃、模型调用或 ACS 恢复验收。固定包的行为说明原生 `harbor job resume` 不足以满足本阶段目标；不能据此开启生产恢复或将 S2-1 标记通过。
+
+固定版本源码进一步确认以下适配边界：
+
+| Agent | Harbor 声明原生 resume | 会话材料与缺口 |
+| --- | --- | --- |
+| Codex | 是 | 运行期间保存在 `/tmp/codex-home/sessions`，在 `finally` 中导出到 `/logs/agent/sessions`；导出错误可能被上游吞掉。恢复前必须独立验证材料，不能只检查进程退出 |
+| Claude Code | 是 | 会话位于 `/logs/agent/sessions`；上游使用 `--continue`，需要绑定明确的源会话身份并处理后台任务的写入 |
+| Terminus-2 | 否 | 需要另行实现和验证持久化恢复协议，不能由其他 Agent 的支持情况推导 |
+| Oracle | 否 | 重跑解决脚本不等同于保存进度后继续，不能当作 LLM 恢复验证 |
+
+证据来自官方 `harbor-0.22.0` wheel（SHA-256：`4c4c6571b3d160ed0cb45b82918136751fb08e7b8596412723ac00dde12eeabb`）及其中的 `harbor/job.py`、`trial/single_step.py`、`agents/installed/base.py`、`agents/installed/codex.py`、`agents/installed/claude_code.py`。`SingleStepTrial` 的 Agent 阶段不会调用 `resume`；原生恢复声明也不提供暂停写入屏障。
+
+另外在本地模型协议 stub 上验证了真实 Codex CLI `0.154.0`、Claude Code `2.1.281` 的会话文件恢复。实验先完成第一轮对话，将第二轮模型响应挂起，**确认中断消息已写入完整的 native session 记录后**强杀进程，复制会话文件到新配置目录并删除原目录，再按原 session ID 恢复；检查已完成轮次标记、已保存的中断消息及新恢复消息。实验只返回文字、不执行工具；没有验证运行中命令、后台进程、Harbor Trial 生命周期或云文件系统快照。
+
+负面实验发现：模型 stub 刚收到第二轮请求就立即强杀时，Claude Code 可能尚未将该用户消息写入会话文件，随后恢复会丢失该轮。早期在收到请求后等待 300 毫秒的实验曾通过，但延时不是持久化屏障。可复现脚本因此检查真实会话记录作为实验前提，不能将“请求已经发出”或“等待了一段时间”当成进度保存成功，更不承诺任意时刻强杀零进度丢失。
+
+该实验保存在 [`native_resume_probe.py`](../runners/harbor/native_resume_probe.py)，在已安装上述两个 CLI 版本的 POSIX 系统运行：
+
+```bash
+python3 runners/harbor/native_resume_probe.py
+python3 -m unittest discover -s runners/harbor -p 'test_native_resume_probe.py' -v
+```
+
+脚本从 `PATH` 查找 CLI，也可用 `--codex`、`--claude` 指定可执行文件；错版直接失败。它使用全新的临时配置和本机模型服务，未继承真实模型凭据；默认删除实验材料。需要保留证据时，传入尚不存在的 `--output-dir`，其中原始请求、日志、会话及摘要仅供本地检查，文件权限收紧为 `0600`。CLI 超时或失败时清理所属进程组。退出码 `0` 仅表示报告声明的会话恢复断言通过，不能代替本阶段完整门禁。
+
+这个结论只覆盖上述两个 CLI 版本。Harbor 框架版本固定并不等于 Agent CLI 固定；恢复配置通过 `agentVersion` 固定上述版本，不能宣称其他 CLI 版本已经通过恢复验证。
+
+### 2.2 实现顺序与待验证边界
+
+首批目标包括 Codex、Claude Code；其他常用 Agent 按各自能力补充适配和测试，不能统一退化成未完成 trial 重跑。
+
+最小适配在 Eruun 现有 Runner、环境适配和 jobs 模块内完成：保存未完成 trial 的原始配置、会话身份及采集进度；通过受控 Agent 生命周期建立跨 trial 写入屏障；新 Runner 直接恢复这些 trial 并调用对应 Agent 的原生恢复入口，避免上游重建 trial 或重新执行破坏性的 setup。仅发送 SIGINT、观察 CLI 退出或发现 JSONL 文件都不能独立证明完整屏障。
+
+服务端继续复用阶段一的 claim、数据库锁、创建预算与 UID 清理。恢复必须建立新 execution key 和源执行关联，保留原绝对 deadline；现有健康执行的观察接管语义不变。结果源归档每执行唯一，不能把它直接改成可覆盖的 checkpoint 历史。ACS 克隆所需模板保留源 Sandbox 的原始 Pod 模板 spec；实际 Pod 的调度默认化与 runtime 注入兼容性等待云验收，不能直接使用重新计算 deadline 的普通创建模板。
+
+真实 ACS 验收按维护者要求留待后续专门执行。快照/克隆、卷覆盖、旧执行隔离、凭据轮换、故障注入、RPO/RTO、屏障时长与万级背景压力都保持 **未验证**；不访问集群、不生成云资源，也不以本地测试替代这些证据。维护者已允许恢复时重放未确认完成的工具调用；实现要求 `replaySafe: true`。此授权不替代真实云验收，也不提供外部副作用的 exactly-once。
 
 ## 3. 权威状态与身份映射
 

@@ -624,5 +624,6 @@ func (s *Service) Maintain(ctx context.Context) {
 	run(time.Second, "reconcile Job result destinations", func(ctx context.Context) error { return s.Artifacts.ReconcilePending(ctx, 100) })
 	run(15*time.Second, "expire original Job results", func(ctx context.Context) error { return s.Artifacts.CleanupExpired(ctx, 100) })
 	run(5*time.Second, "reconcile evaluation Sandboxes", func(ctx context.Context) error { return s.reconcileSandboxes(ctx, 100) })
+	run(5*time.Second, "reconcile evaluation checkpoints", func(ctx context.Context) error { return s.reconcileCheckpoints(ctx, 100) })
 	_ = group.Wait() // Each loop exits without error only after ctx cancellation.
 }

@@ -42,6 +42,9 @@ func (a *workspaceJobs) RegisterRoutes(group *gin.RouterGroup) {
 	// These routes authenticate only the execution-bound Runner capability and
 	// current Kubernetes execution identity in the service, never user sessions.
 	group.GET("/job-runners/:taskID/dataset", a.runnerDataset)
+	group.POST("/job-runners/:taskID/checkpoints/:checkpointID", a.runnerCheckpointPut)
+	group.GET("/job-runners/:taskID/checkpoints/:checkpointID", a.runnerCheckpointGet)
+	group.GET("/job-runners/:taskID/checkpoints/:checkpointID/material", a.runnerCheckpointMaterial)
 	group.POST("/job-runners/:taskID/results", a.runnerResult)
 	group.POST("/job-runners/:taskID/events", a.runnerEvent)
 	group.POST("/job-runners/:taskID/sandboxes", a.runnerSandboxCreate)
@@ -369,4 +372,23 @@ func runnerEventResponse(c *gin.Context, result *jobs.RunnerEventAck, err error)
 		return
 	}
 	jobResponse(c, http.StatusOK, result, err)
+}
+
+func (a *workspaceJobs) runnerCheckpointPut(c *gin.Context) {
+	if strings.Split(c.GetHeader("Content-Type"), ";")[0] != "application/gzip" {
+		jobResponse(c, 0, nil, bcode.ErrJobInput)
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 512<<20)
+	result, err := a.Service.RunnerCheckpointPut(c.Request.Context(), runnerIdentity(c), c.Param("checkpointID"), c.Request.Body)
+	jobResponse(c, http.StatusAccepted, result, err)
+}
+func (a *workspaceJobs) runnerCheckpointGet(c *gin.Context) {
+	result, err := a.Service.RunnerCheckpointGet(c.Request.Context(), runnerIdentity(c), c.Param("checkpointID"))
+	jobResponse(c, http.StatusOK, result, err)
+}
+func (a *workspaceJobs) runnerCheckpointMaterial(c *gin.Context) {
+	downloadArchive(c, func(w io.Writer) error {
+		return a.Service.RunnerCheckpointMaterial(c.Request.Context(), runnerIdentity(c), c.Param("checkpointID"), w)
+	})
 }
