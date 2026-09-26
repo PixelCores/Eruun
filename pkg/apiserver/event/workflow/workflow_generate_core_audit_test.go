@@ -181,7 +181,7 @@ func TestWorkflowFailureCleanupAllPreservesClaimNamePVC(t *testing.T) {
 	traits, err := model.NewJSONStructByStruct(spec.Traits{
 		Storage: []spec.StorageTraitSpec{{
 			Name:      "logs",
-			Type:      config.StorageTypePersistent,
+			Type:      spec.StorageTypePersistent,
 			MountPath: "/logs",
 			ClaimName: "default-logs-pvc",
 		}},

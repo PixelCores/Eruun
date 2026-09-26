@@ -161,19 +161,19 @@ func TestCreateApplicationsFromTemplateAppliesDefaultStorageClass(t *testing.T) 
 		Storage: []spec.StorageTraitSpec{
 			{
 				Name:      "data",
-				Type:      config.StorageTypePersistent,
+				Type:      spec.StorageTypePersistent,
 				MountPath: "/var/lib/mysql",
 				TmpCreate: true,
 				Size:      "30Gi",
 			},
 			{
 				Name:      "cache",
-				Type:      config.StorageTypeEphemeral,
+				Type:      spec.StorageTypeEphemeral,
 				MountPath: "/cache",
 			},
 			{
 				Name:         "explicit-data",
-				Type:         config.StorageTypePersistent,
+				Type:         spec.StorageTypePersistent,
 				MountPath:    "/explicit",
 				StorageClass: "fast-ssd",
 			},
@@ -184,7 +184,7 @@ func TestCreateApplicationsFromTemplateAppliesDefaultStorageClass(t *testing.T) 
 			Traits: apisv1.Traits{
 				Storage: []spec.StorageTraitSpec{{
 					Name:      "init-data",
-					Type:      config.StorageTypePersistent,
+					Type:      spec.StorageTypePersistent,
 					MountPath: "/init-data",
 				}},
 			},
@@ -195,7 +195,7 @@ func TestCreateApplicationsFromTemplateAppliesDefaultStorageClass(t *testing.T) 
 			Traits: apisv1.Traits{
 				Storage: []spec.StorageTraitSpec{{
 					Name:      "backup-data",
-					Type:      config.StorageTypePersistent,
+					Type:      spec.StorageTypePersistent,
 					MountPath: "/backup-data",
 				}},
 			},

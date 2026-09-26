@@ -2,6 +2,7 @@ package v1
 
 import (
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"sort"
 	"strings"
 
@@ -31,13 +32,13 @@ func appendTraitCredentials(credentials []apisv1.ComponentCredentialInfo, namesp
 		credentials = appendSecretKeyCredential(credentials, namespace, source+".envs", env.Name, ref.Name, ref.Key, secrets)
 	}
 	for _, envFrom := range traits.EnvFrom {
-		if !strings.EqualFold(strings.TrimSpace(envFrom.Type), config.StorageTypeSecret) {
+		if !strings.EqualFold(strings.TrimSpace(envFrom.Type), domainspec.StorageTypeSecret) {
 			continue
 		}
 		credentials = appendWholeSecretCredentials(credentials, namespace, source+".envFrom", "", envFrom.SourceName, secrets)
 	}
 	for _, storage := range traits.Storage {
-		if !strings.EqualFold(strings.TrimSpace(storage.Type), config.StorageTypeSecret) {
+		if !strings.EqualFold(strings.TrimSpace(storage.Type), domainspec.StorageTypeSecret) {
 			continue
 		}
 		secretName := strings.TrimSpace(storage.SourceName)

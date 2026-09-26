@@ -198,7 +198,7 @@ var _ datastore.DataStore = (*inMemoryAppStore)(nil)
 func testPersistentStorageTrait(name, claimName string, tmpCreate bool) spec.StorageTraitSpec {
 	return spec.StorageTraitSpec{
 		Name:      name,
-		Type:      config.StorageTypePersistent,
+		Type:      spec.StorageTypePersistent,
 		MountPath: "/data/" + name,
 		TmpCreate: tmpCreate,
 		ClaimName: claimName,

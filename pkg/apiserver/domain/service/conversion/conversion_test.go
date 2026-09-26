@@ -173,12 +173,12 @@ spec:
 
 	storageData := findStorage(mysql.Traits.Storage, "data")
 	require.NotNil(t, storageData)
-	require.Equal(t, config.StorageTypePersistent, storageData.Type)
+	require.Equal(t, spec.StorageTypePersistent, storageData.Type)
 	require.True(t, storageData.TmpCreate)
 	require.Equal(t, "1Gi", storageData.Size)
 	storageConf := findStorage(mysql.Traits.Storage, "conf")
 	require.NotNil(t, storageConf)
-	require.Equal(t, config.StorageTypeConfig, storageConf.Type)
+	require.Equal(t, spec.StorageTypeConfig, storageConf.Type)
 	require.Equal(t, "test-config", storageConf.SourceName)
 
 	configComp := findComponent(resp.Components, "test-config")
@@ -293,7 +293,7 @@ spec:
 	require.NotNil(t, backend)
 	storage := findStorage(backend.Traits.Storage, "logs")
 	require.NotNil(t, storage)
-	require.Equal(t, config.StorageTypePersistent, storage.Type)
+	require.Equal(t, spec.StorageTypePersistent, storage.Type)
 	require.Equal(t, "/app/log", storage.MountPath)
 	require.Equal(t, "developer-pvc", storage.ClaimName)
 	require.Empty(t, storage.SubPath)
@@ -777,7 +777,7 @@ spec:
 	require.Equal(t, int64(0), *init.Traits.SecurityPolicy.RunAsUser)
 	initStorage := findStorage(init.Traits.Storage, "init-work")
 	require.NotNil(t, initStorage)
-	require.Equal(t, config.StorageTypeEphemeral, initStorage.Type)
+	require.Equal(t, spec.StorageTypeEphemeral, initStorage.Type)
 	require.Equal(t, "/work", initStorage.MountPath)
 
 	require.Len(t, component.Traits.Sidecar, 1)
@@ -802,7 +802,7 @@ spec:
 	require.False(t, *sidecar.Traits.SecurityPolicy.AllowPrivilegeEscalation)
 	sidecarStorage := findStorage(sidecar.Traits.Storage, "sidecar-conf")
 	require.NotNil(t, sidecarStorage)
-	require.Equal(t, config.StorageTypeConfig, sidecarStorage.Type)
+	require.Equal(t, spec.StorageTypeConfig, sidecarStorage.Type)
 	require.Equal(t, "sidecar-config", sidecarStorage.SourceName)
 	require.True(t, sidecarStorage.ReadOnly)
 }

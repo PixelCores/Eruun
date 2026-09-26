@@ -525,7 +525,7 @@ func TestCreateApplicationsFromTemplateClonesTraitsAndNames(t *testing.T) {
 			SourceName: "tem-mysql-config",
 			TmpCreate:  true,
 			Size:       "1Gi",
-			Type:       config.StorageTypePersistent,
+			Type:       spec.StorageTypePersistent,
 		}},
 		Ingress: []spec.IngressTraitsSpec{{
 			Name: "mysql",
@@ -752,7 +752,7 @@ func TestCreateApplicationsFromTemplateSharesTopLevelPersistentStorageWithNested
 	templateTraits := apisv1.Traits{
 		Storage: []spec.StorageTraitSpec{{
 			Name:      "data",
-			Type:      config.StorageTypePersistent,
+			Type:      spec.StorageTypePersistent,
 			TmpCreate: true,
 			Size:      "1Gi",
 			MountPath: "/var/lib/mysql",
@@ -762,7 +762,7 @@ func TestCreateApplicationsFromTemplateSharesTopLevelPersistentStorageWithNested
 			Image: "busybox:1.36",
 			Traits: apisv1.Traits{Storage: []spec.StorageTraitSpec{{
 				Name:       "data",
-				Type:       config.StorageTypePersistent,
+				Type:       spec.StorageTypePersistent,
 				MountPath:  "/var/lib/mysql",
 				SubPath:    "init",
 				SourceName: "mysql",
@@ -775,7 +775,7 @@ func TestCreateApplicationsFromTemplateSharesTopLevelPersistentStorageWithNested
 				Traits: apisv1.Traits{
 					Storage: []spec.StorageTraitSpec{{
 						Name:      "data",
-						Type:      config.StorageTypePersistent,
+						Type:      spec.StorageTypePersistent,
 						MountPath: "/var/lib/mysql",
 						SubPath:   "backup",
 						ReadOnly:  true,
@@ -881,14 +881,14 @@ func TestCreateApplicationsFromTemplateSharesTopLevelPersistentStorageWithNested
 func TestRewriteTraitsForTemplateOnlySharesTopLevelPersistentStorage(t *testing.T) {
 	traits := &apisv1.Traits{
 		Storage: []spec.StorageTraitSpec{
-			{Name: "data", Type: config.StorageTypePersistent, TmpCreate: true, Size: "1Gi"},
-			{Name: "config", Type: config.StorageTypeEphemeral},
+			{Name: "data", Type: spec.StorageTypePersistent, TmpCreate: true, Size: "1Gi"},
+			{Name: "config", Type: spec.StorageTypeEphemeral},
 		},
 		Sidecar: []spec.SidecarTraitsSpec{{
 			Name: "backup",
 			Traits: apisv1.Traits{Storage: []spec.StorageTraitSpec{
-				{Name: "cache", Type: config.StorageTypePersistent},
-				{Name: "config", Type: config.StorageTypePersistent},
+				{Name: "cache", Type: spec.StorageTypePersistent},
+				{Name: "config", Type: spec.StorageTypePersistent},
 			}},
 		}},
 	}
@@ -898,7 +898,7 @@ func TestRewriteTraitsForTemplateOnlySharesTopLevelPersistentStorage(t *testing.
 	require.Len(t, traits.Sidecar[0].Traits.Storage, 2)
 	require.Equal(t, "tenant-app-cache", traits.Sidecar[0].Traits.Storage[0].Name)
 	require.False(t, traits.Sidecar[0].Traits.Storage[0].TmpCreate)
-	require.Equal(t, config.StorageTypePersistent, traits.Sidecar[0].Traits.Storage[1].Type)
+	require.Equal(t, spec.StorageTypePersistent, traits.Sidecar[0].Traits.Storage[1].Type)
 	require.Equal(t, "tenant-app-config", traits.Sidecar[0].Traits.Storage[1].Name)
 	require.False(t, traits.Sidecar[0].Traits.Storage[1].TmpCreate)
 }

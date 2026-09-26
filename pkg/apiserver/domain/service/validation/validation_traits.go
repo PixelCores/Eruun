@@ -363,7 +363,7 @@ func (v *validationServiceImpl) validateStorageTrait(storage spec.StorageTraitSp
 	errors = append(errors, traitvalidation.ValidateStorageSubPathConflict(storage, field)...)
 
 	// Validate size for persistent storage with tmpCreate=true
-	if storage.Type == config.StorageTypePersistent && storage.TmpCreate && storage.Size != "" {
+	if storage.Type == spec.StorageTypePersistent && storage.TmpCreate && storage.Size != "" {
 		if !storageQuantityRegexp.MatchString(storage.Size) {
 			errors = append(errors, apisv1.ValidationError{
 				Field:   fmt.Sprintf("%s.size", field),
@@ -374,7 +374,7 @@ func (v *validationServiceImpl) validateStorageTrait(storage spec.StorageTraitSp
 	}
 
 	// Validate sourceName for config/secret types
-	if (storage.Type == config.StorageTypeConfig || storage.Type == config.StorageTypeSecret) && storage.SourceName == "" && storage.Name == "" {
+	if (storage.Type == spec.StorageTypeConfig || storage.Type == spec.StorageTypeSecret) && storage.SourceName == "" && storage.Name == "" {
 		errors = append(errors, apisv1.ValidationError{
 			Field:   fmt.Sprintf("%s.sourceName", field),
 			Code:    apisv1.ErrCodeMissingRequiredField,

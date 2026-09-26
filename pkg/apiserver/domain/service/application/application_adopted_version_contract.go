@@ -5,13 +5,11 @@ import (
 	"reflect"
 	"strings"
 
-	"k8s.io/apimachinery/pkg/api/resource"
-
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 // validateAdoptedVersionUpdateCompatibility keeps the DB contract aligned
@@ -77,7 +75,7 @@ func normalizeAdoptedStandalonePVCSizeChanges(current apisv1.Traits, desired *ap
 	normalize := func(scope string, storages []spec.StorageTraitSpec) error {
 		for storageIndex := range storages {
 			storage := &storages[storageIndex]
-			if storage.Type != config.StorageTypePersistent {
+			if storage.Type != spec.StorageTypePersistent {
 				continue
 			}
 			previous, found, err := matchPersistentStorageRef(index, scope, *storage)

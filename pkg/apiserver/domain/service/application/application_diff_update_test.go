@@ -405,7 +405,7 @@ func TestDiffUpdateVersionDryRunBlocksStatefulSetImmutableTraitChange(t *testing
 	}
 	targetTraits := apisv1.Traits{
 		Storage: []spec.StorageTraitSpec{{
-			Name: "data", Type: config.StorageTypePersistent, MountPath: "/data", TmpCreate: true, Size: "1Gi",
+			Name: "data", Type: spec.StorageTypePersistent, MountPath: "/data", TmpCreate: true, Size: "1Gi",
 		}},
 		Service: []spec.ServiceTraitSpec{{
 			Name: "mysql-headless", Type: string(spec.ServiceAccessInternal), Headless: true,
@@ -463,10 +463,10 @@ func TestDiffUpdateVersionDryRunPreservesStandalonePVCSnapshots(t *testing.T) {
 		ID: "target-app", Name: "target", Version: "1.0.0", Namespace: config.DefaultNamespace,
 	}
 	sourceTraits := apisv1.Traits{Storage: []spec.StorageTraitSpec{{
-		Name: "data", Type: config.StorageTypePersistent, MountPath: "/data", ClaimName: "source-data-pvc",
+		Name: "data", Type: spec.StorageTypePersistent, MountPath: "/data", ClaimName: "source-data-pvc",
 	}}}
 	targetTraits := apisv1.Traits{Storage: []spec.StorageTraitSpec{{
-		Name: "data", Type: config.StorageTypePersistent, MountPath: "/data", ClaimName: "target-data-pvc",
+		Name: "data", Type: spec.StorageTypePersistent, MountPath: "/data", ClaimName: "target-data-pvc",
 	}}}
 	store.components["source-mysql"] = &model.ApplicationComponent{
 		Name: "mysql", AppID: "source-app", Namespace: config.DefaultNamespace,
@@ -648,7 +648,7 @@ func newDiffUpdatePendingCleanupFixture(
 		Properties: mustJSONStruct(&apisv1.Properties{}), Traits: mustJSONStruct(&apisv1.Traits{}),
 	}
 	mysqlTraits := apisv1.Traits{Storage: []spec.StorageTraitSpec{{
-		Name: "data", Type: config.StorageTypePersistent, MountPath: "/data", TmpCreate: true, Size: "1Gi",
+		Name: "data", Type: spec.StorageTypePersistent, MountPath: "/data", TmpCreate: true, Size: "1Gi",
 	}}}
 	targetMySQL := &model.ApplicationComponent{
 		ID: 3, AppID: "target-app", Name: "mysql", Namespace: config.DefaultNamespace, ResourceAppName: "target",
