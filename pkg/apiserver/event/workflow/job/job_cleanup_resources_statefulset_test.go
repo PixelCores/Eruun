@@ -20,8 +20,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
-
-	traitsPlu "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 func TestCleanupResourcesJobCtlEnforcesRequiredStatefulSetDeletion(t *testing.T) {
@@ -515,9 +513,6 @@ func TestCleanupResourcesJobCtlDoesNotSilentlySkipRequiredStatefulSetDeletion(t 
 
 func TestCleanupResourcesJobCtlPreservesNestedStoragePVCs(t *testing.T) {
 	ctx := context.Background()
-	traitsPlu.ResetTraitProcessorsForTest()
-	traitsPlu.RegisterAllProcessors()
-	t.Cleanup(traitsPlu.ResetTraitProcessorsForTest)
 
 	traits, err := model.NewJSONStructByStruct(spec.Traits{
 		Init: []spec.InitTraitSpec{{
@@ -581,9 +576,6 @@ func TestCleanupResourcesJobCtlPreservesNestedStoragePVCs(t *testing.T) {
 
 func TestCleanupResourcesJobCtlPreservesExplicitClaimNamePVC(t *testing.T) {
 	ctx := context.Background()
-	traitsPlu.ResetTraitProcessorsForTest()
-	traitsPlu.RegisterAllProcessors()
-	t.Cleanup(traitsPlu.ResetTraitProcessorsForTest)
 
 	traits, err := model.NewJSONStructByStruct(spec.Traits{
 		Storage: []spec.StorageTraitSpec{{

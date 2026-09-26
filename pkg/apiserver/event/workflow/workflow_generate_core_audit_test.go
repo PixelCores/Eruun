@@ -20,7 +20,6 @@ import (
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	wfNaming "github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
-	traitsPlu "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 	"k8s.io/client-go/kubernetes/fake"
 )
 
@@ -174,9 +173,6 @@ func TestBuildWorkflowFailureCleanupJobsSkipsAdoptedApplication(t *testing.T) {
 
 func TestWorkflowFailureCleanupAllPreservesClaimNamePVC(t *testing.T) {
 	ctx := context.Background()
-	traitsPlu.ResetTraitProcessorsForTest()
-	traitsPlu.RegisterAllProcessors()
-	t.Cleanup(traitsPlu.ResetTraitProcessorsForTest)
 
 	traits, err := model.NewJSONStructByStruct(spec.Traits{
 		Storage: []spec.StorageTraitSpec{{

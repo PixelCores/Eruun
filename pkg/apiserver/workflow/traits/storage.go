@@ -18,19 +18,9 @@ import (
 // PVC (existing or dynamic), EmptyDir, ConfigMap, and Secret volume sources.
 type StorageProcessor struct{}
 
-// Name returns the name of the trait.
-func (s *StorageProcessor) Name() string {
-	return "storage"
-}
-
 // Process converts []spec.StorageTraitSpec into Volumes/VolumeMounts and optionally
 // PersistentVolumeClaims (returned as additional objects for non-StatefulSets).
-func (s *StorageProcessor) Process(ctx *TraitContext) (*TraitResult, error) {
-	storageTraits, ok := ctx.TraitData.([]spec.StorageTraitSpec)
-	if !ok {
-		return nil, fmt.Errorf("unexpected type for storage trait: %T", ctx.TraitData)
-	}
-
+func (s *StorageProcessor) Process(ctx *TraitContext, storageTraits []spec.StorageTraitSpec) (*TraitResult, error) {
 	if len(storageTraits) == 0 {
 		return nil, nil
 	}

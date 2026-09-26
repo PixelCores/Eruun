@@ -51,7 +51,7 @@
 - 包路径使用小写短名，例如 `application`、`workflow`、`resourceimport`、`systemsetting`。
 - 导出类型、接口和函数使用 PascalCase，例如 `ApplicationsService`、`WorkflowService`、`NewWorkflowController`。
 - 非导出实现使用 camelCase，例如 `applicationsServiceImpl`、`workflowUpsertOptions`、`buildComponentServices`。
-- 接口名优先表达业务能力，例如 `ApplicationRepository`、`ResourceImportService`、`TraitProcessor`。
+- 接口名优先表达业务能力，例如 `ApplicationRepository`、`ResourceImportService`、`WorkflowService`。
 - 实现结构体通常以功能名加 `Impl` 或具体控制器命名，例如 `applicationsServiceImpl`、`DeployRoleJobCtl`、`CallbackJobCtl`。
 - 构造函数使用 `NewXxx`，注册函数使用 `RegisterXxx` 或 `InitXxxBean`。
 - 测试函数使用 `Test目标_场景` 或 `Test目标场景`，场景名应说明行为结果，例如 `TestApproveWorkflowTaskRejectsInvalidAction`。
@@ -138,13 +138,13 @@ Repository 层应做到：
 
 ### 4.5 Trait 风格
 
-Traits 是组件声明到 Kubernetes workload 变更的扩展层。当前框架使用有序全局注册、反射定位 trait 字段、Processor 处理单一 trait，并把结果聚合后统一应用。
+Traits 是组件声明到 Kubernetes workload 变更的扩展层。当前实现按固定顺序显式读取 `spec.Traits` 字段，将具体规格传给无状态 Processor，并把结果聚合后统一应用。
 
 新增或调整 Trait 时应保持：
 
 - `domain/spec` 定义用户可见结构。
-- `workflow/traits` 实现无状态 `TraitProcessor`。
-- 在 `RegisterAllProcessors` 中明确执行顺序。
+- `workflow/traits` 实现接收具体规格类型的无状态 Processor。
+- 在 `applyTraitsRecursive` 中明确处理顺序和字段归属；不要添加全局注册或反射分发。
 - 嵌套 trait 要明确递归和排除规则，避免无限递归。
 - 生成的 `AdditionalObjects`、env、volume、service account、probe、resource 等都通过 `TraitResult` 表达。
 - API 示例和专题文档说明用户输入形态。

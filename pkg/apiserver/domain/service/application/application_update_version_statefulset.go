@@ -15,7 +15,6 @@ import (
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
-	workflowtraits "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 func preflightVersionUpdateStatefulSets(componentMap map[string]*model.ApplicationComponent, specs []apisv1.ComponentUpdateSpec, fullRecreate bool) ([]apisv1.ComponentUpdateSpec, error) {
@@ -180,7 +179,6 @@ func versionUpdateComponentSnapshot(current *model.ApplicationComponent, desired
 }
 
 func renderVersionUpdateStatefulSet(component *model.ApplicationComponent) (*appsv1.StatefulSet, error) {
-	workflowtraits.RegisterAllProcessors()
 	snapshot := *component
 	result, err := workflowjob.GenerateStoreService(&snapshot)
 	if err != nil {

@@ -17,13 +17,7 @@ import (
 // based on declarative trait specifications.
 type RBACProcessor struct{}
 
-func (p *RBACProcessor) Name() string { return "rbac" }
-
-func (p *RBACProcessor) Process(ctx *TraitContext) (*TraitResult, error) {
-	specs, ok := ctx.TraitData.([]spec.RBACPolicySpec)
-	if !ok {
-		return nil, fmt.Errorf("rbac trait expects []spec.RBACPolicySpec, got %T", ctx.TraitData)
-	}
+func (p *RBACProcessor) Process(ctx *TraitContext, specs []spec.RBACPolicySpec) (*TraitResult, error) {
 	if len(specs) == 0 {
 		return nil, nil
 	}

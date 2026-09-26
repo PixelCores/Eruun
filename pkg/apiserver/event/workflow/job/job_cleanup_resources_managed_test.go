@@ -19,8 +19,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-
-	traitsPlu "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 func TestCleanupResourcesJobCtlDeletesGeneratedAndLabeledResources(t *testing.T) {
@@ -102,9 +100,6 @@ func TestCleanupResourcesJobCtlDeletesGeneratedAndLabeledResources(t *testing.T)
 }
 
 func TestCleanupResourcesJobCtlPreservesTraitGeneratedRBAC(t *testing.T) {
-	traitsPlu.ResetTraitProcessorsForTest()
-	traitsPlu.RegisterAllProcessors()
-	t.Cleanup(traitsPlu.ResetTraitProcessorsForTest)
 
 	ctx := context.Background()
 	component := &model.ApplicationComponent{

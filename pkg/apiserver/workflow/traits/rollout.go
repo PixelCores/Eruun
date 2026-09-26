@@ -13,17 +13,8 @@ import (
 // RolloutProcessor applies workload-level rollout/update strategy settings.
 type RolloutProcessor struct{}
 
-// Name returns the name of the trait.
-func (p *RolloutProcessor) Name() string {
-	return "rollout"
-}
-
 // Process converts a rollout trait into the native workload update strategy.
-func (p *RolloutProcessor) Process(ctx *TraitContext) (*TraitResult, error) {
-	rollout, ok := ctx.TraitData.(*spec.RolloutTraitSpec)
-	if !ok {
-		return nil, fmt.Errorf("unexpected type for rollout trait: %T", ctx.TraitData)
-	}
+func (p *RolloutProcessor) Process(ctx *TraitContext, rollout *spec.RolloutTraitSpec) (*TraitResult, error) {
 	if rollout == nil {
 		return nil, nil
 	}

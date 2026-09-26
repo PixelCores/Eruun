@@ -6,12 +6,10 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	traitsPlu "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 	"github.com/stretchr/testify/require"
 )
 
 func TestResourceGeneratorsReturnTraitConflict(t *testing.T) {
-	traitsPlu.RegisterAllProcessors()
 	storage := spec.StorageTraitSpec{Name: "data", Type: "persistent", MountPath: "/data", Size: "1Gi"}
 	conflict := storage
 	conflict.Size = "2Gi"

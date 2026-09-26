@@ -25,13 +25,13 @@ func TestRolloutProcessorAppliesDeploymentStrategy(t *testing.T) {
 		},
 	}
 
-	result, err := (&RolloutProcessor{}).Process(NewTraitContext(&model.ApplicationComponent{Name: "api"}, deploy, &spec.RolloutTraitSpec{
+	result, err := (&RolloutProcessor{}).Process(&TraitContext{Component: &model.ApplicationComponent{Name: "api"}, Workload: deploy}, &spec.RolloutTraitSpec{
 		Type: string(appsv1.RollingUpdateDeploymentStrategyType),
 		RollingUpdate: &spec.RolloutRollingUpdateSpec{
 			MaxSurge:       &maxSurge,
 			MaxUnavailable: &maxUnavailable,
 		},
-	}))
+	})
 	require.NoError(t, err)
 	require.NoError(t, applyWorkloadTraitResult(result, deploy))
 
@@ -45,9 +45,9 @@ func TestRolloutProcessorAppliesDeploymentStrategy(t *testing.T) {
 func TestRolloutProcessorRejectsDeploymentRollingUpdateWithoutConfig(t *testing.T) {
 	deploy := &appsv1.Deployment{}
 
-	_, err := (&RolloutProcessor{}).Process(NewTraitContext(&model.ApplicationComponent{Name: "api"}, deploy, &spec.RolloutTraitSpec{
+	_, err := (&RolloutProcessor{}).Process(&TraitContext{Component: &model.ApplicationComponent{Name: "api"}, Workload: deploy}, &spec.RolloutTraitSpec{
 		Type: string(appsv1.RollingUpdateDeploymentStrategyType),
-	}))
+	})
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "requires rollingUpdate")
@@ -87,10 +87,10 @@ func TestRolloutProcessorRejectsDeploymentRollingUpdateMissingFields(t *testing.
 		t.Run(tc.name, func(t *testing.T) {
 			deploy := &appsv1.Deployment{}
 
-			_, err := (&RolloutProcessor{}).Process(NewTraitContext(&model.ApplicationComponent{Name: "api"}, deploy, &spec.RolloutTraitSpec{
+			_, err := (&RolloutProcessor{}).Process(&TraitContext{Component: &model.ApplicationComponent{Name: "api"}, Workload: deploy}, &spec.RolloutTraitSpec{
 				Type:          string(appsv1.RollingUpdateDeploymentStrategyType),
 				RollingUpdate: tc.rollingUpdate,
-			}))
+			})
 
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tc.expected)
@@ -111,13 +111,13 @@ func TestRolloutProcessorAppliesStatefulSetUpdateStrategy(t *testing.T) {
 		},
 	}
 
-	result, err := (&RolloutProcessor{}).Process(NewTraitContext(&model.ApplicationComponent{Name: "mysql"}, statefulSet, &spec.RolloutTraitSpec{
+	result, err := (&RolloutProcessor{}).Process(&TraitContext{Component: &model.ApplicationComponent{Name: "mysql"}, Workload: statefulSet}, &spec.RolloutTraitSpec{
 		Type: string(appsv1.RollingUpdateStatefulSetStrategyType),
 		RollingUpdate: &spec.RolloutRollingUpdateSpec{
 			Partition:      &partition,
 			MaxUnavailable: &maxUnavailable,
 		},
-	}))
+	})
 	require.NoError(t, err)
 	require.NoError(t, applyWorkloadTraitResult(result, statefulSet))
 
@@ -128,9 +128,9 @@ func TestRolloutProcessorAppliesStatefulSetUpdateStrategy(t *testing.T) {
 }
 
 func TestRolloutProcessorRejectsUnsupportedWorkload(t *testing.T) {
-	_, err := (&RolloutProcessor{}).Process(NewTraitContext(&model.ApplicationComponent{Name: "pod"}, &corev1.Pod{}, &spec.RolloutTraitSpec{
+	_, err := (&RolloutProcessor{}).Process(&TraitContext{Component: &model.ApplicationComponent{Name: "pod"}, Workload: &corev1.Pod{}}, &spec.RolloutTraitSpec{
 		Type: string(appsv1.RollingUpdateDeploymentStrategyType),
-	}))
+	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "supports deployment and statefulset")
 }
