@@ -17,7 +17,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 )
 
 func requiredJobInfo[T any](job *model.JobTask) (T, error) {
@@ -117,7 +117,7 @@ func secretFromJobInfo(ctx context.Context, job *model.JobTask, urlSecurityPolic
 		}
 		stringData := map[string]string{}
 		if info.URL != "" {
-			body, err := utils.ReadFileFromURLSimple(ctx, info.URL, urlSecurityPolicy)
+			body, err := clients.ReadURL(ctx, info.URL, urlSecurityPolicy, configMapMaxSize+1024)
 			if err != nil {
 				return nil, fmt.Errorf("fetch secret url failed: %w", err)
 			}
