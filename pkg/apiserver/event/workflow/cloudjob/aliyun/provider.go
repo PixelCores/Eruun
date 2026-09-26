@@ -8,6 +8,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob/contracts"
@@ -16,12 +17,13 @@ import (
 )
 
 type Provider struct {
+	systemsetting.AliyunSettingSupport
 	actions map[string]contracts.CloudActionFactory
 }
 
 var (
-	_ cloudjob.CloudProvider               = (*Provider)(nil)
-	_ cloudjob.CloudProviderSettingSupport = (*Provider)(nil)
+	_ cloudjob.CloudProvider                    = (*Provider)(nil)
+	_ systemsetting.CloudProviderSettingSupport = (*Provider)(nil)
 )
 
 type runtimeAliyunSnapshot struct {
