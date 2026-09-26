@@ -2,6 +2,7 @@ package job
 
 import (
 	"context"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -15,7 +16,7 @@ import (
 
 func TestRunJobRechecksObserveModeBeforeKubernetesWrite(t *testing.T) {
 	store := &componentStatusStore{
-		managementMode: config.ManagementModeObserve,
+		managementMode: domainspec.ManagementModeObserve,
 		components: []*model.ApplicationComponent{{
 			AppID:         "app-1",
 			Name:          "app-config",

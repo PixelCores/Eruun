@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"reflect"
 	"sort"
 	"strings"
@@ -477,7 +478,7 @@ func (c *applicationsServiceImpl) GetApplicationSpec(ctx context.Context, appID 
 	if app == nil {
 		return nil, bcode.ErrApplicationNotExist
 	}
-	if app.EffectiveManagementMode() != config.ManagementModeNative {
+	if app.EffectiveManagementMode() != domainspec.ManagementModeNative {
 		return nil, fmt.Errorf("%w: only native applications have a resubmittable canonical spec", bcode.ErrApplicationManagementMode)
 	}
 

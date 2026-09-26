@@ -20,7 +20,7 @@ func TestUpdateAdoptedVersionRequiresWorkflowIdleWithoutAutoExec(t *testing.T) {
 		Name:           "legacy",
 		Namespace:      config.DefaultNamespace,
 		Version:        "1.0.0",
-		ManagementMode: config.ManagementModeAdopted,
+		ManagementMode: spec.ManagementModeAdopted,
 	}
 	store.tasks["task-running"] = &model.WorkflowQueue{
 		TaskID: "task-running",
@@ -55,16 +55,16 @@ func TestValidateAdoptedVersionUpdateActionsRequiresExistingSourceBindings(t *te
 
 	require.NoError(t, validateAdoptedVersionUpdateActions([]apisv1.ComponentUpdateSpec{{
 		Name:   "backend",
-		Action: string(config.ComponentActionUpdate),
+		Action: string(spec.ComponentActionUpdate),
 	}}, components))
 
 	for _, spec := range []apisv1.ComponentUpdateSpec{
-		{Name: "new", Action: string(config.ComponentActionAdd)},
-		{Name: "unbound", Action: string(config.ComponentActionUpdate)},
-		{Name: "backend", Action: string(config.ComponentActionRemove)},
+		{Name: "new", Action: string(spec.ComponentActionAdd)},
+		{Name: "unbound", Action: string(spec.ComponentActionUpdate)},
+		{Name: "backend", Action: string(spec.ComponentActionRemove)},
 		{
 			Name:   "backend",
-			Action: string(config.ComponentActionUpdate),
+			Action: string(spec.ComponentActionUpdate),
 			Properties: &apisv1.Properties{
 				Secret: map[string]string{"password": "must-not-enter-properties"},
 			},

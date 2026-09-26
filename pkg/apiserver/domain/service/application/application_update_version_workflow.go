@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"strings"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -368,12 +369,12 @@ func hasWorkflowStructureChanges(specs []apisv1.ComponentUpdateSpec, componentMa
 			continue
 		}
 		switch action {
-		case config.ComponentActionAdd:
+		case domainspec.ComponentActionAdd:
 			if _, exists := componentMap[compName]; exists {
 				return false, fmt.Errorf("%w: component %s already exists for add", bcode.ErrComponentAlreadyExists, strings.TrimSpace(spec.Name))
 			}
 			return true, nil
-		case config.ComponentActionRemove:
+		case domainspec.ComponentActionRemove:
 			if _, exists := componentMap[compName]; !exists {
 				return false, fmt.Errorf("%w: component %s not found for remove", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
 			}

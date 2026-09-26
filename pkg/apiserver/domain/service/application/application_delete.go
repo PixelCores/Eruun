@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"strings"
 	"time"
 
@@ -77,10 +78,10 @@ func (c *applicationsServiceImpl) DeleteApplicationCascade(ctx context.Context, 
 		resp = &apisv1.DeleteApplicationResponse{
 			AppID:             app.ID,
 			DeletedCounts:     counts,
-			ResourcesRetained: app.EffectiveManagementMode() != config.ManagementModeNative,
+			ResourcesRetained: app.EffectiveManagementMode() != domainspec.ManagementModeNative,
 		}
 
-		nativeApplication := app.EffectiveManagementMode() == config.ManagementModeNative
+		nativeApplication := app.EffectiveManagementMode() == domainspec.ManagementModeNative
 		if nativeApplication {
 			if err := c.deleteApplicationSchedulesTx(lockCtx, txStore, app.ID); err != nil {
 				return err

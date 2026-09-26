@@ -19,10 +19,10 @@ func TestUpdateVersionRejectsNonPositiveReplicas(t *testing.T) {
 		action   string
 		replicas int32
 	}{
-		{name: "update zero", action: string(config.ComponentActionUpdate), replicas: 0},
-		{name: "update negative", action: string(config.ComponentActionUpdate), replicas: -1},
-		{name: "add zero", action: string(config.ComponentActionAdd), replicas: 0},
-		{name: "add negative", action: string(config.ComponentActionAdd), replicas: -1},
+		{name: "update zero", action: string(spec.ComponentActionUpdate), replicas: 0},
+		{name: "update negative", action: string(spec.ComponentActionUpdate), replicas: -1},
+		{name: "add zero", action: string(spec.ComponentActionAdd), replicas: 0},
+		{name: "add negative", action: string(spec.ComponentActionAdd), replicas: -1},
 	}
 
 	for _, tc := range testCases {
@@ -34,7 +34,7 @@ func TestUpdateVersionRejectsNonPositiveReplicas(t *testing.T) {
 			svc := newMockServiceWithStore(store)
 			componentName := "backend"
 			componentType := config.ServerJob
-			if tc.action == string(config.ComponentActionAdd) {
+			if tc.action == string(spec.ComponentActionAdd) {
 				componentName = "worker"
 			}
 

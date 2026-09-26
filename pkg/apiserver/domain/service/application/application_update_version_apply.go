@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"strings"
 
 	"k8s.io/klog/v2"
@@ -28,7 +29,7 @@ func (c *applicationsServiceImpl) commitAutoExecVersionUpdate(
 	taskCallback *model.JSONStruct,
 	resourceActions versionUpdateResourceActions,
 	readyComponents []string,
-	executionScope config.VersionUpdateExecutionScope,
+	executionScope domainspec.VersionUpdateExecutionScope,
 ) ([]string, []string, []string, []string, string, error) {
 	if workflow == nil {
 		return nil, nil, nil, nil, "", bcode.ErrWorkflowNotExist
@@ -86,7 +87,7 @@ func (c *applicationsServiceImpl) commitAutoExecVersionUpdate(
 			if err != nil {
 				return err
 			}
-			if executionScope == config.VersionUpdateExecutionScopeChangedComponents {
+			if executionScope == domainspec.VersionUpdateExecutionScopeChangedComponents {
 				executionComponents := versionUpdateExecutionComponents(updatedComponents, addedComponents)
 				if err := validateVersionUpdateExecutionScopeWorkflowCoverage(workflowForTask, executionComponents); err != nil {
 					return err
@@ -292,7 +293,7 @@ func applyVersionUpdateComponentChanges(
 		compName := strings.ToLower(strings.TrimSpace(spec.Name))
 
 		switch action {
-		case config.ComponentActionUpdate:
+		case domainspec.ComponentActionUpdate:
 			comp, exists := componentMap[compName]
 			if !exists {
 				return nil, nil, nil, fmt.Errorf("%w: component %s not found for update", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
@@ -305,7 +306,7 @@ func applyVersionUpdateComponentChanges(
 				updatedComponents = append(updatedComponents, spec.Name)
 			}
 
-		case config.ComponentActionAdd:
+		case domainspec.ComponentActionAdd:
 			if _, exists := componentMap[compName]; exists {
 				return nil, nil, nil, fmt.Errorf("%w: component %s already exists for add", bcode.ErrComponentAlreadyExists, strings.TrimSpace(spec.Name))
 			}
@@ -314,7 +315,7 @@ func applyVersionUpdateComponentChanges(
 			}
 			addedComponents = append(addedComponents, spec.Name)
 
-		case config.ComponentActionRemove:
+		case domainspec.ComponentActionRemove:
 			comp, exists := componentMap[compName]
 			if !exists {
 				return nil, nil, nil, fmt.Errorf("%w: component %s not found for remove", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))

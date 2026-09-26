@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"strings"
 	"testing"
 	"time"
@@ -27,9 +28,9 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
@@ -119,10 +120,10 @@ func TestEqualAdoptionReplaySnapshotsTreatsLegacyVersionAsEquivalent(t *testing.
 func TestNormalizeImportManagementMode_DefaultsLegacyToObserveAndRejectsMixedAdoption(t *testing.T) {
 	mode, err := normalizeImportManagementMode(apisv1.ImportNamespaceApplicationsRequest{})
 	require.NoError(t, err)
-	assert.Equal(t, config.ManagementModeObserve, mode)
+	assert.Equal(t, domainspec.ManagementModeObserve, mode)
 
 	_, err = normalizeImportManagementMode(apisv1.ImportNamespaceApplicationsRequest{
-		ManagementMode: config.ManagementModeAdopted,
+		ManagementMode: domainspec.ManagementModeAdopted,
 		Applications: []apisv1.ImportNamespaceApplicationMapping{{
 			Name:       "app",
 			Components: []apisv1.ImportNamespaceComponentMapping{{Name: "api"}},
@@ -133,7 +134,7 @@ func TestNormalizeImportManagementMode_DefaultsLegacyToObserveAndRejectsMixedAdo
 	require.ErrorContains(t, err, "cannot be combined with includeKinds")
 
 	_, err = normalizeImportManagementMode(apisv1.ImportNamespaceApplicationsRequest{
-		ManagementMode: config.ManagementModeAdopted,
+		ManagementMode: domainspec.ManagementModeAdopted,
 		Applications: []apisv1.ImportNamespaceApplicationMapping{
 			{Name: "app-a", Components: []apisv1.ImportNamespaceComponentMapping{{Name: "api"}}},
 			{Name: "app-b", Components: []apisv1.ImportNamespaceComponentMapping{{Name: "api"}}},
@@ -151,7 +152,7 @@ func TestBuildAdoptedCanonicalTargetStateIgnoresRuntimeOnlyComponentUpdates(t *t
 		ID:             "app-1",
 		Name:           "api",
 		Namespace:      "prod",
-		ManagementMode: config.ManagementModeObserve,
+		ManagementMode: domainspec.ManagementModeObserve,
 		BaseModel:      model.BaseModel{UpdateTime: time.Unix(100, 0)},
 	}
 	component := &model.ApplicationComponent{
@@ -657,7 +658,7 @@ func TestImportNamespaceResources_AdoptedFiveExactRootsDependencyClosureAndSafeA
 	dryRun, err := svc.ImportNamespaceResources(context.Background(), request)
 	require.NoError(t, err)
 	require.NotNil(t, dryRun)
-	assert.Equal(t, config.ManagementModeAdopted, dryRun.ManagementMode)
+	assert.Equal(t, domainspec.ManagementModeAdopted, dryRun.ManagementMode)
 	assert.NotEmpty(t, dryRun.PlanFingerprint)
 	require.Len(t, dryRun.Apps, 1)
 	assert.ElementsMatch(t, []string{"backend", "frontend", "socket", "redis", "mysql"}, dryRun.Apps[0].Components)
@@ -733,7 +734,7 @@ func TestImportNamespaceResources_AdoptedFiveExactRootsDependencyClosureAndSafeA
 
 	persistedApp := store.apps[appID]
 	require.NotNil(t, persistedApp)
-	assert.Equal(t, config.ManagementModeAdopted, persistedApp.ManagementMode)
+	assert.Equal(t, domainspec.ManagementModeAdopted, persistedApp.ManagementMode)
 	require.NotNil(t, persistedApp.AdoptionSnapshot)
 	assert.NotContains(t, mustJSON(t, persistedApp.AdoptionSnapshot), "mysql-password")
 
@@ -1098,7 +1099,7 @@ func TestImportNamespaceResources_AdoptedPlanDriftAndHPATargetWriteNothing(t *te
 			ID:             "other-app",
 			Name:           "other-app",
 			Namespace:      namespace,
-			ManagementMode: config.ManagementModeAdopted,
+			ManagementMode: domainspec.ManagementModeAdopted,
 		}
 		sourceUID := string(deployment.UID)
 		store.components["other-api"] = &model.ApplicationComponent{
@@ -1183,7 +1184,7 @@ func TestImportNamespaceResources_AdoptedPlanDriftAndHPATargetWriteNothing(t *te
 			ID:               "other-app",
 			Name:             "other-app",
 			Namespace:        namespace,
-			ManagementMode:   config.ManagementModeAdopted,
+			ManagementMode:   domainspec.ManagementModeAdopted,
 			AdoptionSnapshot: snapshotJSON,
 		}
 		svc := &serviceImpl{
@@ -1239,7 +1240,7 @@ func TestImportNamespaceResources_AdoptedPlanDriftAndHPATargetWriteNothing(t *te
 			ID:               "other-app",
 			Name:             "other-app",
 			Namespace:        namespace,
-			ManagementMode:   config.ManagementModeAdopted,
+			ManagementMode:   domainspec.ManagementModeAdopted,
 			AdoptionSnapshot: snapshotJSON,
 		}
 		svc := &serviceImpl{
@@ -1297,7 +1298,7 @@ func TestImportNamespaceResources_AdoptedPlanDriftAndHPATargetWriteNothing(t *te
 			ID:               "other-app",
 			Name:             "other-app",
 			Namespace:        namespace,
-			ManagementMode:   config.ManagementModeAdopted,
+			ManagementMode:   domainspec.ManagementModeAdopted,
 			AdoptionSnapshot: snapshotJSON,
 		}
 		svc := &serviceImpl{
@@ -1327,7 +1328,7 @@ func TestImportNamespaceResources_AdoptedPlanDriftAndHPATargetWriteNothing(t *te
 			ID:             "other-app",
 			Name:           "other-app",
 			Namespace:      namespace,
-			ManagementMode: config.ManagementModeAdopted,
+			ManagementMode: domainspec.ManagementModeAdopted,
 		}
 		svc := &serviceImpl{
 			Cfg:                adoptedImportTestConfig(),
@@ -1357,7 +1358,7 @@ func TestImportNamespaceResources_AdoptedPlanDriftAndHPATargetWriteNothing(t *te
 			ID:             "other-app",
 			Name:           "other-app",
 			Namespace:      "tenant-b",
-			ManagementMode: config.ManagementModeAdopted,
+			ManagementMode: domainspec.ManagementModeAdopted,
 		}
 		svc := &serviceImpl{
 			Cfg:                adoptedImportTestConfig(),
@@ -1392,7 +1393,7 @@ func TestImportNamespaceResources_AdoptedTargetAppPreservesMatchingComponentID(t
 		ID:             targetID,
 		Name:           "api-app",
 		Namespace:      namespace,
-		ManagementMode: config.ManagementModeObserve,
+		ManagementMode: domainspec.ManagementModeObserve,
 	}
 	store.components["api"] = &model.ApplicationComponent{
 		ID:        77,
@@ -1405,7 +1406,7 @@ func TestImportNamespaceResources_AdoptedTargetAppPreservesMatchingComponentID(t
 			ID:             targetID,
 			Name:           "api-app",
 			Namespace:      namespace,
-			ManagementMode: config.ManagementModeObserve,
+			ManagementMode: domainspec.ManagementModeObserve,
 		}},
 		persistStore:    store,
 		componentIDSeed: 100,
@@ -1436,7 +1437,7 @@ func TestImportNamespaceResources_AdoptedTargetAppPreservesMatchingComponentID(t
 	require.Len(t, applied.Apps, 1)
 	assert.Equal(t, targetID, applied.Apps[0].AppID)
 	require.NotNil(t, store.apps[targetID])
-	assert.Equal(t, config.ManagementModeAdopted, store.apps[targetID].ManagementMode)
+	assert.Equal(t, domainspec.ManagementModeAdopted, store.apps[targetID].ManagementMode)
 	require.NotNil(t, store.components["api"])
 	assert.Equal(t, 77, store.components["api"].ID)
 	assert.Equal(t, targetID, store.components["api"].AppID)
@@ -1485,7 +1486,7 @@ func TestImportNamespaceResources_AdoptedApplyRejectsWorkflowDriftInsideTransact
 		ID:             targetID,
 		Name:           "api-app",
 		Namespace:      namespace,
-		ManagementMode: config.ManagementModeObserve,
+		ManagementMode: domainspec.ManagementModeObserve,
 	}
 	store.components["api"] = &model.ApplicationComponent{
 		ID:        77,
@@ -1505,7 +1506,7 @@ func TestImportNamespaceResources_AdoptedApplyRejectsWorkflowDriftInsideTransact
 			ID:             targetID,
 			Name:           "api-app",
 			Namespace:      namespace,
-			ManagementMode: config.ManagementModeObserve,
+			ManagementMode: domainspec.ManagementModeObserve,
 		}},
 		persistStore: store,
 	}
@@ -1534,7 +1535,7 @@ func TestImportNamespaceResources_AdoptedApplyRejectsWorkflowDriftInsideTransact
 	_, err = svc.ImportNamespaceResources(context.Background(), request)
 
 	require.ErrorIs(t, err, bcode.ErrNamespaceImportPlanDrift)
-	require.Equal(t, config.ManagementModeObserve, store.apps[targetID].ManagementMode)
+	require.Equal(t, domainspec.ManagementModeObserve, store.apps[targetID].ManagementMode)
 	require.Equal(t, "changed-after-plan", store.workflows["workflow-1"].Alias)
 	assertKubeActionsReadOnly(t, client.Actions())
 }
@@ -1581,7 +1582,7 @@ func TestImportNamespaceResources_LegacyObserveNeverLabelsSkippedVCTStatefulSetO
 		},
 	})
 	require.NoError(t, err)
-	assert.Equal(t, config.ManagementModeObserve, resp.ManagementMode)
+	assert.Equal(t, domainspec.ManagementModeObserve, resp.ManagementMode)
 	require.Len(t, appService.createReqs, 1)
 
 	liveStatefulSet, err := client.AppsV1().StatefulSets(namespace).Get(context.Background(), statefulSetName, metav1.GetOptions{})
@@ -1619,7 +1620,7 @@ func adoptedImportRequest(namespace, appName string, names map[string]string) ap
 	return apisv1.ImportNamespaceApplicationsRequest{
 		Namespace:      namespace,
 		Mode:           importModeDryRun,
-		ManagementMode: config.ManagementModeAdopted,
+		ManagementMode: domainspec.ManagementModeAdopted,
 		Applications: []apisv1.ImportNamespaceApplicationMapping{{
 			Name:       appName,
 			Components: components,
@@ -1631,7 +1632,7 @@ func adoptedSingleWorkloadRequest(namespace, appName, componentName, kind, workl
 	return apisv1.ImportNamespaceApplicationsRequest{
 		Namespace:      namespace,
 		Mode:           importModeDryRun,
-		ManagementMode: config.ManagementModeAdopted,
+		ManagementMode: domainspec.ManagementModeAdopted,
 		Applications: []apisv1.ImportNamespaceApplicationMapping{{
 			Name: appName,
 			Components: []apisv1.ImportNamespaceComponentMapping{{

@@ -24,11 +24,11 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/importsecret"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
@@ -80,7 +80,7 @@ type adoptedMembership struct {
 type adoptedCanonicalPlan struct {
 	Version        int                       `json:"version"`
 	Namespace      string                    `json:"namespace"`
-	ManagementMode config.ManagementMode     `json:"managementMode"`
+	ManagementMode domainspec.ManagementMode `json:"managementMode"`
 	Applications   []adoptedCanonicalPlanApp `json:"applications"`
 }
 
@@ -94,14 +94,14 @@ type adoptedCanonicalPlanApp struct {
 }
 
 type adoptedCanonicalTargetState struct {
-	Exists               bool                  `json:"exists"`
-	ID                   string                `json:"id,omitempty"`
-	Name                 string                `json:"name,omitempty"`
-	Namespace            string                `json:"namespace,omitempty"`
-	ManagementMode       config.ManagementMode `json:"managementMode,omitempty"`
-	UpdatedAtUnixNano    int64                 `json:"updatedAtUnixNano,omitempty"`
-	ComponentStateDigest string                `json:"componentStateDigest,omitempty"`
-	WorkflowStateDigest  string                `json:"workflowStateDigest,omitempty"`
+	Exists               bool                      `json:"exists"`
+	ID                   string                    `json:"id,omitempty"`
+	Name                 string                    `json:"name,omitempty"`
+	Namespace            string                    `json:"namespace,omitempty"`
+	ManagementMode       domainspec.ManagementMode `json:"managementMode,omitempty"`
+	UpdatedAtUnixNano    int64                     `json:"updatedAtUnixNano,omitempty"`
+	ComponentStateDigest string                    `json:"componentStateDigest,omitempty"`
+	WorkflowStateDigest  string                    `json:"workflowStateDigest,omitempty"`
 }
 
 type adoptedCanonicalComponent struct {
@@ -139,7 +139,7 @@ func (s *serviceImpl) tryAdoptedApplyReplay(
 	if err != nil {
 		return nil, "", true, fmt.Errorf("%w: load adopted replay target %q: %v", bcode.ErrNamespaceImportPlanDrift, targetAppID, err)
 	}
-	if app.EffectiveManagementMode() != config.ManagementModeAdopted {
+	if app.EffectiveManagementMode() != domainspec.ManagementModeAdopted {
 		if strings.TrimSpace(mapping.TargetAppID) != "" {
 			return nil, "", false, nil
 		}
@@ -279,19 +279,19 @@ func validateAdoptedReplayComponentBindings(
 	return nil
 }
 
-func normalizeImportManagementMode(req apisv1.ImportNamespaceApplicationsRequest) (config.ManagementMode, error) {
+func normalizeImportManagementMode(req apisv1.ImportNamespaceApplicationsRequest) (domainspec.ManagementMode, error) {
 	raw := strings.TrimSpace(string(req.ManagementMode))
 	if raw == "" {
 		if len(req.Applications) > 0 || strings.TrimSpace(req.PlanFingerprint) != "" {
 			return "", bcode.ErrApplicationConfig
 		}
-		return config.ManagementModeObserve, nil
+		return domainspec.ManagementModeObserve, nil
 	}
-	mode, ok := config.NormalizeManagementMode(raw)
-	if !ok || mode == config.ManagementModeNative {
+	mode, ok := domainspec.NormalizeManagementMode(raw)
+	if !ok || mode == domainspec.ManagementModeNative {
 		return "", bcode.ErrApplicationConfig
 	}
-	if mode == config.ManagementModeAdopted {
+	if mode == domainspec.ManagementModeAdopted {
 		if len(req.Applications) != 1 {
 			return "", fmt.Errorf(
 				"%w: adopted namespace import requires exactly one application mapping",
@@ -350,7 +350,7 @@ func (s *serviceImpl) prepareAdoptedPlansForExecution(
 				plan.applyErrorStatus = importResourceStatusFailed
 				continue
 			}
-			if existing.EffectiveManagementMode() == config.ManagementModeNative {
+			if existing.EffectiveManagementMode() == domainspec.ManagementModeNative {
 				plan.err = fmt.Errorf(
 					"%w: native target app %q cannot be replaced by namespace adoption",
 					bcode.ErrAdoptedResourceConflict,
@@ -710,7 +710,7 @@ func collectAdoptedSnapshotConflicts(app *model.Applications, plannedDependencie
 			)
 		}
 	}
-	if app.EffectiveManagementMode() != config.ManagementModeAdopted {
+	if app.EffectiveManagementMode() != domainspec.ManagementModeAdopted {
 		return
 	}
 	snapshot, err := decodeAdoptionSnapshot(app.AdoptionSnapshot)
@@ -2259,7 +2259,7 @@ func (s *serviceImpl) buildAdoptedCanonicalPlan(
 	canonical := adoptedCanonicalPlan{
 		Version:        importcontract.SnapshotVersion,
 		Namespace:      namespace,
-		ManagementMode: config.ManagementModeAdopted,
+		ManagementMode: domainspec.ManagementModeAdopted,
 		Applications:   make([]adoptedCanonicalPlanApp, 0, len(plans)),
 	}
 	for index := range plans {
@@ -2610,11 +2610,11 @@ func markLegacyUnsafeImportResources(plans []importAppPlan) {
 	}
 }
 
-func importResourceCanBeLabeled(mode config.ManagementMode, resource *importResource) bool {
+func importResourceCanBeLabeled(mode domainspec.ManagementMode, resource *importResource) bool {
 	// Explicit adoption is a DB-side operation. Kubernetes metadata mutation is
 	// delegated to the pod coordinator after the source UID binding commits.
 	// Preserve the pre-existing legacy observe import labeling behavior.
-	if mode == config.ManagementModeAdopted || resource == nil {
+	if mode == domainspec.ManagementModeAdopted || resource == nil {
 		return false
 	}
 	return resource.disposition != importcontract.DispositionBlocked &&
@@ -2647,7 +2647,7 @@ func (s *serviceImpl) mutateAdoptedApplicationCreate(
 	if err != nil {
 		return fmt.Errorf("encode adoption snapshot: %w", err)
 	}
-	app.ManagementMode = config.ManagementModeAdopted
+	app.ManagementMode = domainspec.ManagementModeAdopted
 	app.AdoptionSnapshot = snapshotJSON
 	for _, component := range components {
 		if component == nil {

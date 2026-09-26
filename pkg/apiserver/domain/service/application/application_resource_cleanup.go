@@ -57,7 +57,7 @@ func (c *applicationsServiceImpl) cleanupApplicationResourcesUnlocked(
 		}
 		return nil, err
 	}
-	if app.EffectiveManagementMode() != config.ManagementModeNative {
+	if app.EffectiveManagementMode() != domainspec.ManagementModeNative {
 		return nil, fmt.Errorf("%w: resource cleanup is disabled for %s applications",
 			bcode.ErrApplicationManagementMode, app.EffectiveManagementMode())
 	}

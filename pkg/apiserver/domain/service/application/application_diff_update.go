@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"reflect"
 	"sort"
 	"strings"
@@ -49,7 +50,7 @@ func (c *applicationsServiceImpl) DiffUpdateVersion(ctx context.Context, targetA
 		}
 		return nil, err
 	}
-	if !req.DryRun && targetApp.EffectiveManagementMode() == config.ManagementModeObserve {
+	if !req.DryRun && targetApp.EffectiveManagementMode() == domainspec.ManagementModeObserve {
 		return nil, fmt.Errorf("%w: observe applications are read-only", bcode.ErrApplicationManagementMode)
 	}
 	sourceVersion := strings.TrimSpace(sourceApp.Version)
@@ -139,7 +140,7 @@ func (c *applicationsServiceImpl) buildApplicationVersionDiff(ctx context.Contex
 		}
 		targetComponentMap[strings.ToLower(strings.TrimSpace(component.Name))] = component
 	}
-	if targetApp.EffectiveManagementMode() == config.ManagementModeAdopted {
+	if targetApp.EffectiveManagementMode() == domainspec.ManagementModeAdopted {
 		if err := validateAdoptedDiffUpdateInputs(sourceComponents, targetComponents); err != nil {
 			return nil, err
 		}
@@ -149,11 +150,11 @@ func (c *applicationsServiceImpl) buildApplicationVersionDiff(ctx context.Contex
 	if err != nil {
 		return nil, err
 	}
-	if targetApp.EffectiveManagementMode() == config.ManagementModeAdopted {
+	if targetApp.EffectiveManagementMode() == domainspec.ManagementModeAdopted {
 		blockUnsupportedAdoptedVersionDiffs(diff, targetComponents)
 	}
 	applyDiffUpdateTargetOnlyStrategy(diff, targetOnlyStrategy)
-	if targetApp.EffectiveManagementMode() == config.ManagementModeAdopted {
+	if targetApp.EffectiveManagementMode() == domainspec.ManagementModeAdopted {
 		blockUnsupportedAdoptedTargetOnlyRemovals(diff)
 	}
 	if err := blockNonExecutableStatefulSetVersionDiffs(targetComponentMap, diff); err != nil {
@@ -203,7 +204,7 @@ func annotateVersionDiffComponentActions(diff *versionDiffResult, reason string)
 	annotate(diff.updated)
 	annotate(diff.added)
 	for index := range diff.extra {
-		if diff.extra[index].Action == string(config.ComponentActionRemove) {
+		if diff.extra[index].Action == string(domainspec.ComponentActionRemove) {
 			annotate(diff.extra[index : index+1])
 		}
 	}
@@ -232,7 +233,7 @@ func blockUnsupportedAdoptedVersionDiffs(
 			continue
 		}
 		update := apisv1.ComponentUpdateSpec{
-			Action: string(config.ComponentActionUpdate),
+			Action: string(domainspec.ComponentActionUpdate),
 			Name:   item.Name,
 		}
 		for _, field := range item.Fields {
@@ -267,7 +268,7 @@ func blockUnsupportedAdoptedTargetOnlyRemovals(diff *versionDiffResult) {
 	}
 	executable := make([]apisv1.VersionComponentDiff, 0, len(diff.extra))
 	for _, item := range diff.extra {
-		if item.Action != string(config.ComponentActionRemove) {
+		if item.Action != string(domainspec.ComponentActionRemove) {
 			executable = append(executable, item)
 			continue
 		}
@@ -369,7 +370,7 @@ func buildVersionDiff(sourceComponents, targetComponents []*model.ApplicationCom
 		target, exists := targetSnapshots[name]
 		if !exists {
 			result.added = append(result.added, apisv1.VersionComponentDiff{
-				Action: string(config.ComponentActionAdd),
+				Action: string(domainspec.ComponentActionAdd),
 				Name:   source.Name,
 				Type:   source.Type,
 				After:  cloneVersionComponentState(source),
@@ -378,7 +379,7 @@ func buildVersionDiff(sourceComponents, targetComponents []*model.ApplicationCom
 		}
 		if source.Type != target.Type {
 			result.blocked = append(result.blocked, apisv1.VersionComponentDiff{
-				Action: string(config.ComponentActionUpdate),
+				Action: string(domainspec.ComponentActionUpdate),
 				Name:   source.Name,
 				Type:   source.Type,
 				Reason: "component type mismatch",
@@ -393,7 +394,7 @@ func buildVersionDiff(sourceComponents, targetComponents []*model.ApplicationCom
 			continue
 		}
 		result.updated = append(result.updated, apisv1.VersionComponentDiff{
-			Action: string(config.ComponentActionUpdate),
+			Action: string(domainspec.ComponentActionUpdate),
 			Name:   source.Name,
 			Type:   source.Type,
 			Fields: fields,
@@ -438,7 +439,7 @@ func applyDiffUpdateTargetOnlyStrategy(diff *versionDiffResult, strategy string)
 	for i := range diff.extra {
 		switch strategy {
 		case apisv1.DiffUpdateTargetOnlyStrategyRemove:
-			diff.extra[i].Action = string(config.ComponentActionRemove)
+			diff.extra[i].Action = string(domainspec.ComponentActionRemove)
 			diff.extra[i].Reason = "target-only component will be removed"
 		case apisv1.DiffUpdateTargetOnlyStrategyBlock:
 			diff.extra[i].Action = apisv1.DiffUpdateComponentActionBlock
@@ -578,7 +579,7 @@ func buildDiffUpdateVersionRequest(version string, req apisv1.DiffUpdateVersionR
 		properties := item.After.Properties
 		traits := item.After.Traits
 		updateReq.Components = append(updateReq.Components, apisv1.ComponentUpdateSpec{
-			Action:        string(config.ComponentActionAdd),
+			Action:        string(domainspec.ComponentActionAdd),
 			Name:          item.After.Name,
 			Image:         item.After.Image,
 			Replicas:      &replicas,
@@ -593,7 +594,7 @@ func buildDiffUpdateVersionRequest(version string, req apisv1.DiffUpdateVersionR
 				continue
 			}
 			updateReq.Components = append(updateReq.Components, apisv1.ComponentUpdateSpec{
-				Action: string(config.ComponentActionRemove),
+				Action: string(domainspec.ComponentActionRemove),
 				Name:   item.Before.Name,
 			})
 		}
@@ -606,7 +607,7 @@ func versionComponentDiffUpdateSpec(item apisv1.VersionComponentDiff) (apisv1.Co
 		return apisv1.ComponentUpdateSpec{}, false
 	}
 	spec := apisv1.ComponentUpdateSpec{
-		Action: string(config.ComponentActionUpdate),
+		Action: string(domainspec.ComponentActionUpdate),
 		Name:   item.After.Name,
 	}
 	for _, field := range item.Fields {

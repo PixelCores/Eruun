@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"strings"
 	"time"
 
@@ -30,8 +31,8 @@ type versionUpdateRun struct {
 	startTime       int64
 	autoExec        bool
 	executeAt       int64
-	executionScope  config.VersionUpdateExecutionScope
-	strategy        config.UpdateStrategy
+	executionScope  domainspec.VersionUpdateExecutionScope
+	strategy        domainspec.UpdateStrategy
 
 	selectedWorkflow         *model.Workflow
 	autoExecWorkflow         *model.Workflow
@@ -62,7 +63,7 @@ func (c *applicationsServiceImpl) prepareVersionUpdateRun(
 		newVersion:      req.Version,
 		startTime:       time.Now().Unix(),
 		autoExec:        true,
-		strategy:        config.ParseUpdateStrategy(req.Strategy),
+		strategy:        domainspec.ParseUpdateStrategy(req.Strategy),
 	}
 	if req.AutoExec != nil {
 		run.autoExec = *req.AutoExec
@@ -104,7 +105,7 @@ func (c *applicationsServiceImpl) prepareVersionUpdateRun(
 	if err != nil {
 		return nil, err
 	}
-	if app.EffectiveManagementMode() == config.ManagementModeAdopted && run.resourceActions.fullCleanup {
+	if app.EffectiveManagementMode() == domainspec.ManagementModeAdopted && run.resourceActions.fullCleanup {
 		return nil, fmt.Errorf("%w: adopted full cleanup requires an explicit cleanup plan fingerprint", bcode.ErrApplicationManagementMode)
 	}
 	if err := validateVersionUpdateExecutionScopeActions(run.executionScope, run.resourceActions); err != nil {
@@ -168,7 +169,7 @@ func (c *applicationsServiceImpl) preflightVersionUpdateRun(
 	if err := validateVersionUpdateActionContract(run.normalReq.Components, run.componentMap); err != nil {
 		return err
 	}
-	if run.app.EffectiveManagementMode() == config.ManagementModeAdopted {
+	if run.app.EffectiveManagementMode() == domainspec.ManagementModeAdopted {
 		if err := validateAdoptedVersionUpdateActions(run.normalReq.Components, run.componentMap); err != nil {
 			return err
 		}
@@ -231,7 +232,7 @@ func (c *applicationsServiceImpl) preflightVersionUpdateRun(
 	if err != nil {
 		return err
 	}
-	if run.app.EffectiveManagementMode() == config.ManagementModeAdopted {
+	if run.app.EffectiveManagementMode() == domainspec.ManagementModeAdopted {
 		if err := EnsureAppWorkflowIdle(ctx, c.Store, run.app.ID); err != nil {
 			return fmt.Errorf("update adopted application version: %w", err)
 		}
@@ -327,7 +328,7 @@ func (c *applicationsServiceImpl) commitDirectVersionUpdate(ctx context.Context,
 				return c.addComponent(ctx, run.app, spec)
 			},
 			remove: func(ctx context.Context, component *model.ApplicationComponent, spec apisv1.ComponentUpdateSpec) error {
-				shouldCleanup := run.app.EffectiveManagementMode() == config.ManagementModeNative || !component.HasSourceWorkload()
+				shouldCleanup := run.app.EffectiveManagementMode() == domainspec.ManagementModeNative || !component.HasSourceWorkload()
 				if shouldCleanup {
 					if err := c.cleanupVersionUpdateRemovedComponent(ctx, component); err != nil {
 						klog.Errorf("cleanup component resources %s failed: %v", spec.Name, err)

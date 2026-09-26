@@ -2,14 +2,12 @@ package application
 
 import (
 	"fmt"
-	"reflect"
-	"strings"
-
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	"reflect"
+	"strings"
 )
 
 func validateVersionUpdateSharedRemovals(specs []apisv1.ComponentUpdateSpec, componentMap map[string]*model.ApplicationComponent) error {
@@ -18,7 +16,7 @@ func validateVersionUpdateSharedRemovals(specs []apisv1.ComponentUpdateSpec, com
 		if err != nil {
 			return err
 		}
-		if action != config.ComponentActionRemove {
+		if action != domainspec.ComponentActionRemove {
 			continue
 		}
 		key := strings.ToLower(strings.TrimSpace(spec.Name))
@@ -38,20 +36,20 @@ func validateVersionUpdateSharedRemovals(specs []apisv1.ComponentUpdateSpec, com
 	return nil
 }
 
-func parseVersionUpdateComponentAction(spec apisv1.ComponentUpdateSpec) (config.ComponentAction, error) {
+func parseVersionUpdateComponentAction(spec apisv1.ComponentUpdateSpec) (domainspec.ComponentAction, error) {
 	rawAction := strings.TrimSpace(spec.Action)
 	if rawAction == "" {
-		return config.ComponentActionUpdate, nil
+		return domainspec.ComponentActionUpdate, nil
 	}
 	switch strings.ToLower(rawAction) {
-	case string(config.ComponentActionUpdate):
-		return config.ComponentActionUpdate, nil
-	case string(config.ComponentActionAdd):
-		return config.ComponentActionAdd, nil
-	case string(config.ComponentActionRemove):
-		return config.ComponentActionRemove, nil
-	case string(config.ComponentActionRestart):
-		return config.ComponentActionRestart, nil
+	case string(domainspec.ComponentActionUpdate):
+		return domainspec.ComponentActionUpdate, nil
+	case string(domainspec.ComponentActionAdd):
+		return domainspec.ComponentActionAdd, nil
+	case string(domainspec.ComponentActionRemove):
+		return domainspec.ComponentActionRemove, nil
+	case string(domainspec.ComponentActionRestart):
+		return domainspec.ComponentActionRestart, nil
 	default:
 		componentName := strings.TrimSpace(spec.Name)
 		if componentName == "" {
@@ -71,24 +69,24 @@ func validateVersionUpdateActionContract(specs []apisv1.ComponentUpdateSpec, com
 		if key == "" {
 			continue
 		}
-		if (action == config.ComponentActionUpdate || action == config.ComponentActionAdd) && spec.Replicas != nil && *spec.Replicas <= 0 {
+		if (action == domainspec.ComponentActionUpdate || action == domainspec.ComponentActionAdd) && spec.Replicas != nil && *spec.Replicas <= 0 {
 			return fmt.Errorf("%w: component %s replicas must be greater than 0; /version does not support scale-to-zero", bcode.ErrApplicationConfig, strings.TrimSpace(spec.Name))
 		}
 		_, exists := componentMap[key]
 		switch action {
-		case config.ComponentActionUpdate:
+		case domainspec.ComponentActionUpdate:
 			if !exists {
 				return fmt.Errorf("%w: component %s not found for update", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
 			}
-		case config.ComponentActionAdd:
+		case domainspec.ComponentActionAdd:
 			if exists {
 				return fmt.Errorf("%w: component %s already exists for add", bcode.ErrComponentAlreadyExists, strings.TrimSpace(spec.Name))
 			}
-		case config.ComponentActionRemove:
+		case domainspec.ComponentActionRemove:
 			if !exists {
 				return fmt.Errorf("%w: component %s not found for remove", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
 			}
-		case config.ComponentActionRestart:
+		case domainspec.ComponentActionRestart:
 			if !exists {
 				return fmt.Errorf("%w: component %s not found for restart", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
 			}
@@ -118,19 +116,19 @@ func validateVersionUpdateComponentActionConflicts(specs []apisv1.ComponentUpdat
 		current := seen[key]
 		current.name = strings.TrimSpace(spec.Name)
 		switch action {
-		case config.ComponentActionAdd:
+		case domainspec.ComponentActionAdd:
 			current.add = true
-		case config.ComponentActionRemove:
+		case domainspec.ComponentActionRemove:
 			if current.remove {
 				return fmt.Errorf("%w: component %s cannot be removed more than once in one version update request", bcode.ErrDuplicateComponentName, current.name)
 			}
 			current.remove = true
-		case config.ComponentActionRestart:
+		case domainspec.ComponentActionRestart:
 			if current.restart {
 				return fmt.Errorf("%w: component %s cannot be restarted more than once in one version update request", bcode.ErrDuplicateComponentName, current.name)
 			}
 			current.restart = true
-		case config.ComponentActionUpdate:
+		case domainspec.ComponentActionUpdate:
 			if current.update {
 				return fmt.Errorf("%w: component %s cannot be updated more than once in one version update request", bcode.ErrDuplicateComponentName, current.name)
 			}
@@ -189,7 +187,7 @@ func buildVersionUpdateResolvedComponents(existing []*model.ApplicationComponent
 			return nil, err
 		}
 		switch action {
-		case config.ComponentActionUpdate:
+		case domainspec.ComponentActionUpdate:
 			current, exists := componentsByName[key]
 			if !exists {
 				return nil, fmt.Errorf("%w: component %s not found for update", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
@@ -199,7 +197,7 @@ func buildVersionUpdateResolvedComponents(existing []*model.ApplicationComponent
 				return nil, err
 			}
 			componentsByName[key] = updated
-		case config.ComponentActionAdd:
+		case domainspec.ComponentActionAdd:
 			if _, exists := componentsByName[key]; exists {
 				return nil, fmt.Errorf("%w: component %s already exists for add", bcode.ErrComponentAlreadyExists, strings.TrimSpace(spec.Name))
 			}
@@ -212,12 +210,12 @@ func buildVersionUpdateResolvedComponents(existing []*model.ApplicationComponent
 				orderedNames = append(orderedNames, key)
 				orderedNameSet[key] = struct{}{}
 			}
-		case config.ComponentActionRemove:
+		case domainspec.ComponentActionRemove:
 			if _, exists := componentsByName[key]; !exists {
 				return nil, fmt.Errorf("%w: component %s not found for remove", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
 			}
 			delete(componentsByName, key)
-		case config.ComponentActionRestart:
+		case domainspec.ComponentActionRestart:
 			if _, exists := componentsByName[key]; !exists {
 				return nil, fmt.Errorf("%w: component %s not found for restart", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
 			}
@@ -335,7 +333,7 @@ func hasVersionUpdateComponentChanges(componentMap map[string]*model.Application
 		}
 
 		switch action {
-		case config.ComponentActionUpdate:
+		case domainspec.ComponentActionUpdate:
 			comp, exists := componentMap[compName]
 			if !exists {
 				return false, fmt.Errorf("%w: component %s not found for update", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
@@ -347,17 +345,17 @@ func hasVersionUpdateComponentChanges(componentMap map[string]*model.Application
 			if changed {
 				hasChanges = true
 			}
-		case config.ComponentActionAdd:
+		case domainspec.ComponentActionAdd:
 			if _, exists := componentMap[compName]; exists {
 				return false, fmt.Errorf("%w: component %s already exists for add", bcode.ErrComponentAlreadyExists, strings.TrimSpace(spec.Name))
 			}
 			hasChanges = true
-		case config.ComponentActionRemove:
+		case domainspec.ComponentActionRemove:
 			if _, exists := componentMap[compName]; !exists {
 				return false, fmt.Errorf("%w: component %s not found for remove", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
 			}
 			hasChanges = true
-		case config.ComponentActionRestart:
+		case domainspec.ComponentActionRestart:
 			if _, exists := componentMap[compName]; !exists {
 				return false, fmt.Errorf("%w: component %s not found for restart", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
 			}

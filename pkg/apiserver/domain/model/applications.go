@@ -9,19 +9,19 @@ import (
 )
 
 type Applications struct {
-	WorkspaceID      string                `json:"workspaceId" gorm:"type:varchar(36);not null;index"`
-	ID               string                `json:"id" gorm:"primaryKey;type:varchar(64);column:id"`
-	Name             string                `json:"name" gorm:"type:varchar(255);column:name"`          //应用名称
-	Namespace        string                `json:"namespace" gorm:"type:varchar(64);column:namespace"` //命名空间，但是不对外暴露
-	Version          string                `json:"version" gorm:"type:varchar(64);column:version"`     //版本，如果为空则默认为1.0.0
-	Alias            string                `json:"alias" gorm:"type:varchar(128);column:alias"`        //别名
-	Project          string                `json:"project" gorm:"type:varchar(128);column:project"`    //项目
-	Description      string                `json:"description" gorm:"type:text;column:description"`    //详情
-	Icon             string                `json:"icon" gorm:"type:varchar(255);column:icon"`          //图标
-	TemplateEnabled  bool                  `json:"templateEnabled" gorm:"column:tmp_enable"`           // 是否允许作为模板被引用
-	ManagementMode   config.ManagementMode `json:"managementMode" gorm:"type:varchar(16);column:management_mode;index"`
-	AdoptionSnapshot *JSONStruct           `json:"-" gorm:"column:adoption_snapshot;type:longtext;serializer:json"`
-	Callback         *JSONStruct           `json:"callback,omitempty" gorm:"serializer:json"`
+	WorkspaceID      string              `json:"workspaceId" gorm:"type:varchar(36);not null;index"`
+	ID               string              `json:"id" gorm:"primaryKey;type:varchar(64);column:id"`
+	Name             string              `json:"name" gorm:"type:varchar(255);column:name"`          //应用名称
+	Namespace        string              `json:"namespace" gorm:"type:varchar(64);column:namespace"` //命名空间，但是不对外暴露
+	Version          string              `json:"version" gorm:"type:varchar(64);column:version"`     //版本，如果为空则默认为1.0.0
+	Alias            string              `json:"alias" gorm:"type:varchar(128);column:alias"`        //别名
+	Project          string              `json:"project" gorm:"type:varchar(128);column:project"`    //项目
+	Description      string              `json:"description" gorm:"type:text;column:description"`    //详情
+	Icon             string              `json:"icon" gorm:"type:varchar(255);column:icon"`          //图标
+	TemplateEnabled  bool                `json:"templateEnabled" gorm:"column:tmp_enable"`           // 是否允许作为模板被引用
+	ManagementMode   spec.ManagementMode `json:"managementMode" gorm:"type:varchar(16);column:management_mode;index"`
+	AdoptionSnapshot *JSONStruct         `json:"-" gorm:"column:adoption_snapshot;type:longtext;serializer:json"`
+	Callback         *JSONStruct         `json:"callback,omitempty" gorm:"serializer:json"`
 	BaseModel
 }
 
@@ -36,7 +36,7 @@ func NewApplications(id, name, namespace, version, alias, project, description, 
 		Description:     description,
 		Icon:            icon,
 		TemplateEnabled: templateEnabled,
-		ManagementMode:  config.ManagementModeNative,
+		ManagementMode:  spec.ManagementModeNative,
 	}
 }
 
@@ -74,7 +74,7 @@ func (a *Applications) Index() map[string]interface{} {
 		index["tmp_enable"] = a.TemplateEnabled
 	}
 	// A zero-value query must not implicitly filter out observe/adopted rows.
-	if mode, ok := config.NormalizeManagementMode(string(a.ManagementMode)); ok {
+	if mode, ok := spec.NormalizeManagementMode(string(a.ManagementMode)); ok {
 		index["management_mode"] = mode
 	}
 	return index
@@ -82,22 +82,22 @@ func (a *Applications) Index() map[string]interface{} {
 
 // EffectiveManagementMode keeps legacy and rolling-upgrade rows fail-closed
 // when an older writer omitted the nullable management_mode column.
-func (a *Applications) EffectiveManagementMode() config.ManagementMode {
+func (a *Applications) EffectiveManagementMode() spec.ManagementMode {
 	if a == nil {
-		return config.ManagementModeNative
+		return spec.ManagementModeNative
 	}
 	rawMode := strings.TrimSpace(string(a.ManagementMode))
 	if rawMode != "" {
-		if mode, ok := config.NormalizeManagementMode(rawMode); ok {
+		if mode, ok := spec.NormalizeManagementMode(rawMode); ok {
 			return mode
 		}
-		return config.ManagementModeObserve
+		return spec.ManagementModeObserve
 	}
 	if strings.EqualFold(strings.TrimSpace(a.Project), "imported") &&
 		strings.EqualFold(strings.TrimSpace(a.Version), "imported") {
-		return config.ManagementModeObserve
+		return spec.ManagementModeObserve
 	}
-	return config.ManagementModeNative
+	return spec.ManagementModeNative
 }
 
 // ApplicationComponent delivery database model 组件信息

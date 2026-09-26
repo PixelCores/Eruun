@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"testing"
 	"time"
 
@@ -21,8 +22,8 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
+	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
@@ -1336,7 +1337,7 @@ func adoptedCleanupApplication(t *testing.T, resources []importcontract.Resource
 		ID:               "app-1",
 		Name:             "legacy",
 		Namespace:        "prod",
-		ManagementMode:   config.ManagementModeAdopted,
+		ManagementMode:   domainspec.ManagementModeAdopted,
 		AdoptionSnapshot: raw,
 	}
 }

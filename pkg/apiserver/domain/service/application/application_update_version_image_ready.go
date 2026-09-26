@@ -2,6 +2,7 @@ package application
 
 import (
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"strings"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -55,7 +56,7 @@ func versionUpdateReadyComponents(componentMap map[string]*model.ApplicationComp
 		name := strings.TrimSpace(spec.Name)
 		key := strings.ToLower(name)
 		switch action {
-		case config.ComponentActionUpdate:
+		case domainspec.ComponentActionUpdate:
 			comp := componentMap[key]
 			if comp == nil || !versionUpdateImageReadyComponentType(comp.ComponentType) {
 				continue
@@ -68,7 +69,7 @@ func versionUpdateReadyComponents(componentMap map[string]*model.ApplicationComp
 				continue
 			}
 			appendTarget(comp.Name)
-		case config.ComponentActionAdd:
+		case domainspec.ComponentActionAdd:
 			if !includeAdds || strings.TrimSpace(spec.Image) == "" || !versionUpdateImageReadyComponentType(spec.ComponentType) {
 				continue
 			}

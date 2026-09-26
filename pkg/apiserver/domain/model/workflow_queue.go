@@ -1,6 +1,7 @@
 package model
 
 import (
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"time"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -63,14 +64,14 @@ type VersionUpdateCleanupComponent struct {
 }
 
 type VersionUpdateResourceActionInfo struct {
-	Source                   string                             `json:"source"`
-	Version                  int                                `json:"version"`
-	RestartOnly              bool                               `json:"restartOnly,omitempty"`
-	RestartComponents        []string                           `json:"restartComponents,omitempty"`
-	ImageReadyComponents     []string                           `json:"imageReadyComponents,omitempty"`
-	ImageReadyTimeoutSeconds int64                              `json:"imageReadyTimeoutSeconds,omitempty"`
-	ExecutionScope           config.VersionUpdateExecutionScope `json:"executionScope,omitempty"`
-	ExecutionComponents      []string                           `json:"executionComponents,omitempty"`
+	Source                   string                                 `json:"source"`
+	Version                  int                                    `json:"version"`
+	RestartOnly              bool                                   `json:"restartOnly,omitempty"`
+	RestartComponents        []string                               `json:"restartComponents,omitempty"`
+	ImageReadyComponents     []string                               `json:"imageReadyComponents,omitempty"`
+	ImageReadyTimeoutSeconds int64                                  `json:"imageReadyTimeoutSeconds,omitempty"`
+	ExecutionScope           domainspec.VersionUpdateExecutionScope `json:"executionScope,omitempty"`
+	ExecutionComponents      []string                               `json:"executionComponents,omitempty"`
 }
 
 func (wq *WorkflowQueue) PrimaryKey() string {

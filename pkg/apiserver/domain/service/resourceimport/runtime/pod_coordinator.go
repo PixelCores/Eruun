@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"sort"
 	"strconv"
 	"strings"
@@ -40,7 +41,7 @@ type SourceBinding struct {
 	AppID              string
 	ComponentID        int
 	ComponentName      string
-	ManagementMode     config.ManagementMode
+	ManagementMode     domainspec.ManagementMode
 	WorkloadAPIVersion string
 	WorkloadKind       string
 	WorkloadName       string
@@ -48,7 +49,7 @@ type SourceBinding struct {
 }
 
 func (b SourceBinding) readOnly() bool {
-	return b.ManagementMode == config.ManagementModeObserve
+	return b.ManagementMode == domainspec.ManagementModeObserve
 }
 
 func (b SourceBinding) valid() bool {

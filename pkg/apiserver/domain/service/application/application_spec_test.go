@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"encoding/json"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -83,7 +84,7 @@ func TestGetApplicationSpecIncludesUniformCallback(t *testing.T) {
 
 func TestGetApplicationSpecRejectsNonNativeApplication(t *testing.T) {
 	store := newInMemoryAppStore()
-	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "demo", ManagementMode: config.ManagementModeObserve}
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "demo", ManagementMode: domainspec.ManagementModeObserve}
 
 	_, err := newMockServiceWithStore(store).GetApplicationSpec(context.Background(), "app-1")
 	require.Error(t, err)

@@ -4,14 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
-
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	"strings"
 )
 
 type applicationMutationLockContextKey struct{}
@@ -47,7 +46,7 @@ func (c *applicationsServiceImpl) withWritableApplicationLock(
 			}
 			return nil, err
 		}
-		if app.EffectiveManagementMode() == config.ManagementModeObserve {
+		if app.EffectiveManagementMode() == domainspec.ManagementModeObserve {
 			return nil, fmt.Errorf("%w: observe applications are read-only", bcode.ErrApplicationManagementMode)
 		}
 		if run != nil {

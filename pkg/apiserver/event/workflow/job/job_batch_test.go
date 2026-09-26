@@ -561,7 +561,7 @@ type componentStatusStore struct {
 	updates        []*model.ApplicationComponent
 	statuses       []string
 	jobInfos       []*model.JobInfo
-	managementMode config.ManagementMode
+	managementMode domainspec.ManagementMode
 	putErr         error
 }
 

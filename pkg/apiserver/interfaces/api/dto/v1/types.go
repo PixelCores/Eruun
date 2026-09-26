@@ -11,21 +11,21 @@ import (
 
 // ApplicationBase application base model
 type ApplicationBase struct {
-	WorkspaceID     string                `json:"workspaceID"`
-	ID              string                `json:"id"`
-	Name            string                `json:"name"`
-	Namespace       string                `json:"namespace"`
-	Alias           string                `json:"alias"`
-	Project         string                `json:"project"`
-	Version         string                `json:"version"`
-	Description     string                `json:"description"`
-	CreateTime      time.Time             `json:"createTime"`
-	UpdateTime      time.Time             `json:"updateTime"`
-	Icon            string                `json:"icon"`
-	WorkflowID      string                `json:"workflowId"`
-	TemplateEnabled bool                  `json:"templateEnabled"`
-	ManagementMode  config.ManagementMode `json:"managementMode"`
-	Resources       ApplicationResources  `json:"resources"`
+	WorkspaceID     string               `json:"workspaceID"`
+	ID              string               `json:"id"`
+	Name            string               `json:"name"`
+	Namespace       string               `json:"namespace"`
+	Alias           string               `json:"alias"`
+	Project         string               `json:"project"`
+	Version         string               `json:"version"`
+	Description     string               `json:"description"`
+	CreateTime      time.Time            `json:"createTime"`
+	UpdateTime      time.Time            `json:"updateTime"`
+	Icon            string               `json:"icon"`
+	WorkflowID      string               `json:"workflowId"`
+	TemplateEnabled bool                 `json:"templateEnabled"`
+	ManagementMode  spec.ManagementMode  `json:"managementMode"`
+	Resources       ApplicationResources `json:"resources"`
 }
 
 type ApplicationResources struct {
@@ -100,7 +100,7 @@ type ConvertApplicationsResponse struct {
 type ImportNamespaceApplicationsRequest struct {
 	Namespace       string                              `json:"namespace"`
 	Mode            string                              `json:"mode,omitempty"`
-	ManagementMode  config.ManagementMode               `json:"managementMode,omitempty"`
+	ManagementMode  spec.ManagementMode                 `json:"managementMode,omitempty"`
 	Applications    []ImportNamespaceApplicationMapping `json:"applications,omitempty"`
 	PlanFingerprint string                              `json:"planFingerprint,omitempty"`
 	IncludeKinds    []string                            `json:"includeKinds,omitempty"`
@@ -171,7 +171,7 @@ type ImportNamespaceResourceResult struct {
 type ImportNamespaceApplicationsResponse struct {
 	Namespace       string                          `json:"namespace"`
 	Mode            string                          `json:"mode"`
-	ManagementMode  config.ManagementMode           `json:"managementMode"`
+	ManagementMode  spec.ManagementMode             `json:"managementMode"`
 	PlanFingerprint string                          `json:"planFingerprint,omitempty"`
 	Summary         ImportNamespaceSummary          `json:"summary"`
 	Apps            []ImportNamespaceAppResult      `json:"apps,omitempty"`

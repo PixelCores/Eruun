@@ -155,7 +155,7 @@ func TestBuildWorkflowFailureCleanupJobsSkipsAdoptedApplication(t *testing.T) {
 		application: &model.Applications{
 			ID:             "app-1",
 			Name:           "ImportedApp",
-			ManagementMode: config.ManagementModeAdopted,
+			ManagementMode: spec.ManagementModeAdopted,
 		},
 		components: []*model.ApplicationComponent{{
 			Name:              "api",

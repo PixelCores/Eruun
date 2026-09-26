@@ -3,6 +3,7 @@ package application
 import (
 	"encoding/json"
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"sort"
 	"strings"
 
@@ -37,7 +38,7 @@ func parseVersionUpdateResourceActions(specs []apisv1.ComponentUpdateSpec) (vers
 		name := strings.TrimSpace(spec.Name)
 		key := strings.ToLower(name)
 		switch {
-		case action == config.ComponentActionRemove && key == versionUpdateCleanupAllSentinelName:
+		case action == domainspec.ComponentActionRemove && key == versionUpdateCleanupAllSentinelName:
 			if actions.fullCleanup {
 				return versionUpdateResourceActions{}, fmt.Errorf("%w: component %s cannot be used more than once in one version update request", bcode.ErrDuplicateComponentName, name)
 			}
@@ -45,7 +46,7 @@ func parseVersionUpdateResourceActions(specs []apisv1.ComponentUpdateSpec) (vers
 				return versionUpdateResourceActions{}, err
 			}
 			actions.fullCleanup = true
-		case action == config.ComponentActionAdd && key == versionUpdateDeployAllSentinelName:
+		case action == domainspec.ComponentActionAdd && key == versionUpdateDeployAllSentinelName:
 			if actions.deployAll {
 				return versionUpdateResourceActions{}, fmt.Errorf("%w: component %s cannot be used more than once in one version update request", bcode.ErrDuplicateComponentName, name)
 			}
@@ -53,7 +54,7 @@ func parseVersionUpdateResourceActions(specs []apisv1.ComponentUpdateSpec) (vers
 				return versionUpdateResourceActions{}, err
 			}
 			actions.deployAll = true
-		case action == config.ComponentActionRestart:
+		case action == domainspec.ComponentActionRestart:
 			if err := validateVersionUpdateSentinelSpec(spec); err != nil {
 				return versionUpdateResourceActions{}, err
 			}

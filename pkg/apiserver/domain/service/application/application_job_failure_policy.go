@@ -2,6 +2,7 @@ package application
 
 import (
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"strings"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -53,12 +54,12 @@ func normalizeVersionUpdateJobFailurePolicies(specs []apisv1.ComponentUpdateSpec
 		if err != nil {
 			return nil, err
 		}
-		if action != config.ComponentActionAdd && action != config.ComponentActionUpdate {
+		if action != domainspec.ComponentActionAdd && action != domainspec.ComponentActionUpdate {
 			return nil, fmt.Errorf("%w: components[%d].properties.failurePolicy/jobRetryPolicy is only supported for add or update actions", bcode.ErrInvalidProperties, i)
 		}
 
 		componentType := spec.ComponentType
-		if action == config.ComponentActionUpdate {
+		if action == domainspec.ComponentActionUpdate {
 			component := componentMap[strings.ToLower(strings.TrimSpace(spec.Name))]
 			if component == nil {
 				return nil, fmt.Errorf("%w: component %s not found for update", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))

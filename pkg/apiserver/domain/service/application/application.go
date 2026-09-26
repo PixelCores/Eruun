@@ -287,7 +287,7 @@ func (c *applicationsServiceImpl) createApplications(
 		}
 	}
 
-	if mutation != nil || application.EffectiveManagementMode() == config.ManagementModeObserve {
+	if mutation != nil || application.EffectiveManagementMode() == spec.ManagementModeObserve {
 		if _, ok := c.Store.(datastore.Transactional); !ok {
 			return nil, fmt.Errorf("managed application import requires a transactional datastore")
 		}
@@ -313,7 +313,7 @@ func (c *applicationsServiceImpl) createApplications(
 				currentApplication.Namespace = config.DefaultNamespace
 			}
 			if req.ImportAsObserve {
-				currentApplication.ManagementMode = config.ManagementModeObserve
+				currentApplication.ManagementMode = spec.ManagementModeObserve
 			}
 			if callbackSelection.setCallback {
 				currentApplication.Callback = callbackSelection.callback
@@ -395,7 +395,7 @@ func (c *applicationsServiceImpl) prepareApplicationForCreate(ctx context.Contex
 			templateEnabled,
 		)
 	}
-	if !hasMutation && !req.ImportAsObserve && application.EffectiveManagementMode() != config.ManagementModeNative {
+	if !hasMutation && !req.ImportAsObserve && application.EffectiveManagementMode() != spec.ManagementModeNative {
 		return nil, nil, fmt.Errorf(
 			"%w: generic application replacement is disabled for %s applications",
 			bcode.ErrApplicationManagementMode,
@@ -403,7 +403,7 @@ func (c *applicationsServiceImpl) prepareApplicationForCreate(ctx context.Contex
 		)
 	}
 	if req.ImportAsObserve {
-		application.ManagementMode = config.ManagementModeObserve
+		application.ManagementMode = spec.ManagementModeObserve
 	}
 	if application.Namespace == "" {
 		application.Namespace = config.DefaultNamespace
@@ -421,7 +421,7 @@ func (c *applicationsServiceImpl) persistCreatedApplication(ctx context.Context,
 		if err := mutation(ctx, store, application, components); err != nil {
 			return nil, err
 		}
-		if application.EffectiveManagementMode() != config.ManagementModeAdopted {
+		if application.EffectiveManagementMode() != spec.ManagementModeAdopted {
 			return nil, fmt.Errorf(
 				"%w: adopted application mutation produced %s mode",
 				bcode.ErrApplicationManagementMode,
@@ -447,7 +447,7 @@ func (c *applicationsServiceImpl) persistCreatedApplication(ctx context.Context,
 	}
 	syncWorkflowDisabled := mutation != nil &&
 		refreshAppID != "" &&
-		managementModeBeforeMutation == config.ManagementModeObserve
+		managementModeBeforeMutation == spec.ManagementModeObserve
 	wf, err := c.upsertDefaultWorkflow(ctx, store, application, req, resolvedComponents, callbackSelection, syncWorkflowDisabled)
 	if err != nil {
 		return nil, err
@@ -455,7 +455,7 @@ func (c *applicationsServiceImpl) persistCreatedApplication(ctx context.Context,
 	if _, err := c.upsertUpdateWorkflow(ctx, store, application, req, resolvedComponents, callbackSelection, syncWorkflowDisabled); err != nil {
 		return nil, err
 	}
-	if application.EffectiveManagementMode() == config.ManagementModeObserve {
+	if application.EffectiveManagementMode() == spec.ManagementModeObserve {
 		workflows, err := repository.FindWorkflowsByAppID(ctx, store, application.ID)
 		if err != nil {
 			return nil, err
@@ -582,7 +582,7 @@ func newApplicationWorkflow(app *model.Applications, workflows []*model.Workflow
 		Namespace:    app.Namespace,
 		AppID:        app.ID,
 		Alias:        opts.desiredAlias,
-		Disabled:     app.EffectiveManagementMode() == config.ManagementModeObserve,
+		Disabled:     app.EffectiveManagementMode() == spec.ManagementModeObserve,
 		ProjectID:    app.Project,
 		Description:  app.Description,
 		WorkflowType: opts.workflowType,
@@ -603,8 +603,8 @@ func updateApplicationWorkflowFields(target *model.Workflow, app *model.Applicat
 	target.ProjectID = app.Project
 	target.Description = app.Description
 	managementMode := app.EffectiveManagementMode()
-	if managementMode == config.ManagementModeObserve || opts.syncDisabledWithAppMode {
-		target.Disabled = managementMode == config.ManagementModeObserve
+	if managementMode == spec.ManagementModeObserve || opts.syncDisabledWithAppMode {
+		target.Disabled = managementMode == spec.ManagementModeObserve
 	}
 	if opts.setWorkflowTypeOnUpdate {
 		target.WorkflowType = opts.workflowType
@@ -753,8 +753,8 @@ func (c *applicationsServiceImpl) refreshExistingApplication(ctx context.Context
 	}
 	managementMode := application.EffectiveManagementMode()
 	if allowAdoptedMutation {
-		if managementMode != config.ManagementModeObserve &&
-			managementMode != config.ManagementModeAdopted {
+		if managementMode != spec.ManagementModeObserve &&
+			managementMode != spec.ManagementModeAdopted {
 			return nil, fmt.Errorf(
 				"%w: adopted application mutation is disabled for %s applications",
 				bcode.ErrApplicationManagementMode,
@@ -762,13 +762,13 @@ func (c *applicationsServiceImpl) refreshExistingApplication(ctx context.Context
 			)
 		}
 	} else if req.ImportAsObserve {
-		if managementMode == config.ManagementModeAdopted {
+		if managementMode == spec.ManagementModeAdopted {
 			return nil, fmt.Errorf(
 				"%w: observe import cannot replace an adopted application",
 				bcode.ErrApplicationManagementMode,
 			)
 		}
-	} else if managementMode != config.ManagementModeNative {
+	} else if managementMode != spec.ManagementModeNative {
 		return nil, fmt.Errorf(
 			"%w: generic application replacement is disabled for %s applications",
 			bcode.ErrApplicationManagementMode,
@@ -1046,7 +1046,7 @@ func (c *applicationsServiceImpl) updateApplicationWorkflowLocked(ctx context.Co
 		}
 		return nil, err
 	}
-	if app.EffectiveManagementMode() == config.ManagementModeObserve {
+	if app.EffectiveManagementMode() == spec.ManagementModeObserve {
 		return nil, fmt.Errorf("%w: observe applications are read-only", bcode.ErrApplicationManagementMode)
 	}
 	if err := EnsureAppWorkflowIdle(ctx, c.Store, app.ID); err != nil {

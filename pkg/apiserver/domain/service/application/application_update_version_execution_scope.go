@@ -2,6 +2,7 @@ package application
 
 import (
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"sort"
 	"strings"
 
@@ -10,16 +11,16 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
-func normalizeVersionUpdateExecutionScope(raw string) (config.VersionUpdateExecutionScope, error) {
-	scope, ok := config.NormalizeVersionUpdateExecutionScope(raw)
+func normalizeVersionUpdateExecutionScope(raw string) (domainspec.VersionUpdateExecutionScope, error) {
+	scope, ok := domainspec.NormalizeVersionUpdateExecutionScope(raw)
 	if !ok {
 		return "", fmt.Errorf("%w: unsupported executionScope %q", bcode.ErrApplicationConfig, strings.TrimSpace(raw))
 	}
 	return scope, nil
 }
 
-func validateVersionUpdateExecutionScopeActions(scope config.VersionUpdateExecutionScope, actions versionUpdateResourceActions) error {
-	if scope != config.VersionUpdateExecutionScopeChangedComponents {
+func validateVersionUpdateExecutionScopeActions(scope domainspec.VersionUpdateExecutionScope, actions versionUpdateResourceActions) error {
+	if scope != domainspec.VersionUpdateExecutionScopeChangedComponents {
 		return nil
 	}
 	if actions.deployAll {

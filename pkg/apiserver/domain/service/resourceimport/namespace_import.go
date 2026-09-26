@@ -268,10 +268,10 @@ func (s *serviceImpl) ImportNamespaceResources(ctx context.Context, req apisv1.I
 	if err != nil {
 		return nil, err
 	}
-	if managementMode == config.ManagementModeAdopted && strings.TrimSpace(req.Mode) == "" {
+	if managementMode == domainspec.ManagementModeAdopted && strings.TrimSpace(req.Mode) == "" {
 		return nil, fmt.Errorf("%w: adopted namespace import requires explicit mode dry-run or apply", bcode.ErrApplicationConfig)
 	}
-	if managementMode == config.ManagementModeAdopted && mode == importModeApply {
+	if managementMode == domainspec.ManagementModeAdopted && mode == importModeApply {
 		return s.withAdoptedNamespaceApplyLock(
 			ctx,
 			namespace,
@@ -288,7 +288,7 @@ func (s *serviceImpl) importNamespaceResources(
 	req apisv1.ImportNamespaceApplicationsRequest,
 	namespace string,
 	mode string,
-	managementMode config.ManagementMode,
+	managementMode domainspec.ManagementMode,
 ) (*apisv1.ImportNamespaceApplicationsResponse, error) {
 	run, err := s.prepareNamespaceImportRun(ctx, req, namespace, mode, managementMode)
 	if err != nil {

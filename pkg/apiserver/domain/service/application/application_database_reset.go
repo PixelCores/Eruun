@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"net/url"
 	"strings"
 
@@ -54,7 +55,7 @@ func (c *applicationsServiceImpl) resetApplicationDatabasesUnlocked(ctx context.
 		}
 		return nil, err
 	}
-	if app.EffectiveManagementMode() != config.ManagementModeNative {
+	if app.EffectiveManagementMode() != domainspec.ManagementModeNative {
 		return nil, fmt.Errorf("%w: database reset is disabled for %s applications",
 			bcode.ErrApplicationManagementMode, app.EffectiveManagementMode())
 	}
@@ -88,7 +89,7 @@ func (c *applicationsServiceImpl) resetApplicationDatabasesUnlocked(ctx context.
 		}
 		return nil, err
 	}
-	if lockedApp.EffectiveManagementMode() != config.ManagementModeNative {
+	if lockedApp.EffectiveManagementMode() != domainspec.ManagementModeNative {
 		return nil, fmt.Errorf("%w: database reset is disabled for %s applications",
 			bcode.ErrApplicationManagementMode, lockedApp.EffectiveManagementMode())
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"sort"
 	"strings"
 	"time"
@@ -21,10 +22,10 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/importsecret"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
@@ -55,7 +56,7 @@ func (c *applicationsServiceImpl) PlanApplicationResourceCleanup(
 	if err != nil {
 		return nil, err
 	}
-	if app.EffectiveManagementMode() != config.ManagementModeAdopted {
+	if app.EffectiveManagementMode() != domainspec.ManagementModeAdopted {
 		return nil, fmt.Errorf("%w: cleanup plans are only available for adopted applications", bcode.ErrApplicationManagementMode)
 	}
 	keyring, err := c.importSecretKeyring()
@@ -79,11 +80,11 @@ func (c *applicationsServiceImpl) ApplyApplicationResourceCleanup(
 		return nil, err
 	}
 	switch app.EffectiveManagementMode() {
-	case config.ManagementModeNative:
+	case domainspec.ManagementModeNative:
 		return c.CleanupApplicationResources(ctx, app.ID)
-	case config.ManagementModeObserve:
+	case domainspec.ManagementModeObserve:
 		return nil, fmt.Errorf("%w: observe applications are read-only", bcode.ErrApplicationManagementMode)
-	case config.ManagementModeAdopted:
+	case domainspec.ManagementModeAdopted:
 	default:
 		return nil, fmt.Errorf("%w: unsupported mode %q", bcode.ErrApplicationManagementMode, app.ManagementMode)
 	}
@@ -103,7 +104,7 @@ func (c *applicationsServiceImpl) ApplyApplicationResourceCleanup(
 		if err != nil {
 			return err
 		}
-		if current.EffectiveManagementMode() != config.ManagementModeAdopted {
+		if current.EffectiveManagementMode() != domainspec.ManagementModeAdopted {
 			return fmt.Errorf("%w: application is no longer adopted", bcode.ErrApplicationManagementMode)
 		}
 		if err := EnsureAppWorkflowIdle(lockCtx, c.Store, current.ID); err != nil {

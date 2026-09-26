@@ -2,13 +2,12 @@ package runtime
 
 import (
 	"context"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/stretchr/testify/require"
 )
 
 type bindingLoaderStore struct {
@@ -55,9 +54,9 @@ func TestDataStoreBindingLoaderReturnsAllClaimsAndOnlyAdoptedSources(t *testing.
 	observeUID := "observe-deployment-uid"
 	store := &bindingLoaderStore{
 		apps: []*model.Applications{
-			{ID: "native", Namespace: "production", ManagementMode: config.ManagementModeNative},
-			{ID: "observe", Namespace: "production", ManagementMode: config.ManagementModeObserve},
-			{ID: "adopted", Namespace: "production", ManagementMode: config.ManagementModeAdopted},
+			{ID: "native", Namespace: "production", ManagementMode: domainspec.ManagementModeNative},
+			{ID: "observe", Namespace: "production", ManagementMode: domainspec.ManagementModeObserve},
+			{ID: "adopted", Namespace: "production", ManagementMode: domainspec.ManagementModeAdopted},
 		},
 		components: map[string][]*model.ApplicationComponent{
 			"native": {

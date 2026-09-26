@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"strings"
 
 	"k8s.io/klog/v2"
@@ -44,7 +45,7 @@ func (c *applicationsServiceImpl) updateVersionUnlocked(ctx context.Context, app
 		}
 		return nil, err
 	}
-	if app.EffectiveManagementMode() == config.ManagementModeObserve {
+	if app.EffectiveManagementMode() == domainspec.ManagementModeObserve {
 		return nil, fmt.Errorf("%w: observe applications are read-only", bcode.ErrApplicationManagementMode)
 	}
 	defer func() {
@@ -75,14 +76,14 @@ func validateAdoptedVersionUpdateActions(
 			return err
 		}
 		name := strings.TrimSpace(spec.Name)
-		if action == config.ComponentActionAdd {
+		if action == domainspec.ComponentActionAdd {
 			return fmt.Errorf(
 				"%w: adopted applications cannot add component %q without an explicit source binding",
 				bcode.ErrApplicationManagementMode,
 				name,
 			)
 		}
-		if action == config.ComponentActionRemove {
+		if action == domainspec.ComponentActionRemove {
 			return fmt.Errorf(
 				"%w: adopted component %q must be detached through an adoption-aware operation",
 				bcode.ErrApplicationManagementMode,

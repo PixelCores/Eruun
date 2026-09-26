@@ -4,19 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
-
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	"strings"
 )
 
 type namespaceImportRun struct {
 	namespace           string
 	mode                string
-	managementMode      config.ManagementMode
+	managementMode      domainspec.ManagementMode
 	resources           []*importResource
 	includeKinds        map[string]struct{}
 	plans               []importAppPlan
@@ -38,14 +37,14 @@ func (s *serviceImpl) prepareNamespaceImportRun(
 	req apisv1.ImportNamespaceApplicationsRequest,
 	namespace string,
 	mode string,
-	managementMode config.ManagementMode,
+	managementMode domainspec.ManagementMode,
 ) (*namespaceImportRun, error) {
 	var (
 		includeKinds map[string]struct{}
 		kindWarnings []string
 		err          error
 	)
-	if managementMode == config.ManagementModeAdopted {
+	if managementMode == domainspec.ManagementModeAdopted {
 		includeKinds = make(map[string]struct{}, len(allImportKinds))
 		for _, kind := range allImportKinds {
 			includeKinds[kind] = struct{}{}
@@ -74,7 +73,7 @@ func (s *serviceImpl) prepareNamespaceImportRun(
 		adoptedReplay   bool
 		replayAppID     string
 	)
-	if managementMode == config.ManagementModeAdopted {
+	if managementMode == domainspec.ManagementModeAdopted {
 		keyring, err := s.loadAdoptedImportKeyring()
 		if err != nil {
 			return nil, err
@@ -256,7 +255,7 @@ func (r *namespaceImportRun) verifyAdoptedApply(req apisv1.ImportNamespaceApplic
 	adoptedPlanning := r.adoptedPlanning
 	plans := r.plans
 	resp := r.response
-	if managementMode == config.ManagementModeAdopted {
+	if managementMode == domainspec.ManagementModeAdopted {
 		submittedFingerprint := strings.TrimSpace(req.PlanFingerprint)
 		if adoptedPlanning == nil ||
 			adoptedPlanning.keyring == nil ||
@@ -309,7 +308,7 @@ func (s *serviceImpl) applyNamespaceImportRun(ctx context.Context, r *namespaceI
 
 		appKey := appNameNamespaceKey(plan.name, namespace)
 		createReq := plan.createReq
-		if managementMode != config.ManagementModeAdopted {
+		if managementMode != domainspec.ManagementModeAdopted {
 			refreshedReq, refreshErr := buildImportCreateRequest(namespace, plan, existingAppIDMap, existingAppIDSet, existingAppNameByID)
 			if refreshErr != nil {
 				resp.Apps[appIdx].Error = refreshErr.Error()
@@ -342,7 +341,7 @@ func (s *serviceImpl) applyNamespaceImportRun(ctx context.Context, r *namespaceI
 		}
 
 		var created *apisv1.ApplicationBase
-		if managementMode == config.ManagementModeAdopted {
+		if managementMode == domainspec.ManagementModeAdopted {
 			created, err = s.ApplicationService.CreateApplicationsWithMutation(
 				ctx,
 				createReq,
@@ -367,7 +366,7 @@ func (s *serviceImpl) applyNamespaceImportRun(ctx context.Context, r *namespaceI
 			created, err = s.ApplicationService.CreateApplications(ctx, createReq)
 		}
 		if err != nil {
-			if managementMode == config.ManagementModeAdopted &&
+			if managementMode == domainspec.ManagementModeAdopted &&
 				errors.Is(err, bcode.ErrNamespaceImportPlanDrift) {
 				return err
 			}
@@ -390,7 +389,7 @@ func (s *serviceImpl) applyNamespaceImportRun(ctx context.Context, r *namespaceI
 		existingAppNameByID[effectiveAppID] = createReq.Name
 		appliedAppIDs[effectiveAppID] = struct{}{}
 
-		if managementMode == config.ManagementModeObserve {
+		if managementMode == domainspec.ManagementModeObserve {
 			resp.Apps[appIdx].WorkflowDisabled = true
 		}
 
@@ -432,7 +431,7 @@ func (s *serviceImpl) applyNamespaceImportRun(ctx context.Context, r *namespaceI
 
 			labels := buildImportLabels(res, effectiveAppID, plan.appID, componentName, componentID, forceShareLabels)
 			var patchErr error
-			if managementMode == config.ManagementModeAdopted {
+			if managementMode == domainspec.ManagementModeAdopted {
 				patchErr = s.patchResourceMetadataLabels(ctx, res, labels)
 			} else {
 				patchErr = s.patchResourceLabels(ctx, res, labels)

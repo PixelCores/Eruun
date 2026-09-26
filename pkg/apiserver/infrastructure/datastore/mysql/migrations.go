@@ -5,17 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"math"
 	"time"
 
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
-	"k8s.io/klog/v2"
-
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -105,15 +104,15 @@ func migrateApplicationManagementModeTx(tx *gorm.DB) error {
 	table := (&model.Applications{}).TableName()
 	native := tx.Table(table).
 		Where("management_mode IS NULL OR management_mode = ?", "").
-		UpdateColumn("management_mode", config.ManagementModeNative)
+		UpdateColumn("management_mode", domainspec.ManagementModeNative)
 	if native.Error != nil {
 		return fmt.Errorf("backfill native application management mode: %w", native.Error)
 	}
 
 	observed := tx.Table(table).
 		Where("LOWER(project) = ? AND LOWER(version) = ? AND management_mode = ?",
-			"imported", "imported", config.ManagementModeNative).
-		UpdateColumn("management_mode", config.ManagementModeObserve)
+			"imported", "imported", domainspec.ManagementModeNative).
+		UpdateColumn("management_mode", domainspec.ManagementModeObserve)
 	if observed.Error != nil {
 		return fmt.Errorf("migrate historical imported applications to observe: %w", observed.Error)
 	}

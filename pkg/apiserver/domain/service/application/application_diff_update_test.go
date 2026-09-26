@@ -115,7 +115,7 @@ func TestDiffUpdateVersionRejectsSecretPropertiesBeforeAdoptedDryRunResponse(t *
 		ID:             "target-app",
 		Name:           "target",
 		Version:        "1.0.0",
-		ManagementMode: config.ManagementModeAdopted,
+		ManagementMode: spec.ManagementModeAdopted,
 	}
 	uid := "deployment-uid"
 	store.components["source-backend"] = &model.ApplicationComponent{
@@ -158,7 +158,7 @@ func TestDiffUpdateVersionDryRunBlocksAdoptedTargetOnlyRemoval(t *testing.T) {
 		ID:             "target-app",
 		Name:           "target",
 		Version:        "1.0.0",
-		ManagementMode: config.ManagementModeAdopted,
+		ManagementMode: spec.ManagementModeAdopted,
 	}
 	apiUID := "api-uid"
 	legacyUID := "legacy-uid"
@@ -259,7 +259,7 @@ func TestDiffUpdateVersionExecutesGeneratedUpdate(t *testing.T) {
 	svc := newMockServiceWithStore(store)
 	resp, err := svc.DiffUpdateVersion(context.Background(), "target-app", apisv1.DiffUpdateVersionRequest{
 		SourceAppID:    "source-app",
-		ExecutionScope: string(config.VersionUpdateExecutionScopeChangedComponents),
+		ExecutionScope: string(spec.VersionUpdateExecutionScopeChangedComponents),
 		AutoExec:       boolPtr(false),
 	})
 
@@ -267,7 +267,7 @@ func TestDiffUpdateVersionExecutesGeneratedUpdate(t *testing.T) {
 	require.False(t, resp.DryRun)
 	require.NotNil(t, resp.UpdateResult)
 	require.Equal(t, "2.0.0", resp.UpdateResult.Version)
-	require.Equal(t, string(config.VersionUpdateExecutionScopeChangedComponents), resp.UpdateResult.ExecutionScope)
+	require.Equal(t, string(spec.VersionUpdateExecutionScopeChangedComponents), resp.UpdateResult.ExecutionScope)
 	require.Equal(t, "2.0.0", store.apps["target-app"].Version)
 	require.Equal(t, "api:v2", store.components["API"].Image)
 	require.Equal(t, int32(4), store.components["API"].Replicas)
@@ -301,7 +301,7 @@ func TestDiffUpdateVersionRemovesTargetOnlyComponentsWithStrategy(t *testing.T) 
 	require.True(t, resp.Executable)
 	require.Equal(t, apisv1.DiffUpdateTargetOnlyStrategyRemove, resp.TargetOnlyStrategy)
 	require.Len(t, resp.ExtraComponents, 1)
-	require.Equal(t, string(config.ComponentActionRemove), resp.ExtraComponents[0].Action)
+	require.Equal(t, string(spec.ComponentActionRemove), resp.ExtraComponents[0].Action)
 	require.NotNil(t, resp.UpdateResult)
 	require.Contains(t, resp.UpdateResult.RemovedComponents, "legacy")
 	require.Equal(t, "1.0.1", store.apps["target-app"].Version)
