@@ -913,9 +913,9 @@ func TestSiblingEvaluationRunnersCannotExchangeCapabilities(t *testing.T) {
 	require.NoError(t, err)
 	claimRunner(t, f)
 	member := account.WithScope(ctx, account.Scope{WorkspaceID: "space", Namespace: "space-ns", Role: "member"})
-	_, err = f.service.ResolveExecutionKey(member, f.parent.TaskID, "")
+	_, _, err = f.service.ResolveResultTask(member, f.parent.TaskID, "")
 	require.ErrorIs(t, err, bcode.ErrJobInput)
-	key, err := f.service.ResolveExecutionKey(member, f.parent.TaskID, other.ExecutionKey)
+	_, key, err := f.service.ResolveResultTask(member, f.parent.TaskID, other.ExecutionKey)
 	require.NoError(t, err)
 	require.Equal(t, other.ExecutionKey, key)
 }

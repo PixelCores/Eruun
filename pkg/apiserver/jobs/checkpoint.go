@@ -14,6 +14,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/google/uuid"
 )
@@ -118,7 +119,7 @@ func (s *Service) RunnerCheckpointPut(ctx context.Context, identity RunnerIdenti
 	if err != nil {
 		return nil, err
 	}
-	err = s.Artifacts.PutCheckpoint(ctx, auth.task.WorkspaceID, auth.task.TaskID, *auth.job.ExecutionKey, id, input, func(tx datastore.DataStore, artifact *model.JobArtifact, raw json.RawMessage) error {
+	err = s.Artifacts.PutCheckpoint(ctx, auth.task.WorkspaceID, auth.task.TaskID, *auth.job.ExecutionKey, id, input, func(tx artifacts.Backend, artifact *model.JobArtifact, raw json.RawMessage) error {
 		now, deadline, stopped, err := lockSandboxRunner(ctx, tx, auth)
 		if err != nil {
 			return err
@@ -159,7 +160,7 @@ func (s *Service) RunnerCheckpointPut(ctx context.Context, identity RunnerIdenti
 		for _, member := range manifest.Members {
 			memberIDs[member.TrialID] = true
 			row := &model.JobSandbox{ID: sandboxID(auth.task.WorkspaceID, *auth.job.ExecutionKey, member.TrialID)}
-			if err := tx.(datastore.RowLocker).GetForUpdate(ctx, row); err != nil {
+			if err := tx.GetForUpdate(ctx, row); err != nil {
 				return err
 			}
 			if row.State != sandboxReady || row.ReleaseRequested || row.PodUID == "" || row.SandboxUID == "" || row.RunnerUID != identity.PodUID || row.Namespace != auth.namespace {
@@ -221,12 +222,12 @@ func (s *Service) RunnerCheckpointGet(ctx context.Context, identity RunnerIdenti
 	}
 	row := &model.JobCheckpoint{ID: id}
 	advance := false
-	err = s.Store.(datastore.Transactional).WithTransaction(ctx, func(tx datastore.DataStore) error {
+	err = artifacts.WithTransaction(ctx, s.Store, func(tx artifacts.Backend) error {
 		now, _, stopped, err := lockSandboxRunner(ctx, tx, auth)
 		if err != nil {
 			return err
 		}
-		if err := tx.(datastore.RowLocker).GetForUpdate(ctx, row); err != nil {
+		if err := tx.GetForUpdate(ctx, row); err != nil {
 			return err
 		}
 		if row.WorkspaceID != auth.task.WorkspaceID || row.ExecutionKey != *auth.job.ExecutionKey || row.RunnerUID != identity.PodUID {
@@ -271,14 +272,14 @@ func putCheckpoint(ctx context.Context, tx datastore.DataStore, row *model.JobCh
 	return nil
 }
 
-func (s *Service) mutateCheckpoint(ctx context.Context, auth *runnerAuthorization, row *model.JobCheckpoint, change func(datastore.DataStore, *model.JobCheckpoint, time.Time) error) error {
-	return s.Store.(datastore.Transactional).WithTransaction(ctx, func(tx datastore.DataStore) error {
+func (s *Service) mutateCheckpoint(ctx context.Context, auth *runnerAuthorization, row *model.JobCheckpoint, change func(artifacts.Backend, *model.JobCheckpoint, time.Time) error) error {
+	return artifacts.WithTransaction(ctx, s.Store, func(tx artifacts.Backend) error {
 		now, _, stopped, err := lockSandboxRunner(ctx, tx, auth)
 		if err != nil {
 			return err
 		}
 		current := &model.JobCheckpoint{ID: row.ID}
-		if err := tx.(datastore.RowLocker).GetForUpdate(ctx, current); err != nil {
+		if err := tx.GetForUpdate(ctx, current); err != nil {
 			return err
 		}
 		if current.State != sandboxPending || current.RunnerUID != auth.identity.PodUID || current.LeaseToken != row.LeaseToken || current.LeaseUntil == nil || !now.Before(*current.LeaseUntil) {
@@ -303,7 +304,7 @@ func (s *Service) RunnerCheckpointMaterial(ctx context.Context, identity RunnerI
 		return err
 	}
 	row := &model.JobCheckpoint{ID: id}
-	err = s.Store.(datastore.Transactional).WithTransaction(ctx, func(tx datastore.DataStore) error {
+	err = artifacts.WithTransaction(ctx, s.Store, func(tx artifacts.Backend) error {
 		now, _, stopped, err := lockSandboxRunner(ctx, tx, auth)
 		if err != nil {
 			return err
@@ -311,7 +312,7 @@ func (s *Service) RunnerCheckpointMaterial(ctx context.Context, identity RunnerI
 		if stopped != "" {
 			return ErrRunnerConflict
 		}
-		if err := tx.(datastore.RowLocker).GetForUpdate(ctx, row); err != nil {
+		if err := tx.GetForUpdate(ctx, row); err != nil {
 			return err
 		}
 		if auth.evaluation.ResumeCheckpointID != id || !auth.evaluation.RecoveryIsolated || row.WorkspaceID != auth.task.WorkspaceID || row.TaskID != auth.task.TaskID || row.ReferencedByExecutionKey != *auth.job.ExecutionKey || row.State != sandboxReady || row.Cleaned || !now.Before(row.ExpiresAt) {

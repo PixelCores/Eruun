@@ -379,12 +379,7 @@ func (s *JobsServer) GetJobResults(ctx context.Context, req *eruunv1.JobTaskRequ
 }
 
 func (s *JobsServer) resultTask(ctx context.Context, taskID, requestedKey string) (*model.WorkflowQueue, string, error) {
-	key, err := s.Jobs.ResolveExecutionKey(ctx, taskID, requestedKey)
-	if err != nil {
-		return nil, "", err
-	}
-	task, err := s.Jobs.Task(ctx, taskID, key)
-	return task, key, err
+	return s.Jobs.ResolveResultTask(ctx, taskID, requestedKey)
 }
 
 func (s *JobsServer) RetryJobDelivery(ctx context.Context, req *eruunv1.JobDeliveryRequest) (*emptypb.Empty, error) {
