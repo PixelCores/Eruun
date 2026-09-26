@@ -60,7 +60,7 @@ func validateVersionUpdateStatefulSetImmutableFields(componentMap map[string]*mo
 }
 
 func renderVersionUpdateStatefulSetTransition(component *model.ApplicationComponent, update apisv1.ComponentUpdateSpec) (*appsv1.StatefulSet, *appsv1.StatefulSet, error) {
-	currentRequest, err := convertComponentModelToCreateRequest(component)
+	currentRequest, err := component.ComponentSpec()
 	if err != nil {
 		return nil, nil, err
 	}

@@ -52,11 +52,11 @@ func NewJSONStructByStruct(object interface{}) (*JSONStruct, error) {
 		return nil, nil
 	}
 	var data JSONStruct
-	out, err := yaml.Marshal(object)
+	out, err := json.Marshal(object)
 	if err != nil {
 		return nil, fmt.Errorf("marshal object data failure %w", err)
 	}
-	if err := yaml.Unmarshal(out, &data); err != nil {
+	if err := json.Unmarshal(out, &data); err != nil {
 		return nil, fmt.Errorf("unmarshal object data failure %w", err)
 	}
 	return &data, nil
