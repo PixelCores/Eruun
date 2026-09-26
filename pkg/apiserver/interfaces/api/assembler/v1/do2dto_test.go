@@ -719,7 +719,7 @@ func TestConvertComponentModelsToDTOAddsResourceDetailsAndCredentials(t *testing
 				Name: "init-db",
 				Traits: spec.Traits{
 					Storage: []spec.StorageTraitSpec{
-						{Name: "db-secret", Type: config.StorageTypeSecret, MountPath: "/secrets"},
+						{Name: "db-secret", Type: spec.StorageTypeSecret, MountPath: "/secrets"},
 					},
 				},
 			},
@@ -855,7 +855,7 @@ func TestConvertComponentModelsToDTOTreatsEmptyCredentialValuesAsUnresolved(t *t
 		},
 		EnvFrom: []spec.EnvFromSourceSpec{
 			{
-				Type:       config.StorageTypeSecret,
+				Type:       spec.StorageTypeSecret,
 				SourceName: "db-secret",
 			},
 		},
@@ -896,7 +896,7 @@ func TestConvertComponentModelsToDTOSkipsWholeSecretCredentialsWhenSecretHasNoKe
 	apiTraits := mustJSONStruct(t, model.Traits{
 		EnvFrom: []spec.EnvFromSourceSpec{
 			{
-				Type:       config.StorageTypeSecret,
+				Type:       spec.StorageTypeSecret,
 				SourceName: "db-secret",
 			},
 		},

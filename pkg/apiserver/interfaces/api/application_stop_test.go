@@ -10,7 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+
+	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 )
 
 type fakeStopApplicationService struct {
@@ -87,7 +88,7 @@ func TestStopApplicationEndpointHardErrorReturnsFailure(t *testing.T) {
 		t.Fatalf("expected non-OK status, body=%s", resp.Body.String())
 	}
 	result := decodeResponse(t, resp.Body.Bytes(), nil)
-	if result.Code == bcode.SuccessCode {
+	if result.Code == apiresponse.SuccessCode {
 		t.Fatalf("expected error response, got success")
 	}
 }

@@ -3,6 +3,7 @@ package conversion
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,7 +15,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
@@ -173,12 +173,12 @@ spec:
 
 	storageData := findStorage(mysql.Traits.Storage, "data")
 	require.NotNil(t, storageData)
-	require.Equal(t, config.StorageTypePersistent, storageData.Type)
+	require.Equal(t, spec.StorageTypePersistent, storageData.Type)
 	require.True(t, storageData.TmpCreate)
 	require.Equal(t, "1Gi", storageData.Size)
 	storageConf := findStorage(mysql.Traits.Storage, "conf")
 	require.NotNil(t, storageConf)
-	require.Equal(t, config.StorageTypeConfig, storageConf.Type)
+	require.Equal(t, spec.StorageTypeConfig, storageConf.Type)
 	require.Equal(t, "test-config", storageConf.SourceName)
 
 	configComp := findComponent(resp.Components, "test-config")
@@ -293,7 +293,7 @@ spec:
 	require.NotNil(t, backend)
 	storage := findStorage(backend.Traits.Storage, "logs")
 	require.NotNil(t, storage)
-	require.Equal(t, config.StorageTypePersistent, storage.Type)
+	require.Equal(t, spec.StorageTypePersistent, storage.Type)
 	require.Equal(t, "/app/log", storage.MountPath)
 	require.Equal(t, "developer-pvc", storage.ClaimName)
 	require.Empty(t, storage.SubPath)
@@ -777,7 +777,7 @@ spec:
 	require.Equal(t, int64(0), *init.Traits.SecurityPolicy.RunAsUser)
 	initStorage := findStorage(init.Traits.Storage, "init-work")
 	require.NotNil(t, initStorage)
-	require.Equal(t, config.StorageTypeEphemeral, initStorage.Type)
+	require.Equal(t, spec.StorageTypeEphemeral, initStorage.Type)
 	require.Equal(t, "/work", initStorage.MountPath)
 
 	require.Len(t, component.Traits.Sidecar, 1)
@@ -802,7 +802,7 @@ spec:
 	require.False(t, *sidecar.Traits.SecurityPolicy.AllowPrivilegeEscalation)
 	sidecarStorage := findStorage(sidecar.Traits.Storage, "sidecar-conf")
 	require.NotNil(t, sidecarStorage)
-	require.Equal(t, config.StorageTypeConfig, sidecarStorage.Type)
+	require.Equal(t, spec.StorageTypeConfig, sidecarStorage.Type)
 	require.Equal(t, "sidecar-config", sidecarStorage.SourceName)
 	require.True(t, sidecarStorage.ReadOnly)
 }
@@ -1042,21 +1042,24 @@ func TestConvertKubeResources_InvalidFileURLScheme(t *testing.T) {
 func TestConvertKubeResources_FileURLSizeLimit(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.WriteHeader(http.StatusOK)
-		_, _ = writer.Write(make([]byte, utils.ConvertYAMLMaxSize+1))
+		_, _ = writer.Write(make([]byte, convertYAMLMaxSize+1))
 	}))
 	defer server.Close()
 
-	svc := &conversionServiceImpl{ValidationService: NewValidationService()}
+	svc := &conversionServiceImpl{
+		ValidationService:         NewValidationService(),
+		URLSecurityPolicyProvider: newTestURLSecurityPolicyProvider(t, spec.URLSecurityPolicySpec{AllowPrivateByDefault: true}),
+	}
 	_, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{
 		FileURL: server.URL,
 	})
-	require.Error(t, err)
+	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
 }
 
 func TestConvertKubeResources_InlineYAMLSizeLimit(t *testing.T) {
 	svc := &conversionServiceImpl{ValidationService: NewValidationService()}
 	_, err := svc.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{
-		YAML: strings.Repeat("a", utils.ConvertYAMLMaxSize+1),
+		YAML: strings.Repeat("a", convertYAMLMaxSize+1),
 	})
 	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
 }
@@ -1396,4 +1399,47 @@ func findServiceTrait(services []spec.ServiceTraitSpec, name string) *spec.Servi
 		}
 	}
 	return nil
+}
+
+func TestReadYAMLFromURLRejectsRedirectToPrivateTarget(t *testing.T) {
+	t.Parallel()
+
+	privateTarget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("private"))
+	}))
+	defer privateTarget.Close()
+
+	redirectServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, privateTarget.URL, http.StatusFound)
+	}))
+	defer redirectServer.Close()
+
+	entryURL := strings.Replace(redirectServer.URL, "127.0.0.1", "localhost", 1)
+	policy := &spec.URLSecurityPolicySpec{
+		AllowedHostPatterns: []string{"localhost"},
+	}
+	_, err := readYAMLFromURL(context.Background(), entryURL, policy)
+	if err == nil {
+		t.Fatal("expected redirect to private target to be rejected")
+	}
+}
+
+func TestReadYAMLFromURLSizeLimit(t *testing.T) {
+	for _, size := range []int{convertYAMLMaxSize, convertYAMLMaxSize + 1} {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			payload := strings.Repeat("a", size)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(payload))
+			}))
+			defer server.Close()
+			data, err := readYAMLFromURL(context.Background(), server.URL, &spec.URLSecurityPolicySpec{AllowPrivateByDefault: true})
+			if size > convertYAMLMaxSize {
+				require.EqualError(t, err, fmt.Sprintf("file size %d bytes exceeds convert yaml maximum size %d bytes", size, convertYAMLMaxSize))
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, payload, string(data))
+		})
+	}
 }

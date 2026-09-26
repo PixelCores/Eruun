@@ -790,7 +790,7 @@ func convertStorageTraits(mounts []corev1.VolumeMount, volumes []corev1.Volume, 
 		if claimInfo, ok := claimLookup[mount.Name]; ok {
 			result = append(result, spec.StorageTraitSpec{
 				Name:         mount.Name,
-				Type:         config.StorageTypePersistent,
+				Type:         spec.StorageTypePersistent,
 				MountPath:    mount.MountPath,
 				SubPath:      mount.SubPath,
 				SubPathExpr:  mount.SubPathExpr,
@@ -809,7 +809,7 @@ func convertStorageTraits(mounts []corev1.VolumeMount, volumes []corev1.Volume, 
 		if volume.EmptyDir != nil {
 			result = append(result, spec.StorageTraitSpec{
 				Name:        mount.Name,
-				Type:        config.StorageTypeEphemeral,
+				Type:        spec.StorageTypeEphemeral,
 				MountPath:   mount.MountPath,
 				SubPath:     mount.SubPath,
 				SubPathExpr: mount.SubPathExpr,
@@ -820,7 +820,7 @@ func convertStorageTraits(mounts []corev1.VolumeMount, volumes []corev1.Volume, 
 		if volume.ConfigMap != nil {
 			result = append(result, spec.StorageTraitSpec{
 				Name:        mount.Name,
-				Type:        config.StorageTypeConfig,
+				Type:        spec.StorageTypeConfig,
 				MountPath:   mount.MountPath,
 				SubPath:     mount.SubPath,
 				SubPathExpr: mount.SubPathExpr,
@@ -832,7 +832,7 @@ func convertStorageTraits(mounts []corev1.VolumeMount, volumes []corev1.Volume, 
 		if volume.Secret != nil {
 			result = append(result, spec.StorageTraitSpec{
 				Name:        mount.Name,
-				Type:        config.StorageTypeSecret,
+				Type:        spec.StorageTypeSecret,
 				MountPath:   mount.MountPath,
 				SubPath:     mount.SubPath,
 				SubPathExpr: mount.SubPathExpr,
@@ -846,7 +846,7 @@ func convertStorageTraits(mounts []corev1.VolumeMount, volumes []corev1.Volume, 
 			info := pvcLookup[buildNamespacedKey(componentNamespace, claimName)]
 			result = append(result, spec.StorageTraitSpec{
 				Name:         mount.Name,
-				Type:         config.StorageTypePersistent,
+				Type:         spec.StorageTypePersistent,
 				MountPath:    mount.MountPath,
 				SubPath:      mount.SubPath,
 				SubPathExpr:  mount.SubPathExpr,

@@ -22,7 +22,7 @@ import (
 
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 
-	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
+	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
@@ -301,7 +301,7 @@ func TestListApplicationComponentsTreatsEmptySecretValuesAsUnresolved(t *testing
 		},
 		EnvFrom: []spec.EnvFromSourceSpec{
 			{
-				Type:       config.StorageTypeSecret,
+				Type:       spec.StorageTypeSecret,
 				SourceName: "db-secret",
 			},
 		},

@@ -181,7 +181,7 @@ func TestWorkflowFailureCleanupAllPreservesClaimNamePVC(t *testing.T) {
 	traits, err := model.NewJSONStructByStruct(spec.Traits{
 		Storage: []spec.StorageTraitSpec{{
 			Name:      "logs",
-			Type:      config.StorageTypePersistent,
+			Type:      spec.StorageTypePersistent,
 			MountPath: "/logs",
 			ClaimName: "default-logs-pvc",
 		}},
@@ -296,7 +296,7 @@ func TestGenerateJobTasksSequential(t *testing.T) {
 	require.Len(t, second.Jobs[config.JobPriorityMaxHigh], 1)
 	cmJob := second.Jobs[config.JobPriorityMaxHigh][0]
 	require.Equal(t, configComponent.Name, cmJob.Name)
-	cmInput, ok := cmJob.JobInfo.(*model.ConfigMapInput)
+	cmInput, ok := cmJob.JobInfo.(*workflowjob.ConfigMapInput)
 	require.True(t, ok)
 	require.Equal(t, cmJob.Name, cmInput.Name)
 }

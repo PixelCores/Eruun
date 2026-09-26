@@ -68,7 +68,7 @@ func preserveTraitPVCIdentities(componentName string, componentType config.JobTy
 	guard := func(scope string, storages []spec.StorageTraitSpec, sourcePrefix string) error {
 		for storageIndex := range storages {
 			storage := &storages[storageIndex]
-			if storage.Type != config.StorageTypePersistent {
+			if storage.Type != spec.StorageTypePersistent {
 				continue
 			}
 			previous, ok, err := matchPersistentStorageRef(index, scope, *storage)
@@ -133,7 +133,7 @@ func buildPersistentStorageIndex(traits apisv1.Traits) persistentStorageIndex {
 
 func addStoragesToPersistentStorageIndex(index *persistentStorageIndex, scope string, storages []spec.StorageTraitSpec, sourcePrefix string) {
 	for storageIndex, storage := range storages {
-		if storage.Type != config.StorageTypePersistent {
+		if storage.Type != spec.StorageTypePersistent {
 			continue
 		}
 		ref := persistentStorageRef{

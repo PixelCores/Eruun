@@ -30,10 +30,10 @@ var (
 
 	// Valid storage types
 	validStorageTypes = map[string]bool{
-		config.StorageTypePersistent: true,
-		config.StorageTypeEphemeral:  true,
-		config.StorageTypeConfig:     true,
-		config.StorageTypeSecret:     true,
+		spec.StorageTypePersistent: true,
+		spec.StorageTypeEphemeral:  true,
+		spec.StorageTypeConfig:     true,
+		spec.StorageTypeSecret:     true,
 	}
 
 	// Valid probe types

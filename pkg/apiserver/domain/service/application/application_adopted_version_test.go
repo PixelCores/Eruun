@@ -97,7 +97,7 @@ func TestValidateAdoptedVersionUpdateCompatibilityRejectsPropertiesChanges(t *te
 func TestValidateAdoptedVersionUpdateCompatibilityAllowsStandalonePVCGrowth(t *testing.T) {
 	current := apisv1.Traits{Storage: []spec.StorageTraitSpec{{
 		Name:      "data",
-		Type:      config.StorageTypePersistent,
+		Type:      spec.StorageTypePersistent,
 		MountPath: "/var/lib/data",
 		ClaimName: "legacy-data",
 		Size:      "10Gi",
@@ -120,7 +120,7 @@ func TestValidateAdoptedVersionUpdateCompatibilityAllowsStandalonePVCGrowth(t *t
 func TestValidateAdoptedVersionUpdateCompatibilityRejectsStandalonePVCShrink(t *testing.T) {
 	current := apisv1.Traits{Storage: []spec.StorageTraitSpec{{
 		Name:      "data",
-		Type:      config.StorageTypePersistent,
+		Type:      spec.StorageTypePersistent,
 		MountPath: "/var/lib/data",
 		ClaimName: "legacy-data",
 		Size:      "10Gi",
@@ -146,7 +146,7 @@ func TestValidateAdoptedVersionUpdateCompatibilityRejectsStandalonePVCShrink(t *
 func TestValidateAdoptedVersionUpdateCompatibilityRejectsVCTResize(t *testing.T) {
 	current := apisv1.Traits{Storage: []spec.StorageTraitSpec{{
 		Name:      "data",
-		Type:      config.StorageTypePersistent,
+		Type:      spec.StorageTypePersistent,
 		MountPath: "/var/lib/mysql",
 		TmpCreate: true,
 		Size:      "10Gi",

@@ -777,7 +777,7 @@ func TestCreateApplicationsFromTemplateKeepsServiceNamesOutOfResourceReferenceRe
 	mysqlTraits := apisv1.Traits{
 		Storage: []spec.StorageTraitSpec{{
 			Name:       "secret-volume",
-			Type:       config.StorageTypeSecret,
+			Type:       spec.StorageTypeSecret,
 			MountPath:  "/etc/secret",
 			SourceName: "primary",
 		}},
@@ -789,7 +789,7 @@ func TestCreateApplicationsFromTemplateKeepsServiceNamesOutOfResourceReferenceRe
 			Ports:    []spec.ServicePortTraitSpec{{Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
 		}},
 		EnvFrom: []spec.EnvFromSourceSpec{{
-			Type:       config.VolumeTypeSecret,
+			Type:       spec.VolumeTypeSecret,
 			SourceName: "primary",
 		}},
 		Envs: []spec.SimplifiedEnvSpec{{
@@ -875,7 +875,7 @@ func TestCreateApplicationsFromTemplatePreservesUndeclaredResourceReferenceMatch
 	traitsJSON, err := model.NewJSONStructByStruct(apisv1.Traits{
 		Storage: []spec.StorageTraitSpec{{
 			Name:       "secret-volume",
-			Type:       config.StorageTypeSecret,
+			Type:       spec.StorageTypeSecret,
 			MountPath:  "/etc/secret",
 			SourceName: "primary",
 		}},
@@ -887,7 +887,7 @@ func TestCreateApplicationsFromTemplatePreservesUndeclaredResourceReferenceMatch
 			Ports:    []spec.ServicePortTraitSpec{{Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
 		}},
 		EnvFrom: []spec.EnvFromSourceSpec{{
-			Type:       config.VolumeTypeSecret,
+			Type:       spec.VolumeTypeSecret,
 			SourceName: "primary",
 		}},
 		Envs: []spec.SimplifiedEnvSpec{

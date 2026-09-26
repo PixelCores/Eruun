@@ -93,7 +93,7 @@ func applyDefaultStorageClass(traits *apisv1.Traits, defaultStorageClass string)
 	}
 	for i := range traits.Storage {
 		storage := &traits.Storage[i]
-		if storage.Type == config.StorageTypePersistent && strings.TrimSpace(storage.StorageClass) == "" {
+		if storage.Type == spec.StorageTypePersistent && strings.TrimSpace(storage.StorageClass) == "" {
 			storage.StorageClass = defaultStorageClass
 		}
 	}

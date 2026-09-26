@@ -1439,7 +1439,7 @@ func TestValidateComponentTraitsForWriteRejectsNestedStorageSubPathConflict(t *t
 				Traits: spec.Traits{
 					Storage: []spec.StorageTraitSpec{{
 						Name:        "logs",
-						Type:        config.StorageTypePersistent,
+						Type:        spec.StorageTypePersistent,
 						MountPath:   "/app/log",
 						SubPath:     "fixed/logs",
 						SubPathExpr: "$(POD_IP)/logs",

@@ -46,7 +46,7 @@ func TestCommandAndEvaluationRenderIntoTheSameWorkspaceNamespace(t *testing.T) {
 	require.Equal(t, "4Gi", workload.Spec.Template.Spec.Containers[0].Resources.Limits.Memory().String())
 }
 
-// Credentials now arrive as traits.envs, which BuildCommandJob renders before
+// Credentials now arrive as traits.envs, which buildCommandJob renders before
 // the evaluation branch appends its own values. Guards against the platform
 // envs replacing that slice and silently dropping the model credential.
 func TestEvaluationCredentialEnvsSurviveRunnerPlatformEnvs(t *testing.T) {
@@ -138,7 +138,7 @@ func TestEvaluationBuilderUsesBoundedRunnerIdentityAndDownwardAPI(t *testing.T) 
 	}
 	require.Equal(t, map[string]string{"POD_NAME": "metadata.name", "POD_UID": "metadata.uid", "POD_NAMESPACE": "metadata.namespace"}, fields)
 	task := &model.JobTask{Name: f.workload.Name, Namespace: "space-ns", WorkspaceID: "space", TaskID: f.parent.TaskID, JobType: string(config.JobEval), JobInfo: f.workload, EvaluationInfo: f.record.EvaluationInfo}
-	require.NoError(t, workspace.PrepareEvaluationTask(task, &model.Workspace{ID: "space", Namespace: "space-ns"}, spec.WorkspaceConfig{}, runner.Image))
+	require.NoError(t, PrepareEvaluationTask(task, &model.Workspace{ID: "space", Namespace: "space-ns"}, spec.WorkspaceConfig{}, runner.Image))
 	require.Equal(t, f.parent.TaskID, f.workload.Spec.Template.Annotations[config.AnnotationJobTaskID])
 	require.Equal(t, "original-execution", f.workload.Spec.Template.Annotations[config.AnnotationJobExecutionKey])
 	require.Equal(t, "2", f.workload.Spec.Template.Annotations[config.AnnotationJobRunGeneration])

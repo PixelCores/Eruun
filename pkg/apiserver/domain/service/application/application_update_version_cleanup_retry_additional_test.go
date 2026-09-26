@@ -609,7 +609,7 @@ func statefulSetDeletionV2Component(serviceName string) *model.ApplicationCompon
 func statefulSetDeletionV2Traits(serviceName string) apisv1.Traits {
 	return apisv1.Traits{
 		Storage: []spec.StorageTraitSpec{{
-			Name: "data", Type: config.StorageTypePersistent, MountPath: "/data", TmpCreate: true, Size: "1Gi",
+			Name: "data", Type: spec.StorageTypePersistent, MountPath: "/data", TmpCreate: true, Size: "1Gi",
 		}},
 		Service: []spec.ServiceTraitSpec{{
 			Name: serviceName, Type: string(spec.ServiceAccessInternal), Headless: true,

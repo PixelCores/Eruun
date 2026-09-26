@@ -8,13 +8,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"k8s.io/klog/v2"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 )
 
 func setupSSEStream(c *gin.Context, podName, containerName string, unsupportedErr error) (http.Flusher, bool) {
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
-		bcode.ReturnError(c, unsupportedErr)
+		apiresponse.ReturnError(c, unsupportedErr)
 		return nil, false
 	}
 	if err := http.NewResponseController(c.Writer).SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {

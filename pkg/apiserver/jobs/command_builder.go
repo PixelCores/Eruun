@@ -1,4 +1,4 @@
-package job
+package jobs
 
 import (
 	"fmt"
@@ -15,10 +15,10 @@ import (
 	traitprocessors "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
-// BuildCommandJob renders a standalone workload without constructing an application
+// buildCommandJob renders a standalone workload without constructing an application
 // or component. Its fixed stop policy enables durable recovery without replaying
 // user commands after a failed attempt.
-func BuildCommandJob(name, namespace string, command spec.CommandJobSpec, traits spec.JobTraits) (*batchv1.Job, error) {
+func buildCommandJob(name, namespace string, command spec.CommandJobSpec, traits spec.JobTraits) (*batchv1.Job, error) {
 	if len(validation.IsDNS1123Subdomain(name)) != 0 || len(validation.IsDNS1123Label(namespace)) != 0 {
 		return nil, fmt.Errorf("invalid Job name or namespace")
 	}
@@ -82,9 +82,9 @@ func BuildCommandJob(name, namespace string, command spec.CommandJobSpec, traits
 		}
 		ref := corev1.LocalObjectReference{Name: source.SourceName}
 		switch source.Type {
-		case config.StorageTypeSecret:
+		case spec.StorageTypeSecret:
 			container.EnvFrom = append(container.EnvFrom, corev1.EnvFromSource{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: ref}})
-		case config.StorageTypeConfig:
+		case spec.StorageTypeConfig:
 			container.EnvFrom = append(container.EnvFrom, corev1.EnvFromSource{ConfigMapRef: &corev1.ConfigMapEnvSource{LocalObjectReference: ref}})
 		default:
 			return nil, fmt.Errorf("unsupported envFrom type")
@@ -110,7 +110,7 @@ func BuildCommandJob(name, namespace string, command spec.CommandJobSpec, traits
 			return nil, fmt.Errorf("invalid storage source")
 		}
 		switch storage.Type {
-		case config.StorageTypePersistent:
+		case spec.StorageTypePersistent:
 			claim := storage.ClaimName
 			if claim == "" {
 				claim = storage.Name
@@ -119,9 +119,9 @@ func BuildCommandJob(name, namespace string, command spec.CommandJobSpec, traits
 				return nil, fmt.Errorf("invalid PVC reference")
 			}
 			volume.PersistentVolumeClaim = &corev1.PersistentVolumeClaimVolumeSource{ClaimName: claim, ReadOnly: storage.ReadOnly}
-		case config.StorageTypeConfig:
+		case spec.StorageTypeConfig:
 			volume.ConfigMap = &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: sourceName}}
-		case config.StorageTypeSecret:
+		case spec.StorageTypeSecret:
 			volume.Secret = &corev1.SecretVolumeSource{SecretName: sourceName}
 		default:
 			return nil, fmt.Errorf("Job storage requires a PVC, ConfigMap or Secret reference")

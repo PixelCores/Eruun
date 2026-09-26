@@ -12,15 +12,17 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 func evaluationScopeStore(t *testing.T) (*gorm.DB, *access.Store, context.Context) {
@@ -51,10 +53,18 @@ func evaluationScopeTask(t *testing.T, store *access.Store, appID string) *model
 		require.NoError(t, store.Add(context.Background(), &model.Applications{ID: appID, WorkspaceID: "space", Namespace: "space-ns"}))
 	}
 	require.NoError(t, store.Add(context.Background(), parent))
-	workload, err := BuildCommandJob("evaluation-runner", "space-ns", spec.CommandJobSpec{
-		Image: "example.com/runner:0.22.0", Command: []string{"python", "/opt/eruun/runner.py"}, TimeoutSeconds: 60,
-	}, spec.JobTraits{})
-	require.NoError(t, err)
+	backoff, automount := int32(0), false
+	workload := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{Name: "evaluation-runner", Namespace: "space-ns", Annotations: map[string]string{
+			config.AnnotationJobRunPolicy:           string(workflowconfig.JobRunPolicyRecreate),
+			workflowconfig.AnnotationJobRetryPolicy: `{"onOOM":"stop"}`,
+		}},
+		Spec: batchv1.JobSpec{BackoffLimit: &backoff, Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{
+			RestartPolicy: corev1.RestartPolicyNever, AutomountServiceAccountToken: &automount,
+			Containers: []corev1.Container{{Name: "job", Image: "example.com/runner:0.22.0", ImagePullPolicy: corev1.PullIfNotPresent,
+				Command: []string{"python", "/opt/eruun/runner.py"}}},
+		}}},
+	}
 	if appID != "" {
 		workload.Annotations[config.AnnotationComponentName] = "benchmark"
 	}

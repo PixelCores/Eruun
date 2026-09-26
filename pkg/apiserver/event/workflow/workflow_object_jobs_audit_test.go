@@ -17,6 +17,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -269,7 +270,7 @@ func TestSecretJobNameNormalization(t *testing.T) {
 	expectedName := component.Name
 	require.Equal(t, expectedName, jobs[0].Name)
 
-	secretInput, ok := jobs[0].JobInfo.(*model.SecretInput)
+	secretInput, ok := jobs[0].JobInfo.(*workflowjob.SecretInput)
 	require.True(t, ok)
 	require.Equal(t, expectedName, secretInput.Name)
 	require.Equal(t, config.DefaultNamespace, secretInput.Namespace)

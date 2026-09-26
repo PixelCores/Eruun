@@ -722,7 +722,7 @@ func TestCreateApplicationsRejectsStorageSubPathAndSubPathExpr(t *testing.T) {
 			Traits: apisv1.Traits{
 				Storage: []spec.StorageTraitSpec{{
 					Name:        "logs",
-					Type:        config.StorageTypePersistent,
+					Type:        spec.StorageTypePersistent,
 					MountPath:   "/app/log",
 					SubPath:     "fixed/logs",
 					SubPathExpr: "$(POD_IP)/logs",
@@ -1176,7 +1176,7 @@ func TestPrepareComponentsPreservesEmptySecretMapForURLBackedSecret(t *testing.T
 	require.NotNil(t, properties.Secret)
 	require.Empty(t, properties.Secret)
 
-	require.Equal(t, &model.SecretInput{
+	require.Equal(t, &job.SecretInput{
 		Name:      "remote-secret",
 		Namespace: config.DefaultNamespace,
 		Labels: map[string]string{

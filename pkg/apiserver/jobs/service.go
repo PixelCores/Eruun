@@ -229,9 +229,9 @@ func (s *Service) Submit(ctx context.Context, request SubmitRequest) (*Accepted,
 			}
 			return nil, invalid(err)
 		}
-		err = workspace.PrepareEvaluationTask(job, space, s.Config.Accounts.Workspace, s.Config.Jobs.RunnerImage)
+		err = PrepareEvaluationTask(job, space, s.Config.Accounts.Workspace, s.Config.Jobs.RunnerImage)
 	} else {
-		_, err = workspace.PrepareTask(job, "", space, s.Config.Accounts.Workspace)
+		_, err = workflowjob.PrepareTask(job, "", space, s.Config.Accounts.Workspace)
 	}
 	if err != nil {
 		return nil, err
