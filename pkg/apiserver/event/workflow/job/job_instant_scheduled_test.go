@@ -29,7 +29,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
@@ -173,7 +172,7 @@ func TestDelayedJobControllersCommitWithoutQueue(t *testing.T) {
 			task.AppID = "app"
 			jobObj.Spec.Template.Spec = workspacePodSpec()
 			jobObj.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
-			_, err := workspace.PrepareTask(task, "app", &model.Workspace{ID: "workspace", Namespace: "default"}, spec.WorkspaceConfig{})
+			_, err := PrepareTask(task, "app", &model.Workspace{ID: "workspace", Namespace: "default"}, spec.WorkspaceConfig{})
 			require.NoError(t, err)
 			var ctl JobCtl
 			if jobType == config.JobDeployInstant {

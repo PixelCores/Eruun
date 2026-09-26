@@ -1176,7 +1176,7 @@ func TestPrepareComponentsPreservesEmptySecretMapForURLBackedSecret(t *testing.T
 	require.NotNil(t, properties.Secret)
 	require.Empty(t, properties.Secret)
 
-	require.Equal(t, &model.SecretInput{
+	require.Equal(t, &job.SecretInput{
 		Name:      "remote-secret",
 		Namespace: config.DefaultNamespace,
 		Labels: map[string]string{

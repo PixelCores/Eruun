@@ -21,6 +21,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event"
 	workflowevent "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/mysql"
@@ -31,7 +32,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api"
 	grpcapi "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 

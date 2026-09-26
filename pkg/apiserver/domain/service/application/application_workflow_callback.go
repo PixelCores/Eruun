@@ -10,8 +10,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
@@ -240,7 +240,7 @@ func validateCallbackURL(ctx context.Context, value string, urlPolicy *spec.URLS
 	}
 	switch strings.ToLower(parsed.Scheme) {
 	case "http", "https":
-		if _, err := utils.ValidateURLTarget(ctx, value, urlPolicy); err != nil {
+		if _, err := clients.ValidateURLTarget(ctx, value, urlPolicy); err != nil {
 			return fmt.Errorf("callback url %q is not allowed: %w", value, err)
 		}
 		return nil

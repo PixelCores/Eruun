@@ -1,4 +1,4 @@
-package job
+package jobs
 
 import (
 	"fmt"
@@ -15,10 +15,10 @@ import (
 	traitprocessors "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
-// BuildCommandJob renders a standalone workload without constructing an application
+// buildCommandJob renders a standalone workload without constructing an application
 // or component. Its fixed stop policy enables durable recovery without replaying
 // user commands after a failed attempt.
-func BuildCommandJob(name, namespace string, command spec.CommandJobSpec, traits spec.JobTraits) (*batchv1.Job, error) {
+func buildCommandJob(name, namespace string, command spec.CommandJobSpec, traits spec.JobTraits) (*batchv1.Job, error) {
 	if len(validation.IsDNS1123Subdomain(name)) != 0 || len(validation.IsDNS1123Label(namespace)) != 0 {
 		return nil, fmt.Errorf("invalid Job name or namespace")
 	}

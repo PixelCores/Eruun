@@ -1,4 +1,4 @@
-package model
+package job
 
 import (
 	"context"
@@ -6,8 +6,10 @@ import (
 	"strings"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 )
+
+const configMapMaxSize = 1024 * 1024
 
 // ConfigMapData 定义ConfigMap的数据结构
 type ConfigMapData struct {
@@ -31,7 +33,7 @@ type SecretInput struct {
 	FileName    string            `json:"fileName,omitempty"`
 }
 
-func ExtractFileNameFromURLForSecret(url string) string {
+func extractFileNameFromURLForSecret(url string) string {
 	if idx := strings.Index(url, "?"); idx != -1 {
 		url = url[:idx]
 	}
@@ -79,8 +81,8 @@ func (s *ConfigMapInput) GenerateConf(ctx context.Context, urlPolicy *spec.URLSe
 			}
 			totalSize += len(k) + len(v)
 		}
-		if totalSize > utils.ConfigMapMaxSize {
-			return nil, fmt.Errorf("total ConfigMap data size %d bytes exceeds maximum size %d bytes", totalSize, utils.ConfigMapMaxSize)
+		if totalSize > configMapMaxSize {
+			return nil, fmt.Errorf("total ConfigMap data size %d bytes exceeds maximum size %d bytes", totalSize, configMapMaxSize)
 		}
 		return &ConfigMapData{
 			Name:        s.Name,
@@ -95,12 +97,12 @@ func (s *ConfigMapInput) GenerateConf(ctx context.Context, urlPolicy *spec.URLSe
 	if !strings.HasPrefix(s.URL, "http://") && !strings.HasPrefix(s.URL, "https://") {
 		return nil, fmt.Errorf("invalid URL format: must start with http:// or https://")
 	}
-	body, err := utils.ReadFileFromURLSimple(ctx, s.URL, urlPolicy)
+	body, err := clients.ReadURL(ctx, s.URL, urlPolicy, configMapMaxSize+1024)
 	if err != nil {
 		return nil, err
 	}
-	if len(body) > utils.ConfigMapMaxSize {
-		return nil, fmt.Errorf("file size %d bytes exceeds ConfigMap maximum size %d bytes", len(body), utils.ConfigMapMaxSize)
+	if len(body) > configMapMaxSize {
+		return nil, fmt.Errorf("file size %d bytes exceeds ConfigMap maximum size %d bytes", len(body), configMapMaxSize)
 	}
 	fileName := s.FileName
 	if fileName == "" {

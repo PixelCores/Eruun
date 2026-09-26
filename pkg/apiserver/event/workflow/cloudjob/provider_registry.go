@@ -2,10 +2,10 @@ package cloudjob
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"sync"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob/contracts"
 )
 
@@ -18,18 +18,9 @@ type CloudProvider interface {
 	SupportedActions() []string
 }
 
-// CloudProviderSettingSupport defines optional system_setting integration for a provider.
-type CloudProviderSettingSupport interface {
-	SystemSettingType() string
-	NormalizeSystemSettingValue(value json.RawMessage) (json.RawMessage, error)
-	SanitizeSystemSettingValue(value json.RawMessage) json.RawMessage
-	ValidateSystemSettingConnectivity(ctx context.Context, value json.RawMessage) error
-}
-
 var (
-	cloudProvidersMu      sync.RWMutex
-	cloudProviders        = map[string]CloudProvider{}
-	cloudProviderSettings = map[string]CloudProviderSettingSupport{}
+	cloudProvidersMu sync.RWMutex
+	cloudProviders   = map[string]CloudProvider{}
 )
 
 // RegisterCloudProvider adds or replaces a cloud provider implementation by name.
@@ -43,19 +34,10 @@ func RegisterCloudProvider(provider CloudProvider) {
 	}
 	cloudProvidersMu.Lock()
 	defer cloudProvidersMu.Unlock()
-	if oldProvider, ok := cloudProviders[name]; ok {
-		if oldSettingSupport, ok := oldProvider.(CloudProviderSettingSupport); ok {
-			if oldSettingType := normalizeSystemSettingType(oldSettingSupport.SystemSettingType()); oldSettingType != "" {
-				delete(cloudProviderSettings, oldSettingType)
-			}
-		}
-	}
+	previous, _ := cloudProviders[name].(systemsetting.CloudProviderSettingSupport)
+	next, _ := provider.(systemsetting.CloudProviderSettingSupport)
+	systemsetting.ReplaceCloudProviderSettingSupport(previous, next)
 	cloudProviders[name] = provider
-	if settingSupport, ok := provider.(CloudProviderSettingSupport); ok {
-		if settingType := normalizeSystemSettingType(settingSupport.SystemSettingType()); settingType != "" {
-			cloudProviderSettings[settingType] = settingSupport
-		}
-	}
 }
 
 func GetCloudProvider(name string) (CloudProvider, bool) {
@@ -69,28 +51,13 @@ func GetCloudProvider(name string) (CloudProvider, bool) {
 	return provider, ok
 }
 
-func GetCloudProviderSettingSupport(settingType string) (CloudProviderSettingSupport, bool) {
-	normalized := normalizeSystemSettingType(settingType)
-	if normalized == "" {
-		return nil, false
-	}
-	cloudProvidersMu.RLock()
-	defer cloudProvidersMu.RUnlock()
-	settingSupport, ok := cloudProviderSettings[normalized]
-	return settingSupport, ok
-}
-
 func NormalizeProviderName(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
-}
-
-func normalizeSystemSettingType(settingType string) string {
-	return strings.TrimSpace(settingType)
 }
 
 func ResetCloudProvidersForTest() {
 	cloudProvidersMu.Lock()
 	defer cloudProvidersMu.Unlock()
 	cloudProviders = map[string]CloudProvider{}
-	cloudProviderSettings = map[string]CloudProviderSettingSupport{}
+	systemsetting.ResetCloudProviderSettingsForTest()
 }

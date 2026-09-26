@@ -473,3 +473,40 @@ func TestRegistrationTransactionRollsBackOnConflict(t *testing.T) {
 		require.EqualValues(t, 1, n)
 	}
 }
+
+func TestListAdminUsersAuthorizationAndPagination(t *testing.T) {
+	admin := &Principal{User: &model.User{SystemAdmin: true}}
+	for _, tc := range []struct {
+		name       string
+		principal  *Principal
+		page, size int
+		want       error
+	}{
+		{"missing principal", nil, 1, 20, bcode.ErrUnauthorized},
+		{"missing user", &Principal{}, 1, 20, bcode.ErrUnauthorized},
+		{"non-admin before pagination", &Principal{User: &model.User{}}, 0, 0, bcode.ErrForbidden},
+		{"zero page", admin, 0, 20, bcode.ErrAccountInput},
+		{"negative page", admin, -1, 20, bcode.ErrAccountInput},
+		{"zero size", admin, 1, 0, bcode.ErrAccountInput},
+		{"large size", admin, 1, 101, bcode.ErrAccountInput},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := (&Service{}).ListAdminUsers(context.Background(), tc.principal, tc.page, tc.size)
+			require.ErrorIs(t, err, tc.want)
+		})
+	}
+	s, _, _ := testAccounts(t)
+	for _, id := range []string{"c", "a", "b"} {
+		require.NoError(t, s.Repo.Store.Add(context.Background(), &model.User{ID: id, Name: id}))
+	}
+	users, err := s.ListAdminUsers(context.Background(), admin, 2, 1)
+	require.NoError(t, err)
+	require.Len(t, users, 1)
+	require.Equal(t, "b", users[0].ID)
+	users, err = s.ListAdminUsers(context.Background(), admin, 1, 100)
+	require.NoError(t, err)
+	require.Equal(t, []string{"a", "b", "c"}, []string{users[0].ID, users[1].ID, users[2].ID})
+	users, err = s.ListAdminUsers(context.Background(), admin, 4, 1)
+	require.NoError(t, err)
+	require.Empty(t, users)
+}

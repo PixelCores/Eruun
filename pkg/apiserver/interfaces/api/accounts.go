@@ -7,12 +7,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/middleware"
+	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/gin-gonic/gin"
 )
@@ -62,42 +61,42 @@ func bindAccount[T any](c *gin.Context) (*T, bool) {
 	d := json.NewDecoder(c.Request.Body)
 	d.DisallowUnknownFields()
 	if d.Decode(&body) != nil {
-		bcode.ReturnError(c, bcode.ErrAccountInput)
+		apiresponse.ReturnError(c, bcode.ErrAccountInput)
 		return nil, false
 	}
 	var extra interface{}
 	if d.Decode(&extra) != io.EOF {
-		bcode.ReturnError(c, bcode.ErrAccountInput)
+		apiresponse.ReturnError(c, bcode.ErrAccountInput)
 		return nil, false
 	}
 	return &body, true
 }
 func accountResult(c *gin.Context, value interface{}, err error) {
 	if err != nil {
-		bcode.ReturnError(c, err)
+		apiresponse.ReturnError(c, err)
 		return
 	}
-	bcode.ReturnSuccess(c, value)
+	apiresponse.ReturnSuccess(c, value)
 }
 func accountCookie(c *gin.Context, name, value, path string, maxAge int) {
 	http.SetCookie(c.Writer, &http.Cookie{Name: name, Value: value, Path: path, Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: maxAge})
 }
 func accountLoginResult(c *gin.Context, result *account.Login, err error) {
 	if err != nil {
-		bcode.ReturnError(c, err)
+		apiresponse.ReturnError(c, err)
 		return
 	}
 	if result == nil {
-		bcode.ReturnSuccess(c, nil)
+		apiresponse.ReturnSuccess(c, nil)
 		return
 	}
 	accountCookie(c, refreshCookie, result.RefreshToken, "/api/v1/auth", int((30 * 24 * time.Hour).Seconds()))
-	bcode.ReturnSuccess(c, result)
+	apiresponse.ReturnSuccess(c, result)
 }
 
 func (a *accounts) methods(c *gin.Context) {
 	cfg := a.Accounts.Config
-	bcode.ReturnSuccess(c, gin.H{"password": true, "email": cfg.SMTP.Host != "", "phone": cfg.SMS.AccessKeyID != "", "google": cfg.Google.Enabled, "github": cfg.GitHub.Enabled})
+	apiresponse.ReturnSuccess(c, gin.H{"password": true, "email": cfg.SMTP.Host != "", "phone": cfg.SMS.AccessKeyID != "", "google": cfg.Google.Enabled, "github": cfg.GitHub.Enabled})
 }
 func (a *accounts) codes(c *gin.Context) {
 	r, ok := bindAccount[apis.AccountCodeRequest](c)
@@ -105,7 +104,7 @@ func (a *accounts) codes(c *gin.Context) {
 		return
 	}
 	if r.Purpose == "bind" && middleware.Principal(c) == nil {
-		bcode.ReturnError(c, bcode.ErrUnauthorized)
+		apiresponse.ReturnError(c, bcode.ErrUnauthorized)
 		return
 	}
 	accountResult(c, nil, a.Accounts.SendCode(c.Request.Context(), r.Purpose, r.Provider, r.Identifier, c.ClientIP()))
@@ -125,11 +124,11 @@ func (a *accounts) login(c *gin.Context) {
 	}
 	identifier, err := account.NormalizeIdentity(r.Provider, r.Identifier)
 	if err != nil {
-		bcode.ReturnError(c, err)
+		apiresponse.ReturnError(c, err)
 		return
 	}
 	if e := a.Accounts.RateLimit(c.Request.Context(), "login:"+r.Provider+":"+identifier, 10, 15*time.Minute); e != nil {
-		bcode.ReturnError(c, e)
+		apiresponse.ReturnError(c, e)
 		return
 	}
 	v, e := a.Accounts.Login(c.Request.Context(), r.Provider, r.Identifier, r.Password, r.Code)
@@ -144,18 +143,18 @@ func (a *accounts) oauthStart(c *gin.Context) {
 	if r.Link {
 		p = middleware.Principal(c)
 		if p == nil {
-			bcode.ReturnError(c, bcode.ErrUnauthorized)
+			apiresponse.ReturnError(c, bcode.ErrUnauthorized)
 			return
 		}
 	}
 	provider := c.Param("provider")
 	address, browser, e := a.Accounts.OAuthStart(c.Request.Context(), provider, p)
 	if e != nil {
-		bcode.ReturnError(c, e)
+		apiresponse.ReturnError(c, e)
 		return
 	}
 	accountCookie(c, "__Secure-eruun-oauth-"+provider, browser, "/api/v1/auth/oauth2", 300)
-	bcode.ReturnSuccess(c, gin.H{"authorizationURL": address})
+	apiresponse.ReturnSuccess(c, gin.H{"authorizationURL": address})
 }
 func (a *accounts) oauthCallback(c *gin.Context) {
 	r, ok := bindAccount[apis.OAuthCallbackRequest](c)
@@ -164,7 +163,7 @@ func (a *accounts) oauthCallback(c *gin.Context) {
 	}
 	provider := c.Param("provider")
 	if provider != "google" && provider != "github" {
-		bcode.ReturnError(c, bcode.ErrAccountInput)
+		apiresponse.ReturnError(c, bcode.ErrAccountInput)
 		return
 	}
 	name := "__Secure-eruun-oauth-" + provider
@@ -292,11 +291,11 @@ func (a *accounts) acceptInvitation(c *gin.Context) {
 func (a *accounts) users(c *gin.Context) {
 	page, e := strconv.Atoi(c.DefaultQuery("page", "1"))
 	size, sizeErr := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
-	if e != nil || sizeErr != nil || page < 1 || size < 1 || size > 100 {
-		bcode.ReturnError(c, bcode.ErrAccountInput)
+	if e != nil || sizeErr != nil {
+		apiresponse.ReturnError(c, bcode.ErrAccountInput)
 		return
 	}
-	v, e := a.Accounts.Repo.Store.List(c.Request.Context(), &model.User{}, &datastore.ListOptions{Page: page, PageSize: size, SortBy: []datastore.SortOption{{Key: "id", Order: datastore.SortOrderAscending}}})
+	v, e := a.Accounts.ListAdminUsers(c.Request.Context(), middleware.Principal(c), page, size)
 	accountResult(c, v, e)
 }
 func (a *accounts) userStatus(c *gin.Context) {
@@ -305,7 +304,7 @@ func (a *accounts) userStatus(c *gin.Context) {
 		return
 	}
 	if r.Disabled == nil {
-		bcode.ReturnError(c, bcode.ErrAccountInput)
+		apiresponse.ReturnError(c, bcode.ErrAccountInput)
 		return
 	}
 	accountResult(c, nil, a.Accounts.SetDisabled(c.Request.Context(), middleware.Principal(c), c.Param("userID"), *r.Disabled))

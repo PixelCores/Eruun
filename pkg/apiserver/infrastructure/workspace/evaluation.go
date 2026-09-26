@@ -2,10 +2,8 @@ package workspace
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -38,9 +36,15 @@ func WithEvaluationRunner(ctx context.Context, jobName, image string) context.Co
 	return context.WithValue(ctx, evaluationRunnerKey{}, entries)
 }
 
-func prepareEvaluationJob(obj map[string]interface{}, access evaluationRunnerAccess) error {
+// PrepareEvaluationJob validates the trusted runner resource and applies pod policy.
+// Both task preparation and the Kubernetes transport use this write policy.
+func PrepareEvaluationJob(namespace, jobName, image string, obj map[string]interface{}) error {
+	if resourceNamespace, ok := mapAt(obj, "metadata")["namespace"].(string); ok && resourceNamespace != "" && resourceNamespace != namespace {
+		return bcode.ErrForbidden
+	}
+
 	meta := mapAt(obj, "metadata")
-	if access.jobName == "" || access.image == "" || meta["name"] != access.jobName {
+	if jobName == "" || image == "" || meta["name"] != jobName {
 		return bcode.ErrForbidden
 	}
 	template := mapAt(mapAt(obj, "spec"), "template")
@@ -53,7 +57,7 @@ func prepareEvaluationJob(obj map[string]interface{}, access evaluationRunnerAcc
 		return bcode.ErrForbidden
 	}
 	container, _ := containers[0].(map[string]interface{})
-	if container["name"] != "runner" || container["image"] != access.image {
+	if container["name"] != "runner" || container["image"] != image {
 		return bcode.ErrForbidden
 	}
 	command, _ := container["command"].([]interface{})
@@ -70,31 +74,6 @@ func prepareEvaluationJob(obj map[string]interface{}, access evaluationRunnerAcc
 	pod["serviceAccountName"] = EvaluationRunnerName
 	pod["automountServiceAccountToken"] = true
 	return nil
-}
-
-func PrepareEvaluationTask(task *model.JobTask, w *model.Workspace, cfg spec.WorkspaceConfig, image string) error {
-	if task == nil || w == nil || task.JobType != string(config.JobEval) || task.EvaluationInfo == "" || task.WorkspaceID != w.ID || task.Namespace != w.Namespace {
-		return bcode.ErrForbidden
-	}
-	raw, err := json.Marshal(task.JobInfo)
-	if err != nil {
-		return err
-	}
-	var obj map[string]interface{}
-	if err := json.Unmarshal(raw, &obj); err != nil {
-		return err
-	}
-	if namespace, ok := mapAt(obj, "metadata")["namespace"].(string); ok && namespace != "" && namespace != w.Namespace {
-		return bcode.ErrForbidden
-	}
-	if err := prepareEvaluationJob(obj, evaluationRunnerAccess{jobName: task.Name, image: image}); err != nil {
-		return err
-	}
-	raw, err = json.Marshal(obj)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(raw, task.JobInfo)
 }
 
 // EnsureEvaluationRunner adds namespace-scoped framework permissions without

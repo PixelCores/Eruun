@@ -107,7 +107,7 @@
 - **影响**：`fileUrl` 下载、callback、远程 ConfigMap/Secret 等链路可能绕过“默认禁止私网”策略，访问集群内或云元数据地址。
 - **直接原因**：校验阶段先解析并检查 IP，随后默认 Transport 再次解析并拨号；DNS 结果没有 pin 到实际连接。存在代理时，本机解析失败被直接视为允许。
 - **深层成因 / 为何未发现**：现有测试覆盖了 URL 文本和第一次 DNS 结果，甚至锁定“存在代理时 unresolved host 放行”，但没有控制真实 DialContext 或代理端解析结果。
-- **相关代码**：[URL 校验](../pkg/apiserver/utils/http.go#L122-L190)、[默认拨号](../pkg/apiserver/utils/http.go#L265-L297)、[convert 可达入口](../pkg/apiserver/domain/service/conversion/conversion.go#L80-L104)。
+- **相关代码**：[URL 校验](../pkg/apiserver/infrastructure/clients/http.go)、[默认拨号](../pkg/apiserver/infrastructure/clients/http.go)、[convert 可达入口](../pkg/apiserver/domain/service/conversion/conversion.go#L80-L104)。
 - **验证证据**：校验和 `client.Do` 是两次独立解析边界，代码中不存在已校验 IP 到 Transport 的绑定。
 - **推荐方案**：解析一次后使用自定义 `DialContext` 连接已校验 IP，同时保留 Host/SNI；代理模式必须有独立显式策略和受信代理名单，不得因本机 DNS 失败而默认放行。
 - **回归测试**：可控 resolver 第一次返回公网、Dial 阶段返回私网时必须阻断；代理解析到私网同样阻断。

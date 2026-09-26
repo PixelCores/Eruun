@@ -1,4 +1,4 @@
-package workspace
+package job
 
 import (
 	"encoding/json"
@@ -8,6 +8,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
@@ -59,11 +60,14 @@ func PrepareTask(task *model.JobTask, appID string, w *model.Workspace, cfg spec
 	if json.Unmarshal(raw, &obj) != nil || obj == nil {
 		return false, bcode.ErrForbidden
 	}
-	if resource == "cronjobs" && mapAt(mapAt(obj, "spec"), "jobTemplate") == nil {
-		resource = "jobs"
+	if resource == "cronjobs" {
+		spec, _ := obj["spec"].(map[string]interface{})
+		template, _ := spec["jobTemplate"].(map[string]interface{})
+		if template == nil {
+			resource = "jobs"
+		}
 	}
-	transport := &tenantTransport{namespace: w.Namespace, config: cfg}
-	if err = transport.prepare(resource, obj); err != nil {
+	if err = workspace.PrepareResource(w.Namespace, resource, obj, cfg); err != nil {
 		return false, err
 	}
 	raw, err = json.Marshal(obj)

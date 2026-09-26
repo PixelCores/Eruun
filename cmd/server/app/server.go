@@ -21,7 +21,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/observability"
 	api "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/profiling"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/version"
@@ -95,7 +94,7 @@ func Run(s *options.ServerRunOptions) error {
 		background.Wait()
 	}()
 	background.Go(func() { profiling.StartProfilingServer(ctx, errChan) })
-	background.Go(func() { utils.StartLogCleanup(ctx, logDir, 7*24*time.Hour) })
+	background.Go(func() { observability.StartLogCleanup(ctx, logDir, 7*24*time.Hour) })
 
 	runErrChan := make(chan error, 1)
 	go func() {

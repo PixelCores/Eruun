@@ -26,13 +26,13 @@ import (
 	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/importsecret"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	evaluationjobs "github.com/PixelCores/Eruun/pkg/apiserver/jobs"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
 	wf "github.com/PixelCores/Eruun/pkg/apiserver/workflow"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	signal "github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
@@ -1643,7 +1643,7 @@ func (w *WorkflowCtl) prepareJobTask(task *model.JobTask, appID string) (bool, e
 		if w.runtimeConfig == nil || w.runtimeConfig.Jobs == nil {
 			return false, fmt.Errorf("evaluation runner configuration is required")
 		}
-		return true, workspace.PrepareEvaluationTask(task, w.workspace, w.accountConfig.Workspace, w.runtimeConfig.Jobs.RunnerImage)
+		return true, evaluationjobs.PrepareEvaluationTask(task, w.workspace, w.accountConfig.Workspace, w.runtimeConfig.Jobs.RunnerImage)
 	}
-	return workspace.PrepareTask(task, appID, w.workspace, w.accountConfig.Workspace)
+	return job.PrepareTask(task, appID, w.workspace, w.accountConfig.Workspace)
 }

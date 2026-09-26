@@ -10,6 +10,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/gin-gonic/gin"
 	"k8s.io/klog/v2"
@@ -85,11 +86,11 @@ func (app *applications) tryImportNamespaceApplications(c *gin.Context) {
 
 func (app *applications) validateNamespaceImportPreconditions(c *gin.Context, namespace string) bool {
 	if strings.EqualFold(strings.TrimSpace(namespace), config.DefaultNamespace) {
-		bcode.ReturnErrorWithMessage(c, bcode.ErrApplicationConfig, "import from default namespace is not allowed")
+		apiresponse.ReturnErrorWithMessage(c, bcode.ErrApplicationConfig, "import from default namespace is not allowed")
 		return false
 	}
 	if app.ImportService == nil {
-		bcode.ReturnError(c, errors.New("import service is not initialized"))
+		apiresponse.ReturnError(c, errors.New("import service is not initialized"))
 		return false
 	}
 	return true
@@ -133,7 +134,7 @@ func (app *applications) listTemplateApplications(c *gin.Context) {
 func bindListApplicationsOptions(c *gin.Context) (service.ListApplicationsOptions, bool) {
 	var query apis.ListApplicationsQuery
 	if err := c.ShouldBindQuery(&query); err != nil {
-		bcode.ReturnError(c, bcode.ErrApplicationConfig)
+		apiresponse.ReturnError(c, bcode.ErrApplicationConfig)
 		return service.ListApplicationsOptions{}, false
 	}
 	return service.ListApplicationsOptions{
@@ -163,13 +164,13 @@ func (app *applications) deleteApplicationResources(c *gin.Context) {
 	if err != nil {
 		if resp != nil {
 			klog.ErrorS(err, "application resource cleanup reported partial failures", "appID", appID)
-			bcode.ReturnSuccess(c, resp)
+			apiresponse.ReturnSuccess(c, resp)
 			return
 		}
-		bcode.ReturnError(c, err)
+		apiresponse.ReturnError(c, err)
 		return
 	}
-	bcode.ReturnSuccess(c, resp)
+	apiresponse.ReturnSuccess(c, resp)
 }
 
 func (app *applications) planApplicationResourceCleanup(c *gin.Context) {
@@ -204,7 +205,7 @@ func (app *applications) downloadLogArchive(c *gin.Context) {
 
 	archive, err := app.ApplicationService.DownloadLogArchive(c.Request.Context(), appID, *req)
 	if err != nil {
-		bcode.ReturnError(c, err)
+		apiresponse.ReturnError(c, err)
 		return
 	}
 	writeComponentArchiveStream(c, archive, appID, strings.TrimSpace(req.Components[0]), "log-archive")
@@ -212,23 +213,23 @@ func (app *applications) downloadLogArchive(c *gin.Context) {
 
 func validateLogArchiveDownloadRequest(c *gin.Context, req *apis.LogArchiveDownloadRequest) bool {
 	if req == nil {
-		bcode.ReturnError(c, bcode.ErrApplicationConfig)
+		apiresponse.ReturnError(c, bcode.ErrApplicationConfig)
 		return false
 	}
 	if req.JobType != "" && req.JobType != config.JobLogArchiveUpload {
-		bcode.ReturnError(c, bcode.ErrApplicationConfig)
+		apiresponse.ReturnError(c, bcode.ErrApplicationConfig)
 		return false
 	}
 	if len(req.Components) != 1 {
-		bcode.ReturnError(c, bcode.ErrApplicationConfig)
+		apiresponse.ReturnError(c, bcode.ErrApplicationConfig)
 		return false
 	}
 	if strings.TrimSpace(req.Components[0]) == "" {
-		bcode.ReturnError(c, bcode.ErrApplicationConfig)
+		apiresponse.ReturnError(c, bcode.ErrApplicationConfig)
 		return false
 	}
 	if strings.TrimSpace(req.Path) == "" {
-		bcode.ReturnError(c, bcode.ErrComponentFilePathInvalid)
+		apiresponse.ReturnError(c, bcode.ErrComponentFilePathInvalid)
 		return false
 	}
 	return true
@@ -245,7 +246,7 @@ func (app *applications) deleteApplication(c *gin.Context) {
 		return
 	}
 	if req.WaitSeconds != nil && *req.WaitSeconds < 0 {
-		bcode.ReturnError(c, bcode.ErrApplicationConfig)
+		apiresponse.ReturnError(c, bcode.ErrApplicationConfig)
 		return
 	}
 
@@ -253,13 +254,13 @@ func (app *applications) deleteApplication(c *gin.Context) {
 	if err != nil {
 		if resp != nil {
 			klog.ErrorS(err, "delete application reported partial failures", "appID", appID)
-			bcode.ReturnSuccess(c, resp)
+			apiresponse.ReturnSuccess(c, resp)
 			return
 		}
-		bcode.ReturnError(c, err)
+		apiresponse.ReturnError(c, err)
 		return
 	}
-	bcode.ReturnSuccess(c, resp)
+	apiresponse.ReturnSuccess(c, resp)
 }
 
 // restartApplicationWorkloads triggers a rollout restart for app workloads.
@@ -276,13 +277,13 @@ func (app *applications) restartApplicationWorkloads(c *gin.Context) {
 	if err != nil {
 		if resp != nil {
 			klog.ErrorS(err, "restart reported partial failures", "appID", appID)
-			bcode.ReturnSuccess(c, resp)
+			apiresponse.ReturnSuccess(c, resp)
 			return
 		}
-		bcode.ReturnError(c, err)
+		apiresponse.ReturnError(c, err)
 		return
 	}
-	bcode.ReturnSuccess(c, resp)
+	apiresponse.ReturnSuccess(c, resp)
 }
 
 // stopApplicationDeployments scales all application Deployment components to zero replicas.
@@ -299,13 +300,13 @@ func (app *applications) stopApplicationDeployments(c *gin.Context) {
 	if err != nil {
 		if resp != nil {
 			klog.ErrorS(err, "stop reported partial failures", "appID", appID)
-			bcode.ReturnSuccess(c, resp)
+			apiresponse.ReturnSuccess(c, resp)
 			return
 		}
-		bcode.ReturnError(c, err)
+		apiresponse.ReturnError(c, err)
 		return
 	}
-	bcode.ReturnSuccess(c, resp)
+	apiresponse.ReturnSuccess(c, resp)
 }
 
 // startApplicationDeployments restores all application Deployment components to their stored replica counts.
@@ -322,13 +323,13 @@ func (app *applications) startApplicationDeployments(c *gin.Context) {
 	if err != nil {
 		if resp != nil {
 			klog.ErrorS(err, "start reported partial failures", "appID", appID)
-			bcode.ReturnSuccess(c, resp)
+			apiresponse.ReturnSuccess(c, resp)
 			return
 		}
-		bcode.ReturnError(c, err)
+		apiresponse.ReturnError(c, err)
 		return
 	}
-	bcode.ReturnSuccess(c, resp)
+	apiresponse.ReturnSuccess(c, resp)
 }
 
 // updateVersion 更新应用版本
@@ -348,7 +349,7 @@ func (app *applications) updateVersion(c *gin.Context) {
 	}
 
 	if err := validate.Struct(req); err != nil {
-		bcode.ReturnError(c, bcode.ErrApplicationConfig)
+		apiresponse.ReturnError(c, bcode.ErrApplicationConfig)
 		return
 	}
 
@@ -358,12 +359,12 @@ func (app *applications) updateVersion(c *gin.Context) {
 	resp, err := app.ApplicationService.UpdateVersion(ctx, appID, *req)
 	if err != nil {
 		klog.ErrorS(err, "update version failed", "appID", appID)
-		bcode.ReturnError(c, err)
+		apiresponse.ReturnError(c, err)
 		return
 	}
 
 	klog.InfoS("update version succeeded", "appID", appID, "newVersion", resp.Version, "taskID", resp.TaskID)
-	bcode.ReturnSuccess(c, resp)
+	apiresponse.ReturnSuccess(c, resp)
 }
 
 // diffUpdateVersion compares a source app version snapshot with the target app
@@ -379,7 +380,7 @@ func (app *applications) diffUpdateVersion(c *gin.Context) {
 		return
 	}
 	if err := validate.Struct(req); err != nil {
-		bcode.ReturnError(c, bcode.ErrApplicationConfig)
+		apiresponse.ReturnError(c, bcode.ErrApplicationConfig)
 		return
 	}
 
@@ -389,10 +390,10 @@ func (app *applications) diffUpdateVersion(c *gin.Context) {
 	resp, err := app.ApplicationService.DiffUpdateVersion(ctx, targetAppID, *req)
 	if err != nil {
 		klog.ErrorS(err, "diff update version failed", "targetAppID", targetAppID, "sourceAppID", req.SourceAppID)
-		bcode.ReturnError(c, err)
+		apiresponse.ReturnError(c, err)
 		return
 	}
 
 	klog.InfoS("diff update version succeeded", "targetAppID", targetAppID, "sourceAppID", req.SourceAppID, "targetVersion", resp.TargetVersion, "executable", resp.Executable, "dryRun", resp.DryRun)
-	bcode.ReturnSuccess(c, resp)
+	apiresponse.ReturnSuccess(c, resp)
 }

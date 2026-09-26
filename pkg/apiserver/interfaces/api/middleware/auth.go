@@ -6,6 +6,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/gin-gonic/gin"
 )
@@ -180,7 +181,7 @@ func Auth(opts AuthOptions) gin.HandlerFunc {
 		}
 		s := opts.Accounts
 		if s == nil {
-			bcode.ReturnError(c, bcode.ErrServiceUnavailable)
+			apiresponse.ReturnError(c, bcode.ErrServiceUnavailable)
 			c.Abort()
 			return
 		}
@@ -189,7 +190,7 @@ func Auth(opts AuthOptions) gin.HandlerFunc {
 			c.Header("Cache-Control", "no-store")
 			c.Header("Pragma", "no-cache")
 			if err := validateAuthEndpointRequest(c, s); err != nil {
-				bcode.ReturnError(c, err)
+				apiresponse.ReturnError(c, err)
 				c.Abort()
 				return
 			}
@@ -200,7 +201,7 @@ func Auth(opts AuthOptions) gin.HandlerFunc {
 			var err error
 			p, err = s.Authenticate(c.Request.Context(), token)
 			if err != nil {
-				bcode.ReturnError(c, err)
+				apiresponse.ReturnError(c, err)
 				c.Abort()
 				return
 			}
@@ -211,12 +212,12 @@ func Auth(opts AuthOptions) gin.HandlerFunc {
 			return
 		}
 		if p == nil {
-			bcode.ReturnError(c, bcode.ErrUnauthorized)
+			apiresponse.ReturnError(c, bcode.ErrUnauthorized)
 			c.Abort()
 			return
 		}
 		if p.User.MustChangePassword && route != "GET /api/v1/auth/me" && route != "PUT /api/v1/auth/password" && route != "POST /api/v1/auth/logout" {
-			bcode.ReturnError(c, bcode.ErrAccountPasswordChange)
+			apiresponse.ReturnError(c, bcode.ErrAccountPasswordChange)
 			c.Abort()
 			return
 		}
@@ -226,7 +227,7 @@ func Auth(opts AuthOptions) gin.HandlerFunc {
 		}
 		minimum, known := businessRoutes[route]
 		if !known || (minimum == "system" && !p.User.SystemAdmin) {
-			bcode.ReturnError(c, bcode.ErrForbidden)
+			apiresponse.ReturnError(c, bcode.ErrForbidden)
 			c.Abort()
 			return
 		}
@@ -238,12 +239,12 @@ func Auth(opts AuthOptions) gin.HandlerFunc {
 		}
 		a, err := s.Workspace(c.Request.Context(), p, c.GetHeader("X-Eruun-Workspace-ID"))
 		if err != nil {
-			bcode.ReturnError(c, err)
+			apiresponse.ReturnError(c, err)
 			c.Abort()
 			return
 		}
 		if a.Role == "viewer" && minimum != "viewer" {
-			bcode.ReturnError(c, bcode.ErrForbidden)
+			apiresponse.ReturnError(c, bcode.ErrForbidden)
 			c.Abort()
 			return
 		}
@@ -254,14 +255,14 @@ func Auth(opts AuthOptions) gin.HandlerFunc {
 		guard := account.NewStore(s.Repo.Store)
 		if appID := c.Param("appID"); appID != "" {
 			if err = guard.Get(ctx, &model.Applications{ID: appID}); err != nil {
-				bcode.ReturnError(c, err)
+				apiresponse.ReturnError(c, err)
 				c.Abort()
 				return
 			}
 		}
 		if taskID := c.Param("taskID"); taskID != "" {
 			if err = guard.Get(ctx, &model.WorkflowQueue{TaskID: taskID}); err != nil {
-				bcode.ReturnError(c, err)
+				apiresponse.ReturnError(c, err)
 				c.Abort()
 				return
 			}

@@ -1,4 +1,4 @@
-package utils
+package clients
 
 import (
 	"context"
@@ -842,7 +842,7 @@ func TestURLPolicyClientPreservesHostAndTLSSNI(t *testing.T) {
 	}
 }
 
-func TestReadFileFromURLSimpleClosesIdleConnection(t *testing.T) {
+func TestReadURLClosesIdleConnection(t *testing.T) {
 	closed := make(chan struct{}, 1)
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("ok"))
@@ -858,10 +858,11 @@ func TestReadFileFromURLSimpleClosesIdleConnection(t *testing.T) {
 	server.Start()
 	defer server.Close()
 
-	data, err := ReadFileFromURLSimple(
+	data, err := ReadURL(
 		context.Background(),
 		server.URL,
 		&spec.URLSecurityPolicySpec{AllowPrivateByDefault: true},
+		1024,
 	)
 	if err != nil {
 		t.Fatalf("read remote file: %v", err)
@@ -876,7 +877,7 @@ func TestReadFileFromURLSimpleClosesIdleConnection(t *testing.T) {
 	}
 }
 
-func TestReadFileFromURLSimpleRejectsRedirectToPrivateTarget(t *testing.T) {
+func TestReadURLRejectsRedirectToPrivateTarget(t *testing.T) {
 	t.Parallel()
 
 	privateTarget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -894,32 +895,41 @@ func TestReadFileFromURLSimpleRejectsRedirectToPrivateTarget(t *testing.T) {
 	policy := &spec.URLSecurityPolicySpec{
 		AllowedHostPatterns: []string{"localhost"},
 	}
-	_, err := ReadFileFromURLSimple(context.Background(), entryURL, policy)
+	_, err := ReadURL(context.Background(), entryURL, policy, 1024)
 	if err == nil {
 		t.Fatal("expected redirect to private target to be rejected")
 	}
 }
 
-func TestReadFileFromURLForConversionRejectsRedirectToPrivateTarget(t *testing.T) {
-	t.Parallel()
-
-	privateTarget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("private"))
-	}))
-	defer privateTarget.Close()
-
-	redirectServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, privateTarget.URL, http.StatusFound)
-	}))
-	defer redirectServer.Close()
-
-	entryURL := strings.Replace(redirectServer.URL, "127.0.0.1", "localhost", 1)
-	policy := &spec.URLSecurityPolicySpec{
-		AllowedHostPatterns: []string{"localhost"},
-	}
-	_, err := ReadFileFromURLForConversion(context.Background(), entryURL, policy)
-	if err == nil {
-		t.Fatal("expected redirect to private target to be rejected")
+func TestReadURLReadLimitAndStatus(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		limit   int64
+		status  int
+		want    string
+		wantErr string
+	}{
+		{name: "complete", limit: 10, status: http.StatusOK, want: "payload"},
+		{name: "truncated", limit: 3, status: http.StatusOK, want: "pay"},
+		{name: "empty limit", limit: 0, status: http.StatusOK, want: ""},
+		{name: "HTTP error", limit: 10, status: http.StatusBadGateway, wantErr: "HTTP request failed with status: 502"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte("payload"))
+			}))
+			defer server.Close()
+			got, err := ReadURL(context.Background(), server.URL, &spec.URLSecurityPolicySpec{AllowPrivateByDefault: true}, tc.limit)
+			if tc.wantErr != "" {
+				if err == nil || err.Error() != tc.wantErr {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err != nil || string(got) != tc.want {
+				t.Fatalf("read response = %q, %v; want %q", got, err, tc.want)
+			}
+		})
 	}
 }

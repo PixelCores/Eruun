@@ -637,12 +637,12 @@ func jobInfoLabels(info interface{}) map[string]string {
 			return nil
 		}
 		return v.Labels
-	case *model.ConfigMapInput:
+	case *ConfigMapInput:
 		if v == nil {
 			return nil
 		}
 		return v.Labels
-	case *model.SecretInput:
+	case *SecretInput:
 		if v == nil {
 			return nil
 		}
@@ -664,12 +664,12 @@ func jobInfoAnnotations(info interface{}) map[string]string {
 			return nil
 		}
 		return v.Annotations
-	case *model.ConfigMapInput:
+	case *ConfigMapInput:
 		if v == nil {
 			return nil
 		}
 		return v.Annotations
-	case *model.SecretInput:
+	case *SecretInput:
 		if v == nil {
 			return nil
 		}
