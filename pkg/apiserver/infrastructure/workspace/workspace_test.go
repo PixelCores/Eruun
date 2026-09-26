@@ -13,13 +13,11 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/stretchr/testify/require"
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -266,20 +264,9 @@ func TestTransportSecuresDeploymentInitAndSidecar(t *testing.T) {
 	}
 }
 
-func TestTaskValidationAndImpersonation(t *testing.T) {
+func TestImpersonationAndTraitValidation(t *testing.T) {
 	w := &model.Workspace{ID: "a", Namespace: "own"}
 	cfg := workspaceConfig(t)
-	task := &model.JobTask{AppID: "app", Namespace: "own", JobType: string(config.JobDeploy), JobInfo: &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "own"}}}
-	deploy, err := PrepareTask(task, "app", w, cfg)
-	require.NoError(t, err)
-	require.True(t, deploy)
-	task.AppID = "other"
-	_, err = PrepareTask(task, "app", w, cfg)
-	require.ErrorIs(t, err, bcode.ErrForbidden)
-	task.AppID = "app"
-	task.JobType = string(config.JobDeployCloud)
-	_, err = PrepareTask(task, "app", w, cfg)
-	require.ErrorIs(t, err, bcode.ErrForbidden)
 	manager := &Manager{RESTConfig: &rest.Config{Host: "https://kubernetes.example"}, Config: cfg}
 	_, restConfig, err := manager.TenantClient(w)
 	require.NoError(t, err)

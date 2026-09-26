@@ -535,7 +535,7 @@ func (d *DelayDispatcher) dispatch(ctx context.Context, item *delayItem) error {
 	payload := *item.payload
 	payload.Job = payload.Job.DeepCopy()
 	task := &model.JobTask{AppID: app.ID, Namespace: space.Namespace, JobType: string(config.JobDeployInstant), JobInfo: payload.Job}
-	if _, err = workspace.PrepareTask(task, app.ID, space, d.workspaceManager.Config); err != nil {
+	if _, err = PrepareTask(task, app.ID, space, d.workspaceManager.Config); err != nil {
 		return d.rejectCheckpoint(ctx, checkpoint, err)
 	}
 	// The worker initializes the full baseline before committing a delayed job.
