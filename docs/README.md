@@ -59,7 +59,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | 路径 | 职责 | 常见需求入口 | 注意事项 |
 | --- | --- | --- | --- |
 | `cmd/main.go`, `cmd/server/app` | API Server 启动、参数、服务装配 | 新增启动参数、调整初始化顺序 | 配置问题优先 fail-fast，不要静默降级 |
-| `pkg/apiserver/jobs` | 空间独立 Job 与评测数据 | command、Harbor 提交、原生任务包、完整结果、独立保存及保留策略 | 复用现有 WorkflowQueue、JobInfo 和执行租约；公共规格在 `domain/spec`，框架 Runner 在 `pkg/apiserver/jobs/runners/harbor` |
+| `pkg/apiserver/jobs` | 空间独立 Job 与评测数据 | command、Harbor 提交、原生任务包、完整结果、独立保存及保留策略 | 复用现有 WorkflowQueue、JobInfo 和执行租约；公共规格在 `domain/spec`，command Job 构建在本包 `command_builder.go`，框架 Runner 在 `pkg/apiserver/jobs/runners/harbor` |
 | `pkg/apiserver/interfaces/api` | HTTP 路由、参数绑定、响应封装、中间件 | 新接口、接口校验、认证授权、流式能力 | 不直接写 DB/K8s，业务逻辑下沉到 Domain |
 | `pkg/apiserver/interfaces/grpc`, `pkg/apiserver/interfaces/grpc/proto/eruun/v1` | 用户业务 gRPC 适配与版本化 Protobuf 契约 | RPC、强类型字段、metadata 认证、流式传输 | 复用 Domain 服务；不经进程内 HTTP 转发；路由对照见 `grpc-api.md` |
 | `pkg/apiserver/interfaces/api/dto/v1` | API DTO 与请求/响应结构 | 字段增删、响应形态调整 | 同步 assembler、文档和 examples |

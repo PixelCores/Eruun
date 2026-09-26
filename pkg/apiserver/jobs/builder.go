@@ -99,7 +99,7 @@ func BuildTask(ctx context.Context, store datastore.DataStore, cfg *config.Confi
 	if err := spec.DecodeJobJSON(declaration.Spec, &command); err != nil {
 		return nil, err
 	}
-	workload, err := workflowjob.BuildCommandJob(job.Name, namespace, command, declaration.Traits)
+	workload, err := buildCommandJob(job.Name, namespace, command, declaration.Traits)
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +174,7 @@ func BuildEvaluationTask(ctx context.Context, store datastore.DataStore, cfg *co
 	if dataset.Kind != artifacts.KindDataset || dataset.WorkspaceID != job.WorkspaceID || dataset.Expired {
 		return fmt.Errorf("task package is unavailable in this workspace")
 	}
-	workload, err := workflowjob.BuildCommandJob(job.Name, job.Namespace, spec.CommandJobSpec{Image: cfg.Jobs.RunnerImage, Command: []string{"python", "/opt/eruun/runner.py"}, TimeoutSeconds: evaluation.TimeoutSeconds}, info.Traits)
+	workload, err := buildCommandJob(job.Name, job.Namespace, spec.CommandJobSpec{Image: cfg.Jobs.RunnerImage, Command: []string{"python", "/opt/eruun/runner.py"}, TimeoutSeconds: evaluation.TimeoutSeconds}, info.Traits)
 	if err != nil {
 		return err
 	}
