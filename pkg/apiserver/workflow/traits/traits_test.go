@@ -23,18 +23,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
-func resetTraitProcessors() {
-	ResetTraitProcessorsForTest()
-}
-
 // TestEnvProcessor comprehensively tests the env trait processing.
 func TestEnvProcessor(t *testing.T) {
-	// Register processors needed for the tests.
-	// In a real test setup, this might be done in a TestMain or setup function.
-	resetTraitProcessors() // Clear existing processors for a clean test
-	Register(&InitProcessor{})
-	Register(&EnvFromProcessor{})
-	Register(&StorageProcessor{}) // Storage is often used alongside other traits
 
 	// --- Test Data Setup ---
 
@@ -141,10 +131,6 @@ func TestEnvProcessor(t *testing.T) {
 }
 
 func TestSecurityPolicyTrait(t *testing.T) {
-	resetTraitProcessors()
-	Register(&SecurityPolicyProcessor{})
-	Register(&InitProcessor{})
-	Register(&SidecarProcessor{})
 
 	component := &model.ApplicationComponent{
 		Name:  "main-app",
@@ -221,8 +207,6 @@ func TestSecurityPolicyTrait(t *testing.T) {
 }
 
 func TestTargetWorkEnvTrait(t *testing.T) {
-	resetTraitProcessors()
-	Register(&TargetWorkEnvProcessor{})
 
 	component := &model.ApplicationComponent{
 		Name:  "backend",
@@ -279,10 +263,6 @@ func findContainer(containers []corev1.Container, name string) *corev1.Container
 }
 
 func TestApplyTraits_FinalSimplifiedEnvs(t *testing.T) {
-	// Register processors needed for the test
-	resetTraitProcessors() // Clear existing processors for a clean test
-	Register(&EnvsProcessor{})
-	Register(&EnvFromProcessor{})
 
 	// 1. Define the input component with the final, structured envs spec.
 	staticValue := "some_static_value"
@@ -589,37 +569,7 @@ func TestApplyIngressDefaultsServiceFromProperties(t *testing.T) {
 	require.Equal(t, int32(8081), trait.Routes[1].Backend.ServicePort)
 }
 
-func setupProcessors() {
-	resetTraitProcessors()
-	RegisterAllProcessors()
-}
-
-func TestRegister_Idempotent(t *testing.T) {
-	resetTraitProcessors()
-	Register(&StorageProcessor{})
-	Register(&StorageProcessor{})
-	require.Len(t, registeredTraitProcessors, 1)
-}
-
-func TestRegisterAllProcessors_UsesOnceAndReset(t *testing.T) {
-	resetTraitProcessors()
-
-	RegisterAllProcessors()
-	firstCount := len(registeredTraitProcessors)
-	require.Greater(t, firstCount, 0)
-
-	RegisterAllProcessors()
-	require.Len(t, registeredTraitProcessors, firstCount)
-
-	ResetTraitProcessorsForTest()
-	require.Empty(t, registeredTraitProcessors)
-
-	RegisterAllProcessors()
-	require.Len(t, registeredTraitProcessors, firstCount)
-}
-
 func TestApplyTraits_InitTrait_WithNestedTraits(t *testing.T) {
-	setupProcessors()
 	// 1. Define the input component with two init containers sharing a volume.
 	traitsStruct := &model.Traits{
 		Init: []model.InitTrait{
@@ -710,7 +660,6 @@ func TestApplyTraits_InitTrait_WithNestedTraits(t *testing.T) {
 }
 
 func TestApplyTraitsBindsServiceAccount(t *testing.T) {
-	setupProcessors()
 	automount := true
 	traitsStruct := &spec.Traits{
 		RBAC: []spec.RBACPolicySpec{
@@ -788,7 +737,7 @@ func TestRBACProcessor_NamespaceRole(t *testing.T) {
 		},
 	}
 
-	res, err := p.Process(&TraitContext{Component: component, TraitData: policies})
+	res, err := p.Process(&TraitContext{Component: component}, policies)
 	require.NoError(t, err)
 	require.NotNil(t, res)
 	require.Len(t, res.AdditionalObjects, 3)
@@ -848,7 +797,7 @@ func TestRBACProcessor_ClusterScope(t *testing.T) {
 		},
 	}
 
-	res, err := p.Process(&TraitContext{Component: component, TraitData: policies})
+	res, err := p.Process(&TraitContext{Component: component}, policies)
 	require.NoError(t, err)
 	require.Len(t, res.AdditionalObjects, 3)
 	require.Equal(t, "controller-sa", res.ServiceAccountName)
@@ -901,7 +850,7 @@ func TestRBACProcessor_ServiceAccountSelectionAndAutomount(t *testing.T) {
 		},
 	}
 
-	res, err := p.Process(&TraitContext{Component: component, TraitData: policies})
+	res, err := p.Process(&TraitContext{Component: component}, policies)
 	require.NoError(t, err)
 	require.Equal(t, "pod-labeler-sa", res.ServiceAccountName, "first policy should determine bound serviceAccount")
 	require.NotNil(t, res.AutomountServiceAccountToken)
@@ -910,9 +859,6 @@ func TestRBACProcessor_ServiceAccountSelectionAndAutomount(t *testing.T) {
 }
 
 func TestResourcesProcessor(t *testing.T) {
-	// Register processors needed for the test
-	resetTraitProcessors() // Clear existing processors for a clean test
-	Register(&ResourcesProcessor{})
 
 	// Test component with resources trait
 	component := &model.ApplicationComponent{
@@ -973,10 +919,6 @@ func TestResourcesProcessor(t *testing.T) {
 }
 
 func TestResourcesProcessor_WithSidecar(t *testing.T) {
-	// Register processors needed for the test
-	resetTraitProcessors() // Clear existing processors for a clean test
-	Register(&ResourcesProcessor{})
-	Register(&SidecarProcessor{})
 
 	// Test component with sidecar that has its own resources
 	component := &model.ApplicationComponent{
@@ -1075,9 +1017,6 @@ func TestApplyTraits_SidecarTrait_WithNestedTraits(t *testing.T) {
 
 	// 3. Apply the traits.
 	// Reset processors for a clean test to avoid double registration panics.
-	resetTraitProcessors()
-	Register(&SidecarProcessor{})
-	Register(&StorageProcessor{}) // Register dependency trait
 
 	_, err = ApplyTraits(component, workload)
 	require.NoError(t, err)
@@ -1117,10 +1056,9 @@ func TestStorageProcessor_StandalonePVCUsesGivenName(t *testing.T) {
 			AppID:     "app-2",
 			Namespace: "jobs",
 		},
-		TraitData: []spec.StorageTraitSpec{pvcTrait},
 	}
 
-	result, err := storageProcessor.Process(ctx)
+	result, err := storageProcessor.Process(ctx, []spec.StorageTraitSpec{pvcTrait})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Len(t, result.Volumes, 1)
@@ -1144,15 +1082,14 @@ func TestStorageProcessor_ExplicitClaimNameCreatesStandalonePVCTarget(t *testing
 			AppID:     "app-2",
 			Namespace: "jobs",
 		},
-		TraitData: []spec.StorageTraitSpec{{
-			Type:      "persistent",
-			Name:      "shared-cache",
-			TmpCreate: false,
-			ClaimName: "existing-cache",
-		}},
 	}
 
-	result, err := storageProcessor.Process(ctx)
+	result, err := storageProcessor.Process(ctx, []spec.StorageTraitSpec{{
+		Type:      "persistent",
+		Name:      "shared-cache",
+		TmpCreate: false,
+		ClaimName: "existing-cache",
+	}})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Len(t, result.Volumes, 1)
@@ -1176,16 +1113,15 @@ func TestStorageProcessor_RendersSubPathExpr(t *testing.T) {
 			AppID:     "app-1",
 			Namespace: "default",
 		},
-		TraitData: []spec.StorageTraitSpec{{
-			Name:        "logs",
-			Type:        "persistent",
-			ClaimName:   "developer-pvc",
-			MountPath:   "/app/log",
-			SubPathExpr: "$(TZ)/game/$(INSTANCE_ID)/$(SERVER_NAME)/$(POD_IP)",
-		}},
 	}
 
-	result, err := storageProcessor.Process(ctx)
+	result, err := storageProcessor.Process(ctx, []spec.StorageTraitSpec{{
+		Name:        "logs",
+		Type:        "persistent",
+		ClaimName:   "developer-pvc",
+		MountPath:   "/app/log",
+		SubPathExpr: "$(TZ)/game/$(INSTANCE_ID)/$(SERVER_NAME)/$(POD_IP)",
+	}})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -1211,18 +1147,17 @@ func TestStorageProcessor_StatefulSet_TmpCreate_VolumeNameMatch(t *testing.T) {
 			AppID:     "app-123",
 			Namespace: "default",
 		},
-		TraitData: []spec.StorageTraitSpec{
-			{
-				Name:      "mysql-data",
-				Type:      "persistent",
-				MountPath: "/var/lib/mysql",
-				Size:      "5Gi",
-				TmpCreate: true,
-			},
-		},
 	}
 
-	result, err := processor.Process(ctx)
+	result, err := processor.Process(ctx, []spec.StorageTraitSpec{
+		{
+			Name:      "mysql-data",
+			Type:      "persistent",
+			MountPath: "/var/lib/mysql",
+			Size:      "5Gi",
+			TmpCreate: true,
+		},
+	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -1265,30 +1200,29 @@ func TestStorageProcessor_MultiVolume_TmpCreate(t *testing.T) {
 			AppID:     "app-456",
 			Namespace: "default",
 		},
-		TraitData: []spec.StorageTraitSpec{
-			{
-				Name:      "pg-data",
-				Type:      "persistent",
-				MountPath: "/var/lib/postgresql/data",
-				Size:      "10Gi",
-				TmpCreate: true,
-			},
-			{
-				Name:      "pg-wal",
-				Type:      "persistent",
-				MountPath: "/var/lib/postgresql/wal",
-				Size:      "5Gi",
-				TmpCreate: true,
-			},
-			{
-				Name:      "pg-backup",
-				Type:      "ephemeral",
-				MountPath: "/backup",
-			},
-		},
 	}
 
-	result, err := processor.Process(ctx)
+	result, err := processor.Process(ctx, []spec.StorageTraitSpec{
+		{
+			Name:      "pg-data",
+			Type:      "persistent",
+			MountPath: "/var/lib/postgresql/data",
+			Size:      "10Gi",
+			TmpCreate: true,
+		},
+		{
+			Name:      "pg-wal",
+			Type:      "persistent",
+			MountPath: "/var/lib/postgresql/wal",
+			Size:      "5Gi",
+			TmpCreate: true,
+		},
+		{
+			Name:      "pg-backup",
+			Type:      "ephemeral",
+			MountPath: "/backup",
+		},
+	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -1328,25 +1262,24 @@ func TestStorageProcessor_MixedMode(t *testing.T) {
 			AppID:     "app-789",
 			Namespace: "default",
 		},
-		TraitData: []spec.StorageTraitSpec{
-			{
-				Name:      "app-data",
-				Type:      "persistent",
-				MountPath: "/data",
-				Size:      "2Gi",
-				TmpCreate: true,
-			},
-			{
-				Name:      "shared-config",
-				Type:      "persistent",
-				MountPath: "/config",
-				TmpCreate: false,
-				ClaimName: "existing-config-pvc",
-			},
-		},
 	}
 
-	result, err := processor.Process(ctx)
+	result, err := processor.Process(ctx, []spec.StorageTraitSpec{
+		{
+			Name:      "app-data",
+			Type:      "persistent",
+			MountPath: "/data",
+			Size:      "2Gi",
+			TmpCreate: true,
+		},
+		{
+			Name:      "shared-config",
+			Type:      "persistent",
+			MountPath: "/config",
+			TmpCreate: false,
+			ClaimName: "existing-config-pvc",
+		},
+	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -1544,11 +1477,10 @@ func TestStorageProcessor_DuplicateInput(t *testing.T) {
 			AppID:     "app-1",
 			Namespace: "data",
 		},
-		TraitData: allStorageTraits,
 	}
 
 	// 3. Run the processor
-	result, err := storageProcessor.Process(ctx)
+	result, err := storageProcessor.Process(ctx, allStorageTraits)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 

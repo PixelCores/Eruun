@@ -21,7 +21,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	traitsPlu "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 type databaseResetComponentStore struct {
@@ -1129,7 +1128,6 @@ func databaseResetServerComponent(t *testing.T, name string) *model.ApplicationC
 
 func databaseResetStatefulSet(t *testing.T, component *model.ApplicationComponent) (*GenerateServiceResult, *appsv1.StatefulSet) {
 	t.Helper()
-	registerDatabaseResetTraitProcessors(t)
 	result, err := GenerateStoreService(component)
 	if err != nil {
 		t.Fatal(err)
@@ -1140,13 +1138,6 @@ func databaseResetStatefulSet(t *testing.T, component *model.ApplicationComponen
 	statefulSet.Status.Replicas = 1
 	statefulSet.Status.ReadyReplicas = 1
 	return result, statefulSet
-}
-
-func registerDatabaseResetTraitProcessors(t *testing.T) {
-	t.Helper()
-	traitsPlu.ResetTraitProcessorsForTest()
-	traitsPlu.RegisterAllProcessors()
-	t.Cleanup(traitsPlu.ResetTraitProcessorsForTest)
 }
 
 func firstAdditionalPVC(t *testing.T, result *GenerateServiceResult) *corev1.PersistentVolumeClaim {

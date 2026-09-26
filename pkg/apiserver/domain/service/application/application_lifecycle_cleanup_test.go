@@ -19,7 +19,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
-	traitsPlu "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 func TestCleanupApplicationResourcesDeletesWorkload(t *testing.T) {
@@ -82,9 +81,6 @@ func TestCleanupApplicationResourcesDeletesWorkload(t *testing.T) {
 }
 
 func TestCleanupApplicationResourcesPreservesStoragePVC(t *testing.T) {
-	traitsPlu.ResetTraitProcessorsForTest()
-	traitsPlu.RegisterAllProcessors()
-	t.Cleanup(traitsPlu.ResetTraitProcessorsForTest)
 
 	app := &model.Applications{
 		ID:        "app-pvc",
@@ -136,9 +132,6 @@ func TestCleanupApplicationResourcesPreservesStoragePVC(t *testing.T) {
 }
 
 func TestCleanupApplicationResourcesPreservesTraitGeneratedRBAC(t *testing.T) {
-	traitsPlu.ResetTraitProcessorsForTest()
-	traitsPlu.RegisterAllProcessors()
-	t.Cleanup(traitsPlu.ResetTraitProcessorsForTest)
 
 	app := &model.Applications{ID: "app-rbac", Name: "demo-rbac", Namespace: "ops"}
 	component := &model.ApplicationComponent{

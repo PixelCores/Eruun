@@ -12,20 +12,10 @@ import (
 // ResourcesProcessor applies compute resources (cpu/memory/gpu) to a container.
 type ResourcesProcessor struct{}
 
-// Name returns the name of the trait.
-func (r *ResourcesProcessor) Name() string {
-	return "resources"
-}
-
 // Process converts a single ResourceTraitsSpec into Kubernetes ResourceRequirements.
 // cpu/memory represent requests; cpuLimit/memoryLimit override limits and fall
 // back to the request values for backward compatibility.
-func (r *ResourcesProcessor) Process(ctx *TraitContext) (*TraitResult, error) {
-	resourceSpec, ok := ctx.TraitData.(*spec.ResourceTraitsSpec)
-	if !ok {
-		return nil, fmt.Errorf("unexpected type for resources trait: %T", ctx.TraitData)
-	}
-
+func (r *ResourcesProcessor) Process(resourceSpec *spec.ResourceTraitsSpec) (*TraitResult, error) {
 	if resourceSpec == nil {
 		return nil, nil
 	}
