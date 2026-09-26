@@ -21,7 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCancelDelayedVersionTaskForAppSuccess(t *testing.T) {
+func TestCancelDelayedVersionTaskForAppWithReadCacheDisabled(t *testing.T) {
 	store := &statusDataStore{
 		task: &model.WorkflowQueue{
 			TaskID:    "task-delay-1",
@@ -30,7 +30,7 @@ func TestCancelDelayedVersionTaskForAppSuccess(t *testing.T) {
 			ExecuteAt: time.Now().Add(10 * time.Minute).Unix(),
 		},
 	}
-	svc := &workflowServiceImpl{Store: store, Cache: newTestWorkflowCancelSignalCache(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
+	svc := &workflowServiceImpl{Store: store, Cache: cache.NewMemCache(true), RedisClient: newTestWorkflowCancelSignalClient(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
 
 	err := svc.CancelDelayedVersionTaskForApp(context.Background(), "app-1", "tester", "task-delay-1", "manual")
 	require.NoError(t, err)
@@ -61,7 +61,7 @@ func TestCancelDelayedVersionTaskForAppDoesNotOverwriteDispatcherTransition(t *t
 	store.beforeCAS = func(task *model.WorkflowQueue) {
 		task.Status = config.StatusQueued
 	}
-	svc := &workflowServiceImpl{Store: store, Cache: newTestWorkflowCancelSignalCache(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
+	svc := &workflowServiceImpl{Store: store, RedisClient: newTestWorkflowCancelSignalClient(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
 
 	err := svc.CancelDelayedVersionTaskForApp(context.Background(), "app-1", "tester", "task-delay-race", "manual")
 	require.ErrorIs(t, err, bcode.ErrVersionUpdateTaskNotCancellable)
@@ -181,7 +181,7 @@ func TestCancelDelayedVersionTaskForAppTerminalizesPrecreatedCleanupJobs(t *test
 			},
 		},
 	}
-	svc := &workflowServiceImpl{Store: store, Cache: newTestWorkflowCancelSignalCache(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
+	svc := &workflowServiceImpl{Store: store, RedisClient: newTestWorkflowCancelSignalClient(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
 
 	err := svc.CancelDelayedVersionTaskForApp(context.Background(), "app-1", "tester", "task-delay-cleanup", "manual")
 	require.NoError(t, err)
@@ -211,7 +211,7 @@ func TestCancelDelayedVersionTaskForAppKeepsRunningCleanupJobActive(t *testing.T
 			},
 		},
 	}
-	svc := &workflowServiceImpl{Store: store, Cache: newTestWorkflowCancelSignalCache(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
+	svc := &workflowServiceImpl{Store: store, RedisClient: newTestWorkflowCancelSignalClient(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
 
 	err := svc.CancelDelayedVersionTaskForApp(context.Background(), "app-1", "tester", "task-delay-running-cleanup", "manual")
 	require.NoError(t, err)
@@ -228,7 +228,7 @@ func TestCancelDelayedVersionTaskForAppRejectsNonFutureTask(t *testing.T) {
 			ExecuteAt: time.Now().Add(-10 * time.Second).Unix(),
 		},
 	}
-	svc := &workflowServiceImpl{Store: store, Cache: newTestWorkflowCancelSignalCache(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
+	svc := &workflowServiceImpl{Store: store, RedisClient: newTestWorkflowCancelSignalClient(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
 
 	err := svc.CancelDelayedVersionTaskForApp(context.Background(), "app-1", "tester", "task-delay-2", "manual")
 	require.ErrorIs(t, err, bcode.ErrVersionUpdateTaskNotCancellable)
@@ -243,7 +243,7 @@ func TestCancelDelayedVersionTaskForAppRejectsNonWaitingTask(t *testing.T) {
 			ExecuteAt: time.Now().Add(10 * time.Minute).Unix(),
 		},
 	}
-	svc := &workflowServiceImpl{Store: store, Cache: newTestWorkflowCancelSignalCache(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
+	svc := &workflowServiceImpl{Store: store, RedisClient: newTestWorkflowCancelSignalClient(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
 
 	err := svc.CancelDelayedVersionTaskForApp(context.Background(), "app-1", "tester", "task-delay-3", "manual")
 	require.ErrorIs(t, err, bcode.ErrVersionUpdateTaskNotCancellable)
@@ -258,7 +258,7 @@ func TestCancelDelayedVersionTaskForAppRejectsMismatchedApp(t *testing.T) {
 			ExecuteAt: time.Now().Add(10 * time.Minute).Unix(),
 		},
 	}
-	svc := &workflowServiceImpl{Store: store, Cache: newTestWorkflowCancelSignalCache(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
+	svc := &workflowServiceImpl{Store: store, RedisClient: newTestWorkflowCancelSignalClient(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
 
 	err := svc.CancelDelayedVersionTaskForApp(context.Background(), "app-2", "tester", "task-delay-4", "manual")
 	require.ErrorIs(t, err, bcode.ErrWorkflowNotExist)
@@ -280,7 +280,7 @@ func TestCancelAllWorkflowTasksForAppCancelsOnlyActiveAppTasks(t *testing.T) {
 		{TaskID: "task-other-app", AppID: "app-2", Status: config.StatusRunning},
 	}
 	store := &statusDataStore{tasks: tasks}
-	svc := &workflowServiceImpl{Store: store, Cache: newTestWorkflowCancelSignalCache(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
+	svc := &workflowServiceImpl{Store: store, RedisClient: newTestWorkflowCancelSignalClient(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
 
 	cancelledTaskIDs, err := svc.CancelAllWorkflowTasksForApp(context.Background(), "app-1", "tester", "manual cancel")
 
@@ -299,7 +299,7 @@ func TestCancelAllWorkflowTasksForAppCancelsOnlyActiveAppTasks(t *testing.T) {
 
 func TestCancelAllWorkflowTasksForAppReturnsSuccessWhenNoTasks(t *testing.T) {
 	store := &statusDataStore{}
-	svc := &workflowServiceImpl{Store: store, Cache: newTestWorkflowCancelSignalCache(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
+	svc := &workflowServiceImpl{Store: store, RedisClient: newTestWorkflowCancelSignalClient(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
 
 	cancelledTaskIDs, err := svc.CancelAllWorkflowTasksForApp(context.Background(), "app-1", "tester", "manual cancel")
 
@@ -320,7 +320,7 @@ func TestCancelAllWorkflowTasksForAppResendsCancelledTaskWithActiveJobs(t *testi
 			{TaskID: "task-cancelled-done", Status: string(config.StatusCompleted)},
 		},
 	}
-	svc := &workflowServiceImpl{Store: store, Cache: newTestWorkflowCancelSignalCache(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
+	svc := &workflowServiceImpl{Store: store, RedisClient: newTestWorkflowCancelSignalClient(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
 
 	cancelledTaskIDs, err := svc.CancelAllWorkflowTasksForApp(context.Background(), "app-1", "tester", "manual cancel")
 
@@ -342,7 +342,7 @@ func TestCancelAllWorkflowTasksForAppContinuesAfterTerminalRace(t *testing.T) {
 			task.Status = config.StatusCompleted
 		},
 	}
-	svc := &workflowServiceImpl{Store: store, Cache: newTestWorkflowCancelSignalCache(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
+	svc := &workflowServiceImpl{Store: store, RedisClient: newTestWorkflowCancelSignalClient(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
 
 	cancelledTaskIDs, err := svc.CancelAllWorkflowTasksForApp(context.Background(), "app-1", "tester", "manual cancel")
 
@@ -1017,9 +1017,9 @@ func TestCancelWorkflowTaskForAppApprovalPausedIgnoresSignalErrorAndStillTrigger
 	require.NoError(t, redisClient.Close())
 
 	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{
-		Store: store,
-		Cache: cache.NewWithClient(false, cache.CacheTypeMem, redisClient),
-		Cfg:   &config.Config{AllowPrivateURLTargets: true},
+		Store:       store,
+		RedisClient: redisClient,
+		Cfg:         &config.Config{AllowPrivateURLTargets: true},
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
@@ -1091,9 +1091,9 @@ func TestCancelWorkflowTaskForAppApprovalQueuedIgnoresSignalErrorAndStillTrigger
 	require.NoError(t, redisClient.Close())
 
 	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{
-		Store: store,
-		Cache: cache.NewWithClient(false, cache.CacheTypeMem, redisClient),
-		Cfg:   &config.Config{AllowPrivateURLTargets: true},
+		Store:       store,
+		RedisClient: redisClient,
+		Cfg:         &config.Config{AllowPrivateURLTargets: true},
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
@@ -1158,9 +1158,9 @@ func TestCancelWorkflowTaskForAppRetriesAfterApprovalResume(t *testing.T) {
 		},
 	}
 	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{
-		Store: store,
-		Cache: newTestWorkflowCancelSignalCache(t),
-		Cfg:   &config.Config{AllowPrivateURLTargets: true},
+		Store:       store,
+		RedisClient: newTestWorkflowCancelSignalClient(t),
+		Cfg:         &config.Config{AllowPrivateURLTargets: true},
 	})
 
 	err = svc.CancelWorkflowTaskForApp(context.Background(), "app-1", "approver", "task-cancel-approval-race", "manual cancel")
@@ -1260,7 +1260,7 @@ func TestCancelWorkflowTaskForAppRunningTaskDoesNotTriggerCallback(t *testing.T)
 			Callback: callback,
 		},
 	}
-	svc := &workflowServiceImpl{Store: store, Cache: newTestWorkflowCancelSignalCache(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
+	svc := &workflowServiceImpl{Store: store, RedisClient: newTestWorkflowCancelSignalClient(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
 
 	err = svc.CancelWorkflowTaskForApp(context.Background(), "app-1", "approver", "task-cancel-running", "manual cancel")
 	require.NoError(t, err)
@@ -1455,7 +1455,7 @@ func TestCancelWorkflowTaskForAppLosesCASAgainstTerminalTransition(t *testing.T)
 			task.Status = config.StatusCompleted
 		},
 	}
-	svc := &workflowServiceImpl{Store: store, Cache: newTestWorkflowCancelSignalCache(t)}
+	svc := &workflowServiceImpl{Store: store, RedisClient: newTestWorkflowCancelSignalClient(t)}
 
 	err := svc.CancelWorkflowTaskForApp(context.Background(), "app-1", "operator", store.task.TaskID, "manual cancel")
 
@@ -1476,7 +1476,7 @@ func TestCancelWorkflowTaskForAppRetriesActiveStatusTransition(t *testing.T) {
 			task.Status = config.StatusQueued
 		},
 	}
-	svc := &workflowServiceImpl{Store: store, Cache: newTestWorkflowCancelSignalCache(t)}
+	svc := &workflowServiceImpl{Store: store, RedisClient: newTestWorkflowCancelSignalClient(t)}
 
 	err := svc.CancelWorkflowTaskForApp(context.Background(), "app-1", "operator", store.task.TaskID, "manual cancel")
 
@@ -1504,7 +1504,7 @@ func TestCancelWorkflowTaskForAppReturnsConflictAfterActiveStatusRetries(t *test
 		}
 	}
 	store.beforeCAS = transition
-	svc := &workflowServiceImpl{Store: store, Cache: newTestWorkflowCancelSignalCache(t)}
+	svc := &workflowServiceImpl{Store: store, RedisClient: newTestWorkflowCancelSignalClient(t)}
 
 	err := svc.CancelWorkflowTaskForApp(context.Background(), "app-1", "operator", store.task.TaskID, "manual cancel")
 

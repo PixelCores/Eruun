@@ -138,7 +138,7 @@ func TestEvaluationRecoveryDispatchesSuccessorThroughAdmission(t *testing.T) {
 			ctx = workflowjob.WithEvaluationRecovery(ctx, f.service.RecoverEvaluation)
 			finished := make(chan error, 1)
 			go func() {
-				finished <- workflowjob.RunJobs(ctx, []*model.JobTask{task}, 1, client, nil, f.service.Store, func() {}, true, nil, nil, nil, observer, nil)
+				finished <- workflowjob.RunJobs(ctx, []*model.JobTask{task}, 1, client, nil, f.service.Store, func() {}, true, nil, nil, nil, nil, observer, nil)
 			}()
 			require.Eventually(t, func() bool {
 				var count int64
@@ -686,7 +686,7 @@ func TestEvaluationRecoveryStartupFailureSettlesBeforeFirstCheckpoint(t *testing
 	ctx = workflowjob.WithEvaluationRecovery(ctx, f.service.RecoverEvaluation)
 	finished := make(chan error, 1)
 	go func() {
-		finished <- workflowjob.RunJobs(ctx, []*model.JobTask{task}, 1, client, nil, f.service.Store, func() {}, true, nil, nil, nil, nil, nil)
+		finished <- workflowjob.RunJobs(ctx, []*model.JobTask{task}, 1, client, nil, f.service.Store, func() {}, true, nil, nil, nil, nil, nil, nil)
 	}()
 	require.Eventually(t, func() bool {
 		var count int64
@@ -715,7 +715,7 @@ func TestEvaluationRecoveryStartupFailureSettlesBeforeFirstCheckpoint(t *testing
 	f.parent.RunToken, f.parent.WorkerID = "takeover-token", "takeover-worker"
 	task.OwnerRunGeneration, task.RunToken, task.WorkerID = f.parent.RunGeneration, f.parent.RunToken, f.parent.WorkerID
 	require.NoError(t, f.raw.Put(ctx, f.parent))
-	require.NoError(t, workflowjob.RunJobs(ctx, []*model.JobTask{task}, 1, client, nil, f.service.Store, func() {}, true, nil, nil, nil, nil, nil))
+	require.NoError(t, workflowjob.RunJobs(ctx, []*model.JobTask{task}, 1, client, nil, f.service.Store, func() {}, true, nil, nil, nil, nil, nil, nil))
 	require.Equal(t, config.StatusFailed, task.Status)
 	for _, action := range client.Actions() {
 		require.NotEqual(t, "create", action.GetVerb())

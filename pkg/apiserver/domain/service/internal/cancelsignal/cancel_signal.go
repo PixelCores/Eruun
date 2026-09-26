@@ -6,16 +6,11 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
 
-func RedisClientForCancelSignal(ctx context.Context, cacheStore cache.ICache) (*redis.Client, error) {
-	if cacheStore == nil {
-		return nil, bcode.ErrWorkflowCancelSignalUnavailable
-	}
-	redisClient := cacheStore.GetRedisClient()
+func RedisClientForCancelSignal(ctx context.Context, redisClient *redis.Client) (*redis.Client, error) {
 	if redisClient == nil {
 		return nil, bcode.ErrWorkflowCancelSignalUnavailable
 	}

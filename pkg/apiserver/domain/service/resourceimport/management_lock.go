@@ -15,39 +15,20 @@ import (
 )
 
 const (
-	adoptedImportLockerPrefix       = "eruun-adopted-import"
 	adoptedImportLockTTL            = 2 * time.Minute
 	adoptedImportLockExtendInterval = adoptedImportLockTTL / 3
 	adoptedImportLockExtendTimeout  = 5 * time.Second
 	adoptedImportLockUnlockTimeout  = 5 * time.Second
 )
 
-func (s *serviceImpl) adoptedImportLocker() (locker.Locker, error) {
-	if s.ManagementLocker != nil {
-		return s.ManagementLocker, nil
-	}
-	if s.Cache == nil || s.Cache.GetRedisClient() == nil {
-		return nil, bcode.ErrDistributedLockUnavailable
-	}
-	lockProvider, err := locker.New(locker.Config{
-		Type:        locker.TypeRedis,
-		RedisClient: s.Cache.GetRedisClient(),
-		Prefix:      adoptedImportLockerPrefix,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("%w: initialize resource import management locker: %v", bcode.ErrDistributedLockUnavailable, err)
-	}
-	return lockProvider, nil
-}
-
 func (s *serviceImpl) withAdoptedNamespaceApplyLock(
 	ctx context.Context,
 	namespace string,
 	run func(context.Context) (*apisv1.ImportNamespaceApplicationsResponse, error),
 ) (*apisv1.ImportNamespaceApplicationsResponse, error) {
-	lockProvider, err := s.adoptedImportLocker()
-	if err != nil {
-		return nil, err
+	lockProvider := s.ManagementLocker
+	if lockProvider == nil {
+		return nil, bcode.ErrDistributedLockUnavailable
 	}
 	key := "namespace:" + strings.ToLower(strings.TrimSpace(namespace))
 	mutex := lockProvider.NewMutex(key, locker.WithTTL(adoptedImportLockTTL))

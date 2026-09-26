@@ -7,7 +7,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	miniredis "github.com/alicebob/miniredis/v2"
@@ -19,7 +18,7 @@ import (
 	"time"
 )
 
-func newTestWorkflowCancelSignalCache(t *testing.T) cache.ICache {
+func newTestWorkflowCancelSignalClient(t *testing.T) *redis.Client {
 	t.Helper()
 	server, err := miniredis.Run()
 	if err != nil {
@@ -32,7 +31,7 @@ func newTestWorkflowCancelSignalCache(t *testing.T) cache.ICache {
 		_ = redisClient.Close()
 	})
 
-	return cache.NewWithClient(false, cache.CacheTypeMem, redisClient)
+	return redisClient
 }
 
 func withAllowPrivateURLPolicy(t testing.TB, svc *workflowServiceImpl) *workflowServiceImpl {

@@ -341,6 +341,6 @@ func newTestAdoptedSecretController(
 		locker.NewNoopLocker(shareLockerPrefix),
 		nil,
 	)
-	ctl.setRuntime(newJobRuntime(nil, nil, nil, nil, nil, nil, keyring))
+	ctl.setRuntime(newJobRuntime(nil, nil, nil, nil, nil, nil, nil, keyring))
 	return ctl
 }

@@ -265,9 +265,9 @@ func TestVersionRestartJobCtlRestartsDeployment(t *testing.T) {
 	waiter.OnPodAdd(versionRestartReadyPod(api, "api-old", "old-restarted-at"))
 	cacheStore := cacheutil.NewMemCache(false)
 	cacheKey := cacheutil.ApplicationComponentsKey(api.AppID)
-	require.NoError(t, cacheStore.Store(cacheKey, "stale"))
-	require.True(t, cacheStore.Exists(cacheKey))
-	ctl.setRuntime(newJobRuntime(cacheStore, nil, nil, nil, waiter, nil))
+	require.NoError(t, cacheStore.Store(context.Background(), cacheKey, "stale"))
+	require.True(t, cacheStore.Exists(context.Background(), cacheKey))
+	ctl.setRuntime(newJobRuntime(nil, cacheStore, nil, nil, nil, waiter, nil))
 
 	result := runVersionRestartAsync(ctl)
 	restartedAt := waitForDeploymentRestartAt(t, client, deployment.Name)
@@ -280,7 +280,7 @@ func TestVersionRestartJobCtlRestartsDeployment(t *testing.T) {
 	require.NotEmpty(t, updatedDeployment.Spec.Template.Annotations[config.AnnotationWorkloadRestartAt])
 	require.Equal(t, string(config.ComponentStatusRestarting), api.Status)
 	require.Equal(t, config.StatusCompleted, task.Status)
-	require.False(t, cacheStore.Exists(cacheKey))
+	require.False(t, cacheStore.Exists(context.Background(), cacheKey))
 }
 
 func TestVersionRestartJobCtlRestartsStatefulSet(t *testing.T) {
@@ -293,7 +293,7 @@ func TestVersionRestartJobCtlRestartsStatefulSet(t *testing.T) {
 	waiter := informer.NewResourceReadyWaiter()
 	t.Cleanup(waiter.Close)
 	waiter.OnPodAdd(versionRestartReadyPod(db, "mysql-old", "old-restarted-at"))
-	ctl.setRuntime(newJobRuntime(nil, nil, nil, nil, waiter, nil))
+	ctl.setRuntime(newJobRuntime(nil, nil, nil, nil, nil, waiter, nil))
 
 	result := runVersionRestartAsync(ctl)
 	restartedAt := waitForStatefulSetRestartAt(t, client, statefulSet.Name)
@@ -439,7 +439,7 @@ func TestVersionRestartJobCtlFailsWhenRestartedDeploymentPodCrashLoops(t *testin
 	waiter := informer.NewResourceReadyWaiter()
 	t.Cleanup(waiter.Close)
 	waiter.OnPodAdd(versionRestartReadyPod(api, "api-old", "old-restarted-at"))
-	ctl.setRuntime(newJobRuntime(nil, nil, nil, nil, waiter, nil))
+	ctl.setRuntime(newJobRuntime(nil, nil, nil, nil, nil, waiter, nil))
 
 	result := runVersionRestartAsync(ctl)
 	restartedAt := waitForDeploymentRestartAt(t, client, deployment.Name)
@@ -464,7 +464,7 @@ func TestVersionRestartJobCtlFailsWhenRestartedStatefulSetPodCrashLoops(t *testi
 	waiter := informer.NewResourceReadyWaiter()
 	t.Cleanup(waiter.Close)
 	waiter.OnPodAdd(versionRestartReadyPod(db, "mysql-old", "old-restarted-at"))
-	ctl.setRuntime(newJobRuntime(nil, nil, nil, nil, waiter, nil))
+	ctl.setRuntime(newJobRuntime(nil, nil, nil, nil, nil, waiter, nil))
 
 	result := runVersionRestartAsync(ctl)
 	restartedAt := waitForStatefulSetRestartAt(t, client, statefulSet.Name)

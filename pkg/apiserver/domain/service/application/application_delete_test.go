@@ -27,7 +27,7 @@ import (
 	wf "github.com/PixelCores/Eruun/pkg/apiserver/workflow"
 )
 
-func newTestApplicationDeleteCancelSignalCache(t *testing.T) cache.ICache {
+func newTestApplicationDeleteCancelSignalClient(t *testing.T) *redis.Client {
 	t.Helper()
 	server, err := miniredis.Run()
 	if err != nil {
@@ -40,7 +40,7 @@ func newTestApplicationDeleteCancelSignalCache(t *testing.T) cache.ICache {
 		_ = redisClient.Close()
 	})
 
-	return cache.NewWithClient(false, cache.CacheTypeMem, redisClient)
+	return redisClient
 }
 
 func TestDeleteApplicationCascadeSuccess(t *testing.T) {
@@ -63,7 +63,7 @@ func TestDeleteApplicationCascadeSuccess(t *testing.T) {
 		ComponentRepo:     &cascadeComponentRepo{store: store},
 		WorkflowQueueRepo: queueRepo,
 		ScheduleLocker:    locker.NewNoopLocker("test-app-schedule"),
-		Cache:             newTestApplicationDeleteCancelSignalCache(t),
+		RedisClient:       newTestApplicationDeleteCancelSignalClient(t),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{
@@ -115,7 +115,7 @@ func TestDeleteApplicationCascadeReloadsManagementModeAfterLock(t *testing.T) {
 		ComponentRepo:     &cascadeComponentRepo{store: store},
 		WorkflowQueueRepo: &mockWorkflowQueueRepo{},
 		ScheduleLocker:    locker.NewMemoryLocker("test-app-schedule"),
-		Cache:             newTestApplicationDeleteCancelSignalCache(t),
+		RedisClient:       newTestApplicationDeleteCancelSignalClient(t),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{
@@ -161,7 +161,7 @@ func TestDeleteApplicationCascadePreservesOwnershipWhenActiveTasksRemain(t *test
 		ComponentRepo:     &cascadeComponentRepo{store: store},
 		WorkflowQueueRepo: &mockWorkflowQueueRepo{},
 		ScheduleLocker:    locker.NewNoopLocker("test-app-schedule"),
-		Cache:             newTestApplicationDeleteCancelSignalCache(t),
+		RedisClient:       newTestApplicationDeleteCancelSignalClient(t),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{
@@ -202,7 +202,7 @@ func TestDeleteApplicationCascadeWaitsForCancelledCallbackBeforeDeletingMetadata
 		KubeClient: fake.NewSimpleClientset(), Store: store,
 		AppRepo: &cascadeAppRepo{store: store}, ComponentRepo: &cascadeComponentRepo{store: store},
 		WorkflowQueueRepo: &mockWorkflowQueueRepo{}, ScheduleLocker: locker.NewNoopLocker("test-app-schedule"),
-		Cache: newTestApplicationDeleteCancelSignalCache(t),
+		RedisClient: newTestApplicationDeleteCancelSignalClient(t),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{WaitSeconds: int64Ptr(0)})
@@ -235,7 +235,7 @@ func TestDeleteApplicationCascadeTerminalizesUnclaimedCleanupJob(t *testing.T) {
 		KubeClient: fake.NewSimpleClientset(), Store: store,
 		AppRepo: &cascadeAppRepo{store: store}, ComponentRepo: &cascadeComponentRepo{store: store},
 		WorkflowQueueRepo: &mockWorkflowQueueRepo{}, ScheduleLocker: locker.NewNoopLocker("test-app-schedule"),
-		Cache: newTestApplicationDeleteCancelSignalCache(t),
+		RedisClient: newTestApplicationDeleteCancelSignalClient(t),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{WaitSeconds: int64Ptr(0)})
@@ -261,7 +261,7 @@ func TestDeleteApplicationCascadeCountsExcludeCleanupOperationLogs(t *testing.T)
 		ComponentRepo:     &cascadeComponentRepo{store: store},
 		WorkflowQueueRepo: queueRepo,
 		ScheduleLocker:    locker.NewNoopLocker("test-app-schedule"),
-		Cache:             newTestApplicationDeleteCancelSignalCache(t),
+		RedisClient:       newTestApplicationDeleteCancelSignalClient(t),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{
@@ -312,7 +312,7 @@ func TestDeleteApplicationCascadeFailFastWithoutTransactionalStore(t *testing.T)
 		ComponentRepo:     &cascadeComponentRepo{store: base},
 		WorkflowQueueRepo: queueRepo,
 		ScheduleLocker:    locker.NewNoopLocker("test-app-schedule"),
-		Cache:             cache.NewMemCacheWithClient(false, nil),
+		Cache:             cache.NewMemCache(false),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{
@@ -347,7 +347,7 @@ func TestDeleteApplicationCascadeFailsWhenLockUnavailable(t *testing.T) {
 		AppRepo:           &cascadeAppRepo{store: store},
 		ComponentRepo:     &cascadeComponentRepo{store: store},
 		WorkflowQueueRepo: &mockWorkflowQueueRepo{},
-		Cache:             cache.NewMemCacheWithClient(false, nil),
+		Cache:             cache.NewMemCache(false),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{
@@ -389,7 +389,7 @@ func TestDeleteApplicationCascadeDeletesSchedulesBeforeCleanup(t *testing.T) {
 		ComponentRepo:     &cascadeComponentRepo{store: store},
 		WorkflowQueueRepo: queueRepo,
 		ScheduleLocker:    locker.NewNoopLocker("test-app-schedule"),
-		Cache:             cache.NewMemCacheWithClient(false, nil),
+		Cache:             cache.NewMemCache(false),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{
@@ -428,7 +428,7 @@ func TestDeleteApplicationCascadeCancelsLateTasksAfterCleanup(t *testing.T) {
 		ComponentRepo:     &cascadeComponentRepo{store: store},
 		WorkflowQueueRepo: queueRepo,
 		ScheduleLocker:    locker.NewNoopLocker("test-app-schedule"),
-		Cache:             newTestApplicationDeleteCancelSignalCache(t),
+		RedisClient:       newTestApplicationDeleteCancelSignalClient(t),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{
@@ -504,7 +504,7 @@ func TestDeleteApplicationCascadeDeletesRecreatedSchedulesInFinalTx(t *testing.T
 		ComponentRepo:     &cascadeComponentRepo{store: store},
 		WorkflowQueueRepo: queueRepo,
 		ScheduleLocker:    locker.NewNoopLocker("test-app-schedule"),
-		Cache:             cache.NewMemCacheWithClient(false, nil),
+		Cache:             cache.NewMemCache(false),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{

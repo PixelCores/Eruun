@@ -563,7 +563,7 @@ func (c *CleanupResourcesJobCtl) markComponentNotDeploy(ctx context.Context, com
 	}); err != nil {
 		return fmt.Errorf("mark component %s not deploy: %w", component.Name, err)
 	}
-	invalidateComponentsCache(c.runtime, target.AppID, "cleanup resources status sync")
+	invalidateComponentsCache(ctx, c.runtime, target.AppID, "cleanup resources status sync")
 	return nil
 }
 
