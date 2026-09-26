@@ -11,12 +11,12 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob/contracts"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
 type Provider struct {
-	actions                   map[string]contracts.CloudActionFactory
-	connectivityClientFactory func(spec.AliyunCloudSettingSpec) (nasClient, error)
+	actions map[string]contracts.CloudActionFactory
 }
 
 var (
@@ -34,7 +34,6 @@ type runtimeAliyunSnapshot struct {
 
 func NewProvider() *Provider {
 	return &Provider{
-		connectivityClientFactory: newConnectivityNASClient,
 		actions: map[string]contracts.CloudActionFactory{
 			ActionNasEnsureFilesystem:   newNasEnsureFilesystemAction,
 			ActionNasEnsureMountTarget:  newNasEnsureMountTargetAction,
@@ -85,7 +84,7 @@ func (p *Provider) NewRuntime(ctx context.Context, req *contracts.CloudJobReques
 	} else {
 		req.RuntimeProviderSnapshot = buildRuntimeAliyunSnapshot(config)
 	}
-	nasClient, err := newNASClient(config)
+	nasClient, err := clients.NewAliyunNASClient(config)
 	if err != nil {
 		return nil, err
 	}

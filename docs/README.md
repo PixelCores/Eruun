@@ -68,14 +68,14 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `pkg/apiserver/domain/repository` | 仓储接口和数据访问契约 | 查询/写入方法、事务边界 | 接口表达业务意图，不暴露上层 DTO |
 | `pkg/apiserver/domain/service` | 应用生命周期、转换、查询、工作流创建 | 创建/更新/删除应用、组件查询、K8s YAML 转换 | 保持核心领域规则集中；存量资源导入由子模块 `resourceimport` 负责 |
 | `pkg/apiserver/domain/service/resourceimport` | 存量 Kubernetes 资源的一次性导入模块 | 用户规则扫描、候选快照、用户选择、异步纳管任务、资源 identity/digest 与运行期协调 | 扫描与纳管是两个独立持久化 Job，不做持续监听；共享契约在 `contract`，Kubernetes 侧协调在 `runtime` |
-| `pkg/apiserver/domain/spec` | 共享规格、资源契约、策略和校验 | Auth、OAuth、URL 安全、云资源配置、资源类型、Service 暴露类型与共享策略 | 业务取值及归一化与对应规格集中定义 |
+| `pkg/apiserver/domain/spec` | 共享规格、资源契约、策略和校验（含 Aliyun 设置脱敏） | Auth、OAuth、URL 安全、云资源配置、资源类型、Service 暴露类型与共享策略 | 业务取值及归一化与对应规格集中定义 |
 | `pkg/apiserver/event/workflow` | Workflow 调度、分发、状态推进、审批/超时 | 任务状态、队列消费、分布式执行 | DB 状态机是任务事实源 |
 | `pkg/apiserver/event/workflow/job` | 具体 Job 控制器和 K8s 资源调和 | Deployment、StatefulSet、Service、PVC、Secret、RBAC 等资源执行 | 保持资源生成、等待和清理语义一致 |
 | `pkg/apiserver/event/workflow/cloudjob` | 云资源 Provider 合约与实现 | 云资源步骤、Provider 注册、外部云动作 | 合约字符串集中为常量 |
 | `pkg/apiserver/workflow/traits` | OAM Traits 处理器 | storage、env、probe、resources、sidecar、rbac、ingress 等 Trait | 新 Trait 需要处理顺序、测试和文档 |
 | `pkg/apiserver/workflow/config` | 工作流运行配置、执行策略与 topic 命名 | 调度/Worker 默认值、配置校验、回调超时、镜像拉取策略与队列名称 | 模块配置不反向依赖全局配置、领域模型或执行器 |
 | `pkg/apiserver/workflow/naming` | 资源命名规则 | Kubernetes 资源名、PVC/Service 命名 | 命名变化影响状态同步和清理 |
-| `pkg/apiserver/infrastructure` | 外部系统与安全机制适配 | K8s、Redis、Kafka、MySQL、Informer、锁、可观测性、adopted Secret 加密 | Infrastructure 实现接口，不反向承载业务规则；导入 Secret 的加密/签名位于 `infrastructure/importsecret` |
+| `pkg/apiserver/infrastructure` | 外部系统与安全机制适配（含 Aliyun NAS 客户端与连通性检查） | K8s、Redis、Kafka、MySQL、Informer、锁、可观测性、adopted Secret 加密 | Infrastructure 实现接口，不反向承载业务规则；导入 Secret 的加密/签名位于 `infrastructure/importsecret` |
 | `pkg/apiserver/utils` | 通用工具 | 缓存、错误码、异步执行、K8s helper、profiling | 新工具必须可复用，避免放业务分支 |
 | `pkg/apiserver/config` | 进程配置入口与模块配置组合 | 启动参数、环境变量、连接配置、模块配置装配 | 模块专属策略和资源契约由所属模块定义 |
 | `config`, `deploy`, `examples`, `scripts` | 默认配置、部署清单、请求样例和辅助脚本 | 部署参数、示例更新、脚本化验证 | 行为或配置变化要同步 docs |
