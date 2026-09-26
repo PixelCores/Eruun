@@ -14,6 +14,8 @@
   - 重定向逐跳校验，防止“首跳公网、次跳私网”绕过
   - 策略统一从 `system_setting.type=urlSecurityPolicy` 加载
 
+出站目标校验、策略 HTTP 客户端及有界读取由 `pkg/apiserver/infrastructure/clients/http.go` 实现。`ReadURL` 接收调用方指定的读取上限；ConfigMap/Secret 的读取与超限处理归 `event/workflow/job`，转换 YAML 的大小校验归 `domain/service/conversion`。
+
 ## 策略模型
 `system_setting.type = "urlSecurityPolicy"`，`value` 为 JSON 对象：
 

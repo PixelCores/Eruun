@@ -77,7 +77,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `pkg/apiserver/workflow/traits` | OAM Traits 处理器 | storage、env、probe、resources、sidecar、rbac、ingress 等 Trait | 新 Trait 需要处理顺序、测试和文档 |
 | `pkg/apiserver/workflow/config` | 工作流运行配置、执行策略与 topic 命名 | 调度/Worker 默认值、配置校验、回调超时、镜像拉取策略与队列名称 | 模块配置不反向依赖全局配置、领域模型或执行器 |
 | `pkg/apiserver/workflow/naming` | 资源命名规则 | Kubernetes 资源名、PVC/Service 命名 | 命名变化影响状态同步和清理 |
-| `pkg/apiserver/infrastructure` | 外部系统与安全机制适配 | K8s、Redis、Kafka、MySQL、Informer、锁、可观测性、adopted Secret 加密 | Infrastructure 实现接口，不反向承载业务规则；导入 Secret 的加密/签名位于 `infrastructure/importsecret` |
+| `pkg/apiserver/infrastructure` | 外部系统与安全机制适配 | K8s、Redis、Kafka、MySQL、Informer、锁、可观测性、adopted Secret 加密 | 出站 URL 安全客户端在 `clients/http.go`；Infrastructure 实现接口，不反向承载业务规则；导入 Secret 的加密/签名位于 `infrastructure/importsecret` |
 | `pkg/apiserver/infrastructure/observability` | 进程可观测性 | Trace Provider 初始化、klog 文件保留与清理 | 后台清理受进程 context 控制 |
 | `pkg/apiserver/infrastructure/cache` | 内存与 Redis 缓存适配 | 缓存读写、过期、原子消费和共享缓存键 | ApplicationComponentsKey 是查询、执行与状态同步共同使用的存储命名契约 |
 | `pkg/apiserver/utils` | 通用工具 | 错误码、异步执行、K8s helper、profiling | 新工具必须可复用，避免放业务分支 |
