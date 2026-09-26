@@ -11,16 +11,14 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	wfcloudjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob"
-	wfaliyun "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob/aliyun"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
-var builtinSystemSettingSupports = map[string]wfcloudjob.CloudProviderSettingSupport{
-	model.SystemSettingTypeAliyunCloud: wfaliyun.NewProvider(),
+var builtinSystemSettingSupports = map[string]CloudProviderSettingSupport{
+	model.SystemSettingTypeAliyunCloud: AliyunSettingSupport{},
 }
 
 type systemSettingCodec struct {
@@ -293,12 +291,12 @@ func getSystemSettingCodec(settingType string) (systemSettingCodec, bool) {
 	return systemSettingCodec{}, false
 }
 
-func getSystemSettingSupport(settingType string) (wfcloudjob.CloudProviderSettingSupport, bool) {
+func getSystemSettingSupport(settingType string) (CloudProviderSettingSupport, bool) {
 	normalized := strings.TrimSpace(settingType)
 	if normalized == "" {
 		return nil, false
 	}
-	if support, ok := wfcloudjob.GetCloudProviderSettingSupport(normalized); ok {
+	if support, ok := GetCloudProviderSettingSupport(normalized); ok {
 		return support, true
 	}
 	support, ok := builtinSystemSettingSupports[normalized]

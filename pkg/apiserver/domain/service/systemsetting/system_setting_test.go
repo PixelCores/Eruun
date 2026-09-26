@@ -11,8 +11,6 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	wfcloudjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob"
-	wfcloudcontract "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob/contracts"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -86,22 +84,6 @@ type fakeCloudSettingProvider struct {
 	connectivityChecks int
 }
 
-func (f *fakeCloudSettingProvider) Name() string {
-	return "aliyun"
-}
-
-func (f *fakeCloudSettingProvider) NewRuntime(context.Context, *wfcloudcontract.CloudJobRequest) (wfcloudcontract.CloudRuntime, error) {
-	return nil, nil
-}
-
-func (f *fakeCloudSettingProvider) ResolveAction(string) (wfcloudcontract.CloudAction, bool) {
-	return nil, false
-}
-
-func (f *fakeCloudSettingProvider) SupportedActions() []string {
-	return nil
-}
-
 func (f *fakeCloudSettingProvider) SystemSettingType() string {
 	return f.settingType
 }
@@ -134,16 +116,16 @@ func registerAliyunCloudSettingProvider(t *testing.T, connectivityErr error) *fa
 		settingType:     model.SystemSettingTypeAliyunCloud,
 		connectivityErr: connectivityErr,
 	}
-	wfcloudjob.ResetCloudProvidersForTest()
-	wfcloudjob.RegisterCloudProvider(provider)
-	t.Cleanup(wfcloudjob.ResetCloudProvidersForTest)
+	ResetCloudProviderSettingsForTest()
+	ReplaceCloudProviderSettingSupport(nil, provider)
+	t.Cleanup(ResetCloudProviderSettingsForTest)
 	return provider
 }
 
 func resetCloudProviderRegistryForTest(t *testing.T) {
 	t.Helper()
-	wfcloudjob.ResetCloudProvidersForTest()
-	t.Cleanup(wfcloudjob.ResetCloudProvidersForTest)
+	ResetCloudProviderSettingsForTest()
+	t.Cleanup(ResetCloudProviderSettingsForTest)
 }
 
 func TestSystemSettingService_CreateAndGet(t *testing.T) {
