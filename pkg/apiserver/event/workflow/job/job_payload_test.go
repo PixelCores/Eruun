@@ -18,7 +18,7 @@ func TestConfigMapFromJobInfo(t *testing.T) {
 
 	t.Run("input", func(t *testing.T) {
 		jobTask := &model.JobTask{
-			JobInfo: &model.ConfigMapInput{
+			JobInfo: &ConfigMapInput{
 				Name:      "app-config",
 				Namespace: "ops",
 				Labels:    map[string]string{"app": "demo"},
@@ -51,7 +51,7 @@ func TestConfigMapFromJobInfo(t *testing.T) {
 	})
 
 	t.Run("nil-input", func(t *testing.T) {
-		_, err := configMapFromJobInfo(ctx, &model.JobTask{JobInfo: (*model.ConfigMapInput)(nil)}, nil)
+		_, err := configMapFromJobInfo(ctx, &model.JobTask{JobInfo: (*ConfigMapInput)(nil)}, nil)
 
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "nil")
@@ -63,7 +63,7 @@ func TestSecretFromJobInfo(t *testing.T) {
 
 	t.Run("input", func(t *testing.T) {
 		jobTask := &model.JobTask{
-			JobInfo: &model.SecretInput{
+			JobInfo: &SecretInput{
 				Name:      "app-secret",
 				Namespace: "ops",
 				Labels:    map[string]string{"app": "demo"},
@@ -97,7 +97,7 @@ func TestSecretFromJobInfo(t *testing.T) {
 	})
 
 	t.Run("nil-input", func(t *testing.T) {
-		_, err := secretFromJobInfo(ctx, &model.JobTask{JobInfo: (*model.SecretInput)(nil)}, nil)
+		_, err := secretFromJobInfo(ctx, &model.JobTask{JobInfo: (*SecretInput)(nil)}, nil)
 
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "nil")
