@@ -216,7 +216,7 @@ func TestExpiredSourceRejectsRetryAndGuardRollsBack(t *testing.T) {
 	ctx := context.Background()
 	p := policy(spec.JobResultTarget{Type: "minio", Mode: "full"})
 	rejected := errors.New("stale execution token")
-	_, err := s.PutResultGuarded(ctx, "space-a", "task-a", p, bytes.NewReader(resultBytes(t)), func(datastore.DataStore) error { return rejected })
+	_, err := s.PutResultGuarded(ctx, "space-a", "task-a", p, bytes.NewReader(resultBytes(t)), func(Backend) error { return rejected })
 	require.ErrorIs(t, err, rejected)
 	count, err := db.Count(ctx, &model.JobArtifact{WorkspaceID: "space-a", Kind: KindSource}, nil)
 	require.NoError(t, err)

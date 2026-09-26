@@ -26,6 +26,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
@@ -42,12 +43,13 @@ func TestMySQLRunnerClaimRowLockHasOneWinner(t *testing.T) {
 	}
 	db, err := gorm.Open(mysqlgorm.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.Workspace{}, &model.WorkflowQueue{}, &model.JobInfo{}, &model.JobArtifact{}, &model.ArtifactChunk{}, &model.JobDelivery{}))
+	require.NoError(t, db.AutoMigrate(&model.Workspace{}, &model.WorkflowQueue{}, &model.JobInfo{}, &model.JobArtifact{}, &model.ArtifactChunk{}, &model.JobDelivery{}, &model.SystemSetting{}))
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(8)
 	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
 	driver := &sqldriver.Driver{Client: *db}
+	require.NoError(t, repository.EnsureJobSchedulerPolicy(context.Background(), driver))
 	workspaceID, taskID := uuid.NewString(), uuid.NewString()
 	namespace := "test-" + strings.ReplaceAll(workspaceID, "-", "")[:20]
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

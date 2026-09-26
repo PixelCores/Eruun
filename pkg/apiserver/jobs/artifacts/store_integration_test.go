@@ -99,7 +99,7 @@ func TestMySQLConcurrentArtifactPublicationAndDelivery(t *testing.T) {
 	}
 	source, err := s.Get(ctx, workspace, sourceID(workspace, task))
 	require.NoError(t, err)
-	now, err := clock(ctx, driver)
+	now, err := driver.CurrentDatabaseTime(ctx)
 	require.NoError(t, err)
 	updated, err := driver.CompareAndSwap(ctx, source, "expired", false, map[string]interface{}{"expires_at": now.Add(-time.Second)})
 	require.NoError(t, err)
@@ -181,7 +181,7 @@ func TestMySQLAndMinIOPreserveFullResultsAfterSourceExpiry(t *testing.T) {
 			require.Equal(t, 1, delivery.Attempts)
 		}
 	}
-	now, err := clock(ctx, driver)
+	now, err := driver.CurrentDatabaseTime(ctx)
 	require.NoError(t, err)
 	updated, err := driver.CompareAndSwap(ctx, source, "expired", false, map[string]interface{}{"expires_at": now.Add(-time.Second)})
 	require.NoError(t, err)

@@ -16,9 +16,9 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
+	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
 	mysqldsn "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/require"
 	mysqlgorm "gorm.io/driver/mysql"
@@ -50,7 +50,7 @@ func mysqlSandboxFixture(t *testing.T) (*runnerFixture, *dynamicfake.FakeDynamic
 	require.NoError(t, err)
 	conn.SetMaxOpenConns(16)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	models := []interface{}{&model.Workspace{}, &model.Applications{}, &model.WorkflowQueue{}, &model.JobInfo{}, &model.JobArtifact{}, &model.ArtifactChunk{}, &model.JobDelivery{}, &model.SystemSetting{}, &model.ResourceCreationBudget{}, &model.JobSandbox{}}
+	models := []interface{}{&model.Workspace{}, &model.Applications{}, &model.WorkflowQueue{}, &model.JobInfo{}, &model.JobArtifact{}, &model.ArtifactChunk{}, &model.JobDelivery{}, &model.SystemSetting{}, &model.ResourceCreationBudget{}, &model.JobSandbox{}, &model.JobCheckpoint{}}
 	for _, entity := range models {
 		require.False(t, db.Migrator().HasTable(entity), "integration schema must be empty")
 	}
@@ -173,7 +173,7 @@ func TestMySQLSandboxLifecycle(t *testing.T) {
 		require.Equal(t, "creation_outcome_unknown", row.Reason)
 		require.True(t, row.SlotReserved)
 		called := false
-		err = f.service.mutateSandbox(ctx, auth, &stale, func(datastore.DataStore, *model.JobSandbox, time.Time) error { called = true; return nil })
+		err = f.service.mutateSandbox(ctx, auth, &stale, func(artifacts.Backend, *model.JobSandbox, time.Time) error { called = true; return nil })
 		require.ErrorIs(t, err, ErrRunnerConflict)
 		require.False(t, called)
 		require.NoError(t, client.Tracker().Create(SandboxGVR, late, row.Namespace))

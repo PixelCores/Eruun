@@ -15,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -59,7 +60,7 @@ func evaluationRecord(ctx context.Context, store datastore.DataStore, task *mode
 	}
 	return row, nil
 }
-func recoveryOwnership(ctx context.Context, store datastore.DataStore, task *model.JobTask, fn func(datastore.DataStore) error) error {
+func recoveryOwnership(ctx context.Context, store datastore.DataStore, task *model.JobTask, fn func(artifacts.Backend) error) error {
 	generation := task.OwnerRunGeneration
 	if generation == 0 {
 		generation = task.RunGeneration
@@ -67,7 +68,13 @@ func recoveryOwnership(ctx context.Context, store datastore.DataStore, task *mod
 	if task.RunToken == "" || task.WorkerID == "" {
 		return repository.ErrWorkflowOwnershipRequired
 	}
-	return repository.WithWorkflowTaskOwnership(ctx, store, &model.WorkflowQueue{TaskID: task.TaskID, RunGeneration: generation, RunToken: task.RunToken, WorkerID: task.WorkerID, Status: config.StatusRunning}, fn)
+	return repository.WithWorkflowTaskOwnership(ctx, store, &model.WorkflowQueue{TaskID: task.TaskID, RunGeneration: generation, RunToken: task.RunToken, WorkerID: task.WorkerID, Status: config.StatusRunning}, func(tx datastore.DataStore) error {
+		backend, err := artifacts.RequireBackend(tx)
+		if err != nil {
+			return fmt.Errorf("evaluation recovery transaction: %w", err)
+		}
+		return fn(backend)
+	})
 }
 
 // RecoverEvaluation resumes a durable reservation or selects the latest complete
@@ -120,23 +127,16 @@ func (s *Service) RecoverEvaluation(ctx context.Context, task *model.JobTask) (b
 		return false, s.releaseRecoveryReference(ctx, task)
 	}
 	var next *model.JobInfo
-	err = recoveryOwnership(ctx, s.Store, task, func(tx datastore.DataStore) error {
-		locker, ok := tx.(datastore.RowLocker)
-		if !ok {
-			return repository.ErrWorkflowFencingUnsupported
-		}
+	err = recoveryOwnership(ctx, s.Store, task, func(tx artifacts.Backend) error {
 		old := &model.JobInfo{ID: source.ID}
-		if err := locker.GetForUpdate(ctx, old); err != nil {
+		if err := tx.GetForUpdate(ctx, old); err != nil {
 			return err
 		}
 		if old.Status != string(config.StatusFailed) || old.EvaluationInfo != source.EvaluationInfo {
 			return ErrRunnerConflict
 		}
-		clock, ok := tx.(datastore.DatabaseClock)
-		if !ok {
-			return repository.ErrWorkflowClockUnsupported
-		}
-		now, err := clock.CurrentDatabaseTime(ctx)
+
+		now, err := tx.CurrentDatabaseTime(ctx)
 		if err != nil {
 			return err
 		}
@@ -160,7 +160,7 @@ func (s *Service) RecoverEvaluation(ctx context.Context, task *model.JobTask) (b
 				return datastore.ErrEntityInvalid
 			}
 			locked := &model.JobCheckpoint{ID: candidate.ID}
-			if err := locker.GetForUpdate(ctx, locked); err != nil {
+			if err := tx.GetForUpdate(ctx, locked); err != nil {
 				return err
 			}
 			if locked.WorkspaceID != task.WorkspaceID || locked.TaskID != task.TaskID || locked.State != "ready" || locked.Cleaned || !now.Before(locked.ExpiresAt) || !now.Add(spec.EvaluationCollectionGraceSeconds*time.Second).Before(locked.SourceDeadline) || (locked.ReferencedByExecutionKey != "" && locked.ReferencedByExecutionKey != task.ExecutionKey) {
@@ -261,7 +261,7 @@ func (s *Service) isolateRecovery(ctx context.Context, task *model.JobTask, info
 		if err := s.confirmStoppedPod(ctx, task.Namespace, state.OwnerPodName, state.OwnerPodUID, nil); err != nil {
 			return fmt.Errorf("isolate source Runner: %w", err)
 		}
-		if err := recoveryOwnership(ctx, s.Store, task, func(tx datastore.DataStore) error {
+		if err := recoveryOwnership(ctx, s.Store, task, func(tx artifacts.Backend) error {
 			record, err := evaluationRecord(ctx, tx, task, task.ExecutionKey)
 			if err != nil {
 				return err
@@ -305,15 +305,15 @@ func (s *Service) isolateRecovery(ctx context.Context, task *model.JobTask, info
 			continue
 		}
 		released := false
-		if err := recoveryOwnership(ctx, s.Store, task, func(tx datastore.DataStore) error {
+		if err := recoveryOwnership(ctx, s.Store, task, func(tx artifacts.Backend) error {
 			locked := &model.JobSandbox{ID: row.ID}
-			if err := tx.(datastore.RowLocker).GetForUpdate(ctx, locked); err != nil {
+			if err := tx.GetForUpdate(ctx, locked); err != nil {
 				return err
 			}
 			if locked.PodUID != row.PodUID || locked.SandboxUID != row.SandboxUID {
 				return ErrRunnerConflict
 			}
-			now, err := tx.(datastore.DatabaseClock).CurrentDatabaseTime(ctx)
+			now, err := tx.CurrentDatabaseTime(ctx)
 			if err != nil {
 				return err
 			}
@@ -353,9 +353,9 @@ func (s *Service) isolateRecovery(ctx context.Context, task *model.JobTask, info
 		if err := s.confirmStoppedPod(ctx, row.Namespace, row.PodName, row.PodUID, waitForShutdown); err != nil {
 			return fmt.Errorf("isolate source Sandbox %s: %w", row.TrialID, err)
 		}
-		if err := recoveryOwnership(ctx, s.Store, task, func(tx datastore.DataStore) error {
+		if err := recoveryOwnership(ctx, s.Store, task, func(tx artifacts.Backend) error {
 			locked := &model.JobSandbox{ID: row.ID}
-			if err := tx.(datastore.RowLocker).GetForUpdate(ctx, locked); err != nil {
+			if err := tx.GetForUpdate(ctx, locked); err != nil {
 				return err
 			}
 			if locked.PodUID != row.PodUID || locked.SandboxUID != row.SandboxUID || locked.Reason != "recovery_isolation" {
@@ -368,7 +368,7 @@ func (s *Service) isolateRecovery(ctx context.Context, task *model.JobTask, info
 		}
 
 	}
-	return recoveryOwnership(ctx, s.Store, task, func(tx datastore.DataStore) error {
+	return recoveryOwnership(ctx, s.Store, task, func(tx artifacts.Backend) error {
 		record, err := evaluationRecord(ctx, tx, task, task.ExecutionKey)
 		if err != nil {
 			return err
@@ -434,7 +434,7 @@ func (s *Service) confirmStoppedPod(ctx context.Context, namespace, name, uid st
 	}
 }
 func (s *Service) releaseRecoveryReference(ctx context.Context, task *model.JobTask) error {
-	return recoveryOwnership(ctx, s.Store, task, func(tx datastore.DataStore) error {
+	return recoveryOwnership(ctx, s.Store, task, func(tx artifacts.Backend) error {
 		rows, err := tx.List(ctx, &model.JobCheckpoint{WorkspaceID: task.WorkspaceID, TaskID: task.TaskID, ReferencedByExecutionKey: task.ExecutionKey}, nil)
 		if err != nil {
 			return err
@@ -444,12 +444,9 @@ func (s *Service) releaseRecoveryReference(ctx context.Context, task *model.JobT
 			if !ok {
 				return datastore.ErrEntityInvalid
 			}
-			locker, ok := tx.(datastore.RowLocker)
-			if !ok {
-				return repository.ErrWorkflowFencingUnsupported
-			}
+
 			locked := &model.JobCheckpoint{ID: row.ID}
-			if err := locker.GetForUpdate(ctx, locked); err != nil {
+			if err := tx.GetForUpdate(ctx, locked); err != nil {
 				return err
 			}
 			if locked.ReferencedByExecutionKey != task.ExecutionKey {
