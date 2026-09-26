@@ -74,7 +74,7 @@ func (c *applicationsServiceImpl) commitAutoExecVersionUpdate(
 				}
 			}
 
-			updatedComponents, addedComponents, removedComponents, err = c.applyVersionUpdateChangesInStore(lockCtx, tx, app, componentMap, req, newVersion, workflow.ID)
+			updatedComponents, addedComponents, removedComponents, err = c.applyVersionUpdateChangesInStore(lockCtx, tx, app, componentMap, req, newVersion, workflow.ID, nil)
 			if err != nil {
 				return err
 			}
@@ -232,6 +232,7 @@ func (c *applicationsServiceImpl) applyVersionUpdateChangesInStore(
 	req apisv1.UpdateVersionRequest,
 	newVersion string,
 	syncWorkflowID string,
+	beforeRemove func(context.Context, *model.ApplicationComponent) error,
 ) ([]string, []string, []string, error) {
 	updatedComponents, addedComponents, removedComponents, err := applyVersionUpdateComponentChanges(ctx, componentMap, req.Components, versionUpdateComponentChangeHandlers{
 		update: func(ctx context.Context, comp *model.ApplicationComponent, spec apisv1.ComponentUpdateSpec) (bool, error) {
@@ -241,6 +242,11 @@ func (c *applicationsServiceImpl) applyVersionUpdateChangesInStore(
 			return c.addComponentInStore(ctx, store, app, spec)
 		},
 		remove: func(ctx context.Context, comp *model.ApplicationComponent, spec apisv1.ComponentUpdateSpec) error {
+			if beforeRemove != nil {
+				if err := beforeRemove(ctx, comp); err != nil {
+					return err
+				}
+			}
 			if err := store.Delete(ctx, comp); err != nil {
 				klog.Errorf("delete component %s failed: %v", spec.Name, err)
 				return err
@@ -257,7 +263,7 @@ func (c *applicationsServiceImpl) applyVersionUpdateChangesInStore(
 		app.Description = req.Description
 	}
 	if err := store.Put(ctx, app); err != nil {
-		return nil, nil, nil, bcode.ErrVersionUpdateFailed
+		return nil, nil, nil, fmt.Errorf("%w: update application: %w", bcode.ErrVersionUpdateFailed, err)
 	}
 
 	if len(addedComponents) > 0 || len(removedComponents) > 0 {
@@ -321,7 +327,7 @@ func applyVersionUpdateComponentChanges(
 				return nil, nil, nil, fmt.Errorf("%w: component %s not found for remove", bcode.ErrComponentNotFound, strings.TrimSpace(spec.Name))
 			}
 			if err := handlers.remove(ctx, comp, spec); err != nil {
-				return nil, nil, nil, bcode.ErrVersionUpdateFailed
+				return nil, nil, nil, fmt.Errorf("%w: remove component %s: %w", bcode.ErrVersionUpdateFailed, spec.Name, err)
 			}
 			removedComponents = append(removedComponents, spec.Name)
 			delete(componentMap, compName)
@@ -337,5 +343,5 @@ func versionUpdateAddOrUpdateError(action, componentName string, err error) erro
 	if errors.As(err, &businessErr) {
 		return err
 	}
-	return bcode.ErrVersionUpdateFailed
+	return fmt.Errorf("%w: %s component %s: %w", bcode.ErrVersionUpdateFailed, action, componentName, err)
 }

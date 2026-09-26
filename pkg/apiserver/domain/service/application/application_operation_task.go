@@ -6,8 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/klog/v2"
-
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -22,33 +20,20 @@ type operationJobRecord struct {
 	errMsg string
 }
 
-func (c *applicationsServiceImpl) attachOperationTask(ctx context.Context, app *model.Applications, taskType config.WorkflowTaskType, name string, startTime, endTime int64, jobs []operationJobRecord, failedResources []string) string {
-	taskID, _, _ := c.attachOperationTaskWithCallback(ctx, app, taskType, name, startTime, endTime, jobs, failedResources, nil)
-	return taskID
-}
-
 func (c *applicationsServiceImpl) attachOperationTaskWithCallback(ctx context.Context, app *model.Applications, taskType config.WorkflowTaskType, name string, startTime, endTime int64, jobs []operationJobRecord, failedResources []string, callback *model.JSONStruct) (string, *model.WorkflowQueue, error) {
-	return c.attachOperationTaskWithWorkflowIDAndCallback(ctx, app, taskType, name, "", startTime, endTime, jobs, failedResources, callback)
-}
-
-func (c *applicationsServiceImpl) attachOperationTaskWithWorkflowIDAndCallback(ctx context.Context, app *model.Applications, taskType config.WorkflowTaskType, name, workflowID string, startTime, endTime int64, jobs []operationJobRecord, failedResources []string, callback *model.JSONStruct) (string, *model.WorkflowQueue, error) {
 	if app == nil {
 		return "", nil, fmt.Errorf("app is nil")
 	}
-	status := config.StatusCompleted
-	if len(failedResources) > 0 {
-		status = config.StatusFailed
-	}
-	task, err := c.recordAppOperationTask(ctx, app, taskType, name, workflowID, status, startTime, endTime, jobs, callback)
+	status := operationTaskTerminalStatus(failedResources)
+	task, err := c.recordAppOperationTask(ctx, app, taskType, name, "", status, startTime, endTime, jobs, callback)
 	if err != nil {
-		klog.Warningf("record %s task failed appID=%s: %v", name, app.ID, err)
 		return "", nil, err
 	}
 	return task.TaskID, task, nil
 }
 
 func (c *applicationsServiceImpl) triggerOperationTaskCallback(ctx context.Context, task *model.WorkflowQueue, callback *model.JSONStruct, failedResources []string) {
-	if callback == nil {
+	if callback == nil || task == nil {
 		return
 	}
 	triggerWorkflowTerminalCallbackAsync(ctx, c.Store, c.Cfg, c.URLSecurityPolicyProvider, task, operationTaskTerminalStatus(failedResources), "")
@@ -62,53 +47,18 @@ func operationTaskTerminalStatus(failedResources []string) config.Status {
 }
 
 func (c *applicationsServiceImpl) recordAppOperationTask(ctx context.Context, app *model.Applications, taskType config.WorkflowTaskType, name, workflowID string, status config.Status, startTime, endTime int64, jobs []operationJobRecord, callback *model.JSONStruct) (*model.WorkflowQueue, error) {
-	if app == nil {
-		return nil, fmt.Errorf("app is nil")
+	txStore, ok := c.Store.(datastore.Transactional)
+	if !ok {
+		return nil, fmt.Errorf("record %s task requires transactional datastore", name)
 	}
-	if c.WorkflowQueueRepo == nil {
-		return nil, fmt.Errorf("workflow queue repo is nil")
-	}
-	task := &model.WorkflowQueue{
-		TaskID:              utils.RandStringByNumLowercase(24),
-		AppID:               app.ID,
-		ProjectID:           app.Project,
-		WorkflowName:        name,
-		WorkflowDisplayName: name,
-		WorkflowID:          strings.TrimSpace(workflowID),
-		Type:                taskType,
-		Status:              status,
-		Callback:            callback,
-		BaseModel: model.BaseModel{
-			CreateTime: time.Unix(startTime, 0),
-			UpdateTime: time.Unix(endTime, 0),
-		},
-	}
-	if err := c.WorkflowQueueRepo.Create(ctx, task); err != nil {
+	var task *model.WorkflowQueue
+	err := txStore.WithTransaction(ctx, func(tx datastore.DataStore) error {
+		var err error
+		task, err = recordAppOperationTaskInStore(ctx, tx, app, taskType, name, workflowID, status, startTime, endTime, jobs, callback)
+		return err
+	})
+	if err != nil {
 		return nil, err
-	}
-	if c.Store == nil || len(jobs) == 0 {
-		return task, nil
-	}
-	for _, job := range jobs {
-		serviceName := strings.TrimSpace(job.name)
-		if serviceName == "" {
-			serviceName = name
-		}
-		jobInfo := &model.JobInfo{
-			Type:        string(taskType),
-			ProductID:   app.Project,
-			AppID:       app.ID,
-			TaskID:      task.TaskID,
-			Status:      string(job.status),
-			StartTime:   startTime,
-			EndTime:     endTime,
-			Info:        job.info,
-			Error:       job.errMsg,
-			ServiceName: serviceName,
-		}
-		if err := c.Store.Add(ctx, jobInfo); err != nil {
-			klog.Errorf("record %s job info failed appID=%s taskID=%s resource=%s: %v", name, app.ID, task.TaskID, serviceName, err)
-		}
 	}
 	return task, nil
 }
@@ -136,7 +86,7 @@ func recordAppOperationTaskInStore(ctx context.Context, store datastore.DataStor
 		},
 	}
 	if err := store.Add(ctx, task); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("record %s task: %w", name, err)
 	}
 	for _, job := range jobs {
 		serviceName := strings.TrimSpace(job.name)

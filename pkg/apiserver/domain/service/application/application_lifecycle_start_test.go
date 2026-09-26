@@ -160,10 +160,11 @@ func TestStartApplicationDeploymentsTriggersRequestCallback(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.TaskID)
-	require.NotNil(t, queueRepo.lastQueue)
-	require.Equal(t, resp.TaskID, queueRepo.lastQueue.TaskID)
-	require.Equal(t, config.WorkflowTaskTypeStart, queueRepo.lastQueue.Type)
-	requireWorkflowCallbackSuccess(t, queueRepo.lastQueue.Callback, callbackServer.URL)
+	task := &model.WorkflowQueue{TaskID: resp.TaskID}
+	require.NoError(t, callbackStore.Get(context.Background(), task))
+	require.Equal(t, resp.TaskID, task.TaskID)
+	require.Equal(t, config.WorkflowTaskTypeStart, task.Type)
+	requireWorkflowCallbackSuccess(t, task.Callback, callbackServer.URL)
 	admitApplicationCallback(t, callbackStore)
 	requireLifecycleCallback(t, received, "success", string(config.StatusCompleted), resp.TaskID, config.WorkflowTaskTypeStart)
 }
@@ -202,7 +203,9 @@ func TestStartApplicationDeploymentsReturnsErrorWhenCallbackTaskCreateFails(t *t
 			Spec:       appsv1.DeploymentSpec{Replicas: &replicas},
 		},
 	)
-	queueRepo := &mockWorkflowQueueRepo{createErr: errors.New("queue create failed")}
+	store.operationStore = newInMemoryAppStore()
+	store.operationStore.addWorkflowQueueErr = errors.New("queue create failed")
+	queueRepo := &mockWorkflowQueueRepo{}
 	svc := &applicationsServiceImpl{
 		ScheduleLocker:            locker.NewMemoryLocker("test-app-schedule"),
 		KubeClient:                clientset,
@@ -218,7 +221,7 @@ func TestStartApplicationDeploymentsReturnsErrorWhenCallbackTaskCreateFails(t *t
 	})
 
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "record start callback task")
+	require.Contains(t, err.Error(), "operation record commit could not be confirmed")
 	require.Contains(t, err.Error(), "queue create failed")
 	require.Nil(t, resp)
 	require.Nil(t, queueRepo.lastQueue)
@@ -345,10 +348,11 @@ func TestStartApplicationDeploymentsTriggersFailureCallbackForPartialFailure(t *
 	require.NotNil(t, resp)
 	require.NotEmpty(t, resp.TaskID)
 	require.Len(t, resp.FailedResources, 1)
-	require.NotNil(t, queueRepo.lastQueue)
-	require.Equal(t, config.StatusFailed, queueRepo.lastQueue.Status)
+	task := &model.WorkflowQueue{TaskID: resp.TaskID}
+	require.NoError(t, callbackStore.Get(context.Background(), task))
+	require.Equal(t, config.StatusFailed, task.Status)
 	var callback model.WorkflowCallback
-	require.NoError(t, decodeJSONStruct(queueRepo.lastQueue.Callback, &callback))
+	require.NoError(t, decodeJSONStruct(task.Callback, &callback))
 	require.Equal(t, callbackServer.URL, callback.Failure)
 	admitApplicationCallback(t, callbackStore)
 	requireLifecycleCallback(t, received, "failure", string(config.StatusFailed), resp.TaskID, config.WorkflowTaskTypeStart)
@@ -414,6 +418,7 @@ func TestStartApplicationDeploymentsSkipsNonStoppedComponent(t *testing.T) {
 			svc := &applicationsServiceImpl{
 				ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
 				KubeClient:     clientset,
+				Store:          store,
 				AppRepo:        &mockCleanupAppRepo{store: store},
 				ComponentRepo:  &mockCleanupComponentRepo{store: store},
 			}

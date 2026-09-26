@@ -198,6 +198,8 @@ Running / Pending / Stopped / Not Deploy / Unknown -> Updating -> Pending -> Fai
 - `failed`、`deploying`、`updating`、`restarting`、`starting`、`cleaning` 等更高或更具体状态保持原样。
 - 未来时间的延迟 `/version` task 不会提前覆盖状态。
 
+同步 `/restart`、`/stop`、`/start` 和资源清理完成后，会将操作 task 与全部 JobInfo 明细在同一数据库事务中保存。事务内写入失败时整组记录回滚；若 COMMIT 阶段连接异常，提交结果可能未知。记录事务返回错误时，请求返回错误且不发送完成回调；即使未配置 callback，也不会忽略记录失败。Kubernetes 操作及已写入的组件运行态不由该记录事务撤销，因此错误响应不表示资源未变更，应先查询数据库操作记录和 Kubernetes 实际状态再决定重试。
+
 ### /stop 停止服务组件
 
 `POST /api/v1/applications/:appID/stop` 只控制 `webservice` 对应的 Deployment，把副本缩到 0。
