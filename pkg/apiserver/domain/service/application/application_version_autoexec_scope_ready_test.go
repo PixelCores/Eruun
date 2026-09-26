@@ -541,8 +541,6 @@ func TestUpdateVersionAutoExecNoopWorkloadUpdateDoesNotPersistReadyTarget(t *tes
 
 	replicas := int32(1)
 	svc := newMockServiceWithStore(store)
-	queueRepo, ok := svc.WorkflowQueueRepo.(*mockWorkflowQueueRepo)
-	require.True(t, ok)
 	resp, err := svc.UpdateVersion(context.Background(), "app-1", apisv1.UpdateVersionRequest{
 		Version: "1.1.0",
 		Components: []apisv1.ComponentUpdateSpec{
@@ -553,9 +551,9 @@ func TestUpdateVersionAutoExecNoopWorkloadUpdateDoesNotPersistReadyTarget(t *tes
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.TaskID)
 	require.Empty(t, resp.UpdatedComponents)
-	require.NotNil(t, queueRepo.lastQueue)
-	require.Equal(t, resp.TaskID, queueRepo.lastQueue.TaskID)
-	require.Empty(t, queueRepo.lastQueue.ResourceActionInfo)
+	require.NotNil(t, store.tasks[resp.TaskID])
+	require.Equal(t, resp.TaskID, store.tasks[resp.TaskID].TaskID)
+	require.Empty(t, store.tasks[resp.TaskID].ResourceActionInfo)
 	require.Equal(t, "1.1.0", store.apps["app-1"].Version)
 }
 

@@ -138,10 +138,11 @@ func TestRestartApplicationWorkloadsTriggersRequestCallback(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.TaskID)
-	require.NotNil(t, queueRepo.lastQueue)
-	require.Equal(t, resp.TaskID, queueRepo.lastQueue.TaskID)
-	require.Equal(t, config.WorkflowTaskTypeRestart, queueRepo.lastQueue.Type)
-	requireWorkflowCallbackSuccess(t, queueRepo.lastQueue.Callback, callbackServer.URL)
+	task := &model.WorkflowQueue{TaskID: resp.TaskID}
+	require.NoError(t, callbackStore.Get(context.Background(), task))
+	require.Equal(t, resp.TaskID, task.TaskID)
+	require.Equal(t, config.WorkflowTaskTypeRestart, task.Type)
+	requireWorkflowCallbackSuccess(t, task.Callback, callbackServer.URL)
 	admitApplicationCallback(t, callbackStore)
 	requireLifecycleCallback(t, received, "success", string(config.StatusCompleted), resp.TaskID, config.WorkflowTaskTypeRestart)
 }
@@ -175,7 +176,9 @@ func TestRestartApplicationWorkloadsReturnsErrorWhenCallbackTaskCreateFails(t *t
 	clientset := fake.NewSimpleClientset(
 		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: deployName, Namespace: "default"}},
 	)
-	queueRepo := &mockWorkflowQueueRepo{createErr: errors.New("queue create failed")}
+	store.operationStore = newInMemoryAppStore()
+	store.operationStore.addWorkflowQueueErr = errors.New("queue create failed")
+	queueRepo := &mockWorkflowQueueRepo{}
 	svc := &applicationsServiceImpl{
 		ScheduleLocker:            locker.NewMemoryLocker("test-app-schedule"),
 		KubeClient:                clientset,
@@ -191,7 +194,7 @@ func TestRestartApplicationWorkloadsReturnsErrorWhenCallbackTaskCreateFails(t *t
 	})
 
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "record restart callback task")
+	require.Contains(t, err.Error(), "operation record commit could not be confirmed")
 	require.Contains(t, err.Error(), "queue create failed")
 	require.Nil(t, resp)
 	require.Nil(t, queueRepo.lastQueue)
@@ -248,11 +251,12 @@ func TestRestartApplicationWorkloadsReturnsErrorWhenMarkRestartingFails(t *testi
 	require.Contains(t, err.Error(), "status store unavailable")
 	require.NotNil(t, resp)
 	require.NotEmpty(t, resp.TaskID)
-	require.NotNil(t, queueRepo.lastQueue)
-	require.Len(t, queueRepo.queues, 1)
-	require.Equal(t, resp.TaskID, queueRepo.lastQueue.TaskID)
-	require.Equal(t, config.WorkflowTaskTypeRestart, queueRepo.lastQueue.Type)
-	require.Equal(t, config.StatusFailed, queueRepo.lastQueue.Status)
+	task := &model.WorkflowQueue{TaskID: resp.TaskID}
+	require.NoError(t, store.operationStore.Get(context.Background(), task))
+	require.Len(t, store.operationStore.tasks, 1)
+	require.Equal(t, resp.TaskID, task.TaskID)
+	require.Equal(t, config.WorkflowTaskTypeRestart, task.Type)
+	require.Equal(t, config.StatusFailed, task.Status)
 	require.Len(t, resp.FailedResources, 1)
 	require.Contains(t, resp.FailedResources[0], "ComponentStatus:default/"+app.ID)
 	require.Contains(t, resp.FailedResources[0], "mark components restarting")
