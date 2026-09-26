@@ -11,10 +11,13 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
 type countingAppRepo struct {
@@ -130,7 +133,7 @@ func TestListApplicationsIgnoresLegacyWorkflowIDCacheKey(t *testing.T) {
 
 	svc := newMockServiceWithStore(store)
 	svc.Cache = cache.NewMemCache(false)
-	require.NoError(t, svc.Cache.Store("app:list", `[{"id":"legacy-app","name":"legacy","workflow_id":"legacy-wf"}]`))
+	require.NoError(t, svc.Cache.Store(context.Background(), "app:list", `[{"id":"legacy-app","name":"legacy","workflow_id":"legacy-wf"}]`))
 	countingRepo := &countingAppRepo{mockAppRepo: &mockAppRepo{store: store}}
 	svc.AppRepo = countingRepo
 
@@ -140,8 +143,8 @@ func TestListApplicationsIgnoresLegacyWorkflowIDCacheKey(t *testing.T) {
 	require.Equal(t, app.ID, apps[0].ID)
 	require.Equal(t, "wf-default", apps[0].WorkflowID)
 	require.Equal(t, 1, countingRepo.listCalls)
-	require.True(t, svc.Cache.Exists("app:list"))
-	require.True(t, svc.Cache.Exists(applicationListCacheKey))
+	require.True(t, svc.Cache.Exists(context.Background(), "app:list"))
+	require.True(t, svc.Cache.Exists(context.Background(), applicationListCacheKey))
 }
 
 func TestListTemplateApplicationsUsesCache(t *testing.T) {
@@ -319,7 +322,7 @@ func TestListTemplateApplicationsIgnoresLegacyWorkflowIDCacheKey(t *testing.T) {
 
 	svc := newMockServiceWithStore(store)
 	svc.Cache = cache.NewMemCache(false)
-	require.NoError(t, svc.Cache.Store("app:template:list", `[{"id":"legacy-template","name":"legacy","workflow_id":"legacy-wf","templateEnabled":true}]`))
+	require.NoError(t, svc.Cache.Store(context.Background(), "app:template:list", `[{"id":"legacy-template","name":"legacy","workflow_id":"legacy-wf","templateEnabled":true}]`))
 	countingRepo := &countingAppRepo{mockAppRepo: &mockAppRepo{store: store}}
 	svc.AppRepo = countingRepo
 
@@ -329,8 +332,8 @@ func TestListTemplateApplicationsIgnoresLegacyWorkflowIDCacheKey(t *testing.T) {
 	require.Equal(t, template.ID, templates[0].ID)
 	require.Equal(t, "wf-template", templates[0].WorkflowID)
 	require.Equal(t, 1, countingRepo.listCalls)
-	require.True(t, svc.Cache.Exists("app:template:list"))
-	require.True(t, svc.Cache.Exists(templateApplicationListCacheKey))
+	require.True(t, svc.Cache.Exists(context.Background(), "app:template:list"))
+	require.True(t, svc.Cache.Exists(context.Background(), templateApplicationListCacheKey))
 }
 
 func TestListTemplateApplicationsAvoidsWorkflowRepoNPlusOne(t *testing.T) {
@@ -393,7 +396,7 @@ func TestListApplicationsBypassesCacheWhenPaginated(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, second, 1)
 	require.Equal(t, 2, countingRepo.listCalls)
-	require.False(t, svc.Cache.Exists(applicationListCacheKey))
+	require.False(t, svc.Cache.Exists(context.Background(), applicationListCacheKey))
 }
 
 func TestListApplicationsPaginatedUsesStableSecondarySortKey(t *testing.T) {
@@ -511,7 +514,7 @@ func TestListApplicationRuntimeComponentsBypassesDetailCache(t *testing.T) {
 	svc.Cache = cache.NewMemCache(false)
 	countingRepo := &countingComponentRepo{mockComponentRepo: &mockComponentRepo{store: store}}
 	svc.ComponentRepo = countingRepo
-	svc.storeJSONCache(applicationComponentsCacheKey(app.ID), []*model.ApplicationComponent{{
+	svc.storeJSONCache(context.Background(), applicationComponentsCacheKey(app.ID), []*model.ApplicationComponent{{
 		ID:            1,
 		AppID:         app.ID,
 		Name:          "web",
@@ -567,7 +570,7 @@ func TestListApplicationComponentsCacheStoresSecretValuesAsText(t *testing.T) {
 	require.Equal(t, "c2VjcmV0LXB3ZA==", props.Secret["password"])
 
 	var cached []*model.ApplicationComponent
-	require.True(t, svc.loadJSONCache(applicationComponentsCacheKey(app.ID), &cached))
+	require.True(t, svc.loadJSONCache(context.Background(), applicationComponentsCacheKey(app.ID), &cached))
 	require.Len(t, cached, 1)
 	require.NoError(t, decodeJSONStruct(cached[0].Properties, &props))
 	require.Equal(t, "c2VjcmV0LXB3ZA==", props.Secret["password"])
@@ -583,7 +586,7 @@ func TestListApplicationComponentsCacheHitKeepsStoredSecretValuesWithoutKubeLook
 	client := fake.NewSimpleClientset()
 	svc.KubeClient = client
 
-	svc.storeJSONCache(applicationComponentsCacheKey(app.ID), []*model.ApplicationComponent{{
+	svc.storeJSONCache(context.Background(), applicationComponentsCacheKey(app.ID), []*model.ApplicationComponent{{
 		AppID:         app.ID,
 		Name:          "legacy-secret",
 		Namespace:     "default",
@@ -613,7 +616,7 @@ func TestListApplicationComponentsCacheHitKeepsBase64LikeTextSecrets(t *testing.
 	client := fake.NewSimpleClientset()
 	svc.KubeClient = client
 
-	svc.storeJSONCache(applicationComponentsCacheKey(app.ID), []*model.ApplicationComponent{{
+	svc.storeJSONCache(context.Background(), applicationComponentsCacheKey(app.ID), []*model.ApplicationComponent{{
 		AppID:         app.ID,
 		Name:          "manual-secret",
 		Namespace:     "default",
@@ -640,18 +643,18 @@ func TestDeleteApplicationInvalidatesCache(t *testing.T) {
 
 	svc := newMockServiceWithStore(store)
 	svc.Cache = cache.NewMemCache(false)
-	svc.storeJSONCache(applicationListCacheKey, []*apisv1.ApplicationBase{{ID: app.ID}})
-	svc.storeJSONCache(templateApplicationListCacheKey, []*apisv1.ApplicationBase{{ID: app.ID}})
-	svc.storeJSONCache(applicationComponentsCacheKey(app.ID), []*model.ApplicationComponent{{AppID: app.ID, Name: "web"}})
+	svc.storeJSONCache(context.Background(), applicationListCacheKey, []*apisv1.ApplicationBase{{ID: app.ID}})
+	svc.storeJSONCache(context.Background(), templateApplicationListCacheKey, []*apisv1.ApplicationBase{{ID: app.ID}})
+	svc.storeJSONCache(context.Background(), applicationComponentsCacheKey(app.ID), []*model.ApplicationComponent{{AppID: app.ID, Name: "web"}})
 
-	require.True(t, svc.Cache.Exists(applicationListCacheKey))
-	require.True(t, svc.Cache.Exists(templateApplicationListCacheKey))
-	require.True(t, svc.Cache.Exists(applicationComponentsCacheKey(app.ID)))
+	require.True(t, svc.Cache.Exists(context.Background(), applicationListCacheKey))
+	require.True(t, svc.Cache.Exists(context.Background(), templateApplicationListCacheKey))
+	require.True(t, svc.Cache.Exists(context.Background(), applicationComponentsCacheKey(app.ID)))
 
 	require.NoError(t, svc.DeleteApplication(context.Background(), app))
-	require.False(t, svc.Cache.Exists(applicationListCacheKey))
-	require.False(t, svc.Cache.Exists(templateApplicationListCacheKey))
-	require.False(t, svc.Cache.Exists(applicationComponentsCacheKey(app.ID)))
+	require.False(t, svc.Cache.Exists(context.Background(), applicationListCacheKey))
+	require.False(t, svc.Cache.Exists(context.Background(), templateApplicationListCacheKey))
+	require.False(t, svc.Cache.Exists(context.Background(), applicationComponentsCacheKey(app.ID)))
 }
 
 func TestUpdateVersionInvalidatesCache(t *testing.T) {
@@ -668,9 +671,9 @@ func TestUpdateVersionInvalidatesCache(t *testing.T) {
 
 	svc := newMockServiceWithStore(store)
 	svc.Cache = cache.NewMemCache(false)
-	svc.storeJSONCache(applicationListCacheKey, []*apisv1.ApplicationBase{{ID: app.ID}})
-	svc.storeJSONCache(templateApplicationListCacheKey, []*apisv1.ApplicationBase{{ID: app.ID}})
-	svc.storeJSONCache(applicationComponentsCacheKey(app.ID), []*model.ApplicationComponent{{AppID: app.ID, Name: "web"}})
+	svc.storeJSONCache(context.Background(), applicationListCacheKey, []*apisv1.ApplicationBase{{ID: app.ID}})
+	svc.storeJSONCache(context.Background(), templateApplicationListCacheKey, []*apisv1.ApplicationBase{{ID: app.ID}})
+	svc.storeJSONCache(context.Background(), applicationComponentsCacheKey(app.ID), []*model.ApplicationComponent{{AppID: app.ID, Name: "web"}})
 
 	autoExec := false
 	resp, err := svc.UpdateVersion(context.Background(), app.ID, apisv1.UpdateVersionRequest{
@@ -679,7 +682,100 @@ func TestUpdateVersionInvalidatesCache(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, "2.0.0", resp.Version)
-	require.False(t, svc.Cache.Exists(applicationListCacheKey))
-	require.False(t, svc.Cache.Exists(templateApplicationListCacheKey))
-	require.False(t, svc.Cache.Exists(applicationComponentsCacheKey(app.ID)))
+	require.False(t, svc.Cache.Exists(context.Background(), applicationListCacheKey))
+	require.False(t, svc.Cache.Exists(context.Background(), templateApplicationListCacheKey))
+	require.False(t, svc.Cache.Exists(context.Background(), applicationComponentsCacheKey(app.ID)))
+}
+
+type requestContextCache struct {
+	cache.ICache
+	contexts []context.Context
+	loadErr  error
+}
+
+func (c *requestContextCache) Load(ctx context.Context, key string) (string, error) {
+	c.contexts = append(c.contexts, ctx)
+	if c.loadErr != nil {
+		return "", c.loadErr
+	}
+	return c.ICache.Load(ctx, key)
+}
+
+func (c *requestContextCache) Store(ctx context.Context, key, value string) error {
+	c.contexts = append(c.contexts, ctx)
+	return c.ICache.Store(ctx, key, value)
+}
+
+func (c *requestContextCache) Delete(ctx context.Context, key string) error {
+	c.contexts = append(c.contexts, ctx)
+	return c.ICache.Delete(ctx, key)
+}
+
+func TestListApplicationComponentsCachePreservesRequestContextAndFallback(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		cached    string
+		loadErr   error
+		wantCalls int
+	}{
+		{name: "miss", wantCalls: 2},
+		{name: "hit", cached: `[{"name":"web"}]`, wantCalls: 1},
+		{name: "corrupted", cached: "{", wantCalls: 3},
+		{name: "unavailable", loadErr: errors.New("cache unavailable"), wantCalls: 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newInMemoryAppStore()
+			app := model.NewApplications("app-1", "demo", "default", "1.0.0", "", "", "", "", false)
+			require.NoError(t, store.Add(t.Context(), app))
+			require.NoError(t, store.Add(t.Context(), &model.ApplicationComponent{ID: 1, AppID: app.ID, Name: "web", Namespace: "default", ComponentType: "server"}))
+			svc := newMockServiceWithStore(store)
+			c := &requestContextCache{ICache: cache.NewMemCache(false), loadErr: tc.loadErr}
+			if tc.cached != "" {
+				require.NoError(t, c.ICache.Store(t.Context(), applicationComponentsCacheKey(app.ID), tc.cached))
+			}
+			svc.Cache = c
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+			components, err := svc.ListApplicationComponents(ctx, app.ID)
+			require.NoError(t, err)
+			require.Len(t, components, 1)
+			require.Equal(t, "web", components[0].Name)
+			require.Len(t, c.contexts, tc.wantCalls)
+			svc.invalidateApplicationComponentsCache(ctx, app.ID)
+			require.False(t, c.ICache.Exists(t.Context(), applicationComponentsCacheKey(app.ID)))
+			for _, observed := range c.contexts {
+				require.Same(t, ctx, observed)
+			}
+		})
+	}
+}
+
+func TestApplicationScheduleLockIndependentOfReadCache(t *testing.T) {
+	redisClient := newTestApplicationDeleteCancelSignalClient(t)
+	lockProvider, err := locker.New(locker.Config{Type: locker.TypeRedis, RedisClient: redisClient, Prefix: "cache-independent-schedule"})
+	require.NoError(t, err)
+	for _, tc := range []struct {
+		name      string
+		readCache cache.ICache
+	}{
+		{name: "absent"},
+		{name: "disabled", readCache: cache.NewMemCache(true)},
+		{name: "memory", readCache: cache.NewMemCache(false)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := &applicationsServiceImpl{Cache: tc.readCache, ScheduleLocker: lockProvider}
+			resolved, err := svc.appScheduleLocker()
+			require.NoError(t, err)
+			err = schedulelock.WithAppScheduleLock(t.Context(), resolved, "app-1", "test", false, func(ctx context.Context) error {
+				return schedulelock.WithAppScheduleLock(ctx, resolved, "app-1", "competing", false, func(context.Context) error {
+					t.Fatal("competing operation entered locked section")
+					return nil
+				})
+			})
+			require.ErrorIs(t, err, bcode.ErrApplicationOperationLocked)
+			svc.ScheduleLocker = nil
+			_, err = svc.appScheduleLocker()
+			require.ErrorIs(t, err, bcode.ErrDistributedLockUnavailable)
+		})
+	}
 }

@@ -312,7 +312,7 @@ func TestWorkflowRunRetriesOriginalStepWhenDistributedCheckpointFails(t *testing
 	t.Cleanup(func() {
 		require.NoError(t, redisClient.Close())
 	})
-	runtimeCache := cache.NewWithClient(false, cache.CacheTypeMem, redisClient)
+	runtimeCache := cache.NewMemCache(false)
 
 	newController := func(t *testing.T, workflowTask *model.WorkflowQueue) *WorkflowCtl {
 		t.Helper()
@@ -323,6 +323,7 @@ func TestWorkflowRunRetriesOriginalStepWhenDistributedCheckpointFails(t *testing
 			nil,
 			store,
 			&config.Config{AllowPrivateURLTargets: true},
+			redisClient,
 			runtimeCache,
 			&spec.URLSecurityPolicySpec{AllowPrivateByDefault: true},
 		)

@@ -27,6 +27,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/mysql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/identity"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api"
@@ -130,9 +131,24 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 		}
 		iCache = cache.NewRedisICache(redisClient, false, s.cfg.Cache.CacheTTL, s.cfg.Cache.KeyPrefix)
 	default:
-		iCache = cache.NewMemCacheWithClient(false, redisClient)
+		iCache = cache.NewMemCache(false)
 	}
 	s.cache = iCache
+	if err := s.beanContainer.ProvideWithName("redisClient", redisClient); err != nil {
+		return fmt.Errorf("provide Redis coordination client: %w", err)
+	}
+	for name, prefix := range map[string]string{
+		"appScheduleLocker": "eruun-app-schedule",
+		"managementLocker":  "eruun-adopted-import",
+	} {
+		lockProvider, err := locker.New(locker.Config{Type: locker.TypeRedis, RedisClient: redisClient, Prefix: prefix})
+		if err != nil {
+			return fmt.Errorf("initialize %s: %w", name, err)
+		}
+		if err := s.beanContainer.ProvideWithName(name, lockProvider); err != nil {
+			return fmt.Errorf("provide %s: %w", name, err)
+		}
+	}
 
 	// 将db 注入到IOC中
 	if err := s.beanContainer.ProvideWithName("datastore", s.dataStore); err != nil {

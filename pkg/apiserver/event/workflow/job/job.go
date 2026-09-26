@@ -86,11 +86,7 @@ type jobRuntime struct {
 	adoptionPersistenceGate chan struct{}
 }
 
-func newJobRuntime(cache cache.ICache, kubeConfig *rest.Config, urlSecurityPolicy *spec.URLSecurityPolicySpec, delayQueue msg.Queue, resourceWaiter informer.ComponentReadyObserver, resourceImportExecutor ResourceImportExecutor, keyrings ...*importsecret.Keyring) *jobRuntime {
-	var redisClient *redis.Client
-	if cache != nil {
-		redisClient = cache.GetRedisClient()
-	}
+func newJobRuntime(redisClient *redis.Client, cache cache.ICache, kubeConfig *rest.Config, urlSecurityPolicy *spec.URLSecurityPolicySpec, delayQueue msg.Queue, resourceWaiter informer.ComponentReadyObserver, resourceImportExecutor ResourceImportExecutor, keyrings ...*importsecret.Keyring) *jobRuntime {
 	var importSecretKeyring *importsecret.Keyring
 	if len(keyrings) > 0 {
 		importSecretKeyring = keyrings[0]
@@ -276,7 +272,7 @@ func validJobControllerDependencies(job *model.JobTask, client kubernetes.Interf
 	return true
 }
 
-func RunJobs(ctx context.Context, jobs []*model.JobTask, concurrency int, client kubernetes.Interface, kubeConfig *rest.Config, store datastore.DataStore, ack func(), stopOnFailure bool, cache cache.ICache, urlSecurityPolicy *spec.URLSecurityPolicySpec, delayQueue msg.Queue, resourceWaiter informer.ComponentReadyObserver, resourceImportExecutor ResourceImportExecutor, keyrings ...*importsecret.Keyring) error {
+func RunJobs(ctx context.Context, jobs []*model.JobTask, concurrency int, client kubernetes.Interface, kubeConfig *rest.Config, store datastore.DataStore, ack func(), stopOnFailure bool, redisClient *redis.Client, cache cache.ICache, urlSecurityPolicy *spec.URLSecurityPolicySpec, delayQueue msg.Queue, resourceWaiter informer.ComponentReadyObserver, resourceImportExecutor ResourceImportExecutor, keyrings ...*importsecret.Keyring) error {
 	logger := klog.FromContext(ctx)
 	if len(jobs) == 0 {
 		logger.Info("no jobs to run")
@@ -321,7 +317,7 @@ func RunJobs(ctx context.Context, jobs []*model.JobTask, concurrency int, client
 			}
 		}
 	}
-	runtime := newJobRuntime(cache, kubeConfig, urlSecurityPolicy, delayQueue, resourceWaiter, resourceImportExecutor, keyrings...)
+	runtime := newJobRuntime(redisClient, cache, kubeConfig, urlSecurityPolicy, delayQueue, resourceWaiter, resourceImportExecutor, keyrings...)
 	defer runtime.close()
 
 	if concurrency == 1 {
@@ -601,7 +597,7 @@ func runAdmittedJob(jobCtx context.Context, jobCtl JobCtl, job *model.JobTask, c
 			fmt.Errorf("verify workflow ownership before job execution: %w", ownershipErr),
 		)
 	}
-	invalidateComponentsCache(runtime, startStatusAppID, "job start status sync")
+	invalidateComponentsCache(jobCtx, runtime, startStatusAppID, "job start status sync")
 
 	cleaned := false
 
@@ -952,7 +948,7 @@ func syncConfigComponentStatusIfWorkflowOwned(
 	if err != nil {
 		return err
 	}
-	invalidateComponentsCache(runtime, appID, "config status sync")
+	invalidateComponentsCache(ctx, runtime, appID, "config status sync")
 	return nil
 }
 
@@ -980,7 +976,7 @@ func syncComponentStatusOnJobStart(ctx context.Context, job *model.JobTask, stor
 	return target.AppID, nil
 }
 
-func invalidateComponentsCache(runtime *jobRuntime, appID string, reason string) {
+func invalidateComponentsCache(ctx context.Context, runtime *jobRuntime, appID string, reason string) {
 	if runtime == nil || runtime.cache == nil || runtime.cache.IsCacheDisabled() {
 		return
 	}
@@ -989,7 +985,7 @@ func invalidateComponentsCache(runtime *jobRuntime, appID string, reason string)
 		return
 	}
 	cacheKey := cache.ApplicationComponentsKey(appID)
-	if err := runtime.cache.Delete(cacheKey); err != nil {
+	if err := runtime.cache.Delete(ctx, cacheKey); err != nil {
 		klog.V(4).InfoS("invalidate component cache failed", "reason", reason, "appID", appID, "err", err)
 	}
 }

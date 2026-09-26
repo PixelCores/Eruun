@@ -1,10 +1,9 @@
 package cache
 
 import (
+	"context"
 	"sync"
 	"time"
-
-	"github.com/redis/go-redis/v9"
 )
 
 type item struct {
@@ -18,10 +17,12 @@ type MemCache struct {
 	mu          sync.Mutex
 	ttl         time.Duration
 	nextCleanup time.Time
-	redisClient *redis.Client
 }
 
-func (m *MemCache) Store(key string, data string) error {
+func (m *MemCache) Store(ctx context.Context, key string, data string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now := time.Now()
@@ -47,7 +48,10 @@ func (m *MemCache) Store(key string, data string) error {
 	return nil
 }
 
-func (m *MemCache) Load(key string) (string, error) {
+func (m *MemCache) Load(ctx context.Context, key string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var result string
@@ -62,7 +66,10 @@ func (m *MemCache) Load(key string) (string, error) {
 	return result, nil
 }
 
-func (m *MemCache) Consume(key string) (string, error) {
+func (m *MemCache) Consume(ctx context.Context, key string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	value, ok := m.items[key]
@@ -76,7 +83,10 @@ func (m *MemCache) Consume(key string) (string, error) {
 	return value.value, nil
 }
 
-func (m *MemCache) List() ([]string, error) {
+func (m *MemCache) List(ctx context.Context) ([]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	var ret []string
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -91,14 +101,20 @@ func (m *MemCache) List() ([]string, error) {
 	return ret, nil
 }
 
-func (m *MemCache) Delete(key string) error {
+func (m *MemCache) Delete(ctx context.Context, key string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.items, key)
 	return nil
 }
 
-func (m *MemCache) Exists(key string) bool {
+func (m *MemCache) Exists(ctx context.Context, key string) bool {
+	if err := ctx.Err(); err != nil {
+		return false
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if v, ok := m.items[key]; ok {
@@ -114,12 +130,6 @@ func (m *MemCache) IsCacheDisabled() bool {
 	return m.noCache
 }
 
-// GetRedisClient returns the optional Redis client carried for DI.
-// MemCache does not use Redis for cache operations.
-func (m *MemCache) GetRedisClient() *redis.Client {
-	return m.redisClient
-}
-
 // expired 确定是否过期（ttl<=0 表示不过期）
 func (i *item) expired(now time.Time) bool {
 	if i.expiresAt.IsZero() {
@@ -129,15 +139,9 @@ func (i *item) expired(now time.Time) bool {
 }
 
 func NewMemCache(noCache bool) ICache {
-	return NewMemCacheWithClient(noCache, nil)
-}
-
-// NewMemCacheWithClient returns a MemCache and carries an optional Redis client for DI.
-func NewMemCacheWithClient(noCache bool, redisClient *redis.Client) ICache {
 	return &MemCache{
-		noCache:     noCache,
-		items:       make(map[string]*item),
-		ttl:         24 * time.Hour, // 默认设置过期时间为1天
-		redisClient: redisClient,
+		noCache: noCache,
+		items:   make(map[string]*item),
+		ttl:     24 * time.Hour, // 默认设置过期时间为1天
 	}
 }

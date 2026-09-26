@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -73,6 +74,7 @@ type WorkflowCtl struct {
 	Client                   kubernetes.Interface
 	KubeConfig               *rest.Config
 	Store                    datastore.DataStore
+	RedisClient              *redis.Client
 	Cache                    cache.ICache
 	DelayQueue               msg.Queue
 	ResourceWaiter           informer.ComponentReadyObserver
@@ -91,7 +93,7 @@ type WorkflowCtl struct {
 	ctx context.Context
 }
 
-func NewWorkflowController(workflowTask *model.WorkflowQueue, client kubernetes.Interface, kubeConfig *rest.Config, store datastore.DataStore, cfg *config.Config, cache cache.ICache, urlSecurityPolicy *spec.URLSecurityPolicySpec, resourceImportExecutors ...job.ResourceImportExecutor) (*WorkflowCtl, error) {
+func NewWorkflowController(workflowTask *model.WorkflowQueue, client kubernetes.Interface, kubeConfig *rest.Config, store datastore.DataStore, cfg *config.Config, redisClient *redis.Client, cache cache.ICache, urlSecurityPolicy *spec.URLSecurityPolicySpec, resourceImportExecutors ...job.ResourceImportExecutor) (*WorkflowCtl, error) {
 	if workflowTask == nil {
 		return nil, fmt.Errorf("workflow task is nil")
 	}
@@ -117,6 +119,7 @@ func NewWorkflowController(workflowTask *model.WorkflowQueue, client kubernetes.
 		Store:                    store,
 		Client:                   client,
 		KubeConfig:               kubeConfig,
+		RedisClient:              redisClient,
 		Cache:                    cache,
 		prefix:                   fmt.Sprintf("workflowctl-%s-%s", workflowTask.WorkflowName, workflowTask.TaskID),
 		defaultJobTimeoutSeconds: resolveDefaultJobTimeout(cfg),
@@ -595,7 +598,7 @@ func (r *workflowRun) runSteps(taskForGeneration model.WorkflowQueue, stepExecut
 				}
 				return svc.RecoverEvaluation(recoveryCtx, task)
 			})
-			if err := job.RunJobs(recoveryCtx, tasksInPriority, stepConcurrency, r.Client, r.KubeConfig, r.Store, r.ack, stopOnFailure, r.Cache, r.urlSecurityPolicy, r.DelayQueue, r.ResourceWaiter, r.resourceImportExecutor, r.importSecretKeyring); err != nil {
+			if err := job.RunJobs(recoveryCtx, tasksInPriority, stepConcurrency, r.Client, r.KubeConfig, r.Store, r.ack, stopOnFailure, r.RedisClient, r.Cache, r.urlSecurityPolicy, r.DelayQueue, r.ResourceWaiter, r.resourceImportExecutor, r.importSecretKeyring); err != nil {
 				logger.Error(err, "Stopping workflow after job persistence failure", "step", stepExec.Name, "priority", priority)
 				return r.stopForJobInfrastructure(err)
 			}
@@ -797,7 +800,7 @@ func (w *WorkflowCtl) runWorkflowFailureCleanup(ctx context.Context, logger klog
 	cleanupCtx := klog.NewContext(ctx, logger.WithValues("failurePolicy", workflowconfig.WorkflowFailurePolicyCleanupAll))
 	cleanupCtx = job.WithTaskMetadata(cleanupCtx, task.TaskID)
 	logger.Info("Running workflow failure cleanup jobs", "appID", task.AppID, "taskID", task.TaskID, "jobCount", len(cleanupJobs))
-	if err := job.RunJobs(cleanupCtx, cleanupJobs, 1, w.Client, w.KubeConfig, w.Store, w.ack, false, w.Cache, w.urlSecurityPolicy, w.DelayQueue, w.ResourceWaiter, w.resourceImportExecutor, w.importSecretKeyring); err != nil {
+	if err := job.RunJobs(cleanupCtx, cleanupJobs, 1, w.Client, w.KubeConfig, w.Store, w.ack, false, w.RedisClient, w.Cache, w.urlSecurityPolicy, w.DelayQueue, w.ResourceWaiter, w.resourceImportExecutor, w.importSecretKeyring); err != nil {
 		return err
 	}
 	return workflowFailureCleanupError(cleanupJobs)
@@ -1162,7 +1165,7 @@ func (w *WorkflowCtl) triggerApprovalNotification(ctx context.Context, stepExec 
 	go func() {
 		defer cancel()
 		// Notification jobs should not mutate workflow queue state.
-		if err := job.RunJobs(callbackCtx, []*model.JobTask{callbackJob}, 1, w.Client, w.KubeConfig, w.Store, func() {}, false, w.Cache, w.urlSecurityPolicy, w.DelayQueue, w.ResourceWaiter, w.resourceImportExecutor, w.importSecretKeyring); err != nil {
+		if err := job.RunJobs(callbackCtx, []*model.JobTask{callbackJob}, 1, w.Client, w.KubeConfig, w.Store, func() {}, false, w.RedisClient, w.Cache, w.urlSecurityPolicy, w.DelayQueue, w.ResourceWaiter, w.resourceImportExecutor, w.importSecretKeyring); err != nil {
 			klog.ErrorS(err, "workflow callback execution failed", "taskID", callbackJob.TaskID, "jobName", callbackJob.Name)
 		}
 	}()
@@ -1445,7 +1448,7 @@ func terminalCallbackParentContext(ctx context.Context, status config.Status) (c
 
 func (w *WorkflowCtl) runTerminalCallbackJob(ctx context.Context, task *model.WorkflowQueue, callbackJob *model.JobTask) error {
 	run := func(runCtx context.Context) error {
-		return job.RunJobs(runCtx, []*model.JobTask{callbackJob}, 1, w.Client, w.KubeConfig, w.Store, func() {}, false, w.Cache, w.urlSecurityPolicy, w.DelayQueue, w.ResourceWaiter, w.resourceImportExecutor, w.importSecretKeyring)
+		return job.RunJobs(runCtx, []*model.JobTask{callbackJob}, 1, w.Client, w.KubeConfig, w.Store, func() {}, false, w.RedisClient, w.Cache, w.urlSecurityPolicy, w.DelayQueue, w.ResourceWaiter, w.resourceImportExecutor, w.importSecretKeyring)
 	}
 	if task == nil || task.Status != config.StatusCancelled || task.RunGeneration == 0 || task.RunToken == "" || task.WorkerID == "" {
 		return run(ctx)

@@ -9,40 +9,15 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
 const (
-	appScheduleLockerPrefix = "eruun-app-schedule"
-	appScheduleLockKey      = "app-schedule"
-	appScheduleLockTTL      = 2 * time.Minute
-	appScheduleUnlockWait   = 5 * time.Second
+	appScheduleLockKey    = "app-schedule"
+	appScheduleLockTTL    = 2 * time.Minute
+	appScheduleUnlockWait = 5 * time.Second
 )
-
-func ResolveAppScheduleLocker(explicit locker.Locker, cacheStore cache.ICache) (locker.Locker, error) {
-	if explicit != nil {
-		return explicit, nil
-	}
-	if cacheStore == nil {
-		return nil, bcode.ErrDistributedLockUnavailable
-	}
-	redisClient := cacheStore.GetRedisClient()
-	if redisClient == nil {
-		return nil, bcode.ErrDistributedLockUnavailable
-	}
-	lockProvider, err := locker.New(locker.Config{
-		Type:        locker.TypeRedis,
-		RedisClient: redisClient,
-		Prefix:      appScheduleLockerPrefix,
-	})
-	if err != nil {
-		klog.Warningf("init app schedule locker failed: %v", err)
-		return nil, bcode.ErrDistributedLockUnavailable
-	}
-	return lockProvider, nil
-}
 
 func WithAppScheduleLock(ctx context.Context, lockProvider locker.Locker, appID string, operation string, autoExtend bool, fn func(context.Context) error) error {
 	appID = strings.ToLower(strings.TrimSpace(appID))

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/redis/go-redis/v9"
 	"strings"
 	"sync"
 	"time"
@@ -68,9 +69,10 @@ type workflowServiceImpl struct {
 	KubeClient                kubernetes.Interface `inject:"kubeClient"`
 	KubeConfig                *rest.Config         `inject:"kubeConfig"`
 	Cache                     cache.ICache         `inject:"cache"`
+	RedisClient               *redis.Client        `inject:"redisClient"`
 	Cfg                       *config.Config       `inject:""`
 	URLSecurityPolicyProvider *urlpolicy.Provider  `inject:""`
-	ScheduleLocker            locker.Locker
+	ScheduleLocker            locker.Locker        `inject:"appScheduleLocker"`
 	scheduleDispatchMu        sync.Mutex
 	scheduleDispatchPage      int
 }
@@ -1256,7 +1258,7 @@ func (w *workflowServiceImpl) cancelWorkflowTaskIfStatus(ctx context.Context, ta
 			return err
 		}
 	}
-	redisClient, cancelSignalErr := cancelsignal.RedisClientForCancelSignal(ctx, w.Cache)
+	redisClient, cancelSignalErr := cancelsignal.RedisClientForCancelSignal(ctx, w.RedisClient)
 	if cancelSignalErr != nil && !callbackWithoutWorker {
 		if expectedStatus != "" && conflictErr != nil {
 			current, stateErr := repository.TaskByID(ctx, w.Store, task.TaskID)
@@ -1333,7 +1335,7 @@ func (w *workflowServiceImpl) cancelWorkflowTaskIfStatus(ctx context.Context, ta
 	}
 	if redisClient == nil {
 		var err error
-		redisClient, err = cancelsignal.RedisClientForCancelSignal(ctx, w.Cache)
+		redisClient, err = cancelsignal.RedisClientForCancelSignal(ctx, w.RedisClient)
 		if err != nil {
 			// Tasks cancelled before a worker claim are terminal in storage. A missing
 			// signal backend must not suppress their only terminal callback path.
@@ -1773,7 +1775,7 @@ func (w *workflowServiceImpl) triggerWorkflowTerminalCallbackOnApprovalAction(ct
 	// The cancellation signal applies to application work, not to its terminal
 	// notification. The callback keeps its own bounded timeout and parent fence.
 	runCtx = workflowjob.WithTaskMetadata(runCtx, "")
-	if err := workflowjob.RunJobs(runCtx, []*model.JobTask{callbackJob}, 1, nil, nil, w.Store, func() {}, false, w.Cache, urlPolicy, nil, nil, nil); err != nil {
+	if err := workflowjob.RunJobs(runCtx, []*model.JobTask{callbackJob}, 1, nil, nil, w.Store, func() {}, false, w.RedisClient, w.Cache, urlPolicy, nil, nil, nil); err != nil {
 		klog.ErrorS(err, "run terminal workflow callback", "taskID", task.TaskID, "jobName", callbackJob.Name)
 		return err
 	}

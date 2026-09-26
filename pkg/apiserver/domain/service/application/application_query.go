@@ -55,7 +55,7 @@ func normalizeBatchApplicationIDs(appIDs []string) ([]string, []string, error) {
 func (c *applicationsServiceImpl) ListApplications(ctx context.Context, opts ListApplicationsOptions) ([]*apisv1.ApplicationBase, error) {
 	if opts.FullScan() {
 		var cached []*apisv1.ApplicationBase
-		if c.loadJSONCache(scopedListCacheKey(ctx, applicationListCacheKey), &cached) {
+		if c.loadJSONCache(ctx, scopedListCacheKey(ctx, applicationListCacheKey), &cached) {
 			return cached, nil
 		}
 	}
@@ -80,7 +80,7 @@ func (c *applicationsServiceImpl) ListApplications(ctx context.Context, opts Lis
 		return nil, err
 	}
 	if opts.FullScan() {
-		c.storeJSONCache(scopedListCacheKey(ctx, applicationListCacheKey), list)
+		c.storeJSONCache(ctx, scopedListCacheKey(ctx, applicationListCacheKey), list)
 	}
 	return list, nil
 }
@@ -205,7 +205,7 @@ func (c *applicationsServiceImpl) applicationsByIDs(ctx context.Context, appIDs 
 func (c *applicationsServiceImpl) ListTemplateApplications(ctx context.Context, opts ListApplicationsOptions) ([]*apisv1.ApplicationBase, error) {
 	if opts.FullScan() {
 		var cached []*apisv1.ApplicationBase
-		if c.loadJSONCache(scopedListCacheKey(ctx, templateApplicationListCacheKey), &cached) {
+		if c.loadJSONCache(ctx, scopedListCacheKey(ctx, templateApplicationListCacheKey), &cached) {
 			return cached, nil
 		}
 	}
@@ -233,7 +233,7 @@ func (c *applicationsServiceImpl) ListTemplateApplications(ctx context.Context, 
 		return nil, err
 	}
 	if opts.FullScan() {
-		c.storeJSONCache(scopedListCacheKey(ctx, templateApplicationListCacheKey), list)
+		c.storeJSONCache(ctx, scopedListCacheKey(ctx, templateApplicationListCacheKey), list)
 	}
 	return list, nil
 }
@@ -572,7 +572,7 @@ func (c *applicationsServiceImpl) DeleteApplication(ctx context.Context, app *mo
 	}
 	c.invalidateApplicationListCaches(ctx)
 	if app != nil {
-		c.invalidateApplicationComponentsCache(app.ID)
+		c.invalidateApplicationComponentsCache(ctx, app.ID)
 	}
 	return nil
 }
@@ -585,7 +585,7 @@ func (c *applicationsServiceImpl) ListApplicationComponents(ctx context.Context,
 	appID = app.ID
 	componentCacheKey := applicationComponentsCacheKey(appID)
 	var cached []*model.ApplicationComponent
-	if c.loadJSONCache(componentCacheKey, &cached) {
+	if c.loadJSONCache(ctx, componentCacheKey, &cached) {
 		result, _, err := c.prepareApplicationComponentsForRead(cached, false)
 		if err != nil {
 			return nil, err
@@ -600,14 +600,14 @@ func (c *applicationsServiceImpl) ListApplicationComponents(ctx context.Context,
 	}
 	setResourceAppNameForComponents(components, applicationResourceNameKey(app))
 	if len(components) == 0 {
-		c.storeJSONCache(componentCacheKey, []*model.ApplicationComponent(nil))
+		c.storeJSONCache(ctx, componentCacheKey, []*model.ApplicationComponent(nil))
 		return nil, nil
 	}
 	result, cacheValue, err := c.prepareApplicationComponentsForRead(components, true)
 	if err != nil {
 		return nil, err
 	}
-	c.storeJSONCache(componentCacheKey, cacheValue)
+	c.storeJSONCache(ctx, componentCacheKey, cacheValue)
 	return result, nil
 }
 

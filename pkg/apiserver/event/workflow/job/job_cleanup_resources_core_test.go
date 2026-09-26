@@ -147,8 +147,8 @@ func TestRunJobCleanupResourcesInvalidatesComponentsCache(t *testing.T) {
 	store := &cleanupComponentStore{component: component}
 	cacheStore := cacheutil.NewMemCache(false)
 	cacheKey := cacheutil.ApplicationComponentsKey(component.AppID)
-	require.NoError(t, cacheStore.Store(cacheKey, "stale"))
-	require.True(t, cacheStore.Exists(cacheKey))
+	require.NoError(t, cacheStore.Store(context.Background(), cacheKey, "stale"))
+	require.True(t, cacheStore.Exists(context.Background(), cacheKey))
 
 	task := &model.JobTask{
 		Name:      component.Name,
@@ -158,12 +158,12 @@ func TestRunJobCleanupResourcesInvalidatesComponentsCache(t *testing.T) {
 		JobInfo:   component,
 		Timeout:   1,
 	}
-	runtime := newJobRuntime(cacheStore, nil, nil, nil, nil, nil)
+	runtime := newJobRuntime(nil, cacheStore, nil, nil, nil, nil, nil)
 
 	runJob(context.Background(), task, fake.NewSimpleClientset(), store, func() {}, runtime)
 
 	require.Equal(t, config.StatusCompleted, task.Status)
-	require.False(t, cacheStore.Exists(cacheKey))
+	require.False(t, cacheStore.Exists(context.Background(), cacheKey))
 	require.NotNil(t, store.putComponent)
 	require.Equal(t, string(config.ComponentStatusNotDeploy), store.putComponent.Status)
 }

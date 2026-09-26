@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
 	"k8s.io/client-go/kubernetes"
@@ -48,6 +49,7 @@ type Workflow struct {
 	ResultQueue               msg.Queue
 	Cfg                       *config.Config `inject:""`
 	Cache                     cache.ICache   `inject:"cache"`
+	RedisClient               *redis.Client  `inject:"redisClient"`
 	ResourceWaiter            informer.ComponentReadyObserver
 	ResourceImportExecutor    job.ResourceImportExecutor `inject:""`
 	URLSecurityPolicyProvider *urlpolicy.Provider        `inject:""`
@@ -435,7 +437,7 @@ func (w *Workflow) runWorkflowTask(ctx context.Context, workerRun *workflowWorke
 		stopHeartbeat()
 		return false, fmt.Errorf("acquire workflow slot: %w", err)
 	}
-	controller, err := NewWorkflowController(task, w.KubeClient, w.KubeConfig, w.Store, w.Cfg, w.Cache, urlPolicy, w.ResourceImportExecutor)
+	controller, err := NewWorkflowController(task, w.KubeClient, w.KubeConfig, w.Store, w.Cfg, w.RedisClient, w.Cache, urlPolicy, w.ResourceImportExecutor)
 	if err != nil {
 		runErr := fmt.Errorf("init workflow controller: %w", err)
 		w.markTaskRunStartFailure(ctx, task, runErr)
@@ -632,6 +634,7 @@ func (w *Workflow) runWorkflowControllerWithPersistenceRecovery(ctx context.Cont
 			w.KubeConfig,
 			w.Store,
 			w.Cfg,
+			w.RedisClient,
 			w.Cache,
 			current.urlSecurityPolicy,
 			w.ResourceImportExecutor,

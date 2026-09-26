@@ -20,7 +20,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
@@ -269,7 +268,7 @@ func mustTestTaskDispatch(t testing.TB) []byte {
 	return payload
 }
 
-func configureWorkflowAckTestCancelCache(t *testing.T, w *Workflow) {
+func configureWorkflowAckTestCancelClient(t *testing.T, w *Workflow) {
 	t.Helper()
 	redisServer, err := miniredis.Run()
 	require.NoError(t, err)
@@ -278,7 +277,7 @@ func configureWorkflowAckTestCancelCache(t *testing.T, w *Workflow) {
 	t.Cleanup(func() {
 		_ = redisClient.Close()
 	})
-	w.Cache = cacheutil.NewMemCacheWithClient(false, redisClient)
+	w.RedisClient = redisClient
 }
 
 func TestWorkflowTaskPersistenceDistinguishesInfrastructureStopFromUserCancel(t *testing.T) {
@@ -334,7 +333,7 @@ func TestWorkflowRunSuppressesCallbackAfterOwnershipChanges(t *testing.T) {
 	require.NoError(t, err)
 
 	w := newWorkflowForAckTests(t, true)
-	configureWorkflowAckTestCancelCache(t, w)
+	configureWorkflowAckTestCancelClient(t, w)
 	store := w.Store.(*workflowAckTestStore)
 	store.mutateTask(func(task *model.WorkflowQueue) {
 		task.Status = config.StatusRunning
@@ -345,7 +344,7 @@ func TestWorkflowRunSuppressesCallbackAfterOwnershipChanges(t *testing.T) {
 	})
 
 	controller := newTestWorkflowController(t, store.taskSnapshot(), w.KubeClient, store)
-	controller.Cache = w.Cache
+	controller.RedisClient = w.RedisClient
 	authoritative := store.taskSnapshot()
 	authoritative.Status = config.StatusCompleted
 	authoritative.RunGeneration = 4
@@ -496,7 +495,7 @@ func TestWorkflowRunSendsCompletedCallbackWithoutWorkflowAck(t *testing.T) {
 	require.NoError(t, err)
 
 	w := newWorkflowForAckTests(t, true)
-	configureWorkflowAckTestCancelCache(t, w)
+	configureWorkflowAckTestCancelClient(t, w)
 	store := w.Store.(*workflowAckTestStore)
 	store.failCompareAndSwapAt = 3
 	store.failCompareAndSwapError = errors.New("unexpected callback workflow ack")
@@ -505,7 +504,7 @@ func TestWorkflowRunSendsCompletedCallbackWithoutWorkflowAck(t *testing.T) {
 	})
 
 	controller := newTestWorkflowController(t, store.taskSnapshot(), w.KubeClient, store)
-	controller.Cache = w.Cache
+	controller.RedisClient = w.RedisClient
 	err = controller.run(context.Background(), 1)
 
 	require.NoError(t, err)
@@ -522,7 +521,7 @@ func TestWorkflowRunSendsCompletedCallbackWithoutWorkflowAck(t *testing.T) {
 
 func TestRunWorkflowControllerRecoversDeferredExitAckPersistenceFailure(t *testing.T) {
 	w := newWorkflowForAckTests(t, true)
-	configureWorkflowAckTestCancelCache(t, w)
+	configureWorkflowAckTestCancelClient(t, w)
 	w.Cfg.Workflow.WorkerBackoffMin = time.Millisecond
 	w.Cfg.Workflow.WorkerBackoffMax = 5 * time.Millisecond
 	store := w.Store.(*workflowAckTestStore)
@@ -540,7 +539,7 @@ func TestRunWorkflowControllerRecoversDeferredExitAckPersistenceFailure(t *testi
 	store.failCompareAndSwapError = errors.New("temporary deferred exit ack failure")
 
 	controller := newTestWorkflowController(t, store.taskSnapshot(), w.KubeClient, store)
-	controller.Cache = w.Cache
+	controller.RedisClient = w.RedisClient
 	err = runControllerRecoveryForTest(t, w, controller)
 
 	require.Error(t, err)
@@ -553,7 +552,7 @@ func TestRunWorkflowControllerRecoversDeferredExitAckPersistenceFailure(t *testi
 
 func TestRunWorkflowControllerAcceptsAuthoritativeCancellationFromDeferredExitAck(t *testing.T) {
 	w := newWorkflowForAckTests(t, true)
-	configureWorkflowAckTestCancelCache(t, w)
+	configureWorkflowAckTestCancelClient(t, w)
 	store := w.Store.(*workflowAckTestStore)
 	steps, err := model.NewJSONStructByStruct(&model.WorkflowSteps{
 		Steps: []*model.WorkflowStep{{
@@ -565,7 +564,7 @@ func TestRunWorkflowControllerAcceptsAuthoritativeCancellationFromDeferredExitAc
 	store.workflow.Steps = steps
 
 	controller := newTestWorkflowController(t, store.taskSnapshot(), w.KubeClient, store)
-	controller.Cache = w.Cache
+	controller.RedisClient = w.RedisClient
 	persistAck := controller.ack
 	ackCalls := 0
 	controller.ack = func() {

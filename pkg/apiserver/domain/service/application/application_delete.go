@@ -142,7 +142,7 @@ func (c *applicationsServiceImpl) DeleteApplicationCascade(ctx context.Context, 
 		hasIncompleteCleanup := len(resp.Warnings) > 0 || len(resp.FailedResources) > 0 || len(resp.ActiveTaskIDs) > 0
 
 		c.invalidateApplicationListCaches(ctx)
-		c.invalidateApplicationComponentsCache(app.ID)
+		c.invalidateApplicationComponentsCache(ctx, app.ID)
 
 		if hasIncompleteCleanup {
 			return fmt.Errorf("application deleted with warnings")
@@ -196,7 +196,7 @@ func (c *applicationsServiceImpl) cancelTaskForAppDelete(ctx context.Context, ta
 	if task == nil || strings.TrimSpace(task.TaskID) == "" {
 		return nil
 	}
-	redisClient, err := cancelsignal.RedisClientForCancelSignal(ctx, c.Cache)
+	redisClient, err := cancelsignal.RedisClientForCancelSignal(ctx, c.RedisClient)
 	if err != nil {
 		return err
 	}

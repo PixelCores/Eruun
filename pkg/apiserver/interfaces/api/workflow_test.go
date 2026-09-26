@@ -558,10 +558,10 @@ func (s *statusReadApplicationService) ListApplicationRuntimeComponents(context.
 	return s.runtimeComponents, nil
 }
 
-func (s *cacheBackedComponentListService) ListApplicationComponents(_ context.Context, appID string) ([]*model.ApplicationComponent, error) {
+func (s *cacheBackedComponentListService) ListApplicationComponents(ctx context.Context, appID string) ([]*model.ApplicationComponent, error) {
 	cacheKey := cacheutil.ApplicationComponentsKey(appID)
 	if s.cache != nil {
-		raw, err := s.cache.Load(cacheKey)
+		raw, err := s.cache.Load(ctx, cacheKey)
 		if err == nil && raw != "" {
 			var cached []*model.ApplicationComponent
 			if err := json.Unmarshal([]byte(raw), &cached); err == nil {
@@ -578,7 +578,7 @@ func (s *cacheBackedComponentListService) ListApplicationComponents(_ context.Co
 	result := []*model.ApplicationComponent{&componentCopy}
 	if s.cache != nil {
 		if bytes, err := json.Marshal(result); err == nil {
-			_ = s.cache.Store(cacheKey, string(bytes))
+			_ = s.cache.Store(ctx, cacheKey, string(bytes))
 		}
 	}
 	return result, nil
