@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	openapi "github.com/alibabacloud-go/darabonba-openapi/client"
 	aliyunnas "github.com/alibabacloud-go/nas-20170626/v2/client"
 	storagev1client "k8s.io/client-go/kubernetes/typed/storage/v1"
 
@@ -47,39 +46,6 @@ func (e *fileSystemTagPendingError) Unwrap() error {
 		return nil
 	}
 	return e.cause
-}
-
-func newNASClient(config spec.AliyunCloudSettingSpec) (nasClient, error) {
-	return newNASClientWithTimeout(config, 0, 0)
-}
-
-func newConnectivityNASClient(config spec.AliyunCloudSettingSpec) (nasClient, error) {
-	return newNASClientWithTimeout(config, defaultConnectivityConnectTimeoutMilliseconds, defaultConnectivityReadTimeoutMilliseconds)
-}
-
-func newNASClientWithTimeout(config spec.AliyunCloudSettingSpec, connectTimeoutMS, readTimeoutMS int) (nasClient, error) {
-	normalizedConfig := spec.NormalizeAliyunCloudSetting(config)
-	if err := spec.ValidateAliyunCloudSetting(normalizedConfig); err != nil {
-		return nil, fmt.Errorf("invalid system setting %q: %w", model.SystemSettingTypeAliyunCloud, err)
-	}
-	openAPIConfig := new(openapi.Config).
-		SetRegionId(normalizedConfig.RegionID).
-		SetAccessKeyId(normalizedConfig.AccessKeyID).
-		SetAccessKeySecret(normalizedConfig.AccessKeySecret)
-	if connectTimeoutMS > 0 {
-		openAPIConfig.SetConnectTimeout(connectTimeoutMS)
-	}
-	if readTimeoutMS > 0 {
-		openAPIConfig.SetReadTimeout(readTimeoutMS)
-	}
-	if normalizedConfig.Endpoint != "" {
-		openAPIConfig.SetEndpoint(normalizedConfig.Endpoint)
-	}
-	client, err := aliyunnas.NewClient(openAPIConfig)
-	if err != nil {
-		return nil, fmt.Errorf("create aliyun nas client for region %q: %w", normalizedConfig.RegionID, err)
-	}
-	return client, nil
 }
 
 func (c *client) Call(ctx context.Context, action string, params map[string]interface{}) (*contracts.CloudJobResult, error) {
