@@ -20,7 +20,7 @@ flowchart LR
     A[API契约层\ninterfaces/api + dto + assembler]
     B[应用领域层\ndomain/service + domain/repository]
     C[工作流/队列层\nworkflow service + event worker]
-    D[缓存层\nutils/cache + Redis/Mem]
+    D[缓存层\ninfrastructure/cache + Redis/Mem]
     E[K8s资源/状态同步层\njob ctl + informer waiter]
     F[Secret/Config转换层\nkube_convert + job_secret]
     G[(DB: eruun_applications/eruun_app_components/...)]

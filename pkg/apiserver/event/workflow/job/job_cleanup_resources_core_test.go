@@ -17,7 +17,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 
-	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
+	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 )
 
 func TestCleanupResourcesRejectsSourceBoundComponent(t *testing.T) {

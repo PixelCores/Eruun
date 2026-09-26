@@ -21,10 +21,10 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
-	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
+	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 )
 
 func TestVersionRestartJobCtlAdoptedDeploymentUsesSourceIdentity(t *testing.T) {
