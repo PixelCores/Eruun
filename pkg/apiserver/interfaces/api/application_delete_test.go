@@ -10,7 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+
+	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 )
 
 type fakeDeleteApplicationService struct {
@@ -126,7 +127,7 @@ func TestDeleteApplicationEndpointInvalidWaitSeconds(t *testing.T) {
 	}
 
 	result := decodeResponse(t, resp.Body.Bytes(), nil)
-	if result.Code == bcode.SuccessCode {
+	if result.Code == apiresponse.SuccessCode {
 		t.Fatalf("expected error response, got success")
 	}
 	if appSvc.lastAppID != "" {
@@ -179,7 +180,7 @@ func TestDeleteApplicationEndpointChunkedBodyInvalidWaitSeconds(t *testing.T) {
 	}
 
 	result := decodeResponse(t, resp.Body.Bytes(), nil)
-	if result.Code == bcode.SuccessCode {
+	if result.Code == apiresponse.SuccessCode {
 		t.Fatalf("expected error response, got success")
 	}
 	if appSvc.lastAppID != "" {
