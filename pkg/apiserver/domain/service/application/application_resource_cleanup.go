@@ -467,7 +467,7 @@ func (c *applicationsServiceImpl) deleteIngressForComponent(ctx context.Context,
 func (c *applicationsServiceImpl) deleteConfigMapForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, reporter *cleanupReporter) {
 	obj := job.GenerateConfigMap(component, props)
 	switch cm := obj.(type) {
-	case *model.ConfigMapInput:
+	case *job.ConfigMapInput:
 		ns := pickNamespace(cm.Namespace, component.Namespace)
 		name := cm.Name
 		if name == "" {
@@ -489,7 +489,7 @@ func (c *applicationsServiceImpl) deleteConfigMapForComponent(ctx context.Contex
 func (c *applicationsServiceImpl) deleteSecretForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, reporter *cleanupReporter) {
 	obj := job.GenerateSecret(component, props)
 	switch sec := obj.(type) {
-	case *model.SecretInput:
+	case *job.SecretInput:
 		ns := pickNamespace(sec.Namespace, component.Namespace)
 		name := sec.Name
 		if name == "" {

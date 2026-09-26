@@ -19,8 +19,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
@@ -136,7 +136,7 @@ func (c *CallbackJobCtl) Run(ctx context.Context) error {
 		requestBody = string(payloadBytes)
 		body = bytes.NewReader(payloadBytes)
 	}
-	if _, err := utils.ValidateURLTarget(ctx, requestURL, c.urlSecurityPolicy); err != nil {
+	if _, err := clients.ValidateURLTarget(ctx, requestURL, c.urlSecurityPolicy); err != nil {
 		klog.ErrorS(err, "workflow callback request blocked by url policy", callbackLogValues(info, method, requestURL, string(payloadBytes), requestBody, 0)...)
 		return fmt.Errorf("validate callback url: %w", err)
 	}
@@ -267,7 +267,7 @@ func newCallbackURLPolicyHTTPClient(base *http.Client, policy *spec.URLSecurityP
 			return nil
 		},
 	}
-	return utils.NewURLPolicyHTTPClient(callbackBase, policy)
+	return clients.NewURLPolicyHTTPClient(callbackBase, policy)
 }
 
 func callbackTimeout(seconds, maxSeconds, maxNS int64) time.Duration {

@@ -6,13 +6,14 @@ import (
 	"github.com/gin-gonic/gin"
 
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+
+	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 )
 
 func (app *applications) getCanonicalJSONSchema(c *gin.Context) {
 	schema, err := apis.CanonicalJSONSchema()
 	if err != nil {
-		bcode.ReturnError(c, err)
+		apiresponse.ReturnError(c, err)
 		return
 	}
 	c.Data(http.StatusOK, "application/schema+json", schema)

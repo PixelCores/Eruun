@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 )
 
 type pathParamBinder func(*gin.Context) (string, bool)
@@ -25,10 +25,10 @@ func validatedStrictJSONBody[T any](invalidErr error, logBindErr bool) requestBi
 
 func respondWithResult[T any](c *gin.Context, resp T, err error) bool {
 	if err != nil {
-		bcode.ReturnError(c, err)
+		apiresponse.ReturnError(c, err)
 		return false
 	}
-	bcode.ReturnSuccess(c, resp)
+	apiresponse.ReturnSuccess(c, resp)
 	return true
 }
 

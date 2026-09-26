@@ -340,7 +340,7 @@ func GenerateConfigMap(component *model.ApplicationComponent, properties *model.
 	name, namespace := generatedResourceIdentity(component)
 
 	if url, fileName, ok := externalConfigFileInput(properties, true); ok {
-		return &model.ConfigMapInput{
+		return &ConfigMapInput{
 			Name:      name,
 			Namespace: namespace,
 			URL:       url,
@@ -355,7 +355,7 @@ func GenerateConfigMap(component *model.ApplicationComponent, properties *model.
 		data = keyValueDataOrNil(properties.Conf)
 	}
 
-	return &model.ConfigMapInput{
+	return &ConfigMapInput{
 		Name:      name,
 		Namespace: namespace,
 		Labels:    labels,

@@ -11,6 +11,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	assembler "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/assembler/v1"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
@@ -21,7 +22,7 @@ func (app *applications) listApplicationWorkflows(c *gin.Context) {
 	}
 	workflows, err := app.ApplicationService.ListApplicationWorkflows(c.Request.Context(), appID)
 	if err != nil {
-		bcode.ReturnError(c, err)
+		apiresponse.ReturnError(c, err)
 		return
 	}
 	resp, err := convertDTOList(workflows, assembler.ConvertWorkflowModelToDTO, func(wf *model.Workflow, err error) error {
@@ -67,7 +68,7 @@ func (app *applications) updateApplicationWorkflow(c *gin.Context) {
 	req.WorkflowType = config.WorkflowTaskType(strings.ToLower(strings.TrimSpace(string(req.WorkflowType))))
 	normalizeWorkflowSteps(req.Workflow)
 	if err := validate.Struct(req); err != nil {
-		bcode.ReturnError(c, bcode.ErrWorkflowConfig)
+		apiresponse.ReturnError(c, bcode.ErrWorkflowConfig)
 		return
 	}
 	ctx := c.Request.Context()
@@ -75,11 +76,11 @@ func (app *applications) updateApplicationWorkflow(c *gin.Context) {
 	resp, err := app.ApplicationService.UpdateApplicationWorkflow(ctx, appID, *req)
 	if err != nil {
 		klog.ErrorS(err, "update workflow failed", "appID", appID, "workflowID", req.WorkflowID)
-		bcode.ReturnError(c, err)
+		apiresponse.ReturnError(c, err)
 		return
 	}
 	klog.InfoS("update workflow succeeded", "appID", appID, "workflowID", resp.WorkflowID)
-	bcode.ReturnSuccess(c, resp)
+	apiresponse.ReturnSuccess(c, resp)
 }
 
 func (app *applications) listWorkflowSchedules(c *gin.Context) {
@@ -115,10 +116,10 @@ func (app *applications) deleteWorkflowSchedule(c *gin.Context) {
 	}
 	ctx := c.Request.Context()
 	if err := app.WorkflowService.DeleteWorkflowSchedule(ctx, appID, workflowID); err != nil {
-		bcode.ReturnError(c, err)
+		apiresponse.ReturnError(c, err)
 		return
 	}
-	bcode.ReturnSuccess(c, apis.DeleteWorkflowScheduleResponse{WorkflowID: workflowID})
+	apiresponse.ReturnSuccess(c, apis.DeleteWorkflowScheduleResponse{WorkflowID: workflowID})
 }
 
 func normalizeWorkflowSteps(steps []apis.CreateWorkflowStepRequest) {
@@ -162,10 +163,10 @@ func (app *applications) cancelAllApplicationWorkflows(c *gin.Context) {
 		"",
 	)
 	if err != nil {
-		bcode.ReturnError(c, err)
+		apiresponse.ReturnError(c, err)
 		return
 	}
-	bcode.ReturnSuccess(c, apis.CancelAllApplicationWorkflowsResponse{
+	apiresponse.ReturnSuccess(c, apis.CancelAllApplicationWorkflowsResponse{
 		AppID:            appID,
 		CancelledTaskIDs: cancelledTaskIDs,
 	})
@@ -182,7 +183,7 @@ func (app *applications) approveWorkflowTask(c *gin.Context) {
 	}
 	req.Action = strings.ToLower(strings.TrimSpace(req.Action))
 	if err := validate.Struct(req); err != nil {
-		bcode.ReturnError(c, bcode.ErrWorkflowConfig)
+		apiresponse.ReturnError(c, bcode.ErrWorkflowConfig)
 		return
 	}
 	user := strings.TrimSpace(req.User)
@@ -200,7 +201,7 @@ func (app *applications) listApplicationTasks(c *gin.Context) {
 	}
 	tasks, err := app.ApplicationService.ListApplicationTasks(c.Request.Context(), appID)
 	if err != nil {
-		bcode.ReturnError(c, err)
+		apiresponse.ReturnError(c, err)
 		return
 	}
 	resp := make([]*apis.ApplicationTask, 0, len(tasks))
@@ -223,7 +224,7 @@ func (app *applications) listApplicationTasks(c *gin.Context) {
 			AllowedActions:      workflowTaskAllowedActions(task.TaskID, task.AppID, string(task.Status), task.PendingApprovalStep),
 		})
 	}
-	bcode.ReturnSuccess(c, apis.ListApplicationTasksResponse{Tasks: resp})
+	apiresponse.ReturnSuccess(c, apis.ListApplicationTasksResponse{Tasks: resp})
 }
 
 func (app *applications) getWorkflowTaskStatus(c *gin.Context) {
@@ -272,10 +273,10 @@ func (app *applications) cancelWorkflow(
 	}
 	ctx := c.Request.Context()
 	if err := cancelFn(ctx, appID, user, req.TaskID, req.Reason); err != nil {
-		bcode.ReturnError(c, err)
+		apiresponse.ReturnError(c, err)
 		return
 	}
-	bcode.ReturnSuccess(c, apis.CancelWorkflowResponse{TaskID: req.TaskID, Status: string(config.StatusCancelled)})
+	apiresponse.ReturnSuccess(c, apis.CancelWorkflowResponse{TaskID: req.TaskID, Status: string(config.StatusCancelled)})
 }
 
 // tryApplication validates an application creation request without actually creating it
@@ -305,7 +306,7 @@ func (app *applications) tryApplication(c *gin.Context) {
 
 	klog.V(2).InfoS("try application validation completed", "name", req.Name, "valid", resp.Valid, "errorCount", len(resp.Errors))
 
-	bcode.ReturnSuccess(c, resp)
+	apiresponse.ReturnSuccess(c, resp)
 }
 
 // tryWorkflow validates a workflow update request without actually updating it
@@ -349,5 +350,5 @@ func (app *applications) tryWorkflow(c *gin.Context) {
 
 	klog.V(2).InfoS("try workflow validation completed", "appID", appID, "valid", resp.Valid, "errorCount", len(resp.Errors))
 
-	bcode.ReturnSuccess(c, resp)
+	apiresponse.ReturnSuccess(c, resp)
 }

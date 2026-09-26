@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 )
 
 type apiResponse struct {
@@ -32,7 +32,7 @@ func requireSuccessResponse(t *testing.T, body []byte, out interface{}) apiRespo
 	t.Helper()
 
 	resp := decodeResponse(t, body, out)
-	if resp.Code != bcode.SuccessCode {
+	if resp.Code != apiresponse.SuccessCode {
 		t.Fatalf("unexpected response code: %d message: %s", resp.Code, resp.Message)
 	}
 	return resp
