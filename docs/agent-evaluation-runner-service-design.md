@@ -1,6 +1,6 @@
 # Harbor Runner 单实例认领与阶段状态协议
 
-> 状态：Implemented Reference。`main` 已实现 Harbor 0.22.0 Runner、空间 `eval` Job、任务包下载、最终结果上传、ArtifactStore，以及本文记录的单实例认领、阶段、心跳、进度与终态协议。Current 对外契约以 [空间 Job API](workspace-jobs-api.md) 和 [Harbor Runner](../runners/harbor/README.md) 为准。
+> 状态：Implemented Reference。`main` 已实现 Harbor 0.22.0 Runner、空间 `eval` Job、任务包下载、最终结果上传、ArtifactStore，以及本文记录的单实例认领、阶段、心跳、进度与终态协议。Current 对外契约以 [空间 Job API](workspace-jobs-api.md) 和 [Harbor Runner](../pkg/apiserver/jobs/runners/harbor/README.md) 为准。
 
 > 本文解释实现边界和故障模型；更广的 Agent、MCP、Judge 与质量门禁仍见 Proposal 文档，不属于本状态协议。
 
@@ -14,7 +14,7 @@ Kubernetes 工作负载状态与评测业务状态并不等价：Pod `Running` �
 | --- | --- |
 | 使用范围 | 只扩展 `eval`；不包装、不约束 `command` 用户镜像 |
 | Kubernetes 载体 | 保持现有 `batch/v1 Job`，Pod `restartPolicy: Never`，Job `backoffLimit: 0` |
-| 镜像 | 演进现有 `runners/harbor` 镜像，不创建新的通用基础镜像或 Runner 实体 |
+| 镜像 | 演进现有 `pkg/apiserver/jobs/runners/harbor` 镜像，不创建新的通用基础镜像或 Runner 实体 |
 | 进程模型 | Runner 作为容器主进程监督 Harbor 子进程，并主动向 Eruun 发出 HTTP 请求 |
 | 业务状态 | 新增有界 phase/heartbeat/terminal 事件；不把 Pod Running 或 HTTP 成功单独当作最终 Job 状态 |
 | 防重复执行 | 保留 Never 与零 backoff，并在启动 Harbor 前以现有执行身份和 Pod/Job UID 完成单实例 CAS 认领；认领写入现有 JobInfo/InternalInfo，不增加 claim 表或第二套状态机 |
@@ -29,7 +29,7 @@ Kubernetes 工作负载状态与评测业务状态并不等价：Pod `Running` �
 
 - `/api/v1/jobs` 接受 `type: job` + `traits.eval`，持久化认证空间的 WorkspaceID、服务端生成的 TaskID、JobSpec 和任务绑定能力。
 - `pkg/apiserver/jobs/builder.go` 使用固定 Harbor Runner 镜像构建 `batch/v1 Job`，并设置执行 deadline 与结果归档宽限期。
-- `runners/harbor/runner.py` 已作为容器主进程处理信号、启动 Harbor 子进程、判断原生结果、生成完整归档并重试上传。
+- `pkg/apiserver/jobs/runners/harbor/runner.py` 已作为容器主进程处理信号、启动 Harbor 子进程、判断原生结果、生成完整归档并重试上传。
 - `GET /api/v1/job-runners/:taskID/dataset` 与 `POST /api/v1/job-runners/:taskID/results` 已提供任务包下载和最终结果上传。
 - Runner 请求已绑定任务 Token、Pod 名称/UID、所属 Job UID、ExecutionKey、Job RunGeneration、Attempt 和当前恢复 checkpoint。
 - 结果归档、内容摘要、完整性判断、MinIO/数据库保存、保留、下载与空间授权已经实现。
@@ -108,7 +108,7 @@ Runner 只主动访问 Eruun，不需要 Eruun 连接短生命周期 Pod IP，�
 
 ## 5. 镜像与进程模型
 
-现有 `runners/harbor/Dockerfile` 是 `eval` 专用执行镜像。镜像以 UID/GID 1000 运行，入口为 `python /opt/eruun/runner.py`；Runner 是容器主进程，Harbor 是它监督的子进程。
+现有 `pkg/apiserver/jobs/runners/harbor/Dockerfile` 是 `eval` 专用执行镜像。镜像以 UID/GID 1000 运行，入口为 `python /opt/eruun/runner.py`；Runner 是容器主进程，Harbor 是它监督的子进程。
 
 如果后续引入 shell entrypoint，它只能校验只读启动文件并使用 `exec` 启动 Runner，不能承载状态机、HTTP 重试或子进程监督。例如：
 
@@ -314,7 +314,7 @@ Runner Pod 使用 `eruun-evaluation-runner` ServiceAccount，并为该 Pod 显�
 | 公共提交、查询与内部 Runner API | `pkg/apiserver/interfaces/api/jobs.go`、`pkg/apiserver/jobs` | 在内部协议中增加状态事件，不改变公共 Job 请求 |
 | 身份与持久化 | `WorkflowQueue`、`JobInfo`、jobs service/repository | 复用 ExecutionKey、RunGeneration、Attempt 和事务 fencing，在 JobInfo/InternalInfo 中保存 claim owner 与事件 checkpoint |
 | Kubernetes Job 构建与观察 | `pkg/apiserver/jobs/builder.go`、`pkg/apiserver/event/workflow/job` | 保持 InstantJobCtl、Never、零 backoff 和现有清理 |
-| Runner 进程 | `runners/harbor` | 在现有监督、上传和信号路径中插入有界事件客户端 |
+| Runner 进程 | `pkg/apiserver/jobs/runners/harbor` | 在现有监督、上传和信号路径中插入有界事件客户端 |
 | Runner SA/RBAC/NetworkPolicy | `pkg/apiserver/infrastructure/workspace/evaluation.go` | 保持现有权限；状态 API 不扩大 Kubernetes RBAC |
 | 结果与制品 | `pkg/apiserver/jobs/artifacts` | 继续使用现有归档和保存路径；状态事件只引用已确认结果 |
 

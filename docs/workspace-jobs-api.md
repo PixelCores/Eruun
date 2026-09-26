@@ -210,7 +210,7 @@ ACK 的 `data` 为 `{"acceptedSequence": 12, "action": "continue"}`，或在停�
 
 示例地址必须替换为实际地址。`runnerEgress` 仅允许单个 `/32` 或 `/128` 地址及端口，用于 Kubernetes API 和 Eruun API；根据 CNI 对 Service DNAT 的策略匹配方式，列出所需 Service IP 与后端地址。只对固定 Runner Pod 增加这些出站权限，任务环境沿用空间网络策略。`minio` 可省略，此时只提供数据库保存。
 
-Runner 使用固定、无 Secret 读权限的空间 ServiceAccount，只获得 Pod 生命周期与 exec 能力。任务环境不挂载 API Token。空间仍强制 restricted Pod Security、UID 1000、禁止提权与 capabilities；见 [Runner 的镜像和适配边界](../runners/harbor/README.md)。
+Runner 使用固定、无 Secret 读权限的空间 ServiceAccount，只获得 Pod 生命周期与 exec 能力。任务环境不挂载 API Token。空间仍强制 restricted Pod Security、UID 1000、禁止提权与 capabilities；见 [Runner 的镜像和适配边界](../pkg/apiserver/jobs/runners/harbor/README.md)。
 
 Helm 使用 `jobs.existingSecret` 和 `jobs.key` 挂载用户已创建的 Secret，Chart 不生成或公开存储凭据。四种角色需要相同配置；Controller 执行结果保存和 Sandbox 保留清理，Worker 执行 Harbor Job。API/Controller 获得指定 Sandbox CR 的独立 RBAC；Worker 不需 Sandbox 写权限。提供的单文件清单不默认启用 Harbor；使用 Helm 或为清单各角色手动挂载配置。
 
@@ -226,4 +226,4 @@ Go 测试覆盖类型校验、空间授权、Runner 执行身份和恢复、完�
 go test -race -tags=integration ./pkg/apiserver/jobs ./pkg/apiserver/jobs/artifacts
 ```
 
-需要 `MYSQL_TEST_DSN` 和 `MINIO_TEST_CONFIG` 指向隔离环境；未配置时集成部分跳过，不能作为真实数据库验证。Runner claim 的 MySQL 测试验证行锁下只有一个 Pod 获胜。Python 测试和本地镜像构建见 [Runner README](../runners/harbor/README.md)。不同付费模型、私有镜像仓库、生产 CNI 网络规则，以及真实集群 OOM/网络恢复矩阵仍需部署方验证。
+需要 `MYSQL_TEST_DSN` 和 `MINIO_TEST_CONFIG` 指向隔离环境；未配置时集成部分跳过，不能作为真实数据库验证。Runner claim 的 MySQL 测试验证行锁下只有一个 Pod 获胜。Python 测试和本地镜像构建见 [Runner README](../pkg/apiserver/jobs/runners/harbor/README.md)。不同付费模型、私有镜像仓库、生产 CNI 网络规则，以及真实集群 OOM/网络恢复矩阵仍需部署方验证。

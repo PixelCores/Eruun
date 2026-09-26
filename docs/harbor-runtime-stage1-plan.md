@@ -27,13 +27,13 @@ Eruun 部署在 ACK 内并管理同一集群，分批创建任务，目标是至
 | --- | --- | --- |
 | 全局默认准入 100、单空间 10；Worker 默认每进程 100 个 Workflow controller | 默认部署无法形成 10,000 并发；增加副本还增加缓存、连接和事件复制 | [调度策略](../pkg/apiserver/workflow/config/job_scheduler.go)、[运行配置](../pkg/apiserver/workflow/config/runtime.go) |
 | 运行 Job 每 2 秒读父任务 ownership 并 GET Kubernetes Job | 10,000 运行任务理想节奏约为 5,000 DB GET/s 和 5,000 Kubernetes GET/s | [Job 等待](../pkg/apiserver/event/workflow/job/job_retry.go)、[轮询周期](../pkg/apiserver/event/workflow/job/job_batch.go) |
-| Runner 每 15 秒心跳，事件鉴权读取 Pod 和 Job | 约 667 事件请求/s，另约 1,333 Kubernetes GET/s，还存在 DB 鉴权与事务成本 | [Runner](../runners/harbor/runner.py)、[事件鉴权](../pkg/apiserver/jobs/service.go) |
+| Runner 每 15 秒心跳，事件鉴权读取 Pod 和 Job | 约 667 事件请求/s，另约 1,333 Kubernetes GET/s，还存在 DB 鉴权与事务成本 | [Runner](../pkg/apiserver/jobs/runners/harbor/runner.py)、[事件鉴权](../pkg/apiserver/jobs/service.go) |
 | 每 Workflow 默认 10 秒续租；取消 watcher 每秒 GET Redis | 约 1,000 次续租/s 和 10,000 Redis GET/s；排队中已由 Worker 持有的任务还每 200ms 查询准入 | [租约](../pkg/apiserver/event/workflow/workflow.go)、[取消](../pkg/apiserver/workflow/signal/cancel.go)、[准入等待](../pkg/apiserver/event/workflow/job/job_scheduling.go) |
 | Scheduler 默认每 3 秒运行，单批最多准入 100，扫描全部 queued/admitted 并逐 task 查 parent | 长事务、全局策略行竞争与重复读取；100/3 仅为默认批次节奏估算 | [调度仓储](../pkg/apiserver/domain/repository/job_scheduler.go)、[Dispatcher](../pkg/apiserver/event/workflow/dispatcher.go) |
 | Scheduler Leader 的过期 lease 回收默认每 10 秒最多 100 条 | 若 10,000 条过期 WorkflowQueue 都经此路径，约需 100 轮、量级约 1,000s；回到 Waiting 尚未完成接管，增加主备副本不线性提升回收吞吐 | [回收批次](../pkg/apiserver/domain/repository/workflow_lease.go)、[选主调用链](../pkg/apiserver/server_runtime_leader.go)、[运行配置](../pkg/apiserver/workflow/config/runtime.go) |
 | 结果维护循环每 15 秒处理最多 20 个正常 pending 保存目标，串行执行 | 单目标结果正常处理节奏约 1.33 个/s 或更低，集中完成可积压；恢复过期目标另计 | [维护循环](../pkg/apiserver/jobs/service.go)、[保存](../pkg/apiserver/jobs/artifacts/delivery.go) |
-| eval 默认 1 小时、最多 24 小时，Runner 与 trial 也有 deadline | 周级任务当前不支持，不能只改一个 API 校验值 | [规格](../pkg/apiserver/domain/spec/job.go)、[构建](../pkg/apiserver/jobs/builder.go)、[Runner](../runners/harbor/runner.py) |
-| Runner 显式关闭 SandboxClaim；任务环境沿用 Harbor ACK Pod 后端 | 尚无按需 Sandbox CR 执行与生命周期适配 | [环境适配](../runners/harbor/eruun_environment.py)、[Runner 配置](../runners/harbor/runner.py) |
+| eval 默认 1 小时、最多 24 小时，Runner 与 trial 也有 deadline | 周级任务当前不支持，不能只改一个 API 校验值 | [规格](../pkg/apiserver/domain/spec/job.go)、[构建](../pkg/apiserver/jobs/builder.go)、[Runner](../pkg/apiserver/jobs/runners/harbor/runner.py) |
+| Runner 显式关闭 SandboxClaim；任务环境沿用 Harbor ACK Pod 后端 | 尚无按需 Sandbox CR 执行与生命周期适配 | [环境适配](../pkg/apiserver/jobs/runners/harbor/eruun_environment.py)、[Runner 配置](../pkg/apiserver/jobs/runners/harbor/runner.py) |
 
 现有 Worker Pod Informer 只筛选带 `eruun.io/app-id` 的 Pod；独立 eval Runner/trial 使用 task 标签，不能把应用组件的共享缓存视为独立 Job 已完成共享观察。应用组件路径还有每次事件遍历全部 Pod 的 tracker，以及每个等待器查询全部缓存的 lister；它们是复用前需修正/测量的相邻边界，不可误归因于纯独立 eval 压力。[观察器](../pkg/apiserver/infrastructure/informer/kubernetes_observer.go)、[tracker](../pkg/apiserver/infrastructure/informer/waiter.go)。
 
@@ -94,7 +94,7 @@ Eruun 部署在 ACK 内并管理同一集群，分批创建任务，目标是至
 - 协同修改 Go/Python 校验、Runner/任务环境 deadline、Harbor task 内部超时、凭据有效期与结果保留；最大任务时长必须显式有界。已有资料未证明的 ACS 单实例时长/配额要在集群验证；不能仅去掉 24 小时校验。
 - 核算整个执行期的 Runner 工作目录、trial 文件、日志、归档与保留资源峰值，冻结容量、清理时机和磁盘耗尽行为；同时验证长任务中的身份凭据及模型/存储凭据续期，不能只验证结束时上传。
 - 先部署兼容读方，再启用扩展写方，按仍存活的 Runner 版本集合与排空策略验证混合版本。事件 `protocolVersion=v1` 不是已有协商；Runner 配置环境变量与事件 API 解码是不同契约。定义可接受扩展、必需字段和拒绝条件，不以统一关闭严格解码替代兼容设计；旧版本观察迁移也不默认等待最长任务结束。
-- 触点：`runners/harbor`、`jobs/builder.go`、domain/spec、HTTP/gRPC 校验/Schema、空间 RBAC、部署文档与示例。
+- 触点：`pkg/apiserver/jobs/runners/harbor`、`jobs/builder.go`、domain/spec、HTTP/gRPC 校验/Schema、空间 RBAC、部署文档与示例。
 - 验收：真实 ACS 按需创建到完整结果保存；无需预热池；控制面重启后重新关联健康实例；Runner/任务环境丢失有明确结果。现有独立与 Application eval 契约均回归。第二阶段只预留可靠关联，不提前实现快照 API。
 - 依赖与回退：依赖 P1-01、P1-02。资源类型切换不能把存量 Pod 静默当作 Sandbox；停止新准入并按原契约排空存量后回退。具体暴露/启用方式由实现 PR 明确，本文不承诺新配置键。
 
@@ -190,10 +190,10 @@ ACR 企业版标准版的官方分发规格为 500 拉取 QPS；此为实例规�
 | 静态与构建 | `go vet ./...`；`go build -trimpath -o /tmp/eruun-server ./cmd/main.go`；变更 Go 文件格式、`git diff --check` | 通过 |
 | MySQL 调度 | `go test -tags=integration ./pkg/apiserver/domain/repository -run 'TestJobSchedulerMySQL\|TestResourceCreationMySQL\|TestSandboxStartMySQL' -race -count=1` | 通过；含多事务准入、创建预算、全局启动占位、保留资源与降低配额后的原实例接管 |
 | MySQL Sandbox | `go test -tags=integration ./pkg/apiserver/jobs -run '^TestMySQLSandboxLifecycle$' -race -count=1` | 通过；幂等创建、零值释放、并发 trial、取消及迟到创建响应 |
-| Runner | 固定依赖虚拟环境运行 `python -m unittest discover -s runners/harbor -v` | 75 项通过，无框架集成跳过 |
+| Runner | 固定依赖虚拟环境运行 `python -m unittest discover -s pkg/apiserver/jobs/runners/harbor -v` | 75 项通过，无框架集成跳过 |
 | 压测工具 | `python3 -m unittest discover -s examples/agent-evaluation/load-test -p 'test_*.py' -v` | 26 项通过，不访问真实集群 |
 | 部署 | 安装器脚本测试、`go test ./deploy`、Helm 4.2.0 lint/template、`scripts/check-sensitive-content.sh` | 通过 |
-| Runner 镜像 | `docker build --tag eruun-harbor-runner:stage1-local-check runners/harbor` | 本地构建通过，未推送 |
+| Runner 镜像 | `docker build --tag eruun-harbor-runner:stage1-local-check pkg/apiserver/jobs/runners/harbor` | 本地构建通过，未推送 |
 | 服务端镜像 | `docker build --tag eruun-server:stage1-local-check .` | 本地构建通过，未推送 |
 
 MySQL 检查使用本机临时隔离容器，执行后删除；重复运行时 `MYSQL_TEST_DSN` 必须指向可销毁的 `eruun_scheduler_test*` 测试库，不能使用业务库。本次未部署 ACK/ACS、未运行真实云故障注入、未建立 10000 同时真实执行或两周长稳证据。

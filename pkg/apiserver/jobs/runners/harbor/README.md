@@ -9,10 +9,10 @@ Runner 下载经过摘要验证的原生 Harbor `tar.gz` 任务包，默认调�
 在仓库根目录运行：
 
 ```sh
-docker build -t eruun-harbor-runner:0.22.0-local runners/harbor
+docker build -t eruun-harbor-runner:0.22.0-local pkg/apiserver/jobs/runners/harbor
 python3 -m venv /tmp/eruun-harbor-test
-/tmp/eruun-harbor-test/bin/pip install -r runners/harbor/requirements.txt
-/tmp/eruun-harbor-test/bin/python -m unittest discover -s runners/harbor -v
+/tmp/eruun-harbor-test/bin/pip install -r pkg/apiserver/jobs/runners/harbor/requirements.txt
+/tmp/eruun-harbor-test/bin/python -m unittest discover -s pkg/apiserver/jobs/runners/harbor -v
 ```
 
 需要 Python 3.12 或更新版本。测试包括真实 Harbor CLI 的配置解析及真实 ACK 后端的 Pod 生成；Kubernetes API 被替换为测试传输，不会连接用户集群或调用收费模型。未安装框架时，纯 Python 测试仍可运行，框架集成测试明确跳过。
@@ -21,7 +21,7 @@ python3 -m venv /tmp/eruun-harbor-test
 
 ```sh
 docker build -t eruun-harbor-task:1.0.0-local examples/agent-evaluation/harbor-task/environment
-python3 runners/harbor/smoke_kind.py --result /tmp/harbor-smoke-results.tar.gz
+python3 pkg/apiserver/jobs/runners/harbor/smoke_kind.py --result /tmp/harbor-smoke-results.tar.gz
 ```
 
 该验收使用 restricted PodSecurity、无权限试验身份和本地镜像，真实运行 Harbor 到 oracle reward=1，并逐字节检查包含非 UTF-8 内容的制品及完整归档上传。它对状态入口注入连接中断和 HTTP 503，验证同 sequence 恢复；另运行 verifier 故意失败和被安全解包拒绝的制品场景，验证诊断回传及原始 Pod 保留。最后使已 claim 的 Runner OOM，并验证 replacement Pod 无法重新认领或下载数据。它使用模拟的平台传输服务，不覆盖生产 API 的鉴权、结果保存目的地、收费模型或生产集群故障矩阵。
@@ -92,11 +92,11 @@ Harbor 的无条件删除关闭。每个 trial 收尾时，只有下载记录及
 
 ## 恢复能力实验
 
-Runner 通过可选 `recovery` 配置支持固定 Codex/Claude Code 版本的恢复协议；部署、重放与隔离边界见[恢复文档](../../docs/harbor-runtime-recovery.md)。真实 ACS 验收尚未执行。安装本目录固定依赖后，在项目根目录运行 `python runners/harbor/recovery_probe.py`，可重复验证原生 Harbor 的恢复粒度：已完成 trial 跳过，未完成 trial 使用新身份重跑。退出码 `2` 表示实验完成但 trial 内恢复门禁失败；退出码 `1` 表示实验或依赖错误。
+Runner 通过可选 `recovery` 配置支持固定 Codex/Claude Code 版本的恢复协议；部署、重放与隔离边界见[恢复文档](../../../../../docs/harbor-runtime-recovery.md)。真实 ACS 验收尚未执行。安装本目录固定依赖后，在项目根目录运行 `python pkg/apiserver/jobs/runners/harbor/recovery_probe.py`，可重复验证原生 Harbor 的恢复粒度：已完成 trial 跳过，未完成 trial 使用新身份重跑。退出码 `2` 表示实验完成但 trial 内恢复门禁失败；退出码 `1` 表示实验或依赖错误。
 
-该实验只操作临时 fixture，不运行 Agent 或访问集群。Codex、Claude Code 的原生会话恢复入口不能直接视为 Eruun 已支持故障恢复；适配范围、复现命令及后续 ACS 验收见[第二阶段计划](../../docs/harbor-runtime-stage2-plan.md#21-s2-1-本地能力实验)。
+该实验只操作临时 fixture，不运行 Agent 或访问集群。Codex、Claude Code 的原生会话恢复入口不能直接视为 Eruun 已支持故障恢复；适配范围、复现命令及后续 ACS 验收见[第二阶段计划](../../../../../docs/harbor-runtime-stage2-plan.md#21-s2-1-本地能力实验)。
 
-另可在安装 Codex CLI `0.154.0` 与 Claude Code `2.1.281` 的本机运行 `python3 runners/harbor/native_resume_probe.py`，用回环模型服务验证强杀和目录迁移后的原生会话恢复。脚本不使用真实模型凭据、不执行工具；成功也不表示 Harbor 生命周期、写入屏障或 ACS 已验证。
+另可在安装 Codex CLI `0.154.0` 与 Claude Code `2.1.281` 的本机运行 `python3 pkg/apiserver/jobs/runners/harbor/native_resume_probe.py`，用回环模型服务验证强杀和目录迁移后的原生会话恢复。脚本不使用真实模型凭据、不执行工具；成功也不表示 Harbor 生命周期、写入屏障或 ACS 已验证。
 
 
 ## 实验性原生会话恢复
@@ -115,7 +115,7 @@ Runner 通过可选 `recovery` 配置支持固定 Codex/Claude Code 版本的恢
 ERUUN_TEST_NATIVE_CODEX="$(command -v codex)" \
 ERUUN_TEST_NATIVE_CLAUDE="$(command -v claude)" \
 PYTHONDONTWRITEBYTECODE=1 LITELLM_LOCAL_MODEL_COST_MAP=True \
-/tmp/eruun-harbor-test/bin/python -m unittest discover -s runners/harbor -v
+/tmp/eruun-harbor-test/bin/python -m unittest discover -s pkg/apiserver/jobs/runners/harbor -v
 ```
 
 该命令不使用真实模型凭据或集群。原生命令 fixture 为跨平台运行替换 Linux `/proc` 检查，验证的只是生产 argv、受控中断和真实 CLI 会话读写；Linux 屏障、工具副作用、ACS 快照/克隆、真实模型及规模验收仍待完成。

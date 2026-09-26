@@ -61,12 +61,12 @@ Runner 内部接口为 `POST/GET /api/v1/job-runners/{taskID}/checkpoints/{check
 
 ```bash
 python3.13 -m venv /tmp/eruun-recovery-venv
-/tmp/eruun-recovery-venv/bin/python -m pip install -r runners/harbor/requirements.txt
-LITELLM_LOCAL_MODEL_COST_MAP=True /tmp/eruun-recovery-venv/bin/python -m unittest discover -s runners/harbor -p 'test_*.py'
+/tmp/eruun-recovery-venv/bin/python -m pip install -r pkg/apiserver/jobs/runners/harbor/requirements.txt
+LITELLM_LOCAL_MODEL_COST_MAP=True /tmp/eruun-recovery-venv/bin/python -m unittest discover -s pkg/apiserver/jobs/runners/harbor -p 'test_*.py'
 go test ./pkg/apiserver/jobs/... ./pkg/apiserver/event/workflow/... -race
 ```
 
-上述测试默认不运行真实 CLI fixture；设置 `ERUUN_TEST_NATIVE_CODEX` 和 `ERUUN_TEST_NATIVE_CLAUDE` 为固定版本可执行文件路径后，可运行完整回环命令测试，具体命令见 [Runner 文档](../runners/harbor/README.md#实验性原生会话恢复)。
+上述测试默认不运行真实 CLI fixture；设置 `ERUUN_TEST_NATIVE_CODEX` 和 `ERUUN_TEST_NATIVE_CLAUDE` 为固定版本可执行文件路径后，可运行完整回环命令测试，具体命令见 [Runner 文档](../pkg/apiserver/jobs/runners/harbor/README.md#实验性原生会话恢复)。
 
 原生 CLI 本地会话探针及上游 Harbor 恢复粒度实验见 [第二阶段计划](harbor-runtime-stage2-plan.md#21-s2-1-本地能力实验)。测试未证明任务工具、完整生产镜像和真实 ACS 能端到端恢复。
 

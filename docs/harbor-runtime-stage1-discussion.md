@@ -25,9 +25,9 @@
 补充材料讨论了另一个 Harbor demo，其内容可用于识别需求和故障边界，但不能直接替代当前 Eruun 的实现事实。
 
 - 材料中的“约 2,000 个任务”是外部讨论背景，本任务仍采用已确认的 10,000 个同时运行 Job 目标。
-- 外部对话描述 Harbor 0.23.0 经 SandboxSet/SandboxClaim 领取环境；Eruun 当前固定 Harbor 0.22.0，配置 `use_sandbox_claim=False`，沿用直接 Pod 后端。[依赖版本](../runners/harbor/requirements.txt)、[Runner 配置](../runners/harbor/runner.py)。
+- 外部对话描述 Harbor 0.23.0 经 SandboxSet/SandboxClaim 领取环境；Eruun 当前固定 Harbor 0.22.0，配置 `use_sandbox_claim=False`，沿用直接 Pod 后端。[依赖版本](../pkg/apiserver/jobs/runners/harbor/requirements.txt)、[Runner 配置](../pkg/apiserver/jobs/runners/harbor/runner.py)。
 - 当前 trial Pod 的 `ownerReferences` 指向 Runner Pod 的名称与 UID。不能把外部 demo 中“资源没有自动所有权关联”的说法套用到 Eruun。迁移到 Sandbox CR 后，需要重新验证 CR 与 Pod 的所有权和删除传播。
-- 当前自定义环境适配已经保护采集：成功复制到 Runner 后才删除 trial 源环境，采集失败则保留源；它并非无条件执行 Harbor 的正常删除行为。[环境适配](../runners/harbor/eruun_environment.py)。
+- 当前自定义环境适配已经保护采集：成功复制到 Runner 后才删除 trial 源环境，采集失败则保留源；它并非无条件执行 Harbor 的正常删除行为。[环境适配](../pkg/apiserver/jobs/runners/harbor/eruun_environment.py)。
 - 外部对话建议共享预热池，但用户已说明不需要预热池，因此第一阶段不引入共享 SandboxSet 库存管理。
 - “15K Sandbox/分钟”等供应商指标不构成当前集群或 Eruun 的容量证据；本文不将其用作已验证吞吐。
 
@@ -55,7 +55,7 @@ ACR 的“500 / 7 ≈ 71 个镜像/秒”只是参考材料中的简化吞吐估
 
 `n_concurrent_trials` 控制并发 trial 上限；设为 1 时逐个执行。`n_attempts` 是计划内重复评测，`retry.max_retries` 则控制异常重试。重复评测、Harbor 异常重试和 Eruun 执行重试必须保持不同语义，不能仅凭同名的 attempt 字段推断资源身份。[Job 配置](https://docs.harborframework.com/core-concepts/jobs/configs)、[v0.22.0 Job 展开](https://github.com/harbor-framework/harbor/blob/v0.22.0/src/harbor/job.py)、[TrialQueue](https://github.com/harbor-framework/harbor/blob/v0.22.0/src/harbor/trial/queue.py)。
 
-Eruun 当前只传入一个 agent/model 配置，`attempts` 范围为 1–10，`concurrency` 为 1–16，二者默认均为 1；Harbor 内部异常重试明确设置为 0。这些是当前适配限制，不代表 Harbor 自身的全部能力。[规格校验](../pkg/apiserver/domain/spec/job.go)、[配置映射](../runners/harbor/runner.py)。
+Eruun 当前只传入一个 agent/model 配置，`attempts` 范围为 1–10，`concurrency` 为 1–16，二者默认均为 1；Harbor 内部异常重试明确设置为 0。这些是当前适配限制，不代表 Harbor 自身的全部能力。[规格校验](../pkg/apiserver/domain/spec/job.go)、[配置映射](../pkg/apiserver/jobs/runners/harbor/runner.py)。
 
 以下为容量计算示例，假定一个 agent/model、每 trial 一个环境，暂不计失败保留、重试和清理中的实例：
 
@@ -243,7 +243,7 @@ trial 环境内产生数据
   → Runner 上报携带归档身份的 terminal，平台校验并确认
 ```
 
-保存目标的异步交付从源归档持久化后推进，不以收到 terminal 为启动前提。“已采集到 Runner”“平台已持久化”“终态已确认”和“所有保存目标交付成功”是不同时间点。当前环境适配检查采集状态及 manifest 后才释放源环境；正常完成/失败的 Runner 清理还受可信 terminal 和完整源归档约束，取消/超时另有停止路径。[采集适配](../runners/harbor/eruun_environment.py)、[源归档持久化](../pkg/apiserver/jobs/artifacts/store.go)、[Runner 清理门槛](../pkg/apiserver/event/workflow/job/job_instant.go)。
+保存目标的异步交付从源归档持久化后推进，不以收到 terminal 为启动前提。“已采集到 Runner”“平台已持久化”“终态已确认”和“所有保存目标交付成功”是不同时间点。当前环境适配检查采集状态及 manifest 后才释放源环境；正常完成/失败的 Runner 清理还受可信 terminal 和完整源归档约束，取消/超时另有停止路径。[采集适配](../pkg/apiserver/jobs/runners/harbor/eruun_environment.py)、[源归档持久化](../pkg/apiserver/jobs/artifacts/store.go)、[Runner 清理门槛](../pkg/apiserver/event/workflow/job/job_instant.go)。
 
 推荐保持以下行为边界：
 
@@ -312,7 +312,7 @@ namespace field selector 不支持一组 namespace，不能据此推出只能接
 
 分片标签要落到被观察的 Job、Sandbox、Pod 自身；Namespace 标签不会自动成为 Pod 标签。迁移可比较补标与临时兼容观察，先确认覆盖和单写者交接，再切流。既要覆盖存量对象，也要覆盖旧 Runner 后续创建的 trial 和控制器重建的 Pod；不能只补一次现有 Pod，也不能默认运行中 Job 的模板允许任意修改。[Pod 标签读取](https://github.com/kubernetes/kubernetes/blob/v1.35.0/pkg/registry/core/pod/strategy.go#L407-L426)。
 
-标签路径与协议发布有关联，但没有必然的“一改标签就改事件协议”关系：当前 Runner 通过 `pod_overrides` 创建直接 Pod，尚未创建 Sandbox CR；未来推荐 Eruun 创建 Sandbox，标签写入者也须随分工冻结。`ERUUN_JOB_CONFIG` 启动配置与 Runner HTTP 事件请求是两个契约，事件入口的 `DisallowUnknownFields` 不作用于环境变量配置。[Runner 配置与校验](../runners/harbor/runner.py)、[配置注入](../pkg/apiserver/jobs/builder.go)、[事件入口](../pkg/apiserver/interfaces/api/jobs.go)。
+标签路径与协议发布有关联，但没有必然的“一改标签就改事件协议”关系：当前 Runner 通过 `pod_overrides` 创建直接 Pod，尚未创建 Sandbox CR；未来推荐 Eruun 创建 Sandbox，标签写入者也须随分工冻结。`ERUUN_JOB_CONFIG` 启动配置与 Runner HTTP 事件请求是两个契约，事件入口的 `DisallowUnknownFields` 不作用于环境变量配置。[Runner 配置与校验](../pkg/apiserver/jobs/runners/harbor/runner.py)、[配置注入](../pkg/apiserver/jobs/builder.go)、[事件入口](../pkg/apiserver/interfaces/api/jobs.go)。
 
 若实际扩展事件协议，当前 `protocolVersion=v1` 是精确版本门禁，不能当作协商能力。发布顺序为：先让所有可能接收请求的 Server 接受明确定义的新旧格式 → 再启用新 Runner 写入 → 确认最后一个旧 Runner 及其收尾结束后退出旧协议；窗口取决于实际存活集合及排空方式。保留明确字段和拒绝规则，不统一关闭严格解码。资源标签迁移可另用兼容观察和补标完成，不必然等到最长旧任务结束。[协议校验](../pkg/apiserver/jobs/runner_events.go)。
 
@@ -330,7 +330,7 @@ P1-03 需冻结故障检测/租约过期 → 回收 → Workflow 派发与必要
 
 Runner 事件有 `claim`、`heartbeat`、`phase`、`progress`、`terminal` 五类。claim 要求首个 sequence，是执行门禁；terminal 必须携带归档 ID、digest 与采集完成信息，服务端还比对 workspace、task、executionKey、kind、过期状态及摘要。因此 terminal 属于结果确认路径，不能与可替代心跳一同降格处理。[事件规则及归档匹配](../pkg/apiserver/jobs/runner_events.go)。
 
-当前 Runner 默认收尾窗口为 360 秒，并受整个任务的截止时间约束；采集检查、归档、上传、terminal 共用此窗口。上传最多 3 次，前两次失败后分别等待约 1 秒、2 秒；快速失败时即使剩余预算很大，也会很快耗尽次数。建连超时先取 `min(30, remaining)`，但每块上传发送及等待响应前，socket timeout 都会设为调用时的剩余预算。单次阻塞可能吃掉大部分收尾窗口；这既不是绝对无限等待，也不是严格的端到端 deadline 保证。[`transfer_connection` / `transfer_timeout`、`upload_with_retry`、`execute`](../runners/harbor/runner.py)。
+当前 Runner 默认收尾窗口为 360 秒，并受整个任务的截止时间约束；采集检查、归档、上传、terminal 共用此窗口。上传最多 3 次，前两次失败后分别等待约 1 秒、2 秒；快速失败时即使剩余预算很大，也会很快耗尽次数。建连超时先取 `min(30, remaining)`，但每块上传发送及等待响应前，socket timeout 都会设为调用时的剩余预算。单次阻塞可能吃掉大部分收尾窗口；这既不是绝对无限等待，也不是严格的端到端 deadline 保证。[`transfer_connection` / `transfer_timeout`、`upload_with_retry`、`execute`](../pkg/apiserver/jobs/runners/harbor/runner.py)。
 
 例如服务端已保存归档而响应迟迟未到，上传可能耗尽剩余窗口，terminal 无时间完成确认。这时应记录“源归档可能已保存、终态确认未完成”，不能仅凭响应丢失宣告任务必败或结果未保存。现有同一 execution、相同 digest 的重复上传可以返回既有 artifact，不同内容会冲突；要复用这一幂等边界，同时满足执行身份与保留期约束。[上传鉴权与发布](../pkg/apiserver/jobs/service.go)、[源归档幂等](../pkg/apiserver/jobs/artifacts/store.go)、[完成/清理门禁](../pkg/apiserver/event/workflow/job/job_instant.go)。
 
@@ -347,13 +347,13 @@ P1-04/P1-05 将上传改为 **deadline 驱动的可重试循环**，同时约束
 
 验收覆盖连接快速拒绝、慢上传/慢响应、上传已保存但 ACK 丢失、terminal 已提交但 ACK 丢失、429/5xx、身份失效及中断期间集中完成。分别记录源归档、终态确认和保存目标状态，证明没有重复副作用、误报成功或提前清理。
 
-事件重试等待公式的实际序列为约 0.5、1、2、4、4…秒。10,000 个持续快速失败请求在封顶后约 2,500 次/秒只是忽略请求耗时的条件估算，不是实测峰值；4 秒约束失败后的等待，不能推出全部请求必落在同一个 4 秒窗口。要控制恢复压力，还需请求时限、退避上限、抖动及服务端接纳控制。[事件重试](../runners/harbor/runner.py)。
+事件重试等待公式的实际序列为约 0.5、1、2、4、4…秒。10,000 个持续快速失败请求在封顶后约 2,500 次/秒只是忽略请求耗时的条件估算，不是实测峰值；4 秒约束失败后的等待，不能推出全部请求必落在同一个 4 秒窗口。要控制恢复压力，还需请求时限、退避上限、抖动及服务端接纳控制。[事件重试](../pkg/apiserver/jobs/runners/harbor/runner.py)。
 
 ### 9.5 周级运行与验收证据
 
-- 当前 Runner `/work` 为未设置 `sizeLimit` 的 EmptyDir。结果归档压缩 512 MiB、解压 2 GiB 等交付限制并不约束任务运行中不断增长的日志和文件；归档过程还存在临时磁盘峰值。P1-04/P1-05 需冻结执行磁盘、文件数/日志、持久化和超限处置，不能只延长 deadline。[Runner 卷](../pkg/apiserver/jobs/builder.go)、[归档与限制](../runners/harbor/runner.py)。
-- 当前文件采集通过 Python Kubernetes exec/stream 和 tar，不能以 `kubectl` 客户端配置代替链路验证。实测虚拟节点上的长连接、大文件、并发传输、慢消费和中断重试。[采集实现](../runners/harbor/eruun_environment.py)。
-- Runner 使用 ServiceAccount，当前 trial Pod 关闭自动挂载。凭据压力按真实使用身份计算，不能按全部 Pod 一律续签；TokenRequest 生成 JWT 不等于每次向 etcd 写一个 Token 对象。仍须验证周级运行中的凭据轮换与 client 重新加载。[Pod 配置](../runners/harbor/runner.py)、[TokenRequest 实现](https://github.com/kubernetes/kubernetes/blob/v1.35.0/pkg/registry/core/serviceaccount/storage/token.go#L222-L240)。
+- 当前 Runner `/work` 为未设置 `sizeLimit` 的 EmptyDir。结果归档压缩 512 MiB、解压 2 GiB 等交付限制并不约束任务运行中不断增长的日志和文件；归档过程还存在临时磁盘峰值。P1-04/P1-05 需冻结执行磁盘、文件数/日志、持久化和超限处置，不能只延长 deadline。[Runner 卷](../pkg/apiserver/jobs/builder.go)、[归档与限制](../pkg/apiserver/jobs/runners/harbor/runner.py)。
+- 当前文件采集通过 Python Kubernetes exec/stream 和 tar，不能以 `kubectl` 客户端配置代替链路验证。实测虚拟节点上的长连接、大文件、并发传输、慢消费和中断重试。[采集实现](../pkg/apiserver/jobs/runners/harbor/eruun_environment.py)。
+- Runner 使用 ServiceAccount，当前 trial Pod 关闭自动挂载。凭据压力按真实使用身份计算，不能按全部 Pod 一律续签；TokenRequest 生成 JWT 不等于每次向 etcd 写一个 Token 对象。仍须验证周级运行中的凭据轮换与 client 重新加载。[Pod 配置](../pkg/apiserver/jobs/runners/harbor/runner.py)、[TokenRequest 实现](https://github.com/kubernetes/kubernetes/blob/v1.35.0/pkg/registry/core/serviceaccount/storage/token.go#L222-L240)。
 - 分开报告轻量控制面实验、代表性任务正确性、万级真实同时执行和最长时长验证。状态延迟应明确事件接收、DB 提交、API 可见的测量点与时间源；不能无条件把 condition 时间戳当作准确状态变化时刻。单次成功、提交总量或模拟时钟不能替代相应真实验收。
 
 ### 9.6 已关闭的错误推论

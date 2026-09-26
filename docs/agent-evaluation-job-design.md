@@ -1,6 +1,6 @@
 # Eruun LLM 评测任务演进方向
 
-> 状态：Draft / Proposal。`main` 已实现 Harbor `eval` 空间 Job 及其单实例认领、阶段/心跳/进度/终态协议；当前公共 API、默认参数与运行边界以 [空间 Job API](workspace-jobs-api.md)、[Harbor Runner](../runners/harbor/README.md) 和 [Runner 实现参考](agent-evaluation-runner-service-design.md) 为准。本文保留更多目标、Judge、质量门禁和其他 Agent 能力的后续演进。
+> 状态：Draft / Proposal。`main` 已实现 Harbor `eval` 空间 Job 及其单实例认领、阶段/心跳/进度/终态协议；当前公共 API、默认参数与运行边界以 [空间 Job API](workspace-jobs-api.md)、[Harbor Runner](../pkg/apiserver/jobs/runners/harbor/README.md) 和 [Runner 实现参考](agent-evaluation-runner-service-design.md) 为准。本文保留更多目标、Judge、质量门禁和其他 Agent 能力的后续演进。
 
 > 当前契约修订：评测已统一为 `type: job` + `traits.eval`，支持独立 Job 与应用 Workflow；model 是被测对象，agent 是 harness，env 使用 ack，框架版本属于执行快照。本文后文作为 Job 类型的 `eval` 是内部执行器/早期设计用语；公共请求类型仍是 `job`。后续被测应用引用、Judge 和质量门禁仍属 Proposal。
 

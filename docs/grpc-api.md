@@ -1,6 +1,6 @@
 # gRPC v1 公共 API
 
-> 状态：Current。本文描述与 HTTP `/api/v1` 并行的 Eruun 用户业务 gRPC 入口；以 `proto/eruun/v1/` 为字段、服务和流式契约的最终依据。
+> 状态：Current。本文描述与 HTTP `/api/v1` 并行的 Eruun 用户业务 gRPC 入口；以 `pkg/apiserver/interfaces/grpc/proto/eruun/v1/` 为字段、服务和流式契约的最终依据。
 
 ## 启动与部署
 
@@ -57,7 +57,7 @@ func main() {
 }
 ```
 
-Protobuf 采用 `eruun.v1` 包；Go 客户端与服务端生成代码随仓库提交。`optional` 标量用于区分“未提供”与零值；动态 JSON 取值只在原有动态字段使用 `google.protobuf.Struct/Value`，规范 JSON Schema 原文为 `bytes`。固定生成工具为 protoc 35.0、protoc-gen-go v1.36.12、protoc-gen-go-grpc v1.6.2：
+Protobuf 源文件放在 `pkg/apiserver/interfaces/grpc/proto/eruun/v1`，生成的 Go 客户端与服务端代码放在同一接口层的 `pb/v1` 并随仓库提交。生成时以 `pkg/apiserver/interfaces/grpc/proto` 为 include 根目录，Proto import 路径仍是 `eruun/v1/*.proto`，协议包名仍是 `eruun.v1`。`optional` 标量用于区分“未提供”与零值；动态 JSON 取值只在原有动态字段使用 `google.protobuf.Struct/Value`，规范 JSON Schema 原文为 `bytes`。固定生成工具为 protoc 35.0、protoc-gen-go v1.36.12、protoc-gen-go-grpc v1.6.2：
 
 ```bash
 make grpc-gen

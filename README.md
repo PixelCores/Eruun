@@ -244,7 +244,7 @@ go vet ./...
 | Four roles, execution sequences, leases, and failure recovery | [Architecture diagrams](docs/architecture-diagrams.md), [Workflow architecture](docs/workflow-architecture-guide.md), [Distributed runtime](docs/enterprise-distributed-runtime-design.md) |
 | API and automation integration | [Canonical JSON](docs/canonical-json-profile.md), [gRPC](docs/grpc-api.md), [Account examples](examples/account-auth-workspaces/README.md) |
 | Deployment and workspace isolation | [Helm](docs/helm-deployment.md), [Accounts and workspaces](docs/account-auth-workspaces.md), [Local dependencies](docs/local-docker-dependencies.md) |
-| Commands, evaluation, task packages, and results | [Workspace Job API](docs/workspace-jobs-api.md), [Evaluation example](examples/agent-evaluation/README.md), [Runner](runners/harbor/README.md) |
+| Commands, evaluation, task packages, and results | [Workspace Job API](docs/workspace-jobs-api.md), [Evaluation example](examples/agent-evaluation/README.md), [Runner](pkg/apiserver/jobs/runners/harbor/README.md) |
 | Future AI runtime direction | [Vision and roadmap (Draft / Proposal)](docs/ai-runtime-vision.md) |
 
 ## License

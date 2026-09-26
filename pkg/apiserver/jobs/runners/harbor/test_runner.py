@@ -21,7 +21,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import runner
 
 
-EXAMPLE = Path(__file__).resolve().parents[2] / "examples/agent-evaluation/harbor-task"
+EXAMPLE = Path(__file__).resolve().parents[5] / "examples/agent-evaluation/harbor-task"
 
 
 def config():

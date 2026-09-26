@@ -14,7 +14,7 @@ import time
 import uuid
 
 
-EXAMPLE = Path(__file__).resolve().parents[2] / "examples/agent-evaluation/harbor-task"
+EXAMPLE = Path(__file__).resolve().parents[5] / "examples/agent-evaluation/harbor-task"
 SECURITY = {"runAsUser": 1000, "runAsGroup": 1000, "runAsNonRoot": True,
             "allowPrivilegeEscalation": False, "capabilities": {"drop": ["ALL"]}}
 SERVER = '''from http.server import BaseHTTPRequestHandler, HTTPServer

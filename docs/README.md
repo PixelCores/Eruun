@@ -59,9 +59,9 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | 路径 | 职责 | 常见需求入口 | 注意事项 |
 | --- | --- | --- | --- |
 | `cmd/main.go`, `cmd/server/app` | API Server 启动、参数、服务装配 | 新增启动参数、调整初始化顺序 | 配置问题优先 fail-fast，不要静默降级 |
-| `pkg/apiserver/jobs` | 空间独立 Job 与评测数据 | command、Harbor 提交、原生任务包、完整结果、独立保存及保留策略 | 复用现有 WorkflowQueue、JobInfo 和执行租约；公共规格在 `domain/spec`，框架 Runner 在 `runners/harbor` |
+| `pkg/apiserver/jobs` | 空间独立 Job 与评测数据 | command、Harbor 提交、原生任务包、完整结果、独立保存及保留策略 | 复用现有 WorkflowQueue、JobInfo 和执行租约；公共规格在 `domain/spec`，框架 Runner 在 `pkg/apiserver/jobs/runners/harbor` |
 | `pkg/apiserver/interfaces/api` | HTTP 路由、参数绑定、响应封装、中间件 | 新接口、接口校验、认证授权、流式能力 | 不直接写 DB/K8s，业务逻辑下沉到 Domain |
-| `pkg/apiserver/interfaces/grpc`, `proto/eruun/v1` | 用户业务 gRPC 适配与版本化 Protobuf 契约 | RPC、强类型字段、metadata 认证、流式传输 | 复用 Domain 服务；不经进程内 HTTP 转发；路由对照见 `grpc-api.md` |
+| `pkg/apiserver/interfaces/grpc`, `pkg/apiserver/interfaces/grpc/proto/eruun/v1` | 用户业务 gRPC 适配与版本化 Protobuf 契约 | RPC、强类型字段、metadata 认证、流式传输 | 复用 Domain 服务；不经进程内 HTTP 转发；路由对照见 `grpc-api.md` |
 | `pkg/apiserver/interfaces/api/dto/v1` | API DTO 与请求/响应结构 | 字段增删、响应形态调整 | 同步 assembler、文档和 examples |
 | `pkg/apiserver/interfaces/api/assembler/v1` | Domain 对象到 DTO 的组装 | 响应字段推导、脱敏、兼容字段 | 不放持久化或 K8s 调用逻辑 |
 | `pkg/apiserver/domain/model` | GORM 模型和领域实体 | 新表字段、状态字段、业务实体 | 字段语义必须同步跨层契约文档 |
@@ -94,7 +94,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | 认证、授权、OAuth、团队空间 | `pkg/apiserver/domain/service/account` | account、middleware、account workspace scope、infrastructure/workspace | `account-auth-workspaces.md` |
 | 配置、系统设置、安全策略 | `pkg/apiserver/config`, `pkg/apiserver/domain/spec` | config defaults、validation、system setting service | `system-setting.md`, `url-security-policy.md` |
 | 消息队列或分布式执行 | `pkg/apiserver/infrastructure/messaging`, `pkg/apiserver/domain/repository/workflow_lease.go` | 运行角色、Redis Streams、Kafka、workflow worker、DB lease/fencing | `enterprise-distributed-runtime-design.md`, `leader-informer-recovery.md`, `kafka-queue-implementation.md`, `workflow-architecture-guide.md` |
-| 独立 Job 与 Harbor 评测 | `pkg/apiserver/jobs`, `runners/harbor` | 提交、执行身份、任务包、结果保存与空间策略 | `workspace-jobs-api.md`, `workspace-jobs-and-harbor-requirements.md` |
+| 独立 Job 与 Harbor 评测 | `pkg/apiserver/jobs`, `pkg/apiserver/jobs/runners/harbor` | 提交、执行身份、任务包、结果保存与空间策略 | `workspace-jobs-api.md`, `workspace-jobs-and-harbor-requirements.md` |
 | 更多 Agent、MCP、评测框架、模型或 AI Provider 方向 | 先读 `ai-runtime-vision.md` | 先校准 Current 能力与 Proposal 门禁，再决定是否进入实现 | 对应 AI 专题 Proposal；不得把草案字段当成现有契约 |
 
 ## 当前能力入口

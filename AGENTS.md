@@ -14,6 +14,8 @@ Start with `docs/README.md` before broad exploration.
 
 - Server entrypoint: `cmd/main.go`.
 - HTTP/API: `pkg/apiserver/interfaces/api`; DTOs in `dto/v1`; assemblers in `assembler/v1`.
+- gRPC: `pkg/apiserver/interfaces/grpc`; Protobuf sources in its `proto/eruun/v1` subdirectory; generated Go bindings in its `pb/v1` subdirectory.
+- Platform Jobs and evaluation: `pkg/apiserver/jobs`; container runners in its `runners/harbor` subdirectory.
 - Business rules and lifecycle: `pkg/apiserver/domain/service`; models and repository contracts in adjacent domain packages.
 - Workflow scheduling and execution: `pkg/apiserver/event/workflow`; Kubernetes jobs in `event/workflow/job`.
 - Traits and naming: `pkg/apiserver/workflow/traits` and `pkg/apiserver/workflow/naming`.

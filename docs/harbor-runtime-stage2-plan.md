@@ -18,9 +18,9 @@ Eruun 部署在 ACK 内管理同一集群；任务环境按需创建，使用支
 | --- | --- | --- |
 | `WorkflowQueue` 持有任务状态、空间及执行租约；`JobInfo` 持有执行记录与内部状态 | [`workflow_queue.go`](../pkg/apiserver/domain/model/workflow_queue.go)、[`job.go`](../pkg/apiserver/domain/model/job.go) | 沿用业务事实源与事务边界 |
 | Worker ownership 与既有资源执行身份可以不同，`OwnerRunGeneration` 已与 `RunGeneration` 区分 | [`job.go`](../pkg/apiserver/domain/model/job.go)、[`workflow_lease.go`](../pkg/apiserver/domain/repository/workflow_lease.go) | 接管健康执行不能等同于创建新恢复执行 |
-| Runner `/work` 使用 `EmptyDir`；采集状态和 outputs 在 Runner；启动创建新目录并调用 `harbor run` | [`builder.go`](../pkg/apiserver/jobs/builder.go)、[`runner.py`](../runners/harbor/runner.py) | Sandbox 快照不覆盖整个 Harbor Job；可选恢复实现另存 Runner 材料 |
+| Runner `/work` 使用 `EmptyDir`；采集状态和 outputs 在 Runner；启动创建新目录并调用 `harbor run` | [`builder.go`](../pkg/apiserver/jobs/builder.go)、[`runner.py`](../pkg/apiserver/jobs/runners/harbor/runner.py) | Sandbox 快照不覆盖整个 Harbor Job；可选恢复实现另存 Runner 材料 |
 | Runner claim、事件和结果写入已验证执行身份、Pod/Job UID，并在持久化边界校验 | [`runner_events.go`](../pkg/apiserver/jobs/runner_events.go)、[`service.go`](../pkg/apiserver/jobs/service.go) | 恢复须扩展现有 fencing，不能绕过 claim |
-| Harbor 当前固定版本，环境配置关闭 SandboxClaim | [`runner.py`](../runners/harbor/runner.py)、[`requirements.txt`](../runners/harbor/requirements.txt) | 不引入预热池；是否支持恢复由固定版本源码与实验验证 |
+| Harbor 当前固定版本，环境配置关闭 SandboxClaim | [`runner.py`](../pkg/apiserver/jobs/runners/harbor/runner.py)、[`requirements.txt`](../pkg/apiserver/jobs/runners/harbor/requirements.txt) | 不引入预热池；是否支持恢复由固定版本源码与实验验证 |
 
 [ACS 官方 Checkpoint 文档](https://help.aliyun.com/zh/cs/user-guide/clone-agent-sandbox-using-checkpoint) 当前限定：仅 ACS Agent Sandbox、仅文件系统；源 Pod 必须 Running 且 Ready；同一 Pod 同时只能有一个进行中的 Checkpoint；Running 后删除 CR 不能中断快照任务；克隆时 Pod spec 需与源保持一致。官方要求 `acs-virtual-node` 至少 v2.17.0。部署前重新核实地域、组件、CRD 版本和配额，以真实 ACS 验证为准。
 
@@ -28,14 +28,14 @@ Eruun 部署在 ACK 内管理同一集群；任务环境按需创建，使用支
 
 ### 2.1 S2-1 本地能力实验
 
-实验入口为 [`recovery_probe.py`](../runners/harbor/recovery_probe.py)，使用 Runner 固定的 `harbor==0.22.0`、`kubernetes==32.0.1`。从项目根目录运行：
+实验入口为 [`recovery_probe.py`](../pkg/apiserver/jobs/runners/harbor/recovery_probe.py)，使用 Runner 固定的 `harbor==0.22.0`、`kubernetes==32.0.1`。从项目根目录运行：
 
 ```bash
 python3.13 -m venv /tmp/eruun-harbor-stage2-venv
-/tmp/eruun-harbor-stage2-venv/bin/python -m pip install -r runners/harbor/requirements.txt
-/tmp/eruun-harbor-stage2-venv/bin/python runners/harbor/recovery_probe.py
+/tmp/eruun-harbor-stage2-venv/bin/python -m pip install -r pkg/apiserver/jobs/runners/harbor/requirements.txt
+/tmp/eruun-harbor-stage2-venv/bin/python pkg/apiserver/jobs/runners/harbor/recovery_probe.py
 /tmp/eruun-harbor-stage2-venv/bin/python -m unittest discover \
-  -s runners/harbor -p 'test_recovery_probe.py' -v
+  -s pkg/apiserver/jobs/runners/harbor -p 'test_recovery_probe.py' -v
 ```
 
 探针退出码 `2` 表示实验成功建立了证据，但运行中 trial 的恢复门禁失败；`1` 表示依赖错误或实验失败，不能视为已验证。安装依赖需要网络，探针本身不创建 Sandbox、不执行 Agent、不读取 Kubernetes 配置或凭据，也不请求模型。测试依赖缺失或版本不符时明确失败，不通过 skip 隐藏。
@@ -65,11 +65,11 @@ python3.13 -m venv /tmp/eruun-harbor-stage2-venv
 
 负面实验发现：模型 stub 刚收到第二轮请求就立即强杀时，Claude Code 可能尚未将该用户消息写入会话文件，随后恢复会丢失该轮。早期在收到请求后等待 300 毫秒的实验曾通过，但延时不是持久化屏障。可复现脚本因此检查真实会话记录作为实验前提，不能将“请求已经发出”或“等待了一段时间”当成进度保存成功，更不承诺任意时刻强杀零进度丢失。
 
-该实验保存在 [`native_resume_probe.py`](../runners/harbor/native_resume_probe.py)，在已安装上述两个 CLI 版本的 POSIX 系统运行：
+该实验保存在 [`native_resume_probe.py`](../pkg/apiserver/jobs/runners/harbor/native_resume_probe.py)，在已安装上述两个 CLI 版本的 POSIX 系统运行：
 
 ```bash
-python3 runners/harbor/native_resume_probe.py
-python3 -m unittest discover -s runners/harbor -p 'test_native_resume_probe.py' -v
+python3 pkg/apiserver/jobs/runners/harbor/native_resume_probe.py
+python3 -m unittest discover -s pkg/apiserver/jobs/runners/harbor -p 'test_native_resume_probe.py' -v
 ```
 
 脚本从 `PATH` 查找 CLI，也可用 `--codex`、`--claude` 指定可执行文件；错版直接失败。它使用全新的临时配置和本机模型服务，未继承真实模型凭据；默认删除实验材料。需要保留证据时，传入尚不存在的 `--output-dir`，其中原始请求、日志、会话及摘要仅供本地检查，文件权限收紧为 `0600`。CLI 超时或失败时清理所属进程组。退出码 `0` 仅表示报告声明的会话恢复断言通过，不能代替本阶段完整门禁。
@@ -140,7 +140,7 @@ python3 -m unittest discover -s runners/harbor -p 'test_native_resume_probe.py' 
 | 工作包 | 依赖 | 改动层及交付 | 验收 | 回滚边界 |
 | --- | --- | --- | --- | --- |
 | S2-1 能力验证与契约冻结 | 第一阶段身份/按需 Sandbox 设计可用 | Harbor 固定版本源码与最小 ACS 实验；验证恢复粒度、Agent 进度、卷覆盖；冻结存储形状、版本、身份推进、保留和 SLO | 一次多 trial 故障恢复实验，完成 trial 不重跑，未完成 trial 按声明粒度继续；未通过不进入后续工作包 | 仅实验/设计，不改变当前执行 |
-| S2-2 Runner 恢复材料与屏障 | S2-1 | `runners/harbor`、现有 jobs/制品层；持久化必要状态、版本与摘要、暂停/解除屏障 | 删除原 Runner `/work` 后另一 Runner 可验证材料；不完整/损坏材料拒绝；屏障失败能收敛 | 停止生成新恢复点，既有普通执行继续；保留可读材料 |
+| S2-2 Runner 恢复材料与屏障 | S2-1 | `pkg/apiserver/jobs/runners/harbor`、现有 jobs/制品层；持久化必要状态、版本与摘要、暂停/解除屏障 | 删除原 Runner `/work` 后另一 Runner 可验证材料；不完整/损坏材料拒绝；屏障失败能收敛 | 停止生成新恢复点，既有普通执行继续；保留可读材料 |
 | S2-3 Checkpoint 调和与完整提交 | S2-2，第一阶段共享观察稳定 | 现有 jobs 与 K8s 适配/观察、最小 RBAC；多成员快照与完整标记 | 云调用超时、部分失败、重启、重复事件下不产生假完整点；同 Pod 无并行快照 | 停止新快照，追踪已运行任务至终态；不得直接删除运行中 CR 当作中止 |
 | S2-4 恢复执行与 fencing | S2-3，第一阶段调度/准入契约稳定 | repository 事务、jobs、Runner、资源构建与清理；新身份、克隆、resume | 双 Worker/分区/重复恢复只有一个新执行获准；旧写入及误删拒绝；取消与 deadline 不被绕过 | 停止新恢复并排空活动恢复；回退版本前确认旧程序能读新持久化数据 |
 | S2-5 保留回收与可观测性 | S2-3、S2-4 | 制品/清理路径、状态与指标、必要部署配置、操作文档 | 引用保护、过期/空间删除、半成品回收、凭据轮换均有证据；可解释当前停在哪一步 | 暂停破坏性回收，保留只读审计；不回滚删除数据 |

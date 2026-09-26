@@ -244,7 +244,7 @@ go vet ./...
 | 四角色、执行时序、租约与故障恢复 | [架构图](docs/architecture-diagrams.md)、[Workflow 架构](docs/workflow-architecture-guide.md)、[分布式运行时](docs/enterprise-distributed-runtime-design.md) |
 | API 和自动化接入 | [Canonical JSON](docs/canonical-json-profile.md)、[gRPC](docs/grpc-api.md)、[账号示例](examples/account-auth-workspaces/README.md) |
 | 部署与空间隔离 | [Helm](docs/helm-deployment.md)、[账号与空间](docs/account-auth-workspaces.md)、[本地依赖](docs/local-docker-dependencies.md) |
-| 命令、评测、任务包和结果 | [空间 Job API](docs/workspace-jobs-api.md)、[评测示例](examples/agent-evaluation/README.md)、[Runner](runners/harbor/README.md) |
+| 命令、评测、任务包和结果 | [空间 Job API](docs/workspace-jobs-api.md)、[评测示例](examples/agent-evaluation/README.md)、[Runner](pkg/apiserver/jobs/runners/harbor/README.md) |
 | AI Runtime 后续方向 | [愿景与路线图（Draft / Proposal）](docs/ai-runtime-vision.md) |
 
 ## 许可证

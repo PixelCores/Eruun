@@ -1,6 +1,6 @@
 """Offline Harbor recovery capability gate; never starts a sandbox or an agent.
 
-Install requirements.txt, then run ``python runners/harbor/recovery_probe.py``.
+Install requirements.txt, then run ``python pkg/apiserver/jobs/runners/harbor/recovery_probe.py``.
 Exit 2 means the experiment succeeded but the in-trial recovery gate failed;
 exit 1 means the experiment could not establish its evidence. This is a fixture
 experiment against Harbor's real job reconciliation, not a cloud recovery test.
