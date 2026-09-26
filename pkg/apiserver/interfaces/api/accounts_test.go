@@ -1,13 +1,18 @@
 package api
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -40,5 +45,51 @@ func TestAccountInputRejectsUnknownAndTrailingJSON(t *testing.T) {
 		}](c)
 		require.False(t, ok)
 		require.Equal(t, http.StatusBadRequest, w.Code)
+	}
+}
+
+// Embed the unused store methods so this fixture only models the query boundary.
+type adminUserListStore struct {
+	datastore.DataStore
+	options *datastore.ListOptions
+	rows    []datastore.Entity
+}
+
+func (s *adminUserListStore) List(_ context.Context, _ datastore.Entity, options *datastore.ListOptions) ([]datastore.Entity, error) {
+	s.options = options
+	return s.rows, nil
+}
+
+func TestAdminUsersHTTPPaginationAndEnvelope(t *testing.T) {
+	for _, tc := range []struct {
+		query              string
+		status, page, size int
+	}{
+		{"", 200, 1, 20}, {"?page=2&pageSize=100", 200, 2, 100},
+		{"?page=no", 400, 0, 0}, {"?page=0", 400, 0, 0}, {"?pageSize=101", 400, 0, 0},
+	} {
+		t.Run(tc.query, func(t *testing.T) {
+			store := &adminUserListStore{rows: []datastore.Entity{&model.User{ID: "user", PasswordHash: "test-hash"}}}
+			handler := &accounts{Accounts: &account.Service{Repo: repository.Accounts{Store: store}}}
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/users"+tc.query, nil)
+			c.Set(middleware.AuthPrincipalContextKey, &account.Principal{User: &model.User{SystemAdmin: true}})
+			handler.users(c)
+			require.Equal(t, tc.status, recorder.Code)
+			if tc.status != 200 {
+				require.Nil(t, store.options)
+				return
+			}
+			require.Equal(t, tc.page, store.options.Page)
+			require.Equal(t, tc.size, store.options.PageSize)
+			var envelope struct {
+				Data []model.User `json:"data"`
+			}
+			require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &envelope))
+			require.Len(t, envelope.Data, 1)
+			require.Equal(t, "user", envelope.Data[0].ID)
+			require.NotContains(t, recorder.Body.String(), "test-hash")
+		})
 	}
 }

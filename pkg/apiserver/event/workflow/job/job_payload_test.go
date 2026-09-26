@@ -2,6 +2,10 @@ package job
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,6 +15,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
 func TestConfigMapFromJobInfo(t *testing.T) {
@@ -18,7 +23,7 @@ func TestConfigMapFromJobInfo(t *testing.T) {
 
 	t.Run("input", func(t *testing.T) {
 		jobTask := &model.JobTask{
-			JobInfo: &model.ConfigMapInput{
+			JobInfo: &ConfigMapInput{
 				Name:      "app-config",
 				Namespace: "ops",
 				Labels:    map[string]string{"app": "demo"},
@@ -51,7 +56,7 @@ func TestConfigMapFromJobInfo(t *testing.T) {
 	})
 
 	t.Run("nil-input", func(t *testing.T) {
-		_, err := configMapFromJobInfo(ctx, &model.JobTask{JobInfo: (*model.ConfigMapInput)(nil)}, nil)
+		_, err := configMapFromJobInfo(ctx, &model.JobTask{JobInfo: (*ConfigMapInput)(nil)}, nil)
 
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "nil")
@@ -63,7 +68,7 @@ func TestSecretFromJobInfo(t *testing.T) {
 
 	t.Run("input", func(t *testing.T) {
 		jobTask := &model.JobTask{
-			JobInfo: &model.SecretInput{
+			JobInfo: &SecretInput{
 				Name:      "app-secret",
 				Namespace: "ops",
 				Labels:    map[string]string{"app": "demo"},
@@ -97,7 +102,7 @@ func TestSecretFromJobInfo(t *testing.T) {
 	})
 
 	t.Run("nil-input", func(t *testing.T) {
-		_, err := secretFromJobInfo(ctx, &model.JobTask{JobInfo: (*model.SecretInput)(nil)}, nil)
+		_, err := secretFromJobInfo(ctx, &model.JobTask{JobInfo: (*SecretInput)(nil)}, nil)
 
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "nil")
@@ -156,4 +161,32 @@ func TestApplyExecutionIdentityPropagatesToAsyncPayloads(t *testing.T) {
 	ApplyExecutionIdentity(callbackTask)
 
 	require.Equal(t, "execution-2", callbackInfo.Payload.ExecutionKey)
+}
+
+func TestConfigurationURLReadLimits(t *testing.T) {
+	for _, size := range []int{configMapMaxSize, configMapMaxSize + 1, configMapMaxSize + 1025} {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			payload := strings.Repeat("x", size)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(payload))
+			}))
+			defer server.Close()
+			policy := &spec.URLSecurityPolicySpec{AllowPrivateByDefault: true}
+			readSize := min(size, configMapMaxSize+1024)
+			configMap, err := configMapFromJobInfo(context.Background(), &model.JobTask{JobInfo: &ConfigMapInput{
+				Name: "config", URL: server.URL, FileName: "payload",
+			}}, policy)
+			if size > configMapMaxSize {
+				require.EqualError(t, err, fmt.Sprintf("invalid ConfigMap spec: file size %d bytes exceeds ConfigMap maximum size %d bytes", readSize, configMapMaxSize))
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, payload, configMap.Data["payload"])
+			}
+			secret, err := secretFromJobInfo(context.Background(), &model.JobTask{JobInfo: &SecretInput{
+				Name: "secret", URL: server.URL, FileName: "payload",
+			}}, policy)
+			require.NoError(t, err)
+			require.Equal(t, payload[:readSize], secret.StringData["payload"], "Secret URL input retains its existing bounded-read behavior")
+		})
+	}
 }

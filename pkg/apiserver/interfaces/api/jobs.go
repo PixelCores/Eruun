@@ -11,6 +11,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -77,10 +78,10 @@ func jobError(err error) error {
 
 func jobResponse(c *gin.Context, status int, result any, err error) {
 	if err != nil {
-		bcode.ReturnError(c, jobError(err))
+		apiresponse.ReturnError(c, jobError(err))
 		return
 	}
-	bcode.ReturnResponse(c, status, bcode.SuccessCode, "", result)
+	apiresponse.ReturnResponse(c, status, apiresponse.SuccessCode, "", result)
 }
 
 func (a *workspaceJobs) submit(c *gin.Context) {
@@ -367,7 +368,7 @@ func (a *workspaceJobs) runnerEvent(c *gin.Context) {
 func runnerEventResponse(c *gin.Context, result *jobs.RunnerEventAck, err error) {
 	var stopConflict *jobs.RunnerStopConflictError
 	if errors.As(err, &stopConflict) && (stopConflict.Outcome == "cancelled" || stopConflict.Outcome == "timed_out") {
-		bcode.ReturnResponse(c, http.StatusConflict, bcode.ErrJobRunnerConflict.BusinessCode,
+		apiresponse.ReturnResponse(c, http.StatusConflict, bcode.ErrJobRunnerConflict.BusinessCode,
 			bcode.ErrJobRunnerConflict.Message, gin.H{"stopOutcome": stopConflict.Outcome})
 		return
 	}

@@ -39,6 +39,29 @@ func (r Accounts) One(ctx context.Context, query datastore.Entity) error {
 	return nil
 }
 
+// ListUsers returns users in stable ID order for administrator pagination.
+func (r Accounts) ListUsers(ctx context.Context, page, pageSize int) ([]*model.User, error) {
+	rows, err := r.Store.List(ctx, &model.User{}, &datastore.ListOptions{
+		Page: page, PageSize: pageSize,
+		SortBy: []datastore.SortOption{{Key: "id", Order: datastore.SortOrderAscending}},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if rows == nil {
+		return nil, nil
+	}
+	users := make([]*model.User, 0, len(rows))
+	for _, row := range rows {
+		user, ok := row.(*model.User)
+		if !ok {
+			return nil, fmt.Errorf("user list contains %T", row)
+		}
+		users = append(users, user)
+	}
+	return users, nil
+}
+
 func (r Accounts) CurrentDatabaseTime(ctx context.Context) (time.Time, error) {
 	clock, ok := r.Store.(datastore.DatabaseClock)
 	if !ok {

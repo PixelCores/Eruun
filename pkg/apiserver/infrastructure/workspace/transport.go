@@ -69,13 +69,9 @@ func (t *tenantTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			name, _ := mapAt(obj, "metadata")["name"].(string)
 			access, evaluation := entries[name]
 			if evaluation && resource == "jobs" && mapAt(mapAt(obj, "spec"), "template") != nil {
-				if namespace, ok := mapAt(obj, "metadata")["namespace"].(string); ok && namespace != "" && namespace != t.namespace {
-					err = bcode.ErrForbidden
-				} else {
-					err = prepareEvaluationJob(obj, access)
-				}
+				err = PrepareEvaluationJob(t.namespace, access.jobName, access.image, obj)
 			} else {
-				err = t.prepare(resource, obj)
+				err = PrepareResource(t.namespace, resource, obj, t.config)
 			}
 			if err != nil {
 				return nil, err
@@ -100,6 +96,12 @@ func (t *tenantTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 func mapAt(object map[string]interface{}, key string) map[string]interface{} {
 	m, _ := object[key].(map[string]interface{})
 	return m
+}
+
+// PrepareResource applies namespace resource policy before task checkpointing or
+// an actual Kubernetes write. It does not depend on workflow task identity.
+func PrepareResource(namespace, resource string, obj map[string]interface{}, cfg spec.WorkspaceConfig) error {
+	return (&tenantTransport{namespace: namespace, config: cfg}).prepare(resource, obj)
 }
 
 func (t *tenantTransport) prepare(kind string, obj map[string]interface{}) error {

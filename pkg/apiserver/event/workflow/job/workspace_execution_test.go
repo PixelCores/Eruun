@@ -79,37 +79,37 @@ func TestWorkspaceRepeatedDeploymentDoesNotRollout(t *testing.T) {
 				if kind == "deployment" {
 					desired := &appsv1.Deployment{ObjectMeta: meta, Spec: appsv1.DeploymentSpec{Template: template}}
 					task.JobType, task.JobInfo = string(config.JobDeploy), desired
-					_, err = workspace.PrepareTask(task, "app", space, manager.Config)
+					_, err = PrepareTask(task, "app", space, manager.Config)
 					require.NoError(t, err)
 					requireWorkspacePodSecurity(t, desired.Spec.Template.Spec)
 					current, err := client.AppsV1().Deployments(space.Namespace).Create(context.Background(), desired, metav1.CreateOptions{})
 					require.NoError(t, err)
 					// Regenerate the same source payload, as the next workflow invocation does.
 					desired.Spec.Template.Spec = podSpec()
-					_, err = workspace.PrepareTask(task, "app", space, manager.Config)
+					_, err = PrepareTask(task, "app", space, manager.Config)
 					require.NoError(t, err)
 					require.False(t, isDeploymentChanged(current, desired))
 					require.False(t, deploymentPodTemplateChanged(current, desired))
 					desired.Spec.Template.Spec.Containers[0].SecurityContext.RunAsUser = ptr.To(int64(1001))
-					_, err = workspace.PrepareTask(task, "app", space, manager.Config)
+					_, err = PrepareTask(task, "app", space, manager.Config)
 					require.NoError(t, err)
 					require.True(t, isDeploymentChanged(current, desired), "real security changes must still be applied")
 					require.True(t, deploymentPodTemplateChanged(current, desired))
 				} else {
 					desired := &appsv1.StatefulSet{ObjectMeta: meta, Spec: appsv1.StatefulSetSpec{Template: template}}
 					task.JobType, task.JobInfo = string(config.JobDeployStore), desired
-					_, err = workspace.PrepareTask(task, "app", space, manager.Config)
+					_, err = PrepareTask(task, "app", space, manager.Config)
 					require.NoError(t, err)
 					requireWorkspacePodSecurity(t, desired.Spec.Template.Spec)
 					current, err := client.AppsV1().StatefulSets(space.Namespace).Create(context.Background(), desired, metav1.CreateOptions{})
 					require.NoError(t, err)
 					desired.Spec.Template.Spec = podSpec()
-					_, err = workspace.PrepareTask(task, "app", space, manager.Config)
+					_, err = PrepareTask(task, "app", space, manager.Config)
 					require.NoError(t, err)
 					require.False(t, statefulSetPodTemplateChanged(current, desired))
 					require.False(t, statefulSetNeedsUpdate(current, desired))
 					desired.Spec.Template.Spec.InitContainers[0].SecurityContext.RunAsUser = ptr.To(int64(1001))
-					_, err = workspace.PrepareTask(task, "app", space, manager.Config)
+					_, err = PrepareTask(task, "app", space, manager.Config)
 					require.NoError(t, err)
 					require.True(t, statefulSetPodTemplateChanged(current, desired))
 					require.True(t, statefulSetNeedsUpdate(current, desired))
