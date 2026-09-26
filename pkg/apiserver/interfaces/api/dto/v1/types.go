@@ -253,22 +253,9 @@ type TryImportNamespaceApplicationsResponse struct {
 	Warnings         []string                            `json:"warnings,omitempty"`
 }
 
-type CreateComponentRequest struct {
-	Name          string         `json:"name"`
-	ComponentType config.JobType `json:"type"`
-	Image         string         `json:"image,omitempty"`
-	Namespace     string         `json:"namespace"`
-	Replicas      int32          `json:"replicas"`
-	Properties    Properties     `json:"properties"`
-	Traits        Traits         `json:"traits"`
-	Template      *TemplateRef   `json:"tmp,omitempty"`
-}
+type CreateComponentRequest = spec.Component
 
-type TemplateRef struct {
-	ID                  string `json:"id"`
-	Target              string `json:"target,omitempty"`              // 目标模板组件名，用于精确匹配
-	DefaultStorageClass string `json:"defaultStorageClass,omitempty"` // 模板展开时写入空 persistent storageClass 的默认值
-}
+type TemplateRef = spec.TemplateRef
 
 type CreateWorkflowStepRequest struct {
 	SchedulingClass string                         `json:"schedulingClass,omitempty"`

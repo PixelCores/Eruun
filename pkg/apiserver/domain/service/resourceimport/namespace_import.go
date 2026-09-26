@@ -24,7 +24,6 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
@@ -32,7 +31,6 @@ import (
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
-	assembler "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/assembler/v1"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -390,7 +388,7 @@ func (s *serviceImpl) TryImportNamespaceResources(ctx context.Context, req apisv
 			if comp == nil {
 				continue
 			}
-			componentReq, err := convertComponentModelToCreateRequest(comp)
+			componentReq, err := comp.ComponentSpec()
 			if err != nil {
 				resp.Warnings = append(resp.Warnings, fmt.Sprintf("convert existing component %s failed: %v", strings.TrimSpace(comp.Name), err))
 				continue
@@ -617,7 +615,7 @@ func (s *serviceImpl) mergeCreateComponentsWithExisting(
 		if comp == nil {
 			continue
 		}
-		req, err := convertComponentModelToCreateRequest(comp)
+		req, err := comp.ComponentSpec()
 		if err != nil {
 			return nil, fmt.Errorf("convert existing component %s: %w", comp.Name, err)
 		}
@@ -685,7 +683,7 @@ func (s *serviceImpl) mergeCreateComponentsWithAllExisting(
 		if comp == nil {
 			continue
 		}
-		req, err := convertComponentModelToCreateRequest(comp)
+		req, err := comp.ComponentSpec()
 		if err != nil {
 			return nil, fmt.Errorf("convert existing component %s: %w", comp.Name, err)
 		}
@@ -862,25 +860,6 @@ func inferredPrimaryImportKindsForComponent(component apisv1.CreateComponentRequ
 		return nil
 	}
 	return kinds
-}
-
-func convertComponentModelToCreateRequest(comp *model.ApplicationComponent) (apisv1.CreateComponentRequest, error) {
-	dto, err := assembler.ConvertComponentModelToDTO(comp)
-	if err != nil {
-		return apisv1.CreateComponentRequest{}, err
-	}
-	if dto == nil {
-		return apisv1.CreateComponentRequest{}, fmt.Errorf("component dto is nil")
-	}
-	return apisv1.CreateComponentRequest{
-		Name:          dto.Name,
-		ComponentType: dto.ComponentType,
-		Image:         dto.Image,
-		Namespace:     dto.Namespace,
-		Replicas:      dto.Replicas,
-		Properties:    dto.Properties,
-		Traits:        dto.Traits,
-	}, nil
 }
 
 func (s *serviceImpl) tryValidateImportCreateRequest(ctx context.Context, req apisv1.CreateApplicationsRequest) error {

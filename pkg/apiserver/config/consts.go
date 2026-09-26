@@ -3,6 +3,8 @@ package config
 import (
 	"strings"
 	"time"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
 const (
@@ -26,7 +28,7 @@ const (
 	LabelShareStrategy = "eruun.io/share-strategy"
 )
 
-type JobType string
+type JobType = spec.JobType
 type JobErrorPolicy string
 type WorkflowTaskType string
 type WorkflowMode string
