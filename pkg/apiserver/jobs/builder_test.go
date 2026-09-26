@@ -46,7 +46,7 @@ func TestCommandAndEvaluationRenderIntoTheSameWorkspaceNamespace(t *testing.T) {
 	require.Equal(t, "4Gi", workload.Spec.Template.Spec.Containers[0].Resources.Limits.Memory().String())
 }
 
-// Credentials now arrive as traits.envs, which BuildCommandJob renders before
+// Credentials now arrive as traits.envs, which buildCommandJob renders before
 // the evaluation branch appends its own values. Guards against the platform
 // envs replacing that slice and silently dropping the model credential.
 func TestEvaluationCredentialEnvsSurviveRunnerPlatformEnvs(t *testing.T) {
