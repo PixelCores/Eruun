@@ -6,17 +6,14 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api"
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/middleware"
 )
 
 func TestEveryRegisteredRouteHasExactlyOneAuthPolicy(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	api.ResetAPIRegistryForTest()
-	t.Cleanup(api.ResetAPIRegistryForTest)
-	api.InitAPIBean()
 
-	server := &restServer{webContainer: gin.New()}
+	server := New(config.Config{}).(*restServer)
 	server.registerAPIRoutes(false)
 
 	routes := server.webContainer.Routes()
