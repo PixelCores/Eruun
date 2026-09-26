@@ -12,8 +12,8 @@ import (
 	applyv1 "k8s.io/client-go/applyconfigurations/core/v1"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 )
 
 func buildWorkloadInfo(jobType config.JobType, info interface{}, fallbackNamespace, fallbackName string) string {
@@ -43,9 +43,9 @@ func buildWorkloadInfo(jobType config.JobType, info interface{}, fallbackNamespa
 
 func buildConfigLikeInfo(kind domainspec.ResourceKind, info interface{}, fallbackNamespace, fallbackName string) string {
 	switch v := info.(type) {
-	case *model.ConfigMapInput:
+	case *workflowjob.ConfigMapInput:
 		return buildResourceInfo(kind, v.Namespace, v.Name)
-	case *model.SecretInput:
+	case *workflowjob.SecretInput:
 		return buildResourceInfo(kind, v.Namespace, v.Name)
 	case *corev1.ConfigMap:
 		return buildResourceInfo(kind, v.Namespace, v.Name)

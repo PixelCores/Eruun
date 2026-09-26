@@ -24,7 +24,7 @@ func TestGenerateSecret(t *testing.T) {
 				"password": "password123",
 			},
 		}
-		expected := &model.SecretInput{
+		expected := &SecretInput{
 			Name:      "my-secret",
 			Namespace: "default",
 			Labels:    map[string]string{config.LabelManagedBy: config.ManagedByEruun, config.LabelAppID: "test-app", config.LabelComponentID: "1", config.LabelComponentName: "my-secret"},
@@ -58,7 +58,7 @@ func TestGenerateSecret(t *testing.T) {
 				"config.fileName": "my-config-file",
 			},
 		}
-		expected := &model.SecretInput{
+		expected := &SecretInput{
 			Name:      "my-secret-from-url",
 			Namespace: "kube-system",
 			URL:       "http://example.com/config",
@@ -85,7 +85,7 @@ func TestGenerateSecret(t *testing.T) {
 			AppID:     "test-app",
 			ID:        3,
 		}
-		expected := &model.SecretInput{
+		expected := &SecretInput{
 			Name:      "nil-props-secret",
 			Namespace: "default",
 			Labels:    map[string]string{config.LabelManagedBy: config.ManagedByEruun, config.LabelAppID: "test-app", config.LabelComponentID: "3", config.LabelComponentName: "nil-props-secret"},
@@ -108,7 +108,7 @@ func TestGenerateSecret(t *testing.T) {
 		properties := &model.Properties{
 			Secret: map[string]string{},
 		}
-		expected := &model.SecretInput{
+		expected := &SecretInput{
 			Name:      "empty-secret",
 			Namespace: "default",
 			Labels:    map[string]string{config.LabelManagedBy: config.ManagedByEruun, config.LabelAppID: "test-app", config.LabelComponentID: "4", config.LabelComponentName: "empty-secret"},
@@ -130,7 +130,7 @@ func TestGenerateSecret(t *testing.T) {
 		properties := &model.Properties{
 			Secret: map[string]string{"key": "value"},
 		}
-		expected := &model.SecretInput{
+		expected := &SecretInput{
 			Name:      "no-namespace-secret",
 			Namespace: config.DefaultNamespace,
 			Labels:    map[string]string{config.LabelManagedBy: config.ManagedByEruun, config.LabelAppID: "test-app", config.LabelComponentID: "5", config.LabelComponentName: "no-namespace-secret"},
