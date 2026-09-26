@@ -182,7 +182,10 @@ func versionUpdateComponentSnapshot(current *model.ApplicationComponent, desired
 func renderVersionUpdateStatefulSet(component *model.ApplicationComponent) (*appsv1.StatefulSet, error) {
 	workflowtraits.RegisterAllProcessors()
 	snapshot := *component
-	result := workflowjob.GenerateStoreService(&snapshot)
+	result, err := workflowjob.GenerateStoreService(&snapshot)
+	if err != nil {
+		return nil, fmt.Errorf("%w: render StatefulSet for component %s: %w", bcode.ErrApplicationConfig, component.Name, err)
+	}
 	if result == nil {
 		return nil, fmt.Errorf("%w: component %s cannot render desired StatefulSet", bcode.ErrApplicationConfig, component.Name)
 	}

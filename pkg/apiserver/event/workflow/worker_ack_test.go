@@ -534,7 +534,9 @@ func TestRunWorkflowControllerRecoversDeferredExitAckPersistenceFailure(t *testi
 	})
 	require.NoError(t, err)
 	store.workflow.Steps = steps
-	store.failCompareAndSwapAt = 4
+	// Generation failure records a failed JobInfo directly; the second ack
+	// persists the terminal workflow status on exit.
+	store.failCompareAndSwapAt = 2
 	store.failCompareAndSwapError = errors.New("temporary deferred exit ack failure")
 
 	controller := newTestWorkflowController(t, store.taskSnapshot(), w.KubeClient, store)
@@ -546,7 +548,7 @@ func TestRunWorkflowControllerRecoversDeferredExitAckPersistenceFailure(t *testi
 	task := store.taskSnapshot()
 	require.NotNil(t, task)
 	require.Equal(t, config.StatusFailed, task.Status)
-	require.Greater(t, store.compareAndSwapCallsCount(), 4)
+	require.Greater(t, store.compareAndSwapCallsCount(), 2)
 }
 
 func TestRunWorkflowControllerAcceptsAuthoritativeCancellationFromDeferredExitAck(t *testing.T) {
@@ -568,7 +570,7 @@ func TestRunWorkflowControllerAcceptsAuthoritativeCancellationFromDeferredExitAc
 	ackCalls := 0
 	controller.ack = func() {
 		ackCalls++
-		if ackCalls != 4 {
+		if ackCalls != 2 {
 			persistAck()
 			return
 		}
@@ -588,8 +590,8 @@ func TestRunWorkflowControllerAcceptsAuthoritativeCancellationFromDeferredExitAc
 	task := store.taskSnapshot()
 	require.NotNil(t, task)
 	require.Equal(t, config.StatusCancelled, task.Status)
-	require.Equal(t, 4, ackCalls)
-	require.Equal(t, 3, store.compareAndSwapCallsCount())
+	require.Equal(t, 2, ackCalls)
+	require.Equal(t, 1, store.compareAndSwapCallsCount())
 }
 
 func TestRunWorkflowControllerStopsRecoveryAtNonRunnableState(t *testing.T) {

@@ -45,7 +45,10 @@ func requiredStatefulSetCleanupRef(component *model.ApplicationComponent) (clean
 	if component == nil {
 		return cleanupResourceRef{}, fmt.Errorf("required StatefulSet deletion component is nil")
 	}
-	result := GenerateStoreService(component)
+	result, err := GenerateStoreService(component)
+	if err != nil {
+		return cleanupResourceRef{}, err
+	}
 	namespace := component.Namespace
 	name := buildStoreSeverName(component.Name, component.ResourceNameKey())
 	if result != nil {

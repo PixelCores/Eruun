@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"k8s.io/klog/v2"
 
@@ -411,11 +412,16 @@ func failedWorkflowGenerationExecution(task *model.WorkflowQueue, defaultJobTime
 	jobTask.JobType = string(config.JobCleanupResources)
 	jobTask.JobInfo = fmt.Sprintf("prepare workflow job tasks: %v", err)
 	jobTask.Info = "workflow generation failed"
+	jobTask.Status = config.StatusFailed
+	jobTask.Error = fmt.Sprint(jobTask.JobInfo)
+	jobTask.StartTime = time.Now().Unix()
+	jobTask.EndTime = jobTask.StartTime
 	setDeployTimeout(jobTask)
 	executions := []StepExecution{{
-		Name:     "workflow-generation",
-		Mode:     config.WorkflowModeStepByStep,
-		StepType: config.WorkflowStepTypeComponent,
+		Name:            "workflow-generation",
+		generationError: fmt.Errorf("prepare workflow job tasks: %w", err),
+		Mode:            config.WorkflowModeStepByStep,
+		StepType:        config.WorkflowStepTypeComponent,
 		Jobs: map[int][]*model.JobTask{
 			config.JobPriorityLow: {jobTask},
 		},

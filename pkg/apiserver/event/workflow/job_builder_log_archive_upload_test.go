@@ -37,7 +37,7 @@ func TestBuildLogArchiveUploadStepExecutionCreatesOneJobPerComponent(t *testing.
 		AppID:      "app-1",
 	}
 
-	executions := buildWorkflowStepExecutions(context.Background(), 0, &model.WorkflowStep{
+	executions, err := buildWorkflowStepExecutions(context.Background(), 0, &model.WorkflowStep{
 		Name:         "log-archive-upload",
 		WorkflowType: config.JobLogArchiveUpload,
 		Mode:         config.WorkflowModeStepByStep,
@@ -54,6 +54,9 @@ func TestBuildLogArchiveUploadStepExecutionCreatesOneJobPerComponent(t *testing.
 			},
 		},
 	}, componentMap, task, int64(config.DefaultJobTaskTimeout))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	require.Len(t, executions, 2)
 	require.Equal(t, "api", executions[0].Name)
