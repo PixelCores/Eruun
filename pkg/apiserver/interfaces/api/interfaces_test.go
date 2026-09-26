@@ -9,52 +9,37 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type testAPIHandler struct{}
-
-func (t *testAPIHandler) RegisterRoutes(group *gin.RouterGroup) {}
-
-func TestRegisterAPI_IdempotentByType(t *testing.T) {
-	ResetAPIRegistryForTest()
-	defer ResetAPIRegistryForTest()
-
-	RegisterAPI(&testAPIHandler{})
-	RegisterAPI(&testAPIHandler{})
-
-	apis := GetRegisteredAPI()
-	require.Len(t, apis, 1)
-}
-
-func TestInitAPIBean_Idempotent(t *testing.T) {
-	ResetAPIRegistryForTest()
-	defer ResetAPIRegistryForTest()
-
-	first := InitAPIBean()
-	second := InitAPIBean()
-
-	require.NotEmpty(t, first)
-	require.Len(t, second, len(first))
-
-	r := gin.New()
-	for _, bean := range second {
-		handler, ok := bean.(Interface)
-		require.True(t, ok)
-		handler.RegisterRoutes(r.Group("/api/v1"))
+func TestHandlersKeepServerDependenciesIsolated(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	newRouter := func(runtime RuntimeReadiness) *gin.Engine {
+		router := gin.New()
+		for _, handler := range NewHandlers() {
+			if h, ok := handler.(*health); ok {
+				h.Runtime = runtime
+			}
+			handler.RegisterRoutes(router.Group("/api/v1"))
+		}
+		return router
 	}
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
-	resp := httptest.NewRecorder()
-	r.ServeHTTP(resp, req)
-	require.Equal(t, http.StatusOK, resp.Code)
-}
+	first := newRouter(mockRuntimeReadiness{ready: true})
+	second := newRouter(mockRuntimeReadiness{reason: "second server initializing"})
 
-func TestResetAPIRegistryForTest_AllowsReinit(t *testing.T) {
-	ResetAPIRegistryForTest()
-	defer ResetAPIRegistryForTest()
-
-	first := InitAPIBean()
-	require.NotEmpty(t, first)
-
-	ResetAPIRegistryForTest()
-	second := InitAPIBean()
-	require.NotEmpty(t, second)
-	require.Len(t, second, len(first))
+	// Registering and injecting the second server must not change the first.
+	for _, tc := range []struct {
+		name   string
+		router *gin.Engine
+		status int
+	}{
+		{"first", first, http.StatusOK},
+		{"second", second, http.StatusServiceUnavailable},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			for range 20 {
+				resp := httptest.NewRecorder()
+				tc.router.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/v1/ready", nil))
+				require.Equal(t, tc.status, resp.Code)
+			}
+		})
+	}
 }
