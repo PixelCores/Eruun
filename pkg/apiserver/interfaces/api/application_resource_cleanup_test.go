@@ -11,7 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+
+	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 )
 
 type fakeCleanupApplicationService struct {
@@ -67,5 +68,5 @@ func TestDeleteApplicationResourcesEndpointHardErrorReturnsFailure(t *testing.T)
 
 	require.NotEqual(t, http.StatusOK, response.Code)
 	result := decodeResponse(t, response.Body.Bytes(), nil)
-	require.NotEqual(t, bcode.SuccessCode, result.Code)
+	require.NotEqual(t, apiresponse.SuccessCode, result.Code)
 }

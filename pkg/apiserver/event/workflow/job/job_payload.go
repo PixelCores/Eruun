@@ -70,9 +70,9 @@ func configMapFromJobInfo(ctx context.Context, job *model.JobTask, urlSecurityPo
 		return nil, fmt.Errorf("job task is nil")
 	}
 	switch info := job.JobInfo.(type) {
-	case *model.ConfigMapInput:
+	case *ConfigMapInput:
 		if info == nil {
-			return nil, fmt.Errorf("job info %s is nil", jobInfoTypeName[*model.ConfigMapInput]())
+			return nil, fmt.Errorf("job info %s is nil", jobInfoTypeName[*ConfigMapInput]())
 		}
 		conf, err := info.GenerateConf(ctx, urlSecurityPolicy)
 		if err != nil {
@@ -107,9 +107,9 @@ func secretFromJobInfo(ctx context.Context, job *model.JobTask, urlSecurityPolic
 			return nil, fmt.Errorf("job info %s is nil", jobInfoTypeName[*corev1.Secret]())
 		}
 		return info, nil
-	case *model.SecretInput:
+	case *SecretInput:
 		if info == nil {
-			return nil, fmt.Errorf("job info %s is nil", jobInfoTypeName[*model.SecretInput]())
+			return nil, fmt.Errorf("job info %s is nil", jobInfoTypeName[*SecretInput]())
 		}
 		secretType := corev1.SecretTypeOpaque
 		if info.Type != "" {
@@ -123,7 +123,7 @@ func secretFromJobInfo(ctx context.Context, job *model.JobTask, urlSecurityPolic
 			}
 			fileName := info.FileName
 			if fileName == "" {
-				fileName = model.ExtractFileNameFromURLForSecret(info.URL)
+				fileName = extractFileNameFromURLForSecret(info.URL)
 			}
 			stringData[fileName] = string(body)
 		}
