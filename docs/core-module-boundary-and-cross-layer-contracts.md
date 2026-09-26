@@ -20,7 +20,7 @@ flowchart LR
     A[API契约层\ninterfaces/api + dto + assembler]
     B[应用领域层\ndomain/service + domain/repository]
     C[工作流/队列层\nworkflow service + event worker]
-    D[缓存层\nutils/cache + Redis/Mem]
+    D[缓存层\ninfrastructure/cache + Redis/Mem]
     E[K8s资源/状态同步层\njob ctl + informer waiter]
     F[Secret/Config转换层\nkube_convert + job_secret]
     G[(DB: eruun_applications/eruun_app_components/...)]
@@ -140,7 +140,7 @@ K8s 不是组件查询实时事实源，而是通过 informer 异步回写 DB。
 
 - 组件读路径与缓存：`pkg/apiserver/domain/service/application_query.go`、`pkg/apiserver/domain/service/application_cache.go`
 - 组件 API 组装与 credential 解析：`pkg/apiserver/interfaces/api/assembler/v1/component.go`
-- 状态同步：`pkg/apiserver/infrastructure/informer/waiter.go`、`pkg/apiserver/server.go`
+- 状态同步：`pkg/apiserver/infrastructure/informer/waiter.go`、`pkg/apiserver/domain/service/application/component_status_sync.go`；`pkg/apiserver/server_status_sync.go` 仅提供 5 秒有界回调
 - Secret 落地与编码边界：`pkg/apiserver/event/workflow/job/job_secret.go`
 - 纳管 snapshot 版本、校验与 digest 归一化：`pkg/apiserver/domain/service/resourceimport/contract/snapshot.go`
 - Adopted 重建 claim、恢复与 finalize：`pkg/apiserver/event/workflow/job/job_adopted_source.go`

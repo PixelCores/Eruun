@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+
+	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 )
 
 type bindingTestRequest struct {
@@ -24,7 +26,7 @@ func TestBindAndValidateRejectsInvalidPayload(t *testing.T) {
 		if _, ok := bindAndValidate[bindingTestRequest](c, bcode.ErrApplicationConfig, true); !ok {
 			return
 		}
-		bcode.ReturnSuccess(c, gin.H{"ok": true})
+		apiresponse.ReturnSuccess(c, gin.H{"ok": true})
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/binding", strings.NewReader(`{"name":`))
@@ -45,7 +47,7 @@ func TestBindAndValidateRejectsValidationFailure(t *testing.T) {
 		if _, ok := bindAndValidate[bindingTestRequest](c, bcode.ErrApplicationConfig, false); !ok {
 			return
 		}
-		bcode.ReturnSuccess(c, gin.H{"ok": true})
+		apiresponse.ReturnSuccess(c, gin.H{"ok": true})
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/binding", strings.NewReader(`{"name":""}`))
@@ -67,7 +69,7 @@ func TestBindJSONAllowEOFAcceptsEmptyBody(t *testing.T) {
 		if !ok {
 			return
 		}
-		bcode.ReturnSuccess(c, gin.H{"name": req.Name})
+		apiresponse.ReturnSuccess(c, gin.H{"name": req.Name})
 	})
 
 	req := httptest.NewRequest(http.MethodDelete, "/binding", nil)
