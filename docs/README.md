@@ -68,7 +68,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `pkg/apiserver/domain/repository` | 仓储接口和数据访问契约 | 查询/写入方法、事务边界 | 接口表达业务意图，不暴露上层 DTO |
 | `pkg/apiserver/domain/service` | 应用生命周期、转换、查询、工作流创建 | 创建/更新/删除应用、组件查询、K8s YAML 转换 | 保持核心领域规则集中；存量资源导入由子模块 `resourceimport` 负责 |
 | `pkg/apiserver/domain/service/resourceimport` | 存量 Kubernetes 资源的一次性导入模块 | 用户规则扫描、候选快照、用户选择、异步纳管任务、资源 identity/digest 与运行期协调 | 扫描与纳管是两个独立持久化 Job，不做持续监听；共享契约在 `contract`，Kubernetes 侧协调在 `runtime` |
-| `pkg/apiserver/domain/spec` | 共享规格、资源契约、策略和校验 | Auth、OAuth、URL 安全、云资源配置、资源类型、Service 暴露类型与共享策略 | 业务取值及归一化与对应规格集中定义 |
+| `pkg/apiserver/domain/spec` | 共享规格、资源契约、策略和校验 | Auth、OAuth、URL 安全、云资源配置、资源类型、Service 暴露类型与共享策略 | 业务取值及归一化与对应规格集中定义；Storage/Volume 类型与映射集中在 `storage.go` |
 | `pkg/apiserver/event/workflow` | Workflow 调度、分发、状态推进、审批/超时 | 任务状态、队列消费、分布式执行 | DB 状态机是任务事实源 |
 | `pkg/apiserver/event/workflow/job` | 具体 Job 控制器和 K8s 资源调和 | Deployment、StatefulSet、Service、PVC、Secret、RBAC 等资源执行 | 保持资源生成、等待和清理语义一致 |
 | `pkg/apiserver/event/workflow/cloudjob` | 云资源 Provider 合约与实现 | 云资源步骤、Provider 注册、外部云动作 | 合约字符串集中为常量 |

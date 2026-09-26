@@ -301,7 +301,7 @@ func TestListApplicationComponentsTreatsEmptySecretValuesAsUnresolved(t *testing
 		},
 		EnvFrom: []spec.EnvFromSourceSpec{
 			{
-				Type:       config.StorageTypeSecret,
+				Type:       spec.StorageTypeSecret,
 				SourceName: "db-secret",
 			},
 		},

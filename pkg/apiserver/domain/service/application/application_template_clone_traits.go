@@ -227,7 +227,7 @@ func rewriteTemplateStorageTraits(traits *apisv1.Traits, oldName, newName, baseN
 	for i := range traits.Storage {
 		storage := &traits.Storage[i]
 		originalName := strings.TrimSpace(storage.Name)
-		if !collectTopLevelStorageIdentities && storage.Type == config.StorageTypePersistent {
+		if !collectTopLevelStorageIdentities && storage.Type == spec.StorageTypePersistent {
 			if parentStorage, ok := persistentStorageIdentities[originalName]; ok {
 				inheritPersistentStorageIdentity(storage, parentStorage)
 				if storage.SourceName != "" {
@@ -236,7 +236,7 @@ func rewriteTemplateStorageTraits(traits *apisv1.Traits, oldName, newName, baseN
 				continue
 			}
 		}
-		if storage.Type == config.StorageTypePersistent {
+		if storage.Type == spec.StorageTypePersistent {
 			rewriteName := rewriteStorageName
 			if storage.TmpCreate {
 				rewriteName = rewriteTmpCreateStorageName
@@ -259,7 +259,7 @@ func rewriteTemplateStorageTraits(traits *apisv1.Traits, oldName, newName, baseN
 		if storage.SourceName != "" {
 			storage.SourceName = rewriteNameCandidate(storage.SourceName)
 		}
-		if collectTopLevelStorageIdentities && storage.Type == config.StorageTypePersistent && originalName != "" {
+		if collectTopLevelStorageIdentities && storage.Type == spec.StorageTypePersistent && originalName != "" {
 			persistentStorageIdentities[originalName] = *storage
 		}
 	}

@@ -18,7 +18,7 @@ func newStatefulSetPVCFullRebuildRetryFixture(t *testing.T) (*inMemoryAppStore, 
 	}
 	currentTraits := apisv1.Traits{
 		Storage: []spec.StorageTraitSpec{{
-			Name: "data", Type: config.StorageTypePersistent, MountPath: "/data", TmpCreate: true, Size: "1Gi",
+			Name: "data", Type: spec.StorageTypePersistent, MountPath: "/data", TmpCreate: true, Size: "1Gi",
 		}},
 		Service: []spec.ServiceTraitSpec{{
 			Name: "mysql-headless", Type: string(spec.ServiceAccessInternal), Headless: true,

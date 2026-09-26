@@ -355,7 +355,7 @@ func resolvedPVCResourceNames(component apisv1.CreateComponentRequest) []resolve
 func collectStandalonePVCResourceNames(out *[]resolvedPVCResourceName, storages []spec.StorageTraitSpec, sourcePrefix string) {
 	processedVolumes := make(map[string]struct{}, len(storages))
 	for storageIndex, storage := range storages {
-		if config.StorageTypeMapping[storage.Type] != config.VolumeTypePVC || storage.TmpCreate {
+		if spec.StorageTypeMapping[storage.Type] != spec.VolumeTypePVC || storage.TmpCreate {
 			continue
 		}
 		volumeName := utils.NormalizeLowerStrip(storage.Name)

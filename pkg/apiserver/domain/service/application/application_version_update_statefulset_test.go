@@ -88,7 +88,7 @@ func TestUpdateVersionPreservesExistingStandalonePVCClaimName(t *testing.T) {
 			Traits: &apisv1.Traits{
 				Storage: []spec.StorageTraitSpec{{
 					Name:      "cache-v2",
-					Type:      config.StorageTypePersistent,
+					Type:      spec.StorageTypePersistent,
 					MountPath: "/data/cache",
 					ClaimName: "new-cache",
 				}},
@@ -138,7 +138,7 @@ func TestUpdateVersionRejectsStorageSubPathAndSubPathExpr(t *testing.T) {
 		Traits: mustJSONStruct(&apisv1.Traits{
 			Storage: []spec.StorageTraitSpec{{
 				Name:      "logs",
-				Type:      config.StorageTypePersistent,
+				Type:      spec.StorageTypePersistent,
 				MountPath: "/app/log",
 			}},
 		}),
@@ -157,7 +157,7 @@ func TestUpdateVersionRejectsStorageSubPathAndSubPathExpr(t *testing.T) {
 			Traits: &apisv1.Traits{
 				Storage: []spec.StorageTraitSpec{{
 					Name:        "logs",
-					Type:        config.StorageTypePersistent,
+					Type:        spec.StorageTypePersistent,
 					MountPath:   "/app/log",
 					SubPath:     "fixed/logs",
 					SubPathExpr: "$(POD_IP)/logs",
@@ -206,7 +206,7 @@ func TestUpdateVersionRejectsStatefulSetVolumeClaimTemplateRename(t *testing.T) 
 			Traits: &apisv1.Traits{
 				Storage: []spec.StorageTraitSpec{{
 					Name:      "data-v2",
-					Type:      config.StorageTypePersistent,
+					Type:      spec.StorageTypePersistent,
 					MountPath: "/data/data",
 					TmpCreate: true,
 				}},
@@ -299,7 +299,7 @@ func TestUpdateVersionRejectsStatefulSetImmutableTraitChangesBeforeCommit(t *tes
 			}
 			currentTraits := apisv1.Traits{
 				Storage: []spec.StorageTraitSpec{{
-					Name: "data", Type: config.StorageTypePersistent, MountPath: "/data", TmpCreate: true, Size: "1Gi",
+					Name: "data", Type: spec.StorageTypePersistent, MountPath: "/data", TmpCreate: true, Size: "1Gi",
 				}},
 				Service: []spec.ServiceTraitSpec{{
 					Name: "mysql-headless", Type: string(spec.ServiceAccessInternal), Headless: true,

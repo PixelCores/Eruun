@@ -21,7 +21,7 @@ import (
 func TestBuildVersionUpdateFullCleanupInfoKeepsV2WhenVCTsAreUnchanged(t *testing.T) {
 	currentTraits := apisv1.Traits{
 		Storage: []spec.StorageTraitSpec{{
-			Name: "data", Type: config.StorageTypePersistent, MountPath: "/data", TmpCreate: true, Size: "1Gi",
+			Name: "data", Type: spec.StorageTypePersistent, MountPath: "/data", TmpCreate: true, Size: "1Gi",
 		}},
 		Service: []spec.ServiceTraitSpec{{
 			Name: "mysql-headless", Type: string(spec.ServiceAccessInternal), Headless: true,
@@ -56,7 +56,7 @@ func TestBuildVersionUpdateFullCleanupInfoKeepsV2WhenVCTsAreUnchanged(t *testing
 func TestBuildVersionUpdateFullCleanupInfoKeepsV1WithoutImmutableChanges(t *testing.T) {
 	traits := apisv1.Traits{
 		Storage: []spec.StorageTraitSpec{{
-			Name: "data", Type: config.StorageTypePersistent, MountPath: "/data", TmpCreate: true, Size: "1Gi",
+			Name: "data", Type: spec.StorageTypePersistent, MountPath: "/data", TmpCreate: true, Size: "1Gi",
 		}},
 	}
 	component := &model.ApplicationComponent{

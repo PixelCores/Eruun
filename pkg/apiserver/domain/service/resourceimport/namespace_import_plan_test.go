@@ -195,7 +195,7 @@ func TestImportComponentResourceKeys_AllowsStandalonePVCOverlap(t *testing.T) {
 		ComponentType: config.ServerJob,
 		Image:         "nginx:latest",
 		Traits: apisv1.Traits{
-			Storage: []domainspec.StorageTraitSpec{{Name: "cache", Type: config.StorageTypePersistent, MountPath: "/cache", ClaimName: "shared-cache"}},
+			Storage: []domainspec.StorageTraitSpec{{Name: "cache", Type: domainspec.StorageTypePersistent, MountPath: "/cache", ClaimName: "shared-cache"}},
 		},
 	}}
 	existing := apisv1.CreateComponentRequest{
@@ -203,7 +203,7 @@ func TestImportComponentResourceKeys_AllowsStandalonePVCOverlap(t *testing.T) {
 		ComponentType: config.ServerJob,
 		Image:         "nginx:latest",
 		Traits: apisv1.Traits{
-			Storage: []domainspec.StorageTraitSpec{{Name: "cache", Type: config.StorageTypePersistent, MountPath: "/cache", ClaimName: "shared-cache"}},
+			Storage: []domainspec.StorageTraitSpec{{Name: "cache", Type: domainspec.StorageTypePersistent, MountPath: "/cache", ClaimName: "shared-cache"}},
 		},
 	}
 

@@ -722,7 +722,7 @@ func TestCreateApplicationsRejectsStorageSubPathAndSubPathExpr(t *testing.T) {
 			Traits: apisv1.Traits{
 				Storage: []spec.StorageTraitSpec{{
 					Name:        "logs",
-					Type:        config.StorageTypePersistent,
+					Type:        spec.StorageTypePersistent,
 					MountPath:   "/app/log",
 					SubPath:     "fixed/logs",
 					SubPathExpr: "$(POD_IP)/logs",

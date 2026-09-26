@@ -3,11 +3,9 @@ package traits
 import (
 	"fmt"
 
-	corev1 "k8s.io/api/core/v1"
-
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
+	corev1 "k8s.io/api/core/v1"
 )
 
 // EnvsProcessor implements the user-friendly `envs` trait. It translates a
@@ -66,13 +64,13 @@ func (p *EnvFromProcessor) Process(ctx *TraitContext) (*TraitResult, error) {
 			return nil, fmt.Errorf("envFrom trait requires a sourceName")
 		}
 		switch trait.Type {
-		case config.StorageTypeConfig:
+		case spec.StorageTypeConfig:
 			envFromSources = append(envFromSources, corev1.EnvFromSource{
 				ConfigMapRef: &corev1.ConfigMapEnvSource{
 					LocalObjectReference: corev1.LocalObjectReference{Name: trait.SourceName},
 				},
 			})
-		case config.StorageTypeSecret:
+		case spec.StorageTypeSecret:
 			envFromSources = append(envFromSources, corev1.EnvFromSource{
 				SecretRef: &corev1.SecretEnvSource{
 					LocalObjectReference: corev1.LocalObjectReference{Name: trait.SourceName},

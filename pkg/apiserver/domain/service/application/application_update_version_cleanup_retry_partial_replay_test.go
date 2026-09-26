@@ -25,7 +25,7 @@ func TestUpdateVersionPendingStatefulSetPVCDeletionRejectsPartialTemplateReplay(
 	desiredTraits := retry.Components[2].Traits
 	desiredTraits.Storage[0] = spec.StorageTraitSpec{
 		Name:      "data",
-		Type:      config.StorageTypePersistent,
+		Type:      spec.StorageTypePersistent,
 		MountPath: "/data",
 		TmpCreate: true,
 		Size:      "1Gi",
@@ -82,7 +82,7 @@ func newStatefulSetPVCTwoTemplateRetryFixture(t *testing.T) (*inMemoryAppStore, 
 	store, svc, req := newStatefulSetPVCFullRebuildRetryFixture(t)
 	logsStorage := spec.StorageTraitSpec{
 		Name:      "logs",
-		Type:      config.StorageTypePersistent,
+		Type:      spec.StorageTypePersistent,
 		MountPath: "/logs",
 		TmpCreate: true,
 		Size:      "1Gi",

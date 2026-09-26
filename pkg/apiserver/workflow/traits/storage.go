@@ -51,7 +51,7 @@ func (s *StorageProcessor) Process(ctx *TraitContext) (*TraitResult, error) {
 			continue
 		}
 		processedVolumes[volumeName] = true
-		volType := config.StorageTypeMapping[vol.Type]
+		volType := spec.StorageTypeMapping[vol.Type]
 		if volType == "" {
 			return nil, fmt.Errorf("unknown storage type %q for volume %q; supported types: persistent, ephemeral, host-mounted, config, secret", vol.Type, vol.Name)
 		}
@@ -59,7 +59,7 @@ func (s *StorageProcessor) Process(ctx *TraitContext) (*TraitResult, error) {
 		mountPath := defaultOr(vol.MountPath, fmt.Sprintf("/mnt/%s", volumeName))
 
 		switch volType {
-		case config.VolumeTypePVC:
+		case spec.VolumeTypePVC:
 			if vol.TmpCreate {
 				pvcSpec, err := buildPVCSpec(vol, volumeName)
 				if err != nil {
@@ -105,12 +105,12 @@ func (s *StorageProcessor) Process(ctx *TraitContext) (*TraitResult, error) {
 					VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: claimName}},
 				})
 			}
-		case config.VolumeTypeEmptyDir:
+		case spec.VolumeTypeEmptyDir:
 			volumes = append(volumes, corev1.Volume{
 				Name:         volumeName,
 				VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
 			})
-		case config.VolumeTypeConfigMap:
+		case spec.VolumeTypeConfigMap:
 			sourceName := vol.SourceName
 			if sourceName == "" {
 				sourceName = vol.Name
@@ -124,7 +124,7 @@ func (s *StorageProcessor) Process(ctx *TraitContext) (*TraitResult, error) {
 					},
 				},
 			})
-		case config.VolumeTypeSecret:
+		case spec.VolumeTypeSecret:
 			sourceName := vol.SourceName
 			if sourceName == "" {
 				sourceName = vol.Name
