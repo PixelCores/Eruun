@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
-	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
+	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"k8s.io/klog/v2"
 )
 

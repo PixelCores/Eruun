@@ -12,7 +12,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
 )
 
@@ -29,7 +29,7 @@ func (app *applications) streamComponentShellScript(c *gin.Context) {
 
 	stream, err := app.ApplicationService.StreamComponentShellScript(c.Request.Context(), appID, componentName, *req)
 	if err != nil {
-		bcode.ReturnError(c, err)
+		apiresponse.ReturnError(c, err)
 		return
 	}
 	flusher, ok := setupSSEStream(c, stream.PodName, stream.ContainerName, fmt.Errorf("response writer does not support streaming"))

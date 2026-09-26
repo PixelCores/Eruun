@@ -302,9 +302,9 @@ func adoptedSecretIntentFromJobInfo(job *model.JobTask) (*corev1.Secret, error) 
 			intent.Immutable = &value
 		}
 		return intent, nil
-	case *model.SecretInput:
+	case *SecretInput:
 		if info == nil {
-			return nil, fmt.Errorf("job info %s is nil", jobInfoTypeName[*model.SecretInput]())
+			return nil, fmt.Errorf("job info %s is nil", jobInfoTypeName[*SecretInput]())
 		}
 		if len(info.Data) > 0 || strings.TrimSpace(info.URL) != "" {
 			return nil, fmt.Errorf("adopted Secret JobInfo must not contain plaintext data or URL input")
@@ -815,7 +815,7 @@ func GenerateSecret(component *model.ApplicationComponent, properties *model.Pro
 	name, namespace := generatedResourceIdentity(component)
 
 	if url, fileName, ok := externalConfigFileInput(properties, properties != nil && properties.Secret != nil); ok {
-		return &model.SecretInput{
+		return &SecretInput{
 			Name:      name,
 			Namespace: namespace,
 			URL:       url,
@@ -830,7 +830,7 @@ func GenerateSecret(component *model.ApplicationComponent, properties *model.Pro
 		data = keyValueDataOrNil(properties.Secret)
 	}
 
-	return &model.SecretInput{
+	return &SecretInput{
 		Name:      name,
 		Namespace: namespace,
 		Labels:    labels,

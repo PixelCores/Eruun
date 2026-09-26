@@ -514,3 +514,17 @@ func authLookupError(err error) error {
 	}
 	return err
 }
+
+// ListAdminUsers centralizes administrator authorization and pagination rules.
+func (s *Service) ListAdminUsers(ctx context.Context, p *Principal, page, pageSize int) ([]*model.User, error) {
+	if p == nil || p.User == nil {
+		return nil, bcode.ErrUnauthorized
+	}
+	if !p.User.SystemAdmin {
+		return nil, bcode.ErrForbidden
+	}
+	if page < 1 || pageSize < 1 || pageSize > 100 {
+		return nil, bcode.ErrAccountInput
+	}
+	return s.Repo.ListUsers(ctx, page, pageSize)
+}

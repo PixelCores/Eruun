@@ -22,6 +22,8 @@ API Server 使用统一 JSON envelope：
 
 ## 错误映射
 
+HTTP envelope 与错误映射由 `pkg/apiserver/interfaces/api/response` 统一处理，供 handler 和 middleware 共用；业务错误及安全文案标记仍在 `utils/bcode`，gRPC 使用自己的协议映射。
+
 由统一错误入口处理的错误遵循以下规则：
 
 | 错误来源 | HTTP status | `code` | `message` |

@@ -17,7 +17,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 )
 
 func requiredJobInfo[T any](job *model.JobTask) (T, error) {
@@ -70,9 +70,9 @@ func configMapFromJobInfo(ctx context.Context, job *model.JobTask, urlSecurityPo
 		return nil, fmt.Errorf("job task is nil")
 	}
 	switch info := job.JobInfo.(type) {
-	case *model.ConfigMapInput:
+	case *ConfigMapInput:
 		if info == nil {
-			return nil, fmt.Errorf("job info %s is nil", jobInfoTypeName[*model.ConfigMapInput]())
+			return nil, fmt.Errorf("job info %s is nil", jobInfoTypeName[*ConfigMapInput]())
 		}
 		conf, err := info.GenerateConf(ctx, urlSecurityPolicy)
 		if err != nil {
@@ -107,9 +107,9 @@ func secretFromJobInfo(ctx context.Context, job *model.JobTask, urlSecurityPolic
 			return nil, fmt.Errorf("job info %s is nil", jobInfoTypeName[*corev1.Secret]())
 		}
 		return info, nil
-	case *model.SecretInput:
+	case *SecretInput:
 		if info == nil {
-			return nil, fmt.Errorf("job info %s is nil", jobInfoTypeName[*model.SecretInput]())
+			return nil, fmt.Errorf("job info %s is nil", jobInfoTypeName[*SecretInput]())
 		}
 		secretType := corev1.SecretTypeOpaque
 		if info.Type != "" {
@@ -117,13 +117,13 @@ func secretFromJobInfo(ctx context.Context, job *model.JobTask, urlSecurityPolic
 		}
 		stringData := map[string]string{}
 		if info.URL != "" {
-			body, err := utils.ReadFileFromURLSimple(ctx, info.URL, urlSecurityPolicy)
+			body, err := clients.ReadURL(ctx, info.URL, urlSecurityPolicy, configMapMaxSize+1024)
 			if err != nil {
 				return nil, fmt.Errorf("fetch secret url failed: %w", err)
 			}
 			fileName := info.FileName
 			if fileName == "" {
-				fileName = model.ExtractFileNameFromURLForSecret(info.URL)
+				fileName = extractFileNameFromURLForSecret(info.URL)
 			}
 			stringData[fileName] = string(body)
 		}

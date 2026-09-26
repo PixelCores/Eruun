@@ -2,6 +2,7 @@ package conversion
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"k8s.io/klog/v2"
@@ -10,12 +11,14 @@ import (
 	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
 const defaultConvertAppName = "converted-app"
+
+const convertYAMLMaxSize = 10 * 1024 * 1024
 
 const (
 	convertSchemeHTTP  = "http://"
@@ -104,7 +107,7 @@ func resolveConvertYAML(ctx context.Context, req v1.ConvertApplicationsRequest, 
 		if !strings.HasPrefix(fileURL, convertSchemeHTTP) && !strings.HasPrefix(fileURL, convertSchemeHTTPS) {
 			return "", bcode.ErrApplicationConfig
 		}
-		content, err := utils.ReadFileFromURLForConversion(ctx, fileURL, urlPolicy)
+		content, err := readYAMLFromURL(ctx, fileURL, urlPolicy)
 		if err != nil {
 			return "", bcode.ErrApplicationConfig
 		}
@@ -115,8 +118,19 @@ func resolveConvertYAML(ctx context.Context, req v1.ConvertApplicationsRequest, 
 	if yamlText == "" {
 		return "", bcode.ErrApplicationConfig
 	}
-	if len(yamlText) > utils.ConvertYAMLMaxSize {
+	if len(yamlText) > convertYAMLMaxSize {
 		return "", bcode.ErrApplicationConfig
 	}
 	return yamlText, nil
+}
+
+func readYAMLFromURL(ctx context.Context, rawURL string, policy *spec.URLSecurityPolicySpec) ([]byte, error) {
+	data, err := clients.ReadURL(ctx, rawURL, policy, convertYAMLMaxSize+1)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > convertYAMLMaxSize {
+		return nil, fmt.Errorf("file size %d bytes exceeds convert yaml maximum size %d bytes", len(data), convertYAMLMaxSize)
+	}
+	return data, nil
 }

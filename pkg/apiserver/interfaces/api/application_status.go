@@ -10,6 +10,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/applicationstatus"
 	assembler "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/assembler/v1"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/gin-gonic/gin"
 	"k8s.io/klog/v2"
@@ -44,10 +45,10 @@ func (app *applications) listBatchApplicationComponentStatus(c *gin.Context) {
 		return
 	}
 	if len(req.AppIDs) == 0 {
-		bcode.ReturnError(c, bcode.ErrApplicationConfig)
+		apiresponse.ReturnError(c, bcode.ErrApplicationConfig)
 		return
 	}
-	bcode.ReturnSuccess(c, app.statusRules().Batch(c.Request.Context(), req.AppIDs, batchLookupErrorMessage))
+	apiresponse.ReturnSuccess(c, app.statusRules().Batch(c.Request.Context(), req.AppIDs, batchLookupErrorMessage))
 }
 
 func (app *applications) getApplicationStatus(c *gin.Context) {

@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
@@ -26,7 +27,7 @@ func validatedComponentShellScriptRequest(c *gin.Context) (*apis.ExecComponentSh
 		return nil, false
 	}
 	if strings.TrimSpace(req.Script) == "" {
-		bcode.ReturnError(c, bcode.ErrComponentShellScriptInvalid)
+		apiresponse.ReturnError(c, bcode.ErrComponentShellScriptInvalid)
 		return nil, false
 	}
 	return req, true

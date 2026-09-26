@@ -7,6 +7,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
@@ -51,8 +52,8 @@ func (r *resourceImports) getJob(c *gin.Context) {
 
 func respondWithAccepted(c *gin.Context, result *apisv1.ResourceImportJobAcceptedResponse, err error) {
 	if err != nil {
-		bcode.ReturnError(c, err)
+		apiresponse.ReturnError(c, err)
 		return
 	}
-	bcode.ReturnResponse(c, http.StatusAccepted, bcode.SuccessCode, "", result)
+	apiresponse.ReturnResponse(c, http.StatusAccepted, apiresponse.SuccessCode, "", result)
 }
