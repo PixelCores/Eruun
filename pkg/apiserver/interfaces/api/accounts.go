@@ -7,9 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/middleware"
@@ -292,11 +290,11 @@ func (a *accounts) acceptInvitation(c *gin.Context) {
 func (a *accounts) users(c *gin.Context) {
 	page, e := strconv.Atoi(c.DefaultQuery("page", "1"))
 	size, sizeErr := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
-	if e != nil || sizeErr != nil || page < 1 || size < 1 || size > 100 {
+	if e != nil || sizeErr != nil {
 		bcode.ReturnError(c, bcode.ErrAccountInput)
 		return
 	}
-	v, e := a.Accounts.Repo.Store.List(c.Request.Context(), &model.User{}, &datastore.ListOptions{Page: page, PageSize: size, SortBy: []datastore.SortOption{{Key: "id", Order: datastore.SortOrderAscending}}})
+	v, e := a.Accounts.ListAdminUsers(c.Request.Context(), middleware.Principal(c), page, size)
 	accountResult(c, v, e)
 }
 func (a *accounts) userStatus(c *gin.Context) {

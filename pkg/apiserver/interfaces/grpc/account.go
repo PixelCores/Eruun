@@ -8,7 +8,6 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	eruunv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -401,7 +400,8 @@ func (s *AccountServer) AcceptWorkspaceInvitation(ctx context.Context, req *eruu
 }
 
 func (s *AccountServer) ListAdminUsers(ctx context.Context, req *eruunv1.ListAdminUsersRequest) (*eruunv1.ListAdminUsersResponse, error) {
-	if _, err := adminPrincipal(ctx); err != nil {
+	p, err := principal(ctx)
+	if err != nil {
 		return nil, rpcError(err)
 	}
 	page, size := int32(1), int32(20)
@@ -413,22 +413,12 @@ func (s *AccountServer) ListAdminUsers(ctx context.Context, req *eruunv1.ListAdm
 			size = req.GetPageSize()
 		}
 	}
-	if page < 1 || size < 1 || size > 100 {
-		return nil, rpcError(bcode.ErrAccountInput)
-	}
-	items, err := s.Accounts.Repo.Store.List(ctx, &model.User{}, &datastore.ListOptions{
-		Page: int(page), PageSize: int(size),
-		SortBy: []datastore.SortOption{{Key: "id", Order: datastore.SortOrderAscending}},
-	})
+	items, err := s.Accounts.ListAdminUsers(ctx, p, int(page), int(size))
 	if err != nil {
 		return nil, rpcError(err)
 	}
 	resp := &eruunv1.ListAdminUsersResponse{}
-	for _, item := range items {
-		u, ok := item.(*model.User)
-		if !ok {
-			return nil, rpcError(fmt.Errorf("user list contains %T", item))
-		}
+	for _, u := range items {
 		resp.Users = append(resp.Users, userMessage(u))
 	}
 	return resp, nil
