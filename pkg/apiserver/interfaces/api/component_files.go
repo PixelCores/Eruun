@@ -14,6 +14,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
 )
@@ -29,13 +30,13 @@ func (app *applications) exportComponentFilesZip(c *gin.Context) {
 		return
 	}
 	if strings.TrimSpace(req.Path) == "" {
-		bcode.ReturnError(c, bcode.ErrComponentFilePathInvalid)
+		apiresponse.ReturnError(c, bcode.ErrComponentFilePathInvalid)
 		return
 	}
 
 	archive, err := app.ApplicationService.ExportComponentFilesZip(c.Request.Context(), appID, componentName, *req)
 	if err != nil {
-		bcode.ReturnError(c, err)
+		apiresponse.ReturnError(c, err)
 		return
 	}
 	writeComponentArchiveStream(c, archive, appID, componentName, "component-export")
@@ -43,7 +44,7 @@ func (app *applications) exportComponentFilesZip(c *gin.Context) {
 
 func writeComponentArchiveStream(c *gin.Context, archive *service.ComponentFileArchiveStream, appID, componentName, fallbackBaseName string) {
 	if archive == nil || archive.Reader == nil {
-		bcode.ReturnError(c, fmt.Errorf("component file archive stream is empty"))
+		apiresponse.ReturnError(c, fmt.Errorf("component file archive stream is empty"))
 		return
 	}
 	defer func() {
@@ -71,14 +72,14 @@ func writeComponentArchiveStream(c *gin.Context, archive *service.ComponentFileA
 	buffered := bufio.NewReader(archive.Reader)
 	if _, err := buffered.Peek(1); err != nil {
 		if errors.Is(err, io.EOF) {
-			bcode.ReturnError(c, fmt.Errorf("component file archive stream is empty"))
+			apiresponse.ReturnError(c, fmt.Errorf("component file archive stream is empty"))
 			return
 		}
 		if kube.IsArchivePathInvalidError(err) || kube.IsArchivePathLookupError(err) {
-			bcode.ReturnError(c, bcode.ErrComponentFilePathInvalid)
+			apiresponse.ReturnError(c, bcode.ErrComponentFilePathInvalid)
 			return
 		}
-		bcode.ReturnError(c, err)
+		apiresponse.ReturnError(c, err)
 		return
 	}
 

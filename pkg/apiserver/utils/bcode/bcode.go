@@ -5,11 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/gin-gonic/gin"
-	"github.com/go-playground/validator/v10"
 	"k8s.io/klog/v2"
-
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
 // Bcode business error code
@@ -88,33 +84,6 @@ func NewBcode(httpCode, businessCode int32, message string) *Bcode {
 // Init returns initialization errors captured during bcode registration.
 func Init() error {
 	return bcodeInitErr
-}
-
-// ReturnError Unified handling of all types of errors, generating a standard return structure.
-func ReturnError(c *gin.Context, err error) {
-	if err == nil {
-		return
-	}
-
-	var bc *Bcode
-	if errors.As(err, &bc) {
-		ReturnErrorWithMessage(c, bc, SafeClientMessage(err))
-		return
-	}
-
-	if errors.Is(err, datastore.ErrRecordNotExist) {
-		ReturnErrorWithMessage(c, ErrNotFound, "")
-		return
-	}
-
-	var validErr validator.ValidationErrors
-	if errors.As(err, &validErr) {
-		ReturnErrorWithMessage(c, ErrApplicationConfig, "")
-		return
-	}
-
-	klog.ErrorS(errors.New("generic server error response"), "returning generic server error response", "errorType", fmt.Sprintf("%T", err))
-	ReturnErrorWithMessage(c, ErrServer, "")
 }
 
 // ErrServer an unexpected mistake.

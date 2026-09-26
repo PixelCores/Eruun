@@ -1,4 +1,4 @@
-package model
+package job
 
 import (
 	"context"
@@ -31,7 +31,7 @@ type SecretInput struct {
 	FileName    string            `json:"fileName,omitempty"`
 }
 
-func ExtractFileNameFromURLForSecret(url string) string {
+func extractFileNameFromURLForSecret(url string) string {
 	if idx := strings.Index(url, "?"); idx != -1 {
 		url = url[:idx]
 	}

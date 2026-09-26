@@ -6,12 +6,14 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+
+	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 )
 
 func requiredPathParam(c *gin.Context, name string, invalidErr error) (string, bool) {
 	value := strings.TrimSpace(c.Param(name))
 	if value == "" {
-		bcode.ReturnError(c, invalidErr)
+		apiresponse.ReturnError(c, invalidErr)
 		return "", false
 	}
 	return value, true
@@ -41,7 +43,7 @@ func componentRouteParams(c *gin.Context) (string, string, bool) {
 	appID := strings.TrimSpace(c.Param("appID"))
 	componentName := strings.TrimSpace(c.Param("componentName"))
 	if appID == "" || componentName == "" {
-		bcode.ReturnError(c, bcode.ErrComponentNotFound)
+		apiresponse.ReturnError(c, bcode.ErrComponentNotFound)
 		return "", "", false
 	}
 	return appID, componentName, true
