@@ -799,7 +799,7 @@ func TestDeploySecretJobCtlRunAdoptedRejectsPlaintextJobInfoBeforeNetworkOrKuber
 		},
 		{
 			name: "secret input data",
-			jobInfo: &model.SecretInput{
+			jobInfo: &SecretInput{
 				Name:      source.Name,
 				Namespace: source.Namespace,
 				Data:      map[string]string{"password": "forbidden"},
@@ -807,7 +807,7 @@ func TestDeploySecretJobCtlRunAdoptedRejectsPlaintextJobInfoBeforeNetworkOrKuber
 		},
 		{
 			name: "secret input URL",
-			jobInfo: &model.SecretInput{
+			jobInfo: &SecretInput{
 				Name:      source.Name,
 				Namespace: source.Namespace,
 				URL:       "http://127.0.0.1:1/must-not-fetch",
@@ -836,7 +836,7 @@ func TestDeploySecretJobCtlRunAdoptedRejectsPlaintextJobInfoBeforeNetworkOrKuber
 
 func TestInitJobCtlInjectsImportSecretKeyringWithoutMutatingJobInfo(t *testing.T) {
 	keyring := testImportSecretKeyring(t, "active", map[string][]byte{"active": bytes.Repeat([]byte{10}, 32)})
-	jobInfo := &model.SecretInput{Name: "native-secret", Namespace: "ops"}
+	jobInfo := &SecretInput{Name: "native-secret", Namespace: "ops"}
 	jobTask := &model.JobTask{
 		Name:      "native-secret",
 		AppID:     "app-1",

@@ -106,7 +106,7 @@ func (w *workflowServiceImpl) CreateWorkflowTask(ctx context.Context, req apis.C
 	workflow = ConvertWorkflow(&req)
 
 	// 校验工作流信息
-	if err = wf.LintWorkflow(workflow); err != nil {
+	if err = lintWorkflow(workflow); err != nil {
 		return nil, err
 	}
 
