@@ -2,28 +2,27 @@ package model
 
 import (
 	"encoding/json"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 )
 
 func TestApplicationsEffectiveManagementMode(t *testing.T) {
 	tests := []struct {
 		name string
 		app  *Applications
-		want config.ManagementMode
+		want domainspec.ManagementMode
 	}{
-		{name: "new native", app: NewApplications("id", "name", "default", "1.0.0", "", "", "", "", false), want: config.ManagementModeNative},
-		{name: "legacy native", app: &Applications{}, want: config.ManagementModeNative},
-		{name: "legacy imported", app: &Applications{Project: " imported ", Version: "IMPORTED"}, want: config.ManagementModeObserve},
-		{name: "explicit native imported values", app: &Applications{Project: "imported", Version: "imported", ManagementMode: config.ManagementModeNative}, want: config.ManagementModeNative},
-		{name: "observe", app: &Applications{ManagementMode: config.ManagementModeObserve}, want: config.ManagementModeObserve},
-		{name: "adopted", app: &Applications{ManagementMode: config.ManagementModeAdopted}, want: config.ManagementModeAdopted},
-		{name: "unknown fails closed", app: &Applications{ManagementMode: config.ManagementMode("future")}, want: config.ManagementModeObserve},
+		{name: "new native", app: NewApplications("id", "name", "default", "1.0.0", "", "", "", "", false), want: domainspec.ManagementModeNative},
+		{name: "legacy native", app: &Applications{}, want: domainspec.ManagementModeNative},
+		{name: "legacy imported", app: &Applications{Project: " imported ", Version: "IMPORTED"}, want: domainspec.ManagementModeObserve},
+		{name: "explicit native imported values", app: &Applications{Project: "imported", Version: "imported", ManagementMode: domainspec.ManagementModeNative}, want: domainspec.ManagementModeNative},
+		{name: "observe", app: &Applications{ManagementMode: domainspec.ManagementModeObserve}, want: domainspec.ManagementModeObserve},
+		{name: "adopted", app: &Applications{ManagementMode: domainspec.ManagementModeAdopted}, want: domainspec.ManagementModeAdopted},
+		{name: "unknown fails closed", app: &Applications{ManagementMode: domainspec.ManagementMode("future")}, want: domainspec.ManagementModeObserve},
 	}
 
 	for _, tt := range tests {
@@ -35,7 +34,7 @@ func TestApplicationsEffectiveManagementMode(t *testing.T) {
 
 func TestApplicationsIndexOnlyUsesExplicitManagementMode(t *testing.T) {
 	require.NotContains(t, (&Applications{}).Index(), "management_mode")
-	require.Equal(t, config.ManagementModeObserve, (&Applications{ManagementMode: config.ManagementModeObserve}).Index()["management_mode"])
+	require.Equal(t, domainspec.ManagementModeObserve, (&Applications{ManagementMode: domainspec.ManagementModeObserve}).Index()["management_mode"])
 }
 
 func TestApplicationComponentSourceWorkloadRequiresCompleteIdentity(t *testing.T) {

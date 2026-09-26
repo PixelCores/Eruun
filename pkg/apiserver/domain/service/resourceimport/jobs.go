@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"reflect"
 	"regexp"
 	"sort"
@@ -13,9 +14,9 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"k8s.io/apimachinery/pkg/labels"
@@ -291,7 +292,7 @@ func (s *serviceImpl) prepareManageCheckpoint(
 	dryRunRequest := apisv1.ImportNamespaceApplicationsRequest{
 		Namespace:      scan.Namespace,
 		Mode:           importModeDryRun,
-		ManagementMode: config.ManagementModeAdopted,
+		ManagementMode: domainspec.ManagementModeAdopted,
 		Applications:   req.Applications,
 	}
 	dryRun, err := s.ImportNamespaceResources(ctx, dryRunRequest)
@@ -360,7 +361,7 @@ func decodeResourceImportManageCheckpoint(
 		strings.TrimSpace(checkpoint.ScanTaskID) != strings.TrimSpace(req.ScanTaskID) ||
 		strings.TrimSpace(applyRequest.Namespace) != strings.TrimSpace(namespace) ||
 		!strings.EqualFold(strings.TrimSpace(applyRequest.Mode), importModeApply) ||
-		applyRequest.ManagementMode != config.ManagementModeAdopted ||
+		applyRequest.ManagementMode != domainspec.ManagementModeAdopted ||
 		strings.TrimSpace(applyRequest.PlanFingerprint) == "" ||
 		!reflect.DeepEqual(applyRequest.Applications, req.Applications) {
 		return nil, fmt.Errorf("resource import management checkpoint does not match the task request")

@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"sort"
 	"strings"
 
@@ -20,7 +21,7 @@ func buildWorkflowFailureCleanupJobs(ctx context.Context, task *model.WorkflowQu
 	if err != nil {
 		return nil, err
 	}
-	if app.EffectiveManagementMode() != config.ManagementModeNative {
+	if app.EffectiveManagementMode() != domainspec.ManagementModeNative {
 		return nil, nil
 	}
 	entities, err := ds.List(ctx, &model.ApplicationComponent{AppID: task.AppID}, &datastore.ListOptions{})

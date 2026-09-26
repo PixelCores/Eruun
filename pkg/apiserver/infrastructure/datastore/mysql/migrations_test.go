@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"strings"
 	"testing"
 	"time"
@@ -13,13 +14,11 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"github.com/stretchr/testify/require"
-
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
+	"github.com/stretchr/testify/require"
 )
 
 type legacyResourceCreationBudgetRow struct {
@@ -536,7 +535,7 @@ func TestApplicationManagementModeSchemaKeepsLegacyWritesNullable(t *testing.T) 
 	require.Empty(t, field.DefaultValue)
 
 	legacyImportedAfterMarker := &model.Applications{Project: "imported", Version: "imported"}
-	require.Equal(t, config.ManagementModeObserve, legacyImportedAfterMarker.EffectiveManagementMode())
+	require.Equal(t, domainspec.ManagementModeObserve, legacyImportedAfterMarker.EffectiveManagementMode())
 }
 
 func newDryRunMySQL(t *testing.T) *gorm.DB {

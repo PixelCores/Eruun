@@ -2,6 +2,7 @@ package application
 
 import (
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"sort"
 	"strings"
 
@@ -34,7 +35,7 @@ func validateVersionUpdateStatefulSetImmutableFields(componentMap map[string]*mo
 		if err != nil {
 			return err
 		}
-		if action != config.ComponentActionUpdate {
+		if action != domainspec.ComponentActionUpdate {
 			continue
 		}
 		component := componentMap[strings.ToLower(strings.TrimSpace(update.Name))]

@@ -854,7 +854,7 @@ func validateApplicationManagementModeForWrite(
 		}
 		return fmt.Errorf("load application %q management mode: %w", appID, err)
 	}
-	if app.EffectiveManagementMode() == config.ManagementModeObserve {
+	if app.EffectiveManagementMode() == spec.ManagementModeObserve {
 		return fmt.Errorf("application %q is in read-only observe mode", appID)
 	}
 	return nil

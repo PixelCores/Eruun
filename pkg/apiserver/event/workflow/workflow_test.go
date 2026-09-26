@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/stretchr/testify/require"
 	"strings"
@@ -194,7 +195,7 @@ func mustVersionUpdateExecutionScopeActionInfo(t *testing.T, components ...strin
 	payload, err := json.Marshal(model.VersionUpdateResourceActionInfo{
 		Source:              config.JobInfoSourceVersionUpdateAction,
 		Version:             1,
-		ExecutionScope:      config.VersionUpdateExecutionScopeChangedComponents,
+		ExecutionScope:      domainspec.VersionUpdateExecutionScopeChangedComponents,
 		ExecutionComponents: components,
 	})
 	require.NoError(t, err)

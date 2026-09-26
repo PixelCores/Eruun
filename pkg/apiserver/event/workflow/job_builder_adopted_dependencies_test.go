@@ -21,9 +21,9 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	traitsPlu "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
@@ -309,7 +309,7 @@ func TestGenerateJobTasks_ImportedAdoptionSnapshotProducesManagedDependencyClosu
 			ID:               appID,
 			Name:             appName,
 			Namespace:        namespace,
-			ManagementMode:   config.ManagementModeAdopted,
+			ManagementMode:   spec.ManagementModeAdopted,
 			AdoptionSnapshot: snapshotJSON,
 		},
 		workflow: &model.Workflow{
@@ -457,7 +457,7 @@ func TestAugmentAdoptedDependencyJobsPreservesComponentAndApprovalScope(t *testi
 		ID:               appID,
 		Name:             "legacy",
 		Namespace:        namespace,
-		ManagementMode:   config.ManagementModeAdopted,
+		ManagementMode:   spec.ManagementModeAdopted,
 		AdoptionSnapshot: snapshotJSON,
 	}}
 	task := &model.WorkflowQueue{TaskID: "task", WorkflowID: workflowID, AppID: appID}

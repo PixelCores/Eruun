@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"strings"
 
 	"github.com/google/uuid"
@@ -19,9 +20,9 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 )
 
 type adoptedResourceBinding struct {
@@ -175,7 +176,7 @@ func adoptedApplicationForJob(
 		}
 		return nil, nil, false, fmt.Errorf("load application management mode: %w", err)
 	}
-	if app.EffectiveManagementMode() != config.ManagementModeAdopted {
+	if app.EffectiveManagementMode() != domainspec.ManagementModeAdopted {
 		return app, nil, false, nil
 	}
 	snapshot, err := decodeAdoptionSnapshot(app)
@@ -569,7 +570,7 @@ func (b *adoptedResourceBinding) reloadCanonicalForRecreation(ctx context.Contex
 	if err := store.Get(ctx, app); err != nil {
 		return fmt.Errorf("reload adopted recreation application %s: %w", appID, err)
 	}
-	if app.EffectiveManagementMode() != config.ManagementModeAdopted {
+	if app.EffectiveManagementMode() != domainspec.ManagementModeAdopted {
 		return fmt.Errorf("reload adopted recreation application %s: application is no longer adopted", appID)
 	}
 	snapshot, err := decodeAdoptionSnapshot(app)

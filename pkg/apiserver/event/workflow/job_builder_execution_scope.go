@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"strings"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -12,11 +13,11 @@ func filterVersionUpdateExecutionScopeWorkflowSteps(
 	steps *model.WorkflowSteps,
 	info model.VersionUpdateResourceActionInfo,
 ) (*model.WorkflowSteps, error) {
-	scope, ok := config.NormalizeVersionUpdateExecutionScope(string(info.ExecutionScope))
+	scope, ok := domainspec.NormalizeVersionUpdateExecutionScope(string(info.ExecutionScope))
 	if !ok {
 		return nil, fmt.Errorf("unsupported version update executionScope %q", info.ExecutionScope)
 	}
-	if scope != config.VersionUpdateExecutionScopeChangedComponents {
+	if scope != domainspec.VersionUpdateExecutionScopeChangedComponents {
 		return steps, nil
 	}
 	filtered := &model.WorkflowSteps{}

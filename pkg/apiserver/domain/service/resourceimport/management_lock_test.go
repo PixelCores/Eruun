@@ -2,21 +2,20 @@ package resourceimport
 
 import (
 	"context"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"testing"
 	"time"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
+	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes/fake"
-
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
-	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
 type notifyingLocker struct {
@@ -129,7 +128,7 @@ func TestImportNamespaceResources_AdoptedApplySerializesOwnershipScanAndCommit(t
 		ID:               "other-app",
 		Name:             "other-app",
 		Namespace:        namespace,
-		ManagementMode:   config.ManagementModeAdopted,
+		ManagementMode:   domainspec.ManagementModeAdopted,
 		AdoptionSnapshot: snapshotJSON,
 	}
 	require.NoError(t, held.Unlock(context.Background()))

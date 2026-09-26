@@ -130,7 +130,7 @@ func TestCreateApplicationsObserveImportKeepsLongKubernetesName(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, name, store.apps[resp.ID].Name)
-	require.Equal(t, config.ManagementModeObserve, store.apps[resp.ID].ManagementMode)
+	require.Equal(t, spec.ManagementModeObserve, store.apps[resp.ID].ManagementMode)
 }
 
 func TestCreateApplicationsWithMutationCommitsInternalStateAtomically(t *testing.T) {
@@ -151,7 +151,7 @@ func TestCreateApplicationsWithMutationCommitsInternalStateAtomically(t *testing
 			}},
 		},
 		func(_ context.Context, _ datastore.DataStore, app *model.Applications, components []*model.ApplicationComponent) error {
-			app.ManagementMode = config.ManagementModeAdopted
+			app.ManagementMode = spec.ManagementModeAdopted
 			require.Len(t, components, 1)
 			components[0].SourceWorkloadAPIVersion = "apps/v1"
 			components[0].SourceWorkloadKind = "Deployment"
@@ -162,7 +162,7 @@ func TestCreateApplicationsWithMutationCommitsInternalStateAtomically(t *testing
 	)
 	require.NoError(t, err)
 	require.NotNil(t, response)
-	require.Equal(t, config.ManagementModeAdopted, store.apps[response.ID].ManagementMode)
+	require.Equal(t, spec.ManagementModeAdopted, store.apps[response.ID].ManagementMode)
 	require.Equal(t, uid, *store.components["backend"].SourceWorkloadUID)
 
 	mutationErr := errors.New("mutation failed")
@@ -185,14 +185,14 @@ func TestCreateApplicationsWithMutationCommitsInternalStateAtomically(t *testing
 }
 
 func TestCreateApplicationsWithMutationRefreshesManagedApplication(t *testing.T) {
-	for _, managementMode := range []config.ManagementMode{
-		config.ManagementModeObserve,
-		config.ManagementModeAdopted,
+	for _, managementMode := range []spec.ManagementMode{
+		spec.ManagementModeObserve,
+		spec.ManagementModeAdopted,
 	} {
 		t.Run(string(managementMode), func(t *testing.T) {
 			store := newInMemoryAppStore()
 			defaultWorkflowDisabled := true
-			if managementMode == config.ManagementModeAdopted {
+			if managementMode == spec.ManagementModeAdopted {
 				defaultWorkflowDisabled = false
 			}
 			store.apps["managed-app"] = &model.Applications{
@@ -245,7 +245,7 @@ func TestCreateApplicationsWithMutationRefreshesManagedApplication(t *testing.T)
 				func(_ context.Context, _ datastore.DataStore, app *model.Applications, _ []*model.ApplicationComponent) error {
 					mutationCalled = true
 					require.Equal(t, managementMode, app.EffectiveManagementMode())
-					app.ManagementMode = config.ManagementModeAdopted
+					app.ManagementMode = spec.ManagementModeAdopted
 					return nil
 				},
 			)
@@ -253,10 +253,10 @@ func TestCreateApplicationsWithMutationRefreshesManagedApplication(t *testing.T)
 			require.NoError(t, err)
 			require.True(t, mutationCalled)
 			require.Equal(t, "managed-app", response.ID)
-			require.Equal(t, config.ManagementModeAdopted, store.apps["managed-app"].ManagementMode)
+			require.Equal(t, spec.ManagementModeAdopted, store.apps["managed-app"].ManagementMode)
 			require.Len(t, store.workflows, 3)
 			require.False(t, store.workflows["wf-default"].Disabled)
-			require.Equal(t, managementMode == config.ManagementModeAdopted, store.workflows["wf-update"].Disabled)
+			require.Equal(t, managementMode == spec.ManagementModeAdopted, store.workflows["wf-update"].Disabled)
 			require.True(t, store.workflows["wf-custom"].Disabled)
 		})
 	}
@@ -311,7 +311,7 @@ func TestCreateApplicationsWithMutationRejectsNativeReplacement(t *testing.T) {
 		ID:             "native-app",
 		Name:           "native-app",
 		Namespace:      config.DefaultNamespace,
-		ManagementMode: config.ManagementModeNative,
+		ManagementMode: spec.ManagementModeNative,
 	}
 	svc := newMockServiceWithStore(store)
 	mutationCalled := false
@@ -331,7 +331,7 @@ func TestCreateApplicationsWithMutationRejectsNativeReplacement(t *testing.T) {
 
 	require.ErrorIs(t, err, bcode.ErrApplicationManagementMode)
 	require.False(t, mutationCalled)
-	require.Equal(t, config.ManagementModeNative, store.apps["native-app"].ManagementMode)
+	require.Equal(t, spec.ManagementModeNative, store.apps["native-app"].ManagementMode)
 }
 
 func TestCreateApplicationsWithMutationRevalidatesManagedModeInTransaction(t *testing.T) {
@@ -342,10 +342,10 @@ func TestCreateApplicationsWithMutationRevalidatesManagedModeInTransaction(t *te
 		Namespace:      config.DefaultNamespace,
 		Version:        "imported",
 		Project:        "imported",
-		ManagementMode: config.ManagementModeObserve,
+		ManagementMode: spec.ManagementModeObserve,
 	}
 	store.beforeTransaction = func(store *inMemoryAppStore) {
-		store.apps["managed-app"].ManagementMode = config.ManagementModeNative
+		store.apps["managed-app"].ManagementMode = spec.ManagementModeNative
 	}
 	svc := newMockServiceWithStore(store)
 	mutationCalled := false
@@ -367,7 +367,7 @@ func TestCreateApplicationsWithMutationRevalidatesManagedModeInTransaction(t *te
 
 	require.ErrorIs(t, err, bcode.ErrApplicationManagementMode)
 	require.False(t, mutationCalled)
-	require.Equal(t, config.ManagementModeObserve, store.apps["managed-app"].ManagementMode)
+	require.Equal(t, spec.ManagementModeObserve, store.apps["managed-app"].ManagementMode)
 }
 
 func TestCreateApplicationsObserveModeDisablesWorkflowsAtomically(t *testing.T) {
@@ -376,7 +376,7 @@ func TestCreateApplicationsObserveModeDisablesWorkflowsAtomically(t *testing.T) 
 		ID:             "app-1",
 		Name:           "observed-app",
 		Namespace:      config.DefaultNamespace,
-		ManagementMode: config.ManagementModeNative,
+		ManagementMode: spec.ManagementModeNative,
 	}
 	store.workflows["wf-custom"] = &model.Workflow{
 		ID:           "wf-custom",
@@ -398,7 +398,7 @@ func TestCreateApplicationsObserveModeDisablesWorkflowsAtomically(t *testing.T) 
 		}},
 	})
 	require.NoError(t, err)
-	require.Equal(t, config.ManagementModeObserve, store.apps[response.ID].ManagementMode)
+	require.Equal(t, spec.ManagementModeObserve, store.apps[response.ID].ManagementMode)
 	require.NotEmpty(t, store.workflows)
 	for _, workflow := range store.workflows {
 		require.True(t, workflow.Disabled)
@@ -411,7 +411,7 @@ func TestCreateApplicationsObserveImportRejectsAdoptedReplacement(t *testing.T) 
 		ID:             "adopted-app",
 		Name:           "imported-app",
 		Namespace:      config.DefaultNamespace,
-		ManagementMode: config.ManagementModeAdopted,
+		ManagementMode: spec.ManagementModeAdopted,
 	}
 	svc := newMockServiceWithStore(store)
 
@@ -423,13 +423,13 @@ func TestCreateApplicationsObserveImportRejectsAdoptedReplacement(t *testing.T) 
 	})
 
 	require.ErrorIs(t, err, bcode.ErrApplicationManagementMode)
-	require.Equal(t, config.ManagementModeAdopted, store.apps["adopted-app"].ManagementMode)
+	require.Equal(t, spec.ManagementModeAdopted, store.apps["adopted-app"].ManagementMode)
 }
 
 func TestCreateApplicationsRejectsGenericManagedReplacement(t *testing.T) {
-	for _, managementMode := range []config.ManagementMode{
-		config.ManagementModeObserve,
-		config.ManagementModeAdopted,
+	for _, managementMode := range []spec.ManagementMode{
+		spec.ManagementModeObserve,
+		spec.ManagementModeAdopted,
 	} {
 		t.Run(string(managementMode), func(t *testing.T) {
 			store := newInMemoryAppStore()
@@ -461,7 +461,7 @@ func TestCreateApplicationsModeTransitionUsesApplicationLock(t *testing.T) {
 		ID:             "app-1",
 		Name:           "native-app",
 		Namespace:      config.DefaultNamespace,
-		ManagementMode: config.ManagementModeNative,
+		ManagementMode: spec.ManagementModeNative,
 	}
 	svc := newMockServiceWithStore(store)
 	releaseLock := holdApplicationTestAppScheduleLock(t, svc.ScheduleLocker, "app-1")
@@ -474,7 +474,7 @@ func TestCreateApplicationsModeTransitionUsesApplicationLock(t *testing.T) {
 		ImportAsObserve: true,
 	})
 	require.ErrorIs(t, err, bcode.ErrApplicationOperationLocked)
-	require.Equal(t, config.ManagementModeNative, store.apps["app-1"].ManagementMode)
+	require.Equal(t, spec.ManagementModeNative, store.apps["app-1"].ManagementMode)
 }
 
 func TestCreateApplicationsAllowsDuplicateNormalNameAcrossNamespaces(t *testing.T) {

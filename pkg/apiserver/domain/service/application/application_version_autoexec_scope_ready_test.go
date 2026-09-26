@@ -29,7 +29,7 @@ func TestUpdateVersionDefaultExecutionScope(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, string(config.VersionUpdateExecutionScopeFullWorkflow), resp.ExecutionScope)
+	require.Equal(t, string(spec.VersionUpdateExecutionScopeFullWorkflow), resp.ExecutionScope)
 }
 
 func TestUpdateVersionChangedComponentsExecutionScopePersistsResourceActionInfo(t *testing.T) {
@@ -88,7 +88,7 @@ func TestUpdateVersionChangedComponentsExecutionScopePersistsResourceActionInfo(
 	svc := newMockServiceWithStore(store)
 	resp, err := svc.UpdateVersion(context.Background(), "app-1", apisv1.UpdateVersionRequest{
 		Version:        "1.1.0",
-		ExecutionScope: string(config.VersionUpdateExecutionScopeChangedComponents),
+		ExecutionScope: string(spec.VersionUpdateExecutionScopeChangedComponents),
 		Components: []apisv1.ComponentUpdateSpec{
 			{Name: "backend", Image: "backend:v2"},
 		},
@@ -96,9 +96,9 @@ func TestUpdateVersionChangedComponentsExecutionScopePersistsResourceActionInfo(
 
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.TaskID)
-	require.Equal(t, string(config.VersionUpdateExecutionScopeChangedComponents), resp.ExecutionScope)
+	require.Equal(t, string(spec.VersionUpdateExecutionScopeChangedComponents), resp.ExecutionScope)
 	info := requireVersionUpdateResourceActionInfo(t, store.tasks[resp.TaskID])
-	require.Equal(t, config.VersionUpdateExecutionScopeChangedComponents, info.ExecutionScope)
+	require.Equal(t, spec.VersionUpdateExecutionScopeChangedComponents, info.ExecutionScope)
 	require.Equal(t, []string{"backend"}, info.ExecutionComponents)
 	require.Equal(t, []string{"backend"}, info.ImageReadyComponents)
 }
@@ -131,11 +131,11 @@ func TestUpdateVersionRejectsChangedComponentsExecutionScopeWithFullResourceActi
 	}{
 		{
 			name: "deploy all",
-			spec: apisv1.ComponentUpdateSpec{Action: string(config.ComponentActionAdd), Name: "all"},
+			spec: apisv1.ComponentUpdateSpec{Action: string(spec.ComponentActionAdd), Name: "all"},
 		},
 		{
 			name: "cleanup all",
-			spec: apisv1.ComponentUpdateSpec{Action: string(config.ComponentActionRemove), Name: "cleanup_all"},
+			spec: apisv1.ComponentUpdateSpec{Action: string(spec.ComponentActionRemove), Name: "cleanup_all"},
 		},
 	}
 	for _, tt := range tests {
@@ -150,7 +150,7 @@ func TestUpdateVersionRejectsChangedComponentsExecutionScopeWithFullResourceActi
 			svc := newMockServiceWithStore(store)
 			_, err := svc.UpdateVersion(context.Background(), "app-1", apisv1.UpdateVersionRequest{
 				Version:        "1.1.0",
-				ExecutionScope: string(config.VersionUpdateExecutionScopeChangedComponents),
+				ExecutionScope: string(spec.VersionUpdateExecutionScopeChangedComponents),
 				Components:     []apisv1.ComponentUpdateSpec{tt.spec},
 			})
 
@@ -198,7 +198,7 @@ func TestUpdateVersionChangedComponentsExecutionScopeRequiresWorkflowCoverageFor
 	_, err := svc.UpdateVersion(context.Background(), "app-1", apisv1.UpdateVersionRequest{
 		Version:        "1.1.0",
 		WorkflowID:     "wf-1",
-		ExecutionScope: string(config.VersionUpdateExecutionScopeChangedComponents),
+		ExecutionScope: string(spec.VersionUpdateExecutionScopeChangedComponents),
 		Components: []apisv1.ComponentUpdateSpec{
 			{Name: "config", Image: "config:v2"},
 		},
@@ -249,7 +249,7 @@ func TestUpdateVersionChangedComponentsExecutionScopeRejectsPartialWorkflowCover
 	_, err := svc.UpdateVersion(context.Background(), "app-1", apisv1.UpdateVersionRequest{
 		Version:        "1.1.0",
 		WorkflowID:     "wf-1",
-		ExecutionScope: string(config.VersionUpdateExecutionScopeChangedComponents),
+		ExecutionScope: string(spec.VersionUpdateExecutionScopeChangedComponents),
 		Components: []apisv1.ComponentUpdateSpec{
 			{Name: "backend", Image: "backend:v2"},
 			{Name: "config", Image: "config:v2"},

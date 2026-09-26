@@ -24,15 +24,15 @@ func buildVersionUpdateCleanupInfo(
 	cleanupAppendStepIndex int,
 ) (*model.VersionUpdateCleanupInfo, error) {
 	components := make([]model.VersionUpdateCleanupComponent, 0)
-	for _, spec := range specs {
-		action, err := parseVersionUpdateComponentAction(spec)
+	for _, update := range specs {
+		action, err := parseVersionUpdateComponentAction(update)
 		if err != nil {
 			return nil, err
 		}
-		if action != config.ComponentActionRemove {
+		if action != spec.ComponentActionRemove {
 			continue
 		}
-		key := strings.ToLower(strings.TrimSpace(spec.Name))
+		key := strings.ToLower(strings.TrimSpace(update.Name))
 		if key == "" {
 			continue
 		}
@@ -499,15 +499,15 @@ func versionUpdateCleanupStepIndexes(
 	}
 	appendIndex := versionUpdatePostRemovalAppendIndex(&steps, removedSet)
 	indexes := make(map[string]int)
-	for _, spec := range specs {
-		action, err := parseVersionUpdateComponentAction(spec)
+	for _, update := range specs {
+		action, err := parseVersionUpdateComponentAction(update)
 		if err != nil {
 			return nil, 0, err
 		}
-		if action != config.ComponentActionRemove {
+		if action != spec.ComponentActionRemove {
 			continue
 		}
-		key := strings.ToLower(strings.TrimSpace(spec.Name))
+		key := strings.ToLower(strings.TrimSpace(update.Name))
 		if key == "" {
 			continue
 		}
@@ -543,15 +543,15 @@ func versionUpdateFullCleanupInsertStepIndex(workflow *model.Workflow) (int, err
 
 func versionUpdateRemovedComponentSet(specs []apisv1.ComponentUpdateSpec, componentMap map[string]*model.ApplicationComponent) (map[string]struct{}, error) {
 	removedSet := make(map[string]struct{})
-	for _, spec := range specs {
-		action, err := parseVersionUpdateComponentAction(spec)
+	for _, update := range specs {
+		action, err := parseVersionUpdateComponentAction(update)
 		if err != nil {
 			return nil, err
 		}
-		if action != config.ComponentActionRemove {
+		if action != spec.ComponentActionRemove {
 			continue
 		}
-		key := strings.ToLower(strings.TrimSpace(spec.Name))
+		key := strings.ToLower(strings.TrimSpace(update.Name))
 		if key == "" {
 			continue
 		}

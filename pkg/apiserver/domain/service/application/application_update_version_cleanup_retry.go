@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"sort"
 	"strings"
 
@@ -813,7 +814,7 @@ func versionUpdateComponentUpdateSpecsByName(specs []apisv1.ComponentUpdateSpec)
 		if err != nil {
 			return nil, err
 		}
-		if action != config.ComponentActionUpdate {
+		if action != domainspec.ComponentActionUpdate {
 			continue
 		}
 		if key := strings.ToLower(strings.TrimSpace(update.Name)); key != "" {

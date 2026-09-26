@@ -3,13 +3,12 @@ package runtime
 import (
 	"context"
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"strings"
 
-	"k8s.io/apimachinery/pkg/types"
-
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // NewDataStoreBindingLoader reads component label claims and adopted source
@@ -61,7 +60,7 @@ func NewDataStoreBindingLoader(store datastore.DataStore) BindingLoader {
 					ComponentName:  component.Name,
 					ManagementMode: mode,
 				}
-				if mode == config.ManagementModeAdopted && component.HasSourceWorkload() {
+				if mode == domainspec.ManagementModeAdopted && component.HasSourceWorkload() {
 					binding.WorkloadAPIVersion = component.SourceWorkloadAPIVersion
 					binding.WorkloadKind = component.SourceWorkloadKind
 					binding.WorkloadName = component.SourceWorkloadName

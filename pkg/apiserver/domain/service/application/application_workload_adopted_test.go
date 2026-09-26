@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"testing"
 	"time"
 
@@ -69,7 +70,7 @@ func TestObserveApplicationLifecycleIsReadOnly(t *testing.T) {
 				ID:             "observe-" + operation.name,
 				Name:           "imported-app",
 				Namespace:      "production",
-				ManagementMode: config.ManagementModeObserve,
+				ManagementMode: domainspec.ManagementModeObserve,
 			}
 			service, _, clientset, queueRepo := newAdoptedLifecycleTestService(t, app, nil)
 
@@ -87,7 +88,7 @@ func TestAdoptedStopUsesExactSourcesAndCapturesReplicaSnapshots(t *testing.T) {
 		ID:             "adopted-stop",
 		Name:           "imported-app",
 		Namespace:      "production",
-		ManagementMode: config.ManagementModeAdopted,
+		ManagementMode: domainspec.ManagementModeAdopted,
 	}
 	deploymentComponent := adoptedTestComponent(
 		app.ID,
@@ -197,7 +198,7 @@ func TestAdoptedLifecycleRejectsLiveHPAAddedAfterImportBeforeAnyWrite(t *testing
 		ID:             "adopted-hpa",
 		Name:           "imported-app",
 		Namespace:      "production",
-		ManagementMode: config.ManagementModeAdopted,
+		ManagementMode: domainspec.ManagementModeAdopted,
 	}
 	component := adoptedTestComponent(
 		app.ID,
@@ -252,7 +253,7 @@ func TestAdoptedStopRejectsUnsafeStatefulSetBeforeAnyWrite(t *testing.T) {
 		ID:             "adopted-stop-unsafe",
 		Name:           "imported-app",
 		Namespace:      "production",
-		ManagementMode: config.ManagementModeAdopted,
+		ManagementMode: domainspec.ManagementModeAdopted,
 	}
 	deploymentComponent := adoptedTestComponent(
 		app.ID,
@@ -348,7 +349,7 @@ func TestAdoptedStopRejectsUnsafePVCBeforeAnyWrite(t *testing.T) {
 				ID:             "adopted-pvc-" + test.name,
 				Name:           "imported-app",
 				Namespace:      "production",
-				ManagementMode: config.ManagementModeAdopted,
+				ManagementMode: domainspec.ManagementModeAdopted,
 			}
 			component := adoptedTestComponent(
 				app.ID,
@@ -439,7 +440,7 @@ func TestAdoptedStopRevalidatesFreshStatefulSetBeforeScaleDown(t *testing.T) {
 				ID:             "adopted-revalidate-" + test.name,
 				Name:           "imported-app",
 				Namespace:      "production",
-				ManagementMode: config.ManagementModeAdopted,
+				ManagementMode: domainspec.ManagementModeAdopted,
 			}
 			component := adoptedTestComponent(
 				app.ID,
@@ -505,7 +506,7 @@ func TestAdoptedStopSnapshotUpdatePreservesConcurrentComponentFields(t *testing.
 		ID:             "adopted-preserve-component",
 		Name:           "imported-app",
 		Namespace:      "production",
-		ManagementMode: config.ManagementModeAdopted,
+		ManagementMode: domainspec.ManagementModeAdopted,
 	}
 	component := adoptedTestComponent(
 		app.ID,
@@ -580,7 +581,7 @@ func TestAdoptedLifecycleRejectsMissingOrMismatchedSourceBeforeAnyWrite(t *testi
 				ID:             "adopted-identity-" + test.name,
 				Name:           "imported-app",
 				Namespace:      "production",
-				ManagementMode: config.ManagementModeAdopted,
+				ManagementMode: domainspec.ManagementModeAdopted,
 			}
 			component := adoptedTestComponent(
 				app.ID,
@@ -615,7 +616,7 @@ func TestAdoptedLifecyclePreflightsSkippedSourceIdentityAndStatefulSafety(t *tes
 			ID:             "adopted-skipped-start",
 			Name:           "imported-app",
 			Namespace:      "production",
-			ManagementMode: config.ManagementModeAdopted,
+			ManagementMode: domainspec.ManagementModeAdopted,
 		}
 		component := adoptedTestComponent(
 			app.ID,
@@ -655,7 +656,7 @@ func TestAdoptedLifecyclePreflightsSkippedSourceIdentityAndStatefulSafety(t *tes
 			ID:             "adopted-skipped-restart",
 			Name:           "imported-app",
 			Namespace:      "production",
-			ManagementMode: config.ManagementModeAdopted,
+			ManagementMode: domainspec.ManagementModeAdopted,
 		}
 		component := adoptedTestComponent(
 			app.ID,
@@ -702,7 +703,7 @@ func TestAdoptedStartRestoresSnapshotsForDeploymentAndStatefulSet(t *testing.T) 
 		ID:             "adopted-start",
 		Name:           "imported-app",
 		Namespace:      "production",
-		ManagementMode: config.ManagementModeAdopted,
+		ManagementMode: domainspec.ManagementModeAdopted,
 	}
 	deploymentComponent := adoptedTestComponent(
 		app.ID,
@@ -867,7 +868,7 @@ func TestAdoptedStartAndRestartRejectUnsafeStatefulSetBeforeAnyWrite(t *testing.
 				ID:             "adopted-" + test.name,
 				Name:           "imported-app",
 				Namespace:      "production",
-				ManagementMode: config.ManagementModeAdopted,
+				ManagementMode: domainspec.ManagementModeAdopted,
 			}
 			component := adoptedTestComponent(
 				app.ID,
@@ -897,7 +898,7 @@ func TestAdoptedRestartMutatesExactSourcesAndAddsManagedLabels(t *testing.T) {
 		ID:             "adopted-restart",
 		Name:           "imported-app",
 		Namespace:      "production",
-		ManagementMode: config.ManagementModeAdopted,
+		ManagementMode: domainspec.ManagementModeAdopted,
 	}
 	deploymentComponent := adoptedTestComponent(
 		app.ID,
@@ -991,7 +992,7 @@ func TestAdoptedRestartRejectsPausedDeploymentBeforeAnyWrite(t *testing.T) {
 		ID:             "adopted-paused-restart",
 		Name:           "imported-app",
 		Namespace:      "production",
-		ManagementMode: config.ManagementModeAdopted,
+		ManagementMode: domainspec.ManagementModeAdopted,
 	}
 	component := adoptedTestComponent(
 		app.ID,
@@ -1115,7 +1116,7 @@ func TestAdoptedLifecycleSerializesWithWorkflowAndScheduleLock(t *testing.T) {
 					ID:             "adopted-" + operation.name,
 					Name:           "imported-app",
 					Namespace:      "production",
-					ManagementMode: config.ManagementModeAdopted,
+					ManagementMode: domainspec.ManagementModeAdopted,
 				}
 				component := adoptedTestComponent(
 					app.ID,
@@ -1193,7 +1194,7 @@ func TestAdoptedLifecycleRecordsTaskWhileScheduleLockIsHeld(t *testing.T) {
 				ID:             "adopted-" + operation.name,
 				Name:           "imported-app",
 				Namespace:      "production",
-				ManagementMode: config.ManagementModeAdopted,
+				ManagementMode: domainspec.ManagementModeAdopted,
 			}
 			component := adoptedTestComponent(
 				app.ID,

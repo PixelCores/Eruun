@@ -16,10 +16,10 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 )
 
 type cleanupOwnershipStore struct {
@@ -136,7 +136,7 @@ func TestWorkloadFailureCleanupOwnershipLookupSurvivesMidflightCancellation(t *t
 				adoptedSourceStore: &adoptedSourceStore{app: &model.Applications{
 					ID:             "app-1",
 					Namespace:      "ops",
-					ManagementMode: config.ManagementModeNative,
+					ManagementMode: domainspec.ManagementModeNative,
 				}},
 				getStarted:       getStarted,
 				resumeGet:        parentCtx.Done(),
@@ -297,7 +297,7 @@ func TestWorkloadFailureCleanupResolvesOwnershipWithCancelledParent(t *testing.T
 		for _, ownership := range []string{"native", "adopted", "datastore-error"} {
 			t.Run(workload.name+"/"+ownership, func(t *testing.T) {
 				source := workload.newSource()
-				app := &model.Applications{ID: "app-1", Namespace: "ops", ManagementMode: config.ManagementModeNative}
+				app := &model.Applications{ID: "app-1", Namespace: "ops", ManagementMode: domainspec.ManagementModeNative}
 				var datastoreErr error
 				if ownership == "adopted" {
 					snapshot := adoptedSnapshotResource(t, source, workload.componentName, "workload", importcontract.OwnershipExclusive, importcontract.DispositionManaged)

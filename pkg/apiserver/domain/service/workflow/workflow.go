@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"strings"
 	"sync"
 	"time"
@@ -617,7 +618,7 @@ func (w *workflowServiceImpl) upsertWorkflowScheduleUnlocked(ctx context.Context
 		}
 		return nil, err
 	}
-	if app.EffectiveManagementMode() == config.ManagementModeObserve {
+	if app.EffectiveManagementMode() == domainspec.ManagementModeObserve {
 		return nil, fmt.Errorf("%w: observe applications are read-only", bcode.ErrApplicationManagementMode)
 	}
 	normalizedCron, err := utils.NormalizeCronSchedule(req.Cron)
@@ -2069,9 +2070,9 @@ func validateWorkflowTaskEnqueue(ctx context.Context, store datastore.DataStore,
 		}
 		if app != nil {
 			switch app.EffectiveManagementMode() {
-			case config.ManagementModeObserve:
+			case domainspec.ManagementModeObserve:
 				return fmt.Errorf("%w: observe applications are read-only", bcode.ErrApplicationManagementMode)
-			case config.ManagementModeAdopted:
+			case domainspec.ManagementModeAdopted:
 				if workflowContainsJobType(workflow, config.JobDatabaseReset) ||
 					workflowContainsJobType(workflow, config.JobCleanupResources) {
 					return fmt.Errorf("%w: adopted workflows cannot reset databases or perform unfingerprinted cleanup", bcode.ErrApplicationManagementMode)

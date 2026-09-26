@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"testing"
 	"time"
 
@@ -323,7 +324,7 @@ func TestJobRunnerRechecksApplicationAfterAdmission(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			require.NoError(t, repository.EnsureJobSchedulerPolicy(ctx, store))
-			app := &model.Applications{ID: "app", WorkspaceID: "workspace", ManagementMode: config.ManagementModeNative}
+			app := &model.Applications{ID: "app", WorkspaceID: "workspace", ManagementMode: domainspec.ManagementModeNative}
 			require.NoError(t, store.Add(ctx, app))
 			lease := time.Now().Add(time.Minute)
 			owner := &model.WorkflowQueue{TaskID: "task", WorkspaceID: app.WorkspaceID, Status: config.StatusRunning, RunGeneration: 1,
@@ -342,7 +343,7 @@ func TestJobRunnerRechecksApplicationAfterAdmission(t *testing.T) {
 			require.Empty(t, client.Actions())
 			switch change {
 			case "observe":
-				require.NoError(t, db.Model(app).Update("management_mode", config.ManagementModeObserve).Error)
+				require.NoError(t, db.Model(app).Update("management_mode", domainspec.ManagementModeObserve).Error)
 			case "deleted":
 				require.NoError(t, store.Delete(ctx, app))
 			}

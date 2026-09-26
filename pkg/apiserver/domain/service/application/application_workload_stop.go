@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -50,7 +51,7 @@ func (c *applicationsServiceImpl) stopApplicationDeploymentsLocked(ctx context.C
 		}
 		return nil, err
 	}
-	if app.EffectiveManagementMode() == config.ManagementModeObserve {
+	if app.EffectiveManagementMode() == domainspec.ManagementModeObserve {
 		return nil, fmt.Errorf("%w: observe applications are read-only", bcode.ErrApplicationManagementMode)
 	}
 	taskCallback, err := c.resolveOperationTaskCallback(ctx, req.Callback)
@@ -205,7 +206,7 @@ func (c *applicationsServiceImpl) startApplicationDeploymentsLocked(ctx context.
 		}
 		return nil, err
 	}
-	if app.EffectiveManagementMode() == config.ManagementModeObserve {
+	if app.EffectiveManagementMode() == domainspec.ManagementModeObserve {
 		return nil, fmt.Errorf("%w: observe applications are read-only", bcode.ErrApplicationManagementMode)
 	}
 	taskCallback, err := c.resolveOperationTaskCallback(ctx, req.Callback)

@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 
 	"testing"
 	"time"
@@ -756,7 +757,7 @@ func TestEnqueueWorkflowRejectsObserveApplication(t *testing.T) {
 	store := &enqueueWorkflowDataStore{
 		scheduleDataStore: scheduleDataStore{app: &model.Applications{
 			ID:             "observe-app",
-			ManagementMode: config.ManagementModeObserve,
+			ManagementMode: domainspec.ManagementModeObserve,
 		}},
 		components: []*model.ApplicationComponent{{AppID: "observe-app", Name: "api"}},
 	}
@@ -800,7 +801,7 @@ func TestEnqueueWorkflowRejectsUnsafeAdoptedJobs(t *testing.T) {
 			store := &enqueueWorkflowDataStore{
 				scheduleDataStore: scheduleDataStore{app: &model.Applications{
 					ID:             "adopted-app",
-					ManagementMode: config.ManagementModeAdopted,
+					ManagementMode: domainspec.ManagementModeAdopted,
 				}},
 				components: []*model.ApplicationComponent{{AppID: "adopted-app", Name: "api"}},
 			}

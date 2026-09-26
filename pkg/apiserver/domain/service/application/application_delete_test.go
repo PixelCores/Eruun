@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"strings"
 	"testing"
 	"time"
@@ -105,7 +106,7 @@ func TestDeleteApplicationCascadeReloadsManagementModeAfterLock(t *testing.T) {
 	seedCascadeStoreData(store)
 	appRepo := &transitioningCascadeAppRepo{
 		cascadeAppRepo: &cascadeAppRepo{store: store},
-		transitionMode: config.ManagementModeObserve,
+		transitionMode: domainspec.ManagementModeObserve,
 	}
 	svc := &applicationsServiceImpl{
 		KubeClient:        fake.NewSimpleClientset(),
@@ -963,7 +964,7 @@ type cascadeAppRepo struct {
 type transitioningCascadeAppRepo struct {
 	*cascadeAppRepo
 	findCalls      int
-	transitionMode config.ManagementMode
+	transitionMode domainspec.ManagementMode
 }
 
 func (r *transitioningCascadeAppRepo) FindByID(ctx context.Context, id string) (*model.Applications, error) {

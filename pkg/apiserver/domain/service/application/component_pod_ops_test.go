@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"fmt"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"io"
 	"strings"
 	"testing"
@@ -208,7 +209,7 @@ func TestExportComponentFilesZipMapsArchivePathLookupError(t *testing.T) {
 
 func TestExecComponentShellScriptReturnsExitCodeResult(t *testing.T) {
 	store := newInMemoryAppStore()
-	require.NoError(t, store.Add(context.Background(), &model.Applications{ID: "app-1", ManagementMode: config.ManagementModeNative}))
+	require.NoError(t, store.Add(context.Background(), &model.Applications{ID: "app-1", ManagementMode: domainspec.ManagementModeNative}))
 	require.NoError(t, store.Add(context.Background(), &model.ApplicationComponent{
 		AppID:     "app-1",
 		Name:      "api",
@@ -244,7 +245,7 @@ func TestExecComponentShellScriptReturnsExitCodeResult(t *testing.T) {
 
 func TestExecComponentShellScriptRejectsInvalidContainer(t *testing.T) {
 	store := newInMemoryAppStore()
-	require.NoError(t, store.Add(context.Background(), &model.Applications{ID: "app-1", ManagementMode: config.ManagementModeNative}))
+	require.NoError(t, store.Add(context.Background(), &model.Applications{ID: "app-1", ManagementMode: domainspec.ManagementModeNative}))
 	require.NoError(t, store.Add(context.Background(), &model.ApplicationComponent{
 		AppID:     "app-1",
 		Name:      "api",
@@ -272,7 +273,7 @@ func TestExecComponentShellScriptRejectsInvalidContainer(t *testing.T) {
 
 func TestStreamComponentShellScriptReturnsEventStream(t *testing.T) {
 	store := newInMemoryAppStore()
-	require.NoError(t, store.Add(context.Background(), &model.Applications{ID: "app-1", ManagementMode: config.ManagementModeNative}))
+	require.NoError(t, store.Add(context.Background(), &model.Applications{ID: "app-1", ManagementMode: domainspec.ManagementModeNative}))
 	require.NoError(t, store.Add(context.Background(), &model.ApplicationComponent{
 		AppID:     "app-1",
 		Name:      "api",
@@ -317,7 +318,7 @@ func TestStreamComponentShellScriptReturnsEventStream(t *testing.T) {
 
 func TestExecComponentShellScriptRejectsObserveApplication(t *testing.T) {
 	store := newInMemoryAppStore()
-	require.NoError(t, store.Add(context.Background(), &model.Applications{ID: "app-1", ManagementMode: config.ManagementModeObserve}))
+	require.NoError(t, store.Add(context.Background(), &model.Applications{ID: "app-1", ManagementMode: domainspec.ManagementModeObserve}))
 
 	svc := newMockServiceWithStore(store)
 	svc.KubeConfig = &rest.Config{Host: "https://example.test"}

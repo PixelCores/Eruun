@@ -19,10 +19,10 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -139,7 +139,7 @@ func augmentAdoptedDependencyJobs(
 		}
 		return nil, fmt.Errorf("load application %s for adopted dependency jobs: %w", task.AppID, err)
 	}
-	if app.EffectiveManagementMode() != config.ManagementModeAdopted {
+	if app.EffectiveManagementMode() != domainspec.ManagementModeAdopted {
 		return stepGroups, nil
 	}
 	snapshot, err := workflowAdoptionSnapshot(app)
