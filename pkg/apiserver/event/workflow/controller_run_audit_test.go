@@ -21,7 +21,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/cache"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	workflowsignal "github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
 

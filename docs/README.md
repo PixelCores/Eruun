@@ -77,7 +77,8 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `pkg/apiserver/workflow/naming` | 资源命名规则 | Kubernetes 资源名、PVC/Service 命名 | 命名变化影响状态同步和清理 |
 | `pkg/apiserver/infrastructure` | 外部系统与安全机制适配 | K8s、Redis、Kafka、MySQL、Informer、锁、可观测性、adopted Secret 加密 | Infrastructure 实现接口，不反向承载业务规则；导入 Secret 的加密/签名位于 `infrastructure/importsecret` |
 | `pkg/apiserver/infrastructure/observability` | 进程可观测性 | Trace Provider 初始化、klog 文件保留与清理 | 后台清理受进程 context 控制 |
-| `pkg/apiserver/utils` | 通用工具 | 缓存、错误码、异步执行、K8s helper、profiling | 新工具必须可复用，避免放业务分支 |
+| `pkg/apiserver/infrastructure/cache` | 内存与 Redis 缓存适配 | 缓存读写、过期、原子消费和共享缓存键 | ApplicationComponentsKey 是查询、执行与状态同步共同使用的存储命名契约 |
+| `pkg/apiserver/utils` | 通用工具 | 错误码、异步执行、K8s helper、profiling | 新工具必须可复用，避免放业务分支 |
 | `pkg/apiserver/config` | 进程配置入口与模块配置组合 | 启动参数、环境变量、连接配置、模块配置装配 | 模块专属策略和资源契约由所属模块定义 |
 | `config`, `deploy`, `examples`, `scripts` | 默认配置、部署清单、请求样例和辅助脚本 | 部署参数、示例更新、脚本化验证 | 行为或配置变化要同步 docs |
 
