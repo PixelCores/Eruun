@@ -1643,7 +1643,7 @@ func (w *WorkflowCtl) prepareJobTask(task *model.JobTask, appID string) (bool, e
 		if w.runtimeConfig == nil || w.runtimeConfig.Jobs == nil {
 			return false, fmt.Errorf("evaluation runner configuration is required")
 		}
-		return true, workspace.PrepareEvaluationTask(task, w.workspace, w.accountConfig.Workspace, w.runtimeConfig.Jobs.RunnerImage)
+		return true, evaluationjobs.PrepareEvaluationTask(task, w.workspace, w.accountConfig.Workspace, w.runtimeConfig.Jobs.RunnerImage)
 	}
-	return workspace.PrepareTask(task, appID, w.workspace, w.accountConfig.Workspace)
+	return job.PrepareTask(task, appID, w.workspace, w.accountConfig.Workspace)
 }
