@@ -62,6 +62,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `pkg/apiserver/jobs` | 空间独立 Job 与评测数据 | command、Harbor 提交、原生任务包、完整结果、独立保存及保留策略 | 复用现有 WorkflowQueue、JobInfo 和执行租约；公共规格在 `domain/spec`，command Job 构建在本包 `command_builder.go`，框架 Runner 在 `pkg/apiserver/jobs/runners/harbor` |
 | `pkg/apiserver/interfaces/api` | HTTP 路由、参数绑定、响应封装、中间件 | 新接口、接口校验、认证授权、流式能力 | 不直接写 DB/K8s，业务逻辑下沉到 Domain |
 | `pkg/apiserver/interfaces/grpc`, `pkg/apiserver/interfaces/grpc/proto/eruun/v1` | 用户业务 gRPC 适配与版本化 Protobuf 契约 | RPC、强类型字段、metadata 认证、流式传输 | 复用 Domain 服务；不经进程内 HTTP 转发；路由对照见 `grpc-api.md` |
+| `pkg/apiserver/interfaces/api/response` | HTTP 响应与错误映射 | JSON envelope、HTTP 状态、错误脱敏 | handler 与 middleware 共用；业务错误仍由 `utils/bcode` 定义，gRPC 独立映射 |
 | `pkg/apiserver/interfaces/api/dto/v1` | API DTO 与请求/响应结构 | 字段增删、响应形态调整 | 同步 assembler、文档和 examples |
 | `pkg/apiserver/interfaces/api/assembler/v1` | Domain 对象到 DTO 的组装 | 响应字段推导、脱敏、兼容字段 | 不放持久化或 K8s 调用逻辑 |
 | `pkg/apiserver/domain/model` | GORM 模型和领域实体 | 新表字段、状态字段、业务实体 | 字段语义必须同步跨层契约文档 |

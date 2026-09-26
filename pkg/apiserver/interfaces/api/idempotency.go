@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/idempotencykey"
+	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
@@ -17,11 +18,11 @@ func bindIdempotencyKey(c *gin.Context, bindErr *bcode.Bcode) (string, bool) {
 		return "", true
 	}
 	if len(values) != 1 {
-		bcode.ReturnErrorWithMessage(c, bindErr, "Idempotency-Key must be one non-empty value of at most 128 characters without surrounding whitespace")
+		apiresponse.ReturnErrorWithMessage(c, bindErr, "Idempotency-Key must be one non-empty value of at most 128 characters without surrounding whitespace")
 		return "", false
 	}
 	if err := idempotencykey.Validate(values[0]); err != nil {
-		bcode.ReturnErrorWithMessage(c, bindErr, err.Error())
+		apiresponse.ReturnErrorWithMessage(c, bindErr, err.Error())
 		return "", false
 	}
 	return values[0], true

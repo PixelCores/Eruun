@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+
+	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 )
 
 func TestAppIDPathParamRejectsMissingValue(t *testing.T) {
@@ -19,7 +21,7 @@ func TestAppIDPathParamRejectsMissingValue(t *testing.T) {
 		if _, ok := appIDPathParam(c); !ok {
 			return
 		}
-		bcode.ReturnSuccess(c, gin.H{"ok": true})
+		apiresponse.ReturnSuccess(c, gin.H{"ok": true})
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/applications/%20", nil)
@@ -39,7 +41,7 @@ func TestComponentRouteParamsRejectsMissingComponentName(t *testing.T) {
 		if _, _, ok := componentRouteParams(c); !ok {
 			return
 		}
-		bcode.ReturnSuccess(c, gin.H{"ok": true})
+		apiresponse.ReturnSuccess(c, gin.H{"ok": true})
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/applications/app-1/components/%20/logs", nil)

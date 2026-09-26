@@ -13,6 +13,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
+	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
@@ -49,7 +50,7 @@ func (h *health) RegisterRoutes(group *gin.RouterGroup) {
 // healthCheck returns a simple health status (liveness probe).
 // This endpoint always returns OK if the server is running.
 func (h *health) healthCheck(c *gin.Context) {
-	bcode.ReturnSuccess(c, gin.H{
+	apiresponse.ReturnSuccess(c, gin.H{
 		"status": "healthy",
 	})
 }
@@ -60,7 +61,7 @@ func (h *health) readinessCheck(c *gin.Context) {
 	ctx := c.Request.Context()
 	if h.Runtime != nil {
 		if ready, reason := h.Runtime.RuntimeReady(); !ready {
-			bcode.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: "+reason)
+			apiresponse.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: "+reason)
 			return
 		}
 	}
@@ -70,19 +71,19 @@ func (h *health) readinessCheck(c *gin.Context) {
 		cancel()
 		if err != nil {
 			klog.V(4).InfoS("readiness check failed", "dependency", "database", "err", err)
-			bcode.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: database connection failed")
+			apiresponse.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: database connection failed")
 			return
 		}
 	}
 	if h.Cfg != nil && h.Cfg.RunsAPI() {
 		// API mutations require Redis locks and cancellation signals even without queues.
 		if h.Cache == nil || h.Cache.GetRedisClient() == nil {
-			bcode.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: redis client is not configured")
+			apiresponse.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: redis client is not configured")
 			return
 		}
 		if err := h.Cache.GetRedisClient().Ping(ctx).Err(); err != nil {
 			klog.V(4).InfoS("readiness check failed", "dependency", "redis", "err", err)
-			bcode.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: redis connection failed")
+			apiresponse.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: redis connection failed")
 			return
 		}
 	}
@@ -98,7 +99,7 @@ func (h *health) readinessCheck(c *gin.Context) {
 			}
 		}
 		if len(degraded) > 0 {
-			bcode.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: external queue degraded ("+strings.Join(degraded, ", ")+")")
+			apiresponse.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: external queue degraded ("+strings.Join(degraded, ", ")+")")
 			return
 		}
 	}
@@ -109,7 +110,7 @@ func (h *health) readinessCheck(c *gin.Context) {
 			Topics:  kafkaTopicsForHealth(h.Cfg),
 		}); err != nil {
 			klog.V(4).InfoS("readiness check failed", "dependency", "kafka", "err", err)
-			bcode.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: kafka readiness failed")
+			apiresponse.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: kafka readiness failed")
 			return
 		}
 	}
@@ -120,7 +121,7 @@ func (h *health) readinessCheck(c *gin.Context) {
 		}
 		if _, _, err := check.queue.Stats(ctx, check.group); err != nil {
 			klog.V(4).InfoS("readiness check failed", "dependency", check.name, "group", check.group, "err", err)
-			bcode.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: "+check.name+" queue connection failed")
+			apiresponse.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: "+check.name+" queue connection failed")
 			return
 		}
 	}
@@ -129,7 +130,7 @@ func (h *health) readinessCheck(c *gin.Context) {
 	if h.Cfg != nil {
 		role = h.Cfg.NormalizedRole()
 	}
-	bcode.ReturnSuccess(c, gin.H{
+	apiresponse.ReturnSuccess(c, gin.H{
 		"status": "ready",
 		"role":   role,
 	})

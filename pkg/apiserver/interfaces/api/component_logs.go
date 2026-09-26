@@ -13,6 +13,8 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+
+	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 )
 
 func (app *applications) streamComponentLogs(c *gin.Context) {
@@ -23,7 +25,7 @@ func (app *applications) streamComponentLogs(c *gin.Context) {
 	requestedContainer := strings.TrimSpace(c.Query("container"))
 	stream, err := app.ApplicationService.StreamComponentLogs(c.Request.Context(), appID, componentName, requestedContainer)
 	if err != nil {
-		bcode.ReturnError(c, err)
+		apiresponse.ReturnError(c, err)
 		return
 	}
 	defer func() {
