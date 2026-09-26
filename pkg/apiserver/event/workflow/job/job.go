@@ -1218,20 +1218,16 @@ func NewPool(ctx context.Context, jobs []*model.JobTask, concurrency int, client
 	}
 }
 
-func ParseProperties(properties *model.JSONStruct) model.Properties {
-	cProperties, err := json.Marshal(properties)
+func ParseProperties(properties *model.JSONStruct) (model.Properties, error) {
+	encoded, err := json.Marshal(properties)
 	if err != nil {
-		klog.ErrorS(err, "component properties serialization failed")
-		return model.Properties{}
+		return model.Properties{}, fmt.Errorf("marshal component properties: %w", err)
 	}
-
-	var propertied model.Properties
-	err = json.Unmarshal(cProperties, &propertied)
-	if err != nil {
-		klog.ErrorS(err, "component properties deserialization failed")
-		return model.Properties{}
+	var parsed model.Properties
+	if err := json.Unmarshal(encoded, &parsed); err != nil {
+		return model.Properties{}, fmt.Errorf("decode component properties: %w", err)
 	}
-	return propertied
+	return parsed, nil
 }
 
 func BuildLabels(c *model.ApplicationComponent, p *model.Properties) map[string]string {

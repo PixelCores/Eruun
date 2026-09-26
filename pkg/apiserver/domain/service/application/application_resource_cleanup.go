@@ -267,7 +267,10 @@ func (c *applicationsServiceImpl) sharedComponentHasAbnormalPods(ctx context.Con
 }
 
 func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, component *model.ApplicationComponent, reporter *cleanupReporter) error {
-	props := job.ParseProperties(component.Properties)
+	props, err := job.ParseProperties(component.Properties)
+	if err != nil {
+		return err
+	}
 	componentCopy := *component
 	if componentCopy.Namespace == "" {
 		componentCopy.Namespace = config.DefaultNamespace
@@ -276,7 +279,10 @@ func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, 
 
 	switch component.ComponentType {
 	case config.ServerJob:
-		result := job.GenerateWebService(componentPtr, &props)
+		result, err := job.GenerateWebService(componentPtr, &props)
+		if err != nil {
+			return err
+		}
 		deployNS := componentPtr.Namespace
 		deployName := naming.WebServiceName(component.Name, component.ResourceNameKey())
 		if result != nil {
@@ -292,7 +298,10 @@ func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, 
 		}
 		reporter.record("Deployment", deployNS, deployName, c.deleteDeployment(ctx, deployNS, deployName))
 	case config.StoreJob:
-		result := job.GenerateStoreService(componentPtr)
+		result, err := job.GenerateStoreService(componentPtr)
+		if err != nil {
+			return err
+		}
 		statefulNS := componentPtr.Namespace
 		statefulName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 		if result != nil {
@@ -316,7 +325,10 @@ func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, 
 			c.deleteEvaluationJobsForComponent(ctx, componentPtr, reporter)
 			break
 		}
-		result := job.GenerateInstantJob(componentPtr, &props, props.RunPolicy)
+		result, err := job.GenerateInstantJob(componentPtr, &props, props.RunPolicy)
+		if err != nil {
+			return err
+		}
 		jobNS := componentPtr.Namespace
 		jobName := naming.JobName(component.Name, component.ResourceNameKey())
 		if result != nil {
@@ -682,7 +694,11 @@ func (c *applicationsServiceImpl) deleteScheduledJobForComponent(ctx context.Con
 		if err != nil {
 			klog.Errorf("cleanup scheduled job cron normalize failed: %v", err)
 		}
-		result := job.GenerateScheduledCronJob(component, props, normalized)
+		result, err := job.GenerateScheduledCronJob(component, props, normalized)
+		if err != nil {
+			reporter.record("CronJob", component.Namespace, naming.CronJobName(component.Name, component.ResourceNameKey()), err)
+			return
+		}
 		cronNS := component.Namespace
 		cronName := naming.CronJobName(component.Name, component.ResourceNameKey())
 		if result != nil {

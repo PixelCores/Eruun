@@ -8,7 +8,6 @@ import (
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"time"
 
-	appsv1 "k8s.io/api/apps/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -16,7 +15,6 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -219,16 +217,6 @@ func (c *applicationsServiceImpl) restartNativeApplicationComponents(ctx context
 			}
 			statefulNS := componentCopy.Namespace
 			statefulName := naming.StoreServerName(component.Name, component.ResourceNameKey())
-			if result := job.GenerateStoreService(&componentCopy); result != nil {
-				if sts, ok := result.Service.(*appsv1.StatefulSet); ok && sts != nil {
-					if sts.Namespace != "" {
-						statefulNS = sts.Namespace
-					}
-					if sts.Name != "" {
-						statefulName = sts.Name
-					}
-				}
-			}
 			skipped, err := c.restartStatefulSet(ctx, statefulNS, statefulName, patch)
 			reporter.record("StatefulSet", statefulNS, statefulName, skipped, err)
 			if err == nil && !skipped {
@@ -261,16 +249,6 @@ func recordRestartSkippedResource(component *model.ApplicationComponent, reporte
 	case config.StoreJob:
 		statefulNS := componentCopy.Namespace
 		statefulName := naming.StoreServerName(component.Name, component.ResourceNameKey())
-		if result := job.GenerateStoreService(&componentCopy); result != nil {
-			if sts, ok := result.Service.(*appsv1.StatefulSet); ok && sts != nil {
-				if sts.Namespace != "" {
-					statefulNS = sts.Namespace
-				}
-				if sts.Name != "" {
-					statefulName = sts.Name
-				}
-			}
-		}
 		reporter.record("StatefulSet", statefulNS, statefulName, true, nil)
 	}
 }

@@ -120,7 +120,11 @@ func (c *CleanupResourcesJobCtl) prepareRequiredStatefulSetDeletion(ctx context.
 		return err
 	}
 	templates := versionUpdateCleanupStatefulSetPVCTemplatesToDelete(c.job.InternalInfo)
-	if generated := GenerateStoreService(component); generated != nil {
+	generated, err := GenerateStoreService(component)
+	if err != nil {
+		return err
+	}
+	if generated != nil {
 		if statefulSet, ok := generated.Service.(*appsv1.StatefulSet); ok && statefulSet != nil {
 			templates = append(templates, statefulSetVolumeClaimTemplateNames(statefulSet)...)
 		}

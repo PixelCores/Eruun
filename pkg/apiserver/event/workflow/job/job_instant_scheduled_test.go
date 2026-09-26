@@ -588,7 +588,10 @@ func TestGenerateOneTimeJob(t *testing.T) {
 	}
 	props := &model.Properties{}
 
-	result := GenerateOneTimeJob(component, props, "", time.Now().Unix()+60)
+	result, err := GenerateOneTimeJob(component, props, "", time.Now().Unix()+60)
+	if err != nil {
+		t.Fatal(err)
+	}
 	require.NotNil(t, result)
 	jobObj, ok := result.Service.(*batchv1.Job)
 	require.True(t, ok)

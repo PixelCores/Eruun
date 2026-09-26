@@ -1582,6 +1582,8 @@ func (w *Workflow) workerBackoffDelay(current, min, max time.Duration) time.Dura
 
 ## 8. 取消与清理机制
 
+资源生成阶段的 Properties 解码、Trait 聚合或批任务渲染失败，会使整个执行计划失败，不执行已经生成的部分 workload 或附加资源。Controller 先持久化 `workflow-generation` 失败记录及原始原因，再结束工作流；恢复时的 `CurrentStep` 不会跳过这一失败。失败记录写入不可用时保留运行态，按既有持久化恢复流程处理。合法空步骤与未引用组件保持原有行为。
+
 ### 8.1 取消信号流程
 
 单任务取消接受 active 状态（包括等待、排队、运行和审批暂停）；已经是 `cancelled` 但仍存在 active Job 的任务允许重新发送取消信号。completed、failed、timeout、reject 等历史终态返回 `409 / 20013` 且保持不变。取消写入会按最新状态最多执行 3 次 CAS：active 状态间发生迁移时重新读取后重试，持续竞争则返回可重试的 `409 / 20014`。批量取消会跳过竞争期间已进入历史终态的任务，并继续处理后续任务。

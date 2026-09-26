@@ -42,7 +42,7 @@ func TestBuildDatabaseResetStepExecutionAggregatesComponents(t *testing.T) {
 		AppID:      "app-1",
 	}
 
-	executions := buildWorkflowStepExecutions(context.Background(), 0, &model.WorkflowStep{
+	executions, err := buildWorkflowStepExecutions(context.Background(), 0, &model.WorkflowStep{
 		Name:         "database-reset",
 		WorkflowType: config.JobDatabaseReset,
 		Mode:         config.WorkflowModeStepByStep,
@@ -51,6 +51,9 @@ func TestBuildDatabaseResetStepExecutionAggregatesComponents(t *testing.T) {
 			InitSQLURL: "https://files.example/game-1.0.8.sql",
 		}},
 	}, componentMap, task, int64(config.DefaultJobTaskTimeout))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	require.Len(t, executions, 1)
 	require.Equal(t, config.WorkflowModeStepByStep, executions[0].Mode)
@@ -78,7 +81,7 @@ func TestBuildDatabaseResetStepsAssignDistinctExecutionKeys(t *testing.T) {
 		ProjectID:  "project-1",
 		AppID:      "app-1",
 	}
-	groups := buildWorkflowStepExecutionGroups(context.Background(), &model.WorkflowSteps{Steps: []*model.WorkflowStep{
+	groups, err := buildWorkflowStepExecutionGroups(context.Background(), &model.WorkflowSteps{Steps: []*model.WorkflowStep{
 		{
 			Name:         "reset-mysql",
 			WorkflowType: config.JobDatabaseReset,
@@ -90,6 +93,9 @@ func TestBuildDatabaseResetStepsAssignDistinctExecutionKeys(t *testing.T) {
 			Properties:   []model.Policies{{Policies: []string{"redis"}}},
 		},
 	}}, componentMap, task, int64(config.DefaultJobTaskTimeout))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	require.Len(t, groups, 2)
 	require.Equal(t, "step:0/component:0", requireDatabaseResetExecutionKey(t, groups[0]))
@@ -113,7 +119,7 @@ func TestBuildDatabaseResetSubStepsAssignDistinctExecutionKeys(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			executions := buildWorkflowStepExecutions(context.Background(), 2, &model.WorkflowStep{
+			executions, err := buildWorkflowStepExecutions(context.Background(), 2, &model.WorkflowStep{
 				Name: "reset-stores",
 				Mode: test.mode,
 				SubSteps: []*model.WorkflowSubStep{
@@ -129,6 +135,9 @@ func TestBuildDatabaseResetSubStepsAssignDistinctExecutionKeys(t *testing.T) {
 					},
 				},
 			}, componentMap, task, int64(config.DefaultJobTaskTimeout))
+			if err != nil {
+				t.Fatal(err)
+			}
 
 			var keys []string
 			for _, execution := range executions {

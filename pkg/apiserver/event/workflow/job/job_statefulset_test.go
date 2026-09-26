@@ -237,7 +237,10 @@ func TestGenerateStoreService_UsesCommand(t *testing.T) {
 		Properties: propsJSON,
 	}
 
-	result := GenerateStoreService(component)
+	result, err := GenerateStoreService(component)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if result == nil {
 		t.Fatalf("expected result, got nil")
 	}
@@ -293,7 +296,10 @@ func TestGenerateStoreService_UsesHeadlessServiceTraitName(t *testing.T) {
 		Traits:        traitsJSON,
 	}
 
-	result := GenerateStoreService(component)
+	result, err := GenerateStoreService(component)
+	if err != nil {
+		t.Fatal(err)
+	}
 	require.NotNil(t, result)
 
 	statefulSet, ok := result.Service.(*appsv1.StatefulSet)
@@ -311,7 +317,10 @@ func TestGenerateStoreService_DefaultsServiceNameWithoutHeadlessTrait(t *testing
 		ComponentType: config.StoreJob,
 	}
 
-	result := GenerateStoreService(component)
+	result, err := GenerateStoreService(component)
+	if err != nil {
+		t.Fatal(err)
+	}
 	require.NotNil(t, result)
 
 	statefulSet, ok := result.Service.(*appsv1.StatefulSet)
@@ -337,7 +346,10 @@ func TestGenerateStoreService_BoundsStatefulSetNameAndUsesStableSelector(t *test
 		Properties:      properties,
 	}
 
-	result := GenerateStoreService(component)
+	result, err := GenerateStoreService(component)
+	if err != nil {
+		t.Fatal(err)
+	}
 	require.NotNil(t, result)
 
 	statefulSet, ok := result.Service.(*appsv1.StatefulSet)

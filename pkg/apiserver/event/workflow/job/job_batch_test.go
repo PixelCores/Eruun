@@ -31,7 +31,10 @@ func TestGenerateInstantJobSetsTTL(t *testing.T) {
 	}
 	props := &model.Properties{}
 
-	result := GenerateInstantJob(component, props, "")
+	result, err := GenerateInstantJob(component, props, "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	require.NotNil(t, result)
 	jobObj, ok := result.Service.(*batchv1.Job)
 	require.True(t, ok)
@@ -49,7 +52,10 @@ func TestGenerateScheduledCronJobSetsTTL(t *testing.T) {
 	}
 	props := &model.Properties{}
 
-	result := GenerateScheduledCronJob(component, props, "0 * * * *")
+	result, err := GenerateScheduledCronJob(component, props, "0 * * * *")
+	if err != nil {
+		t.Fatal(err)
+	}
 	require.NotNil(t, result)
 	cronObj, ok := result.Service.(*batchv1.CronJob)
 	require.True(t, ok)
@@ -76,7 +82,10 @@ func TestGenerateScheduledCronJobOverridesHistoryLimit(t *testing.T) {
 		FailedJobsHistoryLimit:     &failedLimit,
 	}
 
-	result := GenerateScheduledCronJob(component, props, "0 * * * *")
+	result, err := GenerateScheduledCronJob(component, props, "0 * * * *")
+	if err != nil {
+		t.Fatal(err)
+	}
 	require.NotNil(t, result)
 	cronObj, ok := result.Service.(*batchv1.CronJob)
 	require.True(t, ok)

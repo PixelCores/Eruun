@@ -34,7 +34,10 @@ func TestGenerateWebService_UsesCommand(t *testing.T) {
 		Command: []string{"sh", "-c", "echo ok"},
 	}
 
-	result := GenerateWebService(component, &properties)
+	result, err := GenerateWebService(component, &properties)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if result == nil {
 		t.Fatalf("expected result, got nil")
 	}
@@ -81,7 +84,10 @@ func TestGenerateWebService_AppliesRolloutTrait(t *testing.T) {
 		Traits:    traitsJSON,
 	}
 
-	result := GenerateWebService(component, &model.Properties{})
+	result, err := GenerateWebService(component, &model.Properties{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	require.NotNil(t, result)
 
 	deploy, ok := result.Service.(*appsv1.Deployment)
@@ -108,7 +114,10 @@ func TestGenerateWebService_BoundsNameAndUsesStableSelector(t *testing.T) {
 		},
 	}
 
-	result := GenerateWebService(component, properties)
+	result, err := GenerateWebService(component, properties)
+	if err != nil {
+		t.Fatal(err)
+	}
 	require.NotNil(t, result)
 
 	deploy, ok := result.Service.(*appsv1.Deployment)
