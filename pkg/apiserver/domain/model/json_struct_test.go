@@ -64,15 +64,3 @@ func TestNewJSONStructByStructRejectsInvalidInput(t *testing.T) {
 		require.Error(t, err)
 	}
 }
-
-func TestJSONStructRawExtensionReturnsSerializationErrors(t *testing.T) {
-	valid := JSONStruct{"name": "demo"}
-	raw, err := valid.RawExtension()
-	require.NoError(t, err)
-	require.NotNil(t, raw)
-	require.JSONEq(t, `{"name":"demo"}`, string(raw.Raw))
-
-	invalid := JSONStruct{"invalid": func() {}}
-	_, err = invalid.RawExtension()
-	require.Error(t, err)
-}

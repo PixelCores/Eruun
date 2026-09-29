@@ -4,9 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
-
-	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/yaml"
 )
 
 var tableNamePrefix = "eruun_"
@@ -17,34 +14,8 @@ type Interface interface {
 	ShortTableName() string
 }
 
-// JSONStruct json struct, same with runtime.RawExtension
+// JSONStruct stores a JSON object in model fields.
 type JSONStruct map[string]interface{}
-
-// NewJSONStruct new json struct from runtime.RawExtension
-func NewJSONStruct(raw *runtime.RawExtension) (*JSONStruct, error) {
-	if raw == nil || raw.Raw == nil {
-		return nil, nil
-	}
-	var data JSONStruct
-	err := json.Unmarshal(raw.Raw, &data)
-	if err != nil {
-		return nil, fmt.Errorf("parse raw data failure %w", err)
-	}
-	return &data, nil
-}
-
-// NewJSONStructByString new json struct from string
-func NewJSONStructByString(source string) (*JSONStruct, error) {
-	if source == "" {
-		return nil, nil
-	}
-	var data JSONStruct
-	err := json.Unmarshal([]byte(source), &data)
-	if err != nil {
-		return nil, fmt.Errorf("parse raw data failure %w", err)
-	}
-	return &data, nil
-}
 
 // NewJSONStructByStruct new json struct from struct object
 func NewJSONStructByStruct(object interface{}) (*JSONStruct, error) {
@@ -74,22 +45,6 @@ func (j *JSONStruct) Bytes() ([]byte, error) {
 // Properties return the map
 func (j *JSONStruct) Properties() map[string]interface{} {
 	return *j
-}
-
-// RawExtension encodes the JSONStruct as a RawExtension.
-func (j *JSONStruct) RawExtension() (*runtime.RawExtension, error) {
-	yamlByte, err := yaml.Marshal(j)
-	if err != nil {
-		return nil, fmt.Errorf("marshal JSON struct as YAML: %w", err)
-	}
-	b, err := yaml.YAMLToJSON(yamlByte)
-	if err != nil {
-		return nil, fmt.Errorf("convert JSON struct YAML to JSON: %w", err)
-	}
-	if len(b) == 0 || string(b) == "null" {
-		return nil, nil
-	}
-	return &runtime.RawExtension{Raw: b}, nil
 }
 
 // BaseModel common model
