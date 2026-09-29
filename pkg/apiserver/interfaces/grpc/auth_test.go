@@ -3,6 +3,7 @@ package grpcapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
 	eruunv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1"
@@ -30,6 +32,24 @@ import (
 )
 
 type grpcTestDelivery struct{ code string }
+
+func TestRPCErrorPreservesDatastoreCause(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		code codes.Code
+	}{
+		{"canceled", context.Canceled, codes.Canceled},
+		{"deadline", context.DeadlineExceeded, codes.DeadlineExceeded},
+		{"not found", datastore.ErrRecordNotExist, codes.NotFound},
+		{"unexpected", errors.New("internal database failure"), codes.Internal},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := fmt.Errorf("query: %w", datastore.NewDBError(tc.err))
+			require.Equal(t, tc.code, status.Code(rpcError(err)))
+		})
+	}
+}
 
 func (d *grpcTestDelivery) SendCode(_ context.Context, _, _, code string) error {
 	d.code = code

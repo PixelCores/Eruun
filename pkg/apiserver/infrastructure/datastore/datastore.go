@@ -59,6 +59,10 @@ func (d *DBError) Error() string {
 	return d.err.Error()
 }
 
+func (d *DBError) Unwrap() error {
+	return d.err
+}
+
 // NewDBError new datastore error
 func NewDBError(err error) error {
 	return &DBError{err: err}
