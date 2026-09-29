@@ -450,8 +450,3 @@ func TestReadinessCheckWithKafkaTopicHealthFailure(t *testing.T) {
 	require.Equal(t, bcode.ErrServiceUnavailable.BusinessCode, envelope.Code)
 	require.Contains(t, envelope.Message, "kafka readiness failed")
 }
-
-func TestHealthGetName(t *testing.T) {
-	h := &health{}
-	require.Equal(t, "health", h.GetName())
-}

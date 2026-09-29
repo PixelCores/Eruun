@@ -35,15 +35,7 @@ func (s *restServer) runBootstrapStep(parent context.Context, step func(context.
 	return step(bootstrapCtx)
 }
 
-func (s *restServer) RegisterAPIRoute() {
-	s.registerAPIRoutes(false)
-}
-
-func (s *restServer) RegisterHealthRoute() {
-	s.registerAPIRoutes(true)
-}
-
-func (s *restServer) registerAPIRoutes(healthOnly bool) {
+func (s *restServer) registerAPIRoutes() {
 	// 初始化中间件
 	s.webContainer.Use(gin.Recovery())
 
@@ -97,12 +89,6 @@ func (s *restServer) registerAPIRoutes(healthOnly bool) {
 	for _, prefix := range api.GetAPIPrefix() {
 		group := s.webContainer.Group(prefix)
 		for _, handler := range s.apiHandlers {
-			if healthOnly {
-				named, ok := handler.(interface{ GetName() string })
-				if !ok || named.GetName() != "health" {
-					continue
-				}
-			}
 			handler.RegisterRoutes(group)
 		}
 	}
@@ -224,11 +210,7 @@ func (s *restServer) Run(ctx context.Context, errChan chan error) error {
 		return err
 	}
 
-	if s.cfg.RunsAPI() {
-		s.RegisterAPIRoute()
-	} else {
-		s.RegisterHealthRoute()
-	}
+	s.registerAPIRoutes()
 
 	// Keep already-started runtime work alive while the caller's context begins
 	// graceful shutdown. shutdown cancels runCtx only after workers have drained.

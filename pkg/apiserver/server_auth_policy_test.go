@@ -14,7 +14,7 @@ func TestEveryRegisteredRouteHasExactlyOneAuthPolicy(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	server := New(config.Config{}).(*restServer)
-	server.registerAPIRoutes(false)
+	server.registerAPIRoutes()
 
 	routes := server.webContainer.Routes()
 	require.NotEmpty(t, routes)

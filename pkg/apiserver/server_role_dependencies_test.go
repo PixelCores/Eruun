@@ -163,6 +163,40 @@ func TestInitRoleObserversBuildsOnlyOwnedObserver(t *testing.T) {
 	}
 }
 
+func TestRuntimeRolesOnlyBuildTheirServedAPIAdapters(t *testing.T) {
+	for _, role := range []config.RuntimeRole{
+		config.RuntimeRoleAPI,
+		config.RuntimeRoleController,
+		config.RuntimeRoleScheduler,
+		config.RuntimeRoleWorker,
+	} {
+		t.Run(string(role), func(t *testing.T) {
+			server := New(config.Config{Role: role}).(*restServer)
+			require.NoError(t, server.provideInterfaceBeans())
+			server.registerAPIRoutes()
+
+			routes := make(map[string]bool)
+			for _, route := range server.webContainer.Routes() {
+				routes[route.Method+" "+route.Path] = true
+			}
+			require.True(t, routes["GET /api/v1/health"])
+			require.True(t, routes["GET /api/v1/readyz"])
+			if role == config.RuntimeRoleAPI {
+				require.True(t, routes["POST /api/v1/auth/login"])
+				require.NotNil(t, server.grpcAdministration)
+				require.NotNil(t, server.grpcJobs)
+				require.NotNil(t, server.grpcApplications)
+				return
+			}
+			require.Len(t, routes, 4, "non-API roles serve only health and readiness routes")
+			require.False(t, routes["POST /api/v1/auth/login"])
+			require.Nil(t, server.grpcAdministration)
+			require.Nil(t, server.grpcJobs)
+			require.Nil(t, server.grpcApplications)
+		})
+	}
+}
+
 func TestConfigureWorkflowEventWorkersAssignsRoleDependencies(t *testing.T) {
 	dispatch := &testServerQueue{}
 	delay := &testServerQueue{}

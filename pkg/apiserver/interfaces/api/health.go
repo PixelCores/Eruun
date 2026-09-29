@@ -34,11 +34,6 @@ type health struct {
 	Database    datastore.DatabaseClock `inject:"datastore"`
 }
 
-// GetName returns the API name for registration.
-func (h *health) GetName() string {
-	return "health"
-}
-
 // RegisterRoutes registers health check endpoints.
 func (h *health) RegisterRoutes(group *gin.RouterGroup) {
 	group.GET("/health", h.healthCheck)
