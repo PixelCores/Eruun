@@ -18,6 +18,8 @@ import (
 type fakeResourceImportService struct {
 	scanRequest   apisv1.ResourceImportScanJobRequest
 	manageRequest apisv1.ResourceImportManageJobRequest
+	scanCalls     int
+	manageCalls   int
 }
 
 func (f *fakeResourceImportService) ImportNamespaceResources(context.Context, apisv1.ImportNamespaceApplicationsRequest) (*apisv1.ImportNamespaceApplicationsResponse, error) {
@@ -29,6 +31,7 @@ func (f *fakeResourceImportService) TryImportNamespaceResources(context.Context,
 }
 
 func (f *fakeResourceImportService) SubmitScanJob(_ context.Context, request apisv1.ResourceImportScanJobRequest) (*apisv1.ResourceImportJobAcceptedResponse, error) {
+	f.scanCalls++
 	f.scanRequest = request
 	return &apisv1.ResourceImportJobAcceptedResponse{
 		TaskID: "scan-task-1",
@@ -38,6 +41,7 @@ func (f *fakeResourceImportService) SubmitScanJob(_ context.Context, request api
 }
 
 func (f *fakeResourceImportService) SubmitManageJob(_ context.Context, request apisv1.ResourceImportManageJobRequest) (*apisv1.ResourceImportJobAcceptedResponse, error) {
+	f.manageCalls++
 	f.manageRequest = request
 	return &apisv1.ResourceImportJobAcceptedResponse{
 		TaskID: "manage-task-1",
@@ -72,15 +76,33 @@ func TestResourceImportScanEndpointReturnsAcceptedTask(t *testing.T) {
 
 func TestResourceImportEndpointsRejectUnknownFields(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	handler := &resourceImports{Service: &fakeResourceImportService{}}
-	router := gin.New()
-	handler.RegisterRoutes(router.Group("/api/v1"))
-	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, httptest.NewRequest(
-		http.MethodPost,
-		"/api/v1/resource-import/jobs/manage",
-		bytes.NewReader([]byte(`{"scanTaskId":"scan-task-1","applications":[],"unexpected":true}`)),
-	))
+	for _, tc := range []struct {
+		name string
+		path string
+		body string
+	}{
+		{
+			name: "scan",
+			path: "/api/v1/resource-import/jobs/scan",
+			body: `{"namespace":"team-production","rules":[],"unexpected":true}`,
+		},
+		{
+			name: "manage",
+			path: "/api/v1/resource-import/jobs/manage",
+			body: `{"scanTaskId":"scan-task-1","applications":[],"unexpected":true}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := &fakeResourceImportService{}
+			handler := &resourceImports{Service: service}
+			router := gin.New()
+			handler.RegisterRoutes(router.Group("/api/v1"))
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, tc.path, bytes.NewReader([]byte(tc.body))))
 
-	assert.Equal(t, http.StatusBadRequest, recorder.Code)
+			require.Equal(t, http.StatusBadRequest, recorder.Code)
+			assert.Zero(t, service.scanCalls)
+			assert.Zero(t, service.manageCalls)
+		})
+	}
 }

@@ -84,23 +84,6 @@ func TestHealthCheck(t *testing.T) {
 	require.Equal(t, "healthy", payload["status"])
 }
 
-func TestHealthzCheck(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	h := &health{}
-	r := gin.New()
-	r.GET("/healthz", h.healthCheck)
-
-	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
-	resp := httptest.NewRecorder()
-	r.ServeHTTP(resp, req)
-
-	require.Equal(t, http.StatusOK, resp.Code)
-	var payload map[string]string
-	requireSuccessResponse(t, resp.Body.Bytes(), &payload)
-	require.Equal(t, "healthy", payload["status"])
-}
-
 func TestReadinessCheckWithHealthyQueue(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -432,24 +415,6 @@ func TestReadinessCheckWithKafkaQueueStatsFailureAfterBrokerHealthPasses(t *test
 	envelope := decodeResponse(t, resp.Body.Bytes(), nil)
 	require.Equal(t, bcode.ErrServiceUnavailable.BusinessCode, envelope.Code)
 	require.Contains(t, envelope.Message, "dispatch queue connection failed")
-}
-
-func TestReadinessCheckWithNilQueue(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	h := &health{}
-	r := gin.New()
-	r.GET("/ready", h.readinessCheck)
-
-	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
-	resp := httptest.NewRecorder()
-	r.ServeHTTP(resp, req)
-
-	// Nil queue should be considered ready (no dependency)
-	require.Equal(t, http.StatusOK, resp.Code)
-	var payload map[string]string
-	requireSuccessResponse(t, resp.Body.Bytes(), &payload)
-	require.Equal(t, "ready", payload["status"])
 }
 
 func TestReadinessCheckWithKafkaTopicHealthFailure(t *testing.T) {

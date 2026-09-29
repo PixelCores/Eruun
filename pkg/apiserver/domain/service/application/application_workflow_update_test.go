@@ -230,7 +230,7 @@ func TestUpdateApplicationWorkflowPreservesExistingFailurePolicyWhenOmitted(t *t
 	}
 	store.components["web"] = &model.ApplicationComponent{Name: "web", AppID: "app-1", ComponentType: config.ServerJob}
 	stepsJSON, err := model.NewJSONStructByStruct(&model.WorkflowSteps{
-		FailurePolicy: workflowconfig.WorkflowFailurePolicyCleanupAll,
+		FailurePolicy: workflowconfig.WorkflowFailurePolicyCleanupFailed,
 		Steps: []*model.WorkflowStep{{
 			Name:         "old-deploy-web",
 			WorkflowType: config.JobDeploy,
@@ -259,7 +259,7 @@ func TestUpdateApplicationWorkflowPreservesExistingFailurePolicyWhenOmitted(t *t
 
 	stored := store.workflows["wf-1"]
 	steps := decodeWorkflowSteps(t, stored.Steps)
-	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, steps.FailurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupFailed, steps.FailurePolicy)
 	require.Len(t, steps.Steps, 1)
 	require.Equal(t, "deploy-web", steps.Steps[0].Name)
 }

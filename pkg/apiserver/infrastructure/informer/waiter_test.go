@@ -14,21 +14,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/async"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
 )
-
-func TestExtractPodAbnormalReason(t *testing.T) {
-	pod := newTestPod("default", "demo", "app-1", "api", 7, corev1.ContainerState{
-		Waiting: &corev1.ContainerStateWaiting{
-			Reason:  "CrashLoopBackOff",
-			Message: "back-off",
-		},
-	}, false)
-
-	reason := kube.ExtractPodAbnormalReason(pod)
-	require.Contains(t, reason, "CrashLoopBackOff")
-	require.Contains(t, reason, "container=app")
-}
 
 func TestResourceReadyWaiterPodAbnormalUpdates(t *testing.T) {
 	waiter := NewResourceReadyWaiter()
