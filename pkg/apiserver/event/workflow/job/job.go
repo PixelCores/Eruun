@@ -985,7 +985,7 @@ func invalidateComponentsCache(ctx context.Context, runtime *jobRuntime, appID s
 		return
 	}
 	cacheKey := cache.ApplicationComponentsKey(appID)
-	if err := runtime.cache.Delete(ctx, cacheKey); err != nil {
+	if err := cache.InvalidateAfterWrite(ctx, runtime.cache, cacheKey); err != nil {
 		klog.V(4).InfoS("invalidate component cache failed", "reason", reason, "appID", appID, "err", err)
 	}
 }

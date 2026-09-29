@@ -124,7 +124,7 @@ K8s 不是组件查询实时事实源，而是通过 informer 异步回写 DB。
 
 5. 缓存一致性规则  
 组件状态更新、应用增删改等会触发对应缓存失效；缓存失败不影响主流程正确性，DB 保持事实源。
-缓存读写、损坏条目清理与失效透传调用者 `context.Context`；Redis 在父 context 上追加 5 秒操作上限（`List` 为 30 秒），客户端启用 context deadline。等待连接或重试时可响应取消；已经进行的 socket I/O 仍受 go-redis 的读写 deadline 控制，手动取消不保证立即中断该 I/O。
+缓存读写与读取过程中损坏条目的清理透传调用者 `context.Context`；Redis 在父 context 上追加 5 秒操作上限（`List` 为 30 秒），客户端启用 context deadline。数据变更后的缓存失效保留 context 值，但使用独立的 5 秒超时，不随原请求取消或到期而跳过删除；应用更新、Informer 和 Job 状态同步遵循同一规则。等待连接或重试时可响应取消；已经进行的 socket I/O 仍受 go-redis 的读写 deadline 控制，手动取消不保证立即中断该 I/O。
 锁与 Workflow 取消信号由 server 显式提供 Redis/Locker 依赖，不经缓存对象获取。使用内存缓存或禁用读取缓存不会禁用协调能力；协调依赖缺失仍拒绝相应操作。
 
 6. Adopted 重建声明规则

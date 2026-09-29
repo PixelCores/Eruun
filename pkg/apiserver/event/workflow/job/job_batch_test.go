@@ -572,6 +572,7 @@ type componentStatusStore struct {
 	jobInfos       []*model.JobInfo
 	managementMode domainspec.ManagementMode
 	putErr         error
+	afterCAS       func()
 }
 
 func (s *componentStatusStore) Add(_ context.Context, entity datastore.Entity) error {
@@ -649,6 +650,9 @@ func (s *componentStatusStore) CompareAndSwapWithConditions(_ context.Context, e
 		s.updated = &copied
 		s.updates = append(s.updates, &copied)
 		s.statuses = append(s.statuses, copied.Status)
+		if s.afterCAS != nil {
+			s.afterCAS()
+		}
 		return true, nil
 	}
 	return false, nil
@@ -901,6 +905,36 @@ func TestRunJob_ConfigMapInvalidatesComponentsCache(t *testing.T) {
 	require.False(t, cacheStore.Exists(context.Background(), cacheKey))
 	require.NotNil(t, store.updated)
 	require.Equal(t, string(config.ComponentStatusRunning), store.updated.Status)
+}
+
+func TestConfigComponentStatusInvalidatesCacheAfterCommittedWriteCancelsContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	store := &componentStatusStore{
+		components: []*model.ApplicationComponent{{
+			ID: 7, AppID: "app-3", Name: "app-config", Namespace: "default",
+			ComponentType: config.ConfJob, Status: string(config.ComponentStatusNotDeploy),
+		}},
+		afterCAS: cancel,
+	}
+	cacheStore := cacheutil.NewMemCache(false)
+	cacheKey := cacheutil.ApplicationComponentsKey("app-3")
+	require.NoError(t, cacheStore.Store(t.Context(), cacheKey, "stale components"))
+	jobTask := &model.JobTask{
+		Name: "app-config", Namespace: "default", AppID: "app-3",
+		JobType: string(config.JobDeployConfigMap), Status: config.StatusCompleted,
+	}
+	runtime := newJobRuntime(nil, cacheStore, nil, nil, nil, nil, nil)
+	defer runtime.close()
+
+	err := syncConfigComponentStatusIfWorkflowOwned(ctx, jobTask, store, runtime)
+
+	require.NoError(t, err)
+	require.ErrorIs(t, ctx.Err(), context.Canceled)
+	require.NotNil(t, store.updated)
+	require.Equal(t, string(config.ComponentStatusRunning), store.updated.Status)
+	require.Len(t, store.updates, 1)
+	require.False(t, cacheStore.Exists(t.Context(), cacheKey), "committed config status must invalidate the old snapshot after caller cancellation")
 }
 
 func TestRunJob_SecretFailureInvalidatesComponentsCache(t *testing.T) {

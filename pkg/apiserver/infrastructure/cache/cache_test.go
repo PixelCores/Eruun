@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	miniredis "github.com/alicebob/miniredis/v2"
@@ -292,4 +293,75 @@ func TestMemCacheCancelledOperationsPreserveEntries(t *testing.T) {
 	value, err := c.Load(t.Context(), "k")
 	require.NoError(t, err)
 	require.Equal(t, "original", value)
+}
+
+type invalidationCache struct {
+	ICache
+	delete func(context.Context, string) error
+}
+
+func (c *invalidationCache) Delete(ctx context.Context, key string) error {
+	return c.delete(ctx, key)
+}
+
+func TestInvalidateAfterWritePreservesValuesAndDeletesStaleData(t *testing.T) {
+	for _, backend := range []string{"memory", "redis"} {
+		for _, state := range []string{"active", "cancelled", "expired"} {
+			t.Run(backend+"/"+state, func(t *testing.T) {
+				c := NewMemCache(false)
+				if backend == "redis" {
+					srv := miniredis.RunT(t)
+					cli := redis.NewClient(&redis.Options{Addr: srv.Addr(), ContextTimeoutEnabled: true})
+					t.Cleanup(func() { require.NoError(t, cli.Close()) })
+					c = NewRedisICacheWithClient(cli, false)
+				}
+				require.NoError(t, c.Store(t.Context(), "changed", "stale"))
+				require.NoError(t, c.Store(t.Context(), "unrelated", "current"))
+				type scopeKey struct{}
+				ctx := context.WithValue(t.Context(), scopeKey{}, "workspace-1")
+				switch state {
+				case "cancelled":
+					var cancel context.CancelFunc
+					ctx, cancel = context.WithCancel(ctx)
+					cancel()
+				case "expired":
+					var cancel context.CancelFunc
+					ctx, cancel = context.WithDeadline(ctx, time.Now().Add(-time.Second))
+					defer cancel()
+				}
+				var cleanupCtx context.Context
+				observed := &invalidationCache{delete: func(ctx context.Context, key string) error {
+					cleanupCtx = ctx
+					require.NoError(t, ctx.Err())
+					require.Equal(t, "workspace-1", ctx.Value(scopeKey{}))
+					deadline, ok := ctx.Deadline()
+					require.True(t, ok)
+					require.Positive(t, time.Until(deadline))
+					require.LessOrEqual(t, time.Until(deadline), 5*time.Second)
+					return c.Delete(ctx, key)
+				}}
+				require.NoError(t, InvalidateAfterWrite(ctx, observed, "changed"))
+				require.ErrorIs(t, cleanupCtx.Err(), context.Canceled)
+				require.False(t, c.Exists(t.Context(), "changed"))
+				value, err := c.Load(t.Context(), "unrelated")
+				require.NoError(t, err)
+				require.Equal(t, "current", value)
+			})
+		}
+	}
+}
+
+func TestInvalidateAfterWriteBoundsBlockedDeletion(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		c := &invalidationCache{delete: func(ctx context.Context, _ string) error {
+			<-ctx.Done()
+			return ctx.Err()
+		}}
+		start := time.Now()
+		err := InvalidateAfterWrite(ctx, c, "changed")
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.Equal(t, 5*time.Second, time.Since(start))
+	})
 }

@@ -51,9 +51,6 @@ func NewRedisICache(cli *redis.Client, noCache bool, ttl time.Duration, prefix s
 	return &RedisICache{cli: cli, noCache: noCache, ttl: ttl, keyPrefix: prefix}
 }
 
-// defaultOpTimeout is the default timeout for Redis cache operations.
-const defaultOpTimeout = 5 * time.Second
-
 func (c *RedisICache) key(k string) string { return c.keyPrefix + k }
 
 func (c *RedisICache) Store(ctx context.Context, key string, data string) error {

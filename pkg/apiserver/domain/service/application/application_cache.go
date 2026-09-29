@@ -68,7 +68,7 @@ func (c *applicationsServiceImpl) invalidateCacheKey(ctx context.Context, key st
 	if !c.cacheEnabled() || strings.TrimSpace(key) == "" {
 		return
 	}
-	if err := c.Cache.Delete(ctx, key); err != nil {
+	if err := cacheutil.InvalidateAfterWrite(ctx, c.Cache, key); err != nil {
 		klog.V(4).Infof("invalidate cache key %s failed: %v", key, err)
 	}
 }

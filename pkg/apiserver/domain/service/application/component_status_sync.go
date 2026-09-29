@@ -51,7 +51,7 @@ func SyncComponentStatus(ctx context.Context, store datastore.DataStore, compone
 			return
 		}
 		cacheKey := cache.ApplicationComponentsKey(appID)
-		if err := componentCache.Delete(ctx, cacheKey); err != nil {
+		if err := cache.InvalidateAfterWrite(ctx, componentCache, cacheKey); err != nil {
 			klog.V(4).Infof("Failed to invalidate component cache appID=%s: %v", appID, err)
 		}
 	}()

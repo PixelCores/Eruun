@@ -120,6 +120,7 @@ type concurrentStatusSyncStore struct {
 	casRelease     chan struct{}
 	casStartedOnce sync.Once
 	casCalls       int
+	afterCAS       func()
 }
 
 func newConcurrentStatusSyncStore(component model.ApplicationComponent) *concurrentStatusSyncStore {
@@ -177,6 +178,9 @@ func (s *concurrentStatusSyncStore) CompareAndSwapWithConditions(ctx context.Con
 		}
 	}
 	s.component.UpdateTime = time.Now()
+	if s.afterCAS != nil {
+		s.afterCAS()
+	}
 	return true, nil
 }
 
@@ -656,6 +660,34 @@ func TestSyncComponentStatusInvalidatesCacheAfterConcurrentRefill(t *testing.T) 
 	require.Equal(t, string(config.ComponentStatusRunning), component.Status)
 	require.Equal(t, int32(1), component.ReadyReplicas)
 	require.False(t, componentCache.Exists(context.Background(), cacheKey))
+}
+
+func TestSyncComponentStatusInvalidatesCacheAfterCommittedWriteCancelsContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	store := newConcurrentStatusSyncStore(model.ApplicationComponent{
+		ID: 7, AppID: "app-1", Name: "web", Replicas: 1,
+		Status: string(config.ComponentStatusPending),
+	})
+	close(store.casRelease)
+	store.afterCAS = cancel
+	componentCache := cache.NewMemCache(false)
+	cacheKey := cache.ApplicationComponentsKey("app-1")
+	require.NoError(t, componentCache.Store(t.Context(), cacheKey, "stale components"))
+	status := config.ComponentStatusRunning
+	readyReplicas := int32(1)
+
+	SyncComponentStatus(ctx, store, componentCache, &informer.ComponentStatusUpdate{
+		AppID: "app-1", ComponentID: 7, ComponentName: "web",
+		Status: &status, ReadyReplicas: &readyReplicas,
+	})
+
+	require.ErrorIs(t, ctx.Err(), context.Canceled)
+	component := store.snapshot()
+	require.Equal(t, string(config.ComponentStatusRunning), component.Status)
+	require.Equal(t, readyReplicas, component.ReadyReplicas)
+	require.Equal(t, 1, store.compareAndSwapCalls())
+	require.False(t, componentCache.Exists(t.Context(), cacheKey), "committed runtime status must invalidate the old snapshot after caller cancellation")
 }
 
 func TestSyncComponentStatusPreservesStartingForNonTerminalInformerStatus(t *testing.T) {

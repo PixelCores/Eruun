@@ -5,6 +5,7 @@ package cache
 
 import (
 	"context"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -19,6 +20,17 @@ type ICache interface {
 	Delete(ctx context.Context, key string) error
 	Exists(ctx context.Context, key string) bool
 	IsCacheDisabled() bool
+}
+
+// defaultOpTimeout bounds cache operations, including post-write invalidation.
+const defaultOpTimeout = 5 * time.Second
+
+// InvalidateAfterWrite removes stale data even if the writer's context has ended.
+// Context values are retained, but cleanup gets its own bounded lifetime.
+func InvalidateAfterWrite(ctx context.Context, c ICache, key string) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), defaultOpTimeout)
+	defer cancel()
+	return c.Delete(ctx, key)
 }
 
 type CacheType string

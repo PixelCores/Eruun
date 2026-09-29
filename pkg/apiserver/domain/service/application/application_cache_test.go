@@ -11,6 +11,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
@@ -687,10 +688,93 @@ func TestUpdateVersionInvalidatesCache(t *testing.T) {
 	require.False(t, svc.Cache.Exists(context.Background(), applicationComponentsCacheKey(app.ID)))
 }
 
+type committedCacheUpdateStore struct {
+	datastore.DataStore
+	afterCommit func()
+}
+
+func (s *committedCacheUpdateStore) WithTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	if err := s.DataStore.(datastore.Transactional).WithTransaction(ctx, fn); err != nil {
+		return err
+	}
+	s.afterCommit()
+	return nil
+}
+
+func TestUpdateVersionInvalidatesCommittedChangesAfterRequestEnds(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		wantErr error
+	}{
+		{name: "active request"},
+		{name: "canceled request", wantErr: context.Canceled},
+		{name: "expired deadline", wantErr: context.DeadlineExceeded},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			scope := access.Scope{WorkspaceID: "workspace-current", Namespace: "default"}
+			readCtx := access.WithScope(t.Context(), scope)
+			otherCtx := access.WithScope(t.Context(), access.Scope{WorkspaceID: "workspace-other", Namespace: "other"})
+			store := newInMemoryAppStore()
+			app := model.NewApplications("app-1", "demo", scope.Namespace, "1.0.0", "", "", "", "", false)
+			app.WorkspaceID = scope.WorkspaceID
+			require.NoError(t, store.Add(readCtx, app))
+			require.NoError(t, store.Add(readCtx, &model.ApplicationComponent{
+				ID: 1, AppID: app.ID, Name: "web", Namespace: scope.Namespace,
+				ComponentType: config.ServerJob, Image: "nginx:1.26",
+			}))
+			svc := newMockServiceWithStore(store)
+			svc.Cfg = &config.Config{Accounts: &spec.AccountConfig{}}
+			svc.Cache = cache.NewMemCache(false)
+			before, err := svc.ListApplicationComponents(readCtx, app.ID)
+			require.NoError(t, err)
+			require.Equal(t, "nginx:1.26", before[0].Image)
+			for _, key := range []string{applicationListCacheKey, templateApplicationListCacheKey} {
+				svc.storeJSONCache(readCtx, scopedListCacheKey(readCtx, key), []*apisv1.ApplicationBase{{ID: app.ID}})
+				svc.storeJSONCache(otherCtx, scopedListCacheKey(otherCtx, key), []*apisv1.ApplicationBase{{ID: "other-app"}})
+			}
+
+			ctx, cancel := context.WithCancel(readCtx)
+			if tc.wantErr == context.DeadlineExceeded {
+				cancel()
+				ctx, cancel = context.WithTimeout(readCtx, time.Second)
+			}
+			defer cancel()
+			svc.Store = &committedCacheUpdateStore{DataStore: store, afterCommit: func() {
+				require.NoError(t, ctx.Err(), "the database commit must precede request cancellation")
+				switch tc.wantErr {
+				case context.Canceled:
+					cancel()
+				case context.DeadlineExceeded:
+					<-ctx.Done()
+				}
+			}}
+			autoExec := false
+			_, err = svc.UpdateVersion(ctx, app.ID, apisv1.UpdateVersionRequest{
+				Version: "2.0.0", AutoExec: &autoExec,
+				Components: []apisv1.ComponentUpdateSpec{{Name: "web", Image: "nginx:1.27"}},
+			})
+			require.NoError(t, err)
+			require.ErrorIs(t, ctx.Err(), tc.wantErr)
+			require.Equal(t, "nginx:1.27", store.components["web"].Image)
+			require.Equal(t, "2.0.0", store.apps[app.ID].Version)
+			after, err := svc.ListApplicationComponents(readCtx, app.ID)
+			require.NoError(t, err)
+			require.Equal(t, "nginx:1.27", after[0].Image, "a fresh request must see the committed image")
+			for _, key := range []string{applicationListCacheKey, templateApplicationListCacheKey} {
+				require.False(t, svc.Cache.Exists(readCtx, scopedListCacheKey(readCtx, key)))
+				var other []*apisv1.ApplicationBase
+				require.True(t, svc.loadJSONCache(otherCtx, scopedListCacheKey(otherCtx, key), &other))
+				require.Equal(t, "other-app", other[0].ID, "invalidation must preserve other workspace caches")
+			}
+		})
+	}
+}
+
 type requestContextCache struct {
 	cache.ICache
 	contexts []context.Context
 	loadErr  error
+	onDelete func(context.Context)
 }
 
 func (c *requestContextCache) Load(ctx context.Context, key string) (string, error) {
@@ -707,6 +791,9 @@ func (c *requestContextCache) Store(ctx context.Context, key, value string) erro
 }
 
 func (c *requestContextCache) Delete(ctx context.Context, key string) error {
+	if c.onDelete != nil {
+		c.onDelete(ctx)
+	}
 	c.contexts = append(c.contexts, ctx)
 	return c.ICache.Delete(ctx, key)
 }
@@ -734,18 +821,30 @@ func TestListApplicationComponentsCachePreservesRequestContextAndFallback(t *tes
 				require.NoError(t, c.ICache.Store(t.Context(), applicationComponentsCacheKey(app.ID), tc.cached))
 			}
 			svc.Cache = c
-			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			scope := access.Scope{WorkspaceID: "workspace-current", Namespace: "default"}
+			ctx, cancel := context.WithTimeout(access.WithScope(t.Context(), scope), time.Second)
 			defer cancel()
 			components, err := svc.ListApplicationComponents(ctx, app.ID)
 			require.NoError(t, err)
 			require.Len(t, components, 1)
 			require.Equal(t, "web", components[0].Name)
 			require.Len(t, c.contexts, tc.wantCalls)
-			svc.invalidateApplicationComponentsCache(ctx, app.ID)
-			require.False(t, c.ICache.Exists(t.Context(), applicationComponentsCacheKey(app.ID)))
 			for _, observed := range c.contexts {
-				require.Same(t, ctx, observed)
+				require.Same(t, ctx, observed, "ordinary cache reads and writes retain request context")
 			}
+			c.onDelete = func(observed context.Context) {
+				require.NoError(t, observed.Err(), "mutation invalidation must survive request cancellation")
+				observedScope, ok := access.FromContext(observed)
+				require.True(t, ok)
+				require.Equal(t, scope, observedScope)
+				deadline, ok := observed.Deadline()
+				require.True(t, ok, "detached invalidation must have a deadline")
+				require.True(t, deadline.After(time.Now()))
+			}
+			cancel()
+			svc.invalidateApplicationComponentsCache(ctx, app.ID)
+			require.Len(t, c.contexts, tc.wantCalls+1)
+			require.False(t, c.ICache.Exists(t.Context(), applicationComponentsCacheKey(app.ID)))
 		})
 	}
 }
