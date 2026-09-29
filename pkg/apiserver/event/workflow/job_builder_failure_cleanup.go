@@ -34,7 +34,7 @@ func buildWorkflowFailureCleanupJobs(ctx context.Context, task *model.WorkflowQu
 	if strings.TrimSpace(app.Name) == "" {
 		return nil, fmt.Errorf("application %s name is empty", task.AppID)
 	}
-	resourceAppName := naming.ApplicationResourceKey(app.Name, "", false)
+	resourceAppName := naming.ApplicationResourceKey(app.Name)
 	components := make([]*model.ApplicationComponent, 0, len(entities))
 	for _, entity := range entities {
 		component, ok := entity.(*model.ApplicationComponent)
