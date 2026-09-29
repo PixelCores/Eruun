@@ -152,21 +152,6 @@ func validateAdoptedComponentSourceBinding(component *model.ApplicationComponent
 	return nil
 }
 
-// updateComponent 更新单个组件的配置
-func (c *applicationsServiceImpl) updateComponent(ctx context.Context, comp *model.ApplicationComponent, spec apisv1.ComponentUpdateSpec) (bool, error) {
-	changed, err := c.applyComponentUpdate(comp, spec)
-	if err != nil {
-		return false, err
-	}
-	if changed {
-		if err := c.ComponentRepo.Update(ctx, comp); err != nil {
-			klog.Errorf("update component %s failed: %v", comp.Name, err)
-			return false, err
-		}
-	}
-	return changed, nil
-}
-
 func (c *applicationsServiceImpl) updateComponentInStore(ctx context.Context, store datastore.DataStore, comp *model.ApplicationComponent, spec apisv1.ComponentUpdateSpec) (bool, error) {
 	changed, err := c.applyComponentUpdate(comp, spec)
 	if err != nil {
@@ -257,15 +242,6 @@ func (c *applicationsServiceImpl) applyComponentUpdate(comp *model.ApplicationCo
 	}
 
 	return changed, nil
-}
-
-// addComponent 新增组件
-func (c *applicationsServiceImpl) addComponent(ctx context.Context, app *model.Applications, spec apisv1.ComponentUpdateSpec) error {
-	component, err := newVersionUpdateComponent(app, spec)
-	if err != nil {
-		return err
-	}
-	return c.ComponentRepo.Create(ctx, component)
 }
 
 func (c *applicationsServiceImpl) addComponentInStore(ctx context.Context, store datastore.DataStore, app *model.Applications, spec apisv1.ComponentUpdateSpec) error {

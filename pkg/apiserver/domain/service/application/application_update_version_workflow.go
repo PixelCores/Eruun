@@ -217,31 +217,6 @@ func (c *applicationsServiceImpl) markComponentsRestarting(ctx context.Context, 
 	return nil
 }
 
-func (c *applicationsServiceImpl) syncWorkflowSteps(ctx context.Context, appID string, added, removed []string) error {
-	workflows, err := c.WorkflowRepo.FindByAppID(ctx, appID)
-	if err != nil || len(workflows) == 0 {
-		return err
-	}
-
-	workflow := pickDefaultWorkflow(workflows, "", "")
-	if workflow == nil {
-		// Fallback for legacy data without a default workflow.
-		workflow = workflows[0]
-	}
-	if workflow.Steps == nil {
-		return nil
-	}
-
-	return applyVersionUpdateWorkflowStepSync(workflow, added, removed,
-		func() ([]*model.ApplicationComponent, error) {
-			return c.ComponentRepo.FindByAppID(ctx, appID)
-		},
-		func(workflow *model.Workflow) error {
-			return c.WorkflowRepo.Update(ctx, workflow)
-		},
-	)
-}
-
 func syncWorkflowStepsInStore(ctx context.Context, store datastore.DataStore, appID, workflowID string, added, removed []string) error {
 	workflowID = strings.TrimSpace(workflowID)
 	var workflow *model.Workflow

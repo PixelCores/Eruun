@@ -294,7 +294,9 @@ func TestUpdateVersionAllowsMetadataOnlyChangeWhileStatefulSetPVCMigrationIsPend
 	require.NotEmpty(t, resp.TaskID)
 	require.NotEqual(t, first.TaskID, resp.TaskID)
 	require.Empty(t, resp.WorkflowID)
-	require.Len(t, store.tasks, 1, "metadata-only update must not enqueue another workflow task")
+	require.Len(t, store.tasks, 2)
+	require.Equal(t, config.WorkflowTaskTypeUpdate, store.tasks[resp.TaskID].Type, "metadata-only update records a terminal operation, not an execution workflow")
+	require.Equal(t, config.StatusCompleted, store.tasks[resp.TaskID].Status)
 }
 
 func TestUpdateVersionPendingStatefulSetPVCMigrationRequiresExplicitVCTResume(t *testing.T) {

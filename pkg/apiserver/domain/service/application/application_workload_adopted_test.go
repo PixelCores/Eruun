@@ -19,6 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -72,13 +73,13 @@ func TestObserveApplicationLifecycleIsReadOnly(t *testing.T) {
 				Namespace:      "production",
 				ManagementMode: domainspec.ManagementModeObserve,
 			}
-			service, _, clientset, queueRepo := newAdoptedLifecycleTestService(t, app, nil)
+			service, store, clientset, _ := newAdoptedLifecycleTestService(t, app, nil)
 
 			err := operation.run(service, app.ID)
 			require.ErrorIs(t, err, bcode.ErrApplicationManagementMode)
 			require.ErrorContains(t, err, "observe applications are read-only")
 			require.Empty(t, clientset.Actions())
-			require.Empty(t, queueRepo.queues)
+			require.Empty(t, store.tasks)
 		})
 	}
 }
@@ -207,7 +208,7 @@ func TestAdoptedLifecycleRejectsLiveHPAAddedAfterImportBeforeAnyWrite(t *testing
 		"production-backend",
 		"deployment-uid",
 	)
-	service, store, clientset, queueRepo := newAdoptedLifecycleTestService(
+	service, store, clientset, _ := newAdoptedLifecycleTestService(
 		t,
 		app,
 		[]*model.ApplicationComponent{component},
@@ -245,7 +246,7 @@ func TestAdoptedLifecycleRejectsLiveHPAAddedAfterImportBeforeAnyWrite(t *testing
 	requireNoAdoptedLifecycleKubeWrites(t, clientset)
 	require.Nil(t, store.components["backend"].ResumeReplicas)
 	require.Equal(t, string(config.ComponentStatusRunning), store.components["backend"].Status)
-	require.Empty(t, queueRepo.queues)
+	require.Empty(t, store.tasks)
 }
 
 func TestAdoptedStopRejectsUnsafeStatefulSetBeforeAnyWrite(t *testing.T) {
@@ -271,7 +272,7 @@ func TestAdoptedStopRejectsUnsafeStatefulSetBeforeAnyWrite(t *testing.T) {
 	)
 	deploymentReplicas := int32(3)
 	statefulSetReplicas := int32(1)
-	service, store, clientset, queueRepo := newAdoptedLifecycleTestService(
+	service, store, clientset, _ := newAdoptedLifecycleTestService(
 		t,
 		app,
 		[]*model.ApplicationComponent{deploymentComponent, statefulSetComponent},
@@ -308,7 +309,7 @@ func TestAdoptedStopRejectsUnsafeStatefulSetBeforeAnyWrite(t *testing.T) {
 	requireNoAdoptedLifecycleKubeWrites(t, clientset)
 	require.Nil(t, store.components["backend"].ResumeReplicas)
 	require.Nil(t, store.components["mysql"].ResumeReplicas)
-	require.Empty(t, queueRepo.queues)
+	require.Empty(t, store.tasks)
 
 	deployment, err := clientset.AppsV1().Deployments("production").Get(
 		context.Background(),
@@ -449,7 +450,7 @@ func TestAdoptedStopRevalidatesFreshStatefulSetBeforeScaleDown(t *testing.T) {
 				"legacy-mysql",
 				"statefulset-uid",
 			)
-			service, store, clientset, queueRepo := newAdoptedLifecycleTestService(
+			service, store, clientset, _ := newAdoptedLifecycleTestService(
 				t,
 				app,
 				[]*model.ApplicationComponent{component},
@@ -496,7 +497,7 @@ func TestAdoptedStopRevalidatesFreshStatefulSetBeforeScaleDown(t *testing.T) {
 			requireNoAdoptedLifecycleKubeWrites(t, clientset)
 			require.Equal(t, int32(1), *store.components["mysql"].ResumeReplicas)
 			require.Equal(t, string(config.ComponentStatusRunning), store.components["mysql"].Status)
-			require.Len(t, queueRepo.queues, 1)
+			require.Len(t, store.tasks, 1)
 		})
 	}
 }
@@ -626,7 +627,7 @@ func TestAdoptedLifecyclePreflightsSkippedSourceIdentityAndStatefulSafety(t *tes
 			"original-uid",
 		)
 		component.Status = string(config.ComponentStatusRunning)
-		service, _, clientset, queueRepo := newAdoptedLifecycleTestService(
+		service, store, clientset, _ := newAdoptedLifecycleTestService(
 			t,
 			app,
 			[]*model.ApplicationComponent{component},
@@ -648,7 +649,7 @@ func TestAdoptedLifecyclePreflightsSkippedSourceIdentityAndStatefulSafety(t *tes
 		require.ErrorContains(t, err, "source UID mismatch")
 		require.Nil(t, response)
 		requireNoAdoptedLifecycleKubeWrites(t, clientset)
-		require.Empty(t, queueRepo.queues)
+		require.Empty(t, store.tasks)
 	})
 
 	t.Run("stopped statefulset restart still validates data safety", func(t *testing.T) {
@@ -667,7 +668,7 @@ func TestAdoptedLifecyclePreflightsSkippedSourceIdentityAndStatefulSafety(t *tes
 		)
 		component.Status = string(config.ComponentStatusStopped)
 		component.ResumeReplicas = adoptedTestInt32Ptr(1)
-		service, _, clientset, queueRepo := newAdoptedLifecycleTestService(
+		service, store, clientset, _ := newAdoptedLifecycleTestService(
 			t,
 			app,
 			[]*model.ApplicationComponent{component},
@@ -694,7 +695,7 @@ func TestAdoptedLifecyclePreflightsSkippedSourceIdentityAndStatefulSafety(t *tes
 		require.ErrorContains(t, err, "whenScaled=Delete")
 		require.Nil(t, response)
 		requireNoAdoptedLifecycleKubeWrites(t, clientset)
-		require.Empty(t, queueRepo.queues)
+		require.Empty(t, store.tasks)
 	})
 }
 
@@ -879,7 +880,7 @@ func TestAdoptedStartAndRestartRejectUnsafeStatefulSetBeforeAnyWrite(t *testing.
 			)
 			component.Status = string(test.status)
 			component.ResumeReplicas = adoptedTestInt32Ptr(1)
-			service, _, clientset, queueRepo := newAdoptedLifecycleTestService(
+			service, store, clientset, _ := newAdoptedLifecycleTestService(
 				t,
 				app,
 				[]*model.ApplicationComponent{component},
@@ -888,7 +889,7 @@ func TestAdoptedStartAndRestartRejectUnsafeStatefulSetBeforeAnyWrite(t *testing.
 
 			require.ErrorContains(t, test.operation(service, app.ID), test.wantErr)
 			requireNoAdoptedLifecycleKubeWrites(t, clientset)
-			require.Empty(t, queueRepo.queues)
+			require.Empty(t, store.tasks)
 		})
 	}
 }
@@ -1001,7 +1002,7 @@ func TestAdoptedRestartRejectsPausedDeploymentBeforeAnyWrite(t *testing.T) {
 		"legacy-backend",
 		"deployment-uid",
 	)
-	service, _, clientset, queueRepo := newAdoptedLifecycleTestService(
+	service, store, clientset, _ := newAdoptedLifecycleTestService(
 		t,
 		app,
 		[]*model.ApplicationComponent{component},
@@ -1025,7 +1026,7 @@ func TestAdoptedRestartRejectsPausedDeploymentBeforeAnyWrite(t *testing.T) {
 	)
 	require.ErrorContains(t, err, "Deployment is paused")
 	requireNoAdoptedLifecycleKubeWrites(t, clientset)
-	require.Empty(t, queueRepo.queues)
+	require.Empty(t, store.tasks)
 }
 
 func TestFormatWorkloadRestartAtPreservesNanoseconds(t *testing.T) {
@@ -1214,7 +1215,7 @@ func TestAdoptedLifecycleRecordsTaskWhileScheduleLockIsHeld(t *testing.T) {
 			if operation.prepare != nil {
 				operation.prepare(component, deployment)
 			}
-			service, _, _, queueRepo := newAdoptedLifecycleTestService(
+			service, store, _, _ := newAdoptedLifecycleTestService(
 				t,
 				app,
 				[]*model.ApplicationComponent{component},
@@ -1223,9 +1224,12 @@ func TestAdoptedLifecycleRecordsTaskWhileScheduleLockIsHeld(t *testing.T) {
 
 			taskCreateStarted := make(chan struct{})
 			releaseTaskCreate := make(chan struct{})
-			queueRepo.beforeCreate = func() {
-				close(taskCreateStarted)
-				<-releaseTaskCreate
+			store.beforeAdd = func(entity datastore.Entity) error {
+				if _, ok := entity.(*model.WorkflowQueue); ok {
+					close(taskCreateStarted)
+					<-releaseTaskCreate
+				}
+				return nil
 			}
 			result := make(chan error, 1)
 			go func() {

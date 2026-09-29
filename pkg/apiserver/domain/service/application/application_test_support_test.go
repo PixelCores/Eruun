@@ -132,6 +132,7 @@ type inMemoryAppStore struct {
 	jobs       []*model.JobInfo
 	settings   map[string]*model.SystemSetting
 
+	beforeAdd                 func(datastore.Entity) error
 	addWorkflowQueueErr       error
 	addJobInfoErr             error
 	runtimeUpdateErr          error
@@ -309,6 +310,12 @@ func cloneJSONStruct(raw *model.JSONStruct) *model.JSONStruct {
 }
 
 func (s *inMemoryAppStore) Add(_ context.Context, entity datastore.Entity) error {
+	if s.beforeAdd != nil {
+		if err := s.beforeAdd(entity); err != nil {
+			return err
+		}
+	}
+
 	switch v := entity.(type) {
 	case *model.Applications:
 		if s.errExistingApplicationAdd {
@@ -806,6 +813,14 @@ type cleanupStore struct {
 	components       []*model.ApplicationComponent
 	applications     map[string]*model.Applications
 	runtimeUpdateErr error
+	operationStore   *inMemoryAppStore
+}
+
+func (c *cleanupStore) WithTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	if c.operationStore == nil {
+		c.operationStore = newInMemoryAppStore()
+	}
+	return c.operationStore.WithTransaction(ctx, fn)
 }
 
 func (c *cleanupStore) Add(context.Context, datastore.Entity) error { return nil }

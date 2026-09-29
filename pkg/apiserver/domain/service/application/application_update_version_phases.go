@@ -40,7 +40,6 @@ type versionUpdateRun struct {
 	taskCallback             *model.JSONStruct
 	readyComponents          []string
 	requiresAutoExecWorkflow bool
-	requiresNoopTaskCallback bool
 	hasPlannedChanges        bool
 
 	updatedComponents   []string
@@ -48,7 +47,7 @@ type versionUpdateRun struct {
 	removedComponents   []string
 	restartedComponents []string
 	autoExecTaskID      string
-	noopCallbackTask    *model.WorkflowQueue
+	operationTask       *model.WorkflowQueue
 }
 
 func (c *applicationsServiceImpl) prepareVersionUpdateRun(
@@ -246,7 +245,6 @@ func (c *applicationsServiceImpl) selectVersionUpdateWorkflow(ctx context.Contex
 		run.resourceActions.fullCleanup ||
 		run.resourceActions.deployAll ||
 		len(run.resourceActions.restartComponents) > 0)
-	run.requiresNoopTaskCallback = run.autoExec && !run.requiresAutoExecWorkflow && !callbackIsEmpty(run.req.Callback)
 	if run.requiresAutoExecWorkflow {
 		readyTargets, err := versionUpdateImageReadyComponents(run.componentMap, run.normalReq.Components)
 		if err != nil {
@@ -278,14 +276,11 @@ func (c *applicationsServiceImpl) selectVersionUpdateWorkflow(ctx context.Contex
 			return fmt.Errorf("auto exec workflow: %w", err)
 		}
 	}
-	if run.requiresAutoExecWorkflow || run.requiresNoopTaskCallback {
+	if run.requiresAutoExecWorkflow || (run.autoExec && !callbackIsEmpty(run.req.Callback)) {
 		var err error
 		run.taskCallback, err = c.resolveVersionUpdateTaskCallback(ctx, run.req.Callback)
 		if err != nil {
 			return err
-		}
-		if run.taskCallback == nil {
-			run.requiresNoopTaskCallback = false
 		}
 	}
 	return nil
@@ -303,62 +298,44 @@ func (c *applicationsServiceImpl) commitVersionUpdateRun(ctx context.Context, ru
 		)
 		return err
 	}
-	if run.requiresNoopTaskCallback {
-		run.noopCallbackTask, err = c.commitNoopVersionUpdateWithCallbackTask(
-			ctx, run.app, run.newVersion, run.req.Description, run.responseWorkflowID, run.startTime, time.Now().Unix(),
-			buildUpdateJobRecords(run.app, run.normalReq, nil, nil, nil), run.taskCallback,
-		)
-		if err != nil {
-			return fmt.Errorf("record update-version callback task: %w", err)
-		}
-		return nil
-	}
 	return c.commitDirectVersionUpdate(ctx, run)
 }
 
 func (c *applicationsServiceImpl) commitDirectVersionUpdate(ctx context.Context, run *versionUpdateRun) error {
-	var err error
-	run.updatedComponents, run.addedComponents, run.removedComponents, err = applyVersionUpdateComponentChanges(
-		ctx,
-		run.componentMap,
-		run.normalReq.Components,
-		versionUpdateComponentChangeHandlers{
-			update: c.updateComponent,
-			add: func(ctx context.Context, spec apisv1.ComponentUpdateSpec) error {
-				return c.addComponent(ctx, run.app, spec)
-			},
-			remove: func(ctx context.Context, component *model.ApplicationComponent, spec apisv1.ComponentUpdateSpec) error {
-				shouldCleanup := run.app.EffectiveManagementMode() == domainspec.ManagementModeNative || !component.HasSourceWorkload()
-				if shouldCleanup {
-					if err := c.cleanupVersionUpdateRemovedComponent(ctx, component); err != nil {
-						klog.Errorf("cleanup component resources %s failed: %v", spec.Name, err)
-						return err
-					}
-				}
-				if err := c.ComponentRepo.Delete(ctx, component); err != nil {
-					klog.Errorf("delete component %s failed: %v", spec.Name, err)
-					return err
+	txStore, ok := c.Store.(datastore.Transactional)
+	if !ok {
+		return fmt.Errorf("%w: direct version update requires transactional datastore", bcode.ErrVersionUpdateFailed)
+	}
+	cleanupAttempted := false
+	err := txStore.WithTransaction(ctx, func(tx datastore.DataStore) error {
+		var err error
+		run.updatedComponents, run.addedComponents, run.removedComponents, err = c.applyVersionUpdateChangesInStore(
+			ctx, tx, run.app, run.componentMap, run.normalReq, run.newVersion, "",
+			func(ctx context.Context, component *model.ApplicationComponent) error {
+				if run.app.EffectiveManagementMode() == domainspec.ManagementModeNative || !component.HasSourceWorkload() {
+					cleanupAttempted = true
+					return c.cleanupVersionUpdateRemovedComponent(ctx, component)
 				}
 				return nil
 			},
-		},
-	)
-	if err != nil {
-		return err
-	}
-	run.app.Version = run.newVersion
-	if run.req.Description != "" {
-		run.app.Description = run.req.Description
-	}
-	if err := c.AppRepo.Update(ctx, run.app); err != nil {
-		return bcode.ErrVersionUpdateFailed
-	}
-	if len(run.addedComponents) > 0 || len(run.removedComponents) > 0 {
-		if err := c.syncWorkflowSteps(ctx, run.app.ID, run.addedComponents, run.removedComponents); err != nil {
-			klog.Warningf("sync workflow steps failed after version update committed appID=%s version=%s err=%v", run.app.ID, run.newVersion, err)
+		)
+		if err != nil {
+			return err
 		}
+		run.operationTask, err = recordAppOperationTaskInStore(
+			ctx, tx, run.app, config.WorkflowTaskTypeUpdate, operationTaskNameUpdateVersion,
+			run.responseWorkflowID, config.StatusCompleted, run.startTime, time.Now().Unix(),
+			buildUpdateJobRecords(run.app, run.normalReq, run.updatedComponents, run.addedComponents, run.removedComponents), run.taskCallback,
+		)
+		if err != nil {
+			return fmt.Errorf("record update-version task: %w", err)
+		}
+		return nil
+	})
+	if err != nil && cleanupAttempted {
+		return fmt.Errorf("version update database commit could not be confirmed; Kubernetes cleanup may already have taken effect, inspect operation records and Kubernetes resources before retrying: %w", err)
 	}
-	return nil
+	return err
 }
 
 func (c *applicationsServiceImpl) finalizeVersionUpdateRun(ctx context.Context, run *versionUpdateRun) *apisv1.UpdateVersionResponse {
@@ -374,9 +351,9 @@ func (c *applicationsServiceImpl) finalizeVersionUpdateRun(ctx context.Context, 
 		RemovedComponents:   run.removedComponents,
 		RestartedComponents: run.restartedComponents,
 	}
-	if run.noopCallbackTask != nil {
-		response.TaskID = run.noopCallbackTask.TaskID
-		triggerWorkflowTerminalCallbackAsync(ctx, c.Store, c.Cfg, c.URLSecurityPolicyProvider, run.noopCallbackTask, config.StatusCompleted, "")
+	if run.operationTask != nil {
+		response.TaskID = run.operationTask.TaskID
+		c.triggerOperationTaskCallback(ctx, run.operationTask, run.taskCallback, nil)
 	}
 	if run.autoExecTaskID != "" {
 		response.TaskID = run.autoExecTaskID
@@ -387,21 +364,6 @@ func (c *applicationsServiceImpl) finalizeVersionUpdateRun(ctx context.Context, 
 				klog.ErrorS(err, "mark components updating failed after auto exec workflow queued", "appID", run.app.ID, "taskID", response.TaskID)
 			}
 		}
-	}
-	if response.TaskID == "" {
-		endTime := time.Now().Unix()
-		response.TaskID, _, _ = c.attachOperationTaskWithWorkflowIDAndCallback(
-			ctx,
-			run.app,
-			config.WorkflowTaskTypeUpdate,
-			operationTaskNameUpdateVersion,
-			run.responseWorkflowID,
-			run.startTime,
-			endTime,
-			buildUpdateJobRecords(run.app, run.normalReq, run.updatedComponents, run.addedComponents, run.removedComponents),
-			nil,
-			nil,
-		)
 	}
 	klog.Infof(
 		"AUDIT: update version appID=%s from=%s to=%s strategy=%s executeAt=%d updated=%v added=%v removed=%v taskID=%s",

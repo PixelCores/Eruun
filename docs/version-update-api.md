@@ -705,6 +705,8 @@ curl -X POST "http://localhost:8000/api/v1/applications/app-123/version/cancel" 
 
 - 组件名称会自动转换为小写
 - 同一次版本更新请求不能重复 `remove`、`restart` 或 `update` 同一个组件名，也不能对同一个组件名组合互斥 action；如需替换或重建同名组件，应先完成删除清理，再发起新增/更新请求
+- 直接更新、无变更更新的组件、应用版本、workflow steps 同步和终态操作记录在同一数据库事务内提交；事务内任一步写入失败都会回滚这些数据库记录；若 COMMIT 阶段连接异常，提交结果可能未知，应先查询数据库记录再决定重试。`autoExec: false` 只记录已完成的 update operation task，不创建执行 workflow。
+- 数据库事务不会撤销 Kubernetes 操作：普通同步 `remove` 若已开始清理，后续失败仍可能保留已发生的资源删除；应先检查集群资源状态再决定重试。
 - `autoExec: true` 删除组件会随工作流执行资源清理；`autoExec: false` 不创建工作流或 Task 清理计划，但普通 `remove` 仍会同步清理被删除组件的 Kubernetes 资源
 - `remove cleanup_all` 必须创建 workflow task，不提供同步清理兜底，且 workflow cleanup 保留 standalone PVC 和五类 RBAC
 - 全量清理/全量部署使用 `components[]` 保留动作表达

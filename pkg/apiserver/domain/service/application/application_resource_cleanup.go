@@ -81,8 +81,8 @@ func (c *applicationsServiceImpl) cleanupApplicationResourcesUnlocked(
 	setResourceAppNameForComponents(components, applicationResourceNameKey(app))
 	if len(components) == 0 {
 		resp := &apisv1.CleanupApplicationResourcesResponse{AppID: app.ID}
-		resp.TaskID = c.attachOperationTask(ctx, app, config.WorkflowTaskTypeCleanup, operationTaskNameCleanup, startTime, startTime, nil, nil)
-		return resp, nil
+		resp.TaskID, _, err = c.attachOperationTaskWithCallback(ctx, app, config.WorkflowTaskTypeCleanup, operationTaskNameCleanup, startTime, startTime, nil, nil, nil)
+		return resp, err
 	}
 
 	reporter := newCleanupReporter()
@@ -109,7 +109,11 @@ func (c *applicationsServiceImpl) cleanupApplicationResourcesUnlocked(
 		AppID:            app.ID,
 		DeletedResources: reporter.deletedResources,
 	}
-	resp.TaskID = c.attachOperationTask(ctx, app, config.WorkflowTaskTypeCleanup, operationTaskNameCleanup, startTime, endTime, buildCleanupJobRecords(reporter), reporter.failedResources)
+	resp.TaskID, _, err = c.attachOperationTaskWithCallback(ctx, app, config.WorkflowTaskTypeCleanup, operationTaskNameCleanup, startTime, endTime, buildCleanupJobRecords(reporter), reporter.failedResources, nil)
+	if err != nil {
+		resp.FailedResources = reporter.failedResources
+		return resp, errors.Join(reporter.err(), fmt.Errorf("Kubernetes cleanup may already have taken effect, but operation record commit could not be confirmed; inspect operation records and Kubernetes resources before retrying: %w", err))
+	}
 	if len(reporter.failedResources) > 0 {
 		resp.FailedResources = reporter.failedResources
 		return resp, reporter.err()

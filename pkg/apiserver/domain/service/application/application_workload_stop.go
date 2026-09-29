@@ -119,7 +119,7 @@ func (c *applicationsServiceImpl) stopApplicationDeploymentsLocked(ctx context.C
 					reporter.record(target.kind, target.namespace, target.name, false, nil)
 				}
 				if err := recordTask(lockCtx, lockedApp); err != nil {
-					return fmt.Errorf("record stop task: %w", err)
+					return fmt.Errorf("Kubernetes stop may already have taken effect, but operation record commit could not be confirmed; inspect operation records and Kubernetes resources before retrying: %w", err)
 				}
 				return nil
 			},
@@ -157,8 +157,8 @@ func (c *applicationsServiceImpl) stopApplicationDeploymentsLocked(ctx context.C
 	}
 
 	if !adopted {
-		if taskErr := recordTask(ctx, app); taskErr != nil && taskCallback != nil {
-			return nil, fmt.Errorf("record stop callback task: %w", taskErr)
+		if taskErr := recordTask(ctx, app); taskErr != nil {
+			return nil, fmt.Errorf("Kubernetes stop may already have taken effect, but operation record commit could not be confirmed; inspect operation records and Kubernetes resources before retrying: %w", taskErr)
 		}
 	}
 	stoppedAt := time.Now().UTC().Format(time.RFC3339)
@@ -271,7 +271,7 @@ func (c *applicationsServiceImpl) startApplicationDeploymentsLocked(ctx context.
 					reporter.record(target.kind, target.namespace, target.name, false, nil)
 				}
 				if err := recordTask(lockCtx, lockedApp); err != nil {
-					return fmt.Errorf("record start task: %w", err)
+					return fmt.Errorf("Kubernetes start may already have taken effect, but operation record commit could not be confirmed; inspect operation records and Kubernetes resources before retrying: %w", err)
 				}
 				return nil
 			},
@@ -320,8 +320,8 @@ func (c *applicationsServiceImpl) startApplicationDeploymentsLocked(ctx context.
 	}
 
 	if !adopted {
-		if taskErr := recordTask(ctx, app); taskErr != nil && taskCallback != nil {
-			return nil, fmt.Errorf("record start callback task: %w", taskErr)
+		if taskErr := recordTask(ctx, app); taskErr != nil {
+			return nil, fmt.Errorf("Kubernetes start may already have taken effect, but operation record commit could not be confirmed; inspect operation records and Kubernetes resources before retrying: %w", taskErr)
 		}
 	}
 	startedAt := time.Now().UTC().Format(time.RFC3339)

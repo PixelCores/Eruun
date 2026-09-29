@@ -128,7 +128,7 @@ func (c *applicationsServiceImpl) restartApplicationWorkloadsLocked(ctx context.
 					}
 				}
 				if err := recordTask(lockCtx, lockedApp); err != nil {
-					return fmt.Errorf("record restart task: %w", err)
+					return fmt.Errorf("Kubernetes restart may already have taken effect, but operation record commit could not be confirmed; inspect operation records and Kubernetes resources before retrying: %w", err)
 				}
 				return nil
 			},
@@ -153,8 +153,8 @@ func (c *applicationsServiceImpl) restartApplicationWorkloadsLocked(ctx context.
 		}
 	}
 	if !adopted {
-		if taskErr := recordTask(ctx, app); taskErr != nil && taskCallback != nil {
-			return nil, fmt.Errorf("record restart callback task: %w", taskErr)
+		if taskErr := recordTask(ctx, app); taskErr != nil {
+			return nil, fmt.Errorf("Kubernetes restart may already have taken effect, but operation record commit could not be confirmed; inspect operation records and Kubernetes resources before retrying: %w", taskErr)
 		}
 	}
 

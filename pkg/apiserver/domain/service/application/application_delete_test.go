@@ -252,6 +252,7 @@ func TestDeleteApplicationCascadeCountsExcludeCleanupOperationLogs(t *testing.T)
 	store := newCascadeDeleteStore()
 	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "demo", Namespace: "default"}
 	queueRepo := &storeBackedWorkflowQueueRepo{store: store}
+	store.afterTaskCreate = queueRepo.afterCreate
 
 	svc := &applicationsServiceImpl{
 		KubeClient:        fake.NewSimpleClientset(),
@@ -379,6 +380,8 @@ func TestDeleteApplicationCascadeDeletesSchedulesBeforeCleanup(t *testing.T) {
 		scheduleStore: store,
 	}
 
+	store.afterTaskCreate = queueRepo.afterCreate
+
 	svc := &applicationsServiceImpl{
 		KubeClient:        fake.NewSimpleClientset(),
 		Store:             store,
@@ -415,6 +418,8 @@ func TestDeleteApplicationCascadeCancelsLateTasksAfterCleanup(t *testing.T) {
 		injectLateTaskID:         "late-task-1",
 		injectLateTaskWorkflowID: "wf-late",
 	}
+
+	store.afterTaskCreate = queueRepo.afterCreate
 
 	svc := &applicationsServiceImpl{
 		KubeClient:        fake.NewSimpleClientset(),
@@ -490,6 +495,8 @@ func TestDeleteApplicationCascadeDeletesRecreatedSchedulesInFinalTx(t *testing.T
 		injectLateScheduleWorkflow: "wf-1",
 	}
 
+	store.afterTaskCreate = queueRepo.afterCreate
+
 	svc := &applicationsServiceImpl{
 		KubeClient:        fake.NewSimpleClientset(),
 		Store:             store,
@@ -518,13 +525,14 @@ func TestDeleteApplicationCascadeDeletesRecreatedSchedulesInFinalTx(t *testing.T
 }
 
 type cascadeDeleteStore struct {
-	apps       map[string]*model.Applications
-	workflows  map[string]*model.Workflow
-	components map[string]*model.ApplicationComponent
-	schedules  map[string]*model.WorkflowSchedule
-	tasks      map[string]*model.WorkflowQueue
-	jobs       map[int]*model.JobInfo
-	nextJobID  int
+	apps            map[string]*model.Applications
+	workflows       map[string]*model.Workflow
+	components      map[string]*model.ApplicationComponent
+	schedules       map[string]*model.WorkflowSchedule
+	tasks           map[string]*model.WorkflowQueue
+	jobs            map[int]*model.JobInfo
+	nextJobID       int
+	afterTaskCreate func(context.Context, *cascadeDeleteStore, *model.WorkflowQueue) error
 }
 
 func newCascadeDeleteStore() *cascadeDeleteStore {
@@ -578,6 +586,7 @@ func seedCascadeStoreData(store *cascadeDeleteStore) {
 func (s *cascadeDeleteStore) clone() *cascadeDeleteStore {
 	cp := newCascadeDeleteStore()
 	cp.nextJobID = s.nextJobID
+	cp.afterTaskCreate = s.afterTaskCreate
 	for k, v := range s.apps {
 		tmp := *v
 		cp.apps[k] = &tmp
@@ -605,7 +614,7 @@ func (s *cascadeDeleteStore) clone() *cascadeDeleteStore {
 	return cp
 }
 
-func (s *cascadeDeleteStore) Add(_ context.Context, entity datastore.Entity) error {
+func (s *cascadeDeleteStore) Add(ctx context.Context, entity datastore.Entity) error {
 	switch v := entity.(type) {
 	case *model.Applications:
 		cp := *v
@@ -622,6 +631,9 @@ func (s *cascadeDeleteStore) Add(_ context.Context, entity datastore.Entity) err
 	case *model.WorkflowQueue:
 		cp := *v
 		s.tasks[v.TaskID] = &cp
+		if s.afterTaskCreate != nil {
+			return s.afterTaskCreate(ctx, s, v)
+		}
 	case *model.JobInfo:
 		cp := *v
 		if cp.ID == 0 {
@@ -1101,16 +1113,17 @@ type storeBackedWorkflowQueueRepo struct {
 }
 
 func (r *storeBackedWorkflowQueueRepo) Create(ctx context.Context, queue *model.WorkflowQueue) error {
+	return r.store.Add(ctx, queue)
+}
+
+func (r *storeBackedWorkflowQueueRepo) afterCreate(ctx context.Context, tx *cascadeDeleteStore, queue *model.WorkflowQueue) error {
 	if queue == nil {
 		return nil
 	}
 	if r.scheduleStore != nil {
-		r.scheduleCountsAtCreate = append(r.scheduleCountsAtCreate, len(r.scheduleStore.schedules))
+		r.scheduleCountsAtCreate = append(r.scheduleCountsAtCreate, len(tx.schedules))
 	}
 	r.createdTaskIDs = append(r.createdTaskIDs, queue.TaskID)
-	if err := r.store.Add(ctx, queue); err != nil {
-		return err
-	}
 	if r.injectLateTaskOnCreate {
 		r.injectLateTaskOnCreate = false
 		taskID := strings.TrimSpace(r.injectLateTaskID)
@@ -1128,7 +1141,7 @@ func (r *storeBackedWorkflowQueueRepo) Create(ctx context.Context, queue *model.
 			WorkflowName: "late-dispatch",
 			Status:       config.StatusRunning,
 		}
-		if err := r.store.Add(ctx, lateTask); err != nil {
+		if err := tx.Add(ctx, lateTask); err != nil {
 			return err
 		}
 		r.injectedLateTaskIDs = append(r.injectedLateTaskIDs, taskID)
@@ -1143,7 +1156,7 @@ func (r *storeBackedWorkflowQueueRepo) Create(ctx context.Context, queue *model.
 		if workflowID == "" {
 			workflowID = queue.WorkflowID
 		}
-		r.scheduleStore.schedules[scheduleID] = &model.WorkflowSchedule{
+		tx.schedules[scheduleID] = &model.WorkflowSchedule{
 			ID:         scheduleID,
 			AppID:      queue.AppID,
 			WorkflowID: workflowID,
