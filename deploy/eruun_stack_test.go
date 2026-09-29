@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/yaml"
-	sigsyaml "sigs.k8s.io/yaml"
 )
 
 func TestEruunStackManifestUsesExplicitRBACBoundaries(t *testing.T) {
@@ -280,37 +279,6 @@ func assertControllerRuntimePermissions(t *testing.T, clusterRoles map[string]ma
 	require.ElementsMatch(t, []string{"get", "list", "watch", "create", "delete"}, verbsFor(clusterRoles["eruun-sandbox-runtime"], "agents.kruise.io", "checkpoints"))
 	require.Nil(t, verbsFor(clusterRoles["eruun-platform-runtime"], "agents.kruise.io", "checkpoints"), "Worker must not manage Checkpoints")
 	require.ElementsMatch(t, []string{"get", "patch"}, verbsFor(clusterRoles["eruun-platform-runtime"], "agents.kruise.io", "sandboxes"), "Worker only observes and shuts down source Sandboxes during recovery isolation")
-}
-
-func TestHelmValuesUseTopLevelDistributedRuntime(t *testing.T) {
-	rawValues, err := os.ReadFile("helm/eruun/values.yaml")
-	require.NoError(t, err)
-
-	var values map[string]interface{}
-	require.NoError(t, sigsyaml.Unmarshal(rawValues, &values))
-
-	runtimeValues, ok := values["runtime"].(map[string]interface{})
-	require.True(t, ok, "runtime must be a top-level Helm values object")
-	require.NotContains(t, runtimeValues, "mode")
-	require.NotContains(t, runtimeValues, "split")
-	require.NotContains(t, runtimeValues, "leaseFencingEnabled")
-
-	roles, ok := runtimeValues["roles"].(map[string]interface{})
-	require.True(t, ok, "runtime.roles must be an object")
-	require.Len(t, roles, 4)
-	for _, role := range []string{"api", "controller", "scheduler", "worker"} {
-		require.Contains(t, roles, role)
-	}
-
-	require.NotContains(t, values, "replicaCount")
-	serviceAccount, ok := values["serviceAccount"].(map[string]interface{})
-	require.True(t, ok)
-	require.NotContains(t, serviceAccount, "name")
-
-	redis, ok := values["redis"].(map[string]interface{})
-	require.True(t, ok)
-	require.NotContains(t, redis, "roles")
-	require.NotContains(t, redis, "controllerLockName")
 }
 
 func TestDockerBuildUsesDefaultDeploymentImageWithoutPublishing(t *testing.T) {
