@@ -23,6 +23,11 @@ func NewHandlers() []Interface {
 		NewSettings(),
 		NewProgrammingLanguages(),
 		NewAccounts(),
-		&health{},
+		NewHealth(),
 	}
+}
+
+// NewHealth returns the probe routes used by every runtime role.
+func NewHealth() Interface {
+	return &health{}
 }

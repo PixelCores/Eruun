@@ -103,9 +103,13 @@ const leaderElectionReleaseTimeout = 5 * time.Second
 var leaderElectionRetryDelay = leaderElectionRetryPeriod
 
 func New(cfg config.Config) (a APIServer) {
+	handlers := []api.Interface{api.NewHealth()}
+	if cfg.RunsAPI() {
+		handlers = api.NewHandlers()
+	}
 	s := &restServer{
 		webContainer:  gin.New(),
-		apiHandlers:   api.NewHandlers(),
+		apiHandlers:   handlers,
 		beanContainer: container.NewContainer(),
 		cfg:           cfg,
 	}

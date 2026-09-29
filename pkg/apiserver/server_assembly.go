@@ -232,17 +232,8 @@ func (s *restServer) provideDomainAndEventBeans(runtimeQueues *msg.RuntimeQueues
 		}
 	}
 
-	// interfaces
-	for _, handler := range s.apiHandlers {
-		if err := s.beanContainer.Provides(handler); err != nil {
-			return fmt.Errorf("provide api handler: %w", err)
-		}
-	}
-	s.grpcAdministration = &grpcapi.AdministrationServer{}
-	s.grpcJobs = &grpcapi.JobsServer{}
-	s.grpcApplications = &grpcapi.ApplicationsServer{}
-	if err := s.beanContainer.Provides(s.grpcAdministration, s.grpcJobs, s.grpcApplications); err != nil {
-		return fmt.Errorf("provide grpc business adapters: %w", err)
+	if err := s.provideInterfaceBeans(); err != nil {
+		return err
 	}
 
 	// event
@@ -259,6 +250,24 @@ func (s *restServer) provideDomainAndEventBeans(runtimeQueues *msg.RuntimeQueues
 
 	if err := s.beanContainer.Populate(); err != nil {
 		return fmt.Errorf("fail to populate the bean container: %w", err)
+	}
+	return nil
+}
+
+func (s *restServer) provideInterfaceBeans() error {
+	for _, handler := range s.apiHandlers {
+		if err := s.beanContainer.Provides(handler); err != nil {
+			return fmt.Errorf("provide api handler: %w", err)
+		}
+	}
+	if !s.cfg.RunsAPI() {
+		return nil
+	}
+	s.grpcAdministration = &grpcapi.AdministrationServer{}
+	s.grpcJobs = &grpcapi.JobsServer{}
+	s.grpcApplications = &grpcapi.ApplicationsServer{}
+	if err := s.beanContainer.Provides(s.grpcAdministration, s.grpcJobs, s.grpcApplications); err != nil {
+		return fmt.Errorf("provide grpc business adapters: %w", err)
 	}
 	return nil
 }
