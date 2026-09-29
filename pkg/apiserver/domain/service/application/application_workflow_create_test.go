@@ -217,7 +217,7 @@ func TestCreateApplicationsStoresAndEchoesWorkflowFailurePolicy(t *testing.T) {
 	req := apisv1.CreateApplicationsRequest{
 		Name:          "demo-failure-policy",
 		Namespace:     config.DefaultNamespace,
-		FailurePolicy: workflowconfig.WorkflowFailurePolicyCleanupAll,
+		FailurePolicy: workflowconfig.WorkflowFailurePolicyCleanupFailed,
 		Components: []apisv1.CreateComponentRequest{{
 			Name:          "web",
 			ComponentType: config.ServerJob,
@@ -241,11 +241,11 @@ func TestCreateApplicationsStoresAndEchoesWorkflowFailurePolicy(t *testing.T) {
 	defaultWorkflow := store.workflows[resp.WorkflowID]
 	require.NotNil(t, defaultWorkflow)
 	steps := decodeWorkflowSteps(t, defaultWorkflow.Steps)
-	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, steps.FailurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupFailed, steps.FailurePolicy)
 
 	dto, err := assembler.ConvertWorkflowModelToDTO(defaultWorkflow)
 	require.NoError(t, err)
-	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupAll, dto.FailurePolicy)
+	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupFailed, dto.FailurePolicy)
 }
 
 func TestCreateApplicationsDefaultsWorkflowFailurePolicyToCleanupAll(t *testing.T) {

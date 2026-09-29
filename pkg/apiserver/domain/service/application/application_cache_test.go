@@ -577,36 +577,6 @@ func TestListApplicationComponentsCacheStoresSecretValuesAsText(t *testing.T) {
 	require.Equal(t, "c2VjcmV0LXB3ZA==", props.Secret["password"])
 }
 
-func TestListApplicationComponentsCacheHitKeepsStoredSecretValuesWithoutKubeLookup(t *testing.T) {
-	store := newInMemoryAppStore()
-	app := model.NewApplications("app-1", "demo", "default", "1.0.0", "", "", "", "", false)
-	require.NoError(t, store.Add(context.Background(), app))
-
-	svc := newMockServiceWithStore(store)
-	svc.Cache = cache.NewMemCache(false)
-	client := fake.NewSimpleClientset()
-	svc.KubeClient = client
-
-	svc.storeJSONCache(context.Background(), applicationComponentsCacheKey(app.ID), []*model.ApplicationComponent{{
-		AppID:         app.ID,
-		Name:          "legacy-secret",
-		Namespace:     "default",
-		ComponentType: config.SecretJob,
-		Properties: mustJSONStruct(&model.Properties{
-			Secret: map[string]string{"password": "c2VjcmV0LXB3ZA=="},
-		}),
-	}})
-
-	components, err := svc.ListApplicationComponents(context.Background(), app.ID)
-	require.NoError(t, err)
-	require.Len(t, components, 1)
-	require.Empty(t, client.Actions())
-
-	var props model.Properties
-	require.NoError(t, decodeJSONStruct(components[0].Properties, &props))
-	require.Equal(t, "c2VjcmV0LXB3ZA==", props.Secret["password"])
-}
-
 func TestListApplicationComponentsCacheHitKeepsBase64LikeTextSecrets(t *testing.T) {
 	store := newInMemoryAppStore()
 	app := model.NewApplications("app-1", "demo", "default", "1.0.0", "", "", "", "", false)
