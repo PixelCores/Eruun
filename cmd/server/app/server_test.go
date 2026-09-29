@@ -44,6 +44,50 @@ func TestNewAPIServerCommandUsesBinaryName(t *testing.T) {
 	require.Equal(t, "eruun-server", NewAPIServerCommand().Use)
 }
 
+func TestResolveTracingPreservesValidatedRuntimePolicy(t *testing.T) {
+	defaults := config.NewConfig()
+	require.True(t, defaults.EnableTracing)
+	require.False(t, defaults.AutoTracing)
+
+	cases := []struct {
+		name          string
+		enable        bool
+		auto          bool
+		wantEnabled   bool
+		wantAutoEvent bool
+	}{
+		{name: "both off"},
+		{name: "auto only", auto: true, wantEnabled: true, wantAutoEvent: true},
+		{name: "explicit only", enable: true, wantEnabled: true},
+		{name: "both on", enable: true, auto: true, wantEnabled: true},
+	}
+	for _, backend := range []string{config.REDIS, config.KAFKA} {
+		for _, exporter := range []struct {
+			name     string
+			endpoint string
+		}{
+			{name: "no exporter"},
+			{name: "jaeger exporter", endpoint: "http://127.0.0.1:14268/api/traces"},
+		} {
+			for _, tc := range cases {
+				t.Run(backend+"/"+exporter.name+"/"+tc.name, func(t *testing.T) {
+					cfg := config.NewConfig()
+					cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
+					cfg.Messaging.Type = backend
+					cfg.EnableTracing = tc.enable
+					cfg.AutoTracing = tc.auto
+					cfg.JaegerEndpoint = exporter.endpoint
+					require.Empty(t, cfg.Validate())
+
+					require.Equal(t, tc.wantAutoEvent, resolveTracing(cfg))
+					require.Equal(t, tc.wantEnabled, cfg.EnableTracing)
+					require.Equal(t, exporter.endpoint, cfg.JaegerEndpoint)
+				})
+			}
+		}
+	}
+}
+
 func TestRunMigrateOnlySkipsRuntimeStartup(t *testing.T) {
 	original := migrateSchema
 	t.Cleanup(func() { migrateSchema = original })
