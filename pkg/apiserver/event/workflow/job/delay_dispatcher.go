@@ -225,15 +225,10 @@ func (d *DelayDispatcher) handleMessage(ctx context.Context, message msg.Message
 		d.ackMessage(ctx, message.ID, "empty_payload", true)
 		return
 	}
-	payload, err := d.decodePayload(message.Payload)
+	payload, err := d.decodeNotification(message.Payload)
 	if err != nil {
 		klog.ErrorS(err, "delay dispatcher decode payload failed", "msgID", message.ID)
 		d.ackMessage(ctx, message.ID, "decode_payload_failed", true)
-		return
-	}
-	if payload.Job == nil {
-		klog.ErrorS(fmt.Errorf("job is nil"), "delay dispatcher payload missing job", "msgID", message.ID, "taskID", payload.TaskID)
-		d.ackMessage(ctx, message.ID, "missing_job", true)
 		return
 	}
 	executeAt := payload.ExecuteAt
@@ -385,6 +380,33 @@ func (d *DelayDispatcher) decodePayload(raw []byte) (*DelayJobPayload, error) {
 	return &payload, nil
 }
 
+func (d *DelayDispatcher) decodeNotification(raw []byte) (*DelayJobPayload, error) {
+	var envelope struct {
+		Version *int            `json:"version"`
+		Job     json.RawMessage `json:"job"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return nil, err
+	}
+	if envelope.Version == nil {
+		return d.decodePayload(raw)
+	}
+	if *envelope.Version != delayJobNotificationVersion {
+		return nil, fmt.Errorf("unsupported delay notification version %d", *envelope.Version)
+	}
+	if len(envelope.Job) != 0 {
+		return nil, fmt.Errorf("version %d delay notification includes a workload", *envelope.Version)
+	}
+	var payload DelayJobPayload
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, err
+	}
+	if err := validateDelayJobIdentity(&payload); err != nil {
+		return nil, err
+	}
+	return &payload, nil
+}
+
 func (d *DelayDispatcher) nextItem() (*delayItem, time.Duration) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -490,10 +512,14 @@ func (d *DelayDispatcher) ackMessage(ctx context.Context, msgID, reason string, 
 }
 
 func (d *DelayDispatcher) dispatch(ctx context.Context, item *delayItem) error {
-	if item == nil || item.payload == nil || item.payload.Job == nil {
+	if item == nil || item.payload == nil {
 		return fmt.Errorf("delay item is nil")
 	}
-	if err := validateDelayJobPayload(item.payload); err != nil {
+	validate := validateDelayJobPayload
+	if item.payload.Job == nil {
+		validate = validateDelayJobIdentity
+	}
+	if err := validate(item.payload); err != nil {
 		return errors.Join(errDelayDispatchNoRetry, err)
 	}
 	current, err := d.delayExecutionCurrent(ctx, item.payload)
@@ -528,11 +554,11 @@ func (d *DelayDispatcher) dispatch(ctx context.Context, item *delayItem) error {
 	if checkpoint.DelayState == config.JobDelayStateDispatched {
 		return nil
 	}
-	app, space, err := d.checkpointWorkspace(ctx, checkpoint, item.payload)
+	app, space, err := d.checkpointWorkspace(ctx, checkpoint, committed)
 	if err != nil {
 		return err
 	}
-	payload := *item.payload
+	payload := *committed
 	payload.Job = payload.Job.DeepCopy()
 	task := &model.JobTask{AppID: app.ID, Namespace: space.Namespace, JobType: string(config.JobDeployInstant), JobInfo: payload.Job}
 	if _, err = PrepareTask(task, app.ID, space, d.workspaceManager.Config); err != nil {
@@ -594,6 +620,12 @@ func (d *DelayDispatcher) validateCheckpointNotification(checkpoint *model.JobIn
 	committed, err := d.decodePayload([]byte(checkpoint.DelayPayload))
 	if err != nil {
 		return nil, fmt.Errorf("decode committed delayed workload: %w", err)
+	}
+	if payload.Job == nil {
+		if notificationForDelayJob(committed) != notificationForDelayJob(payload) {
+			return nil, fmt.Errorf("%w: notification differs from delayed checkpoint", errDelayDispatchNoRetry)
+		}
+		return committed, nil
 	}
 	expected, err := json.Marshal(committed)
 	if err != nil {

@@ -156,6 +156,22 @@ func TestDelayDispatcherHandleMessageAcksMissingJob(t *testing.T) {
 	require.Equal(t, []string{"delay-2"}, queue.ackCalls[0].ids)
 }
 
+func TestDelayDispatcherAcksUnsupportedNotificationVersions(t *testing.T) {
+	for _, raw := range []string{
+		`{"version":3,"taskId":"task-1","executionKey":"key-1","runGeneration":1}`,
+		`{"version":2,"taskId":"task-1","executionKey":"key-1","runGeneration":1,"job":null}`,
+		`{"version":2,"taskId":"task-1","executionKey":"key-1"}`,
+	} {
+		t.Run(raw, func(t *testing.T) {
+			queue := &dispatcherAckQueue{}
+			dispatcher := &DelayDispatcher{queue: queue, group: "delay-workers"}
+			dispatcher.handleMessage(context.Background(), msg.Message{ID: "unsupported", Payload: []byte(raw)})
+			require.Len(t, queue.ackCalls, 1)
+			require.Equal(t, []string{"unsupported"}, queue.ackCalls[0].ids)
+		})
+	}
+}
+
 func TestDelayDispatcherFinishRequeuesWhenAckFails(t *testing.T) {
 	queue := &dispatcherAckQueue{ackErr: errors.New("ack failed")}
 	dispatcher := &DelayDispatcher{

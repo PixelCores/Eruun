@@ -20,6 +20,7 @@ import (
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
+	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 )
 
 func delayedWorkspaceSQLFixture(t *testing.T, storedWorkspace interface{}) (*gorm.DB, *sqlstore.Driver, *DelayDispatcher, *DelayJobPayload, *int) {
@@ -62,6 +63,117 @@ func delayedWorkspaceSQLFixture(t *testing.T, storedWorkspace interface{}) (*gor
 		return workspaceResponse(201, raw), err
 	})
 	return db, store, NewDelayDispatcher(nil, manager, access.NewStore(store), "", ""), payloads[0], &creates
+}
+
+func TestDelayedNotificationDispatchesCommittedWorkload(t *testing.T) {
+	for _, format := range []string{"versioned identity", "legacy full payload"} {
+		t.Run(format, func(t *testing.T) {
+			db, store, dispatcher, payload, creates := delayedWorkspaceSQLFixture(t, "space-1")
+			ctx := context.Background()
+			var raw []byte
+			if format == "versioned identity" {
+				producer := &enqueueCaptureQueue{}
+				_, err := EnqueueDelayJob(ctx, producer, payload)
+				require.NoError(t, err)
+				raw = producer.enqueued[0]
+				committed, err := json.Marshal(payload)
+				require.NoError(t, err)
+				require.Less(t, len(raw), len(committed))
+			} else {
+				var err error
+				raw, err = json.Marshal(payload)
+				require.NoError(t, err)
+			}
+			queue := &dispatcherAckQueue{}
+			dispatcher.queue = queue
+			dispatcher.handleMessage(ctx, msg.Message{ID: "delivery", Payload: raw})
+			select {
+			case <-dispatcher.wake:
+			default:
+				t.Fatal("queue delivery did not wake the dispatcher")
+			}
+			item, wait := dispatcher.nextItem()
+			require.NotNil(t, item)
+			require.Zero(t, wait)
+			require.ErrorIs(t, dispatcher.dispatch(ctx, item), errDelayWaitingAdmission)
+			require.Zero(t, *creates, "global admission must still gate Job creation")
+			admitted, err := repository.AdmitQueuedJobs(ctx, store)
+			require.NoError(t, err)
+			require.Equal(t, 1, admitted)
+			require.NoError(t, dispatcher.dispatch(ctx, item))
+			dispatcher.finish(ctx, item)
+			require.Equal(t, 1, *creates)
+			require.Len(t, queue.ackCalls, 1)
+			require.Equal(t, []string{"delivery"}, queue.ackCalls[0].ids)
+			var record model.JobInfo
+			require.NoError(t, db.First(&record, 1).Error)
+			require.Equal(t, config.JobDelayStateDispatched, record.DelayState)
+		})
+	}
+}
+
+func TestDelayedIdentityNotificationRejectsChangedCheckpointIdentity(t *testing.T) {
+	tests := []struct {
+		name             string
+		change           func(*delayJobNotification)
+		expectNoRetryErr bool
+	}{
+		{"execute time", func(n *delayJobNotification) { n.ExecuteAt++ }, true},
+		{"run token", func(n *delayJobNotification) { n.RunToken = "other-run" }, true},
+		{"execution key", func(n *delayJobNotification) { n.ExecutionKey = "other-execution" }, false},
+		{"generation", func(n *delayJobNotification) { n.RunGeneration++ }, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, _, dispatcher, payload, creates := delayedWorkspaceSQLFixture(t, "space-1")
+			notification := notificationForDelayJob(payload)
+			tt.change(&notification)
+			raw, err := json.Marshal(notification)
+			require.NoError(t, err)
+			queue := &dispatcherAckQueue{}
+			dispatcher.queue = queue
+			dispatcher.handleMessage(context.Background(), msg.Message{ID: "changed", Payload: raw})
+			item, _ := dispatcher.nextItem()
+			require.NotNil(t, item)
+			err = dispatcher.dispatch(context.Background(), item)
+			if tt.expectNoRetryErr {
+				require.ErrorIs(t, err, errDelayDispatchNoRetry)
+				dispatcher.acknowledge(context.Background(), item)
+			} else {
+				require.NoError(t, err, "unknown or stale identity must leave the committed checkpoint for recovery")
+				dispatcher.finish(context.Background(), item)
+			}
+			require.Len(t, queue.ackCalls, 1)
+			require.Equal(t, []string{"changed"}, queue.ackCalls[0].ids)
+			require.Zero(t, *creates)
+			var record model.JobInfo
+			require.NoError(t, db.First(&record, 1).Error)
+			require.Equal(t, config.JobDelayStatePending, record.DelayState)
+			require.Equal(t, string(config.StatusDistributed), record.Status)
+		})
+	}
+}
+
+func TestLegacyDelayNotificationRejectsChangedWorkload(t *testing.T) {
+	db, _, dispatcher, payload, creates := delayedWorkspaceSQLFixture(t, "space-1")
+	changed := *payload
+	changed.Job = payload.Job.DeepCopy()
+	changed.Job.Name = "different-job"
+	raw, err := json.Marshal(&changed)
+	require.NoError(t, err)
+	queue := &dispatcherAckQueue{}
+	dispatcher.queue = queue
+	dispatcher.handleMessage(context.Background(), msg.Message{ID: "legacy-changed", Payload: raw})
+	item, _ := dispatcher.nextItem()
+	require.NotNil(t, item)
+	require.ErrorIs(t, dispatcher.dispatch(context.Background(), item), errDelayDispatchNoRetry)
+	dispatcher.acknowledge(context.Background(), item)
+	require.Len(t, queue.ackCalls, 1)
+	require.Equal(t, []string{"legacy-changed"}, queue.ackCalls[0].ids)
+	require.Zero(t, *creates)
+	var record model.JobInfo
+	require.NoError(t, db.First(&record, 1).Error)
+	require.Equal(t, config.JobDelayStatePending, record.DelayState)
 }
 
 func TestDelayedAdmissionRecoversLegacyWorkspaceIdentity(t *testing.T) {

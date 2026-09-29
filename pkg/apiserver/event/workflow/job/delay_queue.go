@@ -33,6 +33,34 @@ type DelayJobPayload struct {
 	Job            *batchv1.Job `json:"job"`
 }
 
+const delayJobNotificationVersion = 2
+
+// The queue wakes the dispatcher; JobInfo.DelayPayload owns the workload.
+// Legacy notifications carried the full DelayJobPayload without a version.
+type delayJobNotification struct {
+	Version       int    `json:"version"`
+	ExecuteAt     int64  `json:"executeAt"`
+	TaskID        string `json:"taskId"`
+	JobType       string `json:"jobType,omitempty"`
+	ServiceName   string `json:"serviceName,omitempty"`
+	ExecutionKey  string `json:"executionKey"`
+	RunGeneration uint64 `json:"runGeneration"`
+	RunToken      string `json:"runToken,omitempty"`
+}
+
+func notificationForDelayJob(payload *DelayJobPayload) delayJobNotification {
+	return delayJobNotification{
+		Version:       delayJobNotificationVersion,
+		ExecuteAt:     payload.ExecuteAt,
+		TaskID:        payload.TaskID,
+		JobType:       payload.JobType,
+		ServiceName:   payload.ServiceName,
+		ExecutionKey:  payload.ExecutionKey,
+		RunGeneration: payload.RunGeneration,
+		RunToken:      payload.RunToken,
+	}
+}
+
 func EnqueueDelayJob(ctx context.Context, queue msg.Queue, payload *DelayJobPayload) (string, error) {
 	if err := validateDelayJobPayload(payload); err != nil {
 		return "", err
@@ -40,9 +68,9 @@ func EnqueueDelayJob(ctx context.Context, queue msg.Queue, payload *DelayJobPayl
 	if queue == nil {
 		return "", ErrDelayQueueUnavailable
 	}
-	raw, err := json.Marshal(payload)
+	raw, err := json.Marshal(notificationForDelayJob(payload))
 	if err != nil {
-		return "", fmt.Errorf("marshal delay payload: %w", err)
+		return "", fmt.Errorf("marshal delay notification: %w", err)
 	}
 	return queue.Enqueue(ctx, raw)
 }
@@ -75,6 +103,13 @@ func validateDelayJobPayload(payload *DelayJobPayload) error {
 	}
 	if strings.TrimSpace(payload.Job.Name) == "" {
 		return fmt.Errorf("delay payload job name is required")
+	}
+	return validateDelayJobIdentity(payload)
+}
+
+func validateDelayJobIdentity(payload *DelayJobPayload) error {
+	if payload == nil {
+		return fmt.Errorf("delay payload is required")
 	}
 	if strings.TrimSpace(payload.TaskID) == "" {
 		return fmt.Errorf("delay payload task ID is required")
