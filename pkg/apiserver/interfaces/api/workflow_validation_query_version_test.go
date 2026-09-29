@@ -32,10 +32,7 @@ func TestListWorkflowSchedulesEndpoint(t *testing.T) {
 			},
 		},
 	}
-	appHandler := &applications{
-		ApplicationService: noopApplicationsService{},
-		WorkflowService:    svc,
-	}
+	appHandler := &applicationWorkflows{WorkflowService: svc}
 	r := gin.New()
 	r.GET("/applications/:appID/workflow/schedules", appHandler.listWorkflowSchedules)
 
@@ -1174,10 +1171,7 @@ func TestDiffUpdateVersionEndpointRejectsMissingSourceAppID(t *testing.T) {
 func TestCancelDelayedVersionUpdateEndpoint(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	wfSvc := &fakeWorkflowService{}
-	appHandler := &applications{
-		ApplicationService: &fakeUpdateVersionService{},
-		WorkflowService:    wfSvc,
-	}
+	appHandler := &applicationWorkflows{WorkflowService: wfSvc}
 	r := gin.New()
 	r.POST("/applications/:appID/version/cancel", appHandler.cancelDelayedVersionUpdate)
 
@@ -1203,10 +1197,7 @@ func TestCancelDelayedVersionUpdateEndpoint(t *testing.T) {
 func TestCancelDelayedVersionUpdateEndpointInvalidRequest(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	wfSvc := &fakeWorkflowService{}
-	appHandler := &applications{
-		ApplicationService: &fakeUpdateVersionService{},
-		WorkflowService:    wfSvc,
-	}
+	appHandler := &applicationWorkflows{WorkflowService: wfSvc}
 	r := gin.New()
 	r.POST("/applications/:appID/version/cancel", appHandler.cancelDelayedVersionUpdate)
 
@@ -1223,10 +1214,7 @@ func TestCancelDelayedVersionUpdateEndpointInvalidRequest(t *testing.T) {
 func TestCancelDelayedVersionUpdateEndpointNotCancellable(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	wfSvc := &fakeWorkflowService{cancelDelayedErr: bcode.ErrVersionUpdateTaskNotCancellable}
-	appHandler := &applications{
-		ApplicationService: &fakeUpdateVersionService{},
-		WorkflowService:    wfSvc,
-	}
+	appHandler := &applicationWorkflows{WorkflowService: wfSvc}
 	r := gin.New()
 	r.POST("/applications/:appID/version/cancel", appHandler.cancelDelayedVersionUpdate)
 
