@@ -66,41 +66,6 @@ func (m *MemCache) Load(ctx context.Context, key string) (string, error) {
 	return result, nil
 }
 
-func (m *MemCache) Consume(ctx context.Context, key string) (string, error) {
-	if err := ctx.Err(); err != nil {
-		return "", err
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	value, ok := m.items[key]
-	if !ok {
-		return "", nil
-	}
-	delete(m.items, key)
-	if value.expired(time.Now()) {
-		return "", nil
-	}
-	return value.value, nil
-}
-
-func (m *MemCache) List(ctx context.Context) ([]string, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	var ret []string
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	now := time.Now()
-	for k, v := range m.items {
-		if v.expired(now) {
-			delete(m.items, k)
-			continue
-		}
-		ret = append(ret, v.value)
-	}
-	return ret, nil
-}
-
 func (m *MemCache) Delete(ctx context.Context, key string) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -109,21 +74,6 @@ func (m *MemCache) Delete(ctx context.Context, key string) error {
 	defer m.mu.Unlock()
 	delete(m.items, key)
 	return nil
-}
-
-func (m *MemCache) Exists(ctx context.Context, key string) bool {
-	if err := ctx.Err(); err != nil {
-		return false
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if v, ok := m.items[key]; ok {
-		if !v.expired(time.Now()) {
-			return true
-		}
-		delete(m.items, key)
-	}
-	return false
 }
 
 func (m *MemCache) IsCacheDisabled() bool {
