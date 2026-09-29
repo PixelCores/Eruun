@@ -18,7 +18,8 @@ import (
 
 type Provider struct {
 	systemsetting.AliyunSettingSupport
-	actions map[string]contracts.CloudActionFactory
+	// Actions are stateless; each invocation supplies its own runtime and state.
+	actions map[string]contracts.CloudAction
 }
 
 var (
@@ -36,10 +37,10 @@ type runtimeAliyunSnapshot struct {
 
 func NewProvider() *Provider {
 	return &Provider{
-		actions: map[string]contracts.CloudActionFactory{
-			ActionNasEnsureFilesystem:   newNasEnsureFilesystemAction,
-			ActionNasEnsureMountTarget:  newNasEnsureMountTargetAction,
-			ActionK8sEnsureStorageClass: newK8sEnsureStorageClassAction,
+		actions: map[string]contracts.CloudAction{
+			ActionNasEnsureFilesystem:   &nasEnsureFilesystemAction{},
+			ActionNasEnsureMountTarget:  &nasEnsureMountTargetAction{},
+			ActionK8sEnsureStorageClass: &k8sEnsureStorageClassAction{},
 		},
 	}
 }
@@ -53,9 +54,6 @@ func (p *Provider) NewRuntime(ctx context.Context, req *contracts.CloudJobReques
 		return nil, fmt.Errorf("cloud job request is nil")
 	}
 	runtimeSnapshot, _ := req.RuntimeProviderSnapshot.(*runtimeAliyunSnapshot)
-	if runtimeSnapshot == nil {
-		runtimeSnapshot, _ = contracts.RuntimeProviderSnapshotFromContext(ctx, ProviderName).(*runtimeAliyunSnapshot)
-	}
 	if req.ResumeFromPersistedState && runtimeSnapshot == nil {
 		return nil, fmt.Errorf("cloud job checkpoint for provider %q cannot resume safely after process restart without runtime provider snapshot; rerun the workflow task", ProviderName)
 	}
@@ -124,11 +122,11 @@ func (p *Provider) ResolveAction(action string) (contracts.CloudAction, bool) {
 	if normalized == "" || p == nil {
 		return nil, false
 	}
-	factory, ok := p.actions[normalized]
-	if !ok || factory == nil {
+	resolved, ok := p.actions[normalized]
+	if !ok || resolved == nil {
 		return nil, false
 	}
-	return factory(), true
+	return resolved, true
 }
 
 func (p *Provider) SupportedActions() []string {

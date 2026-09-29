@@ -54,6 +54,7 @@ func TestEruunStackManifestUsesExplicitRBACBoundaries(t *testing.T) {
 			require.Equal(t, "eruun-controller", data["ERUUN_CONTROLLER_LOCK_NAME"])
 			require.Equal(t, "eruun-scheduler", data["ERUUN_SCHEDULER_LOCK_NAME"])
 			require.NotContains(t, data, "ERUUN_LOCK_NAME")
+			require.NotContains(t, data, "ERUUN_DATASTORE_DATABASE")
 		}
 		if apiVersion == "v1" && kind == "Secret" {
 			secrets++

@@ -79,6 +79,8 @@ func init() {
   - 继续等待：`Done=false` 且 `RequeueAfter>0`
   - 错误：返回 error，交由上层任务失败处理
 - `state` 仅保存可序列化、可重入的信息，避免保存瞬态对象。
+- Provider 在 `NewRuntime` 中固定本次执行依赖，由返回的 runtime 持有。需要同次调用内重建 runtime 时，可使用 `CloudJobRequest.RuntimeProviderSnapshot`；该字段仅在内存中传递，不写入检查点。没有可信运行快照的持久化 state 不得按新配置静默恢复。
+- 源码接入变更：已删除 `contracts.WithRuntimeProviderSnapshot` / `RuntimeProviderSnapshotFromContext`，自定义 action 如需瞬态快照应从传入的 request 读取；`WithDataStore` / `DataStoreFromContext` 和 Provider/Action 接口保持不变。内置 Aliyun 直接复用无状态 action，自定义模板仍保留工厂，可为需要实例状态的 action 单独构造。
 - 新增 action 时同步补充单测：
   - 白名单解析
   - 参数校验失败路径

@@ -56,18 +56,12 @@ type Config struct {
 	// private/loopback/link-local addresses are allowed.
 	AllowPrivateURLTargets bool
 
-	//DTM Distributed transaction management
-	DTMAddr string
-
 	Datastore datastore.Config
 	// DatastoreSchemaMode controls whether this process migrates, validates, or
 	// migrates and exits before starting the runtime.
 	DatastoreSchemaMode string
 
 	Cache RedisCacheConfig
-
-	// Istio Enable
-	IstioEnable bool
 
 	// EnableTracing enables distributed tracing
 	EnableTracing bool
@@ -77,9 +71,6 @@ type Config struct {
 
 	// JaegerEndpoint is the endpoint of the Jaeger collector
 	JaegerEndpoint string
-
-	// AddonCacheTime is how long between two cache operations
-	AddonCacheTime time.Duration
 
 	// LeaderConfig for leader election
 	LeaderConfig leaderConfig
@@ -167,8 +158,7 @@ func NewConfig() *Config {
 			Namespace:          NAMESPACE,
 		},
 		Datastore: datastore.Config{
-			Type:     MYSQL,
-			Database: DBNAME_ERUUN,
+			Type: MYSQL,
 			// Local connection template; replace the password via --datastore-url or ERUUN_DATASTORE_URL.
 			URL:             "eruun:__REPLACE_WITH_MYSQL_PASSWORD__@tcp(127.0.0.1:3306)/eruun?charset=utf8mb4&parseTime=true",
 			MaxIdleConns:    10,
@@ -189,10 +179,7 @@ func NewConfig() *Config {
 		},
 		KubeQPS:                100,
 		KubeBurst:              300,
-		AddonCacheTime:         time.Minute * 10,
-		IstioEnable:            false,
 		ExitOnLostLeader:       true,
-		DTMAddr:                "",
 		EnableTracing:          true,
 		AutoTracing:            false,
 		JaegerEndpoint:         "",
@@ -217,15 +204,14 @@ func (c *Config) Validate() []error {
 	if !schemaModeValid {
 		errs = append(errs, fmt.Errorf("datastore schema mode must be one of migrate, validate, migrate-only; got %q", c.DatastoreSchemaMode))
 	}
+	if c.Datastore.Type != MYSQL {
+		errs = append(errs, fmt.Errorf("unsupported datastore type: %s; only mysql is supported", c.Datastore.Type))
+	} else if strings.TrimSpace(c.Datastore.URL) == "" {
+		errs = append(errs, fmt.Errorf("mysql url cannot be empty"))
+	} else if strings.Contains(c.Datastore.URL, "__REPLACE_") {
+		errs = append(errs, fmt.Errorf("mysql url contains placeholder value, please replace it with real credentials"))
+	}
 	if schemaMode == DatastoreSchemaModeMigrateOnly {
-		if c.Datastore.Type != MYSQL {
-			errs = append(errs, fmt.Errorf("unsupported datastore type: %s", c.Datastore.Type))
-		}
-		if strings.TrimSpace(c.Datastore.URL) == "" {
-			errs = append(errs, fmt.Errorf("mysql url cannot be empty"))
-		} else if strings.Contains(c.Datastore.URL, "__REPLACE_") {
-			errs = append(errs, fmt.Errorf("mysql url contains placeholder value, please replace it with real credentials"))
-		}
 		return errs
 	}
 	_, roleValid := NormalizeRuntimeRole(string(c.Role))
@@ -248,12 +234,6 @@ func (c *Config) Validate() []error {
 		errs = append(errs, fmt.Errorf("api rate limit burst must be > 0 when api rate limit qps is enabled"))
 	}
 	errs = append(errs, c.validateLeaderElection()...)
-	if c.Datastore.Type == MYSQL && strings.TrimSpace(c.Datastore.URL) == "" {
-		errs = append(errs, fmt.Errorf("mysql url cannot be empty"))
-	}
-	if c.Datastore.Type == MYSQL && strings.Contains(c.Datastore.URL, "__REPLACE_") {
-		errs = append(errs, fmt.Errorf("mysql url contains placeholder value, please replace it with real credentials"))
-	}
 	cacheType := strings.ToLower(strings.TrimSpace(c.Cache.CacheType))
 	if cacheType != REDIS {
 		errs = append(errs, fmt.Errorf("distributed application mutation locking requires cache-type=redis"))
@@ -355,9 +335,8 @@ func (c *Config) AddFlags(fs *pflag.FlagSet, configParameter *Config) {
 	fs.Float64Var(&c.KubeQPS, "kube-api-qps", configParameter.KubeQPS, "the qps for kube clients. Low qps may lead to low throughput. High qps may give stress to api-server.")
 	fs.IntVar(&c.KubeBurst, "kube-api-burst", configParameter.KubeBurst, "the burst for kube clients. Recommend setting it qps*3.")
 	fs.BoolVar(&c.ExitOnLostLeader, "exit-on-lost-leader", configParameter.ExitOnLostLeader, "exit the process if this server lost the leader election")
-	fs.StringVar(&c.Datastore.Type, "datastore-type", configParameter.Datastore.Type, "datastore backend type (e.g., mysql, tidb)")
-	fs.StringVar(&c.Datastore.URL, "datastore-url", configParameter.Datastore.URL, "datastore connection URL / DSN (replace the default password placeholder before starting)")
-	fs.StringVar(&c.Datastore.Database, "datastore-database", configParameter.Datastore.Database, "datastore database/schema name")
+	fs.StringVar(&c.Datastore.Type, "datastore-type", configParameter.Datastore.Type, "datastore backend type (mysql only)")
+	fs.StringVar(&c.Datastore.URL, "datastore-url", configParameter.Datastore.URL, "MySQL connection DSN, including the database name (replace the default password placeholder before starting)")
 	fs.StringVar(&c.DatastoreSchemaMode, "datastore-schema-mode", configParameter.DatastoreSchemaMode, "datastore schema handling: migrate|validate|migrate-only")
 	fs.IntVar(&c.Datastore.MaxIdleConns, "mysql-max-idle-conns", configParameter.Datastore.MaxIdleConns, "maximum number of idle MySQL connections to retain in the pool")
 	fs.IntVar(&c.Datastore.MaxOpenConns, "mysql-max-open-conns", configParameter.Datastore.MaxOpenConns, "maximum number of open MySQL connections (<=0 means unlimited)")

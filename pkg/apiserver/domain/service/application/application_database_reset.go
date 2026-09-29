@@ -14,6 +14,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
+	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
@@ -113,7 +114,7 @@ func (c *applicationsServiceImpl) resetApplicationDatabasesUnlocked(ctx context.
 		if err := validateWorkflowTaskEnqueue(ctx, tx, workflow, false); err != nil {
 			return err
 		}
-		task, err = createWorkflowQueueTaskWithCleanupInfo(ctx, tx, workflow, 0, "", "")
+		task, err = workflowservice.CreateWorkflowQueueTask(ctx, tx, workflow, workflowservice.QueueTaskOptions{})
 		return err
 	})
 	if err != nil {

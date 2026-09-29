@@ -325,7 +325,7 @@ Ingress provider 等价表达：
 
 注意：
 
-- 现有 `IstioEnable bool` 字段当前没有有效使用路径。不要复用它表达 provider 策略；可以在后续清理 PR 中删除或迁移。
+- 未使用的 `IstioEnable bool` 预留字段已移除。未来 Gateway 能力应按本草案定义明确的 provider 策略，不恢复无消费者的布尔开关。
 - `GatewayProviderAuto` 只作为输入/配置值；持久化后的 component traits 应保存确定 provider。
 
 ### 6.2 Provider resolver

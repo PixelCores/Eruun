@@ -39,7 +39,6 @@ export REDIS_PASSWORD="$(openssl rand -hex 24)"
 
 ```bash
 export ERUUN_DATASTORE_URL="eruun:${MYSQL_PASSWORD}@tcp(127.0.0.1:${MYSQL_PORT:-3306})/${MYSQL_DATABASE:-eruun}?charset=utf8mb4&parseTime=true"
-export ERUUN_DATASTORE_DATABASE="${MYSQL_DATABASE:-eruun}"
 export ERUUN_CACHE_HOST=127.0.0.1
 export ERUUN_CACHE_PORT="${REDIS_PORT:-6379}"
 export ERUUN_CACHE_PASSWORD="${REDIS_PASSWORD}"
@@ -48,6 +47,8 @@ export ERUUN_MSG_KAFKA_BROKERS="localhost:${KAFKA_PORT:-9092}"
 export ERUUN_AUTH_CONFIG_FILE=/secure/eruun/accounts.json
 go run ./cmd/main.go
 ```
+
+数据库名只取自 `--datastore-url` / `ERUUN_DATASTORE_URL` 的 DSN 路径。旧 `--datastore-database` 参数已移除；若环境中仍设置 `ERUUN_DATASTORE_DATABASE`（即使为空），启动会明确拒绝。升级时从 shell、ConfigMap 或 Helm `env` 中删除旧设置，并核对 DSN 指向原数据库；当前 shell 可执行 `unset ERUUN_DATASTORE_DATABASE`。`MYSQL_DATABASE` 仍用于初始化 Compose 的 MySQL 数据库和生成上述 DSN，不是 Eruun 的第二个选库入口。服务端的 `--datastore-type` 只接受 `mysql`。
 
 仍需准备 [账号配置](account-auth-workspaces.md) 和可访问的 Kubernetes。服务端默认只有 `api` 角色；完整工作流需要按 [运行架构](enterprise-distributed-runtime-design.md) 分别运行其他角色。
 

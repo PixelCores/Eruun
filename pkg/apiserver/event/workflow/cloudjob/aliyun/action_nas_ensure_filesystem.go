@@ -10,10 +10,6 @@ import (
 
 type nasEnsureFilesystemAction struct{}
 
-func newNasEnsureFilesystemAction() contracts.CloudAction {
-	return &nasEnsureFilesystemAction{}
-}
-
 func (a *nasEnsureFilesystemAction) Validate(req *contracts.CloudJobRequest) error {
 	if err := requireCloudParamStrings(req,
 		ParamTenantID,

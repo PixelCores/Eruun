@@ -9,10 +9,6 @@ import (
 
 type k8sEnsureStorageClassAction struct{}
 
-func newK8sEnsureStorageClassAction() contracts.CloudAction {
-	return &k8sEnsureStorageClassAction{}
-}
-
 func (a *k8sEnsureStorageClassAction) Validate(req *contracts.CloudJobRequest) error {
 	if err := requireCloudParamStrings(req,
 		ParamTenantID,

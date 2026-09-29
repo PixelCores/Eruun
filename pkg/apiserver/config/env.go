@@ -18,6 +18,10 @@ const EnvPrefix = "ERUUN"
 // Flag names are transformed by converting to upper snake case and prepending the provided prefix.
 // For example, the flag "bind-addr" becomes "ERUUN_BIND_ADDR".
 func ApplyEnvOverrides(fs *pflag.FlagSet, prefix string) error {
+	key := buildEnvKey(prefix, "datastore-database")
+	if _, exists := os.LookupEnv(key); exists {
+		return fmt.Errorf("%s is no longer supported; remove it and set the database name in --datastore-url or %s", key, buildEnvKey(prefix, "datastore-url"))
+	}
 	var errs []error
 	fs.VisitAll(func(f *pflag.Flag) {
 		if f.Changed {
