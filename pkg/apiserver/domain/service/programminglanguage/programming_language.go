@@ -50,12 +50,7 @@ type ProgrammingLanguageService interface {
 }
 
 type programmingLanguageServiceImpl struct {
-	LanguageRepo repository.ProgrammingLanguageRepository `inject:""`
-}
-
-// NewProgrammingLanguageService creates a ProgrammingLanguageService.
-func NewProgrammingLanguageService() ProgrammingLanguageService {
-	return &programmingLanguageServiceImpl{}
+	LanguageRepo repository.ProgrammingLanguageRepository
 }
 
 // NewProgrammingLanguageServiceWithRepository creates a ready-to-use service.

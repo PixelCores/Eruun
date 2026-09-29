@@ -8,11 +8,11 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/conversion"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/programminglanguage"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/validation"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport"
 )
 
 type ApplicationsService = application.ApplicationsService
@@ -55,10 +55,6 @@ func NewSystemSettingService() SystemSettingService {
 	return systemsetting.NewSystemSettingService()
 }
 
-func NewProgrammingLanguageService() ProgrammingLanguageService {
-	return programminglanguage.NewProgrammingLanguageService()
-}
-
 func NewProgrammingLanguageServiceWithRepository(repo repository.ProgrammingLanguageRepository) (ProgrammingLanguageService, error) {
 	return programminglanguage.NewProgrammingLanguageServiceWithRepository(repo)
 }
@@ -67,19 +63,14 @@ func TerminalizePrecreatedVersionUpdateCleanupJobs(ctx context.Context, store da
 	return workflow.TerminalizePrecreatedVersionUpdateCleanupJobs(ctx, store, taskID, targetStatus, reason)
 }
 
-// InitServiceBean init all service instance
-func InitServiceBean(programmingLanguageOverrides ...ProgrammingLanguageService) []interface{} {
+// InitServiceBean initializes the services built by the container.
+func InitServiceBean() []interface{} {
 	applicationService := NewApplicationService()
 	workflowService := NewWorkflowService()
 	validationService := NewValidationService()
 	conversionService := NewConversionService()
 	importService := NewResourceImportService()
 	systemSettingService := NewSystemSettingService()
-	programmingLanguageService := NewProgrammingLanguageService()
-	if len(programmingLanguageOverrides) > 0 && programmingLanguageOverrides[0] != nil {
-		programmingLanguageService = programmingLanguageOverrides[0]
-	}
-
 	return []interface{}{
 		applicationService,
 		workflowService,
@@ -87,6 +78,5 @@ func InitServiceBean(programmingLanguageOverrides ...ProgrammingLanguageService)
 		conversionService,
 		importService,
 		systemSettingService,
-		programmingLanguageService,
 	}
 }

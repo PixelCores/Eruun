@@ -20,12 +20,7 @@ type ProgrammingLanguageRepository interface {
 }
 
 type programmingLanguageRepository struct {
-	Store datastore.DataStore `inject:"datastore"`
-}
-
-// NewProgrammingLanguageRepository creates a ProgrammingLanguageRepository.
-func NewProgrammingLanguageRepository() ProgrammingLanguageRepository {
-	return &programmingLanguageRepository{}
+	Store datastore.DataStore
 }
 
 // NewProgrammingLanguageRepositoryWithStore creates a ready-to-use repository.
