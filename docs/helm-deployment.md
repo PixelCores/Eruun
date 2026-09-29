@@ -78,6 +78,8 @@ generation/token ownership 与数据库 execution lease 是唯一执行协议，
 
 `env` 只用于追加应用配置，不允许设置由 Chart 管理的 `ERUUN_ROLE`、`ERUUN_ID`、`ERUUN_DATASTORE_SCHEMA_MODE`、`ERUUN_GRPC_BIND_ADDR` 或 `ERUUN_WORKFLOW_WORKER_DRAIN_TIMEOUT`。Worker drain 必须通过 `runtime.workerDrainTimeoutSeconds` 配置，这样 Chart 才能同时校验 `terminationGracePeriodSeconds`。旧单进程顶层键 `replicaCount` 和 `resources` 会被 schema 拒绝；副本数与资源必须分别配置在 `runtime.roles.<role>.replicas` 和 `runtime.roles.<role>.resources`。
 
+升级服务端前，删除旧 ConfigMap 或自定义 `env` 中的 `ERUUN_DATASTORE_DATABASE`，以及启动参数中的 `--datastore-database`。二者均已移除；旧环境变量即使为空也会使启动失败，并提示改用 `ERUUN_DATASTORE_URL` / `--datastore-url` 的 DSN 库名。核对 DSN 仍指向原数据库；Chart 的 `mysql.database` 与生成 DSN 所用的 `MYSQL_DATABASE` 保持原有语义。
+
 数据库 schema 的写入所有权与普通运行时启动分离：
 
 - 首次 `helm install` 时只有 API Deployment 使用 `migrate` 模式；其他角色使用 `validate`。多 API 副本仍通过 MySQL 命名锁串行迁移，避免 Chart 内置 MySQL 尚未创建时运行 `pre-install` hook。

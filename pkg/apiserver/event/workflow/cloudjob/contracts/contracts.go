@@ -14,6 +14,8 @@ type CloudJobInfo struct {
 }
 
 // CloudJobRequest is the normalized request passed to cloud providers.
+// RuntimeProviderSnapshot stays in memory and may be used to rebuild a runtime
+// within the same invocation. Initialized dependencies belong to the runtime.
 type CloudJobRequest struct {
 	Provider                 string                 `json:"provider"`
 	Action                   string                 `json:"action"`

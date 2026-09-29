@@ -207,6 +207,41 @@ func TestProviderResolveActionUnknownStrictWhitelist(t *testing.T) {
 	require.Nil(t, action)
 }
 
+func TestProviderSharedActionsKeepConcurrentExecutionStateIsolated(t *testing.T) {
+	provider := NewProvider()
+	for _, actionName := range provider.SupportedActions() {
+		action, ok := provider.ResolveAction(actionName)
+		require.True(t, ok)
+		t.Run(actionName, func(t *testing.T) {
+			for i := range 8 {
+				t.Run(fmt.Sprint(i), func(t *testing.T) {
+					t.Parallel()
+					fileSystemID := fmt.Sprintf("fs-%d", i)
+					state := map[string]interface{}{
+						StateFileSystemIDKey:     fileSystemID,
+						StateMountDomainKey:      fmt.Sprintf("mount-%d", i),
+						StateMountStatusKey:      StateMountStatusActive,
+						StateMountConfirmInfoKey: "confirmed",
+					}
+					req := &contracts.CloudJobRequest{Params: map[string]interface{}{
+						ParamTenantID:    fmt.Sprintf("tenant-%d", i),
+						ParamStorageType: "Capacity", ParamProtocolType: "NFS",
+						ParamStorageClassName: fmt.Sprintf("storage-%d", i),
+					}}
+					runtime := &fakeCloudRuntime{result: &contracts.CloudJobResult{Output: state}}
+					require.NoError(t, action.Validate(req))
+					progress, err := action.Run(context.Background(), runtime, req, state)
+					require.NoError(t, err)
+					require.True(t, progress.Done)
+					require.Equal(t, fileSystemID, progress.State[StateFileSystemIDKey])
+					require.NotContains(t, state, StateStepKey)
+					require.NotContains(t, req.Params, StateFileSystemIDKey)
+				})
+			}
+		})
+	}
+}
+
 func TestNasEnsureFilesystemActionValidateAndRun(t *testing.T) {
 	action := &nasEnsureFilesystemAction{}
 
@@ -697,12 +732,13 @@ func TestProviderNewRuntimeRequiresAliyunCloudSetting(t *testing.T) {
 func TestProviderNewRuntimeLoadsAliyunCloudSettingFromContext(t *testing.T) {
 	provider := NewProvider()
 	config := testAliyunCloudSetting()
-	ctx := contracts.WithDataStore(context.Background(), &fakeSystemSettingStore{
+	store := &fakeSystemSettingStore{
 		setting: &model.SystemSetting{
 			Type:  model.SystemSettingTypeAliyunCloud,
 			Value: mustMarshalAliyunCloudSetting(t, config),
 		},
-	})
+	}
+	ctx := contracts.WithDataStore(context.Background(), store)
 	req := &contracts.CloudJobRequest{}
 
 	rawRuntime, err := provider.NewRuntime(ctx, req)
@@ -727,6 +763,14 @@ func TestProviderNewRuntimeLoadsAliyunCloudSettingFromContext(t *testing.T) {
 	require.NotContains(t, string(rawReq), "configSnapshot")
 	require.NotContains(t, string(rawReq), "accessKeySecret")
 	require.NotContains(t, string(rawReq), "test-sk")
+
+	changedConfig := config
+	changedConfig.RegionID = "cn-shanghai"
+	changedConfig.AccessKeySecret = "changed-secret"
+	store.setting.Value = mustMarshalAliyunCloudSetting(t, changedConfig)
+	require.Equal(t, config.RegionID, typedRuntime.config.RegionID)
+	require.Equal(t, config.AccessKeySecret, typedRuntime.config.AccessKeySecret)
+	require.Equal(t, config.RegionID, runtimeSnapshot.RegionID)
 }
 
 func TestProviderNewRuntimeRejectsResumeWithoutRuntimeProviderSnapshot(t *testing.T) {

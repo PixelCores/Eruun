@@ -10,7 +10,6 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
@@ -21,8 +20,13 @@ type RuntimeReader interface {
 	ListApplicationRuntimeComponents(context.Context, string) ([]*model.ApplicationComponent, error)
 }
 
+// WorkflowTaskReader supplies the active update state needed for status presentation.
+type WorkflowTaskReader interface {
+	HasImmediateActiveVersionUpdateTask(context.Context, string, int64) (bool, error)
+}
+
 type Service struct {
-	Applications service.ApplicationsService
+	Applications WorkflowTaskReader
 	Runtime      RuntimeReader
 }
 

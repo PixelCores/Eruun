@@ -8,7 +8,6 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	assembler "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/assembler/v1"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
@@ -25,35 +24,26 @@ func (app *applications) listApplicationWorkflows(c *gin.Context) {
 		apiresponse.ReturnError(c, err)
 		return
 	}
-	resp, err := convertDTOList(workflows, assembler.ConvertWorkflowModelToDTO, func(wf *model.Workflow, err error) error {
-		klog.ErrorS(err, "convert workflow dto failed", "appID", appID, "workflowID", wf.ID)
-		return err
-	})
-	respondWithResult(c, apis.ListApplicationWorkflowsResponse{Workflows: resp}, err)
+	resp := make([]*apis.ApplicationWorkflow, 0, len(workflows))
+	for _, workflow := range workflows {
+		if workflow == nil {
+			continue
+		}
+		dto, err := assembler.ConvertWorkflowModelToDTO(workflow)
+		if err != nil {
+			klog.ErrorS(err, "convert workflow dto failed", "appID", appID, "workflowID", workflow.ID)
+			apiresponse.ReturnError(c, err)
+			return
+		}
+		if dto != nil {
+			resp = append(resp, dto)
+		}
+	}
+	apiresponse.ReturnSuccess(c, apis.ListApplicationWorkflowsResponse{Workflows: resp})
 }
 
 func (app *applications) getApplicationSpec(c *gin.Context) {
 	handlePathResult(c, appIDPathParam, app.ApplicationService.GetApplicationSpec)
-}
-
-func convertDTOList[S any, D any](items []*S, convert func(*S) (*D, error), onConvertErr func(*S, error) error) ([]*D, error) {
-	result := make([]*D, 0, len(items))
-	for _, item := range items {
-		if item == nil {
-			continue
-		}
-		dto, err := convert(item)
-		if err != nil {
-			if onConvertErr != nil {
-				return nil, onConvertErr(item, err)
-			}
-			return nil, err
-		}
-		if dto != nil {
-			result = append(result, dto)
-		}
-	}
-	return result, nil
 }
 
 func (app *applications) updateApplicationWorkflow(c *gin.Context) {

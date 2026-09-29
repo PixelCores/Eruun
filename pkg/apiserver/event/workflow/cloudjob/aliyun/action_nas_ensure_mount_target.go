@@ -9,10 +9,6 @@ import (
 
 type nasEnsureMountTargetAction struct{}
 
-func newNasEnsureMountTargetAction() contracts.CloudAction {
-	return &nasEnsureMountTargetAction{}
-}
-
 func (a *nasEnsureMountTargetAction) Validate(req *contracts.CloudJobRequest) error {
 	if err := requireCloudParamStrings(req, ParamTenantID); err != nil {
 		return err

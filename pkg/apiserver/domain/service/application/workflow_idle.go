@@ -39,14 +39,6 @@ func validateWorkflowTaskEnqueue(ctx context.Context, store datastore.DataStore,
 	return workflowservice.ValidateWorkflowTaskEnqueue(ctx, store, workflow, requireComponentInventory)
 }
 
-func createWorkflowQueueTaskWithCleanupInfo(ctx context.Context, store datastore.DataStore, workflow *model.Workflow, executeAt int64, idempotencyKey, cleanupInfo string) (*model.WorkflowQueue, error) {
-	return workflowservice.CreateWorkflowQueueTaskWithCleanupInfo(ctx, store, workflow, executeAt, idempotencyKey, cleanupInfo)
-}
-
-func createWorkflowQueueTaskWithResourceActionInfoAndCallback(ctx context.Context, store datastore.DataStore, workflow *model.Workflow, executeAt int64, idempotencyKey, cleanupInfo, resourceActionInfo string, callback *model.JSONStruct) (*model.WorkflowQueue, error) {
-	return workflowservice.CreateWorkflowQueueTaskWithResourceActionInfoAndCallback(ctx, store, workflow, executeAt, idempotencyKey, cleanupInfo, resourceActionInfo, callback)
-}
-
 func triggerWorkflowTerminalCallbackAsync(ctx context.Context, store datastore.DataStore, cfg *config.Config, provider *urlpolicy.Provider, task *model.WorkflowQueue, status config.Status, reason string) {
 	workflowservice.TriggerWorkflowTerminalCallbackAsync(ctx, store, cfg, provider, task, status, reason)
 }

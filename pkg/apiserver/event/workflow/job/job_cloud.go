@@ -26,7 +26,6 @@ type CloudJobCtl struct {
 type CloudJobRecord struct {
 	Provider     string                 `json:"provider,omitempty"`
 	Action       string                 `json:"action,omitempty"`
-	Params       map[string]interface{} `json:"params,omitempty"`
 	ExecutionKey string                 `json:"executionKey,omitempty"`
 	Status       config.Status          `json:"status,omitempty"`
 	Request      *CloudJobRequest       `json:"request,omitempty"`
@@ -116,8 +115,6 @@ func (c *CloudJobCtl) Run(ctx context.Context) error {
 		c.job.Status = config.StatusFailed
 		return err
 	}
-	runCtx = attachCloudJobRuntimeProviderSnapshot(runCtx, request)
-
 	if err := c.persistCheckpoint(runCtx, info, request, nil, state, config.StatusRunning, nil); err != nil {
 		return fmt.Errorf("persist cloud job checkpoint: %w", err)
 	}
@@ -191,7 +188,6 @@ func recordCloudJobResult(
 	if info != nil {
 		record.Provider = normalizeProviderName(info.Provider)
 		record.Action = strings.TrimSpace(info.Action)
-		record.Params = cloneCloudParams(info.Params)
 		record.ExecutionKey = cloudJobExecutionKey(info)
 	}
 	if request != nil {
@@ -389,20 +385,6 @@ func (c *CloudJobCtl) persistCheckpoint(
 	c.job.Status = status
 	setCloudJobCheckpoint(c.job, info, request, result, state, status, err)
 	return c.SaveInfo(ctx)
-}
-
-func attachCloudJobRuntimeProviderSnapshot(ctx context.Context, request *CloudJobRequest) context.Context {
-	if request == nil || request.RuntimeProviderSnapshot == nil {
-		return ctx
-	}
-	providerName := normalizeProviderName(request.Provider)
-	if providerName == "" {
-		request.RuntimeProviderSnapshot = nil
-		return ctx
-	}
-	ctx = wfcloudcontract.WithRuntimeProviderSnapshot(ctx, providerName, request.RuntimeProviderSnapshot)
-	request.RuntimeProviderSnapshot = nil
-	return ctx
 }
 
 func ensurePublicCloudJobInfo(job *model.JobTask) {

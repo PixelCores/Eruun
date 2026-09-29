@@ -78,14 +78,6 @@ var (
 		"secret":    true,
 		"configMap": true,
 	}
-
-	// Valid protocols for service ports.
-	validServiceProtocols = map[string]bool{
-		"":     true,
-		"TCP":  true,
-		"UDP":  true,
-		"SCTP": true,
-	}
 )
 
 const (

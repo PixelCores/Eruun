@@ -2,15 +2,12 @@ package validation
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/traitvalidation"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	k8svalidation "k8s.io/apimachinery/pkg/util/validation"
 )
 
@@ -52,7 +49,7 @@ func (v *validationServiceImpl) validateTraits(traits apisv1.Traits, fieldPrefix
 	for i, ingress := range traits.Ingress {
 		errors = append(errors, v.validateIngressTrait(ingress, fmt.Sprintf("%s.ingress[%d]", fieldPrefix, i))...)
 	}
-	errors = append(errors, validateIngressBackendServiceReferences(traits, fieldPrefix)...)
+	errors = append(errors, traitvalidation.ValidateIngressBackendServiceReferences(traits, fieldPrefix)...)
 
 	// Validate Service traits
 	for i, svc := range traits.Service {
@@ -78,7 +75,7 @@ func (v *validationServiceImpl) validateTraits(traits apisv1.Traits, fieldPrefix
 		errors = append(errors, v.validateTargetWorkEnvTrait(traits.TargetWorkEnv, fmt.Sprintf("%s.targetWorkEnv", fieldPrefix), isNested)...)
 	}
 	if traits.Rollout != nil || isNested {
-		errors = append(errors, validateRolloutTrait(componentType, traits.Rollout, fmt.Sprintf("%s.rollout", fieldPrefix), isNested)...)
+		errors = append(errors, traitvalidation.ValidateRolloutTrait(componentType, traits.Rollout, fmt.Sprintf("%s.rollout", fieldPrefix), isNested)...)
 	}
 
 	return errors
@@ -127,209 +124,6 @@ func (v *validationServiceImpl) validateTargetWorkEnvTrait(targetWorkEnv map[str
 	}
 
 	return errors
-}
-
-func validateRolloutTrait(componentType config.JobType, rollout *spec.RolloutTraitSpec, field string, isNested bool) []apisv1.ValidationError {
-	if rollout == nil {
-		return nil
-	}
-	if isNested {
-		return []apisv1.ValidationError{{
-			Field:   field,
-			Code:    apisv1.ErrCodeInvalidTraitConfig,
-			Message: "rollout is a workload-level trait and only supports component-level traits",
-		}}
-	}
-
-	switch componentType {
-	case config.ServerJob:
-		return validateDeploymentRolloutTrait(rollout, field)
-	case config.StoreJob:
-		return validateStatefulSetRolloutTrait(rollout, field)
-	default:
-		return []apisv1.ValidationError{{
-			Field:   field,
-			Code:    apisv1.ErrCodeInvalidTraitConfig,
-			Message: fmt.Sprintf("rollout is only supported for webservice and store components, got %s", componentType),
-		}}
-	}
-}
-
-func validateDeploymentRolloutTrait(rollout *spec.RolloutTraitSpec, field string) []apisv1.ValidationError {
-	var errors []apisv1.ValidationError
-	strategyType := appsv1.DeploymentStrategyType(strings.TrimSpace(rollout.Type))
-	switch strategyType {
-	case appsv1.RollingUpdateDeploymentStrategyType:
-		if rollout.RollingUpdate == nil {
-			errors = append(errors, apisv1.ValidationError{
-				Field:   fmt.Sprintf("%s.rollingUpdate", field),
-				Code:    apisv1.ErrCodeMissingRequiredField,
-				Message: "deployment rollout type RollingUpdate requires rollingUpdate",
-			})
-			return errors
-		}
-		if rollout.RollingUpdate.MaxSurge == nil {
-			errors = append(errors, apisv1.ValidationError{
-				Field:   fmt.Sprintf("%s.rollingUpdate.maxSurge", field),
-				Code:    apisv1.ErrCodeMissingRequiredField,
-				Message: "deployment rollout type RollingUpdate requires rollingUpdate.maxSurge",
-			})
-		}
-		if rollout.RollingUpdate.MaxUnavailable == nil {
-			errors = append(errors, apisv1.ValidationError{
-				Field:   fmt.Sprintf("%s.rollingUpdate.maxUnavailable", field),
-				Code:    apisv1.ErrCodeMissingRequiredField,
-				Message: "deployment rollout type RollingUpdate requires rollingUpdate.maxUnavailable",
-			})
-		}
-		errors = append(errors, validateIntOrPercent(rollout.RollingUpdate.MaxSurge, fmt.Sprintf("%s.rollingUpdate.maxSurge", field))...)
-		errors = append(errors, validateIntOrPercent(rollout.RollingUpdate.MaxUnavailable, fmt.Sprintf("%s.rollingUpdate.maxUnavailable", field))...)
-		if rollout.RollingUpdate.Partition != nil {
-			errors = append(errors, apisv1.ValidationError{
-				Field:   fmt.Sprintf("%s.rollingUpdate.partition", field),
-				Code:    apisv1.ErrCodeInvalidTraitConfig,
-				Message: "deployment rollout does not support rollingUpdate.partition",
-			})
-		}
-		if rollout.RollingUpdate.MaxSurge != nil &&
-			rollout.RollingUpdate.MaxUnavailable != nil &&
-			intOrPercentIsZero(rollout.RollingUpdate.MaxSurge) &&
-			intOrPercentIsZero(rollout.RollingUpdate.MaxUnavailable) {
-			errors = append(errors, apisv1.ValidationError{
-				Field:   fmt.Sprintf("%s.rollingUpdate", field),
-				Code:    apisv1.ErrCodeInvalidTraitConfig,
-				Message: "deployment rollout maxSurge and maxUnavailable cannot both be 0",
-			})
-		}
-	case appsv1.RecreateDeploymentStrategyType:
-		if rollout.RollingUpdate != nil {
-			errors = append(errors, apisv1.ValidationError{
-				Field:   fmt.Sprintf("%s.rollingUpdate", field),
-				Code:    apisv1.ErrCodeInvalidTraitConfig,
-				Message: "deployment rollout type Recreate does not support rollingUpdate",
-			})
-		}
-	case "":
-		errors = append(errors, apisv1.ValidationError{
-			Field:   fmt.Sprintf("%s.type", field),
-			Code:    apisv1.ErrCodeMissingRequiredField,
-			Message: "rollout type is required",
-		})
-	default:
-		errors = append(errors, apisv1.ValidationError{
-			Field:   fmt.Sprintf("%s.type", field),
-			Code:    apisv1.ErrCodeInvalidTraitConfig,
-			Message: fmt.Sprintf("invalid deployment rollout type: %s, must be one of: RollingUpdate, Recreate", rollout.Type),
-		})
-	}
-	return errors
-}
-
-func validateStatefulSetRolloutTrait(rollout *spec.RolloutTraitSpec, field string) []apisv1.ValidationError {
-	var errors []apisv1.ValidationError
-	strategyType := appsv1.StatefulSetUpdateStrategyType(strings.TrimSpace(rollout.Type))
-	switch strategyType {
-	case appsv1.RollingUpdateStatefulSetStrategyType:
-		if rollout.RollingUpdate != nil {
-			if rollout.RollingUpdate.MaxSurge != nil {
-				errors = append(errors, apisv1.ValidationError{
-					Field:   fmt.Sprintf("%s.rollingUpdate.maxSurge", field),
-					Code:    apisv1.ErrCodeInvalidTraitConfig,
-					Message: "statefulset rollout does not support rollingUpdate.maxSurge",
-				})
-			}
-			errors = append(errors, validateIntOrPercent(rollout.RollingUpdate.MaxUnavailable, fmt.Sprintf("%s.rollingUpdate.maxUnavailable", field))...)
-			if rollout.RollingUpdate.MaxUnavailable != nil && intOrPercentIsZero(rollout.RollingUpdate.MaxUnavailable) {
-				errors = append(errors, apisv1.ValidationError{
-					Field:   fmt.Sprintf("%s.rollingUpdate.maxUnavailable", field),
-					Code:    apisv1.ErrCodeInvalidTraitConfig,
-					Message: "statefulset rollout maxUnavailable must be greater than 0",
-				})
-			}
-			if rollout.RollingUpdate.Partition != nil && *rollout.RollingUpdate.Partition < 0 {
-				errors = append(errors, apisv1.ValidationError{
-					Field:   fmt.Sprintf("%s.rollingUpdate.partition", field),
-					Code:    apisv1.ErrCodeInvalidTraitConfig,
-					Message: "statefulset rollout partition must be greater than or equal to 0",
-				})
-			}
-		}
-	case appsv1.OnDeleteStatefulSetStrategyType:
-		if rollout.RollingUpdate != nil {
-			errors = append(errors, apisv1.ValidationError{
-				Field:   fmt.Sprintf("%s.rollingUpdate", field),
-				Code:    apisv1.ErrCodeInvalidTraitConfig,
-				Message: "statefulset rollout type OnDelete does not support rollingUpdate",
-			})
-		}
-	case "":
-		errors = append(errors, apisv1.ValidationError{
-			Field:   fmt.Sprintf("%s.type", field),
-			Code:    apisv1.ErrCodeMissingRequiredField,
-			Message: "rollout type is required",
-		})
-	default:
-		errors = append(errors, apisv1.ValidationError{
-			Field:   fmt.Sprintf("%s.type", field),
-			Code:    apisv1.ErrCodeInvalidTraitConfig,
-			Message: fmt.Sprintf("invalid statefulset rollout type: %s, must be one of: RollingUpdate, OnDelete", rollout.Type),
-		})
-	}
-	return errors
-}
-
-func validateIntOrPercent(value *intstr.IntOrString, field string) []apisv1.ValidationError {
-	if value == nil {
-		return nil
-	}
-	if !intOrPercentValid(value) {
-		return []apisv1.ValidationError{{
-			Field:   field,
-			Code:    apisv1.ErrCodeInvalidTraitConfig,
-			Message: "value must be a non-negative JSON integer or percentage string, for example 1 or \"25%\"",
-		}}
-	}
-	return nil
-}
-
-func intOrPercentValid(value *intstr.IntOrString) bool {
-	switch value.Type {
-	case intstr.Int:
-		return value.IntVal >= 0
-	case intstr.String:
-		parsed, ok := parsePercentString(value.StrVal)
-		return ok && parsed >= 0
-	default:
-		return false
-	}
-}
-
-func parsePercentString(raw string) (int, bool) {
-	value := strings.TrimSpace(raw)
-	if value == "" || !strings.HasSuffix(value, "%") {
-		return 0, false
-	}
-	number := strings.TrimSuffix(value, "%")
-	if number == "" {
-		return 0, false
-	}
-	parsed, err := strconv.Atoi(number)
-	return parsed, err == nil
-}
-
-func intOrPercentIsZero(value *intstr.IntOrString) bool {
-	if value == nil {
-		return false
-	}
-	switch value.Type {
-	case intstr.Int:
-		return value.IntVal == 0
-	case intstr.String:
-		parsed, ok := parsePercentString(value.StrVal)
-		return ok && parsed == 0
-	default:
-		return false
-	}
 }
 
 // validateStorageTrait validates a storage trait
