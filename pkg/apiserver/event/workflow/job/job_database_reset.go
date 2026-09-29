@@ -761,7 +761,7 @@ func (c *DatabaseResetJobCtl) markComponentRuntime(ctx context.Context, componen
 	component.Status = string(status)
 	component.ReadyReplicas = readyReplicas
 	component.LastAbnormal = lastAbnormal
-	invalidateComponentsCache(c.runtime, component.AppID, "database reset status sync")
+	invalidateComponentsCache(ctx, c.runtime, component.AppID, "database reset status sync")
 	return nil
 }
 

@@ -71,7 +71,7 @@ func (c *applicationsServiceImpl) cleanupApplicationResourcesUnlocked(
 	}
 	defer func() {
 		c.invalidateApplicationListCaches(ctx)
-		c.invalidateApplicationComponentsCache(app.ID)
+		c.invalidateApplicationComponentsCache(ctx, app.ID)
 	}()
 	startTime := time.Now().Unix()
 	components, err := c.ComponentRepo.FindByAppID(ctx, app.ID)

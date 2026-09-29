@@ -55,7 +55,7 @@ func (c *applicationsServiceImpl) restartApplicationWorkloadsLocked(ctx context.
 	if err != nil {
 		return nil, err
 	}
-	defer c.invalidateApplicationComponentsCache(app.ID)
+	defer c.invalidateApplicationComponentsCache(ctx, app.ID)
 	startTime := time.Now().Unix()
 	components, err := c.ComponentRepo.FindByAppID(ctx, app.ID)
 	if err != nil {

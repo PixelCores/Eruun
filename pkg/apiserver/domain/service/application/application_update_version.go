@@ -50,7 +50,7 @@ func (c *applicationsServiceImpl) updateVersionUnlocked(ctx context.Context, app
 	}
 	defer func() {
 		c.invalidateApplicationListCaches(ctx)
-		c.invalidateApplicationComponentsCache(app.ID)
+		c.invalidateApplicationComponentsCache(ctx, app.ID)
 	}()
 
 	run, err := c.prepareVersionUpdateRun(ctx, app, req)

@@ -43,7 +43,7 @@ func newTestWorkflowController(t *testing.T, task *model.WorkflowQueue, client k
 		nil,
 		store,
 		&config.Config{AllowPrivateURLTargets: true},
-		nil,
+		nil, nil,
 		&spec.URLSecurityPolicySpec{AllowPrivateByDefault: true},
 	)
 	require.NoError(t, err)

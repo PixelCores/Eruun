@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/redis/go-redis/v9"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
@@ -100,13 +101,14 @@ func (o ListApplicationsOptions) NormalizedPage() int {
 }
 
 type applicationsServiceImpl struct {
-	KubeClient                kubernetes.Interface `inject:"kubeClient"`
-	KubeConfig                *rest.Config         `inject:"kubeConfig"`
-	Store                     datastore.DataStore  `inject:"datastore"`
-	Cache                     cache.ICache         `inject:"cache"`
-	Cfg                       *config.Config       `inject:""`
-	URLSecurityPolicyProvider *urlpolicy.Provider  `inject:""`
-	ScheduleLocker            locker.Locker
+	KubeClient                kubernetes.Interface               `inject:"kubeClient"`
+	KubeConfig                *rest.Config                       `inject:"kubeConfig"`
+	Store                     datastore.DataStore                `inject:"datastore"`
+	Cache                     cache.ICache                       `inject:"cache"`
+	RedisClient               *redis.Client                      `inject:"redisClient"`
+	Cfg                       *config.Config                     `inject:""`
+	URLSecurityPolicyProvider *urlpolicy.Provider                `inject:""`
+	ScheduleLocker            locker.Locker                      `inject:"appScheduleLocker"`
 	AppRepo                   repository.ApplicationRepository   `inject:""`
 	WorkflowRepo              repository.WorkflowRepository      `inject:""`
 	ComponentRepo             repository.ComponentRepository     `inject:""`
@@ -345,7 +347,7 @@ func (c *applicationsServiceImpl) createApplications(
 	base := assembler.ConvertAppModelToBase(application, workflow.ID)
 	base.Resources = summarizeApplicationResourcesFromCreateComponents(resolvedComponents)
 	c.invalidateApplicationListCaches(ctx)
-	c.invalidateApplicationComponentsCache(application.ID)
+	c.invalidateApplicationComponentsCache(ctx, application.ID)
 	return base, nil
 }
 

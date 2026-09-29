@@ -120,6 +120,7 @@ type concurrentStatusSyncStore struct {
 	casRelease     chan struct{}
 	casStartedOnce sync.Once
 	casCalls       int
+	afterCAS       func()
 }
 
 func newConcurrentStatusSyncStore(component model.ApplicationComponent) *concurrentStatusSyncStore {
@@ -177,6 +178,9 @@ func (s *concurrentStatusSyncStore) CompareAndSwapWithConditions(ctx context.Con
 		}
 	}
 	s.component.UpdateTime = time.Now()
+	if s.afterCAS != nil {
+		s.afterCAS()
+	}
 	return true, nil
 }
 
@@ -304,7 +308,7 @@ func TestSyncComponentStatusSkipsWhenComponentIDNotFound(t *testing.T) {
 	}
 	componentCache := cache.NewMemCache(false)
 	cacheKey := cache.ApplicationComponentsKey("app-1")
-	require.NoError(t, componentCache.Store(cacheKey, "stale components"))
+	require.NoError(t, componentCache.Store(context.Background(), cacheKey, "stale components"))
 
 	readyReplicas := int32(1)
 	SyncComponentStatus(t.Context(), store, componentCache, &informer.ComponentStatusUpdate{
@@ -319,7 +323,7 @@ func TestSyncComponentStatusSkipsWhenComponentIDNotFound(t *testing.T) {
 	require.Empty(t, store.listQuery.Name)
 	require.Equal(t, 0, store.casCalls)
 	require.Nil(t, store.casComp)
-	require.False(t, componentCache.Exists(cacheKey))
+	require.False(t, componentCache.Exists(context.Background(), cacheKey))
 }
 
 func TestSyncComponentStatusSkipsStoppedComponent(t *testing.T) {
@@ -336,7 +340,7 @@ func TestSyncComponentStatusSkipsStoppedComponent(t *testing.T) {
 	}
 	componentCache := cache.NewMemCache(false)
 	cacheKey := cache.ApplicationComponentsKey("app-1")
-	require.NoError(t, componentCache.Store(cacheKey, "stale components"))
+	require.NoError(t, componentCache.Store(context.Background(), cacheKey, "stale components"))
 
 	status := config.ComponentStatusUnknown
 	readyReplicas := int32(0)
@@ -352,7 +356,7 @@ func TestSyncComponentStatusSkipsStoppedComponent(t *testing.T) {
 
 	require.Equal(t, 0, store.casCalls)
 	require.Nil(t, store.casComp)
-	require.False(t, componentCache.Exists(cacheKey))
+	require.False(t, componentCache.Exists(context.Background(), cacheKey))
 }
 
 func TestSyncComponentStatusDropsNoChangeConflictWithoutRetry(t *testing.T) {
@@ -372,7 +376,7 @@ func TestSyncComponentStatusDropsNoChangeConflictWithoutRetry(t *testing.T) {
 	}
 	componentCache := cache.NewMemCache(false)
 	cacheKey := cache.ApplicationComponentsKey("app-1")
-	require.NoError(t, componentCache.Store(cacheKey, "stale components"))
+	require.NoError(t, componentCache.Store(context.Background(), cacheKey, "stale components"))
 
 	status := config.ComponentStatusPending
 	readyReplicas := int32(0)
@@ -385,7 +389,7 @@ func TestSyncComponentStatusDropsNoChangeConflictWithoutRetry(t *testing.T) {
 	})
 
 	require.Equal(t, 1, store.casCalls)
-	require.False(t, componentCache.Exists(cacheKey))
+	require.False(t, componentCache.Exists(context.Background(), cacheKey))
 }
 
 func TestSyncComponentStatusConcurrentStoppedWriteWinsOverInformer(t *testing.T) {
@@ -399,7 +403,7 @@ func TestSyncComponentStatusConcurrentStoppedWriteWinsOverInformer(t *testing.T)
 	})
 	componentCache := cache.NewMemCache(false)
 	cacheKey := cache.ApplicationComponentsKey("app-1")
-	require.NoError(t, componentCache.Store(cacheKey, "stale components"))
+	require.NoError(t, componentCache.Store(context.Background(), cacheKey, "stale components"))
 
 	status := config.ComponentStatusPending
 	readyReplicas := int32(0)
@@ -435,7 +439,7 @@ func TestSyncComponentStatusConcurrentStoppedWriteWinsOverInformer(t *testing.T)
 	require.Equal(t, string(config.ComponentStatusStopped), component.Status)
 	require.Equal(t, int32(0), component.ReadyReplicas)
 	require.Equal(t, 1, store.compareAndSwapCalls())
-	require.False(t, componentCache.Exists(cacheKey))
+	require.False(t, componentCache.Exists(context.Background(), cacheKey))
 }
 
 func TestSyncComponentStatusConcurrentConfigurationWriteDoesNotBlockRuntimeCAS(t *testing.T) {
@@ -458,7 +462,7 @@ func TestSyncComponentStatusConcurrentConfigurationWriteDoesNotBlockRuntimeCAS(t
 	})
 	componentCache := cache.NewMemCache(false)
 	cacheKey := cache.ApplicationComponentsKey("app-1")
-	require.NoError(t, componentCache.Store(cacheKey, "stale components"))
+	require.NoError(t, componentCache.Store(context.Background(), cacheKey, "stale components"))
 
 	status := config.ComponentStatusRunning
 	readyReplicas := int32(1)
@@ -496,7 +500,7 @@ func TestSyncComponentStatusConcurrentConfigurationWriteDoesNotBlockRuntimeCAS(t
 	require.Equal(t, "example/web:v2", component.Image)
 	require.Equal(t, &updatedTraits, component.Traits)
 	require.Equal(t, 1, store.compareAndSwapCalls())
-	require.False(t, componentCache.Exists(cacheKey))
+	require.False(t, componentCache.Exists(context.Background(), cacheKey))
 }
 
 func TestSyncComponentStatusCleaningPodsGoneMarksNotDeployWithZeroValues(t *testing.T) {
@@ -555,7 +559,7 @@ func TestSyncComponentStatusDropsStaleCleaningCompletionWithoutRetry(t *testing.
 	}
 	componentCache := cache.NewMemCache(false)
 	cacheKey := cache.ApplicationComponentsKey("app-1")
-	require.NoError(t, componentCache.Store(cacheKey, "stale components"))
+	require.NoError(t, componentCache.Store(context.Background(), cacheKey, "stale components"))
 
 	replicas := int32(0)
 	SyncComponentStatus(t.Context(), store, componentCache, &informer.ComponentStatusUpdate{
@@ -566,7 +570,7 @@ func TestSyncComponentStatusDropsStaleCleaningCompletionWithoutRetry(t *testing.
 	})
 
 	require.Equal(t, 1, store.casCalls)
-	require.False(t, componentCache.Exists(cacheKey))
+	require.False(t, componentCache.Exists(context.Background(), cacheKey))
 }
 
 func TestSyncComponentStatusFailedRecoveryClearsLastAbnormal(t *testing.T) {
@@ -620,7 +624,7 @@ func TestSyncComponentStatusInvalidatesCacheAfterConcurrentRefill(t *testing.T) 
 	})
 	componentCache := cache.NewMemCache(false)
 	cacheKey := cache.ApplicationComponentsKey("app-1")
-	require.NoError(t, componentCache.Store(cacheKey, "initial components"))
+	require.NoError(t, componentCache.Store(context.Background(), cacheKey, "initial components"))
 
 	status := config.ComponentStatusRunning
 	readyReplicas := int32(1)
@@ -644,7 +648,7 @@ func TestSyncComponentStatusInvalidatesCacheAfterConcurrentRefill(t *testing.T) 
 	case <-time.After(3 * time.Second):
 		t.Fatal("status sync did not reach compare-and-swap")
 	}
-	require.NoError(t, componentCache.Store(cacheKey, "refilled components"))
+	require.NoError(t, componentCache.Store(context.Background(), cacheKey, "refilled components"))
 	releaseCAS()
 	select {
 	case <-done:
@@ -655,7 +659,35 @@ func TestSyncComponentStatusInvalidatesCacheAfterConcurrentRefill(t *testing.T) 
 	component := store.snapshot()
 	require.Equal(t, string(config.ComponentStatusRunning), component.Status)
 	require.Equal(t, int32(1), component.ReadyReplicas)
-	require.False(t, componentCache.Exists(cacheKey))
+	require.False(t, componentCache.Exists(context.Background(), cacheKey))
+}
+
+func TestSyncComponentStatusInvalidatesCacheAfterCommittedWriteCancelsContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	store := newConcurrentStatusSyncStore(model.ApplicationComponent{
+		ID: 7, AppID: "app-1", Name: "web", Replicas: 1,
+		Status: string(config.ComponentStatusPending),
+	})
+	close(store.casRelease)
+	store.afterCAS = cancel
+	componentCache := cache.NewMemCache(false)
+	cacheKey := cache.ApplicationComponentsKey("app-1")
+	require.NoError(t, componentCache.Store(t.Context(), cacheKey, "stale components"))
+	status := config.ComponentStatusRunning
+	readyReplicas := int32(1)
+
+	SyncComponentStatus(ctx, store, componentCache, &informer.ComponentStatusUpdate{
+		AppID: "app-1", ComponentID: 7, ComponentName: "web",
+		Status: &status, ReadyReplicas: &readyReplicas,
+	})
+
+	require.ErrorIs(t, ctx.Err(), context.Canceled)
+	component := store.snapshot()
+	require.Equal(t, string(config.ComponentStatusRunning), component.Status)
+	require.Equal(t, readyReplicas, component.ReadyReplicas)
+	require.Equal(t, 1, store.compareAndSwapCalls())
+	require.False(t, componentCache.Exists(t.Context(), cacheKey), "committed runtime status must invalidate the old snapshot after caller cancellation")
 }
 
 func TestSyncComponentStatusPreservesStartingForNonTerminalInformerStatus(t *testing.T) {

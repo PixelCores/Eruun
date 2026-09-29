@@ -465,7 +465,7 @@ func (c *VersionRestartJobCtl) markComponentRuntime(ctx context.Context, compone
 	component.Status = string(status)
 	component.ReadyReplicas = readyReplicas
 	component.LastAbnormal = lastAbnormal
-	invalidateComponentsCache(c.runtime, component.AppID, "version restart status sync")
+	invalidateComponentsCache(ctx, c.runtime, component.AppID, "version restart status sync")
 	return nil
 }
 

@@ -17,7 +17,7 @@ import (
 )
 
 func TestNewWorkflowControllerRequiresURLSecurityPolicy(t *testing.T) {
-	ctl, err := NewWorkflowController(&model.WorkflowQueue{TaskID: "task-1"}, nil, nil, &controllerTestStore{}, nil, nil, nil)
+	ctl, err := NewWorkflowController(&model.WorkflowQueue{TaskID: "task-1"}, nil, nil, &controllerTestStore{}, nil, nil, nil, nil)
 	require.Nil(t, ctl)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "url security policy is required")
@@ -37,7 +37,7 @@ func TestNewWorkflowControllerLoadsImportSecretKeyring(t *testing.T) {
 		nil,
 		&controllerTestStore{},
 		cfg,
-		nil,
+		nil, nil,
 		&spec.URLSecurityPolicySpec{},
 	)
 	require.NoError(t, err)
@@ -52,7 +52,7 @@ func TestNewWorkflowControllerRejectsInvalidImportSecretKeyring(t *testing.T) {
 		nil,
 		&controllerTestStore{},
 		&config.Config{ImportSecretKeyring: `{"activeKeyId":"missing","keys":{}}`},
-		nil,
+		nil, nil,
 		&spec.URLSecurityPolicySpec{},
 	)
 	require.Nil(t, ctl)

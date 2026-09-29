@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -256,8 +255,8 @@ func TestReadinessCheckAPIRedisOutageAndRecovery(t *testing.T) {
 			t.Cleanup(func() { require.NoError(t, redisClient.Close()) })
 
 			h := &health{
-				Cache:   cache.NewRedisICacheWithClient(redisClient, false),
-				Runtime: mockRuntimeReadiness{ready: true},
+				RedisClient: redisClient,
+				Runtime:     mockRuntimeReadiness{ready: true},
 				Cfg: &config.Config{
 					Role:      config.RuntimeRoleAPI,
 					Messaging: config.MessagingConfig{Type: backend},
@@ -307,26 +306,16 @@ func TestReadinessCheckAPIRedisOutageAndRecovery(t *testing.T) {
 func TestReadinessCheckAPIRequiresRedisClient(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	for _, tc := range []struct {
-		name  string
-		cache cache.ICache
-	}{
-		{name: "missing cache"},
-		{name: "missing redis client", cache: cache.NewMemCache(false)},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			h := &health{Cache: tc.cache, Cfg: config.NewConfig()}
-			r := gin.New()
-			r.GET("/ready", h.readinessCheck)
-			resp := httptest.NewRecorder()
-			r.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/ready", nil))
+	h := &health{Cfg: config.NewConfig()}
+	r := gin.New()
+	r.GET("/ready", h.readinessCheck)
+	resp := httptest.NewRecorder()
+	r.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/ready", nil))
 
-			require.Equal(t, http.StatusServiceUnavailable, resp.Code)
-			envelope := decodeResponse(t, resp.Body.Bytes(), nil)
-			require.Equal(t, bcode.ErrServiceUnavailable.BusinessCode, envelope.Code)
-			require.Equal(t, "not ready: redis client is not configured", envelope.Message)
-		})
-	}
+	require.Equal(t, http.StatusServiceUnavailable, resp.Code)
+	envelope := decodeResponse(t, resp.Body.Bytes(), nil)
+	require.Equal(t, bcode.ErrServiceUnavailable.BusinessCode, envelope.Code)
+	require.Equal(t, "not ready: redis client is not configured", envelope.Message)
 }
 
 func TestReadinessCheckControllerRequiresOnlyDelayAndResultQueues(t *testing.T) {

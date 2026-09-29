@@ -16,7 +16,10 @@ import (
 type applicationMutationLockContextKey struct{}
 
 func (c *applicationsServiceImpl) appScheduleLocker() (locker.Locker, error) {
-	return schedulelock.ResolveAppScheduleLocker(c.ScheduleLocker, c.Cache)
+	if c.ScheduleLocker == nil {
+		return nil, bcode.ErrDistributedLockUnavailable
+	}
+	return c.ScheduleLocker, nil
 }
 
 func applicationMutationLockHeld(ctx context.Context, appID string) bool {

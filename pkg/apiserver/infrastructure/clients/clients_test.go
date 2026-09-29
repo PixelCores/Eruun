@@ -639,6 +639,7 @@ func TestNewRedisClientPreservesTimeoutAndRetryDefaults(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, client.Close()) })
 
 	options := client.Options()
+	require.True(t, options.ContextTimeoutEnabled)
 	require.Equal(t, 3*time.Second, options.ReadTimeout)
 	require.Equal(t, 3*time.Second, options.WriteTimeout)
 	require.Equal(t, 8*time.Millisecond, options.MinRetryBackoff)

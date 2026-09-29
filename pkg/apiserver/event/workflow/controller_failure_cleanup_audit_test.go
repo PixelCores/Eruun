@@ -13,7 +13,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
-	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	miniredis "github.com/alicebob/miniredis/v2"
 	redis "github.com/redis/go-redis/v9"
@@ -131,7 +130,7 @@ func TestWorkflowRunStopsFailureCleanupWhenPersistenceStops(t *testing.T) {
 			defer redisServer.Close()
 			redisClient := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
 			defer redisClient.Close()
-			ctl.Cache = cacheutil.NewMemCacheWithClient(false, redisClient)
+			ctl.RedisClient = redisClient
 
 			runErr := ctl.run(context.Background(), 1)
 

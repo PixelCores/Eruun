@@ -161,7 +161,7 @@ func TestDeleteApplicationCascadeBypassesPendingCleanupWithoutNestedLock(t *test
 		ComponentRepo:     &cascadeComponentRepo{store: store},
 		WorkflowQueueRepo: &mockWorkflowQueueRepo{},
 		ScheduleLocker:    locker.NewMemoryLocker("test-app-schedule"),
-		Cache:             newTestApplicationDeleteCancelSignalCache(t),
+		RedisClient:       newTestApplicationDeleteCancelSignalClient(t),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{

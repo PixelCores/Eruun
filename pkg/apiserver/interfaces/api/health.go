@@ -9,12 +9,12 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	"github.com/redis/go-redis/v9"
 )
 
 var checkKafkaReadiness = clients.CheckKafkaReadiness
@@ -27,11 +27,11 @@ type RuntimeReadiness interface {
 
 // health provides health check endpoints for Kubernetes probes.
 type health struct {
-	Queues   *msg.RuntimeQueues      `inject:""`
-	Cache    cache.ICache            `inject:"cache"`
-	Cfg      *config.Config          `inject:""`
-	Runtime  RuntimeReadiness        `inject:"runtimeReadiness"`
-	Database datastore.DatabaseClock `inject:"datastore"`
+	Queues      *msg.RuntimeQueues      `inject:""`
+	RedisClient *redis.Client           `inject:"redisClient"`
+	Cfg         *config.Config          `inject:""`
+	Runtime     RuntimeReadiness        `inject:"runtimeReadiness"`
+	Database    datastore.DatabaseClock `inject:"datastore"`
 }
 
 // GetName returns the API name for registration.
@@ -77,11 +77,11 @@ func (h *health) readinessCheck(c *gin.Context) {
 	}
 	if h.Cfg != nil && h.Cfg.RunsAPI() {
 		// API mutations require Redis locks and cancellation signals even without queues.
-		if h.Cache == nil || h.Cache.GetRedisClient() == nil {
+		if h.RedisClient == nil {
 			apiresponse.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: redis client is not configured")
 			return
 		}
-		if err := h.Cache.GetRedisClient().Ping(ctx).Err(); err != nil {
+		if err := h.RedisClient.Ping(ctx).Err(); err != nil {
 			klog.V(4).InfoS("readiness check failed", "dependency", "redis", "err", err)
 			apiresponse.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: redis connection failed")
 			return

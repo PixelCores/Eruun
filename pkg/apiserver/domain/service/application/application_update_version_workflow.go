@@ -111,7 +111,7 @@ func (c *applicationsServiceImpl) MarkInitialDeployingWorkflowComponents(ctx con
 		changed = true
 	}
 	if changed {
-		c.invalidateApplicationComponentsCache(appID)
+		c.invalidateApplicationComponentsCache(ctx, appID)
 	}
 	return nil
 }

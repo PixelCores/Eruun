@@ -59,7 +59,7 @@ func TestRunJobsSerialContinuesWhenStopOnFailureFalse(t *testing.T) {
 		{Name: "second", JobType: "unknown"},
 	}
 
-	RunJobs(context.Background(), jobs, 1, nil, nil, &noopStore{}, func() {}, false, nil, nil, nil, nil, nil)
+	RunJobs(context.Background(), jobs, 1, nil, nil, &noopStore{}, func() {}, false, nil, nil, nil, nil, nil, nil)
 
 	require.Equal(t, config.StatusFailed, jobs[0].Status)
 	require.Equal(t, config.StatusFailed, jobs[1].Status)
@@ -71,7 +71,7 @@ func TestRunJobsSerialStopsWhenStopOnFailureTrue(t *testing.T) {
 		{Name: "second", JobType: "unknown"},
 	}
 
-	RunJobs(context.Background(), jobs, 1, nil, nil, &noopStore{}, func() {}, true, nil, nil, nil, nil, nil)
+	RunJobs(context.Background(), jobs, 1, nil, nil, &noopStore{}, func() {}, true, nil, nil, nil, nil, nil, nil)
 
 	require.Equal(t, config.StatusFailed, jobs[0].Status)
 	require.Empty(t, jobs[1].Status)
@@ -100,7 +100,7 @@ func TestRunJobsSerialStopsWhenAckCancelsContext(t *testing.T) {
 		{Name: "second", JobType: "unknown"},
 	}
 
-	RunJobs(ctx, jobs, 1, fake.NewSimpleClientset(), nil, store, cancel, false, nil, nil, nil, nil, nil)
+	RunJobs(ctx, jobs, 1, fake.NewSimpleClientset(), nil, store, cancel, false, nil, nil, nil, nil, nil, nil)
 
 	require.Equal(t, config.StatusCancelled, jobs[0].Status)
 	require.Empty(t, jobs[1].Status)
@@ -145,7 +145,7 @@ func TestRunJobsReturnsInfrastructureStopWhenDistributedCheckpointFails(t *testi
 				store,
 				func() {},
 				false,
-				nil,
+				nil, nil,
 				nil,
 				queue,
 				nil,
@@ -185,7 +185,7 @@ func TestRunJobsReturnsInfrastructureStopWhenStartOwnershipTransactionFails(t *t
 	client := fake.NewSimpleClientset()
 	ackCount := 0
 
-	err := RunJobs(context.Background(), []*model.JobTask{task}, 1, client, nil, store, func() { ackCount++ }, true, nil, nil, nil, nil, nil)
+	err := RunJobs(context.Background(), []*model.JobTask{task}, 1, client, nil, store, func() { ackCount++ }, true, nil, nil, nil, nil, nil, nil)
 
 	require.ErrorIs(t, err, signal.ErrInfrastructureStop)
 	require.ErrorIs(t, err, transactionErr)
@@ -237,7 +237,7 @@ func TestRunJobsReturnsInfrastructureStopWhenTerminalPersistenceFails(t *testing
 					tx.AddError(persistErr)
 				}
 			}))
-			err = RunJobs(context.Background(), []*model.JobTask{task}, concurrency, fake.NewSimpleClientset(), nil, store, func() {}, true, nil, nil, nil, nil, nil)
+			err = RunJobs(context.Background(), []*model.JobTask{task}, concurrency, fake.NewSimpleClientset(), nil, store, func() {}, true, nil, nil, nil, nil, nil, nil)
 
 			require.ErrorIs(t, err, signal.ErrInfrastructureStop)
 			require.ErrorContains(t, err, persistErr.Error())
@@ -321,7 +321,7 @@ func TestRunJobsKeepsLegacyTerminalPersistenceBestEffort(t *testing.T) {
 		}},
 	}
 
-	err := RunJobs(context.Background(), []*model.JobTask{task}, 1, fake.NewSimpleClientset(), nil, store, func() {}, true, nil, nil, nil, nil, nil)
+	err := RunJobs(context.Background(), []*model.JobTask{task}, 1, fake.NewSimpleClientset(), nil, store, func() {}, true, nil, nil, nil, nil, nil, nil)
 
 	require.NoError(t, err)
 	require.Equal(t, config.StatusCompleted, task.Status)
@@ -364,7 +364,7 @@ func TestRunJobsReturnsTerminalCallbackPersistenceFailureWithoutWorker(t *testin
 			}))
 			result := make(chan error, 1)
 			go func() {
-				result <- RunJobs(ctx, []*model.JobTask{task}, concurrency, nil, nil, store, func() {}, true, nil, &spec.URLSecurityPolicySpec{AllowPrivateByDefault: true}, nil, nil, nil)
+				result <- RunJobs(ctx, []*model.JobTask{task}, concurrency, nil, nil, store, func() {}, true, nil, nil, &spec.URLSecurityPolicySpec{AllowPrivateByDefault: true}, nil, nil, nil)
 			}()
 			require.Eventually(t, func() bool {
 				var count int64
@@ -413,7 +413,7 @@ func TestRunJobsInfrastructureStopDoesNotPersistCancelledState(t *testing.T) {
 		cancel(signal.ErrInfrastructureStop)
 	}
 
-	RunJobs(ctx, jobs, 1, fake.NewSimpleClientset(), nil, store, ack, false, nil, nil, nil, nil, nil)
+	RunJobs(ctx, jobs, 1, fake.NewSimpleClientset(), nil, store, ack, false, nil, nil, nil, nil, nil, nil)
 
 	require.Equal(t, config.StatusPrepare, jobs[0].Status)
 	require.Empty(t, jobs[0].Error)
@@ -429,7 +429,7 @@ func TestRunJobsParallelDoesNotStartJobsWithCancelledContext(t *testing.T) {
 		{Name: "second", JobType: "unknown"},
 	}
 
-	RunJobs(ctx, jobs, 2, nil, nil, &noopStore{}, func() {}, false, nil, nil, nil, nil, nil)
+	RunJobs(ctx, jobs, 2, nil, nil, &noopStore{}, func() {}, false, nil, nil, nil, nil, nil, nil)
 
 	require.Empty(t, jobs[0].Status)
 	require.Empty(t, jobs[1].Status)

@@ -30,7 +30,6 @@ import (
 	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 	validationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/validation"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	assembler "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/assembler/v1"
@@ -185,11 +184,10 @@ type applicationCreator interface {
 }
 
 type serviceImpl struct {
-	Cfg                *config.Config       `inject:""`
-	KubeClient         kubernetes.Interface `inject:"kubeClient"`
-	Store              datastore.DataStore  `inject:"datastore"`
-	Cache              cache.ICache         `inject:"cache"`
-	ManagementLocker   locker.Locker
+	Cfg                *config.Config                   `inject:""`
+	KubeClient         kubernetes.Interface             `inject:"kubeClient"`
+	Store              datastore.DataStore              `inject:"datastore"`
+	ManagementLocker   locker.Locker                    `inject:"managementLocker"`
 	ApplicationService applicationCreator               `inject:""`
 	ValidationService  ValidationService                `inject:""`
 	AppRepo            repository.ApplicationRepository `inject:""`
