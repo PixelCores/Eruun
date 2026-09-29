@@ -378,7 +378,7 @@ func (c *Config) AddFlags(fs *pflag.FlagSet, configParameter *Config) {
 	fs.IntVar(&c.Messaging.KafkaTopicPartitions, "msg-kafka-topic-partitions", configParameter.Messaging.KafkaTopicPartitions, "kafka topic partitions for auto-created topics (must be > 0)")
 	fs.IntVar(&c.Messaging.KafkaTopicReplicationFactor, "msg-kafka-topic-replication-factor", configParameter.Messaging.KafkaTopicReplicationFactor, "kafka topic replication factor for auto-created topics (must be > 0)")
 	// cache-specific flags
-	fs.StringVar(&c.Cache.CacheType, "cache-type", configParameter.Cache.CacheType, "cache backend type (redis|memory)")
+	fs.StringVar(&c.Cache.CacheType, "cache-type", configParameter.Cache.CacheType, "cache backend type (redis only)")
 	fs.StringVar(&c.Cache.CacheHost, "cache-host", configParameter.Cache.CacheHost, "cache host for redis backend")
 	fs.IntVar(&c.Cache.CacheProt, "cache-port", configParameter.Cache.CacheProt, "cache port for redis backend")
 	fs.Int64Var(&c.Cache.CacheDB, "cache-db", configParameter.Cache.CacheDB, "cache database index for redis backend")

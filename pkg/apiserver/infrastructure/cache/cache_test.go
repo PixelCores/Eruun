@@ -132,11 +132,24 @@ func newTestRedisClient(t *testing.T) (*miniredis.Miniredis, *redis.Client) {
 	return s, cli
 }
 
+func newTestRedisCache(t *testing.T, cli *redis.Client, noCache bool) ICache {
+	t.Helper()
+	c, err := NewRedisICache(cli, noCache, 0, "")
+	require.NoError(t, err)
+	return c
+}
+
+func TestNewRedisICacheRequiresClient(t *testing.T) {
+	c, err := NewRedisICache(nil, false, 0, "")
+	require.Nil(t, c)
+	require.ErrorContains(t, err, "redis cache client is not initialized")
+}
+
 func TestRedisICache_Basic(t *testing.T) {
 	s, cli := newTestRedisClient(t)
 	defer s.Close()
 
-	c := NewRedisICacheWithClient(cli, false)
+	c := newTestRedisCache(t, cli, false)
 	require.NoError(t, c.Store(context.Background(), "k", "v"))
 
 	require.True(t, c.Exists(context.Background(), "k"))
@@ -149,7 +162,7 @@ func TestRedisICache_List(t *testing.T) {
 	s, cli := newTestRedisClient(t)
 	defer s.Close()
 
-	c := NewRedisICacheWithClient(cli, false)
+	c := newTestRedisCache(t, cli, false)
 	require.NoError(t, c.Store(context.Background(), "k1", "v1"))
 	require.NoError(t, c.Store(context.Background(), "k2", "v2"))
 
@@ -167,7 +180,7 @@ func TestRedisICache_Delete(t *testing.T) {
 	s, cli := newTestRedisClient(t)
 	defer s.Close()
 
-	c := NewRedisICacheWithClient(cli, false)
+	c := newTestRedisCache(t, cli, false)
 	require.NoError(t, c.Store(context.Background(), "k", "v"))
 	require.True(t, c.Exists(context.Background(), "k"))
 	require.NoError(t, c.Delete(context.Background(), "k"))
@@ -181,7 +194,7 @@ func TestRedisICache_Consume(t *testing.T) {
 	s, cli := newTestRedisClient(t)
 	defer s.Close()
 
-	c := NewRedisICacheWithClient(cli, false)
+	c := newTestRedisCache(t, cli, false)
 	require.NoError(t, c.Store(context.Background(), "k", "v"))
 	value, err := c.Consume(context.Background(), "k")
 	require.NoError(t, err)
@@ -194,7 +207,7 @@ func TestRedisICache_Consume(t *testing.T) {
 func TestRedisICache_NoCacheFlag(t *testing.T) {
 	s, cli := newTestRedisClient(t)
 	defer s.Close()
-	c := NewRedisICacheWithClient(cli, true)
+	c := newTestRedisCache(t, cli, true)
 	require.True(t, c.IsCacheDisabled())
 }
 
@@ -203,7 +216,8 @@ func TestRedisICache_CustomTTLAndPrefix(t *testing.T) {
 	defer s.Close()
 	ttl := 2 * time.Second
 	prefix := "t:"
-	c := NewRedisICache(cli, false, ttl, prefix).(*RedisICache)
+	c, err := NewRedisICache(cli, false, ttl, prefix)
+	require.NoError(t, err)
 	require.NoError(t, c.Store(context.Background(), "kk", "vv"))
 
 	ctx := context.Background()
@@ -241,7 +255,7 @@ func TestRedisICacheCancelledWhileWaitingForConnection(t *testing.T) {
 			timer := time.AfterFunc(30*time.Millisecond, cancel)
 			defer timer.Stop()
 			start := time.Now()
-			err := operation.run(ctx, NewRedisICacheWithClient(cli, false))
+			err := operation.run(ctx, newTestRedisCache(t, cli, false))
 			require.ErrorIs(t, err, context.Canceled)
 			require.Less(t, time.Since(start), time.Second)
 		})
@@ -266,7 +280,7 @@ func TestRedisICacheReadRespectsCallerDeadline(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	_, err := NewRedisICacheWithClient(cli, false).Load(ctx, "k")
+	_, err := newTestRedisCache(t, cli, false).Load(ctx, "k")
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Less(t, time.Since(start), time.Second)
 	select {
@@ -313,7 +327,7 @@ func TestInvalidateAfterWritePreservesValuesAndDeletesStaleData(t *testing.T) {
 					srv := miniredis.RunT(t)
 					cli := redis.NewClient(&redis.Options{Addr: srv.Addr(), ContextTimeoutEnabled: true})
 					t.Cleanup(func() { require.NoError(t, cli.Close()) })
-					c = NewRedisICacheWithClient(cli, false)
+					c = newTestRedisCache(t, cli, false)
 				}
 				require.NoError(t, c.Store(t.Context(), "changed", "stale"))
 				require.NoError(t, c.Store(t.Context(), "unrelated", "current"))

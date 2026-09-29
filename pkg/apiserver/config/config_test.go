@@ -407,6 +407,21 @@ func TestValidateApplicationMutationLockRequiresRedisCacheType(t *testing.T) {
 	require.Contains(t, errorsJoin(errs), "distributed application mutation locking requires cache-type=redis")
 }
 
+func TestCacheTypeFlagRejectsUnsupportedEnvironmentValue(t *testing.T) {
+	cfg := NewConfig()
+	cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
+	flags := pflag.NewFlagSet("cache-config", pflag.ContinueOnError)
+	cfg.AddFlags(flags, cfg)
+	cacheTypeFlag := flags.Lookup("cache-type")
+	require.NotNil(t, cacheTypeFlag)
+	require.Contains(t, cacheTypeFlag.Usage, "redis")
+	require.NotContains(t, cacheTypeFlag.Usage, "memory")
+	t.Setenv("ERUUN_CACHE_TYPE", "memory")
+	require.NoError(t, flags.Parse(nil))
+	require.NoError(t, ApplyEnvOverrides(flags, EnvPrefix))
+	require.Contains(t, errorsJoin(cfg.Validate()), "requires cache-type=redis")
+}
+
 func TestValidateApplicationMutationLockTrimsRedisCacheType(t *testing.T) {
 	cfg := NewConfig()
 	cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"

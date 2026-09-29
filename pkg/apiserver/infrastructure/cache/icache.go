@@ -6,8 +6,6 @@ package cache
 import (
 	"context"
 	"time"
-
-	"github.com/redis/go-redis/v9"
 )
 
 // ICache defines the interface for cache operations.
@@ -31,28 +29,4 @@ func InvalidateAfterWrite(ctx context.Context, c ICache, key string) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), defaultOpTimeout)
 	defer cancel()
 	return c.Delete(ctx, key)
-}
-
-type CacheType string
-
-var (
-	CacheTypeRedis CacheType = "redis"
-	CacheTypeMem   CacheType = "memory"
-)
-
-func New(noCache bool, cacheType CacheType) ICache {
-	return NewWithClient(noCache, cacheType, nil)
-}
-
-// NewWithClient creates the selected cache implementation.
-func NewWithClient(noCache bool, cacheType CacheType, cli *redis.Client) ICache {
-	switch cacheType {
-	case CacheTypeMem:
-		return NewMemCache(noCache)
-	case CacheTypeRedis:
-		return NewRedisICacheWithClient(cli, noCache)
-
-	default:
-		return NewMemCache(noCache)
-	}
 }

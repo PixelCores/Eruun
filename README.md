@@ -217,6 +217,8 @@ Configure the server through flags or `ERUUN_` environment variables; for exampl
 | `ERUUN_AUTH_CONFIG_FILE` | Account, session, and workspace policy JSON |
 | `ERUUN_JOBS_CONFIG_FILE` | Enables the Harbor Runner and optional MinIO; use the same configuration for all four roles |
 
+Redis is required for cache, authentication, and coordination in all four long-running roles (`api`, `controller`, `scheduler`, `worker`). For these roles, `--cache-type` / `ERUUN_CACHE_TYPE` accepts only `redis`; `memory` fails startup validation. In `--datastore-schema-mode=migrate-only`, validation checks only datastore configuration.
+
 Local source development requires Go 1.27, plus GNU Make when using Make targets. Start and configure MySQL, Redis, and optional Kafka using the [local dependencies guide](docs/local-docker-dependencies.md), prepare account configuration and Kubernetes access, then start the API:
 
 ```bash

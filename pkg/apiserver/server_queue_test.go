@@ -546,12 +546,10 @@ func TestInitRedisClientForConfiguredBackendsFailsRedisCache(t *testing.T) {
 	require.Contains(t, err.Error(), "init redis client for configured redis backend")
 }
 
-func TestAuthenticationRequiresRedisWithMemoryCacheAndKafka(t *testing.T) {
+func TestInitRedisClientForConfiguredBackendsRejectsMissingClient(t *testing.T) {
 	oldNewRedisClient := newRedisClient
-	called := false
 	newRedisClient = func(config.RedisCacheConfig) (*redis.Client, error) {
-		called = true
-		return redis.NewClient(&redis.Options{Addr: "127.0.0.1:0"}), nil
+		return nil, nil
 	}
 	t.Cleanup(func() {
 		newRedisClient = oldNewRedisClient
@@ -559,15 +557,13 @@ func TestAuthenticationRequiresRedisWithMemoryCacheAndKafka(t *testing.T) {
 
 	server := &restServer{
 		cfg: config.Config{
-			Cache:     config.RedisCacheConfig{CacheType: "memory"},
+			Cache:     config.RedisCacheConfig{CacheType: "redis"},
 			Messaging: config.MessagingConfig{Type: "kafka"},
 		},
 	}
 	client, err := server.initRedisClientForConfiguredBackends()
-	require.NoError(t, err)
-	require.NotNil(t, client)
-	t.Cleanup(func() { _ = client.Close() })
-	require.True(t, called)
+	require.Nil(t, client)
+	require.ErrorContains(t, err, "redis client is not initialized")
 }
 
 func TestInitRedisClientForConfiguredBackendsUsesRedisForCache(t *testing.T) {
