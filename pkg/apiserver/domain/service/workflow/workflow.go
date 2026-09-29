@@ -1775,7 +1775,14 @@ func (w *workflowServiceImpl) triggerWorkflowTerminalCallbackOnApprovalAction(ct
 	// The cancellation signal applies to application work, not to its terminal
 	// notification. The callback keeps its own bounded timeout and parent fence.
 	runCtx = workflowjob.WithTaskMetadata(runCtx, "")
-	if err := workflowjob.RunJobs(runCtx, []*model.JobTask{callbackJob}, 1, nil, nil, w.Store, func() {}, false, w.RedisClient, w.Cache, urlPolicy, nil, nil, nil); err != nil {
+	if err := workflowjob.RunJobs(runCtx, []*model.JobTask{callbackJob}, &workflowjob.Runtime{
+		Concurrency:       1,
+		Store:             w.Store,
+		Ack:               func() {},
+		RedisClient:       w.RedisClient,
+		Cache:             w.Cache,
+		URLSecurityPolicy: urlPolicy,
+	}); err != nil {
 		klog.ErrorS(err, "run terminal workflow callback", "taskID", task.TaskID, "jobName", callbackJob.Name)
 		return err
 	}

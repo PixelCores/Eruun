@@ -14,12 +14,9 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
-// SidecarProcessor materializes additional containers attached to the Pod.
+// processSidecar materializes additional containers attached to the Pod.
 // It also supports nested traits (except nested sidecars) applied to the sidecar itself.
-type SidecarProcessor struct{}
-
-// Process adds sidecar containers to the workload, recursively applying any nested traits.
-func (s *SidecarProcessor) Process(ctx *TraitContext, sidecarTraits []spec.SidecarTraitsSpec) (*TraitResult, error) {
+func processSidecar(ctx *TraitContext, sidecarTraits []spec.SidecarTraitsSpec) (*TraitResult, error) {
 	finalResult := &TraitResult{
 		VolumeMounts:   make(map[string][]corev1.VolumeMount),
 		EnvFromSources: make(map[string][]corev1.EnvFromSource),
@@ -50,7 +47,7 @@ func (s *SidecarProcessor) Process(ctx *TraitContext, sidecarTraits []spec.Sidec
 		}
 
 		// Recursively apply nested traits, excluding pod-level traits and recursive container traits.
-		nestedResult, err := applyTraitsRecursive(ctx.Component, ctx.Workload, &sidecarSpec.Traits, true)
+		nestedResult, err := applyTraitsRecursive(ctx, &sidecarSpec.Traits, true)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process nested traits for sidecar %s: %w", sidecarName, err)
 		}
@@ -58,23 +55,7 @@ func (s *SidecarProcessor) Process(ctx *TraitContext, sidecarTraits []spec.Sidec
 		// The sidecar container gets the volume mounts from its nested traits.
 		// Use normalized component name to match the key used in storage trait.
 		normalizedName := utils.NormalizeLowerStrip(ctx.Component.Name)
-		var volumeMounts []corev1.VolumeMount
-		if nestedResult != nil {
-			if mounts, ok := nestedResult.VolumeMounts[normalizedName]; ok {
-				volumeMounts = mounts
-			}
-		}
-
-		// The sidecar container also gets the EnvFrom and EnvVars from its nested traits.
-		var envFromSources []corev1.EnvFromSource
-		if nestedResult != nil {
-			if envFrom, ok := nestedResult.EnvFromSources[normalizedName]; ok {
-				envFromSources = envFrom
-			}
-			if nestedEnvVars, ok := nestedResult.EnvVars[normalizedName]; ok {
-				envVars = append(envVars, nestedEnvVars...)
-			}
-		}
+		envVars = append(envVars, nestedResult.EnvVars[normalizedName]...)
 
 		sidecarContainer := corev1.Container{
 			Name:            sidecarName,
@@ -82,40 +63,26 @@ func (s *SidecarProcessor) Process(ctx *TraitContext, sidecarTraits []spec.Sidec
 			Command:         sidecarSpec.Command,
 			Args:            sidecarSpec.Args,
 			Env:             envVars,
-			EnvFrom:         envFromSources,
-			VolumeMounts:    volumeMounts,
+			EnvFrom:         nestedResult.EnvFromSources[normalizedName],
+			VolumeMounts:    nestedResult.VolumeMounts[normalizedName],
 			ImagePullPolicy: workflowconfig.DefaultWorkflowImagePullPolicy,
-		}
-
-		// Apply probes if present
-		if nestedResult != nil {
-			if nestedResult.LivenessProbe != nil {
-				sidecarContainer.LivenessProbe = nestedResult.LivenessProbe
-			}
-			if nestedResult.ReadinessProbe != nil {
-				sidecarContainer.ReadinessProbe = nestedResult.ReadinessProbe
-			}
-			if nestedResult.StartupProbe != nil {
-				sidecarContainer.StartupProbe = nestedResult.StartupProbe
-			}
+			LivenessProbe:   nestedResult.LivenessProbe,
+			ReadinessProbe:  nestedResult.ReadinessProbe,
+			StartupProbe:    nestedResult.StartupProbe,
+			SecurityContext: nestedResult.SecurityContext,
 		}
 
 		// Apply nested resource requirements to the sidecar if present
-		if nestedResult != nil && nestedResult.ResourceRequirements != nil {
+		if nestedResult.ResourceRequirements != nil {
 			sidecarContainer.Resources = *nestedResult.ResourceRequirements
-		}
-		if nestedResult != nil && nestedResult.SecurityContext != nil {
-			sidecarContainer.SecurityContext = nestedResult.SecurityContext
 		}
 
 		// Add the created container to the final result.
 		finalResult.Containers = append(finalResult.Containers, sidecarContainer)
 
 		// Merge volumes and additional objects from the nested traits into the final result.
-		if nestedResult != nil {
-			finalResult.Volumes = append(finalResult.Volumes, nestedResult.Volumes...)
-			finalResult.AdditionalObjects = append(finalResult.AdditionalObjects, nestedResult.AdditionalObjects...)
-		}
+		finalResult.Volumes = append(finalResult.Volumes, nestedResult.Volumes...)
+		finalResult.AdditionalObjects = append(finalResult.AdditionalObjects, nestedResult.AdditionalObjects...)
 
 		klog.V(3).Infof("Constructed sidecar container %s for component %s", sidecarName, ctx.Component.Name)
 	}

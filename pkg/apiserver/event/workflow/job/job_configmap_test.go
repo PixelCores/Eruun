@@ -178,7 +178,7 @@ func TestDeployConfigMapJobCtl_CreateAlreadyExists(t *testing.T) {
 			Data: map[string]string{"foo": "bar"},
 		},
 	}
-	ctl := NewDeployConfigMapJobCtl(jobTask, client, &noopStore{}, func() {}, locker.NewNoopLocker(shareLockerPrefix), nil)
+	ctl := NewDeployConfigMapJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}, URLSecurityPolicy: nil}, locker.NewNoopLocker(shareLockerPrefix))
 	ctx := WithCleanupTracker(context.Background())
 
 	if err := ctl.Run(ctx); err != nil {

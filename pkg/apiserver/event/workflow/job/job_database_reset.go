@@ -15,14 +15,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
@@ -47,7 +45,6 @@ type databaseResetReplicaCheckpoint struct {
 
 type DatabaseResetJobCtl struct {
 	deployNamespacedResourceJobBase
-	runtime *jobRuntime
 }
 
 type pvcResetTarget struct {
@@ -67,20 +64,12 @@ type databaseResetPlan struct {
 	originalReplicasCheckpointed bool
 }
 
-func NewDatabaseResetJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func()) *DatabaseResetJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("DatabaseResetJobCtl", job, client, store, ack, nil)
+func NewDatabaseResetJobCtl(job *model.JobTask, runtime *Runtime) *DatabaseResetJobCtl {
+	base, ok := newDeployNamespacedResourceJobBase("DatabaseResetJobCtl", job, runtime, nil)
 	if !ok {
 		return nil
 	}
 	return &DatabaseResetJobCtl{deployNamespacedResourceJobBase: base}
-}
-
-func (c *DatabaseResetJobCtl) setRuntime(runtime *jobRuntime) {
-	if c == nil {
-		return
-	}
-	c.runtime = runtime
-	c.deployNamespacedResourceJobBase.setRuntime(runtime)
 }
 
 func (c *DatabaseResetJobCtl) Clean(context.Context) {}

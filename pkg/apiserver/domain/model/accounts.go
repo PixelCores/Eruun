@@ -70,9 +70,8 @@ type WorkspaceInvitation struct {
 	BaseModel
 }
 
-func (m *User) PrimaryKey() string   { return m.ID }
-func (*User) TableName() string      { return tableNamePrefix + "users" }
-func (*User) ShortTableName() string { return "users" }
+func (m *User) PrimaryKey() string { return m.ID }
+func (*User) TableName() string    { return tableNamePrefix + "users" }
 func (m *User) Index() map[string]interface{} {
 	out := map[string]interface{}{}
 	if m.ID != "" {
@@ -81,9 +80,8 @@ func (m *User) Index() map[string]interface{} {
 	return out
 }
 
-func (m *Identity) PrimaryKey() string   { return m.ID }
-func (*Identity) TableName() string      { return tableNamePrefix + "identities" }
-func (*Identity) ShortTableName() string { return "identities" }
+func (m *Identity) PrimaryKey() string { return m.ID }
+func (*Identity) TableName() string    { return tableNamePrefix + "identities" }
 func (m *Identity) Index() map[string]interface{} {
 	out := map[string]interface{}{}
 	if m.ID != "" {
@@ -101,9 +99,8 @@ func (m *Identity) Index() map[string]interface{} {
 	return out
 }
 
-func (m *Session) PrimaryKey() string   { return m.ID }
-func (*Session) TableName() string      { return tableNamePrefix + "sessions" }
-func (*Session) ShortTableName() string { return "sessions" }
+func (m *Session) PrimaryKey() string { return m.ID }
+func (*Session) TableName() string    { return tableNamePrefix + "sessions" }
 func (m *Session) Index() map[string]interface{} {
 	out := map[string]interface{}{}
 	if m.ID != "" {
@@ -124,9 +121,8 @@ func (m *Session) Index() map[string]interface{} {
 	return out
 }
 
-func (m *Workspace) PrimaryKey() string   { return m.ID }
-func (*Workspace) TableName() string      { return tableNamePrefix + "workspaces" }
-func (*Workspace) ShortTableName() string { return "workspaces" }
+func (m *Workspace) PrimaryKey() string { return m.ID }
+func (*Workspace) TableName() string    { return tableNamePrefix + "workspaces" }
 func (m *Workspace) Index() map[string]interface{} {
 	out := map[string]interface{}{}
 	if m.ID != "" {
@@ -144,9 +140,8 @@ func (m *Workspace) Index() map[string]interface{} {
 	return out
 }
 
-func (m *WorkspaceMember) PrimaryKey() string   { return m.ID }
-func (*WorkspaceMember) TableName() string      { return tableNamePrefix + "workspace_members" }
-func (*WorkspaceMember) ShortTableName() string { return "workspace_members" }
+func (m *WorkspaceMember) PrimaryKey() string { return m.ID }
+func (*WorkspaceMember) TableName() string    { return tableNamePrefix + "workspace_members" }
 func (m *WorkspaceMember) Index() map[string]interface{} {
 	out := map[string]interface{}{}
 	if m.ID != "" {
@@ -161,9 +156,8 @@ func (m *WorkspaceMember) Index() map[string]interface{} {
 	return out
 }
 
-func (m *WorkspaceInvitation) PrimaryKey() string   { return m.ID }
-func (*WorkspaceInvitation) TableName() string      { return tableNamePrefix + "workspace_invitations" }
-func (*WorkspaceInvitation) ShortTableName() string { return "workspace_invitations" }
+func (m *WorkspaceInvitation) PrimaryKey() string { return m.ID }
+func (*WorkspaceInvitation) TableName() string    { return tableNamePrefix + "workspace_invitations" }
 func (m *WorkspaceInvitation) Index() map[string]interface{} {
 	out := map[string]interface{}{}
 	if m.ID != "" {

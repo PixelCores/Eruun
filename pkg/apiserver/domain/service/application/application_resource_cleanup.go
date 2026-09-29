@@ -481,47 +481,23 @@ func (c *applicationsServiceImpl) deleteIngressForComponent(ctx context.Context,
 }
 
 func (c *applicationsServiceImpl) deleteConfigMapForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, reporter *cleanupReporter) {
-	obj := job.GenerateConfigMap(component, props)
-	switch cm := obj.(type) {
-	case *job.ConfigMapInput:
-		ns := pickNamespace(cm.Namespace, component.Namespace)
-		name := cm.Name
-		if name == "" {
-			name = component.Name
-		}
-		reporter.record("ConfigMap", ns, name, c.deleteConfigMap(ctx, ns, name))
-	case *corev1.ConfigMap:
-		ns := pickNamespace(cm.Namespace, component.Namespace)
-		name := cm.Name
-		if name == "" {
-			name = component.Name
-		}
-		reporter.record("ConfigMap", ns, name, c.deleteConfigMap(ctx, ns, name))
-	default:
-		// nothing to delete
+	cm := job.GenerateConfigMap(component, props)
+	ns := pickNamespace(cm.Namespace, component.Namespace)
+	name := cm.Name
+	if name == "" {
+		name = component.Name
 	}
+	reporter.record("ConfigMap", ns, name, c.deleteConfigMap(ctx, ns, name))
 }
 
 func (c *applicationsServiceImpl) deleteSecretForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, reporter *cleanupReporter) {
-	obj := job.GenerateSecret(component, props)
-	switch sec := obj.(type) {
-	case *job.SecretInput:
-		ns := pickNamespace(sec.Namespace, component.Namespace)
-		name := sec.Name
-		if name == "" {
-			name = component.Name
-		}
-		reporter.record("Secret", ns, name, c.deleteSecret(ctx, ns, name))
-	case *corev1.Secret:
-		ns := pickNamespace(sec.Namespace, component.Namespace)
-		name := sec.Name
-		if name == "" {
-			name = component.Name
-		}
-		reporter.record("Secret", ns, name, c.deleteSecret(ctx, ns, name))
-	default:
-		// nothing
+	sec := job.GenerateSecret(component, props)
+	ns := pickNamespace(sec.Namespace, component.Namespace)
+	name := sec.Name
+	if name == "" {
+		name = component.Name
 	}
+	reporter.record("Secret", ns, name, c.deleteSecret(ctx, ns, name))
 }
 
 func (c *applicationsServiceImpl) deleteAdditionalObjects(ctx context.Context, fallbackNamespace string, objs []client.Object, reporter *cleanupReporter) {

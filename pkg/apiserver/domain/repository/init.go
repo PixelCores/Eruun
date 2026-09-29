@@ -7,7 +7,6 @@ func InitRepositoryBean(appRepo ApplicationRepository, componentRepo ComponentRe
 		appRepo,
 		NewWorkflowRepository(),
 		componentRepo,
-		NewWorkflowQueueRepository(),
 		NewSystemSettingRepository(),
 	}
 }

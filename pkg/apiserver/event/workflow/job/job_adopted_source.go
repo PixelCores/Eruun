@@ -299,7 +299,7 @@ func (b *adoptedResourceBinding) prepareRecreationCandidate(
 	ctx context.Context,
 	store datastore.DataStore,
 	objectMeta metav1.Object,
-	jobRuntime *jobRuntime,
+	jobRuntime *Runtime,
 	lockProvider locker.Locker,
 ) (*adoptedRecreationGuard, error) {
 	if b == nil || store == nil || objectMeta == nil {
@@ -716,7 +716,7 @@ func recoverPendingAdoptedWorkload(
 	kind, namespace, name string,
 	created runtime.Object,
 	objectMeta metav1.Object,
-	jobRuntime *jobRuntime,
+	jobRuntime *Runtime,
 	lockProvider locker.Locker,
 ) (bool, error) {
 	recoveryCtx, recoveryCancel := adoptedRecoveryContext(ctx)
@@ -765,7 +765,7 @@ func recoverPendingAdoptedWorkloadLocked(
 	kind, namespace, name string,
 	created runtime.Object,
 	objectMeta metav1.Object,
-	jobRuntime *jobRuntime,
+	jobRuntime *Runtime,
 ) (bool, error) {
 	binding, adopted, err := adoptedResourceForJob(ctx, store, job, kind, namespace, name)
 	if err != nil {
@@ -836,7 +836,7 @@ func recoverPendingAdoptedDependency(
 	binding *adoptedResourceBinding,
 	created runtime.Object,
 	objectMeta metav1.Object,
-	jobRuntime *jobRuntime,
+	jobRuntime *Runtime,
 	lockProvider locker.Locker,
 ) (bool, error) {
 	if binding == nil {
@@ -867,7 +867,7 @@ func recoverPendingAdoptedDependencyLocked(
 	binding *adoptedResourceBinding,
 	created runtime.Object,
 	objectMeta metav1.Object,
-	jobRuntime *jobRuntime,
+	jobRuntime *Runtime,
 ) (bool, error) {
 	if binding == nil {
 		return false, fmt.Errorf("adopted dependency recreation binding is incomplete")
@@ -920,7 +920,7 @@ func recoverPendingAdoptedSecret(
 	created runtime.Object,
 	objectMeta metav1.Object,
 	ciphertextUpdates []adoptedSecretCiphertextUpdate,
-	jobRuntime *jobRuntime,
+	jobRuntime *Runtime,
 	lockProvider locker.Locker,
 ) (bool, error) {
 	if binding == nil {
@@ -953,7 +953,7 @@ func recoverPendingAdoptedSecretLocked(
 	created runtime.Object,
 	objectMeta metav1.Object,
 	ciphertextUpdates []adoptedSecretCiphertextUpdate,
-	jobRuntime *jobRuntime,
+	jobRuntime *Runtime,
 ) (bool, error) {
 	if binding == nil {
 		return false, fmt.Errorf("adopted secret recreation binding is incomplete")
@@ -1003,7 +1003,7 @@ func (r *adoptedWorkloadRecreation) persistCreated(
 	ctx context.Context,
 	created runtime.Object,
 	objectMeta metav1.Object,
-	jobRuntime *jobRuntime,
+	jobRuntime *Runtime,
 ) error {
 	if r == nil || r.resource == nil || r.application == nil || r.component == nil || r.store == nil || r.tx == nil {
 		return fmt.Errorf("adopted workload recreation state is incomplete")
@@ -1190,7 +1190,7 @@ func (r *adoptedDependencyRecreation) persistCreated(
 	ctx context.Context,
 	created runtime.Object,
 	objectMeta metav1.Object,
-	jobRuntime *jobRuntime,
+	jobRuntime *Runtime,
 ) error {
 	if r == nil || r.resource == nil || r.application == nil || r.snapshot == nil || r.store == nil || r.tx == nil {
 		return fmt.Errorf("adopted dependency recreation state is incomplete")
@@ -1255,7 +1255,7 @@ func (r *adoptedDependencyRecreation) persistCreatedSecret(
 	created runtime.Object,
 	objectMeta metav1.Object,
 	ciphertextUpdates []adoptedSecretCiphertextUpdate,
-	jobRuntime *jobRuntime,
+	jobRuntime *Runtime,
 ) error {
 	if r == nil || r.resource == nil || r.application == nil || r.snapshot == nil || r.store == nil || r.tx == nil {
 		return fmt.Errorf("adopted secret recreation state is incomplete")
@@ -1400,7 +1400,7 @@ func persistRotatedAdoptedSecretData(
 	store datastore.DataStore,
 	appID, sourceName string,
 	ciphertextUpdates []adoptedSecretCiphertextUpdate,
-	jobRuntime *jobRuntime,
+	jobRuntime *Runtime,
 ) error {
 	appID = strings.TrimSpace(appID)
 	sourceName = strings.TrimSpace(sourceName)
@@ -1516,7 +1516,7 @@ func persistCreatedAdoptedDependency(
 	recreation *adoptedDependencyRecreation,
 	created runtime.Object,
 	objectMeta metav1.Object,
-	jobRuntime *jobRuntime,
+	jobRuntime *Runtime,
 ) error {
 	if recreation == nil || recreation.resource == nil || objectMeta == nil {
 		return fmt.Errorf("adopted dependency persistence state is incomplete")

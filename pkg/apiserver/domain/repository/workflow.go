@@ -124,53 +124,7 @@ func (r *componentRepository) FindByName(ctx context.Context, appID, name string
 	return nil, datastore.ErrRecordNotExist
 }
 
-// ---- Workflow Queue Repository Interface ----
-
-// WorkflowQueueRepository defines the interface for workflow queue operations.
-type WorkflowQueueRepository interface {
-	Create(ctx context.Context, queue *model.WorkflowQueue) error
-	Update(ctx context.Context, task *model.WorkflowQueue) error
-	FindByID(ctx context.Context, taskID string) (*model.WorkflowQueue, error)
-	FindWaiting(ctx context.Context) ([]*model.WorkflowQueue, error)
-	FindRunning(ctx context.Context) ([]*model.WorkflowQueue, error)
-	UpdateStatus(ctx context.Context, taskID string, from, to config.Status) (bool, error)
-}
-
-type workflowQueueRepository struct {
-	Store datastore.DataStore `inject:"datastore"`
-}
-
-// NewWorkflowQueueRepository creates a new WorkflowQueueRepository.
-// Dependencies are injected via struct tags.
-func NewWorkflowQueueRepository() WorkflowQueueRepository {
-	return &workflowQueueRepository{}
-}
-
-func (r *workflowQueueRepository) Create(ctx context.Context, queue *model.WorkflowQueue) error {
-	return CreateWorkflowQueue(ctx, r.Store, queue)
-}
-
-func (r *workflowQueueRepository) Update(ctx context.Context, task *model.WorkflowQueue) error {
-	return UpdateTask(ctx, r.Store, task)
-}
-
-func (r *workflowQueueRepository) FindByID(ctx context.Context, taskID string) (*model.WorkflowQueue, error) {
-	return TaskByID(ctx, r.Store, taskID)
-}
-
-func (r *workflowQueueRepository) FindWaiting(ctx context.Context) ([]*model.WorkflowQueue, error) {
-	return WaitingTasks(ctx, r.Store)
-}
-
-func (r *workflowQueueRepository) FindRunning(ctx context.Context) ([]*model.WorkflowQueue, error) {
-	return TaskRunning(ctx, r.Store)
-}
-
-func (r *workflowQueueRepository) UpdateStatus(ctx context.Context, taskID string, from, to config.Status) (bool, error) {
-	return UpdateTaskStatus(ctx, r.Store, taskID, from, to)
-}
-
-// ---- Original Functions (kept for backward compatibility) ----
+// ---- Workflow and task storage operations ----
 
 func WorkflowByID(ctx context.Context, store datastore.DataStore, workflowID string) (*model.Workflow, error) {
 	var workflow = &model.Workflow{

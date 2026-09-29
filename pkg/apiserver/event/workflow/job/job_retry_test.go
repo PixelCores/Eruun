@@ -82,7 +82,7 @@ func TestRetryCreationBudgetPersistsAcrossCommandAndEvaluationControllers(t *tes
 	command := retryTestTask(t, nil)
 	command.JobType = string(config.JobCommand)
 	client := fake.NewSimpleClientset()
-	require.NoError(t, NewInstantJobCtl(command, client, store, func() {}).waitRetryCreationBudget(context.Background()))
+	require.NoError(t, NewInstantJobCtl(command, &Runtime{Client: client, Store: store, Ack: func() {}}).waitRetryCreationBudget(context.Background()))
 	budget := &model.ResourceCreationBudget{ID: "jobs-and-sandboxes"}
 	require.NoError(t, store.creationStore.Get(context.Background(), budget))
 	require.False(t, budget.AvailableAt.IsZero())
@@ -95,7 +95,7 @@ func TestRetryCreationBudgetPersistsAcrossCommandAndEvaluationControllers(t *tes
 	evaluation.JobType = string(config.JobEval)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
-	err = NewInstantJobCtl(evaluation, client, evaluationStore, func() {}).waitRetryCreationBudget(ctx)
+	err = NewInstantJobCtl(evaluation, &Runtime{Client: client, Store: evaluationStore, Ack: func() {}}).waitRetryCreationBudget(ctx)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.NoError(t, store.creationStore.Get(context.Background(), budget))
 	require.True(t, availableAt.Equal(budget.AvailableAt), "waiting cannot consume a permit")
@@ -324,7 +324,7 @@ func TestRetryAttemptWaitsForPreviousOwnedPods(t *testing.T) {
 	cp.Job.Annotations[workflowconfig.AnnotationJobAttempt] = "2"
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
-	err := NewInstantJobCtl(task, client, &retryCheckpointStore{}, func() {}).ensureRetryAttempt(ctx, cp)
+	err := NewInstantJobCtl(task, &Runtime{Client: client, Store: &retryCheckpointStore{}, Ack: func() {}}).ensureRetryAttempt(ctx, cp)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Zero(t, countClientActions(client, "create", "jobs"))
 }
@@ -342,7 +342,7 @@ func TestRetryCheckpointCannotReplayMissingOrForeignJob(t *testing.T) {
 				foreign.UID = "replacement"
 				require.NoError(t, client.Tracker().Add(foreign))
 			}
-			err := NewInstantJobCtl(task, client, &retryCheckpointStore{}, func() {}).ensureRetryAttempt(context.Background(), cp)
+			err := NewInstantJobCtl(task, &Runtime{Client: client, Store: &retryCheckpointStore{}, Ack: func() {}}).ensureRetryAttempt(context.Background(), cp)
 			require.ErrorIs(t, err, signal.ErrInfrastructureStop)
 			require.NotErrorIs(t, err, errJobAdmissionRecoveryExecutionLost, "resize retries do not use the stop-policy admission recovery exemption")
 			require.Zero(t, countClientActions(client, "delete", "jobs"))
@@ -374,7 +374,7 @@ func TestRetryRecoveryHonorsExpiredDeadline(t *testing.T) {
 	require.NoError(t, err)
 	task.InternalInfo = string(raw)
 	client := fake.NewSimpleClientset()
-	err = NewInstantJobCtl(task, client, &retryCheckpointStore{}, func() {}).Run(context.Background())
+	err = NewInstantJobCtl(task, &Runtime{Client: client, Store: &retryCheckpointStore{}, Ack: func() {}}).Run(context.Background())
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Equal(t, config.StatusTimeout, task.Status)
 	require.Empty(t, client.Actions())
@@ -398,7 +398,7 @@ func TestRetryDeletionRechecksWorkflowFence(t *testing.T) {
 	next.Annotations[workflowconfig.AnnotationJobAttempt] = "2"
 	cp := &instantJobRetryCheckpoint{Job: next, Attempt: 2, PreviousUID: previous.UID}
 	client := fake.NewSimpleClientset(previous)
-	err := NewInstantJobCtl(task, client, store, func() {}).ensureRetryAttempt(context.Background(), cp)
+	err := NewInstantJobCtl(task, &Runtime{Client: client, Store: store, Ack: func() {}}).ensureRetryAttempt(context.Background(), cp)
 	require.ErrorIs(t, err, signal.ErrInfrastructureStop)
 	require.Zero(t, countClientActions(client, "delete", "jobs"))
 	require.Zero(t, countClientActions(client, "create", "jobs"))
@@ -410,7 +410,7 @@ func TestRetryDeletionUsesUIDAndResourceVersion(t *testing.T) {
 	live.UID = "old-job"
 	live.ResourceVersion = "9"
 	client := fake.NewSimpleClientset(live)
-	require.NoError(t, NewInstantJobCtl(task, client, &retryCheckpointStore{}, func() {}).deleteRetryJob(context.Background(), live))
+	require.NoError(t, NewInstantJobCtl(task, &Runtime{Client: client, Store: &retryCheckpointStore{}, Ack: func() {}}).deleteRetryJob(context.Background(), live))
 	options := client.Actions()[0].(k8stesting.DeleteAction).GetDeleteOptions()
 	require.Equal(t, live.UID, *options.Preconditions.UID)
 	require.Equal(t, live.ResourceVersion, *options.Preconditions.ResourceVersion)
@@ -483,7 +483,7 @@ func TestRetryCleanupRejectsForeignExecutionOrUID(t *testing.T) {
 			live.UID = "owned"
 			tt.change(live)
 			client := fake.NewSimpleClientset(live)
-			err = NewInstantJobCtl(task, client, &retryCheckpointStore{}, func() {}).cleanRetryAttempt(context.Background())
+			err = NewInstantJobCtl(task, &Runtime{Client: client, Store: &retryCheckpointStore{}, Ack: func() {}}).cleanRetryAttempt(context.Background())
 			require.ErrorIs(t, err, errJobExecutionIdentityChanged)
 			require.Zero(t, countClientActions(client, "delete", "jobs"))
 		})
@@ -604,7 +604,7 @@ func TestRetryCancellationCleanupRejectsDifferentLease(t *testing.T) {
 			live.UID = "owned"
 			client := fake.NewSimpleClientset(live)
 			store := &retryOwnedCheckpointStore{owner: owner}
-			err := NewInstantJobCtl(task, client, store, func() {}).deleteRetryJob(context.Background(), live)
+			err := NewInstantJobCtl(task, &Runtime{Client: client, Store: store, Ack: func() {}}).deleteRetryJob(context.Background(), live)
 			require.ErrorIs(t, err, signal.ErrInfrastructureStop)
 			require.Zero(t, countClientActions(client, "delete", "jobs"))
 		})
@@ -865,7 +865,7 @@ func TestRetryRecoveryAddsRetentionToExistingCheckpointAndJob(t *testing.T) {
 		CurrentUID: live.UID, Deadline: time.Now().Add(time.Hour).UnixNano()}
 	client := fake.NewSimpleClientset(live)
 	store := &retryCheckpointStore{}
-	require.NoError(t, NewInstantJobCtl(task, client, store, func() {}).ensureRetryAttempt(context.Background(), cp))
+	require.NoError(t, NewInstantJobCtl(task, &Runtime{Client: client, Store: store, Ack: func() {}}).ensureRetryAttempt(context.Background(), cp))
 	retained, err := client.BatchV1().Jobs(live.Namespace).Get(context.Background(), live.Name, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, retained.Spec.TTLSecondsAfterFinished)

@@ -21,6 +21,13 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
+func cachedValue(t *testing.T, c cache.ICache, ctx context.Context, key string) string {
+	t.Helper()
+	value, err := c.Load(ctx, key)
+	require.NoError(t, err)
+	return value
+}
+
 type countingAppRepo struct {
 	*mockAppRepo
 	listCalls    int
@@ -144,8 +151,8 @@ func TestListApplicationsIgnoresLegacyWorkflowIDCacheKey(t *testing.T) {
 	require.Equal(t, app.ID, apps[0].ID)
 	require.Equal(t, "wf-default", apps[0].WorkflowID)
 	require.Equal(t, 1, countingRepo.listCalls)
-	require.True(t, svc.Cache.Exists(context.Background(), "app:list"))
-	require.True(t, svc.Cache.Exists(context.Background(), applicationListCacheKey))
+	require.NotEmpty(t, cachedValue(t, svc.Cache, context.Background(), "app:list"))
+	require.NotEmpty(t, cachedValue(t, svc.Cache, context.Background(), applicationListCacheKey))
 }
 
 func TestListTemplateApplicationsUsesCache(t *testing.T) {
@@ -333,8 +340,8 @@ func TestListTemplateApplicationsIgnoresLegacyWorkflowIDCacheKey(t *testing.T) {
 	require.Equal(t, template.ID, templates[0].ID)
 	require.Equal(t, "wf-template", templates[0].WorkflowID)
 	require.Equal(t, 1, countingRepo.listCalls)
-	require.True(t, svc.Cache.Exists(context.Background(), "app:template:list"))
-	require.True(t, svc.Cache.Exists(context.Background(), templateApplicationListCacheKey))
+	require.NotEmpty(t, cachedValue(t, svc.Cache, context.Background(), "app:template:list"))
+	require.NotEmpty(t, cachedValue(t, svc.Cache, context.Background(), templateApplicationListCacheKey))
 }
 
 func TestListTemplateApplicationsAvoidsWorkflowRepoNPlusOne(t *testing.T) {
@@ -397,7 +404,7 @@ func TestListApplicationsBypassesCacheWhenPaginated(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, second, 1)
 	require.Equal(t, 2, countingRepo.listCalls)
-	require.False(t, svc.Cache.Exists(context.Background(), applicationListCacheKey))
+	require.Empty(t, cachedValue(t, svc.Cache, context.Background(), applicationListCacheKey))
 }
 
 func TestListApplicationsPaginatedUsesStableSecondarySortKey(t *testing.T) {
@@ -618,14 +625,14 @@ func TestDeleteApplicationInvalidatesCache(t *testing.T) {
 	svc.storeJSONCache(context.Background(), templateApplicationListCacheKey, []*apisv1.ApplicationBase{{ID: app.ID}})
 	svc.storeJSONCache(context.Background(), applicationComponentsCacheKey(app.ID), []*model.ApplicationComponent{{AppID: app.ID, Name: "web"}})
 
-	require.True(t, svc.Cache.Exists(context.Background(), applicationListCacheKey))
-	require.True(t, svc.Cache.Exists(context.Background(), templateApplicationListCacheKey))
-	require.True(t, svc.Cache.Exists(context.Background(), applicationComponentsCacheKey(app.ID)))
+	require.NotEmpty(t, cachedValue(t, svc.Cache, context.Background(), applicationListCacheKey))
+	require.NotEmpty(t, cachedValue(t, svc.Cache, context.Background(), templateApplicationListCacheKey))
+	require.NotEmpty(t, cachedValue(t, svc.Cache, context.Background(), applicationComponentsCacheKey(app.ID)))
 
 	require.NoError(t, svc.DeleteApplication(context.Background(), app))
-	require.False(t, svc.Cache.Exists(context.Background(), applicationListCacheKey))
-	require.False(t, svc.Cache.Exists(context.Background(), templateApplicationListCacheKey))
-	require.False(t, svc.Cache.Exists(context.Background(), applicationComponentsCacheKey(app.ID)))
+	require.Empty(t, cachedValue(t, svc.Cache, context.Background(), applicationListCacheKey))
+	require.Empty(t, cachedValue(t, svc.Cache, context.Background(), templateApplicationListCacheKey))
+	require.Empty(t, cachedValue(t, svc.Cache, context.Background(), applicationComponentsCacheKey(app.ID)))
 }
 
 func TestUpdateVersionInvalidatesCache(t *testing.T) {
@@ -653,9 +660,9 @@ func TestUpdateVersionInvalidatesCache(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, "2.0.0", resp.Version)
-	require.False(t, svc.Cache.Exists(context.Background(), applicationListCacheKey))
-	require.False(t, svc.Cache.Exists(context.Background(), templateApplicationListCacheKey))
-	require.False(t, svc.Cache.Exists(context.Background(), applicationComponentsCacheKey(app.ID)))
+	require.Empty(t, cachedValue(t, svc.Cache, context.Background(), applicationListCacheKey))
+	require.Empty(t, cachedValue(t, svc.Cache, context.Background(), templateApplicationListCacheKey))
+	require.Empty(t, cachedValue(t, svc.Cache, context.Background(), applicationComponentsCacheKey(app.ID)))
 }
 
 type committedCacheUpdateStore struct {
@@ -731,7 +738,7 @@ func TestUpdateVersionInvalidatesCommittedChangesAfterRequestEnds(t *testing.T) 
 			require.NoError(t, err)
 			require.Equal(t, "nginx:1.27", after[0].Image, "a fresh request must see the committed image")
 			for _, key := range []string{applicationListCacheKey, templateApplicationListCacheKey} {
-				require.False(t, svc.Cache.Exists(readCtx, scopedListCacheKey(readCtx, key)))
+				require.Empty(t, cachedValue(t, svc.Cache, readCtx, scopedListCacheKey(readCtx, key)))
 				var other []*apisv1.ApplicationBase
 				require.True(t, svc.loadJSONCache(otherCtx, scopedListCacheKey(otherCtx, key), &other))
 				require.Equal(t, "other-app", other[0].ID, "invalidation must preserve other workspace caches")
@@ -814,7 +821,7 @@ func TestListApplicationComponentsCachePreservesRequestContextAndFallback(t *tes
 			cancel()
 			svc.invalidateApplicationComponentsCache(ctx, app.ID)
 			require.Len(t, c.contexts, tc.wantCalls+1)
-			require.False(t, c.ICache.Exists(t.Context(), applicationComponentsCacheKey(app.ID)))
+			require.Empty(t, cachedValue(t, c.ICache, t.Context(), applicationComponentsCacheKey(app.ID)))
 		})
 	}
 }

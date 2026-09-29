@@ -36,9 +36,8 @@ type JobSandbox struct {
 	BaseModel
 }
 
-func (s *JobSandbox) PrimaryKey() string     { return s.ID }
-func (s *JobSandbox) TableName() string      { return tableNamePrefix + "job_sandbox" }
-func (s *JobSandbox) ShortTableName() string { return "job_sandbox" }
+func (s *JobSandbox) PrimaryKey() string { return s.ID }
+func (s *JobSandbox) TableName() string  { return tableNamePrefix + "job_sandbox" }
 func (s *JobSandbox) Index() map[string]interface{} {
 	values := map[string]interface{}{}
 	for key, value := range map[string]string{"id": s.ID, "workspace_id": s.WorkspaceID, "task_id": s.TaskID, "execution_key": s.ExecutionKey, "state": s.State} {

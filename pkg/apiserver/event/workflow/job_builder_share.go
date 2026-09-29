@@ -31,8 +31,7 @@ func (s shareConfig) ignore() bool {
 	return s.Strategy == spec.ShareStrategyIgnore
 }
 
-func shareConfigForComponent(component *model.ApplicationComponent) shareConfig {
-	traits := decodeComponentTraits(component)
+func shareConfigForComponent(component *model.ApplicationComponent, traits *spec.Traits) shareConfig {
 	if traits == nil || traits.Share == nil {
 		return shareConfig{}
 	}
@@ -60,8 +59,7 @@ func rbacShareConfigForComponent(component *model.ApplicationComponent, share sh
 	}
 }
 
-func serviceTraitsForComponent(component *model.ApplicationComponent, properties *model.Properties) []spec.ServiceTraitSpec {
-	traits := decodeComponentTraits(component)
+func serviceTraitsForComponent(component *model.ApplicationComponent, properties *model.Properties, traits *spec.Traits) []spec.ServiceTraitSpec {
 	if traits == nil || len(traits.Service) == 0 {
 		return defaultServiceTraitsFromProperties(component, properties)
 	}

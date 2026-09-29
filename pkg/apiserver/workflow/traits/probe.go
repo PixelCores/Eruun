@@ -15,16 +15,14 @@ const (
 	probeTypeStartup   = "startup"
 )
 
-// ProbeProcessor attaches container health checks (liveness/readiness/startup).
-type ProbeProcessor struct{}
-
-// Process converts []spec.ProbeTraitsSpec into Kubernetes Probe objects. Only one
+// processProbe attaches container health checks (liveness/readiness/startup).
+// Converts []spec.ProbeTraitsSpec into Kubernetes Probe objects. Only one
 // probe per type is allowed; duplicates result in an error.
-func (p *ProbeProcessor) Process(ctx *TraitContext, probeTraits []spec.ProbeTraitsSpec) (*TraitResult, error) {
+func processProbe(ctx *TraitContext, probeTraits []spec.ProbeTraitsSpec) (*TraitResult, error) {
 	result := &TraitResult{}
 
 	for _, probeSpec := range probeTraits {
-		kubeProbe, err := p.convertSpecToKubeProbe(probeSpec)
+		kubeProbe, err := convertSpecToKubeProbe(probeSpec)
 		if err != nil {
 			return nil, err
 		}
@@ -55,7 +53,7 @@ func (p *ProbeProcessor) Process(ctx *TraitContext, probeTraits []spec.ProbeTrai
 }
 
 // convertSpecToKubeProbe converts a simplified spec into a Kubernetes Probe object.
-func (p *ProbeProcessor) convertSpecToKubeProbe(spec spec.ProbeTraitsSpec) (*corev1.Probe, error) {
+func convertSpecToKubeProbe(spec spec.ProbeTraitsSpec) (*corev1.Probe, error) {
 	probe := &corev1.Probe{
 		InitialDelaySeconds: spec.InitialDelaySeconds,
 		PeriodSeconds:       spec.PeriodSeconds,

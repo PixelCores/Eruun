@@ -61,12 +61,11 @@ func TestRestartApplicationWorkloadsRestartsWorkloads(t *testing.T) {
 	)
 
 	svc := &applicationsServiceImpl{
-		ScheduleLocker:    locker.NewMemoryLocker("test-app-schedule"),
-		KubeClient:        clientset,
-		Store:             store,
-		AppRepo:           &mockCleanupAppRepo{store: store},
-		ComponentRepo:     &mockCleanupComponentRepo{store: store},
-		WorkflowQueueRepo: &mockWorkflowQueueRepo{},
+		ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
+		KubeClient:     clientset,
+		Store:          store,
+		AppRepo:        &mockCleanupAppRepo{store: store},
+		ComponentRepo:  &mockCleanupComponentRepo{store: store},
 	}
 
 	resp, err := svc.RestartApplicationWorkloads(context.Background(), app.ID, apisv1.ApplicationLifecycleRequest{})
@@ -121,14 +120,12 @@ func TestRestartApplicationWorkloadsTriggersRequestCallback(t *testing.T) {
 		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: deployName, Namespace: "default"}},
 	)
 	callbackStore := newApplicationCallbackStore(t, app, web)
-	queueRepo := &mockWorkflowQueueRepo{store: callbackStore}
 	svc := &applicationsServiceImpl{
 		ScheduleLocker:            locker.NewMemoryLocker("test-app-schedule"),
 		KubeClient:                clientset,
 		Store:                     callbackStore,
 		AppRepo:                   &mockCleanupAppRepo{store: store},
 		ComponentRepo:             &mockCleanupComponentRepo{store: store},
-		WorkflowQueueRepo:         queueRepo,
 		URLSecurityPolicyProvider: newTestURLSecurityPolicyProvider(t, spec.URLSecurityPolicySpec{AllowPrivateByDefault: true}),
 	}
 
@@ -178,14 +175,12 @@ func TestRestartApplicationWorkloadsReturnsErrorWhenCallbackTaskCreateFails(t *t
 	)
 	store.operationStore = newInMemoryAppStore()
 	store.operationStore.addWorkflowQueueErr = errors.New("queue create failed")
-	queueRepo := &mockWorkflowQueueRepo{}
 	svc := &applicationsServiceImpl{
 		ScheduleLocker:            locker.NewMemoryLocker("test-app-schedule"),
 		KubeClient:                clientset,
 		Store:                     store,
 		AppRepo:                   &mockCleanupAppRepo{store: store},
 		ComponentRepo:             &mockCleanupComponentRepo{store: store},
-		WorkflowQueueRepo:         queueRepo,
 		URLSecurityPolicyProvider: newTestURLSecurityPolicyProvider(t, spec.URLSecurityPolicySpec{AllowPrivateByDefault: true}),
 	}
 
@@ -197,8 +192,7 @@ func TestRestartApplicationWorkloadsReturnsErrorWhenCallbackTaskCreateFails(t *t
 	require.Contains(t, err.Error(), "operation record commit could not be confirmed")
 	require.Contains(t, err.Error(), "queue create failed")
 	require.Nil(t, resp)
-	require.Nil(t, queueRepo.lastQueue)
-	require.Empty(t, queueRepo.queues)
+	require.Empty(t, store.operationStore.tasks)
 	requireNoCallbackReceived(t, received)
 
 	deploy, getErr := clientset.AppsV1().Deployments("default").Get(context.Background(), deployName, metav1.GetOptions{})
@@ -234,15 +228,13 @@ func TestRestartApplicationWorkloadsReturnsErrorWhenMarkRestartingFails(t *testi
 	clientset := fake.NewSimpleClientset(
 		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: deployName, Namespace: "default"}},
 	)
-	queueRepo := &mockWorkflowQueueRepo{}
 
 	svc := &applicationsServiceImpl{
-		ScheduleLocker:    locker.NewMemoryLocker("test-app-schedule"),
-		KubeClient:        clientset,
-		Store:             store,
-		AppRepo:           &mockCleanupAppRepo{store: store},
-		ComponentRepo:     &mockCleanupComponentRepo{store: store},
-		WorkflowQueueRepo: queueRepo,
+		ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
+		KubeClient:     clientset,
+		Store:          store,
+		AppRepo:        &mockCleanupAppRepo{store: store},
+		ComponentRepo:  &mockCleanupComponentRepo{store: store},
 	}
 
 	resp, err := svc.RestartApplicationWorkloads(context.Background(), app.ID, apisv1.ApplicationLifecycleRequest{})
@@ -445,12 +437,11 @@ func TestRestartApplicationWorkloadsSkipsStoppedComponents(t *testing.T) {
 	)
 
 	svc := &applicationsServiceImpl{
-		ScheduleLocker:    locker.NewMemoryLocker("test-app-schedule"),
-		KubeClient:        clientset,
-		Store:             store,
-		AppRepo:           &mockCleanupAppRepo{store: store},
-		ComponentRepo:     &mockCleanupComponentRepo{store: store},
-		WorkflowQueueRepo: &mockWorkflowQueueRepo{},
+		ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
+		KubeClient:     clientset,
+		Store:          store,
+		AppRepo:        &mockCleanupAppRepo{store: store},
+		ComponentRepo:  &mockCleanupComponentRepo{store: store},
 	}
 
 	resp, err := svc.RestartApplicationWorkloads(context.Background(), app.ID, apisv1.ApplicationLifecycleRequest{})

@@ -20,7 +20,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
@@ -30,8 +29,8 @@ type DeployServiceJobCtl struct {
 	deployNamespacedResourceJobBase
 }
 
-func NewDeployServiceJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), shareLocker locker.Locker) *DeployServiceJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("NewDeployServiceJobCtl", job, client, store, ack, shareLocker)
+func NewDeployServiceJobCtl(job *model.JobTask, runtime *Runtime, shareLocker locker.Locker) *DeployServiceJobCtl {
+	base, ok := newDeployNamespacedResourceJobBase("NewDeployServiceJobCtl", job, runtime, shareLocker)
 	if !ok {
 		return nil
 	}

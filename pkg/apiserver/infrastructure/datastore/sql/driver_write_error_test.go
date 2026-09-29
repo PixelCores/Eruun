@@ -141,10 +141,6 @@ func (e *testWriteEntity) TableName() string {
 	return "test_write_entities"
 }
 
-func (e *testWriteEntity) ShortTableName() string {
-	return "test_write_entity"
-}
-
 func (e *testWriteEntity) Index() map[string]interface{} {
 	return map[string]interface{}{"id": e.id}
 }

@@ -60,7 +60,7 @@ func TestCleanupResourcesJobCtlPinsStatefulSetUIDAcrossRetentionPolls(t *testing
 			Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 			InternalInfo: versionUpdateRequireStatefulSetDeletionInternalInfo(), Timeout: 2,
 		}
-		ctl := NewCleanupResourcesJobCtl(job, client, &noopStore{}, nil)
+		ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
 		require.NotNil(t, ctl)
 
 		err := ctl.deleteStatefulSet(ctx, component.Namespace, statefulSetName)
@@ -117,7 +117,7 @@ func TestCleanupResourcesJobCtlPinsStatefulSetUIDAcrossRetentionPolls(t *testing
 			Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 			InternalInfo: versionUpdateRequireStatefulSetDeletionInternalInfo(), Timeout: 2,
 		}
-		ctl := NewCleanupResourcesJobCtl(job, client, &noopStore{}, nil)
+		ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
 		require.NotNil(t, ctl)
 		ref, err := requiredStatefulSetCleanupRef(component)
 		require.NoError(t, err)
@@ -174,7 +174,7 @@ func TestCleanupResourcesJobCtlPinsPreflightStatefulSetIdentityBeforeFirstRetent
 				TaskID: "task-1", JobType: string(config.JobCleanupResources), JobInfo: component,
 				InternalInfo: marker, Status: config.StatusRunning, Timeout: 1,
 			}
-			ctl := NewCleanupResourcesJobCtl(job, client, store, nil)
+			ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: store, Ack: nil})
 			require.NotNil(t, ctl)
 			require.NoError(t, ctl.ensureRequiredStatefulSetDeletionAllowed(ctx, component))
 
@@ -346,7 +346,7 @@ func newRetentionGuardController(
 		Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: internalInfo, Timeout: 2,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, client, &noopStore{}, nil)
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
 	require.NotNil(t, ctl)
 	return component, statefulSetName, client, ctl
 }

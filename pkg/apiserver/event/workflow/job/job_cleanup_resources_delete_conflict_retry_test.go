@@ -327,7 +327,7 @@ func newRequiredStatefulSetPVCConflictRetryController(
 		Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: versionUpdateRequireStatefulSetPVCDeletionInternalInfo(t, "data"), Timeout: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, client, &noopStore{}, nil)
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
 	require.NotNil(t, ctl)
 	return component, pvc, client, ctl
 }

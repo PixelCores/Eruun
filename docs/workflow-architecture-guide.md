@@ -201,22 +201,24 @@ func (w *Workflow) StartWorker(
 
 每个 Job 控制器只负责一种资源类型的生命周期管理：
 
+`RunJobs` 为本次执行创建 `Runtime`，控制器在构造时接收运行依赖；需要共享资源锁的控制器还会显式接收由本次执行创建的锁。
+
 ```go
 // job/job.go
-func initJobCtl(job *model.JobTask, ...) JobCtl {
+func initJobCtl(job *model.JobTask, runtime *Runtime) JobCtl {
     switch job.JobType {
     case string(config.JobDeploy):
-        return NewDeployJobCtl(job, client, store, ack)
+        return NewDeployJobCtl(job, runtime, runtime.shareLocker)
     case string(config.JobDeployService):
-        return NewDeployServiceJobCtl(job, client, store, ack)
+        return NewDeployServiceJobCtl(job, runtime, runtime.shareLocker)
     case string(config.JobDeployStore):
-        return NewDeployStatefulSetJobCtl(job, client, store, ack)
+        return NewDeployStatefulSetJobCtl(job, runtime, runtime.shareLocker)
     case string(config.JobDeployPVC):
-        return NewDeployPVCJobCtl(job, client, store, ack)
+        return NewDeployPVCJobCtl(job, runtime, runtime.shareLocker)
     case string(config.JobDeployConfigMap):
-        return NewDeployConfigMapJobCtl(job, client, store, ack)
+        return NewDeployConfigMapJobCtl(job, runtime, runtime.shareLocker)
     case string(config.JobDeploySecret):
-        return NewDeploySecretJobCtl(job, client, store, ack)
+        return NewDeploySecretJobCtl(job, runtime, runtime.shareLocker)
     // ... 更多类型
     }
 }
@@ -269,7 +271,7 @@ for _, stepExec := range stepExecutions {
     for _, priority := range priorities {
         tasksInPriority := stepExec.Jobs[priority]
         // 执行该优先级的所有 Job
-        job.RunJobs(ctx, tasksInPriority, stepConcurrency, ...)
+        w.runJobs(ctx, tasksInPriority, stepConcurrency, w.ack, !stepExec.Mode.IsParallel())
     }
 }
 ```
@@ -604,7 +606,7 @@ func (w *WorkflowCtl) Run(ctx context.Context, concurrency int) error {
             stopOnFailure := !stepExec.Mode.IsParallel()
             
             // 执行该优先级的 Jobs
-            job.RunJobs(ctx, tasksInPriority, stepConcurrency, w.Client, w.Store, w.ack, stopOnFailure)
+            w.runJobs(ctx, tasksInPriority, stepConcurrency, w.ack, stopOnFailure)
             
             // 检查执行结果
             for _, task := range tasksInPriority {

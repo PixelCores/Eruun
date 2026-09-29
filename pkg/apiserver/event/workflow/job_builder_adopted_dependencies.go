@@ -155,7 +155,7 @@ func augmentAdoptedDependencyJobs(
 		)
 	}
 
-	resourceAppName := naming.ApplicationResourceKey(app.Name, "", false)
+	resourceAppName := naming.ApplicationResourceKey(app.Name)
 	seen, err := filterAdoptedDependencyJobs(stepGroups, snapshot, task, resourceAppName, defaultJobTimeoutSeconds)
 	if err != nil {
 		return nil, err

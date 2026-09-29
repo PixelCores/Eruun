@@ -10,7 +10,6 @@ func TestSystemSetting_EntityContract(t *testing.T) {
 	setting := &SystemSetting{Type: SystemSettingTypeNodeSelector}
 
 	require.Equal(t, "eruun_system_setting", setting.TableName())
-	require.Equal(t, "system_setting", setting.ShortTableName())
 	require.Equal(t, SystemSettingTypeNodeSelector, setting.PrimaryKey())
 
 	index := setting.Index()

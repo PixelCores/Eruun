@@ -29,10 +29,6 @@ func (o *JobResultOutbox) TableName() string {
 	return tableNamePrefix + "job_result_outbox"
 }
 
-func (o *JobResultOutbox) ShortTableName() string {
-	return "job_result_outbox"
-}
-
 func (o *JobResultOutbox) Index() map[string]interface{} {
 	index := make(map[string]interface{})
 	if o.ID != "" {

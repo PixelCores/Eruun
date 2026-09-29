@@ -101,18 +101,17 @@ func (o ListApplicationsOptions) NormalizedPage() int {
 }
 
 type applicationsServiceImpl struct {
-	KubeClient                kubernetes.Interface               `inject:"kubeClient"`
-	KubeConfig                *rest.Config                       `inject:"kubeConfig"`
-	Store                     datastore.DataStore                `inject:"datastore"`
-	Cache                     cache.ICache                       `inject:"cache"`
-	RedisClient               *redis.Client                      `inject:"redisClient"`
-	Cfg                       *config.Config                     `inject:""`
-	URLSecurityPolicyProvider *urlpolicy.Provider                `inject:""`
-	ScheduleLocker            locker.Locker                      `inject:"appScheduleLocker"`
-	AppRepo                   repository.ApplicationRepository   `inject:""`
-	WorkflowRepo              repository.WorkflowRepository      `inject:""`
-	ComponentRepo             repository.ComponentRepository     `inject:""`
-	WorkflowQueueRepo         repository.WorkflowQueueRepository `inject:""`
+	KubeClient                kubernetes.Interface             `inject:"kubeClient"`
+	KubeConfig                *rest.Config                     `inject:"kubeConfig"`
+	Store                     datastore.DataStore              `inject:"datastore"`
+	Cache                     cache.ICache                     `inject:"cache"`
+	RedisClient               *redis.Client                    `inject:"redisClient"`
+	Cfg                       *config.Config                   `inject:""`
+	URLSecurityPolicyProvider *urlpolicy.Provider              `inject:""`
+	ScheduleLocker            locker.Locker                    `inject:"appScheduleLocker"`
+	AppRepo                   repository.ApplicationRepository `inject:""`
+	WorkflowRepo              repository.WorkflowRepository    `inject:""`
+	ComponentRepo             repository.ComponentRepository   `inject:""`
 }
 
 type workflowUpsertOptions struct {
@@ -257,7 +256,7 @@ func (c *applicationsServiceImpl) createApplications(
 	}
 	refreshAppID := strings.TrimSpace(req.ID)
 
-	callbackSelection, err := c.resolveCreateApplicationCallback(ctx, req)
+	callbackSelection, err := resolveCreateApplicationCallback(ctx, c.Cfg, c.URLSecurityPolicyProvider, req)
 	if err != nil {
 		return nil, err
 	}
@@ -270,11 +269,11 @@ func (c *applicationsServiceImpl) createApplications(
 	}
 
 	//分解所有的组件
-	resolvedComponents, err := c.resolveComponents(ctx, application.Namespace, application.Name, req.Components)
+	resolvedComponents, _, err := resolveComponentsWithSourceIndexes(ctx, c.AppRepo, c.ComponentRepo, application.Namespace, application.Name, req.Components, c.Cfg)
 	if err != nil {
 		return nil, err
 	}
-	if err := c.validateApplicationResourceNames(ctx, application, resolvedComponents); err != nil {
+	if err := validateApplicationResourceNames(ctx, c.AppRepo, c.ComponentRepo, application, resolvedComponents); err != nil {
 		return nil, err
 	}
 
@@ -1058,7 +1057,7 @@ func (c *applicationsServiceImpl) updateApplicationWorkflowLocked(ctx context.Co
 		return nil, err
 	}
 
-	callback, err := c.normalizeWorkflowCallbackForWrite(ctx, req.Callback)
+	callback, err := normalizeWorkflowCallbackForWrite(ctx, c.Cfg, c.URLSecurityPolicyProvider, req.Callback)
 	if err != nil {
 		return nil, err
 	}

@@ -727,7 +727,7 @@ func TestDeployJobCtlRunReplacesStaleDeploymentVolumeMounts(t *testing.T) {
 		JobType:   string(config.JobDeploy),
 		JobInfo:   desired,
 	}
-	ctl := NewDeployJobCtl(jobTask, client, &noopStore{}, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.run(ctx))
@@ -799,7 +799,7 @@ func TestDeployJobCtlRunSkipsDeploymentWithOnlyLiveSystemLabels(t *testing.T) {
 		JobType:   string(config.JobDeploy),
 		JobInfo:   desired,
 	}
-	ctl := NewDeployJobCtl(jobTask, client, &noopStore{}, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.run(ctx))
@@ -846,7 +846,7 @@ func TestDeployJobCtlRunSkipsDeploymentWithOnlyImmutableSelectorDrift(t *testing
 		JobType:   string(config.JobDeploy),
 		JobInfo:   desired,
 	}
-	ctl := NewDeployJobCtl(jobTask, client, &noopStore{}, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.run(ctx))
@@ -888,7 +888,7 @@ func TestDeployJobCtlRunUpdatesDeploymentReplicasOnly(t *testing.T) {
 		JobType:   string(config.JobDeploy),
 		JobInfo:   desired,
 	}
-	ctl := NewDeployJobCtl(jobTask, client, &noopStore{}, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.run(ctx))
@@ -943,7 +943,7 @@ func TestDeployJobCtlRunAnnotatesChangedPodTemplateWithTaskID(t *testing.T) {
 		JobType:   string(config.JobDeploy),
 		JobInfo:   desired,
 	}
-	ctl := NewDeployJobCtl(jobTask, client, &noopStore{}, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.run(ctx))
@@ -992,7 +992,7 @@ func TestDeployJobCtlRunRestoresTaskAnnotationForUpToDateDeployment(t *testing.T
 		JobType:   string(config.JobDeploy),
 		JobInfo:   desired,
 	}
-	ctl := NewDeployJobCtl(jobTask, client, &noopStore{}, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.run(ctx))
@@ -1069,7 +1069,7 @@ func TestDeployJobCtlRunReplacesStaleDeploymentVolumeSource(t *testing.T) {
 		JobType:   string(config.JobDeploy),
 		JobInfo:   desired,
 	}
-	ctl := NewDeployJobCtl(jobTask, client, &noopStore{}, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.run(ctx))

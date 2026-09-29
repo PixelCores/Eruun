@@ -726,7 +726,7 @@ func importComponentResourceKeys(components []apisv1.CreateComponentRequest, app
 		return nil
 	}
 	keys := make(map[string]struct{})
-	resourceAppName := naming.ApplicationResourceKey(appName, "", false)
+	resourceAppName := naming.ApplicationResourceKey(appName)
 	for _, component := range components {
 		for _, key := range importComponentResolvedResourceKeys(component, resourceAppName, namespace) {
 			keys[key] = struct{}{}
@@ -742,7 +742,7 @@ func importComponentConflictsWithResourceKeys(component apisv1.CreateComponentRe
 	if len(keys) == 0 {
 		return false
 	}
-	resourceAppName := naming.ApplicationResourceKey(appName, "", false)
+	resourceAppName := naming.ApplicationResourceKey(appName)
 	for _, key := range importComponentResolvedResourceKeys(component, resourceAppName, namespace) {
 		if _, exists := keys[key]; exists {
 			return true

@@ -214,10 +214,13 @@ Configure the server through flags or `ERUUN_` environment variables; for exampl
 | `ERUUN_DATASTORE_URL` | The actual MySQL DSN; the password placeholder must be replaced |
 | `ERUUN_CACHE_HOST` / `ERUUN_CACHE_PASSWORD` | Redis connection configuration |
 | `ERUUN_MSG_TYPE` / `ERUUN_MSG_KAFKA_BROKERS` | Redis Streams by default; configure brokers when selecting Kafka, and retain Redis |
+| `ERUUN_ENABLE_TRACING` / `ERUUN_AUTO_TRACING` / `ERUUN_JAEGER_ENDPOINT` | Either tracing flag enables tracing; the Jaeger endpoint controls span export |
 | `ERUUN_AUTH_CONFIG_FILE` | Account, session, and workspace policy JSON |
 | `ERUUN_JOBS_CONFIG_FILE` | Enables the Harbor Runner and optional MinIO; use the same configuration for all four roles |
 
 Redis is required for cache, authentication, and coordination in all four long-running roles (`api`, `controller`, `scheduler`, `worker`). For these roles, `--cache-type` / `ERUUN_CACHE_TYPE` accepts only `redis`; `memory` fails startup validation. In `--datastore-schema-mode=migrate-only`, validation checks only datastore configuration.
+
+Tracing defaults to `ERUUN_ENABLE_TRACING=true` and `ERUUN_AUTO_TRACING=false`. For a valid Redis or Kafka messaging configuration, set both to `false` to disable tracing; setting a Jaeger endpoint alone does not enable it. Without an endpoint, tracing can add trace IDs to API request logs but does not export spans. The static stack manifest sets both tracing flags to `true`.
 
 Local source development requires Go 1.27, plus GNU Make when using Make targets. Start and configure MySQL, Redis, and optional Kafka using the [local dependencies guide](docs/local-docker-dependencies.md), prepare account configuration and Kubernetes access, then start the API:
 

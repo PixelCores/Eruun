@@ -91,10 +91,6 @@ func (j *JobInfo) TableName() string {
 	return tableNamePrefix + "job"
 }
 
-func (j *JobInfo) ShortTableName() string {
-	return "job_info"
-}
-
 func (j *JobTask) ResourceAppNameOrID() string {
 	if j == nil {
 		return ""

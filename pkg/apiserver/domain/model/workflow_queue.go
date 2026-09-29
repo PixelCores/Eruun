@@ -82,10 +82,6 @@ func (wq *WorkflowQueue) TableName() string {
 	return tableNamePrefix + "workflow_queue"
 }
 
-func (wq *WorkflowQueue) ShortTableName() string {
-	return "workflow_queue"
-}
-
 func WorkflowCallbackSource(task *WorkflowQueue, workflow *Workflow, app *Applications) *JSONStruct {
 	if task != nil && task.Callback != nil {
 		return task.Callback

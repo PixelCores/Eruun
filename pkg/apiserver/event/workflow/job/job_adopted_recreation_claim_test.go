@@ -20,9 +20,9 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 )
 
 type recreationConfirmationFailStore struct {
@@ -138,7 +138,7 @@ func TestPrepareRecreationCandidateReleasesGuardOnPanic(t *testing.T) {
 			ctx,
 			store,
 			candidate,
-			&jobRuntime{},
+			&Runtime{},
 			lockProvider,
 		)
 	}()
@@ -253,11 +253,13 @@ func TestAdoptedConfigMapLegacyNamespaceRecreationAlreadyExistsWithClaimConverge
 			JobType:   string(config.JobDeployConfigMap),
 			JobInfo:   desired,
 		},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client:            client,
+			Store:             store,
+			Ack:               func() {},
+			URLSecurityPolicy: nil,
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
-		nil,
 	)
 
 	require.NoError(t, controller.run(ctx))
@@ -319,7 +321,7 @@ func TestAdoptedRecreationLockRejectsStaleClaimantAfterFinalization(t *testing.T
 		Locker:            locker.NewMemoryLocker(shareLockerPrefix),
 		secondLockStarted: make(chan struct{}),
 	}
-	runtime := &jobRuntime{}
+	runtime := &Runtime{}
 	firstCandidate := source.DeepCopy()
 	firstCandidate.UID = ""
 	firstCandidate.ResourceVersion = ""
@@ -414,7 +416,7 @@ func TestAdoptedRecreationClaimFailsClosedWithoutLocker(t *testing.T) {
 		ctx,
 		store,
 		candidate,
-		&jobRuntime{},
+		&Runtime{},
 		nil,
 	)
 	require.ErrorContains(t, err, "locker is unavailable")
@@ -465,7 +467,7 @@ func TestAdoptedRecreationRecoverySerializesStaleCreator(t *testing.T) {
 		firstLockAcquired: make(chan struct{}),
 		allowFirstReturn:  make(chan struct{}),
 	}
-	jobRuntime := &jobRuntime{}
+	jobRuntime := &Runtime{}
 	type recoveryResult struct {
 		recovered bool
 		err       error
@@ -569,7 +571,7 @@ func TestRecoverPendingAdoptedDependencyReloadsStaleBinding(t *testing.T) {
 		binding,
 		replacement,
 		replacement,
-		&jobRuntime{},
+		&Runtime{},
 		locker.NewMemoryLocker(shareLockerPrefix),
 	)
 	require.NoError(t, err)
@@ -619,7 +621,7 @@ func TestRecoverPendingAdoptedWorkloadAcceptsConcurrentFinalization(t *testing.T
 		source.Name,
 		replacement,
 		replacement,
-		&jobRuntime{},
+		&Runtime{},
 		locker.NewMemoryLocker(shareLockerPrefix),
 	)
 	require.NoError(t, err)
@@ -675,11 +677,13 @@ func TestAdoptedConfigMapConcurrentFinalizationPreventsRollback(t *testing.T) {
 			JobType:   string(config.JobDeployConfigMap),
 			JobInfo:   source.DeepCopy(),
 		},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client:            client,
+			Store:             store,
+			Ack:               func() {},
+			URLSecurityPolicy: nil,
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
-		nil,
 	)
 
 	require.NoError(t, controller.run(ctx))
@@ -736,11 +740,13 @@ func TestAdoptedConfigMapUnconfirmedPersistenceSkipsRollback(t *testing.T) {
 			JobType:   string(config.JobDeployConfigMap),
 			JobInfo:   source.DeepCopy(),
 		},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client:            client,
+			Store:             store,
+			Ack:               func() {},
+			URLSecurityPolicy: nil,
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
-		nil,
 	)
 
 	err := controller.run(ctx)

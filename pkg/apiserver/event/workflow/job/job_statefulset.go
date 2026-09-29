@@ -14,13 +14,11 @@ import (
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
@@ -35,8 +33,8 @@ type DeployStatefulSetJobCtl struct {
 	expectedPodTemplateAnnotations map[string]string
 }
 
-func NewDeployStatefulSetJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), shareLocker locker.Locker) *DeployStatefulSetJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("DeployStatefulSetJobCtl", job, client, store, ack, shareLocker)
+func NewDeployStatefulSetJobCtl(job *model.JobTask, runtime *Runtime, shareLocker locker.Locker) *DeployStatefulSetJobCtl {
+	base, ok := newDeployNamespacedResourceJobBase("DeployStatefulSetJobCtl", job, runtime, shareLocker)
 	if !ok {
 		return nil
 	}
