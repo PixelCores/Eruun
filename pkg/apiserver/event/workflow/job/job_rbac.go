@@ -11,13 +11,11 @@ import (
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
 
@@ -26,8 +24,8 @@ type DeployServiceAccountJobCtl struct {
 	deployNamespacedResourceJobBase
 }
 
-func NewDeployServiceAccountJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), shareLocker locker.Locker) *DeployServiceAccountJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("DeployServiceAccountJobCtl", job, client, store, ack, shareLocker)
+func NewDeployServiceAccountJobCtl(job *model.JobTask, runtime *Runtime, shareLocker locker.Locker) *DeployServiceAccountJobCtl {
+	base, ok := newDeployNamespacedResourceJobBase("DeployServiceAccountJobCtl", job, runtime, shareLocker)
 	if !ok {
 		return nil
 	}
@@ -141,8 +139,8 @@ type DeployRoleJobCtl struct {
 	deployNamespacedResourceJobBase
 }
 
-func NewDeployRoleJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), shareLocker locker.Locker) *DeployRoleJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("DeployRoleJobCtl", job, client, store, ack, shareLocker)
+func NewDeployRoleJobCtl(job *model.JobTask, runtime *Runtime, shareLocker locker.Locker) *DeployRoleJobCtl {
+	base, ok := newDeployNamespacedResourceJobBase("DeployRoleJobCtl", job, runtime, shareLocker)
 	if !ok {
 		return nil
 	}
@@ -251,8 +249,8 @@ type DeployRoleBindingJobCtl struct {
 	deployNamespacedResourceJobBase
 }
 
-func NewDeployRoleBindingJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), shareLocker locker.Locker) *DeployRoleBindingJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("DeployRoleBindingJobCtl", job, client, store, ack, shareLocker)
+func NewDeployRoleBindingJobCtl(job *model.JobTask, runtime *Runtime, shareLocker locker.Locker) *DeployRoleBindingJobCtl {
+	base, ok := newDeployNamespacedResourceJobBase("DeployRoleBindingJobCtl", job, runtime, shareLocker)
 	if !ok {
 		return nil
 	}
@@ -365,8 +363,8 @@ type DeployClusterRoleJobCtl struct {
 	deployNamespacedResourceJobBase
 }
 
-func NewDeployClusterRoleJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), shareLocker locker.Locker) *DeployClusterRoleJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("DeployClusterRoleJobCtl", job, client, store, ack, shareLocker)
+func NewDeployClusterRoleJobCtl(job *model.JobTask, runtime *Runtime, shareLocker locker.Locker) *DeployClusterRoleJobCtl {
+	base, ok := newDeployNamespacedResourceJobBase("DeployClusterRoleJobCtl", job, runtime, shareLocker)
 	if !ok {
 		return nil
 	}
@@ -474,8 +472,8 @@ type DeployClusterRoleBindingJobCtl struct {
 	deployNamespacedResourceJobBase
 }
 
-func NewDeployClusterRoleBindingJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), shareLocker locker.Locker) *DeployClusterRoleBindingJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("DeployClusterRoleBindingJobCtl", job, client, store, ack, shareLocker)
+func NewDeployClusterRoleBindingJobCtl(job *model.JobTask, runtime *Runtime, shareLocker locker.Locker) *DeployClusterRoleBindingJobCtl {
+	base, ok := newDeployNamespacedResourceJobBase("DeployClusterRoleBindingJobCtl", job, runtime, shareLocker)
 	if !ok {
 		return nil
 	}

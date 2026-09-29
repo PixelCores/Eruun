@@ -314,7 +314,9 @@ func TestRunJobReturnsInfrastructureStopWhenEarlyTerminalPersistenceFails(t *tes
 			ctx, cancel := tc.ctx()
 			defer cancel()
 
-			err := runJob(ctx, task, fake.NewSimpleClientset(), store, func() {}, nil)
+			client := fake.NewSimpleClientset()
+			ack := func() {}
+			err := runJob(ctx, task, &Runtime{Client: client, Store: store, Ack: ack})
 
 			require.ErrorIs(t, err, signal.ErrInfrastructureStop)
 			require.ErrorIs(t, err, persistErr)
@@ -519,9 +521,11 @@ func TestRunJobInfrastructureStopDuringManagementModeCheckDoesNotPersistFailure(
 	}
 	job := infrastructureStopTestJob()
 	ackCount := 0
+	client := fake.NewSimpleClientset()
+	ack := func() { ackCount++ }
 	done := make(chan struct{})
 	go func() {
-		runJob(ctx, job, fake.NewSimpleClientset(), store, func() { ackCount++ }, nil)
+		runJob(ctx, job, &Runtime{Client: client, Store: store, Ack: ack})
 		close(done)
 	}()
 
@@ -545,11 +549,13 @@ func TestRunJobInfrastructureStopDuringCancellationWatcherSetupDoesNotPersistFai
 	redisClient := redis.NewClient(&redis.Options{Addr: "unused:0"})
 	redisClient.AddHook(hook)
 	defer redisClient.Close()
-	runtime := &Runtime{RedisClient: redisClient}
+	client := fake.NewSimpleClientset()
 	ackCount := 0
+	ack := func() { ackCount++ }
+	runtime := &Runtime{Client: client, Store: store, Ack: ack, RedisClient: redisClient}
 	done := make(chan struct{})
 	go func() {
-		runJob(ctx, job, fake.NewSimpleClientset(), store, func() { ackCount++ }, runtime)
+		runJob(ctx, job, runtime)
 		close(done)
 	}()
 

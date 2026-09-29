@@ -76,7 +76,7 @@ func TestDeployStatefulSetJobCtl_UpdateExisting(t *testing.T) {
 	}
 
 	job.JobInfo = desired
-	ctl := NewDeployStatefulSetJobCtl(job, client, &noopStore{}, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployStatefulSetJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 
 	if err := ctl.run(ctx); err != nil {
 		t.Fatalf("run returned error: %v", err)
@@ -167,7 +167,7 @@ func TestDeployStatefulSetJobCtl_SkipsUnchangedUpdate(t *testing.T) {
 	desired.Spec.Template.Spec.TerminationGracePeriodSeconds = nil
 	desired.Spec.Template.Spec.EnableServiceLinks = nil
 	job.JobInfo = desired
-	ctl := NewDeployStatefulSetJobCtl(job, client, &noopStore{}, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployStatefulSetJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 
 	if err := ctl.run(ctx); err != nil {
 		t.Fatalf("run returned error: %v", err)
@@ -206,7 +206,7 @@ func TestDeployStatefulSetJobCtl_RestoresTaskAnnotationForUpToDateStatefulSet(t 
 	desired.Name = statefulSetName
 	desired.Namespace = "ops"
 	job.JobInfo = desired
-	ctl := NewDeployStatefulSetJobCtl(job, client, &noopStore{}, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployStatefulSetJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 
 	require.NoError(t, ctl.run(ctx))
 

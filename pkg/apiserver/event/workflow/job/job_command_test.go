@@ -63,7 +63,7 @@ func TestWorkspaceJobCleanupWaitsForCommittedResult(t *testing.T) {
 			if jobType == config.JobEval {
 				store.artifact = &model.JobArtifact{WorkspaceID: task.WorkspaceID, TaskID: task.TaskID, ExecutionKey: task.ExecutionKey, Kind: "source", Summary: json.RawMessage(`{"collectionComplete":true}`)}
 			}
-			ctl := NewInstantJobCtl(task, client, store, func() {})
+			ctl := NewInstantJobCtl(task, &Runtime{Client: client, Store: store, Ack: func() {}})
 			require.NoError(t, ctl.SaveInfo(context.Background()))
 			require.Equal(t, string(config.StatusCompleted), store.record.Status)
 			_, err = client.BatchV1().Jobs(live.Namespace).Get(context.Background(), live.Name, metav1.GetOptions{})
@@ -110,7 +110,7 @@ func TestEvaluationCleanupRetainsResultsUntilArchiveIsCommitted(t *testing.T) {
 			task.InternalInfo, task.JobInfo = string(raw), live
 			client := fake.NewSimpleClientset(live)
 			store := &workspaceJobArtifactStore{}
-			ctl := NewInstantJobCtl(task, client, store, func() {})
+			ctl := NewInstantJobCtl(task, &Runtime{Client: client, Store: store, Ack: func() {}})
 			ctl.Clean(context.Background())
 			if status == config.StatusCancelled || status == config.StatusTimeout {
 				require.Equal(t, 1, countClientActions(client, "delete", "jobs"))

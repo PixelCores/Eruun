@@ -23,8 +23,8 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
 
 func TestDeployJobCtlRunAdoptedNoopPreservesUnknownLiveFields(t *testing.T) {
@@ -59,7 +59,7 @@ func TestDeployJobCtlRunAdoptedNoopPreservesUnknownLiveFields(t *testing.T) {
 		app:       adoptedApplication(t, "app-1", "ops", snapshotResource),
 	}
 	jobTask := &model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeploy), JobInfo: desired}
-	ctl := NewDeployJobCtl(jobTask, client, store, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: store, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 
 	require.NoError(t, ctl.run(ctx))
 	got, err := client.AppsV1().Deployments("ops").Get(ctx, live.Name, metav1.GetOptions{})
@@ -163,7 +163,7 @@ func TestDeployJobCtlRunAdoptedRejectsUIDReplacementWithoutWrite(t *testing.T) {
 		component: sourceComponent("app-1", "backend", "Deployment", live.Name, types.UID("original")),
 		app:       adoptedApplication(t, "app-1", "ops", snapshotResource),
 	}
-	ctl := NewDeployJobCtl(&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeploy), JobInfo: desired}, client, store, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployJobCtl(&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeploy), JobInfo: desired}, &Runtime{Client: client, Store: store, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 
 	err := ctl.run(ctx)
 	require.Error(t, err)
@@ -229,7 +229,7 @@ func TestDeployJobCtlRunAdoptedMapsLogicalComponentToFirstContainer(t *testing.T
 		JobType:   string(config.JobDeploy),
 		JobInfo:   desired,
 	}
-	ctl := NewDeployJobCtl(jobTask, client, store, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: store, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 
 	require.NoError(t, ctl.run(ctx))
 	got, err := client.AppsV1().Deployments("ops").Get(ctx, live.Name, metav1.GetOptions{})
@@ -284,9 +284,11 @@ func TestDeployJobCtlRunAdoptedMissingSourceBindingNeverFallsBackToGeneratedName
 			JobType:   string(config.JobDeploy),
 			JobInfo:   desired,
 		},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
 	)
 
@@ -301,7 +303,7 @@ func TestDeployJobCtlRunAdoptedMissingSourceWithoutSnapshotNeverCreatesReplaceme
 	desired := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "generated", Namespace: "ops"}}
 	client := fake.NewSimpleClientset()
 	store := &adoptedSourceStore{component: sourceComponent("app-1", "backend", "Deployment", "legacy-backend", uid)}
-	ctl := NewDeployJobCtl(&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeploy), JobInfo: desired}, client, store, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployJobCtl(&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeploy), JobInfo: desired}, &Runtime{Client: client, Store: store, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 
 	err := ctl.run(ctx)
 	require.Error(t, err)
@@ -340,7 +342,7 @@ func TestStatefulSetAdoptedPreservesIdentityAndIgnoresSyntheticImmutableFields(t
 		component: sourceComponent("app-1", "mysql", "StatefulSet", live.Name, uid),
 		app:       adoptedApplication(t, "app-1", "ops", snapshotResource),
 	}
-	ctl := NewDeployStatefulSetJobCtl(&model.JobTask{Name: "mysql", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployStore), JobInfo: desired}, client, store, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployStatefulSetJobCtl(&model.JobTask{Name: "mysql", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployStore), JobInfo: desired}, &Runtime{Client: client, Store: store, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 
 	require.NoError(t, ctl.run(ctx))
 	require.Equal(t, 0, countClientActions(client, "update", "statefulsets"))
@@ -403,9 +405,11 @@ func TestDeployJobCtlRunAdoptedRecreatesOriginalNameAndPersistsNewUID(t *testing
 	})
 	ctl := NewDeployJobCtl(
 		&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeploy), JobInfo: desired},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
 	)
 
@@ -470,9 +474,11 @@ func TestDeployJobCtlRunAdoptedDoesNotOverwriteConcurrentComponentUpdate(t *test
 	})
 	ctl := NewDeployJobCtl(
 		&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeploy), JobInfo: source.DeepCopy()},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
 	)
 
@@ -558,9 +564,11 @@ func TestDeployStatefulSetJobCtlRunAdoptedRecreatesWithOriginalStorageIdentity(t
 	})
 	ctl := NewDeployStatefulSetJobCtl(
 		&model.JobTask{Name: "mysql", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployStore), JobInfo: desired},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
 	)
 
@@ -621,9 +629,11 @@ func TestDeployPVCJobCtlRunAdoptedExpandsStandaloneBoundPVC(t *testing.T) {
 	desired.Spec.Resources.Requests[corev1.ResourceStorage] = resource.MustParse("20Gi")
 	ctl := NewDeployPVCJobCtl(
 		&model.JobTask{Name: "mysql", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployPVC), JobInfo: desired},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
 	)
 
@@ -748,9 +758,11 @@ func TestDeployPVCJobCtlRunAdoptedRejectsUnsafeChanges(t *testing.T) {
 			testCase.mutate(desired)
 			ctl := NewDeployPVCJobCtl(
 				&model.JobTask{Name: "mysql", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployPVC), JobInfo: desired},
-				client,
-				store,
-				func() {},
+				&Runtime{
+					Client: client,
+					Store:  store,
+					Ack:    func() {},
+				},
 				locker.NewNoopLocker(shareLockerPrefix),
 			)
 
@@ -790,9 +802,11 @@ func TestDeployPVCJobCtlRunAdoptedMissingPVCNeverRecreates(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	ctl := NewDeployPVCJobCtl(
 		&model.JobTask{Name: "mysql", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployPVC), JobInfo: source.DeepCopy()},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
 	)
 
@@ -861,9 +875,11 @@ func TestDeployServiceJobCtlRunAdoptedUsesLiveBaselineAndSkipsNoop(t *testing.T)
 	client := fake.NewSimpleClientset(live)
 	ctl := NewDeployServiceJobCtl(
 		&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployService), JobInfo: desired},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
 	)
 
@@ -900,9 +916,11 @@ func TestDeployServiceJobCtlRunAdoptedSharedDependencyIsNeverWritten(t *testing.
 	client := fake.NewSimpleClientset(live)
 	ctl := NewDeployServiceJobCtl(
 		&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployService), JobInfo: desired},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
 	)
 
@@ -934,9 +952,11 @@ func TestDeployServiceJobCtlRunAdoptedRejectsReplacementUID(t *testing.T) {
 	client := fake.NewSimpleClientset(replacement)
 	ctl := NewDeployServiceJobCtl(
 		&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployService), JobInfo: desired},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
 	)
 
@@ -1008,9 +1028,11 @@ func TestDeployIngressJobCtlRunAdoptedPreservesUnspecifiedLiveFields(t *testing.
 			JobType:         string(config.JobDeployIngress),
 			JobInfo:         desired,
 		},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
 	)
 
@@ -1056,11 +1078,13 @@ func TestDeployConfigMapJobCtlRunAdoptedPreservesUnknownLiveFields(t *testing.T)
 	client := fake.NewSimpleClientset(live)
 	ctl := NewDeployConfigMapJobCtl(
 		&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployConfigMap), JobInfo: desired},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client:            client,
+			Store:             store,
+			Ack:               func() {},
+			URLSecurityPolicy: nil,
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
-		nil,
 	)
 
 	require.NoError(t, ctl.run(ctx))
@@ -1122,9 +1146,11 @@ func TestAdoptedStatefulSetRecreationPersistenceFailureRetainsPendingClaimAndRet
 	desired.UID = ""
 	ctl := NewDeployStatefulSetJobCtl(
 		&model.JobTask{Name: "mysql", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployStore), JobInfo: desired},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
 	)
 

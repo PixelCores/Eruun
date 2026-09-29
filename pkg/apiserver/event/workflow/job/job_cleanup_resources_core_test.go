@@ -34,9 +34,11 @@ func TestCleanupResourcesRejectsSourceBoundComponent(t *testing.T) {
 	}
 	ctl := NewCleanupResourcesJobCtl(
 		&model.JobTask{AppID: "app-1", Name: "api", JobInfo: component},
-		fake.NewSimpleClientset(),
-		&noopStore{},
-		nil,
+		&Runtime{
+			Client: fake.NewSimpleClientset(),
+			Store:  &noopStore{},
+			Ack:    nil,
+		},
 	)
 	require.NotNil(t, ctl)
 
@@ -74,7 +76,7 @@ func TestCleanupResourcesJobCtlPrioritizesContextTerminationOverOpaqueWorkflowTa
 				Name: component.Name, Namespace: component.Namespace, AppID: component.AppID,
 				TaskID: "task-1", JobType: string(config.JobCleanupResources), JobInfo: component, InternalInfo: marker,
 			}
-			ctl := NewCleanupResourcesJobCtl(job, fake.NewSimpleClientset(), store, nil)
+			ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: nil})
 			require.NotNil(t, ctl)
 
 			err := ctl.Run(gateCtx)
@@ -122,7 +124,7 @@ func TestCleanupResourcesJobCtlDoesNotStartWhenCleanupTerminalizesDuringStart(t 
 		JobInfo:      removed,
 		InternalInfo: existing.InternalInfo,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, fake.NewSimpleClientset(), store, nil)
+	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	skipCleanup, err := ctl.markVersionUpdateCleanupRunning(context.Background())
@@ -159,10 +161,13 @@ func TestRunJobCleanupResourcesInvalidatesComponentsCache(t *testing.T) {
 		Timeout:   1,
 	}
 	runtime := newJobRuntime(&Runtime{
-		Cache: cacheStore,
+		Client: fake.NewSimpleClientset(),
+		Store:  store,
+		Ack:    func() {},
+		Cache:  cacheStore,
 	})
 
-	runJob(context.Background(), task, fake.NewSimpleClientset(), store, func() {}, runtime)
+	runJob(context.Background(), task, runtime)
 
 	require.Equal(t, config.StatusCompleted, task.Status)
 	require.False(t, cacheStore.Exists(context.Background(), cacheKey))
@@ -171,11 +176,11 @@ func TestRunJobCleanupResourcesInvalidatesComponentsCache(t *testing.T) {
 }
 
 func TestCleanupResourcesJobCtlValidatesInputs(t *testing.T) {
-	ctl := NewCleanupResourcesJobCtl(nil, nil, nil, nil)
+	ctl := NewCleanupResourcesJobCtl(nil, &Runtime{Client: nil, Store: nil, Ack: nil})
 	require.Nil(t, ctl)
 
 	task := &model.JobTask{JobType: string(config.JobCleanupResources), JobInfo: "invalid"}
-	ctl = NewCleanupResourcesJobCtl(task, fake.NewSimpleClientset(), &noopStore{}, nil)
+	ctl = NewCleanupResourcesJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: &noopStore{}, Ack: nil})
 	require.NotNil(t, ctl)
 	require.Error(t, ctl.Run(context.Background()))
 	require.Equal(t, config.StatusFailed, task.Status)
@@ -211,7 +216,7 @@ func TestCleanupResourcesJobCtlDoesNotRecreateRemovedComponent(t *testing.T) {
 		JobInfo:   component,
 		Timeout:   1,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, client, store, nil)
+	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.Run(ctx))

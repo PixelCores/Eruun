@@ -15,7 +15,6 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
@@ -95,8 +94,8 @@ type logArchiveUploadTarget struct {
 	ContainerName string
 }
 
-func NewLogArchiveUploadJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func()) *LogArchiveUploadJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("LogArchiveUploadJobCtl", job, client, store, ack, nil)
+func NewLogArchiveUploadJobCtl(job *model.JobTask, runtime *Runtime) *LogArchiveUploadJobCtl {
+	base, ok := newDeployNamespacedResourceJobBase("LogArchiveUploadJobCtl", job, runtime, nil)
 	if !ok {
 		return nil
 	}

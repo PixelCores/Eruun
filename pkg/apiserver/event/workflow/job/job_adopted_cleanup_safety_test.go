@@ -86,9 +86,11 @@ func cleanupWorkloadCases() []cleanupWorkloadCase {
 			newController: func(object runtime.Object, client *fake.Clientset, store datastore.DataStore) JobCtl {
 				return NewDeployJobCtl(
 					&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeploy), JobInfo: object.(*appsv1.Deployment).DeepCopy()},
-					client,
-					store,
-					func() {},
+					&Runtime{
+						Client: client,
+						Store:  store,
+						Ack:    func() {},
+					},
 					locker.NewNoopLocker(shareLockerPrefix),
 				)
 			},
@@ -108,9 +110,11 @@ func cleanupWorkloadCases() []cleanupWorkloadCase {
 			newController: func(object runtime.Object, client *fake.Clientset, store datastore.DataStore) JobCtl {
 				return NewDeployStatefulSetJobCtl(
 					&model.JobTask{Name: "mysql", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployStore), JobInfo: object.(*appsv1.StatefulSet).DeepCopy()},
-					client,
-					store,
-					func() {},
+					&Runtime{
+						Client: client,
+						Store:  store,
+						Ack:    func() {},
+					},
 					locker.NewNoopLocker(shareLockerPrefix),
 				)
 			},
@@ -209,9 +213,11 @@ func TestAdoptedWorkloadFailureCleanupNeverDeletesSourceResources(t *testing.T) 
 				JobType:   string(config.JobDeploy),
 				JobInfo:   source.DeepCopy(),
 			},
-			client,
-			store,
-			func() {},
+			&Runtime{
+				Client: client,
+				Store:  store,
+				Ack:    func() {},
+			},
 			locker.NewNoopLocker(shareLockerPrefix),
 		)
 
@@ -250,9 +256,11 @@ func TestAdoptedWorkloadFailureCleanupNeverDeletesSourceResources(t *testing.T) 
 				JobType:   string(config.JobDeployStore),
 				JobInfo:   source.DeepCopy(),
 			},
-			client,
-			store,
-			func() {},
+			&Runtime{
+				Client: client,
+				Store:  store,
+				Ack:    func() {},
+			},
 			locker.NewNoopLocker(shareLockerPrefix),
 		)
 
@@ -278,9 +286,11 @@ func TestWorkloadFailureCleanupFailsClosedWhenApplicationOwnershipIsUnavailable(
 			JobType:   string(config.JobDeploy),
 			JobInfo:   source.DeepCopy(),
 		},
-		client,
-		&adoptedSourceStore{},
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  &adoptedSourceStore{},
+			Ack:    func() {},
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
 	)
 

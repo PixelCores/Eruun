@@ -375,7 +375,7 @@ func TestGenerateJobTasks_ImportedAdoptionSnapshotProducesManagedDependencyClosu
 			AllowVolumeExpansion: &allowExpansion,
 		},
 	)
-	pvcController := workflowjob.NewDeployPVCJobCtl(pvcJob, kubeClient, store, func() {}, nil)
+	pvcController := workflowjob.NewDeployPVCJobCtl(pvcJob, &workflowjob.Runtime{Client: kubeClient, Store: store, Ack: func() {}}, nil)
 	require.NotNil(t, pvcController)
 	require.NoError(t, pvcController.Run(context.Background()))
 	expandedPVC, err := kubeClient.CoreV1().PersistentVolumeClaims(namespace).Get(

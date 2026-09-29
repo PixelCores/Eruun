@@ -209,7 +209,7 @@ func TestWorkflowFailureCleanupAllPreservesClaimNamePVC(t *testing.T) {
 		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: deployName, Namespace: "default"}},
 		&corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: "default-logs-pvc", Namespace: "default"}},
 	)
-	ctl := workflowjob.NewCleanupResourcesJobCtl(jobs[0], client, store, nil)
+	ctl := workflowjob.NewCleanupResourcesJobCtl(jobs[0], &workflowjob.Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.Run(ctx))

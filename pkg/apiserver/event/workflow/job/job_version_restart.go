@@ -14,7 +14,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -22,7 +21,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
@@ -44,8 +42,8 @@ type VersionRestartJobCtl struct {
 	deployNamespacedResourceJobBase
 }
 
-func NewVersionRestartJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func()) *VersionRestartJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("VersionRestartJobCtl", job, client, store, ack, nil)
+func NewVersionRestartJobCtl(job *model.JobTask, runtime *Runtime) *VersionRestartJobCtl {
+	base, ok := newDeployNamespacedResourceJobBase("VersionRestartJobCtl", job, runtime, nil)
 	if !ok {
 		return nil
 	}

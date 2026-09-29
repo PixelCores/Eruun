@@ -146,9 +146,11 @@ func TestPendingAdoptedRecreationWrongTokenFailsClosed(t *testing.T) {
 	client := fake.NewSimpleClientset(replacement)
 	ctl := NewDeployRoleJobCtl(
 		&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobInfo: source.DeepCopy()},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
 	)
 
@@ -186,11 +188,13 @@ func TestAdoptedDependencyRecreationPersistenceFailureRetainsLiveObjectAndPendin
 	})
 	ctl := NewDeployConfigMapJobCtl(
 		&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployConfigMap), JobInfo: source.DeepCopy()},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client:            client,
+			Store:             store,
+			Ack:               func() {},
+			URLSecurityPolicy: nil,
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
-		nil,
 	)
 
 	err := ctl.run(ctx)
@@ -243,9 +247,11 @@ func TestAdoptedWorkloadRecreationPersistenceFailureRetainsLiveObjectAndPendingC
 	})
 	ctl := NewDeployJobCtl(
 		&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeploy), JobInfo: source.DeepCopy()},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
 	)
 

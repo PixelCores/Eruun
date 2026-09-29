@@ -484,7 +484,7 @@ func (r *workflowRun) runSteps(taskForGeneration model.WorkflowQueue, stepExecut
 	if len(stepExecutions) == 1 && stepExecutions[0].generationError != nil {
 		err := stepExecutions[0].generationError
 		for _, task := range stepExecutions[0].Jobs[config.JobPriorityLow] {
-			controller := job.NewCleanupResourcesJobCtl(task, r.Client, r.Store, nil)
+			controller := job.NewCleanupResourcesJobCtl(task, &job.Runtime{Client: r.Client, Store: r.Store})
 			if persistErr := controller.SaveInfo(ctx); persistErr != nil {
 				return r.stopForJobInfrastructure(fmt.Errorf("persist workflow generation failure: %w", persistErr))
 			}

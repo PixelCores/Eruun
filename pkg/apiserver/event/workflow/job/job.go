@@ -188,126 +188,69 @@ func TaskIDFromContext(ctx context.Context) string {
 	return ""
 }
 
-func initJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), runtime *Runtime) JobCtl {
-	if !validJobControllerDependencies(job, client, store) {
+func initJobCtl(job *model.JobTask, runtime *Runtime) JobCtl {
+	if !validJobControllerDependencies(job, runtime) {
 		return nil
 	}
-	var shareLocker locker.Locker
-	var urlSecurityPolicy *spec.URLSecurityPolicySpec
-	if runtime != nil {
-		shareLocker = runtime.shareLocker
-		urlSecurityPolicy = runtime.URLSecurityPolicy
-	}
-
-	var jobCtl JobCtl
 	switch job.JobType {
 	case string(config.JobDeploy):
-		jobCtl = NewDeployJobCtl(job, client, store, ack, shareLocker)
+		return NewDeployJobCtl(job, runtime, runtime.shareLocker)
 	case string(config.JobDeployService):
-		jobCtl = NewDeployServiceJobCtl(job, client, store, ack, shareLocker)
+		return NewDeployServiceJobCtl(job, runtime, runtime.shareLocker)
 	case string(config.JobDeployStore):
-		jobCtl = NewDeployStatefulSetJobCtl(job, client, store, ack, shareLocker)
+		return NewDeployStatefulSetJobCtl(job, runtime, runtime.shareLocker)
 	case string(config.JobDeployPVC):
-		jobCtl = NewDeployPVCJobCtl(job, client, store, ack, shareLocker)
+		return NewDeployPVCJobCtl(job, runtime, runtime.shareLocker)
 	case string(config.JobDeployConfigMap):
-		jobCtl = NewDeployConfigMapJobCtl(job, client, store, ack, shareLocker, urlSecurityPolicy)
+		return NewDeployConfigMapJobCtl(job, runtime, runtime.shareLocker)
 	case string(config.JobDeploySecret):
-		jobCtl = NewDeploySecretJobCtl(job, client, store, ack, shareLocker, urlSecurityPolicy)
+		return NewDeploySecretJobCtl(job, runtime, runtime.shareLocker)
 	case string(config.JobDeployIngress):
-		jobCtl = NewDeployIngressJobCtl(job, client, store, ack, shareLocker)
+		return NewDeployIngressJobCtl(job, runtime, runtime.shareLocker)
 	case string(config.JobDeployServiceAccount):
-		jobCtl = NewDeployServiceAccountJobCtl(job, client, store, ack, shareLocker)
+		return NewDeployServiceAccountJobCtl(job, runtime, runtime.shareLocker)
 	case string(config.JobDeployRole):
-		jobCtl = NewDeployRoleJobCtl(job, client, store, ack, shareLocker)
+		return NewDeployRoleJobCtl(job, runtime, runtime.shareLocker)
 	case string(config.JobDeployRoleBinding):
-		jobCtl = NewDeployRoleBindingJobCtl(job, client, store, ack, shareLocker)
+		return NewDeployRoleBindingJobCtl(job, runtime, runtime.shareLocker)
 	case string(config.JobDeployClusterRole):
-		jobCtl = NewDeployClusterRoleJobCtl(job, client, store, ack, shareLocker)
+		return NewDeployClusterRoleJobCtl(job, runtime, runtime.shareLocker)
 	case string(config.JobDeployClusterRoleBinding):
-		jobCtl = NewDeployClusterRoleBindingJobCtl(job, client, store, ack, shareLocker)
+		return NewDeployClusterRoleBindingJobCtl(job, runtime, runtime.shareLocker)
 	case string(config.JobDeployPodDisruptionBudget):
-		jobCtl = NewDeployAdoptedPodDisruptionBudgetJobCtl(job, client, store, ack, shareLocker)
+		return NewDeployAdoptedPodDisruptionBudgetJobCtl(job, runtime, runtime.shareLocker)
 	case string(config.JobDeployNetworkPolicy):
-		jobCtl = NewDeployAdoptedNetworkPolicyJobCtl(job, client, store, ack, shareLocker)
+		return NewDeployAdoptedNetworkPolicyJobCtl(job, runtime, runtime.shareLocker)
 	case string(config.JobDeployInstant), string(config.JobCommand), string(config.JobEval):
-		jobCtl = NewInstantJobCtl(job, client, store, ack)
+		return NewInstantJobCtl(job, runtime)
 	case string(config.JobDeployScheduled):
-		jobCtl = NewScheduledJobCtl(job, client, store, ack)
+		return NewScheduledJobCtl(job, runtime)
 	case string(config.JobDeployCloud):
-		jobCtl = NewCloudJobCtl(job, store)
+		return NewCloudJobCtl(job, runtime.Store)
 	case string(config.JobDeployCallback):
-		jobCtl = NewCallbackJobCtl(job, store, urlSecurityPolicy)
+		return NewCallbackJobCtl(job, runtime.Store, runtime.URLSecurityPolicy)
 	case string(config.JobCleanupResources):
-		cleanupCtl := NewCleanupResourcesJobCtl(job, client, store, ack)
+		cleanupCtl := NewCleanupResourcesJobCtl(job, runtime)
 		if cleanupCtl == nil {
 			return nil
 		}
-		jobCtl = cleanupCtl
+		return cleanupCtl
 	case string(config.JobDatabaseReset):
-		jobCtl = NewDatabaseResetJobCtl(job, client, store, ack)
+		return NewDatabaseResetJobCtl(job, runtime)
 	case string(config.JobLogArchiveUpload):
-		jobCtl = NewLogArchiveUploadJobCtl(job, client, store, ack)
+		return NewLogArchiveUploadJobCtl(job, runtime)
 	case string(config.JobVersionRestart):
-		jobCtl = NewVersionRestartJobCtl(job, client, store, ack)
+		return NewVersionRestartJobCtl(job, runtime)
 	case string(config.JobResourceImportScan), string(config.JobResourceImportManage):
-		var executor ResourceImportExecutor
-		if runtime != nil {
-			executor = runtime.ResourceImportExecutor
-		}
-		jobCtl = NewResourceImportJobCtl(job, store, executor)
+		return NewResourceImportJobCtl(job, runtime.Store, runtime.ResourceImportExecutor)
 	default:
 		klog.ErrorS(fmt.Errorf("unknown job type"), "init job controller failed", "jobName", job.Name, "jobType", job.JobType)
 		return nil
 	}
-	// Bind only controllers that use the run's dependencies. The concrete cases
-	// make new controllers opt in explicitly without changing public constructors.
-	switch ctl := jobCtl.(type) {
-	case *DeployJobCtl:
-		ctl.setRuntime(runtime)
-	case *DeployServiceJobCtl:
-		ctl.setRuntime(runtime)
-	case *DeployStatefulSetJobCtl:
-		ctl.setRuntime(runtime)
-	case *DeployPVCJobCtl:
-		ctl.setRuntime(runtime)
-	case *DeployConfigMapJobCtl:
-		ctl.setRuntime(runtime)
-	case *DeploySecretJobCtl:
-		ctl.setRuntime(runtime)
-	case *DeployIngressJobCtl:
-		ctl.setRuntime(runtime)
-	case *DeployServiceAccountJobCtl:
-		ctl.setRuntime(runtime)
-	case *DeployRoleJobCtl:
-		ctl.setRuntime(runtime)
-	case *DeployRoleBindingJobCtl:
-		ctl.setRuntime(runtime)
-	case *DeployClusterRoleJobCtl:
-		ctl.setRuntime(runtime)
-	case *DeployClusterRoleBindingJobCtl:
-		ctl.setRuntime(runtime)
-	case *DeployAdoptedPodDisruptionBudgetJobCtl:
-		ctl.setRuntime(runtime)
-	case *DeployAdoptedNetworkPolicyJobCtl:
-		ctl.setRuntime(runtime)
-	case *InstantJobCtl:
-		ctl.setRuntime(runtime)
-	case *ScheduledJobCtl:
-		ctl.setRuntime(runtime)
-	case *CleanupResourcesJobCtl:
-		ctl.setRuntime(runtime)
-	case *DatabaseResetJobCtl:
-		ctl.setRuntime(runtime)
-	case *LogArchiveUploadJobCtl:
-		ctl.setRuntime(runtime)
-	case *VersionRestartJobCtl:
-		ctl.setRuntime(runtime)
-	}
-	return jobCtl
 }
 
-func validJobControllerDependencies(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore) bool {
-	if store == nil {
+func validJobControllerDependencies(job *model.JobTask, runtime *Runtime) bool {
+	if runtime == nil || runtime.Store == nil {
 		klog.ErrorS(fmt.Errorf("store is nil"), "init job controller failed")
 		return false
 	}
@@ -315,7 +258,7 @@ func validJobControllerDependencies(job *model.JobTask, client kubernetes.Interf
 		klog.ErrorS(fmt.Errorf("job is nil"), "init job controller failed")
 		return false
 	}
-	if client == nil && job.JobType != string(config.JobDeployCallback) {
+	if runtime.Client == nil && job.JobType != string(config.JobDeployCallback) {
 		klog.ErrorS(fmt.Errorf("client is nil"), "init job controller failed", "jobName", job.Name, "jobType", job.JobType)
 		return false
 	}
@@ -332,7 +275,7 @@ func RunJobs(ctx context.Context, jobs []*model.JobTask, run *Runtime) error {
 	if run == nil {
 		run = &Runtime{}
 	}
-	client, store, ack := run.Client, run.Store, run.Ack
+	store := run.Store
 	concurrency, stopOnFailure := run.Concurrency, run.StopOnFailure
 
 	if scope, ok := access.FromContext(ctx); ok {
@@ -382,7 +325,7 @@ func RunJobs(ctx context.Context, jobs []*model.JobTask, run *Runtime) error {
 				return infrastructureStopCause(ctx)
 			}
 			logger.Info("Job started", "jobName", job.Name, "jobType", job.JobType)
-			if err := runJobWithEvaluationRecovery(ctx, job, client, store, ack, runtime); err != nil {
+			if err := runJobWithEvaluationRecovery(ctx, job, runtime); err != nil {
 				return err
 			}
 			if ctx.Err() != nil {
@@ -400,7 +343,7 @@ func RunJobs(ctx context.Context, jobs []*model.JobTask, run *Runtime) error {
 		}
 		return nil
 	}
-	jobPool := NewPool(ctx, jobs, concurrency, client, store, ack, stopOnFailure, runtime)
+	jobPool := NewPool(ctx, jobs, runtime)
 	if err := jobPool.Run(); err != nil {
 		return err
 	}
@@ -414,7 +357,11 @@ func infrastructureStopCause(ctx context.Context) error {
 	return context.Cause(ctx)
 }
 
-func runJob(ctx context.Context, job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), runtime *Runtime) (resultErr error) {
+func runJob(ctx context.Context, job *model.JobTask, runtime *Runtime) (resultErr error) {
+	if runtime == nil {
+		return fmt.Errorf("run job: runtime is nil")
+	}
+	client, store, ack := runtime.Client, runtime.Store, runtime.Ack
 	tracer := otel.Tracer("job-runner")
 	ctx, span := tracer.Start(ctx, job.Name, trace.WithAttributes(
 		attribute.String("job.name", job.Name),
@@ -467,7 +414,7 @@ func runJob(ctx context.Context, job *model.JobTask, client kubernetes.Interface
 			klog.Error("start job store is nil")
 			return
 		}
-		jobCtl := initJobCtl(job, client, store, ack, runtime)
+		jobCtl := initJobCtl(job, runtime)
 		if jobCtl == nil {
 			logger.Error(nil, "Failed to initialize job controller for skipped job")
 			return
@@ -485,7 +432,7 @@ func runJob(ctx context.Context, job *model.JobTask, client kubernetes.Interface
 		logger.Error(nil, "Refusing job without datastore")
 		return
 	}
-	jobCtl := initJobCtl(job, client, store, ack, runtime)
+	jobCtl := initJobCtl(job, runtime)
 
 	job.Status = config.StatusPrepare
 	job.Error = ""
@@ -1190,25 +1137,20 @@ func persistenceContext(ctx context.Context) (context.Context, context.CancelFun
 }
 
 type Pool struct {
-	Jobs          []*model.JobTask
-	concurrency   int
-	client        kubernetes.Interface
-	store         datastore.DataStore
-	jobsChan      chan *model.JobTask
-	ack           func()
-	ctx           context.Context
-	cancel        context.CancelCauseFunc
-	stopOnFailure bool
-	wg            sync.WaitGroup
-	failureOnce   sync.Once
-	runErrOnce    sync.Once
-	runErr        error
-	runtime       *Runtime
+	Jobs        []*model.JobTask
+	jobsChan    chan *model.JobTask
+	ctx         context.Context
+	cancel      context.CancelCauseFunc
+	wg          sync.WaitGroup
+	failureOnce sync.Once
+	runErrOnce  sync.Once
+	runErr      error
+	runtime     *Runtime
 }
 
 func (p *Pool) Run() error {
 	defer p.cancel(nil)
-	for i := 0; i < p.concurrency; i++ {
+	for i := 0; i < p.runtime.Concurrency; i++ {
 		go p.work()
 	}
 enqueue:
@@ -1237,13 +1179,13 @@ func (p *Pool) work() {
 			p.wg.Done()
 			continue
 		}
-		if err := runJobWithEvaluationRecovery(p.ctx, job, p.client, p.store, p.ack, p.runtime); err != nil {
+		if err := runJobWithEvaluationRecovery(p.ctx, job, p.runtime); err != nil {
 			p.runErrOnce.Do(func() {
 				p.runErr = err
 			})
 			p.cancel(err)
 		}
-		if p.stopOnFailure && jobStatusFailed(job.Status) {
+		if p.runtime.StopOnFailure && jobStatusFailed(job.Status) {
 			p.failureOnce.Do(func() {
 				p.cancel(nil)
 			})
@@ -1252,21 +1194,15 @@ func (p *Pool) work() {
 	}
 }
 
-// NewPool initializes a new pool with the given tasks and
-// at the given concurrency.
-func NewPool(ctx context.Context, jobs []*model.JobTask, concurrency int, client kubernetes.Interface, store datastore.DataStore, ack func(), stopOnFailure bool, runtime *Runtime) *Pool {
+// NewPool initializes a pool using the run's concurrency and dependencies.
+func NewPool(ctx context.Context, jobs []*model.JobTask, runtime *Runtime) *Pool {
 	ctxForPool, cancel := context.WithCancelCause(ctx)
 	return &Pool{
-		Jobs:          jobs,
-		client:        client,
-		store:         store,
-		concurrency:   concurrency,
-		jobsChan:      make(chan *model.JobTask),
-		ack:           ack,
-		ctx:           ctxForPool,
-		cancel:        cancel,
-		stopOnFailure: stopOnFailure,
-		runtime:       runtime,
+		Jobs:     jobs,
+		jobsChan: make(chan *model.JobTask),
+		ctx:      ctxForPool,
+		cancel:   cancel,
+		runtime:  runtime,
 	}
 }
 

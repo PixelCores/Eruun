@@ -143,7 +143,7 @@ func TestCleanupResourcesJobCtlFailsClosedForOrphanOrdinalPodOnFreshRetry(t *tes
 		Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: versionUpdateRequireStatefulSetDeletionInternalInfo(), Timeout: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, client, &noopStore{}, nil)
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
 	require.NotNil(t, ctl)
 
 	err := ctl.ensureRequiredStatefulSetPodDeletionAllowed(ctx, component)
@@ -176,7 +176,7 @@ func TestCleanupResourcesJobCtlRestoresPinnedPodIdentityOnSameTaskRetry(t *testi
 				Name: component.Name, AppID: component.AppID, TaskID: "task-1", JobType: string(config.JobCleanupResources),
 				JobInfo: component, InternalInfo: marker, Status: config.StatusRunning, Timeout: 1,
 			}
-			firstCtl := NewCleanupResourcesJobCtl(firstJob, client, store, nil)
+			firstCtl := NewCleanupResourcesJobCtl(firstJob, &Runtime{Client: client, Store: store, Ack: nil})
 			require.NotNil(t, firstCtl)
 			require.NoError(t, firstCtl.ensureRequiredStatefulSetPodDeletionAllowed(ctx, component))
 			require.Contains(t, store.jobInfo.InternalInfo, requiredStatefulSetPodCheckpointKey)
@@ -193,7 +193,7 @@ func TestCleanupResourcesJobCtlRestoresPinnedPodIdentityOnSameTaskRetry(t *testi
 				Name: component.Name, AppID: component.AppID, TaskID: "task-1", JobType: string(config.JobCleanupResources),
 				JobInfo: component, InternalInfo: marker, Status: config.StatusRunning, Timeout: 1,
 			}
-			retryCtl := NewCleanupResourcesJobCtl(retryJob, client, store, nil)
+			retryCtl := NewCleanupResourcesJobCtl(retryJob, &Runtime{Client: client, Store: store, Ack: nil})
 			require.NotNil(t, retryCtl)
 			err = retryCtl.ensureRequiredStatefulSetPodDeletionAllowed(ctx, component)
 			if tt.wantConflict {
@@ -228,7 +228,7 @@ func TestCleanupResourcesJobCtlStopsWhenCheckpointPersistRacesCancellation(t *te
 		Name: component.Name, AppID: component.AppID, TaskID: "task-1", JobType: string(config.JobCleanupResources),
 		JobInfo: component, InternalInfo: marker, Status: config.StatusRunning, Timeout: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, client, store, nil)
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	err := ctl.ensureRequiredStatefulSetPodDeletionAllowed(ctx, component)
@@ -291,7 +291,7 @@ func TestCleanupResourcesJobCtlStopsWhenWorkflowTaskIsCancelledButJobInfoIsRunni
 		TaskID: "task-1", JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: marker, Timeout: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, client, store, nil)
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(ctx)
@@ -364,7 +364,7 @@ func TestCleanupResourcesJobCtlStopsOldGenerationBeforeStatefulSetCleanup(t *tes
 		InternalInfo: marker, Status: config.StatusRunning, Timeout: 1,
 		ExecutionKey: oldExecutionKey, RunGeneration: 1, Attempt: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, client, store, nil)
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(ctx)
@@ -409,7 +409,7 @@ func TestCleanupResourcesJobCtlKeepsCompletedRequiredStatefulSetCleanupIdempoten
 		Name: component.Name, Namespace: component.Namespace, AppID: component.AppID,
 		TaskID: "task-1", JobType: string(config.JobCleanupResources), JobInfo: component, InternalInfo: marker,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, client, store, nil)
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.Run(ctx))
@@ -457,7 +457,7 @@ func newRequiredStatefulSetPodController(t *testing.T) (
 		Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: versionUpdateRequireStatefulSetDeletionInternalInfo(), Timeout: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, client, &noopStore{}, nil)
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
 	require.NotNil(t, ctl)
 	return component, statefulSet, pod, client, ctl
 }

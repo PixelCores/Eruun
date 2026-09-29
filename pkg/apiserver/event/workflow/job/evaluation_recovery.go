@@ -5,8 +5,6 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	"k8s.io/client-go/kubernetes"
 )
 
 const EvaluationDeadlineAnnotation = "eruun.io/evaluation-deadline"
@@ -20,17 +18,17 @@ type EvaluationRecovery func(context.Context, *model.JobTask) (bool, error)
 func WithEvaluationRecovery(ctx context.Context, recover EvaluationRecovery) context.Context {
 	return context.WithValue(ctx, evaluationRecoveryKey{}, recover)
 }
-func runJobWithEvaluationRecovery(ctx context.Context, task *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), runtime *Runtime) error {
+func runJobWithEvaluationRecovery(ctx context.Context, task *model.JobTask, runtime *Runtime) error {
 	recover, _ := ctx.Value(evaluationRecoveryKey{}).(EvaluationRecovery)
 	if recover == nil || task.JobType != string(config.JobEval) {
-		return runJob(ctx, task, client, store, ack, runtime)
+		return runJob(ctx, task, runtime)
 	}
 	// The preflight also resumes a recovery reservation after worker takeover.
 	if _, err := recover(ctx, task); err != nil {
 		return err
 	}
 	for {
-		if err := runJob(ctx, task, client, store, ack, runtime); err != nil {
+		if err := runJob(ctx, task, runtime); err != nil {
 			return err
 		}
 		if ctx.Err() != nil {

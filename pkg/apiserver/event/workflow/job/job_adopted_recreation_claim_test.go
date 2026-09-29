@@ -253,11 +253,13 @@ func TestAdoptedConfigMapLegacyNamespaceRecreationAlreadyExistsWithClaimConverge
 			JobType:   string(config.JobDeployConfigMap),
 			JobInfo:   desired,
 		},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client:            client,
+			Store:             store,
+			Ack:               func() {},
+			URLSecurityPolicy: nil,
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
-		nil,
 	)
 
 	require.NoError(t, controller.run(ctx))
@@ -675,11 +677,13 @@ func TestAdoptedConfigMapConcurrentFinalizationPreventsRollback(t *testing.T) {
 			JobType:   string(config.JobDeployConfigMap),
 			JobInfo:   source.DeepCopy(),
 		},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client:            client,
+			Store:             store,
+			Ack:               func() {},
+			URLSecurityPolicy: nil,
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
-		nil,
 	)
 
 	require.NoError(t, controller.run(ctx))
@@ -736,11 +740,13 @@ func TestAdoptedConfigMapUnconfirmedPersistenceSkipsRollback(t *testing.T) {
 			JobType:   string(config.JobDeployConfigMap),
 			JobInfo:   source.DeepCopy(),
 		},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client:            client,
+			Store:             store,
+			Ack:               func() {},
+			URLSecurityPolicy: nil,
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
-		nil,
 	)
 
 	err := controller.run(ctx)

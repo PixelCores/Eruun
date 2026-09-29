@@ -17,7 +17,7 @@ import (
 )
 
 func TestServiceJobCtlBasicBranches(t *testing.T) {
-	require.Nil(t, NewDeployServiceJobCtl(nil, nil, nil, nil, nil))
+	require.Nil(t, NewDeployServiceJobCtl(nil, &Runtime{Client: nil, Store: nil, Ack: nil}, nil))
 
 	ackCount := 0
 	service := applyv1.Service("svc-a", "default")
@@ -27,7 +27,7 @@ func TestServiceJobCtlBasicBranches(t *testing.T) {
 		JobType:   string(config.JobDeployService),
 		JobInfo:   service,
 	}
-	ctl := NewDeployServiceJobCtl(jobTask, nil, &noopStore{}, func() { ackCount++ }, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployServiceJobCtl(jobTask, &Runtime{Client: nil, Store: &noopStore{}, Ack: func() { ackCount++ }}, locker.NewNoopLocker(shareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -71,7 +71,7 @@ func TestGetServiceStatus(t *testing.T) {
 }
 
 func TestPVCJobCtlBasicBranches(t *testing.T) {
-	require.Nil(t, NewDeployPVCJobCtl(nil, nil, nil, nil, nil))
+	require.Nil(t, NewDeployPVCJobCtl(nil, &Runtime{Client: nil, Store: nil, Ack: nil}, nil))
 
 	ackCount := 0
 	jobTask := &model.JobTask{
@@ -82,7 +82,7 @@ func TestPVCJobCtlBasicBranches(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "pvc-a", Namespace: "default"},
 		},
 	}
-	ctl := NewDeployPVCJobCtl(jobTask, nil, &noopStore{}, func() { ackCount++ }, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployPVCJobCtl(jobTask, &Runtime{Client: nil, Store: &noopStore{}, Ack: func() { ackCount++ }}, locker.NewNoopLocker(shareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -104,7 +104,7 @@ func TestPVCJobCtlBasicBranches(t *testing.T) {
 }
 
 func TestIngressJobCtlBasicBranches(t *testing.T) {
-	require.Nil(t, NewDeployIngressJobCtl(nil, nil, nil, nil, nil))
+	require.Nil(t, NewDeployIngressJobCtl(nil, &Runtime{Client: nil, Store: nil, Ack: nil}, nil))
 
 	ackCount := 0
 	jobTask := &model.JobTask{
@@ -115,7 +115,7 @@ func TestIngressJobCtlBasicBranches(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "ing-a", Namespace: "default"},
 		},
 	}
-	ctl := NewDeployIngressJobCtl(jobTask, nil, &noopStore{}, func() { ackCount++ }, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployIngressJobCtl(jobTask, &Runtime{Client: nil, Store: &noopStore{}, Ack: func() { ackCount++ }}, locker.NewNoopLocker(shareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())

@@ -61,7 +61,7 @@ func TestCreatedJobReattachesAfterOwnerAndQuotaChangeWithoutCreate(t *testing.T)
 	defer cancel()
 	release, err := waitForJobAdmission(waitCtx, store, task, client)
 	require.NoError(t, err, "existing Runner must attach even though its old bundle exceeds the new quota")
-	ctl := NewInstantJobCtl(task, client, store, func() {})
+	ctl := NewInstantJobCtl(task, &Runtime{Client: client, Store: store, Ack: func() {}})
 	require.NoError(t, ctl.ensureRetryAttempt(ctx, cp))
 	require.Zero(t, countClientActions(client, "create", "jobs"))
 	// Losing the resource after confirmation still cannot turn that permission
@@ -277,7 +277,7 @@ func TestExpiredRecoveredJobSettlesWithoutAdmission(t *testing.T) {
 					cancel(signal.ErrInfrastructureStop)
 					ctx = stopped
 				}
-				err = runJob(ctx, task, client, store, func() {}, nil)
+				err = runJob(ctx, task, &Runtime{Client: client, Store: store, Ack: func() {}})
 				saved := &model.JobInfo{ID: record.ID}
 				require.NoError(t, store.Get(context.Background(), saved))
 				if tc.revokedOwner || tc.infrastructure {
@@ -311,7 +311,7 @@ func TestExpiredRecoveredJobSettlesWithoutAdmission(t *testing.T) {
 				}
 				// Terminal persistence prevents another takeover from repeating work.
 				before := len(client.Actions())
-				require.NoError(t, runJob(ctx, task, client, store, func() {}, nil))
+				require.NoError(t, runJob(ctx, task, &Runtime{Client: client, Store: store, Ack: func() {}}))
 				require.Len(t, client.Actions(), before)
 			})
 		}

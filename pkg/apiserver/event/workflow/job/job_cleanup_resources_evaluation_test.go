@@ -75,7 +75,7 @@ func TestEvaluationCleanupDeletesOnlyComponentRunners(t *testing.T) {
 				store.jobInfo = &model.JobInfo{ID: 8, Type: task.JobType, AppID: task.AppID, TaskID: task.TaskID,
 					ServiceName: task.Name, Status: string(config.StatusQueued), InternalInfo: task.InternalInfo}
 			}
-			ctl := NewCleanupResourcesJobCtl(task, client, store, nil)
+			ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
 			require.NotNil(t, ctl)
 			require.NoError(t, ctl.Run(ctx))
 			require.Equal(t, config.StatusCompleted, task.Status)

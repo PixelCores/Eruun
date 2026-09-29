@@ -83,8 +83,8 @@ func (s *workflowOwnershipStore) CompareAndSwapWithConditions(_ context.Context,
 }
 
 func TestNewInstantAndScheduledCtlNilJob(t *testing.T) {
-	require.Nil(t, NewInstantJobCtl(nil, nil, nil, nil))
-	require.Nil(t, NewScheduledJobCtl(nil, nil, nil, nil))
+	require.Nil(t, NewInstantJobCtl(nil, &Runtime{Client: nil, Store: nil, Ack: nil}))
+	require.Nil(t, NewScheduledJobCtl(nil, &Runtime{Client: nil, Store: nil, Ack: nil}))
 }
 func TestDelayedJobControllersPropagateWorkflowOwnership(t *testing.T) {
 	newTask := func(jobType config.JobType) *model.JobTask {
@@ -125,8 +125,7 @@ func TestDelayedJobControllersPropagateWorkflowOwnership(t *testing.T) {
 		store := &workflowOwnershipStore{noopStore: &noopStore{}, task: model.WorkflowQueue{
 			TaskID: task.TaskID, Status: config.StatusRunning, RunGeneration: 3, RunToken: "run-3", WorkerID: "worker-delayed",
 		}}
-		ctl := NewInstantJobCtl(task, fake.NewSimpleClientset(), store, func() {})
-		ctl.setRuntime(&Runtime{DelayQueue: queue})
+		ctl := NewInstantJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() {}, DelayQueue: queue})
 
 		require.NoError(t, ctl.run(context.Background()))
 		assertPayload(t, queue)
@@ -140,8 +139,7 @@ func TestDelayedJobControllersPropagateWorkflowOwnership(t *testing.T) {
 		store := &workflowOwnershipStore{noopStore: &noopStore{}, task: model.WorkflowQueue{
 			TaskID: task.TaskID, Status: config.StatusRunning, RunGeneration: 3, RunToken: "run-3", WorkerID: "worker-delayed",
 		}}
-		ctl := NewScheduledJobCtl(task, fake.NewSimpleClientset(), store, func() {})
-		ctl.setRuntime(&Runtime{DelayQueue: queue})
+		ctl := NewScheduledJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() {}, DelayQueue: queue})
 
 		require.NoError(t, ctl.runOneTimeJob(context.Background(), task.JobInfo.(*batchv1.Job)))
 		assertPayload(t, queue)
@@ -177,9 +175,9 @@ func TestDelayedJobControllersCommitWithoutQueue(t *testing.T) {
 			require.NoError(t, err)
 			var ctl JobCtl
 			if jobType == config.JobDeployInstant {
-				ctl = NewInstantJobCtl(task, fake.NewSimpleClientset(), store, func() {})
+				ctl = NewInstantJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() {}})
 			} else {
-				ctl = NewScheduledJobCtl(task, fake.NewSimpleClientset(), store, func() {})
+				ctl = NewScheduledJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() {}})
 			}
 
 			require.NoError(t, ctl.Run(context.Background()))
@@ -213,10 +211,10 @@ func TestImmediateJobControllersRejectStaleWorkflowOwnerBeforeKubernetesAccess(t
 
 			var err error
 			if jobType == config.JobDeployInstant {
-				ctl := NewInstantJobCtl(jobTask, client, store, func() {})
+				ctl := NewInstantJobCtl(jobTask, &Runtime{Client: client, Store: store, Ack: func() {}})
 				err = ctl.run(context.Background())
 			} else {
-				ctl := NewScheduledJobCtl(jobTask, client, store, func() {})
+				ctl := NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: store, Ack: func() {}})
 				err = ctl.runOneTimeJob(context.Background(), jobObj)
 			}
 
@@ -252,10 +250,10 @@ func TestImmediateJobControllersDoNotDeleteNewerExecution(t *testing.T) {
 
 			var err error
 			if jobType == config.JobDeployInstant {
-				ctl := NewInstantJobCtl(jobTask, client, store, func() {})
+				ctl := NewInstantJobCtl(jobTask, &Runtime{Client: client, Store: store, Ack: func() {}})
 				err = ctl.run(context.Background())
 			} else {
-				ctl := NewScheduledJobCtl(jobTask, client, store, func() {})
+				ctl := NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: store, Ack: func() {}})
 				err = ctl.runOneTimeJob(context.Background(), desired)
 			}
 
@@ -370,7 +368,7 @@ func TestInstantJobCtlRunClientNil(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"},
 		},
 	}
-	ctl := NewInstantJobCtl(jobTask, nil, &noopStore{}, func() { ackCount++ })
+	ctl := NewInstantJobCtl(jobTask, &Runtime{Client: nil, Store: &noopStore{}, Ack: func() { ackCount++ }})
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -386,7 +384,7 @@ func TestInstantJobCtlRunUnexpectedJobInfoType(t *testing.T) {
 		JobType:   string(config.JobDeployInstant),
 		JobInfo:   "invalid",
 	}
-	ctl := NewInstantJobCtl(jobTask, fake.NewSimpleClientset(), &noopStore{}, func() {})
+	ctl := NewInstantJobCtl(jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: &noopStore{}, Ack: func() {}})
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -404,7 +402,7 @@ func TestInstantJobCtlRunCompletesFromOwnedSucceededPodFallback(t *testing.T) {
 		JobType:   string(config.JobDeployInstant),
 		JobInfo:   jobObj,
 	}
-	ctl := NewInstantJobCtl(jobTask, client, &noopStore{}, func() { ackCount++ })
+	ctl := NewInstantJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() { ackCount++ }})
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -422,7 +420,7 @@ func TestScheduledJobCtlRunUnexpectedJobInfoType(t *testing.T) {
 		JobType:   string(config.JobDeployScheduled),
 		JobInfo:   "invalid",
 	}
-	ctl := NewScheduledJobCtl(jobTask, fake.NewSimpleClientset(), &noopStore{}, func() { ackCount++ })
+	ctl := NewScheduledJobCtl(jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: &noopStore{}, Ack: func() { ackCount++ }})
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -466,7 +464,7 @@ func TestScheduledJobCtlRunOneTimeSkip(t *testing.T) {
 			},
 		},
 	}
-	ctl := NewScheduledJobCtl(jobTask, client, &noopStore{}, func() { ackCount++ })
+	ctl := NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() { ackCount++ }})
 	require.NotNil(t, ctl)
 
 	err = ctl.Run(ctx)
@@ -506,7 +504,7 @@ func TestScheduledJobCtlRunCronJobPath(t *testing.T) {
 			},
 		},
 	}
-	ctl := NewScheduledJobCtl(jobTask, client, &noopStore{}, func() {})
+	ctl := NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}})
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(ctx)
@@ -526,7 +524,7 @@ func TestInstantJobCtlHelpers(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "instant-job", Namespace: "default"},
 		},
 	}
-	ctl := NewInstantJobCtl(jobTask, client, store, func() {})
+	ctl := NewInstantJobCtl(jobTask, &Runtime{Client: client, Store: store, Ack: func() {}})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.SaveInfo(context.Background()))
@@ -561,7 +559,7 @@ func TestScheduledJobCtlHelpers(t *testing.T) {
 		JobType:   string(config.JobDeployScheduled),
 		JobInfo:   jobObj,
 	}
-	ctl := NewScheduledJobCtl(jobTask, client, store, func() {})
+	ctl := NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: store, Ack: func() {}})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.SaveInfo(context.Background()))
@@ -677,9 +675,9 @@ func TestImmediateJobControllersRejectReplacementAfterRecreateWait(t *testing.T)
 
 				var err error
 				if jobType == config.JobDeployInstant {
-					err = NewInstantJobCtl(jobTask, client, store, func() {}).run(context.Background())
+					err = NewInstantJobCtl(jobTask, &Runtime{Client: client, Store: store, Ack: func() {}}).run(context.Background())
 				} else {
-					err = NewScheduledJobCtl(jobTask, client, store, func() {}).runOneTimeJob(context.Background(), desired)
+					err = NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: store, Ack: func() {}}).runOneTimeJob(context.Background(), desired)
 				}
 
 				require.ErrorIs(t, err, tc.expectedErr)
@@ -829,9 +827,9 @@ func TestImmediateJobCreateRejectsAlreadyExistsReplacement(t *testing.T) {
 			var created bool
 			var err error
 			if jobType == config.JobDeployInstant {
-				created, err = NewInstantJobCtl(jobTask, client, &noopStore{}, func() {}).createJob(context.Background(), desired)
+				created, err = NewInstantJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}).createJob(context.Background(), desired)
 			} else {
-				created, err = NewScheduledJobCtl(jobTask, client, &noopStore{}, func() {}).createJob(context.Background(), desired)
+				created, err = NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}).createJob(context.Background(), desired)
 			}
 
 			require.False(t, created)

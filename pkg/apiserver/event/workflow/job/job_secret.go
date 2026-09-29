@@ -12,7 +12,6 @@ import (
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -32,15 +31,19 @@ type DeploySecretJobCtl struct {
 	importSecretKeyring *importsecret.Keyring
 }
 
-func NewDeploySecretJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), shareLocker locker.Locker, urlSecurityPolicy *spec.URLSecurityPolicySpec) *DeploySecretJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("NewDeploySecretJobCtl", job, client, store, ack, shareLocker)
+func NewDeploySecretJobCtl(job *model.JobTask, runtime *Runtime, shareLocker locker.Locker) *DeploySecretJobCtl {
+	base, ok := newDeployNamespacedResourceJobBase("NewDeploySecretJobCtl", job, runtime, shareLocker)
 	if !ok {
 		return nil
 	}
-	return &DeploySecretJobCtl{
+	ctl := &DeploySecretJobCtl{
 		deployNamespacedResourceJobBase: base,
-		urlSecurityPolicy:               urlSecurityPolicy,
 	}
+	if runtime != nil {
+		ctl.urlSecurityPolicy = runtime.URLSecurityPolicy
+		ctl.importSecretKeyring = runtime.ImportSecretKeyring
+	}
+	return ctl
 }
 
 func (c *DeploySecretJobCtl) Clean(ctx context.Context) {
@@ -51,15 +54,6 @@ func (c *DeploySecretJobCtl) Clean(ctx context.Context) {
 
 func (c *DeploySecretJobCtl) Run(ctx context.Context) error {
 	return c.runWithStatus(ctx, c.run, "DeploySecretJob run error")
-}
-
-func (c *DeploySecretJobCtl) setRuntime(runtime *Runtime) {
-	c.deployNamespacedResourceJobBase.setRuntime(runtime)
-	if runtime == nil {
-		c.importSecretKeyring = nil
-		return
-	}
-	c.importSecretKeyring = runtime.ImportSecretKeyring
 }
 
 func (c *DeploySecretJobCtl) run(ctx context.Context) error {

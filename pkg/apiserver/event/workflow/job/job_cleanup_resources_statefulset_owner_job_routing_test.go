@@ -44,9 +44,16 @@ func TestCleanupResourcesJobCtlOnlyDefersGenericOwnerJobDeletesForRequiredStatef
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client := fake.NewSimpleClientset(ownerJob.DeepCopy())
-			ctl := NewCleanupResourcesJobCtl(&model.JobTask{
-				JobType: string(config.JobCleanupResources), InternalInfo: tt.internalInfo,
-			}, client, &noopStore{}, nil)
+			ctl := NewCleanupResourcesJobCtl(
+				&model.JobTask{
+					JobType: string(config.JobCleanupResources), InternalInfo: tt.internalInfo,
+				},
+				&Runtime{
+					Client: client,
+					Store:  &noopStore{},
+					Ack:    nil,
+				},
+			)
 			require.NotNil(t, ctl)
 			ctl.requiredStatefulSetPodTarget = &requiredStatefulSetPodDeletionTarget{
 				ref: cleanupResourceRef{kind: domainspec.ResourceStatefulSet, namespace: ownerJob.Namespace, name: "mysql"},
@@ -144,7 +151,7 @@ func TestCleanupResourcesJobCtlRunDefersLabeledOwnerJobToRequiredStatefulSetPodR
 				TaskID: store.jobInfo.TaskID, JobType: string(config.JobCleanupResources), JobInfo: component,
 				InternalInfo: internalInfo, Timeout: 4,
 			}
-			ctl := NewCleanupResourcesJobCtl(task, client, store, nil)
+			ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
 			require.NotNil(t, ctl)
 
 			require.NoError(t, ctl.Run(ctx))
@@ -340,7 +347,7 @@ func newRequiredStatefulSetLabeledOwnerRunFixture(
 		TaskID: taskID, JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: internalInfo, Timeout: 4,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, client, store, nil)
+	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 	return &requiredStatefulSetLabeledOwnerRunFixture{
 		ownerJob: ownerJob, pod: pod, client: client, store: store, ctl: ctl,

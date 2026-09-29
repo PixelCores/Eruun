@@ -52,11 +52,13 @@ func TestDeploySecretJobCtlRunAdoptedRejectsPlaintextTaskWrite(t *testing.T) {
 	client := fake.NewSimpleClientset(live)
 	ctl := NewDeploySecretJobCtl(
 		&model.JobTask{Name: "mysql", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeploySecret), JobInfo: desired},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client:            client,
+			Store:             store,
+			Ack:               func() {},
+			URLSecurityPolicy: nil,
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
-		nil,
 	)
 
 	err := ctl.run(ctx)
@@ -97,9 +99,11 @@ func TestAdoptedNonSecretDependenciesRecreateFromSnapshotAndRotateUID(t *testing
 				WithPorts(applyv1.ServicePort().WithName("http").WithPort(80).WithTargetPort(intstr.FromInt32(8080))))
 		ctl := NewDeployServiceJobCtl(
 			&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployService), JobInfo: desired},
-			client,
-			store,
-			func() {},
+			&Runtime{
+				Client: client,
+				Store:  store,
+				Ack:    func() {},
+			},
 			locker.NewNoopLocker(shareLockerPrefix),
 		)
 
@@ -144,9 +148,11 @@ func TestAdoptedNonSecretDependenciesRecreateFromSnapshotAndRotateUID(t *testing
 		})
 		ctl := NewDeployIngressJobCtl(
 			&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployIngress), JobInfo: source.DeepCopy()},
-			client,
-			store,
-			func() {},
+			&Runtime{
+				Client: client,
+				Store:  store,
+				Ack:    func() {},
+			},
 			locker.NewNoopLocker(shareLockerPrefix),
 		)
 
@@ -181,11 +187,13 @@ func TestAdoptedNonSecretDependenciesRecreateFromSnapshotAndRotateUID(t *testing
 		}
 		ctl := NewDeployConfigMapJobCtl(
 			&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployConfigMap), JobInfo: desired},
-			client,
-			store,
-			func() {},
+			&Runtime{
+				Client:            client,
+				Store:             store,
+				Ack:               func() {},
+				URLSecurityPolicy: nil,
+			},
 			locker.NewNoopLocker(shareLockerPrefix),
-			nil,
 		)
 
 		require.NoError(t, ctl.run(ctx))
@@ -845,17 +853,14 @@ func TestInitJobCtlInjectsImportSecretKeyringWithoutMutatingJobInfo(t *testing.T
 		JobInfo:   jobInfo,
 	}
 	runtime := newJobRuntime(&Runtime{
+		Client:              fake.NewSimpleClientset(),
+		Store:               &noopStore{},
+		Ack:                 func() {},
 		ImportSecretKeyring: keyring,
 	})
 	defer runtime.close()
 
-	controller := initJobCtl(
-		jobTask,
-		fake.NewSimpleClientset(),
-		&noopStore{},
-		func() {},
-		runtime,
-	)
+	controller := initJobCtl(jobTask, runtime)
 	secretController, ok := controller.(*DeploySecretJobCtl)
 	require.True(t, ok)
 	require.Same(t, keyring, secretController.importSecretKeyring)

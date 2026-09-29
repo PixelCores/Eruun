@@ -27,28 +27,25 @@ type deployNamespacedResourceJobBase struct {
 	runtime        *Runtime
 }
 
-func newDeployNamespacedResourceJobBase(controllerName string, job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), shareLocker locker.Locker) (deployNamespacedResourceJobBase, bool) {
+func newDeployNamespacedResourceJobBase(controllerName string, job *model.JobTask, runtime *Runtime, shareLocker locker.Locker) (deployNamespacedResourceJobBase, bool) {
 	if job == nil {
 		klog.Errorf("%s: job is nil", controllerName)
 		return deployNamespacedResourceJobBase{}, false
 	}
-	return deployNamespacedResourceJobBase{
+	base := deployNamespacedResourceJobBase{
 		namespace:   job.Namespace,
 		job:         job,
-		client:      client,
-		store:       store,
-		ack:         ack,
 		shareLocker: shareLocker,
-	}, true
-}
-
-func (b *deployNamespacedResourceJobBase) setRuntime(runtime *Runtime) {
-	if b == nil || runtime == nil {
-		return
 	}
-	b.delayQueue = runtime.DelayQueue
-	b.resourceWaiter = runtime.ResourceWaiter
-	b.runtime = runtime
+	if runtime != nil {
+		base.client = runtime.Client
+		base.store = runtime.Store
+		base.ack = runtime.Ack
+		base.delayQueue = runtime.DelayQueue
+		base.resourceWaiter = runtime.ResourceWaiter
+		base.runtime = runtime
+	}
+	return base, true
 }
 
 func (b *deployNamespacedResourceJobBase) cleanCreated(ctx context.Context, kind domainspec.ResourceKind, resourceLabel string, deleteFn deleteNamespacedFunc, isNotFound func(error) bool, successSuffix string) {

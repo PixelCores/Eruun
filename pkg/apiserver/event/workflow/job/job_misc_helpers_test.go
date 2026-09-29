@@ -74,7 +74,7 @@ func TestDeployPVCJobCtlCreatesMissingPVC(t *testing.T) {
 		JobType:   string(config.JobDeployPVC),
 		JobInfo:   pvc.DeepCopy(),
 	}
-	ctl := NewDeployPVCJobCtl(job, client, &noopStore{}, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployPVCJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 
 	require.NoError(t, ctl.run(ctx))
 
@@ -118,7 +118,7 @@ func TestDeployPVCJobCtlSkipsExistingPVCSpecUpdate(t *testing.T) {
 		JobType:   string(config.JobDeployPVC),
 		JobInfo:   desired,
 	}
-	ctl := NewDeployPVCJobCtl(job, client, &noopStore{}, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployPVCJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	if err := ctl.run(ctx); err != nil {
 		t.Fatalf("run returned error: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestDeployPVCJobCtlCleanPreservesTrackedPVC(t *testing.T) {
 		JobType:   string(config.JobDeployPVC),
 		JobInfo:   pvc.DeepCopy(),
 	}
-	ctl := NewDeployPVCJobCtl(job, client, &noopStore{}, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployPVCJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	ctl.Clean(ctx)
