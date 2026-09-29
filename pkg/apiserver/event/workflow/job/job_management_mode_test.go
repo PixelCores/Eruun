@@ -36,10 +36,9 @@ func TestRunJobRechecksObserveModeBeforeKubernetesWrite(t *testing.T) {
 	}
 	client := fake.NewSimpleClientset()
 	ackCount := 0
+	ack := func() { ackCount++ }
 
-	runJob(context.Background(), task, client, store, func() {
-		ackCount++
-	}, nil)
+	runJob(context.Background(), task, &Runtime{Client: client, Store: store, Ack: ack})
 
 	require.Equal(t, config.StatusFailed, task.Status)
 	require.Contains(t, task.Error, "observe mode")

@@ -10,11 +10,9 @@ import (
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
 
@@ -29,21 +27,8 @@ type DeployAdoptedPodDisruptionBudgetJobCtl struct {
 	deployNamespacedResourceJobBase
 }
 
-func NewDeployAdoptedPodDisruptionBudgetJobCtl(
-	job *model.JobTask,
-	client kubernetes.Interface,
-	store datastore.DataStore,
-	ack func(),
-	shareLocker locker.Locker,
-) *DeployAdoptedPodDisruptionBudgetJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase(
-		"DeployAdoptedPodDisruptionBudgetJobCtl",
-		job,
-		client,
-		store,
-		ack,
-		shareLocker,
-	)
+func NewDeployAdoptedPodDisruptionBudgetJobCtl(job *model.JobTask, runtime *Runtime, shareLocker locker.Locker) *DeployAdoptedPodDisruptionBudgetJobCtl {
+	base, ok := newDeployNamespacedResourceJobBase("DeployAdoptedPodDisruptionBudgetJobCtl", job, runtime, shareLocker)
 	if !ok {
 		return nil
 	}
@@ -289,21 +274,8 @@ type DeployAdoptedNetworkPolicyJobCtl struct {
 	deployNamespacedResourceJobBase
 }
 
-func NewDeployAdoptedNetworkPolicyJobCtl(
-	job *model.JobTask,
-	client kubernetes.Interface,
-	store datastore.DataStore,
-	ack func(),
-	shareLocker locker.Locker,
-) *DeployAdoptedNetworkPolicyJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase(
-		"DeployAdoptedNetworkPolicyJobCtl",
-		job,
-		client,
-		store,
-		ack,
-		shareLocker,
-	)
+func NewDeployAdoptedNetworkPolicyJobCtl(job *model.JobTask, runtime *Runtime, shareLocker locker.Locker) *DeployAdoptedNetworkPolicyJobCtl {
+	base, ok := newDeployNamespacedResourceJobBase("DeployAdoptedNetworkPolicyJobCtl", job, runtime, shareLocker)
 	if !ok {
 		return nil
 	}

@@ -9,13 +9,11 @@ import (
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
 
@@ -24,15 +22,18 @@ type DeployConfigMapJobCtl struct {
 	urlSecurityPolicy *spec.URLSecurityPolicySpec
 }
 
-func NewDeployConfigMapJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), shareLocker locker.Locker, urlSecurityPolicy *spec.URLSecurityPolicySpec) *DeployConfigMapJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("DeployConfigMapJobCtl", job, client, store, ack, shareLocker)
+func NewDeployConfigMapJobCtl(job *model.JobTask, runtime *Runtime, shareLocker locker.Locker) *DeployConfigMapJobCtl {
+	base, ok := newDeployNamespacedResourceJobBase("DeployConfigMapJobCtl", job, runtime, shareLocker)
 	if !ok {
 		return nil
 	}
-	return &DeployConfigMapJobCtl{
+	ctl := &DeployConfigMapJobCtl{
 		deployNamespacedResourceJobBase: base,
-		urlSecurityPolicy:               urlSecurityPolicy,
 	}
+	if runtime != nil {
+		ctl.urlSecurityPolicy = runtime.URLSecurityPolicy
+	}
+	return ctl
 }
 
 func (c *DeployConfigMapJobCtl) Clean(ctx context.Context) {

@@ -333,14 +333,15 @@ func newTestAdoptedSecretController(
 	store datastore.DataStore,
 	keyring *importsecret.Keyring,
 ) *DeploySecretJobCtl {
-	ctl := NewDeploySecretJobCtl(
+	return NewDeploySecretJobCtl(
 		jobTask,
-		client,
-		store,
-		func() {},
+		newJobRuntime(&Runtime{
+			Client:              client,
+			Store:               store,
+			Ack:                 func() {},
+			URLSecurityPolicy:   nil,
+			ImportSecretKeyring: keyring,
+		}),
 		locker.NewNoopLocker(shareLockerPrefix),
-		nil,
 	)
-	ctl.setRuntime(newJobRuntime(nil, nil, nil, nil, nil, nil, nil, keyring))
-	return ctl
 }

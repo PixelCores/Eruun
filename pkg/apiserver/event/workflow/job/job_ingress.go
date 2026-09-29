@@ -10,14 +10,12 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 
 	networkingv1 "k8s.io/api/networking/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 )
 
@@ -25,8 +23,8 @@ type DeployIngressJobCtl struct {
 	deployNamespacedResourceJobBase
 }
 
-func NewDeployIngressJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), shareLocker locker.Locker) *DeployIngressJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("DeployIngressJobCtl", job, client, store, ack, shareLocker)
+func NewDeployIngressJobCtl(job *model.JobTask, runtime *Runtime, shareLocker locker.Locker) *DeployIngressJobCtl {
+	base, ok := newDeployNamespacedResourceJobBase("DeployIngressJobCtl", job, runtime, shareLocker)
 	if !ok {
 		return nil
 	}

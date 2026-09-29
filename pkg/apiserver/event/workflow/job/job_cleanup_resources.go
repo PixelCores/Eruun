@@ -10,7 +10,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -22,15 +21,14 @@ import (
 
 type CleanupResourcesJobCtl struct {
 	deployNamespacedResourceJobBase
-	runtime                      *jobRuntime
 	skipSaveInfo                 bool
 	requiredStatefulSetPVCTarget *requiredStatefulSetPVCDeletionTarget
 	statefulSetRetentionTargets  map[string]statefulSetRetentionTarget
 	requiredStatefulSetPodTarget *requiredStatefulSetPodDeletionTarget
 }
 
-func NewCleanupResourcesJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func()) *CleanupResourcesJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("NewCleanupResourcesJobCtl", job, client, store, ack, nil)
+func NewCleanupResourcesJobCtl(job *model.JobTask, runtime *Runtime) *CleanupResourcesJobCtl {
+	base, ok := newDeployNamespacedResourceJobBase("NewCleanupResourcesJobCtl", job, runtime, nil)
 	if !ok {
 		return nil
 	}

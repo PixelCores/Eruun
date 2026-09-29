@@ -66,7 +66,7 @@ func TestVersionRestartJobCtlAdoptedDeploymentUsesSourceIdentity(t *testing.T) {
 	}
 	client := fake.NewSimpleClientset(sourceDeployment.DeepCopy(), collision)
 	task := versionRestartTask(component)
-	ctl := NewVersionRestartJobCtl(task, client, store, nil)
+	ctl := NewVersionRestartJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
 	restartedAt := "2026-07-27T18:00:00Z"
 
 	target, err := ctl.restartDeployment(ctx, component, restartedAt, nil)
@@ -110,7 +110,7 @@ func TestVersionRestartJobCtlAdoptedDeploymentRejectsReplacementUID(t *testing.T
 		app:       adoptedApplication(t, "app-1", "ops", snapshot),
 	}
 	client := fake.NewSimpleClientset(sourceDeployment.DeepCopy())
-	ctl := NewVersionRestartJobCtl(versionRestartTask(component), client, store, nil)
+	ctl := NewVersionRestartJobCtl(versionRestartTask(component), &Runtime{Client: client, Store: store, Ack: nil})
 
 	_, err := ctl.restartDeployment(context.Background(), component, "2026-07-27T18:00:00Z", nil)
 	require.ErrorContains(t, err, "UID")
@@ -142,7 +142,7 @@ func TestVersionRestartJobCtlAdoptedDeploymentRejectsPausedSource(t *testing.T) 
 		app:       adoptedApplication(t, "app-1", "ops", snapshot),
 	}
 	client := fake.NewSimpleClientset(sourceDeployment.DeepCopy())
-	ctl := NewVersionRestartJobCtl(versionRestartTask(component), client, store, nil)
+	ctl := NewVersionRestartJobCtl(versionRestartTask(component), &Runtime{Client: client, Store: store, Ack: nil})
 
 	_, err := ctl.restartDeployment(context.Background(), component, "2026-07-27T18:00:00Z", nil)
 	require.ErrorContains(t, err, "deployment is paused")
@@ -182,7 +182,7 @@ func TestVersionRestartJobCtlAdoptedStatefulSetRejectsDeleteOnScale(t *testing.T
 		app:       adoptedApplication(t, "app-1", "ops", snapshot),
 	}
 	client := fake.NewSimpleClientset(statefulSet.DeepCopy())
-	ctl := NewVersionRestartJobCtl(versionRestartTask(component), client, store, nil)
+	ctl := NewVersionRestartJobCtl(versionRestartTask(component), &Runtime{Client: client, Store: store, Ack: nil})
 
 	_, err := ctl.restartStatefulSet(context.Background(), component, "2026-07-27T18:00:00Z", nil)
 	require.ErrorContains(t, err, "whenScaled=Delete")
@@ -244,7 +244,7 @@ func TestVersionRestartJobCtlAdoptedStatefulSetRejectsNonRollingRestartStrategie
 				app:       adoptedApplication(t, "app-1", "ops", snapshot),
 			}
 			client := fake.NewSimpleClientset(statefulSet.DeepCopy())
-			ctl := NewVersionRestartJobCtl(versionRestartTask(component), client, store, nil)
+			ctl := NewVersionRestartJobCtl(versionRestartTask(component), &Runtime{Client: client, Store: store, Ack: nil})
 
 			_, err := ctl.restartStatefulSet(context.Background(), component, "2026-07-27T18:00:00Z", nil)
 			require.ErrorContains(t, err, test.wantErr)
@@ -259,7 +259,6 @@ func TestVersionRestartJobCtlRestartsDeployment(t *testing.T) {
 	deployment := databaseResetDeployment(t, api)
 	client := fake.NewSimpleClientset(deployment)
 	task := versionRestartTask(api)
-	ctl := NewVersionRestartJobCtl(task, client, store, nil)
 	waiter := informer.NewResourceReadyWaiter()
 	t.Cleanup(waiter.Close)
 	waiter.OnPodAdd(versionRestartReadyPod(api, "api-old", "old-restarted-at"))
@@ -267,7 +266,12 @@ func TestVersionRestartJobCtlRestartsDeployment(t *testing.T) {
 	cacheKey := cacheutil.ApplicationComponentsKey(api.AppID)
 	require.NoError(t, cacheStore.Store(context.Background(), cacheKey, "stale"))
 	require.NotEmpty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))
-	ctl.setRuntime(newJobRuntime(nil, cacheStore, nil, nil, nil, waiter, nil))
+	ctl := NewVersionRestartJobCtl(task, newJobRuntime(&Runtime{
+		Client:         client,
+		Store:          store,
+		Cache:          cacheStore,
+		ResourceWaiter: waiter,
+	}))
 
 	result := runVersionRestartAsync(ctl)
 	restartedAt := waitForDeploymentRestartAt(t, client, deployment.Name)
@@ -289,11 +293,14 @@ func TestVersionRestartJobCtlRestartsStatefulSet(t *testing.T) {
 	_, statefulSet := databaseResetStatefulSet(t, db)
 	client := fake.NewSimpleClientset(statefulSet)
 	task := versionRestartTask(db)
-	ctl := NewVersionRestartJobCtl(task, client, store, nil)
 	waiter := informer.NewResourceReadyWaiter()
 	t.Cleanup(waiter.Close)
 	waiter.OnPodAdd(versionRestartReadyPod(db, "mysql-old", "old-restarted-at"))
-	ctl.setRuntime(newJobRuntime(nil, nil, nil, nil, nil, waiter, nil))
+	ctl := NewVersionRestartJobCtl(task, newJobRuntime(&Runtime{
+		Client:         client,
+		Store:          store,
+		ResourceWaiter: waiter,
+	}))
 
 	result := runVersionRestartAsync(ctl)
 	restartedAt := waitForStatefulSetRestartAt(t, client, statefulSet.Name)
@@ -315,7 +322,7 @@ func TestVersionRestartJobCtlSkipsStoppedComponent(t *testing.T) {
 	deployment := databaseResetDeployment(t, api)
 	client := fake.NewSimpleClientset(deployment)
 	task := versionRestartTask(api)
-	ctl := NewVersionRestartJobCtl(task, client, store, nil)
+	ctl := NewVersionRestartJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
 
 	require.NoError(t, ctl.Run(context.Background()))
 
@@ -351,7 +358,7 @@ func TestVersionRestartJobCtlHonorsShareLifecyclePolicy(t *testing.T) {
 			deployment := databaseResetDeployment(t, api)
 			client := fake.NewSimpleClientset(deployment)
 			task := versionRestartTask(api)
-			ctl := NewVersionRestartJobCtl(task, client, store, nil)
+			ctl := NewVersionRestartJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
 
 			require.NoError(t, ctl.Run(context.Background()))
 
@@ -387,7 +394,7 @@ func TestVersionRestartJobCtlSkipsMissingDeployment(t *testing.T) {
 	store := newDatabaseResetComponentStore(api)
 	client := fake.NewSimpleClientset()
 	task := versionRestartTask(api)
-	ctl := NewVersionRestartJobCtl(task, client, store, nil)
+	ctl := NewVersionRestartJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
 
 	require.NoError(t, ctl.Run(context.Background()))
 	require.Empty(t, api.Status)
@@ -403,7 +410,7 @@ func TestVersionRestartJobCtlFailsOnPatchError(t *testing.T) {
 		return true, nil, errors.New("patch denied")
 	})
 	task := versionRestartTask(api)
-	ctl := NewVersionRestartJobCtl(task, client, store, nil)
+	ctl := NewVersionRestartJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
 
 	err := ctl.Run(context.Background())
 	require.Error(t, err)
@@ -421,7 +428,7 @@ func TestVersionRestartJobCtlTreatsNotFoundPatchAsSkipped(t *testing.T) {
 		return true, nil, k8serrors.NewNotFound(schema.GroupResource{Group: "apps", Resource: "deployments"}, deployment.Name)
 	})
 	task := versionRestartTask(api)
-	ctl := NewVersionRestartJobCtl(task, client, store, nil)
+	ctl := NewVersionRestartJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
 
 	require.NoError(t, ctl.Run(context.Background()))
 	require.Empty(t, api.Status)
@@ -435,11 +442,14 @@ func TestVersionRestartJobCtlFailsWhenRestartedDeploymentPodCrashLoops(t *testin
 	client := fake.NewSimpleClientset(deployment)
 	task := versionRestartTask(api)
 	task.Timeout = 1
-	ctl := NewVersionRestartJobCtl(task, client, store, nil)
 	waiter := informer.NewResourceReadyWaiter()
 	t.Cleanup(waiter.Close)
 	waiter.OnPodAdd(versionRestartReadyPod(api, "api-old", "old-restarted-at"))
-	ctl.setRuntime(newJobRuntime(nil, nil, nil, nil, nil, waiter, nil))
+	ctl := NewVersionRestartJobCtl(task, newJobRuntime(&Runtime{
+		Client:         client,
+		Store:          store,
+		ResourceWaiter: waiter,
+	}))
 
 	result := runVersionRestartAsync(ctl)
 	restartedAt := waitForDeploymentRestartAt(t, client, deployment.Name)
@@ -460,11 +470,14 @@ func TestVersionRestartJobCtlFailsWhenRestartedStatefulSetPodCrashLoops(t *testi
 	client := fake.NewSimpleClientset(statefulSet)
 	task := versionRestartTask(db)
 	task.Timeout = 1
-	ctl := NewVersionRestartJobCtl(task, client, store, nil)
 	waiter := informer.NewResourceReadyWaiter()
 	t.Cleanup(waiter.Close)
 	waiter.OnPodAdd(versionRestartReadyPod(db, "mysql-old", "old-restarted-at"))
-	ctl.setRuntime(newJobRuntime(nil, nil, nil, nil, nil, waiter, nil))
+	ctl := NewVersionRestartJobCtl(task, newJobRuntime(&Runtime{
+		Client:         client,
+		Store:          store,
+		ResourceWaiter: waiter,
+	}))
 
 	result := runVersionRestartAsync(ctl)
 	restartedAt := waitForStatefulSetRestartAt(t, client, statefulSet.Name)
@@ -484,7 +497,7 @@ func TestVersionRestartJobCtlFailsWhenResourceWaiterMissing(t *testing.T) {
 	deployment := databaseResetDeployment(t, api)
 	client := fake.NewSimpleClientset(deployment)
 	task := versionRestartTask(api)
-	ctl := NewVersionRestartJobCtl(task, client, store, nil)
+	ctl := NewVersionRestartJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
 
 	err := ctl.Run(context.Background())
 	require.Error(t, err)

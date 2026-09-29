@@ -108,7 +108,7 @@ func TestCleanupResourcesJobCtlRestartsAfterPodDisappearsAndConvergesCheckpointe
 		Name: component.Name, AppID: component.AppID, TaskID: "task-1", JobType: string(config.JobCleanupResources),
 		JobInfo: component, InternalInfo: marker, Status: config.StatusRunning, Timeout: 1,
 	}
-	firstCtl := NewCleanupResourcesJobCtl(firstJob, client, store, nil)
+	firstCtl := NewCleanupResourcesJobCtl(firstJob, &Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, firstCtl)
 	require.NoError(t, firstCtl.ensureRequiredStatefulSetPodDeletionAllowed(ctx, component))
 	checkpoint, found, err := parseRequiredStatefulSetPodDeletionCheckpoint(store.jobInfo.InternalInfo)
@@ -132,7 +132,7 @@ func TestCleanupResourcesJobCtlRestartsAfterPodDisappearsAndConvergesCheckpointe
 		Name: component.Name, AppID: component.AppID, TaskID: "task-1", JobType: string(config.JobCleanupResources),
 		JobInfo: component, InternalInfo: marker, Status: config.StatusRunning, Timeout: 1,
 	}
-	retryCtl := NewCleanupResourcesJobCtl(retryJob, client, store, nil)
+	retryCtl := NewCleanupResourcesJobCtl(retryJob, &Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, retryCtl)
 	gone, err := retryCtl.componentPodsGone(ctx, component)
 	require.NoError(t, err)
@@ -162,7 +162,7 @@ func TestCleanupResourcesJobCtlRechecksLatePodShareBeforeCheckpointedOwnerJobDel
 		Name: component.Name, AppID: component.AppID, TaskID: "task-late-share", JobType: string(config.JobCleanupResources),
 		JobInfo: component, InternalInfo: marker, Status: config.StatusRunning, Timeout: 1,
 	}
-	firstCtl := NewCleanupResourcesJobCtl(firstJob, client, store, nil)
+	firstCtl := NewCleanupResourcesJobCtl(firstJob, &Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, firstCtl)
 	require.NoError(t, firstCtl.ensureRequiredStatefulSetPodDeletionAllowed(ctx, component))
 	checkpoint, found, err := parseRequiredStatefulSetPodDeletionCheckpoint(store.jobInfo.InternalInfo)
@@ -195,7 +195,7 @@ func TestCleanupResourcesJobCtlRechecksLatePodShareBeforeCheckpointedOwnerJobDel
 		Name: component.Name, AppID: component.AppID, TaskID: "task-late-share", JobType: string(config.JobCleanupResources),
 		JobInfo: component, InternalInfo: marker, Status: config.StatusRunning, Timeout: 1,
 	}
-	retryCtl := NewCleanupResourcesJobCtl(retryJob, client, store, nil)
+	retryCtl := NewCleanupResourcesJobCtl(retryJob, &Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, retryCtl)
 
 	gone, err := retryCtl.componentPodsGone(ctx, component)
@@ -225,7 +225,7 @@ func TestCleanupResourcesJobCtlRechecksNonCanonicalPodUIDBeforeCheckpointedOwner
 		Name: component.Name, AppID: component.AppID, TaskID: "task-late-replacement", JobType: string(config.JobCleanupResources),
 		JobInfo: component, InternalInfo: marker, Status: config.StatusRunning, Timeout: 1,
 	}
-	firstCtl := NewCleanupResourcesJobCtl(firstJob, client, store, nil)
+	firstCtl := NewCleanupResourcesJobCtl(firstJob, &Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, firstCtl)
 	require.NoError(t, firstCtl.ensureRequiredStatefulSetPodDeletionAllowed(ctx, component))
 	checkpoint, found, err := parseRequiredStatefulSetPodDeletionCheckpoint(store.jobInfo.InternalInfo)
@@ -257,7 +257,7 @@ func TestCleanupResourcesJobCtlRechecksNonCanonicalPodUIDBeforeCheckpointedOwner
 		Name: component.Name, AppID: component.AppID, TaskID: "task-late-replacement", JobType: string(config.JobCleanupResources),
 		JobInfo: component, InternalInfo: marker, Status: config.StatusRunning, Timeout: 1,
 	}
-	retryCtl := NewCleanupResourcesJobCtl(retryJob, client, store, nil)
+	retryCtl := NewCleanupResourcesJobCtl(retryJob, &Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, retryCtl)
 
 	gone, err := retryCtl.componentPodsGone(ctx, component)
@@ -330,7 +330,7 @@ func TestCleanupResourcesJobCtlPreflightsAllOwnerJobsBeforeAnyDelete(t *testing.
 				Name: component.Name, AppID: component.AppID, TaskID: taskID, JobType: string(config.JobCleanupResources),
 				JobInfo: component, InternalInfo: marker, Status: config.StatusRunning, Timeout: 1,
 			}
-			firstCtl := NewCleanupResourcesJobCtl(firstJob, client, store, nil)
+			firstCtl := NewCleanupResourcesJobCtl(firstJob, &Runtime{Client: client, Store: store, Ack: nil})
 			require.NotNil(t, firstCtl)
 			require.NoError(t, firstCtl.ensureRequiredStatefulSetPodDeletionAllowed(ctx, component))
 			checkpoint, found, err := parseRequiredStatefulSetPodDeletionCheckpoint(store.jobInfo.InternalInfo)
@@ -360,7 +360,7 @@ func TestCleanupResourcesJobCtlPreflightsAllOwnerJobsBeforeAnyDelete(t *testing.
 				Name: component.Name, AppID: component.AppID, TaskID: taskID, JobType: string(config.JobCleanupResources),
 				JobInfo: component, InternalInfo: marker, Status: config.StatusRunning, Timeout: 1,
 			}
-			retryCtl := NewCleanupResourcesJobCtl(retryJob, client, store, nil)
+			retryCtl := NewCleanupResourcesJobCtl(retryJob, &Runtime{Client: client, Store: store, Ack: nil})
 			require.NotNil(t, retryCtl)
 
 			gone, err := retryCtl.componentPodsGone(ctx, component)
@@ -403,12 +403,12 @@ func TestCleanupResourcesJobCtlReconcilesStaleLocalCheckpointAfterConcurrentExpa
 					JobInfo: component, InternalInfo: marker, Status: config.StatusRunning, Timeout: 1,
 				}
 			}
-			staleCtl := NewCleanupResourcesJobCtl(newTask(), client, store, nil)
+			staleCtl := NewCleanupResourcesJobCtl(newTask(), &Runtime{Client: client, Store: store, Ack: nil})
 			require.NotNil(t, staleCtl)
 			require.NoError(t, staleCtl.ensureRequiredStatefulSetPodDeletionAllowed(ctx, component))
 			require.True(t, staleCtl.requiredStatefulSetPodTarget.checkpointPersisted)
 			require.True(t, staleCtl.requiredStatefulSetPodTarget.checkpointEverPersisted)
-			concurrentCtl := NewCleanupResourcesJobCtl(newTask(), client, store, nil)
+			concurrentCtl := NewCleanupResourcesJobCtl(newTask(), &Runtime{Client: client, Store: store, Ack: nil})
 			require.NotNil(t, concurrentCtl)
 			require.NoError(t, concurrentCtl.ensureRequiredStatefulSetPodDeletionAllowed(ctx, component))
 
@@ -511,7 +511,7 @@ func TestCleanupResourcesJobCtlDoesNotCompleteAcrossConcurrentPodCheckpointExpan
 		InternalInfo: checkpointA, Status: config.StatusCompleted,
 	}
 	ackCount := 0
-	ctl := NewCleanupResourcesJobCtl(job, fake.NewSimpleClientset(), store, func() { ackCount++ })
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() { ackCount++ }})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.SaveInfo(context.Background()))
@@ -558,7 +558,7 @@ func TestCleanupResourcesJobCtlKeepsExistingCompletedCheckpointAuthoritative(t *
 		InternalInfo: checkpointA, Status: config.StatusCompleted,
 	}
 	ackCount := 0
-	ctl := NewCleanupResourcesJobCtl(job, fake.NewSimpleClientset(), store, func() { ackCount++ })
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() { ackCount++ }})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.SaveInfo(context.Background()))
@@ -589,7 +589,7 @@ func TestCleanupResourcesJobCtlDoesNotRecreateDisappearedCheckpointAfterLocalExp
 			JobInfo: component, InternalInfo: marker, Status: config.StatusRunning, Timeout: 1,
 		}
 	}
-	writerCtl := NewCleanupResourcesJobCtl(newTask(), client, store, nil)
+	writerCtl := NewCleanupResourcesJobCtl(newTask(), &Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, writerCtl)
 	require.NoError(t, writerCtl.ensureRequiredStatefulSetPodDeletionAllowed(ctx, component))
 	_, podCheckpointFound, err := parseRequiredStatefulSetPodDeletionCheckpoint(store.jobInfo.InternalInfo)
@@ -599,7 +599,7 @@ func TestCleanupResourcesJobCtlDoesNotRecreateDisappearedCheckpointAfterLocalExp
 	require.NoError(t, err)
 	require.True(t, pvcCheckpointFound)
 
-	restoredCtl := NewCleanupResourcesJobCtl(newTask(), client, store, nil)
+	restoredCtl := NewCleanupResourcesJobCtl(newTask(), &Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, restoredCtl)
 	require.NoError(t, restoredCtl.ensureRequiredStatefulSetPodDeletionAllowed(ctx, component))
 	require.True(t, restoredCtl.requiredStatefulSetPodTarget.checkpointPersisted)
@@ -680,7 +680,7 @@ func TestCleanupResourcesJobCtlRejectsRestartAfterPodDisappearsWithoutOwnerJobCh
 		JobInfo: component, InternalInfo: marker, Status: config.StatusRunning, Timeout: 1,
 	}
 	client := fake.NewSimpleClientset()
-	ctl := NewCleanupResourcesJobCtl(job, client, store, nil)
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	gone, err := ctl.componentPodsGone(ctx, component)
@@ -1044,7 +1044,7 @@ func newRequiredStatefulSetOwnerJobPodController(t *testing.T) (
 		Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: versionUpdateRequireStatefulSetDeletionInternalInfo(), Timeout: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, client, &noopStore{}, nil)
+	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
 	require.NotNil(t, ctl)
 	require.NoError(t, ctl.ensureRequiredStatefulSetPodDeletionAllowed(ctx, component))
 	require.True(t, ctl.requiredStatefulSetPodTarget.checkpointPersisted)

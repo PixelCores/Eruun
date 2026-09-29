@@ -22,9 +22,9 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/importsecret"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 )
 
 func TestAdoptedRecreationAlreadyExistsPreservesFollowupGetError(t *testing.T) {
@@ -53,7 +53,7 @@ func TestAdoptedRecreationAlreadyExistsPreservesFollowupGetError(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "legacy-backend", Namespace: "ops", UID: types.UID("deployment-old")},
 			},
 			run: func(ctx context.Context, client *fake.Clientset, store *adoptedSourceStore, job *model.JobTask, _ *adoptedResourceBinding, component *model.ApplicationComponent, source runtime.Object) error {
-				return NewDeployJobCtl(job, client, store, func() {}, locker.NewNoopLocker(shareLockerPrefix)).recreateAdoptedDeployment(ctx, source.(*appsv1.Deployment).DeepCopy(), component)
+				return NewDeployJobCtl(job, &Runtime{Client: client, Store: store, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix)).recreateAdoptedDeployment(ctx, source.(*appsv1.Deployment).DeepCopy(), component)
 			},
 		},
 		{
@@ -63,7 +63,7 @@ func TestAdoptedRecreationAlreadyExistsPreservesFollowupGetError(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "legacy-database", Namespace: "ops", UID: types.UID("statefulset-old")},
 			},
 			run: func(ctx context.Context, client *fake.Clientset, store *adoptedSourceStore, job *model.JobTask, _ *adoptedResourceBinding, component *model.ApplicationComponent, source runtime.Object) error {
-				return NewDeployStatefulSetJobCtl(job, client, store, func() {}, locker.NewNoopLocker(shareLockerPrefix)).recreateAdoptedStatefulSet(ctx, source.(*appsv1.StatefulSet).DeepCopy(), component)
+				return NewDeployStatefulSetJobCtl(job, &Runtime{Client: client, Store: store, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix)).recreateAdoptedStatefulSet(ctx, source.(*appsv1.StatefulSet).DeepCopy(), component)
 			},
 		},
 		{
@@ -73,7 +73,7 @@ func TestAdoptedRecreationAlreadyExistsPreservesFollowupGetError(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "legacy-service", Namespace: "ops", UID: types.UID("service-old")},
 			},
 			run: func(ctx context.Context, client *fake.Clientset, store *adoptedSourceStore, job *model.JobTask, binding *adoptedResourceBinding, _ *model.ApplicationComponent, source runtime.Object) error {
-				return NewDeployServiceJobCtl(job, client, store, func() {}, locker.NewNoopLocker(shareLockerPrefix)).recreateAdoptedService(ctx, source.(*corev1.Service).DeepCopy(), binding)
+				return NewDeployServiceJobCtl(job, &Runtime{Client: client, Store: store, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix)).recreateAdoptedService(ctx, source.(*corev1.Service).DeepCopy(), binding)
 			},
 		},
 		{
@@ -83,7 +83,7 @@ func TestAdoptedRecreationAlreadyExistsPreservesFollowupGetError(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "legacy-config", Namespace: "ops", UID: types.UID("configmap-old")},
 			},
 			run: func(ctx context.Context, client *fake.Clientset, store *adoptedSourceStore, job *model.JobTask, binding *adoptedResourceBinding, _ *model.ApplicationComponent, source runtime.Object) error {
-				return NewDeployConfigMapJobCtl(job, client, store, func() {}, locker.NewNoopLocker(shareLockerPrefix), nil).recreateAdoptedConfigMap(ctx, source.(*corev1.ConfigMap).DeepCopy(), binding)
+				return NewDeployConfigMapJobCtl(job, &Runtime{Client: client, Store: store, Ack: func() {}, URLSecurityPolicy: nil}, locker.NewNoopLocker(shareLockerPrefix)).recreateAdoptedConfigMap(ctx, source.(*corev1.ConfigMap).DeepCopy(), binding)
 			},
 		},
 		{
@@ -93,7 +93,7 @@ func TestAdoptedRecreationAlreadyExistsPreservesFollowupGetError(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "legacy-ingress", Namespace: "ops", UID: types.UID("ingress-old")},
 			},
 			run: func(ctx context.Context, client *fake.Clientset, store *adoptedSourceStore, job *model.JobTask, binding *adoptedResourceBinding, _ *model.ApplicationComponent, source runtime.Object) error {
-				return NewDeployIngressJobCtl(job, client, store, func() {}, locker.NewNoopLocker(shareLockerPrefix)).recreateAdoptedIngress(ctx, source.(*networkingv1.Ingress).DeepCopy(), binding)
+				return NewDeployIngressJobCtl(job, &Runtime{Client: client, Store: store, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix)).recreateAdoptedIngress(ctx, source.(*networkingv1.Ingress).DeepCopy(), binding)
 			},
 		},
 		{
@@ -114,7 +114,7 @@ func TestAdoptedRecreationAlreadyExistsPreservesFollowupGetError(t *testing.T) {
 						encryptedData: &model.JSONStruct{},
 					}},
 				}
-				return NewDeploySecretJobCtl(job, client, store, func() {}, locker.NewNoopLocker(shareLockerPrefix), nil).recreateAdoptedSecret(ctx, desired, baseline, material, binding)
+				return NewDeploySecretJobCtl(job, &Runtime{Client: client, Store: store, Ack: func() {}, URLSecurityPolicy: nil}, locker.NewNoopLocker(shareLockerPrefix)).recreateAdoptedSecret(ctx, desired, baseline, material, binding)
 			},
 		},
 		{
@@ -124,7 +124,7 @@ func TestAdoptedRecreationAlreadyExistsPreservesFollowupGetError(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "legacy-runtime", Namespace: "ops", UID: types.UID("service-account-old")},
 			},
 			run: func(ctx context.Context, client *fake.Clientset, store *adoptedSourceStore, job *model.JobTask, binding *adoptedResourceBinding, _ *model.ApplicationComponent, source runtime.Object) error {
-				return NewDeployServiceAccountJobCtl(job, client, store, func() {}, locker.NewNoopLocker(shareLockerPrefix)).recreateAdoptedServiceAccount(ctx, source.(*corev1.ServiceAccount).DeepCopy(), binding)
+				return NewDeployServiceAccountJobCtl(job, &Runtime{Client: client, Store: store, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix)).recreateAdoptedServiceAccount(ctx, source.(*corev1.ServiceAccount).DeepCopy(), binding)
 			},
 		},
 		{
@@ -134,7 +134,7 @@ func TestAdoptedRecreationAlreadyExistsPreservesFollowupGetError(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "legacy-role", Namespace: "ops", UID: types.UID("role-old")},
 			},
 			run: func(ctx context.Context, client *fake.Clientset, store *adoptedSourceStore, job *model.JobTask, binding *adoptedResourceBinding, _ *model.ApplicationComponent, source runtime.Object) error {
-				return NewDeployRoleJobCtl(job, client, store, func() {}, locker.NewNoopLocker(shareLockerPrefix)).recreateAdoptedRole(ctx, source.(*rbacv1.Role).DeepCopy(), binding)
+				return NewDeployRoleJobCtl(job, &Runtime{Client: client, Store: store, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix)).recreateAdoptedRole(ctx, source.(*rbacv1.Role).DeepCopy(), binding)
 			},
 		},
 		{
@@ -144,7 +144,7 @@ func TestAdoptedRecreationAlreadyExistsPreservesFollowupGetError(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "legacy-role-binding", Namespace: "ops", UID: types.UID("role-binding-old")},
 			},
 			run: func(ctx context.Context, client *fake.Clientset, store *adoptedSourceStore, job *model.JobTask, binding *adoptedResourceBinding, _ *model.ApplicationComponent, source runtime.Object) error {
-				return NewDeployRoleBindingJobCtl(job, client, store, func() {}, locker.NewNoopLocker(shareLockerPrefix)).recreateAdoptedRoleBinding(ctx, source.(*rbacv1.RoleBinding).DeepCopy(), binding)
+				return NewDeployRoleBindingJobCtl(job, &Runtime{Client: client, Store: store, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix)).recreateAdoptedRoleBinding(ctx, source.(*rbacv1.RoleBinding).DeepCopy(), binding)
 			},
 		},
 		{
@@ -154,7 +154,7 @@ func TestAdoptedRecreationAlreadyExistsPreservesFollowupGetError(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "legacy-pdb", Namespace: "ops", UID: types.UID("pdb-old")},
 			},
 			run: func(ctx context.Context, client *fake.Clientset, store *adoptedSourceStore, job *model.JobTask, binding *adoptedResourceBinding, _ *model.ApplicationComponent, source runtime.Object) error {
-				return NewDeployAdoptedPodDisruptionBudgetJobCtl(job, client, store, func() {}, locker.NewNoopLocker(shareLockerPrefix)).recreateAdoptedPodDisruptionBudget(ctx, source.(*policyv1.PodDisruptionBudget).DeepCopy(), binding)
+				return NewDeployAdoptedPodDisruptionBudgetJobCtl(job, &Runtime{Client: client, Store: store, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix)).recreateAdoptedPodDisruptionBudget(ctx, source.(*policyv1.PodDisruptionBudget).DeepCopy(), binding)
 			},
 		},
 		{
@@ -164,7 +164,7 @@ func TestAdoptedRecreationAlreadyExistsPreservesFollowupGetError(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "legacy-network-policy", Namespace: "ops", UID: types.UID("network-policy-old")},
 			},
 			run: func(ctx context.Context, client *fake.Clientset, store *adoptedSourceStore, job *model.JobTask, binding *adoptedResourceBinding, _ *model.ApplicationComponent, source runtime.Object) error {
-				return NewDeployAdoptedNetworkPolicyJobCtl(job, client, store, func() {}, locker.NewNoopLocker(shareLockerPrefix)).recreateAdoptedNetworkPolicy(ctx, source.(*networkingv1.NetworkPolicy).DeepCopy(), binding)
+				return NewDeployAdoptedNetworkPolicyJobCtl(job, &Runtime{Client: client, Store: store, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix)).recreateAdoptedNetworkPolicy(ctx, source.(*networkingv1.NetworkPolicy).DeepCopy(), binding)
 			},
 		},
 	}
@@ -253,7 +253,7 @@ func TestAdoptedDeploymentRecreationAlreadyExistsReconcilesCurrentDesiredAndRead
 	job := &model.JobTask{
 		Name: "backend", AppID: "app-1", Namespace: "ops", TaskID: "current-task", JobInfo: desired,
 	}
-	controller := NewDeployJobCtl(job, client, store, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	controller := NewDeployJobCtl(job, &Runtime{Client: client, Store: store, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 
 	require.NoError(t, controller.run(ctx))
 	live, err := client.AppsV1().Deployments("ops").Get(ctx, source.Name, metav1.GetOptions{})
@@ -311,7 +311,7 @@ func TestAdoptedStatefulSetRecreationAlreadyExistsRestoresRetentionAndReconciles
 	job := &model.JobTask{
 		Name: "database", AppID: "app-1", Namespace: "ops", TaskID: "current-task", JobInfo: desired,
 	}
-	controller := NewDeployStatefulSetJobCtl(job, client, store, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	controller := NewDeployStatefulSetJobCtl(job, &Runtime{Client: client, Store: store, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 
 	require.NoError(t, controller.run(ctx))
 	live, err := client.AppsV1().StatefulSets("ops").Get(ctx, source.Name, metav1.GetOptions{})

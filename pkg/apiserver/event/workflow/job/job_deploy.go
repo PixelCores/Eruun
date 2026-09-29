@@ -16,13 +16,11 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
@@ -39,11 +37,11 @@ type DeployJobCtl struct {
 
 const defaultDeploymentRollingUpdatePercent = "25%"
 
-func NewDeployJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), shareLocker locker.Locker) *DeployJobCtl {
-	if client == nil || store == nil {
+func NewDeployJobCtl(job *model.JobTask, runtime *Runtime, shareLocker locker.Locker) *DeployJobCtl {
+	if runtime == nil || runtime.Client == nil || runtime.Store == nil {
 		return nil
 	}
-	base, ok := newDeployNamespacedResourceJobBase("DeployJobCtl", job, client, store, ack, shareLocker)
+	base, ok := newDeployNamespacedResourceJobBase("DeployJobCtl", job, runtime, shareLocker)
 	if !ok {
 		return nil
 	}

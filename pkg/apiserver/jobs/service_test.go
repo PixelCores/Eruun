@@ -803,7 +803,7 @@ func TestCommandRuntimePersistsCheckpointAndTerminalResultThroughScopedStore(t *
 	observerCtx, stopObserver := context.WithCancel(context.Background())
 	t.Cleanup(stopObserver)
 	require.NoError(t, observer.Start(observerCtx))
-	ctl := workflowjob.NewInstantJobCtl(task, service.Kube, service.Store, func() {}, observer)
+	ctl := workflowjob.NewInstantJobCtl(task, &workflowjob.Runtime{Client: service.Kube, Store: service.Store, Ack: func() {}, ResourceWaiter: observer})
 	require.NoError(t, ctl.Run(ctx))
 	require.Equal(t, config.StatusCompleted, task.Status)
 	require.NoError(t, ctl.SaveInfo(ctx))

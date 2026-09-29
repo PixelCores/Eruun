@@ -17,8 +17,8 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
 
 func TestDeployAdoptedPodDisruptionBudgetUsesLiveBaselineAndSkipsSecondUpdate(t *testing.T) {
@@ -69,9 +69,11 @@ func TestDeployAdoptedPodDisruptionBudgetUsesLiveBaselineAndSkipsSecondUpdate(t 
 			JobType:   "deploy_adopted_pod_disruption_budget",
 			JobInfo:   desired,
 		},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		nil,
 	)
 
@@ -129,9 +131,11 @@ func TestDeployAdoptedPodDisruptionBudgetEnforcesSnapshotWriteGateAndUID(t *test
 				Namespace: "ops",
 				JobInfo:   desired,
 			},
-			client,
-			store,
-			func() {},
+			&Runtime{
+				Client: client,
+				Store:  store,
+				Ack:    func() {},
+			},
 			nil,
 		)
 
@@ -171,9 +175,11 @@ func TestDeployAdoptedPodDisruptionBudgetEnforcesSnapshotWriteGateAndUID(t *test
 				Namespace: "ops",
 				JobInfo:   source.DeepCopy(),
 			},
-			client,
-			store,
-			func() {},
+			&Runtime{
+				Client: client,
+				Store:  store,
+				Ack:    func() {},
+			},
 			locker.NewMemoryLocker(shareLockerPrefix),
 		)
 
@@ -217,9 +223,11 @@ func TestDeployAdoptedPodDisruptionBudgetEnforcesSnapshotWriteGateAndUID(t *test
 				Namespace: "ops",
 				JobInfo:   desired,
 			},
-			client,
-			store,
-			func() {},
+			&Runtime{
+				Client: client,
+				Store:  store,
+				Ack:    func() {},
+			},
 			nil,
 		)
 
@@ -283,9 +291,11 @@ func TestDeployAdoptedPodDisruptionBudgetRecreatesOriginalNameAndRotatesSnapshot
 			Namespace: "ops",
 			JobInfo:   desired,
 		},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		locker.NewMemoryLocker(shareLockerPrefix),
 	)
 
@@ -353,9 +363,11 @@ func TestDeployAdoptedNetworkPolicyUsesLiveBaselineAndSkipsSecondUpdate(t *testi
 			JobType:   "deploy_adopted_network_policy",
 			JobInfo:   desired,
 		},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		nil,
 	)
 
@@ -412,9 +424,11 @@ func TestDeployAdoptedNetworkPolicyBlockedDispositionRejectsWithoutKubernetesReq
 			Namespace: "ops",
 			JobInfo:   source.DeepCopy(),
 		},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		nil,
 	)
 
@@ -474,9 +488,11 @@ func TestDeployAdoptedNetworkPolicyRecreationPersistenceFailureRetainsLiveObject
 			Namespace: "ops",
 			JobInfo:   source.DeepCopy(),
 		},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		locker.NewMemoryLocker(shareLockerPrefix),
 	)
 

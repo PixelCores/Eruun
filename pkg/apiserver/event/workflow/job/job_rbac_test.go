@@ -32,7 +32,7 @@ func TestDeployServiceAccountJobCtl_Create(t *testing.T) {
 			},
 		},
 	}
-	ctl := NewDeployServiceAccountJobCtl(jobTask, client, &noopStore{}, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployServiceAccountJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	ctx := WithCleanupTracker(context.Background())
 
 	if err := ctl.Run(ctx); err != nil {
@@ -74,7 +74,7 @@ func TestDeployServiceAccountJobCtl_CreateAlreadyExists(t *testing.T) {
 			},
 		},
 	}
-	ctl := NewDeployServiceAccountJobCtl(jobTask, client, &noopStore{}, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployServiceAccountJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	ctx := WithCleanupTracker(context.Background())
 
 	if err := ctl.Run(ctx); err != nil {
@@ -112,7 +112,7 @@ func TestDeployServiceAccountJobCtl_SkipUnmanaged(t *testing.T) {
 			},
 		},
 	}
-	ctl := NewDeployServiceAccountJobCtl(jobTask, client, &noopStore{}, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployServiceAccountJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	ctx := WithCleanupTracker(context.Background())
 
 	if err := ctl.Run(ctx); err != nil {
@@ -156,7 +156,7 @@ func TestDeployServiceAccountJobCtl_ShareDefaultStillReconcilesWithoutLocker(t *
 			},
 		},
 	}
-	ctl := NewDeployServiceAccountJobCtl(jobTask, client, &noopStore{}, func() {}, nil)
+	ctl := NewDeployServiceAccountJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, nil)
 	ctx := WithCleanupTracker(context.Background())
 
 	if err := ctl.Run(ctx); err != nil {
@@ -182,11 +182,11 @@ func TestDeployRBACJobControllersCleanPreservesResources(t *testing.T) {
 	store := &noopStore{}
 	shareLocker := locker.NewNoopLocker(shareLockerPrefix)
 
-	NewDeployServiceAccountJobCtl(&model.JobTask{Name: "shared-sa", Namespace: "ops"}, client, store, nil, shareLocker).Clean(ctx)
-	NewDeployRoleJobCtl(&model.JobTask{Name: "shared-role", Namespace: "ops"}, client, store, nil, shareLocker).Clean(ctx)
-	NewDeployRoleBindingJobCtl(&model.JobTask{Name: "shared-binding", Namespace: "ops"}, client, store, nil, shareLocker).Clean(ctx)
-	NewDeployClusterRoleJobCtl(&model.JobTask{Name: "shared-cluster-role"}, client, store, nil, shareLocker).Clean(ctx)
-	NewDeployClusterRoleBindingJobCtl(&model.JobTask{Name: "shared-cluster-binding"}, client, store, nil, shareLocker).Clean(ctx)
+	NewDeployServiceAccountJobCtl(&model.JobTask{Name: "shared-sa", Namespace: "ops"}, &Runtime{Client: client, Store: store, Ack: nil}, shareLocker).Clean(ctx)
+	NewDeployRoleJobCtl(&model.JobTask{Name: "shared-role", Namespace: "ops"}, &Runtime{Client: client, Store: store, Ack: nil}, shareLocker).Clean(ctx)
+	NewDeployRoleBindingJobCtl(&model.JobTask{Name: "shared-binding", Namespace: "ops"}, &Runtime{Client: client, Store: store, Ack: nil}, shareLocker).Clean(ctx)
+	NewDeployClusterRoleJobCtl(&model.JobTask{Name: "shared-cluster-role"}, &Runtime{Client: client, Store: store, Ack: nil}, shareLocker).Clean(ctx)
+	NewDeployClusterRoleBindingJobCtl(&model.JobTask{Name: "shared-cluster-binding"}, &Runtime{Client: client, Store: store, Ack: nil}, shareLocker).Clean(ctx)
 
 	_, err := client.CoreV1().ServiceAccounts("ops").Get(ctx, "shared-sa", metav1.GetOptions{})
 	if err != nil {
@@ -249,7 +249,7 @@ func TestDeployRoleJobCtl_UpdateManaged(t *testing.T) {
 			}},
 		},
 	}
-	ctl := NewDeployRoleJobCtl(jobTask, client, &noopStore{}, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployRoleJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	ctx := WithCleanupTracker(context.Background())
 
 	if err := ctl.Run(ctx); err != nil {

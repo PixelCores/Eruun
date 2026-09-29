@@ -281,7 +281,7 @@ func newRequiredStatefulSetSafetyRefreshController(
 		TaskID: "task-1", JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: marker, Status: config.StatusRunning, Timeout: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, client, store, nil)
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 	return component, statefulSet, client, ctl
 }

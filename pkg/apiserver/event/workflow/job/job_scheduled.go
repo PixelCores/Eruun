@@ -8,13 +8,11 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	traitsPlu "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
@@ -37,8 +35,8 @@ func GenerateScheduledCronJob(component *model.ApplicationComponent, properties 
 	}, nil
 }
 
-func NewScheduledJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func()) *ScheduledJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("ScheduledJobCtl", job, client, store, ack, nil)
+func NewScheduledJobCtl(job *model.JobTask, runtime *Runtime) *ScheduledJobCtl {
+	base, ok := newDeployNamespacedResourceJobBase("ScheduledJobCtl", job, runtime, nil)
 	if !ok {
 		return nil
 	}
