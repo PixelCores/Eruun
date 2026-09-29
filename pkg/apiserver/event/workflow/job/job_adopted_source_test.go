@@ -121,11 +121,11 @@ func (s *adoptedSourceStore) CompareAndSwap(
 		if !ok || secretJSON == "" {
 			return false, nil
 		}
-		secretData, err := model.NewJSONStructByString(secretJSON)
-		if err != nil {
+		var secretData model.JSONStruct
+		if err := json.Unmarshal([]byte(secretJSON), &secretData); err != nil {
 			return false, err
 		}
-		component.AdoptedSecretData = secretData
+		component.AdoptedSecretData = &secretData
 		s.componentCASCount++
 		return true, nil
 	case *model.Applications:
@@ -144,11 +144,11 @@ func (s *adoptedSourceStore) CompareAndSwap(
 	if !ok || snapshotJSON == "" {
 		return false, nil
 	}
-	snapshot, err := model.NewJSONStructByString(snapshotJSON)
-	if err != nil {
+	var snapshot model.JSONStruct
+	if err := json.Unmarshal([]byte(snapshotJSON), &snapshot); err != nil {
 		return false, err
 	}
-	s.app.AdoptionSnapshot = snapshot
+	s.app.AdoptionSnapshot = &snapshot
 	s.applicationCASCount++
 	return true, nil
 }
