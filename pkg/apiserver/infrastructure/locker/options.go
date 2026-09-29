@@ -45,10 +45,6 @@ type Options struct {
 	// Set to -1 for infinite retries (until context cancellation).
 	// Set to 0 for no retries (equivalent to TryLock behavior in Lock).
 	RetryCount int
-
-	// Metadata is optional key-value data associated with the lock.
-	// Some backends may use this for debugging or ownership tracking.
-	Metadata map[string]string
 }
 
 // Option is a functional option for configuring a mutex.
@@ -60,7 +56,6 @@ func DefaultOptions() *Options {
 		TTL:        DefaultTTL,
 		RetryDelay: DefaultRetryDelay,
 		RetryCount: DefaultRetryCount,
-		Metadata:   make(map[string]string),
 	}
 }
 
@@ -97,32 +92,4 @@ func WithRetryCount(count int) Option {
 	return func(o *Options) {
 		o.RetryCount = count
 	}
-}
-
-// WithMetadata sets metadata key-value pairs for the lock.
-func WithMetadata(key, value string) Option {
-	return func(o *Options) {
-		if o.Metadata == nil {
-			o.Metadata = make(map[string]string)
-		}
-		o.Metadata[key] = value
-	}
-}
-
-// Config holds configuration for creating a Locker instance.
-type Config struct {
-	// Type specifies the backend type (redis, memory, noop, etcd).
-	Type Type
-
-	// RedisClient is the Redis client for TypeRedis.
-	// Required when Type is TypeRedis.
-	RedisClient interface{}
-
-	// EtcdEndpoints are etcd server endpoints for TypeEtcd.
-	// Required when Type is TypeEtcd.
-	EtcdEndpoints []string
-
-	// Prefix is an optional key prefix for all locks created by this locker.
-	// Useful for namespacing locks in shared backends.
-	Prefix string
 }

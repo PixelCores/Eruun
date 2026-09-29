@@ -141,7 +141,7 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 		"appScheduleLocker": "eruun-app-schedule",
 		"managementLocker":  "eruun-adopted-import",
 	} {
-		lockProvider, err := locker.New(locker.Config{Type: locker.TypeRedis, RedisClient: redisClient, Prefix: prefix})
+		lockProvider, err := locker.NewRedisLocker(redisClient, prefix)
 		if err != nil {
 			return fmt.Errorf("initialize %s: %w", name, err)
 		}

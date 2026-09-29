@@ -79,11 +79,7 @@ func newShareLocker(redisClient *redis.Client) locker.Locker {
 	if redisClient == nil {
 		return nil
 	}
-	redisLocker, err := locker.New(locker.Config{
-		Type:        locker.TypeRedis,
-		RedisClient: redisClient,
-		Prefix:      shareLockerPrefix,
-	})
+	redisLocker, err := locker.NewRedisLocker(redisClient, shareLockerPrefix)
 	if err != nil {
 		klog.ErrorS(err, "init shared resource redis locker failed")
 		return nil

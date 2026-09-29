@@ -202,16 +202,6 @@ var (
 
 // ---- Helper Functions ----
 
-// NewRedisLockerFromConfig creates a RedisLocker from a Config.
-// This is a convenience function that extracts the Redis client from the config.
-func NewRedisLockerFromConfig(cfg Config) (*RedisLocker, error) {
-	client, ok := cfg.RedisClient.(*redis.Client)
-	if !ok || client == nil {
-		return nil, fmt.Errorf("invalid redis client in config")
-	}
-	return NewRedisLocker(client, cfg.Prefix)
-}
-
 // AutoExtend starts a goroutine that periodically extends the lock's TTL.
 // It stops when ctx is cancelled or the returned cancel function is called.
 // This is useful for long-running operations that need to hold the lock.
