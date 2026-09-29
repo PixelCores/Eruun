@@ -16,14 +16,10 @@ type SchedulerWorker interface {
 	StartScheduler(ctx context.Context, errChan chan error, ready func())
 }
 
-// WorkerSubscriber runs the message-bus consumer for the worker role.
+// Worker runs the message-bus consumer for the worker role.
 // consumerCtx stops message intake; executionCtx owns already-started work.
-type WorkerSubscriber interface {
-	StartWorker(consumerCtx, executionCtx context.Context, errChan chan error, ready, stopped func())
-}
-
 type Worker interface {
-	WorkerSubscriber
+	StartWorker(consumerCtx, executionCtx context.Context, errChan chan error, ready, stopped func())
 }
 
 // InitEvent init all event worker

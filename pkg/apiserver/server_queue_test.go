@@ -328,6 +328,21 @@ func TestStartWorkersUsesServerScopedEventWorkers(t *testing.T) {
 	require.EqualValues(t, 0, laterWorker.starts.Load())
 }
 
+func TestStartWorkersSkipsNilWorkerInReadinessCount(t *testing.T) {
+	worker := &testServerWorker{}
+	server := &restServer{eventWorkers: []event.Worker{nil, worker}}
+	t.Cleanup(func() { server.stopWorkers(context.Background()) })
+
+	server.startWorkers(context.Background(), nil)
+
+	waitForServerWorkerCount(t, "non-nil worker", worker.subscribes.Load, 1)
+	require.Eventually(t, func() bool {
+		server.workersMu.Lock()
+		defer server.workersMu.Unlock()
+		return server.workersReady
+	}, time.Second, time.Millisecond)
+}
+
 func TestStartWorkersSeparatesConsumerAndExecutionContexts(t *testing.T) {
 	worker := &contextTrackingServerWorker{contexts: make(chan testWorkerContexts, 1)}
 	server := &restServer{eventWorkers: []event.Worker{worker}}
