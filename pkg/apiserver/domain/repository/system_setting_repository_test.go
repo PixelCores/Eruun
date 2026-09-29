@@ -46,7 +46,7 @@ func TestSystemSettingRepositoryDelegates(t *testing.T) {
 }
 
 func TestInitRepositoryBeanContainsCoreRepositories(t *testing.T) {
-	beans := InitRepositoryBean()
+	beans := InitRepositoryBean(NewApplicationRepository(nil), NewComponentRepository(nil))
 	require.NotEmpty(t, beans)
 }
 

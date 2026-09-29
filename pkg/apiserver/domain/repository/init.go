@@ -1,12 +1,12 @@
 package repository
 
-// InitRepositoryBean initializes the repositories built by the container.
-// Dependencies are injected via struct tags by the IoC container.
-func InitRepositoryBean() []interface{} {
+// InitRepositoryBean initializes the remaining container-managed repositories.
+// Application and component repositories are constructed by the server.
+func InitRepositoryBean(appRepo ApplicationRepository, componentRepo ComponentRepository) []interface{} {
 	return []interface{}{
-		NewApplicationRepository(),
+		appRepo,
 		NewWorkflowRepository(),
-		NewComponentRepository(),
+		componentRepo,
 		NewSystemSettingRepository(),
 	}
 }

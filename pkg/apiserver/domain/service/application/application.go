@@ -1024,9 +1024,9 @@ func validateNoNestedRolloutTraitsForWrite(traits apisv1.Traits, fieldPrefix str
 
 func (c *applicationsServiceImpl) UpdateApplicationWorkflow(ctx context.Context, appID string, req apisv1.UpdateApplicationWorkflowRequest) (*apisv1.UpdateWorkflowResponse, error) {
 	var response *apisv1.UpdateWorkflowResponse
-	_, err := c.withWritableApplicationLock(ctx, appID, "update-application-workflow", func(lockCtx context.Context, _ *model.Applications) error {
+	_, err := c.withWritableApplicationLock(ctx, appID, "update-application-workflow", func(lockCtx context.Context, app *model.Applications) error {
 		var updateErr error
-		response, updateErr = c.updateApplicationWorkflowLocked(lockCtx, appID, req)
+		response, updateErr = c.updateApplicationWorkflowLocked(lockCtx, appID, app, req)
 		return updateErr
 	})
 	if err != nil {
@@ -1035,20 +1035,14 @@ func (c *applicationsServiceImpl) UpdateApplicationWorkflow(ctx context.Context,
 	return response, nil
 }
 
-func (c *applicationsServiceImpl) updateApplicationWorkflowLocked(ctx context.Context, appID string, req apisv1.UpdateApplicationWorkflowRequest) (*apisv1.UpdateWorkflowResponse, error) {
+func (c *applicationsServiceImpl) updateApplicationWorkflowLocked(ctx context.Context, appID string, app *model.Applications, req apisv1.UpdateApplicationWorkflowRequest) (*apisv1.UpdateWorkflowResponse, error) {
 	workflowType, err := validateUpdateApplicationWorkflowRequest(appID, req)
 	if err != nil {
 		return nil, err
 	}
-	app, err := c.AppRepo.FindByID(ctx, appID)
+	app, err = c.applicationForRequestedID(ctx, appID, app)
 	if err != nil {
-		if errors.Is(err, datastore.ErrRecordNotExist) {
-			return nil, bcode.ErrApplicationNotExist
-		}
 		return nil, err
-	}
-	if app.EffectiveManagementMode() == spec.ManagementModeObserve {
-		return nil, fmt.Errorf("%w: observe applications are read-only", bcode.ErrApplicationManagementMode)
 	}
 	if err := EnsureAppWorkflowIdle(ctx, c.Store, app.ID); err != nil {
 		return nil, err

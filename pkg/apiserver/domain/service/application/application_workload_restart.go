@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -15,17 +14,22 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 func (c *applicationsServiceImpl) RestartApplicationWorkloads(ctx context.Context, appID string, req apisv1.ApplicationLifecycleRequest) (*apisv1.RestartApplicationWorkloadsResponse, error) {
 	var response *apisv1.RestartApplicationWorkloadsResponse
-	_, err := c.withWritableApplicationLock(ctx, appID, "restart-application-workloads", func(lockCtx context.Context, _ *model.Applications) error {
+	_, err := c.withWritableApplicationLock(ctx, appID, "restart-application-workloads", func(lockCtx context.Context, app *model.Applications) error {
+		if c.KubeClient == nil {
+			return fmt.Errorf("kube client is nil")
+		}
+		app, err := c.applicationForRequestedID(lockCtx, appID, app)
+		if err != nil {
+			return err
+		}
 		var restartErr error
-		response, restartErr = c.restartApplicationWorkloadsLocked(lockCtx, appID, req)
+		response, restartErr = c.restartApplicationWorkloadsLocked(lockCtx, app, req)
 		return restartErr
 	})
 	if err != nil {
@@ -34,23 +38,7 @@ func (c *applicationsServiceImpl) RestartApplicationWorkloads(ctx context.Contex
 	return response, nil
 }
 
-func (c *applicationsServiceImpl) restartApplicationWorkloadsLocked(ctx context.Context, appID string, req apisv1.ApplicationLifecycleRequest) (*apisv1.RestartApplicationWorkloadsResponse, error) {
-	if appID == "" {
-		return nil, bcode.ErrApplicationNotExist
-	}
-	if c.KubeClient == nil {
-		return nil, fmt.Errorf("kube client is nil")
-	}
-	app, err := c.AppRepo.FindByID(ctx, appID)
-	if err != nil {
-		if errors.Is(err, datastore.ErrRecordNotExist) {
-			return nil, bcode.ErrApplicationNotExist
-		}
-		return nil, err
-	}
-	if app.EffectiveManagementMode() == domainspec.ManagementModeObserve {
-		return nil, fmt.Errorf("%w: observe applications are read-only", bcode.ErrApplicationManagementMode)
-	}
+func (c *applicationsServiceImpl) restartApplicationWorkloadsLocked(ctx context.Context, app *model.Applications, req apisv1.ApplicationLifecycleRequest) (*apisv1.RestartApplicationWorkloadsResponse, error) {
 	taskCallback, err := c.resolveOperationTaskCallback(ctx, req.Callback)
 	if err != nil {
 		return nil, err

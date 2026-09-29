@@ -39,10 +39,6 @@ func NewWorkflowService() WorkflowService {
 	return workflow.NewWorkflowService()
 }
 
-func NewValidationService() ValidationService {
-	return validation.NewValidationService()
-}
-
 func NewConversionService() ConversionService {
 	return conversion.NewConversionService()
 }
@@ -63,11 +59,10 @@ func TerminalizePrecreatedVersionUpdateCleanupJobs(ctx context.Context, store da
 	return workflow.TerminalizePrecreatedVersionUpdateCleanupJobs(ctx, store, taskID, targetStatus, reason)
 }
 
-// InitServiceBean initializes the services built by the container.
-func InitServiceBean() []interface{} {
+// InitServiceBean initializes the remaining container-managed services.
+func InitServiceBean(validationService ValidationService) []interface{} {
 	applicationService := NewApplicationService()
 	workflowService := NewWorkflowService()
-	validationService := NewValidationService()
 	conversionService := NewConversionService()
 	importService := NewResourceImportService()
 	systemSettingService := NewSystemSettingService()

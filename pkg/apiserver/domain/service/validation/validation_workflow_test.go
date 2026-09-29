@@ -55,7 +55,7 @@ func TestValidationService_TryWorkflowRejectsInvalidCallbackMethod(t *testing.T)
 		Image:         "nginx:latest",
 	}
 	repos := newMockServiceWithStore(store)
-	svc := &validationServiceImpl{AppRepo: repos.AppRepo, ComponentRepo: repos.ComponentRepo}
+	svc := NewValidationService(nil, nil, repos.AppRepo, repos.ComponentRepo)
 
 	resp := svc.TryWorkflow(context.Background(), "app-1", apisv1.TryWorkflowRequest{
 		Name: "test-workflow",
@@ -81,7 +81,7 @@ func TestValidationService_TryWorkflowReturnsResubmittableSpecAndPlan(t *testing
 		AppID: "app-1", Name: "backend", Namespace: "default", ComponentType: config.ServerJob, Image: "nginx:latest",
 	}
 	repos := newMockServiceWithStore(store)
-	svc := &validationServiceImpl{AppRepo: repos.AppRepo, ComponentRepo: repos.ComponentRepo}
+	svc := NewValidationService(nil, nil, repos.AppRepo, repos.ComponentRepo)
 
 	resp := svc.TryWorkflow(context.Background(), "app-1", apisv1.TryWorkflowRequest{
 		WorkflowID: "wf-1",

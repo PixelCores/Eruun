@@ -75,13 +75,12 @@ type ComponentRepository interface {
 }
 
 type componentRepository struct {
-	Store datastore.DataStore `inject:"datastore"`
+	Store datastore.DataStore
 }
 
 // NewComponentRepository creates a new ComponentRepository.
-// Dependencies are injected via struct tags.
-func NewComponentRepository() ComponentRepository {
-	return &componentRepository{}
+func NewComponentRepository(store datastore.DataStore) ComponentRepository {
+	return &componentRepository{Store: store}
 }
 
 func (r *componentRepository) Create(ctx context.Context, component *model.ApplicationComponent) error {

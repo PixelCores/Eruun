@@ -3,9 +3,7 @@ package application
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -16,17 +14,22 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 func (c *applicationsServiceImpl) StopApplicationDeployments(ctx context.Context, appID string, req apisv1.ApplicationLifecycleRequest) (*apisv1.StopApplicationDeploymentsResponse, error) {
 	var response *apisv1.StopApplicationDeploymentsResponse
-	_, err := c.withWritableApplicationLock(ctx, appID, "stop-application-deployments", func(lockCtx context.Context, _ *model.Applications) error {
+	_, err := c.withWritableApplicationLock(ctx, appID, "stop-application-deployments", func(lockCtx context.Context, app *model.Applications) error {
+		if c.KubeClient == nil {
+			return fmt.Errorf("kube client is nil")
+		}
+		app, err := c.applicationForRequestedID(lockCtx, appID, app)
+		if err != nil {
+			return err
+		}
 		var stopErr error
-		response, stopErr = c.stopApplicationDeploymentsLocked(lockCtx, appID, req)
+		response, stopErr = c.stopApplicationDeploymentsLocked(lockCtx, app, req)
 		return stopErr
 	})
 	if err != nil {
@@ -35,23 +38,7 @@ func (c *applicationsServiceImpl) StopApplicationDeployments(ctx context.Context
 	return response, nil
 }
 
-func (c *applicationsServiceImpl) stopApplicationDeploymentsLocked(ctx context.Context, appID string, req apisv1.ApplicationLifecycleRequest) (*apisv1.StopApplicationDeploymentsResponse, error) {
-	if appID == "" {
-		return nil, bcode.ErrApplicationNotExist
-	}
-	if c.KubeClient == nil {
-		return nil, fmt.Errorf("kube client is nil")
-	}
-	app, err := c.AppRepo.FindByID(ctx, appID)
-	if err != nil {
-		if errors.Is(err, datastore.ErrRecordNotExist) {
-			return nil, bcode.ErrApplicationNotExist
-		}
-		return nil, err
-	}
-	if app.EffectiveManagementMode() == domainspec.ManagementModeObserve {
-		return nil, fmt.Errorf("%w: observe applications are read-only", bcode.ErrApplicationManagementMode)
-	}
+func (c *applicationsServiceImpl) stopApplicationDeploymentsLocked(ctx context.Context, app *model.Applications, req apisv1.ApplicationLifecycleRequest) (*apisv1.StopApplicationDeploymentsResponse, error) {
 	taskCallback, err := c.resolveOperationTaskCallback(ctx, req.Callback)
 	if err != nil {
 		return nil, err
@@ -179,9 +166,16 @@ func (c *applicationsServiceImpl) stopApplicationDeploymentsLocked(ctx context.C
 
 func (c *applicationsServiceImpl) StartApplicationDeployments(ctx context.Context, appID string, req apisv1.ApplicationLifecycleRequest) (*apisv1.StartApplicationDeploymentsResponse, error) {
 	var response *apisv1.StartApplicationDeploymentsResponse
-	_, err := c.withWritableApplicationLock(ctx, appID, "start-application-deployments", func(lockCtx context.Context, _ *model.Applications) error {
+	_, err := c.withWritableApplicationLock(ctx, appID, "start-application-deployments", func(lockCtx context.Context, app *model.Applications) error {
+		if c.KubeClient == nil {
+			return fmt.Errorf("kube client is nil")
+		}
+		app, err := c.applicationForRequestedID(lockCtx, appID, app)
+		if err != nil {
+			return err
+		}
 		var startErr error
-		response, startErr = c.startApplicationDeploymentsLocked(lockCtx, appID, req)
+		response, startErr = c.startApplicationDeploymentsLocked(lockCtx, app, req)
 		return startErr
 	})
 	if err != nil {
@@ -190,23 +184,7 @@ func (c *applicationsServiceImpl) StartApplicationDeployments(ctx context.Contex
 	return response, nil
 }
 
-func (c *applicationsServiceImpl) startApplicationDeploymentsLocked(ctx context.Context, appID string, req apisv1.ApplicationLifecycleRequest) (*apisv1.StartApplicationDeploymentsResponse, error) {
-	if appID == "" {
-		return nil, bcode.ErrApplicationNotExist
-	}
-	if c.KubeClient == nil {
-		return nil, fmt.Errorf("kube client is nil")
-	}
-	app, err := c.AppRepo.FindByID(ctx, appID)
-	if err != nil {
-		if errors.Is(err, datastore.ErrRecordNotExist) {
-			return nil, bcode.ErrApplicationNotExist
-		}
-		return nil, err
-	}
-	if app.EffectiveManagementMode() == domainspec.ManagementModeObserve {
-		return nil, fmt.Errorf("%w: observe applications are read-only", bcode.ErrApplicationManagementMode)
-	}
+func (c *applicationsServiceImpl) startApplicationDeploymentsLocked(ctx context.Context, app *model.Applications, req apisv1.ApplicationLifecycleRequest) (*apisv1.StartApplicationDeploymentsResponse, error) {
 	taskCallback, err := c.resolveOperationTaskCallback(ctx, req.Callback)
 	if err != nil {
 		return nil, err

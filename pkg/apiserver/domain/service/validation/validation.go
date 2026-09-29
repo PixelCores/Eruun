@@ -103,26 +103,20 @@ type ValidationService interface {
 }
 
 type validationServiceImpl struct {
-	Cfg                       *config.Config                   `inject:""`
-	URLSecurityPolicyProvider *urlpolicy.Provider              `inject:""`
-	AppRepo                   repository.ApplicationRepository `inject:""`
-	ComponentRepo             repository.ComponentRepository   `inject:""`
+	Cfg                       *config.Config
+	URLSecurityPolicyProvider *urlpolicy.Provider
+	AppRepo                   repository.ApplicationRepository
+	ComponentRepo             repository.ComponentRepository
 }
 
-// NewValidationService creates a new ValidationService instance
-func NewValidationService() ValidationService {
-	return &validationServiceImpl{}
-}
-
-func (v *validationServiceImpl) WithRepositories(appRepo repository.ApplicationRepository, componentRepo repository.ComponentRepository) ValidationService {
-	copy := *v
-	if copy.AppRepo == nil {
-		copy.AppRepo = appRepo
+// NewValidationService creates a validator with its application dependencies.
+func NewValidationService(cfg *config.Config, policy *urlpolicy.Provider, appRepo repository.ApplicationRepository, componentRepo repository.ComponentRepository) ValidationService {
+	return &validationServiceImpl{
+		Cfg:                       cfg,
+		URLSecurityPolicyProvider: policy,
+		AppRepo:                   appRepo,
+		ComponentRepo:             componentRepo,
 	}
-	if copy.ComponentRepo == nil {
-		copy.ComponentRepo = componentRepo
-	}
-	return &copy
 }
 
 // TryApplication validates an application creation request
