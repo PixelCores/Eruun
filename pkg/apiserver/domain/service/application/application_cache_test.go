@@ -821,7 +821,7 @@ func TestListApplicationComponentsCachePreservesRequestContextAndFallback(t *tes
 
 func TestApplicationScheduleLockIndependentOfReadCache(t *testing.T) {
 	redisClient := newTestApplicationDeleteCancelSignalClient(t)
-	lockProvider, err := locker.New(locker.Config{Type: locker.TypeRedis, RedisClient: redisClient, Prefix: "cache-independent-schedule"})
+	lockProvider, err := locker.NewRedisLocker(redisClient, "cache-independent-schedule")
 	require.NoError(t, err)
 	for _, tc := range []struct {
 		name      string

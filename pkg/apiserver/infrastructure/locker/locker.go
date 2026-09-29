@@ -39,25 +39,8 @@ var (
 	ErrLockerClosed = errors.New("locker is closed")
 )
 
-// Type represents the backend type for the distributed lock.
-type Type string
-
-const (
-	// TypeRedis uses Redis as the distributed lock backend.
-	TypeRedis Type = "redis"
-
-	// TypeMemory uses in-memory locks (single instance only, for testing).
-	TypeMemory Type = "memory"
-
-	// TypeNoop provides a no-op lock implementation (always succeeds).
-	TypeNoop Type = "noop"
-
-	// TypeEtcd uses etcd as the distributed lock backend (future support).
-	TypeEtcd Type = "etcd"
-)
-
-// Locker is a factory interface for creating distributed mutex locks.
-// Different implementations support various backends like Redis, etcd, or in-memory.
+// Locker creates distributed mutex locks.
+// Production uses Redis; in-memory and no-op implementations support tests.
 type Locker interface {
 	// NewMutex creates a new distributed mutex for the given key.
 	// Options can be used to customize lock behavior (TTL, retry settings, etc.).
@@ -95,27 +78,4 @@ type Mutex interface {
 
 	// Key returns the key/name of this mutex.
 	Key() string
-}
-
-// New creates a new Locker based on the provided configuration.
-// It returns an appropriate implementation based on cfg.Type:
-//   - TypeRedis: Redis-based distributed lock (requires cfg.RedisClient)
-//   - TypeMemory: In-memory lock (single process only)
-//   - TypeNoop: No-op lock that always succeeds when explicitly requested
-//   - TypeEtcd: (future) etcd-based distributed lock
-func New(cfg Config) (Locker, error) {
-	switch cfg.Type {
-	case "":
-		return nil, errors.New("locker type cannot be empty")
-	case TypeRedis:
-		return NewRedisLockerFromConfig(cfg)
-	case TypeMemory:
-		return NewMemoryLocker(cfg.Prefix), nil
-	case TypeNoop:
-		return NewNoopLocker(cfg.Prefix), nil
-	case TypeEtcd:
-		return nil, errors.New("etcd locker not yet implemented")
-	default:
-		return nil, errors.New("unknown locker type: " + string(cfg.Type))
-	}
 }

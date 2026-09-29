@@ -291,58 +291,10 @@ func TestNoopLockerPrefix(t *testing.T) {
 	assert.Equal(t, "myapp:test-key", mutex.Key())
 }
 
-// TestNewFactory tests the New factory function.
-func TestNewFactory(t *testing.T) {
-	tests := []struct {
-		name     string
-		cfg      Config
-		wantType string
-		wantErr  bool
-	}{
-		{
-			name:     "memory locker",
-			cfg:      Config{Type: TypeMemory},
-			wantType: "*locker.MemoryLocker",
-		},
-		{
-			name:     "noop locker",
-			cfg:      Config{Type: TypeNoop},
-			wantType: "*locker.NoopLocker",
-		},
-		{
-			name:    "empty type fails",
-			cfg:     Config{Type: ""},
-			wantErr: true,
-		},
-		{
-			name:    "redis without client",
-			cfg:     Config{Type: TypeRedis},
-			wantErr: true,
-		},
-		{
-			name:    "etcd not implemented",
-			cfg:     Config{Type: TypeEtcd},
-			wantErr: true,
-		},
-		{
-			name:    "unknown type",
-			cfg:     Config{Type: "unknown"},
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			locker, err := New(tt.cfg)
-			if tt.wantErr {
-				assert.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-			require.NotNil(t, locker)
-			defer locker.Close()
-		})
-	}
+func TestNewRedisLockerRequiresClient(t *testing.T) {
+	lockProvider, err := NewRedisLocker(nil, "test")
+	require.ErrorContains(t, err, "redis client is nil")
+	require.Nil(t, lockProvider)
 }
 
 // TestOptionsDefaults tests default option values.
@@ -352,7 +304,6 @@ func TestOptionsDefaults(t *testing.T) {
 	assert.Equal(t, DefaultTTL, opts.TTL)
 	assert.Equal(t, DefaultRetryDelay, opts.RetryDelay)
 	assert.Equal(t, DefaultRetryCount, opts.RetryCount)
-	assert.NotNil(t, opts.Metadata)
 }
 
 // TestOptionsApply tests applying options.
@@ -361,13 +312,11 @@ func TestOptionsApply(t *testing.T) {
 		WithTTL(10*time.Second),
 		WithRetryDelay(100*time.Millisecond),
 		WithRetryCount(5),
-		WithMetadata("owner", "test"),
 	)
 
 	assert.Equal(t, 10*time.Second, opts.TTL)
 	assert.Equal(t, 100*time.Millisecond, opts.RetryDelay)
 	assert.Equal(t, 5, opts.RetryCount)
-	assert.Equal(t, "test", opts.Metadata["owner"])
 }
 
 // TestOptionsInvalidValues tests that invalid option values are ignored.
