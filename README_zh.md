@@ -217,7 +217,7 @@ curl --fail-with-body "$ERUUN_URL/api/v1/jobs/$TASK_ID" \
 | `ERUUN_AUTH_CONFIG_FILE` | 账号、会话与空间策略 JSON |
 | `ERUUN_JOBS_CONFIG_FILE` | 启用 Harbor Runner 及可选 MinIO，四种角色使用相同配置 |
 
-所有运行角色的缓存、认证与协调都依赖 Redis。`--cache-type` / `ERUUN_CACHE_TYPE` 仅接受 `redis`；设置为 `memory` 会在启动校验时报错。
+四种常驻运行角色（`api`、`controller`、`scheduler`、`worker`）的缓存、认证与协调都依赖 Redis。对于这些角色，`--cache-type` / `ERUUN_CACHE_TYPE` 仅接受 `redis`；设置为 `memory` 会在启动校验时报错。`--datastore-schema-mode=migrate-only` 模式仅校验数据库配置。
 
 本地源码开发需要 Go 1.27；使用 Make 目标时需 GNU Make。先按 [本地依赖说明](docs/local-docker-dependencies.md) 启动并配置 MySQL、Redis 和可选 Kafka，准备账号配置及 Kubernetes 访问，再启动 API：
 
