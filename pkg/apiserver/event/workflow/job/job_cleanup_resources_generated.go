@@ -22,7 +22,11 @@ import (
 func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, deleted *cleanupResourceSet) {
 	switch component.ComponentType {
 	case config.ServerJob:
-		result := GenerateWebService(component, props)
+		result, err := GenerateWebService(component, props)
+		if err != nil {
+			deleted.errs = append(deleted.errs, err)
+			return
+		}
 		ns := component.Namespace
 		name := buildWebServiceName(component.Name, component.ResourceNameKey())
 		if result != nil {
@@ -36,7 +40,11 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 			return c.deleteDeployment(deleteCtx, ns, name)
 		})
 	case config.StoreJob:
-		result := GenerateStoreService(component)
+		result, err := GenerateStoreService(component)
+		if err != nil {
+			deleted.errs = append(deleted.errs, err)
+			return
+		}
 		ns := component.Namespace
 		name := buildStoreSeverName(component.Name, component.ResourceNameKey())
 		if result != nil {
@@ -59,7 +67,11 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 			// through the component labels, not the ordinary Job naming rule.
 			break
 		}
-		result := GenerateInstantJob(component, props, props.RunPolicy)
+		result, err := GenerateInstantJob(component, props, props.RunPolicy)
+		if err != nil {
+			deleted.errs = append(deleted.errs, err)
+			return
+		}
 		ns := component.Namespace
 		name := buildJobName(component.Name, component.ResourceNameKey())
 		if result != nil {
@@ -76,7 +88,11 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 		if strings.TrimSpace(props.Schedule) == "" {
 			break
 		}
-		result := GenerateScheduledCronJob(component, props, props.Schedule)
+		result, err := GenerateScheduledCronJob(component, props, props.Schedule)
+		if err != nil {
+			deleted.errs = append(deleted.errs, err)
+			return
+		}
 		ns := component.Namespace
 		name := buildCronJobName(component.Name, component.ResourceNameKey())
 		if result != nil {

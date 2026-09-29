@@ -345,7 +345,10 @@ func (c *DatabaseResetJobCtl) prepareDatabaseResetPlans(ctx context.Context, com
 			return nil, fmt.Errorf("database reset is disabled for adopted component %s", rawComponent.Name)
 		}
 		component := normalizeDatabaseResetComponent(rawComponent)
-		result := GenerateStoreService(component)
+		result, err := GenerateStoreService(component)
+		if err != nil {
+			return nil, err
+		}
 		if result == nil {
 			return nil, fmt.Errorf("generate store service for component %s failed", component.Name)
 		}

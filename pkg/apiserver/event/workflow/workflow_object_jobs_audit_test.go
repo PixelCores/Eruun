@@ -263,7 +263,10 @@ func TestSecretJobNameNormalization(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	buckets := buildJobsForComponent(ctx, component, task, int64(config.DefaultJobTaskTimeout), "")
+	buckets, err := buildJobsForComponent(ctx, component, task, int64(config.DefaultJobTaskTimeout), "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	jobs := buckets[config.JobPriorityMaxHigh]
 	require.Len(t, jobs, 1)
 
@@ -298,7 +301,10 @@ func TestBuildJobsForComponent_ShareIgnoreSkipsJobs(t *testing.T) {
 		TaskID:     "task-share",
 	}
 
-	buckets := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout), "")
+	buckets, err := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout), "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	require.Greater(t, countJobs(buckets), 0)
 	for _, jobs := range buckets {
 		for _, job := range jobs {
@@ -338,7 +344,10 @@ func TestBuildJobsForComponentAppliesFailurePolicyOnlyToInstantJobTask(t *testin
 	}
 	task := &model.WorkflowQueue{WorkflowID: "wf-1", AppID: "app-1", TaskID: "task-1"}
 
-	buckets := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout), "")
+	buckets, err := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout), "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	require.Len(t, buckets[config.JobPriorityNormal], 1)
 	require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupFailed, buckets[config.JobPriorityNormal][0].FailurePolicy)
 	require.NotEmpty(t, buckets[config.JobPriorityHigh])
@@ -388,7 +397,10 @@ func TestBuildJobsForComponentAddsShareLabelsToWorkloadPodTemplates(t *testing.T
 			Properties:    propsJSON,
 			Traits:        traitsJSON,
 		}
-		buckets := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout), "")
+		buckets, err := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout), "")
+		if err != nil {
+			t.Fatal(err)
+		}
 		deploy, ok := buckets[config.JobPriorityNormal][0].JobInfo.(*appsv1.Deployment)
 		require.True(t, ok)
 		require.Equal(t, "proxy", deploy.Name)
@@ -411,7 +423,10 @@ func TestBuildJobsForComponentAddsShareLabelsToWorkloadPodTemplates(t *testing.T
 			Properties:    propsJSON,
 			Traits:        traitsJSON,
 		}
-		buckets := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout), "")
+		buckets, err := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout), "")
+		if err != nil {
+			t.Fatal(err)
+		}
 		sts, ok := buckets[config.JobPriorityNormal][0].JobInfo.(*appsv1.StatefulSet)
 		require.True(t, ok)
 		require.Equal(t, "store", sts.Name)
@@ -431,7 +446,10 @@ func TestBuildJobsForComponentAddsShareLabelsToWorkloadPodTemplates(t *testing.T
 			Properties:    propsJSON,
 			Traits:        traitsJSON,
 		}
-		buckets := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout), "")
+		buckets, err := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout), "")
+		if err != nil {
+			t.Fatal(err)
+		}
 		jobInfo, ok := buckets[config.JobPriorityNormal][0].JobInfo.(*batchv1.Job)
 		require.True(t, ok)
 		require.Equal(t, "batch", jobInfo.Name)
@@ -449,7 +467,10 @@ func TestBuildJobsForComponentAddsShareLabelsToWorkloadPodTemplates(t *testing.T
 			Properties:    propsJSON,
 			Traits:        traitsJSON,
 		}
-		buckets := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout), "")
+		buckets, err := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout), "")
+		if err != nil {
+			t.Fatal(err)
+		}
 		cronInfo, ok := buckets[config.JobPriorityNormal][0].JobInfo.(*batchv1.CronJob)
 		require.True(t, ok)
 		require.Equal(t, "scheduled", cronInfo.Name)
@@ -550,7 +571,10 @@ func TestBuildJobsForComponent_ServiceTraitOverridesLegacyServiceGeneration(t *t
 		TaskID:     "task-service",
 	}
 
-	buckets := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout), "")
+	buckets, err := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout), "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	normalJobs := buckets[config.JobPriorityNormal]
 	require.Len(t, normalJobs, 1)
 	_, ok := normalJobs[0].JobInfo.(*appsv1.Deployment)
@@ -642,7 +666,10 @@ func TestBuildJobsForComponent_StoreServiceTraitPrecedesStatefulSet(t *testing.T
 		TaskID:     "task-store",
 	}
 
-	buckets := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout), "")
+	buckets, err := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout), "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	serviceJobs := buckets[config.JobPriorityHigh]
 	require.Len(t, serviceJobs, 1)
 	require.Equal(t, string(config.JobDeployService), serviceJobs[0].JobType)
@@ -679,7 +706,10 @@ func TestBuildJobsForComponent_DefaultServiceFromPortsUsesHighPriority(t *testin
 		TaskID:     "task-ports",
 	}
 
-	buckets := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout), "")
+	buckets, err := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout), "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	serviceJobs := buckets[config.JobPriorityHigh]
 	require.Len(t, serviceJobs, 1)
 	require.Equal(t, string(config.JobDeployService), serviceJobs[0].JobType)

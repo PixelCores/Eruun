@@ -105,7 +105,10 @@ func CreateObjectJobsFromResult(additionalObjects []client.Object, component *mo
 			if ingress.Namespace == "" {
 				ingress.Namespace = component.Namespace
 			}
-			properties := job.ParseProperties(component.Properties)
+			properties, err := job.ParseProperties(component.Properties)
+			if err != nil {
+				return nil, fmt.Errorf("parse component %s properties: %w", component.Name, err)
+			}
 			labels := job.BuildLabels(component, &properties)
 			for k, v := range naming.NormalizeLabelValues(ingress.GetLabels()) {
 				labels[k] = v
@@ -259,7 +262,7 @@ func appendComponentGroup(
 	task *model.WorkflowQueue,
 	defaultJobTimeoutSeconds int64,
 	executionKeyForComponent func(componentIndex int) string,
-) {
+) error {
 	logger := klog.FromContext(ctx)
 	if workflowType == config.JobDatabaseReset {
 		executionKey := ""
@@ -267,11 +270,11 @@ func appendComponentGroup(
 			executionKey = executionKeyForComponent(0)
 		}
 		mergeJobBuckets(buckets, buildDatabaseResetJobs(ctx, componentNames, workflowProperties, componentMap, task, defaultJobTimeoutSeconds, executionKey))
-		return
+		return nil
 	}
 	if workflowType == config.JobLogArchiveUpload {
 		mergeJobBuckets(buckets, buildLogArchiveUploadJobs(ctx, componentNames, componentMap, task, defaultJobTimeoutSeconds, workflowProperties))
-		return
+		return nil
 	}
 	for componentIndex, name := range componentNames {
 		component, ok := componentMap[name]
@@ -287,9 +290,13 @@ func appendComponentGroup(
 			mergeJobBuckets(buckets, buildCleanupJobsForComponent(component, task, defaultJobTimeoutSeconds))
 			continue
 		}
-		componentBuckets := buildJobsForComponent(ctx, component, task, defaultJobTimeoutSeconds, executionKey)
+		componentBuckets, err := buildJobsForComponent(ctx, component, task, defaultJobTimeoutSeconds, executionKey)
+		if err != nil {
+			return fmt.Errorf("build component %s: %w", component.Name, err)
+		}
 		mergeJobBuckets(buckets, componentBuckets)
 	}
+	return nil
 }
 
 func buildCleanupJobsForComponent(
@@ -490,11 +497,11 @@ func buildJobsForComponent(
 	task *model.WorkflowQueue,
 	defaultJobTimeoutSeconds int64,
 	cloudExecutionKey string,
-) map[int][]*model.JobTask {
+) (map[int][]*model.JobTask, error) {
 	logger := klog.FromContext(ctx)
 	buckets := newJobBuckets()
 	if component == nil {
-		return buckets
+		return buckets, nil
 	}
 
 	namespace := component.Namespace
@@ -503,17 +510,30 @@ func buildJobsForComponent(
 		component.Namespace = namespace
 	}
 
-	properties := ParseProperties(ctx, component.Properties)
+	properties, err := job.ParseProperties(component.Properties)
+	if err != nil {
+		return nil, err
+	}
 	share := shareConfigForComponent(component)
 	resourceAppName := component.ResourceNameKey()
 
 	switch component.ComponentType {
 	case config.ServerJob:
-		serviceJobs := job.GenerateWebService(component, &properties)
-		queueServiceJobs(logger, buckets, component, task, namespace, config.JobDeploy, serviceJobs, defaultJobTimeoutSeconds, share)
+		serviceJobs, err := job.GenerateWebService(component, &properties)
+		if err != nil {
+			return nil, err
+		}
+		if err := queueServiceJobs(buckets, component, task, namespace, config.JobDeploy, serviceJobs, defaultJobTimeoutSeconds, share); err != nil {
+			return nil, err
+		}
 	case config.StoreJob:
-		storeJobs := job.GenerateStoreService(component)
-		queueServiceJobs(logger, buckets, component, task, namespace, config.JobDeployStore, storeJobs, defaultJobTimeoutSeconds, share)
+		storeJobs, err := job.GenerateStoreService(component)
+		if err != nil {
+			return nil, err
+		}
+		if err := queueServiceJobs(buckets, component, task, namespace, config.JobDeployStore, storeJobs, defaultJobTimeoutSeconds, share); err != nil {
+			return nil, err
+		}
 
 	case config.ConfJob:
 		jobTask := NewJobTask(component.Name, namespace, task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, resourceAppName)
@@ -558,7 +578,7 @@ func buildJobsForComponent(
 				err = json.Unmarshal(raw, &traits)
 			}
 			if err != nil {
-				logger.Error(err, "Decode Job traits", "componentName", component.Name)
+				return nil, fmt.Errorf("decode job traits: %w", err)
 			}
 		}
 		if traits.Evaluation != nil {
@@ -586,26 +606,42 @@ func buildJobsForComponent(
 			break
 		}
 		if properties.StartTime > 0 {
-			result := job.GenerateOneTimeJob(component, &properties, properties.RunPolicy, properties.StartTime)
+			result, err := job.GenerateOneTimeJob(component, &properties, properties.RunPolicy, properties.StartTime)
+			if err != nil {
+				return nil, err
+			}
 			fallbackName := naming.JobName(component.Name, resourceAppName)
-			jobTask := appendBatchJob(logger, buckets, component, task, namespace, config.InstantJob, config.JobDeployInstant, result, defaultJobTimeoutSeconds, share, fallbackName)
+			jobTask, err := appendBatchJob(buckets, component, task, namespace, config.InstantJob, config.JobDeployInstant, result, defaultJobTimeoutSeconds, share, fallbackName)
+			if err != nil {
+				return nil, err
+			}
 			applyJobFailurePolicyOverride(jobTask, properties.FailurePolicy)
 			break
 		}
-		result := job.GenerateInstantJob(component, &properties, properties.RunPolicy)
+		result, err := job.GenerateInstantJob(component, &properties, properties.RunPolicy)
+		if err != nil {
+			return nil, err
+		}
 		fallbackName := naming.JobName(component.Name, resourceAppName)
-		jobTask := appendBatchJob(logger, buckets, component, task, namespace, config.InstantJob, config.JobDeployInstant, result, defaultJobTimeoutSeconds, share, fallbackName)
+		jobTask, err := appendBatchJob(buckets, component, task, namespace, config.InstantJob, config.JobDeployInstant, result, defaultJobTimeoutSeconds, share, fallbackName)
+		if err != nil {
+			return nil, err
+		}
 		applyJobFailurePolicyOverride(jobTask, properties.FailurePolicy)
 	case config.ScheduledJob:
 		if schedule := strings.TrimSpace(properties.Schedule); schedule != "" {
 			normalized, err := utils.NormalizeCronSchedule(schedule)
 			if err != nil {
-				logger.Error(err, "Invalid cron schedule for scheduled job", "componentName", component.Name)
-				break
+				return nil, fmt.Errorf("normalize cron schedule: %w", err)
 			}
-			result := job.GenerateScheduledCronJob(component, &properties, normalized)
+			result, err := job.GenerateScheduledCronJob(component, &properties, normalized)
+			if err != nil {
+				return nil, err
+			}
 			fallbackName := naming.CronJobName(component.Name, resourceAppName)
-			appendBatchJob(logger, buckets, component, task, namespace, config.ScheduledJob, config.JobDeployScheduled, result, defaultJobTimeoutSeconds, share, fallbackName)
+			if _, err := appendBatchJob(buckets, component, task, namespace, config.ScheduledJob, config.JobDeployScheduled, result, defaultJobTimeoutSeconds, share, fallbackName); err != nil {
+				return nil, err
+			}
 			break
 		}
 	}
@@ -641,11 +677,10 @@ func buildJobsForComponent(
 		}
 	}
 
-	return buckets
+	return buckets, nil
 }
 
 func queueServiceJobs(
-	logger klog.Logger,
 	buckets map[int][]*model.JobTask,
 	component *model.ApplicationComponent,
 	task *model.WorkflowQueue,
@@ -654,9 +689,9 @@ func queueServiceJobs(
 	result *job.GenerateServiceResult,
 	defaultJobTimeoutSeconds int64,
 	share shareConfig,
-) {
+) error {
 	if result == nil {
-		return
+		return nil
 	}
 
 	appendJob := func(priority int, jobTask *model.JobTask) {
@@ -671,11 +706,10 @@ func queueServiceJobs(
 	if len(result.AdditionalObjects) > 0 {
 		jobs, err := CreateObjectJobsFromResult(result.AdditionalObjects, component, task, nil, defaultJobTimeoutSeconds)
 		if err != nil {
-			logger.Error(err, "Failed to create additional resource jobs", "componentName", component.Name)
-		} else {
-			for _, jt := range jobs {
-				appendJob(config.JobPriorityHigh, jt)
-			}
+			return fmt.Errorf("create additional resource jobs: %w", err)
+		}
+		for _, jt := range jobs {
+			appendJob(config.JobPriorityHigh, jt)
 		}
 	}
 
@@ -688,6 +722,7 @@ func queueServiceJobs(
 	applyVersionUpdateImageReadyTimeout(jobTask, component, task)
 	markJobSkippedIfIgnored(share, jobTask)
 	appendJob(config.JobPriorityNormal, jobTask)
+	return nil
 }
 
 func applyVersionUpdateImageReadyTimeout(jobTask *model.JobTask, component *model.ApplicationComponent, task *model.WorkflowQueue) {
@@ -702,7 +737,6 @@ func applyVersionUpdateImageReadyTimeout(jobTask *model.JobTask, component *mode
 }
 
 func appendBatchJob(
-	logger klog.Logger,
 	buckets map[int][]*model.JobTask,
 	component *model.ApplicationComponent,
 	task *model.WorkflowQueue,
@@ -713,18 +747,17 @@ func appendBatchJob(
 	defaultJobTimeoutSeconds int64,
 	share shareConfig,
 	infoFallbackName string,
-) *model.JobTask {
+) (*model.JobTask, error) {
 	if result == nil {
-		return nil
+		return nil, nil
 	}
 
 	if len(result.AdditionalObjects) > 0 {
 		jobs, err := CreateObjectJobsFromResult(result.AdditionalObjects, component, task, nil, defaultJobTimeoutSeconds)
 		if err != nil {
-			logger.Error(err, "Failed to create additional resource jobs", "componentName", component.Name)
-		} else {
-			buckets[config.JobPriorityHigh] = append(buckets[config.JobPriorityHigh], jobs...)
+			return nil, fmt.Errorf("create additional resource jobs: %w", err)
 		}
+		buckets[config.JobPriorityHigh] = append(buckets[config.JobPriorityHigh], jobs...)
 	}
 
 	jobTask := NewJobTask(component.Name, namespace, task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, component.ResourceNameKey())
@@ -735,7 +768,7 @@ func appendBatchJob(
 	jobTask.Info = buildWorkloadInfo(jobType, result.Service, namespace, infoFallbackName)
 	markJobSkippedIfIgnored(share, jobTask)
 	buckets[config.JobPriorityNormal] = append(buckets[config.JobPriorityNormal], jobTask)
-	return jobTask
+	return jobTask, nil
 }
 
 func markJobSkippedIfIgnored(share shareConfig, jobTask *model.JobTask) {

@@ -511,8 +511,12 @@ func isTerminalVersionUpdateCleanupStatus(status config.Status) bool {
 }
 
 func (c *CleanupResourcesJobCtl) deleteComponentResources(ctx context.Context, component *model.ApplicationComponent) cleanupResourceSet {
-	props := ParseProperties(component.Properties)
+	props, err := ParseProperties(component.Properties)
 	deleted := cleanupResourceSet{seen: make(map[string]struct{})}
+	if err != nil {
+		deleted.errs = append(deleted.errs, err)
+		return deleted
+	}
 	c.deleteGeneratedResources(ctx, component, &props, &deleted)
 	c.deleteLabeledResources(ctx, component, &deleted)
 	return deleted

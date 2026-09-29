@@ -28,36 +28,34 @@ type InstantJobCtl struct {
 }
 
 // GenerateInstantJob Job builders.
-func GenerateInstantJob(component *model.ApplicationComponent, properties *model.Properties, runPolicy string) *GenerateServiceResult {
+func GenerateInstantJob(component *model.ApplicationComponent, properties *model.Properties, runPolicy string) (*GenerateServiceResult, error) {
 	job := buildJob(component, properties, jobBuildOptions{runPolicy: runPolicy})
 	if job == nil {
-		return nil
+		return nil, nil
 	}
 	additionalObjects, err := traitsPlu.ApplyTraits(component, job)
 	if err != nil {
-		klog.ErrorS(err, "instant job traits failed", "component", component.Name)
-		return nil
+		return nil, fmt.Errorf("generate component %s: %w", component.Name, err)
 	}
 	return &GenerateServiceResult{
 		Service:           job,
 		AdditionalObjects: additionalObjects,
-	}
+	}, nil
 }
 
-func GenerateOneTimeJob(component *model.ApplicationComponent, properties *model.Properties, runPolicy string, startTime int64) *GenerateServiceResult {
+func GenerateOneTimeJob(component *model.ApplicationComponent, properties *model.Properties, runPolicy string, startTime int64) (*GenerateServiceResult, error) {
 	job := buildJob(component, properties, jobBuildOptions{runPolicy: runPolicy, startTime: startTime})
 	if job == nil {
-		return nil
+		return nil, nil
 	}
 	additionalObjects, err := traitsPlu.ApplyTraits(component, job)
 	if err != nil {
-		klog.ErrorS(err, "scheduled one-time job traits failed", "component", component.Name)
-		return nil
+		return nil, fmt.Errorf("generate component %s: %w", component.Name, err)
 	}
 	return &GenerateServiceResult{
 		Service:           job,
 		AdditionalObjects: additionalObjects,
-	}
+	}, nil
 }
 
 func NewInstantJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), observers ...informer.ComponentReadyObserver) *InstantJobCtl {

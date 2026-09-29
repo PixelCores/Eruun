@@ -451,6 +451,9 @@ func (r *workflowRun) run(concurrency int) error {
 	}
 	if r.workspaceManager != nil {
 		for _, step := range stepExecutions {
+			if step.generationError != nil {
+				continue
+			}
 			for _, tasks := range step.Jobs {
 				for _, task := range tasks {
 					if _, err := r.prepareJobTask(task, taskForGeneration.AppID); err != nil {
@@ -473,6 +476,27 @@ func (r *workflowRun) run(concurrency int) error {
 
 func (r *workflowRun) runSteps(taskForGeneration model.WorkflowQueue, stepExecutions []StepExecution, concurrency int) error {
 	ctx, span := r.ctx, r.span
+	// Generation failure replaces the plan, so it precedes any saved checkpoint
+	// and must keep its cause instead of running a synthetic cleanup payload.
+	if len(stepExecutions) == 1 && stepExecutions[0].generationError != nil {
+		err := stepExecutions[0].generationError
+		for _, task := range stepExecutions[0].Jobs[config.JobPriorityLow] {
+			controller := job.NewCleanupResourcesJobCtl(task, r.Client, r.Store, nil)
+			if persistErr := controller.SaveInfo(ctx); persistErr != nil {
+				return r.stopForJobInfrastructure(fmt.Errorf("persist workflow generation failure: %w", persistErr))
+			}
+		}
+		r.setTerminalStatus(config.StatusFailed, err.Error())
+		if isResourceImportWorkflowTask(taskForGeneration.Type) {
+			r.mutateTask(func(task *model.WorkflowQueue) {
+				task.SchedulingReason = importcontract.PreExecutionFailureReason
+			})
+		}
+		r.failureReason = r.snapshotTerminalReason()
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Workflow generation failed")
+		return err
+	}
 	for _, execution := range stepExecutions {
 		for _, tasks := range execution.Jobs {
 			for _, task := range tasks {

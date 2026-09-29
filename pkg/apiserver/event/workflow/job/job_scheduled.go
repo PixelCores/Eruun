@@ -22,20 +22,19 @@ type ScheduledJobCtl struct {
 	deployNamespacedResourceJobBase
 }
 
-func GenerateScheduledCronJob(component *model.ApplicationComponent, properties *model.Properties, schedule string) *GenerateServiceResult {
+func GenerateScheduledCronJob(component *model.ApplicationComponent, properties *model.Properties, schedule string) (*GenerateServiceResult, error) {
 	cron := buildCronJob(component, properties, schedule)
 	if cron == nil {
-		return nil
+		return nil, nil
 	}
 	additionalObjects, err := traitsPlu.ApplyTraits(component, cron)
 	if err != nil {
-		klog.ErrorS(err, "scheduled cron job traits failed", "component", component.Name)
-		return nil
+		return nil, fmt.Errorf("generate component %s: %w", component.Name, err)
 	}
 	return &GenerateServiceResult{
 		Service:           cron,
 		AdditionalObjects: additionalObjects,
-	}
+	}, nil
 }
 
 func NewScheduledJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func()) *ScheduledJobCtl {

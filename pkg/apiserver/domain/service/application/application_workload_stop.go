@@ -8,7 +8,6 @@ import (
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"time"
 
-	appsv1 "k8s.io/api/apps/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -17,7 +16,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -355,24 +353,7 @@ func resolveDeploymentTarget(component *model.ApplicationComponent) (string, str
 	if component == nil {
 		return "", ""
 	}
-	props := job.ParseProperties(component.Properties)
-	componentCopy := *component
-	if componentCopy.Namespace == "" {
-		componentCopy.Namespace = config.DefaultNamespace
-	}
-	deployNS := componentCopy.Namespace
-	deployName := naming.WebServiceName(component.Name, component.ResourceNameKey())
-	if result := job.GenerateWebService(&componentCopy, &props); result != nil {
-		if deploy, ok := result.Service.(*appsv1.Deployment); ok && deploy != nil {
-			if deploy.Namespace != "" {
-				deployNS = deploy.Namespace
-			}
-			if deploy.Name != "" {
-				deployName = deploy.Name
-			}
-		}
-	}
-	return deployNS, deployName
+	return pickNamespace(component.Namespace, config.DefaultNamespace), naming.WebServiceName(component.Name, component.ResourceNameKey())
 }
 
 func (c *applicationsServiceImpl) scaleDeployment(ctx context.Context, namespace, name string, patch []byte) (bool, error) {

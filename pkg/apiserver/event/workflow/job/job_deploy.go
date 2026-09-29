@@ -9,8 +9,6 @@ import (
 	"slices"
 	"time"
 
-	"github.com/fatih/color"
-
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 
@@ -268,7 +266,7 @@ func (c *DeployJobCtl) timeout() int64 {
 	return c.job.Timeout
 }
 
-func GenerateWebService(component *model.ApplicationComponent, properties *model.Properties) *GenerateServiceResult {
+func GenerateWebService(component *model.ApplicationComponent, properties *model.Properties) (*GenerateServiceResult, error) {
 	deploymentName := buildWebServiceName(component.Name, component.ResourceNameKey())
 	containerName := utils.NormalizeLowerStrip(component.Name)
 	var ContainerPort []corev1.ContainerPort
@@ -324,13 +322,12 @@ func GenerateWebService(component *model.ApplicationComponent, properties *model
 
 	additionalObjects, err := traitsPlu.ApplyTraits(component, deployment)
 	if err != nil {
-		klog.Errorf("Service Info %s Traits Error:%s", color.WhiteString(component.Namespace+"/"+component.Name), err)
-		return nil
+		return nil, fmt.Errorf("generate component %s: %w", component.Name, err)
 	}
 	return &GenerateServiceResult{
 		Service:           deployment,
 		AdditionalObjects: additionalObjects,
-	}
+	}, nil
 }
 
 func (c *DeployJobCtl) updateDeployment(ctx context.Context, deploy *appsv1.Deployment) (*appsv1.Deployment, error) {

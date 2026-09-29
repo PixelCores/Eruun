@@ -19,6 +19,7 @@ import (
 )
 
 type StepExecution struct {
+	generationError error
 	SchedulingClass string
 	Name            string
 	Mode            config.WorkflowMode
@@ -117,7 +118,10 @@ func GenerateJobTasks(ctx context.Context, task *model.WorkflowQueue, ds datasto
 		}
 	}
 
-	stepGroups := buildWorkflowStepExecutionGroups(ctx, workflowSteps, componentMap, task, defaultJobTimeoutSeconds)
+	stepGroups, err := buildWorkflowStepExecutionGroups(ctx, workflowSteps, componentMap, task, defaultJobTimeoutSeconds)
+	if err != nil {
+		return []StepExecution{*failedWorkflowGenerationExecution(task, defaultJobTimeoutSeconds, err)}, nil
+	}
 	stepGroups, err = augmentAdoptedDependencyJobs(ctx, stepGroups, task, ds, defaultJobTimeoutSeconds)
 	if err != nil {
 		logger.Error(err, "Failed to prepare adopted dependency jobs", "workflowID", task.WorkflowID, "appID", task.AppID)

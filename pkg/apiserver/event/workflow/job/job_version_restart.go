@@ -20,10 +20,10 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -133,8 +133,14 @@ func (c *VersionRestartJobCtl) restartDeployment(
 	if adopted {
 		return c.restartAdoptedDeployment(ctx, source, restartedAt)
 	}
-	properties := ParseProperties(component.Properties)
-	result := GenerateWebService(component, &properties)
+	properties, err := ParseProperties(component.Properties)
+	if err != nil {
+		return nil, err
+	}
+	result, err := GenerateWebService(component, &properties)
+	if err != nil {
+		return nil, err
+	}
 	if result == nil {
 		return nil, fmt.Errorf("generate webservice for component %s failed", component.Name)
 	}
@@ -178,7 +184,10 @@ func (c *VersionRestartJobCtl) restartStatefulSet(
 	if adopted {
 		return c.restartAdoptedStatefulSet(ctx, source, restartedAt)
 	}
-	result := GenerateStoreService(component)
+	result, err := GenerateStoreService(component)
+	if err != nil {
+		return nil, err
+	}
 	if result == nil {
 		return nil, fmt.Errorf("generate store service for component %s failed", component.Name)
 	}

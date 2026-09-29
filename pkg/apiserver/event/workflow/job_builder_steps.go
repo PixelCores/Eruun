@@ -15,18 +15,22 @@ func buildWorkflowStepExecutionGroups(
 	componentMap map[string]*model.ApplicationComponent,
 	task *model.WorkflowQueue,
 	defaultJobTimeoutSeconds int64,
-) [][]StepExecution {
+) ([][]StepExecution, error) {
 	if workflowSteps == nil || len(workflowSteps.Steps) == 0 {
-		return nil
+		return nil, nil
 	}
 	stepGroups := make([][]StepExecution, len(workflowSteps.Steps))
 	for stepIndex, step := range workflowSteps.Steps {
-		stepGroups[stepIndex] = buildWorkflowStepExecutions(ctx, stepIndex, step, componentMap, task, defaultJobTimeoutSeconds)
+		executions, err := buildWorkflowStepExecutions(ctx, stepIndex, step, componentMap, task, defaultJobTimeoutSeconds)
+		if err != nil {
+			return nil, fmt.Errorf("build workflow step %s: %w", step.Name, err)
+		}
+		stepGroups[stepIndex] = executions
 		for i := range stepGroups[stepIndex] {
 			applyExecutionSchedulingClass(&stepGroups[stepIndex][i], step.SchedulingClass)
 		}
 	}
-	return stepGroups
+	return stepGroups, nil
 }
 
 func buildWorkflowStepExecutions(
@@ -36,7 +40,7 @@ func buildWorkflowStepExecutions(
 	componentMap map[string]*model.ApplicationComponent,
 	task *model.WorkflowQueue,
 	defaultJobTimeoutSeconds int64,
-) []StepExecution {
+) ([]StepExecution, error) {
 	mode := normalizedStepMode(step.Mode)
 	if config.ParseWorkflowStepType(string(step.StepType)) == config.WorkflowStepTypeApproval {
 		return []StepExecution{{
@@ -44,7 +48,7 @@ func buildWorkflowStepExecutions(
 			Mode:     mode,
 			StepType: config.WorkflowStepTypeApproval,
 			Approval: convertApprovalExecution(step.Approval),
-		}}
+		}}, nil
 	}
 	if len(step.SubSteps) > 0 {
 		return buildSubStepExecutions(ctx, stepIndex, step, mode, componentMap, task, defaultJobTimeoutSeconds)
@@ -52,7 +56,7 @@ func buildWorkflowStepExecutions(
 
 	componentNames := step.ComponentNames()
 	if len(componentNames) == 0 {
-		return nil
+		return nil, nil
 	}
 	if step.WorkflowType == config.JobDatabaseReset {
 		return buildDatabaseResetStepExecution(ctx, step.Name, componentNames, step.Properties, componentMap, task, defaultJobTimeoutSeconds, workflowStepExecutionKey(stepIndex, 0))
@@ -77,7 +81,7 @@ func buildSubStepExecutions(
 	componentMap map[string]*model.ApplicationComponent,
 	task *model.WorkflowQueue,
 	defaultJobTimeoutSeconds int64,
-) []StepExecution {
+) ([]StepExecution, error) {
 	if mode.IsParallel() {
 		return buildParallelSubStepExecution(ctx, stepIndex, step, mode, componentMap, task, defaultJobTimeoutSeconds)
 	}
@@ -85,11 +89,15 @@ func buildSubStepExecutions(
 	var executions []StepExecution
 	for subStepIndex, sub := range step.SubSteps {
 		componentNames := sub.ComponentNames()
-		executions = append(executions, buildSequentialSubStepExecution(ctx, componentNames, sub, componentMap, task, defaultJobTimeoutSeconds, func(componentIndex int) string {
+		subExecutions, err := buildSequentialSubStepExecution(ctx, componentNames, sub, componentMap, task, defaultJobTimeoutSeconds, func(componentIndex int) string {
 			return workflowSubStepExecutionKey(stepIndex, subStepIndex, componentIndex)
-		})...)
+		})
+		if err != nil {
+			return nil, fmt.Errorf("build substep %s: %w", sub.Name, err)
+		}
+		executions = append(executions, subExecutions...)
 	}
-	return executions
+	return executions, nil
 }
 
 func buildParallelSubStepExecution(
@@ -100,12 +108,12 @@ func buildParallelSubStepExecution(
 	componentMap map[string]*model.ApplicationComponent,
 	task *model.WorkflowQueue,
 	defaultJobTimeoutSeconds int64,
-) []StepExecution {
+) ([]StepExecution, error) {
 	buckets := newJobBuckets()
 	for subStepIndex, sub := range step.SubSteps {
 		componentNames := sub.ComponentNames()
 		subBuckets := newJobBuckets()
-		appendComponentGroup(
+		if err := appendComponentGroup(
 			ctx,
 			subBuckets,
 			componentNames,
@@ -117,27 +125,31 @@ func buildParallelSubStepExecution(
 			func(componentIndex int) string {
 				return workflowSubStepExecutionKey(stepIndex, subStepIndex, componentIndex)
 			},
-		)
+		); err != nil {
+			return nil, err
+		}
 		subExecution := StepExecution{Jobs: subBuckets}
 		applyExecutionSchedulingClass(&subExecution, sub.SchedulingClass)
 		mergeJobBuckets(buckets, subBuckets)
 	}
 	if bucketsEmpty(buckets) {
-		return nil
+		return nil, nil
 	}
 	return []StepExecution{{
 		Name:     firstNonEmptyJobStepName(step.Name, "parallel-group"),
 		Mode:     mode,
 		StepType: config.WorkflowStepTypeComponent,
 		Jobs:     buckets,
-	}}
+	}}, nil
 }
 
-func buildSequentialSubStepExecution(ctx context.Context, componentNames []string, sub *model.WorkflowSubStep, componentMap map[string]*model.ApplicationComponent, task *model.WorkflowQueue, defaultJobTimeoutSeconds int64, executionKeyForComponent func(componentIndex int) string) []StepExecution {
+func buildSequentialSubStepExecution(ctx context.Context, componentNames []string, sub *model.WorkflowSubStep, componentMap map[string]*model.ApplicationComponent, task *model.WorkflowQueue, defaultJobTimeoutSeconds int64, executionKeyForComponent func(componentIndex int) string) ([]StepExecution, error) {
 	buckets := newJobBuckets()
-	appendComponentGroup(ctx, buckets, componentNames, sub.WorkflowType, sub.Properties, componentMap, task, defaultJobTimeoutSeconds, executionKeyForComponent)
+	if err := appendComponentGroup(ctx, buckets, componentNames, sub.WorkflowType, sub.Properties, componentMap, task, defaultJobTimeoutSeconds, executionKeyForComponent); err != nil {
+		return nil, err
+	}
 	if bucketsEmpty(buckets) {
-		return nil
+		return nil, nil
 	}
 	displayName := sub.Name
 	if strings.TrimSpace(displayName) == "" && len(componentNames) == 1 {
@@ -149,7 +161,7 @@ func buildSequentialSubStepExecution(ctx context.Context, componentNames []strin
 		Mode:            config.WorkflowModeStepByStep,
 		StepType:        config.WorkflowStepTypeComponent,
 		Jobs:            buckets,
-	}}
+	}}, nil
 }
 
 // Scheduling classes order ready jobs; resource priority buckets still express
@@ -179,18 +191,20 @@ func buildParallelComponentExecution(
 	task *model.WorkflowQueue,
 	defaultJobTimeoutSeconds int64,
 	executionKeyForComponent func(componentIndex int) string,
-) []StepExecution {
+) ([]StepExecution, error) {
 	buckets := newJobBuckets()
-	appendComponentGroup(ctx, buckets, componentNames, workflowType, workflowProperties, componentMap, task, defaultJobTimeoutSeconds, executionKeyForComponent)
+	if err := appendComponentGroup(ctx, buckets, componentNames, workflowType, workflowProperties, componentMap, task, defaultJobTimeoutSeconds, executionKeyForComponent); err != nil {
+		return nil, err
+	}
 	if bucketsEmpty(buckets) {
-		return nil
+		return nil, nil
 	}
 	return []StepExecution{{
 		Name:     firstNonEmptyJobStepName(stepName, fallbackStepName),
 		Mode:     mode,
 		StepType: config.WorkflowStepTypeComponent,
 		Jobs:     buckets,
-	}}
+	}}, nil
 }
 
 func buildDatabaseResetStepExecution(
@@ -202,17 +216,17 @@ func buildDatabaseResetStepExecution(
 	task *model.WorkflowQueue,
 	defaultJobTimeoutSeconds int64,
 	executionKey string,
-) []StepExecution {
+) ([]StepExecution, error) {
 	buckets := buildDatabaseResetJobs(ctx, componentNames, workflowProperties, componentMap, task, defaultJobTimeoutSeconds, executionKey)
 	if bucketsEmpty(buckets) {
-		return nil
+		return nil, nil
 	}
 	return []StepExecution{{
 		Name:     firstNonEmptyJobStepName(stepName, "database-reset"),
 		Mode:     config.WorkflowModeStepByStep,
 		StepType: config.WorkflowStepTypeComponent,
 		Jobs:     buckets,
-	}}
+	}}, nil
 }
 
 func buildSequentialComponentExecutions(
@@ -226,11 +240,11 @@ func buildSequentialComponentExecutions(
 	defaultJobTimeoutSeconds int64,
 	executionKeyForComponent func(componentIndex int) string,
 	displayName func(componentName string) string,
-) []StepExecution {
+) ([]StepExecution, error) {
 	executions := make([]StepExecution, 0, len(componentNames))
 	for componentIndex, name := range componentNames {
 		buckets := newJobBuckets()
-		appendComponentGroup(
+		if err := appendComponentGroup(
 			ctx,
 			buckets,
 			[]string{name},
@@ -242,7 +256,9 @@ func buildSequentialComponentExecutions(
 			func(int) string {
 				return executionKeyForComponent(componentIndex)
 			},
-		)
+		); err != nil {
+			return nil, err
+		}
 		if bucketsEmpty(buckets) {
 			continue
 		}
@@ -253,7 +269,7 @@ func buildSequentialComponentExecutions(
 			Jobs:     buckets,
 		})
 	}
-	return executions
+	return executions, nil
 }
 
 func normalizedStepMode(mode config.WorkflowMode) config.WorkflowMode {

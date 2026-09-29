@@ -1130,7 +1130,10 @@ func databaseResetServerComponent(t *testing.T, name string) *model.ApplicationC
 func databaseResetStatefulSet(t *testing.T, component *model.ApplicationComponent) (*GenerateServiceResult, *appsv1.StatefulSet) {
 	t.Helper()
 	registerDatabaseResetTraitProcessors(t)
-	result := GenerateStoreService(component)
+	result, err := GenerateStoreService(component)
+	if err != nil {
+		t.Fatal(err)
+	}
 	require.NotNil(t, result)
 	statefulSet, ok := result.Service.(*appsv1.StatefulSet)
 	require.True(t, ok)
@@ -1160,8 +1163,14 @@ func firstAdditionalPVC(t *testing.T, result *GenerateServiceResult) *corev1.Per
 
 func databaseResetDeployment(t *testing.T, component *model.ApplicationComponent) *appsv1.Deployment {
 	t.Helper()
-	properties := ParseProperties(component.Properties)
-	result := GenerateWebService(component, &properties)
+	properties, err := ParseProperties(component.Properties)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := GenerateWebService(component, &properties)
+	if err != nil {
+		t.Fatal(err)
+	}
 	require.NotNil(t, result)
 	deployment, ok := result.Service.(*appsv1.Deployment)
 	require.True(t, ok)

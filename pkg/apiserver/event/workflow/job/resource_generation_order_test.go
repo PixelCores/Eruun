@@ -24,12 +24,18 @@ func TestGeneratedWorkloadEnvironmentIsStable(t *testing.T) {
 		generate func() []corev1.EnvVar
 	}{
 		{name: "deployment", generate: func() []corev1.EnvVar {
-			result := GenerateWebService(component, properties)
+			result, err := GenerateWebService(component, properties)
+			if err != nil {
+				t.Fatal(err)
+			}
 			require.NotNil(t, result)
 			return result.Service.(*appsv1.Deployment).Spec.Template.Spec.Containers[0].Env
 		}},
 		{name: "statefulset", generate: func() []corev1.EnvVar {
-			result := GenerateStoreService(component)
+			result, err := GenerateStoreService(component)
+			if err != nil {
+				t.Fatal(err)
+			}
 			require.NotNil(t, result)
 			return result.Service.(*appsv1.StatefulSet).Spec.Template.Spec.Containers[0].Env
 		}},
@@ -58,7 +64,10 @@ func TestGeneratedNestedContainerEnvironmentIsStable(t *testing.T) {
 	component := &model.ApplicationComponent{Name: "api", AppID: "app-1", Namespace: "default", Image: "nginx:1.25", Traits: traitsJSON}
 	want := []corev1.EnvVar{{Name: "A_FIRST", Value: "first"}, {Name: "M_MIDDLE", Value: "middle"}, {Name: "Z_LAST", Value: "last"}, {Name: "A_FIRST", Value: "override"}}
 	for range 32 {
-		result := GenerateWebService(component, &model.Properties{})
+		result, err := GenerateWebService(component, &model.Properties{})
+		if err != nil {
+			t.Fatal(err)
+		}
 		require.NotNil(t, result)
 		pod := result.Service.(*appsv1.Deployment).Spec.Template.Spec
 		require.Equal(t, want, pod.InitContainers[0].Env)

@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"k8s.io/klog/v2"
-
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
@@ -174,21 +172,4 @@ func loadWorkflowTaskApplication(ctx context.Context, task *model.WorkflowQueue,
 		return nil, fmt.Errorf("get application %s: %w", task.AppID, err)
 	}
 	return app, nil
-}
-
-func ParseProperties(ctx context.Context, properties *model.JSONStruct) model.Properties {
-	logger := klog.FromContext(ctx)
-	cProperties, err := json.Marshal(properties)
-	if err != nil {
-		logger.Error(err, "Component.Properties deserialization failure")
-		return model.Properties{}
-	}
-
-	var propertied model.Properties
-	err = json.Unmarshal(cProperties, &propertied)
-	if err != nil {
-		logger.Error(err, "WorkflowSteps deserialization failure")
-		return model.Properties{}
-	}
-	return propertied
 }

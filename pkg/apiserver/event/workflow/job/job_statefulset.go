@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fatih/color"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
@@ -528,7 +527,7 @@ func adoptedStatefulSetSnapshotForPersistence(current *appsv1.StatefulSet) (*app
 	return snapshotObject, nil
 }
 
-func GenerateStoreService(component *model.ApplicationComponent) *GenerateServiceResult {
+func GenerateStoreService(component *model.ApplicationComponent) (*GenerateServiceResult, error) {
 	// 如果命名空间为空，则使用默认的命名空间
 	if component.Namespace == "" {
 		component.Namespace = config.DefaultNamespace
@@ -536,7 +535,10 @@ func GenerateStoreService(component *model.ApplicationComponent) *GenerateServic
 	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
 	containerName := utils.NormalizeLowerStrip(component.Name)
 
-	properties := ParseProperties(component.Properties)
+	properties, err := ParseProperties(component.Properties)
+	if err != nil {
+		return nil, fmt.Errorf("parse component %s properties: %w", component.Name, err)
+	}
 
 	// 构建标签
 	labels := BuildLabels(component, &properties)
@@ -557,8 +559,7 @@ func GenerateStoreService(component *model.ApplicationComponent) *GenerateServic
 
 	serviceName, err := statefulSetServiceName(component)
 	if err != nil {
-		klog.Errorf("Service Info %s StatefulSet ServiceName Error:%s", color.WhiteString(component.Namespace+"/"+component.Name), err)
-		return nil
+		return nil, fmt.Errorf("generate component %s: %w", component.Name, err)
 	}
 
 	container := corev1.Container{
@@ -606,13 +607,12 @@ func GenerateStoreService(component *model.ApplicationComponent) *GenerateServic
 
 	additionalObjects, err := traitsPlu.ApplyTraits(component, statefulSet)
 	if err != nil {
-		klog.Errorf("Service Info %s Traits Error:%s", color.WhiteString(component.Namespace+"/"+component.Name), err)
-		return nil
+		return nil, fmt.Errorf("generate component %s: %w", component.Name, err)
 	}
 	return &GenerateServiceResult{
 		Service:           statefulSet,
 		AdditionalObjects: additionalObjects,
-	}
+	}, nil
 }
 
 func statefulSetServiceName(component *model.ApplicationComponent) (string, error) {
