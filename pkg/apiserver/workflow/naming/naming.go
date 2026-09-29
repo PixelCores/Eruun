@@ -55,18 +55,8 @@ func CronJobName(name, appName string) string {
 }
 
 // ApplicationResourceKey normalizes the app segment used in generated names.
-// Passing templateEnabled includes version for catalog-style keys; runtime
-// workload naming should pass templateEnabled=false.
-func ApplicationResourceKey(appName, version string, templateEnabled bool) string {
-	app := normalizeSegment(appName, defaultAppSegment)
-	if !templateEnabled {
-		return app
-	}
-	version = normalizeSegment(version, "")
-	if version == "" {
-		return app
-	}
-	return fmt.Sprintf("%s-%s", app, version)
+func ApplicationResourceKey(appName string) string {
+	return normalizeSegment(appName, defaultAppSegment)
 }
 
 // BoundedLabelValue normalizes a Kubernetes label value and keeps it within the

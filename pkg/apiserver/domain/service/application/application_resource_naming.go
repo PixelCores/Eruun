@@ -14,7 +14,7 @@ func applicationResourceNameKey(app *model.Applications) string {
 	}
 	// Runtime Kubernetes resource names are derived from the application name
 	// only. Template version is catalog identity, not workload identity.
-	return naming.ApplicationResourceKey(app.Name, "", false)
+	return naming.ApplicationResourceKey(app.Name)
 }
 
 func setResourceAppNameForComponents(components []*model.ApplicationComponent, resourceAppName string) {
