@@ -93,7 +93,7 @@ func convertComponentModelsToCreateRequests(components []*model.ApplicationCompo
 		if component == nil {
 			continue
 		}
-		request, err := convertComponentModelToCreateRequest(component)
+		request, err := component.ComponentSpec()
 		if err != nil {
 			return nil, err
 		}

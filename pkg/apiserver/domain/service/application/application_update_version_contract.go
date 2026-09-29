@@ -162,7 +162,7 @@ func buildVersionUpdateResolvedComponents(existing []*model.ApplicationComponent
 		if component == nil {
 			continue
 		}
-		request, err := convertComponentModelToCreateRequest(component)
+		request, err := component.ComponentSpec()
 		if err != nil {
 			return nil, err
 		}

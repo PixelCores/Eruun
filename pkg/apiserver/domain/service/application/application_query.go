@@ -494,13 +494,14 @@ func (c *applicationsServiceImpl) GetApplicationSpec(ctx context.Context, appID 
 	})
 	componentSpecs := make([]apisv1.CreateComponentRequest, 0, len(components))
 	for _, component := range components {
-		componentSpec, err := assembler.ConvertComponentModelToCreateRequest(component)
+		if component == nil {
+			continue
+		}
+		componentSpec, err := component.ComponentSpec()
 		if err != nil {
 			return nil, err
 		}
-		if componentSpec != nil {
-			componentSpecs = append(componentSpecs, *componentSpec)
-		}
+		componentSpecs = append(componentSpecs, componentSpec)
 	}
 
 	templateEnabled := app.TemplateEnabled

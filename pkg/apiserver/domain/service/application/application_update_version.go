@@ -167,7 +167,7 @@ func (c *applicationsServiceImpl) updateComponentInStore(ctx context.Context, st
 }
 
 func (c *applicationsServiceImpl) applyComponentUpdate(comp *model.ApplicationComponent, spec apisv1.ComponentUpdateSpec) (bool, error) {
-	current, err := convertComponentModelToCreateRequest(comp)
+	current, err := comp.ComponentSpec()
 	if err != nil {
 		return false, err
 	}
