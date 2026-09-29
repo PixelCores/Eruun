@@ -59,7 +59,7 @@ type ResourceImportExecutor interface {
 }
 
 type GenerateServiceResult struct {
-	Service           interface{}
+	Service           client.Object
 	AdditionalObjects []client.Object
 }
 
