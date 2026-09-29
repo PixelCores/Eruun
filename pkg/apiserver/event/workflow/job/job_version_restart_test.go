@@ -266,7 +266,7 @@ func TestVersionRestartJobCtlRestartsDeployment(t *testing.T) {
 	cacheStore := cacheutil.NewMemCache(false)
 	cacheKey := cacheutil.ApplicationComponentsKey(api.AppID)
 	require.NoError(t, cacheStore.Store(context.Background(), cacheKey, "stale"))
-	require.True(t, cacheStore.Exists(context.Background(), cacheKey))
+	require.NotEmpty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))
 	ctl.setRuntime(newJobRuntime(nil, cacheStore, nil, nil, nil, waiter, nil))
 
 	result := runVersionRestartAsync(ctl)
@@ -280,7 +280,7 @@ func TestVersionRestartJobCtlRestartsDeployment(t *testing.T) {
 	require.NotEmpty(t, updatedDeployment.Spec.Template.Annotations[config.AnnotationWorkloadRestartAt])
 	require.Equal(t, string(config.ComponentStatusRestarting), api.Status)
 	require.Equal(t, config.StatusCompleted, task.Status)
-	require.False(t, cacheStore.Exists(context.Background(), cacheKey))
+	require.Empty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))
 }
 
 func TestVersionRestartJobCtlRestartsStatefulSet(t *testing.T) {
