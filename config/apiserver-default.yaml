@@ -11,6 +11,7 @@ authConfigFile: /var/run/secrets/eruun/accounts/accounts.json
 # Flag --jobs-config-file, environment ERUUN_JOBS_CONFIG_FILE.
 jobsConfigFile: ""
 
+# MySQL is the only supported datastore type (--datastore-type / ERUUN_DATASTORE_TYPE).
 # Local MySQL connection template. Replace the password placeholder via
 # --datastore-url / ERUUN_DATASTORE_URL; startup rejects unchanged placeholders.
 datastore:

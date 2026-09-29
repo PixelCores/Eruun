@@ -56,18 +56,12 @@ type Config struct {
 	// private/loopback/link-local addresses are allowed.
 	AllowPrivateURLTargets bool
 
-	//DTM Distributed transaction management
-	DTMAddr string
-
 	Datastore datastore.Config
 	// DatastoreSchemaMode controls whether this process migrates, validates, or
 	// migrates and exits before starting the runtime.
 	DatastoreSchemaMode string
 
 	Cache RedisCacheConfig
-
-	// Istio Enable
-	IstioEnable bool
 
 	// EnableTracing enables distributed tracing
 	EnableTracing bool
@@ -78,9 +72,6 @@ type Config struct {
 
 	// JaegerEndpoint is the endpoint of the Jaeger collector
 	JaegerEndpoint string
-
-	// AddonCacheTime is how long between two cache operations
-	AddonCacheTime time.Duration
 
 	// LeaderConfig for leader election
 	LeaderConfig leaderConfig
@@ -190,10 +181,7 @@ func NewConfig() *Config {
 		},
 		KubeQPS:                100,
 		KubeBurst:              300,
-		AddonCacheTime:         time.Minute * 10,
-		IstioEnable:            false,
 		ExitOnLostLeader:       true,
-		DTMAddr:                "",
 		EnableTracing:          true,
 		AutoTracing:            false,
 		JaegerEndpoint:         "",
@@ -218,10 +206,10 @@ func (c *Config) Validate() []error {
 	if !schemaModeValid {
 		errs = append(errs, fmt.Errorf("datastore schema mode must be one of migrate, validate, migrate-only; got %q", c.DatastoreSchemaMode))
 	}
+	if c.Datastore.Type != MYSQL {
+		errs = append(errs, fmt.Errorf("unsupported datastore type: %s", c.Datastore.Type))
+	}
 	if schemaMode == DatastoreSchemaModeMigrateOnly {
-		if c.Datastore.Type != MYSQL {
-			errs = append(errs, fmt.Errorf("unsupported datastore type: %s", c.Datastore.Type))
-		}
 		if strings.TrimSpace(c.Datastore.URL) == "" {
 			errs = append(errs, fmt.Errorf("mysql url cannot be empty"))
 		} else if strings.Contains(c.Datastore.URL, "__REPLACE_") {
@@ -356,7 +344,7 @@ func (c *Config) AddFlags(fs *pflag.FlagSet, configParameter *Config) {
 	fs.Float64Var(&c.KubeQPS, "kube-api-qps", configParameter.KubeQPS, "the qps for kube clients. Low qps may lead to low throughput. High qps may give stress to api-server.")
 	fs.IntVar(&c.KubeBurst, "kube-api-burst", configParameter.KubeBurst, "the burst for kube clients. Recommend setting it qps*3.")
 	fs.BoolVar(&c.ExitOnLostLeader, "exit-on-lost-leader", configParameter.ExitOnLostLeader, "exit the process if this server lost the leader election")
-	fs.StringVar(&c.Datastore.Type, "datastore-type", configParameter.Datastore.Type, "datastore backend type (e.g., mysql, tidb)")
+	fs.StringVar(&c.Datastore.Type, "datastore-type", configParameter.Datastore.Type, "datastore backend type (mysql only)")
 	fs.StringVar(&c.Datastore.URL, "datastore-url", configParameter.Datastore.URL, "datastore connection URL / DSN (replace the default password placeholder before starting)")
 	fs.StringVar(&c.Datastore.Database, "datastore-database", configParameter.Datastore.Database, "datastore database/schema name")
 	fs.StringVar(&c.DatastoreSchemaMode, "datastore-schema-mode", configParameter.DatastoreSchemaMode, "datastore schema handling: migrate|validate|migrate-only")

@@ -105,6 +105,21 @@ func TestValidateDatastoreSchemaMode(t *testing.T) {
 	require.Contains(t, errorsJoin(cfg.Validate()), "datastore schema mode must be one of")
 }
 
+func TestValidateDatastoreTypeInEverySchemaMode(t *testing.T) {
+	for _, mode := range []string{DatastoreSchemaModeMigrate, DatastoreSchemaModeValidate, DatastoreSchemaModeMigrateOnly} {
+		t.Run(mode, func(t *testing.T) {
+			cfg := NewConfig()
+			cfg.Datastore.Type = "tidb"
+			cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
+			cfg.DatastoreSchemaMode = mode
+
+			errs := cfg.Validate()
+			require.Len(t, errs, 1)
+			require.EqualError(t, errs[0], "unsupported datastore type: tidb")
+		})
+	}
+}
+
 func TestMigrateOnlyValidatesOnlyDatastoreInputs(t *testing.T) {
 	cfg := NewConfig()
 	cfg.DatastoreSchemaMode = DatastoreSchemaModeMigrateOnly
@@ -246,6 +261,9 @@ func TestNewConfigHasMySQLAndKafkaDefaults(t *testing.T) {
 
 	flags := pflag.NewFlagSet("connection-defaults", pflag.ContinueOnError)
 	cfg.AddFlags(flags, cfg)
+	require.Equal(t, MYSQL, flags.Lookup("datastore-type").DefValue)
+	require.Contains(t, flags.Lookup("datastore-type").Usage, "mysql")
+	require.NotContains(t, flags.Lookup("datastore-type").Usage, "tidb")
 	require.Equal(t, cfg.Datastore.URL, flags.Lookup("datastore-url").DefValue)
 	require.Equal(t, "[localhost:9092]", flags.Lookup("msg-kafka-brokers").DefValue)
 	require.Equal(t, cfg.Messaging.KafkaGroupID, flags.Lookup("msg-kafka-group-id").DefValue)
