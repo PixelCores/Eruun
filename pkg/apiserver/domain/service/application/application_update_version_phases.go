@@ -224,7 +224,7 @@ func (c *applicationsServiceImpl) preflightVersionUpdateRun(
 	if err := c.validateVersionUpdateWorkspaceComponents(ctx, run, resolvedComponents); err != nil {
 		return err
 	}
-	if err := c.validateApplicationResourceNames(ctx, &validationApp, resolvedComponents); err != nil {
+	if err := validateApplicationResourceNames(ctx, c.AppRepo, c.ComponentRepo, &validationApp, resolvedComponents); err != nil {
 		return err
 	}
 	run.hasPlannedChanges, err = hasVersionUpdateComponentChanges(run.componentMap, run.normalReq.Components)

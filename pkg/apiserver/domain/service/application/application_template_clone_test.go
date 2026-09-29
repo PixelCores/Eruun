@@ -248,7 +248,7 @@ func TestResolveComponentsWithSourceIndexes(t *testing.T) {
 	})
 
 	t.Run("direct targeted repeated and template only clones", func(t *testing.T) {
-		components, sourceIndexes, err := svc.resolveComponentsWithSourceIndexes(context.Background(), config.DefaultNamespace, "cloned", []apisv1.CreateComponentRequest{
+		components, sourceIndexes, err := ResolveComponentsWithSourceIndexes(context.Background(), svc.AppRepo, svc.ComponentRepo, config.DefaultNamespace, "cloned", []apisv1.CreateComponentRequest{
 			{
 				Name:          "first-job",
 				ComponentType: config.InstantJob,
@@ -264,7 +264,7 @@ func TestResolveComponentsWithSourceIndexes(t *testing.T) {
 				ComponentType: config.InstantJob,
 				Template:      &apisv1.TemplateRef{ID: "tmpl-source-index", Target: "template-job"},
 			},
-		})
+		}, svc.Cfg)
 
 		require.NoError(t, err)
 		require.Len(t, components, 4)
@@ -281,7 +281,7 @@ func TestResolveComponentsWithSourceIndexes(t *testing.T) {
 	})
 
 	t.Run("fallback override", func(t *testing.T) {
-		components, sourceIndexes, err := svc.resolveComponentsWithSourceIndexes(context.Background(), config.DefaultNamespace, "cloned", []apisv1.CreateComponentRequest{
+		components, sourceIndexes, err := ResolveComponentsWithSourceIndexes(context.Background(), svc.AppRepo, svc.ComponentRepo, config.DefaultNamespace, "cloned", []apisv1.CreateComponentRequest{
 			{
 				Name:          "direct-api",
 				ComponentType: config.ServerJob,
@@ -292,7 +292,7 @@ func TestResolveComponentsWithSourceIndexes(t *testing.T) {
 				ComponentType: config.InstantJob,
 				Template:      &apisv1.TemplateRef{ID: "tmpl-source-index"},
 			},
-		})
+		}, svc.Cfg)
 
 		require.NoError(t, err)
 		require.Len(t, components, 3)

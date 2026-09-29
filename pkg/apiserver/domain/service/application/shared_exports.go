@@ -12,13 +12,12 @@ import (
 )
 
 func ResolveComponents(ctx context.Context, appRepo repository.ApplicationRepository, componentRepo repository.ComponentRepository, namespace, appName string, reqComponents []apisv1.CreateComponentRequest, cfg *config.Config) ([]apisv1.CreateComponentRequest, error) {
-	resolver := &applicationsServiceImpl{AppRepo: appRepo, ComponentRepo: componentRepo, Cfg: cfg}
-	return resolver.resolveComponents(ctx, namespace, appName, reqComponents)
+	components, _, err := resolveComponentsWithSourceIndexes(ctx, appRepo, componentRepo, namespace, appName, reqComponents, cfg)
+	return components, err
 }
 
 func ResolveComponentsWithSourceIndexes(ctx context.Context, appRepo repository.ApplicationRepository, componentRepo repository.ComponentRepository, namespace, appName string, reqComponents []apisv1.CreateComponentRequest, cfg *config.Config) ([]apisv1.CreateComponentRequest, []int, error) {
-	resolver := &applicationsServiceImpl{AppRepo: appRepo, ComponentRepo: componentRepo, Cfg: cfg}
-	return resolver.resolveComponentsWithSourceIndexes(ctx, namespace, appName, reqComponents)
+	return resolveComponentsWithSourceIndexes(ctx, appRepo, componentRepo, namespace, appName, reqComponents, cfg)
 }
 
 func ValidateTryApplicationResourceNames(ctx context.Context, appRepo repository.ApplicationRepository, componentRepo repository.ComponentRepository, req apisv1.CreateApplicationsRequest, components []apisv1.CreateComponentRequest) error {
@@ -28,10 +27,9 @@ func ValidateTryApplicationResourceNames(ctx context.Context, appRepo repository
 		Namespace:       req.Namespace,
 		TemplateEnabled: req.TemplateEnabled != nil && *req.TemplateEnabled,
 	}
-	validator := &applicationsServiceImpl{AppRepo: appRepo, ComponentRepo: componentRepo}
 	if resourceApp.ID == "" {
 		if appRepo != nil && componentRepo != nil {
-			return validator.validateApplicationResourceNames(ctx, resourceApp, components)
+			return validateApplicationResourceNames(ctx, appRepo, componentRepo, resourceApp, components)
 		}
 		return validateResolvedResourceNames(applicationResourceNameKey(resourceApp), ServiceNamespaceOrDefault(req.Namespace), components)
 	}
@@ -50,7 +48,7 @@ func ValidateTryApplicationResourceNames(ctx context.Context, appRepo repository
 			resourceApp.TemplateEnabled = app.TemplateEnabled
 		}
 	}
-	return validator.validateApplicationResourceNames(ctx, resourceApp, components)
+	return validateApplicationResourceNames(ctx, appRepo, componentRepo, resourceApp, components)
 }
 
 func ValidateComponentTraitsForWrite(componentType config.JobType, traits apisv1.Traits, fieldPrefix string) error {
@@ -58,14 +56,12 @@ func ValidateComponentTraitsForWrite(componentType config.JobType, traits apisv1
 }
 
 func ValidateCreateApplicationCallback(ctx context.Context, cfg *config.Config, provider *urlpolicy.Provider, req apisv1.CreateApplicationsRequest) error {
-	validator := &applicationsServiceImpl{Cfg: cfg, URLSecurityPolicyProvider: provider}
-	_, err := validator.resolveCreateApplicationCallback(ctx, req)
+	_, err := resolveCreateApplicationCallback(ctx, cfg, provider, req)
 	return err
 }
 
 func ValidateWorkflowCallback(ctx context.Context, cfg *config.Config, provider *urlpolicy.Provider, callback *apisv1.WorkflowCallback) error {
-	validator := &applicationsServiceImpl{Cfg: cfg, URLSecurityPolicyProvider: provider}
-	_, err := validator.normalizeWorkflowCallbackForWrite(ctx, callback)
+	_, err := normalizeWorkflowCallbackForWrite(ctx, cfg, provider, callback)
 	return err
 }
 

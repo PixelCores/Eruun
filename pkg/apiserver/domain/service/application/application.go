@@ -257,7 +257,7 @@ func (c *applicationsServiceImpl) createApplications(
 	}
 	refreshAppID := strings.TrimSpace(req.ID)
 
-	callbackSelection, err := c.resolveCreateApplicationCallback(ctx, req)
+	callbackSelection, err := resolveCreateApplicationCallback(ctx, c.Cfg, c.URLSecurityPolicyProvider, req)
 	if err != nil {
 		return nil, err
 	}
@@ -270,11 +270,11 @@ func (c *applicationsServiceImpl) createApplications(
 	}
 
 	//分解所有的组件
-	resolvedComponents, err := c.resolveComponents(ctx, application.Namespace, application.Name, req.Components)
+	resolvedComponents, _, err := resolveComponentsWithSourceIndexes(ctx, c.AppRepo, c.ComponentRepo, application.Namespace, application.Name, req.Components, c.Cfg)
 	if err != nil {
 		return nil, err
 	}
-	if err := c.validateApplicationResourceNames(ctx, application, resolvedComponents); err != nil {
+	if err := validateApplicationResourceNames(ctx, c.AppRepo, c.ComponentRepo, application, resolvedComponents); err != nil {
 		return nil, err
 	}
 
@@ -1064,7 +1064,7 @@ func (c *applicationsServiceImpl) updateApplicationWorkflowLocked(ctx context.Co
 		return nil, err
 	}
 
-	callback, err := c.normalizeWorkflowCallbackForWrite(ctx, req.Callback)
+	callback, err := normalizeWorkflowCallbackForWrite(ctx, c.Cfg, c.URLSecurityPolicyProvider, req.Callback)
 	if err != nil {
 		return nil, err
 	}
