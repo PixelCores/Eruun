@@ -11,10 +11,10 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	importruntime "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/runtime"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
-	importruntime "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/runtime"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
 
@@ -120,23 +120,20 @@ func (s *restServer) startWorkers(ctx context.Context, errChan chan error) {
 		stopParentCancellation()
 		cancelExecution(cause)
 	}
-	workers := append([]event.Worker(nil), s.eventWorkers...)
-	subscribers := make([]event.WorkerSubscriber, 0, len(workers))
-	for _, worker := range workers {
+	workers := make([]event.Worker, 0, len(s.eventWorkers))
+	for _, worker := range s.eventWorkers {
 		if worker == nil {
 			continue
 		}
-		if subscriber, ok := worker.(event.WorkerSubscriber); ok {
-			subscribers = append(subscribers, subscriber)
-		}
+		workers = append(workers, worker)
 	}
 	s.workersStarted = true
 	s.workersReady = false
 	s.workersCancel = run.cancel
 	s.workersRun = run
-	readySubscribers := 0
-	for _, subscriber := range subscribers {
-		subscriber := subscriber
+	readyWorkers := 0
+	for _, worker := range workers {
+		worker := worker
 		run.start(func(runCtx context.Context) {
 			active := true
 			var readyOnce, stoppedOnce sync.Once
@@ -151,15 +148,15 @@ func (s *restServer) startWorkers(ctx context.Context, errChan chan error) {
 				})
 			}
 			defer markStopped()
-			subscriber.StartWorker(runCtx, executionCtx, errChan, func() {
+			worker.StartWorker(runCtx, executionCtx, errChan, func() {
 				readyOnce.Do(func() {
 					s.workersMu.Lock()
 					defer s.workersMu.Unlock()
 					if !active || s.workersRun != run || !s.workersStarted {
 						return
 					}
-					readySubscribers++
-					if readySubscribers == len(subscribers) {
+					readyWorkers++
+					if readyWorkers == len(workers) {
 						s.workersReady = true
 					}
 				})
