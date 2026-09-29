@@ -22,6 +22,13 @@ import (
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
+func cachedValue(t *testing.T, c cacheutil.ICache, ctx context.Context, key string) string {
+	t.Helper()
+	value, err := c.Load(ctx, key)
+	require.NoError(t, err)
+	return value
+}
+
 func TestGenerateInstantJobSetsTTL(t *testing.T) {
 	component := &model.ApplicationComponent{
 		Name:      "demo",
@@ -884,7 +891,7 @@ func TestRunJob_ConfigMapInvalidatesComponentsCache(t *testing.T) {
 	cacheStore := cacheutil.NewMemCache(false)
 	cacheKey := cacheutil.ApplicationComponentsKey("app-3")
 	require.NoError(t, cacheStore.Store(context.Background(), cacheKey, "stale"))
-	require.True(t, cacheStore.Exists(context.Background(), cacheKey))
+	require.NotEmpty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))
 
 	jobTask := &model.JobTask{
 		Name:      "app-config",
@@ -902,7 +909,7 @@ func TestRunJob_ConfigMapInvalidatesComponentsCache(t *testing.T) {
 	runtime := newJobRuntime(nil, cacheStore, nil, nil, nil, nil, nil)
 	runJob(context.Background(), jobTask, fake.NewSimpleClientset(), store, func() {}, runtime)
 
-	require.False(t, cacheStore.Exists(context.Background(), cacheKey))
+	require.Empty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))
 	require.NotNil(t, store.updated)
 	require.Equal(t, string(config.ComponentStatusRunning), store.updated.Status)
 }
@@ -934,7 +941,7 @@ func TestConfigComponentStatusInvalidatesCacheAfterCommittedWriteCancelsContext(
 	require.NotNil(t, store.updated)
 	require.Equal(t, string(config.ComponentStatusRunning), store.updated.Status)
 	require.Len(t, store.updates, 1)
-	require.False(t, cacheStore.Exists(t.Context(), cacheKey), "committed config status must invalidate the old snapshot after caller cancellation")
+	require.Empty(t, cachedValue(t, cacheStore, t.Context(), cacheKey), "committed config status must invalidate the old snapshot after caller cancellation")
 }
 
 func TestRunJob_SecretFailureInvalidatesComponentsCache(t *testing.T) {
@@ -951,7 +958,7 @@ func TestRunJob_SecretFailureInvalidatesComponentsCache(t *testing.T) {
 	cacheStore := cacheutil.NewMemCache(false)
 	cacheKey := cacheutil.ApplicationComponentsKey("app-4")
 	require.NoError(t, cacheStore.Store(context.Background(), cacheKey, "stale"))
-	require.True(t, cacheStore.Exists(context.Background(), cacheKey))
+	require.NotEmpty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))
 
 	jobTask := &model.JobTask{
 		Name:      "app-secret",
@@ -964,7 +971,7 @@ func TestRunJob_SecretFailureInvalidatesComponentsCache(t *testing.T) {
 	runtime := newJobRuntime(nil, cacheStore, nil, nil, nil, nil, nil)
 	runJob(context.Background(), jobTask, fake.NewSimpleClientset(), store, func() {}, runtime)
 
-	require.False(t, cacheStore.Exists(context.Background(), cacheKey))
+	require.Empty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))
 	require.NotNil(t, store.updated)
 	require.Equal(t, string(config.ComponentStatusFailed), store.updated.Status)
 	require.NotEmpty(t, store.updated.LastAbnormal)
@@ -1022,7 +1029,7 @@ func TestRunJob_ConfigMapDoesNotInvalidateCacheWhenStatusPersistFails(t *testing
 	cacheStore := cacheutil.NewMemCache(false)
 	cacheKey := cacheutil.ApplicationComponentsKey("app-5")
 	require.NoError(t, cacheStore.Store(context.Background(), cacheKey, "stale"))
-	require.True(t, cacheStore.Exists(context.Background(), cacheKey))
+	require.NotEmpty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))
 
 	jobTask := &model.JobTask{
 		Name:      "app-config",
@@ -1040,7 +1047,7 @@ func TestRunJob_ConfigMapDoesNotInvalidateCacheWhenStatusPersistFails(t *testing
 	runtime := newJobRuntime(nil, cacheStore, nil, nil, nil, nil, nil)
 	runJob(context.Background(), jobTask, fake.NewSimpleClientset(), store, func() {}, runtime)
 
-	require.True(t, cacheStore.Exists(context.Background(), cacheKey))
+	require.NotEmpty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))
 	require.Nil(t, store.updated)
 }
 
@@ -1060,7 +1067,7 @@ func TestRunJob_DeployStartInvalidatesComponentsCache(t *testing.T) {
 	cacheStore := cacheutil.NewMemCache(false)
 	cacheKey := cacheutil.ApplicationComponentsKey("app-6")
 	require.NoError(t, cacheStore.Store(context.Background(), cacheKey, "stale"))
-	require.True(t, cacheStore.Exists(context.Background(), cacheKey))
+	require.NotEmpty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))
 
 	jobTask := &model.JobTask{
 		Name:      "app-web",
@@ -1073,7 +1080,7 @@ func TestRunJob_DeployStartInvalidatesComponentsCache(t *testing.T) {
 	runtime := newJobRuntime(nil, cacheStore, nil, nil, nil, nil, nil)
 	runJob(context.Background(), jobTask, fake.NewSimpleClientset(), store, func() {}, runtime)
 
-	require.False(t, cacheStore.Exists(context.Background(), cacheKey))
+	require.Empty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))
 	require.NotNil(t, store.updated)
 	require.Equal(t, string(config.ComponentStatusPending), store.updated.Status)
 	require.Equal(t, int32(0), store.updated.ReadyReplicas)
@@ -1095,7 +1102,7 @@ func TestRunJob_DeployStartDoesNotInvalidateCacheWhenStatusPersistFails(t *testi
 	cacheStore := cacheutil.NewMemCache(false)
 	cacheKey := cacheutil.ApplicationComponentsKey("app-7")
 	require.NoError(t, cacheStore.Store(context.Background(), cacheKey, "stale"))
-	require.True(t, cacheStore.Exists(context.Background(), cacheKey))
+	require.NotEmpty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))
 
 	jobTask := &model.JobTask{
 		Name:      "app-web",
@@ -1108,6 +1115,6 @@ func TestRunJob_DeployStartDoesNotInvalidateCacheWhenStatusPersistFails(t *testi
 	runtime := newJobRuntime(nil, cacheStore, nil, nil, nil, nil, nil)
 	runJob(context.Background(), jobTask, fake.NewSimpleClientset(), store, func() {}, runtime)
 
-	require.True(t, cacheStore.Exists(context.Background(), cacheKey))
+	require.NotEmpty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))
 	require.Nil(t, store.updated)
 }

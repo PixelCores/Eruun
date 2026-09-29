@@ -3,7 +3,6 @@ package cache
 import (
 	"context"
 	"strings"
-	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -16,14 +15,10 @@ import (
 
 func TestMemCache_BasicStoreLoad(t *testing.T) {
 	c := NewMemCache(false)
-	mc := c.(*MemCache)
-	mc.ttl = time.Second
+	c.(*MemCache).ttl = time.Second
 
 	if err := c.Store(context.Background(), "k", "v"); err != nil {
 		t.Fatalf("store error: %v", err)
-	}
-	if !c.Exists(context.Background(), "k") {
-		t.Fatalf("expected key to exist")
 	}
 	got, _ := c.Load(context.Background(), "k")
 	if got != "v" {
@@ -46,36 +41,18 @@ func TestMemCache_Expiration(t *testing.T) {
 	if got, _ := c.Load(context.Background(), "k"); got != "" {
 		t.Fatalf("expected empty after expiry, got %q", got)
 	}
-	if c.Exists(context.Background(), "k") {
-		t.Fatalf("expected key to be expired and removed")
-	}
+	mc.mu.Lock()
+	defer mc.mu.Unlock()
+	require.NotContains(t, mc.items, "k")
 }
 
 func TestMemCache_Delete(t *testing.T) {
 	c := NewMemCache(false)
 	require.NoError(t, c.Store(context.Background(), "k", "v"))
-	require.True(t, c.Exists(context.Background(), "k"))
 	require.NoError(t, c.Delete(context.Background(), "k"))
-	require.False(t, c.Exists(context.Background(), "k"))
 	got, err := c.Load(context.Background(), "k")
 	require.NoError(t, err)
 	require.Equal(t, "", got)
-}
-
-func TestMemCache_ListExcludesExpiredEntries(t *testing.T) {
-	c := NewMemCache(false).(*MemCache)
-	c.mu.Lock()
-	c.items["expired"] = &item{value: "stale", expiresAt: time.Now().Add(-time.Second)}
-	c.items["live"] = &item{value: "current", expiresAt: time.Now().Add(time.Hour)}
-	c.items["permanent"] = &item{value: "permanent"}
-	c.mu.Unlock()
-
-	values, err := c.List(context.Background())
-	require.NoError(t, err)
-	require.ElementsMatch(t, []string{"current", "permanent"}, values)
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	require.NotContains(t, c.items, "expired")
 }
 
 func TestMemCache_StoreReclaimsExpiredEntries(t *testing.T) {
@@ -91,35 +68,6 @@ func TestMemCache_StoreReclaimsExpiredEntries(t *testing.T) {
 	require.NotContains(t, c.items, "expired")
 	require.Contains(t, c.items, "permanent")
 	require.Contains(t, c.items, "new")
-}
-
-func TestMemCache_ConsumeIsAtomic(t *testing.T) {
-	c := NewMemCache(false)
-	require.NoError(t, c.Store(context.Background(), "k", "v"))
-
-	type result struct {
-		value string
-		err   error
-	}
-	results := make(chan result, 2)
-	var wg sync.WaitGroup
-	for range 2 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			value, err := c.Consume(context.Background(), "k")
-			results <- result{value: value, err: err}
-		}()
-	}
-	wg.Wait()
-	close(results)
-
-	values := make([]string, 0, 2)
-	for result := range results {
-		require.NoError(t, result.err)
-		values = append(values, result.value)
-	}
-	require.ElementsMatch(t, []string{"v", ""}, values)
 }
 
 func newTestRedisClient(t *testing.T) (*miniredis.Miniredis, *redis.Client) {
@@ -152,28 +100,9 @@ func TestRedisICache_Basic(t *testing.T) {
 	c := newTestRedisCache(t, cli, false)
 	require.NoError(t, c.Store(context.Background(), "k", "v"))
 
-	require.True(t, c.Exists(context.Background(), "k"))
 	got, err := c.Load(context.Background(), "k")
 	require.NoError(t, err)
 	require.Equal(t, "v", got)
-}
-
-func TestRedisICache_List(t *testing.T) {
-	s, cli := newTestRedisClient(t)
-	defer s.Close()
-
-	c := newTestRedisCache(t, cli, false)
-	require.NoError(t, c.Store(context.Background(), "k1", "v1"))
-	require.NoError(t, c.Store(context.Background(), "k2", "v2"))
-
-	vals, err := c.List(context.Background())
-	require.NoError(t, err)
-	require.Len(t, vals, 2)
-	m := map[string]bool{"v1": false, "v2": false}
-	for _, v := range vals {
-		m[v] = true
-	}
-	require.True(t, m["v1"] && m["v2"])
 }
 
 func TestRedisICache_Delete(t *testing.T) {
@@ -182,26 +111,10 @@ func TestRedisICache_Delete(t *testing.T) {
 
 	c := newTestRedisCache(t, cli, false)
 	require.NoError(t, c.Store(context.Background(), "k", "v"))
-	require.True(t, c.Exists(context.Background(), "k"))
 	require.NoError(t, c.Delete(context.Background(), "k"))
-	require.False(t, c.Exists(context.Background(), "k"))
 	got, err := c.Load(context.Background(), "k")
 	require.NoError(t, err)
 	require.Equal(t, "", got)
-}
-
-func TestRedisICache_Consume(t *testing.T) {
-	s, cli := newTestRedisClient(t)
-	defer s.Close()
-
-	c := newTestRedisCache(t, cli, false)
-	require.NoError(t, c.Store(context.Background(), "k", "v"))
-	value, err := c.Consume(context.Background(), "k")
-	require.NoError(t, err)
-	require.Equal(t, "v", value)
-	value, err = c.Consume(context.Background(), "k")
-	require.NoError(t, err)
-	require.Empty(t, value)
 }
 
 func TestRedisICache_NoCacheFlag(t *testing.T) {
@@ -239,8 +152,6 @@ func TestRedisICacheCancelledWhileWaitingForConnection(t *testing.T) {
 	}{
 		{"store", func(ctx context.Context, c ICache) error { return c.Store(ctx, "k", "v") }},
 		{"load", func(ctx context.Context, c ICache) error { _, err := c.Load(ctx, "k"); return err }},
-		{"consume", func(ctx context.Context, c ICache) error { _, err := c.Consume(ctx, "k"); return err }},
-		{"list", func(ctx context.Context, c ICache) error { _, err := c.List(ctx); return err }},
 		{"delete", func(ctx context.Context, c ICache) error { return c.Delete(ctx, "k") }},
 	} {
 		t.Run(operation.name, func(t *testing.T) {
@@ -298,12 +209,7 @@ func TestMemCacheCancelledOperationsPreserveEntries(t *testing.T) {
 	require.ErrorIs(t, c.Store(ctx, "k", "replacement"), context.Canceled)
 	_, err := c.Load(ctx, "k")
 	require.ErrorIs(t, err, context.Canceled)
-	_, err = c.Consume(ctx, "k")
-	require.ErrorIs(t, err, context.Canceled)
-	_, err = c.List(ctx)
-	require.ErrorIs(t, err, context.Canceled)
 	require.ErrorIs(t, c.Delete(ctx, "k"), context.Canceled)
-	require.False(t, c.Exists(ctx, "k"))
 	value, err := c.Load(t.Context(), "k")
 	require.NoError(t, err)
 	require.Equal(t, "original", value)
@@ -356,8 +262,10 @@ func TestInvalidateAfterWritePreservesValuesAndDeletesStaleData(t *testing.T) {
 				}}
 				require.NoError(t, InvalidateAfterWrite(ctx, observed, "changed"))
 				require.ErrorIs(t, cleanupCtx.Err(), context.Canceled)
-				require.False(t, c.Exists(t.Context(), "changed"))
-				value, err := c.Load(t.Context(), "unrelated")
+				value, err := c.Load(t.Context(), "changed")
+				require.NoError(t, err)
+				require.Empty(t, value)
+				value, err = c.Load(t.Context(), "unrelated")
 				require.NoError(t, err)
 				require.Equal(t, "current", value)
 			})
