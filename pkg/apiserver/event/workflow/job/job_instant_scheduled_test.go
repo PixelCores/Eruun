@@ -111,11 +111,12 @@ func TestDelayedJobControllersPropagateWorkflowOwnership(t *testing.T) {
 	assertPayload := func(t *testing.T, queue *enqueueCaptureQueue) {
 		t.Helper()
 		require.Len(t, queue.enqueued, 1)
-		payload, err := (&DelayDispatcher{}).decodePayload(queue.enqueued[0])
+		payload, err := (&DelayDispatcher{}).decodeNotification(queue.enqueued[0])
 		require.NoError(t, err)
 		require.Equal(t, "execution-delayed", payload.ExecutionKey)
 		require.Equal(t, uint64(3), payload.RunGeneration)
 		require.Equal(t, "run-3", payload.RunToken)
+		require.Nil(t, payload.Job)
 	}
 
 	t.Run("instant", func(t *testing.T) {

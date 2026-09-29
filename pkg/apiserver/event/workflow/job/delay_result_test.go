@@ -135,13 +135,17 @@ func TestEnqueueDelayJobBranches(t *testing.T) {
 	require.Equal(t, "delay-1", id)
 	require.Len(t, queue.enqueued, 1)
 
-	var payload DelayJobPayload
-	require.NoError(t, json.Unmarshal(queue.enqueued[0], &payload))
-	require.Equal(t, "task-1", payload.TaskID)
-	require.Equal(t, uint64(3), payload.RunGeneration)
-	require.Equal(t, "run-3", payload.RunToken)
-	require.NotNil(t, payload.Job)
-	require.Equal(t, "demo", payload.Job.Name)
+	var notification delayJobNotification
+	require.NoError(t, json.Unmarshal(queue.enqueued[0], &notification))
+	require.Equal(t, delayJobNotificationVersion, notification.Version)
+	require.Equal(t, "task-1", notification.TaskID)
+	require.Equal(t, uint64(3), notification.RunGeneration)
+	require.Equal(t, "run-3", notification.RunToken)
+	var fields map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(queue.enqueued[0], &fields))
+	require.NotContains(t, fields, "job")
+	require.NotContains(t, fields, "namespace")
+	require.NotContains(t, fields, "timeoutSeconds")
 }
 
 func TestPersistDelayJobCheckpointStoresRecoverablePayload(t *testing.T) {
