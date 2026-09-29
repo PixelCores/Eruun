@@ -48,7 +48,6 @@ func TestDeleteApplicationCascadeSuccess(t *testing.T) {
 	seedCascadeStoreData(store)
 	store.apps["app-1"].Namespace = "tenant-a"
 	store.components["cron-task"].Namespace = "tenant-a"
-	queueRepo := &mockWorkflowQueueRepo{}
 	namespace := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "tenant-a",
@@ -57,13 +56,12 @@ func TestDeleteApplicationCascadeSuccess(t *testing.T) {
 	}
 	clientset := fake.NewSimpleClientset(namespace)
 	svc := &applicationsServiceImpl{
-		KubeClient:        clientset,
-		Store:             store,
-		AppRepo:           &cascadeAppRepo{store: store},
-		ComponentRepo:     &cascadeComponentRepo{store: store},
-		WorkflowQueueRepo: queueRepo,
-		ScheduleLocker:    locker.NewNoopLocker("test-app-schedule"),
-		RedisClient:       newTestApplicationDeleteCancelSignalClient(t),
+		KubeClient:     clientset,
+		Store:          store,
+		AppRepo:        &cascadeAppRepo{store: store},
+		ComponentRepo:  &cascadeComponentRepo{store: store},
+		ScheduleLocker: locker.NewNoopLocker("test-app-schedule"),
+		RedisClient:    newTestApplicationDeleteCancelSignalClient(t),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{
@@ -109,13 +107,12 @@ func TestDeleteApplicationCascadeReloadsManagementModeAfterLock(t *testing.T) {
 		transitionMode: domainspec.ManagementModeObserve,
 	}
 	svc := &applicationsServiceImpl{
-		KubeClient:        fake.NewSimpleClientset(),
-		Store:             store,
-		AppRepo:           appRepo,
-		ComponentRepo:     &cascadeComponentRepo{store: store},
-		WorkflowQueueRepo: &mockWorkflowQueueRepo{},
-		ScheduleLocker:    locker.NewMemoryLocker("test-app-schedule"),
-		RedisClient:       newTestApplicationDeleteCancelSignalClient(t),
+		KubeClient:     fake.NewSimpleClientset(),
+		Store:          store,
+		AppRepo:        appRepo,
+		ComponentRepo:  &cascadeComponentRepo{store: store},
+		ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
+		RedisClient:    newTestApplicationDeleteCancelSignalClient(t),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{
@@ -155,13 +152,12 @@ func TestDeleteApplicationCascadePreservesOwnershipWhenActiveTasksRemain(t *test
 	store.nextJobID = 1
 
 	svc := &applicationsServiceImpl{
-		KubeClient:        fake.NewSimpleClientset(),
-		Store:             store,
-		AppRepo:           &cascadeAppRepo{store: store},
-		ComponentRepo:     &cascadeComponentRepo{store: store},
-		WorkflowQueueRepo: &mockWorkflowQueueRepo{},
-		ScheduleLocker:    locker.NewNoopLocker("test-app-schedule"),
-		RedisClient:       newTestApplicationDeleteCancelSignalClient(t),
+		KubeClient:     fake.NewSimpleClientset(),
+		Store:          store,
+		AppRepo:        &cascadeAppRepo{store: store},
+		ComponentRepo:  &cascadeComponentRepo{store: store},
+		ScheduleLocker: locker.NewNoopLocker("test-app-schedule"),
+		RedisClient:    newTestApplicationDeleteCancelSignalClient(t),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{
@@ -201,8 +197,8 @@ func TestDeleteApplicationCascadeWaitsForCancelledCallbackBeforeDeletingMetadata
 	svc := &applicationsServiceImpl{
 		KubeClient: fake.NewSimpleClientset(), Store: store,
 		AppRepo: &cascadeAppRepo{store: store}, ComponentRepo: &cascadeComponentRepo{store: store},
-		WorkflowQueueRepo: &mockWorkflowQueueRepo{}, ScheduleLocker: locker.NewNoopLocker("test-app-schedule"),
-		RedisClient: newTestApplicationDeleteCancelSignalClient(t),
+		ScheduleLocker: locker.NewNoopLocker("test-app-schedule"),
+		RedisClient:    newTestApplicationDeleteCancelSignalClient(t),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{WaitSeconds: int64Ptr(0)})
@@ -234,8 +230,8 @@ func TestDeleteApplicationCascadeTerminalizesUnclaimedCleanupJob(t *testing.T) {
 	svc := &applicationsServiceImpl{
 		KubeClient: fake.NewSimpleClientset(), Store: store,
 		AppRepo: &cascadeAppRepo{store: store}, ComponentRepo: &cascadeComponentRepo{store: store},
-		WorkflowQueueRepo: &mockWorkflowQueueRepo{}, ScheduleLocker: locker.NewNoopLocker("test-app-schedule"),
-		RedisClient: newTestApplicationDeleteCancelSignalClient(t),
+		ScheduleLocker: locker.NewNoopLocker("test-app-schedule"),
+		RedisClient:    newTestApplicationDeleteCancelSignalClient(t),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{WaitSeconds: int64Ptr(0)})
@@ -251,17 +247,16 @@ func TestDeleteApplicationCascadeTerminalizesUnclaimedCleanupJob(t *testing.T) {
 func TestDeleteApplicationCascadeCountsExcludeCleanupOperationLogs(t *testing.T) {
 	store := newCascadeDeleteStore()
 	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "demo", Namespace: "default"}
-	queueRepo := &storeBackedWorkflowQueueRepo{store: store}
-	store.afterTaskCreate = queueRepo.afterCreate
+	taskObserver := &cascadeTaskCreateObserver{}
+	store.afterTaskCreate = taskObserver.afterCreate
 
 	svc := &applicationsServiceImpl{
-		KubeClient:        fake.NewSimpleClientset(),
-		Store:             store,
-		AppRepo:           &cascadeAppRepo{store: store},
-		ComponentRepo:     &cascadeComponentRepo{store: store},
-		WorkflowQueueRepo: queueRepo,
-		ScheduleLocker:    locker.NewNoopLocker("test-app-schedule"),
-		RedisClient:       newTestApplicationDeleteCancelSignalClient(t),
+		KubeClient:     fake.NewSimpleClientset(),
+		Store:          store,
+		AppRepo:        &cascadeAppRepo{store: store},
+		ComponentRepo:  &cascadeComponentRepo{store: store},
+		ScheduleLocker: locker.NewNoopLocker("test-app-schedule"),
+		RedisClient:    newTestApplicationDeleteCancelSignalClient(t),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{
@@ -273,7 +268,7 @@ func TestDeleteApplicationCascadeCountsExcludeCleanupOperationLogs(t *testing.T)
 	if resp == nil {
 		t.Fatalf("expected response, got nil")
 	}
-	if len(queueRepo.createdTaskIDs) == 0 {
+	if len(taskObserver.createdTaskIDs) == 0 {
 		t.Fatalf("expected cleanup operation task to be recorded")
 	}
 	if resp.DeletedCounts.Tasks != 0 || resp.DeletedCounts.Jobs != 0 {
@@ -304,15 +299,13 @@ func TestDeleteApplicationCascadeFailFastWithoutTransactionalStore(t *testing.T)
 	base.nextJobID = 1
 
 	store := &nonTransactionalCascadeStore{store: base}
-	queueRepo := &storeBackedWorkflowQueueRepo{store: store}
 	svc := &applicationsServiceImpl{
-		KubeClient:        fake.NewSimpleClientset(),
-		Store:             store,
-		AppRepo:           &cascadeAppRepo{store: base},
-		ComponentRepo:     &cascadeComponentRepo{store: base},
-		WorkflowQueueRepo: queueRepo,
-		ScheduleLocker:    locker.NewNoopLocker("test-app-schedule"),
-		Cache:             cache.NewMemCache(false),
+		KubeClient:     fake.NewSimpleClientset(),
+		Store:          store,
+		AppRepo:        &cascadeAppRepo{store: base},
+		ComponentRepo:  &cascadeComponentRepo{store: base},
+		ScheduleLocker: locker.NewNoopLocker("test-app-schedule"),
+		Cache:          cache.NewMemCache(false),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{
@@ -330,8 +323,8 @@ func TestDeleteApplicationCascadeFailFastWithoutTransactionalStore(t *testing.T)
 	if base.tasks["task-1"].Status != config.StatusRunning {
 		t.Fatalf("task status should remain unchanged before fail-fast, got %s", base.tasks["task-1"].Status)
 	}
-	if len(queueRepo.createdTaskIDs) != 0 {
-		t.Fatalf("no cleanup side effects expected on fail-fast")
+	if len(base.tasks) != 1 || len(base.jobs) != 1 {
+		t.Fatalf("no cleanup records expected on fail-fast, got tasks=%d jobs=%d", len(base.tasks), len(base.jobs))
 	}
 	if _, ok := base.apps["app-1"]; !ok {
 		t.Fatalf("app metadata should remain unchanged")
@@ -342,12 +335,11 @@ func TestDeleteApplicationCascadeFailsWhenLockUnavailable(t *testing.T) {
 	store := newCascadeDeleteStore()
 	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "demo", Namespace: "default"}
 	svc := &applicationsServiceImpl{
-		KubeClient:        fake.NewSimpleClientset(),
-		Store:             store,
-		AppRepo:           &cascadeAppRepo{store: store},
-		ComponentRepo:     &cascadeComponentRepo{store: store},
-		WorkflowQueueRepo: &mockWorkflowQueueRepo{},
-		Cache:             cache.NewMemCache(false),
+		KubeClient:    fake.NewSimpleClientset(),
+		Store:         store,
+		AppRepo:       &cascadeAppRepo{store: store},
+		ComponentRepo: &cascadeComponentRepo{store: store},
+		Cache:         cache.NewMemCache(false),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{
@@ -375,21 +367,17 @@ func TestDeleteApplicationCascadeDeletesSchedulesBeforeCleanup(t *testing.T) {
 		Enabled:    true,
 		NextRun:    1,
 	}
-	queueRepo := &storeBackedWorkflowQueueRepo{
-		store:         store,
-		scheduleStore: store,
-	}
+	taskObserver := &cascadeTaskCreateObserver{}
 
-	store.afterTaskCreate = queueRepo.afterCreate
+	store.afterTaskCreate = taskObserver.afterCreate
 
 	svc := &applicationsServiceImpl{
-		KubeClient:        fake.NewSimpleClientset(),
-		Store:             store,
-		AppRepo:           &cascadeAppRepo{store: store},
-		ComponentRepo:     &cascadeComponentRepo{store: store},
-		WorkflowQueueRepo: queueRepo,
-		ScheduleLocker:    locker.NewNoopLocker("test-app-schedule"),
-		Cache:             cache.NewMemCache(false),
+		KubeClient:     fake.NewSimpleClientset(),
+		Store:          store,
+		AppRepo:        &cascadeAppRepo{store: store},
+		ComponentRepo:  &cascadeComponentRepo{store: store},
+		ScheduleLocker: locker.NewNoopLocker("test-app-schedule"),
+		Cache:          cache.NewMemCache(false),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{
@@ -401,34 +389,32 @@ func TestDeleteApplicationCascadeDeletesSchedulesBeforeCleanup(t *testing.T) {
 	if resp == nil {
 		t.Fatalf("expected response, got nil")
 	}
-	if len(queueRepo.scheduleCountsAtCreate) == 0 {
+	if len(taskObserver.scheduleCountsAtCreate) == 0 {
 		t.Fatalf("expected cleanup operation task creation to be observed")
 	}
-	if queueRepo.scheduleCountsAtCreate[0] != 0 {
-		t.Fatalf("schedules should be deleted before cleanup, got count=%d", queueRepo.scheduleCountsAtCreate[0])
+	if taskObserver.scheduleCountsAtCreate[0] != 0 {
+		t.Fatalf("schedules should be deleted before cleanup, got count=%d", taskObserver.scheduleCountsAtCreate[0])
 	}
 }
 
 func TestDeleteApplicationCascadeCancelsLateTasksAfterCleanup(t *testing.T) {
 	store := newCascadeDeleteStore()
 	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "demo", Namespace: "default"}
-	queueRepo := &storeBackedWorkflowQueueRepo{
-		store:                    store,
+	taskObserver := &cascadeTaskCreateObserver{
 		injectLateTaskOnCreate:   true,
 		injectLateTaskID:         "late-task-1",
 		injectLateTaskWorkflowID: "wf-late",
 	}
 
-	store.afterTaskCreate = queueRepo.afterCreate
+	store.afterTaskCreate = taskObserver.afterCreate
 
 	svc := &applicationsServiceImpl{
-		KubeClient:        fake.NewSimpleClientset(),
-		Store:             store,
-		AppRepo:           &cascadeAppRepo{store: store},
-		ComponentRepo:     &cascadeComponentRepo{store: store},
-		WorkflowQueueRepo: queueRepo,
-		ScheduleLocker:    locker.NewNoopLocker("test-app-schedule"),
-		RedisClient:       newTestApplicationDeleteCancelSignalClient(t),
+		KubeClient:     fake.NewSimpleClientset(),
+		Store:          store,
+		AppRepo:        &cascadeAppRepo{store: store},
+		ComponentRepo:  &cascadeComponentRepo{store: store},
+		ScheduleLocker: locker.NewNoopLocker("test-app-schedule"),
+		RedisClient:    newTestApplicationDeleteCancelSignalClient(t),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{
@@ -440,8 +426,8 @@ func TestDeleteApplicationCascadeCancelsLateTasksAfterCleanup(t *testing.T) {
 	if resp == nil {
 		t.Fatalf("expected response, got nil")
 	}
-	if len(queueRepo.injectedLateTaskIDs) != 1 || queueRepo.injectedLateTaskIDs[0] != "late-task-1" {
-		t.Fatalf("expected a late task injection, got %+v", queueRepo.injectedLateTaskIDs)
+	if len(taskObserver.injectedLateTaskIDs) != 1 || taskObserver.injectedLateTaskIDs[0] != "late-task-1" {
+		t.Fatalf("expected a late task injection, got %+v", taskObserver.injectedLateTaskIDs)
 	}
 	if !containsString(resp.CancelledTaskIDs, "late-task-1") {
 		t.Fatalf("expected late task to be cancelled in second pass, got %+v", resp.CancelledTaskIDs)
@@ -487,24 +473,21 @@ func TestDeleteApplicationCascadeDeletesRecreatedSchedulesInFinalTx(t *testing.T
 		Enabled:    true,
 		NextRun:    1,
 	}
-	queueRepo := &storeBackedWorkflowQueueRepo{
-		store:                      store,
-		scheduleStore:              store,
+	taskObserver := &cascadeTaskCreateObserver{
 		injectLateScheduleOnCreate: true,
 		injectLateScheduleID:       "sch-late",
 		injectLateScheduleWorkflow: "wf-1",
 	}
 
-	store.afterTaskCreate = queueRepo.afterCreate
+	store.afterTaskCreate = taskObserver.afterCreate
 
 	svc := &applicationsServiceImpl{
-		KubeClient:        fake.NewSimpleClientset(),
-		Store:             store,
-		AppRepo:           &cascadeAppRepo{store: store},
-		ComponentRepo:     &cascadeComponentRepo{store: store},
-		WorkflowQueueRepo: queueRepo,
-		ScheduleLocker:    locker.NewNoopLocker("test-app-schedule"),
-		Cache:             cache.NewMemCache(false),
+		KubeClient:     fake.NewSimpleClientset(),
+		Store:          store,
+		AppRepo:        &cascadeAppRepo{store: store},
+		ComponentRepo:  &cascadeComponentRepo{store: store},
+		ScheduleLocker: locker.NewNoopLocker("test-app-schedule"),
+		Cache:          cache.NewMemCache(false),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{
@@ -516,8 +499,8 @@ func TestDeleteApplicationCascadeDeletesRecreatedSchedulesInFinalTx(t *testing.T
 	if resp == nil {
 		t.Fatalf("expected response, got nil")
 	}
-	if len(queueRepo.injectedLateScheduleIDs) != 1 || queueRepo.injectedLateScheduleIDs[0] != "sch-late" {
-		t.Fatalf("expected late schedule recreation, got %+v", queueRepo.injectedLateScheduleIDs)
+	if len(taskObserver.injectedLateScheduleIDs) != 1 || taskObserver.injectedLateScheduleIDs[0] != "sch-late" {
+		t.Fatalf("expected late schedule recreation, got %+v", taskObserver.injectedLateScheduleIDs)
 	}
 	if len(store.schedules) != 0 {
 		t.Fatalf("all schedules should be deleted in final tx, got %+v", store.schedules)
@@ -1097,9 +1080,7 @@ func (r *cascadeComponentRepo) FindByName(_ context.Context, appID, name string)
 	return component, nil
 }
 
-type storeBackedWorkflowQueueRepo struct {
-	store                      datastore.DataStore
-	scheduleStore              *cascadeDeleteStore
+type cascadeTaskCreateObserver struct {
 	createdTaskIDs             []string
 	scheduleCountsAtCreate     []int
 	injectLateTaskOnCreate     bool
@@ -1112,17 +1093,11 @@ type storeBackedWorkflowQueueRepo struct {
 	injectedLateScheduleIDs    []string
 }
 
-func (r *storeBackedWorkflowQueueRepo) Create(ctx context.Context, queue *model.WorkflowQueue) error {
-	return r.store.Add(ctx, queue)
-}
-
-func (r *storeBackedWorkflowQueueRepo) afterCreate(ctx context.Context, tx *cascadeDeleteStore, queue *model.WorkflowQueue) error {
+func (r *cascadeTaskCreateObserver) afterCreate(ctx context.Context, tx *cascadeDeleteStore, queue *model.WorkflowQueue) error {
 	if queue == nil {
 		return nil
 	}
-	if r.scheduleStore != nil {
-		r.scheduleCountsAtCreate = append(r.scheduleCountsAtCreate, len(tx.schedules))
-	}
+	r.scheduleCountsAtCreate = append(r.scheduleCountsAtCreate, len(tx.schedules))
 	r.createdTaskIDs = append(r.createdTaskIDs, queue.TaskID)
 	if r.injectLateTaskOnCreate {
 		r.injectLateTaskOnCreate = false
@@ -1146,7 +1121,7 @@ func (r *storeBackedWorkflowQueueRepo) afterCreate(ctx context.Context, tx *casc
 		}
 		r.injectedLateTaskIDs = append(r.injectedLateTaskIDs, taskID)
 	}
-	if r.injectLateScheduleOnCreate && r.scheduleStore != nil {
+	if r.injectLateScheduleOnCreate {
 		r.injectLateScheduleOnCreate = false
 		scheduleID := strings.TrimSpace(r.injectLateScheduleID)
 		if scheduleID == "" {
@@ -1167,26 +1142,6 @@ func (r *storeBackedWorkflowQueueRepo) afterCreate(ctx context.Context, tx *casc
 		r.injectedLateScheduleIDs = append(r.injectedLateScheduleIDs, scheduleID)
 	}
 	return nil
-}
-
-func (r *storeBackedWorkflowQueueRepo) Update(context.Context, *model.WorkflowQueue) error {
-	return nil
-}
-
-func (r *storeBackedWorkflowQueueRepo) FindByID(context.Context, string) (*model.WorkflowQueue, error) {
-	return nil, datastore.ErrRecordNotExist
-}
-
-func (r *storeBackedWorkflowQueueRepo) FindWaiting(context.Context) ([]*model.WorkflowQueue, error) {
-	return nil, nil
-}
-
-func (r *storeBackedWorkflowQueueRepo) FindRunning(context.Context) ([]*model.WorkflowQueue, error) {
-	return nil, nil
-}
-
-func (r *storeBackedWorkflowQueueRepo) UpdateStatus(context.Context, string, config.Status, config.Status) (bool, error) {
-	return false, nil
 }
 
 type nonTransactionalCascadeStore struct {
@@ -1242,7 +1197,6 @@ func (s *nonTransactionalCascadeStore) CompareAndSwapWithConditions(ctx context.
 }
 
 var _ repository.ComponentRepository = (*cascadeComponentRepo)(nil)
-var _ repository.WorkflowQueueRepository = (*storeBackedWorkflowQueueRepo)(nil)
 
 var _ datastore.DataStore = (*cascadeDeleteStore)(nil)
 var _ datastore.Transactional = (*cascadeDeleteStore)(nil)

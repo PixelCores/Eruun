@@ -60,7 +60,6 @@ func TestCleanupApplicationResourcesRejectsPendingStatefulSetCleanupWithoutSideE
 				tt.taskStatus,
 				tt.jobStatus,
 			)
-			queueRepo := svc.WorkflowQueueRepo.(*mockWorkflowQueueRepo)
 			beforeStore := store.snapshot()
 			beforeStatus := component.Status
 			beforeReadyReplicas := component.ReadyReplicas
@@ -71,7 +70,6 @@ func TestCleanupApplicationResourcesRejectsPendingStatefulSetCleanupWithoutSideE
 			require.Nil(t, resp)
 			require.ErrorIs(t, err, tt.wantErr)
 			require.Empty(t, kubeClient.Actions(), "the fence must run before any Kubernetes request")
-			require.Empty(t, queueRepo.queues, "a rejected cleanup must not create an operation task")
 			require.Equal(t, beforeStore.apps, store.apps)
 			require.Equal(t, beforeStore.components, store.components)
 			require.Equal(t, beforeStore.tasks, store.tasks)
@@ -111,8 +109,8 @@ func TestCleanupApplicationResourcesUsesCanonicalCaseInsensitiveLockKey(t *testi
 	require.Nil(t, resp)
 	require.ErrorIs(t, err, bcode.ErrApplicationOperationLocked)
 	require.Empty(t, kubeClient.Actions())
+	require.Empty(t, store.tasks)
 	require.Equal(t, string(config.ComponentStatusRunning), component.Status)
-	require.Empty(t, svc.WorkflowQueueRepo.(*mockWorkflowQueueRepo).queues)
 }
 
 func TestCleanupApplicationResourcesReReadsApplicationInsideLock(t *testing.T) {
@@ -134,8 +132,8 @@ func TestCleanupApplicationResourcesReReadsApplicationInsideLock(t *testing.T) {
 	require.ErrorIs(t, err, bcode.ErrApplicationNotExist)
 	require.Equal(t, 2, repo.reads)
 	require.Empty(t, kubeClient.Actions())
+	require.Empty(t, store.tasks)
 	require.Equal(t, string(config.ComponentStatusRunning), component.Status)
-	require.Empty(t, svc.WorkflowQueueRepo.(*mockWorkflowQueueRepo).queues)
 }
 
 func TestDeleteApplicationCascadeBypassesPendingCleanupWithoutNestedLock(t *testing.T) {
@@ -155,13 +153,12 @@ func TestDeleteApplicationCascadeBypassesPendingCleanupWithoutNestedLock(t *test
 	store.jobs[cleanupJob.ID] = cleanupJob
 
 	svc := &applicationsServiceImpl{
-		KubeClient:        fake.NewSimpleClientset(),
-		Store:             store,
-		AppRepo:           &cascadeAppRepo{store: store},
-		ComponentRepo:     &cascadeComponentRepo{store: store},
-		WorkflowQueueRepo: &mockWorkflowQueueRepo{},
-		ScheduleLocker:    locker.NewMemoryLocker("test-app-schedule"),
-		RedisClient:       newTestApplicationDeleteCancelSignalClient(t),
+		KubeClient:     fake.NewSimpleClientset(),
+		Store:          store,
+		AppRepo:        &cascadeAppRepo{store: store},
+		ComponentRepo:  &cascadeComponentRepo{store: store},
+		ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
+		RedisClient:    newTestApplicationDeleteCancelSignalClient(t),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{

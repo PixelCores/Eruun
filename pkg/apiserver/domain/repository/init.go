@@ -11,7 +11,6 @@ func InitRepositoryBean(programmingLanguageOverrides ...ProgrammingLanguageRepos
 		NewApplicationRepository(),
 		NewWorkflowRepository(),
 		NewComponentRepository(),
-		NewWorkflowQueueRepository(),
 		NewSystemSettingRepository(),
 		programmingLanguageRepository,
 	}

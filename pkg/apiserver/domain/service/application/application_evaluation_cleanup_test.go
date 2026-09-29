@@ -67,7 +67,7 @@ func TestEvaluationResourceCleanupAcrossApplicationLifecycle(t *testing.T) {
 			store := &cleanupStore{app: app, components: []*model.ApplicationComponent{component}, applications: map[string]*model.Applications{app.ID: app}}
 			svc := &applicationsServiceImpl{
 				KubeClient: client, Store: store, AppRepo: &mockCleanupAppRepo{store: store},
-				ComponentRepo: &mockCleanupComponentRepo{store: store}, WorkflowQueueRepo: &mockWorkflowQueueRepo{},
+				ComponentRepo:  &mockCleanupComponentRepo{store: store},
 				ScheduleLocker: locker.NewMemoryLocker("evaluation-cleanup"),
 			}
 			switch operation {

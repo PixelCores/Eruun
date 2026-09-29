@@ -453,9 +453,7 @@ func TestUpdateVersionTemplateVersionOnlyDoesNotAutoExecWhenResourceKeyIsStable(
 		}),
 	}
 
-	queueRepo := &mockWorkflowQueueRepo{}
 	svc := newMockServiceWithStore(store)
-	svc.WorkflowQueueRepo = queueRepo
 
 	resp, err := svc.UpdateVersion(context.Background(), "tmpl-1", apisv1.UpdateVersionRequest{
 		Version: "2.0.0",
@@ -496,9 +494,7 @@ func TestUpdateVersionNonTemplateVersionOnlyDoesNotAutoExecWorkflow(t *testing.T
 		}),
 	}
 
-	queueRepo := &mockWorkflowQueueRepo{}
 	svc := newMockServiceWithStore(store)
-	svc.WorkflowQueueRepo = queueRepo
 
 	resp, err := svc.UpdateVersion(context.Background(), "app-1", apisv1.UpdateVersionRequest{
 		Version: "1.1.0",

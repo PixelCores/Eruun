@@ -73,12 +73,11 @@ func TestStartApplicationDeploymentsRestoresStoredReplicas(t *testing.T) {
 	)
 
 	svc := &applicationsServiceImpl{
-		ScheduleLocker:    locker.NewMemoryLocker("test-app-schedule"),
-		KubeClient:        clientset,
-		Store:             store,
-		AppRepo:           &mockCleanupAppRepo{store: store},
-		ComponentRepo:     &mockCleanupComponentRepo{store: store},
-		WorkflowQueueRepo: &mockWorkflowQueueRepo{},
+		ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
+		KubeClient:     clientset,
+		Store:          store,
+		AppRepo:        &mockCleanupAppRepo{store: store},
+		ComponentRepo:  &mockCleanupComponentRepo{store: store},
 	}
 
 	resp, err := svc.StartApplicationDeployments(context.Background(), app.ID, apisv1.ApplicationLifecycleRequest{})
@@ -143,14 +142,12 @@ func TestStartApplicationDeploymentsTriggersRequestCallback(t *testing.T) {
 		},
 	)
 	callbackStore := newApplicationCallbackStore(t, app, web)
-	queueRepo := &mockWorkflowQueueRepo{store: callbackStore}
 	svc := &applicationsServiceImpl{
 		ScheduleLocker:            locker.NewMemoryLocker("test-app-schedule"),
 		KubeClient:                clientset,
 		Store:                     callbackStore,
 		AppRepo:                   &mockCleanupAppRepo{store: store},
 		ComponentRepo:             &mockCleanupComponentRepo{store: store},
-		WorkflowQueueRepo:         queueRepo,
 		URLSecurityPolicyProvider: newTestURLSecurityPolicyProvider(t, spec.URLSecurityPolicySpec{AllowPrivateByDefault: true}),
 	}
 
@@ -205,14 +202,12 @@ func TestStartApplicationDeploymentsReturnsErrorWhenCallbackTaskCreateFails(t *t
 	)
 	store.operationStore = newInMemoryAppStore()
 	store.operationStore.addWorkflowQueueErr = errors.New("queue create failed")
-	queueRepo := &mockWorkflowQueueRepo{}
 	svc := &applicationsServiceImpl{
 		ScheduleLocker:            locker.NewMemoryLocker("test-app-schedule"),
 		KubeClient:                clientset,
 		Store:                     store,
 		AppRepo:                   &mockCleanupAppRepo{store: store},
 		ComponentRepo:             &mockCleanupComponentRepo{store: store},
-		WorkflowQueueRepo:         queueRepo,
 		URLSecurityPolicyProvider: newTestURLSecurityPolicyProvider(t, spec.URLSecurityPolicySpec{AllowPrivateByDefault: true}),
 	}
 
@@ -224,8 +219,7 @@ func TestStartApplicationDeploymentsReturnsErrorWhenCallbackTaskCreateFails(t *t
 	require.Contains(t, err.Error(), "operation record commit could not be confirmed")
 	require.Contains(t, err.Error(), "queue create failed")
 	require.Nil(t, resp)
-	require.Nil(t, queueRepo.lastQueue)
-	require.Empty(t, queueRepo.queues)
+	require.Empty(t, store.operationStore.tasks)
 	requireNoCallbackReceived(t, received)
 
 	deploy, getErr := clientset.AppsV1().Deployments("default").Get(context.Background(), deployName, metav1.GetOptions{})
@@ -270,12 +264,11 @@ func TestStartApplicationDeploymentsRejectsMissingStoredReplicas(t *testing.T) {
 	)
 
 	svc := &applicationsServiceImpl{
-		ScheduleLocker:    locker.NewMemoryLocker("test-app-schedule"),
-		KubeClient:        clientset,
-		Store:             store,
-		AppRepo:           &mockCleanupAppRepo{store: store},
-		ComponentRepo:     &mockCleanupComponentRepo{store: store},
-		WorkflowQueueRepo: &mockWorkflowQueueRepo{},
+		ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
+		KubeClient:     clientset,
+		Store:          store,
+		AppRepo:        &mockCleanupAppRepo{store: store},
+		ComponentRepo:  &mockCleanupComponentRepo{store: store},
 	}
 
 	resp, err := svc.StartApplicationDeployments(context.Background(), app.ID, apisv1.ApplicationLifecycleRequest{})
@@ -329,14 +322,12 @@ func TestStartApplicationDeploymentsTriggersFailureCallbackForPartialFailure(t *
 		},
 	)
 	callbackStore := newApplicationCallbackStore(t, app, web)
-	queueRepo := &mockWorkflowQueueRepo{store: callbackStore}
 	svc := &applicationsServiceImpl{
 		ScheduleLocker:            locker.NewMemoryLocker("test-app-schedule"),
 		KubeClient:                clientset,
 		Store:                     callbackStore,
 		AppRepo:                   &mockCleanupAppRepo{store: store},
 		ComponentRepo:             &mockCleanupComponentRepo{store: store},
-		WorkflowQueueRepo:         queueRepo,
 		URLSecurityPolicyProvider: newTestURLSecurityPolicyProvider(t, spec.URLSecurityPolicySpec{AllowPrivateByDefault: true}),
 	}
 
