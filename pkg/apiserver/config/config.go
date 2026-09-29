@@ -69,7 +69,7 @@ type Config struct {
 	// Istio Enable
 	IstioEnable bool
 
-	// EnableTracing enables tracing; JaegerEndpoint controls span export.
+	// EnableTracing enables distributed tracing
 	EnableTracing bool
 
 	// AutoTracing enables tracing even when EnableTracing is false.
