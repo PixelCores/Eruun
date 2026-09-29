@@ -108,7 +108,6 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 		return fmt.Errorf("fail to provide url security policy provider bean: %w", err)
 	}
 
-	cacheType := strings.ToLower(strings.TrimSpace(s.cfg.Cache.CacheType))
 	redisClient, err := s.initRedisClientForConfiguredBackends()
 	if err != nil {
 		return err
@@ -122,16 +121,9 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 		return err
 	}
 
-	// Initialize cache implementation from explicit cache configuration.
-	var iCache cache.ICache
-	switch cacheType {
-	case string(cache.CacheTypeRedis):
-		if redisClient == nil {
-			return fmt.Errorf("redis cache requested but redis client is not initialized")
-		}
-		iCache = cache.NewRedisICache(redisClient, false, s.cfg.Cache.CacheTTL, s.cfg.Cache.KeyPrefix)
-	default:
-		iCache = cache.NewMemCache(false)
+	iCache, err := cache.NewRedisICache(redisClient, false, s.cfg.Cache.CacheTTL, s.cfg.Cache.KeyPrefix)
+	if err != nil {
+		return fmt.Errorf("initialize redis cache: %w", err)
 	}
 	s.cache = iCache
 	if err := s.beanContainer.ProvideWithName("redisClient", redisClient); err != nil {
@@ -381,6 +373,9 @@ func (s *restServer) initRedisClientForConfiguredBackends() (*redis.Client, erro
 	redisClient, err := newRedisClient(s.cfg.Cache)
 	if err != nil {
 		return nil, fmt.Errorf("init redis client for configured redis backend: %w", err)
+	}
+	if redisClient == nil {
+		return nil, fmt.Errorf("init redis client for configured redis backend: redis client is not initialized")
 	}
 	return redisClient, nil
 }

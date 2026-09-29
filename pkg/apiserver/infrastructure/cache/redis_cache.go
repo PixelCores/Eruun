@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -28,19 +29,10 @@ type RedisICache struct {
 const defaultTTL = 24 * time.Hour
 const defaultKeyPrefix = "eruun:cache:"
 
-// NewRedisICacheWithClient creates an ICache backed by the provided client.
-// If cli is nil, falls back to in-memory cache to remain functional.
-func NewRedisICacheWithClient(cli *redis.Client, noCache bool) ICache {
+// NewRedisICache creates a Redis-backed cache with custom TTL and prefix.
+func NewRedisICache(cli *redis.Client, noCache bool, ttl time.Duration, prefix string) (*RedisICache, error) {
 	if cli == nil {
-		return NewMemCache(noCache)
-	}
-	return &RedisICache{cli: cli, noCache: noCache, ttl: defaultTTL, keyPrefix: defaultKeyPrefix}
-}
-
-// NewRedisICache creates an ICache with custom ttl and prefix.
-func NewRedisICache(cli *redis.Client, noCache bool, ttl time.Duration, prefix string) ICache {
-	if cli == nil {
-		return NewMemCache(noCache)
+		return nil, errors.New("redis cache client is not initialized")
 	}
 	if ttl <= 0 {
 		ttl = defaultTTL
@@ -48,7 +40,7 @@ func NewRedisICache(cli *redis.Client, noCache bool, ttl time.Duration, prefix s
 	if prefix == "" {
 		prefix = defaultKeyPrefix
 	}
-	return &RedisICache{cli: cli, noCache: noCache, ttl: ttl, keyPrefix: prefix}
+	return &RedisICache{cli: cli, noCache: noCache, ttl: ttl, keyPrefix: prefix}, nil
 }
 
 func (c *RedisICache) key(k string) string { return c.keyPrefix + k }
