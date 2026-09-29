@@ -783,18 +783,16 @@ func TestStorageProcessor_StatefulSet_TmpCreate(t *testing.T) {
 			AppID:     "app-123",
 			Namespace: "default",
 		},
-		TraitData: []spec.StorageTraitSpec{
-			{
-				Name:      "mysql-data",
-				Type:      "persistent",
-				MountPath: "/var/lib/mysql",
-				Size:      "5Gi",
-				TmpCreate: true,
-			},
-		},
 	}
+	storage := []spec.StorageTraitSpec{{
+		Name:      "mysql-data",
+		Type:      "persistent",
+		MountPath: "/var/lib/mysql",
+		Size:      "5Gi",
+		TmpCreate: true,
+	}}
 
-	result, err := processor.Process(ctx)
+	result, err := processor.Process(ctx, storage)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 

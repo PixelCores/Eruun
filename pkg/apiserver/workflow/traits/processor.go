@@ -3,9 +3,6 @@ package traits
 import (
 	"encoding/json"
 	"fmt"
-	"reflect"
-	"strings"
-	"sync"
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -29,7 +26,6 @@ import (
 type TraitContext struct {
 	Component *model.ApplicationComponent
 	Workload  runtime.Object
-	TraitData interface{}
 }
 
 // TraitResult is the unit of changes emitted by a Processor. The framework
@@ -61,87 +57,6 @@ type TraitResult struct {
 	StatefulSetUpdateStrategy *appsv1.StatefulSetUpdateStrategy
 }
 
-// TraitProcessor defines a pluggable transformer that consumes a trait's data
-// and emits a TraitResult. Implementations must be stateless and side-effect free.
-type TraitProcessor interface {
-	Name() string
-	Process(ctx *TraitContext) (*TraitResult, error)
-}
-
-// NewTraitContext creates a new trait context.
-func NewTraitContext(component *model.ApplicationComponent, workload runtime.Object, traitData interface{}) *TraitContext {
-	return &TraitContext{
-		Component: component,
-		Workload:  workload,
-		TraitData: traitData,
-	}
-}
-
-var (
-	// registeredTraitProcessors stores the registered trait processors in the desired execution order.
-	registeredTraitProcessors []TraitProcessor
-	registeredTraitNames      = map[string]struct{}{}
-	registeredTraitMu         sync.Mutex
-	registerAllProcessorsOnce sync.Once
-)
-
-// Register adds a Processor to the global ordered registry.
-// Duplicate names are ignored to keep registration idempotent.
-func Register(p TraitProcessor) {
-	if p == nil {
-		klog.Warningf("skip registering nil trait processor")
-		return
-	}
-	name := p.Name()
-	if strings.TrimSpace(name) == "" {
-		klog.Warningf("skip registering unnamed trait processor: %T", p)
-		return
-	}
-	registeredTraitMu.Lock()
-	defer registeredTraitMu.Unlock()
-	if _, exists := registeredTraitNames[name]; exists {
-		klog.Warningf("trait processor already registered, skip duplicate: %s", name)
-		return
-	}
-	klog.V(4).Infof("Registering trait processor: %s", name)
-	registeredTraitProcessors = append(registeredTraitProcessors, p)
-	registeredTraitNames[name] = struct{}{}
-}
-
-// RegisterAllProcessors defines the execution order for all built-in processors.
-func RegisterAllProcessors() {
-	registerAllProcessorsOnce.Do(registerBuiltinProcessors)
-}
-
-func registerBuiltinProcessors() {
-	// 1. Register traits that define core resources first.
-	Register(&StorageProcessor{})
-	Register(&EnvFromProcessor{})
-	Register(&EnvsProcessor{})
-	Register(&TargetWorkEnvProcessor{})
-	Register(&ResourcesProcessor{})
-	Register(&SecurityPolicyProcessor{})
-	Register(&ProbeProcessor{}) // Added ProbeProcessor
-	Register(&RBACProcessor{})
-	Register(&RolloutProcessor{})
-
-	// 2. Register traits that add containers or recursively process other traits.
-	Register(&InitProcessor{})
-	Register(&SidecarProcessor{})
-	// Register other processors here as they are added.
-	Register(&IngressProcessor{})
-}
-
-// ResetTraitProcessorsForTest clears trait processor registry globals.
-// Intended for tests and controlled re-initialization scenarios.
-func ResetTraitProcessorsForTest() {
-	registeredTraitMu.Lock()
-	defer registeredTraitMu.Unlock()
-	registeredTraitProcessors = []TraitProcessor{}
-	registeredTraitNames = map[string]struct{}{}
-	registerAllProcessorsOnce = sync.Once{}
-}
-
 // ApplyTraits is the public entrypoint. It dispatches traits to processors,
 // aggregates their outputs, and applies changes onto the workload.
 func ApplyTraits(component *model.ApplicationComponent, workload runtime.Object) ([]client.Object, error) {
@@ -165,7 +80,7 @@ func ApplyTraits(component *model.ApplicationComponent, workload runtime.Object)
 	}
 
 	// Start the recursive application of traits, with no exclusions at the top level.
-	finalResult, err := applyTraitsRecursive(component, workload, &traits, nil)
+	finalResult, err := applyTraitsRecursive(component, workload, &traits, false)
 	if err != nil {
 		return nil, err
 	}
@@ -181,81 +96,82 @@ func ApplyTraits(component *model.ApplicationComponent, workload runtime.Object)
 	return finalResult.AdditionalObjects, nil
 }
 
-// applyTraitsRecursive evaluates all traits found in spec.Traits and collects
-// TraitResults. It supports recursion for nested traits and uses an exclusion
-// list to prevent infinite loops (e.g., sidecar within sidecar).
-func applyTraitsRecursive(component *model.ApplicationComponent, workload runtime.Object, traits *spec.Traits, excludeTraits []string) (*TraitResult, error) {
-	traitsVal := reflect.ValueOf(traits).Elem()
-	var allResults []*TraitResult
-
-	// TmpCreate a map for quick lookup of excluded traits.
-	excludeMap := make(map[string]bool)
-	for _, t := range excludeTraits {
-		excludeMap[t] = true
+// applyTraitsRecursive keeps the built-in order explicit and passes typed specs.
+// Evaluation, Service, and Share are owned by the workflow/job builders.
+// Nested containers exclude init, sidecar, targetWorkEnv, and rollout.
+func applyTraitsRecursive(component *model.ApplicationComponent, workload runtime.Object, traits *spec.Traits, nested bool) (*TraitResult, error) {
+	ctx := &TraitContext{Component: component, Workload: workload}
+	var results []*TraitResult
+	collect := func(result *TraitResult, err error) error {
+		if err != nil {
+			return err
+		}
+		if result != nil {
+			results = append(results, result)
+		}
+		return nil
 	}
-
-	// Process each trait and collect results.
-	for _, p := range registeredTraitProcessors {
-		traitName := p.Name()
-		if excludeMap[traitName] {
-			continue // Skip excluded traits.
-		}
-
-		field, ok := traitFieldByName(traitsVal, traitName)
-		if !ok || !field.IsValid() {
-			continue
-		}
-
-		// Handle both slice and pointer types
-		var shouldProcess bool
-		var traitData interface{}
-
-		switch field.Kind() {
-		case reflect.Slice:
-			if field.IsNil() {
-				continue
-			}
-			if field.Len() > 0 {
-				shouldProcess = true
-				traitData = field.Interface()
-			}
-		case reflect.Ptr:
-			if field.IsNil() {
-				continue
-			}
-			shouldProcess = true
-			traitData = field.Interface()
-		case reflect.String:
-			if strings.TrimSpace(field.String()) == "" {
-				continue
-			}
-			shouldProcess = true
-			traitData = field.String()
-		case reflect.Map:
-			if field.IsNil() || field.Len() == 0 {
-				continue
-			}
-			shouldProcess = true
-			traitData = field.Interface()
-		default:
-			continue
-		}
-
-		if shouldProcess {
-			klog.V(3).Infof("Applying trait '%s' for component %s.", traitName, component.Name)
-			ctx := NewTraitContext(component, workload, traitData)
-			result, err := p.Process(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("failed to process trait '%s': %w", traitName, err)
-			}
-			if result != nil {
-				allResults = append(allResults, result)
-			}
+	if len(traits.Storage) > 0 {
+		if err := collect((&StorageProcessor{}).Process(ctx, traits.Storage)); err != nil {
+			return nil, fmt.Errorf("failed to process trait 'storage': %w", err)
 		}
 	}
-
-	// Merge all results from this level of recursion into a single result.
-	return aggregateTraitResults(allResults)
+	if len(traits.EnvFrom) > 0 {
+		if err := collect((&EnvFromProcessor{}).Process(ctx, traits.EnvFrom)); err != nil {
+			return nil, fmt.Errorf("failed to process trait 'envFrom': %w", err)
+		}
+	}
+	if len(traits.Envs) > 0 {
+		if err := collect((&EnvsProcessor{}).Process(ctx, traits.Envs)); err != nil {
+			return nil, fmt.Errorf("failed to process trait 'envs': %w", err)
+		}
+	}
+	if !nested && len(traits.TargetWorkEnv) > 0 {
+		if err := collect((&TargetWorkEnvProcessor{}).Process(traits.TargetWorkEnv)); err != nil {
+			return nil, fmt.Errorf("failed to process trait 'targetWorkEnv': %w", err)
+		}
+	}
+	if traits.Resources != nil {
+		if err := collect((&ResourcesProcessor{}).Process(traits.Resources)); err != nil {
+			return nil, fmt.Errorf("failed to process trait 'resources': %w", err)
+		}
+	}
+	if traits.SecurityPolicy != nil {
+		if err := collect((&SecurityPolicyProcessor{}).Process(traits.SecurityPolicy)); err != nil {
+			return nil, fmt.Errorf("failed to process trait 'securityPolicy': %w", err)
+		}
+	}
+	if len(traits.Probes) > 0 {
+		if err := collect((&ProbeProcessor{}).Process(ctx, traits.Probes)); err != nil {
+			return nil, fmt.Errorf("failed to process trait 'probes': %w", err)
+		}
+	}
+	if len(traits.RBAC) > 0 {
+		if err := collect((&RBACProcessor{}).Process(ctx, traits.RBAC)); err != nil {
+			return nil, fmt.Errorf("failed to process trait 'rbac': %w", err)
+		}
+	}
+	if !nested && traits.Rollout != nil {
+		if err := collect((&RolloutProcessor{}).Process(ctx, traits.Rollout)); err != nil {
+			return nil, fmt.Errorf("failed to process trait 'rollout': %w", err)
+		}
+	}
+	if !nested && len(traits.Init) > 0 {
+		if err := collect((&InitProcessor{}).Process(ctx, traits.Init)); err != nil {
+			return nil, fmt.Errorf("failed to process trait 'init': %w", err)
+		}
+	}
+	if !nested && len(traits.Sidecar) > 0 {
+		if err := collect((&SidecarProcessor{}).Process(ctx, traits.Sidecar)); err != nil {
+			return nil, fmt.Errorf("failed to process trait 'sidecar': %w", err)
+		}
+	}
+	if len(traits.Ingress) > 0 {
+		if err := collect((&IngressProcessor{}).Process(ctx, traits.Ingress)); err != nil {
+			return nil, fmt.Errorf("failed to process trait 'ingress': %w", err)
+		}
+	}
+	return aggregateTraitResults(results)
 }
 
 // aggregateTraitResults merges multiple TraitResults into one, de-duplicating
@@ -372,36 +288,29 @@ func aggregateTraitResults(results []*TraitResult) (*TraitResult, error) {
 	return finalResult, nil
 }
 
-func traitFieldByName(traitsVal reflect.Value, traitName string) (reflect.Value, bool) {
-	t := traitsVal.Type()
-	lower := strings.ToLower(traitName)
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		if strings.ToLower(field.Name) == lower {
-			return traitsVal.Field(i), true
-		}
-		if tag := field.Tag.Get("json"); tag != "" {
-			if idx := strings.Index(tag, ","); idx != -1 {
-				tag = tag[:idx]
-			}
-			if tag == traitName {
-				return traitsVal.Field(i), true
-			}
-		}
-	}
-	return reflect.Value{}, false
-}
-
 // applyTraitResultToWorkload mutates the provided workload's PodTemplateSpec by
 // appending containers/volumes and wiring mounts/envs to the correct targets.
 // For StatefulSets, dynamically requested PVCs are moved into VolumeClaimTemplates.
 func applyTraitResultToWorkload(result *TraitResult, workload runtime.Object, mainContainerName string) error {
-	if err := applyWorkloadTraitResult(result, workload); err != nil {
-		return err
-	}
-
 	podTemplate, err := getPodTemplateFromWorkload(workload)
 	if err != nil {
+		return err
+	}
+	// Container names share one Pod namespace across init and regular containers.
+	// Reject explicit/generated collisions before mutating the workload.
+	names := make(map[string]struct{})
+	for _, containers := range [][]corev1.Container{
+		podTemplate.Spec.Containers, podTemplate.Spec.InitContainers,
+		result.Containers, result.InitContainers,
+	} {
+		for _, container := range containers {
+			if _, exists := names[container.Name]; exists {
+				return fmt.Errorf("duplicate container name %q", container.Name)
+			}
+			names[container.Name] = struct{}{}
+		}
+	}
+	if err := applyWorkloadTraitResult(result, workload); err != nil {
 		return err
 	}
 

@@ -9,13 +9,11 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
-	traitsPlu "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/kubernetes/fake"
 )
 
 func TestGenerateJobTasksPropagatesResourceErrors(t *testing.T) {
-	traitsPlu.RegisterAllProcessors()
 	storage := spec.StorageTraitSpec{Name: "data", Type: "persistent", MountPath: "/data", Size: "1Gi"}
 	conflict := storage
 	conflict.Size = "2Gi"

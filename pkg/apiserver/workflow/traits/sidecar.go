@@ -11,31 +11,22 @@ import (
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 // SidecarProcessor materializes additional containers attached to the Pod.
 // It also supports nested traits (except nested sidecars) applied to the sidecar itself.
 type SidecarProcessor struct{}
 
-// Name returns the name of the trait.
-func (s *SidecarProcessor) Name() string {
-	return "sidecar"
-}
-
 // Process adds sidecar containers to the workload, recursively applying any nested traits.
-func (s *SidecarProcessor) Process(ctx *TraitContext) (*TraitResult, error) {
-	sidecarTraits, ok := ctx.TraitData.([]spec.SidecarTraitsSpec)
-	if !ok {
-		return nil, fmt.Errorf("unexpected type for sidecar trait: %T", ctx.TraitData)
-	}
-
+func (s *SidecarProcessor) Process(ctx *TraitContext, sidecarTraits []spec.SidecarTraitsSpec) (*TraitResult, error) {
 	finalResult := &TraitResult{
 		VolumeMounts:   make(map[string][]corev1.VolumeMount),
 		EnvFromSources: make(map[string][]corev1.EnvFromSource),
 		EnvVars:        make(map[string][]corev1.EnvVar),
 	}
 
-	for _, sidecarSpec := range sidecarTraits {
+	for index, sidecarSpec := range sidecarTraits {
 		if sidecarSpec.Image == "" {
 			return nil, fmt.Errorf("sidecar for component %s must have an image", ctx.Component.Name)
 		}
@@ -49,7 +40,7 @@ func (s *SidecarProcessor) Process(ctx *TraitContext) (*TraitResult, error) {
 
 		sidecarName := sidecarSpec.Name
 		if sidecarName == "" {
-			sidecarName = fmt.Sprintf("%s-sidecar-%s", ctx.Component.Name, utils.RandStringBytes(4))
+			sidecarName = naming.BoundedLabelValue(fmt.Sprintf("%s-sidecar-%d", ctx.Component.Name, index+1))
 		}
 
 		// Convert env map to env vars
@@ -59,7 +50,7 @@ func (s *SidecarProcessor) Process(ctx *TraitContext) (*TraitResult, error) {
 		}
 
 		// Recursively apply nested traits, excluding pod-level traits and recursive container traits.
-		nestedResult, err := applyTraitsRecursive(ctx.Component, ctx.Workload, &sidecarSpec.Traits, []string{"sidecar", "init", "targetWorkEnv", "rollout"})
+		nestedResult, err := applyTraitsRecursive(ctx.Component, ctx.Workload, &sidecarSpec.Traits, true)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process nested traits for sidecar %s: %w", sidecarName, err)
 		}

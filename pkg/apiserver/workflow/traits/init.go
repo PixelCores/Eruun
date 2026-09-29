@@ -9,33 +9,23 @@ import (
 	"k8s.io/klog/v2"
 
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 // InitProcessor creates init containers (pre-main) and applies nested traits
 // to them (e.g., storage/env/probes/resources), excluding further init recursion.
 type InitProcessor struct{}
 
-// Name returns the name of the trait
-func (i *InitProcessor) Name() string {
-	return "init"
-}
-
 // Process adds init containers to the workload, recursively applying any nested traits.
-func (i *InitProcessor) Process(ctx *TraitContext) (*TraitResult, error) {
-	initTraits, ok := ctx.TraitData.([]spec.InitTraitSpec)
-	if !ok {
-		return nil, fmt.Errorf("unexpected type for init trait: %T", ctx.TraitData)
-	}
-
+func (i *InitProcessor) Process(ctx *TraitContext, initTraits []spec.InitTraitSpec) (*TraitResult, error) {
 	// This is the final result that will be returned, aggregating all outcomes.
 	finalResult := &TraitResult{
 		VolumeMounts:   make(map[string][]corev1.VolumeMount),
 		EnvFromSources: make(map[string][]corev1.EnvFromSource),
 	}
 
-	for _, initTrait := range initTraits {
+	for index, initTrait := range initTraits {
 		if initTrait.Image == "" {
 			return nil, fmt.Errorf("init container for component %s must have an image", ctx.Component.Name)
 		}
@@ -45,7 +35,7 @@ func (i *InitProcessor) Process(ctx *TraitContext) (*TraitResult, error) {
 
 		initContainerName := initTrait.Name
 		if initContainerName == "" {
-			initContainerName = fmt.Sprintf("%s-init-%s", ctx.Component.Name, utils.RandStringBytes(4))
+			initContainerName = naming.BoundedLabelValue(fmt.Sprintf("%s-init-%d", ctx.Component.Name, index+1))
 		}
 
 		// Convert env map to env vars
@@ -56,7 +46,7 @@ func (i *InitProcessor) Process(ctx *TraitContext) (*TraitResult, error) {
 
 		// Recursively apply nested traits, excluding pod-level traits and recursive container traits.
 		// and semantically meaningless nesting (init containers cannot have sidecars).
-		nestedResult, err := applyTraitsRecursive(ctx.Component, ctx.Workload, &initTrait.Traits, []string{"init", "sidecar", "targetWorkEnv", "rollout"})
+		nestedResult, err := applyTraitsRecursive(ctx.Component, ctx.Workload, &initTrait.Traits, true)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process nested traits for init container %s: %w", initContainerName, err)
 		}

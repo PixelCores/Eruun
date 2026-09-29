@@ -12,18 +12,8 @@ import (
 // simplified, source-based schema into native Kubernetes EnvVar entries.
 type EnvsProcessor struct{}
 
-// Name returns the name of the trait.
-func (p *EnvsProcessor) Name() string {
-	return "envs"
-}
-
 // Process translates the []spec.SimplifiedEnvSpec into []corev1.EnvVar.
-func (p *EnvsProcessor) Process(ctx *TraitContext) (*TraitResult, error) {
-	simplifiedEnvs, ok := ctx.TraitData.([]spec.SimplifiedEnvSpec)
-	if !ok {
-		return nil, fmt.Errorf("unexpected type for env spec: expected []spec.SimplifiedEnvSpec, got %T", ctx.TraitData)
-	}
-
+func (p *EnvsProcessor) Process(ctx *TraitContext, simplifiedEnvs []spec.SimplifiedEnvSpec) (*TraitResult, error) {
 	var nativeEnvs []corev1.EnvVar
 	for _, envSpec := range simplifiedEnvs {
 		nativeEnv, err := translateToNativeEnvVar(envSpec)
@@ -46,18 +36,8 @@ func (p *EnvsProcessor) Process(ctx *TraitContext) (*TraitResult, error) {
 // from ConfigMaps or Secrets.
 type EnvFromProcessor struct{}
 
-// Name returns the name of the trait.
-func (p *EnvFromProcessor) Name() string {
-	return "envFrom"
-}
-
 // Process converts []spec.EnvFromSourceSpec into []corev1.EnvFromSource.
-func (p *EnvFromProcessor) Process(ctx *TraitContext) (*TraitResult, error) {
-	envFromTraits, ok := ctx.TraitData.([]spec.EnvFromSourceSpec)
-	if !ok {
-		return nil, fmt.Errorf("unexpected type for envFrom trait: %T", ctx.TraitData)
-	}
-
+func (p *EnvFromProcessor) Process(ctx *TraitContext, envFromTraits []spec.EnvFromSourceSpec) (*TraitResult, error) {
 	var envFromSources []corev1.EnvFromSource
 	for _, trait := range envFromTraits {
 		if trait.SourceName == "" {

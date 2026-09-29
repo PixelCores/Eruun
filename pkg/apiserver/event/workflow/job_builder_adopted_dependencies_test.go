@@ -24,11 +24,9 @@ import (
 	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
-	traitsPlu "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 func TestGenerateJobTasks_ImportedAdoptionSnapshotProducesManagedDependencyClosure(t *testing.T) {
-	traitsPlu.RegisterAllProcessors()
 
 	const (
 		appID      = "adopted-app"

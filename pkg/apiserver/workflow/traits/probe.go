@@ -18,19 +18,9 @@ const (
 // ProbeProcessor attaches container health checks (liveness/readiness/startup).
 type ProbeProcessor struct{}
 
-// Name returns the name of the trait.
-func (p *ProbeProcessor) Name() string {
-	return "probes"
-}
-
 // Process converts []spec.ProbeTraitsSpec into Kubernetes Probe objects. Only one
 // probe per type is allowed; duplicates result in an error.
-func (p *ProbeProcessor) Process(ctx *TraitContext) (*TraitResult, error) {
-	probeTraits, ok := ctx.TraitData.([]spec.ProbeTraitsSpec)
-	if !ok {
-		return nil, fmt.Errorf("unexpected type for probes trait: %T", ctx.TraitData)
-	}
-
+func (p *ProbeProcessor) Process(ctx *TraitContext, probeTraits []spec.ProbeTraitsSpec) (*TraitResult, error) {
 	result := &TraitResult{}
 
 	for _, probeSpec := range probeTraits {

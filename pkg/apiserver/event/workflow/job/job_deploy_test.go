@@ -19,7 +19,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
-	traitsPlu "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 func TestGenerateWebService_UsesCommand(t *testing.T) {
@@ -58,9 +57,6 @@ func TestGenerateWebService_UsesCommand(t *testing.T) {
 }
 
 func TestGenerateWebService_AppliesRolloutTrait(t *testing.T) {
-	traitsPlu.ResetTraitProcessorsForTest()
-	traitsPlu.RegisterAllProcessors()
-	t.Cleanup(traitsPlu.ResetTraitProcessorsForTest)
 
 	maxSurge := intstr.FromString("25%")
 	maxUnavailable := intstr.FromString("10%")

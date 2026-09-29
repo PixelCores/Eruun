@@ -1,12 +1,6 @@
-// Package traits implements a pluggable, ordered "trait" processing pipeline
-// that decorates Kubernetes workloads (Deployment/Service/DaemonSet) with
-// cross-cutting concerns such as storage, environment variables, probes, sidecars,
-// init containers, and compute resources.
-//
-// Design highlights:
-//   - Each trait provides a Processor (Name + Process) that returns a TraitResult.
-//   - Processors are registered in an explicit order to control application precedence.
-//   - Trait data is unmarshaled into spec.Traits and dispatched by reflection.
-//   - Nested traits (e.g., on sidecar/init) are recursively applied with exclusions to avoid loops.
-//   - Aggregation merges results and de-duplicates volumes/objects while allowing "last-wins" for probes/resources.
+// Package traits renders the fixed workload traits in spec.Traits into Kubernetes
+// workloads. Typed processors return TraitResult values; explicit dispatch keeps
+// the processing order and nested exclusions visible to the compiler and reader.
+// Aggregation de-duplicates volumes and objects, rejects conflicting object
+// definitions, and preserves the last non-nil value for singleton fields.
 package traits

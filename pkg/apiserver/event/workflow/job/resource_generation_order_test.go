@@ -9,7 +9,6 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	traitsPlu "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 func TestGeneratedWorkloadEnvironmentIsStable(t *testing.T) {
@@ -50,9 +49,6 @@ func TestGeneratedWorkloadEnvironmentIsStable(t *testing.T) {
 }
 
 func TestGeneratedNestedContainerEnvironmentIsStable(t *testing.T) {
-	traitsPlu.ResetTraitProcessorsForTest()
-	traitsPlu.RegisterAllProcessors()
-	t.Cleanup(traitsPlu.ResetTraitProcessorsForTest)
 	env := map[string]string{"Z_LAST": "last", "A_FIRST": "first", "M_MIDDLE": "middle"}
 	value := "override"
 	nestedTraits := spec.Traits{Envs: []spec.SimplifiedEnvSpec{{Name: "A_FIRST", ValueFrom: spec.ValueSource{Static: &value}}}}

@@ -854,8 +854,6 @@ func TestCreateApplicationsFromTemplateSharesTopLevelPersistentStorageWithNested
 	require.True(t, clonedTraits.Sidecar[0].Traits.Storage[0].ReadOnly)
 	require.Equal(t, "tenant-a-nas", clonedTraits.Sidecar[0].Traits.Storage[0].StorageClass)
 	require.Empty(t, clonedTraits.Sidecar[0].Traits.Storage[0].ClaimName)
-
-	workflowtraits.RegisterAllProcessors()
 	workload := &appsv1.StatefulSet{
 		Spec: appsv1.StatefulSetSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{
 			Containers: []corev1.Container{{Name: createdStore.Name, Image: createdStore.Image}},

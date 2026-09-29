@@ -28,7 +28,7 @@ func buildCommandJob(name, namespace string, command spec.CommandJobSpec, traits
 	container := corev1.Container{Name: "job", Image: command.Image, ImagePullPolicy: corev1.PullIfNotPresent,
 		Command: append([]string(nil), command.Command...), Args: append([]string(nil), command.Args...)}
 	if traits.Resources != nil {
-		result, err := (&traitprocessors.ResourcesProcessor{}).Process(&traitprocessors.TraitContext{TraitData: traits.Resources})
+		result, err := (&traitprocessors.ResourcesProcessor{}).Process(traits.Resources)
 		if err != nil {
 			return nil, fmt.Errorf("render Job resources: %w", err)
 		}

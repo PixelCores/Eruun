@@ -22,7 +22,6 @@ import (
 
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	wfNaming "github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
-	traitsPlu "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 func TestCreateObjectJobsFromResultIngressNaming(t *testing.T) {
@@ -314,7 +313,6 @@ func TestBuildJobsForComponent_ShareIgnoreSkipsJobs(t *testing.T) {
 }
 
 func TestBuildJobsForComponentAppliesFailurePolicyOnlyToInstantJobTask(t *testing.T) {
-	traitsPlu.RegisterAllProcessors()
 	failurePolicy := workflowconfig.WorkflowFailurePolicyCleanupFailed
 	propertiesJSON, err := model.NewJSONStructByStruct(model.Properties{
 		RunPolicy:     string(workflowconfig.JobRunPolicyRecreate),

@@ -17,13 +17,7 @@ import (
 
 type IngressProcessor struct{}
 
-func (p *IngressProcessor) Name() string { return "ingress" }
-
-func (p *IngressProcessor) Process(ctx *TraitContext) (*TraitResult, error) {
-	traits, ok := ctx.TraitData.([]spec.IngressTraitsSpec)
-	if !ok {
-		return nil, fmt.Errorf("ingress trait expects []spec.IngressTraitSpec, got %T", ctx.TraitData)
-	}
+func (p *IngressProcessor) Process(ctx *TraitContext, traits []spec.IngressTraitsSpec) (*TraitResult, error) {
 	if len(traits) == 0 {
 		return nil, nil
 	}
