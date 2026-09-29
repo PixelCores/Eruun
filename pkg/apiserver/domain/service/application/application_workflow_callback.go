@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
@@ -22,7 +23,7 @@ type applicationCallbackSelection struct {
 	overwriteAll bool
 }
 
-func (c *applicationsServiceImpl) resolveCreateApplicationCallback(ctx context.Context, req apisv1.CreateApplicationsRequest) (applicationCallbackSelection, error) {
+func resolveCreateApplicationCallback(ctx context.Context, cfg *config.Config, provider *urlpolicy.Provider, req apisv1.CreateApplicationsRequest) (applicationCallbackSelection, error) {
 	selection := applicationCallbackSelection{
 		overwriteAll: strings.TrimSpace(req.ID) != "" && req.Callback != nil,
 	}
@@ -33,11 +34,11 @@ func (c *applicationsServiceImpl) resolveCreateApplicationCallback(ctx context.C
 	}
 	selection.setCallback = true
 
-	callbackMax := workflowconfig.ResolveWorkflowCallbackTimeoutMax(c.Cfg.WorkflowRuntime())
+	callbackMax := workflowconfig.ResolveWorkflowCallbackTimeoutMax(cfg.WorkflowRuntime())
 	var urlPolicy *spec.URLSecurityPolicySpec
 	var err error
 	if workflowCallbackRequiresURLPolicy(callback) {
-		urlPolicy, err = loadURLSecurityPolicy(ctx, c.URLSecurityPolicyProvider)
+		urlPolicy, err = loadURLSecurityPolicy(ctx, provider)
 		if err != nil {
 			return selection, err
 		}
@@ -87,12 +88,12 @@ func (c *applicationsServiceImpl) resolveOperationTaskCallback(ctx context.Conte
 	return stored, nil
 }
 
-func (c *applicationsServiceImpl) normalizeWorkflowCallbackForWrite(ctx context.Context, callback *apisv1.WorkflowCallback) (*apisv1.WorkflowCallback, error) {
-	callbackMax := workflowconfig.ResolveWorkflowCallbackTimeoutMax(c.Cfg.WorkflowRuntime())
+func normalizeWorkflowCallbackForWrite(ctx context.Context, cfg *config.Config, provider *urlpolicy.Provider, callback *apisv1.WorkflowCallback) (*apisv1.WorkflowCallback, error) {
+	callbackMax := workflowconfig.ResolveWorkflowCallbackTimeoutMax(cfg.WorkflowRuntime())
 	var urlPolicy *spec.URLSecurityPolicySpec
 	var err error
 	if workflowCallbackRequiresURLPolicy(callback) {
-		urlPolicy, err = loadURLSecurityPolicy(ctx, c.URLSecurityPolicyProvider)
+		urlPolicy, err = loadURLSecurityPolicy(ctx, provider)
 		if err != nil {
 			return nil, err
 		}
