@@ -69,11 +69,10 @@ type Config struct {
 	// Istio Enable
 	IstioEnable bool
 
-	// EnableTracing enables distributed tracing
+	// EnableTracing enables tracing; JaegerEndpoint controls span export.
 	EnableTracing bool
 
-	// AutoTracing, when true and EnableTracing is false, auto-enables tracing
-	// if a supported exporter is configured or a distributed queue is used.
+	// AutoTracing enables tracing even when EnableTracing is false.
 	AutoTracing bool
 
 	// JaegerEndpoint is the endpoint of the Jaeger collector
@@ -364,9 +363,9 @@ func (c *Config) AddFlags(fs *pflag.FlagSet, configParameter *Config) {
 	fs.IntVar(&c.Datastore.MaxOpenConns, "mysql-max-open-conns", configParameter.Datastore.MaxOpenConns, "maximum number of open MySQL connections (<=0 means unlimited)")
 	fs.DurationVar(&c.Datastore.ConnMaxLifetime, "mysql-conn-max-lifetime", configParameter.Datastore.ConnMaxLifetime, "maximum amount of time a MySQL connection may be reused (<=0 disables)")
 	fs.DurationVar(&c.Datastore.ConnMaxIdleTime, "mysql-conn-max-idle-time", configParameter.Datastore.ConnMaxIdleTime, "maximum amount of time a MySQL connection may remain idle (<=0 disables)")
-	fs.BoolVar(&c.EnableTracing, "enable-tracing", configParameter.EnableTracing, "Enable distributed tracing.")
-	fs.BoolVar(&c.AutoTracing, "auto-tracing", configParameter.AutoTracing, "Auto-enable tracing when Jaeger is configured or messaging is redis (effective only if --enable-tracing=false).")
-	fs.StringVar(&c.JaegerEndpoint, "jaeger-endpoint", configParameter.JaegerEndpoint, "The endpoint of the Jaeger collector.")
+	fs.BoolVar(&c.EnableTracing, "enable-tracing", configParameter.EnableTracing, "Enable tracing; exporting spans requires --jaeger-endpoint.")
+	fs.BoolVar(&c.AutoTracing, "auto-tracing", configParameter.AutoTracing, "Enable tracing even when --enable-tracing=false; set both flags to false to disable tracing.")
+	fs.StringVar(&c.JaegerEndpoint, "jaeger-endpoint", configParameter.JaegerEndpoint, "Jaeger collector endpoint for exporting spans when tracing is enabled.")
 	// messaging basic flags (broker type & channel prefix). Redis connection will reuse RedisCacheConfig.
 	fs.StringVar(&c.Messaging.Type, "msg-type", configParameter.Messaging.Type, "messaging broker type: redis|kafka")
 	fs.StringVar(&c.Messaging.ChannelPrefix, "msg-channel-prefix", configParameter.Messaging.ChannelPrefix, "messaging channel prefix for topics")
