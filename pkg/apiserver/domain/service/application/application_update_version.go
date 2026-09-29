@@ -2,7 +2,6 @@ package application
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"strings"
@@ -19,9 +18,13 @@ import (
 // UpdateVersion 更新应用版本，支持组件的更新、新增、删除操作
 func (c *applicationsServiceImpl) UpdateVersion(ctx context.Context, appID string, req apisv1.UpdateVersionRequest) (*apisv1.UpdateVersionResponse, error) {
 	var response *apisv1.UpdateVersionResponse
-	_, err := c.withWritableApplicationLock(ctx, appID, "update-application-version", func(lockCtx context.Context, _ *model.Applications) error {
+	_, err := c.withWritableApplicationLock(ctx, appID, "update-application-version", func(lockCtx context.Context, app *model.Applications) error {
+		app, err := c.applicationForRequestedID(lockCtx, appID, app)
+		if err != nil {
+			return err
+		}
 		var updateErr error
-		response, updateErr = c.updateVersionLocked(lockCtx, appID, req)
+		response, updateErr = c.updateVersionLocked(lockCtx, app, req)
 		return updateErr
 	})
 	if err != nil {
@@ -30,24 +33,7 @@ func (c *applicationsServiceImpl) UpdateVersion(ctx context.Context, appID strin
 	return response, nil
 }
 
-func (c *applicationsServiceImpl) updateVersionLocked(ctx context.Context, appID string, req apisv1.UpdateVersionRequest) (*apisv1.UpdateVersionResponse, error) {
-	return c.updateVersionUnlocked(ctx, appID, req)
-}
-
-func (c *applicationsServiceImpl) updateVersionUnlocked(ctx context.Context, appID string, req apisv1.UpdateVersionRequest) (*apisv1.UpdateVersionResponse, error) {
-	if appID == "" {
-		return nil, bcode.ErrApplicationNotExist
-	}
-	app, err := c.AppRepo.FindByID(ctx, appID)
-	if err != nil {
-		if errors.Is(err, datastore.ErrRecordNotExist) {
-			return nil, bcode.ErrApplicationNotExist
-		}
-		return nil, err
-	}
-	if app.EffectiveManagementMode() == domainspec.ManagementModeObserve {
-		return nil, fmt.Errorf("%w: observe applications are read-only", bcode.ErrApplicationManagementMode)
-	}
+func (c *applicationsServiceImpl) updateVersionLocked(ctx context.Context, app *model.Applications, req apisv1.UpdateVersionRequest) (*apisv1.UpdateVersionResponse, error) {
 	defer func() {
 		c.invalidateApplicationListCaches(ctx)
 		c.invalidateApplicationComponentsCache(ctx, app.ID)

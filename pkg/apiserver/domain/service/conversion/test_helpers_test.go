@@ -13,7 +13,7 @@ import (
 )
 
 func NewValidationService() ValidationService {
-	return validationservice.NewValidationService()
+	return validationservice.NewValidationService(nil, nil, nil, nil)
 }
 
 func newTestURLSecurityPolicyProvider(t testing.TB, policy spec.URLSecurityPolicySpec) *urlpolicy.Provider {

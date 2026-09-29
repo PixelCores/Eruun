@@ -18,6 +18,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/validation"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event"
 	workflowevent "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow"
@@ -211,14 +212,18 @@ func (s *restServer) provideDomainAndEventBeans(runtimeQueues *msg.RuntimeQueues
 		return err
 	}
 
+	appRepo := repository.NewApplicationRepository(s.dataStore)
+	componentRepo := repository.NewComponentRepository(s.dataStore)
+	validationService := validation.NewValidationService(&s.cfg, s.urlSecurityPolicyProvider, appRepo, componentRepo)
+
 	// domain - repository (注入 Repository，依赖 datastore)
-	repositories := append(repository.InitRepositoryBean(), programmingLanguageRepository)
+	repositories := append(repository.InitRepositoryBean(appRepo, componentRepo), programmingLanguageRepository)
 	if err := s.beanContainer.Provides(repositories...); err != nil {
 		return fmt.Errorf("fail to provides the repository bean to the container: %w", err)
 	}
 
 	// domain - service (注入 Service，可依赖 Repository)
-	services := append(service.InitServiceBean(), programmingLanguageService)
+	services := append(service.InitServiceBean(validationService), programmingLanguageService)
 	for _, svc := range services {
 		if err := s.beanContainer.Provides(svc); err != nil {
 			return fmt.Errorf("fail to provides the service bean to the container: %w", err)

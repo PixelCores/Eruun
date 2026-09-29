@@ -28,7 +28,7 @@ func TestImportNamespaceResourcesPreservesEncodedSecretProvenance(t *testing.T) 
 	svc := &serviceImpl{
 		KubeClient:         fake.NewSimpleClientset(&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "backend-secret", Namespace: namespace}, Data: map[string][]byte{"password": []byte("secret-pwd")}}),
 		ApplicationService: appService,
-		ValidationService:  NewValidationService(),
+		ValidationService:  newValidationService(store),
 		AppRepo:            &mockAppRepo{store: store},
 		WorkflowRepo:       &mockWorkflowRepo{store: store},
 		ComponentRepo:      &mockComponentRepo{store: store},
@@ -109,7 +109,7 @@ func TestImportNamespaceResources_PersistsObserveModeAtomically(t *testing.T) {
 			},
 		}),
 		ApplicationService: appService,
-		ValidationService:  NewValidationService(),
+		ValidationService:  newValidationService(store),
 		AppRepo:            &mockAppRepo{store: store},
 		WorkflowRepo:       workflowRepo,
 		ComponentRepo:      &mockComponentRepo{store: store},
@@ -205,7 +205,7 @@ func TestImportNamespaceResources_ApplyResolvesEffectiveAppID(t *testing.T) {
 					},
 				}),
 				ApplicationService: appService,
-				ValidationService:  NewValidationService(),
+				ValidationService:  newValidationService(store),
 				AppRepo:            &mockAppRepo{store: store},
 				WorkflowRepo:       workflowRepo,
 				ComponentRepo:      &mockComponentRepo{store: store},
@@ -304,7 +304,7 @@ func TestImportNamespaceResources_ApplyWithFilteredKindsPreservesExistingOmitted
 			},
 		}),
 		ApplicationService: appService,
-		ValidationService:  NewValidationService(),
+		ValidationService:  newValidationService(store),
 		AppRepo:            &mockAppRepo{store: store},
 		ComponentRepo:      &mockComponentRepo{store: store},
 	}
@@ -405,7 +405,7 @@ func TestImportNamespaceResources_ApplyWithFilteredKindsDropsStaleIncludedCompon
 			Data: map[string]string{"key": "value"},
 		}),
 		ApplicationService: appService,
-		ValidationService:  NewValidationService(),
+		ValidationService:  newValidationService(store),
 		AppRepo:            &mockAppRepo{store: store},
 		ComponentRepo:      &mockComponentRepo{store: store},
 	}
@@ -504,7 +504,7 @@ func TestImportNamespaceResources_ApplyWithTraitKindsKeepsExistingWorkloadCompon
 			Data: map[string]string{"key": "value"},
 		}),
 		ApplicationService: appService,
-		ValidationService:  NewValidationService(),
+		ValidationService:  newValidationService(store),
 		AppRepo:            &mockAppRepo{store: store},
 		ComponentRepo:      &mockComponentRepo{store: store},
 	}
@@ -591,7 +591,7 @@ func TestImportNamespaceResources_ApplyWithDeploymentsOnlyKeepsAmbiguousExisting
 			},
 		}),
 		ApplicationService: appService,
-		ValidationService:  NewValidationService(),
+		ValidationService:  newValidationService(store),
 		AppRepo:            &mockAppRepo{store: store},
 		ComponentRepo:      &mockComponentRepo{store: store},
 	}
@@ -657,7 +657,7 @@ func TestImportNamespaceResources_SelectorManagedAppIDMissingInDBFailsApply(t *t
 			},
 		}),
 		ApplicationService: appService,
-		ValidationService:  NewValidationService(),
+		ValidationService:  newValidationService(store),
 		AppRepo:            &mockAppRepo{store: store},
 		ComponentRepo:      &mockComponentRepo{store: store},
 	}
@@ -747,7 +747,7 @@ func TestImportNamespaceResources_SelectorManagedComponentIDUsesResolvedMetadata
 			},
 		}),
 		ApplicationService: appService,
-		ValidationService:  NewValidationService(),
+		ValidationService:  newValidationService(store),
 		AppRepo:            &mockAppRepo{store: store},
 		ComponentRepo:      &mockComponentRepo{store: store},
 	}
@@ -805,7 +805,7 @@ func TestImportNamespaceResources_ApplySharedRBACWithoutComponentsStillLabelsRes
 			},
 		),
 		ApplicationService: appService,
-		ValidationService:  NewValidationService(),
+		ValidationService:  newValidationService(store),
 		AppRepo:            &mockAppRepo{store: store},
 		ComponentRepo:      &mockComponentRepo{store: store},
 	}
@@ -923,7 +923,7 @@ func TestImportNamespaceResources_SelectorManagedAppIDNameMismatchFailsApply(t *
 			},
 		}),
 		ApplicationService: appService,
-		ValidationService:  NewValidationService(),
+		ValidationService:  newValidationService(store),
 		AppRepo:            &mockAppRepo{store: store},
 		ComponentRepo:      &mockComponentRepo{store: store},
 	}
@@ -992,7 +992,7 @@ func TestImportNamespaceResources_ApplyUsesAppRepoFullIndexForExistingApp(t *tes
 			},
 		}),
 		ApplicationService: appService,
-		ValidationService:  NewValidationService(),
+		ValidationService:  newValidationService(store),
 		AppRepo:            &mockAppRepo{store: store},
 		ComponentRepo:      &mockComponentRepo{store: store},
 	}
@@ -1072,7 +1072,7 @@ func TestImportNamespaceResources_ApplyReimportUsesStableImportAppKey(t *testing
 		ApplicationService: &namespaceImportAppServiceStub{
 			generatedID: generatedID,
 		},
-		ValidationService: NewValidationService(),
+		ValidationService: newValidationService(firstStore),
 		AppRepo:           &mockAppRepo{store: firstStore},
 		ComponentRepo:     &mockComponentRepo{store: firstStore},
 	}
@@ -1104,7 +1104,7 @@ func TestImportNamespaceResources_ApplyReimportUsesStableImportAppKey(t *testing
 	secondSvc := &serviceImpl{
 		KubeClient:         firstSvc.KubeClient,
 		ApplicationService: secondAppSvc,
-		ValidationService:  NewValidationService(),
+		ValidationService:  newValidationService(secondStore),
 		AppRepo:            &mockAppRepo{store: secondStore},
 		ComponentRepo:      &mockComponentRepo{store: secondStore},
 	}
@@ -1178,7 +1178,7 @@ func TestImportNamespaceResources_ApplyRecomputesIDForCollapsedAppNames(t *testi
 	svc := &serviceImpl{
 		KubeClient:         fake.NewSimpleClientset(firstDeployment, secondDeployment),
 		ApplicationService: appService,
-		ValidationService:  NewValidationService(),
+		ValidationService:  newValidationService(store),
 		AppRepo:            &mockAppRepo{store: store},
 		ComponentRepo:      &mockComponentRepo{store: store},
 	}
@@ -1267,7 +1267,7 @@ func TestImportNamespaceResources_ApplyStripsReservedLabelsBeforeCreate(t *testi
 			},
 		}),
 		ApplicationService: appService,
-		ValidationService:  NewValidationService(),
+		ValidationService:  newValidationService(store),
 		AppRepo:            &mockAppRepo{store: store},
 		ComponentRepo:      &mockComponentRepo{store: store},
 	}
