@@ -63,7 +63,7 @@ func (c *applicationsServiceImpl) ExportComponentFilesZip(ctx context.Context, a
 	if err != nil {
 		return nil, err
 	}
-	archive, err := archiveComponentPodPathAsZip(ctx, c.KubeClient, c.KubeConfig, target.Namespace, target.PodName, target.ContainerName, req.Path)
+	archive, err := archiveComponentPodPathAsZip(ctx, c.KubeConfig, target.Namespace, target.PodName, target.ContainerName, req.Path)
 	if err != nil {
 		if kube.IsArchivePathInvalidError(err) || kube.IsArchivePathLookupError(err) {
 			return nil, bcode.ErrComponentFilePathInvalid
@@ -109,7 +109,7 @@ func (c *applicationsServiceImpl) execComponentShellScriptLocked(ctx context.Con
 	if err != nil {
 		return nil, err
 	}
-	result, err := execComponentPodShellScript(ctx, c.KubeClient, c.KubeConfig, target.Namespace, target.PodName, target.ContainerName, req.Script)
+	result, err := execComponentPodShellScript(ctx, c.KubeConfig, target.Namespace, target.PodName, target.ContainerName, req.Script)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +150,7 @@ func (c *applicationsServiceImpl) streamComponentShellScriptLocked(ctx context.C
 	if err != nil {
 		return nil, err
 	}
-	events, err := streamComponentPodShellScript(ctx, c.KubeClient, c.KubeConfig, target.Namespace, target.PodName, target.ContainerName, req.Script)
+	events, err := streamComponentPodShellScript(ctx, c.KubeConfig, target.Namespace, target.PodName, target.ContainerName, req.Script)
 	if err != nil {
 		return nil, err
 	}

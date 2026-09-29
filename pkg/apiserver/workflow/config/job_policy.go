@@ -6,9 +6,6 @@ type JobRunPolicy string
 
 const (
 	DefaultRun                  JobRunPolicy = ""
-	DefaultNotRun               JobRunPolicy = "default_not_run"
-	ForceRun                    JobRunPolicy = "force_run"
-	SkipRun                     JobRunPolicy = "skip"
 	JobRunPolicyRecreate        JobRunPolicy = "recreate"
 	JobRunPolicySkipIfCompleted JobRunPolicy = "skip_if_completed"
 )

@@ -2,7 +2,6 @@ package informer
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -10,15 +9,14 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/async"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
 )
 
 const (
-	statusSyncSubmitTimeout = 100 * time.Millisecond
 	podRestartConfigTimeout = 2 * time.Second
 	podOwnerKindReplicaSet  = "ReplicaSet"
 )
@@ -27,12 +25,11 @@ const (
 type ResourceReadyWaiter struct {
 	// statusSyncFunc 状态同步回调（更新数据库）
 	statusSyncFunc StatusSyncFunc
-	// statusSyncExecutor 为状态同步回调提供有界异步执行，避免散点裸协程。
-	statusSyncExecutor *async.BoundedExecutor
+	// statusSyncQueue serializes each component while two workers bound callbacks.
+	statusSyncQueue    workqueue.TypedInterface[componentStatusSyncKey]
 	statusSyncMu       sync.Mutex
-	statusSyncLanes    map[componentStatusSyncKey]*componentStatusSyncLane
+	statusSyncLatest   map[componentStatusSyncKey]componentStatusSyncUpdate
 	statusSyncEpoch    uint64
-	statusSyncSignal   chan struct{}
 	statusSyncStop     chan struct{}
 	statusSyncWG       sync.WaitGroup
 	podGenerationMu    sync.RWMutex
@@ -51,10 +48,9 @@ type componentStatusSyncKey struct {
 	componentID int
 }
 
-type componentStatusSyncLane struct {
-	latest *ComponentStatusUpdate
+type componentStatusSyncUpdate struct {
+	update *ComponentStatusUpdate
 	epoch  uint64
-	active bool
 }
 
 type podStatusInfo struct {
@@ -129,16 +125,17 @@ func (t *podRestartTracker) reset() {
 // NewResourceReadyWaiter creates the Controller Pod event handler.
 func NewResourceReadyWaiter() *ResourceReadyWaiter {
 	waiter := &ResourceReadyWaiter{
-		pods:               newPodTracker(),
-		podRestarts:        newPodRestartTracker(),
-		statusSyncExecutor: async.NewBoundedExecutor("informer-status-sync", 2, 256),
-		statusSyncLanes:    make(map[componentStatusSyncKey]*componentStatusSyncLane),
-		statusSyncSignal:   make(chan struct{}, 1),
-		statusSyncStop:     make(chan struct{}),
-		now:                time.Now,
+		pods:             newPodTracker(),
+		podRestarts:      newPodRestartTracker(),
+		statusSyncQueue:  workqueue.NewTyped[componentStatusSyncKey](),
+		statusSyncLatest: make(map[componentStatusSyncKey]componentStatusSyncUpdate),
+		statusSyncStop:   make(chan struct{}),
+		now:              time.Now,
 	}
-	waiter.statusSyncWG.Add(1)
-	go waiter.runStatusSyncRetry()
+	waiter.statusSyncWG.Add(2)
+	for range 2 {
+		go waiter.runStatusSyncWorker()
+	}
 	return waiter
 }
 
@@ -149,15 +146,9 @@ func (w *ResourceReadyWaiter) Close() {
 	}
 	w.closeOnce.Do(func() {
 		close(w.statusSyncStop)
+		w.statusSyncQueue.ShutDown()
 		w.fencePodSnapshotGenerations()
-		if w.statusSyncExecutor != nil {
-			w.statusSyncExecutor.Close()
-		}
 		w.statusSyncWG.Wait()
-		w.statusSyncMu.Lock()
-		w.statusSyncEpoch++
-		w.statusSyncLanes = make(map[componentStatusSyncKey]*componentStatusSyncLane)
-		w.statusSyncMu.Unlock()
 	})
 }
 
@@ -798,26 +789,16 @@ func (w *ResourceReadyWaiter) syncComponentSnapshot(snapshot componentSnapshot) 
 		return
 	}
 	update := buildStatusUpdate(snapshot)
-	key, schedule := w.enqueueStatusSync(update)
-	if !schedule {
+	key := componentStatusSyncKey{appID: update.AppID, componentID: update.ComponentID}
+	w.statusSyncMu.Lock()
+	defer w.statusSyncMu.Unlock()
+	select {
+	case <-w.statusSyncStop:
 		return
+	default:
 	}
-	submitCtx, cancel := context.WithTimeout(context.Background(), statusSyncSubmitTimeout)
-	defer cancel()
-	if err := w.submitStatusSyncLane(submitCtx, key); err != nil {
-		if errors.Is(err, async.ErrExecutorClosed) {
-			w.discardStatusSyncLane(key)
-			klog.V(4).Infof("skip component status sync appID=%s componentID=%d: executor closed", snapshot.appID, snapshot.componentID)
-			return
-		}
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			w.deferStatusSyncLane(key)
-			klog.Warningf("defer component status sync appID=%s componentID=%d: submit timeout", snapshot.appID, snapshot.componentID)
-			return
-		}
-		w.deferStatusSyncLane(key)
-		klog.Warningf("submit component status sync failed appID=%s componentID=%d: %v", snapshot.appID, snapshot.componentID, err)
-	}
+	w.statusSyncLatest[key] = componentStatusSyncUpdate{update: update, epoch: w.statusSyncEpoch}
+	w.statusSyncQueue.Add(key)
 }
 
 func buildStatusUpdate(snapshot componentSnapshot) *ComponentStatusUpdate {
@@ -854,60 +835,25 @@ func (w *ResourceReadyWaiter) executeStatusSync(update *ComponentStatusUpdate) {
 	w.statusSyncFunc(update)
 }
 
-func (w *ResourceReadyWaiter) enqueueStatusSync(update *ComponentStatusUpdate) (componentStatusSyncKey, bool) {
-	key := componentStatusSyncKey{}
-	if w == nil || update == nil {
-		return key, false
-	}
-	key = componentStatusSyncKey{appID: update.AppID, componentID: update.ComponentID}
-	w.statusSyncMu.Lock()
-	defer w.statusSyncMu.Unlock()
-	select {
-	case <-w.statusSyncStop:
-		return key, false
-	default:
-	}
-	lane := w.statusSyncLanes[key]
-	if lane == nil {
-		lane = &componentStatusSyncLane{}
-		w.statusSyncLanes[key] = lane
-	}
-	lane.latest = update
-	lane.epoch = w.statusSyncEpoch
-	if lane.active {
-		return key, false
-	}
-	lane.active = true
-	return key, true
-}
-
-func (w *ResourceReadyWaiter) submitStatusSyncLane(ctx context.Context, key componentStatusSyncKey) error {
-	if w == nil {
-		return nil
-	}
-	if w.statusSyncExecutor == nil {
-		w.drainStatusSyncLane(key)
-		return nil
-	}
-	return w.statusSyncExecutor.Submit(ctx, func() {
-		w.drainStatusSyncLane(key)
-	})
-}
-
-func (w *ResourceReadyWaiter) drainStatusSyncLane(key componentStatusSyncKey) {
+func (w *ResourceReadyWaiter) runStatusSyncWorker() {
+	defer w.statusSyncWG.Done()
 	for {
+		key, shutdown := w.statusSyncQueue.Get()
+		if shutdown {
+			return
+		}
+		// ShutDown still returns queued keys; Close must discard their callbacks.
 		select {
 		case <-w.statusSyncStop:
-			w.discardStatusSyncLane(key)
+			w.statusSyncQueue.Done(key)
 			return
 		default:
 		}
-
 		update, epoch, ok := w.takeLatestStatusSync(key)
-		if !ok {
-			return
+		if ok {
+			w.executeStatusSyncIfCurrent(update, epoch)
 		}
-		w.executeStatusSyncIfCurrent(update, epoch)
+		w.statusSyncQueue.Done(key)
 	}
 }
 
@@ -925,18 +871,9 @@ func (w *ResourceReadyWaiter) executeStatusSyncIfCurrent(update *ComponentStatus
 func (w *ResourceReadyWaiter) takeLatestStatusSync(key componentStatusSyncKey) (*ComponentStatusUpdate, uint64, bool) {
 	w.statusSyncMu.Lock()
 	defer w.statusSyncMu.Unlock()
-	lane := w.statusSyncLanes[key]
-	if lane == nil {
-		return nil, 0, false
-	}
-	if lane.latest == nil {
-		delete(w.statusSyncLanes, key)
-		return nil, 0, false
-	}
-	update := lane.latest
-	epoch := lane.epoch
-	lane.latest = nil
-	return update, epoch, true
+	latest, ok := w.statusSyncLatest[key]
+	delete(w.statusSyncLatest, key)
+	return latest.update, latest.epoch, ok
 }
 
 func (w *ResourceReadyWaiter) isCurrentStatusSyncEpoch(epoch uint64) bool {
@@ -945,105 +882,11 @@ func (w *ResourceReadyWaiter) isCurrentStatusSyncEpoch(epoch uint64) bool {
 	return epoch == w.statusSyncEpoch
 }
 
-func (w *ResourceReadyWaiter) deferStatusSyncLane(key componentStatusSyncKey) {
-	if w == nil {
-		return
-	}
-	w.statusSyncMu.Lock()
-	lane := w.statusSyncLanes[key]
-	if lane != nil {
-		lane.active = false
-		if lane.latest == nil {
-			delete(w.statusSyncLanes, key)
-		}
-	}
-	w.statusSyncMu.Unlock()
-	w.signalStatusSyncRetry()
-}
-
-func (w *ResourceReadyWaiter) discardStatusSyncLane(key componentStatusSyncKey) {
-	if w == nil {
-		return
-	}
-	w.statusSyncMu.Lock()
-	delete(w.statusSyncLanes, key)
-	w.statusSyncMu.Unlock()
-}
-
-func (w *ResourceReadyWaiter) signalStatusSyncRetry() {
-	if w == nil {
-		return
-	}
-	select {
-	case <-w.statusSyncStop:
-		return
-	default:
-	}
-	select {
-	case w.statusSyncSignal <- struct{}{}:
-	default:
-	}
-}
-
-func (w *ResourceReadyWaiter) runStatusSyncRetry() {
-	defer w.statusSyncWG.Done()
-	for {
-		select {
-		case <-w.statusSyncStop:
-			return
-		case <-w.statusSyncSignal:
-			w.retryDeferredStatusSyncLanes()
-		}
-	}
-}
-
-func (w *ResourceReadyWaiter) retryDeferredStatusSyncLanes() {
-	for {
-		key, ok := w.activateDeferredStatusSyncLane()
-		if !ok {
-			return
-		}
-		if err := w.submitStatusSyncLane(context.Background(), key); err != nil {
-			if errors.Is(err, async.ErrExecutorClosed) {
-				w.discardStatusSyncLane(key)
-				return
-			}
-			w.deferStatusSyncLane(key)
-			return
-		}
-	}
-}
-
-func (w *ResourceReadyWaiter) activateDeferredStatusSyncLane() (componentStatusSyncKey, bool) {
-	w.statusSyncMu.Lock()
-	defer w.statusSyncMu.Unlock()
-	select {
-	case <-w.statusSyncStop:
-		return componentStatusSyncKey{}, false
-	default:
-	}
-	for key, lane := range w.statusSyncLanes {
-		if lane == nil || lane.active || lane.latest == nil {
-			continue
-		}
-		lane.active = true
-		return key, true
-	}
-	return componentStatusSyncKey{}, false
-}
-
 func (w *ResourceReadyWaiter) resetStatusSyncGeneration() {
 	w.statusSyncMu.Lock()
 	defer w.statusSyncMu.Unlock()
 	w.statusSyncEpoch++
-	for key, lane := range w.statusSyncLanes {
-		if lane == nil || !lane.active {
-			delete(w.statusSyncLanes, key)
-			continue
-		}
-		lane.latest = nil
-		lane.epoch = w.statusSyncEpoch
-	}
+	clear(w.statusSyncLatest)
 }
 
 func componentStatusFromSnapshot(snapshot componentSnapshot) config.ComponentStatus {

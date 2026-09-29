@@ -1,10 +1,10 @@
 # 全仓过度设计审计（2026-09-29，第三轮）
 
-> 状态：Historical / Audit。基线为 `main@02503bdbc6ca5045542fa2f1aac71dc91c56a84c`，代码证据固定到该提交。本文仅记录审计结论和建议，O13–O15 尚未实施；不代表线上验收。前两轮整改已经进入本轮基线。
+> 状态：Historical / Audit。基线为 `main@02503bdbc6ca5045542fa2f1aac71dc91c56a84c`，代码证据固定到该提交。O13–O15 及两项候选已在 [PR #118](https://github.com/PixelCores/Eruun/pull/118) 分支实施，处置和本地验收见下文；不据此声明已合入 main 或完成线上验收。前两轮整改已经进入本轮审计基线。
 
 ## 结论与范围
 
-本轮确认 **3 项可处理问题**。优先修正 Ingress 默认规则的两套实现：合法配置已经能让 API 查询摘要与实际资源渲染给出不同端口。其次删除无生产调用的结果发送旧入口，收窄不使用却持续传递的依赖参数。另保留两项低优先级候选，分别是状态同步调度层和遗留策略常量；不为增加发现数量而把所有复杂机制列成待删代码。
+审计基线中确认 **3 项可处理问题**。优先修正 Ingress 默认规则的两套实现：合法配置已经能让 API 查询摘要与实际资源渲染给出不同端口。其次删除无生产调用的结果发送旧入口，收窄不使用却持续传递的依赖参数。另保留两项低优先级候选，分别是状态同步调度层和遗留策略常量；不为增加发现数量而把所有复杂机制列成待删代码。
 
 从 `docs/README.md` 路由到启动装配、HTTP/gRPC、领域服务与校验、Workflow/Job/Traits、Harbor、基础设施、配置和部署，沿真实调用、数据来源和现有测试取证。本轮不是逐行穷尽审计。文件长度、接口数量、生成代码和第三方依赖体积均不单独构成问题；Draft / Proposal 不作为当前实现契约。
 
@@ -15,6 +15,22 @@
 | O15 | 4 个构造/执行函数声明并传递未读取的依赖 | P3：调用者和测试替身承担无效参数 | 仅移除这些形参及传递，保留外围授权和运行依赖 |
 
 P2 表示可复现的功能不一致，P3 表示维护债务；没有据此声称已发生线上事故或测得性能收益。
+
+## 后续实施处置
+
+以下为本 PR 分支的实施状态；后文 O13–O15 和候选保留审计时的证据与建议，不再作为当前分支的未完成清单。
+
+| 项目 | 已实施的收敛 | 保留与验收 |
+| --- | --- | --- |
+| O13 | assembler 与 Trait 渲染复用 `domain/spec` 的后端默认值及相同的 rewrite/pathType 规则 | 批量摘要与渲染使用同一输入比较；第二 Service 端口及显式默认服务的 properties 回退先证明旧实现失败，修复后通过。保留查询容错、部署歧义拒绝及输入模型不变 |
+| O14 | 删除 `EnqueueResultJob`、`dispatchJobResult`、`newJobResultPayload`，测试改走真实 `enqueueResultJob` | 保留消息字段编码、错误身份和 Delay 构造/解码断言；outbox、CAS、ACK、执行身份与恢复路径未改 |
+| O15 | `BuildTask` 仅收任务与 namespace；3 个 Pod 执行/归档 helper 移除 client 形参，调用者与替身同步收窄 | 外围服务的 context、Store、Config、Pod 查询 KubeClient 和执行 rest.Config 保留；既有行为测试及 integration tag 调用编译通过 |
+| 状态同步候选 | 复用 client-go 按 key 去重的 workqueue 和 2 个固定 worker，移除额外 active、提交超时、signal/retry goroutine；删除失去唯一生产消费者的 `utils/async` | 保留 latest payload、epoch、generation fence、同 key 串行、并发上限、reset 等待与 Close 丢弃待办；覆盖饱和、重置、关闭及 panic 后继续处理 |
+| 旧策略常量 | 删除 `DefaultNotRun`、`ForceRun`、`SkipRun` | `NormalizeJobRunPolicy` 实现未变，空值、`recreate`、`skip_if_completed` 和未知值行为保持 |
+
+修复后，报告中原始探针的 `summary_backend` 与 `rendered_backend` 都为 `api-v2:9090`。查询摘要的错误值得到修正，HTTP/gRPC 路由及 JSON 字段不变。
+
+**源码接入。** 仓内调用已更新；仓外 Go 消费者未验证。直接使用 `jobs.BuildTask` 的代码应改为 `BuildTask(task, namespace)`，Pod helper 调用应删除 client 实参、继续传递 context 与 rest.Config。旧结果包装、策略常量和 `utils/async` 已移除，不保留兼容转发层。可靠结果发送继续通过既有 outbox 流程，不应在仓外补回绕过持久化的发送路径。
 
 ## O13｜Ingress 默认规则由查询层和渲染层分别维护
 
@@ -161,7 +177,7 @@ Go API 与 Python Runner 的归档校验处在不同信任边界，不能当成�
 
 以上具体旧项不再作为未完成待办；不表示相关模块已不存在其他债务。旧数据库参数迁移仍参见 [本地依赖](local-docker-dependencies.md) 和 [Helm 部署](helm-deployment.md)。本文复用原审计文件，详细历史通过固定提交保留。
 
-## 本轮验证与后续实施边界
+## 审计基线验证
 
 通过符号/导入检索和函数体核对建立 O14、O15 的消费者及依赖证据；O13 使用上述真实函数探针复现。以下既有测试在本轮基线通过，证明当前契约与测试现状，**不是尚未实施的简化方案已经验收**：
 
@@ -182,4 +198,21 @@ go test ./pkg/apiserver/jobs -race -run '^(TestCommandAndEvaluationRenderIntoThe
 go test ./pkg/apiserver/infrastructure/informer -race -run 'TestStatusSync|TestResetPodSnapshots|TestCloseDropsQueuedStatusSyncCallbacks|TestCloseUnblocksDeferredStatusSyncSubmit|TestResourceReadyWaiterCloseIsIdempotent' -count=1
 ```
 
-本 PR 只修改本文和索引，未改生产代码或测试。另检查固定证据链接的文件/行号、Markdown 本地链接、`git diff --check` 和敏感内容。本轮不重复上轮的全仓 race/coverage、build、installer 和 Helm 验收；这些历史记录见 PR #117 的固定报告。未连接真实 MySQL/Redis/Kafka/Kubernetes/ACS，未运行云 SDK 验收或性能基准，也未验证仓外 Go 消费者。
+审计初稿 `921220e` 只修改本文和索引，未改生产代码或测试；当时另检查固定证据链接的文件/行号、Markdown 本地链接、`git diff --check` 和敏感内容。审计阶段没有重复上轮的全仓验收，后续实施验收独立记录如下。未连接真实 MySQL/Redis/Kafka/Kubernetes/ACS，未运行云 SDK 验收或性能基准，也未验证仓外 Go 消费者。
+
+## 后续实施验收
+
+修复基线为 `921220e`。O13 新增回归先在旧生产实现上复现端口错误；O14/O15 迁移已有行为断言，不为被删除的入口另建兼容层。状态同步测试以固定 2 worker 的实际行为验证，移除只绑定旧 executor/signal 实现的操作。
+
+已通过：
+
+```sh
+go test -race -cover -p 2 ./...
+go vet ./...
+go build -trimpath -o /tmp/eruun-round3-server ./cmd/main.go
+go test -tags integration ./pkg/apiserver/jobs -run '^$'
+scripts/check-sensitive-content.sh
+git diff --check
+```
+
+另完成触及 Go 文件格式检查、原始 Ingress 探针复跑及限定改动范围的独立回归审查。integration tag 命令只验证编译，不代表执行真实数据库集成测试。部署文件、安装器和 Helm 契约没有修改，沿用基线的对应验收；未开展真实集群、数据库、云 SDK、仓外 Go 集成或性能验证。

@@ -28,7 +28,7 @@ func TestCommandAndEvaluationRenderIntoTheSameWorkspaceNamespace(t *testing.T) {
 	require.NoError(t, err)
 	parent := &model.WorkflowQueue{TaskID: command.TaskID}
 	require.NoError(t, f.raw.Get(ctx, parent))
-	task, err := BuildTask(ctx, f.service.Store, f.service.Config, parent, "space-ns")
+	task, err := BuildTask(parent, "space-ns")
 	require.NoError(t, err)
 	workload := task.JobInfo.(*batchv1.Job)
 	require.Equal(t, f.workload.Namespace, workload.Namespace)
@@ -67,7 +67,7 @@ func TestEvaluationCredentialEnvsSurviveRunnerPlatformEnvs(t *testing.T) {
 	require.NoError(t, err)
 	parent := &model.WorkflowQueue{TaskID: accepted.TaskID}
 	require.NoError(t, raw.Get(ctx, parent))
-	task, err := BuildTask(ctx, service.Store, service.Config, parent, "space-ns")
+	task, err := BuildTask(parent, "space-ns")
 	require.NoError(t, err)
 	require.NoError(t, BuildEvaluationTask(ctx, service.Store, service.Config, task, spec.JobTraits{}))
 
