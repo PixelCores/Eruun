@@ -24,7 +24,6 @@ import (
 	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 )
 
 func TestVersionRestartJobCtlAdoptedDeploymentUsesSourceIdentity(t *testing.T) {
@@ -259,9 +258,9 @@ func TestVersionRestartJobCtlRestartsDeployment(t *testing.T) {
 	deployment := databaseResetDeployment(t, api)
 	client := fake.NewSimpleClientset(deployment)
 	task := versionRestartTask(api)
-	waiter := informer.NewResourceReadyWaiter()
-	t.Cleanup(waiter.Close)
-	waiter.OnPodAdd(versionRestartReadyPod(api, "api-old", "old-restarted-at"))
+	_, err := client.CoreV1().Pods("default").Create(context.Background(), versionRestartReadyPod(api, "api-old", "old-restarted-at"), metav1.CreateOptions{})
+	require.NoError(t, err)
+	waiter := startWorkloadTestObserver(t, client)
 	cacheStore := cacheutil.NewMemCache(false)
 	cacheKey := cacheutil.ApplicationComponentsKey(api.AppID)
 	require.NoError(t, cacheStore.Store(context.Background(), cacheKey, "stale"))
@@ -276,7 +275,8 @@ func TestVersionRestartJobCtlRestartsDeployment(t *testing.T) {
 	result := runVersionRestartAsync(ctl)
 	restartedAt := waitForDeploymentRestartAt(t, client, deployment.Name)
 	assertNoVersionRestartResult(t, result, 80*time.Millisecond)
-	waiter.OnPodAdd(versionRestartReadyPod(api, "api-new", restartedAt))
+	_, err = client.CoreV1().Pods("default").Create(context.Background(), versionRestartReadyPod(api, "api-new", restartedAt), metav1.CreateOptions{})
+	require.NoError(t, err)
 	require.NoError(t, readVersionRestartResult(t, result))
 
 	updatedDeployment, err := client.AppsV1().Deployments("default").Get(context.Background(), deployment.Name, metav1.GetOptions{})
@@ -293,9 +293,9 @@ func TestVersionRestartJobCtlRestartsStatefulSet(t *testing.T) {
 	_, statefulSet := databaseResetStatefulSet(t, db)
 	client := fake.NewSimpleClientset(statefulSet)
 	task := versionRestartTask(db)
-	waiter := informer.NewResourceReadyWaiter()
-	t.Cleanup(waiter.Close)
-	waiter.OnPodAdd(versionRestartReadyPod(db, "mysql-old", "old-restarted-at"))
+	_, err := client.CoreV1().Pods("default").Create(context.Background(), versionRestartReadyPod(db, "mysql-old", "old-restarted-at"), metav1.CreateOptions{})
+	require.NoError(t, err)
+	waiter := startWorkloadTestObserver(t, client)
 	ctl := NewVersionRestartJobCtl(task, newJobRuntime(&Runtime{
 		Client:         client,
 		Store:          store,
@@ -305,7 +305,8 @@ func TestVersionRestartJobCtlRestartsStatefulSet(t *testing.T) {
 	result := runVersionRestartAsync(ctl)
 	restartedAt := waitForStatefulSetRestartAt(t, client, statefulSet.Name)
 	assertNoVersionRestartResult(t, result, 80*time.Millisecond)
-	waiter.OnPodAdd(versionRestartReadyPod(db, "mysql-new", restartedAt))
+	_, err = client.CoreV1().Pods("default").Create(context.Background(), versionRestartReadyPod(db, "mysql-new", restartedAt), metav1.CreateOptions{})
+	require.NoError(t, err)
 	require.NoError(t, readVersionRestartResult(t, result))
 
 	updatedStatefulSet, err := client.AppsV1().StatefulSets("default").Get(context.Background(), statefulSet.Name, metav1.GetOptions{})
@@ -441,10 +442,10 @@ func TestVersionRestartJobCtlFailsWhenRestartedDeploymentPodCrashLoops(t *testin
 	deployment := databaseResetDeployment(t, api)
 	client := fake.NewSimpleClientset(deployment)
 	task := versionRestartTask(api)
-	task.Timeout = 1
-	waiter := informer.NewResourceReadyWaiter()
-	t.Cleanup(waiter.Close)
-	waiter.OnPodAdd(versionRestartReadyPod(api, "api-old", "old-restarted-at"))
+	task.Timeout = 3
+	_, err := client.CoreV1().Pods("default").Create(context.Background(), versionRestartReadyPod(api, "api-old", "old-restarted-at"), metav1.CreateOptions{})
+	require.NoError(t, err)
+	waiter := startWorkloadTestObserver(t, client)
 	ctl := NewVersionRestartJobCtl(task, newJobRuntime(&Runtime{
 		Client:         client,
 		Store:          store,
@@ -453,9 +454,10 @@ func TestVersionRestartJobCtlFailsWhenRestartedDeploymentPodCrashLoops(t *testin
 
 	result := runVersionRestartAsync(ctl)
 	restartedAt := waitForDeploymentRestartAt(t, client, deployment.Name)
-	waiter.OnPodAdd(versionRestartCrashLoopPod(api, "api-new", restartedAt))
+	_, err = client.CoreV1().Pods("default").Create(context.Background(), versionRestartCrashLoopPod(api, "api-new", restartedAt), metav1.CreateOptions{})
+	require.NoError(t, err)
 
-	err := readVersionRestartResult(t, result)
+	err = readVersionRestartResult(t, result)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "CrashLoopBackOff")
 	require.Equal(t, config.StatusFailed, task.Status)
@@ -469,10 +471,10 @@ func TestVersionRestartJobCtlFailsWhenRestartedStatefulSetPodCrashLoops(t *testi
 	_, statefulSet := databaseResetStatefulSet(t, db)
 	client := fake.NewSimpleClientset(statefulSet)
 	task := versionRestartTask(db)
-	task.Timeout = 1
-	waiter := informer.NewResourceReadyWaiter()
-	t.Cleanup(waiter.Close)
-	waiter.OnPodAdd(versionRestartReadyPod(db, "mysql-old", "old-restarted-at"))
+	task.Timeout = 3
+	_, err := client.CoreV1().Pods("default").Create(context.Background(), versionRestartReadyPod(db, "mysql-old", "old-restarted-at"), metav1.CreateOptions{})
+	require.NoError(t, err)
+	waiter := startWorkloadTestObserver(t, client)
 	ctl := NewVersionRestartJobCtl(task, newJobRuntime(&Runtime{
 		Client:         client,
 		Store:          store,
@@ -481,9 +483,10 @@ func TestVersionRestartJobCtlFailsWhenRestartedStatefulSetPodCrashLoops(t *testi
 
 	result := runVersionRestartAsync(ctl)
 	restartedAt := waitForStatefulSetRestartAt(t, client, statefulSet.Name)
-	waiter.OnPodAdd(versionRestartCrashLoopPod(db, "mysql-new", restartedAt))
+	_, err = client.CoreV1().Pods("default").Create(context.Background(), versionRestartCrashLoopPod(db, "mysql-new", restartedAt), metav1.CreateOptions{})
+	require.NoError(t, err)
 
-	err := readVersionRestartResult(t, result)
+	err = readVersionRestartResult(t, result)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "CrashLoopBackOff")
 	require.Equal(t, config.StatusFailed, task.Status)
@@ -532,7 +535,7 @@ func readVersionRestartResult(t *testing.T, result <-chan error) error {
 	select {
 	case err := <-result:
 		return err
-	case <-time.After(3 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("timeout waiting for version restart job result")
 		return nil
 	}

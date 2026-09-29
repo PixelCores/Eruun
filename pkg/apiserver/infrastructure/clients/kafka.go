@@ -16,10 +16,6 @@ import (
 )
 
 var (
-	kafkaMu     sync.Mutex
-	kafkaDialer *kafka.Dialer
-	kafkaConns  map[string]*kafka.Conn // broker address -> connection
-
 	kafkaProbeTimeout = 5 * time.Second
 	kafkaDialContext  = func(d *kafka.Dialer, ctx context.Context, network, address string) (*kafka.Conn, error) {
 		return d.DialContext(ctx, network, address)
@@ -113,10 +109,6 @@ func (w *kafkaProbeWriter) Close() error {
 	return w.writer.Close()
 }
 
-func init() {
-	kafkaConns = make(map[string]*kafka.Conn)
-}
-
 // KafkaConfig holds the configuration for Kafka client initialization.
 type KafkaConfig struct {
 	Brokers                []string
@@ -126,23 +118,15 @@ type KafkaConfig struct {
 	TopicReplicationFactor int
 }
 
-// EnsureKafka validates the Kafka brokers connectivity and returns the dialer.
-// It performs a health check by connecting to one of the brokers.
-// The connection is cached for reuse.
-func EnsureKafka(cfg KafkaConfig) (*kafka.Dialer, error) {
+// EnsureKafka checks broker connectivity and ensures the configured topics exist.
+func EnsureKafka(cfg KafkaConfig) error {
 	if len(cfg.Brokers) == 0 {
-		return nil, fmt.Errorf("kafka brokers cannot be empty")
+		return fmt.Errorf("kafka brokers cannot be empty")
 	}
 
-	kafkaMu.Lock()
-	defer kafkaMu.Unlock()
-
-	if kafkaDialer == nil {
-		dialer, err := initKafkaDialerLocked(cfg.Brokers)
-		if err != nil {
-			return nil, err
-		}
-		kafkaDialer = dialer
+	dialer, err := probeKafkaBrokers(cfg.Brokers)
+	if err != nil {
+		return err
 	}
 
 	for _, topic := range normalizeKafkaTopics(cfg.Topic, cfg.Topics...) {
@@ -154,15 +138,15 @@ func EnsureKafka(cfg KafkaConfig) (*kafka.Dialer, error) {
 		if replication <= 0 {
 			replication = 1
 		}
-		if err := ensureKafkaTopicLocked(kafkaDialer, cfg.Brokers, topic, partitions, replication); err != nil {
-			return nil, err
+		if err := ensureKafkaTopic(dialer, cfg.Brokers, topic, partitions, replication); err != nil {
+			return err
 		}
 	}
 
-	return kafkaDialer, nil
+	return nil
 }
 
-func initKafkaDialerLocked(brokers []string) (*kafka.Dialer, error) {
+func probeKafkaBrokers(brokers []string) (*kafka.Dialer, error) {
 	dialer := &kafka.Dialer{
 		Timeout:   10 * time.Second,
 		DualStack: true,
@@ -179,14 +163,14 @@ func initKafkaDialerLocked(brokers []string) (*kafka.Dialer, error) {
 			continue
 		}
 
-		kafkaConns[broker] = conn
+		closeKafkaConn(conn)
 		klog.V(2).Infof("kafka dialer initialized, connected to broker: %s", broker)
 		return dialer, nil
 	}
 	return nil, fmt.Errorf("failed to connect to any kafka broker: %w", lastErr)
 }
 
-func ensureKafkaTopicLocked(dialer *kafka.Dialer, brokers []string, topic string, partitions, replication int) error {
+func ensureKafkaTopic(dialer *kafka.Dialer, brokers []string, topic string, partitions, replication int) error {
 	exists, err := kafkaTopicExists(context.Background(), dialer, brokers, topic)
 	if err != nil {
 		return fmt.Errorf("check kafka topic %s: %w", topic, err)
@@ -208,24 +192,6 @@ func ensureKafkaTopicLocked(dialer *kafka.Dialer, brokers []string, topic string
 	}
 	klog.Infof("kafka topic ensured: %s (partitions=%d replication=%d)", topic, partitions, replication)
 	return nil
-}
-
-// CloseKafkaConnections closes all cached Kafka connections.
-// This should be called during graceful shutdown.
-func CloseKafkaConnections() {
-	kafkaMu.Lock()
-	defer kafkaMu.Unlock()
-
-	for addr, conn := range kafkaConns {
-		if conn == nil {
-			continue
-		}
-		if err := conn.Close(); err != nil {
-			klog.Warningf("failed to close kafka connection to %s: %v", addr, err)
-		}
-	}
-	kafkaConns = make(map[string]*kafka.Conn)
-	kafkaDialer = nil
 }
 
 // CheckKafkaHealth performs a broker-only Kafka health check.

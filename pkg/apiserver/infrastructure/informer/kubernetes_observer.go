@@ -204,5 +204,4 @@ func (o *KubernetesWorkloadObserver) WaitForComponentReadyWithOptions(ctx contex
 	return NewWaitError(config.StatusTimeout, fmt.Errorf("component %s/%s timeout after %v", appID, componentName, timeout))
 }
 
-var _ ComponentReadyObserver = (*ResourceReadyWaiter)(nil)
 var _ ComponentReadyObserver = (*KubernetesWorkloadObserver)(nil)

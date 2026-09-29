@@ -285,7 +285,7 @@ func (s *restServer) ensureKafkaMessagingReady() error {
 		return nil
 	}
 
-	_, err := ensureKafkaMessaging(clients.KafkaConfig{
+	err := ensureKafkaMessaging(clients.KafkaConfig{
 		Brokers:                s.cfg.Messaging.KafkaBrokers,
 		Topics:                 topics,
 		TopicPartitions:        s.cfg.Messaging.KafkaTopicPartitions,

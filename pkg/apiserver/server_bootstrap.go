@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -18,7 +17,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api"
 	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/middleware"
@@ -201,10 +199,6 @@ func watchRuntimeShutdown(parent, runtimeCtx context.Context, shutdown func()) {
 }
 
 func (s *restServer) Run(ctx context.Context, errChan chan error) error {
-	if strings.EqualFold(strings.TrimSpace(s.cfg.Messaging.Type), config.KAFKA) {
-		defer clients.CloseKafkaConnections()
-	}
-
 	// build the Ioc Container
 	if err := s.buildIoCContainer(ctx); err != nil {
 		return err

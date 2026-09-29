@@ -3,6 +3,8 @@ package clients
 import (
 	"context"
 	"errors"
+	"io"
+	"net"
 	"strconv"
 	"sync"
 	"testing"
@@ -94,17 +96,8 @@ func (m *mockKafkaProbeWriteCloser) Close() error {
 	return nil
 }
 
-func resetKafkaClientStateForTest() {
-	kafkaMu.Lock()
-	defer kafkaMu.Unlock()
-	kafkaDialer = nil
-	kafkaConns = map[string]*kafka.Conn{}
-}
-
 func TestEnsureKafkaEmptyBrokers(t *testing.T) {
-	CloseKafkaConnections()
-
-	_, err := EnsureKafka(KafkaConfig{})
+	err := EnsureKafka(KafkaConfig{})
 	require.Error(t, err)
 }
 
@@ -113,25 +106,12 @@ func TestCheckKafkaHealthNoBrokers(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestCloseKafkaConnectionsResetsDialer(t *testing.T) {
-	kafkaDialer = &kafka.Dialer{}
-	kafkaConns = map[string]*kafka.Conn{}
-
-	CloseKafkaConnections()
-
-	require.Nil(t, kafkaDialer)
-	require.Empty(t, kafkaConns)
-}
-
 func TestEnsureKafkaTriesNextBrokerAfterFailure(t *testing.T) {
-	resetKafkaClientStateForTest()
-
 	oldDialFn := kafkaDialContext
 	oldProbeTimeout := kafkaProbeTimeout
 	t.Cleanup(func() {
 		kafkaDialContext = oldDialFn
 		kafkaProbeTimeout = oldProbeTimeout
-		resetKafkaClientStateForTest()
 	})
 
 	var calls []string
@@ -141,26 +121,22 @@ func TestEnsureKafkaTriesNextBrokerAfterFailure(t *testing.T) {
 		if len(calls) == 1 {
 			return nil, errors.New("first broker unavailable")
 		}
-		return &kafka.Conn{}, nil
+		return nil, nil
 	}
 
-	dialer, err := EnsureKafka(KafkaConfig{
+	err := EnsureKafka(KafkaConfig{
 		Brokers: []string{"broker-1:9092", "broker-2:9092"},
 	})
 	require.NoError(t, err)
-	require.NotNil(t, dialer)
 	require.Equal(t, []string{"broker-1:9092", "broker-2:9092"}, calls)
 }
 
 func TestEnsureKafkaUsesIndependentProbeContextPerBroker(t *testing.T) {
-	resetKafkaClientStateForTest()
-
 	oldDialFn := kafkaDialContext
 	oldProbeTimeout := kafkaProbeTimeout
 	t.Cleanup(func() {
 		kafkaDialContext = oldDialFn
 		kafkaProbeTimeout = oldProbeTimeout
-		resetKafkaClientStateForTest()
 	})
 
 	kafkaProbeTimeout = 20 * time.Millisecond
@@ -176,7 +152,7 @@ func TestEnsureKafkaUsesIndependentProbeContextPerBroker(t *testing.T) {
 		return nil, errors.New("second broker unavailable")
 	}
 
-	_, err := EnsureKafka(KafkaConfig{
+	err := EnsureKafka(KafkaConfig{
 		Brokers: []string{"broker-1:9092", "broker-2:9092"},
 	})
 	require.Error(t, err)
@@ -185,8 +161,6 @@ func TestEnsureKafkaUsesIndependentProbeContextPerBroker(t *testing.T) {
 }
 
 func TestEnsureKafkaTopicExistsSkipsCreate(t *testing.T) {
-	resetKafkaClientStateForTest()
-
 	oldDialFn := kafkaDialContext
 	oldReadPartitions := kafkaReadPartitions
 	oldReadController := kafkaReadController
@@ -196,7 +170,6 @@ func TestEnsureKafkaTopicExistsSkipsCreate(t *testing.T) {
 		kafkaReadPartitions = oldReadPartitions
 		kafkaReadController = oldReadController
 		kafkaCreateTopics = oldCreateTopics
-		resetKafkaClientStateForTest()
 	})
 
 	kafkaDialContext = func(_ *kafka.Dialer, _ context.Context, _, _ string) (*kafka.Conn, error) {
@@ -214,7 +187,7 @@ func TestEnsureKafkaTopicExistsSkipsCreate(t *testing.T) {
 		return nil
 	}
 
-	_, err := EnsureKafka(KafkaConfig{
+	err := EnsureKafka(KafkaConfig{
 		Brokers:                []string{"broker-1:9092"},
 		Topic:                  "eruun.workflow.dispatch",
 		TopicPartitions:        3,
@@ -225,8 +198,6 @@ func TestEnsureKafkaTopicExistsSkipsCreate(t *testing.T) {
 }
 
 func TestEnsureKafkaTopicUnknownMetadataCreatesTopic(t *testing.T) {
-	resetKafkaClientStateForTest()
-
 	oldDialFn := kafkaDialContext
 	oldReadPartitions := kafkaReadPartitions
 	oldReadController := kafkaReadController
@@ -236,7 +207,6 @@ func TestEnsureKafkaTopicUnknownMetadataCreatesTopic(t *testing.T) {
 		kafkaReadPartitions = oldReadPartitions
 		kafkaReadController = oldReadController
 		kafkaCreateTopics = oldCreateTopics
-		resetKafkaClientStateForTest()
 	})
 
 	kafkaDialContext = func(_ *kafka.Dialer, _ context.Context, _, _ string) (*kafka.Conn, error) {
@@ -259,7 +229,7 @@ func TestEnsureKafkaTopicUnknownMetadataCreatesTopic(t *testing.T) {
 		return nil
 	}
 
-	_, err := EnsureKafka(KafkaConfig{
+	err := EnsureKafka(KafkaConfig{
 		Brokers:                []string{"broker-1:9092"},
 		Topic:                  "eruun.workflow.dispatch",
 		TopicPartitions:        3,
@@ -273,8 +243,6 @@ func TestEnsureKafkaTopicUnknownMetadataCreatesTopic(t *testing.T) {
 }
 
 func TestEnsureKafkaTopicCreateFailure(t *testing.T) {
-	resetKafkaClientStateForTest()
-
 	oldDialFn := kafkaDialContext
 	oldReadPartitions := kafkaReadPartitions
 	oldReadController := kafkaReadController
@@ -284,7 +252,6 @@ func TestEnsureKafkaTopicCreateFailure(t *testing.T) {
 		kafkaReadPartitions = oldReadPartitions
 		kafkaReadController = oldReadController
 		kafkaCreateTopics = oldCreateTopics
-		resetKafkaClientStateForTest()
 	})
 
 	kafkaDialContext = func(_ *kafka.Dialer, _ context.Context, _, _ string) (*kafka.Conn, error) {
@@ -300,7 +267,7 @@ func TestEnsureKafkaTopicCreateFailure(t *testing.T) {
 		return errors.New("create denied")
 	}
 
-	_, err := EnsureKafka(KafkaConfig{
+	err := EnsureKafka(KafkaConfig{
 		Brokers:                []string{"broker-1:9092"},
 		Topic:                  "eruun.workflow.dispatch",
 		TopicPartitions:        3,
@@ -311,8 +278,6 @@ func TestEnsureKafkaTopicCreateFailure(t *testing.T) {
 }
 
 func TestEnsureKafkaEnsuresAllConfiguredTopics(t *testing.T) {
-	resetKafkaClientStateForTest()
-
 	oldDialFn := kafkaDialContext
 	oldReadPartitions := kafkaReadPartitions
 	oldReadController := kafkaReadController
@@ -322,7 +287,6 @@ func TestEnsureKafkaEnsuresAllConfiguredTopics(t *testing.T) {
 		kafkaReadPartitions = oldReadPartitions
 		kafkaReadController = oldReadController
 		kafkaCreateTopics = oldCreateTopics
-		resetKafkaClientStateForTest()
 	})
 
 	kafkaDialContext = func(_ *kafka.Dialer, _ context.Context, _, _ string) (*kafka.Conn, error) {
@@ -338,7 +302,7 @@ func TestEnsureKafkaEnsuresAllConfiguredTopics(t *testing.T) {
 	}
 	kafkaCreateTopics = func(_ *kafka.Conn, _ ...kafka.TopicConfig) error { return nil }
 
-	_, err := EnsureKafka(KafkaConfig{
+	err := EnsureKafka(KafkaConfig{
 		Brokers: []string{"broker-1:9092"},
 		Topics: []string{
 			"eruun.workflow.dispatch",
@@ -644,4 +608,19 @@ func TestNewRedisClientPreservesTimeoutAndRetryDefaults(t *testing.T) {
 	require.Equal(t, 3*time.Second, options.WriteTimeout)
 	require.Equal(t, 8*time.Millisecond, options.MinRetryBackoff)
 	require.Equal(t, 512*time.Millisecond, options.MaxRetryBackoff)
+}
+
+func TestEnsureKafkaClosesProbeConnection(t *testing.T) {
+	oldDial := kafkaDialContext
+	t.Cleanup(func() { kafkaDialContext = oldDial })
+	clientConn, brokerConn := net.Pipe()
+	t.Cleanup(func() { _ = clientConn.Close(); _ = brokerConn.Close() })
+	kafkaDialContext = func(_ *kafka.Dialer, _ context.Context, _, _ string) (*kafka.Conn, error) {
+		return kafka.NewConn(clientConn, "", 0), nil
+	}
+
+	require.NoError(t, brokerConn.SetReadDeadline(time.Now().Add(time.Second)))
+	require.NoError(t, EnsureKafka(KafkaConfig{Brokers: []string{"broker:9092"}}))
+	_, err := brokerConn.Read(make([]byte, 1))
+	require.ErrorIs(t, err, io.EOF, "successful startup probe must release its connection")
 }

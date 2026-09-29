@@ -136,3 +136,14 @@ type kubeRoundTripperFunc func(*http.Request) (*http.Response, error)
 func (f kubeRoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
+
+func TestGetKubeClientRequiresInitialization(t *testing.T) {
+	previousConfig, previousClient := kubeConfig, kubeClient
+	t.Cleanup(func() { kubeConfig, kubeClient = previousConfig, previousClient })
+	kubeConfig, kubeClient = nil, nil
+	for range 2 {
+		client, err := GetKubeClient()
+		require.Nil(t, client)
+		require.EqualError(t, err, "please call SetKubeConfig first")
+	}
+}
