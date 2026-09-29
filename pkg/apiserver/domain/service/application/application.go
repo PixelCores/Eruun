@@ -101,18 +101,17 @@ func (o ListApplicationsOptions) NormalizedPage() int {
 }
 
 type applicationsServiceImpl struct {
-	KubeClient                kubernetes.Interface               `inject:"kubeClient"`
-	KubeConfig                *rest.Config                       `inject:"kubeConfig"`
-	Store                     datastore.DataStore                `inject:"datastore"`
-	Cache                     cache.ICache                       `inject:"cache"`
-	RedisClient               *redis.Client                      `inject:"redisClient"`
-	Cfg                       *config.Config                     `inject:""`
-	URLSecurityPolicyProvider *urlpolicy.Provider                `inject:""`
-	ScheduleLocker            locker.Locker                      `inject:"appScheduleLocker"`
-	AppRepo                   repository.ApplicationRepository   `inject:""`
-	WorkflowRepo              repository.WorkflowRepository      `inject:""`
-	ComponentRepo             repository.ComponentRepository     `inject:""`
-	WorkflowQueueRepo         repository.WorkflowQueueRepository `inject:""`
+	KubeClient                kubernetes.Interface             `inject:"kubeClient"`
+	KubeConfig                *rest.Config                     `inject:"kubeConfig"`
+	Store                     datastore.DataStore              `inject:"datastore"`
+	Cache                     cache.ICache                     `inject:"cache"`
+	RedisClient               *redis.Client                    `inject:"redisClient"`
+	Cfg                       *config.Config                   `inject:""`
+	URLSecurityPolicyProvider *urlpolicy.Provider              `inject:""`
+	ScheduleLocker            locker.Locker                    `inject:"appScheduleLocker"`
+	AppRepo                   repository.ApplicationRepository `inject:""`
+	WorkflowRepo              repository.WorkflowRepository    `inject:""`
+	ComponentRepo             repository.ComponentRepository   `inject:""`
 }
 
 type workflowUpsertOptions struct {

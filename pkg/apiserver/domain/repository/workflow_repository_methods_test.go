@@ -354,28 +354,6 @@ func TestDelComponentsByAppIDSkipsNotFound(t *testing.T) {
 	require.NoError(t, DelComponentsByAppID(context.Background(), store, "app-1"))
 }
 
-func TestWorkflowQueueRepositoryMethods(t *testing.T) {
-	store := &repositoryTestStore{
-		listEntities: []datastore.Entity{
-			&model.WorkflowQueue{TaskID: "task-1", Status: config.StatusRunning},
-		},
-		casSwapped: true,
-	}
-	repo := &workflowQueueRepository{Store: store}
-
-	require.NoError(t, repo.Create(context.Background(), &model.WorkflowQueue{TaskID: "task-1"}))
-	require.NoError(t, repo.Update(context.Background(), &model.WorkflowQueue{TaskID: "task-1"}))
-	_, err := repo.FindByID(context.Background(), "task-1")
-	require.NoError(t, err)
-	_, err = repo.FindWaiting(context.Background())
-	require.NoError(t, err)
-	_, err = repo.FindRunning(context.Background())
-	require.NoError(t, err)
-	updated, err := repo.UpdateStatus(context.Background(), "task-1", config.StatusRunning, config.StatusCompleted)
-	require.NoError(t, err)
-	require.True(t, updated)
-}
-
 func TestTaskAndDeleteHelpers(t *testing.T) {
 	store := &repositoryTestStore{
 		listEntities: []datastore.Entity{

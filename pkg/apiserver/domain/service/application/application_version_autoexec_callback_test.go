@@ -475,9 +475,7 @@ func TestUpdateVersionAutoExecInvalidWorkflowReturnsError(t *testing.T) {
 		AppID: "app-1",
 	}
 
-	queueRepo := &mockWorkflowQueueRepo{}
 	svc := newMockServiceWithStore(store)
-	svc.WorkflowQueueRepo = queueRepo
 
 	req := apisv1.UpdateVersionRequest{
 		Version: "1.1.0",
@@ -496,7 +494,6 @@ func TestUpdateVersionAutoExecInvalidWorkflowReturnsError(t *testing.T) {
 	require.Contains(t, err.Error(), "invalid workflow")
 	require.Nil(t, resp)
 	require.Empty(t, store.tasks)
-	require.Empty(t, queueRepo.queues)
 	require.Equal(t, "1.0.0", store.apps["app-1"].Version)
 	require.Equal(t, "backend:v1", store.components["backend"].Image)
 	require.Equal(t, string(config.ComponentStatusRunning), store.components["backend"].Status)
@@ -540,9 +537,7 @@ func TestUpdateVersionAutoExecUsesSpecifiedWorkflow(t *testing.T) {
 		}),
 	}
 
-	queueRepo := &mockWorkflowQueueRepo{}
 	svc := newMockServiceWithStore(store)
-	svc.WorkflowQueueRepo = queueRepo
 
 	req := apisv1.UpdateVersionRequest{
 		Version:    "1.1.0",
