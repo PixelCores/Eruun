@@ -15,7 +15,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
@@ -1082,10 +1081,7 @@ func TestDeployJobCtlRunReplacesStaleDeploymentVolumeSource(t *testing.T) {
 }
 
 func TestDeployJobCtlWaitTimeoutWithPodAbnormalReturnsFailed(t *testing.T) {
-	waiter := informer.NewResourceReadyWaiter()
-	defer waiter.Close()
-
-	waiter.OnPodAdd(newWaitTestPod("app-1", "api", "CrashLoopBackOff"))
+	waiter := newWorkloadTestObserver(t, newWaitTestPod("app-1", "api", "CrashLoopBackOff"))
 
 	ctl := &DeployJobCtl{
 		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
@@ -1127,10 +1123,7 @@ func TestDeployJobCtlWaitRequiresResourceWaiter(t *testing.T) {
 }
 
 func TestDeployJobCtlWaitUsesBoundedComponentLabel(t *testing.T) {
-	waiter := informer.NewResourceReadyWaiter()
-	defer waiter.Close()
-
-	waiter.OnPodAdd(newWaitReadyTestPod("app-1", naming.BoundedLabelValue("API")))
+	waiter := newWorkloadTestObserver(t, newWaitReadyTestPod("app-1", naming.BoundedLabelValue("API")))
 
 	ctl := &DeployJobCtl{
 		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
@@ -1149,10 +1142,7 @@ func TestDeployJobCtlWaitUsesBoundedComponentLabel(t *testing.T) {
 }
 
 func TestDeployJobCtlWaitTimeoutWithPendingPodReturnsTimeout(t *testing.T) {
-	waiter := informer.NewResourceReadyWaiter()
-	defer waiter.Close()
-
-	waiter.OnPodAdd(newWaitTestPod("app-1", "api", "ContainerCreating"))
+	waiter := newWorkloadTestObserver(t, newWaitTestPod("app-1", "api", "ContainerCreating"))
 
 	ctl := &DeployJobCtl{
 		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
@@ -1175,12 +1165,10 @@ func TestDeployJobCtlWaitTimeoutWithPendingPodReturnsTimeout(t *testing.T) {
 }
 
 func TestDeployJobCtlWaitIgnoresReadyPodWithDifferentImage(t *testing.T) {
-	waiter := informer.NewResourceReadyWaiter()
-	defer waiter.Close()
-
-	waiter.OnPodAdd(withWaitPodImage(newWaitReadyTestPod("app-1", "api"), "nginx:1.25"))
 	deploy := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	deploy.Spec.Template.Spec.Containers[0].Image = "nginx:1.26"
+
+	waiter := newWorkloadTestObserver(t, withWaitPodImage(newWaitReadyTestPod("app-1", "api"), "nginx:1.25"))
 
 	ctl := &DeployJobCtl{
 		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
@@ -1204,12 +1192,10 @@ func TestDeployJobCtlWaitIgnoresReadyPodWithDifferentImage(t *testing.T) {
 }
 
 func TestDeployJobCtlWaitUsesExpectedImage(t *testing.T) {
-	waiter := informer.NewResourceReadyWaiter()
-	defer waiter.Close()
-
-	waiter.OnPodAdd(withWaitPodImage(newWaitReadyTestPod("app-1", "api"), "nginx:1.26"))
 	deploy := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	deploy.Spec.Template.Spec.Containers[0].Image = "nginx:1.26"
+
+	waiter := newWorkloadTestObserver(t, withWaitPodImage(newWaitReadyTestPod("app-1", "api"), "nginx:1.26"))
 
 	ctl := &DeployJobCtl{
 		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
@@ -1228,20 +1214,17 @@ func TestDeployJobCtlWaitUsesExpectedImage(t *testing.T) {
 }
 
 func TestDeployJobCtlWaitRequiresExpectedTaskAnnotationWithSameImage(t *testing.T) {
-	waiter := informer.NewResourceReadyWaiter()
-	defer waiter.Close()
-
 	oldReady := withWaitPodImage(newWaitReadyTestPod("app-1", "api"), "nginx:1.25")
 	oldReady.Name = "api-old"
 	newAbnormal := withWaitPodAnnotations(withWaitPodImage(newWaitTestPod("app-1", "api", "CrashLoopBackOff"), "nginx:1.25"), map[string]string{
 		config.AnnotationJobTaskID: "task-template-1",
 	})
 	newAbnormal.Name = "api-new"
-	waiter.OnPodAdd(oldReady)
-	waiter.OnPodAdd(newAbnormal)
 
 	deploy := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	deploy.Spec.Template.Spec.Containers[0].Image = "nginx:1.25"
+
+	waiter := newWorkloadTestObserver(t, oldReady, newAbnormal)
 
 	ctl := &DeployJobCtl{
 		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{

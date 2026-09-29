@@ -23,11 +23,8 @@ const (
 	podOwnerKindReplicaSet  = "ReplicaSet"
 )
 
-// ResourceReadyWaiter 资源就绪等待器 - 基于 Informer 事件驱动
+// ResourceReadyWaiter synchronizes Controller Pod snapshots and restart events.
 type ResourceReadyWaiter struct {
-	// waiters 存储等待中的资源
-	// key 格式: "resourceType/namespace/name"（组件等待使用 appID 作为 namespace）
-	waiters sync.Map
 	// statusSyncFunc 状态同步回调（更新数据库）
 	statusSyncFunc StatusSyncFunc
 	// statusSyncExecutor 为状态同步回调提供有界异步执行，避免散点裸协程。
@@ -66,8 +63,6 @@ type podStatusInfo struct {
 	componentName  string
 	componentID    int
 	ready          bool
-	images         map[string]struct{}
-	annotations    map[string]string
 	abnormalReason string
 	updatedAt      time.Time
 }
@@ -131,7 +126,7 @@ func (t *podRestartTracker) reset() {
 	t.pods = make(map[string]*podRestartState)
 }
 
-// NewResourceReadyWaiter 创建等待器
+// NewResourceReadyWaiter creates the Controller Pod event handler.
 func NewResourceReadyWaiter() *ResourceReadyWaiter {
 	waiter := &ResourceReadyWaiter{
 		pods:               newPodTracker(),
@@ -166,7 +161,7 @@ func (w *ResourceReadyWaiter) Close() {
 	})
 }
 
-// ResetPodSnapshots clears informer-derived pod state while preserving waiters and callbacks.
+// ResetPodSnapshots clears informer-derived pod state while preserving callbacks.
 func (w *ResourceReadyWaiter) ResetPodSnapshots() {
 	if w == nil {
 		return
@@ -236,85 +231,12 @@ func (w *ResourceReadyWaiter) SetDeploymentPodRestartTriggerFunc(fn DeploymentPo
 	w.podRestartTrigger = fn
 }
 
-// buildKey 构建唯一键
-func buildKey(resourceType ResourceType, namespace, name string) string {
-	return fmt.Sprintf("%s/%s/%s", resourceType, namespace, name)
-}
-
 func buildPodKey(namespace, name string) string {
 	return fmt.Sprintf("%s/%s", namespace, name)
 }
 
 func buildComponentKey(appID, componentName string) string {
 	return fmt.Sprintf("%s/%s", appID, componentName)
-}
-
-// WaitForComponentReady 等待组件就绪（基于 Pod 事件）
-func (w *ResourceReadyWaiter) WaitForComponentReady(ctx context.Context, appID, componentName string, desiredReplicas int32, timeout time.Duration) error {
-	return w.WaitForComponentReadyWithOptions(ctx, appID, componentName, desiredReplicas, ComponentReadyWaitOptions{}, timeout)
-}
-
-// WaitForComponentReadyWithImages waits for ready pods whose Pod spec contains all expected images.
-// Empty expectedImages preserves the original component-level readiness behavior.
-func (w *ResourceReadyWaiter) WaitForComponentReadyWithImages(ctx context.Context, appID, componentName string, desiredReplicas int32, expectedImages []string, timeout time.Duration) error {
-	return w.WaitForComponentReadyWithOptions(ctx, appID, componentName, desiredReplicas, ComponentReadyWaitOptions{
-		ExpectedImages: expectedImages,
-	}, timeout)
-}
-
-// WaitForComponentReadyWithOptions waits for ready pods matching the provided filters.
-// Empty filters preserve the original component-level readiness behavior.
-func (w *ResourceReadyWaiter) WaitForComponentReadyWithOptions(ctx context.Context, appID, componentName string, desiredReplicas int32, options ComponentReadyWaitOptions, timeout time.Duration) error {
-	if desiredReplicas <= 0 {
-		return fmt.Errorf("component %s/%s desired replicas must be greater than 0", appID, componentName)
-	}
-	key := buildKey(ResourceTypeComponent, appID, componentName)
-	normalizedOptions := normalizeComponentReadyWaitOptions(options)
-
-	entry := &WaitEntry{
-		Key:                 key,
-		ResourceType:        ResourceTypeComponent,
-		ReadyChan:           make(chan struct{}),
-		ErrorChan:           make(chan error, 1),
-		CreatedAt:           time.Now(),
-		DesiredReplicas:     desiredReplicas,
-		ExpectedImages:      normalizedOptions.ExpectedImages,
-		ExpectedAnnotations: normalizedOptions.ExpectedAnnotations,
-	}
-
-	// 注册等待
-	w.waiters.Store(key, entry)
-	defer w.waiters.Delete(key)
-
-	klog.V(4).Infof("Waiting for component %s/%s to be ready (timeout: %v, expectedImages: %v, expectedAnnotations: %v)", appID, componentName, timeout, normalizedOptions.ExpectedImages, normalizedOptions.ExpectedAnnotations)
-
-	if w.isComponentReadySnapshot(appID, componentName, desiredReplicas, normalizedOptions) {
-		klog.V(4).Infof("Component %s/%s already ready from snapshot", appID, componentName)
-		entry.Close()
-		return nil
-	}
-
-	select {
-	case <-entry.ReadyChan:
-		klog.V(4).Infof("Component %s/%s is ready", appID, componentName)
-		return nil
-	case err := <-entry.ErrorChan:
-		klog.V(4).Infof("Component %s/%s wait error: %v", appID, componentName, err)
-		return err
-	case <-ctx.Done():
-		return NewWaitError(config.StatusCancelled, fmt.Errorf("component %s/%s cancelled: %w", appID, componentName, ctx.Err()))
-	case <-time.After(timeout):
-		if snapshot, ok := w.componentSnapshotForOptions(appID, componentName, normalizedOptions); ok {
-			if abnormal := strings.TrimSpace(snapshot.lastAbnormal); abnormal != "" {
-				return NewWaitErrorWithAbnormal(
-					config.StatusFailed,
-					fmt.Errorf("component %s/%s timeout after %v with abnormal pod state: %s", appID, componentName, timeout, abnormal),
-					abnormal,
-				)
-			}
-		}
-		return NewWaitError(config.StatusTimeout, fmt.Errorf("component %s/%s timeout after %v", appID, componentName, timeout))
-	}
 }
 
 // OnPodAdd 处理 Pod 创建事件 - 由 Informer 调用
@@ -371,8 +293,6 @@ func (w *ResourceReadyWaiter) onPodUpdate(oldPod, newPod *corev1.Pod) {
 		componentName:  componentName,
 		componentID:    componentID,
 		ready:          isPodReady(newPod),
-		images:         podImageSet(newPod),
-		annotations:    podAnnotations(newPod),
 		abnormalReason: kube.ExtractPodAbnormalReason(newPod),
 		updatedAt:      time.Now(),
 	}
@@ -422,26 +342,6 @@ func (w *ResourceReadyWaiter) lockPodSnapshotHandler(generation uint64, scoped b
 		return false
 	}
 	return true
-}
-
-// GetPendingCount 获取等待中的资源数量（用于监控）
-func (w *ResourceReadyWaiter) GetPendingCount() int {
-	count := 0
-	w.waiters.Range(func(_, _ interface{}) bool {
-		count++
-		return true
-	})
-	return count
-}
-
-// GetPendingKeys 获取所有等待中的资源键（用于调试）
-func (w *ResourceReadyWaiter) GetPendingKeys() []string {
-	var keys []string
-	w.waiters.Range(func(key, _ interface{}) bool {
-		keys = append(keys, key.(string))
-		return true
-	})
-	return keys
 }
 
 func extractComponentMeta(labels map[string]string) (string, string, int, bool) {
@@ -698,9 +598,6 @@ func (w *ResourceReadyWaiter) updatePodStatus(podKey string, info *podStatusInfo
 		return
 	}
 	prev, prevOk, next, nextOk := w.pods.update(podKey, info)
-	if nextOk {
-		w.notifyComponentReady(next)
-	}
 	if !snapshotChanged(prevOk, prev, nextOk, next) {
 		return
 	}
@@ -734,13 +631,13 @@ func (t *podTracker) update(podKey string, info *podStatusInfo) (componentSnapsh
 		return componentSnapshot{}, false, componentSnapshot{}, false
 	}
 
-	prevSnapshot, prevOk := t.snapshotLocked(componentKey, ComponentReadyWaitOptions{})
+	prevSnapshot, prevOk := t.snapshotLocked(componentKey)
 	if info == nil {
 		delete(t.pods, podKey)
 	} else {
 		t.pods[podKey] = *info
 	}
-	nextSnapshot, nextOk := t.snapshotLocked(componentKey, ComponentReadyWaitOptions{})
+	nextSnapshot, nextOk := t.snapshotLocked(componentKey)
 	if !nextOk && prevOk {
 		nextSnapshot = componentSnapshot{
 			appID:         prevSnapshot.appID,
@@ -754,18 +651,12 @@ func (t *podTracker) update(podKey string, info *podStatusInfo) (componentSnapsh
 	return prevSnapshot, prevOk, nextSnapshot, nextOk
 }
 
-func (t *podTracker) snapshotLocked(componentKey string, options ComponentReadyWaitOptions) (componentSnapshot, bool) {
+func (t *podTracker) snapshotLocked(componentKey string) (componentSnapshot, bool) {
 	var snapshot componentSnapshot
 	var latestTime time.Time
 	found := false
 	for _, info := range t.pods {
 		if info.componentKey != componentKey {
-			continue
-		}
-		if !podImagesContainAll(info.images, options.ExpectedImages) {
-			continue
-		}
-		if !podAnnotationsContainAll(info.annotations, options.ExpectedAnnotations) {
 			continue
 		}
 		if !found {
@@ -784,30 +675,6 @@ func (t *podTracker) snapshotLocked(componentKey string, options ComponentReadyW
 		}
 	}
 	return snapshot, found
-}
-
-func (t *podTracker) snapshotForOptions(componentKey string, options ComponentReadyWaitOptions) (componentSnapshot, bool) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.snapshotLocked(componentKey, options)
-}
-
-func (w *ResourceReadyWaiter) componentSnapshotForOptions(appID, componentName string, options ComponentReadyWaitOptions) (componentSnapshot, bool) {
-	if w.pods == nil {
-		return componentSnapshot{}, false
-	}
-	return w.pods.snapshotForOptions(buildComponentKey(appID, componentName), options)
-}
-
-func (w *ResourceReadyWaiter) isComponentReadySnapshot(appID, componentName string, desiredReplicas int32, options ComponentReadyWaitOptions) bool {
-	if desiredReplicas <= 0 {
-		return false
-	}
-	snapshot, ok := w.componentSnapshotForOptions(appID, componentName, options)
-	if !ok || snapshot.totalCount == 0 {
-		return false
-	}
-	return snapshot.readyCount >= desiredReplicas
 }
 
 func normalizeComponentReadyWaitOptions(options ComponentReadyWaitOptions) ComponentReadyWaitOptions {
@@ -1190,23 +1057,4 @@ func componentStatusFromSnapshot(snapshot componentSnapshot) config.ComponentSta
 		return config.ComponentStatusRunning
 	}
 	return config.ComponentStatusPending
-}
-
-func (w *ResourceReadyWaiter) notifyComponentReady(snapshot componentSnapshot) {
-	key := buildKey(ResourceTypeComponent, snapshot.appID, snapshot.componentName)
-	entryVal, ok := w.waiters.Load(key)
-	if !ok {
-		return
-	}
-	entry := entryVal.(*WaitEntry)
-	if entry.IsClosed() {
-		return
-	}
-	options := ComponentReadyWaitOptions{
-		ExpectedImages:      entry.ExpectedImages,
-		ExpectedAnnotations: entry.ExpectedAnnotations,
-	}
-	if w.isComponentReadySnapshot(snapshot.appID, snapshot.componentName, entry.DesiredReplicas, options) {
-		entry.Close()
-	}
 }

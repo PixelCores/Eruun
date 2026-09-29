@@ -27,11 +27,9 @@ func TestDeployJobCtlWaitAddsPodFailureDiagnostics(t *testing.T) {
 		return fmt.Sprintf("boot log from %s/%s", podName, container), nil
 	})
 
-	waiter := informer.NewResourceReadyWaiter()
-	defer waiter.Close()
-
 	pod := newWaitTestPod("app-1", "api", "CrashLoopBackOff")
-	waiter.OnPodAdd(pod)
+
+	waiter := newWorkloadTestObserver(t, pod)
 
 	ctl := &DeployJobCtl{
 		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
@@ -76,11 +74,9 @@ func TestDeployStatefulSetJobCtlWaitAddsPodFailureDiagnostics(t *testing.T) {
 		return "current mysql log", nil
 	})
 
-	waiter := informer.NewResourceReadyWaiter()
-	defer waiter.Close()
-
 	pod := newWaitTestPod("app-1", "mysql", "CrashLoopBackOff")
-	waiter.OnPodAdd(pod)
+
+	waiter := newWorkloadTestObserver(t, pod)
 
 	ctl := &DeployStatefulSetJobCtl{
 		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
@@ -479,4 +475,23 @@ func restoreWorkloadPodLogReader(t *testing.T, reader workloadPodLogReader) {
 		readWorkloadPodLogs = previous
 		workloadPodLogReaderMu.Unlock()
 	})
+}
+
+func newWorkloadTestObserver(t *testing.T, pods ...*corev1.Pod) *informer.KubernetesWorkloadObserver {
+	t.Helper()
+	client := fake.NewSimpleClientset()
+	for _, pod := range pods {
+		_, err := client.CoreV1().Pods(pod.Namespace).Create(context.Background(), pod, metav1.CreateOptions{})
+		require.NoError(t, err)
+	}
+	return startWorkloadTestObserver(t, client)
+}
+
+func startWorkloadTestObserver(t *testing.T, client kubernetes.Interface) *informer.KubernetesWorkloadObserver {
+	t.Helper()
+	observer := informer.NewKubernetesWorkloadObserver(client)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	require.NoError(t, observer.Start(ctx))
+	return observer
 }

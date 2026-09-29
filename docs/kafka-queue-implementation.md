@@ -134,12 +134,13 @@ func (k *KafkaQueue) AutoClaim(ctx context.Context, ...) ([]Message, error) {
 
 ### 3.4 客户端初始化
 
+启动检查不保留连接；业务队列独立管理 Reader/Writer，readiness 独立验证 Topic 元数据及实际消息收发。
+
 ```go
 // clients/kafka.go
-func EnsureKafka(cfg KafkaConfig) (*kafka.Dialer, error) {
-    // 单例模式，确保全局只有一个 Dialer
-    // 验证 Broker 连接性
-    // 缓存连接供健康检查使用
+func EnsureKafka(cfg KafkaConfig) error {
+    // 使用局部 Dialer 验证 Broker 连接性，探测结束即关闭连接
+    // 检查并创建当前角色需要的 Topic
 }
 ```
 
