@@ -359,31 +359,14 @@ func applyRewriteAnnotations(annotations map[string]string, rewrite *spec.Rewrit
 }
 
 func determinePathType(route model.IngressRoutes, ingressSpec *model.IngressTraitsSpec, annotations map[string]string) networkingv1.PathType {
-	if route.PathType != "" {
-		if pt, ok := parsePathType(route.PathType); ok {
-			return pt
-		}
+	if pathType, ok := spec.NormalizeIngressPathType(route.PathType); ok {
+		return networkingv1.PathType(pathType)
 	}
-	if ingressSpec.DefaultPathType != "" {
-		if pt, ok := parsePathType(ingressSpec.DefaultPathType); ok {
-			return pt
-		}
+	if pathType, ok := spec.NormalizeIngressPathType(ingressSpec.DefaultPathType); ok {
+		return networkingv1.PathType(pathType)
 	}
 	if val, ok := annotations["nginx.ingress.kubernetes.io/use-regex"]; ok && strings.EqualFold(val, "true") {
 		return networkingv1.PathTypeImplementationSpecific
 	}
 	return networkingv1.PathTypePrefix
-}
-
-func parsePathType(value string) (networkingv1.PathType, bool) {
-	switch strings.ToLower(value) {
-	case "prefix":
-		return networkingv1.PathTypePrefix, true
-	case "exact":
-		return networkingv1.PathTypeExact, true
-	case "implementationspecific", "implementation-specific":
-		return networkingv1.PathTypeImplementationSpecific, true
-	default:
-		return networkingv1.PathType(""), false
-	}
 }

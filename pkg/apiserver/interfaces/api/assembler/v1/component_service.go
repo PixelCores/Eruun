@@ -281,29 +281,16 @@ func applyIngressRewriteAnnotations(annotations map[string]string, rewrite *spec
 }
 
 func determineIngressRoutePathType(routePathType, defaultPathType string, annotations map[string]string) string {
-	if pathType, ok := normalizeIngressPathType(routePathType); ok {
+	if pathType, ok := spec.NormalizeIngressPathType(routePathType); ok {
 		return pathType
 	}
-	if pathType, ok := normalizeIngressPathType(defaultPathType); ok {
+	if pathType, ok := spec.NormalizeIngressPathType(defaultPathType); ok {
 		return pathType
 	}
 	if value, ok := annotations["nginx.ingress.kubernetes.io/use-regex"]; ok && strings.EqualFold(value, "true") {
 		return "ImplementationSpecific"
 	}
 	return "Prefix"
-}
-
-func normalizeIngressPathType(value string) (string, bool) {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "prefix":
-		return "Prefix", true
-	case "exact":
-		return "Exact", true
-	case "implementationspecific", "implementation-specific":
-		return "ImplementationSpecific", true
-	default:
-		return "", false
-	}
 }
 
 func selectServiceTraitForLink(component *apisv1.ApplicationComponent) (int, bool) {
