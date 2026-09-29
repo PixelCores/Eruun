@@ -1,6 +1,7 @@
 package traits
 
 import (
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
 )
 
@@ -109,13 +111,13 @@ func TestApplyTraitsPreservesProcessingOrder(t *testing.T) {
 		EnvFrom: []spec.EnvFromSourceSpec{{Type: "invalid"}},
 		Init:    []spec.InitTraitSpec{{}},
 	}
-	_, err := applyTraitsRecursive(component, nil, input, false)
+	_, err := applyTraitsRecursive(&TraitContext{Component: component, componentTraits: input}, input, false)
 	require.ErrorContains(t, err, "failed to process trait 'storage'")
 	input.Storage = nil
-	_, err = applyTraitsRecursive(component, nil, input, false)
+	_, err = applyTraitsRecursive(&TraitContext{Component: component, componentTraits: input}, input, false)
 	require.ErrorContains(t, err, "failed to process trait 'envFrom'")
 	input.EnvFrom = nil
-	_, err = applyTraitsRecursive(component, nil, input, false)
+	_, err = applyTraitsRecursive(&TraitContext{Component: component, componentTraits: input}, input, false)
 	require.ErrorContains(t, err, "failed to process trait 'init'")
 }
 
@@ -132,5 +134,52 @@ func TestTraitFieldsHaveExplicitRenderingOwners(t *testing.T) {
 	require.Len(t, owners, typ.NumField())
 	for i := 0; i < typ.NumField(); i++ {
 		require.Contains(t, owners, typ.Field(i).Name)
+	}
+}
+
+func TestApplyTraitsIngressDefaultsUseOuterComponentForNestedTraits(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		services    []spec.ServiceTraitSpec
+		properties  *model.JSONStruct
+		wantService string
+		wantPort    int32
+	}{
+		{name: "service trait", services: []spec.ServiceTraitSpec{{Name: "outer-service", Ports: []spec.ServicePortTraitSpec{{Port: 8080}}}}, properties: toJSONStruct(model.Properties{Ports: []model.Ports{{Port: 9090}}}), wantService: "outer-service", wantPort: 8080},
+		{name: "properties", properties: toJSONStruct(model.Properties{Ports: []model.Ports{{Port: 9090}}}), wantService: "app-api", wantPort: 9090},
+		{name: "invalid properties retain defaults", properties: &model.JSONStruct{"ports": "invalid"}, wantService: "app-api", wantPort: 80},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			nested := func(name string) spec.Traits {
+				return spec.Traits{
+					Service: []spec.ServiceTraitSpec{{Name: "nested-service", Ports: []spec.ServicePortTraitSpec{{Port: 1234}}}},
+					Ingress: []spec.IngressTraitsSpec{{Name: name, Routes: []spec.IngressRoutes{{}}}},
+				}
+			}
+			component := &model.ApplicationComponent{Name: "api", Namespace: "apps", Properties: tt.properties, Traits: toJSONStruct(spec.Traits{
+				Service: tt.services,
+				Ingress: []spec.IngressTraitsSpec{{Routes: []spec.IngressRoutes{{}}}, {Routes: []spec.IngressRoutes{{}}}},
+				Init:    []spec.InitTraitSpec{{Name: "prepare", Image: "busybox:1.37", Traits: nested("init-ingress")}},
+				Sidecar: []spec.SidecarTraitsSpec{{Name: "helper", Image: "busybox:1.37", Traits: nested("sidecar-ingress")}},
+			})}
+			before, err := json.Marshal(component)
+			require.NoError(t, err)
+			workload := &appsv1.Deployment{Spec: appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "api"}}}}}}
+			objects, err := ApplyTraits(component, workload)
+			require.NoError(t, err)
+			require.Len(t, objects, 4)
+			names := []string{"init-ingress", "sidecar-ingress", "api-ingress", "api-ingress-2"}
+			for i, object := range objects {
+				ingress := object.(*networkingv1.Ingress)
+				require.Equal(t, names[i], ingress.Name)
+				require.Equal(t, "apps", ingress.Namespace)
+				backend := ingress.Spec.Rules[0].HTTP.Paths[0].Backend.Service
+				require.Equal(t, tt.wantService, backend.Name)
+				require.Equal(t, tt.wantPort, backend.Port.Number)
+			}
+			after, err := json.Marshal(component)
+			require.NoError(t, err)
+			require.Equal(t, string(before), string(after), "rendering must not mutate the stored component")
+		})
 	}
 }

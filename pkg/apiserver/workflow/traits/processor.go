@@ -20,15 +20,18 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 )
 
-// TraitContext provides the inputs a Processor needs to render its changes.
+// TraitContext provides the inputs trait functions need to render its changes.
 // It is read-only with respect to the source component and workload; mutations
 // must be returned through TraitResult and applied by the framework.
 type TraitContext struct {
 	Component *model.ApplicationComponent
 	Workload  runtime.Object
+
+	// Ingress defaults, including nested ingress, use the outer component services.
+	componentTraits *spec.Traits
 }
 
-// TraitResult is the unit of changes emitted by a Processor. The framework
+// TraitResult is the unit of changes emitted by a trait function. The framework
 // aggregates multiple results and applies them onto the target workload.
 type TraitResult struct {
 	// Pod-level modifications
@@ -80,7 +83,7 @@ func ApplyTraits(component *model.ApplicationComponent, workload runtime.Object)
 	}
 
 	// Start the recursive application of traits, with no exclusions at the top level.
-	finalResult, err := applyTraitsRecursive(component, workload, &traits, false)
+	finalResult, err := applyTraitsRecursive(&TraitContext{Component: component, Workload: workload, componentTraits: &traits}, &traits, false)
 	if err != nil {
 		return nil, err
 	}
@@ -99,8 +102,7 @@ func ApplyTraits(component *model.ApplicationComponent, workload runtime.Object)
 // applyTraitsRecursive keeps the built-in order explicit and passes typed specs.
 // Evaluation, Service, and Share are owned by the workflow/job builders.
 // Nested containers exclude init, sidecar, targetWorkEnv, and rollout.
-func applyTraitsRecursive(component *model.ApplicationComponent, workload runtime.Object, traits *spec.Traits, nested bool) (*TraitResult, error) {
-	ctx := &TraitContext{Component: component, Workload: workload}
+func applyTraitsRecursive(ctx *TraitContext, traits *spec.Traits, nested bool) (*TraitResult, error) {
 	var results []*TraitResult
 	collect := func(result *TraitResult, err error) error {
 		if err != nil {
@@ -112,62 +114,62 @@ func applyTraitsRecursive(component *model.ApplicationComponent, workload runtim
 		return nil
 	}
 	if len(traits.Storage) > 0 {
-		if err := collect((&StorageProcessor{}).Process(ctx, traits.Storage)); err != nil {
+		if err := collect(processStorage(ctx, traits.Storage)); err != nil {
 			return nil, fmt.Errorf("failed to process trait 'storage': %w", err)
 		}
 	}
 	if len(traits.EnvFrom) > 0 {
-		if err := collect((&EnvFromProcessor{}).Process(ctx, traits.EnvFrom)); err != nil {
+		if err := collect(processEnvFrom(ctx, traits.EnvFrom)); err != nil {
 			return nil, fmt.Errorf("failed to process trait 'envFrom': %w", err)
 		}
 	}
 	if len(traits.Envs) > 0 {
-		if err := collect((&EnvsProcessor{}).Process(ctx, traits.Envs)); err != nil {
+		if err := collect(processEnvs(ctx, traits.Envs)); err != nil {
 			return nil, fmt.Errorf("failed to process trait 'envs': %w", err)
 		}
 	}
 	if !nested && len(traits.TargetWorkEnv) > 0 {
-		if err := collect((&TargetWorkEnvProcessor{}).Process(traits.TargetWorkEnv)); err != nil {
+		if err := collect(processTargetWorkEnv(traits.TargetWorkEnv)); err != nil {
 			return nil, fmt.Errorf("failed to process trait 'targetWorkEnv': %w", err)
 		}
 	}
 	if traits.Resources != nil {
-		if err := collect((&ResourcesProcessor{}).Process(traits.Resources)); err != nil {
+		if err := collect(ProcessResources(traits.Resources)); err != nil {
 			return nil, fmt.Errorf("failed to process trait 'resources': %w", err)
 		}
 	}
 	if traits.SecurityPolicy != nil {
-		if err := collect((&SecurityPolicyProcessor{}).Process(traits.SecurityPolicy)); err != nil {
+		if err := collect(processSecurityPolicy(traits.SecurityPolicy)); err != nil {
 			return nil, fmt.Errorf("failed to process trait 'securityPolicy': %w", err)
 		}
 	}
 	if len(traits.Probes) > 0 {
-		if err := collect((&ProbeProcessor{}).Process(ctx, traits.Probes)); err != nil {
+		if err := collect(processProbe(ctx, traits.Probes)); err != nil {
 			return nil, fmt.Errorf("failed to process trait 'probes': %w", err)
 		}
 	}
 	if len(traits.RBAC) > 0 {
-		if err := collect((&RBACProcessor{}).Process(ctx, traits.RBAC)); err != nil {
+		if err := collect(processRBAC(ctx, traits.RBAC)); err != nil {
 			return nil, fmt.Errorf("failed to process trait 'rbac': %w", err)
 		}
 	}
 	if !nested && traits.Rollout != nil {
-		if err := collect((&RolloutProcessor{}).Process(ctx, traits.Rollout)); err != nil {
+		if err := collect(processRollout(ctx, traits.Rollout)); err != nil {
 			return nil, fmt.Errorf("failed to process trait 'rollout': %w", err)
 		}
 	}
 	if !nested && len(traits.Init) > 0 {
-		if err := collect((&InitProcessor{}).Process(ctx, traits.Init)); err != nil {
+		if err := collect(processInit(ctx, traits.Init)); err != nil {
 			return nil, fmt.Errorf("failed to process trait 'init': %w", err)
 		}
 	}
 	if !nested && len(traits.Sidecar) > 0 {
-		if err := collect((&SidecarProcessor{}).Process(ctx, traits.Sidecar)); err != nil {
+		if err := collect(processSidecar(ctx, traits.Sidecar)); err != nil {
 			return nil, fmt.Errorf("failed to process trait 'sidecar': %w", err)
 		}
 	}
 	if len(traits.Ingress) > 0 {
-		if err := collect((&IngressProcessor{}).Process(ctx, traits.Ingress)); err != nil {
+		if err := collect(processIngress(ctx, traits.Ingress)); err != nil {
 			return nil, fmt.Errorf("failed to process trait 'ingress': %w", err)
 		}
 	}

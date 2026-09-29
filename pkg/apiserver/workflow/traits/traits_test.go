@@ -431,7 +431,7 @@ func TestApplyIngressDefaultsNamespaceUsesComponent(t *testing.T) {
 	component := &model.ApplicationComponent{Namespace: "component-ns"}
 	trait := &spec.IngressTraitsSpec{Namespace: "custom-ns"}
 
-	require.NoError(t, applyIngressDefaults(trait, component, 0))
+	require.NoError(t, applyIngressDefaults(trait, component, nil, nil, 0))
 	require.Equal(t, "component-ns", trait.Namespace)
 }
 
@@ -444,27 +444,27 @@ func TestApplyIngressDefaultsServiceName(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, applyIngressDefaults(trait, component, 0))
+	require.NoError(t, applyIngressDefaults(trait, component, nil, nil, 0))
 
 	require.Equal(t, naming.ServiceName("api", "app-1"), trait.Routes[0].Backend.ServiceName)
 	require.Equal(t, "custom-svc", trait.Routes[1].Backend.ServiceName)
 }
 
 func TestApplyIngressDefaultsServiceFromTrait(t *testing.T) {
+	componentTraits := &model.Traits{
+		Service: []spec.ServiceTraitSpec{
+			{
+				Name: "api-master",
+				Type: "internal",
+				Ports: []spec.ServicePortTraitSpec{
+					{Port: 8080},
+				},
+			},
+		},
+	}
 	component := &model.ApplicationComponent{
 		Name:  "api",
 		AppID: "app-1",
-		Traits: toJSONStruct(model.Traits{
-			Service: []spec.ServiceTraitSpec{
-				{
-					Name: "api-master",
-					Type: "internal",
-					Ports: []spec.ServicePortTraitSpec{
-						{Port: 8080},
-					},
-				},
-			},
-		}),
 	}
 
 	trait := &spec.IngressTraitsSpec{
@@ -473,33 +473,33 @@ func TestApplyIngressDefaultsServiceFromTrait(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, applyIngressDefaults(trait, component, 0))
+	require.NoError(t, applyIngressDefaults(trait, component, componentTraits, nil, 0))
 	require.Equal(t, "api-master", trait.Routes[0].Backend.ServiceName)
 	require.Equal(t, int32(8080), trait.Routes[0].Backend.ServicePort)
 }
 
 func TestApplyIngressDefaultsRequiresExplicitServiceNameWhenMultipleServices(t *testing.T) {
+	componentTraits := &model.Traits{
+		Service: []spec.ServiceTraitSpec{
+			{
+				Name: "api-v1",
+				Type: "internal",
+				Ports: []spec.ServicePortTraitSpec{
+					{Port: 8080},
+				},
+			},
+			{
+				Name: "api-v2",
+				Type: "internal",
+				Ports: []spec.ServicePortTraitSpec{
+					{Port: 8081},
+				},
+			},
+		},
+	}
 	component := &model.ApplicationComponent{
 		Name:  "api",
 		AppID: "app-1",
-		Traits: toJSONStruct(model.Traits{
-			Service: []spec.ServiceTraitSpec{
-				{
-					Name: "api-v1",
-					Type: "internal",
-					Ports: []spec.ServicePortTraitSpec{
-						{Port: 8080},
-					},
-				},
-				{
-					Name: "api-v2",
-					Type: "internal",
-					Ports: []spec.ServicePortTraitSpec{
-						{Port: 8081},
-					},
-				},
-			},
-		}),
 	}
 	trait := &spec.IngressTraitsSpec{
 		Routes: []spec.IngressRoutes{
@@ -507,34 +507,34 @@ func TestApplyIngressDefaultsRequiresExplicitServiceNameWhenMultipleServices(t *
 		},
 	}
 
-	err := applyIngressDefaults(trait, component, 0)
+	err := applyIngressDefaults(trait, component, componentTraits, nil, 0)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "serviceName is required")
 	require.Contains(t, err.Error(), "api")
 }
 
 func TestApplyIngressDefaultsAllowsExplicitServiceNameWhenMultipleServices(t *testing.T) {
+	componentTraits := &model.Traits{
+		Service: []spec.ServiceTraitSpec{
+			{
+				Name: "api-v1",
+				Type: "internal",
+				Ports: []spec.ServicePortTraitSpec{
+					{Port: 8080},
+				},
+			},
+			{
+				Name: "api-v2",
+				Type: "internal",
+				Ports: []spec.ServicePortTraitSpec{
+					{Port: 8081},
+				},
+			},
+		},
+	}
 	component := &model.ApplicationComponent{
 		Name:  "api",
 		AppID: "app-1",
-		Traits: toJSONStruct(model.Traits{
-			Service: []spec.ServiceTraitSpec{
-				{
-					Name: "api-v1",
-					Type: "internal",
-					Ports: []spec.ServicePortTraitSpec{
-						{Port: 8080},
-					},
-				},
-				{
-					Name: "api-v2",
-					Type: "internal",
-					Ports: []spec.ServicePortTraitSpec{
-						{Port: 8081},
-					},
-				},
-			},
-		}),
 	}
 	trait := &spec.IngressTraitsSpec{
 		Routes: []spec.IngressRoutes{
@@ -542,18 +542,18 @@ func TestApplyIngressDefaultsAllowsExplicitServiceNameWhenMultipleServices(t *te
 		},
 	}
 
-	require.NoError(t, applyIngressDefaults(trait, component, 0))
+	require.NoError(t, applyIngressDefaults(trait, component, componentTraits, nil, 0))
 	require.Equal(t, "api-v2", trait.Routes[0].Backend.ServiceName)
 	require.Equal(t, int32(8081), trait.Routes[0].Backend.ServicePort)
 }
 
 func TestApplyIngressDefaultsServiceFromProperties(t *testing.T) {
+	properties := &model.Properties{
+		Ports: []model.Ports{{Port: 9090}},
+	}
 	component := &model.ApplicationComponent{
 		Name:  "api",
 		AppID: "app-1",
-		Properties: toJSONStruct(model.Properties{
-			Ports: []model.Ports{{Port: 9090}},
-		}),
 	}
 
 	trait := &spec.IngressTraitsSpec{
@@ -563,7 +563,7 @@ func TestApplyIngressDefaultsServiceFromProperties(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, applyIngressDefaults(trait, component, 0))
+	require.NoError(t, applyIngressDefaults(trait, component, nil, properties, 0))
 	require.Equal(t, naming.ServiceName("api", "app-1"), trait.Routes[0].Backend.ServiceName)
 	require.Equal(t, int32(9090), trait.Routes[0].Backend.ServicePort)
 	require.Equal(t, int32(8081), trait.Routes[1].Backend.ServicePort)
@@ -716,7 +716,6 @@ func TestApplyTraitsBindsServiceAccount(t *testing.T) {
 }
 
 func TestRBACProcessor_NamespaceRole(t *testing.T) {
-	p := &RBACProcessor{}
 	component := &model.ApplicationComponent{
 		Name:      "backend",
 		Namespace: "demo",
@@ -737,7 +736,7 @@ func TestRBACProcessor_NamespaceRole(t *testing.T) {
 		},
 	}
 
-	res, err := p.Process(&TraitContext{Component: component}, policies)
+	res, err := processRBAC(&TraitContext{Component: component}, policies)
 	require.NoError(t, err)
 	require.NotNil(t, res)
 	require.Len(t, res.AdditionalObjects, 3)
@@ -770,7 +769,6 @@ func TestRBACProcessor_NamespaceRole(t *testing.T) {
 }
 
 func TestRBACProcessor_ClusterScope(t *testing.T) {
-	p := &RBACProcessor{}
 	component := &model.ApplicationComponent{
 		Name:      "controller",
 		Namespace: "system",
@@ -797,7 +795,7 @@ func TestRBACProcessor_ClusterScope(t *testing.T) {
 		},
 	}
 
-	res, err := p.Process(&TraitContext{Component: component}, policies)
+	res, err := processRBAC(&TraitContext{Component: component}, policies)
 	require.NoError(t, err)
 	require.Len(t, res.AdditionalObjects, 3)
 	require.Equal(t, "controller-sa", res.ServiceAccountName)
@@ -822,7 +820,6 @@ func TestRBACProcessor_ClusterScope(t *testing.T) {
 }
 
 func TestRBACProcessor_ServiceAccountSelectionAndAutomount(t *testing.T) {
-	p := &RBACProcessor{}
 	component := &model.ApplicationComponent{
 		Name:      "worker",
 		Namespace: "ops",
@@ -850,7 +847,7 @@ func TestRBACProcessor_ServiceAccountSelectionAndAutomount(t *testing.T) {
 		},
 	}
 
-	res, err := p.Process(&TraitContext{Component: component}, policies)
+	res, err := processRBAC(&TraitContext{Component: component}, policies)
 	require.NoError(t, err)
 	require.Equal(t, "pod-labeler-sa", res.ServiceAccountName, "first policy should determine bound serviceAccount")
 	require.NotNil(t, res.AutomountServiceAccountToken)
@@ -1044,7 +1041,6 @@ func TestApplyTraits_SidecarTrait_WithNestedTraits(t *testing.T) {
 }
 
 func TestStorageProcessor_StandalonePVCUsesGivenName(t *testing.T) {
-	storageProcessor := &StorageProcessor{}
 	pvcTrait := spec.StorageTraitSpec{
 		Type:      "persistent",
 		Name:      "shared-cache",
@@ -1058,7 +1054,7 @@ func TestStorageProcessor_StandalonePVCUsesGivenName(t *testing.T) {
 		},
 	}
 
-	result, err := storageProcessor.Process(ctx, []spec.StorageTraitSpec{pvcTrait})
+	result, err := processStorage(ctx, []spec.StorageTraitSpec{pvcTrait})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Len(t, result.Volumes, 1)
@@ -1075,7 +1071,6 @@ func TestStorageProcessor_StandalonePVCUsesGivenName(t *testing.T) {
 }
 
 func TestStorageProcessor_ExplicitClaimNameCreatesStandalonePVCTarget(t *testing.T) {
-	storageProcessor := &StorageProcessor{}
 	ctx := &TraitContext{
 		Component: &model.ApplicationComponent{
 			Name:      "worker",
@@ -1084,7 +1079,7 @@ func TestStorageProcessor_ExplicitClaimNameCreatesStandalonePVCTarget(t *testing
 		},
 	}
 
-	result, err := storageProcessor.Process(ctx, []spec.StorageTraitSpec{{
+	result, err := processStorage(ctx, []spec.StorageTraitSpec{{
 		Type:      "persistent",
 		Name:      "shared-cache",
 		TmpCreate: false,
@@ -1106,7 +1101,6 @@ func TestStorageProcessor_ExplicitClaimNameCreatesStandalonePVCTarget(t *testing
 }
 
 func TestStorageProcessor_RendersSubPathExpr(t *testing.T) {
-	storageProcessor := &StorageProcessor{}
 	ctx := &TraitContext{
 		Component: &model.ApplicationComponent{
 			Name:      "backend",
@@ -1115,7 +1109,7 @@ func TestStorageProcessor_RendersSubPathExpr(t *testing.T) {
 		},
 	}
 
-	result, err := storageProcessor.Process(ctx, []spec.StorageTraitSpec{{
+	result, err := processStorage(ctx, []spec.StorageTraitSpec{{
 		Name:        "logs",
 		Type:        "persistent",
 		ClaimName:   "developer-pvc",
@@ -1140,7 +1134,6 @@ func TestStorageProcessor_RendersSubPathExpr(t *testing.T) {
 // volumeClaimTemplate 名称与 VolumeMount 名称一致
 // 这是修复 "volumeMounts[0].name: Not found" 错误的核心测试
 func TestStorageProcessor_StatefulSet_TmpCreate_VolumeNameMatch(t *testing.T) {
-	processor := &StorageProcessor{}
 	ctx := &TraitContext{
 		Component: &model.ApplicationComponent{
 			Name:      "mysql",
@@ -1149,7 +1142,7 @@ func TestStorageProcessor_StatefulSet_TmpCreate_VolumeNameMatch(t *testing.T) {
 		},
 	}
 
-	result, err := processor.Process(ctx, []spec.StorageTraitSpec{
+	result, err := processStorage(ctx, []spec.StorageTraitSpec{
 		{
 			Name:      "mysql-data",
 			Type:      "persistent",
@@ -1193,7 +1186,6 @@ func TestStorageProcessor_StatefulSet_TmpCreate_VolumeNameMatch(t *testing.T) {
 
 // TestStorageProcessor_MultiVolume_TmpCreate 验证多个 tmpCreate volume 的命名
 func TestStorageProcessor_MultiVolume_TmpCreate(t *testing.T) {
-	processor := &StorageProcessor{}
 	ctx := &TraitContext{
 		Component: &model.ApplicationComponent{
 			Name:      "postgres",
@@ -1202,7 +1194,7 @@ func TestStorageProcessor_MultiVolume_TmpCreate(t *testing.T) {
 		},
 	}
 
-	result, err := processor.Process(ctx, []spec.StorageTraitSpec{
+	result, err := processStorage(ctx, []spec.StorageTraitSpec{
 		{
 			Name:      "pg-data",
 			Type:      "persistent",
@@ -1255,7 +1247,6 @@ func TestStorageProcessor_MultiVolume_TmpCreate(t *testing.T) {
 
 // TestStorageProcessor_MixedMode 验证 tmpCreate 和引用已有 PVC 混合使用
 func TestStorageProcessor_MixedMode(t *testing.T) {
-	processor := &StorageProcessor{}
 	ctx := &TraitContext{
 		Component: &model.ApplicationComponent{
 			Name:      "app-server",
@@ -1264,7 +1255,7 @@ func TestStorageProcessor_MixedMode(t *testing.T) {
 		},
 	}
 
-	result, err := processor.Process(ctx, []spec.StorageTraitSpec{
+	result, err := processStorage(ctx, []spec.StorageTraitSpec{
 		{
 			Name:      "app-data",
 			Type:      "persistent",
@@ -1470,7 +1461,6 @@ func TestStorageProcessor_DuplicateInput(t *testing.T) {
 	allStorageTraits = append(allStorageTraits, traits.Init[0].Traits.Storage...)
 
 	// 2. TmpCreate the processor and the context
-	storageProcessor := &StorageProcessor{}
 	ctx := &TraitContext{
 		Component: &model.ApplicationComponent{
 			Name:      "mysql",
@@ -1480,7 +1470,7 @@ func TestStorageProcessor_DuplicateInput(t *testing.T) {
 	}
 
 	// 3. Run the processor
-	result, err := storageProcessor.Process(ctx, allStorageTraits)
+	result, err := processStorage(ctx, allStorageTraits)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 

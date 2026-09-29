@@ -805,7 +805,7 @@ func materializeSecretData(secret *corev1.Secret) map[string][]byte {
 	return merged
 }
 
-func GenerateSecret(component *model.ApplicationComponent, properties *model.Properties) interface{} {
+func GenerateSecret(component *model.ApplicationComponent, properties *model.Properties) *SecretInput {
 	name, namespace := generatedResourceIdentity(component)
 
 	if url, fileName, ok := externalConfigFileInput(properties, properties != nil && properties.Secret != nil); ok {
@@ -821,7 +821,7 @@ func GenerateSecret(component *model.ApplicationComponent, properties *model.Pro
 	labels := BuildLabels(component, properties)
 	var data map[string]string
 	if properties != nil {
-		data = keyValueDataOrNil(properties.Secret)
+		data = properties.Secret
 	}
 
 	return &SecretInput{

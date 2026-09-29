@@ -38,7 +38,7 @@ func TestCreateObjectJobsFromResultIngressNaming(t *testing.T) {
 
 	t.Run("auto name when ingress missing name", func(t *testing.T) {
 		ing := &networkingv1.Ingress{}
-		jobs, err := CreateObjectJobsFromResult([]client.Object{ing}, component, task, nil, int64(config.DefaultJobTaskTimeout))
+		jobs, err := createObjectJobsFromResult([]client.Object{ing}, component, task, nil, int64(config.DefaultJobTaskTimeout), shareConfigForComponent(component, decodeComponentTraits(component)))
 		require.NoError(t, err)
 		require.Len(t, jobs, 1)
 
@@ -61,7 +61,7 @@ func TestCreateObjectJobsFromResultIngressNaming(t *testing.T) {
 			},
 		}
 
-		j, err := CreateObjectJobsFromResult([]client.Object{pvc}, component, task, nil, int64(config.DefaultJobTaskTimeout))
+		j, err := createObjectJobsFromResult([]client.Object{pvc}, component, task, nil, int64(config.DefaultJobTaskTimeout), shareConfigForComponent(component, decodeComponentTraits(component)))
 		require.NoError(t, err)
 		require.Len(t, j, 1)
 		require.Equal(t, canonical, j[0].Name)
@@ -80,7 +80,7 @@ func TestCreateObjectJobsFromResultIngressNaming(t *testing.T) {
 			},
 		}
 
-		j, err := CreateObjectJobsFromResult([]client.Object{pvc}, component, task, nil, int64(config.DefaultJobTaskTimeout))
+		j, err := createObjectJobsFromResult([]client.Object{pvc}, component, task, nil, int64(config.DefaultJobTaskTimeout), shareConfigForComponent(component, decodeComponentTraits(component)))
 		require.NoError(t, err)
 		require.Len(t, j, 1)
 
@@ -95,7 +95,7 @@ func TestCreateObjectJobsFromResultIngressNaming(t *testing.T) {
 		baseName := "CustomRoute"
 		ing.Name = baseName
 
-		jobs, err := CreateObjectJobsFromResult([]client.Object{ing}, component, task, nil, int64(config.DefaultJobTaskTimeout))
+		jobs, err := createObjectJobsFromResult([]client.Object{ing}, component, task, nil, int64(config.DefaultJobTaskTimeout), shareConfigForComponent(component, decodeComponentTraits(component)))
 		require.NoError(t, err)
 		require.Len(t, jobs, 1)
 
@@ -118,7 +118,7 @@ func TestCreateObjectJobsFromResultIngressNaming(t *testing.T) {
 				},
 			},
 		}
-		jobs, err := CreateObjectJobsFromResult([]client.Object{ing}, component, task, nil, int64(config.DefaultJobTaskTimeout))
+		jobs, err := createObjectJobsFromResult([]client.Object{ing}, component, task, nil, int64(config.DefaultJobTaskTimeout), shareConfigForComponent(component, decodeComponentTraits(component)))
 		require.NoError(t, err)
 		require.Len(t, jobs, 1)
 		ingressObj, ok := jobs[0].JobInfo.(*networkingv1.Ingress)
@@ -134,7 +134,7 @@ func TestCreateObjectJobsFromResultIgnoresConfigAndSecret(t *testing.T) {
 	task := &model.WorkflowQueue{WorkflowID: "wf", ProjectID: "proj", AppID: "aid"}
 	cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "app-config"}, Data: map[string]string{"key": "value"}}
 	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "app-secret"}}
-	jobs, err := CreateObjectJobsFromResult([]client.Object{cm, secret}, component, task, nil, int64(config.DefaultJobTaskTimeout))
+	jobs, err := createObjectJobsFromResult([]client.Object{cm, secret}, component, task, nil, int64(config.DefaultJobTaskTimeout), shareConfigForComponent(component, decodeComponentTraits(component)))
 	require.NoError(t, err)
 	require.Empty(t, jobs, "configmap/secret should be ignored; dedicated jobs exist elsewhere")
 }
@@ -196,7 +196,7 @@ func TestCreateObjectJobsFromResultRBAC(t *testing.T) {
 	}
 
 	objs := []client.Object{sa, role, binding, clusterRole, clusterBinding}
-	jobs, err := CreateObjectJobsFromResult(objs, component, task, nil, int64(config.DefaultJobTaskTimeout))
+	jobs, err := createObjectJobsFromResult(objs, component, task, nil, int64(config.DefaultJobTaskTimeout), shareConfigForComponent(component, decodeComponentTraits(component)))
 	require.NoError(t, err)
 	require.Len(t, jobs, 5)
 
@@ -502,7 +502,7 @@ func TestCreateObjectJobsFromResult_ShareIgnoreSkipsAdditionalJobs(t *testing.T)
 
 	pvc := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: "data"}}
 	sa := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "cache-sa"}}
-	jobs, err := CreateObjectJobsFromResult([]client.Object{pvc, sa}, component, task, nil, int64(config.DefaultJobTaskTimeout))
+	jobs, err := createObjectJobsFromResult([]client.Object{pvc, sa}, component, task, nil, int64(config.DefaultJobTaskTimeout), shareConfigForComponent(component, decodeComponentTraits(component)))
 	require.NoError(t, err)
 	require.Len(t, jobs, 2)
 	for _, job := range jobs {
@@ -735,7 +735,7 @@ func TestServiceTraitsForComponent_FallbackFromProperties(t *testing.T) {
 		},
 	}
 
-	traits := serviceTraitsForComponent(component, properties)
+	traits := serviceTraitsForComponent(component, properties, nil)
 	require.Len(t, traits, 1)
 	require.Empty(t, traits[0].Name)
 	require.Equal(t, "internal", traits[0].Type)

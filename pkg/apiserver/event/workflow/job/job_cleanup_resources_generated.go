@@ -192,37 +192,19 @@ func (c *CleanupResourcesJobCtl) deleteAdditionalObjects(ctx context.Context, fa
 }
 
 func (c *CleanupResourcesJobCtl) deleteConfigMapForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, deleted *cleanupResourceSet) {
-	obj := GenerateConfigMap(component, props)
-	switch cm := obj.(type) {
-	case *ConfigMapInput:
-		ns := pickNonEmpty(cm.Namespace, component.Namespace)
-		name := pickNonEmpty(cm.Name, component.Name)
-		c.deleteTrackedResource(ctx, deleted, spec.ResourceConfigMap, ns, name, false, func(deleteCtx context.Context) error {
-			return c.deleteConfigMap(deleteCtx, ns, name)
-		})
-	case *corev1.ConfigMap:
-		ns := pickNonEmpty(cm.Namespace, component.Namespace)
-		name := pickNonEmpty(cm.Name, component.Name)
-		c.deleteTrackedResource(ctx, deleted, spec.ResourceConfigMap, ns, name, false, func(deleteCtx context.Context) error {
-			return c.deleteConfigMap(deleteCtx, ns, name)
-		})
-	}
+	cm := GenerateConfigMap(component, props)
+	ns := pickNonEmpty(cm.Namespace, component.Namespace)
+	name := pickNonEmpty(cm.Name, component.Name)
+	c.deleteTrackedResource(ctx, deleted, spec.ResourceConfigMap, ns, name, false, func(deleteCtx context.Context) error {
+		return c.deleteConfigMap(deleteCtx, ns, name)
+	})
 }
 
 func (c *CleanupResourcesJobCtl) deleteSecretForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, deleted *cleanupResourceSet) {
-	obj := GenerateSecret(component, props)
-	switch sec := obj.(type) {
-	case *SecretInput:
-		ns := pickNonEmpty(sec.Namespace, component.Namespace)
-		name := pickNonEmpty(sec.Name, component.Name)
-		c.deleteTrackedResource(ctx, deleted, spec.ResourceSecret, ns, name, false, func(deleteCtx context.Context) error {
-			return c.deleteSecret(deleteCtx, ns, name)
-		})
-	case *corev1.Secret:
-		ns := pickNonEmpty(sec.Namespace, component.Namespace)
-		name := pickNonEmpty(sec.Name, component.Name)
-		c.deleteTrackedResource(ctx, deleted, spec.ResourceSecret, ns, name, false, func(deleteCtx context.Context) error {
-			return c.deleteSecret(deleteCtx, ns, name)
-		})
-	}
+	sec := GenerateSecret(component, props)
+	ns := pickNonEmpty(sec.Namespace, component.Namespace)
+	name := pickNonEmpty(sec.Name, component.Name)
+	c.deleteTrackedResource(ctx, deleted, spec.ResourceSecret, ns, name, false, func(deleteCtx context.Context) error {
+		return c.deleteSecret(deleteCtx, ns, name)
+	})
 }

@@ -13,11 +13,9 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
-// RBACProcessor materializes RBAC resources (ServiceAccount, Role/ClusterRole, RoleBinding)
+// processRBAC materializes RBAC resources (ServiceAccount, Role/ClusterRole, RoleBinding)
 // based on declarative trait specifications.
-type RBACProcessor struct{}
-
-func (p *RBACProcessor) Process(ctx *TraitContext, specs []spec.RBACPolicySpec) (*TraitResult, error) {
+func processRBAC(ctx *TraitContext, specs []spec.RBACPolicySpec) (*TraitResult, error) {
 	if len(specs) == 0 {
 		return nil, nil
 	}
