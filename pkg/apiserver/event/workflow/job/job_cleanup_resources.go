@@ -22,7 +22,6 @@ import (
 
 type CleanupResourcesJobCtl struct {
 	deployNamespacedResourceJobBase
-	runtime                      *jobRuntime
 	skipSaveInfo                 bool
 	requiredStatefulSetPVCTarget *requiredStatefulSetPVCDeletionTarget
 	statefulSetRetentionTargets  map[string]statefulSetRetentionTarget

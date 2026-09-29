@@ -299,7 +299,7 @@ func TestPersistRotatedAdoptedSecretDataRebasesStaleSourcesAndRetriesCAS(t *test
 			encryptedData: encoded,
 		}
 	}
-	runtime := newJobRuntime(nil, nil, nil, nil, nil, nil, nil)
+	runtime := newJobRuntime(&Runtime{})
 	defer runtime.close()
 
 	require.NoError(t, persistRotatedAdoptedSecretData(
@@ -844,7 +844,9 @@ func TestInitJobCtlInjectsImportSecretKeyringWithoutMutatingJobInfo(t *testing.T
 		JobType:   string(config.JobDeploySecret),
 		JobInfo:   jobInfo,
 	}
-	runtime := newJobRuntime(nil, nil, nil, nil, nil, nil, nil, keyring)
+	runtime := newJobRuntime(&Runtime{
+		ImportSecretKeyring: keyring,
+	})
 	defer runtime.close()
 
 	controller := initJobCtl(

@@ -20,7 +20,7 @@ type EvaluationRecovery func(context.Context, *model.JobTask) (bool, error)
 func WithEvaluationRecovery(ctx context.Context, recover EvaluationRecovery) context.Context {
 	return context.WithValue(ctx, evaluationRecoveryKey{}, recover)
 }
-func runJobWithEvaluationRecovery(ctx context.Context, task *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), runtime *jobRuntime) error {
+func runJobWithEvaluationRecovery(ctx context.Context, task *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), runtime *Runtime) error {
 	recover, _ := ctx.Value(evaluationRecoveryKey{}).(EvaluationRecovery)
 	if recover == nil || task.JobType != string(config.JobEval) {
 		return runJob(ctx, task, client, store, ack, runtime)

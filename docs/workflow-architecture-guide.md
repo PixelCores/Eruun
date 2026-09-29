@@ -269,7 +269,7 @@ for _, stepExec := range stepExecutions {
     for _, priority := range priorities {
         tasksInPriority := stepExec.Jobs[priority]
         // 执行该优先级的所有 Job
-        job.RunJobs(ctx, tasksInPriority, stepConcurrency, ...)
+        w.runJobs(ctx, tasksInPriority, stepConcurrency, w.ack, !stepExec.Mode.IsParallel())
     }
 }
 ```
@@ -604,7 +604,7 @@ func (w *WorkflowCtl) Run(ctx context.Context, concurrency int) error {
             stopOnFailure := !stepExec.Mode.IsParallel()
             
             // 执行该优先级的 Jobs
-            job.RunJobs(ctx, tasksInPriority, stepConcurrency, w.Client, w.Store, w.ack, stopOnFailure)
+            w.runJobs(ctx, tasksInPriority, stepConcurrency, w.ack, stopOnFailure)
             
             // 检查执行结果
             for _, task := range tasksInPriority {

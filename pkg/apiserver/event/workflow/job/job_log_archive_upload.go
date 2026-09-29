@@ -87,7 +87,6 @@ type LogArchiveUploadJobResult struct {
 
 type LogArchiveUploadJobCtl struct {
 	deployNamespacedResourceJobBase
-	runtime *jobRuntime
 }
 
 type logArchiveUploadTarget struct {
@@ -102,14 +101,6 @@ func NewLogArchiveUploadJobCtl(job *model.JobTask, client kubernetes.Interface, 
 		return nil
 	}
 	return &LogArchiveUploadJobCtl{deployNamespacedResourceJobBase: base}
-}
-
-func (c *LogArchiveUploadJobCtl) setRuntime(runtime *jobRuntime) {
-	if c == nil {
-		return
-	}
-	c.runtime = runtime
-	c.deployNamespacedResourceJobBase.setRuntime(runtime)
 }
 
 func (c *LogArchiveUploadJobCtl) Clean(context.Context) {}
@@ -133,7 +124,7 @@ func (c *LogArchiveUploadJobCtl) run(ctx context.Context) error {
 	if targetPath == "" {
 		return fmt.Errorf("log archive upload path is required")
 	}
-	if c.runtime == nil || c.runtime.kubeConfig == nil {
+	if c.runtime == nil || c.runtime.KubeConfig == nil {
 		return fmt.Errorf("kube config is nil")
 	}
 	uploader := c.runtime.archiveUploader
@@ -150,7 +141,7 @@ func (c *LogArchiveUploadJobCtl) run(ctx context.Context) error {
 		return err
 	}
 
-	archive, err := archivePodPathForUpload(ctx, c.client, c.runtime.kubeConfig, target.Namespace, target.PodName, target.ContainerName, targetPath)
+	archive, err := archivePodPathForUpload(ctx, c.client, c.runtime.KubeConfig, target.Namespace, target.PodName, target.ContainerName, targetPath)
 	if err != nil {
 		return err
 	}

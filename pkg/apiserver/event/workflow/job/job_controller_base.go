@@ -24,7 +24,7 @@ type deployNamespacedResourceJobBase struct {
 	shareLocker    locker.Locker
 	delayQueue     msg.Queue
 	resourceWaiter informer.ComponentReadyObserver
-	runtime        *jobRuntime
+	runtime        *Runtime
 }
 
 func newDeployNamespacedResourceJobBase(controllerName string, job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), shareLocker locker.Locker) (deployNamespacedResourceJobBase, bool) {
@@ -42,12 +42,12 @@ func newDeployNamespacedResourceJobBase(controllerName string, job *model.JobTas
 	}, true
 }
 
-func (b *deployNamespacedResourceJobBase) setRuntime(runtime *jobRuntime) {
+func (b *deployNamespacedResourceJobBase) setRuntime(runtime *Runtime) {
 	if b == nil || runtime == nil {
 		return
 	}
-	b.delayQueue = runtime.delayQueue
-	b.resourceWaiter = runtime.resourceWaiter
+	b.delayQueue = runtime.DelayQueue
+	b.resourceWaiter = runtime.ResourceWaiter
 	b.runtime = runtime
 }
 

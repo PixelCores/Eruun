@@ -126,7 +126,7 @@ func TestDelayedJobControllersPropagateWorkflowOwnership(t *testing.T) {
 			TaskID: task.TaskID, Status: config.StatusRunning, RunGeneration: 3, RunToken: "run-3", WorkerID: "worker-delayed",
 		}}
 		ctl := NewInstantJobCtl(task, fake.NewSimpleClientset(), store, func() {})
-		ctl.setRuntime(&jobRuntime{delayQueue: queue})
+		ctl.setRuntime(&Runtime{DelayQueue: queue})
 
 		require.NoError(t, ctl.run(context.Background()))
 		assertPayload(t, queue)
@@ -141,7 +141,7 @@ func TestDelayedJobControllersPropagateWorkflowOwnership(t *testing.T) {
 			TaskID: task.TaskID, Status: config.StatusRunning, RunGeneration: 3, RunToken: "run-3", WorkerID: "worker-delayed",
 		}}
 		ctl := NewScheduledJobCtl(task, fake.NewSimpleClientset(), store, func() {})
-		ctl.setRuntime(&jobRuntime{delayQueue: queue})
+		ctl.setRuntime(&Runtime{DelayQueue: queue})
 
 		require.NoError(t, ctl.runOneTimeJob(context.Background(), task.JobInfo.(*batchv1.Job)))
 		assertPayload(t, queue)
@@ -764,9 +764,15 @@ func TestRunJobsPreservesNonTerminalStateAfterRecreateOwnershipReadFailure(t *te
 				})
 				ackCount := 0
 
-				runErr := RunJobs(context.Background(), []*model.JobTask{jobTask}, concurrencyCase.concurrency, client, nil, store, func() {
-					ackCount++
-				}, true, nil, nil, nil, nil, nil, nil)
+				runErr := RunJobs(context.Background(), []*model.JobTask{jobTask}, &Runtime{
+					Concurrency: concurrencyCase.concurrency,
+					Client:      client,
+					Store:       store,
+					Ack: func() {
+						ackCount++
+					},
+					StopOnFailure: true,
+				})
 
 				require.ErrorIs(t, runErr, signal.ErrInfrastructureStop)
 				require.ErrorContains(t, runErr, temporaryErr.Error())

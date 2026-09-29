@@ -267,7 +267,10 @@ func TestVersionRestartJobCtlRestartsDeployment(t *testing.T) {
 	cacheKey := cacheutil.ApplicationComponentsKey(api.AppID)
 	require.NoError(t, cacheStore.Store(context.Background(), cacheKey, "stale"))
 	require.True(t, cacheStore.Exists(context.Background(), cacheKey))
-	ctl.setRuntime(newJobRuntime(nil, cacheStore, nil, nil, nil, waiter, nil))
+	ctl.setRuntime(newJobRuntime(&Runtime{
+		Cache:          cacheStore,
+		ResourceWaiter: waiter,
+	}))
 
 	result := runVersionRestartAsync(ctl)
 	restartedAt := waitForDeploymentRestartAt(t, client, deployment.Name)
@@ -293,7 +296,9 @@ func TestVersionRestartJobCtlRestartsStatefulSet(t *testing.T) {
 	waiter := informer.NewResourceReadyWaiter()
 	t.Cleanup(waiter.Close)
 	waiter.OnPodAdd(versionRestartReadyPod(db, "mysql-old", "old-restarted-at"))
-	ctl.setRuntime(newJobRuntime(nil, nil, nil, nil, nil, waiter, nil))
+	ctl.setRuntime(newJobRuntime(&Runtime{
+		ResourceWaiter: waiter,
+	}))
 
 	result := runVersionRestartAsync(ctl)
 	restartedAt := waitForStatefulSetRestartAt(t, client, statefulSet.Name)
@@ -439,7 +444,9 @@ func TestVersionRestartJobCtlFailsWhenRestartedDeploymentPodCrashLoops(t *testin
 	waiter := informer.NewResourceReadyWaiter()
 	t.Cleanup(waiter.Close)
 	waiter.OnPodAdd(versionRestartReadyPod(api, "api-old", "old-restarted-at"))
-	ctl.setRuntime(newJobRuntime(nil, nil, nil, nil, nil, waiter, nil))
+	ctl.setRuntime(newJobRuntime(&Runtime{
+		ResourceWaiter: waiter,
+	}))
 
 	result := runVersionRestartAsync(ctl)
 	restartedAt := waitForDeploymentRestartAt(t, client, deployment.Name)
@@ -464,7 +471,9 @@ func TestVersionRestartJobCtlFailsWhenRestartedStatefulSetPodCrashLoops(t *testi
 	waiter := informer.NewResourceReadyWaiter()
 	t.Cleanup(waiter.Close)
 	waiter.OnPodAdd(versionRestartReadyPod(db, "mysql-old", "old-restarted-at"))
-	ctl.setRuntime(newJobRuntime(nil, nil, nil, nil, nil, waiter, nil))
+	ctl.setRuntime(newJobRuntime(&Runtime{
+		ResourceWaiter: waiter,
+	}))
 
 	result := runVersionRestartAsync(ctl)
 	restartedAt := waitForStatefulSetRestartAt(t, client, statefulSet.Name)

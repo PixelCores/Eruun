@@ -664,7 +664,13 @@ func TestListApplicationComponentsRefreshesAfterConfigJobStatusSync(t *testing.T
 			},
 		},
 	}
-	job.RunJobs(context.Background(), []*model.JobTask{jobTask}, 1, fake.NewSimpleClientset(), nil, store, func() {}, false, nil, cacheStore, nil, nil, nil, nil)
+	job.RunJobs(context.Background(), []*model.JobTask{jobTask}, &job.Runtime{
+		Concurrency: 1,
+		Client:      fake.NewSimpleClientset(),
+		Store:       store,
+		Ack:         func() {},
+		Cache:       cacheStore,
+	})
 
 	secondReq := httptest.NewRequest(http.MethodGet, "/applications/app-1/components", nil)
 	secondResp := httptest.NewRecorder()

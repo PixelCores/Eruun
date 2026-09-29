@@ -59,7 +59,11 @@ func TestRunJobsSerialContinuesWhenStopOnFailureFalse(t *testing.T) {
 		{Name: "second", JobType: "unknown"},
 	}
 
-	RunJobs(context.Background(), jobs, 1, nil, nil, &noopStore{}, func() {}, false, nil, nil, nil, nil, nil, nil)
+	RunJobs(context.Background(), jobs, &Runtime{
+		Concurrency: 1,
+		Store:       &noopStore{},
+		Ack:         func() {},
+	})
 
 	require.Equal(t, config.StatusFailed, jobs[0].Status)
 	require.Equal(t, config.StatusFailed, jobs[1].Status)
@@ -71,7 +75,12 @@ func TestRunJobsSerialStopsWhenStopOnFailureTrue(t *testing.T) {
 		{Name: "second", JobType: "unknown"},
 	}
 
-	RunJobs(context.Background(), jobs, 1, nil, nil, &noopStore{}, func() {}, true, nil, nil, nil, nil, nil, nil)
+	RunJobs(context.Background(), jobs, &Runtime{
+		Concurrency:   1,
+		Store:         &noopStore{},
+		Ack:           func() {},
+		StopOnFailure: true,
+	})
 
 	require.Equal(t, config.StatusFailed, jobs[0].Status)
 	require.Empty(t, jobs[1].Status)
@@ -100,7 +109,12 @@ func TestRunJobsSerialStopsWhenAckCancelsContext(t *testing.T) {
 		{Name: "second", JobType: "unknown"},
 	}
 
-	RunJobs(ctx, jobs, 1, fake.NewSimpleClientset(), nil, store, cancel, false, nil, nil, nil, nil, nil, nil)
+	RunJobs(ctx, jobs, &Runtime{
+		Concurrency: 1,
+		Client:      fake.NewSimpleClientset(),
+		Store:       store,
+		Ack:         cancel,
+	})
 
 	require.Equal(t, config.StatusCancelled, jobs[0].Status)
 	require.Empty(t, jobs[1].Status)
@@ -136,21 +150,13 @@ func TestRunJobsReturnsInfrastructureStopWhenDistributedCheckpointFails(t *testi
 				}},
 			}
 
-			err := RunJobs(
-				context.Background(),
-				[]*model.JobTask{task},
-				concurrency,
-				fake.NewSimpleClientset(),
-				nil,
-				store,
-				func() {},
-				false,
-				nil, nil,
-				nil,
-				queue,
-				nil,
-				nil,
-			)
+			err := RunJobs(context.Background(), []*model.JobTask{task}, &Runtime{
+				Concurrency: concurrency,
+				Client:      fake.NewSimpleClientset(),
+				Store:       store,
+				Ack:         func() {},
+				DelayQueue:  queue,
+			})
 
 			require.ErrorIs(t, err, signal.ErrInfrastructureStop)
 			require.ErrorIs(t, err, checkpointErr)
@@ -185,7 +191,13 @@ func TestRunJobsReturnsInfrastructureStopWhenStartOwnershipTransactionFails(t *t
 	client := fake.NewSimpleClientset()
 	ackCount := 0
 
-	err := RunJobs(context.Background(), []*model.JobTask{task}, 1, client, nil, store, func() { ackCount++ }, true, nil, nil, nil, nil, nil, nil)
+	err := RunJobs(context.Background(), []*model.JobTask{task}, &Runtime{
+		Concurrency:   1,
+		Client:        client,
+		Store:         store,
+		Ack:           func() { ackCount++ },
+		StopOnFailure: true,
+	})
 
 	require.ErrorIs(t, err, signal.ErrInfrastructureStop)
 	require.ErrorIs(t, err, transactionErr)
@@ -237,7 +249,13 @@ func TestRunJobsReturnsInfrastructureStopWhenTerminalPersistenceFails(t *testing
 					tx.AddError(persistErr)
 				}
 			}))
-			err = RunJobs(context.Background(), []*model.JobTask{task}, concurrency, fake.NewSimpleClientset(), nil, store, func() {}, true, nil, nil, nil, nil, nil, nil)
+			err = RunJobs(context.Background(), []*model.JobTask{task}, &Runtime{
+				Concurrency:   concurrency,
+				Client:        fake.NewSimpleClientset(),
+				Store:         store,
+				Ack:           func() {},
+				StopOnFailure: true,
+			})
 
 			require.ErrorIs(t, err, signal.ErrInfrastructureStop)
 			require.ErrorContains(t, err, persistErr.Error())
@@ -321,7 +339,13 @@ func TestRunJobsKeepsLegacyTerminalPersistenceBestEffort(t *testing.T) {
 		}},
 	}
 
-	err := RunJobs(context.Background(), []*model.JobTask{task}, 1, fake.NewSimpleClientset(), nil, store, func() {}, true, nil, nil, nil, nil, nil, nil)
+	err := RunJobs(context.Background(), []*model.JobTask{task}, &Runtime{
+		Concurrency:   1,
+		Client:        fake.NewSimpleClientset(),
+		Store:         store,
+		Ack:           func() {},
+		StopOnFailure: true,
+	})
 
 	require.NoError(t, err)
 	require.Equal(t, config.StatusCompleted, task.Status)
@@ -364,7 +388,13 @@ func TestRunJobsReturnsTerminalCallbackPersistenceFailureWithoutWorker(t *testin
 			}))
 			result := make(chan error, 1)
 			go func() {
-				result <- RunJobs(ctx, []*model.JobTask{task}, concurrency, nil, nil, store, func() {}, true, nil, nil, &spec.URLSecurityPolicySpec{AllowPrivateByDefault: true}, nil, nil, nil)
+				result <- RunJobs(ctx, []*model.JobTask{task}, &Runtime{
+					Concurrency:       concurrency,
+					Store:             store,
+					Ack:               func() {},
+					StopOnFailure:     true,
+					URLSecurityPolicy: &spec.URLSecurityPolicySpec{AllowPrivateByDefault: true},
+				})
 			}()
 			require.Eventually(t, func() bool {
 				var count int64
@@ -413,7 +443,12 @@ func TestRunJobsInfrastructureStopDoesNotPersistCancelledState(t *testing.T) {
 		cancel(signal.ErrInfrastructureStop)
 	}
 
-	RunJobs(ctx, jobs, 1, fake.NewSimpleClientset(), nil, store, ack, false, nil, nil, nil, nil, nil, nil)
+	RunJobs(ctx, jobs, &Runtime{
+		Concurrency: 1,
+		Client:      fake.NewSimpleClientset(),
+		Store:       store,
+		Ack:         ack,
+	})
 
 	require.Equal(t, config.StatusPrepare, jobs[0].Status)
 	require.Empty(t, jobs[0].Error)
@@ -429,7 +464,11 @@ func TestRunJobsParallelDoesNotStartJobsWithCancelledContext(t *testing.T) {
 		{Name: "second", JobType: "unknown"},
 	}
 
-	RunJobs(ctx, jobs, 2, nil, nil, &noopStore{}, func() {}, false, nil, nil, nil, nil, nil, nil)
+	RunJobs(ctx, jobs, &Runtime{
+		Concurrency: 2,
+		Store:       &noopStore{},
+		Ack:         func() {},
+	})
 
 	require.Empty(t, jobs[0].Status)
 	require.Empty(t, jobs[1].Status)
@@ -506,7 +545,7 @@ func TestRunJobInfrastructureStopDuringCancellationWatcherSetupDoesNotPersistFai
 	redisClient := redis.NewClient(&redis.Options{Addr: "unused:0"})
 	redisClient.AddHook(hook)
 	defer redisClient.Close()
-	runtime := &jobRuntime{redisClient: redisClient}
+	runtime := &Runtime{RedisClient: redisClient}
 	ackCount := 0
 	done := make(chan struct{})
 	go func() {
@@ -523,6 +562,20 @@ func TestRunJobInfrastructureStopDuringCancellationWatcherSetupDoesNotPersistFai
 	require.Equal(t, 1, ackCount)
 	require.Empty(t, store.jobInfos)
 	require.Nil(t, store.updated)
+}
+
+func TestJobRuntimeDoesNotReusePersistenceGateAcrossRuns(t *testing.T) {
+	config := &Runtime{}
+	config.adoptionPersistenceOnce.Do(func() {
+		config.adoptionPersistenceGate = make(chan struct{}, 1)
+	})
+
+	first := newJobRuntime(config)
+	second := newJobRuntime(config)
+	require.NoError(t, first.withAdoptionPersistenceContext(context.Background(), func() error { return nil }))
+	require.NoError(t, second.withAdoptionPersistenceContext(context.Background(), func() error { return nil }))
+	require.NotEqual(t, config.adoptionPersistenceGate, first.adoptionPersistenceGate)
+	require.NotEqual(t, first.adoptionPersistenceGate, second.adoptionPersistenceGate)
 }
 
 func infrastructureStopTestJob() *model.JobTask {

@@ -79,7 +79,7 @@ func TestAdoptedDependencyRecreationMergesSnapshotUpdatesFromSharedRuntime(t *te
 	secondCreated := secondSource.DeepCopy()
 	secondCreated.UID = types.UID("new-worker-uid")
 	secondCreated.ResourceVersion = "2"
-	sharedRuntime := &jobRuntime{}
+	sharedRuntime := &Runtime{}
 	lockProvider := locker.NewMemoryLocker(shareLockerPrefix)
 	firstGuard, err := firstRecreation.adoptedResourceBinding.prepareRecreationCandidate(
 		ctx,

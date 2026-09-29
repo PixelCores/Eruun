@@ -47,7 +47,6 @@ type databaseResetReplicaCheckpoint struct {
 
 type DatabaseResetJobCtl struct {
 	deployNamespacedResourceJobBase
-	runtime *jobRuntime
 }
 
 type pvcResetTarget struct {
@@ -73,14 +72,6 @@ func NewDatabaseResetJobCtl(job *model.JobTask, client kubernetes.Interface, sto
 		return nil
 	}
 	return &DatabaseResetJobCtl{deployNamespacedResourceJobBase: base}
-}
-
-func (c *DatabaseResetJobCtl) setRuntime(runtime *jobRuntime) {
-	if c == nil {
-		return
-	}
-	c.runtime = runtime
-	c.deployNamespacedResourceJobBase.setRuntime(runtime)
 }
 
 func (c *DatabaseResetJobCtl) Clean(context.Context) {}

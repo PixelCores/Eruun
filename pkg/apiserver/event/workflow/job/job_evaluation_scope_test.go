@@ -94,7 +94,14 @@ func TestEvaluationScopeRunsThroughAdmissionAndPersistsPrivateSnapshot(t *testin
 			defer cancel()
 			result := make(chan error, 1)
 			go func() {
-				result <- RunJobs(ctx, []*model.JobTask{task}, 1, client, nil, store, func() {}, true, nil, nil, nil, nil, observer, nil)
+				result <- RunJobs(ctx, []*model.JobTask{task}, &Runtime{
+					Concurrency:    1,
+					Client:         client,
+					Store:          store,
+					Ack:            func() {},
+					StopOnFailure:  true,
+					ResourceWaiter: observer,
+				})
 			}()
 			require.Eventually(t, func() bool {
 				var count int64
@@ -151,7 +158,13 @@ func TestEvaluationScopeRejectsForeignAndForgedOwnership(t *testing.T) {
 				task.JobType = string(config.JobCommand)
 			}
 			client := fake.NewSimpleClientset()
-			require.Error(t, RunJobs(ctx, []*model.JobTask{task}, 1, client, nil, store, func() {}, true, nil, nil, nil, nil, nil, nil))
+			require.Error(t, RunJobs(ctx, []*model.JobTask{task}, &Runtime{
+				Concurrency:   1,
+				Client:        client,
+				Store:         store,
+				Ack:           func() {},
+				StopOnFailure: true,
+			}))
 			require.Empty(t, client.Actions())
 			if name == "foreign application" {
 				_, err := findExistingJobInfo(ctx, store, task)

@@ -71,41 +71,52 @@ const (
 	cancelledJobCleanupRenewInterval = config.DelTimeOut / 3
 )
 
-type jobRuntime struct {
-	redisClient             *redis.Client
+// Runtime contains the dependencies and execution policy for a RunJobs call.
+// RunJobs creates fresh lock and persistence state for each invocation.
+type Runtime struct {
+	Concurrency             int
+	Client                  kubernetes.Interface
+	Store                   datastore.DataStore
+	Ack                     func()
+	StopOnFailure           bool
+	RedisClient             *redis.Client
+	Cache                   cache.ICache
+	URLSecurityPolicy       *spec.URLSecurityPolicySpec
+	DelayQueue              msg.Queue
+	ResourceWaiter          informer.ComponentReadyObserver
+	KubeConfig              *rest.Config
+	ImportSecretKeyring     *importsecret.Keyring
+	ResourceImportExecutor  ResourceImportExecutor
 	shareLocker             locker.Locker
-	cache                   cache.ICache
-	urlSecurityPolicy       *spec.URLSecurityPolicySpec
-	delayQueue              msg.Queue
-	resourceWaiter          informer.ComponentReadyObserver
-	kubeConfig              *rest.Config
 	archiveUploader         ArchiveUploader
-	importSecretKeyring     *importsecret.Keyring
-	resourceImportExecutor  ResourceImportExecutor
 	adoptionPersistenceOnce sync.Once
 	adoptionPersistenceGate chan struct{}
 }
 
-func newJobRuntime(redisClient *redis.Client, cache cache.ICache, kubeConfig *rest.Config, urlSecurityPolicy *spec.URLSecurityPolicySpec, delayQueue msg.Queue, resourceWaiter informer.ComponentReadyObserver, resourceImportExecutor ResourceImportExecutor, keyrings ...*importsecret.Keyring) *jobRuntime {
-	var importSecretKeyring *importsecret.Keyring
-	if len(keyrings) > 0 {
-		importSecretKeyring = keyrings[0]
+func newJobRuntime(config *Runtime) *Runtime {
+	if config == nil {
+		config = &Runtime{}
 	}
-	return &jobRuntime{
-		redisClient:            redisClient,
-		shareLocker:            newShareLocker(redisClient),
-		cache:                  cache,
-		urlSecurityPolicy:      urlSecurityPolicy,
-		delayQueue:             delayQueue,
-		resourceWaiter:         resourceWaiter,
-		kubeConfig:             kubeConfig,
+	return &Runtime{
+		Concurrency:            config.Concurrency,
+		Client:                 config.Client,
+		Store:                  config.Store,
+		Ack:                    config.Ack,
+		StopOnFailure:          config.StopOnFailure,
+		RedisClient:            config.RedisClient,
+		Cache:                  config.Cache,
+		URLSecurityPolicy:      config.URLSecurityPolicy,
+		DelayQueue:             config.DelayQueue,
+		ResourceWaiter:         config.ResourceWaiter,
+		KubeConfig:             config.KubeConfig,
+		ImportSecretKeyring:    config.ImportSecretKeyring,
+		ResourceImportExecutor: config.ResourceImportExecutor,
+		shareLocker:            newShareLocker(config.RedisClient),
 		archiveUploader:        currentArchiveUploader(),
-		importSecretKeyring:    importSecretKeyring,
-		resourceImportExecutor: resourceImportExecutor,
 	}
 }
 
-func (r *jobRuntime) close() {
+func (r *Runtime) close() {
 	if r == nil || r.shareLocker == nil {
 		return
 	}
@@ -114,7 +125,7 @@ func (r *jobRuntime) close() {
 	}
 }
 
-func (r *jobRuntime) withAdoptionPersistenceContext(ctx context.Context, fn func() error) error {
+func (r *Runtime) withAdoptionPersistenceContext(ctx context.Context, fn func() error) error {
 	if r == nil {
 		return fn()
 	}
@@ -177,16 +188,15 @@ func TaskIDFromContext(ctx context.Context) string {
 	return ""
 }
 
-func initJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), runtime *jobRuntime) JobCtl {
+func initJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), runtime *Runtime) JobCtl {
 	if !validJobControllerDependencies(job, client, store) {
 		return nil
 	}
-
 	var shareLocker locker.Locker
 	var urlSecurityPolicy *spec.URLSecurityPolicySpec
 	if runtime != nil {
 		shareLocker = runtime.shareLocker
-		urlSecurityPolicy = runtime.urlSecurityPolicy
+		urlSecurityPolicy = runtime.URLSecurityPolicy
 	}
 
 	var jobCtl JobCtl
@@ -229,8 +239,8 @@ func initJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore
 		jobCtl = NewCallbackJobCtl(job, store, urlSecurityPolicy)
 	case string(config.JobCleanupResources):
 		cleanupCtl := NewCleanupResourcesJobCtl(job, client, store, ack)
-		if cleanupCtl != nil {
-			cleanupCtl.runtime = runtime
+		if cleanupCtl == nil {
+			return nil
 		}
 		jobCtl = cleanupCtl
 	case string(config.JobDatabaseReset):
@@ -242,15 +252,56 @@ func initJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore
 	case string(config.JobResourceImportScan), string(config.JobResourceImportManage):
 		var executor ResourceImportExecutor
 		if runtime != nil {
-			executor = runtime.resourceImportExecutor
+			executor = runtime.ResourceImportExecutor
 		}
 		jobCtl = NewResourceImportJobCtl(job, store, executor)
 	default:
 		klog.ErrorS(fmt.Errorf("unknown job type"), "init job controller failed", "jobName", job.Name, "jobType", job.JobType)
 		return nil
 	}
-	if aware, ok := jobCtl.(interface{ setRuntime(*jobRuntime) }); ok {
-		aware.setRuntime(runtime)
+	// Bind only controllers that use the run's dependencies. The concrete cases
+	// make new controllers opt in explicitly without changing public constructors.
+	switch ctl := jobCtl.(type) {
+	case *DeployJobCtl:
+		ctl.setRuntime(runtime)
+	case *DeployServiceJobCtl:
+		ctl.setRuntime(runtime)
+	case *DeployStatefulSetJobCtl:
+		ctl.setRuntime(runtime)
+	case *DeployPVCJobCtl:
+		ctl.setRuntime(runtime)
+	case *DeployConfigMapJobCtl:
+		ctl.setRuntime(runtime)
+	case *DeploySecretJobCtl:
+		ctl.setRuntime(runtime)
+	case *DeployIngressJobCtl:
+		ctl.setRuntime(runtime)
+	case *DeployServiceAccountJobCtl:
+		ctl.setRuntime(runtime)
+	case *DeployRoleJobCtl:
+		ctl.setRuntime(runtime)
+	case *DeployRoleBindingJobCtl:
+		ctl.setRuntime(runtime)
+	case *DeployClusterRoleJobCtl:
+		ctl.setRuntime(runtime)
+	case *DeployClusterRoleBindingJobCtl:
+		ctl.setRuntime(runtime)
+	case *DeployAdoptedPodDisruptionBudgetJobCtl:
+		ctl.setRuntime(runtime)
+	case *DeployAdoptedNetworkPolicyJobCtl:
+		ctl.setRuntime(runtime)
+	case *InstantJobCtl:
+		ctl.setRuntime(runtime)
+	case *ScheduledJobCtl:
+		ctl.setRuntime(runtime)
+	case *CleanupResourcesJobCtl:
+		ctl.setRuntime(runtime)
+	case *DatabaseResetJobCtl:
+		ctl.setRuntime(runtime)
+	case *LogArchiveUploadJobCtl:
+		ctl.setRuntime(runtime)
+	case *VersionRestartJobCtl:
+		ctl.setRuntime(runtime)
 	}
 	return jobCtl
 }
@@ -272,12 +323,17 @@ func validJobControllerDependencies(job *model.JobTask, client kubernetes.Interf
 	return true
 }
 
-func RunJobs(ctx context.Context, jobs []*model.JobTask, concurrency int, client kubernetes.Interface, kubeConfig *rest.Config, store datastore.DataStore, ack func(), stopOnFailure bool, redisClient *redis.Client, cache cache.ICache, urlSecurityPolicy *spec.URLSecurityPolicySpec, delayQueue msg.Queue, resourceWaiter informer.ComponentReadyObserver, resourceImportExecutor ResourceImportExecutor, keyrings ...*importsecret.Keyring) error {
+func RunJobs(ctx context.Context, jobs []*model.JobTask, run *Runtime) error {
 	logger := klog.FromContext(ctx)
 	if len(jobs) == 0 {
 		logger.Info("no jobs to run")
 		return nil
 	}
+	if run == nil {
+		run = &Runtime{}
+	}
+	client, store, ack := run.Client, run.Store, run.Ack
+	concurrency, stopOnFailure := run.Concurrency, run.StopOnFailure
 
 	if scope, ok := access.FromContext(ctx); ok {
 		for _, task := range jobs {
@@ -317,7 +373,7 @@ func RunJobs(ctx context.Context, jobs []*model.JobTask, concurrency int, client
 			}
 		}
 	}
-	runtime := newJobRuntime(redisClient, cache, kubeConfig, urlSecurityPolicy, delayQueue, resourceWaiter, resourceImportExecutor, keyrings...)
+	runtime := newJobRuntime(run)
 	defer runtime.close()
 
 	if concurrency == 1 {
@@ -358,7 +414,7 @@ func infrastructureStopCause(ctx context.Context) error {
 	return context.Cause(ctx)
 }
 
-func runJob(ctx context.Context, job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), runtime *jobRuntime) (resultErr error) {
+func runJob(ctx context.Context, job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), runtime *Runtime) (resultErr error) {
 	tracer := otel.Tracer("job-runner")
 	ctx, span := tracer.Start(ctx, job.Name, trace.WithAttributes(
 		attribute.String("job.name", job.Name),
@@ -467,7 +523,7 @@ func runJob(ctx context.Context, job *model.JobTask, client kubernetes.Interface
 		var watcherCancel context.CancelFunc
 		var redisClient *redis.Client
 		if runtime != nil {
-			redisClient = runtime.redisClient
+			redisClient = runtime.RedisClient
 		}
 		watcher, watcherCtx, watcherCancel, err = signal.WatchWithClient(ctx, taskID, redisClient)
 		if err != nil {
@@ -559,7 +615,7 @@ func runJob(ctx context.Context, job *model.JobTask, client kubernetes.Interface
 	return runAdmittedJob(jobCtx, jobCtl, job, client, store, ack, runtime, span)
 }
 
-func runAdmittedJob(jobCtx context.Context, jobCtl JobCtl, job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), runtime *jobRuntime, span trace.Span) (resultErr error) {
+func runAdmittedJob(jobCtx context.Context, jobCtl JobCtl, job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), runtime *Runtime, span trace.Span) (resultErr error) {
 	logger := klog.FromContext(jobCtx)
 	// Admission may wait while an application changes management mode. Check
 	// write permission after that wait, immediately before execution side effects.
@@ -934,7 +990,7 @@ func syncConfigComponentStatusIfWorkflowOwned(
 	ctx context.Context,
 	job *model.JobTask,
 	store datastore.DataStore,
-	runtime *jobRuntime,
+	runtime *Runtime,
 ) error {
 	if job == nil || store == nil || !isConfigComponentJobType(job.JobType) {
 		return nil
@@ -976,8 +1032,8 @@ func syncComponentStatusOnJobStart(ctx context.Context, job *model.JobTask, stor
 	return target.AppID, nil
 }
 
-func invalidateComponentsCache(ctx context.Context, runtime *jobRuntime, appID string, reason string) {
-	if runtime == nil || runtime.cache == nil || runtime.cache.IsCacheDisabled() {
+func invalidateComponentsCache(ctx context.Context, runtime *Runtime, appID string, reason string) {
+	if runtime == nil || runtime.Cache == nil || runtime.Cache.IsCacheDisabled() {
 		return
 	}
 	appID = strings.TrimSpace(appID)
@@ -985,7 +1041,7 @@ func invalidateComponentsCache(ctx context.Context, runtime *jobRuntime, appID s
 		return
 	}
 	cacheKey := cache.ApplicationComponentsKey(appID)
-	if err := cache.InvalidateAfterWrite(ctx, runtime.cache, cacheKey); err != nil {
+	if err := cache.InvalidateAfterWrite(ctx, runtime.Cache, cacheKey); err != nil {
 		klog.V(4).InfoS("invalidate component cache failed", "reason", reason, "appID", appID, "err", err)
 	}
 }
@@ -1050,7 +1106,7 @@ func componentStatusForJob(status config.Status) (config.ComponentStatus, bool) 
 	}
 }
 
-func persistTerminalJobState(ctx context.Context, jobCtl JobCtl, job *model.JobTask, store datastore.DataStore, runtime *jobRuntime) error {
+func persistTerminalJobState(ctx context.Context, jobCtl JobCtl, job *model.JobTask, store datastore.DataStore, runtime *Runtime) error {
 	if jobCtl == nil || job == nil || store == nil {
 		return nil
 	}
@@ -1147,7 +1203,7 @@ type Pool struct {
 	failureOnce   sync.Once
 	runErrOnce    sync.Once
 	runErr        error
-	runtime       *jobRuntime
+	runtime       *Runtime
 }
 
 func (p *Pool) Run() error {
@@ -1198,7 +1254,7 @@ func (p *Pool) work() {
 
 // NewPool initializes a new pool with the given tasks and
 // at the given concurrency.
-func NewPool(ctx context.Context, jobs []*model.JobTask, concurrency int, client kubernetes.Interface, store datastore.DataStore, ack func(), stopOnFailure bool, runtime *jobRuntime) *Pool {
+func NewPool(ctx context.Context, jobs []*model.JobTask, concurrency int, client kubernetes.Interface, store datastore.DataStore, ack func(), stopOnFailure bool, runtime *Runtime) *Pool {
 	ctxForPool, cancel := context.WithCancelCause(ctx)
 	return &Pool{
 		Jobs:          jobs,

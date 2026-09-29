@@ -158,7 +158,9 @@ func TestRunJobCleanupResourcesInvalidatesComponentsCache(t *testing.T) {
 		JobInfo:   component,
 		Timeout:   1,
 	}
-	runtime := newJobRuntime(nil, cacheStore, nil, nil, nil, nil, nil)
+	runtime := newJobRuntime(&Runtime{
+		Cache: cacheStore,
+	})
 
 	runJob(context.Background(), task, fake.NewSimpleClientset(), store, func() {}, runtime)
 

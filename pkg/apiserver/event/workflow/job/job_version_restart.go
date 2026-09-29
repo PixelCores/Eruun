@@ -42,7 +42,6 @@ type versionRestartWaitTarget struct {
 
 type VersionRestartJobCtl struct {
 	deployNamespacedResourceJobBase
-	runtime *jobRuntime
 }
 
 func NewVersionRestartJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func()) *VersionRestartJobCtl {
@@ -54,14 +53,6 @@ func NewVersionRestartJobCtl(job *model.JobTask, client kubernetes.Interface, st
 }
 
 func (c *VersionRestartJobCtl) Clean(context.Context) {}
-
-func (c *VersionRestartJobCtl) setRuntime(runtime *jobRuntime) {
-	if c == nil {
-		return
-	}
-	c.runtime = runtime
-	c.deployNamespacedResourceJobBase.setRuntime(runtime)
-}
 
 func (c *VersionRestartJobCtl) Run(ctx context.Context) error {
 	return c.runWithStatus(ctx, c.run, "version restart job run error")

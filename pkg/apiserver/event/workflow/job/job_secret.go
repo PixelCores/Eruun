@@ -53,13 +53,13 @@ func (c *DeploySecretJobCtl) Run(ctx context.Context) error {
 	return c.runWithStatus(ctx, c.run, "DeploySecretJob run error")
 }
 
-func (c *DeploySecretJobCtl) setRuntime(runtime *jobRuntime) {
+func (c *DeploySecretJobCtl) setRuntime(runtime *Runtime) {
 	c.deployNamespacedResourceJobBase.setRuntime(runtime)
 	if runtime == nil {
 		c.importSecretKeyring = nil
 		return
 	}
-	c.importSecretKeyring = runtime.importSecretKeyring
+	c.importSecretKeyring = runtime.ImportSecretKeyring
 }
 
 func (c *DeploySecretJobCtl) run(ctx context.Context) error {

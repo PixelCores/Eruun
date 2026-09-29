@@ -899,7 +899,9 @@ func TestRunJob_ConfigMapInvalidatesComponentsCache(t *testing.T) {
 		},
 	}
 
-	runtime := newJobRuntime(nil, cacheStore, nil, nil, nil, nil, nil)
+	runtime := newJobRuntime(&Runtime{
+		Cache: cacheStore,
+	})
 	runJob(context.Background(), jobTask, fake.NewSimpleClientset(), store, func() {}, runtime)
 
 	require.False(t, cacheStore.Exists(context.Background(), cacheKey))
@@ -924,7 +926,9 @@ func TestConfigComponentStatusInvalidatesCacheAfterCommittedWriteCancelsContext(
 		Name: "app-config", Namespace: "default", AppID: "app-3",
 		JobType: string(config.JobDeployConfigMap), Status: config.StatusCompleted,
 	}
-	runtime := newJobRuntime(nil, cacheStore, nil, nil, nil, nil, nil)
+	runtime := newJobRuntime(&Runtime{
+		Cache: cacheStore,
+	})
 	defer runtime.close()
 
 	err := syncConfigComponentStatusIfWorkflowOwned(ctx, jobTask, store, runtime)
@@ -961,7 +965,9 @@ func TestRunJob_SecretFailureInvalidatesComponentsCache(t *testing.T) {
 		JobInfo:   "bad-job-info-type",
 	}
 
-	runtime := newJobRuntime(nil, cacheStore, nil, nil, nil, nil, nil)
+	runtime := newJobRuntime(&Runtime{
+		Cache: cacheStore,
+	})
 	runJob(context.Background(), jobTask, fake.NewSimpleClientset(), store, func() {}, runtime)
 
 	require.False(t, cacheStore.Exists(context.Background(), cacheKey))
@@ -1037,7 +1043,9 @@ func TestRunJob_ConfigMapDoesNotInvalidateCacheWhenStatusPersistFails(t *testing
 		},
 	}
 
-	runtime := newJobRuntime(nil, cacheStore, nil, nil, nil, nil, nil)
+	runtime := newJobRuntime(&Runtime{
+		Cache: cacheStore,
+	})
 	runJob(context.Background(), jobTask, fake.NewSimpleClientset(), store, func() {}, runtime)
 
 	require.True(t, cacheStore.Exists(context.Background(), cacheKey))
@@ -1070,7 +1078,9 @@ func TestRunJob_DeployStartInvalidatesComponentsCache(t *testing.T) {
 		JobInfo:   "bad-deploy-job-info",
 	}
 
-	runtime := newJobRuntime(nil, cacheStore, nil, nil, nil, nil, nil)
+	runtime := newJobRuntime(&Runtime{
+		Cache: cacheStore,
+	})
 	runJob(context.Background(), jobTask, fake.NewSimpleClientset(), store, func() {}, runtime)
 
 	require.False(t, cacheStore.Exists(context.Background(), cacheKey))
@@ -1105,7 +1115,9 @@ func TestRunJob_DeployStartDoesNotInvalidateCacheWhenStatusPersistFails(t *testi
 		JobInfo:   "bad-deploy-job-info",
 	}
 
-	runtime := newJobRuntime(nil, cacheStore, nil, nil, nil, nil, nil)
+	runtime := newJobRuntime(&Runtime{
+		Cache: cacheStore,
+	})
 	runJob(context.Background(), jobTask, fake.NewSimpleClientset(), store, func() {}, runtime)
 
 	require.True(t, cacheStore.Exists(context.Background(), cacheKey))

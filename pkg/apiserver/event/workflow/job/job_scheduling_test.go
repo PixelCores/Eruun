@@ -255,7 +255,13 @@ func TestJobAdmissionWaitExitReleasesQueueWithoutKubernetesEffects(t *testing.T)
 				client := fake.NewSimpleClientset()
 				result := make(chan error, 1)
 				go func() {
-					result <- RunJobs(ctx, []*model.JobTask{task}, concurrency, client, nil, store, func() {}, true, nil, nil, nil, nil, nil, nil)
+					result <- RunJobs(ctx, []*model.JobTask{task}, &Runtime{
+						Concurrency:   concurrency,
+						Client:        client,
+						Store:         store,
+						Ack:           func() {},
+						StopOnFailure: true,
+					})
 				}()
 				require.Eventually(t, func() bool {
 					var count int64
