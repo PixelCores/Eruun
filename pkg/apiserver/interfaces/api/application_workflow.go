@@ -83,7 +83,7 @@ func (app *applications) updateApplicationWorkflow(c *gin.Context) {
 	apiresponse.ReturnSuccess(c, resp)
 }
 
-func (app *applications) listWorkflowSchedules(c *gin.Context) {
+func (app *applicationWorkflows) listWorkflowSchedules(c *gin.Context) {
 	handlePathResult(
 		c,
 		appIDPathParam,
@@ -94,7 +94,7 @@ func (app *applications) listWorkflowSchedules(c *gin.Context) {
 	)
 }
 
-func (app *applications) upsertWorkflowSchedule(c *gin.Context) {
+func (app *applicationWorkflows) upsertWorkflowSchedule(c *gin.Context) {
 	handlePathBoundResult(
 		c,
 		appIDPathParam,
@@ -105,7 +105,7 @@ func (app *applications) upsertWorkflowSchedule(c *gin.Context) {
 	)
 }
 
-func (app *applications) deleteWorkflowSchedule(c *gin.Context) {
+func (app *applicationWorkflows) deleteWorkflowSchedule(c *gin.Context) {
 	appID, ok := appIDPathParam(c)
 	if !ok {
 		return
@@ -126,7 +126,7 @@ func normalizeWorkflowSteps(steps []apis.CreateWorkflowStepRequest) {
 	apis.NormalizeWorkflowSteps(steps)
 }
 
-func (app *applications) execApplicationWorkflow(c *gin.Context) {
+func (app *applicationWorkflows) execApplicationWorkflow(c *gin.Context) {
 	idempotencyKey, ok := bindIdempotencyKey(c, bcode.ErrWorkflowConfig)
 	if !ok {
 		return
@@ -145,13 +145,13 @@ func (app *applications) execApplicationWorkflow(c *gin.Context) {
 	)
 }
 
-func (app *applications) cancelApplicationWorkflow(c *gin.Context) {
+func (app *applicationWorkflows) cancelApplicationWorkflow(c *gin.Context) {
 	app.cancelWorkflow(c, app.WorkflowService.CancelWorkflowTaskForApp, func(user string) string {
 		return user
 	})
 }
 
-func (app *applications) cancelAllApplicationWorkflows(c *gin.Context) {
+func (app *applicationWorkflows) cancelAllApplicationWorkflows(c *gin.Context) {
 	appID, ok := appIDPathParam(c)
 	if !ok {
 		return
@@ -172,7 +172,7 @@ func (app *applications) cancelAllApplicationWorkflows(c *gin.Context) {
 	})
 }
 
-func (app *applications) approveWorkflowTask(c *gin.Context) {
+func (app *applicationWorkflows) approveWorkflowTask(c *gin.Context) {
 	taskID, ok := taskIDPathParam(c)
 	if !ok {
 		return
@@ -227,7 +227,7 @@ func (app *applications) listApplicationTasks(c *gin.Context) {
 	apiresponse.ReturnSuccess(c, apis.ListApplicationTasksResponse{Tasks: resp})
 }
 
-func (app *applications) getWorkflowTaskStatus(c *gin.Context) {
+func (app *applicationWorkflows) getWorkflowTaskStatus(c *gin.Context) {
 	handlePathResult(c, taskIDPathParam, func(ctx context.Context, taskID string) (*apis.TaskStatusResponse, error) {
 		resp, err := app.WorkflowService.GetTaskStatus(ctx, taskID)
 		if resp != nil {
@@ -237,7 +237,7 @@ func (app *applications) getWorkflowTaskStatus(c *gin.Context) {
 	})
 }
 
-func (app *applications) getWorkflowTaskStages(c *gin.Context) {
+func (app *applicationWorkflows) getWorkflowTaskStages(c *gin.Context) {
 	handlePathResult(c, taskIDPathParam, func(ctx context.Context, taskID string) (*apis.TaskStagesResponse, error) {
 		resp, err := app.WorkflowService.GetTaskStages(ctx, taskID)
 		if resp != nil {
@@ -247,11 +247,11 @@ func (app *applications) getWorkflowTaskStages(c *gin.Context) {
 	})
 }
 
-func (app *applications) cancelDelayedVersionUpdate(c *gin.Context) {
+func (app *applicationWorkflows) cancelDelayedVersionUpdate(c *gin.Context) {
 	app.cancelWorkflow(c, app.WorkflowService.CancelDelayedVersionTaskForApp, strings.TrimSpace)
 }
 
-func (app *applications) cancelWorkflow(
+func (app *applicationWorkflows) cancelWorkflow(
 	c *gin.Context,
 	cancelFn func(context.Context, string, string, string, string) error,
 	normalizeUser func(string) string,

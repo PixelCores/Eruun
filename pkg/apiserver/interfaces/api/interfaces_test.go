@@ -5,9 +5,19 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	containerutil "github.com/PixelCores/Eruun/pkg/apiserver/utils/container"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestApplicationWorkflowHandlerInjection(t *testing.T) {
+	workflowService := &fakeWorkflowService{}
+	handler := &applicationWorkflows{}
+	beans := containerutil.NewContainer()
+	require.NoError(t, beans.Provides(workflowService, handler))
+	require.NoError(t, beans.Populate())
+	require.Same(t, workflowService, handler.WorkflowService)
+}
 
 func TestHandlersKeepServerDependenciesIsolated(t *testing.T) {
 	gin.SetMode(gin.TestMode)

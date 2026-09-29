@@ -27,9 +27,8 @@ import (
 func TestCancelApplicationWorkflowEndpoint(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := &fakeWorkflowService{}
-	appHandler := &applications{
-		ApplicationService: noopApplicationsService{},
-		WorkflowService:    svc,
+	appHandler := &applicationWorkflows{
+		WorkflowService: svc,
 	}
 	r := gin.New()
 	r.POST("/applications/:appID/workflow/cancel", appHandler.cancelApplicationWorkflow)
@@ -75,10 +74,7 @@ func TestCancelApplicationWorkflowEndpointReturnsConflictCodes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			gin.SetMode(gin.TestMode)
 			svc := &fakeWorkflowService{cancelForAppErr: tt.err}
-			appHandler := &applications{
-				ApplicationService: noopApplicationsService{},
-				WorkflowService:    svc,
-			}
+			appHandler := &applicationWorkflows{WorkflowService: svc}
 			r := gin.New()
 			r.POST("/applications/:appID/workflow/cancel", appHandler.cancelApplicationWorkflow)
 
@@ -99,9 +95,8 @@ func TestCancelApplicationWorkflowEndpointReturnsConflictCodes(t *testing.T) {
 func TestCancelAllApplicationWorkflowsEndpoint(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := &fakeWorkflowService{cancelAllResp: []string{"task-1", "task-2"}}
-	appHandler := &applications{
-		ApplicationService: noopApplicationsService{},
-		WorkflowService:    svc,
+	appHandler := &applicationWorkflows{
+		WorkflowService: svc,
 	}
 	r := gin.New()
 	r.POST("/applications/:appID/workflow/tasks/cancel-all", appHandler.cancelAllApplicationWorkflows)
@@ -124,9 +119,8 @@ func TestCancelAllApplicationWorkflowsEndpoint(t *testing.T) {
 func TestCancelAllApplicationWorkflowsEndpointNoTasks(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := &fakeWorkflowService{}
-	appHandler := &applications{
-		ApplicationService: noopApplicationsService{},
-		WorkflowService:    svc,
+	appHandler := &applicationWorkflows{
+		WorkflowService: svc,
 	}
 	r := gin.New()
 	r.POST("/applications/:appID/workflow/tasks/cancel-all", appHandler.cancelAllApplicationWorkflows)
@@ -153,9 +147,8 @@ func TestApproveWorkflowTaskEndpoint(t *testing.T) {
 			Status: string(config.StatusWaiting),
 		},
 	}
-	appHandler := &applications{
-		ApplicationService: noopApplicationsService{},
-		WorkflowService:    svc,
+	appHandler := &applicationWorkflows{
+		WorkflowService: svc,
 	}
 	r := gin.New()
 	r.POST("/workflow/tasks/:taskID/approval", appHandler.approveWorkflowTask)
@@ -182,9 +175,8 @@ func TestApproveWorkflowTaskEndpoint(t *testing.T) {
 func TestApproveWorkflowTaskEndpointRejectsInvalidAction(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := &fakeWorkflowService{}
-	appHandler := &applications{
-		ApplicationService: noopApplicationsService{},
-		WorkflowService:    svc,
+	appHandler := &applicationWorkflows{
+		WorkflowService: svc,
 	}
 	r := gin.New()
 	r.POST("/workflow/tasks/:taskID/approval", appHandler.approveWorkflowTask)
@@ -214,9 +206,8 @@ func TestGetWorkflowTaskStatusEndpoint(t *testing.T) {
 			},
 		},
 	}
-	appHandler := &applications{
-		ApplicationService: noopApplicationsService{},
-		WorkflowService:    svc,
+	appHandler := &applicationWorkflows{
+		WorkflowService: svc,
 	}
 	r := gin.New()
 	r.GET("/workflow/tasks/:taskID/status", appHandler.getWorkflowTaskStatus)
@@ -286,9 +277,8 @@ func TestGetWorkflowTaskStagesEndpoint(t *testing.T) {
 			},
 		},
 	}
-	appHandler := &applications{
-		ApplicationService: noopApplicationsService{},
-		WorkflowService:    svc,
+	appHandler := &applicationWorkflows{
+		WorkflowService: svc,
 	}
 	r := gin.New()
 	r.GET("/workflow/tasks/:taskID/stages", appHandler.getWorkflowTaskStages)

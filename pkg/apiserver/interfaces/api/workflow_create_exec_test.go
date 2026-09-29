@@ -17,9 +17,8 @@ import (
 func TestExecApplicationWorkflowEndpoint(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := &fakeWorkflowService{}
-	appHandler := &applications{
-		ApplicationService: noopApplicationsService{},
-		WorkflowService:    svc,
+	appHandler := &applicationWorkflows{
+		WorkflowService: svc,
 	}
 	r := gin.New()
 	r.POST("/applications/:appID/workflow/exec", appHandler.execApplicationWorkflow)
@@ -52,7 +51,7 @@ func TestExecApplicationWorkflowEndpoint(t *testing.T) {
 func TestExecApplicationWorkflowEndpointRejectsInvalidIdempotencyKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := &fakeWorkflowService{}
-	handler := &applications{ApplicationService: noopApplicationsService{}, WorkflowService: svc}
+	handler := &applicationWorkflows{WorkflowService: svc}
 	router := gin.New()
 	router.POST("/applications/:appID/workflow/exec", handler.execApplicationWorkflow)
 

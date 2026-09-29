@@ -205,133 +205,14 @@ func (f *fakeWorkflowService) DispatchWorkflowSchedules(context.Context) (int, e
 	return 0, nil
 }
 
-type noopApplicationsService struct{}
-
-func (noopApplicationsService) CreateApplications(context.Context, apis.CreateApplicationsRequest) (*apis.ApplicationBase, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) CreateApplicationsWithMutation(context.Context, apis.CreateApplicationsRequest, service.ApplicationCreateMutation) (*apis.ApplicationBase, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) MarkInitialDeployingWorkflowComponents(context.Context, string, string) error {
-	return nil
+// noopApplicationsService supplies the one shared default used by status tests.
+// Other methods must be implemented by the test that exercises them.
+type noopApplicationsService struct {
+	service.ApplicationsService
 }
 
 func (noopApplicationsService) HasImmediateActiveVersionUpdateTask(context.Context, string, int64) (bool, error) {
 	return false, nil
-}
-
-func (noopApplicationsService) GetApplication(context.Context, string) (*model.Applications, error) {
-	return nil, nil
-}
-func (noopApplicationsService) GetApplicationSpec(context.Context, string) (*apis.CreateApplicationsRequest, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) ListApplications(context.Context, service.ListApplicationsOptions) ([]*apis.ApplicationBase, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) ListTemplateApplications(context.Context, service.ListApplicationsOptions) ([]*apis.ApplicationBase, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) BatchGetApplications(context.Context, []string) (*apis.BatchGetApplicationsResponse, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) DeleteApplication(context.Context, *model.Applications) error {
-	return nil
-}
-
-func (noopApplicationsService) DeleteApplicationCascade(context.Context, string, apis.DeleteApplicationRequest) (*apis.DeleteApplicationResponse, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) CleanupApplicationResources(context.Context, string) (*apis.CleanupApplicationResourcesResponse, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) PlanApplicationResourceCleanup(context.Context, string) (*apis.CleanupApplicationResourcesPlanResponse, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) ApplyApplicationResourceCleanup(context.Context, string, apis.CleanupApplicationResourcesRequest) (*apis.CleanupApplicationResourcesResponse, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) ResetApplicationDatabases(context.Context, string, apis.DatabaseResetRequest) (*apis.DatabaseResetResponse, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) DownloadLogArchive(context.Context, string, apis.LogArchiveDownloadRequest) (*service.ComponentFileArchiveStream, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) RestartApplicationWorkloads(context.Context, string, apis.ApplicationLifecycleRequest) (*apis.RestartApplicationWorkloadsResponse, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) StopApplicationDeployments(context.Context, string, apis.ApplicationLifecycleRequest) (*apis.StopApplicationDeploymentsResponse, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) StartApplicationDeployments(context.Context, string, apis.ApplicationLifecycleRequest) (*apis.StartApplicationDeploymentsResponse, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) UpdateApplicationWorkflow(context.Context, string, apis.UpdateApplicationWorkflowRequest) (*apis.UpdateWorkflowResponse, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) ListApplicationWorkflows(context.Context, string) ([]*model.Workflow, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) ListApplicationComponents(context.Context, string) ([]*model.ApplicationComponent, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) ListApplicationTasks(context.Context, string) ([]*model.WorkflowQueue, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) ListCronJobs(context.Context) ([]*apis.CronJobInfo, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) ListScheduledJobs(context.Context) ([]*apis.ScheduledJobInfo, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) ListComponentContainers(context.Context, string, string) (*apis.ComponentContainersResponse, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) StreamComponentLogs(context.Context, string, string, string) (*service.ComponentLogStream, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) ExportComponentFilesZip(context.Context, string, string, apis.ExportComponentFilesRequest) (*service.ComponentFileArchiveStream, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) ExecComponentShellScript(context.Context, string, string, apis.ExecComponentShellScriptRequest) (*apis.ExecComponentShellScriptResponse, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) StreamComponentShellScript(context.Context, string, string, apis.ExecComponentShellScriptRequest) (*service.ComponentShellScriptStream, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) UpdateVersion(context.Context, string, apis.UpdateVersionRequest) (*apis.UpdateVersionResponse, error) {
-	return nil, nil
-}
-
-func (noopApplicationsService) DiffUpdateVersion(context.Context, string, apis.DiffUpdateVersionRequest) (*apis.DiffUpdateVersionResponse, error) {
-	return nil, nil
 }
 
 var _ service.ApplicationsService = noopApplicationsService{}

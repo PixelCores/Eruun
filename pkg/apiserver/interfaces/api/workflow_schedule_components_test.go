@@ -40,9 +40,8 @@ func TestUpsertWorkflowScheduleEndpoint(t *testing.T) {
 			},
 		},
 	}
-	appHandler := &applications{
-		ApplicationService: noopApplicationsService{},
-		WorkflowService:    svc,
+	appHandler := &applicationWorkflows{
+		WorkflowService: svc,
 	}
 	r := gin.New()
 	r.POST("/applications/:appID/workflow/schedule", appHandler.upsertWorkflowSchedule)
@@ -71,9 +70,8 @@ func TestUpsertWorkflowScheduleEndpoint(t *testing.T) {
 func TestDeleteWorkflowScheduleEndpoint(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := &fakeWorkflowService{}
-	appHandler := &applications{
-		ApplicationService: noopApplicationsService{},
-		WorkflowService:    svc,
+	appHandler := &applicationWorkflows{
+		WorkflowService: svc,
 	}
 	r := gin.New()
 	r.DELETE("/applications/:appID/workflow/schedule/:workflowID", appHandler.deleteWorkflowSchedule)

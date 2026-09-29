@@ -190,12 +190,10 @@ func TestDeleteApplicationEndpointChunkedBodyInvalidWaitSeconds(t *testing.T) {
 
 func TestApplicationLifecycleRouteRegistration(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	appHandler := &applications{
-		ApplicationService: noopApplicationsService{},
-		WorkflowService:    &fakeWorkflowService{},
-	}
 	r := gin.New()
-	appHandler.RegisterRoutes(r.Group("/api/v1"))
+	for _, handler := range NewHandlers() {
+		handler.RegisterRoutes(r.Group("/api/v1"))
+	}
 
 	registered := map[string]bool{}
 	for _, route := range r.Routes() {
@@ -221,7 +219,19 @@ func TestApplicationLifecycleRouteRegistration(t *testing.T) {
 	expectRoute(http.MethodPost, "/api/v1/applications/:appID/restart")
 	expectRoute(http.MethodPost, "/api/v1/applications/:appID/stop")
 	expectRoute(http.MethodPost, "/api/v1/applications/:appID/start")
+	expectRoute(http.MethodGet, "/api/v1/applications/:appID/workflows")
+	expectRoute(http.MethodPut, "/api/v1/applications/:appID/workflow")
+	expectRoute(http.MethodGet, "/api/v1/applications/:appID/workflow/tasks")
 	expectRoute(http.MethodPost, "/api/v1/applications/:appID/workflow/tasks/cancel-all")
+	expectRoute(http.MethodGet, "/api/v1/applications/:appID/workflow/schedules")
+	expectRoute(http.MethodPost, "/api/v1/applications/:appID/workflow/schedule")
+	expectRoute(http.MethodDelete, "/api/v1/applications/:appID/workflow/schedule/:workflowID")
+	expectRoute(http.MethodPost, "/api/v1/applications/:appID/workflow/exec")
+	expectRoute(http.MethodPost, "/api/v1/applications/:appID/workflow/cancel")
+	expectRoute(http.MethodPost, "/api/v1/workflow/tasks/:taskID/approval")
+	expectRoute(http.MethodGet, "/api/v1/workflow/tasks/:taskID/status")
+	expectRoute(http.MethodGet, "/api/v1/workflow/tasks/:taskID/stages")
+	expectRoute(http.MethodPost, "/api/v1/applications/:appID/version/cancel")
 
 	rejectRoute(http.MethodPost, "/api/v1/applications/:appID/delete")
 	rejectRoute(http.MethodPost, "/api/v1/applications/:appID/actions/restart")

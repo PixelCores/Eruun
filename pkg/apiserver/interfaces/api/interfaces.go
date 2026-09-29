@@ -18,6 +18,7 @@ type Interface interface {
 func NewHandlers() []Interface {
 	return []Interface{
 		NewApplications(),
+		&applicationWorkflows{},
 		NewResourceImports(),
 		NewWorkspaceJobs(),
 		NewSettings(),
