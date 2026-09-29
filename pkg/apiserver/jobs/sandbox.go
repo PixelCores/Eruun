@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"regexp"
 	"time"
 
@@ -15,6 +14,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/google/uuid"
 )
@@ -98,20 +98,17 @@ func (s *Service) RunnerSandboxRelease(ctx context.Context, identity RunnerIdent
 
 // lockSandboxRunner repeats the exact claim and execution checks after both
 // durable owner rows are locked. Kubernetes authorization happens before this.
-func lockSandboxRunner(ctx context.Context, tx datastore.DataStore, auth *runnerAuthorization) (time.Time, time.Time, string, error) {
-	locker, ok := tx.(datastore.RowLocker)
-	if !ok {
-		return time.Time{}, time.Time{}, "", fmt.Errorf("sandbox mutation requires row locking")
-	}
+func lockSandboxRunner(ctx context.Context, tx artifacts.Backend, auth *runnerAuthorization) (time.Time, time.Time, string, error) {
+
 	task := &model.WorkflowQueue{TaskID: auth.task.TaskID}
-	if err := locker.GetForUpdate(ctx, task); err != nil {
+	if err := tx.GetForUpdate(ctx, task); err != nil {
 		return time.Time{}, time.Time{}, "", err
 	}
 	if err := validateLockedRunnerTask(task, auth); err != nil {
 		return time.Time{}, time.Time{}, "", err
 	}
 	job := &model.JobInfo{ID: auth.job.ID}
-	if err := locker.GetForUpdate(ctx, job); err != nil {
+	if err := tx.GetForUpdate(ctx, job); err != nil {
 		return time.Time{}, time.Time{}, "", err
 	}
 	if err := validateLockedRunnerJob(ctx, tx, job, auth, task.Status); err != nil {
@@ -121,11 +118,8 @@ func lockSandboxRunner(ctx context.Context, tx datastore.DataStore, auth *runner
 	if err != nil || !runnerOwnerMatches(state, auth) || deadline <= 0 {
 		return time.Time{}, time.Time{}, "", bcode.ErrUnauthorized
 	}
-	clock, ok := tx.(datastore.DatabaseClock)
-	if !ok {
-		return time.Time{}, time.Time{}, "", fmt.Errorf("sandbox mutation requires database clock")
-	}
-	now, err := clock.CurrentDatabaseTime(ctx)
+
+	now, err := tx.CurrentDatabaseTime(ctx)
 	if err != nil {
 		return time.Time{}, time.Time{}, "", err
 	}
@@ -144,14 +138,11 @@ func lockSandboxRunner(ctx context.Context, tx datastore.DataStore, auth *runner
 // lockSandboxMaintenanceOwners preserves the task -> job -> sandbox lock order
 // used by runner mutations. Missing owners are allowed because application
 // deletion may remove them before the bounded Sandbox retention period ends.
-func lockSandboxMaintenanceOwners(ctx context.Context, tx datastore.DataStore, candidate *model.JobSandbox) (*model.WorkflowQueue, *model.JobInfo, bool, error) {
-	locker, ok := tx.(datastore.RowLocker)
-	if !ok {
-		return nil, nil, false, fmt.Errorf("sandbox maintenance requires row locking")
-	}
+func lockSandboxMaintenanceOwners(ctx context.Context, tx artifacts.Backend, candidate *model.JobSandbox) (*model.WorkflowQueue, *model.JobInfo, bool, error) {
+
 	orphaned := false
 	task := &model.WorkflowQueue{TaskID: candidate.TaskID}
-	if err := locker.GetForUpdate(ctx, task); err != nil {
+	if err := tx.GetForUpdate(ctx, task); err != nil {
 		if !errors.Is(err, datastore.ErrRecordNotExist) {
 			return nil, nil, false, err
 		}
@@ -160,7 +151,7 @@ func lockSandboxMaintenanceOwners(ctx context.Context, tx datastore.DataStore, c
 		return nil, nil, false, ErrRunnerConflict
 	}
 	job := &model.JobInfo{ID: candidate.JobID}
-	if err := locker.GetForUpdate(ctx, job); err != nil {
+	if err := tx.GetForUpdate(ctx, job); err != nil {
 		if !errors.Is(err, datastore.ErrRecordNotExist) {
 			return nil, nil, false, err
 		}
@@ -199,7 +190,7 @@ func (s *Service) runnerSandbox(ctx context.Context, identity RunnerIdentity, tr
 	var row *model.JobSandbox
 	advance := false
 	var databaseNow, databaseSampledAt time.Time
-	err = s.Store.(datastore.Transactional).WithTransaction(ctx, func(tx datastore.DataStore) error {
+	err = artifacts.WithTransaction(ctx, s.Store, func(tx artifacts.Backend) error {
 		now, deadline, stopped, err := lockSandboxRunner(ctx, tx, auth)
 		if err != nil {
 			return err
@@ -331,8 +322,8 @@ func (s *Service) runnerSandbox(ctx context.Context, identity RunnerIdentity, tr
 
 // mutateSandbox uses the same JobInfo lock for slot acquisition and release.
 // A stale operation can never overwrite a newer lease or a stopped intent.
-func (s *Service) mutateSandbox(ctx context.Context, auth *runnerAuthorization, candidate *model.JobSandbox, fn func(datastore.DataStore, *model.JobSandbox, time.Time) error) error {
-	return s.Store.(datastore.Transactional).WithTransaction(ctx, func(tx datastore.DataStore) error {
+func (s *Service) mutateSandbox(ctx context.Context, auth *runnerAuthorization, candidate *model.JobSandbox, fn func(artifacts.Backend, *model.JobSandbox, time.Time) error) error {
+	return artifacts.WithTransaction(ctx, s.Store, func(tx artifacts.Backend) error {
 		var now time.Time
 		stopped := ""
 		if auth != nil {
@@ -346,13 +337,13 @@ func (s *Service) mutateSandbox(ctx context.Context, auth *runnerAuthorization, 
 				return err
 			}
 			var err error
-			now, err = tx.(datastore.DatabaseClock).CurrentDatabaseTime(ctx)
+			now, err = tx.CurrentDatabaseTime(ctx)
 			if err != nil {
 				return err
 			}
 		}
 		row := &model.JobSandbox{ID: candidate.ID}
-		if err := tx.(datastore.RowLocker).GetForUpdate(ctx, row); err != nil {
+		if err := tx.GetForUpdate(ctx, row); err != nil {
 			return err
 		}
 		if row.WorkspaceID != candidate.WorkspaceID || row.ExecutionKey != candidate.ExecutionKey || row.RunnerUID != candidate.RunnerUID || row.LeaseToken != candidate.LeaseToken {

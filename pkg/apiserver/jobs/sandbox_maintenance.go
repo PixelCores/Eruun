@@ -10,6 +10,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -20,7 +21,7 @@ func (s *Service) reconcileSandboxes(ctx context.Context, limit int) error {
 	if s.SandboxClient == nil {
 		return nil
 	}
-	now, err := s.Store.(datastore.DatabaseClock).CurrentDatabaseTime(ctx)
+	now, err := s.Store.CurrentDatabaseTime(ctx)
 	if err != nil {
 		return err
 	}
@@ -55,7 +56,7 @@ func (s *Service) reconcileSandboxes(ctx context.Context, limit int) error {
 // Move a failed row behind the current due backlog without changing its
 // reservation. Only the observed lifecycle version may receive this delay.
 func (s *Service) delayFailedSandbox(ctx context.Context, row *model.JobSandbox) error {
-	now, err := s.Store.(datastore.DatabaseClock).CurrentDatabaseTime(ctx)
+	now, err := s.Store.CurrentDatabaseTime(ctx)
 	if err != nil {
 		return fmt.Errorf("read failed Sandbox maintenance retry time: %w", err)
 	}
@@ -63,12 +64,9 @@ func (s *Service) delayFailedSandbox(ctx context.Context, row *model.JobSandbox)
 	if !row.ReconcileAt.Before(next) {
 		return nil
 	}
-	conditional, ok := s.Store.(datastore.ConditionalCompareAndSwap)
-	if !ok {
-		return fmt.Errorf("delay failed Sandbox maintenance: conditional updates unavailable")
-	}
+
 	// A concurrent lifecycle change owns its own next reconcile time.
-	_, err = conditional.CompareAndSwapWithConditions(ctx, &model.JobSandbox{ID: row.ID},
+	_, err = s.Store.CompareAndSwapWithConditions(ctx, &model.JobSandbox{ID: row.ID},
 		map[string]interface{}{"reconcile_at": row.ReconcileAt, "lease_token": row.LeaseToken, "state": row.State},
 		map[string]interface{}{"reconcile_at": next})
 	if err != nil {
@@ -89,20 +87,19 @@ func (s *Service) maintainSandbox(ctx context.Context, candidate *model.JobSandb
 		}
 	}
 	advance := false
-	err := s.Store.(datastore.Transactional).WithTransaction(ctx, func(tx datastore.DataStore) error {
-		locker := tx.(datastore.RowLocker)
+	err := artifacts.WithTransaction(ctx, s.Store, func(tx artifacts.Backend) error {
 		task, job, orphaned, err := lockSandboxMaintenanceOwners(ctx, tx, candidate)
 		if err != nil {
 			return err
 		}
 		row := &model.JobSandbox{ID: candidate.ID}
-		if err := locker.GetForUpdate(ctx, row); err != nil {
+		if err := tx.GetForUpdate(ctx, row); err != nil {
 			return err
 		}
 		if row.WorkspaceID != candidate.WorkspaceID || row.Namespace != candidate.Namespace || row.RunnerUID != candidate.RunnerUID || row.JobID != candidate.JobID || row.TaskID != candidate.TaskID || row.ExecutionKey != candidate.ExecutionKey {
 			return ErrRunnerConflict
 		}
-		now, err := tx.(datastore.DatabaseClock).CurrentDatabaseTime(ctx)
+		now, err := tx.CurrentDatabaseTime(ctx)
 		if err != nil {
 			return err
 		}

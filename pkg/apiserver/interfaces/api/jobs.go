@@ -222,12 +222,7 @@ func (a *workspaceJobs) downloadDataset(c *gin.Context) {
 	})
 }
 func (a *workspaceJobs) downloadResult(c *gin.Context) {
-	key, err := a.Service.ResolveExecutionKey(c.Request.Context(), c.Param("taskID"), c.Query("executionKey"))
-	if err != nil {
-		jobResponse(c, 0, nil, err)
-		return
-	}
-	task, err := a.Service.Task(c.Request.Context(), c.Param("taskID"), key)
+	task, key, err := a.Service.ResolveResultTask(c.Request.Context(), c.Param("taskID"), c.Query("executionKey"))
 	if err != nil {
 		jobResponse(c, 0, nil, err)
 		return
@@ -244,12 +239,7 @@ func (a *workspaceJobs) downloadResult(c *gin.Context) {
 	})
 }
 func (a *workspaceJobs) downloadDelivery(c *gin.Context) {
-	key, err := a.Service.ResolveExecutionKey(c.Request.Context(), c.Param("taskID"), c.Query("executionKey"))
-	if err != nil {
-		jobResponse(c, 0, nil, err)
-		return
-	}
-	task, err := a.Service.Task(c.Request.Context(), c.Param("taskID"), key)
+	task, key, err := a.Service.ResolveResultTask(c.Request.Context(), c.Param("taskID"), c.Query("executionKey"))
 	if err != nil {
 		jobResponse(c, 0, nil, err)
 		return
@@ -263,15 +253,12 @@ func (a *workspaceJobs) retry(c *gin.Context) {
 		jobResponse(c, 0, nil, err)
 		return
 	}
-	key, err := a.Service.ResolveExecutionKey(c.Request.Context(), c.Param("taskID"), c.Query("executionKey"))
+	task, key, err := a.Service.ResolveResultTask(c.Request.Context(), c.Param("taskID"), c.Query("executionKey"))
 	if err != nil {
 		jobResponse(c, 0, nil, err)
 		return
 	}
-	task, err := a.Service.Task(c.Request.Context(), c.Param("taskID"), key)
-	if err == nil {
-		err = a.Service.Artifacts.Retry(c.Request.Context(), task.WorkspaceID, task.TaskID, c.Param("target"), key)
-	}
+	err = a.Service.Artifacts.Retry(c.Request.Context(), task.WorkspaceID, task.TaskID, c.Param("target"), key)
 	jobResponse(c, http.StatusAccepted, nil, err)
 }
 func (a *workspaceJobs) retention(c *gin.Context) {
@@ -289,15 +276,12 @@ func (a *workspaceJobs) retention(c *gin.Context) {
 		jobResponse(c, 0, nil, bcode.ErrJobInput)
 		return
 	}
-	key, err := a.Service.ResolveExecutionKey(c.Request.Context(), c.Param("taskID"), c.Query("executionKey"))
+	task, key, err := a.Service.ResolveResultTask(c.Request.Context(), c.Param("taskID"), c.Query("executionKey"))
 	if err != nil {
 		jobResponse(c, 0, nil, err)
 		return
 	}
-	task, err := a.Service.Task(c.Request.Context(), c.Param("taskID"), key)
-	if err == nil {
-		err = a.Service.Artifacts.SetRetention(c.Request.Context(), task.WorkspaceID, task.TaskID, request.RetentionDays, key)
-	}
+	err = a.Service.Artifacts.SetRetention(c.Request.Context(), task.WorkspaceID, task.TaskID, request.RetentionDays, key)
 	jobResponse(c, http.StatusOK, nil, err)
 }
 func runnerIdentity(c *gin.Context) jobs.RunnerIdentity {

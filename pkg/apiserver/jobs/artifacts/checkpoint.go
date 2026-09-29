@@ -19,7 +19,7 @@ const KindCheckpoint = "checkpoint"
 // PutCheckpoint stores bounded, validated material independently of result
 // delivery. The caller binds its manifest and artifact atomically under its
 // execution locks. Duplicate IDs must contain byte-identical archives.
-func (s *Store) PutCheckpoint(ctx context.Context, workspaceID, taskID, executionKey, id string, input io.Reader, bind func(datastore.DataStore, *model.JobArtifact, json.RawMessage) error) error {
+func (s *Store) PutCheckpoint(ctx context.Context, workspaceID, taskID, executionKey, id string, input io.Reader, bind func(Backend, *model.JobArtifact, json.RawMessage) error) error {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return err
 	}
@@ -92,8 +92,8 @@ func (s *Store) PutCheckpoint(ctx context.Context, workspaceID, taskID, executio
 		return err
 	}
 	artifact := &model.JobArtifact{ID: stableID(KindCheckpoint, workspaceID, executionKey, id), WorkspaceID: workspaceID, TaskID: taskID, ExecutionKey: executionKey, Kind: KindCheckpoint, Name: "checkpoint.tar.gz", Digest: a.digest, Size: a.size, Manifest: a.manifest}
-	return transaction(ctx, s.db, func(tx datastore.DataStore) error {
-		if err := locked(ctx, tx, &model.Workspace{ID: workspaceID}); err != nil {
+	return WithTransaction(ctx, s.db, func(tx Backend) error {
+		if err := tx.GetForUpdate(ctx, &model.Workspace{ID: workspaceID}); err != nil {
 			return err
 		}
 		if err := bind(tx, artifact, manifest); err != nil {
@@ -115,7 +115,7 @@ func (s *Store) PutCheckpoint(ctx context.Context, workspaceID, taskID, executio
 
 // DeleteCheckpoint removes material only in the transaction that fenced and
 // expired its checkpoint; this kind is deliberately outside result retention.
-func DeleteCheckpoint(ctx context.Context, tx datastore.DataStore, workspaceID, id string) error {
+func DeleteCheckpoint(ctx context.Context, tx Backend, workspaceID, id string) error {
 	a, err := scopedArtifact(ctx, tx, workspaceID, id, true)
 	if errors.Is(err, datastore.ErrRecordNotExist) {
 		return nil
@@ -134,7 +134,7 @@ func DeleteCheckpoint(ctx context.Context, tx datastore.DataStore, workspaceID, 
 
 // VerifyCheckpoint checks every immutable chunk before the caller commits a
 // complete point. Callers hold that checkpoint's lifecycle lock.
-func VerifyCheckpoint(ctx context.Context, tx datastore.DataStore, workspaceID, id, executionKey string) error {
+func VerifyCheckpoint(ctx context.Context, tx Backend, workspaceID, id, executionKey string) error {
 	a, err := scopedArtifact(ctx, tx, workspaceID, id, false)
 	if err != nil {
 		return err

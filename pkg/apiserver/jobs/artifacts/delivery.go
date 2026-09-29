@@ -19,14 +19,14 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
-func scopedDelivery(ctx context.Context, db datastore.DataStore, workspaceID, taskID, target string, lock bool, executionKey ...string) (*model.JobDelivery, error) {
+func scopedDelivery(ctx context.Context, db Backend, workspaceID, taskID, target string, lock bool, executionKey ...string) (*model.JobDelivery, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return nil, err
 	}
 	d := &model.JobDelivery{ID: deliveryID(workspaceID, taskID, target, executionKey...)}
 	var err error
 	if lock {
-		err = locked(ctx, db, d)
+		err = db.GetForUpdate(ctx, d)
 	} else {
 		err = db.Get(ctx, d)
 	}
@@ -58,11 +58,11 @@ func (s *Store) Deliveries(ctx context.Context, workspaceID, taskID string, exec
 }
 
 func (s *Store) Retry(ctx context.Context, workspaceID, taskID, target string, executionKey ...string) error {
-	return transaction(ctx, s.db, func(tx datastore.DataStore) error {
+	return WithTransaction(ctx, s.db, func(tx Backend) error {
 		if err := requireWorkspace(workspaceID); err != nil {
 			return err
 		}
-		if err := locked(ctx, tx, &model.Workspace{ID: workspaceID}); err != nil {
+		if err := tx.GetForUpdate(ctx, &model.Workspace{ID: workspaceID}); err != nil {
 			return err
 		}
 		d, err := scopedDelivery(ctx, tx, workspaceID, taskID, target, true, executionKey...)
@@ -79,7 +79,7 @@ func (s *Store) Retry(ctx context.Context, workspaceID, taskID, target string, e
 		if err := sourceAvailable(ctx, tx, source); err != nil {
 			return err
 		}
-		now, err := clock(ctx, tx)
+		now, err := tx.CurrentDatabaseTime(ctx)
 		if err != nil {
 			return err
 		}
@@ -97,7 +97,7 @@ func (s *Store) ReconcilePending(ctx context.Context, limit int) error {
 	if limit < 1 || limit > 1000 {
 		return fmt.Errorf("delivery limit must be 1..1000")
 	}
-	now, err := clock(ctx, s.db)
+	now, err := s.db.CurrentDatabaseTime(ctx)
 	if err != nil {
 		return err
 	}
@@ -157,16 +157,16 @@ func (s *Store) ReconcilePending(ctx context.Context, limit int) error {
 func (s *Store) deliver(ctx context.Context, candidate *model.JobDelivery) error {
 	var d *model.JobDelivery
 	claimed := false
-	err := transaction(ctx, s.db, func(tx datastore.DataStore) error {
+	err := WithTransaction(ctx, s.db, func(tx Backend) error {
 		var err error
-		if err := locked(ctx, tx, &model.Workspace{ID: candidate.WorkspaceID}); err != nil {
+		if err := tx.GetForUpdate(ctx, &model.Workspace{ID: candidate.WorkspaceID}); err != nil {
 			return err
 		}
 		d, err = scopedDelivery(ctx, tx, candidate.WorkspaceID, candidate.TaskID, candidate.Target, true, candidate.ExecutionKey)
 		if err != nil {
 			return err
 		}
-		now, err := clock(ctx, tx)
+		now, err := tx.CurrentDatabaseTime(ctx)
 		if err != nil {
 			return err
 		}
@@ -210,7 +210,7 @@ func (s *Store) deliver(ctx context.Context, candidate *model.JobDelivery) error
 	}
 	// If cancellation prevented a final update, the durable lease remains
 	// recoverable. A stale worker can never replace a newer worker's outcome.
-	updated, saveErr := s.db.(datastore.ConditionalCompareAndSwap).CompareAndSwapWithConditions(ctx, d, map[string]interface{}{"state": DeliveryRunning, "lease_token": d.LeaseToken}, map[string]interface{}{"state": state, "last_error": lastError, "reference": reference, "lease_token": "", "lease_until": nil})
+	updated, saveErr := s.db.CompareAndSwapWithConditions(ctx, d, map[string]interface{}{"state": DeliveryRunning, "lease_token": d.LeaseToken}, map[string]interface{}{"state": state, "last_error": lastError, "reference": reference, "lease_token": "", "lease_until": nil})
 	if saveErr != nil {
 		return fmt.Errorf("record delivery outcome: %w", saveErr)
 	}
@@ -246,7 +246,7 @@ func (s *Store) copyMinIO(ctx context.Context, d *model.JobDelivery) (string, er
 
 func (s *Store) copyDatabase(ctx context.Context, d *model.JobDelivery) (string, error) {
 	id := databaseID(d.WorkspaceID, d.TaskID, d.ExecutionKey)
-	err := transaction(ctx, s.db, func(tx datastore.DataStore) error {
+	err := WithTransaction(ctx, s.db, func(tx Backend) error {
 		// Lock in the same order as Retry. Confirm the lease before publishing a copy.
 		current, err := scopedDelivery(ctx, tx, d.WorkspaceID, d.TaskID, d.Target, true, d.ExecutionKey)
 		if err != nil {

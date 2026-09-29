@@ -10,8 +10,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
+	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -147,7 +147,7 @@ func ownedSandboxPod(row *model.JobSandbox, pod *corev1.Pod, uid string) bool {
 }
 
 func (s *Service) finishSandbox(ctx context.Context, auth *runnerAuthorization, row *model.JobSandbox, state, reason string) error {
-	return s.mutateSandbox(ctx, auth, row, func(_ datastore.DataStore, current *model.JobSandbox, now time.Time) error {
+	return s.mutateSandbox(ctx, auth, row, func(_ artifacts.Backend, current *model.JobSandbox, now time.Time) error {
 		if !current.ReleaseRequested {
 			current.State, current.Reason = state, reason
 		}
@@ -158,7 +158,7 @@ func (s *Service) finishSandbox(ctx context.Context, auth *runnerAuthorization, 
 }
 
 func (s *Service) lostSandbox(ctx context.Context, auth *runnerAuthorization, row *model.JobSandbox, reason string) error {
-	return s.mutateSandbox(ctx, auth, row, func(_ datastore.DataStore, current *model.JobSandbox, now time.Time) error {
+	return s.mutateSandbox(ctx, auth, row, func(_ artifacts.Backend, current *model.JobSandbox, now time.Time) error {
 		current.State, current.Reason, current.SlotReserved, current.StartReserved = sandboxFailed, reason, false, false
 		current.LeaseToken, current.LeaseUntil = "", nil
 		current.ReconcileAt = now.Add(sandboxRetention)
@@ -167,7 +167,7 @@ func (s *Service) lostSandbox(ctx context.Context, auth *runnerAuthorization, ro
 }
 
 func (s *Service) retainFailedSandbox(ctx context.Context, auth *runnerAuthorization, row *model.JobSandbox, reason string) error {
-	return s.mutateSandbox(ctx, auth, row, func(_ datastore.DataStore, current *model.JobSandbox, now time.Time) error {
+	return s.mutateSandbox(ctx, auth, row, func(_ artifacts.Backend, current *model.JobSandbox, now time.Time) error {
 		stopSandbox(current, now, reason)
 		current.State = sandboxFailed
 		current.LeaseToken, current.LeaseUntil = "", nil
@@ -216,7 +216,7 @@ func (s *Service) advanceSandbox(ctx context.Context, auth *runnerAuthorization,
 			return s.finishSandbox(ctx, auth, row, sandboxPending, "creation_rate_limited")
 		}
 		var now time.Time
-		if err = s.mutateSandbox(ctx, auth, row, func(_ datastore.DataStore, current *model.JobSandbox, at time.Time) error {
+		if err = s.mutateSandbox(ctx, auth, row, func(_ artifacts.Backend, current *model.JobSandbox, at time.Time) error {
 			now = at
 			if !current.ReleaseRequested {
 				current.CreateAttempts++
@@ -250,7 +250,7 @@ func (s *Service) advanceSandbox(ctx context.Context, auth *runnerAuthorization,
 		return s.lostSandbox(ctx, auth, row, "sandbox_identity_changed")
 	}
 	if row.SandboxUID == "" {
-		if err := s.mutateSandbox(ctx, auth, row, func(_ datastore.DataStore, current *model.JobSandbox, _ time.Time) error {
+		if err := s.mutateSandbox(ctx, auth, row, func(_ artifacts.Backend, current *model.JobSandbox, _ time.Time) error {
 			if current.SandboxUID != "" && current.SandboxUID != string(object.GetUID()) {
 				return ErrRunnerConflict
 			}
@@ -303,7 +303,7 @@ func (s *Service) advanceSandbox(ctx context.Context, auth *runnerAuthorization,
 	if row.PodUID != "" && row.PodUID != uid {
 		return s.retainFailedSandbox(ctx, auth, row, "pod_identity_changed")
 	}
-	return s.mutateSandbox(ctx, auth, row, func(_ datastore.DataStore, current *model.JobSandbox, now time.Time) error {
+	return s.mutateSandbox(ctx, auth, row, func(_ artifacts.Backend, current *model.JobSandbox, now time.Time) error {
 		if current.PodUID != "" && current.PodUID != uid {
 			return ErrRunnerConflict
 		}
@@ -323,7 +323,7 @@ func (s *Service) cleanupSandbox(ctx context.Context, auth *runnerAuthorization,
 	client := s.SandboxClient.Resource(SandboxGVR).Namespace(row.Namespace)
 	object, err := client.Get(ctx, row.SandboxName, metav1.GetOptions{})
 	if k8serrors.IsNotFound(err) {
-		return s.mutateSandbox(ctx, auth, row, func(_ datastore.DataStore, current *model.JobSandbox, now time.Time) error {
+		return s.mutateSandbox(ctx, auth, row, func(_ artifacts.Backend, current *model.JobSandbox, now time.Time) error {
 			// A timed-out create may still arrive. Until its absolute shutdown
 			// bound, keep the intent and slot so maintenance can find the orphan.
 			if current.SandboxUID != "" || current.CreateAttempts == 0 || !now.Before(current.Deadline.Add(sandboxRetention)) {
@@ -346,19 +346,19 @@ func (s *Service) cleanupSandbox(ctx context.Context, auth *runnerAuthorization,
 		return s.lostSandbox(ctx, auth, row, "sandbox_identity_changed")
 	}
 	if row.SandboxUID == "" {
-		if err := s.mutateSandbox(ctx, auth, row, func(_ datastore.DataStore, current *model.JobSandbox, _ time.Time) error {
+		if err := s.mutateSandbox(ctx, auth, row, func(_ artifacts.Backend, current *model.JobSandbox, _ time.Time) error {
 			current.SandboxUID = string(object.GetUID())
 			return nil
 		}); err != nil {
 			return err
 		}
 	}
-	now, err := s.Store.(datastore.DatabaseClock).CurrentDatabaseTime(ctx)
+	now, err := s.Store.CurrentDatabaseTime(ctx)
 	if err != nil {
 		return err
 	}
 	if row.RetainUntil != nil && now.Before(*row.RetainUntil) {
-		return s.mutateSandbox(ctx, auth, row, func(_ datastore.DataStore, current *model.JobSandbox, now time.Time) error {
+		return s.mutateSandbox(ctx, auth, row, func(_ artifacts.Backend, current *model.JobSandbox, now time.Time) error {
 			// Serialize the external extension with recovery's durable isolation
 			// marker. A stale lease cannot patch a newer resourceVersion and then
 			// discover only afterwards that its database mutation was fenced.
@@ -406,7 +406,7 @@ func (s *Service) cleanupSandbox(ctx context.Context, auth *runnerAuthorization,
 			return err
 		}
 		if active {
-			return s.mutateSandbox(ctx, auth, row, func(_ datastore.DataStore, current *model.JobSandbox, now time.Time) error {
+			return s.mutateSandbox(ctx, auth, row, func(_ artifacts.Backend, current *model.JobSandbox, now time.Time) error {
 				current.State = sandboxPending
 				if current.Reason != "recovery_isolated" {
 					current.Reason = "checkpoint_running"
@@ -424,7 +424,7 @@ func (s *Service) cleanupSandbox(ctx context.Context, auth *runnerAuthorization,
 	if err != nil && !k8serrors.IsNotFound(err) {
 		return fmt.Errorf("confirm sandbox deletion: %w", err)
 	}
-	return s.mutateSandbox(ctx, auth, row, func(_ datastore.DataStore, current *model.JobSandbox, now time.Time) error {
+	return s.mutateSandbox(ctx, auth, row, func(_ artifacts.Backend, current *model.JobSandbox, now time.Time) error {
 		if k8serrors.IsNotFound(err) {
 			current.State, current.SlotReserved, current.StartReserved = sandboxReleased, false, false
 			if current.Reason != "recovery_isolated" {

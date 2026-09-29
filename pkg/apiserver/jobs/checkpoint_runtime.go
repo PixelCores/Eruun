@@ -88,7 +88,7 @@ func (s *Service) checkpointSource(ctx context.Context, row *model.JobCheckpoint
 }
 
 func (s *Service) checkpointFailed(ctx context.Context, auth *runnerAuthorization, row *model.JobCheckpoint, reason string) error {
-	return s.mutateCheckpoint(ctx, auth, row, func(_ datastore.DataStore, current *model.JobCheckpoint, now time.Time) error {
+	return s.mutateCheckpoint(ctx, auth, row, func(_ artifacts.Backend, current *model.JobCheckpoint, now time.Time) error {
 		current.State, current.Reason, current.ExpiresAt = sandboxFailed, reason, now
 		current.LeaseToken, current.LeaseUntil, current.ReconcileAt = "", nil, now
 		return nil
@@ -146,7 +146,7 @@ func (s *Service) advanceCheckpoint(ctx context.Context, auth *runnerAuthorizati
 				return err
 			}
 			// Save the exact source template before issuing the first cloud call.
-			if err := s.mutateCheckpoint(ctx, auth, row, func(_ datastore.DataStore, current *model.JobCheckpoint, _ time.Time) error {
+			if err := s.mutateCheckpoint(ctx, auth, row, func(_ artifacts.Backend, current *model.JobCheckpoint, _ time.Time) error {
 				current.Members, err = json.Marshal(members)
 				return err
 			}); err != nil {
@@ -182,7 +182,7 @@ func (s *Service) advanceCheckpoint(ctx context.Context, auth *runnerAuthorizati
 			}
 			// Recheck the claim immediately before creating an external resource.
 			member.CreateRequested = true
-			if err := s.mutateCheckpoint(ctx, auth, row, func(_ datastore.DataStore, current *model.JobCheckpoint, _ time.Time) error {
+			if err := s.mutateCheckpoint(ctx, auth, row, func(_ artifacts.Backend, current *model.JobCheckpoint, _ time.Time) error {
 				current.Members, err = json.Marshal(members)
 				return err
 			}); err != nil {
@@ -217,7 +217,7 @@ func (s *Service) advanceCheckpoint(ctx context.Context, auth *runnerAuthorizati
 		} else {
 			allReady = false
 		}
-		if err := s.mutateCheckpoint(ctx, auth, row, func(_ datastore.DataStore, current *model.JobCheckpoint, _ time.Time) error {
+		if err := s.mutateCheckpoint(ctx, auth, row, func(_ artifacts.Backend, current *model.JobCheckpoint, _ time.Time) error {
 			current.Members, err = json.Marshal(members)
 			return err
 		}); err != nil {
@@ -227,7 +227,7 @@ func (s *Service) advanceCheckpoint(ctx context.Context, auth *runnerAuthorizati
 			return nil
 		}
 	}
-	return s.mutateCheckpoint(ctx, auth, row, func(tx datastore.DataStore, current *model.JobCheckpoint, now time.Time) error {
+	return s.mutateCheckpoint(ctx, auth, row, func(tx artifacts.Backend, current *model.JobCheckpoint, now time.Time) error {
 		current.LeaseToken, current.LeaseUntil, current.ReconcileAt = "", nil, now.Add(15*time.Second)
 		if !allReady {
 			return nil
@@ -271,7 +271,7 @@ func (s *Service) checkpointRestore(ctx context.Context, auth *runnerAuthorizati
 	if err := s.Store.Get(ctx, point); err != nil {
 		return false, err
 	}
-	now, err := s.Store.(datastore.DatabaseClock).CurrentDatabaseTime(ctx)
+	now, err := s.Store.CurrentDatabaseTime(ctx)
 	if err != nil {
 		return false, err
 	}

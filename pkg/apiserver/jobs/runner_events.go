@@ -251,20 +251,16 @@ func (s *Service) RunnerEvent(ctx context.Context, identity RunnerIdentity, even
 	}
 	var ack RunnerEventAck
 	result := "accepted"
-	err = s.Store.(datastore.Transactional).WithTransaction(ctx, func(tx datastore.DataStore) error {
-		locker, ok := tx.(datastore.RowLocker)
-		if !ok {
-			return fmt.Errorf("runner events require row locking")
-		}
+	err = artifacts.WithTransaction(ctx, s.Store, func(tx artifacts.Backend) error {
 		task := &model.WorkflowQueue{TaskID: auth.task.TaskID}
-		if err := locker.GetForUpdate(ctx, task); err != nil {
+		if err := tx.GetForUpdate(ctx, task); err != nil {
 			return err
 		}
 		if err := validateLockedRunnerTask(task, auth); err != nil {
 			return err
 		}
 		record := &model.JobInfo{ID: auth.job.ID}
-		if err := locker.GetForUpdate(ctx, record); err != nil {
+		if err := tx.GetForUpdate(ctx, record); err != nil {
 			return err
 		}
 		if err := validateLockedRunnerJob(ctx, tx, record, auth, task.Status); err != nil {
@@ -274,11 +270,8 @@ func (s *Service) RunnerEvent(ctx context.Context, identity RunnerIdentity, even
 		if err != nil {
 			return err
 		}
-		clock, ok := tx.(datastore.DatabaseClock)
-		if !ok {
-			return fmt.Errorf("runner events require database clock")
-		}
-		now, err := clock.CurrentDatabaseTime(ctx)
+
+		now, err := tx.CurrentDatabaseTime(ctx)
 		if err != nil {
 			return err
 		}
@@ -388,7 +381,7 @@ func subtleTokenMismatch(left, right string) bool {
 	return len(left) != len(right) || subtle.ConstantTimeCompare([]byte(left), []byte(right)) != 1
 }
 
-func validateLockedRunnerJob(ctx context.Context, store datastore.DataStore, record *model.JobInfo, auth *runnerAuthorization, parentStatus config.Status) error {
+func validateLockedRunnerJob(ctx context.Context, store artifacts.Backend, record *model.JobInfo, auth *runnerAuthorization, parentStatus config.Status) error {
 	if record == nil || auth == nil || !runnerJobStatusAuthorized(record, parentStatus) || record.Type != string(config.JobEval) ||
 		record.WorkspaceID != auth.job.WorkspaceID || record.TaskID != auth.job.TaskID || record.ExecutionKey == nil || auth.job.ExecutionKey == nil ||
 		*record.ExecutionKey != *auth.job.ExecutionKey || record.EvaluationInfo != auth.job.EvaluationInfo || record.RunGeneration != auth.job.RunGeneration || record.Attempt != auth.job.Attempt {
@@ -472,7 +465,7 @@ func runnerStatus(record *model.JobInfo, now time.Time) (*RunnerStatus, error) {
 	return status, nil
 }
 
-func latestRunnerStatus(ctx context.Context, store datastore.DataStore, records []*model.JobInfo) (*RunnerStatus, error) {
+func latestRunnerStatus(ctx context.Context, store artifacts.Backend, records []*model.JobInfo) (*RunnerStatus, error) {
 	var latest *model.JobInfo
 	for _, record := range records {
 		if record == nil || record.Type != string(config.JobEval) || record.ExecutionKey == nil {
@@ -490,11 +483,8 @@ func latestRunnerStatus(ctx context.Context, store datastore.DataStore, records 
 	if latest.InternalInfo == "" {
 		return nil, nil
 	}
-	clock, ok := store.(datastore.DatabaseClock)
-	if !ok {
-		return nil, fmt.Errorf("runner status requires database clock")
-	}
-	now, err := clock.CurrentDatabaseTime(ctx)
+
+	now, err := store.CurrentDatabaseTime(ctx)
 	if err != nil {
 		return nil, err
 	}

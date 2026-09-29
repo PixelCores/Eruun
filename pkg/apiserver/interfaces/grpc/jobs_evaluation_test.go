@@ -23,7 +23,9 @@ func TestApplicationEvaluationResultsAreScopedToExecution(t *testing.T) {
 	store := accounts.Repo.Store
 	artifactStore, err := artifacts.New(store, nil)
 	require.NoError(t, err)
-	server := &JobsServer{Jobs: &jobs.Service{Store: store, Artifacts: artifactStore}}
+	backend, err := artifacts.RequireBackend(store)
+	require.NoError(t, err)
+	server := &JobsServer{Jobs: &jobs.Service{Store: backend, Artifacts: artifactStore}}
 	ctx := account.WithScope(context.Background(), account.Scope{UserID: "user", WorkspaceID: "workspace", Namespace: "ns", Role: "owner"})
 	task := &model.WorkflowQueue{TaskID: "workflow-task", WorkspaceID: "workspace", AppID: "app", Status: config.StatusCompleted}
 	require.NoError(t, store.Add(ctx, task))

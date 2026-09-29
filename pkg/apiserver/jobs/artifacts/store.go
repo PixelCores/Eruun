@@ -28,27 +28,49 @@ const (
 	DeliveryFailed    = "failed"
 )
 
+// Backend is the SQL capability contract required by Jobs and artifact storage.
+// Transaction callbacks must retain these capabilities on the same connection.
+type Backend interface {
+	datastore.DataStore
+	datastore.Transactional
+	datastore.RowLocker
+	datastore.DatabaseClock
+	datastore.ConditionalCompareAndSwap
+}
+
+// RequireBackend validates a datastore at a constructor or transaction boundary.
+func RequireBackend(db datastore.DataStore) (Backend, error) {
+	backend, ok := db.(Backend)
+	if !ok {
+		return nil, fmt.Errorf("Jobs datastore requires transactions, row locks, database clock and conditional updates")
+	}
+	return backend, nil
+}
+
+// WithTransaction checks the transaction handle before any business callback runs.
+func WithTransaction(ctx context.Context, db Backend, fn func(Backend) error) error {
+	return db.WithTransaction(ctx, func(tx datastore.DataStore) error {
+		backend, err := RequireBackend(tx)
+		if err != nil {
+			return fmt.Errorf("Jobs transaction: %w", err)
+		}
+		return fn(backend)
+	})
+}
+
 // Store uses the server datastore. Callers authorize workspace membership; all
 // artifact references are additionally checked against that explicit workspace.
 type Store struct {
-	db      datastore.DataStore
+	db      Backend
 	objects objectStore
 }
 
 func New(db datastore.DataStore, cfg *spec.MinIOConfig) (*Store, error) {
-	if db == nil {
-		return nil, fmt.Errorf("artifact datastore is required")
+	backend, err := RequireBackend(db)
+	if err != nil {
+		return nil, err
 	}
-	if _, ok := db.(datastore.Transactional); !ok {
-		return nil, fmt.Errorf("artifact datastore requires transactions")
-	}
-	if _, ok := db.(datastore.DatabaseClock); !ok {
-		return nil, fmt.Errorf("artifact datastore requires database clock")
-	}
-	if _, ok := db.(datastore.ConditionalCompareAndSwap); !ok {
-		return nil, fmt.Errorf("artifact datastore requires conditional updates")
-	}
-	s := &Store{db: db}
+	s := &Store{db: backend}
 	if cfg != nil {
 		object, err := newMinIO(cfg)
 		if err != nil {
@@ -93,20 +115,7 @@ func requireWorkspace(workspaceID string) error {
 	}
 	return nil
 }
-func clock(ctx context.Context, db datastore.DataStore) (time.Time, error) {
-	return db.(datastore.DatabaseClock).CurrentDatabaseTime(ctx)
-}
-func transaction(ctx context.Context, db datastore.DataStore, fn func(datastore.DataStore) error) error {
-	return db.(datastore.Transactional).WithTransaction(ctx, fn)
-}
-func locked(ctx context.Context, db datastore.DataStore, e datastore.Entity) error {
-	locker, ok := db.(datastore.RowLocker)
-	if !ok {
-		return fmt.Errorf("artifact datastore requires row locks")
-	}
-	return locker.GetForUpdate(ctx, e)
-}
-func scopedArtifact(ctx context.Context, db datastore.DataStore, workspaceID, id string, lock bool) (*model.JobArtifact, error) {
+func scopedArtifact(ctx context.Context, db Backend, workspaceID, id string, lock bool) (*model.JobArtifact, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return nil, err
 	}
@@ -116,7 +125,7 @@ func scopedArtifact(ctx context.Context, db datastore.DataStore, workspaceID, id
 	a := &model.JobArtifact{ID: id}
 	var err error
 	if lock {
-		err = locked(ctx, db, a)
+		err = db.GetForUpdate(ctx, a)
 	} else {
 		err = db.Get(ctx, a)
 	}
@@ -128,12 +137,12 @@ func scopedArtifact(ctx context.Context, db datastore.DataStore, workspaceID, id
 	}
 	return a, nil
 }
-func sourceAvailable(ctx context.Context, db datastore.DataStore, a *model.JobArtifact) error {
+func sourceAvailable(ctx context.Context, db Backend, a *model.JobArtifact) error {
 	if a.Expired {
 		return ErrSourceExpired
 	}
 	if a.ExpiresAt != nil {
-		now, err := clock(ctx, db)
+		now, err := db.CurrentDatabaseTime(ctx)
 		if err != nil {
 			return err
 		}
@@ -157,8 +166,8 @@ func (s *Store) UploadDataset(ctx context.Context, workspaceID, name string, r i
 	}
 	defer archive.close()
 	a := &model.JobArtifact{ID: uuid.NewString(), WorkspaceID: workspaceID, Kind: KindDataset, Name: name, Digest: archive.digest, Size: archive.size, Manifest: archive.manifest}
-	err = transaction(ctx, s.db, func(tx datastore.DataStore) error {
-		if err := locked(ctx, tx, &model.Workspace{ID: workspaceID}); err != nil {
+	err = WithTransaction(ctx, s.db, func(tx Backend) error {
+		if err := tx.GetForUpdate(ctx, &model.Workspace{ID: workspaceID}); err != nil {
 			return err
 		}
 		return saveArchive(ctx, tx, a, archive.file)
@@ -177,7 +186,7 @@ func (s *Store) PutResult(ctx context.Context, workspaceID, taskID string, polic
 
 // PutResultGuarded locks the workspace before invoking guard in the publishing
 // transaction, allowing the runtime to atomically reject obsolete executions.
-func (s *Store) PutResultGuarded(ctx context.Context, workspaceID, taskID string, policy spec.JobResultPolicy, r io.Reader, guard func(datastore.DataStore) error, executionKey ...string) (*model.JobArtifact, error) {
+func (s *Store) PutResultGuarded(ctx context.Context, workspaceID, taskID string, policy spec.JobResultPolicy, r io.Reader, guard func(Backend) error, executionKey ...string) (*model.JobArtifact, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return nil, err
 	}
@@ -193,8 +202,8 @@ func (s *Store) PutResultGuarded(ctx context.Context, workspaceID, taskID string
 	}
 	defer archive.close()
 	a := &model.JobArtifact{ID: sourceID(workspaceID, taskID, executionKey...), WorkspaceID: workspaceID, TaskID: taskID, ExecutionKey: executionKeyValue(executionKey), Kind: KindSource, Name: "results.tar.gz", Digest: archive.digest, Size: archive.size, Manifest: archive.manifest, Summary: archive.summary}
-	err = transaction(ctx, s.db, func(tx datastore.DataStore) error {
-		if err := locked(ctx, tx, &model.Workspace{ID: workspaceID}); err != nil {
+	err = WithTransaction(ctx, s.db, func(tx Backend) error {
+		if err := tx.GetForUpdate(ctx, &model.Workspace{ID: workspaceID}); err != nil {
 			return err
 		}
 		if guard != nil {
@@ -204,7 +213,7 @@ func (s *Store) PutResultGuarded(ctx context.Context, workspaceID, taskID string
 		}
 		// The existing task row serializes duplicate publication and workspace deletion.
 		task := &model.WorkflowQueue{TaskID: taskID}
-		if err := locked(ctx, tx, task); err != nil {
+		if err := tx.GetForUpdate(ctx, task); err != nil {
 			return err
 		}
 		if task.WorkspaceID != workspaceID {
@@ -221,7 +230,7 @@ func (s *Store) PutResultGuarded(ctx context.Context, workspaceID, taskID string
 		if !errors.Is(getErr, datastore.ErrRecordNotExist) {
 			return getErr
 		}
-		now, err := clock(ctx, tx)
+		now, err := tx.CurrentDatabaseTime(ctx)
 		if err != nil {
 			return err
 		}
@@ -292,11 +301,11 @@ func (s *Store) ListPage(ctx context.Context, workspaceID, kind, taskID string, 
 }
 
 func (s *Store) Download(ctx context.Context, workspaceID, id string, w io.Writer) error {
-	return transaction(ctx, s.db, func(tx datastore.DataStore) error {
+	return WithTransaction(ctx, s.db, func(tx Backend) error {
 		if err := requireWorkspace(workspaceID); err != nil {
 			return err
 		}
-		if err := locked(ctx, tx, &model.Workspace{ID: workspaceID}); err != nil {
+		if err := tx.GetForUpdate(ctx, &model.Workspace{ID: workspaceID}); err != nil {
 			return err
 		}
 		a, err := scopedArtifact(ctx, tx, workspaceID, id, true)
@@ -340,11 +349,11 @@ func (s *Store) SetRetention(ctx context.Context, workspaceID, taskID string, da
 	if days < 1 || days > 3650 {
 		return fmt.Errorf("%w: retentionDays must be 1..3650", ErrInvalidInput)
 	}
-	return transaction(ctx, s.db, func(tx datastore.DataStore) error {
+	return WithTransaction(ctx, s.db, func(tx Backend) error {
 		if err := requireWorkspace(workspaceID); err != nil {
 			return err
 		}
-		if err := locked(ctx, tx, &model.Workspace{ID: workspaceID}); err != nil {
+		if err := tx.GetForUpdate(ctx, &model.Workspace{ID: workspaceID}); err != nil {
 			return err
 		}
 		a, err := scopedArtifact(ctx, tx, workspaceID, sourceID(workspaceID, taskID, executionKey...), true)
@@ -354,7 +363,7 @@ func (s *Store) SetRetention(ctx context.Context, workspaceID, taskID string, da
 		if err := sourceAvailable(ctx, tx, a); err != nil {
 			return err
 		}
-		now, err := clock(ctx, tx)
+		now, err := tx.CurrentDatabaseTime(ctx)
 		if err != nil {
 			return err
 		}
@@ -368,7 +377,7 @@ func (s *Store) CleanupExpired(ctx context.Context, limit int) error {
 	if limit < 1 || limit > 1000 {
 		return fmt.Errorf("cleanup limit must be 1..1000")
 	}
-	now, err := clock(ctx, s.db)
+	now, err := s.db.CurrentDatabaseTime(ctx)
 	if err != nil {
 		return err
 	}
@@ -378,15 +387,15 @@ func (s *Store) CleanupExpired(ctx context.Context, limit int) error {
 	}
 	for _, record := range records {
 		candidate := record.(*model.JobArtifact)
-		if err := transaction(ctx, s.db, func(tx datastore.DataStore) error {
-			if err := locked(ctx, tx, &model.Workspace{ID: candidate.WorkspaceID}); err != nil {
+		if err := WithTransaction(ctx, s.db, func(tx Backend) error {
+			if err := tx.GetForUpdate(ctx, &model.Workspace{ID: candidate.WorkspaceID}); err != nil {
 				return err
 			}
 			a, err := scopedArtifact(ctx, tx, candidate.WorkspaceID, candidate.ID, true)
 			if err != nil {
 				return err
 			}
-			current, err := clock(ctx, tx)
+			current, err := tx.CurrentDatabaseTime(ctx)
 			if err != nil {
 				return err
 			}

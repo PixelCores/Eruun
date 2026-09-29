@@ -23,7 +23,7 @@ func (s *Service) reconcileCheckpoints(ctx context.Context, limit int) error {
 	if s.SandboxClient == nil {
 		return nil
 	}
-	now, err := s.Store.(datastore.DatabaseClock).CurrentDatabaseTime(ctx)
+	now, err := s.Store.CurrentDatabaseTime(ctx)
 	if err != nil {
 		return err
 	}
@@ -42,13 +42,13 @@ func (s *Service) reconcileCheckpoints(ctx context.Context, limit int) error {
 				if ctx.Err() != nil {
 					return err
 				}
-				now, clockErr := s.Store.(datastore.DatabaseClock).CurrentDatabaseTime(ctx)
+				now, clockErr := s.Store.CurrentDatabaseTime(ctx)
 				if clockErr != nil {
 					return errors.Join(err, clockErr)
 				}
 				// Failed cloud reads must not pin the same rows at the head of
 				// every bounded maintenance page. Never delay a newer lifecycle.
-				_, delayErr := s.Store.(datastore.ConditionalCompareAndSwap).CompareAndSwapWithConditions(ctx, &model.JobCheckpoint{ID: row.ID}, map[string]interface{}{"reconcile_at": row.ReconcileAt, "lease_token": row.LeaseToken, "state": row.State}, map[string]interface{}{"reconcile_at": now.Add(15 * time.Second)})
+				_, delayErr := s.Store.CompareAndSwapWithConditions(ctx, &model.JobCheckpoint{ID: row.ID}, map[string]interface{}{"reconcile_at": row.ReconcileAt, "lease_token": row.LeaseToken, "state": row.State}, map[string]interface{}{"reconcile_at": now.Add(15 * time.Second)})
 				return fmt.Errorf("maintain checkpoint %s: %w", row.ID, errors.Join(err, delayErr))
 			}
 			return nil
@@ -69,16 +69,16 @@ func (s *Service) maintainCheckpoint(ctx context.Context, candidate *model.JobCh
 		}
 	}
 	cleanup := false
-	err := s.Store.(datastore.Transactional).WithTransaction(ctx, func(tx datastore.DataStore) error {
+	err := artifacts.WithTransaction(ctx, s.Store, func(tx artifacts.Backend) error {
 		task, job, orphaned, err := lockSandboxMaintenanceOwners(ctx, tx, &model.JobSandbox{WorkspaceID: candidate.WorkspaceID, TaskID: candidate.TaskID, JobID: candidate.JobID, ExecutionKey: candidate.ExecutionKey})
 		if err != nil {
 			return err
 		}
 		row := &model.JobCheckpoint{ID: candidate.ID}
-		if err := tx.(datastore.RowLocker).GetForUpdate(ctx, row); err != nil {
+		if err := tx.GetForUpdate(ctx, row); err != nil {
 			return err
 		}
-		now, err := tx.(datastore.DatabaseClock).CurrentDatabaseTime(ctx)
+		now, err := tx.CurrentDatabaseTime(ctx)
 		if err != nil {
 			return err
 		}
@@ -151,7 +151,7 @@ func (s *Service) maintainCheckpoint(ctx context.Context, candidate *model.JobCh
 			// CR does not stop the cloud snapshot. An observed UID is not terminal
 			// proof; keep the source until success or its absolute retention bound.
 			if member.CreateRequested && member.SnapshotID == "" {
-				now, err := s.Store.(datastore.DatabaseClock).CurrentDatabaseTime(ctx)
+				now, err := s.Store.CurrentDatabaseTime(ctx)
 				if err != nil {
 					return err
 				}
@@ -183,15 +183,15 @@ func (s *Service) maintainCheckpoint(ctx context.Context, candidate *model.JobCh
 			allGone = false
 		}
 	}
-	return s.Store.(datastore.Transactional).WithTransaction(ctx, func(tx datastore.DataStore) error {
+	return artifacts.WithTransaction(ctx, s.Store, func(tx artifacts.Backend) error {
 		if _, _, _, err := lockSandboxMaintenanceOwners(ctx, tx, &model.JobSandbox{WorkspaceID: candidate.WorkspaceID, TaskID: candidate.TaskID, JobID: candidate.JobID, ExecutionKey: candidate.ExecutionKey}); err != nil {
 			return err
 		}
 		row := &model.JobCheckpoint{ID: candidate.ID}
-		if err := tx.(datastore.RowLocker).GetForUpdate(ctx, row); err != nil {
+		if err := tx.GetForUpdate(ctx, row); err != nil {
 			return err
 		}
-		now, err := tx.(datastore.DatabaseClock).CurrentDatabaseTime(ctx)
+		now, err := tx.CurrentDatabaseTime(ctx)
 		if err != nil {
 			return err
 		}
@@ -234,7 +234,7 @@ func (s *Service) sandboxCheckpointActive(ctx context.Context, row *model.JobSan
 				// CR deletion cannot prove the cloud snapshot stopped.
 				if member.SnapshotID == "" {
 					if now.IsZero() {
-						now, err = s.Store.(datastore.DatabaseClock).CurrentDatabaseTime(ctx)
+						now, err = s.Store.CurrentDatabaseTime(ctx)
 						if err != nil {
 							return false, err
 						}

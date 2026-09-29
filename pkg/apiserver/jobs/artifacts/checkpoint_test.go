@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/stretchr/testify/require"
 )
 
@@ -38,7 +37,7 @@ func TestCheckpointMaterialFileManifest(t *testing.T) {
 			}
 			data := archiveBytes(t, entries...)
 			bound := false
-			err = store.PutCheckpoint(context.Background(), "space-a", "task-a", "exec-a", "point", bytes.NewReader(data), func(_ datastore.DataStore, artifact *model.JobArtifact, raw json.RawMessage) error {
+			err = store.PutCheckpoint(context.Background(), "space-a", "task-a", "exec-a", "point", bytes.NewReader(data), func(_ Backend, artifact *model.JobArtifact, raw json.RawMessage) error {
 				bound = true
 				require.Equal(t, KindCheckpoint, artifact.Kind)
 				require.JSONEq(t, string(manifest), string(raw))

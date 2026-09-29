@@ -32,7 +32,7 @@ import (
 )
 
 type Service struct {
-	Store           datastore.DataStore
+	Store           artifacts.Backend
 	Artifacts       *artifacts.Store
 	Kube            kubernetes.Interface
 	Config          *config.Config
@@ -41,6 +41,10 @@ type Service struct {
 }
 
 func New(store datastore.DataStore, kube kubernetes.Interface, cfg *config.Config) (*Service, error) {
+	backend, err := artifacts.RequireBackend(store)
+	if err != nil {
+		return nil, err
+	}
 	var minio *spec.MinIOConfig
 	if cfg != nil && cfg.Jobs != nil {
 		minio = cfg.Jobs.MinIO
@@ -49,7 +53,7 @@ func New(store datastore.DataStore, kube kubernetes.Interface, cfg *config.Confi
 	if err != nil {
 		return nil, err
 	}
-	return &Service{Store: store, Artifacts: data, Kube: kube, Config: cfg}, nil
+	return &Service{Store: backend, Artifacts: data, Kube: kube, Config: cfg}, nil
 }
 
 type SubmitRequest struct {
@@ -142,13 +146,10 @@ func (s *Service) SetPolicy(ctx context.Context, p spec.JobResultPolicy) error {
 		return err
 	}
 	data, _ := json.Marshal(p)
-	return s.Store.(datastore.Transactional).WithTransaction(ctx, func(tx datastore.DataStore) error {
+	return artifacts.WithTransaction(ctx, s.Store, func(tx artifacts.Backend) error {
 		space := &model.Workspace{ID: scope.WorkspaceID}
-		locker, ok := tx.(datastore.RowLocker)
-		if !ok {
-			return fmt.Errorf("Job policy requires row locking")
-		}
-		if err := locker.GetForUpdate(ctx, space); err != nil {
+
+		if err := tx.GetForUpdate(ctx, space); err != nil {
 			return err
 		}
 		if space.Namespace != scope.Namespace {
@@ -236,13 +237,10 @@ func (s *Service) Submit(ctx context.Context, request SubmitRequest) (*Accepted,
 	if err != nil {
 		return nil, err
 	}
-	err = s.Store.(datastore.Transactional).WithTransaction(ctx, func(tx datastore.DataStore) error {
+	err = artifacts.WithTransaction(ctx, s.Store, func(tx artifacts.Backend) error {
 		locked := &model.Workspace{ID: scope.WorkspaceID}
-		locker, ok := tx.(datastore.RowLocker)
-		if !ok {
-			return fmt.Errorf("Job submission requires row locking")
-		}
-		if err := locker.GetForUpdate(ctx, locked); err != nil {
+
+		if err := tx.GetForUpdate(ctx, locked); err != nil {
 			return err
 		}
 		if locked.Namespace != scope.Namespace {
@@ -274,17 +272,23 @@ func (s *Service) scopedTask(ctx context.Context, taskID string) (*model.Workflo
 }
 
 func (s *Service) evaluationExecution(ctx context.Context, task *model.WorkflowQueue, executionKey string) (*model.JobInfo, error) {
-	rows, err := s.Store.List(ctx, &model.JobInfo{TaskID: task.TaskID, WorkspaceID: task.WorkspaceID, AppID: task.AppID}, &datastore.ListOptions{})
+	options := &datastore.ListOptions{FilterOptions: datastore.FilterOptions{In: []datastore.InQueryOption{{Key: "type", Values: []string{string(config.JobEval)}}}}}
+	if executionKey != "" {
+		options.In = append(options.In, datastore.InQueryOption{Key: "execution_key", Values: []string{executionKey}})
+	} else {
+		options.Page, options.PageSize = 1, 2
+		// Historical NULL identities are ignored, while a non-NULL empty identity
+		// retains its existing result-storage and ambiguity semantics.
+		options.NotEqual = []datastore.ComparisonQueryOption{{Key: "execution_key", Value: nil}}
+	}
+	rows, err := s.Store.List(ctx, &model.JobInfo{TaskID: task.TaskID, WorkspaceID: task.WorkspaceID, AppID: task.AppID}, options)
 	if err != nil {
 		return nil, err
 	}
 	var selected *model.JobInfo
 	for _, row := range rows {
 		record := row.(*model.JobInfo)
-		if record.Type != string(config.JobEval) || record.ExecutionKey == nil {
-			continue
-		}
-		if executionKey != "" && *record.ExecutionKey != executionKey {
+		if record.Type != string(config.JobEval) || record.ExecutionKey == nil || (executionKey != "" && *record.ExecutionKey != executionKey) {
 			continue
 		}
 		if selected != nil {
@@ -319,30 +323,41 @@ func (s *Service) Task(ctx context.Context, taskID string, executionKey ...strin
 	return task, nil
 }
 
-// ResolveExecutionKey binds result operations to one evaluation Job. Standalone
-// callers may omit the key only while their execution identity is unambiguous.
-func (s *Service) ResolveExecutionKey(ctx context.Context, taskID, executionKey string) (string, error) {
-	task, err := s.Task(ctx, taskID, executionKey)
+// resolveExecution authorizes the parent before selecting a bounded execution set.
+func (s *Service) resolveExecution(ctx context.Context, taskID, executionKey string) (*model.WorkflowQueue, *model.JobInfo, error) {
+	task, err := s.scopedTask(ctx, taskID)
 	if err != nil {
-		return "", err
+		return nil, nil, err
+	}
+	if executionKey == "" && (task.Type != config.WorkflowTaskTypeJob || task.AppID != "") {
+		return nil, nil, bcode.ErrNotFound
 	}
 	record, err := s.evaluationExecution(ctx, task, executionKey)
-	if err != nil || record == nil {
-		return "", err
+	if err != nil {
+		return nil, nil, err
 	}
-	return *record.ExecutionKey, nil
+	return task, record, nil
+}
+
+// ResolveResultTask returns the authorized parent and its selected evaluation
+// identity together, so result operations do not repeat execution selection.
+func (s *Service) ResolveResultTask(ctx context.Context, taskID, executionKey string) (*model.WorkflowQueue, string, error) {
+	task, record, err := s.resolveExecution(ctx, taskID, executionKey)
+	if err != nil {
+		return nil, "", err
+	}
+	if record == nil {
+		return task, "", nil
+	}
+	return task, *record.ExecutionKey, nil
 }
 
 func (s *Service) Get(ctx context.Context, taskID string, executionKey ...string) (*Detail, error) {
-	task, err := s.Task(ctx, taskID, executionKey...)
-	if err != nil {
-		return nil, err
-	}
 	key := ""
 	if len(executionKey) > 0 {
 		key = executionKey[0]
 	}
-	record, err := s.evaluationExecution(ctx, task, key)
+	task, record, err := s.resolveExecution(ctx, taskID, key)
 	if err != nil {
 		return nil, err
 	}
@@ -544,13 +559,10 @@ func (s *Service) RunnerResult(ctx context.Context, identity RunnerIdentity, r i
 	if policy == nil {
 		return nil, bcode.ErrJobInput
 	}
-	return s.Artifacts.PutResultGuarded(ctx, auth.task.WorkspaceID, auth.task.TaskID, *policy, r, func(tx datastore.DataStore) error {
+	return s.Artifacts.PutResultGuarded(ctx, auth.task.WorkspaceID, auth.task.TaskID, *policy, r, func(tx artifacts.Backend) error {
 		task := &model.WorkflowQueue{TaskID: auth.task.TaskID}
-		locker, ok := tx.(datastore.RowLocker)
-		if !ok {
-			return fmt.Errorf("result publication requires row locking")
-		}
-		if err := locker.GetForUpdate(ctx, task); err != nil {
+
+		if err := tx.GetForUpdate(ctx, task); err != nil {
 			return err
 		}
 		if err := validateLockedRunnerTask(task, auth); err != nil {
@@ -559,7 +571,7 @@ func (s *Service) RunnerResult(ctx context.Context, identity RunnerIdentity, r i
 		// A recovered owner may adopt the same immutable execution checkpoint.
 		// A replacement execution may never publish under the old Pod identity.
 		job := &model.JobInfo{ID: auth.job.ID}
-		if err := locker.GetForUpdate(ctx, job); err != nil {
+		if err := tx.GetForUpdate(ctx, job); err != nil {
 			return err
 		}
 		if err := validateLockedRunnerJob(ctx, tx, job, auth, task.Status); err != nil {
@@ -573,7 +585,7 @@ func (s *Service) RunnerResult(ctx context.Context, identity RunnerIdentity, r i
 	}, *auth.job.ExecutionKey)
 }
 
-func runnerParentAuthorized(ctx context.Context, store datastore.DataStore, status config.Status, record *model.JobInfo, auth *runnerAuthorization) error {
+func runnerParentAuthorized(ctx context.Context, store artifacts.Backend, status config.Status, record *model.JobInfo, auth *runnerAuthorization) error {
 	if status == config.StatusRunning || status == config.StatusCancelled {
 		return nil
 	}
@@ -587,11 +599,8 @@ func runnerParentAuthorized(ctx context.Context, store datastore.DataStore, stat
 	if err != nil || !runnerOwnerMatches(state, auth) || deadline <= 0 {
 		return bcode.ErrUnauthorized
 	}
-	clock, ok := store.(datastore.DatabaseClock)
-	if !ok {
-		return fmt.Errorf("runner recovery authorization requires database clock")
-	}
-	now, err := clock.CurrentDatabaseTime(ctx)
+
+	now, err := store.CurrentDatabaseTime(ctx)
 	if err != nil {
 		return err
 	}
