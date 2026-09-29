@@ -93,12 +93,10 @@ func (s *restServer) registerAPIRoutes(healthOnly bool) {
 	// Enable gzip compression for responses
 	s.webContainer.Use(middleware.Gzip())
 
-	// 获取所有注册的API
-	apis := api.GetRegisteredAPI()
 	// 为每个API前缀创建路由组
 	for _, prefix := range api.GetAPIPrefix() {
 		group := s.webContainer.Group(prefix)
-		for _, handler := range apis {
+		for _, handler := range s.apiHandlers {
 			if healthOnly {
 				named, ok := handler.(interface{ GetName() string })
 				if !ok || named.GetName() != "health" {

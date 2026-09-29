@@ -43,6 +43,7 @@ type restServer struct {
 	apiRateLimiter            *ratelimit.Limiter
 	jobs                      *jobs.Service
 	webContainer              *gin.Engine
+	apiHandlers               []api.Interface
 	beanContainer             *container.Container
 	cfg                       config.Config
 	dataStore                 datastore.DataStore
@@ -104,6 +105,7 @@ var leaderElectionRetryDelay = leaderElectionRetryPeriod
 func New(cfg config.Config) (a APIServer) {
 	s := &restServer{
 		webContainer:  gin.New(),
+		apiHandlers:   api.NewHandlers(),
 		beanContainer: container.NewContainer(),
 		cfg:           cfg,
 	}

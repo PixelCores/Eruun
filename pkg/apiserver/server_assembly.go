@@ -217,8 +217,10 @@ func (s *restServer) provideDomainAndEventBeans(runtimeQueues *msg.RuntimeQueues
 	}
 
 	// interfaces
-	if err := s.beanContainer.Provides(api.InitAPIBean()...); err != nil {
-		return fmt.Errorf("fail to provides the api bean to the container: %w", err)
+	for _, handler := range s.apiHandlers {
+		if err := s.beanContainer.Provides(handler); err != nil {
+			return fmt.Errorf("provide api handler: %w", err)
+		}
 	}
 	s.grpcAdministration = &grpcapi.AdministrationServer{}
 	s.grpcJobs = &grpcapi.JobsServer{}

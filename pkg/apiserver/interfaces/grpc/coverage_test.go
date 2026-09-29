@@ -27,8 +27,7 @@ func TestRouteRPCCoverageAndExceptions(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	group := router.Group("/api/v1")
-	api.InitAPIBean()
-	for _, handler := range api.GetRegisteredAPI() {
+	for _, handler := range api.NewHandlers() {
 		handler.RegisterRoutes(group)
 	}
 	methods := rpcMethods(
