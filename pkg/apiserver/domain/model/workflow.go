@@ -119,10 +119,6 @@ func (w *Workflow) TableName() string {
 	return tableNamePrefix + "workflow"
 }
 
-func (w *Workflow) ShortTableName() string {
-	return "workflow"
-}
-
 func (w *Workflow) Index() map[string]interface{} {
 	index := make(map[string]interface{})
 	if w.ID != "" {

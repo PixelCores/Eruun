@@ -48,10 +48,6 @@ func (a *Applications) TableName() string {
 	return tableNamePrefix + "applications"
 }
 
-func (a *Applications) ShortTableName() string {
-	return "app"
-}
-
 // Index return custom index
 func (a *Applications) Index() map[string]interface{} {
 	index := make(map[string]interface{})
@@ -141,10 +137,6 @@ func (w *ApplicationComponent) PrimaryKey() string {
 
 func (w *ApplicationComponent) TableName() string {
 	return tableNamePrefix + "app_components"
-}
-
-func (w *ApplicationComponent) ShortTableName() string {
-	return "app_component"
 }
 
 func (w *ApplicationComponent) Index() map[string]interface{} {

@@ -89,7 +89,6 @@ type Entity interface {
 	SetUpdateTime(time time.Time)
 	PrimaryKey() string
 	TableName() string
-	ShortTableName() string
 	Index() map[string]interface{}
 }
 

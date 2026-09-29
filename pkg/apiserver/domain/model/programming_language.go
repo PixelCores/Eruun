@@ -20,10 +20,6 @@ func (p *ProgrammingLanguage) TableName() string {
 	return tableNamePrefix + "programming_languages"
 }
 
-func (p *ProgrammingLanguage) ShortTableName() string {
-	return "programming_language"
-}
-
 func (p *ProgrammingLanguage) Index() map[string]interface{} {
 	index := make(map[string]interface{})
 	if p.ID != "" {

@@ -32,5 +32,4 @@ func (b *ResourceCreationBudget) PrimaryKey() string { return b.ID }
 func (b *ResourceCreationBudget) TableName() string {
 	return tableNamePrefix + "resource_creation_budget"
 }
-func (b *ResourceCreationBudget) ShortTableName() string        { return "resource_creation_budget" }
 func (b *ResourceCreationBudget) Index() map[string]interface{} { return nil }

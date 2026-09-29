@@ -11,11 +11,6 @@ func (u *SystemInfo) TableName() string {
 	return tableNamePrefix + "system_info"
 }
 
-// ShortTableName is the compressed version of table name for kubeapi storage and others
-func (u *SystemInfo) ShortTableName() string {
-	return "sys"
-}
-
 // PrimaryKey return custom primary key
 func (u *SystemInfo) PrimaryKey() string {
 	return u.InstallID

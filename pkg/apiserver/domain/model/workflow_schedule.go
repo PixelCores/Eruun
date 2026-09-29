@@ -20,10 +20,6 @@ func (ws *WorkflowSchedule) TableName() string {
 	return tableNamePrefix + "workflow_schedule"
 }
 
-func (ws *WorkflowSchedule) ShortTableName() string {
-	return "workflow_schedule"
-}
-
 func (ws *WorkflowSchedule) Index() map[string]interface{} {
 	index := make(map[string]interface{})
 	if ws.ID != "" {

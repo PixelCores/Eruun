@@ -13,7 +13,6 @@ func TestNodeSelectorProfile_EntityContract(t *testing.T) {
 	}
 
 	require.Equal(t, "eruun_node_selector_profiles", profile.TableName())
-	require.Equal(t, "node_selector_profile", profile.ShortTableName())
 	require.Equal(t, "node-1", profile.PrimaryKey())
 
 	index := profile.Index()
