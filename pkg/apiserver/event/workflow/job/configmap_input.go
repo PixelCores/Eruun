@@ -5,20 +5,14 @@ import (
 	"fmt"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 )
 
 const configMapMaxSize = 1024 * 1024
-
-// ConfigMapData 定义ConfigMap的数据结构
-type ConfigMapData struct {
-	Name        string            `json:"name"`
-	Namespace   string            `json:"namespace"`
-	Labels      map[string]string `json:"labels,omitempty"`
-	Annotations map[string]string `json:"annotations,omitempty"`
-	Data        map[string]string `json:"data"`
-}
 
 // SecretInput : 与 ConfigMapInput 类似，支持 Data 或 URL（URL 下载后作为单文件注入）。
 // 注意：Secret 的值需为字节；通过 StringData 便捷传入。
@@ -61,8 +55,8 @@ type ConfigMapInput struct {
 	FileName    string            `json:"fileName,omitempty"`
 }
 
-// GenerateConf 根据 Data 或 URL 生成标准 ConfigMapData
-func (s *ConfigMapInput) GenerateConf(ctx context.Context, urlPolicy *spec.URLSecurityPolicySpec) (*ConfigMapData, error) {
+// GenerateConf 根据 Data 或 URL 生成 Kubernetes ConfigMap
+func (s *ConfigMapInput) GenerateConf(ctx context.Context, urlPolicy *spec.URLSecurityPolicySpec) (*corev1.ConfigMap, error) {
 	if s.Name == "" {
 		return nil, fmt.Errorf("ConfigMap name is required")
 	}
@@ -84,12 +78,14 @@ func (s *ConfigMapInput) GenerateConf(ctx context.Context, urlPolicy *spec.URLSe
 		if totalSize > configMapMaxSize {
 			return nil, fmt.Errorf("total ConfigMap data size %d bytes exceeds maximum size %d bytes", totalSize, configMapMaxSize)
 		}
-		return &ConfigMapData{
-			Name:        s.Name,
-			Namespace:   s.Namespace,
-			Labels:      s.Labels,
-			Annotations: s.Annotations,
-			Data:        s.Data,
+		return &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        s.Name,
+				Namespace:   s.Namespace,
+				Labels:      s.Labels,
+				Annotations: s.Annotations,
+			},
+			Data: s.Data,
 		}, nil
 	}
 
@@ -108,12 +104,14 @@ func (s *ConfigMapInput) GenerateConf(ctx context.Context, urlPolicy *spec.URLSe
 	if fileName == "" {
 		fileName = extractFileNameFromURLSimple(s.URL)
 	}
-	return &ConfigMapData{
-		Name:        s.Name,
-		Namespace:   s.Namespace,
-		Labels:      s.Labels,
-		Annotations: s.Annotations,
-		Data:        map[string]string{fileName: string(body)},
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        s.Name,
+			Namespace:   s.Namespace,
+			Labels:      s.Labels,
+			Annotations: s.Annotations,
+		},
+		Data: map[string]string{fileName: string(body)},
 	}, nil
 }
 

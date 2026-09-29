@@ -13,12 +13,9 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
-// InitProcessor creates init containers (pre-main) and applies nested traits
+// processInit creates init containers (pre-main) and applies nested traits
 // to them (e.g., storage/env/probes/resources), excluding further init recursion.
-type InitProcessor struct{}
-
-// Process adds init containers to the workload, recursively applying any nested traits.
-func (i *InitProcessor) Process(ctx *TraitContext, initTraits []spec.InitTraitSpec) (*TraitResult, error) {
+func processInit(ctx *TraitContext, initTraits []spec.InitTraitSpec) (*TraitResult, error) {
 	// This is the final result that will be returned, aggregating all outcomes.
 	finalResult := &TraitResult{
 		VolumeMounts:   make(map[string][]corev1.VolumeMount),
@@ -46,12 +43,9 @@ func (i *InitProcessor) Process(ctx *TraitContext, initTraits []spec.InitTraitSp
 
 		// Recursively apply nested traits, excluding pod-level traits and recursive container traits.
 		// and semantically meaningless nesting (init containers cannot have sidecars).
-		nestedResult, err := applyTraitsRecursive(ctx.Component, ctx.Workload, &initTrait.Traits, true)
+		nestedResult, err := applyTraitsRecursive(ctx, &initTrait.Traits, true)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process nested traits for init container %s: %w", initContainerName, err)
-		}
-		if nestedResult == nil {
-			nestedResult = &TraitResult{}
 		}
 
 		// The init container itself gets the volume mounts from its nested traits.

@@ -28,10 +28,3 @@ func externalConfigFileInput(properties *model.Properties, enabled bool) (string
 	}
 	return url, fileName, true
 }
-
-func keyValueDataOrNil(values map[string]string) map[string]string {
-	if values == nil {
-		return nil
-	}
-	return values
-}

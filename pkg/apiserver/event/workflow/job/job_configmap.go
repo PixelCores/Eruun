@@ -336,7 +336,7 @@ func adoptedConfigMapEqual(current, updated *corev1.ConfigMap) bool {
 
 // GenerateConfigMap Generate a simplified ConfigMap input based on components and attributes.
 // First, read the external file URL from Conf["config.url"]; otherwise, directly use the content in Conf as the content of ConfigMap.
-func GenerateConfigMap(component *model.ApplicationComponent, properties *model.Properties) interface{} {
+func GenerateConfigMap(component *model.ApplicationComponent, properties *model.Properties) *ConfigMapInput {
 	name, namespace := generatedResourceIdentity(component)
 
 	if url, fileName, ok := externalConfigFileInput(properties, true); ok {
@@ -352,7 +352,7 @@ func GenerateConfigMap(component *model.ApplicationComponent, properties *model.
 	labels := BuildLabels(component, properties)
 	var data map[string]string
 	if properties != nil {
-		data = keyValueDataOrNil(properties.Conf)
+		data = properties.Conf
 	}
 
 	return &ConfigMapInput{

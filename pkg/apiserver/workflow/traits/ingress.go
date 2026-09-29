@@ -15,17 +15,16 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 )
 
-type IngressProcessor struct{}
-
-func (p *IngressProcessor) Process(ctx *TraitContext, traits []spec.IngressTraitsSpec) (*TraitResult, error) {
+func processIngress(ctx *TraitContext, traits []spec.IngressTraitsSpec) (*TraitResult, error) {
 	if len(traits) == 0 {
 		return nil, nil
 	}
 
+	properties := decodeComponentProperties(ctx.Component)
 	result := &TraitResult{}
 	for idx, t := range traits {
 		// Apply defaults
-		if err := applyIngressDefaults(&t, ctx.Component, idx); err != nil {
+		if err := applyIngressDefaults(&t, ctx.Component, ctx.componentTraits, properties, idx); err != nil {
 			return nil, fmt.Errorf("apply ingress defaults trait[%d]: %w", idx, err)
 		}
 
@@ -39,7 +38,7 @@ func (p *IngressProcessor) Process(ctx *TraitContext, traits []spec.IngressTrait
 	return result, nil
 }
 
-func applyIngressDefaults(traitSpec *spec.IngressTraitsSpec, component *model.ApplicationComponent, idx int) error {
+func applyIngressDefaults(traitSpec *spec.IngressTraitsSpec, component *model.ApplicationComponent, traits *spec.Traits, properties *model.Properties, idx int) error {
 	if traitSpec == nil {
 		return nil
 	}
@@ -61,8 +60,6 @@ func applyIngressDefaults(traitSpec *spec.IngressTraitsSpec, component *model.Ap
 	if component == nil {
 		return nil
 	}
-	traits := decodeComponentTraits(component)
-	properties := decodeComponentProperties(component)
 	defaultServiceName, defaultServicePort, err := resolveIngressDefaultService(component, traits, properties, ingressNeedsDefaultBackendName(traitSpec))
 	if err != nil {
 		return err
@@ -184,21 +181,6 @@ func firstServiceTraitPort(serviceTrait spec.ServiceTraitSpec) int32 {
 		}
 	}
 	return 0
-}
-
-func decodeComponentTraits(component *model.ApplicationComponent) *spec.Traits {
-	if component == nil || component.Traits == nil {
-		return nil
-	}
-	raw, err := json.Marshal(component.Traits)
-	if err != nil || string(raw) == "{}" || string(raw) == "null" {
-		return nil
-	}
-	var traits spec.Traits
-	if err := json.Unmarshal(raw, &traits); err != nil {
-		return nil
-	}
-	return &traits
 }
 
 func decodeComponentProperties(component *model.ApplicationComponent) *model.Properties {
