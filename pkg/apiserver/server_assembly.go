@@ -212,12 +212,13 @@ func (s *restServer) provideDomainAndEventBeans(runtimeQueues *msg.RuntimeQueues
 	}
 
 	// domain - repository (注入 Repository，依赖 datastore)
-	if err := s.beanContainer.Provides(repository.InitRepositoryBean(programmingLanguageRepository)...); err != nil {
+	repositories := append(repository.InitRepositoryBean(), programmingLanguageRepository)
+	if err := s.beanContainer.Provides(repositories...); err != nil {
 		return fmt.Errorf("fail to provides the repository bean to the container: %w", err)
 	}
 
 	// domain - service (注入 Service，可依赖 Repository)
-	services := service.InitServiceBean(programmingLanguageService)
+	services := append(service.InitServiceBean(), programmingLanguageService)
 	for _, svc := range services {
 		if err := s.beanContainer.Provides(svc); err != nil {
 			return fmt.Errorf("fail to provides the service bean to the container: %w", err)
