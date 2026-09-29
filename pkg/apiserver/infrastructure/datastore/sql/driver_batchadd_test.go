@@ -19,7 +19,6 @@ func (e *testBatchEntity) SetCreateTime(time.Time) {}
 func (e *testBatchEntity) SetUpdateTime(time.Time) {}
 func (e *testBatchEntity) PrimaryKey() string      { return e.id }
 func (e *testBatchEntity) TableName() string       { return "test_batch_entities" }
-func (e *testBatchEntity) ShortTableName() string  { return "test_batch_entities" }
 func (e *testBatchEntity) Index() map[string]interface{} {
 	return map[string]interface{}{"id": e.id}
 }

@@ -11,7 +11,6 @@ var tableNamePrefix = "eruun_"
 // Interface model interface
 type Interface interface {
 	TableName() string
-	ShortTableName() string
 }
 
 // JSONStruct stores a JSON object in model fields.

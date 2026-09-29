@@ -19,10 +19,6 @@ func (n *NodeSelectorProfile) TableName() string {
 	return tableNamePrefix + "node_selector_profiles"
 }
 
-func (n *NodeSelectorProfile) ShortTableName() string {
-	return "node_selector_profile"
-}
-
 func (n *NodeSelectorProfile) Index() map[string]interface{} {
 	index := make(map[string]interface{})
 	if n.ID != "" {

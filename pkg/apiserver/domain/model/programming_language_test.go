@@ -10,7 +10,6 @@ func TestProgrammingLanguage_EntityContract(t *testing.T) {
 	language := &ProgrammingLanguage{ID: "lang-1", Code: "golang", Version: "1.24"}
 
 	require.Equal(t, "eruun_programming_languages", language.TableName())
-	require.Equal(t, "programming_language", language.ShortTableName())
 	require.Equal(t, "lang-1", language.PrimaryKey())
 
 	index := language.Index()

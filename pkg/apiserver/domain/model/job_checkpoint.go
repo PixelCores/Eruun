@@ -31,9 +31,8 @@ type JobCheckpoint struct {
 	BaseModel
 }
 
-func (c *JobCheckpoint) PrimaryKey() string     { return c.ID }
-func (c *JobCheckpoint) TableName() string      { return tableNamePrefix + "job_checkpoint" }
-func (c *JobCheckpoint) ShortTableName() string { return "job_checkpoint" }
+func (c *JobCheckpoint) PrimaryKey() string { return c.ID }
+func (c *JobCheckpoint) TableName() string  { return tableNamePrefix + "job_checkpoint" }
 func (c *JobCheckpoint) Index() map[string]interface{} {
 	index := map[string]interface{}{}
 	for key, value := range map[string]string{"id": c.ID, "workspace_id": c.WorkspaceID, "task_id": c.TaskID, "execution_key": c.ExecutionKey, "state": c.State, "referenced_by_execution_key": c.ReferencedByExecutionKey} {

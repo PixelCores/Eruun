@@ -20,10 +20,6 @@ func (r *RBACProfile) TableName() string {
 	return tableNamePrefix + "rbac_profiles"
 }
 
-func (r *RBACProfile) ShortTableName() string {
-	return "rbac_profile"
-}
-
 func (r *RBACProfile) Index() map[string]interface{} {
 	index := make(map[string]interface{})
 	if r.ID != "" {
