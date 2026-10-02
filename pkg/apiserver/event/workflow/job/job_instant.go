@@ -10,14 +10,12 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 	traitsPlu "github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
@@ -58,13 +56,10 @@ func GenerateOneTimeJob(component *model.ApplicationComponent, properties *model
 	}, nil
 }
 
-func NewInstantJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), observers ...informer.ComponentReadyObserver) *InstantJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("InstantJobCtl", job, client, store, ack, nil)
+func NewInstantJobCtl(job *model.JobTask, runtime *Runtime) *InstantJobCtl {
+	base, ok := newDeployNamespacedResourceJobBase("InstantJobCtl", job, runtime, nil)
 	if !ok {
 		return nil
-	}
-	if len(observers) > 0 {
-		base.resourceWaiter = observers[0]
 	}
 	return &InstantJobCtl{
 		deployNamespacedResourceJobBase: base,

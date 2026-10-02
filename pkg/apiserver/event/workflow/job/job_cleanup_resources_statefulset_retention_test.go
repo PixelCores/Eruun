@@ -140,7 +140,7 @@ func TestCleanupResourcesJobCtlRetainsAllStatefulSetPVCsBeforeRequiredDeletion(t
 				TaskID: "task-1", JobType: string(config.JobCleanupResources), JobInfo: component,
 				InternalInfo: internalInfo, Timeout: 2,
 			}
-			ctl := NewCleanupResourcesJobCtl(task, client, store, nil)
+			ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
 			require.NotNil(t, ctl)
 
 			require.NoError(t, ctl.Run(ctx))
@@ -190,7 +190,7 @@ func TestCleanupResourcesJobCtlRetriesAndIdempotentlyAppliesStatefulSetPVCRetent
 		Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: versionUpdateRequireStatefulSetDeletionInternalInfo(), Timeout: 2,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, client, &noopStore{}, nil)
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
 	require.NotNil(t, ctl)
 	ref, err := requiredStatefulSetCleanupRef(component)
 	require.NoError(t, err)
@@ -212,7 +212,7 @@ func TestCleanupResourcesJobCtlTreatsMissingStatefulSetAsRetentionConverged(t *t
 		InternalInfo: versionUpdateRequireStatefulSetDeletionInternalInfo(), Timeout: 1,
 	}
 	client := fake.NewSimpleClientset()
-	ctl := NewCleanupResourcesJobCtl(job, client, &noopStore{}, nil)
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
 	require.NotNil(t, ctl)
 	ref, err := requiredStatefulSetCleanupRef(component)
 	require.NoError(t, err)
@@ -266,7 +266,7 @@ func TestCleanupResourcesJobCtlClearsStatefulSetPVCOwnerReferencesWithoutLivePod
 		Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: versionUpdateRequireStatefulSetDeletionInternalInfo(), Timeout: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, client, &noopStore{}, nil)
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
 	require.NotNil(t, ctl)
 	ref, err := requiredStatefulSetCleanupRef(component)
 	require.NoError(t, err)
@@ -368,7 +368,7 @@ func TestCleanupResourcesJobCtlFailsClosedWhenStatefulSetPVCOwnerReferencePatchF
 				TaskID: "task-1", JobType: string(config.JobCleanupResources), JobInfo: component,
 				InternalInfo: internalInfo, Timeout: 1,
 			}
-			ctl := NewCleanupResourcesJobCtl(task, client, store, nil)
+			ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
 			require.NotNil(t, ctl)
 
 			err := ctl.Run(ctx)
@@ -430,7 +430,7 @@ func TestCleanupResourcesJobCtlBlocksExtraProtectedLabeledStatefulSetBeforeAnyDe
 		TaskID: "task-1", JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: internalInfo, Timeout: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, client, store, nil)
+	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(ctx)
@@ -470,7 +470,7 @@ func TestCleanupResourcesJobCtlRechecksRequiredStatefulSetShareLabelsAfterRetent
 		Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: versionUpdateRequireStatefulSetDeletionInternalInfo(), Timeout: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, client, &noopStore{}, nil)
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
 	require.NotNil(t, ctl)
 	require.NoError(t, ctl.ensureRequiredStatefulSetDeletionAllowed(ctx, component))
 
@@ -554,7 +554,7 @@ func TestCleanupResourcesJobCtlFailsClosedIfRequiredStatefulSetChangesAfterReten
 				Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 				InternalInfo: versionUpdateRequireStatefulSetDeletionInternalInfo(), Timeout: 1,
 			}
-			ctl := NewCleanupResourcesJobCtl(job, client, &noopStore{}, nil)
+			ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
 			require.NotNil(t, ctl)
 			require.NoError(t, ctl.ensureRequiredStatefulSetDeletionAllowed(ctx, component))
 
@@ -607,7 +607,7 @@ func TestCleanupResourcesJobCtlRemembersMarkerTemplatesWhenStatefulSetAlreadyMis
 		Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: versionUpdateRequireStatefulSetPVCDeletionInternalInfo(t, "retired"), Timeout: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, client, &noopStore{}, nil)
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.prepareRequiredStatefulSetDeletion(ctx, component))
@@ -678,7 +678,7 @@ func TestCleanupResourcesJobCtlProtectsPodsForEveryRequiredStatefulSetDeletion(t
 				Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 				InternalInfo: versionUpdateRequireStatefulSetDeletionInternalInfo(), Timeout: 1,
 			}
-			ctl := NewCleanupResourcesJobCtl(job, client, &noopStore{}, nil)
+			ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
 			require.NotNil(t, ctl)
 
 			preflightErr := ctl.ensureRequiredStatefulSetPodDeletionAllowed(context.Background(), component)

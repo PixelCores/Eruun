@@ -223,11 +223,9 @@ func (m *Manager) IsStarted() bool {
 // GetStats 获取统计信息（用于监控）
 func (m *Manager) GetStats() map[string]interface{} {
 	return map[string]interface{}{
-		"started":        m.IsStarted(),
-		"pendingWaiters": m.waiter.GetPendingCount(),
-		"pendingKeys":    m.waiter.GetPendingKeys(),
-		"labelSelector":  m.labelSelector,
-		"resyncPeriod":   m.resyncPeriod.String(),
-		"syncTimeout":    m.syncTimeout.String(),
+		"started":       m.IsStarted(),
+		"labelSelector": m.labelSelector,
+		"resyncPeriod":  m.resyncPeriod.String(),
+		"syncTimeout":   m.syncTimeout.String(),
 	}
 }

@@ -101,18 +101,17 @@ func (o ListApplicationsOptions) NormalizedPage() int {
 }
 
 type applicationsServiceImpl struct {
-	KubeClient                kubernetes.Interface               `inject:"kubeClient"`
-	KubeConfig                *rest.Config                       `inject:"kubeConfig"`
-	Store                     datastore.DataStore                `inject:"datastore"`
-	Cache                     cache.ICache                       `inject:"cache"`
-	RedisClient               *redis.Client                      `inject:"redisClient"`
-	Cfg                       *config.Config                     `inject:""`
-	URLSecurityPolicyProvider *urlpolicy.Provider                `inject:""`
-	ScheduleLocker            locker.Locker                      `inject:"appScheduleLocker"`
-	AppRepo                   repository.ApplicationRepository   `inject:""`
-	WorkflowRepo              repository.WorkflowRepository      `inject:""`
-	ComponentRepo             repository.ComponentRepository     `inject:""`
-	WorkflowQueueRepo         repository.WorkflowQueueRepository `inject:""`
+	KubeClient                kubernetes.Interface             `inject:"kubeClient"`
+	KubeConfig                *rest.Config                     `inject:"kubeConfig"`
+	Store                     datastore.DataStore              `inject:"datastore"`
+	Cache                     cache.ICache                     `inject:"cache"`
+	RedisClient               *redis.Client                    `inject:"redisClient"`
+	Cfg                       *config.Config                   `inject:""`
+	URLSecurityPolicyProvider *urlpolicy.Provider              `inject:""`
+	ScheduleLocker            locker.Locker                    `inject:"appScheduleLocker"`
+	AppRepo                   repository.ApplicationRepository `inject:""`
+	WorkflowRepo              repository.WorkflowRepository    `inject:""`
+	ComponentRepo             repository.ComponentRepository   `inject:""`
 }
 
 type workflowUpsertOptions struct {
@@ -257,7 +256,7 @@ func (c *applicationsServiceImpl) createApplications(
 	}
 	refreshAppID := strings.TrimSpace(req.ID)
 
-	callbackSelection, err := c.resolveCreateApplicationCallback(ctx, req)
+	callbackSelection, err := resolveCreateApplicationCallback(ctx, c.Cfg, c.URLSecurityPolicyProvider, req)
 	if err != nil {
 		return nil, err
 	}
@@ -270,11 +269,11 @@ func (c *applicationsServiceImpl) createApplications(
 	}
 
 	//分解所有的组件
-	resolvedComponents, err := c.resolveComponents(ctx, application.Namespace, application.Name, req.Components)
+	resolvedComponents, _, err := resolveComponentsWithSourceIndexes(ctx, c.AppRepo, c.ComponentRepo, application.Namespace, application.Name, req.Components, c.Cfg)
 	if err != nil {
 		return nil, err
 	}
-	if err := c.validateApplicationResourceNames(ctx, application, resolvedComponents); err != nil {
+	if err := validateApplicationResourceNames(ctx, c.AppRepo, c.ComponentRepo, application, resolvedComponents); err != nil {
 		return nil, err
 	}
 
@@ -1025,9 +1024,9 @@ func validateNoNestedRolloutTraitsForWrite(traits apisv1.Traits, fieldPrefix str
 
 func (c *applicationsServiceImpl) UpdateApplicationWorkflow(ctx context.Context, appID string, req apisv1.UpdateApplicationWorkflowRequest) (*apisv1.UpdateWorkflowResponse, error) {
 	var response *apisv1.UpdateWorkflowResponse
-	_, err := c.withWritableApplicationLock(ctx, appID, "update-application-workflow", func(lockCtx context.Context, _ *model.Applications) error {
+	_, err := c.withWritableApplicationLock(ctx, appID, "update-application-workflow", func(lockCtx context.Context, app *model.Applications) error {
 		var updateErr error
-		response, updateErr = c.updateApplicationWorkflowLocked(lockCtx, appID, req)
+		response, updateErr = c.updateApplicationWorkflowLocked(lockCtx, appID, app, req)
 		return updateErr
 	})
 	if err != nil {
@@ -1036,20 +1035,14 @@ func (c *applicationsServiceImpl) UpdateApplicationWorkflow(ctx context.Context,
 	return response, nil
 }
 
-func (c *applicationsServiceImpl) updateApplicationWorkflowLocked(ctx context.Context, appID string, req apisv1.UpdateApplicationWorkflowRequest) (*apisv1.UpdateWorkflowResponse, error) {
+func (c *applicationsServiceImpl) updateApplicationWorkflowLocked(ctx context.Context, appID string, app *model.Applications, req apisv1.UpdateApplicationWorkflowRequest) (*apisv1.UpdateWorkflowResponse, error) {
 	workflowType, err := validateUpdateApplicationWorkflowRequest(appID, req)
 	if err != nil {
 		return nil, err
 	}
-	app, err := c.AppRepo.FindByID(ctx, appID)
+	app, err = c.applicationForRequestedID(ctx, appID, app)
 	if err != nil {
-		if errors.Is(err, datastore.ErrRecordNotExist) {
-			return nil, bcode.ErrApplicationNotExist
-		}
 		return nil, err
-	}
-	if app.EffectiveManagementMode() == spec.ManagementModeObserve {
-		return nil, fmt.Errorf("%w: observe applications are read-only", bcode.ErrApplicationManagementMode)
 	}
 	if err := EnsureAppWorkflowIdle(ctx, c.Store, app.ID); err != nil {
 		return nil, err
@@ -1064,7 +1057,7 @@ func (c *applicationsServiceImpl) updateApplicationWorkflowLocked(ctx context.Co
 		return nil, err
 	}
 
-	callback, err := c.normalizeWorkflowCallbackForWrite(ctx, req.Callback)
+	callback, err := normalizeWorkflowCallbackForWrite(ctx, c.Cfg, c.URLSecurityPolicyProvider, req.Callback)
 	if err != nil {
 		return nil, err
 	}

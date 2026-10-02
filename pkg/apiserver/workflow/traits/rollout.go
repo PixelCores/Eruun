@@ -10,11 +10,9 @@ import (
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
-// RolloutProcessor applies workload-level rollout/update strategy settings.
-type RolloutProcessor struct{}
-
-// Process converts a rollout trait into the native workload update strategy.
-func (p *RolloutProcessor) Process(ctx *TraitContext, rollout *spec.RolloutTraitSpec) (*TraitResult, error) {
+// processRollout applies workload-level rollout/update strategy settings.
+// Converts a rollout trait into the native workload update strategy.
+func processRollout(ctx *TraitContext, rollout *spec.RolloutTraitSpec) (*TraitResult, error) {
 	if rollout == nil {
 		return nil, nil
 	}

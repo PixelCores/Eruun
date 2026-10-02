@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	k8sfake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/remotecommand"
 	utilexec "k8s.io/utils/exec"
@@ -47,7 +46,6 @@ func (e fakeExitError) ExitStatus() int { return e.status }
 var _ utilexec.ExitError = fakeExitError{}
 
 func TestExecPodShellScriptBuildsShellCommandAndCapturesOutput(t *testing.T) {
-	client := k8sfake.NewSimpleClientset()
 	config := &rest.Config{Host: "https://example.test"}
 
 	orig := newRemoteExecutor
@@ -64,7 +62,7 @@ func TestExecPodShellScriptBuildsShellCommandAndCapturesOutput(t *testing.T) {
 		}}, nil
 	}
 
-	result, err := ExecPodShellScript(context.Background(), client, config, "default", "pod-api", "api", "echo hello")
+	result, err := ExecPodShellScript(context.Background(), config, "default", "pod-api", "api", "echo hello")
 	require.NoError(t, err)
 	require.Equal(t, []string{"/bin/sh", "-c", "echo hello"}, gotCommands)
 	require.Equal(t, "api", gotContainer)
@@ -75,7 +73,6 @@ func TestExecPodShellScriptBuildsShellCommandAndCapturesOutput(t *testing.T) {
 }
 
 func TestExecPodShellScriptCapsOutput(t *testing.T) {
-	client := k8sfake.NewSimpleClientset()
 	config := &rest.Config{Host: "https://example.test"}
 
 	orig := newRemoteExecutor
@@ -90,7 +87,7 @@ func TestExecPodShellScriptCapsOutput(t *testing.T) {
 		}}, nil
 	}
 
-	result, err := ExecPodShellScript(context.Background(), client, config, "default", "pod-api", "api", "echo hello")
+	result, err := ExecPodShellScript(context.Background(), config, "default", "pod-api", "api", "echo hello")
 	require.NoError(t, err)
 	require.True(t, strings.HasSuffix(result.Stdout, syncExecOutputTruncatedSuffix))
 	require.True(t, strings.HasSuffix(result.Stderr, syncExecOutputTruncatedSuffix))
@@ -99,7 +96,6 @@ func TestExecPodShellScriptCapsOutput(t *testing.T) {
 }
 
 func TestExecPodShellScriptReturnsExitCodeOnCommandFailure(t *testing.T) {
-	client := k8sfake.NewSimpleClientset()
 	config := &rest.Config{Host: "https://example.test"}
 
 	orig := newRemoteExecutor
@@ -111,7 +107,7 @@ func TestExecPodShellScriptReturnsExitCodeOnCommandFailure(t *testing.T) {
 		}}, nil
 	}
 
-	result, err := ExecPodShellScript(context.Background(), client, config, "default", "pod-api", "api", "exit 17")
+	result, err := ExecPodShellScript(context.Background(), config, "default", "pod-api", "api", "exit 17")
 	require.NoError(t, err)
 	require.Equal(t, 17, result.ExitCode)
 	require.Equal(t, "boom", result.Stderr)
@@ -119,7 +115,6 @@ func TestExecPodShellScriptReturnsExitCodeOnCommandFailure(t *testing.T) {
 }
 
 func TestStreamPodShellScriptEmitsEventsAndExit(t *testing.T) {
-	client := k8sfake.NewSimpleClientset()
 	config := &rest.Config{Host: "https://example.test"}
 
 	orig := newRemoteExecutor
@@ -132,7 +127,7 @@ func TestStreamPodShellScriptEmitsEventsAndExit(t *testing.T) {
 		}}, nil
 	}
 
-	events, err := StreamPodShellScript(context.Background(), client, config, "default", "pod-api", "api", "echo hello")
+	events, err := StreamPodShellScript(context.Background(), config, "default", "pod-api", "api", "echo hello")
 	require.NoError(t, err)
 	got := make([]PodShellStreamEvent, 0, 3)
 	for event := range events {
@@ -149,7 +144,6 @@ func TestStreamPodShellScriptEmitsEventsAndExit(t *testing.T) {
 }
 
 func TestArchivePodPathAsZipCreatesZipStream(t *testing.T) {
-	client := k8sfake.NewSimpleClientset()
 	config := &rest.Config{Host: "https://example.test"}
 
 	orig := newRemoteExecutor
@@ -176,7 +170,7 @@ func TestArchivePodPathAsZipCreatesZipStream(t *testing.T) {
 		}}, nil
 	}
 
-	stream, err := ArchivePodPathAsZip(context.Background(), client, config, "default", "pod-api", "api", "/tmp/out")
+	stream, err := ArchivePodPathAsZip(context.Background(), config, "default", "pod-api", "api", "/tmp/out")
 	require.NoError(t, err)
 	require.Equal(t, "out.zip", stream.FileName)
 	require.Equal(t, "application/zip", stream.ContentType)
@@ -200,7 +194,6 @@ func TestArchivePodPathAsZipCreatesZipStream(t *testing.T) {
 }
 
 func TestArchivePodPathAsZipFallsBackToMultipartWhenTarMissing(t *testing.T) {
-	client := k8sfake.NewSimpleClientset()
 	config := &rest.Config{Host: "https://example.test"}
 
 	orig := newRemoteExecutor
@@ -235,7 +228,7 @@ func TestArchivePodPathAsZipFallsBackToMultipartWhenTarMissing(t *testing.T) {
 		return nil, fmt.Errorf("unexpected command sequence: %v", commands)
 	}
 
-	stream, err := ArchivePodPathAsZip(context.Background(), client, config, "default", "pod-api", "api", "/tmp/out")
+	stream, err := ArchivePodPathAsZip(context.Background(), config, "default", "pod-api", "api", "/tmp/out")
 	require.NoError(t, err)
 	require.Equal(t, "out.multipart", stream.FileName)
 	mediaType, params, err := mime.ParseMediaType(stream.ContentType)
@@ -265,7 +258,6 @@ func TestArchivePodPathAsZipFallsBackToMultipartWhenTarMissing(t *testing.T) {
 }
 
 func TestArchivePodPathAsZipReturnsReadErrorOnMalformedTar(t *testing.T) {
-	client := k8sfake.NewSimpleClientset()
 	config := &rest.Config{Host: "https://example.test"}
 
 	orig := newRemoteExecutor
@@ -283,7 +275,7 @@ func TestArchivePodPathAsZipReturnsReadErrorOnMalformedTar(t *testing.T) {
 		}}, nil
 	}
 
-	stream, err := ArchivePodPathAsZip(context.Background(), client, config, "default", "pod-api", "api", "/tmp/out")
+	stream, err := ArchivePodPathAsZip(context.Background(), config, "default", "pod-api", "api", "/tmp/out")
 	require.NoError(t, err)
 	defer stream.Close()
 	_, err = io.ReadAll(stream.Reader)
@@ -292,7 +284,6 @@ func TestArchivePodPathAsZipReturnsReadErrorOnMalformedTar(t *testing.T) {
 }
 
 func TestArchivePodPathAsZipMarksLookupErrors(t *testing.T) {
-	client := k8sfake.NewSimpleClientset()
 	config := &rest.Config{Host: "https://example.test"}
 
 	orig := newRemoteExecutor
@@ -310,7 +301,7 @@ func TestArchivePodPathAsZipMarksLookupErrors(t *testing.T) {
 		}}, nil
 	}
 
-	stream, err := ArchivePodPathAsZip(context.Background(), client, config, "default", "pod-api", "api", "/tmp/out")
+	stream, err := ArchivePodPathAsZip(context.Background(), config, "default", "pod-api", "api", "/tmp/out")
 	require.NoError(t, err)
 	defer stream.Close()
 
@@ -359,13 +350,12 @@ func TestSanitizeArchiveEntryName(t *testing.T) {
 }
 
 func TestArchivePodPathAsZipRejectsParentRelativePath(t *testing.T) {
-	client := k8sfake.NewSimpleClientset()
 	config := &rest.Config{Host: "https://example.test"}
 
 	for _, targetPath := range []string{"..", "../..", "../out", "a/../../b"} {
 		targetPath := targetPath
 		t.Run(targetPath, func(t *testing.T) {
-			stream, err := ArchivePodPathAsZip(context.Background(), client, config, "default", "pod-api", "api", targetPath)
+			stream, err := ArchivePodPathAsZip(context.Background(), config, "default", "pod-api", "api", targetPath)
 			require.Nil(t, stream)
 			require.Error(t, err)
 			require.True(t, IsArchivePathInvalidError(err))
@@ -374,7 +364,6 @@ func TestArchivePodPathAsZipRejectsParentRelativePath(t *testing.T) {
 }
 
 func TestArchivePodPathAsZipSupportsHardLinkEntry(t *testing.T) {
-	client := k8sfake.NewSimpleClientset()
 	config := &rest.Config{Host: "https://example.test"}
 
 	orig := newRemoteExecutor
@@ -400,7 +389,7 @@ func TestArchivePodPathAsZipSupportsHardLinkEntry(t *testing.T) {
 		}}, nil
 	}
 
-	stream, err := ArchivePodPathAsZip(context.Background(), client, config, "default", "pod-api", "api", "/tmp/out")
+	stream, err := ArchivePodPathAsZip(context.Background(), config, "default", "pod-api", "api", "/tmp/out")
 	require.NoError(t, err)
 	defer stream.Close()
 
@@ -457,7 +446,6 @@ func TestCopyTarHardLinkToZipUsesResolverOnCacheMiss(t *testing.T) {
 }
 
 func TestArchivePodPathAsZipMultipartFailureCancelsFindCommand(t *testing.T) {
-	client := k8sfake.NewSimpleClientset()
 	config := &rest.Config{Host: "https://example.test"}
 
 	findCanceled := make(chan struct{}, 1)
@@ -495,7 +483,7 @@ func TestArchivePodPathAsZipMultipartFailureCancelsFindCommand(t *testing.T) {
 		return nil, fmt.Errorf("unexpected command sequence: %v", commands)
 	}
 
-	stream, err := ArchivePodPathAsZip(context.Background(), client, config, "default", "pod-api", "api", "/tmp/out")
+	stream, err := ArchivePodPathAsZip(context.Background(), config, "default", "pod-api", "api", "/tmp/out")
 	require.NoError(t, err)
 	defer stream.Close()
 

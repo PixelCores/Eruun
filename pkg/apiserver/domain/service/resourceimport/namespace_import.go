@@ -27,7 +27,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
-	validationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/validation"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
@@ -727,7 +726,7 @@ func importComponentResourceKeys(components []apisv1.CreateComponentRequest, app
 		return nil
 	}
 	keys := make(map[string]struct{})
-	resourceAppName := naming.ApplicationResourceKey(appName, "", false)
+	resourceAppName := naming.ApplicationResourceKey(appName)
 	for _, component := range components {
 		for _, key := range importComponentResolvedResourceKeys(component, resourceAppName, namespace) {
 			keys[key] = struct{}{}
@@ -743,7 +742,7 @@ func importComponentConflictsWithResourceKeys(component apisv1.CreateComponentRe
 	if len(keys) == 0 {
 		return false
 	}
-	resourceAppName := naming.ApplicationResourceKey(appName, "", false)
+	resourceAppName := naming.ApplicationResourceKey(appName)
 	for _, key := range importComponentResolvedResourceKeys(component, resourceAppName, namespace) {
 		if _, exists := keys[key]; exists {
 			return true
@@ -866,13 +865,7 @@ func (s *serviceImpl) tryValidateImportCreateRequest(ctx context.Context, req ap
 	if s.ValidationService == nil {
 		return fmt.Errorf("validation service is nil")
 	}
-	validationService := s.ValidationService
-	if binder, ok := validationService.(interface {
-		WithRepositories(repository.ApplicationRepository, repository.ComponentRepository) validationservice.ValidationService
-	}); ok {
-		validationService = binder.WithRepositories(s.AppRepo, s.ComponentRepo)
-	}
-	resp := validationService.TryApplication(ctx, req)
+	resp := s.ValidationService.TryApplication(ctx, req)
 	if resp == nil {
 		return fmt.Errorf("try application validation returned nil response")
 	}

@@ -48,7 +48,7 @@ func TestCleanupResourcesJobCtlMarksVersionUpdateCleanupRunningBeforeDelete(t *t
 		RunGeneration: 1,
 		Attempt:       1,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, fake.NewSimpleClientset(), store, nil)
+	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	skipCleanup, err := ctl.markVersionUpdateCleanupRunning(context.Background())
@@ -95,7 +95,7 @@ func TestCleanupResourcesJobCtlDoesNotRestartTerminalizedVersionUpdateCleanup(t 
 		JobInfo:      removed,
 		InternalInfo: existing.InternalInfo,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, fake.NewSimpleClientset(), store, nil)
+	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	skipCleanup, err := ctl.markVersionUpdateCleanupRunning(context.Background())
@@ -147,7 +147,7 @@ func TestCleanupResourcesJobCtlTreatsCompletedVersionUpdateCleanupAsSuccess(t *t
 		InternalInfo: versionUpdateRemoveCleanupInternalInfo(),
 		Timeout:      1,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, client, store, nil)
+	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.Run(ctx))
@@ -193,7 +193,7 @@ func TestCleanupResourcesJobCtlBlocksVersionUpdateCleanupForReusedComponent(t *t
 		InternalInfo: versionUpdateRemoveCleanupInternalInfo(),
 		Timeout:      1,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, client, store, nil)
+	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(ctx)
@@ -240,7 +240,7 @@ func TestCleanupResourcesJobCtlFailsBeforeDeleteWhenRunningStatusCannotPersist(t
 		InternalInfo: versionUpdateRemoveCleanupInternalInfo(),
 		Timeout:      1,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, client, store, nil)
+	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(ctx)
@@ -276,7 +276,7 @@ func TestCleanupResourcesJobCtlMarkComponentNotDeploySkipsDifferentComponentID(t
 		JobType:   string(config.JobCleanupResources),
 		JobInfo:   component,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, fake.NewSimpleClientset(), store, nil)
+	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.markComponentNotDeploy(context.Background(), component))
@@ -307,7 +307,7 @@ func TestCleanupResourcesJobCtlSaveInfoUpdatesVersionUpdateCleanupJob(t *testing
 		Error:        "delete deployment failed",
 		InternalInfo: existing.InternalInfo,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, fake.NewSimpleClientset(), store, nil)
+	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.SaveInfo(context.Background()))
@@ -350,7 +350,7 @@ func TestVersionUpdateCleanupJobInfoRejectsStaleGenerationWrite(t *testing.T) {
 		RunGeneration: 2,
 		Attempt:       1,
 	}
-	newerCtl := NewCleanupResourcesJobCtl(newerTask, fake.NewSimpleClientset(), store, nil)
+	newerCtl := NewCleanupResourcesJobCtl(newerTask, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: nil})
 	require.NotNil(t, newerCtl)
 
 	require.NoError(t, newerCtl.SaveInfo(context.Background()))
@@ -377,7 +377,7 @@ func TestVersionUpdateCleanupJobInfoRejectsStaleGenerationWrite(t *testing.T) {
 		RunGeneration: 1,
 		Attempt:       1,
 	}
-	staleCtl := NewCleanupResourcesJobCtl(staleTask, fake.NewSimpleClientset(), store, nil)
+	staleCtl := NewCleanupResourcesJobCtl(staleTask, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: nil})
 	require.NotNil(t, staleCtl)
 
 	require.NoError(t, staleCtl.SaveInfo(context.Background()))
@@ -413,7 +413,7 @@ func TestCleanupResourcesJobCtlSaveInfoAddsRegularCleanupJobRecord(t *testing.T)
 		JobInfo:    "regular cleanup payload",
 		Status:     config.StatusCompleted,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, fake.NewSimpleClientset(), store, nil)
+	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.SaveInfo(context.Background()))
@@ -448,7 +448,7 @@ func TestCleanupResourcesJobCtlSaveInfoDoesNotUpdateUnmarkedCleanupRecord(t *tes
 		Error:        "cleanup failed",
 		InternalInfo: versionUpdateRemoveCleanupInternalInfo(),
 	}
-	ctl := NewCleanupResourcesJobCtl(task, fake.NewSimpleClientset(), store, nil)
+	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.SaveInfo(context.Background()))

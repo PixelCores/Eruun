@@ -57,12 +57,11 @@ func TestCleanupApplicationResourcesDeletesWorkload(t *testing.T) {
 	)
 
 	svc := &applicationsServiceImpl{
-		ScheduleLocker:    locker.NewMemoryLocker("test-app-schedule"),
-		KubeClient:        clientset,
-		Store:             store,
-		AppRepo:           &mockCleanupAppRepo{store: store},
-		ComponentRepo:     &mockCleanupComponentRepo{store: store},
-		WorkflowQueueRepo: &mockWorkflowQueueRepo{},
+		ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
+		KubeClient:     clientset,
+		Store:          store,
+		AppRepo:        &mockCleanupAppRepo{store: store},
+		ComponentRepo:  &mockCleanupComponentRepo{store: store},
 	}
 
 	resp, err := svc.CleanupApplicationResources(context.Background(), app.ID)
@@ -113,12 +112,11 @@ func TestCleanupApplicationResourcesPreservesStoragePVC(t *testing.T) {
 	)
 
 	svc := &applicationsServiceImpl{
-		ScheduleLocker:    locker.NewMemoryLocker("test-app-schedule"),
-		KubeClient:        clientset,
-		Store:             store,
-		AppRepo:           &mockCleanupAppRepo{store: store},
-		ComponentRepo:     &mockCleanupComponentRepo{store: store},
-		WorkflowQueueRepo: &mockWorkflowQueueRepo{},
+		ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
+		KubeClient:     clientset,
+		Store:          store,
+		AppRepo:        &mockCleanupAppRepo{store: store},
+		ComponentRepo:  &mockCleanupComponentRepo{store: store},
 	}
 
 	resp, err := svc.CleanupApplicationResources(context.Background(), app.ID)
@@ -169,7 +167,6 @@ func TestCleanupApplicationResourcesPreservesTraitGeneratedRBAC(t *testing.T) {
 		ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
 		KubeClient:     clientset, Store: store,
 		AppRepo: &mockCleanupAppRepo{store: store}, ComponentRepo: &mockCleanupComponentRepo{store: store},
-		WorkflowQueueRepo: &mockWorkflowQueueRepo{},
 	}
 
 	resp, err := svc.CleanupApplicationResources(context.Background(), app.ID)
@@ -263,12 +260,11 @@ func TestCleanupApplicationResourcesDeletesTraitServicesByLabels(t *testing.T) {
 	)
 
 	svc := &applicationsServiceImpl{
-		ScheduleLocker:    locker.NewMemoryLocker("test-app-schedule"),
-		KubeClient:        clientset,
-		Store:             store,
-		AppRepo:           &mockCleanupAppRepo{store: store},
-		ComponentRepo:     &mockCleanupComponentRepo{store: store},
-		WorkflowQueueRepo: &mockWorkflowQueueRepo{},
+		ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
+		KubeClient:     clientset,
+		Store:          store,
+		AppRepo:        &mockCleanupAppRepo{store: store},
+		ComponentRepo:  &mockCleanupComponentRepo{store: store},
 	}
 
 	resp, err := svc.CleanupApplicationResources(context.Background(), app.ID)
@@ -325,12 +321,11 @@ func TestCleanupApplicationResourcesDeletesIngressByLabels(t *testing.T) {
 	)
 
 	svc := &applicationsServiceImpl{
-		ScheduleLocker:    locker.NewMemoryLocker("test-app-schedule"),
-		KubeClient:        clientset,
-		Store:             store,
-		AppRepo:           &mockCleanupAppRepo{store: store},
-		ComponentRepo:     &mockCleanupComponentRepo{store: store},
-		WorkflowQueueRepo: &mockWorkflowQueueRepo{},
+		ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
+		KubeClient:     clientset,
+		Store:          store,
+		AppRepo:        &mockCleanupAppRepo{store: store},
+		ComponentRepo:  &mockCleanupComponentRepo{store: store},
 	}
 
 	resp, err := svc.CleanupApplicationResources(context.Background(), app.ID)
@@ -379,12 +374,11 @@ func TestCleanupApplicationResourcesSkipsSharedComponent(t *testing.T) {
 	)
 
 	svc := &applicationsServiceImpl{
-		ScheduleLocker:    locker.NewMemoryLocker("test-app-schedule"),
-		KubeClient:        clientset,
-		Store:             store,
-		AppRepo:           &mockCleanupAppRepo{store: store},
-		ComponentRepo:     &mockCleanupComponentRepo{store: store},
-		WorkflowQueueRepo: &mockWorkflowQueueRepo{},
+		ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
+		KubeClient:     clientset,
+		Store:          store,
+		AppRepo:        &mockCleanupAppRepo{store: store},
+		ComponentRepo:  &mockCleanupComponentRepo{store: store},
 	}
 
 	resp, err := svc.CleanupApplicationResources(context.Background(), app.ID)
@@ -456,12 +450,11 @@ func TestCleanupApplicationResourcesSharedAbnormalPodAllowsDelete(t *testing.T) 
 	)
 
 	svc := &applicationsServiceImpl{
-		ScheduleLocker:    locker.NewMemoryLocker("test-app-schedule"),
-		KubeClient:        clientset,
-		Store:             store,
-		AppRepo:           &mockCleanupAppRepo{store: store},
-		ComponentRepo:     &mockCleanupComponentRepo{store: store},
-		WorkflowQueueRepo: &mockWorkflowQueueRepo{},
+		ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
+		KubeClient:     clientset,
+		Store:          store,
+		AppRepo:        &mockCleanupAppRepo{store: store},
+		ComponentRepo:  &mockCleanupComponentRepo{store: store},
 	}
 
 	resp, err := svc.CleanupApplicationResources(context.Background(), app.ID)
@@ -512,12 +505,11 @@ func TestCleanupApplicationResourcesDoesNotSkipSharedForce(t *testing.T) {
 	)
 
 	svc := &applicationsServiceImpl{
-		ScheduleLocker:    locker.NewMemoryLocker("test-app-schedule"),
-		KubeClient:        clientset,
-		Store:             store,
-		AppRepo:           &mockCleanupAppRepo{store: store},
-		ComponentRepo:     &mockCleanupComponentRepo{store: store},
-		WorkflowQueueRepo: &mockWorkflowQueueRepo{},
+		ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
+		KubeClient:     clientset,
+		Store:          store,
+		AppRepo:        &mockCleanupAppRepo{store: store},
+		ComponentRepo:  &mockCleanupComponentRepo{store: store},
 	}
 
 	resp, err := svc.CleanupApplicationResources(context.Background(), app.ID)
@@ -574,12 +566,11 @@ func TestCleanupApplicationResourcesKeepsCleaningWhenPodsRemain(t *testing.T) {
 	clientset := fake.NewSimpleClientset(pod)
 
 	svc := &applicationsServiceImpl{
-		ScheduleLocker:    locker.NewMemoryLocker("test-app-schedule"),
-		KubeClient:        clientset,
-		Store:             store,
-		AppRepo:           &mockCleanupAppRepo{store: store},
-		ComponentRepo:     &mockCleanupComponentRepo{store: store},
-		WorkflowQueueRepo: &mockWorkflowQueueRepo{},
+		ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
+		KubeClient:     clientset,
+		Store:          store,
+		AppRepo:        &mockCleanupAppRepo{store: store},
+		ComponentRepo:  &mockCleanupComponentRepo{store: store},
 	}
 
 	_, err := svc.CleanupApplicationResources(context.Background(), app.ID)

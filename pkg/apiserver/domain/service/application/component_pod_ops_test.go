@@ -14,7 +14,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
 
@@ -101,7 +100,7 @@ func TestExportComponentFilesZipSelectsLatestReadyPod(t *testing.T) {
 	orig := archiveComponentPodPathAsZip
 	defer func() { archiveComponentPodPathAsZip = orig }()
 	var gotNamespace, gotPod, gotContainer, gotPath string
-	archiveComponentPodPathAsZip = func(_ context.Context, _ kubernetes.Interface, _ *rest.Config, namespace, podName, container, targetPath string) (*kube.PodPathArchiveStream, error) {
+	archiveComponentPodPathAsZip = func(_ context.Context, _ *rest.Config, namespace, podName, container, targetPath string) (*kube.PodPathArchiveStream, error) {
 		gotNamespace = namespace
 		gotPod = podName
 		gotContainer = container
@@ -154,7 +153,7 @@ func TestExportComponentFilesZipPendingPodReturnsPendingError(t *testing.T) {
 	orig := archiveComponentPodPathAsZip
 	defer func() { archiveComponentPodPathAsZip = orig }()
 	called := false
-	archiveComponentPodPathAsZip = func(context.Context, kubernetes.Interface, *rest.Config, string, string, string, string) (*kube.PodPathArchiveStream, error) {
+	archiveComponentPodPathAsZip = func(context.Context, *rest.Config, string, string, string, string) (*kube.PodPathArchiveStream, error) {
 		called = true
 		return nil, nil
 	}
@@ -198,7 +197,7 @@ func TestExportComponentFilesZipMapsArchivePathLookupError(t *testing.T) {
 
 	orig := archiveComponentPodPathAsZip
 	defer func() { archiveComponentPodPathAsZip = orig }()
-	archiveComponentPodPathAsZip = func(context.Context, kubernetes.Interface, *rest.Config, string, string, string, string) (*kube.PodPathArchiveStream, error) {
+	archiveComponentPodPathAsZip = func(context.Context, *rest.Config, string, string, string, string) (*kube.PodPathArchiveStream, error) {
 		return nil, fmt.Errorf("archive pod path: exit error: tar: out: cannot stat: no such file or directory")
 	}
 
@@ -224,7 +223,7 @@ func TestExecComponentShellScriptReturnsExitCodeResult(t *testing.T) {
 	orig := execComponentPodShellScript
 	defer func() { execComponentPodShellScript = orig }()
 	var gotPod, gotContainer, gotScript string
-	execComponentPodShellScript = func(_ context.Context, _ kubernetes.Interface, _ *rest.Config, _, podName, container, script string) (*kube.PodExecResult, error) {
+	execComponentPodShellScript = func(_ context.Context, _ *rest.Config, _, podName, container, script string) (*kube.PodExecResult, error) {
 		gotPod = podName
 		gotContainer = container
 		gotScript = script
@@ -260,7 +259,7 @@ func TestExecComponentShellScriptRejectsInvalidContainer(t *testing.T) {
 	orig := execComponentPodShellScript
 	defer func() { execComponentPodShellScript = orig }()
 	called := false
-	execComponentPodShellScript = func(context.Context, kubernetes.Interface, *rest.Config, string, string, string, string) (*kube.PodExecResult, error) {
+	execComponentPodShellScript = func(context.Context, *rest.Config, string, string, string, string) (*kube.PodExecResult, error) {
 		called = true
 		return nil, nil
 	}
@@ -288,7 +287,7 @@ func TestStreamComponentShellScriptReturnsEventStream(t *testing.T) {
 	orig := streamComponentPodShellScript
 	defer func() { streamComponentPodShellScript = orig }()
 	var gotPod, gotContainer, gotScript string
-	streamComponentPodShellScript = func(_ context.Context, _ kubernetes.Interface, _ *rest.Config, _, podName, container, script string) (<-chan kube.PodShellStreamEvent, error) {
+	streamComponentPodShellScript = func(_ context.Context, _ *rest.Config, _, podName, container, script string) (<-chan kube.PodShellStreamEvent, error) {
 		gotPod = podName
 		gotContainer = container
 		gotScript = script

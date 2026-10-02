@@ -1,8 +1,6 @@
 package spec
 
 import (
-	"strings"
-
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 
 	corev1 "k8s.io/api/core/v1"
@@ -204,21 +202,6 @@ type IngressTraitsSpec struct {
 	TLS              []IngressTLSConfig `json:"tls,omitempty"`
 	Routes           []IngressRoutes    `json:"routes"`
 }
-
-// NormalizeIngressPathType returns the canonical Kubernetes path type for a trait value.
-func NormalizeIngressPathType(value string) (string, bool) {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "prefix":
-		return "Prefix", true
-	case "exact":
-		return "Exact", true
-	case "implementationspecific", "implementation-specific":
-		return "ImplementationSpecific", true
-	default:
-		return "", false
-	}
-}
-
 type IngressTLSConfig struct {
 	SecretName string   `json:"secretName"`
 	Hosts      []string `json:"hosts,omitempty"`

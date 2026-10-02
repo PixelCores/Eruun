@@ -14,13 +14,11 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 )
 
-// StorageProcessor wires storage into Pods via Volumes/VolumeMounts. It supports
+// Wires storage into Pods via Volumes/VolumeMounts. It supports
 // PVC (existing or dynamic), EmptyDir, ConfigMap, and Secret volume sources.
-type StorageProcessor struct{}
-
-// Process converts []spec.StorageTraitSpec into Volumes/VolumeMounts and optionally
+// Converts []spec.StorageTraitSpec into Volumes/VolumeMounts and optionally
 // PersistentVolumeClaims (returned as additional objects for non-StatefulSets).
-func (s *StorageProcessor) Process(ctx *TraitContext, storageTraits []spec.StorageTraitSpec) (*TraitResult, error) {
+func processStorage(ctx *TraitContext, storageTraits []spec.StorageTraitSpec) (*TraitResult, error) {
 	if len(storageTraits) == 0 {
 		return nil, nil
 	}

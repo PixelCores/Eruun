@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
 
@@ -46,8 +45,7 @@ func (m *mockArchiveUploader) UploadArchive(ctx context.Context, input ArchiveUp
 }
 
 func TestLogArchiveUploadJobCtlFailsWhenUploaderNotConfigured(t *testing.T) {
-	ctl := NewLogArchiveUploadJobCtl(logArchiveUploadTask("api"), fake.NewSimpleClientset(), &noopStore{}, nil)
-	ctl.setRuntime(&jobRuntime{kubeConfig: &rest.Config{}})
+	ctl := NewLogArchiveUploadJobCtl(logArchiveUploadTask("api"), &Runtime{Client: fake.NewSimpleClientset(), Store: &noopStore{}, KubeConfig: &rest.Config{}})
 
 	err := ctl.run(context.Background())
 	require.ErrorIs(t, err, ErrArchiveUploaderNotConfigured)
@@ -56,7 +54,7 @@ func TestLogArchiveUploadJobCtlFailsWhenUploaderNotConfigured(t *testing.T) {
 func TestLogArchiveUploadJobCtlUploadsZipAndWritesResultInfo(t *testing.T) {
 	oldArchive := archivePodPathForUpload
 	t.Cleanup(func() { archivePodPathForUpload = oldArchive })
-	archivePodPathForUpload = func(_ context.Context, _ kubernetes.Interface, _ *rest.Config, namespace, podName, container, targetPath string) (*kube.PodPathArchiveStream, error) {
+	archivePodPathForUpload = func(_ context.Context, _ *rest.Config, namespace, podName, container, targetPath string) (*kube.PodPathArchiveStream, error) {
 		require.Equal(t, "default", namespace)
 		require.Equal(t, "api-pod", podName)
 		require.Equal(t, "api", container)
@@ -68,8 +66,7 @@ func TestLogArchiveUploadJobCtlUploadsZipAndWritesResultInfo(t *testing.T) {
 		}, nil
 	}
 	uploader := &mockArchiveUploader{}
-	ctl := NewLogArchiveUploadJobCtl(logArchiveUploadTask("api"), fake.NewSimpleClientset(logArchiveUploadPod("api")), &noopStore{}, nil)
-	ctl.setRuntime(&jobRuntime{kubeConfig: &rest.Config{}, archiveUploader: uploader})
+	ctl := NewLogArchiveUploadJobCtl(logArchiveUploadTask("api"), &Runtime{Client: fake.NewSimpleClientset(logArchiveUploadPod("api")), Store: &noopStore{}, KubeConfig: &rest.Config{}, archiveUploader: uploader})
 
 	err := ctl.run(context.Background())
 	require.NoError(t, err)
@@ -101,7 +98,7 @@ func TestLogArchiveUploadJobCtlUploadsZipAndWritesResultInfo(t *testing.T) {
 func TestLogArchiveUploadJobCtlRejectsNonZipArchive(t *testing.T) {
 	oldArchive := archivePodPathForUpload
 	t.Cleanup(func() { archivePodPathForUpload = oldArchive })
-	archivePodPathForUpload = func(context.Context, kubernetes.Interface, *rest.Config, string, string, string, string) (*kube.PodPathArchiveStream, error) {
+	archivePodPathForUpload = func(context.Context, *rest.Config, string, string, string, string) (*kube.PodPathArchiveStream, error) {
 		return &kube.PodPathArchiveStream{
 			Reader:      io.NopCloser(strings.NewReader("multipart")),
 			FileName:    "api-logs.multipart",
@@ -109,8 +106,7 @@ func TestLogArchiveUploadJobCtlRejectsNonZipArchive(t *testing.T) {
 		}, nil
 	}
 	uploader := &mockArchiveUploader{}
-	ctl := NewLogArchiveUploadJobCtl(logArchiveUploadTask("api"), fake.NewSimpleClientset(logArchiveUploadPod("api")), &noopStore{}, nil)
-	ctl.setRuntime(&jobRuntime{kubeConfig: &rest.Config{}, archiveUploader: uploader})
+	ctl := NewLogArchiveUploadJobCtl(logArchiveUploadTask("api"), &Runtime{Client: fake.NewSimpleClientset(logArchiveUploadPod("api")), Store: &noopStore{}, KubeConfig: &rest.Config{}, archiveUploader: uploader})
 
 	err := ctl.run(context.Background())
 	require.Error(t, err)
@@ -122,14 +118,13 @@ func TestLogArchiveUploadJobCtlRejectsInvalidRequestedContainer(t *testing.T) {
 	oldArchive := archivePodPathForUpload
 	t.Cleanup(func() { archivePodPathForUpload = oldArchive })
 	archiveCalled := false
-	archivePodPathForUpload = func(context.Context, kubernetes.Interface, *rest.Config, string, string, string, string) (*kube.PodPathArchiveStream, error) {
+	archivePodPathForUpload = func(context.Context, *rest.Config, string, string, string, string) (*kube.PodPathArchiveStream, error) {
 		archiveCalled = true
 		return nil, nil
 	}
 	task := logArchiveUploadTask("api")
 	task.JobInfo.(*LogArchiveUploadJobInfo).Container = "missing"
-	ctl := NewLogArchiveUploadJobCtl(task, fake.NewSimpleClientset(logArchiveUploadPod("api")), &noopStore{}, nil)
-	ctl.setRuntime(&jobRuntime{kubeConfig: &rest.Config{}, archiveUploader: &mockArchiveUploader{}})
+	ctl := NewLogArchiveUploadJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(logArchiveUploadPod("api")), Store: &noopStore{}, KubeConfig: &rest.Config{}, archiveUploader: &mockArchiveUploader{}})
 
 	err := ctl.run(context.Background())
 	require.Error(t, err)

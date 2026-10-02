@@ -6,11 +6,9 @@ import (
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
-// SecurityPolicyProcessor applies container-level security settings.
-type SecurityPolicyProcessor struct{}
-
-// Process converts a SecurityPolicySpec into a container SecurityContext.
-func (s *SecurityPolicyProcessor) Process(policy *spec.SecurityPolicySpec) (*TraitResult, error) {
+// processSecurityPolicy applies container-level security settings.
+// Converts a SecurityPolicySpec into a container SecurityContext.
+func processSecurityPolicy(policy *spec.SecurityPolicySpec) (*TraitResult, error) {
 	if policy == nil {
 		return nil, nil
 	}

@@ -21,8 +21,8 @@ func mustJSON(t testing.TB, value *model.JSONStruct) string {
 	return string(data)
 }
 
-func NewValidationService() ValidationService {
-	return validationservice.NewValidationService()
+func newValidationService(store *inMemoryAppStore) ValidationService {
+	return validationservice.NewValidationService(nil, nil, &mockAppRepo{store: store}, &mockComponentRepo{store: store})
 }
 
 type inMemoryAppStore struct {

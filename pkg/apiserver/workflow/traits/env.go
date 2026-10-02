@@ -8,12 +8,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// EnvsProcessor implements the user-friendly `envs` trait. It translates a
+// processEnvs implements the user-friendly `envs` trait. It translates a
 // simplified, source-based schema into native Kubernetes EnvVar entries.
-type EnvsProcessor struct{}
-
-// Process translates the []spec.SimplifiedEnvSpec into []corev1.EnvVar.
-func (p *EnvsProcessor) Process(ctx *TraitContext, simplifiedEnvs []spec.SimplifiedEnvSpec) (*TraitResult, error) {
+func processEnvs(ctx *TraitContext, simplifiedEnvs []spec.SimplifiedEnvSpec) (*TraitResult, error) {
 	var nativeEnvs []corev1.EnvVar
 	for _, envSpec := range simplifiedEnvs {
 		nativeEnv, err := translateToNativeEnvVar(envSpec)
@@ -32,12 +29,9 @@ func (p *EnvsProcessor) Process(ctx *TraitContext, simplifiedEnvs []spec.Simplif
 	}, nil
 }
 
-// EnvFromProcessor implements the `envFrom` trait for bulk importing env vars
+// processEnvFrom implements the `envFrom` trait for bulk importing env vars
 // from ConfigMaps or Secrets.
-type EnvFromProcessor struct{}
-
-// Process converts []spec.EnvFromSourceSpec into []corev1.EnvFromSource.
-func (p *EnvFromProcessor) Process(ctx *TraitContext, envFromTraits []spec.EnvFromSourceSpec) (*TraitResult, error) {
+func processEnvFrom(ctx *TraitContext, envFromTraits []spec.EnvFromSourceSpec) (*TraitResult, error) {
 	var envFromSources []corev1.EnvFromSource
 	for _, trait := range envFromTraits {
 		if trait.SourceName == "" {

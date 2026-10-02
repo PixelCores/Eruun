@@ -1775,7 +1775,14 @@ func (w *workflowServiceImpl) triggerWorkflowTerminalCallbackOnApprovalAction(ct
 	// The cancellation signal applies to application work, not to its terminal
 	// notification. The callback keeps its own bounded timeout and parent fence.
 	runCtx = workflowjob.WithTaskMetadata(runCtx, "")
-	if err := workflowjob.RunJobs(runCtx, []*model.JobTask{callbackJob}, 1, nil, nil, w.Store, func() {}, false, w.RedisClient, w.Cache, urlPolicy, nil, nil, nil); err != nil {
+	if err := workflowjob.RunJobs(runCtx, []*model.JobTask{callbackJob}, &workflowjob.Runtime{
+		Concurrency:       1,
+		Store:             w.Store,
+		Ack:               func() {},
+		RedisClient:       w.RedisClient,
+		Cache:             w.Cache,
+		URLSecurityPolicy: urlPolicy,
+	}); err != nil {
 		klog.ErrorS(err, "run terminal workflow callback", "taskID", task.TaskID, "jobName", callbackJob.Name)
 		return err
 	}
@@ -2042,7 +2049,7 @@ func (w *workflowServiceImpl) enqueueWorkflowTaskWithStoreAndIdempotencyKey(ctx 
 		return nil, err
 	}
 
-	workflowTask, err := createWorkflowQueueTask(ctx, store, workflow, executeAt, idempotencyKey)
+	workflowTask, err := CreateWorkflowQueueTask(ctx, store, workflow, QueueTaskOptions{ExecuteAt: executeAt, IdempotencyKey: idempotencyKey})
 	if err != nil {
 		return nil, err
 	}
@@ -2153,29 +2160,28 @@ func ValidateWorkflowTaskEnqueue(ctx context.Context, store datastore.DataStore,
 	return validateWorkflowTaskEnqueue(ctx, store, workflow, requireComponentInventory)
 }
 
-func createWorkflowQueueTask(ctx context.Context, store datastore.DataStore, workflow *model.Workflow, executeAt int64, idempotencyKey string) (*model.WorkflowQueue, error) {
-	return createWorkflowQueueTaskWithCleanupInfo(ctx, store, workflow, executeAt, idempotencyKey, "")
+// QueueTaskOptions contains the optional scheduling and execution snapshots for a task.
+type QueueTaskOptions struct {
+	ExecuteAt          int64
+	IdempotencyKey     string
+	CleanupInfo        string
+	ResourceActionInfo string
+	Callback           *model.JSONStruct
 }
 
-func createWorkflowQueueTaskWithCleanupInfo(ctx context.Context, store datastore.DataStore, workflow *model.Workflow, executeAt int64, idempotencyKey, cleanupInfo string) (*model.WorkflowQueue, error) {
-	return createWorkflowQueueTaskWithCallback(ctx, store, workflow, executeAt, idempotencyKey, cleanupInfo, nil)
-}
-
-func createWorkflowQueueTaskWithCallback(ctx context.Context, store datastore.DataStore, workflow *model.Workflow, executeAt int64, idempotencyKey, cleanupInfo string, callback *model.JSONStruct) (*model.WorkflowQueue, error) {
-	return createWorkflowQueueTaskWithResourceActionInfoAndCallback(ctx, store, workflow, executeAt, idempotencyKey, cleanupInfo, "", callback)
-}
-
-func createWorkflowQueueTaskWithResourceActionInfoAndCallback(ctx context.Context, store datastore.DataStore, workflow *model.Workflow, executeAt int64, idempotencyKey, cleanupInfo, resourceActionInfo string, callback *model.JSONStruct) (*model.WorkflowQueue, error) {
-	idempotencyKey = strings.TrimSpace(idempotencyKey)
+// CreateWorkflowQueueTask persists one task, resolving retries by their idempotency key.
+// The caller owns the transaction and application scheduling lock.
+func CreateWorkflowQueueTask(ctx context.Context, store datastore.DataStore, workflow *model.Workflow, options QueueTaskOptions) (*model.WorkflowQueue, error) {
+	idempotencyKey := strings.TrimSpace(options.IdempotencyKey)
 	var idempotencyKeyPtr *string
 	if idempotencyKey != "" {
 		idempotencyKeyPtr = &idempotencyKey
 	}
-	workflowTask := newWorkflowQueueTask(workflow, executeAt)
+	workflowTask := newWorkflowQueueTask(workflow, options.ExecuteAt)
 	workflowTask.IdempotencyKey = idempotencyKeyPtr
-	workflowTask.CleanupInfo = strings.TrimSpace(cleanupInfo)
-	workflowTask.ResourceActionInfo = strings.TrimSpace(resourceActionInfo)
-	workflowTask.Callback = callback
+	workflowTask.CleanupInfo = strings.TrimSpace(options.CleanupInfo)
+	workflowTask.ResourceActionInfo = strings.TrimSpace(options.ResourceActionInfo)
+	workflowTask.Callback = options.Callback
 
 	if err := repository.CreateWorkflowQueue(ctx, store, workflowTask); err != nil {
 		if idempotencyKey != "" && errors.Is(err, datastore.ErrRecordExist) {
@@ -2194,18 +2200,6 @@ func createWorkflowQueueTaskWithResourceActionInfoAndCallback(ctx context.Contex
 		return nil, err
 	}
 	return workflowTask, nil
-}
-
-func CreateWorkflowQueueTaskWithCleanupInfo(ctx context.Context, store datastore.DataStore, workflow *model.Workflow, executeAt int64, idempotencyKey, cleanupInfo string) (*model.WorkflowQueue, error) {
-	return createWorkflowQueueTaskWithCleanupInfo(ctx, store, workflow, executeAt, idempotencyKey, cleanupInfo)
-}
-
-func CreateWorkflowQueueTaskWithCallback(ctx context.Context, store datastore.DataStore, workflow *model.Workflow, executeAt int64, idempotencyKey, cleanupInfo string, callback *model.JSONStruct) (*model.WorkflowQueue, error) {
-	return createWorkflowQueueTaskWithCallback(ctx, store, workflow, executeAt, idempotencyKey, cleanupInfo, callback)
-}
-
-func CreateWorkflowQueueTaskWithResourceActionInfoAndCallback(ctx context.Context, store datastore.DataStore, workflow *model.Workflow, executeAt int64, idempotencyKey, cleanupInfo, resourceActionInfo string, callback *model.JSONStruct) (*model.WorkflowQueue, error) {
-	return createWorkflowQueueTaskWithResourceActionInfoAndCallback(ctx, store, workflow, executeAt, idempotencyKey, cleanupInfo, resourceActionInfo, callback)
 }
 
 func newWorkflowQueueTask(workflow *model.Workflow, executeAt int64) *model.WorkflowQueue {

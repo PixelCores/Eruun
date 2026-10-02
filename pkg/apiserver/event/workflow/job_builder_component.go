@@ -60,12 +60,11 @@ func setCloudJobTimeout(jobTask *model.JobTask) {
 	jobTask.Timeout = config.CloudJobTimeout
 }
 
-func CreateObjectJobsFromResult(additionalObjects []client.Object, component *model.ApplicationComponent, task *model.WorkflowQueue, jobs []*model.JobTask, defaultJobTimeoutSeconds int64) ([]*model.JobTask, error) {
+func createObjectJobsFromResult(additionalObjects []client.Object, component *model.ApplicationComponent, task *model.WorkflowQueue, jobs []*model.JobTask, defaultJobTimeoutSeconds int64, share shareConfig) ([]*model.JobTask, error) {
 	if len(additionalObjects) == 0 {
 		return jobs, nil
 	}
 
-	share := shareConfigForComponent(component)
 	rbacShare := rbacShareConfigForComponent(component, share)
 	resourceAppName := component.ResourceNameKey()
 
@@ -514,7 +513,8 @@ func buildJobsForComponent(
 	if err != nil {
 		return nil, err
 	}
-	share := shareConfigForComponent(component)
+	componentTraits := decodeComponentTraits(component)
+	share := shareConfigForComponent(component, componentTraits)
 	resourceAppName := component.ResourceNameKey()
 
 	switch component.ComponentType {
@@ -647,7 +647,7 @@ func buildJobsForComponent(
 	}
 
 	if component.ComponentType != config.InstantJob && component.ComponentType != config.ScheduledJob && component.ComponentType != config.CloudJob {
-		serviceTraits := serviceTraitsForComponent(component, &properties)
+		serviceTraits := serviceTraitsForComponent(component, &properties, componentTraits)
 		if len(serviceTraits) > 0 {
 			for _, trait := range serviceTraits {
 				svcName := strings.TrimSpace(trait.Name)
@@ -704,7 +704,7 @@ func queueServiceJobs(
 	// Traits may emit extra Kubernetes objects (PVC, Ingress, etc.). Schedule them
 	// ahead of the base workload so dependencies are ready before the deployment runs.
 	if len(result.AdditionalObjects) > 0 {
-		jobs, err := CreateObjectJobsFromResult(result.AdditionalObjects, component, task, nil, defaultJobTimeoutSeconds)
+		jobs, err := createObjectJobsFromResult(result.AdditionalObjects, component, task, nil, defaultJobTimeoutSeconds, share)
 		if err != nil {
 			return fmt.Errorf("create additional resource jobs: %w", err)
 		}
@@ -753,7 +753,7 @@ func appendBatchJob(
 	}
 
 	if len(result.AdditionalObjects) > 0 {
-		jobs, err := CreateObjectJobsFromResult(result.AdditionalObjects, component, task, nil, defaultJobTimeoutSeconds)
+		jobs, err := createObjectJobsFromResult(result.AdditionalObjects, component, task, nil, defaultJobTimeoutSeconds, share)
 		if err != nil {
 			return nil, fmt.Errorf("create additional resource jobs: %w", err)
 		}

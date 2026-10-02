@@ -72,5 +72,6 @@ func TestUpdateVersionSerializesTheCompleteApplicationMutation(t *testing.T) {
 
 	close(blockingRepo.release)
 	require.NoError(t, <-firstDone)
+	require.Equal(t, int32(1), blockingRepo.reads.Load(), "the mutation reuses the application loaded under the lock")
 	require.Equal(t, "1.1.0", store.apps["app-1"].Version)
 }

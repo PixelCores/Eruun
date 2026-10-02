@@ -22,13 +22,12 @@ type ApplicationRepository interface {
 }
 
 type applicationRepository struct {
-	Store datastore.DataStore `inject:"datastore"`
+	Store datastore.DataStore
 }
 
 // NewApplicationRepository creates a new ApplicationRepository.
-// Dependencies are injected via struct tags.
-func NewApplicationRepository() ApplicationRepository {
-	return &applicationRepository{}
+func NewApplicationRepository(store datastore.DataStore) ApplicationRepository {
+	return &applicationRepository{Store: store}
 }
 
 func (r *applicationRepository) FindByID(ctx context.Context, id string) (*model.Applications, error) {

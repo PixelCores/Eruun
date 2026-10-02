@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -196,24 +195,13 @@ func ensureLogDir(logDir string) error {
 func run(ctx context.Context, s *options.ServerRunOptions, errChan chan error) error {
 	klog.Infof("Eruun information: version: %v", version.EruunVersion)
 
-	// Simplified auto-tracing: do not rely on replica count
-	explicit := s.GenericServerRunOptions.EnableTracing
-	// Treat supported messaging backends as external/distributed queues.
-	hasExternalQueue := func(typ string) bool {
-		t := strings.ToLower(strings.TrimSpace(typ))
-		return t == config.REDIS || t == config.KAFKA
-	}
-	auto := s.GenericServerRunOptions.AutoTracing &&
-		(s.GenericServerRunOptions.JaegerEndpoint != "" || hasExternalQueue(s.GenericServerRunOptions.Messaging.Type))
-	effective := explicit || auto
-	// Propagate effective value so server middleware aligns with provider init
-	s.GenericServerRunOptions.EnableTracing = effective
-	if auto && !explicit {
+	autoEnabled := resolveTracing(s.GenericServerRunOptions)
+	if autoEnabled {
 		klog.InfoS("Auto tracing enabled", "jaegerEndpoint", s.GenericServerRunOptions.JaegerEndpoint, "msgType", s.GenericServerRunOptions.Messaging.Type)
 	}
 
-	if effective {
-		klog.InfoS("Distributed tracing enabled", "jaegerEndpoint", s.GenericServerRunOptions.JaegerEndpoint)
+	if s.GenericServerRunOptions.EnableTracing {
+		klog.InfoS("Tracing enabled", "jaegerEndpoint", s.GenericServerRunOptions.JaegerEndpoint)
 		shutdown, err := observability.InitTracerProvider("eruun-server", s.GenericServerRunOptions.JaegerEndpoint)
 		if err != nil {
 			return fmt.Errorf("failed to init tracer provider: %w", err)
@@ -229,4 +217,11 @@ func run(ctx context.Context, s *options.ServerRunOptions, errChan chan error) e
 
 	apiServer := server.New(*s.GenericServerRunOptions)
 	return apiServer.Run(ctx, errChan)
+}
+
+// resolveTracing keeps the tracer provider and HTTP middleware on the same setting.
+func resolveTracing(cfg *config.Config) bool {
+	autoEnabled := cfg.AutoTracing && !cfg.EnableTracing
+	cfg.EnableTracing = cfg.EnableTracing || cfg.AutoTracing
+	return autoEnabled
 }

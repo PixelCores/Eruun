@@ -9,13 +9,11 @@ import (
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
-// ResourcesProcessor applies compute resources (cpu/memory/gpu) to a container.
-type ResourcesProcessor struct{}
-
-// Process converts a single ResourceTraitsSpec into Kubernetes ResourceRequirements.
+// ProcessResources applies compute resources (cpu/memory/gpu) to a container.
+// Converts a single ResourceTraitsSpec into Kubernetes ResourceRequirements.
 // cpu/memory represent requests; cpuLimit/memoryLimit override limits and fall
 // back to the request values for backward compatibility.
-func (r *ResourcesProcessor) Process(resourceSpec *spec.ResourceTraitsSpec) (*TraitResult, error) {
+func ProcessResources(resourceSpec *spec.ResourceTraitsSpec) (*TraitResult, error) {
 	if resourceSpec == nil {
 		return nil, nil
 	}

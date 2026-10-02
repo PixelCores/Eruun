@@ -9,7 +9,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
@@ -291,7 +290,6 @@ func newMockServiceWithStore(store *inMemoryAppStore) *applicationsServiceImpl {
 		AppRepo:                   &mockAppRepo{store: store},
 		WorkflowRepo:              &mockWorkflowRepo{store: store},
 		ComponentRepo:             &mockComponentRepo{store: store},
-		WorkflowQueueRepo:         &mockWorkflowQueueRepo{},
 		URLSecurityPolicyProvider: urlpolicy.NewProvider(store, 0),
 		ScheduleLocker:            locker.NewMemoryLocker("test-app-schedule"),
 	}
@@ -347,53 +345,3 @@ func newTestURLSecurityPolicyProvider(t testing.TB, policy spec.URLSecurityPolic
 	setTestURLSecurityPolicy(t, store, policy)
 	return urlpolicy.NewProvider(store, 0)
 }
-
-// mockWorkflowQueueRepo implements repository.WorkflowQueueRepository for tests
-type mockWorkflowQueueRepo struct {
-	store        datastore.DataStore
-	lastQueue    *model.WorkflowQueue
-	queues       []*model.WorkflowQueue
-	createErr    error
-	beforeCreate func()
-}
-
-func (m *mockWorkflowQueueRepo) Create(ctx context.Context, queue *model.WorkflowQueue) error {
-	if m.beforeCreate != nil {
-		m.beforeCreate()
-	}
-	if m.createErr != nil {
-		return m.createErr
-	}
-	if m.store != nil {
-		if err := m.store.Add(ctx, queue); err != nil {
-			return err
-		}
-	}
-	if queue != nil {
-		m.lastQueue = queue
-		m.queues = append(m.queues, queue)
-	}
-	return nil
-}
-
-func (m *mockWorkflowQueueRepo) Update(ctx context.Context, task *model.WorkflowQueue) error {
-	return nil
-}
-
-func (m *mockWorkflowQueueRepo) FindByID(ctx context.Context, taskID string) (*model.WorkflowQueue, error) {
-	return nil, datastore.ErrRecordNotExist
-}
-
-func (m *mockWorkflowQueueRepo) FindWaiting(ctx context.Context) ([]*model.WorkflowQueue, error) {
-	return nil, nil
-}
-
-func (m *mockWorkflowQueueRepo) FindRunning(ctx context.Context) ([]*model.WorkflowQueue, error) {
-	return nil, nil
-}
-
-func (m *mockWorkflowQueueRepo) UpdateStatus(ctx context.Context, taskID string, from, to config.Status) (bool, error) {
-	return false, nil
-}
-
-var _ repository.WorkflowQueueRepository = (*mockWorkflowQueueRepo)(nil)

@@ -154,7 +154,7 @@ func loadResourceAppName(ctx context.Context, task *model.WorkflowQueue, ds data
 	if strings.TrimSpace(app.Name) == "" {
 		return "", fmt.Errorf("application %s name is empty", task.AppID)
 	}
-	return naming.ApplicationResourceKey(app.Name, "", false), nil
+	return naming.ApplicationResourceKey(app.Name), nil
 }
 
 func loadWorkflowTaskApplication(ctx context.Context, task *model.WorkflowQueue, ds datastore.DataStore) (*model.Applications, error) {

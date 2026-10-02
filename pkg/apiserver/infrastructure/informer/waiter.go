@@ -2,7 +2,6 @@ package informer
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -10,32 +9,27 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/async"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
 )
 
 const (
-	statusSyncSubmitTimeout = 100 * time.Millisecond
 	podRestartConfigTimeout = 2 * time.Second
 	podOwnerKindReplicaSet  = "ReplicaSet"
 )
 
-// ResourceReadyWaiter 资源就绪等待器 - 基于 Informer 事件驱动
+// ResourceReadyWaiter synchronizes Controller Pod snapshots and restart events.
 type ResourceReadyWaiter struct {
-	// waiters 存储等待中的资源
-	// key 格式: "resourceType/namespace/name"（组件等待使用 appID 作为 namespace）
-	waiters sync.Map
 	// statusSyncFunc 状态同步回调（更新数据库）
 	statusSyncFunc StatusSyncFunc
-	// statusSyncExecutor 为状态同步回调提供有界异步执行，避免散点裸协程。
-	statusSyncExecutor *async.BoundedExecutor
+	// statusSyncQueue serializes each component while two workers bound callbacks.
+	statusSyncQueue    workqueue.TypedInterface[componentStatusSyncKey]
 	statusSyncMu       sync.Mutex
-	statusSyncLanes    map[componentStatusSyncKey]*componentStatusSyncLane
+	statusSyncLatest   map[componentStatusSyncKey]componentStatusSyncUpdate
 	statusSyncEpoch    uint64
-	statusSyncSignal   chan struct{}
 	statusSyncStop     chan struct{}
 	statusSyncWG       sync.WaitGroup
 	podGenerationMu    sync.RWMutex
@@ -54,10 +48,9 @@ type componentStatusSyncKey struct {
 	componentID int
 }
 
-type componentStatusSyncLane struct {
-	latest *ComponentStatusUpdate
+type componentStatusSyncUpdate struct {
+	update *ComponentStatusUpdate
 	epoch  uint64
-	active bool
 }
 
 type podStatusInfo struct {
@@ -66,8 +59,6 @@ type podStatusInfo struct {
 	componentName  string
 	componentID    int
 	ready          bool
-	images         map[string]struct{}
-	annotations    map[string]string
 	abnormalReason string
 	updatedAt      time.Time
 }
@@ -131,19 +122,20 @@ func (t *podRestartTracker) reset() {
 	t.pods = make(map[string]*podRestartState)
 }
 
-// NewResourceReadyWaiter 创建等待器
+// NewResourceReadyWaiter creates the Controller Pod event handler.
 func NewResourceReadyWaiter() *ResourceReadyWaiter {
 	waiter := &ResourceReadyWaiter{
-		pods:               newPodTracker(),
-		podRestarts:        newPodRestartTracker(),
-		statusSyncExecutor: async.NewBoundedExecutor("informer-status-sync", 2, 256),
-		statusSyncLanes:    make(map[componentStatusSyncKey]*componentStatusSyncLane),
-		statusSyncSignal:   make(chan struct{}, 1),
-		statusSyncStop:     make(chan struct{}),
-		now:                time.Now,
+		pods:             newPodTracker(),
+		podRestarts:      newPodRestartTracker(),
+		statusSyncQueue:  workqueue.NewTyped[componentStatusSyncKey](),
+		statusSyncLatest: make(map[componentStatusSyncKey]componentStatusSyncUpdate),
+		statusSyncStop:   make(chan struct{}),
+		now:              time.Now,
 	}
-	waiter.statusSyncWG.Add(1)
-	go waiter.runStatusSyncRetry()
+	waiter.statusSyncWG.Add(2)
+	for range 2 {
+		go waiter.runStatusSyncWorker()
+	}
 	return waiter
 }
 
@@ -154,19 +146,13 @@ func (w *ResourceReadyWaiter) Close() {
 	}
 	w.closeOnce.Do(func() {
 		close(w.statusSyncStop)
+		w.statusSyncQueue.ShutDown()
 		w.fencePodSnapshotGenerations()
-		if w.statusSyncExecutor != nil {
-			w.statusSyncExecutor.Close()
-		}
 		w.statusSyncWG.Wait()
-		w.statusSyncMu.Lock()
-		w.statusSyncEpoch++
-		w.statusSyncLanes = make(map[componentStatusSyncKey]*componentStatusSyncLane)
-		w.statusSyncMu.Unlock()
 	})
 }
 
-// ResetPodSnapshots clears informer-derived pod state while preserving waiters and callbacks.
+// ResetPodSnapshots clears informer-derived pod state while preserving callbacks.
 func (w *ResourceReadyWaiter) ResetPodSnapshots() {
 	if w == nil {
 		return
@@ -236,85 +222,12 @@ func (w *ResourceReadyWaiter) SetDeploymentPodRestartTriggerFunc(fn DeploymentPo
 	w.podRestartTrigger = fn
 }
 
-// buildKey 构建唯一键
-func buildKey(resourceType ResourceType, namespace, name string) string {
-	return fmt.Sprintf("%s/%s/%s", resourceType, namespace, name)
-}
-
 func buildPodKey(namespace, name string) string {
 	return fmt.Sprintf("%s/%s", namespace, name)
 }
 
 func buildComponentKey(appID, componentName string) string {
 	return fmt.Sprintf("%s/%s", appID, componentName)
-}
-
-// WaitForComponentReady 等待组件就绪（基于 Pod 事件）
-func (w *ResourceReadyWaiter) WaitForComponentReady(ctx context.Context, appID, componentName string, desiredReplicas int32, timeout time.Duration) error {
-	return w.WaitForComponentReadyWithOptions(ctx, appID, componentName, desiredReplicas, ComponentReadyWaitOptions{}, timeout)
-}
-
-// WaitForComponentReadyWithImages waits for ready pods whose Pod spec contains all expected images.
-// Empty expectedImages preserves the original component-level readiness behavior.
-func (w *ResourceReadyWaiter) WaitForComponentReadyWithImages(ctx context.Context, appID, componentName string, desiredReplicas int32, expectedImages []string, timeout time.Duration) error {
-	return w.WaitForComponentReadyWithOptions(ctx, appID, componentName, desiredReplicas, ComponentReadyWaitOptions{
-		ExpectedImages: expectedImages,
-	}, timeout)
-}
-
-// WaitForComponentReadyWithOptions waits for ready pods matching the provided filters.
-// Empty filters preserve the original component-level readiness behavior.
-func (w *ResourceReadyWaiter) WaitForComponentReadyWithOptions(ctx context.Context, appID, componentName string, desiredReplicas int32, options ComponentReadyWaitOptions, timeout time.Duration) error {
-	if desiredReplicas <= 0 {
-		return fmt.Errorf("component %s/%s desired replicas must be greater than 0", appID, componentName)
-	}
-	key := buildKey(ResourceTypeComponent, appID, componentName)
-	normalizedOptions := normalizeComponentReadyWaitOptions(options)
-
-	entry := &WaitEntry{
-		Key:                 key,
-		ResourceType:        ResourceTypeComponent,
-		ReadyChan:           make(chan struct{}),
-		ErrorChan:           make(chan error, 1),
-		CreatedAt:           time.Now(),
-		DesiredReplicas:     desiredReplicas,
-		ExpectedImages:      normalizedOptions.ExpectedImages,
-		ExpectedAnnotations: normalizedOptions.ExpectedAnnotations,
-	}
-
-	// 注册等待
-	w.waiters.Store(key, entry)
-	defer w.waiters.Delete(key)
-
-	klog.V(4).Infof("Waiting for component %s/%s to be ready (timeout: %v, expectedImages: %v, expectedAnnotations: %v)", appID, componentName, timeout, normalizedOptions.ExpectedImages, normalizedOptions.ExpectedAnnotations)
-
-	if w.isComponentReadySnapshot(appID, componentName, desiredReplicas, normalizedOptions) {
-		klog.V(4).Infof("Component %s/%s already ready from snapshot", appID, componentName)
-		entry.Close()
-		return nil
-	}
-
-	select {
-	case <-entry.ReadyChan:
-		klog.V(4).Infof("Component %s/%s is ready", appID, componentName)
-		return nil
-	case err := <-entry.ErrorChan:
-		klog.V(4).Infof("Component %s/%s wait error: %v", appID, componentName, err)
-		return err
-	case <-ctx.Done():
-		return NewWaitError(config.StatusCancelled, fmt.Errorf("component %s/%s cancelled: %w", appID, componentName, ctx.Err()))
-	case <-time.After(timeout):
-		if snapshot, ok := w.componentSnapshotForOptions(appID, componentName, normalizedOptions); ok {
-			if abnormal := strings.TrimSpace(snapshot.lastAbnormal); abnormal != "" {
-				return NewWaitErrorWithAbnormal(
-					config.StatusFailed,
-					fmt.Errorf("component %s/%s timeout after %v with abnormal pod state: %s", appID, componentName, timeout, abnormal),
-					abnormal,
-				)
-			}
-		}
-		return NewWaitError(config.StatusTimeout, fmt.Errorf("component %s/%s timeout after %v", appID, componentName, timeout))
-	}
 }
 
 // OnPodAdd 处理 Pod 创建事件 - 由 Informer 调用
@@ -371,8 +284,6 @@ func (w *ResourceReadyWaiter) onPodUpdate(oldPod, newPod *corev1.Pod) {
 		componentName:  componentName,
 		componentID:    componentID,
 		ready:          isPodReady(newPod),
-		images:         podImageSet(newPod),
-		annotations:    podAnnotations(newPod),
 		abnormalReason: kube.ExtractPodAbnormalReason(newPod),
 		updatedAt:      time.Now(),
 	}
@@ -422,26 +333,6 @@ func (w *ResourceReadyWaiter) lockPodSnapshotHandler(generation uint64, scoped b
 		return false
 	}
 	return true
-}
-
-// GetPendingCount 获取等待中的资源数量（用于监控）
-func (w *ResourceReadyWaiter) GetPendingCount() int {
-	count := 0
-	w.waiters.Range(func(_, _ interface{}) bool {
-		count++
-		return true
-	})
-	return count
-}
-
-// GetPendingKeys 获取所有等待中的资源键（用于调试）
-func (w *ResourceReadyWaiter) GetPendingKeys() []string {
-	var keys []string
-	w.waiters.Range(func(key, _ interface{}) bool {
-		keys = append(keys, key.(string))
-		return true
-	})
-	return keys
 }
 
 func extractComponentMeta(labels map[string]string) (string, string, int, bool) {
@@ -698,9 +589,6 @@ func (w *ResourceReadyWaiter) updatePodStatus(podKey string, info *podStatusInfo
 		return
 	}
 	prev, prevOk, next, nextOk := w.pods.update(podKey, info)
-	if nextOk {
-		w.notifyComponentReady(next)
-	}
 	if !snapshotChanged(prevOk, prev, nextOk, next) {
 		return
 	}
@@ -734,13 +622,13 @@ func (t *podTracker) update(podKey string, info *podStatusInfo) (componentSnapsh
 		return componentSnapshot{}, false, componentSnapshot{}, false
 	}
 
-	prevSnapshot, prevOk := t.snapshotLocked(componentKey, ComponentReadyWaitOptions{})
+	prevSnapshot, prevOk := t.snapshotLocked(componentKey)
 	if info == nil {
 		delete(t.pods, podKey)
 	} else {
 		t.pods[podKey] = *info
 	}
-	nextSnapshot, nextOk := t.snapshotLocked(componentKey, ComponentReadyWaitOptions{})
+	nextSnapshot, nextOk := t.snapshotLocked(componentKey)
 	if !nextOk && prevOk {
 		nextSnapshot = componentSnapshot{
 			appID:         prevSnapshot.appID,
@@ -754,18 +642,12 @@ func (t *podTracker) update(podKey string, info *podStatusInfo) (componentSnapsh
 	return prevSnapshot, prevOk, nextSnapshot, nextOk
 }
 
-func (t *podTracker) snapshotLocked(componentKey string, options ComponentReadyWaitOptions) (componentSnapshot, bool) {
+func (t *podTracker) snapshotLocked(componentKey string) (componentSnapshot, bool) {
 	var snapshot componentSnapshot
 	var latestTime time.Time
 	found := false
 	for _, info := range t.pods {
 		if info.componentKey != componentKey {
-			continue
-		}
-		if !podImagesContainAll(info.images, options.ExpectedImages) {
-			continue
-		}
-		if !podAnnotationsContainAll(info.annotations, options.ExpectedAnnotations) {
 			continue
 		}
 		if !found {
@@ -784,30 +666,6 @@ func (t *podTracker) snapshotLocked(componentKey string, options ComponentReadyW
 		}
 	}
 	return snapshot, found
-}
-
-func (t *podTracker) snapshotForOptions(componentKey string, options ComponentReadyWaitOptions) (componentSnapshot, bool) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.snapshotLocked(componentKey, options)
-}
-
-func (w *ResourceReadyWaiter) componentSnapshotForOptions(appID, componentName string, options ComponentReadyWaitOptions) (componentSnapshot, bool) {
-	if w.pods == nil {
-		return componentSnapshot{}, false
-	}
-	return w.pods.snapshotForOptions(buildComponentKey(appID, componentName), options)
-}
-
-func (w *ResourceReadyWaiter) isComponentReadySnapshot(appID, componentName string, desiredReplicas int32, options ComponentReadyWaitOptions) bool {
-	if desiredReplicas <= 0 {
-		return false
-	}
-	snapshot, ok := w.componentSnapshotForOptions(appID, componentName, options)
-	if !ok || snapshot.totalCount == 0 {
-		return false
-	}
-	return snapshot.readyCount >= desiredReplicas
 }
 
 func normalizeComponentReadyWaitOptions(options ComponentReadyWaitOptions) ComponentReadyWaitOptions {
@@ -931,26 +789,16 @@ func (w *ResourceReadyWaiter) syncComponentSnapshot(snapshot componentSnapshot) 
 		return
 	}
 	update := buildStatusUpdate(snapshot)
-	key, schedule := w.enqueueStatusSync(update)
-	if !schedule {
+	key := componentStatusSyncKey{appID: update.AppID, componentID: update.ComponentID}
+	w.statusSyncMu.Lock()
+	defer w.statusSyncMu.Unlock()
+	select {
+	case <-w.statusSyncStop:
 		return
+	default:
 	}
-	submitCtx, cancel := context.WithTimeout(context.Background(), statusSyncSubmitTimeout)
-	defer cancel()
-	if err := w.submitStatusSyncLane(submitCtx, key); err != nil {
-		if errors.Is(err, async.ErrExecutorClosed) {
-			w.discardStatusSyncLane(key)
-			klog.V(4).Infof("skip component status sync appID=%s componentID=%d: executor closed", snapshot.appID, snapshot.componentID)
-			return
-		}
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			w.deferStatusSyncLane(key)
-			klog.Warningf("defer component status sync appID=%s componentID=%d: submit timeout", snapshot.appID, snapshot.componentID)
-			return
-		}
-		w.deferStatusSyncLane(key)
-		klog.Warningf("submit component status sync failed appID=%s componentID=%d: %v", snapshot.appID, snapshot.componentID, err)
-	}
+	w.statusSyncLatest[key] = componentStatusSyncUpdate{update: update, epoch: w.statusSyncEpoch}
+	w.statusSyncQueue.Add(key)
 }
 
 func buildStatusUpdate(snapshot componentSnapshot) *ComponentStatusUpdate {
@@ -987,60 +835,25 @@ func (w *ResourceReadyWaiter) executeStatusSync(update *ComponentStatusUpdate) {
 	w.statusSyncFunc(update)
 }
 
-func (w *ResourceReadyWaiter) enqueueStatusSync(update *ComponentStatusUpdate) (componentStatusSyncKey, bool) {
-	key := componentStatusSyncKey{}
-	if w == nil || update == nil {
-		return key, false
-	}
-	key = componentStatusSyncKey{appID: update.AppID, componentID: update.ComponentID}
-	w.statusSyncMu.Lock()
-	defer w.statusSyncMu.Unlock()
-	select {
-	case <-w.statusSyncStop:
-		return key, false
-	default:
-	}
-	lane := w.statusSyncLanes[key]
-	if lane == nil {
-		lane = &componentStatusSyncLane{}
-		w.statusSyncLanes[key] = lane
-	}
-	lane.latest = update
-	lane.epoch = w.statusSyncEpoch
-	if lane.active {
-		return key, false
-	}
-	lane.active = true
-	return key, true
-}
-
-func (w *ResourceReadyWaiter) submitStatusSyncLane(ctx context.Context, key componentStatusSyncKey) error {
-	if w == nil {
-		return nil
-	}
-	if w.statusSyncExecutor == nil {
-		w.drainStatusSyncLane(key)
-		return nil
-	}
-	return w.statusSyncExecutor.Submit(ctx, func() {
-		w.drainStatusSyncLane(key)
-	})
-}
-
-func (w *ResourceReadyWaiter) drainStatusSyncLane(key componentStatusSyncKey) {
+func (w *ResourceReadyWaiter) runStatusSyncWorker() {
+	defer w.statusSyncWG.Done()
 	for {
+		key, shutdown := w.statusSyncQueue.Get()
+		if shutdown {
+			return
+		}
+		// ShutDown still returns queued keys; Close must discard their callbacks.
 		select {
 		case <-w.statusSyncStop:
-			w.discardStatusSyncLane(key)
+			w.statusSyncQueue.Done(key)
 			return
 		default:
 		}
-
 		update, epoch, ok := w.takeLatestStatusSync(key)
-		if !ok {
-			return
+		if ok {
+			w.executeStatusSyncIfCurrent(update, epoch)
 		}
-		w.executeStatusSyncIfCurrent(update, epoch)
+		w.statusSyncQueue.Done(key)
 	}
 }
 
@@ -1058,18 +871,9 @@ func (w *ResourceReadyWaiter) executeStatusSyncIfCurrent(update *ComponentStatus
 func (w *ResourceReadyWaiter) takeLatestStatusSync(key componentStatusSyncKey) (*ComponentStatusUpdate, uint64, bool) {
 	w.statusSyncMu.Lock()
 	defer w.statusSyncMu.Unlock()
-	lane := w.statusSyncLanes[key]
-	if lane == nil {
-		return nil, 0, false
-	}
-	if lane.latest == nil {
-		delete(w.statusSyncLanes, key)
-		return nil, 0, false
-	}
-	update := lane.latest
-	epoch := lane.epoch
-	lane.latest = nil
-	return update, epoch, true
+	latest, ok := w.statusSyncLatest[key]
+	delete(w.statusSyncLatest, key)
+	return latest.update, latest.epoch, ok
 }
 
 func (w *ResourceReadyWaiter) isCurrentStatusSyncEpoch(epoch uint64) bool {
@@ -1078,105 +882,11 @@ func (w *ResourceReadyWaiter) isCurrentStatusSyncEpoch(epoch uint64) bool {
 	return epoch == w.statusSyncEpoch
 }
 
-func (w *ResourceReadyWaiter) deferStatusSyncLane(key componentStatusSyncKey) {
-	if w == nil {
-		return
-	}
-	w.statusSyncMu.Lock()
-	lane := w.statusSyncLanes[key]
-	if lane != nil {
-		lane.active = false
-		if lane.latest == nil {
-			delete(w.statusSyncLanes, key)
-		}
-	}
-	w.statusSyncMu.Unlock()
-	w.signalStatusSyncRetry()
-}
-
-func (w *ResourceReadyWaiter) discardStatusSyncLane(key componentStatusSyncKey) {
-	if w == nil {
-		return
-	}
-	w.statusSyncMu.Lock()
-	delete(w.statusSyncLanes, key)
-	w.statusSyncMu.Unlock()
-}
-
-func (w *ResourceReadyWaiter) signalStatusSyncRetry() {
-	if w == nil {
-		return
-	}
-	select {
-	case <-w.statusSyncStop:
-		return
-	default:
-	}
-	select {
-	case w.statusSyncSignal <- struct{}{}:
-	default:
-	}
-}
-
-func (w *ResourceReadyWaiter) runStatusSyncRetry() {
-	defer w.statusSyncWG.Done()
-	for {
-		select {
-		case <-w.statusSyncStop:
-			return
-		case <-w.statusSyncSignal:
-			w.retryDeferredStatusSyncLanes()
-		}
-	}
-}
-
-func (w *ResourceReadyWaiter) retryDeferredStatusSyncLanes() {
-	for {
-		key, ok := w.activateDeferredStatusSyncLane()
-		if !ok {
-			return
-		}
-		if err := w.submitStatusSyncLane(context.Background(), key); err != nil {
-			if errors.Is(err, async.ErrExecutorClosed) {
-				w.discardStatusSyncLane(key)
-				return
-			}
-			w.deferStatusSyncLane(key)
-			return
-		}
-	}
-}
-
-func (w *ResourceReadyWaiter) activateDeferredStatusSyncLane() (componentStatusSyncKey, bool) {
-	w.statusSyncMu.Lock()
-	defer w.statusSyncMu.Unlock()
-	select {
-	case <-w.statusSyncStop:
-		return componentStatusSyncKey{}, false
-	default:
-	}
-	for key, lane := range w.statusSyncLanes {
-		if lane == nil || lane.active || lane.latest == nil {
-			continue
-		}
-		lane.active = true
-		return key, true
-	}
-	return componentStatusSyncKey{}, false
-}
-
 func (w *ResourceReadyWaiter) resetStatusSyncGeneration() {
 	w.statusSyncMu.Lock()
 	defer w.statusSyncMu.Unlock()
 	w.statusSyncEpoch++
-	for key, lane := range w.statusSyncLanes {
-		if lane == nil || !lane.active {
-			delete(w.statusSyncLanes, key)
-			continue
-		}
-		lane.latest = nil
-		lane.epoch = w.statusSyncEpoch
-	}
+	clear(w.statusSyncLatest)
 }
 
 func componentStatusFromSnapshot(snapshot componentSnapshot) config.ComponentStatus {
@@ -1190,23 +900,4 @@ func componentStatusFromSnapshot(snapshot componentSnapshot) config.ComponentSta
 		return config.ComponentStatusRunning
 	}
 	return config.ComponentStatusPending
-}
-
-func (w *ResourceReadyWaiter) notifyComponentReady(snapshot componentSnapshot) {
-	key := buildKey(ResourceTypeComponent, snapshot.appID, snapshot.componentName)
-	entryVal, ok := w.waiters.Load(key)
-	if !ok {
-		return
-	}
-	entry := entryVal.(*WaitEntry)
-	if entry.IsClosed() {
-		return
-	}
-	options := ComponentReadyWaitOptions{
-		ExpectedImages:      entry.ExpectedImages,
-		ExpectedAnnotations: entry.ExpectedAnnotations,
-	}
-	if w.isComponentReadySnapshot(snapshot.appID, snapshot.componentName, entry.DesiredReplicas, options) {
-		entry.Close()
-	}
 }

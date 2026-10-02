@@ -1,18 +1,12 @@
 package repository
 
-// InitRepositoryBean initializes all repository instances.
-// Dependencies are injected via struct tags by the IoC container.
-func InitRepositoryBean(programmingLanguageOverrides ...ProgrammingLanguageRepository) []interface{} {
-	programmingLanguageRepository := NewProgrammingLanguageRepository()
-	if len(programmingLanguageOverrides) > 0 && programmingLanguageOverrides[0] != nil {
-		programmingLanguageRepository = programmingLanguageOverrides[0]
-	}
+// InitRepositoryBean initializes the remaining container-managed repositories.
+// Application and component repositories are constructed by the server.
+func InitRepositoryBean(appRepo ApplicationRepository, componentRepo ComponentRepository) []interface{} {
 	return []interface{}{
-		NewApplicationRepository(),
+		appRepo,
 		NewWorkflowRepository(),
-		NewComponentRepository(),
-		NewWorkflowQueueRepository(),
+		componentRepo,
 		NewSystemSettingRepository(),
-		programmingLanguageRepository,
 	}
 }

@@ -12,7 +12,6 @@ import (
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
-	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
 )
 
 func TestConvertDatabaseResetWorkflowSpecKeepsInitSQLURL(t *testing.T) {
@@ -570,53 +569,6 @@ func TestConvertComponentModelToDTOAppliesIngressRouteDefaults(t *testing.T) {
 			ServicePort: 80,
 		},
 	}, dto.Ingresses[0].Routes)
-}
-
-func TestIngressPathTypeMatchesGeneratedResource(t *testing.T) {
-	tests := []struct {
-		name        string
-		routeType   string
-		defaultType string
-		rewrite     *spec.RewritePolicy
-		want        string
-	}{
-		{name: "route whitespace and case", routeType: " eXaCt ", defaultType: "Prefix", want: "Exact"},
-		{name: "default whitespace", defaultType: " Exact ", want: "Exact"},
-		{name: "invalid route uses default", routeType: "unknown", defaultType: " implementation-specific ", want: "ImplementationSpecific"},
-		{name: "invalid route falls back to prefix", routeType: "unknown", want: "Prefix"},
-		{name: "regex fallback", rewrite: &spec.RewritePolicy{Type: "regexReplace"}, want: "ImplementationSpecific"},
-		{name: "prefix fallback", want: "Prefix"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ingressSpec := spec.IngressTraitsSpec{
-				DefaultPathType: tt.defaultType,
-				Routes: []spec.IngressRoutes{{
-					Host: "api.example.com", PathType: tt.routeType, Rewrite: tt.rewrite,
-				}},
-			}
-			component := &model.ApplicationComponent{
-				AppID: "app-9", Name: "api", Namespace: "default", ComponentType: config.ServerJob,
-				Traits: mustJSONStruct(t, model.Traits{Ingress: []spec.IngressTraitsSpec{ingressSpec}}),
-			}
-
-			dto, err := ConvertComponentModelToDTO(component)
-			require.NoError(t, err)
-			require.Len(t, dto.Ingresses, 1)
-			require.Len(t, dto.Ingresses[0].Routes, 1)
-
-			resource, err := traits.BuildIngress(&ingressSpec)
-			require.NoError(t, err)
-			require.Len(t, resource.Spec.Rules, 1)
-			require.Len(t, resource.Spec.Rules[0].HTTP.Paths, 1)
-			pathType := resource.Spec.Rules[0].HTTP.Paths[0].PathType
-			require.NotNil(t, pathType)
-
-			require.Equal(t, tt.want, dto.Ingresses[0].Routes[0].PathType)
-			require.Equal(t, tt.want, string(*pathType))
-		})
-	}
 }
 
 func TestConvertComponentModelToDTOAppliesIngressRewriteDefaultsToSummary(t *testing.T) {

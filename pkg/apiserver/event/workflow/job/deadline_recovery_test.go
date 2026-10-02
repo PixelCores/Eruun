@@ -28,7 +28,7 @@ func TestRecoveredEvaluationRetryPreservesAbsoluteDeadline(t *testing.T) {
 			workload := task.JobInfo.(*batchv1.Job)
 			deadline := time.Now().Add(tc.deadline).UnixNano()
 			workload.Annotations[EvaluationDeadlineAnnotation] = strconv.FormatInt(deadline, 10)
-			ctl := NewInstantJobCtl(task, fake.NewSimpleClientset(), &retryCheckpointStore{}, func() {})
+			ctl := NewInstantJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: &retryCheckpointStore{}, Ack: func() {}})
 			checkpoint, err := ctl.newRetryCheckpoint(context.Background(), workload)
 			if !tc.valid {
 				require.ErrorContains(t, err, "invalid evaluation recovery deadline")

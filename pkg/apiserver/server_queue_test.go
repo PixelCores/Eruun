@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/segmentio/kafka-go"
 	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -618,10 +617,10 @@ func TestEnsureKafkaMessagingReadyUsesOnlyRoleTopics(t *testing.T) {
 	oldEnsureKafka := ensureKafkaMessaging
 	var captured clients.KafkaConfig
 	calls := 0
-	ensureKafkaMessaging = func(cfg clients.KafkaConfig) (*kafka.Dialer, error) {
+	ensureKafkaMessaging = func(cfg clients.KafkaConfig) error {
 		calls++
 		captured = cfg
-		return &kafka.Dialer{}, nil
+		return nil
 	}
 	t.Cleanup(func() {
 		ensureKafkaMessaging = oldEnsureKafka

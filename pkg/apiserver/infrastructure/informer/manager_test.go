@@ -46,7 +46,7 @@ func TestManagerCanRestartAfterStop(t *testing.T) {
 
 	pod := newDeploymentTestPod("default", "stale-demo", "app-1", "api", 7, 0)
 	waiter.OnPodAdd(pod)
-	require.NoError(t, waiter.WaitForComponentReady(ctx, "app-1", "api", 1, 100*time.Millisecond))
+	require.Equal(t, 1, podSnapshotCount(waiter))
 
 	manager.Stop()
 	require.False(t, manager.IsStarted())
@@ -57,9 +57,6 @@ func TestManagerCanRestartAfterStop(t *testing.T) {
 	require.Same(t, waiter, manager.GetWaiter())
 	require.Equal(t, 0, podSnapshotCount(waiter))
 	require.Equal(t, 0, podRestartSnapshotCount(waiter))
-
-	err := waiter.WaitForComponentReady(ctx, "app-1", "api", 1, 50*time.Millisecond)
-	require.Error(t, err)
 
 	manager.Stop()
 	require.False(t, manager.IsStarted())

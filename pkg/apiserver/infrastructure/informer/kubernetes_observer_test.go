@@ -3,6 +3,8 @@ package informer
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strconv"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -174,4 +176,329 @@ func startKubernetesWorkloadObserver(t *testing.T, observer *KubernetesWorkloadO
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	require.NoError(t, observer.Start(ctx))
+}
+
+func TestWaitForComponentReady(t *testing.T) {
+	waiter := NewKubernetesWorkloadObserver(fake.NewSimpleClientset())
+	waiter.pollInterval = time.Millisecond
+	startKubernetesWorkloadObserver(t, waiter)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	result := make(chan error, 1)
+	go func() {
+		result <- waiter.WaitForComponentReady(ctx, "app-1", "api", 1, time.Second)
+	}()
+
+	time.Sleep(10 * time.Millisecond)
+	pod := newTestPod("default", "demo", "app-1", "api", 7, corev1.ContainerState{
+		Running: &corev1.ContainerStateRunning{},
+	}, true)
+	require.NoError(t, waiter.podInformer.GetIndexer().Add(pod))
+
+	err := <-result
+	require.NoError(t, err)
+}
+
+func TestWaitForComponentReadyUsesSnapshot(t *testing.T) {
+	waiter := NewKubernetesWorkloadObserver(fake.NewSimpleClientset())
+	waiter.pollInterval = time.Millisecond
+	startKubernetesWorkloadObserver(t, waiter)
+	pod := newTestPod("default", "demo", "app-1", "api", 7, corev1.ContainerState{
+		Running: &corev1.ContainerStateRunning{},
+	}, true)
+	require.NoError(t, waiter.podInformer.GetIndexer().Add(pod))
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	result := make(chan error, 1)
+	go func() {
+		result <- waiter.WaitForComponentReady(ctx, "app-1", "api", 1, time.Second)
+	}()
+
+	select {
+	case err := <-result:
+		require.NoError(t, err)
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("expected ready from snapshot before timeout")
+	}
+}
+
+func TestWaitForComponentReadyWithImagesIgnoresReadyPodWithDifferentImage(t *testing.T) {
+	waiter := NewKubernetesWorkloadObserver(fake.NewSimpleClientset())
+	waiter.pollInterval = time.Millisecond
+	startKubernetesWorkloadObserver(t, waiter)
+	pod := setTestPodImages(newTestPod("default", "demo", "app-1", "api", 7, corev1.ContainerState{
+		Running: &corev1.ContainerStateRunning{},
+	}, true), "api:v1")
+	require.NoError(t, waiter.podInformer.GetIndexer().Add(pod))
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	err := waiter.WaitForComponentReadyWithOptions(ctx, "app-1", "api", 1, ComponentReadyWaitOptions{ExpectedImages: []string{"api:v2"}}, 80*time.Millisecond)
+	require.Error(t, err)
+
+	we, ok := ExtractWaitError(err)
+	require.True(t, ok)
+	require.Equal(t, config.StatusTimeout, we.Status)
+}
+
+func TestWaitForComponentReadyWithImagesUsesReadyPodWithExpectedImage(t *testing.T) {
+	waiter := NewKubernetesWorkloadObserver(fake.NewSimpleClientset())
+	waiter.pollInterval = time.Millisecond
+	startKubernetesWorkloadObserver(t, waiter)
+	pod := setTestPodImages(newTestPod("default", "demo", "app-1", "api", 7, corev1.ContainerState{
+		Running: &corev1.ContainerStateRunning{},
+	}, true), "api:v2")
+	require.NoError(t, waiter.podInformer.GetIndexer().Add(pod))
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	require.NoError(t, waiter.WaitForComponentReadyWithOptions(ctx, "app-1", "api", 1, ComponentReadyWaitOptions{ExpectedImages: []string{"api:v2"}}, time.Second))
+}
+
+func TestWaitForComponentReadyWithImagesTimeoutReturnsFailedForMatchingAbnormalPod(t *testing.T) {
+	waiter := NewKubernetesWorkloadObserver(fake.NewSimpleClientset())
+	waiter.pollInterval = time.Millisecond
+	startKubernetesWorkloadObserver(t, waiter)
+	oldReady := setTestPodImages(newTestPod("default", "demo-old", "app-1", "api", 7, corev1.ContainerState{
+		Running: &corev1.ContainerStateRunning{},
+	}, true), "api:v1")
+	newAbnormal := setTestPodImages(newTestPod("default", "demo-new", "app-1", "api", 7, corev1.ContainerState{
+		Waiting: &corev1.ContainerStateWaiting{
+			Reason:  "CrashLoopBackOff",
+			Message: "back-off",
+		},
+	}, false), "api:v2")
+	require.NoError(t, waiter.podInformer.GetIndexer().Add(oldReady))
+	require.NoError(t, waiter.podInformer.GetIndexer().Add(newAbnormal))
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	err := waiter.WaitForComponentReadyWithOptions(ctx, "app-1", "api", 1, ComponentReadyWaitOptions{ExpectedImages: []string{"api:v2"}}, 80*time.Millisecond)
+	require.Error(t, err)
+
+	we, ok := ExtractWaitError(err)
+	require.True(t, ok)
+	require.Equal(t, config.StatusFailed, we.Status)
+	require.Contains(t, we.Error(), "CrashLoopBackOff")
+	require.Contains(t, we.AbnormalReason, "CrashLoopBackOff")
+}
+
+func TestWaitForComponentReadyWithOptionsIgnoresReadyPodWithoutExpectedAnnotation(t *testing.T) {
+	waiter := NewKubernetesWorkloadObserver(fake.NewSimpleClientset())
+	waiter.pollInterval = time.Millisecond
+	startKubernetesWorkloadObserver(t, waiter)
+	oldReady := setTestPodImages(newTestPod("default", "demo-old", "app-1", "api", 7, corev1.ContainerState{
+		Running: &corev1.ContainerStateRunning{},
+	}, true), "api:v1")
+	require.NoError(t, waiter.podInformer.GetIndexer().Add(oldReady))
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	err := waiter.WaitForComponentReadyWithOptions(ctx, "app-1", "api", 1, ComponentReadyWaitOptions{
+		ExpectedImages: []string{"api:v1"},
+		ExpectedAnnotations: map[string]string{
+			config.AnnotationWorkloadRestartAt: "2026-07-02T00:00:00Z",
+		},
+	}, 80*time.Millisecond)
+	require.Error(t, err)
+
+	we, ok := ExtractWaitError(err)
+	require.True(t, ok)
+	require.Equal(t, config.StatusTimeout, we.Status)
+}
+
+func TestWaitForComponentReadyWithOptionsUsesReadyPodWithExpectedAnnotation(t *testing.T) {
+	waiter := NewKubernetesWorkloadObserver(fake.NewSimpleClientset())
+	waiter.pollInterval = time.Millisecond
+	startKubernetesWorkloadObserver(t, waiter)
+	restartedAt := "2026-07-02T00:00:00Z"
+	pod := setTestPodAnnotations(setTestPodImages(newTestPod("default", "demo-new", "app-1", "api", 7, corev1.ContainerState{
+		Running: &corev1.ContainerStateRunning{},
+	}, true), "api:v1"), map[string]string{
+		config.AnnotationWorkloadRestartAt: restartedAt,
+	})
+	require.NoError(t, waiter.podInformer.GetIndexer().Add(pod))
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	require.NoError(t, waiter.WaitForComponentReadyWithOptions(ctx, "app-1", "api", 1, ComponentReadyWaitOptions{
+		ExpectedImages: []string{"api:v1"},
+		ExpectedAnnotations: map[string]string{
+			config.AnnotationWorkloadRestartAt: restartedAt,
+		},
+	}, time.Second))
+}
+
+func TestWaitForComponentReadyWithOptionsTimeoutReturnsFailedForMatchingAbnormalPod(t *testing.T) {
+	waiter := NewKubernetesWorkloadObserver(fake.NewSimpleClientset())
+	waiter.pollInterval = time.Millisecond
+	startKubernetesWorkloadObserver(t, waiter)
+	restartedAt := "2026-07-02T00:00:00Z"
+	oldReady := setTestPodImages(newTestPod("default", "demo-old", "app-1", "api", 7, corev1.ContainerState{
+		Running: &corev1.ContainerStateRunning{},
+	}, true), "api:v1")
+	newAbnormal := setTestPodAnnotations(setTestPodImages(newTestPod("default", "demo-new", "app-1", "api", 7, corev1.ContainerState{
+		Waiting: &corev1.ContainerStateWaiting{
+			Reason:  "CrashLoopBackOff",
+			Message: "back-off",
+		},
+	}, false), "api:v1"), map[string]string{
+		config.AnnotationWorkloadRestartAt: restartedAt,
+	})
+	require.NoError(t, waiter.podInformer.GetIndexer().Add(oldReady))
+	require.NoError(t, waiter.podInformer.GetIndexer().Add(newAbnormal))
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	err := waiter.WaitForComponentReadyWithOptions(ctx, "app-1", "api", 1, ComponentReadyWaitOptions{
+		ExpectedImages: []string{"api:v1"},
+		ExpectedAnnotations: map[string]string{
+			config.AnnotationWorkloadRestartAt: restartedAt,
+		},
+	}, 80*time.Millisecond)
+	require.Error(t, err)
+
+	we, ok := ExtractWaitError(err)
+	require.True(t, ok)
+	require.Equal(t, config.StatusFailed, we.Status)
+	require.Contains(t, we.Error(), "CrashLoopBackOff")
+	require.Contains(t, we.AbnormalReason, "CrashLoopBackOff")
+}
+
+func TestWaitForComponentReadySnapshotRespectsDesiredReplicas(t *testing.T) {
+	waiter := NewKubernetesWorkloadObserver(fake.NewSimpleClientset())
+	waiter.pollInterval = time.Millisecond
+	startKubernetesWorkloadObserver(t, waiter)
+	pod := newTestPod("default", "demo", "app-1", "api", 7, corev1.ContainerState{
+		Running: &corev1.ContainerStateRunning{},
+	}, true)
+	require.NoError(t, waiter.podInformer.GetIndexer().Add(pod))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	result := make(chan error, 1)
+	go func() {
+		result <- waiter.WaitForComponentReady(ctx, "app-1", "api", 2, 200*time.Millisecond)
+	}()
+
+	assertNoResult(t, result, 50*time.Millisecond)
+
+	pod2 := newTestPod("default", "demo-2", "app-1", "api", 7, corev1.ContainerState{
+		Running: &corev1.ContainerStateRunning{},
+	}, true)
+	require.NoError(t, waiter.podInformer.GetIndexer().Add(pod2))
+
+	select {
+	case err := <-result:
+		require.NoError(t, err)
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected ready after adding second pod")
+	}
+}
+
+func TestWaitForComponentReadyRejectsNonPositiveDesiredReplicas(t *testing.T) {
+	waiter := NewKubernetesWorkloadObserver(fake.NewSimpleClientset())
+	waiter.pollInterval = time.Millisecond
+	startKubernetesWorkloadObserver(t, waiter)
+
+	for _, desiredReplicas := range []int32{0, -1} {
+		t.Run(fmt.Sprintf("replicas_%d", desiredReplicas), func(t *testing.T) {
+			err := waiter.WaitForComponentReady(context.Background(), "app-1", "api", desiredReplicas, time.Hour)
+			require.ErrorContains(t, err, "requires positive replicas and timeout")
+		})
+	}
+}
+
+func TestWaitForComponentReadyTimeoutReturnsFailedWhenLastAbnormalSeen(t *testing.T) {
+	waiter := NewKubernetesWorkloadObserver(fake.NewSimpleClientset())
+	waiter.pollInterval = time.Millisecond
+	startKubernetesWorkloadObserver(t, waiter)
+	pod := newTestPod("default", "demo", "app-1", "api", 7, corev1.ContainerState{
+		Waiting: &corev1.ContainerStateWaiting{
+			Reason:  "CrashLoopBackOff",
+			Message: "back-off restarting failed container",
+		},
+	}, false)
+	require.NoError(t, waiter.podInformer.GetIndexer().Add(pod))
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	err := waiter.WaitForComponentReady(ctx, "app-1", "api", 1, 120*time.Millisecond)
+	require.Error(t, err)
+
+	we, ok := ExtractWaitError(err)
+	require.True(t, ok)
+	require.Equal(t, config.StatusFailed, we.Status)
+	require.Contains(t, we.Error(), "CrashLoopBackOff")
+	require.Contains(t, we.AbnormalReason, "CrashLoopBackOff")
+}
+
+func TestWaitForComponentReadyTimeoutReturnsTimeoutWhenOnlyPending(t *testing.T) {
+	waiter := NewKubernetesWorkloadObserver(fake.NewSimpleClientset())
+	waiter.pollInterval = time.Millisecond
+	startKubernetesWorkloadObserver(t, waiter)
+	pod := newTestPod("default", "demo", "app-1", "api", 7, corev1.ContainerState{
+		Waiting: &corev1.ContainerStateWaiting{
+			Reason:  "ContainerCreating",
+			Message: "pod is waiting to be scheduled",
+		},
+	}, false)
+	require.NoError(t, waiter.podInformer.GetIndexer().Add(pod))
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	err := waiter.WaitForComponentReady(ctx, "app-1", "api", 1, 120*time.Millisecond)
+	require.Error(t, err)
+
+	we, ok := ExtractWaitError(err)
+	require.True(t, ok)
+	require.Equal(t, config.StatusTimeout, we.Status)
+	require.Empty(t, we.AbnormalReason)
+}
+
+func assertNoResult(t *testing.T, result <-chan error, wait time.Duration) {
+	t.Helper()
+	select {
+	case err := <-result:
+		t.Fatalf("unexpected early result: %v", err)
+	case <-time.After(wait):
+	}
+}
+
+func setTestPodImages(pod *corev1.Pod, images ...string) *corev1.Pod {
+	if pod == nil {
+		return nil
+	}
+	pod.Spec.Containers = make([]corev1.Container, 0, len(images))
+	for i, image := range images {
+		name := "app-" + strconv.Itoa(i)
+		if len(images) == 1 {
+			name = "app"
+		}
+		pod.Spec.Containers = append(pod.Spec.Containers, corev1.Container{
+			Name:  name,
+			Image: image,
+		})
+	}
+	return pod
+}
+
+func setTestPodAnnotations(pod *corev1.Pod, annotations map[string]string) *corev1.Pod {
+	if pod == nil {
+		return nil
+	}
+	pod.Annotations = annotations
+	return pod
 }

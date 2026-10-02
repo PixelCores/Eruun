@@ -13,6 +13,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -87,9 +88,7 @@ func TestValidationService_TryApplication_EmitsComponentsArray(t *testing.T) {
 }
 
 func TestValidationService_TryApplication_RejectsInvalidAppCallbackURL(t *testing.T) {
-	svc := &validationServiceImpl{
-		URLSecurityPolicyProvider: newTestURLSecurityPolicyProvider(t, spec.DefaultURLSecurityPolicy()),
-	}
+	svc := NewValidationService(nil, newTestURLSecurityPolicyProvider(t, spec.DefaultURLSecurityPolicy()), nil, nil)
 	req := validCallbackTryApplicationRequest()
 	req.Callback = &apisv1.WorkflowCallback{
 		Success: "ftp://example.com/callback",
@@ -129,8 +128,7 @@ func TestValidationService_TryApplication_CreateChecksExistingAppResourceCollisi
 		ComponentType: config.ServerJob,
 		Image:         "nginx:latest",
 	}
-	appSvc := newMockServiceWithStore(store)
-	svc := &validationServiceImpl{AppRepo: appSvc.AppRepo, ComponentRepo: appSvc.ComponentRepo}
+	svc := NewValidationService(nil, nil, repository.NewApplicationRepository(store), repository.NewComponentRepository(store))
 
 	resp := svc.TryApplication(context.Background(), apisv1.CreateApplicationsRequest{
 		Name:      "game",

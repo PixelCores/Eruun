@@ -70,9 +70,8 @@ func NewDBError(err error) error {
 
 // Config datastore config
 type Config struct {
-	Type     string
-	URL      string
-	Database string
+	Type string
+	URL  string
 	// MaxIdleConns defines the maximum number of idle connections kept in the pool.
 	MaxIdleConns int
 	// MaxOpenConns limits the total number of open connections to the database.
@@ -89,7 +88,6 @@ type Entity interface {
 	SetUpdateTime(time time.Time)
 	PrimaryKey() string
 	TableName() string
-	ShortTableName() string
 	Index() map[string]interface{}
 }
 

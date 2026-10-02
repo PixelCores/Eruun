@@ -17,9 +17,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
 
+	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 )
 
 func TestImportNamespaceResources_AdoptedStandalonePodMakesDependenciesShared(t *testing.T) {
@@ -171,7 +171,7 @@ func TestImportNamespaceResources_AdoptedPreservesSourceReplicasIncludingZero(t 
 				KubeClient:         client,
 				ManagementLocker:   locker.NewMemoryLocker("test-adopted-import"),
 				ApplicationService: appService,
-				ValidationService:  NewValidationService(),
+				ValidationService:  newValidationService(store),
 				AppRepo:            &mockAppRepo{store: store},
 				WorkflowRepo:       &mockWorkflowRepo{store: store},
 				ComponentRepo:      &mockComponentRepo{store: store},
@@ -284,7 +284,7 @@ func runAdoptedExternalUsageDryRun(
 		Cfg:                adoptedImportTestConfig(),
 		KubeClient:         client,
 		ApplicationService: &namespaceImportAppServiceStub{},
-		ValidationService:  NewValidationService(),
+		ValidationService:  newValidationService(store),
 		AppRepo:            &mockAppRepo{store: store},
 		WorkflowRepo:       &mockWorkflowRepo{store: store},
 		ComponentRepo:      &mockComponentRepo{store: store},

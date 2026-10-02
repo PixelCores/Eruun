@@ -13,23 +13,21 @@ import (
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
 
 type DeployPVCJobCtl struct {
 	deployNamespacedResourceJobBase
 }
 
-func NewDeployPVCJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), shareLocker locker.Locker) *DeployPVCJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("NewDeployPVCJobCtl", job, client, store, ack, shareLocker)
+func NewDeployPVCJobCtl(job *model.JobTask, runtime *Runtime, shareLocker locker.Locker) *DeployPVCJobCtl {
+	base, ok := newDeployNamespacedResourceJobBase("NewDeployPVCJobCtl", job, runtime, shareLocker)
 	if !ok {
 		return nil
 	}

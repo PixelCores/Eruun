@@ -73,7 +73,7 @@ func TestObserveApplicationLifecycleIsReadOnly(t *testing.T) {
 				Namespace:      "production",
 				ManagementMode: domainspec.ManagementModeObserve,
 			}
-			service, store, clientset, _ := newAdoptedLifecycleTestService(t, app, nil)
+			service, store, clientset := newAdoptedLifecycleTestService(t, app, nil)
 
 			err := operation.run(service, app.ID)
 			require.ErrorIs(t, err, bcode.ErrApplicationManagementMode)
@@ -108,7 +108,7 @@ func TestAdoptedStopUsesExactSourcesAndCapturesReplicaSnapshots(t *testing.T) {
 	deploymentReplicas := int32(3)
 	statefulSetReplicas := int32(2)
 	decoyReplicas := int32(7)
-	service, store, clientset, _ := newAdoptedLifecycleTestService(
+	service, store, clientset := newAdoptedLifecycleTestService(
 		t,
 		app,
 		[]*model.ApplicationComponent{deploymentComponent, statefulSetComponent},
@@ -208,7 +208,7 @@ func TestAdoptedLifecycleRejectsLiveHPAAddedAfterImportBeforeAnyWrite(t *testing
 		"production-backend",
 		"deployment-uid",
 	)
-	service, store, clientset, _ := newAdoptedLifecycleTestService(
+	service, store, clientset := newAdoptedLifecycleTestService(
 		t,
 		app,
 		[]*model.ApplicationComponent{component},
@@ -272,7 +272,7 @@ func TestAdoptedStopRejectsUnsafeStatefulSetBeforeAnyWrite(t *testing.T) {
 	)
 	deploymentReplicas := int32(3)
 	statefulSetReplicas := int32(1)
-	service, store, clientset, _ := newAdoptedLifecycleTestService(
+	service, store, clientset := newAdoptedLifecycleTestService(
 		t,
 		app,
 		[]*model.ApplicationComponent{deploymentComponent, statefulSetComponent},
@@ -384,7 +384,7 @@ func TestAdoptedStopRejectsUnsafePVCBeforeAnyWrite(t *testing.T) {
 					Status: corev1.PersistentVolumeClaimStatus{Phase: test.claimPhase},
 				})
 			}
-			service, store, clientset, _ := newAdoptedLifecycleTestService(
+			service, store, clientset := newAdoptedLifecycleTestService(
 				t,
 				app,
 				[]*model.ApplicationComponent{component},
@@ -450,7 +450,7 @@ func TestAdoptedStopRevalidatesFreshStatefulSetBeforeScaleDown(t *testing.T) {
 				"legacy-mysql",
 				"statefulset-uid",
 			)
-			service, store, clientset, _ := newAdoptedLifecycleTestService(
+			service, store, clientset := newAdoptedLifecycleTestService(
 				t,
 				app,
 				[]*model.ApplicationComponent{component},
@@ -518,7 +518,7 @@ func TestAdoptedStopSnapshotUpdatePreservesConcurrentComponentFields(t *testing.
 	)
 	component.Image = "original-image"
 	component.Replicas = 1
-	service, store, _, _ := newAdoptedLifecycleTestService(
+	service, store, _ := newAdoptedLifecycleTestService(
 		t,
 		app,
 		[]*model.ApplicationComponent{component},
@@ -591,7 +591,7 @@ func TestAdoptedLifecycleRejectsMissingOrMismatchedSourceBeforeAnyWrite(t *testi
 				"legacy-backend",
 				"original-uid",
 			)
-			service, store, clientset, _ := newAdoptedLifecycleTestService(
+			service, store, clientset := newAdoptedLifecycleTestService(
 				t,
 				app,
 				[]*model.ApplicationComponent{component},
@@ -627,7 +627,7 @@ func TestAdoptedLifecyclePreflightsSkippedSourceIdentityAndStatefulSafety(t *tes
 			"original-uid",
 		)
 		component.Status = string(config.ComponentStatusRunning)
-		service, store, clientset, _ := newAdoptedLifecycleTestService(
+		service, store, clientset := newAdoptedLifecycleTestService(
 			t,
 			app,
 			[]*model.ApplicationComponent{component},
@@ -668,7 +668,7 @@ func TestAdoptedLifecyclePreflightsSkippedSourceIdentityAndStatefulSafety(t *tes
 		)
 		component.Status = string(config.ComponentStatusStopped)
 		component.ResumeReplicas = adoptedTestInt32Ptr(1)
-		service, store, clientset, _ := newAdoptedLifecycleTestService(
+		service, store, clientset := newAdoptedLifecycleTestService(
 			t,
 			app,
 			[]*model.ApplicationComponent{component},
@@ -725,7 +725,7 @@ func TestAdoptedStartRestoresSnapshotsForDeploymentAndStatefulSet(t *testing.T) 
 	statefulSetComponent.Status = string(config.ComponentStatusStopped)
 	statefulSetComponent.ResumeReplicas = adoptedTestInt32Ptr(2)
 	zero := int32(0)
-	service, store, clientset, _ := newAdoptedLifecycleTestService(
+	service, store, clientset := newAdoptedLifecycleTestService(
 		t,
 		app,
 		[]*model.ApplicationComponent{deploymentComponent, statefulSetComponent},
@@ -880,7 +880,7 @@ func TestAdoptedStartAndRestartRejectUnsafeStatefulSetBeforeAnyWrite(t *testing.
 			)
 			component.Status = string(test.status)
 			component.ResumeReplicas = adoptedTestInt32Ptr(1)
-			service, store, clientset, _ := newAdoptedLifecycleTestService(
+			service, store, clientset := newAdoptedLifecycleTestService(
 				t,
 				app,
 				[]*model.ApplicationComponent{component},
@@ -917,7 +917,7 @@ func TestAdoptedRestartMutatesExactSourcesAndAddsManagedLabels(t *testing.T) {
 		"statefulset-uid",
 	)
 	statefulSetComponent.ID = 42
-	service, store, clientset, _ := newAdoptedLifecycleTestService(
+	service, store, clientset := newAdoptedLifecycleTestService(
 		t,
 		app,
 		[]*model.ApplicationComponent{deploymentComponent, statefulSetComponent},
@@ -1002,7 +1002,7 @@ func TestAdoptedRestartRejectsPausedDeploymentBeforeAnyWrite(t *testing.T) {
 		"legacy-backend",
 		"deployment-uid",
 	)
-	service, store, clientset, _ := newAdoptedLifecycleTestService(
+	service, store, clientset := newAdoptedLifecycleTestService(
 		t,
 		app,
 		[]*model.ApplicationComponent{component},
@@ -1131,7 +1131,7 @@ func TestAdoptedLifecycleSerializesWithWorkflowAndScheduleLock(t *testing.T) {
 					component.ResumeReplicas = adoptedTestInt32Ptr(2)
 				}
 				replicas := int32(2)
-				service, store, clientset, _ := newAdoptedLifecycleTestService(
+				service, store, clientset := newAdoptedLifecycleTestService(
 					t,
 					app,
 					[]*model.ApplicationComponent{component},
@@ -1215,7 +1215,7 @@ func TestAdoptedLifecycleRecordsTaskWhileScheduleLockIsHeld(t *testing.T) {
 			if operation.prepare != nil {
 				operation.prepare(component, deployment)
 			}
-			service, store, _, _ := newAdoptedLifecycleTestService(
+			service, store, _ := newAdoptedLifecycleTestService(
 				t,
 				app,
 				[]*model.ApplicationComponent{component},
@@ -1266,7 +1266,7 @@ func newAdoptedLifecycleTestService(
 	app *model.Applications,
 	components []*model.ApplicationComponent,
 	objects ...runtime.Object,
-) (*applicationsServiceImpl, *inMemoryAppStore, *fake.Clientset, *mockWorkflowQueueRepo) {
+) (*applicationsServiceImpl, *inMemoryAppStore, *fake.Clientset) {
 	t.Helper()
 	store := newInMemoryAppStore()
 	require.NoError(t, store.Add(context.Background(), app))
@@ -1274,16 +1274,14 @@ func newAdoptedLifecycleTestService(
 		require.NoError(t, store.Add(context.Background(), component))
 	}
 	clientset := fake.NewSimpleClientset(objects...)
-	queueRepo := &mockWorkflowQueueRepo{}
 	service := &applicationsServiceImpl{
-		KubeClient:        clientset,
-		Store:             store,
-		AppRepo:           &mockAppRepo{store: store},
-		ComponentRepo:     &mockComponentRepo{store: store},
-		WorkflowQueueRepo: queueRepo,
-		ScheduleLocker:    locker.NewMemoryLocker("test-adopted-lifecycle"),
+		KubeClient:     clientset,
+		Store:          store,
+		AppRepo:        &mockAppRepo{store: store},
+		ComponentRepo:  &mockComponentRepo{store: store},
+		ScheduleLocker: locker.NewMemoryLocker("test-adopted-lifecycle"),
 	}
-	return service, store, clientset, queueRepo
+	return service, store, clientset
 }
 
 func adoptedTestComponent(

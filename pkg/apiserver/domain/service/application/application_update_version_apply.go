@@ -13,6 +13,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
+	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -106,7 +107,12 @@ func (c *applicationsServiceImpl) commitAutoExecVersionUpdate(
 				return fmt.Errorf("auto exec resource action state: %w", err)
 			}
 
-			task, err := createWorkflowQueueTaskWithResourceActionInfoAndCallback(lockCtx, tx, workflowForTask, executeAt, "", cleanupInfoJSON, resourceActionInfoJSON, taskCallback)
+			task, err := workflowservice.CreateWorkflowQueueTask(lockCtx, tx, workflowForTask, workflowservice.QueueTaskOptions{
+				ExecuteAt:          executeAt,
+				CleanupInfo:        cleanupInfoJSON,
+				ResourceActionInfo: resourceActionInfoJSON,
+				Callback:           taskCallback,
+			})
 			if err != nil {
 				return fmt.Errorf("auto exec workflow: %w", err)
 			}

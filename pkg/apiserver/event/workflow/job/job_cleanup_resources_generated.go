@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	appsv1 "k8s.io/api/apps/v1"
-	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -30,10 +28,7 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 		ns := component.Namespace
 		name := buildWebServiceName(component.Name, component.ResourceNameKey())
 		if result != nil {
-			if deploy, ok := result.Service.(*appsv1.Deployment); ok && deploy != nil {
-				ns = pickNonEmpty(deploy.Namespace, ns)
-				name = pickNonEmpty(deploy.Name, name)
-			}
+			ns, name = workloadIdentityFromObject(result.Service, ns, name)
 			c.deleteAdditionalObjects(ctx, component.Namespace, result.AdditionalObjects, deleted)
 		}
 		c.deleteTrackedResource(ctx, deleted, spec.ResourceDeployment, ns, name, false, func(deleteCtx context.Context) error {
@@ -48,10 +43,7 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 		ns := component.Namespace
 		name := buildStoreSeverName(component.Name, component.ResourceNameKey())
 		if result != nil {
-			if sts, ok := result.Service.(*appsv1.StatefulSet); ok && sts != nil {
-				ns = pickNonEmpty(sts.Namespace, ns)
-				name = pickNonEmpty(sts.Name, name)
-			}
+			ns, name = workloadIdentityFromObject(result.Service, ns, name)
 			c.deleteAdditionalObjects(ctx, component.Namespace, result.AdditionalObjects, deleted)
 		}
 		c.deleteTrackedResource(ctx, deleted, spec.ResourceStatefulSet, ns, name, false, func(deleteCtx context.Context) error {
@@ -75,10 +67,7 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 		ns := component.Namespace
 		name := buildJobName(component.Name, component.ResourceNameKey())
 		if result != nil {
-			if jobObj, ok := result.Service.(*batchv1.Job); ok && jobObj != nil {
-				ns = pickNonEmpty(jobObj.Namespace, ns)
-				name = pickNonEmpty(jobObj.Name, name)
-			}
+			ns, name = workloadIdentityFromObject(result.Service, ns, name)
 			c.deleteAdditionalObjects(ctx, component.Namespace, result.AdditionalObjects, deleted)
 		}
 		c.deleteTrackedResource(ctx, deleted, spec.ResourceJob, ns, name, false, func(deleteCtx context.Context) error {
@@ -96,10 +85,7 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 		ns := component.Namespace
 		name := buildCronJobName(component.Name, component.ResourceNameKey())
 		if result != nil {
-			if cronObj, ok := result.Service.(*batchv1.CronJob); ok && cronObj != nil {
-				ns = pickNonEmpty(cronObj.Namespace, ns)
-				name = pickNonEmpty(cronObj.Name, name)
-			}
+			ns, name = workloadIdentityFromObject(result.Service, ns, name)
 			c.deleteAdditionalObjects(ctx, component.Namespace, result.AdditionalObjects, deleted)
 		}
 		c.deleteTrackedResource(ctx, deleted, spec.ResourceCronJob, ns, name, false, func(deleteCtx context.Context) error {
@@ -108,6 +94,13 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 	}
 
 	c.deleteServicesForComponent(ctx, component, props, deleted)
+}
+
+func workloadIdentityFromObject(resource client.Object, namespace, name string) (string, string) {
+	if resource == nil {
+		return namespace, name
+	}
+	return pickNonEmpty(resource.GetNamespace(), namespace), pickNonEmpty(resource.GetName(), name)
 }
 
 func (c *CleanupResourcesJobCtl) deleteServicesForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, deleted *cleanupResourceSet) {
@@ -199,37 +192,19 @@ func (c *CleanupResourcesJobCtl) deleteAdditionalObjects(ctx context.Context, fa
 }
 
 func (c *CleanupResourcesJobCtl) deleteConfigMapForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, deleted *cleanupResourceSet) {
-	obj := GenerateConfigMap(component, props)
-	switch cm := obj.(type) {
-	case *ConfigMapInput:
-		ns := pickNonEmpty(cm.Namespace, component.Namespace)
-		name := pickNonEmpty(cm.Name, component.Name)
-		c.deleteTrackedResource(ctx, deleted, spec.ResourceConfigMap, ns, name, false, func(deleteCtx context.Context) error {
-			return c.deleteConfigMap(deleteCtx, ns, name)
-		})
-	case *corev1.ConfigMap:
-		ns := pickNonEmpty(cm.Namespace, component.Namespace)
-		name := pickNonEmpty(cm.Name, component.Name)
-		c.deleteTrackedResource(ctx, deleted, spec.ResourceConfigMap, ns, name, false, func(deleteCtx context.Context) error {
-			return c.deleteConfigMap(deleteCtx, ns, name)
-		})
-	}
+	cm := GenerateConfigMap(component, props)
+	ns := pickNonEmpty(cm.Namespace, component.Namespace)
+	name := pickNonEmpty(cm.Name, component.Name)
+	c.deleteTrackedResource(ctx, deleted, spec.ResourceConfigMap, ns, name, false, func(deleteCtx context.Context) error {
+		return c.deleteConfigMap(deleteCtx, ns, name)
+	})
 }
 
 func (c *CleanupResourcesJobCtl) deleteSecretForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, deleted *cleanupResourceSet) {
-	obj := GenerateSecret(component, props)
-	switch sec := obj.(type) {
-	case *SecretInput:
-		ns := pickNonEmpty(sec.Namespace, component.Namespace)
-		name := pickNonEmpty(sec.Name, component.Name)
-		c.deleteTrackedResource(ctx, deleted, spec.ResourceSecret, ns, name, false, func(deleteCtx context.Context) error {
-			return c.deleteSecret(deleteCtx, ns, name)
-		})
-	case *corev1.Secret:
-		ns := pickNonEmpty(sec.Namespace, component.Namespace)
-		name := pickNonEmpty(sec.Name, component.Name)
-		c.deleteTrackedResource(ctx, deleted, spec.ResourceSecret, ns, name, false, func(deleteCtx context.Context) error {
-			return c.deleteSecret(deleteCtx, ns, name)
-		})
-	}
+	sec := GenerateSecret(component, props)
+	ns := pickNonEmpty(sec.Namespace, component.Namespace)
+	name := pickNonEmpty(sec.Name, component.Name)
+	c.deleteTrackedResource(ctx, deleted, spec.ResourceSecret, ns, name, false, func(deleteCtx context.Context) error {
+		return c.deleteSecret(deleteCtx, ns, name)
+	})
 }

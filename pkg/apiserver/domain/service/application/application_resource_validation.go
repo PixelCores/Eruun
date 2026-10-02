@@ -7,6 +7,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/traitvalidation"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -45,14 +46,14 @@ func validateResolvedResourceNames(resourceAppName, namespace string, components
 	return trackResolvedApplicationResources(seenResources, seenComponentLabels, resourceAppName, namespace, "", "", components, true)
 }
 
-func (c *applicationsServiceImpl) validateApplicationResourceNames(ctx context.Context, app *model.Applications, components []apisv1.CreateComponentRequest) error {
+func validateApplicationResourceNames(ctx context.Context, appRepo repository.ApplicationRepository, componentRepo repository.ComponentRepository, app *model.Applications, components []apisv1.CreateComponentRequest) error {
 	if app == nil {
 		return fmt.Errorf("%w: application is nil", bcode.ErrApplicationConfig)
 	}
-	if c.AppRepo == nil {
+	if appRepo == nil {
 		return fmt.Errorf("application repository is not initialized")
 	}
-	if c.ComponentRepo == nil {
+	if componentRepo == nil {
 		return fmt.Errorf("component repository is not initialized")
 	}
 
@@ -63,7 +64,7 @@ func (c *applicationsServiceImpl) validateApplicationResourceNames(ctx context.C
 		return trackResolvedApplicationResources(seenResources, seenComponentLabels, applicationResourceNameKey(app), namespace, app.ID, app.Name, components, true)
 	}
 
-	apps, err := c.AppRepo.List(ctx, datastore.ListOptions{})
+	apps, err := appRepo.List(ctx, datastore.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -71,7 +72,7 @@ func (c *applicationsServiceImpl) validateApplicationResourceNames(ctx context.C
 		if existingApp == nil || existingApp.TemplateEnabled || existingApp.ID == app.ID || serviceNamespaceOrDefault(existingApp.Namespace) != namespace {
 			continue
 		}
-		existingComponents, err := c.ComponentRepo.FindByAppID(ctx, existingApp.ID)
+		existingComponents, err := componentRepo.FindByAppID(ctx, existingApp.ID)
 		if err != nil {
 			return err
 		}

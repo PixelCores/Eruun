@@ -67,9 +67,11 @@ func TestAdoptedRoleRecreationPersistsClaimBeforeCreate(t *testing.T) {
 			JobType:   string(config.JobDeployRole),
 			JobInfo:   source.DeepCopy(),
 		},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
 	)
 
@@ -123,9 +125,11 @@ func TestAdoptedRoleRecreationAlreadyExistsWithSameTokenFinalizesClaim(t *testin
 	})
 	ctl := NewDeployRoleJobCtl(
 		&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobInfo: source.DeepCopy()},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
 	)
 
@@ -166,9 +170,11 @@ func TestAdoptedRoleRecreationClaimCASFailureDoesNotCreate(t *testing.T) {
 			JobType:   string(config.JobDeployRole),
 			JobInfo:   source.DeepCopy(),
 		},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
 	)
 
@@ -260,23 +266,53 @@ func TestPendingAdoptedRecreationRecoversNamespacedRBACAndPolicyResources(t *tes
 			switch testCase.kind {
 			case "ServiceAccount":
 				runErr = NewDeployServiceAccountJobCtl(
-					job, client, store, func() {}, locker.NewNoopLocker(shareLockerPrefix),
+					job,
+					&Runtime{
+						Client: client,
+						Store:  store,
+						Ack:    func() {},
+					},
+					locker.NewNoopLocker(shareLockerPrefix),
 				).run(ctx)
 			case "Role":
 				runErr = NewDeployRoleJobCtl(
-					job, client, store, func() {}, locker.NewNoopLocker(shareLockerPrefix),
+					job,
+					&Runtime{
+						Client: client,
+						Store:  store,
+						Ack:    func() {},
+					},
+					locker.NewNoopLocker(shareLockerPrefix),
 				).run(ctx)
 			case "RoleBinding":
 				runErr = NewDeployRoleBindingJobCtl(
-					job, client, store, func() {}, locker.NewNoopLocker(shareLockerPrefix),
+					job,
+					&Runtime{
+						Client: client,
+						Store:  store,
+						Ack:    func() {},
+					},
+					locker.NewNoopLocker(shareLockerPrefix),
 				).run(ctx)
 			case "PodDisruptionBudget":
 				runErr = NewDeployAdoptedPodDisruptionBudgetJobCtl(
-					job, client, store, func() {}, locker.NewMemoryLocker(shareLockerPrefix),
+					job,
+					&Runtime{
+						Client: client,
+						Store:  store,
+						Ack:    func() {},
+					},
+					locker.NewMemoryLocker(shareLockerPrefix),
 				).run(ctx)
 			case "NetworkPolicy":
 				runErr = NewDeployAdoptedNetworkPolicyJobCtl(
-					job, client, store, func() {}, locker.NewMemoryLocker(shareLockerPrefix),
+					job,
+					&Runtime{
+						Client: client,
+						Store:  store,
+						Ack:    func() {},
+					},
+					locker.NewMemoryLocker(shareLockerPrefix),
 				).run(ctx)
 			default:
 				require.FailNow(t, "unsupported recovery test kind", testCase.kind)
@@ -327,9 +363,11 @@ func TestDeployServiceAccountJobCtlRunAdoptedPreservesUnknownFieldsAndSkipsNoop(
 	client := fake.NewSimpleClientset(live)
 	ctl := NewDeployServiceAccountJobCtl(
 		&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployServiceAccount), JobInfo: desired},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
 	)
 
@@ -385,9 +423,11 @@ func TestDeployRoleJobCtlRunAdoptedUsesSourceUIDAndLiveBaseline(t *testing.T) {
 	client := fake.NewSimpleClientset(live)
 	ctl := NewDeployRoleJobCtl(
 		&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployRole), JobInfo: desired},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
 	)
 
@@ -444,9 +484,11 @@ func TestDeployNamespacedRBACJobCtlRunAdoptedPreservedDispositionNeverTouchesKub
 			client := fake.NewSimpleClientset(source)
 			ctl := NewDeployRoleJobCtl(
 				&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployRole), JobInfo: source.DeepCopy()},
-				client,
-				store,
-				func() {},
+				&Runtime{
+					Client: client,
+					Store:  store,
+					Ack:    func() {},
+				},
 				locker.NewNoopLocker(shareLockerPrefix),
 			)
 
@@ -481,9 +523,11 @@ func TestDeployRoleJobCtlRunAdoptedRejectsReplacementUID(t *testing.T) {
 	client := fake.NewSimpleClientset(replacement)
 	ctl := NewDeployRoleJobCtl(
 		&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployRole), JobInfo: source.DeepCopy()},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
 	)
 
@@ -515,9 +559,11 @@ func TestDeployRoleJobCtlRunAdoptedNeverFallsBackToGeneratedName(t *testing.T) {
 	desired.Name = "generated-role"
 	ctl := NewDeployRoleJobCtl(
 		&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployRole), JobInfo: desired},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
 	)
 
@@ -553,9 +599,11 @@ func TestDeployRoleBindingJobCtlRunAdoptedRejectsImmutableRoleRefChange(t *testi
 	client := fake.NewSimpleClientset(source)
 	ctl := NewDeployRoleBindingJobCtl(
 		&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployRoleBinding), JobInfo: desired},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
 	)
 
@@ -603,9 +651,11 @@ func TestDeployRoleBindingJobCtlRunAdoptedUsesLiveBaselineAndSkipsSecondUpdate(t
 	client := fake.NewSimpleClientset(source)
 	ctl := NewDeployRoleBindingJobCtl(
 		&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployRoleBinding), JobInfo: desired},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
 	)
 
@@ -643,9 +693,11 @@ func TestAdoptedNamespacedRBACRecreateFromSnapshotAndRotateUID(t *testing.T) {
 		})
 		ctl := NewDeployServiceAccountJobCtl(
 			&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployServiceAccount), JobInfo: source.DeepCopy()},
-			client,
-			store,
-			func() {},
+			&Runtime{
+				Client: client,
+				Store:  store,
+				Ack:    func() {},
+			},
 			locker.NewNoopLocker(shareLockerPrefix),
 		)
 
@@ -678,9 +730,11 @@ func TestAdoptedNamespacedRBACRecreateFromSnapshotAndRotateUID(t *testing.T) {
 		})
 		ctl := NewDeployRoleBindingJobCtl(
 			&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployRoleBinding), JobInfo: source.DeepCopy()},
-			client,
-			store,
-			func() {},
+			&Runtime{
+				Client: client,
+				Store:  store,
+				Ack:    func() {},
+			},
 			locker.NewNoopLocker(shareLockerPrefix),
 		)
 
@@ -720,9 +774,11 @@ func TestAdoptedRoleRecreationPersistenceFailureRetainsLiveObjectAndPendingClaim
 	})
 	ctl := NewDeployRoleJobCtl(
 		&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployRole), JobInfo: source.DeepCopy()},
-		client,
-		store,
-		func() {},
+		&Runtime{
+			Client: client,
+			Store:  store,
+			Ack:    func() {},
+		},
 		locker.NewNoopLocker(shareLockerPrefix),
 	)
 
@@ -769,9 +825,11 @@ func TestAdoptedClusterScopedRBACJobsAreExternalZeroWrite(t *testing.T) {
 		}
 		ctl := NewDeployClusterRoleJobCtl(
 			&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployClusterRole), JobInfo: desired},
-			client,
-			store,
-			func() {},
+			&Runtime{
+				Client: client,
+				Store:  store,
+				Ack:    func() {},
+			},
 			locker.NewNoopLocker(shareLockerPrefix),
 		)
 
@@ -788,9 +846,11 @@ func TestAdoptedClusterScopedRBACJobsAreExternalZeroWrite(t *testing.T) {
 		}
 		ctl := NewDeployClusterRoleBindingJobCtl(
 			&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployClusterRoleBinding), JobInfo: desired},
-			client,
-			store,
-			func() {},
+			&Runtime{
+				Client: client,
+				Store:  store,
+				Ack:    func() {},
+			},
 			locker.NewNoopLocker(shareLockerPrefix),
 		)
 

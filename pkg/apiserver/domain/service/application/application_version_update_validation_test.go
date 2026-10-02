@@ -368,9 +368,7 @@ func TestUpdateVersionRejectsNegativeExecuteAt(t *testing.T) {
 		Image: "backend:v1",
 	}
 
-	queueRepo := &mockWorkflowQueueRepo{}
 	svc := newMockServiceWithStore(store)
-	svc.WorkflowQueueRepo = queueRepo
 
 	req := apisv1.UpdateVersionRequest{
 		Version:   "1.1.0",
@@ -386,6 +384,6 @@ func TestUpdateVersionRejectsNegativeExecuteAt(t *testing.T) {
 	_, err := svc.UpdateVersion(context.Background(), "app-1", req)
 	require.Error(t, err)
 	require.ErrorIs(t, err, bcode.ErrWorkflowConfig)
+	require.Empty(t, store.tasks)
 	require.Equal(t, "1.0.0", store.apps["app-1"].Version)
-	require.Nil(t, queueRepo.lastQueue)
 }

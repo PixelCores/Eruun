@@ -111,10 +111,9 @@ func buildComponentIngresses(component *apisv1.ApplicationComponent) []apisv1.Co
 	if !componentDeploysIngress(component) || len(component.Traits.Ingress) == 0 {
 		return nil
 	}
-	defaultServiceName, defaultServicePort := resolveComponentIngressDefaultService(component)
 	ingresses := make([]apisv1.ComponentIngressInfo, 0, len(component.Traits.Ingress))
 	for i, trait := range component.Traits.Ingress {
-		annotations, routes := buildIngressTraitDetails(trait, defaultServiceName, defaultServicePort)
+		annotations, routes := buildIngressTraitDetails(component, trait)
 		ingress := apisv1.ComponentIngressInfo{
 			Name:             buildIngressResourceName(component.Name, componentResourceAppName(component), trait.Name, i),
 			Namespace:        pickIngressNamespace(component.Namespace, trait.Namespace),
@@ -128,37 +127,33 @@ func buildComponentIngresses(component *apisv1.ApplicationComponent) []apisv1.Co
 	return ingresses
 }
 
-func buildIngressTraitDetails(trait spec.IngressTraitsSpec, defaultServiceName string, defaultServicePort int32) (map[string]string, []apisv1.ComponentIngressRouteInfo) {
+func buildIngressTraitDetails(component *apisv1.ApplicationComponent, trait spec.IngressTraitsSpec) (map[string]string, []apisv1.ComponentIngressRouteInfo) {
 	annotations := copyStringMap(trait.Annotations)
 	if len(trait.Routes) == 0 {
 		return annotations, nil
 	}
+	defaultServiceName := naming.ServiceName(component.Name, componentResourceAppName(component))
 	result := make([]apisv1.ComponentIngressRouteInfo, 0, len(trait.Routes))
 	for _, route := range trait.Routes {
-		annotations = applyIngressRewriteAnnotations(annotations, route.Rewrite)
-		serviceName := strings.TrimSpace(route.Backend.ServiceName)
-		if serviceName == "" {
-			serviceName = defaultServiceName
-		}
-		servicePort := route.Backend.ServicePort
-		if servicePort <= 0 {
-			servicePort = defaultServicePort
-		}
-		if servicePort <= 0 {
-			servicePort = 80
+		annotations = spec.ApplyIngressRewriteAnnotations(annotations, route.Rewrite)
+		backend := route.Backend
+		backend.ServiceName = strings.TrimSpace(backend.ServiceName)
+		backend = spec.ResolveIngressBackend(backend, defaultServiceName, component.Traits.Service, component.Properties.Ports)
+		if backend.ServicePort <= 0 {
+			backend.ServicePort = 80
 		}
 		path := strings.TrimSpace(route.Path)
 		if path == "" {
 			path = "/"
 		}
-		pathType := determineIngressRoutePathType(route.PathType, trait.DefaultPathType, annotations)
+		pathType := spec.IngressPathType(route.PathType, trait.DefaultPathType, annotations)
 		for _, host := range resolveIngressRouteHosts(route.Host, trait.Hosts) {
 			result = append(result, apisv1.ComponentIngressRouteInfo{
 				Host:        host,
 				Path:        path,
 				PathType:    pathType,
-				ServiceName: serviceName,
-				ServicePort: servicePort,
+				ServiceName: backend.ServiceName,
+				ServicePort: backend.ServicePort,
 				Weight:      route.Backend.Weight,
 				Headers:     copyStringMap(route.Backend.Headers),
 				Rewrite:     route.Rewrite,
@@ -182,27 +177,6 @@ func resolveIngressRouteHosts(routeHost string, ingressHosts []string) []string 
 		return hosts
 	}
 	return []string{""}
-}
-
-func resolveComponentIngressDefaultService(component *apisv1.ApplicationComponent) (string, int32) {
-	if component == nil {
-		return "", 0
-	}
-	if idx, ok := selectServiceTraitForLink(component); ok {
-		trait := component.Traits.Service[idx]
-		name := strings.TrimSpace(trait.Name)
-		if name == "" {
-			name = naming.ServiceName(component.Name, componentResourceAppName(component))
-		}
-		return name, firstServiceTraitPort(trait)
-	}
-	name := naming.ServiceName(component.Name, componentResourceAppName(component))
-	for _, port := range component.Properties.Ports {
-		if port.Port > 0 {
-			return name, port.Port
-		}
-	}
-	return name, 0
 }
 
 func componentDeploysService(component *apisv1.ApplicationComponent) bool {
@@ -229,15 +203,6 @@ func componentDeploysIngress(component *apisv1.ApplicationComponent) bool {
 	}
 }
 
-func firstServiceTraitPort(serviceTrait spec.ServiceTraitSpec) int32 {
-	for _, port := range serviceTrait.Ports {
-		if port.Port > 0 {
-			return port.Port
-		}
-	}
-	return 0
-}
-
 func pickIngressName(componentName, explicitName string, idx int) string {
 	if name := strings.TrimSpace(explicitName); name != "" {
 		return name
@@ -259,38 +224,6 @@ func buildIngressResourceName(componentName, resourceAppName, explicitName strin
 
 func pickIngressNamespace(componentNamespace, _ string) string {
 	return pickComponentNamespace(componentNamespace)
-}
-
-func applyIngressRewriteAnnotations(annotations map[string]string, rewrite *spec.RewritePolicy) map[string]string {
-	if rewrite == nil {
-		return annotations
-	}
-	if annotations == nil {
-		annotations = make(map[string]string)
-	}
-	if rewrite.Replacement != "" {
-		if _, exists := annotations["nginx.ingress.kubernetes.io/rewrite-target"]; !exists {
-			annotations["nginx.ingress.kubernetes.io/rewrite-target"] = rewrite.Replacement
-		}
-	}
-	rewriteType := strings.ToLower(rewrite.Type)
-	if rewriteType == "regex" || rewriteType == "regexreplace" {
-		annotations["nginx.ingress.kubernetes.io/use-regex"] = "true"
-	}
-	return annotations
-}
-
-func determineIngressRoutePathType(routePathType, defaultPathType string, annotations map[string]string) string {
-	if pathType, ok := spec.NormalizeIngressPathType(routePathType); ok {
-		return pathType
-	}
-	if pathType, ok := spec.NormalizeIngressPathType(defaultPathType); ok {
-		return pathType
-	}
-	if value, ok := annotations["nginx.ingress.kubernetes.io/use-regex"]; ok && strings.EqualFold(value, "true") {
-		return "ImplementationSpecific"
-	}
-	return "Prefix"
 }
 
 func selectServiceTraitForLink(component *apisv1.ApplicationComponent) (int, bool) {

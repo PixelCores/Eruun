@@ -12,8 +12,7 @@ type testBuiltinModel struct {
 	name string
 }
 
-func (t *testBuiltinModel) TableName() string      { return t.name }
-func (t *testBuiltinModel) ShortTableName() string { return t.name }
+func (t *testBuiltinModel) TableName() string { return t.name }
 
 func TestBuiltinModelsReturnsOrderedIsolatedSnapshots(t *testing.T) {
 	first, err := BuiltinModels()

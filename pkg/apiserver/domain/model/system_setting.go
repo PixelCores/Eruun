@@ -27,10 +27,6 @@ func (s *SystemSetting) TableName() string {
 	return tableNamePrefix + "system_setting"
 }
 
-func (s *SystemSetting) ShortTableName() string {
-	return "system_setting"
-}
-
 func (s *SystemSetting) Index() map[string]interface{} {
 	index := make(map[string]interface{})
 	if s.Type != "" {

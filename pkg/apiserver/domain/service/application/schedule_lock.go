@@ -79,3 +79,23 @@ func (c *applicationsServiceImpl) withWritableApplicationLock(
 	}
 	return current, nil
 }
+
+// applicationForRequestedID reuses the locked application for ordinary IDs.
+// The lock helper trims its key; preserve the original raw lookup for callers
+// that passed whitespace so datastore ID resolution and errors stay unchanged.
+func (c *applicationsServiceImpl) applicationForRequestedID(ctx context.Context, appID string, lockedApp *model.Applications) (*model.Applications, error) {
+	if appID == strings.TrimSpace(appID) {
+		return lockedApp, nil
+	}
+	app, err := c.AppRepo.FindByID(ctx, appID)
+	if err != nil {
+		if errors.Is(err, datastore.ErrRecordNotExist) {
+			return nil, bcode.ErrApplicationNotExist
+		}
+		return nil, err
+	}
+	if app.EffectiveManagementMode() == domainspec.ManagementModeObserve {
+		return nil, fmt.Errorf("%w: observe applications are read-only", bcode.ErrApplicationManagementMode)
+	}
+	return app, nil
+}

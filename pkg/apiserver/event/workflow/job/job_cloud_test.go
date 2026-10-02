@@ -450,28 +450,42 @@ func TestCloudJobCtlRunWithRegisteredProviderSuccess(t *testing.T) {
 	require.Equal(t, "i-123", record.Result.Output["instanceId"])
 }
 
-func TestCloudJobCtlRunKeepsRuntimeProviderSnapshotInContextOnly(t *testing.T) {
+func TestCloudJobCtlRunKeepsRuntimeProviderSnapshotOutOfCheckpoints(t *testing.T) {
 	resetCloudProvidersForTest()
 	defer restoreBuiltinCloudProvidersForTest()
 
+	actionCalls := 0
+	store := newCloudJobCheckpointStore()
 	provider := &fakeCloudProvider{
 		name: "mock",
 		newRuntime: func(_ context.Context, req *CloudJobRequest) (CloudRuntime, error) {
 			req.RuntimeProviderSnapshot = map[string]string{
 				"endpoint": "nas.cn-hangzhou.aliyuncs.com",
 				"regionId": "cn-hangzhou",
+				"secret":   "runtime-only-secret",
 			}
 			return &fakeCloudRuntime{}, nil
 		},
 		registry: &fakeCloudActionRegistry{
 			actions: map[string]CloudAction{
 				"create": &fakeCloudAction{
-					run: func(ctx context.Context, _ CloudRuntime, req *CloudJobRequest, _ map[string]interface{}) (*CloudActionProgress, error) {
-						cfg, ok := wfcloudcontract.RuntimeProviderSnapshotFromContext(ctx, "mock").(map[string]string)
+					run: func(_ context.Context, _ CloudRuntime, req *CloudJobRequest, _ map[string]interface{}) (*CloudActionProgress, error) {
+						require.NotEmpty(t, store.records)
+						for _, checkpoint := range store.records {
+							require.NotContains(t, checkpoint.InternalInfo, "runtime-only-secret")
+							require.NotContains(t, checkpoint.InternalInfo, "nas.cn-hangzhou.aliyuncs.com")
+						}
+						cfg, ok := req.RuntimeProviderSnapshot.(map[string]string)
 						require.True(t, ok)
 						require.Equal(t, "nas.cn-hangzhou.aliyuncs.com", cfg["endpoint"])
 						require.Equal(t, "cn-hangzhou", cfg["regionId"])
-						require.Nil(t, req.RuntimeProviderSnapshot)
+						raw, err := json.Marshal(req)
+						require.NoError(t, err)
+						require.NotContains(t, string(raw), "runtime-only-secret")
+						actionCalls++
+						if actionCalls == 1 {
+							return &CloudActionProgress{State: map[string]interface{}{"step": "waiting"}, RequeueAfter: time.Millisecond}, nil
+						}
 						return &CloudActionProgress{
 							Done:   true,
 							Result: &CloudJobResult{Message: "done"},
@@ -493,23 +507,66 @@ func TestCloudJobCtlRunKeepsRuntimeProviderSnapshotInContextOnly(t *testing.T) {
 			ExecutionKey: "step:0/component:0",
 		},
 	}
-	ctl := NewCloudJobCtl(task, &noopStore{})
+	ctl := NewCloudJobCtl(task, store)
 	require.NotNil(t, ctl)
+	ctl.waitFunc = func(context.Context, time.Duration) error { return nil }
 
 	err := ctl.Run(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, "cloudjob: default/cloud-public-safe", task.Info)
 	require.NotContains(t, task.Info, "accessKeySecret")
 	require.NotContains(t, task.Info, `"sk"`)
-	require.Nil(t, provider.req.RuntimeProviderSnapshot)
+	require.Equal(t, 2, actionCalls)
+	require.NotNil(t, provider.req.RuntimeProviderSnapshot)
 	require.NotContains(t, task.InternalInfo, "configSnapshot")
 	require.NotContains(t, task.InternalInfo, "accessKeySecret")
 	require.NotContains(t, task.InternalInfo, "nas.cn-hangzhou.aliyuncs.com")
+	require.NotContains(t, task.InternalInfo, "runtime-only-secret")
 
 	var record CloudJobRecord
 	require.NoError(t, json.Unmarshal([]byte(task.InternalInfo), &record))
 	require.NotNil(t, record.Request)
 	require.Nil(t, record.Request.RuntimeProviderSnapshot)
+}
+
+func TestCloudJobCheckpointPreservesLegacyRequestParamsAndDistinctExecutionKeys(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		request       string
+		wantZone      string
+		checkpointErr error
+	}{
+		{name: "persisted request", request: `,"request":{"provider":"mock","action":"create","params":{"zone":"persisted-zone"},"executionKey":"old-job-execution"}`, wantZone: "persisted-zone"},
+		{name: "legacy record without request", wantZone: "current-zone", checkpointErr: errors.New("provider failed")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Old top-level params are deliberately different from both the
+			// current component and the persisted request. They never own recovery.
+			checkpoint := parseCloudJobRecord(`{"provider":"mock","action":"create","params":{"zone":"unused-top-level-zone"},"executionKey":"component-step","state":{"step":"waiting"}` + tc.request + `}`)
+			require.NotNil(t, checkpoint)
+			info := &CloudJobInfo{Provider: "mock", Action: "create", ExecutionKey: "component-step", Params: map[string]interface{}{"zone": "current-zone"}}
+			request := buildCloudJobRequest(&model.JobTask{ExecutionKey: "current-job-execution"}, info, checkpoint)
+			require.Equal(t, tc.wantZone, request.Params["zone"])
+			require.True(t, request.ResumeFromPersistedState)
+			require.Nil(t, request.RuntimeProviderSnapshot)
+			require.Equal(t, "current-job-execution", request.ExecutionKey)
+			require.Equal(t, "component-step", cloudJobExecutionKeyFromRecord(checkpoint))
+
+			raw := recordCloudJobResult(info, request, nil, checkpoint.State, config.StatusRunning, tc.checkpointErr)
+			var encoded map[string]json.RawMessage
+			require.NoError(t, json.Unmarshal([]byte(raw), &encoded))
+			require.NotContains(t, encoded, "params")
+			record := parseCloudJobRecord(raw)
+			require.NotNil(t, record)
+			require.Equal(t, tc.wantZone, record.Request.Params["zone"])
+			require.Equal(t, "component-step", record.ExecutionKey)
+			require.Equal(t, "current-job-execution", record.Request.ExecutionKey)
+			require.Equal(t, checkpoint.State, record.State)
+			if tc.checkpointErr != nil {
+				require.Equal(t, tc.checkpointErr.Error(), record.Error)
+			}
+		})
+	}
 }
 
 func TestCloudJobCtlRunProviderReturnsError(t *testing.T) {

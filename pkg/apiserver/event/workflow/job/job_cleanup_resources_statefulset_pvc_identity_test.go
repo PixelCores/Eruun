@@ -42,7 +42,7 @@ func TestCleanupResourcesJobCtlRejectsPVCCheckpointWriteAfterExecutionTakeover(t
 		InternalInfo: marker, Status: config.StatusRunning,
 		ExecutionKey: oldExecutionKey, RunGeneration: 1, Attempt: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, fake.NewSimpleClientset(), store, nil)
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 	ctl.requiredStatefulSetPVCTarget = &requiredStatefulSetPVCDeletionTarget{
 		ref: ref, templates: []string{"data"},
@@ -77,7 +77,7 @@ func TestCleanupResourcesJobCtlPVCDeletePreconditionsRejectLateProtection(t *tes
 		Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: versionUpdateRequireStatefulSetPVCDeletionInternalInfo(t, "data"), Timeout: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, client, &noopStore{}, nil)
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
 	require.NotNil(t, ctl)
 	require.NoError(t, ctl.ensureRequiredStatefulSetPVCDeletionAllowed(ctx, component))
 
@@ -131,7 +131,7 @@ func TestCleanupResourcesJobCtlPVCDeleteNotFoundRejectsSameNameReplacement(t *te
 		Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: versionUpdateRequireStatefulSetPVCDeletionInternalInfo(t, "data"), Timeout: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, client, &noopStore{}, nil)
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
 	require.NotNil(t, ctl)
 	require.NoError(t, ctl.ensureRequiredStatefulSetPVCDeletionAllowed(ctx, component))
 
@@ -195,7 +195,7 @@ func TestCleanupResourcesJobCtlRejectsMissingPVCDeleteIdentity(t *testing.T) {
 				Name: component.Name, AppID: component.AppID, TaskID: "task-1", JobType: string(config.JobCleanupResources),
 				JobInfo: component, InternalInfo: marker, Status: config.StatusRunning, Timeout: 1,
 			}
-			ctl := NewCleanupResourcesJobCtl(job, client, store, nil)
+			ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: store, Ack: nil})
 			require.NotNil(t, ctl)
 
 			err := ctl.ensureRequiredStatefulSetPVCDeletionAllowed(ctx, component)
@@ -241,7 +241,7 @@ func TestCleanupResourcesJobCtlRestoresPVCIdentityAndRejectsReplacementOnSameTas
 		Name: component.Name, AppID: component.AppID, TaskID: "task-1", JobType: string(config.JobCleanupResources),
 		JobInfo: component, InternalInfo: markerWithPodCheckpoint, Status: config.StatusRunning, Timeout: 1,
 	}
-	firstCtl := NewCleanupResourcesJobCtl(firstJob, client, store, nil)
+	firstCtl := NewCleanupResourcesJobCtl(firstJob, &Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, firstCtl)
 	require.NoError(t, firstCtl.ensureRequiredStatefulSetPVCDeletionAllowed(ctx, component))
 	require.Contains(t, store.jobInfo.InternalInfo, requiredStatefulSetPVCCheckpointKey)
@@ -259,7 +259,7 @@ func TestCleanupResourcesJobCtlRestoresPVCIdentityAndRejectsReplacementOnSameTas
 		Name: component.Name, AppID: component.AppID, TaskID: "task-1", JobType: string(config.JobCleanupResources),
 		JobInfo: component, InternalInfo: marker, Status: config.StatusRunning, Timeout: 1,
 	}
-	retryCtl := NewCleanupResourcesJobCtl(retryJob, client, store, nil)
+	retryCtl := NewCleanupResourcesJobCtl(retryJob, &Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, retryCtl)
 	err = retryCtl.ensureRequiredStatefulSetPVCDeletionAllowed(ctx, component)
 	require.Error(t, err)
@@ -296,7 +296,7 @@ func TestCleanupResourcesJobCtlDoesNotOverwriteConcurrentPodCheckpoint(t *testin
 		Name: component.Name, AppID: component.AppID, TaskID: "task-1", JobType: string(config.JobCleanupResources),
 		JobInfo: component, InternalInfo: marker, Status: config.StatusRunning, Timeout: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, client, store, nil)
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	err = ctl.ensureRequiredStatefulSetPVCDeletionAllowed(ctx, component)
@@ -354,7 +354,7 @@ func TestCleanupResourcesJobCtlPodCheckpointDoesNotOverwriteConcurrentPVCCheckpo
 		Name: component.Name, AppID: component.AppID, TaskID: "task-1", JobType: string(config.JobCleanupResources),
 		JobInfo: component, InternalInfo: marker, Status: config.StatusRunning, Timeout: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, client, store, nil)
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.ensureRequiredStatefulSetPodDeletionAllowed(ctx, component))
@@ -388,7 +388,7 @@ func TestCleanupResourcesJobCtlBoundsCheckpointChurnDuringSaveInfo(t *testing.T)
 		Name: component.Name, AppID: component.AppID, TaskID: "task-1", JobType: string(config.JobCleanupResources),
 		JobInfo: component, InternalInfo: marker, Status: config.StatusFailed, Error: "checkpoint conflict",
 	}
-	ctl := NewCleanupResourcesJobCtl(job, fake.NewSimpleClientset(), store, nil)
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	attempts := 0
@@ -448,7 +448,7 @@ func TestCleanupResourcesJobCtlRejectsExtraLabelMatchedStatefulSetBeforeMutation
 		TaskID: "task-1", JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: marker, Timeout: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, client, store, nil)
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(ctx)

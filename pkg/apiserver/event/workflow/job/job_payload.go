@@ -78,15 +78,7 @@ func configMapFromJobInfo(ctx context.Context, job *model.JobTask, urlSecurityPo
 		if err != nil {
 			return nil, fmt.Errorf("invalid ConfigMap spec: %w", err)
 		}
-		return &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:        conf.Name,
-				Namespace:   conf.Namespace,
-				Labels:      conf.Labels,
-				Annotations: conf.Annotations,
-			},
-			Data: conf.Data,
-		}, nil
+		return conf, nil
 	case *corev1.ConfigMap:
 		if info == nil {
 			return nil, fmt.Errorf("job info %s is nil", jobInfoTypeName[*corev1.ConfigMap]())

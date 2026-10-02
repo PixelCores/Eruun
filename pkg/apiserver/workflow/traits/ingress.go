@@ -15,17 +15,16 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 )
 
-type IngressProcessor struct{}
-
-func (p *IngressProcessor) Process(ctx *TraitContext, traits []spec.IngressTraitsSpec) (*TraitResult, error) {
+func processIngress(ctx *TraitContext, traits []spec.IngressTraitsSpec) (*TraitResult, error) {
 	if len(traits) == 0 {
 		return nil, nil
 	}
 
+	properties := decodeComponentProperties(ctx.Component)
 	result := &TraitResult{}
 	for idx, t := range traits {
 		// Apply defaults
-		if err := applyIngressDefaults(&t, ctx.Component, idx); err != nil {
+		if err := applyIngressDefaults(&t, ctx.Component, ctx.componentTraits, properties, idx); err != nil {
 			return nil, fmt.Errorf("apply ingress defaults trait[%d]: %w", idx, err)
 		}
 
@@ -39,7 +38,7 @@ func (p *IngressProcessor) Process(ctx *TraitContext, traits []spec.IngressTrait
 	return result, nil
 }
 
-func applyIngressDefaults(traitSpec *spec.IngressTraitsSpec, component *model.ApplicationComponent, idx int) error {
+func applyIngressDefaults(traitSpec *spec.IngressTraitsSpec, component *model.ApplicationComponent, traits *spec.Traits, properties *model.Properties, idx int) error {
 	if traitSpec == nil {
 		return nil
 	}
@@ -61,21 +60,29 @@ func applyIngressDefaults(traitSpec *spec.IngressTraitsSpec, component *model.Ap
 	if component == nil {
 		return nil
 	}
-	traits := decodeComponentTraits(component)
-	properties := decodeComponentProperties(component)
-	defaultServiceName, defaultServicePort, err := resolveIngressDefaultService(component, traits, properties, ingressNeedsDefaultBackendName(traitSpec))
-	if err != nil {
-		return err
+	var services []spec.ServiceTraitSpec
+	if traits != nil {
+		services = traits.Service
 	}
-	for i := range traitSpec.Routes {
-		if strings.TrimSpace(traitSpec.Routes[i].Backend.ServiceName) == "" {
-			traitSpec.Routes[i].Backend.ServiceName = defaultServiceName
-		}
-		if traitSpec.Routes[i].Backend.ServicePort <= 0 {
-			if servicePort := resolveIngressBackendPort(component, traits, properties, traitSpec.Routes[i].Backend.ServiceName, defaultServicePort); servicePort > 0 {
-				traitSpec.Routes[i].Backend.ServicePort = servicePort
+	if ingressNeedsDefaultBackendName(traitSpec) {
+		nonExternal := 0
+		for _, service := range services {
+			accessType, _ := spec.NormalizeServiceAccessType(service.Type)
+			if accessType != spec.ServiceAccessExternal {
+				nonExternal++
 			}
 		}
+		if nonExternal > 1 {
+			return fmt.Errorf("ingress backend serviceName is required when component %q defines multiple non-external service traits", component.Name)
+		}
+	}
+	var ports []spec.Ports
+	if properties != nil {
+		ports = properties.Ports
+	}
+	defaultServiceName := naming.ServiceName(component.Name, component.ResourceNameKey())
+	for i := range traitSpec.Routes {
+		traitSpec.Routes[i].Backend = spec.ResolveIngressBackend(traitSpec.Routes[i].Backend, defaultServiceName, services, ports)
 	}
 	return nil
 }
@@ -90,115 +97,6 @@ func ingressNeedsDefaultBackendName(traitSpec *spec.IngressTraitsSpec) bool {
 		}
 	}
 	return false
-}
-
-func resolveIngressDefaultService(component *model.ApplicationComponent, traits *spec.Traits, properties *model.Properties, requireUnambiguous bool) (string, int32, error) {
-	if component == nil {
-		return "", 0, nil
-	}
-
-	if svcTrait, ok, err := selectIngressServiceTrait(component, traits, requireUnambiguous); err != nil {
-		return "", 0, err
-	} else if ok {
-		serviceName := strings.TrimSpace(svcTrait.Name)
-		if serviceName == "" {
-			serviceName = naming.ServiceName(component.Name, component.ResourceNameKey())
-		}
-		return serviceName, firstServiceTraitPort(svcTrait), nil
-	}
-
-	defaultName := naming.ServiceName(component.Name, component.ResourceNameKey())
-	if properties == nil {
-		return defaultName, 0, nil
-	}
-	for _, port := range properties.Ports {
-		if port.Port > 0 {
-			return defaultName, port.Port, nil
-		}
-	}
-	return defaultName, 0, nil
-}
-
-func resolveIngressBackendPort(component *model.ApplicationComponent, traits *spec.Traits, properties *model.Properties, serviceName string, fallbackPort int32) int32 {
-	if component == nil {
-		return fallbackPort
-	}
-	normalizedServiceName := strings.TrimSpace(serviceName)
-	defaultServiceName := naming.ServiceName(component.Name, component.ResourceNameKey())
-	if traits != nil {
-		for _, svcTrait := range traits.Service {
-			candidateName := strings.TrimSpace(svcTrait.Name)
-			if candidateName == "" {
-				candidateName = defaultServiceName
-			}
-			if candidateName == normalizedServiceName {
-				if port := firstServiceTraitPort(svcTrait); port > 0 {
-					return port
-				}
-			}
-		}
-	}
-	if normalizedServiceName == defaultServiceName && properties != nil {
-		for _, port := range properties.Ports {
-			if port.Port > 0 {
-				return port.Port
-			}
-		}
-	}
-	return fallbackPort
-}
-
-func selectIngressServiceTrait(component *model.ApplicationComponent, traits *spec.Traits, requireUnambiguous bool) (spec.ServiceTraitSpec, bool, error) {
-	if component == nil || traits == nil || len(traits.Service) == 0 {
-		return spec.ServiceTraitSpec{}, false, nil
-	}
-
-	var fallback *spec.ServiceTraitSpec
-	var nonExternal []spec.ServiceTraitSpec
-	for i := range traits.Service {
-		current := &traits.Service[i]
-		if fallback == nil {
-			fallback = current
-		}
-		accessType, _ := spec.NormalizeServiceAccessType(current.Type)
-		if accessType != spec.ServiceAccessExternal {
-			nonExternal = append(nonExternal, *current)
-		}
-	}
-	if requireUnambiguous && len(nonExternal) > 1 {
-		return spec.ServiceTraitSpec{}, false, fmt.Errorf("ingress backend serviceName is required when component %q defines multiple non-external service traits", component.Name)
-	}
-	if len(nonExternal) > 0 {
-		return nonExternal[0], true, nil
-	}
-	if fallback != nil {
-		return *fallback, true, nil
-	}
-	return spec.ServiceTraitSpec{}, false, nil
-}
-
-func firstServiceTraitPort(serviceTrait spec.ServiceTraitSpec) int32 {
-	for _, port := range serviceTrait.Ports {
-		if port.Port > 0 {
-			return port.Port
-		}
-	}
-	return 0
-}
-
-func decodeComponentTraits(component *model.ApplicationComponent) *spec.Traits {
-	if component == nil || component.Traits == nil {
-		return nil
-	}
-	raw, err := json.Marshal(component.Traits)
-	if err != nil || string(raw) == "{}" || string(raw) == "null" {
-		return nil
-	}
-	var traits spec.Traits
-	if err := json.Unmarshal(raw, &traits); err != nil {
-		return nil
-	}
-	return &traits
 }
 
 func decodeComponentProperties(component *model.ApplicationComponent) *model.Properties {
@@ -242,7 +140,7 @@ func buildIngressFromSpec(ingressSpec *model.IngressTraitsSpec) *networkingv1.In
 	var hostOrder []string
 
 	for _, route := range ingressSpec.Routes {
-		annotations = applyRewriteAnnotations(annotations, route.Rewrite)
+		annotations = spec.ApplyIngressRewriteAnnotations(annotations, route.Rewrite)
 
 		path := route.Path
 		if path == "" {
@@ -339,34 +237,6 @@ func pointerToPathType(pt networkingv1.PathType) *networkingv1.PathType {
 	return &value
 }
 
-func applyRewriteAnnotations(annotations map[string]string, rewrite *spec.RewritePolicy) map[string]string {
-	if rewrite == nil {
-		return annotations
-	}
-	if annotations == nil {
-		annotations = make(map[string]string)
-	}
-	rewriteType := strings.ToLower(rewrite.Type)
-	if rewrite.Replacement != "" {
-		if _, exists := annotations["nginx.ingress.kubernetes.io/rewrite-target"]; !exists {
-			annotations["nginx.ingress.kubernetes.io/rewrite-target"] = rewrite.Replacement
-		}
-	}
-	if rewriteType == "regex" || rewriteType == "regexreplace" {
-		annotations["nginx.ingress.kubernetes.io/use-regex"] = "true"
-	}
-	return annotations
-}
-
 func determinePathType(route model.IngressRoutes, ingressSpec *model.IngressTraitsSpec, annotations map[string]string) networkingv1.PathType {
-	if pathType, ok := spec.NormalizeIngressPathType(route.PathType); ok {
-		return networkingv1.PathType(pathType)
-	}
-	if pathType, ok := spec.NormalizeIngressPathType(ingressSpec.DefaultPathType); ok {
-		return networkingv1.PathType(pathType)
-	}
-	if val, ok := annotations["nginx.ingress.kubernetes.io/use-regex"]; ok && strings.EqualFold(val, "true") {
-		return networkingv1.PathTypeImplementationSpecific
-	}
-	return networkingv1.PathTypePrefix
+	return networkingv1.PathType(spec.IngressPathType(route.PathType, ingressSpec.DefaultPathType, annotations))
 }

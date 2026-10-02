@@ -1,15 +1,11 @@
 package clients
 
 import (
-	"flag"
 	"fmt"
-	"path/filepath"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/flowcontrol"
-	"k8s.io/client-go/util/homedir"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
 	apiConfig "github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -79,26 +75,7 @@ func GetKubeClient() (kubernetes.Interface, error) {
 		return client, nil
 	}
 
-	var loadKubeClient *string
-	if home := homedir.HomeDir(); home != "" {
-		// 如果输入了kubeconfig参数，该参数的值就是kubeconfig文件的绝对路径，
-		// 如果没有输入kubeconfig参数，就用默认路径~/.kube/config
-		loadKubeClient = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-	}
-
-	if loadKubeClient == nil {
-		return nil, fmt.Errorf("please call SetKubeConfig first")
-	}
-	loadConf, err := clientcmd.BuildConfigFromFlags("", *loadKubeClient)
-	if err != nil {
-		return nil, err
-	}
-	loadClient, err := kubernetes.NewForConfig(loadConf)
-	if err != nil {
-		return nil, err
-	}
-	SetKubeClient(loadClient)
-	return loadClient, nil
+	return nil, fmt.Errorf("please call SetKubeConfig first")
 }
 
 // GetKubeConfig create/get kube runtime config

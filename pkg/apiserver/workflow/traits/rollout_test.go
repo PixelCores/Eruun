@@ -25,7 +25,7 @@ func TestRolloutProcessorAppliesDeploymentStrategy(t *testing.T) {
 		},
 	}
 
-	result, err := (&RolloutProcessor{}).Process(&TraitContext{Component: &model.ApplicationComponent{Name: "api"}, Workload: deploy}, &spec.RolloutTraitSpec{
+	result, err := processRollout(&TraitContext{Component: &model.ApplicationComponent{Name: "api"}, Workload: deploy}, &spec.RolloutTraitSpec{
 		Type: string(appsv1.RollingUpdateDeploymentStrategyType),
 		RollingUpdate: &spec.RolloutRollingUpdateSpec{
 			MaxSurge:       &maxSurge,
@@ -45,7 +45,7 @@ func TestRolloutProcessorAppliesDeploymentStrategy(t *testing.T) {
 func TestRolloutProcessorRejectsDeploymentRollingUpdateWithoutConfig(t *testing.T) {
 	deploy := &appsv1.Deployment{}
 
-	_, err := (&RolloutProcessor{}).Process(&TraitContext{Component: &model.ApplicationComponent{Name: "api"}, Workload: deploy}, &spec.RolloutTraitSpec{
+	_, err := processRollout(&TraitContext{Component: &model.ApplicationComponent{Name: "api"}, Workload: deploy}, &spec.RolloutTraitSpec{
 		Type: string(appsv1.RollingUpdateDeploymentStrategyType),
 	})
 
@@ -87,7 +87,7 @@ func TestRolloutProcessorRejectsDeploymentRollingUpdateMissingFields(t *testing.
 		t.Run(tc.name, func(t *testing.T) {
 			deploy := &appsv1.Deployment{}
 
-			_, err := (&RolloutProcessor{}).Process(&TraitContext{Component: &model.ApplicationComponent{Name: "api"}, Workload: deploy}, &spec.RolloutTraitSpec{
+			_, err := processRollout(&TraitContext{Component: &model.ApplicationComponent{Name: "api"}, Workload: deploy}, &spec.RolloutTraitSpec{
 				Type:          string(appsv1.RollingUpdateDeploymentStrategyType),
 				RollingUpdate: tc.rollingUpdate,
 			})
@@ -111,7 +111,7 @@ func TestRolloutProcessorAppliesStatefulSetUpdateStrategy(t *testing.T) {
 		},
 	}
 
-	result, err := (&RolloutProcessor{}).Process(&TraitContext{Component: &model.ApplicationComponent{Name: "mysql"}, Workload: statefulSet}, &spec.RolloutTraitSpec{
+	result, err := processRollout(&TraitContext{Component: &model.ApplicationComponent{Name: "mysql"}, Workload: statefulSet}, &spec.RolloutTraitSpec{
 		Type: string(appsv1.RollingUpdateStatefulSetStrategyType),
 		RollingUpdate: &spec.RolloutRollingUpdateSpec{
 			Partition:      &partition,
@@ -128,7 +128,7 @@ func TestRolloutProcessorAppliesStatefulSetUpdateStrategy(t *testing.T) {
 }
 
 func TestRolloutProcessorRejectsUnsupportedWorkload(t *testing.T) {
-	_, err := (&RolloutProcessor{}).Process(&TraitContext{Component: &model.ApplicationComponent{Name: "pod"}, Workload: &corev1.Pod{}}, &spec.RolloutTraitSpec{
+	_, err := processRollout(&TraitContext{Component: &model.ApplicationComponent{Name: "pod"}, Workload: &corev1.Pod{}}, &spec.RolloutTraitSpec{
 		Type: string(appsv1.RollingUpdateDeploymentStrategyType),
 	})
 	require.Error(t, err)

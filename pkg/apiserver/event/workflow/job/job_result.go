@@ -66,10 +66,6 @@ type ResultDispatcher struct {
 	ensureFailures        atomic.Int64
 }
 
-func EnqueueResultJob(ctx context.Context, queue msg.Queue, payload *JobResultPayload) (string, error) {
-	return enqueueResultJob(ctx, queue, payload)
-}
-
 func NewResultDispatcher(queue msg.Queue, client kubernetes.Interface, store datastore.DataStore, group, consumer string) *ResultDispatcher {
 	return &ResultDispatcher{
 		queue:                 queue,
@@ -460,14 +456,6 @@ func (d *ResultDispatcher) ackMessage(ctx context.Context, msgID, reason string)
 	msg.MarkMessageHandlingDone(d.queue, msgID, true)
 	klog.V(4).InfoS("result dispatcher ack succeeded", "group", d.group, "msgID", msgID, "reason", reason)
 	return nil
-}
-
-func dispatchJobResult(ctx context.Context, queue msg.Queue, payload *JobResultPayload) error {
-	if payload == nil {
-		return fmt.Errorf("result payload is nil")
-	}
-	_, err := EnqueueResultJob(ctx, queue, payload)
-	return err
 }
 
 func isResultPayloadProcessable(payload *JobResultPayload) bool {
@@ -880,41 +868,6 @@ func isSuccessfulTerminalJobStatus(status config.Status) bool {
 		return true
 	default:
 		return false
-	}
-}
-
-func newJobResultPayload(jobTask *model.JobTask, jobObj *batchv1.Job) *JobResultPayload {
-	if jobTask == nil || jobObj == nil {
-		return nil
-	}
-	name := strings.TrimSpace(jobObj.Name)
-	if name == "" {
-		return nil
-	}
-	namespace := strings.TrimSpace(jobObj.Namespace)
-	if namespace == "" {
-		namespace = strings.TrimSpace(jobTask.Namespace)
-	}
-	if namespace == "" {
-		return nil
-	}
-	serviceName := resolveJobServiceName(jobTask)
-	if serviceName == "" {
-		serviceName = componentNameFromJobInfo(jobObj)
-	}
-	timeout := jobTask.Timeout
-	if timeout <= 0 {
-		timeout = int64(config.DefaultJobTaskTimeout.Seconds())
-	}
-	return &JobResultPayload{
-		TaskID:         jobTask.TaskID,
-		ExecutionKey:   jobTask.ExecutionKey,
-		RunGeneration:  jobTask.RunGeneration,
-		JobType:        jobTask.JobType,
-		Namespace:      namespace,
-		Name:           name,
-		ServiceName:    serviceName,
-		TimeoutSeconds: timeout,
 	}
 }
 

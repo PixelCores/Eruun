@@ -25,9 +25,8 @@ type JobArtifact struct {
 	BaseModel
 }
 
-func (a *JobArtifact) PrimaryKey() string     { return a.ID }
-func (a *JobArtifact) TableName() string      { return tableNamePrefix + "job_artifact" }
-func (a *JobArtifact) ShortTableName() string { return "job_artifact" }
+func (a *JobArtifact) PrimaryKey() string { return a.ID }
+func (a *JobArtifact) TableName() string  { return tableNamePrefix + "job_artifact" }
 func (a *JobArtifact) Index() map[string]interface{} {
 	m := map[string]interface{}{}
 	if a.ID != "" {
@@ -58,9 +57,8 @@ type ArtifactChunk struct {
 	BaseModel
 }
 
-func (a *ArtifactChunk) PrimaryKey() string     { return a.ID }
-func (a *ArtifactChunk) TableName() string      { return tableNamePrefix + "artifact_chunk" }
-func (a *ArtifactChunk) ShortTableName() string { return "artifact_chunk" }
+func (a *ArtifactChunk) PrimaryKey() string { return a.ID }
+func (a *ArtifactChunk) TableName() string  { return tableNamePrefix + "artifact_chunk" }
 func (a *ArtifactChunk) Index() map[string]interface{} {
 	m := map[string]interface{}{}
 	if a.ID != "" {
@@ -93,9 +91,8 @@ type JobDelivery struct {
 	BaseModel
 }
 
-func (d *JobDelivery) PrimaryKey() string     { return d.ID }
-func (d *JobDelivery) TableName() string      { return tableNamePrefix + "job_delivery" }
-func (d *JobDelivery) ShortTableName() string { return "job_delivery" }
+func (d *JobDelivery) PrimaryKey() string { return d.ID }
+func (d *JobDelivery) TableName() string  { return tableNamePrefix + "job_delivery" }
 func (d *JobDelivery) Index() map[string]interface{} {
 	m := map[string]interface{}{}
 	if d.ID != "" {

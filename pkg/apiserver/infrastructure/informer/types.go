@@ -2,7 +2,6 @@ package informer
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -15,66 +14,10 @@ type ComponentReadyObserver interface {
 	WaitForComponentReadyWithOptions(ctx context.Context, appID, componentName string, desiredReplicas int32, options ComponentReadyWaitOptions, timeout time.Duration) error
 }
 
-// ResourceType 资源类型
-type ResourceType string
-
-const (
-	ResourceTypeComponent ResourceType = "Component"
-)
-
-// WaitEntry 等待条目
-type WaitEntry struct {
-	Key                 string            // namespace/name
-	ResourceType        ResourceType      // 资源类型
-	ReadyChan           chan struct{}     // 关闭表示资源就绪
-	ErrorChan           chan error        // 错误通道
-	CreatedAt           time.Time         // 创建时间
-	DesiredReplicas     int32             // 期望副本数（仅用于组件等待）
-	ExpectedImages      []string          // 期望 Pod 镜像；为空时只按组件 Ready 聚合
-	ExpectedAnnotations map[string]string // 期望 Pod 注解；为空时不按注解过滤
-	mu                  sync.Mutex        // 保护 closed 字段
-	closed              bool              // 是否已关闭
-}
-
 // ComponentReadyWaitOptions filters component readiness to a specific Pod generation.
 type ComponentReadyWaitOptions struct {
 	ExpectedImages      []string
 	ExpectedAnnotations map[string]string
-}
-
-// Close 安全关闭 WaitEntry
-func (e *WaitEntry) Close() {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
-	if e.closed {
-		return
-	}
-	e.closed = true
-	close(e.ReadyChan)
-}
-
-// SendError 发送错误并关闭
-func (e *WaitEntry) SendError(err error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
-	if e.closed {
-		return
-	}
-	e.closed = true
-	select {
-	case e.ErrorChan <- err:
-	default:
-	}
-	close(e.ErrorChan)
-}
-
-// IsClosed 检查是否已关闭
-func (e *WaitEntry) IsClosed() bool {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.closed
 }
 
 // ComponentStatusUpdate 组件状态更新信息（传递给数据库同步）

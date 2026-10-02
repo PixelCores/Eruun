@@ -9,6 +9,7 @@ import (
 	"time"
 
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
+	mysqldsn "github.com/go-sql-driver/mysql"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/require"
 )
@@ -237,7 +238,6 @@ func TestValidateRuntimeLeaderLockNames(t *testing.T) {
 func TestNewConfigHasMySQLAndKafkaDefaults(t *testing.T) {
 	cfg := NewConfig()
 	require.Equal(t, MYSQL, cfg.Datastore.Type)
-	require.Equal(t, "eruun", cfg.Datastore.Database)
 	require.Equal(t, "eruun:__REPLACE_WITH_MYSQL_PASSWORD__@tcp(127.0.0.1:3306)/eruun?charset=utf8mb4&parseTime=true", cfg.Datastore.URL)
 	require.Equal(t, REDIS, cfg.Messaging.Type)
 	require.Equal(t, []string{"localhost:9092"}, cfg.Messaging.KafkaBrokers)
@@ -260,18 +260,19 @@ func TestNewConfigHasMySQLAndKafkaDefaults(t *testing.T) {
 }
 
 func TestConnectionConfigFlagAndEnvironmentOverrides(t *testing.T) {
-	const envDSN = "eruun:test-env@tcp(mysql-env.example:3306)/eruun?parseTime=true"
-	const cliDSN = "eruun:test-cli@tcp(mysql-cli.example:3307)/eruun?parseTime=true"
+	const envDSN = "eruun:test-env@tcp(mysql-env.example:3306)/from-env?parseTime=true"
+	const cliDSN = "eruun:test-cli@tcp(mysql-cli.example:3307)/from-flag?parseTime=true"
 	for _, tc := range []struct {
-		name    string
-		args    []string
-		dsn     string
-		brokers []string
-		group   string
-		offset  string
+		name     string
+		args     []string
+		dsn      string
+		database string
+		brokers  []string
+		group    string
+		offset   string
 	}{
 		{
-			name: "environment overrides defaults", dsn: envDSN,
+			name: "environment overrides defaults", dsn: envDSN, database: "from-env",
 			brokers: []string{"kafka-env-1.example:9092", "kafka-env-2.example:9092"},
 			group:   "env-workers", offset: "latest",
 		},
@@ -283,7 +284,7 @@ func TestConnectionConfigFlagAndEnvironmentOverrides(t *testing.T) {
 				"--msg-kafka-group-id=cli-workers",
 				"--msg-kafka-offset-reset=earliest",
 			},
-			dsn: cliDSN, brokers: []string{"kafka-cli.example:9093"},
+			dsn: cliDSN, database: "from-flag", brokers: []string{"kafka-cli.example:9093"},
 			group: "cli-workers", offset: "earliest",
 		},
 	} {
@@ -299,12 +300,75 @@ func TestConnectionConfigFlagAndEnvironmentOverrides(t *testing.T) {
 			require.NoError(t, ApplyEnvOverrides(flags, EnvPrefix))
 
 			require.Equal(t, tc.dsn, cfg.Datastore.URL)
+			dsn, err := mysqldsn.ParseDSN(cfg.Datastore.URL)
+			require.NoError(t, err)
+			require.Equal(t, tc.database, dsn.DBName)
 			require.Equal(t, tc.brokers, cfg.Messaging.KafkaBrokers)
 			require.Equal(t, tc.group, cfg.Messaging.KafkaGroupID)
 			require.Equal(t, tc.offset, cfg.Messaging.KafkaAutoOffsetReset)
 			cfg.Messaging.Type = KAFKA
 			require.Empty(t, cfg.Validate())
 		})
+	}
+}
+
+func TestRemovedDatastoreDatabaseInputsAreRejected(t *testing.T) {
+	t.Run("flag", func(t *testing.T) {
+		cfg := NewConfig()
+		flags := pflag.NewFlagSet("removed-database-flag", pflag.ContinueOnError)
+		cfg.AddFlags(flags, cfg)
+		err := flags.Parse([]string{"--datastore-database=unused"})
+		require.ErrorContains(t, err, "unknown flag: --datastore-database")
+	})
+
+	for _, value := range []string{"", "unused-database-value"} {
+		for _, explicitDSN := range []bool{false, true} {
+			t.Run(fmt.Sprintf("environment/value=%q/explicitDSN=%t", value, explicitDSN), func(t *testing.T) {
+				cfg := NewConfig()
+				flags := pflag.NewFlagSet("removed-database-env", pflag.ContinueOnError)
+				cfg.AddFlags(flags, cfg)
+				if explicitDSN {
+					require.NoError(t, flags.Parse([]string{"--datastore-url=eruun:test-only@tcp(localhost:3306)/from-dsn"}))
+				}
+				t.Setenv("ERUUN_DATASTORE_DATABASE", value)
+				err := ApplyEnvOverrides(flags, EnvPrefix)
+				require.ErrorContains(t, err, "ERUUN_DATASTORE_DATABASE is no longer supported")
+				require.ErrorContains(t, err, "remove it and set the database name in --datastore-url or ERUUN_DATASTORE_URL")
+				require.NotContains(t, err.Error(), "unused-database-value")
+				require.NotContains(t, err.Error(), "test-only")
+			})
+		}
+	}
+}
+
+func TestValidateDatastoreInputsInEverySchemaMode(t *testing.T) {
+	for _, mode := range []string{DatastoreSchemaModeMigrate, DatastoreSchemaModeValidate, DatastoreSchemaModeMigrateOnly} {
+		for _, tc := range []struct {
+			name string
+			kind string
+			dsn  string
+			want string
+		}{
+			{name: "mysql", kind: MYSQL, dsn: "eruun:test-only@tcp(localhost:3306)/custom-db"},
+			{name: "unsupported tidb", kind: "tidb", dsn: "eruun:test-only@tcp(localhost:3306)/custom-db", want: "unsupported datastore type: tidb; only mysql is supported"},
+			{name: "unknown type", kind: "other", dsn: "eruun:test-only@tcp(localhost:3306)/custom-db", want: "unsupported datastore type: other; only mysql is supported"},
+			{name: "empty type", want: "unsupported datastore type:"},
+			{name: "empty DSN", kind: MYSQL, want: "mysql url cannot be empty"},
+			{name: "placeholder DSN", kind: MYSQL, dsn: NewConfig().Datastore.URL, want: "mysql url contains placeholder value"},
+		} {
+			t.Run(mode+"/"+tc.name, func(t *testing.T) {
+				cfg := NewConfig()
+				cfg.DatastoreSchemaMode = mode
+				cfg.Datastore.Type = tc.kind
+				cfg.Datastore.URL = tc.dsn
+				errs := errorsJoin(cfg.Validate())
+				if tc.want == "" {
+					require.Empty(t, errs)
+				} else {
+					require.Contains(t, errs, tc.want)
+				}
+			})
+		}
 	}
 }
 

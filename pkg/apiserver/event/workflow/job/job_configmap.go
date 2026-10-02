@@ -9,13 +9,11 @@ import (
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
 
@@ -24,15 +22,18 @@ type DeployConfigMapJobCtl struct {
 	urlSecurityPolicy *spec.URLSecurityPolicySpec
 }
 
-func NewDeployConfigMapJobCtl(job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), shareLocker locker.Locker, urlSecurityPolicy *spec.URLSecurityPolicySpec) *DeployConfigMapJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("DeployConfigMapJobCtl", job, client, store, ack, shareLocker)
+func NewDeployConfigMapJobCtl(job *model.JobTask, runtime *Runtime, shareLocker locker.Locker) *DeployConfigMapJobCtl {
+	base, ok := newDeployNamespacedResourceJobBase("DeployConfigMapJobCtl", job, runtime, shareLocker)
 	if !ok {
 		return nil
 	}
-	return &DeployConfigMapJobCtl{
+	ctl := &DeployConfigMapJobCtl{
 		deployNamespacedResourceJobBase: base,
-		urlSecurityPolicy:               urlSecurityPolicy,
 	}
+	if runtime != nil {
+		ctl.urlSecurityPolicy = runtime.URLSecurityPolicy
+	}
+	return ctl
 }
 
 func (c *DeployConfigMapJobCtl) Clean(ctx context.Context) {
@@ -336,7 +337,7 @@ func adoptedConfigMapEqual(current, updated *corev1.ConfigMap) bool {
 
 // GenerateConfigMap Generate a simplified ConfigMap input based on components and attributes.
 // First, read the external file URL from Conf["config.url"]; otherwise, directly use the content in Conf as the content of ConfigMap.
-func GenerateConfigMap(component *model.ApplicationComponent, properties *model.Properties) interface{} {
+func GenerateConfigMap(component *model.ApplicationComponent, properties *model.Properties) *ConfigMapInput {
 	name, namespace := generatedResourceIdentity(component)
 
 	if url, fileName, ok := externalConfigFileInput(properties, true); ok {
@@ -352,7 +353,7 @@ func GenerateConfigMap(component *model.ApplicationComponent, properties *model.
 	labels := BuildLabels(component, properties)
 	var data map[string]string
 	if properties != nil {
-		data = keyValueDataOrNil(properties.Conf)
+		data = properties.Conf
 	}
 
 	return &ConfigMapInput{

@@ -89,7 +89,7 @@ func TestNormalizeLabelValuesPreservesKeys(t *testing.T) {
 }
 
 func TestApplicationResourceKey(t *testing.T) {
-	require.Equal(t, "game", ApplicationResourceKey("Game", "1.0.0", false))
-	require.Equal(t, "mysql-8-0-41", ApplicationResourceKey("mysql", "8.0.41", true))
-	require.Equal(t, "mysql", ApplicationResourceKey("mysql", "", true))
+	require.Equal(t, "game", ApplicationResourceKey("Game"))
+	require.Equal(t, "my-app", ApplicationResourceKey("My App"))
+	require.Equal(t, "app", ApplicationResourceKey(""))
 }

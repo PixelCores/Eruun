@@ -15,7 +15,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
@@ -76,7 +75,7 @@ func TestDeployStatefulSetJobCtl_UpdateExisting(t *testing.T) {
 	}
 
 	job.JobInfo = desired
-	ctl := NewDeployStatefulSetJobCtl(job, client, &noopStore{}, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployStatefulSetJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 
 	if err := ctl.run(ctx); err != nil {
 		t.Fatalf("run returned error: %v", err)
@@ -167,7 +166,7 @@ func TestDeployStatefulSetJobCtl_SkipsUnchangedUpdate(t *testing.T) {
 	desired.Spec.Template.Spec.TerminationGracePeriodSeconds = nil
 	desired.Spec.Template.Spec.EnableServiceLinks = nil
 	job.JobInfo = desired
-	ctl := NewDeployStatefulSetJobCtl(job, client, &noopStore{}, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployStatefulSetJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 
 	if err := ctl.run(ctx); err != nil {
 		t.Fatalf("run returned error: %v", err)
@@ -206,7 +205,7 @@ func TestDeployStatefulSetJobCtl_RestoresTaskAnnotationForUpToDateStatefulSet(t 
 	desired.Name = statefulSetName
 	desired.Namespace = "ops"
 	job.JobInfo = desired
-	ctl := NewDeployStatefulSetJobCtl(job, client, &noopStore{}, func() {}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployStatefulSetJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 
 	require.NoError(t, ctl.run(ctx))
 
@@ -645,10 +644,7 @@ func comparableStatefulSet() *appsv1.StatefulSet {
 }
 
 func TestDeployStatefulSetJobCtlWaitTimeoutWithPodAbnormalReturnsFailed(t *testing.T) {
-	waiter := informer.NewResourceReadyWaiter()
-	defer waiter.Close()
-
-	waiter.OnPodAdd(newWaitTestPod("app-1", "mysql", "CrashLoopBackOff"))
+	waiter := newWorkloadTestObserver(t, newWaitTestPod("app-1", "mysql", "CrashLoopBackOff"))
 
 	ctl := &DeployStatefulSetJobCtl{
 		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
@@ -690,10 +686,7 @@ func TestDeployStatefulSetJobCtlWaitRequiresResourceWaiter(t *testing.T) {
 }
 
 func TestDeployStatefulSetJobCtlWaitUsesBoundedComponentLabel(t *testing.T) {
-	waiter := informer.NewResourceReadyWaiter()
-	defer waiter.Close()
-
-	waiter.OnPodAdd(newWaitReadyTestPod("app-1", naming.BoundedLabelValue("MySQL_DB")))
+	waiter := newWorkloadTestObserver(t, newWaitReadyTestPod("app-1", naming.BoundedLabelValue("MySQL_DB")))
 
 	ctl := &DeployStatefulSetJobCtl{
 		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
@@ -712,10 +705,7 @@ func TestDeployStatefulSetJobCtlWaitUsesBoundedComponentLabel(t *testing.T) {
 }
 
 func TestDeployStatefulSetJobCtlWaitTimeoutWithPendingPodReturnsTimeout(t *testing.T) {
-	waiter := informer.NewResourceReadyWaiter()
-	defer waiter.Close()
-
-	waiter.OnPodAdd(newWaitTestPod("app-1", "mysql", "ContainerCreating"))
+	waiter := newWorkloadTestObserver(t, newWaitTestPod("app-1", "mysql", "ContainerCreating"))
 
 	ctl := &DeployStatefulSetJobCtl{
 		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
@@ -738,10 +728,7 @@ func TestDeployStatefulSetJobCtlWaitTimeoutWithPendingPodReturnsTimeout(t *testi
 }
 
 func TestDeployStatefulSetJobCtlWaitIgnoresReadyPodWithDifferentImage(t *testing.T) {
-	waiter := informer.NewResourceReadyWaiter()
-	defer waiter.Close()
-
-	waiter.OnPodAdd(withWaitPodImage(newWaitReadyTestPod("app-1", "mysql"), "mysql:5.7"))
+	waiter := newWorkloadTestObserver(t, withWaitPodImage(newWaitReadyTestPod("app-1", "mysql"), "mysql:5.7"))
 
 	ctl := &DeployStatefulSetJobCtl{
 		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
@@ -765,10 +752,7 @@ func TestDeployStatefulSetJobCtlWaitIgnoresReadyPodWithDifferentImage(t *testing
 }
 
 func TestDeployStatefulSetJobCtlWaitUsesExpectedImage(t *testing.T) {
-	waiter := informer.NewResourceReadyWaiter()
-	defer waiter.Close()
-
-	waiter.OnPodAdd(withWaitPodImage(newWaitReadyTestPod("app-1", "mysql"), "mysql:8.0"))
+	waiter := newWorkloadTestObserver(t, withWaitPodImage(newWaitReadyTestPod("app-1", "mysql"), "mysql:8.0"))
 
 	ctl := &DeployStatefulSetJobCtl{
 		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
@@ -787,17 +771,14 @@ func TestDeployStatefulSetJobCtlWaitUsesExpectedImage(t *testing.T) {
 }
 
 func TestDeployStatefulSetJobCtlWaitRequiresExpectedTaskAnnotationWithSameImage(t *testing.T) {
-	waiter := informer.NewResourceReadyWaiter()
-	defer waiter.Close()
-
 	oldReady := withWaitPodImage(newWaitReadyTestPod("app-1", "mysql"), "mysql:8.0")
 	oldReady.Name = "mysql-old"
 	newAbnormal := withWaitPodAnnotations(withWaitPodImage(newWaitTestPod("app-1", "mysql", "CrashLoopBackOff"), "mysql:8.0"), map[string]string{
 		config.AnnotationJobTaskID: "task-sts-template",
 	})
 	newAbnormal.Name = "mysql-new"
-	waiter.OnPodAdd(oldReady)
-	waiter.OnPodAdd(newAbnormal)
+
+	waiter := newWorkloadTestObserver(t, oldReady, newAbnormal)
 
 	ctl := &DeployStatefulSetJobCtl{
 		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{

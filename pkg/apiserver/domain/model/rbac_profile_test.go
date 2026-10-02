@@ -13,7 +13,6 @@ func TestRBACProfile_EntityContract(t *testing.T) {
 	}
 
 	require.Equal(t, "eruun_rbac_profiles", profile.TableName())
-	require.Equal(t, "rbac_profile", profile.ShortTableName())
 	require.Equal(t, "rbac-1", profile.PrimaryKey())
 
 	index := profile.Index()

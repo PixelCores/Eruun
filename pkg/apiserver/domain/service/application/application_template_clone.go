@@ -9,6 +9,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -84,12 +85,7 @@ func templateOverrideTargetsComponent(target, templateName string) bool {
 	return target == templateName || target == fmt.Sprintf("tem-%s", templateName)
 }
 
-func (c *applicationsServiceImpl) resolveComponents(ctx context.Context, namespace, appName string, reqComponents []apisv1.CreateComponentRequest) ([]apisv1.CreateComponentRequest, error) {
-	components, _, err := c.resolveComponentsWithSourceIndexes(ctx, namespace, appName, reqComponents)
-	return components, err
-}
-
-func (c *applicationsServiceImpl) resolveComponentsWithSourceIndexes(ctx context.Context, namespace, appName string, reqComponents []apisv1.CreateComponentRequest) ([]apisv1.CreateComponentRequest, []int, error) {
+func resolveComponentsWithSourceIndexes(ctx context.Context, appRepo repository.ApplicationRepository, componentRepo repository.ComponentRepository, namespace, appName string, reqComponents []apisv1.CreateComponentRequest, cfg *config.Config) ([]apisv1.CreateComponentRequest, []int, error) {
 	components := make([]apisv1.CreateComponentRequest, 0, len(reqComponents))
 	sourceIndexes := make([]int, 0, len(reqComponents))
 	templateOrder := make([]string, 0)
@@ -134,7 +130,7 @@ func (c *applicationsServiceImpl) resolveComponentsWithSourceIndexes(ctx context
 	for _, templateID := range templateOrder {
 		tr := templateMap[templateID]
 		// 克隆
-		clones, cloneSourceIndexes, err := c.cloneComponentsFromTemplate(ctx, namespace, templateID, tr)
+		clones, cloneSourceIndexes, err := cloneComponentsFromTemplate(ctx, appRepo, componentRepo, namespace, templateID, tr)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -142,7 +138,7 @@ func (c *applicationsServiceImpl) resolveComponentsWithSourceIndexes(ctx context
 		sourceIndexes = append(sourceIndexes, cloneSourceIndexes...)
 	}
 	if scope, ok := access.FromContext(ctx); ok {
-		if namespace != scope.Namespace || c.Cfg == nil || c.Cfg.Accounts == nil {
+		if namespace != scope.Namespace || cfg == nil || cfg.Accounts == nil {
 			return nil, nil, bcode.ErrForbidden
 		}
 		for i := range components {
@@ -154,7 +150,7 @@ func (c *applicationsServiceImpl) resolveComponentsWithSourceIndexes(ctx context
 			if comp.ComponentType == config.CloudJob {
 				return nil, nil, bcode.ErrForbidden
 			}
-			if err := workspace.ValidateTraits(namespace, comp.Name, &comp.Traits, &comp.Properties, c.Cfg.Accounts.Workspace); err != nil {
+			if err := workspace.ValidateTraits(namespace, comp.Name, &comp.Traits, &comp.Properties, cfg.Accounts.Workspace); err != nil {
 				return nil, nil, err
 			}
 		}
@@ -162,7 +158,7 @@ func (c *applicationsServiceImpl) resolveComponentsWithSourceIndexes(ctx context
 	return components, sourceIndexes, nil
 }
 
-func (c *applicationsServiceImpl) cloneComponentsFromTemplate(ctx context.Context, namespace, templateID string, tr *templateRequest) ([]apisv1.CreateComponentRequest, []int, error) {
+func cloneComponentsFromTemplate(ctx context.Context, appRepo repository.ApplicationRepository, componentRepo repository.ComponentRepository, namespace, templateID string, tr *templateRequest) ([]apisv1.CreateComponentRequest, []int, error) {
 	if tr == nil {
 		return nil, nil, nil
 	}
@@ -170,7 +166,7 @@ func (c *applicationsServiceImpl) cloneComponentsFromTemplate(ctx context.Contex
 		return nil, nil, bcode.ErrTemplateIDMissing
 	}
 
-	templateApp, err := c.AppRepo.FindByID(ctx, templateID)
+	templateApp, err := appRepo.FindByID(ctx, templateID)
 	if err != nil {
 		if errors.Is(err, datastore.ErrRecordNotExist) {
 			return nil, nil, bcode.ErrApplicationNotExist
@@ -181,7 +177,7 @@ func (c *applicationsServiceImpl) cloneComponentsFromTemplate(ctx context.Contex
 		return nil, nil, bcode.ErrTemplateNotEnabled
 	}
 
-	templateComponents, err := c.ComponentRepo.FindByAppID(ctx, templateApp.ID)
+	templateComponents, err := componentRepo.FindByAppID(ctx, templateApp.ID)
 	if err != nil {
 		return nil, nil, err
 	}
