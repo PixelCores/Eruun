@@ -22,6 +22,10 @@ func ApplyEnvOverrides(fs *pflag.FlagSet, prefix string) error {
 	if _, exists := os.LookupEnv(key); exists {
 		return fmt.Errorf("%s is no longer supported; remove it and set the database name in --datastore-url or %s", key, buildEnvKey(prefix, "datastore-url"))
 	}
+	key = buildEnvKey(prefix, "auto-tracing")
+	if _, exists := os.LookupEnv(key); exists {
+		return fmt.Errorf("%s is no longer supported; remove it and control tracing with --enable-tracing or %s", key, buildEnvKey(prefix, "enable-tracing"))
+	}
 	var errs []error
 	fs.VisitAll(func(f *pflag.Flag) {
 		if f.Changed {

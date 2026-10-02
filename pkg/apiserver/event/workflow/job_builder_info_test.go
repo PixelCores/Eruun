@@ -9,15 +9,16 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	applyv1 "k8s.io/client-go/applyconfigurations/core/v1"
 )
 
 func TestBuildServiceDeployInfo(t *testing.T) {
-	svc := applyv1.Service("nginx", "default").
-		WithSpec(applyv1.ServiceSpec().WithPorts(
-			applyv1.ServicePort().WithName("http").WithPort(80).WithProtocol(corev1.ProtocolTCP).WithTargetPort(intstr.FromInt(8080)),
-			applyv1.ServicePort().WithName("https").WithPort(443).WithProtocol(corev1.ProtocolTCP).WithTargetPort(intstr.FromInt(8443)),
-		))
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "nginx", Namespace: "default"},
+		Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{
+			{Name: "http", Port: 80, Protocol: corev1.ProtocolTCP, TargetPort: intstr.FromInt(8080)},
+			{Name: "https", Port: 443, Protocol: corev1.ProtocolTCP, TargetPort: intstr.FromInt(8443)},
+		}},
+	}
 
 	info := buildServiceDeployInfo(svc, "nginx", "default")
 	require.Equal(t, "svc: nginx.default.svc:80,443; ports: http:80/TCP->8080, https:443/TCP->8443", info)
@@ -48,4 +49,15 @@ func TestBuildIngressDeployInfo(t *testing.T) {
 
 	info := buildIngressDeployInfo(ing, "nginx", "default")
 	require.Equal(t, "ingress: nginx.example.com/, nginx.example.com/api", info)
+}
+
+func TestBuildServiceDeployInfoOmitsUnsetTargetPort(t *testing.T) {
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "backend", Namespace: "ops"},
+		Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{
+			{Name: "http", Port: 80},
+			{Name: "https", Port: 443, TargetPort: intstr.FromString("tls")},
+		}},
+	}
+	require.Equal(t, "svc: backend.ops.svc:80,443; ports: http:80/TCP, https:443/TCP->tls", buildServiceDeployInfo(svc, "", ""))
 }

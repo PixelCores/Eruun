@@ -350,10 +350,3 @@ func pickNonEmpty(value, fallback string) string {
 	}
 	return strings.TrimSpace(fallback)
 }
-
-func valueOrEmpty(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return *value
-}

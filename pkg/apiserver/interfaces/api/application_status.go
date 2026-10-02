@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"time"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/applicationstatus"
@@ -65,18 +64,6 @@ func (app *applications) getApplicationComponentStatus(c *gin.Context) {
 
 func (app *applications) applicationComponentStatus(ctx context.Context, appID string) (apis.ApplicationComponentStatusResponse, error) {
 	return app.statusRules().GetComponentStatus(ctx, appID)
-}
-
-func (app *applications) applicationAggregateStatus(ctx context.Context, appID string, components []*model.ApplicationComponent) (string, error) {
-	return app.statusRules().Aggregate(ctx, appID, components)
-}
-
-func aggregateApplicationStatus(components []*model.ApplicationComponent) string {
-	return aggregateApplicationStatusWithReferenceTime(components, time.Now())
-}
-
-func aggregateApplicationStatusWithReferenceTime(components []*model.ApplicationComponent, now time.Time) string {
-	return applicationstatus.AggregateWithReferenceTime(components, now)
 }
 
 func batchLookupErrorMessage(err error) string {

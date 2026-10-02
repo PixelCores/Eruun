@@ -288,59 +288,6 @@ func TestCreateAndExecApplicationsEndpointMarksDeployingForPastExecuteAt(t *test
 	require.Equal(t, "wfdefault", appSvc.lastMarkWorkflow)
 }
 
-func TestShouldMarkCreateAndExecDeploying(t *testing.T) {
-	now := time.Unix(1000, 0)
-	tests := []struct {
-		name      string
-		executeAt int64
-		now       time.Time
-		want      bool
-	}{
-		{
-			name:      "negative",
-			executeAt: -1,
-			now:       now,
-			want:      false,
-		},
-		{
-			name:      "zero",
-			executeAt: 0,
-			now:       now,
-			want:      true,
-		},
-		{
-			name:      "past",
-			executeAt: 999,
-			now:       now,
-			want:      true,
-		},
-		{
-			name:      "current second",
-			executeAt: 1000,
-			now:       now,
-			want:      true,
-		},
-		{
-			name:      "near future became due",
-			executeAt: 1001,
-			now:       time.Unix(1001, 0),
-			want:      true,
-		},
-		{
-			name:      "future",
-			executeAt: 1001,
-			now:       now,
-			want:      false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, shouldMarkCreateAndExecDeploying(tt.executeAt, tt.now))
-		})
-	}
-}
-
 func TestCreateAndExecApplicationsEndpointInvalidExecuteAtDoesNotExecOrMark(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	appSvc := &fakeCreateAndExecApplicationService{

@@ -27,6 +27,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
+	conversionservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/conversion"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
@@ -1962,15 +1963,15 @@ func ingressBackendServiceNames(ing *networkingv1.Ingress) []string {
 
 func (s *serviceImpl) buildImportPlans(grouped map[string][]*importResource, appNames, appAliases map[string]string, sharedAppID string) []importAppPlan {
 	appIDs := sortedImportAppIDs(grouped)
-	sharedResourceTemplates, sharedSourceComponents, sharedTemplateWarnings, sharedSourceWarnings := buildSharedImportInputs(grouped[sharedAppID])
+	sharedResourceTemplates, sharedTemplateWarnings := buildSharedImportInputs(grouped[sharedAppID])
 
 	plans := make([]importAppPlan, 0, len(appIDs))
 	for _, appID := range appIDs {
 		resources := sortedImportPlanResources(grouped[appID])
 		plan := newImportAppPlan(appID, appNames, appAliases, resources)
-		objects := importPlanObjects(appID, sharedAppID, resources)
+		objects, localSources := importPlanObjects(appID, sharedAppID, resources)
 
-		resourceSourceComponents, sourceComponents, warnings, err := convertImportPlanComponents(appID, sharedAppID, objects, sharedResourceTemplates, sharedTemplateWarnings, sharedSourceWarnings)
+		components, sources, warnings, err := convertImportPlanComponents(appID, sharedAppID, objects, sharedResourceTemplates, sharedTemplateWarnings)
 		appendImportPlanWarnings(&plan, appID, warnings)
 		if err != nil {
 			plan.err = err
@@ -1978,7 +1979,7 @@ func (s *serviceImpl) buildImportPlans(grouped map[string][]*importResource, app
 			continue
 		}
 
-		finalizeImportPlanComponents(&plan, appID, sharedAppID, resources, sourceComponents, resourceSourceComponents, sharedSourceComponents)
+		finalizeImportPlanComponents(&plan, appID, sharedAppID, resources, components, sources, localSources)
 		plans = append(plans, plan)
 	}
 	return plans
@@ -1993,13 +1994,18 @@ func sortedImportAppIDs(grouped map[string][]*importResource) []string {
 	return appIDs
 }
 
-func buildSharedImportInputs(resources []*importResource) ([]*unstructured.Unstructured, []apisv1.CreateComponentRequest, []string, []string) {
-	sharedResourceTemplates, _, sharedTemplateWarnings := buildSharedResourceTemplates(resources)
+func buildSharedImportInputs(resources []*importResource) ([]*unstructured.Unstructured, []string) {
+	sharedResourceTemplates, sharedTemplateWarnings := buildSharedResourceTemplates(resources)
 	filteredTemplates, skippedWarnings := filterUnsafeStatefulSetVolumeClaimTemplateImports(sharedResourceTemplates)
 	sharedTemplateWarnings = append(sharedTemplateWarnings, skippedWarnings...)
-	sharedResourceTemplates = filteredTemplates
-	sharedSourceComponents, sharedSourceWarnings := convertSharedTemplateSourceComponents(sharedResourceTemplates)
-	return sharedResourceTemplates, sharedSourceComponents, sharedTemplateWarnings, sharedSourceWarnings
+	// Keep the shared-only diagnostics even when another pass combines these
+	// templates with an application's resources and resolves their dependencies.
+	_, conversionWarnings, err := convertKubeObjectsToComponents(filteredTemplates)
+	sharedTemplateWarnings = append(sharedTemplateWarnings, conversionWarnings...)
+	if err != nil {
+		sharedTemplateWarnings = append(sharedTemplateWarnings, fmt.Sprintf("convert shared templates for source matching failed: %v", err))
+	}
+	return filteredTemplates, sharedTemplateWarnings
 }
 
 func sortedImportPlanResources(resources []*importResource) []*importResource {
@@ -2021,17 +2027,23 @@ func newImportAppPlan(appID string, appNames, appAliases map[string]string, reso
 	}
 }
 
-func importPlanObjects(appID, sharedAppID string, resources []*importResource) []*unstructured.Unstructured {
+func importPlanObjects(appID, sharedAppID string, resources []*importResource) ([]*unstructured.Unstructured, map[*unstructured.Unstructured]string) {
 	objects := make([]*unstructured.Unstructured, 0, len(resources))
+	localSources := make(map[*unstructured.Unstructured]string, len(resources))
 	for _, res := range resources {
-		if res != nil && res.object != nil {
-			objects = append(objects, res.object.DeepCopy())
+		if res == nil || res.object == nil {
+			continue
 		}
+		obj := res.object.DeepCopy()
+		if appID == sharedAppID {
+			if err := ensureShareLabelsOnResourceObject(res.kindKey, obj, res.name); err != nil {
+				klog.Warningf("inject share labels for %s/%s failed: %v", res.kind, res.name, err)
+			}
+		}
+		objects = append(objects, obj)
+		localSources[obj] = resourceResultKey(res)
 	}
-	if appID == sharedAppID {
-		ensureShareLabelsForResources(objects, resources)
-	}
-	return objects
+	return objects, localSources
 }
 
 func convertImportPlanComponents(
@@ -2040,30 +2052,27 @@ func convertImportPlanComponents(
 	objects []*unstructured.Unstructured,
 	sharedResourceTemplates []*unstructured.Unstructured,
 	sharedTemplateWarnings []string,
-	sharedSourceWarnings []string,
-) ([]apisv1.CreateComponentRequest, []apisv1.CreateComponentRequest, []string, error) {
+) ([]apisv1.CreateComponentRequest, []*unstructured.Unstructured, []string, error) {
 	filteredObjects, skippedWarnings := filterUnsafeStatefulSetVolumeClaimTemplateImports(objects)
-	resourceSourceComponents, resourceWarnings, err := convertKubeObjectsToComponents(filteredObjects)
+	components, sources, resourceWarnings, err := conversionservice.ConvertKubeObjectsWithSources(filteredObjects)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("convert resources for app %s: %w", appID, err)
 	}
 
-	sourceComponents := resourceSourceComponents
 	warnings := append([]string(nil), skippedWarnings...)
 	if appID != sharedAppID && len(sharedResourceTemplates) > 0 {
 		fullObjects := importObjectsWithSharedTemplates(filteredObjects, sharedResourceTemplates)
 		warnings = append(warnings, sharedTemplateWarnings...)
-		warnings = append(warnings, sharedSourceWarnings...)
-		components, convertWarnings, err := convertKubeObjectsToComponents(fullObjects)
+		var convertWarnings []string
+		components, sources, convertWarnings, err = conversionservice.ConvertKubeObjectsWithSources(fullObjects)
 		warnings = append(warnings, convertWarnings...)
 		if err != nil {
-			return resourceSourceComponents, nil, warnings, fmt.Errorf("convert resources for app %s: %w", appID, err)
+			return nil, nil, warnings, fmt.Errorf("convert resources for app %s: %w", appID, err)
 		}
-		sourceComponents = components
 	} else {
 		warnings = append(warnings, resourceWarnings...)
 	}
-	return resourceSourceComponents, sourceComponents, warnings, nil
+	return components, sources, warnings, nil
 }
 
 func filterUnsafeStatefulSetVolumeClaimTemplateImports(objects []*unstructured.Unstructured) ([]*unstructured.Unstructured, []string) {
@@ -2108,13 +2117,21 @@ func appendImportPlanWarnings(plan *importAppPlan, appID string, warnings []stri
 	}
 }
 
-func finalizeImportPlanComponents(plan *importAppPlan, appID, sharedAppID string, resources []*importResource, sourceComponents, resourceSourceComponents, sharedSourceComponents []apisv1.CreateComponentRequest) {
-	deduped := dedupeImportComponents(sourceComponents)
-	plan.resourceComponentByKey = buildResourceComponentNameMapping(resources, sourceComponents, deduped, resourceSourceComponents)
-	plan.workloadComponentByOriginalName = buildWorkloadComponentNameMapping(resources, plan.resourceComponentByKey)
-	if appID != sharedAppID && len(sharedSourceComponents) > 0 {
-		ensureSharedComponentsOnApp(sourceComponents, deduped, sharedSourceComponents, plan.resourceComponentByKey)
+func finalizeImportPlanComponents(plan *importAppPlan, appID, sharedAppID string, resources []*importResource, components []apisv1.CreateComponentRequest, sources []*unstructured.Unstructured, localSources map[*unstructured.Unstructured]string) {
+	deduped := dedupeImportComponents(components)
+	for i, source := range sources {
+		if key, local := localSources[source]; local {
+			if plan.resourceComponentByKey == nil {
+				plan.resourceComponentByKey = make(map[string]string)
+			}
+			plan.resourceComponentByKey[key] = deduped[i].Name
+		} else if deduped[i].Traits.Share == nil {
+			deduped[i].Traits.Share = &domainspec.ShareTraitSpec{Strategy: string(domainspec.ShareStrategyDefault)}
+		} else if strings.TrimSpace(deduped[i].Traits.Share.Strategy) == "" {
+			deduped[i].Traits.Share.Strategy = string(domainspec.ShareStrategyDefault)
+		}
 	}
+	plan.workloadComponentByOriginalName = buildWorkloadComponentNameMapping(resources, plan.resourceComponentByKey)
 	plan.components = deduped
 	plan.componentNames = componentNames(deduped)
 	if len(plan.components) == 0 && appID != sharedAppID {
@@ -2123,12 +2140,11 @@ func finalizeImportPlanComponents(plan *importAppPlan, appID, sharedAppID string
 	}
 }
 
-func buildSharedResourceTemplates(resources []*importResource) ([]*unstructured.Unstructured, map[string]struct{}, []string) {
+func buildSharedResourceTemplates(resources []*importResource) ([]*unstructured.Unstructured, []string) {
 	if len(resources) == 0 {
-		return nil, nil, nil
+		return nil, nil
 	}
 	templates := make([]*unstructured.Unstructured, 0, len(resources))
-	componentNames := make(map[string]struct{})
 	warnings := make([]string, 0)
 	for _, res := range resources {
 		if res == nil || res.object == nil {
@@ -2143,54 +2159,8 @@ func buildSharedResourceTemplates(resources []*importResource) ([]*unstructured.
 			continue
 		}
 		templates = append(templates, obj)
-		if isShareComponentCarrierKind(res.kindKey) {
-			name := strings.ToLower(strings.TrimSpace(res.name))
-			if name != "" {
-				componentNames[name] = struct{}{}
-			}
-		}
 	}
-	return templates, componentNames, warnings
-}
-
-func convertSharedTemplateSourceComponents(templates []*unstructured.Unstructured) ([]apisv1.CreateComponentRequest, []string) {
-	if len(templates) == 0 {
-		return nil, nil
-	}
-	objects := make([]*unstructured.Unstructured, 0, len(templates))
-	for _, obj := range templates {
-		if obj == nil {
-			continue
-		}
-		objects = append(objects, obj.DeepCopy())
-	}
-	if len(objects) == 0 {
-		return nil, nil
-	}
-	components, warnings, err := convertKubeObjectsToComponents(objects)
-	if err != nil {
-		return nil, append(warnings, fmt.Sprintf("convert shared templates for source matching failed: %v", err))
-	}
-	return components, warnings
-}
-
-func ensureShareLabelsForResources(objects []*unstructured.Unstructured, resources []*importResource) {
-	if len(objects) == 0 || len(resources) == 0 {
-		return
-	}
-	for i := range objects {
-		if i >= len(resources) {
-			break
-		}
-		obj := objects[i]
-		res := resources[i]
-		if obj == nil || res == nil {
-			continue
-		}
-		if err := ensureShareLabelsOnResourceObject(res.kindKey, obj, res.name); err != nil {
-			klog.Warningf("inject share labels for %s/%s failed: %v", res.kind, res.name, err)
-		}
-	}
+	return templates, warnings
 }
 
 func ensureShareLabelsOnResourceObject(kindKey string, obj *unstructured.Unstructured, defaultShareName string) error {
@@ -2221,62 +2191,6 @@ func ensureShareLabelsOnResourceObject(kindKey string, obj *unstructured.Unstruc
 		}
 	}
 	return nil
-}
-
-func isShareComponentCarrierKind(kindKey string) bool {
-	switch kindKey {
-	case importKindDeployments,
-		importKindStatefulSets,
-		importKindDaemonSets,
-		importKindJobs,
-		importKindCronJobs,
-		importKindConfigMaps,
-		importKindSecrets:
-		return true
-	default:
-		return false
-	}
-}
-
-func ensureSharedComponentsOnApp(
-	sourceComponents, dedupedComponents, sharedSourceComponents []apisv1.CreateComponentRequest,
-	resourceComponentByKey map[string]string,
-) {
-	if len(sourceComponents) == 0 || len(dedupedComponents) == 0 || len(sharedSourceComponents) == 0 {
-		return
-	}
-	localComponentNames := make(map[string]struct{}, len(resourceComponentByKey))
-	for _, name := range resourceComponentByKey {
-		normalized := strings.ToLower(strings.TrimSpace(name))
-		if normalized == "" {
-			continue
-		}
-		localComponentNames[normalized] = struct{}{}
-	}
-	sharedBudget := buildComponentSignatureBudget(sharedSourceComponents)
-	for i := range sourceComponents {
-		if i >= len(dedupedComponents) {
-			break
-		}
-		dedupedName := strings.ToLower(strings.TrimSpace(dedupedComponents[i].Name))
-		if dedupedName != "" {
-			if _, isLocal := localComponentNames[dedupedName]; isLocal {
-				continue
-			}
-		}
-		signature := componentSourceSignature(sourceComponents[i])
-		if signature == "" || sharedBudget[signature] <= 0 {
-			continue
-		}
-		sharedBudget[signature]--
-		if dedupedComponents[i].Traits.Share == nil {
-			dedupedComponents[i].Traits.Share = &domainspec.ShareTraitSpec{Strategy: string(domainspec.ShareStrategyDefault)}
-			continue
-		}
-		if strings.TrimSpace(dedupedComponents[i].Traits.Share.Strategy) == "" {
-			dedupedComponents[i].Traits.Share.Strategy = string(domainspec.ShareStrategyDefault)
-		}
-	}
 }
 
 func dedupeImportComponents(components []apisv1.CreateComponentRequest) []apisv1.CreateComponentRequest {
@@ -2352,61 +2266,6 @@ func dedupeImportComponents(components []apisv1.CreateComponentRequest) []apisv1
 	return result
 }
 
-func buildResourceComponentNameMapping(resources []*importResource, sourceComponents, dedupedComponents, resourceSourceComponents []apisv1.CreateComponentRequest) map[string]string {
-	if len(resources) == 0 || len(sourceComponents) == 0 || len(sourceComponents) != len(dedupedComponents) {
-		return nil
-	}
-	resourceBudget := buildComponentSignatureBudget(resourceSourceComponents)
-	if len(resourceBudget) == 0 {
-		return nil
-	}
-	renameQueueByName := make(map[string][]string, len(sourceComponents))
-	for i := range sourceComponents {
-		signature := componentSourceSignature(sourceComponents[i])
-		if signature == "" || resourceBudget[signature] <= 0 {
-			continue
-		}
-		resourceBudget[signature]--
-		sourceName := strings.ToLower(strings.TrimSpace(sourceComponents[i].Name))
-		dedupedName := strings.TrimSpace(dedupedComponents[i].Name)
-		if sourceName == "" || dedupedName == "" {
-			continue
-		}
-		renameQueueByName[sourceName] = append(renameQueueByName[sourceName], dedupedName)
-	}
-	if len(renameQueueByName) == 0 {
-		return nil
-	}
-
-	mapping := make(map[string]string, len(resources))
-	for _, res := range resourcesInConvertComponentOrder(resources) {
-		if res == nil {
-			continue
-		}
-		sourceName := strings.ToLower(strings.TrimSpace(res.name))
-		if sourceName == "" {
-			sourceName = strings.ToLower(strings.TrimSpace(res.componentName))
-		}
-		if sourceName == "" {
-			continue
-		}
-		queue := renameQueueByName[sourceName]
-		if len(queue) == 0 {
-			continue
-		}
-		key := resourceResultKey(res)
-		if key == "" {
-			continue
-		}
-		mapping[key] = queue[0]
-		renameQueueByName[sourceName] = queue[1:]
-	}
-	if len(mapping) == 0 {
-		return nil
-	}
-	return mapping
-}
-
 func buildWorkloadComponentNameMapping(resources []*importResource, resourceComponentByKey map[string]string) map[string]string {
 	if len(resources) == 0 || len(resourceComponentByKey) == 0 {
 		return nil
@@ -2454,84 +2313,6 @@ func isImportWorkloadKind(kindKey string) bool {
 	default:
 		return false
 	}
-}
-
-func buildComponentSignatureBudget(components []apisv1.CreateComponentRequest) map[string]int {
-	if len(components) == 0 {
-		return nil
-	}
-	budget := make(map[string]int, len(components))
-	for i := range components {
-		signature := componentSourceSignature(components[i])
-		if signature == "" {
-			continue
-		}
-		budget[signature]++
-	}
-	if len(budget) == 0 {
-		return nil
-	}
-	return budget
-}
-
-func componentSourceSignature(component apisv1.CreateComponentRequest) string {
-	normalized := struct {
-		Name          string            `json:"name"`
-		Namespace     string            `json:"namespace"`
-		ComponentType config.JobType    `json:"componentType"`
-		Image         string            `json:"image"`
-		Properties    apisv1.Properties `json:"properties"`
-		Traits        apisv1.Traits     `json:"traits"`
-	}{
-		Name:          strings.TrimSpace(component.Name),
-		Namespace:     strings.TrimSpace(component.Namespace),
-		ComponentType: component.ComponentType,
-		Image:         strings.TrimSpace(component.Image),
-		Properties:    component.Properties,
-		Traits:        component.Traits,
-	}
-	data, err := json.Marshal(normalized)
-	if err != nil {
-		return ""
-	}
-	return string(data)
-}
-
-func resourcesInConvertComponentOrder(resources []*importResource) []*importResource {
-	if len(resources) == 0 {
-		return nil
-	}
-	configMaps := make([]*importResource, 0)
-	secrets := make([]*importResource, 0)
-	workloads := make([]*importResource, 0)
-	jobs := make([]*importResource, 0)
-	cronJobs := make([]*importResource, 0)
-
-	for _, res := range resources {
-		if res == nil {
-			continue
-		}
-		switch res.kindKey {
-		case importKindConfigMaps:
-			configMaps = append(configMaps, res)
-		case importKindSecrets:
-			secrets = append(secrets, res)
-		case importKindDeployments, importKindStatefulSets, importKindDaemonSets:
-			workloads = append(workloads, res)
-		case importKindJobs:
-			jobs = append(jobs, res)
-		case importKindCronJobs:
-			cronJobs = append(cronJobs, res)
-		}
-	}
-
-	ordered := make([]*importResource, 0, len(configMaps)+len(secrets)+len(workloads)+len(jobs)+len(cronJobs))
-	ordered = append(ordered, configMaps...)
-	ordered = append(ordered, secrets...)
-	ordered = append(ordered, workloads...)
-	ordered = append(ordered, jobs...)
-	ordered = append(ordered, cronJobs...)
-	return ordered
 }
 
 func componentNames(components []apisv1.CreateComponentRequest) []string {

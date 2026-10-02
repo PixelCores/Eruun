@@ -280,7 +280,7 @@ func loadPendingVersionUpdateStatefulSetPVCDeletions(
 		if err != nil {
 			return nil, err
 		}
-		resolvesTaskIDs, err := normalizeVersionUpdateCleanupResolutionTaskIDs(taskID, cleanupInfo.ResolvesTaskIDs)
+		resolvesTaskIDs, err := model.NormalizeVersionUpdateCleanupResolutionTaskIDs(taskID, cleanupInfo.ResolvesTaskIDs)
 		if err != nil {
 			return nil, err
 		}
@@ -365,19 +365,20 @@ func resolvedVersionUpdateStatefulSetCleanupTaskIDs(
 	attempts []*versionUpdateStatefulSetCleanupAttempt,
 	attemptsByTaskID map[string]*versionUpdateStatefulSetCleanupAttempt,
 ) (map[string]struct{}, error) {
+	references := make(map[string][]string, len(attempts))
+	for _, attempt := range attempts {
+		references[attempt.task.TaskID] = attempt.resolvesTaskIDs
+	}
+	if err := model.ValidateVersionUpdateCleanupResolutionGraph(references); err != nil {
+		return nil, err
+	}
 	for _, attempt := range attempts {
 		for _, resolvedTaskID := range attempt.resolvesTaskIDs {
 			target := attemptsByTaskID[resolvedTaskID]
-			if target == nil {
-				return nil, fmt.Errorf("task %s resolves unknown StatefulSet cleanup task %s", attempt.task.TaskID, resolvedTaskID)
-			}
 			if target.succeeded {
 				return nil, fmt.Errorf("task %s resolves StatefulSet cleanup task %s that has no pending cleanup", attempt.task.TaskID, resolvedTaskID)
 			}
 		}
-	}
-	if err := validateVersionUpdateCleanupResolutionGraph(attemptsByTaskID); err != nil {
-		return nil, err
 	}
 	resolved := make(map[string]struct{})
 	resolverByTaskID := make(map[string]string)
@@ -406,66 +407,6 @@ func resolvedVersionUpdateStatefulSetCleanupTaskIDs(
 		}
 	}
 	return resolved, nil
-}
-
-func validateVersionUpdateCleanupResolutionGraph(attemptsByTaskID map[string]*versionUpdateStatefulSetCleanupAttempt) error {
-	const (
-		resolutionVisiting = iota + 1
-		resolutionVisited
-	)
-	states := make(map[string]int, len(attemptsByTaskID))
-	var visit func(string) error
-	visit = func(taskID string) error {
-		switch states[taskID] {
-		case resolutionVisiting:
-			return fmt.Errorf("StatefulSet cleanup resolution graph contains a cycle at task %s", taskID)
-		case resolutionVisited:
-			return nil
-		}
-		attempt := attemptsByTaskID[taskID]
-		if attempt == nil {
-			return fmt.Errorf("StatefulSet cleanup resolution references unknown task %s", taskID)
-		}
-		states[taskID] = resolutionVisiting
-		for _, resolvedTaskID := range attempt.resolvesTaskIDs {
-			if err := visit(resolvedTaskID); err != nil {
-				return err
-			}
-		}
-		states[taskID] = resolutionVisited
-		return nil
-	}
-	for taskID := range attemptsByTaskID {
-		if err := visit(taskID); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func normalizeVersionUpdateCleanupResolutionTaskIDs(taskID string, values []string) ([]string, error) {
-	if len(values) == 0 {
-		return nil, nil
-	}
-	taskID = strings.TrimSpace(taskID)
-	seen := make(map[string]struct{}, len(values))
-	result := make([]string, 0, len(values))
-	for _, rawValue := range values {
-		value := strings.TrimSpace(rawValue)
-		if value == "" {
-			return nil, fmt.Errorf("task %s has an empty resolvesTaskIDs entry", taskID)
-		}
-		if value == taskID {
-			return nil, fmt.Errorf("task %s cannot resolve itself", taskID)
-		}
-		if _, exists := seen[value]; exists {
-			return nil, fmt.Errorf("task %s resolves StatefulSet cleanup task %s more than once", taskID, value)
-		}
-		seen[value] = struct{}{}
-		result = append(result, value)
-	}
-	sort.Strings(result)
-	return result, nil
 }
 
 func versionUpdateCleanupInfoForPVCRetry(task *model.WorkflowQueue) (model.VersionUpdateCleanupInfo, bool, error) {

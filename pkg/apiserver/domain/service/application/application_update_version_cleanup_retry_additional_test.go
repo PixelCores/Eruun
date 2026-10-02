@@ -422,6 +422,76 @@ func TestLoadPendingStatefulSetDeletionRejectsResolutionCycle(t *testing.T) {
 	require.ErrorContains(t, err, "resolution graph contains a cycle")
 }
 
+func TestLoadPendingStatefulSetDeletionPreservesResolutionCoverage(t *testing.T) {
+	for _, tt := range []struct {
+		name            string
+		completedTarget bool
+		secondResolver  bool
+		namespace       string
+		pvcTemplate     string
+		resolverVersion int
+		err             string
+	}{
+		{name: "normalized reference"},
+		{name: "completed target", completedTarget: true, err: "has no pending cleanup"},
+		{name: "multiple successful resolvers", secondResolver: true, err: "resolved by both tasks"},
+		{name: "different resource identity", namespace: "other", err: "does not cover every referenced"},
+		{name: "different PVC template", pvcTemplate: "other", err: "does not cover every referenced"},
+		{name: "V2 cannot resolve V3", resolverVersion: model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, err: "does not cover every referenced"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			store := newInMemoryAppStore()
+			addAttempt := func(taskID string, status config.Status, version int, template string, references []string) {
+				addStatefulSetDeletionV2Attempt(t, store, taskID, status, status, references, time.Time{})
+				var info model.VersionUpdateCleanupInfo
+				require.NoError(t, json.Unmarshal([]byte(store.tasks[taskID].CleanupInfo), &info))
+				info.Version = version
+				if template != "" {
+					info.Components[0].StatefulSetPVCTemplatesToDelete = []string{template}
+				}
+				if taskID != "failed" && tt.namespace != "" {
+					info.Components[0].Component.Namespace = tt.namespace
+				}
+				payload, err := json.Marshal(info)
+				require.NoError(t, err)
+				store.tasks[taskID].CleanupInfo = string(payload)
+				marker, err := versionUpdateCleanupJobInfoMarker(true, info.Components[0].StatefulSetPVCTemplatesToDelete)
+				require.NoError(t, err)
+				for _, job := range store.jobs {
+					if job.TaskID == taskID {
+						job.InternalInfo = marker
+					}
+				}
+			}
+			targetStatus := config.StatusFailed
+			if tt.completedTarget {
+				targetStatus = config.StatusCompleted
+			}
+			addAttempt("failed", targetStatus, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, "data", nil)
+			version, template := tt.resolverVersion, tt.pvcTemplate
+			if version == 0 {
+				version = model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion
+				if template == "" {
+					template = "data"
+				}
+			}
+			addAttempt("resolver", config.StatusCompleted, version, template, []string{" failed\t"})
+			if tt.secondResolver {
+				addAttempt("resolver-2", config.StatusCompleted, version, template, []string{"failed"})
+			}
+
+			pending, err := loadPendingVersionUpdateStatefulSetPVCDeletions(context.Background(), store, "app-1")
+
+			if tt.err != "" {
+				require.ErrorContains(t, err, tt.err)
+				return
+			}
+			require.NoError(t, err)
+			require.Empty(t, pending)
+		})
+	}
+}
+
 func TestPendingStatefulSetDeletionV2RejectsPVCTemplatePlan(t *testing.T) {
 	_, err := updatePendingStatefulSetDeletion(
 		make(map[string]map[string]*pendingStatefulSetPVCDeletion),

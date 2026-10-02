@@ -434,10 +434,10 @@ func (c *applicationsServiceImpl) deleteServiceForComponent(ctx context.Context,
 	}
 	svc := job.GenerateService(component, props)
 	name := naming.ServiceName(component.Name, component.ResourceNameKey())
-	if svc != nil && svc.Name != nil && *svc.Name != "" {
-		name = *svc.Name
-		if svc.Namespace != nil && *svc.Namespace != "" {
-			ns = *svc.Namespace
+	if svc != nil && svc.Name != "" {
+		name = svc.Name
+		if svc.Namespace != "" {
+			ns = svc.Namespace
 		}
 	}
 	reporter.record("Service", ns, name, c.deleteService(ctx, ns, name))

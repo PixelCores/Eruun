@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	applyv1 "k8s.io/client-go/applyconfigurations/core/v1"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -628,15 +627,10 @@ func shareStrategyFromJobInfo(info interface{}) (domainspec.ShareStrategy, bool)
 func jobInfoLabels(info interface{}) map[string]string {
 	switch v := info.(type) {
 	case metav1.Object:
-		if v == nil {
+		if isNilJobInfo(v) {
 			return nil
 		}
 		return v.GetLabels()
-	case *applyv1.ServiceApplyConfiguration:
-		if v == nil {
-			return nil
-		}
-		return v.Labels
 	case *ConfigMapInput:
 		if v == nil {
 			return nil
@@ -655,15 +649,10 @@ func jobInfoLabels(info interface{}) map[string]string {
 func jobInfoAnnotations(info interface{}) map[string]string {
 	switch v := info.(type) {
 	case metav1.Object:
-		if v == nil {
+		if isNilJobInfo(v) {
 			return nil
 		}
 		return v.GetAnnotations()
-	case *applyv1.ServiceApplyConfiguration:
-		if v == nil {
-			return nil
-		}
-		return v.Annotations
 	case *ConfigMapInput:
 		if v == nil {
 			return nil

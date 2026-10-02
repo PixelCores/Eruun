@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"time"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
@@ -41,13 +40,6 @@ func (app *applications) createAndExecApplications(c *gin.Context) {
 		*req, idempotencyKey, func(err error) string { return err.Error() },
 	)
 	respondWithResult(c, resp, err)
-}
-
-func shouldMarkCreateAndExecDeploying(executeAt int64, now time.Time) bool {
-	if executeAt < 0 {
-		return false
-	}
-	return executeAt == 0 || executeAt <= now.Unix()
 }
 
 func (app *applications) convertApplications(c *gin.Context) {

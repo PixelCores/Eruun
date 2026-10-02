@@ -81,7 +81,7 @@ spec:
 	podLabels := workflowjob.BuildLabels(targetComponent, &properties)
 	generatedService := workflowjob.GenerateServiceFromTrait(targetComponent, &properties, component.Traits.Service[0])
 	require.NotNil(t, generatedService)
-	require.NotNil(t, generatedService.Spec)
+
 	require.Equal(t, "target-app", generatedService.Spec.Selector[config.LabelAppID])
 	require.Equal(t, "99", generatedService.Spec.Selector[config.LabelComponentID])
 	require.Equal(t, "api", generatedService.Spec.Selector[config.LabelComponentName])

@@ -214,13 +214,15 @@ curl --fail-with-body "$ERUUN_URL/api/v1/jobs/$TASK_ID" \
 | `ERUUN_DATASTORE_URL` | 实际 MySQL DSN，必须替换密码占位符 |
 | `ERUUN_CACHE_HOST` / `ERUUN_CACHE_PASSWORD` | Redis 连接配置 |
 | `ERUUN_MSG_TYPE` / `ERUUN_MSG_KAFKA_BROKERS` | 默认 Redis Streams；选择 Kafka 时配置 Broker，仍保留 Redis |
-| `ERUUN_ENABLE_TRACING` / `ERUUN_AUTO_TRACING` / `ERUUN_JAEGER_ENDPOINT` | 任一追踪开关为 `true` 即启用追踪；Jaeger 地址只控制 Span 导出 |
+| `ERUUN_ENABLE_TRACING` / `ERUUN_JAEGER_ENDPOINT` | 单一开关控制追踪；Jaeger 地址只控制 Span 导出 |
 | `ERUUN_AUTH_CONFIG_FILE` | 账号、会话与空间策略 JSON |
 | `ERUUN_JOBS_CONFIG_FILE` | 启用 Harbor Runner 及可选 MinIO，四种角色使用相同配置 |
 
 四种常驻运行角色（`api`、`controller`、`scheduler`、`worker`）的缓存、认证与协调都依赖 Redis。对于这些角色，`--cache-type` / `ERUUN_CACHE_TYPE` 仅接受 `redis`；设置为 `memory` 会在启动校验时报错。`--datastore-schema-mode=migrate-only` 模式仅校验数据库配置。
 
-追踪默认配置为 `ERUUN_ENABLE_TRACING=true`、`ERUUN_AUTO_TRACING=false`。对合法的 Redis 或 Kafka 消息配置，两个开关都设为 `false` 才会关闭追踪；仅设置 Jaeger 地址不会启用追踪。未设置地址时，追踪仍可在 API 请求日志中附带 trace ID，但不会导出 Span。静态部署清单将两个开关都设为 `true`。
+追踪默认配置为 `ERUUN_ENABLE_TRACING=true`，设为 `false` 即可关闭。该开关同时控制 Trace Provider 和 HTTP 中间件，与 Redis/Kafka 后端无关；仅设置 Jaeger 地址不会启用追踪。未设置地址时，追踪仍可在 API 请求日志中附带 trace ID，但不会导出 Span。静态部署清单默认启用追踪。
+
+迁移：已移除 `--auto-tracing` 和 `ERUUN_AUTO_TRACING`。删除旧配置，将 `--enable-tracing` / `ERUUN_ENABLE_TRACING` 设为旧两个开关的逻辑 OR 结果（旧默认值的结果为开启）。旧 CLI 参数或环境变量仍存在时启动会报错，旧环境变量为空或为 `false` 也必须删除。保留的开关仍遵循 CLI 优先于环境变量的规则。
 
 本地源码开发需要 Go 1.27；使用 Make 目标时需 GNU Make。先按 [本地依赖说明](docs/local-docker-dependencies.md) 启动并配置 MySQL、Redis 和可选 Kafka，准备账号配置及 Kubernetes 访问，再启动 API：
 

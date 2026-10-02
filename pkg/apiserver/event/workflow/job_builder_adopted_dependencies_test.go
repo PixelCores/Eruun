@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -594,4 +595,40 @@ func requireJobNames(t *testing.T, jobs []*model.JobTask, expected ...string) {
 		}
 	}
 	require.ElementsMatch(t, expected, names)
+}
+
+func TestDecodeAdoptedServiceManifestPreservesFieldsAndValidatesIdentity(t *testing.T) {
+	source := &corev1.Service{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "Service"},
+		ObjectMeta: metav1.ObjectMeta{Name: "backend", Namespace: "ops", Labels: map[string]string{"app": "backend"}},
+		Spec: corev1.ServiceSpec{
+			Type:      corev1.ServiceTypeNodePort,
+			ClusterIP: "10.0.0.20", ClusterIPs: []string{"10.0.0.20"},
+			Ports: []corev1.ServicePort{{Name: "http", Port: 80, TargetPort: intstr.FromString("http"), Protocol: corev1.ProtocolTCP, NodePort: 30080}},
+		},
+	}
+	for _, tt := range []struct {
+		name         string
+		namespace    string
+		resourceName string
+		wantError    bool
+	}{
+		{name: "matching", namespace: "ops", resourceName: "backend"},
+		{name: "wrong namespace", namespace: "other", resourceName: "backend", wantError: true},
+		{name: "wrong name", namespace: "ops", resourceName: "other", wantError: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			manifest, err := json.Marshal(source)
+			require.NoError(t, err)
+			snapshot := &importcontract.ResourceSnapshot{Manifest: manifest}
+			snapshot.Source.Kind = "Service"
+			decoded, err := decodeAdoptedDependencyManifest(snapshot, tt.namespace, tt.resourceName)
+			if tt.wantError {
+				require.ErrorContains(t, err, "does not match source")
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, source, decoded)
+		})
+	}
 }

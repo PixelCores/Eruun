@@ -1,12 +1,12 @@
-# 过度设计与代码膨胀审计（2026-10-02）
+# 过度设计与代码膨胀审计及整改（2026-10-02）
 
-> 状态：Historical / Audit。审查基线为 `main@0984611debb2cc299fdfba186f5eb73ae3993d3f`。代码证据固定到该提交；后续修改需重新核对。本文记录发现与建议，未实施代码整改，也不把 Draft / Proposal 当成当前能力。
+> 状态：Historical / Audit。审查基线为 `main@0984611debb2cc299fdfba186f5eb73ae3993d3f`。原始代码证据固定到该提交；PR #123 分支已实施 O16–O21，处置与验证见文末，不代表已经合入 main。下文发现描述的是审查时状态，不把 Draft / Proposal 当成当前能力。
 
 ## 结论与判断标准
 
 本轮确认 **6 项 P3 维护债务或配置／查询表达问题**。主要问题不是项目使用了多少层，而是部分路径为同一需求维护了两套表示、丢失信息后再反推、重复解释同一持久化规则，或者保留了已脱离生产调用的业务条件。下文说明可达入口、额外成本和最小简化边界；没有依据这些发现声称发生过线上事故，也没有测得性能收益。
 
-沿用历史报告的编号，从 O16 开始，避免与已处置的 O01–O15 混淆。所有项的状态均为**已确认、待后续整改**；本 PR 只新增本文并更新文档索引。
+沿用历史报告的编号，从 O16 开始，避免与已处置的 O01–O15 混淆。六项均已在本 PR 分支整改；保留原始发现及最小修复边界，便于核对改动理由。
 
 | 编号 | 问题 | 具体维护成本 | 建议范围与风险 |
 | --- | --- | --- | --- |
@@ -14,7 +14,7 @@
 | O17 | Observe 导入丢失来源，再用内容签名和顺序反推 | JSON 签名预算、名称队列与转换排序需同步维护 | 保留内部来源映射；中等风险，需覆盖同名与共享依赖 |
 | O18 | StatefulSet 清理引用规则由两处重复解释 | 同一持久化字段的规范化与环校验有两份实现 | 只共享无副作用规则；涉及数据删除保护，验证要求高 |
 | O19 | 持久化记录兼任查询，字段是否生效由隐藏白名单决定 | 查询意图散落四处，取消查询中的 Status 实际被忽略 | 先显式表达这一条查询；范围小，保留清理保护 |
-| O20 | 两个 tracing 开关表达同一个启用状态 | 四种组合、额外文档说明和测试矩阵 | 后续收敛公开配置；需明确迁移，不能按内部重构处理 |
+| O20 | 两个 tracing 开关表达同一个启用状态 | 四种组合、额外文档说明和测试矩阵 | 收敛公开配置并明确迁移，属于配置契约变更 |
 | O21 | HTTP 重构后旧业务条件仍由测试保活 | 测试验证脱离当前生产路径的第二份规则 | 删除私有残留、迁移有价值断言；低风险 |
 
 ## 范围与证据强度
@@ -122,7 +122,22 @@
 
 历史依据见 [2026-09-29 审计](overdesign-audit-2026-09-29.md)，其中引用的旧提交继续用于追溯，不作为本轮问题仍然存在的证据。
 
-## 验证记录与后续顺序
+## 分支整改结果
+
+| 编号 | 状态与实现 | 回归证据 |
+| --- | --- | --- |
+| O16 | 已实施。builder、JobInfo、执行器和 adopted manifest 统一为 `*corev1.Service`，删除 ApplyConfiguration 转换和 metadata 特判。保留同类型内的执行缺省值处理、CRUD 与冲突重试 | 生成器、Create/Update/no-op、metadata、adopted UID/重建、清理路径；新增旧 snapshot 不覆盖 live NodePort/AppProtocol、缺省值与输入不被修改的测试 |
+| O17 | 已实施。转换器将每个组件与原始输入对象关联，import 在复制输入时保存 resource key，去重后直接生成资源映射与共享标记；删除 JSON 签名预算和镜像转换排序 | 同名跨 Kind、本地/共享输入同名同内容、输入换序、过时推测名称、Service/RBAC、VCT skip 与 warning 保持。保留独立转换的校验/诊断职责 |
+| O18 | 已实施。`domain/model` 集中 cleanup 引用规范化、未知引用和环检测；两个调用方继续分别判断成功、覆盖范围和多个 resolver | 两侧对称测试覆盖空白/空值/重复/自引用/未知引用/环、时钟与显式因果、已完成目标、多个 resolver、不同 namespace/PVC identity、V2/V3 |
+| O19 | 已实施。使用现有 `InQueryOption` 显式表达 status 与完整 scheduling_reason；保留读后检查、执行身份、CAS 和分页 | 真实 MySQL 方言 SQL 构造验证类型集合、两项等值条件、无 LIKE、第二页 offset 和 100 条上限；既有 Job/CronJob 身份保护测试保留。此项没有连接真实 MySQL |
+| O20 | 已实施。保留单一 `enable-tracing`，默认开启；删除 AutoTracing 字段、flag、逻辑 OR 和静态清单的旧变量 | 启停、CLI 优先级、Redis/Kafka、exporter 独立性与旧配置拒绝测试；更新中英文 README 的迁移说明 |
+| O21 | 已实施。移除 HTTP 私有时间条件和状态聚合包装；四组聚合测试移至实际领域规则，时间断言调用真实 create-and-exec 服务 | 负/零/过去/当前/未来时间、调用期间到期、空 task ID/空响应、执行失败；原端点、状态优先级、临时失败平滑和脱敏测试保留 |
+
+配置迁移：删除 `--auto-tracing` / `ERUUN_AUTO_TRACING`，将 `--enable-tracing` / `ERUUN_ENABLE_TRACING` 设置为旧两个开关的逻辑 OR 结果。默认仍为开启；旧环境变量即使为空或 `false` 也会被明确拒绝。Jaeger endpoint 继续只决定 Span 导出。详细说明见 [中文首页](../README_zh.md#配置与本地开发)。
+
+Go 源码调用边界：`GenerateService`、`GenerateServiceFromTrait` 和 `ApplyService` 的 Service 类型签名发生变化，仓内调用已迁移；未调查仓外消费者。HTTP/JSON、持久化字段、租约/fencing 和删除身份契约未改变。没有增加依赖、配置兼容别名或发布版本。
+
+## 审查基线验证记录
 
 以下均为本轮基线上实际执行的**既有行为验证**，不是尚未实施的简化方案验收。使用 Go 1.27.1。
 
@@ -144,6 +159,24 @@ go test ./pkg/apiserver/domain/service/resourceimport \
 
 上述定向测试通过；第三条命令使用临时 `GOCACHE`，4 个包的 25 个顶层测试通过、无跳过。取消恢复测试使用替身，不能证明 O19 的 SQL 筛选正确。文档交付另检查新增链接、固定提交行号、敏感内容及 `git diff --check`。
 
-本 PR 没有修改 Go、API、配置、镜像或部署行为，因此未重跑全仓 race/coverage、vet、server build、Helm、安装器及容器构建；远端检查结果以 PR 当前 head 为准。真实外部服务、性能与仓外 Go 调用仍未验证。
+以上命令是最初审计提交的历史记录，其中旧 helper 测试已随整改迁移；不能用这组旧结果替代修复后的验证。
 
-建议先处理 O19 的显式查询和 O21 的私有残留，随后独立推进 O16。O17 与 O18 各自保留完整行为对照后再简化，避免跨模块重写；O20 需要作为公开配置变更单独决策。每项在后续 PR 中以“删除了哪一份重复表示／规则、哪些行为仍通过验证”验收，不以删行数或抽象层数作为成功标准。
+## 整改验证记录
+
+使用 Go 1.27.1，以下检查通过：
+
+```sh
+go test -race -cover -p 2 ./...
+go vet ./...
+go build -trimpath -o /tmp/eruun-overdesign-fix-server ./cmd/main.go
+go test -tags=integration -run '^$' ./...
+deploy/all_in_one_install_quickstart_test.sh
+scripts/check-sensitive-content.sh
+git diff --check
+```
+
+Go 命令使用可写临时 `GOCACHE`；全仓 race/coverage 中 54 个测试包通过，另有无测试文件或仅统计覆盖率的包。integration 命令只验证带标签的测试可编译，没有执行集成测试。全仓格式检查无输出。最后的 Service 缺省值、旧快照字段保护及摘要边界另经 job/workflow 定向 race 测试通过。四组状态聚合测试已逐组比对，原用例和断言完整迁移到实际领域规则。
+
+本轮未修改 Chart，未执行 Helm 模板检查（本机无 Helm），也未构建容器镜像。
+
+真实 MySQL 查询执行、Kubernetes API server 默认化、Redis/Kafka、Jaeger 导出、云服务、负载与仓外 Go 消费者未验收；fake client 与 SQL DryRun 不构成真实服务验收。远端检查结果以 PR 当前 head 为准。

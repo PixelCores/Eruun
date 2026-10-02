@@ -1,10 +1,13 @@
 package model
 
 import (
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
 const (
@@ -53,6 +56,73 @@ type VersionUpdateCleanupInfo struct {
 	// task may resolve, but only after both its cleanup jobs and workflow succeed.
 	ResolvesTaskIDs []string                        `json:"resolvesTaskIDs,omitempty"`
 	Components      []VersionUpdateCleanupComponent `json:"components,omitempty"`
+}
+
+// NormalizeVersionUpdateCleanupResolutionTaskIDs validates and copies one task's
+// persisted cleanup references without changing the stored values.
+func NormalizeVersionUpdateCleanupResolutionTaskIDs(taskID string, values []string) ([]string, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	taskID = strings.TrimSpace(taskID)
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, rawValue := range values {
+		value := strings.TrimSpace(rawValue)
+		if value == "" {
+			return nil, fmt.Errorf("task %s has an empty resolvesTaskIDs entry", taskID)
+		}
+		if value == taskID {
+			return nil, fmt.Errorf("task %s cannot resolve itself", taskID)
+		}
+		if _, exists := seen[value]; exists {
+			return nil, fmt.Errorf("task %s resolves StatefulSet cleanup task %s more than once", taskID, value)
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result, nil
+}
+
+// ValidateVersionUpdateCleanupResolutionGraph checks normalized references for
+// unknown tasks and cycles. Callers retain cleanup success and coverage rules.
+func ValidateVersionUpdateCleanupResolutionGraph(references map[string][]string) error {
+	for taskID, resolvedTaskIDs := range references {
+		for _, resolvedTaskID := range resolvedTaskIDs {
+			if _, exists := references[resolvedTaskID]; !exists {
+				return fmt.Errorf("task %s resolves unknown StatefulSet cleanup task %s", taskID, resolvedTaskID)
+			}
+		}
+	}
+	const (
+		resolutionVisiting = iota + 1
+		resolutionVisited
+	)
+	states := make(map[string]int, len(references))
+	var visit func(string) error
+	visit = func(taskID string) error {
+		switch states[taskID] {
+		case resolutionVisiting:
+			return fmt.Errorf("StatefulSet cleanup resolution graph contains a cycle at task %s", taskID)
+		case resolutionVisited:
+			return nil
+		}
+		states[taskID] = resolutionVisiting
+		for _, resolvedTaskID := range references[taskID] {
+			if err := visit(resolvedTaskID); err != nil {
+				return err
+			}
+		}
+		states[taskID] = resolutionVisited
+		return nil
+	}
+	for taskID := range references {
+		if err := visit(taskID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type VersionUpdateCleanupComponent struct {
