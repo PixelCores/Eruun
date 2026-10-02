@@ -218,7 +218,7 @@ func (s *Service) Submit(ctx context.Context, request SubmitRequest) (*Accepted,
 	task := &model.WorkflowQueue{TaskID: taskID, WorkspaceID: scope.WorkspaceID, WorkflowName: request.Name, WorkflowDisplayName: request.Name, TaskCreator: scope.UserID, Type: config.WorkflowTaskTypeJob, Status: config.StatusWaiting, JobSpec: string(declaration)}
 	// Validate the exact renderer and workspace policy before enqueueing. Building
 	// does not create namespace, application, component, or Kubernetes resources.
-	job, err := BuildTask(ctx, s.Store, s.Config, task, scope.Namespace)
+	job, err := BuildTask(task, scope.Namespace)
 	if err != nil {
 		return nil, invalid(err)
 	}

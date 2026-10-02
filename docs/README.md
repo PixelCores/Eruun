@@ -80,7 +80,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `pkg/apiserver/infrastructure` | 外部系统与安全机制适配（含 Aliyun NAS 客户端与连通性检查） | K8s、Redis、Kafka、MySQL、Informer、锁、可观测性、adopted Secret 加密 | 出站 URL 安全客户端在 `clients/http.go`；`workspace` 只承接资源载荷策略及 Kubernetes 写入边界，任务准备由 Job 所属包负责；Infrastructure 实现接口，不反向承载业务规则；导入 Secret 的加密/签名位于 `infrastructure/importsecret` |
 | `pkg/apiserver/infrastructure/observability` | 进程可观测性 | Trace Provider 初始化、klog 文件保留与清理 | 后台清理受进程 context 控制 |
 | `pkg/apiserver/infrastructure/cache` | 内存与 Redis 缓存适配 | 缓存读写、删除、过期及共享缓存键 | ApplicationComponentsKey 是查询、执行与状态同步共同使用的存储命名契约 |
-| `pkg/apiserver/utils` | 通用工具 | 错误码、异步执行、K8s helper、profiling | 新工具必须可复用，避免放业务分支 |
+| `pkg/apiserver/utils` | 通用工具 | 错误码、K8s helper、profiling | 新工具必须可复用，避免放业务分支 |
 | `pkg/apiserver/config` | 进程配置入口与模块配置组合 | 启动参数、环境变量、连接配置、模块配置装配 | 模块专属策略和资源契约由所属模块定义 |
 | `config`, `deploy`, `examples`, `scripts` | 默认配置、部署清单、请求样例和辅助脚本 | 部署参数、示例更新、脚本化验证 | 行为或配置变化要同步 docs |
 
@@ -175,7 +175,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
-| [`overdesign-audit-2026-09-29.md`](overdesign-audit-2026-09-29.md) | Historical / Audit | 基于 `b7268a8` 的过度设计复核；O08–O12 与局部候选的后续实施、配置迁移、回归记录及 O01–O07 历史处置 |
+| [`overdesign-audit-2026-09-29.md`](overdesign-audit-2026-09-29.md) | Historical / Audit | 基于 `02503bd` 的第三轮过度设计审核；O13–O15 与两项候选的实施、Ingress 端口回归、源码接入边界和历史处置 |
 | [`code-quality-audit-2026-09-26.md`](code-quality-audit-2026-09-26.md) | Historical / Audit | 基于 `d075a82` 的复杂度、Go 惯用法与抽象边界审计；13 项问题、代码证据、简化方向与验证边界 |
 | `distributed-runtime-audit-2026-09-10.md` | Historical / Audit | 分布式运行时问题、连续十轮复审及隔离故障验收记录 |
 | `login-token-authz-analysis-2026-09-04.md` | Historical / Audit | opaque 登录 Token、会话撤销、空间授权与 JWT 必要性评估；记录 refresh 重放检测、空闲超时、清理和路由策略测试的后续处置 |

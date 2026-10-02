@@ -30,7 +30,7 @@ func TestOnlineEvaluationTimeoutLimitPreservesRunningExecution(t *testing.T) {
 	require.NoError(t, err)
 	parent := &model.WorkflowQueue{TaskID: accepted.TaskID}
 	require.NoError(t, store.Get(ctx, parent))
-	task, err := BuildTask(ctx, s.Store, s.Config, parent, "space-ns")
+	task, err := BuildTask(parent, "space-ns")
 	require.NoError(t, err)
 	require.NoError(t, BuildEvaluationTask(ctx, s.Store, s.Config, task, spec.JobTraits{}))
 	workload := task.JobInfo.(*batchv1.Job)

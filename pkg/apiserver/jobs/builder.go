@@ -77,7 +77,7 @@ func SetEvaluationTraits(job *model.JobTask, traits spec.JobTraits) error {
 	return nil
 }
 
-func BuildTask(ctx context.Context, store datastore.DataStore, cfg *config.Config, task *model.WorkflowQueue, namespace string) (*model.JobTask, error) {
+func BuildTask(task *model.WorkflowQueue, namespace string) (*model.JobTask, error) {
 	if task == nil || task.Type != config.WorkflowTaskTypeJob || task.AppID != "" || task.WorkspaceID == "" || task.TaskID == "" {
 		return nil, fmt.Errorf("invalid standalone Job identity")
 	}

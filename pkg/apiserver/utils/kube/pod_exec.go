@@ -17,7 +17,6 @@ import (
 	"strconv"
 	"strings"
 
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/remotecommand"
 	utilexec "k8s.io/utils/exec"
@@ -94,7 +93,7 @@ func (r PodExecResult) Succeeded() bool {
 }
 
 // ExecPodShellScript executes a shell script in a Pod and captures stdout, stderr, and exit code.
-func ExecPodShellScript(ctx context.Context, client kubernetes.Interface, restConfig *rest.Config, namespace, podName, container, script string) (*PodExecResult, error) {
+func ExecPodShellScript(ctx context.Context, restConfig *rest.Config, namespace, podName, container, script string) (*PodExecResult, error) {
 	script = strings.TrimSpace(script)
 	if script == "" {
 		return nil, fmt.Errorf("shell script is empty")
@@ -119,7 +118,7 @@ func ExecPodShellScript(ctx context.Context, client kubernetes.Interface, restCo
 }
 
 // StreamPodShellScript executes a shell script in a Pod and returns stream events.
-func StreamPodShellScript(ctx context.Context, client kubernetes.Interface, restConfig *rest.Config, namespace, podName, container, script string) (<-chan PodShellStreamEvent, error) {
+func StreamPodShellScript(ctx context.Context, restConfig *rest.Config, namespace, podName, container, script string) (<-chan PodShellStreamEvent, error) {
 	script = strings.TrimSpace(script)
 	if script == "" {
 		return nil, fmt.Errorf("shell script is empty")
@@ -172,7 +171,7 @@ func StreamPodShellScript(ctx context.Context, client kubernetes.Interface, rest
 }
 
 // ArchivePodPathAsZip archives a Pod file or directory into a zip stream.
-func ArchivePodPathAsZip(ctx context.Context, client kubernetes.Interface, restConfig *rest.Config, namespace, podName, container, targetPath string) (*PodPathArchiveStream, error) {
+func ArchivePodPathAsZip(ctx context.Context, restConfig *rest.Config, namespace, podName, container, targetPath string) (*PodPathArchiveStream, error) {
 	archiveDir, archiveBase, archiveName, err := normalizeArchivePath(targetPath)
 	if err != nil {
 		return nil, err

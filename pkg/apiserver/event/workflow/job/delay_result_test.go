@@ -181,72 +181,51 @@ func TestPersistDelayJobCheckpointStoresRecoverablePayload(t *testing.T) {
 	require.Equal(t, payload.ExecutionKey, storedPayload.ExecutionKey)
 }
 
-func TestEnqueueResultJobAndDispatch(t *testing.T) {
+func TestEnqueueResultJob(t *testing.T) {
 	ctx := context.Background()
 
-	_, err := EnqueueResultJob(ctx, nil, nil)
+	_, err := enqueueResultJob(ctx, nil, nil)
 	require.Error(t, err)
-	_, err = EnqueueResultJob(ctx, nil, &JobResultPayload{})
+	_, err = enqueueResultJob(ctx, nil, &JobResultPayload{})
 	require.Error(t, err)
 
-	valid := &JobResultPayload{Name: "job-1", Namespace: "default", TaskID: "task-1", ExecutionKey: "execution-1", RunGeneration: 1}
-	_, err = EnqueueResultJob(ctx, nil, valid)
+	valid := &JobResultPayload{
+		OutboxID: "outbox-1", Name: "job-1", Namespace: "default", TaskID: "task-1", ExecutionKey: "execution-1", RunGeneration: 1,
+		JobType: string(config.JobDeployInstant), ServiceName: "svc-a", TimeoutSeconds: 60, RunToken: "run-1", WorkerID: "worker-1",
+	}
+	_, err = enqueueResultJob(ctx, nil, valid)
 	require.ErrorIs(t, err, ErrResultQueueUnavailable)
 
 	queue := &enqueueCaptureQueue{enqueueID: "result-1"}
-	id, err := EnqueueResultJob(ctx, queue, valid)
+	id, err := enqueueResultJob(ctx, queue, valid)
 	require.NoError(t, err)
 	require.Equal(t, "result-1", id)
 	require.Len(t, queue.enqueued, 1)
 
-	require.ErrorIs(t, dispatchJobResult(ctx, nil, valid), ErrResultQueueUnavailable)
+	require.JSONEq(t, `{"outboxId":"outbox-1","name":"job-1","namespace":"default","taskId":"task-1","executionKey":"execution-1","runGeneration":1,"jobType":"instant_job","serviceName":"svc-a","timeoutSeconds":60,"runToken":"run-1","workerId":"worker-1"}`, string(queue.enqueued[0]))
 
 	queue.enqueueErr = errors.New("enqueue failed")
-	require.Error(t, dispatchJobResult(ctx, queue, valid))
+	_, err = enqueueResultJob(ctx, queue, valid)
+	require.ErrorIs(t, err, queue.enqueueErr)
 }
 
-func TestDispatchJobResultReturnsQueueErrorWhenUnavailable(t *testing.T) {
+func TestEnqueueResultJobReturnsQueueErrorWhenUnavailable(t *testing.T) {
 	canceledCtx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := dispatchJobResult(canceledCtx, nil, &JobResultPayload{
+	_, err := enqueueResultJob(canceledCtx, nil, &JobResultPayload{
 		Name: "job-1", Namespace: "default", TaskID: "task-1", ExecutionKey: "execution-1", RunGeneration: 1,
 	})
 	require.ErrorIs(t, err, ErrResultQueueUnavailable)
 }
 
-func TestResultPayloadBuildersAndDecode(t *testing.T) {
+func TestDelayResultPayloadAndDecode(t *testing.T) {
 	_, err := decodeResultPayload([]byte(`{"taskId":`))
 	require.Error(t, err)
 
 	decoded, err := decodeResultPayload([]byte(`{"taskId":"task-1","executionKey":"execution-1","runGeneration":1,"namespace":"default","name":"job-1"}`))
 	require.NoError(t, err)
 	require.Equal(t, "task-1", decoded.TaskID)
-
-	require.Nil(t, newJobResultPayload(nil, nil))
-	require.Nil(t, newJobResultPayload(&model.JobTask{TaskID: "task-1"}, &batchv1.Job{}))
-
-	jobTask := &model.JobTask{
-		TaskID:        "task-1",
-		JobType:       string(config.JobDeployInstant),
-		Namespace:     "default",
-		Name:          "svc-a",
-		ExecutionKey:  "execution-1",
-		RunGeneration: 7,
-	}
-	jobObj := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "job-1",
-		},
-	}
-	payload := newJobResultPayload(jobTask, jobObj)
-	require.NotNil(t, payload)
-	require.Equal(t, "task-1", payload.TaskID)
-	require.Equal(t, "default", payload.Namespace)
-	require.Equal(t, "svc-a", payload.ServiceName)
-	require.Equal(t, "execution-1", payload.ExecutionKey)
-	require.Equal(t, uint64(7), payload.RunGeneration)
-	require.Equal(t, int64(config.DefaultJobTaskTimeout.Seconds()), payload.TimeoutSeconds)
 
 	require.Nil(t, newJobResultPayloadFromDelay(nil, nil))
 	require.Nil(t, newJobResultPayloadFromDelay(&DelayJobPayload{}, &batchv1.Job{}))

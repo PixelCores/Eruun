@@ -8,7 +8,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/client-go/kubernetes"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
 
@@ -39,7 +38,7 @@ func TestDownloadLogArchiveReturnsComponentArchiveStream(t *testing.T) {
 	orig := archiveComponentPodPathAsZip
 	defer func() { archiveComponentPodPathAsZip = orig }()
 	var gotNamespace, gotPod, gotContainer, gotPath string
-	archiveComponentPodPathAsZip = func(_ context.Context, _ kubernetes.Interface, _ *rest.Config, namespace, podName, container, targetPath string) (*kube.PodPathArchiveStream, error) {
+	archiveComponentPodPathAsZip = func(_ context.Context, _ *rest.Config, namespace, podName, container, targetPath string) (*kube.PodPathArchiveStream, error) {
 		gotNamespace = namespace
 		gotPod = podName
 		gotContainer = container
@@ -86,7 +85,7 @@ func TestDownloadLogArchiveRejectsNonPodComponent(t *testing.T) {
 	orig := archiveComponentPodPathAsZip
 	defer func() { archiveComponentPodPathAsZip = orig }()
 	called := false
-	archiveComponentPodPathAsZip = func(context.Context, kubernetes.Interface, *rest.Config, string, string, string, string) (*kube.PodPathArchiveStream, error) {
+	archiveComponentPodPathAsZip = func(context.Context, *rest.Config, string, string, string, string) (*kube.PodPathArchiveStream, error) {
 		called = true
 		return nil, nil
 	}

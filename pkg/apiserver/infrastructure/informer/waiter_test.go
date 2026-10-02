@@ -12,7 +12,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/async"
 )
 
 func TestResourceReadyWaiterPodAbnormalUpdates(t *testing.T) {
@@ -482,102 +481,84 @@ func TestStatusSyncKeepsDifferentComponentLanesParallel(t *testing.T) {
 	releaseOnce.Do(func() { close(releaseFirst) })
 }
 
-func TestStatusSyncOverflowRetriesThroughSameExecutorLane(t *testing.T) {
+func TestStatusSyncBacklogCoalescesLatestWithTwoWorkers(t *testing.T) {
 	waiter := NewResourceReadyWaiter()
-	waiter.statusSyncExecutor.Close()
-	waiter.statusSyncExecutor = async.NewBoundedExecutor("test-status-sync-timeout", 1, 1)
 	t.Cleanup(waiter.Close)
-
-	releaseFirst := make(chan struct{})
+	release := make(chan struct{})
 	var releaseOnce sync.Once
-	t.Cleanup(func() { releaseOnce.Do(func() { close(releaseFirst) }) })
-	firstStarted := make(chan struct{}, 1)
-	overflowStarted := make(chan struct{}, 1)
-	overflowUpdates := make(chan *ComponentStatusUpdate, 2)
+	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
+	started := make(chan struct{}, 2)
+	const components = 300
+	updates := make(chan *ComponentStatusUpdate, components)
 	waiter.SetStatusSyncFunc(func(update *ComponentStatusUpdate) {
-		switch update.ComponentID {
-		case 1:
-			firstStarted <- struct{}{}
-			<-releaseFirst
-		case 3:
-			overflowStarted <- struct{}{}
-			overflowUpdates <- cloneStatusUpdate(update)
+		if update.ComponentID <= 2 {
+			started <- struct{}{}
+			<-release
+			return
 		}
+		updates <- cloneStatusUpdate(update)
 	})
+	for id := 1; id <= 2; id++ {
+		waiter.syncComponentSnapshot(componentSnapshot{appID: "app-1", componentID: id, totalCount: 1})
+	}
+	for range 2 {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("both status workers did not start")
+		}
+	}
 
-	waiter.syncComponentSnapshot(componentSnapshot{
-		appID:         "app-1",
-		componentName: "blocker",
-		componentID:   1,
-		readyCount:    1,
-		totalCount:    1,
-	})
+	// Backlog beyond the old executor capacity must keep only the latest value
+	// for each component without blocking the Pod event handler.
+	submitted := make(chan struct{})
+	go func() {
+		defer close(submitted)
+		for id := 3; id < components+3; id++ {
+			waiter.syncComponentSnapshot(componentSnapshot{appID: "app-1", componentID: id, totalCount: 1})
+			waiter.syncComponentSnapshot(componentSnapshot{appID: "app-1", componentID: id, totalCount: 1, readyCount: 1})
+		}
+	}()
 	select {
-	case <-firstStarted:
+	case <-submitted:
 	case <-time.After(time.Second):
-		t.Fatal("blocking status sync did not start")
+		t.Fatal("status submission blocked behind running callbacks")
 	}
-
-	waiter.syncComponentSnapshot(componentSnapshot{
-		appID:         "app-1",
-		componentName: "queued",
-		componentID:   2,
-		readyCount:    1,
-		totalCount:    1,
-	})
-
-	start := time.Now()
-	waiter.syncComponentSnapshot(componentSnapshot{
-		appID:         "app-1",
-		componentName: "overflow",
-		componentID:   3,
-		readyCount:    0,
-		totalCount:    1,
-	})
-	elapsed := time.Since(start)
-	require.Less(t, elapsed, statusSyncSubmitTimeout+200*time.Millisecond)
-
 	select {
-	case <-overflowStarted:
-		t.Fatal("overflow status sync bypassed the saturated executor")
-	case <-time.After(100 * time.Millisecond):
+	case update := <-updates:
+		t.Fatalf("more than two callbacks ran concurrently: %+v", update)
+	default:
 	}
-
-	waiter.syncComponentSnapshot(componentSnapshot{
-		appID:         "app-1",
-		componentName: "overflow",
-		componentID:   3,
-		readyCount:    1,
-		totalCount:    1,
-	})
-	releaseOnce.Do(func() { close(releaseFirst) })
-
-	overflow := readUpdate(t, overflowUpdates)
-	require.NotNil(t, overflow.Status)
-	require.Equal(t, config.ComponentStatusRunning, *overflow.Status)
+	releaseOnce.Do(func() { close(release) })
+	seen := make(map[int]bool, components)
+	for range components {
+		update := readUpdate(t, updates)
+		require.NotNil(t, update.Status)
+		require.Equal(t, config.ComponentStatusRunning, *update.Status)
+		require.False(t, seen[update.ComponentID], "component was processed more than once")
+		seen[update.ComponentID] = true
+	}
 	select {
-	case extra := <-overflowUpdates:
-		t.Fatalf("overflow lane should execute only its latest status, got %+v", extra)
+	case update := <-updates:
+		t.Fatalf("backlog was not coalesced: %+v", update)
 	case <-time.After(100 * time.Millisecond):
 	}
 }
 
 func TestResetPodSnapshotsDropsQueuedPreviousGenerationStatus(t *testing.T) {
 	waiter := NewResourceReadyWaiter()
-	waiter.statusSyncExecutor.Close()
-	waiter.statusSyncExecutor = async.NewBoundedExecutor("test-status-sync-reset", 1, 2)
 	t.Cleanup(waiter.Close)
 
 	releaseFirst := make(chan struct{})
 	var releaseOnce sync.Once
 	t.Cleanup(func() { releaseOnce.Do(func() { close(releaseFirst) }) })
-	firstStarted := make(chan struct{}, 1)
+	firstStarted := make(chan struct{}, 2)
 	oldGeneration := make(chan *ComponentStatusUpdate, 1)
 	marker := make(chan struct{}, 1)
 	currentGeneration := make(chan *ComponentStatusUpdate, 1)
 	waiter.SetStatusSyncFunc(func(update *ComponentStatusUpdate) {
 		switch update.ComponentID {
-		case 1:
+		case 1, 4:
 			firstStarted <- struct{}{}
 			<-releaseFirst
 		case 2:
@@ -591,11 +572,15 @@ func TestResetPodSnapshotsDropsQueuedPreviousGenerationStatus(t *testing.T) {
 		}
 	})
 
-	waiter.syncComponentSnapshot(componentSnapshot{appID: "app-1", componentName: "blocker", componentID: 1, readyCount: 1, totalCount: 1})
-	select {
-	case <-firstStarted:
-	case <-time.After(time.Second):
-		t.Fatal("blocking status sync did not start")
+	for _, id := range []int{1, 4} {
+		waiter.syncComponentSnapshot(componentSnapshot{appID: "app-1", componentName: "blocker", componentID: id, readyCount: 1, totalCount: 1})
+	}
+	for range 2 {
+		select {
+		case <-firstStarted:
+		case <-time.After(time.Second):
+			t.Fatal("blocking status sync did not start")
+		}
 	}
 	waiter.syncComponentSnapshot(componentSnapshot{appID: "app-1", componentName: "api", componentID: 2, readyCount: 0, totalCount: 1})
 	resetDone := make(chan struct{})
@@ -633,44 +618,64 @@ func TestResetPodSnapshotsDropsQueuedPreviousGenerationStatus(t *testing.T) {
 	require.Equal(t, config.ComponentStatusRunning, *update.Status)
 }
 
-func TestResetPodSnapshotsRejectsPreviousEpochAfterLaneTakesUpdate(t *testing.T) {
+func TestResetPodSnapshotsPreservesSameKeyUpdateAfterOldWorkerFinishes(t *testing.T) {
 	waiter := NewResourceReadyWaiter()
 	t.Cleanup(waiter.Close)
-	called := make(chan *ComponentStatusUpdate, 1)
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
+	started := make(chan struct{}, 2)
+	called := make(chan *ComponentStatusUpdate, 2)
 	waiter.SetStatusSyncFunc(func(update *ComponentStatusUpdate) {
+		if update.ComponentID <= 2 {
+			started <- struct{}{}
+			<-release
+			return
+		}
 		called <- cloneStatusUpdate(update)
 	})
+	for id := 1; id <= 2; id++ {
+		waiter.syncComponentSnapshot(componentSnapshot{appID: "app-1", componentID: id, totalCount: 1})
+	}
+	for range 2 {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("both status workers did not start")
+		}
+	}
 
-	previous := buildStatusUpdate(componentSnapshot{
-		appID:         "app-1",
-		componentName: "api",
-		componentID:   7,
-		readyCount:    0,
-		totalCount:    1,
-	})
-	key, schedule := waiter.enqueueStatusSync(previous)
-	require.True(t, schedule)
+	// Hold the same key between taking its old payload and finishing processing.
+	// Both real workers are occupied, making this reset interleaving deterministic.
+	waiter.syncComponentSnapshot(componentSnapshot{appID: "app-1", componentID: 7, totalCount: 1})
+	key, shutdown := waiter.statusSyncQueue.Get()
+	require.False(t, shutdown)
+	require.Equal(t, 7, key.componentID)
 	taken, epoch, ok := waiter.takeLatestStatusSync(key)
 	require.True(t, ok)
-	require.Same(t, previous, taken)
+	resetDone := make(chan struct{})
+	go func() {
+		waiter.ResetPodSnapshots()
+		close(resetDone)
+	}()
+	requirePodGenerationWriteFencePending(t, waiter)
+	releaseOnce.Do(func() { close(release) })
+	select {
+	case <-resetDone:
+	case <-time.After(time.Second):
+		t.Fatal("snapshot reset did not finish")
+	}
 
-	waiter.ResetPodSnapshots()
+	waiter.syncComponentSnapshot(componentSnapshot{appID: "app-1", componentID: 7, totalCount: 1, readyCount: 1})
 	waiter.executeStatusSyncIfCurrent(taken, epoch)
 	select {
 	case update := <-called:
-		t.Fatalf("previous epoch update executed after reset: %+v", update)
+		t.Fatalf("previous epoch or overlapping same-key callback executed: %+v", update)
 	case <-time.After(100 * time.Millisecond):
 	}
-	waiter.drainStatusSyncLane(key)
-
-	waiter.syncComponentSnapshot(componentSnapshot{
-		appID:         "app-1",
-		componentName: "api",
-		componentID:   7,
-		readyCount:    1,
-		totalCount:    1,
-	})
+	waiter.statusSyncQueue.Done(key)
 	current := readUpdate(t, called)
+	require.Equal(t, 7, current.ComponentID)
 	require.NotNil(t, current.Status)
 	require.Equal(t, config.ComponentStatusRunning, *current.Status)
 }
@@ -737,8 +742,6 @@ func TestResetPodSnapshotsWaitsForCurrentEpochCallbackFence(t *testing.T) {
 
 func TestCloseDropsQueuedStatusSyncCallbacks(t *testing.T) {
 	waiter := NewResourceReadyWaiter()
-	waiter.statusSyncExecutor.Close()
-	waiter.statusSyncExecutor = async.NewBoundedExecutor("test-status-sync-close", 1, 1)
 
 	releaseFirst := make(chan struct{})
 	var releaseOnce sync.Once
@@ -746,10 +749,10 @@ func TestCloseDropsQueuedStatusSyncCallbacks(t *testing.T) {
 		releaseOnce.Do(func() { close(releaseFirst) })
 		waiter.Close()
 	})
-	firstStarted := make(chan struct{}, 1)
+	firstStarted := make(chan struct{}, 2)
 	queuedCalled := make(chan struct{}, 1)
 	waiter.SetStatusSyncFunc(func(update *ComponentStatusUpdate) {
-		if update.ComponentID == 1 {
+		if update.ComponentID == 1 || update.ComponentID == 3 {
 			firstStarted <- struct{}{}
 			<-releaseFirst
 			return
@@ -757,11 +760,15 @@ func TestCloseDropsQueuedStatusSyncCallbacks(t *testing.T) {
 		queuedCalled <- struct{}{}
 	})
 
-	waiter.syncComponentSnapshot(componentSnapshot{appID: "app-1", componentName: "blocker", componentID: 1, readyCount: 1, totalCount: 1})
-	select {
-	case <-firstStarted:
-	case <-time.After(time.Second):
-		t.Fatal("blocking status sync did not start")
+	for _, id := range []int{1, 3} {
+		waiter.syncComponentSnapshot(componentSnapshot{appID: "app-1", componentName: "blocker", componentID: id, readyCount: 1, totalCount: 1})
+	}
+	for range 2 {
+		select {
+		case <-firstStarted:
+		case <-time.After(time.Second):
+			t.Fatal("blocking status sync did not start")
+		}
 	}
 	waiter.syncComponentSnapshot(componentSnapshot{appID: "app-1", componentName: "queued", componentID: 2, readyCount: 1, totalCount: 1})
 
@@ -788,67 +795,99 @@ func TestCloseDropsQueuedStatusSyncCallbacks(t *testing.T) {
 	}
 }
 
-func TestCloseUnblocksDeferredStatusSyncSubmit(t *testing.T) {
+func TestCloseRejectsConcurrentStatusSyncSubmissions(t *testing.T) {
 	waiter := NewResourceReadyWaiter()
-	waiter.statusSyncExecutor.Close()
-	waiter.statusSyncExecutor = async.NewBoundedExecutor("test-status-sync-close-deferred", 1, 1)
-
-	releaseFirst := make(chan struct{})
+	release := make(chan struct{})
 	var releaseOnce sync.Once
 	t.Cleanup(func() {
-		releaseOnce.Do(func() { close(releaseFirst) })
+		releaseOnce.Do(func() { close(release) })
 		waiter.Close()
 	})
-	firstStarted := make(chan struct{}, 1)
-	deferredCalled := make(chan struct{}, 1)
+	started := make(chan int, 3)
 	waiter.SetStatusSyncFunc(func(update *ComponentStatusUpdate) {
-		switch update.ComponentID {
-		case 1:
-			firstStarted <- struct{}{}
-			<-releaseFirst
-		case 3:
-			deferredCalled <- struct{}{}
-		}
+		started <- update.ComponentID
+		<-release
 	})
-
-	waiter.syncComponentSnapshot(componentSnapshot{appID: "app-1", componentName: "blocker", componentID: 1, readyCount: 1, totalCount: 1})
-	select {
-	case <-firstStarted:
-	case <-time.After(time.Second):
-		t.Fatal("blocking status sync did not start")
+	for id := 1; id <= 2; id++ {
+		waiter.syncComponentSnapshot(componentSnapshot{appID: "app-1", componentID: id, totalCount: 1})
 	}
-	waiter.syncComponentSnapshot(componentSnapshot{appID: "app-1", componentName: "queued", componentID: 2, readyCount: 1, totalCount: 1})
-	waiter.syncComponentSnapshot(componentSnapshot{appID: "app-1", componentName: "deferred", componentID: 3, readyCount: 1, totalCount: 1})
+	for range 2 {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("both status workers did not start")
+		}
+	}
+	waiter.syncComponentSnapshot(componentSnapshot{appID: "app-1", componentID: 3, totalCount: 1})
 
-	deferredKey := componentStatusSyncKey{appID: "app-1", componentID: 3}
-	require.Eventually(t, func() bool {
-		waiter.statusSyncMu.Lock()
-		defer waiter.statusSyncMu.Unlock()
-		lane := waiter.statusSyncLanes[deferredKey]
-		return lane != nil && lane.active && lane.latest != nil
-	}, time.Second, 5*time.Millisecond, "deferred lane was not activated by retry")
-
+	var submitters sync.WaitGroup
+	for n := range 8 {
+		submitters.Add(1)
+		go func() {
+			defer submitters.Done()
+			for id := 4; id < 204; id++ {
+				waiter.syncComponentSnapshot(componentSnapshot{appID: "app-1", componentID: id + n*200, totalCount: 1})
+			}
+		}()
+	}
+	submitted := make(chan struct{})
+	go func() { submitters.Wait(); close(submitted) }()
 	closed := make(chan struct{})
-	go func() {
-		waiter.Close()
-		close(closed)
-	}()
+	go func() { waiter.Close(); close(closed) }()
 	select {
 	case <-waiter.statusSyncStop:
 	case <-time.After(time.Second):
 		t.Fatal("waiter close did not stop status sync")
 	}
-	releaseOnce.Do(func() { close(releaseFirst) })
+	select {
+	case <-submitted:
+	case <-time.After(time.Second):
+		t.Fatal("close left status submitters blocked")
+	}
+	select {
+	case <-closed:
+		t.Fatal("close returned while callbacks were still running")
+	default:
+	}
+	releaseOnce.Do(func() { close(release) })
 	select {
 	case <-closed:
 	case <-time.After(time.Second):
-		t.Fatal("waiter close deadlocked with retry submit blocked")
+		t.Fatal("close deadlocked with concurrent status submission")
 	}
 	select {
-	case <-deferredCalled:
-		t.Fatal("deferred status callback executed after close started")
-	case <-time.After(100 * time.Millisecond):
+	case id := <-started:
+		t.Fatalf("queued callback ran after close started: component %d", id)
+	default:
 	}
+}
+
+func TestStatusSyncPanicPreservesSameKeyFollowup(t *testing.T) {
+	waiter := NewResourceReadyWaiter()
+	t.Cleanup(waiter.Close)
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
+	started := make(chan struct{}, 1)
+	called := make(chan *ComponentStatusUpdate, 1)
+	waiter.SetStatusSyncFunc(func(update *ComponentStatusUpdate) {
+		if *update.Status == config.ComponentStatusPending {
+			started <- struct{}{}
+			<-release
+			panic("status callback failed")
+		}
+		called <- cloneStatusUpdate(update)
+	})
+	waiter.syncComponentSnapshot(componentSnapshot{appID: "app-1", componentID: 7, totalCount: 1})
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("panicking callback did not start")
+	}
+	waiter.syncComponentSnapshot(componentSnapshot{appID: "app-1", componentID: 7, totalCount: 1, readyCount: 1})
+	releaseOnce.Do(func() { close(release) })
+	update := readUpdate(t, called)
+	require.Equal(t, config.ComponentStatusRunning, *update.Status)
 }
 
 func TestResourceReadyWaiterCloseIsIdempotent(t *testing.T) {

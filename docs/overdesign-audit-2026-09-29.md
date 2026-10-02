@@ -1,172 +1,218 @@
-# 全仓过度设计审计（2026-09-29）
+# 全仓过度设计审计（2026-09-29，第三轮）
 
-> 状态：Historical / Audit。审计基线为 `main@b7268a82c9fca3bc928a607c83fa196a37f58b5a`，问题证据链接固定到该提交。后续简化已在 [PR #117](https://github.com/PixelCores/Eruun/pull/117) 分支实施，处置与验收见下文；不据此声明已合入 `main` 或完成线上验收。
+> 状态：Historical / Audit。基线为 `main@02503bdbc6ca5045542fa2f1aac71dc91c56a84c`，代码证据固定到该提交。O13–O15 及两项候选已在 [PR #118](https://github.com/PixelCores/Eruun/pull/118) 分支实施，处置和本地验收见下文；不据此声明已合入 main 或完成线上验收。前两轮整改已经进入本轮审计基线。
 
 ## 结论与范围
 
-审计时最值得处理的是 **Try 与写入路径重复维护业务校验规则**，以及 **数据库配置暴露了不参与连接的第二份库名**。另外确认了 CloudJob 内部参数副本、运行快照搬运和无生产消费者的错误处理工具。这些问题都有具体代码证据，但未据此证明线上事故或性能瓶颈；本轮按 **P3 维护债务与配置表达问题**记录，推进顺序不等同于故障严重程度。
+审计基线中确认 **3 项可处理问题**。优先修正 Ingress 默认规则的两套实现：合法配置已经能让 API 查询摘要与实际资源渲染给出不同端口。其次删除无生产调用的结果发送旧入口，收窄不使用却持续传递的依赖参数。另保留两项低优先级候选，分别是状态同步调度层和遗留策略常量；不为增加发现数量而把所有复杂机制列成待删代码。
 
-首轮基于 `9097b26` 的 O01–O07 已有对应简化进入本轮基线。本文复用同一审计文件，保留原编号的处置表，新发现从 O08 开始；首轮原文可查看[固定历史版本](https://github.com/PixelCores/Eruun/blob/ae9306fc816e9e9845a16dd7bcefd91542bb2e6d/docs/overdesign-audit-2026-09-29.md)，不把已修复项再次列为待办。
+从 `docs/README.md` 路由到启动装配、HTTP/gRPC、领域服务与校验、Workflow/Job/Traits、Harbor、基础设施、配置和部署，沿真实调用、数据来源和现有测试取证。本轮不是逐行穷尽审计。文件长度、接口数量、生成代码和第三方依赖体积均不单独构成问题；Draft / Proposal 不作为当前实现契约。
 
-审查从 `docs/README.md` 路由到启动装配、HTTP/gRPC、领域校验与服务、Workflow/Job/Traits、Harbor、基础设施、配置和部署，沿实际装配及调用链取证。不是逐行穷尽审计；生成的 Protobuf 代码、第三方依赖体积、文件长度和接口数量不单独作为问题依据。Draft / Proposal 只用于理解方向，不作为删除或保留实现的充分理由。
-
-| 编号 | 基线中的问题 | 代价 | 建议顺序 / 改动边界 |
+| 编号 | 已确认的问题 | 优先级与实际影响 | 最小处理边界 |
 | --- | --- | --- | --- |
-| O08 | Try 与写入重复实现 Trait 叶子校验 | 同一规则需要维护两份实现 | 优先；复用已存在的共享函数，保留入口编排 |
-| O09 | 数据库名有无效配置入口，后端帮助列出未支持值 | 增加配置歧义与排障成本 | 优先；独立处理公开配置清理与迁移说明 |
-| O10 | CloudJob 检查点写入未被恢复逻辑读取的顶层参数 | 多一份拷贝、序列化和数据来源 | 其次；只收敛内部记录，保留旧记录读取 |
-| O11 | CloudJob 初始化后把运行快照搬入无后续内置消费者的 context | request、context、runtime 三处传递增加理解成本 | 其次；先锁定内置 Provider 与扩展契约边界 |
-| O12 | `errhandler` 整包只由自身测试使用 | 保留无当前业务需求的策略及导出 API | 低成本清理；核对仓外 Go 消费后移除 |
+| O13 | 查询层重复计算 Ingress 默认值，端口已发生漂移 | P2：支持的配置会显示错误后端端口 | 共享无副作用的默认规则，assembler 保留 DTO 投影 |
+| O14 | 结果发送的旧包装与 payload 构造只由测试调用 | P3：额外维护一组入口、默认值和专用测试 | 删除无生产入口的路径，迁移仍有意义的协议断言 |
+| O15 | 4 个构造/执行函数声明并传递未读取的依赖 | P3：调用者和测试替身承担无效参数 | 仅移除这些形参及传递，保留外围授权和运行依赖 |
 
-## 后续实施与验收边界
+P2 表示可复现的功能不一致，P3 表示维护债务；没有据此声称已发生线上事故或测得性能收益。
 
-O08–O12 和下列四个局部候选已在本 PR 分支完成。后文保留审计时的需求、证据和建议，供核对改动原因，不再作为当前分支的未完成清单。
+## 后续实施处置
 
-| 项目 | 已实施的收敛 | 保留的行为与验证 |
+以下为本 PR 分支的实施状态；后文 O13–O15 和候选保留审计时的证据与建议，不再作为当前分支的未完成清单。
+
+| 项目 | 已实施的收敛 | 保留与验收 |
 | --- | --- | --- |
-| O08 | Try 复用已有 `internal/traitvalidation` 的 Service、Ingress、Rollout 规则，移除规则副本 | Try 的保留标签错误仍排序并指向具体 key；保留 Service 名称先于标签的错误顺序、字段/code/message、完整报告及未改写的 `normalizedSpec`。新增报告回归先在旧实现通过，再验证新实现；现有写入、nested、nil/零值测试保留 |
-| O09 | 移除 `Datastore.Database`、`--datastore-database` 和默认配置副本；DSN 是唯一选库来源。清除 `DTMAddr`、`IstioEnable`、`AddonCacheTime` 无消费者预留；后端帮助和校验均只接受 `mysql` | 旧环境变量明确拒绝，含空值；flag/env 优先级和 DSN 库名解析有回归。保留连接池及三种 schema 模式；未知后端在启动校验阶段失败 |
-| O10 | 新检查点不再写入顶层 `CloudJobRecord.Params` | 旧 JSON 中该字段可被忽略并正常解码；恢复仍使用 `Request.Params`，没有 request 的旧记录仍走原有回退。两种 `ExecutionKey`、state 和错误保留 |
-| O11 | 删除初始化后的 snapshot context 搬运及专用导出 helper；runtime 持有已初始化依赖，request 的瞬态 snapshot 只在内存传递 | 两轮 action 推进检查中间及最终持久化记录，snapshot/模拟凭据均不落库；运行期设置变更不替换已有 runtime；缺少可信 snapshot 的恢复仍拒绝 |
-| O12 | 删除仅由自身测试使用的 `utils/errhandler` 包及对应测试 | 仓内导入图无生产消费者；既有启动、Worker 和 Leader 错误路径未改动 |
-| Aliyun action | 三个空结构体 action 直接保存在 Provider 中，删除空构造函数 | 每个 action 以 8 个并发独立输入/state 验证隔离；保留自定义 Provider 工厂协议 |
-| Workflow 入队 | 多层默认参数转发收敛为 `CreateWorkflowQueueTask` 和 `QueueTaskOptions`，三个实际调用点显式传入所需值 | 保留调用方事务与调度锁、重复键查询/错误、callback/cleanup/resourceAction 快照及调度时间；现有入队和版本更新测试覆盖 |
-| 单用途 DTO 转换 | 工作流列表直接转换，移除只有一个消费者的泛型 helper | 保留 nil 元素过滤、空数组响应、首个转换错误返回及日志 |
-| 聚合状态依赖 | `applicationstatus.Service` 使用只声明实际查询方法的 `WorkflowTaskReader` | HTTP/gRPC 装配不变，状态与 active update 判断由现有接口回归覆盖 |
+| O13 | assembler 与 Trait 渲染复用 `domain/spec` 的后端默认值及相同的 rewrite/pathType 规则 | 批量摘要与渲染使用同一输入比较；第二 Service 端口及显式默认服务的 properties 回退先证明旧实现失败，修复后通过。保留查询容错、部署歧义拒绝及输入模型不变 |
+| O14 | 删除 `EnqueueResultJob`、`dispatchJobResult`、`newJobResultPayload`，测试改走真实 `enqueueResultJob` | 保留消息字段编码、错误身份和 Delay 构造/解码断言；outbox、CAS、ACK、执行身份与恢复路径未改 |
+| O15 | `BuildTask` 仅收任务与 namespace；3 个 Pod 执行/归档 helper 移除 client 形参，调用者与替身同步收窄 | 外围服务的 context、Store、Config、Pod 查询 KubeClient 和执行 rest.Config 保留；既有行为测试及 integration tag 调用编译通过 |
+| 状态同步候选 | 复用 client-go 按 key 去重的 workqueue 和 2 个固定 worker，移除额外 active、提交超时、signal/retry goroutine；删除失去唯一生产消费者的 `utils/async` | 保留 latest payload、epoch、generation fence、同 key 串行、并发上限、reset 等待与 Close 丢弃待办；覆盖饱和、重置、关闭及 panic 后继续处理 |
+| 旧策略常量 | 删除 `DefaultNotRun`、`ForceRun`、`SkipRun` | `NormalizeJobRunPolicy` 实现未变，空值、`recreate`、`skip_if_completed` 和未知值行为保持 |
 
-**升级与源码接入。** 移除 `--datastore-database` 和所有环境中的 `ERUUN_DATASTORE_DATABASE`（包括空值），核对 `--datastore-url` / `ERUUN_DATASTORE_URL` 的 DSN 仍指向原数据库；`MYSQL_DATABASE` 的 MySQL 初始化及 DSN 生成语义不变。操作说明见 [本地依赖](local-docker-dependencies.md) 和 [Helm 部署](helm-deployment.md)。没有新增第二个选库机制。
+修复后，报告中原始探针的 `summary_backend` 与 `rendered_backend` 都为 `api-v2:9090`。查询摘要的错误值得到修正，HTTP/gRPC 路由及 JSON 字段不变。
 
-仓外 Go 消费者未验证。删除的导出源码入口包括 `CloudJobRecord.Params`、snapshot context helper、旧 `CreateWorkflowQueueTaskWith…` 函数族和 `errhandler`；配置结构的无效字段也已移除。源码集成应改为 `CreateWorkflowQueueTask(..., QueueTaskOptions{...})`，自定义 CloudJob 按 [Provider 模板](cloudjob-custom-provider-template.md) 使用 runtime 或 request 的瞬态字段。公共 HTTP/gRPC 路由与 JSON 响应未改变；内部新检查点省略不参与恢复的顶层 `params`，没有修改数据库表结构。
+**源码接入。** 仓内调用已更新；仓外 Go 消费者未验证。直接使用 `jobs.BuildTask` 的代码应改为 `BuildTask(task, namespace)`，Pod helper 调用应删除 client 实参、继续传递 context 与 rest.Config。旧结果包装、策略常量和 `utils/async` 已移除，不保留兼容转发层。可靠结果发送继续通过既有 outbox 流程，不应在仓外补回绕过持久化的发送路径。
 
-## O08｜同一 Trait 校验规则在 Try 与写入中各实现一遍
+## O13｜Ingress 默认规则由查询层和渲染层分别维护
 
-**当前需求与证据。** Try 应返回完整校验报告，写入应在无效请求落库前失败；两条入口需要不同的错误编排，但底层规则相同。目前 Try 调用 `validation` 包内的副本（[调用点](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/domain/service/validation/validation_traits.go#L51-L81)），Create/Version 写入调用已存在的 `internal/traitvalidation`（[写入调用点](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/domain/service/application/application.go#L965-L992)）。
+**触发与证据。** 同一组件定义 `api-v1:8080` 和 `api-v2:9090` 两个 Service，Ingress 明确指定 `api-v2`，省略端口。两个 Service 都带合法 selector，组件 properties 包含两个端口和匹配 labels。Try 接受该输入，写入 Trait 校验也通过。
 
-| 规则 | Try 实现 | 写入共享实现 |
-| --- | --- | --- |
-| Service 类型、名称、selector、port/protocol | [validation_service.go:16–119](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/domain/service/validation/validation_service.go#L16-L119) | [trait_validation.go:255–358](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/domain/service/internal/traitvalidation/trait_validation.go#L255-L358) |
-| Ingress 名称、host、backend 引用 | [validation_ingress.go:18–112](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/domain/service/validation/validation_ingress.go#L18-L112) | [trait_validation.go:159–252](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/domain/service/internal/traitvalidation/trait_validation.go#L159-L252) |
-| Rollout 类型、整数/百分比、零值组合 | [validation_traits.go:132–333](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/domain/service/validation/validation_traits.go#L132-L333) | [trait_validation.go:360–498](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/domain/service/internal/traitvalidation/trait_validation.go#L360-L498) |
+查询摘要经过 [`buildComponentIngresses`](https://github.com/PixelCores/Eruun/blob/02503bdbc6ca5045542fa2f1aac71dc91c56a84c/pkg/apiserver/interfaces/api/assembler/v1/component_service.go#L110-L128)，先选组件级默认端口；[`buildIngressTraitDetails`](https://github.com/PixelCores/Eruun/blob/02503bdbc6ca5045542fa2f1aac71dc91c56a84c/pkg/apiserver/interfaces/api/assembler/v1/component_service.go#L131-L168) 虽保留 route 指定的服务名，缺省端口仍使用第一个 Service 的 8080。实际渲染的 [`applyIngressDefaults`](https://github.com/PixelCores/Eruun/blob/02503bdbc6ca5045542fa2f1aac71dc91c56a84c/pkg/apiserver/workflow/traits/ingress.go#L63-L75) 调用 [`resolveIngressBackendPort`](https://github.com/PixelCores/Eruun/blob/02503bdbc6ca5045542fa2f1aac71dc91c56a84c/pkg/apiserver/workflow/traits/ingress.go#L119-L145)，按服务名找到 9090。HTTP 与 gRPC 都调用批量 assembler，因此这是生产查询路径的规则分歧。
 
-**为什么值得简化。** 叶子规则在两套实现中重复，Rollout 也重复对应规则；实施复核确认保留标签的错误字段、消息和顺序存在入口差异，因此仅复用规则，保留 Try 的小型呈现适配。这里的问题不是文件太长，而是共享校验包已经存在，另一入口仍维护规则副本。一次规则调整必须定位两套函数，遗漏其中一处就可能使 Try 与提交产生分歧。本轮未发现足够证据宣称两条路径已经发生规则漂移，也不把相关区间总行数当作可直接删除的行数。
-
-**最小简化。** 先让 Try 的 Service、Ingress 叶子校验调用现有共享函数，再按相同边界收敛 Rollout；删除失去消费者的副本和局部 helper。无需新建 validation engine、注册表或 package。这不是重开历史 Q-004 的大文件拆分问题。
-
-**保留与验收。** 保留 Try 收集全部错误、写入返回首个业务错误的差异，以及字段路径、code/message、错误顺序、nested Trait 限制、nil/零值语义。用同一组有效/无效输入覆盖两条入口，断言规则一致、响应形式各自不变；不能通过取消 Try 中的校验来减少代码。
-
-## O09｜数据库身份保留了一个可设置但无运行消费者的副本
-
-**当前需求与证据。** [配置入口](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/config/config.go#L358-L365)同时提供 `--datastore-url` 和 `--datastore-database`；[配置结构](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/infrastructure/datastore/datastore.go#L72-L83)、[默认值](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/config/config.go#L169-L178)及[参考配置](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/config/apiserver-default.yaml#L14-L19)也保留两份库名表达。环境变量映射会接受 `ERUUN_DATASTORE_DATABASE`。但 [openDatabase](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/infrastructure/datastore/mysql/mysql.go#L79-L109)只从 `cfg.URL` 生成连接 DSN，没有读取 `cfg.Database`；仓内未找到该字段的其他运行消费者。
-
-一个只解析 flag 与 DSN、不连接数据库的本地探针使用 `.../from-dsn` 和 `--datastore-database=from-flag`，结果为：
+本地探针直接调用现有 Try、写入 Trait 校验、批量 assembler 和 `ApplyTraits`，结果为：
 
 ```text
-flag_database=from-flag dsn_database=from-dsn
+try_valid=true try_errors=[]
+write_traits_error=<nil>
+summary_backend=api-v2:8080
+rendered_backend=api-v2:9090
 ```
 
-这证明参数被接受且两个值并存；结合 `openDatabase` 的取值路径，可以确认后者不会覆盖连接库名，不代表完成了真实数据库连接验证。另外 `datastore-type` 帮助声称支持 `mysql, tidb`，[运行装配](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/server_assembly.go#L80-L93)却只有 `mysql` 分支。
+**影响与简化。** API 使用者会看到一个不对应渲染结果的端口，排障与后续规则修改都要对照两套实现。收敛这组默认规则，由 assembler 投影到 DTO；从复制后的 spec 计算，避免查询修改保存模型。先修复并覆盖按服务名选端口的分歧，再核对名称、namespace、host、pathType/rewrite 的共同规则。无需增加注册表、策略接口或新的渲染框架，也不能让查询直接调用整个 `ApplyTraits` 流程。
 
-**代价与最小简化。** 配置使用者需要判断两份数据库名哪个有效，维护者需要解释无效开关与不可用后端。建议明确以 DSN 为唯一数据库身份来源，修正后端帮助，独立清理无效字段、flag/env 和参考项，并给已有配置使用者迁移说明及明确的拒绝行为。不要突然让旧字段覆盖 DSN；那会改变实际数据库选择，超出结构简化。也不能从 `tidb` 类型值不可用推导 TiDB 的 MySQL 协议兼容性结论。
+**必须保留。** 显式端口优先、多 Service 缺省名称时的歧义拒绝、properties/80 回退、资源身份与命名空间、host 顺序、pathType/rewrite 注解优先级、TLS 和 nil/空集合语义。后续测试应将同一输入同时送入 batch assembler 与 Trait 渲染，覆盖第二个 Service、显式端口、单 Service 默认、properties 回退及歧义输入。修改的是错误摘要值，不改变公共字段或路由。
 
-**保留与验收。** 保留连接池、凭据占位符拒绝、schema 的 migrate/validate/migrate-only 行为。验证 flag/env、DSN 库名解析、未知后端拒绝及部署清单的 DSN 展开；特别检查旧环境变量不再静默产生“设置成功”的错觉。本轮未连接数据库，未复现误写其他库。
+### 可重复的本地证据
 
-**同类低收益候选。** `DTMAddr`、`IstioEnable`、`AddonCacheTime` 目前只有[字段声明](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/config/config.go#L59-L82)和[默认赋值](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/config/config.go#L192-L195)，没有 flag 或运行消费者。可清理预留字段，不应为了保住它们而补建新的功能。
+在上述基线的仓库根目录，将下列代码保存为 `/tmp/ingress-audit.go`，运行 `go run /tmp/ingress-audit.go`。它只做内存校验、DTO 转换和对象渲染，不创建数据库记录或集群资源；通过写入 Trait 校验不等于完成整个 HTTP 写入事务。
 
-## O10｜CloudJob 检查点持续写入未被使用的顶层参数
+<details>
+<summary>探针源码</summary>
 
-**当前需求与证据。** [CloudJobRecord](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/event/workflow/job/job_cloud.go#L26-L35)同时保存 `Params` 和 `Request`。每次持久化检查点时，[记录函数](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/event/workflow/job/job_cloud.go#L188-L198)从 `info.Params` 克隆顶层参数，再克隆含 `Params` 的请求；[恢复函数](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/event/workflow/job/job_cloud.go#L263-L293)实际读取的是 `checkpoint.Request.Params`。仓内未找到顶层 `CloudJobRecord.Params` 的生产读取。
+```go
+package main
 
-记录最终写入 `JobInfo.InternalInfo`；[模型字段](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/domain/model/job.go#L20-L25)标记为 `json:"-"`。它是内部检查点，不能说成公共 API 已承诺的字段。另一方面，`info.Params` 与恢复后的 `Request.Params` 可能来自不同时刻，也不能声称两者永远相等。
+import (
+	"context"
+	"fmt"
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	application "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/validation"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	assembler "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/assembler/v1"
+	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/traits"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+)
 
-**代价与最小简化。** 当前恢复只依赖一条参数来源，却每轮额外拷贝、编码另一份未读取参数；没有测得其存储或性能收益。可先停止向新检查点写顶层 `Params`，保留 `Request.Params`、旧记录解码和错误路径，避免一次性重写记录格式。
+func main() {
+	traitSpec := spec.Traits{
+		Service: []spec.ServiceTraitSpec{
+			{Name: "api-v1", Type: "internal", Selector: map[string]string{"tier": "api"}, Ports: []spec.ServicePortTraitSpec{{Port: 8080}}},
+			{Name: "api-v2", Type: "internal", Selector: map[string]string{"tier": "api"}, Ports: []spec.ServicePortTraitSpec{{Port: 9090}}},
+		},
+		Ingress: []spec.IngressTraitsSpec{{Name: "api-ingress", Routes: []spec.IngressRoutes{{Path: "/", Backend: spec.IngressRoute{ServiceName: "api-v2"}}}}},
+	}
+	properties := spec.Properties{Ports: []spec.Ports{{Port: 8080}, {Port: 9090}}, Labels: map[string]string{"tier": "api"}}
+	req := apis.CreateApplicationsRequest{Name: "demo", Namespace: "default", Components: []apis.CreateComponentRequest{{Name: "backend", Image: "nginx:1", ComponentType: config.ServerJob, Properties: properties, Traits: traitSpec}}}
+	check := validation.NewValidationService(nil, nil, nil, nil).TryApplication(context.Background(), req)
+	fmt.Printf("try_valid=%t try_errors=%+v\n", check.Valid, check.Errors)
+	fmt.Printf("write_traits_error=%v\n", application.ValidateComponentTraitsForWrite(config.ServerJob, traitSpec, "components[0].traits"))
+	raw, err := model.NewJSONStructByStruct(traitSpec)
+	must(err)
+	rawProperties, err := model.NewJSONStructByStruct(properties)
+	must(err)
+	component := &model.ApplicationComponent{Name: "backend", Namespace: "default", AppID: "demo", Image: "nginx:1", ComponentType: config.ServerJob, Properties: rawProperties, Traits: raw}
+	dtos, err := assembler.ConvertComponentModelsToDTO([]*model.ApplicationComponent{component})
+	must(err)
+	route := dtos[0].Ingresses[0].Routes[0]
+	fmt.Printf("summary_backend=%s:%d\n", route.ServiceName, route.ServicePort)
+	workload := &appsv1.Deployment{Spec: appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "backend", Image: "nginx:1"}}}}}}
+	objects, err := traits.ApplyTraits(component, workload)
+	must(err)
+	for _, obj := range objects {
+		if ingress, ok := obj.(*networkingv1.Ingress); ok {
+			backend := ingress.Spec.Rules[0].HTTP.Paths[0].Backend.Service
+			fmt.Printf("rendered_backend=%s:%d\n", backend.Name, backend.Port.Number)
+		}
+	}
+}
+func must(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+```
 
-**保留与验收。** 覆盖参数恢复、旧记录、错误检查点及脱敏。特别不能顺手合并两个 `ExecutionKey`：顶层来自组件的 `CloudJobInfo`，请求中的值来自 `JobTask`，它们承担不同身份语义（[赋值](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/event/workflow/job/job_cloud.go#L191-L198)、[请求身份](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/event/workflow/job/job_cloud.go#L263-L272)）。
+</details>
 
-## O11｜运行快照在初始化之后被搬进没有后续内置读取的 context
+## O14｜结果发送仍保留没有生产入口的旧路径
 
-**当前需求与证据。** CloudJob 需要在一次执行期间使用稳定的云配置，并禁止把凭据/运行快照写入检查点。当前 [Run](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/event/workflow/job/job_cloud.go#L111-L125)先调用 `provider.NewRuntime`，随后才调用 [attachCloudJobRuntimeProviderSnapshot](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/event/workflow/job/job_cloud.go#L394-L405)，把 request 中的快照转入 context 再清空 request 字段。
+**当前需求与证据。** 实际结果发送已经由 outbox 驱动：[`dispatchPendingOutbox`](https://github.com/PixelCores/Eruun/blob/02503bdbc6ca5045542fa2f1aac71dc91c56a84c/pkg/apiserver/event/workflow/job/job_result_outbox.go#L250-L312) 领取状态，使用 [`jobResultPayloadFromOutbox`](https://github.com/PixelCores/Eruun/blob/02503bdbc6ca5045542fa2f1aac71dc91c56a84c/pkg/apiserver/event/workflow/job/job_result_outbox.go#L341-L359) 构造消息，再调用私有 `enqueueResultJob`。入队前后的状态比较更新和 message ID 持久化承担可靠性要求。
 
-当前唯一内置 Provider 的 context 快照读取在 [Aliyun.NewRuntime](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/event/workflow/cloudjob/aliyun/provider.go#L51-L61)，发生在上述搬运之前；仓内非测试调用中没有搬运后的第二次 `NewRuntime`。三个内置 action 也不读取此 context 值，而实际配置已经保留在[返回的 runtime client](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/event/workflow/cloudjob/aliyun/provider.go#L84-L96)。为这条当前未被消费的后置通道，仍需维护 [context key、provider 名归一化、存取和类型断言](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/event/workflow/cloudjob/contracts/context.go#L35-L60)。
+但 [`EnqueueResultJob`](https://github.com/PixelCores/Eruun/blob/02503bdbc6ca5045542fa2f1aac71dc91c56a84c/pkg/apiserver/event/workflow/job/job_result.go#L69-L71) 包装、[`dispatchJobResult`](https://github.com/PixelCores/Eruun/blob/02503bdbc6ca5045542fa2f1aac71dc91c56a84c/pkg/apiserver/event/workflow/job/job_result.go#L465-L471) 和 [`newJobResultPayload`](https://github.com/PixelCores/Eruun/blob/02503bdbc6ca5045542fa2f1aac71dc91c56a84c/pkg/apiserver/event/workflow/job/job_result.go#L886-L919) 仍保留。全仓符号检索中，除这条链内部调用外，它们仅由 `delay_result_test.go` 调用；旧构造函数还维护 namespace、serviceName、timeout 和执行身份的组装。这里指生产文件中仅被测试保活的旧入口，不是建议删除普通测试辅助函数。
 
-**代价与最小简化。** 读者需要在 request、context、runtime 之间追踪同一轮配置，才能确定它是否参与恢复。对当前内置执行，配置稳定性可以由已构造的 runtime 承担；建议收敛后置搬运，不新增通用上下文容器。此结论限于本仓当前装配，删除导出 helper 或改变自定义 action 可见的 context 前，仍需核对仓外 Provider；现有测试中的假 action 读取快照，不等于存在内置业务消费者。
+**代价与简化。** 维护者需要分辨 outbox 与旧入口哪个实际发送消息，协议变化也可能继续修改无消费者的构造逻辑。移除两个私有死入口；导出的 `EnqueueResultJob` 在核对仓外 Go 使用后一起收敛。把仍有价值的编码、无效 payload、队列不可用和入队失败断言迁移到实际 `enqueueResultJob` / outbox 路径。
 
-**保留与验收。** 保留运行快照与凭据不落库、一次执行配置稳定，以及已有持久化 state 却缺少可信运行快照时[明确拒绝恢复](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/event/workflow/cloudjob/aliyun/provider.go#L55-L61)。不能删掉拒绝检查后改成读取新的系统设置继续执行。验证新执行、多轮推进、初始化失败、跨重启拒绝、checkpoint 内容及扩展 Provider 边界。
+**必须保留。** `newJobResultPayloadFromDelay` 仍有生产调用，不能同删；保留 Delay 解码断言、outbox、CAS、ACK、恢复、generation/token 和资源归属检查。仓内无消费者不能证明仓外源码集成不存在；本轮未验证仓外 Go 调用。后续验收应包含领取、入队失败回退、消息身份持久化和旧 dispatching 恢复测试。
 
-## O12｜没有生产消费者的错误通知策略包
+## O15｜函数签名表达了并不存在的依赖
 
-**当前证据。** [`utils/errhandler/handlers.go`](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/utils/errhandler/handlers.go#L3-L54)为错误通知维护 `ErrorHandler`、nil channel 策略枚举、options、fallback 回调及三个导出函数。全仓调用/导入搜索只命中该包及自身测试；Go 的 `cmd/...`、`pkg/...` 非测试依赖图中没有包导入它。
+**当前需求与证据。** 下列 4 个函数的指定形参在函数体中完全未读取，且不是需要遵循固定签名的接口实现：
 
-**代价与最小简化。** 没有当前业务消费者，却仍维护 panic/ignore/fallback 的组合及其测试。若确认没有仓外 Go 包依赖，可直接删除这个孤立包与仅服务它的测试；无需将其接入现有代码来证明抽象“有用”。54 行生产文件只是维护表面大小，不是性能结论。
-
-**保留与验收。** 不改变现有启动、Worker、Leader 的错误传播。删除前核查导入图和外部消费，删除后编译实际调用包。不能因这个包无消费者就推导所有错误处理 helper 都多余。
-
-## 候选与不建议实施的扩大化重构
-
-- **Aliyun 内部 action 工厂。** [Provider 的 action 工厂映射](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/event/workflow/cloudjob/aliyun/provider.go#L19-L44)把三个空结构体 action 包在工厂中；例如 [NAS action 构造](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/event/workflow/cloudjob/aliyun/action_nas_ensure_filesystem.go#L11-L15)只返回空实例。可局部考虑直接保存无状态 `CloudAction`，但收益较小，须验证并发无共享可变状态。保留 provider/action 协议、白名单、状态机和[自定义 Provider 扩展模板](cloudjob-custom-provider-template.md)，不据此删除整个扩展层。
-- **单用途转换与默认参数转发。** [`convertDTOList`](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/interfaces/api/application_workflow.go#L28-L57)只有一个生产消费者；[Workflow 入队函数族](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/domain/service/workflow/workflow.go#L2163-L2215)通过多层默认参数包装同一操作。可随邻近改动收敛，不值得新建通用框架；入队事务、重复键幂等及 callback/cleanup/resourceAction 快照必须保留。
-- **窄消费者仍依赖整块服务。** [`applicationstatus.Service`](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/domain/service/applicationstatus/status.go#L24-L34)只需要 `HasImmediateActiveVersionUpdateTask`，仍声明 `ApplicationsService`。可以沿这一实际消费者收窄，但旧 O04 的 32 个空方法证据已经失效，不能把局部剩余问题描述为原修复未完成。
-- **保留必要复杂性。** Workflow 租约、generation/token fencing、outbox、数据库恢复、持久卷身份、空间授权和 Harbor 的结果确认/恢复屏障均有当前需求。HTTP/gRPC 并行与 ProtoJSON 数字处理有公开协议约束。没有测量与替代方案证据，不能把这些机制或整套 IoC 一次性删除。
-
-## 首轮 O01–O07 的当前处置
-
-以下状态只表示原报告的具体证据已失效或已处置，不表示相关模块不存在其他维护债务。合并记录可由固定基线的 `git log 9097b26..b7268a8` 复核。
-
-| 旧项 | 合并记录 | 本轮基线核对 |
+| 函数 | 无效形参 | 实际工作与传递成本 |
 | --- | --- | --- |
-| O01 缓存不可达选项 | [#97](https://github.com/PixelCores/Eruun/pull/97) | Redis-only 帮助与运行校验一致；[直接构造 Redis 缓存](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/server_assembly.go#L125-L129)，缺少客户端明确失败 |
-| O02 非 API 角色装配业务适配器 | [#95](https://github.com/PixelCores/Eruun/pull/95) | [New 按角色选择 handler](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/server.go#L105-L116)，[gRPC 业务适配器仅在 API 角色装配](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/server_assembly.go#L255-L270) |
-| O03 延迟通知重复完整 Job | [#101](https://github.com/PixelCores/Eruun/pull/101) | [v2 通知只传身份及调度信息](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/event/workflow/job/delay_queue.go#L36-L75)，完整 workload 仍由数据库保存 |
-| O04 Workflow 局部消费者依赖整块应用服务 | [#98](https://github.com/PixelCores/Eruun/pull/98) | [独立 Workflow handler](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/interfaces/api/application_workflow_routes.go#L10-L24)只注入 WorkflowService；原空方法替身已收敛 |
-| O05 锁后端工厂与占位 | [#96](https://github.com/PixelCores/Eruun/pull/96) | [直接构造 Redis locker](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/server_assembly.go#L133-L143)；旧 Type/Config 工厂及 Metadata 预留已移除 |
-| O06 Worker 冗余动态断言 | [#99](https://github.com/PixelCores/Eruun/pull/99) | [Worker 直接表达订阅能力](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/event/event.go#L19-L28)，启动不再断言回同一接口 |
-| O07 JSONStruct 无消费者的旧转换入口 | [#100](https://github.com/PixelCores/Eruun/pull/100) | [model.go](https://github.com/PixelCores/Eruun/blob/b7268a82c9fca3bc928a607c83fa196a37f58b5a/pkg/apiserver/domain/model/model.go#L3-L46)已移除 RawExtension/string 入口和 YAML 转换依赖 |
+| [`jobs.BuildTask`](https://github.com/PixelCores/Eruun/blob/02503bdbc6ca5045542fa2f1aac71dc91c56a84c/pkg/apiserver/jobs/builder.go#L80-L110) | `ctx`、`store`、`cfg` | 根据 WorkflowQueue 声明和 namespace 构建任务；两个生产调用者及现有测试仍传入这三个值 |
+| [`ExecPodShellScript`](https://github.com/PixelCores/Eruun/blob/02503bdbc6ca5045542fa2f1aac71dc91c56a84c/pkg/apiserver/utils/kube/pod_exec.go#L97-L119) | `client` | 实际通过 `restConfig` 创建执行通道；测试额外传入 fake client |
+| [`StreamPodShellScript`](https://github.com/PixelCores/Eruun/blob/02503bdbc6ca5045542fa2f1aac71dc91c56a84c/pkg/apiserver/utils/kube/pod_exec.go#L122-L172) | `client` | 流式执行依赖 context 和 `restConfig`；应用层及替身继续传递 client |
+| [`ArchivePodPathAsZip`](https://github.com/PixelCores/Eruun/blob/02503bdbc6ca5045542fa2f1aac71dc91c56a84c/pkg/apiserver/utils/kube/pod_exec.go#L175-L199) | `client` | tar 探测、归档与 fallback 都使用 `restConfig`；Job 层函数类型也重复携带 client |
 
-本轮也核对了后续生成对象、Job runtime 注入、缓存接口和角色观察器的简化；没有沿用这些代码变动之前的结论。其他历史质量报告及行动映射只作为线索，不作为当前未修问题清单。
+`BuildTask` 的两个生产入口位于 [`jobs/service.go`](https://github.com/PixelCores/Eruun/blob/02503bdbc6ca5045542fa2f1aac71dc91c56a84c/pkg/apiserver/jobs/service.go#L221) 和 [`event/workflow/job_builder.go`](https://github.com/PixelCores/Eruun/blob/02503bdbc6ca5045542fa2f1aac71dc91c56a84c/pkg/apiserver/event/workflow/job_builder.go#L53)。Pod 操作的传递位于 [`component_pod_ops.go`](https://github.com/PixelCores/Eruun/blob/02503bdbc6ca5045542fa2f1aac71dc91c56a84c/pkg/apiserver/domain/service/application/component_pod_ops.go#L66)；归档 Job 的替换函数类型位于 [`job_log_archive_upload.go`](https://github.com/PixelCores/Eruun/blob/02503bdbc6ca5045542fa2f1aac71dc91c56a84c/pkg/apiserver/event/workflow/job/job_log_archive_upload.go#L52-L55)。
 
-## 验证记录
+**代价与简化。** 函数签名使读者误以为声明构造需要数据库/运行配置，或 Pod 执行 helper 使用传入的 Kubernetes client；调用和替身也被迫维持无效依赖。直接删除相应形参及所有传递点，不新建上下文结构体、依赖容器或接口来包装它们。`BuildTask` 中评测 token 生成仍使用随机数，不能因为移除这些参数就把它称为确定性的纯函数。
 
-### 审计基线
+**必须保留。** 外围服务仍需 context、数据库、配置和用于 Pod 查询的 KubeClient；尤其 `BuildEvaluationTask` 的真实依赖、组件授权/锁、容器选择、取消传播、输出上限、归档路径校验及 tar fallback 都保留。签名变化涉及导出 Go 函数，仓外迁移边界尚未验证；不需要修改 HTTP/gRPC 协议。后续运行现有构建、exec/stream/archive、应用层及归档 Job 测试，并编译全仓核对所有调用点。
 
-审计初稿提交 `3965b4f` 仅修改本文与文档索引。以下命令在当时基线通过，用于确认原有行为，不能单独作为后续重构的验收结果；其中 `TestCloudJobCtlRunKeepsRuntimeProviderSnapshotInContextOnly` 已在实施中改名为 `TestCloudJobCtlRunKeepsRuntimeProviderSnapshotOutOfCheckpoints`：
+## 两项低优先级候选
+
+### 状态同步重复维护待处理任务的调度状态
+
+[`ResourceReadyWaiter`](https://github.com/PixelCores/Eruun/blob/02503bdbc6ca5045542fa2f1aac71dc91c56a84c/pkg/apiserver/infrastructure/informer/waiter.go#L129-L161) 固定创建 2 个 worker 和容量 256 的 executor。它又通过 [`statusSyncLanes`](https://github.com/PixelCores/Eruun/blob/02503bdbc6ca5045542fa2f1aac71dc91c56a84c/pkg/apiserver/infrastructure/informer/waiter.go#L857-L881) 管理每个组件的 latest、epoch、active；提交超时后，由 [defer、signal、扫描和 retry goroutine](https://github.com/PixelCores/Eruun/blob/02503bdbc6ca5045542fa2f1aac71dc91c56a84c/pkg/apiserver/infrastructure/informer/waiter.go#L948-L1032) 重新向 executor 投递。`utils/async` 的唯一仓内生产消费者就是这个 waiter。
+
+这里的成本是同一待处理 key 需要协调 lane map、executor channel 和重试信号三处状态。256 仅限制 executor 队列，更多 key 仍保存在 lane map；**没有证据证明已经发生内存、吞吐或安全故障**。已有饱和与关闭测试说明这些边界不能随意取消。
+
+可评估使用项目已有 client-go 的 keyed workqueue 配合 2 个固定 worker，保留 latest payload map、epoch 和 generation fence，仅替换提交超时和重试转运层。回调不返回错误，无需增加 rate-limit 或业务重试框架。该替换尚未实现或证明等价，优先级低于 O13–O15；如果原契约需要补回同样复杂的机制，应放弃替换。
+
+验收必须保持同组件串行与最新值合并、不同组件并发上限、reset 等待执行中回调、旧 epoch 拒绝、Close 丢弃排队任务且不死锁、panic 隔离。不能只以代码更短判定成功。
+
+### 没有消费者且不被规范化接受的旧策略常量
+
+[`DefaultNotRun`、`ForceRun`、`SkipRun`](https://github.com/PixelCores/Eruun/blob/02503bdbc6ca5045542fa2f1aac71dc91c56a84c/pkg/apiserver/workflow/config/job_policy.go#L7-L28) 在仓内只有定义；同文件的 `NormalizeJobRunPolicy` 对它们的字符串返回 `known=false`。可清理这些导出常量并核对仓外调用，不应为了保留它们扩大支持值。`DefaultRun` 对应空值，仍被规范化接受，不能与前三者混为一谈。此项收益小，适合附带清理，不独立重构策略模型。
+
+## 保留的必要复杂性
+
+Workflow 租约、generation/token fencing、outbox、数据库恢复和空间授权都有当前需求。Harbor 的 claim、检查点、UID 比较及结果确认屏障用于执行身份与恢复；command Job 和 evaluation Job 的输入及依赖也不同，不能只因为都有构建代码就合并路径。HTTP/gRPC 的双入口和 ProtoJSON 转换有公开协议约束。
+
+Go API 与 Python Runner 的归档校验处在不同信任边界，不能当成普通重复代码删除。`ArchiveUploader` 在 Current 文档中有明确源码扩展与未配置时快速失败的约定，本轮不把整个扩展接口判为冗余。基础设施的测试替身、不同角色的 observer 及 DB 事务能力边界也不因只有少量实现而自动归类为过度设计。
+
+## 前两轮处置
+
+| 历史范围 | 进入本轮基线的处置 | 证据 |
+| --- | --- | --- |
+| O01–O07 | Redis 缓存/锁收敛、按角色装配、延迟通知去除完整 Job、独立 Workflow handler、Worker 接口与 JSONStruct 清理 | [首轮固定报告](https://github.com/PixelCores/Eruun/blob/ae9306fc816e9e9845a16dd7bcefd91542bb2e6d/docs/overdesign-audit-2026-09-29.md)；对应 PR #95–#101 |
+| O08–O12 | Try 复用叶子校验、DSN 唯一选库、CloudJob 检查点/快照收敛、移除 errhandler | [已合并 PR #117](https://github.com/PixelCores/Eruun/pull/117)；[实施与验收固定版本](https://github.com/PixelCores/Eruun/blob/02503bdbc6ca5045542fa2f1aac71dc91c56a84c/docs/overdesign-audit-2026-09-29.md) |
+| 上轮局部候选 | Aliyun 空 action 构造、Workflow 入队参数转发、单用途泛型转换和聚合状态依赖已收敛 | 同属 PR #117 |
+
+以上具体旧项不再作为未完成待办；不表示相关模块已不存在其他债务。旧数据库参数迁移仍参见 [本地依赖](local-docker-dependencies.md) 和 [Helm 部署](helm-deployment.md)。本文复用原审计文件，详细历史通过固定提交保留。
+
+## 审计基线验证
+
+通过符号/导入检索和函数体核对建立 O14、O15 的消费者及依赖证据；O13 使用上述真实函数探针复现。以下既有测试在本轮基线通过，证明当前契约与测试现状，**不是尚未实施的简化方案已经验收**：
 
 ```sh
-# 角色装配、观察器所有权与 Worker readiness
-go test ./pkg/apiserver -run 'TestRuntimeRolesOnlyBuildTheirServedAPIAdapters|TestStartWorkersSkipsNilWorkerInReadinessCount|TestBuildRuntimeQueuesBuildsOnlyRoleQueues|TestInitRoleObserversBuildsOnlyOwnedObserver' -count=1
+# Ingress 摘要、默认规则与歧义拒绝
+go test ./pkg/apiserver/interfaces/api/assembler/v1 ./pkg/apiserver/workflow/traits ./pkg/apiserver/domain/service/validation -run 'TestConvertComponentModelToDTO.*Ingress|TestApplyIngressDefaults|TestValidationService_TryApplication_RejectsMissingIngressServiceNameWithMultipleServices' -count=1
 
-# Redis、锁与 JSONStruct 的已修复旧项
-go test ./pkg/apiserver/config ./pkg/apiserver/infrastructure/cache ./pkg/apiserver/infrastructure/locker ./pkg/apiserver/domain/model -run 'TestCacheTypeFlagRejectsUnsupportedEnvironmentValue|TestNewRedisICacheRequiresClient|TestNewRedisLockerRequiresClient|TestNewJSONStructByStructPreservesJSONContract' -count=1
+# 结果编码、旧入口及真实 outbox 路径
+go test ./pkg/apiserver/event/workflow/job -run 'TestEnqueueResultJobAndDispatch|TestDispatchJobResultReturnsQueueErrorWhenUnavailable|TestResultPayloadBuildersAndDecode|TestResultOutboxDispatcherClaimsPendingBeforeEnqueue|TestResultOutboxDispatcherPersistsQueuedStateAfterSuccessfulEnqueue|TestResultOutboxDispatcherReturnsToPendingWhenEnqueueFails|TestJobResultPayloadFromOutboxRequiresMandatoryFields' -count=1
 
-# 延迟通知及独立 Workflow handler
-go test ./pkg/apiserver/event/workflow/job ./pkg/apiserver/interfaces/api -run 'TestDelayedNotificationDispatchesCommittedWorkload|TestLegacyDelayNotificationRejectsChangedWorkload|TestApplicationWorkflowHandlerInjection' -count=1
+# 无效依赖所涉的现有行为（32 个顶层测试，无跳过）
+go test ./pkg/apiserver/utils/kube -race -run '^Test(ExecPodShellScript|StreamPodShellScript|ArchivePodPathAsZip|IsArchivePathLookupError|SanitizeArchiveEntryName|CopyTarHardLinkToZip|BuildPodExecURL)' -count=1 -v
+go test ./pkg/apiserver/domain/service/application -race -run '^Test(ListComponentPodsUsesSourceUIDWithoutManagedLabels|ExportComponentFilesZip|ExecComponentShellScript|StreamComponentShellScript)' -count=1 -v
+go test ./pkg/apiserver/event/workflow/job -race -run '^TestLogArchiveUploadJobCtl' -count=1 -v
+go test ./pkg/apiserver/jobs -race -run '^(TestCommandAndEvaluationRenderIntoTheSameWorkspaceNamespace|TestEvaluationCredentialEnvsSurviveRunnerPlatformEnvs)$' -count=1 -v
 
-# Try / 写入校验的现有契约
-go test ./pkg/apiserver/domain/service/validation -run 'TestValidationService_TryApplication_(ValidServiceTrait|InvalidServiceTraitMissingPorts|InvalidServiceTraitHeadlessType|InvalidIngressNameAndHosts|RejectsMissingIngressServiceNameWithMultipleServices)|TestValidateComponentTraitsForWriteRejects(InvalidServiceTrait|ReservedIngressLabels|AmbiguousIngressBackend)' -count=1
-
-# CloudJob checkpoint、运行快照和跨重启拒绝边界
-go test ./pkg/apiserver/event/workflow/job ./pkg/apiserver/event/workflow/cloudjob/aliyun -run 'TestCloudJobCtlRunWithRegisteredProviderSuccess|TestCloudJobCtlRunKeepsRuntimeProviderSnapshotInContextOnly|TestCloudJobCtlRunFailsToResumePersistedStateWithoutRuntimeProviderSnapshot|TestCloudJobCtlRunMatchesCheckpointByExecutionKey|TestProviderNewRuntimeRejectsResumeWithoutRuntimeProviderSnapshot|TestProviderNewRuntimeUsesRuntimeProviderSnapshotOnResume' -count=1
+# 状态同步并发、代次重置、饱和与关闭
+go test ./pkg/apiserver/infrastructure/informer -race -run 'TestStatusSync|TestResetPodSnapshots|TestCloseDropsQueuedStatusSyncCallbacks|TestCloseUnblocksDeferredStatusSyncSubmit|TestResourceReadyWaiterCloseIsIdempotent' -count=1
 ```
 
-上述测试均通过。另外完成源码调用/导入搜索、flag/DSN 内存解析探针、文档链接及行号边界检查、`git diff --check` 和 `scripts/check-sensitive-content.sh`。
+审计初稿 `921220e` 只修改本文和索引，未改生产代码或测试；当时另检查固定证据链接的文件/行号、Markdown 本地链接、`git diff --check` 和敏感内容。审计阶段没有重复上轮的全仓验收，后续实施验收独立记录如下。未连接真实 MySQL/Redis/Kafka/Kubernetes/ACS，未运行云 SDK 验收或性能基准，也未验证仓外 Go 消费者。
 
-审计初稿未修改 Go 代码或运行配置，未运行全仓 race/coverage。后续实施的验收独立记录如下。
+## 后续实施验收
 
-### 后续实施
+修复基线为 `921220e`。O13 新增回归先在旧生产实现上复现端口错误；O14/O15 迁移已有行为断言，不为被删除的入口另建兼容层。状态同步测试以固定 2 worker 的实际行为验证，移除只绑定旧 executor/signal 实现的操作。
 
-新增回归覆盖 Try 错误呈现和规范化请求、旧数据库输入拒绝、DSN 唯一选库、旧 CloudJob 检查点恢复、运行快照不落库及共享 Aliyun action 的并发隔离。已完成限定差异及直接调用链的独立复核。
-
-通过的本地检查：
+已通过：
 
 ```sh
 go test -race -cover -p 2 ./...
 go vet ./...
-go build -trimpath -o /tmp/eruun-cleanup-server ./cmd/main.go
-deploy/all_in_one_install_quickstart_test.sh
-# 使用 Helm v4.2.0，HELM_BIN 指向本地可执行文件
-HELM_BIN=helm deploy/helm/eruun/helm_template_test.sh
+go build -trimpath -o /tmp/eruun-round3-server ./cmd/main.go
+go test -tags integration ./pkg/apiserver/jobs -run '^$'
 scripts/check-sensitive-content.sh
 git diff --check
 ```
 
-全仓 Go 格式检查通过；同时修正 main 基线上已有的三处 import 排序差异。除格式外，后续复核没有扩展到新的审计主题。生产 Go 文件相对审计初稿净减少 558 行，此数只描述维护代码规模；新增回归测试单独计算。
-
-真实 MySQL/Redis/Kafka/Kubernetes/ACS、云 SDK 和仓外 Go 消费者未验收；没有进行性能基准，删行与去重不代表已测得吞吐或延迟提升。Workflow 租约、fencing、outbox、恢复屏障和空间授权保持原有实现。
+另完成触及 Go 文件格式检查、原始 Ingress 探针复跑及限定改动范围的独立回归审查。integration tag 命令只验证编译，不代表执行真实数据库集成测试。部署文件、安装器和 Helm 契约没有修改，沿用基线的对应验收；未开展真实集群、数据库、云 SDK、仓外 Go 集成或性能验证。

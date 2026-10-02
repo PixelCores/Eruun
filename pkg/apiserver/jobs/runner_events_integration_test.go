@@ -82,7 +82,7 @@ func TestMySQLRunnerClaimRowLockHasOneWinner(t *testing.T) {
 	service, err := New(account.NewStore(driver), client, cfg)
 	require.NoError(t, err)
 	scoped := account.WithScope(ctx, account.Scope{WorkspaceID: workspaceID, Namespace: namespace, Role: "member"})
-	task, err := BuildTask(scoped, service.Store, cfg, parent, namespace)
+	task, err := BuildTask(parent, namespace)
 	require.NoError(t, err)
 	task.ExecutionKey, task.RunGeneration, task.Attempt = "execution", 1, 1
 	require.NoError(t, BuildEvaluationTask(scoped, service.Store, cfg, task, spec.JobTraits{}))

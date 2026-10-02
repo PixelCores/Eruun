@@ -108,7 +108,7 @@ func TestSubmitEvalUsesAuthorizedWorkspaceAndKeepsInternalJobType(t *testing.T) 
 	require.NoError(t, raw.Get(ctx, parent))
 	require.Equal(t, "space", parent.WorkspaceID)
 	require.Contains(t, parent.JobSpec, `"eval"`)
-	task, err := BuildTask(ctx, service.Store, service.Config, parent, "space-ns")
+	task, err := BuildTask(parent, "space-ns")
 	require.NoError(t, err)
 	require.Equal(t, string(config.JobEval), task.JobType)
 	detail, err := service.Get(ctx, accepted.TaskID)
@@ -147,7 +147,7 @@ func newRunnerFixtureForService(t *testing.T, service *Service, raw *sqlstore.Dr
 	require.NoError(t, raw.Get(ctx, parent))
 	parent.Status, parent.RunGeneration, parent.RunToken, parent.WorkerID = config.StatusRunning, 4, "replacement-lease", "replacement-worker"
 	require.NoError(t, raw.Put(ctx, parent))
-	task, err := BuildTask(ctx, service.Store, service.Config, parent, "space-ns")
+	task, err := BuildTask(parent, "space-ns")
 	require.NoError(t, err)
 	task.RunGeneration, task.OwnerRunGeneration, task.ExecutionKey = 2, 4, "original-execution"
 	require.NoError(t, BuildEvaluationTask(ctx, service.Store, service.Config, task, spec.JobTraits{}))
@@ -785,7 +785,7 @@ func TestCommandRuntimePersistsCheckpointAndTerminalResultThroughScopedStore(t *
 	require.NoError(t, raw.Get(ctx, parent))
 	parent.Status, parent.RunGeneration, parent.RunToken, parent.WorkerID = config.StatusRunning, 1, "lease", "worker"
 	require.NoError(t, raw.Put(ctx, parent))
-	task, err := BuildTask(ctx, service.Store, service.Config, parent, "space-ns")
+	task, err := BuildTask(parent, "space-ns")
 	require.NoError(t, err)
 	task.RunGeneration, task.OwnerRunGeneration, task.OwnerStatus = 1, 1, config.StatusRunning
 	task.RunToken, task.WorkerID, task.ExecutionKey = parent.RunToken, parent.WorkerID, "command-execution"
