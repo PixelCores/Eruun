@@ -101,7 +101,7 @@ func ApplyIngressRewriteAnnotations(annotations map[string]string, rewrite *Rewr
 }
 
 // IngressPathType resolves the route, ingress, and rewrite defaults in that order.
-// Whitespace normalization remains the responsibility of the calling boundary.
+// Path type values are normalized for whitespace and case at this shared boundary.
 func IngressPathType(routePathType, defaultPathType string, annotations map[string]string) string {
 	if pathType, ok := ingressPathType(routePathType); ok {
 		return pathType
@@ -116,7 +116,7 @@ func IngressPathType(routePathType, defaultPathType string, annotations map[stri
 }
 
 func ingressPathType(value string) (string, bool) {
-	switch strings.ToLower(value) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "prefix":
 		return "Prefix", true
 	case "exact":

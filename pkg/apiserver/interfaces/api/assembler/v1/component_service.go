@@ -146,7 +146,7 @@ func buildIngressTraitDetails(component *apisv1.ApplicationComponent, trait spec
 		if path == "" {
 			path = "/"
 		}
-		pathType := spec.IngressPathType(strings.TrimSpace(route.PathType), strings.TrimSpace(trait.DefaultPathType), annotations)
+		pathType := spec.IngressPathType(route.PathType, trait.DefaultPathType, annotations)
 		for _, host := range resolveIngressRouteHosts(route.Host, trait.Hosts) {
 			result = append(result, apisv1.ComponentIngressRouteInfo{
 				Host:        host,

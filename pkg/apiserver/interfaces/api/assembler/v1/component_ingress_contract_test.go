@@ -168,9 +168,23 @@ func TestConvertComponentModelsToDTOIngressPreservesRoutePresentation(t *testing
 			wantAnnotations: map[string]string{"nginx.ingress.kubernetes.io/rewrite-target": "/kept", "nginx.ingress.kubernetes.io/use-regex": "true"},
 		},
 		{
-			name: "summary trims path type but renderer retains its boundary", defaultPathType: "Prefix",
-			routes:           []spec.IngressRoutes{{PathType: " Exact "}},
-			wantSummaryTypes: []string{"Exact"}, wantRenderTypes: []string{"Prefix"},
+			name: "route whitespace and case normalize in summary and renderer", defaultPathType: "Prefix",
+			routes:           []spec.IngressRoutes{{PathType: " eXaCt "}},
+			wantSummaryTypes: []string{"Exact"}, wantRenderTypes: []string{"Exact"},
+		},
+		{
+			name: "default whitespace normalizes in summary and renderer", defaultPathType: " Exact ",
+			routes:           []spec.IngressRoutes{{}},
+			wantSummaryTypes: []string{"Exact"}, wantRenderTypes: []string{"Exact"},
+		},
+		{
+			name: "invalid route uses normalized default", defaultPathType: " implementation-specific ",
+			routes:           []spec.IngressRoutes{{PathType: "unknown"}},
+			wantSummaryTypes: []string{"ImplementationSpecific"}, wantRenderTypes: []string{"ImplementationSpecific"},
+		},
+		{
+			name: "invalid route falls back to prefix", routes: []spec.IngressRoutes{{PathType: "unknown"}},
+			wantSummaryTypes: []string{"Prefix"}, wantRenderTypes: []string{"Prefix"},
 		},
 		{
 			name:             "rewrite only affects current and later routes",
