@@ -51,15 +51,17 @@ func CleanupRecoveredCancelledJobsPage(ctx context.Context, client kubernetes.In
 	if pageSize <= 0 || pageSize > 100 {
 		pageSize = 100
 	}
-	entities, err := store.List(ctx, &model.JobInfo{Status: string(config.StatusCancelled)}, &datastore.ListOptions{
+	entities, err := store.List(ctx, &model.JobInfo{}, &datastore.ListOptions{
 		FilterOptions: datastore.FilterOptions{
 			In: []datastore.InQueryOption{{
 				Key: "type", Values: []string{
 					string(config.JobDeployInstant), string(config.JobCommand),
 					string(config.JobEval), string(config.JobDeployScheduled),
 				},
-			}},
-			Queries: []datastore.FuzzyQueryOption{{Key: "scheduling_reason", Query: cancelledJobCleanupPending}},
+			},
+				{Key: "status", Values: []string{string(config.StatusCancelled)}},
+				{Key: "scheduling_reason", Values: []string{cancelledJobCleanupPending}},
+			},
 		},
 		Page: page, PageSize: pageSize,
 		SortBy: []datastore.SortOption{{Key: "update_time", Order: datastore.SortOrderAscending}},

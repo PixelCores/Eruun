@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	applyv1 "k8s.io/client-go/applyconfigurations/core/v1"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
@@ -405,9 +404,9 @@ func TestBuildJobsForComponentAddsShareLabelsToWorkloadPodTemplates(t *testing.T
 		shareAssertions(t, deploy.Labels)
 		shareAssertions(t, deploy.Spec.Template.Labels)
 		selectorAssertions(t, deploy.Spec.Selector.MatchLabels)
-		svc, ok := buckets[config.JobPriorityHigh][0].JobInfo.(*applyv1.ServiceApplyConfiguration)
+		svc, ok := buckets[config.JobPriorityHigh][0].JobInfo.(*corev1.Service)
 		require.True(t, ok)
-		require.Equal(t, "proxy", *svc.Name)
+		require.Equal(t, "proxy", svc.Name)
 	})
 
 	t.Run("statefulset", func(t *testing.T) {
@@ -592,12 +591,10 @@ func TestBuildJobsForComponent_ServiceTraitOverridesLegacyServiceGeneration(t *t
 	}
 
 	for _, serviceJob := range serviceJobs {
-		svcInfo, ok := serviceJob.JobInfo.(*applyv1.ServiceApplyConfiguration)
+		svcInfo, ok := serviceJob.JobInfo.(*corev1.Service)
 		require.True(t, ok)
-		require.NotNil(t, svcInfo.Name)
-		require.NotNil(t, svcInfo.Spec)
 
-		name := *svcInfo.Name
+		name := svcInfo.Name
 		_, exists := expectedServiceNames[name]
 		require.True(t, exists, "unexpected service name %s", name)
 		expectedServiceNames[name] = true
@@ -609,8 +606,7 @@ func TestBuildJobsForComponent_ServiceTraitOverridesLegacyServiceGeneration(t *t
 			require.NotContains(t, svcInfo.Spec.Selector, config.LabelAppID)
 		case "mysql-headless":
 			require.Equal(t, "mysql", svcInfo.Spec.Selector["name"])
-			require.NotNil(t, svcInfo.Spec.ClusterIP)
-			require.Equal(t, corev1.ClusterIPNone, *svcInfo.Spec.ClusterIP)
+			require.Equal(t, corev1.ClusterIPNone, svcInfo.Spec.ClusterIP)
 		}
 	}
 
@@ -671,10 +667,9 @@ func TestBuildJobsForComponent_StoreServiceTraitPrecedesStatefulSet(t *testing.T
 	serviceJobs := buckets[config.JobPriorityHigh]
 	require.Len(t, serviceJobs, 1)
 	require.Equal(t, string(config.JobDeployService), serviceJobs[0].JobType)
-	svcInfo, ok := serviceJobs[0].JobInfo.(*applyv1.ServiceApplyConfiguration)
+	svcInfo, ok := serviceJobs[0].JobInfo.(*corev1.Service)
 	require.True(t, ok)
-	require.NotNil(t, svcInfo.Name)
-	require.Equal(t, "mysql", *svcInfo.Name)
+	require.Equal(t, "mysql", svcInfo.Name)
 
 	normalJobs := buckets[config.JobPriorityNormal]
 	require.Len(t, normalJobs, 1)
@@ -711,11 +706,10 @@ func TestBuildJobsForComponent_DefaultServiceFromPortsUsesHighPriority(t *testin
 	serviceJobs := buckets[config.JobPriorityHigh]
 	require.Len(t, serviceJobs, 1)
 	require.Equal(t, string(config.JobDeployService), serviceJobs[0].JobType)
-	svcInfo, ok := serviceJobs[0].JobInfo.(*applyv1.ServiceApplyConfiguration)
+	svcInfo, ok := serviceJobs[0].JobInfo.(*corev1.Service)
 	require.True(t, ok)
-	require.NotNil(t, svcInfo.Spec)
 	require.Len(t, svcInfo.Spec.Ports, 1)
-	require.Equal(t, int32(8080), *svcInfo.Spec.Ports[0].Port)
+	require.Equal(t, int32(8080), svcInfo.Spec.Ports[0].Port)
 
 	normalJobs := buckets[config.JobPriorityNormal]
 	require.Len(t, normalJobs, 1)

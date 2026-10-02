@@ -195,11 +195,6 @@ func ensureLogDir(logDir string) error {
 func run(ctx context.Context, s *options.ServerRunOptions, errChan chan error) error {
 	klog.Infof("Eruun information: version: %v", version.EruunVersion)
 
-	autoEnabled := resolveTracing(s.GenericServerRunOptions)
-	if autoEnabled {
-		klog.InfoS("Auto tracing enabled", "jaegerEndpoint", s.GenericServerRunOptions.JaegerEndpoint, "msgType", s.GenericServerRunOptions.Messaging.Type)
-	}
-
 	if s.GenericServerRunOptions.EnableTracing {
 		klog.InfoS("Tracing enabled", "jaegerEndpoint", s.GenericServerRunOptions.JaegerEndpoint)
 		shutdown, err := observability.InitTracerProvider("eruun-server", s.GenericServerRunOptions.JaegerEndpoint)
@@ -217,11 +212,4 @@ func run(ctx context.Context, s *options.ServerRunOptions, errChan chan error) e
 
 	apiServer := server.New(*s.GenericServerRunOptions)
 	return apiServer.Run(ctx, errChan)
-}
-
-// resolveTracing keeps the tracer provider and HTTP middleware on the same setting.
-func resolveTracing(cfg *config.Config) bool {
-	autoEnabled := cfg.AutoTracing && !cfg.EnableTracing
-	cfg.EnableTracing = cfg.EnableTracing || cfg.AutoTracing
-	return autoEnabled
 }

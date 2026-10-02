@@ -8,7 +8,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	applyv1 "k8s.io/client-go/applyconfigurations/core/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -20,7 +19,7 @@ func TestServiceJobCtlBasicBranches(t *testing.T) {
 	require.Nil(t, NewDeployServiceJobCtl(nil, &Runtime{Client: nil, Store: nil, Ack: nil}, nil))
 
 	ackCount := 0
-	service := applyv1.Service("svc-a", "default")
+	service := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "svc-a", Namespace: "default"}}
 	jobTask := &model.JobTask{
 		Name:      "svc-a",
 		Namespace: "default",

@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
@@ -40,16 +42,16 @@ func TestApplyService_PreservesHeadlessClusterIP(t *testing.T) {
 		},
 	}
 
-	svcCfg := GenerateServiceFromTrait(component, nil, trait)
-	if svcCfg == nil {
-		t.Fatalf("expected service apply config, got nil")
+	desired := GenerateServiceFromTrait(component, nil, trait)
+	if desired == nil {
+		t.Fatalf("expected service, got nil")
 	}
 
 	clientset := fake.NewSimpleClientset()
 	ctl := &DeployServiceJobCtl{
 		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{client: clientset},
 	}
-	applied, err := ctl.ApplyService(context.Background(), svcCfg)
+	applied, err := ctl.ApplyService(context.Background(), desired)
 	if err != nil {
 		t.Fatalf("ApplyService failed: %v", err)
 	}
@@ -85,16 +87,16 @@ func TestApplyService_UpdatesExternalName(t *testing.T) {
 		},
 	}
 
-	svcCfg := GenerateServiceFromTrait(component, nil, trait)
-	if svcCfg == nil {
-		t.Fatalf("expected service apply config, got nil")
+	desired := GenerateServiceFromTrait(component, nil, trait)
+	if desired == nil {
+		t.Fatalf("expected service, got nil")
 	}
 
 	clientset := fake.NewSimpleClientset(existing)
 	ctl := &DeployServiceJobCtl{
 		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{client: clientset},
 	}
-	applied, err := ctl.ApplyService(context.Background(), svcCfg)
+	applied, err := ctl.ApplyService(context.Background(), desired)
 	if err != nil {
 		t.Fatalf("ApplyService failed: %v", err)
 	}
@@ -123,11 +125,11 @@ func TestApplyService_SkipsUnchangedServiceUpdate(t *testing.T) {
 		},
 	}
 
-	svcCfg := GenerateServiceFromTrait(component, nil, trait)
-	if svcCfg == nil {
-		t.Fatalf("expected service apply config, got nil")
+	desired := GenerateServiceFromTrait(component, nil, trait)
+	if desired == nil {
+		t.Fatalf("expected service, got nil")
 	}
-	existing := serviceFromApplyConfig(svcCfg)
+	existing := desired.DeepCopy()
 	existing.ResourceVersion = "1"
 	existing.Spec.ClusterIP = "10.0.0.10"
 	existing.Spec.ClusterIPs = []string{"10.0.0.10"}
@@ -139,7 +141,7 @@ func TestApplyService_SkipsUnchangedServiceUpdate(t *testing.T) {
 	ctl := &DeployServiceJobCtl{
 		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{client: clientset},
 	}
-	applied, err := ctl.ApplyService(context.Background(), svcCfg)
+	applied, err := ctl.ApplyService(context.Background(), desired)
 	if err != nil {
 		t.Fatalf("ApplyService failed: %v", err)
 	}
@@ -166,11 +168,11 @@ func TestApplyService_SkipsUnchangedNodePortServiceUpdate(t *testing.T) {
 		},
 	}
 
-	svcCfg := GenerateServiceFromTrait(component, nil, trait)
-	if svcCfg == nil {
-		t.Fatalf("expected service apply config, got nil")
+	desired := GenerateServiceFromTrait(component, nil, trait)
+	if desired == nil {
+		t.Fatalf("expected service, got nil")
 	}
-	existing := serviceFromApplyConfig(svcCfg)
+	existing := desired.DeepCopy()
 	existing.ResourceVersion = "1"
 	existing.Spec.ClusterIP = "10.0.0.20"
 	existing.Spec.ClusterIPs = []string{"10.0.0.20"}
@@ -183,7 +185,7 @@ func TestApplyService_SkipsUnchangedNodePortServiceUpdate(t *testing.T) {
 	ctl := &DeployServiceJobCtl{
 		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{client: clientset},
 	}
-	applied, err := ctl.ApplyService(context.Background(), svcCfg)
+	applied, err := ctl.ApplyService(context.Background(), desired)
 	if err != nil {
 		t.Fatalf("ApplyService failed: %v", err)
 	}
@@ -210,11 +212,11 @@ func TestApplyService_SkipsUnchangedLoadBalancerServiceUpdate(t *testing.T) {
 		},
 	}
 
-	svcCfg := GenerateServiceFromTrait(component, nil, trait)
-	if svcCfg == nil {
-		t.Fatalf("expected service apply config, got nil")
+	desired := GenerateServiceFromTrait(component, nil, trait)
+	if desired == nil {
+		t.Fatalf("expected service, got nil")
 	}
-	existing := serviceFromApplyConfig(svcCfg)
+	existing := desired.DeepCopy()
 	existing.ResourceVersion = "1"
 	existing.Spec.ClusterIP = "10.0.0.30"
 	existing.Spec.ClusterIPs = []string{"10.0.0.30"}
@@ -229,7 +231,7 @@ func TestApplyService_SkipsUnchangedLoadBalancerServiceUpdate(t *testing.T) {
 	ctl := &DeployServiceJobCtl{
 		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{client: clientset},
 	}
-	applied, err := ctl.ApplyService(context.Background(), svcCfg)
+	applied, err := ctl.ApplyService(context.Background(), desired)
 	if err != nil {
 		t.Fatalf("ApplyService failed: %v", err)
 	}
@@ -320,4 +322,22 @@ func TestServiceNeedsUpdateDetectsLoadBalancerNodePortAllocationChange(t *testin
 	if !serviceNeedsUpdate(current, desired) {
 		t.Fatal("expected loadbalancer nodeport allocation change to require update")
 	}
+}
+
+func TestApplyService_DefaultsAndPreservesInput(t *testing.T) {
+	desired := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "backend", Namespace: "ops"},
+		Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 80}}},
+	}
+	original := desired.DeepCopy()
+	client := fake.NewSimpleClientset()
+	ctl := &DeployServiceJobCtl{deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{client: client}}
+
+	created, err := ctl.ApplyService(context.Background(), desired)
+
+	require.NoError(t, err)
+	require.Equal(t, corev1.ServiceTypeClusterIP, created.Spec.Type)
+	require.Equal(t, corev1.ProtocolTCP, created.Spec.Ports[0].Protocol)
+	require.Equal(t, "port-0", created.Spec.Ports[0].Name)
+	require.Equal(t, original, desired)
 }

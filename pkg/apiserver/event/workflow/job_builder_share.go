@@ -8,7 +8,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	applyv1 "k8s.io/client-go/applyconfigurations/core/v1"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -188,8 +187,6 @@ func applyShareLabelsToJobInfo(jobInfo interface{}, share shareConfig) {
 		info.Spec.JobTemplate.Spec.Template.Labels = applyShareLabels(info.Spec.JobTemplate.Spec.Template.Labels, share)
 	case metav1.Object:
 		applyShareLabelsToObject(info, share)
-	case *applyv1.ServiceApplyConfiguration:
-		info.Labels = applyShareLabels(info.Labels, share)
 	case *workflowjob.ConfigMapInput:
 		info.Labels = applyShareLabels(info.Labels, share)
 	case *workflowjob.SecretInput:

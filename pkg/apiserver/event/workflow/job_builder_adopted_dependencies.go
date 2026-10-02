@@ -15,7 +15,6 @@ import (
 	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	applyv1 "k8s.io/client-go/applyconfigurations/core/v1"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
@@ -667,17 +666,7 @@ func decodeAdoptedDependencyManifest(
 	var object metav1.Object
 	switch strings.ToLower(strings.TrimSpace(resource.Source.Kind)) {
 	case "service":
-		var object applyv1.ServiceApplyConfiguration
-		if err := decode(&object); err != nil {
-			return nil, err
-		}
-		if object.Namespace == nil || object.Name == nil {
-			return nil, fmt.Errorf("adopted Service snapshot manifest identity is incomplete")
-		}
-		if err := validate(*object.Namespace, *object.Name); err != nil {
-			return nil, err
-		}
-		return &object, nil
+		object = &corev1.Service{}
 	case "ingress":
 		object = &networkingv1.Ingress{}
 	case "persistentvolumeclaim":

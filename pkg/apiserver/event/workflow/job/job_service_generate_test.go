@@ -46,16 +46,13 @@ func TestGenerateServiceFromTrait_UsesTraitFields(t *testing.T) {
 	if svc == nil {
 		t.Fatalf("expected service, got nil")
 	}
-	if svc.Name == nil || *svc.Name != "mysql-master" {
+	if svc.Name != "mysql-master" {
 		t.Fatalf("unexpected service name: %#v", svc.Name)
 	}
-	if svc.Spec == nil {
-		t.Fatalf("expected service spec, got nil")
-	}
-	if svc.Spec.Type == nil || *svc.Spec.Type != corev1.ServiceTypeClusterIP {
+	if svc.Spec.Type != corev1.ServiceTypeClusterIP {
 		t.Fatalf("unexpected service type: %#v", svc.Spec.Type)
 	}
-	if svc.Spec.ClusterIP == nil || *svc.Spec.ClusterIP != corev1.ClusterIPNone {
+	if svc.Spec.ClusterIP != corev1.ClusterIPNone {
 		t.Fatalf("expected headless ClusterIP None, got %#v", svc.Spec.ClusterIP)
 	}
 	if got := svc.Spec.Selector["mysql-pod-role"]; got != "master" {
@@ -70,7 +67,7 @@ func TestGenerateServiceFromTrait_UsesTraitFields(t *testing.T) {
 	if got := len(svc.Spec.Ports); got != 1 {
 		t.Fatalf("expected 1 service port, got %d", got)
 	}
-	if svc.Spec.Ports[0].TargetPort == nil || svc.Spec.Ports[0].TargetPort.IntVal != 3306 {
+	if svc.Spec.Ports[0].TargetPort.IntVal != 3306 {
 		t.Fatalf("unexpected target port: %#v", svc.Spec.Ports[0].TargetPort)
 	}
 }
@@ -162,7 +159,6 @@ func TestGenerateServiceFromTrait_RebindsManagedIdentitySelectors(t *testing.T) 
 	svc := GenerateServiceFromTrait(component, nil, trait)
 
 	require.NotNil(t, svc)
-	require.NotNil(t, svc.Spec)
 	require.Equal(t, "Helm", svc.Spec.Selector[config.LabelManagedBy])
 	require.Equal(t, "target-app", svc.Spec.Selector[config.LabelAppID])
 	require.Equal(t, "7", svc.Spec.Selector[config.LabelComponentID])
@@ -194,7 +190,6 @@ func TestGenerateServiceFromTrait_PreservesAdoptedIdentitySelectors(t *testing.T
 	svc := GenerateServiceFromTrait(component, nil, trait)
 
 	require.NotNil(t, svc)
-	require.NotNil(t, svc.Spec)
 	require.Equal(t, "source-app", svc.Spec.Selector[config.LabelAppID])
 	require.Equal(t, "41", svc.Spec.Selector[config.LabelComponentID])
 	require.Equal(t, "source-api", svc.Spec.Selector[config.LabelComponentName])
@@ -222,7 +217,6 @@ func TestGenerateServiceFromTrait_NormalizesGeneratedSelectorsAndPreservesValidE
 
 	svc := GenerateServiceFromTrait(component, nil, trait)
 	require.NotNil(t, svc)
-	require.NotNil(t, svc.Spec)
 	require.Equal(t, "Helm", svc.Spec.Selector[config.LabelManagedBy])
 	require.Equal(t, "api", svc.Spec.Selector[config.LabelComponentName])
 	require.Equal(t, "API", svc.Spec.Selector["role"])
@@ -311,22 +305,19 @@ func TestGenerateServiceFromTrait_Defaults(t *testing.T) {
 	if svc == nil {
 		t.Fatalf("expected service, got nil")
 	}
-	if svc.Name == nil || *svc.Name != buildServiceName(component.Name, component.ResourceAppNameOrID()) {
+	if svc.Name != buildServiceName(component.Name, component.ResourceAppNameOrID()) {
 		t.Fatalf("unexpected default service name: %#v", svc.Name)
 	}
-	if svc.Spec == nil {
-		t.Fatalf("expected service spec, got nil")
-	}
-	if svc.Spec.Type == nil || *svc.Spec.Type != corev1.ServiceTypeClusterIP {
+	if svc.Spec.Type != corev1.ServiceTypeClusterIP {
 		t.Fatalf("expected default ClusterIP type, got %#v", svc.Spec.Type)
 	}
 	if len(svc.Spec.Ports) != 1 {
 		t.Fatalf("expected one service port, got %d", len(svc.Spec.Ports))
 	}
-	if svc.Spec.Ports[0].Protocol == nil || *svc.Spec.Ports[0].Protocol != corev1.ProtocolTCP {
+	if svc.Spec.Ports[0].Protocol != corev1.ProtocolTCP {
 		t.Fatalf("expected default TCP protocol, got %#v", svc.Spec.Ports[0].Protocol)
 	}
-	if svc.Spec.Ports[0].TargetPort == nil || svc.Spec.Ports[0].TargetPort.IntVal != 8080 {
+	if svc.Spec.Ports[0].TargetPort.IntVal != 8080 {
 		t.Fatalf("expected default targetPort=8080, got %#v", svc.Spec.Ports[0].TargetPort)
 	}
 }
@@ -346,13 +337,13 @@ func TestGenerateServiceFromTrait_DefaultPortNameFallsBackWhenTooLong(t *testing
 	}
 
 	svc := GenerateServiceFromTrait(component, nil, trait)
-	if svc == nil || svc.Spec == nil {
+	if svc == nil {
 		t.Fatalf("expected service spec")
 	}
 	if len(svc.Spec.Ports) != 1 {
 		t.Fatalf("expected one service port, got %d", len(svc.Spec.Ports))
 	}
-	if svc.Spec.Ports[0].Name == nil || *svc.Spec.Ports[0].Name != "p-8080" {
+	if svc.Spec.Ports[0].Name != "p-8080" {
 		t.Fatalf("expected fallback port name p-8080, got %#v", svc.Spec.Ports[0].Name)
 	}
 }
@@ -372,7 +363,7 @@ func TestGenerateServiceFromTrait_DefaultSelectorWhenEmpty(t *testing.T) {
 	}
 
 	svc := GenerateServiceFromTrait(component, nil, trait)
-	if svc == nil || svc.Spec == nil {
+	if svc == nil {
 		t.Fatalf("expected service spec")
 	}
 	if got := svc.Spec.Selector[config.LabelAppID]; got != "app-4" {
@@ -399,16 +390,16 @@ func TestGenerateServiceFromTrait_ExternalName(t *testing.T) {
 	}
 
 	svc := GenerateServiceFromTrait(component, nil, trait)
-	if svc == nil || svc.Spec == nil {
+	if svc == nil {
 		t.Fatalf("expected service spec")
 	}
-	if svc.Name == nil || *svc.Name != "api-external" {
+	if svc.Name != "api-external" {
 		t.Fatalf("expected explicit service name api-external, got %#v", svc.Name)
 	}
-	if svc.Spec.Type == nil || *svc.Spec.Type != corev1.ServiceTypeExternalName {
+	if svc.Spec.Type != corev1.ServiceTypeExternalName {
 		t.Fatalf("expected ExternalName type, got %#v", svc.Spec.Type)
 	}
-	if svc.Spec.ExternalName == nil || *svc.Spec.ExternalName != "example.org" {
+	if svc.Spec.ExternalName != "example.org" {
 		t.Fatalf("expected externalName example.org, got %#v", svc.Spec.ExternalName)
 	}
 	if svc.Spec.Selector != nil {
@@ -430,26 +421,26 @@ func TestGenerateService_Default(t *testing.T) {
 	}
 
 	svc := GenerateService(component, properties)
-	if svc == nil || svc.Spec == nil {
+	if svc == nil {
 		t.Fatalf("expected generated service")
 	}
-	if svc.Name == nil || *svc.Name != buildServiceName(component.Name, component.ResourceAppNameOrID()) {
+	if svc.Name != buildServiceName(component.Name, component.ResourceAppNameOrID()) {
 		t.Fatalf("unexpected service name: %#v", svc.Name)
 	}
 	require.Equal(t, map[string]string{
 		config.LabelAppID:         component.AppID,
 		config.LabelComponentName: component.Name,
 	}, svc.Spec.Selector)
-	if svc.Spec.Type == nil || *svc.Spec.Type != corev1.ServiceTypeClusterIP {
+	if svc.Spec.Type != corev1.ServiceTypeClusterIP {
 		t.Fatalf("expected ClusterIP service, got %#v", svc.Spec.Type)
 	}
 	if len(svc.Spec.Ports) != 2 {
 		t.Fatalf("expected 2 ports, got %d", len(svc.Spec.Ports))
 	}
-	if svc.Spec.Ports[0].Name == nil || *svc.Spec.Ports[0].Name == "" {
+	if svc.Spec.Ports[0].Name == "" {
 		t.Fatalf("expected port name to be generated")
 	}
-	if len(*svc.Spec.Ports[0].Name) > 15 && (*svc.Spec.Ports[0].Name)[:2] != "p-" {
-		t.Fatalf("expected long port name to fallback with p- prefix, got %s", *svc.Spec.Ports[0].Name)
+	if len(svc.Spec.Ports[0].Name) > 15 && svc.Spec.Ports[0].Name[:2] != "p-" {
+		t.Fatalf("expected long port name to fallback with p- prefix, got %s", svc.Spec.Ports[0].Name)
 	}
 }

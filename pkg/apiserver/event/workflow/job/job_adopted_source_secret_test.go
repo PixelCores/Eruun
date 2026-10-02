@@ -21,7 +21,6 @@ import (
 	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	applyv1 "k8s.io/client-go/applyconfigurations/core/v1"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 
@@ -92,11 +91,14 @@ func TestAdoptedNonSecretDependenciesRecreateFromSnapshotAndRotateUID(t *testing
 			object.ResourceVersion = "11"
 			return false, nil, nil
 		})
-		desired := applyv1.Service(source.Name, source.Namespace).
-			WithSpec(applyv1.ServiceSpec().
-				WithType(corev1.ServiceTypeClusterIP).
-				WithSelector(map[string]string{"app": "backend"}).
-				WithPorts(applyv1.ServicePort().WithName("http").WithPort(80).WithTargetPort(intstr.FromInt32(8080))))
+		desired := &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{Name: source.Name, Namespace: source.Namespace},
+			Spec: corev1.ServiceSpec{
+				Type:     corev1.ServiceTypeClusterIP,
+				Selector: map[string]string{"app": "backend"},
+				Ports:    []corev1.ServicePort{{Name: "http", Port: 80, TargetPort: intstr.FromInt32(8080), Protocol: corev1.ProtocolTCP}},
+			},
+		}
 		ctl := NewDeployServiceJobCtl(
 			&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployService), JobInfo: desired},
 			&Runtime{

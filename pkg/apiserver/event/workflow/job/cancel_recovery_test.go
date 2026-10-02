@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	mysqlgorm "gorm.io/driver/mysql"
+	"gorm.io/gorm"
 	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -19,6 +21,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	sqldatastore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
@@ -26,6 +30,52 @@ type cancelledJobRecoveryStore struct {
 	noopStore
 	space  model.Workspace
 	record *model.JobInfo
+}
+
+func TestCleanupRecoveredCancelledJobsPageUsesExactSQLFilters(t *testing.T) {
+	db, err := gorm.Open(mysqlgorm.New(mysqlgorm.Config{
+		DSN:                       "gorm:gorm@tcp(127.0.0.1:9910)/gorm?charset=utf8mb4&parseTime=True",
+		SkipInitializeWithVersion: true,
+	}), &gorm.Config{
+		DryRun: true, DisableAutomaticPing: true,
+		NamingStrategy: sqlnamer.SQLNamer{},
+	})
+	require.NoError(t, err)
+	var query string
+	var args []interface{}
+	require.NoError(t, db.Callback().Row().After("gorm:row").Register("capture_cleanup_query", func(tx *gorm.DB) {
+		query = tx.Statement.SQL.String()
+		args = append([]interface{}(nil), tx.Statement.Vars...)
+	}))
+	store := &sqldatastore.Driver{Client: *db}
+
+	for _, tc := range []struct {
+		name     string
+		pageSize int
+		limit    int
+	}{
+		{name: "second page", pageSize: 10, limit: 10},
+		{name: "oversized page capped at 100", pageSize: 101, limit: 100},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cleaned, listed, err := CleanupRecoveredCancelledJobsPage(context.Background(), fake.NewSimpleClientset(), store, 2, tc.pageSize)
+			// Rows cannot execute in DryRun mode; the statement has still been built.
+			require.ErrorContains(t, err, "dry run mode unsupported")
+			require.Zero(t, cleaned)
+			require.Zero(t, listed)
+			// Exercise the real datastore query builder: JobInfo.Index does not expose status.
+			// Equality excludes running rows and reasons that only contain the pending marker.
+			require.Contains(t, query, "`type` IN (?,?,?,?)")
+			require.Contains(t, query, "`status` = ?")
+			require.Contains(t, query, "`scheduling_reason` = ?")
+			require.NotContains(t, query, "LIKE")
+			require.Contains(t, query, "ORDER BY `update_time` LIMIT ? OFFSET ?")
+			require.Equal(t, []interface{}{
+				string(config.JobDeployInstant), string(config.JobCommand), string(config.JobEval), string(config.JobDeployScheduled),
+				string(config.StatusCancelled), cancelledJobCleanupPending, tc.limit, tc.limit,
+			}, args)
+		})
+	}
 }
 
 func (s *cancelledJobRecoveryStore) Get(_ context.Context, entity datastore.Entity) error {

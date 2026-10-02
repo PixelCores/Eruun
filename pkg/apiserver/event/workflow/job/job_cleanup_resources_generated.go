@@ -121,8 +121,8 @@ func (c *CleanupResourcesJobCtl) deleteServicesForComponent(ctx context.Context,
 			name = buildServiceName(component.Name, component.ResourceNameKey())
 		}
 		if svc != nil {
-			name = pickNonEmpty(valueOrEmpty(svc.Name), name)
-			ns = pickNonEmpty(valueOrEmpty(svc.Namespace), ns)
+			name = pickNonEmpty(svc.Name, name)
+			ns = pickNonEmpty(svc.Namespace, ns)
 		}
 		c.deleteTrackedResource(ctx, deleted, spec.ResourceService, ns, name, false, func(deleteCtx context.Context) error {
 			return c.deleteService(deleteCtx, ns, name)
@@ -134,8 +134,8 @@ func (c *CleanupResourcesJobCtl) deleteServicesForComponent(ctx context.Context,
 		ns := component.Namespace
 		name := buildServiceName(component.Name, component.ResourceNameKey())
 		if svc != nil {
-			name = pickNonEmpty(valueOrEmpty(svc.Name), name)
-			ns = pickNonEmpty(valueOrEmpty(svc.Namespace), ns)
+			name = pickNonEmpty(svc.Name, name)
+			ns = pickNonEmpty(svc.Namespace, ns)
 		}
 		c.deleteTrackedResource(ctx, deleted, spec.ResourceService, ns, name, false, func(deleteCtx context.Context) error {
 			return c.deleteService(deleteCtx, ns, name)

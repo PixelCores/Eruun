@@ -12,7 +12,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	applyv1 "k8s.io/client-go/applyconfigurations/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
@@ -54,17 +53,17 @@ func (c *DeployServiceJobCtl) run(ctx context.Context) error {
 		return fmt.Errorf("client is nil")
 	}
 
-	service, err := serviceApplyFromJobInfo(c.job)
+	service, err := serviceFromJobInfo(c.job)
 	if err != nil {
 		return err
 	}
 
 	// 必要字段检查
-	if service.Name == nil || service.Namespace == nil {
-		return fmt.Errorf("service name or namespace is nil")
+	if service.Name == "" || service.Namespace == "" {
+		return fmt.Errorf("service name or namespace is empty")
 	}
-	name := *service.Name
-	namespace := *service.Namespace
+	name := service.Name
+	namespace := service.Namespace
 	if binding, adopted, sourceErr := adoptedResourceForJob(
 		ctx,
 		c.store,
@@ -75,7 +74,7 @@ func (c *DeployServiceJobCtl) run(ctx context.Context) error {
 	); sourceErr != nil {
 		return sourceErr
 	} else if adopted {
-		return c.reconcileAdoptedService(ctx, serviceFromApplyConfig(service), binding)
+		return c.reconcileAdoptedService(ctx, serviceWithDefaults(service), binding)
 	}
 
 	unlock, skipped, err := resolveSharedResourceAccess(ctx, sharedResourceAccessOptions{
@@ -118,7 +117,7 @@ func (c *DeployServiceJobCtl) run(ctx context.Context) error {
 	// 直接使用 ApplyService 处理创建或更新
 	updated, err := c.ApplyService(ctx, service)
 	if err != nil {
-		klog.Errorf("failed to apply service %q: %v", *service.Name, err)
+		klog.Errorf("failed to apply service %q: %v", service.Name, err)
 		return fmt.Errorf("apply service failed: %w", err)
 	}
 	klog.Infof("Service %q applied successfully.", updated.Name)
@@ -302,9 +301,10 @@ func mergeAdoptedServicePorts(current, desired []corev1.ServicePort) []corev1.Se
 			merged = append(merged, desiredPort)
 			continue
 		}
-		if desiredPort.NodePort == 0 {
-			desiredPort.NodePort = merged[index].NodePort
-		}
+		// The desired port may come from an older adoption snapshot. Keep live
+		// fields that Service traits cannot configure.
+		desiredPort.NodePort = merged[index].NodePort
+		desiredPort.AppProtocol = merged[index].AppProtocol
 		// A Service trait cannot currently represent a named targetPort.
 		// Adopted Services therefore keep the live target identity; supported
 		// adopted version updates do not include Service port changes.
@@ -372,43 +372,36 @@ func getServiceStatus(ctx context.Context, kubeClient kubernetes.Interface, name
 	return true, nil
 }
 
-func GenerateService(component *model.ApplicationComponent, properties *model.Properties) *applyv1.ServiceApplyConfiguration {
-	var servicePorts []*applyv1.ServicePortApplyConfiguration
+func GenerateService(component *model.ApplicationComponent, properties *model.Properties) *corev1.Service {
+	servicePorts := make([]corev1.ServicePort, 0, len(properties.Ports))
 	base := utils.ToRFC1123Name(component.Name)
-
 	for _, p := range properties.Ports {
-		port := applyv1.ServicePort().
-			WithName(defaultServicePortName(base, p.Port)).
-			WithPort(p.Port).
-			WithTargetPort(intstr.FromInt32(p.Port)).
-			WithProtocol(corev1.ProtocolTCP)
-		servicePorts = append(servicePorts, port)
+		servicePorts = append(servicePorts, corev1.ServicePort{
+			Name:       defaultServicePortName(base, p.Port),
+			Port:       p.Port,
+			TargetPort: intstr.FromInt32(p.Port),
+			Protocol:   corev1.ProtocolTCP,
+		})
 	}
-
-	labels := BuildLabels(component, properties)
-
-	selectorLabel := defaultServiceSelector(component)
-
-	serviceName := buildServiceName(component.Name, component.ResourceNameKey())
-	svc := applyv1.Service(serviceName, component.Namespace).
-		WithLabels(labels).
-		WithAnnotations(BuildAnnotations(component)).
-		WithSpec(applyv1.ServiceSpec().
-			WithSelector(selectorLabel).
-			WithPorts(servicePorts...).
-			WithType(corev1.ServiceTypeClusterIP)).
-		WithKind("Service").
-		WithAPIVersion("v1").
-		WithName(serviceName).
-		WithNamespace(component.Namespace)
-
-	return svc
+	return &corev1.Service{
+		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Service"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        buildServiceName(component.Name, component.ResourceNameKey()),
+			Namespace:   component.Namespace,
+			Labels:      BuildLabels(component, properties),
+			Annotations: BuildAnnotations(component),
+		},
+		Spec: corev1.ServiceSpec{
+			Type:     corev1.ServiceTypeClusterIP,
+			Selector: defaultServiceSelector(component),
+			Ports:    servicePorts,
+		},
+	}
 }
 
-func GenerateServiceFromTrait(component *model.ApplicationComponent, properties *model.Properties, serviceTrait spec.ServiceTraitSpec) *applyv1.ServiceApplyConfiguration {
-	var servicePorts []*applyv1.ServicePortApplyConfiguration
+func GenerateServiceFromTrait(component *model.ApplicationComponent, properties *model.Properties, serviceTrait spec.ServiceTraitSpec) *corev1.Service {
+	servicePorts := make([]corev1.ServicePort, 0, len(serviceTrait.Ports))
 	base := utils.ToRFC1123Name(component.Name)
-
 	for _, p := range serviceTrait.Ports {
 		if p.Port <= 0 {
 			continue
@@ -417,18 +410,16 @@ func GenerateServiceFromTrait(component *model.ApplicationComponent, properties 
 		if portName == "" {
 			portName = defaultServicePortName(base, p.Port)
 		}
-
 		targetPort := p.TargetPort
 		if targetPort <= 0 {
 			targetPort = p.Port
 		}
-
-		port := applyv1.ServicePort().
-			WithName(portName).
-			WithPort(p.Port).
-			WithTargetPort(intstr.FromInt32(targetPort)).
-			WithProtocol(serviceProtocolFromTrait(p.Protocol))
-		servicePorts = append(servicePorts, port)
+		servicePorts = append(servicePorts, corev1.ServicePort{
+			Name:       portName,
+			Port:       p.Port,
+			TargetPort: intstr.FromInt32(targetPort),
+			Protocol:   serviceProtocolFromTrait(p.Protocol),
+		})
 	}
 
 	labels := BuildLabels(component, properties)
@@ -436,39 +427,29 @@ func GenerateServiceFromTrait(component *model.ApplicationComponent, properties 
 		labels[k] = v
 	}
 	labels = ApplyComponentManagedLabels(labels, component)
-
 	serviceType := serviceTypeFromTrait(serviceTrait.Type)
-	selectorLabel := serviceSelectorForTrait(component, properties, serviceType, serviceTrait.Selector)
-
 	serviceName := strings.TrimSpace(serviceTrait.Name)
 	if serviceName == "" {
 		serviceName = buildServiceName(component.Name, component.ResourceNameKey())
 	}
-
-	specConfig := applyv1.ServiceSpec().WithType(serviceType)
+	svc := &corev1.Service{
+		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Service"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        serviceName,
+			Namespace:   component.Namespace,
+			Labels:      labels,
+			Annotations: BuildAnnotations(component),
+		},
+		Spec: corev1.ServiceSpec{Type: serviceType, Ports: servicePorts},
+	}
 	if serviceType == corev1.ServiceTypeExternalName {
-		if externalName := strings.TrimSpace(serviceTrait.ExternalName); externalName != "" {
-			specConfig.WithExternalName(externalName)
-		}
-		if len(servicePorts) > 0 {
-			specConfig.WithPorts(servicePorts...)
-		}
+		svc.Spec.ExternalName = strings.TrimSpace(serviceTrait.ExternalName)
 	} else {
-		specConfig.WithSelector(selectorLabel).WithPorts(servicePorts...)
+		svc.Spec.Selector = serviceSelectorForTrait(component, properties, serviceType, serviceTrait.Selector)
 	}
 	if serviceTrait.Headless && serviceType == corev1.ServiceTypeClusterIP {
-		specConfig.WithClusterIP(corev1.ClusterIPNone)
+		svc.Spec.ClusterIP = corev1.ClusterIPNone
 	}
-
-	svc := applyv1.Service(serviceName, component.Namespace).
-		WithLabels(labels).
-		WithAnnotations(BuildAnnotations(component)).
-		WithSpec(specConfig).
-		WithKind("Service").
-		WithAPIVersion("v1").
-		WithName(serviceName).
-		WithNamespace(component.Namespace)
-
 	return svc
 }
 
@@ -476,11 +457,11 @@ func resolveServiceName(jobTask *model.JobTask) string {
 	if jobTask == nil {
 		return ""
 	}
-	service, ok := optionalJobInfo[*applyv1.ServiceApplyConfiguration](jobTask)
-	if !ok || service.Name == nil {
+	service, ok := optionalJobInfo[*corev1.Service](jobTask)
+	if !ok {
 		return ""
 	}
-	return strings.TrimSpace(*service.Name)
+	return strings.TrimSpace(service.Name)
 }
 
 func serviceTypeFromTrait(raw string) corev1.ServiceType {
@@ -573,64 +554,23 @@ func selectorTargetsGeneratedLabel(key string, properties *model.Properties) boo
 	return ok
 }
 
-func stringDeref(input *string) string {
-	if input == nil {
-		return ""
+// serviceWithDefaults preserves the execution defaults for imported Service
+// manifests as well as generated Services, without mutating the job payload.
+func serviceWithDefaults(service *corev1.Service) *corev1.Service {
+	service = service.DeepCopy()
+	if service.Spec.Type == "" {
+		service.Spec.Type = corev1.ServiceTypeClusterIP
 	}
-	return *input
-}
-
-func serviceFromApplyConfig(svc *applyv1.ServiceApplyConfiguration) *corev1.Service {
-	// 处理可能为 nil 的字段
-	var serviceType corev1.ServiceType = corev1.ServiceTypeClusterIP // 默认值
-	if svc.Spec.Type != nil {
-		serviceType = *svc.Spec.Type
-	}
-
-	coreService := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        *svc.Name,
-			Namespace:   *svc.Namespace,
-			Labels:      svc.Labels,
-			Annotations: svc.Annotations,
-		},
-		Spec: corev1.ServiceSpec{
-			Type:         serviceType,
-			Selector:     svc.Spec.Selector,
-			ExternalName: stringDeref(svc.Spec.ExternalName),
-			ClusterIP:    stringDeref(svc.Spec.ClusterIP),
-			ClusterIPs:   append([]string(nil), svc.Spec.ClusterIPs...),
-			Ports:        make([]corev1.ServicePort, len(svc.Spec.Ports)),
-		},
-	}
-
-	// 转换端口
-	for i, port := range svc.Spec.Ports {
-		portName := fmt.Sprintf("port-%d", i)
-		if port.Name != nil {
-			portName = *port.Name
+	for i := range service.Spec.Ports {
+		port := &service.Spec.Ports[i]
+		if port.Name == "" {
+			port.Name = fmt.Sprintf("port-%d", i)
 		}
-
-		// 处理可能为 nil 的字段
-		var targetPort intstr.IntOrString
-		if port.TargetPort != nil {
-			targetPort = *port.TargetPort
-		}
-
-		var protocol corev1.Protocol = corev1.ProtocolTCP // 默认值
-		if port.Protocol != nil {
-			protocol = *port.Protocol
-		}
-
-		coreService.Spec.Ports[i] = corev1.ServicePort{
-			Name:       portName,
-			Port:       *port.Port,
-			TargetPort: targetPort,
-			Protocol:   protocol,
+		if port.Protocol == "" {
+			port.Protocol = corev1.ProtocolTCP
 		}
 	}
-
-	return coreService
+	return service
 }
 
 func copyServicePreservedFields(dst, src *corev1.Service) {
@@ -743,8 +683,8 @@ func serviceNeedsUpdate(current, desired *corev1.Service) bool {
 	return false
 }
 
-func (c *DeployServiceJobCtl) ApplyService(ctx context.Context, svc *applyv1.ServiceApplyConfiguration) (*corev1.Service, error) {
-	coreService := serviceFromApplyConfig(svc)
+func (c *DeployServiceJobCtl) ApplyService(ctx context.Context, coreService *corev1.Service) (*corev1.Service, error) {
+	coreService = serviceWithDefaults(coreService)
 
 	updateService := func() (*corev1.Service, error) {
 		var appliedSvc *corev1.Service

@@ -12,7 +12,6 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	applyv1 "k8s.io/client-go/applyconfigurations/core/v1"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
@@ -157,8 +156,8 @@ func scheduledJobInfo(job *model.JobTask) (*batchv1.CronJob, *batchv1.Job, error
 	}
 }
 
-func serviceApplyFromJobInfo(job *model.JobTask) (*applyv1.ServiceApplyConfiguration, error) {
-	return requiredJobInfo[*applyv1.ServiceApplyConfiguration](job)
+func serviceFromJobInfo(job *model.JobTask) (*corev1.Service, error) {
+	return requiredJobInfo[*corev1.Service](job)
 }
 
 func deploymentFromJobInfo(job *model.JobTask) (*appsv1.Deployment, error) {

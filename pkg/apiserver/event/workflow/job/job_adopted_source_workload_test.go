@@ -17,7 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	applyv1 "k8s.io/client-go/applyconfigurations/core/v1"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 
@@ -860,18 +859,14 @@ func TestDeployServiceJobCtlRunAdoptedUsesLiveBaselineAndSkipsNoop(t *testing.T)
 		importcontract.DispositionManaged,
 	)
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", resourceSnapshot)}
-	desired := applyv1.Service(live.Name, live.Namespace).
-		WithSpec(applyv1.ServiceSpec().
-			WithType(corev1.ServiceTypeClusterIP).
-			WithSelector(map[string]string{
-				"app":                 "backend",
-				config.LabelManagedBy: "Helm",
-			}).
-			WithPorts(applyv1.ServicePort().
-				WithName("http").
-				WithPort(80).
-				WithTargetPort(intstr.FromInt32(8080)).
-				WithProtocol(corev1.ProtocolTCP)))
+	desired := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: live.Name, Namespace: live.Namespace},
+		Spec: corev1.ServiceSpec{
+			Type:     corev1.ServiceTypeClusterIP,
+			Selector: map[string]string{"app": "backend", config.LabelManagedBy: "Helm"},
+			Ports:    []corev1.ServicePort{{Name: "http", Port: 80, TargetPort: intstr.FromInt32(8080), Protocol: corev1.ProtocolTCP}},
+		},
+	}
 	client := fake.NewSimpleClientset(live)
 	ctl := NewDeployServiceJobCtl(
 		&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployService), JobInfo: desired},
@@ -911,8 +906,10 @@ func TestDeployServiceJobCtlRunAdoptedSharedDependencyIsNeverWritten(t *testing.
 		importcontract.DispositionSharedPreserved,
 	)
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", resourceSnapshot)}
-	desired := applyv1.Service(live.Name, live.Namespace).
-		WithSpec(applyv1.ServiceSpec().WithPorts(applyv1.ServicePort().WithName("http").WithPort(81)))
+	desired := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: live.Name, Namespace: live.Namespace},
+		Spec:       corev1.ServiceSpec{Type: corev1.ServiceTypeClusterIP, Ports: []corev1.ServicePort{{Name: "http", Port: 81, Protocol: corev1.ProtocolTCP}}},
+	}
 	client := fake.NewSimpleClientset(live)
 	ctl := NewDeployServiceJobCtl(
 		&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployService), JobInfo: desired},
@@ -947,8 +944,10 @@ func TestDeployServiceJobCtlRunAdoptedRejectsReplacementUID(t *testing.T) {
 	replacement := source.DeepCopy()
 	replacement.UID = types.UID("replacement-uid")
 	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", resourceSnapshot)}
-	desired := applyv1.Service(source.Name, source.Namespace).
-		WithSpec(applyv1.ServiceSpec().WithPorts(applyv1.ServicePort().WithName("http").WithPort(81)))
+	desired := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: source.Name, Namespace: source.Namespace},
+		Spec:       corev1.ServiceSpec{Type: corev1.ServiceTypeClusterIP, Ports: []corev1.ServicePort{{Name: "http", Port: 81, Protocol: corev1.ProtocolTCP}}},
+	}
 	client := fake.NewSimpleClientset(replacement)
 	ctl := NewDeployServiceJobCtl(
 		&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployService), JobInfo: desired},
@@ -1206,4 +1205,42 @@ func TestAdoptedStatefulSetRecreationPersistenceFailureRetainsPendingClaimAndRet
 	}, createdPolicies)
 	require.Equal(t, string(newUID), *store.component.SourceWorkloadUID)
 	require.Equal(t, string(newUID), decodeTestAdoptionSnapshot(t, store.app).Resources[0].Source.UID)
+}
+
+func TestDeployServiceJobCtlRunAdoptedPreservesLivePortFieldsOverSnapshot(t *testing.T) {
+	ctx := WithCleanupTracker(context.Background())
+	oldProtocol, liveProtocol := "old-http", "http"
+	source := &corev1.Service{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "Service"},
+		ObjectMeta: metav1.ObjectMeta{Name: "backend-service", Namespace: "ops", UID: types.UID("service-uid")},
+		Spec: corev1.ServiceSpec{
+			Type:      corev1.ServiceTypeNodePort,
+			ClusterIP: "10.0.0.20",
+			Ports:     []corev1.ServicePort{{Name: "http", Port: 80, TargetPort: intstr.FromInt32(8080), Protocol: corev1.ProtocolTCP, NodePort: 30080, AppProtocol: &oldProtocol}},
+		},
+	}
+	snapshot := adoptedSnapshotResource(t, source, "backend", "service", importcontract.OwnershipExclusive, importcontract.DispositionManaged)
+	store := &adoptedSourceStore{app: adoptedApplication(t, "app-1", "ops", snapshot)}
+	live := source.DeepCopy()
+	live.Spec.Ports[0].NodePort = 30081
+	live.Spec.Ports[0].AppProtocol = &liveProtocol
+	client := fake.NewSimpleClientset(live)
+	desired := source.DeepCopy()
+	desired.Labels = map[string]string{config.LabelAppID: "app-1"}
+	ctl := NewDeployServiceJobCtl(
+		&model.JobTask{Name: "backend", AppID: "app-1", Namespace: "ops", JobType: string(config.JobDeployService), JobInfo: desired},
+		&Runtime{Client: client, Store: store, Ack: func() {}},
+		locker.NewNoopLocker(shareLockerPrefix),
+	)
+
+	require.NoError(t, ctl.run(ctx))
+	updated, err := client.CoreV1().Services("ops").Get(ctx, live.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, 1, countClientActions(client, "update", "services"))
+	require.Equal(t, int32(30081), updated.Spec.Ports[0].NodePort)
+	require.Equal(t, &liveProtocol, updated.Spec.Ports[0].AppProtocol)
+	require.Equal(t, "10.0.0.20", updated.Spec.ClusterIP)
+	require.Equal(t, "app-1", updated.Labels[config.LabelAppID])
+	require.Equal(t, int32(30080), desired.Spec.Ports[0].NodePort)
+	require.Equal(t, &oldProtocol, desired.Spec.Ports[0].AppProtocol)
 }

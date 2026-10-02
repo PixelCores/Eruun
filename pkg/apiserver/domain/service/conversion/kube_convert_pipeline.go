@@ -28,61 +28,70 @@ type kubeObjectBuckets struct {
 
 type kubeConvertState struct {
 	components []apis.CreateComponentRequest
+	sources    []*unstructured.Unstructured
 	refs       []componentRef
 	pvcLookup  map[string]claimTemplateInfo
 }
 
-func convertKubeObjectsToComponents(objects []*unstructured.Unstructured) ([]apis.CreateComponentRequest, []string, error) {
+func ConvertKubeObjectsToComponents(objects []*unstructured.Unstructured) ([]apis.CreateComponentRequest, []string, error) {
+	components, _, warnings, err := ConvertKubeObjectsWithSources(objects)
+	return components, warnings, err
+}
+
+// ConvertKubeObjectsWithSources preserves the input object that produced each
+// component. Sources and components have the same length and order, including
+// when different input objects have identical names or contents.
+func ConvertKubeObjectsWithSources(objects []*unstructured.Unstructured) ([]apis.CreateComponentRequest, []*unstructured.Unstructured, []string, error) {
 	buckets, warnings := classifyKubeObjects(objects)
 	state := &kubeConvertState{}
 
 	pvcLookup, pvcWarnings, err := buildPVCInfoLookup(buckets.pvcs)
 	warnings = append(warnings, pvcWarnings...)
 	if err != nil {
-		return nil, warnings, err
+		return nil, nil, warnings, err
 	}
 	state.pvcLookup = pvcLookup
 
 	stageWarnings, err := state.appendConfigMaps(buckets.configMaps)
 	warnings = append(warnings, stageWarnings...)
 	if err != nil {
-		return nil, warnings, err
+		return nil, nil, warnings, err
 	}
 
 	stageWarnings, err = state.appendSecrets(buckets.secrets)
 	warnings = append(warnings, stageWarnings...)
 	if err != nil {
-		return nil, warnings, err
+		return nil, nil, warnings, err
 	}
 
 	stageWarnings, err = state.appendWorkloads(buckets.workloads)
 	warnings = append(warnings, stageWarnings...)
 	if err != nil {
-		return nil, warnings, err
+		return nil, nil, warnings, err
 	}
 
-	stageWarnings, err = state.appendJobs(buckets.jobs)
+	stageWarnings, err = state.appendWorkloads(buckets.jobs)
 	warnings = append(warnings, stageWarnings...)
 	if err != nil {
-		return nil, warnings, err
+		return nil, nil, warnings, err
 	}
 
-	stageWarnings, err = state.appendCronJobs(buckets.cronJobs)
+	stageWarnings, err = state.appendWorkloads(buckets.cronJobs)
 	warnings = append(warnings, stageWarnings...)
 	if err != nil {
-		return nil, warnings, err
+		return nil, nil, warnings, err
 	}
 
 	stageWarnings, err = state.applyServiceTraits(buckets.services)
 	warnings = append(warnings, stageWarnings...)
 	if err != nil {
-		return nil, warnings, err
+		return nil, nil, warnings, err
 	}
 
 	stageWarnings, err = state.applyIngressTraits(buckets.ingresses)
 	warnings = append(warnings, stageWarnings...)
 	if err != nil {
-		return nil, warnings, err
+		return nil, nil, warnings, err
 	}
 
 	stageWarnings, err = state.applyRBACTraits(
@@ -94,14 +103,10 @@ func convertKubeObjectsToComponents(objects []*unstructured.Unstructured) ([]api
 	)
 	warnings = append(warnings, stageWarnings...)
 	if err != nil {
-		return nil, warnings, err
+		return nil, nil, warnings, err
 	}
 
-	return state.components, warnings, nil
-}
-
-func ConvertKubeObjectsToComponents(objects []*unstructured.Unstructured) ([]apis.CreateComponentRequest, []string, error) {
-	return convertKubeObjectsToComponents(objects)
+	return state.components, state.sources, warnings, nil
 }
 
 func classifyKubeObjects(objects []*unstructured.Unstructured) (kubeObjectBuckets, []string) {
@@ -163,6 +168,7 @@ func (s *kubeConvertState) appendConfigMaps(objects []*unstructured.Unstructured
 		}
 		if comp != nil {
 			s.components = append(s.components, *comp)
+			s.sources = append(s.sources, obj)
 		}
 	}
 	return warnings, nil
@@ -178,6 +184,7 @@ func (s *kubeConvertState) appendSecrets(objects []*unstructured.Unstructured) (
 		}
 		if comp != nil {
 			s.components = append(s.components, *comp)
+			s.sources = append(s.sources, obj)
 		}
 	}
 	return warnings, nil
@@ -192,32 +199,9 @@ func (s *kubeConvertState) appendWorkloads(objects []*unstructured.Unstructured)
 			return warnings, err
 		}
 		s.components, s.refs = appendConvertedComponent(s.components, s.refs, comp, labels, saName)
-	}
-	return warnings, nil
-}
-
-func (s *kubeConvertState) appendJobs(objects []*unstructured.Unstructured) ([]string, error) {
-	var warnings []string
-	for _, obj := range objects {
-		comp, labels, saName, warns, err := convertWorkloadObject(obj, s.pvcLookup)
-		warnings = append(warnings, warns...)
-		if err != nil {
-			return warnings, err
+		if comp != nil {
+			s.sources = append(s.sources, obj)
 		}
-		s.components, s.refs = appendConvertedComponent(s.components, s.refs, comp, labels, saName)
-	}
-	return warnings, nil
-}
-
-func (s *kubeConvertState) appendCronJobs(objects []*unstructured.Unstructured) ([]string, error) {
-	var warnings []string
-	for _, obj := range objects {
-		comp, labels, saName, warns, err := convertWorkloadObject(obj, s.pvcLookup)
-		warnings = append(warnings, warns...)
-		if err != nil {
-			return warnings, err
-		}
-		s.components, s.refs = appendConvertedComponent(s.components, s.refs, comp, labels, saName)
 	}
 	return warnings, nil
 }

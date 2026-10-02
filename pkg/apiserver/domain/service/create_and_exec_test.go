@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -32,11 +34,55 @@ type createExecWorkflowStub struct {
 	result *apis.ExecWorkflowResponse
 	err    error
 	called bool
+	delay  time.Duration
 }
 
 func (s *createExecWorkflowStub) ExecWorkflowTaskForApp(context.Context, string, string, int64, string) (*apis.ExecWorkflowResponse, error) {
 	s.called = true
+	time.Sleep(s.delay)
 	return s.result, s.err
+}
+
+func TestExecuteCreateAndExecApplicationDeploymentTiming(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		offset     time.Duration
+		executeAt  int64
+		scheduled  bool
+		delay      time.Duration
+		result     *apis.ExecWorkflowResponse
+		wantMarked bool
+	}{
+		{name: "negative rejected", executeAt: -1, result: &apis.ExecWorkflowResponse{TaskID: "task"}},
+		{name: "immediate", result: &apis.ExecWorkflowResponse{TaskID: "task"}, wantMarked: true},
+		{name: "past", scheduled: true, offset: -time.Second, result: &apis.ExecWorkflowResponse{TaskID: "task"}, wantMarked: true},
+		{name: "current second", scheduled: true, result: &apis.ExecWorkflowResponse{TaskID: "task"}, wantMarked: true},
+		{name: "future", scheduled: true, offset: time.Hour, result: &apis.ExecWorkflowResponse{TaskID: "task"}},
+		{name: "became due during execution", scheduled: true, offset: time.Second, delay: time.Second, result: &apis.ExecWorkflowResponse{TaskID: "task"}, wantMarked: true},
+		{name: "no task ID", result: &apis.ExecWorkflowResponse{}},
+		{name: "nil execution response"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				executeAt := tc.executeAt
+				if tc.scheduled {
+					executeAt = time.Now().Add(tc.offset).Unix()
+				}
+				app := &createExecAppStub{created: &apis.ApplicationBase{ID: "app", WorkflowID: "workflow"}}
+				workflow := &createExecWorkflowStub{result: tc.result, delay: tc.delay}
+				resp, err := ExecuteCreateAndExecApplication(context.Background(), app, workflow,
+					apis.CreateAndExecApplicationRequest{
+						CreateApplicationsRequest: apis.CreateApplicationsRequest{Name: "sample"}, ExecuteAt: executeAt,
+					}, "", func(error) string { return "safe failure" })
+				require.NoError(t, err)
+				require.Equal(t, tc.wantMarked, app.marked)
+				require.Equal(t, executeAt >= 0, workflow.called)
+				if executeAt < 0 {
+					require.Equal(t, apis.CreateAndExecStatusFailed, resp.ExecStatus)
+				}
+			})
+		})
+	}
 }
 
 func TestExecuteCreateAndExecApplicationSharedOutcomes(t *testing.T) {

@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
@@ -213,194 +214,90 @@ func TestImportComponentResourceKeys_AllowsStandalonePVCOverlap(t *testing.T) {
 	assert.Contains(t, inferredPrimaryImportKindsForComponent(existing), importKindPersistentVolumeClaims)
 }
 
-func TestBuildResourceComponentNameMapping_UsesConvertOrderQueues(t *testing.T) {
-	namespace := "default"
-	configRes := &importResource{
-		kindKey:       importKindConfigMaps,
-		kind:          "ConfigMap",
-		namespace:     namespace,
-		name:          "backend",
-		componentName: "backend",
-	}
-	deployRes := &importResource{
-		kindKey:       importKindDeployments,
-		kind:          "Deployment",
-		namespace:     namespace,
-		name:          "backend",
-		componentName: "backend",
-	}
+func TestFinalizeImportPlanComponentsTracksIdenticalSourcesAfterReordering(t *testing.T) {
+	for _, sharedFirst := range []bool{false, true} {
+		t.Run(map[bool]string{false: "local first", true: "shared first"}[sharedFirst], func(t *testing.T) {
+			local := newConfigMapResource(t, "backend", "workspace")
+			shared := local.object.DeepCopy()
+			components := []apisv1.CreateComponentRequest{
+				{Name: "backend", ComponentType: config.ConfJob, Properties: apisv1.Properties{Conf: map[string]string{"key": "value"}}},
+				{Name: "backend", ComponentType: config.ConfJob, Properties: apisv1.Properties{Conf: map[string]string{"key": "value"}}},
+			}
+			sources := []*unstructured.Unstructured{local.object, shared}
+			localIndex, sharedIndex := 0, 1
+			if sharedFirst {
+				sources[0], sources[1] = sources[1], sources[0]
+				localIndex, sharedIndex = 1, 0
+			}
+			plan := importAppPlan{}
+			finalizeImportPlanComponents(&plan, "app", "shared", []*importResource{local}, components, sources,
+				map[*unstructured.Unstructured]string{local.object: resourceResultKey(local)})
 
-	source := []apisv1.CreateComponentRequest{
-		{Name: "backend"},
-		{Name: "backend"},
+			require.NoError(t, plan.err)
+			require.Len(t, plan.components, 2)
+			assert.Equal(t, "backend", plan.components[0].Name)
+			assert.Equal(t, "backend-2", plan.components[1].Name)
+			assert.Equal(t, map[string]string{resourceResultKey(local): plan.components[localIndex].Name}, plan.resourceComponentByKey)
+			assert.Nil(t, plan.components[localIndex].Traits.Share)
+			require.NotNil(t, plan.components[sharedIndex].Traits.Share)
+			assert.Equal(t, string(domainspec.ShareStrategyDefault), plan.components[sharedIndex].Traits.Share.Strategy)
+		})
 	}
-	deduped := []apisv1.CreateComponentRequest{
-		{Name: "backend"},
-		{Name: "backend-x9k2m"},
-	}
-
-	mapping := buildResourceComponentNameMapping([]*importResource{deployRes, configRes}, source, deduped, source)
-	require.NotNil(t, mapping)
-	assert.Equal(t, "backend", mapping[resourceResultKey(configRes)])
-	assert.Equal(t, "backend-x9k2m", mapping[resourceResultKey(deployRes)])
 }
 
-func TestBuildResourceComponentNameMapping_UsesResourceNameWhenComponentNameIsStale(t *testing.T) {
-	namespace := "default"
-	configRes := &importResource{
-		kindKey:       importKindConfigMaps,
-		kind:          "ConfigMap",
-		namespace:     namespace,
-		name:          "backend",
-		componentName: "backend",
+func TestBuildImportPlansKeepsLocalMappingWhenSharedTemplateHasSameName(t *testing.T) {
+	for _, sameKind := range []bool{false, true} {
+		t.Run(map[bool]string{false: "different kinds", true: "identical configmaps"}[sameKind], func(t *testing.T) {
+			local := newDeploymentResource(t, "backend", "workspace", map[string]string{"app": "backend"}, "", nil, nil)
+			if sameKind {
+				local = newConfigMapResource(t, "backend", "workspace")
+			}
+			// Historical inferred component names must not replace the actual source identity.
+			local.componentName = "backend-stale"
+			shared := newConfigMapResource(t, "backend", "workspace")
+			originalLocal, originalShared := local.object.DeepCopy(), shared.object.DeepCopy()
+			plans := (&serviceImpl{}).buildImportPlans(map[string][]*importResource{
+				"app": {local}, "shared": {shared},
+			}, nil, nil, "shared")
+			plan := mustFindPlan(t, plans, "app")
+			require.NoError(t, plan.err)
+			require.Len(t, plan.components, 2)
+			require.Len(t, plan.resourceComponentByKey, 1)
+			localName := plan.resourceComponentByKey[resourceResultKey(local)]
+			for _, component := range plan.components {
+				if component.Name == localName {
+					assert.Nil(t, component.Traits.Share)
+					if sameKind {
+						assert.Equal(t, config.ConfJob, component.ComponentType)
+					} else {
+						assert.Equal(t, config.ServerJob, component.ComponentType)
+					}
+				} else {
+					require.NotNil(t, component.Traits.Share)
+					assert.Equal(t, string(domainspec.ShareStrategyDefault), component.Traits.Share.Strategy)
+				}
+			}
+			assert.Equal(t, originalLocal, local.object)
+			assert.Equal(t, originalShared, shared.object)
+		})
 	}
-	deployRes := &importResource{
-		kindKey:       importKindDeployments,
-		kind:          "Deployment",
-		namespace:     namespace,
-		name:          "backend",
-		componentName: "backend-old",
-	}
-
-	source := []apisv1.CreateComponentRequest{
-		{Name: "backend"},
-		{Name: "backend"},
-	}
-	deduped := []apisv1.CreateComponentRequest{
-		{Name: "backend"},
-		{Name: "backend-x9k2m"},
-	}
-
-	mapping := buildResourceComponentNameMapping([]*importResource{deployRes, configRes}, source, deduped, source)
-	require.NotNil(t, mapping)
-	assert.Equal(t, "backend", mapping[resourceResultKey(configRes)])
-	assert.Equal(t, "backend-x9k2m", mapping[resourceResultKey(deployRes)])
 }
 
-func TestBuildResourceComponentNameMapping_ExcludesSharedTemplateComponents(t *testing.T) {
-	namespace := "default"
-	deployRes := &importResource{
-		kindKey:       importKindDeployments,
-		kind:          "Deployment",
-		namespace:     namespace,
-		name:          "backend",
-		componentName: "backend",
-	}
-
-	resourceSource := []apisv1.CreateComponentRequest{
-		{
-			Name:          "backend",
-			Namespace:     namespace,
-			ComponentType: config.ServerJob,
-			Image:         "app:v1",
-		},
-	}
-	sharedSource := apisv1.CreateComponentRequest{
-		Name:          "backend",
-		Namespace:     namespace,
-		ComponentType: config.ConfJob,
-		Properties: apisv1.Properties{
-			Conf: map[string]string{"k": "v"},
-		},
-		Traits: apisv1.Traits{
-			Share: &domainspec.ShareTraitSpec{Strategy: string(domainspec.ShareStrategyDefault)},
-		},
-	}
-
-	// Simulate full conversion order where shared config component appears before app deployment component.
-	source := []apisv1.CreateComponentRequest{
-		sharedSource,
-		resourceSource[0],
-	}
-	deduped := []apisv1.CreateComponentRequest{
-		{Name: "backend"},
-		{Name: "backend-9k2mx"},
-	}
-
-	mapping := buildResourceComponentNameMapping([]*importResource{deployRes}, source, deduped, resourceSource)
-	require.NotNil(t, mapping)
-	assert.Equal(t, "backend-9k2mx", mapping[resourceResultKey(deployRes)])
-}
-
-func TestEnsureSharedComponentsOnApp_MarksBySourceSignatureNotName(t *testing.T) {
-	namespace := "default"
-	source := []apisv1.CreateComponentRequest{
-		{
-			Name:          "backend",
-			Namespace:     namespace,
-			ComponentType: config.ServerJob,
-			Image:         "app:v1",
-		},
-		{
-			Name:          "backend",
-			Namespace:     namespace,
-			ComponentType: config.ConfJob,
-			Properties: apisv1.Properties{
-				Conf: map[string]string{"k": "v"},
-			},
-			Traits: apisv1.Traits{
-				Share: &domainspec.ShareTraitSpec{Strategy: string(domainspec.ShareStrategyDefault)},
-			},
-		},
-	}
-	deduped := []apisv1.CreateComponentRequest{
-		{
-			Name:          "backend",
-			Namespace:     namespace,
-			ComponentType: config.ServerJob,
-			Image:         "app:v1",
-		},
-		{
-			Name:          "backend-j2m8q",
-			Namespace:     namespace,
-			ComponentType: config.ConfJob,
-			Properties: apisv1.Properties{
-				Conf: map[string]string{"k": "v"},
-			},
-		},
-	}
-	sharedSource := []apisv1.CreateComponentRequest{source[1]}
-
-	ensureSharedComponentsOnApp(source, deduped, sharedSource, map[string]string{
-		"Deployment/default/backend": deduped[0].Name,
-	})
-
-	assert.Nil(t, deduped[0].Traits.Share)
-	require.NotNil(t, deduped[1].Traits.Share)
-	assert.Equal(t, string(domainspec.ShareStrategyDefault), deduped[1].Traits.Share.Strategy)
-}
-
-func TestEnsureSharedComponentsOnApp_DoesNotTagLocalComponentWhenSignatureCollides(t *testing.T) {
-	namespace := "default"
-	source := []apisv1.CreateComponentRequest{
-		{
-			Name:          "backend",
-			Namespace:     namespace,
-			ComponentType: config.ConfJob,
-			Properties: apisv1.Properties{
-				Conf: map[string]string{"k": "v"},
-			},
-		},
-		{
-			Name:          "backend",
-			Namespace:     namespace,
-			ComponentType: config.ConfJob,
-			Properties: apisv1.Properties{
-				Conf: map[string]string{"k": "v"},
-			},
-		},
-	}
-	deduped := dedupeImportComponents(source)
-	require.Len(t, deduped, 2)
-	sharedSource := []apisv1.CreateComponentRequest{source[1]}
-
-	ensureSharedComponentsOnApp(source, deduped, sharedSource, map[string]string{
-		"ConfigMap/default/backend": deduped[0].Name,
-	})
-
-	assert.Nil(t, deduped[0].Traits.Share)
-	require.NotNil(t, deduped[1].Traits.Share)
-	assert.Equal(t, string(domainspec.ShareStrategyDefault), deduped[1].Traits.Share.Strategy)
+func TestBuildImportPlansPreservesSharedOnlyWarnings(t *testing.T) {
+	local := newDeploymentResource(t, "backend", "workspace", map[string]string{"app": "backend"}, "", nil, nil)
+	sharedService := newServiceResource(t, "backend-service", "workspace", map[string]string{"app": "backend"})
+	sharedConfig := newConfigMapResource(t, "config", "workspace")
+	plans := (&serviceImpl{}).buildImportPlans(map[string][]*importResource{
+		"app": {local}, "shared": {sharedService, sharedConfig},
+	}, nil, nil, "shared")
+	plan := mustFindPlan(t, plans, "app")
+	require.NoError(t, plan.err)
+	require.Len(t, plan.components, 2)
+	component := mustFindPlanComponent(t, plan, "backend")
+	require.Len(t, component.Traits.Service, 1)
+	assert.Equal(t, "backend-service", component.Traits.Service[0].Name)
+	assert.Equal(t, component.Name, plan.resourceComponentByKey[resourceResultKey(local)])
+	assert.Contains(t, plan.warnings, "app=app: service backend-service has no matching workload; skipped")
 }
 
 func TestResolveResourceComponentName_UsesMappedNameWhenOriginalMissing(t *testing.T) {

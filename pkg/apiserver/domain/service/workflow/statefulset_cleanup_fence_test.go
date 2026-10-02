@@ -176,6 +176,68 @@ func TestStatefulSetCleanupFenceRejectsResolutionCycle(t *testing.T) {
 	require.ErrorContains(t, err, "resolution graph contains a cycle")
 }
 
+func TestStatefulSetCleanupFencePreservesResolutionCoverage(t *testing.T) {
+	for _, tt := range []struct {
+		name            string
+		completedTarget bool
+		secondResolver  bool
+		namespace       string
+		pvcTemplate     string
+		resolverVersion int
+		err             string
+	}{
+		{name: "normalized reference"},
+		{name: "completed target", completedTarget: true, err: "has no pending cleanup"},
+		{name: "multiple successful resolvers", secondResolver: true, err: "resolved by both tasks"},
+		{name: "different resource identity", namespace: "other", err: "does not cover every referenced"},
+		{name: "different PVC template", pvcTemplate: "other", err: "does not cover every referenced"},
+		{name: "V2 cannot resolve V3", resolverVersion: model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, err: "does not cover every referenced"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			targetStatus := config.StatusFailed
+			if tt.completedTarget {
+				targetStatus = config.StatusCompleted
+			}
+			store, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, targetStatus)
+			version := tt.resolverVersion
+			if version == 0 {
+				version = model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion
+			}
+			resolver, _ := newStatefulSetCleanupFenceStore(t, version, config.StatusCompleted)
+			var info model.VersionUpdateCleanupInfo
+			require.NoError(t, json.Unmarshal([]byte(resolver.tasks[0].CleanupInfo), &info))
+			info.ResolvesTaskIDs = []string{" migration-1\t"}
+			if tt.namespace != "" {
+				info.Components[0].Component.Namespace = tt.namespace
+			}
+			if tt.pvcTemplate != "" {
+				info.Components[0].StatefulSetPVCTemplatesToDelete = []string{tt.pvcTemplate}
+				var marker statefulSetCleanupJobMarker
+				require.NoError(t, json.Unmarshal([]byte(resolver.jobs[0].InternalInfo), &marker))
+				marker.StatefulSetPVCTemplatesToDelete = []string{tt.pvcTemplate}
+				payload, err := json.Marshal(marker)
+				require.NoError(t, err)
+				resolver.jobs[0].InternalInfo = string(payload)
+			}
+			payload, err := json.Marshal(info)
+			require.NoError(t, err)
+			resolver.tasks[0].CleanupInfo = string(payload)
+			prependStatefulSetCleanupFenceAttempt(store, resolver, "migration-2")
+			if tt.secondResolver {
+				prependStatefulSetCleanupFenceAttempt(store, resolver, "migration-3")
+			}
+
+			err = EnsureNoPendingStatefulSetCleanup(context.Background(), store, "app-1")
+
+			if tt.err != "" {
+				require.ErrorContains(t, err, tt.err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
 func TestStatefulSetCleanupFenceAllowsCompletedMixedV2V3Task(t *testing.T) {
 	store, _ := newMixedStatefulSetCleanupFenceStore(t, config.StatusCompleted, config.StatusCompleted)
 

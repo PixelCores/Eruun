@@ -8,8 +8,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
-	applyv1 "k8s.io/client-go/applyconfigurations/core/v1"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
@@ -56,15 +54,15 @@ func buildConfigLikeInfo(kind domainspec.ResourceKind, info interface{}, fallbac
 	}
 }
 
-func buildServiceDeployInfo(svc *applyv1.ServiceApplyConfiguration, fallbackName, fallbackNamespace string) string {
+func buildServiceDeployInfo(svc *corev1.Service, fallbackName, fallbackNamespace string) string {
 	if svc == nil {
 		return buildResourceInfo(domainspec.ResourceService, fallbackNamespace, fallbackName)
 	}
-	name := derefString(svc.Name)
+	name := svc.Name
 	if name == "" {
 		name = fallbackName
 	}
-	namespace := derefString(svc.Namespace)
+	namespace := svc.Namespace
 	if namespace == "" {
 		namespace = fallbackNamespace
 	}
@@ -115,24 +113,24 @@ func buildResourceInfo(kind domainspec.ResourceKind, namespace, name string) str
 	return fmt.Sprintf("%s: %s/%s", kindValue, namespace, name)
 }
 
-func servicePortInfo(svc *applyv1.ServiceApplyConfiguration) ([]string, []string) {
-	if svc == nil || svc.Spec == nil {
+func servicePortInfo(svc *corev1.Service) ([]string, []string) {
+	if svc == nil {
 		return nil, nil
 	}
 	portNums := make([]string, 0, len(svc.Spec.Ports))
 	portDetails := make([]string, 0, len(svc.Spec.Ports))
 	for _, port := range svc.Spec.Ports {
-		if port.Port == nil {
-			continue
-		}
-		portNum := fmt.Sprintf("%d", *port.Port)
+		portNum := fmt.Sprintf("%d", port.Port)
 		portNums = append(portNums, portNum)
 		proto := "TCP"
-		if port.Protocol != nil && string(*port.Protocol) != "" {
-			proto = string(*port.Protocol)
+		if port.Protocol != "" {
+			proto = string(port.Protocol)
 		}
-		name := derefString(port.Name)
-		target := targetPortString(port.TargetPort)
+		name := port.Name
+		target := ""
+		if port.TargetPort.IntVal != 0 || port.TargetPort.StrVal != "" {
+			target = port.TargetPort.String()
+		}
 		detail := portNum + "/" + proto
 		if name != "" {
 			detail = name + ":" + detail
@@ -143,13 +141,6 @@ func servicePortInfo(svc *applyv1.ServiceApplyConfiguration) ([]string, []string
 		portDetails = append(portDetails, detail)
 	}
 	return portNums, portDetails
-}
-
-func targetPortString(port *intstr.IntOrString) string {
-	if port == nil {
-		return ""
-	}
-	return port.String()
 }
 
 func ingressRoutes(ingress *networkingv1.Ingress) []string {
@@ -187,11 +178,4 @@ func addUniqueRoute(value string, seen map[string]struct{}, routes *[]string) {
 	}
 	seen[value] = struct{}{}
 	*routes = append(*routes, value)
-}
-
-func derefString(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return *value
 }

@@ -66,9 +66,6 @@ type Config struct {
 	// EnableTracing enables distributed tracing
 	EnableTracing bool
 
-	// AutoTracing enables tracing even when EnableTracing is false.
-	AutoTracing bool
-
 	// JaegerEndpoint is the endpoint of the Jaeger collector
 	JaegerEndpoint string
 
@@ -181,7 +178,6 @@ func NewConfig() *Config {
 		KubeBurst:              300,
 		ExitOnLostLeader:       true,
 		EnableTracing:          true,
-		AutoTracing:            false,
 		JaegerEndpoint:         "",
 		AllowPrivateURLTargets: false,
 		//JaegerEndpoint:   "http://localhost:14268/api/traces",
@@ -343,7 +339,6 @@ func (c *Config) AddFlags(fs *pflag.FlagSet, configParameter *Config) {
 	fs.DurationVar(&c.Datastore.ConnMaxLifetime, "mysql-conn-max-lifetime", configParameter.Datastore.ConnMaxLifetime, "maximum amount of time a MySQL connection may be reused (<=0 disables)")
 	fs.DurationVar(&c.Datastore.ConnMaxIdleTime, "mysql-conn-max-idle-time", configParameter.Datastore.ConnMaxIdleTime, "maximum amount of time a MySQL connection may remain idle (<=0 disables)")
 	fs.BoolVar(&c.EnableTracing, "enable-tracing", configParameter.EnableTracing, "Enable tracing; exporting spans requires --jaeger-endpoint.")
-	fs.BoolVar(&c.AutoTracing, "auto-tracing", configParameter.AutoTracing, "Enable tracing even when --enable-tracing=false; set both flags to false to disable tracing.")
 	fs.StringVar(&c.JaegerEndpoint, "jaeger-endpoint", configParameter.JaegerEndpoint, "Jaeger collector endpoint for exporting spans when tracing is enabled.")
 	// messaging basic flags (broker type & channel prefix). Redis connection will reuse RedisCacheConfig.
 	fs.StringVar(&c.Messaging.Type, "msg-type", configParameter.Messaging.Type, "messaging broker type: redis|kafka")

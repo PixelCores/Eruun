@@ -51,6 +51,66 @@ func TestGRPCBindAddrFlagEnvironmentAndRoleValidation(t *testing.T) {
 	require.NotContains(t, errorsJoin(cfg.Validate()), "grpc bind address cannot be empty")
 }
 
+func TestTracingFlagEnvironmentAndExporter(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		env     string
+		args    []string
+		want    bool
+		invalid bool
+	}{
+		{name: "default enabled", want: true},
+		{name: "environment enables", env: "true", want: true},
+		{name: "environment disables", env: "false"},
+		{name: "CLI disables over environment", env: "true", args: []string{"--enable-tracing=false"}},
+		{name: "CLI enables over environment", env: "false", args: []string{"--enable-tracing=true"}, want: true},
+		{name: "invalid environment", env: "invalid", invalid: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, endpoint := range []string{"", "http://127.0.0.1:14268/api/traces"} {
+				cfg := NewConfig()
+				flags := pflag.NewFlagSet("tracing", pflag.ContinueOnError)
+				cfg.AddFlags(flags, cfg)
+				if tc.env != "" {
+					t.Setenv("ERUUN_ENABLE_TRACING", tc.env)
+				}
+				t.Setenv("ERUUN_JAEGER_ENDPOINT", endpoint)
+				require.NoError(t, flags.Parse(tc.args))
+				err := ApplyEnvOverrides(flags, EnvPrefix)
+				if tc.invalid {
+					require.ErrorContains(t, err, "ERUUN_ENABLE_TRACING")
+					continue
+				}
+				require.NoError(t, err)
+				require.Equal(t, tc.want, cfg.EnableTracing)
+				require.Equal(t, endpoint, cfg.JaegerEndpoint)
+				cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
+				for _, backend := range []string{REDIS, KAFKA} {
+					cfg.Messaging.Type = backend
+					require.Empty(t, cfg.Validate())
+					require.Equal(t, tc.want, cfg.EnableTracing)
+				}
+			}
+		})
+	}
+}
+
+func TestRemovedAutoTracingInputsAreRejected(t *testing.T) {
+	cfg := NewConfig()
+	flags := pflag.NewFlagSet("removed-tracing-flag", pflag.ContinueOnError)
+	cfg.AddFlags(flags, cfg)
+	require.ErrorContains(t, flags.Parse([]string{"--auto-tracing=true"}), "unknown flag: --auto-tracing")
+	for _, value := range []string{"", "false", "true"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("ERUUN_AUTO_TRACING", value)
+			require.NoError(t, flags.Parse([]string{"--enable-tracing=false"}))
+			err := ApplyEnvOverrides(flags, EnvPrefix)
+			require.ErrorContains(t, err, "ERUUN_AUTO_TRACING is no longer supported")
+			require.ErrorContains(t, err, "--enable-tracing or ERUUN_ENABLE_TRACING")
+		})
+	}
+}
+
 func TestWorkflowCallbackTimeoutConfigBoundary(t *testing.T) {
 	tests := []struct {
 		name string
