@@ -364,7 +364,7 @@ func (a *workspaceJobs) runnerCheckpointPut(c *gin.Context) {
 		jobResponse(c, 0, nil, bcode.ErrJobInput)
 		return
 	}
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 512<<20)
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, spec.CheckpointArchiveLimit)
 	result, err := a.Service.RunnerCheckpointPut(c.Request.Context(), runnerIdentity(c), c.Param("checkpointID"), c.Request.Body)
 	jobResponse(c, http.StatusAccepted, result, err)
 }

@@ -322,7 +322,7 @@ func TestConvertComponentModelToDTOSkipsIngressForUnsupportedComponentTypes(t *t
 
 func TestConvertComponentModelToDTOSvcLinks(t *testing.T) {
 	properties := model.Properties{
-		Ports: []model.Ports{{Port: 80}, {Port: 443}},
+		Ports: []model.Ports{{Port: 80}, {Port: 443}, {Port: 80}},
 	}
 	propsJSON, err := model.NewJSONStructByStruct(&properties)
 	require.NoError(t, err)
@@ -331,7 +331,6 @@ func TestConvertComponentModelToDTOSvcLinks(t *testing.T) {
 		ID:            3,
 		AppID:         "app-9",
 		Name:          "api",
-		Namespace:     "default",
 		ComponentType: config.ServerJob,
 		Properties:    propsJSON,
 		Status:        "Running",
@@ -410,6 +409,15 @@ func TestConvertComponentModelToDTOUsesSharedResourceKeyForGeneratedNames(t *tes
 	require.Equal(t, "web", dto.Ingresses[0].Routes[0].ServiceName)
 	require.Equal(t, []apisv1.ExternalLink{
 		{Type: "ingress", Value: "web.example.com/"},
+	}, dto.ExternalLinks)
+
+	component.Traits = mustJSONStruct(t, model.Traits{
+		Share: &spec.ShareTraitSpec{Strategy: string(spec.ShareStrategyDefault)},
+	})
+	dto, err = ConvertComponentModelToDTO(component)
+	require.NoError(t, err)
+	require.Equal(t, []apisv1.ExternalLink{
+		{Type: "svc", Value: "web.default.svc:8080"},
 	}, dto.ExternalLinks)
 }
 
@@ -490,6 +498,66 @@ func TestConvertComponentModelToDTOPrefersNonExternalServiceTraitForSvcLink(t *t
 	require.Equal(t, []apisv1.ExternalLink{
 		{Type: "svc", Value: "internal-api.default.svc:80"},
 	}, dto.ExternalLinks)
+}
+
+func TestConvertComponentModelToDTOUsesServicePortsForSvcLinks(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		ports []model.Ports
+	}{
+		{name: "service port differs from container port", ports: []model.Ports{{Port: 8080}}},
+		{name: "service trait without property ports"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			component := &model.ApplicationComponent{
+				AppID:         "app-9",
+				Name:          "api",
+				Namespace:     "default",
+				ComponentType: config.ServerJob,
+				Properties:    mustJSONStruct(t, model.Properties{Ports: tc.ports}),
+				Traits: mustJSONStruct(t, model.Traits{Service: []spec.ServiceTraitSpec{{
+					Name:     "api-fixed",
+					Type:     string(spec.ServiceAccessInternal),
+					Selector: map[string]string{"app": "api"},
+					Ports:    []spec.ServicePortTraitSpec{{Port: 80, TargetPort: 8080, Protocol: "TCP"}},
+				}}}),
+			}
+
+			dto, err := ConvertComponentModelToDTO(component)
+			require.NoError(t, err)
+			require.Len(t, dto.Services, 1)
+			require.Equal(t, int32(80), dto.Services[0].Ports[0].Port)
+			require.Equal(t, int32(8080), dto.Services[0].Ports[0].TargetPort)
+			require.Equal(t, []apisv1.ExternalLink{
+				{Type: "svc", Value: "api-fixed.default.svc:80"},
+			}, dto.ExternalLinks)
+		})
+	}
+}
+
+func TestConvertComponentModelToDTOUsesFirstExternalServiceForSvcLink(t *testing.T) {
+	component := &model.ApplicationComponent{
+		Name:          "api",
+		Namespace:     "team",
+		ComponentType: config.ServerJob,
+		Traits: mustJSONStruct(t, model.Traits{Service: []spec.ServiceTraitSpec{
+			{
+				Name: "external-api", Type: string(spec.ServiceAccessExternal), ExternalName: "api.example.com",
+				Ports: []spec.ServicePortTraitSpec{{Port: 80, Protocol: "TCP"}, {Port: 80, Protocol: "UDP"}, {Port: 443, Protocol: "TCP"}},
+			},
+			{
+				Name: "other-api", Type: string(spec.ServiceAccessExternal), ExternalName: "other.example.com",
+				Ports: []spec.ServicePortTraitSpec{{Port: 8080, Protocol: "TCP"}},
+			},
+		}}),
+	}
+
+	dtos, err := ConvertComponentModelsToDTO([]*model.ApplicationComponent{component})
+	require.NoError(t, err)
+	require.Len(t, dtos, 1)
+	require.Equal(t, []apisv1.ExternalLink{
+		{Type: "svc", Value: "external-api.team.svc:80,443"},
+	}, dtos[0].ExternalLinks)
 }
 
 func TestConvertComponentModelToDTOSkipsServiceSummariesForNonServiceDeployComponents(t *testing.T) {
@@ -926,7 +994,7 @@ func TestConvertComponentModelsToDTOSkipsWholeSecretCredentialsWhenSecretHasNoKe
 	require.Nil(t, api.Credentials)
 }
 
-func TestConvertComponentModelsToDTOSkipsEncodedCredentialValues(t *testing.T) {
+func TestConvertComponentModelsToDTOKeepsBase64CredentialValuesLiteral(t *testing.T) {
 	secretProps := mustJSONStruct(t, model.Properties{
 		Secret: map[string]string{"password": "c2VjcmV0LXB3ZA=="},
 	})
@@ -1006,6 +1074,44 @@ func TestConvertComponentModelsToDTOKeepsManualBase64LikeValuesResolved(t *testi
 	require.Equal(t, []apisv1.ComponentCredentialInfo{
 		{Source: "component.envs", EnvName: "DB_PASSWORD", SecretName: "db-secret", Key: "password", Value: "dGVzdA==", Resolved: true},
 	}, api.Credentials)
+}
+
+func TestConvertComponentModelsToDTOScopesAndOrdersCredentials(t *testing.T) {
+	components := []*model.ApplicationComponent{
+		{
+			Name: "db-secret", Namespace: "default", ComponentType: config.SecretJob,
+			Properties: mustJSONStruct(t, model.Properties{Secret: map[string]string{"z": "last", "a": "first"}}),
+		},
+		{
+			Name: "db-secret", Namespace: "default", ComponentType: config.SecretJob,
+			Properties: mustJSONStruct(t, model.Properties{Secret: map[string]string{"a": "duplicate"}}),
+		},
+		{
+			Name: "db-secret", Namespace: "team", ComponentType: config.SecretJob,
+			Properties: mustJSONStruct(t, model.Properties{Secret: map[string]string{"a": "other namespace"}}),
+		},
+	}
+	for _, namespace := range []string{"", "team", "missing"} {
+		components = append(components, &model.ApplicationComponent{
+			Name: "api-" + namespace, Namespace: namespace, ComponentType: config.ServerJob,
+			Traits: mustJSONStruct(t, model.Traits{EnvFrom: []spec.EnvFromSourceSpec{{
+				Type: spec.StorageTypeSecret, SourceName: "db-secret",
+			}}}),
+		})
+	}
+
+	dtos, err := ConvertComponentModelsToDTO(components)
+	require.NoError(t, err)
+	require.Equal(t, []apisv1.ComponentCredentialInfo{
+		{Source: "component.envFrom", SecretName: "db-secret", Key: "a", Value: "first", Resolved: true},
+		{Source: "component.envFrom", SecretName: "db-secret", Key: "z", Value: "last", Resolved: true},
+	}, requireComponentByName(t, dtos, "api-").Credentials)
+	require.Equal(t, []apisv1.ComponentCredentialInfo{
+		{Source: "component.envFrom", SecretName: "db-secret", Key: "a", Value: "other namespace", Resolved: true},
+	}, requireComponentByName(t, dtos, "api-team").Credentials)
+	require.Equal(t, []apisv1.ComponentCredentialInfo{
+		{Source: "component.envFrom", SecretName: "db-secret", Resolved: false},
+	}, requireComponentByName(t, dtos, "api-missing").Credentials)
 }
 
 func mustJSONStruct(t *testing.T, value interface{}) *model.JSONStruct {

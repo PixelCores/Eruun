@@ -31,6 +31,7 @@ func TestArchiveUploadsOverrideServerReadDeadline(t *testing.T) {
 	}{
 		{"/api/v1/job-datasets", "/api/v1/job-datasets", true},
 		{"/api/v1/job-runners/:taskID/results", "/api/v1/job-runners/test/results", true},
+		{"/api/v1/job-runners/:taskID/checkpoints/:checkpointID", "/api/v1/job-runners/test/checkpoints/point", true},
 		{"/ordinary", "/ordinary", false},
 	} {
 		t.Run(test.route, func(t *testing.T) {
@@ -94,6 +95,7 @@ func TestArchiveDownloadsOverrideServerWriteDeadline(t *testing.T) {
 		archive    bool
 	}{
 		{"/api/v1/job-runners/:taskID/dataset", "/api/v1/job-runners/test/dataset", true},
+		{"/api/v1/job-runners/:taskID/checkpoints/:checkpointID/material", "/api/v1/job-runners/test/checkpoints/point/material", true},
 		{"/api/v1/job-datasets/:datasetID/download", "/api/v1/job-datasets/test/download", true},
 		{"/api/v1/jobs/:taskID/results/:artifactID/download", "/api/v1/jobs/test/results/source/download", true},
 		{"/api/v1/jobs/:taskID/deliveries/:target/download", "/api/v1/jobs/test/deliveries/database/download", true},

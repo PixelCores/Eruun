@@ -74,20 +74,10 @@ func convertComponentModelToDTOBase(component *model.ApplicationComponent) (*api
 	if len(dto.Traits.Sidecar) > 0 {
 		dto.Sidecars = append(dto.Sidecars, dto.Traits.Sidecar...)
 	}
-	dto.ExternalLinks = buildComponentExternalLinks(dto)
 	return dto, nil
 }
 
-type componentSecretIndex map[string]componentSecretValues
-
-type componentSecretValues struct {
-	entries map[string]componentSecretValue
-}
-
-type componentSecretValue struct {
-	value string
-	ready bool
-}
+type componentSecretIndex map[string]map[string]string
 
 func enrichComponentResourceDetails(component *apisv1.ApplicationComponent, secrets componentSecretIndex) {
 	if component == nil {
@@ -95,6 +85,7 @@ func enrichComponentResourceDetails(component *apisv1.ApplicationComponent, secr
 	}
 	component.Services = buildComponentServices(component)
 	component.Ingresses = buildComponentIngresses(component)
+	component.ExternalLinks = buildComponentExternalLinks(component)
 	component.ResourceConfigs = buildComponentResourceConfigs(component)
 	component.Credentials = buildComponentCredentials(component, secrets)
 }
@@ -116,9 +107,7 @@ func buildComponentSecretIndex(components []*model.ApplicationComponent) (compon
 		if err := decodeJSONStruct(component.Properties, &properties); err != nil {
 			return nil, fmt.Errorf("decode secret component %s properties: %w", component.Name, err)
 		}
-		secrets[key] = componentSecretValues{
-			entries: buildComponentSecretValueEntries(component, properties.Secret),
-		}
+		secrets[key] = properties.Secret
 	}
 	return secrets, nil
 }

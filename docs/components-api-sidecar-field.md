@@ -32,6 +32,8 @@
 
 `services` 来自组件的 `traits.service`；当组件未显式配置 service trait 但 `properties.ports` 有端口时，会按现有组件服务命名规则返回默认内部 Service 信息。
 
+没有 Ingress 链接时，`externalLinks` 从 `services` 中选择第一个非 `external` Service；全部为 `external` 时选择第一项。链接使用该 Service 的名称、命名空间和去重后的 `ports[].port`，不使用容器的 `targetPort`。例如 Service 的 `port: 80` 转发到 `targetPort: 8080` 时，链接端口为 `80`；仅配置 `traits.service.ports` 也会生成链接。
+
 每个 Service 包含：
 
 - `name`

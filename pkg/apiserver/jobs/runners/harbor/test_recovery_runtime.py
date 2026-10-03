@@ -1,4 +1,5 @@
 import asyncio
+import gzip
 import io
 from http.server import BaseHTTPRequestHandler
 import json
@@ -123,6 +124,53 @@ class RecoveryMaterialTest(unittest.TestCase):
         with patch.object(recovery, "MAX_CHECKPOINT_EXPANDED_BYTES", 1), patch.object(Path, "read_bytes", side_effect=AssertionError("read before limit")):
             with self.assertRaisesRegex(runner.RunnerError, "material limit"):
                 recovery.create_bundle(work, manifest(), self.root / "archive")
+
+    def test_complete_tar_size_limit_matches_writer_and_loader(self):
+        work = self.root / "source"
+        output = work / "outputs/run/trial-a/agent/session"
+        output.parent.mkdir(parents=True)
+        output.write_bytes(b"session")
+        material = self.root / "material.tar.gz"
+        recovery.create_bundle(work, manifest(), material)
+        expanded = len(gzip.decompress(material.read_bytes()))
+        for limit in (expanded, expanded - 1):
+            with self.subTest(limit=limit), patch.object(recovery, "MAX_CHECKPOINT_EXPANDED_BYTES", limit):
+                destination = self.root / str(limit)
+                destination.mkdir()
+                if limit == expanded:
+                    recovery.create_bundle(work, manifest(), self.root / "new.tar.gz")
+                    recovery.load_bundle(material, destination, config())
+                else:
+                    with self.assertRaisesRegex(runner.RunnerError, "expanded size limit"):
+                        recovery.create_bundle(work, manifest(), self.root / "new.tar.gz")
+                    with self.assertRaisesRegex(runner.RunnerError, "expanded size limit"):
+                        recovery.load_bundle(material, destination, config())
+                    self.assertEqual(list(destination.iterdir()), [])
+
+    def test_material_checks_compressed_limit_and_gzip_tail_before_writes(self):
+        work = self.root / "source"
+        (work / "outputs/run").mkdir(parents=True)
+        material = self.root / "material.tar.gz"
+        recovery.create_bundle(work, manifest(), material)
+        raw = material.read_bytes()
+        with patch.object(recovery, "MAX_CHECKPOINT_BYTES", len(raw) - 1):
+            with self.assertRaisesRegex(runner.RunnerError, "compressed size limit"):
+                recovery.load_bundle(material, self.root / "compressed", config())
+        expanded = gzip.decompress(raw)
+        damaged = bytearray(raw)
+        damaged[-6] ^= 1
+        for name, data in (("checksum", damaged), ("nonzero trailing data", gzip.compress(expanded + b"x"))):
+            with self.subTest(name=name):
+                material.write_bytes(data)
+                destination = self.root / name
+                destination.mkdir()
+                with self.assertRaises((runner.RunnerError, OSError)):
+                    recovery.load_bundle(material, destination, config())
+                self.assertEqual(list(destination.iterdir()), [])
+        material.write_bytes(gzip.compress(expanded + b"\0"))
+        with patch.object(recovery, "MAX_CHECKPOINT_EXPANDED_BYTES", len(expanded)):
+            with self.assertRaisesRegex(runner.RunnerError, "expanded size limit"):
+                recovery.load_bundle(material, self.root / "padding", config())
 
     def archive(self, entries):
         output = self.root / (uuid.uuid4().hex + ".tar.gz")

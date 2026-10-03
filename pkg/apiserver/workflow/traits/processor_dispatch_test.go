@@ -104,6 +104,100 @@ func TestApplyTraitsPreservesNestedExclusions(t *testing.T) {
 	require.Len(t, workload.Spec.Template.Spec.Containers, 2)
 }
 
+func TestApplyTraitsKeepsContainerConfigurationLocal(t *testing.T) {
+	containerTraits := func(scope string) spec.Traits {
+		choice, tail := scope+"-trait", scope+"-tail"
+		return spec.Traits{
+			Envs: []spec.SimplifiedEnvSpec{
+				{Name: "CHOICE", ValueFrom: spec.ValueSource{Static: &choice}},
+				{Name: "TAIL", ValueFrom: spec.ValueSource{Static: &tail}},
+			},
+			EnvFrom: []spec.EnvFromSourceSpec{
+				{Type: "config", SourceName: scope + "-config"},
+				{Type: "secret", SourceName: scope + "-secret"},
+			},
+			Storage: []spec.StorageTraitSpec{
+				{Name: "shared", Type: "persistent", ClaimName: "shared-claim", MountPath: "/shared"},
+				{Name: scope + "-data", Type: "ephemeral", MountPath: "/data"},
+				{Name: scope + "-duplicate", Type: "ephemeral", MountPath: "/data"},
+			},
+		}
+	}
+	input := containerTraits("main")
+	input.Init = []spec.InitTraitSpec{{Name: "prepare", Image: "busybox:1.37", Traits: containerTraits("init"),
+		Properties: spec.Properties{Env: map[string]string{"CHOICE": "init-base"}},
+	}}
+	input.Sidecar = []spec.SidecarTraitsSpec{{Name: "helper", Image: "busybox:1.37", Traits: containerTraits("sidecar"),
+		Env: map[string]string{"CHOICE": "sidecar-base"},
+	}}
+	component := &model.ApplicationComponent{Name: "API", Namespace: "apps", Traits: toJSONStruct(input)}
+	before, err := json.Marshal(component)
+	require.NoError(t, err)
+	baseEnvFrom := corev1.EnvFromSource{ConfigMapRef: &corev1.ConfigMapEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "base-config"}}}
+	baseMount := corev1.VolumeMount{Name: "base", MountPath: "/base"}
+	existingSidecar := corev1.Container{Name: "observer", Env: []corev1.EnvVar{{Name: "EXISTING", Value: "sidecar"}}}
+	existingInit := corev1.Container{Name: "bootstrap", Env: []corev1.EnvVar{{Name: "EXISTING", Value: "init"}}}
+	workload := &appsv1.Deployment{Spec: appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{
+		Containers: []corev1.Container{
+			{Name: "api", Env: []corev1.EnvVar{{Name: "CHOICE", Value: "main-base"}}, EnvFrom: []corev1.EnvFromSource{baseEnvFrom}, VolumeMounts: []corev1.VolumeMount{baseMount}},
+			existingSidecar,
+		},
+		InitContainers: []corev1.Container{existingInit},
+		Volumes:        []corev1.Volume{{Name: "base", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}}},
+	}}}}
+
+	objects, err := ApplyTraits(component, workload)
+	require.NoError(t, err)
+	pod := workload.Spec.Template.Spec
+	require.Len(t, pod.Containers, 3)
+	require.Len(t, pod.InitContainers, 2)
+	require.Equal(t, existingSidecar, *findContainer(pod.Containers, "observer"))
+	require.Equal(t, existingInit, *findContainer(pod.InitContainers, "bootstrap"))
+	for _, tc := range []struct {
+		scope     string
+		container *corev1.Container
+	}{
+		{scope: "main", container: findContainer(pod.Containers, "api")},
+		{scope: "init", container: findContainer(pod.InitContainers, "prepare")},
+		{scope: "sidecar", container: findContainer(pod.Containers, "helper")},
+	} {
+		t.Run(tc.scope, func(t *testing.T) {
+			require.NotNil(t, tc.container)
+			require.Equal(t, []corev1.EnvVar{
+				{Name: "CHOICE", Value: tc.scope + "-base"},
+				{Name: "CHOICE", Value: tc.scope + "-trait"},
+				{Name: "TAIL", Value: tc.scope + "-tail"},
+			}, tc.container.Env, "traits must append in order after existing env entries")
+			var wantEnvFrom []corev1.EnvFromSource
+			var wantMounts []corev1.VolumeMount
+			if tc.scope == "main" {
+				wantEnvFrom = append(wantEnvFrom, baseEnvFrom)
+				wantMounts = append(wantMounts, baseMount)
+			}
+			wantEnvFrom = append(wantEnvFrom,
+				corev1.EnvFromSource{ConfigMapRef: &corev1.ConfigMapEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: tc.scope + "-config"}}},
+				corev1.EnvFromSource{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: tc.scope + "-secret"}}},
+			)
+			wantMounts = append(wantMounts, corev1.VolumeMount{Name: "shared", MountPath: "/shared"}, corev1.VolumeMount{Name: tc.scope + "-data", MountPath: "/data"})
+			require.Equal(t, wantEnvFrom, tc.container.EnvFrom)
+			require.Equal(t, wantMounts, tc.container.VolumeMounts, "mount paths deduplicate within each container only")
+		})
+	}
+	var volumeNames []string
+	for _, volume := range pod.Volumes {
+		volumeNames = append(volumeNames, volume.Name)
+	}
+	require.Equal(t, []string{"base", "shared", "main-data", "main-duplicate", "init-data", "init-duplicate", "sidecar-data", "sidecar-duplicate"}, volumeNames)
+	require.Len(t, objects, 1, "the shared PVC must deduplicate across all containers")
+	pvc, ok := objects[0].(*corev1.PersistentVolumeClaim)
+	require.True(t, ok)
+	require.Equal(t, "shared-claim", pvc.Name)
+	require.Equal(t, "apps", pvc.Namespace)
+	after, err := json.Marshal(component)
+	require.NoError(t, err)
+	require.Equal(t, string(before), string(after), "rendering must not mutate the stored component")
+}
+
 func TestApplyTraitsPreservesProcessingOrder(t *testing.T) {
 	component := &model.ApplicationComponent{Name: "api"}
 	input := &spec.Traits{

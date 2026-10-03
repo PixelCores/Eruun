@@ -9,7 +9,6 @@ import (
 	"k8s.io/klog/v2"
 
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
@@ -17,11 +16,7 @@ import (
 // processSidecar materializes additional containers attached to the Pod.
 // It also supports nested traits (except nested sidecars) applied to the sidecar itself.
 func processSidecar(ctx *TraitContext, sidecarTraits []spec.SidecarTraitsSpec) (*TraitResult, error) {
-	finalResult := &TraitResult{
-		VolumeMounts:   make(map[string][]corev1.VolumeMount),
-		EnvFromSources: make(map[string][]corev1.EnvFromSource),
-		EnvVars:        make(map[string][]corev1.EnvVar),
-	}
+	finalResult := &TraitResult{}
 
 	for index, sidecarSpec := range sidecarTraits {
 		if sidecarSpec.Image == "" {
@@ -52,10 +47,7 @@ func processSidecar(ctx *TraitContext, sidecarTraits []spec.SidecarTraitsSpec) (
 			return nil, fmt.Errorf("failed to process nested traits for sidecar %s: %w", sidecarName, err)
 		}
 
-		// The sidecar container gets the volume mounts from its nested traits.
-		// Use normalized component name to match the key used in storage trait.
-		normalizedName := utils.NormalizeLowerStrip(ctx.Component.Name)
-		envVars = append(envVars, nestedResult.EnvVars[normalizedName]...)
+		envVars = append(envVars, nestedResult.EnvVars...)
 
 		sidecarContainer := corev1.Container{
 			Name:            sidecarName,
@@ -63,8 +55,8 @@ func processSidecar(ctx *TraitContext, sidecarTraits []spec.SidecarTraitsSpec) (
 			Command:         sidecarSpec.Command,
 			Args:            sidecarSpec.Args,
 			Env:             envVars,
-			EnvFrom:         nestedResult.EnvFromSources[normalizedName],
-			VolumeMounts:    nestedResult.VolumeMounts[normalizedName],
+			EnvFrom:         nestedResult.EnvFromSources,
+			VolumeMounts:    nestedResult.VolumeMounts,
 			ImagePullPolicy: workflowconfig.DefaultWorkflowImagePullPolicy,
 			LivenessProbe:   nestedResult.LivenessProbe,
 			ReadinessProbe:  nestedResult.ReadinessProbe,
