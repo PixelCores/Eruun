@@ -175,6 +175,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
+| [`distributed-design-audit-2026-10-06.md`](distributed-design-audit-2026-10-06.md) | Historical / Audit | 基于 `63d4a4c` 的分布式设计审核：四角色与权威状态、设计取舍、应用锁/结果恢复/时钟风险、容量边界、优化顺序与验收矩阵 |
 | [`overdesign-audit-2026-10-02.md`](overdesign-audit-2026-10-02.md) | Historical / Audit | 基于 `0984611` 的 6 项审计发现及 PR #123 分支整改：统一 Service 表示、保留导入来源、复用清理规则、显式查询、tracing 配置迁移和移除旧 HTTP helper |
 | [`overdesign-audit-2026-09-29.md`](overdesign-audit-2026-09-29.md) | Historical / Audit | 基于 `02503bd` 的第三轮过度设计审核；O13–O15 与两项候选的实施、Ingress 端口回归、源码接入边界和历史处置 |
 | [`code-quality-audit-2026-09-26.md`](code-quality-audit-2026-09-26.md) | Historical / Audit | 基于 `d075a82` 的复杂度、Go 惯用法与抽象边界审计；13 项问题、代码证据、简化方向与验证边界 |
