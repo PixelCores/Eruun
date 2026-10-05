@@ -197,7 +197,7 @@ func TestRetrySelectorExitRepairsObservationBeforeLaterDeletion(t *testing.T) {
 	live := task.JobInfo.(*batchv1.Job).DeepCopy()
 	live.UID, live.ResourceVersion, live.Labels = "owned", "10", nil
 	client := fake.NewSimpleClientset(live)
-	ctl := NewInstantJobCtl(task, &Runtime{Client: client, Store: &retryCheckpointStore{}, Ack: func() {}})
+	ctl := NewInstantJobCtl(task, &Runtime{Client: client, Store: withJobTestOwner(&retryCheckpointStore{}, task), Ack: func() {}})
 	cp := &instantJobRetryCheckpoint{Job: live.DeepCopy(), Attempt: 1, CurrentUID: live.UID}
 	ctl.resourceWaiter = scriptedJobObserver{observe: func(check func(*batchv1.Job) (bool, error)) error {
 		done, err := check(nil)
@@ -246,7 +246,7 @@ func TestRetryObserverRepairMarksOnlyAuthoritativeExecutionLoss(t *testing.T) {
 			client.PrependReactor("update", "jobs", func(ktesting.Action) (bool, runtime.Object, error) {
 				return true, nil, tc.updateErr
 			})
-			ctl := NewInstantJobCtl(task, &Runtime{Client: client, Store: &retryCheckpointStore{}, Ack: func() {}})
+			ctl := NewInstantJobCtl(task, &Runtime{Client: client, Store: withJobTestOwner(&retryCheckpointStore{}, task), Ack: func() {}})
 			ctl.resourceWaiter = scriptedJobObserver{observe: func(check func(*batchv1.Job) (bool, error)) error {
 				_, err := check(nil)
 				return err

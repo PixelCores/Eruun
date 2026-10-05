@@ -612,6 +612,8 @@ func TestListApplicationComponentsUsesDefaultNamespaceForBlankComponentIngress(t
 func TestListApplicationComponentsRefreshesAfterConfigJobStatusSync(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	store := &componentCacheSyncStore{
+		owner: &model.WorkflowQueue{TaskID: "task-config", Status: config.StatusRunning,
+			RunGeneration: 1, RunToken: "run-config", WorkerID: "worker-config"},
 		component: &model.ApplicationComponent{
 			ID:            1,
 			AppID:         "app-1",
@@ -652,25 +654,37 @@ func TestListApplicationComponentsRefreshesAfterConfigJobStatusSync(t *testing.T
 		t.Fatalf("expected first lastAbnormal old error, got %s", firstPayload.Components[0].LastAbnormal)
 	}
 
+	// A shared default ConfigMap is already available; its skipped completion
+	// projects component health and invalidates the API cache without admission.
 	jobTask := &model.JobTask{
-		Name:      "app-config",
-		Namespace: "default",
-		AppID:     "app-1",
-		JobType:   string(config.JobDeployConfigMap),
+		TaskID:             store.owner.TaskID,
+		OwnerRunGeneration: store.owner.RunGeneration,
+		RunToken:           store.owner.RunToken,
+		WorkerID:           store.owner.WorkerID,
+		OwnerStatus:        store.owner.Status,
+		Status:             config.StatusSkipped,
+		Name:               "app-config",
+		Namespace:          "default",
+		AppID:              "app-1",
+		JobType:            string(config.JobDeployConfigMap),
 		JobInfo: &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "app-config",
 				Namespace: "default",
+				Labels: map[string]string{
+					config.LabelShareName:     "shared-app-config",
+					config.LabelShareStrategy: string(spec.ShareStrategyDefault),
+				},
 			},
 		},
 	}
-	job.RunJobs(context.Background(), []*model.JobTask{jobTask}, &job.Runtime{
+	require.NoError(t, job.RunJobs(context.Background(), []*model.JobTask{jobTask}, &job.Runtime{
 		Concurrency: 1,
 		Client:      fake.NewSimpleClientset(),
 		Store:       store,
 		Ack:         func() {},
 		Cache:       cacheStore,
-	})
+	}))
 
 	secondReq := httptest.NewRequest(http.MethodGet, "/applications/app-1/components", nil)
 	secondResp := httptest.NewRecorder()

@@ -264,7 +264,18 @@ func BuildEvaluationTask(ctx context.Context, store datastore.DataStore, cfg *co
 			// only a new recovery must still have time to start its agent.
 			return workflowjob.RestoreInstantJobRetryCheckpoint(job)
 		}
-		job.Timeout = int64(time.Until(time.Unix(0, info.ExecutionDeadline)).Seconds())
+		clock, ok := store.(datastore.DatabaseClock)
+		if !ok {
+			return fmt.Errorf("evaluation recovery requires a database clock")
+		}
+		now, err := clock.CurrentDatabaseTime(ctx)
+		if err != nil {
+			return fmt.Errorf("query evaluation recovery database clock: %w", err)
+		}
+		if now.IsZero() {
+			return fmt.Errorf("query evaluation recovery database clock: zero timestamp")
+		}
+		job.Timeout = int64(time.Unix(0, info.ExecutionDeadline).Sub(now).Seconds())
 		if job.Timeout <= spec.EvaluationCollectionGraceSeconds {
 			return fmt.Errorf("evaluation recovery deadline elapsed")
 		}

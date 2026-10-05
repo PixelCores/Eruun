@@ -825,7 +825,7 @@ func TestExecWorkflowTaskForAppSerializesIdleCheckAndTaskInsert(t *testing.T) {
 	}}})
 	require.NoError(t, err)
 	store := &manualExecTestStore{
-		statusDataStore: &statusDataStore{workflow: &model.Workflow{
+		statusDataStore: &statusDataStore{app: &model.Applications{ID: "app-1"}, workflow: &model.Workflow{
 			ID:    "wf-1",
 			AppID: "app-1",
 			Steps: steps,

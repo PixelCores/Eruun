@@ -22,6 +22,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
@@ -221,7 +222,7 @@ func (c *InstantJobCtl) ensureRetryWorkflowOwnership(ctx context.Context) error 
 
 func retryJobRetentionSeconds(deadline int64, earliestTermination time.Time) (int32, error) {
 	if earliestTermination.IsZero() {
-		earliestTermination = time.Now()
+		return 0, fmt.Errorf("job retry retention requires an authoritative timestamp")
 	}
 	remaining := time.Unix(0, deadline).Sub(earliestTermination)
 	seconds := int64(config.DefaultJobTTLSeconds)
@@ -234,6 +235,21 @@ func retryJobRetentionSeconds(deadline int64, earliestTermination time.Time) (in
 	return int32(seconds), nil
 }
 
+func (c *InstantJobCtl) retryDatabaseTime(ctx context.Context) (time.Time, error) {
+	clock, ok := c.store.(datastore.DatabaseClock)
+	if !ok {
+		return time.Time{}, errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("Job retry requires database clock"))
+	}
+	now, err := clock.CurrentDatabaseTime(ctx)
+	if err != nil {
+		return time.Time{}, errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("read Job retry database clock: %w", err))
+	}
+	if now.IsZero() {
+		return time.Time{}, errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("Job retry database clock is zero"))
+	}
+	return now.UTC(), nil
+}
+
 func (c *InstantJobCtl) retainRetryCheckpoint(ctx context.Context, cp *instantJobRetryCheckpoint, createdAt time.Time) error {
 	if cp.Job.Spec.TTLSecondsAfterFinished != nil && cp.Job.Labels[config.LabelManagedBy] == config.ManagedByEruun {
 		return nil
@@ -241,6 +257,13 @@ func (c *InstantJobCtl) retainRetryCheckpoint(ctx context.Context, cp *instantJo
 	// Kubernetes counts TTL from termination, which can precede recovery.
 	// Creation is a conservative lower bound for an old attempt's termination.
 	if cp.Job.Spec.TTLSecondsAfterFinished == nil {
+		if createdAt.IsZero() {
+			var err error
+			createdAt, err = c.retryDatabaseTime(ctx)
+			if err != nil {
+				return err
+			}
+		}
 		ttl, err := retryJobRetentionSeconds(cp.Deadline, createdAt)
 		if err != nil {
 			return errors.Join(signal.ErrInfrastructureStop, err)
@@ -273,7 +296,14 @@ func (c *InstantJobCtl) runWithRetryPolicy(ctx context.Context, desired *batchv1
 			return err
 		}
 	}
-	runCtx, cancel := context.WithDeadline(ctx, time.Unix(0, cp.Deadline))
+	// Translate the durable database deadline into a local monotonic budget.
+	// Anchor before the query so database latency cannot extend that budget.
+	localStart := time.Now()
+	now, err := c.retryDatabaseTime(ctx)
+	if err != nil {
+		return err
+	}
+	runCtx, cancel := context.WithDeadline(ctx, localStart.Add(time.Unix(0, cp.Deadline).Sub(now)))
 	defer cancel()
 	for {
 		if err := c.ensureRetryAttempt(runCtx, cp); err != nil {
@@ -321,9 +351,13 @@ func (c *InstantJobCtl) runWithRetryPolicy(ctx context.Context, desired *batchv1
 				return NewStatusError(config.StatusFailed, err)
 			}
 		}
+		now, err := c.retryDatabaseTime(runCtx)
+		if err != nil {
+			return err
+		}
 		cp = &instantJobRetryCheckpoint{
 			Kind: cp.Kind, Version: cp.Version, Attempt: cp.Attempt + 1,
-			PreviousUID: live.UID, RetryAt: time.Now().Add(time.Duration(policy.BackoffSeconds) * time.Second).UnixNano(),
+			PreviousUID: live.UID, RetryAt: now.Add(time.Duration(policy.BackoffSeconds) * time.Second).UnixNano(),
 			Deadline: cp.Deadline, Job: next,
 		}
 		cp.Job.Annotations[workflowconfig.AnnotationJobAttempt] = strconv.FormatUint(uint64(cp.Attempt), 10)
@@ -337,6 +371,10 @@ func (c *InstantJobCtl) runWithRetryPolicy(ctx context.Context, desired *batchv1
 func (c *InstantJobCtl) newRetryCheckpoint(ctx context.Context, desired *batchv1.Job) (*instantJobRetryCheckpoint, error) {
 	if c.store == nil || !retryJobMatchesTask(desired, c.job) {
 		return nil, fmt.Errorf("jobRetryPolicy requires datastore and workflow execution identity")
+	}
+	now, err := c.retryDatabaseTime(ctx)
+	if err != nil {
+		return nil, err
 	}
 	if err := c.ensureRetryWorkflowOwnership(ctx); err != nil {
 		return nil, err
@@ -367,16 +405,16 @@ func (c *InstantJobCtl) newRetryCheckpoint(ctx context.Context, desired *batchv1
 	}
 	cp := &instantJobRetryCheckpoint{
 		Kind: "instant_job_retry", Version: 1, Attempt: 1,
-		Deadline: time.Now().Add(time.Duration(timeout) * time.Second).UnixNano(), Job: desired.DeepCopy(),
+		Deadline: now.Add(time.Duration(timeout) * time.Second).UnixNano(), Job: desired.DeepCopy(),
 	}
 	if raw := desired.Annotations[EvaluationDeadlineAnnotation]; raw != "" && c.job.JobType == string(config.JobEval) {
 		deadline, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil || deadline <= time.Now().UnixNano() || deadline > cp.Deadline+int64(time.Second) {
+		if err != nil || deadline <= now.UnixNano() || deadline > cp.Deadline+int64(time.Second) {
 			return nil, fmt.Errorf("invalid evaluation recovery deadline")
 		}
 		cp.Deadline = deadline
 	}
-	ttl, err := retryJobRetentionSeconds(cp.Deadline, time.Now())
+	ttl, err := retryJobRetentionSeconds(cp.Deadline, now)
 	if err != nil {
 		return nil, err
 	}
@@ -410,13 +448,19 @@ func (c *InstantJobCtl) ensureRetryAttempt(ctx context.Context, cp *instantJobRe
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if delay := time.Until(time.Unix(0, cp.RetryAt)); delay > 0 {
-		timer := time.NewTimer(delay)
-		defer timer.Stop()
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-timer.C:
+	if cp.RetryAt > 0 {
+		now, err := c.retryDatabaseTime(ctx)
+		if err != nil {
+			return err
+		}
+		if delay := time.Unix(0, cp.RetryAt).Sub(now); delay > 0 {
+			timer := time.NewTimer(delay)
+			defer timer.Stop()
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-timer.C:
+			}
 		}
 	}
 	if err := c.ensureRetryWorkflowOwnership(ctx); err != nil {
@@ -453,7 +497,7 @@ func (c *InstantJobCtl) ensureRetryAttempt(ctx context.Context, cp *instantJobRe
 	if err := c.ensureRetryWorkflowOwnership(ctx); err != nil {
 		return err
 	}
-	if err := c.retainRetryCheckpoint(ctx, cp, time.Now()); err != nil {
+	if err := c.retainRetryCheckpoint(ctx, cp, time.Time{}); err != nil {
 		return err
 	}
 	if err := c.waitRetryCreationBudget(ctx); err != nil {

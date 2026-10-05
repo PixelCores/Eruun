@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -42,6 +43,10 @@ func (w *waitingTaskStore) IsExistByCondition(context.Context, string, map[strin
 }
 func (w *waitingTaskStore) CompareAndSwap(context.Context, datastore.Entity, string, interface{}, map[string]interface{}) (bool, error) {
 	return true, nil
+}
+
+func (w *waitingTaskStore) CurrentDatabaseTime(context.Context) (time.Time, error) {
+	return time.Now(), nil
 }
 
 func TestWaitingTasksUsesFIFOSort(t *testing.T) {
@@ -107,6 +112,10 @@ func (w *waitingTaskFilterStore) IsExistByCondition(context.Context, string, map
 }
 func (w *waitingTaskFilterStore) CompareAndSwap(context.Context, datastore.Entity, string, interface{}, map[string]interface{}) (bool, error) {
 	return true, nil
+}
+
+func (w *waitingTaskFilterStore) CurrentDatabaseTime(context.Context) (time.Time, error) {
+	return time.Now(), nil
 }
 
 type updateTaskFieldStore struct {
@@ -243,3 +252,42 @@ var _ datastore.DataStore = (*waitingTaskStore)(nil)
 var _ datastore.DataStore = (*waitingTaskFilterStore)(nil)
 var _ datastore.DataStore = (*updateTaskFieldStore)(nil)
 var _ datastore.DataStore = (*idempotencyTaskStore)(nil)
+
+func TestWaitingTasksUsesDatabaseClockAcrossNodeSkew(t *testing.T) {
+	for _, offset := range []time.Duration{-24 * time.Hour, 24 * time.Hour} {
+		t.Run(offset.String(), func(t *testing.T) {
+			databaseNow := time.Now().Add(offset).Truncate(time.Second)
+			store := &repositoryTestStore{
+				databaseNow: databaseNow,
+				listEntities: []datastore.Entity{
+					&model.WorkflowQueue{TaskID: "overdue", ExecuteAt: databaseNow.Unix() - 1},
+					&model.WorkflowQueue{TaskID: "due", ExecuteAt: databaseNow.Unix()},
+					&model.WorkflowQueue{TaskID: "future", ExecuteAt: databaseNow.Unix() + 1},
+					&model.WorkflowQueue{TaskID: "immediate"},
+				},
+			}
+			tasks, err := WaitingTasks(context.Background(), store)
+			require.NoError(t, err)
+			var ids []string
+			for _, task := range tasks {
+				ids = append(ids, task.TaskID)
+			}
+			require.Equal(t, []string{"overdue", "due", "immediate"}, ids)
+			require.Equal(t, databaseNow.Unix()+1, store.lastListOpts.LessThan[0].Value)
+			require.Equal(t, 1, store.databaseNowCalls, "query and defensive filter must share one clock sample")
+		})
+	}
+}
+
+func TestWaitingTasksFailsClosedWithoutDatabaseClock(t *testing.T) {
+	clockErr := errors.New("database clock unavailable")
+	store := &repositoryTestStore{databaseNowErr: clockErr}
+	tasks, err := WaitingTasks(context.Background(), store)
+	require.ErrorIs(t, err, clockErr)
+	require.Nil(t, tasks)
+	require.Nil(t, store.lastListOpts, "do not select work using the node clock")
+
+	tasks, err = WaitingTasks(context.Background(), &updateTaskFieldStore{})
+	require.ErrorIs(t, err, ErrWorkflowClockUnsupported)
+	require.Nil(t, tasks)
+}

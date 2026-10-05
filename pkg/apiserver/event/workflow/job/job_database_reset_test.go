@@ -197,7 +197,8 @@ func TestDatabaseResetJobCtlResetsStandalonePVCWithoutRestartingServer(t *testin
 	deployment := databaseResetDeployment(t, api)
 
 	client := fake.NewSimpleClientset(statefulSet, pvc, deployment)
-	ctl := NewDatabaseResetJobCtl(databaseResetTask(db, api), &Runtime{Client: client, Store: store, Ack: nil})
+	resetTask := databaseResetTask(db, api)
+	ctl := NewDatabaseResetJobCtl(resetTask, &Runtime{Client: client, Store: withJobTestOwner(store, resetTask), Ack: nil})
 
 	require.NoError(t, ctl.run(context.Background()))
 
@@ -266,7 +267,8 @@ func TestDatabaseResetJobCtlIgnoresLegacyRestartComponentsAcrossShareStrategies(
 
 	store := newDatabaseResetComponentStore(components...)
 	client := fake.NewSimpleClientset(objects...)
-	ctl := NewDatabaseResetJobCtl(databaseResetTask(components...), &Runtime{Client: client, Store: store, Ack: nil})
+	resetTask := databaseResetTask(components...)
+	ctl := NewDatabaseResetJobCtl(resetTask, &Runtime{Client: client, Store: withJobTestOwner(store, resetTask), Ack: nil})
 
 	require.NoError(t, ctl.run(context.Background()))
 	for _, action := range client.Actions() {
@@ -303,7 +305,8 @@ func TestDatabaseResetJobCtlUpdatesMySQLInitSQLURLBeforePVCReset(t *testing.T) {
 	pvc := firstAdditionalPVC(t, result)
 	client := fake.NewSimpleClientset(statefulSet, pvc)
 
-	ctl := NewDatabaseResetJobCtl(databaseResetTaskWithInitSQLURL("https://files.example/game-1.0.8.sql", db), &Runtime{Client: client, Store: store, Ack: nil})
+	resetTask := databaseResetTaskWithInitSQLURL("https://files.example/game-1.0.8.sql", db)
+	ctl := NewDatabaseResetJobCtl(resetTask, &Runtime{Client: client, Store: withJobTestOwner(store, resetTask), Ack: nil})
 	require.NoError(t, ctl.run(context.Background()))
 
 	updated, err := client.AppsV1().StatefulSets("default").Get(context.Background(), statefulSet.Name, metav1.GetOptions{})
@@ -355,7 +358,8 @@ func TestDatabaseResetJobCtlRestoresReplicasWhenInitSQLURLUpdateFails(t *testing
 		return false, nil, nil
 	})
 
-	ctl := NewDatabaseResetJobCtl(databaseResetTaskWithInitSQLURL("https://files.example/game-1.0.8.sql", db), &Runtime{Client: client, Store: store, Ack: nil})
+	resetTask := databaseResetTaskWithInitSQLURL("https://files.example/game-1.0.8.sql", db)
+	ctl := NewDatabaseResetJobCtl(resetTask, &Runtime{Client: client, Store: withJobTestOwner(store, resetTask), Ack: nil})
 	err := ctl.run(context.Background())
 
 	require.Error(t, err)
@@ -382,7 +386,7 @@ func TestDatabaseResetJobCtlRestoresCheckpointedReplicasAfterRecoveredPreflightF
 	client := fake.NewSimpleClientset(statefulSet, pvc)
 
 	firstTask := databaseResetTaskWithInitSQLURL("https://files.example/game-1.0.8.sql", db)
-	firstCtl := NewDatabaseResetJobCtl(firstTask, &Runtime{Client: client, Store: store, Ack: nil})
+	firstCtl := NewDatabaseResetJobCtl(firstTask, &Runtime{Client: client, Store: withJobTestOwner(store, firstTask), Ack: nil})
 	plans, err := firstCtl.prepareDatabaseResetPlans(context.Background(), []*model.ApplicationComponent{db}, "https://files.example/game-1.0.8.sql")
 	require.NoError(t, err)
 	require.NoError(t, firstCtl.checkpointDatabaseResetReplicas(context.Background(), plans))
@@ -402,7 +406,7 @@ func TestDatabaseResetJobCtlRestoresCheckpointedReplicasAfterRecoveredPreflightF
 	})
 
 	failedRecoveryTask := databaseResetTaskWithInitSQLURL("https://files.example/game-1.0.8.sql", db)
-	failedRecoveryCtl := NewDatabaseResetJobCtl(failedRecoveryTask, &Runtime{Client: client, Store: store, Ack: nil})
+	failedRecoveryCtl := NewDatabaseResetJobCtl(failedRecoveryTask, &Runtime{Client: client, Store: withJobTestOwner(store, failedRecoveryTask), Ack: nil})
 	err = failedRecoveryCtl.run(context.Background())
 	require.ErrorContains(t, err, "temporary statefulset read failure")
 	failedRecoveryTask.Status = config.StatusFailed
@@ -423,7 +427,7 @@ func TestDatabaseResetJobCtlRestoresCheckpointedReplicasAfterRecoveredPreflightF
 	denyDatabaseResetInitSQLURLUpdate(client, "https://files.example/game-1.0.8.sql")
 
 	retryTask := databaseResetTaskWithInitSQLURL("https://files.example/game-1.0.8.sql", db)
-	retryCtl := NewDatabaseResetJobCtl(retryTask, &Runtime{Client: client, Store: store, Ack: nil})
+	retryCtl := NewDatabaseResetJobCtl(retryTask, &Runtime{Client: client, Store: withJobTestOwner(store, retryTask), Ack: nil})
 	err = retryCtl.run(context.Background())
 
 	require.ErrorContains(t, err, "init SQL update denied")
@@ -448,7 +452,8 @@ func TestDatabaseResetJobCtlPreservesCheckpointedZeroReplicasOnUpdateFailure(t *
 	client := fake.NewSimpleClientset(statefulSet, firstAdditionalPVC(t, result))
 	denyDatabaseResetInitSQLURLUpdate(client, "https://files.example/game-1.0.8.sql")
 
-	ctl := NewDatabaseResetJobCtl(databaseResetTaskWithInitSQLURL("https://files.example/game-1.0.8.sql", db), &Runtime{Client: client, Store: store, Ack: nil})
+	resetTask := databaseResetTaskWithInitSQLURL("https://files.example/game-1.0.8.sql", db)
+	ctl := NewDatabaseResetJobCtl(resetTask, &Runtime{Client: client, Store: withJobTestOwner(store, resetTask), Ack: nil})
 	err := ctl.run(context.Background())
 
 	require.ErrorContains(t, err, "init SQL update denied")
@@ -482,14 +487,14 @@ func TestDatabaseResetJobCtlIsolatesReplicaCheckpointsByExecutionKey(t *testing.
 
 	firstTask := databaseResetTask(mysql)
 	firstTask.JobInfo.(*DatabaseResetJobInfo).ExecutionKey = "step:0/component:0"
-	firstCtl := NewDatabaseResetJobCtl(firstTask, &Runtime{Client: client, Store: store, Ack: nil})
+	firstCtl := NewDatabaseResetJobCtl(firstTask, &Runtime{Client: client, Store: withJobTestOwner(store, firstTask), Ack: nil})
 	firstPlans, err := firstCtl.prepareDatabaseResetPlans(context.Background(), []*model.ApplicationComponent{mysql}, "")
 	require.NoError(t, err)
 	require.NoError(t, firstCtl.checkpointDatabaseResetReplicas(context.Background(), firstPlans))
 
 	secondTask := databaseResetTask(redis)
 	secondTask.JobInfo.(*DatabaseResetJobInfo).ExecutionKey = "step:1/component:0"
-	secondCtl := NewDatabaseResetJobCtl(secondTask, &Runtime{Client: client, Store: store, Ack: nil})
+	secondCtl := NewDatabaseResetJobCtl(secondTask, &Runtime{Client: client, Store: withJobTestOwner(store, secondTask), Ack: nil})
 	secondPlans, err := secondCtl.prepareDatabaseResetPlans(context.Background(), []*model.ApplicationComponent{redis}, "")
 	require.NoError(t, err)
 	require.NoError(t, secondCtl.checkpointDatabaseResetReplicas(context.Background(), secondPlans))
@@ -537,7 +542,7 @@ func TestDatabaseResetJobCtlPersistsParallelReplicaCheckpointsIndependently(t *t
 		waitGroup.Add(1)
 		go func() {
 			defer waitGroup.Done()
-			ctl := NewDatabaseResetJobCtl(tasks[index], &Runtime{Client: client, Store: store, Ack: nil})
+			ctl := NewDatabaseResetJobCtl(tasks[index], &Runtime{Client: client, Store: withJobTestOwner(store, tasks[index]), Ack: nil})
 			plans, err := ctl.prepareDatabaseResetPlans(context.Background(), components[index], "")
 			if err == nil {
 				err = ctl.checkpointDatabaseResetReplicas(context.Background(), plans)
@@ -561,7 +566,7 @@ func TestDatabaseResetJobCtlRetriesFromUnpreparedCheckpointIdentity(t *testing.T
 	store := newDatabaseResetComponentStore(db)
 	client := fake.NewSimpleClientset()
 	task := databaseResetTask(db)
-	ctl := NewDatabaseResetJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
+	ctl := NewDatabaseResetJobCtl(task, &Runtime{Client: client, Store: withJobTestOwner(store, task), Ack: nil})
 
 	err := ctl.run(context.Background())
 	require.ErrorContains(t, err, "get statefulset")
@@ -575,7 +580,7 @@ func TestDatabaseResetJobCtlRetriesFromUnpreparedCheckpointIdentity(t *testing.T
 	require.NoError(t, client.Tracker().Add(statefulSet))
 	require.NoError(t, client.Tracker().Add(firstAdditionalPVC(t, result)))
 	recoveredTask := databaseResetTask(db)
-	recoveredCtl := NewDatabaseResetJobCtl(recoveredTask, &Runtime{Client: client, Store: store, Ack: nil})
+	recoveredCtl := NewDatabaseResetJobCtl(recoveredTask, &Runtime{Client: client, Store: withJobTestOwner(store, recoveredTask), Ack: nil})
 	plans, err := recoveredCtl.prepareDatabaseResetPlans(context.Background(), []*model.ApplicationComponent{db}, "")
 	require.NoError(t, err)
 	require.NoError(t, recoveredCtl.checkpointDatabaseResetReplicas(context.Background(), plans))
@@ -595,7 +600,8 @@ func TestDatabaseResetJobCtlFailsBeforeMutationWhenReplicaCheckpointCannotPersis
 	result, statefulSet := databaseResetStatefulSet(t, db)
 	client := fake.NewSimpleClientset(statefulSet, firstAdditionalPVC(t, result))
 
-	ctl := NewDatabaseResetJobCtl(databaseResetTask(db), &Runtime{Client: client, Store: store, Ack: nil})
+	resetTask := databaseResetTask(db)
+	ctl := NewDatabaseResetJobCtl(resetTask, &Runtime{Client: client, Store: withJobTestOwner(store, resetTask), Ack: nil})
 	err := ctl.run(context.Background())
 
 	require.ErrorContains(t, err, "persist database reset replica checkpoint")
@@ -636,7 +642,7 @@ func TestDatabaseResetJobCtlRejectsInvalidReplicaCheckpointBeforeMutation(t *tes
 				InternalInfo: test.internalInfo,
 			})
 
-			ctl := NewDatabaseResetJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
+			ctl := NewDatabaseResetJobCtl(task, &Runtime{Client: client, Store: withJobTestOwner(store, task), Ack: nil})
 			err := ctl.run(context.Background())
 
 			require.ErrorContains(t, err, test.errorText)
@@ -656,7 +662,7 @@ func TestDatabaseResetJobCtlRejectsMissingExecutionKeyBeforeMutation(t *testing.
 	task := databaseResetTask(db)
 	task.JobInfo.(*DatabaseResetJobInfo).ExecutionKey = ""
 
-	ctl := NewDatabaseResetJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
+	ctl := NewDatabaseResetJobCtl(task, &Runtime{Client: client, Store: withJobTestOwner(store, task), Ack: nil})
 	err := ctl.run(context.Background())
 
 	require.ErrorContains(t, err, "database reset execution key is missing")
@@ -681,7 +687,7 @@ func TestDatabaseResetJobCtlRejectsDuplicateExecutionCheckpointsBeforeMutation(t
 		})
 	}
 
-	ctl := NewDatabaseResetJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
+	ctl := NewDatabaseResetJobCtl(task, &Runtime{Client: client, Store: withJobTestOwner(store, task), Ack: nil})
 	err := ctl.run(context.Background())
 
 	require.ErrorContains(t, err, "multiple database reset replica checkpoints")
@@ -697,7 +703,7 @@ func TestDatabaseResetJobCtlSaveInfoUpsertsReplicaCheckpoint(t *testing.T) {
 	statefulSet.Spec.Replicas = nil
 	client := fake.NewSimpleClientset(statefulSet, firstAdditionalPVC(t, result))
 	task := databaseResetTask(db)
-	ctl := NewDatabaseResetJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
+	ctl := NewDatabaseResetJobCtl(task, &Runtime{Client: client, Store: withJobTestOwner(store, task), Ack: nil})
 
 	require.NoError(t, ctl.run(context.Background()))
 	checkpointInfo := task.InternalInfo
@@ -726,7 +732,8 @@ func TestDatabaseResetJobCtlSkipsInitSQLURLUpdateWhenUnchanged(t *testing.T) {
 	pvc := firstAdditionalPVC(t, result)
 	client := fake.NewSimpleClientset(statefulSet, pvc)
 
-	ctl := NewDatabaseResetJobCtl(databaseResetTaskWithInitSQLURL("  "+currentURL+"  ", db), &Runtime{Client: client, Store: store, Ack: nil})
+	resetTask := databaseResetTaskWithInitSQLURL("  "+currentURL+"  ", db)
+	ctl := NewDatabaseResetJobCtl(resetTask, &Runtime{Client: client, Store: withJobTestOwner(store, resetTask), Ack: nil})
 	require.NoError(t, ctl.run(context.Background()))
 
 	statefulSetUpdates := 0
@@ -752,7 +759,8 @@ func TestDatabaseResetJobCtlWithoutInitSQLURLKeepsExistingValue(t *testing.T) {
 	pvc := firstAdditionalPVC(t, result)
 	client := fake.NewSimpleClientset(statefulSet, pvc)
 
-	ctl := NewDatabaseResetJobCtl(databaseResetTask(db), &Runtime{Client: client, Store: store, Ack: nil})
+	resetTask := databaseResetTask(db)
+	ctl := NewDatabaseResetJobCtl(resetTask, &Runtime{Client: client, Store: withJobTestOwner(store, resetTask), Ack: nil})
 	require.NoError(t, ctl.run(context.Background()))
 
 	updated, err := client.AppsV1().StatefulSets("default").Get(context.Background(), statefulSet.Name, metav1.GetOptions{})
@@ -772,7 +780,8 @@ func TestDatabaseResetJobCtlInitSQLURLDoesNotApplyToRedis(t *testing.T) {
 	redisResult, redisStatefulSet := databaseResetStatefulSet(t, redis)
 	client := fake.NewSimpleClientset(mysqlStatefulSet, firstAdditionalPVC(t, mysqlResult), redisStatefulSet, firstAdditionalPVC(t, redisResult))
 
-	ctl := NewDatabaseResetJobCtl(databaseResetTaskWithInitSQLURL("https://files.example/game-1.0.8.sql", mysql, redis), &Runtime{Client: client, Store: store, Ack: nil})
+	resetTask := databaseResetTaskWithInitSQLURL("https://files.example/game-1.0.8.sql", mysql, redis)
+	ctl := NewDatabaseResetJobCtl(resetTask, &Runtime{Client: client, Store: withJobTestOwner(store, resetTask), Ack: nil})
 	require.NoError(t, ctl.run(context.Background()))
 
 	updatedMySQL, err := client.AppsV1().StatefulSets("default").Get(context.Background(), mysqlStatefulSet.Name, metav1.GetOptions{})
@@ -791,7 +800,8 @@ func TestDatabaseResetJobCtlRejectsInitSQLURLWhenNoStatefulSetMatches(t *testing
 	result, statefulSet := databaseResetStatefulSet(t, redis)
 	client := fake.NewSimpleClientset(statefulSet, firstAdditionalPVC(t, result))
 
-	ctl := NewDatabaseResetJobCtl(databaseResetTaskWithInitSQLURL("https://files.example/game-1.0.8.sql", redis), &Runtime{Client: client, Store: store, Ack: nil})
+	resetTask := databaseResetTaskWithInitSQLURL("https://files.example/game-1.0.8.sql", redis)
+	ctl := NewDatabaseResetJobCtl(resetTask, &Runtime{Client: client, Store: withJobTestOwner(store, resetTask), Ack: nil})
 	err := ctl.run(context.Background())
 
 	require.Error(t, err)
@@ -824,7 +834,8 @@ func TestDatabaseResetJobCtlPreservesStoppedServer(t *testing.T) {
 	deployment.Spec.Replicas = &zero
 
 	client := fake.NewSimpleClientset(statefulSet, pvc, deployment)
-	ctl := NewDatabaseResetJobCtl(databaseResetTask(db, api), &Runtime{Client: client, Store: store, Ack: nil})
+	resetTask := databaseResetTask(db, api)
+	ctl := NewDatabaseResetJobCtl(resetTask, &Runtime{Client: client, Store: withJobTestOwner(store, resetTask), Ack: nil})
 
 	require.NoError(t, ctl.run(context.Background()))
 
@@ -860,7 +871,8 @@ func TestDatabaseResetJobCtlDeletesVolumeClaimTemplatePVCWithoutRecreate(t *test
 	}
 
 	client := fake.NewSimpleClientset(statefulSet, templatePVC)
-	ctl := NewDatabaseResetJobCtl(databaseResetTask(db), &Runtime{Client: client, Store: store, Ack: nil})
+	resetTask := databaseResetTask(db)
+	ctl := NewDatabaseResetJobCtl(resetTask, &Runtime{Client: client, Store: withJobTestOwner(store, resetTask), Ack: nil})
 
 	require.NoError(t, ctl.run(context.Background()))
 	_, err := client.CoreV1().PersistentVolumeClaims("default").Get(context.Background(), templatePVCName, metav1.GetOptions{})
@@ -891,7 +903,8 @@ func TestDatabaseResetJobCtlKeepsSimilarPrefixTemplatePVC(t *testing.T) {
 	}
 
 	client := fake.NewSimpleClientset(statefulSet, templatePVC, unrelatedPVC)
-	ctl := NewDatabaseResetJobCtl(databaseResetTask(db), &Runtime{Client: client, Store: store, Ack: nil})
+	resetTask := databaseResetTask(db)
+	ctl := NewDatabaseResetJobCtl(resetTask, &Runtime{Client: client, Store: withJobTestOwner(store, resetTask), Ack: nil})
 
 	require.NoError(t, ctl.run(context.Background()))
 	_, err := client.CoreV1().PersistentVolumeClaims("default").Get(context.Background(), templatePVCName, metav1.GetOptions{})
@@ -922,7 +935,8 @@ func TestDatabaseResetJobCtlSkipsMissingVolumeClaimTemplatePVC(t *testing.T) {
 	}
 
 	client := fake.NewSimpleClientset(statefulSet, templatePVC)
-	ctl := NewDatabaseResetJobCtl(databaseResetTask(db), &Runtime{Client: client, Store: store, Ack: nil})
+	resetTask := databaseResetTask(db)
+	ctl := NewDatabaseResetJobCtl(resetTask, &Runtime{Client: client, Store: withJobTestOwner(store, resetTask), Ack: nil})
 
 	require.NoError(t, ctl.run(context.Background()))
 	_, err := client.CoreV1().PersistentVolumeClaims("default").Get(context.Background(), templatePVCName, metav1.GetOptions{})
@@ -945,7 +959,8 @@ func TestDatabaseResetJobCtlFailsWhenStandalonePVCMissing(t *testing.T) {
 	_, statefulSet := databaseResetStatefulSet(t, db)
 
 	client := fake.NewSimpleClientset(statefulSet)
-	ctl := NewDatabaseResetJobCtl(databaseResetTask(db), &Runtime{Client: client, Store: store, Ack: nil})
+	resetTask := databaseResetTask(db)
+	ctl := NewDatabaseResetJobCtl(resetTask, &Runtime{Client: client, Store: withJobTestOwner(store, resetTask), Ack: nil})
 
 	err := ctl.run(context.Background())
 	require.Error(t, err)
@@ -967,7 +982,8 @@ func TestDatabaseResetJobCtlSkipsMissingServerDeployment(t *testing.T) {
 	pvc := firstAdditionalPVC(t, result)
 
 	client := fake.NewSimpleClientset(statefulSet, pvc)
-	ctl := NewDatabaseResetJobCtl(databaseResetTask(db, api), &Runtime{Client: client, Store: store, Ack: nil})
+	resetTask := databaseResetTask(db, api)
+	ctl := NewDatabaseResetJobCtl(resetTask, &Runtime{Client: client, Store: withJobTestOwner(store, resetTask), Ack: nil})
 
 	require.NoError(t, ctl.run(context.Background()))
 	require.Equal(t, string(config.ComponentStatusRunning), db.Status)
@@ -984,7 +1000,8 @@ func TestDatabaseResetJobCtlReturnsErrorWhenStatefulSetMissing(t *testing.T) {
 	}})
 	store := newDatabaseResetComponentStore(db)
 	client := fake.NewSimpleClientset()
-	ctl := NewDatabaseResetJobCtl(databaseResetTask(db), &Runtime{Client: client, Store: store, Ack: nil})
+	resetTask := databaseResetTask(db)
+	ctl := NewDatabaseResetJobCtl(resetTask, &Runtime{Client: client, Store: withJobTestOwner(store, resetTask), Ack: nil})
 
 	err := ctl.run(context.Background())
 	require.Error(t, err)
@@ -1017,7 +1034,7 @@ func TestDatabaseResetJobCtlTimesOutWhenPodsRemain(t *testing.T) {
 	client := fake.NewSimpleClientset(statefulSet, templatePVC, pod)
 	task := databaseResetTask(db)
 	task.Timeout = 1
-	ctl := NewDatabaseResetJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
+	ctl := NewDatabaseResetJobCtl(task, &Runtime{Client: client, Store: withJobTestOwner(store, task), Ack: nil})
 
 	err := ctl.run(context.Background())
 	require.Error(t, err)

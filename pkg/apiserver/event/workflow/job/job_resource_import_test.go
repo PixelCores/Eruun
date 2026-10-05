@@ -92,7 +92,7 @@ func TestResourceImportManagePersistsCheckpointBeforeApply(t *testing.T) {
 			Request:   json.RawMessage(`{"scanTaskId":"scan-1","applications":[{"name":"payments"}]}`),
 		},
 	}
-	controller := NewResourceImportJobCtl(jobTask, store, executor)
+	controller := NewResourceImportJobCtl(jobTask, withJobTestOwner(store, jobTask), executor)
 
 	require.NoError(t, controller.Run(context.Background()))
 	require.Equal(t, 1, executor.prepareCalls)
@@ -124,7 +124,7 @@ func TestResourceImportManageRecoveryReusesPersistedCheckpoint(t *testing.T) {
 			Request:   json.RawMessage(`{"scanTaskId":"scan-1","applications":[{"name":"payments"}]}`),
 		},
 	}
-	controller := NewResourceImportJobCtl(jobTask, store, executor)
+	controller := NewResourceImportJobCtl(jobTask, withJobTestOwner(store, jobTask), executor)
 
 	require.NoError(t, controller.Run(context.Background()))
 	assert.Zero(t, executor.prepareCalls)
@@ -147,9 +147,9 @@ func TestResourceImportManageDoesNotApplyWhenCheckpointPersistenceFails(t *testi
 			Request:   json.RawMessage(`{"scanTaskId":"scan-1","applications":[{"name":"payments"}]}`),
 		},
 	}
-	controller := NewResourceImportJobCtl(jobTask, store, executor)
+	controller := NewResourceImportJobCtl(jobTask, withJobTestOwner(store, jobTask), executor)
 
-	require.ErrorContains(t, controller.Run(context.Background()), "persist resource import management checkpoint")
+	require.ErrorContains(t, controller.Run(context.Background()), "database unavailable")
 	assert.Zero(t, executor.executeCalls)
 	assert.Empty(t, jobTask.InternalInfo)
 }

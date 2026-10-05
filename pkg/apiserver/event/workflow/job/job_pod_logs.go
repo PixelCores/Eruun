@@ -2,6 +2,7 @@ package job
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -84,6 +85,10 @@ func completedJobForFinalize(jobTask *model.JobTask) (*batchv1.Job, bool) {
 }
 
 func collectJobPodLogs(ctx context.Context, client kubernetes.Interface, namespace, jobName string) (string, error) {
+	return collectJobPodLogsForJob(ctx, client, namespace, jobName, nil)
+}
+
+func collectJobPodLogsForJob(ctx context.Context, client kubernetes.Interface, namespace, jobName string, owner *batchv1.Job) (string, error) {
 	if client == nil {
 		return "", fmt.Errorf("client is nil")
 	}
@@ -103,7 +108,11 @@ func collectJobPodLogs(ctx context.Context, client kubernetes.Interface, namespa
 	})
 
 	var builder strings.Builder
+	var readErrors []error
 	for _, pod := range pods.Items {
+		if owner != nil && !podOwnedByJob(&pod, owner) {
+			continue
+		}
 		containerNames := podLogContainerNames(&pod)
 		if len(containerNames) == 0 {
 			continue
@@ -116,6 +125,9 @@ func collectJobPodLogs(ctx context.Context, client kubernetes.Interface, namespa
 			logText, err := readPodContainerLogs(ctx, client, namespace, pod.Name, container)
 			if err != nil {
 				klog.Warningf("read pod logs %s/%s (container %s) failed: %v", namespace, pod.Name, container, err)
+				if owner != nil {
+					readErrors = append(readErrors, fmt.Errorf("read pod %s container %s logs: %w", pod.Name, container, err))
+				}
 				continue
 			}
 			builder.WriteString(logText)
@@ -125,6 +137,9 @@ func collectJobPodLogs(ctx context.Context, client kubernetes.Interface, namespa
 		}
 	}
 	logs := strings.TrimSpace(builder.String())
+	if len(readErrors) > 0 {
+		return logs, errors.Join(readErrors...)
+	}
 	if logs == "" {
 		return "", fmt.Errorf("no logs collected for job %s/%s", namespace, jobName)
 	}
@@ -250,7 +265,9 @@ func deleteCompletedPodsForJob(ctx context.Context, client kubernetes.Interface,
 		if !podOwnedByJob(pod, jobObj) {
 			continue
 		}
-		if err := client.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+		if err := client.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
+			Preconditions: &metav1.Preconditions{UID: &pod.UID},
+		}); err != nil && !k8serrors.IsNotFound(err) {
 			if firstErr == nil {
 				firstErr = fmt.Errorf("delete completed pod %s/%s: %w", namespace, pod.Name, err)
 			}

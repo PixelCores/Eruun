@@ -307,7 +307,7 @@ func TestCleanupResourcesJobCtlSaveInfoUpdatesVersionUpdateCleanupJob(t *testing
 		Error:        "delete deployment failed",
 		InternalInfo: existing.InternalInfo,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: nil})
+	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: withJobTestOwner(store, task), Ack: nil})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.SaveInfo(context.Background()))
@@ -350,7 +350,8 @@ func TestVersionUpdateCleanupJobInfoRejectsStaleGenerationWrite(t *testing.T) {
 		RunGeneration: 2,
 		Attempt:       1,
 	}
-	newerCtl := NewCleanupResourcesJobCtl(newerTask, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: nil})
+	ownerStore := withJobTestOwner(store, newerTask)
+	newerCtl := NewCleanupResourcesJobCtl(newerTask, &Runtime{Client: fake.NewSimpleClientset(), Store: ownerStore, Ack: nil})
 	require.NotNil(t, newerCtl)
 
 	require.NoError(t, newerCtl.SaveInfo(context.Background()))
@@ -377,7 +378,12 @@ func TestVersionUpdateCleanupJobInfoRejectsStaleGenerationWrite(t *testing.T) {
 		RunGeneration: 1,
 		Attempt:       1,
 	}
-	staleCtl := NewCleanupResourcesJobCtl(staleTask, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: nil})
+	// The current workflow owns both saves; the second save carries an old
+	// child checkpoint and must not replace the newer committed JobInfo.
+	staleTask.OwnerRunGeneration = newerTask.OwnerRunGeneration
+	staleTask.RunToken = newerTask.RunToken
+	staleTask.WorkerID = newerTask.WorkerID
+	staleCtl := NewCleanupResourcesJobCtl(staleTask, &Runtime{Client: fake.NewSimpleClientset(), Store: ownerStore, Ack: nil})
 	require.NotNil(t, staleCtl)
 
 	require.NoError(t, staleCtl.SaveInfo(context.Background()))
@@ -413,7 +419,7 @@ func TestCleanupResourcesJobCtlSaveInfoAddsRegularCleanupJobRecord(t *testing.T)
 		JobInfo:    "regular cleanup payload",
 		Status:     config.StatusCompleted,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: nil})
+	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: withJobTestOwner(store, task), Ack: nil})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.SaveInfo(context.Background()))
@@ -448,7 +454,7 @@ func TestCleanupResourcesJobCtlSaveInfoDoesNotUpdateUnmarkedCleanupRecord(t *tes
 		Error:        "cleanup failed",
 		InternalInfo: versionUpdateRemoveCleanupInternalInfo(),
 	}
-	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: nil})
+	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: withJobTestOwner(store, task), Ack: nil})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.SaveInfo(context.Background()))

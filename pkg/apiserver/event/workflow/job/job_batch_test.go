@@ -634,7 +634,7 @@ func TestRunJob_SkippedWritesJobInfo(t *testing.T) {
 		Status:     config.StatusSkipped,
 	}
 
-	runJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() {}})
+	runJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: withJobTestOwner(store, jobTask), Ack: func() {}})
 
 	require.Equal(t, 1, store.addCount)
 	info, ok := store.lastAdded.(*model.JobInfo)
@@ -804,7 +804,7 @@ func TestRunJob_ConfigMapUpdatesComponentStatus(t *testing.T) {
 		},
 	}
 
-	runJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() {}})
+	runAdmittedTestJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() {}})
 
 	require.NotNil(t, store.updated)
 	require.Equal(t, string(config.ComponentStatusRunning), store.updated.Status)
@@ -841,7 +841,7 @@ func TestRunJob_ConfigMapSharedDefaultSkippedMapsRunning(t *testing.T) {
 		},
 	}
 
-	runJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() {}})
+	runJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: withJobTestOwner(store, jobTask), Ack: func() {}})
 
 	require.NotNil(t, store.updated)
 	require.Equal(t, string(config.ComponentStatusRunning), store.updated.Status)
@@ -878,7 +878,7 @@ func TestRunJob_ConfigMapSharedIgnoreSkippedDoesNotMapRunning(t *testing.T) {
 		},
 	}
 
-	runJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() {}})
+	runJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: withJobTestOwner(store, jobTask), Ack: func() {}})
 
 	require.Nil(t, store.updated)
 	require.Equal(t, string(config.ComponentStatusNotDeploy), store.components[0].Status)
@@ -909,7 +909,7 @@ func TestRunJob_ConfigMapUpdatesComponentStatusWithWorkflowID(t *testing.T) {
 		},
 	}
 
-	runJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() {}})
+	runAdmittedTestJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() {}})
 
 	require.NotNil(t, store.updated)
 	require.Equal(t, string(config.ComponentStatusRunning), store.updated.Status)
@@ -941,7 +941,7 @@ func TestRunJob_ConfigMapDoesNotSetPending(t *testing.T) {
 		},
 	}
 
-	runJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() {}})
+	runAdmittedTestJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() {}})
 
 	require.NotEmpty(t, store.statuses)
 	for _, status := range store.statuses {
@@ -985,7 +985,7 @@ func TestRunJob_ConfigMapInvalidatesComponentsCache(t *testing.T) {
 		Ack:    func() {},
 		Cache:  cacheStore,
 	})
-	runJob(context.Background(), jobTask, runtime)
+	runAdmittedTestJob(context.Background(), jobTask, runtime)
 
 	require.Empty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))
 	require.NotNil(t, store.updated)
@@ -1014,7 +1014,7 @@ func TestConfigComponentStatusInvalidatesCacheAfterCommittedWriteCancelsContext(
 	})
 	defer runtime.close()
 
-	err := syncConfigComponentStatusIfWorkflowOwned(ctx, jobTask, store, runtime)
+	err := syncConfigComponentStatusIfWorkflowOwned(ctx, jobTask, withJobTestOwner(store, jobTask), runtime)
 
 	require.NoError(t, err)
 	require.ErrorIs(t, ctx.Err(), context.Canceled)
@@ -1054,7 +1054,7 @@ func TestRunJob_SecretFailureInvalidatesComponentsCache(t *testing.T) {
 		Ack:    func() {},
 		Cache:  cacheStore,
 	})
-	runJob(context.Background(), jobTask, runtime)
+	runAdmittedTestJob(context.Background(), jobTask, runtime)
 
 	require.Empty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))
 	require.NotNil(t, store.updated)
@@ -1092,7 +1092,7 @@ func TestRunJob_SecretSharedDefaultSkippedMapsRunning(t *testing.T) {
 		},
 	}
 
-	runJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() {}})
+	runJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: withJobTestOwner(store, jobTask), Ack: func() {}})
 
 	require.NotNil(t, store.updated)
 	require.Equal(t, string(config.ComponentStatusRunning), store.updated.Status)
@@ -1135,7 +1135,7 @@ func TestRunJob_ConfigMapDoesNotInvalidateCacheWhenStatusPersistFails(t *testing
 		Ack:    func() {},
 		Cache:  cacheStore,
 	})
-	runJob(context.Background(), jobTask, runtime)
+	runAdmittedTestJob(context.Background(), jobTask, runtime)
 
 	require.NotEmpty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))
 	require.Nil(t, store.updated)
@@ -1173,7 +1173,7 @@ func TestRunJob_DeployStartInvalidatesComponentsCache(t *testing.T) {
 		Ack:    func() {},
 		Cache:  cacheStore,
 	})
-	runJob(context.Background(), jobTask, runtime)
+	runAdmittedTestJob(context.Background(), jobTask, runtime)
 
 	require.Empty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))
 	require.NotNil(t, store.updated)
@@ -1213,7 +1213,7 @@ func TestRunJob_DeployStartDoesNotInvalidateCacheWhenStatusPersistFails(t *testi
 		Ack:    func() {},
 		Cache:  cacheStore,
 	})
-	runJob(context.Background(), jobTask, runtime)
+	runAdmittedTestJob(context.Background(), jobTask, runtime)
 
 	require.NotEmpty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))
 	require.Nil(t, store.updated)

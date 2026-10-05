@@ -127,7 +127,7 @@ func TestSaveJobInfoPreservesConcurrentEvaluationRunnerCheckpoint(t *testing.T) 
 		store.existing[0].InternalInfo = evaluationCheckpoint(t, task, 5)
 	}
 
-	require.NoError(t, saveJobInfo(context.Background(), store, task))
+	require.NoError(t, saveJobInfo(context.Background(), withJobTestOwner(store, task), task))
 	require.NotNil(t, store.updated)
 	state, _, err := EvaluationRunnerCheckpoint(store.updated)
 	require.NoError(t, err)
@@ -174,7 +174,7 @@ func TestSaveJobInfoUpdatesRecoveredExecutionTerminalState(t *testing.T) {
 		Attempt:       1,
 	}
 
-	require.NoError(t, saveJobInfo(context.Background(), store, job))
+	require.NoError(t, saveJobInfo(context.Background(), withJobTestOwner(store, job), job))
 	require.Nil(t, store.added)
 	require.NotNil(t, store.updated)
 	require.Equal(t, 7, store.updated.ID)
@@ -204,7 +204,7 @@ func TestSaveJobInfoKeepsDistinctExecutionsSeparate(t *testing.T) {
 		Attempt:       1,
 	}
 
-	require.NoError(t, saveJobInfo(context.Background(), store, job))
+	require.NoError(t, saveJobInfo(context.Background(), withJobTestOwner(store, job), job))
 	require.Nil(t, store.updated)
 	require.NotNil(t, store.added)
 	require.NotNil(t, store.added.ExecutionKey)
@@ -233,7 +233,7 @@ func TestSaveJobInfoPreservesSuccessfulTerminalState(t *testing.T) {
 		Attempt:       1,
 	}
 
-	require.NoError(t, saveJobInfo(context.Background(), store, job))
+	require.NoError(t, saveJobInfo(context.Background(), withJobTestOwner(store, job), job))
 	require.Nil(t, store.added)
 	require.Nil(t, store.updated)
 	require.Equal(t, string(config.StatusCompleted), store.existing[0].Status)
@@ -264,7 +264,7 @@ func TestSaveJobInfoReloadsAfterConcurrentTerminalUpdate(t *testing.T) {
 		Attempt:       1,
 	}
 
-	require.NoError(t, saveJobInfo(context.Background(), store, job))
+	require.NoError(t, saveJobInfo(context.Background(), withJobTestOwner(store, job), job))
 	require.Nil(t, store.added)
 	require.Nil(t, store.updated)
 	require.Equal(t, string(config.StatusCompleted), store.existing[0].Status)

@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
@@ -93,16 +94,53 @@ func TestWithWorkflowTaskOwnershipFencesSideEffectWrites(t *testing.T) {
 		require.Equal(t, 1, store.transactionCalls)
 	})
 
-	t.Run("legacy execution remains compatible", func(t *testing.T) {
-		store := &repositoryTestStore{}
-		persisted := false
-
-		err := WithWorkflowTaskOwnership(context.Background(), store, &model.WorkflowQueue{}, func(datastore.DataStore) error {
-			persisted = true
-			return nil
-		})
-
-		require.NoError(t, err)
-		require.True(t, persisted)
+	t.Run("missing execution identity never persists", func(t *testing.T) {
+		for _, tt := range []struct {
+			name string
+			task model.WorkflowQueue
+			want error
+		}{
+			{"empty snapshot", model.WorkflowQueue{}, datastore.ErrPrimaryEmpty},
+			{"missing token", model.WorkflowQueue{TaskID: "task", RunGeneration: 1, WorkerID: "worker"}, ErrWorkflowOwnershipRequired},
+			{"blank token", model.WorkflowQueue{TaskID: "task", RunGeneration: 1, RunToken: " ", WorkerID: "worker"}, ErrWorkflowOwnershipRequired},
+			{"missing generation", model.WorkflowQueue{TaskID: "task", RunToken: "token", WorkerID: "worker"}, ErrWorkflowOwnershipRequired},
+			{"missing worker", model.WorkflowQueue{TaskID: "task", RunGeneration: 1, RunToken: "token"}, ErrWorkflowOwnershipRequired},
+			{"blank worker", model.WorkflowQueue{TaskID: "task", RunGeneration: 1, RunToken: "token", WorkerID: " "}, ErrWorkflowOwnershipRequired},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				store := &transactionalWorkflowOwnershipStore{repositoryTestStore: &repositoryTestStore{casWithConditionsSwapped: true}}
+				persisted := false
+				err := WithWorkflowTaskOwnership(context.Background(), store, &tt.task, func(datastore.DataStore) error {
+					persisted = true
+					return nil
+				})
+				require.ErrorIs(t, err, tt.want)
+				require.False(t, persisted)
+				require.Zero(t, store.transactionCalls)
+			})
+		}
 	})
+}
+
+func TestWithWorkflowTaskOwnershipFencesUnclaimedTerminalCallbacks(t *testing.T) {
+	for _, status := range []config.Status{config.StatusCompleted, config.StatusFailed, config.StatusTimeout, config.StatusCancelled, config.StatusReject, config.StatusSkipped} {
+		t.Run(string(status), func(t *testing.T) {
+			task := &model.WorkflowQueue{TaskID: "unclaimed-task", Status: status}
+			base := &repositoryTestStore{casWithConditionsSwapped: true}
+			store := &transactionalWorkflowOwnershipStore{repositoryTestStore: base}
+			persisted := false
+			persist := func(datastore.DataStore) error { persisted = true; return nil }
+			require.NoError(t, WithWorkflowTaskOwnership(context.Background(), store, task, persist))
+			require.True(t, persisted)
+			require.Equal(t, 1, store.transactionCalls)
+			require.Equal(t, status, base.casConditions["status"])
+			require.Equal(t, uint64(0), base.casConditions["run_generation"])
+			require.Equal(t, "", base.casConditions["run_token"])
+			require.Equal(t, "", base.casConditions["worker_id"])
+			base.casWithConditionsSwapped = false
+			persisted = false
+			require.ErrorIs(t, WithWorkflowTaskOwnership(context.Background(), store, task, persist), ErrWorkflowOwnershipLost)
+			require.False(t, persisted)
+		})
+	}
 }

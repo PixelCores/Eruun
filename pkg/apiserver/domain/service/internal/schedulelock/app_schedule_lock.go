@@ -17,9 +17,10 @@ const (
 	appScheduleLockKey    = "app-schedule"
 	appScheduleLockTTL    = 2 * time.Minute
 	appScheduleUnlockWait = 5 * time.Second
+	appScheduleExtendWait = 5 * time.Second
 )
 
-func WithAppScheduleLock(ctx context.Context, lockProvider locker.Locker, appID string, operation string, autoExtend bool, fn func(context.Context) error) error {
+func WithAppScheduleLock(ctx context.Context, lockProvider locker.Locker, appID string, operation string, autoExtend bool, fn func(context.Context) error) (resultErr error) {
 	appID = strings.ToLower(strings.TrimSpace(appID))
 	if appID == "" {
 		return bcode.ErrApplicationNotExist
@@ -46,12 +47,47 @@ func WithAppScheduleLock(ctx context.Context, lockProvider locker.Locker, appID 
 		}
 	}()
 
-	if autoExtend {
-		stopExtend := locker.AutoExtend(ctx, mutex, appScheduleLockTTL/3)
-		defer stopExtend()
+	if !autoExtend {
+		return fn(ctx)
 	}
-
-	return fn(ctx)
+	criticalCtx, cancelCritical := context.WithCancelCause(ctx)
+	defer cancelCritical(nil)
+	renewCtx, stopRenew := context.WithCancel(criticalCtx)
+	renewDone := make(chan struct{})
+	var renewalErr error
+	go func() {
+		defer close(renewDone)
+		ticker := time.NewTicker(appScheduleLockTTL / 3)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-renewCtx.Done():
+				return
+			case <-ticker.C:
+				extendCtx, cancel := context.WithTimeout(renewCtx, appScheduleExtendWait)
+				err := mutex.Extend(extendCtx)
+				cancel()
+				if err == nil {
+					continue
+				}
+				if renewCtx.Err() == nil {
+					renewalErr = fmt.Errorf("%w: renew app schedule lock for %s: %w", bcode.ErrDistributedLockUnavailable, appID, err)
+					cancelCritical(renewalErr)
+				}
+				return
+			}
+		}
+	}()
+	defer func() {
+		stopRenew()
+		<-renewDone
+		// Preserve lock loss even if the operation returned nil after observing
+		// cancellation. Wait for renewal before releasing the Redis mutex.
+		if renewalErr != nil {
+			resultErr = errors.Join(resultErr, renewalErr)
+		}
+	}()
+	return fn(criticalCtx)
 }
 
 func mapAppScheduleLockError(err error) error {

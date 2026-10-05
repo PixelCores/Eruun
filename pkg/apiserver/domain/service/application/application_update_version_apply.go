@@ -35,10 +35,6 @@ func (c *applicationsServiceImpl) commitAutoExecVersionUpdate(
 	if workflow == nil {
 		return nil, nil, nil, nil, "", bcode.ErrWorkflowNotExist
 	}
-	txStore, ok := c.Store.(datastore.Transactional)
-	if !ok {
-		return nil, nil, nil, nil, "", fmt.Errorf("%w: auto exec version update requires transactional datastore", bcode.ErrVersionUpdateFailed)
-	}
 
 	var (
 		updatedComponents   []string
@@ -49,7 +45,7 @@ func (c *applicationsServiceImpl) commitAutoExecVersionUpdate(
 		taskID              string
 	)
 	commit := func(lockCtx context.Context) error {
-		return txStore.WithTransaction(lockCtx, func(tx datastore.DataStore) error {
+		return repository.WithApplicationSchedulingTransaction(lockCtx, c.Store, app.ID, func(tx datastore.DataStore) error {
 			if err := EnsureAppWorkflowIdle(lockCtx, tx, workflow.AppID); err != nil {
 				return fmt.Errorf("auto exec workflow: %w", err)
 			}

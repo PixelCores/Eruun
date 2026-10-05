@@ -36,6 +36,15 @@ func (s *transactionFaultStore) WithTransaction(ctx context.Context, fn func(dat
 	})
 }
 
+func (s *transactionFaultStore) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	return s.DataStore.(datastore.ReadCommittedTransactional).WithReadCommittedTransaction(ctx, func(tx datastore.DataStore) error {
+		return fn(&transactionFaultStore{DataStore: tx, beforeWrite: s.beforeWrite})
+	})
+}
+func (s *transactionFaultStore) GetForUpdate(ctx context.Context, entity datastore.Entity) error {
+	return s.DataStore.(datastore.RowLocker).GetForUpdate(ctx, entity)
+}
+
 func (s *transactionFaultStore) Add(ctx context.Context, entity datastore.Entity) error {
 	if err := s.beforeWrite(entity); err != nil {
 		return err

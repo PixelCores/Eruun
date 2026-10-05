@@ -112,7 +112,7 @@ func TestRunJobsSerialStopsWhenAckCancelsContext(t *testing.T) {
 	RunJobs(ctx, jobs, &Runtime{
 		Concurrency: 1,
 		Client:      fake.NewSimpleClientset(),
-		Store:       store,
+		Store:       withJobTestOwner(store, jobs[0]),
 		Ack:         cancel,
 	})
 
@@ -325,8 +325,8 @@ func TestRunJobReturnsInfrastructureStopWhenEarlyTerminalPersistenceFails(t *tes
 	}
 }
 
-func TestRunJobsKeepsLegacyTerminalPersistenceBestEffort(t *testing.T) {
-	persistErr := errors.New("injected legacy terminal persistence failure")
+func TestRunJobsRejectsMissingOwnershipBeforeSideEffects(t *testing.T) {
+	persistErr := errors.New("unexpected persistence attempt")
 	store := &ownedCheckpointFailureStore{
 		jobInfoStore: &jobInfoStore{addErr: persistErr},
 	}
@@ -334,24 +334,27 @@ func TestRunJobsKeepsLegacyTerminalPersistenceBestEffort(t *testing.T) {
 		Name:      "app-config",
 		Namespace: "default",
 		AppID:     "app-1",
-		TaskID:    "task-legacy",
+		TaskID:    "task-unclaimed",
 		JobType:   string(config.JobDeployConfigMap),
 		JobInfo: &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{
 			Name: "app-config", Namespace: "default",
 		}},
 	}
 
+	client := fake.NewSimpleClientset()
 	err := RunJobs(context.Background(), []*model.JobTask{task}, &Runtime{
 		Concurrency:   1,
-		Client:        fake.NewSimpleClientset(),
+		Client:        client,
 		Store:         store,
 		Ack:           func() {},
 		StopOnFailure: true,
 	})
 
-	require.NoError(t, err)
-	require.Equal(t, config.StatusCompleted, task.Status)
-	require.Equal(t, 1, store.addCount)
+	require.ErrorIs(t, err, signal.ErrInfrastructureStop)
+	require.ErrorIs(t, err, repository.ErrWorkflowOwnershipRequired)
+	require.NotEqual(t, config.StatusCompleted, task.Status)
+	require.Zero(t, store.addCount)
+	require.Empty(t, client.Actions())
 }
 
 func TestRunJobsReturnsTerminalCallbackPersistenceFailureWithoutWorker(t *testing.T) {

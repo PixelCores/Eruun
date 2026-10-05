@@ -166,7 +166,7 @@ func TestPersistDelayJobCheckpointStoresRecoverablePayload(t *testing.T) {
 		Job:           &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"}},
 	}
 
-	require.NoError(t, persistDelayJobCheckpoint(context.Background(), store, jobTask, payload))
+	require.NoError(t, persistDelayJobCheckpoint(context.Background(), withJobTestOwner(store, jobTask), jobTask, payload))
 	require.Equal(t, config.StatusDistributed, jobTask.Status)
 	require.Equal(t, config.JobDelayStatePending, jobTask.DelayState)
 	require.Equal(t, payload.ExecuteAt, jobTask.DelayExecuteAt)

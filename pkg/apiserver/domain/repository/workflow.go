@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"time"
 
 	"k8s.io/klog/v2"
 
@@ -243,7 +242,11 @@ func CreateWorkflowQueue(ctx context.Context, store datastore.DataStore, queue *
 }
 
 func WaitingTasks(ctx context.Context, store datastore.DataStore) (list []*model.WorkflowQueue, err error) {
-	now := time.Now().Unix()
+	databaseNow, err := currentWorkflowDatabaseTime(ctx, store)
+	if err != nil {
+		return nil, err
+	}
+	now := databaseNow.Unix()
 	var workflowQueue = &model.WorkflowQueue{
 		Status: config.StatusWaiting,
 	}

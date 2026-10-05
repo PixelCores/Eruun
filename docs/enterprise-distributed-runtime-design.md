@@ -43,6 +43,8 @@ API 角色注册完整业务 API；非 API 角色只注册健康路由。Followe
 
 API 的工作流执行、应用版本更新和取消操作仍依赖 Redis 分布式锁及取消信号。无论消息后端选择 Redis 还是 Kafka，API 的 `/api/v1/ready`、`/api/v1/readyz` 都通过已注入的缓存 Redis 客户端执行 `PING`；客户端缺失或连接失败时返回 503，连接恢复后返回 200。该检查不访问消息主题，`/api/v1/health`、`/api/v1/healthz` 仍只检查进程存活。
 
+提交应用 Workflow 时，Redis 锁用于协调请求，并在续期失败时取消业务 context、返回错误。同一应用的手动执行、Cron、数据库重置和版本自动执行还使用既有应用行的数据库锁，以 READ COMMITTED 事务包住幂等检查、idle 判断和任务插入；Redis 锁失效不再是串行化约束的唯一保障。这不改变未来定时任务的登记规则，也不能撤销已经成功发出的外部副作用。
+
 ## 3. 双 Leader 契约
 
 Controller 和 Scheduler 分别使用：
@@ -78,13 +80,13 @@ Worker 在执行期间周期性续租。续租和任务状态更新都必须匹�
 taskId + runGeneration + runToken + workerId
 ```
 
-ownership 不匹配时，旧执行立即停止后续状态写入。外部系统仍需使用执行身份作为幂等键或提供补偿，因为 at-least-once 不能保证外部副作用 exactly once。
+非终态的底层持久化 helper 同样要求完整身份，空 token、worker 或零代次不能绕过事务。API 在首次 claim 前产生的终态回调可以有空执行身份，但仍必须锁定完整父状态快照。ownership 不匹配时，旧执行立即停止后续状态写入。外部系统仍需使用执行身份作为幂等键或提供补偿，因为 at-least-once 不能保证外部副作用 exactly once。
 
 ### 4.3 故障恢复
 
 Scheduler lease reaper 周期扫描 lease 已过期且身份完整的 `queued/running` task，以 CAS 清理旧 ownership 并恢复为 `waiting`。下一次派发创建新的 generation/token。
 
-Scheduler 的 waiting task 与 cron schedule 查询都在数据库侧按到期时间过滤，并按 100 条固定批次处理。`workflow_queue(status, execute_at)` 与 `workflow_schedule(enabled, next_run)` 复合索引支撑这两条热路径；持续积压会由后续轮询继续排空，而不会把全量未到期记录加载到单个 Leader 进程。
+Waiting task 到期判断也以数据库时间为准；时钟查询失败或返回零值时不派发。Scheduler 的 waiting task 与 cron schedule 查询都在数据库侧按到期时间过滤，并按 100 条固定批次处理。`workflow_queue(status, execute_at)` 与 `workflow_schedule(enabled, next_run)` 复合索引支撑这两条热路径；持续积压会由后续轮询继续排空，而不会把全量未到期记录加载到单个 Leader 进程。
 
 Cron schedule 按 `next_run, id` 稳定排序，在同一进程的后续轮询中推进页码，读到末页后回到第一页。即使整批计划因错误、应用锁争用或无可运行日期而未推进 `next_run`，后面的到期计划也会获得处理机会。成功派发、删除或禁用计划导致候选集缩小时，移入前页的记录会在下一轮扫描中重新被读取；进程重启从第一页开始。分页不改写计划的 `next_run`、`last_run` 或幂等键，派发失败仍按原有事务语义回滚并返回错误。
 
@@ -98,7 +100,15 @@ Cron schedule 按 `next_run, id` 稳定排序，在同一进程的后续轮询�
 
 数据库恢复每次轮询最多读取 100 条记录，按记录 ID 倒序推进游标，到末尾后重新扫描。持续重试、无效载荷或扫描期间记录状态变化不会阻塞后续到期任务；新到达的记录在下一轮扫描中纳入。队列通知按执行键去重，被去重的消息释放处理标记并保持未确认状态，允许 Kafka 再次认领并在执行完成后确认。滚动升级时先升级消费通知的 Controller，再升级生产通知的 Worker；旧 Controller 遇到 v2 通知会依赖数据库轮询恢复，到期发现可能变慢。
 
+Harbor 恢复资格、恢复任务剩余预算及持久化 Job retry 的 deadline/RetryAt 使用数据库时间。恢复时把剩余时长换算为本进程的单调计时预算，保持原 deadline，不因节点时钟差或接管而重新获得完整超时。数据库时钟缺失、失败或零值会停止推进；这不替代 Kubernetes、Runner 与数据库之间的实际时钟同步要求。
+
 结果处理只消费与当前 `JobInfo` 和 Kubernetes Job annotation 匹配的结果；旧 generation 的迟到结果不能覆盖当前执行。确定性资源名用于重试复用，执行身份用于区分不同 generation。
+
+结果通知也以数据库 outbox 为恢复来源。`result_dispatching_queue` 和 `result_queued` 有 60 秒补投宽限；消费者认领时写入独立 token 和 30 秒数据库租约，每 10 秒续期。到期回收必须同时匹配 state、token/消息 ID 和原租约，活跃消费者续期后旧扫描快照不能将其重新投递。重复通知不授予处理权限；旧 claim 不能再提交结果或删除 outbox。
+
+成功结果先在检查 claim 的事务内保存终态与日志，之后按已记录的 Job UID 清理 Kubernetes 对象。保存失败保留现场；清理失败保留 outbox 供重试；重放已完成记录只补清理，不重新等待已删除 Job。日志读取失败也保留现场等待重试，结果 ACK 在清理与 outbox 收敛后发生。数据库与 Kubernetes 之间仍没有跨系统原子事务。
+
+升级需通过现有 schema migration 增加 outbox 的 `lease_expires_at`、`job_uid` 列。旧空租约记录先登记宽限而不是立即接管；旧 processing 记录的宽限包含其完整 Job timeout、30 秒删除、30 秒处理及 5 秒保存余量。旧终态记录没有已保存 UID 时不自动删除同名对象。混合版本期间旧 API 和结果消费者仍运行原协议；完整防护需相关旧进程排空并升级后成立。既有 Deadline/RetryAt 原值保留，不追溯校正历史节点偏差。具体回归与未验证的集群故障边界见[分布式设计审核的修复处置](distributed-design-audit-2026-10-06.md#8-pr-139-修复处置与验证边界)。
 
 ## 6. Informer 与 Worker
 

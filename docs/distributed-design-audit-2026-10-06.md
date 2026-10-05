@@ -1,6 +1,6 @@
 # 分布式设计审核：现状、取舍与优化方向（2026-10-06）
 
-> 状态：Historical / Audit。审查基线为远端 `main@63d4a4c583502c6604468b1150a3a802e5ce895f`（冻结日期：2026-10-06）。本文是该版本的设计审核快照；仅新增文档，不修改运行时代码。下文的优化均为建议，尚未实施。源码链接固定到此提交，后续变更需重新核对。
+> 状态：Historical / Audit。审查基线为远端 `main@63d4a4c583502c6604468b1150a3a802e5ce895f`（冻结日期：2026-10-06）。第 2–7 节保留该版本的设计审核快照，固定源码链接说明修复前的机制与缺口。PR #139 随后实施 D1–D5 的修复，处置详情与验证边界见第 8 节；容量建议仍待测量，不代表已经实施。
 
 ## 1. 审核结论与范围
 
@@ -8,14 +8,14 @@ Eruun 当前是单 Kubernetes 集群内的分布式 Application/Workflow Runtime
 
 这个分工有合理基础：复用已有数据库事务处理业务一致性，避免再增加一套执行锁或协调服务；把观察、派发和执行分开，减小角色间的生命周期耦合。但四角色多副本不等于整个系统已经生产高可用，也不等于对外部副作用提供 exactly-once。
 
-本轮重点确认的风险：
+冻结基线确认的风险（D1–D5 的本 PR 处置见第 8 节）：
 
 - **应用级互斥失效窗口**：Redis 锁续期失败不会通知业务回调；同应用的不同任务可能绕开原本依赖该锁的串行约束。
 - **结果链路恢复缺口**：已入队的结果通知丢失后，现有 outbox 扫描没有补投递入口；结果消费者还存在先删除 Kubernetes 成功证据、后提交数据库结果的窗口。
 - **时钟来源不完全统一**：Workflow 执行租约使用数据库时间，但定时任务到期筛选和 Harbor 恢复的前置截止判断仍使用进程时间。
 - **容量需实测**：全局准入事务扫描、Runner 权威鉴权读取、每进程 informer、结果 chunk 事务和恢复批次，都会限制横向扩展收益。
 
-以上区分“静态确认的代码行为”“满足特定故障条件时的影响推演”“尚未测量的容量风险”。本次没有新增故障注入复现，也不把历史集群测试算作本基线验收。
+以上区分“静态确认的代码行为”“满足特定故障条件时的影响推演”“尚未测量的容量风险”。初次文档审查仅有静态证据；后续修复增加了第 8 节列出的回归与真实 MySQL 验证，仍不把历史集群测试算作本次验收。
 
 ### 1.1 覆盖程度
 
@@ -182,17 +182,17 @@ Chart 的[四角色配置][e23]默认 API/Controller/Scheduler/Worker 为 2/2/2/
 
 数据库迁移使用 MySQL 命名锁、完成 marker 和 schema 校验。Helm 首装由 API 初始化，升级使用 [pre-upgrade migration Job][e26]，常驻角色按模板选择 migrate/validate。升级迁移期间旧 Pod 可能继续运行，因此仍需兼容旧版本读写；一个 migration Job 不提供跨系统原子升级或任意回滚保证。
 
-## 5. 现存问题与最小优化
+## 5. 冻结基线的问题与最小优化
 
-优先级用于本次审核排序：P1 是明确故障条件下影响互斥、任务收敛或成功结果；P2 是时间语义等有界问题。以下条目均属于冻结 main 的现存行为，**本 PR 未修复**，没有把静态推演写成生产事故。
+优先级用于本次审核排序：P1 是明确故障条件下影响互斥、任务收敛或成功结果；P2 是时间语义等有界问题。以下正文保留冻结 main 的问题描述及原验收目标；本 PR 的修复状态列在表中并于第 8 节展开，没有把静态推演写成生产事故。
 
 | 编号 | 优先级/性质 | 触发与影响 | 处置状态 |
 | --- | --- | --- | --- |
-| D1 | P1，应用互斥 | 长临界区续租失败且锁到期，旧请求仍继续；同应用可能出现两条独立任务 | 建议优先复现并修复 |
-| D2 | P1，恢复完整性 | result 通知已入队后被裁剪/丢失，outbox 可停在 queued/processing_queue | 建议优先补恢复契约 |
-| D3 | P1，提交顺序 | 完成 Job 删除成功、DB 结果提交前故障，重试失去成功证据和日志 | 建议优先修正提交顺序 |
-| D4 | P2，定时语义 | Scheduler/Worker 时钟偏差，定时任务提前/延后，或过早放弃可恢复评测 | 建议统一判断时钟 |
-| D5 | 防御性契约缺口 | 非终态空 token 的底层 helper 允许无 fencing 持久化；正常 dispatch 有入口校验 | 调用点审计后收紧，未证明正常入口可绕过 |
+| D1 | P1，应用互斥 | 长临界区续租失败且锁到期，旧请求仍继续；同应用可能出现两条独立任务 | 已修复：续租失败取消 + app 行锁事务 |
+| D2 | P1，恢复完整性 | result 通知已入队后被裁剪/丢失，outbox 可停在 queued/processing_queue | 已修复：DB lease / claim token / 过期补投 |
+| D3 | P1，提交顺序 | 完成 Job 删除成功、DB 结果提交前故障，重试失去成功证据和日志 | 已修复：先提交结果与日志，再按 UID 重试清理 |
+| D4 | P2，定时语义 | Scheduler/Worker 时钟偏差，定时任务提前/延后，或过早放弃可恢复评测 | 已修复：到期与评测恢复直接链路使用 DB 时间 |
+| D5 | 防御性契约缺口 | 非终态空 token 的底层 helper 允许无 fencing 持久化；正常 dispatch 有入口校验 | 已收紧：非终态缺少身份即拒绝；终态仍校验父快照 |
 
 ### D1：应用锁续期失败没有传播到业务写入
 
@@ -202,7 +202,7 @@ Chart 的[四角色配置][e23]默认 API/Controller/Scheduler/Worker 为 2/2/2/
 
 最小方向：让续期失败明确取消并返回到操作方；同时在既有 app 记录或持久化业务条件上建立事务内的行锁/CAS，约束“检查 idle + 创建任务”。单独取消 context 只能缩短窗口，不能保证撤销已发出的外部请求。不需要再添加第三套分布式锁。
 
-验收：真实 MySQL + 可控 Redis 下暂停 A 于 idle 检查后，令续租失败并让 B 进入，恢复 A；验证同应用业务约束、不同幂等键、已成功提交重试，以及外部副作用失败收尾。本轮仅静态确认机制。
+验收：真实 MySQL + 可控 Redis 下暂停 A 于 idle 检查后，令续租失败并让 B 进入，恢复 A；验证同应用业务约束、不同幂等键、已成功提交重试，以及外部副作用失败收尾。原审核仅静态确认机制；新增复现与验证见第 8 节。
 
 ### D2：结果 outbox 的已入队状态缺少丢消息补偿
 
@@ -222,7 +222,7 @@ Chart 的[四角色配置][e23]默认 API/Controller/Scheduler/Worker 为 2/2/2/
 
 最小方向：先按执行身份持久化 terminal status 和日志，再做可重试清理；重放先识别已提交终态，补清理即可。保留幂等、旧 UID 拒绝和失败重试，避免为了清理而重跑成功工作。
 
-验收：在“删除成功/DB 写失败”与“DB 提交成功/清理失败”分别注入故障；检查终态和日志保留、ACK 时机、重复消息以及同名 Job 替换。本轮未新增这两类注入测试。
+验收：在“删除成功/DB 写失败”与“DB 提交成功/清理失败”分别注入故障；检查终态和日志保留、ACK 时机、重复消息以及同名 Job 替换。修复阶段已新增这两类注入测试，见第 8 节。
 
 ### D4：把 lease 的数据库时钟保证延伸到业务到期判断
 
@@ -264,7 +264,7 @@ Artifact 的 HTTP/gRPC 下载已经先落本地临时文件，再发送到网络
 
 ## 7. 故障场景与验收标准
 
-这些是后续隔离环境的验收项，不是本轮已执行结果。
+这张表是完整的隔离环境验收目标；本 PR 实际执行的子集见第 8 节，未执行项不视为通过。
 
 | 故障/交错 | 现有机制或缺口 | 应记录的可观察断言 |
 | --- | --- | --- |
@@ -282,29 +282,62 @@ Artifact 的 HTTP/gRPC 下载已经先落本地临时文件，再发送到网络
 
 每次验收应记录提交 SHA、部署配置、依赖版本、副本/并发量、故障起止、task/execution/UID 关联和实际耗时；不记录 run token、Runner token 或连接凭据。恢复时间至少分为：检测、ownership 回收、重派发、准入、资源重新关联、结果收敛。
 
-## 8. 本次验证与证据限制
+## 8. PR #139 修复处置与验证边界
 
-本 PR 仅更改本报告及 `docs/README.md` 索引。已在冻结源码上运行以下已有测试：
+本 PR 在同一审核分支修复 D1–D5，不新增协调服务，不改变四角色部署拓扑。上文固定 SHA 的链接继续用于解释原问题；以下相对链接指向包含修复的代码。
+
+### 8.1 已实施的行为
+
+| 编号 | 处置与理由 | 代码与回归入口 |
+| --- | --- | --- |
+| D1 | 应用锁每 40 秒续期，单次续期最多 5 秒；失败取消业务 context，并向调用者保留错误。手动执行、Cron、数据库重置、自动执行新版本都在既有 app 行上获取锁，以 READ COMMITTED 包住检查与提交，避免 Redis 租约失效后双提交。已完成提交遇到响应不确定时仍应按原幂等键重试 | [应用事务](../pkg/apiserver/domain/repository/application_scheduling.go)、[续租](../pkg/apiserver/domain/service/internal/schedulelock/app_schedule_lock.go)、[MySQL 并发回归](../pkg/apiserver/domain/service/workflow/workflow_scheduling_mysql_test.go) |
+| D2 | outbox 的 queued/processing 等状态也参加到期恢复；按租约到期优先扫描，DB 时间租约、独立处理 token 与 CAS 把通知丢失和仍存活的消费者区分开。消费中定期续租，失去身份后不能提交结果或删除 outbox；数据库保留的载荷可以重新投递 | [outbox 调度与租约](../pkg/apiserver/event/workflow/job/job_result_outbox.go)、[结果消费](../pkg/apiserver/event/workflow/job/job_result.go) |
+| D3 | 先按执行身份和结果 claim 在数据库提交终态与日志，再执行带 UID 约束的清理。DB 失败保留 Job/Pod；清理失败保留 outbox，重放识别已提交终态后只补清理。同名替换对象不能充当原结果的清理目标 | [结果处理](../pkg/apiserver/event/workflow/job/job_result.go)、[故障窗口回归](../pkg/apiserver/event/workflow/job/result_recovery_regression_test.go) |
+| D4 | WaitingTasks 由 DB 时间筛选到期任务；Harbor 恢复在 ownership 事务内用同一个 DB 时间样本判断执行期限和 checkpoint 资格；后续构建与 Job retry 检查点、退避也使用 DB 时间；恢复时换算成本机单调计时剩余预算，保留原绝对 deadline。数据库时钟不可用时停止推进，不用节点时间兜底 | [到期筛选](../pkg/apiserver/domain/repository/workflow.go)、[恢复](../pkg/apiserver/jobs/recovery.go)、[恢复任务构建](../pkg/apiserver/jobs/builder.go)、[时钟回归](../pkg/apiserver/jobs/recovery_clock_test.go)、[重试控制器](../pkg/apiserver/event/workflow/job/job_retry.go)、[节点偏差回归](../pkg/apiserver/event/workflow/job/deadline_recovery_test.go) |
+| D5 | 非终态写入必须提供 taskID、正代次、非空 token 和 worker，缺少任一项就拒绝执行持久化回调。Worker claim 前发生的 API 终态回调仍合法，但必须在事务内锁定包括空字段在内的完整父状态快照 | [ownership helper](../pkg/apiserver/domain/repository/workflow_lease.go)、[拒绝与终态回归](../pkg/apiserver/domain/repository/workflow_ownership_test.go) |
+
+D1 的行锁只串行化同一应用的提交，不改变允许登记多个未来定时任务的契约，也不能撤销已成功送达外部系统的请求。D5 同时更新了缺少身份的旧业务测试夹具，原有业务写入故障注入、清理与缓存断言继续保留。
+
+### 8.2 数据与升级
+
+`JobResultOutbox` 增加可空的 `lease_expires_at` 和记录清理对象的 `job_uid`，通过现有 schema migration/validate 流程增加列，无需新表或手工全表状态重置。`message_id` 在 queued 状态记录 broker ID，在 dispatching/processing 状态记录该次 claim token，外部消息载荷不增加字段。
+
+升级后首次遇到旧的空租约行，先用 DB 时间登记宽限期，不立即抢占；旧 processing 的宽限期包含完整 Job timeout、删除及保存余量。旧终态记录若没有已保存 UID，保留 Kubernetes 对象，避免将同名新对象误当作旧执行进行删除。混合版本窗口仍应遵守现有迁移流程；相关旧进程必须排空并升级后，才能完整依赖新协议。旧 API 不获取新的 app 行锁，旧结果消费者也不执行新 token/lease 校验，增加列与登记宽限不能为这些旧进程补上全部 D1–D5 防护。这不是任意版本回滚保证。已保存的旧 Deadline/RetryAt 原值保留，不追溯校正旧节点写入时的时钟偏差。
+
+### 8.3 回归证据
+
+修复先以回归复现旧行为，再验证新行为。使用 Go 1.27.1 和独立临时 GOCACHE，已完成：
+
+- 全仓 `go test -race -cover -p 2 ./...`：65 个测试包通过；可选 Docker Compose smoke（`ERUUN_TEST_LOCAL_DEPS=1`）未开启，未算外部依赖验收。复核后的结果恢复小修另重跑受影响 Job 包和故障窗口回归。
+- `go vet ./...`、`go build -trimpath -o <临时目录>/eruun-server ./cmd/main.go` 通过。
+- 独立 MySQL 8.4.11：应用并发提交（空、不同及相同幂等键）、合法未来定时任务、应用不存在；结果 claim 锁与迟到 owner、续期、事务回滚、旧空租约宽限后补投；原表加列及 schema 校验；既有并发 Job 准入和无 Worker 终态回调。
+- 本地故障注入：续租失败取消、结果通知丢失/重复、活跃处理保护、过期批次推进、结果保存/日志读取/清理失败、提交响应不确定、同名新 UID 保护、临时 K8s 读取失败及父 context 取消、节点 ±24h 偏差与 deadline 边界、缺失执行身份拒绝。
+- 文档本地链接、代码围栏及 47 处冻结 SHA 源码行号、`gofmt`、`git diff --check` 通过。
+
+真实 MySQL 测试通过 `MYSQL_TEST_DSN` 指向各自独占的临时库；不连接开发/生产数据，也不在文档或日志记录凭据。可选用以下命令复跑相应组（须先按测试要求提供独占测试库，分组不共享并发 schema）：
 
 ```bash
-go test -race ./pkg/apiserver ./pkg/apiserver/domain/repository \
-  ./pkg/apiserver/infrastructure/messaging \
-  -run 'Test(BuildRuntimeLeader|RuntimeLeader|RuntimeReady|StartRuntimeLeader|RunRuntimeLeader|WithWorkflowTaskOwnership|RedisStreams|KafkaQueue)' -count=1
-
-go test -race ./pkg/apiserver/event/workflow/job \
-  ./pkg/apiserver/domain/service/internal/schedulelock \
-  -run 'Test(ResultOutboxDispatcher|DelayDispatcherRecoversDueCheckpointWithoutQueue|DelayDispatcherDropsStaleWorkflowOwnership|WithAppScheduleLock)' -count=1
+go test -race -tags=integration ./pkg/apiserver/domain/service/workflow \
+  -run TestWorkflowSubmissionMySQLSerializesAfterApplicationLockLoss -count=1
+go test -race -tags=integration ./pkg/apiserver/event/workflow/job \
+  -run TestResultRecoveryMySQL -count=1
+go test -race -tags=integration ./pkg/apiserver/infrastructure/datastore/mysql \
+  -run TestResultOutboxSchemaMigrationIntegration -count=1
+go test -race -tags=integration ./pkg/apiserver/domain/repository \
+  -run 'TestJobSchedulerMySQL(TerminalCallbacksWithoutWorker|ConcurrentAdmission)$' -count=1
 ```
 
-两组命令覆盖的 5 个包均通过；使用 Go 1.27.1 和独立临时 GOCACHE。上述命令只选择已有测试，不是全量运行时回归，也不证明 D1–D4 已有故障注入覆盖。D5 的旧测试通过恰好表明空身份分支仍被接受，不是安全结论。
+D1 的数据库并发测试使用失效锁的可控替身，续租取消另外由虚拟时间测试验证；它不等同于真实 Redis 主从切换。测试早期因沙箱禁止临时监听端口中断的命令未算通过，最终全仓在允许临时端口的环境运行。
 
-仓库还包含 Workflow ACK/lease、MySQL 并发准入、Runner claim、checkpoint/recovery、结果交付和导入协调测试。本轮没有运行带真实外部依赖的 integration 套件：MySQL/Redis/Kafka/MinIO、Kubernetes 多节点故障以及 ACS 快照/恢复均未验收。只编译或因缺少环境变量跳过的测试不能算外部系统通过。
+### 8.4 未验证的边界
 
-交付时另检查 Markdown 引用的本地文件及固定 SHA/行号、文档状态与索引一致、敏感内容和 `git diff --check`。后续源码修复应更新本报告的处置状态，或另存新基线审查，避免把建议误读成已经实现。
+本地故障注入与数据库并发测试不等于真实多节点验收。尚未执行真实 Redis/Kafka 裁剪与故障切换、Kubernetes 多节点 Leader 交接、生产 MySQL HA、MinIO 或 ACS 快照/恢复演练。MySQL 测试引擎为临时独立实例 8.4.11，与 Chart 内置默认镜像 8.0.37 不同，不能替代目标环境验收。
+
+容量表与第 7 节未执行的故障矩阵继续作为后续测量任务；没有把全部本地业务计时、Python Runner 时钟或其他服务的时钟同步宣称为本 PR 已解决。
 
 ## 9. 固定基线的源码索引
 
-下列链接固定在本报告的 main 基线；正文引用它们说明当前机制或风险，不引用浮动分支作为证据。
+下列链接固定在本报告的 main 基线；第 2–7 节引用它们说明冻结版本机制或风险，不引用浮动分支作为证据。
 
 1. [角色与依赖装配][e01] — `pkg/apiserver/server_assembly.go`。
 2. [角色 readiness][e02] — `pkg/apiserver/interfaces/api/health.go`。

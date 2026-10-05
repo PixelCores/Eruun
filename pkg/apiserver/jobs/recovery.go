@@ -123,10 +123,11 @@ func (s *Service) RecoverEvaluation(ctx context.Context, task *model.JobTask) (b
 	if err != nil {
 		return false, err
 	}
-	if state == nil || state.Terminal != nil || info.RecoveryIndex >= maxEvaluationRecoveries || deadline <= time.Now().Add(spec.EvaluationCollectionGraceSeconds*time.Second).UnixNano() {
+	if state == nil || state.Terminal != nil || info.RecoveryIndex >= maxEvaluationRecoveries {
 		return false, s.releaseRecoveryReference(ctx, task)
 	}
 	var next *model.JobInfo
+	deadlineElapsed := false
 	err = recoveryOwnership(ctx, s.Store, task, func(tx artifacts.Backend) error {
 		old := &model.JobInfo{ID: source.ID}
 		if err := tx.GetForUpdate(ctx, old); err != nil {
@@ -138,7 +139,15 @@ func (s *Service) RecoverEvaluation(ctx context.Context, task *model.JobTask) (b
 
 		now, err := tx.CurrentDatabaseTime(ctx)
 		if err != nil {
-			return err
+			return fmt.Errorf("query evaluation recovery database clock: %w", err)
+		}
+		if now.IsZero() {
+			return fmt.Errorf("query evaluation recovery database clock: zero timestamp")
+		}
+		// Use the same authoritative sample for the execution and its source point.
+		if !now.Add(spec.EvaluationCollectionGraceSeconds * time.Second).Before(time.Unix(0, deadline)) {
+			deadlineElapsed = true
+			return nil
 		}
 		rows, err := tx.List(ctx, &model.JobCheckpoint{WorkspaceID: task.WorkspaceID, TaskID: task.TaskID, ExecutionKey: task.ExecutionKey, State: "ready"}, &datastore.ListOptions{SortBy: []datastore.SortOption{{Key: "create_time", Order: datastore.SortOrderDescending}}, Page: 1, PageSize: 3})
 		if err != nil {
@@ -217,8 +226,14 @@ func (s *Service) RecoverEvaluation(ctx context.Context, task *model.JobTask) (b
 		point.ReferencedByExecutionKey = nextKey
 		return tx.Put(ctx, point)
 	})
-	if err != nil || next == nil {
+	if err != nil {
 		return false, err
+	}
+	if deadlineElapsed {
+		return false, s.releaseRecoveryReference(ctx, task)
+	}
+	if next == nil {
+		return false, nil
 	}
 	task.ExecutionKey, task.EvaluationInfo = *next.ExecutionKey, next.EvaluationInfo
 	task.InternalInfo, task.Info, task.Error = "", "", ""

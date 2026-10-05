@@ -75,10 +75,6 @@ func (c *applicationsServiceImpl) resetApplicationDatabasesUnlocked(ctx context.
 	if err != nil {
 		return nil, err
 	}
-	txStore, ok := c.Store.(datastore.Transactional)
-	if !ok {
-		return nil, fmt.Errorf("%w: database reset requires transactional datastore", bcode.ErrExecWorkflow)
-	}
 	var (
 		workflow *model.Workflow
 		task     *model.WorkflowQueue
@@ -95,7 +91,7 @@ func (c *applicationsServiceImpl) resetApplicationDatabasesUnlocked(ctx context.
 			bcode.ErrApplicationManagementMode, lockedApp.EffectiveManagementMode())
 	}
 	app = lockedApp
-	err = txStore.WithTransaction(ctx, func(tx datastore.DataStore) error {
+	err = repository.WithApplicationSchedulingTransaction(ctx, c.Store, app.ID, func(tx datastore.DataStore) error {
 		if err := EnsureAppWorkflowIdle(ctx, tx, app.ID); err != nil {
 			return err
 		}

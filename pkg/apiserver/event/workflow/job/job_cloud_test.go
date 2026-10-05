@@ -70,12 +70,13 @@ func TestCloudJobCtlRunInjectsDataStoreIntoProviderContext(t *testing.T) {
 			Action:   "create",
 		},
 	}
-	ctl := NewCloudJobCtl(task, store)
+	ownedStore := withJobTestOwner(store, task)
+	ctl := NewCloudJobCtl(task, ownedStore)
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
 	require.NoError(t, err)
-	require.Same(t, store, wfcloudcontract.DataStoreFromContext(provider.ctx))
+	require.Same(t, ownedStore, wfcloudcontract.DataStoreFromContext(provider.ctx))
 }
 
 func (f *fakeCloudProvider) ResolveAction(action string) (CloudAction, bool) {
@@ -345,7 +346,7 @@ func TestCloudJobCtlRunProviderNotRegistered(t *testing.T) {
 			Action:   "create",
 		},
 	}
-	ctl := NewCloudJobCtl(task, &noopStore{})
+	ctl := NewCloudJobCtl(task, withJobTestOwner(&noopStore{}, task))
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -371,7 +372,7 @@ func TestCloudJobCtlRunAliyunUnknownActionReturnsNotRegistered(t *testing.T) {
 			Action:   "create-ecs",
 		},
 	}
-	ctl := NewCloudJobCtl(task, &noopStore{})
+	ctl := NewCloudJobCtl(task, withJobTestOwner(&noopStore{}, task))
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -427,7 +428,7 @@ func TestCloudJobCtlRunWithRegisteredProviderSuccess(t *testing.T) {
 			},
 		},
 	}
-	ctl := NewCloudJobCtl(task, &noopStore{})
+	ctl := NewCloudJobCtl(task, withJobTestOwner(&noopStore{}, task))
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -507,7 +508,8 @@ func TestCloudJobCtlRunKeepsRuntimeProviderSnapshotOutOfCheckpoints(t *testing.T
 			ExecutionKey: "step:0/component:0",
 		},
 	}
-	ctl := NewCloudJobCtl(task, store)
+	ownedStore := withJobTestOwner(store, task)
+	ctl := NewCloudJobCtl(task, ownedStore)
 	require.NotNil(t, ctl)
 	ctl.waitFunc = func(context.Context, time.Duration) error { return nil }
 
@@ -593,7 +595,7 @@ func TestCloudJobCtlRunProviderReturnsError(t *testing.T) {
 			Action:   "create",
 		},
 	}
-	ctl := NewCloudJobCtl(task, &noopStore{})
+	ctl := NewCloudJobCtl(task, withJobTestOwner(&noopStore{}, task))
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -632,7 +634,7 @@ func TestCloudJobCtlRunSDKReturnsError(t *testing.T) {
 			Action:   "create",
 		},
 	}
-	ctl := NewCloudJobCtl(task, &noopStore{})
+	ctl := NewCloudJobCtl(task, withJobTestOwner(&noopStore{}, task))
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -664,7 +666,7 @@ func TestCloudJobCtlRunActionNotRegistered(t *testing.T) {
 			Action:   "create",
 		},
 	}
-	ctl := NewCloudJobCtl(task, &noopStore{})
+	ctl := NewCloudJobCtl(task, withJobTestOwner(&noopStore{}, task))
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -700,7 +702,7 @@ func TestCloudJobCtlRunActionValidateError(t *testing.T) {
 			Action:   "create",
 		},
 	}
-	ctl := NewCloudJobCtl(task, &noopStore{})
+	ctl := NewCloudJobCtl(task, withJobTestOwner(&noopStore{}, task))
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -777,7 +779,7 @@ func TestCloudJobCtlRunMultiStepAction(t *testing.T) {
 			Action:   "provision",
 		},
 	}
-	ctl := NewCloudJobCtl(task, &noopStore{})
+	ctl := NewCloudJobCtl(task, withJobTestOwner(&noopStore{}, task))
 	require.NotNil(t, ctl)
 	ctl.waitFunc = func(_ context.Context, _ time.Duration) error { return nil }
 
@@ -831,7 +833,7 @@ func TestCloudJobCtlRunFailsToResumePersistedStateWithoutRuntimeProviderSnapshot
 			"step": "nas-ready",
 		}, config.StatusRunning, nil),
 	}
-	require.NoError(t, saveOrUpdateJobInfo(context.Background(), store, seedTask))
+	require.NoError(t, saveOrUpdateJobInfo(context.Background(), withJobTestOwner(store, seedTask), seedTask))
 
 	provider := &fakeCloudProvider{
 		name: "mock",
@@ -865,7 +867,8 @@ func TestCloudJobCtlRunFailsToResumePersistedStateWithoutRuntimeProviderSnapshot
 			},
 		},
 	}
-	ctl := NewCloudJobCtl(task, store)
+	ownedStore := withJobTestOwner(store, task)
+	ctl := NewCloudJobCtl(task, ownedStore)
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -917,7 +920,7 @@ func TestCloudJobCtlRunDoesNotReuseLegacyCheckpointWithoutExecutionKey(t *testin
 			},
 		}, nil, nil, config.StatusRunning, nil),
 	}
-	require.NoError(t, saveOrUpdateJobInfo(context.Background(), store, legacyTask))
+	require.NoError(t, saveOrUpdateJobInfo(context.Background(), withJobTestOwner(store, legacyTask), legacyTask))
 
 	provider := &fakeCloudProvider{
 		name: "mock",
@@ -959,7 +962,8 @@ func TestCloudJobCtlRunDoesNotReuseLegacyCheckpointWithoutExecutionKey(t *testin
 			ExecutionKey: "step:0/component:0",
 		},
 	}
-	ctl := NewCloudJobCtl(task, store)
+	ownedStore := withJobTestOwner(store, task)
+	ctl := NewCloudJobCtl(task, ownedStore)
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -1048,8 +1052,8 @@ func TestCloudJobCtlRunMatchesCheckpointByExecutionKey(t *testing.T) {
 			Params:   map[string]interface{}{"zone": "cn-shanghai-b"},
 		}, nil, nil, config.StatusRunning, nil),
 	}
-	require.NoError(t, saveOrUpdateJobInfo(context.Background(), store, firstTask))
-	require.NoError(t, saveOrUpdateJobInfo(context.Background(), store, secondTask))
+	require.NoError(t, saveOrUpdateJobInfo(context.Background(), withJobTestOwner(store, firstTask), firstTask))
+	require.NoError(t, saveOrUpdateJobInfo(context.Background(), withJobTestOwner(store, secondTask), secondTask))
 	require.Len(t, store.records, 2)
 
 	provider := &fakeCloudProvider{
@@ -1095,7 +1099,8 @@ func TestCloudJobCtlRunMatchesCheckpointByExecutionKey(t *testing.T) {
 			ExecutionKey: secondExecutionKey,
 		},
 	}
-	ctl := NewCloudJobCtl(task, store)
+	ownedStore := withJobTestOwner(store, task)
+	ctl := NewCloudJobCtl(task, ownedStore)
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -1146,7 +1151,7 @@ func TestCloudJobCtlRunInProgressWithoutRequeueDelay(t *testing.T) {
 			Action:   "provision",
 		},
 	}
-	ctl := NewCloudJobCtl(task, &noopStore{})
+	ctl := NewCloudJobCtl(task, withJobTestOwner(&noopStore{}, task))
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -1184,7 +1189,7 @@ func TestCloudJobCtlRunReturnsStatusTimeoutWhenActionTimesOut(t *testing.T) {
 			Action:   "provision",
 		},
 	}
-	ctl := NewCloudJobCtl(task, &noopStore{})
+	ctl := NewCloudJobCtl(task, withJobTestOwner(&noopStore{}, task))
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -1232,7 +1237,7 @@ func TestCloudJobCtlRunReturnsStatusTimeoutWhenWaitTimesOut(t *testing.T) {
 			Action:   "provision",
 		},
 	}
-	ctl := NewCloudJobCtl(task, &noopStore{})
+	ctl := NewCloudJobCtl(task, withJobTestOwner(&noopStore{}, task))
 	require.NotNil(t, ctl)
 	ctl.waitFunc = func(_ context.Context, _ time.Duration) error {
 		return context.DeadlineExceeded
@@ -1288,7 +1293,7 @@ func TestCloudJobCtlRunAppliesJobTimeoutContextToLoop(t *testing.T) {
 			Action:   "provision",
 		},
 	}
-	ctl := NewCloudJobCtl(task, &noopStore{})
+	ctl := NewCloudJobCtl(task, withJobTestOwner(&noopStore{}, task))
 	require.NotNil(t, ctl)
 	ctl.waitFunc = func(ctx context.Context, _ time.Duration) error {
 		if _, ok := ctx.Deadline(); !ok {

@@ -205,7 +205,7 @@ func TestProcessJobResultDeletesCompletedOwnedPods(t *testing.T) {
 		Type:   batchv1.JobComplete,
 		Status: corev1.ConditionTrue,
 	}}
-	ownedSucceeded := succeededPodForJob(liveJob, "result-job-owned", liveJob.UID)
+	ownedSucceeded := resultTestPod(liveJob)
 	client := fake.NewSimpleClientset(liveJob, ownedSucceeded)
 	payload := &JobResultPayload{
 		Name:           liveJob.Name,
@@ -294,7 +294,7 @@ func TestProcessJobResultKeepsCompletedStatusWhenJobCleanupFails(t *testing.T) {
 		Type:   batchv1.JobComplete,
 		Status: corev1.ConditionTrue,
 	}}
-	ownedSucceeded := succeededPodForJob(liveJob, "result-cleanup-failure-job-owned", liveJob.UID)
+	ownedSucceeded := resultTestPod(liveJob)
 	client := fake.NewSimpleClientset(liveJob, ownedSucceeded)
 	client.PrependReactor("delete", "jobs", func(k8stesting.Action) (bool, runtime.Object, error) {
 		return true, nil, errors.New("delete denied")
@@ -315,7 +315,7 @@ func TestProcessJobResultKeepsCompletedStatusWhenJobCleanupFails(t *testing.T) {
 	require.NoError(t, store.Add(ctx, jobInfo))
 
 	err := processJobResult(ctx, client, store, payload)
-	require.NoError(t, err)
+	require.ErrorContains(t, err, "delete denied")
 
 	_, err = client.BatchV1().Jobs(liveJob.Namespace).Get(ctx, liveJob.Name, metav1.GetOptions{})
 	require.NoError(t, err)
@@ -332,4 +332,29 @@ func podForJobWithPhase(jobObj *batchv1.Job, name string, ownerUID types.UID, ph
 	pod := succeededPodForJob(jobObj, name, ownerUID)
 	pod.Status.Phase = phase
 	return pod
+}
+
+func TestDeleteCompletedPodsForJobRetainsReplacementAfterList(t *testing.T) {
+	jobObj := jobForPodFallback("pod-name-reused", nil)
+	listed := succeededPodForJob(jobObj, "reused-pod", jobObj.UID)
+	listed.UID = "listed-pod-uid"
+	replacement := listed.DeepCopy()
+	replacement.UID = "replacement-pod-uid"
+	client := fake.NewSimpleClientset(replacement)
+	client.PrependReactor("list", "pods", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, &corev1.PodList{Items: []corev1.Pod{*listed}}, nil
+	})
+	client.PrependReactor("delete", "pods", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		options := action.(k8stesting.DeleteAction).GetDeleteOptions()
+		if options.Preconditions != nil && options.Preconditions.UID != nil && *options.Preconditions.UID == listed.UID {
+			return true, nil, k8serrors.NewConflict(schema.GroupResource{Resource: "pods"}, listed.Name, errors.New("UID precondition failed"))
+		}
+		return false, nil, nil
+	})
+	deleted, err := deleteCompletedPodsForJob(context.Background(), client, jobObj.Namespace, jobObj)
+	require.ErrorContains(t, err, "UID precondition failed")
+	require.Zero(t, deleted)
+	current, err := client.CoreV1().Pods(jobObj.Namespace).Get(context.Background(), replacement.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, replacement.UID, current.UID)
 }
