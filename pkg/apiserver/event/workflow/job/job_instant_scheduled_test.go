@@ -330,7 +330,6 @@ func TestExistingJobExecutionIdentityComparesGenerationsWithinOneTask(t *testing
 				store,
 				desired,
 				config.JobDeployInstant,
-				validateExistingJobExecutionIdentity(context.Background(), store, desired),
 			)
 
 			if tc.wantErr != nil {

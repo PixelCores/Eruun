@@ -199,7 +199,6 @@ func applyJobRunPolicy(
 	store datastore.DataStore,
 	jobObj *batchv1.Job,
 	jobType config.JobType,
-	validators ...func(*batchv1.Job) error,
 ) (runPolicyAction, error) {
 	if jobObj == nil {
 		return runPolicyActionCreate, fmt.Errorf("job is nil")
@@ -236,9 +235,6 @@ func applyJobRunPolicy(
 	}
 
 	validateExisting := validateExistingJobExecutionIdentity(ctx, store, jobObj)
-	if len(validators) > 0 && validators[0] != nil {
-		validateExisting = validators[0]
-	}
 	if err := validateExisting(existing); err != nil {
 		return runPolicyActionCreate, err
 	}
