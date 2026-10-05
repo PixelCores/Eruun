@@ -65,7 +65,6 @@ func appendSecretKeyCredential(credentials []apisv1.ComponentCredentialInfo, nam
 		return credentials
 	}
 	value, resolved := lookupSecretValue(secrets, namespace, secretName, key)
-	value, resolved = normalizeCredentialValue(value, resolved)
 	return append(credentials, apisv1.ComponentCredentialInfo{
 		Source:     source,
 		EnvName:    strings.TrimSpace(envName),
@@ -95,40 +94,22 @@ func appendWholeSecretCredentials(credentials []apisv1.ComponentCredentialInfo, 
 		return credentials
 	}
 	for _, key := range keys {
-		entry := values.entries[key]
-		value, resolved := normalizeCredentialValue(resolvedSecretValue(entry), entry.ready)
+		value := values[key]
 		credentials = append(credentials, apisv1.ComponentCredentialInfo{
 			Source:     source,
 			EnvName:    strings.TrimSpace(envName),
 			SecretName: secretName,
 			Key:        key,
 			Value:      value,
-			Resolved:   resolved,
+			Resolved:   value != "",
 		})
 	}
 	return credentials
 }
 
-func normalizeCredentialValue(value string, resolved bool) (string, bool) {
-	if !resolved || value == "" {
-		return "", false
-	}
-	return value, true
-}
-
 func lookupSecretValue(secrets componentSecretIndex, namespace, secretName, key string) (string, bool) {
-	if secrets == nil {
-		return "", false
-	}
-	values, ok := secrets[componentSecretKey(namespace, secretName)]
-	if !ok {
-		return "", false
-	}
-	entry, ok := values.entries[key]
-	if !ok || !entry.ready {
-		return "", false
-	}
-	return entry.value, true
+	value := secrets[componentSecretKey(namespace, secretName)][key]
+	return value, value != ""
 }
 
 func componentSecretKey(namespace, name string) string {
@@ -157,32 +138,14 @@ func copyStringMap(values map[string]string) map[string]string {
 	return copied
 }
 
-func buildComponentSecretValueEntries(component *model.ApplicationComponent, values map[string]string) map[string]componentSecretValue {
+func sortedSecretEntryKeys(values map[string]string) []string {
 	if len(values) == 0 {
 		return nil
 	}
-	entries := make(map[string]componentSecretValue, len(values))
-	for key, value := range values {
-		entries[key] = componentSecretValue{value: value, ready: true}
-	}
-	return entries
-}
-
-func sortedSecretEntryKeys(values componentSecretValues) []string {
-	if len(values.entries) == 0 {
-		return nil
-	}
-	keys := make([]string, 0, len(values.entries))
-	for key := range values.entries {
+	keys := make([]string, 0, len(values))
+	for key := range values {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 	return keys
-}
-
-func resolvedSecretValue(entry componentSecretValue) string {
-	if !entry.ready {
-		return ""
-	}
-	return entry.value
 }

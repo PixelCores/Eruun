@@ -77,16 +77,7 @@ func convertComponentModelToDTOBase(component *model.ApplicationComponent) (*api
 	return dto, nil
 }
 
-type componentSecretIndex map[string]componentSecretValues
-
-type componentSecretValues struct {
-	entries map[string]componentSecretValue
-}
-
-type componentSecretValue struct {
-	value string
-	ready bool
-}
+type componentSecretIndex map[string]map[string]string
 
 func enrichComponentResourceDetails(component *apisv1.ApplicationComponent, secrets componentSecretIndex) {
 	if component == nil {
@@ -116,9 +107,7 @@ func buildComponentSecretIndex(components []*model.ApplicationComponent) (compon
 		if err := decodeJSONStruct(component.Properties, &properties); err != nil {
 			return nil, fmt.Errorf("decode secret component %s properties: %w", component.Name, err)
 		}
-		secrets[key] = componentSecretValues{
-			entries: buildComponentSecretValueEntries(component, properties.Secret),
-		}
+		secrets[key] = properties.Secret
 	}
 	return secrets, nil
 }
