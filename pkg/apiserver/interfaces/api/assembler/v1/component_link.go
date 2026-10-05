@@ -4,9 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 func buildComponentExternalLinks(component *apisv1.ApplicationComponent) []apisv1.ExternalLink {
@@ -17,7 +16,7 @@ func buildComponentExternalLinks(component *apisv1.ApplicationComponent) []apisv
 	if len(ingressLinks) > 0 {
 		return ingressLinks
 	}
-	return buildServiceLinks(component)
+	return buildServiceLinks(component.Services)
 }
 
 func buildIngressLinks(component *apisv1.ApplicationComponent) []apisv1.ExternalLink {
@@ -48,27 +47,23 @@ func buildIngressLinks(component *apisv1.ApplicationComponent) []apisv1.External
 	return links
 }
 
-func buildServiceLinks(component *apisv1.ApplicationComponent) []apisv1.ExternalLink {
-	if !componentDeploysService(component) {
+func buildServiceLinks(services []apisv1.ComponentServiceInfo) []apisv1.ExternalLink {
+	if len(services) == 0 {
 		return nil
 	}
-	if len(component.Properties.Ports) == 0 {
-		return nil
-	}
-	namespace := strings.TrimSpace(component.Namespace)
-	if namespace == "" {
-		namespace = config.DefaultNamespace
-	}
-	serviceName := resolveServiceLinkName(component)
-	if serviceName == "" || namespace == "" {
-		return nil
-	}
-	ports := make([]string, 0, len(component.Properties.Ports))
-	seen := make(map[int32]struct{})
-	for _, port := range component.Properties.Ports {
-		if port.Port == 0 {
-			continue
+	service := services[0]
+	for _, candidate := range services {
+		if candidate.Type != string(spec.ServiceAccessExternal) {
+			service = candidate
+			break
 		}
+	}
+	if service.Name == "" || service.Namespace == "" {
+		return nil
+	}
+	ports := make([]string, 0, len(service.Ports))
+	seen := make(map[int32]struct{})
+	for _, port := range service.Ports {
 		if _, ok := seen[port.Port]; ok {
 			continue
 		}
@@ -81,36 +76,9 @@ func buildServiceLinks(component *apisv1.ApplicationComponent) []apisv1.External
 	return []apisv1.ExternalLink{
 		{
 			Type:  "svc",
-			Value: fmt.Sprintf("%s.%s.svc:%s", serviceName, namespace, strings.Join(ports, ",")),
+			Value: fmt.Sprintf("%s.%s.svc:%s", service.Name, service.Namespace, strings.Join(ports, ",")),
 		},
 	}
-}
-
-func resolveServiceLinkName(component *apisv1.ApplicationComponent) string {
-	if component == nil {
-		return ""
-	}
-
-	componentName := strings.TrimSpace(component.Name)
-	if componentName == "" {
-		return ""
-	}
-
-	defaultServiceName := componentName
-	if strings.TrimSpace(componentResourceAppName(component)) != "" {
-		defaultServiceName = naming.ServiceName(componentName, componentResourceAppName(component))
-	}
-
-	traitIndex, ok := selectServiceTraitForLink(component)
-	if !ok {
-		return defaultServiceName
-	}
-
-	explicitName := strings.TrimSpace(component.Traits.Service[traitIndex].Name)
-	if explicitName != "" {
-		return explicitName
-	}
-	return defaultServiceName
 }
 
 func componentResourceAppName(component *apisv1.ApplicationComponent) string {

@@ -74,7 +74,6 @@ func convertComponentModelToDTOBase(component *model.ApplicationComponent) (*api
 	if len(dto.Traits.Sidecar) > 0 {
 		dto.Sidecars = append(dto.Sidecars, dto.Traits.Sidecar...)
 	}
-	dto.ExternalLinks = buildComponentExternalLinks(dto)
 	return dto, nil
 }
 
@@ -95,6 +94,7 @@ func enrichComponentResourceDetails(component *apisv1.ApplicationComponent, secr
 	}
 	component.Services = buildComponentServices(component)
 	component.Ingresses = buildComponentIngresses(component)
+	component.ExternalLinks = buildComponentExternalLinks(component)
 	component.ResourceConfigs = buildComponentResourceConfigs(component)
 	component.Credentials = buildComponentCredentials(component, secrets)
 }
