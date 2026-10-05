@@ -20,6 +20,7 @@ var execComponentPodShellScript = kube.ExecPodShellScript
 var streamComponentPodShellScript = kube.StreamPodShellScript
 
 type componentPodTarget struct {
+	PodState      kube.ComponentLogPodState
 	Namespace     string
 	PodName       string
 	ContainerName string
@@ -221,6 +222,7 @@ func (c *applicationsServiceImpl) resolveComponentPodTarget(ctx context.Context,
 		return nil, unavailableErr
 	}
 	return &componentPodTarget{
+		PodState:      state,
 		Namespace:     namespace,
 		PodName:       pod.Name,
 		ContainerName: containerName,
