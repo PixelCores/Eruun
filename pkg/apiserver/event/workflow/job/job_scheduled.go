@@ -145,7 +145,7 @@ func (c *ScheduledJobCtl) runOneTimeJob(ctx context.Context, jobObj *batchv1.Job
 	if err := ensureCurrentJobWorkflowOwnership(ctx, c.store, c.job); err != nil {
 		return err
 	}
-	action, err := applyJobRunPolicy(ctx, c.client, c.store, jobObj, jobType, validateExistingJobExecutionIdentity(ctx, c.store, jobObj))
+	action, err := applyJobRunPolicy(ctx, c.client, c.store, jobObj, jobType)
 	if err != nil {
 		return err
 	}
