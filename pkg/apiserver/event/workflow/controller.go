@@ -1385,11 +1385,10 @@ func (w *WorkflowCtl) triggerWorkflowCallback(ctx context.Context, status config
 		klog.Errorf("decode workflow %s callback failed: %v", workflowID, err)
 		return
 	}
-	event, targetURL := callbackTargetForStatus(&callback, status)
+	event, targetURL, method := callback.TerminalTarget(status)
 	if targetURL == "" {
 		return
 	}
-	method := callbackMethodForEvent(&callback, event)
 	payload := job.CallbackPayload{
 		Event:        event,
 		Status:       string(status),
@@ -1565,44 +1564,6 @@ func decodeWorkflowCallback(raw *model.JSONStruct, target interface{}) error {
 		return err
 	}
 	return json.Unmarshal(data, target)
-}
-
-func callbackTargetForStatus(callback *model.WorkflowCallback, status config.Status) (string, string) {
-	if callback == nil {
-		return "", ""
-	}
-	switch status {
-	case config.StatusCompleted, config.StatusPassed:
-		return "success", strings.TrimSpace(callback.Success)
-	case config.StatusCancelled:
-		if callback.Cancelled != "" {
-			return "cancelled", strings.TrimSpace(callback.Cancelled)
-		}
-		return "failure", strings.TrimSpace(callback.Failure)
-	case config.StatusTimeout:
-		if callback.Timeout != "" {
-			return "timeout", strings.TrimSpace(callback.Timeout)
-		}
-		return "failure", strings.TrimSpace(callback.Failure)
-	case config.StatusReject:
-		if callback.Reject != "" {
-			return "reject", strings.TrimSpace(callback.Reject)
-		}
-		return "failure", strings.TrimSpace(callback.Failure)
-	default:
-		return "failure", strings.TrimSpace(callback.Failure)
-	}
-}
-
-func callbackMethodForEvent(callback *model.WorkflowCallback, event string) string {
-	if callback == nil || len(callback.Methods) == 0 || event == "" {
-		return ""
-	}
-	method, ok := callback.Methods[strings.ToLower(event)]
-	if !ok {
-		return ""
-	}
-	return strings.ToUpper(strings.TrimSpace(method))
 }
 
 func (w *WorkflowCtl) prepareWorkspace(ctx context.Context) (context.Context, error) {

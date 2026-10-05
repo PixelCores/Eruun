@@ -1,6 +1,8 @@
 package model
 
 import (
+	"strings"
+
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
@@ -64,6 +66,35 @@ type WorkflowCallback struct {
 	Methods        map[string]string `json:"methods,omitempty"`
 	Headers        map[string]string `json:"headers,omitempty"`
 	TimeoutSeconds int64             `json:"timeoutSeconds,omitempty"`
+}
+
+// TerminalTarget selects the event, URL and method for a terminal callback.
+// An empty URL means that no callback should be sent.
+func (c *WorkflowCallback) TerminalTarget(status config.Status) (event, url, method string) {
+	if c == nil {
+		return "", "", ""
+	}
+	event, url = "failure", c.Failure
+	switch status {
+	case config.StatusCompleted, config.StatusPassed:
+		event, url = "success", c.Success
+	case config.StatusCancelled:
+		if c.Cancelled != "" {
+			event, url = "cancelled", c.Cancelled
+		}
+	case config.StatusTimeout:
+		if c.Timeout != "" {
+			event, url = "timeout", c.Timeout
+		}
+	case config.StatusReject:
+		if c.Reject != "" {
+			event, url = "reject", c.Reject
+		}
+	case config.StatusFailed:
+	default:
+		return "", "", ""
+	}
+	return event, strings.TrimSpace(url), strings.ToUpper(strings.TrimSpace(c.Methods[event]))
 }
 
 // ComponentNames returns referenced component names for a workflow step.
