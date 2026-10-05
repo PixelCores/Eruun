@@ -4,13 +4,12 @@ import (
 	"fmt"
 
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	corev1 "k8s.io/api/core/v1"
 )
 
 // processEnvs implements the user-friendly `envs` trait. It translates a
 // simplified, source-based schema into native Kubernetes EnvVar entries.
-func processEnvs(ctx *TraitContext, simplifiedEnvs []spec.SimplifiedEnvSpec) (*TraitResult, error) {
+func processEnvs(simplifiedEnvs []spec.SimplifiedEnvSpec) (*TraitResult, error) {
 	var nativeEnvs []corev1.EnvVar
 	for _, envSpec := range simplifiedEnvs {
 		nativeEnv, err := translateToNativeEnvVar(envSpec)
@@ -20,18 +19,12 @@ func processEnvs(ctx *TraitContext, simplifiedEnvs []spec.SimplifiedEnvSpec) (*T
 		nativeEnvs = append(nativeEnvs, *nativeEnv)
 	}
 
-	// Use normalized component name to match the actual container name
-	normalizedName := utils.NormalizeLowerStrip(ctx.Component.Name)
-	return &TraitResult{
-		EnvVars: map[string][]corev1.EnvVar{
-			normalizedName: nativeEnvs,
-		},
-	}, nil
+	return &TraitResult{EnvVars: nativeEnvs}, nil
 }
 
 // processEnvFrom implements the `envFrom` trait for bulk importing env vars
 // from ConfigMaps or Secrets.
-func processEnvFrom(ctx *TraitContext, envFromTraits []spec.EnvFromSourceSpec) (*TraitResult, error) {
+func processEnvFrom(envFromTraits []spec.EnvFromSourceSpec) (*TraitResult, error) {
 	var envFromSources []corev1.EnvFromSource
 	for _, trait := range envFromTraits {
 		if trait.SourceName == "" {
@@ -55,13 +48,7 @@ func processEnvFrom(ctx *TraitContext, envFromTraits []spec.EnvFromSourceSpec) (
 		}
 	}
 
-	// Use normalized component name to match the actual container name
-	normalizedName := utils.NormalizeLowerStrip(ctx.Component.Name)
-	return &TraitResult{
-		EnvFromSources: map[string][]corev1.EnvFromSource{
-			normalizedName: envFromSources,
-		},
-	}, nil
+	return &TraitResult{EnvFromSources: envFromSources}, nil
 }
 
 // translateToNativeEnvVar converts one SimplifiedEnvSpec into a single EnvVar
