@@ -1119,7 +1119,7 @@ func TestStorageProcessor_RendersSubPathExpr(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	mounts := result.VolumeMounts["backend"]
+	mounts := result.VolumeMounts
 	require.Len(t, mounts, 1)
 	require.Equal(t, "/app/log", mounts[0].MountPath)
 	require.Empty(t, mounts[0].SubPath)
@@ -1170,7 +1170,7 @@ func TestStorageProcessor_StatefulSet_TmpCreate_VolumeNameMatch(t *testing.T) {
 		"PVC template 名称应该是 volumeName，以匹配 VolumeMount")
 
 	// 验证 VolumeMount 名称
-	mounts := result.VolumeMounts["mysql"]
+	mounts := result.VolumeMounts
 	require.Len(t, mounts, 1)
 	assert.Equal(t, "mysql-data", mounts[0].Name,
 		"VolumeMount 名称应该是 volumeName")
@@ -1234,7 +1234,7 @@ func TestStorageProcessor_MultiVolume_TmpCreate(t *testing.T) {
 	assert.True(t, pvcNames["pg-wal"], "应该有 pg-wal PVC template")
 
 	// 验证 VolumeMount 名称
-	mounts := result.VolumeMounts["postgres"]
+	mounts := result.VolumeMounts
 	require.Len(t, mounts, 3)
 	mountNames := make(map[string]bool)
 	for _, m := range mounts {
@@ -1308,26 +1308,14 @@ func TestStorageProcessor_MixedMode(t *testing.T) {
 
 // TestApplyStorageToStatefulSet 验证完整的 StatefulSet 处理流程
 func TestApplyStorageToStatefulSet(t *testing.T) {
-	// 模拟 StorageProcessor 的输出
-	result := &TraitResult{
-		Volumes: []corev1.Volume{
-			{
-				Name: "mysql-data",
-				VolumeSource: corev1.VolumeSource{
-					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-						ClaimName: "mysql-data",
-					},
-				},
-			},
+	storage := spec.StorageTraitSpec{Name: "mysql-data", Type: "persistent", MountPath: "/var/lib/mysql", TmpCreate: true, Size: "2Gi"}
+	component := &model.ApplicationComponent{Name: "mysql", Namespace: "default", Traits: toJSONStruct(spec.Traits{
+		Storage: []spec.StorageTraitSpec{
+			storage,
+			{Name: "config", Type: "persistent", ClaimName: "mysql-config", MountPath: "/etc/mysql", Size: "1Gi"},
 		},
-		VolumeMounts: map[string][]corev1.VolumeMount{
-			"mysql": {
-				{Name: "mysql-data", MountPath: "/var/lib/mysql"},
-			},
-		},
-	}
-
-	// 创建 StatefulSet workload
+		Init: []spec.InitTraitSpec{{Name: "prepare", Image: "busybox:1.37", Traits: spec.Traits{Storage: []spec.StorageTraitSpec{storage}}}},
+	})}
 	sts := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "mysql-test",
@@ -1344,58 +1332,27 @@ func TestApplyStorageToStatefulSet(t *testing.T) {
 		},
 	}
 
-	// 应用 volumes 到 StatefulSet
-	sts.Spec.Template.Spec.Volumes = result.Volumes
-
-	// 应用 volumeMounts 到容器
-	for i := range sts.Spec.Template.Spec.Containers {
-		container := &sts.Spec.Template.Spec.Containers[i]
-		if mounts, ok := result.VolumeMounts[container.Name]; ok {
-			container.VolumeMounts = append(container.VolumeMounts, mounts...)
-		}
-	}
-
-	// 模拟 processor.go 将 PVC 转换为 volumeClaimTemplates
-	templatePVC := corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "mysql-data", // 使用 volumeName，不是 pvcName
-		},
-		Spec: corev1.PersistentVolumeClaimSpec{
-			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-		},
-	}
-	sts.Spec.VolumeClaimTemplates = append(sts.Spec.VolumeClaimTemplates, templatePVC)
-
-	// 移除对应的 volume（StatefulSet 会自动创建）
-	var filteredVolumes []corev1.Volume
-	for _, vol := range sts.Spec.Template.Spec.Volumes {
-		if vol.PersistentVolumeClaim != nil && vol.PersistentVolumeClaim.ClaimName == "mysql-data" {
-			continue // 移除
-		}
-		filteredVolumes = append(filteredVolumes, vol)
-	}
-	sts.Spec.Template.Spec.Volumes = filteredVolumes
-
-	// 验证最终结果
-	require.Len(t, sts.Spec.VolumeClaimTemplates, 1,
-		"应该有一个 volumeClaimTemplate")
-	assert.Equal(t, "mysql-data", sts.Spec.VolumeClaimTemplates[0].Name,
-		"volumeClaimTemplate 名称应该与 VolumeMount 名称一致")
-
-	// 验证 Volume 被正确移除
-	assert.Len(t, sts.Spec.Template.Spec.Volumes, 0,
-		"显式 Volume 应该被移除，StatefulSet 会自动创建")
-
-	// 验证 VolumeMount 仍然存在且名称正确
-	require.Len(t, sts.Spec.Template.Spec.Containers[0].VolumeMounts, 1)
-	assert.Equal(t, "mysql-data", sts.Spec.Template.Spec.Containers[0].VolumeMounts[0].Name,
-		"VolumeMount.Name 应该与 volumeClaimTemplate.Name 一致")
-
-	// 核心验证：VolumeMount.Name == volumeClaimTemplate.Name
-	assert.Equal(t,
-		sts.Spec.Template.Spec.Containers[0].VolumeMounts[0].Name,
-		sts.Spec.VolumeClaimTemplates[0].Name,
-		"VolumeMount.Name 必须等于 volumeClaimTemplate.Name，否则 Pod 会创建失败")
+	objects, err := ApplyTraits(component, sts)
+	require.NoError(t, err)
+	require.Len(t, sts.Spec.VolumeClaimTemplates, 1)
+	template := sts.Spec.VolumeClaimTemplates[0]
+	require.Equal(t, "mysql-data", template.Name)
+	require.Empty(t, template.Namespace)
+	require.Equal(t, resource.MustParse("2Gi"), template.Spec.Resources.Requests[corev1.ResourceStorage])
+	require.Equal(t, []corev1.Volume{{Name: "config", VolumeSource: corev1.VolumeSource{
+		PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: "mysql-config"},
+	}}}, sts.Spec.Template.Spec.Volumes, "only the template volume should be removed")
+	require.Equal(t, []corev1.VolumeMount{
+		{Name: template.Name, MountPath: "/var/lib/mysql"},
+		{Name: "config", MountPath: "/etc/mysql"},
+	}, sts.Spec.Template.Spec.Containers[0].VolumeMounts)
+	require.Len(t, sts.Spec.Template.Spec.InitContainers, 1)
+	require.Equal(t, []corev1.VolumeMount{{Name: template.Name, MountPath: "/var/lib/mysql"}}, sts.Spec.Template.Spec.InitContainers[0].VolumeMounts)
+	require.Len(t, objects, 1)
+	pvc, ok := objects[0].(*corev1.PersistentVolumeClaim)
+	require.True(t, ok)
+	require.Equal(t, "mysql-config", pvc.Name)
+	require.Equal(t, "default", pvc.Namespace)
 }
 
 const userInputJSON = `

@@ -39,16 +39,16 @@ type TraitResult struct {
 	Containers        []corev1.Container
 	Volumes           []corev1.Volume
 	NodeSelector      map[string]string
-	VolumeMounts      map[string][]corev1.VolumeMount   // Keyed by container name
-	EnvVars           map[string][]corev1.EnvVar        // Keyed by container name
-	EnvFromSources    map[string][]corev1.EnvFromSource // Keyed by container name
 	AdditionalObjects []client.Object
 
 	// Service account binding
 	ServiceAccountName           string
 	AutomountServiceAccountToken *bool
 
-	// Container-level modifications
+	// Container-level modifications target the current recursion's container.
+	VolumeMounts         []corev1.VolumeMount
+	EnvVars              []corev1.EnvVar
+	EnvFromSources       []corev1.EnvFromSource
 	LivenessProbe        *corev1.Probe
 	ReadinessProbe       *corev1.Probe
 	StartupProbe         *corev1.Probe
@@ -119,12 +119,12 @@ func applyTraitsRecursive(ctx *TraitContext, traits *spec.Traits, nested bool) (
 		}
 	}
 	if len(traits.EnvFrom) > 0 {
-		if err := collect(processEnvFrom(ctx, traits.EnvFrom)); err != nil {
+		if err := collect(processEnvFrom(traits.EnvFrom)); err != nil {
 			return nil, fmt.Errorf("failed to process trait 'envFrom': %w", err)
 		}
 	}
 	if len(traits.Envs) > 0 {
-		if err := collect(processEnvs(ctx, traits.Envs)); err != nil {
+		if err := collect(processEnvs(traits.Envs)); err != nil {
 			return nil, fmt.Errorf("failed to process trait 'envs': %w", err)
 		}
 	}
@@ -177,18 +177,14 @@ func applyTraitsRecursive(ctx *TraitContext, traits *spec.Traits, nested bool) (
 }
 
 // aggregateTraitResults merges multiple TraitResults into one, de-duplicating
-// volumes/objects and concatenating per-container mounts/envs. For singleton
+// volumes/objects and concatenating the current container's mounts/envs. For singleton
 // fields (probes/resources) the last non-nil value wins by design.
 func aggregateTraitResults(results []*TraitResult) (*TraitResult, error) {
-	finalResult := &TraitResult{
-		VolumeMounts:   make(map[string][]corev1.VolumeMount),
-		EnvVars:        make(map[string][]corev1.EnvVar),
-		EnvFromSources: make(map[string][]corev1.EnvFromSource),
-	}
+	finalResult := &TraitResult{}
 	// Use maps to track the names of added volumes and objects to prevent duplicates.
 	volumeNameSet := make(map[string]bool)
 	objectsByIdentity := make(map[string]client.Object)
-	volumeMountSet := make(map[string]map[string]bool) // containerName -> mountPath -> exists
+	volumeMountSet := make(map[string]bool)
 
 	for _, traitResult := range results {
 		finalResult.InitContainers = append(finalResult.InitContainers, traitResult.InitContainers...)
@@ -223,28 +219,15 @@ func aggregateTraitResults(results []*TraitResult) (*TraitResult, error) {
 			}
 		}
 
-		// Merge and de-duplicate VolumeMounts by container name and mount path.
-		for containerName, mounts := range traitResult.VolumeMounts {
-			if _, ok := volumeMountSet[containerName]; !ok {
-				volumeMountSet[containerName] = make(map[string]bool)
-			}
-			for _, mount := range mounts {
-				if !volumeMountSet[containerName][mount.MountPath] {
-					finalResult.VolumeMounts[containerName] = append(finalResult.VolumeMounts[containerName], mount)
-					volumeMountSet[containerName][mount.MountPath] = true
-				}
+		// Each recursion targets one container, so mount paths are local to it.
+		for _, mount := range traitResult.VolumeMounts {
+			if !volumeMountSet[mount.MountPath] {
+				finalResult.VolumeMounts = append(finalResult.VolumeMounts, mount)
+				volumeMountSet[mount.MountPath] = true
 			}
 		}
-
-		// Merge EnvVars by container name.
-		for containerName, envs := range traitResult.EnvVars {
-			finalResult.EnvVars[containerName] = append(finalResult.EnvVars[containerName], envs...)
-		}
-
-		// Merge EnvFromSources by container name.
-		for containerName, envs := range traitResult.EnvFromSources {
-			finalResult.EnvFromSources[containerName] = append(finalResult.EnvFromSources[containerName], envs...)
-		}
+		finalResult.EnvVars = append(finalResult.EnvVars, traitResult.EnvVars...)
+		finalResult.EnvFromSources = append(finalResult.EnvFromSources, traitResult.EnvFromSources...)
 
 		if len(traitResult.NodeSelector) > 0 {
 			if finalResult.NodeSelector == nil {
@@ -343,18 +326,16 @@ func applyTraitResultToWorkload(result *TraitResult, workload runtime.Object, ma
 		}
 	}
 
-	// TmpCreate a map of all containers (main, init, sidecar) for easy lookup.
-	containerMap := make(map[string]*corev1.Container)
-	for i := range podTemplate.Spec.Containers {
-		containerMap[podTemplate.Spec.Containers[i].Name] = &podTemplate.Spec.Containers[i]
+	var mainContainer *corev1.Container
+	for _, containers := range [][]corev1.Container{podTemplate.Spec.Containers, podTemplate.Spec.InitContainers} {
+		for i := range containers {
+			if containers[i].Name == mainContainerName {
+				mainContainer = &containers[i]
+				break
+			}
+		}
 	}
-	for i := range podTemplate.Spec.InitContainers {
-		containerMap[podTemplate.Spec.InitContainers[i].Name] = &podTemplate.Spec.InitContainers[i]
-	}
-
-	// Apply Probes to the main container
-	mainContainer, ok := containerMap[mainContainerName]
-	if !ok {
+	if mainContainer == nil {
 		return fmt.Errorf("main container %s not found in workload", mainContainerName)
 	}
 	// Apply Resources to the main container
@@ -374,32 +355,9 @@ func applyTraitResultToWorkload(result *TraitResult, workload runtime.Object, ma
 		mainContainer.StartupProbe = result.StartupProbe
 	}
 
-	// Apply VolumeMounts to the correct containers.
-	for containerName, mounts := range result.VolumeMounts {
-		if container, ok := containerMap[containerName]; ok {
-			container.VolumeMounts = append(container.VolumeMounts, mounts...)
-		} else {
-			klog.Warningf("Could not find container '%s' to apply volume mounts.", containerName)
-		}
-	}
-
-	// Apply EnvVars to the correct containers.
-	for containerName, envs := range result.EnvVars {
-		if container, ok := containerMap[containerName]; ok {
-			container.Env = append(container.Env, envs...)
-		} else {
-			klog.Warningf("Could not find container '%s' to apply env vars.", containerName)
-		}
-	}
-
-	// Apply EnvFromSources to the correct containers.
-	for containerName, envs := range result.EnvFromSources {
-		if container, ok := containerMap[containerName]; ok {
-			container.EnvFrom = append(container.EnvFrom, envs...)
-		} else {
-			klog.Warningf("Could not find container '%s' to apply env from sources.", containerName)
-		}
-	}
+	mainContainer.VolumeMounts = append(mainContainer.VolumeMounts, result.VolumeMounts...)
+	mainContainer.Env = append(mainContainer.Env, result.EnvVars...)
+	mainContainer.EnvFrom = append(mainContainer.EnvFrom, result.EnvFromSources...)
 
 	return applyVolumeClaimTemplates(result, workload, podTemplate, mainContainerName)
 }

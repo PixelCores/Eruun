@@ -142,17 +142,9 @@ func processStorage(ctx *TraitContext, storageTraits []spec.StorageTraitSpec) (*
 		additionalObjects = append(additionalObjects, &pvcs[i])
 	}
 
-	// The container name is not known here. The aggregator will place the mounts.
-	// We use the normalized component name as the key to match the actual container name.
-	volumeMountMap := make(map[string][]corev1.VolumeMount)
-	if len(volumeMounts) > 0 {
-		normalizedName := utils.NormalizeLowerStrip(ctx.Component.Name)
-		volumeMountMap[normalizedName] = volumeMounts
-	}
-
 	return &TraitResult{
 		Volumes:           volumes,
-		VolumeMounts:      volumeMountMap,
+		VolumeMounts:      volumeMounts,
 		AdditionalObjects: additionalObjects,
 	}, nil
 }

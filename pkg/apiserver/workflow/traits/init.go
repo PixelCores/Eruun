@@ -17,10 +17,7 @@ import (
 // to them (e.g., storage/env/probes/resources), excluding further init recursion.
 func processInit(ctx *TraitContext, initTraits []spec.InitTraitSpec) (*TraitResult, error) {
 	// This is the final result that will be returned, aggregating all outcomes.
-	finalResult := &TraitResult{
-		VolumeMounts:   make(map[string][]corev1.VolumeMount),
-		EnvFromSources: make(map[string][]corev1.EnvFromSource),
-	}
+	finalResult := &TraitResult{}
 
 	for index, initTrait := range initTraits {
 		if initTrait.Image == "" {
@@ -48,30 +45,15 @@ func processInit(ctx *TraitContext, initTraits []spec.InitTraitSpec) (*TraitResu
 			return nil, fmt.Errorf("failed to process nested traits for init container %s: %w", initContainerName, err)
 		}
 
-		// The init container itself gets the volume mounts from its nested traits.
-		var volumeMounts []corev1.VolumeMount
-		for _, mounts := range nestedResult.VolumeMounts {
-			volumeMounts = append(volumeMounts, mounts...)
-		}
-
-		// The init container also gets the EnvFrom sources from its nested traits.
-		var envFromSources []corev1.EnvFromSource
-		for _, envFromBatch := range nestedResult.EnvFromSources {
-			envFromSources = append(envFromSources, envFromBatch...)
-		}
-
-		// The init container also gets the Env vars from its nested traits.
-		for _, envVarsBatch := range nestedResult.EnvVars {
-			envVars = append(envVars, envVarsBatch...)
-		}
+		envVars = append(envVars, nestedResult.EnvVars...)
 
 		initContainer := corev1.Container{
 			Name:            initContainerName,
 			Image:           initTrait.Image,
 			Command:         initTrait.Properties.Command,
 			Env:             envVars, // Now contains envs from both properties and traits
-			EnvFrom:         envFromSources,
-			VolumeMounts:    volumeMounts,
+			EnvFrom:         nestedResult.EnvFromSources,
+			VolumeMounts:    nestedResult.VolumeMounts,
 			ImagePullPolicy: workflowconfig.DefaultWorkflowImagePullPolicy,
 		}
 
