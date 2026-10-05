@@ -1,14 +1,11 @@
 package artifacts
 
 import (
-	"archive/tar"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -23,42 +20,12 @@ func (s *Store) PutCheckpoint(ctx context.Context, workspaceID, taskID, executio
 	if err := requireWorkspace(workspaceID); err != nil {
 		return err
 	}
-	a, err := readArchive(ctx, input, false)
+	a, err := readArchive(ctx, input, KindCheckpoint)
 	if err != nil {
 		return err
 	}
 	defer a.close()
-	gz, err := gzip.NewReader(a.file)
-	if err != nil {
-		return fmt.Errorf("read checkpoint material: %w", err)
-	}
-	tr := tar.NewReader(gz)
-	var manifest json.RawMessage
-	for {
-		h, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			_ = gz.Close()
-			return fmt.Errorf("read checkpoint material: %w", err)
-		}
-		if strings.TrimPrefix(h.Name, "./") != "checkpoint.json" {
-			continue
-		}
-		if (h.Typeflag != tar.TypeReg && h.Typeflag != tar.TypeRegA) || h.Size > metadataLimit {
-			_ = gz.Close()
-			return fmt.Errorf("%w: invalid checkpoint.json", ErrInvalidArchive)
-		}
-		manifest, err = io.ReadAll(tr)
-		if err != nil {
-			_ = gz.Close()
-			return err
-		}
-	}
-	if err := gz.Close(); err != nil {
-		return err
-	}
+	manifest := a.checkpointManifest
 	if !json.Valid(manifest) {
 		return fmt.Errorf("%w: missing checkpoint.json", ErrInvalidArchive)
 	}
@@ -87,9 +54,6 @@ func (s *Store) PutCheckpoint(ctx context.Context, workspaceID, taskID, executio
 		if !ok || value.Size != entry.Size || value.Digest != entry.Digest || entry.LinkTarget != "" {
 			return fmt.Errorf("%w: checkpoint file digest mismatch", ErrInvalidArchive)
 		}
-	}
-	if _, err := a.file.Seek(0, io.SeekStart); err != nil {
-		return err
 	}
 	artifact := &model.JobArtifact{ID: stableID(KindCheckpoint, workspaceID, executionKey, id), WorkspaceID: workspaceID, TaskID: taskID, ExecutionKey: executionKey, Kind: KindCheckpoint, Name: "checkpoint.tar.gz", Digest: a.digest, Size: a.size, Manifest: a.manifest}
 	return WithTransaction(ctx, s.db, func(tx Backend) error {

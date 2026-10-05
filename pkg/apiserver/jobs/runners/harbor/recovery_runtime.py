@@ -7,6 +7,7 @@ Harbor's stock reconciliation, which deletes/reruns incomplete trial folders.
 import asyncio
 from contextlib import closing
 from datetime import datetime, timezone
+import gzip
 import hashlib
 import http.client
 import io
@@ -25,6 +26,7 @@ from runner import (EVENT_ATTEMPT_SECONDS, FRAMEWORK_VERSION, MAX_FILES, MAX_EVE
 
 AGENT_VERSIONS = {"codex": "0.154.0", "claude-code": "2.1.281"}
 MAX_CHECKPOINT_BYTES = 64 * 1024 * 1024
+# Complete uncompressed tar stream, including manifest, headers and padding.
 MAX_CHECKPOINT_EXPANDED_BYTES = 256 * 1024 * 1024
 MAX_CHECKPOINT_MANIFEST = 1024 * 1024
 RESUME_PROMPT = "Continue the original task from the saved session. An interrupted tool operation may be replayed; the task explicitly permits replay."
@@ -191,22 +193,45 @@ def validate_manifest(manifest, config):
     return manifest
 
 
+class _CheckpointReader:
+    """Bound every decompressed read, including tar/PAX headers and padding."""
+
+    def __init__(self, source):
+        self.source = source
+        self.remaining = MAX_CHECKPOINT_EXPANDED_BYTES
+
+    def read(self, size=-1):
+        size = self.remaining + 1 if size < 0 else min(size, self.remaining + 1)
+        raw = self.source.read(size)
+        self.remaining -= len(raw)
+        if self.remaining < 0:
+            raise RunnerError("checkpoint exceeds expanded size limit")
+        return raw
+
+
 def load_bundle(path, destination, config):
     """Validate every byte before material becomes an executable recovery plan."""
-    seen, contents, total = set(), {}, 0
-    with tarfile.open(path, "r:gz") as archive:
-        for index, member in enumerate(archive):
-            safe_path(member.name)
-            if index >= MAX_FILES or not member.isfile() or member.name in seen:
-                raise RunnerError("checkpoint contains duplicate or unsupported entries")
-            seen.add(member.name)
-            total += member.size
-            if member.size < 0 or total > MAX_CHECKPOINT_EXPANDED_BYTES:
-                raise RunnerError("checkpoint exceeds expanded size limit")
-            if member.name == "checkpoint.json" and member.size > MAX_CHECKPOINT_MANIFEST:
-                raise RunnerError("checkpoint manifest exceeds size limit")
-            with archive.extractfile(member) as source:
-                contents[member.name] = source.read()
+    if path.stat().st_size > MAX_CHECKPOINT_BYTES:
+        raise RunnerError("checkpoint material exceeds compressed size limit")
+    seen, contents = set(), {}
+    with gzip.open(path, "rb") as expanded:
+        with tarfile.open(fileobj=_CheckpointReader(expanded), mode="r|") as archive:
+            for index, member in enumerate(archive):
+                safe_path(member.name)
+                if index >= MAX_FILES or not member.isfile() or member.name in seen:
+                    raise RunnerError("checkpoint contains duplicate or unsupported entries")
+                seen.add(member.name)
+                if member.size < 0 or member.offset_data + member.size > MAX_CHECKPOINT_EXPANDED_BYTES:
+                    raise RunnerError("checkpoint exceeds expanded size limit")
+                if member.name == "checkpoint.json" and member.size > MAX_CHECKPOINT_MANIFEST:
+                    raise RunnerError("checkpoint manifest exceeds size limit")
+                with archive.extractfile(member) as source:
+                    contents[member.name] = source.read()
+            # Drain through tar's stream to include its read-ahead buffer, then
+            # gzip's checksum and all trailing padding, before writing files.
+            while padding := archive.fileobj.read(32 * 1024):
+                if any(padding):
+                    raise RunnerError("checkpoint contains trailing archive content")
     try:
         manifest = validate_manifest(json.loads(contents.pop("checkpoint.json")), config)
         files = manifest["files"]
@@ -317,11 +342,16 @@ def create_bundle(work, manifest, archive_path, forbidden_values=()):
         raise RunnerError("checkpoint manifest contains runtime credentials")
     if len(encoded) > MAX_CHECKPOINT_MANIFEST:
         raise RunnerError("checkpoint manifest exceeds size limit")
-    with tarfile.open(archive_path, "w:gz") as target:
-        for name, raw in [("checkpoint.json", encoded), *data]:
-            info = tarfile.TarInfo(name)
-            info.size, info.mode = len(raw), 0o600
-            target.addfile(info, io.BytesIO(raw))
+    with gzip.open(archive_path, "wb") as compressed:
+        with tarfile.open(fileobj=compressed, mode="w") as target:
+            for name, raw in [("checkpoint.json", encoded), *data]:
+                info = tarfile.TarInfo(name)
+                info.size, info.mode = len(raw), 0o600
+                target.addfile(info, io.BytesIO(raw))
+        # Tar close writes its final blocks and padding. Gzip tell reports the
+        # complete uncompressed stream without reading the archive a second time.
+        if compressed.tell() > MAX_CHECKPOINT_EXPANDED_BYTES:
+            raise RunnerError("checkpoint exceeds expanded size limit")
     if archive_path.stat().st_size > MAX_CHECKPOINT_BYTES:
         raise RunnerError("checkpoint exceeds compressed size limit")
 

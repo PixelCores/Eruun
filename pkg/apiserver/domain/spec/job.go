@@ -25,6 +25,11 @@ const (
 	CodexRecoveryVersion                   = "0.154.0"
 	ClaudeCodeRecoveryVersion              = "2.1.281"
 	DefaultCheckpointIntervalSeconds int64 = 300
+	CheckpointArchiveLimit           int64 = 64 << 20
+	// CheckpointExpandedLimit includes the complete tar stream: files,
+	// checkpoint.json, archive headers and padding.
+	CheckpointExpandedLimit int64 = 256 << 20
+	CheckpointManifestLimit       = 1 << 20
 )
 
 // JobSpec describes one standalone command or a Job with an evaluation trait.

@@ -160,7 +160,7 @@ func (s *Store) UploadDataset(ctx context.Context, workspaceID, name string, r i
 	if strings.TrimSpace(name) == "" || len(name) > 255 {
 		return nil, fmt.Errorf("%w: dataset name must contain 1..255 bytes", ErrInvalidInput)
 	}
-	archive, err := readArchive(ctx, r, true)
+	archive, err := readArchive(ctx, r, KindDataset)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +196,7 @@ func (s *Store) PutResultGuarded(ctx context.Context, workspaceID, taskID string
 	if err := policy.Validate(); err != nil {
 		return nil, err
 	}
-	archive, err := readArchive(ctx, r, false)
+	archive, err := readArchive(ctx, r, KindSource)
 	if err != nil {
 		return nil, err
 	}

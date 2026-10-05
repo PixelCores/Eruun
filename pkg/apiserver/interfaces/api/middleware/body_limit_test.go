@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -113,4 +114,59 @@ func TestRequestBodyLimitCapsRunnerEventsAt64KiB(t *testing.T) {
 		router.ServeHTTP(response, request)
 		require.Equal(t, tc.want, response.Code)
 	}
+}
+
+type checkpointBody struct{}
+
+func (checkpointBody) Read(p []byte) (int, error) { clear(p); return len(p), nil }
+
+func TestCheckpointUploadBodyLimit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, chunked := range []bool{false, true} {
+		for _, tc := range []struct {
+			name string
+			size int64
+			want int
+		}{
+			{"above ordinary limit", 25 << 20, http.StatusOK},
+			{"checkpoint limit", 64 << 20, http.StatusOK},
+			{"over checkpoint limit", (64 << 20) + 1, http.StatusRequestEntityTooLarge},
+		} {
+			t.Run(fmt.Sprintf("%s/chunked=%t", tc.name, chunked), func(t *testing.T) {
+				router := gin.New()
+				router.Use(RequestBodyLimit(24 << 20))
+				router.POST("/api/v1/job-runners/:taskID/checkpoints/:checkpointID", func(c *gin.Context) {
+					_, err := io.Copy(io.Discard, c.Request.Body)
+					if err != nil {
+						var tooLarge *http.MaxBytesError
+						require.ErrorAs(t, err, &tooLarge)
+						c.Status(http.StatusRequestEntityTooLarge)
+						return
+					}
+					c.Status(http.StatusOK)
+				})
+				request := httptest.NewRequest(http.MethodPost, "/api/v1/job-runners/task/checkpoints/point", io.LimitReader(checkpointBody{}, tc.size))
+				request.ContentLength = tc.size
+				if chunked {
+					request.ContentLength = -1
+					request.TransferEncoding = []string{"chunked"}
+				}
+				response := httptest.NewRecorder()
+				router.ServeHTTP(response, request)
+				require.Equal(t, tc.want, response.Code)
+			})
+		}
+	}
+}
+
+func TestCheckpointControlRoutesKeepOrdinaryBodyLimit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(RequestBodyLimit(8))
+	called := false
+	router.GET("/api/v1/job-runners/:taskID/checkpoints/:checkpointID", func(c *gin.Context) { called = true })
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/job-runners/task/checkpoints/point", strings.NewReader("123456789")))
+	require.Equal(t, http.StatusRequestEntityTooLarge, response.Code)
+	require.False(t, called)
 }
