@@ -221,7 +221,7 @@ func TestRestartApplicationWorkloadsReturnsErrorWhenMarkRestartingFails(t *testi
 		applications: map[string]*model.Applications{
 			app.ID: app,
 		},
-		runtimeUpdateErr: errors.New("status store unavailable"),
+		runtimeUpdateErr: errors.New("status store unavailable (database offline)"),
 	}
 
 	deployName := naming.WebServiceName(web.Name, app.Name)
@@ -239,6 +239,7 @@ func TestRestartApplicationWorkloadsReturnsErrorWhenMarkRestartingFails(t *testi
 
 	resp, err := svc.RestartApplicationWorkloads(context.Background(), app.ID, apisv1.ApplicationLifecycleRequest{})
 	require.Error(t, err)
+	require.ErrorIs(t, err, store.runtimeUpdateErr)
 	require.Contains(t, err.Error(), "mark components restarting")
 	require.Contains(t, err.Error(), "status store unavailable")
 	require.NotNil(t, resp)
@@ -253,10 +254,47 @@ func TestRestartApplicationWorkloadsReturnsErrorWhenMarkRestartingFails(t *testi
 	require.Contains(t, resp.FailedResources[0], "ComponentStatus:default/"+app.ID)
 	require.Contains(t, resp.FailedResources[0], "mark components restarting")
 	require.Contains(t, resp.FailedResources[0], "status store unavailable")
+	require.Equal(t, "ComponentStatus:default/"+app.ID+" (mark components restarting: update component web status to Restarting: status store unavailable (database offline))", resp.FailedResources[0])
+	require.Len(t, store.operationStore.jobs, 2)
+	require.Equal(t, "ComponentStatus:default/"+app.ID, store.operationStore.jobs[1].ServiceName)
+	require.Equal(t, "mark components restarting: update component web status to Restarting: status store unavailable (database offline)", store.operationStore.jobs[1].Error)
 
 	deploy, err := clientset.AppsV1().Deployments("default").Get(context.Background(), deployName, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.NotEmpty(t, deploy.Spec.Template.Annotations[config.AnnotationWorkloadRestartAt])
+}
+
+func TestAdoptedRestartPreservesStatusFailureRecord(t *testing.T) {
+	app := &model.Applications{
+		ID: "adopted-restart-mark-fail", Name: "imported-app", Namespace: "production",
+		ManagementMode: spec.ManagementModeAdopted,
+	}
+	component := adoptedTestComponent(app.ID, "backend", config.ServerJob, "legacy-backend", "deployment-uid")
+	component.ID = 41
+	service, store, clientset := newAdoptedLifecycleTestService(t, app, []*model.ApplicationComponent{component},
+		&appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{Name: "legacy-backend", Namespace: "production", UID: "deployment-uid"},
+			Spec:       appsv1.DeploymentSpec{Replicas: adoptedTestInt32Ptr(3)},
+		},
+	)
+	store.runtimeUpdateErr = errors.New("status store unavailable (database offline)")
+
+	response, err := service.RestartApplicationWorkloads(context.Background(), app.ID, apisv1.ApplicationLifecycleRequest{})
+	require.ErrorIs(t, err, store.runtimeUpdateErr)
+	require.NotNil(t, response)
+	require.NotEmpty(t, response.TaskID)
+	require.Equal(t, []string{"Deployment:production/legacy-backend"}, response.RestartedResources)
+	require.Equal(t, []string{"ComponentStatus:production/" + app.ID + " (mark components restarting: update component backend status to Restarting: status store unavailable (database offline))"}, response.FailedResources)
+	require.Equal(t, config.StatusFailed, store.tasks[response.TaskID].Status)
+	require.Len(t, store.jobs, 2)
+	require.Equal(t, "Deployment:production/legacy-backend", store.jobs[0].ServiceName)
+	require.Equal(t, string(config.StatusCompleted), store.jobs[0].Status)
+	require.Equal(t, "ComponentStatus:production/"+app.ID, store.jobs[1].ServiceName)
+	require.Equal(t, "mark components restarting: update component backend status to Restarting: status store unavailable (database offline)", store.jobs[1].Error)
+	require.Equal(t, string(config.StatusFailed), store.jobs[1].Status)
+	deployment, err := clientset.AppsV1().Deployments("production").Get(context.Background(), "legacy-backend", metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, response.RestartedAt, deployment.Spec.Template.Annotations[config.AnnotationWorkloadRestartAt])
 }
 
 func TestRestartApplicationWorkloadsSkipsSharedComponent(t *testing.T) {

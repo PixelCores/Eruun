@@ -111,11 +111,11 @@ func (c *applicationsServiceImpl) cleanupApplicationResourcesUnlocked(
 	}
 	resp.TaskID, _, err = c.attachOperationTaskWithCallback(ctx, app, config.WorkflowTaskTypeCleanup, operationTaskNameCleanup, startTime, endTime, buildCleanupJobRecords(reporter), reporter.failedResources, nil)
 	if err != nil {
-		resp.FailedResources = reporter.failedResources
+		resp.FailedResources = formatFailedResources(reporter.failedResources)
 		return resp, errors.Join(reporter.err(), fmt.Errorf("Kubernetes cleanup may already have taken effect, but operation record commit could not be confirmed; inspect operation records and Kubernetes resources before retrying: %w", err))
 	}
 	if len(reporter.failedResources) > 0 {
-		resp.FailedResources = reporter.failedResources
+		resp.FailedResources = formatFailedResources(reporter.failedResources)
 		return resp, reporter.err()
 	}
 	return resp, nil
@@ -616,14 +616,14 @@ func (c *applicationsServiceImpl) deleteNamespaced(ctx context.Context, namespac
 
 type cleanupReporter struct {
 	deletedResources []string
-	failedResources  []string
+	failedResources  []operationJobRecord
 	errs             []error
 }
 
 func newCleanupReporter() *cleanupReporter {
 	return &cleanupReporter{
 		deletedResources: []string{},
-		failedResources:  []string{},
+		failedResources:  []operationJobRecord{},
 	}
 }
 
@@ -633,7 +633,7 @@ func (r *cleanupReporter) record(kind, namespace, name string, err error) {
 	}
 	target := formatResource(kind, namespace, name)
 	if err != nil {
-		r.failedResources = append(r.failedResources, fmt.Sprintf("%s (%v)", target, err))
+		r.failedResources = append(r.failedResources, operationJobRecord{name: target, errMsg: fmt.Sprint(err)})
 		r.errs = append(r.errs, err)
 	} else {
 		r.deletedResources = append(r.deletedResources, target)

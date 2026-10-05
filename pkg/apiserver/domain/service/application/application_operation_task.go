@@ -20,7 +20,7 @@ type operationJobRecord struct {
 	errMsg string
 }
 
-func (c *applicationsServiceImpl) attachOperationTaskWithCallback(ctx context.Context, app *model.Applications, taskType config.WorkflowTaskType, name string, startTime, endTime int64, jobs []operationJobRecord, failedResources []string, callback *model.JSONStruct) (string, *model.WorkflowQueue, error) {
+func (c *applicationsServiceImpl) attachOperationTaskWithCallback(ctx context.Context, app *model.Applications, taskType config.WorkflowTaskType, name string, startTime, endTime int64, jobs []operationJobRecord, failedResources []operationJobRecord, callback *model.JSONStruct) (string, *model.WorkflowQueue, error) {
 	if app == nil {
 		return "", nil, fmt.Errorf("app is nil")
 	}
@@ -32,14 +32,14 @@ func (c *applicationsServiceImpl) attachOperationTaskWithCallback(ctx context.Co
 	return task.TaskID, task, nil
 }
 
-func (c *applicationsServiceImpl) triggerOperationTaskCallback(ctx context.Context, task *model.WorkflowQueue, callback *model.JSONStruct, failedResources []string) {
+func (c *applicationsServiceImpl) triggerOperationTaskCallback(ctx context.Context, task *model.WorkflowQueue, callback *model.JSONStruct, failedResources []operationJobRecord) {
 	if callback == nil || task == nil {
 		return
 	}
 	triggerWorkflowTerminalCallbackAsync(ctx, c.Store, c.Cfg, c.URLSecurityPolicyProvider, task, operationTaskTerminalStatus(failedResources), "")
 }
 
-func operationTaskTerminalStatus(failedResources []string) config.Status {
+func operationTaskTerminalStatus(failedResources []operationJobRecord) config.Status {
 	if len(failedResources) > 0 {
 		return config.StatusFailed
 	}
@@ -175,7 +175,7 @@ func buildUpdateJobRecords(app *model.Applications, req apisv1.UpdateVersionRequ
 func buildResourceJobRecords(resources []string, status config.Status, info string) []operationJobRecord {
 	records := make([]operationJobRecord, 0, len(resources))
 	for _, resource := range resources {
-		target, errMsg := parseResourceFailure(resource)
+		target := strings.TrimSpace(resource)
 		if target == "" {
 			continue
 		}
@@ -183,20 +183,20 @@ func buildResourceJobRecords(resources []string, status config.Status, info stri
 			name:   target,
 			status: status,
 			info:   info,
-			errMsg: errMsg,
 		}
 		records = append(records, record)
 	}
 	return records
 }
 
-func buildFailedResourceJobRecords(resources []string) []operationJobRecord {
+func buildFailedResourceJobRecords(resources []operationJobRecord) []operationJobRecord {
 	records := make([]operationJobRecord, 0, len(resources))
 	for _, resource := range resources {
-		target, errMsg := parseResourceFailure(resource)
+		target := strings.TrimSpace(resource.name)
 		if target == "" {
 			continue
 		}
+		errMsg := strings.TrimSpace(resource.errMsg)
 		if errMsg == "" {
 			errMsg = "operation failed"
 		}
@@ -210,16 +210,10 @@ func buildFailedResourceJobRecords(resources []string) []operationJobRecord {
 	return records
 }
 
-func parseResourceFailure(resource string) (string, string) {
-	resource = strings.TrimSpace(resource)
-	if resource == "" {
-		return "", ""
+func formatFailedResources(resources []operationJobRecord) []string {
+	formatted := make([]string, 0, len(resources))
+	for _, resource := range resources {
+		formatted = append(formatted, fmt.Sprintf("%s (%s)", resource.name, resource.errMsg))
 	}
-	idx := strings.LastIndex(resource, " (")
-	if idx == -1 || !strings.HasSuffix(resource, ")") {
-		return resource, ""
-	}
-	target := strings.TrimSpace(resource[:idx])
-	errMsg := strings.TrimSuffix(resource[idx+2:], ")")
-	return target, strings.TrimSpace(errMsg)
+	return formatted
 }

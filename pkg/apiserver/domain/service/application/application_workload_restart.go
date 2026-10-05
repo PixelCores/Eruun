@@ -111,7 +111,7 @@ func (c *applicationsServiceImpl) restartApplicationWorkloadsLocked(ctx context.
 						)
 						reporter.failedResources = append(
 							reporter.failedResources,
-							fmt.Sprintf("%s (%v)", statusTarget, markErr),
+							operationJobRecord{name: statusTarget, errMsg: fmt.Sprint(markErr)},
 						)
 					}
 				}
@@ -137,7 +137,7 @@ func (c *applicationsServiceImpl) restartApplicationWorkloadsLocked(ctx context.
 		if err := c.markComponentsRestarting(ctx, app.ID, restartedComponents); err != nil {
 			markErr = fmt.Errorf("mark components restarting: %w", err)
 			statusTarget := formatResource("ComponentStatus", pickNamespace(app.Namespace, config.DefaultNamespace), app.ID)
-			reporter.failedResources = append(reporter.failedResources, fmt.Sprintf("%s (%v)", statusTarget, markErr))
+			reporter.failedResources = append(reporter.failedResources, operationJobRecord{name: statusTarget, errMsg: fmt.Sprint(markErr)})
 		}
 	}
 	if !adopted {
@@ -158,7 +158,7 @@ func (c *applicationsServiceImpl) restartApplicationWorkloadsLocked(ctx context.
 		klog.ErrorS(markErr, "mark components restarting failed after workloads restarted", "appID", app.ID, "taskID", resp.TaskID)
 	}
 	if len(reporter.failedResources) > 0 {
-		resp.FailedResources = reporter.failedResources
+		resp.FailedResources = formatFailedResources(reporter.failedResources)
 		if markErr != nil {
 			return resp, errors.Join(reporter.err(), markErr)
 		}
@@ -293,7 +293,7 @@ func (c *applicationsServiceImpl) restartStatefulSet(ctx context.Context, namesp
 type restartReporter struct {
 	restartedResources []string
 	skippedResources   []string
-	failedResources    []string
+	failedResources    []operationJobRecord
 	errs               []error
 }
 
@@ -301,7 +301,7 @@ func newRestartReporter() *restartReporter {
 	return &restartReporter{
 		restartedResources: []string{},
 		skippedResources:   []string{},
-		failedResources:    []string{},
+		failedResources:    []operationJobRecord{},
 	}
 }
 
@@ -311,7 +311,7 @@ func (r *restartReporter) record(kind, namespace, name string, skipped bool, err
 	}
 	target := formatResource(kind, namespace, name)
 	if err != nil {
-		r.failedResources = append(r.failedResources, fmt.Sprintf("%s (%v)", target, err))
+		r.failedResources = append(r.failedResources, operationJobRecord{name: target, errMsg: fmt.Sprint(err)})
 		r.errs = append(r.errs, err)
 		return
 	}

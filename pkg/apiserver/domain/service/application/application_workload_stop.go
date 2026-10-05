@@ -158,7 +158,7 @@ func (c *applicationsServiceImpl) stopApplicationDeploymentsLocked(ctx context.C
 	}
 	c.triggerOperationTaskCallback(ctx, task, taskCallback, reporter.failedResources)
 	if len(reporter.failedResources) > 0 {
-		resp.FailedResources = reporter.failedResources
+		resp.FailedResources = formatFailedResources(reporter.failedResources)
 		return resp, reporter.err()
 	}
 	return resp, nil
@@ -312,7 +312,7 @@ func (c *applicationsServiceImpl) startApplicationDeploymentsLocked(ctx context.
 	}
 	c.triggerOperationTaskCallback(ctx, task, taskCallback, reporter.failedResources)
 	if len(reporter.failedResources) > 0 {
-		resp.FailedResources = reporter.failedResources
+		resp.FailedResources = formatFailedResources(reporter.failedResources)
 		return resp, reporter.err()
 	}
 	return resp, nil
@@ -388,7 +388,7 @@ func (c *applicationsServiceImpl) markComponentStarted(ctx context.Context, comp
 type deploymentScaleReporter struct {
 	successfulResources []string
 	skippedResources    []string
-	failedResources     []string
+	failedResources     []operationJobRecord
 	errs                []error
 }
 
@@ -396,7 +396,7 @@ func newDeploymentScaleReporter() *deploymentScaleReporter {
 	return &deploymentScaleReporter{
 		successfulResources: []string{},
 		skippedResources:    []string{},
-		failedResources:     []string{},
+		failedResources:     []operationJobRecord{},
 	}
 }
 
@@ -406,7 +406,7 @@ func (r *deploymentScaleReporter) record(kind, namespace, name string, skipped b
 	}
 	target := formatResource(kind, namespace, name)
 	if err != nil {
-		r.failedResources = append(r.failedResources, fmt.Sprintf("%s (%v)", target, err))
+		r.failedResources = append(r.failedResources, operationJobRecord{name: target, errMsg: fmt.Sprint(err)})
 		r.errs = append(r.errs, err)
 		return
 	}
