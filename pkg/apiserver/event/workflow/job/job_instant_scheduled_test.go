@@ -529,13 +529,13 @@ func TestInstantJobCtlHelpers(t *testing.T) {
 	require.NoError(t, ctl.SaveInfo(context.Background()))
 	require.Equal(t, 1, store.addCount)
 
-	created, err := ctl.createJob(context.Background(), jobTask.JobInfo.(*batchv1.Job))
+	created, err := ctl.createBatchJob(context.Background(), jobTask.JobInfo.(*batchv1.Job))
 	require.NoError(t, err)
 	require.True(t, created)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	status, _, err := ctl.wait(ctx)
+	status, _, err := ctl.waitBatchJob(ctx)
 	require.Error(t, err)
 	require.Equal(t, config.StatusTimeout, status)
 
@@ -564,13 +564,13 @@ func TestScheduledJobCtlHelpers(t *testing.T) {
 	require.NoError(t, ctl.SaveInfo(context.Background()))
 	require.Equal(t, 1, store.addCount)
 
-	created, err := ctl.createJob(context.Background(), jobObj)
+	created, err := ctl.createBatchJob(context.Background(), jobObj)
 	require.NoError(t, err)
 	require.True(t, created)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	status, _, err := ctl.wait(ctx)
+	status, _, err := ctl.waitBatchJob(ctx)
 	require.Error(t, err)
 	require.Equal(t, config.StatusTimeout, status)
 
@@ -826,9 +826,9 @@ func TestImmediateJobCreateRejectsAlreadyExistsReplacement(t *testing.T) {
 			var created bool
 			var err error
 			if jobType == config.JobDeployInstant {
-				created, err = NewInstantJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}).createJob(context.Background(), desired)
+				created, err = NewInstantJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}).createBatchJob(context.Background(), desired)
 			} else {
-				created, err = NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}).createJob(context.Background(), desired)
+				created, err = NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}).createBatchJob(context.Background(), desired)
 			}
 
 			require.False(t, created)

@@ -76,7 +76,7 @@ func (c *ScheduledJobCtl) Run(ctx context.Context) error {
 		c.job.Error = ""
 		return nil
 	}
-	status, message, err := c.wait(ctx)
+	status, message, err := c.waitBatchJob(ctx)
 	if err != nil {
 		applyJobError(c.job, err, message)
 		return err
@@ -185,43 +185,8 @@ func (c *ScheduledJobCtl) runOneTimeJob(ctx context.Context, jobObj *batchv1.Job
 		return nil
 	}
 
-	if _, err := c.createJob(ctx, jobObj); err != nil {
+	if _, err := c.createBatchJob(ctx, jobObj); err != nil {
 		return err
 	}
 	return nil
-}
-
-func (c *ScheduledJobCtl) createJob(ctx context.Context, jobObj *batchv1.Job) (bool, error) {
-	if err := ensureCurrentJobWorkflowOwnership(ctx, c.store, c.job); err != nil {
-		return false, err
-	}
-	validateExisting := validateExistingJobExecutionIdentity(ctx, c.store, jobObj)
-	_, created, err := createOrUpdateTrackedResource(ctx, domainspec.ResourceJob, jobObj.Namespace, jobObj.Name, func(ctx context.Context) (*batchv1.Job, error) {
-		return c.client.BatchV1().Jobs(jobObj.Namespace).Get(ctx, jobObj.Name, metav1.GetOptions{})
-	}, func(ctx context.Context) (*batchv1.Job, error) {
-		return c.client.BatchV1().Jobs(jobObj.Namespace).Create(ctx, jobObj, metav1.CreateOptions{})
-	}, func(_ context.Context, existing *batchv1.Job) error {
-		return validateExisting(existing)
-	}, k8serrors.IsNotFound, k8serrors.IsAlreadyExists)
-	return created, err
-}
-
-func (c *ScheduledJobCtl) wait(ctx context.Context) (config.Status, string, error) {
-	timeout := c.job.Timeout
-	if timeout <= 0 {
-		timeout = int64(config.DefaultJobTaskTimeout.Seconds())
-	}
-	waitCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
-	defer cancel()
-	namespace := c.namespace
-	name := c.job.Name
-	if jobObj, ok := optionalJobInfo[*batchv1.Job](c.job); ok {
-		if jobObj.Namespace != "" {
-			namespace = jobObj.Namespace
-		}
-		if jobObj.Name != "" {
-			name = jobObj.Name
-		}
-	}
-	return waitForJobCompletion(waitCtx, c.client, namespace, name)
 }
