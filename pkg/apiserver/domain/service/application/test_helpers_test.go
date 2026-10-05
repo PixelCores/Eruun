@@ -244,7 +244,8 @@ var _ repository.ApplicationRepository = (*mockCleanupAppRepo)(nil)
 
 // mockCleanupComponentRepo wraps cleanupStore for cleanup tests
 type mockCleanupComponentRepo struct {
-	store *cleanupStore
+	store          *cleanupStore
+	findByAppIDErr error
 }
 
 func (m *mockCleanupComponentRepo) Create(ctx context.Context, component *model.ApplicationComponent) error {
@@ -260,7 +261,7 @@ func (m *mockCleanupComponentRepo) DeleteByAppID(ctx context.Context, appID stri
 }
 
 func (m *mockCleanupComponentRepo) FindByAppID(ctx context.Context, appID string) ([]*model.ApplicationComponent, error) {
-	return m.store.components, nil
+	return m.store.components, m.findByAppIDErr
 }
 
 func (m *mockCleanupComponentRepo) Update(ctx context.Context, component *model.ApplicationComponent) error {

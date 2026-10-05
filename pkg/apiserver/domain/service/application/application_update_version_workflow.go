@@ -15,7 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
-func (c *applicationsServiceImpl) markComponentsUpdating(ctx context.Context, appID string, components []string) error {
+func (c *applicationsServiceImpl) markComponentsStatus(ctx context.Context, appID string, components []string, status config.ComponentStatus) error {
 	if appID == "" || len(components) == 0 {
 		return nil
 	}
@@ -43,7 +43,6 @@ func (c *applicationsServiceImpl) markComponentsUpdating(ctx context.Context, ap
 		if comp.Status == string(config.ComponentStatusCleaning) {
 			continue
 		}
-		status := config.ComponentStatusUpdating
 		lastAbnormal := ""
 		comp.Status = string(status)
 		comp.LastAbnormal = lastAbnormal
@@ -51,7 +50,7 @@ func (c *applicationsServiceImpl) markComponentsUpdating(ctx context.Context, ap
 			"status":        string(status),
 			"last_abnormal": lastAbnormal,
 		}); err != nil {
-			return fmt.Errorf("update component %s status to Updating: %w", comp.Name, err)
+			return fmt.Errorf("update component %s status to %s: %w", comp.Name, status, err)
 		}
 	}
 	return nil
@@ -173,48 +172,6 @@ func componentSupportsInitialDeployingStatus(componentType config.JobType) bool 
 	default:
 		return false
 	}
-}
-
-func (c *applicationsServiceImpl) markComponentsRestarting(ctx context.Context, appID string, components []string) error {
-	if appID == "" || len(components) == 0 {
-		return nil
-	}
-	targets := make(map[string]struct{}, len(components))
-	for _, name := range components {
-		key := strings.ToLower(strings.TrimSpace(name))
-		if key != "" {
-			targets[key] = struct{}{}
-		}
-	}
-	if len(targets) == 0 {
-		return nil
-	}
-	items, err := c.ComponentRepo.FindByAppID(ctx, appID)
-	if err != nil {
-		return fmt.Errorf("list components for app %s: %w", appID, err)
-	}
-	for _, comp := range items {
-		if comp == nil {
-			continue
-		}
-		if _, ok := targets[strings.ToLower(comp.Name)]; !ok {
-			continue
-		}
-		if comp.Status == string(config.ComponentStatusCleaning) {
-			continue
-		}
-		status := config.ComponentStatusRestarting
-		lastAbnormal := ""
-		comp.Status = string(status)
-		comp.LastAbnormal = lastAbnormal
-		if err := repository.UpdateComponentRuntimeFields(ctx, c.Store, comp, map[string]interface{}{
-			"status":        string(status),
-			"last_abnormal": lastAbnormal,
-		}); err != nil {
-			return fmt.Errorf("update component %s status to Restarting: %w", comp.Name, err)
-		}
-	}
-	return nil
 }
 
 func syncWorkflowStepsInStore(ctx context.Context, store datastore.DataStore, appID, workflowID string, added, removed []string) error {

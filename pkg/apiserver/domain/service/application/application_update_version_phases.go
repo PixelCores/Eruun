@@ -360,7 +360,7 @@ func (c *applicationsServiceImpl) finalizeVersionUpdateRun(ctx context.Context, 
 		if run.executeAt == 0 {
 			componentsToMark := append([]string{}, run.updatedComponents...)
 			componentsToMark = append(componentsToMark, run.addedComponents...)
-			if err := c.markComponentsUpdating(ctx, run.app.ID, componentsToMark); err != nil {
+			if err := c.markComponentsStatus(ctx, run.app.ID, componentsToMark, config.ComponentStatusUpdating); err != nil {
 				klog.ErrorS(err, "mark components updating failed after auto exec workflow queued", "appID", run.app.ID, "taskID", response.TaskID)
 			}
 		}

@@ -102,7 +102,7 @@ func (c *applicationsServiceImpl) restartApplicationWorkloadsLocked(ctx context.
 					}
 				}
 				if len(restartedComponents) > 0 {
-					if err := c.markComponentsRestarting(lockCtx, lockedApp.ID, restartedComponents); err != nil {
+					if err := c.markComponentsStatus(lockCtx, lockedApp.ID, restartedComponents, config.ComponentStatusRestarting); err != nil {
 						markErr = fmt.Errorf("mark components restarting: %w", err)
 						statusTarget := formatResource(
 							"ComponentStatus",
@@ -134,7 +134,7 @@ func (c *applicationsServiceImpl) restartApplicationWorkloadsLocked(ctx context.
 	}
 
 	if !adopted && len(restartedComponents) > 0 {
-		if err := c.markComponentsRestarting(ctx, app.ID, restartedComponents); err != nil {
+		if err := c.markComponentsStatus(ctx, app.ID, restartedComponents, config.ComponentStatusRestarting); err != nil {
 			markErr = fmt.Errorf("mark components restarting: %w", err)
 			statusTarget := formatResource("ComponentStatus", pickNamespace(app.Namespace, config.DefaultNamespace), app.ID)
 			reporter.failedResources = append(reporter.failedResources, operationJobRecord{name: statusTarget, errMsg: fmt.Sprint(markErr)})
