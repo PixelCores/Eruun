@@ -225,25 +225,3 @@ func buildIngressResourceName(componentName, resourceAppName, explicitName strin
 func pickIngressNamespace(componentNamespace, _ string) string {
 	return pickComponentNamespace(componentNamespace)
 }
-
-func selectServiceTraitForLink(component *apisv1.ApplicationComponent) (int, bool) {
-	if component == nil || len(component.Traits.Service) == 0 {
-		return -1, false
-	}
-
-	fallbackIndex := -1
-	for i := range component.Traits.Service {
-		if fallbackIndex == -1 {
-			fallbackIndex = i
-		}
-		serviceType, _ := spec.NormalizeServiceAccessType(component.Traits.Service[i].Type)
-		if serviceType != spec.ServiceAccessExternal {
-			return i, true
-		}
-	}
-
-	if fallbackIndex >= 0 {
-		return fallbackIndex, true
-	}
-	return -1, false
-}
