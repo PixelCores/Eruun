@@ -21,6 +21,8 @@ func prepareArchiveDeadline(c *gin.Context) bool {
 	route := c.Request.Method + " " + c.FullPath()
 	switch route {
 	case "POST /api/v1/job-datasets", "POST /api/v1/job-runners/:taskID/results",
+		"POST /api/v1/job-runners/:taskID/checkpoints/:checkpointID",
+		"GET /api/v1/job-runners/:taskID/checkpoints/:checkpointID/material",
 		"GET /api/v1/job-runners/:taskID/dataset", "GET /api/v1/job-datasets/:datasetID/download",
 		"GET /api/v1/jobs/:taskID/results/:artifactID/download", "GET /api/v1/jobs/:taskID/deliveries/:target/download":
 	default:
@@ -62,6 +64,8 @@ func RequestBodyLimit(maxBytes int64) gin.HandlerFunc {
 				archiveLimit = 64 << 20
 			case "/api/v1/job-runners/:taskID/results":
 				archiveLimit = 512 << 20
+			case "/api/v1/job-runners/:taskID/checkpoints/:checkpointID":
+				archiveLimit = spec.CheckpointArchiveLimit
 			}
 		}
 		if archiveLimit > 0 {

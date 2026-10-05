@@ -107,7 +107,7 @@ Runner 通过可选 `recovery` 配置支持固定 Codex/Claude Code 版本的恢
 
 每一批 trial 受原 concurrency 上限约束。Agent 在一个时间片后由 Sandbox 内 `native_checkpoint.py` 请求 SIGINT，随后终止其进程组；进程组之外残留的双重 fork、setsid 或后台任务也会被完整 `/proc` 身份扫描拒绝。仅接受平台创建的 PID 1 `sleep`；检查包含进程启动时间，避免 PID 重用误判。会话 JSONL 必须完整可解析，必要文件 fsync 后同步文件系统；单纯 exec 断流或 CLI 父进程消失不能形成恢复点。需要等本批 setup/verifier/采集结束或所有剩余 Agent 停止，才冻结全 Job 的参与集合，因此配置间隔不等于已验证的 RPO。
 
-屏障内上传 `POST checkpointURL/{id}` 的不可变 gzip 材料，重复请求复用同一 ID 和字节，并轮询 `GET` 至全部快照 `ready`。`pending` 不解除屏障，失败则结束本次执行，不继续运行可能仍在取快照的源。材料最多压缩 64 MiB、展开 256 MiB、10,000 个文件及 1 MiB manifest；逐文件 SHA-256、严格相对路径、版本、成员集合及采集状态校验失败都拒绝恢复。材料不包含平台能力文件或已知原生登录文件；运行配置与 lock 中的 Pod 身份及本地路径在新执行中重建，发现运行时凭据出现在材料中会失败关闭。新执行重新获得自己的 Sandbox 身份及凭据。真实 ACS 对文件系统/卷的覆盖、进程隔离和快照期间停止写入的保证仍需单独验证。
+屏障内上传 `POST checkpointURL/{id}` 的不可变 gzip 材料，重复请求复用同一 ID 和字节，并轮询 `GET` 至全部快照 `ready`。`pending` 不解除屏障，失败则结束本次执行，不继续运行可能仍在取快照的源。材料最多压缩 64 MiB、完整解压 tar 字节流 256 MiB（包含文件、manifest、tar/PAX 头部及 padding）、10,000 个文件及 1 MiB manifest；生成、平台接收和恢复使用同一大小口径。Checkpoint 上传与材料下载使用归档传输 deadline，普通与 chunked 上传均受 64 MiB 限制。逐文件 SHA-256、严格相对路径、版本、成员集合及采集状态校验失败都拒绝恢复。材料不包含平台能力文件或已知原生登录文件；运行配置与 lock 中的 Pod 身份及本地路径在新执行中重建，发现运行时凭据出现在材料中会失败关闭。新执行重新获得自己的 Sandbox 身份及凭据。真实 ACS 对文件系统/卷的覆盖、进程隔离和快照期间停止写入的保证仍需单独验证。
 
 本地测试使用真实 Harbor `Trial` 生命周期，覆盖并发完成/中断 trial、保存后删除源目录、恢复路径重建、完成 trial 跳过、显式会话恢复、损坏材料、凭据、屏障失败和原截止时间。生产原生命令也可使用固定 CLI 和回环模型 fixture 验证：
 

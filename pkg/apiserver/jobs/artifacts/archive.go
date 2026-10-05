@@ -47,11 +47,12 @@ type ManifestEntry struct {
 }
 
 type archive struct {
-	file     *os.File
-	size     int64
-	digest   string
-	manifest json.RawMessage
-	summary  json.RawMessage
+	file               *os.File
+	size               int64
+	digest             string
+	manifest           json.RawMessage
+	summary            json.RawMessage
+	checkpointManifest json.RawMessage
 }
 
 func (a *archive) close() { name := a.file.Name(); _ = a.file.Close(); _ = os.Remove(name) }
@@ -68,10 +69,17 @@ func (r contextReader) Read(p []byte) (int, error) {
 	return r.r.Read(p)
 }
 
-func readArchive(ctx context.Context, input io.Reader, dataset bool) (_ *archive, err error) {
-	compressed, expanded := ResultArchiveLimit, ResultExpandedLimit
-	if dataset {
+func readArchive(ctx context.Context, input io.Reader, kind string) (_ *archive, err error) {
+	var compressed, expanded int64
+	switch kind {
+	case KindDataset:
 		compressed, expanded = DatasetArchiveLimit, DatasetExpandedLimit
+	case KindSource:
+		compressed, expanded = ResultArchiveLimit, ResultExpandedLimit
+	case KindCheckpoint:
+		compressed, expanded = spec.CheckpointArchiveLimit, spec.CheckpointExpandedLimit
+	default:
+		return nil, fmt.Errorf("unsupported archive kind %q", kind)
 	}
 	file, err := os.CreateTemp("", "eruun-archive-*")
 	if err != nil {
@@ -142,7 +150,7 @@ func readArchive(ctx context.Context, input io.Reader, dataset bool) (_ *archive
 		if hdr.Typeflag == tar.TypeDir {
 			continue
 		}
-		if !dataset && hdr.Typeflag == tar.TypeSymlink {
+		if kind == KindSource && hdr.Typeflag == tar.TypeSymlink {
 			target := hdr.Linkname
 			resolved := path.Clean(path.Join(path.Dir(name), target))
 			if target == "" || strings.HasPrefix(target, "/") || strings.ContainsAny(target, "\\\x00") || resolved == ".." || strings.HasPrefix(resolved, "../") || parents[name] {
@@ -164,14 +172,18 @@ func readArchive(ctx context.Context, input io.Reader, dataset bool) (_ *archive
 		}
 		files[name] = true
 		hash := sha256.New()
-		isConfig := dataset && path.Base(name) == "task.toml"
-		isSummary := !dataset && path.Base(name) == "result.json" && (summaryPath == "" || strings.Count(name, "/") < strings.Count(summaryPath, "/"))
+		isConfig := kind == KindDataset && path.Base(name) == "task.toml"
+		isSummary := kind == KindSource && path.Base(name) == "result.json" && (summaryPath == "" || strings.Count(name, "/") < strings.Count(summaryPath, "/"))
+		isCheckpoint := kind == KindCheckpoint && name == "checkpoint.json"
 		var content []byte
-		if isConfig || isSummary {
+		if isConfig || isSummary || isCheckpoint {
+			if isCheckpoint && hdr.Size > spec.CheckpointManifestLimit {
+				return nil, fmt.Errorf("%w: checkpoint.json too large", ErrInvalidArchive)
+			}
 			if hdr.Size > metadataLimit && isConfig {
 				return nil, fmt.Errorf("%w: task.toml too large", ErrInvalidArchive)
 			}
-			if hdr.Size <= metadataLimit {
+			if isCheckpoint || hdr.Size <= metadataLimit {
 				content, err = io.ReadAll(io.TeeReader(tr, hash))
 			} else {
 				_, err = io.Copy(hash, tr)
@@ -187,6 +199,9 @@ func readArchive(ctx context.Context, input io.Reader, dataset bool) (_ *archive
 		}
 		if isConfig {
 			configs[name] = content
+		}
+		if isCheckpoint {
+			result.checkpointManifest = content
 		}
 		if isSummary && len(content) > 0 && json.Valid(content) {
 			result.summary = content
@@ -235,7 +250,7 @@ func readArchive(ctx context.Context, input io.Reader, dataset bool) (_ *archive
 			}
 		}
 	}
-	if dataset {
+	if kind == KindDataset {
 		if len(configs) == 0 {
 			return nil, fmt.Errorf("%w: no Harbor task.toml found", ErrInvalidArchive)
 		}

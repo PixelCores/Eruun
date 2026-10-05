@@ -49,7 +49,7 @@ func TestArchiveNativeTasksAndCompleteManifest(t *testing.T) {
 	for _, prefix := range []string{"", "dataset/task/", "./dataset/task/"} {
 		t.Run(prefix, func(t *testing.T) {
 			data := archiveBytes(t, taskEntries(prefix)...)
-			got, err := readArchive(context.Background(), bytes.NewReader(data), true)
+			got, err := readArchive(context.Background(), bytes.NewReader(data), KindDataset)
 			require.NoError(t, err)
 			defer got.close()
 			require.Equal(t, int64(len(data)), got.size)
@@ -84,7 +84,11 @@ func TestArchiveRejectsUnsafeAndInvalidInputs(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := readArchive(context.Background(), bytes.NewReader(archiveBytes(t, tt.entries...)), tt.dataset)
+			kind := KindSource
+			if tt.dataset {
+				kind = KindDataset
+			}
+			result, err := readArchive(context.Background(), bytes.NewReader(archiveBytes(t, tt.entries...)), kind)
 			if result != nil {
 				result.close()
 			}
@@ -95,7 +99,7 @@ func TestArchiveRejectsUnsafeAndInvalidInputs(t *testing.T) {
 		t.Run(image, func(t *testing.T) {
 			entries := taskEntries("")
 			entries[1].content = "[environment]\ndocker_image = \"" + image + "\"\n"
-			result, err := readArchive(context.Background(), bytes.NewReader(archiveBytes(t, entries...)), true)
+			result, err := readArchive(context.Background(), bytes.NewReader(archiveBytes(t, entries...)), KindDataset)
 			if result != nil {
 				result.close()
 			}
@@ -106,30 +110,30 @@ func TestArchiveRejectsUnsafeAndInvalidInputs(t *testing.T) {
 
 func TestArchiveResultSummaryLinksAndIntegrity(t *testing.T) {
 	data := archiveBytes(t, testEntry{name: "result.json", content: `{"collectionComplete":true,"evaluationStatus":"succeeded"}`}, testEntry{name: "outputs/trial/trajectory.json", content: `[1,2,3]`}, testEntry{name: "outputs/current", kind: tar.TypeSymlink, link: "trial/trajectory.json"})
-	result, err := readArchive(context.Background(), bytes.NewReader(data), false)
+	result, err := readArchive(context.Background(), bytes.NewReader(data), KindSource)
 	require.NoError(t, err)
 	defer result.close()
 	require.JSONEq(t, `{"collectionComplete":true,"evaluationStatus":"succeeded"}`, string(result.summary))
 	require.Contains(t, string(result.manifest), `"linkTarget":"trial/trajectory.json"`)
 	data[len(data)-6] ^= 1
-	_, err = readArchive(context.Background(), bytes.NewReader(data), false)
+	_, err = readArchive(context.Background(), bytes.NewReader(data), KindSource)
 	require.ErrorIs(t, err, ErrInvalidArchive)
 	var combined bytes.Buffer
 	combined.Write(archiveBytes(t, testEntry{name: "first", content: "x"}))
 	combined.Write(archiveBytes(t, testEntry{name: "second", content: "y"}))
-	_, err = readArchive(context.Background(), &combined, false)
+	_, err = readArchive(context.Background(), &combined, KindSource)
 	require.ErrorIs(t, err, ErrInvalidArchive)
 }
 
 func TestArchiveBoundsAndCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := readArchive(ctx, bytes.NewReader(nil), false)
+	_, err := readArchive(ctx, bytes.NewReader(nil), KindSource)
 	require.ErrorIs(t, err, context.Canceled)
 	entries := make([]testEntry, MaxArchiveFiles+1)
 	for i := range entries {
 		entries[i] = testEntry{name: string(rune(0x1000 + i)), content: "x"}
 	}
-	_, err = readArchive(context.Background(), bytes.NewReader(archiveBytes(t, entries...)), false)
+	_, err = readArchive(context.Background(), bytes.NewReader(archiveBytes(t, entries...)), KindSource)
 	require.ErrorIs(t, err, ErrInvalidArchive)
 }
