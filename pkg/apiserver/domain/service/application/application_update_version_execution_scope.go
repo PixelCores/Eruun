@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
@@ -75,40 +74,13 @@ func validateVersionUpdateExecutionScopeWorkflowCoverage(workflow *model.Workflo
 		return nil
 	}
 
-	covered := make(map[string]struct{}, len(required))
 	var steps model.WorkflowSteps
 	if workflow.Steps != nil {
 		if err := decodeJSONStruct(workflow.Steps, &steps); err != nil {
 			return fmt.Errorf("%w: invalid workflow steps: %v", bcode.ErrWorkflowConfig, err)
 		}
 	}
-	for _, step := range steps.Steps {
-		if step == nil {
-			continue
-		}
-		if config.ParseWorkflowStepType(string(step.StepType)) == config.WorkflowStepTypeApproval {
-			continue
-		}
-		if len(step.SubSteps) == 0 && versionUpdateWorkflowJobTypeDeploysComponents(step.WorkflowType) {
-			for _, name := range step.ComponentNames() {
-				key := strings.ToLower(strings.TrimSpace(name))
-				if key != "" {
-					covered[key] = struct{}{}
-				}
-			}
-		}
-		for _, sub := range step.SubSteps {
-			if sub == nil || !versionUpdateWorkflowJobTypeDeploysComponents(sub.WorkflowType) {
-				continue
-			}
-			for _, name := range sub.ComponentNames() {
-				key := strings.ToLower(strings.TrimSpace(name))
-				if key != "" {
-					covered[key] = struct{}{}
-				}
-			}
-		}
-	}
+	covered := versionUpdateWorkflowDeploymentComponents(steps)
 	missing := make([]string, 0)
 	for key, name := range required {
 		if _, ok := covered[key]; !ok {

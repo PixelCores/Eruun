@@ -170,37 +170,7 @@ func validateVersionUpdateDeployAllWorkflow(workflow *model.Workflow, components
 	if err := validateVersionUpdateWorkflowStepsJobTypes(&steps); err != nil {
 		return err
 	}
-	covered := make(map[string]struct{}, len(required))
-	for _, step := range steps.Steps {
-		if step == nil {
-			continue
-		}
-		if config.ParseWorkflowStepType(string(step.StepType)) == config.WorkflowStepTypeApproval {
-			continue
-		}
-		if len(step.SubSteps) == 0 && versionUpdateWorkflowJobTypeDeploysComponents(step.WorkflowType) {
-			for _, name := range step.ComponentNames() {
-				key := strings.ToLower(strings.TrimSpace(name))
-				if key != "" {
-					covered[key] = struct{}{}
-				}
-			}
-		}
-		for _, sub := range step.SubSteps {
-			if sub == nil {
-				continue
-			}
-			if !versionUpdateWorkflowJobTypeDeploysComponents(sub.WorkflowType) {
-				continue
-			}
-			for _, name := range sub.ComponentNames() {
-				key := strings.ToLower(strings.TrimSpace(name))
-				if key != "" {
-					covered[key] = struct{}{}
-				}
-			}
-		}
-	}
+	covered := versionUpdateWorkflowDeploymentComponents(steps)
 	var missing []string
 	for key, name := range required {
 		if _, ok := covered[key]; !ok {
@@ -221,13 +191,33 @@ func validateVersionUpdateReadyWorkflowCoverage(workflow *model.Workflow, compon
 	if workflow == nil {
 		return bcode.ErrWorkflowNotExist
 	}
-	covered := make(map[string]struct{}, len(componentNames))
 	var steps model.WorkflowSteps
 	if workflow.Steps != nil {
 		if err := decodeJSONStruct(workflow.Steps, &steps); err != nil {
 			return fmt.Errorf("%w: decode workflow steps: %v", bcode.ErrExecWorkflow, err)
 		}
 	}
+	covered := versionUpdateWorkflowDeploymentComponents(steps)
+
+	missing := make([]string, 0)
+	for _, name := range componentNames {
+		key := strings.ToLower(strings.TrimSpace(name))
+		if key == "" {
+			continue
+		}
+		if _, ok := covered[key]; !ok {
+			missing = append(missing, strings.TrimSpace(name))
+		}
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		return fmt.Errorf("%w: version update workflow %s does not cover Ready-observed components: %s", bcode.ErrWorkflowConfig, strings.TrimSpace(workflow.ID), strings.Join(missing, ","))
+	}
+	return nil
+}
+
+func versionUpdateWorkflowDeploymentComponents(steps model.WorkflowSteps) map[string]struct{} {
+	covered := make(map[string]struct{})
 	for _, step := range steps.Steps {
 		if step == nil {
 			continue
@@ -255,22 +245,7 @@ func validateVersionUpdateReadyWorkflowCoverage(workflow *model.Workflow, compon
 			}
 		}
 	}
-
-	missing := make([]string, 0)
-	for _, name := range componentNames {
-		key := strings.ToLower(strings.TrimSpace(name))
-		if key == "" {
-			continue
-		}
-		if _, ok := covered[key]; !ok {
-			missing = append(missing, strings.TrimSpace(name))
-		}
-	}
-	if len(missing) > 0 {
-		sort.Strings(missing)
-		return fmt.Errorf("%w: version update workflow %s does not cover Ready-observed components: %s", bcode.ErrWorkflowConfig, strings.TrimSpace(workflow.ID), strings.Join(missing, ","))
-	}
-	return nil
+	return covered
 }
 
 func versionUpdateWorkflowJobTypeDeploysComponents(jobType config.JobType) bool {
