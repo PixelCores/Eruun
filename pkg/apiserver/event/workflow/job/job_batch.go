@@ -23,6 +23,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -597,6 +598,41 @@ func podOwnedByJob(pod *corev1.Pod, job *batchv1.Job) bool {
 		}
 	}
 	return false
+}
+
+func (b *deployNamespacedResourceJobBase) createBatchJob(ctx context.Context, jobObj *batchv1.Job) (bool, error) {
+	if err := ensureCurrentJobWorkflowOwnership(ctx, b.store, b.job); err != nil {
+		return false, err
+	}
+	validateExisting := validateExistingJobExecutionIdentity(ctx, b.store, jobObj)
+	_, created, err := createOrUpdateTrackedResource(ctx, domainspec.ResourceJob, jobObj.Namespace, jobObj.Name, func(ctx context.Context) (*batchv1.Job, error) {
+		return b.client.BatchV1().Jobs(jobObj.Namespace).Get(ctx, jobObj.Name, metav1.GetOptions{})
+	}, func(ctx context.Context) (*batchv1.Job, error) {
+		return b.client.BatchV1().Jobs(jobObj.Namespace).Create(ctx, jobObj, metav1.CreateOptions{})
+	}, func(_ context.Context, existing *batchv1.Job) error {
+		return validateExisting(existing)
+	}, k8serrors.IsNotFound, k8serrors.IsAlreadyExists)
+	return created, err
+}
+
+func (b *deployNamespacedResourceJobBase) waitBatchJob(ctx context.Context) (config.Status, string, error) {
+	timeout := b.job.Timeout
+	if timeout <= 0 {
+		timeout = int64(config.DefaultJobTaskTimeout.Seconds())
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+	defer cancel()
+	namespace := b.namespace
+	name := b.job.Name
+	if jobObj, ok := optionalJobInfo[*batchv1.Job](b.job); ok {
+		if jobObj.Namespace != "" {
+			namespace = jobObj.Namespace
+		}
+		if jobObj.Name != "" {
+			name = jobObj.Name
+		}
+	}
+	return waitForJobCompletion(waitCtx, b.client, namespace, name)
 }
 
 // Job wait helpers.

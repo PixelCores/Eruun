@@ -3,6 +3,9 @@ package job
 import (
 	"context"
 	"errors"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,7 +15,10 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
+	restfake "k8s.io/client-go/rest/fake"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
@@ -332,6 +338,73 @@ func TestStartTimeFromJob(t *testing.T) {
 	value, ok = startTimeFromJob(job)
 	require.True(t, ok)
 	require.Equal(t, int64(123), value)
+}
+
+func TestWaitBatchJobUsesTaskTargetAndTimeout(t *testing.T) {
+	tests := []struct {
+		name        string
+		jobInfo     interface{}
+		timeout     int64
+		wantTarget  string
+		wantTimeout time.Duration
+	}{
+		{
+			name: "task defaults", wantTarget: "task-namespace/jobs/task-name",
+			wantTimeout: config.DefaultJobTaskTimeout,
+		},
+		{
+			name: "empty job info and negative timeout", jobInfo: &batchv1.Job{}, timeout: -1,
+			wantTarget: "task-namespace/jobs/task-name", wantTimeout: config.DefaultJobTaskTimeout,
+		},
+		{
+			name: "job info namespace", jobInfo: &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: "job-namespace"}},
+			timeout: 15, wantTarget: "job-namespace/jobs/task-name", wantTimeout: 15 * time.Second,
+		},
+		{
+			name: "job info name", jobInfo: &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "job-name"}},
+			timeout: 10, wantTarget: "task-namespace/jobs/job-name", wantTimeout: 10 * time.Second,
+		},
+		{
+			name: "job info target", jobInfo: &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: "job-namespace", Name: "job-name"}},
+			wantTarget: "job-namespace/jobs/job-name", wantTimeout: config.DefaultJobTaskTimeout,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var requestPath string
+			var deadline time.Time
+			var hasDeadline bool
+			httpClient := restfake.CreateHTTPClient(func(request *http.Request) (*http.Response, error) {
+				requestPath = request.URL.Path
+				deadline, hasDeadline = request.Context().Deadline()
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(`{"apiVersion":"batch/v1","kind":"Job","status":{"conditions":[{"type":"Complete","status":"True"}]}}`)),
+				}, nil
+			})
+			client, err := kubernetes.NewForConfigAndClient(&rest.Config{Host: "https://kubernetes.example.test"}, httpClient)
+			require.NoError(t, err)
+			base := deployNamespacedResourceJobBase{
+				namespace: "task-namespace",
+				client:    client,
+				job: &model.JobTask{
+					Name: "task-name", Namespace: "task-namespace", Timeout: test.timeout, JobInfo: test.jobInfo,
+				},
+			}
+
+			started := time.Now()
+			status, message, err := base.waitBatchJob(context.Background())
+			finished := time.Now()
+			require.NoError(t, err)
+			require.Equal(t, config.StatusCompleted, status)
+			require.Empty(t, message)
+			require.Equal(t, "/apis/batch/v1/namespaces/"+test.wantTarget, requestPath)
+			require.True(t, hasDeadline)
+			require.False(t, deadline.Before(started.Add(test.wantTimeout)))
+			require.False(t, deadline.After(finished.Add(test.wantTimeout)))
+		})
+	}
 }
 
 func TestWaitForJobCompletionBranches(t *testing.T) {
