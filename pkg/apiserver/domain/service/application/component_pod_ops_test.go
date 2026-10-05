@@ -164,6 +164,51 @@ func TestExportComponentFilesZipPendingPodReturnsPendingError(t *testing.T) {
 	require.False(t, called)
 }
 
+func TestComponentPodOperationsRejectCompletedPods(t *testing.T) {
+	origArchive, origExec, origStream := archiveComponentPodPathAsZip, execComponentPodShellScript, streamComponentPodShellScript
+	t.Cleanup(func() {
+		archiveComponentPodPathAsZip, execComponentPodShellScript, streamComponentPodShellScript = origArchive, origExec, origStream
+	})
+	backendCalls := 0
+	archiveComponentPodPathAsZip = func(context.Context, *rest.Config, string, string, string, string) (*kube.PodPathArchiveStream, error) {
+		backendCalls++
+		return nil, fmt.Errorf("unexpected archive call")
+	}
+	execComponentPodShellScript = func(context.Context, *rest.Config, string, string, string, string) (*kube.PodExecResult, error) {
+		backendCalls++
+		return nil, fmt.Errorf("unexpected exec call")
+	}
+	streamComponentPodShellScript = func(context.Context, *rest.Config, string, string, string, string) (<-chan kube.PodShellStreamEvent, error) {
+		backendCalls++
+		return nil, fmt.Errorf("unexpected stream call")
+	}
+	for _, phase := range []corev1.PodPhase{corev1.PodSucceeded, corev1.PodFailed} {
+		t.Run(string(phase), func(t *testing.T) {
+			store := newInMemoryAppStore()
+			require.NoError(t, store.Add(context.Background(), &model.Applications{ID: "app-1", ManagementMode: domainspec.ManagementModeNative}))
+			require.NoError(t, store.Add(context.Background(), &model.ApplicationComponent{
+				AppID: "app-1", Name: "api", Namespace: config.DefaultNamespace,
+			}))
+			pod := newComponentLogPod("pod-api", config.DefaultNamespace, "app-1", "api", []corev1.Container{{Name: "api"}})
+			pod.Status.Phase = phase
+			svc := newMockServiceWithStore(store)
+			svc.KubeClient = k8sfake.NewSimpleClientset(pod)
+			svc.KubeConfig = &rest.Config{Host: "https://example.test"}
+
+			archive, err := svc.ExportComponentFilesZip(context.Background(), "app-1", "api", apisv1.ExportComponentFilesRequest{Path: "/tmp/out"})
+			require.Nil(t, archive)
+			require.ErrorIs(t, err, bcode.ErrComponentPodUnavailable)
+			result, err := svc.ExecComponentShellScript(context.Background(), "app-1", "api", apisv1.ExecComponentShellScriptRequest{Script: "echo done"})
+			require.Nil(t, result)
+			require.ErrorIs(t, err, bcode.ErrComponentPodUnavailable)
+			stream, err := svc.StreamComponentShellScript(context.Background(), "app-1", "api", apisv1.ExecComponentShellScriptRequest{Script: "echo done"})
+			require.Nil(t, stream)
+			require.ErrorIs(t, err, bcode.ErrComponentPodUnavailable)
+			require.Zero(t, backendCalls)
+		})
+	}
+}
+
 func TestExportComponentFilesZipMapsInvalidArchivePathError(t *testing.T) {
 	store := newInMemoryAppStore()
 	require.NoError(t, store.Add(context.Background(), &model.ApplicationComponent{
