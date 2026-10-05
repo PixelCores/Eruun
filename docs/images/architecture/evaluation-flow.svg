@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1030" viewBox="0 0 1280 1030" role="img" aria-labelledby="title desc">
+<title id="title">一次评测，两条独立的完成路径</title>
+<desc id="desc">调用方上传任务包并提交评测。控制面创建 Runner；Runner 认领、下载并通过内部 API 为 trial 申请 Sandbox，Sandbox 执行 setup、Agent、verifier。Runner 采集并上传结果，源归档持久化后，一条路径确认执行终态，另一条由 Controller 独立交付 MinIO 或数据库，目标失败可单独重试。</desc>
+<defs>
+<marker id="blue" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0 0 L9 4.5 L0 9 Z" fill="#2864d7"/></marker>
+<marker id="teal" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0 0 L9 4.5 L0 9 Z" fill="#0b817b"/></marker>
+<marker id="muted" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0 0 L9 4.5 L0 9 Z" fill="#5b7087"/></marker>
+<marker id="purple" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0 0 L9 4.5 L0 9 Z" fill="#7954af"/></marker>
+<marker id="amber" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0 0 L9 4.5 L0 9 Z" fill="#a56b18"/></marker>
+</defs>
+<style>text{font-family:Inter,"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif} .mono{font-family:"SFMono-Regular",Consolas,monospace}</style>
+<rect x="0" y="0" width="1280" height="1030" rx="0" fill="#ffffff" stroke="none"/>
+<text x="40" y="40" font-size="14" font-weight="600" fill="#5b7087" text-anchor="start" letter-spacing="2">ERUUN / ARCHITECTURE     04</text>
+<text x="40" y="84" font-size="30" font-weight="700" fill="#18324f" text-anchor="start">一次评测，两条独立的完成路径</text>
+<text x="40" y="117" font-size="18" font-weight="400" fill="#5b7087" text-anchor="start">Runner 组织评测，Sandbox 执行任务；结果保存不阻塞执行终态确认。</text>
+<rect x="40" y="155" width="360" height="485" rx="12" fill="#f3f6fc" stroke="none"/>
+<text x="64" y="187" font-size="22" font-weight="600" fill="#2864d7" text-anchor="start">Eruun 控制面</text>
+<text x="64" y="215" font-size="15" font-weight="400" fill="#5b7087" text-anchor="start">API · Scheduler · Worker · Controller</text>
+<rect x="460" y="155" width="360" height="485" rx="12" fill="#f7f4fc" stroke="none"/>
+<text x="484" y="187" font-size="22" font-weight="600" fill="#7954af" text-anchor="start">Runner / Harbor</text>
+<text x="484" y="215" font-size="17" font-weight="400" fill="#5b7087" text-anchor="start">编排与采集</text>
+<rect x="880" y="155" width="360" height="485" rx="12" fill="#f0f8f6" stroke="none"/>
+<text x="904" y="187" font-size="22" font-weight="600" fill="#0b817b" text-anchor="start">Sandbox</text>
+<text x="904" y="215" font-size="17" font-weight="400" fill="#5b7087" text-anchor="start">执行与评分</text>
+<rect x="64" y="246" width="312" height="112" rx="12" fill="#fff" stroke="#cdd8e5"/>
+<rect x="64" y="246" width="5" height="112" rx="2" fill="#2864d7" stroke="none"/>
+<text x="89" y="280" font-size="22" font-weight="600" fill="#18324f" text-anchor="start">提交并调度评测</text>
+<text x="89" y="310" font-size="18" font-weight="400" fill="#5b7087" text-anchor="start">任务包 + traits.eval</text>
+<text x="89" y="337" font-size="18" font-weight="400" fill="#5b7087" text-anchor="start">复用任务队列，创建 Runner</text>
+<path d="M 376 302 L 484 302" fill="none" stroke="#2864d7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)"/>
+<rect x="484" y="246" width="312" height="112" rx="12" fill="#fff" stroke="#cdd8e5"/>
+<rect x="484" y="246" width="5" height="112" rx="2" fill="#7954af" stroke="none"/>
+<text x="509" y="280" font-size="22" font-weight="600" fill="#18324f" text-anchor="start">认领、下载与编排</text>
+<text x="509" y="310" font-size="18" font-weight="400" fill="#5b7087" text-anchor="start">绑定本次 execution 身份</text>
+<text x="509" y="337" font-size="18" font-weight="400" fill="#5b7087" text-anchor="start">Harbor 组织一个或多个 trial</text>
+<path d="M 640 358 L 640 397" fill="none" stroke="#7954af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#purple)"/>
+<rect x="484" y="397" width="312" height="86" rx="12" fill="#fff" stroke="#cdd8e5"/>
+<rect x="484" y="397" width="5" height="86" rx="2" fill="#7954af" stroke="none"/>
+<text x="509" y="431" font-size="22" font-weight="600" fill="#18324f" text-anchor="start">申请 trial 环境</text>
+<text x="509" y="461" font-size="18" font-weight="400" fill="#5b7087" text-anchor="start">经内部 API 等待 Ready / UID</text>
+<path d="M 796 440 L 904 440" fill="none" stroke="#7954af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#purple)"/>
+<rect x="904" y="397" width="312" height="86" rx="12" fill="#fff" stroke="#cdd8e5"/>
+<rect x="904" y="397" width="5" height="86" rx="2" fill="#0b817b" stroke="none"/>
+<text x="929" y="431" font-size="22" font-weight="600" fill="#18324f" text-anchor="start">执行 trial</text>
+<text x="929" y="461" font-size="18" font-weight="400" fill="#5b7087" text-anchor="start">setup → Agent → verifier</text>
+<path d="M 1060 483 L 1060 568 L 796 568" fill="none" stroke="#0b817b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 5" marker-end="url(#teal)"/>
+<rect x="484" y="518" width="312" height="104" rx="12" fill="#fff" stroke="#cdd8e5"/>
+<rect x="484" y="518" width="5" height="104" rx="2" fill="#7954af" stroke="none"/>
+<text x="509" y="552" font-size="22" font-weight="600" fill="#18324f" text-anchor="start">完整采集并上传</text>
+<text x="509" y="582" font-size="18" font-weight="400" fill="#5b7087" text-anchor="start">result.json + outputs/</text>
+<text x="509" y="609" font-size="18" font-weight="400" fill="#5b7087" text-anchor="start">保留采集状态与原始结果</text>
+<path d="M 484 568 L 376 568" fill="none" stroke="#2864d7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)"/>
+<rect x="64" y="518" width="312" height="104" rx="12" fill="#fff" stroke="#cdd8e5"/>
+<rect x="64" y="518" width="5" height="104" rx="2" fill="#2864d7" stroke="none"/>
+<text x="89" y="552" font-size="22" font-weight="600" fill="#18324f" text-anchor="start">持久化源归档</text>
+<text x="89" y="582" font-size="18" font-weight="400" fill="#5b7087" text-anchor="start">创建每个目标的交付记录</text>
+<text x="89" y="609" font-size="18" font-weight="400" fill="#5b7087" text-anchor="start">此时即可开始保存副本</text>
+<path d="M 220 622 L 220 689" fill="none" stroke="#2864d7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)"/>
+<path d="M 220 656 L 940 656 L 940 689" fill="none" stroke="#0b817b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#teal)"/>
+<text x="614" y="644" font-size="17" font-weight="400" fill="#0b817b" text-anchor="middle">独立推进</text>
+<rect x="40" y="689" width="566" height="241" rx="12" fill="#f3f6fc" stroke="#bfd0eb"/>
+<text x="65" y="725" font-size="22" font-weight="600" fill="#2864d7" text-anchor="start">A · 确认执行结果</text>
+<text x="65" y="763" font-size="20" font-weight="400" fill="#18324f" text-anchor="start">完整采集 → 成功 terminal ACK</text>
+<text x="65" y="800" font-size="20" font-weight="400" fill="#18324f" text-anchor="start">→ Runner 退出 0 → Kubernetes Job 成功</text>
+<text x="65" y="850" font-size="18" font-weight="400" fill="#5b7087" text-anchor="start">以上证据共同确认评测执行成功。</text>
+<text x="65" y="877" font-size="18" font-weight="400" fill="#5b7087" text-anchor="start">评分数据保留在结果中，执行成功不等于满分。</text>
+<rect x="646" y="689" width="594" height="241" rx="12" fill="#f0f8f6" stroke="#bfd8d1"/>
+<text x="671" y="725" font-size="22" font-weight="600" fill="#0b817b" text-anchor="start">B · 保存结果副本</text>
+<text x="671" y="763" font-size="20" font-weight="400" fill="#18324f" text-anchor="start">Controller → MinIO / 数据库</text>
+<text x="671" y="800" font-size="20" font-weight="400" fill="#18324f" text-anchor="start">逐目标记录保存状态 → 查询 / 下载</text>
+<text x="671" y="850" font-size="18" font-weight="400" fill="#5b7087" text-anchor="start">失败目标可单独重试，无需重新执行 Agent。</text>
+<text x="671" y="877" font-size="18" font-weight="400" fill="#5b7087" text-anchor="start">这条路径无需等待 terminal ACK 或 Runner 退出。</text>
+<path d="M 40 983 L 1240 983" fill="none" stroke="#cdd8e5" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="40" y="1010" font-size="16" font-weight="400" fill="#5b7087" text-anchor="start">新评测使用本集群按需创建的 Sandbox；Harbor trial 由 Runner 编排，不展开为额外的 Eruun Workflow。</text>
+</svg>
