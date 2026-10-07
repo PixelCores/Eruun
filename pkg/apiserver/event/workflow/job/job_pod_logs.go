@@ -130,6 +130,19 @@ func collectJobPodLogsForJob(ctx context.Context, client kubernetes.Interface, n
 				}
 				continue
 			}
+			if owner != nil {
+				// The logs API addresses Pods by name. Verify the UID after the
+				// read so a replacement cannot supply another execution's logs.
+				current, verifyErr := client.CoreV1().Pods(namespace).Get(ctx, pod.Name, metav1.GetOptions{})
+				if verifyErr != nil {
+					readErrors = append(readErrors, fmt.Errorf("verify pod %s after reading logs: %w", pod.Name, verifyErr))
+					continue
+				}
+				if current.UID != pod.UID || !podOwnedByJob(current, owner) {
+					readErrors = append(readErrors, fmt.Errorf("pod %s identity changed while reading logs", pod.Name))
+					continue
+				}
+			}
 			builder.WriteString(logText)
 			if !strings.HasSuffix(logText, "\n") {
 				builder.WriteString("\n")

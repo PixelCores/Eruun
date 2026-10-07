@@ -485,6 +485,12 @@ func (s *resultOutboxTestStore) CompareAndSwapWithConditions(_ context.Context, 
 		if endTime, ok := updates["end_time"].(int64); ok {
 			current.EndTime = endTime
 		}
+		if startTime, ok := updates["start_time"].(int64); ok {
+			current.StartTime = startTime
+		}
+		if info, ok := updates["info"].(string); ok {
+			current.Info = info
+		}
 		current.UpdateTime = time.Now()
 		return true, nil
 	}
@@ -536,6 +542,10 @@ func (s *resultOutboxTestStore) CompareAndSwapWithConditions(_ context.Context, 
 func resultOutboxJobInfoMatchesConditions(current *model.JobInfo, conditions map[string]interface{}) (bool, error) {
 	for field, value := range conditions {
 		switch field {
+		case "attempt":
+			if fmt.Sprint(current.Attempt) != fmt.Sprint(value) {
+				return false, nil
+			}
 		case "status":
 			if current.Status != fmt.Sprint(value) {
 				return false, nil

@@ -290,10 +290,10 @@ Artifact 的 HTTP/gRPC 下载已经先落本地临时文件，再发送到网络
 
 | 编号 | 处置与理由 | 代码与回归入口 |
 | --- | --- | --- |
-| D1 | 应用锁每 40 秒续期，单次续期最多 5 秒；失败取消业务 context，并向调用者保留错误。手动执行、Cron、数据库重置、自动执行新版本都在既有 app 行上获取锁，以 READ COMMITTED 包住检查与提交，避免 Redis 租约失效后双提交。已完成提交遇到响应不确定时仍应按原幂等键重试 | [应用事务](../pkg/apiserver/domain/repository/application_scheduling.go)、[续租](../pkg/apiserver/domain/service/internal/schedulelock/app_schedule_lock.go)、[MySQL 并发回归](../pkg/apiserver/domain/service/workflow/workflow_scheduling_mysql_test.go) |
+| D1 | 应用锁每 40 秒续期，单次续期最多 5 秒；失败取消业务 context，并向调用者保留错误。手动执行、Cron、数据库重置、自动执行与直接提交新版本都在既有 app 行上获取锁，以 READ COMMITTED 包住检查与提交，避免 Redis 租约失效后双提交。版本更新统一先锁 app 再写组件；直接提交在锁内复核原有结构性或 adopted 更新的 idle 条件，普通原地配置更新保持原规则。提交时还会验证预检快照；应用或组件配置已变化则返回 HTTP 409（10043），要求重新读取后提交，避免旧快照覆盖。已完成提交遇到响应不确定时仍应按原幂等键重试 | [应用事务](../pkg/apiserver/domain/repository/application_scheduling.go)、[续租](../pkg/apiserver/domain/service/internal/schedulelock/app_schedule_lock.go)、[MySQL 并发回归](../pkg/apiserver/domain/service/workflow/workflow_scheduling_mysql_test.go)、[版本更新并发回归](../pkg/apiserver/domain/service/application/application_scheduling_mysql_test.go) |
 | D2 | outbox 的 queued/processing 等状态也参加到期恢复；按租约到期优先扫描，DB 时间租约、独立处理 token 与 CAS 把通知丢失和仍存活的消费者区分开。消费中定期续租，失去身份后不能提交结果或删除 outbox；数据库保留的载荷可以重新投递 | [outbox 调度与租约](../pkg/apiserver/event/workflow/job/job_result_outbox.go)、[结果消费](../pkg/apiserver/event/workflow/job/job_result.go) |
-| D3 | 先按执行身份和结果 claim 在数据库提交终态与日志，再执行带 UID 约束的清理。DB 失败保留 Job/Pod；清理失败保留 outbox，重放识别已提交终态后只补清理。同名替换对象不能充当原结果的清理目标 | [结果处理](../pkg/apiserver/event/workflow/job/job_result.go)、[故障窗口回归](../pkg/apiserver/event/workflow/job/result_recovery_regression_test.go) |
-| D4 | WaitingTasks 由 DB 时间筛选到期任务；Harbor 恢复在 ownership 事务内用同一个 DB 时间样本判断执行期限和 checkpoint 资格；后续构建与 Job retry 检查点、退避也使用 DB 时间；恢复时换算成本机单调计时剩余预算，保留原绝对 deadline。数据库时钟不可用时停止推进，不用节点时间兜底 | [到期筛选](../pkg/apiserver/domain/repository/workflow.go)、[恢复](../pkg/apiserver/jobs/recovery.go)、[恢复任务构建](../pkg/apiserver/jobs/builder.go)、[时钟回归](../pkg/apiserver/jobs/recovery_clock_test.go)、[重试控制器](../pkg/apiserver/event/workflow/job/job_retry.go)、[节点偏差回归](../pkg/apiserver/event/workflow/job/deadline_recovery_test.go) |
+| D3 | 先按执行身份和结果 claim 在数据库提交终态与日志，再执行带 UID 约束的清理。结果写入使用状态、执行代次与 attempt 的 CAS，保留并发取消等已提交终态；仅最终持久化为 Completed 才执行成功清理。按名称读取日志后再次校验 Pod UID 与 Job owner，身份变化或无法确认则重试。DB 失败保留 Job/Pod；清理失败保留 outbox，重放识别已提交终态后只补清理。同名替换对象不能充当原结果的日志来源或清理目标 | [结果处理](../pkg/apiserver/event/workflow/job/job_result.go)、[故障窗口回归](../pkg/apiserver/event/workflow/job/result_recovery_regression_test.go) |
+| D4 | WaitingTasks 由 DB 时间筛选到期任务；Harbor 恢复在 ownership 事务内用同一个 DB 时间样本判断执行期限和 checkpoint 资格；后续构建、恢复准入预检查与 Job retry 检查点、退避也使用 DB 时间；恢复时换算成本机单调计时剩余预算，保留原绝对 deadline。数据库时钟不可用时停止推进，不用节点时间兜底 | [到期筛选](../pkg/apiserver/domain/repository/workflow.go)、[恢复](../pkg/apiserver/jobs/recovery.go)、[恢复任务构建](../pkg/apiserver/jobs/builder.go)、[时钟回归](../pkg/apiserver/jobs/recovery_clock_test.go)、[重试控制器](../pkg/apiserver/event/workflow/job/job_retry.go)、[节点偏差回归](../pkg/apiserver/event/workflow/job/deadline_recovery_test.go)、[恢复准入回归](../pkg/apiserver/event/workflow/job/job_scheduling_recovery_test.go) |
 | D5 | 非终态写入必须提供 taskID、正代次、非空 token 和 worker，缺少任一项就拒绝执行持久化回调。Worker claim 前发生的 API 终态回调仍合法，但必须在事务内锁定包括空字段在内的完整父状态快照 | [ownership helper](../pkg/apiserver/domain/repository/workflow_lease.go)、[拒绝与终态回归](../pkg/apiserver/domain/repository/workflow_ownership_test.go) |
 
 D1 的行锁只串行化同一应用的提交，不改变允许登记多个未来定时任务的契约，也不能撤销已成功送达外部系统的请求。D5 同时更新了缺少身份的旧业务测试夹具，原有业务写入故障注入、清理与缓存断言继续保留。
@@ -308,10 +308,10 @@ D1 的行锁只串行化同一应用的提交，不改变允许登记多个未�
 
 修复先以回归复现旧行为，再验证新行为。使用 Go 1.27.1 和独立临时 GOCACHE，已完成：
 
-- 全仓 `go test -race -cover -p 2 ./...`：65 个测试包通过；可选 Docker Compose smoke（`ERUUN_TEST_LOCAL_DEPS=1`）未开启，未算外部依赖验收。复核后的结果恢复小修另重跑受影响 Job 包和故障窗口回归。
+- 全仓 `go test -race -cover -p 2 ./...`：65 个测试包通过；可选 Docker Compose smoke（`ERUUN_TEST_LOCAL_DEPS=1`）未开启，未算外部依赖验收。后续复核另重跑受影响的 application、Job、HTTP API、gRPC、bcode 完整包 race 回归；application 覆盖率 79.9%，Job 覆盖率 76.9%。
 - `go vet ./...`、`go build -trimpath -o <临时目录>/eruun-server ./cmd/main.go` 通过。
-- 独立 MySQL 8.4.11：应用并发提交（空、不同及相同幂等键）、合法未来定时任务、应用不存在；结果 claim 锁与迟到 owner、续期、事务回滚、旧空租约宽限后补投；原表加列及 schema 校验；既有并发 Job 准入和无 Worker 终态回调。
-- 本地故障注入：续租失败取消、结果通知丢失/重复、活跃处理保护、过期批次推进、结果保存/日志读取/清理失败、提交响应不确定、同名新 UID 保护、临时 K8s 读取失败及父 context 取消、节点 ±24h 偏差与 deadline 边界、缺失执行身份拒绝。
+- 独立 MySQL 8.4.11：应用并发提交（空、不同及相同幂等键）、合法未来定时任务、应用不存在；结果 claim 锁与迟到 owner、续期、事务回滚、旧空租约宽限后补投；原表加列及 schema 校验；既有并发 Job 准入和无 Worker 终态回调；直接/自动版本提交的锁顺序、锁内 idle 复核、旧预检快照拒绝及运行状态变化兼容；结果 SQL 写入前并发取消保留原终态。
+- 本地故障注入：续租失败取消、结果通知丢失/重复、活跃处理保护、过期批次推进、结果保存/日志读取/清理失败、提交响应不确定、同名新 UID 保护、临时 K8s 读取失败及父 context 取消、节点 ±24h 偏差与 deadline 边界（含恢复准入前置检查）、缺失执行身份拒绝；七类已提交终态在日志读取或结果写入前交错时保持不变；日志读取期间 Pod 替换、删除或身份确认失败不会提交结果或清理资源。
 - 文档本地链接、代码围栏及 47 处冻结 SHA 源码行号、`gofmt`、`git diff --check` 通过。
 
 真实 MySQL 测试通过 `MYSQL_TEST_DSN` 指向各自独占的临时库；不连接开发/生产数据，也不在文档或日志记录凭据。可选用以下命令复跑相应组（须先按测试要求提供独占测试库，分组不共享并发 schema）：
@@ -319,6 +319,8 @@ D1 的行锁只串行化同一应用的提交，不改变允许登记多个未�
 ```bash
 go test -race -tags=integration ./pkg/apiserver/domain/service/workflow \
   -run TestWorkflowSubmissionMySQLSerializesAfterApplicationLockLoss -count=1
+go test -race -tags=integration ./pkg/apiserver/domain/service/application \
+  -run TestDirectVersionUpdateMySQLApplicationLock -count=1
 go test -race -tags=integration ./pkg/apiserver/event/workflow/job \
   -run TestResultRecoveryMySQL -count=1
 go test -race -tags=integration ./pkg/apiserver/infrastructure/datastore/mysql \

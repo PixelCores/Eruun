@@ -358,3 +358,45 @@ func TestDeleteCompletedPodsForJobRetainsReplacementAfterList(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, replacement.UID, current.UID)
 }
+
+func TestProcessJobResultRejectsPodIdentityChangeDuringLogRead(t *testing.T) {
+	for _, change := range []string{"replaced", "deleted", "verification unavailable"} {
+		t.Run(change, func(t *testing.T) {
+			ctx := context.Background()
+			payload, liveJob, pod, store := completedResultFixture(t)
+			pod.UID = "listed-pod-uid"
+			client := fake.NewSimpleClientset(liveJob, pod)
+			logsRead := false
+			client.PrependReactor("get", "pods", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				if action.GetSubresource() != "log" {
+					if logsRead && change == "verification unavailable" {
+						return true, nil, errors.New("pod identity verification unavailable")
+					}
+					return false, nil, nil
+				}
+				logsRead = true
+				resource := corev1.SchemeGroupVersion.WithResource("pods")
+				switch change {
+				case "replaced":
+					replacement := pod.DeepCopy()
+					replacement.UID = "replacement-pod-uid"
+					require.NoError(t, client.Tracker().Update(resource, replacement, pod.Namespace))
+				case "deleted":
+					require.NoError(t, client.Tracker().Delete(resource, pod.Namespace, pod.Name))
+				}
+				return true, &runtime.Unknown{Raw: []byte("logs whose pod identity must be verified")}, nil
+			})
+
+			err := processJobResult(ctx, client, store, payload)
+			require.Error(t, err)
+			require.True(t, logsRead)
+			stored := &model.JobInfo{ID: 1}
+			require.NoError(t, store.Get(ctx, stored))
+			require.Equal(t, string(config.StatusDistributed), stored.Status)
+			require.Empty(t, stored.Info)
+			for _, action := range client.Actions() {
+				require.NotEqual(t, "delete", action.GetVerb(), "unverified logs must not trigger cleanup")
+			}
+		})
+	}
+}

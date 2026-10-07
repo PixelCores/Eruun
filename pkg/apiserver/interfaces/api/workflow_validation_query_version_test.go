@@ -903,6 +903,7 @@ func TestUpdateVersionEndpointPreservesWorkflowConflictCodes(t *testing.T) {
 	}{
 		{name: "running", err: bcode.ErrWorkflowTaskRunning},
 		{name: "cancelling", err: bcode.ErrWorkflowTaskCancelling},
+		{name: "stale version snapshot", err: bcode.ErrVersionUpdateConflict},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

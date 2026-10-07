@@ -235,8 +235,8 @@ func retryJobRetentionSeconds(deadline int64, earliestTermination time.Time) (in
 	return int32(seconds), nil
 }
 
-func (c *InstantJobCtl) retryDatabaseTime(ctx context.Context) (time.Time, error) {
-	clock, ok := c.store.(datastore.DatabaseClock)
+func retryDatabaseTime(ctx context.Context, store datastore.DataStore) (time.Time, error) {
+	clock, ok := store.(datastore.DatabaseClock)
 	if !ok {
 		return time.Time{}, errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("Job retry requires database clock"))
 	}
@@ -259,7 +259,7 @@ func (c *InstantJobCtl) retainRetryCheckpoint(ctx context.Context, cp *instantJo
 	if cp.Job.Spec.TTLSecondsAfterFinished == nil {
 		if createdAt.IsZero() {
 			var err error
-			createdAt, err = c.retryDatabaseTime(ctx)
+			createdAt, err = retryDatabaseTime(ctx, c.store)
 			if err != nil {
 				return err
 			}
@@ -299,7 +299,7 @@ func (c *InstantJobCtl) runWithRetryPolicy(ctx context.Context, desired *batchv1
 	// Translate the durable database deadline into a local monotonic budget.
 	// Anchor before the query so database latency cannot extend that budget.
 	localStart := time.Now()
-	now, err := c.retryDatabaseTime(ctx)
+	now, err := retryDatabaseTime(ctx, c.store)
 	if err != nil {
 		return err
 	}
@@ -351,7 +351,7 @@ func (c *InstantJobCtl) runWithRetryPolicy(ctx context.Context, desired *batchv1
 				return NewStatusError(config.StatusFailed, err)
 			}
 		}
-		now, err := c.retryDatabaseTime(runCtx)
+		now, err := retryDatabaseTime(runCtx, c.store)
 		if err != nil {
 			return err
 		}
@@ -372,7 +372,7 @@ func (c *InstantJobCtl) newRetryCheckpoint(ctx context.Context, desired *batchv1
 	if c.store == nil || !retryJobMatchesTask(desired, c.job) {
 		return nil, fmt.Errorf("jobRetryPolicy requires datastore and workflow execution identity")
 	}
-	now, err := c.retryDatabaseTime(ctx)
+	now, err := retryDatabaseTime(ctx, c.store)
 	if err != nil {
 		return nil, err
 	}
@@ -449,7 +449,7 @@ func (c *InstantJobCtl) ensureRetryAttempt(ctx context.Context, cp *instantJobRe
 		return err
 	}
 	if cp.RetryAt > 0 {
-		now, err := c.retryDatabaseTime(ctx)
+		now, err := retryDatabaseTime(ctx, c.store)
 		if err != nil {
 			return err
 		}

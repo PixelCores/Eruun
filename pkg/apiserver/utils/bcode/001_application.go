@@ -121,3 +121,7 @@ var ErrNamespaceImportPlanDrift = NewBcode(409, 10041, "namespace import plan dr
 // ErrAdoptedResourceConflict indicates that a source name now resolves to a
 // different Kubernetes UID and must never be overwritten.
 var ErrAdoptedResourceConflict = NewBcode(409, 10042, "adopted resource identity conflict")
+
+// ErrVersionUpdateConflict indicates that application configuration changed
+// after version-update preflight and the request must be validated again.
+var ErrVersionUpdateConflict = NewBcode(409, 10043, "version update preflight is stale; read the application and retry")

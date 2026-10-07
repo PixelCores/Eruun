@@ -49,7 +49,7 @@ func waitForJobAdmission(ctx context.Context, store datastore.DataStore, task *m
 	if d, ok := ctx.Deadline(); ok {
 		deadline = &d
 	}
-	confirmedUID, err := confirmJobAdmissionRecovery(ctx, client, task)
+	confirmedUID, err := confirmJobAdmissionRecovery(ctx, store, client, task)
 	if err != nil {
 		if statusErr, ok := ExtractStatusError(err); ok && statusErr.Status == config.StatusTimeout {
 			return noop, err
@@ -145,7 +145,7 @@ func (c *InstantJobCtl) waitRetryCreationBudget(ctx context.Context) error {
 // A persisted UID makes this a reattachment, never a new resource admission.
 // Check it once outside the database transaction; ensureRetryAttempt repeats
 // the identity check and refuses a Create if the object disappears meanwhile.
-func confirmJobAdmissionRecovery(ctx context.Context, client kubernetes.Interface, task *model.JobTask) (string, error) {
+func confirmJobAdmissionRecovery(ctx context.Context, store datastore.DataStore, client kubernetes.Interface, task *model.JobTask) (string, error) {
 	if (task.JobType != string(config.JobCommand) && task.JobType != string(config.JobEval)) || task.InternalInfo == "" {
 		return "", nil
 	}
@@ -153,9 +153,14 @@ func confirmJobAdmissionRecovery(ctx context.Context, client kubernetes.Interfac
 	if err != nil {
 		return "", err
 	}
+	now, err := retryDatabaseTime(ctx, store)
+	if err != nil {
+		return "", err
+	}
 	// Exhausted executions must settle without requesting another admission,
-	// including a create whose returned UID was never checkpointed.
-	if !time.Unix(0, cp.Deadline).After(time.Now()) {
+	// including a create whose returned UID was never checkpointed. Use the
+	// same database time domain as the durable retry deadline.
+	if !time.Unix(0, cp.Deadline).After(now) {
 		return "", NewStatusError(config.StatusTimeout, context.DeadlineExceeded)
 	}
 	if cp.CurrentUID == "" {

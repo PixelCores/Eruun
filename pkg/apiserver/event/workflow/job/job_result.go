@@ -585,6 +585,7 @@ func processJobResultWithOutbox(ctx context.Context, client kubernetes.Interface
 		logs = logText
 	}
 
+	var persistedStatus config.Status
 	persist := func(tx datastore.DataStore, _ *model.JobResultOutbox) error {
 		if err := updateJobInfoStatus(ctx, tx, payload, status, message, startTime, endTime, logs); err != nil {
 			return err
@@ -593,15 +594,16 @@ func processJobResultWithOutbox(ctx context.Context, client kubernetes.Interface
 		if err != nil {
 			return err
 		}
-		if saved == nil || saved.Status != string(status) {
+		if saved == nil || !isSettledDelayedExecutionStatus(config.Status(saved.Status)) {
 			return fmt.Errorf("result status was not persisted for execution %s", payload.ExecutionKey)
 		}
+		persistedStatus = config.Status(saved.Status)
 		return nil
 	}
 	if upErr := withResultOutboxOwnership(ctx, store, outbox, persist); upErr != nil {
 		return upErr
 	}
-	if status == config.StatusCompleted {
+	if persistedStatus == config.StatusCompleted {
 		if cleanupErr := cleanupPersistedResult(ctx, client, store, payload, outbox, jobObj); cleanupErr != nil {
 			return cleanupErr
 		}
@@ -759,65 +761,7 @@ func updateJobInfoStatus(ctx context.Context, store datastore.DataStore, payload
 	if hasResultPayloadFencingIdentity(payload) {
 		return updateFencedJobInfoStatus(ctx, store, payload, status, message, startTime, endTime, info)
 	}
-	query := &model.JobInfo{TaskID: payload.TaskID}
-	filters := datastore.FilterOptions{}
-	if payload.JobType != "" {
-		filters.In = append(filters.In, datastore.InQueryOption{Key: "type", Values: []string{payload.JobType}})
-	}
-	if payload.ServiceName != "" {
-		filters.In = append(filters.In, datastore.InQueryOption{Key: "service_name", Values: []string{payload.ServiceName}})
-	}
-	filters.In = append(filters.In,
-		datastore.InQueryOption{Key: "execution_key", Values: []string{payload.ExecutionKey}},
-		datastore.InQueryOption{Key: "run_generation", Values: []string{fmt.Sprint(payload.RunGeneration)}})
-	opts := datastore.ListOptions{
-		FilterOptions: filters,
-		SortBy: []datastore.SortOption{
-			{Key: "create_time", Order: datastore.SortOrderDescending},
-		},
-		Page:     1,
-		PageSize: 1,
-	}
-	entities, err := store.List(ctx, query, &opts)
-	if err != nil {
-		return fmt.Errorf("list job info: %w", err)
-	}
-	if len(entities) == 0 {
-		klog.InfoS("job info not found while updating result status", "taskID", payload.TaskID, "serviceName", payload.ServiceName, "status", status)
-		return nil
-	}
-	jobInfo, ok := entities[0].(*model.JobInfo)
-	if !ok || jobInfo == nil {
-		return fmt.Errorf("job info type assertion failed")
-	}
-	if shouldKeepExistingJobInfoStatus(jobInfo.Status, status) {
-		klog.V(4).InfoS("skip stale job status update", "taskID", payload.TaskID, "current", jobInfo.Status, "next", status)
-		return nil
-	}
-
-	jobInfo.Status = string(status)
-	switch status {
-	case config.StatusCompleted, config.StatusSkipped, config.StatusPassed:
-		jobInfo.Error = ""
-	default:
-		jobInfo.Error = strings.TrimSpace(message)
-	}
-	if startTime > 0 && jobInfo.StartTime == 0 {
-		jobInfo.StartTime = startTime
-	}
-	if endTime > 0 {
-		jobInfo.EndTime = endTime
-	} else if jobInfo.EndTime == 0 && status != config.StatusRunning {
-		jobInfo.EndTime = time.Now().Unix()
-	}
-	if status == config.StatusCompleted && info != "" {
-		jobInfo.Info = info
-	}
-
-	if err := store.Put(ctx, jobInfo); err != nil {
-		return fmt.Errorf("update job info: %w", err)
-	}
-	return nil
+	return updateJobInfoStatusCAS(ctx, store, payload, status, message, startTime, endTime, info)
 }
 
 func hasResultPayloadFencingIdentity(payload *JobResultPayload) bool {
@@ -846,59 +790,65 @@ func updateFencedJobInfoStatus(
 		return errors.Join(errResultDispatchNoRetry, err)
 	}
 	err = withJobInfoOwnership(ctx, store, owner, func(tx datastore.DataStore) error {
-		conditionalStore, ok := tx.(datastore.ConditionalCompareAndSwap)
-		if !ok {
-			return fmt.Errorf("update job info: datastore does not support conditional compare-and-swap")
-		}
-		for attempt := 1; attempt <= jobInfoSaveMaxAttempts; attempt++ {
-			jobInfo, err := findJobInfoForResult(ctx, tx, payload)
-			if err != nil {
-				return err
-			}
-			if jobInfo == nil {
-				klog.InfoS("job info not found while updating result status", "taskID", payload.TaskID, "serviceName", payload.ServiceName, "status", status)
-				return nil
-			}
-			if shouldKeepExistingJobInfoStatus(jobInfo.Status, status) {
-				return nil
-			}
-			updates := map[string]interface{}{"status": string(status)}
-			switch status {
-			case config.StatusCompleted, config.StatusSkipped, config.StatusPassed:
-				updates["error"] = ""
-			default:
-				updates["error"] = strings.TrimSpace(message)
-			}
-			if startTime > 0 && jobInfo.StartTime == 0 {
-				updates["start_time"] = startTime
-			}
-			if endTime > 0 {
-				updates["end_time"] = endTime
-			} else if jobInfo.EndTime == 0 && status != config.StatusRunning {
-				updates["end_time"] = time.Now().Unix()
-			}
-			if status == config.StatusCompleted && info != "" {
-				updates["info"] = info
-			}
-			updated, err := conditionalStore.CompareAndSwapWithConditions(ctx, jobInfo, map[string]interface{}{
-				"status":         jobInfo.Status,
-				"execution_key":  payload.ExecutionKey,
-				"run_generation": payload.RunGeneration,
-				"attempt":        jobInfo.Attempt,
-			}, updates)
-			if err != nil {
-				return fmt.Errorf("update job info: %w", err)
-			}
-			if updated {
-				return nil
-			}
-		}
-		return fmt.Errorf("update job info: concurrent execution state changes did not converge after %d attempts", jobInfoSaveMaxAttempts)
+		return updateJobInfoStatusCAS(ctx, tx, payload, status, message, startTime, endTime, info)
 	})
 	if errors.Is(err, repository.ErrWorkflowOwnershipLost) {
 		return errors.Join(errResultDispatchNoRetry, err)
 	}
 	return err
+}
+
+// The outbox lease excludes competing result consumers, but cancellation can
+// settle JobInfo independently. Preserve the first terminal result atomically.
+func updateJobInfoStatusCAS(ctx context.Context, store datastore.DataStore, payload *JobResultPayload, status config.Status, message string, startTime, endTime int64, info string) error {
+	conditionalStore, ok := store.(datastore.ConditionalCompareAndSwap)
+	if !ok {
+		return fmt.Errorf("update job info: datastore does not support conditional compare-and-swap")
+	}
+	for attempt := 1; attempt <= jobInfoSaveMaxAttempts; attempt++ {
+		jobInfo, err := findJobInfoForResult(ctx, store, payload)
+		if err != nil {
+			return err
+		}
+		if jobInfo == nil {
+			klog.InfoS("job info not found while updating result status", "taskID", payload.TaskID, "serviceName", payload.ServiceName, "status", status)
+			return nil
+		}
+		if isSettledDelayedExecutionStatus(config.Status(jobInfo.Status)) {
+			return nil
+		}
+		updates := map[string]interface{}{"status": string(status)}
+		switch status {
+		case config.StatusCompleted, config.StatusSkipped, config.StatusPassed:
+			updates["error"] = ""
+		default:
+			updates["error"] = strings.TrimSpace(message)
+		}
+		if startTime > 0 && jobInfo.StartTime == 0 {
+			updates["start_time"] = startTime
+		}
+		if endTime > 0 {
+			updates["end_time"] = endTime
+		} else if jobInfo.EndTime == 0 && status != config.StatusRunning {
+			updates["end_time"] = time.Now().Unix()
+		}
+		if status == config.StatusCompleted && info != "" {
+			updates["info"] = info
+		}
+		updated, err := conditionalStore.CompareAndSwapWithConditions(ctx, jobInfo, map[string]interface{}{
+			"status":         jobInfo.Status,
+			"execution_key":  payload.ExecutionKey,
+			"run_generation": payload.RunGeneration,
+			"attempt":        jobInfo.Attempt,
+		}, updates)
+		if err != nil {
+			return fmt.Errorf("update job info: %w", err)
+		}
+		if updated {
+			return nil
+		}
+	}
+	return fmt.Errorf("update job info: concurrent execution state changes did not converge after %d attempts", jobInfoSaveMaxAttempts)
 }
 
 func resultPayloadJobTask(payload *JobResultPayload) (*model.JobTask, error) {

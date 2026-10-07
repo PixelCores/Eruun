@@ -97,6 +97,38 @@ func (s *resultJobInfoStore) Put(_ context.Context, entity datastore.Entity) err
 	return s.putErr
 }
 
+func (s *resultJobInfoStore) CompareAndSwapWithConditions(ctx context.Context, entity datastore.Entity, conditions, updates map[string]interface{}) (bool, error) {
+	jobInfo, ok := entity.(*model.JobInfo)
+	if !ok {
+		return false, datastore.ErrEntityInvalid
+	}
+	matched, err := resultOutboxJobInfoMatchesConditions(jobInfo, conditions)
+	if !matched || err != nil {
+		return matched, err
+	}
+	updated := *jobInfo
+	if value, ok := updates["status"].(string); ok {
+		updated.Status = value
+	}
+	if value, ok := updates["error"].(string); ok {
+		updated.Error = value
+	}
+	if value, ok := updates["info"].(string); ok {
+		updated.Info = value
+	}
+	if value, ok := updates["start_time"].(int64); ok {
+		updated.StartTime = value
+	}
+	if value, ok := updates["end_time"].(int64); ok {
+		updated.EndTime = value
+	}
+	if err := s.Put(ctx, &updated); err != nil {
+		return false, err
+	}
+	*jobInfo = updated
+	return true, nil
+}
+
 func TestEnqueueDelayJobBranches(t *testing.T) {
 	ctx := context.Background()
 
@@ -341,7 +373,8 @@ func TestUpdateJobInfoStatusBranches(t *testing.T) {
 	badTypeStore := &resultJobInfoStore{listEntities: []datastore.Entity{&model.Workflow{ID: "wf-1"}}}
 	require.Error(t, updateJobInfoStatus(ctx, badTypeStore, payload, config.StatusFailed, "msg", 0, 0, ""))
 
-	jobInfo := &model.JobInfo{TaskID: "task-1"}
+	executionKey := payload.ExecutionKey
+	jobInfo := &model.JobInfo{ID: 1, TaskID: "task-1", ExecutionKey: &executionKey, RunGeneration: payload.RunGeneration}
 	okStore := &resultJobInfoStore{
 		listEntities: []datastore.Entity{jobInfo},
 	}

@@ -108,6 +108,8 @@ POST /api/v1/applications/:appID/version/cancel
 - `database_reset`、`remove cleanup_all`、普通 remove/add 和无签名资源清理不会对 adopted 应用入队；删除资源必须使用专用 cleanup plan/fingerprint 契约。
 - `restart` 会再次校验 source UID；暂停的 Deployment、`OnDelete` StatefulSet、非零 `rollingUpdate.partition` 以及不安全 PVC 状态都会在 PodTemplate 写入前失败。
 
+版本提交（包括 `autoExec=false`）在数据库事务内先锁应用行，再写组件。预检后应用或组件配置发生变化时返回 `409 / 10043`，不会用旧快照覆盖新配置；调用方应重新读取当前配置，确认更新意图后重新提交。直接提交的结构性或 adopted 更新会在锁内复核原有 idle 条件，普通原地配置更新保持原规则。
+
 `autoExec=true` 的执行语义：
 - 默认执行选定 workflow 的完整步骤；只有显式传入 `executionScope=changed_components` 时，才按本次实际变更组件裁剪 workflow deploy/默认 component jobs。
 - 创建真实 workflow task 时，版本更新与手工执行、到期 schedule、数据库重置共用 per-App 分布式锁；锁内事务原子完成 active task 检查、版本/组件写入和 task 创建。锁竞争返回 `409 / 10031`，且不会提交本次版本、组件或 task 变更；锁只覆盖任务创建事务，不覆盖异步 workflow 的实际执行。
@@ -202,6 +204,7 @@ POST /api/v1/applications/:appID/version/cancel
 | 409 | 10031 | 同一应用存在并发的版本更新、工作流入队、调度、数据库重置或其他互斥操作；调用方应稍后重试 |
 | 503 | 10032 | 应用级分布式锁后端不可用；请求不会继续写入版本或任务 |
 | 409 | 10033 | 版本更新任务不可取消（已执行/非延迟待执行） |
+| 409 | 10043 | 预检后应用或组件配置已被其他请求修改；重新读取当前配置、确认更新意图后重新提交 |
 | 404 | 20005 | 指定的工作流不存在 |
 | 409 | 20007 | 应用已有运行中或排队中的工作流/StatefulSet 清理任务 |
 | 409 | 20008 | 应用工作流正在取消且清理 Job 尚未收敛 |

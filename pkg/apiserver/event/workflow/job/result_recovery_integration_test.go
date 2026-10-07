@@ -4,9 +4,11 @@ package job
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -19,9 +21,11 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
+	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 )
 
 func resultRecoveryMySQLStore(t *testing.T) *sqlstore.Driver {
@@ -170,4 +174,70 @@ func TestResultRecoveryMySQLLegacyNullLeaseGetsGraceAndRecovers(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, config.JobResultOutboxStateResultQueued, current.State)
 	}
+}
+
+func TestResultRecoveryMySQLConcurrentCancellationWinsBeforeResultCAS(t *testing.T) {
+	store := resultRecoveryMySQLStore(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	payload, live, pod, _ := completedResultFixture(t)
+	record := testResultJobInfo(1, payload)
+	record.Status = string(config.StatusDistributed)
+	record.Attempt = 1
+	require.NoError(t, store.Add(ctx, record))
+	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultQueued)
+	outbox.MessageID = "result-message"
+	require.NoError(t, store.Add(ctx, outbox))
+	beforeWrite := make(chan struct{})
+	releaseWrite := make(chan struct{})
+	var once sync.Once
+	require.NoError(t, store.Client.Callback().Update().Before("gorm:update").Register("pause-result-before-cas", func(tx *gorm.DB) {
+		if _, ok := tx.Statement.Model.(*model.JobInfo); !ok {
+			return
+		}
+		updates, ok := tx.Statement.Dest.(map[string]interface{})
+		if !ok || updates["status"] != string(config.StatusCompleted) {
+			return
+		}
+		once.Do(func() {
+			close(beforeWrite)
+			select {
+			case <-releaseWrite:
+			case <-ctx.Done():
+			}
+		})
+	}))
+	t.Cleanup(func() { require.NoError(t, store.Client.Callback().Update().Remove("pause-result-before-cas")) })
+	client := fake.NewSimpleClientset(live, pod)
+	queue := &dispatcherAckQueue{}
+	dispatcher := NewResultDispatcher(queue, client, store, "result", "consumer")
+	raw, err := json.Marshal(jobResultPayloadFromOutbox(outbox))
+	require.NoError(t, err)
+	resultDone := make(chan bool, 1)
+	go func() { resultDone <- dispatcher.handleMessage(ctx, msg.Message{ID: outbox.MessageID, Payload: raw}) }()
+	select {
+	case <-beforeWrite:
+	case <-ctx.Done():
+		t.Fatal("result did not reach the SQL write barrier")
+	}
+	require.NoError(t, repository.TerminalizeCancelledWorkflowJobs(ctx, store, payload.TaskID, "user cancelled", ""))
+	close(releaseWrite)
+	select {
+	case result := <-resultDone:
+		require.True(t, result)
+	case <-ctx.Done():
+		t.Fatal("result did not finish")
+	}
+	saved := &model.JobInfo{ID: 1}
+	require.NoError(t, store.Get(ctx, saved))
+	require.Equal(t, string(config.StatusCancelled), saved.Status)
+	require.Equal(t, "user cancelled", saved.Error)
+	require.Equal(t, "parent workflow cancelled", saved.SchedulingReason)
+	require.Empty(t, saved.Info)
+	for _, action := range client.Actions() {
+		require.NotEqual(t, "delete", action.GetVerb())
+	}
+	require.Len(t, queue.ackCalls, 1)
+	_, err = getJobResultOutboxByID(ctx, store, outbox.ID)
+	require.ErrorIs(t, err, datastore.ErrRecordNotExist)
 }

@@ -678,6 +678,14 @@ func (s *committedCacheUpdateStore) WithTransaction(ctx context.Context, fn func
 	return nil
 }
 
+func (s *committedCacheUpdateStore) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	if err := s.DataStore.(datastore.ReadCommittedTransactional).WithReadCommittedTransaction(ctx, fn); err != nil {
+		return err
+	}
+	s.afterCommit()
+	return nil
+}
+
 func TestUpdateVersionInvalidatesCommittedChangesAfterRequestEnds(t *testing.T) {
 	for _, tc := range []struct {
 		name    string

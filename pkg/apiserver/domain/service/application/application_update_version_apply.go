@@ -1,7 +1,9 @@
 package application
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
@@ -46,6 +48,9 @@ func (c *applicationsServiceImpl) commitAutoExecVersionUpdate(
 	)
 	commit := func(lockCtx context.Context) error {
 		return repository.WithApplicationSchedulingTransaction(lockCtx, c.Store, app.ID, func(tx datastore.DataStore) error {
+			if err := validateVersionUpdateSnapshot(lockCtx, tx, app, componentMap); err != nil {
+				return err
+			}
 			if err := EnsureAppWorkflowIdle(lockCtx, tx, workflow.AppID); err != nil {
 				return fmt.Errorf("auto exec workflow: %w", err)
 			}
@@ -346,4 +351,69 @@ func versionUpdateAddOrUpdateError(action, componentName string, err error) erro
 		return err
 	}
 	return fmt.Errorf("%w: %s component %s: %w", bcode.ErrVersionUpdateFailed, action, componentName, err)
+}
+
+// validateVersionUpdateSnapshot runs under the application row lock. Preflight
+// can include Kubernetes reads, so reject changed configuration instead of
+// silently applying a stale plan or repeating those reads inside the transaction.
+func validateVersionUpdateSnapshot(ctx context.Context, store datastore.DataStore, app *model.Applications, components map[string]*model.ApplicationComponent) error {
+	currentApp := &model.Applications{ID: app.ID}
+	if err := store.Get(ctx, currentApp); err != nil {
+		return fmt.Errorf("read version update application snapshot: %w", err)
+	}
+	expectedApp, actualApp := *app, *currentApp
+	expectedApp.BaseModel, actualApp.BaseModel = model.BaseModel{}, model.BaseModel{}
+	// Canonical JSON compares persisted JSON objects independently of Go numeric
+	// representations. Include persisted json:"-" fields explicitly; API visibility
+	// must not exclude adoption identity/configuration from the conflict check.
+	matches := func(expected, actual []any) error {
+		before, err := json.Marshal(expected)
+		if err != nil {
+			return fmt.Errorf("encode version update preflight snapshot: %w", err)
+		}
+		after, err := json.Marshal(actual)
+		if err != nil {
+			return fmt.Errorf("encode version update current snapshot: %w", err)
+		}
+		if !bytes.Equal(before, after) {
+			return bcode.ErrVersionUpdateConflict
+		}
+		return nil
+	}
+	if err := matches([]any{expectedApp, expectedApp.AdoptionSnapshot}, []any{actualApp, actualApp.AdoptionSnapshot}); err != nil {
+		return err
+	}
+	current, err := repository.FindComponentsByAppID(ctx, store, app.ID)
+	if err != nil {
+		return fmt.Errorf("read version update component snapshot: %w", err)
+	}
+	if len(current) != len(components) {
+		return bcode.ErrVersionUpdateConflict
+	}
+	for _, component := range current {
+		expected := components[strings.ToLower(component.Name)]
+		if expected == nil {
+			return bcode.ErrVersionUpdateConflict
+		}
+		before, after := *expected, *component
+		before.BaseModel, after.BaseModel = model.BaseModel{}, model.BaseModel{}
+		before.Status, after.Status = "", ""
+		before.ReadyReplicas, after.ReadyReplicas = 0, 0
+		before.LastAbnormal, after.LastAbnormal = "", ""
+		if err := matches(
+			[]any{before, before.SourceWorkloadAPIVersion, before.SourceWorkloadKind, before.SourceWorkloadName, before.SourceWorkloadUID, before.SourcePodSelector, before.ResumeReplicas, before.AdoptedSecretData},
+			[]any{after, after.SourceWorkloadAPIVersion, after.SourceWorkloadKind, after.SourceWorkloadName, after.SourceWorkloadUID, after.SourcePodSelector, after.ResumeReplicas, after.AdoptedSecretData},
+		); err != nil {
+			return err
+		}
+	}
+	// Runtime observations and timestamps are not preflight configuration. Keep
+	// their current values when the existing full-model update writes the plan.
+	app.BaseModel = currentApp.BaseModel
+	for _, component := range current {
+		expected := components[strings.ToLower(component.Name)]
+		expected.BaseModel = component.BaseModel
+		expected.Status, expected.ReadyReplicas, expected.LastAbnormal = component.Status, component.ReadyReplicas, component.LastAbnormal
+	}
+	return nil
 }
