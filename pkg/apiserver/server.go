@@ -57,9 +57,7 @@ type restServer struct {
 	sandboxObserver           *informer.KubernetesSandboxObserver
 	eventWorkers              []event.Worker
 	workersMu                 sync.Mutex
-	workersStarted            bool
 	workersReady              bool
-	workersCancel             context.CancelFunc
 	workersRun                *workerRun
 	drainingWorkerRuns        map[*workerRun]struct{}
 	controllerRun             *workerRun
@@ -72,8 +70,6 @@ type restServer struct {
 	leaderCancel              context.CancelFunc
 	leaderPodUID              string
 	leaderServiceDone         <-chan struct{}
-	controllerReady           atomic.Bool
-	schedulerReady            atomic.Bool
 }
 
 func (s *restServer) RuntimeRole() string {
@@ -94,7 +90,7 @@ func (s *restServer) RuntimeReady() (bool, string) {
 		return true, ""
 	}
 	s.workersMu.Lock()
-	ready := s.workersStarted && s.workersReady
+	ready := s.workersRun != nil && s.workersReady
 	s.workersMu.Unlock()
 	if !ready {
 		return false, "worker subscriber is not running"

@@ -223,7 +223,7 @@ func TestEnqueueResultJob(t *testing.T) {
 
 	valid := &JobResultPayload{
 		OutboxID: "outbox-1", Name: "job-1", Namespace: "default", TaskID: "task-1", ExecutionKey: "execution-1", RunGeneration: 1,
-		JobType: string(config.JobDeployInstant), ServiceName: "svc-a", TimeoutSeconds: 60, RunToken: "run-1", WorkerID: "worker-1",
+		JobType: string(config.JobDeployInstant), ServiceName: "svc-a", TimeoutSeconds: 60,
 	}
 	_, err = enqueueResultJob(ctx, nil, valid)
 	require.ErrorIs(t, err, ErrResultQueueUnavailable)
@@ -234,7 +234,7 @@ func TestEnqueueResultJob(t *testing.T) {
 	require.Equal(t, "result-1", id)
 	require.Len(t, queue.enqueued, 1)
 
-	require.JSONEq(t, `{"outboxId":"outbox-1","name":"job-1","namespace":"default","taskId":"task-1","executionKey":"execution-1","runGeneration":1,"jobType":"instant_job","serviceName":"svc-a","timeoutSeconds":60,"runToken":"run-1","workerId":"worker-1"}`, string(queue.enqueued[0]))
+	require.JSONEq(t, `{"outboxId":"outbox-1","name":"job-1","namespace":"default","taskId":"task-1","executionKey":"execution-1","runGeneration":1,"jobType":"instant_job","serviceName":"svc-a","timeoutSeconds":60}`, string(queue.enqueued[0]))
 
 	queue.enqueueErr = errors.New("enqueue failed")
 	_, err = enqueueResultJob(ctx, queue, valid)
@@ -246,7 +246,7 @@ func TestEnqueueResultJobReturnsQueueErrorWhenUnavailable(t *testing.T) {
 	cancel()
 
 	_, err := enqueueResultJob(canceledCtx, nil, &JobResultPayload{
-		Name: "job-1", Namespace: "default", TaskID: "task-1", ExecutionKey: "execution-1", RunGeneration: 1,
+		OutboxID: "outbox-1", Name: "job-1", Namespace: "default", TaskID: "task-1", ExecutionKey: "execution-1", RunGeneration: 1,
 	})
 	require.ErrorIs(t, err, ErrResultQueueUnavailable)
 }
@@ -255,7 +255,7 @@ func TestDelayResultPayloadAndDecode(t *testing.T) {
 	_, err := decodeResultPayload([]byte(`{"taskId":`))
 	require.Error(t, err)
 
-	decoded, err := decodeResultPayload([]byte(`{"taskId":"task-1","executionKey":"execution-1","runGeneration":1,"namespace":"default","name":"job-1"}`))
+	decoded, err := decodeResultPayload([]byte(`{"outboxId":"outbox-1","taskId":"task-1","executionKey":"execution-1","runGeneration":1,"namespace":"default","name":"job-1"}`))
 	require.NoError(t, err)
 	require.Equal(t, "task-1", decoded.TaskID)
 

@@ -19,7 +19,6 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
 func TestFinalizeLogContent_NoTruncate(t *testing.T) {
@@ -222,7 +221,7 @@ func TestProcessJobResultDeletesCompletedOwnedPods(t *testing.T) {
 	jobInfo.Status = string(config.StatusRunning)
 	require.NoError(t, store.Add(ctx, jobInfo))
 
-	err := processJobResult(ctx, client, store, payload)
+	err := processClaimedTestJobResult(t, ctx, client, store, payload)
 	require.NoError(t, err)
 
 	_, err = client.CoreV1().Pods(liveJob.Namespace).Get(ctx, ownedSucceeded.Name, metav1.GetOptions{})
@@ -262,14 +261,11 @@ func TestProcessJobResultStopsWhenSameNameJobIsReplaced(t *testing.T) {
 		}
 		return true, oldJob.DeepCopy(), nil
 	})
-	store := &resultJobInfoStore{
-		listEntities: []datastore.Entity{&model.JobInfo{
-			TaskID: "task-old",
-			Status: string(config.StatusRunning),
-		}},
-	}
+	store := newResultOutboxTestStore()
+	key := "execution-old"
+	require.NoError(t, store.Add(context.Background(), &model.JobInfo{ID: 1, TaskID: "task-old", Status: string(config.StatusRunning), Type: string(config.JobDeployScheduled), ExecutionKey: &key, RunGeneration: 1}))
 	started := time.Now()
-	err := processJobResult(context.Background(), client, store, &JobResultPayload{
+	err := processClaimedTestJobResult(t, context.Background(), client, store, &JobResultPayload{
 		TaskID:         "task-old",
 		JobType:        string(config.JobDeployScheduled),
 		Namespace:      oldJob.Namespace,
@@ -282,7 +278,7 @@ func TestProcessJobResultStopsWhenSameNameJobIsReplaced(t *testing.T) {
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, getCalls, 2)
 	require.Less(t, time.Since(started), 500*time.Millisecond)
-	require.Nil(t, store.putEntity, "stale result must not update the new execution")
+	require.Equal(t, string(config.StatusRunning), store.jobInfoByTaskID("task-old").Status, "stale result must not update execution state")
 }
 
 func TestProcessJobResultKeepsCompletedStatusWhenJobCleanupFails(t *testing.T) {
@@ -314,7 +310,7 @@ func TestProcessJobResultKeepsCompletedStatusWhenJobCleanupFails(t *testing.T) {
 	jobInfo.Status = string(config.StatusRunning)
 	require.NoError(t, store.Add(ctx, jobInfo))
 
-	err := processJobResult(ctx, client, store, payload)
+	err := processClaimedTestJobResult(t, ctx, client, store, payload)
 	require.ErrorContains(t, err, "delete denied")
 
 	_, err = client.BatchV1().Jobs(liveJob.Namespace).Get(ctx, liveJob.Name, metav1.GetOptions{})
@@ -387,7 +383,7 @@ func TestProcessJobResultRejectsPodIdentityChangeDuringLogRead(t *testing.T) {
 				return true, &runtime.Unknown{Raw: []byte("logs whose pod identity must be verified")}, nil
 			})
 
-			err := processJobResult(ctx, client, store, payload)
+			err := processClaimedTestJobResult(t, ctx, client, store, payload)
 			require.Error(t, err)
 			require.True(t, logsRead)
 			stored := &model.JobInfo{ID: 1}
@@ -501,7 +497,7 @@ func TestCollectResultLogsRevalidatesNeverStartedContainer(t *testing.T) {
 				}
 				return true, current, nil
 			})
-			require.Error(t, processJobResult(context.Background(), client, store, payload))
+			require.Error(t, processClaimedTestJobResult(t, context.Background(), client, store, payload))
 			require.True(t, verified)
 			record := store.jobInfoByTaskID(payload.TaskID)
 			require.Equal(t, string(config.StatusDistributed), record.Status)
@@ -523,7 +519,7 @@ func TestCollectResultLogsRetainsTransientFailureForExecutedContainer(t *testing
 		}
 		return false, nil, nil
 	})
-	require.ErrorContains(t, processJobResult(context.Background(), client, store, payload), "temporary log transport failure")
+	require.ErrorContains(t, processClaimedTestJobResult(t, context.Background(), client, store, payload), "temporary log transport failure")
 	record := store.jobInfoByTaskID(payload.TaskID)
 	require.Equal(t, string(config.StatusDistributed), record.Status)
 	require.Empty(t, record.Info)

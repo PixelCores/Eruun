@@ -174,7 +174,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
-| [`leader-worker-complexity-audit-2026-10-07.md`](leader-worker-complexity-audit-2026-10-07.md) | Historical / Audit | 基于 `2a99ad3` 的统一节点复杂度审核：4 项局部精简、2 项待验证的架构收敛及必须保留的恢复契约 |
+| [`leader-worker-complexity-audit-2026-10-07.md`](leader-worker-complexity-audit-2026-10-07.md) | Historical / Audit | 基于 `2a99ad3` 的统一节点复杂度审核与 A1–A4 精简处置；2 项架构建议仍待评估，保留恢复正确性契约 |
 | [`distributed-design-audit-2026-10-06.md`](distributed-design-audit-2026-10-06.md) | Historical / Audit | 基于 `63d4a4c` 的分布式设计审核：四角色与权威状态、设计取舍、D1–D5 修复处置和验证边界、容量建议与验收矩阵 |
 | [`overdesign-audit-2026-10-02.md`](overdesign-audit-2026-10-02.md) | Historical / Audit | 基于 `0984611` 的 6 项审计发现及 PR #123 分支整改：统一 Service 表示、保留导入来源、复用清理规则、显式查询、tracing 配置迁移和移除旧 HTTP helper |
 | [`overdesign-audit-2026-09-29.md`](overdesign-audit-2026-09-29.md) | Historical / Audit | 基于 `02503bd` 的第三轮过度设计审核；O13–O15 与两项候选的实施、Ingress 端口回归、源码接入边界和历史处置 |

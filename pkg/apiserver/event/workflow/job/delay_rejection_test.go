@@ -122,7 +122,7 @@ func TestRejectedPersistedWorkloadReachesTerminalState(t *testing.T) {
 func TestUntrustedDelayedNotificationDoesNotSettleCheckpoint(t *testing.T) {
 	store, manager, payloads := delayedWorkspaceFixture(t)
 	delete(store.jobInfos, 2)
-	payloads[0].Namespace = "namespace-2"
+	payloads[0].ExecuteAt++
 	before := *store.jobInfos[1]
 	dispatcher := NewDelayDispatcher(nil, manager, access.NewStore(store), "", "")
 	runDelayedScheduleUntilAck(t, dispatcher, payloads[0])

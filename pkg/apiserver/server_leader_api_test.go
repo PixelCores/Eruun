@@ -23,6 +23,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 func TestLeaderHTTPGatesBusinessRoutesAndAllowsProbes(t *testing.T) {
@@ -101,8 +102,7 @@ func TestLeaderHTTPLossCancelsRequestAndUnblocksUpload(t *testing.T) {
 		_, err := io.Copy(io.Discard, c.Request.Body)
 		done <- err
 	})
-	httpServer := httptest.NewServer(router)
-	defer httpServer.Close()
+	httpServer := serveLeaderHTTPTestHandler(t, s, router)
 	conn, err := net.Dial("tcp", strings.TrimPrefix(httpServer.URL, "http://"))
 	require.NoError(t, err)
 	defer conn.Close()
@@ -160,7 +160,9 @@ func TestLeaderGRPCGatePrecedesPublicAuthenticationAndPreservesErrorDetails(t *t
 			authenticationReached.Store(true)
 			return handler(ctx, req)
 		}))
-	conn := serveLeaderTestGRPC(t, server)
+	// Isolate interceptor ordering here; the production listener rejects
+	// Worker connections before they reach authentication or RPC handlers.
+	conn := serveLeaderTestGRPC(t, server, nil)
 	_, err := eruunv1.NewAccountServiceClient(conn).GetAuthMethods(context.Background(), &emptypb.Empty{})
 	require.Equal(t, codes.Unavailable, status.Code(err))
 	details := status.Convert(err).Details()
@@ -220,7 +222,7 @@ func TestLeaderGRPCLossCancelsActiveUnaryAndBlockedStream(t *testing.T) {
 					return stream.RecvMsg(&emptypb.Empty{})
 				}}},
 			}, &blockedCall{})
-			conn := serveLeaderTestGRPC(t, server)
+			conn := serveLeaderTestGRPC(t, server, s)
 			done := make(chan error, 1)
 			go func() {
 				if operation == "unary" {
@@ -253,14 +255,234 @@ func TestLeaderGRPCLossCancelsActiveUnaryAndBlockedStream(t *testing.T) {
 	}
 }
 
-func serveLeaderTestGRPC(t *testing.T, server *grpc.Server) *grpc.ClientConn {
+func serveLeaderTestGRPC(t *testing.T, server *grpc.Server, node *restServer) *grpc.ClientConn {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
+	if node != nil {
+		listener = &leaderListener{Listener: listener, server: node, requireLeadership: true}
+	}
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(server.Stop)
 	conn, err := grpc.NewClient(listener.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 	return conn
+}
+
+func TestLeaderHTTPLossUnblocksNetworkWrite(t *testing.T) {
+	term, loseLeadership := context.WithCancel(context.Background())
+	defer loseLeadership()
+	node := &restServer{leaderCtx: term}
+	router := gin.New()
+	router.Use(node.leaderAPIMiddleware())
+	entered := make(chan struct{})
+	done := make(chan error, 1)
+	router.GET("/api/v1/download", func(c *gin.Context) {
+		close(entered)
+		_, err := c.Writer.Write(make([]byte, 8<<20))
+		done <- err
+	})
+	server := serveLeaderHTTPTestHandler(t, node, router)
+	conn, err := net.Dial("tcp", server.Listener.Addr().String())
+	require.NoError(t, err)
+	defer conn.Close()
+	require.NoError(t, conn.(*net.TCPConn).SetReadBuffer(1024))
+	_, err = io.WriteString(conn, "GET /api/v1/download HTTP/1.1\r\nHost: localhost\r\n\r\n")
+	require.NoError(t, err)
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("download did not start")
+	}
+	// A peer that never reads must keep the real TCP write blocked.
+	select {
+	case err := <-done:
+		t.Fatalf("download was not blocked before leadership loss: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	loseLeadership()
+	select {
+	case err := <-done:
+		require.Error(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("leadership loss did not unblock the response write")
+	}
+	// Drain bytes already buffered before the close and verify actual EOF.
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(time.Second)))
+	_, err = io.Copy(io.Discard, conn)
+	require.NoError(t, err)
+}
+
+func TestLeaderHTTPClientCancellationLeavesTermAndOtherRequestsAlive(t *testing.T) {
+	term, loseLeadership := context.WithCancel(context.Background())
+	defer loseLeadership()
+	node := &restServer{leaderCtx: term}
+	router := gin.New()
+	router.Use(node.leaderAPIMiddleware())
+	entered := make(chan struct{})
+	handlerDone := make(chan error, 1)
+	router.GET("/api/v1/wait", func(c *gin.Context) {
+		close(entered)
+		<-c.Request.Context().Done()
+		handlerDone <- context.Cause(c.Request.Context())
+	})
+	router.GET("/api/v1/ping", func(c *gin.Context) { c.String(http.StatusOK, "alive") })
+	server := serveLeaderHTTPTestHandler(t, node, router)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/api/v1/wait", nil)
+	require.NoError(t, err)
+	client := server.Client()
+	clientDone := make(chan error, 1)
+	go func() {
+		response, err := client.Do(request)
+		if response != nil {
+			response.Body.Close()
+		}
+		clientDone <- err
+	}()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("request did not start")
+	}
+	cancel()
+	select {
+	case err := <-clientDone:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("client request survived cancellation")
+	}
+	select {
+	case err := <-handlerDone:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("handler survived client cancellation")
+	}
+	require.NoError(t, term.Err())
+	code, body, _, err := callLeaderTransportHTTP(client, server.URL+"/api/v1/ping")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, code)
+	require.Equal(t, "alive", body)
+}
+
+func TestLeaderGRPCBlockedIOStopsOnTermLossAndClientCancellation(t *testing.T) {
+	for _, operation := range []string{"receive", "send"} {
+		for _, cancellation := range []string{"leader", "client"} {
+			t.Run(operation+"/"+cancellation, func(t *testing.T) {
+				term, loseLeadership := context.WithCancel(context.Background())
+				defer loseLeadership()
+				node := &restServer{leaderCtx: term}
+				server := grpc.NewServer(grpc.StreamInterceptor(node.leaderStreamInterceptor))
+				entered := make(chan struct{})
+				handlerDone := make(chan error, 1)
+				server.RegisterService(&grpc.ServiceDesc{
+					ServiceName: "test.BlockedIO", HandlerType: (*leaderTransportPingService)(nil),
+					Streams: []grpc.StreamDesc{{StreamName: "Wait", ClientStreams: true, ServerStreams: true, Handler: func(_ any, stream grpc.ServerStream) error {
+						var err error
+						if operation == "receive" {
+							close(entered)
+							err = stream.RecvMsg(&emptypb.Empty{})
+						} else {
+							// The first message consumes the transport write quota;
+							// the unread client stream blocks the next SendMsg.
+							message := wrapperspb.Bytes(make([]byte, 1<<20))
+							err = stream.SendMsg(message)
+							close(entered)
+							if err == nil {
+								err = stream.SendMsg(message)
+							}
+						}
+						handlerDone <- err
+						return err
+					}}, {StreamName: "Ping", ServerStreams: true, Handler: func(_ any, stream grpc.ServerStream) error {
+						return stream.SendMsg(&emptypb.Empty{})
+					}}},
+				}, struct{}{})
+				conn := serveLeaderTestGRPC(t, server, node)
+				ctx, cancelClient := context.WithCancel(context.Background())
+				defer cancelClient()
+				stream, err := conn.NewStream(ctx, &grpc.StreamDesc{ClientStreams: true, ServerStreams: true}, "/test.BlockedIO/Wait")
+				require.NoError(t, err)
+				select {
+				case <-entered:
+				case <-time.After(time.Second):
+					t.Fatal("stream did not enter transport operation")
+				}
+				select {
+				case err := <-handlerDone:
+					t.Fatalf("stream was not blocked before cancellation: %v", err)
+				case <-time.After(50 * time.Millisecond):
+				}
+				if cancellation == "leader" {
+					loseLeadership()
+				} else {
+					cancelClient()
+				}
+				select {
+				case err := <-handlerDone:
+					require.Error(t, err, "the blocking transport operation must return before the handler exits")
+				case <-time.After(time.Second):
+					t.Fatal("handler transport operation survived cancellation")
+				}
+				err = stream.RecvMsg(&wrapperspb.BytesValue{})
+				if cancellation == "leader" {
+					require.Equal(t, codes.Unavailable, status.Code(err))
+				} else {
+					require.Equal(t, codes.Canceled, status.Code(err))
+					require.NoError(t, term.Err(), "client cancellation must not cancel leadership")
+					ping, err := conn.NewStream(context.Background(), &grpc.StreamDesc{ServerStreams: true}, "/test.BlockedIO/Ping")
+					require.NoError(t, err)
+					require.NoError(t, ping.RecvMsg(&emptypb.Empty{}), "the same connection must still serve other calls")
+					require.ErrorIs(t, ping.RecvMsg(&emptypb.Empty{}), io.EOF)
+				}
+			})
+		}
+	}
+}
+
+func TestLeaderGRPCNormalStreamPreservesMultipleMessagesAndEOF(t *testing.T) {
+	term, loseLeadership := context.WithCancel(context.Background())
+	defer loseLeadership()
+	node := &restServer{leaderCtx: term}
+	server := grpc.NewServer(grpc.StreamInterceptor(node.leaderStreamInterceptor))
+	handlerDone := make(chan error, 1)
+	server.RegisterService(&grpc.ServiceDesc{
+		ServiceName: "test.Messages", HandlerType: (*leaderTransportPingService)(nil),
+		Streams: []grpc.StreamDesc{{StreamName: "Echo", ClientStreams: true, ServerStreams: true, Handler: func(_ any, stream grpc.ServerStream) (err error) {
+			defer func() { handlerDone <- err }()
+			for {
+				message := &wrapperspb.StringValue{}
+				if err = stream.RecvMsg(message); err == io.EOF {
+					return nil
+				} else if err != nil {
+					return err
+				}
+				if err = stream.SendMsg(message); err != nil {
+					return err
+				}
+			}
+		}}},
+	}, struct{}{})
+	conn := serveLeaderTestGRPC(t, server, node)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	stream, err := conn.NewStream(ctx, &grpc.StreamDesc{ClientStreams: true, ServerStreams: true}, "/test.Messages/Echo")
+	require.NoError(t, err)
+	for _, value := range []string{"first", "second", "last"} {
+		require.NoError(t, stream.SendMsg(wrapperspb.String(value)))
+		message := &wrapperspb.StringValue{}
+		require.NoError(t, stream.RecvMsg(message))
+		require.Equal(t, value, message.GetValue())
+	}
+	require.NoError(t, stream.CloseSend())
+	require.ErrorIs(t, stream.RecvMsg(&wrapperspb.StringValue{}), io.EOF)
+	select {
+	case err := <-handlerDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("normal stream handler did not finish")
+	}
+	require.NoError(t, term.Err())
 }

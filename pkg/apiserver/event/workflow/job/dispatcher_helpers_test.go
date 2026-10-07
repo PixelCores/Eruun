@@ -2,6 +2,7 @@ package job
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
@@ -297,7 +298,7 @@ func TestDispatcherConstructorsAndStartGuards(t *testing.T) {
 	require.EqualValues(t, 0, result.ensureFailures.Load())
 
 	ctxOutbox, cancelOutbox := context.WithCancel(context.Background())
-	outbox := NewResultOutboxDispatcher(&dispatcherAckQueue{}, fake.NewSimpleClientset(), &noopStore{})
+	outbox := NewResultOutboxDispatcher(&dispatcherAckQueue{}, &noopStore{})
 	outbox.pollInterval = time.Hour
 	startDone := make(chan struct{})
 	go func() {
@@ -372,7 +373,7 @@ func TestDispatchersRunBlocksUntilContextCancelled(t *testing.T) {
 
 	t.Run("result_outbox", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
-		dispatcher := NewResultOutboxDispatcher(&dispatcherAckQueue{}, fake.NewSimpleClientset(), &noopStore{})
+		dispatcher := NewResultOutboxDispatcher(&dispatcherAckQueue{}, &noopStore{})
 		dispatcher.pollInterval = time.Hour
 		done := make(chan struct{})
 		go func() {
@@ -399,17 +400,22 @@ func TestResultDispatcherProcessesMessagesConcurrently(t *testing.T) {
 			},
 		},
 	})
-	dispatcher := NewResultDispatcher(queue, client, &noopStore{}, "result-workers", "result-consumer")
+	store := newResultOutboxTestStore()
+	payload := &JobResultPayload{TaskID: "task-slow", Namespace: "default", Name: "slow-job", ExecutionKey: "execution-slow", RunGeneration: 1, TimeoutSeconds: 60}
+	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
+	outbox.MessageID = "slow"
+	require.NoError(t, store.Add(context.Background(), outbox))
+	raw, err := json.Marshal(jobResultPayloadFromOutbox(outbox))
+	require.NoError(t, err)
+	dispatcher := NewResultDispatcher(queue, client, store, "result-workers", "result-consumer")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var processingWG sync.WaitGroup
 	slots := make(chan struct{}, 2)
 
 	dispatcher.dispatchMessages(ctx, []msg.Message{{
-		ID: "slow",
-		Payload: []byte(
-			`{"taskId":"task-slow","namespace":"default","name":"slow-job","executionKey":"execution-slow","runGeneration":1,"timeoutSeconds":60}`,
-		),
+		ID:      "slow",
+		Payload: raw,
 	}}, slots, &processingWG)
 	require.Eventually(t, func() bool {
 		getJobActions := 0
@@ -459,13 +465,20 @@ func TestResultDispatcherSkipsDuplicateInFlightMessage(t *testing.T) {
 			},
 		},
 	})
-	dispatcher := NewResultDispatcher(queue, client, &noopStore{}, "result-workers", "result-consumer")
+	store := newResultOutboxTestStore()
+	payload := &JobResultPayload{TaskID: "task-slow", Namespace: "default", Name: "slow-job", ExecutionKey: "execution-slow", RunGeneration: 1, TimeoutSeconds: 60}
+	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
+	outbox.MessageID = "same-message"
+	require.NoError(t, store.Add(context.Background(), outbox))
+	raw, err := json.Marshal(jobResultPayloadFromOutbox(outbox))
+	require.NoError(t, err)
+	dispatcher := NewResultDispatcher(queue, client, store, "result-workers", "result-consumer")
 	ctx, cancel := context.WithCancel(context.Background())
 	var processingWG sync.WaitGroup
 	slots := make(chan struct{}, 2)
 	message := msg.Message{
 		ID:      "same-message",
-		Payload: []byte(`{"taskId":"task-slow","namespace":"default","name":"slow-job","executionKey":"execution-slow","runGeneration":1,"timeoutSeconds":60}`),
+		Payload: raw,
 	}
 
 	dispatcher.dispatchMessages(ctx, []msg.Message{message}, slots, &processingWG)
@@ -529,8 +542,8 @@ func requireClosed(t *testing.T, done <-chan struct{}) {
 func TestProcessJobResultEarlyBranches(t *testing.T) {
 	ctx := context.Background()
 
-	require.ErrorIs(t, processJobResult(ctx, nil, nil, nil), errResultDispatchNoRetry)
-	require.ErrorIs(t, processJobResult(ctx, nil, nil, &JobResultPayload{}), errResultDispatchNoRetry)
-	require.ErrorIs(t, processJobResult(ctx, nil, nil, &JobResultPayload{Name: "job", TaskID: "task"}), errResultDispatchNoRetry)
-	require.ErrorIs(t, processJobResult(ctx, fake.NewSimpleClientset(), &noopStore{}, &JobResultPayload{Name: "job", TaskID: "task"}), errResultDispatchNoRetry)
+	require.ErrorIs(t, processJobResultWithOutbox(ctx, nil, nil, nil, nil), errResultDispatchNoRetry)
+	require.ErrorIs(t, processJobResultWithOutbox(ctx, nil, nil, &JobResultPayload{}, nil), errResultDispatchNoRetry)
+	require.ErrorIs(t, processJobResultWithOutbox(ctx, nil, nil, &JobResultPayload{Name: "job", TaskID: "task"}, nil), errResultDispatchNoRetry)
+	require.ErrorIs(t, processJobResultWithOutbox(ctx, fake.NewSimpleClientset(), &noopStore{}, &JobResultPayload{Name: "job", TaskID: "task"}, nil), errResultDispatchNoRetry)
 }

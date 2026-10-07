@@ -91,7 +91,7 @@ func TestLeaderStopsBothControlLoopsBeforeLeaseRelease(t *testing.T) {
 	}
 	election := s.buildRuntimeLeaderElectionConfig(ctx, ctx, &testLeaderElectionLock{}, nil)
 	election.Callbacks.OnStoppedLeading()
-	require.False(t, s.workersStarted, "shutdown must not restart workers")
+	require.Nil(t, s.workersRun, "shutdown must not restart workers")
 }
 
 func TestLeaderIgnoresStartupAfterShutdown(t *testing.T) {
@@ -200,7 +200,7 @@ func TestRuntimeReadinessTracksCurrentDuty(t *testing.T) {
 	s := &restServer{}
 	ready, _ := s.RuntimeReady()
 	require.False(t, ready)
-	s.workersStarted, s.workersReady = true, true
+	s.workersRun, s.workersReady = &workerRun{}, true
 	ready, _ = s.RuntimeReady()
 	require.True(t, ready)
 	s.leading.Store(true)

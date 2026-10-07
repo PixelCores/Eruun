@@ -162,7 +162,6 @@ const (
 	JobResultOutboxStateResultDispatching     JobResultOutboxState = "result_dispatching_queue"
 	JobResultOutboxStateResultQueued          JobResultOutboxState = "result_queued"
 	JobResultOutboxStateResultProcessingQueue JobResultOutboxState = "result_processing_queue"
-	JobResultOutboxStateResultProcessingLocal JobResultOutboxState = "result_processing_local"
 	JobResultOutboxStateFailed                JobResultOutboxState = "failed"
 )
 

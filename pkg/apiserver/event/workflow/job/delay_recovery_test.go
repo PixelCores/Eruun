@@ -113,7 +113,7 @@ func TestDelayDispatcherDeduplicatedMessagesRemainRetryable(t *testing.T) {
 			ctx := context.Background()
 			store := newResultOutboxTestStore()
 			payload := seedDelayRecoveryCheckpoint(t, store, 1, time.Now().Add(-time.Minute).Unix())
-			raw, err := json.Marshal(payload)
+			raw, err := json.Marshal(notificationForDelayJob(payload))
 			require.NoError(t, err)
 			queue := &delayMessageLifecycleQueue{inFlight: make(map[string]bool)}
 			client := fake.NewSimpleClientset()
@@ -141,6 +141,8 @@ func TestDelayDispatcherDeduplicatedMessagesRemainRetryable(t *testing.T) {
 			require.Len(t, dispatcher.items, 1)
 
 			item, _ := dispatcher.nextItem()
+			item.payload, err = dispatcher.validateCheckpointNotification(store.jobInfos[1], item.payload)
+			require.NoError(t, err)
 			require.ErrorIs(t, dispatcher.dispatchJob(ctx, item, client), createErr)
 			dispatcher.requeue(item)
 			// Reclaiming while dispatch is retrying must remain safe and retryable.
@@ -158,6 +160,8 @@ func TestDelayDispatcherDeduplicatedMessagesRemainRetryable(t *testing.T) {
 			dispatcher.handleMessage(ctx, duplicate)
 			item, _ = dispatcher.nextItem()
 			require.NotNil(t, item)
+			item.payload, err = dispatcher.validateCheckpointNotification(store.jobInfos[1], item.payload)
+			require.NoError(t, err)
 			require.NoError(t, dispatcher.dispatchJob(ctx, item, client))
 			dispatcher.finish(ctx, item)
 			require.False(t, queue.inFlight[duplicate.ID])

@@ -60,12 +60,10 @@ func (s *restServer) startLeader(parent context.Context, errChan chan error) {
 	}()
 	s.leading.Store(true)
 	s.pauseWorkerIntake()
-	s.onStartedControllerLeading(ctx, errChan)
-	if ctx.Err() != nil || !s.controllerReady.Load() {
+	if !s.onStartedControllerLeading(ctx, errChan) || ctx.Err() != nil {
 		return
 	}
-	s.onStartedSchedulerLeading(ctx, errChan)
-	if ctx.Err() != nil || !s.schedulerReady.Load() {
+	if !s.onStartedSchedulerLeading(ctx, errChan) || ctx.Err() != nil {
 		return
 	}
 	s.leaderMu.Lock()
@@ -180,8 +178,7 @@ func (s *restServer) pauseWorkerIntake() {
 	s.workersMu.Lock()
 	run := s.workersRun
 	s.workersRun = nil
-	s.workersStarted, s.workersReady = false, false
-	s.workersCancel = nil
+	s.workersReady = false
 	if run != nil {
 		if s.drainingWorkerRuns == nil {
 			s.drainingWorkerRuns = make(map[*workerRun]struct{})

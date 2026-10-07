@@ -16,8 +16,6 @@ type JobResultOutbox struct {
 	Name           string                      `json:"name" gorm:"type:varchar(255);column:name"`
 	ServiceName    string                      `json:"service_name" gorm:"type:varchar(255);column:service_name"`
 	TimeoutSeconds int64                       `json:"timeout_seconds" gorm:"column:timeout_seconds"`
-	RunToken       string                      `json:"-" gorm:"type:varchar(64);column:run_token"`
-	WorkerID       string                      `json:"worker_id" gorm:"type:varchar(255);column:worker_id"`
 	State          config.JobResultOutboxState `json:"state" gorm:"type:varchar(32);column:state"`
 	JobUID         string                      `json:"-" gorm:"type:varchar(64);column:job_uid"`
 	LeaseExpiresAt *time.Time                  `json:"-" gorm:"column:lease_expires_at"`

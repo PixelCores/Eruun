@@ -60,7 +60,7 @@ func TestResultRecoveryMySQLTransactionFencesOldOwner(t *testing.T) {
 	record := testResultJobInfo(1, payload)
 	record.Status = string(config.StatusDistributed)
 	require.NoError(t, store.Add(ctx, record))
-	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultQueued)
+	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
 	outbox.MessageID = "first"
 	require.NoError(t, store.Add(ctx, outbox))
 	claimed, err := claimResultOutbox(ctx, store, outbox, "first")
@@ -82,7 +82,7 @@ func TestResultRecoveryMySQLTransactionFencesOldOwner(t *testing.T) {
 	}()
 	<-entered
 	time.Sleep(600 * time.Millisecond)
-	recovery := NewResultOutboxDispatcher(&enqueueCaptureQueue{}, fake.NewSimpleClientset(), store)
+	recovery := NewResultOutboxDispatcher(&enqueueCaptureQueue{}, store)
 	recoveryDone := make(chan error, 1)
 	go func() {
 		recoveryDone <- recovery.recoverResultOutboxes(ctx, []config.JobResultOutboxState{config.JobResultOutboxStateResultProcessingQueue})
@@ -115,14 +115,14 @@ func TestResultRecoveryMySQLRenewalAndRollback(t *testing.T) {
 	record := testResultJobInfo(1, payload)
 	record.Status = string(config.StatusDistributed)
 	require.NoError(t, store.Add(ctx, record))
-	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultQueued)
+	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
 	outbox.MessageID = "delivery"
 	require.NoError(t, store.Add(ctx, outbox))
 	claimed, err := claimResultOutbox(ctx, store, outbox, "delivery")
 	require.NoError(t, err)
 	require.True(t, claimed)
 	require.NoError(t, renewResultOutboxLease(ctx, store, outbox))
-	recovery := NewResultOutboxDispatcher(&enqueueCaptureQueue{}, fake.NewSimpleClientset(), store)
+	recovery := NewResultOutboxDispatcher(&enqueueCaptureQueue{}, store)
 	require.NoError(t, recovery.processOnce(ctx))
 	active, err := getJobResultOutboxByID(ctx, store, outbox.ID)
 	require.NoError(t, err)
@@ -140,40 +140,43 @@ func TestResultRecoveryMySQLRenewalAndRollback(t *testing.T) {
 	require.Empty(t, preserved.Info)
 }
 
-func TestResultRecoveryMySQLLegacyNullLeaseGetsGraceAndRecovers(t *testing.T) {
+func TestResultRecoveryMySQLRejectsActiveNullLeaseWithoutBlockingExpiredRows(t *testing.T) {
 	store := resultRecoveryMySQLStore(t)
 	ctx := context.Background()
 	payload, _, _, _ := completedResultFixture(t)
-	rows := make([]*model.JobResultOutbox, 0, 2)
-	for _, state := range []config.JobResultOutboxState{config.JobResultOutboxStateResultQueued, config.JobResultOutboxStateResultProcessingQueue} {
+	rows := make([]*model.JobResultOutbox, 0, 3)
+	for _, state := range []config.JobResultOutboxState{config.JobResultOutboxStateResultDispatching, config.JobResultOutboxStateResultQueued, config.JobResultOutboxStateResultProcessingQueue} {
 		next := *payload
 		next.TaskID = string(state)
 		outbox := buildJobResultOutbox(&next, state)
-		outbox.MessageID = "legacy-message"
+		outbox.MessageID = "invalid-message"
 		require.NoError(t, store.Add(ctx, outbox))
 		rows = append(rows, outbox)
 	}
-	queue := &enqueueCaptureQueue{}
-	recovery := NewResultOutboxDispatcher(queue, fake.NewSimpleClientset(), store)
+	expired := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
+	deadline := expired.LeaseExpiresAt.Add(-2 * resultOutboxDispatchGrace)
+	expired.LeaseExpiresAt = &deadline
+	expired.MessageID = "lost-message"
+	require.NoError(t, store.Add(ctx, expired))
+	queue := &enqueueCaptureQueue{enqueueID: "recovered"}
+	recovery := NewResultOutboxDispatcher(queue, store)
+	recovery.batchSize = len(rows)
 	require.NoError(t, recovery.processOnce(ctx))
-	require.Empty(t, queue.enqueued, "old active consumers first receive a bounded grace")
-	now, err := resultOutboxDatabaseTime(ctx, store)
+	require.Empty(t, queue.enqueued)
+	for _, outbox := range rows {
+		current, err := getJobResultOutboxByID(ctx, store, outbox.ID)
+		require.NoError(t, err)
+		require.Nil(t, current.LeaseExpiresAt)
+		require.Equal(t, config.JobResultOutboxStateFailed, current.State, "NULL lease rejection CAS must use IS NULL")
+		require.Equal(t, "invalid-message", current.MessageID)
+		require.Contains(t, current.LastError, "active result outbox has no lease")
+	}
+	require.NoError(t, recovery.processOnce(ctx))
+	require.Len(t, queue.enqueued, 1, "rejected invalid rows cannot starve normal expired recovery")
+	current, err := getJobResultOutboxByID(ctx, store, expired.ID)
 	require.NoError(t, err)
-	for _, outbox := range rows {
-		current, err := getJobResultOutboxByID(ctx, store, outbox.ID)
-		require.NoError(t, err)
-		require.NotNil(t, current.LeaseExpiresAt, "NULL lease CAS must use IS NULL")
-		require.True(t, current.LeaseExpiresAt.After(now))
-		require.Equal(t, outbox.State, current.State)
-		require.NoError(t, store.Client.Model(outbox).UpdateColumn("lease_expires_at", now.Add(-time.Second)).Error)
-	}
-	require.NoError(t, recovery.processOnce(ctx))
-	require.Len(t, queue.enqueued, 2, "lost queued and processing notifications recover without broker state")
-	for _, outbox := range rows {
-		current, err := getJobResultOutboxByID(ctx, store, outbox.ID)
-		require.NoError(t, err)
-		require.Equal(t, config.JobResultOutboxStateResultQueued, current.State)
-	}
+	require.Equal(t, config.JobResultOutboxStateResultQueued, current.State)
+	require.Equal(t, "recovered", current.MessageID)
 }
 
 func TestResultRecoveryMySQLConcurrentCancellationWinsBeforeResultCAS(t *testing.T) {
@@ -185,7 +188,7 @@ func TestResultRecoveryMySQLConcurrentCancellationWinsBeforeResultCAS(t *testing
 	record.Status = string(config.StatusDistributed)
 	record.Attempt = 1
 	require.NoError(t, store.Add(ctx, record))
-	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultQueued)
+	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
 	outbox.MessageID = "result-message"
 	require.NoError(t, store.Add(ctx, outbox))
 	beforeWrite := make(chan struct{})

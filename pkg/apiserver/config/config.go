@@ -400,9 +400,3 @@ func (c Config) RuntimeMessagingTopics() []string {
 		workflowconfig.ResultTopic(c.Messaging.ChannelPrefix),
 	}
 }
-
-// HasExternalQueue returns true if a supported distributed queue backend is configured.
-func (c Config) HasExternalQueue() bool {
-	t := strings.ToLower(strings.TrimSpace(c.Messaging.Type))
-	return t == REDIS || t == KAFKA
-}
