@@ -36,7 +36,7 @@ func (s *restServer) startGRPC(ctx context.Context) error {
 		}
 	}()
 	klog.InfoS("gRPC APIs are being served", "address", s.cfg.GRPCBindAddr)
-	if err := server.Serve(listener); err != nil {
+	if err := server.Serve(&leaderListener{Listener: listener, server: s, requireLeadership: true}); err != nil {
 		close(stopShutdownWatcher)
 		return fmt.Errorf("serve grpc on %s: %w", s.cfg.GRPCBindAddr, err)
 	}

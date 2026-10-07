@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -136,7 +137,12 @@ func (s *restServer) ensureDefaultSystemSetting(ctx context.Context, settingType
 func (s *restServer) startHTTP(ctx context.Context) error {
 	// Start HTTP appserver
 	klog.Infof("HTTP APIs are being served on: %s, ctx: %s", s.cfg.BindAddr, ctx)
+	listener, err := net.Listen("tcp", s.cfg.BindAddr)
+	if err != nil {
+		return fmt.Errorf("listen for http on %s: %w", s.cfg.BindAddr, err)
+	}
 	server := &http.Server{
+		ConnContext:       s.httpConnectionContext,
 		Addr:              s.cfg.BindAddr,
 		Handler:           s,
 		ReadHeaderTimeout: 2 * time.Second,
@@ -169,7 +175,7 @@ func (s *restServer) startHTTP(ctx context.Context) error {
 		}
 	}()
 
-	err := server.ListenAndServe()
+	err = server.Serve(&leaderListener{Listener: listener, server: s})
 	if err != nil && err != http.ErrServerClosed {
 		klog.Errorf("HTTP server failed to start on %s: %v", s.cfg.BindAddr, err)
 		close(stopCh)

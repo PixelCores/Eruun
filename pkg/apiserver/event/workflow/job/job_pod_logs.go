@@ -122,17 +122,23 @@ func collectJobPodLogsForJob(ctx context.Context, client kubernetes.Interface, n
 				builder.WriteString("\n")
 			}
 			builder.WriteString(fmt.Sprintf("=== Pod: %s (container: %s) ===\n", pod.Name, container))
-			logText, err := readPodContainerLogs(ctx, client, namespace, pod.Name, container)
-			if err != nil {
-				klog.Warningf("read pod logs %s/%s (container %s) failed: %v", namespace, pod.Name, container, err)
-				if owner != nil {
-					readErrors = append(readErrors, fmt.Errorf("read pod %s container %s logs: %w", pod.Name, container, err))
+			neverStarted := owner != nil && podContainerNeverStarted(&pod, container)
+			var logText string
+			if !neverStarted {
+				var err error
+				logText, err = readPodContainerLogs(ctx, client, namespace, pod.Name, container)
+				if err != nil {
+					klog.Warningf("read pod logs %s/%s (container %s) failed: %v", namespace, pod.Name, container, err)
+					if owner != nil {
+						readErrors = append(readErrors, fmt.Errorf("read pod %s container %s logs: %w", pod.Name, container, err))
+					}
+					continue
 				}
-				continue
 			}
 			if owner != nil {
-				// The logs API addresses Pods by name. Verify the UID after the
-				// read so a replacement cannot supply another execution's logs.
+				// Both log reads and omissions are bound to the listed Pod UID.
+				// A missing log is safe only while its terminal, never-started
+				// container state can still be confirmed for that execution.
 				current, verifyErr := client.CoreV1().Pods(namespace).Get(ctx, pod.Name, metav1.GetOptions{})
 				if verifyErr != nil {
 					readErrors = append(readErrors, fmt.Errorf("verify pod %s after reading logs: %w", pod.Name, verifyErr))
@@ -141,6 +147,13 @@ func collectJobPodLogsForJob(ctx context.Context, client kubernetes.Interface, n
 				if current.UID != pod.UID || !podOwnedByJob(current, owner) {
 					readErrors = append(readErrors, fmt.Errorf("pod %s identity changed while reading logs", pod.Name))
 					continue
+				}
+				if neverStarted {
+					if !podContainerNeverStarted(current, container) {
+						readErrors = append(readErrors, fmt.Errorf("pod %s container %s no longer confirms never-started state", pod.Name, container))
+						continue
+					}
+					logText = fmt.Sprintf("[logs unavailable: container never started before Pod failed (reason: %s)]", current.Status.Reason)
 				}
 			}
 			builder.WriteString(logText)
@@ -157,6 +170,30 @@ func collectJobPodLogsForJob(ctx context.Context, client kubernetes.Interface, n
 		return "", fmt.Errorf("no logs collected for job %s/%s", namespace, jobName)
 	}
 	return logs, nil
+}
+
+// Failed Pods can retain containers waiting behind a failed init container or
+// image pull. Missing status or runtime history is not proof that logs never
+// existed; require an explicit waiting state with no evidence of an earlier run.
+func podContainerNeverStarted(pod *corev1.Pod, name string) bool {
+	if pod == nil || pod.UID == "" || pod.Status.Phase != corev1.PodFailed {
+		return false
+	}
+	statuses := pod.Status.ContainerStatuses
+	for _, init := range pod.Spec.InitContainers {
+		if init.Name == name {
+			statuses = pod.Status.InitContainerStatuses
+			break
+		}
+	}
+	for _, status := range statuses {
+		if status.Name == name {
+			return status.State.Waiting != nil && status.State.Running == nil && status.State.Terminated == nil &&
+				status.LastTerminationState == (corev1.ContainerState{}) && status.RestartCount == 0 &&
+				status.ContainerID == "" && !status.Ready && (status.Started == nil || !*status.Started)
+		}
+	}
+	return false
 }
 
 func jobForCompletedCleanup(ctx context.Context, client kubernetes.Interface, namespace, name string, fallback *batchv1.Job) (*batchv1.Job, error) {

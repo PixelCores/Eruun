@@ -21,7 +21,7 @@ Chart 默认 `runtime.replicas=4`，稳定状态为 1 个 Leader＋3 个 Worker�
 
 集群通过固定 Service 访问业务 API。Service 保留 selector，其中 `eruun.io/runtime-id` 初始为 `unassigned`；Leader 为自身 Pod 设置值为 Pod UID 的同名标签，并通过 Service resourceVersion CAS 把 selector 指向自己。失主时只条件撤销自己的选择，不能清除新 Leader 的入口。EndpointSlice 与 Pod readiness 由 Kubernetes 原生控制器维护。健康 Worker 仍为 PodReady，但不会因此被该 Service 选中。
 
-`--leader-service-name` / `ERUUN_LEADER_SERVICE_NAME` 指定集群入口 Service；集群部署设置该值，本地可留空并直接访问已当选节点。HTTP/gRPC 长连接及流会在切主时中断；客户端重连后先查任务状态，只有契约支持时才用相同幂等键重试，不能盲目重放创建任务或刷新会话。
+`--leader-service-name` / `ERUUN_LEADER_SERVICE_NAME` 指定集群入口 Service；集群部署设置该值，本地可留空并直接访问已当选节点。已接受业务请求的 HTTP 连接和全部 gRPC 连接绑定当前 Leader 任期，失主时关闭，包括空闲连接；Service 尚未收敛时，Worker 对业务 HTTP 返回 503 并关闭连接，对新 gRPC 连接直接断开，健康探针仍可用。客户端重新连接固定 Service 后先查任务状态，只有契约支持时才用相同幂等键重试，不能盲目重放创建任务或刷新会话。
 
 Redis 仍用于缓存、应用变更锁和取消信号；选择 Kafka 只替换消息后端。提交应用 Workflow 的 Redis 锁续期失败会取消业务 context。同一应用的手动执行、Cron、数据库重置、版本自动执行和直接版本提交仍使用应用行锁与 READ COMMITTED 事务。版本提交验证预检快照，配置变化返回 HTTP 409（10043），避免旧快照覆盖；这些 D1 保障不会因只有一个 Leader 而删除。
 
@@ -86,6 +86,8 @@ Harbor 恢复资格、恢复任务剩余预算、Job 恢复准入预检查及持
 结果通知也以数据库 outbox 为恢复来源。`result_dispatching_queue` 和 `result_queued` 有 60 秒补投宽限；消费者认领时写入独立 token 和 30 秒数据库租约，每 10 秒续期。到期回收必须同时匹配 state、token/消息 ID 和原租约，活跃消费者续期后旧扫描快照不能将其重新投递。重复通知不授予处理权限；旧 claim 不能再提交结果或删除 outbox。
 
 结果写入在检查 claim 的事务内通过状态、执行代次与 attempt 的 CAS 保存终态与日志；并发取消等已提交终态不会被覆盖，仅最终持久化为 Completed 才按已记录的 Job UID 清理 Kubernetes 对象。保存失败保留现场；清理失败保留 outbox 供重试；重放已完成记录只补清理，不重新等待已删除 Job。按名称读取日志后还需校验 Pod UID 与 Job owner；读取失败、身份变化或无法确认身份均保留现场等待重试。结果 ACK 在清理与 outbox 收敛后发生。数据库与 Kubernetes 之间仍没有跨系统原子事务。
+
+无需读取日志的例外是：Failed Pod 中的容器明确处于 Waiting、没有启动或重启记录，并经重新读取 Pod 确认相同 UID、owner 和状态；结果中记录该容器从未启动及 Pod 失败原因，避免旧失败尝试阻塞已成功 Job。缺少容器状态不视为从未启动。
 
 升级需通过现有 schema migration 增加 outbox 的 `lease_expires_at`、`job_uid` 列。旧空租约记录先登记宽限而不是立即接管；旧 processing 记录的宽限包含其完整 Job timeout、30 秒删除、30 秒处理及 5 秒保存余量。旧终态记录没有已保存 UID 时不自动删除同名对象。历史结果协议的完整防护需旧进程排空并升级后成立。既有 Deadline/RetryAt 原值保留，不追溯校正历史节点偏差。具体回归与未验证的集群故障边界见[分布式设计审核的修复处置](distributed-design-audit-2026-10-06.md#8-pr-139-修复处置与验证边界)。
 

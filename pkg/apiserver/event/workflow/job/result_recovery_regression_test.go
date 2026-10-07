@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,7 +18,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
 	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -603,4 +608,75 @@ func TestResultRecoveryPreservesConcurrentTerminalResult(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestResultRecoveryCompletedJobWithUnstartedFailedPod(t *testing.T) {
+	payload, live, success, store := completedResultFixture(t)
+	failed := success.DeepCopy()
+	failed.Name = "failed-before-container-start"
+	failed.UID = "failed-pod-uid"
+	failed.Status = corev1.PodStatus{Phase: corev1.PodFailed, Reason: "Evicted", ContainerStatuses: []corev1.ContainerStatus{{
+		Name: failed.Spec.Containers[0].Name, State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "ContainerCreating"}},
+	}}}
+	deleted := false
+	client, err := kubernetes.NewForConfig(&rest.Config{Host: "https://kubernetes.example", Transport: workspaceRoundTripper(func(r *http.Request) (*http.Response, error) {
+		status := http.StatusOK
+		var object interface{}
+		var raw string
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/log"):
+			if strings.Contains(r.URL.Path, failed.Name) {
+				status = http.StatusBadRequest
+				object = &metav1.Status{TypeMeta: metav1.TypeMeta{Kind: "Status", APIVersion: "v1"}, Status: metav1.StatusFailure, Reason: metav1.StatusReasonBadRequest, Code: 400, Message: "container is waiting to start: ContainerCreating"}
+			} else {
+				raw = "actual successful result\n"
+			}
+		case strings.Contains(r.URL.Path, "/jobs/"):
+			if r.Method == http.MethodDelete {
+				deleted = true
+			}
+			if deleted {
+				status = http.StatusNotFound
+				object = &metav1.Status{TypeMeta: metav1.TypeMeta{Kind: "Status", APIVersion: "v1"}, Status: metav1.StatusFailure, Reason: metav1.StatusReasonNotFound, Code: 404}
+			} else {
+				object = live
+			}
+		case strings.HasSuffix(r.URL.Path, "/pods"):
+			object = &corev1.PodList{TypeMeta: metav1.TypeMeta{Kind: "PodList", APIVersion: "v1"}, Items: []corev1.Pod{*failed, *success}}
+		case strings.Contains(r.URL.Path, success.Name):
+			object = success
+		case strings.Contains(r.URL.Path, failed.Name):
+			object = failed
+		default:
+			return nil, fmt.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		header := http.Header{}
+		if object != nil {
+			data, err := json.Marshal(object)
+			if err != nil {
+				return nil, err
+			}
+			raw = string(data)
+			header.Set("Content-Type", "application/json")
+		}
+		return &http.Response{StatusCode: status, Header: header, Body: io.NopCloser(strings.NewReader(raw)), Request: r}, nil
+	})})
+	require.NoError(t, err)
+	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultQueued)
+	outbox.MessageID = "delivery"
+	require.NoError(t, store.Add(context.Background(), outbox))
+	queue := &dispatcherAckQueue{}
+	dispatcher := NewResultDispatcher(queue, client, store, "result", "consumer")
+	raw, err := json.Marshal(jobResultPayloadFromOutbox(outbox))
+	require.NoError(t, err)
+	dispatcher.handleMessage(context.Background(), msg.Message{ID: outbox.MessageID, Payload: raw})
+	record := store.jobInfoByTaskID(payload.TaskID)
+	require.Equal(t, string(config.StatusCompleted), record.Status, "a never-started failed attempt cannot provide logs, but the successful result must settle")
+	require.Contains(t, record.Info, "actual successful result")
+	require.Contains(t, record.Info, "container never started")
+	require.Contains(t, record.Info, "Evicted")
+	require.True(t, deleted, "cleanup follows the committed result")
+	require.Len(t, queue.ackCalls, 1)
+	_, err = getJobResultOutboxByID(context.Background(), store, outbox.ID)
+	require.ErrorIs(t, err, datastore.ErrRecordNotExist)
 }

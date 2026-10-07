@@ -25,6 +25,9 @@ func (s *restServer) requestLeadership(parent context.Context) (context.Context,
 	if term == nil || term.Err() != nil {
 		return nil, nil, false
 	}
+	if conn, ok := parent.Value(httpConnectionKey{}).(*leaderConn); ok && !conn.bind(term) {
+		return nil, nil, false
+	}
 	ctx, cancel := context.WithCancelCause(parent)
 	stop := context.AfterFunc(term, func() { cancel(bcode.ErrServiceUnavailable) })
 	if term.Err() != nil {
@@ -45,6 +48,9 @@ func (s *restServer) leaderAPIMiddleware() gin.HandlerFunc {
 			if release != nil {
 				release()
 			}
+			// A stale Service endpoint may still route a fresh connection here.
+			// Do not let its next request remain pinned to this Worker.
+			c.Header("Connection", "close")
 			apiresponse.ReturnError(c, bcode.ErrServiceUnavailable)
 			c.Abort()
 			return
