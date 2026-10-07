@@ -213,7 +213,7 @@ curl --fail-with-body "$ERUUN_URL/api/v1/jobs/$TASK_ID" \
 | `ERUUN_AUTH_CONFIG_FILE` | 账号、会话与空间策略 JSON |
 | `ERUUN_JOBS_CONFIG_FILE` | 启用 Harbor Runner 及可选 MinIO，所有节点使用相同配置 |
 
-所有节点的缓存、认证与协调都依赖 Redis。`--cache-type` / `ERUUN_CACHE_TYPE` 仅接受 `redis`；设置为 `memory` 会在启动校验时报错。`--datastore-schema-mode=migrate-only` 仅校验数据库配置。
+Eruun 使用 MySQL 持久化数据，使用 Redis 提供缓存、认证与协调。连接参数通过 `--datastore-url`、`--cache-*` 或对应的 `ERUUN_` 环境变量配置。`--datastore-schema-mode=migrate-only` 仅校验数据库配置。
 
 追踪默认配置为 `ERUUN_ENABLE_TRACING=true`，设为 `false` 即可关闭。该开关同时控制 Trace Provider 和 HTTP 中间件，与 Redis/Kafka 后端无关；仅设置 Jaeger 地址不会启用追踪。未设置地址时，追踪仍可在 API 请求日志中附带 trace ID，但不会导出 Span。静态部署清单默认启用追踪。
 

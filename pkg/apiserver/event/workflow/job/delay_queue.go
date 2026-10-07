@@ -27,7 +27,6 @@ type DelayJobPayload struct {
 	TaskID         string       `json:"taskId"`
 	ExecutionKey   string       `json:"executionKey"`
 	RunGeneration  uint64       `json:"runGeneration"`
-	RunToken       string       `json:"runToken,omitempty"`
 	ServiceName    string       `json:"serviceName,omitempty"`
 	TimeoutSeconds int64        `json:"timeoutSeconds,omitempty"`
 	Job            *batchv1.Job `json:"job"`
@@ -45,7 +44,6 @@ type delayJobNotification struct {
 	ServiceName   string `json:"serviceName,omitempty"`
 	ExecutionKey  string `json:"executionKey"`
 	RunGeneration uint64 `json:"runGeneration"`
-	RunToken      string `json:"runToken,omitempty"`
 }
 
 func notificationForDelayJob(payload *DelayJobPayload) delayJobNotification {
@@ -57,7 +55,6 @@ func notificationForDelayJob(payload *DelayJobPayload) delayJobNotification {
 		ServiceName:   payload.ServiceName,
 		ExecutionKey:  payload.ExecutionKey,
 		RunGeneration: payload.RunGeneration,
-		RunToken:      payload.RunToken,
 	}
 }
 

@@ -241,10 +241,14 @@ func CreateWorkflowQueue(ctx context.Context, store datastore.DataStore, queue *
 	return nil
 }
 
-func WaitingTasks(ctx context.Context, store datastore.DataStore) (list []*model.WorkflowQueue, err error) {
+// WaitingTasks scans one FIFO page. Callers advance full pages even when
+// admission rejects every task, then wrap so shrinking queues are revisited.
+func WaitingTasks(ctx context.Context, store datastore.DataStore, page int) (list []*model.WorkflowQueue, nextPage int, err error) {
+	page = max(1, page)
+	nextPage = 1
 	databaseNow, err := currentWorkflowDatabaseTime(ctx, store)
 	if err != nil {
-		return nil, err
+		return nil, nextPage, err
 	}
 	now := databaseNow.Unix()
 	var workflowQueue = &model.WorkflowQueue{
@@ -255,12 +259,18 @@ func WaitingTasks(ctx context.Context, store datastore.DataStore) (list []*model
 			// LessThan is strict, so use the next Unix second to express execute_at <= now.
 			LessThan: []datastore.ComparisonQueryOption{{Key: "execute_at", Value: now + 1}},
 		},
-		Page:     1,
+		Page:     page,
 		PageSize: workflowDispatchQueryBatchSize,
-		SortBy:   []datastore.SortOption{{Key: "create_time", Order: datastore.SortOrderAscending}},
+		SortBy: []datastore.SortOption{
+			{Key: "create_time", Order: datastore.SortOrderAscending},
+			{Key: "task_id", Order: datastore.SortOrderAscending},
+		},
 	})
 	if err != nil {
-		return nil, err
+		return nil, nextPage, err
+	}
+	if len(queues) == workflowDispatchQueryBatchSize {
+		nextPage = page + 1
 	}
 	for _, entity := range queues {
 		wq, ok := entity.(*model.WorkflowQueue)
@@ -274,11 +284,6 @@ func WaitingTasks(ctx context.Context, store datastore.DataStore) (list []*model
 		list = append(list, wq)
 	}
 	return
-}
-
-func UpdateTask(ctx context.Context, store datastore.DataStore, task *model.WorkflowQueue) error {
-	err := store.Put(ctx, task)
-	return err
 }
 
 func UpdateTaskFields(ctx context.Context, store datastore.DataStore, taskID string, fields map[string]interface{}) error {
@@ -305,38 +310,6 @@ func UpdateTaskFieldsIfStatus(ctx context.Context, store datastore.DataStore, ta
 	}
 	task := &model.WorkflowQueue{TaskID: taskID}
 	return store.CompareAndSwap(ctx, task, "status", status, fields)
-}
-
-func TaskRunning(ctx context.Context, store datastore.DataStore) (list []*model.WorkflowQueue, err error) {
-	tasks, err := store.List(ctx, &model.WorkflowQueue{}, &datastore.ListOptions{FilterOptions: datastore.FilterOptions{In: []datastore.InQueryOption{
-		{
-			Key: "status",
-			Values: []string{
-				string(config.StatusCreated),
-				string(config.StatusRunning),
-				string(config.StatusWaiting),
-				string(config.StatusQueued),
-				string(config.StatusBlocked),
-				string(config.QueueItemPending),
-				string(config.StatusPrepare),
-				string(config.StatusWaitingApprove),
-				"",
-			},
-		},
-	}}})
-
-	if err != nil {
-		return nil, err
-	}
-	for _, entity := range tasks {
-		task, ok := entity.(*model.WorkflowQueue)
-		if !ok {
-			klog.Warningf("unexpected workflow queue entity type: %T", entity)
-			continue
-		}
-		list = append(list, task)
-	}
-	return
 }
 
 func FindWorkflowTasksByAppID(ctx context.Context, store datastore.DataStore, appID string) (list []*model.WorkflowQueue, err error) {
@@ -447,34 +420,6 @@ func TaskByIdempotencyKey(ctx context.Context, store datastore.DataStore, idempo
 		return task, nil
 	}
 	return nil, datastore.ErrRecordNotExist
-}
-
-// UpdateTaskStatus performs an atomic compare-and-swap to update task status.
-// It only updates if the current status matches 'from' (when from is not empty).
-// Returns (true, nil) if update succeeded, (false, nil) if condition not met or task not found.
-func UpdateTaskStatus(ctx context.Context, store datastore.DataStore, taskID string, from, to config.Status) (bool, error) {
-	task := &model.WorkflowQueue{TaskID: taskID}
-
-	// If no from condition, use simple Put (backward compatible)
-	if from == "" {
-		if err := store.Get(ctx, task); err != nil {
-			if errors.Is(err, datastore.ErrRecordNotExist) {
-				return false, nil
-			}
-			return false, err
-		}
-		task.Status = to
-		if err := store.Put(ctx, task); err != nil {
-			return false, err
-		}
-		return true, nil
-	}
-
-	// Atomic CAS: UPDATE ... WHERE task_id = ? AND status = ?
-	updates := map[string]interface{}{
-		"status": to,
-	}
-	return store.CompareAndSwap(ctx, task, "status", from, updates)
 }
 
 type ApproveTaskCondition struct {

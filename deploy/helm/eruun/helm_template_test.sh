@@ -369,6 +369,9 @@ grep -q 'key: "keys.json"' "${keyring_manifest}" ||
 default_deployment_manifest="${TEST_ROOT}/default-deployment.yaml"
 runHelm template eruun "${TEST_DIR}" \
   --namespace eruun-system > "${default_deployment_manifest}"
+if grep -Eq 'name: ERUUN_(DATASTORE|CACHE)_TYPE' "${default_deployment_manifest}"; then
+  fail "fixed MySQL and Redis backends must not render type selectors"
+fi
 assertEqual "$(grep -c 'name: ERUUN_GRPC_BIND_ADDR' "${default_deployment_manifest}")" "1" "runtime must configure the gRPC listener"
 grep -q 'value: "0.0.0.0:9000"' "${default_deployment_manifest}" ||
   fail "runtime gRPC listener must bind the Pod network interface"

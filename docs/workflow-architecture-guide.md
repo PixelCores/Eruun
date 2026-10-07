@@ -2185,7 +2185,6 @@ messaging:
 cache:
   cacheHost: redis.prod.svc.cluster.local
   cacheProt: 6379
-  cacheType: redis
   cacheDB: 0
   cacheTTL: 24h
   keyPrefix: "eruun:cache:"

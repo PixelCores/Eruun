@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"k8s.io/klog/v2"
-
-	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow"
 )
 
 // Sample once per process, including controller generations still draining.
@@ -24,12 +22,8 @@ func (s *restServer) runWorkerRuntimeMetrics(ctx context.Context) {
 		}
 		var memory runtime.MemStats
 		runtime.ReadMemStats(&memory)
-		for _, worker := range s.eventWorkers {
-			w, ok := worker.(*workflow.Workflow)
-			if !ok {
-				continue
-			}
-			stats := w.RuntimeStats()
+		if s.workflow != nil {
+			stats := s.workflow.RuntimeStats()
 			klog.InfoS("workflow runtime stats",
 				"concurrencyLimit", stats.ConcurrencyLimit, "controllers", stats.Controllers,
 				"waitingForSlot", stats.WaitingForSlot, "heartbeats", stats.Heartbeats,

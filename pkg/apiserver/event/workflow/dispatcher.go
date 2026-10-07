@@ -25,9 +25,6 @@ import (
 type TaskDispatch struct {
 	Version       int    `json:"version"`
 	TaskID        string `json:"taskId"`
-	WorkflowID    string `json:"workflowId"`
-	ProjectID     string `json:"projectId"`
-	AppID         string `json:"appId"`
 	RunGeneration uint64 `json:"runGeneration"`
 	RunToken      string `json:"runToken"`
 }
@@ -60,6 +57,7 @@ func validateTaskDispatch(t TaskDispatch) error {
 func (w *Workflow) Dispatcher(ctx context.Context) {
 	ticker := time.NewTicker(w.dispatchPollInterval())
 	defer ticker.Stop()
+	page := 1
 	for {
 		select {
 		case <-ctx.Done():
@@ -82,7 +80,7 @@ func (w *Workflow) Dispatcher(ctx context.Context) {
 			// still passes its own durable admission gate before creating work.
 		}
 
-		waitingTasks, err := w.waitingTasks(ctx)
+		waitingTasks, nextPage, err := w.waitingTasks(ctx, page)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || ctx.Err() != nil {
 				return
@@ -90,6 +88,7 @@ func (w *Workflow) Dispatcher(ctx context.Context) {
 			klog.Errorf("list waiting workflow tasks failed: %v", err)
 			continue
 		}
+		page = nextPage
 		if len(waitingTasks) == 0 {
 			continue
 		}
@@ -101,9 +100,6 @@ func (w *Workflow) Dispatcher(ctx context.Context) {
 				payload := TaskDispatch{
 					Version:       taskDispatchVersion,
 					TaskID:        queuedTask.TaskID,
-					WorkflowID:    queuedTask.WorkflowID,
-					ProjectID:     queuedTask.ProjectID,
-					AppID:         queuedTask.AppID,
 					RunGeneration: queuedTask.RunGeneration,
 					RunToken:      queuedTask.RunToken,
 				}
@@ -126,7 +122,7 @@ func (w *Workflow) Dispatcher(ctx context.Context) {
 // It implements resilient behavior: by default (max failures = 0), it retries indefinitely
 // with exponential backoff instead of exiting on transient errors.
 // consumerCtx controls message intake; executionCtx owns already-started workflow controllers.
-func (w *Workflow) StartWorker(consumerCtx, executionCtx context.Context, errChan chan error, ready, stopped func()) {
+func (w *Workflow) StartWorker(consumerCtx, executionCtx context.Context, ready, stopped func()) {
 	if consumerCtx == nil {
 		consumerCtx = context.Background()
 	}
@@ -246,7 +242,7 @@ func (w *Workflow) StartWorker(consumerCtx, executionCtx context.Context, errCha
 
 func (w *Workflow) claimAndProcessTask(ctx context.Context, task *model.WorkflowQueue, processor func(context.Context, *model.WorkflowQueue) error) {
 	var queuedTask *model.WorkflowQueue
-	queuedTask, claimed, err := repository.ClaimWorkflowTaskForDispatch(ctx, w.Store, task, w.workflowLeaseDuration())
+	queuedTask, claimed, err := w.WorkflowService.ClaimTaskForDispatch(ctx, task, w.workflowLeaseDuration())
 	if err != nil {
 		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
 			return
@@ -347,6 +343,9 @@ func (w *Workflow) processDispatchMessage(ctx context.Context, workerRun *workfl
 		return true, ""
 	}
 
+	// Discard obsolete messages before querying the claim clock. Even if that
+	// clock is unavailable, missing, user-cancelled and superseded tasks still ACK.
+	// The following database CAS remains the authoritative ownership check.
 	task, err := repository.TaskByID(ctx, w.Store, td.TaskID)
 	if err != nil {
 		if isContextCancellationError(err) {
@@ -382,7 +381,7 @@ func (w *Workflow) processDispatchMessage(ctx context.Context, workerRun *workfl
 	if !claimed {
 		return true, td.TaskID
 	}
-	if err := w.runClaimedWorkflowTask(ctx, workerRun, claimedTask, 1); err != nil {
+	if err := w.runWorkflowTask(workerRun, claimedTask); err != nil {
 		if isContextCancellationError(err) {
 			return false, td.TaskID
 		}
@@ -425,12 +424,4 @@ func (w *Workflow) delayConsumerName() string {
 		return "delay-dispatcher"
 	}
 	return fmt.Sprintf("%s-delay", consumer)
-}
-
-func (w *Workflow) resultConsumerName() string {
-	consumer := w.consumerName()
-	if consumer == "" {
-		return "result-dispatcher"
-	}
-	return fmt.Sprintf("%s-result", consumer)
 }

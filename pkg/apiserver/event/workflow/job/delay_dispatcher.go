@@ -88,13 +88,6 @@ func NewDelayDispatcher(queue msg.Queue, manager *workspace.Manager, store datas
 	}
 }
 
-func (d *DelayDispatcher) Start(ctx context.Context) {
-	if !d.prepare(ctx) {
-		return
-	}
-	go d.runLoops(ctx)
-}
-
 func (d *DelayDispatcher) Run(ctx context.Context) {
 	if !d.prepare(ctx) {
 		return
@@ -803,74 +796,18 @@ func (d *DelayDispatcher) createDelayedJob(ctx context.Context, client kubernete
 	return d.ensureDelayedResultOutboxPending(ctx, resultPayload)
 }
 
+// A delayed execution belongs to its committed checkpoint, independently of
+// later changes to the parent Workflow lease. Keep this read before each
+// admission attempt so cancellation and terminal results prevent recreation.
 func (d *DelayDispatcher) delayExecutionCurrent(ctx context.Context, payload *DelayJobPayload) (bool, error) {
-	if payload == nil || payload.RunGeneration == 0 {
-		return true, nil
+	if err := validateDelayJobIdentity(payload); err != nil {
+		return false, errors.Join(errDelayDispatchNoRetry, err)
 	}
-	taskID := strings.TrimSpace(payload.TaskID)
-	if taskID == "" {
-		return false, fmt.Errorf("%w: delayed execution generation requires task ID", errDelayDispatchNoRetry)
-	}
-	if d == nil || d.store == nil {
-		return false, fmt.Errorf("load workflow task for delayed job: datastore is nil")
-	}
-	committed, settled, err := d.delayedExecutionCommitted(ctx, payload)
+	checkpoint, err := d.findDelayCheckpoint(ctx, payload)
 	if err != nil {
 		return false, err
 	}
-	if settled {
-		return false, nil
-	}
-	if committed {
-		return true, nil
-	}
-	task, err := repository.TaskByID(ctx, d.store, taskID)
-	if err != nil {
-		if errors.Is(err, datastore.ErrRecordNotExist) {
-			klog.InfoS("discard delayed job for missing workflow task", "taskID", taskID, "runGeneration", payload.RunGeneration)
-			return false, nil
-		}
-		return false, fmt.Errorf("load workflow task for delayed job: %w", err)
-	}
-	if task.RunGeneration != payload.RunGeneration {
-		klog.InfoS("discard stale delayed job generation", "taskID", taskID, "payloadGeneration", payload.RunGeneration, "currentGeneration", task.RunGeneration)
-		return false, nil
-	}
-	payloadToken := strings.TrimSpace(payload.RunToken)
-	taskToken := strings.TrimSpace(task.RunToken)
-	if taskToken == "" || (payloadToken != "" && taskToken != payloadToken) {
-		klog.InfoS("discard stale delayed job token", "taskID", taskID, "runGeneration", payload.RunGeneration)
-		return false, nil
-	}
-	return true, nil
-}
-
-func (d *DelayDispatcher) delayedExecutionCommitted(ctx context.Context, payload *DelayJobPayload) (committed, settled bool, err error) {
-	if d == nil || d.store == nil || payload == nil || strings.TrimSpace(payload.ExecutionKey) == "" || payload.RunGeneration == 0 {
-		return false, false, nil
-	}
-	jobInfos, err := loadJobInfos(
-		ctx,
-		d.store,
-		strings.TrimSpace(payload.TaskID),
-		strings.TrimSpace(payload.JobType),
-		strings.TrimSpace(payload.ServiceName),
-	)
-	if err != nil {
-		return false, false, fmt.Errorf("load committed delayed job: %w", err)
-	}
-	executionKey := strings.TrimSpace(payload.ExecutionKey)
-	for _, jobInfo := range jobInfos {
-		if jobInfo == nil || jobInfo.ExecutionKey == nil || strings.TrimSpace(*jobInfo.ExecutionKey) != executionKey {
-			continue
-		}
-		if jobInfo.RunGeneration != payload.RunGeneration {
-			continue
-		}
-		status := config.Status(jobInfo.Status)
-		return status == config.StatusDistributed, isSettledDelayedExecutionStatus(status), nil
-	}
-	return false, false, nil
+	return checkpoint != nil && config.Status(checkpoint.Status) == config.StatusDistributed, nil
 }
 
 func (d *DelayDispatcher) markDelayCheckpointDispatched(ctx context.Context, payload *DelayJobPayload) error {
@@ -914,8 +851,11 @@ func (d *DelayDispatcher) markDelayCheckpointDispatched(ctx context.Context, pay
 }
 
 func (d *DelayDispatcher) findDelayCheckpoint(ctx context.Context, payload *DelayJobPayload) (*model.JobInfo, error) {
-	if d == nil || d.store == nil || payload == nil {
-		return nil, nil
+	if d == nil || d.store == nil {
+		return nil, fmt.Errorf("load delay checkpoint: datastore is nil")
+	}
+	if payload == nil {
+		return nil, fmt.Errorf("load delay checkpoint: payload is nil")
 	}
 	records, err := loadJobInfos(
 		ctx,
@@ -952,9 +892,7 @@ func (d *DelayDispatcher) resumeDelayedResultOutbox(ctx context.Context, outbox 
 	}
 	switch outbox.State {
 	case config.JobResultOutboxStateResultPending,
-		config.JobResultOutboxStateResultDispatching,
-		config.JobResultOutboxStateResultQueued,
-		config.JobResultOutboxStateResultProcessingQueue:
+		config.JobResultOutboxStateResultProcessing:
 		return nil
 	case config.JobResultOutboxStateFailed:
 		message := strings.TrimSpace(outbox.LastError)

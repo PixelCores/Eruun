@@ -33,9 +33,8 @@ import (
 )
 
 type workflowRuntimeService interface {
-	WaitingTasks(context.Context) ([]*model.WorkflowQueue, error)
-	UpdateTask(context.Context, *model.WorkflowQueue) bool
-	MarkTaskStatus(context.Context, string, config.Status, config.Status) (bool, error)
+	WaitingTasks(context.Context, int) ([]*model.WorkflowQueue, int, error)
+	ClaimTaskForDispatch(context.Context, *model.WorkflowQueue, time.Duration) (*model.WorkflowQueue, bool, error)
 	DispatchWorkflowSchedules(context.Context) (int, error)
 }
 
@@ -46,19 +45,15 @@ type Workflow struct {
 	WorkflowService           workflowRuntimeService `inject:""`
 	Queue                     msg.Queue
 	DelayQueue                msg.Queue
-	ResultQueue               msg.Queue
 	Cfg                       *config.Config `inject:""`
 	Cache                     cache.ICache   `inject:"cache"`
 	RedisClient               *redis.Client  `inject:"redisClient"`
 	ResourceWaiter            informer.ComponentReadyObserver
 	ResourceImportExecutor    job.ResourceImportExecutor `inject:""`
 	URLSecurityPolicyProvider *urlpolicy.Provider        `inject:""`
-	controllerLifecycleMu     sync.Mutex
-	schedulerLifecycleMu      sync.Mutex
 	workerLimiterOnce         sync.Once
 	workflowLimiter           *semaphore.Weighted
 	runtimeStats              workflowRuntimeCounters
-	errChan                   chan error
 }
 
 type workflowWorkerRun struct {
@@ -70,9 +65,6 @@ type workflowWorkerRun struct {
 type workflowRuntimeContextKey struct{}
 
 func newWorkflowWorkerRun(executionCtx context.Context, limiter *semaphore.Weighted) *workflowWorkerRun {
-	if executionCtx == nil {
-		executionCtx = context.Background()
-	}
 	return &workflowWorkerRun{
 		executionCtx: executionCtx,
 		taskGroup:    &errgroup.Group{},
@@ -81,9 +73,6 @@ func newWorkflowWorkerRun(executionCtx context.Context, limiter *semaphore.Weigh
 }
 
 func (r *workflowWorkerRun) wait() error {
-	if r == nil || r.taskGroup == nil {
-		return nil
-	}
 	return r.taskGroup.Wait()
 }
 
@@ -96,34 +85,15 @@ func (w *Workflow) workerConcurrencyLimiter() *semaphore.Weighted {
 	return w.workflowLimiter
 }
 
-// StartController runs the controller-owned coordination loops. It intentionally
-// excludes queue admission and worker message consumption.
-func (w *Workflow) StartController(ctx context.Context, errChan chan error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	w.controllerLifecycleMu.Lock()
-	defer w.controllerLifecycleMu.Unlock()
+// StartLeader runs all control loops for one serialized Leader term. The caller
+// prepares the informer snapshot and queue group before starting this runtime.
+// Returning means every loop from this term has stopped.
+func (w *Workflow) StartLeader(ctx context.Context, ready func()) {
 	var wg sync.WaitGroup
 	w.startDelayDispatcher(ctx, &wg)
 	w.startResultDispatcher(ctx, &wg)
-	w.startResultOutboxDispatcher(ctx, &wg)
 	w.startCancelledWorkflowRecovery(ctx, &wg)
 	w.startTerminalCallbackRecovery(ctx, &wg)
-	<-ctx.Done()
-	wg.Wait()
-}
-
-// StartScheduler runs queue admission, schedule dispatch, and database lease recovery.
-// The ready callback is invoked only after synchronous startup recovery succeeds
-// and all scheduler loops have been launched.
-func (w *Workflow) StartScheduler(ctx context.Context, errChan chan error, ready func()) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	w.schedulerLifecycleMu.Lock()
-	defer w.schedulerLifecycleMu.Unlock()
-	var wg sync.WaitGroup
 	w.startScheduleDispatcher(ctx, &wg)
 	w.startLeaseReaper(ctx, &wg)
 	wg.Add(1)
@@ -161,10 +131,6 @@ func (w *Workflow) startLeaseReaper(ctx context.Context, wg *sync.WaitGroup) {
 				klog.InfoS("recovered expired workflow execution leases", "count", recovered)
 			}
 		}
-	}
-	if wg == nil {
-		go run()
-		return
 	}
 	wg.Add(1)
 	go func() {
@@ -208,10 +174,6 @@ func (w *Workflow) startCancelledWorkflowRecovery(ctx context.Context, wg *sync.
 			case <-ticker.C:
 			}
 		}
-	}
-	if wg == nil {
-		go run()
-		return
 	}
 	wg.Add(1)
 	go func() {
@@ -262,13 +224,9 @@ func (w *Workflow) startTerminalCallbackRecovery(ctx context.Context, wg *sync.W
 				}
 				active[task.TaskID] = struct{}{}
 				taskSnapshot := *task
-				if wg != nil {
-					wg.Add(1)
-				}
+				wg.Add(1)
 				go func() {
-					if wg != nil {
-						defer wg.Done()
-					}
+					defer wg.Done()
 					done, err := workflowservice.ReconcileWorkflowTerminalCallback(
 						ctx, w.Store, w.Cfg, w.URLSecurityPolicyProvider, &taskSnapshot,
 					)
@@ -297,10 +255,6 @@ func (w *Workflow) startTerminalCallbackRecovery(ctx context.Context, wg *sync.W
 			}
 		}
 	}
-	if wg == nil {
-		go run()
-		return
-	}
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -310,10 +264,6 @@ func (w *Workflow) startTerminalCallbackRecovery(ctx context.Context, wg *sync.W
 
 func (w *Workflow) startScheduleDispatcher(ctx context.Context, wg *sync.WaitGroup) {
 	if w.WorkflowService == nil {
-		return
-	}
-	if wg == nil {
-		go w.workflowScheduleDispatcher(ctx)
 		return
 	}
 	wg.Add(1)
@@ -354,10 +304,6 @@ func (w *Workflow) startDelayDispatcher(ctx context.Context, wg *sync.WaitGroup)
 		manager = &workspace.Manager{Client: w.KubeClient, RESTConfig: w.KubeConfig, Config: w.Cfg.Accounts.Workspace}
 	}
 	dispatcher := job.NewDelayDispatcher(w.DelayQueue, manager, w.Store, config.DelayQueueGroup, consumer)
-	if wg == nil {
-		dispatcher.Start(ctx)
-		return
-	}
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -366,15 +312,7 @@ func (w *Workflow) startDelayDispatcher(ctx context.Context, wg *sync.WaitGroup)
 }
 
 func (w *Workflow) startResultDispatcher(ctx context.Context, wg *sync.WaitGroup) {
-	if w.ResultQueue == nil {
-		return
-	}
-	consumer := w.resultConsumerName()
-	dispatcher := job.NewResultDispatcher(w.ResultQueue, w.KubeClient, w.Store, config.ResultQueueGroup, consumer)
-	if wg == nil {
-		dispatcher.Start(ctx)
-		return
-	}
+	dispatcher := job.NewResultDispatcher(w.KubeClient, w.Store)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -382,102 +320,59 @@ func (w *Workflow) startResultDispatcher(ctx context.Context, wg *sync.WaitGroup
 	}()
 }
 
-func (w *Workflow) startResultOutboxDispatcher(ctx context.Context, wg *sync.WaitGroup) {
-	if w.ResultQueue == nil {
-		return
-	}
-	dispatcher := job.NewResultOutboxDispatcher(w.ResultQueue, w.Store)
-	if wg == nil {
-		dispatcher.Start(ctx)
-		return
-	}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		dispatcher.Run(ctx)
-	}()
-}
-
-func (w *Workflow) runWorkflowTask(ctx context.Context, workerRun *workflowWorkerRun, task *model.WorkflowQueue, concurrency int) (bool, error) {
+func (w *Workflow) runWorkflowTask(workerRun *workflowWorkerRun, task *model.WorkflowQueue) error {
 	if task == nil || task.TaskID == "" {
-		return false, fmt.Errorf("invalid workflow task")
+		return fmt.Errorf("invalid workflow task")
 	}
 	if task.RunGeneration == 0 || task.RunToken == "" || task.WorkerID == "" {
-		return false, repository.ErrWorkflowOwnershipRequired
+		return repository.ErrWorkflowOwnershipRequired
 	}
-	runnerCtx := ctx
-	var taskGroup *errgroup.Group
-	var workflowLimiter *semaphore.Weighted
-	if workerRun != nil {
-		runnerCtx = workerRun.executionCtx
-		taskGroup = workerRun.taskGroup
-		workflowLimiter = workerRun.limiter
+	concurrency := 1
+	if w.Cfg != nil && w.Cfg.Workflow.SequentialMaxConcurrency > 0 {
+		concurrency = w.Cfg.Workflow.SequentialMaxConcurrency
 	}
-	taskCtx, cancelTask := context.WithCancelCause(runnerCtx)
-	taskCtx = context.WithValue(taskCtx, workflowRuntimeContextKey{}, runnerCtx)
+	taskCtx, cancelTask := context.WithCancelCause(workerRun.executionCtx)
+	taskCtx = context.WithValue(taskCtx, workflowRuntimeContextKey{}, workerRun.executionCtx)
 	heartbeatDone := w.startWorkflowTaskHeartbeat(taskCtx, cancelTask, task)
 	stopHeartbeat := func() {
 		cancelTask(nil)
 		<-heartbeatDone
 	}
-	runnerCtx = taskCtx
 
 	// The database claim already transferred this task to the execution lifetime.
 	// Stopping intake on promotion must not cancel its preparation or persistence.
-	urlPolicy, err := urlpolicy.ResolvePolicy(runnerCtx, w.URLSecurityPolicyProvider)
+	urlPolicy, err := urlpolicy.ResolvePolicy(taskCtx, w.URLSecurityPolicyProvider)
 	if err != nil {
 		runErr := fmt.Errorf("load url security policy: %w", err)
 		if !isContextCancellationError(runErr) {
-			w.markTaskRunStartFailure(runnerCtx, task, runErr)
+			w.markTaskRunStartFailure(taskCtx, task, runErr)
 		}
 		stopHeartbeat()
-		return false, runErr
+		return runErr
 	}
 
-	releaseSlot, err := w.acquireWorkflowSlot(runnerCtx, workflowLimiter)
+	releaseSlot, err := w.acquireWorkflowSlot(taskCtx, workerRun.limiter)
 	if err != nil {
 		stopHeartbeat()
-		return false, fmt.Errorf("acquire workflow slot: %w", err)
+		return fmt.Errorf("acquire workflow slot: %w", err)
 	}
 	controller, err := NewWorkflowController(task, w.KubeClient, w.KubeConfig, w.Store, w.Cfg, w.RedisClient, w.Cache, urlPolicy, w.ResourceImportExecutor)
 	if err != nil {
 		runErr := fmt.Errorf("init workflow controller: %w", err)
-		w.markTaskRunStartFailure(runnerCtx, task, runErr)
+		w.markTaskRunStartFailure(taskCtx, task, runErr)
 		releaseSlot()
 		stopHeartbeat()
-		return false, runErr
+		return runErr
 	}
-	runController := func() error {
+	workerRun.taskGroup.Go(func() error {
 		defer stopHeartbeat()
 		defer releaseSlot()
-		err := w.runWorkflowControllerWithPersistenceRecovery(runnerCtx, controller, concurrency)
+		err := w.runWorkflowControllerWithPersistenceRecovery(taskCtx, controller, concurrency)
 		if err != nil {
 			w.reportTaskError(err)
 		}
 		return err
-	}
-	if taskGroup != nil {
-		taskGroup.Go(runController)
-		return true, nil
-	}
-	go func() {
-		_ = runController()
-	}()
-	return true, nil
-}
-
-func (w *Workflow) runClaimedWorkflowTask(ctx context.Context, workerRun *workflowWorkerRun, task *model.WorkflowQueue, concurrency int) error {
-	sequentialConcurrency := concurrency
-	if w.Cfg != nil && w.Cfg.Workflow.SequentialMaxConcurrency > 0 {
-		sequentialConcurrency = w.Cfg.Workflow.SequentialMaxConcurrency
-	}
-	started, err := w.runWorkflowTask(ctx, workerRun, task, sequentialConcurrency)
-	if err != nil {
-		return err
-	}
-	if !started {
-		return fmt.Errorf("workflow task did not start")
-	}
+	})
 	return nil
 }
 
@@ -705,7 +600,7 @@ func (w *Workflow) waitForWorkflowTaskPersistenceRecovery(ctx context.Context, t
 // Note: Workflow task failures are expected business errors (e.g., deployment failures,
 // validation errors) and should NOT cause the server to exit. Only infrastructure errors
 // (e.g., Redis connection failures, database errors) should trigger service termination.
-// Therefore, we only log the error instead of sending it to errChan.
+// Task errors are logged without terminating the server.
 func (w *Workflow) reportTaskError(err error) {
 	if err == nil {
 		return

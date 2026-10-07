@@ -526,6 +526,8 @@ runUnifiedRuntimeContract() {
   done
 }
 
+assertNotContains "${MANIFEST_SOURCE}" "ERUUN_DATASTORE_TYPE"
+assertNotContains "${MANIFEST_SOURCE}" "ERUUN_CACHE_TYPE"
 runManifestGeneratedSecretsContract
 runHelmSensitiveValuesContract
 runLegacyBindingCleanupScopeContract

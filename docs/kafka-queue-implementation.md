@@ -240,13 +240,13 @@ I kafka reader initialized for topic=eruun.workflow.dispatch group=eruun-workflo
 运行期健康检查区分为两类：
 
 - `/healthz`：仅表示进程存活。
-- `/readyz`：在 `msg-type=kafka` 时会检查 broker 连通性、`dispatch/delay/result` 三个真实业务 Topic 的元数据，并对每个 Topic 执行一次最小化 produce/read smoke check。
+- `/readyz`：在 `msg-type=kafka` 时会检查 broker 连通性、`dispatch/delay` 两个真实业务 Topic 的元数据，并对每个 Topic 执行一次最小化 produce/read smoke check。
 
 说明：
 
 - smoke check 使用真实业务 Topic，不额外引入专用 health topic。
 - smoke check 写入探针后会按 Kafka 返回的 partition/offset 精确读回，不依赖 consumer group rebalance 完成时机。
-- 探针消息会由 Kafka 队列层识别，并按业务 consumer group 的连续 offset 提交规则确认，不会越过更早未 ACK 的业务消息，也不会进入 workflow/delay/result 业务处理链路。
+- 探针消息会由 Kafka 队列层识别，并按业务 consumer group 的连续 offset 提交规则确认，不会越过更早未 ACK 的业务消息，也不会进入 workflow/delay 业务处理链路。
 
 ---
 
@@ -284,7 +284,7 @@ I kafka reader initialized for topic=eruun.workflow.dispatch group=eruun-workflo
 
 服务启动时会在 Kafka 初始化阶段做 Topic 保障：
 
-1. 先检查 `dispatch/delay/result` 三个目标 Topic 是否可读元数据；
+1. 先检查 `dispatch/delay` 两个目标 Topic 是否可读元数据；
 2. 若 Topic 不存在，主动按配置创建；
 3. 创建后再次校验可用性；
 4. 若任何 Topic 校验/创建失败，`msg-type=kafka` 模式下会 fail-fast（终止启动）。
@@ -310,8 +310,9 @@ kafka-topics.sh --create \
 ### 7.4 Consumer Group 协调
 
 - `--msg-kafka-group-id` 作为基础 group
-- dispatch 队列使用基础 group（兼容旧部署）
-- delay/result 队列派生为 `base.delay` / `base.result`，避免三类队列互相触发不必要 rebalance
+- dispatch 队列使用基础 group
+- delay 队列使用 `base.delay`，避免两类队列互相触发不必要 rebalance
+- 一次性延迟 Job 的结果由 Leader 直接认领数据库 outbox，不创建 result Topic 或 consumer group
 - Rebalance 期间可能有短暂的消息处理延迟
 
 ### 7.5 Offset 提交策略

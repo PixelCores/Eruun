@@ -7,7 +7,7 @@ import (
 )
 
 type JobResultOutbox struct {
-	ID             string                      `json:"id" gorm:"primaryKey;type:varchar(64);column:id"`
+	ID             string                      `json:"id" gorm:"primaryKey;type:varchar(64);column:id;index:idx_result_outbox_pending,priority:2"`
 	TaskID         string                      `json:"task_id" gorm:"type:varchar(255);column:task_id"`
 	ExecutionKey   string                      `json:"execution_key" gorm:"type:varchar(255);column:execution_key;index"`
 	RunGeneration  uint64                      `json:"run_generation" gorm:"column:run_generation;not null;default:0"`
@@ -16,10 +16,10 @@ type JobResultOutbox struct {
 	Name           string                      `json:"name" gorm:"type:varchar(255);column:name"`
 	ServiceName    string                      `json:"service_name" gorm:"type:varchar(255);column:service_name"`
 	TimeoutSeconds int64                       `json:"timeout_seconds" gorm:"column:timeout_seconds"`
-	State          config.JobResultOutboxState `json:"state" gorm:"type:varchar(32);column:state"`
+	State          config.JobResultOutboxState `json:"state" gorm:"type:varchar(32);column:state;index:idx_result_outbox_pending,priority:1;index:idx_result_outbox_state_lease,priority:1"`
 	JobUID         string                      `json:"-" gorm:"type:varchar(64);column:job_uid"`
-	LeaseExpiresAt *time.Time                  `json:"-" gorm:"column:lease_expires_at"`
-	MessageID      string                      `json:"message_id" gorm:"type:varchar(255);column:message_id"`
+	LeaseExpiresAt *time.Time                  `json:"-" gorm:"column:lease_expires_at;index:idx_result_outbox_state_lease,priority:2"`
+	ClaimToken     string                      `json:"-" gorm:"type:varchar(64);column:claim_token"`
 	Attempts       int                         `json:"attempts" gorm:"column:attempts"`
 	LastError      string                      `json:"last_error" gorm:"type:text;column:last_error"`
 	BaseModel

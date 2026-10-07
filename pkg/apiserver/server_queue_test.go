@@ -15,7 +15,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
@@ -47,11 +47,15 @@ type testServerWorker struct {
 	subscribes atomic.Int64
 }
 
-func (w *testServerWorker) Start(context.Context, chan error) {
+func (w *testServerWorker) StartLeader(ctx context.Context, ready func()) {
 	w.starts.Add(1)
+	ready()
+	<-ctx.Done()
 }
 
-func (w *testServerWorker) StartWorker(consumerCtx context.Context, _ context.Context, _ chan error, ready, stopped func()) {
+func (w *testServerWorker) RuntimeStats() workflow.RuntimeStats { return workflow.RuntimeStats{} }
+
+func (w *testServerWorker) StartWorker(consumerCtx context.Context, _ context.Context, ready, stopped func()) {
 	w.subscribes.Add(1)
 	if ready != nil {
 		ready()
@@ -68,20 +72,21 @@ type testWorkerContexts struct {
 }
 
 type contextTrackingServerWorker struct {
+	testServerWorker
 	contexts         chan testWorkerContexts
 	leaderContexts   chan context.Context
 	waitForExecution bool
 }
 
-func (w *contextTrackingServerWorker) Start(ctx context.Context, _ chan error) {
-	if w.leaderContexts == nil {
-		return
+func (w *contextTrackingServerWorker) StartLeader(ctx context.Context, ready func()) {
+	if w.leaderContexts != nil {
+		w.leaderContexts <- ctx
 	}
-	w.leaderContexts <- ctx
+	ready()
 	<-ctx.Done()
 }
 
-func (w *contextTrackingServerWorker) StartWorker(consumerCtx, executionCtx context.Context, _ chan error, ready, stopped func()) {
+func (w *contextTrackingServerWorker) StartWorker(consumerCtx, executionCtx context.Context, ready, stopped func()) {
 	w.contexts <- testWorkerContexts{consumer: consumerCtx, execution: executionCtx}
 	if ready != nil {
 		ready()
@@ -96,13 +101,12 @@ func (w *contextTrackingServerWorker) StartWorker(consumerCtx, executionCtx cont
 }
 
 type blockingServerWorker struct {
+	testServerWorker
 	started chan struct{}
 	release chan struct{}
 }
 
-func (w *blockingServerWorker) Start(context.Context, chan error) {}
-
-func (w *blockingServerWorker) StartWorker(_ context.Context, _ context.Context, _ chan error, ready, stopped func()) {
+func (w *blockingServerWorker) StartWorker(_ context.Context, _ context.Context, ready, stopped func()) {
 	close(w.started)
 	if ready != nil {
 		ready()
@@ -181,15 +185,15 @@ func TestEnsureQueueGroup(t *testing.T) {
 	})
 }
 
-func TestOnStartedSchedulerLeadingReportsQueueGroupError(t *testing.T) {
+func TestStartLeaderReportsQueueGroupError(t *testing.T) {
 	expectedErr := errors.New("ensure group failed")
 	server := &restServer{
 		Queue: &testServerQueue{ensureGroupErr: expectedErr},
 	}
-	t.Cleanup(server.stopSchedulerRun)
+	t.Cleanup(server.stopLeader)
 	errChan := make(chan error, 1)
 
-	require.False(t, server.onStartedSchedulerLeading(context.Background(), errChan))
+	require.False(t, server.startLeader(context.Background(), errChan))
 
 	select {
 	case err := <-errChan:
@@ -202,7 +206,7 @@ func TestOnStartedSchedulerLeadingReportsQueueGroupError(t *testing.T) {
 	}
 }
 
-func TestOnStartedSchedulerLeadingUnblocksErrorReportOnShutdown(t *testing.T) {
+func TestStartLeaderUnblocksErrorReportOnShutdown(t *testing.T) {
 	server := &restServer{
 		Queue: &testServerQueue{ensureGroupErr: errors.New("ensure group failed")},
 	}
@@ -210,7 +214,7 @@ func TestOnStartedSchedulerLeadingUnblocksErrorReportOnShutdown(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		server.onStartedSchedulerLeading(ctx, make(chan error))
+		server.startLeader(ctx, make(chan error))
 	}()
 
 	require.Eventually(t, func() bool {
@@ -259,16 +263,16 @@ func TestReportableInformerStartError(t *testing.T) {
 	}
 }
 
-func TestOnStartedSchedulerLeadingIgnoresQueueGroupErrorWhenContextCanceled(t *testing.T) {
+func TestStartLeaderIgnoresQueueGroupErrorWhenContextCanceled(t *testing.T) {
 	server := &restServer{
 		Queue: &testServerQueue{ensureGroupErr: context.Canceled},
 	}
-	t.Cleanup(server.stopSchedulerRun)
+	t.Cleanup(server.stopLeader)
 	errChan := make(chan error, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	require.False(t, server.onStartedSchedulerLeading(ctx, errChan))
+	require.False(t, server.startLeader(ctx, errChan))
 	require.EqualValues(t, 0, server.ensureQueueGroupFailures.Load())
 
 	select {
@@ -278,38 +282,31 @@ func TestOnStartedSchedulerLeadingIgnoresQueueGroupErrorWhenContextCanceled(t *t
 	}
 }
 
-func TestBeginControllerRunStopsPreviousInformerRuntimeSynchronously(t *testing.T) {
+func TestLeaderRebuildsInformerAfterPreviousTermStops(t *testing.T) {
 	manager := informer.NewManager(fake.NewSimpleClientset())
-	t.Cleanup(func() {
-		manager.Stop()
-		manager.GetWaiter().Close()
-	})
-
-	previousRun := newWorkerRun(context.Background())
-	previousRun.markStarted()
-	require.NoError(t, manager.Start(previousRun.ctx))
+	server := &restServer{InformerManager: manager, workflow: &testServerWorker{}}
+	t.Cleanup(func() { server.stopLeader(); manager.GetWaiter().Close() })
+	require.True(t, server.startLeader(context.Background(), nil))
+	first := server.leaderRun
 	require.True(t, manager.IsStarted())
-
-	server := &restServer{
-		InformerManager: manager,
-		controllerRun:   previousRun,
+	server.stopLeader()
+	require.False(t, manager.IsStarted())
+	select {
+	case <-first.done:
+	default:
+		t.Fatal("previous term was still running after stop")
 	}
-	currentRun := server.beginControllerRun(context.Background())
-	require.NotNil(t, currentRun)
-	require.False(t, manager.IsStarted(), "beginning a controller run must wait for the previous informer runtime to stop")
-
-	currentRun.markStarted()
-	t.Cleanup(server.stopControllerRun)
-	require.NoError(t, manager.Start(currentRun.ctx))
+	require.True(t, server.startLeader(context.Background(), nil))
+	require.NotSame(t, first, server.leaderRun)
 	require.True(t, manager.IsStarted())
 }
 
-func TestStartWorkersUsesServerScopedEventWorkers(t *testing.T) {
+func TestStartWorkersUsesServerScopedWorkflow(t *testing.T) {
 	firstWorker := &testServerWorker{}
 	laterWorker := &testServerWorker{}
-	firstServer := &restServer{eventWorkers: []event.Worker{firstWorker}}
-	laterServer := &restServer{eventWorkers: []event.Worker{laterWorker}}
-	require.Len(t, laterServer.eventWorkers, 1)
+	firstServer := &restServer{workflow: firstWorker}
+	laterServer := &restServer{workflow: laterWorker}
+	require.Same(t, laterWorker, laterServer.workflow)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -327,24 +324,19 @@ func TestStartWorkersUsesServerScopedEventWorkers(t *testing.T) {
 	require.EqualValues(t, 0, laterWorker.starts.Load())
 }
 
-func TestStartWorkersSkipsNilWorkerInReadinessCount(t *testing.T) {
-	worker := &testServerWorker{}
-	server := &restServer{eventWorkers: []event.Worker{nil, worker}}
-	t.Cleanup(func() { server.stopWorkers(context.Background()) })
-
-	server.startWorkers(context.Background(), nil)
-
-	waitForServerWorkerCount(t, "non-nil worker", worker.subscribes.Load, 1)
-	require.Eventually(t, func() bool {
-		server.workersMu.Lock()
-		defer server.workersMu.Unlock()
-		return server.workersReady
-	}, time.Second, time.Millisecond)
+func TestStartWorkersRequiresWorkflowRuntime(t *testing.T) {
+	server := &restServer{}
+	errors := make(chan error, 1)
+	server.startWorkers(context.Background(), errors)
+	require.Nil(t, server.workersRun)
+	ready, _ := server.RuntimeReady()
+	require.False(t, ready)
+	require.ErrorContains(t, <-errors, "workflow runtime is not configured")
 }
 
 func TestStartWorkersSeparatesConsumerAndExecutionContexts(t *testing.T) {
 	worker := &contextTrackingServerWorker{contexts: make(chan testWorkerContexts, 1)}
-	server := &restServer{eventWorkers: []event.Worker{worker}}
+	server := &restServer{workflow: worker}
 	executionCtx, cancelExecution := context.WithCancel(context.Background())
 	defer cancelExecution()
 
@@ -367,7 +359,7 @@ func TestStartWorkersSeparatesConsumerAndExecutionContexts(t *testing.T) {
 
 func TestStartWorkersIgnoresCanceledExecutionContext(t *testing.T) {
 	worker := &testServerWorker{}
-	server := &restServer{eventWorkers: []event.Worker{worker}}
+	server := &restServer{workflow: worker}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -385,7 +377,7 @@ func TestStopWorkersReturnsWhenDrainTimeoutExpires(t *testing.T) {
 		started: make(chan struct{}),
 		release: make(chan struct{}),
 	}
-	server := &restServer{eventWorkers: []event.Worker{worker}}
+	server := &restServer{workflow: worker}
 	server.startWorkers(context.Background(), nil)
 	select {
 	case <-worker.started:
@@ -448,10 +440,17 @@ func TestBestEffortReleaseLeaderLockReleasesCurrentHolder(t *testing.T) {
 	require.False(t, update.RenewTime.IsZero())
 }
 
-type readinessTestWorker func(context.Context, context.Context, chan error, func(), func())
+type readinessTestWorker func(context.Context, context.Context, func(), func())
 
-func (w readinessTestWorker) StartWorker(consumer, execution context.Context, errors chan error, ready, stopped func()) {
-	w(consumer, execution, errors, ready, stopped)
+func (w readinessTestWorker) StartLeader(ctx context.Context, ready func()) {
+	ready()
+	<-ctx.Done()
+}
+
+func (w readinessTestWorker) RuntimeStats() workflow.RuntimeStats { return workflow.RuntimeStats{} }
+
+func (w readinessTestWorker) StartWorker(consumer, execution context.Context, ready, stopped func()) {
+	w(consumer, execution, ready, stopped)
 }
 
 func TestStartWorkersIgnoresOldReadinessCallbacksAfterPromotion(t *testing.T) {
@@ -460,7 +459,7 @@ func TestStartWorkersIgnoresOldReadinessCallbacksAfterPromotion(t *testing.T) {
 	callbacks := make(chan [2]func(), 2)
 	finishOld := make(chan struct{})
 	var starts atomic.Int32
-	worker := readinessTestWorker(func(_, execution context.Context, _ chan error, ready, stopped func()) {
+	worker := readinessTestWorker(func(_, execution context.Context, ready, stopped func()) {
 		first := starts.Add(1) == 1
 		callbacks <- [2]func(){ready, stopped}
 		if first {
@@ -472,7 +471,7 @@ func TestStartWorkersIgnoresOldReadinessCallbacksAfterPromotion(t *testing.T) {
 		}
 		<-execution.Done()
 	})
-	server := &restServer{eventWorkers: []event.Worker{worker}}
+	server := &restServer{workflow: worker}
 	t.Cleanup(func() {
 		cancel()
 		server.stopWorkers(context.Background())
@@ -508,13 +507,13 @@ func TestStartWorkersIgnoresOldReadinessCallbacksAfterPromotion(t *testing.T) {
 	require.False(t, ready, "a stopped subscriber must not regain readiness")
 }
 
-type schedulerStartupTestWorker struct {
+type leaderStartupTestWorker struct {
 	testServerWorker
 	entered chan func()
 	finish  chan struct{}
 }
 
-func (w *schedulerStartupTestWorker) StartScheduler(ctx context.Context, _ chan error, ready func()) {
+func (w *leaderStartupTestWorker) StartLeader(ctx context.Context, ready func()) {
 	w.entered <- ready
 	select {
 	case <-w.finish:
@@ -522,15 +521,15 @@ func (w *schedulerStartupTestWorker) StartScheduler(ctx context.Context, _ chan 
 	}
 }
 
-func TestOnStartedSchedulerLeadingReturnsStartupResult(t *testing.T) {
+func TestStartLeaderReturnsStartupResult(t *testing.T) {
 	for _, outcome := range []string{"ready", "exited before ready", "cancelled before ready"} {
 		t.Run(outcome, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
-			worker := &schedulerStartupTestWorker{entered: make(chan func(), 1), finish: make(chan struct{})}
-			server := &restServer{eventWorkers: []event.Worker{worker}}
-			t.Cleanup(func() { cancel(); server.stopSchedulerRun() })
+			worker := &leaderStartupTestWorker{entered: make(chan func(), 1), finish: make(chan struct{})}
+			server := &restServer{workflow: worker}
+			t.Cleanup(func() { cancel(); server.stopLeader() })
 			result := make(chan bool, 1)
-			go func() { result <- server.onStartedSchedulerLeading(ctx, nil) }()
+			go func() { result <- server.startLeader(ctx, nil) }()
 			ready := <-worker.entered
 			select {
 			case <-result:
@@ -657,7 +656,6 @@ func TestInitRedisClientForConfiguredBackendsFailsRedisCache(t *testing.T) {
 
 	server := &restServer{
 		cfg: config.Config{
-			Cache:     config.RedisCacheConfig{CacheType: "redis"},
 			Messaging: config.MessagingConfig{Type: "kafka"},
 		},
 	}
@@ -678,7 +676,6 @@ func TestInitRedisClientForConfiguredBackendsRejectsMissingClient(t *testing.T) 
 
 	server := &restServer{
 		cfg: config.Config{
-			Cache:     config.RedisCacheConfig{CacheType: "redis"},
 			Messaging: config.MessagingConfig{Type: "kafka"},
 		},
 	}
@@ -702,7 +699,6 @@ func TestInitRedisClientForConfiguredBackendsUsesRedisForCache(t *testing.T) {
 
 	server := &restServer{
 		cfg: config.Config{
-			Cache:     config.RedisCacheConfig{CacheType: "redis"},
 			Messaging: config.MessagingConfig{Type: "kafka"},
 		},
 	}
@@ -743,7 +739,7 @@ func TestEnsureKafkaMessagingReadyPreparesAllRuntimeTopics(t *testing.T) {
 	server := &restServer{cfg: base}
 	require.NoError(t, server.ensureKafkaMessagingReady())
 	require.Equal(t, 1, calls)
-	require.Equal(t, []string{"tenant-a.workflow.dispatch", "tenant-a.job.delay", "tenant-a.job.result"}, captured.Topics)
+	require.Equal(t, []string{"tenant-a.workflow.dispatch", "tenant-a.job.delay"}, captured.Topics)
 	require.Equal(t, []string{"broker-1:9092"}, captured.Brokers)
 	require.Equal(t, 3, captured.TopicPartitions)
 	require.Equal(t, 2, captured.TopicReplicationFactor)

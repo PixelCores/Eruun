@@ -170,7 +170,6 @@ func (c *ScheduledJobCtl) runOneTimeJob(ctx context.Context, jobObj *batchv1.Job
 			TaskID:         c.job.TaskID,
 			ExecutionKey:   c.job.ExecutionKey,
 			RunGeneration:  c.job.RunGeneration,
-			RunToken:       c.job.RunToken,
 			ServiceName:    resolveJobServiceName(c.job),
 			TimeoutSeconds: c.job.Timeout,
 			Job:            jobObj,

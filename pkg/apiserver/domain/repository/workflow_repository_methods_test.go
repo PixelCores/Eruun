@@ -379,30 +379,6 @@ func TestTaskAndDeleteHelpers(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestUpdateTaskStatusFallbackPath(t *testing.T) {
-	store := &repositoryTestStore{}
-	updated, err := UpdateTaskStatus(context.Background(), store, "task-1", "", config.StatusCompleted)
-	require.NoError(t, err)
-	require.True(t, updated)
-	require.IsType(t, &model.WorkflowQueue{}, store.putEntity)
-}
-
-func TestUpdateTaskStatusFallbackNotFound(t *testing.T) {
-	store := &repositoryTestStore{getErr: datastore.ErrRecordNotExist}
-	updated, err := UpdateTaskStatus(context.Background(), store, "task-1", "", config.StatusCompleted)
-	require.NoError(t, err)
-	require.False(t, updated)
-}
-
-func TestUpdateTaskStatusWithCondition(t *testing.T) {
-	store := &repositoryTestStore{casSwapped: true}
-	updated, err := UpdateTaskStatus(context.Background(), store, "task-1", config.StatusRunning, config.StatusCompleted)
-	require.NoError(t, err)
-	require.True(t, updated)
-	require.Equal(t, "status", store.casField)
-	require.Equal(t, config.StatusRunning, store.casValue)
-}
-
 func TestApproveTaskCAS(t *testing.T) {
 	t.Run("with conditional CAS", func(t *testing.T) {
 		store := &repositoryTestStore{casWithConditionsSwapped: true}

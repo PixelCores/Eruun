@@ -45,7 +45,9 @@ Scheduler 对 `waiting` task 执行 CAS，生成新的：
 - `runToken`
 - dispatch 时间与 lease deadline
 
-随后发布版本 2 dispatch。Worker 只接受携带完整 `taskId/runGeneration/runToken` 的消息，并在 ownership CAS 成功后把任务置为 `running`、写入 `workerId` 和新的 lease deadline。
+调度统一通过服务层认领入口：延迟 Workflow 在应用锁内重新检查 StatefulSet 清理门禁，普通任务不能越过未解决的清理，负责恢复清理的任务可继续；通过后才执行 generation/token CAS。立即任务保留已有原子认领路径。
+
+随后发布版本 2 dispatch，消息只包含 `version/taskId/runGeneration/runToken`。Worker 先筛除已删除、已取消或旧执行身份消息，再以 ownership CAS 把任务置为 `running`、写入 `workerId` 和新的 lease deadline；执行所需元数据从认领后的数据库记录读取。
 
 dispatch、Worker claim、heartbeat、显式释放和 Scheduler reaper 都以 MySQL 的微秒级 Unix 时间为权威时间。运行节点的墙钟和 DSN 时区不参与数据库 lease 的到期判断，因此节点时钟偏差不会让 Scheduler 提前接管仍在续租的 Worker。
 
@@ -65,7 +67,7 @@ taskId + runGeneration + runToken + workerId
 
 Scheduler lease reaper 周期扫描 lease 已过期且身份完整的 `queued/running` task，以 CAS 清理旧 ownership 并恢复为 `waiting`。下一次派发创建新的 generation/token。
 
-Waiting task 到期判断也以数据库时间为准；时钟查询失败或返回零值时不派发。Scheduler 的 waiting task 与 cron schedule 查询都在数据库侧按到期时间过滤，并按 100 条固定批次处理。`workflow_queue(status, execute_at)` 与 `workflow_schedule(enabled, next_run)` 复合索引支撑这两条热路径；持续积压会由后续轮询继续排空，而不会把全量未到期记录加载到单个 Leader 进程。
+Waiting task 到期判断也以数据库时间为准；时钟查询失败或返回零值时不派发。Scheduler 的 waiting task 与 cron schedule 查询都在数据库侧按到期时间过滤，并按 100 条固定批次处理。`workflow_queue(status, execute_at)` 与 `workflow_schedule(enabled, next_run)` 复合索引支撑这两条热路径。Waiting task 保留 FIFO 排序并有界轮转分页，避免一整批被应用准入拒绝的任务挡住后面的健康任务；候选集缩小时，移入前页的记录会在下一轮扫描中处理。扫描不会把全量未到期记录加载到单个 Leader 进程。
 
 Cron schedule 按 `next_run, id` 稳定排序，在同一进程的后续轮询中推进页码，读到末页后回到第一页。即使整批计划因错误、应用锁争用或无可运行日期而未推进 `next_run`，后面的到期计划也会获得处理机会。成功派发、删除或禁用计划导致候选集缩小时，移入前页的记录会在下一轮扫描中重新被读取；进程重启从第一页开始。分页不改写计划的 `next_run`、`last_run` 或幂等键，派发失败仍按原有事务语义回滚并返回错误。
 
@@ -75,7 +77,7 @@ Cron schedule 按 `next_run, id` 稳定排序，在同一进程的后续轮询�
 
 `JobInfo`、延迟载荷、结果载荷和 result outbox 携带同一 generation-aware 执行身份。Kubernetes Job 同时写入执行身份 annotation。
 
-一次性延迟 Job 在发送队列通知前，先把完整载荷、到期时间和 `pending` 检查点写入 `JobInfo`。新队列通知使用 `version: 2`，只带 `executeAt`、`taskId`、`jobType`、`serviceName`、`executionKey`、`runGeneration` 和 `runToken`；Controller 读取数据库中的完整载荷，核对通知身份后执行。未标版本、旧/未知版本或携带 `job` 字段的通知均作为无效消息确认并丢弃，不执行工作负载；已提交检查点仍由数据库恢复。检查点必须已保存与应用一致的 workspace 身份，不再推断或回填缺失身份；校验失败只对同一代次、仍待执行的记录写入失败，数据库写入失败则重试。Redis Stream 只负责降低到期发现延迟；Controller Leader 还会按 `(status, delay_state, delay_execute_at)` 索引轮询已到期检查点并直接恢复。因此 consumer group 被重建、Stream 被裁剪、Redis 暂时不可用或进程在写库后/入队前退出，都不会让已提交的延迟执行永久丢失。成功创建同身份 Kubernetes Job 并持久化 result outbox 后，检查点才变为 `dispatched`。
+一次性延迟 Job 在发送队列通知前，先把完整载荷、到期时间和 `pending` 检查点写入 `JobInfo`。新队列通知使用 `version: 2`，只带 `executeAt`、`taskId`、`jobType`、`serviceName`、`executionKey` 和 `runGeneration`；Controller 读取数据库中的完整载荷，核对通知身份后执行。checkpoint 提交时仍以父 Workflow ownership 事务隔离旧执行者；提交后执行权限由 checkpoint 的执行身份、状态和准入期限决定，不再回退查询父任务或携带父任务 token，因此父任务后续换代不阻断已提交的延迟执行。未标版本、旧/未知版本或携带 `job` 字段的通知均作为无效消息确认并丢弃，不执行工作负载；已提交检查点仍由数据库恢复。检查点必须已保存与应用一致的 workspace 身份，不再推断或回填缺失身份；校验失败只对同一代次、仍待执行的记录写入失败，数据库写入失败则重试。Redis Stream 只负责降低到期发现延迟；Leader 还会按 `(status, delay_state, delay_execute_at)` 索引轮询已到期检查点并直接恢复。因此 consumer group 被重建、Stream 被裁剪、Redis 暂时不可用或进程在写库后/入队前退出，都不会让已提交的延迟执行永久丢失。成功创建同身份 Kubernetes Job 并持久化 result outbox 后，检查点才变为 `dispatched`。
 
 数据库恢复每次轮询最多读取 100 条记录，按记录 ID 倒序推进游标，到末尾后重新扫描。持续重试、无效载荷或扫描期间记录状态变化不会阻塞后续到期任务；新到达的记录在下一轮扫描中纳入。队列通知按执行键去重，被去重的消息释放处理标记并保持未确认状态，允许 Kafka 再次认领并在执行完成后确认。
 
@@ -83,25 +85,27 @@ Harbor 恢复资格、恢复任务剩余预算、Job 恢复准入预检查及持
 
 结果处理只消费与当前 `JobInfo` 和 Kubernetes Job annotation 匹配的结果；旧 generation 的迟到结果不能覆盖当前执行。确定性资源名用于重试复用，执行身份用于区分不同 generation。
 
-结果通知必须带 `outboxId`，只以数据库 outbox 为恢复来源；缺失 ID 的消息作为无效格式确认并丢弃，outbox 已完成并删除后的重复通知仍幂等确认。`result_dispatching_queue` 和 `result_queued` 有 60 秒补投宽限；消费者认领时写入独立 token 和 30 秒数据库租约，每 10 秒续期。到期回收必须同时匹配 state、token/消息 ID 和原租约，活跃消费者续期后旧扫描快照不能将其重新投递。重复通知不授予处理权限；旧 claim 不能再提交结果或删除 outbox。
+一次性延迟 Job 的结果待办直接由当前 Leader 扫描数据库 outbox 并处理，不再经由结果 MQ。状态收敛为 `result_pending → result_processing`，不可重试的异常保留为 `failed`。处理池最多同时运行 16 项，只按空闲槽位读取和认领 pending；处理失败回到 pending，等待后续扫描。pending 按记录 ID 倒序推进进程内游标，到末尾后重新扫描；每圈都会越过已尝试的记录，不依赖节点时间或重试次数排序。新到达的记录在后续扫描圈中纳入。
 
-结果写入在检查 claim 的事务内通过状态、执行代次与 attempt 的 CAS 保存终态与日志；并发取消等已提交终态不会被覆盖，仅最终持久化为 Completed 才按已记录的 Job UID 清理 Kubernetes 对象。保存失败保留现场；清理失败保留 outbox 供重试；重放已完成记录只补清理，不重新等待已删除 Job。按名称读取日志后还需校验 Pod UID 与 Job owner；读取失败、身份变化或无法确认身份均保留现场等待重试。结果 ACK 在清理与 outbox 收敛后发生。数据库与 Kubernetes 之间仍没有跨系统原子事务。
+认领以 CAS 写入独立 `claim_token` 和 30 秒数据库租约，每 10 秒续期。过期扫描独立于空闲处理槽位，以状态、claim token 和原租约快照做 CAS；活跃处理者续期后，旧扫描不能回收它。结果记录被恢复或换主认领后，旧 claim 不能再提交结果或删除 outbox。
+
+结果写入在检查 claim 的事务内通过状态、执行代次与 attempt 的 CAS 保存终态与日志；并发取消等已提交终态不会被覆盖，仅最终持久化为 Completed 才按已记录的 Job UID 清理 Kubernetes 对象。保存失败保留现场；清理失败保留 outbox 供重试；重放已完成记录只补清理，不重新等待已删除 Job。按名称读取日志后还需校验 Pod UID 与 Job owner；读取失败、身份变化或无法确认身份均保留现场等待重试。清理成功后才在 ownership 保护下删除 outbox；这条链路不再使用消息 ACK。数据库与 Kubernetes 之间仍没有跨系统原子事务。
 
 无需读取日志的例外是：Failed Pod 中的容器明确处于 Waiting、没有启动或重启记录，并经重新读取 Pod 确认相同 UID、owner 和状态；结果中记录该容器从未启动及 Pod 失败原因，避免旧失败尝试阻塞已成功 Job。缺少容器状态不视为从未启动。
 
-开发阶段只支持当前内部结果协议，不提供旧消息或旧处理状态的迁移路径。`result_pending` 的空租约合法；`result_dispatching_queue`、`result_queued` 和 `result_processing_queue` 缺少租约属于异常记录，恢复扫描以 CAS 将其标为 `failed` 并记录原因，保留记录供诊断，不推断宽限期、不重新执行。正常过期记录继续按原租约回收补投。终态记录没有已保存 UID 时仍不自动删除同名对象。数据库 schema 初始化与校验保留，既有 Deadline/RetryAt 原值不重写。精简范围和验证边界见[复杂度审核与处置](leader-worker-complexity-audit-2026-10-07.md)。
+开发阶段只支持当前数据库结果处理协议，不提供旧结果消息或旧处理状态的迁移路径。`result_pending` 的空租约合法；`result_processing` 缺少租约属于异常记录，恢复扫描以 CAS 将其标为 `failed` 并记录原因，保留记录供诊断，不推断宽限期、不重新执行。正常过期记录按原租约回收为 pending。终态记录没有已保存 UID 时仍不自动删除同名对象。数据库 schema 初始化与校验保留，既有 Deadline/RetryAt 原值不重写。精简范围和验证边界见[复杂度审核与处置](leader-worker-complexity-audit-2026-10-07.md)。
 
 ## 6. Informer 与 Worker
 
-Controller Leader 的 Informer Manager 负责全局状态投影和应用状态同步。
+Leader 的 Informer Manager 负责全局状态投影和应用状态同步。
 
-每个 Worker 使用独立的 `ComponentReadyObserver`。当前 `KubernetesWorkloadObserver` 在 Worker 进程内维护共享 Pod informer cache，并按 application/component、期望镜像、annotation、Ready condition 和异常终态判断资源状态。这样 Worker 不依赖 Controller Leader 的进程内 waiter，也不需要每个 Job 各自执行 cluster-wide Pod List。
+每个 Worker 使用独立的 `ComponentReadyObserver`。当前 `KubernetesWorkloadObserver` 在 Worker 进程内维护共享 Pod informer cache，并按 application/component、期望镜像、annotation、Ready condition 和异常终态判断资源状态。这样 Worker 不依赖 Leader 的进程内 waiter，也不需要每个 Job 各自执行 cluster-wide Pod List。
 
 initial sync、List/Watch 重连和等待过程都受运行 context 控制；关闭或超时会返回明确错误，不把未知状态视为 Ready。
 
 ## 7. 启动与关闭
 
-节点初始化 Kubernetes、MySQL schema、Redis/消息主题与 IoC 后，准备 Worker 观察和执行能力并参与选举。业务 API 与控制循环受当前任期约束，健康探针反映当前职责及依赖是否就绪；PodReady 不等于正在提供业务 API。
+节点初始化 Kubernetes、MySQL schema、Redis/消息主题与 IoC 后，准备 Worker 观察和执行能力并参与选举。消息主题只有跨节点 dispatch 与 delay；结果处理直接依赖数据库。IoC 装配一个 Workflow runtime，Leader 的调度和协调循环共享一份运行实例、取消与退出等待。Informer initial sync、队列准备和启动恢复完成后才开放业务 API；启动失败会清理本轮运行实例。健康探针反映当前职责及依赖是否就绪；PodReady 不等于正在提供业务 API。
 
 收到 SIGTERM 后先取消选举与任期入口，停止领取新任务，再以独立执行 context 排空已启动任务；上限由 `--workflow-worker-drain-timeout` 控制，默认 60 秒。超时后停止本地执行与续租，由后续 Leader 的 reaper 和 Worker 接管。关闭是有限预算，不承诺所有长任务都能在该窗口内自然完成。
 

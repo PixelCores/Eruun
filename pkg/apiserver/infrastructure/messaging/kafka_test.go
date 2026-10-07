@@ -229,9 +229,9 @@ func TestKafkaQueueEnsureGroupDerivationAndSwitch(t *testing.T) {
 	require.Equal(t, 1, reader1.closeCalls)
 	require.Empty(t, kq.pendingMessages, "switching group should reset pending state")
 
-	require.NoError(t, kq.EnsureGroup(context.Background(), resultDispatchGroup))
+	require.NoError(t, kq.EnsureGroup(context.Background(), workflowDispatchGroup))
 	require.Len(t, readerCfgs, 3)
-	require.Equal(t, "base-group.result", readerCfgs[2].GroupID)
+	require.Equal(t, "base-group", readerCfgs[2].GroupID)
 	require.Equal(t, 1, reader2.closeCalls)
 }
 

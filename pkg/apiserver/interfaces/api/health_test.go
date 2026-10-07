@@ -96,7 +96,7 @@ func TestReadinessCheckWithHealthyQueue(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	h := &health{
-		Queues: &msg.RuntimeQueues{Dispatch: &mockHealthQueue{}, Delay: &mockHealthQueue{}, Result: &mockHealthQueue{}},
+		Queues: &msg.RuntimeQueues{Dispatch: &mockHealthQueue{}, Delay: &mockHealthQueue{}},
 		Cfg: &config.Config{
 			Messaging: config.MessagingConfig{Type: "redis"},
 		},
@@ -154,7 +154,7 @@ func TestReadinessCheckReportsRuntimeRole(t *testing.T) {
 		t.Run(role, func(t *testing.T) {
 			redisServer := miniredis.RunT(t)
 			h := &health{
-				Queues:      &msg.RuntimeQueues{Dispatch: &mockHealthQueue{}, Delay: &mockHealthQueue{}, Result: &mockHealthQueue{}},
+				Queues:      &msg.RuntimeQueues{Dispatch: &mockHealthQueue{}, Delay: &mockHealthQueue{}},
 				RedisClient: redis.NewClient(&redis.Options{Addr: redisServer.Addr()}),
 				Runtime:     mockRuntimeReadiness{ready: true, role: role},
 				Cfg:         &config.Config{Messaging: config.MessagingConfig{Type: config.REDIS}},
@@ -198,12 +198,12 @@ func TestReadinessCheckWithUnhealthyQueue(t *testing.T) {
 	redisServer := miniredis.RunT(t)
 	redisClient := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
 	t.Cleanup(func() { _ = redisClient.Close() })
-	for _, name := range []string{"dispatch", "delay", "result"} {
+	for _, name := range []string{"dispatch", "delay"} {
 		t.Run(name, func(t *testing.T) {
-			queues := map[string]*mockHealthQueue{"dispatch": {}, "delay": {}, "result": {}}
+			queues := map[string]*mockHealthQueue{"dispatch": {}, "delay": {}}
 			queues[name].statsError = errors.New("connection refused")
 			h := &health{
-				Queues:      &msg.RuntimeQueues{Dispatch: queues["dispatch"], Delay: queues["delay"], Result: queues["result"]},
+				Queues:      &msg.RuntimeQueues{Dispatch: queues["dispatch"], Delay: queues["delay"]},
 				Cfg:         &config.Config{Messaging: config.MessagingConfig{Type: config.REDIS}},
 				RedisClient: redisClient,
 			}
@@ -252,7 +252,7 @@ func TestReadinessCheckRedisOutageAndRecovery(t *testing.T) {
 
 			h := &health{
 				RedisClient: redisClient,
-				Queues:      &msg.RuntimeQueues{Dispatch: &mockHealthQueue{}, Delay: &mockHealthQueue{}, Result: &mockHealthQueue{}},
+				Queues:      &msg.RuntimeQueues{Dispatch: &mockHealthQueue{}, Delay: &mockHealthQueue{}},
 				Runtime:     mockRuntimeReadiness{ready: true},
 				Cfg: &config.Config{
 					Messaging: config.MessagingConfig{Type: backend},
@@ -331,7 +331,6 @@ func TestReadinessCheckRequiresAllRuntimeQueues(t *testing.T) {
 	require.Equal(t, http.StatusServiceUnavailable, resp.Code)
 	envelope := decodeResponse(t, resp.Body.Bytes(), nil)
 	require.Contains(t, envelope.Message, "delay")
-	require.Contains(t, envelope.Message, "result")
 	require.Contains(t, envelope.Message, "dispatch")
 }
 
@@ -348,7 +347,6 @@ func TestReadinessCheckWithExternalDelayQueueStatsError(t *testing.T) {
 		Queues: &msg.RuntimeQueues{
 			Dispatch: &mockHealthQueue{},
 			Delay:    &mockHealthQueue{statsError: errors.New("delay queue down")},
-			Result:   &mockHealthQueue{},
 		},
 		Cfg: &config.Config{
 			Messaging: config.MessagingConfig{Type: "kafka"},
@@ -382,7 +380,7 @@ func TestReadinessCheckWithKafkaBrokerConnectivityFailure(t *testing.T) {
 	})
 
 	h := &health{
-		Queues: &msg.RuntimeQueues{Dispatch: &mockHealthQueue{}, Delay: &mockHealthQueue{}, Result: &mockHealthQueue{}},
+		Queues: &msg.RuntimeQueues{Dispatch: &mockHealthQueue{}, Delay: &mockHealthQueue{}},
 		Cfg: &config.Config{
 			Messaging: config.MessagingConfig{Type: "kafka", KafkaBrokers: []string{"127.0.0.1:1"}},
 		},
@@ -413,7 +411,7 @@ func TestReadinessCheckWithKafkaQueueStatsFailureAfterBrokerHealthPasses(t *test
 	})
 
 	h := &health{
-		Queues: &msg.RuntimeQueues{Dispatch: &mockHealthQueue{statsError: errors.New("queue stats failed")}, Delay: &mockHealthQueue{}, Result: &mockHealthQueue{}},
+		Queues: &msg.RuntimeQueues{Dispatch: &mockHealthQueue{statsError: errors.New("queue stats failed")}, Delay: &mockHealthQueue{}},
 		Cfg: &config.Config{
 			Messaging: config.MessagingConfig{Type: "kafka", KafkaBrokers: []string{"127.0.0.1:9092"}},
 		},
@@ -446,7 +444,7 @@ func TestReadinessCheckWithKafkaTopicHealthFailure(t *testing.T) {
 	})
 
 	h := &health{
-		Queues: &msg.RuntimeQueues{Dispatch: &mockHealthQueue{}, Delay: &mockHealthQueue{}, Result: &mockHealthQueue{}},
+		Queues: &msg.RuntimeQueues{Dispatch: &mockHealthQueue{}, Delay: &mockHealthQueue{}},
 		Cfg: &config.Config{
 			Messaging: config.MessagingConfig{
 				Type:         "kafka",

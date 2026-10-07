@@ -256,15 +256,15 @@ func TestUpdateJobInfoStatusUsesResultOutboxFence(t *testing.T) {
 				}
 				require.NoError(t, store.Add(ctx, record))
 			}
-			outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
-			outbox.MessageID = "delivery"
+			outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultPending)
+
 			require.NoError(t, store.Add(ctx, outbox))
-			claimed, err := claimResultOutbox(ctx, store, outbox, "delivery")
+			claimed, err := claimResultOutbox(ctx, store, outbox)
 			require.NoError(t, err)
 			require.True(t, claimed)
 			switch claimState {
 			case "stale token":
-				outbox.MessageID = "stale-processing-owner"
+				outbox.ClaimToken = "stale-processing-owner"
 			case "expired lease":
 				store.now = outbox.LeaseExpiresAt.Add(time.Second)
 			case "missing lease":

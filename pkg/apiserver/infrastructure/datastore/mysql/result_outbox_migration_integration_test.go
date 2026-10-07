@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestResultOutboxSchemaMigrationIntegration(t *testing.T) {
+func TestResultOutboxSchemaInitializationIntegration(t *testing.T) {
 	db := integrationMigrationDB(t)
 	ctx := context.Background()
 	entities := []interface{}{&model.JobResultOutbox{}, &model.SystemSetting{}}
@@ -21,21 +21,27 @@ func TestResultOutboxSchemaMigrationIntegration(t *testing.T) {
 	}
 	require.NoError(t, db.AutoMigrate(entities...))
 	t.Cleanup(func() { require.NoError(t, db.Migrator().DropTable(entities...)) })
-	now := time.Now().UTC()
-	legacy := &model.JobResultOutbox{BaseModel: model.BaseModel{CreateTime: now, UpdateTime: now}, ID: "before-result-lease", TaskID: "preserved-task", ExecutionKey: "preserved-execution", RunGeneration: 1, State: config.JobResultOutboxStateResultQueued, MessageID: "old-delivery"}
-	require.NoError(t, db.Create(legacy).Error)
-	for _, column := range []string{"job_uid", "lease_expires_at"} {
-		require.NoError(t, db.Migrator().DropColumn(legacy, column))
-	}
 	require.NoError(t, writeSchemaMigrationMarker(ctx, db))
-	require.Error(t, validateSchema(ctx, db, []model.Interface{&model.JobResultOutbox{}}), "new consumers must reject pre-lease schema")
-	require.NoError(t, db.AutoMigrate(&model.JobResultOutbox{}))
 	require.NoError(t, validateSchema(ctx, db, []model.Interface{&model.JobResultOutbox{}}))
+	for _, column := range []string{"job_uid", "lease_expires_at", "claim_token"} {
+		require.True(t, db.Migrator().HasColumn(&model.JobResultOutbox{}, column))
+	}
+	require.False(t, db.Migrator().HasColumn(&model.JobResultOutbox{}, "message_id"))
+	for _, index := range []string{"idx_result_outbox_pending", "idx_result_outbox_state_lease"} {
+		require.True(t, db.Migrator().HasIndex(&model.JobResultOutbox{}, index))
+	}
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	active := &model.JobResultOutbox{BaseModel: model.BaseModel{CreateTime: now, UpdateTime: now}, ID: "active-result", TaskID: "task", ExecutionKey: "execution", RunGeneration: 1, State: config.JobResultOutboxStateResultProcessing, ClaimToken: "independent-owner", JobUID: "job-uid", LeaseExpiresAt: &now}
+	require.NoError(t, db.Create(active).Error)
 	restored := &model.JobResultOutbox{}
-	require.NoError(t, db.First(restored, "id = ?", legacy.ID).Error)
-	require.Equal(t, legacy.TaskID, restored.TaskID)
-	require.Equal(t, legacy.MessageID, restored.MessageID)
-	require.Equal(t, legacy.State, restored.State)
-	require.Nil(t, restored.LeaseExpiresAt, "runtime grants old rows a bounded DB-clock grace")
-	require.Empty(t, restored.JobUID, "migration must not invent a cleanup identity")
+	require.NoError(t, db.First(restored, "id = ?", active.ID).Error)
+	require.Equal(t, active.ClaimToken, restored.ClaimToken)
+	require.Equal(t, active.JobUID, restored.JobUID)
+	require.True(t, now.Equal(*restored.LeaseExpiresAt))
+	pending := &model.JobResultOutbox{BaseModel: model.BaseModel{CreateTime: now, UpdateTime: now}, ID: "pending-result", State: config.JobResultOutboxStateResultPending}
+	require.NoError(t, db.Create(pending).Error)
+	require.Nil(t, pending.LeaseExpiresAt)
+	require.Empty(t, pending.ClaimToken)
+	require.NoError(t, db.Migrator().DropColumn(active, "claim_token"))
+	require.Error(t, validateSchema(ctx, db, []model.Interface{&model.JobResultOutbox{}}), "startup validation must reject a schema missing claim ownership")
 }

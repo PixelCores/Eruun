@@ -30,7 +30,7 @@ func (s *promotionPolicyStore) Get(ctx context.Context, entity datastore.Entity)
 func TestClaimedWorkflowPreparationUsesExecutionContextAfterPromotion(t *testing.T) {
 	for _, action := range []string{"complete", "stop execution", "ownership replaced"} {
 		t.Run(action, func(t *testing.T) {
-			w := newWorkflowForAckTests(t, true)
+			w := newWorkflowForAckTests(t)
 			configureWorkflowAckTestCancelClient(t, w)
 			store := w.Store.(*workflowAckTestStore)
 			w.Store = &workspaceControllerTestStore{DataStore: store, appID: store.taskSnapshot().AppID}

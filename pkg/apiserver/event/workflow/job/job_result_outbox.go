@@ -4,114 +4,28 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
-	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 const (
-	resultOutboxPollInterval      = workflowconfig.DefaultDispatchPollInterval
-	resultOutboxBatchSize         = workflowconfig.DefaultWorkerReadCount
+	resultOutboxBatchSize         = 100
 	resultOutboxProcessGrace      = 30 * time.Second
 	resultOutboxHeartbeatInterval = 10 * time.Second
-	resultOutboxDispatchGrace     = workflowconfig.DefaultWorkerAutoClaimIdle
 )
 
 var resultOutboxPersistTimeout = 5 * time.Second
 
-type ResultOutboxDispatcher struct {
-	queue        msg.Queue
-	store        datastore.DataStore
-	pollInterval time.Duration
-	batchSize    int
-}
-
-func NewResultOutboxDispatcher(queue msg.Queue, store datastore.DataStore) *ResultOutboxDispatcher {
-	return &ResultOutboxDispatcher{
-		queue:        queue,
-		store:        store,
-		pollInterval: resultOutboxPollInterval,
-		batchSize:    resultOutboxBatchSize,
-	}
-}
-
-func (d *ResultOutboxDispatcher) Start(ctx context.Context) {
-	if !d.prepare(ctx) {
-		return
-	}
-	go d.loop(ctx)
-}
-
-func (d *ResultOutboxDispatcher) Run(ctx context.Context) {
-	if !d.prepare(ctx) {
-		return
-	}
-	d.loop(ctx)
-}
-
-func (d *ResultOutboxDispatcher) prepare(ctx context.Context) bool {
-	if d == nil {
-		return false
-	}
-	if d.queue == nil || d.store == nil {
-		klog.ErrorS(fmt.Errorf("queue or store is nil"), "result outbox dispatcher dependencies missing", "queueNil", d.queue == nil, "storeNil", d.store == nil)
-		return false
-	}
-	return true
-}
-
-func (d *ResultOutboxDispatcher) loop(ctx context.Context) {
-	ticker := time.NewTicker(d.pollInterval)
-	defer ticker.Stop()
-
-	for {
-		if err := d.processOnce(ctx); err != nil {
-			klog.ErrorS(err, "result outbox dispatcher process failed")
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-	}
-}
-
-func (d *ResultOutboxDispatcher) processOnce(ctx context.Context) error {
-	if err := d.recoverResultOutboxes(ctx, []config.JobResultOutboxState{
-		config.JobResultOutboxStateResultDispatching, config.JobResultOutboxStateResultQueued,
-		config.JobResultOutboxStateResultProcessingQueue,
-	}); err != nil {
-		return err
-	}
-	return d.processResultPending(ctx)
-}
-
-func (d *ResultOutboxDispatcher) processResultPending(ctx context.Context) error {
-	outboxes, err := listJobResultOutboxesByStates(ctx, d.store, []config.JobResultOutboxState{config.JobResultOutboxStateResultPending}, d.batchSize)
-	if err != nil {
-		return err
-	}
-	for _, outbox := range outboxes {
-		if err := d.dispatchPendingOutbox(ctx, outbox); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (d *ResultOutboxDispatcher) recoverResultOutboxes(ctx context.Context, states []config.JobResultOutboxState) error {
-	outboxes, err := listJobResultOutboxesByStates(ctx, d.store, states, d.batchSize)
+func (d *ResultDispatcher) recoverResultOutboxes(ctx context.Context) error {
+	outboxes, err := listJobResultOutboxesByStates(ctx, d.store, []config.JobResultOutboxState{config.JobResultOutboxStateResultProcessing}, d.recoveryBatchSize)
 	if err != nil {
 		return err
 	}
@@ -120,7 +34,7 @@ func (d *ResultOutboxDispatcher) recoverResultOutboxes(ctx context.Context, stat
 		return err
 	}
 	for _, outbox := range outboxes {
-		conditions := map[string]interface{}{"state": string(outbox.State), "message_id": outbox.MessageID, "lease_expires_at": outbox.LeaseExpiresAt}
+		conditions := map[string]interface{}{"state": string(outbox.State), "claim_token": outbox.ClaimToken, "lease_expires_at": outbox.LeaseExpiresAt}
 		if outbox.LeaseExpiresAt == nil {
 			// A typed nil pointer is not a nil SQL condition value.
 			conditions["lease_expires_at"] = nil
@@ -140,8 +54,8 @@ func (d *ResultOutboxDispatcher) recoverResultOutboxes(ctx context.Context, stat
 			continue
 		}
 		_, err := compareAndSwapJobResultOutboxWithConditions(ctx, d.store, outbox, conditions, map[string]interface{}{
-			"state": config.JobResultOutboxStateResultPending, "message_id": "", "lease_expires_at": nil,
-			"attempts": outbox.Attempts + 1, "last_error": "result notification or processing exceeded recovery grace",
+			"state": config.JobResultOutboxStateResultPending, "claim_token": "", "lease_expires_at": nil,
+			"attempts": outbox.Attempts + 1, "last_error": "result processing lease expired",
 		})
 		if err != nil {
 			return err
@@ -163,83 +77,6 @@ func resultOutboxDatabaseTime(ctx context.Context, store datastore.DataStore) (t
 		return time.Time{}, fmt.Errorf("result outbox database clock is zero")
 	}
 	return now.UTC(), nil
-}
-
-func (d *ResultOutboxDispatcher) dispatchPendingOutbox(ctx context.Context, outbox *model.JobResultOutbox) error {
-	if outbox == nil {
-		return nil
-	}
-	payload := jobResultPayloadFromOutbox(outbox)
-	if payload == nil {
-		return markJobResultOutboxFailed(ctx, d.store, outbox, "result outbox payload is invalid")
-	}
-
-	now, err := resultOutboxDatabaseTime(ctx, d.store)
-	if err != nil {
-		return err
-	}
-	deadline := now.Add(resultOutboxDispatchGrace)
-	claimed, err := trySetJobResultOutboxState(ctx, d.store, outbox, config.JobResultOutboxStateResultPending, config.JobResultOutboxStateResultDispatching, outbox.Attempts, strings.TrimSpace(outbox.LastError), map[string]interface{}{
-		"message_id": uuid.NewString(), "lease_expires_at": &deadline,
-	})
-	if err != nil {
-		return err
-	}
-	if !claimed {
-		return nil
-	}
-
-	messageID, err := enqueueResultJob(ctx, d.queue, payload)
-	if err == nil {
-		persistCtx, cancel := resultOutboxPersistenceContext()
-		defer cancel()
-		now, clockErr := resultOutboxDatabaseTime(persistCtx, d.store)
-		if clockErr != nil {
-			return clockErr
-		}
-		deadline = now.Add(resultOutboxDispatchGrace)
-
-		queued, setErr := trySetJobResultOutboxState(persistCtx, d.store, outbox, config.JobResultOutboxStateResultDispatching, config.JobResultOutboxStateResultQueued, outbox.Attempts, "", map[string]interface{}{
-			"message_id": strings.TrimSpace(messageID), "lease_expires_at": &deadline,
-		})
-		if setErr != nil {
-			return setErr
-		}
-		outbox.MessageID = strings.TrimSpace(messageID)
-		if queued {
-			outbox.State = config.JobResultOutboxStateResultQueued
-			outbox.LastError = ""
-		}
-		return nil
-	}
-
-	requeued, setErr := trySetJobResultOutboxState(ctx, d.store, outbox, config.JobResultOutboxStateResultDispatching, config.JobResultOutboxStateResultPending, outbox.Attempts+1, fmt.Sprintf("result enqueue failed: %v", err), map[string]interface{}{
-		"message_id": "", "lease_expires_at": nil,
-	})
-	if setErr != nil {
-		return setErr
-	}
-	if requeued {
-		klog.Warningf("result enqueue failed; outbox returned to pending outboxID=%s attempts=%d err=%v", outbox.ID, outbox.Attempts, err)
-	}
-	return nil
-}
-
-func enqueueResultJob(ctx context.Context, queue msg.Queue, payload *JobResultPayload) (string, error) {
-	if payload == nil || strings.TrimSpace(payload.OutboxID) == "" {
-		return "", fmt.Errorf("result payload outbox ID is required")
-	}
-	if err := validateJobResultPayload(payload); err != nil {
-		return "", err
-	}
-	if queue == nil {
-		return "", ErrResultQueueUnavailable
-	}
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return "", fmt.Errorf("marshal result payload: %w", err)
-	}
-	return queue.Enqueue(ctx, raw)
 }
 
 func buildJobResultOutbox(payload *JobResultPayload, state config.JobResultOutboxState) *model.JobResultOutbox {
@@ -274,7 +111,6 @@ func jobResultPayloadFromOutbox(outbox *model.JobResultOutbox) *JobResultPayload
 		return nil
 	}
 	payload := &JobResultPayload{
-		OutboxID:       strings.TrimSpace(outbox.ID),
 		TaskID:         strings.TrimSpace(outbox.TaskID),
 		ExecutionKey:   strings.TrimSpace(outbox.ExecutionKey),
 		RunGeneration:  outbox.RunGeneration,
@@ -337,6 +173,28 @@ func deleteJobResultOutbox(ctx context.Context, store datastore.DataStore, id st
 	return err
 }
 
+// The process-local cursor bounds each scan while rotating past retries and
+// concurrent claim losers. Correctness still comes from the database claim.
+func listPendingResultOutboxes(ctx context.Context, store datastore.DataStore, beforeID string, limit int) ([]*model.JobResultOutbox, error) {
+	opts := &datastore.ListOptions{Page: 1, PageSize: limit, SortBy: []datastore.SortOption{{Key: "id", Order: datastore.SortOrderDescending}}}
+	if beforeID != "" {
+		opts.LessThan = []datastore.ComparisonQueryOption{{Key: "id", Value: beforeID}}
+	}
+	entities, err := store.List(ctx, &model.JobResultOutbox{State: config.JobResultOutboxStateResultPending}, opts)
+	if err != nil {
+		return nil, err
+	}
+	outboxes := make([]*model.JobResultOutbox, 0, len(entities))
+	for _, entity := range entities {
+		outbox, ok := entity.(*model.JobResultOutbox)
+		if !ok || outbox == nil {
+			return nil, datastore.ErrEntityInvalid
+		}
+		outboxes = append(outboxes, outbox)
+	}
+	return outboxes, nil
+}
+
 func listJobResultOutboxesByStates(ctx context.Context, store datastore.DataStore, states []config.JobResultOutboxState, pageSize int) ([]*model.JobResultOutbox, error) {
 	if store == nil {
 		return nil, fmt.Errorf("datastore is nil")
@@ -362,8 +220,7 @@ func listJobResultOutboxesByStates(ctx context.Context, store datastore.DataStor
 		// Live processing must not hide newer expired rows.
 		SortBy: []datastore.SortOption{
 			{Key: "lease_expires_at", Order: datastore.SortOrderAscending},
-			{Key: "update_time", Order: datastore.SortOrderAscending},
-			{Key: "create_time", Order: datastore.SortOrderAscending},
+			{Key: "id", Order: datastore.SortOrderAscending},
 		},
 		Page:     1,
 		PageSize: pageSize,
@@ -407,8 +264,8 @@ func trySetJobResultOutboxState(ctx context.Context, store datastore.DataStore, 
 		outbox.State = to
 		outbox.Attempts = attempts
 		outbox.LastError = strings.TrimSpace(lastError)
-		if value, exists := updates["message_id"]; exists {
-			outbox.MessageID = strings.TrimSpace(fmt.Sprint(value))
+		if value, exists := updates["claim_token"]; exists {
+			outbox.ClaimToken = strings.TrimSpace(fmt.Sprint(value))
 		}
 		if value, exists := updates["lease_expires_at"]; exists {
 			outbox.LeaseExpiresAt, _ = value.(*time.Time)
@@ -418,7 +275,7 @@ func trySetJobResultOutboxState(ctx context.Context, store datastore.DataStore, 
 }
 
 func retryResultOutbox(ctx context.Context, store datastore.DataStore, outbox *model.JobResultOutbox, lastError string) error {
-	_, err := trySetJobResultOutboxState(ctx, store, outbox, config.JobResultOutboxStateResultProcessingQueue, config.JobResultOutboxStateResultPending, outbox.Attempts+1, lastError, map[string]interface{}{"message_id": "", "lease_expires_at": nil})
+	_, err := trySetJobResultOutboxState(ctx, store, outbox, config.JobResultOutboxStateResultProcessing, config.JobResultOutboxStateResultPending, outbox.Attempts+1, lastError, map[string]interface{}{"claim_token": "", "lease_expires_at": nil})
 	return err
 }
 
@@ -431,7 +288,7 @@ func markJobResultOutboxFailed(ctx context.Context, store datastore.DataStore, o
 
 func compareAndSwapJobResultOutbox(ctx context.Context, store datastore.DataStore, outbox *model.JobResultOutbox, from config.JobResultOutboxState, updates map[string]interface{}) (bool, error) {
 	return compareAndSwapJobResultOutboxWithConditions(ctx, store, outbox, map[string]interface{}{
-		"state": string(from), "message_id": outbox.MessageID,
+		"state": string(from), "claim_token": outbox.ClaimToken,
 	}, updates)
 }
 
@@ -473,7 +330,7 @@ func withResultOutboxOwnership(ctx context.Context, store datastore.DataStore, o
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if outbox == nil || strings.TrimSpace(outbox.ID) == "" || strings.TrimSpace(outbox.MessageID) == "" {
+	if outbox == nil || strings.TrimSpace(outbox.ID) == "" || strings.TrimSpace(outbox.ClaimToken) == "" {
 		return errResultOutboxOwnershipLost
 	}
 	transactional, ok := store.(datastore.ReadCommittedTransactional)
@@ -483,7 +340,7 @@ func withResultOutboxOwnership(ctx context.Context, store datastore.DataStore, o
 	ctx, cancel := context.WithTimeout(ctx, resultOutboxPersistTimeout)
 	defer cancel()
 	return transactional.WithReadCommittedTransaction(ctx, func(tx datastore.DataStore) error {
-		owned, err := compareAndSwapJobResultOutbox(ctx, tx, outbox, config.JobResultOutboxStateResultProcessingQueue, map[string]interface{}{})
+		owned, err := compareAndSwapJobResultOutbox(ctx, tx, outbox, config.JobResultOutboxStateResultProcessing, map[string]interface{}{})
 		if err != nil {
 			return err
 		}
@@ -512,7 +369,7 @@ func renewResultOutboxLease(ctx context.Context, store datastore.DataStore, outb
 			return err
 		}
 		deadline := now.Add(resultOutboxProcessGrace)
-		renewed, err := compareAndSwapJobResultOutbox(ctx, tx, outbox, config.JobResultOutboxStateResultProcessingQueue, map[string]interface{}{"lease_expires_at": &deadline})
+		renewed, err := compareAndSwapJobResultOutbox(ctx, tx, outbox, config.JobResultOutboxStateResultProcessing, map[string]interface{}{"lease_expires_at": &deadline})
 		if err != nil {
 			return err
 		}

@@ -1,10 +1,8 @@
 package messaging
 
-// RuntimeQueues groups the queue clients initialized for one runtime role.
-// A nil field means that the role neither produces to nor consumes from that
-// queue and therefore must not depend on its availability.
+// RuntimeQueues groups the cross-node dispatch and delay notification queues.
+// Every node initializes both queues so it can become Leader or Worker.
 type RuntimeQueues struct {
 	Dispatch Queue
 	Delay    Queue
-	Result   Queue
 }

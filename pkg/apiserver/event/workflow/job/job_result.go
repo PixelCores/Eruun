@@ -2,13 +2,11 @@ package job
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,19 +20,14 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
-var (
-	ErrResultQueueUnavailable = errors.New("result queue unavailable")
-	errResultDispatchNoRetry  = errors.New("result dispatch no retry")
-)
+var errResultDispatchNoRetry = errors.New("result dispatch no retry")
 
 const defaultResultProcessingConcurrency = 16
 
 type JobResultPayload struct {
-	OutboxID       string `json:"outboxId,omitempty"`
 	TaskID         string `json:"taskId"`
 	ExecutionKey   string `json:"executionKey"`
 	RunGeneration  uint64 `json:"runGeneration"`
@@ -46,328 +39,150 @@ type JobResultPayload struct {
 }
 
 type ResultDispatcher struct {
-	queue                 msg.Queue
 	client                kubernetes.Interface
 	store                 datastore.DataStore
-	group                 string
-	consumer              string
-	readCount             int
-	readBlock             time.Duration
-	autoClaimInterval     time.Duration
-	autoClaimIdle         time.Duration
-	autoClaimCount        int
-	backoffMin            time.Duration
-	backoffMax            time.Duration
+	pollInterval          time.Duration
+	recoveryBatchSize     int
 	heartbeatInterval     time.Duration
 	processingConcurrency int
-	inFlightMu            sync.Mutex
-	inFlight              map[string]struct{}
-	ackFailures           atomic.Int64
-	ensureFailures        atomic.Int64
+	pendingBeforeID       string
 }
 
-func NewResultDispatcher(queue msg.Queue, client kubernetes.Interface, store datastore.DataStore, group, consumer string) *ResultDispatcher {
+func NewResultDispatcher(client kubernetes.Interface, store datastore.DataStore) *ResultDispatcher {
 	return &ResultDispatcher{
-		queue:                 queue,
-		client:                client,
-		store:                 store,
-		group:                 group,
-		consumer:              consumer,
-		readCount:             workflowconfig.DefaultWorkerReadCount,
-		readBlock:             workflowconfig.DefaultWorkerReadBlock,
-		autoClaimInterval:     workflowconfig.DefaultWorkerStaleInterval,
-		autoClaimIdle:         workflowconfig.DefaultWorkerAutoClaimIdle,
-		autoClaimCount:        workflowconfig.DefaultWorkerAutoClaimCount,
-		backoffMin:            workflowconfig.DefaultWorkerBackoffMin,
-		backoffMax:            workflowconfig.DefaultWorkerBackoffMax,
+		client: client, store: store,
+		pollInterval:          workflowconfig.DefaultDispatchPollInterval,
+		recoveryBatchSize:     resultOutboxBatchSize,
 		processingConcurrency: defaultResultProcessingConcurrency,
 	}
 }
 
-func (d *ResultDispatcher) Start(ctx context.Context) {
-	if !d.prepare(ctx) {
-		return
-	}
-	go d.runLoops(ctx)
-}
-
 func (d *ResultDispatcher) Run(ctx context.Context) {
-	if !d.prepare(ctx) {
+	if d == nil || d.client == nil || d.store == nil {
+		klog.ErrorS(fmt.Errorf("Kubernetes client and datastore are required"), "result dispatcher dependencies missing")
 		return
 	}
-	d.runLoops(ctx)
-}
-
-func (d *ResultDispatcher) prepare(ctx context.Context) bool {
-	if d == nil {
-		return false
-	}
-	if d.queue == nil || d.client == nil || d.store == nil {
-		klog.ErrorS(fmt.Errorf("queue, client, or store is nil"), "result dispatcher dependencies missing", "queueNil", d.queue == nil, "clientNil", d.client == nil, "storeNil", d.store == nil)
-		return false
-	}
-	if d.group == "" {
-		d.group = config.ResultQueueGroup
-	}
-	if d.consumer == "" {
-		d.consumer = "result-dispatcher"
-	}
-	if err := d.queue.EnsureGroup(ctx, d.group); err != nil {
-		failures := d.ensureFailures.Add(1)
-		klog.ErrorS(err, "result dispatcher ensure group failed", "group", d.group, "failureCount", failures)
-	}
-	return true
-}
-
-func (d *ResultDispatcher) runLoops(ctx context.Context) {
 	concurrency := d.processingConcurrency
 	if concurrency <= 0 {
 		concurrency = defaultResultProcessingConcurrency
 	}
-	slots := make(chan struct{}, concurrency)
-	var loopWG sync.WaitGroup
-	var processingWG sync.WaitGroup
-	loopWG.Add(2)
-	go func() {
-		defer loopWG.Done()
-		d.readLoop(ctx, slots, &processingWG)
-	}()
-	go func() {
-		defer loopWG.Done()
-		d.claimLoop(ctx, slots, &processingWG)
-	}()
-	loopWG.Wait()
-	processingWG.Wait()
-	d.releaseInFlightMessages()
-}
-
-func (d *ResultDispatcher) readLoop(ctx context.Context, slots chan struct{}, processingWG *sync.WaitGroup) {
-	currentDelay := d.backoffMin
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-		messages, err := d.queue.ReadGroup(ctx, d.group, d.consumer, d.readCount, d.readBlock)
-		if err != nil {
-			wait := d.backoffDelay(currentDelay)
-			currentDelay = wait
-			klog.ErrorS(err, "result dispatcher read failed", "group", d.group, "consumer", d.consumer, "retryAfter", wait)
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(wait):
-			}
-			continue
-		}
-		currentDelay = d.backoffMin
-		d.dispatchMessages(ctx, messages, slots, processingWG)
+	interval := d.pollInterval
+	if interval <= 0 {
+		interval = workflowconfig.DefaultDispatchPollInterval
 	}
-}
-
-func (d *ResultDispatcher) claimLoop(ctx context.Context, slots chan struct{}, processingWG *sync.WaitGroup) {
-	ticker := time.NewTicker(d.autoClaimInterval)
+	slots := make(chan struct{}, concurrency)
+	var processing sync.WaitGroup
+	defer processing.Wait()
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
+		if ctx.Err() != nil {
+			return
+		}
+		// Recovery is independent of free processing slots. A full pool must not
+		// prevent expired owners from being fenced and returned to pending.
+		if err := d.recoverResultOutboxes(ctx); err != nil {
+			klog.ErrorS(err, "recover result outboxes")
+		}
+		if err := d.dispatchPendingResults(ctx, slots, &processing); err != nil {
+			klog.ErrorS(err, "dispatch pending results")
+		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 		}
-		messages, err := d.queue.AutoClaim(ctx, d.group, d.consumer, d.autoClaimIdle, d.autoClaimCount)
-		if err != nil {
-			klog.ErrorS(err, "result dispatcher auto-claim failed", "group", d.group, "consumer", d.consumer)
-			continue
-		}
-		d.dispatchMessages(ctx, messages, slots, processingWG)
 	}
 }
 
-func (d *ResultDispatcher) dispatchMessages(ctx context.Context, messages []msg.Message, slots chan struct{}, processingWG *sync.WaitGroup) {
-	for i, message := range messages {
-		if !d.markMessageInFlight(message.ID) {
-			klog.V(4).InfoS("skip result message already being handled", "msgID", message.ID)
+func (d *ResultDispatcher) dispatchPendingResults(ctx context.Context, slots chan struct{}, processing *sync.WaitGroup) error {
+	available := cap(slots) - len(slots)
+	if available == 0 {
+		return nil
+	}
+	outboxes, err := listPendingResultOutboxes(ctx, d.store, d.pendingBeforeID, available)
+	if err != nil {
+		return err
+	}
+	for _, outbox := range outboxes {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case slots <- struct{}{}:
+		}
+		// Advance only past rows actually attempted, including claim errors.
+		// Advancing an entire batch could hide healthy rows behind a failing CAS.
+		d.pendingBeforeID = outbox.ID
+		claimed, err := claimResultOutbox(ctx, d.store, outbox)
+		if err != nil || !claimed {
+			<-slots
+			if err != nil {
+				return err
+			}
 			continue
 		}
-		select {
-		case slots <- struct{}{}:
-		case <-ctx.Done():
-			for _, pending := range messages[i+1:] {
-				d.markMessageInFlight(pending.ID)
-			}
-			return
-		}
-		message := message
-		msg.MarkMessageHandlingStart(d.queue, message.ID)
-		processingWG.Add(1)
+		processing.Add(1)
 		go func() {
-			defer processingWG.Done()
+			defer processing.Done()
 			defer func() { <-slots }()
-			defer d.markMessageDone(message.ID)
-			if !d.handleMessage(ctx, message) {
-				msg.MarkMessageHandlingDone(d.queue, message.ID, false)
+			if err := d.processResult(ctx, outbox); err != nil {
+				klog.ErrorS(err, "process result outbox", "outboxID", outbox.ID)
 			}
 		}()
 	}
+	if len(outboxes) < available {
+		d.pendingBeforeID = ""
+	}
+	return nil
 }
 
-func (d *ResultDispatcher) releaseInFlightMessages() {
-	d.inFlightMu.Lock()
-	ids := make([]string, 0, len(d.inFlight))
-	for id := range d.inFlight {
-		ids = append(ids, id)
-	}
-	d.inFlight = nil
-	d.inFlightMu.Unlock()
-
-	for _, id := range ids {
-		msg.MarkMessageHandlingDone(d.queue, id, false)
-	}
-}
-
-func (d *ResultDispatcher) markMessageInFlight(id string) bool {
-	if id == "" {
-		return true
-	}
-	d.inFlightMu.Lock()
-	defer d.inFlightMu.Unlock()
-	if d.inFlight == nil {
-		d.inFlight = make(map[string]struct{})
-	}
-	if _, exists := d.inFlight[id]; exists {
-		return false
-	}
-	d.inFlight[id] = struct{}{}
-	return true
-}
-
-func (d *ResultDispatcher) markMessageDone(id string) {
-	if id == "" {
-		return
-	}
-	d.inFlightMu.Lock()
-	delete(d.inFlight, id)
-	d.inFlightMu.Unlock()
-}
-
-func (d *ResultDispatcher) handleMessage(ctx context.Context, message msg.Message) bool {
-	if message.ID == "" {
-		return true
-	}
-	if len(message.Payload) == 0 {
-		return d.ackMessage(ctx, message.ID, "empty_payload") == nil
-	}
-	payload, err := decodeResultPayload(message.Payload)
-	if err != nil {
-		klog.ErrorS(err, "result dispatcher decode payload failed", "msgID", message.ID)
-		return d.ackMessage(ctx, message.ID, "decode_payload_failed") == nil
-	}
-	return d.handleOutboxMessage(ctx, message, payload)
-}
-
-func (d *ResultDispatcher) handleOutboxMessage(ctx context.Context, message msg.Message, payload *JobResultPayload) bool {
-	if d == nil || d.store == nil {
-		return false
-	}
-	persistCtx, cancel := resultOutboxPersistenceContext()
-	outbox, err := getJobResultOutboxByID(persistCtx, d.store, strings.TrimSpace(payload.OutboxID))
-	if err != nil {
-		cancel()
-		if errors.Is(err, datastore.ErrRecordNotExist) {
-			return d.ackMessage(ctx, message.ID, "outbox_missing") == nil
-		}
-		klog.ErrorS(err, "load result outbox", "msgID", message.ID)
-		return false
-	}
-	claimed, err := claimResultOutbox(persistCtx, d.store, outbox, message.ID)
-	cancel()
-	if err != nil {
-		klog.ErrorS(err, "claim result outbox", "outboxID", outbox.ID)
-		return false
-	}
-	if !claimed {
-		// A processing delivery has its own token and lease. Replayed broker IDs
-		// must never resume or invalidate a live owner's work.
-		return d.ackMessage(ctx, message.ID, "outbox_not_claimed") == nil
-	}
-	// The durable outbox owns the result identity, not the notification body.
-	payload = jobResultPayloadFromOutbox(outbox)
+// processResult only accepts an already-claimed outbox. All result writes and
+// cleanup keep their independent database ownership checks.
+func (d *ResultDispatcher) processResult(ctx context.Context, outbox *model.JobResultOutbox) error {
+	payload := jobResultPayloadFromOutbox(outbox)
+	var err error
 	if payload == nil {
 		err = errResultDispatchNoRetry
 	} else {
 		err = d.processOwnedResult(ctx, outbox, payload)
 	}
-	persistCtx, cancel = resultOutboxPersistenceContext()
+	persistCtx, cancel := resultOutboxPersistenceContext()
 	defer cancel()
 	if err != nil {
-		klog.ErrorS(err, "process result outbox", "outboxID", outbox.ID)
 		if errors.Is(err, errResultOutboxOwnershipLost) {
-			return false
+			return err
 		}
 		if errors.Is(err, errResultDispatchNoRetry) {
-			if markErr := markJobResultOutboxFailed(persistCtx, d.store, outbox, err.Error()); markErr != nil {
-				return false
-			}
-			return d.ackMessage(ctx, message.ID, "no_retry_process_error") == nil
+			return errors.Join(err, markJobResultOutboxFailed(persistCtx, d.store, outbox, err.Error()))
 		}
-		if retryErr := retryResultOutbox(persistCtx, d.store, outbox, err.Error()); retryErr != nil {
-			klog.ErrorS(retryErr, "return result outbox to pending", "outboxID", outbox.ID)
-		}
-		return false
+		return errors.Join(err, retryResultOutbox(persistCtx, d.store, outbox, err.Error()))
 	}
-	if err := withResultOutboxOwnership(persistCtx, d.store, outbox, func(tx datastore.DataStore, _ *model.JobResultOutbox) error {
+	return withResultOutboxOwnership(persistCtx, d.store, outbox, func(tx datastore.DataStore, _ *model.JobResultOutbox) error {
 		return deleteJobResultOutbox(persistCtx, tx, outbox.ID)
-	}); err != nil {
-		return false
-	}
-	return d.ackMessage(ctx, message.ID, "processed") == nil
+	})
 }
 
-func claimResultOutbox(ctx context.Context, store datastore.DataStore, outbox *model.JobResultOutbox, messageID string) (bool, error) {
-	for attempt := 0; attempt < 2; attempt++ {
-		conditions := map[string]interface{}{"state": string(outbox.State), "message_id": outbox.MessageID, "lease_expires_at": outbox.LeaseExpiresAt}
-		switch outbox.State {
-		case config.JobResultOutboxStateResultQueued:
-			if outbox.MessageID != strings.TrimSpace(messageID) {
-				return false, nil
-			}
-		case config.JobResultOutboxStateResultDispatching:
-			// Enqueue may deliver before the producer persists its broker ID.
-		default:
-			return false, nil
-		}
-		if outbox.LeaseExpiresAt == nil {
-			return false, fmt.Errorf("active result outbox has no lease: %s", outbox.ID)
-		}
-		now, err := resultOutboxDatabaseTime(ctx, store)
-		if err != nil {
-			return false, err
-		}
-		deadline := now.Add(resultOutboxProcessGrace)
-		token := uuid.NewString()
-		claimed, err := compareAndSwapJobResultOutboxWithConditions(ctx, store, outbox, conditions, map[string]interface{}{
-			"state": config.JobResultOutboxStateResultProcessingQueue, "message_id": token, "lease_expires_at": &deadline, "last_error": "",
-		})
-		if err != nil {
-			return false, err
-		}
-		if claimed {
-			outbox.State = config.JobResultOutboxStateResultProcessingQueue
-			outbox.MessageID = token
-			outbox.LeaseExpiresAt = &deadline
-			return true, nil
-		}
-		current, err := getJobResultOutboxByID(ctx, store, outbox.ID)
-		if errors.Is(err, datastore.ErrRecordNotExist) {
-			return false, nil
-		}
-		if err != nil {
-			return false, err
-		}
-		*outbox = *current
+func claimResultOutbox(ctx context.Context, store datastore.DataStore, outbox *model.JobResultOutbox) (bool, error) {
+	if outbox == nil || outbox.State != config.JobResultOutboxStateResultPending {
+		return false, nil
 	}
-	return false, nil
+	now, err := resultOutboxDatabaseTime(ctx, store)
+	if err != nil {
+		return false, err
+	}
+	deadline := now.Add(resultOutboxProcessGrace)
+	token := uuid.NewString()
+	claimed, err := compareAndSwapJobResultOutboxWithConditions(ctx, store, outbox, map[string]interface{}{
+		"state": string(config.JobResultOutboxStateResultPending), "claim_token": outbox.ClaimToken, "attempts": outbox.Attempts,
+	}, map[string]interface{}{
+		"state": config.JobResultOutboxStateResultProcessing, "claim_token": token, "lease_expires_at": &deadline, "last_error": "",
+	})
+	if claimed {
+		outbox.State = config.JobResultOutboxStateResultProcessing
+		outbox.ClaimToken = token
+		outbox.LeaseExpiresAt = &deadline
+	}
+	return claimed, err
 }
 
 func (d *ResultDispatcher) processOwnedResult(ctx context.Context, outbox *model.JobResultOutbox, payload *JobResultPayload) error {
@@ -404,35 +219,6 @@ func (d *ResultDispatcher) processOwnedResult(ctx context.Context, outbox *model
 		return errors.Join(err, cause)
 	}
 	return err
-}
-
-func decodeResultPayload(raw []byte) (*JobResultPayload, error) {
-	var payload JobResultPayload
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(payload.OutboxID) == "" {
-		return nil, fmt.Errorf("result payload outbox ID is required")
-	}
-	if err := validateJobResultPayload(&payload); err != nil {
-		return nil, err
-	}
-	return &payload, nil
-}
-
-func (d *ResultDispatcher) ackMessage(ctx context.Context, msgID, reason string) error {
-	if d == nil || d.queue == nil || msgID == "" {
-		return nil
-	}
-	if err := d.queue.Ack(ctx, d.group, msgID); err != nil {
-		msg.MarkMessageHandlingDone(d.queue, msgID, false)
-		failures := d.ackFailures.Add(1)
-		klog.ErrorS(err, "result dispatcher ack failed", "group", d.group, "msgID", msgID, "reason", reason, "failureCount", failures)
-		return err
-	}
-	msg.MarkMessageHandlingDone(d.queue, msgID, true)
-	klog.V(4).InfoS("result dispatcher ack succeeded", "group", d.group, "msgID", msgID, "reason", reason)
-	return nil
 }
 
 func isResultPayloadProcessable(payload *JobResultPayload) bool {
@@ -480,7 +266,7 @@ func processJobResultWithOutbox(ctx context.Context, client kubernetes.Interface
 			return nil
 		}
 		if outbox.JobUID == "" {
-			// Old completed rows have no trustworthy cleanup identity. Do not bind
+			// Completed rows without a recorded UID have no cleanup identity. Do not bind
 			// them to whichever object now happens to have the same name.
 			klog.InfoS("keep completed result without recorded cleanup UID", "taskID", payload.TaskID, "name", payload.Name)
 			return nil
@@ -617,7 +403,7 @@ func bindResultOutboxJobUID(ctx context.Context, store datastore.DataStore, outb
 		if current.JobUID != "" && current.JobUID != uid {
 			return fmt.Errorf("%w: result Job UID changed", errResultDispatchNoRetry)
 		}
-		bound, err := compareAndSwapJobResultOutbox(ctx, tx, outbox, config.JobResultOutboxStateResultProcessingQueue, map[string]interface{}{"job_uid": uid})
+		bound, err := compareAndSwapJobResultOutbox(ctx, tx, outbox, config.JobResultOutboxStateResultProcessing, map[string]interface{}{"job_uid": uid})
 		if err != nil {
 			return err
 		}
@@ -882,18 +668,4 @@ func jobTimesFromStatus(jobObj *batchv1.Job) (int64, int64) {
 		endTime = jobObj.Status.CompletionTime.Unix()
 	}
 	return startTime, endTime
-}
-
-func (d *ResultDispatcher) backoffDelay(current time.Duration) time.Duration {
-	if current <= 0 {
-		current = d.backoffMin
-	}
-	next := current * 2
-	if next > d.backoffMax {
-		next = d.backoffMax
-	}
-	if next < d.backoffMin {
-		next = d.backoffMin
-	}
-	return next
 }

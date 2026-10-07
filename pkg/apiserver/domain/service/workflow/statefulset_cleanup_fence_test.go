@@ -371,7 +371,7 @@ func TestStatefulSetCleanupFenceStrictlyValidatesExplicitMigrationMarker(t *test
 	require.ErrorContains(t, err, "decode cleanup job marker")
 }
 
-func TestMarkTaskStatusBlocksDelayedOrdinaryTaskAfterFailedStatefulSetMigration(t *testing.T) {
+func TestClaimTaskForDispatchBlocksDelayedOrdinaryTaskAfterFailedStatefulSetMigration(t *testing.T) {
 	store, workflow := newStatefulSetCleanupFenceStore(t, 0, "")
 	ordinary := &model.WorkflowQueue{
 		TaskID: "ordinary-future", AppID: workflow.AppID, WorkflowID: workflow.ID,
@@ -385,18 +385,19 @@ func TestMarkTaskStatusBlocksDelayedOrdinaryTaskAfterFailedStatefulSetMigration(
 	store.jobs = append(store.jobs, failedStore.jobs...)
 	svc := &workflowServiceImpl{Store: store, ScheduleLocker: locker.NewMemoryLocker("test-app-schedule")}
 	ordinary.ExecuteAt = time.Now().Add(-time.Second).Unix()
-	waiting, err := svc.WaitingTasks(context.Background())
+	waiting, _, err := svc.WaitingTasks(context.Background(), 1)
 	require.NoError(t, err)
 	require.Contains(t, waiting, ordinary)
 
-	claimed, err := svc.MarkTaskStatus(context.Background(), ordinary.TaskID, config.StatusWaiting, config.StatusQueued)
+	queued, claimed, err := svc.ClaimTaskForDispatch(context.Background(), ordinary, time.Minute)
 
+	require.Nil(t, queued)
 	require.False(t, claimed)
 	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
 	require.Equal(t, config.StatusWaiting, ordinary.Status)
 }
 
-func TestMarkTaskStatusAllowsStatefulSetMigrationResumeTask(t *testing.T) {
+func TestClaimTaskForDispatchAllowsStatefulSetMigrationResumeTask(t *testing.T) {
 	store, workflow := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, config.StatusFailed)
 	resume := &model.WorkflowQueue{
 		TaskID: "migration-resume", AppID: workflow.AppID, WorkflowID: workflow.ID,
@@ -406,14 +407,17 @@ func TestMarkTaskStatusAllowsStatefulSetMigrationResumeTask(t *testing.T) {
 	store.tasks = append([]*model.WorkflowQueue{resume}, store.tasks...)
 	svc := &workflowServiceImpl{Store: store, ScheduleLocker: locker.NewMemoryLocker("test-app-schedule")}
 
-	claimed, err := svc.MarkTaskStatus(context.Background(), resume.TaskID, config.StatusWaiting, config.StatusQueued)
+	queued, claimed, err := svc.ClaimTaskForDispatch(context.Background(), resume, time.Minute)
 
 	require.NoError(t, err)
 	require.True(t, claimed)
+	require.Equal(t, uint64(1), queued.RunGeneration)
+	require.NotEmpty(t, queued.RunToken)
+	require.NotNil(t, queued.LeaseExpiresAt)
 	require.Equal(t, config.StatusQueued, resume.Status)
 }
 
-func TestMarkTaskStatusUsesApplicationScheduleLock(t *testing.T) {
+func TestClaimTaskForDispatchUsesApplicationScheduleLock(t *testing.T) {
 	store, workflow := newStatefulSetCleanupFenceStore(t, 0, "")
 	task := &model.WorkflowQueue{
 		TaskID: "ordinary-due", AppID: workflow.AppID, WorkflowID: workflow.ID,
@@ -426,14 +430,15 @@ func TestMarkTaskStatusUsesApplicationScheduleLock(t *testing.T) {
 	t.Cleanup(func() { _ = held.Unlock(context.Background()) })
 	svc := &workflowServiceImpl{Store: store, ScheduleLocker: lockProvider}
 
-	claimed, err := svc.MarkTaskStatus(context.Background(), task.TaskID, config.StatusWaiting, config.StatusQueued)
+	queued, claimed, err := svc.ClaimTaskForDispatch(context.Background(), task, time.Minute)
 
+	require.Nil(t, queued)
 	require.False(t, claimed)
 	require.ErrorIs(t, err, bcode.ErrApplicationOperationLocked)
 	require.Equal(t, config.StatusWaiting, task.Status)
 }
 
-func TestMarkTaskStatusKeepsImmediateTaskDispatchIndependentOfScheduleLocker(t *testing.T) {
+func TestClaimTaskForDispatchKeepsImmediateTaskDispatchIndependentOfScheduleLocker(t *testing.T) {
 	store, workflow := newStatefulSetCleanupFenceStore(t, 0, "")
 	task := &model.WorkflowQueue{
 		TaskID: "ordinary-immediate", AppID: workflow.AppID, WorkflowID: workflow.ID,
@@ -442,11 +447,72 @@ func TestMarkTaskStatusKeepsImmediateTaskDispatchIndependentOfScheduleLocker(t *
 	store.tasks = append(store.tasks, task)
 	svc := &workflowServiceImpl{Store: store}
 
-	claimed, err := svc.MarkTaskStatus(context.Background(), task.TaskID, config.StatusWaiting, config.StatusQueued)
+	snapshot := *task
+	queued, claimed, err := svc.ClaimTaskForDispatch(context.Background(), &snapshot, time.Minute)
 
 	require.NoError(t, err)
 	require.True(t, claimed)
+	require.Equal(t, uint64(1), queued.RunGeneration)
+	require.NotEmpty(t, queued.RunToken)
+	require.NotNil(t, queued.LeaseExpiresAt)
 	require.Equal(t, config.StatusQueued, task.Status)
+}
+
+func TestClaimTaskForDispatchRejectsChangedTask(t *testing.T) {
+	for _, delayed := range []bool{false, true} {
+		for _, change := range []string{"cancelled", "new generation"} {
+			t.Run(fmt.Sprintf("delayed=%t/%s", delayed, change), func(t *testing.T) {
+				store, workflow := newStatefulSetCleanupFenceStore(t, 0, "")
+				task := &model.WorkflowQueue{TaskID: "task-1", AppID: workflow.AppID, Status: config.StatusWaiting, RunGeneration: 2}
+				if delayed {
+					task.ExecuteAt = time.Now().Add(-time.Second).Unix()
+				}
+				store.tasks = append(store.tasks, task)
+				snapshot := *task
+				store.beforeDispatchCAS = func(current *model.WorkflowQueue) {
+					if change == "cancelled" {
+						current.Status = config.StatusCancelled
+					} else {
+						current.RunGeneration++
+					}
+				}
+				svc := &workflowServiceImpl{Store: store, ScheduleLocker: locker.NewMemoryLocker("test-app-schedule")}
+
+				queued, claimed, err := svc.ClaimTaskForDispatch(context.Background(), &snapshot, time.Minute)
+
+				require.NoError(t, err)
+				require.False(t, claimed)
+				require.Nil(t, queued)
+				require.Empty(t, task.RunToken)
+				require.Nil(t, task.LeaseExpiresAt)
+			})
+		}
+	}
+}
+
+func TestClaimTaskForDispatchClaimsGenerationOnce(t *testing.T) {
+	store, workflow := newStatefulSetCleanupFenceStore(t, 0, "")
+	task := &model.WorkflowQueue{TaskID: "due-task", AppID: workflow.AppID, Status: config.StatusWaiting, ExecuteAt: time.Now().Add(-time.Second).Unix(), RunGeneration: 2}
+	store.tasks = append(store.tasks, task)
+	snapshot := *task
+	svc := &workflowServiceImpl{Store: store, ScheduleLocker: locker.NewMemoryLocker("test-app-schedule")}
+
+	queued, claimed, err := svc.ClaimTaskForDispatch(context.Background(), &snapshot, time.Minute)
+
+	require.NoError(t, err)
+	require.True(t, claimed)
+	require.Equal(t, uint64(3), queued.RunGeneration)
+	require.NotEmpty(t, queued.RunToken)
+	require.Equal(t, queued.RunToken, task.RunToken)
+	require.NotNil(t, task.LeaseExpiresAt)
+
+	duplicate, claimed, err := svc.ClaimTaskForDispatch(context.Background(), &snapshot, time.Minute)
+
+	require.NoError(t, err)
+	require.False(t, claimed)
+	require.Nil(t, duplicate)
+	require.Equal(t, queued.RunToken, task.RunToken)
+	require.Equal(t, uint64(3), task.RunGeneration)
 }
 
 func TestExecWorkflowTaskForAppAllowsCompletedStatefulSetCleanup(t *testing.T) {

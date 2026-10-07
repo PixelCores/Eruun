@@ -69,8 +69,6 @@ spec:
             - name: ERUUN_WORKFLOW_WORKER_DRAIN_TIMEOUT
               value: {{ printf "%ds" (int $root.Values.runtime.workerDrainTimeoutSeconds) | quote }}
             {{- include "eruun.datastoreEnv" $root | nindent 12 }}
-            - name: ERUUN_CACHE_TYPE
-              value: redis
             - name: ERUUN_CACHE_HOST
               value: {{ include "eruun.suffixedName" (dict "root" $root "suffix" "redis") }}
             - name: ERUUN_CACHE_PORT

@@ -10,6 +10,9 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	importruntime "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/runtime"
 )
 
 func (s *restServer) setupRuntimeLeaderElection(ctx, runtimeCtx context.Context, errChan chan error) (leaderelection.LeaderElectionConfig, error) {
@@ -50,38 +53,83 @@ func (s *restServer) buildRuntimeLeaderElectionConfig(ctx, runtimeCtx context.Co
 	}
 }
 
-func (s *restServer) startLeader(parent context.Context, errChan chan error) {
-	ctx, cancel := context.WithCancel(parent)
+func (s *restServer) startLeader(parent context.Context, errChan chan error) bool {
+	run := newWorkerRun(parent)
+	s.leaderMu.Lock()
+	s.leaderRun = run
+	s.leaderMu.Unlock()
 	ready := false
 	defer func() {
+		// Seal only after every goroutine for this term has been registered.
+		run.markStarted()
 		if !ready {
-			cancel()
+			s.stopLeaderRun()
 		}
 	}()
+	ctx := run.ctx
 	s.leading.Store(true)
 	s.pauseWorkerIntake()
-	if !s.onStartedControllerLeading(ctx, errChan) || ctx.Err() != nil {
-		return
+	if s.InformerManager != nil {
+		if err := s.InformerManager.Start(ctx); err != nil {
+			reportWorkerStartupError(ctx, errChan, reportableInformerStartError(ctx, err))
+			return false
+		}
 	}
-	if !s.onStartedSchedulerLeading(ctx, errChan) || ctx.Err() != nil {
-		return
+	if err := s.ensureQueueGroup(ctx); err != nil {
+		if ctx.Err() == nil {
+			reportWorkerStartupError(ctx, errChan, fmt.Errorf("ensure queue group %s: %w", config.WorkflowWorkerQueueGroup, err))
+		}
+		return false
+	}
+	if s.workflow == nil {
+		reportWorkerStartupError(ctx, errChan, fmt.Errorf("workflow runtime is not configured"))
+		return false
+	}
+	if ctx.Err() != nil {
+		return false
+	}
+	if s.jobs != nil {
+		run.start(s.jobs.Maintain)
+	}
+	if s.accounts != nil {
+		run.start(s.accounts.RunSessionCleanup)
+	}
+	if s.KubeClient != nil && s.dataStore != nil {
+		coordinator := importruntime.NewPodCoordinator(s.KubeClient, importruntime.NewDataStoreBindingLoader(s.dataStore))
+		run.start(coordinator.Run)
+	}
+	run.start(s.runQueueMetrics)
+	startup := make(chan bool, 1)
+	run.start(func(ctx context.Context) {
+		var once sync.Once
+		report := func(ready bool) { once.Do(func() { startup <- ready }) }
+		defer report(false)
+		s.workflow.StartLeader(ctx, func() { report(true) })
+	})
+	select {
+	case started := <-startup:
+		if !started {
+			return false
+		}
+	case <-ctx.Done():
+		return false
+	}
+	if ctx.Err() != nil {
+		return false
 	}
 	s.leaderMu.Lock()
-	s.leaderCtx, s.leaderCancel = ctx, cancel
+	s.leaderCtx = ctx
 	s.leaderMu.Unlock()
 	publishCtx, finishPublish := context.WithTimeout(ctx, leaderElectionReleaseTimeout)
 	err := s.publishLeaderService(publishCtx)
 	finishPublish()
 	if err != nil {
-		cancel()
+		run.stop()
 		reportWorkerStartupError(parent, errChan, fmt.Errorf("publish Leader API endpoint: %w", err))
-		return
+		return false
 	}
 	if s.cfg.LeaderConfig.ServiceName != "" {
-		done := make(chan struct{})
-		s.leaderServiceDone = done
-		go func() {
-			defer close(done)
+		run.start(func(ctx context.Context) {
 			ticker := time.NewTicker(5 * time.Second)
 			defer ticker.Stop()
 			for {
@@ -97,23 +145,29 @@ func (s *restServer) startLeader(parent context.Context, errChan chan error) {
 					klog.ErrorS(err, "reconcile Leader API Service")
 				}
 			}
-		}()
+		})
 	}
 	ready = true
 	klog.InfoS("runtime Leader ready", "identity", s.cfg.LeaderConfig.ID)
+	return true
+}
+
+// Startup and shutdown are serialized by runRuntimeLeaderElection. Failed startup
+// also uses this path, so partial initialization never outlives its term.
+func (s *restServer) stopLeaderRun() {
+	s.leaderMu.Lock()
+	run := s.leaderRun
+	s.leaderRun, s.leaderCtx = nil, nil
+	s.leaderMu.Unlock()
+	run.stop()
+	if s.InformerManager != nil {
+		s.InformerManager.Stop()
+	}
+	run.wait()
 }
 
 func (s *restServer) stopLeader() {
-	s.leaderMu.Lock()
-	if s.leaderCancel != nil {
-		s.leaderCancel()
-	}
-	s.leaderCtx, s.leaderCancel = nil, nil
-	s.leaderMu.Unlock()
-	if s.leaderServiceDone != nil {
-		<-s.leaderServiceDone
-		s.leaderServiceDone = nil
-	}
+	s.stopLeaderRun()
 	if s.leading.Load() {
 		ctx, cancel := context.WithTimeout(context.Background(), leaderElectionReleaseTimeout)
 		if err := s.withdrawLeaderService(ctx); err != nil {
@@ -121,8 +175,6 @@ func (s *restServer) stopLeader() {
 		}
 		cancel()
 	}
-	s.stopSchedulerRun()
-	s.stopControllerRun()
 	s.leading.Store(false)
 }
 

@@ -206,7 +206,6 @@ func (c *InstantJobCtl) run(ctx context.Context) error {
 			TaskID:         c.job.TaskID,
 			ExecutionKey:   c.job.ExecutionKey,
 			RunGeneration:  c.job.RunGeneration,
-			RunToken:       c.job.RunToken,
 			ServiceName:    resolveJobServiceName(c.job),
 			TimeoutSeconds: c.job.Timeout,
 		}

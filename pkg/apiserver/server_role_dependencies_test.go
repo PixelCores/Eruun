@@ -17,7 +17,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event"
 	workflowevent "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
@@ -90,7 +89,7 @@ func TestRuntimeNodeBuildsAllRoleDependencies(t *testing.T) {
 	server := New(*cfg).(*restServer)
 	queues, err := server.buildRuntimeQueues(nil)
 	require.NoError(t, err)
-	for _, queue := range []msg.Queue{queues.Dispatch, queues.Delay, queues.Result} {
+	for _, queue := range []msg.Queue{queues.Dispatch, queues.Delay} {
 		require.NotNil(t, queue)
 		require.NoError(t, queue.Close(context.Background()))
 	}
@@ -130,22 +129,17 @@ func TestRuntimeNodeBuildsSandboxObserverOnlyWhenConfigured(t *testing.T) {
 	}
 }
 
-func TestConfigureWorkflowEventWorkersAssignsRoleDependencies(t *testing.T) {
-	dispatch := &testServerQueue{}
-	delay := &testServerQueue{}
-	result := &testServerQueue{}
+func TestWorkflowRuntimeIsInstanceScopedAndUsesExplicitDependencies(t *testing.T) {
+	dispatch, delay := &testServerQueue{}, &testServerQueue{}
 	observer := informer.NewKubernetesWorkloadObserver(fake.NewSimpleClientset())
-	worker := &workflowevent.Workflow{}
-	workers := []event.Worker{worker}
-
-	configureWorkflowEventWorkers(workers, &msg.RuntimeQueues{
-		Dispatch: dispatch,
-		Delay:    delay,
-		Result:   result,
-	}, observer)
-
+	first, second := New(*config.NewConfig()).(*restServer), New(*config.NewConfig()).(*restServer)
+	first.resourceObserver = observer
+	queues := &msg.RuntimeQueues{Dispatch: dispatch, Delay: delay}
+	require.NoError(t, first.provideWorkflowRuntime(queues))
+	require.NoError(t, second.provideWorkflowRuntime(queues))
+	worker := first.workflow.(*workflowevent.Workflow)
+	require.NotSame(t, worker, second.workflow)
 	require.Same(t, dispatch, worker.Queue)
 	require.Same(t, delay, worker.DelayQueue)
-	require.Same(t, result, worker.ResultQueue)
 	require.Same(t, observer, worker.ResourceWaiter)
 }

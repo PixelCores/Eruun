@@ -1,6 +1,6 @@
 # Leader/Worker 优化后的复杂度审核
 
-> 状态：Historical / Audit。基线为 `main@2a99ad3539e445cb70e18b93a0007be24d376df9`（2026-10-07，PR [#139](https://github.com/PixelCores/Eruun/pull/139) 合并后）。本文保留该基线的分析证据，并记录 PR #140 中 A1–A4 的精简处置；B1/B2 仍为待评估建议。当前运行契约见 [分布式运行时设计](enterprise-distributed-runtime-design.md)。
+> 状态：Historical / Audit。基线为 `main@2a99ad3539e445cb70e18b93a0007be24d376df9`（2026-10-07，PR [#139](https://github.com/PixelCores/Eruun/pull/139) 合并后）。本文保留该基线的分析证据，并记录 PR #140 中 A1–A4 的精简处置；基于 `main@3d4be8d` 的后续实施记录见第 8 节。当前运行契约见 [分布式运行时设计](enterprise-distributed-runtime-design.md)。
 
 ## 1. 判断
 
@@ -156,6 +156,54 @@ A3 回归使用生产 listener 和 HTTP ConnContext，覆盖慢上传、阻塞�
 相对原审核提交，本次生产 Go 代码净减少 221 行；新增和改写的测试用于固定当前协议、取消和恢复边界，不代表性能收益。
 
 真实 Kubernetes 切主/分区、端到端 Harbor 和性能容量测试未纳入本次验证；没有据此承诺性能提升。B1/B2 不在本次实现范围内。
+
+## 8. 后续实施：数据库结果处理与统一生命周期
+
+本轮以 `main@3d4be8d0259084029bd525808a1814f94e9583d2` 为基线，按重新复核后的结论收敛实际调用链；上文 B1/B2 的原始分析作为历史依据保留。
+
+| 项目 | 本轮实施 | 保留的边界 |
+| --- | --- | --- |
+| 调度入口 | 删除无生产调用的 `MarkTaskStatus`，真实 Dispatcher 经唯一服务入口执行延迟任务准入，再进行数据库 generation/token 认领 | 应用锁、清理恢复例外、取消与重复认领；有界轮转分页避免被拒任务占满第一页 |
+| B1：结果 MQ 往返 | Leader 直接扫描并认领数据库 outbox，删除 result Topic、消费者组、投递/排队状态与消息 ID；状态为 pending、processing、failed | 16 槽背压、稳定 ID 游标、数据库处理租约、过期快照 CAS、终态提交与 UID 清理 |
+| B2：生命周期 | 单一 Leader run 管理调度、协调和 Informer；IoC 显式装配一个 Workflow runtime，删除单实现的事件列表和可选职责断言 | 准备屏障、失败清理、旧任期退出、API 任期绑定、Worker 接单与已有执行分离 |
+| 派发消息 | 删除消费者未使用的 workflow/project/app ID，仅传递版本和执行身份 | 认领后读取元数据；保留前置查询，使时钟故障时缺失、取消或旧消息仍可直接确认 |
+
+延迟消息仍在实际调度收敛后确认。提前确认会让切主后尚未到期的通知依赖数据库扫描重建时序，本轮保留其响应时延语义；没有增设未来任务预加载、兼容协议或新的运行配置。
+
+结果处理字段使用 `claim_token`，不是 broker 消息 ID；保留数据库 schema 初始化与校验，不实施旧消息或旧结果状态的数据迁移。扫描索引和有界处理用于维持当前恢复契约，不构成吞吐或容量提升的实测结论。
+
+本轮验证：
+
+- `go test -race -cover -p 2 ./...`：53 个测试包通过；原单实现事件工厂包已删除，其装配隔离断言移到实际 IoC 路径。
+- 全仓 `go vet -p 2 ./...`、服务端 `go build -trimpath`、全仓 integration-tag 源码编译通过。
+- 隔离 MySQL 8.4.11 的 5 项结果恢复 race 测试通过：事务隔离旧 owner、续租/回滚、异常 NULL 租约、并发取消、竞争认领与游标；schema 初始化/索引/缺失 claim 字段校验测试通过。临时容器与凭据文件已删除。
+- 新增回归覆盖 100 个受阻任务后的健康任务派发、扫描集合缩小、认领失败后继续扫描、16 槽满载时恢复、长任务续租与取消退出、任期初始化顺序和失败清理。
+- 修改文件 gofmt、敏感内容、Markdown 本地链接与 diff 检查通过。
+
+相对本轮基线，生产 Go 净减少 615 行。未实测真实 Kubernetes 集群故障切换、网络分区、完整 Harbor 流程或吞吐容量；本地选举与并发测试不替代这些验收。
+
+## 9. 继续收敛：延迟任务、运行入口与固定后端配置
+
+本次在第 8 节改动基础上落实三项剩余简化，不改变 Leader/Worker 拓扑。
+
+| 项目 | 实施 | 保留的边界 |
+| --- | --- | --- |
+| 延迟任务执行依据 | 删除父 Workflow 查询回退，以及延迟载荷、通知中的 `runToken`；统一查询已提交的 checkpoint | checkpoint 提交时的父 ownership 事务；execution key/generation、通知一致性、取消/终态复查、数据库错误重试、调度准入期限 |
+| 运行入口 | Leader 后台循环始终由同一 WaitGroup 管理；Worker 执行必须属于实际运行实例；删除无调用的状态接口、未使用的 Workflow 错误通道和不等待退出的启动分支 | 接单与已有执行的 context 分离、共享并发限制、准备期间续租、切主排空、停止等待；server 启动错误仍通过原错误通道上报 |
+| 固定后端配置 | MySQL 与 Redis 直接装配，删除 `datastore-type`、`cache-type`、对应类型字段与部署固定值，更新示例 | 连接参数、数据库 schema 生命周期、IoC 和测试替换接口；消息后端仍可选 Redis/Kafka |
+
+已提交的延迟任务以自身 checkpoint 为执行依据；父 Workflow 后续换代不撤销该任务。缺少匹配 checkpoint 或记录已进入终态时不创建工作负载，数据库读取失败仍保留重试机会。执行前的必要复查继续保留，不能因共用查询逻辑而删去并发取消边界。
+
+按本次范围决定，Kafka readiness 保持对实际业务 Topic 的 produce/read 验证，以及消费者识别和确认探针的逻辑。本次不引入旧字段迁移、兼容别名或新的配置开关。
+
+本次验证：
+
+- 全仓 `go test -race -cover -p 2 ./...` 的 53 个测试包通过；修正测试替身遵守 context 取消后，最终 Workflow 包以 `-race -cover -count=1 -timeout=90s` 再次通过。该替身修正只用于确保测试真实等待执行退出，未改变生产恢复逻辑。
+- 定向回归覆盖缺失/错身份/非 Distributed checkpoint、执行前数据库错误与并发取消，以及提交阶段当前/过期 generation、token、worker 的所有权判断。
+- 全仓 vet、服务端构建、integration 标签源码编译、配置与连接参数测试、安装脚本、Helm v4.2.0 lint/template 均通过。integration 标签编译不代表运行了真实数据库或集群测试。
+- 修改的 Go 文件格式、敏感内容、Markdown 本地链接和 diff 检查通过；Kafka readiness 与探针消费者文件哈希同本轮起始快照一致。
+
+相对第 8 节完成时，生产 Go 进一步净减少 238 行；相对 `3d4be8d` 的累计净减少为 853 行。行数只用于说明维护面变化，不作为性能指标。本次未执行真实集群切主、网络分区或吞吐容量测试。
 
 <!-- 以下链接固定在审核基线，避免 main 前进后改变证据。 -->
 [server-state]: https://github.com/PixelCores/Eruun/blob/2a99ad3539e445cb70e18b93a0007be24d376df9/pkg/apiserver/server.go#L58-L103

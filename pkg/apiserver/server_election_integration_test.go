@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event"
 	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -107,7 +106,7 @@ func TestRuntimeElectionFailoverWithRealElector(t *testing.T) {
 		cfg := config.NewConfig()
 		cfg.LeaderConfig.ID = identity
 		workers[i] = &testServerWorker{}
-		servers[i] = &restServer{cfg: *cfg, eventWorkers: []event.Worker{workers[i]}}
+		servers[i] = &restServer{cfg: *cfg, workflow: workers[i]}
 		locks[i] = &electionLeaseClient{state: shared, identity: identity}
 		done[i] = make(chan struct{})
 		servers[i].startWorkers(ctx, startupErrors)

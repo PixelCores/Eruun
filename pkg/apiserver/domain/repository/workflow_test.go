@@ -51,15 +51,17 @@ func (w *waitingTaskStore) CurrentDatabaseTime(context.Context) (time.Time, erro
 
 func TestWaitingTasksUsesFIFOSort(t *testing.T) {
 	store := &waitingTaskStore{}
-	list, err := WaitingTasks(context.Background(), store)
+	list, nextPage, err := WaitingTasks(context.Background(), store, 1)
 	require.NoError(t, err)
 	require.Len(t, list, 2)
+	require.Equal(t, 1, nextPage)
 
 	if store.lastOptions == nil || len(store.lastOptions.SortBy) == 0 {
 		t.Fatalf("expected sort options to be set")
 	}
 	require.Equal(t, "create_time", store.lastOptions.SortBy[0].Key)
 	require.Equal(t, datastore.SortOrderAscending, store.lastOptions.SortBy[0].Order)
+	require.Equal(t, datastore.SortOption{Key: "task_id", Order: datastore.SortOrderAscending}, store.lastOptions.SortBy[1])
 	require.Equal(t, 1, store.lastOptions.Page)
 	require.Equal(t, workflowDispatchQueryBatchSize, store.lastOptions.PageSize)
 	require.Len(t, store.lastOptions.FilterOptions.LessThan, 1)
@@ -79,7 +81,7 @@ func TestWaitingTasksFiltersFutureExecuteAt(t *testing.T) {
 		},
 	}
 
-	list, err := WaitingTasks(context.Background(), store)
+	list, _, err := WaitingTasks(context.Background(), store, 1)
 	require.NoError(t, err)
 	require.Len(t, list, 2)
 	require.Equal(t, "t1", list[0].TaskID)
@@ -266,7 +268,7 @@ func TestWaitingTasksUsesDatabaseClockAcrossNodeSkew(t *testing.T) {
 					&model.WorkflowQueue{TaskID: "immediate"},
 				},
 			}
-			tasks, err := WaitingTasks(context.Background(), store)
+			tasks, _, err := WaitingTasks(context.Background(), store, 1)
 			require.NoError(t, err)
 			var ids []string
 			for _, task := range tasks {
@@ -282,12 +284,57 @@ func TestWaitingTasksUsesDatabaseClockAcrossNodeSkew(t *testing.T) {
 func TestWaitingTasksFailsClosedWithoutDatabaseClock(t *testing.T) {
 	clockErr := errors.New("database clock unavailable")
 	store := &repositoryTestStore{databaseNowErr: clockErr}
-	tasks, err := WaitingTasks(context.Background(), store)
+	tasks, _, err := WaitingTasks(context.Background(), store, 1)
 	require.ErrorIs(t, err, clockErr)
 	require.Nil(t, tasks)
 	require.Nil(t, store.lastListOpts, "do not select work using the node clock")
 
-	tasks, err = WaitingTasks(context.Background(), &updateTaskFieldStore{})
+	tasks, _, err = WaitingTasks(context.Background(), &updateTaskFieldStore{}, 1)
 	require.ErrorIs(t, err, ErrWorkflowClockUnsupported)
 	require.Nil(t, tasks)
+}
+
+type pagedWaitingTaskStore struct {
+	waitingTaskStore
+	tasks []datastore.Entity
+}
+
+func (s *pagedWaitingTaskStore) List(_ context.Context, _ datastore.Entity, opts *datastore.ListOptions) ([]datastore.Entity, error) {
+	s.lastOptions = opts
+	start := (opts.Page - 1) * opts.PageSize
+	if start >= len(s.tasks) {
+		return nil, nil
+	}
+	return s.tasks[start:min(start+opts.PageSize, len(s.tasks))], nil
+}
+
+func TestWaitingTasksAdvancesFullPageAndRevisitsShrinkingQueue(t *testing.T) {
+	store := &pagedWaitingTaskStore{}
+	for range workflowDispatchQueryBatchSize {
+		store.tasks = append(store.tasks, &model.WorkflowQueue{Status: config.StatusWaiting})
+	}
+	last := &model.WorkflowQueue{TaskID: "last", Status: config.StatusWaiting}
+	store.tasks = append(store.tasks, last)
+
+	first, nextPage, err := WaitingTasks(context.Background(), store, 1)
+	require.NoError(t, err)
+	require.Len(t, first, workflowDispatchQueryBatchSize)
+	require.Equal(t, 2, nextPage)
+
+	second, wrapped, err := WaitingTasks(context.Background(), store, nextPage)
+	require.NoError(t, err)
+	require.Equal(t, []*model.WorkflowQueue{last}, second)
+	require.Equal(t, 2, store.lastOptions.Page)
+	require.Equal(t, 1, wrapped)
+
+	// Successful claims can move unseen rows into an earlier page. Visiting
+	// the now-empty later page must wrap instead of losing those rows forever.
+	store.tasks = store.tasks[workflowDispatchQueryBatchSize:]
+	second, wrapped, err = WaitingTasks(context.Background(), store, nextPage)
+	require.NoError(t, err)
+	require.Empty(t, second)
+	require.Equal(t, 1, wrapped)
+	revisited, _, err := WaitingTasks(context.Background(), store, wrapped)
+	require.NoError(t, err)
+	require.Equal(t, []*model.WorkflowQueue{last}, revisited)
 }

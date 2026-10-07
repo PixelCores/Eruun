@@ -39,15 +39,13 @@ type WorkflowService interface {
 	CreateWorkflowTask(ctx context.Context, workflow apis.CreateWorkflowRequest) (*apis.CreateWorkflowResponse, error)
 	ExecWorkflowTask(ctx context.Context, workflowID string, executeAt int64) (*apis.ExecWorkflowResponse, error)
 	ExecWorkflowTaskForApp(ctx context.Context, appID, workflowID string, executeAt int64, idempotencyKey string) (*apis.ExecWorkflowResponse, error)
-	WaitingTasks(ctx context.Context) ([]*model.WorkflowQueue, error)
-	UpdateTask(ctx context.Context, queue *model.WorkflowQueue) bool
-	TaskRunning(ctx context.Context) ([]*model.WorkflowQueue, error)
+	WaitingTasks(ctx context.Context, page int) ([]*model.WorkflowQueue, int, error)
 	CancelWorkflowTask(ctx context.Context, userName, taskID, reason string) error
 	CancelWorkflowTaskForApp(ctx context.Context, appID, userName, taskID, reason string) error
 	CancelAllWorkflowTasksForApp(ctx context.Context, appID, userName, reason string) ([]string, error)
 	CancelDelayedVersionTaskForApp(ctx context.Context, appID, userName, taskID, reason string) error
 	ApproveWorkflowTask(ctx context.Context, taskID, action, userName, reason string) (*apis.TaskApprovalResponse, error)
-	MarkTaskStatus(ctx context.Context, taskID string, from, to config.Status) (bool, error)
+	ClaimTaskForDispatch(ctx context.Context, task *model.WorkflowQueue, leaseDuration time.Duration) (*model.WorkflowQueue, bool, error)
 	GetTaskStatus(ctx context.Context, taskID string) (*apis.TaskStatusResponse, error)
 	GetTaskStages(ctx context.Context, taskID string) (*apis.TaskStagesResponse, error)
 	UpsertWorkflowSchedule(ctx context.Context, appID string, req apis.UpsertWorkflowScheduleRequest) (*apis.UpsertWorkflowScheduleResponse, error)
@@ -931,93 +929,59 @@ func workflowScheduleToDTO(schedule *model.WorkflowSchedule, workflow *model.Wor
 	return dto
 }
 
-func (w *workflowServiceImpl) WaitingTasks(ctx context.Context) ([]*model.WorkflowQueue, error) {
-	list, err := repository.WaitingTasks(ctx, w.Store)
-	if err != nil {
-		return nil, err
-	}
-	return list, err
+func (w *workflowServiceImpl) WaitingTasks(ctx context.Context, page int) ([]*model.WorkflowQueue, int, error) {
+	return repository.WaitingTasks(ctx, w.Store, page)
 }
 
-func (w *workflowServiceImpl) UpdateTask(ctx context.Context, task *model.WorkflowQueue) bool {
-	err := repository.UpdateTask(ctx, w.Store, task)
-	if err != nil {
-		klog.Errorf("%s:%s update t status error", task.WorkflowName, task.TaskID)
-		return false
+// ClaimTaskForDispatch applies application admission rules before creating the
+// database execution generation consumed by Workers.
+func (w *workflowServiceImpl) ClaimTaskForDispatch(ctx context.Context, task *model.WorkflowQueue, leaseDuration time.Duration) (*model.WorkflowQueue, bool, error) {
+	if task == nil || task.TaskID == "" {
+		return nil, false, datastore.ErrPrimaryEmpty
 	}
-	return true
-}
-
-func (w *workflowServiceImpl) MarkTaskStatus(ctx context.Context, taskID string, from, to config.Status) (bool, error) {
-	if from == config.StatusWaiting && to == config.StatusQueued {
-		return w.claimWaitingTaskForDispatch(ctx, taskID)
-	}
-	return repository.UpdateTaskStatus(ctx, w.Store, taskID, from, to)
-}
-
-func (w *workflowServiceImpl) claimWaitingTaskForDispatch(ctx context.Context, taskID string) (bool, error) {
-	task, err := repository.TaskByID(ctx, w.Store, taskID)
-	if err != nil {
-		if errors.Is(err, datastore.ErrRecordNotExist) {
-			return false, nil
-		}
-		return false, err
-	}
-	if task.Status != config.StatusWaiting {
-		return false, nil
-	}
-	// Immediate and cron tasks are created while holding this same application
-	// lock and remain active for idle checks. Only delayed tasks can outlive the
-	// safety decision made when they were originally enqueued.
+	// Immediate and cron tasks remain active for idle checks after submission.
+	// Delayed tasks can outlive the safety decision made when they were queued.
 	if task.ExecuteAt <= 0 {
-		return repository.UpdateTaskStatus(ctx, w.Store, taskID, config.StatusWaiting, config.StatusQueued)
+		return repository.ClaimWorkflowTaskForDispatch(ctx, w.Store, task, leaseDuration)
 	}
 	lockProvider, err := w.appScheduleLocker()
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
-	claimed := false
+	var queuedTask *model.WorkflowQueue
+	var claimed bool
 	err = schedulelock.WithAppScheduleLock(ctx, lockProvider, task.AppID, "dispatch-workflow-task", true, func(lockCtx context.Context) error {
-		current, err := repository.TaskByID(lockCtx, w.Store, taskID)
+		current, err := repository.TaskByID(lockCtx, w.Store, task.TaskID)
 		if err != nil {
 			if errors.Is(err, datastore.ErrRecordNotExist) {
 				return nil
 			}
 			return err
 		}
-		if current.Status != config.StatusWaiting {
+		if current.Status != config.StatusWaiting || current.RunGeneration != task.RunGeneration {
 			return nil
 		}
 		if current.AppID == "" || current.AppID != task.AppID {
-			return fmt.Errorf("workflow task %s changed application from %q to %q", taskID, task.AppID, current.AppID)
+			return fmt.Errorf("workflow task %s changed application from %q to %q", task.TaskID, task.AppID, current.AppID)
 		}
 		_, migrationTask, err := statefulSetCleanupInfoForFence(current)
 		if err != nil {
 			return err
 		}
-		// A v2/v3 migration task is the operation that resolves the fence. Its
-		// cleanup contract was validated while the version update held this lock.
+		// Migration tasks resolve the cleanup fence. Their cleanup contract was
+		// validated while the version update held this same application lock.
 		if !migrationTask {
 			if err := EnsureNoPendingStatefulSetCleanup(lockCtx, w.Store, current.AppID); err != nil {
 				return err
 			}
 		}
-		claimed, err = repository.UpdateTaskStatus(lockCtx, w.Store, taskID, config.StatusWaiting, config.StatusQueued)
+		queuedTask, claimed, err = repository.ClaimWorkflowTaskForDispatch(lockCtx, w.Store, current, leaseDuration)
 		return err
 	})
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
-	return claimed, nil
-}
-
-// TaskRunning 所有正在运行的Task
-func (w *workflowServiceImpl) TaskRunning(ctx context.Context) ([]*model.WorkflowQueue, error) {
-	list, err := repository.TaskRunning(ctx, w.Store)
-	if err != nil {
-		return nil, err
-	}
-	return list, err
+	return queuedTask, claimed, nil
 }
 
 func (w *workflowServiceImpl) CancelWorkflowTask(ctx context.Context, userName, taskID, reason string) error {

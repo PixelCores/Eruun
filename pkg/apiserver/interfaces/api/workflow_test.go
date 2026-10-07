@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
@@ -77,14 +78,8 @@ func (f *fakeWorkflowService) ExecWorkflowTaskForApp(_ context.Context, appID, w
 	return f.execResp, nil
 }
 
-func (f *fakeWorkflowService) WaitingTasks(context.Context) ([]*model.WorkflowQueue, error) {
-	return nil, nil
-}
-
-func (f *fakeWorkflowService) UpdateTask(context.Context, *model.WorkflowQueue) bool { return true }
-
-func (f *fakeWorkflowService) TaskRunning(context.Context) ([]*model.WorkflowQueue, error) {
-	return nil, nil
+func (f *fakeWorkflowService) WaitingTasks(context.Context, int) ([]*model.WorkflowQueue, int, error) {
+	return nil, 1, nil
 }
 
 func (f *fakeWorkflowService) CancelWorkflowTask(ctx context.Context, userName, taskID, reason string) error {
@@ -146,8 +141,8 @@ func (f *fakeWorkflowService) ApproveWorkflowTask(_ context.Context, taskID, act
 	}, nil
 }
 
-func (f *fakeWorkflowService) MarkTaskStatus(context.Context, string, config.Status, config.Status) (bool, error) {
-	return false, nil
+func (f *fakeWorkflowService) ClaimTaskForDispatch(context.Context, *model.WorkflowQueue, time.Duration) (*model.WorkflowQueue, bool, error) {
+	return nil, false, nil
 }
 
 func (f *fakeWorkflowService) GetTaskStatus(context.Context, string) (*apis.TaskStatusResponse, error) {

@@ -213,7 +213,7 @@ Configure the server through flags or `ERUUN_` environment variables; for exampl
 | `ERUUN_AUTH_CONFIG_FILE` | Account, session, and workspace policy JSON |
 | `ERUUN_JOBS_CONFIG_FILE` | Enables the Harbor Runner and optional MinIO; use the same configuration for all nodes |
 
-All runtime nodes require Redis for cache, authentication, and coordination. `--cache-type` / `ERUUN_CACHE_TYPE` accepts only `redis`; `memory` fails startup validation. In `--datastore-schema-mode=migrate-only`, validation checks only datastore configuration.
+Eruun uses MySQL for persistence and Redis for cache, authentication, and coordination. Configure their connections with `--datastore-url` and the `--cache-*` flags or corresponding `ERUUN_` environment variables. In `--datastore-schema-mode=migrate-only`, validation checks only datastore configuration.
 
 Tracing defaults to `ERUUN_ENABLE_TRACING=true`; set it to `false` to disable tracing. This setting controls both the tracer provider and HTTP middleware, independently of the Redis/Kafka backend. Setting a Jaeger endpoint alone does not enable tracing. Without an endpoint, tracing can add trace IDs to API request logs but does not export spans. The static stack manifest enables tracing.
 

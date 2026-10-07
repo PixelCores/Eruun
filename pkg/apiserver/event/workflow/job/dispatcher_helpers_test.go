@@ -2,7 +2,6 @@ package job
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
@@ -10,8 +9,6 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/stretchr/testify/require"
-	batchv1 "k8s.io/api/batch/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
 
@@ -23,16 +20,12 @@ import (
 
 type blockingDispatcherQueue struct {
 	readStarted      chan struct{}
+	ensureGroupErr   error
 	autoClaimStarted chan struct{}
 	readOnce         sync.Once
 	autoClaimOnce    sync.Once
 	doneMu           sync.Mutex
 	done             []string
-}
-
-type resultConcurrencyQueue struct {
-	dispatcherAckQueue
-	acked chan string
 }
 
 type lifecycleDispatcherQueue struct {
@@ -47,13 +40,6 @@ func (q *lifecycleDispatcherQueue) MarkMessageHandlingDone(id string, acked bool
 	}
 }
 
-func (q *resultConcurrencyQueue) Ack(_ context.Context, _ string, ids ...string) error {
-	for _, id := range ids {
-		q.acked <- id
-	}
-	return nil
-}
-
 func newBlockingDispatcherQueue() *blockingDispatcherQueue {
 	return &blockingDispatcherQueue{
 		readStarted:      make(chan struct{}),
@@ -61,7 +47,7 @@ func newBlockingDispatcherQueue() *blockingDispatcherQueue {
 	}
 }
 
-func (q *blockingDispatcherQueue) EnsureGroup(context.Context, string) error { return nil }
+func (q *blockingDispatcherQueue) EnsureGroup(context.Context, string) error { return q.ensureGroupErr }
 func (q *blockingDispatcherQueue) Enqueue(context.Context, []byte) (string, error) {
 	return "", nil
 }
@@ -199,37 +185,6 @@ func TestDelayDispatcherAckAndDecodePayload(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestResultDispatcherHelperBranches(t *testing.T) {
-	dispatcher := &ResultDispatcher{
-		backoffMin: time.Second,
-		backoffMax: 4 * time.Second,
-	}
-
-	require.Equal(t, 2*time.Second, dispatcher.backoffDelay(0))
-	require.Equal(t, 4*time.Second, dispatcher.backoffDelay(4*time.Second))
-
-	var nilDispatcher *ResultDispatcher
-	require.NoError(t, nilDispatcher.ackMessage(context.Background(), "id-1", "reason"))
-
-	queue := &dispatcherAckQueue{ackErr: errors.New("ack failed")}
-	dispatcher.queue = queue
-	dispatcher.group = "result-workers"
-	require.Error(t, dispatcher.ackMessage(context.Background(), "id-1", "reason"))
-	require.EqualValues(t, 1, dispatcher.ackFailures.Load())
-}
-
-func TestResultDispatcherReleasesUndispatchedMessagesOnStop(t *testing.T) {
-	queue := &lifecycleDispatcherQueue{}
-	dispatcher := NewResultDispatcher(queue, nil, nil, "group", "consumer")
-	require.True(t, dispatcher.markMessageInFlight("result-1"))
-	require.True(t, dispatcher.markMessageInFlight("result-2"))
-
-	dispatcher.releaseInFlightMessages()
-
-	require.ElementsMatch(t, []string{"result-1", "result-2"}, queue.done)
-	require.Empty(t, dispatcher.inFlight)
-}
-
 type delayRecoveryQueryStore struct {
 	noopStore
 	query datastore.Entity
@@ -260,80 +215,41 @@ func TestDelayDispatcherRecoveryUsesBoundedDueQuery(t *testing.T) {
 	require.Equal(t, []datastore.SortOption{{Key: "id", Order: datastore.SortOrderDescending}}, store.opts.SortBy)
 }
 
-func TestDispatcherConstructorsAndStartGuards(t *testing.T) {
+func TestDispatcherConstructorsAndRunGuards(t *testing.T) {
 	delay := NewDelayDispatcher(nil, nil, nil, "", "")
 	require.NotNil(t, delay)
-	require.Equal(t, "", delay.group)
-	require.Equal(t, "", delay.consumer)
-
-	delay.Start(context.Background())
-
-	ctxDelay, cancelDelay := context.WithCancel(context.Background())
-	delay = NewDelayDispatcher(&dispatcherAckQueue{}, &workspace.Manager{Client: fake.NewSimpleClientset(), RESTConfig: &rest.Config{}}, &noopStore{}, "", "")
-	delay.readBlock = 5 * time.Millisecond
-	delay.autoClaimInterval = 5 * time.Millisecond
-	delay.Start(ctxDelay)
-	time.Sleep(10 * time.Millisecond)
-	cancelDelay()
+	delay.Run(context.Background())
+	(*DelayDispatcher)(nil).Run(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	queue := newBlockingDispatcherQueue()
+	delay = NewDelayDispatcher(queue, &workspace.Manager{Client: fake.NewSimpleClientset(), RESTConfig: &rest.Config{}}, &noopStore{}, "", "")
+	done := make(chan struct{})
+	go func() { delay.Run(ctx); close(done) }()
+	requireClosed(t, queue.readStarted)
+	requireStillRunning(t, done)
+	cancel()
+	requireClosed(t, done)
 	require.Equal(t, config.DelayQueueGroup, delay.group)
 	require.Equal(t, "delay-dispatcher", delay.consumer)
 	require.EqualValues(t, 0, delay.ensureFailures.Load())
-
-	result := NewResultDispatcher(nil, nil, nil, "", "")
-	require.NotNil(t, result)
-	require.Equal(t, "", result.group)
-	require.Equal(t, "", result.consumer)
-
-	result.Start(context.Background())
-
-	ctxResult, cancelResult := context.WithCancel(context.Background())
-	result = NewResultDispatcher(&dispatcherAckQueue{}, fake.NewSimpleClientset(), &noopStore{}, "", "")
-	result.readBlock = 5 * time.Millisecond
-	result.autoClaimInterval = 5 * time.Millisecond
-	result.Start(ctxResult)
-	time.Sleep(10 * time.Millisecond)
-	cancelResult()
-	require.Equal(t, config.ResultQueueGroup, result.group)
-	require.Equal(t, "result-dispatcher", result.consumer)
-	require.EqualValues(t, 0, result.ensureFailures.Load())
-
-	ctxOutbox, cancelOutbox := context.WithCancel(context.Background())
-	outbox := NewResultOutboxDispatcher(&dispatcherAckQueue{}, &noopStore{})
-	outbox.pollInterval = time.Hour
-	startDone := make(chan struct{})
-	go func() {
-		outbox.Start(ctxOutbox)
-		close(startDone)
-	}()
-	select {
-	case <-startDone:
-	case <-time.After(100 * time.Millisecond):
-		cancelOutbox()
-		t.Fatal("result outbox Start blocked")
-	}
-	cancelOutbox()
+	result := NewResultDispatcher(nil, nil)
+	require.Equal(t, defaultResultProcessingConcurrency, result.processingConcurrency)
+	result.Run(context.Background())
 }
 
-func TestDispatcherStartCountsEnsureGroupFailures(t *testing.T) {
-	ctxDelay, cancelDelay := context.WithCancel(context.Background())
-	defer cancelDelay()
-	delay := NewDelayDispatcher(&dispatcherAckQueue{ensureGroupErr: errors.New("ensure delay failed")}, &workspace.Manager{Client: fake.NewSimpleClientset(), RESTConfig: &rest.Config{}}, &noopStore{}, "", "")
-	delay.readBlock = time.Millisecond
-	delay.autoClaimInterval = time.Millisecond
-	delay.Start(ctxDelay)
-	cancelDelay()
-	time.Sleep(5 * time.Millisecond)
+func TestDelayDispatcherRunCountsEnsureGroupFailures(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	queue := newBlockingDispatcherQueue()
+	queue.ensureGroupErr = errors.New("ensure delay failed")
+	delay := NewDelayDispatcher(queue, &workspace.Manager{Client: fake.NewSimpleClientset(), RESTConfig: &rest.Config{}}, &noopStore{}, "", "")
+	done := make(chan struct{})
+	go func() { delay.Run(ctx); close(done) }()
+	requireClosed(t, queue.readStarted)
+	cancel()
+	requireClosed(t, done)
 	require.EqualValues(t, 1, delay.ensureFailures.Load())
-
-	ctxResult, cancelResult := context.WithCancel(context.Background())
-	defer cancelResult()
-	result := NewResultDispatcher(&dispatcherAckQueue{ensureGroupErr: errors.New("ensure result failed")}, fake.NewSimpleClientset(), &noopStore{}, "", "")
-	result.readBlock = time.Millisecond
-	result.autoClaimInterval = time.Millisecond
-	result.Start(ctxResult)
-	cancelResult()
-	time.Sleep(5 * time.Millisecond)
-	require.EqualValues(t, 1, result.ensureFailures.Load())
 }
 
 func TestDispatchersRunBlocksUntilContextCancelled(t *testing.T) {
@@ -356,166 +272,15 @@ func TestDispatchersRunBlocksUntilContextCancelled(t *testing.T) {
 
 	t.Run("result", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
-		queue := newBlockingDispatcherQueue()
-		dispatcher := NewResultDispatcher(queue, fake.NewSimpleClientset(), &noopStore{}, "", "")
-		dispatcher.autoClaimInterval = time.Millisecond
-		done := make(chan struct{})
-		go func() {
-			dispatcher.Run(ctx)
-			close(done)
-		}()
-		requireClosed(t, queue.readStarted)
-		requireClosed(t, queue.autoClaimStarted)
-		requireStillRunning(t, done)
-		cancel()
-		requireClosed(t, done)
-	})
-
-	t.Run("result_outbox", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		dispatcher := NewResultOutboxDispatcher(&dispatcherAckQueue{}, &noopStore{})
+		dispatcher := NewResultDispatcher(fake.NewSimpleClientset(), newResultOutboxTestStore())
 		dispatcher.pollInterval = time.Hour
 		done := make(chan struct{})
-		go func() {
-			dispatcher.Run(ctx)
-			close(done)
-		}()
-		time.Sleep(20 * time.Millisecond)
+		go func() { dispatcher.Run(ctx); close(done) }()
 		requireStillRunning(t, done)
 		cancel()
 		requireClosed(t, done)
 	})
-}
 
-func TestResultDispatcherProcessesMessagesConcurrently(t *testing.T) {
-	queue := &resultConcurrencyQueue{acked: make(chan string, 2)}
-	client := fake.NewSimpleClientset(&batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "slow-job",
-			Namespace: "default",
-			Annotations: map[string]string{
-				config.AnnotationJobTaskID:        "task-slow",
-				config.AnnotationJobExecutionKey:  "execution-slow",
-				config.AnnotationJobRunGeneration: "1",
-			},
-		},
-	})
-	store := newResultOutboxTestStore()
-	payload := &JobResultPayload{TaskID: "task-slow", Namespace: "default", Name: "slow-job", ExecutionKey: "execution-slow", RunGeneration: 1, TimeoutSeconds: 60}
-	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
-	outbox.MessageID = "slow"
-	require.NoError(t, store.Add(context.Background(), outbox))
-	raw, err := json.Marshal(jobResultPayloadFromOutbox(outbox))
-	require.NoError(t, err)
-	dispatcher := NewResultDispatcher(queue, client, store, "result-workers", "result-consumer")
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	var processingWG sync.WaitGroup
-	slots := make(chan struct{}, 2)
-
-	dispatcher.dispatchMessages(ctx, []msg.Message{{
-		ID:      "slow",
-		Payload: raw,
-	}}, slots, &processingWG)
-	require.Eventually(t, func() bool {
-		getJobActions := 0
-		for _, action := range client.Actions() {
-			if action.GetVerb() == "get" && action.GetResource().Resource == "jobs" {
-				getJobActions++
-			}
-		}
-		return getJobActions >= 2
-	}, time.Second, time.Millisecond, "slow result handler did not enter its Job wait")
-
-	dispatcher.dispatchMessages(ctx, []msg.Message{{
-		ID:      "quick",
-		Payload: []byte(`{"taskId":`),
-	}}, slots, &processingWG)
-
-	select {
-	case id := <-queue.acked:
-		require.Equal(t, "quick", id, "a waiting Job result must not block another message")
-	case <-time.After(250 * time.Millisecond):
-		t.Fatal("quick result message was blocked behind a waiting Job")
-	}
-
-	cancel()
-	done := make(chan struct{})
-	go func() {
-		processingWG.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("result handlers did not stop after context cancellation")
-	}
-}
-
-func TestResultDispatcherSkipsDuplicateInFlightMessage(t *testing.T) {
-	queue := &resultConcurrencyQueue{acked: make(chan string, 2)}
-	client := fake.NewSimpleClientset(&batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "slow-job",
-			Namespace: "default",
-			Annotations: map[string]string{
-				config.AnnotationJobTaskID:        "task-slow",
-				config.AnnotationJobExecutionKey:  "execution-slow",
-				config.AnnotationJobRunGeneration: "1",
-			},
-		},
-	})
-	store := newResultOutboxTestStore()
-	payload := &JobResultPayload{TaskID: "task-slow", Namespace: "default", Name: "slow-job", ExecutionKey: "execution-slow", RunGeneration: 1, TimeoutSeconds: 60}
-	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
-	outbox.MessageID = "same-message"
-	require.NoError(t, store.Add(context.Background(), outbox))
-	raw, err := json.Marshal(jobResultPayloadFromOutbox(outbox))
-	require.NoError(t, err)
-	dispatcher := NewResultDispatcher(queue, client, store, "result-workers", "result-consumer")
-	ctx, cancel := context.WithCancel(context.Background())
-	var processingWG sync.WaitGroup
-	slots := make(chan struct{}, 2)
-	message := msg.Message{
-		ID:      "same-message",
-		Payload: raw,
-	}
-
-	dispatcher.dispatchMessages(ctx, []msg.Message{message}, slots, &processingWG)
-	require.Eventually(t, func() bool { return len(slots) == 1 }, time.Second, 10*time.Millisecond)
-	dispatcher.dispatchMessages(ctx, []msg.Message{{
-		ID:      message.ID,
-		Payload: []byte(`{"taskId":`),
-	}}, slots, &processingWG)
-
-	require.Equal(t, 1, len(slots), "a duplicate message ID must not consume another processing slot")
-	select {
-	case id := <-queue.acked:
-		t.Fatalf("duplicate in-flight message was processed and acked: %s", id)
-	case <-time.After(50 * time.Millisecond):
-	}
-
-	cancel()
-	done := make(chan struct{})
-	go func() {
-		processingWG.Wait()
-		close(done)
-	}()
-	requireClosed(t, done)
-
-	retryCtx, retryCancel := context.WithCancel(context.Background())
-	defer retryCancel()
-	dispatcher.dispatchMessages(retryCtx, []msg.Message{{
-		ID:      message.ID,
-		Payload: []byte(`{"taskId":`),
-	}}, slots, &processingWG)
-	select {
-	case id := <-queue.acked:
-		require.Equal(t, message.ID, id, "the message ID must be released after handling finishes")
-	case <-time.After(time.Second):
-		t.Fatal("released message ID could not be processed again")
-	}
-	processingWG.Wait()
 }
 
 func requireStillRunning(t *testing.T, done <-chan struct{}) {

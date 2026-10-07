@@ -4,7 +4,6 @@ package job
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"strings"
@@ -25,7 +24,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
-	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 )
 
 func resultRecoveryMySQLStore(t *testing.T) *sqlstore.Driver {
@@ -60,10 +58,10 @@ func TestResultRecoveryMySQLTransactionFencesOldOwner(t *testing.T) {
 	record := testResultJobInfo(1, payload)
 	record.Status = string(config.StatusDistributed)
 	require.NoError(t, store.Add(ctx, record))
-	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
-	outbox.MessageID = "first"
+	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultPending)
+
 	require.NoError(t, store.Add(ctx, outbox))
-	claimed, err := claimResultOutbox(ctx, store, outbox, "first")
+	claimed, err := claimResultOutbox(ctx, store, outbox)
 	require.NoError(t, err)
 	require.True(t, claimed)
 	now, err := resultOutboxDatabaseTime(ctx, store)
@@ -82,10 +80,10 @@ func TestResultRecoveryMySQLTransactionFencesOldOwner(t *testing.T) {
 	}()
 	<-entered
 	time.Sleep(600 * time.Millisecond)
-	recovery := NewResultOutboxDispatcher(&enqueueCaptureQueue{}, store)
+	recovery := NewResultDispatcher(nil, store)
 	recoveryDone := make(chan error, 1)
 	go func() {
-		recoveryDone <- recovery.recoverResultOutboxes(ctx, []config.JobResultOutboxState{config.JobResultOutboxStateResultProcessingQueue})
+		recoveryDone <- recovery.recoverResultOutboxes(ctx)
 	}()
 	select {
 	case err := <-recoveryDone:
@@ -115,18 +113,18 @@ func TestResultRecoveryMySQLRenewalAndRollback(t *testing.T) {
 	record := testResultJobInfo(1, payload)
 	record.Status = string(config.StatusDistributed)
 	require.NoError(t, store.Add(ctx, record))
-	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
-	outbox.MessageID = "delivery"
+	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultPending)
+
 	require.NoError(t, store.Add(ctx, outbox))
-	claimed, err := claimResultOutbox(ctx, store, outbox, "delivery")
+	claimed, err := claimResultOutbox(ctx, store, outbox)
 	require.NoError(t, err)
 	require.True(t, claimed)
 	require.NoError(t, renewResultOutboxLease(ctx, store, outbox))
-	recovery := NewResultOutboxDispatcher(&enqueueCaptureQueue{}, store)
-	require.NoError(t, recovery.processOnce(ctx))
+	recovery := NewResultDispatcher(nil, store)
+	require.NoError(t, recovery.recoverResultOutboxes(ctx))
 	active, err := getJobResultOutboxByID(ctx, store, outbox.ID)
 	require.NoError(t, err)
-	require.Equal(t, outbox.MessageID, active.MessageID)
+	require.Equal(t, outbox.ClaimToken, active.ClaimToken)
 	injected := errors.New("rollback result transaction")
 	require.ErrorIs(t, withResultOutboxOwnership(ctx, store, outbox, func(tx datastore.DataStore, _ *model.JobResultOutbox) error {
 		if err := updateJobInfoStatus(ctx, tx, payload, config.StatusCompleted, "", 1, 2, "uncommitted logs"); err != nil {
@@ -144,39 +142,29 @@ func TestResultRecoveryMySQLRejectsActiveNullLeaseWithoutBlockingExpiredRows(t *
 	store := resultRecoveryMySQLStore(t)
 	ctx := context.Background()
 	payload, _, _, _ := completedResultFixture(t)
-	rows := make([]*model.JobResultOutbox, 0, 3)
-	for _, state := range []config.JobResultOutboxState{config.JobResultOutboxStateResultDispatching, config.JobResultOutboxStateResultQueued, config.JobResultOutboxStateResultProcessingQueue} {
-		next := *payload
-		next.TaskID = string(state)
-		outbox := buildJobResultOutbox(&next, state)
-		outbox.MessageID = "invalid-message"
-		require.NoError(t, store.Add(ctx, outbox))
-		rows = append(rows, outbox)
-	}
-	expired := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
-	deadline := expired.LeaseExpiresAt.Add(-2 * resultOutboxDispatchGrace)
+	invalid := buildJobResultOutbox(payload, config.JobResultOutboxStateResultProcessing)
+	invalid.ClaimToken = "invalid-owner"
+	require.NoError(t, store.Add(ctx, invalid))
+	next := *payload
+	next.TaskID = "expired"
+	expired := buildLeasedTestResultOutbox(t, store, &next, config.JobResultOutboxStateResultProcessing)
+	deadline := expired.LeaseExpiresAt.Add(-2 * resultOutboxProcessGrace)
 	expired.LeaseExpiresAt = &deadline
-	expired.MessageID = "lost-message"
 	require.NoError(t, store.Add(ctx, expired))
-	queue := &enqueueCaptureQueue{enqueueID: "recovered"}
-	recovery := NewResultOutboxDispatcher(queue, store)
-	recovery.batchSize = len(rows)
-	require.NoError(t, recovery.processOnce(ctx))
-	require.Empty(t, queue.enqueued)
-	for _, outbox := range rows {
-		current, err := getJobResultOutboxByID(ctx, store, outbox.ID)
-		require.NoError(t, err)
-		require.Nil(t, current.LeaseExpiresAt)
-		require.Equal(t, config.JobResultOutboxStateFailed, current.State, "NULL lease rejection CAS must use IS NULL")
-		require.Equal(t, "invalid-message", current.MessageID)
-		require.Contains(t, current.LastError, "active result outbox has no lease")
-	}
-	require.NoError(t, recovery.processOnce(ctx))
-	require.Len(t, queue.enqueued, 1, "rejected invalid rows cannot starve normal expired recovery")
-	current, err := getJobResultOutboxByID(ctx, store, expired.ID)
+	recovery := NewResultDispatcher(nil, store)
+	recovery.recoveryBatchSize = 1
+	require.NoError(t, recovery.recoverResultOutboxes(ctx))
+	current, err := getJobResultOutboxByID(ctx, store, invalid.ID)
 	require.NoError(t, err)
-	require.Equal(t, config.JobResultOutboxStateResultQueued, current.State)
-	require.Equal(t, "recovered", current.MessageID)
+	require.Nil(t, current.LeaseExpiresAt)
+	require.Equal(t, config.JobResultOutboxStateFailed, current.State, "NULL lease rejection CAS must use IS NULL")
+	require.Equal(t, "invalid-owner", current.ClaimToken)
+	require.Contains(t, current.LastError, "active result outbox has no lease")
+	require.NoError(t, recovery.recoverResultOutboxes(ctx))
+	current, err = getJobResultOutboxByID(ctx, store, expired.ID)
+	require.NoError(t, err)
+	require.Equal(t, config.JobResultOutboxStateResultPending, current.State)
+	require.Empty(t, current.ClaimToken)
 }
 
 func TestResultRecoveryMySQLConcurrentCancellationWinsBeforeResultCAS(t *testing.T) {
@@ -188,8 +176,8 @@ func TestResultRecoveryMySQLConcurrentCancellationWinsBeforeResultCAS(t *testing
 	record.Status = string(config.StatusDistributed)
 	record.Attempt = 1
 	require.NoError(t, store.Add(ctx, record))
-	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
-	outbox.MessageID = "result-message"
+	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultPending)
+
 	require.NoError(t, store.Add(ctx, outbox))
 	beforeWrite := make(chan struct{})
 	releaseWrite := make(chan struct{})
@@ -212,12 +200,12 @@ func TestResultRecoveryMySQLConcurrentCancellationWinsBeforeResultCAS(t *testing
 	}))
 	t.Cleanup(func() { require.NoError(t, store.Client.Callback().Update().Remove("pause-result-before-cas")) })
 	client := fake.NewSimpleClientset(live, pod)
-	queue := &dispatcherAckQueue{}
-	dispatcher := NewResultDispatcher(queue, client, store, "result", "consumer")
-	raw, err := json.Marshal(jobResultPayloadFromOutbox(outbox))
+	dispatcher := NewResultDispatcher(client, store)
+	claimed, err := claimResultOutbox(ctx, store, outbox)
 	require.NoError(t, err)
-	resultDone := make(chan bool, 1)
-	go func() { resultDone <- dispatcher.handleMessage(ctx, msg.Message{ID: outbox.MessageID, Payload: raw}) }()
+	require.True(t, claimed)
+	resultDone := make(chan error, 1)
+	go func() { resultDone <- dispatcher.processResult(ctx, outbox) }()
 	select {
 	case <-beforeWrite:
 	case <-ctx.Done():
@@ -227,7 +215,7 @@ func TestResultRecoveryMySQLConcurrentCancellationWinsBeforeResultCAS(t *testing
 	close(releaseWrite)
 	select {
 	case result := <-resultDone:
-		require.True(t, result)
+		require.NoError(t, result)
 	case <-ctx.Done():
 		t.Fatal("result did not finish")
 	}
@@ -240,7 +228,67 @@ func TestResultRecoveryMySQLConcurrentCancellationWinsBeforeResultCAS(t *testing
 	for _, action := range client.Actions() {
 		require.NotEqual(t, "delete", action.GetVerb())
 	}
-	require.Len(t, queue.ackCalls, 1)
 	_, err = getJobResultOutboxByID(ctx, store, outbox.ID)
 	require.ErrorIs(t, err, datastore.ErrRecordNotExist)
+}
+
+func TestResultRecoveryMySQLConcurrentClaimsAndPendingCursor(t *testing.T) {
+	store := resultRecoveryMySQLStore(t)
+	ctx := context.Background()
+	payload, _, _, _ := completedResultFixture(t)
+	pending := buildJobResultOutbox(payload, config.JobResultOutboxStateResultPending)
+	pending.ID = "b"
+	require.NoError(t, store.Add(ctx, pending))
+	winners := make(chan *model.JobResultOutbox, 8)
+	errs := make(chan error, 8)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for range 8 {
+		snapshot := *pending
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			claimed, err := claimResultOutbox(ctx, store, &snapshot)
+			errs <- err
+			if claimed {
+				winners <- &snapshot
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+	require.Len(t, winners, 1)
+	owner := <-winners
+	oldToken := owner.ClaimToken
+	require.NoError(t, retryResultOutbox(ctx, store, owner, "temporary failure"))
+	claimed, err := claimResultOutbox(ctx, store, pending)
+	require.NoError(t, err)
+	require.False(t, claimed, "attempt CAS must reject snapshots from before the prior claim")
+	current, err := getJobResultOutboxByID(ctx, store, pending.ID)
+	require.NoError(t, err)
+	claimed, err = claimResultOutbox(ctx, store, current)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	require.NotEqual(t, oldToken, current.ClaimToken)
+	for _, id := range []string{"a", "c"} {
+		next := *pending
+		next.ID = id
+		require.NoError(t, store.Add(ctx, &next))
+	}
+	rows, err := listPendingResultOutboxes(ctx, store, "", 1)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	require.Equal(t, "c", rows[0].ID)
+	rows, err = listPendingResultOutboxes(ctx, store, "c", 1)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	require.Equal(t, "a", rows[0].ID, "SQL keyset must skip processing claims and advance below the last attempted id")
+	rows, err = listPendingResultOutboxes(ctx, store, "a", 1)
+	require.NoError(t, err)
+	require.Empty(t, rows)
 }

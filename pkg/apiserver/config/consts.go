@@ -10,8 +10,6 @@ import (
 const (
 	REDIS     = "redis"
 	KAFKA     = "kafka"
-	TIDB      = "tidb"
-	MYSQL     = "mysql"
 	NAMESPACE = "eruun-system"
 )
 
@@ -133,7 +131,6 @@ const (
 	AnnotationWorkloadRestartAt = "kubectl.kubernetes.io/restartedAt"
 	WorkflowWorkerQueueGroup    = "workflow-workers"
 	DelayQueueGroup             = "job-delay-dispatcher"
-	ResultQueueGroup            = "job-result-dispatcher"
 
 	WaitingTasksQueryTimeout            = 5 * time.Second
 	TaskStateTransitionTimeout          = 5 * time.Second
@@ -158,11 +155,9 @@ const (
 )
 
 const (
-	JobResultOutboxStateResultPending         JobResultOutboxState = "result_pending"
-	JobResultOutboxStateResultDispatching     JobResultOutboxState = "result_dispatching_queue"
-	JobResultOutboxStateResultQueued          JobResultOutboxState = "result_queued"
-	JobResultOutboxStateResultProcessingQueue JobResultOutboxState = "result_processing_queue"
-	JobResultOutboxStateFailed                JobResultOutboxState = "failed"
+	JobResultOutboxStateResultPending    JobResultOutboxState = "result_pending"
+	JobResultOutboxStateResultProcessing JobResultOutboxState = "result_processing"
+	JobResultOutboxStateFailed           JobResultOutboxState = "failed"
 )
 
 const (

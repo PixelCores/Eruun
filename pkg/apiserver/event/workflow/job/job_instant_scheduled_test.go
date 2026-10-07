@@ -86,7 +86,7 @@ func TestNewInstantAndScheduledCtlNilJob(t *testing.T) {
 	require.Nil(t, NewInstantJobCtl(nil, &Runtime{Client: nil, Store: nil, Ack: nil}))
 	require.Nil(t, NewScheduledJobCtl(nil, &Runtime{Client: nil, Store: nil, Ack: nil}))
 }
-func TestDelayedJobControllersPropagateWorkflowOwnership(t *testing.T) {
+func TestDelayedJobControllersCommitOwnershipAndNotifyExecutionIdentity(t *testing.T) {
 	newTask := func(jobType config.JobType) *model.JobTask {
 		return &model.JobTask{
 			Name:               "delayed-job",
@@ -115,7 +115,7 @@ func TestDelayedJobControllersPropagateWorkflowOwnership(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "execution-delayed", payload.ExecutionKey)
 		require.Equal(t, uint64(3), payload.RunGeneration)
-		require.Equal(t, "run-3", payload.RunToken)
+		require.NotContains(t, string(queue.enqueued[0]), "runToken")
 		require.Nil(t, payload.Job)
 	}
 
@@ -131,6 +131,7 @@ func TestDelayedJobControllersPropagateWorkflowOwnership(t *testing.T) {
 		assertPayload(t, queue)
 		require.Equal(t, config.JobDelayStatePending, task.DelayState)
 		require.NotEmpty(t, task.DelayPayload)
+		require.NotContains(t, task.DelayPayload, "runToken")
 	})
 
 	t.Run("scheduled", func(t *testing.T) {

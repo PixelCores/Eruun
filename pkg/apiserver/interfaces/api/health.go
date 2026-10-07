@@ -146,7 +146,6 @@ func (h *health) requiredQueueChecks() []healthQueueCheck {
 	return []healthQueueCheck{
 		{name: "dispatch", queue: queues.Dispatch, group: config.WorkflowWorkerQueueGroup},
 		{name: "delay", queue: queues.Delay, group: config.DelayQueueGroup},
-		{name: "result", queue: queues.Result, group: config.ResultQueueGroup},
 	}
 }
 

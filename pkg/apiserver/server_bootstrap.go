@@ -282,8 +282,6 @@ func (s *restServer) Run(ctx context.Context, errChan chan error) error {
 			defer cancelDrain()
 			s.stopWorkers(drainCtx)
 			s.drainPromotedWorkers(drainCtx)
-			s.stopControllerRun()
-			s.stopSchedulerRun()
 			runCancel()
 		})
 	}

@@ -94,7 +94,6 @@ type Config struct {
 type RedisCacheConfig struct {
 	CacheHost string
 	CacheProt int
-	CacheType string
 	CacheDB   int64
 	UserName  string
 	Password  string
@@ -149,7 +148,6 @@ func NewConfig() *Config {
 			Namespace: NAMESPACE,
 		},
 		Datastore: datastore.Config{
-			Type: MYSQL,
 			// Local connection template; replace the password via --datastore-url or ERUUN_DATASTORE_URL.
 			URL:             "eruun:__REPLACE_WITH_MYSQL_PASSWORD__@tcp(127.0.0.1:3306)/eruun?charset=utf8mb4&parseTime=true",
 			MaxIdleConns:    10,
@@ -161,7 +159,6 @@ func NewConfig() *Config {
 		Cache: RedisCacheConfig{
 			CacheHost: "localhost",
 			CacheProt: 6379,
-			CacheType: REDIS,
 			UserName:  "",
 			Password:  "",
 			CacheDB:   0,
@@ -193,9 +190,7 @@ func (c *Config) Validate() []error {
 	if !schemaModeValid {
 		errs = append(errs, fmt.Errorf("datastore schema mode must be one of migrate, validate, migrate-only; got %q", c.DatastoreSchemaMode))
 	}
-	if c.Datastore.Type != MYSQL {
-		errs = append(errs, fmt.Errorf("unsupported datastore type: %s; only mysql is supported", c.Datastore.Type))
-	} else if strings.TrimSpace(c.Datastore.URL) == "" {
+	if strings.TrimSpace(c.Datastore.URL) == "" {
 		errs = append(errs, fmt.Errorf("mysql url cannot be empty"))
 	} else if strings.Contains(c.Datastore.URL, "__REPLACE_") {
 		errs = append(errs, fmt.Errorf("mysql url contains placeholder value, please replace it with real credentials"))
@@ -219,10 +214,7 @@ func (c *Config) Validate() []error {
 		errs = append(errs, fmt.Errorf("api rate limit burst must be > 0 when api rate limit qps is enabled"))
 	}
 	errs = append(errs, c.validateLeaderElection()...)
-	cacheType := strings.ToLower(strings.TrimSpace(c.Cache.CacheType))
-	if cacheType != REDIS {
-		errs = append(errs, fmt.Errorf("distributed application mutation locking requires cache-type=redis"))
-	} else if strings.TrimSpace(c.Cache.CacheHost) == "" || c.Cache.CacheProt <= 0 {
+	if strings.TrimSpace(c.Cache.CacheHost) == "" || c.Cache.CacheProt <= 0 {
 		errs = append(errs, fmt.Errorf("redis cache host/port is invalid"))
 	}
 	errs = append(errs, c.Workflow.Validate()...)
@@ -274,13 +266,7 @@ func (c *Config) validateMessaging() []error {
 	case "":
 		errs = append(errs, fmt.Errorf("messaging type cannot be empty"))
 	case REDIS:
-		// Redis mode: reuses RedisCacheConfig for connection settings
-		if strings.TrimSpace(c.Cache.CacheHost) == "" {
-			errs = append(errs, fmt.Errorf("redis cache host cannot be empty when messaging type is redis"))
-		}
-		if c.Cache.CacheProt <= 0 {
-			errs = append(errs, fmt.Errorf("redis cache port must be > 0 when messaging type is redis"))
-		}
+		// Redis connection settings are required and validated for every runtime node.
 	case KAFKA:
 		// Kafka mode: requires Kafka-specific configuration
 		if len(c.Messaging.KafkaBrokers) == 0 {
@@ -319,7 +305,6 @@ func (c *Config) AddFlags(fs *pflag.FlagSet, configParameter *Config) {
 	fs.StringVar(&c.LeaderConfig.Namespace, "leader-namespace", configParameter.LeaderConfig.Namespace, "namespace for leader election lease")
 	fs.Float64Var(&c.KubeQPS, "kube-api-qps", configParameter.KubeQPS, "the qps for kube clients. Low qps may lead to low throughput. High qps may give stress to api-server.")
 	fs.IntVar(&c.KubeBurst, "kube-api-burst", configParameter.KubeBurst, "the burst for kube clients. Recommend setting it qps*3.")
-	fs.StringVar(&c.Datastore.Type, "datastore-type", configParameter.Datastore.Type, "datastore backend type (mysql only)")
 	fs.StringVar(&c.Datastore.URL, "datastore-url", configParameter.Datastore.URL, "MySQL connection DSN, including the database name (replace the default password placeholder before starting)")
 	fs.StringVar(&c.DatastoreSchemaMode, "datastore-schema-mode", configParameter.DatastoreSchemaMode, "datastore schema handling: migrate|validate|migrate-only")
 	fs.IntVar(&c.Datastore.MaxIdleConns, "mysql-max-idle-conns", configParameter.Datastore.MaxIdleConns, "maximum number of idle MySQL connections to retain in the pool")
@@ -339,7 +324,6 @@ func (c *Config) AddFlags(fs *pflag.FlagSet, configParameter *Config) {
 	fs.IntVar(&c.Messaging.KafkaTopicPartitions, "msg-kafka-topic-partitions", configParameter.Messaging.KafkaTopicPartitions, "kafka topic partitions for auto-created topics (must be > 0)")
 	fs.IntVar(&c.Messaging.KafkaTopicReplicationFactor, "msg-kafka-topic-replication-factor", configParameter.Messaging.KafkaTopicReplicationFactor, "kafka topic replication factor for auto-created topics (must be > 0)")
 	// cache-specific flags
-	fs.StringVar(&c.Cache.CacheType, "cache-type", configParameter.Cache.CacheType, "cache backend type (redis only)")
 	fs.StringVar(&c.Cache.CacheHost, "cache-host", configParameter.Cache.CacheHost, "cache host for redis backend")
 	fs.IntVar(&c.Cache.CacheProt, "cache-port", configParameter.Cache.CacheProt, "cache port for redis backend")
 	fs.Int64Var(&c.Cache.CacheDB, "cache-db", configParameter.Cache.CacheDB, "cache database index for redis backend")
@@ -397,6 +381,5 @@ func (c Config) RuntimeMessagingTopics() []string {
 	return []string{
 		workflowconfig.DispatchTopic(c.Messaging.ChannelPrefix),
 		workflowconfig.DelayTopic(c.Messaging.ChannelPrefix),
-		workflowconfig.ResultTopic(c.Messaging.ChannelPrefix),
 	}
 }

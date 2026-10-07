@@ -11,9 +11,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	importruntime "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/runtime"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
@@ -109,6 +107,11 @@ func (s *restServer) startWorkers(ctx context.Context, errChan chan error) {
 		s.workersMu.Unlock()
 		return
 	}
+	if s.workflow == nil {
+		s.workersMu.Unlock()
+		reportWorkerStartupError(ctx, errChan, fmt.Errorf("workflow runtime is not configured"))
+		return
+	}
 	// Consumer cancellation stops intake only. In-flight execution is cancelled
 	// explicitly with ErrInfrastructureStop after the configured drain window.
 	executionCtx, cancelExecution := context.WithCancelCause(context.WithoutCancel(ctx))
@@ -120,47 +123,32 @@ func (s *restServer) startWorkers(ctx context.Context, errChan chan error) {
 		stopParentCancellation()
 		cancelExecution(cause)
 	}
-	workers := make([]event.Worker, 0, len(s.eventWorkers))
-	for _, worker := range s.eventWorkers {
-		if worker == nil {
-			continue
-		}
-		workers = append(workers, worker)
-	}
 	s.workersReady = false
 	s.workersRun = run
-	readyWorkers := 0
-	for _, worker := range workers {
-		worker := worker
-		run.start(func(runCtx context.Context) {
-			active := true
-			var readyOnce, stoppedOnce sync.Once
-			markStopped := func() {
-				stoppedOnce.Do(func() {
-					s.workersMu.Lock()
-					active = false
-					if s.workersRun == run {
-						s.workersReady = false
-					}
-					s.workersMu.Unlock()
-				})
-			}
-			defer markStopped()
-			worker.StartWorker(runCtx, executionCtx, errChan, func() {
-				readyOnce.Do(func() {
-					s.workersMu.Lock()
-					defer s.workersMu.Unlock()
-					if !active || s.workersRun != run {
-						return
-					}
-					readyWorkers++
-					if readyWorkers == len(workers) {
-						s.workersReady = true
-					}
-				})
-			}, markStopped)
-		})
-	}
+	run.start(func(runCtx context.Context) {
+		active := true
+		var readyOnce, stoppedOnce sync.Once
+		markStopped := func() {
+			stoppedOnce.Do(func() {
+				s.workersMu.Lock()
+				active = false
+				if s.workersRun == run {
+					s.workersReady = false
+				}
+				s.workersMu.Unlock()
+			})
+		}
+		defer markStopped()
+		s.workflow.StartWorker(runCtx, executionCtx, func() {
+			readyOnce.Do(func() {
+				s.workersMu.Lock()
+				defer s.workersMu.Unlock()
+				if active && s.workersRun == run {
+					s.workersReady = true
+				}
+			})
+		}, markStopped)
+	})
 	run.markStarted()
 	go s.observeWorkerRun(run)
 	s.workersMu.Unlock()
@@ -251,160 +239,6 @@ func (s *restServer) ensureQueueGroup(ctx context.Context) error {
 		return err
 	}
 	return nil
-}
-
-func (s *restServer) startControllerEventWorkers(run *workerRun, errChan chan error) {
-	if run == nil {
-		return
-	}
-	if s.jobs != nil {
-		run.start(s.jobs.Maintain)
-	}
-	for _, worker := range append([]event.Worker(nil), s.eventWorkers...) {
-		controllerWorker, ok := worker.(event.ControllerWorker)
-		if !ok || controllerWorker == nil {
-			continue
-		}
-		run.start(func(runCtx context.Context) {
-			controllerWorker.StartController(runCtx, errChan)
-		})
-	}
-}
-
-func (s *restServer) startSchedulerEventWorkers(run *workerRun, errChan chan error) (int, <-chan bool) {
-	startupResults := make(chan bool, len(s.eventWorkers))
-	if run == nil {
-		return 0, startupResults
-	}
-	workerCount := 0
-	for _, worker := range append([]event.Worker(nil), s.eventWorkers...) {
-		schedulerWorker, ok := worker.(event.SchedulerWorker)
-		if !ok || schedulerWorker == nil {
-			continue
-		}
-		workerCount++
-		run.start(func(runCtx context.Context) {
-			var startupOnce sync.Once
-			reportStartup := func(ready bool) {
-				startupOnce.Do(func() {
-					startupResults <- ready
-				})
-			}
-			defer reportStartup(false)
-			schedulerWorker.StartScheduler(runCtx, errChan, func() {
-				reportStartup(true)
-			})
-		})
-	}
-	return workerCount, startupResults
-}
-
-func (s *restServer) beginControllerRun(ctx context.Context) *workerRun {
-	s.workersMu.Lock()
-	previous := s.controllerRun
-	s.controllerRun = nil
-	s.workersMu.Unlock()
-	if previous != nil {
-		previous.stop()
-		previous.wait()
-	}
-	if s.InformerManager != nil {
-		s.InformerManager.Stop()
-	}
-	run := newWorkerRun(ctx)
-	s.workersMu.Lock()
-	s.controllerRun = run
-	s.workersMu.Unlock()
-	return run
-}
-
-func (s *restServer) stopControllerRun() {
-	s.workersMu.Lock()
-	run := s.controllerRun
-	s.controllerRun = nil
-	s.workersMu.Unlock()
-	if run != nil {
-		run.stop()
-	}
-	if s.InformerManager != nil {
-		s.InformerManager.Stop()
-	}
-	if run != nil {
-		run.wait()
-	}
-}
-
-func (s *restServer) beginSchedulerRun(ctx context.Context) *workerRun {
-	s.workersMu.Lock()
-	previous := s.schedulerRun
-	s.schedulerRun = nil
-	s.workersMu.Unlock()
-	if previous != nil {
-		previous.stop()
-		previous.wait()
-	}
-	run := newWorkerRun(ctx)
-	s.workersMu.Lock()
-	s.schedulerRun = run
-	s.workersMu.Unlock()
-	return run
-}
-
-func (s *restServer) stopSchedulerRun() {
-	s.workersMu.Lock()
-	run := s.schedulerRun
-	s.schedulerRun = nil
-	s.workersMu.Unlock()
-	if run != nil {
-		run.stop()
-		run.wait()
-	}
-}
-
-func (s *restServer) onStartedControllerLeading(ctx context.Context, errChan chan error) bool {
-	run := s.beginControllerRun(ctx)
-	if s.InformerManager != nil {
-		if err := s.InformerManager.Start(run.ctx); err != nil {
-			reportWorkerStartupError(run.ctx, errChan, reportableInformerStartError(run.ctx, err))
-			run.markStarted()
-			return false
-		}
-	}
-	s.startControllerEventWorkers(run, errChan)
-	if s.accounts != nil {
-		run.start(s.accounts.RunSessionCleanup)
-	}
-	if s.KubeClient != nil && s.dataStore != nil {
-		coordinator := importruntime.NewPodCoordinator(s.KubeClient, importruntime.NewDataStoreBindingLoader(s.dataStore))
-		run.start(coordinator.Run)
-	}
-	run.markStarted()
-	return true
-}
-
-func (s *restServer) onStartedSchedulerLeading(ctx context.Context, errChan chan error) bool {
-	run := s.beginSchedulerRun(ctx)
-	if err := s.ensureQueueGroup(run.ctx); err != nil {
-		if run.ctx.Err() == nil {
-			reportWorkerStartupError(run.ctx, errChan, fmt.Errorf("ensure queue group %s: %w", config.WorkflowWorkerQueueGroup, err))
-		}
-		run.markStarted()
-		return false
-	}
-	workerCount, startupResults := s.startSchedulerEventWorkers(run, errChan)
-	run.start(s.runQueueMetrics)
-	run.markStarted()
-	for range workerCount {
-		select {
-		case ready := <-startupResults:
-			if !ready {
-				return false
-			}
-		case <-run.ctx.Done():
-			return false
-		}
-	}
-	return true
 }
 
 func (s *restServer) runQueueMetrics(ctx context.Context) {

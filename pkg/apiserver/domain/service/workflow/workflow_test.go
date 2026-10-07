@@ -109,7 +109,8 @@ func holdWorkflowTestAppScheduleLock(t *testing.T, lockProvider locker.Locker, a
 
 type enqueueWorkflowDataStore struct {
 	scheduleDataStore
-	components []*model.ApplicationComponent
+	components        []*model.ApplicationComponent
+	beforeDispatchCAS func(*model.WorkflowQueue)
 }
 
 func (s *enqueueWorkflowDataStore) WithTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
@@ -117,6 +118,13 @@ func (s *enqueueWorkflowDataStore) WithTransaction(ctx context.Context, fn func(
 }
 func (s *enqueueWorkflowDataStore) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
 	return s.WithTransaction(ctx, fn)
+}
+
+func (s *enqueueWorkflowDataStore) CompareAndSwapWithConditions(ctx context.Context, entity datastore.Entity, conditions, updates map[string]interface{}) (bool, error) {
+	beforeCAS := s.beforeDispatchCAS
+	s.beforeDispatchCAS = nil
+	state := &statusDataStore{tasks: s.tasks, beforeCAS: beforeCAS}
+	return state.CompareAndSwapWithConditions(ctx, entity, conditions, updates)
 }
 
 func (s *enqueueWorkflowDataStore) List(ctx context.Context, query datastore.Entity, options *datastore.ListOptions) ([]datastore.Entity, error) {
@@ -471,6 +479,10 @@ func (s *statusDataStore) applyTaskUpdatesTo(task *model.WorkflowQueue, updates 
 			task.TaskRevoker, _ = v.(string)
 		case "cancel_source":
 			task.CancelSource, _ = v.(string)
+		case "run_generation":
+			task.RunGeneration, _ = v.(uint64)
+		case "dispatch_attempts":
+			task.DispatchAttempts, _ = v.(uint)
 		case "run_token":
 			task.RunToken, _ = v.(string)
 		case "worker_id":
@@ -478,7 +490,11 @@ func (s *statusDataStore) applyTaskUpdatesTo(task *model.WorkflowQueue, updates 
 		case "heartbeat_at":
 			task.HeartbeatAt, _ = v.(*time.Time)
 		case "lease_expires_at":
-			task.LeaseExpiresAt, _ = v.(*time.Time)
+			if value, ok := v.(time.Time); ok {
+				task.LeaseExpiresAt = &value
+			} else {
+				task.LeaseExpiresAt, _ = v.(*time.Time)
+			}
 		case "scheduling_reason":
 			task.SchedulingReason, _ = v.(string)
 		}

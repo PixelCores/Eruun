@@ -10,6 +10,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
 
 type lifecycleBlockingQueue struct {
@@ -58,7 +59,7 @@ func TestWorkflowStartWorkerStartsNewGenerationWhilePreviousStops(t *testing.T) 
 	firstCtx, cancelFirst := context.WithCancel(context.Background())
 	firstDone := make(chan struct{})
 	go func() {
-		w.StartWorker(firstCtx, firstCtx, nil, nil, nil)
+		w.StartWorker(firstCtx, firstCtx, nil, nil)
 		close(firstDone)
 	}()
 
@@ -69,7 +70,7 @@ func TestWorkflowStartWorkerStartsNewGenerationWhilePreviousStops(t *testing.T) 
 	defer cancelSecond()
 	secondDone := make(chan struct{})
 	go func() {
-		w.StartWorker(secondCtx, secondCtx, nil, nil, nil)
+		w.StartWorker(secondCtx, secondCtx, nil, nil)
 		close(secondDone)
 	}()
 
@@ -162,4 +163,15 @@ func requireClosed(t *testing.T, ch <-chan struct{}) {
 			return false
 		}
 	}, time.Second, 10*time.Millisecond)
+}
+
+func newWorkflowWorkerRunForTest(t *testing.T, w *Workflow) *workflowWorkerRun {
+	t.Helper()
+	ctx, cancel := context.WithCancelCause(context.Background())
+	run := newWorkflowWorkerRun(ctx, w.workerConcurrencyLimiter())
+	t.Cleanup(func() {
+		cancel(signal.ErrInfrastructureStop)
+		_ = run.wait()
+	})
+	return run
 }

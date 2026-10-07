@@ -16,7 +16,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -32,6 +32,14 @@ import (
 
 type APIServer interface {
 	Run(context.Context, chan error) error
+}
+
+// workflowRuntime is the single IoC-populated workflow instance. Its interface
+// permits lifecycle tests to control startup and shutdown.
+type workflowRuntime interface {
+	StartLeader(context.Context, func())
+	StartWorker(context.Context, context.Context, func(), func())
+	RuntimeStats() workflow.RuntimeStats
 }
 
 type restServer struct {
@@ -55,21 +63,18 @@ type restServer struct {
 	InformerManager           *informer.Manager // Informer 管理器，用于 List-Watch 机制
 	resourceObserver          *informer.KubernetesWorkloadObserver
 	sandboxObserver           *informer.KubernetesSandboxObserver
-	eventWorkers              []event.Worker
+	workflow                  workflowRuntime
 	workersMu                 sync.Mutex
 	workersReady              bool
 	workersRun                *workerRun
 	drainingWorkerRuns        map[*workerRun]struct{}
-	controllerRun             *workerRun
-	schedulerRun              *workerRun
 	urlSecurityPolicyProvider *urlpolicy.Provider
 	ensureQueueGroupFailures  atomic.Int64
 	leading                   atomic.Bool
 	leaderMu                  sync.RWMutex
 	leaderCtx                 context.Context
-	leaderCancel              context.CancelFunc
+	leaderRun                 *workerRun
 	leaderPodUID              string
-	leaderServiceDone         <-chan struct{}
 }
 
 func (s *restServer) RuntimeRole() string {

@@ -20,9 +20,7 @@ const (
 	defaultKafkaGroupID   = "eruun-workflow-workers"
 	workflowDispatchGroup = "workflow-workers"
 	delayDispatchGroup    = "job-delay-dispatcher"
-	resultDispatchGroup   = "job-result-dispatcher"
 	delayGroupSuffix      = "delay"
-	resultGroupSuffix     = "result"
 	correlationHeaderKey  = "eruun-correlation-id"
 )
 
@@ -170,8 +168,6 @@ func (k *KafkaQueue) deriveGroupID(group string) string {
 	switch role {
 	case delayDispatchGroup:
 		return fmt.Sprintf("%s.%s", base, delayGroupSuffix)
-	case resultDispatchGroup:
-		return fmt.Sprintf("%s.%s", base, resultGroupSuffix)
 	}
 
 	if strings.HasPrefix(role, base+".") {

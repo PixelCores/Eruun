@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
@@ -27,7 +26,7 @@ func TestRuntimeLeaderElectionUsesOneLease(t *testing.T) {
 
 func TestPromotionPreservesRunningExecutionAndDemotionResumesIntake(t *testing.T) {
 	worker := &contextTrackingServerWorker{contexts: make(chan testWorkerContexts, 2), waitForExecution: true}
-	s := &restServer{cfg: *config.NewConfig(), eventWorkers: []event.Worker{worker}}
+	s := &restServer{cfg: *config.NewConfig(), workflow: worker}
 	runtimeCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	s.startWorkers(runtimeCtx, nil)
@@ -63,29 +62,24 @@ func TestPromotionPreservesRunningExecutionAndDemotionResumesIntake(t *testing.T
 	require.Eventually(t, func() bool { return first.execution.Err() != nil && second.execution.Err() != nil }, time.Second, time.Millisecond)
 }
 
-func TestLeaderStopsBothControlLoopsBeforeLeaseRelease(t *testing.T) {
+func TestLeaderStopsAllControlLoopsBeforeLeaseRelease(t *testing.T) {
 	old := releaseLeaderLock
 	defer func() { releaseLeaderLock = old }()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	s := &restServer{cfg: *config.NewConfig()}
-	controller := newWorkerRun(context.Background())
-	scheduler := newWorkerRun(context.Background())
-	for _, run := range []*workerRun{controller, scheduler} {
+	run := newWorkerRun(context.Background())
+	for range 2 {
 		run.start(func(ctx context.Context) { <-ctx.Done() })
-		run.markStarted()
 	}
-	s.controllerRun, s.schedulerRun = controller, scheduler
-	apiCtx, apiCancel := context.WithCancel(context.Background())
-	s.leaderCtx, s.leaderCancel = apiCtx, apiCancel
+	run.markStarted()
+	s.leaderRun, s.leaderCtx = run, run.ctx
 	releaseLeaderLock = func(resourcelock.Interface, time.Duration) bool {
-		require.ErrorIs(t, apiCtx.Err(), context.Canceled)
-		for _, run := range []*workerRun{controller, scheduler} {
-			select {
-			case <-run.done:
-			default:
-				t.Fatal("released Lease before control loop stopped")
-			}
+		require.ErrorIs(t, run.ctx.Err(), context.Canceled)
+		select {
+		case <-run.done:
+		default:
+			t.Fatal("released Lease before control loops stopped")
 		}
 		return true
 	}
@@ -104,7 +98,7 @@ func TestLeaderIgnoresStartupAfterShutdown(t *testing.T) {
 	require.NoError(t, runtimeCtx.Err())
 	election.Callbacks.OnStartedLeading(context.Background())
 	require.False(t, s.leading.Load())
-	require.Nil(t, s.controllerRun)
+	require.Nil(t, s.leaderRun)
 }
 
 func TestLeaderWaitsForInitializationBeforeExposingAPI(t *testing.T) {

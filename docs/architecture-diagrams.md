@@ -69,7 +69,7 @@ sequenceDiagram
 
 独立空间 Job 不创建 Application 或 Component，由 Worker 将任务声明构建为 Kubernetes Job。评测使用 `type: job` + `traits.eval`，也可作为应用 Workflow 的顶层 `job` 组件执行。Harbor Runner 在 Pod 内先认领执行，再下载任务包、运行评测、上报阶段/心跳/终态并上传完整原始结果。API 保存源结果后，Controller 独立执行 MinIO/数据库目标保存与过期清理；保存失败不改变已完成的评测事实，重试保存也不会重跑评测。同一应用任务内的评测结果以 Job `executionKey` 区分。见 [空间 Job API](workspace-jobs-api.md)。
 
-上图展示立即执行主路径；延迟 Job 由 Worker 写入数据库检查点，Controller 到期后创建 Kubernetes Job，结合 delay/result 消息与 outbox 恢复执行进度。
+上图展示立即执行主路径；延迟 Job 由 Worker 写入数据库检查点，Controller 到期后创建 Kubernetes Job，使用 delay 通知降低到期发现延迟，再直接认领数据库 outbox 完成结果收尾和恢复。
 
 ## 3. Application、Component、Trait 与 Workflow
 

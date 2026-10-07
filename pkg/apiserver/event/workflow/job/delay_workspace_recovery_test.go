@@ -108,7 +108,6 @@ func TestDelayedIdentityNotificationRejectsChangedCheckpointIdentity(t *testing.
 		expectNoRetryErr bool
 	}{
 		{"execute time", func(n *delayJobNotification) { n.ExecuteAt++ }, true},
-		{"run token", func(n *delayJobNotification) { n.RunToken = "other-run" }, true},
 		{"execution key", func(n *delayJobNotification) { n.ExecutionKey = "other-execution" }, false},
 		{"generation", func(n *delayJobNotification) { n.RunGeneration++ }, false},
 	}

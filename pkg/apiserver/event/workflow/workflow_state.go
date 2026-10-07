@@ -9,10 +9,10 @@ import (
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
-func (w *Workflow) waitingTasks(ctx context.Context) ([]*model.WorkflowQueue, error) {
+func (w *Workflow) waitingTasks(ctx context.Context, page int) ([]*model.WorkflowQueue, int, error) {
 	queryCtx, cancel := context.WithTimeout(ctx, config.WaitingTasksQueryTimeout)
 	defer cancel()
-	return w.WorkflowService.WaitingTasks(queryCtx)
+	return w.WorkflowService.WaitingTasks(queryCtx, page)
 }
 
 func (w *Workflow) enqueueDispatch(ctx context.Context, payload []byte) (string, error) {

@@ -307,7 +307,6 @@ func TestEnsureKafkaEnsuresAllConfiguredTopics(t *testing.T) {
 		Topics: []string{
 			"eruun.workflow.dispatch",
 			"eruun.job.delay",
-			"eruun.job.result",
 		},
 		TopicPartitions:        3,
 		TopicReplicationFactor: 2,
@@ -316,7 +315,6 @@ func TestEnsureKafkaEnsuresAllConfiguredTopics(t *testing.T) {
 	require.Equal(t, []string{
 		"eruun.workflow.dispatch",
 		"eruun.job.delay",
-		"eruun.job.result",
 	}, topicChecks)
 }
 

@@ -83,8 +83,9 @@ type contextCheckingResultOutboxStore struct {
 
 type delayFencingStore struct {
 	*resultOutboxTestStore
-	task   *model.WorkflowQueue
-	getErr error
+	task    *model.WorkflowQueue
+	getErr  error
+	listErr error
 }
 
 type settlingDelayStore struct {
@@ -138,6 +139,13 @@ func (s *delayFencingStore) Get(ctx context.Context, entity datastore.Entity) er
 	}
 	*task = *s.task
 	return nil
+}
+
+func (s *delayFencingStore) List(ctx context.Context, query datastore.Entity, opts *datastore.ListOptions) ([]datastore.Entity, error) {
+	if _, ok := query.(*model.JobInfo); ok && s.listErr != nil {
+		return nil, s.listErr
+	}
+	return s.resultOutboxTestStore.List(ctx, query, opts)
 }
 
 func newResultOutboxTestStore() *resultOutboxTestStore {
@@ -365,6 +373,9 @@ func (s *resultOutboxTestStore) List(_ context.Context, query datastore.Entity, 
 			outboxes = append(outboxes, &copy)
 		}
 		sort.Slice(outboxes, func(i, j int) bool {
+			if opts != nil && len(opts.SortBy) > 0 && opts.SortBy[0].Key == "id" {
+				return outboxes[i].ID > outboxes[j].ID
+			}
 			if opts != nil && len(opts.SortBy) > 0 && opts.SortBy[0].Key == "lease_expires_at" {
 				a, b := outboxes[i].LeaseExpiresAt, outboxes[j].LeaseExpiresAt
 				if a == nil && b != nil {
@@ -376,6 +387,7 @@ func (s *resultOutboxTestStore) List(_ context.Context, query datastore.Entity, 
 				if a != nil && b != nil && !a.Equal(*b) {
 					return a.Before(*b)
 				}
+				return outboxes[i].ID < outboxes[j].ID
 			}
 			if !outboxes[i].UpdateTime.Equal(outboxes[j].UpdateTime) {
 				return outboxes[i].UpdateTime.Before(outboxes[j].UpdateTime)
@@ -512,12 +524,16 @@ func (s *resultOutboxTestStore) CompareAndSwapWithConditions(_ context.Context, 
 			if strings.TrimSpace(current.ID) != strings.TrimSpace(fmt.Sprint(value)) {
 				return false, nil
 			}
+		case "attempts":
+			if fmt.Sprint(current.Attempts) != fmt.Sprint(value) {
+				return false, nil
+			}
 		case "state":
 			if string(current.State) != strings.TrimSpace(fmt.Sprint(value)) {
 				return false, nil
 			}
-		case "message_id":
-			if strings.TrimSpace(current.MessageID) != strings.TrimSpace(fmt.Sprint(value)) {
+		case "claim_token":
+			if strings.TrimSpace(current.ClaimToken) != strings.TrimSpace(fmt.Sprint(value)) {
 				return false, nil
 			}
 		case "lease_expires_at":
@@ -616,6 +632,11 @@ func matchOutboxFilters(outbox *model.JobResultOutbox, opts *datastore.ListOptio
 			}
 		}
 		if !matched {
+			return false
+		}
+	}
+	for _, filter := range opts.LessThan {
+		if filter.Key == "id" && outbox.ID >= fmt.Sprint(filter.Value) {
 			return false
 		}
 	}
@@ -718,8 +739,8 @@ func applyOutboxUpdates(outbox *model.JobResultOutbox, updates map[string]interf
 		switch key {
 		case "state":
 			outbox.State = value.(config.JobResultOutboxState)
-		case "message_id":
-			outbox.MessageID = value.(string)
+		case "claim_token":
+			outbox.ClaimToken = value.(string)
 		case "job_uid":
 			outbox.JobUID = value.(string)
 		case "lease_expires_at":
@@ -746,63 +767,6 @@ func (s *resultOutboxTestStore) jobInfoByTaskID(taskID string) *model.JobInfo {
 	return nil
 }
 
-func TestDelayDispatcherDropsStaleWorkflowOwnership(t *testing.T) {
-	tests := []struct {
-		name          string
-		task          *model.WorkflowQueue
-		runGeneration uint64
-		runToken      string
-	}{
-		{
-			name:          "generation changed",
-			task:          &model.WorkflowQueue{TaskID: "task-delay-fenced", RunGeneration: 2, RunToken: "run-2"},
-			runGeneration: 1,
-			runToken:      "run-1",
-		},
-		{
-			name:          "token cleared by reaper",
-			task:          &model.WorkflowQueue{TaskID: "task-delay-fenced", RunGeneration: 2},
-			runGeneration: 2,
-			runToken:      "run-2",
-		},
-		{
-			name:          "legacy tokenless message after reaper",
-			task:          &model.WorkflowQueue{TaskID: "task-delay-fenced", RunGeneration: 2},
-			runGeneration: 2,
-		},
-		{
-			name:          "task deleted",
-			runGeneration: 2,
-			runToken:      "run-2",
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			store := &delayFencingStore{resultOutboxTestStore: newResultOutboxTestStore(), task: tc.task}
-			client := fake.NewSimpleClientset()
-			dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
-			payload := &DelayJobPayload{
-				TaskID:        "task-delay-fenced",
-				JobType:       string(config.JobDeployScheduled),
-				Namespace:     "default",
-				ExecutionKey:  "execution-stale",
-				RunGeneration: tc.runGeneration,
-				RunToken:      tc.runToken,
-				ServiceName:   "svc-a",
-				Job: &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
-					Name:      "delay-job-fenced",
-					Namespace: "default",
-				}},
-			}
-
-			require.NoError(t, dispatcher.dispatchJob(context.Background(), &delayItem{payload: payload}, client))
-			require.Empty(t, client.Actions(), "stale delayed ownership must be rejected before Kubernetes access")
-			require.Empty(t, store.outboxes)
-		})
-	}
-}
-
 func TestDelayDispatcherPreservesCommittedDelayedJobAcrossWorkflowGeneration(t *testing.T) {
 	executionKey := "execution-committed"
 	store := &delayFencingStore{
@@ -826,7 +790,6 @@ func TestDelayDispatcherPreservesCommittedDelayedJobAcrossWorkflowGeneration(t *
 		Namespace:     "default",
 		ExecutionKey:  executionKey,
 		RunGeneration: 1,
-		RunToken:      "run-1",
 		ServiceName:   "svc-a",
 		Job: &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
 			Name:      "delay-job-committed",
@@ -878,7 +841,6 @@ func TestDelayDispatcherDoesNotRecreateSettledDelayedExecution(t *testing.T) {
 				Namespace:     "default",
 				ExecutionKey:  executionKey,
 				RunGeneration: 2,
-				RunToken:      "run-2",
 				ServiceName:   "svc-a",
 				Job: &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
 					Name:      "delay-job-settled",
@@ -898,33 +860,23 @@ func TestDelayDispatcherDoesNotRecreateSettledDelayedExecution(t *testing.T) {
 	}
 }
 
-func TestDelayDispatcherAcceptsCurrentGenerationWithCompatibleToken(t *testing.T) {
-	for _, runToken := range []string{"run-2", ""} {
-		t.Run(fmt.Sprintf("token-%q", runToken), func(t *testing.T) {
-			store := &delayFencingStore{
-				resultOutboxTestStore: newResultOutboxTestStore(),
-				task:                  &model.WorkflowQueue{TaskID: "task-delay-current", RunGeneration: 2, RunToken: "run-2"},
+func TestDelayDispatcherCommittedCheckpointDoesNotReadParentWorkflow(t *testing.T) {
+	for _, parent := range []string{"current", "new generation", "token expired", "missing", "read failure"} {
+		t.Run(parent, func(t *testing.T) {
+			store := &delayFencingStore{resultOutboxTestStore: newResultOutboxTestStore(), task: &model.WorkflowQueue{TaskID: "task-delay-current", RunGeneration: 2, RunToken: "run-2"}}
+			switch parent {
+			case "new generation":
+				store.task.RunGeneration++
+			case "token expired":
+				store.task.RunToken = ""
+			case "missing":
+				store.task = nil
+			case "read failure":
+				store.getErr = errors.New("parent workflow unavailable")
 			}
 			client := fake.NewSimpleClientset()
 			dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
-			payload := &DelayJobPayload{
-				TaskID:        "task-delay-current",
-				JobType:       string(config.JobDeployScheduled),
-				Namespace:     "default",
-				ExecutionKey:  "execution-current",
-				RunGeneration: 2,
-				RunToken:      runToken,
-				ServiceName:   "svc-a",
-				Job: &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
-					Name:      "delay-job-current",
-					Namespace: "default",
-					Annotations: map[string]string{
-						config.AnnotationJobExecutionKey:  "execution-current",
-						config.AnnotationJobRunGeneration: "2",
-					},
-				}},
-			}
-
+			payload := &DelayJobPayload{TaskID: "task-delay-current", JobType: string(config.JobDeployScheduled), Namespace: "default", ExecutionKey: "execution-current", RunGeneration: 2, ServiceName: "svc-a", Job: &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "delay-job-current", Namespace: "default"}}}
 			seedCommittedDelayTestCheckpoint(t, store.resultOutboxTestStore, payload)
 			require.NoError(t, dispatcher.dispatchJob(context.Background(), &delayItem{payload: payload}, client))
 			_, err := client.BatchV1().Jobs("default").Get(context.Background(), "delay-job-current", metav1.GetOptions{})
@@ -971,7 +923,6 @@ func TestDelayDispatcherDoesNotBindOutboxToDifferentJobExecution(t *testing.T) {
 				Namespace:     "default",
 				ExecutionKey:  executionKey,
 				RunGeneration: 2,
-				RunToken:      "run-2",
 				ServiceName:   "svc-a",
 				Job: &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
 					Name:      existing.Name,
@@ -1016,7 +967,6 @@ func TestDelayDispatcherDoesNotRecreateWhenResultSettlesBetweenReads(t *testing.
 		Namespace:     "default",
 		ExecutionKey:  executionKey,
 		RunGeneration: 2,
-		RunToken:      "run-2",
 		ServiceName:   "svc-a",
 		Job: &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
 			Name:      "delay-job-settles-between-reads",
@@ -1049,10 +999,10 @@ func TestDelayDispatcherDoesNotRecreateWhenResultSettlesBetweenReads(t *testing.
 	require.Empty(t, store.outboxes)
 }
 
-func TestDelayDispatcherRetriesOwnershipLookupFailure(t *testing.T) {
+func TestDelayDispatcherRetriesCheckpointLookupFailure(t *testing.T) {
 	store := &delayFencingStore{
 		resultOutboxTestStore: newResultOutboxTestStore(),
-		getErr:                errors.New("database unavailable"),
+		listErr:               errors.New("database unavailable"),
 	}
 	client := fake.NewSimpleClientset()
 	dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
@@ -1062,7 +1012,6 @@ func TestDelayDispatcherRetriesOwnershipLookupFailure(t *testing.T) {
 		Namespace:     "default",
 		ExecutionKey:  "execution-current",
 		RunGeneration: 2,
-		RunToken:      "run-2",
 		Job: &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
 			Name:      "delay-job-current",
 			Namespace: "default",
@@ -1070,8 +1019,8 @@ func TestDelayDispatcherRetriesOwnershipLookupFailure(t *testing.T) {
 	}
 
 	err := dispatcher.dispatchJob(context.Background(), &delayItem{payload: payload}, client)
-	require.ErrorContains(t, err, "load workflow task for delayed job")
-	require.Empty(t, client.Actions(), "a failed ownership lookup must retry before Kubernetes access")
+	require.ErrorContains(t, err, "load delay checkpoint")
+	require.Empty(t, client.Actions(), "a failed checkpoint lookup must retry before Kubernetes access")
 	require.Empty(t, store.outboxes)
 }
 
@@ -1226,7 +1175,6 @@ func TestDelayDispatcherDispatchPersistsOutboxWhenCreateErrorLeavesJobPresent(t 
 			JobType:        string(config.JobDeployScheduled),
 			ExecutionKey:   "execution-current",
 			RunGeneration:  2,
-			RunToken:       "run-2",
 			Namespace:      "default",
 			ServiceName:    "svc-a",
 			TimeoutSeconds: 60,
@@ -1323,174 +1271,10 @@ func TestDelayDispatcherDispatchDoesNotRecreateWhenResultOutboxPendingAndJobMiss
 	require.Empty(t, client.Actions())
 }
 
-func TestResultOutboxDispatcherClaimsPendingBeforeEnqueue(t *testing.T) {
+func TestResultDispatcherRecoversExpiredProcessingAcrossBatches(t *testing.T) {
 	store := newResultOutboxTestStore()
-	queue := &enqueueCaptureQueue{enqueueID: "result-1"}
-	dispatcher := NewResultOutboxDispatcher(queue, store)
-
-	payload := &JobResultPayload{
-		TaskID:         "task-delay-claim",
-		ExecutionKey:   "execution-delay-claim",
-		RunGeneration:  1,
-		JobType:        string(config.JobDeployScheduled),
-		Namespace:      "default",
-		Name:           "delay-job-claim",
-		ServiceName:    "svc-a",
-		TimeoutSeconds: 60,
-	}
-	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultPending)
-	require.NoError(t, store.Add(context.Background(), outbox))
-	store.rejectNextTransition(config.JobResultOutboxStateResultPending, config.JobResultOutboxStateResultDispatching)
-
-	require.NoError(t, dispatcher.dispatchPendingOutbox(context.Background(), outbox))
-	require.Empty(t, queue.enqueued)
-
-	refreshed, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
-	require.NoError(t, err)
-	require.Equal(t, config.JobResultOutboxStateResultPending, refreshed.State)
-	require.Equal(t, "", refreshed.MessageID)
-}
-
-func TestResultOutboxDispatcherPersistsQueuedStateAfterSuccessfulEnqueue(t *testing.T) {
-	store := newResultOutboxTestStore()
-	queue := &enqueueCaptureQueue{enqueueID: "result-queued-1"}
-	dispatcher := NewResultOutboxDispatcher(queue, store)
-
-	payload := &JobResultPayload{
-		TaskID:         "task-delay-queued",
-		ExecutionKey:   "execution-delay-queued",
-		RunGeneration:  1,
-		JobType:        string(config.JobDeployScheduled),
-		Namespace:      "default",
-		Name:           "delay-job-queued",
-		ServiceName:    "svc-a",
-		TimeoutSeconds: 60,
-	}
-	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultPending)
-	require.NoError(t, store.Add(context.Background(), outbox))
-
-	require.NoError(t, dispatcher.dispatchPendingOutbox(context.Background(), outbox))
-
-	refreshed, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
-	require.NoError(t, err)
-	require.Equal(t, config.JobResultOutboxStateResultQueued, refreshed.State)
-	require.Equal(t, "result-queued-1", refreshed.MessageID)
-	require.Equal(t, "", refreshed.LastError)
-}
-
-func TestResultOutboxDispatcherTransitionsOnlyTargetOutbox(t *testing.T) {
-	store := newResultOutboxTestStore()
-	queue := &enqueueCaptureQueue{enqueueID: "result-7"}
-	dispatcher := NewResultOutboxDispatcher(queue, store)
-
-	targetPayload := &JobResultPayload{
-		TaskID:         "task-delay-target",
-		ExecutionKey:   "execution-delay-target",
-		RunGeneration:  1,
-		JobType:        string(config.JobDeployScheduled),
-		Namespace:      "default",
-		Name:           "delay-job-target",
-		ServiceName:    "svc-a",
-		TimeoutSeconds: 60,
-	}
-	siblingPayload := &JobResultPayload{
-		TaskID:         "task-delay-sibling",
-		ExecutionKey:   "execution-delay-sibling",
-		RunGeneration:  1,
-		JobType:        string(config.JobDeployScheduled),
-		Namespace:      "default",
-		Name:           "delay-job-sibling",
-		ServiceName:    "svc-b",
-		TimeoutSeconds: 60,
-	}
-	targetOutbox := buildJobResultOutbox(targetPayload, config.JobResultOutboxStateResultPending)
-	siblingOutbox := buildJobResultOutbox(siblingPayload, config.JobResultOutboxStateResultPending)
-	require.NoError(t, store.Add(context.Background(), targetOutbox))
-	require.NoError(t, store.Add(context.Background(), siblingOutbox))
-
-	require.NoError(t, dispatcher.dispatchPendingOutbox(context.Background(), targetOutbox))
-
-	refreshedTarget, err := getJobResultOutboxByID(context.Background(), store, targetOutbox.ID)
-	require.NoError(t, err)
-	require.Equal(t, config.JobResultOutboxStateResultQueued, refreshedTarget.State)
-	require.Equal(t, "result-7", refreshedTarget.MessageID)
-
-	refreshedSibling, err := getJobResultOutboxByID(context.Background(), store, siblingOutbox.ID)
-	require.NoError(t, err)
-	require.Equal(t, config.JobResultOutboxStateResultPending, refreshedSibling.State)
-}
-
-func TestResultOutboxDispatcherReturnsToPendingWhenEnqueueFails(t *testing.T) {
-	store := newResultOutboxTestStore()
-	queue := &enqueueCaptureQueue{enqueueErr: errors.New("queue down")}
-	dispatcher := NewResultOutboxDispatcher(queue, store)
-
-	payload := &JobResultPayload{
-		TaskID:         "task-delay-enqueue-fail",
-		ExecutionKey:   "execution-delay-enqueue-fail",
-		RunGeneration:  1,
-		JobType:        string(config.JobDeployScheduled),
-		Namespace:      "default",
-		Name:           "delay-job-enqueue-fail",
-		ServiceName:    "svc-a",
-		TimeoutSeconds: 60,
-	}
-	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultPending)
-	require.NoError(t, store.Add(context.Background(), outbox))
-	require.NoError(t, store.Add(context.Background(), &model.JobInfo{
-		ID:          3,
-		TaskID:      payload.TaskID,
-		Type:        payload.JobType,
-		ServiceName: payload.ServiceName,
-		Status:      string(config.StatusWaiting),
-	}))
-
-	require.NoError(t, dispatcher.dispatchPendingOutbox(context.Background(), outbox))
-
-	refreshed, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
-	require.NoError(t, err)
-	require.Equal(t, config.JobResultOutboxStateResultPending, refreshed.State)
-	require.Equal(t, 1, refreshed.Attempts)
-	require.Contains(t, refreshed.LastError, "result enqueue failed")
-	require.Contains(t, refreshed.LastError, "queue down")
-	require.Equal(t, "", refreshed.MessageID)
-
-	jobInfo := store.jobInfoByTaskID(payload.TaskID)
-	require.NotNil(t, jobInfo)
-	require.Equal(t, string(config.StatusWaiting), jobInfo.Status)
-}
-
-func TestResultOutboxDispatcherLeavesDispatchingWhenPendingRequeueClaimLost(t *testing.T) {
-	store := newResultOutboxTestStore()
-	queue := &enqueueCaptureQueue{enqueueErr: errors.New("queue down")}
-	dispatcher := NewResultOutboxDispatcher(queue, store)
-
-	payload := &JobResultPayload{
-		TaskID:         "task-delay-requeue-cas-lost",
-		ExecutionKey:   "execution-delay-requeue-cas-lost",
-		RunGeneration:  1,
-		JobType:        string(config.JobDeployScheduled),
-		Namespace:      "default",
-		Name:           "delay-job-requeue-cas-lost",
-		ServiceName:    "svc-a",
-		TimeoutSeconds: 60,
-	}
-	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultPending)
-	require.NoError(t, store.Add(context.Background(), outbox))
-	store.rejectNextTransition(config.JobResultOutboxStateResultDispatching, config.JobResultOutboxStateResultPending)
-
-	require.NoError(t, dispatcher.dispatchPendingOutbox(context.Background(), outbox))
-
-	refreshed, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
-	require.NoError(t, err)
-	require.Equal(t, config.JobResultOutboxStateResultDispatching, refreshed.State)
-	require.Equal(t, 0, refreshed.Attempts)
-}
-
-func TestResultOutboxDispatcherRecoversExpiredProcessingAcrossBatches(t *testing.T) {
-	store := newResultOutboxTestStore()
-	dispatcher := NewResultOutboxDispatcher(&enqueueCaptureQueue{}, store)
-	dispatcher.batchSize = 2
+	dispatcher := NewResultDispatcher(nil, store)
+	dispatcher.recoveryBatchSize = 2
 
 	for i := 0; i < 3; i++ {
 		payload := &JobResultPayload{
@@ -1503,86 +1287,28 @@ func TestResultOutboxDispatcherRecoversExpiredProcessingAcrossBatches(t *testing
 			ServiceName:    "svc-a",
 			TimeoutSeconds: 60,
 		}
-		outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultProcessingQueue)
+		outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultProcessing)
 		expired := time.Now().Add(-time.Minute)
 		outbox.LeaseExpiresAt = &expired
 		require.NoError(t, store.Add(context.Background(), outbox))
 	}
 
 	for i := 0; i < 2; i++ {
-		require.NoError(t, dispatcher.recoverResultOutboxes(context.Background(), []config.JobResultOutboxState{config.JobResultOutboxStateResultProcessingQueue}))
+		require.NoError(t, dispatcher.recoverResultOutboxes(context.Background()))
 	}
 
 	pending, err := listJobResultOutboxesByStates(context.Background(), store, []config.JobResultOutboxState{config.JobResultOutboxStateResultPending}, 10)
 	require.NoError(t, err)
 	require.Len(t, pending, 3)
 
-	processing, err := listJobResultOutboxesByStates(context.Background(), store, []config.JobResultOutboxState{config.JobResultOutboxStateResultProcessingQueue}, 10)
+	processing, err := listJobResultOutboxesByStates(context.Background(), store, []config.JobResultOutboxState{config.JobResultOutboxStateResultProcessing}, 10)
 	require.NoError(t, err)
 	require.Empty(t, processing)
 }
 
-func TestResultOutboxDispatcherRecoversStaleDispatchingOutbox(t *testing.T) {
+func TestResultDispatcherRecoversStaleProcessingOutbox(t *testing.T) {
 	store := newResultOutboxTestStore()
-	dispatcher := NewResultOutboxDispatcher(&enqueueCaptureQueue{}, store)
-
-	payload := &JobResultPayload{
-		TaskID:         "task-dispatching-stale",
-		ExecutionKey:   "execution-dispatching-stale",
-		RunGeneration:  1,
-		JobType:        string(config.JobDeployScheduled),
-		Namespace:      "default",
-		Name:           "delay-job-dispatching-stale",
-		ServiceName:    "svc-a",
-		TimeoutSeconds: 60,
-	}
-	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultDispatching)
-	outbox.CreateTime = time.Now().Add(-2 * time.Minute)
-	outbox.UpdateTime = time.Now().Add(-time.Minute)
-	expired := time.Now().Add(-time.Minute)
-	outbox.LeaseExpiresAt = &expired
-	require.NoError(t, store.Add(context.Background(), outbox))
-
-	require.NoError(t, dispatcher.recoverResultOutboxes(context.Background(), []config.JobResultOutboxState{config.JobResultOutboxStateResultDispatching}))
-
-	refreshed, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
-	require.NoError(t, err)
-	require.Equal(t, config.JobResultOutboxStateResultPending, refreshed.State)
-	require.Equal(t, 1, refreshed.Attempts)
-	require.Contains(t, refreshed.LastError, "exceeded recovery grace")
-}
-
-func TestResultOutboxDispatcherKeepsFreshDispatchingOutbox(t *testing.T) {
-	store := newResultOutboxTestStore()
-	dispatcher := NewResultOutboxDispatcher(&enqueueCaptureQueue{}, store)
-
-	payload := &JobResultPayload{
-		TaskID:         "task-dispatching-fresh",
-		ExecutionKey:   "execution-dispatching-fresh",
-		RunGeneration:  1,
-		JobType:        string(config.JobDeployScheduled),
-		Namespace:      "default",
-		Name:           "delay-job-dispatching-fresh",
-		ServiceName:    "svc-a",
-		TimeoutSeconds: 60,
-	}
-	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultDispatching)
-	deadline := time.Now().Add(time.Minute)
-	outbox.LeaseExpiresAt = &deadline
-	require.NoError(t, store.Add(context.Background(), outbox))
-
-	require.NoError(t, dispatcher.recoverResultOutboxes(context.Background(), []config.JobResultOutboxState{config.JobResultOutboxStateResultDispatching}))
-
-	refreshed, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
-	require.NoError(t, err)
-	require.Equal(t, config.JobResultOutboxStateResultDispatching, refreshed.State)
-	require.Equal(t, 0, refreshed.Attempts)
-	require.Equal(t, "", refreshed.LastError)
-}
-
-func TestResultOutboxDispatcherRecoversStaleQueueProcessingOutbox(t *testing.T) {
-	store := newResultOutboxTestStore()
-	dispatcher := NewResultOutboxDispatcher(&enqueueCaptureQueue{}, store)
+	dispatcher := NewResultDispatcher(nil, store)
 	dispatcher.pollInterval = 5 * time.Millisecond
 
 	payload := &JobResultPayload{
@@ -1595,25 +1321,25 @@ func TestResultOutboxDispatcherRecoversStaleQueueProcessingOutbox(t *testing.T) 
 		ServiceName:    "svc-a",
 		TimeoutSeconds: 1,
 	}
-	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultProcessingQueue)
+	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultProcessing)
 	outbox.CreateTime = time.Now().Add(-2 * time.Minute)
 	outbox.UpdateTime = time.Now().Add(-2 * time.Minute)
 	expired := time.Now().Add(-time.Minute)
 	outbox.LeaseExpiresAt = &expired
 	require.NoError(t, store.Add(context.Background(), outbox))
 
-	require.NoError(t, dispatcher.recoverResultOutboxes(context.Background(), []config.JobResultOutboxState{config.JobResultOutboxStateResultProcessingQueue}))
+	require.NoError(t, dispatcher.recoverResultOutboxes(context.Background()))
 
 	refreshed, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
 	require.NoError(t, err)
 	require.Equal(t, config.JobResultOutboxStateResultPending, refreshed.State)
 	require.Equal(t, 1, refreshed.Attempts)
-	require.Contains(t, refreshed.LastError, "exceeded recovery grace")
+	require.Contains(t, refreshed.LastError, "lease expired")
 }
 
-func TestResultOutboxDispatcherKeepsFreshQueueProcessingOutbox(t *testing.T) {
+func TestResultDispatcherKeepsFreshProcessingOutbox(t *testing.T) {
 	store := newResultOutboxTestStore()
-	dispatcher := NewResultOutboxDispatcher(&enqueueCaptureQueue{}, store)
+	dispatcher := NewResultDispatcher(nil, store)
 	dispatcher.pollInterval = 5 * time.Millisecond
 
 	payload := &JobResultPayload{
@@ -1626,16 +1352,16 @@ func TestResultOutboxDispatcherKeepsFreshQueueProcessingOutbox(t *testing.T) {
 		ServiceName:    "svc-a",
 		TimeoutSeconds: 60,
 	}
-	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultProcessingQueue)
+	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultProcessing)
 	deadline := time.Now().Add(time.Minute)
 	outbox.LeaseExpiresAt = &deadline
 	require.NoError(t, store.Add(context.Background(), outbox))
 
-	require.NoError(t, dispatcher.recoverResultOutboxes(context.Background(), []config.JobResultOutboxState{config.JobResultOutboxStateResultProcessingQueue}))
+	require.NoError(t, dispatcher.recoverResultOutboxes(context.Background()))
 
 	refreshed, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
 	require.NoError(t, err)
-	require.Equal(t, config.JobResultOutboxStateResultProcessingQueue, refreshed.State)
+	require.Equal(t, config.JobResultOutboxStateResultProcessing, refreshed.State)
 	require.Equal(t, 0, refreshed.Attempts)
 	require.Equal(t, "", refreshed.LastError)
 }
