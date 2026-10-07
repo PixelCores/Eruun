@@ -105,7 +105,7 @@ func (s *restServer) startWorkers(ctx context.Context, errChan chan error) {
 		s.workersMu.Unlock()
 		return
 	}
-	if s.workersStarted {
+	if s.workersRun != nil {
 		s.workersMu.Unlock()
 		return
 	}
@@ -127,9 +127,7 @@ func (s *restServer) startWorkers(ctx context.Context, errChan chan error) {
 		}
 		workers = append(workers, worker)
 	}
-	s.workersStarted = true
 	s.workersReady = false
-	s.workersCancel = run.cancel
 	s.workersRun = run
 	readyWorkers := 0
 	for _, worker := range workers {
@@ -152,7 +150,7 @@ func (s *restServer) startWorkers(ctx context.Context, errChan chan error) {
 				readyOnce.Do(func() {
 					s.workersMu.Lock()
 					defer s.workersMu.Unlock()
-					if !active || s.workersRun != run || !s.workersStarted {
+					if !active || s.workersRun != run {
 						return
 					}
 					readyWorkers++
@@ -178,9 +176,7 @@ func (s *restServer) observeWorkerRun(run *workerRun) {
 	if s.workersRun != run {
 		return
 	}
-	s.workersStarted = false
 	s.workersReady = false
-	s.workersCancel = nil
 	s.workersRun = nil
 }
 
@@ -189,30 +185,21 @@ func (s *restServer) stopWorkers(ctx context.Context) {
 		panic("stop workers: nil context")
 	}
 	s.workersMu.Lock()
-	if !s.workersStarted {
+	run := s.workersRun
+	if run == nil {
 		s.workersMu.Unlock()
 		return
 	}
-	run := s.workersRun
-	cancel := s.workersCancel
-	s.workersStarted = false
 	s.workersReady = false
-	s.workersCancel = nil
 	s.workersRun = nil
 	s.workersMu.Unlock()
-	if run != nil {
-		run.stop()
-		if run.waitUntil(ctx) {
-			run.stopExecution()
-			return
-		}
+	run.stop()
+	if run.waitUntil(ctx) {
 		run.stopExecution()
-		s.trackDrainingWorkerRun(run)
 		return
 	}
-	if cancel != nil {
-		cancel()
-	}
+	run.stopExecution()
+	s.trackDrainingWorkerRun(run)
 }
 
 func (s *restServer) trackDrainingWorkerRun(run *workerRun) {
@@ -332,7 +319,6 @@ func (s *restServer) beginControllerRun(ctx context.Context) *workerRun {
 }
 
 func (s *restServer) stopControllerRun() {
-	s.controllerReady.Store(false)
 	s.workersMu.Lock()
 	run := s.controllerRun
 	s.controllerRun = nil
@@ -365,7 +351,6 @@ func (s *restServer) beginSchedulerRun(ctx context.Context) *workerRun {
 }
 
 func (s *restServer) stopSchedulerRun() {
-	s.schedulerReady.Store(false)
 	s.workersMu.Lock()
 	run := s.schedulerRun
 	s.schedulerRun = nil
@@ -376,14 +361,13 @@ func (s *restServer) stopSchedulerRun() {
 	}
 }
 
-func (s *restServer) onStartedControllerLeading(ctx context.Context, errChan chan error) {
-	s.controllerReady.Store(false)
+func (s *restServer) onStartedControllerLeading(ctx context.Context, errChan chan error) bool {
 	run := s.beginControllerRun(ctx)
 	if s.InformerManager != nil {
 		if err := s.InformerManager.Start(run.ctx); err != nil {
 			reportWorkerStartupError(run.ctx, errChan, reportableInformerStartError(run.ctx, err))
 			run.markStarted()
-			return
+			return false
 		}
 	}
 	s.startControllerEventWorkers(run, errChan)
@@ -395,18 +379,17 @@ func (s *restServer) onStartedControllerLeading(ctx context.Context, errChan cha
 		run.start(coordinator.Run)
 	}
 	run.markStarted()
-	s.controllerReady.Store(true)
+	return true
 }
 
-func (s *restServer) onStartedSchedulerLeading(ctx context.Context, errChan chan error) {
-	s.schedulerReady.Store(false)
+func (s *restServer) onStartedSchedulerLeading(ctx context.Context, errChan chan error) bool {
 	run := s.beginSchedulerRun(ctx)
 	if err := s.ensureQueueGroup(run.ctx); err != nil {
 		if run.ctx.Err() == nil {
 			reportWorkerStartupError(run.ctx, errChan, fmt.Errorf("ensure queue group %s: %w", config.WorkflowWorkerQueueGroup, err))
 		}
 		run.markStarted()
-		return
+		return false
 	}
 	workerCount, startupResults := s.startSchedulerEventWorkers(run, errChan)
 	run.start(s.runQueueMetrics)
@@ -415,13 +398,13 @@ func (s *restServer) onStartedSchedulerLeading(ctx context.Context, errChan chan
 		select {
 		case ready := <-startupResults:
 			if !ready {
-				return
+				return false
 			}
 		case <-run.ctx.Done():
-			return
+			return false
 		}
 	}
-	s.schedulerReady.Store(true)
+	return true
 }
 
 func (s *restServer) runQueueMetrics(ctx context.Context) {

@@ -239,127 +239,65 @@ func TestSaveJobInfoUsesWorkflowOwnershipFence(t *testing.T) {
 	})
 }
 
-func TestUpdateJobInfoStatusUsesExecutionOwnershipFence(t *testing.T) {
-	current := &model.WorkflowQueue{
-		TaskID:        "task-result",
-		Status:        config.StatusRunning,
-		RunGeneration: 2,
-		RunToken:      "token-2",
-		WorkerID:      "worker-b",
+func TestUpdateJobInfoStatusUsesResultOutboxFence(t *testing.T) {
+	for _, claimState := range []string{"current", "stale token", "expired lease", "missing lease", "missing claim"} {
+		t.Run(claimState, func(t *testing.T) {
+			ctx := context.Background()
+			store := &resultLeaseClockStore{resultOutboxTestStore: newResultOutboxTestStore(), now: time.Now().UTC()}
+			payload := &JobResultPayload{TaskID: "task-result", Name: "job-svc-a", Namespace: "default", JobType: string(config.JobDeployScheduled), ServiceName: "svc-a", ExecutionKey: "execution-current", RunGeneration: 2}
+			for id := 1; id <= 3; id++ {
+				record := testResultJobInfo(id, payload)
+				record.Status = string(config.StatusDistributed)
+				if id == 1 {
+					record.RunGeneration = 1
+				} else if id == 2 {
+					otherKey := "execution-other"
+					record.ExecutionKey = &otherKey
+				}
+				require.NoError(t, store.Add(ctx, record))
+			}
+			outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
+			outbox.MessageID = "delivery"
+			require.NoError(t, store.Add(ctx, outbox))
+			claimed, err := claimResultOutbox(ctx, store, outbox, "delivery")
+			require.NoError(t, err)
+			require.True(t, claimed)
+			switch claimState {
+			case "stale token":
+				outbox.MessageID = "stale-processing-owner"
+			case "expired lease":
+				store.now = outbox.LeaseExpiresAt.Add(time.Second)
+			case "missing lease":
+				outbox.LeaseExpiresAt = nil
+				require.NoError(t, store.Put(ctx, outbox))
+			case "missing claim":
+				outbox = nil
+			}
+			called := false
+			err = withResultOutboxOwnership(ctx, store, outbox, func(tx datastore.DataStore, _ *model.JobResultOutbox) error {
+				called = true
+				return updateJobInfoStatus(ctx, tx, payload, config.StatusCompleted, "", 0, 1, "logs")
+			})
+			if claimState == "current" {
+				require.NoError(t, err, "result ownership survives the parent Workflow finishing")
+				require.True(t, called)
+			} else {
+				require.ErrorIs(t, err, errResultOutboxOwnershipLost)
+				require.False(t, called)
+			}
+			for id := 1; id <= 3; id++ {
+				record := &model.JobInfo{ID: id}
+				require.NoError(t, store.Get(ctx, record))
+				if claimState == "current" && id == 3 {
+					require.Equal(t, string(config.StatusCompleted), record.Status)
+					require.Equal(t, "logs", record.Info)
+				} else {
+					require.Equal(t, string(config.StatusDistributed), record.Status)
+					require.Empty(t, record.Info)
+				}
+			}
+		})
 	}
-	oldExecutionKey := "execution-1"
-	currentExecutionKey := "execution-2"
-	jobInfos := func() []datastore.Entity {
-		return []datastore.Entity{
-			&model.JobInfo{
-				ID:            1,
-				TaskID:        current.TaskID,
-				Type:          string(config.JobDeployScheduled),
-				ServiceName:   "svc-a",
-				Status:        string(config.StatusWaiting),
-				ExecutionKey:  &oldExecutionKey,
-				RunGeneration: 1,
-			},
-			&model.JobInfo{
-				ID:            2,
-				TaskID:        current.TaskID,
-				Type:          string(config.JobDeployScheduled),
-				ServiceName:   "svc-a",
-				Status:        string(config.StatusWaiting),
-				ExecutionKey:  &currentExecutionKey,
-				RunGeneration: current.RunGeneration,
-			},
-		}
-	}
-
-	t.Run("stale generation cannot update", func(t *testing.T) {
-		store := &workflowOwnedJobInfoStore{workflowTask: current, jobInfos: jobInfos()}
-		payload := &JobResultPayload{
-			TaskID:        current.TaskID,
-			Name:          "job-svc-a",
-			Namespace:     "default",
-			JobType:       string(config.JobDeployScheduled),
-			ServiceName:   "svc-a",
-			ExecutionKey:  oldExecutionKey,
-			RunGeneration: 1,
-			RunToken:      "token-1",
-			WorkerID:      "worker-a",
-		}
-
-		err := updateJobInfoStatus(context.Background(), store, payload, config.StatusCompleted, "", 0, 1, "")
-
-		require.ErrorIs(t, err, errResultDispatchNoRetry)
-		require.ErrorIs(t, err, repository.ErrWorkflowOwnershipLost)
-		require.Nil(t, store.putJobInfo)
-		require.Equal(t, 1, store.transactionCalls)
-	})
-
-	t.Run("current generation updates exact job info", func(t *testing.T) {
-		store := &workflowOwnedJobInfoStore{workflowTask: current, jobInfos: jobInfos()}
-		payload := &JobResultPayload{
-			TaskID:        current.TaskID,
-			Name:          "job-svc-a",
-			Namespace:     "default",
-			JobType:       string(config.JobDeployScheduled),
-			ServiceName:   "svc-a",
-			ExecutionKey:  currentExecutionKey,
-			RunGeneration: current.RunGeneration,
-			RunToken:      current.RunToken,
-			WorkerID:      current.WorkerID,
-		}
-
-		err := updateJobInfoStatus(context.Background(), store, payload, config.StatusCompleted, "", 0, 1, "")
-
-		require.NoError(t, err)
-		require.NotNil(t, store.putJobInfo)
-		require.Equal(t, 2, store.putJobInfo.ID)
-		require.Equal(t, current.RunGeneration, store.putJobInfo.RunGeneration)
-		require.Equal(t, string(config.StatusCompleted), store.putJobInfo.Status)
-		require.Equal(t, 1, store.transactionCalls)
-	})
-}
-
-func TestUpdateJobInfoStatusUsesLegacyExecutionKeyWithoutFencing(t *testing.T) {
-	otherKey := "execution-other"
-	expectedKey := "execution-legacy"
-	store := &workflowOwnedJobInfoStore{jobInfos: []datastore.Entity{
-		&model.JobInfo{
-			ID:            1,
-			TaskID:        "task-legacy",
-			Type:          string(config.JobDeployScheduled),
-			ServiceName:   "svc-a",
-			Status:        string(config.StatusDistributed),
-			ExecutionKey:  &otherKey,
-			RunGeneration: 1,
-		},
-		&model.JobInfo{
-			ID:            2,
-			TaskID:        "task-legacy",
-			Type:          string(config.JobDeployScheduled),
-			ServiceName:   "svc-a",
-			Status:        string(config.StatusDistributed),
-			ExecutionKey:  &expectedKey,
-			RunGeneration: 1,
-		},
-	}}
-	payload := &JobResultPayload{
-		TaskID:        "task-legacy",
-		Name:          "job-svc-a",
-		Namespace:     "default",
-		JobType:       string(config.JobDeployScheduled),
-		ServiceName:   "svc-a",
-		ExecutionKey:  expectedKey,
-		RunGeneration: 1,
-	}
-
-	err := updateJobInfoStatus(context.Background(), store, payload, config.StatusCompleted, "", 0, 1, "logs")
-
-	require.NoError(t, err)
-	require.NotNil(t, store.putJobInfo)
-	require.Equal(t, 2, store.putJobInfo.ID)
-	require.Equal(t, string(config.StatusCompleted), store.putJobInfo.Status)
-	require.Equal(t, "logs", store.putJobInfo.Info)
-	require.Zero(t, store.transactionCalls)
 }
 
 type recordingTerminalJobCtl struct {

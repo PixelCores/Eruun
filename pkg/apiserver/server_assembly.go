@@ -282,9 +282,6 @@ func (s *restServer) ensureKafkaMessagingReady() error {
 		return nil
 	}
 	topics := s.cfg.RuntimeMessagingTopics()
-	if len(topics) == 0 {
-		return nil
-	}
 
 	err := ensureKafkaMessaging(clients.KafkaConfig{
 		Brokers:                s.cfg.Messaging.KafkaBrokers,

@@ -1,7 +1,6 @@
 package job
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -382,20 +381,17 @@ func (d *DelayDispatcher) decodePayload(raw []byte) (*DelayJobPayload, error) {
 
 func (d *DelayDispatcher) decodeNotification(raw []byte) (*DelayJobPayload, error) {
 	var envelope struct {
-		Version *int            `json:"version"`
+		Version int             `json:"version"`
 		Job     json.RawMessage `json:"job"`
 	}
 	if err := json.Unmarshal(raw, &envelope); err != nil {
 		return nil, err
 	}
-	if envelope.Version == nil {
-		return d.decodePayload(raw)
-	}
-	if *envelope.Version != delayJobNotificationVersion {
-		return nil, fmt.Errorf("unsupported delay notification version %d", *envelope.Version)
+	if envelope.Version != delayJobNotificationVersion {
+		return nil, fmt.Errorf("unsupported delay notification version %d", envelope.Version)
 	}
 	if len(envelope.Job) != 0 {
-		return nil, fmt.Errorf("version %d delay notification includes a workload", *envelope.Version)
+		return nil, fmt.Errorf("version %d delay notification includes a workload", envelope.Version)
 	}
 	var payload DelayJobPayload
 	if err := json.Unmarshal(raw, &payload); err != nil {
@@ -578,11 +574,6 @@ func (d *DelayDispatcher) dispatch(ctx context.Context, item *delayItem) error {
 		return err
 	}
 	ctx = access.WithScope(ctx, access.ForWorkspace(space))
-	if checkpoint.WorkspaceID == "" {
-		if err := d.backfillDelayCheckpointWorkspace(ctx, checkpoint, space.ID); err != nil {
-			return err
-		}
-	}
 	scopedItem := *item
 	scopedItem.payload = &payload
 	return d.dispatchJob(ctx, &scopedItem, client)
@@ -610,7 +601,7 @@ func (d *DelayDispatcher) checkpointWorkspace(ctx context.Context, checkpoint *m
 		return nil, nil, fmt.Errorf("load delayed workspace: %w", err)
 	}
 	if space.Namespace == "" || app.Namespace != space.Namespace || payload.Namespace != space.Namespace ||
-		(checkpoint.WorkspaceID != "" && checkpoint.WorkspaceID != space.ID) {
+		checkpoint.WorkspaceID != space.ID {
 		return nil, nil, d.rejectCheckpoint(ctx, checkpoint, bcode.ErrForbidden)
 	}
 	return app, space, nil
@@ -621,49 +612,10 @@ func (d *DelayDispatcher) validateCheckpointNotification(checkpoint *model.JobIn
 	if err != nil {
 		return nil, fmt.Errorf("decode committed delayed workload: %w", err)
 	}
-	if payload.Job == nil {
-		if notificationForDelayJob(committed) != notificationForDelayJob(payload) {
-			return nil, fmt.Errorf("%w: notification differs from delayed checkpoint", errDelayDispatchNoRetry)
-		}
-		return committed, nil
-	}
-	expected, err := json.Marshal(committed)
-	if err != nil {
-		return nil, fmt.Errorf("encode committed delayed workload: %w", err)
-	}
-	actual, err := json.Marshal(payload)
-	if err != nil || !bytes.Equal(expected, actual) {
+	if notificationForDelayJob(committed) != notificationForDelayJob(payload) {
 		return nil, fmt.Errorf("%w: notification differs from delayed checkpoint", errDelayDispatchNoRetry)
 	}
 	return committed, nil
-}
-
-// Older application Jobs did not store workspace_id. Backfill only after the
-// committed payload, application, namespace owner and tenant client are checked.
-func (d *DelayDispatcher) backfillDelayCheckpointWorkspace(ctx context.Context, checkpoint *model.JobInfo, workspaceID string) error {
-	conditional, ok := d.store.(datastore.ConditionalCompareAndSwap)
-	if !ok {
-		return fmt.Errorf("backfill delayed workspace: conditional updates are required")
-	}
-	conditions := map[string]interface{}{
-		"app_id": checkpoint.AppID, "execution_key": jobInfoExecutionKey(*checkpoint),
-		"run_generation": checkpoint.RunGeneration, "status": string(config.StatusDistributed),
-		"delay_state": string(config.JobDelayStatePending), "delay_payload": checkpoint.DelayPayload,
-	}
-	// The existing nullable column can contain either an empty string or NULL.
-	// Neither predicate can replace a concurrently assigned workspace identity.
-	for _, empty := range []interface{}{"", nil} {
-		conditions["workspace_id"] = empty
-		updated, err := conditional.CompareAndSwapWithConditions(ctx, checkpoint, conditions, map[string]interface{}{"workspace_id": workspaceID})
-		if err != nil {
-			return fmt.Errorf("backfill delayed workspace: %w", err)
-		}
-		if updated {
-			checkpoint.WorkspaceID = workspaceID
-			return nil
-		}
-	}
-	return fmt.Errorf("backfill delayed workspace: %w", repository.ErrWorkflowOwnershipLost)
 }
 
 // Only a matching, still-pending committed execution can be failed. Persistence
@@ -1002,8 +954,7 @@ func (d *DelayDispatcher) resumeDelayedResultOutbox(ctx context.Context, outbox 
 	case config.JobResultOutboxStateResultPending,
 		config.JobResultOutboxStateResultDispatching,
 		config.JobResultOutboxStateResultQueued,
-		config.JobResultOutboxStateResultProcessingQueue,
-		config.JobResultOutboxStateResultProcessingLocal:
+		config.JobResultOutboxStateResultProcessingQueue:
 		return nil
 	case config.JobResultOutboxStateFailed:
 		message := strings.TrimSpace(outbox.LastError)

@@ -386,7 +386,7 @@ func (w *Workflow) startResultOutboxDispatcher(ctx context.Context, wg *sync.Wai
 	if w.ResultQueue == nil {
 		return
 	}
-	dispatcher := job.NewResultOutboxDispatcher(w.ResultQueue, w.KubeClient, w.Store)
+	dispatcher := job.NewResultOutboxDispatcher(w.ResultQueue, w.Store)
 	if wg == nil {
 		dispatcher.Start(ctx)
 		return

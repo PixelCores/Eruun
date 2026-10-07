@@ -21,7 +21,6 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -44,8 +43,6 @@ type JobResultPayload struct {
 	Name           string `json:"name"`
 	ServiceName    string `json:"serviceName,omitempty"`
 	TimeoutSeconds int64  `json:"timeoutSeconds,omitempty"`
-	RunToken       string `json:"runToken,omitempty"`
-	WorkerID       string `json:"workerId,omitempty"`
 }
 
 type ResultDispatcher struct {
@@ -266,22 +263,7 @@ func (d *ResultDispatcher) handleMessage(ctx context.Context, message msg.Messag
 		klog.ErrorS(err, "result dispatcher decode payload failed", "msgID", message.ID)
 		return d.ackMessage(ctx, message.ID, "decode_payload_failed") == nil
 	}
-	if payload.Name == "" || payload.TaskID == "" {
-		klog.ErrorS(fmt.Errorf("task or name is empty"), "result dispatcher payload missing task or name", "msgID", message.ID, "taskID", payload.TaskID, "name", payload.Name)
-		return d.ackMessage(ctx, message.ID, "missing_task_or_name") == nil
-	}
-	if payload.OutboxID != "" {
-		return d.handleOutboxMessage(ctx, message, payload)
-	}
-	if err := processJobResult(ctx, d.client, d.store, payload); err != nil {
-		if errors.Is(err, errResultDispatchNoRetry) {
-			klog.ErrorS(err, "result dispatcher process failed without retry", "msgID", message.ID, "taskID", payload.TaskID, "name", payload.Name)
-			return d.ackMessage(ctx, message.ID, "no_retry_process_error") == nil
-		}
-		klog.ErrorS(err, "result dispatcher process failed", "msgID", message.ID, "taskID", payload.TaskID, "name", payload.Name)
-		return false
-	}
-	return d.ackMessage(ctx, message.ID, "processed") == nil
+	return d.handleOutboxMessage(ctx, message, payload)
 }
 
 func (d *ResultDispatcher) handleOutboxMessage(ctx context.Context, message msg.Message, payload *JobResultPayload) bool {
@@ -344,7 +326,7 @@ func (d *ResultDispatcher) handleOutboxMessage(ctx context.Context, message msg.
 
 func claimResultOutbox(ctx context.Context, store datastore.DataStore, outbox *model.JobResultOutbox, messageID string) (bool, error) {
 	for attempt := 0; attempt < 2; attempt++ {
-		conditions := map[string]interface{}{"state": string(outbox.State), "message_id": outbox.MessageID}
+		conditions := map[string]interface{}{"state": string(outbox.State), "message_id": outbox.MessageID, "lease_expires_at": outbox.LeaseExpiresAt}
 		switch outbox.State {
 		case config.JobResultOutboxStateResultQueued:
 			if outbox.MessageID != strings.TrimSpace(messageID) {
@@ -354,6 +336,9 @@ func claimResultOutbox(ctx context.Context, store datastore.DataStore, outbox *m
 			// Enqueue may deliver before the producer persists its broker ID.
 		default:
 			return false, nil
+		}
+		if outbox.LeaseExpiresAt == nil {
+			return false, fmt.Errorf("active result outbox has no lease: %s", outbox.ID)
 		}
 		now, err := resultOutboxDatabaseTime(ctx, store)
 		if err != nil {
@@ -426,6 +411,9 @@ func decodeResultPayload(raw []byte) (*JobResultPayload, error) {
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return nil, err
 	}
+	if strings.TrimSpace(payload.OutboxID) == "" {
+		return nil, fmt.Errorf("result payload outbox ID is required")
+	}
 	if err := validateJobResultPayload(&payload); err != nil {
 		return nil, err
 	}
@@ -467,12 +455,8 @@ func validateJobResultPayload(payload *JobResultPayload) error {
 	return nil
 }
 
-func processJobResult(ctx context.Context, client kubernetes.Interface, store datastore.DataStore, payload *JobResultPayload) error {
-	return processJobResultWithOutbox(ctx, client, store, payload, nil)
-}
-
 func processJobResultWithOutbox(ctx context.Context, client kubernetes.Interface, store datastore.DataStore, payload *JobResultPayload, outbox *model.JobResultOutbox) error {
-	if !isResultPayloadProcessable(payload) {
+	if !isResultPayloadProcessable(payload) || outbox == nil || strings.TrimSpace(outbox.ID) == "" {
 		return errResultDispatchNoRetry
 	}
 	if client == nil || store == nil {
@@ -495,7 +479,7 @@ func processJobResultWithOutbox(ctx context.Context, client kubernetes.Interface
 		if config.Status(record.Status) != config.StatusCompleted {
 			return nil
 		}
-		if outbox == nil || outbox.JobUID == "" {
+		if outbox.JobUID == "" {
 			// Old completed rows have no trustworthy cleanup identity. Do not bind
 			// them to whichever object now happens to have the same name.
 			klog.InfoS("keep completed result without recorded cleanup UID", "taskID", payload.TaskID, "name", payload.Name)
@@ -520,7 +504,7 @@ func processJobResultWithOutbox(ctx context.Context, client kubernetes.Interface
 	if err := bindResultOutboxJobUID(ctx, store, outbox, expectedUID); err != nil {
 		return err
 	}
-	if outbox != nil && outbox.JobUID != "" {
+	if outbox.JobUID != "" {
 		expectedUID = outbox.JobUID
 	}
 	matchesExpectedJob := func(jobObj *batchv1.Job) bool {
@@ -620,7 +604,7 @@ func processJobResultWithOutbox(ctx context.Context, client kubernetes.Interface
 
 // A Job's UID is recorded before waiting or removing its runtime evidence.
 func bindResultOutboxJobUID(ctx context.Context, store datastore.DataStore, outbox *model.JobResultOutbox, uid string) error {
-	if outbox == nil || uid == "" {
+	if uid == "" {
 		return nil
 	}
 	if outbox.JobUID != "" {
@@ -654,10 +638,8 @@ func cleanupPersistedResult(ctx context.Context, client kubernetes.Interface, st
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if outbox != nil {
-		if err := withResultOutboxOwnership(ctx, store, outbox, func(datastore.DataStore, *model.JobResultOutbox) error { return nil }); err != nil {
-			return err
-		}
+	if err := withResultOutboxOwnership(ctx, store, outbox, func(datastore.DataStore, *model.JobResultOutbox) error { return nil }); err != nil {
+		return err
 	}
 	if err := deleteCompletedJobAndPods(ctx, client, payload.Namespace, payload.Name, jobObj); err != nil {
 		return fmt.Errorf("clean committed result: %w", err)
@@ -754,53 +736,12 @@ func jobResultMatchesExecutionIdentity(payload *JobResultPayload, jobObj *batchv
 	return strings.TrimSpace(jobObj.Annotations[config.AnnotationJobRunGeneration]) == strconv.FormatUint(payload.RunGeneration, 10)
 }
 
+// The outbox lease excludes competing result consumers, but cancellation can
+// settle JobInfo independently. Preserve the first terminal result atomically.
 func updateJobInfoStatus(ctx context.Context, store datastore.DataStore, payload *JobResultPayload, status config.Status, message string, startTime, endTime int64, info string) error {
 	if store == nil || validateJobResultPayload(payload) != nil {
 		return errResultDispatchNoRetry
 	}
-	if hasResultPayloadFencingIdentity(payload) {
-		return updateFencedJobInfoStatus(ctx, store, payload, status, message, startTime, endTime, info)
-	}
-	return updateJobInfoStatusCAS(ctx, store, payload, status, message, startTime, endTime, info)
-}
-
-func hasResultPayloadFencingIdentity(payload *JobResultPayload) bool {
-	return payload != nil && (strings.TrimSpace(payload.RunToken) != "" || strings.TrimSpace(payload.WorkerID) != "")
-}
-
-func hasCompleteResultPayloadExecutionIdentity(payload *JobResultPayload) bool {
-	return payload != nil &&
-		payload.RunGeneration > 0 &&
-		strings.TrimSpace(payload.ExecutionKey) != "" &&
-		strings.TrimSpace(payload.RunToken) != "" &&
-		strings.TrimSpace(payload.WorkerID) != ""
-}
-
-func updateFencedJobInfoStatus(
-	ctx context.Context,
-	store datastore.DataStore,
-	payload *JobResultPayload,
-	status config.Status,
-	message string,
-	startTime, endTime int64,
-	info string,
-) error {
-	owner, err := resultPayloadJobTask(payload)
-	if err != nil {
-		return errors.Join(errResultDispatchNoRetry, err)
-	}
-	err = withJobInfoOwnership(ctx, store, owner, func(tx datastore.DataStore) error {
-		return updateJobInfoStatusCAS(ctx, tx, payload, status, message, startTime, endTime, info)
-	})
-	if errors.Is(err, repository.ErrWorkflowOwnershipLost) {
-		return errors.Join(errResultDispatchNoRetry, err)
-	}
-	return err
-}
-
-// The outbox lease excludes competing result consumers, but cancellation can
-// settle JobInfo independently. Preserve the first terminal result atomically.
-func updateJobInfoStatusCAS(ctx context.Context, store datastore.DataStore, payload *JobResultPayload, status config.Status, message string, startTime, endTime int64, info string) error {
 	conditionalStore, ok := store.(datastore.ConditionalCompareAndSwap)
 	if !ok {
 		return fmt.Errorf("update job info: datastore does not support conditional compare-and-swap")
@@ -849,23 +790,6 @@ func updateJobInfoStatusCAS(ctx context.Context, store datastore.DataStore, payl
 		}
 	}
 	return fmt.Errorf("update job info: concurrent execution state changes did not converge after %d attempts", jobInfoSaveMaxAttempts)
-}
-
-func resultPayloadJobTask(payload *JobResultPayload) (*model.JobTask, error) {
-	if payload == nil {
-		return nil, fmt.Errorf("result payload is nil")
-	}
-	if !hasCompleteResultPayloadExecutionIdentity(payload) {
-		return nil, fmt.Errorf("result payload execution identity is incomplete")
-	}
-	return &model.JobTask{
-		TaskID:        strings.TrimSpace(payload.TaskID),
-		JobType:       strings.TrimSpace(payload.JobType),
-		ExecutionKey:  strings.TrimSpace(payload.ExecutionKey),
-		RunGeneration: payload.RunGeneration,
-		RunToken:      strings.TrimSpace(payload.RunToken),
-		WorkerID:      strings.TrimSpace(payload.WorkerID),
-	}, nil
 }
 
 func findJobInfoForResult(ctx context.Context, store datastore.DataStore, payload *JobResultPayload) (*model.JobInfo, error) {

@@ -75,7 +75,7 @@ Cron schedule 按 `next_run, id` 稳定排序，在同一进程的后续轮询�
 
 `JobInfo`、延迟载荷、结果载荷和 result outbox 携带同一 generation-aware 执行身份。Kubernetes Job 同时写入执行身份 annotation。
 
-一次性延迟 Job 在发送队列通知前，先把完整载荷、到期时间和 `pending` 检查点写入 `JobInfo`。新队列通知使用 `version: 2`，只带 `executeAt`、`taskId`、`jobType`、`serviceName`、`executionKey`、`runGeneration` 和 `runToken`；Controller 读取数据库中的完整载荷，核对通知身份后执行。升级期间仍能读取未标版本、内嵌完整 Job 的旧通知，并继续比对完整载荷。Redis Stream 只负责降低到期发现延迟；Controller Leader 还会按 `(status, delay_state, delay_execute_at)` 索引轮询已到期检查点并直接恢复。因此 consumer group 被重建、Stream 被裁剪、Redis 暂时不可用或进程在写库后/入队前退出，都不会让已提交的延迟执行永久丢失。成功创建同身份 Kubernetes Job 并持久化 result outbox 后，检查点才变为 `dispatched`。
+一次性延迟 Job 在发送队列通知前，先把完整载荷、到期时间和 `pending` 检查点写入 `JobInfo`。新队列通知使用 `version: 2`，只带 `executeAt`、`taskId`、`jobType`、`serviceName`、`executionKey`、`runGeneration` 和 `runToken`；Controller 读取数据库中的完整载荷，核对通知身份后执行。未标版本、旧/未知版本或携带 `job` 字段的通知均作为无效消息确认并丢弃，不执行工作负载；已提交检查点仍由数据库恢复。检查点必须已保存与应用一致的 workspace 身份，不再推断或回填缺失身份；校验失败只对同一代次、仍待执行的记录写入失败，数据库写入失败则重试。Redis Stream 只负责降低到期发现延迟；Controller Leader 还会按 `(status, delay_state, delay_execute_at)` 索引轮询已到期检查点并直接恢复。因此 consumer group 被重建、Stream 被裁剪、Redis 暂时不可用或进程在写库后/入队前退出，都不会让已提交的延迟执行永久丢失。成功创建同身份 Kubernetes Job 并持久化 result outbox 后，检查点才变为 `dispatched`。
 
 数据库恢复每次轮询最多读取 100 条记录，按记录 ID 倒序推进游标，到末尾后重新扫描。持续重试、无效载荷或扫描期间记录状态变化不会阻塞后续到期任务；新到达的记录在下一轮扫描中纳入。队列通知按执行键去重，被去重的消息释放处理标记并保持未确认状态，允许 Kafka 再次认领并在执行完成后确认。
 
@@ -83,13 +83,13 @@ Harbor 恢复资格、恢复任务剩余预算、Job 恢复准入预检查及持
 
 结果处理只消费与当前 `JobInfo` 和 Kubernetes Job annotation 匹配的结果；旧 generation 的迟到结果不能覆盖当前执行。确定性资源名用于重试复用，执行身份用于区分不同 generation。
 
-结果通知也以数据库 outbox 为恢复来源。`result_dispatching_queue` 和 `result_queued` 有 60 秒补投宽限；消费者认领时写入独立 token 和 30 秒数据库租约，每 10 秒续期。到期回收必须同时匹配 state、token/消息 ID 和原租约，活跃消费者续期后旧扫描快照不能将其重新投递。重复通知不授予处理权限；旧 claim 不能再提交结果或删除 outbox。
+结果通知必须带 `outboxId`，只以数据库 outbox 为恢复来源；缺失 ID 的消息作为无效格式确认并丢弃，outbox 已完成并删除后的重复通知仍幂等确认。`result_dispatching_queue` 和 `result_queued` 有 60 秒补投宽限；消费者认领时写入独立 token 和 30 秒数据库租约，每 10 秒续期。到期回收必须同时匹配 state、token/消息 ID 和原租约，活跃消费者续期后旧扫描快照不能将其重新投递。重复通知不授予处理权限；旧 claim 不能再提交结果或删除 outbox。
 
 结果写入在检查 claim 的事务内通过状态、执行代次与 attempt 的 CAS 保存终态与日志；并发取消等已提交终态不会被覆盖，仅最终持久化为 Completed 才按已记录的 Job UID 清理 Kubernetes 对象。保存失败保留现场；清理失败保留 outbox 供重试；重放已完成记录只补清理，不重新等待已删除 Job。按名称读取日志后还需校验 Pod UID 与 Job owner；读取失败、身份变化或无法确认身份均保留现场等待重试。结果 ACK 在清理与 outbox 收敛后发生。数据库与 Kubernetes 之间仍没有跨系统原子事务。
 
 无需读取日志的例外是：Failed Pod 中的容器明确处于 Waiting、没有启动或重启记录，并经重新读取 Pod 确认相同 UID、owner 和状态；结果中记录该容器从未启动及 Pod 失败原因，避免旧失败尝试阻塞已成功 Job。缺少容器状态不视为从未启动。
 
-升级需通过现有 schema migration 增加 outbox 的 `lease_expires_at`、`job_uid` 列。旧空租约记录先登记宽限而不是立即接管；旧 processing 记录的宽限包含其完整 Job timeout、30 秒删除、30 秒处理及 5 秒保存余量。旧终态记录没有已保存 UID 时不自动删除同名对象。历史结果协议的完整防护需旧进程排空并升级后成立。既有 Deadline/RetryAt 原值保留，不追溯校正历史节点偏差。具体回归与未验证的集群故障边界见[分布式设计审核的修复处置](distributed-design-audit-2026-10-06.md#8-pr-139-修复处置与验证边界)。
+开发阶段只支持当前内部结果协议，不提供旧消息或旧处理状态的迁移路径。`result_pending` 的空租约合法；`result_dispatching_queue`、`result_queued` 和 `result_processing_queue` 缺少租约属于异常记录，恢复扫描以 CAS 将其标为 `failed` 并记录原因，保留记录供诊断，不推断宽限期、不重新执行。正常过期记录继续按原租约回收补投。终态记录没有已保存 UID 时仍不自动删除同名对象。数据库 schema 初始化与校验保留，既有 Deadline/RetryAt 原值不重写。精简范围和验证边界见[复杂度审核与处置](leader-worker-complexity-audit-2026-10-07.md)。
 
 ## 6. Informer 与 Worker
 

@@ -317,7 +317,7 @@ func TestResultDispatcherHandleMessageAcksStaleOutboxDuplicate(t *testing.T) {
 		ServiceName:    "svc-a",
 		TimeoutSeconds: 60,
 	}
-	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultQueued)
+	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
 	outbox.MessageID = "result-1"
 	require.NoError(t, store.Add(context.Background(), outbox))
 
@@ -379,7 +379,7 @@ func TestResultDispatcherHandleMessageLeavesActiveProcessingQueueMessage(t *test
 		ServiceName:    "svc-a",
 		TimeoutSeconds: 60,
 	}
-	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultProcessingQueue)
+	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultProcessingQueue)
 	outbox.MessageID = "result-5"
 	require.NoError(t, store.Add(context.Background(), outbox))
 	require.NoError(t, store.Add(context.Background(), testResultJobInfo(10, payload)))
@@ -443,7 +443,7 @@ func TestResultDispatcherHandleMessageProcessesDispatchingOutbox(t *testing.T) {
 		ServiceName:    "svc-a",
 		TimeoutSeconds: 60,
 	}
-	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultDispatching)
+	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultDispatching)
 	require.NoError(t, store.Add(context.Background(), outbox))
 	require.NoError(t, store.Add(context.Background(), testResultJobInfo(11, payload)))
 
@@ -506,7 +506,7 @@ func TestResultDispatcherHandleMessageDispatchingClaimLostToQueuedContinuesProce
 		ServiceName:    "svc-a",
 		TimeoutSeconds: 60,
 	}
-	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultDispatching)
+	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultDispatching)
 	store.raceOutboxID = outbox.ID
 	store.raceMessageID = "result-dispatching-race"
 	require.NoError(t, store.Add(context.Background(), outbox))
@@ -582,7 +582,7 @@ func TestResultDispatcherHandleMessageRefreshesPersistenceContextAfterLongProces
 		ServiceName:    "svc-a",
 		TimeoutSeconds: 60,
 	}
-	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultQueued)
+	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
 	outbox.MessageID = "result-persist-refresh"
 	require.NoError(t, store.Add(context.Background(), outbox))
 	require.NoError(t, store.Add(context.Background(), testResultJobInfo(13, payload)))

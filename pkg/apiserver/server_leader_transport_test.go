@@ -25,7 +25,12 @@ func serveLeaderTransportHTTP(t *testing.T, node *restServer, name string) *http
 	router.Use(node.leaderAPIMiddleware())
 	router.GET("/api/v1/ping", func(c *gin.Context) { c.String(http.StatusOK, name) })
 	router.GET("/api/v1/healthz", func(c *gin.Context) { c.String(http.StatusOK, "healthy") })
-	server := httptest.NewUnstartedServer(router)
+	return serveLeaderHTTPTestHandler(t, node, router)
+}
+
+func serveLeaderHTTPTestHandler(t *testing.T, node *restServer, handler http.Handler) *httptest.Server {
+	t.Helper()
+	server := httptest.NewUnstartedServer(handler)
 	server.Listener = &leaderListener{Listener: server.Listener, server: node}
 	server.Config.ConnContext = node.httpConnectionContext
 	server.Start()

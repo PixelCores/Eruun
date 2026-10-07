@@ -58,23 +58,90 @@ func completedResultFixture(t *testing.T) (*JobResultPayload, *batchv1.Job, *cor
 	return payload, live, pod, store
 }
 
+func buildLeasedTestResultOutbox(t *testing.T, store datastore.DataStore, payload *JobResultPayload, state config.JobResultOutboxState) *model.JobResultOutbox {
+	t.Helper()
+	outbox := buildJobResultOutbox(payload, state)
+	require.NotNil(t, outbox)
+	now, err := resultOutboxDatabaseTime(context.Background(), store)
+	require.NoError(t, err)
+	deadline := now.Add(resultOutboxDispatchGrace)
+	outbox.LeaseExpiresAt = &deadline
+	return outbox
+}
+
+// Result-processing tests use the same durable publish/claim contract as the
+// consumer. A repeated call continues the test owner's still-live claim.
+func processClaimedTestJobResult(t *testing.T, ctx context.Context, client kubernetes.Interface, store datastore.DataStore, payload *JobResultPayload) error {
+	t.Helper()
+	setupCtx := context.Background()
+	outbox, err := createJobResultOutbox(setupCtx, store, payload, config.JobResultOutboxStateResultPending)
+	require.NoError(t, err)
+	if outbox.State == config.JobResultOutboxStateResultPending {
+		publisher := NewResultOutboxDispatcher(&enqueueCaptureQueue{enqueueID: "test-delivery"}, store)
+		require.NoError(t, publisher.dispatchPendingOutbox(setupCtx, outbox))
+		claimed, err := claimResultOutbox(setupCtx, store, outbox, "test-delivery")
+		require.NoError(t, err)
+		require.True(t, claimed)
+	}
+	return processJobResultWithOutbox(ctx, client, store, jobResultPayloadFromOutbox(outbox), outbox)
+}
+
+func TestResultProtocolRejectsMissingOutboxID(t *testing.T) {
+	payload, live, pod, store := completedResultFixture(t)
+	client := fake.NewSimpleClientset(live, pod)
+	queue := &dispatcherAckQueue{}
+	dispatcher := NewResultDispatcher(queue, client, store, "result", "consumer")
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+	_, err = decodeResultPayload(raw)
+	require.ErrorContains(t, err, "outbox ID is required")
+	require.True(t, dispatcher.handleMessage(context.Background(), msg.Message{ID: "unowned", Payload: raw}))
+	require.Empty(t, client.Actions())
+	require.Equal(t, string(config.StatusDistributed), store.jobInfoByTaskID(payload.TaskID).Status)
+	require.Len(t, queue.ackCalls, 1)
+}
+
+func TestResultProtocolMissingOutboxStillAcknowledgesReplay(t *testing.T) {
+	payload, live, pod, store := completedResultFixture(t)
+	payload.OutboxID = "already-cleaned"
+	client := fake.NewSimpleClientset(live, pod)
+	queue := &dispatcherAckQueue{}
+	dispatcher := NewResultDispatcher(queue, client, store, "result", "consumer")
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+	require.True(t, dispatcher.handleMessage(context.Background(), msg.Message{ID: "replay", Payload: raw}))
+	require.Empty(t, client.Actions())
+	require.Len(t, queue.ackCalls, 1)
+}
+
+func TestResultProtocolMissingClaimCannotPersist(t *testing.T) {
+	_, _, _, store := completedResultFixture(t)
+	called := false
+	err := withResultOutboxOwnership(context.Background(), store, nil, func(datastore.DataStore, *model.JobResultOutbox) error {
+		called = true
+		return nil
+	})
+	require.ErrorIs(t, err, errResultOutboxOwnershipLost)
+	require.False(t, called)
+}
+
 func TestResultRecoveryRepublishesLostQueuedNotification(t *testing.T) {
 	payload, _, _, store := completedResultFixture(t)
-	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultQueued)
+	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
 	outbox.MessageID = "lost-message"
 	outbox.UpdateTime = time.Now().Add(-time.Hour)
 	expired := time.Now().Add(-time.Minute)
 	outbox.LeaseExpiresAt = &expired
 	require.NoError(t, store.Add(context.Background(), outbox))
 	queue := &enqueueCaptureQueue{enqueueID: "recovered-message"}
-	dispatcher := NewResultOutboxDispatcher(queue, fake.NewSimpleClientset(), store)
+	dispatcher := NewResultOutboxDispatcher(queue, store)
 	require.NoError(t, dispatcher.processOnce(context.Background()))
 	require.Len(t, queue.enqueued, 1, "a durable queued outbox must recover even when the broker has no message")
 }
 
 func TestResultRecoveryDuplicateCannotTakeActiveProcessing(t *testing.T) {
 	payload, live, pod, store := completedResultFixture(t)
-	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultProcessingQueue)
+	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultProcessingQueue)
 	outbox.MessageID = "active-delivery"
 	require.NoError(t, store.Add(context.Background(), outbox))
 	queue := &dispatcherAckQueue{}
@@ -92,7 +159,7 @@ func TestResultRecoveryCommitFailureKeepsSuccessEvidence(t *testing.T) {
 	payload, live, pod, base := completedResultFixture(t)
 	store := &failingResultCommitStore{resultOutboxTestStore: base, fail: true}
 	client := fake.NewSimpleClientset(live, pod)
-	require.ErrorContains(t, processJobResult(context.Background(), client, store, payload), "result commit unavailable")
+	require.ErrorContains(t, processClaimedTestJobResult(t, context.Background(), client, store, payload), "result commit unavailable")
 	_, err := client.BatchV1().Jobs(live.Namespace).Get(context.Background(), live.Name, metav1.GetOptions{})
 	require.NoError(t, err, "successful workload must remain until its result commits")
 	_, err = client.CoreV1().Pods(live.Namespace).Get(context.Background(), pod.Name, metav1.GetOptions{})
@@ -105,13 +172,13 @@ func TestResultRecoveryCleanupFailureIsRetryableWithoutLosingSuccess(t *testing.
 	client.PrependReactor("delete", "jobs", func(k8stesting.Action) (bool, runtime.Object, error) {
 		return true, nil, errors.New("cleanup unavailable")
 	})
-	require.ErrorContains(t, processJobResult(context.Background(), client, store, payload), "cleanup unavailable")
+	require.ErrorContains(t, processClaimedTestJobResult(t, context.Background(), client, store, payload), "cleanup unavailable")
 	require.Equal(t, string(config.StatusCompleted), store.jobInfoByTaskID(payload.TaskID).Status, "cleanup failure must not erase a committed success")
 }
 
 func TestResultRecoveryCleanupRetriesCommittedSuccess(t *testing.T) {
 	payload, live, pod, store := completedResultFixture(t)
-	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultQueued)
+	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
 	outbox.MessageID = "first"
 	require.NoError(t, store.Add(context.Background(), outbox))
 	client := fake.NewSimpleClientset(live, pod)
@@ -135,7 +202,7 @@ func TestResultRecoveryCleanupRetriesCommittedSuccess(t *testing.T) {
 	require.Equal(t, string(live.UID), pending.JobUID)
 	require.Equal(t, config.JobResultOutboxStateResultPending, pending.State)
 	cleanupFails = false
-	publisher := NewResultOutboxDispatcher(&enqueueCaptureQueue{enqueueID: "retry"}, client, store)
+	publisher := NewResultOutboxDispatcher(&enqueueCaptureQueue{enqueueID: "retry"}, store)
 	require.NoError(t, publisher.dispatchPendingOutbox(context.Background(), pending))
 	require.True(t, dispatcher.handleMessage(context.Background(), msg.Message{ID: "retry", Payload: raw}))
 	require.Equal(t, committed, store.jobInfoByTaskID(payload.TaskID), "cleanup-only replay must not rewrite the terminal result")
@@ -152,7 +219,7 @@ func TestResultRecoveryRetainsSameNameReplacementAndLegacyUnknownUID(t *testing.
 			record.Status = string(config.StatusCompleted)
 			record.Info = "committed logs"
 			require.NoError(t, store.Put(context.Background(), record))
-			outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultQueued)
+			outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
 			outbox.MessageID = "cleanup"
 			if knownUID {
 				outbox.JobUID = string(live.UID)
@@ -201,7 +268,7 @@ func (s *uncertainResultCommitStore) WithReadCommittedTransaction(ctx context.Co
 func TestResultRecoveryUncertainCommitReplaysCleanupOnly(t *testing.T) {
 	payload, live, pod, base := completedResultFixture(t)
 	store := &uncertainResultCommitStore{resultOutboxTestStore: base, failOnce: true}
-	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultQueued)
+	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
 	outbox.MessageID = "first"
 	require.NoError(t, store.Add(context.Background(), outbox))
 	client := fake.NewSimpleClientset(live, pod)
@@ -217,7 +284,7 @@ func TestResultRecoveryUncertainCommitReplaysCleanupOnly(t *testing.T) {
 	require.Equal(t, string(config.StatusCompleted), committed.Status)
 	pending, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
 	require.NoError(t, err)
-	publisher := NewResultOutboxDispatcher(&enqueueCaptureQueue{enqueueID: "retry"}, client, store)
+	publisher := NewResultOutboxDispatcher(&enqueueCaptureQueue{enqueueID: "retry"}, store)
 	require.NoError(t, publisher.dispatchPendingOutbox(context.Background(), pending))
 	require.True(t, dispatcher.handleMessage(context.Background(), msg.Message{ID: "retry", Payload: raw}))
 	require.Equal(t, committed, store.jobInfoByTaskID(payload.TaskID))
@@ -239,7 +306,7 @@ func (s *resultLeaseClockStore) WithReadCommittedTransaction(ctx context.Context
 func TestResultRecoveryLeaseRenewalAndStaleOwner(t *testing.T) {
 	payload, _, _, base := completedResultFixture(t)
 	store := &resultLeaseClockStore{resultOutboxTestStore: base, now: time.Now().Add(2 * time.Hour)}
-	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultQueued)
+	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
 	outbox.MessageID = "delivery"
 	require.NoError(t, store.Add(context.Background(), outbox))
 	claimed, err := claimResultOutbox(context.Background(), store, outbox, "delivery")
@@ -249,7 +316,7 @@ func TestResultRecoveryLeaseRenewalAndStaleOwner(t *testing.T) {
 	store.now = store.now.Add(20 * time.Second)
 	require.NoError(t, renewResultOutboxLease(context.Background(), store, outbox))
 	store.now = firstLease.Add(time.Second)
-	recovery := NewResultOutboxDispatcher(&enqueueCaptureQueue{}, fake.NewSimpleClientset(), store)
+	recovery := NewResultOutboxDispatcher(&enqueueCaptureQueue{}, store)
 	require.NoError(t, recovery.processOnce(context.Background()))
 	active, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
 	require.NoError(t, err)
@@ -263,8 +330,8 @@ func TestResultRecoveryLeaseRenewalAndStaleOwner(t *testing.T) {
 	require.False(t, called, "a recovered consumer cannot write results or delete the new outbox")
 }
 
-func TestResultRecoveryLegacyRowsReceiveBoundedGrace(t *testing.T) {
-	for _, state := range []config.JobResultOutboxState{config.JobResultOutboxStateResultQueued, config.JobResultOutboxStateResultProcessingQueue} {
+func TestResultRecoveryRejectsActiveRowsWithoutLease(t *testing.T) {
+	for _, state := range []config.JobResultOutboxState{config.JobResultOutboxStateResultDispatching, config.JobResultOutboxStateResultQueued, config.JobResultOutboxStateResultProcessingQueue} {
 		t.Run(string(state), func(t *testing.T) {
 			payload, _, _, base := completedResultFixture(t)
 			store := &resultLeaseClockStore{resultOutboxTestStore: base, now: time.Now().UTC()}
@@ -272,27 +339,63 @@ func TestResultRecoveryLegacyRowsReceiveBoundedGrace(t *testing.T) {
 			outbox.MessageID = "legacy"
 			outbox.UpdateTime = store.now.Add(-24 * time.Hour)
 			require.NoError(t, store.Add(context.Background(), outbox))
+			claimed, err := claimResultOutbox(context.Background(), store, outbox, outbox.MessageID)
+			require.False(t, claimed, "notifications cannot make a lease-less active row runnable")
+			if state != config.JobResultOutboxStateResultProcessingQueue {
+				require.ErrorContains(t, err, "active result outbox has no lease")
+			}
 			queue := &enqueueCaptureQueue{}
-			recovery := NewResultOutboxDispatcher(queue, fake.NewSimpleClientset(), store)
+			recovery := NewResultOutboxDispatcher(queue, store)
 			require.NoError(t, recovery.processOnce(context.Background()))
 			require.Empty(t, queue.enqueued)
 			preserved, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
 			require.NoError(t, err)
-			require.Equal(t, state, preserved.State)
-			require.NotNil(t, preserved.LeaseExpiresAt)
-			require.True(t, preserved.LeaseExpiresAt.After(store.now))
-			store.now = preserved.LeaseExpiresAt.Add(time.Second)
+			require.Equal(t, config.JobResultOutboxStateFailed, preserved.State)
+			require.Nil(t, preserved.LeaseExpiresAt)
+			require.Equal(t, "legacy", preserved.MessageID)
+			require.Contains(t, preserved.LastError, "active result outbox has no lease")
+			store.now = store.now.Add(24 * time.Hour)
 			require.NoError(t, recovery.processOnce(context.Background()))
-			require.Len(t, queue.enqueued, 1)
+			require.Empty(t, queue.enqueued, "invalid active rows must never become runnable")
 		})
 	}
+}
+
+func TestResultRecoveryInvalidActiveBatchDoesNotStarveExpiredRows(t *testing.T) {
+	payload, _, _, store := completedResultFixture(t)
+	for i := 0; i < 3; i++ {
+		next := *payload
+		next.TaskID = fmt.Sprintf("invalid-%d", i)
+		invalid := buildJobResultOutbox(&next, config.JobResultOutboxStateResultProcessingQueue)
+		invalid.MessageID = fmt.Sprintf("owner-%d", i)
+		require.NoError(t, store.Add(context.Background(), invalid))
+	}
+	expired := buildJobResultOutbox(payload, config.JobResultOutboxStateResultQueued)
+	deadline := time.Now().Add(-time.Minute)
+	expired.LeaseExpiresAt = &deadline
+	expired.MessageID = "lost-message"
+	require.NoError(t, store.Add(context.Background(), expired))
+	queue := &enqueueCaptureQueue{enqueueID: "recovered"}
+	recovery := NewResultOutboxDispatcher(queue, store)
+	recovery.batchSize = 2
+	require.NoError(t, recovery.processOnce(context.Background()))
+	require.Empty(t, queue.enqueued)
+	require.NoError(t, recovery.processOnce(context.Background()))
+	require.Len(t, queue.enqueued, 1)
+	current, err := getJobResultOutboxByID(context.Background(), store, expired.ID)
+	require.NoError(t, err)
+	require.Equal(t, config.JobResultOutboxStateResultQueued, current.State)
+	require.Equal(t, "recovered", current.MessageID)
+	failed, err := listJobResultOutboxesByStates(context.Background(), store, []config.JobResultOutboxState{config.JobResultOutboxStateFailed}, 10)
+	require.NoError(t, err)
+	require.Len(t, failed, 3, "invalid records remain available for diagnosis")
 }
 
 func TestResultRecoveryHeartbeatFailureCancelsBeforeResultWrite(t *testing.T) {
 	payload, live, _, base := completedResultFixture(t)
 	live.Status.Conditions = nil
 	store := &resultLeaseClockStore{resultOutboxTestStore: base, now: time.Now().UTC()}
-	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultQueued)
+	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
 	outbox.MessageID = "delivery"
 	require.NoError(t, store.Add(context.Background(), outbox))
 	claimed, err := claimResultOutbox(context.Background(), store, outbox, "delivery")
@@ -320,7 +423,7 @@ func TestResultRecoveryExpiredRowsAreNotBlockedByActiveBatch(t *testing.T) {
 	for i := 0; i < resultOutboxBatchSize+1; i++ {
 		next := *payload
 		next.TaskID = fmt.Sprintf("mixed-result-%d", i)
-		outbox := buildJobResultOutbox(&next, config.JobResultOutboxStateResultProcessingQueue)
+		outbox := buildLeasedTestResultOutbox(t, store, &next, config.JobResultOutboxStateResultProcessingQueue)
 		outbox.MessageID = fmt.Sprintf("owner-%d", i)
 		deadline := now.Add(time.Hour)
 		outbox.LeaseExpiresAt = &deadline
@@ -331,7 +434,7 @@ func TestResultRecoveryExpiredRowsAreNotBlockedByActiveBatch(t *testing.T) {
 		}
 		require.NoError(t, store.Add(context.Background(), outbox))
 	}
-	dispatcher := NewResultOutboxDispatcher(&enqueueCaptureQueue{}, fake.NewSimpleClientset(), store)
+	dispatcher := NewResultOutboxDispatcher(&enqueueCaptureQueue{}, store)
 	require.NoError(t, dispatcher.recoverResultOutboxes(context.Background(), []config.JobResultOutboxState{config.JobResultOutboxStateResultProcessingQueue}))
 	next := *payload
 	next.TaskID = fmt.Sprintf("mixed-result-%d", resultOutboxBatchSize)
@@ -353,7 +456,7 @@ func TestResultRecoveryDetectsUIDReplacementAfterCompletion(t *testing.T) {
 		}
 		return false, nil, nil
 	})
-	require.NoError(t, processJobResult(context.Background(), client, store, payload))
+	require.NoError(t, processClaimedTestJobResult(t, context.Background(), client, store, payload))
 	require.Equal(t, string(config.StatusDistributed), store.jobInfoByTaskID(payload.TaskID).Status)
 	for _, action := range client.Actions() {
 		require.NotEqual(t, "delete", action.GetVerb(), "same annotations do not authorize deleting a different UID")
@@ -362,7 +465,7 @@ func TestResultRecoveryDetectsUIDReplacementAfterCompletion(t *testing.T) {
 
 func TestResultRecoveryLogFailureRetainsEvidenceAndRetries(t *testing.T) {
 	payload, live, pod, store := completedResultFixture(t)
-	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultQueued)
+	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
 	outbox.MessageID = "first"
 	require.NoError(t, store.Add(context.Background(), outbox))
 	client := fake.NewSimpleClientset(live, pod)
@@ -385,7 +488,7 @@ func TestResultRecoveryLogFailureRetainsEvidenceAndRetries(t *testing.T) {
 	failLogs = false
 	pending, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
 	require.NoError(t, err)
-	publisher := NewResultOutboxDispatcher(&enqueueCaptureQueue{enqueueID: "retry"}, client, store)
+	publisher := NewResultOutboxDispatcher(&enqueueCaptureQueue{enqueueID: "retry"}, store)
 	require.NoError(t, publisher.dispatchPendingOutbox(context.Background(), pending))
 	require.True(t, dispatcher.handleMessage(context.Background(), msg.Message{ID: "retry", Payload: raw}))
 	require.Equal(t, string(config.StatusCompleted), store.jobInfoByTaskID(payload.TaskID).Status)
@@ -405,9 +508,9 @@ func TestResultRecoveryTransientReadFailureDoesNotSettleResult(t *testing.T) {
 				}
 				return false, nil, nil
 			})
-			require.ErrorContains(t, processJobResult(context.Background(), client, store, payload), "temporary API failure")
+			require.ErrorContains(t, processClaimedTestJobResult(t, context.Background(), client, store, payload), "temporary API failure")
 			require.Equal(t, string(config.StatusDistributed), store.jobInfoByTaskID(payload.TaskID).Status)
-			require.NoError(t, processJobResult(context.Background(), client, store, payload))
+			require.NoError(t, processClaimedTestJobResult(t, context.Background(), client, store, payload))
 			require.Equal(t, string(config.StatusCompleted), store.jobInfoByTaskID(payload.TaskID).Status)
 		})
 	}
@@ -435,7 +538,7 @@ func TestResultRecoveryMissingJobAfterCompletionKeepsObservedUID(t *testing.T) {
 		require.Equal(t, live.UID, *options.Preconditions.UID)
 		return true, nil, k8serrors.NewConflict(schema.GroupResource{Group: "batch", Resource: "jobs"}, live.Name, errors.New("UID precondition failed"))
 	})
-	require.NoError(t, processJobResult(context.Background(), client, store, payload))
+	require.NoError(t, processClaimedTestJobResult(t, context.Background(), client, store, payload))
 	current, err := client.BatchV1().Jobs(live.Namespace).Get(context.Background(), live.Name, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Equal(t, replacement.UID, current.UID)
@@ -469,7 +572,7 @@ func TestResultRecoveryProducerCannotOverwriteEarlyConsumer(t *testing.T) {
 		require.True(t, claimed)
 		owner = current.MessageID
 	}
-	dispatcher := NewResultOutboxDispatcher(queue, fake.NewSimpleClientset(), store)
+	dispatcher := NewResultOutboxDispatcher(queue, store)
 	require.NoError(t, dispatcher.dispatchPendingOutbox(context.Background(), outbox))
 	current, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
 	require.NoError(t, err)
@@ -480,7 +583,7 @@ func TestResultRecoveryProducerCannotOverwriteEarlyConsumer(t *testing.T) {
 
 func TestResultRecoveryOldDeliveryCannotInvalidateNewNotification(t *testing.T) {
 	payload, live, pod, store := completedResultFixture(t)
-	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultQueued)
+	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
 	outbox.MessageID = "current-delivery"
 	require.NoError(t, store.Add(context.Background(), outbox))
 	queue := &dispatcherAckQueue{}
@@ -500,7 +603,7 @@ func TestResultRecoveryMissingResultRowCannotAuthorizeCleanup(t *testing.T) {
 	payload, live, pod, store := completedResultFixture(t)
 	store.jobInfos = make(map[int]*model.JobInfo)
 	client := fake.NewSimpleClientset(live, pod)
-	require.ErrorContains(t, processJobResult(context.Background(), client, store, payload), "result status was not persisted")
+	require.ErrorContains(t, processClaimedTestJobResult(t, context.Background(), client, store, payload), "result status was not persisted")
 	_, err := client.BatchV1().Jobs(live.Namespace).Get(context.Background(), live.Name, metav1.GetOptions{})
 	require.NoError(t, err)
 }
@@ -523,7 +626,7 @@ func TestResultRecoveryDistinguishesJobTimeoutFromConsumerCancellation(t *testin
 					return false, nil, nil
 				})
 			}
-			err := processJobResult(ctx, client, store, payload)
+			err := processClaimedTestJobResult(t, ctx, client, store, payload)
 			if cancelConsumer {
 				require.ErrorIs(t, err, context.Canceled)
 				require.Equal(t, string(config.StatusDistributed), store.jobInfoByTaskID(payload.TaskID).Status)
@@ -571,7 +674,7 @@ func TestResultRecoveryPreservesConcurrentTerminalResult(t *testing.T) {
 				settled.EndTime = 123
 				settled.Info = "previously committed evidence"
 				settle := func() { require.NoError(t, base.Put(context.Background(), settled)) }
-				outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultQueued)
+				outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
 				outbox.MessageID = "result-delivery"
 				require.NoError(t, store.Add(context.Background(), outbox))
 				client := fake.NewSimpleClientset(live, pod)
@@ -662,7 +765,7 @@ func TestResultRecoveryCompletedJobWithUnstartedFailedPod(t *testing.T) {
 		return &http.Response{StatusCode: status, Header: header, Body: io.NopCloser(strings.NewReader(raw)), Request: r}, nil
 	})})
 	require.NoError(t, err)
-	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultQueued)
+	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultQueued)
 	outbox.MessageID = "delivery"
 	require.NoError(t, store.Add(context.Background(), outbox))
 	queue := &dispatcherAckQueue{}

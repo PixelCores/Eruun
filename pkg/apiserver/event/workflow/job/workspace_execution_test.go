@@ -224,12 +224,12 @@ func TestDelayedJobsUsePersistedWorkspaceAndRestrictedClient(t *testing.T) {
 	}
 }
 
-func TestDelayedJobsRejectInvalidWorkspaceBeforeWrites(t *testing.T) {
+func TestDelayedJobsRejectInvalidPersistedWorkloadBeforeKubernetesWrites(t *testing.T) {
 	tests := []struct {
 		name   string
 		mutate func(*delayedWorkspaceStore, *workspace.Manager, *DelayJobPayload)
 	}{
-		{"queue namespace", func(_ *delayedWorkspaceStore, _ *workspace.Manager, p *DelayJobPayload) { p.Namespace = "namespace-2" }},
+		{"checkpoint namespace", func(_ *delayedWorkspaceStore, _ *workspace.Manager, p *DelayJobPayload) { p.Namespace = "namespace-2" }},
 		{"job namespace", func(_ *delayedWorkspaceStore, _ *workspace.Manager, p *DelayJobPayload) {
 			p.Job.Namespace = "namespace-2"
 		}},
@@ -244,8 +244,12 @@ func TestDelayedJobsRejectInvalidWorkspaceBeforeWrites(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			store, manager, payloads := delayedWorkspaceFixture(t)
 			tt.mutate(store, manager, payloads[0])
-			before, err := json.Marshal(store.jobInfos)
+			// The current queue protocol carries identity only. Security checks
+			// validate the workload restored from the authoritative checkpoint.
+			raw, err := json.Marshal(payloads[0])
 			require.NoError(t, err)
+			store.jobInfos[1].DelayPayload = string(raw)
+			unrelated := *store.jobInfos[2]
 			manager.RESTConfig.Transport = workspaceRoundTripper(func(*http.Request) (*http.Response, error) {
 				t.Error("rejected workload reached Kubernetes")
 				return nil, fmt.Errorf("unexpected Kubernetes request")
@@ -253,9 +257,9 @@ func TestDelayedJobsRejectInvalidWorkspaceBeforeWrites(t *testing.T) {
 			dispatcher := NewDelayDispatcher(nil, manager, access.NewStore(store), "", "")
 			require.Error(t, dispatcher.dispatch(context.Background(), &delayItem{payload: payloads[0]}))
 			require.Empty(t, store.outboxes)
-			after, err := json.Marshal(store.jobInfos)
-			require.NoError(t, err)
-			require.Equal(t, string(before), string(after))
+			require.Equal(t, string(config.StatusFailed), store.jobInfos[1].Status)
+			require.NotEmpty(t, store.jobInfos[1].Error)
+			require.Equal(t, unrelated, *store.jobInfos[2])
 			for _, a := range manager.Client.(*fake.Clientset).Actions() {
 				require.Equal(t, "get", a.GetVerb())
 			}

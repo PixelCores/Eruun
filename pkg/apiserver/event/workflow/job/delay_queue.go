@@ -36,7 +36,7 @@ type DelayJobPayload struct {
 const delayJobNotificationVersion = 2
 
 // The queue wakes the dispatcher; JobInfo.DelayPayload owns the workload.
-// Legacy notifications carried the full DelayJobPayload without a version.
+// Only versioned identity notifications are accepted; the workload stays in DB.
 type delayJobNotification struct {
 	Version       int    `json:"version"`
 	ExecuteAt     int64  `json:"executeAt"`

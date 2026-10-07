@@ -189,7 +189,7 @@ func TestOnStartedSchedulerLeadingReportsQueueGroupError(t *testing.T) {
 	t.Cleanup(server.stopSchedulerRun)
 	errChan := make(chan error, 1)
 
-	server.onStartedSchedulerLeading(context.Background(), errChan)
+	require.False(t, server.onStartedSchedulerLeading(context.Background(), errChan))
 
 	select {
 	case err := <-errChan:
@@ -268,7 +268,7 @@ func TestOnStartedSchedulerLeadingIgnoresQueueGroupErrorWhenContextCanceled(t *t
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	server.onStartedSchedulerLeading(ctx, errChan)
+	require.False(t, server.onStartedSchedulerLeading(ctx, errChan))
 	require.EqualValues(t, 0, server.ensureQueueGroupFailures.Load())
 
 	select {
@@ -374,9 +374,9 @@ func TestStartWorkersIgnoresCanceledExecutionContext(t *testing.T) {
 	server.startWorkers(ctx, nil)
 
 	server.workersMu.Lock()
-	started := server.workersStarted
+	run := server.workersRun
 	server.workersMu.Unlock()
-	require.False(t, started)
+	require.Nil(t, run)
 	require.EqualValues(t, 0, worker.subscribes.Load())
 }
 
@@ -446,6 +446,113 @@ func TestBestEffortReleaseLeaderLockReleasesCurrentHolder(t *testing.T) {
 	require.Equal(t, 7, update.LeaderTransitions)
 	require.False(t, update.AcquireTime.IsZero())
 	require.False(t, update.RenewTime.IsZero())
+}
+
+type readinessTestWorker func(context.Context, context.Context, chan error, func(), func())
+
+func (w readinessTestWorker) StartWorker(consumer, execution context.Context, errors chan error, ready, stopped func()) {
+	w(consumer, execution, errors, ready, stopped)
+}
+
+func TestStartWorkersIgnoresOldReadinessCallbacksAfterPromotion(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	callbacks := make(chan [2]func(), 2)
+	finishOld := make(chan struct{})
+	var starts atomic.Int32
+	worker := readinessTestWorker(func(_, execution context.Context, _ chan error, ready, stopped func()) {
+		first := starts.Add(1) == 1
+		callbacks <- [2]func(){ready, stopped}
+		if first {
+			select {
+			case <-finishOld:
+			case <-execution.Done():
+			}
+			return
+		}
+		<-execution.Done()
+	})
+	server := &restServer{eventWorkers: []event.Worker{worker}}
+	t.Cleanup(func() {
+		cancel()
+		server.stopWorkers(context.Background())
+		server.drainPromotedWorkers(context.Background())
+	})
+	server.startWorkers(ctx, nil)
+	old := <-callbacks
+	server.pauseWorkerIntake()
+	server.startWorkers(ctx, nil)
+	current := <-callbacks
+
+	old[0]()
+	ready, _ := server.RuntimeReady()
+	require.False(t, ready, "old readiness must not admit the replacement subscriber")
+	current[0]()
+	ready, reason := server.RuntimeReady()
+	require.True(t, ready, reason)
+	old[1]()
+	ready, reason = server.RuntimeReady()
+	require.True(t, ready, reason)
+	close(finishOld)
+	require.Eventually(t, func() bool {
+		server.workersMu.Lock()
+		defer server.workersMu.Unlock()
+		return len(server.drainingWorkerRuns) == 0
+	}, time.Second, time.Millisecond)
+	ready, reason = server.RuntimeReady()
+	require.True(t, ready, reason)
+
+	current[1]()
+	current[0]()
+	ready, _ = server.RuntimeReady()
+	require.False(t, ready, "a stopped subscriber must not regain readiness")
+}
+
+type schedulerStartupTestWorker struct {
+	testServerWorker
+	entered chan func()
+	finish  chan struct{}
+}
+
+func (w *schedulerStartupTestWorker) StartScheduler(ctx context.Context, _ chan error, ready func()) {
+	w.entered <- ready
+	select {
+	case <-w.finish:
+	case <-ctx.Done():
+	}
+}
+
+func TestOnStartedSchedulerLeadingReturnsStartupResult(t *testing.T) {
+	for _, outcome := range []string{"ready", "exited before ready", "cancelled before ready"} {
+		t.Run(outcome, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			worker := &schedulerStartupTestWorker{entered: make(chan func(), 1), finish: make(chan struct{})}
+			server := &restServer{eventWorkers: []event.Worker{worker}}
+			t.Cleanup(func() { cancel(); server.stopSchedulerRun() })
+			result := make(chan bool, 1)
+			go func() { result <- server.onStartedSchedulerLeading(ctx, nil) }()
+			ready := <-worker.entered
+			select {
+			case <-result:
+				t.Fatal("startup returned before scheduler readiness")
+			default:
+			}
+			switch outcome {
+			case "ready":
+				ready()
+			case "exited before ready":
+				close(worker.finish)
+			case "cancelled before ready":
+				cancel()
+			}
+			select {
+			case successful := <-result:
+				require.Equal(t, outcome == "ready", successful)
+			case <-time.After(time.Second):
+				t.Fatal("scheduler startup did not settle")
+			}
+		})
+	}
 }
 
 func TestBestEffortReleaseLeaderLockSkipsChangedHolderAndFailures(t *testing.T) {
