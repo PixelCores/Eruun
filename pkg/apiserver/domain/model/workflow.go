@@ -7,7 +7,8 @@ import (
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
-// Workflow application delivery database model
+// Workflow stores an application's reusable workflow definition. Each execution
+// has its own WorkflowQueue record, lifecycle, and ownership.
 type Workflow struct {
 	ID           string                  `json:"id" gorm:"primaryKey;type:varchar(64);column:id"`
 	Name         string                  `json:"name" gorm:"type:varchar(255);column:name"`

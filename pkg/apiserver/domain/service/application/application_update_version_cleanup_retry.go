@@ -501,7 +501,7 @@ func updatePendingStatefulSetDeletion(
 		return false, fmt.Errorf("task %s component %s StatefulSet identity: %w", task.TaskID, component.Name, err)
 	}
 	taskStatus := config.Status(strings.TrimSpace(string(task.Status)))
-	if taskStatus == "" || isWorkflowActiveStatus(taskStatus) {
+	if taskStatus == "" || model.IsWorkflowActiveStatus(taskStatus) {
 		return false, bcode.ErrWorkflowTaskRunning
 	}
 	taskCompleted := taskStatus == config.StatusCompleted
@@ -633,7 +633,7 @@ func isRetryableTerminalVersionUpdateTaskStatus(status config.Status) bool {
 }
 
 func isActiveVersionUpdateCleanupStatus(status config.Status) bool {
-	return status == "" || isWorkflowActiveStatus(status)
+	return status == "" || model.IsWorkflowActiveStatus(status)
 }
 
 func isPreStartVersionUpdateCleanupStatus(status config.Status) bool {

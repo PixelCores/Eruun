@@ -13,7 +13,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 )
 
 type statusSyncStore struct {
@@ -242,7 +241,7 @@ func TestSyncComponentStatusQueriesByAppIDAndComponentID(t *testing.T) {
 	}
 
 	readyReplicas := int32(1)
-	SyncComponentStatus(t.Context(), store, nil, &informer.ComponentStatusUpdate{
+	SyncComponentStatus(t.Context(), store, nil, &model.ComponentStatusUpdate{
 		AppID:         "app-1",
 		ComponentID:   7,
 		ComponentName: "web",
@@ -279,7 +278,7 @@ func TestSyncComponentStatusUsesComponentIDWhenLabelNameIsNormalized(t *testing.
 	}
 
 	readyReplicas := int32(1)
-	SyncComponentStatus(t.Context(), store, nil, &informer.ComponentStatusUpdate{
+	SyncComponentStatus(t.Context(), store, nil, &model.ComponentStatusUpdate{
 		AppID:         "app-1",
 		ComponentID:   7,
 		ComponentName: "api-v1",
@@ -311,7 +310,7 @@ func TestSyncComponentStatusSkipsWhenComponentIDNotFound(t *testing.T) {
 	require.NoError(t, componentCache.Store(context.Background(), cacheKey, "stale components"))
 
 	readyReplicas := int32(1)
-	SyncComponentStatus(t.Context(), store, componentCache, &informer.ComponentStatusUpdate{
+	SyncComponentStatus(t.Context(), store, componentCache, &model.ComponentStatusUpdate{
 		AppID:         "app-1",
 		ComponentID:   7,
 		ComponentName: "web",
@@ -345,7 +344,7 @@ func TestSyncComponentStatusSkipsStoppedComponent(t *testing.T) {
 	status := config.ComponentStatusUnknown
 	readyReplicas := int32(0)
 	replicas := int32(0)
-	SyncComponentStatus(t.Context(), store, componentCache, &informer.ComponentStatusUpdate{
+	SyncComponentStatus(t.Context(), store, componentCache, &model.ComponentStatusUpdate{
 		AppID:         "app-1",
 		ComponentID:   7,
 		ComponentName: "web",
@@ -380,7 +379,7 @@ func TestSyncComponentStatusDropsNoChangeConflictWithoutRetry(t *testing.T) {
 
 	status := config.ComponentStatusPending
 	readyReplicas := int32(0)
-	SyncComponentStatus(t.Context(), store, componentCache, &informer.ComponentStatusUpdate{
+	SyncComponentStatus(t.Context(), store, componentCache, &model.ComponentStatusUpdate{
 		AppID:         "app-1",
 		ComponentID:   7,
 		ComponentName: "web",
@@ -410,7 +409,7 @@ func TestSyncComponentStatusConcurrentStoppedWriteWinsOverInformer(t *testing.T)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		SyncComponentStatus(t.Context(), store, componentCache, &informer.ComponentStatusUpdate{
+		SyncComponentStatus(t.Context(), store, componentCache, &model.ComponentStatusUpdate{
 			AppID:         "app-1",
 			ComponentID:   7,
 			ComponentName: "web",
@@ -469,7 +468,7 @@ func TestSyncComponentStatusConcurrentConfigurationWriteDoesNotBlockRuntimeCAS(t
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		SyncComponentStatus(t.Context(), store, componentCache, &informer.ComponentStatusUpdate{
+		SyncComponentStatus(t.Context(), store, componentCache, &model.ComponentStatusUpdate{
 			AppID:         "app-1",
 			ComponentID:   7,
 			ComponentName: "web",
@@ -519,7 +518,7 @@ func TestSyncComponentStatusCleaningPodsGoneMarksNotDeployWithZeroValues(t *test
 	}
 
 	replicas := int32(0)
-	SyncComponentStatus(t.Context(), store, nil, &informer.ComponentStatusUpdate{
+	SyncComponentStatus(t.Context(), store, nil, &model.ComponentStatusUpdate{
 		AppID:         "app-1",
 		ComponentID:   7,
 		ComponentName: "web",
@@ -562,7 +561,7 @@ func TestSyncComponentStatusDropsStaleCleaningCompletionWithoutRetry(t *testing.
 	require.NoError(t, componentCache.Store(context.Background(), cacheKey, "stale components"))
 
 	replicas := int32(0)
-	SyncComponentStatus(t.Context(), store, componentCache, &informer.ComponentStatusUpdate{
+	SyncComponentStatus(t.Context(), store, componentCache, &model.ComponentStatusUpdate{
 		AppID:         "app-1",
 		ComponentID:   7,
 		ComponentName: "web",
@@ -591,7 +590,7 @@ func TestSyncComponentStatusFailedRecoveryClearsLastAbnormal(t *testing.T) {
 	status := config.ComponentStatusRunning
 	readyReplicas := int32(1)
 	lastAbnormal := ""
-	SyncComponentStatus(t.Context(), store, nil, &informer.ComponentStatusUpdate{
+	SyncComponentStatus(t.Context(), store, nil, &model.ComponentStatusUpdate{
 		AppID:         "app-1",
 		ComponentID:   7,
 		ComponentName: "web",
@@ -631,7 +630,7 @@ func TestSyncComponentStatusInvalidatesCacheAfterConcurrentRefill(t *testing.T) 
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		SyncComponentStatus(t.Context(), store, componentCache, &informer.ComponentStatusUpdate{
+		SyncComponentStatus(t.Context(), store, componentCache, &model.ComponentStatusUpdate{
 			AppID:         "app-1",
 			ComponentID:   7,
 			ComponentName: "web",
@@ -677,7 +676,7 @@ func TestSyncComponentStatusInvalidatesCacheAfterCommittedWriteCancelsContext(t 
 	status := config.ComponentStatusRunning
 	readyReplicas := int32(1)
 
-	SyncComponentStatus(ctx, store, componentCache, &informer.ComponentStatusUpdate{
+	SyncComponentStatus(ctx, store, componentCache, &model.ComponentStatusUpdate{
 		AppID: "app-1", ComponentID: 7, ComponentName: "web",
 		Status: &status, ReadyReplicas: &readyReplicas,
 	})
@@ -725,7 +724,7 @@ func TestSyncComponentStatusPreservesStartingForNonTerminalInformerStatus(t *tes
 
 			replicas := int32(3)
 			lastAbnormal := ""
-			SyncComponentStatus(t.Context(), store, nil, &informer.ComponentStatusUpdate{
+			SyncComponentStatus(t.Context(), store, nil, &model.ComponentStatusUpdate{
 				AppID:         "app-1",
 				ComponentID:   7,
 				ComponentName: "web",
@@ -758,7 +757,7 @@ func TestSyncComponentStatusPreservesStartingForReadyReplicaPending(t *testing.T
 	}
 
 	readyReplicas := int32(1)
-	SyncComponentStatus(t.Context(), store, nil, &informer.ComponentStatusUpdate{
+	SyncComponentStatus(t.Context(), store, nil, &model.ComponentStatusUpdate{
 		AppID:         "app-1",
 		ComponentID:   7,
 		ComponentName: "web",
@@ -805,7 +804,7 @@ func TestSyncComponentStatusPreservesDeployingForNonTerminalInformerStatus(t *te
 
 			replicas := int32(3)
 			lastAbnormal := ""
-			SyncComponentStatus(t.Context(), store, nil, &informer.ComponentStatusUpdate{
+			SyncComponentStatus(t.Context(), store, nil, &model.ComponentStatusUpdate{
 				AppID:         "app-1",
 				ComponentID:   7,
 				ComponentName: "web",
@@ -859,7 +858,7 @@ func TestSyncComponentStatusAllowsStartingToReachTerminalInformerStatus(t *testi
 			if tt.status == config.ComponentStatusFailed {
 				readyReplicas = 0
 			}
-			SyncComponentStatus(t.Context(), store, nil, &informer.ComponentStatusUpdate{
+			SyncComponentStatus(t.Context(), store, nil, &model.ComponentStatusUpdate{
 				AppID:         "app-1",
 				ComponentID:   7,
 				ComponentName: "web",
@@ -912,7 +911,7 @@ func TestSyncComponentStatusAllowsDeployingToReachTerminalInformerStatus(t *test
 			if tt.status == config.ComponentStatusFailed {
 				readyReplicas = 0
 			}
-			SyncComponentStatus(t.Context(), store, nil, &informer.ComponentStatusUpdate{
+			SyncComponentStatus(t.Context(), store, nil, &model.ComponentStatusUpdate{
 				AppID:         "app-1",
 				ComponentID:   7,
 				ComponentName: "web",

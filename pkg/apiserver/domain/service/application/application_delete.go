@@ -166,7 +166,7 @@ func (c *applicationsServiceImpl) filterActiveTasks(ctx context.Context, tasks [
 			continue
 		}
 		status := task.Status
-		if status == "" || isWorkflowActiveStatus(status) {
+		if status == "" || model.IsWorkflowActiveStatus(status) {
 			active = append(active, task)
 			continue
 		}
@@ -218,7 +218,7 @@ func (c *applicationsServiceImpl) cancelTaskForAppDelete(ctx context.Context, ta
 			*task = current
 			return cancelsignal.PublishWorkflowCancelSignal(ctx, task.TaskID, cancelReason, redisClient)
 		}
-		if current.Status != "" && !isWorkflowActiveStatus(current.Status) {
+		if current.Status != "" && !model.IsWorkflowActiveStatus(current.Status) {
 			return nil
 		}
 		conditions := map[string]interface{}{

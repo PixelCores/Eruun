@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 )
 
 type statusSyncDeadlineStore struct {
@@ -25,7 +25,7 @@ func TestSyncComponentStatusCallbackBoundsPersistenceContext(t *testing.T) {
 	store := &statusSyncDeadlineStore{}
 	server := &restServer{dataStore: store}
 	before := time.Now()
-	server.syncComponentStatus(&informer.ComponentStatusUpdate{AppID: "app-1", ComponentID: 7})
+	server.syncComponentStatus(&model.ComponentStatusUpdate{AppID: "app-1", ComponentID: 7})
 	after := time.Now()
 
 	require.NotNil(t, store.ctx)

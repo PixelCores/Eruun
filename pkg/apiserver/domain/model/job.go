@@ -9,6 +9,9 @@ import (
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
+// JobInfo persists an internal execution unit and its scheduling/recovery state.
+// A public standalone Job is submitted as a WorkflowQueue, and may produce a
+// Kubernetes Job; neither is the same object as this execution record.
 type JobInfo struct {
 	ID                    int                  `json:"id" gorm:"primaryKey;column:id"`
 	Type                  string               `json:"type" gorm:"type:varchar(64);column:type"`
@@ -45,7 +48,8 @@ type JobInfo struct {
 	BaseModel
 }
 
-// JobTask 是最小的执行单位
+// JobTask is the in-memory execution payload built for a resource controller.
+// JobInfo stores its durable progress; this payload is not a separate aggregate.
 type JobTask struct {
 	Name            string `json:"name"`
 	Namespace       string `json:"namespace"`

@@ -23,10 +23,6 @@ func ConvertComponent(req *apisv1.CreateComponentRequest, appID string) *model.A
 	return workflowservice.ConvertComponent(req, appID)
 }
 
-func isWorkflowActiveStatus(status config.Status) bool {
-	return workflowservice.IsWorkflowActiveStatus(status)
-}
-
 func taskHasActiveJobs(ctx context.Context, store datastore.DataStore, taskID string) (bool, error) {
 	return workflowservice.TaskHasActiveJobs(ctx, store, taskID)
 }

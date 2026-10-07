@@ -10,6 +10,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 )
 
 func TestManagerBoundsInitialCacheSync(t *testing.T) {
@@ -95,7 +97,7 @@ func TestManagerRejectsPreviousGenerationHandlersAfterRestart(t *testing.T) {
 func TestManagerStopWaitsForHandlerAndClearsItsSnapshot(t *testing.T) {
 	manager := NewManager(fake.NewSimpleClientset())
 	waiter := manager.GetWaiter()
-	waiter.SetStatusSyncFunc(func(*ComponentStatusUpdate) {})
+	waiter.SetStatusSyncFunc(func(*model.ComponentStatusUpdate) {})
 	require.NoError(t, manager.Start(context.Background()))
 	generation := manager.waiterGeneration
 
@@ -158,7 +160,7 @@ func TestManagerStopWaitsForCurrentGenerationStatusCallback(t *testing.T) {
 	})
 
 	callbackStarted := make(chan struct{}, 2)
-	waiter.SetStatusSyncFunc(func(*ComponentStatusUpdate) {
+	waiter.SetStatusSyncFunc(func(*model.ComponentStatusUpdate) {
 		callbackStarted <- struct{}{}
 		<-releaseCallback
 	})
@@ -166,7 +168,7 @@ func TestManagerStopWaitsForCurrentGenerationStatusCallback(t *testing.T) {
 	waiter.statusSyncMu.Lock()
 	epoch := waiter.statusSyncEpoch
 	waiter.statusSyncMu.Unlock()
-	update := &ComponentStatusUpdate{AppID: "app-1", ComponentID: 7}
+	update := &model.ComponentStatusUpdate{AppID: "app-1", ComponentID: 7}
 	callbackDone := make(chan struct{})
 	go func() {
 		waiter.executeStatusSyncIfCurrent(update, epoch)

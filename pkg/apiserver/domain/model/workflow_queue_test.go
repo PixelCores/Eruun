@@ -6,9 +6,34 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/stretchr/testify/require"
 	gormschema "gorm.io/gorm/schema"
 )
+
+func TestIsWorkflowActiveStatus(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		status config.Status
+		active bool
+	}{
+		{name: "running execution", status: config.StatusRunning, active: true},
+		{name: "queued execution", status: config.StatusQueued, active: true},
+		{name: "blocked admission", status: config.StatusBlocked, active: true},
+		{name: "pending approval", status: config.StatusWaitingApprove, active: true},
+		{name: "debug checkpoint", status: config.StatusDebugAfter, active: true},
+		{name: "cancelled task requires separate Job check", status: config.StatusCancelled},
+		{name: "completed execution", status: config.StatusCompleted},
+		{name: "failed execution", status: config.StatusFailed},
+		{name: "never executed", status: config.StatusNotRun},
+		{name: "empty is not active", status: ""},
+		{name: "unknown is not active", status: "new-state"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.active, IsWorkflowActiveStatus(tt.status))
+		})
+	}
+}
 
 func TestWorkflowQueue_IdempotencyKeyUniqueIndex(t *testing.T) {
 	parsed, err := gormschema.Parse(&WorkflowQueue{}, &sync.Map{}, gormschema.NamingStrategy{})

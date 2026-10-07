@@ -146,7 +146,7 @@ func applyStatefulSetCleanupFenceAttempt(
 		return err
 	}
 	taskStatus := config.Status(strings.TrimSpace(string(task.Status)))
-	if taskStatus == "" || isWorkflowActiveStatus(taskStatus) {
+	if taskStatus == "" || model.IsWorkflowActiveStatus(taskStatus) {
 		return bcode.ErrWorkflowTaskRunning
 	}
 	taskCompleted := taskStatus == config.StatusCompleted
@@ -203,7 +203,7 @@ func applyStatefulSetCleanupFenceAttempt(
 				}
 			}
 		default:
-			if jobStatus == "" || isWorkflowActiveStatus(jobStatus) {
+			if jobStatus == "" || model.IsWorkflowActiveStatus(jobStatus) {
 				if taskStatus == config.StatusCancelled {
 					return bcode.ErrWorkflowTaskCancelling
 				}

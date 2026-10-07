@@ -3,13 +3,12 @@ package application
 import (
 	"encoding/json"
 	"fmt"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"sort"
 	"strings"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
@@ -19,15 +18,15 @@ const (
 )
 
 type versionUpdateResourceActions struct {
-	components        []apisv1.ComponentUpdateSpec
+	components        []domainspec.ComponentUpdateSpec
 	fullCleanup       bool
 	deployAll         bool
 	restartComponents []string
 }
 
-func parseVersionUpdateResourceActions(specs []apisv1.ComponentUpdateSpec) (versionUpdateResourceActions, error) {
+func parseVersionUpdateResourceActions(specs []domainspec.ComponentUpdateSpec) (versionUpdateResourceActions, error) {
 	actions := versionUpdateResourceActions{
-		components: make([]apisv1.ComponentUpdateSpec, 0, len(specs)),
+		components: make([]domainspec.ComponentUpdateSpec, 0, len(specs)),
 	}
 	restartSeen := make(map[string]string)
 	for _, spec := range specs {
@@ -76,7 +75,7 @@ func parseVersionUpdateResourceActions(specs []apisv1.ComponentUpdateSpec) (vers
 	return actions, nil
 }
 
-func validateVersionUpdateSentinelSpec(spec apisv1.ComponentUpdateSpec) error {
+func validateVersionUpdateSentinelSpec(spec domainspec.ComponentUpdateSpec) error {
 	if spec.Image != "" ||
 		spec.Replicas != nil ||
 		len(spec.Env) > 0 ||

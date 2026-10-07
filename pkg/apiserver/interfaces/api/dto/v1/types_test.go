@@ -117,6 +117,39 @@ func TestCreateApplicationsRequestDecodesExplicitEmptyJobFailurePolicy(t *testin
 	require.Empty(t, *req.Components[0].Properties.FailurePolicy)
 }
 
+func TestUpdateVersionRequestComponentJSONContract(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "omitted optional fields",
+			input: `{"version":"2.0.0","components":[{"name":"api"}]}`,
+			want:  `{"version":"2.0.0","components":[{"name":"api"}]}`,
+		},
+		{
+			name:  "explicit zero and empty replacements",
+			input: `{"version":"2.0.0","components":[{"name":"api","replicas":0,"properties":{},"traits":{}}]}`,
+			want:  `{"version":"2.0.0","components":[{"name":"api","replicas":0,"properties":{"ports":null,"env":null,"conf":null,"secret":null,"command":null,"labels":null},"traits":{}}]}`,
+		},
+		{
+			name:  "all component fields",
+			input: `{"version":"2.0.0","components":[{"action":"add","name":"worker","image":"example/worker:v2","replicas":2,"env":{"MODE":"override"},"type":"webservice","properties":{"env":{"MODE":"base"}},"traits":{"targetWorkEnv":{"pool":"batch"}}}]}`,
+			want:  `{"version":"2.0.0","components":[{"action":"add","name":"worker","image":"example/worker:v2","replicas":2,"env":{"MODE":"override"},"type":"webservice","properties":{"ports":null,"env":{"MODE":"base"},"conf":null,"secret":null,"command":null,"labels":null},"traits":{"targetWorkEnv":{"pool":"batch"}}}]}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var req UpdateVersionRequest
+			require.NoError(t, decodeStrictJSON([]byte(tt.input), &req))
+			raw, err := json.Marshal(req)
+			require.NoError(t, err)
+			require.JSONEq(t, tt.want, string(raw))
+		})
+	}
+}
+
 func TestUpdateVersionRequestDecodesJobFailurePolicy(t *testing.T) {
 	input := `{"version":"1.1.0","components":[{"action":"add","name":"mysql-update-job","type":"job","properties":{"runPolicy":"recreate","failurePolicy":"cleanup_failed"}}]}`
 

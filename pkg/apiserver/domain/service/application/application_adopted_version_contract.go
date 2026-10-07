@@ -7,7 +7,6 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
@@ -21,7 +20,7 @@ import (
 // checks.
 func validateAdoptedVersionUpdateCompatibility(
 	component *model.ApplicationComponent,
-	update apisv1.ComponentUpdateSpec,
+	update spec.ComponentUpdateSpec,
 ) error {
 	if component == nil {
 		return fmt.Errorf("%w: adopted component is nil", bcode.ErrApplicationManagementMode)
@@ -46,7 +45,7 @@ func validateAdoptedVersionUpdateCompatibility(
 	if err != nil || equal {
 		return err
 	}
-	var current apisv1.Traits
+	var current spec.Traits
 	if err := decodeJSONStruct(component.Traits, &current); err != nil {
 		return err
 	}
@@ -67,7 +66,7 @@ func validateAdoptedVersionUpdateCompatibility(
 	return nil
 }
 
-func normalizeAdoptedStandalonePVCSizeChanges(current apisv1.Traits, desired *apisv1.Traits) error {
+func normalizeAdoptedStandalonePVCSizeChanges(current spec.Traits, desired *spec.Traits) error {
 	if desired == nil {
 		return nil
 	}

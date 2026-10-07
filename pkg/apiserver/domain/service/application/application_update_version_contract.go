@@ -2,15 +2,15 @@ package application
 
 import (
 	"fmt"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"reflect"
 	"strings"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
-func validateVersionUpdateSharedRemovals(specs []apisv1.ComponentUpdateSpec, componentMap map[string]*model.ApplicationComponent) error {
+func validateVersionUpdateSharedRemovals(specs []domainspec.ComponentUpdateSpec, componentMap map[string]*model.ApplicationComponent) error {
 	for _, spec := range specs {
 		action, err := parseVersionUpdateComponentAction(spec)
 		if err != nil {
@@ -36,7 +36,7 @@ func validateVersionUpdateSharedRemovals(specs []apisv1.ComponentUpdateSpec, com
 	return nil
 }
 
-func parseVersionUpdateComponentAction(spec apisv1.ComponentUpdateSpec) (domainspec.ComponentAction, error) {
+func parseVersionUpdateComponentAction(spec domainspec.ComponentUpdateSpec) (domainspec.ComponentAction, error) {
 	rawAction := strings.TrimSpace(spec.Action)
 	if rawAction == "" {
 		return domainspec.ComponentActionUpdate, nil
@@ -59,7 +59,7 @@ func parseVersionUpdateComponentAction(spec apisv1.ComponentUpdateSpec) (domains
 	}
 }
 
-func validateVersionUpdateActionContract(specs []apisv1.ComponentUpdateSpec, componentMap map[string]*model.ApplicationComponent) error {
+func validateVersionUpdateActionContract(specs []domainspec.ComponentUpdateSpec, componentMap map[string]*model.ApplicationComponent) error {
 	for _, spec := range specs {
 		action, err := parseVersionUpdateComponentAction(spec)
 		if err != nil {
@@ -95,7 +95,7 @@ func validateVersionUpdateActionContract(specs []apisv1.ComponentUpdateSpec, com
 	return nil
 }
 
-func validateVersionUpdateComponentActionConflicts(specs []apisv1.ComponentUpdateSpec) error {
+func validateVersionUpdateComponentActionConflicts(specs []domainspec.ComponentUpdateSpec) error {
 	type actions struct {
 		add     bool
 		remove  bool
@@ -154,8 +154,8 @@ func validateVersionUpdateComponentActionConflicts(specs []apisv1.ComponentUpdat
 	return nil
 }
 
-func buildVersionUpdateResolvedComponents(existing []*model.ApplicationComponent, specs []apisv1.ComponentUpdateSpec) ([]apisv1.CreateComponentRequest, error) {
-	componentsByName := make(map[string]apisv1.CreateComponentRequest, len(existing)+len(specs))
+func buildVersionUpdateResolvedComponents(existing []*model.ApplicationComponent, specs []domainspec.ComponentUpdateSpec) ([]domainspec.Component, error) {
+	componentsByName := make(map[string]domainspec.Component, len(existing)+len(specs))
 	orderedNames := make([]string, 0, len(existing)+len(specs))
 	orderedNameSet := make(map[string]struct{}, len(existing)+len(specs))
 	for _, component := range existing {
@@ -222,7 +222,7 @@ func buildVersionUpdateResolvedComponents(existing []*model.ApplicationComponent
 		}
 	}
 
-	resolved := make([]apisv1.CreateComponentRequest, 0, len(componentsByName))
+	resolved := make([]domainspec.Component, 0, len(componentsByName))
 	for _, name := range orderedNames {
 		component, exists := componentsByName[name]
 		if !exists {
@@ -233,13 +233,13 @@ func buildVersionUpdateResolvedComponents(existing []*model.ApplicationComponent
 	return resolved, nil
 }
 
-func componentUpdateSpecToResolvedComponent(spec apisv1.ComponentUpdateSpec) (apisv1.CreateComponentRequest, error) {
+func componentUpdateSpecToResolvedComponent(spec domainspec.ComponentUpdateSpec) (domainspec.Component, error) {
 	replicas := int32(1)
 	if spec.Replicas != nil {
 		replicas = *spec.Replicas
 	}
 
-	resolved := apisv1.CreateComponentRequest{
+	resolved := domainspec.Component{
 		Name:          spec.Name,
 		ComponentType: spec.ComponentType,
 		Image:         spec.Image,
@@ -247,7 +247,7 @@ func componentUpdateSpecToResolvedComponent(spec apisv1.ComponentUpdateSpec) (ap
 	}
 	if spec.Properties != nil {
 		if reserved := reservedComponentLabelsIn(spec.Properties.Labels); len(reserved) > 0 {
-			return apisv1.CreateComponentRequest{}, fmt.Errorf("%w: component %s properties.labels contains reserved keys: %s", bcode.ErrInvalidProperties, spec.Name, strings.Join(reserved, ","))
+			return domainspec.Component{}, fmt.Errorf("%w: component %s properties.labels contains reserved keys: %s", bcode.ErrInvalidProperties, spec.Name, strings.Join(reserved, ","))
 		}
 		resolved.Properties = *spec.Properties
 	}
@@ -261,17 +261,17 @@ func componentUpdateSpecToResolvedComponent(spec apisv1.ComponentUpdateSpec) (ap
 	}
 	if spec.Traits != nil {
 		if err := validateComponentTraitsForWrite(spec.ComponentType, *spec.Traits, fmt.Sprintf("component[%s].traits", strings.TrimSpace(spec.Name))); err != nil {
-			return apisv1.CreateComponentRequest{}, err
+			return domainspec.Component{}, err
 		}
 		resolved.Traits = *spec.Traits
 	}
 	if err := domainspec.NormalizeComponentEvaluation(string(resolved.ComponentType), resolved.Image, resolved.Properties, &resolved.Traits); err != nil {
-		return apisv1.CreateComponentRequest{}, fmt.Errorf("%w: %v", bcode.ErrApplicationConfig, err)
+		return domainspec.Component{}, fmt.Errorf("%w: %v", bcode.ErrApplicationConfig, err)
 	}
 	return resolved, nil
 }
 
-func applyComponentUpdateSpecToResolvedComponent(current apisv1.CreateComponentRequest, spec apisv1.ComponentUpdateSpec) (apisv1.CreateComponentRequest, error) {
+func applyComponentUpdateSpecToResolvedComponent(current domainspec.Component, spec domainspec.ComponentUpdateSpec) (domainspec.Component, error) {
 	if spec.Image != "" {
 		current.Image = spec.Image
 	}
@@ -280,7 +280,7 @@ func applyComponentUpdateSpecToResolvedComponent(current apisv1.CreateComponentR
 	}
 	if spec.Properties != nil {
 		if reserved := reservedComponentLabelsIn(spec.Properties.Labels); len(reserved) > 0 {
-			return apisv1.CreateComponentRequest{}, fmt.Errorf("%w: component %s properties.labels contains reserved keys: %s", bcode.ErrInvalidProperties, spec.Name, strings.Join(reserved, ","))
+			return domainspec.Component{}, fmt.Errorf("%w: component %s properties.labels contains reserved keys: %s", bcode.ErrInvalidProperties, spec.Name, strings.Join(reserved, ","))
 		}
 		current.Properties = *spec.Properties
 	}
@@ -294,33 +294,33 @@ func applyComponentUpdateSpecToResolvedComponent(current apisv1.CreateComponentR
 	}
 	if spec.Traits != nil {
 		if err := validateComponentTraitsForWrite(current.ComponentType, *spec.Traits, fmt.Sprintf("component[%s].traits", strings.TrimSpace(spec.Name))); err != nil {
-			return apisv1.CreateComponentRequest{}, err
+			return domainspec.Component{}, err
 		}
 		current.Traits = *spec.Traits
 	}
 	if err := domainspec.NormalizeComponentEvaluation(string(current.ComponentType), current.Image, current.Properties, &current.Traits); err != nil {
-		return apisv1.CreateComponentRequest{}, fmt.Errorf("%w: %v", bcode.ErrApplicationConfig, err)
+		return domainspec.Component{}, fmt.Errorf("%w: %v", bcode.ErrApplicationConfig, err)
 	}
 	return current, nil
 }
 
-func componentPropertiesEqual(raw *model.JSONStruct, desired apisv1.Properties) (bool, error) {
-	var current apisv1.Properties
+func componentPropertiesEqual(raw *model.JSONStruct, desired domainspec.Properties) (bool, error) {
+	var current domainspec.Properties
 	if err := decodeJSONStruct(raw, &current); err != nil {
 		return false, err
 	}
 	return reflect.DeepEqual(current, desired), nil
 }
 
-func componentTraitsEqual(raw *model.JSONStruct, desired apisv1.Traits) (bool, error) {
-	var current apisv1.Traits
+func componentTraitsEqual(raw *model.JSONStruct, desired domainspec.Traits) (bool, error) {
+	var current domainspec.Traits
 	if err := decodeJSONStruct(raw, &current); err != nil {
 		return false, err
 	}
 	return reflect.DeepEqual(current, desired), nil
 }
 
-func hasVersionUpdateComponentChanges(componentMap map[string]*model.ApplicationComponent, specs []apisv1.ComponentUpdateSpec) (bool, error) {
+func hasVersionUpdateComponentChanges(componentMap map[string]*model.ApplicationComponent, specs []domainspec.ComponentUpdateSpec) (bool, error) {
 	hasChanges := false
 	for _, spec := range specs {
 		action, err := parseVersionUpdateComponentAction(spec)
@@ -364,7 +364,7 @@ func hasVersionUpdateComponentChanges(componentMap map[string]*model.Application
 	return hasChanges, nil
 }
 
-func componentUpdateSpecHasChanges(comp *model.ApplicationComponent, spec apisv1.ComponentUpdateSpec) (bool, error) {
+func componentUpdateSpecHasChanges(comp *model.ApplicationComponent, spec domainspec.ComponentUpdateSpec) (bool, error) {
 	if comp == nil {
 		return false, nil
 	}
@@ -420,7 +420,7 @@ func componentEnvUpdatesHaveChanges(raw *model.JSONStruct, envUpdates map[string
 		return true, nil
 	}
 
-	var props apisv1.Properties
+	var props domainspec.Properties
 	if err := decodeJSONStruct(raw, &props); err != nil {
 		return false, err
 	}

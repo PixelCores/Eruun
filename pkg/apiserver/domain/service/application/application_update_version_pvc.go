@@ -7,7 +7,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
@@ -21,11 +20,11 @@ type persistentStorageIndex struct {
 	byScopedMount map[string][]persistentStorageRef
 }
 
-func preserveVersionUpdatePVCIdentities(componentMap map[string]*model.ApplicationComponent, specs []apisv1.ComponentUpdateSpec, fullRecreate bool) ([]apisv1.ComponentUpdateSpec, error) {
+func preserveVersionUpdatePVCIdentities(componentMap map[string]*model.ApplicationComponent, specs []spec.ComponentUpdateSpec, fullRecreate bool) ([]spec.ComponentUpdateSpec, error) {
 	if len(specs) == 0 {
 		return specs, nil
 	}
-	normalized := make([]apisv1.ComponentUpdateSpec, len(specs))
+	normalized := make([]spec.ComponentUpdateSpec, len(specs))
 	copy(normalized, specs)
 
 	for idx := range normalized {
@@ -45,7 +44,7 @@ func preserveVersionUpdatePVCIdentities(componentMap map[string]*model.Applicati
 		if !exists || component == nil {
 			continue
 		}
-		var currentTraits apisv1.Traits
+		var currentTraits spec.Traits
 		if err := decodeJSONStruct(component.Traits, &currentTraits); err != nil {
 			return nil, err
 		}
@@ -59,7 +58,7 @@ func preserveVersionUpdatePVCIdentities(componentMap map[string]*model.Applicati
 	return normalized, nil
 }
 
-func preserveTraitPVCIdentities(componentName string, componentType config.JobType, current, desired apisv1.Traits, allowStatefulSetRecreate bool) (apisv1.Traits, error) {
+func preserveTraitPVCIdentities(componentName string, componentType config.JobType, current, desired spec.Traits, allowStatefulSetRecreate bool) (spec.Traits, error) {
 	index := buildPersistentStorageIndex(current)
 	if len(index.byScopedName) == 0 && len(index.byScopedMount) == 0 {
 		return desired, nil
@@ -90,18 +89,18 @@ func preserveTraitPVCIdentities(componentName string, componentType config.JobTy
 	}
 
 	if err := guard("main", desired.Storage, "traits.storage"); err != nil {
-		return apisv1.Traits{}, err
+		return spec.Traits{}, err
 	}
 	for initIndex := range desired.Init {
 		scope := namedContainerScope("init", desired.Init[initIndex].Name, initIndex)
 		if err := guard(scope, desired.Init[initIndex].Traits.Storage, fmt.Sprintf("traits.init[%d].traits.storage", initIndex)); err != nil {
-			return apisv1.Traits{}, err
+			return spec.Traits{}, err
 		}
 	}
 	for sidecarIndex := range desired.Sidecar {
 		scope := namedContainerScope("sidecar", desired.Sidecar[sidecarIndex].Name, sidecarIndex)
 		if err := guard(scope, desired.Sidecar[sidecarIndex].Traits.Storage, fmt.Sprintf("traits.sidecar[%d].traits.storage", sidecarIndex)); err != nil {
-			return apisv1.Traits{}, err
+			return spec.Traits{}, err
 		}
 	}
 	return desired, nil
@@ -116,7 +115,7 @@ func storagePVCIdentityClientMessage(componentName string, componentType config.
 		componentName, field)
 }
 
-func buildPersistentStorageIndex(traits apisv1.Traits) persistentStorageIndex {
+func buildPersistentStorageIndex(traits spec.Traits) persistentStorageIndex {
 	index := persistentStorageIndex{
 		byScopedName:  make(map[string]persistentStorageRef),
 		byScopedMount: make(map[string][]persistentStorageRef),

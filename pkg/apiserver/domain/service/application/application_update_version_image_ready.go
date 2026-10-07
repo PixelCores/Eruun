@@ -2,12 +2,11 @@ package application
 
 import (
 	"fmt"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"strings"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
@@ -24,15 +23,15 @@ func normalizeVersionUpdateImageReadyTimeoutSeconds(value int64) (int64, error) 
 	return value, nil
 }
 
-func versionUpdateImageReadyComponents(componentMap map[string]*model.ApplicationComponent, specs []apisv1.ComponentUpdateSpec) ([]string, error) {
+func versionUpdateImageReadyComponents(componentMap map[string]*model.ApplicationComponent, specs []domainspec.ComponentUpdateSpec) ([]string, error) {
 	return versionUpdateReadyComponents(componentMap, specs, true)
 }
 
-func versionUpdateReadyUpdateComponents(componentMap map[string]*model.ApplicationComponent, specs []apisv1.ComponentUpdateSpec) ([]string, error) {
+func versionUpdateReadyUpdateComponents(componentMap map[string]*model.ApplicationComponent, specs []domainspec.ComponentUpdateSpec) ([]string, error) {
 	return versionUpdateReadyComponents(componentMap, specs, false)
 }
 
-func versionUpdateReadyComponents(componentMap map[string]*model.ApplicationComponent, specs []apisv1.ComponentUpdateSpec, includeAdds bool) ([]string, error) {
+func versionUpdateReadyComponents(componentMap map[string]*model.ApplicationComponent, specs []domainspec.ComponentUpdateSpec, includeAdds bool) ([]string, error) {
 	seen := make(map[string]struct{})
 	targets := make([]string, 0)
 	appendTarget := func(name string) {
