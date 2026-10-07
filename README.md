@@ -102,7 +102,7 @@ flowchart TB
 
 The default is four nodes: one Leader and three Workers. Production needs at least two nodes; a single node has no Worker capacity for new tasks. Promotion stops new task intake while previously claimed tasks continue with their original ownership and heartbeats. Losing leadership stops API/control duties before returning to Worker intake. Healthy Workers remain PodReady; the business Service selects only the Leader.
 
-The execution path is: **Leader API persists a task → Leader dispatches it → Worker claims a database lease and operates on Kubernetes → execution progress and results are saved**. Acceptance, workload readiness, execution completion, and result storage are separate states. Leadership changes interrupt HTTP/gRPC connections; reconnect, check task state, and retry only under the endpoint's idempotency contract. The former four-role, dual-Lease topology requires a [maintenance-window migration](docs/helm-deployment.md) and cannot run alongside this topology.
+The execution path is: **Leader API persists a task → Leader dispatches it → Worker claims a database lease and operates on Kubernetes → execution progress and results are saved**. Acceptance, workload readiness, execution completion, and result storage are separate states. Leadership changes interrupt HTTP/gRPC connections; reconnect, check task state, and retry only under the endpoint's idempotency contract.
 
 | Dependency | Responsibility | Boundary |
 | --- | --- | --- |
@@ -225,7 +225,7 @@ Local source development requires Go 1.27, plus GNU Make when using Make targets
 go run ./cmd/main.go
 ```
 
-This starts one candidate node. Once elected, a single node serves APIs but cannot claim new tasks. End-to-end execution requires at least two nodes sharing the namespace, Lease, database, and messaging configuration, with unique instance IDs. Local processes need distinct HTTP/gRPC addresses. Migrate the database first, then start other nodes in validation mode; see the [Helm deployment contract](docs/helm-deployment.md) for cluster setup and removal of old settings.
+This starts one candidate node. Once elected, a single node serves APIs but cannot claim new tasks. End-to-end execution requires at least two nodes sharing the namespace, Lease, database, and messaging configuration, with unique instance IDs. Local processes need distinct HTTP/gRPC addresses. Migrate the database first, then start other nodes in validation mode; see the [Helm deployment contract](docs/helm-deployment.md) for cluster setup.
 
 Common development checks:
 

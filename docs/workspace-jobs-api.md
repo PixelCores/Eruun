@@ -214,7 +214,7 @@ Runner 使用固定、无 Secret 读权限的空间 ServiceAccount，只获得 P
 
 Helm 使用 `jobs.existingSecret` 和 `jobs.key` 把用户创建的 Secret 挂载到全部节点，Chart 不生成或公开存储凭据。Leader 的 Controller 执行结果保存和 Sandbox 保留清理，Worker 执行 Harbor Job；统一运行身份具备接任所需的 Sandbox 权限，业务任务仍使用空间受限身份。提供的单文件清单不默认启用 Harbor，启用时需为统一 Deployment 挂载配置。
 
-升级先核对 Runner/server 协议、镜像与 schema：旧配置无 `sandboxURL` 时，新 Runner 仍读取旧 Pod 协议，已有 Runner 沿原资源完成，不能临时把它的 Pod 当作 Sandbox。禁止新 Server 配不支持新 Sandbox 请求的旧 Runner 镜像。旧四角色双 Lease 转为统一节点时必须按 [Helm 维护窗口迁移](helm-deployment.md#从旧四角色迁移) 先停全部旧进程，协议读方兼容不等于拓扑可混跑。回滚前停止新准入并排空 Sandbox 执行和保留资源，不能将新字段交给旧严格解码器；使用明确镜像 tag/digest。
+升级先核对 Runner/server 协议、镜像与 schema：旧配置无 `sandboxURL` 时，新 Runner 仍读取旧 Pod 协议，已有 Runner 沿原资源完成，不能临时把它的 Pod 当作 Sandbox。禁止新 Server 配不支持新 Sandbox 请求的旧 Runner 镜像。回滚前停止新准入并排空 Sandbox 执行和保留资源，不能将新字段交给旧严格解码器；使用明确镜像 tag/digest。
 
 若来自更早的**无 claim 协议**版本，仍必须停止新评测并排空或明确取消旧评测、确认 Kubernetes Job 已停止，再升级并恢复提交；该版本不在上述已有 v1 Runner 的共存范围内。`command` 不进入此协议排空要求。
 

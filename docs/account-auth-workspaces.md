@@ -6,7 +6,7 @@
 
 ## 部署与配置
 
-全部节点从 `--auth-config-file` / `ERUUN_AUTH_CONFIG_FILE` 读取同一份严格 JSON 配置，示例为 [`deploy/accounts.example.json`](../deploy/accounts.example.json)。复制到仓库外的私密文件，权限设为 `0600`，填写真实值后再部署。配置不通过系统设置 API 读取或修改，变更后重启所有节点（从旧四角色迁移须先按维护窗口停旧拓扑）。未知字段、占位凭据、无效 Origin、缺少集群网络配置会使启动失败。MySQL 与 Redis 是必需依赖，Redis 同时承担验证码、OAuth state 和限流；Kafka 不能替代它。
+全部节点从 `--auth-config-file` / `ERUUN_AUTH_CONFIG_FILE` 读取同一份严格 JSON 配置，示例为 [`deploy/accounts.example.json`](../deploy/accounts.example.json)。复制到仓库外的私密文件，权限设为 `0600`，填写真实值后再部署。配置不通过系统设置 API 读取或修改，变更后重启所有节点。未知字段、占位凭据、无效 Origin、缺少集群网络配置会使启动失败。MySQL 与 Redis 是必需依赖，Redis 同时承担验证码、OAuth state 和限流；Kafka 不能替代它。
 
 | 配置 | 契约 |
 | --- | --- |

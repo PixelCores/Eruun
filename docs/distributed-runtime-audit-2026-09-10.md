@@ -2,7 +2,7 @@
 
 > 状态：Historical / Audit。审计基线为 `main@3045955f75b332e2ac5f07e77c2dfa725f499eb9`。本文记录代码证据和在隔离环境中实际完成的验证，不构成生产高可用认证，也不承诺 exactly-once。
 
-> 当前拓扑提示：下文的四角色、双 Lease 和对应测试属于所列历史基线。当前统一节点使用单 Leader，迁移必须先停旧拓扑；见[分布式运行时设计](enterprise-distributed-runtime-design.md)与[部署迁移](helm-deployment.md#从旧四角色迁移)。历史证据不作为新拓扑验收结果。
+> 当前拓扑提示：下文的四角色、双 Lease 和对应测试属于所列历史基线。当前统一节点使用单 Leader，见[分布式运行时设计](enterprise-distributed-runtime-design.md)与[部署契约](helm-deployment.md)。历史证据不作为新拓扑验收结果。
 
 ## 范围与原则
 

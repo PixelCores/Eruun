@@ -142,7 +142,7 @@ Workflow lease 恢复会读取已持久的运行中 retry checkpoint，保留原
 
 现有 task stages 查询的 `info` 展示每个已登记 Job 的调度状态、class、首次排队时间与原因。Job 记录保存 attempt 和最终错误；结构化日志说明 OOM 决策与调度错误。Workspace 身份不作为无界 Prometheus label。
 
-升级需要先完成 schema migration，再升级统一节点；从旧四角色切换时必须先按[部署维护窗口](helm-deployment.md#从旧四角色迁移)停止旧拓扑，不能混跑；新增调度列使用可空字段或明确的零值默认值，不改旧 Job 业务状态。回滚前应停止接收新任务并排空已启用 retry policy 的运行中 Job；旧 Worker 不理解新的准入与 checkpoint，不能混跑并声称全局上限有效。
+升级需要先完成 schema migration，再升级统一节点；新增调度列使用可空字段或明确的零值默认值，不改旧 Job 业务状态。回滚前应停止接收新任务并排空已启用 retry policy 的运行中 Job；旧 Worker 不理解新的准入与 checkpoint，不能混跑并声称全局上限有效。
 
 本实现不包括 GPU/设备容量预留、节点放置、按资源量的配额、gang scheduling、checkpoint 抢占或任务 deadline 公共 API。需要这些能力时再基于明确负载与 Kubernetes 侧资源事实设计，不能把本次逻辑并发槽位解释为这些功能。
 

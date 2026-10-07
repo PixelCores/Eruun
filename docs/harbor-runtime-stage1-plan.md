@@ -2,7 +2,7 @@
 
 > 状态：Draft / 实施中。本文是第一阶段主 PR 的实施与验收计划；第 3 节保留 `8290fb1` 基线事实，已实施改动和证据在第 7 节逐项记录。真实 ACK/ACS 部署和压测由用户手动执行，本 PR 交付代码、部署配置、脚本及判定方法；代码通过测试不代表万级容量或周级长稳通过。
 
-> 拓扑更新：历史基线中的 API/Controller/Scheduler/Worker 部署与独立 Leader 说明予以保留；当前运行时改为统一节点单 Leader。协议与容量实验按 [Current 运行契约](enterprise-distributed-runtime-design.md)执行，旧四角色不得与新拓扑混跑。
+> 拓扑更新：历史基线中的 API/Controller/Scheduler/Worker 部署与独立 Leader 说明予以保留；当前运行时改为统一节点单 Leader。协议与容量实验按 [Current 运行契约](enterprise-distributed-runtime-design.md)执行。
 
 > 实施路线为 Eruun 统一创建 Runner Job 与 trial Sandbox，Harbor 逐 trial 申请并使用环境。用户已确认：控制面中断最多 10 分钟时，健康 trial 继续、暂停新环境申请、恢复后补报；每 Job 可设置时长，支持最长 14 天且管理员可在线降低/恢复全局上限；未完整采集结果的 Sandbox 保留 24 小时再清理。详细依据与历史评审纠正见[讨论纪要第 9 节](harbor-runtime-stage1-discussion.md#9-评审核验结论与实施门禁)。
 

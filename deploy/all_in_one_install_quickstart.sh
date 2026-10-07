@@ -431,32 +431,6 @@ patchManifestOverrides() {
   fi
 }
 
-ensureOldRuntimeStopped() {
-  local role name replicas pod_selector pods count
-  for role in api controller scheduler worker; do
-    if [ "${INSTALL_MODE}" = "helm" ]; then
-      name=$(helmSuffixedName "${role}")
-      pod_selector="app.kubernetes.io/instance=${RELEASE_NAME},app.kubernetes.io/component=${role}"
-    else
-      name="${DEPLOYMENT_NAME}-${role}"
-      pod_selector="app=eruun,app.kubernetes.io/component=${role}"
-    fi
-    if ! replicas=$("${KUBECTL_BIN}" -n "${NAMESPACE}" get deployment "${name}" --ignore-not-found -o 'jsonpath={.spec.replicas} {.status.replicas} {.status.terminatingReplicas}' 2>&1); then
-      bail "cannot verify old runtime deployment ${name}: ${replicas}"
-    fi
-    for count in ${replicas}; do
-      case "${count}" in
-        *[!0-9]*) bail "invalid replica count returned for ${name}" ;;
-      esac
-      [ "${count}" -eq 0 ] || bail "stop the old four-role deployments and wait for their Pods to terminate before installing: ${name} is still active"
-    done
-    if ! pods=$("${KUBECTL_BIN}" -n "${NAMESPACE}" get pods -l "${pod_selector}" -o name 2>&1); then
-      bail "cannot verify old runtime Pods: ${pods}"
-    fi
-    [ -z "${pods}" ] || bail "wait for the old four-role Pods to terminate before installing: ${name} still has Pods"
-  done
-}
-
 installManifest() {
   ensureNamespace
   createAccountSecret
@@ -565,7 +539,6 @@ showAccessHints() {
 main() {
   printf 'Eruun all-in-one installer\n'
   preflightCheck
-  ensureOldRuntimeStopped
   confirmInstall
 
   if [ "${INSTALL_MODE}" = "helm" ]; then

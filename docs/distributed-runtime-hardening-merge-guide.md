@@ -2,7 +2,7 @@
 
 > 状态：Historical / Audit。PR #9–#15 已按第 5 节顺序合并，本文按 `main@f46f685a25b46de91fbcba864d543ad255f9fb10` 校准实现说明；原始问题基线为 `main@3df077a2fa94ed331add8c4f739b4582bd559408`。代码整合与本地回归已完成，第 6 节真实集群验收仍待执行；该历史记录不代表当前拓扑、生产 HA 或新版本集群验收已经通过。
 
-> 当前拓扑提示：下文的四角色、双 Lease 和对应测试属于所列历史基线。当前统一节点使用单 Leader，迁移必须先停旧拓扑；见[分布式运行时设计](enterprise-distributed-runtime-design.md)与[部署迁移](helm-deployment.md#从旧四角色迁移)。历史证据不作为新拓扑验收结果。
+> 当前拓扑提示：下文的四角色、双 Lease 和对应测试属于所列历史基线。当前统一节点使用单 Leader，见[分布式运行时设计](enterprise-distributed-runtime-design.md)与[部署契约](helm-deployment.md)。历史证据不作为新拓扑验收结果。
 
 ## 1. 结论
 

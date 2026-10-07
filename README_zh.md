@@ -102,7 +102,7 @@ flowchart TB
 
 默认部署 4 个节点，即 1 Leader＋3 Worker；生产至少需要 2 个节点，单节点没有领取新任务的 Worker 容量。Leader 停止领取新任务，升主前已认领的任务继续完成并续租；失主取消 API 与控制职责后恢复 Worker。健康 Worker 仍为 PodReady，业务 Service 只选择当前 Leader。
 
-主要路径是：**Leader API 保存任务 → Leader 调度派发 → Worker 认领数据库租约并操作 Kubernetes → 保存执行进度与结果**。提交成功仅表示任务已接收；应用就绪、执行终态和结果保存须分别查询。切主会中断 HTTP/gRPC 连接，应重连并核对任务状态后按接口幂等契约重试。旧四角色双 Lease 拓扑必须按[维护窗口迁移](docs/helm-deployment.md)，不能混跑。
+主要路径是：**Leader API 保存任务 → Leader 调度派发 → Worker 认领数据库租约并操作 Kubernetes → 保存执行进度与结果**。提交成功仅表示任务已接收；应用就绪、执行终态和结果保存须分别查询。切主会中断 HTTP/gRPC 连接，应重连并核对任务状态后按接口幂等契约重试。
 
 | 依赖 | 负责什么 | 边界 |
 | --- | --- | --- |
@@ -225,7 +225,7 @@ curl --fail-with-body "$ERUUN_URL/api/v1/jobs/$TASK_ID" \
 go run ./cmd/main.go
 ```
 
-该命令启动一个候选节点；单节点当选后只接收 API，不领取新任务。端到端执行至少启动两个节点，共享 namespace、Lease、数据库、Redis/消息配置，并使用唯一实例 ID。同机进程须分别设置不冲突的 HTTP/gRPC 地址；先完成 schema 迁移，再以校验模式启动其他节点。集群方式及旧参数移除见 [Helm 部署契约](docs/helm-deployment.md)。
+该命令启动一个候选节点；单节点当选后只接收 API，不领取新任务。端到端执行至少启动两个节点，共享 namespace、Lease、数据库、Redis/消息配置，并使用唯一实例 ID。同机进程须分别设置不冲突的 HTTP/gRPC 地址；先完成 schema 迁移，再以校验模式启动其他节点。集群配置见 [Helm 部署契约](docs/helm-deployment.md)。
 
 常用开发检查：
 

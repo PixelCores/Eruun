@@ -77,7 +77,7 @@ Cron schedule 按 `next_run, id` 稳定排序，在同一进程的后续轮询�
 
 一次性延迟 Job 在发送队列通知前，先把完整载荷、到期时间和 `pending` 检查点写入 `JobInfo`。新队列通知使用 `version: 2`，只带 `executeAt`、`taskId`、`jobType`、`serviceName`、`executionKey`、`runGeneration` 和 `runToken`；Controller 读取数据库中的完整载荷，核对通知身份后执行。升级期间仍能读取未标版本、内嵌完整 Job 的旧通知，并继续比对完整载荷。Redis Stream 只负责降低到期发现延迟；Controller Leader 还会按 `(status, delay_state, delay_execute_at)` 索引轮询已到期检查点并直接恢复。因此 consumer group 被重建、Stream 被裁剪、Redis 暂时不可用或进程在写库后/入队前退出，都不会让已提交的延迟执行永久丢失。成功创建同身份 Kubernetes Job 并持久化 result outbox 后，检查点才变为 `dispatched`。
 
-数据库恢复每次轮询最多读取 100 条记录，按记录 ID 倒序推进游标，到末尾后重新扫描。持续重试、无效载荷或扫描期间记录状态变化不会阻塞后续到期任务；新到达的记录在下一轮扫描中纳入。队列通知按执行键去重，被去重的消息释放处理标记并保持未确认状态，允许 Kafka 再次认领并在执行完成后确认。这段通知格式兼容不构成部署拓扑兼容；从旧四角色双 Lease 升级必须按下文维护窗口迁移，不能混跑。
+数据库恢复每次轮询最多读取 100 条记录，按记录 ID 倒序推进游标，到末尾后重新扫描。持续重试、无效载荷或扫描期间记录状态变化不会阻塞后续到期任务；新到达的记录在下一轮扫描中纳入。队列通知按执行键去重，被去重的消息释放处理标记并保持未确认状态，允许 Kafka 再次认领并在执行完成后确认。
 
 Harbor 恢复资格、恢复任务剩余预算、Job 恢复准入预检查及持久化 Job retry 的 deadline/RetryAt 使用数据库时间。恢复时把剩余时长换算为本进程的单调计时预算，保持原 deadline，不因节点时钟差或接管而重新获得完整超时。数据库时钟缺失、失败或零值会停止推进；这不替代 Kubernetes、Runner 与数据库之间的实际时钟同步要求。
 
@@ -87,7 +87,7 @@ Harbor 恢复资格、恢复任务剩余预算、Job 恢复准入预检查及持
 
 结果写入在检查 claim 的事务内通过状态、执行代次与 attempt 的 CAS 保存终态与日志；并发取消等已提交终态不会被覆盖，仅最终持久化为 Completed 才按已记录的 Job UID 清理 Kubernetes 对象。保存失败保留现场；清理失败保留 outbox 供重试；重放已完成记录只补清理，不重新等待已删除 Job。按名称读取日志后还需校验 Pod UID 与 Job owner；读取失败、身份变化或无法确认身份均保留现场等待重试。结果 ACK 在清理与 outbox 收敛后发生。数据库与 Kubernetes 之间仍没有跨系统原子事务。
 
-升级需通过现有 schema migration 增加 outbox 的 `lease_expires_at`、`job_uid` 列。旧空租约记录先登记宽限而不是立即接管；旧 processing 记录的宽限包含其完整 Job timeout、30 秒删除、30 秒处理及 5 秒保存余量。旧终态记录没有已保存 UID 时不自动删除同名对象。历史结果协议的完整防护需旧进程排空并升级后成立；这不允许旧四角色与新节点拓扑混跑。既有 Deadline/RetryAt 原值保留，不追溯校正历史节点偏差。具体回归与未验证的集群故障边界见[分布式设计审核的修复处置](distributed-design-audit-2026-10-06.md#8-pr-139-修复处置与验证边界)。
+升级需通过现有 schema migration 增加 outbox 的 `lease_expires_at`、`job_uid` 列。旧空租约记录先登记宽限而不是立即接管；旧 processing 记录的宽限包含其完整 Job timeout、30 秒删除、30 秒处理及 5 秒保存余量。旧终态记录没有已保存 UID 时不自动删除同名对象。历史结果协议的完整防护需旧进程排空并升级后成立。既有 Deadline/RetryAt 原值保留，不追溯校正历史节点偏差。具体回归与未验证的集群故障边界见[分布式设计审核的修复处置](distributed-design-audit-2026-10-06.md#8-pr-139-修复处置与验证边界)。
 
 ## 6. Informer 与 Worker
 
@@ -103,13 +103,11 @@ initial sync、List/Watch 重连和等待过程都受运行 context 控制；关
 
 收到 SIGTERM 后先取消选举与任期入口，停止领取新任务，再以独立执行 context 排空已启动任务；上限由 `--workflow-worker-drain-timeout` 控制，默认 60 秒。超时后停止本地执行与续租，由后续 Leader 的 reaper 和 Worker 接管。关闭是有限预算，不承诺所有长任务都能在该窗口内自然完成。
 
-## 8. 部署与旧拓扑迁移
+## 8. 部署
 
 Chart 使用一个 runtime Deployment 和 ServiceAccount，`runtime.replicas` 默认 4，`runtime.resources` 配置每个节点的相同资源。固定 Service 只选择当前 Leader，健康 Worker 的 readiness 不作为业务路由条件。资源、schema、RBAC 和 Quickstart 参数见 [Helm 部署契约](helm-deployment.md)。
 
-旧 `--role` / `ERUUN_ROLE`、双 Lease 参数、`--exit-on-lost-leader` / `ERUUN_EXIT_ON_LOST_LEADER` 和 `runtime.roles` 不再是运行选项。**旧四角色双 Lease 与新单 Lease 拓扑不能滚动混跑。**
-
-迁移必须安排维护窗口：先备份部署 values、Secret 引用及数据库，停止新的业务提交，给长任务足够的完成或可恢复排空时间；然后停止全部旧 API、Controller、Scheduler、Worker 进程，确认旧控制循环与执行者不再运行。按新参数完成 schema 迁移后启动统一节点，确认单 Lease holder、Service 只指向该 Leader、Worker 就绪，再恢复流量。不要删除业务数据、PVC 或消息来代替排空。回滚同样先停新拓扑，并检查旧版本对当前 schema/任务格式的兼容性。
+项目仍处于开发阶段，直接使用当前配置部署统一节点。数据库仍按既有 schema 初始化与校验流程准备；启动后核验唯一 Lease holder、Service 选择和 Worker readiness。
 
 任务 ownership、D1–D5 修复和历史 deadline/RetryAt 原值保持不变。新拓扑上线不是结果协议或恢复正确性的验收证明。
 

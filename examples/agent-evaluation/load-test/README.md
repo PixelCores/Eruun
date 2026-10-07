@@ -138,7 +138,7 @@ helm upgrade "$ERUUN_RELEASE" deploy/helm/eruun \
   --wait --timeout 10m
 ```
 
-渲染可能包含私有 env 值，仅在受控终端审阅，不把输出贴到公共记录。每档完整排空、核对结果并保存观测后，手动把 `WORKER_SLOTS` 改为 **100 → 250 → 500 → 1000**，再次渲染/升级。每档只变该 slot，固定统一节点资源、副本、任务模板、请求速率、Leader 配置与观察预算；禁止自动循环放量。改变 slot 会更新统一 Deployment，也可能切换 Leader；升级后重建 API 连接，等旧 Pod 退出并确认一个 Leader、一个领取新任务的 Worker，再开始该档注入。该操作只适用于已迁移到统一节点的环境；旧四角色必须先按维护窗口停止。
+渲染可能包含私有 env 值，仅在受控终端审阅，不把输出贴到公共记录。每档完整排空、核对结果并保存观测后，手动把 `WORKER_SLOTS` 改为 **100 → 250 → 500 → 1000**，再次渲染/升级。每档只变该 slot，固定统一节点资源、副本、任务模板、请求速率、Leader 配置与观察预算；禁止自动循环放量。改变 slot 会更新统一 Deployment，也可能切换 Leader；升级后重建 API 连接，等旧 Pod 退出并确认一个 Leader、一个领取新任务的 Worker，再开始该档注入。
 
 准入前置：固定并记录 [`workflow_scheduler`](../../../docs/system-setting.md#job-全局调度) 的全局 `maxConcurrentJobs`、各空间 `maxConcurrentJobsPerWorkspace` 和实际 ResourceQuota/LimitRange。默认全局 100、每空间 10 会先于高档 Worker slot 限制任务；需要在整组阶梯前由管理员按环境能力确定，不能逐档偷偷提高后混称只改变 Worker。Runner 与 trial 均消耗配额，当前默认空间 request 2 CPU/4 GiB 只够一个默认规格 Runner 加一个 trial；不要以新增空间绕过配额规划。ACK/ACS、镜像、网络、数据库/保存目标能力和费用停止线都由操作者先核验，未通过档停止注入并处理在途任务，不据 slot 数宣布容量通过。
 

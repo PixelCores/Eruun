@@ -30,7 +30,7 @@ flowchart TB
 - MySQL 是任务状态及 ownership 事实源；消息允许重复交付，Worker 仍须数据库 CAS 认领。
 - 选择 Kafka 后 Redis 仍是依赖。该图不代表全部网络与权限关系。
 
-迁移、客户端重试及恢复边界见[分布式运行时设计](enterprise-distributed-runtime-design.md)。
+部署、客户端重试及恢复边界见[分布式运行时设计](enterprise-distributed-runtime-design.md)。
 
 ## 2. Workflow 执行与恢复
 

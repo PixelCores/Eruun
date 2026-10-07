@@ -34,8 +34,6 @@ if [ "${ERUUN_QUICKSTART_FAKE_COMMAND:-false}" = "true" ]; then
     exit 1
   fi
   case "$*" in
-    *"get deployment "*) printf '%s' "${FAKE_OLD_RUNTIME_REPLICAS:-}"; exit 0 ;;
-    *"get pods -l "*) printf '%s' "${FAKE_OLD_RUNTIME_PODS:-}"; exit 0 ;;
     *"get secret eruun-mysql-secret"*"mysql-root-password"*) fakeSecretValue "${FAKE_EXISTING_MYSQL_ROOT:-}" ;;
     *"get secret eruun-mysql-secret"*"mysql-user"*) fakeSecretValue "${FAKE_EXISTING_MYSQL_USER:-}" ;;
     *"get secret eruun-mysql-secret"*"mysql-password"*) fakeSecretValue "${FAKE_EXISTING_MYSQL_PASSWORD:-}" ;;
@@ -502,37 +500,27 @@ runLongHelmDependencyNameContract() {
   assertTempFilesCleaned "${case_dir}"
 }
 
-runUnifiedRuntimeMigrationContract() {
+runUnifiedRuntimeContract() {
   local scenario case_dir command_log output
-  for scenario in replicas pods invalid-count valid; do
+  for scenario in invalid-count valid; do
     case_dir=$(newCase "unified-${scenario}")
     command_log="${case_dir}/commands.log"
     output="${case_dir}/output.log"
-    local old_replicas="" old_pods="" node_count=4
-    case "${scenario}" in
-      replicas) old_replicas="0 0 1" ;;
-      pods) old_pods="pod/eruun-controller-old" ;;
-      invalid-count) node_count=1 ;;
-    esac
+    local node_count=4
+    if [ "${scenario}" = invalid-count ]; then node_count=1; fi
     if env ERUUN_QUICKSTART_FAKE_COMMAND=true FAKE_COMMAND_LOG="${command_log}" \
-      FAKE_OLD_RUNTIME_REPLICAS="${old_replicas}" FAKE_OLD_RUNTIME_PODS="${old_pods}" \
       INSTALL_MODE=manifest MANIFEST="${case_dir}/eruun-stack.yaml" \
       KUBECTL_BIN="${TEST_SCRIPT}" OPENSSL_BIN="${TEST_SCRIPT}" TMPDIR="${case_dir}/tmp" \
       SKIP_CONFIRM=true WAIT_READY=true REPLICA_COUNT="${node_count}" \
       IMAGE_REPOSITORY=example.com/eruun IMAGE_TAG=test "${case_dir}/installer.sh" > "${output}" 2>&1; then
-      [ "${scenario}" = valid ] || fail "unsafe ${scenario} migration must fail"
+      [ "${scenario}" = valid ] || fail "invalid unified runtime replica count must fail"
       assertContains "${command_log}" "scale deployment/eruun-runtime --replicas=4"
       assertContains "${command_log}" "set image deployment/eruun-runtime eruun-server=example.com/eruun:test"
       assertContains "${command_log}" "rollout status deployment/eruun-runtime"
     else
       [ "${scenario}" != valid ] || fail "valid unified runtime installation must succeed"
-      if [ "${scenario}" = invalid-count ]; then
-        assertContains "${output}" "REPLICA_COUNT must be >= 2"
-      else
-        assertContains "${output}" "old four-role"
-        assertNotContains "${command_log}" "apply -f"
-        assertNotContains "${command_log}" "create secret generic"
-      fi
+      assertContains "${output}" "REPLICA_COUNT must be >= 2"
+      [ ! -s "${command_log}" ] || fail "invalid replica count must fail before invoking deployment commands"
     fi
     assertTempFilesCleaned "${case_dir}"
   done
@@ -550,6 +538,6 @@ runPersistentCredentialReadFailureContract
 runPersistentCredentialMissingKeyContract
 runPersistentResourceWithoutCredentialContract
 runLongHelmDependencyNameContract
-runUnifiedRuntimeMigrationContract
+runUnifiedRuntimeContract
 
 printf '%s\n' "Eruun quickstart tests passed"

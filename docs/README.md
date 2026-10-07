@@ -47,7 +47,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 - 用户业务 gRPC v1 与 HTTP 并行：仅当前 Leader 在本地默认提供 `127.0.0.1:9001`，集群内 Leader Pod/固定 Service 使用 9000；见 [`grpc-api.md`](grpc-api.md)。
 - 服务进程本地默认监听：`127.0.0.1:8001`；`deploy/eruun-stack.yaml` 会通过 `ERUUN_BIND_ADDR=0.0.0.0:8000` 覆盖该默认值并暴露集群内服务。
 - MySQL 默认 DSN 是 `127.0.0.1:3306/eruun` 的本地连接模板，必须替换密码占位符；Kafka 默认 Broker 为 `localhost:9092`，消息后端仍默认 Redis。字段与覆盖方式见 [`config/apiserver-default.yaml`](../config/apiserver-default.yaml) 和 [Kafka 配置说明](kafka-queue-implementation.md#4-配置说明)。
-- 所有服务端节点参与同一个 Leader 选举；Leader 提供业务 API、调度和后台维护，其他节点是 Worker＋候选。静态角色参数已移除，迁移须停止旧拓扑。
+- 所有服务端节点参与同一个 Leader 选举；Leader 提供业务 API、调度和后台维护，其他节点是 Worker＋候选。开发阶段直接使用当前统一节点配置部署。
 - Workflow 固定使用 v2 generation/token ownership 与数据库执行租约，Worker 不再获取 Redis 执行锁；不存在关闭 fencing 或处理 v1 dispatch 的运行模式。
 - 顶层 `/workflow`、`/workflow/exec`、`/workflow/cancel` 路由不再注册；应用维度 workflow API 是当前主路径。
 - 业务 API 强制 Bearer 登录并按个人/团队空间授权；账号配置由 `ERUUN_AUTH_CONFIG_FILE` 加载，所有认证依赖失败时保持拒绝访问。
@@ -147,7 +147,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `template-engine-status.md` | Current | 模板能力状态 |
 | `mysql-template-init-env-example.md` | Current | MySQL 模板初始化环境变量示例 |
 | `tcp-ingress-nginx-dependencies.md` | Current | Redis/MySQL TCP 外部访问配置 |
-| `helm-deployment.md` | Current | Helm 同构节点拓扑、schema 迁移与数据库配置、探针、PDB、topology spread、统一 ServiceAccount/RBAC 与旧拓扑维护窗口迁移 |
+| `helm-deployment.md` | Current | Helm 同构节点拓扑、schema 迁移与数据库配置、探针、PDB、topology spread 与统一 ServiceAccount/RBAC |
 
 ## 实现参考
 

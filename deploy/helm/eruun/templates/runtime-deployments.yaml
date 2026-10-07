@@ -1,22 +1,4 @@
 {{- include "eruun.validateRuntime" . -}}
-{{- if .Release.IsUpgrade -}}
-{{- $root := . -}}
-{{- range $role := list "api" "controller" "scheduler" "worker" -}}
-{{- $name := include "eruun.suffixedName" (dict "root" $root "suffix" $role) -}}
-{{- $old := lookup "apps/v1" "Deployment" $root.Release.Namespace $name -}}
-{{- $status := default dict $old.status -}}
-{{- if and $old (or (gt (int $old.spec.replicas) 0) (gt (int $status.replicas) 0) (gt (int $status.terminatingReplicas) 0)) -}}
-{{- fail (printf "stop the old four-role deployments and wait for their Pods to terminate before upgrading: %s is still active" $name) -}}
-{{- end -}}
-{{- end -}}
-{{- $pods := lookup "v1" "Pod" .Release.Namespace "" -}}
-{{- range $pod := default (list) (get $pods "items") -}}
-{{- $labels := default dict $pod.metadata.labels -}}
-{{- if and (eq (get $labels "app.kubernetes.io/instance") $root.Release.Name) (has (get $labels "app.kubernetes.io/component") (list "api" "controller" "scheduler" "worker")) -}}
-{{- fail (printf "wait for the old four-role Pods to terminate before upgrading: %s still exists" $pod.metadata.name) -}}
-{{- end -}}
-{{- end -}}
-{{- end -}}
 {{- $root := . -}}
 {{- $usesImportSecretKeyring := .Values.importSecretKeyring.existingSecret -}}
 apiVersion: apps/v1

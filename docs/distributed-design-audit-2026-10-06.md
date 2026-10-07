@@ -2,7 +2,7 @@
 
 > 状态：Historical / Audit。审查基线为远端 `main@63d4a4c583502c6604468b1150a3a802e5ce895f`（冻结日期：2026-10-06）。第 2–7 节保留该版本的设计审核快照，固定源码链接说明修复前的机制与缺口。PR #139 随后实施 D1–D5 的修复，处置详情与验证边界见第 8 节；容量建议仍待测量，不代表已经实施。
 
-> 当前拓扑提示：下文的四角色、双 Lease 和对应测试属于所列历史基线。当前统一节点使用单 Leader，迁移必须先停旧拓扑；见[分布式运行时设计](enterprise-distributed-runtime-design.md)与[部署迁移](helm-deployment.md#从旧四角色迁移)。历史证据不作为新拓扑验收结果。
+> 当前拓扑提示：下文的四角色、双 Lease 和对应测试属于所列历史基线。当前统一节点使用单 Leader，见[分布式运行时设计](enterprise-distributed-runtime-design.md)与[部署契约](helm-deployment.md)。历史证据不作为新拓扑验收结果。
 
 ## 1. 审核结论与范围
 

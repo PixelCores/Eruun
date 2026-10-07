@@ -55,7 +55,7 @@ Worker 每 30 秒记录 `workflow runtime stats`：controller/等待槽位/续�
 - Worker 收到终止信号后停止领取新消息，默认最多排空 60 秒；Helm Chart 和 `deploy/eruun-stack.yaml` 都提供 90 秒 `terminationGracePeriodSeconds`，超时后取消执行并由数据库 lease reaper 接管。
 - Workflow 数据库 lease 的写入、续租、释放和过期比较统一使用 MySQL 的微秒级 Unix 时间，由 `TIMESTAMPDIFF(MICROSECOND, '1970-01-01 00:00:00', UTC_TIMESTAMP(6))` 直接计算，避免数据库会话本地时间在夏令时重复小时内的转换歧义。运行节点的绝对时钟偏差和 DSN 时区不参与 ownership 转移。Kubernetes Leader Lease 与业务数据库 lease 是不同协议，不可混为同一个到期判断。
 
-完整字段和消息协议见 [企业级分布式运行时设计](enterprise-distributed-runtime-design.md)；旧四角色双 Lease 升级需先停止全部旧进程，详见 [Helm 维护窗口迁移](helm-deployment.md#从旧四角色迁移)，不能混跑。
+完整字段和消息协议见 [企业级分布式运行时设计](enterprise-distributed-runtime-design.md)，部署参数见 [Helm 部署契约](helm-deployment.md)。
 
 ## 数据库时钟回归验证
 
