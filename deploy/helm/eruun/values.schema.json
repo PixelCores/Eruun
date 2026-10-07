@@ -1,31 +1,36 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
   "type": "object",
-  "required": ["runtime", "serviceAccount"],
+  "required": [
+    "runtime",
+    "serviceAccount"
+  ],
   "properties": {
     "replicaCount": false,
     "resources": false,
     "service": {
       "type": "object",
       "properties": {
-        "grpcPort": {"type": "integer", "minimum": 1, "maximum": 65535}
+        "grpcPort": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        }
       }
     },
     "runtime": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["controllerLockName", "schedulerLockName", "heartbeatInterval", "leaseDuration", "leaseReaperInterval", "workerDrainTimeoutSeconds", "terminationGracePeriodSeconds", "roles"],
+      "required": [
+        "heartbeatInterval",
+        "leaseDuration",
+        "leaseReaperInterval",
+        "workerDrainTimeoutSeconds",
+        "terminationGracePeriodSeconds",
+        "leaderLockName",
+        "replicas"
+      ],
       "properties": {
-        "controllerLockName": {
-          "type": "string",
-          "maxLength": 253,
-          "pattern": "^$|^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\\.[a-z0-9](?:[-a-z0-9]*[a-z0-9])?)*$"
-        },
-        "schedulerLockName": {
-          "type": "string",
-          "maxLength": 253,
-          "pattern": "^$|^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\\.[a-z0-9](?:[-a-z0-9]*[a-z0-9])?)*$"
-        },
         "heartbeatInterval": {
           "type": "string",
           "minLength": 1
@@ -46,56 +51,76 @@
           "type": "integer",
           "minimum": 2
         },
-        "roles": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["api", "controller", "scheduler", "worker"],
-          "properties": {
-            "api": {"$ref": "#/definitions/runtimeRole"},
-            "controller": {"$ref": "#/definitions/runtimeRole"},
-            "scheduler": {"$ref": "#/definitions/runtimeRole"},
-            "worker": {"$ref": "#/definitions/runtimeRole"}
-          }
+        "leaderLockName": {
+          "type": "string",
+          "maxLength": 253,
+          "pattern": "^$|^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\\.[a-z0-9](?:[-a-z0-9]*[a-z0-9])?)*$"
+        },
+        "replicas": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "resources": {
+          "type": "object"
         }
       }
     },
     "serviceAccount": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["create", "roleNames"],
+      "required": [
+        "create",
+        "name"
+      ],
       "properties": {
-        "create": {"type": "boolean"},
-        "roleNames": {
+        "create": {
+          "type": "boolean"
+        },
+        "annotations": {
           "type": "object",
-          "additionalProperties": false,
-          "required": ["api", "controller", "scheduler", "worker"],
-          "properties": {
-            "api": {"type": "string"},
-            "controller": {"type": "string"},
-            "scheduler": {"type": "string"},
-            "worker": {"type": "string"}
+          "additionalProperties": {
+            "type": "string"
           }
         },
-        "annotations": {"type": "object", "additionalProperties": {"type": "string"}},
-        "automountServiceAccountToken": {"type": "boolean"}
+        "automountServiceAccountToken": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        }
       }
     },
     "podDisruptionBudget": {
       "type": "object",
       "properties": {
-        "enabled": {"type": "boolean"},
-        "maxUnavailable": {"type": ["integer", "string"]}
+        "enabled": {
+          "type": "boolean"
+        },
+        "maxUnavailable": {
+          "type": [
+            "integer",
+            "string"
+          ]
+        }
       }
     }
   },
   "allOf": [
     {
       "if": {
-        "required": ["serviceAccount"],
+        "required": [
+          "serviceAccount"
+        ],
         "properties": {
           "serviceAccount": {
-            "required": ["create"],
-            "properties": {"create": {"const": false}}
+            "required": [
+              "create"
+            ],
+            "properties": {
+              "create": {
+                "const": false
+              }
+            }
           }
         }
       },
@@ -103,34 +128,13 @@
         "properties": {
           "serviceAccount": {
             "properties": {
-              "roleNames": {
-                "properties": {
-                  "api": {"minLength": 1},
-                  "controller": {"minLength": 1},
-                  "scheduler": {"minLength": 1},
-                  "worker": {"minLength": 1}
-                }
+              "name": {
+                "minLength": 1
               }
             }
           }
         }
       }
     }
-  ],
-  "definitions": {
-    "runtimeRole": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["replicas"],
-      "properties": {
-        "replicas": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "resources": {
-          "type": "object"
-        }
-      }
-    }
-  }
+  ]
 }

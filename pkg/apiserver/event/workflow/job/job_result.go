@@ -11,9 +11,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	batchv1 "k8s.io/api/batch/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
@@ -59,6 +61,7 @@ type ResultDispatcher struct {
 	autoClaimCount        int
 	backoffMin            time.Duration
 	backoffMax            time.Duration
+	heartbeatInterval     time.Duration
 	processingConcurrency int
 	inFlightMu            sync.Mutex
 	inFlight              map[string]struct{}
@@ -286,150 +289,136 @@ func (d *ResultDispatcher) handleOutboxMessage(ctx context.Context, message msg.
 		return false
 	}
 	persistCtx, cancel := resultOutboxPersistenceContext()
-
-	outboxID := strings.TrimSpace(payload.OutboxID)
-	outbox, err := getJobResultOutboxByID(persistCtx, d.store, outboxID)
+	outbox, err := getJobResultOutboxByID(persistCtx, d.store, strings.TrimSpace(payload.OutboxID))
 	if err != nil {
 		cancel()
 		if errors.Is(err, datastore.ErrRecordNotExist) {
 			return d.ackMessage(ctx, message.ID, "outbox_missing") == nil
 		}
-		klog.ErrorS(err, "result dispatcher load outbox failed", "outboxID", outboxID, "msgID", message.ID)
+		klog.ErrorS(err, "load result outbox", "msgID", message.ID)
 		return false
 	}
-
-	messageID := strings.TrimSpace(message.ID)
-	switch outbox.State {
-	case config.JobResultOutboxStateResultQueued:
-		claimed, claimErr := claimQueuedOutboxForMessage(persistCtx, d.store, outbox, messageID)
-		if claimErr != nil {
-			cancel()
-			klog.ErrorS(claimErr, "result dispatcher claim outbox failed", "outboxID", outbox.ID, "msgID", message.ID)
-			return false
-		}
-		if !claimed {
-			cancel()
-			return d.ackMessage(ctx, message.ID, "outbox_claim_lost") == nil
-		}
-		outbox.State = config.JobResultOutboxStateResultProcessingQueue
-		outbox.MessageID = messageID
-		outbox.LastError = ""
-	case config.JobResultOutboxStateResultProcessingQueue:
-		if strings.TrimSpace(outbox.MessageID) != messageID {
-			cancel()
-			return d.ackMessage(ctx, message.ID, "outbox_message_mismatch") == nil
-		}
-	case config.JobResultOutboxStateResultDispatching:
-		claimed, claimErr := compareAndSwapJobResultOutboxWithConditions(persistCtx, d.store, outbox, map[string]interface{}{
-			"state": string(config.JobResultOutboxStateResultDispatching),
-		}, map[string]interface{}{
-			"state":      config.JobResultOutboxStateResultProcessingQueue,
-			"message_id": messageID,
-			"attempts":   outbox.Attempts,
-			"last_error": "",
-		})
-		if claimErr != nil {
-			cancel()
-			klog.ErrorS(claimErr, "result dispatcher claim dispatching outbox failed", "outboxID", outbox.ID, "msgID", message.ID)
-			return false
-		}
-		if !claimed {
-			refreshed, refreshErr := getJobResultOutboxByID(persistCtx, d.store, outbox.ID)
-			if refreshErr != nil {
-				cancel()
-				if errors.Is(refreshErr, datastore.ErrRecordNotExist) {
-					return d.ackMessage(ctx, message.ID, "outbox_missing") == nil
-				}
-				klog.ErrorS(refreshErr, "result dispatcher refresh dispatching outbox failed", "outboxID", outbox.ID, "msgID", message.ID)
-				return false
-			}
-			outbox = refreshed
-			switch outbox.State {
-			case config.JobResultOutboxStateResultQueued:
-				if strings.TrimSpace(outbox.MessageID) != messageID {
-					cancel()
-					return d.ackMessage(ctx, message.ID, "outbox_message_mismatch") == nil
-				}
-				reclaimed, reclaimErr := claimQueuedOutboxForMessage(persistCtx, d.store, outbox, messageID)
-				if reclaimErr != nil {
-					cancel()
-					klog.ErrorS(reclaimErr, "result dispatcher reclaim queued outbox failed", "outboxID", outbox.ID, "msgID", message.ID)
-					return false
-				}
-				if !reclaimed {
-					cancel()
-					return d.ackMessage(ctx, message.ID, "outbox_claim_lost") == nil
-				}
-			case config.JobResultOutboxStateResultProcessingQueue:
-				if strings.TrimSpace(outbox.MessageID) != messageID {
-					cancel()
-					return d.ackMessage(ctx, message.ID, "outbox_message_mismatch") == nil
-				}
-				cancel()
-				return d.ackMessage(ctx, message.ID, "outbox_claim_lost") == nil
-			case config.JobResultOutboxStateResultDispatching:
-				cancel()
-				return false
-			default:
-				cancel()
-				return d.ackMessage(ctx, message.ID, "outbox_state_"+string(outbox.State)) == nil
-			}
-		}
-		outbox.State = config.JobResultOutboxStateResultProcessingQueue
-		outbox.MessageID = messageID
-		outbox.LastError = ""
-	default:
-		cancel()
-		return d.ackMessage(ctx, message.ID, "outbox_state_"+string(outbox.State)) == nil
-	}
+	claimed, err := claimResultOutbox(persistCtx, d.store, outbox, message.ID)
 	cancel()
-
-	if err := processJobResult(ctx, d.client, d.store, payload); err != nil {
-		persistCtx, cancel = resultOutboxPersistenceContext()
-		defer cancel()
+	if err != nil {
+		klog.ErrorS(err, "claim result outbox", "outboxID", outbox.ID)
+		return false
+	}
+	if !claimed {
+		// A processing delivery has its own token and lease. Replayed broker IDs
+		// must never resume or invalidate a live owner's work.
+		return d.ackMessage(ctx, message.ID, "outbox_not_claimed") == nil
+	}
+	// The durable outbox owns the result identity, not the notification body.
+	payload = jobResultPayloadFromOutbox(outbox)
+	if payload == nil {
+		err = errResultDispatchNoRetry
+	} else {
+		err = d.processOwnedResult(ctx, outbox, payload)
+	}
+	persistCtx, cancel = resultOutboxPersistenceContext()
+	defer cancel()
+	if err != nil {
+		klog.ErrorS(err, "process result outbox", "outboxID", outbox.ID)
+		if errors.Is(err, errResultOutboxOwnershipLost) {
+			return false
+		}
 		if errors.Is(err, errResultDispatchNoRetry) {
-			klog.ErrorS(err, "result dispatcher process failed without retry", "outboxID", outbox.ID, "msgID", message.ID, "taskID", payload.TaskID, "name", payload.Name)
 			if markErr := markJobResultOutboxFailed(persistCtx, d.store, outbox, err.Error()); markErr != nil {
-				klog.ErrorS(markErr, "result dispatcher mark outbox failed", "outboxID", outbox.ID, "msgID", message.ID)
 				return false
 			}
 			return d.ackMessage(ctx, message.ID, "no_retry_process_error") == nil
 		}
-		klog.ErrorS(err, "result dispatcher process failed", "outboxID", outbox.ID, "msgID", message.ID, "taskID", payload.TaskID, "name", payload.Name)
-		if moveErr := moveQueueResultOutboxToQueued(persistCtx, d.store, outbox, err.Error(), outbox.Attempts+1); moveErr != nil {
-			klog.ErrorS(moveErr, "result dispatcher move outbox back to queued failed", "outboxID", outbox.ID, "msgID", message.ID)
+		if retryErr := retryResultOutbox(persistCtx, d.store, outbox, err.Error()); retryErr != nil {
+			klog.ErrorS(retryErr, "return result outbox to pending", "outboxID", outbox.ID)
 		}
 		return false
 	}
-	persistCtx, cancel = resultOutboxPersistenceContext()
-	defer cancel()
-	if err := deleteJobResultOutbox(persistCtx, d.store, outbox.ID); err != nil {
-		klog.ErrorS(err, "result dispatcher delete outbox failed", "outboxID", outbox.ID, "msgID", message.ID)
+	if err := withResultOutboxOwnership(persistCtx, d.store, outbox, func(tx datastore.DataStore, _ *model.JobResultOutbox) error {
+		return deleteJobResultOutbox(persistCtx, tx, outbox.ID)
+	}); err != nil {
 		return false
 	}
 	return d.ackMessage(ctx, message.ID, "processed") == nil
 }
 
-func claimQueuedOutboxForMessage(ctx context.Context, store datastore.DataStore, outbox *model.JobResultOutbox, messageID string) (bool, error) {
-	if outbox == nil {
-		return false, nil
+func claimResultOutbox(ctx context.Context, store datastore.DataStore, outbox *model.JobResultOutbox, messageID string) (bool, error) {
+	for attempt := 0; attempt < 2; attempt++ {
+		conditions := map[string]interface{}{"state": string(outbox.State), "message_id": outbox.MessageID}
+		switch outbox.State {
+		case config.JobResultOutboxStateResultQueued:
+			if outbox.MessageID != strings.TrimSpace(messageID) {
+				return false, nil
+			}
+		case config.JobResultOutboxStateResultDispatching:
+			// Enqueue may deliver before the producer persists its broker ID.
+		default:
+			return false, nil
+		}
+		now, err := resultOutboxDatabaseTime(ctx, store)
+		if err != nil {
+			return false, err
+		}
+		deadline := now.Add(resultOutboxProcessGrace)
+		token := uuid.NewString()
+		claimed, err := compareAndSwapJobResultOutboxWithConditions(ctx, store, outbox, conditions, map[string]interface{}{
+			"state": config.JobResultOutboxStateResultProcessingQueue, "message_id": token, "lease_expires_at": &deadline, "last_error": "",
+		})
+		if err != nil {
+			return false, err
+		}
+		if claimed {
+			outbox.State = config.JobResultOutboxStateResultProcessingQueue
+			outbox.MessageID = token
+			outbox.LeaseExpiresAt = &deadline
+			return true, nil
+		}
+		current, err := getJobResultOutboxByID(ctx, store, outbox.ID)
+		if errors.Is(err, datastore.ErrRecordNotExist) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		*outbox = *current
 	}
-	claimed, err := compareAndSwapJobResultOutboxWithConditions(ctx, store, outbox, map[string]interface{}{
-		"state":      string(config.JobResultOutboxStateResultQueued),
-		"message_id": strings.TrimSpace(messageID),
-	}, map[string]interface{}{
-		"state":      config.JobResultOutboxStateResultProcessingQueue,
-		"message_id": strings.TrimSpace(messageID),
-		"attempts":   outbox.Attempts,
-		"last_error": "",
-	})
-	if err != nil || !claimed {
-		return claimed, err
+	return false, nil
+}
+
+func (d *ResultDispatcher) processOwnedResult(ctx context.Context, outbox *model.JobResultOutbox, payload *JobResultPayload) error {
+	processCtx, cancel := context.WithCancelCause(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		interval := d.heartbeatInterval
+		if interval <= 0 {
+			interval = resultOutboxHeartbeatInterval
+		}
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-processCtx.Done():
+				return
+			case <-ticker.C:
+				renewCtx, stop := context.WithTimeout(processCtx, resultOutboxPersistTimeout)
+				err := renewResultOutboxLease(renewCtx, d.store, outbox)
+				stop()
+				if err != nil {
+					cancel(err)
+					return
+				}
+			}
+		}
+	}()
+	err := processJobResultWithOutbox(processCtx, d.client, d.store, payload, outbox)
+	cause := context.Cause(processCtx)
+	cancel(context.Canceled)
+	<-done
+	if cause != nil {
+		return errors.Join(err, cause)
 	}
-	outbox.State = config.JobResultOutboxStateResultProcessingQueue
-	outbox.MessageID = strings.TrimSpace(messageID)
-	outbox.LastError = ""
-	return true, nil
+	return err
 }
 
 func decodeResultPayload(raw []byte) (*JobResultPayload, error) {
@@ -479,6 +468,10 @@ func validateJobResultPayload(payload *JobResultPayload) error {
 }
 
 func processJobResult(ctx context.Context, client kubernetes.Interface, store datastore.DataStore, payload *JobResultPayload) error {
+	return processJobResultWithOutbox(ctx, client, store, payload, nil)
+}
+
+func processJobResultWithOutbox(ctx context.Context, client kubernetes.Interface, store datastore.DataStore, payload *JobResultPayload, outbox *model.JobResultOutbox) error {
 	if !isResultPayloadProcessable(payload) {
 		return errResultDispatchNoRetry
 	}
@@ -494,8 +487,26 @@ func processJobResult(ctx context.Context, client kubernetes.Interface, store da
 	if timeout <= 0 {
 		timeout = int64(config.DefaultJobTaskTimeout.Seconds())
 	}
+	record, recordErr := findJobInfoForResult(ctx, store, payload)
+	if recordErr != nil {
+		return recordErr
+	}
+	if record != nil && isSettledDelayedExecutionStatus(config.Status(record.Status)) {
+		if config.Status(record.Status) != config.StatusCompleted {
+			return nil
+		}
+		if outbox == nil || outbox.JobUID == "" {
+			// Old completed rows have no trustworthy cleanup identity. Do not bind
+			// them to whichever object now happens to have the same name.
+			klog.InfoS("keep completed result without recorded cleanup UID", "taskID", payload.TaskID, "name", payload.Name)
+			return nil
+		}
+		return cleanupPersistedResult(ctx, client, store, payload, outbox, &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: payload.Name, Namespace: namespace, UID: types.UID(outbox.JobUID)}})
+	}
 	currentJob, getErr := client.BatchV1().Jobs(namespace).Get(ctx, payload.Name, metav1.GetOptions{})
-	if getErr != nil && !k8serrors.IsNotFound(getErr) {
+	if k8serrors.IsNotFound(getErr) {
+		currentJob = nil
+	} else if getErr != nil {
 		return fmt.Errorf("get job before processing result: %w", getErr)
 	}
 	if currentJob != nil && !jobResultMatchesExecutionIdentity(payload, currentJob) {
@@ -506,11 +517,20 @@ func processJobResult(ctx context.Context, client kubernetes.Interface, store da
 	if currentJob != nil {
 		expectedUID = string(currentJob.UID)
 	}
+	if err := bindResultOutboxJobUID(ctx, store, outbox, expectedUID); err != nil {
+		return err
+	}
+	if outbox != nil && outbox.JobUID != "" {
+		expectedUID = outbox.JobUID
+	}
 	matchesExpectedJob := func(jobObj *batchv1.Job) bool {
-		if expectedUID != "" && string(jobObj.UID) != expectedUID {
+		if !jobResultMatchesExecutionIdentity(payload, jobObj) {
 			return false
 		}
-		return jobResultMatchesExecutionIdentity(payload, jobObj)
+		if expectedUID == "" {
+			expectedUID = string(jobObj.UID)
+		}
+		return string(jobObj.UID) == expectedUID
 	}
 	waitCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
@@ -520,15 +540,30 @@ func processJobResult(ctx context.Context, client kubernetes.Interface, store da
 		klog.InfoS("discard stale job result after Kubernetes Job identity changed", "namespace", namespace, "name", payload.Name, "taskID", payload.TaskID, "runGeneration", payload.RunGeneration)
 		return nil
 	}
+	if err != nil {
+		if _, terminal := ExtractStatusError(err); !terminal {
+			return fmt.Errorf("observe result job: %w", err)
+		}
+	}
 	status, message = jobCompletionResult(status, message, err)
+	if bindErr := bindResultOutboxJobUID(ctx, store, outbox, expectedUID); bindErr != nil {
+		return bindErr
+	}
 
 	jobObj, getErr := client.BatchV1().Jobs(namespace).Get(ctx, payload.Name, metav1.GetOptions{})
-	if getErr != nil && !k8serrors.IsNotFound(getErr) {
-		klog.ErrorS(getErr, "get job failed while processing result", "namespace", namespace, "name", payload.Name, "taskID", payload.TaskID)
+	if k8serrors.IsNotFound(getErr) {
+		jobObj = nil
+	} else if getErr != nil {
+		return fmt.Errorf("get job after completion: %w", getErr)
 	}
-	if jobObj != nil && !jobResultMatchesExecutionIdentity(payload, jobObj) {
+	if jobObj != nil && !matchesExpectedJob(jobObj) {
 		klog.InfoS("discard stale job result for newer Kubernetes Job", "namespace", namespace, "name", payload.Name, "taskID", payload.TaskID, "runGeneration", payload.RunGeneration)
 		return nil
+	}
+	if jobObj == nil && expectedUID != "" {
+		// The observed object may have disappeared after completion. Preserve
+		// its UID for pod log selection and cleanup even if a name is reused.
+		jobObj = &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: payload.Name, Namespace: namespace, UID: types.UID(expectedUID)}}
 	}
 	serviceName := strings.TrimSpace(payload.ServiceName)
 	if serviceName == "" && jobObj != nil {
@@ -543,19 +578,35 @@ func processJobResult(ctx context.Context, client kubernetes.Interface, store da
 
 	var logs string
 	if status == config.StatusCompleted {
-		logText, logErr := collectJobPodLogs(ctx, client, namespace, payload.Name)
+		logText, logErr := collectJobPodLogsForJob(ctx, client, namespace, payload.Name, jobObj)
 		if logErr != nil {
-			klog.ErrorS(logErr, "collect job logs failed", "namespace", namespace, "name", payload.Name, "taskID", payload.TaskID)
-		} else {
-			logs = logText
+			return fmt.Errorf("collect result logs before cleanup: %w", logErr)
 		}
-		if cleanupErr := deleteCompletedJobAndPods(ctx, client, namespace, payload.Name, jobObj); cleanupErr != nil {
-			klog.Warningf("clean completed job %s/%s failed: %v", namespace, payload.Name, cleanupErr)
-		}
+		logs = logText
 	}
 
-	if upErr := updateJobInfoStatus(ctx, store, payload, status, message, startTime, endTime, logs); upErr != nil {
+	var persistedStatus config.Status
+	persist := func(tx datastore.DataStore, _ *model.JobResultOutbox) error {
+		if err := updateJobInfoStatus(ctx, tx, payload, status, message, startTime, endTime, logs); err != nil {
+			return err
+		}
+		saved, err := findJobInfoForResult(ctx, tx, payload)
+		if err != nil {
+			return err
+		}
+		if saved == nil || !isSettledDelayedExecutionStatus(config.Status(saved.Status)) {
+			return fmt.Errorf("result status was not persisted for execution %s", payload.ExecutionKey)
+		}
+		persistedStatus = config.Status(saved.Status)
+		return nil
+	}
+	if upErr := withResultOutboxOwnership(ctx, store, outbox, persist); upErr != nil {
 		return upErr
+	}
+	if persistedStatus == config.StatusCompleted {
+		if cleanupErr := cleanupPersistedResult(ctx, client, store, payload, outbox, jobObj); cleanupErr != nil {
+			return cleanupErr
+		}
 	}
 
 	if err != nil {
@@ -563,6 +614,53 @@ func processJobResult(ctx context.Context, client kubernetes.Interface, store da
 			return nil
 		}
 		return err
+	}
+	return nil
+}
+
+// A Job's UID is recorded before waiting or removing its runtime evidence.
+func bindResultOutboxJobUID(ctx context.Context, store datastore.DataStore, outbox *model.JobResultOutbox, uid string) error {
+	if outbox == nil || uid == "" {
+		return nil
+	}
+	if outbox.JobUID != "" {
+		if outbox.JobUID != uid {
+			return fmt.Errorf("%w: result Job UID changed", errResultDispatchNoRetry)
+		}
+		return nil
+	}
+	if err := withResultOutboxOwnership(ctx, store, outbox, func(tx datastore.DataStore, current *model.JobResultOutbox) error {
+		if current.JobUID != "" && current.JobUID != uid {
+			return fmt.Errorf("%w: result Job UID changed", errResultDispatchNoRetry)
+		}
+		bound, err := compareAndSwapJobResultOutbox(ctx, tx, outbox, config.JobResultOutboxStateResultProcessingQueue, map[string]interface{}{"job_uid": uid})
+		if err != nil {
+			return err
+		}
+		if !bound {
+			return errResultOutboxOwnershipLost
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	outbox.JobUID = uid
+	return nil
+}
+
+// Database ownership is checked before cleanup; Kubernetes UID preconditions
+// protect the irreversible operation after the transaction has released its lock.
+func cleanupPersistedResult(ctx context.Context, client kubernetes.Interface, store datastore.DataStore, payload *JobResultPayload, outbox *model.JobResultOutbox, jobObj *batchv1.Job) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if outbox != nil {
+		if err := withResultOutboxOwnership(ctx, store, outbox, func(datastore.DataStore, *model.JobResultOutbox) error { return nil }); err != nil {
+			return err
+		}
+	}
+	if err := deleteCompletedJobAndPods(ctx, client, payload.Namespace, payload.Name, jobObj); err != nil {
+		return fmt.Errorf("clean committed result: %w", err)
 	}
 	return nil
 }
@@ -663,65 +761,7 @@ func updateJobInfoStatus(ctx context.Context, store datastore.DataStore, payload
 	if hasResultPayloadFencingIdentity(payload) {
 		return updateFencedJobInfoStatus(ctx, store, payload, status, message, startTime, endTime, info)
 	}
-	query := &model.JobInfo{TaskID: payload.TaskID}
-	filters := datastore.FilterOptions{}
-	if payload.JobType != "" {
-		filters.In = append(filters.In, datastore.InQueryOption{Key: "type", Values: []string{payload.JobType}})
-	}
-	if payload.ServiceName != "" {
-		filters.In = append(filters.In, datastore.InQueryOption{Key: "service_name", Values: []string{payload.ServiceName}})
-	}
-	filters.In = append(filters.In,
-		datastore.InQueryOption{Key: "execution_key", Values: []string{payload.ExecutionKey}},
-		datastore.InQueryOption{Key: "run_generation", Values: []string{fmt.Sprint(payload.RunGeneration)}})
-	opts := datastore.ListOptions{
-		FilterOptions: filters,
-		SortBy: []datastore.SortOption{
-			{Key: "create_time", Order: datastore.SortOrderDescending},
-		},
-		Page:     1,
-		PageSize: 1,
-	}
-	entities, err := store.List(ctx, query, &opts)
-	if err != nil {
-		return fmt.Errorf("list job info: %w", err)
-	}
-	if len(entities) == 0 {
-		klog.InfoS("job info not found while updating result status", "taskID", payload.TaskID, "serviceName", payload.ServiceName, "status", status)
-		return nil
-	}
-	jobInfo, ok := entities[0].(*model.JobInfo)
-	if !ok || jobInfo == nil {
-		return fmt.Errorf("job info type assertion failed")
-	}
-	if shouldKeepExistingJobInfoStatus(jobInfo.Status, status) {
-		klog.V(4).InfoS("skip stale job status update", "taskID", payload.TaskID, "current", jobInfo.Status, "next", status)
-		return nil
-	}
-
-	jobInfo.Status = string(status)
-	switch status {
-	case config.StatusCompleted, config.StatusSkipped, config.StatusPassed:
-		jobInfo.Error = ""
-	default:
-		jobInfo.Error = strings.TrimSpace(message)
-	}
-	if startTime > 0 && jobInfo.StartTime == 0 {
-		jobInfo.StartTime = startTime
-	}
-	if endTime > 0 {
-		jobInfo.EndTime = endTime
-	} else if jobInfo.EndTime == 0 && status != config.StatusRunning {
-		jobInfo.EndTime = time.Now().Unix()
-	}
-	if status == config.StatusCompleted && info != "" {
-		jobInfo.Info = info
-	}
-
-	if err := store.Put(ctx, jobInfo); err != nil {
-		return fmt.Errorf("update job info: %w", err)
-	}
-	return nil
+	return updateJobInfoStatusCAS(ctx, store, payload, status, message, startTime, endTime, info)
 }
 
 func hasResultPayloadFencingIdentity(payload *JobResultPayload) bool {
@@ -750,59 +790,65 @@ func updateFencedJobInfoStatus(
 		return errors.Join(errResultDispatchNoRetry, err)
 	}
 	err = withJobInfoOwnership(ctx, store, owner, func(tx datastore.DataStore) error {
-		conditionalStore, ok := tx.(datastore.ConditionalCompareAndSwap)
-		if !ok {
-			return fmt.Errorf("update job info: datastore does not support conditional compare-and-swap")
-		}
-		for attempt := 1; attempt <= jobInfoSaveMaxAttempts; attempt++ {
-			jobInfo, err := findJobInfoForResult(ctx, tx, payload)
-			if err != nil {
-				return err
-			}
-			if jobInfo == nil {
-				klog.InfoS("job info not found while updating result status", "taskID", payload.TaskID, "serviceName", payload.ServiceName, "status", status)
-				return nil
-			}
-			if shouldKeepExistingJobInfoStatus(jobInfo.Status, status) {
-				return nil
-			}
-			updates := map[string]interface{}{"status": string(status)}
-			switch status {
-			case config.StatusCompleted, config.StatusSkipped, config.StatusPassed:
-				updates["error"] = ""
-			default:
-				updates["error"] = strings.TrimSpace(message)
-			}
-			if startTime > 0 && jobInfo.StartTime == 0 {
-				updates["start_time"] = startTime
-			}
-			if endTime > 0 {
-				updates["end_time"] = endTime
-			} else if jobInfo.EndTime == 0 && status != config.StatusRunning {
-				updates["end_time"] = time.Now().Unix()
-			}
-			if status == config.StatusCompleted && info != "" {
-				updates["info"] = info
-			}
-			updated, err := conditionalStore.CompareAndSwapWithConditions(ctx, jobInfo, map[string]interface{}{
-				"status":         jobInfo.Status,
-				"execution_key":  payload.ExecutionKey,
-				"run_generation": payload.RunGeneration,
-				"attempt":        jobInfo.Attempt,
-			}, updates)
-			if err != nil {
-				return fmt.Errorf("update job info: %w", err)
-			}
-			if updated {
-				return nil
-			}
-		}
-		return fmt.Errorf("update job info: concurrent execution state changes did not converge after %d attempts", jobInfoSaveMaxAttempts)
+		return updateJobInfoStatusCAS(ctx, tx, payload, status, message, startTime, endTime, info)
 	})
 	if errors.Is(err, repository.ErrWorkflowOwnershipLost) {
 		return errors.Join(errResultDispatchNoRetry, err)
 	}
 	return err
+}
+
+// The outbox lease excludes competing result consumers, but cancellation can
+// settle JobInfo independently. Preserve the first terminal result atomically.
+func updateJobInfoStatusCAS(ctx context.Context, store datastore.DataStore, payload *JobResultPayload, status config.Status, message string, startTime, endTime int64, info string) error {
+	conditionalStore, ok := store.(datastore.ConditionalCompareAndSwap)
+	if !ok {
+		return fmt.Errorf("update job info: datastore does not support conditional compare-and-swap")
+	}
+	for attempt := 1; attempt <= jobInfoSaveMaxAttempts; attempt++ {
+		jobInfo, err := findJobInfoForResult(ctx, store, payload)
+		if err != nil {
+			return err
+		}
+		if jobInfo == nil {
+			klog.InfoS("job info not found while updating result status", "taskID", payload.TaskID, "serviceName", payload.ServiceName, "status", status)
+			return nil
+		}
+		if isSettledDelayedExecutionStatus(config.Status(jobInfo.Status)) {
+			return nil
+		}
+		updates := map[string]interface{}{"status": string(status)}
+		switch status {
+		case config.StatusCompleted, config.StatusSkipped, config.StatusPassed:
+			updates["error"] = ""
+		default:
+			updates["error"] = strings.TrimSpace(message)
+		}
+		if startTime > 0 && jobInfo.StartTime == 0 {
+			updates["start_time"] = startTime
+		}
+		if endTime > 0 {
+			updates["end_time"] = endTime
+		} else if jobInfo.EndTime == 0 && status != config.StatusRunning {
+			updates["end_time"] = time.Now().Unix()
+		}
+		if status == config.StatusCompleted && info != "" {
+			updates["info"] = info
+		}
+		updated, err := conditionalStore.CompareAndSwapWithConditions(ctx, jobInfo, map[string]interface{}{
+			"status":         jobInfo.Status,
+			"execution_key":  payload.ExecutionKey,
+			"run_generation": payload.RunGeneration,
+			"attempt":        jobInfo.Attempt,
+		}, updates)
+		if err != nil {
+			return fmt.Errorf("update job info: %w", err)
+		}
+		if updated {
+			return nil
+		}
+	}
+	return fmt.Errorf("update job info: concurrent execution state changes did not converge after %d attempts", jobInfoSaveMaxAttempts)
 }
 
 func resultPayloadJobTask(payload *JobResultPayload) (*model.JobTask, error) {

@@ -1,49 +1,36 @@
 # Eruun 当前架构图
 
-> 状态：Implemented Reference。图中只展示 `main` 已实现的运行关系；未来 AI Runtime 能力见 [AI Runtime 愿景](ai-runtime-vision.md)。
+> 状态：Implemented Reference。图中展示本版本的运行关系；未来 AI Runtime 能力见 [AI Runtime 愿景](ai-runtime-vision.md)。
 
-## 1. 四角色与依赖
+## 1. 同构节点、单 Leader 与依赖
 
 ```mermaid
 flowchart TB
-    Client[API 调用方]
-
-    subgraph Runtime[Eruun runtime]
-        API["api<br/>HTTP/gRPC、认证授权、任务创建"]
-        Controller["controller<br/>观察、状态投影、延迟任务与结果协调"]
-        Scheduler["scheduler<br/>派发、lease reaper"]
-        Worker["worker<br/>Workflow 与 Job 执行"]
+    Client[API 调用方] --> Service[固定 Service / 只选择 Leader]
+    subgraph Runtime[同一个 runtime Deployment]
+        Leader[Leader：API / 调度 / Controller 维护]
+        Workers[Worker 节点＋选举候选]
     end
-
-    DB[("MySQL<br/>领域状态、Workflow ownership")]
-    Redis[("Redis<br/>缓存、应用锁、取消信号、可选消息")]
-    Kafka[("Kafka<br/>可选消息后端")]
-    K8s[Kubernetes API]
-
-    Client --> API
-    API --> DB
-    API --> Redis
-    Scheduler <--> DB
-    Scheduler --> Redis
-    Scheduler --> Kafka
-    Redis --> Worker
-    Kafka --> Worker
-    Worker <--> DB
-    Worker --> Redis
-    Worker --> K8s
-    Controller <--> K8s
-    Controller --> DB
-    Controller <--> Redis
-    Controller <--> Kafka
+    Service --> Leader
+    Leader -. 参与选举 .-> Lease[Kubernetes 单 Lease]
+    Workers -. 参与选举 .-> Lease
+    Leader <--> DB[(MySQL：业务状态与任务 ownership)]
+    Leader --> Queue[Redis Streams / Kafka]
+    Queue --> Workers
+    Workers <--> DB
+    Workers --> K8s[Kubernetes workloads]
+    Leader <--> K8s
+    Leader <--> Redis[Redis：缓存、应用锁、取消信号]
+    Workers <--> Redis
 ```
 
-关键边界：
+- Leader 停止领取新任务；升主前已认领的 Worker 任务继续完成并续租。
+- 健康 Worker 为 PodReady，但 Service 只选择 Leader 的 Pod UID 标签。EndpointSlice 由 Kubernetes 管理。
+- 调度、Controller 后台维护与业务 API 使用同一任期；失主停止这些职责后恢复 Worker。
+- MySQL 是任务状态及 ownership 事实源；消息允许重复交付，Worker 仍须数据库 CAS 认领。
+- 选择 Kafka 后 Redis 仍是依赖。该图不代表全部网络与权限关系。
 
-- Scheduler 扫描并派发 waiting task，应用 Workflow 与独立空间 Job 共用该链路。
-- Worker 消费 dispatch 后仍需通过数据库 ownership 条件认领执行。
-- MySQL 是 Workflow 状态和 lease 的事实源；Redis/Kafka 只承载协调或消息。
-- Controller 负责全局 Kubernetes 状态投影、延迟任务和结果协调；Worker 使用本地 observer 等待自己创建的 workload。Controller 与 Scheduler 分别使用独立 Kubernetes Lease 选主。
-- Redis Streams 与 Kafka 是可选消息后端；选择 Kafka 后，Redis 仍承担缓存、应用锁和取消信号。上图展示主要依赖，非完整网络访问矩阵。
+部署、客户端重试及恢复边界见[分布式运行时设计](enterprise-distributed-runtime-design.md)。
 
 ## 2. Workflow 执行与恢复
 
@@ -51,13 +38,13 @@ flowchart TB
 sequenceDiagram
     autonumber
     participant C as Client
-    participant A as API
+    participant A as Leader API
     participant D as MySQL
-    participant S as Scheduler leader
+    participant S as Leader 内调度
     participant Q as Redis/Kafka
     participant W as Worker
     participant K as Kubernetes
-    participant O as Controller
+    participant O as Leader 内 Controller
 
     C->>A: 提交应用执行、独立 command 或带 traits.eval 的 job
     A->>D: 保存 waiting task 及所属应用/空间

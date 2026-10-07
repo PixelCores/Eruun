@@ -35,18 +35,10 @@ type WorkflowStepType string
 type Status string
 type JobResultOutboxState string
 type JobDelayState string
-type RuntimeRole string
 
 func (s Status) ToLower() Status {
 	return Status(strings.ToLower(string(s)))
 }
-
-const (
-	RuntimeRoleAPI        RuntimeRole = "api"
-	RuntimeRoleController RuntimeRole = "controller"
-	RuntimeRoleScheduler  RuntimeRole = "scheduler"
-	RuntimeRoleWorker     RuntimeRole = "worker"
-)
 
 const (
 	DefaultStorageMode                    = 420

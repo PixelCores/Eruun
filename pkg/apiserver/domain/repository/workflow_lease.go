@@ -229,14 +229,16 @@ func WithWorkflowTaskOwnership(
 	// Terminal API callbacks may precede any worker claim. They still lock
 	// the exact parent snapshot, including its empty token and worker fields.
 	terminal := jobSchedulingTerminal(string(task.Status))
-	if task.RunToken == "" && !terminal {
-		return persist(store)
-	}
-	if task.TaskID == "" {
+	if strings.TrimSpace(task.TaskID) == "" {
 		return datastore.ErrPrimaryEmpty
 	}
-	if !terminal && (task.RunGeneration == 0 || task.WorkerID == "") {
-		return fmt.Errorf("workflow ownership requires generation, token, and worker identity")
+	if !terminal {
+		if err := validateWorkflowExecutionIdentity(task.TaskID, task.RunGeneration, task.RunToken); err != nil {
+			return err
+		}
+		if strings.TrimSpace(task.WorkerID) == "" {
+			return fmt.Errorf("%w: owned persistence requires worker identity", ErrWorkflowOwnershipRequired)
+		}
 	}
 	transactional, ok := store.(datastore.Transactional)
 	if !ok {

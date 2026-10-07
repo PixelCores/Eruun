@@ -10,7 +10,6 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
@@ -152,7 +151,7 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 		return fmt.Errorf("fail to provides the cache bean to the container: %w", err)
 	}
 
-	// Initialize only the queues used by this process role.
+	// Every node can become Leader and requires all runtime queues.
 	if err := s.ensureKafkaMessagingReady(); err != nil {
 		return err
 	}
@@ -166,12 +165,10 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 		return fmt.Errorf("fail to provide runtime queues bean to the container: %w", err)
 	}
 
-	// 将操作k8s的权限全都注入到IOC中
-	if s.cfg.NormalizedRole() == config.RuntimeRoleAPI {
-		kubeClient, kubeConfig, err = workspace.APIClient(kubeConfig, accountsConfig.Workspace)
-		if err != nil {
-			return fmt.Errorf("create scoped API Kubernetes client: %w", err)
-		}
+	// Tenant-scoped API requests use impersonation; trusted background contexts keep the platform identity.
+	kubeClient, kubeConfig, err = workspace.APIClient(kubeConfig, accountsConfig.Workspace)
+	if err != nil {
+		return fmt.Errorf("create scoped API Kubernetes client: %w", err)
 	}
 	if err := s.beanContainer.ProvideWithName("kubeClient", kubeClient); err != nil {
 		return fmt.Errorf("fail to provides the kubeClient bean to the container: %w", err)
@@ -181,7 +178,7 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 		return fmt.Errorf("fail to provides the kubeConfig bean to the container: %w", err)
 	}
 
-	s.initRoleObservers(kubeClient)
+	s.initRuntimeObservers(kubeClient)
 
 	// provide config for downstream components that need it (inject by type)
 	if err := s.beanContainer.Provides(&s.cfg); err != nil {
@@ -258,9 +255,7 @@ func (s *restServer) provideInterfaceBeans() error {
 			return fmt.Errorf("provide api handler: %w", err)
 		}
 	}
-	if !s.cfg.RunsAPI() {
-		return nil
-	}
+
 	s.grpcAdministration = &grpcapi.AdministrationServer{}
 	s.grpcJobs = &grpcapi.JobsServer{}
 	s.grpcApplications = &grpcapi.ApplicationsServer{}
@@ -306,48 +301,33 @@ func (s *restServer) ensureKafkaMessagingReady() error {
 func (s *restServer) buildRuntimeQueues(redisClient *redis.Client) (*msg.RuntimeQueues, error) {
 	queues := &msg.RuntimeQueues{}
 	var err error
-	if s.cfg.RequiresDispatchQueue() {
-		queues.Dispatch, err = s.buildQueue(s.dispatchTopic(), redisClient)
-		if err != nil {
-			return nil, fmt.Errorf("initialize dispatch queue: %w", err)
-		}
+	queues.Dispatch, err = s.buildQueue(s.dispatchTopic(), redisClient)
+	if err != nil {
+		return nil, fmt.Errorf("initialize dispatch queue: %w", err)
 	}
-	if s.cfg.RequiresDelayQueue() {
-		queues.Delay, err = s.buildQueue(s.delayTopic(), redisClient)
-		if err != nil {
-			return nil, fmt.Errorf("initialize delay queue: %w", err)
-		}
+	queues.Delay, err = s.buildQueue(s.delayTopic(), redisClient)
+	if err != nil {
+		return nil, fmt.Errorf("initialize delay queue: %w", err)
 	}
-	if s.cfg.RequiresResultQueue() {
-		queues.Result, err = s.buildQueue(s.resultTopic(), redisClient)
-		if err != nil {
-			return nil, fmt.Errorf("initialize result queue: %w", err)
-		}
+	queues.Result, err = s.buildQueue(s.resultTopic(), redisClient)
+	if err != nil {
+		return nil, fmt.Errorf("initialize result queue: %w", err)
 	}
 	return queues, nil
 }
 
-func (s *restServer) initRoleObservers(kubeClient kubernetes.Interface) {
-	if s.cfg.RunsController() {
-		// The controller alone owns cluster state observation and database sync.
-		s.InformerManager = informer.NewManager(
-			kubeClient,
-			informer.WithResyncPeriod(30*time.Second),
-			informer.WithLabelSelector(config.LabelAppID),
-		)
-		waiter := s.InformerManager.GetWaiter()
-		waiter.SetStatusSyncFunc(s.syncComponentStatus)
-		waiter.SetPodRestartMonitorConfigFunc(s.loadPodRestartMonitorConfig)
-		waiter.SetDeploymentPodRestartTriggerFunc(s.handleDeploymentPodRestartThresholdExceeded)
-		klog.Info("controller informer manager initialized with Eruun label selector")
-	}
-	if s.cfg.RunsWorker() {
-		s.resourceObserver = informer.NewKubernetesWorkloadObserver(kubeClient)
-	}
+func (s *restServer) initRuntimeObservers(kubeClient kubernetes.Interface) {
+	// The manager writes observed state only while this node holds leadership.
+	s.InformerManager = informer.NewManager(kubeClient, informer.WithResyncPeriod(30*time.Second), informer.WithLabelSelector(config.LabelAppID))
+	waiter := s.InformerManager.GetWaiter()
+	waiter.SetStatusSyncFunc(s.syncComponentStatus)
+	waiter.SetPodRestartMonitorConfigFunc(s.loadPodRestartMonitorConfig)
+	waiter.SetDeploymentPodRestartTriggerFunc(s.handleDeploymentPodRestartThresholdExceeded)
+	s.resourceObserver = informer.NewKubernetesWorkloadObserver(kubeClient)
 }
 
 func (s *restServer) initSandboxObserver(kubeClient kubernetes.Interface, platformConfig *rest.Config) error {
-	if s.cfg.Jobs == nil || (!s.cfg.RunsAPI() && !s.cfg.RunsController()) {
+	if s.cfg.Jobs == nil {
 		return nil
 	}
 	if s.jobs == nil || platformConfig == nil {

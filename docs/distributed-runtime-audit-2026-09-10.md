@@ -2,6 +2,8 @@
 
 > 状态：Historical / Audit。审计基线为 `main@3045955f75b332e2ac5f07e77c2dfa725f499eb9`。本文记录代码证据和在隔离环境中实际完成的验证，不构成生产高可用认证，也不承诺 exactly-once。
 
+> 当前拓扑提示：下文的四角色、双 Lease 和对应测试属于所列历史基线。当前统一节点使用单 Leader，见[分布式运行时设计](enterprise-distributed-runtime-design.md)与[部署契约](helm-deployment.md)。历史证据不作为新拓扑验收结果。
+
 ## 范围与原则
 
 本次审查覆盖 API、Controller、Scheduler、Worker 四种运行角色，以及应用 Workflow、空间独立 Job、数据库执行租约、Redis/Kafka 消息、延迟任务、结果恢复、Leader 切换、schema 迁移和 Helm/Quickstart 部署。修复保留现有 `/api/v1`、JSON、v2 dispatch、数据库 ownership 和执行身份契约，没有引入新的业务实体、协调服务或兼容别名。

@@ -167,7 +167,7 @@ func TestRunJobCleanupResourcesInvalidatesComponentsCache(t *testing.T) {
 		Cache:  cacheStore,
 	})
 
-	runJob(context.Background(), task, runtime)
+	runAdmittedTestJob(context.Background(), task, runtime)
 
 	require.Equal(t, config.StatusCompleted, task.Status)
 	require.Empty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))

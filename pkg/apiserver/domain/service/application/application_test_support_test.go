@@ -169,6 +169,13 @@ func (s *inMemoryAppStore) WithTransaction(ctx context.Context, fn func(datastor
 	return nil
 }
 
+func (s *inMemoryAppStore) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	return s.WithTransaction(ctx, fn)
+}
+func (s *inMemoryAppStore) GetForUpdate(ctx context.Context, entity datastore.Entity) error {
+	return s.Get(ctx, entity)
+}
+
 func (s *inMemoryAppStore) snapshot() *inMemoryAppStore {
 	return &inMemoryAppStore{
 		apps:                      cloneApplicationsMap(s.apps),

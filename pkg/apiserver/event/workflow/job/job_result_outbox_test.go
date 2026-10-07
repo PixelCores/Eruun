@@ -365,6 +365,18 @@ func (s *resultOutboxTestStore) List(_ context.Context, query datastore.Entity, 
 			outboxes = append(outboxes, &copy)
 		}
 		sort.Slice(outboxes, func(i, j int) bool {
+			if opts != nil && len(opts.SortBy) > 0 && opts.SortBy[0].Key == "lease_expires_at" {
+				a, b := outboxes[i].LeaseExpiresAt, outboxes[j].LeaseExpiresAt
+				if a == nil && b != nil {
+					return true
+				}
+				if a != nil && b == nil {
+					return false
+				}
+				if a != nil && b != nil && !a.Equal(*b) {
+					return a.Before(*b)
+				}
+			}
 			if !outboxes[i].UpdateTime.Equal(outboxes[j].UpdateTime) {
 				return outboxes[i].UpdateTime.Before(outboxes[j].UpdateTime)
 			}
@@ -473,6 +485,12 @@ func (s *resultOutboxTestStore) CompareAndSwapWithConditions(_ context.Context, 
 		if endTime, ok := updates["end_time"].(int64); ok {
 			current.EndTime = endTime
 		}
+		if startTime, ok := updates["start_time"].(int64); ok {
+			current.StartTime = startTime
+		}
+		if info, ok := updates["info"].(string); ok {
+			current.Info = info
+		}
 		current.UpdateTime = time.Now()
 		return true, nil
 	}
@@ -502,6 +520,11 @@ func (s *resultOutboxTestStore) CompareAndSwapWithConditions(_ context.Context, 
 			if strings.TrimSpace(current.MessageID) != strings.TrimSpace(fmt.Sprint(value)) {
 				return false, nil
 			}
+		case "lease_expires_at":
+			expected, _ := value.(*time.Time)
+			if (current.LeaseExpiresAt == nil) != (expected == nil) || (expected != nil && !current.LeaseExpiresAt.Equal(*expected)) {
+				return false, nil
+			}
 		default:
 			return false, datastore.ErrEntityInvalid
 		}
@@ -519,6 +542,10 @@ func (s *resultOutboxTestStore) CompareAndSwapWithConditions(_ context.Context, 
 func resultOutboxJobInfoMatchesConditions(current *model.JobInfo, conditions map[string]interface{}) (bool, error) {
 	for field, value := range conditions {
 		switch field {
+		case "attempt":
+			if fmt.Sprint(current.Attempt) != fmt.Sprint(value) {
+				return false, nil
+			}
 		case "status":
 			if current.Status != fmt.Sprint(value) {
 				return false, nil
@@ -693,6 +720,10 @@ func applyOutboxUpdates(outbox *model.JobResultOutbox, updates map[string]interf
 			outbox.State = value.(config.JobResultOutboxState)
 		case "message_id":
 			outbox.MessageID = value.(string)
+		case "job_uid":
+			outbox.JobUID = value.(string)
+		case "lease_expires_at":
+			outbox.LeaseExpiresAt, _ = value.(*time.Time)
 		case "attempts":
 			outbox.Attempts = value.(int)
 		case "last_error":
@@ -1456,7 +1487,7 @@ func TestResultOutboxDispatcherLeavesDispatchingWhenPendingRequeueClaimLost(t *t
 	require.Equal(t, 0, refreshed.Attempts)
 }
 
-func TestResultOutboxDispatcherRecoverLocalProcessingRecoversAllPages(t *testing.T) {
+func TestResultOutboxDispatcherRecoversExpiredProcessingAcrossBatches(t *testing.T) {
 	store := newResultOutboxTestStore()
 	dispatcher := NewResultOutboxDispatcher(&enqueueCaptureQueue{}, fake.NewSimpleClientset(), store)
 	dispatcher.batchSize = 2
@@ -1473,10 +1504,14 @@ func TestResultOutboxDispatcherRecoverLocalProcessingRecoversAllPages(t *testing
 			TimeoutSeconds: 60,
 		}
 		outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultProcessingLocal)
+		expired := time.Now().Add(-time.Minute)
+		outbox.LeaseExpiresAt = &expired
 		require.NoError(t, store.Add(context.Background(), outbox))
 	}
 
-	require.NoError(t, dispatcher.recoverLocalProcessing(context.Background()))
+	for i := 0; i < 2; i++ {
+		require.NoError(t, dispatcher.recoverResultOutboxes(context.Background(), []config.JobResultOutboxState{config.JobResultOutboxStateResultProcessingLocal}))
+	}
 
 	pending, err := listJobResultOutboxesByStates(context.Background(), store, []config.JobResultOutboxState{config.JobResultOutboxStateResultPending}, 10)
 	require.NoError(t, err)
@@ -1505,9 +1540,11 @@ func TestResultOutboxDispatcherRecoversStaleDispatchingOutbox(t *testing.T) {
 	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultDispatching)
 	outbox.CreateTime = time.Now().Add(-2 * time.Minute)
 	outbox.UpdateTime = time.Now().Add(-time.Minute)
+	expired := time.Now().Add(-time.Minute)
+	outbox.LeaseExpiresAt = &expired
 	require.NoError(t, store.Add(context.Background(), outbox))
 
-	require.NoError(t, dispatcher.processResultDispatching(context.Background()))
+	require.NoError(t, dispatcher.recoverResultOutboxes(context.Background(), []config.JobResultOutboxState{config.JobResultOutboxStateResultDispatching}))
 
 	refreshed, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
 	require.NoError(t, err)
@@ -1534,7 +1571,7 @@ func TestResultOutboxDispatcherKeepsFreshDispatchingOutbox(t *testing.T) {
 	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultDispatching)
 	require.NoError(t, store.Add(context.Background(), outbox))
 
-	require.NoError(t, dispatcher.processResultDispatching(context.Background()))
+	require.NoError(t, dispatcher.recoverResultOutboxes(context.Background(), []config.JobResultOutboxState{config.JobResultOutboxStateResultDispatching}))
 
 	refreshed, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
 	require.NoError(t, err)
@@ -1561,9 +1598,11 @@ func TestResultOutboxDispatcherRecoversStaleLocalProcessingOutbox(t *testing.T) 
 	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultProcessingLocal)
 	outbox.CreateTime = time.Now().Add(-2 * time.Minute)
 	outbox.UpdateTime = time.Now().Add(-2 * time.Minute)
+	expired := time.Now().Add(-time.Minute)
+	outbox.LeaseExpiresAt = &expired
 	require.NoError(t, store.Add(context.Background(), outbox))
 
-	require.NoError(t, dispatcher.processResultProcessingLocal(context.Background()))
+	require.NoError(t, dispatcher.recoverResultOutboxes(context.Background(), []config.JobResultOutboxState{config.JobResultOutboxStateResultProcessingLocal}))
 
 	refreshed, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
 	require.NoError(t, err)
@@ -1590,7 +1629,7 @@ func TestResultOutboxDispatcherKeepsFreshLocalProcessingOutbox(t *testing.T) {
 	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultProcessingLocal)
 	require.NoError(t, store.Add(context.Background(), outbox))
 
-	require.NoError(t, dispatcher.processResultProcessingLocal(context.Background()))
+	require.NoError(t, dispatcher.recoverResultOutboxes(context.Background(), []config.JobResultOutboxState{config.JobResultOutboxStateResultProcessingLocal}))
 
 	refreshed, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
 	require.NoError(t, err)

@@ -51,8 +51,11 @@ func TestEruunStackManifestUsesExplicitRBACBoundaries(t *testing.T) {
 			runtimeFlagsConfigMaps++
 			data, ok := object["data"].(map[string]interface{})
 			require.True(t, ok, "runtime flags ConfigMap must contain data")
-			require.Equal(t, "eruun-controller", data["ERUUN_CONTROLLER_LOCK_NAME"])
-			require.Equal(t, "eruun-scheduler", data["ERUUN_SCHEDULER_LOCK_NAME"])
+			require.Equal(t, "eruun-runtime", data["ERUUN_LEADER_LOCK_NAME"])
+			require.Equal(t, "eruun", data["ERUUN_LEADER_SERVICE_NAME"])
+			require.Equal(t, "15s", data["ERUUN_DURATION"])
+			require.NotContains(t, data, "ERUUN_CONTROLLER_LOCK_NAME")
+			require.NotContains(t, data, "ERUUN_SCHEDULER_LOCK_NAME")
 			require.NotContains(t, data, "ERUUN_LOCK_NAME")
 			require.NotContains(t, data, "ERUUN_DATASTORE_DATABASE")
 		}
@@ -62,11 +65,9 @@ func TestEruunStackManifestUsesExplicitRBACBoundaries(t *testing.T) {
 	}
 
 	require.Equal(t, map[string]struct{}{
-		"eruun-platform-runtime":    {},
-		"eruun-controller-observer": {},
-		"eruun-sandbox-runtime":     {},
+		"eruun-platform-runtime": {},
 	}, clusterRoles)
-	require.Len(t, clusterRoleBindings, 3)
+	require.Len(t, clusterRoleBindings, 1)
 	for name, binding := range clusterRoleBindings {
 		roleName, found, nestedErr := unstructured.NestedString(binding, "roleRef", "name")
 		require.NoError(t, nestedErr)
@@ -77,7 +78,7 @@ func TestEruunStackManifestUsesExplicitRBACBoundaries(t *testing.T) {
 	require.Equal(t, 1, runtimeFlagsConfigMaps)
 }
 
-func TestEruunStackUsesFixedDistributedRuntime(t *testing.T) {
+func TestEruunStackUsesUnifiedDistributedRuntime(t *testing.T) {
 	manifest, err := os.Open("eruun-stack.yaml")
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -113,13 +114,9 @@ func TestEruunStackUsesFixedDistributedRuntime(t *testing.T) {
 				deployments[component] = object
 			}
 		case "ServiceAccount":
-			if name == "eruun-api" || name == "eruun-controller" || name == "eruun-scheduler" || name == "eruun-worker" {
-				serviceAccounts[name] = struct{}{}
-			}
+			serviceAccounts[name] = struct{}{}
 		case "PodDisruptionBudget":
-			if name == "eruun-api" || name == "eruun-controller" || name == "eruun-scheduler" || name == "eruun-worker" {
-				pdbs[name] = struct{}{}
-			}
+			pdbs[name] = struct{}{}
 		case "Service":
 			if name == "eruun" {
 				service = object
@@ -139,58 +136,59 @@ func TestEruunStackUsesFixedDistributedRuntime(t *testing.T) {
 		}
 	}
 
-	roles := []string{"api", "controller", "scheduler", "worker"}
-	require.Len(t, deployments, len(roles))
-	require.Len(t, serviceAccounts, len(roles))
-	require.Len(t, pdbs, len(roles))
+	require.Len(t, deployments, 1)
+	require.Equal(t, map[string]struct{}{"eruun-runtime": {}}, serviceAccounts)
+	require.Equal(t, map[string]struct{}{"eruun-runtime": {}}, pdbs)
+	deployment, found := deployments["runtime"]
+	require.True(t, found, "missing unified runtime Deployment")
+	name, _, _ := unstructured.NestedString(deployment, "metadata", "name")
+	require.Equal(t, "eruun-runtime", name)
+	require.Equal(t, int64(4), stackNumberValue(t, deployment, "spec", "replicas"))
+	serviceAccountName, found, err := unstructured.NestedString(deployment, "spec", "template", "spec", "serviceAccountName")
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, "eruun-runtime", serviceAccountName)
+	require.Equal(t, int64(90), stackNumberValue(t, deployment, "spec", "template", "spec", "terminationGracePeriodSeconds"))
 
-	for _, role := range roles {
-		deployment, found := deployments[role]
-		require.True(t, found, "missing %s Deployment", role)
-		name, _, _ := unstructured.NestedString(deployment, "metadata", "name")
-		require.Equal(t, "eruun-"+role, name)
-		replicas := stackNumberValue(t, deployment, "spec", "replicas")
-		require.Greater(t, replicas, int64(0))
-		serviceAccountName, found, err := unstructured.NestedString(deployment, "spec", "template", "spec", "serviceAccountName")
-		require.NoError(t, err)
-		require.True(t, found)
-		require.Equal(t, "eruun-"+role, serviceAccountName)
-		grace := stackNumberValue(t, deployment, "spec", "template", "spec", "terminationGracePeriodSeconds")
-		require.Equal(t, int64(90), grace)
-
-		containers, found, err := unstructured.NestedSlice(deployment, "spec", "template", "spec", "containers")
-		require.NoError(t, err)
-		require.True(t, found)
-		require.Len(t, containers, 1)
-		container, ok := containers[0].(map[string]interface{})
+	containers, found, err := unstructured.NestedSlice(deployment, "spec", "template", "spec", "containers")
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Len(t, containers, 1)
+	container, ok := containers[0].(map[string]interface{})
+	require.True(t, ok)
+	env, found, err := unstructured.NestedSlice(container, "env")
+	require.NoError(t, err)
+	require.True(t, found)
+	podNameFound := false
+	for _, item := range env {
+		entry, ok := item.(map[string]interface{})
 		require.True(t, ok)
-		env, found, err := unstructured.NestedSlice(container, "env")
-		require.NoError(t, err)
-		require.True(t, found)
-		roleFound := false
-		for _, item := range env {
-			entry, ok := item.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			if entry["name"] == "ERUUN_ROLE" && entry["value"] == role {
-				roleFound = true
-			}
+		require.NotEqual(t, "ERUUN_ROLE", entry["name"])
+		require.NotEqual(t, "ERUUN_ID", entry["name"], "election identity must default to a fresh process UUID")
+		if entry["name"] == "ERUUN_POD_NAME" {
+			podNameFound = true
+			fieldPath, _, err := unstructured.NestedString(entry, "valueFrom", "fieldRef", "fieldPath")
+			require.NoError(t, err)
+			require.Equal(t, "metadata.name", fieldPath)
 		}
-		require.True(t, roleFound, "missing ERUUN_ROLE=%s", role)
 	}
+	require.True(t, podNameFound, "runtime must locate its Pod independently of its election identity")
 
 	selector, found, err := unstructured.NestedString(service, "spec", "selector", "app.kubernetes.io/component")
 	require.NoError(t, err)
 	require.True(t, found)
-	require.Equal(t, "api", selector)
+	require.Equal(t, "runtime", selector)
+	identity, found, err := unstructured.NestedString(service, "spec", "selector", "eruun.io/runtime-id")
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, "unassigned", identity)
 
 	data, found, err := unstructured.NestedStringMap(flags, "data")
 	require.NoError(t, err)
 	require.True(t, found)
 	for _, key := range []string{
-		"ERUUN_CONTROLLER_LOCK_NAME",
-		"ERUUN_SCHEDULER_LOCK_NAME",
+		"ERUUN_LEADER_LOCK_NAME",
+		"ERUUN_LEADER_SERVICE_NAME",
 		"ERUUN_WORKFLOW_HEARTBEAT_INTERVAL",
 		"ERUUN_WORKFLOW_LEASE_DURATION",
 		"ERUUN_WORKFLOW_LEASE_REAPER_INTERVAL",
@@ -201,9 +199,8 @@ func TestEruunStackUsesFixedDistributedRuntime(t *testing.T) {
 	require.NotContains(t, data, "ERUUN_WORKFLOW_LEASE_FENCING_ENABLED")
 	require.NotContains(t, data, "ERUUN_LOCK_NAME")
 
-	require.ElementsMatch(t, []string{"eruun-controller", "eruun-scheduler"}, stackSubjectNames(t, leaderBinding))
-	require.ElementsMatch(t, []string{"eruun-api", "eruun-worker"}, stackSubjectNames(t, clusterBindings["eruun-platform-runtime"]))
-	require.Equal(t, []string{"eruun-controller"}, stackSubjectNames(t, clusterBindings["eruun-controller-observer"]))
+	require.Equal(t, []string{"eruun-runtime"}, stackSubjectNames(t, leaderBinding))
+	require.Equal(t, []string{"eruun-runtime"}, stackSubjectNames(t, clusterBindings["eruun-platform-runtime"]))
 
 	roleRefName := func(binding map[string]interface{}) string {
 		name, found, err := unstructured.NestedString(binding, "roleRef", "name")
@@ -212,12 +209,12 @@ func TestEruunStackUsesFixedDistributedRuntime(t *testing.T) {
 		return name
 	}
 	require.Equal(t, "eruun-platform-runtime", roleRefName(clusterBindings["eruun-platform-runtime"]))
-	require.Equal(t, "eruun-controller-observer", roleRefName(clusterBindings["eruun-controller-observer"]))
+	require.Equal(t, "eruun-leader-election", roleRefName(leaderBinding))
 
-	assertControllerRuntimePermissions(t, clusterRoles)
+	assertUnifiedRuntimePermissions(t, clusterRoles)
 }
 
-func assertControllerRuntimePermissions(t *testing.T, clusterRoles map[string]map[string]interface{}) {
+func assertUnifiedRuntimePermissions(t *testing.T, clusterRoles map[string]map[string]interface{}) {
 	t.Helper()
 	verbsFor := func(role map[string]interface{}, apiGroup, resource string) []string {
 		rules, found, err := unstructured.NestedSlice(role, "rules")
@@ -243,10 +240,10 @@ func assertControllerRuntimePermissions(t *testing.T, clusterRoles map[string]ma
 		}
 		return nil
 	}
-	controllerRole := clusterRoles["eruun-controller-observer"]
-	require.Equal(t, []string{"get"}, verbsFor(controllerRole, "", "namespaces"), "Delayed dispatch must revalidate workspace ownership without creating namespaces")
-	require.Equal(t, []string{"impersonate"}, verbsFor(controllerRole, "", "serviceaccounts"))
-	rules, _, err := unstructured.NestedSlice(controllerRole, "rules")
+	runtimeRole := clusterRoles["eruun-platform-runtime"]
+	require.ElementsMatch(t, []string{"get", "create", "update", "delete"}, verbsFor(runtimeRole, "", "namespaces"), "runtime must retain workspace lifecycle permissions")
+	require.Equal(t, []string{"impersonate"}, verbsFor(runtimeRole, "", "serviceaccounts"))
+	rules, _, err := unstructured.NestedSlice(runtimeRole, "rules")
 	require.NoError(t, err)
 	for _, item := range rules {
 		rule := item.(map[string]interface{})
@@ -260,26 +257,19 @@ func assertControllerRuntimePermissions(t *testing.T, clusterRoles map[string]ma
 			}
 		}
 	}
-	require.ElementsMatch(t, []string{"get", "list", "watch", "patch", "delete"}, verbsFor(controllerRole, "", "pods"), "Controller must observe, label, and clean up completed Job Pods")
-	require.Equal(t, []string{"get"}, verbsFor(controllerRole, "", "pods/log"), "ResultDispatcher must collect completed Job logs")
-	require.ElementsMatch(t, []string{"get", "create", "update", "delete"}, verbsFor(controllerRole, "batch", "jobs"), "Controller must dispatch delayed Jobs, adopt execution identities, and clean up completed Jobs")
-	require.ElementsMatch(t, []string{"get", "delete"}, verbsFor(controllerRole, "batch", "cronjobs"), "Controller cancellation recovery must delete only the exact scheduled execution")
-	require.Equal(t, []string{"get"}, verbsFor(controllerRole, "apps", "replicasets"))
-	for _, resource := range []struct{ apiGroup, name string }{
-		{"", "secrets"},
-		{"", "pods/exec"},
-		{"apps", "deployments"},
-		{"rbac.authorization.k8s.io", "roles"},
-		{"rbac.authorization.k8s.io", "clusterroles"},
-	} {
-		require.Nil(t, verbsFor(controllerRole, resource.apiGroup, resource.name), "Controller must not manage %s", resource.name)
+	require.ElementsMatch(t, []string{"get", "list", "watch", "patch", "delete"}, verbsFor(runtimeRole, "", "pods"), "Controller must observe, label, and clean up completed Job Pods")
+	require.Equal(t, []string{"get"}, verbsFor(runtimeRole, "", "pods/log"), "ResultDispatcher must collect completed Job logs")
+	require.ElementsMatch(t, []string{"get", "list", "watch", "create", "update", "patch", "delete"}, verbsFor(runtimeRole, "batch", "jobs"), "runtime must dispatch, observe, adopt and clean up executions")
+	require.ElementsMatch(t, []string{"get", "list", "create", "update", "patch", "delete"}, verbsFor(runtimeRole, "batch", "cronjobs"))
+	require.ElementsMatch(t, []string{"get", "list", "update", "delete"}, verbsFor(runtimeRole, "apps", "replicasets"))
+	require.ElementsMatch(t, []string{"get", "list", "create", "update", "patch", "delete"}, verbsFor(runtimeRole, "", "secrets"))
+	require.Equal(t, []string{"create"}, verbsFor(runtimeRole, "", "pods/exec"))
+	require.ElementsMatch(t, []string{"get", "list", "create", "update", "patch", "delete"}, verbsFor(runtimeRole, "apps", "deployments"))
+	for _, resource := range []string{"roles", "clusterroles"} {
+		require.ElementsMatch(t, []string{"get", "list", "create", "update", "patch", "delete", "bind", "escalate"}, verbsFor(runtimeRole, "rbac.authorization.k8s.io", resource))
 	}
-	require.Contains(t, verbsFor(clusterRoles["eruun-platform-runtime"], "batch", "jobs"), "update", "Worker must adopt reusable Jobs into a new execution generation")
-	require.Contains(t, verbsFor(clusterRoles["eruun-platform-runtime"], "batch", "jobs"), "watch", "Worker must share Job List/Watch snapshots for execution status")
-	require.ElementsMatch(t, []string{"get", "list", "watch", "create", "update", "patch", "delete"}, verbsFor(clusterRoles["eruun-sandbox-runtime"], "agents.kruise.io", "sandboxes"))
-	require.ElementsMatch(t, []string{"get", "list", "watch", "create", "delete"}, verbsFor(clusterRoles["eruun-sandbox-runtime"], "agents.kruise.io", "checkpoints"))
-	require.Nil(t, verbsFor(clusterRoles["eruun-platform-runtime"], "agents.kruise.io", "checkpoints"), "Worker must not manage Checkpoints")
-	require.ElementsMatch(t, []string{"get", "patch"}, verbsFor(clusterRoles["eruun-platform-runtime"], "agents.kruise.io", "sandboxes"), "Worker only observes and shuts down source Sandboxes during recovery isolation")
+	require.ElementsMatch(t, []string{"get", "list", "watch", "create", "update", "patch", "delete"}, verbsFor(runtimeRole, "agents.kruise.io", "sandboxes"))
+	require.ElementsMatch(t, []string{"get", "list", "watch", "create", "delete"}, verbsFor(runtimeRole, "agents.kruise.io", "checkpoints"))
 }
 
 func TestDockerBuildUsesDefaultDeploymentImageWithoutPublishing(t *testing.T) {

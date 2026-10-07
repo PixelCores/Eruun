@@ -422,11 +422,13 @@ func (w *Workflow) runWorkflowTask(ctx context.Context, workerRun *workflowWorke
 	}
 	runnerCtx = taskCtx
 
-	urlPolicy, err := urlpolicy.ResolvePolicy(ctx, w.URLSecurityPolicyProvider)
+	// The database claim already transferred this task to the execution lifetime.
+	// Stopping intake on promotion must not cancel its preparation or persistence.
+	urlPolicy, err := urlpolicy.ResolvePolicy(runnerCtx, w.URLSecurityPolicyProvider)
 	if err != nil {
 		runErr := fmt.Errorf("load url security policy: %w", err)
 		if !isContextCancellationError(runErr) {
-			w.markTaskRunStartFailure(ctx, task, runErr)
+			w.markTaskRunStartFailure(runnerCtx, task, runErr)
 		}
 		stopHeartbeat()
 		return false, runErr
@@ -440,7 +442,7 @@ func (w *Workflow) runWorkflowTask(ctx context.Context, workerRun *workflowWorke
 	controller, err := NewWorkflowController(task, w.KubeClient, w.KubeConfig, w.Store, w.Cfg, w.RedisClient, w.Cache, urlPolicy, w.ResourceImportExecutor)
 	if err != nil {
 		runErr := fmt.Errorf("init workflow controller: %w", err)
-		w.markTaskRunStartFailure(ctx, task, runErr)
+		w.markTaskRunStartFailure(runnerCtx, task, runErr)
 		releaseSlot()
 		stopHeartbeat()
 		return false, runErr

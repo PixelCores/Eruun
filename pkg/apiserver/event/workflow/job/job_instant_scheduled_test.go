@@ -175,9 +175,9 @@ func TestDelayedJobControllersCommitWithoutQueue(t *testing.T) {
 			require.NoError(t, err)
 			var ctl JobCtl
 			if jobType == config.JobDeployInstant {
-				ctl = NewInstantJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() {}})
+				ctl = NewInstantJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: withJobTestOwner(store, task), Ack: func() {}})
 			} else {
-				ctl = NewScheduledJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() {}})
+				ctl = NewScheduledJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: withJobTestOwner(store, task), Ack: func() {}})
 			}
 
 			require.NoError(t, ctl.Run(context.Background()))
@@ -523,7 +523,7 @@ func TestInstantJobCtlHelpers(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "instant-job", Namespace: "default"},
 		},
 	}
-	ctl := NewInstantJobCtl(jobTask, &Runtime{Client: client, Store: store, Ack: func() {}})
+	ctl := NewInstantJobCtl(jobTask, &Runtime{Client: client, Store: withJobTestOwner(store, jobTask), Ack: func() {}})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.SaveInfo(context.Background()))
@@ -558,7 +558,7 @@ func TestScheduledJobCtlHelpers(t *testing.T) {
 		JobType:   string(config.JobDeployScheduled),
 		JobInfo:   jobObj,
 	}
-	ctl := NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: store, Ack: func() {}})
+	ctl := NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: withJobTestOwner(store, jobTask), Ack: func() {}})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.SaveInfo(context.Background()))

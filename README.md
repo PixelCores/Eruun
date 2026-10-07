@@ -22,7 +22,7 @@ It serves as an execution backend for self-hosted platforms, bringing applicatio
 | LLM evaluation | Upload native Harbor task packages, declare `type: job` with `traits.eval` as a standalone Job or application component, and retain rewards, trajectories, logs, and artifacts | Prebuilt task images, verifiers, Runner configuration, and Secret-backed credentials when using a model |
 | Bringing existing Kubernetes applications into Eruun | Read-only observation or explicit adoption through dry-run and signed plans | Clear resource ownership, a supported resource scope, and adoption key configuration |
 
-If you only need to apply a few Kubernetes manifests, Eruun’s database, queue, and four-role deployment add operational cost. These dependencies become more useful when you need durable tasks, workspace authorization, multi-component execution, and a common query interface.
+If you only need to apply a few Kubernetes manifests, Eruun’s database, queue, and multi-node deployment add operational cost. These dependencies become more useful when you need durable tasks, workspace authorization, multi-component execution, and a common query interface.
 
 ## Core concepts
 
@@ -82,34 +82,27 @@ Resource generation, reconciliation, and cleanup paths handle `service` and `sha
 
 ## Runtime architecture
 
-The same `eruun-server` binary starts one role selected by `--role` or `ERUUN_ROLE`, defaulting to `api`. The complete runtime combines four roles.
+Every node runs the same `eruun-server` and competes for one Kubernetes Lease. The elected Leader serves HTTP/gRPC APIs, scheduling, and Controller maintenance. Other nodes execute as Workers and remain election candidates.
 
 ```mermaid
 flowchart TB
-    Client["Platform / automation / API client"] --> API["api · HTTP / gRPC"]
-    API --> DB[("MySQL · domain state and execution leases")]
-    Scheduler["scheduler · dispatch and lease recovery"] <--> DB
-    Scheduler --> Queue["Redis Streams or Kafka"]
-    Queue --> Worker["worker · Workflow / command / evaluation"]
+    Client[API clients] --> Service[Stable Service: selects only the Leader]
+    Service --> Leader[Leader: API / scheduling / maintenance]
+    Leader -. election .-> Lease[One Kubernetes Lease]
+    Worker[Worker nodes and candidates] -. election .-> Lease
+    Leader <--> DB[(MySQL: domain state and execution leases)]
+    Leader --> Queue[Redis Streams or Kafka]
+    Queue --> Worker
     Worker <--> DB
-    Worker --> K8s["Kubernetes · workload runtime"]
-    Controller["controller · state and result coordination"] --> K8s
-    Controller <--> DB
-    Controller --> Results["Evaluation result storage · database / optional MinIO"]
-    API --> Redis[("Redis · cache and application coordination")]
+    Worker --> K8s[Kubernetes workloads]
+    Leader <--> K8s
+    Leader --> Redis[Redis: cache and application coordination]
     Worker --> Redis
 ```
 
-This diagram shows the main execution and data paths. See the [architecture diagrams](docs/architecture-diagrams.md) for additional dependency details and recovery sequences.
+The default is four nodes: one Leader and three Workers. Production needs at least two nodes; a single node has no Worker capacity for new tasks. Promotion stops new task intake while previously claimed tasks continue with their original ownership and heartbeats. Losing leadership stops API/control duties before returning to Worker intake. Healthy Workers remain PodReady; the business Service selects only the Leader.
 
-| Role | Responsibility | Scaling model |
-| --- | --- | --- |
-| `api` | HTTP/gRPC, authentication and authorization, validation, domain reads/writes, and task submission | Multiple replicas receive requests |
-| `controller` | Global Kubernetes observation, state projection, delayed task/result coordination, evaluation result storage, and expiry cleanup | Replicas compete for a separate Controller Leader Lease |
-| `scheduler` | Claim waiting tasks, dispatch messages, and reclaim expired execution leases | Replicas compete for a separate Scheduler Leader Lease |
-| `worker` | Consume dispatches, claim and renew execution ownership, and run Workflows and standalone Jobs | Replicas execute concurrently; each Worker uses a local workload observer |
-
-The main execution path is: **API persists the task → Scheduler dispatches it → Worker claims a lease and operates on Kubernetes → Worker saves execution progress while Controller projects runtime state**. A successful submission means the task was accepted; query application readiness and task completion separately. Evaluation execution, result collection, and each storage destination also have separate states.
+The execution path is: **Leader API persists a task → Leader dispatches it → Worker claims a database lease and operates on Kubernetes → execution progress and results are saved**. Acceptance, workload readiness, execution completion, and result storage are separate states. Leadership changes interrupt HTTP/gRPC connections; reconnect, check task state, and retry only under the endpoint's idempotency contract.
 
 | Dependency | Responsibility | Boundary |
 | --- | --- | --- |
@@ -119,7 +112,7 @@ The main execution path is: **API persists the task → Scheduler dispatches it 
 | Kubernetes | Container execution, resource reconciliation, scheduling, and isolation | Provides actual resource state; business queries primarily read database projections |
 | MinIO (optional) | Stores complete evaluation result files | Database-only storage is supported; failed storage destinations can be retried independently |
 
-The queue delivers messages at least once. Database leases and generation/token fencing prevent stale executors from overwriting newer state; external side effects still need idempotency or compensation. Four roles do not automatically provide data availability: the chart’s bundled MySQL and Redis are single-replica development dependencies. See [Helm deployment](docs/helm-deployment.md) for production topology guidance.
+The queue delivers messages at least once. Database leases and generation/token fencing prevent stale executors from overwriting newer state; external side effects still need idempotency or compensation. Multiple nodes do not automatically provide data availability: the chart’s bundled MySQL and Redis are single-replica development dependencies. See [Helm deployment](docs/helm-deployment.md) for production topology guidance.
 
 ## Capability boundaries and roadmap
 
@@ -132,7 +125,7 @@ The queue delivers messages at least once. Database leases and generation/token 
 
 | Stage | Scope |
 | --- | --- |
-| Current | The Application/Workflow capabilities, four-role runtime, workspace authorization, standalone command Jobs, and Harbor evaluation through both execution entry points described here |
+| Current | The Application/Workflow capabilities, homogeneous runtime, workspace authorization, standalone command Jobs, and Harbor evaluation through both execution entry points described here |
 | Next | Self-hosted agent execution contracts, MCP/CLI tool bindings, credential delegation, tool permissions and auditing, and more evaluation frameworks |
 | Later | Model serving, GPU-aware scheduling, vectorization, managed AI Providers, and cloud or multi-cluster execution |
 
@@ -140,7 +133,7 @@ The [AI runtime vision](docs/ai-runtime-vision.md) explains the direction of dev
 
 ## Quick start
 
-### 1. Deploy the four-role runtime
+### 1. Deploy the homogeneous runtime
 
 Prepare Bash, `kubectl`, OpenSSL, Helm, and access to a Kubernetes cluster. The cluster must support NetworkPolicy and Restricted v1.34 Pod Security, with storage available for the MySQL/Redis PVCs; see [Helm deployment](docs/helm-deployment.md). Installing published images requires neither Go nor Rust.
 
@@ -155,7 +148,7 @@ AUTH_CONFIG_FILE=/secure/eruun/accounts.json INSTALL_MODE=helm \
 kubectl -n eruun-system port-forward svc/eruun 8000:8000
 ```
 
-The installer deploys all four roles plus MySQL and Redis. On the first installation, it generates random database/cache passwords when none are supplied and passes them through temporary files with mode `0600` and Kubernetes Secrets. Subsequent installations reuse existing credentials. Leave `port-forward` running and check from another terminal:
+The installer deploys the unified nodes plus MySQL and Redis. On the first installation, it generates random database/cache passwords when none are supplied and passes them through temporary files with mode `0600` and Kubernetes Secrets. Subsequent installations reuse existing credentials. `port-forward` connects to the current Leader; restart it after a leadership change. Check from another terminal:
 
 ```bash
 export ERUUN_URL=http://127.0.0.1:8000
@@ -209,28 +202,30 @@ Configure the server through flags or `ERUUN_` environment variables; for exampl
 
 | Configuration | Purpose |
 | --- | --- |
-| `ERUUN_ROLE` | `api` / `controller` / `scheduler` / `worker`; defaults to `api`; there is no `all` role |
+| `ERUUN_LEADER_LOCK_NAME` | Shared election Lease; defaults to `eruun-runtime` |
+| `ERUUN_LEADER_SERVICE_NAME` | Cluster business Service; leave empty locally to access the elected node directly |
+| `ERUUN_POD_NAME` | Pod name for cluster entry-point maintenance; election identity defaults to a separate UUID per process |
 | `ERUUN_BIND_ADDR` / `ERUUN_GRPC_BIND_ADDR` | Local HTTP defaults to `127.0.0.1:8001`; API gRPC defaults to `127.0.0.1:9001`; cluster deployments use 8000 / 9000 respectively |
 | `ERUUN_DATASTORE_URL` | The actual MySQL DSN; the password placeholder must be replaced |
 | `ERUUN_CACHE_HOST` / `ERUUN_CACHE_PASSWORD` | Redis connection configuration |
 | `ERUUN_MSG_TYPE` / `ERUUN_MSG_KAFKA_BROKERS` | Redis Streams by default; configure brokers when selecting Kafka, and retain Redis |
 | `ERUUN_ENABLE_TRACING` / `ERUUN_JAEGER_ENDPOINT` | Enable tracing with one flag; the Jaeger endpoint controls span export |
 | `ERUUN_AUTH_CONFIG_FILE` | Account, session, and workspace policy JSON |
-| `ERUUN_JOBS_CONFIG_FILE` | Enables the Harbor Runner and optional MinIO; use the same configuration for all four roles |
+| `ERUUN_JOBS_CONFIG_FILE` | Enables the Harbor Runner and optional MinIO; use the same configuration for all nodes |
 
-Redis is required for cache, authentication, and coordination in all four long-running roles (`api`, `controller`, `scheduler`, `worker`). For these roles, `--cache-type` / `ERUUN_CACHE_TYPE` accepts only `redis`; `memory` fails startup validation. In `--datastore-schema-mode=migrate-only`, validation checks only datastore configuration.
+All runtime nodes require Redis for cache, authentication, and coordination. `--cache-type` / `ERUUN_CACHE_TYPE` accepts only `redis`; `memory` fails startup validation. In `--datastore-schema-mode=migrate-only`, validation checks only datastore configuration.
 
 Tracing defaults to `ERUUN_ENABLE_TRACING=true`; set it to `false` to disable tracing. This setting controls both the tracer provider and HTTP middleware, independently of the Redis/Kafka backend. Setting a Jaeger endpoint alone does not enable tracing. Without an endpoint, tracing can add trace IDs to API request logs but does not export spans. The static stack manifest enables tracing.
 
 Migration: `--auto-tracing` and `ERUUN_AUTO_TRACING` have been removed. Remove the old setting and set `--enable-tracing` / `ERUUN_ENABLE_TRACING` to the logical OR of the previous two flags (previous defaults: enabled). The removed CLI flag or environment variable now causes startup to fail, including when the old environment variable is empty or `false`. Explicit CLI settings take precedence over the remaining environment setting.
 
-Local source development requires Go 1.27, plus GNU Make when using Make targets. Start and configure MySQL, Redis, and optional Kafka using the [local dependencies guide](docs/local-docker-dependencies.md), prepare account configuration and Kubernetes access, then start the API:
+Local source development requires Go 1.27, plus GNU Make when using Make targets. Start and configure MySQL, Redis, and optional Kafka using the [local dependencies guide](docs/local-docker-dependencies.md), prepare account configuration and Kubernetes access, then start a node:
 
 ```bash
-go run ./cmd/main.go --role=api
+go run ./cmd/main.go
 ```
 
-This starts only the API. End-to-end execution requires the other three roles, as described in [distributed deployment and role dependencies](docs/enterprise-distributed-runtime-design.md). Processes on the same machine need different HTTP listening ports, and Controller/Scheduler need the correct Leader Election namespace. Complete database schema migration before starting other roles in validation mode; see the [Helm schema contract](docs/helm-deployment.md).
+This starts one candidate node. Once elected, a single node serves APIs but cannot claim new tasks. End-to-end execution requires at least two nodes sharing the namespace, Lease, database, and messaging configuration, with unique instance IDs. Local processes need distinct HTTP/gRPC addresses. Migrate the database first, then start other nodes in validation mode; see the [Helm deployment contract](docs/helm-deployment.md) for cluster setup.
 
 Common development checks:
 
@@ -248,7 +243,7 @@ go vet ./...
 | --- | --- |
 | Documentation status, current behavior, and code locations | [Documentation index](docs/README.md) |
 | Domain model, traits, permissions, and module boundaries | [Architecture](docs/架构文档.md), [Cross-layer field contracts](docs/core-module-boundary-and-cross-layer-contracts.md) |
-| Four roles, execution sequences, leases, and failure recovery | [Architecture diagrams](docs/architecture-diagrams.md), [Workflow architecture](docs/workflow-architecture-guide.md), [Distributed runtime](docs/enterprise-distributed-runtime-design.md) |
+| Leader/Worker nodes, execution sequences, leases, and failure recovery | [Architecture diagrams](docs/architecture-diagrams.md), [Workflow architecture](docs/workflow-architecture-guide.md), [Distributed runtime](docs/enterprise-distributed-runtime-design.md) |
 | API and automation integration | [Canonical JSON](docs/canonical-json-profile.md), [gRPC](docs/grpc-api.md), [Account examples](examples/account-auth-workspaces/README.md) |
 | Deployment and workspace isolation | [Helm](docs/helm-deployment.md), [Accounts and workspaces](docs/account-auth-workspaces.md), [Local dependencies](docs/local-docker-dependencies.md) |
 | Commands, evaluation, task packages, and results | [Workspace Job API](docs/workspace-jobs-api.md), [Evaluation example](examples/agent-evaluation/README.md), [Runner](pkg/apiserver/jobs/runners/harbor/README.md) |

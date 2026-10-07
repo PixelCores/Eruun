@@ -12,6 +12,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
@@ -302,13 +303,23 @@ func (c *applicationsServiceImpl) commitVersionUpdateRun(ctx context.Context, ru
 }
 
 func (c *applicationsServiceImpl) commitDirectVersionUpdate(ctx context.Context, run *versionUpdateRun) error {
-	txStore, ok := c.Store.(datastore.Transactional)
-	if !ok {
-		return fmt.Errorf("%w: direct version update requires transactional datastore", bcode.ErrVersionUpdateFailed)
-	}
 	cleanupAttempted := false
-	err := txStore.WithTransaction(ctx, func(tx datastore.DataStore) error {
-		var err error
+	err := repository.WithApplicationSchedulingTransaction(ctx, c.Store, run.app.ID, func(tx datastore.DataStore) error {
+		if err := validateVersionUpdateSnapshot(ctx, tx, run.app, run.componentMap); err != nil {
+			return err
+		}
+		// Use the same app-before-component order as automatic submissions.
+		// Redis lease loss can let a task commit after preflight, so repeat only
+		// the idle checks already required for structural/adopted changes.
+		requiresIdle, err := hasWorkflowStructureChanges(run.normalReq.Components, run.componentMap)
+		if err != nil {
+			return err
+		}
+		if requiresIdle || run.app.EffectiveManagementMode() == domainspec.ManagementModeAdopted {
+			if err := EnsureAppWorkflowIdle(ctx, tx, run.app.ID); err != nil {
+				return err
+			}
+		}
 		run.updatedComponents, run.addedComponents, run.removedComponents, err = c.applyVersionUpdateChangesInStore(
 			ctx, tx, run.app, run.componentMap, run.normalReq, run.newVersion, "",
 			func(ctx context.Context, component *model.ApplicationComponent) error {

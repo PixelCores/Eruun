@@ -23,6 +23,7 @@ const databaseReadinessTimeout = 2 * time.Second
 
 type RuntimeReadiness interface {
 	RuntimeReady() (bool, string)
+	RuntimeRole() string
 }
 
 // health provides health check endpoints for Kubernetes probes.
@@ -50,8 +51,8 @@ func (h *health) healthCheck(c *gin.Context) {
 	})
 }
 
-// readinessCheck checks if the server is ready to accept traffic.
-// It verifies connectivity to the dependencies required by the runtime role.
+// readinessCheck checks whether the node can fulfill its current runtime role.
+// Healthy workers remain ready even though only the leader serves business APIs.
 func (h *health) readinessCheck(c *gin.Context) {
 	ctx := c.Request.Context()
 	if h.Runtime != nil {
@@ -70,8 +71,8 @@ func (h *health) readinessCheck(c *gin.Context) {
 			return
 		}
 	}
-	if h.Cfg != nil && h.Cfg.RunsAPI() {
-		// API mutations require Redis locks and cancellation signals even without queues.
+	if h.Cfg != nil {
+		// Every node needs Redis for API mutation locks, authentication and cancellation.
 		if h.RedisClient == nil {
 			apiresponse.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: redis client is not configured")
 			return
@@ -82,21 +83,18 @@ func (h *health) readinessCheck(c *gin.Context) {
 			return
 		}
 	}
-	externalQueue := h.Cfg != nil && h.Cfg.HasExternalQueue()
 	isKafka := h.Cfg != nil && strings.EqualFold(strings.TrimSpace(h.Cfg.Messaging.Type), "kafka")
 	checks := h.requiredQueueChecks()
 
-	if externalQueue {
-		var degraded []string
-		for _, check := range checks {
-			if !queueIsReady(check.queue) {
-				degraded = append(degraded, check.name)
-			}
+	var degraded []string
+	for _, check := range checks {
+		if !queueIsReady(check.queue) {
+			degraded = append(degraded, check.name)
 		}
-		if len(degraded) > 0 {
-			apiresponse.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: external queue degraded ("+strings.Join(degraded, ", ")+")")
-			return
-		}
+	}
+	if len(degraded) > 0 {
+		apiresponse.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: external queue degraded ("+strings.Join(degraded, ", ")+")")
+		return
 	}
 
 	if isKafka && len(checks) > 0 {
@@ -121,9 +119,9 @@ func (h *health) readinessCheck(c *gin.Context) {
 		}
 	}
 
-	role := config.RuntimeRoleAPI
-	if h.Cfg != nil {
-		role = h.Cfg.NormalizedRole()
+	role := "worker"
+	if h.Runtime != nil {
+		role = h.Runtime.RuntimeRole()
 	}
 	apiresponse.ReturnSuccess(c, gin.H{
 		"status": "ready",
@@ -145,17 +143,11 @@ func (h *health) requiredQueueChecks() []healthQueueCheck {
 	if queues == nil {
 		queues = &msg.RuntimeQueues{}
 	}
-	checks := make([]healthQueueCheck, 0, 3)
-	if h.Cfg.RequiresDispatchQueue() {
-		checks = append(checks, healthQueueCheck{name: "dispatch", queue: queues.Dispatch, group: config.WorkflowWorkerQueueGroup})
+	return []healthQueueCheck{
+		{name: "dispatch", queue: queues.Dispatch, group: config.WorkflowWorkerQueueGroup},
+		{name: "delay", queue: queues.Delay, group: config.DelayQueueGroup},
+		{name: "result", queue: queues.Result, group: config.ResultQueueGroup},
 	}
-	if h.Cfg.RequiresDelayQueue() {
-		checks = append(checks, healthQueueCheck{name: "delay", queue: queues.Delay, group: config.DelayQueueGroup})
-	}
-	if h.Cfg.RequiresResultQueue() {
-		checks = append(checks, healthQueueCheck{name: "result", queue: queues.Result, group: config.ResultQueueGroup})
-	}
-	return checks
 }
 
 func queueIsReady(queue msg.Queue) bool {

@@ -1,5 +1,7 @@
 # Leader Informer Recovery
 
+> Historical record: the leader lifecycle and `exit-on-lost-leader` settings below describe the version at the time. The current runtime uses homogeneous nodes, one Lease, and returns to Worker duty after leadership loss. See [the current runtime contract](../docs/enterprise-distributed-runtime-design.md); these tests do not validate the new topology.
+
 Date: 2026-07-01
 
 ## Context

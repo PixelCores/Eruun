@@ -1,29 +1,26 @@
 {{- include "eruun.validateRuntime" . -}}
-{{- define "eruun.runtimeDeployment" -}}
-{{- $root := index . "root" -}}
-{{- $role := index . "role" -}}
-{{- $roleValues := index $root.Values.runtime.roles $role -}}
-{{- $usesImportSecretKeyring := and $root.Values.importSecretKeyring.existingSecret (or (eq $role "api") (eq $role "worker")) -}}
+{{- $root := . -}}
+{{- $usesImportSecretKeyring := .Values.importSecretKeyring.existingSecret -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "eruun.suffixedName" (dict "root" $root "suffix" $role) }}
+  name: {{ include "eruun.suffixedName" (dict "root" $root "suffix" "runtime") }}
   labels:
     {{- include "eruun.labels" $root | nindent 4 }}
-    app.kubernetes.io/component: {{ $role }}
+    app.kubernetes.io/component: runtime
 spec:
-  replicas: {{ $roleValues.replicas }}
+  replicas: {{ $root.Values.runtime.replicas }}
   selector:
     matchLabels:
-      app.kubernetes.io/component: {{ $role }}
+      app.kubernetes.io/component: runtime
       app.kubernetes.io/instance: {{ $root.Release.Name }}
   template:
     metadata:
       labels:
         {{- include "eruun.labels" $root | nindent 8 }}
-        app.kubernetes.io/component: {{ $role }}
+        app.kubernetes.io/component: runtime
     spec:
-      serviceAccountName: {{ include "eruun.roleServiceAccountName" (dict "root" $root "role" $role) }}
+      serviceAccountName: {{ include "eruun.serviceAccountName" $root }}
       securityContext:
         fsGroup: 1000
       terminationGracePeriodSeconds: {{ $root.Values.runtime.terminationGracePeriodSeconds }}
@@ -38,10 +35,8 @@ spec:
           ports:
             - name: http
               containerPort: {{ $root.Values.service.port }}
-            {{- if eq $role "api" }}
             - name: grpc
               containerPort: {{ $root.Values.service.grpcPort }}
-            {{- end }}
           env:
             - name: ERUUN_AUTH_CONFIG_FILE
               value: /var/run/secrets/eruun/accounts/accounts.json
@@ -49,28 +44,22 @@ spec:
             - name: ERUUN_JOBS_CONFIG_FILE
               value: /var/run/secrets/eruun/jobs/jobs.json
             {{- end }}
-            - name: ERUUN_ROLE
-              value: {{ $role | quote }}
             - name: ERUUN_DATASTORE_SCHEMA_MODE
-              value: {{ ternary "migrate" "validate" (and $root.Release.IsInstall (eq $role "api")) | quote }}
-            - name: ERUUN_EXIT_ON_LOST_LEADER
-              value: "false"
-            - name: ERUUN_ID
+              value: {{ ternary "migrate" "validate" $root.Release.IsInstall | quote }}
+            - name: ERUUN_POD_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
             - name: ERUUN_BIND_ADDR
               value: {{ printf "0.0.0.0:%v" $root.Values.service.port | quote }}
-            {{- if eq $role "api" }}
             - name: ERUUN_GRPC_BIND_ADDR
               value: {{ printf "0.0.0.0:%v" $root.Values.service.grpcPort | quote }}
-            {{- end }}
             - name: ERUUN_LEADER_NAMESPACE
               value: {{ $root.Release.Namespace | quote }}
-            - name: ERUUN_CONTROLLER_LOCK_NAME
-              value: {{ include "eruun.runtimeLockName" (dict "root" $root "role" "controller") | quote }}
-            - name: ERUUN_SCHEDULER_LOCK_NAME
-              value: {{ include "eruun.runtimeLockName" (dict "root" $root "role" "scheduler") | quote }}
+            - name: ERUUN_LEADER_LOCK_NAME
+              value: {{ include "eruun.runtimeLockName" $root | quote }}
+            - name: ERUUN_LEADER_SERVICE_NAME
+              value: {{ include "eruun.fullname" $root | quote }}
             - name: ERUUN_WORKFLOW_HEARTBEAT_INTERVAL
               value: {{ $root.Values.runtime.heartbeatInterval | quote }}
             - name: ERUUN_WORKFLOW_LEASE_DURATION
@@ -136,7 +125,7 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 15
           resources:
-            {{- toYaml $roleValues.resources | nindent 12 }}
+            {{- toYaml $root.Values.runtime.resources | nindent 12 }}
       volumes:
       {{- if $root.Values.jobs.existingSecret }}
         - name: jobs-config
@@ -181,11 +170,6 @@ spec:
           whenUnsatisfiable: {{ $root.Values.topologySpreadConstraints.whenUnsatisfiable }}
           labelSelector:
             matchLabels:
-              app.kubernetes.io/component: {{ $role }}
+              app.kubernetes.io/component: runtime
               app.kubernetes.io/instance: {{ $root.Release.Name }}
       {{- end }}
----
-{{- end -}}
-{{- range $role := list "api" "controller" "scheduler" "worker" }}
-{{ include "eruun.runtimeDeployment" (dict "root" $ "role" $role) }}
-{{- end }}

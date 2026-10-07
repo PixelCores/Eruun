@@ -4,7 +4,7 @@
 
 ## 目标与测量边界
 
-在隔离的 Eruun 四角色部署中，向一个空间提交 **1000 个 `eval` Job**，每个 Job 包含一个 Harbor 0.22.0 `oracle` trial。使用 [可构建的合成任务镜像和批量提交器](../examples/agent-evaluation/load-test/README.md)：试验 Pod 同时启动五个休眠时长不同的线程，每个 Job 的最长线程由试验容器 hostname 确定为 **60–300 秒**，最大值为 Sleep 300。这是真实的 Eruun API、数据库、调度、Kubernetes Job/Pod、Harbor Runner、状态事件和结果保存链路；任务内容和等待时间是合成的，没有模型调用、模型凭据或真实评测工作量。只在客户端伪造请求响应无法测量后半段链路的上限。
+在隔离的 Eruun 同构节点部署中，向一个空间提交 **1000 个 `eval` Job**，每个 Job 包含一个 Harbor 0.22.0 `oracle` trial。使用 [可构建的合成任务镜像和批量提交器](../examples/agent-evaluation/load-test/README.md)：试验 Pod 同时启动五个休眠时长不同的线程，每个 Job 的最长线程由试验容器 hostname 确定为 **60–300 秒**，最大值为 Sleep 300。这是真实的 Eruun API、数据库、调度、Kubernetes Job/Pod、Harbor Runner、状态事件和结果保存链路；任务内容和等待时间是合成的，没有模型调用、模型凭据或真实评测工作量。只在客户端伪造请求响应无法测量后半段链路的上限。
 
 分别回答三个问题：一次能可靠接收多少待执行 Job；在目标提交速率下，排队与提交延迟如何变化；每个空间及整个部署能稳定执行多少个并发 trial，以及制品保存何时追不上完成速率。报告只对记录的集群、角色副本、数据库、队列后端、镜像、资源配额和结果策略成立；不能从一次 1000 Job 实验推断其他配置或真实模型任务的上限。
 
@@ -12,7 +12,7 @@
 
 ## 环境和负载准备
 
-1. 使用专用集群、数据库/schema、Redis 或 Kafka、空间和对象存储。记录 Eruun 与 Runner 镜像 digest、Harbor 版本、节点数量及可分配 CPU/内存、Kubernetes API/etcd 与 CNI、MySQL 连接池及磁盘、队列后端、API/Controller/Scheduler/Worker 副本数和资源限制、空间 ResourceQuota，以及监控采样间隔。四个角色必须配置同一 Harbor Runner；先完成 schema 升级。隔离环境不应混入其他任务。
+1. 使用专用集群、数据库/schema、Redis 或 Kafka、空间和对象存储。记录 Eruun 与 Runner 镜像 digest、Harbor 版本、节点数量及可分配 CPU/内存、Kubernetes API/etcd 与 CNI、MySQL 连接池及磁盘、队列后端、统一节点副本数、当前 Leader 与 Worker 分布和资源限制、空间 ResourceQuota，以及监控采样间隔。所有节点必须配置同一 Harbor Runner；先完成 schema 升级。隔离环境不应混入其他任务。
 2. 按 [合成负载示例](../examples/agent-evaluation/load-test/README.md) 构建并推送 `task/environment/Dockerfile` 的镜像，最好在运行记录中固定 digest。把任务目录复制到临时位置，替换 `task.toml` 的占位 `docker_image`，打包并上传原生任务。`oracle` 参考解执行镜像内的线程休眠程序；verifier 检查五个线程均完成，并把每个 Job 的计划/实际时长写入 `load-timing.json` 制品。`[agent].timeout_sec=360`，外层评测预算仍需覆盖镜像拉取、Harbor 启动、verifier 和归档。先运行一个 Job，验证 reward 1、完整采集和保存成功，且制品报告的时长落在 60–300 秒；不满足则排查镜像和任务包后再开始压测。
 3. 只上传 **一次** 原生 tar.gz 任务包，保存返回的 `data.id`，1000 个 Job 都复用该 `taskPackageId`。批量提交器使用 [合成请求模板](../examples/agent-evaluation/load-test/evaluation.json)：`traits.eval.agent=oracle`，不填写 model/credentials；`traits.eval.attempts=1`、`concurrency=1`；`traits.eval.timeoutSeconds=900`，给最长 300 秒的合成等待之外的准备和 verifier 留预算，Runner 另有 360 秒采集/停止余量。明确使用隔离数据库上的 `retentionDays=1`、`database/full`，让结果保存也接受压力；数据库完整副本不会因为源归档保留期结束而自动删除，实验结束后由隔离环境的清理流程处理。保持同一策略贯穿可比较的轮次。
 4. 使用有 member 权限的空间 Bearer Token，提交时带 `X-Eruun-Workspace-ID`；修改 `workflow_scheduler` 需要系统管理员 Token。驱动程序不得把 Token、Runner 凭据或响应中的敏感信息写入日志。先读取并备份 `GET /api/v1/settings/workflow_scheduler` 的 `data.value`；只在专用环境通过 `PUT /api/v1/settings/workflow_scheduler` 的 `{ "value": { ... } }` 调整两个并发上限，每轮记录生效值，结束后恢复原值。降低上限不会终止已有 Job，必须排空后再切换轮次。
@@ -39,7 +39,7 @@
 
 驱动每 5–15 秒按已返回的 task ID 拉取 `GET /api/v1/jobs/:taskID`，并为每个任务保存各字段发生变化的时间及最后一次响应：业务 `status`、`executions`、`runnerStatus`、`collectionState`、`deliveries`；查询须限流并另记实际 QPS，避免 1000 个任务的同步轮询本身改变实验结果。API 记录 `POST /jobs` 的成功率、HTTP 4xx/5xx、p50/p95/p99、每秒 202 数；对任务分别记录提交 202 → 调度 queued/admitted、Kubernetes Job/Pod 创建和 Running、Runner phase=running、Runner terminal、任务终态、采集完整、保存目标成功的时间。`JobInfo` 对外 `executions` 含 `schedulingState`、`schedulingQueuedAt`、`start_time`、`end_time`，需要更精确的准入时间时在隔离数据库用只读快照和调度日志对照；轮询得到的转换时刻有一个采样间隔的不确定度。数据库快照仅提取与本轮 task ID 对应的必要列，不导出 `evaluation_info` 或 `internal_info`。
 
-同时采集：等待/已准入/运行/终态任务数，实际 Running Runner Pod 与 trial Pod 数、Pending 原因、镜像拉取延迟、失败和 OOM；四角色 CPU/内存、重启、日志错误及 Worker lease 恢复；MySQL 活跃连接、锁等待、慢查询、CPU/IO、表大小；Redis/Kafka 消费积压和延迟；Kubernetes API/etcd 请求延迟、节点可分配资源；每个 Job 制品中的计划/实际休眠时长、原始归档的数量与字节、数据库完整副本增长、Controller 待保存/失败目标数和保存耗时。已配置 OpenTelemetry 导出器时补充 Runner 事件量、冲突数及接收延迟；没有导出器时不要假定这些指标可用。按 `runId` 存时间序列、匿名化任务清单、配置快照、错误分类和 dashboard 截图，保留 1 分钟以上粒度的趋势和每任务细节以便复核。
+同时采集：等待/已准入/运行/终态任务数，实际 Running Runner Pod 与 trial Pod 数、Pending 原因、镜像拉取延迟、失败和 OOM；各节点 CPU/内存、重启、日志错误及 Worker lease 恢复；MySQL 活跃连接、锁等待、慢查询、CPU/IO、表大小；Redis/Kafka 消费积压和延迟；Kubernetes API/etcd 请求延迟、节点可分配资源；每个 Job 制品中的计划/实际休眠时长、原始归档的数量与字节、数据库完整副本增长、Controller 待保存/失败目标数和保存耗时。已配置 OpenTelemetry 导出器时补充 Runner 事件量、冲突数及接收延迟；没有导出器时不要假定这些指标可用。按 `runId` 存时间序列、匿名化任务清单、配置快照、错误分类和 dashboard 截图，保留 1 分钟以上粒度的趋势和每任务细节以便复核。
 
 计算口径：`acceptance = 有 taskId 的 202 数 / 实际发出请求数`；`completion = 任务 completed 且 collectionState=collected 的数 / 已接受数`；`delivery = 全部选择的保存目标 succeeded 的数 / 已接受数`；`submit throughput = 成功 202 数 / 提交窗口秒数`；`drain throughput = 完整完成数 / 从首个执行到最后终态的秒数`。分别报告提交到 Runner running 的排队 p50/p95/p99、Runner running 到 terminal 的执行时长、terminal 到保存成功的 p95/p99，以及最后一个目标保存成功时的整轮排空时间。所有比例要列分子、分母；超时、取消、采集不完整和保存失败分别计数，不能只用 reward 或 HTTP 202 断言成功。
 

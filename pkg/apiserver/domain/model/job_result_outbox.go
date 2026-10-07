@@ -1,6 +1,10 @@
 package model
 
-import "github.com/PixelCores/Eruun/pkg/apiserver/config"
+import (
+	"time"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+)
 
 type JobResultOutbox struct {
 	ID             string                      `json:"id" gorm:"primaryKey;type:varchar(64);column:id"`
@@ -15,6 +19,8 @@ type JobResultOutbox struct {
 	RunToken       string                      `json:"-" gorm:"type:varchar(64);column:run_token"`
 	WorkerID       string                      `json:"worker_id" gorm:"type:varchar(255);column:worker_id"`
 	State          config.JobResultOutboxState `json:"state" gorm:"type:varchar(32);column:state"`
+	JobUID         string                      `json:"-" gorm:"type:varchar(64);column:job_uid"`
+	LeaseExpiresAt *time.Time                  `json:"-" gorm:"column:lease_expires_at"`
 	MessageID      string                      `json:"message_id" gorm:"type:varchar(255);column:message_id"`
 	Attempts       int                         `json:"attempts" gorm:"column:attempts"`
 	LastError      string                      `json:"last_error" gorm:"type:text;column:last_error"`

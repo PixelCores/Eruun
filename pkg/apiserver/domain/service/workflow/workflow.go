@@ -520,11 +520,7 @@ func (w *workflowServiceImpl) execWorkflowTaskForAppLocked(ctx context.Context, 
 	}
 	var resp *apis.ExecWorkflowResponse
 	err = schedulelock.WithAppScheduleLock(ctx, lockProvider, appID, "exec-workflow", true, func(lockCtx context.Context) error {
-		txStore, ok := w.Store.(datastore.Transactional)
-		if !ok {
-			return fmt.Errorf("%w: workflow execution requires transactional datastore", bcode.ErrExecWorkflow)
-		}
-		return txStore.WithTransaction(lockCtx, func(tx datastore.DataStore) error {
+		return repository.WithApplicationSchedulingTransaction(lockCtx, w.Store, appID, func(tx datastore.DataStore) error {
 			workflow, err := repository.WorkflowByID(lockCtx, tx, workflowID)
 			if err != nil {
 				return err
@@ -858,7 +854,7 @@ func (w *workflowServiceImpl) dispatchWorkflowSchedule(ctx context.Context, txSt
 
 	queued := false
 	err = schedulelock.WithAppScheduleLock(ctx, lockProvider, schedule.AppID, "dispatch-workflow-schedule", true, func(lockCtx context.Context) error {
-		return txStore.WithTransaction(lockCtx, func(tx datastore.DataStore) error {
+		return repository.WithApplicationSchedulingTransaction(lockCtx, w.Store, schedule.AppID, func(tx datastore.DataStore) error {
 			claimed, err := repository.UpdateWorkflowScheduleNextRun(lockCtx, tx, schedule.ID, schedule.NextRun, nextRun)
 			if err != nil {
 				return err
@@ -2129,7 +2125,7 @@ type QueueTaskOptions struct {
 }
 
 // CreateWorkflowQueueTask persists one task, resolving retries by their idempotency key.
-// The caller owns the transaction and application scheduling lock.
+// The caller holds the application row in a read-committed scheduling transaction.
 func CreateWorkflowQueueTask(ctx context.Context, store datastore.DataStore, workflow *model.Workflow, options QueueTaskOptions) (*model.WorkflowQueue, error) {
 	idempotencyKey := strings.TrimSpace(options.IdempotencyKey)
 	var idempotencyKeyPtr *string

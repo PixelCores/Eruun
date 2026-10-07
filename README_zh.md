@@ -22,7 +22,7 @@ Eruun 当前提供 **Kubernetes 应用与工作流运行时、独立命令任务
 | LLM 评测 | 上传 Harbor 原生任务包，以 `type: job` + `traits.eval` 声明独立 Job 或应用组件，保存奖励、轨迹、日志与制品 | 预构建任务镜像、verifier、Runner 配置；使用模型时提供 Secret 凭据 |
 | 已有 Kubernetes 应用接入 | 只读观察，或经过 dry-run 与签名计划显式接管已有资源 | 明确资源归属、支持的资源范围及接管密钥配置 |
 
-如果需求只是提交几份 Kubernetes 清单，Eruun 的数据库、队列和四角色部署会增加运维成本。需要任务持久化、空间授权、多组件执行和统一查询时，这些基础设施才更有价值。
+如果需求只是提交几份 Kubernetes 清单，Eruun 的数据库、队列和多节点部署会增加运维成本。需要任务持久化、空间授权、多组件执行和统一查询时，这些基础设施才更有价值。
 
 ## 核心概念
 
@@ -82,34 +82,27 @@ Eruun 采用 OAM 启发的「组件 + Traits + 工作流」模型，提供应用
 
 ## 运行架构
 
-同一个 `eruun-server` 二进制通过 `--role` / `ERUUN_ROLE` 启动一种角色；默认是 `api`。完整运行时由四种角色协作组成。
+所有节点运行相同的 `eruun-server`，竞争一个 Kubernetes Lease。选出的 Leader 提供 HTTP/gRPC API、调度与 Controller 后台维护，其余节点是 Worker 和下一任 Leader 的候选。
 
 ```mermaid
 flowchart TB
-    Client["平台 / 自动化 / API 调用方"] --> API["api · HTTP / gRPC"]
-    API --> DB[("MySQL · 领域状态与执行租约")]
-    Scheduler["scheduler · 派发与租约恢复"] <--> DB
-    Scheduler --> Queue["Redis Streams 或 Kafka"]
-    Queue --> Worker["worker · Workflow / command / 评测"]
+    Client[调用方] --> Service[固定 Service：只选择 Leader]
+    Service --> Leader[Leader：API / 调度 / 后台维护]
+    Leader -. 选举 .-> Lease[Kubernetes 单 Lease]
+    Worker[Worker 节点＋候选] -. 选举 .-> Lease
+    Leader <--> DB[(MySQL：业务状态与执行租约)]
+    Leader --> Queue[Redis Streams 或 Kafka]
+    Queue --> Worker
     Worker <--> DB
-    Worker --> K8s["Kubernetes · 工作负载运行面"]
-    Controller["controller · 状态与结果协调"] --> K8s
-    Controller <--> DB
-    Controller --> Results["评测结果保存 · 数据库 / 可选 MinIO"]
-    API --> Redis[("Redis · 缓存与应用协调")]
+    Worker --> K8s[Kubernetes 工作负载]
+    Leader <--> K8s
+    Leader --> Redis[Redis：缓存与应用协调]
     Worker --> Redis
 ```
 
-图中展示主要执行与数据路径；更多依赖说明和恢复时序见 [架构图](docs/architecture-diagrams.md)。
+默认部署 4 个节点，即 1 Leader＋3 Worker；生产至少需要 2 个节点，单节点没有领取新任务的 Worker 容量。Leader 停止领取新任务，升主前已认领的任务继续完成并续租；失主取消 API 与控制职责后恢复 Worker。健康 Worker 仍为 PodReady，业务 Service 只选择当前 Leader。
 
-| 角色 | 职责 | 扩展方式 |
-| --- | --- | --- |
-| `api` | HTTP/gRPC、认证授权、校验、领域读写和任务入队 | 多副本接收请求 |
-| `controller` | Kubernetes 全局观察、状态投影、延迟任务/结果协调、评测结果保存与过期清理 | 多副本竞争独立 Controller Leader Lease |
-| `scheduler` | 认领等待任务、派发消息、回收过期执行租约 | 多副本竞争独立 Scheduler Leader Lease |
-| `worker` | 消费派发、认领/续租执行身份，运行 Workflow 和独立 Job | 多副本并行执行；每个 Worker 使用本地 workload observer |
-
-一次执行的主要过程是：**API 保存任务 → Scheduler 派发 → Worker 认领租约并操作 Kubernetes → Worker 保存执行进度，Controller 投影运行状态**。提交成功表示任务已接受，应用就绪与任务完成需继续查询；评测执行、结果采集和各保存目标也有各自状态。
+主要路径是：**Leader API 保存任务 → Leader 调度派发 → Worker 认领数据库租约并操作 Kubernetes → 保存执行进度与结果**。提交成功仅表示任务已接收；应用就绪、执行终态和结果保存须分别查询。切主会中断 HTTP/gRPC 连接，应重连并核对任务状态后按接口幂等契约重试。
 
 | 依赖 | 负责什么 | 边界 |
 | --- | --- | --- |
@@ -119,7 +112,7 @@ flowchart TB
 | Kubernetes | 运行容器、资源调和、调度和隔离 | 实际资源状态由 Kubernetes 提供，业务查询主要读取数据库投影 |
 | MinIO（可选） | 评测结果的完整文件保存目标 | 可仅使用数据库保存；目标保存失败可单独重试 |
 
-队列按至少一次语义交付。数据库租约与 generation/token fencing 防止旧执行者覆盖新状态；外部副作用仍需要幂等或补偿设计。四角色部署也不自动带来数据高可用：Chart 内置 MySQL、Redis 是单副本开发依赖，生产拓扑见 [Helm 部署](docs/helm-deployment.md)。
+队列按至少一次语义交付。数据库租约与 generation/token fencing 防止旧执行者覆盖新状态；外部副作用仍需要幂等或补偿设计。多节点部署也不自动带来数据高可用：Chart 内置 MySQL、Redis 是单副本开发依赖，生产拓扑见 [Helm 部署](docs/helm-deployment.md)。
 
 ## 能力边界与路线图
 
@@ -132,7 +125,7 @@ flowchart TB
 
 | 阶段 | 范围 |
 | --- | --- |
-| Current | 本文列出的 Application/Workflow、四角色运行时、空间授权、独立 command Job，以及两种执行入口中的 Harbor 评测 |
+| Current | 本文列出的 Application/Workflow、同构节点运行时、空间授权、独立 command Job，以及两种执行入口中的 Harbor 评测 |
 | Next | 自托管 Agent 执行契约、MCP/CLI 工具绑定、凭据委派、工具权限与审计、更多评测框架 |
 | Later | 模型服务、GPU 感知调度、向量化、托管 AI Provider、云或多集群执行 |
 
@@ -140,7 +133,7 @@ flowchart TB
 
 ## 快速开始
 
-### 1. 部署四角色运行时
+### 1. 部署同构节点运行时
 
 准备 Bash、`kubectl`、OpenSSL、Helm 和可访问的 Kubernetes 集群。集群需支持 NetworkPolicy 与 Restricted v1.34 Pod Security，并提供 MySQL/Redis PVC 所需存储；详见 [Helm 部署](docs/helm-deployment.md)。使用已有镜像安装不需要 Go 或 Rust 工具链。
 
@@ -155,7 +148,7 @@ AUTH_CONFIG_FILE=/secure/eruun/accounts.json INSTALL_MODE=helm \
 kubectl -n eruun-system port-forward svc/eruun 8000:8000
 ```
 
-安装脚本部署四种角色及 MySQL、Redis；首次安装未提供数据库/缓存密码时会生成随机值，通过 `0600` 临时文件和 Kubernetes Secret 传递。后续安装复用已有凭据。`port-forward` 保持运行，在另一个终端检查：
+安装脚本部署统一运行节点及 MySQL、Redis；首次安装未提供数据库/缓存密码时会生成随机值，通过 `0600` 临时文件和 Kubernetes Secret 传递。后续安装复用已有凭据。`port-forward` 连接到当前 Leader；切主后需重启端口转发。在另一个终端检查：
 
 ```bash
 export ERUUN_URL=http://127.0.0.1:8000
@@ -209,28 +202,30 @@ curl --fail-with-body "$ERUUN_URL/api/v1/jobs/$TASK_ID" \
 
 | 配置 | 用途 |
 | --- | --- |
-| `ERUUN_ROLE` | `api` / `controller` / `scheduler` / `worker`；默认 `api`，没有 `all` |
+| `ERUUN_LEADER_LOCK_NAME` | 所有节点共用一个 Lease，默认 `eruun-runtime` |
+| `ERUUN_LEADER_SERVICE_NAME` | 集群业务入口 Service；本地可留空直接访问已当选节点 |
+| `ERUUN_POD_NAME` | 集群注入本 Pod 名以维护入口；选举 identity 默认独立的每进程 UUID |
 | `ERUUN_BIND_ADDR` / `ERUUN_GRPC_BIND_ADDR` | 本地 HTTP 默认 `127.0.0.1:8001`，API gRPC 默认 `127.0.0.1:9001`；集群分别使用 8000 / 9000 |
 | `ERUUN_DATASTORE_URL` | 实际 MySQL DSN，必须替换密码占位符 |
 | `ERUUN_CACHE_HOST` / `ERUUN_CACHE_PASSWORD` | Redis 连接配置 |
 | `ERUUN_MSG_TYPE` / `ERUUN_MSG_KAFKA_BROKERS` | 默认 Redis Streams；选择 Kafka 时配置 Broker，仍保留 Redis |
 | `ERUUN_ENABLE_TRACING` / `ERUUN_JAEGER_ENDPOINT` | 单一开关控制追踪；Jaeger 地址只控制 Span 导出 |
 | `ERUUN_AUTH_CONFIG_FILE` | 账号、会话与空间策略 JSON |
-| `ERUUN_JOBS_CONFIG_FILE` | 启用 Harbor Runner 及可选 MinIO，四种角色使用相同配置 |
+| `ERUUN_JOBS_CONFIG_FILE` | 启用 Harbor Runner 及可选 MinIO，所有节点使用相同配置 |
 
-四种常驻运行角色（`api`、`controller`、`scheduler`、`worker`）的缓存、认证与协调都依赖 Redis。对于这些角色，`--cache-type` / `ERUUN_CACHE_TYPE` 仅接受 `redis`；设置为 `memory` 会在启动校验时报错。`--datastore-schema-mode=migrate-only` 模式仅校验数据库配置。
+所有节点的缓存、认证与协调都依赖 Redis。`--cache-type` / `ERUUN_CACHE_TYPE` 仅接受 `redis`；设置为 `memory` 会在启动校验时报错。`--datastore-schema-mode=migrate-only` 仅校验数据库配置。
 
 追踪默认配置为 `ERUUN_ENABLE_TRACING=true`，设为 `false` 即可关闭。该开关同时控制 Trace Provider 和 HTTP 中间件，与 Redis/Kafka 后端无关；仅设置 Jaeger 地址不会启用追踪。未设置地址时，追踪仍可在 API 请求日志中附带 trace ID，但不会导出 Span。静态部署清单默认启用追踪。
 
 迁移：已移除 `--auto-tracing` 和 `ERUUN_AUTO_TRACING`。删除旧配置，将 `--enable-tracing` / `ERUUN_ENABLE_TRACING` 设为旧两个开关的逻辑 OR 结果（旧默认值的结果为开启）。旧 CLI 参数或环境变量仍存在时启动会报错，旧环境变量为空或为 `false` 也必须删除。保留的开关仍遵循 CLI 优先于环境变量的规则。
 
-本地源码开发需要 Go 1.27；使用 Make 目标时需 GNU Make。先按 [本地依赖说明](docs/local-docker-dependencies.md) 启动并配置 MySQL、Redis 和可选 Kafka，准备账号配置及 Kubernetes 访问，再启动 API：
+本地源码开发需要 Go 1.27；使用 Make 目标时需 GNU Make。先按 [本地依赖说明](docs/local-docker-dependencies.md) 启动并配置 MySQL、Redis 和可选 Kafka，准备账号配置及 Kubernetes 访问，再启动节点：
 
 ```bash
-go run ./cmd/main.go --role=api
+go run ./cmd/main.go
 ```
 
-该命令只启动 API。端到端执行需按 [分布式部署与角色依赖](docs/enterprise-distributed-runtime-design.md) 运行其余三种角色；同机进程使用不同 HTTP 监听端口，Controller/Scheduler 还需正确配置 Leader Election namespace。数据库先完成 schema 迁移，再让其他角色以校验模式启动，具体规则见 [Helm 的 schema 契约](docs/helm-deployment.md)。
+该命令启动一个候选节点；单节点当选后只接收 API，不领取新任务。端到端执行至少启动两个节点，共享 namespace、Lease、数据库、Redis/消息配置，并使用唯一实例 ID。同机进程须分别设置不冲突的 HTTP/gRPC 地址；先完成 schema 迁移，再以校验模式启动其他节点。集群配置见 [Helm 部署契约](docs/helm-deployment.md)。
 
 常用开发检查：
 
@@ -248,7 +243,7 @@ go vet ./...
 | --- | --- |
 | 文档状态、当前事实与代码定位 | [文档索引](docs/README.md) |
 | 领域模型、Traits、权限与模块边界 | [架构文档](docs/架构文档.md)、[跨层字段契约](docs/core-module-boundary-and-cross-layer-contracts.md) |
-| 四角色、执行时序、租约与故障恢复 | [架构图](docs/architecture-diagrams.md)、[Workflow 架构](docs/workflow-architecture-guide.md)、[分布式运行时](docs/enterprise-distributed-runtime-design.md) |
+| Leader/Worker、执行时序、租约与故障恢复 | [架构图](docs/architecture-diagrams.md)、[Workflow 架构](docs/workflow-architecture-guide.md)、[分布式运行时](docs/enterprise-distributed-runtime-design.md) |
 | API 和自动化接入 | [Canonical JSON](docs/canonical-json-profile.md)、[gRPC](docs/grpc-api.md)、[账号示例](examples/account-auth-workspaces/README.md) |
 | 部署与空间隔离 | [Helm](docs/helm-deployment.md)、[账号与空间](docs/account-auth-workspaces.md)、[本地依赖](docs/local-docker-dependencies.md) |
 | 命令、评测、任务包和结果 | [空间 Job API](docs/workspace-jobs-api.md)、[评测示例](examples/agent-evaluation/README.md)、[Runner](pkg/apiserver/jobs/runners/harbor/README.md) |

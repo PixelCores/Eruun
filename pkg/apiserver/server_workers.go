@@ -227,6 +227,7 @@ func (s *restServer) trackDrainingWorkerRun(run *workerRun) {
 	s.workersMu.Unlock()
 	go func() {
 		run.wait()
+		run.stopExecution()
 		s.workersMu.Lock()
 		delete(s.drainingWorkerRuns, run)
 		s.workersMu.Unlock()
@@ -332,7 +333,6 @@ func (s *restServer) beginControllerRun(ctx context.Context) *workerRun {
 
 func (s *restServer) stopControllerRun() {
 	s.controllerReady.Store(false)
-	s.controllerLeading.Store(false)
 	s.workersMu.Lock()
 	run := s.controllerRun
 	s.controllerRun = nil
@@ -366,7 +366,6 @@ func (s *restServer) beginSchedulerRun(ctx context.Context) *workerRun {
 
 func (s *restServer) stopSchedulerRun() {
 	s.schedulerReady.Store(false)
-	s.schedulerLeading.Store(false)
 	s.workersMu.Lock()
 	run := s.schedulerRun
 	s.schedulerRun = nil
@@ -378,7 +377,6 @@ func (s *restServer) stopSchedulerRun() {
 }
 
 func (s *restServer) onStartedControllerLeading(ctx context.Context, errChan chan error) {
-	s.controllerLeading.Store(true)
 	s.controllerReady.Store(false)
 	run := s.beginControllerRun(ctx)
 	if s.InformerManager != nil {
@@ -389,6 +387,9 @@ func (s *restServer) onStartedControllerLeading(ctx context.Context, errChan cha
 		}
 	}
 	s.startControllerEventWorkers(run, errChan)
+	if s.accounts != nil {
+		run.start(s.accounts.RunSessionCleanup)
+	}
 	if s.KubeClient != nil && s.dataStore != nil {
 		coordinator := importruntime.NewPodCoordinator(s.KubeClient, importruntime.NewDataStoreBindingLoader(s.dataStore))
 		run.start(coordinator.Run)
@@ -398,7 +399,6 @@ func (s *restServer) onStartedControllerLeading(ctx context.Context, errChan cha
 }
 
 func (s *restServer) onStartedSchedulerLeading(ctx context.Context, errChan chan error) {
-	s.schedulerLeading.Store(true)
 	s.schedulerReady.Store(false)
 	run := s.beginSchedulerRun(ctx)
 	if err := s.ensureQueueGroup(run.ctx); err != nil {

@@ -4,55 +4,36 @@
 
 ## 1. 目标与边界
 
-当前运行时把 API、Controller、Scheduler 和 Worker 的职责显式分离，并以数据库记录作为 Workflow 执行事实源。目标是：
+所有 Eruun 节点使用同一二进制、配置和 Deployment。节点竞争一个 Kubernetes Lease，当前 Leader 承接 HTTP/gRPC API、调度和 Controller 后台维护；其他节点执行 Worker 任务并继续参选。API、调度、观察和执行仍是内部职责，不再是四种部署角色。
 
-- 各角色可以独立扩缩。
-- Controller 与 Scheduler 使用不同 Kubernetes Lease，互不扩大故障域。
-- Scheduler 派发和 Worker 执行始终携带 generation/token ownership。
-- Worker 或 Leader 退出后，过期任务由数据库 lease reaper 恢复。
-- Worker 不依赖 Controller Leader 的进程内 informer 才能等待资源就绪。
-- 关闭时先停止 HTTP intake 和 Worker intake，再在有限时间内排空已启动任务。
+这减少了独立角色的部署、配置和接管组合，也把 API、调度与后台维护的资源竞争和故障集中到一个 Leader。增加节点主要增加 Worker 容量和接班候选，不会增加活跃 API 或调度 Leader 数。是否需要进一步拆分，应根据 API 尾延迟、队列积压、控制循环耗时和恢复时间测量。
 
-当前边界不包含跨 Kubernetes 集群调度、跨地域多活、exactly-once 外部副作用、默认生产级 MySQL/Redis HA 或指标驱动 HPA。空间初始化已创建 NetworkPolicy；实际网络隔离依赖 CNI 支持与正确的集群网络配置，见 [账号与空间](account-auth-workspaces.md)。
+MySQL 中的 Workflow ownership 仍是执行事实源；角色切换不替代 generation/token fencing、任务续租、结果 outbox、DB 时钟或 Kubernetes UID 校验。当前边界不包含跨集群调度、跨地域多活、exactly-once 外部副作用或默认生产级数据面 HA。空间网络隔离仍依赖 CNI，见[账号与空间](account-auth-workspaces.md)。
 
-## 2. 角色模型
+## 2. 节点职责与业务入口
 
-同一二进制通过 `--role` / `ERUUN_ROLE` 选择一个运行角色：
-
-| 角色 | 职责 | Leader Election |
+| 当前职责 | 工作 | 执行任务 |
 | --- | --- | --- |
-| `api` | HTTP/gRPC API、鉴权、任务持久化、查询和取消入口 | 否 |
-| `controller` | Informer 状态投影、延迟任务、结果队列和 outbox 协调、评测结果目标保存与到期清理 | Controller Lease |
-| `scheduler` | waiting task 派发和过期执行租约回收 | Scheduler Lease |
-| `worker` | 消费 dispatch、执行 Workflow 与 Job | 否 |
+| Leader | 业务 HTTP/gRPC、鉴权与任务持久化；waiting/Cron 派发、lease reaper；状态投影、延迟任务、结果 outbox、制品交付与清理 | 停止领取新任务；升主前已认领的 Worker 任务继续完成并续租 |
+| Worker＋候选 | 消费 dispatch，以数据库 ownership 认领和执行 Workflow/Job，等待资源就绪；参与同一个选举 | 并行执行，新任务受现有准入与并发限制 |
 
-当前部署固定渲染四类独立角色；不再提供组合进程 `all` 运行形态。各角色副本数独立配置，且不存在奇数副本约束。
+Chart 默认 `runtime.replicas=4`，稳定状态为 1 个 Leader＋3 个 Worker。单节点能当选并提供 API，但没有领取新任务的 Worker 容量；生产至少需要 2 个节点，默认建议 4 个，副本数不要求奇数。所有节点必须具备接任 Leader 所需的配置、依赖和权限。
 
-API 角色注册完整业务 API；非 API 角色只注册健康路由。Follower Controller/Scheduler 保持进程可用并等待下一任期，readiness 不把“当前不是 Leader”当作失败。
+集群通过固定 Service 访问业务 API。Service 保留 selector，其中 `eruun.io/runtime-id` 初始为 `unassigned`；Leader 为自身 Pod 设置值为 Pod UID 的同名标签，并通过 Service resourceVersion CAS 把 selector 指向自己。失主时只条件撤销自己的选择，不能清除新 Leader 的入口。EndpointSlice 与 Pod readiness 由 Kubernetes 原生控制器维护。健康 Worker 仍为 PodReady，但不会因此被该 Service 选中。
 
-进程只初始化本角色会生产或消费的消息主题，未列出的主题不可用不会阻塞该角色启动或 readiness：
+`--leader-service-name` / `ERUUN_LEADER_SERVICE_NAME` 指定集群入口 Service；集群部署设置该值，本地可留空并直接访问已当选节点。已接受业务请求的 HTTP 连接和全部 gRPC 连接绑定当前 Leader 任期，失主时关闭，包括空闲连接；Service 尚未收敛时，Worker 对业务 HTTP 返回 503 并关闭连接，对新 gRPC 连接直接断开，健康探针仍可用。客户端重新连接固定 Service 后先查任务状态，只有契约支持时才用相同幂等键重试，不能盲目重放创建任务或刷新会话。
 
-| 角色 | dispatch | delay | result | Kubernetes 观察器 |
-| --- | --- | --- | --- | --- |
-| `api` | - | - | - | - |
-| `controller` | - | 消费 | 生产与消费 | 全局状态 Informer Manager |
-| `scheduler` | 生产 | - | - | - |
-| `worker` | 消费 | 生产 | - | Pod readiness observer |
+Redis 仍用于缓存、应用变更锁和取消信号；选择 Kafka 只替换消息后端。提交应用 Workflow 的 Redis 锁续期失败会取消业务 context。同一应用的手动执行、Cron、数据库重置、版本自动执行和直接版本提交仍使用应用行锁与 READ COMMITTED 事务。版本提交验证预检快照，配置变化返回 HTTP 409（10043），避免旧快照覆盖；这些 D1 保障不会因只有一个 Leader 而删除。
 
-这张依赖矩阵同时约束 Kafka topic 初始化和健康探针。这样 result topic 故障不会让 API、Scheduler 或 Worker 被判为不可用，Controller 也不会因为不拥有 dispatch topic 而被错误摘流。
+## 3. 单 Leader 任期与切换
 
-API 的工作流执行、应用版本更新和取消操作仍依赖 Redis 分布式锁及取消信号。无论消息后端选择 Redis 还是 Kafka，API 的 `/api/v1/ready`、`/api/v1/readyz` 都通过已注入的缓存 Redis 客户端执行 `PING`；客户端缺失或连接失败时返回 503，连接恢复后返回 200。该检查不访问消息主题，`/api/v1/health`、`/api/v1/healthz` 仍只检查进程存活。
+所有节点在同一 namespace 竞争 `--leader-lock-name` / `ERUUN_LEADER_LOCK_NAME` 指定的 Lease，默认 `eruun-runtime`。选举 identity 默认使用每次进程启动生成的 UUID；集群通过 `--pod-name` / `ERUUN_POD_NAME` 传入 PodName，仅用于查询和标记本 Pod，不作为 Lease holder。不要把 PodName 或固定节点名复用为 `ERUUN_ID`；显式覆盖 `--id` / `ERUUN_ID` 时必须保证每次进程实例唯一。不同安装应使用不同 Lease 名称和入口 Service，不能意外共享一个选举。
 
-## 3. 双 Leader 契约
+- 升主时停止 Worker 接单，使用独立的任期 context 启动 API、调度和 Controller 循环。已有任务沿原执行 context、generation/token/worker identity 继续，不为了升主等待全部长任务结束，也不重新授予完整超时。
+- 失主时取消业务 API 和控制职责、条件撤销自己的 Service 选择，随后重入 Worker 并继续参选。健康 Worker 不因未当选而 readiness 失败。
+- 进程退出与失主任期不同：退出还要限时排空已有 Worker 任务，超时后取消本地执行并依靠数据库租约恢复。
 
-Controller 和 Scheduler 分别使用：
-
-```text
-<controller-lock-name>
-<scheduler-lock-name>
-```
-
-两个名称必须不同。每次获得任期都会创建独立 role context；失去任期时只停止该角色本次任期内的 goroutine 和写入，然后继续等待重新参选。Worker 不绑定 Leader 任期。
+Kubernetes Lease 与 Service selector 更新不是跨系统事务，也不对全部外部副作用提供 fencing。网络分区、进程暂停和控制面拥塞仍需故障验证；不能承诺固定恢复秒数、连接无中断或绝无重叠执行。
 
 ## 4. Workflow ownership
 
@@ -78,13 +59,13 @@ Worker 在执行期间周期性续租。续租和任务状态更新都必须匹�
 taskId + runGeneration + runToken + workerId
 ```
 
-ownership 不匹配时，旧执行立即停止后续状态写入。外部系统仍需使用执行身份作为幂等键或提供补偿，因为 at-least-once 不能保证外部副作用 exactly once。
+非终态的底层持久化 helper 同样要求完整身份，空 token、worker 或零代次不能绕过事务。API 在首次 claim 前产生的终态回调可以有空执行身份，但仍必须锁定完整父状态快照。ownership 不匹配时，旧执行立即停止后续状态写入。外部系统仍需使用执行身份作为幂等键或提供补偿，因为 at-least-once 不能保证外部副作用 exactly once。
 
 ### 4.3 故障恢复
 
 Scheduler lease reaper 周期扫描 lease 已过期且身份完整的 `queued/running` task，以 CAS 清理旧 ownership 并恢复为 `waiting`。下一次派发创建新的 generation/token。
 
-Scheduler 的 waiting task 与 cron schedule 查询都在数据库侧按到期时间过滤，并按 100 条固定批次处理。`workflow_queue(status, execute_at)` 与 `workflow_schedule(enabled, next_run)` 复合索引支撑这两条热路径；持续积压会由后续轮询继续排空，而不会把全量未到期记录加载到单个 Leader 进程。
+Waiting task 到期判断也以数据库时间为准；时钟查询失败或返回零值时不派发。Scheduler 的 waiting task 与 cron schedule 查询都在数据库侧按到期时间过滤，并按 100 条固定批次处理。`workflow_queue(status, execute_at)` 与 `workflow_schedule(enabled, next_run)` 复合索引支撑这两条热路径；持续积压会由后续轮询继续排空，而不会把全量未到期记录加载到单个 Leader 进程。
 
 Cron schedule 按 `next_run, id` 稳定排序，在同一进程的后续轮询中推进页码，读到末页后回到第一页。即使整批计划因错误、应用锁争用或无可运行日期而未推进 `next_run`，后面的到期计划也会获得处理机会。成功派发、删除或禁用计划导致候选集缩小时，移入前页的记录会在下一轮扫描中重新被读取；进程重启从第一页开始。分页不改写计划的 `next_run`、`last_run` 或幂等键，派发失败仍按原有事务语义回滚并返回错误。
 
@@ -96,9 +77,19 @@ Cron schedule 按 `next_run, id` 稳定排序，在同一进程的后续轮询�
 
 一次性延迟 Job 在发送队列通知前，先把完整载荷、到期时间和 `pending` 检查点写入 `JobInfo`。新队列通知使用 `version: 2`，只带 `executeAt`、`taskId`、`jobType`、`serviceName`、`executionKey`、`runGeneration` 和 `runToken`；Controller 读取数据库中的完整载荷，核对通知身份后执行。升级期间仍能读取未标版本、内嵌完整 Job 的旧通知，并继续比对完整载荷。Redis Stream 只负责降低到期发现延迟；Controller Leader 还会按 `(status, delay_state, delay_execute_at)` 索引轮询已到期检查点并直接恢复。因此 consumer group 被重建、Stream 被裁剪、Redis 暂时不可用或进程在写库后/入队前退出，都不会让已提交的延迟执行永久丢失。成功创建同身份 Kubernetes Job 并持久化 result outbox 后，检查点才变为 `dispatched`。
 
-数据库恢复每次轮询最多读取 100 条记录，按记录 ID 倒序推进游标，到末尾后重新扫描。持续重试、无效载荷或扫描期间记录状态变化不会阻塞后续到期任务；新到达的记录在下一轮扫描中纳入。队列通知按执行键去重，被去重的消息释放处理标记并保持未确认状态，允许 Kafka 再次认领并在执行完成后确认。滚动升级时先升级消费通知的 Controller，再升级生产通知的 Worker；旧 Controller 遇到 v2 通知会依赖数据库轮询恢复，到期发现可能变慢。
+数据库恢复每次轮询最多读取 100 条记录，按记录 ID 倒序推进游标，到末尾后重新扫描。持续重试、无效载荷或扫描期间记录状态变化不会阻塞后续到期任务；新到达的记录在下一轮扫描中纳入。队列通知按执行键去重，被去重的消息释放处理标记并保持未确认状态，允许 Kafka 再次认领并在执行完成后确认。
+
+Harbor 恢复资格、恢复任务剩余预算、Job 恢复准入预检查及持久化 Job retry 的 deadline/RetryAt 使用数据库时间。恢复时把剩余时长换算为本进程的单调计时预算，保持原 deadline，不因节点时钟差或接管而重新获得完整超时。数据库时钟缺失、失败或零值会停止推进；这不替代 Kubernetes、Runner 与数据库之间的实际时钟同步要求。
 
 结果处理只消费与当前 `JobInfo` 和 Kubernetes Job annotation 匹配的结果；旧 generation 的迟到结果不能覆盖当前执行。确定性资源名用于重试复用，执行身份用于区分不同 generation。
+
+结果通知也以数据库 outbox 为恢复来源。`result_dispatching_queue` 和 `result_queued` 有 60 秒补投宽限；消费者认领时写入独立 token 和 30 秒数据库租约，每 10 秒续期。到期回收必须同时匹配 state、token/消息 ID 和原租约，活跃消费者续期后旧扫描快照不能将其重新投递。重复通知不授予处理权限；旧 claim 不能再提交结果或删除 outbox。
+
+结果写入在检查 claim 的事务内通过状态、执行代次与 attempt 的 CAS 保存终态与日志；并发取消等已提交终态不会被覆盖，仅最终持久化为 Completed 才按已记录的 Job UID 清理 Kubernetes 对象。保存失败保留现场；清理失败保留 outbox 供重试；重放已完成记录只补清理，不重新等待已删除 Job。按名称读取日志后还需校验 Pod UID 与 Job owner；读取失败、身份变化或无法确认身份均保留现场等待重试。结果 ACK 在清理与 outbox 收敛后发生。数据库与 Kubernetes 之间仍没有跨系统原子事务。
+
+无需读取日志的例外是：Failed Pod 中的容器明确处于 Waiting、没有启动或重启记录，并经重新读取 Pod 确认相同 UID、owner 和状态；结果中记录该容器从未启动及 Pod 失败原因，避免旧失败尝试阻塞已成功 Job。缺少容器状态不视为从未启动。
+
+升级需通过现有 schema migration 增加 outbox 的 `lease_expires_at`、`job_uid` 列。旧空租约记录先登记宽限而不是立即接管；旧 processing 记录的宽限包含其完整 Job timeout、30 秒删除、30 秒处理及 5 秒保存余量。旧终态记录没有已保存 UID 时不自动删除同名对象。历史结果协议的完整防护需旧进程排空并升级后成立。既有 Deadline/RetryAt 原值保留，不追溯校正历史节点偏差。具体回归与未验证的集群故障边界见[分布式设计审核的修复处置](distributed-design-audit-2026-10-06.md#8-pr-139-修复处置与验证边界)。
 
 ## 6. Informer 与 Worker
 
@@ -110,32 +101,17 @@ initial sync、List/Watch 重连和等待过程都受运行 context 控制；关
 
 ## 7. 启动与关闭
 
-启动顺序为：
+节点初始化 Kubernetes、MySQL schema、Redis/消息主题与 IoC 后，准备 Worker 观察和执行能力并参与选举。业务 API 与控制循环受当前任期约束，健康探针反映当前职责及依赖是否就绪；PodReady 不等于正在提供业务 API。
 
-1. 使用父 context 初始化 Kubernetes，按配置迁移或校验 MySQL schema，初始化默认系统设置、缓存，以及本角色拥有的 Redis Stream / Kafka topic 和 IoC。
-2. 按角色注册业务或健康路由。
-3. 启动角色选举、Worker observer 和 Worker intake。
-4. 启动 HTTP server。
+收到 SIGTERM 后先取消选举与任期入口，停止领取新任务，再以独立执行 context 排空已启动任务；上限由 `--workflow-worker-drain-timeout` 控制，默认 60 秒。超时后停止本地执行与续租，由后续 Leader 的 reaper 和 Worker 接管。关闭是有限预算，不承诺所有长任务都能在该窗口内自然完成。
 
-收到 SIGTERM 后：
+## 8. 部署
 
-1. 父 context 立即停止 HTTP intake。
-2. Worker 停止领取新消息。
-3. 已启动 Workflow 使用独立 execution context 排空，最长由 `workflow-worker-drain-timeout` 控制。
-4. 超时后取消剩余执行，使租约停止续期并由 Scheduler reaper 接管。
-5. 停止 Controller/Scheduler 任期并结束进程。
+Chart 使用一个 runtime Deployment 和 ServiceAccount，`runtime.replicas` 默认 4，`runtime.resources` 配置每个节点的相同资源。固定 Service 只选择当前 Leader，健康 Worker 的 readiness 不作为业务路由条件。资源、schema、RBAC 和 Quickstart 参数见 [Helm 部署契约](helm-deployment.md)。
 
-HTTP shutdown 与 Worker drain 并行执行；外层进程等待也有明确超时，不会因启动迁移或运行 goroutine 永久阻塞退出。
+项目仍处于开发阶段，直接使用当前配置部署统一节点。数据库仍按既有 schema 初始化与校验流程准备；启动后核验唯一 Lease holder、Service 选择和 Worker readiness。
 
-## 8. Helm 拓扑
-
-Chart 固定渲染 API、Controller、Scheduler、Worker 四个独立 Deployment 和 ServiceAccount；Service 只选择 API Pod。每个角色通过 `runtime.roles.<role>` 独立配置副本数和 resources，PDB 与 topology spread 按角色生成。旧的 `runtime.mode`、`runtime.split`、顶层 `replicaCount` 和 `resources` 会被 schema 拒绝。
-
-角色资源名通过统一 helper 为 `-api/-controller/-scheduler/-worker` 预留长度，即使 fullname 达到 63 字符也保持唯一且符合 Kubernetes 名称限制。
-
-Workflow fencing 固定启用，Chart 不暴露关闭开关、v1 兼容开关、cutover acknowledgement 或运行时迁移门禁。values 只描述目标拓扑。
-
-Schema 迁移也不由所有运行 Pod 共同承担：首次安装由 API 在 MySQL 命名锁内初始化 schema；升级由独立的 `pre-upgrade` migration Job 在新 Pod rollout 前执行，升级后的所有角色使用只读校验模式。该 Job 只连接 MySQL，不构建 Kubernetes、消息队列和 HTTP 运行时依赖，并仅在结构与数据迁移全部成功后写入版本化 marker；校验模式同时检查 marker、表和列。迁移必须保持对仍在运行的旧 Pod 向后兼容。
+任务 ownership、D1–D5 修复和历史 deadline/RetryAt 原值保持不变。新拓扑上线不是结果协议或恢复正确性的验收证明。
 
 ## 9. 依赖与安全
 
@@ -143,11 +119,10 @@ Schema 迁移也不由所有运行 Pod 共同承担：首次安装由 API 在 My
 - Redis 用于缓存、应用变更分布式锁及可选的 Streams 消息；Kafka 可作为消息后端，Workflow 执行租约由 MySQL 管理。
 - 内置 MySQL/Redis 只适合开发和演示。
 - run token 属于执行凭据，不写入业务日志、trace 或指标标签。
-- Scheduler 只拥有 namespace-scoped Leader Election 权限；Controller 额外拥有 Pod 观察/metadata patch、ReplicaSet owner 读取，以及延时 Job 分发、执行身份更新、结果日志读取和已完成 Job/Pod 清理权限；API 与 Worker 使用显式资源管理 ClusterRole，其中 Job `update` 支持复用 Job 的执行代次接管。Helm 与静态 manifest 都不绑定内置 `cluster-admin`；具体权限与旧绑定迁移边界见 `helm-deployment.md`。
+- 所有节点都可能接任 Leader，因此使用统一运行身份与所需的显式 Kubernetes 权限；业务空间仍使用受限身份，任务 ownership 与授权边界不变。具体权限见 `helm-deployment.md`。
 
-## 10. 验证要求
+## 10. 验证边界
 
-- 单元测试覆盖角色装配、schema migrate/validate 模式、双 Leader、lease CAS、heartbeat、reaper、消息身份校验和关闭时序。
-- race 测试覆盖 Worker 生命周期、Leader 回调、observer 和 Workflow 状态写入。
-- Helm 模板测试覆盖固定四角色对象数量、Service selector、角色级 RBAC、schema migration hook 与运行模式、PDB、termination grace、ServiceAccount 引用和 63 字符 fullname 下的角色名唯一性。
-- 集群验收覆盖随机删除 Worker、Controller Leader、Scheduler Leader，以及 Redis、Kafka、MySQL 短暂不可用后的恢复。
+本拓扑的验证应覆盖统一节点装配、单 Lease 任期、健康 Worker、升主停止接单但保留旧任务、失主撤销 API/控制循环后恢复 Worker，以及 Service CAS 不误删新 Leader 选择。现有任务 lease CAS、heartbeat、reaper、结果 outbox、DB clock 和 UID 回归仍需保留。
+
+模板检查应验证统一 Deployment/ServiceAccount、副本与资源字段、Service selector、RBAC、schema migration、PDB 与退出预算。真实集群还需验证 Leader/Worker 删除、长任务期间切主、HTTP/gRPC 重连、网络分区和依赖短暂不可用；单元或模板测试不能代替这些验收，也不能推导固定 RTO。

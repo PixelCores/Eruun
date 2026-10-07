@@ -305,6 +305,12 @@ resolveServiceName() {
 }
 
 preflightCheck() {
+  if [ -n "${REPLICA_COUNT}" ]; then
+    case "${REPLICA_COUNT}" in
+      *[!0-9]*) bail "REPLICA_COUNT must be an integer >= 2 (one Leader and at least one Worker)" ;;
+    esac
+    [ "${REPLICA_COUNT}" -ge 2 ] || bail "REPLICA_COUNT must be >= 2 (one Leader and at least one Worker)"
+  fi
   [ -n "${AUTH_CONFIG_FILE}" ] && [ -s "${AUTH_CONFIG_FILE}" ] || bail "AUTH_CONFIG_FILE must name a nonempty account configuration file; see docs/account-auth-workspaces.md"
 
   case "${INSTALL_MODE}" in
@@ -410,18 +416,15 @@ patchManifestOverrides() {
     return 0
   fi
 
-  local role
   if [ -n "${IMAGE_REPOSITORY}" ]; then
     local image="${IMAGE_REPOSITORY}"
     if [ -n "${IMAGE_TAG}" ]; then
       image="${IMAGE_REPOSITORY}:${IMAGE_TAG}"
     fi
-    for role in api controller scheduler worker; do
-      runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" set image "deployment/${DEPLOYMENT_NAME}-${role}" "${CONTAINER_NAME}=${image}"
-    done
+    runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" set image "deployment/${DEPLOYMENT_NAME}-runtime" "${CONTAINER_NAME}=${image}"
   fi
   if [ -n "${REPLICA_COUNT}" ]; then
-    runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" scale "deployment/${DEPLOYMENT_NAME}-api" --replicas="${REPLICA_COUNT}"
+    runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" scale "deployment/${DEPLOYMENT_NAME}-runtime" --replicas="${REPLICA_COUNT}"
   fi
   if [ -n "${SERVICE_TYPE}" ]; then
     runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" patch "service/${SERVICE_NAME}" --type=merge -p "{\"spec\":{\"type\":\"${SERVICE_TYPE}\"}}"
@@ -474,7 +477,7 @@ installHelm() {
   if [ -n "${IMAGE_PULL_POLICY}" ]; then args+=(--set "image.pullPolicy=${IMAGE_PULL_POLICY}"); fi
   if [ -n "${SERVICE_TYPE}" ]; then args+=(--set "service.type=${SERVICE_TYPE}"); fi
   if [ -n "${SERVICE_PORT}" ]; then args+=(--set "service.port=${SERVICE_PORT}"); fi
-  if [ -n "${REPLICA_COUNT}" ]; then args+=(--set "runtime.roles.api.replicas=${REPLICA_COUNT}"); fi
+  if [ -n "${REPLICA_COUNT}" ]; then args+=(--set "runtime.replicas=${REPLICA_COUNT}"); fi
   if [ -n "${MYSQL_IMAGE}" ]; then args+=(--set "mysql.image=${MYSQL_IMAGE}"); fi
   if [ -n "${MYSQL_DATABASE}" ]; then args+=(--set "mysql.database=${MYSQL_DATABASE}"); fi
   if [ -n "${MYSQL_STORAGE}" ]; then args+=(--set "mysql.storage=${MYSQL_STORAGE}"); fi
@@ -504,18 +507,13 @@ waitForReady() {
     return 0
   fi
 
-  local role
   if [ "${INSTALL_MODE}" = "helm" ]; then
-    for role in api controller scheduler worker; do
-      runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" rollout status "deployment/$(helmSuffixedName "${role}")" --timeout="${WAIT_TIMEOUT}"
-    done
+    runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" rollout status "deployment/$(helmSuffixedName runtime)" --timeout="${WAIT_TIMEOUT}"
     runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" rollout status "statefulset/$(helmSuffixedName mysql)" --timeout="${WAIT_TIMEOUT}"
     runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" rollout status "statefulset/$(helmSuffixedName redis)" --timeout="${WAIT_TIMEOUT}"
     return 0
   fi
-  for role in api controller scheduler worker; do
-    runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" rollout status "deployment/${DEPLOYMENT_NAME}-${role}" --timeout="${WAIT_TIMEOUT}"
-  done
+  runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" rollout status "deployment/${DEPLOYMENT_NAME}-runtime" --timeout="${WAIT_TIMEOUT}"
   runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" rollout status "statefulset/${DEPLOYMENT_NAME}-mysql" --timeout="${WAIT_TIMEOUT}"
   runCmd "${KUBECTL_BIN}" -n "${NAMESPACE}" rollout status "${REDIS_WORKLOAD_KIND}/${DEPLOYMENT_NAME}-redis" --timeout="${WAIT_TIMEOUT}"
 }

@@ -66,26 +66,38 @@ type restServer struct {
 	schedulerRun              *workerRun
 	urlSecurityPolicyProvider *urlpolicy.Provider
 	ensureQueueGroupFailures  atomic.Int64
-	controllerLeading         atomic.Bool
+	leading                   atomic.Bool
+	leaderMu                  sync.RWMutex
+	leaderCtx                 context.Context
+	leaderCancel              context.CancelFunc
+	leaderPodUID              string
+	leaderServiceDone         <-chan struct{}
 	controllerReady           atomic.Bool
-	schedulerLeading          atomic.Bool
 	schedulerReady            atomic.Bool
 }
 
+func (s *restServer) RuntimeRole() string {
+	if s.leading.Load() {
+		return "leader"
+	}
+	return "worker"
+}
+
 func (s *restServer) RuntimeReady() (bool, string) {
-	if s.cfg.RunsController() && s.controllerLeading.Load() && !s.controllerReady.Load() {
-		return false, "controller leader is still initializing"
-	}
-	if s.cfg.RunsScheduler() && s.schedulerLeading.Load() && !s.schedulerReady.Load() {
-		return false, "scheduler leader is still initializing"
-	}
-	if s.cfg.RunsWorker() {
-		s.workersMu.Lock()
-		ready := s.workersStarted && s.workersReady
-		s.workersMu.Unlock()
+	if s.leading.Load() {
+		s.leaderMu.RLock()
+		ready := s.leaderCtx != nil && s.leaderCtx.Err() == nil
+		s.leaderMu.RUnlock()
 		if !ready {
-			return false, "worker subscriber is not running"
+			return false, "leader is initializing or stopping"
 		}
+		return true, ""
+	}
+	s.workersMu.Lock()
+	ready := s.workersStarted && s.workersReady
+	s.workersMu.Unlock()
+	if !ready {
+		return false, "worker subscriber is not running"
 	}
 	return true, ""
 }
@@ -103,10 +115,7 @@ const leaderElectionReleaseTimeout = 5 * time.Second
 var leaderElectionRetryDelay = leaderElectionRetryPeriod
 
 func New(cfg config.Config) (a APIServer) {
-	handlers := []api.Interface{api.NewHealth()}
-	if cfg.RunsAPI() {
-		handlers = api.NewHandlers()
-	}
+	handlers := api.NewHandlers()
 	s := &restServer{
 		webContainer:  gin.New(),
 		apiHandlers:   handlers,

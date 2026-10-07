@@ -2,6 +2,8 @@
 
 > 状态：Historical / Audit。基于 `main` 提交 `b3f3848aa5b24e851474b983a21692001337ce56` 的只读审计；“当前认证与授权链路”“缺口”等章节保留该基线事实。本文末尾记录同一 PR 后续实施的处置，不代表引入 JWT 或新的公开 API。
 
+> 当前拓扑提示：下文的四角色、双 Lease 和对应测试属于所列历史基线。当前统一节点使用单 Leader，见[分布式运行时设计](enterprise-distributed-runtime-design.md)与[部署契约](helm-deployment.md)。历史证据不作为新拓扑验收结果。
+
 ## 结论
 
 当前项目已经具备常规的认证、会话和授权能力，并非“只有登录 Token、没有授权”：

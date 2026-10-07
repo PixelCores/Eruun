@@ -14,6 +14,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 
@@ -46,9 +47,18 @@ func testResultExecutionKey(taskID string) string {
 }
 
 func stampTestResultJob(jobObj *batchv1.Job, taskID string) {
+	if jobObj.UID == "" {
+		jobObj.UID = types.UID("uid-" + taskID)
+	}
 	stampJobExecutionIdentity(&model.JobTask{
 		TaskID: taskID, ExecutionKey: testResultExecutionKey(taskID), RunGeneration: 1,
 	}, jobObj)
+}
+
+func resultTestPod(job *batchv1.Job) *corev1.Pod {
+	pod := succeededPodForJob(job, job.Name+"-pod", job.UID)
+	pod.Spec.Containers = []corev1.Container{{Name: "main"}}
+	return pod
 }
 
 func testResultJobInfo(id int, payload *JobResultPayload) *model.JobInfo {
@@ -328,7 +338,7 @@ func TestResultDispatcherHandleMessageAcksStaleOutboxDuplicate(t *testing.T) {
 	require.Equal(t, "result-1", refreshed.MessageID)
 }
 
-func TestResultDispatcherHandleMessageResumesProcessingQueueMessage(t *testing.T) {
+func TestResultDispatcherHandleMessageLeavesActiveProcessingQueueMessage(t *testing.T) {
 	store := newResultOutboxTestStore()
 	queue := &dispatcherAckQueue{}
 	start := metav1.NewTime(time.Now().Add(-time.Minute))
@@ -355,7 +365,7 @@ func TestResultDispatcherHandleMessageResumesProcessingQueueMessage(t *testing.T
 	dispatcher := &ResultDispatcher{
 		queue:  queue,
 		group:  "result-workers",
-		client: fake.NewSimpleClientset(jobObj),
+		client: fake.NewSimpleClientset(jobObj, resultTestPod(jobObj)),
 		store:  store,
 	}
 
@@ -383,11 +393,11 @@ func TestResultDispatcherHandleMessageResumesProcessingQueueMessage(t *testing.T
 	}))
 
 	_, getErr := getJobResultOutboxByID(context.Background(), store, outbox.ID)
-	require.ErrorIs(t, getErr, datastore.ErrRecordNotExist)
+	require.NoError(t, getErr)
 
 	jobInfo := store.jobInfoByTaskID(payload.TaskID)
 	require.NotNil(t, jobInfo)
-	require.Equal(t, string(config.StatusCompleted), jobInfo.Status)
+	require.Empty(t, jobInfo.Status)
 	require.Len(t, queue.ackCalls, 1)
 	require.Equal(t, []string{"result-5"}, queue.ackCalls[0].ids)
 }
@@ -419,7 +429,7 @@ func TestResultDispatcherHandleMessageProcessesDispatchingOutbox(t *testing.T) {
 	dispatcher := &ResultDispatcher{
 		queue:  queue,
 		group:  "result-workers",
-		client: fake.NewSimpleClientset(jobObj),
+		client: fake.NewSimpleClientset(jobObj, resultTestPod(jobObj)),
 		store:  store,
 	}
 
@@ -482,7 +492,7 @@ func TestResultDispatcherHandleMessageDispatchingClaimLostToQueuedContinuesProce
 	dispatcher := &ResultDispatcher{
 		queue:  queue,
 		group:  "result-workers",
-		client: fake.NewSimpleClientset(jobObj),
+		client: fake.NewSimpleClientset(jobObj, resultTestPod(jobObj)),
 		store:  store,
 	}
 
@@ -550,7 +560,7 @@ func TestResultDispatcherHandleMessageRefreshesPersistenceContextAfterLongProces
 		},
 	}
 	stampTestResultJob(jobObj, "task-outbox-persist-refresh")
-	client := fake.NewSimpleClientset(jobObj)
+	client := fake.NewSimpleClientset(jobObj, resultTestPod(jobObj))
 	client.Fake.PrependReactor("get", "jobs", func(action k8stesting.Action) (bool, runtime.Object, error) {
 		time.Sleep(25 * time.Millisecond)
 		return false, nil, nil

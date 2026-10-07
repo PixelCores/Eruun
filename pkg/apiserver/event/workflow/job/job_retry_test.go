@@ -39,6 +39,10 @@ type retryCheckpointStore struct {
 	afterSave func(*model.JobInfo) error
 }
 
+func (*retryCheckpointStore) CurrentDatabaseTime(context.Context) (time.Time, error) {
+	return time.Now().UTC(), nil
+}
+
 type retryCreationBudgetStore struct {
 	datastore.DataStore
 	creationStore *sqlstore.Driver
@@ -63,7 +67,44 @@ func newRetryCreationBudgetStore(t *testing.T, store datastore.DataStore) *retry
 }
 
 func (s *retryCreationBudgetStore) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
-	return s.creationStore.WithReadCommittedTransaction(ctx, fn)
+	return s.creationStore.WithReadCommittedTransaction(ctx, func(tx datastore.DataStore) error {
+		return fn(&retryCreationBudgetStore{DataStore: s.DataStore, creationStore: tx.(*sqlstore.Driver)})
+	})
+}
+
+func (s *retryCreationBudgetStore) WithTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	return s.WithReadCommittedTransaction(ctx, fn)
+}
+
+func (s *retryCreationBudgetStore) CurrentDatabaseTime(ctx context.Context) (time.Time, error) {
+	return s.creationStore.CurrentDatabaseTime(ctx)
+}
+
+// Route only budget records to SQL. Checkpoint writes and parent fencing retain
+// the wrapped fixture's ownership checks and failure injection inside callbacks.
+func (s *retryCreationBudgetStore) recordStore(entity datastore.Entity) datastore.DataStore {
+	switch entity.(type) {
+	case *model.SystemSetting, *model.ResourceCreationBudget:
+		return s.creationStore
+	default:
+		return s.DataStore
+	}
+}
+
+func (s *retryCreationBudgetStore) Add(ctx context.Context, entity datastore.Entity) error {
+	return s.recordStore(entity).Add(ctx, entity)
+}
+
+func (s *retryCreationBudgetStore) Put(ctx context.Context, entity datastore.Entity) error {
+	return s.recordStore(entity).Put(ctx, entity)
+}
+
+func (s *retryCreationBudgetStore) Get(ctx context.Context, entity datastore.Entity) error {
+	return s.recordStore(entity).Get(ctx, entity)
+}
+
+func (s *retryCreationBudgetStore) CompareAndSwap(ctx context.Context, entity datastore.Entity, field string, value interface{}, updates map[string]interface{}) (bool, error) {
+	return s.recordStore(entity).CompareAndSwap(ctx, entity, field, value, updates)
 }
 
 func (s *retryCreationBudgetStore) CompareAndSwapWithConditions(ctx context.Context, entity datastore.Entity, conditions, updates map[string]interface{}) (bool, error) {
@@ -207,7 +248,7 @@ func TestInstantJobOOMRetryPolicies(t *testing.T) {
 			client := fake.NewSimpleClientset()
 			var created []*batchv1.Job
 			installRetryJobReactor(t, client, tt.failures, tt.reason, &created)
-			ctl := newObservedInstantJobCtl(t, task, client, store, func() {})
+			ctl := newObservedInstantJobCtl(t, task, client, newRetryCreationBudgetStore(t, withJobTestOwner(store, task)), func() {})
 			err := ctl.Run(WithCleanupTracker(context.Background()))
 			if tt.wantError == "" {
 				require.NoError(t, err)
@@ -237,7 +278,7 @@ func TestInstantJobRetryCheckpointResumesWithoutDoubleGrowth(t *testing.T) {
 		}
 		return nil
 	}}
-	require.ErrorIs(t, newObservedInstantJobCtl(t, task, client, store, func() {}).Run(ctx), context.Canceled)
+	require.ErrorIs(t, newObservedInstantJobCtl(t, task, client, newRetryCreationBudgetStore(t, withJobTestOwner(store, task)), func() {}).Run(ctx), context.Canceled)
 	require.Len(t, created, 1)
 	require.Equal(t, uint(2), store.record.Attempt)
 	store.afterSave = nil
@@ -245,7 +286,7 @@ func TestInstantJobRetryCheckpointResumesWithoutDoubleGrowth(t *testing.T) {
 	recovered.InternalInfo = store.record.InternalInfo
 	recovered.Attempt = store.record.Attempt
 	require.NoError(t, RestoreInstantJobRetryCheckpoint(recovered))
-	require.NoError(t, newObservedInstantJobCtl(t, recovered, client, store, func() {}).Run(context.Background()))
+	require.NoError(t, newObservedInstantJobCtl(t, recovered, client, newRetryCreationBudgetStore(t, withJobTestOwner(store, recovered)), func() {}).Run(context.Background()))
 	require.Len(t, created, 2)
 	require.Equal(t, "512Mi", created[1].Spec.Template.Spec.Containers[0].Resources.Limits.Memory().String())
 	require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
@@ -262,7 +303,7 @@ func TestInstantJobRetryCheckpointFailurePreventsDeletion(t *testing.T) {
 		}
 		return nil
 	}}
-	err := newObservedInstantJobCtl(t, task, client, store, func() {}).Run(context.Background())
+	err := newObservedInstantJobCtl(t, task, client, newRetryCreationBudgetStore(t, withJobTestOwner(store, task)), func() {}).Run(context.Background())
 	require.ErrorIs(t, err, signal.ErrInfrastructureStop)
 	require.Zero(t, countClientActions(client, "delete", "jobs"))
 	require.Len(t, created, 1)
@@ -865,7 +906,7 @@ func TestRetryRecoveryAddsRetentionToExistingCheckpointAndJob(t *testing.T) {
 		CurrentUID: live.UID, Deadline: time.Now().Add(time.Hour).UnixNano()}
 	client := fake.NewSimpleClientset(live)
 	store := &retryCheckpointStore{}
-	require.NoError(t, NewInstantJobCtl(task, &Runtime{Client: client, Store: store, Ack: func() {}}).ensureRetryAttempt(context.Background(), cp))
+	require.NoError(t, NewInstantJobCtl(task, &Runtime{Client: client, Store: withJobTestOwner(store, task), Ack: func() {}}).ensureRetryAttempt(context.Background(), cp))
 	retained, err := client.BatchV1().Jobs(live.Namespace).Get(context.Background(), live.Name, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, retained.Spec.TTLSecondsAfterFinished)

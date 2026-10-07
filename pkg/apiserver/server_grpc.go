@@ -21,7 +21,10 @@ func (s *restServer) startGRPC(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("listen for grpc on %s: %w", s.cfg.GRPCBindAddr, err)
 	}
-	server := grpcapi.NewServer(s.accounts, s.workspaceManager, s.grpcAdministration, s.grpcJobs, s.grpcApplications, s.apiRateLimiter)
+	server := grpcapi.NewServer(s.accounts, s.workspaceManager, s.grpcAdministration, s.grpcJobs, s.grpcApplications, s.apiRateLimiter,
+		grpc.UnaryInterceptor(s.leaderUnaryInterceptor),
+		grpc.StreamInterceptor(s.leaderStreamInterceptor),
+	)
 	shutdownComplete := make(chan struct{})
 	stopShutdownWatcher := make(chan struct{})
 	go func() {
@@ -33,7 +36,7 @@ func (s *restServer) startGRPC(ctx context.Context) error {
 		}
 	}()
 	klog.InfoS("gRPC APIs are being served", "address", s.cfg.GRPCBindAddr)
-	if err := server.Serve(listener); err != nil {
+	if err := server.Serve(&leaderListener{Listener: listener, server: s, requireLeadership: true}); err != nil {
 		close(stopShutdownWatcher)
 		return fmt.Errorf("serve grpc on %s: %w", s.cfg.GRPCBindAddr, err)
 	}

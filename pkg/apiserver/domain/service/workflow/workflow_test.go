@@ -115,6 +115,9 @@ type enqueueWorkflowDataStore struct {
 func (s *enqueueWorkflowDataStore) WithTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
 	return fn(s)
 }
+func (s *enqueueWorkflowDataStore) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	return s.WithTransaction(ctx, fn)
+}
 
 func (s *enqueueWorkflowDataStore) List(ctx context.Context, query datastore.Entity, options *datastore.ListOptions) ([]datastore.Entity, error) {
 	if compQuery, ok := query.(*model.ApplicationComponent); ok {
@@ -176,6 +179,12 @@ func (s *manualExecTestStore) Add(ctx context.Context, entity datastore.Entity) 
 
 func (s *manualExecTestStore) WithTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
 	return fn(s)
+}
+func (s *manualExecTestStore) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	return s.WithTransaction(ctx, fn)
+}
+func (s *manualExecTestStore) GetForUpdate(ctx context.Context, entity datastore.Entity) error {
+	return s.Get(ctx, entity)
 }
 
 func (s *statusDataStore) Add(_ context.Context, entity datastore.Entity) error {
@@ -264,6 +273,10 @@ func (s *statusDataStore) Get(ctx context.Context, entity datastore.Entity) erro
 		}
 	}
 	return datastore.ErrRecordNotExist
+}
+
+func (s *scheduleDataStore) CurrentDatabaseTime(context.Context) (time.Time, error) {
+	return time.Now().UTC(), nil
 }
 
 func (s *statusDataStore) List(_ context.Context, query datastore.Entity, _ *datastore.ListOptions) ([]datastore.Entity, error) {
@@ -589,6 +602,31 @@ func (s *transactionalScheduleDataStore) WithTransaction(_ context.Context, fn f
 		return err
 	}
 	return nil
+}
+
+func (s *transactionalScheduleDataStore) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	return s.WithTransaction(ctx, fn)
+}
+
+// Scheduling unit fixtures omit unrelated app fields. The MySQL submission
+// tests exercise real application-row existence, locking and isolation.
+func (s *scheduleDataStore) GetForUpdate(ctx context.Context, entity datastore.Entity) error {
+	if app, ok := entity.(*model.Applications); ok {
+		if s.app != nil && s.app.ID == app.ID {
+			return s.Get(ctx, entity)
+		}
+		for _, workflow := range s.workflows {
+			if workflow != nil && workflow.AppID == app.ID {
+				return nil
+			}
+		}
+		for _, schedule := range s.schedules {
+			if schedule != nil && schedule.AppID == app.ID {
+				return nil
+			}
+		}
+	}
+	return s.Get(ctx, entity)
 }
 
 func cloneWorkflowSchedules(in []*model.WorkflowSchedule) []*model.WorkflowSchedule {

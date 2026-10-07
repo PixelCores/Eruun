@@ -50,7 +50,7 @@ go run ./cmd/main.go
 
 数据库名只取自 `--datastore-url` / `ERUUN_DATASTORE_URL` 的 DSN 路径。旧 `--datastore-database` 参数已移除；若环境中仍设置 `ERUUN_DATASTORE_DATABASE`（即使为空），启动会明确拒绝。升级时从 shell、ConfigMap 或 Helm `env` 中删除旧设置，并核对 DSN 指向原数据库；当前 shell 可执行 `unset ERUUN_DATASTORE_DATABASE`。`MYSQL_DATABASE` 仍用于初始化 Compose 的 MySQL 数据库和生成上述 DSN，不是 Eruun 的第二个选库入口。服务端的 `--datastore-type` 只接受 `mysql`。
 
-仍需准备 [账号配置](account-auth-workspaces.md) 和可访问的 Kubernetes。服务端默认只有 `api` 角色；完整工作流需要按 [运行架构](enterprise-distributed-runtime-design.md) 分别运行其他角色。
+仍需准备 [账号配置](account-auth-workspaces.md) 和可访问的 Kubernetes。所有节点参与同一个选举；单节点当选后没有新任务 Worker 容量，完整执行需至少两个节点。各本地进程使用唯一 ID 和不冲突的 HTTP/gRPC 端口，其他共享配置见 [运行架构](enterprise-distributed-runtime-design.md)。
 
 若使用默认 Redis Streams 队列，将 `ERUUN_MSG_TYPE` 设为 `redis`。启动 Kafka 容器不会自动切换 Eruun 的消息后端；使用 Kafka 时 Redis 仍用于缓存和应用锁。
 

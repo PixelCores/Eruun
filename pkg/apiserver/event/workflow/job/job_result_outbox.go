@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
@@ -21,10 +22,11 @@ import (
 )
 
 const (
-	resultOutboxPollInterval  = workflowconfig.DefaultDispatchPollInterval
-	resultOutboxBatchSize     = workflowconfig.DefaultWorkerReadCount
-	resultOutboxProcessGrace  = 30 * time.Second
-	resultOutboxDispatchGrace = workflowconfig.DefaultWorkerAutoClaimIdle
+	resultOutboxPollInterval      = workflowconfig.DefaultDispatchPollInterval
+	resultOutboxBatchSize         = workflowconfig.DefaultWorkerReadCount
+	resultOutboxProcessGrace      = 30 * time.Second
+	resultOutboxHeartbeatInterval = 10 * time.Second
+	resultOutboxDispatchGrace     = workflowconfig.DefaultWorkerAutoClaimIdle
 )
 
 var resultOutboxPersistTimeout = 5 * time.Second
@@ -71,9 +73,6 @@ func (d *ResultOutboxDispatcher) prepare(ctx context.Context) bool {
 		klog.ErrorS(fmt.Errorf("queue, client, or store is nil"), "result outbox dispatcher dependencies missing", "queueNil", d.queue == nil, "clientNil", d.client == nil, "storeNil", d.store == nil)
 		return false
 	}
-	if err := d.recoverLocalProcessing(ctx); err != nil {
-		klog.ErrorS(err, "result outbox dispatcher recover local processing failed")
-	}
 	return true
 }
 
@@ -94,48 +93,13 @@ func (d *ResultOutboxDispatcher) loop(ctx context.Context) {
 }
 
 func (d *ResultOutboxDispatcher) processOnce(ctx context.Context) error {
-	if err := d.processResultDispatching(ctx); err != nil {
+	if err := d.recoverResultOutboxes(ctx, []config.JobResultOutboxState{
+		config.JobResultOutboxStateResultDispatching, config.JobResultOutboxStateResultQueued,
+		config.JobResultOutboxStateResultProcessingQueue, config.JobResultOutboxStateResultProcessingLocal,
+	}); err != nil {
 		return err
 	}
-	if err := d.processResultProcessingLocal(ctx); err != nil {
-		return err
-	}
-	if err := d.processResultPending(ctx); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (d *ResultOutboxDispatcher) recoverLocalProcessing(ctx context.Context) error {
-	return d.recoverOutboxState(ctx, config.JobResultOutboxStateResultProcessingLocal, config.JobResultOutboxStateResultPending)
-}
-
-func (d *ResultOutboxDispatcher) recoverOutboxState(ctx context.Context, from, to config.JobResultOutboxState) error {
-	for {
-		outboxes, err := listJobResultOutboxesByStates(ctx, d.store, []config.JobResultOutboxState{from}, d.batchSize)
-		if err != nil {
-			return err
-		}
-		if len(outboxes) == 0 {
-			return nil
-		}
-
-		updated := 0
-		for _, outbox := range outboxes {
-			ok, setErr := trySetJobResultOutboxState(ctx, d.store, outbox, from, to, outbox.Attempts, strings.TrimSpace(outbox.LastError), map[string]interface{}{
-				"message_id": "",
-			})
-			if setErr != nil {
-				return setErr
-			}
-			if ok {
-				updated++
-			}
-		}
-		if updated == 0 {
-			return nil
-		}
-	}
+	return d.processResultPending(ctx)
 }
 
 func (d *ResultOutboxDispatcher) processResultPending(ctx context.Context) error {
@@ -151,100 +115,67 @@ func (d *ResultOutboxDispatcher) processResultPending(ctx context.Context) error
 	return nil
 }
 
-func (d *ResultOutboxDispatcher) processResultDispatching(ctx context.Context) error {
-	outboxes, err := listJobResultOutboxesByStates(ctx, d.store, []config.JobResultOutboxState{config.JobResultOutboxStateResultDispatching}, d.batchSize)
+// A missing lease is an old row, not evidence that an old consumer has stopped.
+// Give it one database-timed grace period before reclaiming it. Old processing
+// may still be inside its full Job timeout followed by bounded cleanup.
+func (d *ResultOutboxDispatcher) recoverResultOutboxes(ctx context.Context, states []config.JobResultOutboxState) error {
+	outboxes, err := listJobResultOutboxesByStates(ctx, d.store, states, d.batchSize)
 	if err != nil {
 		return err
 	}
-	if len(outboxes) == 0 {
-		return nil
+	now, err := resultOutboxDatabaseTime(ctx, d.store)
+	if err != nil {
+		return err
 	}
-
-	now := time.Now()
 	for _, outbox := range outboxes {
-		if !d.shouldRecoverResultDispatching(outbox, now) {
+		conditions := map[string]interface{}{"state": string(outbox.State), "message_id": outbox.MessageID, "lease_expires_at": outbox.LeaseExpiresAt}
+		if outbox.LeaseExpiresAt == nil {
+			// A typed nil pointer is not a nil SQL condition value.
+			conditions["lease_expires_at"] = nil
+			grace := d.dispatchGrace
+			if grace <= 0 {
+				grace = resultOutboxDispatchGrace
+			}
+			if outbox.State == config.JobResultOutboxStateResultProcessingQueue || outbox.State == config.JobResultOutboxStateResultProcessingLocal {
+				timeout := outbox.TimeoutSeconds
+				if timeout <= 0 {
+					timeout = int64(config.DefaultJobTaskTimeout.Seconds())
+				}
+				grace = time.Duration(timeout)*time.Second + jobDeleteTimeout + resultOutboxProcessGrace + resultOutboxPersistTimeout
+			}
+			deadline := now.Add(grace)
+			if _, err := compareAndSwapJobResultOutboxWithConditions(ctx, d.store, outbox, conditions, map[string]interface{}{"lease_expires_at": &deadline}); err != nil {
+				return err
+			}
 			continue
 		}
-		message := "result dispatching exceeded recovery grace before enqueue confirmation"
-		recovered, setErr := trySetJobResultOutboxState(ctx, d.store, outbox, config.JobResultOutboxStateResultDispatching, config.JobResultOutboxStateResultPending, outbox.Attempts+1, message, map[string]interface{}{
-			"message_id": "",
-		})
-		if setErr != nil {
-			return setErr
+		if outbox.LeaseExpiresAt.After(now) {
+			continue
 		}
-		if recovered {
-			klog.InfoS("result outbox recovered from dispatching to pending after grace period", "outboxID", outbox.ID, "attempts", outbox.Attempts+1)
+		_, err := compareAndSwapJobResultOutboxWithConditions(ctx, d.store, outbox, conditions, map[string]interface{}{
+			"state": config.JobResultOutboxStateResultPending, "message_id": "", "lease_expires_at": nil,
+			"attempts": outbox.Attempts + 1, "last_error": "result notification or processing exceeded recovery grace",
+		})
+		if err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-func (d *ResultOutboxDispatcher) processResultProcessingLocal(ctx context.Context) error {
-	outboxes, err := listJobResultOutboxesByStates(ctx, d.store, []config.JobResultOutboxState{config.JobResultOutboxStateResultProcessingLocal}, d.batchSize)
+func resultOutboxDatabaseTime(ctx context.Context, store datastore.DataStore) (time.Time, error) {
+	clock, ok := store.(datastore.DatabaseClock)
+	if !ok {
+		return time.Time{}, fmt.Errorf("result outbox requires database clock")
+	}
+	now, err := clock.CurrentDatabaseTime(ctx)
 	if err != nil {
-		return err
+		return time.Time{}, fmt.Errorf("read result outbox database clock: %w", err)
 	}
-	if len(outboxes) == 0 {
-		return nil
+	if now.IsZero() {
+		return time.Time{}, fmt.Errorf("result outbox database clock is zero")
 	}
-
-	now := time.Now()
-	for _, outbox := range outboxes {
-		if !d.shouldRecoverResultProcessingLocal(outbox, now) {
-			continue
-		}
-		message := "result processing local exceeded recovery grace and is retried from pending"
-		recovered, setErr := trySetJobResultOutboxState(ctx, d.store, outbox, config.JobResultOutboxStateResultProcessingLocal, config.JobResultOutboxStateResultPending, outbox.Attempts+1, message, map[string]interface{}{
-			"message_id": "",
-		})
-		if setErr != nil {
-			return setErr
-		}
-		if recovered {
-			klog.InfoS("result outbox recovered from local processing to pending after grace period", "outboxID", outbox.ID, "attempts", outbox.Attempts+1)
-		}
-	}
-	return nil
-}
-
-func (d *ResultOutboxDispatcher) shouldRecoverResultDispatching(outbox *model.JobResultOutbox, now time.Time) bool {
-	if outbox == nil {
-		return false
-	}
-	grace := d.dispatchGrace
-	if grace <= 0 {
-		return true
-	}
-	lastUpdate := outbox.UpdateTime
-	if lastUpdate.IsZero() {
-		lastUpdate = outbox.CreateTime
-	}
-	if lastUpdate.IsZero() {
-		return true
-	}
-	return !lastUpdate.Add(grace).After(now)
-}
-
-func (d *ResultOutboxDispatcher) shouldRecoverResultProcessingLocal(outbox *model.JobResultOutbox, now time.Time) bool {
-	if outbox == nil {
-		return false
-	}
-	timeoutSeconds := outbox.TimeoutSeconds
-	if timeoutSeconds <= 0 {
-		timeoutSeconds = int64(config.DefaultJobTaskTimeout.Seconds())
-	}
-	grace := time.Duration(timeoutSeconds)*time.Second + resultOutboxProcessGrace + resultOutboxPersistTimeout + d.pollInterval
-	if grace <= 0 {
-		grace = d.pollInterval
-	}
-	lastUpdate := outbox.UpdateTime
-	if lastUpdate.IsZero() {
-		lastUpdate = outbox.CreateTime
-	}
-	if lastUpdate.IsZero() {
-		return true
-	}
-	return !lastUpdate.Add(grace).After(now)
+	return now.UTC(), nil
 }
 
 func (d *ResultOutboxDispatcher) dispatchPendingOutbox(ctx context.Context, outbox *model.JobResultOutbox) error {
@@ -256,8 +187,13 @@ func (d *ResultOutboxDispatcher) dispatchPendingOutbox(ctx context.Context, outb
 		return markJobResultOutboxFailed(ctx, d.store, outbox, "result outbox payload is invalid")
 	}
 
+	now, err := resultOutboxDatabaseTime(ctx, d.store)
+	if err != nil {
+		return err
+	}
+	deadline := now.Add(resultOutboxDispatchGrace)
 	claimed, err := trySetJobResultOutboxState(ctx, d.store, outbox, config.JobResultOutboxStateResultPending, config.JobResultOutboxStateResultDispatching, outbox.Attempts, strings.TrimSpace(outbox.LastError), map[string]interface{}{
-		"message_id": "",
+		"message_id": uuid.NewString(), "lease_expires_at": &deadline,
 	})
 	if err != nil {
 		return err
@@ -270,9 +206,14 @@ func (d *ResultOutboxDispatcher) dispatchPendingOutbox(ctx context.Context, outb
 	if err == nil {
 		persistCtx, cancel := resultOutboxPersistenceContext()
 		defer cancel()
+		now, clockErr := resultOutboxDatabaseTime(persistCtx, d.store)
+		if clockErr != nil {
+			return clockErr
+		}
+		deadline = now.Add(resultOutboxDispatchGrace)
 
 		queued, setErr := trySetJobResultOutboxState(persistCtx, d.store, outbox, config.JobResultOutboxStateResultDispatching, config.JobResultOutboxStateResultQueued, outbox.Attempts, "", map[string]interface{}{
-			"message_id": strings.TrimSpace(messageID),
+			"message_id": strings.TrimSpace(messageID), "lease_expires_at": &deadline,
 		})
 		if setErr != nil {
 			return setErr
@@ -286,7 +227,7 @@ func (d *ResultOutboxDispatcher) dispatchPendingOutbox(ctx context.Context, outb
 	}
 
 	requeued, setErr := trySetJobResultOutboxState(ctx, d.store, outbox, config.JobResultOutboxStateResultDispatching, config.JobResultOutboxStateResultPending, outbox.Attempts+1, fmt.Sprintf("result enqueue failed: %v", err), map[string]interface{}{
-		"message_id": "",
+		"message_id": "", "lease_expires_at": nil,
 	})
 	if setErr != nil {
 		return setErr
@@ -427,7 +368,10 @@ func listJobResultOutboxesByStates(ctx context.Context, store datastore.DataStor
 		FilterOptions: datastore.FilterOptions{
 			In: []datastore.InQueryOption{{Key: "state", Values: values}},
 		},
+		// NULL legacy leases come first, then expired leases. Live processing
+		// and long legacy grace periods must not hide newer expired rows.
 		SortBy: []datastore.SortOption{
+			{Key: "lease_expires_at", Order: datastore.SortOrderAscending},
 			{Key: "update_time", Order: datastore.SortOrderAscending},
 			{Key: "create_time", Order: datastore.SortOrderAscending},
 		},
@@ -476,17 +420,15 @@ func trySetJobResultOutboxState(ctx context.Context, store datastore.DataStore, 
 		if value, exists := updates["message_id"]; exists {
 			outbox.MessageID = strings.TrimSpace(fmt.Sprint(value))
 		}
+		if value, exists := updates["lease_expires_at"]; exists {
+			outbox.LeaseExpiresAt, _ = value.(*time.Time)
+		}
 	}
 	return ok, nil
 }
 
-func moveQueueResultOutboxToQueued(ctx context.Context, store datastore.DataStore, outbox *model.JobResultOutbox, lastError string, attempts int) error {
-	if outbox == nil {
-		return nil
-	}
-	_, err := trySetJobResultOutboxState(ctx, store, outbox, config.JobResultOutboxStateResultProcessingQueue, config.JobResultOutboxStateResultQueued, attempts, lastError, map[string]interface{}{
-		"message_id": strings.TrimSpace(outbox.MessageID),
-	})
+func retryResultOutbox(ctx context.Context, store datastore.DataStore, outbox *model.JobResultOutbox, lastError string) error {
+	_, err := trySetJobResultOutboxState(ctx, store, outbox, config.JobResultOutboxStateResultProcessingQueue, config.JobResultOutboxStateResultPending, outbox.Attempts+1, lastError, map[string]interface{}{"message_id": "", "lease_expires_at": nil})
 	return err
 }
 
@@ -499,7 +441,7 @@ func markJobResultOutboxFailed(ctx context.Context, store datastore.DataStore, o
 
 func compareAndSwapJobResultOutbox(ctx context.Context, store datastore.DataStore, outbox *model.JobResultOutbox, from config.JobResultOutboxState, updates map[string]interface{}) (bool, error) {
 	return compareAndSwapJobResultOutboxWithConditions(ctx, store, outbox, map[string]interface{}{
-		"state": string(from),
+		"state": string(from), "message_id": outbox.MessageID,
 	}, updates)
 }
 
@@ -531,4 +473,62 @@ func compareAndSwapJobResultOutboxWithConditions(ctx context.Context, store data
 
 func resultOutboxPersistenceContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), resultOutboxPersistTimeout)
+}
+
+var errResultOutboxOwnershipLost = errors.New("result outbox ownership lost")
+
+// Token verification and result writes share a transaction. There is no K8s I/O
+// in this callback. The CAS takes the row lock before checking the DB-timed lease.
+func withResultOutboxOwnership(ctx context.Context, store datastore.DataStore, outbox *model.JobResultOutbox, persist func(datastore.DataStore, *model.JobResultOutbox) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if outbox == nil {
+		return persist(store, nil)
+	}
+	transactional, ok := store.(datastore.ReadCommittedTransactional)
+	if !ok {
+		return fmt.Errorf("result outbox requires read committed transactions")
+	}
+	ctx, cancel := context.WithTimeout(ctx, resultOutboxPersistTimeout)
+	defer cancel()
+	return transactional.WithReadCommittedTransaction(ctx, func(tx datastore.DataStore) error {
+		owned, err := compareAndSwapJobResultOutbox(ctx, tx, outbox, config.JobResultOutboxStateResultProcessingQueue, map[string]interface{}{})
+		if err != nil {
+			return err
+		}
+		if !owned {
+			return errResultOutboxOwnershipLost
+		}
+		current, err := getJobResultOutboxByID(ctx, tx, outbox.ID)
+		if err != nil {
+			return err
+		}
+		now, err := resultOutboxDatabaseTime(ctx, tx)
+		if err != nil {
+			return err
+		}
+		if current.LeaseExpiresAt == nil || !current.LeaseExpiresAt.After(now) {
+			return errResultOutboxOwnershipLost
+		}
+		return persist(tx, current)
+	})
+}
+
+func renewResultOutboxLease(ctx context.Context, store datastore.DataStore, outbox *model.JobResultOutbox) error {
+	return withResultOutboxOwnership(ctx, store, outbox, func(tx datastore.DataStore, current *model.JobResultOutbox) error {
+		now, err := resultOutboxDatabaseTime(ctx, tx)
+		if err != nil {
+			return err
+		}
+		deadline := now.Add(resultOutboxProcessGrace)
+		renewed, err := compareAndSwapJobResultOutbox(ctx, tx, outbox, config.JobResultOutboxStateResultProcessingQueue, map[string]interface{}{"lease_expires_at": &deadline})
+		if err != nil {
+			return err
+		}
+		if !renewed {
+			return errResultOutboxOwnershipLost
+		}
+		return nil
+	})
 }

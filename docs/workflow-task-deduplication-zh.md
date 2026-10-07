@@ -7,7 +7,7 @@
 ## 固定协议
 
 1. **Scheduler 创建执行代次**
-   - Scheduler Leader 用数据库 CAS 将 `waiting` 更新为 `queued`。
+   - Leader 内 Scheduler 用数据库 CAS 将 `waiting` 更新为 `queued`。
    - 同一次 CAS 增加 `run_generation`、生成不可猜测的 `run_token`，并写入分发租约。
    - 只发布包含完整 generation/token 的版本 2 dispatch；不存在旧消息兼容分支。
 
@@ -18,7 +18,7 @@
 
 3. **租约恢复**
    - Worker 周期性续租；停止 intake 后只在 drain timeout 内继续已认领执行。
-   - Scheduler Leader 的 lease reaper 只回收租约过期且 generation/token/lease timestamp 仍完全匹配的 `queued/running` 任务。
+   - Leader 内 Scheduler 的 lease reaper 只回收租约过期且 generation/token/lease timestamp 仍完全匹配的 `queued/running` 任务。
    - 回收会清空旧 token/worker 并恢复为 `waiting`；下次分发创建更高 generation，旧 Worker 因 fencing 不能覆盖新执行。
 
 4. **Job 与消息幂等**

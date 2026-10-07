@@ -140,13 +140,14 @@ var applicationMethodPolicies = map[string]string{
 }
 
 // NewServer registers only methods with an explicit authorization policy.
-func NewServer(accounts *account.Service, namespaces *workspace.Manager, administration *AdministrationServer, jobsAdapter *JobsServer, applications *ApplicationsServer, limiter *ratelimit.Limiter) *grpc.Server {
+func NewServer(accounts *account.Service, namespaces *workspace.Manager, administration *AdministrationServer, jobsAdapter *JobsServer, applications *ApplicationsServer, limiter *ratelimit.Limiter, options ...grpc.ServerOption) *grpc.Server {
 	interceptor := accountAuthInterceptor(accounts, limiter)
-	s := grpc.NewServer(
+	options = append(options,
 		grpc.MaxRecvMsgSize(maxUnaryMessageBytes),
-		grpc.UnaryInterceptor(interceptor),
-		grpc.StreamInterceptor(accountStreamAuthInterceptor(accounts, limiter)),
+		grpc.ChainUnaryInterceptor(interceptor),
+		grpc.ChainStreamInterceptor(accountStreamAuthInterceptor(accounts, limiter)),
 	)
+	s := grpc.NewServer(options...)
 	eruunv1.RegisterAccountServiceServer(s, &AccountServer{Accounts: accounts, Namespaces: namespaces})
 	eruunv1.RegisterSettingsServiceServer(s, administration)
 	eruunv1.RegisterProgrammingLanguagesServiceServer(s, administration)

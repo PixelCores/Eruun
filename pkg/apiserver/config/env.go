@@ -26,6 +26,12 @@ func ApplyEnvOverrides(fs *pflag.FlagSet, prefix string) error {
 	if _, exists := os.LookupEnv(key); exists {
 		return fmt.Errorf("%s is no longer supported; remove it and control tracing with --enable-tracing or %s", key, buildEnvKey(prefix, "enable-tracing"))
 	}
+	for _, removed := range []string{"role", "controller-lock-name", "scheduler-lock-name", "exit-on-lost-leader"} {
+		key := buildEnvKey(prefix, removed)
+		if _, exists := os.LookupEnv(key); exists {
+			return fmt.Errorf("%s is no longer supported; all nodes now share one leader election configured by --leader-lock-name", key)
+		}
+	}
 	var errs []error
 	fs.VisitAll(func(f *pflag.Flag) {
 		if f.Changed {

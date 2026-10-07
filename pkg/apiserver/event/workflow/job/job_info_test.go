@@ -72,11 +72,12 @@ func TestSaveOrUpdateJobInfoIsolatesExecutionsWithinOneGeneration(t *testing.T) 
 	second := *first
 	second.ExecutionKey = "step-1"
 	second.Status = config.StatusWaiting
+	ownedStore := withJobTestOwner(store, first, &second)
 
-	require.NoError(t, saveOrUpdateJobInfo(context.Background(), store, first))
-	require.NoError(t, saveOrUpdateJobInfo(context.Background(), store, &second))
+	require.NoError(t, saveOrUpdateJobInfo(context.Background(), ownedStore, first))
+	require.NoError(t, saveOrUpdateJobInfo(context.Background(), ownedStore, &second))
 	first.Status = config.StatusCompleted
-	require.NoError(t, saveOrUpdateJobInfo(context.Background(), store, first))
+	require.NoError(t, saveOrUpdateJobInfo(context.Background(), ownedStore, first))
 
 	statuses := make(map[string]string, len(store.records))
 	for _, record := range store.records {

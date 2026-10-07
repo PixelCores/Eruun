@@ -301,6 +301,7 @@ func (s batchComponentStatusApplicationService) HasImmediateActiveVersionUpdateT
 
 type componentCacheSyncStore struct {
 	component *model.ApplicationComponent
+	owner     *model.WorkflowQueue
 }
 
 type recordingValidationService struct {
@@ -349,7 +350,19 @@ func (s *componentCacheSyncStore) DeleteByFilter(context.Context, datastore.Enti
 	return nil
 }
 
-func (s *componentCacheSyncStore) Get(context.Context, datastore.Entity) error { return nil }
+func (s *componentCacheSyncStore) Get(_ context.Context, entity datastore.Entity) error {
+	if row, ok := entity.(*model.WorkflowQueue); ok {
+		if s.owner == nil || row.TaskID != s.owner.TaskID {
+			return datastore.ErrRecordNotExist
+		}
+		*row = *s.owner
+	}
+	return nil
+}
+
+func (s *componentCacheSyncStore) WithTransaction(_ context.Context, fn func(datastore.DataStore) error) error {
+	return fn(s)
+}
 
 func (s *componentCacheSyncStore) List(_ context.Context, query datastore.Entity, _ *datastore.ListOptions) ([]datastore.Entity, error) {
 	componentQuery, ok := query.(*model.ApplicationComponent)
@@ -379,6 +392,11 @@ func (s *componentCacheSyncStore) CompareAndSwap(context.Context, datastore.Enti
 }
 
 func (s *componentCacheSyncStore) CompareAndSwapWithConditions(_ context.Context, entity datastore.Entity, conditions map[string]interface{}, updates map[string]interface{}) (bool, error) {
+	if row, ok := entity.(*model.WorkflowQueue); ok {
+		return s.owner != nil && row.TaskID == s.owner.TaskID && len(updates) == 0 &&
+			conditions["status"] == s.owner.Status && conditions["run_generation"] == s.owner.RunGeneration &&
+			conditions["run_token"] == s.owner.RunToken && conditions["worker_id"] == s.owner.WorkerID, nil
+	}
 	if _, ok := entity.(*model.ApplicationComponent); !ok || s.component == nil {
 		return false, nil
 	}

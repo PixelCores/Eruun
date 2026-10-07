@@ -4,9 +4,9 @@
 
 ## 启动与部署
 
-只有 `api` 角色开放 gRPC。直接启动服务器时，HTTP 默认监听 `127.0.0.1:8001`，gRPC 默认监听 `127.0.0.1:9001`。可通过 `--grpc-bind-addr` 或 `ERUUN_GRPC_BIND_ADDR` 指定独立地址；监听冲突或监听失败会使进程启动失败。Controller、Scheduler 和 Worker 不开放业务 gRPC，仍保留原有 HTTP 健康入口。
+只有当前 Leader 提供业务 gRPC；所有节点具备接任能力。HTTP 本地默认 `127.0.0.1:8001`，gRPC 默认 `127.0.0.1:9001`，通过 `--grpc-bind-addr` / `ERUUN_GRPC_BIND_ADDR` 配置。集群经固定 Leader Service 的 gRPC 端口访问，Worker 只提供健康入口。切主会取消旧任期 API 并关闭该任期的连接（含空闲连接）；Service 路由尚未更新时，Worker 也会断开新 gRPC 连接，使客户端继续重连。客户端重连后先核对任务状态，遵循具体 RPC 的幂等契约，不能自动重放所有写入。
 
-Helm 和静态清单让 API Pod 监听 `0.0.0.0:9000`，现有 ClusterIP Service 增加名为 `grpc` 的 9000 端口。HTTP 8000 端口、Ingress 与健康探针保持原样。进程不配置 TLS 或 mTLS；本地回环或可信集群内部可以直接连接，集群外使用时应由部署方配置支持 HTTP/2 的 TLS 网关，不应把明文 gRPC 端口直接暴露到不可信网络。
+Helm 和静态清单让当前 Leader 提供 `0.0.0.0:9000`，固定 Leader ClusterIP Service 提供名为 `grpc` 的 9000 端口。HTTP 8000 端口、Ingress 与健康探针保持原样。进程不配置 TLS 或 mTLS；本地回环或可信集群内部可以直接连接，集群外使用时应由部署方配置支持 HTTP/2 的 TLS 网关，不应把明文 gRPC 端口直接暴露到不可信网络。
 
 ## 认证与权限
 
