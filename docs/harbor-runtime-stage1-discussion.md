@@ -4,6 +4,8 @@
 >
 > 所属：[阶段一主 PR #59](https://github.com/PixelCores/Eruun/pull/59)。实施工作包及验收总表仍由[第一阶段计划](harbor-runtime-stage1-plan.md)维护；本文保存该计划后续细化的依据。第二阶段见[主 PR #60](https://github.com/PixelCores/Eruun/pull/60)。
 
+> 拓扑更新：历史基线中的 API/Controller/Scheduler/Worker 部署与独立 Leader 说明予以保留；当前运行时改为统一节点单 Leader。协议与容量实验按 [Current 运行契约](enterprise-distributed-runtime-design.md)执行，旧四角色不得与新拓扑混跑。
+
 ## 1. 已确认的需求
 
 | 主题 | 已确认内容 |

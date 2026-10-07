@@ -34,7 +34,7 @@ func TestGRPCStartupFailsOnMissingDependenciesAndListenerConflict(t *testing.T) 
 	require.ErrorContains(t, err, "listen for grpc")
 }
 
-func TestGRPCGracefulShutdownAndRoleGate(t *testing.T) {
+func TestGRPCGracefulShutdown(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- grpcReadyServer("127.0.0.1:0").startGRPC(ctx) }()
@@ -46,10 +46,6 @@ func TestGRPCGracefulShutdownAndRoleGate(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("grpc shutdown exceeded test deadline")
 	}
-	for _, role := range []config.RuntimeRole{config.RuntimeRoleController, config.RuntimeRoleScheduler, config.RuntimeRoleWorker} {
-		require.False(t, (config.Config{Role: role}).RunsAPI(), "only api role starts gRPC")
-	}
-	require.True(t, (config.Config{Role: config.RuntimeRoleAPI}).RunsAPI())
 }
 
 type blockingService interface {

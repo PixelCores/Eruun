@@ -51,15 +51,17 @@ func TestStaticDeploymentGRPCPortAndHTTPProbes(t *testing.T) {
 				ingress = document
 			}
 		case "Deployment":
-			if name == "eruun-api" || name == "eruun-controller" || name == "eruun-scheduler" || name == "eruun-worker" {
-				deployments[name] = document
-			}
+			deployments[name] = document
 		}
 	}
 	require.NotNil(t, service)
 	require.NotNil(t, flags)
 	require.NotNil(t, ingress)
-	require.Len(t, deployments, 4)
+	require.Len(t, deployments, 1)
+	require.Contains(t, deployments, "eruun-runtime")
+	require.Equal(t, 4, yamlPath(deployments["eruun-runtime"], "spec", "replicas"))
+	require.Equal(t, "runtime", yamlPath(service, "spec", "selector", "app.kubernetes.io/component"))
+	require.Equal(t, "unassigned", yamlPath(service, "spec", "selector", "eruun.io/runtime-id"))
 	require.Equal(t, "0.0.0.0:9000", yamlPath(flags, "data", "ERUUN_GRPC_BIND_ADDR"))
 	ports, ok := yamlPath(service, "spec", "ports").([]any)
 	require.True(t, ok)
@@ -84,7 +86,7 @@ func TestStaticDeploymentGRPCPortAndHTTPProbes(t *testing.T) {
 				require.Equal(t, 9000, yamlMap(item)["containerPort"])
 			}
 		}
-		require.Equal(t, name == "eruun-api", hasGRPC, name)
+		require.True(t, hasGRPC, name)
 		for _, probe := range []string{"startupProbe", "readinessProbe", "livenessProbe"} {
 			require.Equal(t, "http", yamlPath(container, probe, "httpGet", "port"), name+" "+probe)
 		}

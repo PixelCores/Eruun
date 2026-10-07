@@ -48,7 +48,7 @@ func TestSandboxPlatformClientKeepsTenantScopeAndSharedRequestBudget(t *testing.
 	tenant, tenantConfig, err := workspace.APIClient(base, spec.WorkspaceConfig{})
 	require.NoError(t, err)
 	require.Same(t, platformConfig.RateLimiter, tenantConfig.RateLimiter)
-	server := &restServer{cfg: config.Config{Role: config.RuntimeRoleAPI, Jobs: &spec.JobsRuntimeConfig{}}, jobs: &jobs.Service{Kube: tenant}}
+	server := &restServer{cfg: config.Config{Jobs: &spec.JobsRuntimeConfig{}}, jobs: &jobs.Service{Kube: tenant}}
 	require.NoError(t, server.initSandboxObserver(tenant, platformConfig))
 	ctx := account.WithScope(context.Background(), account.Scope{WorkspaceID: "workspace-a", Namespace: "space-a", Role: "member"})
 	_, err = server.jobs.SandboxClient.Resource(jobs.SandboxGVR).Namespace("space-a").Create(ctx,
@@ -83,117 +83,50 @@ func TestSandboxPlatformClientKeepsTenantScopeAndSharedRequestBudget(t *testing.
 	}
 }
 
-func TestBuildRuntimeQueuesBuildsOnlyRoleQueues(t *testing.T) {
-	for _, tc := range []struct {
-		role                    config.RuntimeRole
-		dispatch, delay, result bool
-	}{
-		{role: config.RuntimeRoleAPI},
-		{role: config.RuntimeRoleController, delay: true, result: true},
-		{role: config.RuntimeRoleScheduler, dispatch: true},
-		{role: config.RuntimeRoleWorker, dispatch: true, delay: true},
-	} {
-		t.Run(string(tc.role), func(t *testing.T) {
-			cfg := config.NewConfig()
-			cfg.Role = tc.role
-			cfg.Messaging.Type = config.KAFKA
-			cfg.Messaging.KafkaBrokers = []string{"127.0.0.1:9092"}
-			server := &restServer{cfg: *cfg}
-
-			queues, err := server.buildRuntimeQueues(nil)
-
-			require.NoError(t, err)
-			require.Equal(t, tc.dispatch, queues.Dispatch != nil)
-			require.Equal(t, tc.delay, queues.Delay != nil)
-			require.Equal(t, tc.result, queues.Result != nil)
-			for _, queue := range []msg.Queue{queues.Dispatch, queues.Delay, queues.Result} {
-				if queue != nil {
-					require.NoError(t, queue.Close(context.Background()))
-				}
-			}
-		})
+func TestRuntimeNodeBuildsAllRoleDependencies(t *testing.T) {
+	cfg := config.NewConfig()
+	cfg.Messaging.Type = config.KAFKA
+	cfg.Messaging.KafkaBrokers = []string{"127.0.0.1:9092"}
+	server := New(*cfg).(*restServer)
+	queues, err := server.buildRuntimeQueues(nil)
+	require.NoError(t, err)
+	for _, queue := range []msg.Queue{queues.Dispatch, queues.Delay, queues.Result} {
+		require.NotNil(t, queue)
+		require.NoError(t, queue.Close(context.Background()))
 	}
+	server.initRuntimeObservers(fake.NewSimpleClientset())
+	require.NotNil(t, server.InformerManager)
+	require.NotNil(t, server.resourceObserver)
+	require.NoError(t, server.provideInterfaceBeans())
+	server.registerAPIRoutes()
+	routes := map[string]bool{}
+	for _, route := range server.webContainer.Routes() {
+		routes[route.Method+" "+route.Path] = true
+	}
+	require.True(t, routes["GET /api/v1/healthz"])
+	require.True(t, routes["GET /api/v1/readyz"])
+	require.True(t, routes["POST /api/v1/auth/login"])
+	require.NotNil(t, server.grpcAdministration)
+	require.NotNil(t, server.grpcJobs)
+	require.NotNil(t, server.grpcApplications)
 }
 
-func TestSandboxObserversAreOnlyBuiltForConfiguredConsumers(t *testing.T) {
-	for _, role := range []config.RuntimeRole{config.RuntimeRoleAPI, config.RuntimeRoleController, config.RuntimeRoleScheduler, config.RuntimeRoleWorker} {
-		for _, configured := range []bool{false, true} {
-			t.Run(string(role)+"/"+map[bool]string{false: "commands", true: "evaluations"}[configured], func(t *testing.T) {
-				server := &restServer{cfg: config.Config{Role: role}, jobs: &jobs.Service{}}
-				if configured {
-					server.cfg.Jobs = &spec.JobsRuntimeConfig{}
-				}
-				limiter := flowcontrol.NewTokenBucketRateLimiter(100, 300)
-				cfg := &rest.Config{Host: "https://kubernetes.example", RateLimiter: limiter}
-				require.NoError(t, server.initSandboxObserver(fake.NewSimpleClientset(), cfg))
-				want := configured && (role == config.RuntimeRoleAPI || role == config.RuntimeRoleController)
-				require.Equal(t, want, server.sandboxObserver != nil)
-				require.Equal(t, want, server.jobs.SandboxClient != nil)
-				if want {
-					require.Same(t, server.sandboxObserver, server.jobs.SandboxObserver)
-					_, err := server.jobs.SandboxObserver.Sandbox("space", "pending")
-					require.ErrorIs(t, err, informer.ErrSandboxObservationUnavailable)
-					ready, _ := server.RuntimeReady()
-					require.True(t, ready, "Sandbox initial sync must not block API or standby Controller readiness")
-				}
-				require.Same(t, limiter, cfg.RateLimiter)
-			})
+func TestRuntimeNodeBuildsSandboxObserverOnlyWhenConfigured(t *testing.T) {
+	for _, configured := range []bool{false, true} {
+		server := &restServer{jobs: &jobs.Service{}}
+		if configured {
+			server.cfg.Jobs = &spec.JobsRuntimeConfig{}
 		}
-	}
-}
-
-func TestInitRoleObserversBuildsOnlyOwnedObserver(t *testing.T) {
-	for _, tc := range []struct {
-		role                      config.RuntimeRole
-		wantManager, wantObserver bool
-	}{
-		{role: config.RuntimeRoleAPI},
-		{role: config.RuntimeRoleController, wantManager: true},
-		{role: config.RuntimeRoleScheduler},
-		{role: config.RuntimeRoleWorker, wantObserver: true},
-	} {
-		t.Run(string(tc.role), func(t *testing.T) {
-			server := &restServer{cfg: config.Config{Role: tc.role}}
-
-			server.initRoleObservers(fake.NewSimpleClientset())
-
-			require.Equal(t, tc.wantManager, server.InformerManager != nil)
-			require.Equal(t, tc.wantObserver, server.resourceObserver != nil)
-		})
-	}
-}
-
-func TestRuntimeRolesOnlyBuildTheirServedAPIAdapters(t *testing.T) {
-	for _, role := range []config.RuntimeRole{
-		config.RuntimeRoleAPI,
-		config.RuntimeRoleController,
-		config.RuntimeRoleScheduler,
-		config.RuntimeRoleWorker,
-	} {
-		t.Run(string(role), func(t *testing.T) {
-			server := New(config.Config{Role: role}).(*restServer)
-			require.NoError(t, server.provideInterfaceBeans())
-			server.registerAPIRoutes()
-
-			routes := make(map[string]bool)
-			for _, route := range server.webContainer.Routes() {
-				routes[route.Method+" "+route.Path] = true
-			}
-			require.True(t, routes["GET /api/v1/health"])
-			require.True(t, routes["GET /api/v1/readyz"])
-			if role == config.RuntimeRoleAPI {
-				require.True(t, routes["POST /api/v1/auth/login"])
-				require.NotNil(t, server.grpcAdministration)
-				require.NotNil(t, server.grpcJobs)
-				require.NotNil(t, server.grpcApplications)
-				return
-			}
-			require.Len(t, routes, 4, "non-API roles serve only health and readiness routes")
-			require.False(t, routes["POST /api/v1/auth/login"])
-			require.Nil(t, server.grpcAdministration)
-			require.Nil(t, server.grpcJobs)
-			require.Nil(t, server.grpcApplications)
-		})
+		limiter := flowcontrol.NewTokenBucketRateLimiter(100, 300)
+		cfg := &rest.Config{Host: "https://kubernetes.example", RateLimiter: limiter}
+		require.NoError(t, server.initSandboxObserver(fake.NewSimpleClientset(), cfg))
+		require.Equal(t, configured, server.sandboxObserver != nil)
+		require.Equal(t, configured, server.jobs.SandboxClient != nil)
+		if configured {
+			require.Same(t, server.sandboxObserver, server.jobs.SandboxObserver)
+			_, err := server.jobs.SandboxObserver.Sandbox("space", "pending")
+			require.ErrorIs(t, err, informer.ErrSandboxObservationUnavailable)
+		}
 	}
 }
 

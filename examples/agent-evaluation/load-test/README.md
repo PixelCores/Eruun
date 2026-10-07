@@ -108,7 +108,7 @@ python3 -m unittest discover -s examples/agent-evaluation/load-test -p 'test_obs
 
 ## 固定单 Worker 的手动容量阶梯
 
-[`worker-baseline-values.yaml`](worker-baseline-values.yaml) 固定一个 Worker，request/limit 都为 4 CPU/8 GiB，初始 `ERUUN_WORKFLOW_MAX_CONCURRENT=100`。这是待实测的固定实验点，不是生产推荐或已验证容量；也可以在首轮前选定其他资源，但整组阶梯必须保持同一配置。API、Controller、Scheduler 保持环境 values/Chart 的 HA 副本设置。此参数仅限制每 Worker 并行 Workflow controller 数，不代表试验 Pod 数或已运行 trial 数。
+[`worker-baseline-values.yaml`](worker-baseline-values.yaml) 固定两个统一节点，稳定状态为一个 Leader、一个 Worker；每节点 request/limit 都为 4 CPU/8 GiB，初始 `ERUUN_WORKFLOW_MAX_CONCURRENT=100`。这是待实测的单 Worker 实验点，不是生产推荐或已验证容量；首轮可选定其他资源，但整组阶梯须保持不变。两节点共用配置，不独立调整 API/Controller/Scheduler 副本。此参数仅限制每 Worker 并行 Workflow controller 数，不代表试验 Pod 数或已运行 trial 数。
 
 开始前，按[部署契约](../../../docs/helm-deployment.md)准备受控环境 values、现有账号/Runner 配置 Secret 及可拉取的明确版本镜像。Chart 仍包含内置 MySQL/Redis；本覆盖文件不创建 ACS 算力、不配置云凭据，也不替环境完成 HA 数据面。**Helm 会替换 `env` 数组**；如果现有环境 values 中有 `env`（例如外部数据库连接配置），先将全部条目合并到覆盖文件的私有副本，确认 Worker slot 所在下标后再使用命令，不能用下方的 `env[0]` 覆盖其他设置。
 
@@ -119,7 +119,7 @@ BASELINE_VALUES=examples/agent-evaluation/load-test/worker-baseline-values.yaml
 WORKER_SLOT_INDEX=0
 WORKER_SLOTS=100
 
-# 仅本地渲染，不调用 Kubernetes；只显示运行角色清单。
+# 仅本地渲染，不调用 Kubernetes；只显示统一 runtime 清单。
 helm template "$ERUUN_RELEASE" deploy/helm/eruun \
   --namespace "$ERUUN_NAMESPACE" \
   --values "$ERUUN_ENV_VALUES" --values "$BASELINE_VALUES" \
@@ -138,7 +138,7 @@ helm upgrade "$ERUUN_RELEASE" deploy/helm/eruun \
   --wait --timeout 10m
 ```
 
-渲染可能包含私有 env 值，仅在受控终端审阅，不把输出贴到公共记录。每档完整排空、核对结果并保存观测后，手动把 `WORKER_SLOTS` 改为 **100 → 250 → 500 → 1000**，再次渲染/升级。每档只变该 slot，固定 Worker 资源、副本、任务模板、请求速率、其余角色配置与观察预算；禁止自动循环放量。Deployment 滚动升级期间可能临时存在新旧 Worker 重叠，须等旧 Pod 退出、确认只有一个有效 Worker，再开始该档注入。
+渲染可能包含私有 env 值，仅在受控终端审阅，不把输出贴到公共记录。每档完整排空、核对结果并保存观测后，手动把 `WORKER_SLOTS` 改为 **100 → 250 → 500 → 1000**，再次渲染/升级。每档只变该 slot，固定统一节点资源、副本、任务模板、请求速率、Leader 配置与观察预算；禁止自动循环放量。改变 slot 会更新统一 Deployment，也可能切换 Leader；升级后重建 API 连接，等旧 Pod 退出并确认一个 Leader、一个领取新任务的 Worker，再开始该档注入。该操作只适用于已迁移到统一节点的环境；旧四角色必须先按维护窗口停止。
 
 准入前置：固定并记录 [`workflow_scheduler`](../../../docs/system-setting.md#job-全局调度) 的全局 `maxConcurrentJobs`、各空间 `maxConcurrentJobsPerWorkspace` 和实际 ResourceQuota/LimitRange。默认全局 100、每空间 10 会先于高档 Worker slot 限制任务；需要在整组阶梯前由管理员按环境能力确定，不能逐档偷偷提高后混称只改变 Worker。Runner 与 trial 均消耗配额，当前默认空间 request 2 CPU/4 GiB 只够一个默认规格 Runner 加一个 trial；不要以新增空间绕过配额规划。ACK/ACS、镜像、网络、数据库/保存目标能力和费用停止线都由操作者先核验，未通过档停止注入并处理在途任务，不据 slot 数宣布容量通过。
 
@@ -168,8 +168,8 @@ python3 examples/agent-evaluation/load-test/kube_snapshot.py \
 
 完成单 Worker 阶梯后，按[阶段一矩阵](../../../docs/harbor-runtime-stage1-plan.md#63-实验矩阵)分别执行，避免一次同时改变多个条件：
 
-1. 每轮保存新镜像 digest、所有角色副本/资源、scheduler 设置、有效 quota、任务包摘要和提交/观察 JSONL；记录监控时间源。将 synthetic task 的运行时间延长至大于爬坡和稳态窗口，不能用默认 60–300 秒验证两小时稳态。
-2. 在持续运行的受控批次中分别重启 Worker、API、Controller、Scheduler；用既有 Deployment 操作逐个角色执行，记录实际故障与恢复时刻。观察原 Job/Sandbox/Pod UID 是否保持，旧 owner 写入是否被拒绝；重关联不能计为新资源创建。
+1. 每轮保存新镜像 digest、全部节点副本/资源与当时职责、scheduler 设置、有效 quota、任务包摘要和提交/观察 JSONL；记录监控时间源。将 synthetic task 的运行时间延长至大于爬坡和稳态窗口，不能用默认 60–300 秒验证两小时稳态。
+2. 在持续运行的受控批次中分别重启当前 Worker 节点、Leader 节点；按当时 Lease holder 精确选择 Pod，记录实际故障、API 重连、任期切换与恢复时刻。不要把整个统一 Deployment 一次重启当作单节点故障。观察原 Job/Sandbox/Pod UID 是否保持，旧 owner 写入是否被拒绝；重关联不能计为新资源创建。
 3. 由环境负责人分别使测试 API、测试 DB 不可达 60/300/600 秒，保持 Kubernetes、Runner 和已有 trial 健康；同步采样资源创建计数，验证中断被检测后暂停新环境、已有 trial 可推进、恢复后完整结果及 terminal 确认。恢复后检查启动速率、Pending 占位、DB 锁等待和保存积压；不要将 600 秒注入加上人为额外恢复延迟当作“600 秒以内”。
 4. 独立制造制品上传响应丢失、慢保存目标与采集不完整。核对 archive digest 不变、没有重复交付、其他结果可进展；保留案例检查 `retainUntil` 与云侧 `shutdownTime`，24 小时后 CR 消失且占位释放。等待时仍计费用；保留 Sandbox 可能仍有进程活动。
 5. 长稳先做 72 小时子集，再做两周代表性任务；记录 Token 轮换、模型凭据有效期、磁盘峰值、结果大小、采样覆盖和未知数。Python token 轮换单测不能替代集群与 Provider 的长期证据。

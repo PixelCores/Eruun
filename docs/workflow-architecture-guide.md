@@ -2,7 +2,7 @@
 
 > 状态：Implemented Reference。本文描述当前 Workflow/Job 内部执行结构；公开路由与配置仍以 Current 专题和代码为准。
 
-> 企业角色拆分、双 Leader Election、数据库 generation/token lease 与 60 秒恢复边界见 [企业级分布式运行时设计](enterprise-distributed-runtime-design.md)；本文仍聚焦 Workflow/Job 内部执行结构。
+> 同构节点、单 Leader Election、数据库 generation/token lease 与恢复边界见 [企业级分布式运行时设计](enterprise-distributed-runtime-design.md)；本文仍聚焦 Workflow/Job 内部执行结构。
 
 > Job 在依赖就绪后还须经过全局准入，支持步骤优先级、空间并发上限和等待老化；原资源依赖 bucket 不变。见 [Job 全局调度与失败策略](workflow-global-scheduler-design.md)。
 
@@ -531,9 +531,9 @@ type Queue interface {
 
 ## 5. 核心组件详解
 
-### 5.1 Workflow - 角色化运行入口
+### 5.1 Workflow - 任期与执行入口
 
-`Workflow` 是四类进程共享的实现，但每个进程只启动自己角色的方法：
+`Workflow` 保留调度、维护与执行的内部职责方法。统一节点按当前任期启停它们：
 
 ```go
 // event/workflow/workflow.go 与 dispatcher.go
@@ -554,7 +554,7 @@ func (w *Workflow) StartWorker(
 }
 ```
 
-Controller 与 Scheduler 的入口只在各自 Leader 任期中运行；Worker 不参加 Leader Election。`all` 角色会在同一进程内启动三类入口，但仍使用 Controller/Scheduler 双 Lease 和同一套 v2 ownership。
+Controller 与 Scheduler 的入口运行于同一个 Leader 任期，业务 API 同样受该任期约束。所有节点参与一个选举；非 Leader 领取 Worker 任务，升主停止新接单但已有任务继续完成。不存在 `all` 或其他静态角色选项，v2 ownership 保持不变。
 
 任务恢复不执行启动时全表重置：Scheduler reaper 只以 CAS 回收已过期且 ownership 完整的 `queued/running` execution lease，下一次派发生成新的 `runGeneration/runToken`。Worker 关闭时先停止 intake，再用独立 `executionCtx` 排空已启动任务。
 
@@ -1382,9 +1382,9 @@ Priority 10 (Deployment):        ↓
 集群最大并行 Job 数 = min(请求数, worker 进程数 × MaxConcurrentWorkflows) × 每个工作流的同优先级并行 Job 数
 ```
 
-`MaxConcurrentWorkflows` 是每个实际消费进程的本地上限，不是集群级分布式信号量。每个 `worker`（以及组合模式中的 `all`）进程独立执行该上限，集群总并发可能达到 `worker 进程数 × MaxConcurrentWorkflows`。
+`MaxConcurrentWorkflows` 是每个节点的本地执行上限，不是集群级分布式信号量。稳定状态下由 N−1 个 Worker 领取新任务；升主节点已有任务仍可继续，因此切主期间不能仅用当前 Worker 数推导所有在途任务数。全局 Job 准入限制另行生效。
 
-进程关闭时先停止 Worker intake，已启动 workflow 使用独立 execution context 排空，默认上限 60 秒；超过上限后取消本地执行并停止续租，由 Scheduler reaper 恢复。Controller 或 Scheduler Leader 切换不会停止独立 Worker。
+进程关闭时先停止 Worker intake，已启动 workflow 使用独立 execution context 排空，默认上限 60 秒；超过上限后取消本地执行并停止续租，由 Scheduler reaper 恢复。Leader 切换不会因任期变化直接取消已认领的 Worker 执行；升主节点也只停止新接单。
 
 #### 不同场景下的并行 Job 数示例
 
@@ -2062,12 +2062,11 @@ type MessagingConfig struct {
 | `--workflow-sequential-max-concurrency` | 1 | 串行步骤内部最大并发数 | 生产环境建议 1-3 |
 | `--workflow-dispatch-poll-interval` | 3s | Dispatcher 扫描间隔 | 生产环境建议 3-5s |
 | `--workflow-worker-stale-interval` | 15s | Worker 过期检查间隔 | 生产环境建议 15-30s |
-| `--role` | api | 运行角色：api/controller/scheduler/worker | 每个进程只运行一类职责 |
-| `--controller-lock-name` | eruun-controller | Controller Leader Lease | 同 namespace 内唯一 |
-| `--scheduler-lock-name` | eruun-scheduler | Scheduler Leader Lease | 不得与 Controller 相同 |
+| `--leader-lock-name` | eruun-runtime | 统一 Leader Lease | 同一安装的节点共用 |
+| `--leader-service-name` | 空 | 当前 Leader 的业务 Service | 集群配置；本地可直接访问当选节点 |
 | `--workflow-heartbeat-interval` | 10s | Worker DB 心跳 | 小于 lease duration |
 | `--workflow-lease-duration` | 30s | DB 执行租约 | 必须大于 heartbeat |
-| `--workflow-lease-reaper-interval` | 10s | 过期租约扫描 | 默认保持 60 秒 RTO |
+| `--workflow-lease-reaper-interval` | 10s | 过期租约扫描 | 结合积压实测，不保证固定 RTO |
 | `--workflow-worker-drain-timeout` | 60s | 关闭时任务排空上限 | 与恢复目标对齐 |
 | `--workflow-worker-autoclaim-idle` | 60s | AutoClaim 最小空闲时间 | 应大于 Job 最大执行时间 |
 | `--workflow-worker-autoclaim-count` | 50 | AutoClaim 批量大小 | 根据任务量调整 |

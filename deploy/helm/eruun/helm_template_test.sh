@@ -82,7 +82,7 @@ resourceNames() {
   ' "${manifest}"
 }
 
-assertUniqueRoleNames() {
+assertRuntimeNames() {
   local kind="$1"
   local manifest="$2"
   local names
@@ -93,13 +93,13 @@ assertUniqueRoleNames() {
   count=$(printf '%s\n' "${names}" | awk 'NF { count++ } END { print count + 0 }')
   unique_count=$(printf '%s\n' "${names}" | awk 'NF && !seen[$0]++ { count++ } END { print count + 0 }')
 
-  assertEqual "${count}" "4" "distributed runtime must render four ${kind} names"
-  assertEqual "${unique_count}" "4" "long fullnameOverride must preserve unique ${kind} role suffixes"
+  assertEqual "${count}" "1" "unified runtime must render one ${kind}"
+  assertEqual "${unique_count}" "1" "long fullnameOverride must preserve the ${kind} runtime suffix"
   while IFS= read -r name; do
     [ -n "${name}" ] || continue
     [ "${#name}" -le 63 ] || fail "${kind} name exceeds 63 characters: ${name}"
     case "${name}" in
-      *-api|*-controller|*-scheduler|*-worker) ;;
+      *-runtime) ;;
       *) fail "${kind} name does not preserve a runtime role suffix: ${name}" ;;
     esac
   done <<< "${names}"
@@ -123,16 +123,6 @@ bindingSubjectNamespace() {
   ' "${manifest}"
 }
 
-bindingSubjectNames() {
-  local manifest="$1"
-  awk '
-    $1 == "kind:" { inBinding = ($2 == "ClusterRoleBinding"); inSubjects = 0 }
-    inBinding && $1 == "subjects:" { inSubjects = 1; next }
-    inBinding && inSubjects && $1 == "roleRef:" { inSubjects = 0; next }
-    inBinding && inSubjects && $1 == "name:" { print $2 }
-  ' "${manifest}"
-}
-
 bindingSubjectNamesFor() {
   local binding_name="$1"
   local manifest="$2"
@@ -152,27 +142,6 @@ bindingSubjectNamesFor() {
     selected && /^subjects:/ { inSubjects = 1; next }
     selected && inSubjects && /^roleRef:/ { inSubjects = 0; next }
     selected && inSubjects && /^    name:/ { print $2 }
-  ' "${manifest}"
-}
-
-bindingRoleRefNameFor() {
-  local binding_name="$1"
-  local manifest="$2"
-  awk -v target="${binding_name}" '
-    /^kind:/ {
-      inBinding = ($2 == "ClusterRoleBinding")
-      inMetadata = 0
-      selected = 0
-      inRoleRef = 0
-    }
-    inBinding && /^metadata:/ { inMetadata = 1; next }
-    inBinding && inMetadata && /^  name:/ {
-      selected = ($2 == target)
-      inMetadata = 0
-      next
-    }
-    selected && /^roleRef:/ { inRoleRef = 1; next }
-    selected && inRoleRef && /^  name:/ { print $2; exit }
   ' "${manifest}"
 }
 
@@ -279,72 +248,17 @@ grep -q '^appVersion: "0.1.0"$' "${TEST_DIR}/Chart.yaml" ||
 
 default_manifest=$(renderRBAC default eruun eruun-system)
 assertRBACClosure "${default_manifest}" eruun-system
-assertEqual "$(resourceNames ClusterRole "${default_manifest}" | wc -l | tr -d ' ')" "3" "RBAC must render resource-manager, controller-observer and Sandbox ClusterRoles"
-assertEqual "$(resourceNames ClusterRoleBinding "${default_manifest}" | wc -l | tr -d ' ')" "3" "RBAC must render one binding per ClusterRole"
+assertEqual "$(resourceNames ClusterRole "${default_manifest}" | wc -l | tr -d ' ')" "1" "RBAC must render a single runtime ClusterRole"
+assertEqual "$(resourceNames ClusterRoleBinding "${default_manifest}" | wc -l | tr -d ' ')" "1" "RBAC must render one runtime ClusterRoleBinding"
 assertEqual \
   "$(resourceName ClusterRole "${default_manifest}")" \
   "eruun-eruun-eruun-system" \
   "default ClusterRole name must remain stable"
-controller_role_name="eruun-eruun-eruun-system-controller-observer"
-sandbox_role_name="eruun-eruun-eruun-system-sandbox-runtime"
-assertEqual "$(clusterRoleRuleFieldFor "${default_manifest}" "${sandbox_role_name}" agents.kruise.io sandboxes)" "get list watch create update patch delete" "Sandbox runtime must access only its named CRD resource"
-assertEqual "$(clusterRoleRuleFieldFor "${default_manifest}" "${sandbox_role_name}" agents.kruise.io checkpoints)" "get list watch create delete" "Checkpoint runtime must use only observation, creation, and cleanup privileges"
-assertEqual "$(clusterRoleRuleFieldFor "${default_manifest}" eruun-eruun-eruun-system agents.kruise.io checkpoints)" "" "Worker must not manage Checkpoints"
-assertEqual "$(bindingRoleRefNameFor "${sandbox_role_name}" "${default_manifest}")" "${sandbox_role_name}" "Sandbox binding must reference its narrow role"
-assertEqual "$(bindingSubjectNamesFor "${sandbox_role_name}" "${default_manifest}" | sort | tr '\n' ' ' | sed 's/ $//')" "eruun-eruun-api eruun-eruun-controller" "only API and Controller consume Sandbox lifecycle state"
-assertEqual "$(clusterRoleRuleFieldFor "${default_manifest}" eruun-eruun-eruun-system agents.kruise.io sandboxes)" "get patch" "Worker only observes and shuts down source Sandboxes during recovery isolation"
-assertEqual "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" "" namespaces)" "get" "Delayed dispatch must only read workspace namespaces"
-assertEqual "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" "" serviceaccounts)" "impersonate" "Delayed dispatch must use its workspace identity"
-assertEqual "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" "" serviceaccounts resourceNames)" "eruun-runner" "Controller impersonation must be restricted to workspace runners"
-
-assertEqual \
-  "$(bindingRoleRefNameFor "${controller_role_name}" "${default_manifest}")" \
-  "${controller_role_name}" \
-  "controller observer binding must reference its narrow ClusterRole"
-assertEqual \
-  "$(bindingSubjectNamesFor eruun-eruun-eruun-system "${default_manifest}" | sort | tr '\n' ' ' | sed 's/ $//')" \
-  "eruun-eruun-api eruun-eruun-worker" \
-  "resource manager binding must include only API and Worker"
-assertEqual \
-  "$(bindingSubjectNamesFor "${controller_role_name}" "${default_manifest}")" \
-  "eruun-eruun-controller" \
-  "controller observer binding must include only Controller"
-assertEqual \
-  "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" "" pods)" \
-  "get list watch patch delete" \
-  "Controller must observe, label, and clean up completed Job Pods"
-assertEqual \
-  "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" "" pods/log)" \
-  "get" \
-  "ResultDispatcher must collect completed Job logs"
-assertEqual \
-  "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" batch jobs)" \
-  "get create update delete" \
-  "Controller must dispatch delayed Jobs, adopt execution identities, and clean up completed Jobs"
-assertEqual \
-  "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" batch cronjobs)" \
-  "get delete" \
-  "Controller cancellation recovery must delete only the exact scheduled execution"
-assertEqual \
-  "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" apps replicasets)" \
-  "get" \
-  "Controller must only read ReplicaSet owners"
-assertEqual \
-  "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" "" secrets)" \
-  "" \
-  "Controller must not receive Secret permissions"
-assertEqual \
-  "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" "" pods/exec)" \
-  "" \
-  "Controller must not receive Pod exec permissions"
-assertEqual \
-  "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" apps deployments)" \
-  "" \
-  "Controller must not manage Deployments"
-assertEqual \
-  "$(clusterRoleRuleFieldFor "${default_manifest}" "${controller_role_name}" rbac.authorization.k8s.io roles)" \
-  "" \
-  "Controller must not manage RBAC roles"
+assertEqual "$(clusterRoleRuleVerbs "${default_manifest}" agents.kruise.io sandboxes)" "get list watch create update patch delete" "runtime retains Sandbox lifecycle permissions"
+assertEqual "$(clusterRoleRuleVerbs "${default_manifest}" agents.kruise.io checkpoints)" "get list watch create delete" "runtime retains Checkpoint lifecycle permissions"
+assertEqual "$(bindingSubjectNamesFor eruun-eruun-eruun-system "${default_manifest}")" "eruun-eruun-runtime" "all capabilities use the runtime ServiceAccount"
+assertEqual "$(clusterRoleRuleFieldFor "${default_manifest}" eruun-eruun-eruun-system "" serviceaccounts resourceNames)" "eruun-runner" "workspace impersonation remains restricted to runner ServiceAccounts"
+grep -Fq 'resourceNames: ["eruun-eruun"]' "${default_manifest}" || fail "leader route updates must name the business Service"
 assertEqual \
   "$(clusterRoleRuleVerbs "${default_manifest}" batch jobs)" \
   "get list watch create update patch delete" \
@@ -444,24 +358,24 @@ runHelm template eruun "${TEST_DIR}" \
   --show-only templates/runtime-deployments.yaml \
   --set-string importSecretKeyring.existingSecret=eruun-import-keyring \
   --set-string importSecretKeyring.key=keys.json > "${keyring_manifest}"
-assertEqual "$(grep -c 'name: ERUUN_IMPORT_SECRET_KEYRING_FILE' "${keyring_manifest}")" "2" "distributed runtime must expose the keyring only to API and Worker"
+assertEqual "$(grep -c 'name: ERUUN_IMPORT_SECRET_KEYRING_FILE' "${keyring_manifest}")" "1" "runtime must expose the import keyring"
 grep -q 'value: /var/run/secrets/eruun/import-secret-keyring/keyring.json' "${keyring_manifest}" ||
   fail "keyring file environment variable must point at the mounted file"
-assertEqual "$(grep -c 'secretName: "eruun-import-keyring"' "${keyring_manifest}")" "2" "distributed runtime must mount the keyring Secret only in API and Worker"
-assertEqual "$(grep -c 'name: import-secret-keyring' "${keyring_manifest}")" "4" "API and Worker must each render one keyring volume and volumeMount"
+assertEqual "$(grep -c 'secretName: "eruun-import-keyring"' "${keyring_manifest}")" "1" "runtime must mount the import keyring"
+assertEqual "$(grep -c 'name: import-secret-keyring' "${keyring_manifest}")" "2" "runtime must render one keyring volume and volumeMount"
 grep -q 'key: "keys.json"' "${keyring_manifest}" ||
   fail "existing keyring Secret key was not rendered"
 
 default_deployment_manifest="${TEST_ROOT}/default-deployment.yaml"
 runHelm template eruun "${TEST_DIR}" \
   --namespace eruun-system > "${default_deployment_manifest}"
-assertEqual "$(grep -c 'name: ERUUN_GRPC_BIND_ADDR' "${default_deployment_manifest}")" "1" "only API must configure the gRPC listener"
+assertEqual "$(grep -c 'name: ERUUN_GRPC_BIND_ADDR' "${default_deployment_manifest}")" "1" "runtime must configure the gRPC listener"
 grep -q 'value: "0.0.0.0:9000"' "${default_deployment_manifest}" ||
-  fail "API gRPC listener must bind the Pod network interface"
-assertEqual "$(grep -c 'containerPort: 9000' "${default_deployment_manifest}")" "1" "only API must expose a gRPC container port"
+  fail "runtime gRPC listener must bind the Pod network interface"
+assertEqual "$(grep -c 'containerPort: 9000' "${default_deployment_manifest}")" "1" "runtime must expose a gRPC container port"
 grep -A 2 'name: grpc' "${default_deployment_manifest}" | grep -q 'port: 9000' ||
   fail "ClusterIP Service must publish the gRPC port"
-assertEqual "$(grep -c 'port: http' "${default_deployment_manifest}")" "12" "all runtime HTTP probes must remain on the HTTP port"
+assertEqual "$(grep -c 'port: http' "${default_deployment_manifest}")" "3" "all runtime HTTP probes must remain on the HTTP port"
 assertEqual \
   "$(grep -c '"helm.sh/resource-policy": keep' "${default_deployment_manifest}")" \
   "2" \
@@ -476,7 +390,7 @@ if grep -q 'name: import-secret-keyring' "${default_deployment_manifest}"; then
 fi
 assertEqual \
   "$(grep -c 'terminationGracePeriodSeconds: 90' "${default_deployment_manifest}")" \
-  "4" \
+  "1" \
   "default runtime deployments must use the safe termination grace"
 
 custom_dependency_ports_manifest="${TEST_ROOT}/custom-dependency-ports.yaml"
@@ -518,8 +432,8 @@ if runHelm template eruun "${TEST_DIR}" \
 fi
 if runHelm template eruun "${TEST_DIR}" \
   --namespace eruun-system \
-  --set-string serviceAccount.name=eruun >/dev/null 2>&1; then
-  fail "legacy single-process serviceAccount.name must be rejected"
+  --set-string serviceAccount.roleNames.api=eruun >/dev/null 2>&1; then
+  fail "removed serviceAccount.roleNames must be rejected"
 fi
 if runHelm template eruun "${TEST_DIR}" \
   --namespace eruun-system \
@@ -575,46 +489,17 @@ fi
 runHelm template eruun "${TEST_DIR}" \
   --namespace eruun-system > "${runtime_manifest}"
 
-assertEqual \
-  "$(awk '$1 == "kind:" && $2 == "Deployment" { count++ } END { print count + 0 }' "${runtime_manifest}")" \
-  "4" \
-  "distributed runtime must render one Deployment per runtime role"
-assertEqual \
-  "$(awk '$1 == "kind:" && $2 == "ServiceAccount" { count++ } END { print count + 0 }' "${runtime_manifest}")" \
-  "4" \
-  "distributed runtime must render one ServiceAccount per runtime role"
-assertEqual \
-  "$(awk '$1 == "kind:" && $2 == "PodDisruptionBudget" { count++ } END { print count + 0 }' "${runtime_manifest}")" \
-  "4" \
-  "distributed runtime must protect every replicated role with a PodDisruptionBudget"
-assertEqual \
-  "$(grep -c 'terminationGracePeriodSeconds: 90' "${runtime_manifest}")" \
-  "4" \
-  "distributed runtime termination grace must cover every role deployment"
-assertEqual \
-  "$(grep -c 'name: ERUUN_EXIT_ON_LOST_LEADER' "${runtime_manifest}")" \
-  "4" \
-  "distributed runtime roles must remain available as leader-election standbys"
-assertEqual \
-  "$(grep -c 'startupProbe:' "${runtime_manifest}")" \
-  "4" \
-  "distributed runtime must protect every role during startup"
-assertEqual \
-  "$(grep -c 'failureThreshold: 30' "${runtime_manifest}")" \
-  "4" \
-  "distributed runtime startup probes must allow slow initialization"
-assertEqual \
-  "$(grep -c 'name: ERUUN_DATASTORE_SCHEMA_MODE' "${runtime_manifest}")" \
-  "5" \
-  "runtime deployments and migration Job must declare schema ownership"
-assertEqual \
-  "$(grep -c 'value: \"migrate\"' "${runtime_manifest}")" \
-  "1" \
-  "initial install must assign schema migration to the API role only"
-assertEqual \
-  "$(grep -c 'value: \"validate\"' "${runtime_manifest}")" \
-  "3" \
-  "non-API roles must only validate schema on initial install"
+for kind in Deployment ServiceAccount PodDisruptionBudget; do
+  assertEqual "$(resourceNames "${kind}" "${runtime_manifest}" | wc -l | tr -d ' ')" "1" "runtime must render one ${kind}"
+done
+for pattern in 'terminationGracePeriodSeconds: 90' 'startupProbe:' 'failureThreshold: 30' 'replicas: 4'; do
+  assertEqual "$(grep -c "${pattern}" "${runtime_manifest}")" "1" "runtime must render ${pattern}"
+done
+if grep -Eq 'ERUUN_ROLE|ERUUN_EXIT_ON_LOST_LEADER|ERUUN_CONTROLLER_LOCK_NAME|ERUUN_SCHEDULER_LOCK_NAME' "${runtime_manifest}"; then
+  fail "runtime must not configure removed roles or separate leaders"
+fi
+assertEqual "$(grep -c 'name: ERUUN_DATASTORE_SCHEMA_MODE' "${runtime_manifest}")" "2" "runtime and migration Job must declare schema handling"
+assertEqual "$(grep -c 'value: "migrate"' "${runtime_manifest}")" "1" "runtime nodes migrate under the database lock on initial install"
 
 upgrade_manifest="${TEST_ROOT}/upgrade-runtime.yaml"
 runHelm template eruun "${TEST_DIR}" \
@@ -622,8 +507,8 @@ runHelm template eruun "${TEST_DIR}" \
   --is-upgrade > "${upgrade_manifest}"
 assertEqual \
   "$(grep -c 'value: \"validate\"' "${upgrade_manifest}")" \
-  "4" \
-  "all runtime roles must validate schema after the pre-upgrade migration"
+  "1" \
+  "all runtime nodes must validate schema after the pre-upgrade migration"
 grep -q '"helm.sh/hook": pre-upgrade' "${upgrade_manifest}" ||
   fail "schema migration Job must run as a pre-upgrade hook"
 grep -q 'value: migrate-only' "${upgrade_manifest}" ||
@@ -631,7 +516,7 @@ grep -q 'value: migrate-only' "${upgrade_manifest}" ||
 
 assertEqual \
   "$(grep -c 'key: datastore-url' "${upgrade_manifest}")" \
-  "5" \
+  "2" \
   "runtime deployments and migration Job must default to the same datastore Secret"
 
 external_datastore_manifest="${TEST_ROOT}/upgrade-external-datastore.yaml"
@@ -643,7 +528,7 @@ runHelm template eruun "${TEST_DIR}" \
   --set-string "env[0].value=${external_datastore_url}" > "${external_datastore_manifest}"
 assertEqual \
   "$(grep -Fc "value: \"${external_datastore_url}\"" "${external_datastore_manifest}")" \
-  "5" \
+  "2" \
   "all runtime deployments and migration Job must use the external datastore override"
 
 expanded_datastore_manifest="${TEST_ROOT}/upgrade-expanded-datastore.yaml"
@@ -669,40 +554,35 @@ awk -v expectedURL="${expanded_datastore_url}" '
     if (value != expectedURL || !passwordReady || !databaseReady || !hostReady) failed = 1
     count++
   }
-  END { exit failed || count != 5 }
+  END { exit failed || count != 2 }
 ' "${expanded_datastore_manifest}" ||
   fail "runtime deployments and migration Job must define DSN expansion inputs before the override"
 
-assertEqual \
-  "$(grep -c 'value: \"eruun-eruun-controller\"' "${runtime_manifest}")" \
-  "4" \
-  "default controller Lease must derive from the release fullname"
-assertEqual \
-  "$(grep -c 'value: \"eruun-eruun-scheduler\"' "${runtime_manifest}")" \
-  "4" \
-  "default scheduler Lease must derive from the release fullname"
-
+assertEqual "$(grep -c 'value: "eruun-eruun-runtime"' "${runtime_manifest}")" "1" "default Lease derives from the release fullname"
+assertEqual "$(grep -c 'name: ERUUN_LEADER_SERVICE_NAME' "${runtime_manifest}")" "1" "runtime must publish its leader through the API Service"
+assertEqual "$(grep -c 'name: ERUUN_POD_NAME' "${runtime_manifest}")" "1" "runtime must bind Pod identity independently of its unique Lease identity"
+if grep -q 'name: ERUUN_ID' "${runtime_manifest}"; then
+  fail "runtime must retain a fresh process UUID across Pod container restarts"
+fi
 isolated_lock_manifest="${TEST_ROOT}/isolated-lock-runtime.yaml"
-runHelm template isolated "${TEST_DIR}" \
-  --namespace eruun-system \
-  --show-only templates/runtime-deployments.yaml > "${isolated_lock_manifest}"
-assertEqual \
-  "$(grep -c 'value: \"isolated-eruun-controller\"' "${isolated_lock_manifest}")" \
-  "4" \
-  "controller Lease defaults must be isolated by release fullname"
-assertEqual \
-  "$(grep -c 'value: \"isolated-eruun-scheduler\"' "${isolated_lock_manifest}")" \
-  "4" \
-  "scheduler Lease defaults must be isolated by release fullname"
-
+runHelm template isolated "${TEST_DIR}" --namespace eruun-system --show-only templates/runtime-deployments.yaml > "${isolated_lock_manifest}"
+assertEqual "$(grep -c 'value: "isolated-eruun-runtime"' "${isolated_lock_manifest}")" "1" "Lease defaults must be isolated by release fullname"
 explicit_lock_manifest="${TEST_ROOT}/explicit-lock-runtime.yaml"
-runHelm template eruun "${TEST_DIR}" \
-  --namespace eruun-system \
-  --show-only templates/runtime-deployments.yaml \
-  --set-string runtime.controllerLockName=shared-controller \
-  --set-string runtime.schedulerLockName=shared-scheduler > "${explicit_lock_manifest}"
-assertEqual "$(grep -c 'value: \"shared-controller\"' "${explicit_lock_manifest}")" "4" "explicit controller Lease override must be preserved"
-assertEqual "$(grep -c 'value: \"shared-scheduler\"' "${explicit_lock_manifest}")" "4" "explicit scheduler Lease override must be preserved"
+runHelm template eruun "${TEST_DIR}" --namespace eruun-system --show-only templates/runtime-deployments.yaml --set-string runtime.leaderLockName=shared-runtime > "${explicit_lock_manifest}"
+assertEqual "$(grep -c 'value: "shared-runtime"' "${explicit_lock_manifest}")" "1" "explicit unified Lease override must be preserved"
+for removed in runtime.controllerLockName=old runtime.schedulerLockName=old runtime.roles.worker.replicas=3; do
+  if runHelm template eruun "${TEST_DIR}" --set "${removed}" >/dev/null 2>&1; then
+    fail "removed runtime values must be rejected: ${removed}"
+  fi
+done
+if runHelm template eruun "${TEST_DIR}" --set runtime.replicas=1 >/dev/null 2>&1; then
+  fail "runtime must retain at least one Worker alongside the Leader"
+fi
+for managed in ERUUN_POD_NAME ERUUN_BIND_ADDR ERUUN_LEADER_LOCK_NAME ERUUN_LEADER_NAMESPACE ERUUN_LEADER_SERVICE_NAME ERUUN_CONTROLLER_LOCK_NAME ERUUN_SCHEDULER_LOCK_NAME; do
+  if runHelm template eruun "${TEST_DIR}" --set-string "env[0].name=${managed}" --set-string 'env[0].value=override' >/dev/null 2>&1; then
+    fail "runtime must reject unsafe environment override: ${managed}"
+  fi
+done
 
 long_runtime_manifest="${TEST_ROOT}/runtime-long-fullname.yaml"
 runHelm template eruun "${TEST_DIR}" \
@@ -710,7 +590,7 @@ runHelm template eruun "${TEST_DIR}" \
   --set-string "fullnameOverride=$(repeatChar f 63)" > "${long_runtime_manifest}"
 
 for kind in Deployment ServiceAccount PodDisruptionBudget; do
-  assertUniqueRoleNames "${kind}" "${long_runtime_manifest}"
+  assertRuntimeNames "${kind}" "${long_runtime_manifest}"
 done
 
 for kind in Service StatefulSet Secret; do
@@ -728,22 +608,10 @@ grep -q -- '-mysql$' <<< "$(resourceNames StatefulSet "${long_runtime_manifest}"
 grep -q -- '-redis$' <<< "$(resourceNames StatefulSet "${long_runtime_manifest}")" ||
   fail "long fullnameOverride must preserve the Redis suffix"
 
-for role in api controller scheduler worker; do
-  grep -q "value: \"${role}\"" "${runtime_manifest}" ||
-    fail "distributed runtime must pass ERUUN_ROLE=${role} to its Deployment"
-  grep -q "app.kubernetes.io/component: ${role}" "${runtime_manifest}" ||
-    fail "distributed runtime must label the ${role} workload"
-done
-
-awk '
-  $1 == "kind:" { kind = $2; inSelector = 0 }
-  kind == "Service" && $1 == "selector:" { inSelector = 1; next }
-  kind == "Service" && inSelector && $1 == "app.kubernetes.io/component:" {
-    if ($2 == "api") found = 1
-    exit
-  }
-  END { exit found ? 0 : 1 }
-' "${runtime_manifest}" || fail "Service must select only API pods"
+service_manifest="${TEST_ROOT}/leader-service.yaml"
+runHelm template eruun "${TEST_DIR}" --show-only templates/eruun-service.yaml > "${service_manifest}"
+grep -q 'app.kubernetes.io/component: runtime' "${service_manifest}" || fail "Service must select runtime Pods"
+grep -q 'eruun.io/runtime-id: unassigned' "${service_manifest}" || fail "Service must reject all Pods until the Leader publishes its identity"
 
 if runHelm template eruun "${TEST_DIR}" \
   --namespace eruun-system \
@@ -765,39 +633,13 @@ runHelm template eruun "${TEST_DIR}" \
 if runHelm template eruun "${TEST_DIR}" \
   --namespace eruun-system \
   --set serviceAccount.create=false >/dev/null 2>&1; then
-  fail "distributed runtime must require one existing ServiceAccount per role"
+  fail "distributed runtime must require an existing runtime ServiceAccount name"
 fi
 
-external_sa_manifest="${TEST_ROOT}/runtime-external-service-accounts.yaml"
-runHelm template eruun "${TEST_DIR}" \
-  --namespace eruun-system \
-  --show-only templates/serviceaccount-rbac.yaml \
-  --set serviceAccount.create=false \
-  --set-string serviceAccount.roleNames.api=precreated-api \
-  --set-string serviceAccount.roleNames.controller=precreated-controller \
-  --set-string serviceAccount.roleNames.scheduler=precreated-scheduler \
-  --set-string serviceAccount.roleNames.worker=precreated-worker > "${external_sa_manifest}"
-
-if runHelm template eruun "${TEST_DIR}" --namespace eruun-system --set serviceAccount.create=false --set-string serviceAccount.roleNames.api=shared-runtime --set-string serviceAccount.roleNames.controller=precreated-controller --set-string serviceAccount.roleNames.scheduler=shared-runtime --set-string serviceAccount.roleNames.worker=precreated-worker >/dev/null 2>&1; then
-  fail "distributed runtime must reject a Scheduler ServiceAccount shared with a ClusterRole-bound role"
-fi
-if runHelm template eruun "${TEST_DIR}" --namespace eruun-system --set serviceAccount.create=false --set-string serviceAccount.roleNames.api=shared-runtime --set-string serviceAccount.roleNames.controller=shared-runtime --set-string serviceAccount.roleNames.scheduler=precreated-scheduler --set-string serviceAccount.roleNames.worker=precreated-worker >/dev/null 2>&1; then
-  fail "distributed runtime must reject a Controller ServiceAccount shared with the resource-manager role"
-fi
-
-assertEqual \
-  "$(bindingSubjectNamesFor eruun-eruun-eruun-system "${external_sa_manifest}" | sort | tr '\n' ' ' | sed 's/ $//')" \
-  "precreated-api precreated-worker" \
-  "resource manager binding must include only the API and Worker ServiceAccounts"
-assertEqual \
-  "$(bindingSubjectNamesFor "${controller_role_name}" "${external_sa_manifest}")" \
-  "precreated-controller" \
-  "controller observer binding must include only the Controller ServiceAccount"
-assertEqual \
-  "$(grep -c 'name: precreated-scheduler' "${external_sa_manifest}")" \
-  "1" \
-  "Scheduler ServiceAccount must appear only in the namespace-scoped RoleBinding"
-
+external_sa_manifest="${TEST_ROOT}/runtime-external-service-account.yaml"
+runHelm template eruun "${TEST_DIR}" --namespace eruun-system --show-only templates/serviceaccount-rbac.yaml --set serviceAccount.create=false --set-string serviceAccount.name=precreated-runtime > "${external_sa_manifest}"
+assertEqual "$(bindingSubjectNamesFor eruun-eruun-eruun-system "${external_sa_manifest}")" "precreated-runtime" "external runtime ServiceAccount must receive the runtime permissions"
+assertEqual "$(grep -c 'name: precreated-runtime' "${external_sa_manifest}")" "2" "external runtime ServiceAccount must appear in namespace and cluster bindings"
 
 for bad_secret in '' '__REPLACE_WITH_ACCOUNT_SECRET__'; do
   if runHelm template account-auth "${TEST_DIR}" --set-string "auth.existingSecret=${bad_secret}" > "${TEST_ROOT}/bad-auth.yaml" 2>&1; then
@@ -808,9 +650,22 @@ if runHelm template account-auth "${TEST_DIR}" --set-string auth.key= > "${TEST_
   fail "empty account Secret key must be rejected"
 fi
 runHelm template account-auth "${TEST_DIR}" --show-only templates/runtime-deployments.yaml > "${TEST_ROOT}/account-auth.yaml"
-assertEqual "$(grep -c 'name: ERUUN_AUTH_CONFIG_FILE' "${TEST_ROOT}/account-auth.yaml")" "4" "all roles require account config"
-assertEqual "$(grep -c 'fsGroup: 1000' "${TEST_ROOT}/account-auth.yaml")" "4" "non-root runtime must be able to read the Secret"
-assertEqual "$(grep -c 'defaultMode: 0440' "${TEST_ROOT}/account-auth.yaml")" "4" "account Secret must have restrictive group-readable permissions"
-assertEqual "$(grep -c 'secretName: "eruun-account-config"' "${TEST_ROOT}/account-auth.yaml")" "4" "all roles mount the shared account Secret"
+assertEqual "$(grep -c 'name: ERUUN_AUTH_CONFIG_FILE' "${TEST_ROOT}/account-auth.yaml")" "1" "all nodes require account config"
+assertEqual "$(grep -c 'fsGroup: 1000' "${TEST_ROOT}/account-auth.yaml")" "1" "non-root runtime must be able to read the Secret"
+assertEqual "$(grep -c 'defaultMode: 0440' "${TEST_ROOT}/account-auth.yaml")" "1" "account Secret must have restrictive group-readable permissions"
+assertEqual "$(grep -c 'secretName: "eruun-account-config"' "${TEST_ROOT}/account-auth.yaml")" "1" "all nodes mount the shared account Secret"
+
+# The bundled static manifest must carry the same unified runtime and RBAC closure.
+static_manifest="${TEST_DIR}/../../eruun-stack.yaml"
+for kind in Deployment ServiceAccount PodDisruptionBudget ClusterRole ClusterRoleBinding Role RoleBinding; do
+  assertEqual "$(resourceNames "${kind}" "${static_manifest}" | wc -l | tr -d ' ')" "1" "static manifest must render one ${kind}"
+done
+assertEqual "$(bindingSubjectNamesFor eruun-platform-runtime "${static_manifest}")" "eruun-runtime" "static cluster permissions must bind only the runtime identity"
+assertEqual "$(bindingRoleRefName "${static_manifest}")" "eruun-platform-runtime" "static binding must target the runtime ClusterRole"
+assertEqual "$(clusterRoleRuleVerbs "${static_manifest}" agents.kruise.io checkpoints)" "get list watch create delete" "static runtime must retain checkpoint lifecycle access"
+grep -q 'eruun.io/runtime-id: unassigned' "${static_manifest}" || fail "static Service must wait for leader identity"
+if grep -Eq 'name: eruun-(api|controller|scheduler|worker)$|ERUUN_ROLE|ERUUN_CONTROLLER_LOCK_NAME|ERUUN_SCHEDULER_LOCK_NAME' "${static_manifest}"; then
+  fail "static runtime must not retain removed role configuration or identities"
+fi
 
 printf '%s\n' "Helm template tests passed"

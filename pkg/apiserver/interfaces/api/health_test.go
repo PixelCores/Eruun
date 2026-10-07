@@ -26,6 +26,7 @@ type mockHealthQueue struct {
 type mockRuntimeReadiness struct {
 	ready  bool
 	reason string
+	role   string
 }
 
 type mockHealthDatabase struct {
@@ -42,6 +43,13 @@ func (m *mockHealthDatabase) CurrentDatabaseTime(ctx context.Context) (time.Time
 		return time.Time{}, m.err
 	}
 	return time.Now().UTC(), nil
+}
+
+func (m mockRuntimeReadiness) RuntimeRole() string {
+	if m.role == "" {
+		return "worker"
+	}
+	return m.role
 }
 
 func (m mockRuntimeReadiness) RuntimeReady() (bool, string) {
@@ -88,13 +96,15 @@ func TestReadinessCheckWithHealthyQueue(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	h := &health{
-		Queues: &msg.RuntimeQueues{Dispatch: &mockHealthQueue{}},
+		Queues: &msg.RuntimeQueues{Dispatch: &mockHealthQueue{}, Delay: &mockHealthQueue{}, Result: &mockHealthQueue{}},
 		Cfg: &config.Config{
-			Role:      config.RuntimeRoleScheduler,
 			Messaging: config.MessagingConfig{Type: "redis"},
 		},
 	}
 	r := gin.New()
+	redisServer := miniredis.RunT(t)
+	h.RedisClient = redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() { _ = h.RedisClient.Close() })
 	r.GET("/ready", h.readinessCheck)
 
 	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
@@ -140,33 +150,36 @@ func TestReadinessCheckDatabaseOutageTimeoutAndRecovery(t *testing.T) {
 
 func TestReadinessCheckReportsRuntimeRole(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	for _, role := range []string{"worker", "leader"} {
+		t.Run(role, func(t *testing.T) {
+			redisServer := miniredis.RunT(t)
+			h := &health{
+				Queues:      &msg.RuntimeQueues{Dispatch: &mockHealthQueue{}, Delay: &mockHealthQueue{}, Result: &mockHealthQueue{}},
+				RedisClient: redis.NewClient(&redis.Options{Addr: redisServer.Addr()}),
+				Runtime:     mockRuntimeReadiness{ready: true, role: role},
+				Cfg:         &config.Config{Messaging: config.MessagingConfig{Type: config.REDIS}},
+			}
+			t.Cleanup(func() { _ = h.RedisClient.Close() })
+			r := gin.New()
+			r.GET("/ready", h.readinessCheck)
 
-	h := &health{
-		Queues: &msg.RuntimeQueues{
-			Dispatch: &mockHealthQueue{},
-			Delay:    &mockHealthQueue{},
-		},
-		Runtime: mockRuntimeReadiness{ready: true},
-		Cfg:     &config.Config{Role: config.RuntimeRoleWorker},
+			req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+			resp := httptest.NewRecorder()
+			r.ServeHTTP(resp, req)
+
+			require.Equal(t, http.StatusOK, resp.Code)
+			var payload map[string]string
+			requireSuccessResponse(t, resp.Body.Bytes(), &payload)
+			require.Equal(t, role, payload["role"])
+		})
 	}
-	r := gin.New()
-	r.GET("/ready", h.readinessCheck)
-
-	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
-	resp := httptest.NewRecorder()
-	r.ServeHTTP(resp, req)
-
-	require.Equal(t, http.StatusOK, resp.Code)
-	var payload map[string]string
-	requireSuccessResponse(t, resp.Body.Bytes(), &payload)
-	require.Equal(t, "worker", payload["role"])
 }
 
 func TestReadinessCheckRejectsInitializingRuntimeLeader(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	h := &health{
-		Runtime: mockRuntimeReadiness{reason: "scheduler leader is still initializing"},
+		Runtime: mockRuntimeReadiness{reason: "leader is still initializing"},
 	}
 	r := gin.New()
 	r.GET("/ready", h.readinessCheck)
@@ -177,32 +190,34 @@ func TestReadinessCheckRejectsInitializingRuntimeLeader(t *testing.T) {
 
 	require.Equal(t, http.StatusServiceUnavailable, resp.Code)
 	envelope := decodeResponse(t, resp.Body.Bytes(), nil)
-	require.Contains(t, envelope.Message, "scheduler leader is still initializing")
+	require.Contains(t, envelope.Message, "leader is still initializing")
 }
 
 func TestReadinessCheckWithUnhealthyQueue(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-
-	h := &health{
-		Queues: &msg.RuntimeQueues{Dispatch: &mockHealthQueue{statsError: errors.New("connection refused")}},
-		Cfg: &config.Config{
-			Role:      config.RuntimeRoleScheduler,
-			Messaging: config.MessagingConfig{Type: "redis"},
-		},
+	redisServer := miniredis.RunT(t)
+	redisClient := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() { _ = redisClient.Close() })
+	for _, name := range []string{"dispatch", "delay", "result"} {
+		t.Run(name, func(t *testing.T) {
+			queues := map[string]*mockHealthQueue{"dispatch": {}, "delay": {}, "result": {}}
+			queues[name].statsError = errors.New("connection refused")
+			h := &health{
+				Queues:      &msg.RuntimeQueues{Dispatch: queues["dispatch"], Delay: queues["delay"], Result: queues["result"]},
+				Cfg:         &config.Config{Messaging: config.MessagingConfig{Type: config.REDIS}},
+				RedisClient: redisClient,
+			}
+			r := gin.New()
+			r.GET("/ready", h.readinessCheck)
+			resp := httptest.NewRecorder()
+			r.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/ready", nil))
+			require.Equal(t, http.StatusServiceUnavailable, resp.Code)
+			envelope := decodeResponse(t, resp.Body.Bytes(), nil)
+			require.Equal(t, bcode.ErrServiceUnavailable.BusinessCode, envelope.Code)
+			require.Equal(t, "not ready: "+name+" queue connection failed", envelope.Message)
+			require.Equal(t, "null", string(envelope.Data))
+		})
 	}
-	r := gin.New()
-	r.GET("/ready", h.readinessCheck)
-
-	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
-	resp := httptest.NewRecorder()
-	r.ServeHTTP(resp, req)
-
-	require.Equal(t, http.StatusServiceUnavailable, resp.Code)
-	envelope := decodeResponse(t, resp.Body.Bytes(), nil)
-	require.Equal(t, bcode.ErrServiceUnavailable.BusinessCode, envelope.Code)
-	require.Contains(t, envelope.Message, "not ready")
-	require.Contains(t, envelope.Message, "queue connection failed")
-	require.Equal(t, "null", string(envelope.Data))
 }
 
 func TestReadinessCheckWithNilQueueWithoutExternalQueue(t *testing.T) {
@@ -222,13 +237,11 @@ func TestReadinessCheckWithNilQueueWithoutExternalQueue(t *testing.T) {
 	require.Equal(t, "ready", payload["status"])
 }
 
-func TestReadinessCheckAPIRedisOutageAndRecovery(t *testing.T) {
+func TestReadinessCheckRedisOutageAndRecovery(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	oldCheck := checkKafkaReadiness
-	checkKafkaReadiness = func(context.Context, clients.KafkaConfig) error {
-		return errors.New("API readiness must not probe Kafka")
-	}
+	checkKafkaReadiness = func(context.Context, clients.KafkaConfig) error { return nil }
 	t.Cleanup(func() { checkKafkaReadiness = oldCheck })
 
 	for _, backend := range []string{config.REDIS, config.KAFKA} {
@@ -239,9 +252,9 @@ func TestReadinessCheckAPIRedisOutageAndRecovery(t *testing.T) {
 
 			h := &health{
 				RedisClient: redisClient,
+				Queues:      &msg.RuntimeQueues{Dispatch: &mockHealthQueue{}, Delay: &mockHealthQueue{}, Result: &mockHealthQueue{}},
 				Runtime:     mockRuntimeReadiness{ready: true},
 				Cfg: &config.Config{
-					Role:      config.RuntimeRoleAPI,
 					Messaging: config.MessagingConfig{Type: backend},
 				},
 			}
@@ -257,7 +270,7 @@ func TestReadinessCheckAPIRedisOutageAndRecovery(t *testing.T) {
 						var payload map[string]string
 						requireSuccessResponse(t, resp.Body.Bytes(), &payload)
 						require.Equal(t, "ready", payload["status"])
-						require.Equal(t, "api", payload["role"])
+						require.Equal(t, "worker", payload["role"])
 					} else {
 						envelope := decodeResponse(t, resp.Body.Bytes(), nil)
 						require.Equal(t, bcode.ErrServiceUnavailable.BusinessCode, envelope.Code)
@@ -277,16 +290,11 @@ func TestReadinessCheckAPIRedisOutageAndRecovery(t *testing.T) {
 			}
 			require.NoError(t, redisServer.Restart())
 			checkReadiness(http.StatusOK)
-
-			// Unused queue failures must not affect API readiness.
-			failedQueue := &mockHealthQueue{statsError: errors.New("queue down")}
-			h.Queues = &msg.RuntimeQueues{Dispatch: failedQueue, Delay: failedQueue, Result: failedQueue}
-			checkReadiness(http.StatusOK)
 		})
 	}
 }
 
-func TestReadinessCheckAPIRequiresRedisClient(t *testing.T) {
+func TestReadinessCheckRequiresRedisClient(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	h := &health{Cfg: config.NewConfig()}
@@ -301,17 +309,19 @@ func TestReadinessCheckAPIRequiresRedisClient(t *testing.T) {
 	require.Equal(t, "not ready: redis client is not configured", envelope.Message)
 }
 
-func TestReadinessCheckControllerRequiresOnlyDelayAndResultQueues(t *testing.T) {
+func TestReadinessCheckRequiresAllRuntimeQueues(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	h := &health{
 		Queues: &msg.RuntimeQueues{},
 		Cfg: &config.Config{
-			Role:      config.RuntimeRoleController,
 			Messaging: config.MessagingConfig{Type: "redis"},
 		},
 	}
 	r := gin.New()
+	redisServer := miniredis.RunT(t)
+	h.RedisClient = redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() { _ = h.RedisClient.Close() })
 	r.GET("/ready", h.readinessCheck)
 
 	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
@@ -322,7 +332,7 @@ func TestReadinessCheckControllerRequiresOnlyDelayAndResultQueues(t *testing.T) 
 	envelope := decodeResponse(t, resp.Body.Bytes(), nil)
 	require.Contains(t, envelope.Message, "delay")
 	require.Contains(t, envelope.Message, "result")
-	require.NotContains(t, envelope.Message, "dispatch")
+	require.Contains(t, envelope.Message, "dispatch")
 }
 
 func TestReadinessCheckWithExternalDelayQueueStatsError(t *testing.T) {
@@ -336,15 +346,18 @@ func TestReadinessCheckWithExternalDelayQueueStatsError(t *testing.T) {
 
 	h := &health{
 		Queues: &msg.RuntimeQueues{
-			Delay:  &mockHealthQueue{statsError: errors.New("delay queue down")},
-			Result: &mockHealthQueue{},
+			Dispatch: &mockHealthQueue{},
+			Delay:    &mockHealthQueue{statsError: errors.New("delay queue down")},
+			Result:   &mockHealthQueue{},
 		},
 		Cfg: &config.Config{
-			Role:      config.RuntimeRoleController,
 			Messaging: config.MessagingConfig{Type: "kafka"},
 		},
 	}
 	r := gin.New()
+	redisServer := miniredis.RunT(t)
+	h.RedisClient = redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() { _ = h.RedisClient.Close() })
 	r.GET("/ready", h.readinessCheck)
 
 	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
@@ -369,13 +382,15 @@ func TestReadinessCheckWithKafkaBrokerConnectivityFailure(t *testing.T) {
 	})
 
 	h := &health{
-		Queues: &msg.RuntimeQueues{Dispatch: &mockHealthQueue{}},
+		Queues: &msg.RuntimeQueues{Dispatch: &mockHealthQueue{}, Delay: &mockHealthQueue{}, Result: &mockHealthQueue{}},
 		Cfg: &config.Config{
-			Role:      config.RuntimeRoleScheduler,
 			Messaging: config.MessagingConfig{Type: "kafka", KafkaBrokers: []string{"127.0.0.1:1"}},
 		},
 	}
 	r := gin.New()
+	redisServer := miniredis.RunT(t)
+	h.RedisClient = redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() { _ = h.RedisClient.Close() })
 	r.GET("/ready", h.readinessCheck)
 
 	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
@@ -398,13 +413,15 @@ func TestReadinessCheckWithKafkaQueueStatsFailureAfterBrokerHealthPasses(t *test
 	})
 
 	h := &health{
-		Queues: &msg.RuntimeQueues{Dispatch: &mockHealthQueue{statsError: errors.New("queue stats failed")}},
+		Queues: &msg.RuntimeQueues{Dispatch: &mockHealthQueue{statsError: errors.New("queue stats failed")}, Delay: &mockHealthQueue{}, Result: &mockHealthQueue{}},
 		Cfg: &config.Config{
-			Role:      config.RuntimeRoleScheduler,
 			Messaging: config.MessagingConfig{Type: "kafka", KafkaBrokers: []string{"127.0.0.1:9092"}},
 		},
 	}
 	r := gin.New()
+	redisServer := miniredis.RunT(t)
+	h.RedisClient = redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() { _ = h.RedisClient.Close() })
 	r.GET("/ready", h.readinessCheck)
 
 	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
@@ -429,9 +446,8 @@ func TestReadinessCheckWithKafkaTopicHealthFailure(t *testing.T) {
 	})
 
 	h := &health{
-		Queues: &msg.RuntimeQueues{Dispatch: &mockHealthQueue{}},
+		Queues: &msg.RuntimeQueues{Dispatch: &mockHealthQueue{}, Delay: &mockHealthQueue{}, Result: &mockHealthQueue{}},
 		Cfg: &config.Config{
-			Role: config.RuntimeRoleScheduler,
 			Messaging: config.MessagingConfig{
 				Type:         "kafka",
 				KafkaBrokers: []string{"127.0.0.1:9092"},
@@ -439,6 +455,9 @@ func TestReadinessCheckWithKafkaTopicHealthFailure(t *testing.T) {
 		},
 	}
 	r := gin.New()
+	redisServer := miniredis.RunT(t)
+	h.RedisClient = redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() { _ = h.RedisClient.Close() })
 	r.GET("/ready", h.readinessCheck)
 
 	req := httptest.NewRequest(http.MethodGet, "/ready", nil)

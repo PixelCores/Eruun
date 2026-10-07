@@ -12,9 +12,9 @@ Eruun 已经是一套可运行的 Kubernetes 应用与工作流运行时，但�
 
 ## 2. 当前事实与目标能力
 
-| 能力面 | `main` 当前事实 | 目标方向 |
+| 能力面 | 本版本事实 | 目标方向 |
 | --- | --- | --- |
-| 控制面 | API/controller/scheduler/worker 四角色；MySQL 保存 Workflow 状态和执行 ownership | 继续作为 Agent、评测与模型任务的统一控制面 |
+| 控制面 | 同构节点选出 Leader，其他节点执行任务；MySQL 保存 Workflow 状态和执行 ownership | 继续作为 Agent、评测与模型任务的统一控制面 |
 | 工作负载 | `webservice`、`store`、`job`、`scheduledjob`、`cloudjob`、`config` 和 `secret` 组件；Service 由 Trait 声明 | 表达常驻 Agent、一次性 Agent 任务和模型服务，但暂不冻结新组件类型 |
 | 扩展能力 | 已实现 storage、env、resources、securityPolicy、RBAC、probes、init、sidecar、ingress、service、share、rollout 等 Traits | 增加 Agent 所需能力前先判断能否组合已有 Trait，避免按产品名新增专用 Trait |
 | 安全 | 账号与空间授权、Kubernetes RBAC、容器 SecurityContext、Secret/ConfigMap 引用和 URL 安全策略 | 增加工具授权、出站访问、凭据委派、审批、审计和撤销的一致边界 |
@@ -79,14 +79,14 @@ vLLM、HAMi、Ray/KubeRay、LeaderWorkerSet 或其他 operator 都是可选择�
 
 ```mermaid
 flowchart LR
-    User[用户或平台] --> API[API role]
+    User[用户或平台] --> API[Leader API]
     API --> DB[(MySQL\n状态与 ownership)]
-    Scheduler[Scheduler role] --> DB
+    Scheduler[Leader 内 Scheduler] --> DB
     Scheduler --> Queue[Redis Streams 或 Kafka]
-    Queue --> Worker[Worker role]
+    Queue --> Worker[Worker node]
     Worker --> K8s[Kubernetes workloads]
     Worker --> External[模型、MCP、对象存储、云 API]
-    Controller[Controller role] --> K8s
+    Controller[Leader 内 Controller] --> K8s
     Controller --> DB
 ```
 

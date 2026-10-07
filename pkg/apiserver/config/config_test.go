@@ -3,7 +3,6 @@ package config
 import (
 	"encoding/base64"
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -23,7 +22,10 @@ func TestNewConfigHasSequentialConcurrencyDefault(t *testing.T) {
 	require.Equal(t, 1, cfg.Messaging.KafkaTopicPartitions)
 	require.Equal(t, 1, cfg.Messaging.KafkaTopicReplicationFactor)
 	require.Equal(t, 15*time.Second, cfg.LeaderConfig.Duration)
-	require.Equal(t, RuntimeRoleAPI, cfg.Role)
+	require.Equal(t, "eruun-runtime", cfg.LeaderConfig.LockName)
+	require.Empty(t, cfg.LeaderConfig.ServiceName)
+	require.Empty(t, cfg.LeaderConfig.PodName)
+	require.NotEqual(t, cfg.LeaderConfig.ID, NewConfig().LeaderConfig.ID)
 	require.Equal(t, DatastoreSchemaModeMigrate, cfg.DatastoreSchemaMode)
 	require.Equal(t, 100, cfg.Workflow.MaxConcurrentWorkflows)
 	require.Equal(t, 10*time.Second, cfg.Workflow.HeartbeatInterval)
@@ -34,7 +36,7 @@ func TestNewConfigHasSequentialConcurrencyDefault(t *testing.T) {
 	require.Zero(t, cfg.APIRateLimitBurst)
 }
 
-func TestGRPCBindAddrFlagEnvironmentAndRoleValidation(t *testing.T) {
+func TestGRPCBindAddrFlagEnvironmentAndValidation(t *testing.T) {
 	cfg := NewConfig()
 	flags := pflag.NewFlagSet("grpc-address", pflag.ContinueOnError)
 	cfg.AddFlags(flags, cfg)
@@ -47,8 +49,6 @@ func TestGRPCBindAddrFlagEnvironmentAndRoleValidation(t *testing.T) {
 	require.Contains(t, errorsJoin(cfg.Validate()), "grpc bind address must differ from http")
 	cfg.GRPCBindAddr = ""
 	require.Contains(t, errorsJoin(cfg.Validate()), "grpc bind address cannot be empty")
-	cfg.Role = RuntimeRoleController
-	require.NotContains(t, errorsJoin(cfg.Validate()), "grpc bind address cannot be empty")
 }
 
 func TestTracingFlagEnvironmentAndExporter(t *testing.T) {
@@ -170,7 +170,6 @@ func TestMigrateOnlyValidatesOnlyDatastoreInputs(t *testing.T) {
 	cfg := NewConfig()
 	cfg.DatastoreSchemaMode = DatastoreSchemaModeMigrateOnly
 	cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
-	cfg.Role = "invalid"
 	cfg.BindAddr = ""
 	cfg.Cache.CacheType = "memory"
 	cfg.Messaging.Type = "invalid"
@@ -188,111 +187,66 @@ func TestWorkflowLeaseFencingHasNoDisableFlag(t *testing.T) {
 	require.Nil(t, flags.Lookup("workflow-lease-fencing-enabled"))
 }
 
-func TestRuntimeRoleCapabilities(t *testing.T) {
-	for _, tc := range []struct {
-		role                               RuntimeRole
-		api, controller, scheduler, worker bool
-	}{
-		{RuntimeRoleAPI, true, false, false, false},
-		{RuntimeRoleController, false, true, false, false},
-		{RuntimeRoleScheduler, false, false, true, false},
-		{RuntimeRoleWorker, false, false, false, true},
-	} {
-		cfg := NewConfig()
-		cfg.Role = tc.role
-		require.Equal(t, tc.api, cfg.RunsAPI())
-		require.Equal(t, tc.controller, cfg.RunsController())
-		require.Equal(t, tc.scheduler, cfg.RunsScheduler())
-		require.Equal(t, tc.worker, cfg.RunsWorker())
-	}
+func TestRuntimeMessagingTopics(t *testing.T) {
+	cfg := NewConfig()
+	cfg.Messaging.ChannelPrefix = "tenant"
+	require.Equal(t, []string{"tenant.workflow.dispatch", "tenant.job.delay", "tenant.job.result"}, cfg.RuntimeMessagingTopics())
 }
 
-func TestRuntimeRoleQueueRequirements(t *testing.T) {
-	tests := []struct {
-		role                    RuntimeRole
-		dispatch, delay, result bool
-		topics                  []string
-	}{
-		{role: RuntimeRoleAPI, topics: []string{}},
-		{role: RuntimeRoleController, delay: true, result: true, topics: []string{"tenant.job.delay", "tenant.job.result"}},
-		{role: RuntimeRoleScheduler, dispatch: true, topics: []string{"tenant.workflow.dispatch"}},
-		{role: RuntimeRoleWorker, dispatch: true, delay: true, topics: []string{"tenant.workflow.dispatch", "tenant.job.delay"}},
-	}
-	for _, tc := range tests {
-		t.Run(string(tc.role), func(t *testing.T) {
+func TestRemovedRuntimeConfigurationRejected(t *testing.T) {
+	for _, removed := range []string{"role", "controller-lock-name", "scheduler-lock-name", "exit-on-lost-leader"} {
+		t.Run(removed, func(t *testing.T) {
 			cfg := NewConfig()
-			cfg.Role = tc.role
-			cfg.Messaging.ChannelPrefix = "tenant"
-			require.Equal(t, tc.dispatch, cfg.RequiresDispatchQueue())
-			require.Equal(t, tc.delay, cfg.RequiresDelayQueue())
-			require.Equal(t, tc.result, cfg.RequiresResultQueue())
-			require.Equal(t, tc.topics, cfg.RuntimeMessagingTopics())
-		})
-	}
-}
-
-func TestApplyEnvOverridesParsesRuntimeRole(t *testing.T) {
-	cfg := NewConfig()
-	flags := pflag.NewFlagSet("runtime-role", pflag.ContinueOnError)
-	cfg.AddFlags(flags, cfg)
-	require.NoError(t, os.Setenv("ERUUN_ROLE", "worker"))
-	t.Cleanup(func() { require.NoError(t, os.Unsetenv("ERUUN_ROLE")) })
-
-	require.NoError(t, ApplyEnvOverrides(flags, EnvPrefix))
-	require.Equal(t, RuntimeRoleWorker, cfg.Role)
-	require.True(t, cfg.RunsWorker())
-	require.False(t, cfg.RunsAPI())
-}
-
-func TestApplyEnvOverridesRejectsInvalidRuntimeRole(t *testing.T) {
-	cfg := NewConfig()
-	flags := pflag.NewFlagSet("runtime-role", pflag.ContinueOnError)
-	cfg.AddFlags(flags, cfg)
-	require.NoError(t, os.Setenv("ERUUN_ROLE", "unknown"))
-	t.Cleanup(func() { require.NoError(t, os.Unsetenv("ERUUN_ROLE")) })
-
-	err := ApplyEnvOverrides(flags, EnvPrefix)
-	require.ErrorContains(t, err, "invalid runtime role")
-}
-
-func TestValidateRuntimeRoleAndLeaseWindow(t *testing.T) {
-	cfg := NewConfig()
-	cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
-	cfg.Role = "invalid"
-	cfg.Workflow.LeaseDuration = cfg.Workflow.HeartbeatInterval
-	errs := errorsJoin(cfg.Validate())
-	require.Contains(t, errs, "runtime role must be one of")
-	require.Contains(t, errs, "lease duration must be greater than heartbeat interval")
-}
-
-func TestValidateRuntimeLeaderLockNames(t *testing.T) {
-	tests := []struct {
-		name       string
-		controller string
-		scheduler  string
-		want       string
-	}{
-		{name: "valid DNS subdomains", controller: "controller.runtime.example", scheduler: "scheduler.runtime.example"},
-		{name: "same name", controller: "shared", scheduler: "shared", want: "lock names must be distinct"},
-		{name: "empty controller", controller: "", scheduler: "scheduler", want: "controller leader election lock name cannot be empty"},
-		{name: "invalid controller syntax", controller: "Controller_BAD", scheduler: "scheduler", want: "controller leader election lock name must be a valid DNS-1123 subdomain"},
-		{name: "scheduler surrounding whitespace", controller: "controller", scheduler: " scheduler", want: "scheduler leader election lock name must not contain leading or trailing whitespace"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			cfg := NewConfig()
-			cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
-			cfg.LeaderConfig.ControllerLockName = tc.controller
-			cfg.LeaderConfig.SchedulerLockName = tc.scheduler
-
-			errs := errorsJoin(cfg.Validate())
-			if tc.want == "" {
-				require.Empty(t, errs)
-				return
+			flags := pflag.NewFlagSet("removed-runtime", pflag.ContinueOnError)
+			cfg.AddFlags(flags, cfg)
+			require.ErrorContains(t, flags.Parse([]string{"--" + removed + "=value"}), "unknown flag")
+			key := buildEnvKey(EnvPrefix, removed)
+			for _, value := range []string{"", "value"} {
+				t.Setenv(key, value)
+				require.ErrorContains(t, ApplyEnvOverrides(flags, EnvPrefix), key+" is no longer supported")
 			}
-			require.Contains(t, errs, tc.want)
 		})
 	}
+}
+
+func TestLeaderConfigurationOverridesAndValidation(t *testing.T) {
+	cfg := NewConfig()
+	cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?parseTime=true"
+	flags := pflag.NewFlagSet("leader-config", pflag.ContinueOnError)
+	cfg.AddFlags(flags, cfg)
+	t.Setenv("ERUUN_LEADER_LOCK_NAME", "runtime-env")
+	t.Setenv("ERUUN_LEADER_SERVICE_NAME", "eruun")
+	require.NoError(t, flags.Parse([]string{"--leader-lock-name=runtime-cli", "--pod-name=eruun-runtime-abc"}))
+	require.NoError(t, ApplyEnvOverrides(flags, EnvPrefix))
+	require.Equal(t, "runtime-cli", cfg.LeaderConfig.LockName)
+	require.Equal(t, "eruun", cfg.LeaderConfig.ServiceName)
+	require.Empty(t, cfg.Validate())
+	for _, tc := range []struct {
+		name   string
+		change func(*Config)
+		want   string
+	}{
+		{"empty lock", func(c *Config) { c.LeaderConfig.LockName = "" }, "lock name cannot be empty"},
+		{"invalid lock", func(c *Config) { c.LeaderConfig.LockName = "Bad_Name" }, "lock name must be a valid DNS-1123 subdomain"},
+		{"whitespace lock", func(c *Config) { c.LeaderConfig.LockName = " runtime" }, "lock name must not contain leading or trailing whitespace"},
+		{"invalid service", func(c *Config) { c.LeaderConfig.ServiceName = "bad.service" }, "service name must be a valid DNS-1035 label"},
+		{"empty identity", func(c *Config) { c.LeaderConfig.ID = "" }, "identity cannot be empty"},
+		{"empty Pod name", func(c *Config) { c.LeaderConfig.PodName = "" }, "pod name must be a valid DNS-1123 subdomain"},
+		{"invalid Pod name", func(c *Config) { c.LeaderConfig.PodName = "Invalid_Pod" }, "pod name must be a valid DNS-1123 subdomain"},
+		{"empty namespace", func(c *Config) { c.LeaderConfig.Namespace = "" }, "namespace must be a valid DNS-1123 label"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			copy := *cfg
+			tc.change(&copy)
+			require.Contains(t, errorsJoin(copy.Validate()), tc.want)
+		})
+	}
+}
+
+func TestValidateWorkflowLeaseWindow(t *testing.T) {
+	cfg := NewConfig()
+	cfg.Workflow.LeaseDuration = cfg.Workflow.HeartbeatInterval
+	require.Contains(t, errorsJoin(cfg.Validate()), "lease duration must be greater than heartbeat interval")
 }
 
 func TestNewConfigHasMySQLAndKafkaDefaults(t *testing.T) {

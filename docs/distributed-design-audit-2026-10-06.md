@@ -2,6 +2,8 @@
 
 > 状态：Historical / Audit。审查基线为远端 `main@63d4a4c583502c6604468b1150a3a802e5ce895f`（冻结日期：2026-10-06）。第 2–7 节保留该版本的设计审核快照，固定源码链接说明修复前的机制与缺口。PR #139 随后实施 D1–D5 的修复，处置详情与验证边界见第 8 节；容量建议仍待测量，不代表已经实施。
 
+> 当前拓扑提示：下文的四角色、双 Lease 和对应测试属于所列历史基线。当前统一节点使用单 Leader，迁移必须先停旧拓扑；见[分布式运行时设计](enterprise-distributed-runtime-design.md)与[部署迁移](helm-deployment.md#从旧四角色迁移)。历史证据不作为新拓扑验收结果。
+
 ## 1. 审核结论与范围
 
 Eruun 当前是单 Kubernetes 集群内的分布式 Application/Workflow Runtime：同一 Go 二进制按 API、Controller、Scheduler、Worker 四种角色运行，MySQL 保存业务与执行所有权，Redis/Kafka 传输通知，Kubernetes 管理实际工作负载。API/Worker 可以并行处理工作；Controller/Scheduler 各有一个有效 Leader，其额外副本主要提供接管能力。
@@ -284,7 +286,7 @@ Artifact 的 HTTP/gRPC 下载已经先落本地临时文件，再发送到网络
 
 ## 8. PR #139 修复处置与验证边界
 
-本 PR 在同一审核分支修复 D1–D5，不新增协调服务，不改变四角色部署拓扑。上文固定 SHA 的链接继续用于解释原问题；以下相对链接指向包含修复的代码。
+D1–D5 修复阶段未新增协调服务、未改变当时的四角色拓扑；同一 PR 后续按用户要求迁移为统一节点单 Leader。此节保留 D1–D5 的处置与当时验证边界，新拓扑以 Current 文档为准。上文固定 SHA 的链接继续用于解释原问题；以下相对链接指向包含修复的代码。
 
 ### 8.1 已实施的行为
 

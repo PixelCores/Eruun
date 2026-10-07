@@ -4,7 +4,7 @@
 # - workflow.callbackTimeoutMax -> --workflow-callback-timeout-max
 # - env key: ERUUN_WORKFLOW_CALLBACK_TIMEOUT_MAX
 
-# Required account/OAuth/delivery/workspace Secret JSON, read by all roles.
+# Required account/OAuth/delivery/workspace Secret JSON, read by every runtime node.
 # Flag --auth-config-file, environment ERUUN_AUTH_CONFIG_FILE.
 authConfigFile: /var/run/secrets/eruun/accounts/accounts.json
 # Optional Harbor Runner / MinIO configuration mounted from a Secret.
@@ -30,6 +30,18 @@ messaging:
   kafkaAutoOffsetReset: earliest
   kafkaTopicPartitions: 1
   kafkaTopicReplicationFactor: 1
+
+# Every node participates in the same Lease election. Only its leader serves
+# business APIs and scheduling; other nodes execute tasks.
+leader:
+  # --leader-lock-name / ERUUN_LEADER_LOCK_NAME
+  lockName: eruun-runtime
+  # --leader-service-name / ERUUN_LEADER_SERVICE_NAME. Empty for local access;
+  # cluster deployments set the API Service and --pod-name to the Pod name.
+  # Election --id defaults to a fresh UUID for each process; do not reuse Pod names.
+  serviceName: ""
+  namespace: eruun-system
+  duration: 15s
 
 workflow:
   # Maximum timeout for workflow callback requests.

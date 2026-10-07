@@ -15,5 +15,7 @@ spec:
       port: {{ .Values.service.grpcPort }}
       targetPort: grpc
   selector:
-    app.kubernetes.io/component: api
+    app.kubernetes.io/component: runtime
     app.kubernetes.io/instance: {{ .Release.Name }}
+    # The elected leader replaces this sentinel with its Pod UID.
+    eruun.io/runtime-id: unassigned

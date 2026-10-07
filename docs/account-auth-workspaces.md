@@ -6,7 +6,7 @@
 
 ## 部署与配置
 
-全部运行角色从 `--auth-config-file` / `ERUUN_AUTH_CONFIG_FILE` 读取同一份严格 JSON 配置，示例为 [`deploy/accounts.example.json`](../deploy/accounts.example.json)。复制到仓库外的私密文件，权限设为 `0600`，填写真实值后再部署。配置不通过系统设置 API 读取或修改，变更后滚动重启所有角色。未知字段、占位凭据、无效 Origin、缺少集群网络配置会使启动失败。MySQL 与 Redis 是必需依赖，Redis 同时承担验证码、OAuth state 和限流；Kafka 不能替代它。
+全部节点从 `--auth-config-file` / `ERUUN_AUTH_CONFIG_FILE` 读取同一份严格 JSON 配置，示例为 [`deploy/accounts.example.json`](../deploy/accounts.example.json)。复制到仓库外的私密文件，权限设为 `0600`，填写真实值后再部署。配置不通过系统设置 API 读取或修改，变更后重启所有节点（从旧四角色迁移须先按维护窗口停旧拓扑）。未知字段、占位凭据、无效 Origin、缺少集群网络配置会使启动失败。MySQL 与 Redis 是必需依赖，Redis 同时承担验证码、OAuth state 和限流；Kafka 不能替代它。
 
 | 配置 | 契约 |
 | --- | --- |
@@ -63,7 +63,7 @@ helm upgrade --install eruun deploy/helm/eruun -n eruun-system \
 
 登录结果的 `data` 包含 `accessToken`、`tokenType: Bearer`、`expiresIn: 900`、`user`。随机令牌在数据库只保存 SHA-256 哈希；access 默认 15 分钟，会话有 7 天 refresh 空闲期限和 30 天绝对期限，成功刷新只推进空闲期限，不延长绝对期限。业务 API 访问不写 Session，也不推进空闲期限。refresh 位于 `__Secure-eruun-refresh` Cookie，Path `/api/v1/auth`，HttpOnly、Secure、SameSite=Lax。refresh 由稳定的随机族选择器和每次轮换的随机凭证组成；Session 只保存族选择器和当前完整 refresh 值的哈希，轮换不会新增历史行。任一旧值仍能通过族选择器定位当前 Session，随后因完整值哈希不匹配触发原子撤销，并记录不含令牌值的安全事件。因此客户端必须对 refresh 做 single-flight，不能把并发刷新当成普通重试。角色和停用状态每次请求从服务端读取，移除或降权影响后续请求。登出撤销当前会话，改密、重置或停用撤销全部会话。刷新不更新“近期身份验证”时间；敏感操作过期时重新登录。
 
-API 角色启动后立即清理绝对过期或 refresh 空闲过期的 Session，之后每小时重复执行。签发、认证、刷新与清理均使用数据库 UTC 时钟，避免 API 副本时钟偏差提前撤销共享 Session。清理失败会记录错误并在下一周期重试，不改变认证时的 fail-closed 过期判断。
+Leader API 任期启动后立即清理绝对过期或 refresh 空闲过期的 Session，之后每小时重复执行。签发、认证、刷新与清理均使用数据库 UTC 时钟，避免 API 副本时钟偏差提前撤销共享 Session。清理失败会记录错误并在下一周期重试，不改变认证时的 fail-closed 过期判断。
 
 GitHub/Google 使用授权码、PKCE S256、随机 state、浏览器绑定。Google 校验 RS256 签名、issuer、audience、有效期和 nonce；GitHub 每次重新读取稳定数字 ID，不以用户名标识账号。首次第三方登录创建个人空间，仅将提供方确认验证的邮箱绑定为邮箱身份。邮箱与现有账号重复时返回 33002，要求登录原账号再绑定；不会按同名邮箱静默合并账号。第三方凭据或错误正文不返回客户端。
 
@@ -147,7 +147,7 @@ OAuth 前端先 POST start，再导航到 authorizationURL。回调页从当前 
 
 API 资源操作及后台执行使用 namespace 内受限 `eruun-runner` 身份；工作负载本身使用无 token 挂载的 default ServiceAccount。Pod 必须非 root、禁止提权、drop ALL capabilities、RuntimeDefault seccomp。镜像须支持非 root USER，或在 securityPolicy 设置非零 runAsUser。入口及展开后的最终容器（含 init、sidecar）均校验；拒绝 host namespace、hostPath、hostPort、任意 ServiceAccount、额外 RBAC、CloudJob、跨 namespace、NodePort/LoadBalancer、任意 Ingress 注解/域名/默认后端、不允许的存储类。
 
-展开后的任务在资源比较和持久化之前写入与请求边界相同的安全默认值；规范化会完整替换对象内容，包括清除已移除的嵌套字段（如 Localhost seccomp 的 localhostProfile），相同配置再次部署不会因这些默认值触发 Deployment/StatefulSet 滚动更新。延迟 Job 到期时从已提交 JobInfo 的 AppID 读取应用及空间，重新验证 namespace 归属，并使用该空间的受限客户端执行。Controller RBAC 仅增加 namespace 读取和指定 `eruun-runner` 的 impersonation，不负责空间初始化。
+展开后的任务在资源比较和持久化之前写入与请求边界相同的安全默认值；规范化会完整替换对象内容，包括清除已移除的嵌套字段（如 Localhost seccomp 的 localhostProfile），相同配置再次部署不会因这些默认值触发 Deployment/StatefulSet 滚动更新。延迟 Job 到期时从已提交 JobInfo 的 AppID 读取应用及空间，重新验证 namespace 归属，并使用该空间的受限客户端执行。延迟执行继续使用空间受限身份；节点的统一 RBAC 不取消 namespace 与指定 `eruun-runner` impersonation 的边界。
 
 延迟通知须与持久化检查点一致，不一致的通知仅确认消息，不修改检查点，正确任务仍可由数据库恢复。对已核实检查点的空间/工作负载校验失败，先按执行身份和当前状态原子写入失败终态，再确认消息；未创建的 Job 不标为已派发。失败写入或消息确认失败可重试，已有终态、新一代执行及已交给结果处理的任务不会被覆盖。
 

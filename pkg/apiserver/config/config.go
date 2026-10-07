@@ -18,11 +18,12 @@ import (
 )
 
 type leaderConfig struct {
-	ID                 string
-	ControllerLockName string
-	SchedulerLockName  string
-	Duration           time.Duration
-	Namespace          string
+	ID          string
+	PodName     string
+	LockName    string
+	ServiceName string
+	Duration    time.Duration
+	Namespace   string
 }
 
 const (
@@ -38,12 +39,10 @@ type Config struct {
 	Accounts       *spec.AccountConfig
 	JobsConfigFile string
 	Jobs           *spec.JobsRuntimeConfig
-	// Role selects the explicit runtime responsibility for this process.
-	Role RuntimeRole
 
 	// api server bind address
 	BindAddr string
-	// GRPCBindAddr is the separate gRPC listener used by the api role.
+	// GRPCBindAddr is the separate gRPC listener used by the leader.
 	GRPCBindAddr string
 
 	// APIRateLimitQPS limits expensive API operations. Set 0 to disable it.
@@ -77,9 +76,6 @@ type Config struct {
 
 	// KubeQPS the QPS of kube client
 	KubeQPS float64
-
-	// ExitOnLostLeader exits the process after leader election is lost.
-	ExitOnLostLeader bool
 
 	// Messaging configuration (pub/sub)
 	Messaging MessagingConfig
@@ -142,17 +138,15 @@ func (c *Config) WorkflowRuntime() workflowconfig.RuntimeConfig {
 
 func NewConfig() *Config {
 	return &Config{
-		Role:              RuntimeRoleAPI,
 		BindAddr:          "127.0.0.1:8001",
 		GRPCBindAddr:      "127.0.0.1:9001",
 		APIRateLimitQPS:   0,
 		APIRateLimitBurst: 0,
 		LeaderConfig: leaderConfig{
-			ID:                 uuid.New().String(),
-			ControllerLockName: "eruun-controller",
-			SchedulerLockName:  "eruun-scheduler",
-			Duration:           defaultLeaderLeaseDuration,
-			Namespace:          NAMESPACE,
+			ID:        uuid.New().String(),
+			LockName:  "eruun-runtime",
+			Duration:  defaultLeaderLeaseDuration,
+			Namespace: NAMESPACE,
 		},
 		Datastore: datastore.Config{
 			Type: MYSQL,
@@ -176,7 +170,6 @@ func NewConfig() *Config {
 		},
 		KubeQPS:                100,
 		KubeBurst:              300,
-		ExitOnLostLeader:       true,
 		EnableTracing:          true,
 		JaegerEndpoint:         "",
 		AllowPrivateURLTargets: false,
@@ -210,17 +203,13 @@ func (c *Config) Validate() []error {
 	if schemaMode == DatastoreSchemaModeMigrateOnly {
 		return errs
 	}
-	_, roleValid := NormalizeRuntimeRole(string(c.Role))
-	if !roleValid {
-		errs = append(errs, fmt.Errorf("runtime role must be one of api, controller, scheduler, worker; got %q", c.Role))
-	}
 	if strings.TrimSpace(c.BindAddr) == "" {
 		errs = append(errs, fmt.Errorf("bind address cannot be empty"))
 	}
-	if c.NormalizedRole() == RuntimeRoleAPI && strings.TrimSpace(c.GRPCBindAddr) == "" {
+	if strings.TrimSpace(c.GRPCBindAddr) == "" {
 		errs = append(errs, fmt.Errorf("grpc bind address cannot be empty"))
 	}
-	if c.NormalizedRole() == RuntimeRoleAPI && c.GRPCBindAddr == c.BindAddr {
+	if c.GRPCBindAddr == c.BindAddr {
 		errs = append(errs, fmt.Errorf("grpc bind address must differ from http bind address"))
 	}
 	apiRateLimitQPSValid := !math.IsNaN(c.APIRateLimitQPS) && !math.IsInf(c.APIRateLimitQPS, 0) && c.APIRateLimitQPS >= 0
@@ -251,27 +240,28 @@ func (c *Config) validateLeaderElection() []error {
 	if c.LeaderConfig.Duration < minLeaderLeaseDuration {
 		errs = append(errs, fmt.Errorf("leader election lease duration must be >= 4s, got %s", c.LeaderConfig.Duration))
 	}
-	controllerLockName := strings.TrimSpace(c.LeaderConfig.ControllerLockName)
-	schedulerLockName := strings.TrimSpace(c.LeaderConfig.SchedulerLockName)
-	for _, lock := range []struct {
-		scope string
-		raw   string
-		name  string
-	}{
-		{scope: "controller", raw: c.LeaderConfig.ControllerLockName, name: controllerLockName},
-		{scope: "scheduler", raw: c.LeaderConfig.SchedulerLockName, name: schedulerLockName},
-	} {
-		switch {
-		case lock.name == "":
-			errs = append(errs, fmt.Errorf("%s leader election lock name cannot be empty", lock.scope))
-		case lock.raw != lock.name:
-			errs = append(errs, fmt.Errorf("%s leader election lock name must not contain leading or trailing whitespace", lock.scope))
-		case len(k8svalidation.IsDNS1123Subdomain(lock.name)) > 0:
-			errs = append(errs, fmt.Errorf("%s leader election lock name must be a valid DNS-1123 subdomain", lock.scope))
-		}
+	lockName := strings.TrimSpace(c.LeaderConfig.LockName)
+	switch {
+	case lockName == "":
+		errs = append(errs, fmt.Errorf("leader election lock name cannot be empty"))
+	case lockName != c.LeaderConfig.LockName:
+		errs = append(errs, fmt.Errorf("leader election lock name must not contain leading or trailing whitespace"))
+	case len(k8svalidation.IsDNS1123Subdomain(lockName)) > 0:
+		errs = append(errs, fmt.Errorf("leader election lock name must be a valid DNS-1123 subdomain"))
 	}
-	if controllerLockName != "" && controllerLockName == schedulerLockName {
-		errs = append(errs, fmt.Errorf("controller and scheduler leader election lock names must be distinct"))
+	if strings.TrimSpace(c.LeaderConfig.ID) == "" {
+		errs = append(errs, fmt.Errorf("leader election identity cannot be empty"))
+	}
+	if len(k8svalidation.IsDNS1123Label(c.LeaderConfig.Namespace)) > 0 {
+		errs = append(errs, fmt.Errorf("leader namespace must be a valid DNS-1123 label"))
+	}
+	if c.LeaderConfig.ServiceName != "" {
+		if len(k8svalidation.IsDNS1035Label(c.LeaderConfig.ServiceName)) > 0 {
+			errs = append(errs, fmt.Errorf("leader service name must be a valid DNS-1035 label"))
+		}
+		if len(k8svalidation.IsDNS1123Subdomain(c.LeaderConfig.PodName)) > 0 {
+			errs = append(errs, fmt.Errorf("pod name must be a valid DNS-1123 subdomain when leader service is configured"))
+		}
 	}
 	return errs
 }
@@ -316,21 +306,19 @@ func (c *Config) validateMessaging() []error {
 func (c *Config) AddFlags(fs *pflag.FlagSet, configParameter *Config) {
 	fs.StringVar(&c.AuthConfigFile, "auth-config-file", c.AuthConfigFile, "Mounted Secret JSON containing account and workspace configuration (required)")
 	fs.StringVar(&c.JobsConfigFile, "jobs-config-file", c.JobsConfigFile, "Mounted Secret JSON configuring Harbor Runner and optional MinIO result storage")
-	c.Role = configParameter.Role
-	fs.Var((*runtimeRoleValue)(&c.Role), "role", "runtime role: api|controller|scheduler|worker")
 	fs.StringVar(&c.BindAddr, "bind-addr", configParameter.BindAddr, "The bind address used to serve the http APIs.")
-	fs.StringVar(&c.GRPCBindAddr, "grpc-bind-addr", configParameter.GRPCBindAddr, "The bind address used to serve gRPC APIs on the api role.")
+	fs.StringVar(&c.GRPCBindAddr, "grpc-bind-addr", configParameter.GRPCBindAddr, "The bind address used to serve gRPC APIs on the leader.")
 	fs.Float64Var(&c.APIRateLimitQPS, "api-rate-limit-qps", configParameter.APIRateLimitQPS, "API rate limit for expensive operations in requests per second (0 disables)")
 	fs.IntVar(&c.APIRateLimitBurst, "api-rate-limit-burst", configParameter.APIRateLimitBurst, "API rate limit burst size for expensive operations (required when api-rate-limit-qps > 0)")
 	fs.BoolVar(&c.AllowPrivateURLTargets, "allow-private-url-targets", configParameter.AllowPrivateURLTargets, "allow outbound URL targets that resolve to private/loopback/link-local addresses")
-	fs.StringVar(&c.LeaderConfig.ID, "id", configParameter.LeaderConfig.ID, "the holder identity name")
-	fs.StringVar(&c.LeaderConfig.ControllerLockName, "controller-lock-name", configParameter.LeaderConfig.ControllerLockName, "the controller leader-election lease name")
-	fs.StringVar(&c.LeaderConfig.SchedulerLockName, "scheduler-lock-name", configParameter.LeaderConfig.SchedulerLockName, "the scheduler leader-election lease name")
+	fs.StringVar(&c.LeaderConfig.ID, "id", configParameter.LeaderConfig.ID, "the unique process holder identity (defaults to a new UUID)")
+	fs.StringVar(&c.LeaderConfig.PodName, "pod-name", configParameter.LeaderConfig.PodName, "the Pod name used when publishing the leader API Service")
+	fs.StringVar(&c.LeaderConfig.LockName, "leader-lock-name", configParameter.LeaderConfig.LockName, "the shared runtime leader-election lease name")
+	fs.StringVar(&c.LeaderConfig.ServiceName, "leader-service-name", configParameter.LeaderConfig.ServiceName, "the API Service whose selector follows the elected leader (empty for local access)")
 	fs.DurationVar(&c.LeaderConfig.Duration, "duration", configParameter.LeaderConfig.Duration, "leader election lease duration (e.g.15s)")
 	fs.StringVar(&c.LeaderConfig.Namespace, "leader-namespace", configParameter.LeaderConfig.Namespace, "namespace for leader election lease")
 	fs.Float64Var(&c.KubeQPS, "kube-api-qps", configParameter.KubeQPS, "the qps for kube clients. Low qps may lead to low throughput. High qps may give stress to api-server.")
 	fs.IntVar(&c.KubeBurst, "kube-api-burst", configParameter.KubeBurst, "the burst for kube clients. Recommend setting it qps*3.")
-	fs.BoolVar(&c.ExitOnLostLeader, "exit-on-lost-leader", configParameter.ExitOnLostLeader, "exit the process if this server lost the leader election")
 	fs.StringVar(&c.Datastore.Type, "datastore-type", configParameter.Datastore.Type, "datastore backend type (mysql only)")
 	fs.StringVar(&c.Datastore.URL, "datastore-url", configParameter.Datastore.URL, "MySQL connection DSN, including the database name (replace the default password placeholder before starting)")
 	fs.StringVar(&c.DatastoreSchemaMode, "datastore-schema-mode", configParameter.DatastoreSchemaMode, "datastore schema handling: migrate|validate|migrate-only")
@@ -380,26 +368,6 @@ func (c *Config) AddFlags(fs *pflag.FlagSet, configParameter *Config) {
 	profiling.AddFlags(fs)
 }
 
-type runtimeRoleValue RuntimeRole
-
-func (r *runtimeRoleValue) String() string {
-	if r == nil || *r == "" {
-		return string(RuntimeRoleAPI)
-	}
-	return string(*r)
-}
-
-func (r *runtimeRoleValue) Set(value string) error {
-	role, ok := NormalizeRuntimeRole(value)
-	if !ok {
-		return fmt.Errorf("invalid runtime role %q", value)
-	}
-	*r = runtimeRoleValue(role)
-	return nil
-}
-
-func (r *runtimeRoleValue) Type() string { return "runtime-role" }
-
 func normalizeDatastoreSchemaMode(value string) (string, bool) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "", DatastoreSchemaModeMigrate:
@@ -425,71 +393,12 @@ func (c Config) MigrateSchemaOnly() bool {
 	return c.NormalizedDatastoreSchemaMode() == DatastoreSchemaModeMigrateOnly
 }
 
-func NormalizeRuntimeRole(value string) (RuntimeRole, bool) {
-	switch RuntimeRole(strings.ToLower(strings.TrimSpace(value))) {
-	case RuntimeRoleAPI:
-		return RuntimeRoleAPI, true
-	case RuntimeRoleController:
-		return RuntimeRoleController, true
-	case RuntimeRoleScheduler:
-		return RuntimeRoleScheduler, true
-	case RuntimeRoleWorker:
-		return RuntimeRoleWorker, true
-	case "":
-		return RuntimeRoleAPI, true
-	default:
-		return "", false
-	}
-}
-
-func (c Config) NormalizedRole() RuntimeRole {
-	role, ok := NormalizeRuntimeRole(string(c.Role))
-	if !ok {
-		return RuntimeRoleAPI
-	}
-	return role
-}
-
-func (c Config) RunsAPI() bool {
-	return c.NormalizedRole() == RuntimeRoleAPI
-}
-
-func (c Config) RunsController() bool {
-	return c.NormalizedRole() == RuntimeRoleController
-}
-
-func (c Config) RunsScheduler() bool {
-	return c.NormalizedRole() == RuntimeRoleScheduler
-}
-
-func (c Config) RunsWorker() bool {
-	return c.NormalizedRole() == RuntimeRoleWorker
-}
-
-func (c Config) RequiresDispatchQueue() bool {
-	return c.RunsScheduler() || c.RunsWorker()
-}
-
-func (c Config) RequiresDelayQueue() bool {
-	return c.RunsController() || c.RunsWorker()
-}
-
-func (c Config) RequiresResultQueue() bool {
-	return c.RunsController()
-}
-
 func (c Config) RuntimeMessagingTopics() []string {
-	topics := make([]string, 0, 3)
-	if c.RequiresDispatchQueue() {
-		topics = append(topics, workflowconfig.DispatchTopic(c.Messaging.ChannelPrefix))
+	return []string{
+		workflowconfig.DispatchTopic(c.Messaging.ChannelPrefix),
+		workflowconfig.DelayTopic(c.Messaging.ChannelPrefix),
+		workflowconfig.ResultTopic(c.Messaging.ChannelPrefix),
 	}
-	if c.RequiresDelayQueue() {
-		topics = append(topics, workflowconfig.DelayTopic(c.Messaging.ChannelPrefix))
-	}
-	if c.RequiresResultQueue() {
-		topics = append(topics, workflowconfig.ResultTopic(c.Messaging.ChannelPrefix))
-	}
-	return topics
 }
 
 // HasExternalQueue returns true if a supported distributed queue backend is configured.

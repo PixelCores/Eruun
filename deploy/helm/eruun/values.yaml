@@ -31,10 +31,10 @@ redis:
   resources: {}
 
 runtime:
-  # Empty lock names derive release-scoped defaults from eruun.fullname.
-  # Set explicit names only when coordinated lock sharing is intentional.
-  controllerLockName: ""
-  schedulerLockName: ""
+  # Empty derives a release-scoped Lease name from eruun.fullname.
+  leaderLockName: ""
+  # One elected leader and three workers by default. Every replica can lead.
+  replicas: 4
   heartbeatInterval: 10s
   leaseDuration: 30s
   leaseReaperInterval: 10s
@@ -42,43 +42,13 @@ runtime:
   # Must remain longer than workerDrainTimeoutSeconds so Kubernetes does not SIGKILL
   # a Worker while it is completing its graceful drain.
   terminationGracePeriodSeconds: 90
-  roles:
-    api:
-      replicas: 2
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: 500m
-          memory: 512Mi
-    controller:
-      replicas: 2
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: 500m
-          memory: 512Mi
-    scheduler:
-      replicas: 2
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: 500m
-          memory: 512Mi
-    worker:
-      replicas: 3
-      resources:
-        requests:
-          cpu: 250m
-          memory: 256Mi
-        limits:
-          cpu: "1"
-          memory: 1Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
 
 podDisruptionBudget:
   enabled: true
@@ -92,13 +62,8 @@ topologySpreadConstraints:
 
 serviceAccount:
   create: true
-  # Required per role when create=false.
-  # The Scheduler name must differ from api/controller/worker so it cannot inherit their ClusterRole.
-  roleNames:
-    api: ""
-    controller: ""
-    scheduler: ""
-    worker: ""
+  # Required when create=false; otherwise defaults to the runtime workload name.
+  name: ""
   annotations: {}
   automountServiceAccountToken: true
 

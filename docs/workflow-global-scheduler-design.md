@@ -4,7 +4,7 @@
 
 ## 1. 适用性结论
 
-原设计的数据库事实源、generation/token fencing、Worker heartbeat 和 Scheduler Leader 适用 Eruun，继续使用。原先只以 Workflow Run 为准入单位，不能满足跨 Workflow 排列每一个 Job：长 Workflow 会持续占用执行机会，内部 ready Job 无法与其他 Workflow 竞争。因此本实现把**执行机会的选择下沉到依赖已就绪的 Eruun JobTask**，保留 Workflow 的调度、步骤、审批、取消和恢复 ownership。
+原设计的数据库事实源、generation/token fencing、Worker heartbeat 和 Leader 内 Scheduler 适用 Eruun，继续使用。原先只以 Workflow Run 为准入单位，不能满足跨 Workflow 排列每一个 Job：长 Workflow 会持续占用执行机会，内部 ready Job 无法与其他 Workflow 竞争。因此本实现把**执行机会的选择下沉到依赖已就绪的 Eruun JobTask**，保留 Workflow 的调度、步骤、审批、取消和恢复 ownership。
 
 不新增 Scheduler 服务、CRD、顶层队列表或另一套执行租约。既有 `JobInfo` 同时保存 Job 执行记录和调度状态；既有 `SystemSetting` 的 `workflow_scheduler` 行保存全局策略，并作为准入事务的串行锁。当前 `scheduler` 角色负责放行，`worker` 负责提交 ready Job、等待准入、执行和释放；API 处理审批取消或拒绝产生的终态回调，也登记并等待同一准入。
 
@@ -142,7 +142,7 @@ Workflow lease 恢复会读取已持久的运行中 retry checkpoint，保留原
 
 现有 task stages 查询的 `info` 展示每个已登记 Job 的调度状态、class、首次排队时间与原因。Job 记录保存 attempt 和最终错误；结构化日志说明 OOM 决策与调度错误。Workspace 身份不作为无界 Prometheus label。
 
-升级需要先完成 schema migration，再统一升级四角色；新增调度列使用可空字段或明确的零值默认值，不改旧 Job 业务状态。回滚前应停止接收新任务并排空已启用 retry policy 的运行中 Job；旧 Worker 不理解新的准入与 checkpoint，不能混跑并声称全局上限有效。
+升级需要先完成 schema migration，再升级统一节点；从旧四角色切换时必须先按[部署维护窗口](helm-deployment.md#从旧四角色迁移)停止旧拓扑，不能混跑；新增调度列使用可空字段或明确的零值默认值，不改旧 Job 业务状态。回滚前应停止接收新任务并排空已启用 retry policy 的运行中 Job；旧 Worker 不理解新的准入与 checkpoint，不能混跑并声称全局上限有效。
 
 本实现不包括 GPU/设备容量预留、节点放置、按资源量的配额、gang scheduling、checkpoint 抢占或任务 deadline 公共 API。需要这些能力时再基于明确负载与 Kubernetes 侧资源事实设计，不能把本次逻辑并发槽位解释为这些功能。
 

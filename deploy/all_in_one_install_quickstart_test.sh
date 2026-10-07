@@ -34,6 +34,8 @@ if [ "${ERUUN_QUICKSTART_FAKE_COMMAND:-false}" = "true" ]; then
     exit 1
   fi
   case "$*" in
+    *"get deployment "*) printf '%s' "${FAKE_OLD_RUNTIME_REPLICAS:-}"; exit 0 ;;
+    *"get pods -l "*) printf '%s' "${FAKE_OLD_RUNTIME_PODS:-}"; exit 0 ;;
     *"get secret eruun-mysql-secret"*"mysql-root-password"*) fakeSecretValue "${FAKE_EXISTING_MYSQL_ROOT:-}" ;;
     *"get secret eruun-mysql-secret"*"mysql-user"*) fakeSecretValue "${FAKE_EXISTING_MYSQL_USER:-}" ;;
     *"get secret eruun-mysql-secret"*"mysql-password"*) fakeSecretValue "${FAKE_EXISTING_MYSQL_PASSWORD:-}" ;;
@@ -489,10 +491,7 @@ runLongHelmDependencyNameContract() {
   assertContains "${command_log}" "get secret ${redis_name}"
   assertContains "${command_log}" "get persistentvolumeclaim data-${mysql_name}-0 -o name"
   assertContains "${command_log}" "get persistentvolumeclaim data-${redis_name}-0 -o name"
-  assertContains "${command_log}" "rollout status deployment/$(printf '%059d' 0 | tr 0 f)-api"
-  assertContains "${command_log}" "rollout status deployment/$(printf '%052d' 0 | tr 0 f)-controller"
-  assertContains "${command_log}" "rollout status deployment/$(printf '%053d' 0 | tr 0 f)-scheduler"
-  assertContains "${command_log}" "rollout status deployment/$(printf '%056d' 0 | tr 0 f)-worker"
+  assertContains "${command_log}" "rollout status deployment/$(printf '%055d' 0 | tr 0 f)-runtime"
   assertContains "${command_log}" "rollout status statefulset/${mysql_name}"
   assertContains "${command_log}" "rollout status statefulset/${redis_name}"
   assertContains "${command_log}" "port-forward svc/${fullname}"
@@ -501,6 +500,42 @@ runLongHelmDependencyNameContract() {
   [ "${#redis_name}" -eq 63 ] || fail "Quickstart Redis dependency name must be 63 characters"
   rm -f "${case_dir}/tmp/eruun-port-forward.log"
   assertTempFilesCleaned "${case_dir}"
+}
+
+runUnifiedRuntimeMigrationContract() {
+  local scenario case_dir command_log output
+  for scenario in replicas pods invalid-count valid; do
+    case_dir=$(newCase "unified-${scenario}")
+    command_log="${case_dir}/commands.log"
+    output="${case_dir}/output.log"
+    local old_replicas="" old_pods="" node_count=4
+    case "${scenario}" in
+      replicas) old_replicas="0 0 1" ;;
+      pods) old_pods="pod/eruun-controller-old" ;;
+      invalid-count) node_count=1 ;;
+    esac
+    if env ERUUN_QUICKSTART_FAKE_COMMAND=true FAKE_COMMAND_LOG="${command_log}" \
+      FAKE_OLD_RUNTIME_REPLICAS="${old_replicas}" FAKE_OLD_RUNTIME_PODS="${old_pods}" \
+      INSTALL_MODE=manifest MANIFEST="${case_dir}/eruun-stack.yaml" \
+      KUBECTL_BIN="${TEST_SCRIPT}" OPENSSL_BIN="${TEST_SCRIPT}" TMPDIR="${case_dir}/tmp" \
+      SKIP_CONFIRM=true WAIT_READY=true REPLICA_COUNT="${node_count}" \
+      IMAGE_REPOSITORY=example.com/eruun IMAGE_TAG=test "${case_dir}/installer.sh" > "${output}" 2>&1; then
+      [ "${scenario}" = valid ] || fail "unsafe ${scenario} migration must fail"
+      assertContains "${command_log}" "scale deployment/eruun-runtime --replicas=4"
+      assertContains "${command_log}" "set image deployment/eruun-runtime eruun-server=example.com/eruun:test"
+      assertContains "${command_log}" "rollout status deployment/eruun-runtime"
+    else
+      [ "${scenario}" != valid ] || fail "valid unified runtime installation must succeed"
+      if [ "${scenario}" = invalid-count ]; then
+        assertContains "${output}" "REPLICA_COUNT must be >= 2"
+      else
+        assertContains "${output}" "old four-role"
+        assertNotContains "${command_log}" "apply -f"
+        assertNotContains "${command_log}" "create secret generic"
+      fi
+    fi
+    assertTempFilesCleaned "${case_dir}"
+  done
 }
 
 runManifestGeneratedSecretsContract
@@ -515,5 +550,6 @@ runPersistentCredentialReadFailureContract
 runPersistentCredentialMissingKeyContract
 runPersistentResourceWithoutCredentialContract
 runLongHelmDependencyNameContract
+runUnifiedRuntimeMigrationContract
 
 printf '%s\n' "Eruun quickstart tests passed"

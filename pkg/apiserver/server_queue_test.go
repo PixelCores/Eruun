@@ -613,7 +613,7 @@ func TestEnsureKafkaMessagingReadySkipsNonKafka(t *testing.T) {
 	require.NoError(t, server.ensureKafkaMessagingReady())
 }
 
-func TestEnsureKafkaMessagingReadyUsesOnlyRoleTopics(t *testing.T) {
+func TestEnsureKafkaMessagingReadyPreparesAllRuntimeTopics(t *testing.T) {
 	oldEnsureKafka := ensureKafkaMessaging
 	var captured clients.KafkaConfig
 	calls := 0
@@ -633,33 +633,14 @@ func TestEnsureKafkaMessagingReadyUsesOnlyRoleTopics(t *testing.T) {
 		KafkaTopicPartitions:        3,
 		KafkaTopicReplicationFactor: 2,
 	}}
-	tests := []struct {
-		role   config.RuntimeRole
-		topics []string
-	}{
-		{role: config.RuntimeRoleAPI},
-		{role: config.RuntimeRoleController, topics: []string{"tenant-a.job.delay", "tenant-a.job.result"}},
-		{role: config.RuntimeRoleScheduler, topics: []string{"tenant-a.workflow.dispatch"}},
-		{role: config.RuntimeRoleWorker, topics: []string{"tenant-a.workflow.dispatch", "tenant-a.job.delay"}},
-	}
-	for _, tc := range tests {
-		t.Run(string(tc.role), func(t *testing.T) {
-			cfg := base
-			cfg.Role = tc.role
-			server := &restServer{cfg: cfg}
-			before := calls
-			require.NoError(t, server.ensureKafkaMessagingReady())
-			if len(tc.topics) == 0 {
-				require.Equal(t, before, calls)
-				return
-			}
-			require.Equal(t, before+1, calls)
-			require.Equal(t, tc.topics, captured.Topics)
-			require.Equal(t, []string{"broker-1:9092"}, captured.Brokers)
-			require.Equal(t, 3, captured.TopicPartitions)
-			require.Equal(t, 2, captured.TopicReplicationFactor)
-		})
-	}
+	server := &restServer{cfg: base}
+	require.NoError(t, server.ensureKafkaMessagingReady())
+	require.Equal(t, 1, calls)
+	require.Equal(t, []string{"tenant-a.workflow.dispatch", "tenant-a.job.delay", "tenant-a.job.result"}, captured.Topics)
+	require.Equal(t, []string{"broker-1:9092"}, captured.Brokers)
+	require.Equal(t, 3, captured.TopicPartitions)
+	require.Equal(t, 2, captured.TopicReplicationFactor)
+
 }
 
 func TestServerLifecycleRejectsNilContext(t *testing.T) {

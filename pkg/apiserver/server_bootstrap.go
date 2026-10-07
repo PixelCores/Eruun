@@ -56,6 +56,7 @@ func (s *restServer) registerAPIRoutes() {
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
+	s.webContainer.Use(s.leaderAPIMiddleware())
 	if s.cfg.APIRateLimitQPS > 0 {
 		if s.apiRateLimiter == nil {
 			s.apiRateLimiter = ratelimit.New(s.cfg.APIRateLimitQPS, s.cfg.APIRateLimitBurst)
@@ -221,7 +222,7 @@ func (s *restServer) Run(ctx context.Context, errChan chan error) error {
 			<-observerDone
 		}()
 	}
-	if s.cfg.RunsWorker() {
+	{
 		metricsDone := make(chan struct{})
 		go func() {
 			defer close(metricsDone)
@@ -234,24 +235,38 @@ func (s *restServer) Run(ctx context.Context, errChan chan error) error {
 	}
 	electionCtx, electionCancel := context.WithCancel(ctx)
 	defer electionCancel()
-	elections, err := s.setupRuntimeLeaderElections(electionCtx, errChan)
+	election, err := s.setupRuntimeLeaderElection(electionCtx, runCtx, errChan)
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil
 		}
 		return err
 	}
-	electionsDone := s.startRuntimeLeaderElections(electionCtx, elections)
+	if s.resourceObserver == nil {
+		return fmt.Errorf("worker resource observer is not configured")
+	}
+	// During initial cache sync no tasks need draining yet. Parent shutdown must
+	// interrupt sync even though the later runtime context survives graceful drain.
+	stopStartupCancellation := context.AfterFunc(ctx, runCancel)
+	observerErr := s.resourceObserver.Start(runCtx)
+	stopStartupCancellation()
+	if ctx.Err() != nil {
+		return nil
+	}
+	if observerErr != nil {
+		return fmt.Errorf("start worker resource observer: %w", observerErr)
+	}
+	s.startWorkers(runCtx, errChan)
+	electionsDone := make(chan struct{})
+	go func() { defer close(electionsDone); s.runRuntimeLeaderElection(electionCtx, election) }()
 	var shutdownOnce sync.Once
-	var runtimeLifecycleMu sync.Mutex
 	shutdown := func() {
 		shutdownOnce.Do(func() {
-			runtimeLifecycleMu.Lock()
-			defer runtimeLifecycleMu.Unlock()
 
 			// Leadership must stop before worker drain. This fences late callbacks
 			// while already-running worker executions use their separate context.
 			electionCancel()
+			s.pauseWorkerIntake()
 			<-electionsDone
 			drainTimeout := s.cfg.Workflow.WorkerDrainTimeout
 			if drainTimeout <= 0 {
@@ -260,6 +275,7 @@ func (s *restServer) Run(ctx context.Context, errChan chan error) error {
 			drainCtx, cancelDrain := context.WithTimeout(context.Background(), drainTimeout)
 			defer cancelDrain()
 			s.stopWorkers(drainCtx)
+			s.drainPromotedWorkers(drainCtx)
 			s.stopControllerRun()
 			s.stopSchedulerRun()
 			runCancel()
@@ -267,31 +283,8 @@ func (s *restServer) Run(ctx context.Context, errChan chan error) error {
 	}
 	defer shutdown()
 	watchRuntimeShutdown(ctx, runCtx, shutdown)
-	if s.cfg.RunsAPI() {
-		go s.accounts.RunSessionCleanup(runCtx)
-	}
+	klog.InfoS("Eruun runtime started", "role", s.RuntimeRole())
 
-	if s.cfg.RunsWorker() {
-		if s.resourceObserver == nil {
-			return fmt.Errorf("worker resource observer is not configured")
-		}
-		if err := s.resourceObserver.Start(runCtx); err != nil {
-			if ctx.Err() != nil {
-				return nil
-			}
-			return fmt.Errorf("start worker resource observer: %w", err)
-		}
-		runtimeLifecycleMu.Lock()
-		if runCtx.Err() == nil {
-			s.startWorkers(runCtx, errChan)
-		}
-		runtimeLifecycleMu.Unlock()
-	}
-	klog.InfoS("Eruun runtime started", "role", s.cfg.NormalizedRole(), "leaderElections", len(elections))
-
-	if !s.cfg.RunsAPI() {
-		return s.startHTTP(ctx)
-	}
 	serveGroup, serveCtx := errgroup.WithContext(ctx)
 	serveGroup.Go(func() error { return s.startHTTP(serveCtx) })
 	serveGroup.Go(func() error { return s.startGRPC(serveCtx) })

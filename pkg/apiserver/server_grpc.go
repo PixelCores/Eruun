@@ -21,7 +21,10 @@ func (s *restServer) startGRPC(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("listen for grpc on %s: %w", s.cfg.GRPCBindAddr, err)
 	}
-	server := grpcapi.NewServer(s.accounts, s.workspaceManager, s.grpcAdministration, s.grpcJobs, s.grpcApplications, s.apiRateLimiter)
+	server := grpcapi.NewServer(s.accounts, s.workspaceManager, s.grpcAdministration, s.grpcJobs, s.grpcApplications, s.apiRateLimiter,
+		grpc.UnaryInterceptor(s.leaderUnaryInterceptor),
+		grpc.StreamInterceptor(s.leaderStreamInterceptor),
+	)
 	shutdownComplete := make(chan struct{})
 	stopShutdownWatcher := make(chan struct{})
 	go func() {

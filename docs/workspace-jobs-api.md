@@ -8,7 +8,7 @@
 
 独立 Job 由平台生成 `taskId`，不要求 `appId`，不创建占位应用。Application 内评测沿用所属 Workflow 的 AppID 和 TaskID，以各 Job 的 `executionKey` 区分配置、状态、结果与保存策略。
 
-**契约迁移**：Trait 键由 `traits.evaluation` 改为 `traits.eval`，旧键不再接受；旧 `type: eval`、评测 `spec`、`framework/frameworkVersion`、`datasetId`、嵌套 `agent.model`、`options` 或顶层 `resultPolicy` 也不再接受。升级前排空或取消旧评测并确认 Kubernetes Job 已停止，导出所需历史结果，然后升级数据库 schema 和各运行角色。普通 `command` 请求不变。
+**契约迁移**：Trait 键由 `traits.evaluation` 改为 `traits.eval`，旧键不再接受；旧 `type: eval`、评测 `spec`、`framework/frameworkVersion`、`datasetId`、嵌套 `agent.model`、`options` 或顶层 `resultPolicy` 也不再接受。升级前排空或取消旧评测并确认 Kubernetes Job 已停止，导出所需历史结果，然后升级数据库 schema 和各运行节点。普通 `command` 请求不变。
 
 业务接口使用登录 Bearer Token 和 `X-Eruun-Workspace-ID`。读取需要空间成员权限，viewer 可读取；提交、上传、修改策略、取消及重试要求 member 或更高角色。创建请求可省略 `workspaceId`，由已授权的请求空间决定；若显式填写，必须与该空间一致。空间 ID 在创建空间时生成，不会为每个 Job 新建空间。
 
@@ -185,13 +185,13 @@ ACK 的 `data` 为 `{"acceptedSequence": 12, "action": "continue"}`，或在停�
 
 ## 管理员配置与部署
 
-普通 `command` 不依赖 Harbor 配置。启用评测时，为所有运行角色设置 `--jobs-config-file` / `ERUUN_JOBS_CONFIG_FILE`，指向只读 Secret JSON：
+普通 `command` 不依赖 Harbor 配置。启用评测时，为所有节点设置 `--jobs-config-file` / `ERUUN_JOBS_CONFIG_FILE`，指向只读 Secret JSON：
 
 ```json
 {
   "runnerImage": "registry.example.com/eruun-harbor-runner:0.22.0",
   "runnerWorkStorageMiB": 20480,
-  "apiURL": "http://eruun-api.eruun-system.svc:8000",
+  "apiURL": "http://eruun.eruun-system.svc:8000",
   "runnerEgress": [
     {"cidr": "192.0.2.10/32", "port": 443},
     {"cidr": "192.0.2.11/32", "port": 6443},
@@ -212,9 +212,9 @@ ACK 的 `data` 为 `{"acceptedSequence": 12, "action": "continue"}`，或在停�
 
 Runner 使用固定、无 Secret 读权限的空间 ServiceAccount，只获得 Pod 生命周期与 exec 能力。任务环境不挂载 API Token。空间仍强制 restricted Pod Security、UID 1000、禁止提权与 capabilities；见 [Runner 的镜像和适配边界](../pkg/apiserver/jobs/runners/harbor/README.md)。
 
-Helm 使用 `jobs.existingSecret` 和 `jobs.key` 挂载用户已创建的 Secret，Chart 不生成或公开存储凭据。四种角色需要相同配置；Controller 执行结果保存和 Sandbox 保留清理，Worker 执行 Harbor Job。API/Controller 获得指定 Sandbox CR 的独立 RBAC；Worker 不需 Sandbox 写权限。提供的单文件清单不默认启用 Harbor；使用 Helm 或为清单各角色手动挂载配置。
+Helm 使用 `jobs.existingSecret` 和 `jobs.key` 把用户创建的 Secret 挂载到全部节点，Chart 不生成或公开存储凭据。Leader 的 Controller 执行结果保存和 Sandbox 保留清理，Worker 执行 Harbor Job；统一运行身份具备接任所需的 Sandbox 权限，业务任务仍使用空间受限身份。提供的单文件清单不默认启用 Harbor，启用时需为统一 Deployment 挂载配置。
 
-阶段一升级顺序：先运行 schema 迁移并部署新 RBAC；完成所有 API/Controller 读方升级，确认旧 Runner 的 v1 事件与 Pod 路径仍可用；再部署支持两种配置的 Runner 镜像和新 Worker，后者为新执行生成 `sandboxURL`；全部 Server 升级后才写新增 scheduler/部署配置字段。旧配置无 `sandboxURL` 时，新 Runner 仍读取旧 Pod 协议；已经运行的旧 Runner 沿原资源完成，不能临时把它的 Pod 当作 Sandbox。禁止新 Worker 配旧 Runner 镜像，或新 Sandbox 请求落到旧 API。使用明确的新镜像 tag/digest，避免覆盖同名镜像。回滚前停止新准入并排空 Sandbox 执行和保留资源，不能将新字段交给旧版严格解码器。
+升级先核对 Runner/server 协议、镜像与 schema：旧配置无 `sandboxURL` 时，新 Runner 仍读取旧 Pod 协议，已有 Runner 沿原资源完成，不能临时把它的 Pod 当作 Sandbox。禁止新 Server 配不支持新 Sandbox 请求的旧 Runner 镜像。旧四角色双 Lease 转为统一节点时必须按 [Helm 维护窗口迁移](helm-deployment.md#从旧四角色迁移) 先停全部旧进程，协议读方兼容不等于拓扑可混跑。回滚前停止新准入并排空 Sandbox 执行和保留资源，不能将新字段交给旧严格解码器；使用明确镜像 tag/digest。
 
 若来自更早的**无 claim 协议**版本，仍必须停止新评测并排空或明确取消旧评测、确认 Kubernetes Job 已停止，再升级并恢复提交；该版本不在上述已有 v1 Runner 的共存范围内。`command` 不进入此协议排空要求。
 

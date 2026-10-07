@@ -19,10 +19,6 @@ app.kubernetes.io/managed-by: eruun
 {{- printf "%s-%s" (include "eruun.fullname" .) .Release.Namespace -}}
 {{- end -}}
 
-{{- define "eruun.controllerObserverRBACName" -}}
-{{- printf "%s-controller-observer" (include "eruun.clusterRBACName" .) -}}
-{{- end -}}
-
 {{- define "eruun.suffixedName" -}}
 {{- $root := index . "root" -}}
 {{- $suffix := required "suffix is required for a suffixed Eruun resource name" (index . "suffix") | toString -}}
@@ -72,10 +68,7 @@ app.kubernetes.io/managed-by: eruun
 {{- end -}}
 
 {{- define "eruun.runtimeLockName" -}}
-{{- $root := index . "root" -}}
-{{- $role := index . "role" -}}
-{{- $override := index $root.Values.runtime (printf "%sLockName" $role) -}}
-{{- default (include "eruun.suffixedName" (dict "root" $root "suffix" $role)) $override -}}
+{{- default (include "eruun.suffixedName" (dict "root" . "suffix" "runtime")) .Values.runtime.leaderLockName -}}
 {{- end -}}
 
 {{- define "eruun.datastoreEnv" -}}
@@ -97,14 +90,11 @@ app.kubernetes.io/managed-by: eruun
   value: {{ .Values.mysql.database | quote }}
 {{- end -}}
 
-{{- define "eruun.roleServiceAccountName" -}}
-{{- $root := index . "root" -}}
-{{- $role := index . "role" -}}
-{{- if $root.Values.serviceAccount.create -}}
-{{- include "eruun.suffixedName" (dict "root" $root "suffix" $role) -}}
+{{- define "eruun.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create -}}
+{{- default (include "eruun.suffixedName" (dict "root" . "suffix" "runtime")) .Values.serviceAccount.name -}}
 {{- else -}}
-{{- $roleNames := default dict $root.Values.serviceAccount.roleNames -}}
-{{- required (printf "serviceAccount.roleNames.%s is required when serviceAccount.create=false" $role) (index $roleNames $role) -}}
+{{- required "serviceAccount.name is required when serviceAccount.create=false" .Values.serviceAccount.name -}}
 {{- end -}}
 {{- end -}}
 
@@ -116,31 +106,12 @@ app.kubernetes.io/managed-by: eruun
 {{- fail "auth.existingSecret is required and must reference a configured account Secret" -}}
 {{- end -}}
 {{- if empty .Values.auth.key -}}{{- fail "auth.key is required" -}}{{- end -}}
-{{- if not .Values.serviceAccount.create -}}
-{{- $roleNames := default dict .Values.serviceAccount.roleNames -}}
-{{- $apiName := default "" (index $roleNames "api") -}}
-{{- $controllerName := default "" (index $roleNames "controller") -}}
-{{- $schedulerName := default "" (index $roleNames "scheduler") -}}
-{{- $workerName := default "" (index $roleNames "worker") -}}
-{{- if and $controllerName $apiName (eq $controllerName $apiName) -}}
-{{- fail "serviceAccount.roleNames.controller must differ from serviceAccount.roleNames.api" -}}
-{{- end -}}
-{{- if and $controllerName $workerName (eq $controllerName $workerName) -}}
-{{- fail "serviceAccount.roleNames.controller must differ from serviceAccount.roleNames.worker" -}}
-{{- end -}}
-{{- range $role := list "api" "controller" "worker" -}}
-{{- $roleName := default "" (index $roleNames $role) -}}
-{{- if and $schedulerName $roleName (eq $schedulerName $roleName) -}}
-{{- fail (printf "serviceAccount.roleNames.scheduler must differ from serviceAccount.roleNames.%s" $role) -}}
-{{- end -}}
-{{- end -}}
-{{- end -}}
 {{- if le (int .Values.runtime.terminationGracePeriodSeconds) (int .Values.runtime.workerDrainTimeoutSeconds) -}}
 {{- fail "runtime.terminationGracePeriodSeconds must be greater than runtime.workerDrainTimeoutSeconds" -}}
 {{- end -}}
 {{- range $env := .Values.env -}}
 {{- $name := trim (default "" $env.name) -}}
-{{- if or (eq $name "ERUUN_AUTH_CONFIG_FILE") (eq $name "ERUUN_ROLE") (eq $name "ERUUN_ID") (eq $name "ERUUN_EXIT_ON_LOST_LEADER") (eq $name "ERUUN_WORKFLOW_WORKER_DRAIN_TIMEOUT") (eq $name "ERUUN_DATASTORE_SCHEMA_MODE") (eq $name "ERUUN_GRPC_BIND_ADDR") -}}
+{{- if or (eq $name "ERUUN_AUTH_CONFIG_FILE") (eq $name "ERUUN_ROLE") (eq $name "ERUUN_ID") (eq $name "ERUUN_POD_NAME") (eq $name "ERUUN_EXIT_ON_LOST_LEADER") (eq $name "ERUUN_WORKFLOW_WORKER_DRAIN_TIMEOUT") (eq $name "ERUUN_DATASTORE_SCHEMA_MODE") (eq $name "ERUUN_GRPC_BIND_ADDR") (eq $name "ERUUN_BIND_ADDR") (eq $name "ERUUN_LEADER_LOCK_NAME") (eq $name "ERUUN_LEADER_NAMESPACE") (eq $name "ERUUN_LEADER_SERVICE_NAME") (eq $name "ERUUN_CONTROLLER_LOCK_NAME") (eq $name "ERUUN_SCHEDULER_LOCK_NAME") -}}
 {{- fail (printf "env must not override Chart-managed variable %s" $name) -}}
 {{- end -}}
 {{- end -}}

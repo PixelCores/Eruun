@@ -8,7 +8,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 
 | 阶段 | 能力 | 文档解释 |
 | --- | --- | --- |
-| Current | Application、Component、Traits、Workflow、四角色运行时、Kubernetes 调和、认证与空间、独立 command Job、独立与应用 Workflow 内 Harbor 评测 Job | 可按文档直接使用，必须与实现一致 |
+| Current | Application、Component、Traits、Workflow、同构节点运行时、Kubernetes 调和、认证与空间、独立 command Job、独立与应用 Workflow 内 Harbor 评测 Job | 可按文档直接使用，必须与实现一致 |
 | Next | Kubernetes 自托管 Agent、MCP/CLI 工具边界、凭据/权限、审计、更多评测框架 | 方向已明确，公共契约尚未冻结 |
 | Later | 模型服务、GPU 感知调度、向量化、托管 AI Provider、云或多集群能力 | 探索阶段 |
 
@@ -16,14 +16,14 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 
 ## 推荐阅读顺序
 
-初次了解产品，先读 [项目首页（中文）](../README_zh.md) / [English](../README.md)，了解适用场景、核心概念、四角色架构、能力边界与快速开始。以下顺序用于深入实现与维护：
+初次了解产品，先读 [项目首页（中文）](../README_zh.md) / [English](../README.md)，了解适用场景、核心概念、单 Leader 节点架构、能力边界与快速开始。以下顺序用于深入实现与维护：
 
 1. `AGENTS.md`：仓库协作规则、构建测试命令、提交和 PR 要求。
 2. 本文档：目录分层、需求定位、当前代码事实和文档索引。
 3. `架构文档.md` 与 `architecture-diagrams.md`：当前角色、数据、Component、Trait 和 Workflow 边界。
 4. `core-module-boundary-and-cross-layer-contracts.md`：API、Domain、DB、Cache、K8s 的核心字段契约。
 5. `workflow-architecture-guide.md`：工作流调度、队列、Job 执行和状态机。
-6. `enterprise-distributed-runtime-design.md`：四类运行角色、双 Leader、Workflow 数据库租约和部署拓扑。
+6. `enterprise-distributed-runtime-design.md`：同构节点、单 Leader、Workflow 数据库租约和部署拓扑。
 7. `ai-runtime-vision.md`：AI Runtime 目标、路线图和 Proposal 进入实现的门禁。
 
 ## 状态约定
@@ -44,10 +44,10 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 ## 当前代码事实速查
 
 - API 前缀：`/api/v1`。
-- 用户业务 gRPC v1 与 HTTP 并行：仅 API 角色在本地默认监听 `127.0.0.1:9001`，集群内 API Pod/Service 使用 9000；见 [`grpc-api.md`](grpc-api.md)。
+- 用户业务 gRPC v1 与 HTTP 并行：仅当前 Leader 在本地默认提供 `127.0.0.1:9001`，集群内 Leader Pod/固定 Service 使用 9000；见 [`grpc-api.md`](grpc-api.md)。
 - 服务进程本地默认监听：`127.0.0.1:8001`；`deploy/eruun-stack.yaml` 会通过 `ERUUN_BIND_ADDR=0.0.0.0:8000` 覆盖该默认值并暴露集群内服务。
 - MySQL 默认 DSN 是 `127.0.0.1:3306/eruun` 的本地连接模板，必须替换密码占位符；Kafka 默认 Broker 为 `localhost:9092`，消息后端仍默认 Redis。字段与覆盖方式见 [`config/apiserver-default.yaml`](../config/apiserver-default.yaml) 和 [Kafka 配置说明](kafka-queue-implementation.md#4-配置说明)。
-- 服务端角色通过 `--role` / `ERUUN_ROLE` 显式选择 `api/controller/scheduler/worker`；直接运行默认是 `api`，不存在聚合 `all` 角色。
+- 所有服务端节点参与同一个 Leader 选举；Leader 提供业务 API、调度和后台维护，其他节点是 Worker＋候选。静态角色参数已移除，迁移须停止旧拓扑。
 - Workflow 固定使用 v2 generation/token ownership 与数据库执行租约，Worker 不再获取 Redis 执行锁；不存在关闭 fencing 或处理 v1 dispatch 的运行模式。
 - 顶层 `/workflow`、`/workflow/exec`、`/workflow/cancel` 路由不再注册；应用维度 workflow API 是当前主路径。
 - 业务 API 强制 Bearer 登录并按个人/团队空间授权；账号配置由 `ERUUN_AUTH_CONFIG_FILE` 加载，所有认证依赖失败时保持拒绝访问。
@@ -108,7 +108,6 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `local-docker-dependencies.md` | Current | MySQL、Redis、Kafka 本地 Compose 分组、凭据、连接配置、健康检查和数据保留 |
 | `workspace-jobs-api.md` | Current | 独立 command Job、两种入口共享 evaluation Trait、原生任务包、完整结果与 MinIO/数据库独立保存、空间策略和部署配置 |
 | [`../examples/agent-evaluation/README.md`](../examples/agent-evaluation/README.md) | Current | Harbor 评测 Job 端到端示例：镜像、任务包、dataset 上传、Job 提交、状态查询与结果下载 |
-| `distributed-runtime-hardening-merge-guide.md` | Current | 已合并的 7 个分布式运行时加固 PR、实现边界、合并记录与待完成的真实集群验收清单 |
 | `account-auth-workspaces.md` | Current | GitHub/Google、邮箱/手机号登录、会话、团队权限、延迟任务隔离与失败收尾、重复部署幂等性、前端与部署接入 |
 | [`../examples/account-auth-workspaces/README.md`](../examples/account-auth-workspaces/README.md) | Current | 账号与团队 API 实操：curl 注册/登录/刷新、OAuth 浏览器回调、身份绑定、邀请和空间资源访问 |
 | `api-error-response-contract.md` | Current | API 统一错误响应与通用错误脱敏契约 |
@@ -122,7 +121,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `create-and-exec-application-api.md` | Current | 创建并执行应用 API |
 | `app-workflow-callback.md` | Current | App 与 Workflow Callback 优先级 |
 | `workflow-failure-policy.md` | Current | Workflow 失败清理、Job 级清理例外与有界 OOM 停止/重试/资源增长策略 |
-| `leader-informer-recovery.md` | Current | Controller/Scheduler 双 Leader、Informer 重建、Worker 独立观察、数据库执行租约恢复与 UTC 时钟回归验证 |
+| `leader-informer-recovery.md` | Current | 单 Leader 任期、Informer 重建、Worker 独立观察、数据库执行租约恢复与 UTC 时钟回归验证 |
 | `batch-applications-api.md` | Current | 批量应用详情查询 API |
 | `application-management-mode.md` | Current | 应用 `native` / `observe` 写权限边界与历史导入迁移契约 |
 | `application-status-api.md` | Current | 单应用聚合状态、单应用组件状态明细、批量应用状态的接口边界 |
@@ -148,7 +147,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `template-engine-status.md` | Current | 模板能力状态 |
 | `mysql-template-init-env-example.md` | Current | MySQL 模板初始化环境变量示例 |
 | `tcp-ingress-nginx-dependencies.md` | Current | Redis/MySQL TCP 外部访问配置 |
-| `helm-deployment.md` | Current | Helm 四角色拓扑、schema 迁移与数据库配置、探针、PDB、topology spread、ServiceAccount、Controller Job 权限与 Quickstart 旧 RBAC 绑定清理边界 |
+| `helm-deployment.md` | Current | Helm 同构节点拓扑、schema 迁移与数据库配置、探针、PDB、topology spread、统一 ServiceAccount/RBAC 与旧拓扑维护窗口迁移 |
 
 ## 实现参考
 
@@ -159,8 +158,8 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `agent-evaluation-runner-service-design.md` | Implemented Reference | Harbor Runner 单实例 claim、v1 阶段/心跳/进度/终态事件、结果门禁与 Kubernetes 故障兜底 |
 | `workflow-global-scheduler-design.md` | Implemented Reference | Job 全局优先级、FIFO、等待老化、空间并发上限、ownership 准入与 OOM 策略 |
 | `enterprise-distributed-runtime-design.md` | Implemented Reference | 分布式运行时：角色依赖、API Redis readiness、Leader Election、数据库 lease/fencing、延迟任务恢复与通知去重、Cron 有界分页与失败计划重试、Worker observer 和 Helm 拓扑 |
-| `架构文档.md` | Implemented Reference | 当前四角色、HTTP/gRPC、数据所有权、Component/Workflow、独立空间 Job、Traits 与空间权限边界 |
-| `architecture-diagrams.md` | Implemented Reference | 当前四角色、Workflow/独立 Job 执行、评测结果保存和 Trait 映射图 |
+| `架构文档.md` | Implemented Reference | 当前同构节点、HTTP/gRPC、数据所有权、Component/Workflow、独立空间 Job、Traits 与空间权限边界 |
+| `architecture-diagrams.md` | Implemented Reference | 当前同构节点、Workflow/独立 Job 执行、评测结果保存和 Trait 映射图 |
 | `kafka-queue-implementation.md` | Implemented Reference | Kafka 队列实现 |
 | `cloudjob-skeleton.md` | Implemented Reference | CloudJob 基础说明 |
 | `cloudjob-custom-provider-template.md` | Implemented Reference | Custom CloudJob Provider 扩展 |
@@ -179,6 +178,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | [`overdesign-audit-2026-10-02.md`](overdesign-audit-2026-10-02.md) | Historical / Audit | 基于 `0984611` 的 6 项审计发现及 PR #123 分支整改：统一 Service 表示、保留导入来源、复用清理规则、显式查询、tracing 配置迁移和移除旧 HTTP helper |
 | [`overdesign-audit-2026-09-29.md`](overdesign-audit-2026-09-29.md) | Historical / Audit | 基于 `02503bd` 的第三轮过度设计审核；O13–O15 与两项候选的实施、Ingress 端口回归、源码接入边界和历史处置 |
 | [`code-quality-audit-2026-09-26.md`](code-quality-audit-2026-09-26.md) | Historical / Audit | 基于 `d075a82` 的复杂度、Go 惯用法与抽象边界审计；13 项问题、代码证据、简化方向与验证边界 |
+| `distributed-runtime-hardening-merge-guide.md` | Historical / Audit | 基于 `f46f685` 的 7 个加固 PR、合并记录与当时验收边界；旧四角色拓扑已被统一节点替代 |
 | `distributed-runtime-audit-2026-09-10.md` | Historical / Audit | 分布式运行时问题、连续十轮复审及隔离故障验收记录 |
 | `login-token-authz-analysis-2026-09-04.md` | Historical / Audit | opaque 登录 Token、会话撤销、空间授权与 JWT 必要性评估；记录 refresh 重放检测、空闲超时、清理和路由策略测试的后续处置 |
 | `go-idiomatic-code-quality-audit-2026-08-09.md` | Historical / Audit | 基于 `aaec6307` 的全仓 Go 惯用性、接口、并发、错误传播与测试组织审计 |
