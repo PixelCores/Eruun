@@ -26,11 +26,11 @@
 | `pkg/apiserver/interfaces/api` | 路由、请求绑定、响应封装、中间件 | Handler 只做 HTTP 契约处理和 Domain 委托，不直接写 DB 或 K8s |
 | `pkg/apiserver/interfaces/api/dto/v1` | API 请求和响应结构 | DTO 表达对外 JSON 契约，字段变化必须同步 assembler、examples 和 docs |
 | `pkg/apiserver/interfaces/api/assembler/v1` | Domain 到 DTO 的组装 | 负责展示字段、派生字段、兼容字段和脱敏，不放持久化或 K8s 调用 |
-| `pkg/apiserver/domain/model` | GORM 模型和领域实体 | 模型字段是 DB 主事实源之一，字段语义要和跨层契约文档一致 |
+| `pkg/apiserver/domain/model` | 持久化记录、执行载荷和部分领域行为 | 不把每个结构体视为聚合根；区分 DB 记录、内存载荷和观察更新，字段语义与跨层契约一致 |
 | `pkg/apiserver/domain/repository` | 仓储接口和数据访问意图 | 新代码优先使用接口表达业务查询/写入意图，兼容函数保留但不扩大使用面 |
-| `pkg/apiserver/domain/service` | 领域服务 | 应用生命周期、校验、转换、workflow 创建等核心规则集中在这里；存量资源导入由子模块 `resourceimport` 负责 |
+| `pkg/apiserver/domain/service` | 应用用例编排与局部业务规则 | 协调授权、事务及外部能力；纯规则使用所属模块的领域类型，存量资源导入由子模块 `resourceimport` 负责 |
 | `pkg/apiserver/domain/service/resourceimport` | 存量 Kubernetes 资源导入模块 | 根包编排一次性 scan/manage Job；`contract` 保存跨生命周期共享的 identity/snapshot 规则；`runtime` 承载 Kubernetes 侧协调。不把 `adoption` 作为模块名 |
-| `pkg/apiserver/domain/spec` | 共享规格和值对象 | Traits、资源类型、Service 暴露类型、共享策略及系统设置、安全策略等跨 DTO/Domain 的语义结构优先放这里 |
+| `pkg/apiserver/domain/spec` | 共享规格、策略和值语义 | Traits、组件变更规格、资源类型及共享策略等跨 DTO/Domain 的语义结构优先放这里；不把所有可变规格都称为不可变值对象 |
 | `pkg/apiserver/event/workflow` | 工作流调度和控制器 | 以 DB 状态机为事实源，队列只承载分发，控制器负责状态推进和 ack |
 | `pkg/apiserver/event/workflow/job` | Kubernetes 资源 Job 控制器 | 每类资源独立控制器，生成、应用、等待、清理语义要保持一致 |
 | `pkg/apiserver/event/workflow/cloudjob` | 云资源 Provider 合约 | Provider、Action、上下文和状态字符串集中定义，避免散落魔法字符串 |
@@ -40,7 +40,7 @@
 | `pkg/apiserver/infrastructure` | 外部系统适配 | 实现连接、队列、存储、Informer、锁和可观测性，不反向承载业务规则 |
 | `pkg/apiserver/utils` | 技术工具 | 只放可复用技术 helper，不放应用生命周期、workflow 或 API 业务分支 |
 
-模块之间的默认方向是 `interfaces -> domain -> infrastructure`；`resourceimport` 作为明确的业务模块，由 API 提交任务、复用 domain/infrastructure 能力，并由 workflow worker 异步执行。跨层依赖应保持单向、显式和可测试。
+当前主要委托路径是 `interfaces -> domain/service -> repository/datastore、workflow、infrastructure`，但部分 service 仍直接使用 API DTO，运行时也复用 account scope 和模型；这不是严格的向内依赖图。新增纯规则应依赖所属模块的 `model/spec`，由传输层复用规格或完成转换；外部观察通过领域拥有的更新载荷进入用例。`resourceimport` 由 API 提交任务、复用既有能力，并由 workflow worker 异步执行。
 
 安全约束按其事实归属放置，不建立笼统的顶层 `security` 层：workspace scope 与 scoped datastore 属于账号/空间访问规则，动态 URL 策略加载属于 system setting，导入 Secret 加密与计划签名属于 infrastructure。跨模块共享的安全策略值对象仍位于 `domain/spec`。
 
@@ -100,17 +100,21 @@ API handler 的职责是接收 HTTP 请求、绑定参数、调用领域服务�
 - Assembler 写入 DB、读取 Kubernetes 或触发副作用。
 - `utils` 承载某个业务分支的专用规则。
 
-### 4.2 Domain Service 风格
+### 4.2 用例与领域规则
 
-Domain Service 是业务规则的主要归属地。当前应用服务拆分为 create、delete、query、version update、template clone、component ops 等同包文件，保持公共接口稳定，用私有 helper 分解复杂流程。
+`domain/service` 是当前用例入口，不等同于 DDD 中只计算业务规则的 Domain Service。应用服务按 create、delete、query、version update、template clone、component ops 等同包文件分工，保持公共接口稳定，用私有 helper 分解复杂流程。
 
 服务方法通常具备以下特征：
 
 - 第一个参数是 `context.Context`。
-- 输入使用 DTO 或领域参数对象，输出返回 DTO 或 Domain model。
-- 跨表写入优先使用事务。
+- 现有入口仍可接收或返回 DTO；新增和提取的纯规则使用领域参数，不扩大对 API DTO 的依赖。
+- 跨表写入明确事务及锁定范围；SQL 事务不能回滚已经发生的 Kubernetes 副作用。
 - 业务前置条件显式检查，失败时直接返回带上下文的错误。
 - 需要默认值时在边界处明确设置，不做不可见的降级替代。
+
+当前组件变更规格由 `domain/spec.ComponentUpdateSpec` 拥有，API 复用其字段契约，相关版本更新纯规则直接使用该规格。Informer 通过 `domain/model.ComponentStatusUpdate` 提交观察，`SyncComponentStatus` 决定是否写入运行态；观察载荷本身不决定状态优先级。
+
+`model.IsWorkflowActiveStatus` 统一 Workflow 活跃状态分类。API 允许取消空状态的既有规则仍在 API 层显式保留；已取消任务是否仍有活跃 Job 由 service 查询持久化记录。这不等于统一了所有状态迁移，审批、ownership 与 CAS 仍由原执行路径负责。上述规则归属调整不改变表、JSON、IoC 或执行语义。
 
 ### 4.3 Repository 和 DataStore 风格
 
@@ -125,7 +129,7 @@ Repository 层应做到：
 
 ### 4.4 Workflow/Event 风格
 
-工作流运行时以 `WorkflowQueue` 和 `JobTask` 状态为核心事实源。Dispatcher 负责扫描和投递任务，Worker 消费队列，`WorkflowCtl` 推进步骤状态，Job 控制器执行具体资源操作。
+工作流运行时以持久化的 `WorkflowQueue` 和 `JobInfo` 为执行事实源；`Workflow` 是定义，`JobTask` 是内存执行载荷。Dispatcher 负责扫描和投递任务，Worker 消费队列，`WorkflowCtl` 作为流程管理器推进步骤，Job 控制器执行具体资源操作。术语和候选业务边界见 [当前架构](架构文档.md)。
 
 设计风格包括：
 
@@ -135,6 +139,7 @@ Repository 层应做到：
 - Job controller 统一实现 `Run`、`Clean`、`SaveInfo` 语义。
 - Job 基类抽出 namespace、job、client、store、ack、locker、waiter 等公共运行依赖。
 - 取消、审批、超时和回调都要明确状态转换和持久化点。
+- dispatch/delay/result 队列是执行投递机制，不等于通用领域事件总线；保留数据库 lease、fencing、检查点及 Outbox 的恢复职责。
 
 ### 4.5 Trait 风格
 
@@ -154,6 +159,18 @@ Traits 是组件声明到 Kubernetes workload 变更的扩展层。当前实现�
 Infrastructure 只适配外部系统，包括 Kubernetes client、Redis、Kafka、MySQL、Informer、Locker、Tracing。它可以实现接口、封装 SDK、提供重试或连接健康检查，但不应决定应用生命周期、组件状态优先级或 API 展示语义。
 
 配置错误、连接错误和不支持的后端应 fail-fast。运行期可恢复错误要可观测，并由调用方决定是否继续。
+
+### 4.7 尚未解开的边界
+
+以下是当前仍存在的耦合和后续维护方向，不代表已经完成的重构：
+
+| 当前边界 | 后续修改该能力时的方向 |
+| --- | --- |
+| 多数应用/Workflow service 入口仍依赖 API DTO，Workflow service 还构建并执行 callback Job | 按具体用例把纯规则移到已有领域类型；收敛回调执行职责，保留幂等和 ownership 校验 |
+| account scope/scoped store 被运行时广泛复用，空间删除检查任务、交付、Sandbox 和 checkpoint | 先明确访问规则与运行资源生命周期的协作契约；有真实替换需要时再提取窄接口 |
+| 事务内 Kubernetes 副作用：`DeleteWorkspace` 删除 namespace，`commitDirectVersionUpdate` 可能清理移除组件；数据库回滚不撤销资源删除 | 单独设计并验证这些生命周期操作的持久化意图、重试和部分完成语义；不能靠移出事务或改包名宣称解决一致性 |
+
+维护时优先收敛现有责任面，不因 DDD 名称批量创建 repository/service/facade、为每张表建立聚合包装，或按技术目录拆微服务。既有 IoC、存储契约及并发保护保持不变，除非具体需求明确改变它们。
 
 ## 5. 编码倾向
 
@@ -202,7 +219,7 @@ Infrastructure 只适配外部系统，包括 Kubernetes client、Redis、Kafka�
 
 新增或修改行为时应同步：
 
-- API 或字段变化：更新专题 API 文档、`examples/` 和 `docs/README.md`。
+- API 或字段变化：更新专题 API 文档和 `examples/`；新增、移动、移除文档或改变导航/状态时更新 `docs/README.md`。
 - Workflow 语义变化：更新 `workflow-architecture-guide.md` 或对应专题文档。
 - 跨层字段变化：更新 `core-module-boundary-and-cross-layer-contracts.md`。
 - 重要架构取舍、迁移或兼容风险：新增或更新 `devlogs/` 决策记录。
@@ -232,4 +249,4 @@ Infrastructure 只适配外部系统，包括 Kubernetes client、Redis、Kafka�
 - 是否传递 `context.Context`，goroutine 是否有退出路径。
 - 缓存是否只做加速，不成为事实源。
 - 是否补充了最小但有效的测试和文档。
-- Docs-only 变更是否更新 `docs/README.md` 索引。
+- 文档导航或状态变化是否同步 `docs/README.md` 索引；仅修改既有正文无需机械更新索引。

@@ -16,6 +16,9 @@ const (
 	VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion = 3
 )
 
+// WorkflowQueue is a durable execution instance, including standalone workspace
+// Jobs. Workflow holds the reusable definition; message queues only dispatch this
+// record. Status writes still require the repository's transaction and ownership guards.
 type WorkflowQueue struct {
 	TaskID              string                  `json:"task_id" gorm:"primaryKey;type:varchar(255);column:task_id"`
 	WorkspaceID         string                  `json:"workspaceId,omitempty" gorm:"type:varchar(36);column:workspace_id;index"`
@@ -46,6 +49,22 @@ type WorkflowQueue struct {
 	DispatchAttempts    uint                    `json:"dispatchAttempts,omitempty" gorm:"column:dispatch_attempts;not null;default:0"`
 	SchedulingReason    string                  `json:"schedulingReason,omitempty" gorm:"type:varchar(255);column:scheduling_reason"`
 	BaseModel
+}
+
+// IsWorkflowActiveStatus classifies execution states for lifecycle decisions.
+// Empty and unknown states are not active. Callers that accept an empty status
+// for cancellation must handle it explicitly; cancelled tasks may still have
+// active Jobs and require a separate persisted-state check.
+func IsWorkflowActiveStatus(status config.Status) bool {
+	switch status {
+	case config.StatusCreated, config.StatusRunning, config.StatusWaiting,
+		config.StatusQueued, config.StatusBlocked, config.QueueItemPending,
+		config.StatusPrepare, config.StatusWaitingApprove, config.StatusDistributed,
+		config.StatusDebugBefore, config.StatusDebugAfter:
+		return true
+	default:
+		return false
+	}
 }
 
 type VersionUpdateCleanupInfo struct {

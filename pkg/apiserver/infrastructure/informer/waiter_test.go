@@ -12,13 +12,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 )
 
 func TestResourceReadyWaiterPodAbnormalUpdates(t *testing.T) {
 	waiter := NewResourceReadyWaiter()
 	t.Cleanup(waiter.Close)
-	updates := make(chan *ComponentStatusUpdate, 2)
-	waiter.SetStatusSyncFunc(func(update *ComponentStatusUpdate) {
+	updates := make(chan *model.ComponentStatusUpdate, 2)
+	waiter.SetStatusSyncFunc(func(update *model.ComponentStatusUpdate) {
 		updates <- update
 	})
 
@@ -51,8 +52,8 @@ func TestResourceReadyWaiterPodAbnormalUpdates(t *testing.T) {
 func TestResourceReadyWaiterIdenticalPodSnapshotDoesNotSyncTwice(t *testing.T) {
 	waiter := NewResourceReadyWaiter()
 	t.Cleanup(waiter.Close)
-	updates := make(chan *ComponentStatusUpdate, 2)
-	waiter.SetStatusSyncFunc(func(update *ComponentStatusUpdate) {
+	updates := make(chan *model.ComponentStatusUpdate, 2)
+	waiter.SetStatusSyncFunc(func(update *model.ComponentStatusUpdate) {
 		updates <- cloneStatusUpdate(update)
 	})
 
@@ -76,8 +77,8 @@ func TestResourceReadyWaiterIdenticalPodSnapshotDoesNotSyncTwice(t *testing.T) {
 func TestResourceReadyWaiterRecoveredRunningReadyClearsLastTerminatedError(t *testing.T) {
 	waiter := NewResourceReadyWaiter()
 	t.Cleanup(waiter.Close)
-	updates := make(chan *ComponentStatusUpdate, 2)
-	waiter.SetStatusSyncFunc(func(update *ComponentStatusUpdate) {
+	updates := make(chan *model.ComponentStatusUpdate, 2)
+	waiter.SetStatusSyncFunc(func(update *model.ComponentStatusUpdate) {
 		updates <- update
 	})
 
@@ -117,8 +118,8 @@ func TestResourceReadyWaiterRecoveredRunningReadyClearsLastTerminatedError(t *te
 func TestResourceReadyWaiterRecoveredInitContainerClearsLastTerminatedError(t *testing.T) {
 	waiter := NewResourceReadyWaiter()
 	t.Cleanup(waiter.Close)
-	updates := make(chan *ComponentStatusUpdate, 2)
-	waiter.SetStatusSyncFunc(func(update *ComponentStatusUpdate) {
+	updates := make(chan *model.ComponentStatusUpdate, 2)
+	waiter.SetStatusSyncFunc(func(update *model.ComponentStatusUpdate) {
 		updates <- update
 	})
 
@@ -373,8 +374,8 @@ func TestStatusSyncSerializesAndCoalescesLatestForSameComponent(t *testing.T) {
 	releaseFirst := make(chan struct{})
 	var releaseOnce sync.Once
 	t.Cleanup(func() { releaseOnce.Do(func() { close(releaseFirst) }) })
-	updates := make(chan *ComponentStatusUpdate, 4)
-	waiter.SetStatusSyncFunc(func(update *ComponentStatusUpdate) {
+	updates := make(chan *model.ComponentStatusUpdate, 4)
+	waiter.SetStatusSyncFunc(func(update *model.ComponentStatusUpdate) {
 		if update.Status != nil && *update.Status == config.ComponentStatusPending {
 			firstStarted <- struct{}{}
 			<-releaseFirst
@@ -444,7 +445,7 @@ func TestStatusSyncKeepsDifferentComponentLanesParallel(t *testing.T) {
 	releaseFirst := make(chan struct{})
 	var releaseOnce sync.Once
 	t.Cleanup(func() { releaseOnce.Do(func() { close(releaseFirst) }) })
-	waiter.SetStatusSyncFunc(func(update *ComponentStatusUpdate) {
+	waiter.SetStatusSyncFunc(func(update *model.ComponentStatusUpdate) {
 		switch update.ComponentID {
 		case 7:
 			firstStarted <- struct{}{}
@@ -489,8 +490,8 @@ func TestStatusSyncBacklogCoalescesLatestWithTwoWorkers(t *testing.T) {
 	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
 	started := make(chan struct{}, 2)
 	const components = 300
-	updates := make(chan *ComponentStatusUpdate, components)
-	waiter.SetStatusSyncFunc(func(update *ComponentStatusUpdate) {
+	updates := make(chan *model.ComponentStatusUpdate, components)
+	waiter.SetStatusSyncFunc(func(update *model.ComponentStatusUpdate) {
 		if update.ComponentID <= 2 {
 			started <- struct{}{}
 			<-release
@@ -553,10 +554,10 @@ func TestResetPodSnapshotsDropsQueuedPreviousGenerationStatus(t *testing.T) {
 	var releaseOnce sync.Once
 	t.Cleanup(func() { releaseOnce.Do(func() { close(releaseFirst) }) })
 	firstStarted := make(chan struct{}, 2)
-	oldGeneration := make(chan *ComponentStatusUpdate, 1)
+	oldGeneration := make(chan *model.ComponentStatusUpdate, 1)
 	marker := make(chan struct{}, 1)
-	currentGeneration := make(chan *ComponentStatusUpdate, 1)
-	waiter.SetStatusSyncFunc(func(update *ComponentStatusUpdate) {
+	currentGeneration := make(chan *model.ComponentStatusUpdate, 1)
+	waiter.SetStatusSyncFunc(func(update *model.ComponentStatusUpdate) {
 		switch update.ComponentID {
 		case 1, 4:
 			firstStarted <- struct{}{}
@@ -625,8 +626,8 @@ func TestResetPodSnapshotsPreservesSameKeyUpdateAfterOldWorkerFinishes(t *testin
 	var releaseOnce sync.Once
 	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
 	started := make(chan struct{}, 2)
-	called := make(chan *ComponentStatusUpdate, 2)
-	waiter.SetStatusSyncFunc(func(update *ComponentStatusUpdate) {
+	called := make(chan *model.ComponentStatusUpdate, 2)
+	waiter.SetStatusSyncFunc(func(update *model.ComponentStatusUpdate) {
 		if update.ComponentID <= 2 {
 			started <- struct{}{}
 			<-release
@@ -688,7 +689,7 @@ func TestResetPodSnapshotsWaitsForCurrentEpochCallbackFence(t *testing.T) {
 	releaseCallback := make(chan struct{})
 	var releaseOnce sync.Once
 	t.Cleanup(func() { releaseOnce.Do(func() { close(releaseCallback) }) })
-	waiter.SetStatusSyncFunc(func(*ComponentStatusUpdate) {
+	waiter.SetStatusSyncFunc(func(*model.ComponentStatusUpdate) {
 		callbackStarted <- struct{}{}
 		<-releaseCallback
 	})
@@ -696,7 +697,7 @@ func TestResetPodSnapshotsWaitsForCurrentEpochCallbackFence(t *testing.T) {
 	waiter.statusSyncMu.Lock()
 	epoch := waiter.statusSyncEpoch
 	waiter.statusSyncMu.Unlock()
-	update := &ComponentStatusUpdate{AppID: "app-1", ComponentID: 7}
+	update := &model.ComponentStatusUpdate{AppID: "app-1", ComponentID: 7}
 	callbackDone := make(chan struct{})
 	go func() {
 		waiter.executeStatusSyncIfCurrent(update, epoch)
@@ -751,7 +752,7 @@ func TestCloseDropsQueuedStatusSyncCallbacks(t *testing.T) {
 	})
 	firstStarted := make(chan struct{}, 2)
 	queuedCalled := make(chan struct{}, 1)
-	waiter.SetStatusSyncFunc(func(update *ComponentStatusUpdate) {
+	waiter.SetStatusSyncFunc(func(update *model.ComponentStatusUpdate) {
 		if update.ComponentID == 1 || update.ComponentID == 3 {
 			firstStarted <- struct{}{}
 			<-releaseFirst
@@ -804,7 +805,7 @@ func TestCloseRejectsConcurrentStatusSyncSubmissions(t *testing.T) {
 		waiter.Close()
 	})
 	started := make(chan int, 3)
-	waiter.SetStatusSyncFunc(func(update *ComponentStatusUpdate) {
+	waiter.SetStatusSyncFunc(func(update *model.ComponentStatusUpdate) {
 		started <- update.ComponentID
 		<-release
 	})
@@ -869,8 +870,8 @@ func TestStatusSyncPanicPreservesSameKeyFollowup(t *testing.T) {
 	var releaseOnce sync.Once
 	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
 	started := make(chan struct{}, 1)
-	called := make(chan *ComponentStatusUpdate, 1)
-	waiter.SetStatusSyncFunc(func(update *ComponentStatusUpdate) {
+	called := make(chan *model.ComponentStatusUpdate, 1)
+	waiter.SetStatusSyncFunc(func(update *model.ComponentStatusUpdate) {
 		if *update.Status == config.ComponentStatusPending {
 			started <- struct{}{}
 			<-release
@@ -893,7 +894,7 @@ func TestStatusSyncPanicPreservesSameKeyFollowup(t *testing.T) {
 func TestResourceReadyWaiterCloseIsIdempotent(t *testing.T) {
 	waiter := NewResourceReadyWaiter()
 	called := make(chan struct{}, 1)
-	waiter.SetStatusSyncFunc(func(update *ComponentStatusUpdate) {
+	waiter.SetStatusSyncFunc(func(update *model.ComponentStatusUpdate) {
 		called <- struct{}{}
 	})
 
@@ -954,7 +955,7 @@ func newDeploymentTestPod(namespace, name, appID, componentName string, componen
 	return pod
 }
 
-func readUpdate(t *testing.T, updates <-chan *ComponentStatusUpdate) *ComponentStatusUpdate {
+func readUpdate(t *testing.T, updates <-chan *model.ComponentStatusUpdate) *model.ComponentStatusUpdate {
 	t.Helper()
 	select {
 	case update := <-updates:
@@ -1008,7 +1009,7 @@ func podRestartSnapshotCount(waiter *ResourceReadyWaiter) int {
 	return len(waiter.podRestarts.pods)
 }
 
-func cloneStatusUpdate(update *ComponentStatusUpdate) *ComponentStatusUpdate {
+func cloneStatusUpdate(update *model.ComponentStatusUpdate) *model.ComponentStatusUpdate {
 	if update == nil {
 		return nil
 	}

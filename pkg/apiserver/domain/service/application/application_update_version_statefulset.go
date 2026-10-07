@@ -2,7 +2,6 @@ package application
 
 import (
 	"fmt"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"sort"
 	"strings"
 
@@ -12,12 +11,12 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
-	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
-func preflightVersionUpdateStatefulSets(componentMap map[string]*model.ApplicationComponent, specs []apisv1.ComponentUpdateSpec, fullRecreate bool) ([]apisv1.ComponentUpdateSpec, error) {
+func preflightVersionUpdateStatefulSets(componentMap map[string]*model.ApplicationComponent, specs []domainspec.ComponentUpdateSpec, fullRecreate bool) ([]domainspec.ComponentUpdateSpec, error) {
 	normalized, err := preserveVersionUpdatePVCIdentities(componentMap, specs, fullRecreate)
 	if err != nil {
 		return nil, err
@@ -28,7 +27,7 @@ func preflightVersionUpdateStatefulSets(componentMap map[string]*model.Applicati
 	return normalized, nil
 }
 
-func validateVersionUpdateStatefulSetImmutableFields(componentMap map[string]*model.ApplicationComponent, specs []apisv1.ComponentUpdateSpec, fullRecreate bool) error {
+func validateVersionUpdateStatefulSetImmutableFields(componentMap map[string]*model.ApplicationComponent, specs []domainspec.ComponentUpdateSpec, fullRecreate bool) error {
 	for _, update := range specs {
 		action, err := parseVersionUpdateComponentAction(update)
 		if err != nil {
@@ -58,7 +57,7 @@ func validateVersionUpdateStatefulSetImmutableFields(componentMap map[string]*mo
 	return nil
 }
 
-func renderVersionUpdateStatefulSetTransition(component *model.ApplicationComponent, update apisv1.ComponentUpdateSpec) (*appsv1.StatefulSet, *appsv1.StatefulSet, error) {
+func renderVersionUpdateStatefulSetTransition(component *model.ApplicationComponent, update domainspec.ComponentUpdateSpec) (*appsv1.StatefulSet, *appsv1.StatefulSet, error) {
 	currentRequest, err := component.ComponentSpec()
 	if err != nil {
 		return nil, nil, err
@@ -83,7 +82,7 @@ func renderVersionUpdateStatefulSetTransition(component *model.ApplicationCompon
 	return currentStatefulSet, desiredStatefulSet, nil
 }
 
-func versionUpdateStatefulSetPVCTemplatesToDelete(component *model.ApplicationComponent, update apisv1.ComponentUpdateSpec) ([]string, error) {
+func versionUpdateStatefulSetPVCTemplatesToDelete(component *model.ApplicationComponent, update domainspec.ComponentUpdateSpec) ([]string, error) {
 	current, desired, err := renderVersionUpdateStatefulSetTransition(component, update)
 	if err != nil {
 		return nil, err
@@ -94,7 +93,7 @@ func versionUpdateStatefulSetPVCTemplatesToDelete(component *model.ApplicationCo
 	return statefulSetPVCTemplatesToDelete(current, desired), nil
 }
 
-func versionUpdateStatefulSetRequiresDeletion(component *model.ApplicationComponent, update apisv1.ComponentUpdateSpec) (bool, error) {
+func versionUpdateStatefulSetRequiresDeletion(component *model.ApplicationComponent, update domainspec.ComponentUpdateSpec) (bool, error) {
 	current, desired, err := renderVersionUpdateStatefulSetTransition(component, update)
 	if err != nil {
 		return false, err
@@ -161,7 +160,7 @@ func versionUpdateRecreatesStatefulSet(component *model.ApplicationComponent, fu
 	return !shared
 }
 
-func versionUpdateComponentSnapshot(current *model.ApplicationComponent, desired apisv1.CreateComponentRequest) (*model.ApplicationComponent, error) {
+func versionUpdateComponentSnapshot(current *model.ApplicationComponent, desired domainspec.Component) (*model.ApplicationComponent, error) {
 	properties, err := model.NewJSONStructByStruct(desired.Properties)
 	if err != nil {
 		return nil, fmt.Errorf("marshal desired StatefulSet properties: %w", err)

@@ -13,6 +13,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
 )
 
@@ -49,7 +50,7 @@ type componentStatusSyncKey struct {
 }
 
 type componentStatusSyncUpdate struct {
-	update *ComponentStatusUpdate
+	update *model.ComponentStatusUpdate
 	epoch  uint64
 }
 
@@ -801,12 +802,12 @@ func (w *ResourceReadyWaiter) syncComponentSnapshot(snapshot componentSnapshot) 
 	w.statusSyncQueue.Add(key)
 }
 
-func buildStatusUpdate(snapshot componentSnapshot) *ComponentStatusUpdate {
+func buildStatusUpdate(snapshot componentSnapshot) *model.ComponentStatusUpdate {
 	ready := snapshot.readyCount
 	lastAbnormal := snapshot.lastAbnormal
 	total := snapshot.totalCount
 	status := componentStatusFromSnapshot(snapshot)
-	return &ComponentStatusUpdate{
+	return &model.ComponentStatusUpdate{
 		AppID:         snapshot.appID,
 		ComponentID:   snapshot.componentID,
 		ComponentName: snapshot.componentName,
@@ -817,7 +818,7 @@ func buildStatusUpdate(snapshot componentSnapshot) *ComponentStatusUpdate {
 	}
 }
 
-func (w *ResourceReadyWaiter) executeStatusSync(update *ComponentStatusUpdate) {
+func (w *ResourceReadyWaiter) executeStatusSync(update *model.ComponentStatusUpdate) {
 	if w == nil || w.statusSyncFunc == nil || update == nil {
 		return
 	}
@@ -857,7 +858,7 @@ func (w *ResourceReadyWaiter) runStatusSyncWorker() {
 	}
 }
 
-func (w *ResourceReadyWaiter) executeStatusSyncIfCurrent(update *ComponentStatusUpdate, epoch uint64) {
+func (w *ResourceReadyWaiter) executeStatusSyncIfCurrent(update *model.ComponentStatusUpdate, epoch uint64) {
 	if w == nil {
 		return
 	}
@@ -868,7 +869,7 @@ func (w *ResourceReadyWaiter) executeStatusSyncIfCurrent(update *ComponentStatus
 	}
 }
 
-func (w *ResourceReadyWaiter) takeLatestStatusSync(key componentStatusSyncKey) (*ComponentStatusUpdate, uint64, bool) {
+func (w *ResourceReadyWaiter) takeLatestStatusSync(key componentStatusSyncKey) (*model.ComponentStatusUpdate, uint64, bool) {
 	w.statusSyncMu.Lock()
 	defer w.statusSyncMu.Unlock()
 	latest, ok := w.statusSyncLatest[key]

@@ -26,3 +26,33 @@ func TestWorkflowTaskAllowedActionsAreExecutableDescriptors(t *testing.T) {
 	require.Empty(t, terminal)
 	require.NotNil(t, terminal)
 }
+
+func TestWorkflowTaskAllowedActionsPreserveLifecycleBoundaries(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		taskID  string
+		appID   string
+		status  string
+		pending string
+		actions []string
+	}{
+		{name: "empty status remains cancellable", taskID: "task", appID: "app", actions: []string{"cancel"}},
+		{name: "blocked task remains cancellable", taskID: "task", appID: "app", status: string(config.StatusBlocked), actions: []string{"cancel"}},
+		{name: "trim transport values", taskID: " task ", appID: " app ", status: " running ", actions: []string{"cancel"}},
+		{name: "unknown status has no actions", taskID: "task", appID: "app", status: "unknown"},
+		{name: "cancelled status has no advertised retry", taskID: "task", appID: "app", status: string(config.StatusCancelled)},
+		{name: "no task identity", appID: "app", status: string(config.StatusRunning)},
+		{name: "no application cancel route", taskID: "task", status: string(config.StatusRunning)},
+		{name: "approval route has task identity", taskID: "task", status: string(config.StatusWaiting), pending: "approve", actions: []string{"continue", "cancel"}},
+		{name: "terminal ignores stale approval step", taskID: "task", appID: "app", status: string(config.StatusCompleted), pending: "approve"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			actions := workflowTaskAllowedActions(tt.taskID, tt.appID, tt.status, tt.pending)
+			require.NotNil(t, actions)
+			require.Len(t, actions, len(tt.actions))
+			for i, name := range tt.actions {
+				require.Equal(t, name, actions[i].Name)
+			}
+		})
+	}
+}

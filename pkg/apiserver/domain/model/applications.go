@@ -122,6 +122,18 @@ type ApplicationComponent struct {
 	BaseModel
 }
 
+// ComponentStatusUpdate carries an observation of component runtime state.
+// Nil fields mean no observation; non-nil zero values are explicit observations.
+type ComponentStatusUpdate struct {
+	AppID         string                  // 应用 ID
+	ComponentID   int                     // 组件 ID
+	ComponentName string                  // 组件名称
+	Status        *config.ComponentStatus // 运行状态
+	ReadyReplicas *int32                  // 就绪副本数
+	Replicas      *int32                  // 观察到的副本数
+	LastAbnormal  *string                 // 最近一次异常信息（指向空字符串表示清空）
+}
+
 func (w *ApplicationComponent) HasSourceWorkload() bool {
 	return w != nil &&
 		strings.TrimSpace(w.SourceWorkloadAPIVersion) != "" &&

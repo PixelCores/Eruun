@@ -1091,7 +1091,7 @@ func (w *workflowServiceImpl) shouldCancelTaskWithStore(ctx context.Context, sto
 	if task == nil || strings.TrimSpace(task.TaskID) == "" {
 		return false, nil
 	}
-	if task.Status == "" || isWorkflowActiveStatus(task.Status) {
+	if task.Status == "" || model.IsWorkflowActiveStatus(task.Status) {
 		return true, nil
 	}
 	if task.Status != config.StatusCancelled {
@@ -2210,7 +2210,7 @@ func EnsureAppWorkflowIdle(ctx context.Context, store datastore.DataStore, appID
 			}
 			continue
 		}
-		if isWorkflowActiveStatus(current.Status) {
+		if model.IsWorkflowActiveStatus(current.Status) {
 			return bcode.ErrWorkflowTaskRunning
 		}
 		if current.Status == config.StatusCancelled {
@@ -2242,20 +2242,6 @@ func normalizeExecuteAt(executeAt int64) (int64, error) {
 
 func NormalizeExecuteAt(executeAt int64) (int64, error) {
 	return normalizeExecuteAt(executeAt)
-}
-
-var activeWorkflowStatuses = map[config.Status]struct{}{
-	config.StatusCreated:        {},
-	config.StatusRunning:        {},
-	config.StatusWaiting:        {},
-	config.StatusQueued:         {},
-	config.StatusBlocked:        {},
-	config.QueueItemPending:     {},
-	config.StatusPrepare:        {},
-	config.StatusWaitingApprove: {},
-	config.StatusDistributed:    {},
-	config.StatusDebugBefore:    {},
-	config.StatusDebugAfter:     {},
 }
 
 func taskHasActiveJobs(ctx context.Context, store datastore.DataStore, taskID string) (bool, error) {
@@ -2296,14 +2282,6 @@ var terminalJobStatuses = map[config.Status]struct{}{
 func statusIn(status config.Status, set map[config.Status]struct{}) bool {
 	_, ok := set[status]
 	return ok
-}
-
-func isWorkflowActiveStatus(status config.Status) bool {
-	return statusIn(status, activeWorkflowStatuses)
-}
-
-func IsWorkflowActiveStatus(status config.Status) bool {
-	return isWorkflowActiveStatus(status)
 }
 
 func isJobTerminalStatus(status config.Status) bool {

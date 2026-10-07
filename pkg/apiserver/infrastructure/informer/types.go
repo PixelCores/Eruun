@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 )
 
 // ComponentReadyObserver is the worker-facing readiness contract. Implementations
@@ -20,19 +21,8 @@ type ComponentReadyWaitOptions struct {
 	ExpectedAnnotations map[string]string
 }
 
-// ComponentStatusUpdate 组件状态更新信息（传递给数据库同步）
-type ComponentStatusUpdate struct {
-	AppID         string                  // 应用 ID
-	ComponentID   int                     // 组件 ID
-	ComponentName string                  // 组件名称
-	Status        *config.ComponentStatus // 运行状态
-	ReadyReplicas *int32                  // 就绪副本数
-	Replicas      *int32                  // 期望副本数
-	LastAbnormal  *string                 // 最近一次异常信息（为空表示清空）
-}
-
 // StatusSyncFunc 状态同步回调函数类型
-type StatusSyncFunc func(update *ComponentStatusUpdate)
+type StatusSyncFunc func(update *model.ComponentStatusUpdate)
 
 // PodRestartMonitorConfig controls Pod restart threshold detection.
 type PodRestartMonitorConfig struct {

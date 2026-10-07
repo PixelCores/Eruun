@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 )
 
 // WorkflowTaskAllowedActions is shared response assembly for HTTP and gRPC.
@@ -22,23 +23,11 @@ func WorkflowTaskAllowedActions(taskID, appID, status, pendingApprovalStep strin
 			{Name: "cancel", Method: "POST", Path: path, Body: map[string]any{"action": "cancel"}},
 		}
 	}
-	if appID == "" || !WorkflowStatusCancellable(statusValue) {
+	if appID == "" || (statusValue != "" && !model.IsWorkflowActiveStatus(statusValue)) {
 		return []AllowedAction{}
 	}
 	return []AllowedAction{{
 		Name: "cancel", Method: "POST", Path: "/api/v1/applications/" + url.PathEscape(appID) + "/workflow/cancel",
 		Body: map[string]any{"taskId": taskID},
 	}}
-}
-
-func WorkflowStatusCancellable(status config.Status) bool {
-	switch status {
-	case "", config.StatusCreated, config.StatusRunning, config.StatusWaiting,
-		config.StatusQueued, config.StatusBlocked, config.QueueItemPending,
-		config.StatusPrepare, config.StatusWaitingApprove, config.StatusDistributed,
-		config.StatusDebugBefore, config.StatusDebugAfter:
-		return true
-	default:
-		return false
-	}
 }

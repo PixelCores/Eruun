@@ -12,7 +12,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 )
 
 func findComponentForStatusSync(ctx context.Context, store datastore.DataStore, appID string, componentID int) (*model.ApplicationComponent, error) {
@@ -35,9 +34,9 @@ func findComponentForStatusSync(ctx context.Context, store datastore.DataStore, 
 	return nil, nil
 }
 
-// SyncComponentStatus applies an informer observation without overwriting newer
+// SyncComponentStatus applies a runtime observation without overwriting newer
 // lifecycle or configuration writes, then invalidates the component query cache.
-func SyncComponentStatus(ctx context.Context, store datastore.DataStore, componentCache cache.ICache, update *informer.ComponentStatusUpdate) {
+func SyncComponentStatus(ctx context.Context, store datastore.DataStore, componentCache cache.ICache, update *model.ComponentStatusUpdate) {
 	if store == nil || update == nil || update.ComponentID == 0 {
 		return
 	}
