@@ -261,7 +261,7 @@ func TestVersionRestartJobCtlRestartsDeployment(t *testing.T) {
 	_, err := client.CoreV1().Pods("default").Create(context.Background(), versionRestartReadyPod(api, "api-old", "old-restarted-at"), metav1.CreateOptions{})
 	require.NoError(t, err)
 	waiter := startWorkloadTestObserver(t, client)
-	cacheStore := cacheutil.NewMemCache(false)
+	cacheStore := cacheutil.NewMemCache()
 	cacheKey := cacheutil.ApplicationComponentsKey(api.AppID)
 	require.NoError(t, cacheStore.Store(context.Background(), cacheKey, "stale"))
 	require.NotEmpty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))

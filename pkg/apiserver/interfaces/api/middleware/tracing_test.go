@@ -64,10 +64,6 @@ func TestLoggingMiddlewareLowersHealthCheckVerbosity(t *testing.T) {
 		"/api/v1/healthz",
 		"/api/v1/ready",
 		"/api/v1/readyz",
-		"/health",
-		"/healthz",
-		"/ready",
-		"/readyz",
 	}
 	for _, path := range healthCheckPaths {
 		path := path

@@ -3,7 +3,6 @@ package application
 import (
 	"context"
 	"encoding/json"
-
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -196,7 +195,7 @@ func TestUpdateVersionFullRebuildRestoresPendingStatefulSetPVCPlan(t *testing.T)
 			require.Equal(t, "mysql-headless", restoredTraits.Service[0].Name)
 			secondJob := requireVersionUpdateCleanupJobForTask(t, store, second.TaskID, "mysql")
 			require.Equal(t, string(config.StatusQueued), secondJob.Status)
-			var marker versionUpdateCleanupJobMarker
+			var marker model.VersionUpdateCleanupJobMarker
 			require.NoError(t, json.Unmarshal([]byte(secondJob.InternalInfo), &marker))
 			require.Equal(t, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, marker.Version)
 			require.Equal(t, []string{"data", "data-v2"}, marker.StatefulSetPVCTemplatesToDelete)

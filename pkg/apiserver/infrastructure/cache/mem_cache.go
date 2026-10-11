@@ -12,7 +12,6 @@ type item struct {
 }
 
 type MemCache struct {
-	noCache     bool
 	items       map[string]*item
 	mu          sync.Mutex
 	ttl         time.Duration
@@ -76,10 +75,6 @@ func (m *MemCache) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
-func (m *MemCache) IsCacheDisabled() bool {
-	return m.noCache
-}
-
 // expired 确定是否过期（ttl<=0 表示不过期）
 func (i *item) expired(now time.Time) bool {
 	if i.expiresAt.IsZero() {
@@ -88,10 +83,9 @@ func (i *item) expired(now time.Time) bool {
 	return !now.Before(i.expiresAt)
 }
 
-func NewMemCache(noCache bool) ICache {
+func NewMemCache() ICache {
 	return &MemCache{
-		noCache: noCache,
-		items:   make(map[string]*item),
-		ttl:     24 * time.Hour, // 默认设置过期时间为1天
+		items: make(map[string]*item),
+		ttl:   24 * time.Hour, // 默认设置过期时间为1天
 	}
 }

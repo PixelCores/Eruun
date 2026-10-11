@@ -10,13 +10,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/leaderelection"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event"
+	workflowevent "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -34,6 +33,13 @@ type APIServer interface {
 	Run(context.Context, chan error) error
 }
 
+type workflowRuntime interface {
+	StartController(context.Context)
+	StartScheduler(context.Context, func())
+	StartWorker(context.Context, context.Context, func(), func())
+	RuntimeStats() workflowevent.RuntimeStats
+}
+
 type restServer struct {
 	accounts                  *account.Service
 	workspaceManager          *workspace.Manager
@@ -49,13 +55,11 @@ type restServer struct {
 	dataStore                 datastore.DataStore
 	cache                     cache.ICache
 	KubeClient                kubernetes.Interface `inject:"kubeClient"` //inject 是注入IOC的name，如果tag中包含inject 那么必须有对应的容器注入服务,必须大写，小写会无法访问
-	KubeConfig                *rest.Config         `inject:"kubeConfig"`
 	Queue                     msg.Queue
-	runtimeQueues             *msg.RuntimeQueues
 	InformerManager           *informer.Manager // Informer 管理器，用于 List-Watch 机制
 	resourceObserver          *informer.KubernetesWorkloadObserver
 	sandboxObserver           *informer.KubernetesSandboxObserver
-	eventWorkers              []event.Worker
+	workflow                  workflowRuntime
 	workersMu                 sync.Mutex
 	workersReady              bool
 	workersRun                *workerRun

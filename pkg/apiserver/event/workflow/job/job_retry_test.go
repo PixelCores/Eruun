@@ -545,6 +545,11 @@ func (s *retryOwnedCheckpointStore) Get(_ context.Context, entity datastore.Enti
 	return datastore.ErrRecordNotExist
 }
 
+// The fixture models an explicit transaction boundary; SQL tests verify isolation.
+func (s *retryOwnedCheckpointStore) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	return s.WithTransaction(ctx, fn)
+}
+
 func (s *retryOwnedCheckpointStore) WithTransaction(_ context.Context, fn func(datastore.DataStore) error) error {
 	return fn(s)
 }

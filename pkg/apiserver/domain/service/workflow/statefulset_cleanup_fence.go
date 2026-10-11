@@ -15,12 +15,9 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
-type statefulSetCleanupJobMarker struct {
-	Source                          string   `json:"source"`
-	Version                         int      `json:"version,omitempty"`
-	RequireStatefulSetDeletion      bool     `json:"requireStatefulSetDeletion,omitempty"`
-	StatefulSetPVCTemplatesToDelete []string `json:"statefulSetPVCTemplatesToDelete,omitempty"`
-}
+// errPendingStatefulSetCleanup marks the expected fence outcome; other fence
+// errors report corrupt contracts or storage failures.
+var errPendingStatefulSetCleanup = errors.New("unfinished StatefulSet cleanup")
 
 type pendingStatefulSetCleanup struct {
 	name      string
@@ -126,7 +123,7 @@ func EnsureNoPendingStatefulSetCleanup(ctx context.Context, store datastore.Data
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	internalErr := fmt.Errorf("%w: unfinished StatefulSet cleanup for components %s", bcode.ErrApplicationConfig, strings.Join(names, ","))
+	internalErr := fmt.Errorf("%w: %w for components %s", bcode.ErrApplicationConfig, errPendingStatefulSetCleanup, strings.Join(names, ","))
 	return bcode.WithSafeClientMessage(internalErr, fmt.Sprintf(
 		"components %s have an unfinished StatefulSet migration; resume it with the version update API before executing another workflow",
 		strings.Join(names, ","),
@@ -150,7 +147,7 @@ func applyStatefulSetCleanupFenceAttempt(
 		return bcode.ErrWorkflowTaskRunning
 	}
 	taskCompleted := taskStatus == config.StatusCompleted
-	taskRequiresRetry := statefulSetCleanupFenceTaskRequiresRetry(taskStatus)
+	taskRequiresRetry := model.IsRetryableVersionUpdateCleanupTaskStatus(taskStatus)
 	if !taskCompleted && !taskRequiresRetry {
 		return fmt.Errorf("task %s has unsupported terminal status %q for StatefulSet cleanup fence", task.TaskID, task.Status)
 	}
@@ -170,7 +167,7 @@ func applyStatefulSetCleanupFenceAttempt(
 		if err != nil {
 			return err
 		}
-		templates := normalizedCleanupPVCTemplateNames(component.StatefulSetPVCTemplatesToDelete)
+		templates := model.NormalizeVersionUpdateCleanupPVCTemplateNames(component.StatefulSetPVCTemplatesToDelete)
 		jobStatus := config.Status("")
 		jobMissing := job == nil
 		if job != nil {
@@ -316,21 +313,12 @@ func resolvedStatefulSetCleanupFenceTaskIDs(
 	return resolved, nil
 }
 
-func statefulSetCleanupFenceTaskRequiresRetry(status config.Status) bool {
-	switch status {
-	case config.StatusFailed, config.StatusTimeout, config.StatusCancelled, config.StatusReject, config.StatusPassed, config.StatusSkipped:
-		return true
-	default:
-		return false
-	}
-}
-
 func statefulSetCleanupFenceComponentVersion(
 	task *model.WorkflowQueue,
 	cleanupInfoVersion int,
 	component model.VersionUpdateCleanupComponent,
 ) (int, error) {
-	templates := normalizedCleanupPVCTemplateNames(component.StatefulSetPVCTemplatesToDelete)
+	templates := model.NormalizeVersionUpdateCleanupPVCTemplateNames(component.StatefulSetPVCTemplatesToDelete)
 	switch cleanupInfoVersion {
 	case model.VersionUpdateCleanupInfoVersionStatefulSetDeletion:
 		if len(templates) > 0 {
@@ -413,7 +401,7 @@ func matchingStatefulSetCleanupFenceJob(
 		return nil, fmt.Errorf("task %s StatefulSet cleanup contract is missing its component descriptor", task.TaskID)
 	}
 	componentName := strings.ToLower(strings.TrimSpace(cleanupComponent.Component.Name))
-	expectedTemplates := normalizedCleanupPVCTemplateNames(cleanupComponent.StatefulSetPVCTemplatesToDelete)
+	expectedTemplates := model.NormalizeVersionUpdateCleanupPVCTemplateNames(cleanupComponent.StatefulSetPVCTemplatesToDelete)
 	if cleanupVersion == model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion && len(expectedTemplates) == 0 {
 		return nil, fmt.Errorf("task %s component %s StatefulSet PVC cleanup contract has no templates", task.TaskID, componentName)
 	}
@@ -434,7 +422,7 @@ func matchingStatefulSetCleanupFenceJob(
 		if !marked {
 			continue
 		}
-		var marker statefulSetCleanupJobMarker
+		var marker model.VersionUpdateCleanupJobMarker
 		if err := json.Unmarshal([]byte(raw), &marker); err != nil {
 			return nil, fmt.Errorf("decode cleanup job marker for task %s component %s: %w", task.TaskID, componentName, err)
 		}
@@ -442,10 +430,10 @@ func matchingStatefulSetCleanupFenceJob(
 			return nil, fmt.Errorf("task %s cleanup job marker does not require StatefulSet deletion for component %s", task.TaskID, componentName)
 		}
 		if cleanupVersion == model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion {
-			if marker.Version != cleanupVersion || !equalCleanupPVCTemplateNames(marker.StatefulSetPVCTemplatesToDelete, expectedTemplates) {
+			if marker.Version != cleanupVersion || !model.EqualVersionUpdateCleanupPVCTemplateNames(marker.StatefulSetPVCTemplatesToDelete, expectedTemplates) {
 				return nil, fmt.Errorf("task %s cleanup job marker does not match component %s PVC cleanup contract", task.TaskID, componentName)
 			}
-		} else if marker.Version != 0 || len(normalizedCleanupPVCTemplateNames(marker.StatefulSetPVCTemplatesToDelete)) != 0 {
+		} else if marker.Version != 0 || len(model.NormalizeVersionUpdateCleanupPVCTemplateNames(marker.StatefulSetPVCTemplatesToDelete)) != 0 {
 			return nil, fmt.Errorf("task %s cleanup job marker does not match component %s StatefulSet deletion contract", task.TaskID, componentName)
 		}
 		if matched != nil {
@@ -457,33 +445,4 @@ func matchingStatefulSetCleanupFenceJob(
 		return nil, nil
 	}
 	return matched, nil
-}
-
-func equalCleanupPVCTemplateNames(left, right []string) bool {
-	left = normalizedCleanupPVCTemplateNames(left)
-	right = normalizedCleanupPVCTemplateNames(right)
-	if len(left) != len(right) {
-		return false
-	}
-	for index := range left {
-		if left[index] != right[index] {
-			return false
-		}
-	}
-	return true
-}
-
-func normalizedCleanupPVCTemplateNames(values []string) []string {
-	seen := make(map[string]struct{}, len(values))
-	for _, value := range values {
-		if value = strings.TrimSpace(value); value != "" {
-			seen[value] = struct{}{}
-		}
-	}
-	result := make([]string, 0, len(seen))
-	for value := range seen {
-		result = append(result, value)
-	}
-	sort.Strings(result)
-	return result
 }

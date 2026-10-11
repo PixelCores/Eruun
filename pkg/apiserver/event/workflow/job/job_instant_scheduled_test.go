@@ -71,6 +71,11 @@ func (s *workflowOwnershipStore) Get(_ context.Context, entity datastore.Entity)
 	return nil
 }
 
+// The fixture models an explicit transaction boundary; SQL tests verify isolation.
+func (s *workflowOwnershipStore) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	return s.WithTransaction(ctx, fn)
+}
+
 func (s *workflowOwnershipStore) WithTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
 	return fn(s)
 }

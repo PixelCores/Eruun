@@ -13,8 +13,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
@@ -237,7 +235,7 @@ func deleteCompletedJobAndPods(ctx context.Context, client kubernetes.Interface,
 	})
 	switch {
 	case deleteErr == nil:
-		if err := waitForJobUIDDeletion(ctx, client, namespace, name, uid); err != nil {
+		if err := waitForJobUIDDeletion(ctx, client, namespace, name, uid, jobDeleteTimeout); err != nil {
 			return err
 		}
 	case k8serrors.IsNotFound(deleteErr):
@@ -258,29 +256,6 @@ func deleteCompletedJobAndPods(ctx context.Context, client kubernetes.Interface,
 		return err
 	}
 	return nil
-}
-
-func waitForJobUIDDeletion(ctx context.Context, client kubernetes.Interface, namespace, name string, uid types.UID) error {
-	deleteCtx, cancel := context.WithTimeout(ctx, jobDeleteTimeout)
-	defer cancel()
-
-	if err := wait.PollUntilContextCancel(deleteCtx, jobPollInterval, true, func(checkCtx context.Context) (bool, error) {
-		return jobUIDAbsent(checkCtx, client, namespace, name, uid)
-	}); err != nil {
-		return fmt.Errorf("wait for job %s/%s UID %q deletion: %w", namespace, name, uid, err)
-	}
-	return nil
-}
-
-func jobUIDAbsent(ctx context.Context, client kubernetes.Interface, namespace, name string, uid types.UID) (bool, error) {
-	jobObj, err := client.BatchV1().Jobs(namespace).Get(ctx, name, metav1.GetOptions{})
-	if k8serrors.IsNotFound(err) {
-		return true, nil
-	}
-	if err != nil {
-		return false, fmt.Errorf("get job %s/%s: %w", namespace, name, err)
-	}
-	return jobObj.UID != uid, nil
 }
 
 func deleteCompletedPodsForJob(ctx context.Context, client kubernetes.Interface, namespace string, jobObj *batchv1.Job) (int, error) {

@@ -144,3 +144,15 @@ func (e *testWriteEntity) TableName() string {
 func (e *testWriteEntity) Index() map[string]interface{} {
 	return map[string]interface{}{"id": e.id}
 }
+
+func TestRuntimeStoreContractRejectsIncompleteAdapters(t *testing.T) {
+	driver := &Driver{}
+	checked, err := datastore.RequireRuntimeStore(driver)
+	require.NoError(t, err)
+	require.Same(t, driver, checked)
+	readOnly := struct{ datastore.DataStore }{DataStore: driver}
+	_, err = datastore.RequireRuntimeStore(readOnly)
+	require.ErrorContains(t, err, "runtime datastore requires")
+	_, err = datastore.RequireRuntimeStore(nil)
+	require.ErrorContains(t, err, "runtime datastore requires")
+}

@@ -28,15 +28,6 @@ func TestApplicationRepositoryDelegatesToStore(t *testing.T) {
 	_, err = repo.FindByName(context.Background(), "demo")
 	require.NoError(t, err)
 
-	require.NoError(t, repo.Create(context.Background(), &model.Applications{ID: "app-2"}))
-	require.IsType(t, &model.Applications{}, store.addEntity)
-
-	require.NoError(t, repo.Update(context.Background(), &model.Applications{ID: "app-2"}))
-	require.IsType(t, &model.Applications{}, store.putEntity)
-
-	require.NoError(t, repo.Delete(context.Background(), &model.Applications{ID: "app-2"}))
-	require.IsType(t, &model.Applications{}, store.deleteEntity)
-
 	list, err := repo.List(context.Background(), datastore.ListOptions{})
 	require.NoError(t, err)
 	require.Len(t, list, 1)

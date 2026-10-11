@@ -1,6 +1,11 @@
 package ratelimit
 
-import "golang.org/x/time/rate"
+import (
+	"net/http"
+	"strings"
+
+	"golang.org/x/time/rate"
+)
 
 // Limiter shares HTTP and gRPC operation-class budgets in one API process.
 type Limiter struct {
@@ -26,4 +31,19 @@ func (l *Limiter) Allow(expensive bool) bool {
 		return l.expensive.Allow()
 	}
 	return l.read.Allow()
+}
+
+// IsExpensiveRequest classifies the shared HTTP and RPC operation budget.
+func IsExpensiveRequest(method, path string) bool {
+	switch strings.ToUpper(strings.TrimSpace(method)) {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+	default:
+		return true
+	}
+
+	normalizedPath := strings.ToLower(strings.TrimSpace(path))
+	return strings.Contains(normalizedPath, "/exec") ||
+		strings.Contains(normalizedPath, "/logs") ||
+		strings.Contains(normalizedPath, "/shell/stream") ||
+		strings.Contains(normalizedPath, "/files/export")
 }

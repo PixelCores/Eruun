@@ -22,6 +22,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -62,10 +63,10 @@ func (c *applicationsServiceImpl) cleanupApplicationResourcesUnlocked(
 			bcode.ErrApplicationManagementMode, app.EffectiveManagementMode())
 	}
 	if !bypassWorkflowGuards {
-		if err := EnsureAppWorkflowIdle(ctx, c.Store, app.ID); err != nil {
+		if err := workflowservice.EnsureAppWorkflowIdle(ctx, c.Store, app.ID); err != nil {
 			return nil, err
 		}
-		if err := EnsureNoPendingStatefulSetCleanup(ctx, c.Store, app.ID); err != nil {
+		if err := workflowservice.EnsureNoPendingStatefulSetCleanup(ctx, c.Store, app.ID); err != nil {
 			return nil, err
 		}
 	}

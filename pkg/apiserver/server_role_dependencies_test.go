@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/flowcontrol"
@@ -17,14 +19,10 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event"
-	workflowevent "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 type sandboxRoleTestTransport func(*http.Request) (*http.Response, error)
@@ -128,24 +126,4 @@ func TestRuntimeNodeBuildsSandboxObserverOnlyWhenConfigured(t *testing.T) {
 			require.ErrorIs(t, err, informer.ErrSandboxObservationUnavailable)
 		}
 	}
-}
-
-func TestConfigureWorkflowEventWorkersAssignsRoleDependencies(t *testing.T) {
-	dispatch := &testServerQueue{}
-	delay := &testServerQueue{}
-	result := &testServerQueue{}
-	observer := informer.NewKubernetesWorkloadObserver(fake.NewSimpleClientset())
-	worker := &workflowevent.Workflow{}
-	workers := []event.Worker{worker}
-
-	configureWorkflowEventWorkers(workers, &msg.RuntimeQueues{
-		Dispatch: dispatch,
-		Delay:    delay,
-		Result:   result,
-	}, observer)
-
-	require.Same(t, dispatch, worker.Queue)
-	require.Same(t, delay, worker.DelayQueue)
-	require.Same(t, result, worker.ResultQueue)
-	require.Same(t, observer, worker.ResourceWaiter)
 }

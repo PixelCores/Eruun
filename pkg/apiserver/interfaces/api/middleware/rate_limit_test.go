@@ -7,6 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/ratelimit"
 )
 
 func TestRateLimitRejectsOverBurstForExpensiveOperations(t *testing.T) {
@@ -14,7 +16,7 @@ func TestRateLimitRejectsOverBurstForExpensiveOperations(t *testing.T) {
 
 	router := gin.New()
 	handlerCalled := 0
-	router.Use(RateLimit(RateLimitOptions{QPS: 0.001, Burst: 1}))
+	router.Use(RateLimit(ratelimit.New(0.001, 1)))
 	router.POST("/api/v1/applications", func(c *gin.Context) {
 		handlerCalled++
 		c.Status(http.StatusOK)
@@ -32,7 +34,7 @@ func TestRateLimitDoesNotUseForwardedHeadersAsFreshBuckets(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	router := gin.New()
-	router.Use(RateLimit(RateLimitOptions{QPS: 0.001, Burst: 1}))
+	router.Use(RateLimit(ratelimit.New(0.001, 1)))
 	router.POST("/api/v1/applications", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})
@@ -54,12 +56,12 @@ func TestRateLimitAllowsMoreReadRequestsThanExpensiveOperations(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	router := gin.New()
-	router.Use(RateLimit(RateLimitOptions{QPS: 0.001, Burst: 1}))
+	router.Use(RateLimit(ratelimit.New(0.001, 1)))
 	router.GET("/api/v1/applications", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})
 
-	for i := 0; i < defaultRateLimitReadMultiplier; i++ {
+	for i := 0; i < 5; i++ {
 		resp := performRateLimitRequest(router, http.MethodGet, "/api/v1/applications")
 		require.Equal(t, http.StatusOK, resp.Code)
 	}
@@ -72,7 +74,7 @@ func TestRateLimitTreatsLogReadsAsExpensiveOperations(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	router := gin.New()
-	router.Use(RateLimit(RateLimitOptions{QPS: 0.001, Burst: 1}))
+	router.Use(RateLimit(ratelimit.New(0.001, 1)))
 	router.GET("/api/v1/applications/:appID/components/:componentName/logs", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})
@@ -89,11 +91,7 @@ func TestRateLimitSkipsHealthPaths(t *testing.T) {
 
 	router := gin.New()
 	handlerCalled := 0
-	router.Use(RateLimit(RateLimitOptions{
-		QPS:       0.001,
-		Burst:     1,
-		SkipPaths: DefaultRateLimitSkipPaths(),
-	}))
+	router.Use(RateLimit(ratelimit.New(0.001, 1)))
 	router.GET("/api/v1/health", func(c *gin.Context) {
 		handlerCalled++
 		c.Status(http.StatusOK)
@@ -107,12 +105,12 @@ func TestRateLimitSkipsHealthPaths(t *testing.T) {
 	require.Equal(t, 2, handlerCalled)
 }
 
-func TestRateLimitDisabledWhenQPSNotPositive(t *testing.T) {
+func TestRateLimitDisabledWithoutSharedLimiter(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	router := gin.New()
 	handlerCalled := 0
-	router.Use(RateLimit(RateLimitOptions{QPS: 0, Burst: 1}))
+	router.Use(RateLimit(nil))
 	router.GET("/api/v1/apps", func(c *gin.Context) {
 		handlerCalled++
 		c.Status(http.StatusOK)

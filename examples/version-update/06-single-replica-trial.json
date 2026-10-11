@@ -1,6 +1,5 @@
 {
-  "version": "2.1.0-canary",
-  "strategy": "canary",
+  "version": "2.1.0-rc1",
   "components": [
     {
       "name": "frontend",
@@ -9,17 +8,5 @@
     }
   ],
   "autoExec": true,
-  "description": "Canary release - testing v2.1.0 with 1 replica"
+  "description": "Trial v2.1.0 with 1 replica before scaling out"
 }
-
-
-
-
-
-
-
-
-
-
-
-

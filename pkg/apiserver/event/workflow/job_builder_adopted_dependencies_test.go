@@ -326,7 +326,7 @@ func TestGenerateJobTasks_ImportedAdoptionSnapshotProducesManagedDependencyClosu
 		WorkflowID:   workflowID,
 		WorkflowName: workflowID,
 		AppID:        appID,
-	}, store, int64(config.DefaultJobTaskTimeout))
+	}, store, int64(config.DefaultJobTaskTimeout.Seconds()))
 
 	jobsByType := make(map[config.JobType][]*model.JobTask)
 	totalJobs := 0
@@ -426,7 +426,7 @@ func TestAdoptedProtectedPVCJobRejectsExplicitStorageClassChange(t *testing.T) {
 		&snapshot,
 		&model.WorkflowQueue{WorkflowID: "workflow", AppID: "app", TaskID: "task"},
 		"app",
-		int64(config.DefaultJobTaskTimeout),
+		int64(config.DefaultJobTaskTimeout.Seconds()),
 		&model.JobTask{JobInfo: generated},
 	)
 	require.ErrorContains(t, err, "cannot change storageClassName")
@@ -462,7 +462,7 @@ func TestAugmentAdoptedDependencyJobsPreservesComponentAndApprovalScope(t *testi
 	task := &model.WorkflowQueue{TaskID: "task", WorkflowID: workflowID, AppID: appID}
 
 	newWorkloadJob := func(name string, jobType config.JobType) *model.JobTask {
-		jobTask := NewJobTask(name, namespace, workflowID, "", appID, task.TaskID, int64(config.DefaultJobTaskTimeout), "legacy")
+		jobTask := NewJobTask(name, namespace, workflowID, "", appID, task.TaskID, int64(config.DefaultJobTaskTimeout.Seconds()), "legacy")
 		jobTask.JobType = string(jobType)
 		return jobTask
 	}
@@ -502,7 +502,7 @@ func TestAugmentAdoptedDependencyJobsPreservesComponentAndApprovalScope(t *testi
 			newStepGroups(true),
 			task,
 			store,
-			int64(config.DefaultJobTaskTimeout),
+			int64(config.DefaultJobTaskTimeout.Seconds()),
 		)
 		require.NoError(t, err)
 		requireJobNames(t, groups[0][0].Jobs[config.JobPriorityMaxHigh], globalSecret.Name)
@@ -516,7 +516,7 @@ func TestAugmentAdoptedDependencyJobsPreservesComponentAndApprovalScope(t *testi
 			newStepGroups(false),
 			task,
 			store,
-			int64(config.DefaultJobTaskTimeout),
+			int64(config.DefaultJobTaskTimeout.Seconds()),
 		)
 		require.NoError(t, err)
 		requireJobNames(t, groups[0][0].Jobs[config.JobPriorityMaxHigh], globalSecret.Name)

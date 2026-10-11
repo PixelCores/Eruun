@@ -1,13 +1,16 @@
 package grpcapi
 
 import (
+	"strings"
 	"testing"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api"
-	eruunv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api"
+	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/middleware"
+	eruunv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1"
 )
 
 func rpcMethods(descs ...grpc.ServiceDesc) map[string]bool {
@@ -37,7 +40,7 @@ func TestRouteRPCCoverageAndExceptions(t *testing.T) {
 	)
 	require.Len(t, router.Routes(), 114)
 	require.Len(t, routeRPC, 99)
-	require.Len(t, grpcRouteExceptions, 15)
+	require.Len(t, grpcRouteExceptions, 11)
 	require.Len(t, methods, 99)
 	routes := map[string]bool{}
 	for _, route := range router.Routes() {
@@ -49,7 +52,7 @@ func TestRouteRPCCoverageAndExceptions(t *testing.T) {
 			require.False(t, grpcRouteExceptions[key], "mapped exception %s", key)
 			require.True(t, methods[method], "missing RPC for %s", key)
 		} else {
-			require.True(t, grpcRouteExceptions[key], "unreviewed route %s", key)
+			require.True(t, grpcRouteExceptions[key] || (route.Method == "GET" && middleware.IsHealthPath(route.Path)), "unreviewed route %s", key)
 		}
 	}
 	for route := range routeRPC {
@@ -65,5 +68,23 @@ func TestRouteRPCCoverageAndExceptions(t *testing.T) {
 	}
 	for method := range methods {
 		require.True(t, used[method], "unmapped RPC %s", method)
+	}
+}
+
+func TestHTTPAndRPCBusinessPoliciesAgree(t *testing.T) {
+	for route, rpc := range routeRPC {
+		verb, path, _ := strings.Cut(route, " ")
+		expected := middleware.BusinessRoutePolicy(verb, path)
+		actual := applicationMethodPolicies[rpc]
+		if role := administrationMethodPolicies[rpc]; role != "" {
+			actual = role
+		}
+		if role := jobsMethodPolicies[rpc]; role != "" {
+			actual = role
+		}
+		if adminAccountMethods[rpc] {
+			actual = "system"
+		}
+		require.Equal(t, expected, actual, "authorization drift for %s -> %s", route, rpc)
 	}
 }

@@ -14,7 +14,6 @@ type ICache interface {
 	Store(ctx context.Context, key string, data string) error
 	Load(ctx context.Context, key string) (string, error)
 	Delete(ctx context.Context, key string) error
-	IsCacheDisabled() bool
 }
 
 // defaultOpTimeout bounds cache operations, including post-write invalidation.

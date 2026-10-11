@@ -71,7 +71,7 @@ func TestGenerateJobTasksUsesPersistedCleanupJobsForRemovedComponents(t *testing
 		}),
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
 	require.Len(t, executions, 2)
 
 	require.Equal(t, "worker", executions[0].Name)
@@ -156,7 +156,7 @@ func TestGenerateJobTasksPlacesPersistedCleanupByWorkflowStepIndexAfterExpandedS
 		}),
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
 	require.Len(t, executions, 4)
 	require.Equal(t, []string{"api", "worker", versionUpdateCleanupStepName, "frontend"}, []string{
 		executions[0].Name,
@@ -238,7 +238,7 @@ func TestGenerateJobTasksPlacesPersistedCleanupAfterApprovalGate(t *testing.T) {
 		}),
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
 	require.Len(t, executions, 3)
 	require.Equal(t, "approve-release", executions[0].Name)
 	require.Equal(t, config.WorkflowStepTypeApproval, executions[0].StepType)
@@ -334,7 +334,7 @@ func TestGenerateJobTasksCleanupOnlySkipsDeployStepsAfterApprovalGate(t *testing
 		),
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
 	require.Len(t, executions, 2)
 	require.Equal(t, "approve-release", executions[0].Name)
 	require.Equal(t, config.WorkflowStepTypeApproval, executions[0].StepType)
@@ -391,7 +391,7 @@ func TestGenerateJobTasksVersionRestartOnlyKeepsLeadingApprovalAndSkipsDeploy(t 
 		ResourceActionInfo: mustVersionUpdateResourceActionInfo(t, true, "api"),
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
 	require.Len(t, executions, 2)
 	require.Equal(t, "approve-release", executions[0].Name)
 	require.Equal(t, config.WorkflowStepTypeApproval, executions[0].StepType)
@@ -443,7 +443,7 @@ func TestGenerateJobTasksVersionRestartAppendsAfterDeploy(t *testing.T) {
 		ResourceActionInfo: mustVersionUpdateResourceActionInfo(t, false, "api"),
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
 	require.Len(t, executions, 2)
 	require.Equal(t, "worker", executions[0].Name)
 	require.NotEmpty(t, executions[0].Jobs[config.JobPriorityNormal])
@@ -504,7 +504,7 @@ func TestGenerateJobTasksVersionUpdateImageReadyTimeoutTargetsWorkloadJobs(t *te
 		ResourceActionInfo: mustVersionUpdateImageReadyActionInfo(t, 300, "api", "mysql"),
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
 	apiDeploy := requireWorkflowJob(t, executions, "api", config.JobDeploy)
 	workerDeploy := requireWorkflowJob(t, executions, "worker", config.JobDeploy)
 	mysqlDeploy := requireWorkflowJob(t, executions, "mysql", config.JobDeployStore)
@@ -587,7 +587,7 @@ func TestGenerateJobTasksDefaultExecutionScopeRunsFullWorkflow(t *testing.T) {
 		ResourceActionInfo: mustVersionUpdateMarkerInfo(t),
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
 	requireWorkflowJob(t, executions, "backend", config.JobDeploy)
 	requireWorkflowJob(t, executions, "frontend", config.JobDeploy)
 	requireWorkflowJob(t, executions, "socket", config.JobDeploy)
@@ -675,7 +675,7 @@ func TestGenerateJobTasksChangedComponentsExecutionScopeFiltersWorkflowPolicies(
 		ResourceActionInfo: mustVersionUpdateExecutionScopeActionInfo(t, "backend"),
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
 	require.NotEmpty(t, executions)
 	require.Equal(t, "approve-release", executions[0].Name)
 	require.Equal(t, config.WorkflowStepTypeApproval, executions[0].StepType)
@@ -730,7 +730,7 @@ func TestGenerateJobTasksChangedComponentsExecutionScopeKeepsInstantJob(t *testi
 		ResourceActionInfo: mustVersionUpdateExecutionScopeActionInfo(t, "mysql-update-job"),
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
 	instantJob := requireWorkflowJob(t, executions, "mysql-update-job", config.JobDeployInstant)
 	require.NotNil(t, instantJob.JobInfo)
 
@@ -808,7 +808,7 @@ func TestGenerateJobTasksChangedComponentsExecutionScopeSkipsNonDeployJobs(t *te
 		ResourceActionInfo: mustVersionUpdateExecutionScopeActionInfo(t, "mysql"),
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
 	requireWorkflowJob(t, executions, "mysql", config.JobDeployStore)
 
 	names := workflowJobNames(executions)
@@ -850,7 +850,7 @@ func TestGenerateJobTasksIgnoresUnmarkedPersistedCleanupJobs(t *testing.T) {
 		TaskID:       "task-reset",
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
 	require.Empty(t, executions)
 }
 
@@ -906,7 +906,7 @@ func TestGenerateJobTasksWithApprovalStep(t *testing.T) {
 		WorkflowName: "approval-flow",
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
 	require.Len(t, executions, 2)
 	require.Equal(t, config.WorkflowStepTypeApproval, executions[0].StepType)
 	require.NotNil(t, executions[0].Approval)

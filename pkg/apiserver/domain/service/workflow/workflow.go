@@ -6,12 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/redis/go-redis/v9"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/robfig/cron/v3"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -24,6 +23,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/cancelsignal"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -36,18 +36,14 @@ import (
 )
 
 type WorkflowService interface {
-	CreateWorkflowTask(ctx context.Context, workflow apis.CreateWorkflowRequest) (*apis.CreateWorkflowResponse, error)
-	ExecWorkflowTask(ctx context.Context, workflowID string, executeAt int64) (*apis.ExecWorkflowResponse, error)
 	ExecWorkflowTaskForApp(ctx context.Context, appID, workflowID string, executeAt int64, idempotencyKey string) (*apis.ExecWorkflowResponse, error)
 	WaitingTasks(ctx context.Context) ([]*model.WorkflowQueue, error)
-	UpdateTask(ctx context.Context, queue *model.WorkflowQueue) bool
-	TaskRunning(ctx context.Context) ([]*model.WorkflowQueue, error)
+	ClaimTaskForDispatch(ctx context.Context, task *model.WorkflowQueue, leaseDuration time.Duration) (*model.WorkflowQueue, bool, error)
 	CancelWorkflowTask(ctx context.Context, userName, taskID, reason string) error
 	CancelWorkflowTaskForApp(ctx context.Context, appID, userName, taskID, reason string) error
 	CancelAllWorkflowTasksForApp(ctx context.Context, appID, userName, reason string) ([]string, error)
 	CancelDelayedVersionTaskForApp(ctx context.Context, appID, userName, taskID, reason string) error
 	ApproveWorkflowTask(ctx context.Context, taskID, action, userName, reason string) (*apis.TaskApprovalResponse, error)
-	MarkTaskStatus(ctx context.Context, taskID string, from, to config.Status) (bool, error)
 	GetTaskStatus(ctx context.Context, taskID string) (*apis.TaskStatusResponse, error)
 	GetTaskStages(ctx context.Context, taskID string) (*apis.TaskStagesResponse, error)
 	UpsertWorkflowSchedule(ctx context.Context, appID string, req apis.UpsertWorkflowScheduleRequest) (*apis.UpsertWorkflowScheduleResponse, error)
@@ -93,65 +89,6 @@ func NewWorkflowService() WorkflowService {
 	return &workflowServiceImpl{}
 }
 
-// CreateWorkflowTask 创建工作流任务(执行)
-func (w *workflowServiceImpl) CreateWorkflowTask(ctx context.Context, req apis.CreateWorkflowRequest) (*apis.CreateWorkflowResponse, error) {
-	workflow := &model.Workflow{
-		Name: req.Name,
-	}
-	exist, err := w.Store.IsExist(ctx, workflow)
-	if err != nil {
-		klog.Errorf("check workflow existence failure: %v", err)
-		return nil, fmt.Errorf("check workflow existence: %w", err)
-	}
-	if exist {
-		return nil, bcode.ErrWorkflowExist
-	}
-	workflow = ConvertWorkflow(&req)
-
-	// 校验工作流信息
-	if err = lintWorkflow(workflow); err != nil {
-		return nil, err
-	}
-
-	if err = repository.CreateWorkflow(ctx, w.Store, workflow); err != nil {
-		return nil, bcode.ErrCreateWorkflow
-	}
-
-	// 创建组件
-	for _, component := range req.Component {
-		nComponent := ConvertComponent(&component, workflow.ID)
-		properties, err := model.NewJSONStructByStruct(component.Properties)
-		if err != nil {
-			w.rollbackWorkflowCreation(ctx, workflow)
-			klog.Errorf("new trait failure,%s", err.Error())
-			return nil, bcode.ErrInvalidProperties
-		}
-
-		nComponent.Properties = properties
-
-		err = repository.CreateComponents(ctx, w.Store, nComponent)
-		if err != nil {
-			w.rollbackWorkflowCreation(ctx, workflow)
-			klog.Errorf("TmpCreate Components err: %s", err)
-			return nil, bcode.ErrCreateComponents
-		}
-	}
-	return &apis.CreateWorkflowResponse{
-		WorkflowID: workflow.ID,
-	}, nil
-}
-
-func ConvertWorkflow(req *apis.CreateWorkflowRequest) *model.Workflow {
-	return &model.Workflow{
-		ID:          utils.RandStringByNumLowercase(24),
-		Name:        strings.ToLower(req.Name),
-		Alias:       req.Alias,
-		Disabled:    true,
-		ProjectID:   strings.ToLower(req.Project),
-		Description: req.Description,
-	}
-}
-
 func ConvertComponent(req *apis.CreateComponentRequest, appID string) *model.ApplicationComponent {
 	if req.Replicas <= 0 {
 		req.Replicas = 1
@@ -165,15 +102,6 @@ func ConvertComponent(req *apis.CreateComponentRequest, appID string) *model.App
 		Replicas:      req.Replicas,
 		ComponentType: req.ComponentType,
 	}
-}
-
-// ExecWorkflowTask 执行工作流的任务
-func (w *workflowServiceImpl) ExecWorkflowTask(ctx context.Context, workflowID string, executeAt int64) (*apis.ExecWorkflowResponse, error) {
-	workflow, err := repository.WorkflowByID(ctx, w.Store, workflowID)
-	if err != nil {
-		return nil, err
-	}
-	return w.execWorkflowTaskForAppLocked(ctx, workflow.AppID, workflowID, executeAt, "")
 }
 
 func (w *workflowServiceImpl) GetTaskStatus(ctx context.Context, taskID string) (*apis.TaskStatusResponse, error) {
@@ -939,87 +867,6 @@ func (w *workflowServiceImpl) WaitingTasks(ctx context.Context) ([]*model.Workfl
 	return list, err
 }
 
-func (w *workflowServiceImpl) UpdateTask(ctx context.Context, task *model.WorkflowQueue) bool {
-	err := repository.UpdateTask(ctx, w.Store, task)
-	if err != nil {
-		klog.Errorf("%s:%s update t status error", task.WorkflowName, task.TaskID)
-		return false
-	}
-	return true
-}
-
-func (w *workflowServiceImpl) MarkTaskStatus(ctx context.Context, taskID string, from, to config.Status) (bool, error) {
-	if from == config.StatusWaiting && to == config.StatusQueued {
-		return w.claimWaitingTaskForDispatch(ctx, taskID)
-	}
-	return repository.UpdateTaskStatus(ctx, w.Store, taskID, from, to)
-}
-
-func (w *workflowServiceImpl) claimWaitingTaskForDispatch(ctx context.Context, taskID string) (bool, error) {
-	task, err := repository.TaskByID(ctx, w.Store, taskID)
-	if err != nil {
-		if errors.Is(err, datastore.ErrRecordNotExist) {
-			return false, nil
-		}
-		return false, err
-	}
-	if task.Status != config.StatusWaiting {
-		return false, nil
-	}
-	// Immediate and cron tasks are created while holding this same application
-	// lock and remain active for idle checks. Only delayed tasks can outlive the
-	// safety decision made when they were originally enqueued.
-	if task.ExecuteAt <= 0 {
-		return repository.UpdateTaskStatus(ctx, w.Store, taskID, config.StatusWaiting, config.StatusQueued)
-	}
-	lockProvider, err := w.appScheduleLocker()
-	if err != nil {
-		return false, err
-	}
-	claimed := false
-	err = schedulelock.WithAppScheduleLock(ctx, lockProvider, task.AppID, "dispatch-workflow-task", true, func(lockCtx context.Context) error {
-		current, err := repository.TaskByID(lockCtx, w.Store, taskID)
-		if err != nil {
-			if errors.Is(err, datastore.ErrRecordNotExist) {
-				return nil
-			}
-			return err
-		}
-		if current.Status != config.StatusWaiting {
-			return nil
-		}
-		if current.AppID == "" || current.AppID != task.AppID {
-			return fmt.Errorf("workflow task %s changed application from %q to %q", taskID, task.AppID, current.AppID)
-		}
-		_, migrationTask, err := statefulSetCleanupInfoForFence(current)
-		if err != nil {
-			return err
-		}
-		// A v2/v3 migration task is the operation that resolves the fence. Its
-		// cleanup contract was validated while the version update held this lock.
-		if !migrationTask {
-			if err := EnsureNoPendingStatefulSetCleanup(lockCtx, w.Store, current.AppID); err != nil {
-				return err
-			}
-		}
-		claimed, err = repository.UpdateTaskStatus(lockCtx, w.Store, taskID, config.StatusWaiting, config.StatusQueued)
-		return err
-	})
-	if err != nil {
-		return false, err
-	}
-	return claimed, nil
-}
-
-// TaskRunning 所有正在运行的Task
-func (w *workflowServiceImpl) TaskRunning(ctx context.Context) ([]*model.WorkflowQueue, error) {
-	list, err := repository.TaskRunning(ctx, w.Store)
-	if err != nil {
-		return nil, err
-	}
-	return list, err
-}
-
 func (w *workflowServiceImpl) CancelWorkflowTask(ctx context.Context, userName, taskID, reason string) error {
 	task, err := repository.TaskByID(ctx, w.Store, taskID)
 	if err != nil {
@@ -1481,10 +1328,11 @@ func runCancelledTaskStoreUpdate(ctx context.Context, store datastore.DataStore,
 		}
 		return nil
 	}
-	if txStore, ok := store.(datastore.Transactional); ok {
-		return txStore.WithTransaction(ctx, run)
+	txStore, ok := store.(datastore.Transactional)
+	if !ok {
+		return fmt.Errorf("cancel workflow task requires transactional datastore")
 	}
-	return run(store)
+	return txStore.WithTransaction(ctx, run)
 }
 
 // TerminalizePrecreatedVersionUpdateCleanupJobs marks version-update cleanup jobs
@@ -1743,7 +1591,6 @@ func (w *workflowServiceImpl) triggerWorkflowTerminalCallbackOnApprovalAction(ct
 			Method:         method,
 			Headers:        callback.Headers,
 			TimeoutSeconds: callbackTimeoutSeconds,
-			TimeoutMaxSec:  workflowconfig.ResolveWorkflowCallbackTimeoutMaxSeconds(callbackTimeoutMax),
 			TimeoutMaxNS:   int64(callbackTimeoutMax),
 			Payload:        payload,
 		},
@@ -2168,18 +2015,6 @@ func newWorkflowQueueTask(workflow *model.Workflow, executeAt int64) *model.Work
 		Type:                workflow.WorkflowType,
 		Status:              config.StatusWaiting,
 		ExecuteAt:           executeAt,
-	}
-}
-
-func (w *workflowServiceImpl) rollbackWorkflowCreation(ctx context.Context, workflow *model.Workflow) {
-	if workflow == nil {
-		return
-	}
-	if err := repository.DelComponentsByAppID(ctx, w.Store, workflow.ID); err != nil {
-		klog.Errorf("cleanup components for workflow %s failed: %v", workflow.ID, err)
-	}
-	if err := repository.DelWorkflow(ctx, w.Store, workflow); err != nil {
-		klog.Errorf("cleanup workflow %s failed: %v", workflow.ID, err)
 	}
 }
 

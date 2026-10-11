@@ -24,33 +24,20 @@ func NormalizeManagementMode(value string) (ManagementMode, bool) {
 	}
 }
 
-// UpdateStrategy 版本更新策略类型
+// UpdateStrategy is the legacy version-update request field; workload rollout
+// behavior is controlled by component traits, not this value.
 type UpdateStrategy string
 
-const (
-	// UpdateStrategyRolling 滚动更新（默认）- 逐步替换Pod，保证服务可用性
-	UpdateStrategyRolling UpdateStrategy = "rolling"
-	// UpdateStrategyRecreate 重建更新 - 先删除所有旧Pod，再创建新Pod
-	UpdateStrategyRecreate UpdateStrategy = "recreate"
-	// UpdateStrategyCanary 金丝雀更新 - 先更新部分Pod，验证后再全量更新
-	UpdateStrategyCanary UpdateStrategy = "canary"
-	// UpdateStrategyBlueGreen 蓝绿部署 - 创建新版本，切换流量后销毁旧版本
-	UpdateStrategyBlueGreen UpdateStrategy = "blue-green"
-)
+const UpdateStrategyRolling UpdateStrategy = "rolling"
 
-// ParseUpdateStrategy 解析更新策略，默认返回滚动更新
-func ParseUpdateStrategy(strategy string) UpdateStrategy {
+// NormalizeUpdateStrategy accepts only the historical default; unimplemented
+// strategies must not be echoed as though they change execution behavior.
+func NormalizeUpdateStrategy(strategy string) (UpdateStrategy, bool) {
 	switch UpdateStrategy(strategy) {
-	case UpdateStrategyRecreate:
-		return UpdateStrategyRecreate
-	case UpdateStrategyCanary:
-		return UpdateStrategyCanary
-	case UpdateStrategyBlueGreen:
-		return UpdateStrategyBlueGreen
-	case UpdateStrategyRolling:
-		return UpdateStrategyRolling
+	case "", UpdateStrategyRolling:
+		return UpdateStrategyRolling, true
 	default:
-		return UpdateStrategyRolling
+		return "", false
 	}
 }
 

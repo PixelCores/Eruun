@@ -133,24 +133,21 @@ func (v *validationServiceImpl) validateWorkflowSteps(steps []apisv1.CreateWorkf
 			errors = append(errors, nameErrors...)
 
 			// Check for duplicate step names
-			lowerName := strings.ToLower(step.Name)
-			if stepNames[lowerName] {
+			if err := applicationservice.ValidateUniqueWorkflowStepName(step.Name, stepNames); err != nil {
 				errors = append(errors, apisv1.ValidationError{
 					Field:   fmt.Sprintf("%s.name", stepField),
 					Code:    apisv1.ErrCodeDuplicateWorkflowStep,
-					Message: fmt.Sprintf("duplicate workflow step name: %s", step.Name),
+					Message: err.Error(),
 				})
-			} else {
-				stepNames[lowerName] = true
 			}
 		}
 
 		// Validate mode
-		if !validWorkflowModes[step.Mode] {
+		if err := applicationservice.ValidateWorkflowMode(step.Mode); err != nil {
 			errors = append(errors, apisv1.ValidationError{
 				Field:   fmt.Sprintf("%s.mode", stepField),
 				Code:    apisv1.ErrCodeInvalidWorkflowMode,
-				Message: fmt.Sprintf("invalid workflow mode: %s, must be one of: StepByStep, DAG", step.Mode),
+				Message: err.Error(),
 			})
 		}
 		if _, ok := validWorkflowStepTypes[stepType]; !ok {

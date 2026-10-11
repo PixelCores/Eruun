@@ -9,13 +9,14 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
-	"github.com/gin-gonic/gin"
 )
 
 type workspaceJobs struct {
@@ -160,7 +161,7 @@ func (a *workspaceJobs) datasets(c *gin.Context) {
 			return
 		}
 	}
-	result, err := a.Service.Artifacts.ListPage(c.Request.Context(), scope.WorkspaceID, artifacts.KindDataset, "", page, size)
+	result, err := a.Service.Artifacts.ListPage(c.Request.Context(), scope.WorkspaceID, artifacts.KindDataset, "", page, size, "")
 	jobResponse(c, http.StatusOK, result, err)
 }
 func (a *workspaceJobs) dataset(c *gin.Context) {

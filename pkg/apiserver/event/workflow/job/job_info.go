@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -434,42 +433,17 @@ func versionUpdateCleanupStatefulSetPVCTemplatesToDelete(raw string) []string {
 	if !marked || marker.Version != model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion || !marker.RequireStatefulSetDeletion || len(marker.StatefulSetPVCTemplatesToDelete) == 0 {
 		return nil
 	}
-	return normalizedVersionUpdateCleanupPVCTemplates(marker.StatefulSetPVCTemplatesToDelete)
+	return model.NormalizeVersionUpdateCleanupPVCTemplateNames(marker.StatefulSetPVCTemplatesToDelete)
 }
 
-func normalizedVersionUpdateCleanupPVCTemplates(rawTemplates []string) []string {
-	seen := make(map[string]struct{}, len(rawTemplates))
-	templates := make([]string, 0, len(rawTemplates))
-	for _, rawName := range rawTemplates {
-		name := strings.TrimSpace(rawName)
-		if name == "" {
-			continue
-		}
-		if _, exists := seen[name]; exists {
-			continue
-		}
-		seen[name] = struct{}{}
-		templates = append(templates, name)
-	}
-	sort.Strings(templates)
-	return templates
-}
-
-type versionUpdateCleanupInternalInfo struct {
-	Source                          string   `json:"source"`
-	Version                         int      `json:"version"`
-	RequireStatefulSetDeletion      bool     `json:"requireStatefulSetDeletion"`
-	StatefulSetPVCTemplatesToDelete []string `json:"statefulSetPVCTemplatesToDelete"`
-}
-
-func parseVersionUpdateCleanupInternalInfo(raw string) (versionUpdateCleanupInternalInfo, bool) {
+func parseVersionUpdateCleanupInternalInfo(raw string) (model.VersionUpdateCleanupJobMarker, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return versionUpdateCleanupInternalInfo{}, false
+		return model.VersionUpdateCleanupJobMarker{}, false
 	}
-	var marker versionUpdateCleanupInternalInfo
+	var marker model.VersionUpdateCleanupJobMarker
 	if err := json.Unmarshal([]byte(raw), &marker); err != nil {
-		return versionUpdateCleanupInternalInfo{}, false
+		return model.VersionUpdateCleanupJobMarker{}, false
 	}
 	return marker, marker.Source == config.JobInfoSourceVersionUpdateRemove
 }
@@ -479,7 +453,7 @@ func validateVersionUpdateCleanupInternalInfo(raw string, component *model.Appli
 	if !marked {
 		return nil
 	}
-	templates := normalizedVersionUpdateCleanupPVCTemplates(marker.StatefulSetPVCTemplatesToDelete)
+	templates := model.NormalizeVersionUpdateCleanupPVCTemplateNames(marker.StatefulSetPVCTemplatesToDelete)
 	switch marker.Version {
 	case 0:
 		if len(templates) > 0 {

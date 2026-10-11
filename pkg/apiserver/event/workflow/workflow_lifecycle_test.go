@@ -58,7 +58,7 @@ func TestWorkflowStartWorkerStartsNewGenerationWhilePreviousStops(t *testing.T) 
 	firstCtx, cancelFirst := context.WithCancel(context.Background())
 	firstDone := make(chan struct{})
 	go func() {
-		w.StartWorker(firstCtx, firstCtx, nil, nil, nil)
+		w.StartWorker(firstCtx, firstCtx, nil, nil)
 		close(firstDone)
 	}()
 
@@ -69,7 +69,7 @@ func TestWorkflowStartWorkerStartsNewGenerationWhilePreviousStops(t *testing.T) 
 	defer cancelSecond()
 	secondDone := make(chan struct{})
 	go func() {
-		w.StartWorker(secondCtx, secondCtx, nil, nil, nil)
+		w.StartWorker(secondCtx, secondCtx, nil, nil)
 		close(secondDone)
 	}()
 

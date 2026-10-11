@@ -16,6 +16,25 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
+func TestVersionUpdateCleanupJobMarkerPreservesPersistedJSON(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		deletion  bool
+		templates []string
+		want      string
+	}{
+		{name: "ordinary cleanup", want: `{"source":"version_update_remove"}`},
+		{name: "legacy statefulset deletion", deletion: true, want: `{"source":"version_update_remove","requireStatefulSetDeletion":true}`},
+		{name: "v3 normalized pvc names", deletion: true, templates: []string{" logs ", "data", "logs"}, want: `{"source":"version_update_remove","version":3,"requireStatefulSetDeletion":true,"statefulSetPVCTemplatesToDelete":["data","logs"]}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			marker, err := versionUpdateCleanupJobInfoMarker(tc.deletion, tc.templates)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, marker)
+		})
+	}
+}
+
 func TestUpdateVersionFullRebuildRestoresPendingStatefulSetDeletionV2(t *testing.T) {
 	store, svc, req := newStatefulSetDeletionV2RetryFixture(t)
 
@@ -52,7 +71,7 @@ func TestUpdateVersionFullRebuildRestoresPendingStatefulSetDeletionV2(t *testing
 	require.Equal(t, "mysql-headless", restoredTraits.Service[0].Name)
 
 	secondJob := requireVersionUpdateCleanupJobForTask(t, store, second.TaskID, "mysql")
-	var marker versionUpdateCleanupJobMarker
+	var marker model.VersionUpdateCleanupJobMarker
 	require.NoError(t, json.Unmarshal([]byte(secondJob.InternalInfo), &marker))
 	require.Zero(t, marker.Version)
 	require.True(t, marker.RequireStatefulSetDeletion)

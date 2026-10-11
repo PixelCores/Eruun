@@ -240,19 +240,11 @@ func WithWorkflowTaskOwnership(
 			return fmt.Errorf("%w: owned persistence requires worker identity", ErrWorkflowOwnershipRequired)
 		}
 	}
-	transactional, ok := store.(datastore.Transactional)
+	transactional, ok := store.(datastore.ReadCommittedTransactional)
 	if !ok {
 		return ErrWorkflowFencingUnsupported
 	}
-	runTransaction := transactional.WithTransaction
-	if current, ok := store.(datastore.ReadCommittedTransactional); ok {
-		// Access wrappers may read before taking the ownership row lock. SQL
-		// callers need fresh reads after waiting for that lock, including Job
-		// admission and idempotent release checks. Production SQL stores expose
-		// this capability; simpler non-SQL stores retain their transaction API.
-		runTransaction = current.WithReadCommittedTransaction
-	}
-	return runTransaction(ctx, func(tx datastore.DataStore) error {
+	return transactional.WithReadCommittedTransaction(ctx, func(tx datastore.DataStore) error {
 		expectedStatus := task.Status
 		if expectedStatus == "" {
 			expectedStatus = config.StatusRunning
@@ -501,14 +493,11 @@ func TerminalizeCancelledWorkflowJobs(ctx context.Context, store datastore.DataS
 }
 
 func withWorkflowRecoveryTransaction(ctx context.Context, store datastore.DataStore, fn func(datastore.DataStore) error) error {
-	transactional, ok := store.(datastore.Transactional)
+	transactional, ok := store.(datastore.ReadCommittedTransactional)
 	if !ok {
 		return ErrWorkflowFencingUnsupported
 	}
-	if current, ok := store.(datastore.ReadCommittedTransactional); ok {
-		return current.WithReadCommittedTransaction(ctx, fn)
-	}
-	return transactional.WithTransaction(ctx, fn)
+	return transactional.WithReadCommittedTransaction(ctx, fn)
 }
 
 func currentWorkflowDatabaseTime(ctx context.Context, store datastore.DataStore) (time.Time, error) {

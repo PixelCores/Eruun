@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +18,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
@@ -305,7 +305,7 @@ func TestDeleteApplicationCascadeFailFastWithoutTransactionalStore(t *testing.T)
 		AppRepo:        &cascadeAppRepo{store: base},
 		ComponentRepo:  &cascadeComponentRepo{store: base},
 		ScheduleLocker: locker.NewNoopLocker("test-app-schedule"),
-		Cache:          cache.NewMemCache(false),
+		Cache:          cache.NewMemCache(),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{
@@ -339,7 +339,7 @@ func TestDeleteApplicationCascadeFailsWhenLockUnavailable(t *testing.T) {
 		Store:         store,
 		AppRepo:       &cascadeAppRepo{store: store},
 		ComponentRepo: &cascadeComponentRepo{store: store},
-		Cache:         cache.NewMemCache(false),
+		Cache:         cache.NewMemCache(),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{
@@ -377,7 +377,7 @@ func TestDeleteApplicationCascadeDeletesSchedulesBeforeCleanup(t *testing.T) {
 		AppRepo:        &cascadeAppRepo{store: store},
 		ComponentRepo:  &cascadeComponentRepo{store: store},
 		ScheduleLocker: locker.NewNoopLocker("test-app-schedule"),
-		Cache:          cache.NewMemCache(false),
+		Cache:          cache.NewMemCache(),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{
@@ -487,7 +487,7 @@ func TestDeleteApplicationCascadeDeletesRecreatedSchedulesInFinalTx(t *testing.T
 		AppRepo:        &cascadeAppRepo{store: store},
 		ComponentRepo:  &cascadeComponentRepo{store: store},
 		ScheduleLocker: locker.NewNoopLocker("test-app-schedule"),
-		Cache:          cache.NewMemCache(false),
+		Cache:          cache.NewMemCache(),
 	}
 
 	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{
@@ -1002,18 +1002,6 @@ func (r *cascadeAppRepo) FindByName(ctx context.Context, name string) (*model.Ap
 	return app, nil
 }
 
-func (r *cascadeAppRepo) Create(ctx context.Context, app *model.Applications) error {
-	return r.store.Add(ctx, app)
-}
-
-func (r *cascadeAppRepo) Update(ctx context.Context, app *model.Applications) error {
-	return r.store.Put(ctx, app)
-}
-
-func (r *cascadeAppRepo) Delete(ctx context.Context, app *model.Applications) error {
-	return r.store.Delete(ctx, app)
-}
-
 func (r *cascadeAppRepo) List(_ context.Context, _ datastore.ListOptions) ([]*model.Applications, error) {
 	out := make([]*model.Applications, 0, len(r.store.apps))
 	for _, app := range r.store.apps {
@@ -1030,36 +1018,6 @@ var _ repository.ApplicationRepository = (*cascadeAppRepo)(nil)
 
 type cascadeComponentRepo struct {
 	store *cascadeDeleteStore
-}
-
-func (r *cascadeComponentRepo) Create(ctx context.Context, component *model.ApplicationComponent) error {
-	return r.store.Add(ctx, component)
-}
-
-func (r *cascadeComponentRepo) Update(ctx context.Context, component *model.ApplicationComponent) error {
-	return r.store.Put(ctx, component)
-}
-
-func (r *cascadeComponentRepo) Delete(ctx context.Context, component *model.ApplicationComponent) error {
-	return r.store.Delete(ctx, component)
-}
-
-func (r *cascadeComponentRepo) BatchAdd(ctx context.Context, components []*model.ApplicationComponent) error {
-	for _, component := range components {
-		if err := r.store.Add(ctx, component); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (r *cascadeComponentRepo) DeleteByAppID(_ context.Context, appID string) error {
-	for name, component := range r.store.components {
-		if component != nil && component.AppID == appID {
-			delete(r.store.components, name)
-		}
-	}
-	return nil
 }
 
 func (r *cascadeComponentRepo) FindByAppID(_ context.Context, appID string) ([]*model.ApplicationComponent, error) {

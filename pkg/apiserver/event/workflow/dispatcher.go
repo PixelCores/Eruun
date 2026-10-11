@@ -123,10 +123,9 @@ func (w *Workflow) Dispatcher(ctx context.Context) {
 }
 
 // StartWorker subscribes to task dispatch topic and executes tasks.
-// It implements resilient behavior: by default (max failures = 0), it retries indefinitely
-// with exponential backoff instead of exiting on transient errors.
+// It retries transient errors with bounded exponential backoff until cancellation.
 // consumerCtx controls message intake; executionCtx owns already-started workflow controllers.
-func (w *Workflow) StartWorker(consumerCtx, executionCtx context.Context, errChan chan error, ready, stopped func()) {
+func (w *Workflow) StartWorker(consumerCtx, executionCtx context.Context, ready, stopped func()) {
 	if consumerCtx == nil {
 		consumerCtx = context.Background()
 	}
@@ -147,11 +146,9 @@ func (w *Workflow) StartWorker(consumerCtx, executionCtx context.Context, errCha
 	// Get config values with defaults
 	backoffMin := w.workerBackoffMin()
 	backoffMax := w.workerBackoffMax()
-	maxReadFailures := w.workerMaxReadFailures()
-	maxClaimFailures := w.workerMaxClaimFailures()
 
-	klog.Infof("worker starting: stream=%s group=%s consumer=%s maxReadFailures=%d maxClaimFailures=%d",
-		w.dispatchTopic(), group, consumer, maxReadFailures, maxClaimFailures)
+	klog.Infof("worker starting: stream=%s group=%s consumer=%s",
+		w.dispatchTopic(), group, consumer)
 
 	// Ensure consumer group exists once on worker start to avoid per-read overhead.
 	if err := w.Queue.EnsureGroup(consumerCtx, group); err != nil {
@@ -183,11 +180,6 @@ func (w *Workflow) StartWorker(consumerCtx, executionCtx context.Context, errCha
 				klog.Warningf("auto-claim error (consecutive: %d): %v", claimFailures, err)
 				w.reportWorkerError(fmt.Errorf("auto-claim failed (%d consecutive): %w", claimFailures, err))
 
-				// Only exit if maxClaimFailures > 0 and threshold reached
-				if maxClaimFailures > 0 && claimFailures >= maxClaimFailures {
-					klog.Errorf("max claim failures reached (%d), worker exiting", maxClaimFailures)
-					return
-				}
 				continue
 			}
 			claimFailures = 0
@@ -220,11 +212,6 @@ func (w *Workflow) StartWorker(consumerCtx, executionCtx context.Context, errCha
 				case <-time.After(wait):
 				}
 
-				// Only exit if maxReadFailures > 0 and threshold reached
-				if maxReadFailures > 0 && readFailures >= maxReadFailures {
-					klog.Errorf("max read failures reached (%d), worker exiting", maxReadFailures)
-					return
-				}
 				continue
 			}
 			readFailures = 0
@@ -246,7 +233,7 @@ func (w *Workflow) StartWorker(consumerCtx, executionCtx context.Context, errCha
 
 func (w *Workflow) claimAndProcessTask(ctx context.Context, task *model.WorkflowQueue, processor func(context.Context, *model.WorkflowQueue) error) {
 	var queuedTask *model.WorkflowQueue
-	queuedTask, claimed, err := repository.ClaimWorkflowTaskForDispatch(ctx, w.Store, task, w.workflowLeaseDuration())
+	queuedTask, claimed, err := w.WorkflowService.ClaimTaskForDispatch(ctx, task, w.workflowLeaseDuration())
 	if err != nil {
 		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
 			return

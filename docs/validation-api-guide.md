@@ -58,6 +58,10 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
 
 Workflow 的组件引用（`components`、`properties.policies`、`properties[].policies`、`subSteps[]` 以及 `log_archive_upload` 的 step name fallback）按大小写不敏感方式匹配已存在组件；真实创建或更新工作流时，持久化引用会使用组件自身 `Name` 的实际大小写。
 
+顶层 `workflow[]` 的 `mode` 只接受省略、空字符串、`StepByStep` 或 `DAG`；空值仍默认为 `StepByStep`。非空步骤名按大小写不敏感方式判重。Try Application / Try Workflow 与真实应用创建、工作流更新使用相同的 mode 和重名规则：Try 分别返回 `INVALID_WORKFLOW_MODE`（`/workflow/{index}/mode`）和 `DUPLICATE_WORKFLOW_STEP`（`/workflow/{index}/name`），写入接口返回工作流配置错误且不保存请求。
+
+迁移旧请求时，请将未知 mode 改为上述合法值，并为重名步骤指定不同名称；写入接口不再将未知 mode 静默当作 `StepByStep`。`stepType` 的既有非法值拒绝规则保持不变。
+
 Try Application 与 Try Workflow 都会校验公开 workflow jobType 的附加契约。对于 `log_archive_upload`：
 
 - `properties.path` 必填；缺失时返回 `MISSING_REQUIRED_FIELD`。

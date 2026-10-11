@@ -19,6 +19,8 @@ type Driver struct {
 	Client gorm.DB
 }
 
+var _ datastore.RuntimeStore = (*Driver)(nil)
+
 // CurrentDatabaseTime returns the SQL server's UTC wall clock. Distributed
 // lifecycle decisions use this value so node clock skew cannot expire shared
 // state prematurely.

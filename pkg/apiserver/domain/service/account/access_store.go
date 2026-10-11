@@ -19,6 +19,8 @@ import (
 // obtain their scope from the persisted application or workspace task before executing jobs.
 type Store struct{ raw datastore.DataStore }
 
+var _ datastore.RuntimeStore = (*Store)(nil)
+
 func NewStore(raw datastore.DataStore) *Store { return &Store{raw: raw} }
 
 // CountStartingSandboxes is a narrow internal aggregate for the shared start

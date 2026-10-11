@@ -3,6 +3,8 @@ package job
 import (
 	"context"
 
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
@@ -65,4 +67,16 @@ func (b *deployNamespacedResourceJobBase) runWithStatus(ctx context.Context, run
 
 func (b *deployNamespacedResourceJobBase) runWithWait(ctx context.Context, runFn runJobFunc, waitFn waitJobFunc, runLogMsg, waitLogMsg string) error {
 	return runJobWithWait(ctx, b.job, b.ack, runFn, waitFn, runLogMsg, waitLogMsg)
+}
+
+func (b *deployNamespacedResourceJobBase) cleanCreatedBatchJobs(ctx context.Context, successSuffix string) {
+	b.cleanCreated(ctx, domainspec.ResourceJob, "job", func(ctx context.Context, namespace, name string) error {
+		live, err := b.client.BatchV1().Jobs(namespace).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		// Garbage collection continues server-side; waiting here would spend the
+		// shared cleanup budget before later created resources are deleted.
+		return deleteJobForeground(ctx, b.client, namespace, live)
+	}, k8serrors.IsNotFound, successSuffix)
 }

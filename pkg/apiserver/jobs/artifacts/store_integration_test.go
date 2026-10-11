@@ -63,7 +63,7 @@ func TestMySQLConcurrentArtifactPublicationAndDelivery(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := s.PutResult(ctx, workspace, task, p, bytes.NewReader(data))
+			_, err := s.PutResult(ctx, workspace, task, p, bytes.NewReader(data), "")
 			errs <- err
 		}()
 	}
@@ -75,7 +75,7 @@ func TestMySQLConcurrentArtifactPublicationAndDelivery(t *testing.T) {
 	count, err := driver.Count(ctx, &model.JobArtifact{WorkspaceID: workspace, Kind: KindSource}, nil)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, count)
-	deliveries, err := s.Deliveries(ctx, workspace, task)
+	deliveries, err := s.Deliveries(ctx, workspace, task, "")
 	require.NoError(t, err)
 	require.Len(t, deliveries, 2)
 	errs = make(chan error, workers)
@@ -88,16 +88,16 @@ func TestMySQLConcurrentArtifactPublicationAndDelivery(t *testing.T) {
 	for err := range errs {
 		require.NoError(t, err)
 	}
-	deliveries, err = s.Deliveries(ctx, workspace, task)
+	deliveries, err = s.Deliveries(ctx, workspace, task, "")
 	require.NoError(t, err)
 	for _, delivery := range deliveries {
 		require.Equal(t, DeliverySucceeded, delivery.State)
 		require.Equal(t, 1, delivery.Attempts)
 		var out bytes.Buffer
-		require.NoError(t, s.DownloadDelivery(ctx, workspace, task, delivery.Target, &out))
+		require.NoError(t, s.DownloadDelivery(ctx, workspace, task, delivery.Target, &out, ""))
 		require.Equal(t, data, out.Bytes())
 	}
-	source, err := s.Get(ctx, workspace, sourceID(workspace, task))
+	source, err := s.Get(ctx, workspace, sourceID(workspace, task, ""))
 	require.NoError(t, err)
 	now, err := driver.CurrentDatabaseTime(ctx)
 	require.NoError(t, err)
@@ -107,7 +107,7 @@ func TestMySQLConcurrentArtifactPublicationAndDelivery(t *testing.T) {
 	require.NoError(t, s.CleanupExpired(ctx, 10))
 	require.ErrorIs(t, s.Download(ctx, workspace, source.ID, io.Discard), ErrSourceExpired)
 	for _, target := range []string{"database", "minio"} {
-		require.NoError(t, s.DownloadDelivery(ctx, workspace, task, target, io.Discard), fmt.Sprintf("saved %s survives source expiry", target))
+		require.NoError(t, s.DownloadDelivery(ctx, workspace, task, target, io.Discard, ""), fmt.Sprintf("saved %s survives source expiry", target))
 	}
 }
 
@@ -147,11 +147,11 @@ func TestMySQLAndMinIOPreserveFullResultsAfterSourceExpiry(t *testing.T) {
 	_, err = rand.New(rand.NewSource(2)).Read(payload)
 	require.NoError(t, err)
 	data := archiveBytes(t, testEntry{name: "result.json", content: `{"collectionComplete":true}`}, testEntry{name: "outputs/artifact.bin", content: string(payload)})
-	source, err := s.PutResult(ctx, workspace, task, policy(spec.JobResultTarget{Type: "database", Mode: "full"}, spec.JobResultTarget{Type: "minio", Mode: "full"}), bytes.NewReader(data))
+	source, err := s.PutResult(ctx, workspace, task, policy(spec.JobResultTarget{Type: "database", Mode: "full"}, spec.JobResultTarget{Type: "minio", Mode: "full"}), bytes.NewReader(data), "")
 	require.NoError(t, err)
 	require.Greater(t, source.Chunks, 3)
 	require.NoError(t, s.ReconcilePending(ctx, 10))
-	deliveries, err := s.Deliveries(ctx, workspace, task)
+	deliveries, err := s.Deliveries(ctx, workspace, task, "")
 	require.NoError(t, err)
 	for _, delivery := range deliveries {
 		if delivery.Target == "minio" {
@@ -169,9 +169,9 @@ func TestMySQLAndMinIOPreserveFullResultsAfterSourceExpiry(t *testing.T) {
 		}
 		require.NoError(t, objects.client.RemoveBucket(context.Background(), cfg.Bucket))
 	})
-	require.NoError(t, s.Retry(ctx, workspace, task, "minio"))
+	require.NoError(t, s.Retry(ctx, workspace, task, "minio", ""))
 	require.NoError(t, s.ReconcilePending(ctx, 10))
-	deliveries, err = s.Deliveries(ctx, workspace, task)
+	deliveries, err = s.Deliveries(ctx, workspace, task, "")
 	require.NoError(t, err)
 	for _, delivery := range deliveries {
 		require.Equal(t, DeliverySucceeded, delivery.State, delivery.LastError)
@@ -190,21 +190,21 @@ func TestMySQLAndMinIOPreserveFullResultsAfterSourceExpiry(t *testing.T) {
 	require.ErrorIs(t, s.Download(ctx, workspace, source.ID, io.Discard), ErrSourceExpired)
 	for _, target := range []string{"minio", "database"} {
 		var out bytes.Buffer
-		require.NoError(t, s.DownloadDelivery(ctx, workspace, task, target, &out))
+		require.NoError(t, s.DownloadDelivery(ctx, workspace, task, target, &out, ""))
 		require.Equal(t, data, out.Bytes())
 	}
-	require.ErrorIs(t, s.DownloadDelivery(ctx, strings.ToUpper(workspace), task, "minio", io.Discard), datastore.ErrRecordNotExist)
+	require.ErrorIs(t, s.DownloadDelivery(ctx, strings.ToUpper(workspace), task, "minio", io.Discard, ""), datastore.ErrRecordNotExist)
 	// A separate metadata-only destination retains its MinIO reference too.
 	metadataTask := uuid.NewString()
 	require.NoError(t, driver.Add(ctx, &model.WorkflowQueue{TaskID: metadataTask, WorkspaceID: workspace}))
 	metadataData := resultBytes(t)
-	metadataSource, err := s.PutResult(ctx, workspace, metadataTask, policy(spec.JobResultTarget{Type: "database", Mode: "metadata"}, spec.JobResultTarget{Type: "minio", Mode: "full"}), bytes.NewReader(metadataData))
+	metadataSource, err := s.PutResult(ctx, workspace, metadataTask, policy(spec.JobResultTarget{Type: "database", Mode: "metadata"}, spec.JobResultTarget{Type: "minio", Mode: "full"}), bytes.NewReader(metadataData), "")
 	require.NoError(t, err)
 	require.NoError(t, s.ReconcilePending(ctx, 10))
 	_, err = driver.CompareAndSwap(ctx, metadataSource, "expired", false, map[string]interface{}{"expires_at": now.Add(-time.Second)})
 	require.NoError(t, err)
 	require.NoError(t, s.CleanupExpired(ctx, 10))
 	var metadataOut bytes.Buffer
-	require.NoError(t, s.DownloadDelivery(ctx, workspace, metadataTask, "database", &metadataOut))
+	require.NoError(t, s.DownloadDelivery(ctx, workspace, metadataTask, "database", &metadataOut, ""))
 	require.Equal(t, metadataData, metadataOut.Bytes())
 }

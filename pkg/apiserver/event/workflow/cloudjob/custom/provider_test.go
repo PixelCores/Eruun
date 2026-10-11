@@ -34,7 +34,7 @@ func TestProviderResolveActionAndWhitelist(t *testing.T) {
 	require.False(t, found)
 	require.Nil(t, unknown)
 
-	require.ElementsMatch(t, []string{ActionEcho}, provider.SupportedActions())
+	require.Len(t, provider.actions, 1)
 }
 
 func TestProviderRuntimeTemplateReturnsNotImplemented(t *testing.T) {

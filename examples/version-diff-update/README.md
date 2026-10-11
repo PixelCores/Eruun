@@ -23,7 +23,7 @@ POST /api/v1/applications/:targetAppID/version/diff-update
 | `sourceAppId` | string | 是 | 无 | 作为期望状态的源应用 ID。接口会读取源应用已经落库的完整组件快照。 |
 | `dryRun` | boolean | 否 | `false` | `true` 时只返回差异，不写库、不触发工作流、不清理 Kubernetes 资源。 |
 | `targetOnlyStrategy` | string | 否 | `preserve` | 目标应用独有组件的处理策略。可选值：`preserve`、`block`、`remove`。 |
-| `strategy` | string | 否 | `rolling` | 执行更新时复用现有版本更新策略。可选值沿用版本更新接口，例如 `rolling`、`recreate`、`canary`、`blue-green`。 |
+| `strategy` | string | 否 | `rolling` | 历史占位字段，只接受省略、空字符串或 `rolling`，其他值返回业务码 `10012`；不控制发布方式，工作负载更新策略由组件 `traits.rollout` 控制。 |
 | `workflowId` | string | 否 | 空 | 指定自动执行的工作流。仅在 `autoExec=true` 且存在组件变更时使用。 |
 | `executeAt` | number | 否 | `0` | 延迟执行时间，Unix 秒。仅在 `autoExec=true` 且存在组件变更时生效。 |
 | `autoExec` | boolean | 否 | `true` | 是否在更新后自动执行工作流。 |

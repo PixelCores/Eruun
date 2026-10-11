@@ -9,14 +9,11 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
-// ApplicationRepository defines the interface for application data operations.
+// ApplicationRepository provides application queries; writes use the transaction-bound store.
 type ApplicationRepository interface {
 	FindByID(ctx context.Context, id string) (*model.Applications, error)
 	FindByIDs(ctx context.Context, ids []string) ([]*model.Applications, error)
 	FindByName(ctx context.Context, name string) (*model.Applications, error)
-	Create(ctx context.Context, app *model.Applications) error
-	Update(ctx context.Context, app *model.Applications) error
-	Delete(ctx context.Context, app *model.Applications) error
 	List(ctx context.Context, options datastore.ListOptions) ([]*model.Applications, error)
 	ListByQuery(ctx context.Context, query *model.Applications, options datastore.ListOptions) ([]*model.Applications, error)
 }
@@ -71,18 +68,6 @@ func (r *applicationRepository) FindByName(ctx context.Context, name string) (*m
 	return apps[0], nil
 }
 
-func (r *applicationRepository) Create(ctx context.Context, app *model.Applications) error {
-	return CreateApplications(ctx, r.Store, app)
-}
-
-func (r *applicationRepository) Update(ctx context.Context, app *model.Applications) error {
-	return r.Store.Put(ctx, app)
-}
-
-func (r *applicationRepository) Delete(ctx context.Context, app *model.Applications) error {
-	return r.Store.Delete(ctx, app)
-}
-
 func (r *applicationRepository) List(ctx context.Context, options datastore.ListOptions) ([]*model.Applications, error) {
 	return ListApplications(ctx, r.Store, options)
 }
@@ -91,7 +76,7 @@ func (r *applicationRepository) ListByQuery(ctx context.Context, query *model.Ap
 	return ListApplicationsByQuery(ctx, r.Store, query, options)
 }
 
-// ---- Original Functions (kept for backward compatibility) ----
+// Store-scoped operations can participate in the caller's transaction.
 
 func ApplicationByID(ctx context.Context, store datastore.DataStore, id string) (*model.Applications, error) {
 	app := model.Applications{

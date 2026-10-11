@@ -2,7 +2,6 @@ package custom
 
 import (
 	"context"
-	"sort"
 	"strings"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob"
@@ -41,16 +40,4 @@ func (p *Provider) ResolveAction(action string) (contracts.CloudAction, bool) {
 		return nil, false
 	}
 	return factory(), true
-}
-
-func (p *Provider) SupportedActions() []string {
-	if p == nil || len(p.actions) == 0 {
-		return nil
-	}
-	actions := make([]string, 0, len(p.actions))
-	for action := range p.actions {
-		actions = append(actions, action)
-	}
-	sort.Strings(actions)
-	return actions
 }

@@ -39,10 +39,10 @@ func TestApplyWorkflowExecutionIdentityIsGenerationScopedAndDeterministic(t *tes
 
 func TestFailedWorkflowGenerationExecutionCarriesGenerationIdentity(t *testing.T) {
 	firstTask := &model.WorkflowQueue{TaskID: "task-generation-failure", RunGeneration: 3}
-	first := failedWorkflowGenerationExecution(firstTask, int64(config.DefaultJobTaskTimeout), errors.New("invalid workflow"))
+	first := failedWorkflowGenerationExecution(firstTask, int64(config.DefaultJobTaskTimeout.Seconds()), errors.New("invalid workflow"))
 	firstJob := first.Jobs[config.JobPriorityLow][0]
 
-	repeated := failedWorkflowGenerationExecution(firstTask, int64(config.DefaultJobTaskTimeout), errors.New("invalid workflow"))
+	repeated := failedWorkflowGenerationExecution(firstTask, int64(config.DefaultJobTaskTimeout.Seconds()), errors.New("invalid workflow"))
 	repeatedJob := repeated.Jobs[config.JobPriorityLow][0]
 	require.Len(t, firstJob.ExecutionKey, 64)
 	require.Equal(t, firstJob.ExecutionKey, repeatedJob.ExecutionKey)
@@ -50,7 +50,7 @@ func TestFailedWorkflowGenerationExecutionCarriesGenerationIdentity(t *testing.T
 	require.Equal(t, uint(1), firstJob.Attempt)
 
 	secondTask := &model.WorkflowQueue{TaskID: firstTask.TaskID, RunGeneration: 4}
-	second := failedWorkflowGenerationExecution(secondTask, int64(config.DefaultJobTaskTimeout), errors.New("invalid workflow"))
+	second := failedWorkflowGenerationExecution(secondTask, int64(config.DefaultJobTaskTimeout.Seconds()), errors.New("invalid workflow"))
 	secondJob := second.Jobs[config.JobPriorityLow][0]
 	require.NotEqual(t, firstJob.ExecutionKey, secondJob.ExecutionKey)
 	require.Equal(t, uint64(4), secondJob.RunGeneration)

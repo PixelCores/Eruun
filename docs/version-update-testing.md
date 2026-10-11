@@ -482,18 +482,17 @@
 
 ---
 
-## 场景八：金丝雀发布
+## 场景八：单副本试运行新版本
 
 ### 用例
 
-使用金丝雀策略，先部署少量副本测试新版本。
+先以 1 个副本部署新版本进行验证，确认后再扩容。顶层 `strategy` 是历史占位字段，只接受省略或 `rolling`，不提供金丝雀编排；`canary` 等值会返回业务码 `10012`。
 
 **请求**：`POST /api/v1/applications/abc123xyz456/version`
 
 ```json
 {
-  "version": "3.1.0-canary",
-  "strategy": "canary",
+  "version": "3.1.0-rc1",
   "components": [
     {
       "name": "backend",
@@ -501,7 +500,7 @@
       "replicas": 1
     }
   ],
-  "description": "Canary release - testing v3.1.0 with 1 replica"
+  "description": "Trial v3.1.0 with 1 replica before scaling out"
 }
 ```
 
@@ -510,10 +509,10 @@
 ```json
 {
   "appId": "abc123xyz456",
-  "version": "3.1.0-canary",
+  "version": "3.1.0-rc1",
   "previousVersion": "3.0.1",
-  "strategy": "canary",
-  "taskId": "task-canary-006",
+  "strategy": "rolling",
+  "taskId": "task-trial-006",
   "updatedComponents": ["backend"],
   "addedComponents": [],
   "removedComponents": []

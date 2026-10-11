@@ -18,6 +18,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/traitvalidation"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
+	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -42,12 +43,10 @@ type ApplicationsService interface {
 	CreateApplicationsWithMutation(context.Context, apisv1.CreateApplicationsRequest, ApplicationCreateMutation) (*apisv1.ApplicationBase, error)
 	MarkInitialDeployingWorkflowComponents(context.Context, string, string) error
 	HasImmediateActiveVersionUpdateTask(context.Context, string, int64) (bool, error)
-	GetApplication(ctx context.Context, appName string) (*model.Applications, error)
 	GetApplicationSpec(ctx context.Context, appID string) (*apisv1.CreateApplicationsRequest, error)
 	ListApplications(ctx context.Context, opts ListApplicationsOptions) ([]*apisv1.ApplicationBase, error)
 	ListTemplateApplications(ctx context.Context, opts ListApplicationsOptions) ([]*apisv1.ApplicationBase, error)
 	BatchGetApplications(ctx context.Context, appIDs []string) (*apisv1.BatchGetApplicationsResponse, error)
-	DeleteApplication(ctx context.Context, app *model.Applications) error
 	DeleteApplicationCascade(ctx context.Context, appID string, req apisv1.DeleteApplicationRequest) (*apisv1.DeleteApplicationResponse, error)
 	CleanupApplicationResources(ctx context.Context, appID string) (*apisv1.CleanupApplicationResourcesResponse, error)
 	PlanApplicationResourceCleanup(ctx context.Context, appID string) (*apisv1.CleanupApplicationResourcesPlanResponse, error)
@@ -250,7 +249,7 @@ func (c *applicationsServiceImpl) createApplications(
 	if c.Store == nil {
 		return nil, fmt.Errorf("datastore is not initialized")
 	}
-	application, refreshTransaction, err := c.prepareApplicationForCreate(ctx, req, mutation != nil)
+	application, createTransaction, err := c.prepareApplicationForCreate(ctx, req, mutation != nil)
 	if err != nil {
 		return nil, err
 	}
@@ -288,19 +287,13 @@ func (c *applicationsServiceImpl) createApplications(
 		}
 	}
 
-	if mutation != nil || application.EffectiveManagementMode() == spec.ManagementModeObserve {
-		if _, ok := c.Store.(datastore.Transactional); !ok {
-			return nil, fmt.Errorf("managed application import requires a transactional datastore")
-		}
-	}
-
 	var workflow *model.Workflow
 	run := func(store datastore.DataStore) error {
 		if refreshAppID != "" {
-			if err := EnsureAppWorkflowIdle(ctx, store, application.ID); err != nil {
+			if err := workflowservice.EnsureAppWorkflowIdle(ctx, store, application.ID); err != nil {
 				return err
 			}
-			if err := EnsureNoPendingStatefulSetCleanup(ctx, store, application.ID); err != nil {
+			if err := workflowservice.EnsureNoPendingStatefulSetCleanup(ctx, store, application.ID); err != nil {
 				return err
 			}
 			currentApplication, err := c.refreshExistingApplication(ctx, store, req, mutation != nil)
@@ -329,18 +322,8 @@ func (c *applicationsServiceImpl) createApplications(
 		return err
 	}
 
-	if refreshTransaction != nil {
-		if err := refreshTransaction.WithTransaction(ctx, run); err != nil {
-			return nil, err
-		}
-	} else if tx, ok := c.Store.(datastore.Transactional); ok {
-		if err := tx.WithTransaction(ctx, run); err != nil {
-			return nil, err
-		}
-	} else {
-		if err := run(c.Store); err != nil {
-			return nil, err
-		}
+	if err := createTransaction.WithTransaction(ctx, run); err != nil {
+		return nil, err
 	}
 
 	base := assembler.ConvertAppModelToBase(application, workflow.ID)
@@ -357,17 +340,17 @@ func (c *applicationsServiceImpl) prepareApplicationForCreate(ctx context.Contex
 	)
 	templateEnabled := req.TemplateEnabled != nil && *req.TemplateEnabled
 	refreshAppID := strings.TrimSpace(req.ID)
-	var refreshTransaction datastore.Transactional
+	var createTransaction datastore.Transactional
 	if refreshAppID != "" {
 		var ok bool
-		refreshTransaction, ok = c.Store.(datastore.Transactional)
+		createTransaction, ok = c.Store.(datastore.Transactional)
 		if !ok {
 			return nil, nil, fmt.Errorf("application refresh requires transactional datastore")
 		}
-		if err := EnsureAppWorkflowIdle(ctx, c.Store, refreshAppID); err != nil {
+		if err := workflowservice.EnsureAppWorkflowIdle(ctx, c.Store, refreshAppID); err != nil {
 			return nil, nil, err
 		}
-		if err := EnsureNoPendingStatefulSetCleanup(ctx, c.Store, refreshAppID); err != nil {
+		if err := workflowservice.EnsureNoPendingStatefulSetCleanup(ctx, c.Store, refreshAppID); err != nil {
 			return nil, nil, err
 		}
 		application, err = c.refreshExistingApplication(ctx, c.Store, req, hasMutation)
@@ -378,6 +361,11 @@ func (c *applicationsServiceImpl) prepareApplicationForCreate(ctx context.Contex
 			return nil, nil, bcode.ErrApplicationNotExist
 		}
 	} else {
+		var ok bool
+		createTransaction, ok = c.Store.(datastore.Transactional)
+		if !ok {
+			return nil, nil, fmt.Errorf("application creation requires transactional datastore")
+		}
 		targetNamespace := serviceNamespaceOrDefault(req.Namespace)
 		if !templateEnabled {
 			if err := c.ensureStandardApplicationNameAvailable(ctx, targetNamespace, req.Name, ""); err != nil {
@@ -413,7 +401,7 @@ func (c *applicationsServiceImpl) prepareApplicationForCreate(ctx context.Contex
 		application.WorkspaceID = scope.WorkspaceID
 	}
 
-	return application, refreshTransaction, nil
+	return application, createTransaction, nil
 }
 
 func (c *applicationsServiceImpl) persistCreatedApplication(ctx context.Context, store datastore.DataStore, application *model.Applications, components []*model.ApplicationComponent, req apisv1.CreateApplicationsRequest, resolvedComponents []apisv1.CreateComponentRequest, callbackSelection applicationCallbackSelection, mutation ApplicationCreateMutation, refreshAppID string) (*model.Workflow, error) {
@@ -914,7 +902,7 @@ func prepareComponents(appID, namespace string, reqComponents []apisv1.CreateCom
 		if reqComponent.ComponentType == config.SecretJob {
 			reqComponent.Properties.Secret = copyStringMap(reqComponent.Properties.Secret)
 		}
-		component := ConvertComponent(&reqComponent, appID)
+		component := workflowservice.ConvertComponent(&reqComponent, appID)
 
 		properties, err := model.NewJSONStructByStruct(reqComponent.Properties)
 		if err != nil {
@@ -1044,7 +1032,7 @@ func (c *applicationsServiceImpl) updateApplicationWorkflowLocked(ctx context.Co
 	if err != nil {
 		return nil, err
 	}
-	if err := EnsureAppWorkflowIdle(ctx, c.Store, app.ID); err != nil {
+	if err := workflowservice.EnsureAppWorkflowIdle(ctx, c.Store, app.ID); err != nil {
 		return nil, err
 	}
 

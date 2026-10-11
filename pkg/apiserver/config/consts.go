@@ -10,8 +10,6 @@ import (
 const (
 	REDIS     = "redis"
 	KAFKA     = "kafka"
-	TIDB      = "tidb"
-	MYSQL     = "mysql"
 	NAMESPACE = "eruun-system"
 )
 

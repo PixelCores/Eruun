@@ -11,12 +11,11 @@ import (
 
 // CORSOptions defines how cross-origin requests are handled.
 type CORSOptions struct {
-	AllowOrigins     []string
-	AllowMethods     []string
-	AllowHeaders     []string
-	ExposeHeaders    []string
-	AllowCredentials bool
-	MaxAge           time.Duration
+	AllowOrigins  []string
+	AllowMethods  []string
+	AllowHeaders  []string
+	ExposeHeaders []string
+	MaxAge        time.Duration
 }
 
 // CORS attaches the Access-Control headers and handles preflight requests.
@@ -26,7 +25,6 @@ func CORS(opts CORSOptions) gin.HandlerFunc {
 	allowHeaders := normalizeWithFallback(opts.AllowHeaders, []string{"Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"})
 	exposeHeaders := normalizeList(opts.ExposeHeaders)
 
-	allowAllOrigins := hasItem(allowOrigins, "*")
 	allowedMethodsHeader := strings.Join(allowMethods, ", ")
 	allowedHeadersHeader := strings.Join(allowHeaders, ", ")
 	exposedHeadersHeader := strings.Join(exposeHeaders, ", ")
@@ -39,19 +37,13 @@ func CORS(opts CORSOptions) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		origin := c.Request.Header.Get("Origin")
 
-		// Short-circuit non-CORS requests unless wildcard is configured
-		if origin == "" && !allowAllOrigins {
+		// Requests without an Origin do not need CORS headers.
+		if origin == "" {
 			c.Next()
 			return
 		}
 
 		switch {
-		case allowAllOrigins && opts.AllowCredentials && origin != "":
-			// Reflect origin to support credentials with wildcard config
-			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
-			c.Writer.Header().Add("Vary", "Origin")
-		case allowAllOrigins:
-			c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		case originAllowed(origin, allowOrigins):
 			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
 			c.Writer.Header().Add("Vary", "Origin")
@@ -64,9 +56,7 @@ func CORS(opts CORSOptions) gin.HandlerFunc {
 			return
 		}
 
-		if opts.AllowCredentials {
-			c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-		}
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		if allowedMethodsHeader != "" {
 			c.Writer.Header().Set("Access-Control-Allow-Methods", allowedMethodsHeader)
 		}
@@ -92,15 +82,6 @@ func CORS(opts CORSOptions) gin.HandlerFunc {
 func originAllowed(origin string, allowed []string) bool {
 	for _, candidate := range allowed {
 		if candidate == origin {
-			return true
-		}
-	}
-	return false
-}
-
-func hasItem(list []string, value string) bool {
-	for _, v := range list {
-		if v == value {
 			return true
 		}
 	}

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"strings"
 
 	"k8s.io/klog/v2"
@@ -16,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
 	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -51,10 +51,10 @@ func (c *applicationsServiceImpl) commitAutoExecVersionUpdate(
 			if err := validateVersionUpdateSnapshot(lockCtx, tx, app, componentMap); err != nil {
 				return err
 			}
-			if err := EnsureAppWorkflowIdle(lockCtx, tx, workflow.AppID); err != nil {
+			if err := workflowservice.EnsureAppWorkflowIdle(lockCtx, tx, workflow.AppID); err != nil {
 				return fmt.Errorf("auto exec workflow: %w", err)
 			}
-			if err := validateWorkflowTaskEnqueue(lockCtx, tx, workflow, false); err != nil {
+			if err := workflowservice.ValidateWorkflowTaskEnqueue(lockCtx, tx, workflow, false); err != nil {
 				return autoExecWorkflowValidationError(err)
 			}
 			cleanupInfo, cleanupInfoJSON, err := prepareAutoExecVersionCleanup(lockCtx, tx, app.ID, componentMap, req, workflow, resourceActions)
@@ -210,11 +210,11 @@ func reloadAutoExecVersionWorkflow(ctx context.Context, store datastore.DataStor
 		if err := validateVersionUpdateDeployAllWorkflow(workflowForTask, currentComponents); err != nil {
 			return nil, err
 		}
-		if err := validateWorkflowTaskEnqueue(ctx, store, workflowForTask, false); err != nil {
+		if err := workflowservice.ValidateWorkflowTaskEnqueue(ctx, store, workflowForTask, false); err != nil {
 			return nil, autoExecWorkflowValidationError(err)
 		}
 	} else if !hasCleanup {
-		if err := validateWorkflowTaskEnqueue(ctx, store, workflowForTask, false); err != nil {
+		if err := workflowservice.ValidateWorkflowTaskEnqueue(ctx, store, workflowForTask, false); err != nil {
 			return nil, autoExecWorkflowValidationError(err)
 		}
 	}

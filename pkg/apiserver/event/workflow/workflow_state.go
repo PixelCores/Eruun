@@ -63,31 +63,11 @@ func (w *Workflow) workerReadBlock() time.Duration {
 	return workflowconfig.DefaultWorkerReadBlock
 }
 
-func (w *Workflow) workerMaxReadFailures() int {
-	if w.Cfg != nil {
-		return w.Cfg.Workflow.WorkerMaxReadFailures
-	}
-	return workflowconfig.DefaultWorkerMaxReadFailures
-}
-
-func (w *Workflow) workerMaxClaimFailures() int {
-	if w.Cfg != nil {
-		return w.Cfg.Workflow.WorkerMaxClaimFailures
-	}
-	return workflowconfig.DefaultWorkerMaxClaimFailures
-}
-
 func (w *Workflow) workerBackoffMin() time.Duration {
-	if w.Cfg != nil && w.Cfg.Workflow.WorkerBackoffMin > 0 {
-		return w.Cfg.Workflow.WorkerBackoffMin
-	}
 	return workflowconfig.DefaultWorkerBackoffMin
 }
 
 func (w *Workflow) workerBackoffMax() time.Duration {
-	if w.Cfg != nil && w.Cfg.Workflow.WorkerBackoffMax > 0 {
-		return w.Cfg.Workflow.WorkerBackoffMax
-	}
 	return workflowconfig.DefaultWorkerBackoffMax
 }
 

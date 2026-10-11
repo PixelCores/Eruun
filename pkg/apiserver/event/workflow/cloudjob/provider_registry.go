@@ -15,7 +15,6 @@ type CloudProvider interface {
 	Name() string
 	NewRuntime(ctx context.Context, req *contracts.CloudJobRequest) (contracts.CloudRuntime, error)
 	ResolveAction(action string) (contracts.CloudAction, bool)
-	SupportedActions() []string
 }
 
 var (

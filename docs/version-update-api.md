@@ -17,12 +17,11 @@ POST /api/v1/applications/:appID/version/cancel
 
 ### 更新策略
 
-| 策略 | 值 | 说明 |
-|------|------|------|
-| 滚动更新 | `rolling` | 默认策略，逐步替换 Pod，保证服务可用性 |
-| 重建更新 | `recreate` | 先删除所有旧 Pod，再创建新 Pod |
-| 金丝雀更新 | `canary` | 先更新部分 Pod，验证后再全量更新 |
-| 蓝绿部署 | `blue-green` | 创建新版本，切换流量后销毁旧版本 |
+顶层 `strategy` 是历史占位字段，只接受省略、空字符串或精确的 `rolling`，响应统一回显 `rolling`。该字段不控制资源生成，也不承诺零停机或任何发布编排；实际 Deployment / StatefulSet 更新策略由组件的 [`traits.rollout`](rollout-trait.md) 控制。
+
+`recreate`、`canary`、`blue-green` 和其他非空值均返回 HTTP 400、业务码 `10012`，并在写入版本、组件或创建任务前停止。HTTP `/version`、`/version/diff-update` 和对应 gRPC 方法使用相同校验。
+
+迁移已有请求时，应删除顶层 `strategy` 或改为 `rolling`。旧版本对未实现策略的接受和回显不代表这些策略曾经生效；需要配置工作负载更新方式时，应按组件类型设置 `traits.rollout`，不能把顶层旧值机械转换成同名 trait 值。
 
 ### 组件操作
 
@@ -60,7 +59,7 @@ POST /api/v1/applications/:appID/version/cancel
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `version` | string | **是** | 新版本号 |
-| `strategy` | string | 否 | 更新策略，默认 `rolling` |
+| `strategy` | string | 否 | 历史占位字段；仅接受空值或 `rolling`，不控制工作负载更新策略 |
 | `executionScope` | string | 否 | workflow 执行范围：`full_workflow`（默认）或 `changed_components` |
 | `components` | array | 否 | 组件更新规格列表 |
 | `workflowId` | string | 否 | `autoExec=true` 时指定自动执行或 no-op 回调关联的工作流 ID |
@@ -180,7 +179,7 @@ POST /api/v1/applications/:appID/version/cancel
 | `appId` | string | 应用 ID |
 | `version` | string | 新版本号 |
 | `previousVersion` | string | 更新前版本号 |
-| `strategy` | string | 使用的更新策略 |
+| `strategy` | string | 历史字段固定回显 `rolling`；不表示执行了特定发布策略 |
 | `executionScope` | string | 使用的 workflow 执行范围 |
 | `taskId` | string | 工作流任务 ID；未触发工作流时返回版本更新任务 ID |
 | `workflowId` | string | 本次关联的工作流 ID；真实 workflow task 返回实际执行 workflow，no-op operation task 仅在请求提供有效 `workflowId` 时返回 |
@@ -196,9 +195,8 @@ POST /api/v1/applications/:appID/version/cancel
 | 400 | 10000 | 应用配置错误；StatefulSet 不可变字段变更或历史 cleanup v2/v3 仍 pending 时，`message` 包含对应迁移/恢复提示 |
 | 404 | 10005 | 应用不存在 |
 | 500 | 10011 | 版本更新失败 |
-| 400 | 10012 | 无效的更新策略 |
+| 400 | 10012 | 顶层 `strategy` 不是空值或 `rolling` |
 | 404 | 10013 | 组件不存在 |
-| 400 | 10014 | 没有可更新的组件 |
 | 400 | 10015 | 组件已存在（新增时） |
 | 400 | 10016 | 无效的组件操作类型 |
 | 409 | 10031 | 同一应用存在并发的版本更新、工作流入队、调度、数据库重置或其他互斥操作；调用方应稍后重试 |
@@ -482,19 +480,26 @@ POST /api/v1/applications/:appID/version/cancel
 }
 ```
 
-### 11. 金丝雀发布
+### 11. 配置组件滚动更新
 
-使用金丝雀策略更新部分副本：
+通过 `traits.rollout` 配置 `webservice` 的 Deployment 更新方式。`traits` 会整体更新，实际请求需保留该组件仍需使用的其他 traits。
 
 ```json
 {
   "version": "2.1.0",
-  "strategy": "canary",
   "components": [
     {
       "name": "frontend",
       "image": "myapp/frontend:v2.1.0",
-      "replicas": 1
+      "traits": {
+        "rollout": {
+          "type": "RollingUpdate",
+          "rollingUpdate": {
+            "maxSurge": "25%",
+            "maxUnavailable": 0
+          }
+        }
+      }
     }
   ],
   "autoExec": true
@@ -698,11 +703,9 @@ curl -X POST "http://localhost:8000/api/v1/applications/app-123/version/cancel" 
 
 ## 最佳实践
 
-1. **生产环境使用滚动更新**：默认的 `rolling` 策略可以保证服务可用性
-2. **测试环境可用重建更新**：`recreate` 策略更新速度快，适合测试环境
-3. **大版本更新使用金丝雀/蓝绿**：降低风险，便于回滚
-4. **设置合理的副本数**：确保更新期间有足够的副本处理流量
-5. **添加更新说明**：使用 `description` 字段记录更新原因，便于审计
+1. **显式配置工作负载更新方式**：按组件类型设置 `traits.rollout`，并结合 readiness probe、副本数和集群容量评估更新期间的可用性。
+2. **确认重建影响**：`webservice` 的 `traits.rollout.type=Recreate` 会先删除旧 Pod，应在允许服务中断时使用。
+3. **添加更新说明**：使用 `description` 字段记录更新原因，便于审计。
 
 ## 注意事项
 

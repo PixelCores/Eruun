@@ -29,7 +29,6 @@
 - `Name`：返回唯一 provider 名称
 - `NewRuntime`：为一次 cloudjob 执行初始化厂商依赖
 - `ResolveAction`：从本 provider 的严格白名单解析 action
-- `SupportedActions`：返回本 provider 支持的 action 列表
 
 action 映射是 provider 的内部数据，不再通过独立的 `ActionRegistry` 对象暴露给调用方。
 

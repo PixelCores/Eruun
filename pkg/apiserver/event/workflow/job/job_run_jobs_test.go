@@ -37,6 +37,11 @@ type ownedCheckpointFailureStore struct {
 	transactionErr error
 }
 
+// The fixture models an explicit transaction boundary; SQL tests verify isolation.
+func (s *ownedCheckpointFailureStore) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	return s.WithTransaction(ctx, fn)
+}
+
 func (s *ownedCheckpointFailureStore) WithTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
 	if s.transactionErr != nil {
 		return s.transactionErr

@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event"
 	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 )
 
 // This backend simulates API-server record/version atomicity, not a Kubernetes
@@ -107,10 +107,10 @@ func TestRuntimeElectionFailoverWithRealElector(t *testing.T) {
 		cfg := config.NewConfig()
 		cfg.LeaderConfig.ID = identity
 		workers[i] = &testServerWorker{}
-		servers[i] = &restServer{cfg: *cfg, eventWorkers: []event.Worker{workers[i]}}
+		servers[i] = &restServer{cfg: *cfg, workflow: workers[i]}
 		locks[i] = &electionLeaseClient{state: shared, identity: identity}
 		done[i] = make(chan struct{})
-		servers[i].startWorkers(ctx, startupErrors)
+		servers[i].startWorkers(ctx)
 	}
 	t.Cleanup(func() {
 		cancel()
@@ -195,7 +195,7 @@ func TestRuntimeElectionFailoverWithRealElector(t *testing.T) {
 	}, time.Second, time.Millisecond)
 	for i, s := range servers {
 		subscriptions := workers[i].subscribes.Load()
-		s.startWorkers(ctx, startupErrors)
+		s.startWorkers(ctx)
 		require.Equal(t, subscriptions, workers[i].subscribes.Load(), "cancelled runtime must not restart intake")
 	}
 	require.False(t, overlappingAPITerms.Load(), "both candidates admitted API requests")

@@ -305,7 +305,7 @@ func TestSyncComponentStatusSkipsWhenComponentIDNotFound(t *testing.T) {
 			},
 		},
 	}
-	componentCache := cache.NewMemCache(false)
+	componentCache := cache.NewMemCache()
 	cacheKey := cache.ApplicationComponentsKey("app-1")
 	require.NoError(t, componentCache.Store(context.Background(), cacheKey, "stale components"))
 
@@ -337,7 +337,7 @@ func TestSyncComponentStatusSkipsStoppedComponent(t *testing.T) {
 			},
 		},
 	}
-	componentCache := cache.NewMemCache(false)
+	componentCache := cache.NewMemCache()
 	cacheKey := cache.ApplicationComponentsKey("app-1")
 	require.NoError(t, componentCache.Store(context.Background(), cacheKey, "stale components"))
 
@@ -373,7 +373,7 @@ func TestSyncComponentStatusDropsNoChangeConflictWithoutRetry(t *testing.T) {
 		casNotFound: true,
 		exists:      true,
 	}
-	componentCache := cache.NewMemCache(false)
+	componentCache := cache.NewMemCache()
 	cacheKey := cache.ApplicationComponentsKey("app-1")
 	require.NoError(t, componentCache.Store(context.Background(), cacheKey, "stale components"))
 
@@ -400,7 +400,7 @@ func TestSyncComponentStatusConcurrentStoppedWriteWinsOverInformer(t *testing.T)
 		ReadyReplicas: 1,
 		Status:        string(config.ComponentStatusRunning),
 	})
-	componentCache := cache.NewMemCache(false)
+	componentCache := cache.NewMemCache()
 	cacheKey := cache.ApplicationComponentsKey("app-1")
 	require.NoError(t, componentCache.Store(context.Background(), cacheKey, "stale components"))
 
@@ -459,7 +459,7 @@ func TestSyncComponentStatusConcurrentConfigurationWriteDoesNotBlockRuntimeCAS(t
 			UpdateTime: initialUpdateTime,
 		},
 	})
-	componentCache := cache.NewMemCache(false)
+	componentCache := cache.NewMemCache()
 	cacheKey := cache.ApplicationComponentsKey("app-1")
 	require.NoError(t, componentCache.Store(context.Background(), cacheKey, "stale components"))
 
@@ -556,7 +556,7 @@ func TestSyncComponentStatusDropsStaleCleaningCompletionWithoutRetry(t *testing.
 		casNotFound: true,
 		exists:      true,
 	}
-	componentCache := cache.NewMemCache(false)
+	componentCache := cache.NewMemCache()
 	cacheKey := cache.ApplicationComponentsKey("app-1")
 	require.NoError(t, componentCache.Store(context.Background(), cacheKey, "stale components"))
 
@@ -621,7 +621,7 @@ func TestSyncComponentStatusInvalidatesCacheAfterConcurrentRefill(t *testing.T) 
 		ReadyReplicas: 0,
 		Status:        string(config.ComponentStatusPending),
 	})
-	componentCache := cache.NewMemCache(false)
+	componentCache := cache.NewMemCache()
 	cacheKey := cache.ApplicationComponentsKey("app-1")
 	require.NoError(t, componentCache.Store(context.Background(), cacheKey, "initial components"))
 
@@ -670,7 +670,7 @@ func TestSyncComponentStatusInvalidatesCacheAfterCommittedWriteCancelsContext(t 
 	})
 	close(store.casRelease)
 	store.afterCAS = cancel
-	componentCache := cache.NewMemCache(false)
+	componentCache := cache.NewMemCache()
 	cacheKey := cache.ApplicationComponentsKey("app-1")
 	require.NoError(t, componentCache.Store(t.Context(), cacheKey, "stale components"))
 	status := config.ComponentStatusRunning

@@ -101,8 +101,5 @@ var ErrNotFound = NewBcode(404, 404, "404 Not Found")
 // ErrUpstreamNotFound the proxy upstream is not found
 var ErrUpstreamNotFound = NewBcode(502, 502, "Upstream not found")
 
-// ErrNotImplemented indicates the API is not implemented.
-var ErrNotImplemented = NewBcode(501, 501, "Not implemented")
-
 // ErrServiceUnavailable indicates the service is unavailable.
 var ErrServiceUnavailable = NewBcode(503, 503, "Service unavailable")

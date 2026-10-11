@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"sort"
 	"strconv"
 	"strings"
@@ -24,6 +23,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -48,10 +48,6 @@ type SourceBinding struct {
 	WorkloadUID        types.UID
 }
 
-func (b SourceBinding) readOnly() bool {
-	return b.ManagementMode == domainspec.ManagementModeObserve
-}
-
 func (b SourceBinding) valid() bool {
 	return b.labelClaimValid() &&
 		strings.TrimSpace(b.WorkloadKind) != "" &&
@@ -72,22 +68,13 @@ func (b SourceBinding) controllerKey() string {
 }
 
 // BindingLoader returns current component label claims for every application.
-// Adopted and observe components may populate source workload identity; observe
-// bindings are used only for synthetic status events and never authorize writes.
+// Only adopted source workload identities authorize Pod metadata writes. Other
+// application modes still reserve their managed labels against conflicting claims.
 type BindingLoader func(context.Context) ([]SourceBinding, error)
 
-// PodObservationFunc receives synthetic managed-label views of read-only
-// source Pods. A nil newPod represents deletion.
-type PodObservationFunc func(oldPod, newPod *corev1.Pod)
-
-type observedPodState struct {
-	binding SourceBinding
-	pod     *corev1.Pod
-}
-
 // PodCoordinator observes Pods in namespaces with source bindings. It patches
-// only adopted Pod metadata after verifying the owner UID chain; observe
-// bindings emit read-only synthetic events. It never reads or writes controller
+// only adopted Pod metadata after verifying the owner UID chain. It never
+// reads or writes controller
 // PodTemplates, so initial adoption cannot cause a rollout.
 type PodCoordinator struct {
 	client kubernetes.Interface
@@ -95,56 +82,22 @@ type PodCoordinator struct {
 
 	reloadInterval time.Duration
 	maxQueueItems  int
-	observe        PodObservationFunc
 
 	queue workqueue.TypedRateLimitingInterface[string]
 
 	watchers         sync.WaitGroup
-	observeMu        sync.Mutex
 	mu               sync.RWMutex
 	bindingsByNS     map[string]map[string]SourceBinding
 	labelClaimsByNS  map[string]map[string]struct{}
 	namespaceCancels map[string]context.CancelFunc
 	pending          map[string]uint64
 	podScanOffsets   map[string]int
-	observedPods     map[string]observedPodState
 	namespaceOffset  int
-}
-
-// PodCoordinatorOption configures a coordinator. Options are intentionally
-// small so the default runtime behavior remains conservative.
-type PodCoordinatorOption func(*PodCoordinator)
-
-// WithBindingReloadInterval changes the database binding reload cadence.
-func WithBindingReloadInterval(interval time.Duration) PodCoordinatorOption {
-	return func(c *PodCoordinator) {
-		if interval > 0 {
-			c.reloadInterval = interval
-		}
-	}
-}
-
-// WithMaxQueueItems bounds distinct queued Pods and prevents a noisy namespace
-// from consuming unbounded memory.
-func WithMaxQueueItems(max int) PodCoordinatorOption {
-	return func(c *PodCoordinator) {
-		if max > 0 {
-			c.maxQueueItems = max
-		}
-	}
-}
-
-// WithPodObservationFunc connects read-only source Pod events to the runtime
-// status tracker without changing Kubernetes metadata.
-func WithPodObservationFunc(observe PodObservationFunc) PodCoordinatorOption {
-	return func(c *PodCoordinator) {
-		c.observe = observe
-	}
 }
 
 // NewPodCoordinator creates a leader-scoped coordinator. Run owns all watches
 // and returns when its context is cancelled (for example on leader loss).
-func NewPodCoordinator(client kubernetes.Interface, loader BindingLoader, opts ...PodCoordinatorOption) *PodCoordinator {
+func NewPodCoordinator(client kubernetes.Interface, loader BindingLoader) *PodCoordinator {
 	c := &PodCoordinator{
 		client:         client,
 		load:           loader,
@@ -159,10 +112,6 @@ func NewPodCoordinator(client kubernetes.Interface, loader BindingLoader, opts .
 		namespaceCancels: make(map[string]context.CancelFunc),
 		pending:          make(map[string]uint64),
 		podScanOffsets:   make(map[string]int),
-		observedPods:     make(map[string]observedPodState),
-	}
-	for _, opt := range opts {
-		opt(c)
 	}
 	return c
 }
@@ -231,7 +180,7 @@ func (c *PodCoordinator) reload(ctx context.Context) {
 			}
 			labelClaimsByNamespace[namespace][managedLabelClaimKey(expectedLabels(binding))] = struct{}{}
 		}
-		if !binding.valid() {
+		if binding.ManagementMode == domainspec.ManagementModeObserve || !binding.valid() {
 			continue
 		}
 		uid := binding.WorkloadUID
@@ -285,20 +234,9 @@ func (c *PodCoordinator) replaceBindings(
 	if labelClaimsByNamespace == nil {
 		labelClaimsByNamespace = make(map[string]map[string]struct{})
 	}
-	removedObserved := make([]*corev1.Pod, 0)
-	c.observeMu.Lock()
-	defer c.observeMu.Unlock()
 	c.mu.Lock()
 	c.bindingsByNS = byNamespace
 	c.labelClaimsByNS = labelClaimsByNamespace
-	for key, observed := range c.observedPods {
-		current, active := byNamespace[observed.binding.Namespace][observed.binding.controllerKey()]
-		if active && current == observed.binding && current.readOnly() {
-			continue
-		}
-		delete(c.observedPods, key)
-		removedObserved = append(removedObserved, observed.pod)
-	}
 	for namespace, cancel := range c.namespaceCancels {
 		if _, active := byNamespace[namespace]; active {
 			continue
@@ -313,9 +251,6 @@ func (c *PodCoordinator) replaceBindings(
 		}
 	}
 	c.mu.Unlock()
-	for _, pod := range removedObserved {
-		c.notifyObservedPod(pod, nil)
-	}
 }
 
 func (c *PodCoordinator) namespacesForNextScan() []string {
@@ -416,15 +351,14 @@ func (c *PodCoordinator) handleDeletedPod(obj interface{}) {
 		return
 	}
 	// Deletion does not require an API read or Kubernetes write. Invalidate an
-	// in-flight reconciliation before removing the synthetic observation so an
-	// older GET result must be followed by a final NotFound check.
+	// in-flight reconciliation so an older GET result must be followed by a
+	// final NotFound check without releasing its bounded queue reservation.
 	key := pod.Namespace + "/" + pod.Name
 	c.mu.Lock()
 	if generation, pending := c.pending[key]; pending {
 		c.pending[key] = generation + 1
 	}
 	c.mu.Unlock()
-	c.deleteObservedPod(key)
 }
 
 // enqueuePodIfCapacity returns false only when the bounded queue is full. A
@@ -514,7 +448,6 @@ func (c *PodCoordinator) reconcilePod(ctx context.Context, key string) error {
 	}
 	pod, err := c.client.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
-		c.deleteObservedPod(key)
 		return nil
 	}
 	if err != nil {
@@ -525,19 +458,8 @@ func (c *PodCoordinator) reconcilePod(ctx context.Context, key string) error {
 		return err
 	}
 	if !found {
-		c.deleteObservedPod(key)
 		return nil
 	}
-	if binding.readOnly() {
-		if labelsConflict(pod.Labels, binding) {
-			c.deleteObservedPod(key)
-			klog.Warningf("refusing observed pod identity conflict namespace=%s pod=%s appID=%s component=%s", namespace, name, binding.AppID, binding.ComponentName)
-			return nil
-		}
-		c.updateObservedPod(key, pod, binding)
-		return nil
-	}
-	c.deleteObservedPod(key)
 	if labelsConflict(pod.Labels, binding) && !c.labelsAreDetachedBinding(namespace, pod.Labels) {
 		klog.Warningf("refusing adopted pod label conflict namespace=%s pod=%s appID=%s component=%s", namespace, name, binding.AppID, binding.ComponentName)
 		return nil
@@ -570,69 +492,6 @@ func (c *PodCoordinator) reconcilePod(ctx context.Context, key string) error {
 		return fmt.Errorf("patch adopted pod metadata: %w", err)
 	}
 	return nil
-}
-
-func (c *PodCoordinator) updateObservedPod(key string, pod *corev1.Pod, binding SourceBinding) {
-	if c == nil || pod == nil || c.observe == nil {
-		return
-	}
-	c.observeMu.Lock()
-	defer c.observeMu.Unlock()
-	next := syntheticObservedPodFromSource(pod, binding)
-	c.mu.Lock()
-	current, active := c.bindingsByNS[binding.Namespace][binding.controllerKey()]
-	if !active || current != binding || !current.readOnly() {
-		c.mu.Unlock()
-		return
-	}
-	previous, found := c.observedPods[key]
-	c.observedPods[key] = observedPodState{binding: binding, pod: next}
-	c.mu.Unlock()
-	if found && previous.binding == binding && previous.pod != nil && previous.pod.UID == next.UID {
-		c.notifyObservedPod(previous.pod, next)
-		return
-	}
-	if found {
-		c.notifyObservedPod(previous.pod, nil)
-	}
-	c.notifyObservedPod(nil, next)
-}
-
-func (c *PodCoordinator) deleteObservedPod(key string) {
-	if c == nil || c.observe == nil {
-		return
-	}
-	c.observeMu.Lock()
-	defer c.observeMu.Unlock()
-	c.mu.Lock()
-	observed, found := c.observedPods[key]
-	if found {
-		delete(c.observedPods, key)
-	}
-	c.mu.Unlock()
-	if found {
-		c.notifyObservedPod(observed.pod, nil)
-	}
-}
-
-func (c *PodCoordinator) notifyObservedPod(oldPod, newPod *corev1.Pod) {
-	if c != nil && c.observe != nil {
-		c.observe(oldPod, newPod)
-	}
-}
-
-func syntheticObservedPodFromSource(pod *corev1.Pod, binding SourceBinding) *corev1.Pod {
-	if pod == nil {
-		return nil
-	}
-	result := pod.DeepCopy()
-	if result.Labels == nil {
-		result.Labels = make(map[string]string)
-	}
-	for key, value := range expectedLabels(binding) {
-		result.Labels[key] = value
-	}
-	return result
 }
 
 func (c *PodCoordinator) bindingForPod(ctx context.Context, pod *corev1.Pod) (SourceBinding, bool, error) {

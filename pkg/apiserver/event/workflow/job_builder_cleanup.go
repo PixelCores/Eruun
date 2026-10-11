@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -254,7 +255,7 @@ func versionUpdateCleanupInfoFromTask(task *model.WorkflowQueue) (model.VersionU
 func validateVersionUpdateCleanupInfo(cleanupInfo model.VersionUpdateCleanupInfo) error {
 	maxComponentVersion := model.VersionUpdateCleanupInfoVersionV1
 	for _, component := range cleanupInfo.Components {
-		templates := normalizedCleanupPVCTemplates(component.StatefulSetPVCTemplatesToDelete)
+		templates := model.NormalizeVersionUpdateCleanupPVCTemplateNames(component.StatefulSetPVCTemplatesToDelete)
 		componentVersion := model.VersionUpdateCleanupInfoVersionV1
 		if component.RequireStatefulSetDeletion {
 			if component.Component == nil || component.Component.ComponentType != config.StoreJob {
@@ -285,18 +286,13 @@ func validatePersistedCleanupJobContract(cleanupInfoVersion int, component model
 	if record == nil {
 		return fmt.Errorf("cleanup job info is nil")
 	}
-	expectedTemplates := normalizedCleanupPVCTemplates(component.StatefulSetPVCTemplatesToDelete)
-	var marker struct {
-		Source                          string   `json:"source"`
-		Version                         int      `json:"version"`
-		RequireStatefulSetDeletion      bool     `json:"requireStatefulSetDeletion"`
-		StatefulSetPVCTemplatesToDelete []string `json:"statefulSetPVCTemplatesToDelete"`
-	}
+	expectedTemplates := model.NormalizeVersionUpdateCleanupPVCTemplateNames(component.StatefulSetPVCTemplatesToDelete)
+	var marker model.VersionUpdateCleanupJobMarker
 	if err := json.Unmarshal([]byte(record.InternalInfo), &marker); err != nil {
 		return fmt.Errorf("decode cleanup job info marker: %w", err)
 	}
-	actualTemplates := normalizedCleanupPVCTemplates(marker.StatefulSetPVCTemplatesToDelete)
-	if !equalCleanupPVCTemplates(expectedTemplates, actualTemplates) {
+	actualTemplates := model.NormalizeVersionUpdateCleanupPVCTemplateNames(marker.StatefulSetPVCTemplatesToDelete)
+	if !slices.Equal(expectedTemplates, actualTemplates) {
 		return fmt.Errorf("cleanup job info StatefulSet PVC deletion templates do not match task cleanup info")
 	}
 	if marker.RequireStatefulSetDeletion != component.RequireStatefulSetDeletion {
@@ -315,36 +311,6 @@ func validatePersistedCleanupJobContract(cleanupInfoVersion int, component model
 		return fmt.Errorf("cleanup job info StatefulSet PVC deletion requires StatefulSet deletion")
 	}
 	return nil
-}
-
-func normalizedCleanupPVCTemplates(rawTemplates []string) []string {
-	seen := make(map[string]struct{}, len(rawTemplates))
-	templates := make([]string, 0, len(rawTemplates))
-	for _, rawName := range rawTemplates {
-		name := strings.TrimSpace(rawName)
-		if name == "" {
-			continue
-		}
-		if _, exists := seen[name]; exists {
-			continue
-		}
-		seen[name] = struct{}{}
-		templates = append(templates, name)
-	}
-	sort.Strings(templates)
-	return templates
-}
-
-func equalCleanupPVCTemplates(left, right []string) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for i := range left {
-		if left[i] != right[i] {
-			return false
-		}
-	}
-	return true
 }
 
 func isVersionUpdateCleanupJobInfo(record *model.JobInfo) (bool, error) {

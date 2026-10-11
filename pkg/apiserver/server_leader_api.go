@@ -5,13 +5,15 @@ import (
 	"errors"
 	"strconv"
 
-	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/gin-gonic/gin"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/middleware"
+	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
 // requestLeadership binds the request to the current, fully initialized term.
@@ -36,8 +38,7 @@ func (s *restServer) requestLeadership(parent context.Context) (context.Context,
 
 func (s *restServer) leaderAPIMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		switch c.Request.URL.Path {
-		case "/api/v1/health", "/api/v1/healthz", "/api/v1/ready", "/api/v1/readyz":
+		if middleware.IsHealthPath(c.Request.URL.Path) {
 			c.Next()
 			return
 		}

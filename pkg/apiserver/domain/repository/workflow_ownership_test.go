@@ -21,6 +21,12 @@ func (s *transactionalWorkflowOwnershipStore) WithTransaction(ctx context.Contex
 	return fn(s.repositoryTestStore)
 }
 
+// This in-memory fixture records the transaction boundary; SQL isolation is
+// covered separately by the database integration tests.
+func (s *transactionalWorkflowOwnershipStore) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	return s.WithTransaction(ctx, fn)
+}
+
 var _ datastore.Transactional = (*transactionalWorkflowOwnershipStore)(nil)
 
 type readCommittedWorkflowOwnershipStore struct {
@@ -143,4 +149,20 @@ func TestWithWorkflowTaskOwnershipFencesUnclaimedTerminalCallbacks(t *testing.T)
 			require.False(t, persisted)
 		})
 	}
+}
+
+func TestWorkflowOwnershipAndRecoveryRequireReadCommitted(t *testing.T) {
+	base := &transactionalWorkflowOwnershipStore{repositoryTestStore: &repositoryTestStore{casWithConditionsSwapped: true}}
+	// Keep the real backing fixture, while exposing only default transactions.
+	store := struct {
+		datastore.DataStore
+		datastore.Transactional
+	}{DataStore: base, Transactional: base}
+	task := &model.WorkflowQueue{TaskID: "task", RunGeneration: 1, RunToken: "token", WorkerID: "worker"}
+	called := false
+	run := func(datastore.DataStore) error { called = true; return nil }
+	require.ErrorIs(t, WithWorkflowTaskOwnership(context.Background(), store, task, run), ErrWorkflowFencingUnsupported)
+	require.ErrorIs(t, withWorkflowRecoveryTransaction(context.Background(), store, run), ErrWorkflowFencingUnsupported)
+	require.False(t, called)
+	require.Zero(t, base.transactionCalls)
 }

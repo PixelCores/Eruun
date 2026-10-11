@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -75,6 +76,50 @@ type VersionUpdateCleanupInfo struct {
 	// task may resolve, but only after both its cleanup jobs and workflow succeed.
 	ResolvesTaskIDs []string                        `json:"resolvesTaskIDs,omitempty"`
 	Components      []VersionUpdateCleanupComponent `json:"components,omitempty"`
+}
+
+// VersionUpdateCleanupJobMarker is the persisted JobInfo.InternalInfo contract.
+// Keep omitted zero fields for existing cleanup records; a v2 task still uses
+// marker version 0, while PVC deletion uses marker version 3.
+type VersionUpdateCleanupJobMarker struct {
+	Source                          string   `json:"source"`
+	Version                         int      `json:"version,omitempty"`
+	RequireStatefulSetDeletion      bool     `json:"requireStatefulSetDeletion,omitempty"`
+	StatefulSetPVCTemplatesToDelete []string `json:"statefulSetPVCTemplatesToDelete,omitempty"`
+}
+
+// IsRetryableVersionUpdateCleanupTaskStatus identifies terminal tasks whose
+// destructive cleanup still needs explicit recovery, rather than success.
+func IsRetryableVersionUpdateCleanupTaskStatus(status config.Status) bool {
+	switch status {
+	case config.StatusFailed, config.StatusTimeout, config.StatusCancelled, config.StatusReject, config.StatusPassed, config.StatusSkipped:
+		return true
+	default:
+		return false
+	}
+}
+
+// NormalizeVersionUpdateCleanupPVCTemplateNames copies, trims, merges and sorts
+// the case-sensitive PVC template names without changing the persisted input.
+func NormalizeVersionUpdateCleanupPVCTemplateNames(groups ...[]string) []string {
+	seen := make(map[string]struct{})
+	for _, group := range groups {
+		for _, rawName := range group {
+			if name := strings.TrimSpace(rawName); name != "" {
+				seen[name] = struct{}{}
+			}
+		}
+	}
+	names := make([]string, 0, len(seen))
+	for name := range seen {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func EqualVersionUpdateCleanupPVCTemplateNames(left, right []string) bool {
+	return slices.Equal(NormalizeVersionUpdateCleanupPVCTemplateNames(left), NormalizeVersionUpdateCleanupPVCTemplateNames(right))
 }
 
 // NormalizeVersionUpdateCleanupResolutionTaskIDs validates and copies one task's

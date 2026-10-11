@@ -3,27 +3,23 @@ package api
 import (
 	"context"
 	"encoding/json"
-
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
-
-	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
-
+	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -624,7 +620,7 @@ func TestListApplicationComponentsRefreshesAfterConfigJobStatusSync(t *testing.T
 			LastAbnormal:  "old error",
 		},
 	}
-	cacheStore := cacheutil.NewMemCache(false)
+	cacheStore := cacheutil.NewMemCache()
 	appService := &cacheBackedComponentListService{
 		cache: cacheStore,
 		store: store,

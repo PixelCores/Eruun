@@ -455,9 +455,39 @@ func workflowComponentTypesFromModels(components []*model.ApplicationComponent) 
 	return componentTypes
 }
 
+// ValidateWorkflowMode keeps stored workflows and Try on the same public mode contract.
+func ValidateWorkflowMode(mode string) error {
+	switch config.WorkflowMode(mode) {
+	case "", config.WorkflowModeStepByStep, config.WorkflowModeDAG:
+		return nil
+	default:
+		return fmt.Errorf("invalid workflow mode: %s, must be one of: StepByStep, DAG", mode)
+	}
+}
+
+// ValidateUniqueWorkflowStepName records nonempty names using Try's case-insensitive identity.
+func ValidateUniqueWorkflowStepName(name string, seen map[string]bool) error {
+	if name == "" {
+		return nil
+	}
+	key := strings.ToLower(name)
+	if seen[key] {
+		return fmt.Errorf("duplicate workflow step name: %s", name)
+	}
+	seen[key] = true
+	return nil
+}
+
 func validateWorkflowComponentRefs(steps []apisv1.CreateWorkflowStepRequest, existing map[string]config.JobType) error {
+	stepNames := make(map[string]bool, len(steps))
 	for _, step := range steps {
 		if err := workflowconfig.ValidateJobSchedulingClass(step.SchedulingClass); err != nil {
+			return fmt.Errorf("%w: step %q: %v", bcode.ErrWorkflowConfig, step.Name, err)
+		}
+		if err := ValidateUniqueWorkflowStepName(step.Name, stepNames); err != nil {
+			return fmt.Errorf("%w: %v", bcode.ErrWorkflowConfig, err)
+		}
+		if err := ValidateWorkflowMode(step.Mode); err != nil {
 			return fmt.Errorf("%w: step %q: %v", bcode.ErrWorkflowConfig, step.Name, err)
 		}
 		for _, sub := range step.SubSteps {

@@ -31,7 +31,7 @@
 ## 接入步骤
 
 1. 复制 `custom` 包作为你的 provider 起点，重命名 `ProviderName` 和 action 常量。
-2. 在 `provider.go` 的 action map 中显式注册你允许的 action，并通过 `ResolveAction` / `SupportedActions` 暴露统一行为。
+2. 在 `provider.go` 的 action map 中显式注册你允许的 action，并通过 `ResolveAction` 暴露统一行为。
 3. 在 `runtime.go` 中接入真实依赖，并实现 `CloudRuntime.Call`。
 4. 按 action 维度拆分文件，在 `Run` 中维护 `state + requeueAfter` 状态机。
 5. 在初始化入口注册 provider：`cloudjob.RegisterCloudProvider(yourprovider.NewProvider())`。

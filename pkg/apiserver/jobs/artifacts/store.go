@@ -85,27 +85,20 @@ func stableID(parts ...string) string {
 	hash := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 	return hex.EncodeToString(hash[:])
 }
-func sourceID(workspaceID, taskID string, executionKey ...string) string {
+func sourceID(workspaceID, taskID string, executionKey string) string {
 	return scopedID([]string{KindSource, workspaceID, taskID}, executionKey)
 }
-func deliveryID(workspaceID, taskID, target string, executionKey ...string) string {
+func deliveryID(workspaceID, taskID, target string, executionKey string) string {
 	return scopedID([]string{"delivery", workspaceID, taskID, target}, executionKey)
 }
-func databaseID(workspaceID, taskID string, executionKey ...string) string {
+func databaseID(workspaceID, taskID string, executionKey string) string {
 	return scopedID([]string{KindDatabase, workspaceID, taskID}, executionKey)
 }
 
-func executionKeyValue(keys []string) string {
-	if len(keys) == 0 {
-		return ""
-	}
-	return keys[0]
-}
-
 // Preserve identifiers for historical records with no execution identity.
-func scopedID(parts, keys []string) string {
-	if key := executionKeyValue(keys); key != "" {
-		parts = append(parts, key)
+func scopedID(parts []string, executionKey string) string {
+	if executionKey != "" {
+		parts = append(parts, executionKey)
 	}
 	return stableID(parts...)
 }
@@ -178,15 +171,9 @@ func (s *Store) UploadDataset(ctx context.Context, workspaceID, name string, r i
 	return a, nil
 }
 
-// PutResult publishes the source and all selected delivery records atomically.
-// The source is immutable per execution; duplicate identical uploads return it.
-func (s *Store) PutResult(ctx context.Context, workspaceID, taskID string, policy spec.JobResultPolicy, r io.Reader, executionKey ...string) (*model.JobArtifact, error) {
-	return s.PutResultGuarded(ctx, workspaceID, taskID, policy, r, nil, executionKey...)
-}
-
 // PutResultGuarded locks the workspace before invoking guard in the publishing
 // transaction, allowing the runtime to atomically reject obsolete executions.
-func (s *Store) PutResultGuarded(ctx context.Context, workspaceID, taskID string, policy spec.JobResultPolicy, r io.Reader, guard func(Backend) error, executionKey ...string) (*model.JobArtifact, error) {
+func (s *Store) PutResultGuarded(ctx context.Context, workspaceID, taskID string, policy spec.JobResultPolicy, r io.Reader, guard func(Backend) error, executionKey string) (*model.JobArtifact, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return nil, err
 	}
@@ -201,7 +188,7 @@ func (s *Store) PutResultGuarded(ctx context.Context, workspaceID, taskID string
 		return nil, err
 	}
 	defer archive.close()
-	a := &model.JobArtifact{ID: sourceID(workspaceID, taskID, executionKey...), WorkspaceID: workspaceID, TaskID: taskID, ExecutionKey: executionKeyValue(executionKey), Kind: KindSource, Name: "results.tar.gz", Digest: archive.digest, Size: archive.size, Manifest: archive.manifest, Summary: archive.summary}
+	a := &model.JobArtifact{ID: sourceID(workspaceID, taskID, executionKey), WorkspaceID: workspaceID, TaskID: taskID, ExecutionKey: executionKey, Kind: KindSource, Name: "results.tar.gz", Digest: archive.digest, Size: archive.size, Manifest: archive.manifest, Summary: archive.summary}
 	err = WithTransaction(ctx, s.db, func(tx Backend) error {
 		if err := tx.GetForUpdate(ctx, &model.Workspace{ID: workspaceID}); err != nil {
 			return err
@@ -240,7 +227,7 @@ func (s *Store) PutResultGuarded(ctx context.Context, workspaceID, taskID string
 			return err
 		}
 		for _, target := range policy.Targets {
-			d := &model.JobDelivery{ID: deliveryID(workspaceID, taskID, target.Type, executionKey...), WorkspaceID: workspaceID, TaskID: taskID, ExecutionKey: executionKeyValue(executionKey), SourceID: a.ID, Target: target.Type, Mode: target.Mode, State: DeliveryPending}
+			d := &model.JobDelivery{ID: deliveryID(workspaceID, taskID, target.Type, executionKey), WorkspaceID: workspaceID, TaskID: taskID, ExecutionKey: executionKey, SourceID: a.ID, Target: target.Type, Mode: target.Mode, State: DeliveryPending}
 			if err := tx.Add(ctx, d); err != nil {
 				return err
 			}
@@ -278,18 +265,18 @@ func (s *Store) Get(ctx context.Context, workspaceID, id string) (*model.JobArti
 
 // List returns the first page for a task's small source/destination result set.
 // Dataset listings should use ListPage so every uploaded task package is reachable.
-func (s *Store) List(ctx context.Context, workspaceID, kind, taskID string, executionKey ...string) ([]*model.JobArtifact, error) {
-	return s.ListPage(ctx, workspaceID, kind, taskID, 1, 100, executionKey...)
+func (s *Store) List(ctx context.Context, workspaceID, kind, taskID string, executionKey string) ([]*model.JobArtifact, error) {
+	return s.ListPage(ctx, workspaceID, kind, taskID, 1, 100, executionKey)
 }
 
-func (s *Store) ListPage(ctx context.Context, workspaceID, kind, taskID string, page, pageSize int, executionKey ...string) ([]*model.JobArtifact, error) {
+func (s *Store) ListPage(ctx context.Context, workspaceID, kind, taskID string, page, pageSize int, executionKey string) ([]*model.JobArtifact, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return nil, err
 	}
 	if page < 1 || pageSize < 1 || pageSize > 100 || page > 10000000 {
 		return nil, fmt.Errorf("%w: page must be positive and pageSize must be 1..100", ErrInvalidInput)
 	}
-	records, err := s.db.List(ctx, &model.JobArtifact{WorkspaceID: workspaceID, Kind: kind, TaskID: taskID, ExecutionKey: executionKeyValue(executionKey)}, &datastore.ListOptions{Page: page, PageSize: pageSize, SortBy: []datastore.SortOption{{Key: "create_time", Order: datastore.SortOrderDescending}, {Key: "id", Order: datastore.SortOrderDescending}}})
+	records, err := s.db.List(ctx, &model.JobArtifact{WorkspaceID: workspaceID, Kind: kind, TaskID: taskID, ExecutionKey: executionKey}, &datastore.ListOptions{Page: page, PageSize: pageSize, SortBy: []datastore.SortOption{{Key: "create_time", Order: datastore.SortOrderDescending}, {Key: "id", Order: datastore.SortOrderDescending}}})
 	if err != nil {
 		return nil, err
 	}
@@ -345,7 +332,7 @@ func copyChunks(ctx context.Context, db datastore.DataStore, a *model.JobArtifac
 	return nil
 }
 
-func (s *Store) SetRetention(ctx context.Context, workspaceID, taskID string, days int, executionKey ...string) error {
+func (s *Store) SetRetention(ctx context.Context, workspaceID, taskID string, days int, executionKey string) error {
 	if days < 1 || days > 3650 {
 		return fmt.Errorf("%w: retentionDays must be 1..3650", ErrInvalidInput)
 	}
@@ -356,7 +343,7 @@ func (s *Store) SetRetention(ctx context.Context, workspaceID, taskID string, da
 		if err := tx.GetForUpdate(ctx, &model.Workspace{ID: workspaceID}); err != nil {
 			return err
 		}
-		a, err := scopedArtifact(ctx, tx, workspaceID, sourceID(workspaceID, taskID, executionKey...), true)
+		a, err := scopedArtifact(ctx, tx, workspaceID, sourceID(workspaceID, taskID, executionKey), true)
 		if err != nil {
 			return err
 		}

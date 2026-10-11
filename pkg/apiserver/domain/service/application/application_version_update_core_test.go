@@ -2,14 +2,14 @@ package application
 
 import (
 	"context"
+	"testing"
 
 	"github.com/stretchr/testify/require"
-	"testing"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
 func TestUpdateVersionWithImageUpdate(t *testing.T) {
@@ -305,6 +305,27 @@ func TestUpdateVersionDefaultStrategy(t *testing.T) {
 	resp, err := svc.UpdateVersion(context.Background(), "app-1", req)
 	require.NoError(t, err)
 	require.Equal(t, "rolling", resp.Strategy)
+}
+
+func TestUpdateVersionRejectsUnsupportedStrategyBeforeWrites(t *testing.T) {
+	for _, strategy := range []string{"recreate", "canary", "blue-green", "unknown", "Rolling", " rolling "} {
+		t.Run(strategy, func(t *testing.T) {
+			store := newInMemoryAppStore()
+			store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "demo", Version: "1.0.0"}
+			store.components["web"] = &model.ApplicationComponent{Name: "web", AppID: "app-1", Image: "nginx:1.26"}
+			svc := newMockServiceWithStore(store)
+			response, err := svc.UpdateVersion(context.Background(), "app-1", apisv1.UpdateVersionRequest{
+				Version: "2.0.0", Strategy: strategy, AutoExec: boolPtr(false),
+				Components: []apisv1.ComponentUpdateSpec{{Name: "web", Image: "nginx:1.27"}},
+			})
+			require.ErrorIs(t, err, bcode.ErrInvalidUpdateStrategy)
+			require.Nil(t, response)
+			require.Equal(t, "1.0.0", store.apps["app-1"].Version)
+			require.Equal(t, "nginx:1.26", store.components["web"].Image)
+			require.Empty(t, store.workflows)
+			require.Empty(t, store.tasks)
+		})
+	}
 }
 
 func TestUpdateVersionNoChanges(t *testing.T) {

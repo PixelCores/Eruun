@@ -40,13 +40,6 @@ func WithResyncPeriod(d time.Duration) ManagerOption {
 	}
 }
 
-// WithSyncTimeout bounds the initial informer snapshot wait.
-func WithSyncTimeout(d time.Duration) ManagerOption {
-	return func(m *Manager) {
-		m.syncTimeout = d
-	}
-}
-
 // WithLabelSelector 设置标签过滤器（减少内存消耗）
 func WithLabelSelector(selector string) ManagerOption {
 	return func(m *Manager) {
@@ -218,14 +211,4 @@ func (m *Manager) IsStarted() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.started
-}
-
-// GetStats 获取统计信息（用于监控）
-func (m *Manager) GetStats() map[string]interface{} {
-	return map[string]interface{}{
-		"started":       m.IsStarted(),
-		"labelSelector": m.labelSelector,
-		"resyncPeriod":  m.resyncPeriod.String(),
-		"syncTimeout":   m.syncTimeout.String(),
-	}
 }

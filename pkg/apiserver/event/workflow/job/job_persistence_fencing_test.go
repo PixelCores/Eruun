@@ -3,7 +3,6 @@ package job
 import (
 	"context"
 	"errors"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"strconv"
 	"testing"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
@@ -27,6 +27,11 @@ type workflowOwnedJobInfoStore struct {
 	components       []*model.ApplicationComponent
 	updatedComponent *model.ApplicationComponent
 	transactionCalls int
+}
+
+// The fixture models an explicit transaction boundary; SQL tests verify isolation.
+func (s *workflowOwnedJobInfoStore) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	return s.WithTransaction(ctx, fn)
 }
 
 func (s *workflowOwnedJobInfoStore) WithTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {

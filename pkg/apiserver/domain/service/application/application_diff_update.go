@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"reflect"
 	"sort"
 	"strings"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -30,6 +30,9 @@ func (c *applicationsServiceImpl) DiffUpdateVersion(ctx context.Context, targetA
 	sourceAppID := strings.TrimSpace(req.SourceAppID)
 	if targetAppID == "" || sourceAppID == "" {
 		return nil, bcode.ErrApplicationConfig
+	}
+	if _, ok := domainspec.NormalizeUpdateStrategy(req.Strategy); !ok {
+		return nil, bcode.ErrInvalidUpdateStrategy
 	}
 	targetOnlyStrategy, err := normalizeDiffUpdateTargetOnlyStrategy(req.TargetOnlyStrategy)
 	if err != nil {

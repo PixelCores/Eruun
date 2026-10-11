@@ -36,20 +36,6 @@ func TestExecWorkflowTaskForAppBlocksPendingStatefulSetCleanup(t *testing.T) {
 	}
 }
 
-func TestExecWorkflowTaskBlocksPendingStatefulSetCleanup(t *testing.T) {
-	store, workflow := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, config.StatusFailed)
-	svc := &workflowServiceImpl{
-		Store:          store,
-		ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
-	}
-
-	resp, err := svc.ExecWorkflowTask(context.Background(), workflow.ID, 0)
-
-	require.Nil(t, resp)
-	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
-	require.Empty(t, store.queues)
-}
-
 func TestStatefulSetCleanupFenceRequiresAV3ResumeForPendingPVCTemplates(t *testing.T) {
 	store, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, config.StatusFailed)
 	v2Store, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, config.StatusCompleted)
@@ -212,7 +198,7 @@ func TestStatefulSetCleanupFencePreservesResolutionCoverage(t *testing.T) {
 			}
 			if tt.pvcTemplate != "" {
 				info.Components[0].StatefulSetPVCTemplatesToDelete = []string{tt.pvcTemplate}
-				var marker statefulSetCleanupJobMarker
+				var marker model.VersionUpdateCleanupJobMarker
 				require.NoError(t, json.Unmarshal([]byte(resolver.jobs[0].InternalInfo), &marker))
 				marker.StatefulSetPVCTemplatesToDelete = []string{tt.pvcTemplate}
 				payload, err := json.Marshal(marker)
@@ -371,84 +357,6 @@ func TestStatefulSetCleanupFenceStrictlyValidatesExplicitMigrationMarker(t *test
 	require.ErrorContains(t, err, "decode cleanup job marker")
 }
 
-func TestMarkTaskStatusBlocksDelayedOrdinaryTaskAfterFailedStatefulSetMigration(t *testing.T) {
-	store, workflow := newStatefulSetCleanupFenceStore(t, 0, "")
-	ordinary := &model.WorkflowQueue{
-		TaskID: "ordinary-future", AppID: workflow.AppID, WorkflowID: workflow.ID,
-		Status: config.StatusWaiting, ExecuteAt: time.Now().Add(time.Hour).Unix(),
-		BaseModel: model.BaseModel{CreateTime: time.Now().Add(-time.Hour)},
-	}
-	store.tasks = append(store.tasks, ordinary)
-	failedStore, _ := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, config.StatusFailed)
-	failedStore.tasks[0].CreateTime = time.Now()
-	store.tasks = append(failedStore.tasks, store.tasks...)
-	store.jobs = append(store.jobs, failedStore.jobs...)
-	svc := &workflowServiceImpl{Store: store, ScheduleLocker: locker.NewMemoryLocker("test-app-schedule")}
-	ordinary.ExecuteAt = time.Now().Add(-time.Second).Unix()
-	waiting, err := svc.WaitingTasks(context.Background())
-	require.NoError(t, err)
-	require.Contains(t, waiting, ordinary)
-
-	claimed, err := svc.MarkTaskStatus(context.Background(), ordinary.TaskID, config.StatusWaiting, config.StatusQueued)
-
-	require.False(t, claimed)
-	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
-	require.Equal(t, config.StatusWaiting, ordinary.Status)
-}
-
-func TestMarkTaskStatusAllowsStatefulSetMigrationResumeTask(t *testing.T) {
-	store, workflow := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, config.StatusFailed)
-	resume := &model.WorkflowQueue{
-		TaskID: "migration-resume", AppID: workflow.AppID, WorkflowID: workflow.ID,
-		Status: config.StatusWaiting, ExecuteAt: time.Now().Add(-time.Second).Unix(), CleanupInfo: store.tasks[0].CleanupInfo,
-		BaseModel: model.BaseModel{CreateTime: time.Now()},
-	}
-	store.tasks = append([]*model.WorkflowQueue{resume}, store.tasks...)
-	svc := &workflowServiceImpl{Store: store, ScheduleLocker: locker.NewMemoryLocker("test-app-schedule")}
-
-	claimed, err := svc.MarkTaskStatus(context.Background(), resume.TaskID, config.StatusWaiting, config.StatusQueued)
-
-	require.NoError(t, err)
-	require.True(t, claimed)
-	require.Equal(t, config.StatusQueued, resume.Status)
-}
-
-func TestMarkTaskStatusUsesApplicationScheduleLock(t *testing.T) {
-	store, workflow := newStatefulSetCleanupFenceStore(t, 0, "")
-	task := &model.WorkflowQueue{
-		TaskID: "ordinary-due", AppID: workflow.AppID, WorkflowID: workflow.ID,
-		Status: config.StatusWaiting, ExecuteAt: time.Now().Add(-time.Second).Unix(),
-	}
-	store.tasks = append(store.tasks, task)
-	lockProvider := locker.NewMemoryLocker("test-app-schedule")
-	held := lockProvider.NewMutex("app-schedule:" + workflow.AppID)
-	require.NoError(t, held.TryLock(context.Background()))
-	t.Cleanup(func() { _ = held.Unlock(context.Background()) })
-	svc := &workflowServiceImpl{Store: store, ScheduleLocker: lockProvider}
-
-	claimed, err := svc.MarkTaskStatus(context.Background(), task.TaskID, config.StatusWaiting, config.StatusQueued)
-
-	require.False(t, claimed)
-	require.ErrorIs(t, err, bcode.ErrApplicationOperationLocked)
-	require.Equal(t, config.StatusWaiting, task.Status)
-}
-
-func TestMarkTaskStatusKeepsImmediateTaskDispatchIndependentOfScheduleLocker(t *testing.T) {
-	store, workflow := newStatefulSetCleanupFenceStore(t, 0, "")
-	task := &model.WorkflowQueue{
-		TaskID: "ordinary-immediate", AppID: workflow.AppID, WorkflowID: workflow.ID,
-		Status: config.StatusWaiting,
-	}
-	store.tasks = append(store.tasks, task)
-	svc := &workflowServiceImpl{Store: store}
-
-	claimed, err := svc.MarkTaskStatus(context.Background(), task.TaskID, config.StatusWaiting, config.StatusQueued)
-
-	require.NoError(t, err)
-	require.True(t, claimed)
-	require.Equal(t, config.StatusQueued, task.Status)
-}
-
 func TestExecWorkflowTaskForAppAllowsCompletedStatefulSetCleanup(t *testing.T) {
 	store, workflow := newStatefulSetCleanupFenceStore(t, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, config.StatusCompleted)
 	svc := &workflowServiceImpl{
@@ -561,7 +469,7 @@ func newStatefulSetCleanupFenceStore(t *testing.T, cleanupVersion int, cleanupSt
 		ResourceAppName:            "shop",
 		RequireStatefulSetDeletion: true,
 	}
-	marker := statefulSetCleanupJobMarker{
+	marker := model.VersionUpdateCleanupJobMarker{
 		Source:                     config.JobInfoSourceVersionUpdateRemove,
 		RequireStatefulSetDeletion: true,
 	}
@@ -622,7 +530,7 @@ func newMixedStatefulSetCleanupFenceStore(
 	} else {
 		store.tasks[0].Status = config.StatusFailed
 	}
-	v3MarkerJSON, err := json.Marshal(statefulSetCleanupJobMarker{
+	v3MarkerJSON, err := json.Marshal(model.VersionUpdateCleanupJobMarker{
 		Source: config.JobInfoSourceVersionUpdateRemove, Version: model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion,
 		RequireStatefulSetDeletion: true, StatefulSetPVCTemplatesToDelete: []string{"data"},
 	})

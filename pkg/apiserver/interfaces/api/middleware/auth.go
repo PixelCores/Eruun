@@ -4,11 +4,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
-	"github.com/gin-gonic/gin"
 )
 
 const AuthPrincipalContextKey = "auth.principal"
@@ -20,8 +21,15 @@ func Principal(c *gin.Context) *account.Principal {
 	value, _ := p.(*account.Principal)
 	return value
 }
-func DefaultAuthSkipPaths() []string {
-	return []string{"/api/v1/health", "/api/v1/healthz", "/api/v1/ready", "/api/v1/readyz"}
+
+// IsHealthPath identifies the registered health and readiness endpoints.
+func IsHealthPath(path string) bool {
+	switch path {
+	case "/api/v1/health", "/api/v1/healthz", "/api/v1/ready", "/api/v1/readyz":
+		return true
+	default:
+		return false
+	}
 }
 
 var publicAccountRoutes = map[string]bool{
@@ -139,13 +147,8 @@ var runnerRoutes = map[string]bool{
 func HasAuthPolicy(method, path string) bool {
 	route := method + " " + path
 	classes := 0
-	if method == "GET" {
-		for _, health := range DefaultAuthSkipPaths() {
-			if path == health {
-				classes++
-				break
-			}
-		}
+	if method == "GET" && IsHealthPath(path) {
+		classes++
 	}
 	if publicAccountRoutes[route] {
 		classes++
@@ -162,6 +165,16 @@ func HasAuthPolicy(method, path string) bool {
 	return classes == 1
 }
 
+// BusinessRoutePolicy returns the authorization class of a business endpoint.
+// Empty means no business policy; unknown routes remain denied by Auth.
+func BusinessRoutePolicy(method, path string) string {
+	minimum := businessRoutes[method+" "+path]
+	if minimum == "system" && (strings.HasPrefix(path, "/api/v1/applications/") || strings.HasPrefix(path, "/api/v1/resource-import/")) {
+		return "system_workspace"
+	}
+	return minimum
+}
+
 func Auth(opts AuthOptions) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.FullPath()
@@ -173,11 +186,9 @@ func Auth(opts AuthOptions) gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		for _, health := range DefaultAuthSkipPaths() {
-			if path == health && c.Request.Method == "GET" {
-				c.Next()
-				return
-			}
+		if c.Request.Method == "GET" && IsHealthPath(path) {
+			c.Next()
+			return
 		}
 		s := opts.Accounts
 		if s == nil {
@@ -225,15 +236,13 @@ func Auth(opts AuthOptions) gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		minimum, known := businessRoutes[route]
-		if !known || (minimum == "system" && !p.User.SystemAdmin) {
+		minimum := BusinessRoutePolicy(c.Request.Method, path)
+		if minimum == "" || ((minimum == "system" || minimum == "system_workspace") && !p.User.SystemAdmin) {
 			apiresponse.ReturnError(c, bcode.ErrForbidden)
 			c.Abort()
 			return
 		}
-		if minimum == "system" &&
-			!strings.HasPrefix(path, "/api/v1/applications/") &&
-			!strings.HasPrefix(path, "/api/v1/resource-import/") {
+		if minimum == "system" {
 			c.Next()
 			return
 		}
@@ -249,7 +258,7 @@ func Auth(opts AuthOptions) gin.HandlerFunc {
 			return
 		}
 		scope := account.Scope{UserID: p.User.ID, WorkspaceID: a.Workspace.ID, Namespace: a.Workspace.Namespace, Role: a.Role, SystemAdmin: p.User.SystemAdmin}
-		scope.ClusterOperation = minimum == "system"
+		scope.ClusterOperation = minimum == "system_workspace"
 		ctx := account.WithScope(c.Request.Context(), scope)
 		c.Request = c.Request.WithContext(ctx)
 		guard := account.NewStore(s.Repo.Store)

@@ -388,3 +388,18 @@ func (r *caseInsensitiveRefreshApplicationRepository) FindByID(ctx context.Conte
 	}
 	return r.ApplicationRepository.FindByID(ctx, id)
 }
+
+func TestCreateApplicationsRequiresTransactionBeforeNewApplicationWrites(t *testing.T) {
+	store := newInMemoryAppStore()
+	kubeClient := fake.NewSimpleClientset()
+	svc := newMockServiceWithStore(store)
+	svc.Store = &createRefreshNonTransactionalStore{DataStore: store}
+	svc.KubeClient = kubeClient
+	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{Name: "new-app", Namespace: "must-not-be-created"})
+	require.Nil(t, resp)
+	require.EqualError(t, err, "application creation requires transactional datastore")
+	require.Empty(t, kubeClient.Actions())
+	require.Empty(t, store.apps)
+	require.Empty(t, store.components)
+	require.Empty(t, store.workflows)
+}

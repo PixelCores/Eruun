@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"strings"
 	"time"
 
@@ -14,6 +13,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
@@ -56,6 +57,10 @@ func (c *applicationsServiceImpl) prepareVersionUpdateRun(
 	app *model.Applications,
 	req apisv1.UpdateVersionRequest,
 ) (*versionUpdateRun, error) {
+	strategy, ok := domainspec.NormalizeUpdateStrategy(req.Strategy)
+	if !ok {
+		return nil, bcode.ErrInvalidUpdateStrategy
+	}
 	run := &versionUpdateRun{
 		app:             app,
 		req:             req,
@@ -63,14 +68,14 @@ func (c *applicationsServiceImpl) prepareVersionUpdateRun(
 		newVersion:      req.Version,
 		startTime:       time.Now().Unix(),
 		autoExec:        true,
-		strategy:        domainspec.ParseUpdateStrategy(req.Strategy),
+		strategy:        strategy,
 	}
 	if req.AutoExec != nil {
 		run.autoExec = *req.AutoExec
 	}
 
 	var err error
-	run.executeAt, err = normalizeExecuteAt(req.ExecuteAt)
+	run.executeAt, err = workflowservice.NormalizeExecuteAt(req.ExecuteAt)
 	if err != nil {
 		return nil, err
 	}
@@ -163,9 +168,6 @@ func (c *applicationsServiceImpl) preflightVersionUpdateRun(
 	run *versionUpdateRun,
 	components []*model.ApplicationComponent,
 ) error {
-	if err := validateVersionUpdateComponentActionConflicts(run.normalReq.Components); err != nil {
-		return err
-	}
 	if err := validateVersionUpdateActionContract(run.normalReq.Components, run.componentMap); err != nil {
 		return err
 	}
@@ -206,7 +208,7 @@ func (c *applicationsServiceImpl) preflightVersionUpdateRun(
 		return err
 	}
 	if requiresWorkflowStepSync {
-		if err := EnsureAppWorkflowIdle(ctx, c.Store, run.app.ID); err != nil {
+		if err := workflowservice.EnsureAppWorkflowIdle(ctx, c.Store, run.app.ID); err != nil {
 			return err
 		}
 	}
@@ -233,7 +235,7 @@ func (c *applicationsServiceImpl) preflightVersionUpdateRun(
 		return err
 	}
 	if run.app.EffectiveManagementMode() == domainspec.ManagementModeAdopted {
-		if err := EnsureAppWorkflowIdle(ctx, c.Store, run.app.ID); err != nil {
+		if err := workflowservice.EnsureAppWorkflowIdle(ctx, c.Store, run.app.ID); err != nil {
 			return fmt.Errorf("update adopted application version: %w", err)
 		}
 	}
@@ -270,10 +272,10 @@ func (c *applicationsServiceImpl) selectVersionUpdateWorkflow(ctx context.Contex
 			return err
 		}
 		run.readyComponents = readyTargets
-		if err := validateWorkflowTaskEnqueue(ctx, c.Store, run.autoExecWorkflow, false); err != nil {
+		if err := workflowservice.ValidateWorkflowTaskEnqueue(ctx, c.Store, run.autoExecWorkflow, false); err != nil {
 			return autoExecWorkflowValidationError(err)
 		}
-		if err := EnsureAppWorkflowIdle(ctx, c.Store, run.autoExecWorkflow.AppID); err != nil {
+		if err := workflowservice.EnsureAppWorkflowIdle(ctx, c.Store, run.autoExecWorkflow.AppID); err != nil {
 			return fmt.Errorf("auto exec workflow: %w", err)
 		}
 	}
@@ -316,7 +318,7 @@ func (c *applicationsServiceImpl) commitDirectVersionUpdate(ctx context.Context,
 			return err
 		}
 		if requiresIdle || run.app.EffectiveManagementMode() == domainspec.ManagementModeAdopted {
-			if err := EnsureAppWorkflowIdle(ctx, tx, run.app.ID); err != nil {
+			if err := workflowservice.EnsureAppWorkflowIdle(ctx, tx, run.app.ID); err != nil {
 				return err
 			}
 		}
