@@ -13,13 +13,17 @@ import (
 	"gorm.io/gorm/logger"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -48,7 +52,7 @@ func evaluationScopeTask(t *testing.T, store *access.Store, appID string) *model
 		RunGeneration: 1, RunToken: "run-token", WorkerID: "worker", LeaseExpiresAt: &lease}
 	if appID == "" {
 		parent.Type = config.WorkflowTaskTypeJob
-		parent.JobSpec = `{"type":"job","traits":{"eval":{"env":"ack","agent":"oracle","taskPackageId":"11111111-1111-1111-1111-111111111111"}}}`
+		parent.JobSpec = `{"name":"evaluation","stages":[{"name":"run","steps":[{"name":"evaluate","type":"job","traits":{"eval":{"env":"ack","agent":"oracle","taskPackageId":"11111111-1111-1111-1111-111111111111"}}}]}]}`
 	} else {
 		require.NoError(t, store.Add(context.Background(), &model.Applications{ID: appID, WorkspaceID: "space", Namespace: "space-ns"}))
 	}
@@ -170,6 +174,69 @@ func TestEvaluationScopeRejectsForeignAndForgedOwnership(t *testing.T) {
 				_, err := findExistingJobInfo(ctx, store, task)
 				require.Error(t, err, "parent scope must also protect lifecycle lookup")
 			}
+		})
+	}
+}
+
+func TestStandaloneJobVolumeRunsThroughPVCController(t *testing.T) {
+	for _, name := range []string{spec.JobVolumeName("parent"), "foreign-pvc"} {
+		t.Run(name, func(t *testing.T) {
+			db, store, scopedCtx := evaluationScopeStore(t)
+			lease := time.Now().Add(time.Hour)
+			parent := &model.WorkflowQueue{TaskID: "parent", WorkspaceID: "space", Type: config.WorkflowTaskTypeJob,
+				Status: config.StatusRunning, RunGeneration: 1, RunToken: "run-token", WorkerID: "worker", LeaseExpiresAt: &lease,
+				JobSpec: `{"name":"pipeline","volume":{"size":"1Gi"},"stages":[{"name":"run","steps":[{"name":"command","type":"command","spec":{"image":"busybox:1.37.0","command":["true"]}}]}]}`}
+			require.NoError(t, store.Add(context.Background(), parent))
+			pvc := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "space-ns", Labels: map[string]string{spec.JobTaskLabel: parent.TaskID}},
+				Spec: corev1.PersistentVolumeClaimSpec{AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+					Resources: corev1.VolumeResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("1Gi")}}}}
+			task := &model.JobTask{Name: name, Namespace: "space-ns", WorkspaceID: "space", TaskID: parent.TaskID,
+				JobType: string(config.JobDeployPVC), JobInfo: pvc, Timeout: 60, Status: config.StatusQueued,
+				ExecutionKey: "volume-execution", RunGeneration: 1, OwnerRunGeneration: 1, RunToken: parent.RunToken, WorkerID: parent.WorkerID}
+			ApplyExecutionIdentity(task)
+			client := fake.NewSimpleClientset()
+			client.PrependReactor("create", "persistentvolumeclaims", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				action.(k8stesting.CreateAction).GetObject().(*corev1.PersistentVolumeClaim).Status.Phase = corev1.ClaimPending
+				return false, nil, nil
+			})
+			ctx, cancel := context.WithTimeout(scopedCtx, 5*time.Second)
+			defer cancel()
+			run := &Runtime{Concurrency: 1, Client: client, Store: store, Ack: func() {}, StopOnFailure: true}
+			if name == "foreign-pvc" {
+				err := RunJobs(ctx, []*model.JobTask{task}, run)
+				require.ErrorContains(t, err, "authorize workspace job")
+				require.Empty(t, client.Actions(), "foreign PVC must be rejected before Kubernetes access")
+				_, err = findExistingJobInfo(ctx, store, task)
+				require.Error(t, err, "lifecycle lookup must retain the PVC name authorization")
+				var count int64
+				require.NoError(t, db.Model(&model.JobInfo{}).Count(&count).Error)
+				require.Zero(t, count)
+				return
+			}
+			result := make(chan error, 1)
+			go func() { result <- RunJobs(ctx, []*model.JobTask{task}, run) }()
+			require.Eventually(t, func() bool {
+				var count int64
+				return db.Model(&model.JobInfo{}).Where("execution_key = ? AND scheduling_state = ?", task.ExecutionKey, "queued").Count(&count).Error == nil && count == 1
+			}, time.Second, 10*time.Millisecond)
+			count, err := repository.AdmitQueuedJobs(context.Background(), store)
+			require.NoError(t, err)
+			require.Equal(t, 1, count)
+			select {
+			case err := <-result:
+				require.NoError(t, err)
+			case <-ctx.Done():
+				t.Fatal("PVC did not finish after admission")
+			}
+			require.Equal(t, config.StatusCompleted, task.Status)
+			created, err := client.CoreV1().PersistentVolumeClaims("space-ns").Get(ctx, name, metav1.GetOptions{})
+			require.NoError(t, err)
+			require.Equal(t, "parent", created.Labels[spec.JobTaskLabel])
+			saved, err := findExistingJobInfo(ctx, store, task)
+			require.NoError(t, err)
+			require.NotNil(t, saved)
+			require.Equal(t, name, saved.ServiceName)
+			require.Equal(t, string(config.StatusCompleted), saved.Status)
 		})
 	}
 }

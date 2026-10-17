@@ -2,7 +2,6 @@ package account
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"time"
@@ -118,36 +117,43 @@ func (s *Store) Check(ctx context.Context, e datastore.Entity) error {
 	return s.Check(ctx, app)
 }
 
-// workspaceTaskJobType binds an app-less execution record to the type accepted
-// in its durable parent snapshot. Runtime or request fields cannot widen this.
-func workspaceTaskJobType(task *model.WorkflowQueue) config.JobType {
+// workspaceTaskJobAllowed binds app-less execution types to their durable
+// parent snapshot. Only the run's own declared work volume may create a PVC.
+func workspaceTaskJobAllowed(task *model.WorkflowQueue, job *model.JobInfo) bool {
 	if task == nil || task.AppID != "" {
-		return ""
+		return false
 	}
+	query := job == nil || job.Type == ""
 	switch task.Type {
 	case config.WorkflowTaskTypeResourceImportScan:
-		return config.JobResourceImportScan
+		return query || job.Type == string(config.JobResourceImportScan)
 	case config.WorkflowTaskTypeResourceImportManage:
-		return config.JobResourceImportManage
+		return query || job.Type == string(config.JobResourceImportManage)
 	case config.WorkflowTaskTypeJob:
-		var snapshot struct {
-			Type   config.JobType `json:"type"`
-			Traits spec.JobTraits `json:"traits"`
+		var snapshot spec.JobSpec
+		if spec.DecodeJobJSON([]byte(task.JobSpec), &snapshot) != nil || snapshot.Normalize() != nil {
+			return false
 		}
-		if json.Unmarshal([]byte(task.JobSpec), &snapshot) == nil {
-			if snapshot.Type == config.JobCommand && snapshot.Traits.Evaluation == nil {
-				return config.JobCommand
-			}
-			if snapshot.Type == config.InstantJob && snapshot.Traits.Evaluation != nil && snapshot.Traits.Evaluation.Normalize() == nil {
-				return config.JobEval
+		if query {
+			return true
+		}
+		if job.Type == string(config.JobDeployPVC) {
+			return snapshot.Volume != nil && job.ServiceName == spec.JobVolumeName(task.TaskID)
+		}
+		for _, stage := range snapshot.Stages {
+			for _, step := range stage.Steps {
+				if step.Type == "command" && job.Type == string(config.JobCommand) ||
+					step.Type == "job" && job.Type == string(config.JobEval) {
+					return true
+				}
 			}
 		}
 	}
-	return ""
+	return false
 }
 
 func workspaceOwnedTask(task *model.WorkflowQueue) bool {
-	return workspaceTaskJobType(task) != ""
+	return workspaceTaskJobAllowed(task, nil)
 }
 
 func (s *Store) checkWorkspaceJob(ctx context.Context, v *model.JobInfo, scope Scope) error {
@@ -155,11 +161,7 @@ func (s *Store) checkWorkspaceJob(ctx context.Context, v *model.JobInfo, scope S
 	if err := s.raw.Get(ctx, task); err != nil {
 		return err
 	}
-	if task.AppID != "" || task.WorkspaceID != scope.WorkspaceID || !workspaceOwnedTask(task) {
-		return bcode.ErrForbidden
-	}
-	expectedJobType := workspaceTaskJobType(task)
-	if v.Type != "" && v.Type != string(expectedJobType) {
+	if task.WorkspaceID != scope.WorkspaceID || !workspaceTaskJobAllowed(task, v) {
 		return bcode.ErrForbidden
 	}
 	return nil

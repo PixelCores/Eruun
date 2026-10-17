@@ -8,14 +8,18 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path"
 	"strings"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 	"k8s.io/apimachinery/pkg/api/resource"
 	validation "k8s.io/apimachinery/pkg/util/validation"
 )
 
 const (
+	JobTaskLabel             = "eruun.io/job-task"
 	HarborVersion            = "0.22.0"
 	JobArchiveTimeoutSeconds = 300
 	// One ten-minute control-plane interruption plus the existing six-minute
@@ -32,12 +36,39 @@ const (
 	CheckpointManifestLimit       = 1 << 20
 )
 
-// JobSpec describes one standalone command or a Job with an evaluation trait.
+// JobVolumeName identifies the shared volume owned by one standalone run.
+func JobVolumeName(taskID string) string {
+	return "eruun-job-" + taskID + "-work"
+}
+
+// JobSpec describes a standalone run whose stages execute in order.
 type JobSpec struct {
+	Name   string     `json:"name"`
+	Volume *JobVolume `json:"volume,omitempty"`
+	Stages []JobStage `json:"stages"`
+}
+
+type JobVolume struct {
+	Size         string `json:"size"`
+	StorageClass string `json:"storageClass,omitempty"`
+	AccessMode   string `json:"accessMode,omitempty"`
+}
+
+type JobStage struct {
+	Name  string    `json:"name"`
+	Steps []JobStep `json:"steps"`
+}
+
+type JobStep struct {
 	Name   string          `json:"name"`
 	Type   string          `json:"type"`
 	Spec   json.RawMessage `json:"spec,omitempty"`
-	Traits JobTraits       `json:"traits,omitempty"`
+	Traits Traits          `json:"traits,omitempty"`
+	Retry  *JobStepRetry   `json:"retry,omitempty"`
+}
+
+type JobStepRetry struct {
+	BackoffLimit int32 `json:"backoffLimit"`
 }
 
 type CommandJobSpec struct {
@@ -208,39 +239,99 @@ func (j *JobSpec) Normalize() error {
 	if j == nil || strings.TrimSpace(j.Name) == "" || len(j.Name) > 128 {
 		return fmt.Errorf("name must contain 1 to 128 bytes")
 	}
-	switch j.Type {
-	case "command":
-		if j.Traits.Evaluation != nil {
-			return fmt.Errorf("evaluation requires type job")
+	if len(j.Stages) == 0 {
+		return fmt.Errorf("stages must contain at least one stage")
+	}
+	if j.Volume != nil {
+		quantity, err := resource.ParseQuantity(j.Volume.Size)
+		if err != nil || quantity.Sign() <= 0 {
+			return fmt.Errorf("volume.size must be a positive Kubernetes storage quantity")
 		}
-		if len(j.Spec) == 0 || bytes.Equal(bytes.TrimSpace(j.Spec), []byte("null")) {
-			return fmt.Errorf("spec is required")
+		if j.Volume.StorageClass != "" && len(validation.IsDNS1123Subdomain(j.Volume.StorageClass)) != 0 {
+			return fmt.Errorf("volume.storageClass must be a valid Kubernetes StorageClass name")
 		}
-		if err := validateJobTraits(j.Traits); err != nil {
-			return err
+		if j.Volume.AccessMode == "" {
+			j.Volume.AccessMode = "ReadWriteOnce"
 		}
-		var command CommandJobSpec
-		if err := DecodeJobJSON(j.Spec, &command); err != nil {
-			return fmt.Errorf("command spec: %w", err)
+		if j.Volume.AccessMode != "ReadWriteOnce" && j.Volume.AccessMode != "ReadWriteMany" {
+			return fmt.Errorf("volume.accessMode must be ReadWriteOnce or ReadWriteMany")
 		}
-		if !ExplicitJobImage(command.Image) || len(command.Command) == 0 || command.Command[0] == "" {
-			return fmt.Errorf("command requires an explicitly tagged image and command")
+	}
+	stageNames := make(map[string]bool, len(j.Stages))
+	stepNames := make(map[string]bool)
+	for stageIndex := range j.Stages {
+		stage := &j.Stages[stageIndex]
+		if strings.TrimSpace(stage.Name) == "" {
+			return fmt.Errorf("stage %d: name must not be empty", stageIndex+1)
 		}
-		if command.TimeoutSeconds == 0 {
-			command.TimeoutSeconds = 3600
+		if stageNames[stage.Name] {
+			return fmt.Errorf("duplicate stage name %q", stage.Name)
 		}
-		if command.TimeoutSeconds < 1 || command.TimeoutSeconds > 86400 {
-			return fmt.Errorf("timeoutSeconds must be between 1 and 86400")
+		stageNames[stage.Name] = true
+		if len(stage.Steps) == 0 {
+			return fmt.Errorf("stage %q: steps must contain at least one step", stage.Name)
 		}
-		j.Spec, _ = json.Marshal(command)
-		normalizeJobResources(&j.Traits.Resources)
-	case "job":
-		if len(j.Spec) != 0 {
-			return fmt.Errorf("evaluation inputs belong in traits.eval; spec is not supported")
+		if j.Volume != nil && len(stage.Steps) > 1 && j.Volume.AccessMode != "ReadWriteMany" {
+			return fmt.Errorf("stage %q: multiple steps require volume.accessMode ReadWriteMany", stage.Name)
 		}
-		return NormalizeEvaluationTraits(&j.Traits)
-	default:
-		return fmt.Errorf("type must be command or job")
+		for stepIndex := range stage.Steps {
+			step := &stage.Steps[stepIndex]
+			if strings.TrimSpace(step.Name) == "" {
+				return fmt.Errorf("stage %q step %d: name must not be empty", stage.Name, stepIndex+1)
+			}
+			if stepNames[step.Name] {
+				return fmt.Errorf("duplicate step name %q", step.Name)
+			}
+			stepNames[step.Name] = true
+			// Submit generates task IDs from 12 random bytes encoded as 24 hex
+			// characters. Reject names that naming would rewrite or truncate.
+			prefix := "eruun-job-" + strings.Repeat("0", 24)
+			if naming.JobName(step.Name, prefix) != prefix+"-"+step.Name {
+				return fmt.Errorf("step %q: generated Kubernetes Job name must use lowercase DNS label characters and contain at most 63 bytes (step name at most 28 bytes)", step.Name)
+			}
+			switch step.Type {
+			case "command":
+				if step.Retry != nil && (step.Retry.BackoffLimit < 0 || step.Retry.BackoffLimit > 10) {
+					return fmt.Errorf("step %q: retry.backoffLimit must be between 0 and 10", step.Name)
+				}
+				if len(step.Spec) == 0 || bytes.Equal(bytes.TrimSpace(step.Spec), []byte("null")) {
+					return fmt.Errorf("step %q: command spec is required", step.Name)
+				}
+				if err := validateJobTraits(step.Traits, j.Volume != nil); err != nil {
+					return fmt.Errorf("step %q: %w", step.Name, err)
+				}
+				var command CommandJobSpec
+				if err := DecodeJobJSON(step.Spec, &command); err != nil {
+					return fmt.Errorf("step %q command spec: %w", step.Name, err)
+				}
+				if !ExplicitJobImage(command.Image) || len(command.Command) == 0 || command.Command[0] == "" {
+					return fmt.Errorf("step %q: command requires an explicitly tagged image and command", step.Name)
+				}
+				if command.TimeoutSeconds == 0 {
+					command.TimeoutSeconds = 3600
+				}
+				if command.TimeoutSeconds < 1 || command.TimeoutSeconds > 86400 {
+					return fmt.Errorf("step %q: timeoutSeconds must be between 1 and 86400", step.Name)
+				}
+				step.Spec, _ = json.Marshal(command)
+				normalizeJobResources(&step.Traits.Resources)
+			case "job":
+				if step.Retry != nil {
+					return fmt.Errorf("step %q: retry is not supported for evaluation; evaluation recovery is controlled by traits.eval.recovery", step.Name)
+				}
+				if len(step.Spec) != 0 {
+					return fmt.Errorf("step %q: evaluation inputs belong in traits.eval; spec is not supported", step.Name)
+				}
+				if step.Traits.Evaluation == nil {
+					return fmt.Errorf("step %q: traits.eval is required", step.Name)
+				}
+				if err := NormalizeComponentEvaluation("job", "", Properties{}, &step.Traits); err != nil {
+					return fmt.Errorf("step %q: %w", step.Name, err)
+				}
+			default:
+				return fmt.Errorf("step %q: type must be command or job", step.Name)
+			}
+		}
 	}
 	return nil
 }
@@ -319,10 +410,50 @@ func validateEvaluationEnvs(envs []SimplifiedEnvSpec) error {
 	return nil
 }
 
-func validateJobTraits(t JobTraits) error {
-	for _, storage := range t.Storage {
+func validateJobTraits(t Traits, hasVolume bool) error {
+	if t.Evaluation != nil {
+		return fmt.Errorf("traits.eval requires type job")
+	}
+	if len(t.Ingress) > 0 {
+		return fmt.Errorf("traits.ingress is not supported by command steps")
+	}
+	if len(t.Service) > 0 {
+		return fmt.Errorf("traits.service is not supported by command steps")
+	}
+	if t.Rollout != nil {
+		return fmt.Errorf("traits.rollout is not supported by command steps")
+	}
+	if t.Share != nil {
+		return fmt.Errorf("traits.share is not supported by command steps")
+	}
+	if len(t.RBAC) > 0 {
+		return fmt.Errorf("traits.rbac creates additional ServiceAccount, Role and Binding objects and is not supported by command steps")
+	}
+	for index, storage := range t.Storage {
+		if hasVolume && (utils.NormalizeLowerStrip(storage.Name) == "workspace" || path.Clean(storage.MountPath) == "/workspace") {
+			return fmt.Errorf("traits.storage[%d]: volume reserves the workspace volume name and /workspace mount path", index)
+		}
 		if storage.TmpCreate || storage.Size != "" || storage.StorageClass != "" {
-			return fmt.Errorf("Job storage must reference an existing resource")
+			return fmt.Errorf("traits.storage[%d]: Job storage must reference an existing resource; tmpCreate, size and storageClass are not supported; use volume for shared storage", index)
+		}
+		if storage.Type == StorageTypePersistent {
+			claimName := storage.ClaimName
+			if claimName == "" {
+				claimName = storage.Name
+			}
+			if len(validation.IsDNS1123Subdomain(claimName)) != 0 {
+				return fmt.Errorf("traits.storage[%d]: persistent storage must reference an existing PVC with a valid claimName or name", index)
+			}
+		}
+	}
+	for index, init := range t.Init {
+		if err := validateJobTraits(init.Traits, hasVolume); err != nil {
+			return fmt.Errorf("traits.init[%d]: %w", index, err)
+		}
+	}
+	for index, sidecar := range t.Sidecar {
+		if err := validateJobTraits(sidecar.Traits, hasVolume); err != nil {
+			return fmt.Errorf("traits.sidecar[%d]: %w", index, err)
 		}
 	}
 	return validateJobResources(t.Resources)

@@ -2,6 +2,7 @@ package account
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
@@ -76,9 +78,9 @@ func TestScopedJobAdmissionLifecycle(t *testing.T) {
 			owner := &model.WorkflowQueue{TaskID: "task", WorkspaceID: "allowed", Type: tc.workflow,
 				Status: config.StatusRunning, RunGeneration: 1, RunToken: "token", WorkerID: "worker", LeaseExpiresAt: &lease}
 			if tc.workflow == config.WorkflowTaskTypeJob {
-				owner.JobSpec = `{"type":"` + string(tc.job) + `"}`
+				owner.JobSpec = `{"name":"command","stages":[{"name":"main","steps":[{"name":"run","type":"command","spec":{"image":"busybox:1.37.0","command":["true"]}}]}]}`
 				if tc.job == config.JobEval {
-					owner.JobSpec = `{"type":"job","traits":{"eval":{"env":"ack","agent":"oracle","taskPackageId":"11111111-1111-1111-1111-111111111111"}}}`
+					owner.JobSpec = `{"name":"evaluation","stages":[{"name":"main","steps":[{"name":"evaluate","type":"job","traits":{"eval":{"env":"ack","agent":"oracle","taskPackageId":"11111111-1111-1111-1111-111111111111"}}}]}]}`
 				}
 			}
 			if tc.app {
@@ -241,12 +243,12 @@ func TestScopedJobAdmissionTransactionUsesCanonicalApplicationWorkspace(t *testi
 
 func TestWorkspaceJobScopeRequiresMatchingPersistedParent(t *testing.T) {
 	legacy := &model.WorkflowQueue{Type: config.WorkflowTaskTypeJob, JobSpec: `{"type":"agent_evaluation"}`}
-	require.Empty(t, workspaceTaskJobType(legacy))
+	require.False(t, workspaceOwnedTask(legacy))
 	service, _, _ := testAccounts(t)
 	ctx := WithScope(context.Background(), Scope{WorkspaceID: "allowed", Namespace: "allowed-ns"})
 	raw := service.Repo.Store
 	store := NewStore(raw)
-	parent := &model.WorkflowQueue{TaskID: "command-parent", WorkspaceID: "allowed", Type: config.WorkflowTaskTypeJob, JobSpec: `{"type":"command"}`}
+	parent := &model.WorkflowQueue{TaskID: "command-parent", WorkspaceID: "allowed", Type: config.WorkflowTaskTypeJob, JobSpec: `{"name":"command","stages":[{"name":"main","steps":[{"name":"run","type":"command","spec":{"image":"busybox:1.37.0","command":["true"]}}]}]}`}
 	require.NoError(t, raw.Add(context.Background(), parent))
 	for _, tc := range []struct {
 		name      string
@@ -273,6 +275,64 @@ func TestWorkspaceJobScopeRequiresMatchingPersistedParent(t *testing.T) {
 		candidate := *parent
 		candidate.JobSpec = snapshot
 		require.ErrorIs(t, store.Check(ctx, &candidate), bcode.ErrForbidden)
+	}
+}
+
+func TestWorkspaceJobStagesLimitExecutionTypesAndVolumeOwnership(t *testing.T) {
+	command := spec.JobStep{Name: "run", Type: "command", Spec: json.RawMessage(`{"image":"busybox:1.37.0","command":["true"]}`)}
+	evaluation := spec.JobStep{Name: "evaluate", Type: "job", Traits: spec.Traits{Evaluation: &spec.EvaluationTraitSpec{
+		Env: "ack", Agent: "oracle", TaskPackageID: "11111111-1111-1111-1111-111111111111",
+	}}}
+	for _, tc := range []struct {
+		name        string
+		steps       []spec.JobStep
+		volume      bool
+		jobType     config.JobType
+		serviceName string
+		allowed     bool
+	}{
+		{"command", []spec.JobStep{command}, false, config.JobCommand, "", true},
+		{"evaluation", []spec.JobStep{evaluation}, false, config.JobEval, "", true},
+		{"mixed command", []spec.JobStep{command, evaluation}, false, config.JobCommand, "", true},
+		{"mixed evaluation", []spec.JobStep{command, evaluation}, false, config.JobEval, "", true},
+		{"mixed query", []spec.JobStep{command, evaluation}, false, "", "", true},
+		{"undeclared evaluation", []spec.JobStep{command}, false, config.JobEval, "", false},
+		{"undeclared command", []spec.JobStep{evaluation}, false, config.JobCommand, "", false},
+		{"own volume", []spec.JobStep{command, evaluation}, true, config.JobDeployPVC, spec.JobVolumeName("task"), true},
+		{"volume not declared", []spec.JobStep{command}, false, config.JobDeployPVC, spec.JobVolumeName("task"), false},
+		{"other run volume", []spec.JobStep{command}, true, config.JobDeployPVC, spec.JobVolumeName("other"), false},
+		{"other PVC", []spec.JobStep{command}, true, config.JobDeployPVC, "user-data", false},
+		{"PVC query without identity", []spec.JobStep{command}, true, config.JobDeployPVC, "", false},
+		{"arbitrary deployment", []spec.JobStep{command, evaluation}, true, config.JobDeploy, spec.JobVolumeName("task"), false},
+		{"arbitrary cleanup", []spec.JobStep{command, evaluation}, true, config.JobCleanupResources, spec.JobVolumeName("task"), false},
+		{"import operation", []spec.JobStep{command, evaluation}, true, config.JobResourceImportScan, "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			snapshot := spec.JobSpec{Name: "pipeline", Stages: []spec.JobStage{{Name: "main", Steps: tc.steps}}}
+			if tc.volume {
+				snapshot.Volume = &spec.JobVolume{Size: "1Gi", AccessMode: "ReadWriteMany"}
+			}
+			body, err := json.Marshal(snapshot)
+			require.NoError(t, err)
+			parent := &model.WorkflowQueue{TaskID: "task", WorkspaceID: "allowed", Type: config.WorkflowTaskTypeJob, JobSpec: string(body)}
+			ctx := WithScope(context.Background(), Scope{WorkspaceID: "allowed", Namespace: "allowed-ns"})
+			require.NoError(t, NewStore(nil).Check(ctx, parent), "new stage snapshots must pass the task submission boundary")
+			job := &model.JobInfo{Type: string(tc.jobType), ServiceName: tc.serviceName}
+			require.Equal(t, tc.allowed, workspaceTaskJobAllowed(parent, job))
+			parent.AppID = "application"
+			require.False(t, workspaceTaskJobAllowed(parent, job))
+		})
+	}
+	for _, snapshot := range []string{
+		`{"type":"command"}`,
+		`{"name":"missing-stages"}`,
+		`{"name":"empty-stage","stages":[{"name":"main","steps":[]}]}`,
+		`{"name":"invalid-type","stages":[{"name":"main","steps":[{"name":"run","type":"cleanup_resources"}]}]}`,
+		`{"name":"invalid-evaluation","stages":[{"name":"main","steps":[{"name":"run","type":"job","traits":{"eval":{}}}]}]}`,
+	} {
+		parent := &model.WorkflowQueue{TaskID: "task", Type: config.WorkflowTaskTypeJob, JobSpec: snapshot}
+		require.False(t, workspaceOwnedTask(parent))
+		require.False(t, workspaceTaskJobAllowed(parent, &model.JobInfo{Type: string(config.JobCommand)}))
 	}
 }
 

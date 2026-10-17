@@ -121,24 +121,34 @@ Schema 和所有服务端规范化输出只生成这一形态。请求解码器�
 ```json
 {
   "name": "evaluate-model",
-  "type": "job",
-  "traits": {
-    "eval": {
-      "env": "ack",
-      "model": "openai/gpt-4",
-      "agent": "codex",
-      "taskPackageId": "12345678-1234-1234-1234-123456789012",
-      "attempts": 1,
-      "concurrency": 1,
-      "timeoutSeconds": 3600
+  "stages": [
+    {
+      "name": "main",
+      "steps": [
+        {
+          "name": "evaluate-model",
+          "type": "job",
+          "traits": {
+            "eval": {
+              "env": "ack",
+              "model": "openai/gpt-4",
+              "agent": "codex",
+              "taskPackageId": "12345678-1234-1234-1234-123456789012",
+              "attempts": 1,
+              "concurrency": 1,
+              "timeoutSeconds": 3600
+            }
+          }
+        }
+      ]
     }
-  }
+  ]
 }
 ```
 
-`taskPackageId` 必须替换为当前空间上传的任务包 ID。Application 将同一声明放入 `components`，Workflow 用 `jobType: "deploy"` 和 `components` 引用它。评测不接受用户 `image`、命令、延时、Cron、`runPolicy` 或重试覆盖；框架版本和 Runner 镜像由平台管理。`traits.resources` 控制 Runner，`traits.eval.sandboxResources` 控制每个试验环境；结果策略位于 `traits.eval.resultPolicy`。`eval` 不能放在其他组件类型、init 或 sidecar 中。
+`taskPackageId` 必须替换为当前空间上传的任务包 ID。Application 将 `steps[]` 中的同一声明放入 `components`，Workflow 用 `jobType: "deploy"` 和 `components` 引用它。评测不接受用户 `image`、命令、延时、Cron 或 `runPolicy`；独立 step 可用 `retry.backoffLimit` 设置 Kubernetes Job 失败重试，Application 组件仍不接受 properties.retry 覆盖；框架版本和 Runner 镜像由平台管理。`traits.resources` 控制 Runner，`traits.eval.sandboxResources` 控制每个试验环境；结果策略位于 `traits.eval.resultPolicy`。`eval` 不能放在其他组件类型、init 或 sidecar 中。
 
-独立普通命令仍使用 `type: "command"` 与 `spec`；评测不接受旧 `traits.evaluation`、`type: "eval"`、业务 `spec`、`framework`、`frameworkVersion`、`options` 或顶层 `resultPolicy`。完整输入与执行边界见 [空间 Job API](workspace-jobs-api.md)。
+独立 Job 的顶层使用 `name`、可选 `volume` 和 `stages[].steps[]`，每个 step 复用 `Trait`。command step 使用 `type: "command"` 与 `spec`，评测 step 使用上面的 `type: "job"` 与 `traits.eval`；旧独立请求顶层 `type/spec/traits` 已删除。评测不接受旧 `traits.evaluation`、`type: "eval"`、业务 `spec`、`framework`、`frameworkVersion`、`options` 或顶层 `resultPolicy`。完整输入与执行边界见 [空间 Job API](workspace-jobs-api.md)。
 
 ## 3. JSON Schema
 
@@ -159,9 +169,9 @@ https://eruun.io/schemas/v1/canonical-profile.json
 - `Component`
 - `Trait`
 - `Workflow`
-- `Job`：独立 Job 请求，包含 command 与 evaluation 两个互斥分支
+- `Job`：独立 Job 请求，包含 `volume` 和 `stages`；其 `JobStep` 包含 command 与 evaluation 两个互斥分支
 
-`Trait` 与 `JobTraits` 均引用同一个 `EvaluationTraitSpec` 定义。Bundle 根使用 `anyOf`，因为不带空间字段的独立评测 Job 与 Application Job 组件可以具有相同形状；调用方也可直接选择对应 `$defs` 校验具体入口。
+独立 Job step 与 Application 组件共享 `Trait` 和其中的 `EvaluationTraitSpec`，不再提供独立 `JobTraits` Schema。Bundle 根使用 `anyOf` 组合各入口；调用方也可直接选择对应 `$defs` 校验具体入口。
 
 对象默认使用 `additionalProperties: false`；业务上本来就是键值集合的字段，例如 labels、annotations、env 和 secret data，按字段值类型开放动态键。Schema 包含现有枚举、必填字段与数组下限，适用于编辑器提示、预提交校验和 Agent constrained decoding。
 

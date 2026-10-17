@@ -481,6 +481,9 @@ func loadJobInfos(ctx context.Context, store datastore.DataStore, taskID, jobTyp
 		return nil, nil
 	}
 	query := &model.JobInfo{TaskID: strings.TrimSpace(taskID)}
+	if jobType == string(config.JobDeployPVC) {
+		query.Type, query.ServiceName = jobType, serviceName
+	}
 	if isResourceImportJobType(config.JobType(jobType)) || config.IsWorkspaceJobType(config.JobType(jobType)) {
 		if scope, ok := access.FromContext(ctx); ok {
 			if config.JobType(jobType) == config.JobEval {

@@ -58,11 +58,23 @@ func TestCanonicalSchemaDiscoversSharedEvaluationAndStandaloneJobs(t *testing.T)
 	definitions := schema["$defs"].(map[string]any)
 	job := definitions["Job"].(map[string]any)
 	require.Equal(t, false, job["additionalProperties"])
-	require.Len(t, job["oneOf"], 2)
+	require.NotContains(t, job, "oneOf")
 	jobFields := job["properties"].(map[string]any)
-	require.Equal(t, "#/$defs/CommandJobSpec", jobFields["spec"].(map[string]any)["$ref"])
+	require.ElementsMatch(t, []any{"name", "stages"}, job["required"])
+	require.Equal(t, "#/$defs/JobStage", jobFields["stages"].(map[string]any)["items"].(map[string]any)["$ref"])
+	require.NotContains(t, jobFields, "type")
+	require.NotContains(t, jobFields, "spec")
+	require.NotContains(t, jobFields, "traits")
+	step := definitions["JobStep"].(map[string]any)
+	require.Len(t, step["oneOf"], 2)
+	stepFields := step["properties"].(map[string]any)
+	require.Equal(t, "#/$defs/CommandJobSpec", stepFields["spec"].(map[string]any)["$ref"])
+	require.Equal(t, "#/$defs/Trait", stepFields["traits"].(map[string]any)["$ref"])
+	retry := definitions["JobStepRetry"].(map[string]any)["properties"].(map[string]any)["backoffLimit"].(map[string]any)
+	require.Equal(t, float64(0), retry["minimum"])
+	require.Equal(t, float64(10), retry["maximum"])
 	require.NotContains(t, jobFields, "resultPolicy")
-	for _, name := range []string{"Trait", "JobTraits"} {
+	for _, name := range []string{"Trait"} {
 		fields := definitions[name].(map[string]any)["properties"].(map[string]any)
 		require.Equal(t, "#/$defs/EvaluationTraitSpec", fields["eval"].(map[string]any)["$ref"])
 		require.NotContains(t, fields, "evaluation")
@@ -95,12 +107,12 @@ func TestApplicationAndJobDecodeRecoveryWithoutLosingReplayConsent(t *testing.T)
 	var request CreateApplicationsRequest
 	require.NoError(t, json.Unmarshal([]byte(`{"name":"evaluation-app","components":[{"name":"evaluate","type":"job","traits":{"eval":`+evaluation+`}}]}`), &request))
 	var standalone spec.JobSpec
-	require.NoError(t, spec.DecodeJobJSON([]byte(`{"name":"evaluate","type":"job","traits":{"eval":`+evaluation+`}}`), &standalone))
+	require.NoError(t, spec.DecodeJobJSON([]byte(`{"name":"evaluate","stages":[{"name":"main","steps":[{"name":"evaluate","type":"job","traits":{"eval":`+evaluation+`}}]}]}`), &standalone))
 	require.NoError(t, request.Components[0].Traits.Evaluation.Normalize())
 	require.NoError(t, standalone.Normalize())
-	require.Equal(t, standalone.Traits.Evaluation.Recovery, request.Components[0].Traits.Evaluation.Recovery)
-	require.True(t, standalone.Traits.Evaluation.Recovery.ReplaySafe)
-	require.Equal(t, spec.DefaultCheckpointIntervalSeconds, standalone.Traits.Evaluation.Recovery.CheckpointIntervalSeconds)
+	require.Equal(t, standalone.Stages[0].Steps[0].Traits.Evaluation.Recovery, request.Components[0].Traits.Evaluation.Recovery)
+	require.True(t, standalone.Stages[0].Steps[0].Traits.Evaluation.Recovery.ReplaySafe)
+	require.Equal(t, spec.DefaultCheckpointIntervalSeconds, standalone.Stages[0].Steps[0].Traits.Evaluation.Recovery.CheckpointIntervalSeconds)
 }
 
 func TestApplicationEvaluationRejectsUnknownBusinessFields(t *testing.T) {
@@ -118,7 +130,7 @@ func TestApplicationEvaluationRejectsUnknownBusinessFields(t *testing.T) {
 	require.NoError(t, err)
 	require.ErrorContains(t, json.Unmarshal(invalid, &request), "unknown field")
 	var standalone spec.JobSpec
-	require.ErrorContains(t, spec.DecodeJobJSON([]byte(`{"name":"evaluate","type":"job","traits":{"eval":{"env":"ack","agent":"oracle","taskPackageId":"12345678-1234-1234-1234-123456789012","framework":"harbor"}}}`), &standalone), "unknown field")
+	require.ErrorContains(t, spec.DecodeJobJSON([]byte(`{"name":"evaluate","stages":[{"name":"main","steps":[{"name":"evaluate","type":"job","traits":{"eval":{"env":"ack","agent":"oracle","taskPackageId":"12345678-1234-1234-1234-123456789012","framework":"harbor"}}}]}]}`), &standalone), "unknown field")
 	delete(evaluation, "framework")
 	traits := component["traits"].(map[string]any)
 	traits["evaluation"] = traits["eval"]

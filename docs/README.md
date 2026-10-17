@@ -106,7 +106,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
 | `local-docker-dependencies.md` | Current | MySQL、Redis、Kafka 本地 Compose 分组、凭据、连接配置、健康检查和数据保留 |
-| `workspace-jobs-api.md` | Current | 独立 command Job、两种入口共享 evaluation Trait、原生任务包、完整结果与 MinIO/数据库独立保存、空间策略和部署配置 |
+| `workspace-jobs-api.md` | Current | 独立 Job stages、command 与 evaluation step、运行共享卷与失败重试、两种入口共享 evaluation Trait、原生任务包、完整结果与 MinIO/数据库独立保存、空间策略和部署配置 |
 | [`../examples/agent-evaluation/README.md`](../examples/agent-evaluation/README.md) | Current | Harbor 评测 Job 端到端示例：镜像、任务包、dataset 上传、Job 提交、状态查询与结果下载 |
 | `account-auth-workspaces.md` | Current | GitHub/Google、邮箱/手机号登录、会话、团队权限、延迟任务隔离与失败收尾、重复部署幂等性、前端与部署接入 |
 | [`../examples/account-auth-workspaces/README.md`](../examples/account-auth-workspaces/README.md) | Current | 账号与团队 API 实操：curl 注册/登录/刷新、OAuth 浏览器回调、身份绑定、邀请和空间资源访问 |
@@ -208,7 +208,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `vllm-hami-distributed-inference-design.md` | Draft / Proposal | 自托管模型服务、GPU、vLLM/HAMi 与多节点 adapter 方向 |
 | `workflow-conditional-branching-design.md` | Draft / Proposal | 条件分支设计 |
 | `workflow-resource-capacity-scheduler.md` | Draft / Proposal | Workflow 资源容量准入与可选容量补偿边界 |
-| `job-module-design.md` | Draft / Proposal | 自定义 Job 模块：可复用定义、手动/延迟/cron 触发与并发策略、stages 多步骤、运行共享卷，复用现有执行底座 |
+| `job-module-design.md` | Implemented Reference / Proposal | 第 1 阶段 stages、运行卷与编译已实现；可复用定义、手动/延迟/cron 触发与并发策略仍为 Proposal |
 | `harbor-job-load-test-plan.md` | Draft / Proposal | 可构建的合成镜像、1000 个 Harbor Job 的批量提交与 60–300 秒休眠压测矩阵、数据口径和容量判定 |
 | [`harbor-runtime-stage1-plan.md`](harbor-runtime-stage1-plan.md) | Draft / Proposal | 第一阶段主 PR（实施中）：代码与手工压测交付、共享观察、按需 Sandbox、预算和真实规模验收 |
 | [`harbor-runtime-stage1-discussion.md`](harbor-runtime-stage1-discussion.md) | Draft / Proposal | 第一阶段讨论与评审核验：需求和代码依据、观察/标签迁移、协议发布、结果交付、纠正项及待冻结决策 |

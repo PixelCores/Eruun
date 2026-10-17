@@ -50,13 +50,33 @@ func GenerateJobTasks(ctx context.Context, task *model.WorkflowQueue, ds datasto
 		if !ok || task.AppID != "" || scope.WorkspaceID != task.WorkspaceID || scope.Namespace == "" {
 			return nil, fmt.Errorf("workspace Job requires its persisted workspace execution scope")
 		}
-		jobTask, err := jobs.BuildTask(task, scope.Namespace)
+		stages, err := jobs.BuildTask(task, scope.Namespace)
 		if err != nil {
 			return []StepExecution{*failedWorkflowGenerationExecution(task, defaultJobTimeoutSeconds, err)}, nil
 		}
-		executions := []StepExecution{{Name: jobTask.Name, Mode: config.WorkflowModeStepByStep,
-			StepType: config.WorkflowStepTypeComponent, FailurePolicy: workflowconfig.WorkflowFailurePolicyCleanupFailed,
-			Jobs: map[int][]*model.JobTask{config.JobPriorityNormal: {jobTask}}}}
+		var declaration spec.JobSpec
+		if err := spec.DecodeJobJSON([]byte(task.JobSpec), &declaration); err != nil {
+			return []StepExecution{*failedWorkflowGenerationExecution(task, defaultJobTimeoutSeconds, err)}, nil
+		}
+		executions := make([]StepExecution, len(stages))
+		for index, stage := range stages {
+			execution := &executions[index]
+			execution.Name = declaration.Stages[index].Name
+			execution.Mode = config.WorkflowModeStepByStep
+			if len(declaration.Stages[index].Steps) > 1 {
+				execution.Mode = config.WorkflowModeDAG
+			}
+			execution.StepType = config.WorkflowStepTypeComponent
+			execution.FailurePolicy = workflowconfig.WorkflowFailurePolicyCleanupFailed
+			execution.Jobs = make(map[int][]*model.JobTask)
+			for _, jobTask := range stage {
+				priority := config.JobPriorityNormal
+				if jobTask.JobType == string(config.JobDeployPVC) {
+					priority = config.JobPriorityMaxHigh
+				}
+				execution.Jobs[priority] = append(execution.Jobs[priority], jobTask)
+			}
+		}
 		applyWorkflowExecutionIdentity(executions, task)
 		if err := restoreCommittedJobExecutions(ctx, executions, task, ds); err != nil {
 			return nil, err

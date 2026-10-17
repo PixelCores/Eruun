@@ -8,11 +8,12 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/stretchr/testify/require"
+	"k8s.io/utils/ptr"
 )
 
 func TestBuildCommandJobUsesReferencesWithoutApplication(t *testing.T) {
 	value := "hello"
-	traits := spec.JobTraits{Resources: &spec.ResourceTraitsSpec{CPU: "1", Memory: "2Gi"},
+	traits := spec.Traits{Resources: &spec.ResourceTraitsSpec{CPU: "1", Memory: "2Gi"},
 		Envs: []spec.SimplifiedEnvSpec{{Name: "MESSAGE", ValueFrom: spec.ValueSource{Static: &value}},
 			{Name: "TOKEN", ValueFrom: spec.ValueSource{Secret: &spec.SecretSelectorSpec{Name: "credentials", Key: "token"}}}},
 		EnvFrom: []spec.EnvFromSourceSpec{{Type: "config", SourceName: "settings"}},
@@ -36,23 +37,27 @@ func TestBuildCommandJobUsesReferencesWithoutApplication(t *testing.T) {
 	require.Zero(t, policy.MaxRetries)
 }
 
-// Application-only traits (sidecar, ingress, rollout, ...) are absent from
-// spec.JobTraits, so they cannot reach this function at all. Their rejection is
-// covered at the decode boundary in TestJobSpecRejectsApplicationOnlyTraits.
-func TestBuildCommandJobRejectsAmbiguousOrUnsupportedTraits(t *testing.T) {
-	literal := "value"
-	for _, tc := range []struct {
-		name   string
-		traits spec.JobTraits
-	}{
-		{"dynamic storage", spec.JobTraits{Storage: []spec.StorageTraitSpec{{Name: "data", Type: "persistent", MountPath: "/data", TmpCreate: true}}}},
-		{"host mount", spec.JobTraits{Storage: []spec.StorageTraitSpec{{Name: "host", Type: "host-mounted", MountPath: "/host"}}}},
-		{"ambiguous env", spec.JobTraits{Envs: []spec.SimplifiedEnvSpec{{Name: "TOKEN", ValueFrom: spec.ValueSource{Static: &literal, Secret: &spec.SecretSelectorSpec{Name: "s", Key: "token"}}}}}},
-		{"invalid secret", spec.JobTraits{EnvFrom: []spec.EnvFromSourceSpec{{Type: "secret", SourceName: "../other"}}}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			_, err := buildCommandJob("command-task", "space", spec.CommandJobSpec{Image: "busybox:1.37.0", Command: []string{"true"}, TimeoutSeconds: 60}, tc.traits)
-			require.Error(t, err)
-		})
+func TestBuildCommandJobAppliesNestedComponentTraits(t *testing.T) {
+	value := "ready"
+	traits := spec.Traits{
+		TargetWorkEnv:  map[string]string{"pool": "batch"},
+		SecurityPolicy: &spec.SecurityPolicySpec{RunAsNonRoot: ptr.To(true)},
+		Probes:         []spec.ProbeTraitsSpec{{Type: "startup", Exec: &spec.ExecProbe{Command: []string{"true"}}}},
+		Init: []spec.InitTraitSpec{{Name: "prepare", Image: "busybox:1.37.0",
+			Properties: spec.Properties{Command: []string{"true"}},
+			Traits:     spec.Traits{Envs: []spec.SimplifiedEnvSpec{{Name: "STATE", ValueFrom: spec.ValueSource{Static: &value}}}}}},
+		Sidecar: []spec.SidecarTraitsSpec{{Name: "observe", Image: "busybox:1.37.0", Command: []string{"true"},
+			Traits: spec.Traits{Resources: &spec.ResourceTraitsSpec{CPU: "100m", Memory: "32Mi"}}}},
 	}
+	job, err := buildCommandJob("command-task", "space", spec.CommandJobSpec{Image: "busybox:1.37.0", Command: []string{"true"}, TimeoutSeconds: 60}, traits)
+	require.NoError(t, err)
+	pod := job.Spec.Template.Spec
+	require.Equal(t, "batch", pod.NodeSelector["pool"])
+	require.True(t, *pod.Containers[0].SecurityContext.RunAsNonRoot)
+	require.Equal(t, []string{"true"}, pod.Containers[0].StartupProbe.Exec.Command)
+	require.Len(t, pod.InitContainers, 1)
+	require.Equal(t, "ready", pod.InitContainers[0].Env[0].Value)
+	require.Len(t, pod.Containers, 2)
+	require.Equal(t, "100m", pod.Containers[1].Resources.Requests.Cpu().String())
+	require.Equal(t, "32Mi", pod.Containers[1].Resources.Limits.Memory().String())
 }

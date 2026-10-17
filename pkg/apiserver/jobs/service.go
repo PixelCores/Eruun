@@ -174,35 +174,40 @@ func (s *Service) Submit(ctx context.Context, request SubmitRequest) (*Accepted,
 	if s.Config == nil || s.Config.Accounts == nil {
 		return nil, bcode.ErrServiceUnavailable
 	}
-	if request.Traits.Evaluation != nil {
-		if s.Config.Jobs == nil {
-			return nil, bcode.WithSafeClientMessage(bcode.ErrServiceUnavailable, "Harbor Runner is not configured")
-		}
-		if request.Traits.Evaluation.ResultPolicy == nil {
-			p, err := s.Policy(ctx)
-			if err != nil {
-				return nil, err
-			}
-			request.Traits.Evaluation.ResultPolicy = &p.Policy
-		}
-		if err = s.validatePolicy(*request.Traits.Evaluation.ResultPolicy); err != nil {
-			return nil, err
-		}
-		// Normalize already restricted evaluation envs to Secret references;
-		// confirm each one resolves in this workspace before accepting the Job.
-		for _, env := range request.Traits.Envs {
-			if env.ValueFrom.Secret == nil {
+	for _, stage := range request.Stages {
+		for _, step := range stage.Steps {
+			if step.Traits.Evaluation == nil {
 				continue
 			}
-			if s.Kube == nil {
-				return nil, bcode.ErrServiceUnavailable
+			if s.Config.Jobs == nil {
+				return nil, bcode.WithSafeClientMessage(bcode.ErrServiceUnavailable, "Harbor Runner is not configured")
 			}
-			secret, err := s.Kube.CoreV1().Secrets(scope.Namespace).Get(ctx, env.ValueFrom.Secret.Name, metav1.GetOptions{})
-			if err != nil {
-				return nil, fmt.Errorf("resolve evaluation credential: %w", err)
+			if step.Traits.Evaluation.ResultPolicy == nil {
+				p, err := s.Policy(ctx)
+				if err != nil {
+					return nil, err
+				}
+				step.Traits.Evaluation.ResultPolicy = &p.Policy
 			}
-			if _, ok := secret.Data[env.ValueFrom.Secret.Key]; !ok {
-				return nil, invalid(fmt.Errorf("credential Secret key is missing"))
+			if err = s.validatePolicy(*step.Traits.Evaluation.ResultPolicy); err != nil {
+				return nil, err
+			}
+			// Normalize already restricted evaluation envs to Secret references;
+			// confirm each one resolves in this workspace before accepting the Job.
+			for _, env := range step.Traits.Envs {
+				if env.ValueFrom.Secret == nil {
+					continue
+				}
+				if s.Kube == nil {
+					return nil, bcode.ErrServiceUnavailable
+				}
+				secret, err := s.Kube.CoreV1().Secrets(scope.Namespace).Get(ctx, env.ValueFrom.Secret.Name, metav1.GetOptions{})
+				if err != nil {
+					return nil, fmt.Errorf("resolve evaluation credential: %w", err)
+				}
+				if _, ok := secret.Data[env.ValueFrom.Secret.Key]; !ok {
+					return nil, invalid(fmt.Errorf("credential Secret key is missing"))
+				}
 			}
 		}
 	}
@@ -218,24 +223,28 @@ func (s *Service) Submit(ctx context.Context, request SubmitRequest) (*Accepted,
 	task := &model.WorkflowQueue{TaskID: taskID, WorkspaceID: scope.WorkspaceID, WorkflowName: request.Name, WorkflowDisplayName: request.Name, TaskCreator: scope.UserID, Type: config.WorkflowTaskTypeJob, Status: config.StatusWaiting, JobSpec: string(declaration)}
 	// Validate the exact renderer and workspace policy before enqueueing. Building
 	// does not create namespace, application, component, or Kubernetes resources.
-	job, err := BuildTask(task, scope.Namespace)
+	stages, err := BuildTask(task, scope.Namespace)
 	if err != nil {
 		return nil, invalid(err)
 	}
 	space := &model.Workspace{ID: scope.WorkspaceID, Namespace: scope.Namespace}
-	if request.Traits.Evaluation != nil {
-		if err := BuildEvaluationTask(ctx, s.Store, s.Config, job, spec.JobTraits{}); err != nil {
-			if errors.Is(err, errEvaluationPolicyUnavailable) {
-				return nil, bcode.ErrServiceUnavailable
+	for _, stage := range stages {
+		for _, job := range stage {
+			if job.JobType == string(config.JobEval) {
+				if err := BuildEvaluationTask(ctx, s.Store, s.Config, job, spec.JobTraits{}); err != nil {
+					if errors.Is(err, errEvaluationPolicyUnavailable) {
+						return nil, bcode.ErrServiceUnavailable
+					}
+					return nil, invalid(err)
+				}
+				err = PrepareEvaluationTask(job, space, s.Config.Accounts.Workspace, s.Config.Jobs.RunnerImage)
+			} else {
+				_, err = workflowjob.PrepareTask(job, "", space, s.Config.Accounts.Workspace)
 			}
-			return nil, invalid(err)
+			if err != nil {
+				return nil, err
+			}
 		}
-		err = PrepareEvaluationTask(job, space, s.Config.Accounts.Workspace, s.Config.Jobs.RunnerImage)
-	} else {
-		_, err = workflowjob.PrepareTask(job, "", space, s.Config.Accounts.Workspace)
-	}
-	if err != nil {
-		return nil, err
 	}
 	err = artifacts.WithTransaction(ctx, s.Store, func(tx artifacts.Backend) error {
 		locked := &model.Workspace{ID: scope.WorkspaceID}
@@ -251,7 +260,7 @@ func (s *Service) Submit(ctx context.Context, request SubmitRequest) (*Accepted,
 	if err != nil {
 		return nil, fmt.Errorf("submit Job: %w", err)
 	}
-	return &Accepted{TaskID: taskID, WorkspaceID: scope.WorkspaceID, Type: request.Type, Status: task.Status}, nil
+	return &Accepted{TaskID: taskID, WorkspaceID: scope.WorkspaceID, Type: string(config.WorkflowTaskTypeJob), Status: task.Status}, nil
 }
 
 // scopedTask authorizes only the parent workspace; public App reads additionally
@@ -371,12 +380,14 @@ func (s *Service) Get(ctx context.Context, taskID string, executionKey ...string
 		if err != nil {
 			return nil, err
 		}
-		declaration = spec.JobSpec{Name: record.ServiceName, Type: "job", Traits: info.Traits}
+		declaration = spec.JobSpec{Name: record.ServiceName, Stages: []spec.JobStage{{Name: "evaluation", Steps: []spec.JobStep{{
+			Name: record.ServiceName, Type: "job", Traits: spec.Traits{Evaluation: info.Traits.Evaluation, Resources: info.Traits.Resources, Envs: info.Traits.Envs},
+		}}}}}
 		status = config.Status(record.Status)
 	} else if err := spec.DecodeJobJSON([]byte(task.JobSpec), &declaration); err != nil {
 		return nil, err
 	}
-	out := &Detail{Accepted: Accepted{TaskID: task.TaskID, WorkspaceID: task.WorkspaceID, Type: declaration.Type, Status: status}, Job: declaration, Executions: []*model.JobInfo{}}
+	out := &Detail{Accepted: Accepted{TaskID: task.TaskID, WorkspaceID: task.WorkspaceID, Type: string(config.WorkflowTaskTypeJob), Status: status}, Job: declaration, Executions: []*model.JobInfo{}}
 	if record != nil {
 		out.ExecutionKey = *record.ExecutionKey
 		out.Executions = append(out.Executions, record)
@@ -385,10 +396,17 @@ func (s *Service) Get(ctx context.Context, taskID string, executionKey ...string
 			if err != nil {
 				return nil, err
 			}
-			out.Job.Traits = info.Traits
+			for i := range out.Job.Stages {
+				for k := range out.Job.Stages[i].Steps {
+					step := &out.Job.Stages[i].Steps[k]
+					if step.Type == "job" && (task.AppID != "" || record.ServiceName == "eruun-job-"+task.TaskID+"-"+step.Name) {
+						step.Traits = spec.Traits{Evaluation: info.Traits.Evaluation, Resources: info.Traits.Resources, Envs: info.Traits.Envs}
+					}
+				}
+			}
 			out.FrameworkVersion = info.FrameworkVersion
 		}
-	} else if declaration.Type == string(config.JobCommand) {
+	} else {
 		rows, err := s.Store.List(ctx, &model.JobInfo{TaskID: task.TaskID, WorkspaceID: task.WorkspaceID, AppID: task.AppID}, &datastore.ListOptions{})
 		if err != nil {
 			return nil, err
@@ -405,7 +423,13 @@ func (s *Service) Get(ctx context.Context, taskID string, executionKey ...string
 	if err != nil {
 		return nil, err
 	}
-	if declaration.Traits.Evaluation != nil {
+	hasEvaluation := record != nil
+	for _, stage := range declaration.Stages {
+		for _, step := range stage.Steps {
+			hasEvaluation = hasEvaluation || step.Traits.Evaluation != nil
+		}
+	}
+	if hasEvaluation {
 		if out.ExecutionKey != "" {
 			out.Sandboxes, out.SandboxesTruncated, err = s.sandboxStatuses(ctx, task.WorkspaceID, task.TaskID, out.ExecutionKey)
 			if err != nil {
@@ -633,6 +657,89 @@ func (s *Service) Maintain(ctx context.Context) {
 	run(time.Second, "reconcile Job result destinations", func(ctx context.Context) error { return s.Artifacts.ReconcilePending(ctx, 100) })
 	run(15*time.Second, "expire original Job results", func(ctx context.Context) error { return s.Artifacts.CleanupExpired(ctx, 100) })
 	run(5*time.Second, "reconcile evaluation Sandboxes", func(ctx context.Context) error { return s.reconcileSandboxes(ctx, 100) })
+	run(5*time.Second, "release terminal Job volumes", s.cleanupRunVolumes)
 	run(5*time.Second, "reconcile evaluation checkpoints", func(ctx context.Context) error { return s.reconcileCheckpoints(ctx, 100) })
 	_ = group.Wait() // Each loop exits without error only after ctx cancellation.
+}
+
+// cleanupRunVolumes uses live labelled PVCs as the cleanup queue, so completed
+// deletions no longer incur work and failed deletes remain eligible next time.
+func (s *Service) cleanupRunVolumes(ctx context.Context) error {
+	if s.Kube == nil {
+		return fmt.Errorf("release Job volumes: Kubernetes client is unavailable")
+	}
+	var cleanupErr error
+	options := metav1.ListOptions{LabelSelector: spec.JobTaskLabel, Limit: 100}
+	for {
+		claims, err := s.Kube.CoreV1().PersistentVolumeClaims("").List(ctx, options)
+		if err != nil {
+			return errors.Join(cleanupErr, fmt.Errorf("list Job volumes: %w", err))
+		}
+		for _, claim := range claims.Items {
+			task := &model.WorkflowQueue{TaskID: claim.Labels[spec.JobTaskLabel]}
+			if err := s.Store.Get(ctx, task); errors.Is(err, datastore.ErrRecordNotExist) {
+				klog.V(2).InfoS("Skip Job volume with unknown run", "taskID", task.TaskID, "namespace", claim.Namespace, "name", claim.Name)
+				continue
+			} else if err != nil {
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("read Job volume %s/%s run: %w", claim.Namespace, claim.Name, err))
+				continue
+			}
+			if task.Type != config.WorkflowTaskTypeJob || task.AppID != "" || claim.Name != spec.JobVolumeName(task.TaskID) {
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("volume %s/%s does not match standalone Job %s ownership", claim.Namespace, claim.Name, task.TaskID))
+				continue
+			}
+			var declaration spec.JobSpec
+			if err := spec.DecodeJobJSON([]byte(task.JobSpec), &declaration); err != nil {
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("read Job %s volume: %w", task.TaskID, err))
+				continue
+			}
+			if declaration.Volume == nil {
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("Job %s does not declare volume %s/%s", task.TaskID, claim.Namespace, claim.Name))
+				continue
+			}
+			space := &model.Workspace{ID: task.WorkspaceID}
+			if err := s.Store.Get(ctx, space); err != nil {
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("read Job %s workspace: %w", task.TaskID, err))
+				continue
+			}
+			if space.Namespace == "" || claim.Namespace != space.Namespace {
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("Job %s volume %s/%s does not match workspace namespace %q", task.TaskID, claim.Namespace, claim.Name, space.Namespace))
+				continue
+			}
+			if !terminal(task.Status) {
+				continue
+			}
+			if task.Status == config.StatusCancelled {
+				// A live cancellation owner may still create or stop a Job. The
+				// existing recovery path releases this lease and persists cleanup
+				// completion only after foreground Job deletion has finished.
+				if task.RunToken != "" {
+					continue
+				}
+				jobs, err := s.Store.List(ctx, &model.JobInfo{TaskID: task.TaskID, WorkspaceID: task.WorkspaceID}, nil)
+				if err != nil {
+					cleanupErr = errors.Join(cleanupErr, fmt.Errorf("read cancelled Job %s executions: %w", task.TaskID, err))
+					continue
+				}
+				pending := false
+				for _, row := range jobs {
+					job := row.(*model.JobInfo)
+					if !terminal(config.Status(job.Status)) || workflowjob.IsCancelledJobCleanupPending(job) {
+						pending = true
+						break
+					}
+				}
+				if pending {
+					continue
+				}
+			}
+			if err := s.Kube.CoreV1().PersistentVolumeClaims(claim.Namespace).Delete(ctx, claim.Name, metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &claim.UID, ResourceVersion: &claim.ResourceVersion}}); err != nil && !k8serrors.IsNotFound(err) {
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("delete Job %s volume: %w", task.TaskID, err))
+			}
+		}
+		options.Continue = claims.Continue
+		if options.Continue == "" {
+			return cleanupErr
+		}
+	}
 }

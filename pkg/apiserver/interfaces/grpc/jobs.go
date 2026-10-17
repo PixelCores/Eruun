@@ -11,7 +11,6 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/structpb"
-	corev1 "k8s.io/api/core/v1"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
@@ -54,124 +53,6 @@ func jobPolicyOutput(p spec.JobResultPolicy) *eruunv1.JobResultPolicy {
 	return result
 }
 
-func jobTraitsInput(p *eruunv1.JobTraits) (spec.JobTraits, error) {
-	result := spec.JobTraits{}
-	if p == nil {
-		return result, nil
-	}
-	for _, storage := range p.Storage {
-		if storage == nil {
-			continue
-		}
-		result.Storage = append(result.Storage, spec.StorageTraitSpec{
-			Name: storage.Name, Type: storage.Type, MountPath: storage.MountPath, SubPath: storage.SubPath,
-			SubPathExpr: storage.SubPathExpr, ReadOnly: storage.ReadOnly, SourceName: storage.SourceName,
-			TmpCreate: storage.TmpCreate, Size: storage.Size, ClaimName: storage.ClaimName, StorageClass: storage.StorageClass,
-		})
-	}
-	for _, source := range p.EnvFrom {
-		if source != nil {
-			result.EnvFrom = append(result.EnvFrom, spec.EnvFromSourceSpec{Type: source.Type, SourceName: source.SourceName})
-		}
-	}
-	for _, env := range p.Envs {
-		if env == nil {
-			continue
-		}
-		value := spec.ValueSource{}
-		if env.ValueFrom != nil {
-			if env.ValueFrom.Static != nil {
-				s := env.ValueFrom.GetStatic()
-				value.Static = &s
-			}
-			if env.ValueFrom.Field != nil {
-				s := env.ValueFrom.GetField()
-				value.Field = &s
-			}
-			if env.ValueFrom.Secret != nil {
-				value.Secret = &spec.SecretSelectorSpec{Name: env.ValueFrom.Secret.Name, Key: env.ValueFrom.Secret.Key}
-			}
-			if env.ValueFrom.Config != nil {
-				value.Config = &spec.ConfigMapSelectorSpec{Name: env.ValueFrom.Config.Name, Key: env.ValueFrom.Config.Key}
-			}
-		}
-		result.Envs = append(result.Envs, spec.SimplifiedEnvSpec{Name: env.Name, ValueFrom: value})
-	}
-	// target_work_env stays in the proto for field-number stability, but Jobs
-	// have never accepted it; reject it rather than dropping it silently.
-	if len(p.TargetWorkEnv) > 0 {
-		return spec.JobTraits{}, fmt.Errorf("unsupported standalone Job trait")
-	}
-	if p.Resources != nil {
-		result.Resources = &spec.ResourceTraitsSpec{CPU: p.Resources.Cpu, Memory: p.Resources.Memory, GPU: p.Resources.Gpu, CPULimit: p.Resources.CpuLimit, MemoryLimit: p.Resources.MemoryLimit}
-	}
-	if p.SecurityPolicy != nil {
-		policy, err := decodeTypedRequest[corev1.SecurityContext](p.SecurityPolicy)
-		if err != nil {
-			return spec.JobTraits{}, fmt.Errorf("decode Job security policy: %w", err)
-		}
-		result.SecurityPolicy = &policy
-	}
-	if p.Eval != nil {
-		evaluation, err := decodeTypedRequest[spec.EvaluationTraitSpec](p.Eval)
-		if err != nil {
-			return spec.JobTraits{}, fmt.Errorf("decode evaluation trait: %w", err)
-		}
-		result.Evaluation = &evaluation
-	}
-	return result, nil
-}
-
-func jobTraitsOutput(p spec.JobTraits) (*eruunv1.JobTraits, error) {
-	result := &eruunv1.JobTraits{}
-	for _, storage := range p.Storage {
-		result.Storage = append(result.Storage, &eruunv1.JobStorageTrait{
-			Name: storage.Name, Type: storage.Type, MountPath: storage.MountPath, SubPath: storage.SubPath,
-			SubPathExpr: storage.SubPathExpr, ReadOnly: storage.ReadOnly, SourceName: storage.SourceName,
-			TmpCreate: storage.TmpCreate, Size: storage.Size, ClaimName: storage.ClaimName, StorageClass: storage.StorageClass,
-		})
-	}
-	for _, source := range p.EnvFrom {
-		result.EnvFrom = append(result.EnvFrom, &eruunv1.JobEnvFrom{Type: source.Type, SourceName: source.SourceName})
-	}
-	for _, env := range p.Envs {
-		value := &eruunv1.JobValueSource{}
-		if env.ValueFrom.Static != nil {
-			s := *env.ValueFrom.Static
-			value.Static = &s
-		}
-		if env.ValueFrom.Field != nil {
-			s := *env.ValueFrom.Field
-			value.Field = &s
-		}
-		if env.ValueFrom.Secret != nil {
-			value.Secret = &eruunv1.JobSecretSelector{Name: env.ValueFrom.Secret.Name, Key: env.ValueFrom.Secret.Key}
-		}
-		if env.ValueFrom.Config != nil {
-			value.Config = &eruunv1.JobConfigSelector{Name: env.ValueFrom.Config.Name, Key: env.ValueFrom.Config.Key}
-		}
-		result.Envs = append(result.Envs, &eruunv1.JobEnv{Name: env.Name, ValueFrom: value})
-	}
-	if p.Resources != nil {
-		result.Resources = &eruunv1.JobResourceTrait{Cpu: p.Resources.CPU, Memory: p.Resources.Memory, Gpu: p.Resources.GPU, CpuLimit: p.Resources.CPULimit, MemoryLimit: p.Resources.MemoryLimit}
-	}
-	if p.SecurityPolicy != nil {
-		policy, err := encodeTypedResponse(p.SecurityPolicy, &eruunv1.AppKubeCoreSecurityContext{})
-		if err != nil {
-			return nil, fmt.Errorf("encode Job security policy: %w", err)
-		}
-		result.SecurityPolicy = policy
-	}
-	if p.Evaluation != nil {
-		evaluation, err := encodeTypedResponse(p.Evaluation, &eruunv1.EvaluationTrait{})
-		if err != nil {
-			return nil, fmt.Errorf("encode evaluation trait: %w", err)
-		}
-		result.Eval = evaluation
-	}
-	return result, nil
-}
-
 func jsonValue(raw []byte) (*structpb.Value, error) {
 	if len(raw) == 0 {
 		return nil, nil
@@ -184,15 +65,7 @@ func jsonValue(raw []byte) (*structpb.Value, error) {
 }
 
 func jobSpecOutput(p spec.JobSpec) (*eruunv1.JobSpec, error) {
-	value, err := jsonValue(p.Spec)
-	if err != nil {
-		return nil, err
-	}
-	traits, err := jobTraitsOutput(p.Traits)
-	if err != nil {
-		return nil, err
-	}
-	return &eruunv1.JobSpec{Name: p.Name, Type: p.Type, Spec: value, Traits: traits}, nil
+	return encodeTypedResponse(p, &eruunv1.JobSpec{})
 }
 
 func jobArtifactOutput(item *model.JobArtifact) (*eruunv1.JobArtifact, error) {
@@ -251,19 +124,11 @@ func jobSubmitInput(req *eruunv1.SubmitJobRequest) (jobs.SubmitRequest, error) {
 	if req == nil || len(req.ProtoReflect().GetUnknown()) != 0 {
 		return jobs.SubmitRequest{}, bcode.ErrJobInput
 	}
-	var raw []byte
-	if req.Spec != nil {
-		var err error
-		raw, err = protojson.Marshal(req.Spec)
-		if err != nil {
-			return jobs.SubmitRequest{}, bcode.ErrJobInput
-		}
-	}
-	traits, err := jobTraitsInput(req.Traits)
+	input, err := decodeTypedRequest[jobs.SubmitRequest](req)
 	if err != nil {
 		return jobs.SubmitRequest{}, bcode.ErrJobInput
 	}
-	return jobs.SubmitRequest{WorkspaceID: req.WorkspaceId, JobSpec: spec.JobSpec{Name: req.Name, Type: req.Type, Spec: raw, Traits: traits}}, nil
+	return input, nil
 }
 
 func (s *JobsServer) SubmitJob(ctx context.Context, req *eruunv1.SubmitJobRequest) (*eruunv1.JobAccepted, error) {

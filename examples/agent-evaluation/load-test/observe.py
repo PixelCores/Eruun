@@ -74,7 +74,10 @@ def snapshot(data, task_id):
     if status in FAILED:
         return result
     try:
-        selected = data["job"]["traits"]["eval"]["resultPolicy"]["targets"]
+        stages = data["job"]["stages"]
+        if len(stages) != 1 or len(stages[0]["steps"]) != 1:
+            raise ValueError
+        selected = stages[0]["steps"][0]["traits"]["eval"]["resultPolicy"]["targets"]
         if not isinstance(selected, list) or not 1 <= len(selected) <= 2:
             raise ValueError
         targets = {}

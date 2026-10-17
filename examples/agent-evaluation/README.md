@@ -72,7 +72,7 @@ DATASET_ID="$(printf '%s\n' "$DATASET_RESPONSE" | jq -er '.data.id')"
 ```bash
 jq \
   --arg datasetId "$DATASET_ID" \
-  '.traits.eval.taskPackageId = $datasetId' \
+  '.stages[0].steps[0].traits.eval.taskPackageId = $datasetId' \
   examples/agent-evaluation/evaluation.json \
   > "$HARBOR_EXAMPLE_DIR/evaluation.json"
 

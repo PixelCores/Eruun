@@ -69,11 +69,10 @@ type canonicalWorkflowSubStepJSON struct {
 }
 
 type canonicalJobJSON struct {
-	WorkspaceID string               `json:"workspaceId,omitempty"`
-	Name        string               `json:"name"`
-	Type        string               `json:"type"`
-	Spec        *spec.CommandJobSpec `json:"spec,omitempty"`
-	Traits      spec.JobTraits       `json:"traits,omitempty"`
+	WorkspaceID string          `json:"workspaceId,omitempty"`
+	Name        string          `json:"name"`
+	Volume      *spec.JobVolume `json:"volume,omitempty"`
+	Stages      []spec.JobStage `json:"stages"`
 }
 
 // CanonicalJSONSchema returns the discoverable JSON Schema bundle for the
@@ -224,7 +223,15 @@ func (b *schemaBuilder) requiredField(definition, field, validation string, opti
 	case "WorkflowStep", "WorkflowSubStep":
 		return field == "name"
 	case "Job":
+		return field == "name" || field == "stages"
+	case "JobStage":
+		return field == "name" || field == "steps"
+	case "JobStep":
 		return field == "name" || field == "type"
+	case "JobVolume":
+		return field == "size"
+	case "JobStepRetry":
+		return field == "backoffLimit"
 	case "EvaluationTraitSpec":
 		return field == "env" || field == "agent" || field == "taskPackageId"
 	case "EvaluationRecoverySpec":
@@ -241,8 +248,22 @@ func (b *schemaBuilder) requiredField(definition, field, validation string, opti
 
 func (b *schemaBuilder) applyFieldConstraints(definition, field string, schema map[string]any) {
 	switch {
-	case definition == "Job" && field == "type":
+	case definition == "JobStep" && field == "type":
 		schema["enum"] = []string{"command", "job"}
+	case definition == "JobStep" && field == "spec":
+		clear(schema)
+		for key, value := range b.schemaFor(reflect.TypeOf(spec.CommandJobSpec{})) {
+			schema[key] = value
+		}
+	case (definition == "Job" && field == "stages") || (definition == "JobStage" && field == "steps"):
+		schema["minItems"] = 1
+	case (definition == "JobStage" || definition == "JobStep") && field == "name":
+		schema["minLength"] = 1
+	case definition == "JobVolume" && field == "accessMode":
+		schema["enum"] = []string{"ReadWriteOnce", "ReadWriteMany"}
+		schema["default"] = "ReadWriteOnce"
+	case definition == "JobStepRetry" && field == "backoffLimit":
+		schema["minimum"], schema["maximum"] = 0, 10
 	case definition == "Job" && field == "name":
 		schema["minLength"], schema["maxLength"] = 1, 128
 	case definition == "EvaluationTraitSpec" && field == "env":
@@ -317,7 +338,7 @@ func (b *schemaBuilder) applyFieldConstraints(definition, field string, schema m
 
 func (b *schemaBuilder) applyDefinitionConstraints(name string, definition map[string]any) {
 	switch name {
-	case "Job":
+	case "JobStep":
 		definition["oneOf"] = []any{
 			map[string]any{"required": []string{"spec"}, "properties": map[string]any{
 				"type":   map[string]any{"const": "command"},

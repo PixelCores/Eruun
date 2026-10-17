@@ -25,13 +25,14 @@ func TestOnlineEvaluationTimeoutLimitPreservesRunningExecution(t *testing.T) {
 	dataset := "11111111-1111-1111-1111-111111111111"
 	require.NoError(t, store.Add(ctx, &model.JobArtifact{ID: dataset, WorkspaceID: "space", Kind: artifacts.KindDataset, Digest: strings.Repeat("a", 64)}))
 	request := SubmitRequest{JobSpec: evaluationDeclaration("long evaluation", dataset, "oracle", "")}
-	request.Traits.Evaluation.TimeoutSeconds = workflowconfig.MaxEvaluationTimeoutSeconds
+	request.Stages[0].Steps[0].Traits.Evaluation.TimeoutSeconds = workflowconfig.MaxEvaluationTimeoutSeconds
 	accepted, err := s.Submit(ctx, request)
 	require.NoError(t, err)
 	parent := &model.WorkflowQueue{TaskID: accepted.TaskID}
 	require.NoError(t, store.Get(ctx, parent))
-	task, err := BuildTask(parent, "space-ns")
+	stages, err := BuildTask(parent, "space-ns")
 	require.NoError(t, err)
+	task := stages[0][0]
 	require.NoError(t, BuildEvaluationTask(ctx, s.Store, s.Config, task, spec.JobTraits{}))
 	workload := task.JobInfo.(*batchv1.Job)
 	require.EqualValues(t, workflowconfig.MaxEvaluationTimeoutSeconds+spec.EvaluationCollectionGraceSeconds, *workload.Spec.ActiveDeadlineSeconds)

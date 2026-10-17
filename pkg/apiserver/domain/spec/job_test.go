@@ -16,24 +16,25 @@ func TestJobContractNormalization(t *testing.T) {
 		name, body string
 		valid      bool
 	}{
-		{"command", `{"name":"daily","type":"command","spec":{"image":"busybox:1.37.0","command":["echo","ok"]}}`, true},
-		{"evaluation", `{"name":"model-eval","type":"job","traits":{"eval":{"env":"ack","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"}}}`, true},
-		{"old evaluation trait key", `{"name":"model-eval","type":"job","traits":{"evaluation":{"env":"ack","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"}}}`, false},
-		{"legacy eval type", `{"name":"model-eval","type":"eval","spec":{"datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}}`, false},
-		{"old ambiguous type", `{"name":"daily","type":"custom","spec":{}}`, false},
-		{"application identity", `{"name":"daily","type":"command","appId":"app","spec":{}}`, false},
-		{"unbounded image", `{"name":"daily","type":"command","spec":{"image":"busybox:latest","command":["true"]}}`, false},
-		{"unknown command input", `{"name":"daily","type":"command","spec":{"image":"busybox:1","command":["true"],"cron":"* * * * *"}}`, false},
-		{"missing evaluation trait", `{"name":"model-eval","type":"job"}`, false},
-		{"evaluation spec rejected", `{"name":"model-eval","type":"job","spec":{},"traits":{"eval":{"env":"ack","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"}}}`, false},
-		{"null evaluation spec rejected", `{"name":"model-eval","type":"job","spec":null,"traits":{"eval":{"env":"ack","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"}}}`, false},
-		{"framework rejected", `{"name":"model-eval","type":"job","traits":{"eval":{"env":"ack","framework":"harbor","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"}}}`, false},
-		{"framework version rejected", `{"name":"model-eval","type":"job","traits":{"eval":{"env":"ack","frameworkVersion":"0.22.0","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"}}}`, false},
-		{"agent object rejected", `{"name":"model-eval","type":"job","traits":{"eval":{"env":"ack","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}}}`, false},
-		{"runtime env override", `{"name":"model-eval","type":"job","traits":{"eval":{"env":"ack","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"},"envs":[{"name":"PATH","valueFrom":{"static":"evil"}}]}}`, false},
-		{"top-level result policy rejected", `{"name":"model-eval","type":"job","resultPolicy":{"retentionDays":90,"targets":[{"type":"database","mode":"full"}]},"traits":{"eval":{"env":"ack","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"}}}`, false},
-		{"command with evaluation rejected", `{"name":"daily","type":"command","spec":{"image":"busybox:1","command":["true"]},"traits":{"eval":{"env":"ack","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"}}}`, false},
-		{"no input object", `{"name":"daily","type":"command","spec":null}`, false},
+		{"legacy top-level rejected", `{"name":"daily","type":"command","spec":{"image":"busybox:1.37.0","command":["true"]}}`, false},
+		{"command", `{"name":"daily","stages":[{"name":"main","steps":[{"name":"run","type":"command","spec":{"image":"busybox:1.37.0","command":["echo","ok"]}}]}]}`, true},
+		{"evaluation", `{"name":"model-eval","stages":[{"name":"main","steps":[{"name":"run","type":"job","traits":{"eval":{"env":"ack","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"}}}]}]}`, true},
+		{"old evaluation trait key", `{"name":"model-eval","stages":[{"name":"main","steps":[{"name":"run","type":"job","traits":{"evaluation":{"env":"ack","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"}}}]}]}`, false},
+		{"legacy eval type", `{"name":"model-eval","stages":[{"name":"main","steps":[{"name":"run","type":"eval","spec":{"datasetId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}}]}]}`, false},
+		{"old ambiguous type", `{"name":"daily","stages":[{"name":"main","steps":[{"name":"run","type":"custom","spec":{}}]}]}`, false},
+		{"application identity", `{"name":"daily","stages":[{"name":"main","steps":[{"name":"run","type":"command","appId":"app","spec":{}}]}]}`, false},
+		{"unbounded image", `{"name":"daily","stages":[{"name":"main","steps":[{"name":"run","type":"command","spec":{"image":"busybox:latest","command":["true"]}}]}]}`, false},
+		{"unknown command input", `{"name":"daily","stages":[{"name":"main","steps":[{"name":"run","type":"command","spec":{"image":"busybox:1","command":["true"],"cron":"* * * * *"}}]}]}`, false},
+		{"missing evaluation trait", `{"name":"model-eval","stages":[{"name":"main","steps":[{"name":"run","type":"job"}]}]}`, false},
+		{"evaluation spec rejected", `{"name":"model-eval","stages":[{"name":"main","steps":[{"name":"run","type":"job","spec":{},"traits":{"eval":{"env":"ack","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"}}}]}]}`, false},
+		{"null evaluation spec rejected", `{"name":"model-eval","stages":[{"name":"main","steps":[{"name":"run","type":"job","spec":null,"traits":{"eval":{"env":"ack","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"}}}]}]}`, false},
+		{"framework rejected", `{"name":"model-eval","stages":[{"name":"main","steps":[{"name":"run","type":"job","traits":{"eval":{"env":"ack","framework":"harbor","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"}}}]}]}`, false},
+		{"framework version rejected", `{"name":"model-eval","stages":[{"name":"main","steps":[{"name":"run","type":"job","traits":{"eval":{"env":"ack","frameworkVersion":"0.22.0","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"}}}]}]}`, false},
+		{"agent object rejected", `{"name":"model-eval","stages":[{"name":"main","steps":[{"name":"run","type":"job","traits":{"eval":{"env":"ack","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":{"name":"oracle"}}}}]}]}`, false},
+		{"runtime env override", `{"name":"model-eval","stages":[{"name":"main","steps":[{"name":"run","type":"job","traits":{"eval":{"env":"ack","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"},"envs":[{"name":"PATH","valueFrom":{"static":"evil"}}]}}]}]}`, false},
+		{"top-level result policy rejected", `{"name":"model-eval","stages":[{"name":"main","steps":[{"name":"run","type":"job","resultPolicy":{"retentionDays":90,"targets":[{"type":"database","mode":"full"}]},"traits":{"eval":{"env":"ack","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"}}}]}]}`, false},
+		{"command with evaluation rejected", `{"name":"daily","stages":[{"name":"main","steps":[{"name":"run","type":"command","spec":{"image":"busybox:1","command":["true"]},"traits":{"eval":{"env":"ack","taskPackageId":"12345678-1234-1234-1234-123456789012","agent":"oracle"}}}]}]}`, false},
+		{"no input object", `{"name":"daily","stages":[{"name":"main","steps":[{"name":"run","type":"command","spec":null}]}]}`, false},
 		{"concatenated JSON", `{"name":"daily","type":"command","spec":{}} {}`, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -47,7 +48,7 @@ func TestJobContractNormalization(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			require.NotNil(t, job.Traits.Resources)
+			require.NotNil(t, job.Stages[0].Steps[0].Traits.Resources)
 			first, _ := json.Marshal(job)
 			require.NoError(t, job.Normalize())
 			second, _ := json.Marshal(job)
@@ -56,20 +57,207 @@ func TestJobContractNormalization(t *testing.T) {
 	}
 }
 
+func TestJobStageValidation(t *testing.T) {
+	command := func(name string) JobStep {
+		return JobStep{Name: name, Type: "command", Spec: json.RawMessage(`{"image":"busybox:1.37.0","command":["true"]}`)}
+	}
+	for _, tc := range []struct {
+		name   string
+		change func(*JobSpec)
+		want   string
+	}{
+		{"single command", func(*JobSpec) {}, ""},
+		{"empty name", func(j *JobSpec) { j.Name = " " }, "name must contain"},
+		{"empty stages", func(j *JobSpec) { j.Stages = nil }, "at least one stage"},
+		{"empty stage name", func(j *JobSpec) { j.Stages[0].Name = " " }, "name must not be empty"},
+		{"duplicate stage", func(j *JobSpec) { j.Stages = append(j.Stages, j.Stages[0]) }, "duplicate stage name"},
+		{"empty steps", func(j *JobSpec) { j.Stages[0].Steps = nil }, "at least one step"},
+		{"empty step name", func(j *JobSpec) { j.Stages[0].Steps[0].Name = " " }, "name must not be empty"},
+		{"duplicate step in stage", func(j *JobSpec) { j.Stages[0].Steps = append(j.Stages[0].Steps, command("run")) }, "duplicate step name"},
+		{"duplicate step across stages", func(j *JobSpec) {
+			j.Stages = append(j.Stages, JobStage{Name: "second", Steps: []JobStep{command("run")}})
+		}, "duplicate step name"},
+		{"uppercase step", func(j *JobSpec) { j.Stages[0].Steps[0].Name = "Run" }, "generated Kubernetes Job name"},
+		{"dot step", func(j *JobSpec) { j.Stages[0].Steps[0].Name = "run.one" }, "generated Kubernetes Job name"},
+		{"step ending hyphen", func(j *JobSpec) { j.Stages[0].Steps[0].Name = "run-" }, "generated Kubernetes Job name"},
+		{"step at length limit", func(j *JobSpec) { j.Stages[0].Steps[0].Name = strings.Repeat("a", 28) }, ""},
+		{"step over length limit", func(j *JobSpec) { j.Stages[0].Steps[0].Name = strings.Repeat("a", 29) }, "generated Kubernetes Job name"},
+		{"minimum retry", func(j *JobSpec) { j.Stages[0].Steps[0].Retry = &JobStepRetry{BackoffLimit: 0} }, ""},
+		{"maximum retry", func(j *JobSpec) { j.Stages[0].Steps[0].Retry = &JobStepRetry{BackoffLimit: 10} }, ""},
+		{"negative retry", func(j *JobSpec) { j.Stages[0].Steps[0].Retry = &JobStepRetry{BackoffLimit: -1} }, "retry.backoffLimit"},
+		{"excessive retry", func(j *JobSpec) { j.Stages[0].Steps[0].Retry = &JobStepRetry{BackoffLimit: 11} }, "retry.backoffLimit"},
+		{"volume default", func(j *JobSpec) { j.Volume = &JobVolume{Size: "1Gi"} }, ""},
+		{"volume with class", func(j *JobSpec) { j.Volume = &JobVolume{Size: "1Gi", StorageClass: "fast-storage"} }, ""},
+		{"empty volume size", func(j *JobSpec) { j.Volume = &JobVolume{} }, "volume.size"},
+		{"invalid volume size", func(j *JobSpec) { j.Volume = &JobVolume{Size: "invalid"} }, "volume.size"},
+		{"zero volume size", func(j *JobSpec) { j.Volume = &JobVolume{Size: "0"} }, "volume.size"},
+		{"negative volume size", func(j *JobSpec) { j.Volume = &JobVolume{Size: "-1Gi"} }, "volume.size"},
+		{"invalid storage class", func(j *JobSpec) { j.Volume = &JobVolume{Size: "1Gi", StorageClass: "../bad"} }, "volume.storageClass"},
+		{"invalid access mode", func(j *JobSpec) { j.Volume = &JobVolume{Size: "1Gi", AccessMode: "ReadOnlyMany"} }, "volume.accessMode"},
+		{"parallel without volume", func(j *JobSpec) { j.Stages[0].Steps = append(j.Stages[0].Steps, command("other")) }, ""},
+		{"parallel read write once", func(j *JobSpec) {
+			j.Volume = &JobVolume{Size: "1Gi"}
+			j.Stages[0].Steps = append(j.Stages[0].Steps, command("other"))
+		}, "multiple steps require volume.accessMode ReadWriteMany"},
+		{"parallel read write many", func(j *JobSpec) {
+			j.Volume = &JobVolume{Size: "1Gi", AccessMode: "ReadWriteMany"}
+			j.Stages[0].Steps = append(j.Stages[0].Steps, command("other"))
+		}, ""},
+		{"sequential read write once", func(j *JobSpec) {
+			j.Volume = &JobVolume{Size: "1Gi"}
+			j.Stages = append(j.Stages, JobStage{Name: "second", Steps: []JobStep{command("other")}})
+		}, ""},
+		{"multiple evaluation steps", func(j *JobSpec) {
+			j.Stages[0].Steps = []JobStep{
+				{Name: "first", Type: "job", Traits: Traits{Evaluation: testEvaluationTrait()}},
+				{Name: "second", Type: "job", Traits: Traits{Evaluation: testEvaluationTrait()}},
+			}
+		}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			job := JobSpec{Name: "pipeline", Stages: []JobStage{{Name: "main", Steps: []JobStep{command("run")}}}}
+			tc.change(&job)
+			err := job.Normalize()
+			if tc.want != "" {
+				require.ErrorContains(t, err, tc.want)
+				return
+			}
+			require.NoError(t, err)
+			if job.Volume != nil {
+				require.NotEmpty(t, job.Volume.AccessMode)
+			}
+		})
+	}
+	var missing *JobSpec
+	require.Error(t, missing.Normalize())
+}
+
+func TestJobEvaluationRejectsRetry(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		backoff int32
+	}{
+		{"negative", -1},
+		{"zero", 0},
+		{"positive", 2},
+		{"maximum command retry", 10},
+		{"excessive", 11},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			job := JobSpec{Name: "evaluation", Stages: []JobStage{{Name: "main", Steps: []JobStep{{
+				Name: "evaluate", Type: "job", Traits: Traits{Evaluation: testEvaluationTrait()},
+				Retry: &JobStepRetry{BackoffLimit: tc.backoff},
+			}}}}}
+			require.ErrorContains(t, job.Normalize(), "evaluation recovery is controlled by traits.eval.recovery")
+		})
+	}
+}
+
+func TestJobCommandTraitValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		traits Traits
+		want   string
+	}{
+		{"existing PVC", Traits{Storage: []StorageTraitSpec{{Name: "data", Type: "persistent", ClaimName: "existing-data", MountPath: "/data"}}}, ""},
+		{"existing PVC name fallback", Traits{Storage: []StorageTraitSpec{{Name: "data", Type: "persistent", MountPath: "/data"}}}, ""},
+		{"ephemeral", Traits{Storage: []StorageTraitSpec{{Name: "temp", Type: "ephemeral", MountPath: "/tmp"}}}, ""},
+		{"config", Traits{Storage: []StorageTraitSpec{{Name: "config", Type: "config", SourceName: "settings", MountPath: "/config"}}}, ""},
+		{"ingress", Traits{Ingress: []IngressTraitsSpec{{}}}, "traits.ingress"},
+		{"service", Traits{Service: []ServiceTraitSpec{{}}}, "traits.service"},
+		{"rollout", Traits{Rollout: &RolloutTraitSpec{}}, "traits.rollout"},
+		{"share", Traits{Share: &ShareTraitSpec{}}, "traits.share"},
+		{"rbac", Traits{RBAC: []RBACPolicySpec{{}}}, "traits.rbac"},
+		{"evaluation", Traits{Evaluation: testEvaluationTrait()}, "traits.eval"},
+		{"PVC tmpCreate", Traits{Storage: []StorageTraitSpec{{Name: "data", Type: "persistent", TmpCreate: true}}}, "traits.storage[0]"},
+		{"PVC size", Traits{Storage: []StorageTraitSpec{{Name: "data", Type: "persistent", Size: "1Gi"}}}, "traits.storage[0]"},
+		{"PVC storage class", Traits{Storage: []StorageTraitSpec{{Name: "data", Type: "persistent", StorageClass: "fast"}}}, "traits.storage[0]"},
+		{"PVC missing reference", Traits{Storage: []StorageTraitSpec{{Type: "persistent"}}}, "existing PVC"},
+		{"PVC invalid reference", Traits{Storage: []StorageTraitSpec{{Name: "data", Type: "persistent", ClaimName: "../other"}}}, "existing PVC"},
+	} {
+		for _, location := range []string{"top", "init", "sidecar", "nested"} {
+			t.Run(tc.name+"/"+location, func(t *testing.T) {
+				traits := tc.traits
+				switch location {
+				case "init":
+					traits = Traits{Init: []InitTraitSpec{{Name: "setup", Image: "busybox:1.37.0", Traits: traits}}}
+				case "sidecar":
+					traits = Traits{Sidecar: []SidecarTraitsSpec{{Name: "helper", Image: "busybox:1.37.0", Traits: traits}}}
+				case "nested":
+					traits = Traits{Init: []InitTraitSpec{{Name: "setup", Image: "busybox:1.37.0", Traits: Traits{Sidecar: []SidecarTraitsSpec{{Name: "helper", Image: "busybox:1.37.0", Traits: traits}}}}}}
+				}
+				job := JobSpec{Name: "command", Stages: []JobStage{{Name: "main", Steps: []JobStep{{
+					Name: "run", Type: "command", Spec: json.RawMessage(`{"image":"busybox:1.37.0","command":["true"]}`), Traits: traits,
+				}}}}}
+				err := job.Normalize()
+				if tc.want == "" {
+					require.NoError(t, err)
+					return
+				}
+				require.ErrorContains(t, err, tc.want)
+				if location == "init" || location == "nested" {
+					require.ErrorContains(t, err, "traits.init[0]")
+				}
+				if location == "sidecar" || location == "nested" {
+					require.ErrorContains(t, err, "traits.sidecar[0]")
+				}
+			})
+		}
+	}
+}
+
+func TestJobVolumeRejectsConflictingTraitMounts(t *testing.T) {
+	for _, storage := range []StorageTraitSpec{
+		{Name: "workspace", Type: "ephemeral", MountPath: "/data"},
+		{Name: "WorkSpace", Type: "ephemeral", MountPath: "/data"},
+		{Name: "data", Type: "ephemeral", MountPath: "/workspace"},
+		{Name: "data", Type: "ephemeral", MountPath: "/workspace/"},
+	} {
+		for _, nested := range []bool{false, true} {
+			traits := Traits{Storage: []StorageTraitSpec{storage}}
+			if nested {
+				traits = Traits{Init: []InitTraitSpec{{Image: "busybox:1", Traits: traits}}}
+			}
+			job := JobSpec{Name: "command", Volume: &JobVolume{Size: "1Gi"}, Stages: []JobStage{{Name: "main", Steps: []JobStep{{
+				Name: "run", Type: "command", Spec: json.RawMessage(`{"image":"busybox:1.37.0","command":["true"]}`), Traits: traits,
+			}}}}}
+			require.ErrorContains(t, job.Normalize(), "volume reserves")
+			job.Volume = nil
+			require.NoError(t, job.Normalize())
+		}
+	}
+}
+
+func TestJobEvaluationRetainsRestrictedTraits(t *testing.T) {
+	for _, traits := range []Traits{
+		{Init: []InitTraitSpec{{}}}, {Sidecar: []SidecarTraitsSpec{{}}},
+		{Ingress: []IngressTraitsSpec{{}}}, {Service: []ServiceTraitSpec{{}}},
+		{RBAC: []RBACPolicySpec{{}}}, {Probes: []ProbeTraitsSpec{{}}},
+		{TargetWorkEnv: map[string]string{"zone": "a"}}, {Share: &ShareTraitSpec{}},
+		{Rollout: &RolloutTraitSpec{}}, {SecurityPolicy: &SecurityPolicySpec{}},
+		{Storage: []StorageTraitSpec{{Name: "data", Type: "persistent"}}},
+		{EnvFrom: []EnvFromSourceSpec{{Type: "secret", SourceName: "credential"}}},
+	} {
+		traits.Evaluation = testEvaluationTrait()
+		job := JobSpec{Name: "evaluation", Stages: []JobStage{{Name: "main", Steps: []JobStep{{Name: "evaluate", Type: "job", Traits: traits}}}}}
+		require.ErrorContains(t, job.Normalize(), "evaluation supports resources and credential envs only")
+	}
+}
+
 func testEvaluationTrait() *EvaluationTraitSpec {
 	return &EvaluationTraitSpec{Env: "ack", TaskPackageID: "12345678-1234-1234-1234-123456789012", Agent: "oracle"}
 }
 
 func TestEvaluationDefaultsPersistInNormalizedTraits(t *testing.T) {
-	job := JobSpec{Name: "model-eval", Type: "job", Traits: JobTraits{Evaluation: testEvaluationTrait()}}
+	job := JobSpec{Name: "model-eval", Stages: []JobStage{{Name: "main", Steps: []JobStep{{Name: "evaluate", Type: "job", Traits: Traits{Evaluation: testEvaluationTrait()}}}}}}
 	require.NoError(t, job.Normalize())
-	require.Equal(t, 1, job.Traits.Evaluation.Attempts)
-	require.Equal(t, 1, job.Traits.Evaluation.Concurrency)
-	require.EqualValues(t, 3600, job.Traits.Evaluation.TimeoutSeconds)
-	require.Empty(t, job.Spec)
-	require.NotSame(t, job.Traits.Resources, job.Traits.Evaluation.SandboxResources)
-	require.Nil(t, job.Traits.Evaluation.ResultPolicy, "workspace policy is snapshotted by the submission service")
-	require.Nil(t, job.Traits.Evaluation.Recovery, "recovery must remain opt-in")
+	require.Equal(t, 1, job.Stages[0].Steps[0].Traits.Evaluation.Attempts)
+	require.Equal(t, 1, job.Stages[0].Steps[0].Traits.Evaluation.Concurrency)
+	require.EqualValues(t, 3600, job.Stages[0].Steps[0].Traits.Evaluation.TimeoutSeconds)
+	require.Empty(t, job.Stages[0].Steps[0].Spec)
+	require.NotSame(t, job.Stages[0].Steps[0].Traits.Resources, job.Stages[0].Steps[0].Traits.Evaluation.SandboxResources)
+	require.Nil(t, job.Stages[0].Steps[0].Traits.Evaluation.ResultPolicy, "workspace policy is snapshotted by the submission service")
+	require.Nil(t, job.Stages[0].Steps[0].Traits.Evaluation.Recovery, "recovery must remain opt-in")
 }
 
 func TestEvaluationRecoveryRequiresSupportedReplaySafeAgent(t *testing.T) {
@@ -182,34 +370,10 @@ func TestResultPolicyPreservesFullData(t *testing.T) {
 }
 
 func TestEvaluationResourceRequestsNormalizeForRunner(t *testing.T) {
-	job := JobSpec{Name: "evaluation", Type: "job", Traits: JobTraits{Evaluation: testEvaluationTrait(), Resources: &ResourceTraitsSpec{CPU: "1", Memory: "2Gi"}}}
+	job := JobSpec{Name: "evaluation", Stages: []JobStage{{Name: "main", Steps: []JobStep{{Name: "evaluate", Type: "job", Traits: Traits{Evaluation: testEvaluationTrait(), Resources: &ResourceTraitsSpec{CPU: "1", Memory: "2Gi"}}}}}}}
 	require.NoError(t, job.Normalize())
-	require.Equal(t, "1", job.Traits.Resources.CPULimit)
-	require.Equal(t, "2Gi", job.Traits.Resources.MemoryLimit)
-}
-
-// Application-only traits are absent from JobTraits, so DisallowUnknownFields
-// rejects them at the decode boundary with no hand-written check.
-func TestJobSpecRejectsApplicationOnlyTraits(t *testing.T) {
-	for _, tc := range []struct{ name, trait string }{
-		{"sidecar", `"sidecar":[{"name":"extra","image":"busybox:1.37.0"}]`},
-		{"ingress", `"ingress":[{"host":"example.com"}]`},
-		{"service", `"service":[{"port":80}]`},
-		{"rbac", `"rbac":[{"name":"reader"}]`},
-		{"probes", `"probes":[{"type":"liveness"}]`},
-		{"init", `"init":[{"name":"setup","image":"busybox:1.37.0"}]`},
-		{"rollout", `"rollout":{"strategy":"RollingUpdate"}`},
-		{"share", `"share":{"enabled":true}`},
-		{"targetWorkEnv", `"targetWorkEnv":{"zone":"a"}`},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			body := `{"name":"j","type":"command","spec":{"image":"busybox:1.37.0","command":["true"]},"traits":{` + tc.trait + `}}`
-			var job JobSpec
-			err := DecodeJobJSON([]byte(body), &job)
-			require.Error(t, err)
-			require.Contains(t, err.Error(), "unknown field")
-		})
-	}
+	require.Equal(t, "1", job.Stages[0].Steps[0].Traits.Resources.CPULimit)
+	require.Equal(t, "2Gi", job.Stages[0].Steps[0].Traits.Resources.MemoryLimit)
 }
 
 func TestEvaluationCredentialsUseUnifiedEnvTraits(t *testing.T) {
@@ -240,8 +404,7 @@ func TestEvaluationCredentialsUseUnifiedEnvTraits(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.traits.Evaluation = testEvaluationTrait()
-			job := JobSpec{Name: "evaluation", Type: "job", Traits: tc.traits}
-			err := job.Normalize()
+			err := NormalizeEvaluationTraits(&tc.traits)
 			if tc.valid {
 				require.NoError(t, err)
 			} else {
