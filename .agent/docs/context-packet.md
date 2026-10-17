@@ -1,6 +1,6 @@
-# Context Packet (任务上下文包)
+# Context Packet (可选任务简报)
 
-提需求时一次性提供"最小且充分"的上下文，减少追问，提升单轮交付成功率。
+当任务涉及多个契约、风险较高或需求存在歧义时，用这份简报快速锁定边界。普通任务不需要填表，Agent 应从仓库中自行获取可发现上下文。已有任务计划或状态记录时复用其中的信息，无需另建一份简报。
 
 ---
 
@@ -19,9 +19,6 @@
 - 期望:
 - 错误日志（如有）:
 
-### Risk (风险)
-Low / Medium / High
-
 ### Constraints (约束，可选)
 - 兼容性:
 - 性能要求:
@@ -36,70 +33,22 @@ Low / Medium / High
 
 ---
 
-## Phase A 模板（先分析，不改代码）
-
-> 用于 `eruun-code` 两阶段流程的第一阶段。
-> 目标：先锁定影响面与契约，再进入实现。
-
-```markdown
-### Change Goal
-一句话描述本次变更目标
-
-### Impact Surface (API/Domain/DB/Cache/K8s)
-- API:
-- Domain:
-- DB:
-- Cache:
-- K8s:
-
-### Contract Draft (关键字段/行为)
-- 字段/行为 1: 表示/编码/脱敏/优先级
-- 字段/行为 2: 表示/编码/脱敏/优先级
-
-### Risks
-- 风险点:
-- 回归点:
-
-### Test & Acceptance
-- 单测:
-- 集成/手工验证:
-- 验收口径:
-
-### Devlog Assessment
-- 是否需要 `devlogs/` 记录:
-- 理由:
-- 计划文件名:
-```
-
-### 进入 Phase B 的确认语
-
-需要用户显式确认后才进入实现阶段，推荐使用：
-
-- `确认实现`
-- `开始实现`
-- `按方案执行`
-- `implement now`
-- `go ahead`
-
----
-
 ## 填写示例
+
+以下是虚构的边界校验示例，只演示简报写法，不描述 Eruun 的当前路径或 API 契约。实际任务应填入已核实的文件和符号。
 
 ```markdown
 ### Goal
-修复 CleanupResources 后组件状态显示 Unknown 而非 Not Deploy
+修复请求校验接受非法负数上限的问题
 
 ### Scope
-- 文件: `pkg/apiserver/domain/service/application.go`
-- 符号: `func (a *ApplicationService) CleanupResources()`
+- 文件: `<已定位的校验文件>`
+- 符号: `<已定位的校验函数>`
 
 ### Current → Expected
-- 现状: 清理资源后状态变为 Unknown
-- 期望: 清理资源后状态变为 Not Deploy
+- 现状: 复现用例中负数上限被接受
+- 期望: 按已确认的契约拒绝负数；保留零值和正数的原有行为
 - 错误日志: 无
-
-### Risk
-Low（仅影响状态显示，无持久化变更）
 
 ### Constraints
 - 必须兼容现有 API 响应格式
@@ -108,19 +57,18 @@ Low（仅影响状态显示，无持久化变更）
 - [x] 代码
 - [x] 测试
 - [ ] 文档
-- [ ] Devlog（纯状态展示修复，无重要技术选型时可豁免并说明）
+- [ ] Devlog（仅在存在持久且非显然的技术决策时需要）
 ```
 
 ---
 
 ## 最小信息集
 
-当不确定提供什么时，至少包含：
+如果需要主动补充上下文，优先提供：
 
 1. **Goal** - 一句话目标
-2. **Scope** - 文件路径 + 关键符号
-3. **Current → Expected** - 复现步骤或错误输出
-4. **Risk** - 你的判断
+2. **Current → Expected** - 复现步骤、错误输出或验收结果
+3. **Constraints** - 仓库中无法推断的契约或取舍
 
 ---
 
