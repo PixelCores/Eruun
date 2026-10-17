@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"net/url"
 	"strings"
 
@@ -15,6 +14,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
 	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
@@ -92,10 +92,10 @@ func (c *applicationsServiceImpl) resetApplicationDatabasesUnlocked(ctx context.
 	}
 	app = lockedApp
 	err = repository.WithApplicationSchedulingTransaction(ctx, c.Store, app.ID, func(tx datastore.DataStore) error {
-		if err := EnsureAppWorkflowIdle(ctx, tx, app.ID); err != nil {
+		if err := workflowservice.EnsureAppWorkflowIdle(ctx, tx, app.ID); err != nil {
 			return err
 		}
-		if err := EnsureNoPendingStatefulSetCleanup(ctx, tx, app.ID); err != nil {
+		if err := workflowservice.EnsureNoPendingStatefulSetCleanup(ctx, tx, app.ID); err != nil {
 			return err
 		}
 		workflowSteps, err := model.NewJSONStructByStruct(buildDatabaseResetWorkflowSteps(databaseComponents, initSQLURL))
@@ -107,7 +107,7 @@ func (c *applicationsServiceImpl) resetApplicationDatabasesUnlocked(ctx context.
 			klog.ErrorS(err, "create database reset workflow failed", "appID", app.ID)
 			return bcode.ErrCreateWorkflow
 		}
-		if err := validateWorkflowTaskEnqueue(ctx, tx, workflow, false); err != nil {
+		if err := workflowservice.ValidateWorkflowTaskEnqueue(ctx, tx, workflow, false); err != nil {
 			return err
 		}
 		task, err = workflowservice.CreateWorkflowQueueTask(ctx, tx, workflow, workflowservice.QueueTaskOptions{})

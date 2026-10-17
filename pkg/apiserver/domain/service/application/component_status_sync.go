@@ -46,7 +46,7 @@ func SyncComponentStatus(ctx context.Context, store datastore.DataStore, compone
 		return
 	}
 	defer func() {
-		if componentCache == nil || componentCache.IsCacheDisabled() {
+		if componentCache == nil {
 			return
 		}
 		cacheKey := cache.ApplicationComponentsKey(appID)

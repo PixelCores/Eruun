@@ -31,10 +31,6 @@ var (
 	errCloudActionNotFound   = wfcloudjob.ErrCloudActionNotFound
 )
 
-func RegisterCloudProvider(provider CloudProvider) {
-	wfcloudjob.RegisterCloudProvider(provider)
-}
-
 func getCloudProvider(name string) (CloudProvider, bool) {
 	return wfcloudjob.GetCloudProvider(name)
 }

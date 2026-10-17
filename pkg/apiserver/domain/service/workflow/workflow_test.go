@@ -3,19 +3,21 @@ package workflow
 import (
 	"cmp"
 	"context"
+	"sort"
+	"sync"
+	"testing"
+	"time"
+
+	miniredis "github.com/alicebob/miniredis/v2"
+	redis "github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/require"
+
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
-	miniredis "github.com/alicebob/miniredis/v2"
-	redis "github.com/redis/go-redis/v9"
-	"github.com/stretchr/testify/require"
-	"sort"
-	"sync"
-	"testing"
-	"time"
 )
 
 func newTestWorkflowCancelSignalClient(t *testing.T) *redis.Client {
@@ -185,6 +187,12 @@ func (s *manualExecTestStore) WithReadCommittedTransaction(ctx context.Context, 
 }
 func (s *manualExecTestStore) GetForUpdate(ctx context.Context, entity datastore.Entity) error {
 	return s.Get(ctx, entity)
+}
+
+// This fixture exercises single-threaded CAS transitions; database rollback
+// and isolation behavior use the transaction-backed fixtures separately.
+func (s *statusDataStore) WithTransaction(_ context.Context, fn func(datastore.DataStore) error) error {
+	return fn(s)
 }
 
 func (s *statusDataStore) Add(_ context.Context, entity datastore.Entity) error {
@@ -970,3 +978,14 @@ var _ datastore.DataStore = (*statusDataStore)(nil)
 var _ datastore.DataStore = (*scheduleDataStore)(nil)
 
 var _ WorkflowService = (*workflowServiceImpl)(nil)
+
+func TestCancelledTaskStoreUpdateRequiresTransaction(t *testing.T) {
+	store := &failingDataStore{}
+	called := false
+	err := runCancelledTaskStoreUpdate(context.Background(), store, "task", "cancelled", func(datastore.DataStore) error {
+		called = true
+		return nil
+	})
+	require.EqualError(t, err, "cancel workflow task requires transactional datastore")
+	require.False(t, called)
+}

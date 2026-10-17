@@ -17,6 +17,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
@@ -362,7 +363,7 @@ func testDirectVersionUpdateRechecksIdleAtCommit(t *testing.T, newStore func(*te
 				app.ManagementMode = spec.ManagementModeAdopted
 				require.NoError(t, store.Put(ctx, app))
 			}
-			require.NoError(t, EnsureAppWorkflowIdle(ctx, store, app.ID), "preflight passed before another submission")
+			require.NoError(t, workflowservice.EnsureAppWorkflowIdle(ctx, store, app.ID), "preflight passed before another submission")
 			require.NoError(t, store.Add(ctx, &model.WorkflowQueue{TaskID: uuid.NewString(), AppID: app.ID, Status: config.StatusWaiting}))
 			client := fake.NewSimpleClientset()
 			service := &applicationsServiceImpl{Store: store, KubeClient: client}

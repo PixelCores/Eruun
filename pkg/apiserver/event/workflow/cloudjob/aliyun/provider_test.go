@@ -191,12 +191,7 @@ func TestProviderResolveActionBuiltins(t *testing.T) {
 		require.NotNil(t, action)
 	}
 
-	supported := provider.SupportedActions()
-	require.ElementsMatch(t, []string{
-		ActionNasEnsureFilesystem,
-		ActionNasEnsureMountTarget,
-		ActionK8sEnsureStorageClass,
-	}, supported)
+	require.Len(t, provider.actions, 3)
 }
 
 func TestProviderResolveActionUnknownStrictWhitelist(t *testing.T) {
@@ -209,7 +204,7 @@ func TestProviderResolveActionUnknownStrictWhitelist(t *testing.T) {
 
 func TestProviderSharedActionsKeepConcurrentExecutionStateIsolated(t *testing.T) {
 	provider := NewProvider()
-	for _, actionName := range provider.SupportedActions() {
+	for actionName := range provider.actions {
 		action, ok := provider.ResolveAction(actionName)
 		require.True(t, ok)
 		t.Run(actionName, func(t *testing.T) {

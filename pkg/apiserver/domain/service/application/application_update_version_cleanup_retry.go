@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"sort"
 	"strings"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -31,13 +31,6 @@ type versionUpdateStatefulSetCleanupAttempt struct {
 	jobs            []*model.JobInfo
 	resolvesTaskIDs []string
 	succeeded       bool
-}
-
-type versionUpdateCleanupJobMarker struct {
-	Source                          string   `json:"source"`
-	Version                         int      `json:"version,omitempty"`
-	RequireStatefulSetDeletion      bool     `json:"requireStatefulSetDeletion,omitempty"`
-	StatefulSetPVCTemplatesToDelete []string `json:"statefulSetPVCTemplatesToDelete,omitempty"`
 }
 
 func mergePendingVersionUpdateStatefulSetPVCDeletions(
@@ -88,7 +81,7 @@ func mergePendingVersionUpdateStatefulSetPVCDeletions(
 			if err != nil {
 				return fmt.Errorf("restore component %s pending StatefulSet PVC plan: %w", cleanupComponent.Component.Name, err)
 			}
-			cleanupComponent.StatefulSetPVCTemplatesToDelete = mergeVersionUpdatePVCTemplateNames(
+			cleanupComponent.StatefulSetPVCTemplatesToDelete = model.NormalizeVersionUpdateCleanupPVCTemplateNames(
 				cleanupComponent.StatefulSetPVCTemplatesToDelete,
 				pendingStatefulSetPVCTemplateNames(plan),
 				transitionTemplates,
@@ -327,7 +320,7 @@ func applyVersionUpdateStatefulSetCleanupAttempt(
 	hasPVCDeletionContract := false
 	for _, cleanupComponent := range attempt.cleanupInfo.Components {
 		if cleanupComponent.RequireStatefulSetDeletion &&
-			len(normalizeVersionUpdatePVCTemplateNames(cleanupComponent.StatefulSetPVCTemplatesToDelete)) > 0 {
+			len(model.NormalizeVersionUpdateCleanupPVCTemplateNames(cleanupComponent.StatefulSetPVCTemplatesToDelete)) > 0 {
 			hasPVCDeletionContract = true
 			break
 		}
@@ -475,7 +468,7 @@ func updatePendingStatefulSetDeletion(
 		return false, fmt.Errorf("StatefulSet cleanup task ID is empty")
 	}
 	component := cleanupComponent.Component
-	templates := normalizeVersionUpdatePVCTemplateNames(cleanupComponent.StatefulSetPVCTemplatesToDelete)
+	templates := model.NormalizeVersionUpdateCleanupPVCTemplateNames(cleanupComponent.StatefulSetPVCTemplatesToDelete)
 	if !cleanupComponent.RequireStatefulSetDeletion {
 		return false, nil
 	}
@@ -505,7 +498,7 @@ func updatePendingStatefulSetDeletion(
 		return false, bcode.ErrWorkflowTaskRunning
 	}
 	taskCompleted := taskStatus == config.StatusCompleted
-	taskRequiresRetry := isRetryableTerminalVersionUpdateTaskStatus(taskStatus)
+	taskRequiresRetry := model.IsRetryableVersionUpdateCleanupTaskStatus(taskStatus)
 	if !taskCompleted && !taskRequiresRetry {
 		return false, fmt.Errorf("task %s has unsupported terminal status %q for StatefulSet cleanup recovery", task.TaskID, task.Status)
 	}
@@ -623,15 +616,6 @@ func shouldRetryStatefulSetCleanup(status config.Status, taskRequiresRetry, jobM
 	}
 }
 
-func isRetryableTerminalVersionUpdateTaskStatus(status config.Status) bool {
-	switch status {
-	case config.StatusFailed, config.StatusTimeout, config.StatusCancelled, config.StatusReject, config.StatusPassed, config.StatusSkipped:
-		return true
-	default:
-		return false
-	}
-}
-
 func isActiveVersionUpdateCleanupStatus(status config.Status) bool {
 	return status == "" || model.IsWorkflowActiveStatus(status)
 }
@@ -722,7 +706,7 @@ func matchingVersionUpdateCleanupJob(
 			strings.ToLower(strings.TrimSpace(job.ServiceName)) != componentKey {
 			continue
 		}
-		var marker versionUpdateCleanupJobMarker
+		var marker model.VersionUpdateCleanupJobMarker
 		if err := json.Unmarshal([]byte(strings.TrimSpace(job.InternalInfo)), &marker); err != nil {
 			continue
 		}
@@ -737,7 +721,7 @@ func matchingVersionUpdateCleanupJob(
 			expectedMarkerVersion = model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion
 		}
 		if marker.Version != expectedMarkerVersion || !marker.RequireStatefulSetDeletion ||
-			!equalVersionUpdatePVCTemplateNames(marker.StatefulSetPVCTemplatesToDelete, expectedTemplates) {
+			!model.EqualVersionUpdateCleanupPVCTemplateNames(marker.StatefulSetPVCTemplatesToDelete, expectedTemplates) {
 			return nil, fmt.Errorf("task %s cleanup job marker does not match component %s PVC cleanup contract", task.TaskID, componentKey)
 		}
 		matched = job
@@ -801,40 +785,4 @@ func pendingStatefulSetCleanupTaskIDs(pending map[string]map[string]*pendingStat
 	}
 	sort.Strings(taskIDs)
 	return taskIDs
-}
-
-func mergeVersionUpdatePVCTemplateNames(groups ...[]string) []string {
-	seen := make(map[string]struct{})
-	for _, group := range groups {
-		for _, rawName := range group {
-			name := strings.TrimSpace(rawName)
-			if name != "" {
-				seen[name] = struct{}{}
-			}
-		}
-	}
-	names := make([]string, 0, len(seen))
-	for name := range seen {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
-}
-
-func normalizeVersionUpdatePVCTemplateNames(names []string) []string {
-	return mergeVersionUpdatePVCTemplateNames(names)
-}
-
-func equalVersionUpdatePVCTemplateNames(left, right []string) bool {
-	left = normalizeVersionUpdatePVCTemplateNames(left)
-	right = normalizeVersionUpdatePVCTemplateNames(right)
-	if len(left) != len(right) {
-		return false
-	}
-	for index := range left {
-		if left[index] != right[index] {
-			return false
-		}
-	}
-	return true
 }

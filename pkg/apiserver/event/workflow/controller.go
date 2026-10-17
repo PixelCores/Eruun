@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -849,13 +850,17 @@ func (w *WorkflowCtl) updateWorkflowStatus(_ context.Context) {
 }
 
 func resolveDefaultJobTimeout(cfg *config.Config) int64 {
+	timeout := config.DefaultJobTaskTimeout
 	if cfg != nil && cfg.Workflow.DefaultJobTimeout > 0 {
-		seconds := int64(cfg.Workflow.DefaultJobTimeout / time.Second)
-		if seconds > 0 {
-			return seconds
-		}
+		timeout = cfg.Workflow.DefaultJobTimeout
 	}
-	return int64(config.DefaultJobTaskTimeout)
+	seconds := int64(timeout / time.Second)
+	// JobTask and Kubernetes deadlines use whole seconds. Round fractional
+	// values up, but keep conversion back to time.Duration within its range.
+	if timeout%time.Second != 0 && seconds < math.MaxInt64/int64(time.Second) {
+		seconds++
+	}
+	return seconds
 }
 
 func (w *WorkflowCtl) mutateTask(mut func(task *model.WorkflowQueue)) {
@@ -1169,7 +1174,6 @@ func (w *WorkflowCtl) triggerApprovalNotification(ctx context.Context, stepExec 
 			Method:         method,
 			Headers:        approval.Headers,
 			TimeoutSeconds: int64(approvalNotifyTimeout / time.Second),
-			TimeoutMaxSec:  workflowconfig.ResolveWorkflowCallbackTimeoutMaxSeconds(approvalNotifyTimeout),
 			TimeoutMaxNS:   int64(approvalNotifyTimeout),
 			Payload:        payload,
 		},
@@ -1421,7 +1425,6 @@ func (w *WorkflowCtl) triggerWorkflowCallback(ctx context.Context, status config
 			Method:         method,
 			Headers:        callback.Headers,
 			TimeoutSeconds: workflowconfig.ClampWorkflowCallbackTimeoutSeconds(callback.TimeoutSeconds, w.callbackTimeoutMax),
-			TimeoutMaxSec:  workflowconfig.ResolveWorkflowCallbackTimeoutMaxSeconds(w.callbackTimeoutMax),
 			TimeoutMaxNS:   int64(w.callbackTimeoutMax),
 			Payload:        payload,
 		},

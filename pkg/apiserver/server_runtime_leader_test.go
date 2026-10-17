@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 )
 
 func TestRuntimeLeaderElectionUsesOneLease(t *testing.T) {
@@ -27,10 +27,10 @@ func TestRuntimeLeaderElectionUsesOneLease(t *testing.T) {
 
 func TestPromotionPreservesRunningExecutionAndDemotionResumesIntake(t *testing.T) {
 	worker := &contextTrackingServerWorker{contexts: make(chan testWorkerContexts, 2), waitForExecution: true}
-	s := &restServer{cfg: *config.NewConfig(), eventWorkers: []event.Worker{worker}}
+	s := &restServer{cfg: *config.NewConfig(), workflow: worker}
 	runtimeCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	s.startWorkers(runtimeCtx, nil)
+	s.startWorkers(runtimeCtx)
 	first := <-worker.contexts
 	require.Eventually(t, func() bool { ready, _ := s.RuntimeReady(); return ready }, time.Second, time.Millisecond)
 	election := s.buildRuntimeLeaderElectionConfig(runtimeCtx, runtimeCtx, &testLeaderElectionLock{identity: s.cfg.LeaderConfig.ID}, nil)

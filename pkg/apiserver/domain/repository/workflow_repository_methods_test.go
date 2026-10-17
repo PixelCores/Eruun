@@ -28,7 +28,6 @@ func TestWorkflowRepositoryMethods(t *testing.T) {
 
 	require.NoError(t, repo.Create(context.Background(), &model.Workflow{ID: "wf-2"}))
 	require.NoError(t, repo.Update(context.Background(), &model.Workflow{ID: "wf-2"}))
-	require.NoError(t, repo.Delete(context.Background(), &model.Workflow{ID: "wf-2"}))
 
 	list, err := repo.FindByAppID(context.Background(), "app-1")
 	require.NoError(t, err)
@@ -65,15 +64,6 @@ func TestComponentRepositoryMethods(t *testing.T) {
 		},
 	}
 	repo := &componentRepository{Store: store}
-
-	require.NoError(t, repo.Create(context.Background(), &model.ApplicationComponent{ID: 2, AppID: "app-1"}))
-	require.NoError(t, repo.Update(context.Background(), &model.ApplicationComponent{ID: 2, AppID: "app-1"}))
-	require.NoError(t, repo.Delete(context.Background(), &model.ApplicationComponent{ID: 2, AppID: "app-1"}))
-
-	require.NoError(t, repo.BatchAdd(context.Background(), []*model.ApplicationComponent{
-		{ID: 3, AppID: "app-1"},
-		{ID: 4, AppID: "app-1"},
-	}))
 
 	list, err := repo.FindByAppID(context.Background(), "app-1")
 	require.NoError(t, err)

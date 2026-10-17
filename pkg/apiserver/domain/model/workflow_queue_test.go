@@ -6,9 +6,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/stretchr/testify/require"
 	gormschema "gorm.io/gorm/schema"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 )
 
 func TestIsWorkflowActiveStatus(t *testing.T) {
@@ -32,6 +33,28 @@ func TestIsWorkflowActiveStatus(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			require.Equal(t, tt.active, IsWorkflowActiveStatus(tt.status))
 		})
+	}
+}
+
+func TestVersionUpdateCleanupTemplateNameIdentity(t *testing.T) {
+	first := []string{" logs ", "data", " ", "logs", "Data"}
+	second := []string{"backup", "data"}
+	require.Equal(t, []string{"Data", "backup", "data", "logs"}, NormalizeVersionUpdateCleanupPVCTemplateNames(first, second))
+	require.Equal(t, []string{" logs ", "data", " ", "logs", "Data"}, first)
+	require.Equal(t, []string{"backup", "data"}, second)
+	require.Equal(t, []string{}, NormalizeVersionUpdateCleanupPVCTemplateNames(nil))
+	require.True(t, EqualVersionUpdateCleanupPVCTemplateNames([]string{"data", " logs ", "data"}, []string{"logs", "data"}))
+	require.True(t, EqualVersionUpdateCleanupPVCTemplateNames(nil, []string{" "}))
+	require.False(t, EqualVersionUpdateCleanupPVCTemplateNames([]string{"Data"}, []string{"data"}), "PVC template identity must remain case sensitive")
+	require.False(t, EqualVersionUpdateCleanupPVCTemplateNames([]string{"logs", "data"}, []string{"data"}))
+}
+
+func TestVersionUpdateCleanupRetryableTaskStatuses(t *testing.T) {
+	for _, status := range []config.Status{config.StatusFailed, config.StatusTimeout, config.StatusCancelled, config.StatusReject, config.StatusPassed, config.StatusSkipped} {
+		require.True(t, IsRetryableVersionUpdateCleanupTaskStatus(status), "status=%s", status)
+	}
+	for _, status := range []config.Status{"", "unknown", config.StatusCompleted, config.StatusRunning, config.StatusWaiting, config.StatusCreated, config.StatusQueued} {
+		require.False(t, IsRetryableVersionUpdateCleanupTaskStatus(status), "status=%s", status)
 	}
 }
 

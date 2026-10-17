@@ -34,8 +34,7 @@ import (
 
 type workflowRuntimeService interface {
 	WaitingTasks(context.Context) ([]*model.WorkflowQueue, error)
-	UpdateTask(context.Context, *model.WorkflowQueue) bool
-	MarkTaskStatus(context.Context, string, config.Status, config.Status) (bool, error)
+	ClaimTaskForDispatch(context.Context, *model.WorkflowQueue, time.Duration) (*model.WorkflowQueue, bool, error)
 	DispatchWorkflowSchedules(context.Context) (int, error)
 }
 
@@ -58,7 +57,6 @@ type Workflow struct {
 	workerLimiterOnce         sync.Once
 	workflowLimiter           *semaphore.Weighted
 	runtimeStats              workflowRuntimeCounters
-	errChan                   chan error
 }
 
 type workflowWorkerRun struct {
@@ -98,7 +96,7 @@ func (w *Workflow) workerConcurrencyLimiter() *semaphore.Weighted {
 
 // StartController runs the controller-owned coordination loops. It intentionally
 // excludes queue admission and worker message consumption.
-func (w *Workflow) StartController(ctx context.Context, errChan chan error) {
+func (w *Workflow) StartController(ctx context.Context) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -117,7 +115,7 @@ func (w *Workflow) StartController(ctx context.Context, errChan chan error) {
 // StartScheduler runs queue admission, schedule dispatch, and database lease recovery.
 // The ready callback is invoked only after synchronous startup recovery succeeds
 // and all scheduler loops have been launched.
-func (w *Workflow) StartScheduler(ctx context.Context, errChan chan error, ready func()) {
+func (w *Workflow) StartScheduler(ctx context.Context, ready func()) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -705,7 +703,6 @@ func (w *Workflow) waitForWorkflowTaskPersistenceRecovery(ctx context.Context, t
 // Note: Workflow task failures are expected business errors (e.g., deployment failures,
 // validation errors) and should NOT cause the server to exit. Only infrastructure errors
 // (e.g., Redis connection failures, database errors) should trigger service termination.
-// Therefore, we only log the error instead of sending it to errChan.
 func (w *Workflow) reportTaskError(err error) {
 	if err == nil {
 		return

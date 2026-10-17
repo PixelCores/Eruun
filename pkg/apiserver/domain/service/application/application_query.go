@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"reflect"
 	"sort"
 	"strings"
@@ -18,6 +17,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	assembler "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/assembler/v1"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
@@ -450,18 +450,6 @@ func (c *applicationsServiceImpl) defaultWorkflowIDsByAppIDs(ctx context.Context
 	return workflowIDs, nil
 }
 
-// GetApplication get application model
-func (c *applicationsServiceImpl) GetApplication(ctx context.Context, appName string) (*model.Applications, error) {
-	app, err := c.AppRepo.FindByName(ctx, appName)
-	if err != nil {
-		if errors.Is(err, datastore.ErrRecordNotExist) {
-			return nil, bcode.ErrApplicationNotExist
-		}
-		return nil, err
-	}
-	return app, nil
-}
-
 func (c *applicationsServiceImpl) GetApplicationSpec(ctx context.Context, appID string) (*apisv1.CreateApplicationsRequest, error) {
 	if scope, ok := access.FromContext(ctx); ok && scope.Role == "viewer" {
 		return nil, bcode.ErrForbidden
@@ -564,18 +552,6 @@ func applicationCallbackIsResubmittable(workflows []*model.Workflow, appCallback
 		}
 	}
 	return true, nil
-}
-
-// DeleteApplication delete application
-func (c *applicationsServiceImpl) DeleteApplication(ctx context.Context, app *model.Applications) error {
-	if err := c.AppRepo.Delete(ctx, app); err != nil {
-		return err
-	}
-	c.invalidateApplicationListCaches(ctx)
-	if app != nil {
-		c.invalidateApplicationComponentsCache(ctx, app.ID)
-	}
-	return nil
 }
 
 func (c *applicationsServiceImpl) ListApplicationComponents(ctx context.Context, appID string) ([]*model.ApplicationComponent, error) {

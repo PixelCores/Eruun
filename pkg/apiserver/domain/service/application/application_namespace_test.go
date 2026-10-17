@@ -40,7 +40,7 @@ func TestCreateApplicationsDoesNotCreateNamespace(t *testing.T) {
 	require.Empty(t, svc.KubeClient.(*fake.Clientset).Actions())
 }
 
-func TestDeleteApplicationPreservesOwnedNamespaceWhenEmpty(t *testing.T) {
+func TestDeleteApplicationCascadePreservesOwnedNamespaceWhenEmpty(t *testing.T) {
 	store := newInMemoryAppStore()
 	app := &model.Applications{
 		ID:        "app-1",
@@ -58,7 +58,8 @@ func TestDeleteApplicationPreservesOwnedNamespaceWhenEmpty(t *testing.T) {
 	svc := newMockServiceWithStore(store)
 	svc.KubeClient = fake.NewSimpleClientset(namespace)
 
-	require.NoError(t, svc.DeleteApplication(context.Background(), app))
+	_, deleteErr := svc.DeleteApplicationCascade(context.Background(), app.ID, apisv1.DeleteApplicationRequest{})
+	require.NoError(t, deleteErr)
 	_, exists := store.apps[app.ID]
 	require.False(t, exists)
 
@@ -66,7 +67,7 @@ func TestDeleteApplicationPreservesOwnedNamespaceWhenEmpty(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestDeleteApplicationKeepsNamespaceWhenAnotherAppUsesIt(t *testing.T) {
+func TestDeleteApplicationCascadeKeepsNamespaceWhenAnotherAppUsesIt(t *testing.T) {
 	store := newInMemoryAppStore()
 	app1 := &model.Applications{
 		ID:        "app-1",
@@ -90,7 +91,8 @@ func TestDeleteApplicationKeepsNamespaceWhenAnotherAppUsesIt(t *testing.T) {
 	svc := newMockServiceWithStore(store)
 	svc.KubeClient = fake.NewSimpleClientset(namespace)
 
-	require.NoError(t, svc.DeleteApplication(context.Background(), app1))
+	_, deleteErr := svc.DeleteApplicationCascade(context.Background(), app1.ID, apisv1.DeleteApplicationRequest{})
+	require.NoError(t, deleteErr)
 	_, exists := store.apps[app1.ID]
 	require.False(t, exists)
 
@@ -98,7 +100,7 @@ func TestDeleteApplicationKeepsNamespaceWhenAnotherAppUsesIt(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestDeleteApplicationKeepsNamespaceWhenUserResourcesRemain(t *testing.T) {
+func TestDeleteApplicationCascadeKeepsNamespaceWhenUserResourcesRemain(t *testing.T) {
 	store := newInMemoryAppStore()
 	app := &model.Applications{
 		ID:        "app-1",
@@ -122,7 +124,8 @@ func TestDeleteApplicationKeepsNamespaceWhenUserResourcesRemain(t *testing.T) {
 	svc := newMockServiceWithStore(store)
 	svc.KubeClient = fake.NewSimpleClientset(namespace, cm)
 
-	require.NoError(t, svc.DeleteApplication(context.Background(), app))
+	_, deleteErr := svc.DeleteApplicationCascade(context.Background(), app.ID, apisv1.DeleteApplicationRequest{})
+	require.NoError(t, deleteErr)
 	_, exists := store.apps[app.ID]
 	require.False(t, exists)
 

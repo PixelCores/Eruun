@@ -3,16 +3,13 @@ package workflow
 import (
 	"context"
 	"encoding/json"
-
 	"net/http"
 	"net/http/httptest"
-
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
-
 	kubefake "k8s.io/client-go/kubernetes/fake"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -107,8 +104,8 @@ func TestCancelledTerminalCallbackOutlivesTaskCancellationWhileRenewingLease(t *
 		Status: config.StatusWaiting,
 		JobInfo: &job.CallbackJobInfo{
 			Event: "cancelled", URL: server.URL, Method: http.MethodPost, TimeoutSeconds: 1,
-			TimeoutMaxSec: 1, TimeoutMaxNS: int64(time.Second),
-			Payload: job.CallbackPayload{Event: "cancelled", Status: string(config.StatusCancelled), TaskID: task.TaskID},
+			TimeoutMaxNS: int64(time.Second),
+			Payload:      job.CallbackPayload{Event: "cancelled", Status: string(config.StatusCancelled), TaskID: task.TaskID},
 		},
 	}
 

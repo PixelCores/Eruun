@@ -342,11 +342,7 @@ func deleteCancelledBatchJob(ctx context.Context, client kubernetes.Interface, n
 }
 
 func deleteCancelledKubernetesJob(ctx context.Context, client kubernetes.Interface, namespace string, live *batchv1.Job) error {
-	uid := live.UID
-	policy := metav1.DeletePropagationForeground
-	if err := client.BatchV1().Jobs(namespace).Delete(ctx, live.Name, metav1.DeleteOptions{
-		Preconditions: &metav1.Preconditions{UID: &uid}, PropagationPolicy: &policy,
-	}); err != nil && !k8serrors.IsNotFound(err) {
+	if err := deleteJobForeground(ctx, client, namespace, live); err != nil && !k8serrors.IsNotFound(err) {
 		return fmt.Errorf("delete cancelled Kubernetes Job: %w", err)
 	}
 	return waitForCancelledKubernetesResourceDeletion(ctx, func(ctx context.Context) (types.UID, error) {
@@ -355,7 +351,7 @@ func deleteCancelledKubernetesJob(ctx context.Context, client kubernetes.Interfa
 			return "", err
 		}
 		return current.UID, nil
-	}, uid, "Job")
+	}, live.UID, "Job")
 }
 
 func deleteCancelledKubernetesCronJob(ctx context.Context, client kubernetes.Interface, namespace string, live *batchv1.CronJob) error {

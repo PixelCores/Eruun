@@ -10,6 +10,9 @@ import (
 	"testing"
 	"time"
 
+	redis "github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/require"
+
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
@@ -17,8 +20,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
-	redis "github.com/redis/go-redis/v9"
-	"github.com/stretchr/testify/require"
 )
 
 func TestCancelDelayedVersionTaskForAppWithReadCacheDisabled(t *testing.T) {
@@ -30,7 +31,7 @@ func TestCancelDelayedVersionTaskForAppWithReadCacheDisabled(t *testing.T) {
 			ExecuteAt: time.Now().Add(10 * time.Minute).Unix(),
 		},
 	}
-	svc := &workflowServiceImpl{Store: store, Cache: cache.NewMemCache(true), RedisClient: newTestWorkflowCancelSignalClient(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
+	svc := &workflowServiceImpl{Store: store, Cache: cache.NewMemCache(), RedisClient: newTestWorkflowCancelSignalClient(t), Cfg: &config.Config{AllowPrivateURLTargets: true}}
 
 	err := svc.CancelDelayedVersionTaskForApp(context.Background(), "app-1", "tester", "task-delay-1", "manual")
 	require.NoError(t, err)

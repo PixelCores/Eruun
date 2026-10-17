@@ -63,7 +63,6 @@ type CallbackJobInfo struct {
 	Method         string            `json:"method"`
 	Headers        map[string]string `json:"headers,omitempty"`
 	TimeoutSeconds int64             `json:"timeoutSeconds,omitempty"`
-	TimeoutMaxSec  int64             `json:"timeoutMaxSec,omitempty"`
 	TimeoutMaxNS   int64             `json:"timeoutMaxNs,omitempty"`
 	Payload        CallbackPayload   `json:"payload"`
 }
@@ -141,7 +140,7 @@ func (c *CallbackJobCtl) Run(ctx context.Context) error {
 		return fmt.Errorf("validate callback url: %w", err)
 	}
 
-	requestCtx, cancel := context.WithTimeout(ctx, callbackTimeout(info.TimeoutSeconds, info.TimeoutMaxSec, info.TimeoutMaxNS))
+	requestCtx, cancel := context.WithTimeout(ctx, callbackTimeout(info.TimeoutSeconds, info.TimeoutMaxNS))
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(requestCtx, method, requestURL, body)
@@ -270,12 +269,10 @@ func newCallbackURLPolicyHTTPClient(base *http.Client, policy *spec.URLSecurityP
 	return clients.NewURLPolicyHTTPClient(callbackBase, policy)
 }
 
-func callbackTimeout(seconds, maxSeconds, maxNS int64) time.Duration {
+func callbackTimeout(seconds, maxNS int64) time.Duration {
 	maxTimeout := workflowconfig.DefaultWorkflowCallbackTimeoutMax
 	if maxNS > 0 {
 		maxTimeout = time.Duration(maxNS)
-	} else if maxSeconds > 0 {
-		maxTimeout = time.Duration(maxSeconds) * time.Second
 	}
 	return workflowconfig.ResolveWorkflowCallbackTimeout(seconds, maxTimeout)
 }

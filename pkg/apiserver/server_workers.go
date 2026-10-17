@@ -13,7 +13,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	importruntime "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/runtime"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
@@ -96,7 +95,7 @@ func (r *workerRun) waitUntil(ctx context.Context) bool {
 	}
 }
 
-func (s *restServer) startWorkers(ctx context.Context, errChan chan error) {
+func (s *restServer) startWorkers(ctx context.Context) {
 	if ctx == nil {
 		panic("start workers: nil context")
 	}
@@ -120,18 +119,9 @@ func (s *restServer) startWorkers(ctx context.Context, errChan chan error) {
 		stopParentCancellation()
 		cancelExecution(cause)
 	}
-	workers := make([]event.Worker, 0, len(s.eventWorkers))
-	for _, worker := range s.eventWorkers {
-		if worker == nil {
-			continue
-		}
-		workers = append(workers, worker)
-	}
 	s.workersReady = false
 	s.workersRun = run
-	readyWorkers := 0
-	for _, worker := range workers {
-		worker := worker
+	if worker := s.workflow; worker != nil {
 		run.start(func(runCtx context.Context) {
 			active := true
 			var readyOnce, stoppedOnce sync.Once
@@ -146,15 +136,11 @@ func (s *restServer) startWorkers(ctx context.Context, errChan chan error) {
 				})
 			}
 			defer markStopped()
-			worker.StartWorker(runCtx, executionCtx, errChan, func() {
+			worker.StartWorker(runCtx, executionCtx, func() {
 				readyOnce.Do(func() {
 					s.workersMu.Lock()
 					defer s.workersMu.Unlock()
-					if !active || s.workersRun != run {
-						return
-					}
-					readyWorkers++
-					if readyWorkers == len(workers) {
+					if active && s.workersRun == run {
 						s.workersReady = true
 					}
 				})
@@ -253,50 +239,32 @@ func (s *restServer) ensureQueueGroup(ctx context.Context) error {
 	return nil
 }
 
-func (s *restServer) startControllerEventWorkers(run *workerRun, errChan chan error) {
+func (s *restServer) startControllerRuntime(run *workerRun) {
 	if run == nil {
 		return
 	}
 	if s.jobs != nil {
 		run.start(s.jobs.Maintain)
 	}
-	for _, worker := range append([]event.Worker(nil), s.eventWorkers...) {
-		controllerWorker, ok := worker.(event.ControllerWorker)
-		if !ok || controllerWorker == nil {
-			continue
-		}
-		run.start(func(runCtx context.Context) {
-			controllerWorker.StartController(runCtx, errChan)
-		})
+	if s.workflow != nil {
+		run.start(s.workflow.StartController)
 	}
 }
 
-func (s *restServer) startSchedulerEventWorkers(run *workerRun, errChan chan error) (int, <-chan bool) {
-	startupResults := make(chan bool, len(s.eventWorkers))
-	if run == nil {
-		return 0, startupResults
+func (s *restServer) startSchedulerRuntime(run *workerRun) <-chan bool {
+	if run == nil || s.workflow == nil {
+		return nil
 	}
-	workerCount := 0
-	for _, worker := range append([]event.Worker(nil), s.eventWorkers...) {
-		schedulerWorker, ok := worker.(event.SchedulerWorker)
-		if !ok || schedulerWorker == nil {
-			continue
+	startupResult := make(chan bool, 1)
+	run.start(func(runCtx context.Context) {
+		var startupOnce sync.Once
+		reportStartup := func(ready bool) {
+			startupOnce.Do(func() { startupResult <- ready })
 		}
-		workerCount++
-		run.start(func(runCtx context.Context) {
-			var startupOnce sync.Once
-			reportStartup := func(ready bool) {
-				startupOnce.Do(func() {
-					startupResults <- ready
-				})
-			}
-			defer reportStartup(false)
-			schedulerWorker.StartScheduler(runCtx, errChan, func() {
-				reportStartup(true)
-			})
-		})
-	}
-	return workerCount, startupResults
+		defer reportStartup(false)
+		s.workflow.StartScheduler(runCtx, func() { reportStartup(true) })
+	})
+	return startupResult
 }
 
 func (s *restServer) beginControllerRun(ctx context.Context) *workerRun {
@@ -370,7 +338,7 @@ func (s *restServer) onStartedControllerLeading(ctx context.Context, errChan cha
 			return false
 		}
 	}
-	s.startControllerEventWorkers(run, errChan)
+	s.startControllerRuntime(run)
 	if s.accounts != nil {
 		run.start(s.accounts.RunSessionCleanup)
 	}
@@ -391,20 +359,18 @@ func (s *restServer) onStartedSchedulerLeading(ctx context.Context, errChan chan
 		run.markStarted()
 		return false
 	}
-	workerCount, startupResults := s.startSchedulerEventWorkers(run, errChan)
+	startupResult := s.startSchedulerRuntime(run)
 	run.start(s.runQueueMetrics)
 	run.markStarted()
-	for range workerCount {
-		select {
-		case ready := <-startupResults:
-			if !ready {
-				return false
-			}
-		case <-run.ctx.Done():
-			return false
-		}
+	if startupResult == nil {
+		return true
 	}
-	return true
+	select {
+	case ready := <-startupResult:
+		return ready
+	case <-run.ctx.Done():
+		return false
+	}
 }
 
 func (s *restServer) runQueueMetrics(ctx context.Context) {

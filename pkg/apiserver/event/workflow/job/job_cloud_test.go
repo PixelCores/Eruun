@@ -13,6 +13,8 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	wfcloudjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob"
+	wfaliyun "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob/aliyun"
 	wfcloudcontract "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob/contracts"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
@@ -60,7 +62,7 @@ func TestCloudJobCtlRunInjectsDataStoreIntoProviderContext(t *testing.T) {
 			},
 		},
 	}
-	RegisterCloudProvider(provider)
+	wfcloudjob.RegisterCloudProvider(provider)
 
 	task := &model.JobTask{
 		Name:    "cloud-store-context",
@@ -86,13 +88,6 @@ func (f *fakeCloudProvider) ResolveAction(action string) (CloudAction, bool) {
 	return f.registry.ResolveAction(action)
 }
 
-func (f *fakeCloudProvider) SupportedActions() []string {
-	if f == nil || f.registry == nil {
-		return nil
-	}
-	return f.registry.SupportedActions()
-}
-
 type fakeCloudActionRegistry struct {
 	actions map[string]CloudAction
 }
@@ -105,24 +100,12 @@ func (r *fakeCloudActionRegistry) ResolveAction(action string) (CloudAction, boo
 	return a, ok
 }
 
-func (r *fakeCloudActionRegistry) SupportedActions() []string {
-	if len(r.actions) == 0 {
-		return nil
-	}
-	out := make([]string, 0, len(r.actions))
-	for action := range r.actions {
-		out = append(out, action)
-	}
-	sort.Strings(out)
-	return out
-}
-
 func TestRegisterBuiltinCloudProvidersPreservesRegisteredReplacement(t *testing.T) {
 	resetCloudProvidersForTest()
 	defer restoreBuiltinCloudProvidersForTest()
 
 	replacement := &fakeCloudProvider{name: "aliyun"}
-	RegisterCloudProvider(replacement)
+	wfcloudjob.RegisterCloudProvider(replacement)
 	registerBuiltinCloudProviders()
 
 	provider, exists := getCloudProvider("aliyun")
@@ -140,7 +123,9 @@ func TestRegisterBuiltinCloudProvidersRegistersAliyunWhenMissing(t *testing.T) {
 	require.True(t, exists)
 	require.NotNil(t, provider)
 	require.Equal(t, "aliyun", provider.Name())
-	require.NotEmpty(t, provider.SupportedActions())
+	action, ok := provider.ResolveAction(wfaliyun.ActionNasEnsureFilesystem)
+	require.True(t, ok)
+	require.NotNil(t, action)
 }
 
 type fakeCloudRuntime struct {
@@ -410,7 +395,7 @@ func TestCloudJobCtlRunWithRegisteredProviderSuccess(t *testing.T) {
 			},
 		},
 	}
-	RegisterCloudProvider(provider)
+	wfcloudjob.RegisterCloudProvider(provider)
 
 	task := &model.JobTask{
 		Name:       "cloud-mock",
@@ -496,7 +481,7 @@ func TestCloudJobCtlRunKeepsRuntimeProviderSnapshotOutOfCheckpoints(t *testing.T
 			},
 		},
 	}
-	RegisterCloudProvider(provider)
+	wfcloudjob.RegisterCloudProvider(provider)
 
 	task := &model.JobTask{
 		Name:      "cloud-public-safe",
@@ -585,7 +570,7 @@ func TestCloudJobCtlRunProviderReturnsError(t *testing.T) {
 			},
 		},
 	}
-	RegisterCloudProvider(provider)
+	wfcloudjob.RegisterCloudProvider(provider)
 
 	task := &model.JobTask{
 		Name:    "cloud-broken",
@@ -624,7 +609,7 @@ func TestCloudJobCtlRunSDKReturnsError(t *testing.T) {
 			},
 		},
 	}
-	RegisterCloudProvider(provider)
+	wfcloudjob.RegisterCloudProvider(provider)
 
 	task := &model.JobTask{
 		Name:    "cloud-runtime-error",
@@ -656,7 +641,7 @@ func TestCloudJobCtlRunActionNotRegistered(t *testing.T) {
 		runtime:  &fakeCloudRuntime{},
 		registry: &fakeCloudActionRegistry{actions: map[string]CloudAction{}},
 	}
-	RegisterCloudProvider(provider)
+	wfcloudjob.RegisterCloudProvider(provider)
 
 	task := &model.JobTask{
 		Name:    "cloud-no-action",
@@ -692,7 +677,7 @@ func TestCloudJobCtlRunActionValidateError(t *testing.T) {
 			},
 		},
 	}
-	RegisterCloudProvider(provider)
+	wfcloudjob.RegisterCloudProvider(provider)
 
 	task := &model.JobTask{
 		Name:    "cloud-invalid",
@@ -769,7 +754,7 @@ func TestCloudJobCtlRunMultiStepAction(t *testing.T) {
 			},
 		},
 	}
-	RegisterCloudProvider(provider)
+	wfcloudjob.RegisterCloudProvider(provider)
 
 	task := &model.JobTask{
 		Name:    "cloud-multi-step",
@@ -849,7 +834,7 @@ func TestCloudJobCtlRunFailsToResumePersistedStateWithoutRuntimeProviderSnapshot
 			},
 		},
 	}
-	RegisterCloudProvider(provider)
+	wfcloudjob.RegisterCloudProvider(provider)
 
 	task := &model.JobTask{
 		Name:       "cloud-restore",
@@ -945,7 +930,7 @@ func TestCloudJobCtlRunDoesNotReuseLegacyCheckpointWithoutExecutionKey(t *testin
 			},
 		},
 	}
-	RegisterCloudProvider(provider)
+	wfcloudjob.RegisterCloudProvider(provider)
 
 	task := &model.JobTask{
 		Name:       "cloud-legacy-restore",
@@ -1079,7 +1064,7 @@ func TestCloudJobCtlRunMatchesCheckpointByExecutionKey(t *testing.T) {
 			},
 		},
 	}
-	RegisterCloudProvider(provider)
+	wfcloudjob.RegisterCloudProvider(provider)
 
 	task := &model.JobTask{
 		Name:          "cloud-repeat",
@@ -1141,7 +1126,7 @@ func TestCloudJobCtlRunInProgressWithoutRequeueDelay(t *testing.T) {
 			},
 		},
 	}
-	RegisterCloudProvider(provider)
+	wfcloudjob.RegisterCloudProvider(provider)
 
 	task := &model.JobTask{
 		Name:    "cloud-missing-requeue",
@@ -1179,7 +1164,7 @@ func TestCloudJobCtlRunReturnsStatusTimeoutWhenActionTimesOut(t *testing.T) {
 			},
 		},
 	}
-	RegisterCloudProvider(provider)
+	wfcloudjob.RegisterCloudProvider(provider)
 
 	task := &model.JobTask{
 		Name:    "cloud-timeout",
@@ -1227,7 +1212,7 @@ func TestCloudJobCtlRunReturnsStatusTimeoutWhenWaitTimesOut(t *testing.T) {
 			},
 		},
 	}
-	RegisterCloudProvider(provider)
+	wfcloudjob.RegisterCloudProvider(provider)
 
 	task := &model.JobTask{
 		Name:    "cloud-wait-timeout",
@@ -1282,7 +1267,7 @@ func TestCloudJobCtlRunAppliesJobTimeoutContextToLoop(t *testing.T) {
 			},
 		},
 	}
-	RegisterCloudProvider(provider)
+	wfcloudjob.RegisterCloudProvider(provider)
 
 	task := &model.JobTask{
 		Name:    "cloud-timeout-context",

@@ -47,10 +47,10 @@ func Logging() gin.HandlerFunc {
 }
 
 func isLowVerbosityRequestLog(method, path string) bool {
-	switch strings.TrimSpace(path) {
-	case "/health", "/healthz", "/ready", "/readyz",
-		"/api/v1/health", "/api/v1/healthz", "/api/v1/ready", "/api/v1/readyz":
+	if IsHealthPath(strings.TrimSpace(path)) {
 		return true
+	}
+	switch strings.TrimSpace(path) {
 	case "/api/v1/applications/components/status":
 		return strings.EqualFold(strings.TrimSpace(method), http.MethodPost)
 	default:

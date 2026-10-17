@@ -3,7 +3,6 @@ package application
 import (
 	"context"
 	"fmt"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"sort"
 	"strings"
 	"time"
@@ -18,6 +17,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
 	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
+	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -62,7 +63,7 @@ func (c *applicationsServiceImpl) withAdoptedLifecycleLock(
 				bcode.ErrApplicationManagementMode,
 			)
 		}
-		if err := EnsureAppWorkflowIdle(lockCtx, c.Store, app.ID); err != nil {
+		if err := workflowservice.EnsureAppWorkflowIdle(lockCtx, c.Store, app.ID); err != nil {
 			return nil, err
 		}
 		components, err := c.ComponentRepo.FindByAppID(lockCtx, app.ID)

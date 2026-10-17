@@ -2,12 +2,9 @@ package workflow
 
 import (
 	"context"
-
 	"errors"
-
 	"net/http"
 	"net/http/httptest"
-
 	"sync/atomic"
 	"testing"
 	"time"
@@ -15,7 +12,6 @@ import (
 	miniredis "github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
-
 	kubefake "k8s.io/client-go/kubernetes/fake"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -312,7 +308,7 @@ func TestWorkflowRunRetriesOriginalStepWhenDistributedCheckpointFails(t *testing
 	t.Cleanup(func() {
 		require.NoError(t, redisClient.Close())
 	})
-	runtimeCache := cache.NewMemCache(false)
+	runtimeCache := cache.NewMemCache()
 
 	newController := func(t *testing.T, workflowTask *model.WorkflowQueue) *WorkflowCtl {
 		t.Helper()

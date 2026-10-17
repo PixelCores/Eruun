@@ -18,8 +18,10 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
+	cache "k8s.io/client-go/tools/cache"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
 func controllerRef(kind, name string, uid types.UID) metav1.OwnerReference {
@@ -60,6 +62,51 @@ func TestPodCoordinatorNoopWithoutAdoptedBindings(t *testing.T) {
 	require.Empty(t, coordinator.bindingsByNS)
 	require.Empty(t, coordinator.namespaceCancels)
 	require.Empty(t, client.Actions())
+}
+
+func TestPodCoordinatorObserveBindingOnlyReservesLabels(t *testing.T) {
+	binding := testBinding("observed", "StatefulSet", "source-uid")
+	binding.ManagementMode = domainspec.ManagementModeObserve
+	client := fake.NewSimpleClientset()
+	c := NewPodCoordinator(client, func(context.Context) ([]SourceBinding, error) {
+		return []SourceBinding{binding}, nil
+	})
+	t.Cleanup(c.shutdown)
+	c.reload(context.Background())
+	require.Empty(t, c.bindingsByNS)
+	require.Empty(t, c.namespaceCancels)
+	require.Contains(t, c.labelClaimsByNS[binding.Namespace], managedLabelClaimKey(expectedLabels(binding)))
+	require.False(t, c.labelsAreDetachedBinding(binding.Namespace, expectedLabels(binding)))
+	require.Empty(t, client.Actions())
+}
+
+func TestPodCoordinatorDeletionPreservesPendingGeneration(t *testing.T) {
+	for _, tombstone := range []bool{false, true} {
+		t.Run(fmt.Sprintf("tombstone=%t", tombstone), func(t *testing.T) {
+			c := newTestCoordinator(fake.NewSimpleClientset(), testBinding("adopted", "StatefulSet", "source-uid"))
+			t.Cleanup(c.shutdown)
+			pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: "adopted", Name: "db-0"}}
+			c.enqueuePod(pod)
+			key, shutdown := c.queue.Get()
+			require.False(t, shutdown)
+			generation := c.pending[key]
+			var event interface{} = pod
+			if tombstone {
+				event = cache.DeletedFinalStateUnknown{Key: key, Obj: pod}
+			}
+			c.handleDeletedPod(event)
+			require.True(t, c.finishPendingAttempt(key, generation))
+			require.Equal(t, generation+1, c.pending[key])
+			c.queue.Done(key)
+			c.queue.Add(key)
+			// The follow-up GET observes NotFound and releases the reservation.
+			require.True(t, c.processNext(context.Background()))
+			require.Empty(t, c.pending)
+			require.Zero(t, c.queue.Len())
+			c.handleDeletedPod(event)
+			require.Empty(t, c.pending, "untracked deletions must not occupy queue capacity")
+		})
+	}
 }
 
 func TestPodCoordinatorLabelsDeploymentPodThroughReplicaSetOwner(t *testing.T) {
@@ -405,8 +452,8 @@ func TestPodCoordinatorRunWaitsForActiveWorkerOnLeaderCancellation(t *testing.T)
 	c := NewPodCoordinator(
 		client,
 		func(context.Context) ([]SourceBinding, error) { return []SourceBinding{binding}, nil },
-		WithBindingReloadInterval(time.Hour),
 	)
+	c.reloadInterval = time.Hour
 	ctx, cancel := context.WithCancel(context.Background())
 	runDone := make(chan struct{})
 	go func() {
@@ -464,7 +511,8 @@ func TestPodCoordinatorRunWaitsForNamespaceWatchOnLeaderCancellation(t *testing.
 	binding := testBinding("adopted", "StatefulSet", types.UID("statefulset-uid"))
 	c := NewPodCoordinator(client, func(context.Context) ([]SourceBinding, error) {
 		return []SourceBinding{binding}, nil
-	}, WithBindingReloadInterval(time.Hour))
+	})
+	c.reloadInterval = time.Hour
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	runDone := make(chan struct{})

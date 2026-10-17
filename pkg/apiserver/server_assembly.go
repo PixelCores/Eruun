@@ -19,7 +19,6 @@ import (
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/validation"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event"
 	workflowevent "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
@@ -51,9 +50,6 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 		return fmt.Errorf("build model set: %w", err)
 	}
 	// infrastructure
-	if err := s.beanContainer.ProvideWithName("RestServer", s); err != nil {
-		return fmt.Errorf("fail to provides the RestServer bean to the container: %w", err)
-	}
 	if err := s.beanContainer.ProvideWithName("runtimeReadiness", api.RuntimeReadiness(s)); err != nil {
 		return fmt.Errorf("fail to provide runtime readiness bean: %w", err)
 	}
@@ -76,19 +72,16 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 		return err
 	}
 
-	var ds datastore.DataStore
-	switch s.cfg.Datastore.Type {
-	case "mysql":
-		schemaMode := mysql.SchemaModeMigrate
-		if s.cfg.NormalizedDatastoreSchemaMode() == config.DatastoreSchemaModeValidate {
-			schemaMode = mysql.SchemaModeValidate
-		}
-		ds, err = mysql.NewWithSchemaMode(ctx, s.cfg.Datastore, builtinModels, schemaMode)
-		if err != nil {
-			return fmt.Errorf("create mysql datastore instance failure %w", err)
-		}
-	default:
-		return fmt.Errorf("not support datastore type %s", s.cfg.Datastore.Type)
+	schemaMode := mysql.SchemaModeMigrate
+	if s.cfg.NormalizedDatastoreSchemaMode() == config.DatastoreSchemaModeValidate {
+		schemaMode = mysql.SchemaModeValidate
+	}
+	ds, err := mysql.NewWithSchemaMode(ctx, s.cfg.Datastore, builtinModels, schemaMode)
+	if err != nil {
+		return fmt.Errorf("create mysql datastore: %w", err)
+	}
+	if _, err := datastore.RequireRuntimeStore(ds); err != nil {
+		return fmt.Errorf("validate runtime datastore: %w", err)
 	}
 	s.dataStore = account.NewStore(ds)
 	if err := s.runBootstrapStep(ctx, s.ensureDefaultURLSecurityPolicySetting); err != nil {
@@ -121,7 +114,7 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 		return err
 	}
 
-	iCache, err := cache.NewRedisICache(redisClient, false, s.cfg.Cache.CacheTTL, s.cfg.Cache.KeyPrefix)
+	iCache, err := cache.NewRedisICache(redisClient, s.cfg.Cache.CacheTTL, s.cfg.Cache.KeyPrefix)
 	if err != nil {
 		return fmt.Errorf("initialize redis cache: %w", err)
 	}
@@ -159,7 +152,6 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	s.runtimeQueues = runtimeQueues
 	s.Queue = runtimeQueues.Dispatch
 	if err := s.beanContainer.Provides(runtimeQueues); err != nil {
 		return fmt.Errorf("fail to provide runtime queues bean to the container: %w", err)
@@ -231,15 +223,12 @@ func (s *restServer) provideDomainAndEventBeans(runtimeQueues *msg.RuntimeQueues
 		return err
 	}
 
-	// event
-	eventWorkers := event.InitEvent()
-	configureWorkflowEventWorkers(eventWorkers, runtimeQueues, s.resourceObserver)
-	s.eventWorkers = append([]event.Worker(nil), eventWorkers...)
-	eventBeans := make([]interface{}, 0, len(eventWorkers))
-	for _, worker := range eventWorkers {
-		eventBeans = append(eventBeans, worker)
+	workflowWorker := &workflowevent.Workflow{
+		Queue: runtimeQueues.Dispatch, DelayQueue: runtimeQueues.Delay,
+		ResultQueue: runtimeQueues.Result, ResourceWaiter: s.resourceObserver,
 	}
-	if err := s.beanContainer.Provides(eventBeans...); err != nil {
+	s.workflow = workflowWorker
+	if err := s.beanContainer.Provides(workflowWorker); err != nil {
 		return fmt.Errorf("fail to provides the event bean to the container: %w", err)
 	}
 
@@ -342,22 +331,6 @@ func (s *restServer) initSandboxObserver(kubeClient kubernetes.Interface, platfo
 	s.jobs.SandboxClient = sandboxClient
 	s.jobs.SandboxObserver = observer
 	return nil
-}
-
-func configureWorkflowEventWorkers(workers []event.Worker, queues *msg.RuntimeQueues, observer informer.ComponentReadyObserver) {
-	if queues == nil {
-		queues = &msg.RuntimeQueues{}
-	}
-	for _, worker := range workers {
-		workflowWorker, ok := worker.(*workflowevent.Workflow)
-		if !ok {
-			continue
-		}
-		workflowWorker.Queue = queues.Dispatch
-		workflowWorker.DelayQueue = queues.Delay
-		workflowWorker.ResultQueue = queues.Result
-		workflowWorker.ResourceWaiter = observer
-	}
 }
 
 func (s *restServer) initRedisClientForConfiguredBackends() (*redis.Client, error) {

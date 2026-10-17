@@ -7,12 +7,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+	batchv1 "k8s.io/api/batch/v1"
+
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
-	"github.com/stretchr/testify/require"
-	batchv1 "k8s.io/api/batch/v1"
 )
 
 // Keep the authoritative clock attached to transaction handles as in SQL.
@@ -28,6 +29,20 @@ func (s recoveryClockStore) CurrentDatabaseTime(context.Context) (time.Time, err
 
 func (s recoveryClockStore) WithTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
 	return s.Backend.WithTransaction(ctx, func(tx datastore.DataStore) error {
+		backend, err := artifacts.RequireBackend(tx)
+		if err != nil {
+			return err
+		}
+		return fn(recoveryClockStore{Backend: backend, now: s.now, err: s.err})
+	})
+}
+
+func (s recoveryClockStore) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	transactional, ok := s.Backend.(datastore.ReadCommittedTransactional)
+	if !ok {
+		return errors.New("recovery fixture requires read-committed transactions")
+	}
+	return transactional.WithReadCommittedTransaction(ctx, func(tx datastore.DataStore) error {
 		backend, err := artifacts.RequireBackend(tx)
 		if err != nil {
 			return err

@@ -383,17 +383,17 @@ func TestCallbackURLsShareOriginCanonicalizesIDNAHosts(t *testing.T) {
 }
 
 func TestCallbackTimeoutUsesDefaultWhenZero(t *testing.T) {
-	timeout := callbackTimeout(0, 0, 0)
+	timeout := callbackTimeout(0, 0)
 	require.Equal(t, workflowconfig.DefaultWorkflowCallbackTimeout, timeout)
 }
 
 func TestCallbackTimeoutCapsToMax(t *testing.T) {
-	timeout := callbackTimeout(int64((96*time.Hour)/time.Second), int64((72*time.Hour)/time.Second), 0)
+	timeout := callbackTimeout(int64((96*time.Hour)/time.Second), int64(72*time.Hour))
 	require.Equal(t, 72*time.Hour, timeout)
 }
 
 func TestCallbackTimeoutCapsToSubSecondMax(t *testing.T) {
-	timeout := callbackTimeout(3600, 1, int64(500*time.Millisecond))
+	timeout := callbackTimeout(3600, int64(500*time.Millisecond))
 	require.Equal(t, 500*time.Millisecond, timeout)
 }
 

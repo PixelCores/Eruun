@@ -5,9 +5,10 @@ import (
 	"encoding/json"
 	"strings"
 
+	"k8s.io/klog/v2"
+
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
-	"k8s.io/klog/v2"
 )
 
 const (
@@ -25,7 +26,7 @@ func applicationComponentsCacheKey(appID string) string {
 }
 
 func (c *applicationsServiceImpl) cacheEnabled() bool {
-	return c.Cache != nil && !c.Cache.IsCacheDisabled()
+	return c.Cache != nil
 }
 
 func (c *applicationsServiceImpl) loadJSONCache(ctx context.Context, key string, out interface{}) bool {

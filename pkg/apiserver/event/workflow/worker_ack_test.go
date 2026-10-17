@@ -191,26 +191,14 @@ func (s *workflowAckTestStore) compareAndSwapCallsCount() int {
 }
 
 type stubWorkflowService struct {
-	updateOK     bool
-	updateCalled bool
-	store        *workflowAckTestStore
+	store *workflowAckTestStore
 }
 
 func (s *stubWorkflowService) WaitingTasks(context.Context) ([]*model.WorkflowQueue, error) {
 	return nil, nil
 }
-func (s *stubWorkflowService) UpdateTask(context.Context, *model.WorkflowQueue) bool {
-	s.updateCalled = true
-	return s.updateOK
-}
-func (s *stubWorkflowService) TaskRunning(context.Context) ([]*model.WorkflowQueue, error) {
-	return nil, nil
-}
-func (s *stubWorkflowService) MarkTaskStatus(ctx context.Context, taskID string, from, to config.Status) (bool, error) {
-	if s.store == nil {
-		return true, nil
-	}
-	return s.store.CompareAndSwap(ctx, &model.WorkflowQueue{TaskID: taskID}, "status", from, map[string]interface{}{"status": to})
+func (s *stubWorkflowService) ClaimTaskForDispatch(ctx context.Context, task *model.WorkflowQueue, lease time.Duration) (*model.WorkflowQueue, bool, error) {
+	return repository.ClaimWorkflowTaskForDispatch(ctx, s.store, task, lease)
 }
 func (s *stubWorkflowService) DispatchWorkflowSchedules(context.Context) (int, error) {
 	return 0, nil
@@ -218,7 +206,7 @@ func (s *stubWorkflowService) DispatchWorkflowSchedules(context.Context) (int, e
 
 var _ workflowRuntimeService = (*stubWorkflowService)(nil)
 
-func newWorkflowForAckTests(t testing.TB, updateOK bool) *Workflow {
+func newWorkflowForAckTests(t testing.TB) *Workflow {
 	t.Helper()
 	steps, _ := model.NewJSONStructByStruct(&model.WorkflowSteps{})
 	store := &workflowAckTestStore{
@@ -246,7 +234,7 @@ func newWorkflowForAckTests(t testing.TB, updateOK bool) *Workflow {
 	return &Workflow{
 		KubeClient:                fake.NewSimpleClientset(),
 		Store:                     store,
-		WorkflowService:           &stubWorkflowService{updateOK: updateOK, store: store},
+		WorkflowService:           &stubWorkflowService{store: store},
 		Queue:                     nil,
 		Cfg:                       &config.Config{},
 		URLSecurityPolicyProvider: newTestURLSecurityPolicyProvider(t, spec.URLSecurityPolicySpec{AllowPrivateByDefault: true}),
@@ -282,7 +270,7 @@ func configureWorkflowAckTestCancelClient(t *testing.T, w *Workflow) {
 
 func TestWorkflowTaskPersistenceDistinguishesInfrastructureStopFromUserCancel(t *testing.T) {
 	t.Run("infrastructure stop leaves task recoverable", func(t *testing.T) {
-		w := newWorkflowForAckTests(t, true)
+		w := newWorkflowForAckTests(t)
 		store := w.Store.(*workflowAckTestStore)
 		store.mutateTask(func(task *model.WorkflowQueue) {
 			task.Status = config.StatusRunning
@@ -304,7 +292,7 @@ func TestWorkflowTaskPersistenceDistinguishesInfrastructureStopFromUserCancel(t 
 	})
 
 	t.Run("user cancel persists terminal status", func(t *testing.T) {
-		w := newWorkflowForAckTests(t, true)
+		w := newWorkflowForAckTests(t)
 		store := w.Store.(*workflowAckTestStore)
 		store.mutateTask(func(task *model.WorkflowQueue) {
 			task.Status = config.StatusRunning
@@ -332,7 +320,7 @@ func TestWorkflowRunSuppressesCallbackAfterOwnershipChanges(t *testing.T) {
 	callback, err := model.NewJSONStructByStruct(&model.WorkflowCallback{Success: callbackServer.URL})
 	require.NoError(t, err)
 
-	w := newWorkflowForAckTests(t, true)
+	w := newWorkflowForAckTests(t)
 	configureWorkflowAckTestCancelClient(t, w)
 	store := w.Store.(*workflowAckTestStore)
 	store.mutateTask(func(task *model.WorkflowQueue) {
@@ -411,9 +399,7 @@ func TestStopTaskPersistencePropagatesInfrastructureCause(t *testing.T) {
 func TestRunWorkflowControllerRecoversTransientPersistenceFailure(t *testing.T) {
 	for _, status := range []config.Status{config.StatusQueued, config.StatusRunning} {
 		t.Run(string(status), func(t *testing.T) {
-			w := newWorkflowForAckTests(t, true)
-			w.Cfg.Workflow.WorkerBackoffMin = time.Millisecond
-			w.Cfg.Workflow.WorkerBackoffMax = 5 * time.Millisecond
+			w := newWorkflowForAckTests(t)
 			store := w.Store.(*workflowAckTestStore)
 			store.mutateTask(func(task *model.WorkflowQueue) {
 				task.Status = status
@@ -434,7 +420,7 @@ func TestRunWorkflowControllerRecoversTransientPersistenceFailure(t *testing.T) 
 }
 
 func TestRunWorkflowControllerStopsRecoveryWhenOwnershipChanges(t *testing.T) {
-	w := newWorkflowForAckTests(t, true)
+	w := newWorkflowForAckTests(t)
 	store := w.Store.(*workflowAckTestStore)
 	store.mutateTask(func(task *model.WorkflowQueue) {
 		task.Status = config.StatusRunning
@@ -465,7 +451,7 @@ func TestRunWorkflowControllerStopsRecoveryWhenOwnershipChanges(t *testing.T) {
 }
 
 func TestWorkflowRunSkipsDeferredExitAckAfterCompletedPersistence(t *testing.T) {
-	w := newWorkflowForAckTests(t, true)
+	w := newWorkflowForAckTests(t)
 	store := w.Store.(*workflowAckTestStore)
 	store.failCompareAndSwapAt = 3
 	store.failCompareAndSwapError = errors.New("unexpected redundant exit ack")
@@ -494,7 +480,7 @@ func TestWorkflowRunSendsCompletedCallbackWithoutWorkflowAck(t *testing.T) {
 	callback, err := model.NewJSONStructByStruct(&model.WorkflowCallback{Success: callbackServer.URL})
 	require.NoError(t, err)
 
-	w := newWorkflowForAckTests(t, true)
+	w := newWorkflowForAckTests(t)
 	configureWorkflowAckTestCancelClient(t, w)
 	store := w.Store.(*workflowAckTestStore)
 	store.failCompareAndSwapAt = 3
@@ -520,10 +506,8 @@ func TestWorkflowRunSendsCompletedCallbackWithoutWorkflowAck(t *testing.T) {
 }
 
 func TestRunWorkflowControllerRecoversDeferredExitAckPersistenceFailure(t *testing.T) {
-	w := newWorkflowForAckTests(t, true)
+	w := newWorkflowForAckTests(t)
 	configureWorkflowAckTestCancelClient(t, w)
-	w.Cfg.Workflow.WorkerBackoffMin = time.Millisecond
-	w.Cfg.Workflow.WorkerBackoffMax = 5 * time.Millisecond
 	store := w.Store.(*workflowAckTestStore)
 	steps, err := model.NewJSONStructByStruct(&model.WorkflowSteps{
 		Steps: []*model.WorkflowStep{{
@@ -551,7 +535,7 @@ func TestRunWorkflowControllerRecoversDeferredExitAckPersistenceFailure(t *testi
 }
 
 func TestRunWorkflowControllerAcceptsAuthoritativeCancellationFromDeferredExitAck(t *testing.T) {
-	w := newWorkflowForAckTests(t, true)
+	w := newWorkflowForAckTests(t)
 	configureWorkflowAckTestCancelClient(t, w)
 	store := w.Store.(*workflowAckTestStore)
 	steps, err := model.NewJSONStructByStruct(&model.WorkflowSteps{
@@ -605,7 +589,7 @@ func TestRunWorkflowControllerStopsRecoveryAtNonRunnableState(t *testing.T) {
 			callback, err := model.NewJSONStructByStruct(&model.WorkflowCallback{Success: callbackServer.URL})
 			require.NoError(t, err)
 
-			w := newWorkflowForAckTests(t, true)
+			w := newWorkflowForAckTests(t)
 			store := w.Store.(*workflowAckTestStore)
 			store.mutateTask(func(task *model.WorkflowQueue) {
 				task.Callback = callback
@@ -630,7 +614,7 @@ func TestRunWorkflowControllerStopsRecoveryAtNonRunnableState(t *testing.T) {
 }
 
 func TestRunWorkflowControllerReportsMissingTaskDuringPersistenceRecovery(t *testing.T) {
-	w := newWorkflowForAckTests(t, true)
+	w := newWorkflowForAckTests(t)
 	store := w.Store.(*workflowAckTestStore)
 	store.failCompareAndSwapAt = 1
 	store.failCompareAndSwapError = errors.New("temporary database failure")
@@ -646,7 +630,7 @@ func TestRunWorkflowControllerReportsMissingTaskDuringPersistenceRecovery(t *tes
 }
 
 func TestProcessDispatchMessageAckOnSuccess(t *testing.T) {
-	w := newWorkflowForAckTests(t, true)
+	w := newWorkflowForAckTests(t)
 	payload := mustTestTaskDispatch(t)
 
 	ack, taskID := w.processDispatchMessage(context.Background(), nil, msg.Message{ID: "1-0", Payload: payload})
@@ -657,7 +641,7 @@ func TestProcessDispatchMessageAckOnSuccess(t *testing.T) {
 func TestProcessDispatchMessageAckOnFailure(t *testing.T) {
 	// In pass/fail system, we always ack messages even on execution failure
 	// Task state is tracked in database, not message queue
-	w := newWorkflowForAckTests(t, false)
+	w := newWorkflowForAckTests(t)
 	payload := mustTestTaskDispatch(t)
 
 	ack, taskID := w.processDispatchMessage(context.Background(), nil, msg.Message{ID: "1-0", Payload: payload})
@@ -666,7 +650,7 @@ func TestProcessDispatchMessageAckOnFailure(t *testing.T) {
 }
 
 func TestProcessDispatchMessageMarksTaskFailedWhenURLPolicyUnavailable(t *testing.T) {
-	w := newWorkflowForAckTests(t, true)
+	w := newWorkflowForAckTests(t)
 	w.URLSecurityPolicyProvider = nil
 	store := w.Store.(*workflowAckTestStore)
 	payload := mustTestTaskDispatch(t)
@@ -681,7 +665,7 @@ func TestProcessDispatchMessageMarksTaskFailedWhenURLPolicyUnavailable(t *testin
 }
 
 func TestProcessDispatchMessageKeepsPendingWhenURLPolicyLoadCanceled(t *testing.T) {
-	w := newWorkflowForAckTests(t, true)
+	w := newWorkflowForAckTests(t)
 	w.URLSecurityPolicyProvider = newFailingURLSecurityPolicyProvider(context.Canceled)
 	store := w.Store.(*workflowAckTestStore)
 	payload := mustTestTaskDispatch(t)
@@ -696,14 +680,14 @@ func TestProcessDispatchMessageKeepsPendingWhenURLPolicyLoadCanceled(t *testing.
 }
 
 func TestProcessDispatchMessageAckOnDecodeError(t *testing.T) {
-	w := newWorkflowForAckTests(t, true)
+	w := newWorkflowForAckTests(t)
 	ack, taskID := w.processDispatchMessage(context.Background(), nil, msg.Message{ID: "1-0", Payload: []byte("oops")})
 	require.True(t, ack)
 	require.Equal(t, "", taskID)
 }
 
 func TestProcessDispatchMessageKeepsPendingOnDatastoreFailure(t *testing.T) {
-	w := newWorkflowForAckTests(t, true)
+	w := newWorkflowForAckTests(t)
 	store := w.Store.(*workflowAckTestStore)
 	store.taskGetErr = errors.New("datastore temporarily unavailable")
 	payload := mustTestTaskDispatch(t)
@@ -714,7 +698,7 @@ func TestProcessDispatchMessageKeepsPendingOnDatastoreFailure(t *testing.T) {
 }
 
 func TestProcessDispatchMessageAckOnMissingTask(t *testing.T) {
-	w := newWorkflowForAckTests(t, true)
+	w := newWorkflowForAckTests(t)
 	store := w.Store.(*workflowAckTestStore)
 	store.taskGetErr = datastore.ErrRecordNotExist
 	payload := mustTestTaskDispatch(t)
@@ -737,7 +721,7 @@ func TestProcessDispatchMessageSkipsUserCancelledTask(t *testing.T) {
 	store := &workflowAckTestStore{
 		task: task,
 	}
-	svc := &stubWorkflowService{updateOK: true}
+	svc := &stubWorkflowService{}
 	w := &Workflow{
 		KubeClient:      fake.NewSimpleClientset(),
 		Store:           store,
@@ -750,11 +734,11 @@ func TestProcessDispatchMessageSkipsUserCancelledTask(t *testing.T) {
 	ack, taskID := w.processDispatchMessage(context.Background(), nil, msg.Message{ID: "1-0", Payload: payload})
 	require.True(t, ack)
 	require.Equal(t, "task-1", taskID)
-	require.False(t, svc.updateCalled)
+	require.Zero(t, store.compareAndSwapCallsCount())
 }
 
 func TestProcessDispatchMessageAcknowledgesDuplicateAfterDatabaseClaimRejected(t *testing.T) {
-	w := newWorkflowForAckTests(t, true)
+	w := newWorkflowForAckTests(t)
 	store := w.Store.(*workflowAckTestStore)
 	store.mutateTask(func(task *model.WorkflowQueue) {
 		task.Status = config.StatusRunning

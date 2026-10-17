@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"sort"
 	"strings"
 	"time"
@@ -23,6 +22,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
 	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
+	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/importsecret"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
@@ -107,7 +108,7 @@ func (c *applicationsServiceImpl) ApplyApplicationResourceCleanup(
 		if current.EffectiveManagementMode() != domainspec.ManagementModeAdopted {
 			return fmt.Errorf("%w: application is no longer adopted", bcode.ErrApplicationManagementMode)
 		}
-		if err := EnsureAppWorkflowIdle(lockCtx, c.Store, current.ID); err != nil {
+		if err := workflowservice.EnsureAppWorkflowIdle(lockCtx, c.Store, current.ID); err != nil {
 			return fmt.Errorf("cleanup adopted application: %w", err)
 		}
 		keyring, err := c.importSecretKeyring()

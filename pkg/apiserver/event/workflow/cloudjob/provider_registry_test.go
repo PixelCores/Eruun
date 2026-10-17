@@ -40,10 +40,6 @@ func (p *registryTestProvider) ResolveAction(string) (contracts.CloudAction, boo
 	return nil, false
 }
 
-func (p *registryTestProvider) SupportedActions() []string {
-	return nil
-}
-
 type registryTestProviderWithSettingSupport struct {
 	registryTestProvider
 	settingType string

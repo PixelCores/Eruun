@@ -470,11 +470,11 @@ func versionUpdateCleanupJobInfoMarker(requireStatefulSetDeletion bool, stateful
 	if len(statefulSetPVCTemplatesToDelete) > 0 {
 		markerVersion = model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion
 	}
-	payload, err := json.Marshal(versionUpdateCleanupJobMarker{
+	payload, err := json.Marshal(model.VersionUpdateCleanupJobMarker{
 		Source:                          config.JobInfoSourceVersionUpdateRemove,
 		Version:                         markerVersion,
 		RequireStatefulSetDeletion:      requireStatefulSetDeletion,
-		StatefulSetPVCTemplatesToDelete: normalizeVersionUpdatePVCTemplateNames(statefulSetPVCTemplatesToDelete),
+		StatefulSetPVCTemplatesToDelete: model.NormalizeVersionUpdateCleanupPVCTemplateNames(statefulSetPVCTemplatesToDelete),
 	})
 	if err != nil {
 		return "", fmt.Errorf("marshal cleanup job info marker: %w", err)

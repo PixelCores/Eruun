@@ -7,10 +7,11 @@ import (
 	"testing"
 	"time"
 
-	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	mysqldsn "github.com/go-sql-driver/mysql"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/require"
+
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 func TestNewConfigHasSequentialConcurrencyDefault(t *testing.T) {
@@ -145,8 +146,6 @@ func TestWorkflowConfigFlagAndEnvironmentOverrides(t *testing.T) {
 	require.Equal(t, 20*time.Second, cfg.Workflow.LeaseDuration)
 	require.Equal(t, 2000, cfg.Workflow.LeaseReaperBatchSize)
 	require.Equal(t, time.Minute, cfg.Workflow.DefaultJobTimeout)
-	require.Zero(t, cfg.Workflow.WorkerMaxReadFailures)
-	require.Zero(t, cfg.Workflow.WorkerMaxClaimFailures)
 	require.Empty(t, cfg.Workflow.Validate())
 }
 
@@ -171,7 +170,7 @@ func TestMigrateOnlyValidatesOnlyDatastoreInputs(t *testing.T) {
 	cfg.DatastoreSchemaMode = DatastoreSchemaModeMigrateOnly
 	cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
 	cfg.BindAddr = ""
-	cfg.Cache.CacheType = "memory"
+	cfg.Cache.CacheHost = ""
 	cfg.Messaging.Type = "invalid"
 	cfg.Workflow = workflowconfig.RuntimeConfig{}
 
@@ -251,7 +250,6 @@ func TestValidateWorkflowLeaseWindow(t *testing.T) {
 
 func TestNewConfigHasMySQLAndKafkaDefaults(t *testing.T) {
 	cfg := NewConfig()
-	require.Equal(t, MYSQL, cfg.Datastore.Type)
 	require.Equal(t, "eruun:__REPLACE_WITH_MYSQL_PASSWORD__@tcp(127.0.0.1:3306)/eruun?charset=utf8mb4&parseTime=true", cfg.Datastore.URL)
 	require.Equal(t, REDIS, cfg.Messaging.Type)
 	require.Equal(t, []string{"localhost:9092"}, cfg.Messaging.KafkaBrokers)
@@ -359,21 +357,16 @@ func TestValidateDatastoreInputsInEverySchemaMode(t *testing.T) {
 	for _, mode := range []string{DatastoreSchemaModeMigrate, DatastoreSchemaModeValidate, DatastoreSchemaModeMigrateOnly} {
 		for _, tc := range []struct {
 			name string
-			kind string
 			dsn  string
 			want string
 		}{
-			{name: "mysql", kind: MYSQL, dsn: "eruun:test-only@tcp(localhost:3306)/custom-db"},
-			{name: "unsupported tidb", kind: "tidb", dsn: "eruun:test-only@tcp(localhost:3306)/custom-db", want: "unsupported datastore type: tidb; only mysql is supported"},
-			{name: "unknown type", kind: "other", dsn: "eruun:test-only@tcp(localhost:3306)/custom-db", want: "unsupported datastore type: other; only mysql is supported"},
-			{name: "empty type", want: "unsupported datastore type:"},
-			{name: "empty DSN", kind: MYSQL, want: "mysql url cannot be empty"},
-			{name: "placeholder DSN", kind: MYSQL, dsn: NewConfig().Datastore.URL, want: "mysql url contains placeholder value"},
+			{name: "mysql", dsn: "eruun:test-only@tcp(localhost:3306)/custom-db"},
+			{name: "empty DSN", want: "mysql url cannot be empty"},
+			{name: "placeholder DSN", dsn: NewConfig().Datastore.URL, want: "mysql url contains placeholder value"},
 		} {
 			t.Run(mode+"/"+tc.name, func(t *testing.T) {
 				cfg := NewConfig()
 				cfg.DatastoreSchemaMode = mode
-				cfg.Datastore.Type = tc.kind
 				cfg.Datastore.URL = tc.dsn
 				errs := errorsJoin(cfg.Validate())
 				if tc.want == "" {
@@ -473,41 +466,6 @@ func TestValidateDatastoreURLForMySQL(t *testing.T) {
 		errs := cfg.Validate()
 		require.Empty(t, errs)
 	})
-}
-
-func TestValidateApplicationMutationLockRequiresRedisCacheType(t *testing.T) {
-	cfg := NewConfig()
-	cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
-	cfg.Cache.CacheType = "memory"
-
-	errs := cfg.Validate()
-
-	require.Contains(t, errorsJoin(errs), "distributed application mutation locking requires cache-type=redis")
-}
-
-func TestCacheTypeFlagRejectsUnsupportedEnvironmentValue(t *testing.T) {
-	cfg := NewConfig()
-	cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
-	flags := pflag.NewFlagSet("cache-config", pflag.ContinueOnError)
-	cfg.AddFlags(flags, cfg)
-	cacheTypeFlag := flags.Lookup("cache-type")
-	require.NotNil(t, cacheTypeFlag)
-	require.Contains(t, cacheTypeFlag.Usage, "redis")
-	require.NotContains(t, cacheTypeFlag.Usage, "memory")
-	t.Setenv("ERUUN_CACHE_TYPE", "memory")
-	require.NoError(t, flags.Parse(nil))
-	require.NoError(t, ApplyEnvOverrides(flags, EnvPrefix))
-	require.Contains(t, errorsJoin(cfg.Validate()), "requires cache-type=redis")
-}
-
-func TestValidateApplicationMutationLockTrimsRedisCacheType(t *testing.T) {
-	cfg := NewConfig()
-	cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
-	cfg.Cache.CacheType = " redis "
-
-	errs := cfg.Validate()
-
-	require.Empty(t, errs)
 }
 
 func TestValidateAPIRateLimit(t *testing.T) {
@@ -632,4 +590,19 @@ func errorsJoin(errs []error) string {
 		b.WriteString(err.Error())
 	}
 	return b.String()
+}
+
+func TestRemovedBackendSelectorsRejected(t *testing.T) {
+	for _, selector := range []string{"datastore-type", "cache-type"} {
+		t.Run(selector, func(t *testing.T) {
+			cfg := NewConfig()
+			flags := pflag.NewFlagSet("removed-backends", pflag.ContinueOnError)
+			cfg.AddFlags(flags, cfg)
+			require.ErrorContains(t, flags.Parse([]string{"--" + selector + "=value"}), "unknown flag")
+			for _, value := range []string{"", "mysql", "redis"} {
+				t.Setenv(buildEnvKey(EnvPrefix, selector), value)
+				require.ErrorContains(t, ApplyEnvOverrides(flags, EnvPrefix), "is no longer supported")
+			}
+		})
+	}
 }

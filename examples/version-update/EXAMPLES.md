@@ -9,7 +9,7 @@
 | `03-add-component.json` | 新增组件 |
 | `04-remove-component.json` | 删除组件 |
 | `05-mixed-operations.json` | 混合操作 |
-| `06-canary-release.json` | 金丝雀发布 |
+| `06-single-replica-trial.json` | 单副本试运行新版本（不是金丝雀发布；顶层 `strategy` 只接受省略或 `rolling`） |
 | `07-update-env.json` | 更新环境变量 |
 | `08-version-bump-only.json` | 仅更新版本号 |
 | `09-update-with-workflow.json` | 指定自动执行工作流（含 `executeAt` 延迟执行示例） |

@@ -2,21 +2,17 @@ package job
 
 import (
 	"context"
-
 	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
-
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 )
 
@@ -147,7 +143,7 @@ func TestRunJobCleanupResourcesInvalidatesComponentsCache(t *testing.T) {
 		ComponentType: config.ConfJob,
 	}
 	store := &cleanupComponentStore{component: component}
-	cacheStore := cacheutil.NewMemCache(false)
+	cacheStore := cacheutil.NewMemCache()
 	cacheKey := cacheutil.ApplicationComponentsKey(component.AppID)
 	require.NoError(t, cacheStore.Store(context.Background(), cacheKey, "stale"))
 	require.NotEmpty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))

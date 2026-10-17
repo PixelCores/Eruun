@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
@@ -54,14 +55,6 @@ type fakeWorkflowService struct {
 	taskStagesResp         *apis.TaskStagesResponse
 }
 
-func (f *fakeWorkflowService) CreateWorkflowTask(context.Context, apis.CreateWorkflowRequest) (*apis.CreateWorkflowResponse, error) {
-	return nil, nil
-}
-
-func (f *fakeWorkflowService) ExecWorkflowTask(context.Context, string, int64) (*apis.ExecWorkflowResponse, error) {
-	return nil, nil
-}
-
 func (f *fakeWorkflowService) ExecWorkflowTaskForApp(_ context.Context, appID, workflowID string, executeAt int64, idempotencyKey string) (*apis.ExecWorkflowResponse, error) {
 	f.execForAppCalled = true
 	f.lastExecAppID = appID
@@ -81,10 +74,8 @@ func (f *fakeWorkflowService) WaitingTasks(context.Context) ([]*model.WorkflowQu
 	return nil, nil
 }
 
-func (f *fakeWorkflowService) UpdateTask(context.Context, *model.WorkflowQueue) bool { return true }
-
-func (f *fakeWorkflowService) TaskRunning(context.Context) ([]*model.WorkflowQueue, error) {
-	return nil, nil
+func (f *fakeWorkflowService) ClaimTaskForDispatch(context.Context, *model.WorkflowQueue, time.Duration) (*model.WorkflowQueue, bool, error) {
+	return nil, false, nil
 }
 
 func (f *fakeWorkflowService) CancelWorkflowTask(ctx context.Context, userName, taskID, reason string) error {
@@ -144,10 +135,6 @@ func (f *fakeWorkflowService) ApproveWorkflowTask(_ context.Context, taskID, act
 		Action: action,
 		Status: string(config.StatusWaiting),
 	}, nil
-}
-
-func (f *fakeWorkflowService) MarkTaskStatus(context.Context, string, config.Status, config.Status) (bool, error) {
-	return false, nil
 }
 
 func (f *fakeWorkflowService) GetTaskStatus(context.Context, string) (*apis.TaskStatusResponse, error) {
@@ -362,6 +349,10 @@ func (s *componentCacheSyncStore) Get(_ context.Context, entity datastore.Entity
 
 func (s *componentCacheSyncStore) WithTransaction(_ context.Context, fn func(datastore.DataStore) error) error {
 	return fn(s)
+}
+
+func (s *componentCacheSyncStore) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	return s.WithTransaction(ctx, fn)
 }
 
 func (s *componentCacheSyncStore) List(_ context.Context, query datastore.Entity, _ *datastore.ListOptions) ([]datastore.Entity, error) {

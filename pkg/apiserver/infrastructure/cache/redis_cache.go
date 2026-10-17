@@ -11,7 +11,6 @@ import (
 // RedisICache implements ICache using Redis as backend with a default TTL.
 type RedisICache struct {
 	cli       *redis.Client
-	noCache   bool
 	ttl       time.Duration
 	keyPrefix string
 }
@@ -20,7 +19,7 @@ const defaultTTL = 24 * time.Hour
 const defaultKeyPrefix = "eruun:cache:"
 
 // NewRedisICache creates a Redis-backed cache with custom TTL and prefix.
-func NewRedisICache(cli *redis.Client, noCache bool, ttl time.Duration, prefix string) (*RedisICache, error) {
+func NewRedisICache(cli *redis.Client, ttl time.Duration, prefix string) (*RedisICache, error) {
 	if cli == nil {
 		return nil, errors.New("redis cache client is not initialized")
 	}
@@ -30,7 +29,7 @@ func NewRedisICache(cli *redis.Client, noCache bool, ttl time.Duration, prefix s
 	if prefix == "" {
 		prefix = defaultKeyPrefix
 	}
-	return &RedisICache{cli: cli, noCache: noCache, ttl: ttl, keyPrefix: prefix}, nil
+	return &RedisICache{cli: cli, ttl: ttl, keyPrefix: prefix}, nil
 }
 
 func (c *RedisICache) key(k string) string { return c.keyPrefix + k }
@@ -56,8 +55,6 @@ func (c *RedisICache) Delete(ctx context.Context, key string) error {
 	defer cancel()
 	return cacheOperationError(ctx, c.cli.Del(ctx, c.key(key)).Err())
 }
-
-func (c *RedisICache) IsCacheDisabled() bool { return c.noCache }
 
 // go-redis may return a socket timeout when the context deadline expires.
 // Preserve the caller's cancellation error for errors.Is without masking a

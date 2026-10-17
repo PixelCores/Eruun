@@ -21,8 +21,6 @@ type WorkflowRepository interface {
 	FindByID(ctx context.Context, workflowID string) (*model.Workflow, error)
 	Create(ctx context.Context, workflow *model.Workflow) error
 	Update(ctx context.Context, workflow *model.Workflow) error
-	Delete(ctx context.Context, workflow *model.Workflow) error
-	DeleteByAppID(ctx context.Context, appID string) error
 	FindByAppID(ctx context.Context, appID string) ([]*model.Workflow, error)
 }
 
@@ -48,27 +46,14 @@ func (r *workflowRepository) Update(ctx context.Context, workflow *model.Workflo
 	return r.Store.Put(ctx, workflow)
 }
 
-func (r *workflowRepository) Delete(ctx context.Context, workflow *model.Workflow) error {
-	return DelWorkflow(ctx, r.Store, workflow)
-}
-
-func (r *workflowRepository) DeleteByAppID(ctx context.Context, appID string) error {
-	return DelWorkflowsByAppID(ctx, r.Store, appID)
-}
-
 func (r *workflowRepository) FindByAppID(ctx context.Context, appID string) ([]*model.Workflow, error) {
 	return FindWorkflowsByAppID(ctx, r.Store, appID)
 }
 
 // ---- Component Repository Interface ----
 
-// ComponentRepository defines the interface for component data operations.
+// ComponentRepository provides component queries; writes use the transaction-bound store.
 type ComponentRepository interface {
-	Create(ctx context.Context, component *model.ApplicationComponent) error
-	Update(ctx context.Context, component *model.ApplicationComponent) error
-	Delete(ctx context.Context, component *model.ApplicationComponent) error
-	BatchAdd(ctx context.Context, components []*model.ApplicationComponent) error
-	DeleteByAppID(ctx context.Context, appID string) error
 	FindByAppID(ctx context.Context, appID string) ([]*model.ApplicationComponent, error)
 	FindByName(ctx context.Context, appID, name string) (*model.ApplicationComponent, error)
 }
@@ -80,30 +65,6 @@ type componentRepository struct {
 // NewComponentRepository creates a new ComponentRepository.
 func NewComponentRepository(store datastore.DataStore) ComponentRepository {
 	return &componentRepository{Store: store}
-}
-
-func (r *componentRepository) Create(ctx context.Context, component *model.ApplicationComponent) error {
-	return CreateComponents(ctx, r.Store, component)
-}
-
-func (r *componentRepository) Update(ctx context.Context, component *model.ApplicationComponent) error {
-	return r.Store.Put(ctx, component)
-}
-
-func (r *componentRepository) Delete(ctx context.Context, component *model.ApplicationComponent) error {
-	return r.Store.Delete(ctx, component)
-}
-
-func (r *componentRepository) BatchAdd(ctx context.Context, components []*model.ApplicationComponent) error {
-	entities := make([]datastore.Entity, len(components))
-	for i, comp := range components {
-		entities[i] = comp
-	}
-	return r.Store.BatchAdd(ctx, entities)
-}
-
-func (r *componentRepository) DeleteByAppID(ctx context.Context, appID string) error {
-	return DelComponentsByAppID(ctx, r.Store, appID)
 }
 
 func (r *componentRepository) FindByAppID(ctx context.Context, appID string) ([]*model.ApplicationComponent, error) {
@@ -276,11 +237,6 @@ func WaitingTasks(ctx context.Context, store datastore.DataStore) (list []*model
 	return
 }
 
-func UpdateTask(ctx context.Context, store datastore.DataStore, task *model.WorkflowQueue) error {
-	err := store.Put(ctx, task)
-	return err
-}
-
 func UpdateTaskFields(ctx context.Context, store datastore.DataStore, taskID string, fields map[string]interface{}) error {
 	if taskID == "" {
 		return datastore.ErrPrimaryEmpty
@@ -305,38 +261,6 @@ func UpdateTaskFieldsIfStatus(ctx context.Context, store datastore.DataStore, ta
 	}
 	task := &model.WorkflowQueue{TaskID: taskID}
 	return store.CompareAndSwap(ctx, task, "status", status, fields)
-}
-
-func TaskRunning(ctx context.Context, store datastore.DataStore) (list []*model.WorkflowQueue, err error) {
-	tasks, err := store.List(ctx, &model.WorkflowQueue{}, &datastore.ListOptions{FilterOptions: datastore.FilterOptions{In: []datastore.InQueryOption{
-		{
-			Key: "status",
-			Values: []string{
-				string(config.StatusCreated),
-				string(config.StatusRunning),
-				string(config.StatusWaiting),
-				string(config.StatusQueued),
-				string(config.StatusBlocked),
-				string(config.QueueItemPending),
-				string(config.StatusPrepare),
-				string(config.StatusWaitingApprove),
-				"",
-			},
-		},
-	}}})
-
-	if err != nil {
-		return nil, err
-	}
-	for _, entity := range tasks {
-		task, ok := entity.(*model.WorkflowQueue)
-		if !ok {
-			klog.Warningf("unexpected workflow queue entity type: %T", entity)
-			continue
-		}
-		list = append(list, task)
-	}
-	return
 }
 
 func FindWorkflowTasksByAppID(ctx context.Context, store datastore.DataStore, appID string) (list []*model.WorkflowQueue, err error) {

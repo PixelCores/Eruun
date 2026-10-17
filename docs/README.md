@@ -67,7 +67,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `pkg/apiserver/interfaces/api/assembler/v1` | Domain 对象到 DTO 的组装 | 响应字段推导、脱敏、兼容字段 | 不放持久化或 K8s 调用逻辑 |
 | `pkg/apiserver/domain/model` | GORM 模型和领域实体 | 新表字段、状态字段、业务实体 | 字段语义必须同步跨层契约文档 |
 | `pkg/apiserver/domain/repository` | 仓储接口和数据访问契约（含按 ID 排序的类型化账号查询） | 查询/写入方法、事务边界 | 接口表达业务意图，不暴露上层 DTO |
-| `pkg/apiserver/domain/service` | 应用生命周期、转换、查询、工作流创建；`account` 统一管理员用户查询、授权和分页规则 | 创建/更新/删除应用、组件查询、K8s YAML 转换 | 工作流名称/项目校验在 `workflow/workflow_validation.go`；保持核心领域规则集中；存量资源导入由子模块 `resourceimport` 负责 |
+| `pkg/apiserver/domain/service` | 应用生命周期、转换、查询、工作流创建；`account` 统一管理员用户查询、授权和分页规则 | 创建/更新/删除应用、组件查询、K8s YAML 转换 | 工作流步骤校验在 `application/application_workflow_steps.go`；保持核心领域规则集中；存量资源导入由子模块 `resourceimport` 负责 |
 | `pkg/apiserver/domain/service/application` | 应用生命周期与组件业务规则 | 应用变更、组件查询、Informer 运行态回写 | `SyncComponentStatus` 负责状态保护、条件写入和缓存失效；server 只装配有界回调 |
 | `pkg/apiserver/domain/service/resourceimport` | 存量 Kubernetes 资源的一次性导入模块 | 用户规则扫描、候选快照、用户选择、异步纳管任务、资源 identity/digest 与运行期协调 | 扫描与纳管是两个独立持久化 Job，不做持续监听；共享契约在 `contract`，Kubernetes 侧协调在 `runtime` |
 | `pkg/apiserver/domain/spec` | 共享规格、资源契约、策略和校验（含 Aliyun 设置脱敏） | Auth、OAuth、URL 安全、云资源配置、资源类型、Service 暴露类型与共享策略 | 业务取值及归一化与对应规格集中定义；Storage/Volume 类型与映射集中在 `storage.go`；应用管理模式、更新策略、执行范围与组件动作集中在 `application_policy.go` |
@@ -174,6 +174,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
+| [`overdesign-audit-2026-10-08.md`](overdesign-audit-2026-10-08.md) | Historical / Audit | 基于 `fc37007` 的 O29–O47 复核与 2026-10-09 修复记录：行为修复、最小简化、原结论更正及兼容/恢复协议保留边界 |
 | [`leader-worker-complexity-audit-2026-10-07.md`](leader-worker-complexity-audit-2026-10-07.md) | Historical / Audit | 基于 `2a99ad3` 的统一节点复杂度审核与 A1–A4 精简处置；2 项架构建议仍待评估，保留恢复正确性契约 |
 | [`distributed-design-audit-2026-10-06.md`](distributed-design-audit-2026-10-06.md) | Historical / Audit | 基于 `63d4a4c` 的分布式设计审核：四角色与权威状态、设计取舍、D1–D5 修复处置和验证边界、容量建议与验收矩阵 |
 | [`overdesign-audit-2026-10-02.md`](overdesign-audit-2026-10-02.md) | Historical / Audit | 基于 `0984611` 的 6 项审计发现及 PR #123 分支整改：统一 Service 表示、保留导入来源、复用清理规则、显式查询、tracing 配置迁移和移除旧 HTTP helper |

@@ -405,7 +405,7 @@ func requiredStatefulSetPVCTargetFromCheckpoint(
 ) (*requiredStatefulSetPVCDeletionTarget, error) {
 	checkpoint.Namespace = namespaceOrDefault(checkpoint.Namespace)
 	checkpoint.StatefulSetName = strings.TrimSpace(checkpoint.StatefulSetName)
-	checkpoint.Templates = normalizedVersionUpdateCleanupPVCTemplates(checkpoint.Templates)
+	checkpoint.Templates = model.NormalizeVersionUpdateCleanupPVCTemplateNames(checkpoint.Templates)
 	if checkpoint.Namespace != ref.namespace || checkpoint.StatefulSetName != ref.name || !equalStringSlices(checkpoint.Templates, templates) {
 		return nil, requiredStatefulSetPVCConflict(ref, ref.name, fmt.Sprintf("PVC identity checkpoint targets %s/%s templates %v instead of %s templates %v", checkpoint.Namespace, checkpoint.StatefulSetName, checkpoint.Templates, cleanupResourceDisplayName(ref), templates))
 	}
@@ -472,8 +472,8 @@ func requiredStatefulSetPVCCheckpointsEqual(a, b requiredStatefulSetPVCDeletionC
 	b.Namespace = namespaceOrDefault(b.Namespace)
 	a.StatefulSetName = strings.TrimSpace(a.StatefulSetName)
 	b.StatefulSetName = strings.TrimSpace(b.StatefulSetName)
-	a.Templates = normalizedVersionUpdateCleanupPVCTemplates(a.Templates)
-	b.Templates = normalizedVersionUpdateCleanupPVCTemplates(b.Templates)
+	a.Templates = model.NormalizeVersionUpdateCleanupPVCTemplateNames(a.Templates)
+	b.Templates = model.NormalizeVersionUpdateCleanupPVCTemplateNames(b.Templates)
 	if a.Namespace != b.Namespace || a.StatefulSetName != b.StatefulSetName || !equalStringSlices(a.Templates, b.Templates) || len(a.PVCs) != len(b.PVCs) {
 		return false
 	}

@@ -8,13 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
-	eruunv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1"
-	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/ratelimit"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/go-playground/validator/v10"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
@@ -22,6 +15,14 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
+	eruunv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1"
+	"github.com/PixelCores/Eruun/pkg/apiserver/interfaces/ratelimit"
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
 const maxUnaryMessageBytes = 24 << 20
@@ -322,12 +323,8 @@ func expensiveRPC(method string) bool {
 		if rpc != method {
 			continue
 		}
-		if !strings.HasPrefix(route, "GET ") {
-			return true
-		}
-		path := strings.ToLower(route)
-		return strings.Contains(path, "/exec") || strings.Contains(path, "/logs") ||
-			strings.Contains(path, "/shell/stream") || strings.Contains(path, "/files/export")
+		verb, path, _ := strings.Cut(route, " ")
+		return ratelimit.IsExpensiveRequest(verb, path)
 	}
 	return true
 }

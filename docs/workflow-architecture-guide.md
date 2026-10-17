@@ -1739,6 +1739,8 @@ Workflow steps JSON 支持 workflow 级 `failurePolicy` 字段。旧数组写法
 
 执行 `cleanup_all` 时，Controller 会保持串行顺序尝试全部 cleanup jobs；单个 cleanup job 失败不会阻止后续组件清理，多个 cleanup 失败会聚合到 workflow 终态原因中。
 
+Instant Job 和一次性 Scheduled Job 的失败清理显式使用 Foreground 级联删除，并等待目标 Job UID 消失；`runPolicy: Recreate` 也在此等待完成后才允许创建新 Job，避免上一轮 Pod 与新执行重叠。删除绑定读取到的 UID 和 resourceVersion，冲突或删除等待失败时保留错误，不继续创建替代执行。已完成 Job 仍先收集日志，再按原有 Background 策略清理及回收残留 Pod；StatefulSet 清理流程中保留的 Orphan 特例不受影响。
+
 `cleanup_all` 不删除 App、Workflow、Component DB 实体，也不扩展人工取消、审批拒绝、callback 失败或 `cleanup_resources` 自身失败的语义。普通共享资源保护仍由现有 `cleanup_resources` 规则负责；ServiceAccount、Role、RoleBinding、ClusterRole、ClusterRoleBinding 不依赖 share 标签，任何 cleanup 路径都不会删除。
 
 需要为整条 workflow 保留旧的只清失败 job 行为时，在 workflow 上显式设置 `failurePolicy: cleanup_failed`。只需要让单个 `type=job` 的主 Instant Job 退出 workflow 默认 `cleanup_all` 时，可在该组件的 `properties` 中设置 `failurePolicy: cleanup_failed`；该 Job override 优先于 workflow 策略，附属 PVC、RBAC 等任务仍继承 workflow 策略，但其永久保留边界不受策略影响。并行失败中只要任一任务的有效策略仍为 `cleanup_all`，Controller 就执行全量清理，并在实际触发任务不同于首个失败任务时把触发任务追加到终态原因和 callback `reason`。
@@ -2009,22 +2011,12 @@ type WorkflowRuntimeConfig struct {
 
     // Worker 优雅排空上限（默认 60s）
     WorkerDrainTimeout time.Duration
-    
-    // Worker 最大连续读取失败次数（0=无限重试）
-    WorkerMaxReadFailures int
-    
-    // Worker 最大连续认领失败次数（0=无限重试）
-    WorkerMaxClaimFailures int
-    
-    // 退避最小时间（默认 200ms）
-    WorkerBackoffMin time.Duration
-    
-    // 退避最大时间（默认 5min）
-    WorkerBackoffMax time.Duration
 }
 ```
 
-说明：`WorkerMaxReadFailures`、`WorkerMaxClaimFailures`、`WorkerBackoffMin` 与 `WorkerBackoffMax` 是当前运行时内部配置字段，`Config.NewConfig()` 会设置默认值；当前服务端命令行未暴露对应 `--workflow-worker-*failure/backoff*` 参数。
+Worker 的读取和认领错误不会因为累计次数而退出；取消运行 context 才结束消费循环。读取重试保留 200ms 至 5min 的有界退避，这两个边界是代码常量，没有 flag/env 配置入口。
+
+`--workflow-default-job-timeout` 接受正的 Duration。转换为 JobTask 和 Kubernetes 使用的整数秒时，小数部分向上取整（例如 `500ms` 为 1 秒、`1500ms` 为 2 秒）；接近 Go Duration 极限时使用不溢出的最大整秒值。未提供运行配置的内部构造使用 20 分钟默认值。回调的内部超时上限仅保存纳秒表示，仍按实际 Duration 截断，`500ms` 的回调上限不会扩大为 1 秒。
 
 ### 11.2 MessagingConfig
 
@@ -2147,10 +2139,6 @@ workflow:
   workerReadBlock: 1s
   defaultJobTimeout: 30s
   maxConcurrentWorkflows: 5
-  workerMaxReadFailures: 0
-  workerMaxClaimFailures: 0
-  workerBackoffMin: 100ms
-  workerBackoffMax: 1m
 
 messaging:
   type: redis
@@ -2171,10 +2159,6 @@ workflow:
   workerReadBlock: 2s
   defaultJobTimeout: 60s
   maxConcurrentWorkflows: 20     # 根据 K8s API 承载能力调整
-  workerMaxReadFailures: 0       # 无限重试，增强弹性
-  workerMaxClaimFailures: 0
-  workerBackoffMin: 200ms
-  workerBackoffMax: 5m
 
 messaging:
   type: redis
@@ -2185,7 +2169,6 @@ messaging:
 cache:
   cacheHost: redis.prod.svc.cluster.local
   cacheProt: 6379
-  cacheType: redis
   cacheDB: 0
   cacheTTL: 24h
   keyPrefix: "eruun:cache:"
@@ -2205,10 +2188,6 @@ workflow:
   workerReadBlock: 3s
   defaultJobTimeout: 120s
   maxConcurrentWorkflows: 50     # 大规模部署
-  workerMaxReadFailures: 0
-  workerMaxClaimFailures: 0
-  workerBackoffMin: 200ms
-  workerBackoffMax: 5m
 
 messaging:
   type: kafka

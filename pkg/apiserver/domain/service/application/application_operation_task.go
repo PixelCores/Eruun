@@ -8,6 +8,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
@@ -36,7 +37,7 @@ func (c *applicationsServiceImpl) triggerOperationTaskCallback(ctx context.Conte
 	if callback == nil || task == nil {
 		return
 	}
-	triggerWorkflowTerminalCallbackAsync(ctx, c.Store, c.Cfg, c.URLSecurityPolicyProvider, task, operationTaskTerminalStatus(failedResources), "")
+	workflowservice.TriggerWorkflowTerminalCallbackAsync(ctx, c.Store, c.Cfg, c.URLSecurityPolicyProvider, task, operationTaskTerminalStatus(failedResources), "")
 }
 
 func operationTaskTerminalStatus(failedResources []operationJobRecord) config.Status {

@@ -56,7 +56,7 @@ func TestGenerateJobTasksCloudJob(t *testing.T) {
 		TaskID:       "task-cloud",
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
 	require.Len(t, executions, 1)
 	exec := executions[0]
 	require.Equal(t, "infra-cloud", exec.Name)
@@ -107,7 +107,7 @@ func TestGenerateJobTasksCloudJobWithoutCloudPropertiesStillEnqueuesJob(t *testi
 		TaskID:       "task-cloud",
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
 	require.Len(t, executions, 1)
 	exec := executions[0]
 	require.Equal(t, "infra-cloud-invalid", exec.Name)
@@ -213,7 +213,7 @@ func TestGenerateJobTasksCloudJobAssignsDistinctExecutionKeysAcrossRepeatedCompo
 		TaskID:     "task-cloud-repeat",
 	}
 
-	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout))
+	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
 	require.Len(t, executions, 2)
 
 	firstInfo, ok := executions[0].Jobs[config.JobPriorityNormal][0].JobInfo.(*workflowjob.CloudJobInfo)

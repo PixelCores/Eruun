@@ -10,7 +10,7 @@ type UpdateVersionRequest struct {
 	// Version 新版本号（必填）
 	Version string `json:"version" validate:"required"`
 
-	// Strategy 更新策略：rolling（默认）、recreate、canary、blue-green
+	// Strategy 历史占位字段，仅接受空值或 rolling；实际更新策略由组件 traits.rollout 控制
 	Strategy string `json:"strategy,omitempty"`
 
 	// ExecutionScope workflow 执行范围：full_workflow（默认）或 changed_components
@@ -53,7 +53,7 @@ type UpdateVersionResponse struct {
 	// PreviousVersion 更新前版本号
 	PreviousVersion string `json:"previousVersion"`
 
-	// Strategy 使用的更新策略
+	// Strategy 历史字段固定回显 rolling，不表示执行了特定发布策略
 	Strategy string `json:"strategy"`
 
 	// ExecutionScope 使用的 workflow 执行范围
@@ -100,7 +100,7 @@ type DiffUpdateVersionRequest struct {
 	// preserve (default), remove, or block.
 	TargetOnlyStrategy string `json:"targetOnlyStrategy,omitempty"`
 
-	// Strategy 更新策略：rolling（默认）、recreate、canary、blue-green
+	// Strategy 历史占位字段，仅接受空值或 rolling；实际更新策略由组件 traits.rollout 控制
 	Strategy string `json:"strategy,omitempty"`
 
 	// ExecutionScope workflow 执行范围：full_workflow（默认）或 changed_components

@@ -980,7 +980,7 @@ func syncComponentStatusOnJobStart(ctx context.Context, job *model.JobTask, stor
 }
 
 func invalidateComponentsCache(ctx context.Context, runtime *Runtime, appID string, reason string) {
-	if runtime == nil || runtime.Cache == nil || runtime.Cache.IsCacheDisabled() {
+	if runtime == nil || runtime.Cache == nil {
 		return
 	}
 	appID = strings.TrimSpace(appID)

@@ -2,29 +2,16 @@ package workflow
 
 import (
 	"context"
-	"errors"
-
 	"testing"
 	"time"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
-	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
-
-func TestCreateWorkflowTaskPropagatesStoreError(t *testing.T) {
-	storeErr := errors.New("datastore unavailable")
-	svc := &workflowServiceImpl{Store: &failingDataStore{err: storeErr}}
-	req := apis.CreateWorkflowRequest{Name: "demo-workflow", Project: "proj"}
-
-	_, err := svc.CreateWorkflowTask(context.Background(), req)
-	require.Error(t, err)
-	require.ErrorIs(t, err, storeErr)
-}
 
 func TestGenericWorkflowReadsHideResourceImportTasks(t *testing.T) {
 	for _, taskType := range []config.WorkflowTaskType{

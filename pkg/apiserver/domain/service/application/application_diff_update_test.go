@@ -16,6 +16,32 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
+func TestDiffUpdateVersionRejectsUnsupportedStrategyIncludingDryRunAndNoOp(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		dryRun        bool
+		sourceVersion string
+	}{
+		{name: "dry run", dryRun: true, sourceVersion: "2.0.0"},
+		{name: "no changes", sourceVersion: "1.0.0"},
+		{name: "apply", sourceVersion: "2.0.0"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newInMemoryAppStore()
+			store.apps["source"] = &model.Applications{ID: "source", Name: "source", Version: tc.sourceVersion}
+			store.apps["target"] = &model.Applications{ID: "target", Name: "target", Version: "1.0.0"}
+			svc := newMockServiceWithStore(store)
+			response, err := svc.DiffUpdateVersion(context.Background(), "target", apisv1.DiffUpdateVersionRequest{
+				SourceAppID: "source", Strategy: "canary", DryRun: tc.dryRun, AutoExec: boolPtr(false),
+			})
+			require.ErrorIs(t, err, bcode.ErrInvalidUpdateStrategy)
+			require.Nil(t, response)
+			require.Equal(t, "1.0.0", store.apps["target"].Version)
+			require.Empty(t, store.tasks)
+		})
+	}
+}
+
 func TestDiffUpdateVersionDryRunReportsUpdatedAddedAndExtra(t *testing.T) {
 	store := newInMemoryAppStore()
 	store.apps["source-app"] = &model.Applications{

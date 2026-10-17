@@ -19,24 +19,18 @@ package api
 import (
 	"errors"
 	"fmt"
-	"regexp"
 	"sync"
-	"unicode"
+
+	"github.com/go-playground/validator/v10"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-
-	"github.com/go-playground/validator/v10"
 )
 
 var validate = validator.New()
 var (
 	validateInitOnce sync.Once
 	validateInitErr  error
-)
-
-var (
-	emailRegexp = regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,63}$`)
 )
 
 func init() {
@@ -57,67 +51,10 @@ func registerValidators() {
 			}
 		}
 		register("checkname", ValidateName)
-		register("checkalias", ValidateAlias)
-		register("checkemail", ValidateEmail)
-		register("checkpassword", ValidatePassword)
-		register("checkMode", ValidateWorkflowMode)
 	})
 }
 
 // ValidateName custom check name field
 func ValidateName(fl validator.FieldLevel) bool {
 	return spec.ValidAPIName(fl.Field().String(), datastore.PrimaryKeyMaxLength)
-}
-
-// ValidateAlias custom check alias field
-func ValidateAlias(fl validator.FieldLevel) bool {
-	value := fl.Field().String()
-	if value != "" && (len(value) > 64 || len(value) < 2) {
-		return false
-	}
-	return true
-}
-
-// ValidateEmail custom check email field
-func ValidateEmail(fl validator.FieldLevel) bool {
-	value := fl.Field().String()
-	if value == "" {
-		return true
-	}
-	return emailRegexp.MatchString(value)
-}
-
-// ValidatePassword custom check password field
-func ValidatePassword(fl validator.FieldLevel) bool {
-	value := fl.Field().String()
-	if value == "" {
-		return true
-	}
-	if len(value) < 8 || len(value) > 16 {
-		return false
-	}
-	// go's regex doesn't support backtracking so check the password with a loop
-	letter := false
-	num := false
-	for _, c := range value {
-		switch {
-		case unicode.IsNumber(c):
-			num = true
-		case unicode.IsLetter(c):
-			letter = true
-		}
-	}
-	return letter && num
-}
-
-// ValidateWorkflowMode the sub step mode can be empty.
-func ValidateWorkflowMode(fl validator.FieldLevel) bool {
-	value := fl.Field().String()
-	if value == "" {
-		return true
-	}
-	if value == "DAG" || value == "StepByStep" {
-		return true
-	}
-	return false
 }

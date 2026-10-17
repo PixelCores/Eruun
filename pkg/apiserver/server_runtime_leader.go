@@ -42,7 +42,7 @@ func (s *restServer) buildRuntimeLeaderElectionConfig(ctx, runtimeCtx context.Co
 				s.stopLeader()
 				releaseLeaderLock(lock, leaderElectionReleaseTimeout)
 				if ctx.Err() == nil {
-					s.startWorkers(runtimeCtx, errChan)
+					s.startWorkers(runtimeCtx)
 				}
 			},
 			OnNewLeader: func(identity string) { klog.InfoS("runtime leader observed", "identity", identity) },

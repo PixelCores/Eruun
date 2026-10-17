@@ -30,16 +30,6 @@ type RuntimeConfig struct {
 	CallbackTimeoutMax time.Duration
 	// MaxConcurrentWorkflows limits how many workflow controllers each worker process runs in parallel.
 	MaxConcurrentWorkflows int
-	// WorkerMaxReadFailures is the max consecutive read failures before worker exits.
-	// Set to 0 for infinite retries (recommended for resilience).
-	WorkerMaxReadFailures int
-	// WorkerMaxClaimFailures is the max consecutive claim failures before worker exits.
-	// Set to 0 for infinite retries (recommended for resilience).
-	WorkerMaxClaimFailures int
-	// WorkerBackoffMin is the minimum backoff duration for worker retries.
-	WorkerBackoffMin time.Duration
-	// WorkerBackoffMax is the maximum backoff duration for worker retries.
-	WorkerBackoffMax time.Duration
 	// HeartbeatInterval controls how frequently a running worker renews its database lease.
 	HeartbeatInterval time.Duration
 	// LeaseDuration is the database ownership lease for queued and running tasks.
@@ -68,8 +58,6 @@ const (
 	DefaultWorkerDrainTimeout           = 60 * time.Second
 	DefaultWorkerBackoffMin             = 200 * time.Millisecond // 最小退避时间
 	DefaultWorkerBackoffMax             = 5 * time.Minute        // 最大退避时间
-	DefaultWorkerMaxReadFailures        = 10                     // 连续 10 次失败后退出
-	DefaultWorkerMaxClaimFailures       = 10                     // 连续 10 次失败后退出
 )
 
 // DefaultRuntimeConfig returns the server defaults for workflow execution.
@@ -85,10 +73,6 @@ func DefaultRuntimeConfig() RuntimeConfig {
 		DefaultJobTimeout:        60 * time.Second,
 		CallbackTimeoutMax:       DefaultWorkflowCallbackTimeoutMax,
 		MaxConcurrentWorkflows:   DefaultMaxConcurrentWorkflows,
-		WorkerMaxReadFailures:    0, // 0 = infinite retries (resilient)
-		WorkerMaxClaimFailures:   0, // 0 = infinite retries (resilient)
-		WorkerBackoffMin:         DefaultWorkerBackoffMin,
-		WorkerBackoffMax:         DefaultWorkerBackoffMax,
 		HeartbeatInterval:        DefaultWorkflowHeartbeatInterval,
 		LeaseDuration:            DefaultWorkflowLeaseDuration,
 		LeaseReaperInterval:      DefaultWorkflowLeaseReaperInterval,

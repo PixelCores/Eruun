@@ -46,9 +46,7 @@ func NewScheduledJobCtl(job *model.JobTask, runtime *Runtime) *ScheduledJobCtl {
 }
 
 func (c *ScheduledJobCtl) Clean(ctx context.Context) {
-	c.cleanCreated(ctx, domainspec.ResourceJob, "job", func(ctx context.Context, namespace, name string) error {
-		return c.client.BatchV1().Jobs(namespace).Delete(ctx, name, metav1.DeleteOptions{})
-	}, k8serrors.IsNotFound, "")
+	c.cleanCreatedBatchJobs(ctx, "")
 	c.cleanCreated(ctx, domainspec.ResourceCronJob, "cronjob", func(ctx context.Context, namespace, name string) error {
 		return c.client.BatchV1().CronJobs(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	}, k8serrors.IsNotFound, "")

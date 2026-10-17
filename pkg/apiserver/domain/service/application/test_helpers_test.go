@@ -55,18 +55,6 @@ func (m *mockAppRepo) FindByName(ctx context.Context, name string) (*model.Appli
 	return apps[0], nil
 }
 
-func (m *mockAppRepo) Create(ctx context.Context, app *model.Applications) error {
-	return m.store.Add(ctx, app)
-}
-
-func (m *mockAppRepo) Update(ctx context.Context, app *model.Applications) error {
-	return m.store.Put(ctx, app)
-}
-
-func (m *mockAppRepo) Delete(ctx context.Context, app *model.Applications) error {
-	return m.store.Delete(ctx, app)
-}
-
 func (m *mockAppRepo) List(ctx context.Context, options datastore.ListOptions) ([]*model.Applications, error) {
 	return m.ListByQuery(ctx, &model.Applications{}, options)
 }
@@ -113,19 +101,6 @@ func (m *mockWorkflowRepo) Update(ctx context.Context, workflow *model.Workflow)
 	return m.store.Put(ctx, workflow)
 }
 
-func (m *mockWorkflowRepo) Delete(ctx context.Context, workflow *model.Workflow) error {
-	return m.store.Delete(ctx, workflow)
-}
-
-func (m *mockWorkflowRepo) DeleteByAppID(ctx context.Context, appID string) error {
-	for id, wf := range m.store.workflows {
-		if wf.AppID == appID {
-			delete(m.store.workflows, id)
-		}
-	}
-	return nil
-}
-
 func (m *mockWorkflowRepo) FindByAppID(ctx context.Context, appID string) ([]*model.Workflow, error) {
 	var result []*model.Workflow
 	for _, wf := range m.store.workflows {
@@ -143,28 +118,6 @@ type mockComponentRepo struct {
 	store *inMemoryAppStore
 }
 
-func (m *mockComponentRepo) Create(ctx context.Context, component *model.ApplicationComponent) error {
-	return m.store.Add(ctx, component)
-}
-
-func (m *mockComponentRepo) BatchAdd(ctx context.Context, components []*model.ApplicationComponent) error {
-	for _, comp := range components {
-		if err := m.store.Add(ctx, comp); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (m *mockComponentRepo) DeleteByAppID(ctx context.Context, appID string) error {
-	for name, comp := range m.store.components {
-		if comp.AppID == appID {
-			delete(m.store.components, name)
-		}
-	}
-	return nil
-}
-
 func (m *mockComponentRepo) FindByAppID(ctx context.Context, appID string) ([]*model.ApplicationComponent, error) {
 	var result []*model.ApplicationComponent
 	for _, comp := range m.store.components {
@@ -173,14 +126,6 @@ func (m *mockComponentRepo) FindByAppID(ctx context.Context, appID string) ([]*m
 		}
 	}
 	return result, nil
-}
-
-func (m *mockComponentRepo) Update(ctx context.Context, component *model.ApplicationComponent) error {
-	return m.store.Put(ctx, component)
-}
-
-func (m *mockComponentRepo) Delete(ctx context.Context, component *model.ApplicationComponent) error {
-	return m.store.Delete(ctx, component)
 }
 
 func (m *mockComponentRepo) FindByName(ctx context.Context, appID, name string) (*model.ApplicationComponent, error) {
@@ -220,18 +165,6 @@ func (m *mockCleanupAppRepo) FindByName(ctx context.Context, name string) (*mode
 	return nil, datastore.ErrRecordNotExist
 }
 
-func (m *mockCleanupAppRepo) Create(ctx context.Context, app *model.Applications) error {
-	return nil
-}
-
-func (m *mockCleanupAppRepo) Update(ctx context.Context, app *model.Applications) error {
-	return nil
-}
-
-func (m *mockCleanupAppRepo) Delete(ctx context.Context, app *model.Applications) error {
-	return nil
-}
-
 func (m *mockCleanupAppRepo) List(ctx context.Context, options datastore.ListOptions) ([]*model.Applications, error) {
 	return nil, nil
 }
@@ -248,34 +181,8 @@ type mockCleanupComponentRepo struct {
 	findByAppIDErr error
 }
 
-func (m *mockCleanupComponentRepo) Create(ctx context.Context, component *model.ApplicationComponent) error {
-	return nil
-}
-
-func (m *mockCleanupComponentRepo) BatchAdd(ctx context.Context, components []*model.ApplicationComponent) error {
-	return nil
-}
-
-func (m *mockCleanupComponentRepo) DeleteByAppID(ctx context.Context, appID string) error {
-	return nil
-}
-
 func (m *mockCleanupComponentRepo) FindByAppID(ctx context.Context, appID string) ([]*model.ApplicationComponent, error) {
 	return m.store.components, m.findByAppIDErr
-}
-
-func (m *mockCleanupComponentRepo) Update(ctx context.Context, component *model.ApplicationComponent) error {
-	for i, c := range m.store.components {
-		if c.Name == component.Name && c.AppID == component.AppID {
-			m.store.components[i] = component
-			return nil
-		}
-	}
-	return nil
-}
-
-func (m *mockCleanupComponentRepo) Delete(ctx context.Context, component *model.ApplicationComponent) error {
-	return nil
 }
 
 func (m *mockCleanupComponentRepo) FindByName(ctx context.Context, appID, name string) (*model.ApplicationComponent, error) {

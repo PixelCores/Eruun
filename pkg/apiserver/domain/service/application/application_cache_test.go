@@ -85,7 +85,7 @@ func TestListApplicationsUsesCache(t *testing.T) {
 	require.NoError(t, store.Add(context.Background(), app))
 
 	svc := newMockServiceWithStore(store)
-	svc.Cache = cache.NewMemCache(false)
+	svc.Cache = cache.NewMemCache()
 	countingRepo := &countingAppRepo{
 		mockAppRepo:  &mockAppRepo{store: store},
 		failListOver: 1,
@@ -120,7 +120,7 @@ func TestListApplicationsPopulatesDefaultWorkflowID(t *testing.T) {
 	}))
 
 	svc := newMockServiceWithStore(store)
-	svc.Cache = cache.NewMemCache(false)
+	svc.Cache = cache.NewMemCache()
 
 	apps, err := svc.ListApplications(context.Background(), ListApplicationsOptions{})
 	require.NoError(t, err)
@@ -140,7 +140,7 @@ func TestListApplicationsIgnoresLegacyWorkflowIDCacheKey(t *testing.T) {
 	}))
 
 	svc := newMockServiceWithStore(store)
-	svc.Cache = cache.NewMemCache(false)
+	svc.Cache = cache.NewMemCache()
 	require.NoError(t, svc.Cache.Store(context.Background(), "app:list", `[{"id":"legacy-app","name":"legacy","workflow_id":"legacy-wf"}]`))
 	countingRepo := &countingAppRepo{mockAppRepo: &mockAppRepo{store: store}}
 	svc.AppRepo = countingRepo
@@ -163,7 +163,7 @@ func TestListTemplateApplicationsUsesCache(t *testing.T) {
 	require.NoError(t, store.Add(context.Background(), normal))
 
 	svc := newMockServiceWithStore(store)
-	svc.Cache = cache.NewMemCache(false)
+	svc.Cache = cache.NewMemCache()
 	countingRepo := &countingAppRepo{
 		mockAppRepo:  &mockAppRepo{store: store},
 		failListOver: 1,
@@ -194,7 +194,7 @@ func TestListTemplateApplicationsPopulatesDefaultWorkflowID(t *testing.T) {
 	}))
 
 	svc := newMockServiceWithStore(store)
-	svc.Cache = cache.NewMemCache(false)
+	svc.Cache = cache.NewMemCache()
 
 	templates, err := svc.ListTemplateApplications(context.Background(), ListApplicationsOptions{})
 	require.NoError(t, err)
@@ -232,7 +232,7 @@ func TestListTemplateApplicationsAddsMainComponentResourceSummary(t *testing.T) 
 	}))
 
 	svc := newMockServiceWithStore(store)
-	svc.Cache = cache.NewMemCache(false)
+	svc.Cache = cache.NewMemCache()
 
 	templates, err := svc.ListTemplateApplications(context.Background(), ListApplicationsOptions{})
 	require.NoError(t, err)
@@ -270,7 +270,7 @@ func TestListTemplateApplicationsMainComponentSelectionIsStable(t *testing.T) {
 	}))
 
 	svc := newMockServiceWithStore(store)
-	svc.Cache = cache.NewMemCache(false)
+	svc.Cache = cache.NewMemCache()
 
 	templates, err := svc.ListTemplateApplications(context.Background(), ListApplicationsOptions{})
 	require.NoError(t, err)
@@ -303,7 +303,7 @@ func TestListTemplateApplicationsResourceSummaryKeepsZeroValuesWhenMissing(t *te
 	}))
 
 	svc := newMockServiceWithStore(store)
-	svc.Cache = cache.NewMemCache(false)
+	svc.Cache = cache.NewMemCache()
 
 	templates, err := svc.ListTemplateApplications(context.Background(), ListApplicationsOptions{})
 	require.NoError(t, err)
@@ -329,7 +329,7 @@ func TestListTemplateApplicationsIgnoresLegacyWorkflowIDCacheKey(t *testing.T) {
 	}))
 
 	svc := newMockServiceWithStore(store)
-	svc.Cache = cache.NewMemCache(false)
+	svc.Cache = cache.NewMemCache()
 	require.NoError(t, svc.Cache.Store(context.Background(), "app:template:list", `[{"id":"legacy-template","name":"legacy","workflow_id":"legacy-wf","templateEnabled":true}]`))
 	countingRepo := &countingAppRepo{mockAppRepo: &mockAppRepo{store: store}}
 	svc.AppRepo = countingRepo
@@ -364,7 +364,7 @@ func TestListTemplateApplicationsAvoidsWorkflowRepoNPlusOne(t *testing.T) {
 	}))
 
 	svc := newMockServiceWithStore(store)
-	svc.Cache = cache.NewMemCache(false)
+	svc.Cache = cache.NewMemCache()
 	countingRepo := &countingWorkflowRepo{mockWorkflowRepo: &mockWorkflowRepo{store: store}}
 	svc.WorkflowRepo = countingRepo
 
@@ -387,7 +387,7 @@ func TestListApplicationsBypassesCacheWhenPaginated(t *testing.T) {
 	require.NoError(t, store.Add(context.Background(), model.NewApplications("app-2", "demo-2", "default", "1.0.0", "", "", "", "", false)))
 
 	svc := newMockServiceWithStore(store)
-	svc.Cache = cache.NewMemCache(false)
+	svc.Cache = cache.NewMemCache()
 	countingRepo := &countingAppRepo{
 		mockAppRepo: &mockAppRepo{store: store},
 	}
@@ -419,7 +419,7 @@ func TestListApplicationsPaginatedUsesStableSecondarySortKey(t *testing.T) {
 	require.NoError(t, store.Add(context.Background(), app1))
 
 	svc := newMockServiceWithStore(store)
-	svc.Cache = cache.NewMemCache(false)
+	svc.Cache = cache.NewMemCache()
 	countingRepo := &countingAppRepo{mockAppRepo: &mockAppRepo{store: store}}
 	svc.AppRepo = countingRepo
 
@@ -455,7 +455,7 @@ func TestListTemplateApplicationsPushesPaginationAndTemplateFilterToRepo(t *test
 	require.NoError(t, store.Add(context.Background(), template1))
 
 	svc := newMockServiceWithStore(store)
-	svc.Cache = cache.NewMemCache(false)
+	svc.Cache = cache.NewMemCache()
 	countingRepo := &countingAppRepo{mockAppRepo: &mockAppRepo{store: store}}
 	svc.AppRepo = countingRepo
 
@@ -486,7 +486,7 @@ func TestListApplicationComponentsUsesCache(t *testing.T) {
 	}))
 
 	svc := newMockServiceWithStore(store)
-	svc.Cache = cache.NewMemCache(false)
+	svc.Cache = cache.NewMemCache()
 	countingRepo := &countingComponentRepo{
 		mockComponentRepo: &mockComponentRepo{store: store},
 		failFindOver:      1,
@@ -519,7 +519,7 @@ func TestListApplicationRuntimeComponentsBypassesDetailCache(t *testing.T) {
 	}))
 
 	svc := newMockServiceWithStore(store)
-	svc.Cache = cache.NewMemCache(false)
+	svc.Cache = cache.NewMemCache()
 	countingRepo := &countingComponentRepo{mockComponentRepo: &mockComponentRepo{store: store}}
 	svc.ComponentRepo = countingRepo
 	svc.storeJSONCache(context.Background(), applicationComponentsCacheKey(app.ID), []*model.ApplicationComponent{{
@@ -562,7 +562,7 @@ func TestListApplicationComponentsCacheStoresSecretValuesAsText(t *testing.T) {
 	}))
 
 	svc := newMockServiceWithStore(store)
-	svc.Cache = cache.NewMemCache(false)
+	svc.Cache = cache.NewMemCache()
 	countingRepo := &countingComponentRepo{
 		mockComponentRepo: &mockComponentRepo{store: store},
 	}
@@ -590,7 +590,7 @@ func TestListApplicationComponentsCacheHitKeepsBase64LikeTextSecrets(t *testing.
 	require.NoError(t, store.Add(context.Background(), app))
 
 	svc := newMockServiceWithStore(store)
-	svc.Cache = cache.NewMemCache(false)
+	svc.Cache = cache.NewMemCache()
 	client := fake.NewSimpleClientset()
 	svc.KubeClient = client
 
@@ -614,13 +614,13 @@ func TestListApplicationComponentsCacheHitKeepsBase64LikeTextSecrets(t *testing.
 	require.Equal(t, "dGVzdA==", props.Secret["password"])
 }
 
-func TestDeleteApplicationInvalidatesCache(t *testing.T) {
+func TestDeleteApplicationCascadeInvalidatesCache(t *testing.T) {
 	store := newInMemoryAppStore()
 	app := model.NewApplications("app-1", "demo", "default", "1.0.0", "", "", "", "", true)
 	require.NoError(t, store.Add(context.Background(), app))
 
 	svc := newMockServiceWithStore(store)
-	svc.Cache = cache.NewMemCache(false)
+	svc.Cache = cache.NewMemCache()
 	svc.storeJSONCache(context.Background(), applicationListCacheKey, []*apisv1.ApplicationBase{{ID: app.ID}})
 	svc.storeJSONCache(context.Background(), templateApplicationListCacheKey, []*apisv1.ApplicationBase{{ID: app.ID}})
 	svc.storeJSONCache(context.Background(), applicationComponentsCacheKey(app.ID), []*model.ApplicationComponent{{AppID: app.ID, Name: "web"}})
@@ -629,7 +629,8 @@ func TestDeleteApplicationInvalidatesCache(t *testing.T) {
 	require.NotEmpty(t, cachedValue(t, svc.Cache, context.Background(), templateApplicationListCacheKey))
 	require.NotEmpty(t, cachedValue(t, svc.Cache, context.Background(), applicationComponentsCacheKey(app.ID)))
 
-	require.NoError(t, svc.DeleteApplication(context.Background(), app))
+	_, deleteErr := svc.DeleteApplicationCascade(context.Background(), app.ID, apisv1.DeleteApplicationRequest{})
+	require.NoError(t, deleteErr)
 	require.Empty(t, cachedValue(t, svc.Cache, context.Background(), applicationListCacheKey))
 	require.Empty(t, cachedValue(t, svc.Cache, context.Background(), templateApplicationListCacheKey))
 	require.Empty(t, cachedValue(t, svc.Cache, context.Background(), applicationComponentsCacheKey(app.ID)))
@@ -648,7 +649,7 @@ func TestUpdateVersionInvalidatesCache(t *testing.T) {
 	}))
 
 	svc := newMockServiceWithStore(store)
-	svc.Cache = cache.NewMemCache(false)
+	svc.Cache = cache.NewMemCache()
 	svc.storeJSONCache(context.Background(), applicationListCacheKey, []*apisv1.ApplicationBase{{ID: app.ID}})
 	svc.storeJSONCache(context.Background(), templateApplicationListCacheKey, []*apisv1.ApplicationBase{{ID: app.ID}})
 	svc.storeJSONCache(context.Background(), applicationComponentsCacheKey(app.ID), []*model.ApplicationComponent{{AppID: app.ID, Name: "web"}})
@@ -709,7 +710,7 @@ func TestUpdateVersionInvalidatesCommittedChangesAfterRequestEnds(t *testing.T) 
 			}))
 			svc := newMockServiceWithStore(store)
 			svc.Cfg = &config.Config{Accounts: &spec.AccountConfig{}}
-			svc.Cache = cache.NewMemCache(false)
+			svc.Cache = cache.NewMemCache()
 			before, err := svc.ListApplicationComponents(readCtx, app.ID)
 			require.NoError(t, err)
 			require.Equal(t, "nginx:1.26", before[0].Image)
@@ -801,7 +802,7 @@ func TestListApplicationComponentsCachePreservesRequestContextAndFallback(t *tes
 			require.NoError(t, store.Add(t.Context(), app))
 			require.NoError(t, store.Add(t.Context(), &model.ApplicationComponent{ID: 1, AppID: app.ID, Name: "web", Namespace: "default", ComponentType: "server"}))
 			svc := newMockServiceWithStore(store)
-			c := &requestContextCache{ICache: cache.NewMemCache(false), loadErr: tc.loadErr}
+			c := &requestContextCache{ICache: cache.NewMemCache(), loadErr: tc.loadErr}
 			if tc.cached != "" {
 				require.NoError(t, c.ICache.Store(t.Context(), applicationComponentsCacheKey(app.ID), tc.cached))
 			}
@@ -843,8 +844,7 @@ func TestApplicationScheduleLockIndependentOfReadCache(t *testing.T) {
 		readCache cache.ICache
 	}{
 		{name: "absent"},
-		{name: "disabled", readCache: cache.NewMemCache(true)},
-		{name: "memory", readCache: cache.NewMemCache(false)},
+		{name: "memory", readCache: cache.NewMemCache()},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			svc := &applicationsServiceImpl{Cache: tc.readCache, ScheduleLocker: lockProvider}

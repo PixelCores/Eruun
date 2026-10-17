@@ -35,6 +35,8 @@ POST /api/v1/applications/:targetAppID/version/diff-update
 | `targetOnlyStrategy` | 否 | 目标应用独有组件的处理策略：`preserve`（默认保留）、`remove`（执行时删除）、`block`（存在目标独有组件时阻断执行） |
 | `strategy` / `executionScope` / `workflowId` / `executeAt` / `autoExec` / `description` | 否 | 执行时复用现有版本更新语义；`executionScope=changed_components` 会透传到内部 `/version` 请求 |
 
+顶层 `strategy` 仅接受省略、空字符串或精确的 `rolling`；其他值返回业务码 `10012`，包括 `dryRun=true` 和没有差异的请求，且不会写入目标应用或创建任务。它只是历史占位字段，不控制发布行为，真实更新策略由组件 `traits.rollout` 控制；迁移说明见[版本更新 API](version-update-api.md#更新策略)。
+
 ## Behavior
 
 - 目标应用的新版本号使用源应用的 `version`。

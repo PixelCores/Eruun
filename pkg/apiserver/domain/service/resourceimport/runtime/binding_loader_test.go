@@ -2,12 +2,13 @@ package runtime
 
 import (
 	"context"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"testing"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/stretchr/testify/require"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
 type bindingLoaderStore struct {
@@ -100,10 +101,10 @@ func TestDataStoreBindingLoaderReturnsAllClaimsAndOnlyAdoptedSources(t *testing.
 	require.False(t, byAppID["native"].valid())
 	require.True(t, byAppID["observe"].labelClaimValid())
 	require.False(t, byAppID["observe"].valid())
-	require.True(t, byAppID["observe"].readOnly())
+	require.Equal(t, domainspec.ManagementModeObserve, byAppID["observe"].ManagementMode)
 	require.Empty(t, byAppID["observe"].WorkloadUID)
 	require.True(t, byAppID["adopted"].valid())
-	require.False(t, byAppID["adopted"].readOnly())
+	require.Equal(t, domainspec.ManagementModeAdopted, byAppID["adopted"].ManagementMode)
 	require.Equal(t, "deployment-uid", string(byAppID["adopted"].WorkloadUID))
 	require.Equal(t, 1, store.appListCalls)
 	require.Equal(t, 1, store.componentListCalls)

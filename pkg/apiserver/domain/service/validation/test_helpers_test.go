@@ -133,9 +133,6 @@ func (m *mockAppRepo) FindByName(ctx context.Context, name string) (*model.Appli
 	}
 	return nil, datastore.ErrRecordNotExist
 }
-func (m *mockAppRepo) Create(context.Context, *model.Applications) error { return nil }
-func (m *mockAppRepo) Update(context.Context, *model.Applications) error { return nil }
-func (m *mockAppRepo) Delete(context.Context, *model.Applications) error { return nil }
 func (m *mockAppRepo) List(ctx context.Context, options datastore.ListOptions) ([]*model.Applications, error) {
 	return m.ListByQuery(ctx, &model.Applications{}, options)
 }
@@ -155,11 +152,6 @@ func (m *mockAppRepo) ListByQuery(ctx context.Context, query *model.Applications
 
 type mockComponentRepo struct{ store *inMemoryAppStore }
 
-func (m *mockComponentRepo) Create(context.Context, *model.ApplicationComponent) error { return nil }
-func (m *mockComponentRepo) BatchAdd(context.Context, []*model.ApplicationComponent) error {
-	return nil
-}
-func (m *mockComponentRepo) DeleteByAppID(context.Context, string) error { return nil }
 func (m *mockComponentRepo) FindByAppID(_ context.Context, appID string) ([]*model.ApplicationComponent, error) {
 	var result []*model.ApplicationComponent
 	for _, comp := range m.store.components {
@@ -169,8 +161,6 @@ func (m *mockComponentRepo) FindByAppID(_ context.Context, appID string) ([]*mod
 	}
 	return result, nil
 }
-func (m *mockComponentRepo) Update(context.Context, *model.ApplicationComponent) error { return nil }
-func (m *mockComponentRepo) Delete(context.Context, *model.ApplicationComponent) error { return nil }
 func (m *mockComponentRepo) FindByName(_ context.Context, appID, name string) (*model.ApplicationComponent, error) {
 	for _, comp := range m.store.components {
 		if comp.AppID == appID && comp.Name == name {

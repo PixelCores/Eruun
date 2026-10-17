@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"strings"
 	"time"
 
@@ -14,6 +13,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/cancelsignal"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
+	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
@@ -181,7 +182,7 @@ func (c *applicationsServiceImpl) filterActiveTasks(ctx context.Context, tasks [
 			active = append(active, task)
 			continue
 		}
-		hasJobs, err := taskHasActiveJobs(ctx, c.Store, task.TaskID)
+		hasJobs, err := workflowservice.TaskHasActiveJobs(ctx, c.Store, task.TaskID)
 		if err != nil {
 			return nil, err
 		}

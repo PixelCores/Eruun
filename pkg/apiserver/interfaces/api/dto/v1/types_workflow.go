@@ -8,17 +8,6 @@ import (
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
-type CreateWorkflowRequest struct {
-	Name        string                       `json:"name" validate:"checkname"`
-	Project     string                       `json:"project" validate:"checkname"`
-	Alias       string                       `json:"alias"`
-	Description string                       `json:"description" optional:"true"`
-	Labels      map[string]string            `json:"labels,omitempty"`
-	Component   []CreateComponentRequest     `json:"component"`
-	Workflows   []CreateWorkflowStepsRequest `json:"workflow"`
-	TryRun      bool                         `json:"tryRun"`
-}
-
 type Properties = spec.Properties
 
 type Traits = spec.Traits
@@ -33,15 +22,6 @@ type WorkflowProperties struct {
 type WorkflowTraits struct {
 	Type       string                 `json:"type"`
 	Properties map[string]interface{} `json:"properties"`
-}
-
-type CreateWorkflowStepsRequest struct {
-	Name               string                         `json:"name"`
-	ComponentType      config.JobType                 `json:"jobType,omitempty"`
-	WorkflowProperties WorkflowPolicies               `json:"properties,omitempty"`
-	Components         []string                       `json:"components,omitempty"`
-	Mode               string                         `json:"mode,omitempty"`
-	SubSteps           []CreateWorkflowSubStepRequest `json:"subSteps,omitempty"`
 }
 
 type CreateWorkflowSubStepRequest struct {
@@ -155,10 +135,6 @@ type WorkflowCallback struct {
 	Methods        map[string]string `json:"methods,omitempty"`
 	Headers        map[string]string `json:"headers,omitempty"`
 	TimeoutSeconds int64             `json:"timeoutSeconds,omitempty"`
-}
-
-type CreateWorkflowResponse struct {
-	WorkflowID string `json:"workflowId"`
 }
 
 type UpdateApplicationWorkflowRequest struct {

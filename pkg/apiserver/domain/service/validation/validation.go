@@ -54,13 +54,6 @@ var (
 		config.ScheduledJob: true,
 	}
 
-	// Valid workflow modes
-	validWorkflowModes = map[string]bool{
-		string(config.WorkflowModeStepByStep): true,
-		string(config.WorkflowModeDAG):        true,
-		"":                                    true, // Empty is allowed (defaults to StepByStep)
-	}
-
 	validWorkflowStepTypes = map[config.WorkflowStepType]bool{
 		config.WorkflowStepTypeComponent: true,
 		config.WorkflowStepTypeApproval:  true,

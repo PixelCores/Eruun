@@ -73,7 +73,7 @@ func TestRequestBodyLimit_WithCORSHeadersWhenCORSRunsFirst(t *testing.T) {
 
 	router := gin.New()
 	router.Use(CORS(CORSOptions{
-		AllowOrigins: []string{"*"},
+		AllowOrigins: []string{"https://example.com"},
 		AllowMethods: []string{"POST", "OPTIONS"},
 		AllowHeaders: []string{"Content-Type", "Origin"},
 	}))
@@ -87,7 +87,7 @@ func TestRequestBodyLimit_WithCORSHeadersWhenCORSRunsFirst(t *testing.T) {
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 	require.Equal(t, http.StatusRequestEntityTooLarge, resp.Code)
-	require.Equal(t, "*", resp.Header().Get("Access-Control-Allow-Origin"))
+	require.Equal(t, "https://example.com", resp.Header().Get("Access-Control-Allow-Origin"))
 }
 
 func TestRequestBodyLimitCapsRunnerEventsAt64KiB(t *testing.T) {

@@ -219,6 +219,8 @@ func TestApplyJobRunPolicy(t *testing.T) {
 			client := fake.NewSimpleClientset()
 			if tc.existing != nil {
 				existing := tc.existing.DeepCopy()
+				existing.UID = "existing-job-uid"
+				existing.ResourceVersion = "1"
 				if _, err := client.BatchV1().Jobs(namespace).Create(ctx, existing, metav1.CreateOptions{}); err != nil {
 					t.Fatalf("create existing job: %v", err)
 				}
@@ -961,7 +963,7 @@ func TestRunJob_ConfigMapInvalidatesComponentsCache(t *testing.T) {
 			},
 		},
 	}
-	cacheStore := cacheutil.NewMemCache(false)
+	cacheStore := cacheutil.NewMemCache()
 	cacheKey := cacheutil.ApplicationComponentsKey("app-3")
 	require.NoError(t, cacheStore.Store(context.Background(), cacheKey, "stale"))
 	require.NotEmpty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))
@@ -1002,7 +1004,7 @@ func TestConfigComponentStatusInvalidatesCacheAfterCommittedWriteCancelsContext(
 		}},
 		afterCAS: cancel,
 	}
-	cacheStore := cacheutil.NewMemCache(false)
+	cacheStore := cacheutil.NewMemCache()
 	cacheKey := cacheutil.ApplicationComponentsKey("app-3")
 	require.NoError(t, cacheStore.Store(t.Context(), cacheKey, "stale components"))
 	jobTask := &model.JobTask{
@@ -1035,7 +1037,7 @@ func TestRunJob_SecretFailureInvalidatesComponentsCache(t *testing.T) {
 			},
 		},
 	}
-	cacheStore := cacheutil.NewMemCache(false)
+	cacheStore := cacheutil.NewMemCache()
 	cacheKey := cacheutil.ApplicationComponentsKey("app-4")
 	require.NoError(t, cacheStore.Store(context.Background(), cacheKey, "stale"))
 	require.NotEmpty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))
@@ -1111,7 +1113,7 @@ func TestRunJob_ConfigMapDoesNotInvalidateCacheWhenStatusPersistFails(t *testing
 		},
 		putErr: errors.New("persist failed"),
 	}
-	cacheStore := cacheutil.NewMemCache(false)
+	cacheStore := cacheutil.NewMemCache()
 	cacheKey := cacheutil.ApplicationComponentsKey("app-5")
 	require.NoError(t, cacheStore.Store(context.Background(), cacheKey, "stale"))
 	require.NotEmpty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))
@@ -1154,7 +1156,7 @@ func TestRunJob_DeployStartInvalidatesComponentsCache(t *testing.T) {
 			},
 		},
 	}
-	cacheStore := cacheutil.NewMemCache(false)
+	cacheStore := cacheutil.NewMemCache()
 	cacheKey := cacheutil.ApplicationComponentsKey("app-6")
 	require.NoError(t, cacheStore.Store(context.Background(), cacheKey, "stale"))
 	require.NotEmpty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))
@@ -1194,7 +1196,7 @@ func TestRunJob_DeployStartDoesNotInvalidateCacheWhenStatusPersistFails(t *testi
 		},
 		putErr: errors.New("persist failed"),
 	}
-	cacheStore := cacheutil.NewMemCache(false)
+	cacheStore := cacheutil.NewMemCache()
 	cacheKey := cacheutil.ApplicationComponentsKey("app-7")
 	require.NoError(t, cacheStore.Store(context.Background(), cacheKey, "stale"))
 	require.NotEmpty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))

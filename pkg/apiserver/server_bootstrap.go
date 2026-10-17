@@ -50,24 +50,18 @@ func (s *restServer) registerAPIRoutes() {
 	// CIDRs are validated during startup; forwarding headers are ignored by default.
 	_ = s.webContainer.SetTrustedProxies(trustedProxies)
 	s.webContainer.Use(middleware.CORS(middleware.CORSOptions{
-		AllowOrigins:     origins,
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With", "X-Eruun-Workspace-ID"},
-		ExposeHeaders:    []string{},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
+		AllowOrigins:  origins,
+		AllowMethods:  []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:  []string{"Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With", "X-Eruun-Workspace-ID"},
+		ExposeHeaders: []string{},
+		MaxAge:        12 * time.Hour,
 	}))
 	s.webContainer.Use(s.leaderAPIMiddleware())
 	if s.cfg.APIRateLimitQPS > 0 {
 		if s.apiRateLimiter == nil {
 			s.apiRateLimiter = ratelimit.New(s.cfg.APIRateLimitQPS, s.cfg.APIRateLimitBurst)
 		}
-		s.webContainer.Use(middleware.RateLimit(middleware.RateLimitOptions{
-			QPS:       s.cfg.APIRateLimitQPS,
-			Burst:     s.cfg.APIRateLimitBurst,
-			SkipPaths: middleware.DefaultRateLimitSkipPaths(),
-			Shared:    s.apiRateLimiter,
-		}))
+		s.webContainer.Use(middleware.RateLimit(s.apiRateLimiter))
 	}
 	s.webContainer.Use(middleware.RequestBodyLimit(config.DefaultRequestBodyLimitBytes))
 	s.webContainer.Use(middleware.Auth(middleware.AuthOptions{
@@ -262,7 +256,7 @@ func (s *restServer) Run(ctx context.Context, errChan chan error) error {
 	if observerErr != nil {
 		return fmt.Errorf("start worker resource observer: %w", observerErr)
 	}
-	s.startWorkers(runCtx, errChan)
+	s.startWorkers(runCtx)
 	electionsDone := make(chan struct{})
 	go func() { defer close(electionsDone); s.runRuntimeLeaderElection(electionCtx, election) }()
 	var shutdownOnce sync.Once

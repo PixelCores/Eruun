@@ -32,6 +32,12 @@ func ApplyEnvOverrides(fs *pflag.FlagSet, prefix string) error {
 			return fmt.Errorf("%s is no longer supported; all nodes now share one leader election configured by --leader-lock-name", key)
 		}
 	}
+	for _, removed := range []string{"datastore-type", "cache-type"} {
+		key := buildEnvKey(prefix, removed)
+		if _, exists := os.LookupEnv(key); exists {
+			return fmt.Errorf("%s is no longer supported; remove it: MySQL and Redis are required backends", key)
+		}
+	}
 	var errs []error
 	fs.VisitAll(func(f *pflag.Flag) {
 		if f.Changed {

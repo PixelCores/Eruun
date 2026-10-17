@@ -24,6 +24,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
@@ -189,8 +190,10 @@ type serviceImpl struct {
 	ApplicationService applicationCreator               `inject:""`
 	ValidationService  ValidationService                `inject:""`
 	AppRepo            repository.ApplicationRepository `inject:""`
-	WorkflowRepo       repository.WorkflowRepository    `inject:""`
-	ComponentRepo      repository.ComponentRepository   `inject:""`
+	WorkflowRepo       interface {
+		FindByAppID(context.Context, string) ([]*model.Workflow, error)
+	} `inject:""`
+	ComponentRepo repository.ComponentRepository `inject:""`
 }
 
 func NewService() Service {

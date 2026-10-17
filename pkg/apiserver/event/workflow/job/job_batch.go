@@ -255,23 +255,14 @@ func applyJobRunPolicy(
 		}
 		return runPolicyActionCreate, nil
 	case workflowconfig.JobRunPolicyRecreate:
-		deleteOptions := metav1.DeleteOptions{}
-		if existing.UID != "" {
-			uid := existing.UID
-			deleteOptions.Preconditions = &metav1.Preconditions{UID: &uid}
-		}
-		deleteErr := client.BatchV1().Jobs(namespace).Delete(ctx, jobName, deleteOptions)
+		// Foreground deletion retains the Job until its owned Pods are gone,
+		// so a replacement cannot overlap the previous execution.
+		deleteErr := deleteJobForeground(ctx, client, namespace, existing)
 		if deleteErr != nil && !k8serrors.IsNotFound(deleteErr) {
 			return runPolicyActionCreate, fmt.Errorf("delete existing job %s/%s: %w", namespace, jobName, deleteErr)
 		}
-		if deleteErr == nil {
-			if existing.UID != "" {
-				if err := waitForJobUIDDeletion(ctx, client, namespace, jobName, existing.UID); err != nil {
-					return runPolicyActionCreate, err
-				}
-			} else if err := waitForJobDeletion(ctx, client, namespace, jobName); err != nil {
-				return runPolicyActionCreate, fmt.Errorf("wait for job deletion %s/%s: %w", namespace, jobName, err)
-			}
+		if err := waitForJobUIDDeletion(ctx, client, namespace, jobName, existing.UID, foregroundJobDeleteTimeout(existing)); err != nil {
+			return runPolicyActionCreate, err
 		}
 		return runPolicyActionCreate, nil
 	default:
@@ -704,22 +695,4 @@ func jobExists(ctx context.Context, client kubernetes.Interface, namespace, name
 		return nil, false, err
 	}
 	return job, true, nil
-}
-
-func waitForJobDeletion(ctx context.Context, client kubernetes.Interface, namespace, name string) error {
-	if client == nil {
-		return fmt.Errorf("client is nil")
-	}
-	deleteCtx, cancel := context.WithTimeout(ctx, jobDeleteTimeout)
-	defer cancel()
-	return wait.PollUntilContextCancel(deleteCtx, jobPollInterval, true, func(checkCtx context.Context) (bool, error) {
-		_, err := client.BatchV1().Jobs(namespace).Get(checkCtx, name, metav1.GetOptions{})
-		if err != nil {
-			if k8serrors.IsNotFound(err) {
-				return true, nil
-			}
-			return false, err
-		}
-		return false, nil
-	})
 }

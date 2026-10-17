@@ -3,13 +3,13 @@ package application
 import (
 	"context"
 	"fmt"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"strings"
 
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -246,17 +246,12 @@ func newVersionUpdateComponent(app *model.Applications, spec apisv1.ComponentUpd
 	if spec.Traits != nil {
 		spec.Traits = &resolved.Traits
 	}
-	replicas := int32(1)
-	if spec.Replicas != nil {
-		replicas = *spec.Replicas
-	}
-
 	component := &model.ApplicationComponent{
 		Name:          spec.Name,
 		AppID:         app.ID,
 		Namespace:     app.Namespace,
 		Image:         spec.Image,
-		Replicas:      replicas,
+		Replicas:      resolved.Replicas,
 		ComponentType: spec.ComponentType,
 	}
 

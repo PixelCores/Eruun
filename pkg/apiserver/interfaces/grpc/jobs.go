@@ -8,6 +8,11 @@ import (
 	"os"
 	"time"
 
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/structpb"
+	corev1 "k8s.io/api/core/v1"
+
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
@@ -16,10 +21,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/types/known/emptypb"
-	"google.golang.org/protobuf/types/known/structpb"
-	corev1 "k8s.io/api/core/v1"
 )
 
 const archiveChunkSize = 64 << 10
@@ -443,7 +444,7 @@ func (s *JobsServer) ListJobDatasets(ctx context.Context, req *eruunv1.ListJobDa
 			size = int(*req.PageSize)
 		}
 	}
-	items, err := s.Jobs.Artifacts.ListPage(ctx, scope.WorkspaceID, artifacts.KindDataset, "", page, size)
+	items, err := s.Jobs.Artifacts.ListPage(ctx, scope.WorkspaceID, artifacts.KindDataset, "", page, size, "")
 	if err != nil {
 		return nil, rpcError(jobFailure(err))
 	}

@@ -19,11 +19,11 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
-func scopedDelivery(ctx context.Context, db Backend, workspaceID, taskID, target string, lock bool, executionKey ...string) (*model.JobDelivery, error) {
+func scopedDelivery(ctx context.Context, db Backend, workspaceID, taskID, target string, lock bool, executionKey string) (*model.JobDelivery, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return nil, err
 	}
-	d := &model.JobDelivery{ID: deliveryID(workspaceID, taskID, target, executionKey...)}
+	d := &model.JobDelivery{ID: deliveryID(workspaceID, taskID, target, executionKey)}
 	var err error
 	if lock {
 		err = db.GetForUpdate(ctx, d)
@@ -33,20 +33,20 @@ func scopedDelivery(ctx context.Context, db Backend, workspaceID, taskID, target
 	if err != nil {
 		return nil, err
 	}
-	if d.WorkspaceID != workspaceID || d.TaskID != taskID || d.Target != target || d.ExecutionKey != executionKeyValue(executionKey) {
+	if d.WorkspaceID != workspaceID || d.TaskID != taskID || d.Target != target || d.ExecutionKey != executionKey {
 		return nil, datastore.ErrRecordNotExist
 	}
 	return d, nil
 }
 
-func (s *Store) Deliveries(ctx context.Context, workspaceID, taskID string, executionKey ...string) ([]*model.JobDelivery, error) {
+func (s *Store) Deliveries(ctx context.Context, workspaceID, taskID string, executionKey string) ([]*model.JobDelivery, error) {
 	if err := requireWorkspace(workspaceID); err != nil {
 		return nil, err
 	}
 	if taskID == "" {
 		return nil, fmt.Errorf("taskId is required")
 	}
-	records, err := s.db.List(ctx, &model.JobDelivery{WorkspaceID: workspaceID, TaskID: taskID, ExecutionKey: executionKeyValue(executionKey)}, nil)
+	records, err := s.db.List(ctx, &model.JobDelivery{WorkspaceID: workspaceID, TaskID: taskID, ExecutionKey: executionKey}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +57,7 @@ func (s *Store) Deliveries(ctx context.Context, workspaceID, taskID string, exec
 	return result, nil
 }
 
-func (s *Store) Retry(ctx context.Context, workspaceID, taskID, target string, executionKey ...string) error {
+func (s *Store) Retry(ctx context.Context, workspaceID, taskID, target string, executionKey string) error {
 	return WithTransaction(ctx, s.db, func(tx Backend) error {
 		if err := requireWorkspace(workspaceID); err != nil {
 			return err
@@ -65,7 +65,7 @@ func (s *Store) Retry(ctx context.Context, workspaceID, taskID, target string, e
 		if err := tx.GetForUpdate(ctx, &model.Workspace{ID: workspaceID}); err != nil {
 			return err
 		}
-		d, err := scopedDelivery(ctx, tx, workspaceID, taskID, target, true, executionKey...)
+		d, err := scopedDelivery(ctx, tx, workspaceID, taskID, target, true, executionKey)
 		if err != nil {
 			return err
 		}
@@ -240,7 +240,7 @@ func (s *Store) copyMinIO(ctx context.Context, d *model.JobDelivery) (string, er
 	if _, err = file.Seek(0, io.SeekStart); err != nil {
 		return "", err
 	}
-	key := fmt.Sprintf("workspaces/%s/jobs/%s/%s.tar.gz", stableID(d.WorkspaceID), scopedID([]string{d.TaskID}, []string{d.ExecutionKey}), source.Digest)
+	key := fmt.Sprintf("workspaces/%s/jobs/%s/%s.tar.gz", stableID(d.WorkspaceID), scopedID([]string{d.TaskID}, d.ExecutionKey), source.Digest)
 	return s.objects.Put(ctx, key, file, source.Size, source.Digest)
 }
 
@@ -315,8 +315,8 @@ func (s *Store) copyDatabase(ctx context.Context, d *model.JobDelivery) (string,
 	return id, nil
 }
 
-func (s *Store) DownloadDelivery(ctx context.Context, workspaceID, taskID, target string, w io.Writer, executionKey ...string) error {
-	d, err := scopedDelivery(ctx, s.db, workspaceID, taskID, target, false, executionKey...)
+func (s *Store) DownloadDelivery(ctx context.Context, workspaceID, taskID, target string, w io.Writer, executionKey string) error {
+	d, err := scopedDelivery(ctx, s.db, workspaceID, taskID, target, false, executionKey)
 	if err != nil {
 		return err
 	}

@@ -49,7 +49,7 @@ func policy(targets ...spec.JobResultTarget) spec.JobResultPolicy {
 }
 func byTarget(t *testing.T, s *Store) map[string]*model.JobDelivery {
 	t.Helper()
-	records, err := s.Deliveries(context.Background(), "space-a", "task-a")
+	records, err := s.Deliveries(context.Background(), "space-a", "task-a", "")
 	require.NoError(t, err)
 	result := map[string]*model.JobDelivery{}
 	for _, r := range records {
@@ -118,20 +118,20 @@ func TestDatasetAndResultIsolationImmutablePublication(t *testing.T) {
 	require.ErrorIs(t, err, datastore.ErrRecordNotExist)
 	result := resultBytes(t)
 	p := spec.DefaultJobResultPolicy()
-	source, err := s.PutResult(ctx, "space-a", "task-a", p, bytes.NewReader(result))
+	source, err := s.PutResult(ctx, "space-a", "task-a", p, bytes.NewReader(result), "")
 	require.NoError(t, err)
 	require.WithinDuration(t, time.Now().Add(90*24*time.Hour), *source.ExpiresAt, time.Second)
-	again, err := s.PutResult(ctx, "space-a", "task-a", p, bytes.NewReader(result))
+	again, err := s.PutResult(ctx, "space-a", "task-a", p, bytes.NewReader(result), "")
 	require.NoError(t, err)
 	require.Equal(t, source.ID, again.ID)
-	_, err = s.PutResult(ctx, "space-a", "task-a", p, bytes.NewReader(archiveBytes(t, testEntry{name: "different", content: "x"})))
+	_, err = s.PutResult(ctx, "space-a", "task-a", p, bytes.NewReader(archiveBytes(t, testEntry{name: "different", content: "x"})), "")
 	require.ErrorIs(t, err, ErrConflict)
-	_, err = s.PutResult(ctx, "space-b", "task-a", p, bytes.NewReader(result))
+	_, err = s.PutResult(ctx, "space-b", "task-a", p, bytes.NewReader(result), "")
 	require.ErrorIs(t, err, datastore.ErrRecordNotExist)
 	count, err := db.Count(ctx, &model.JobDelivery{WorkspaceID: "space-a", TaskID: "task-a"}, nil)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, count)
-	require.NoError(t, s.SetRetention(ctx, "space-a", "task-a", 30))
+	require.NoError(t, s.SetRetention(ctx, "space-a", "task-a", 30, ""))
 	source, err = s.Get(ctx, "space-a", source.ID)
 	require.NoError(t, err)
 	require.WithinDuration(t, time.Now().Add(30*24*time.Hour), *source.ExpiresAt, time.Second)
@@ -144,7 +144,7 @@ func TestPartialFailureRetryAndSourceExpiryPreserveCopies(t *testing.T) {
 	s.objects = objects
 	data := resultBytes(t)
 	p := policy(spec.JobResultTarget{Type: "minio", Mode: "full"}, spec.JobResultTarget{Type: "database", Mode: "full"})
-	source, err := s.PutResult(ctx, "space-a", "task-a", p, bytes.NewReader(data))
+	source, err := s.PutResult(ctx, "space-a", "task-a", p, bytes.NewReader(data), "")
 	require.NoError(t, err)
 	require.NoError(t, s.ReconcilePending(ctx, 10))
 	statuses := byTarget(t, s)
@@ -154,14 +154,14 @@ func TestPartialFailureRetryAndSourceExpiryPreserveCopies(t *testing.T) {
 	require.NoError(t, s.ReconcilePending(ctx, 10))
 	require.Equal(t, 1, objects.writes, "failed deliveries need an explicit retry")
 	objects.fail = false
-	require.NoError(t, s.Retry(ctx, "space-a", "task-a", "minio"))
-	require.NoError(t, s.Retry(ctx, "space-a", "task-a", "minio"))
+	require.NoError(t, s.Retry(ctx, "space-a", "task-a", "minio", ""))
+	require.NoError(t, s.Retry(ctx, "space-a", "task-a", "minio", ""))
 	require.NoError(t, s.ReconcilePending(ctx, 10))
 	statuses = byTarget(t, s)
 	require.Equal(t, DeliverySucceeded, statuses["minio"].State)
 	require.Equal(t, 2, statuses["minio"].Attempts)
 	require.Equal(t, 1, statuses["database"].Attempts)
-	require.NoError(t, s.Retry(ctx, "space-a", "task-a", "database"))
+	require.NoError(t, s.Retry(ctx, "space-a", "task-a", "database", ""))
 	require.NoError(t, s.ReconcilePending(ctx, 10))
 	require.Equal(t, 2, objects.writes)
 	_, err = db.CompareAndSwap(ctx, source, "expired", false, map[string]interface{}{"expires_at": time.Now().UTC().Add(-time.Hour)})
@@ -170,15 +170,15 @@ func TestPartialFailureRetryAndSourceExpiryPreserveCopies(t *testing.T) {
 	require.ErrorIs(t, s.Download(ctx, "space-a", source.ID, io.Discard), ErrSourceExpired)
 	for _, target := range []string{"minio", "database"} {
 		var out bytes.Buffer
-		require.NoError(t, s.DownloadDelivery(ctx, "space-a", "task-a", target, &out))
+		require.NoError(t, s.DownloadDelivery(ctx, "space-a", "task-a", target, &out, ""))
 		require.Equal(t, data, out.Bytes())
-		require.ErrorIs(t, s.DownloadDelivery(ctx, "space-b", "task-a", target, io.Discard), datastore.ErrRecordNotExist)
+		require.ErrorIs(t, s.DownloadDelivery(ctx, "space-b", "task-a", target, io.Discard, ""), datastore.ErrRecordNotExist)
 	}
 	source, err = s.Get(ctx, "space-a", source.ID)
 	require.NoError(t, err)
 	require.True(t, source.Expired)
 	require.NotEmpty(t, source.Summary)
-	copies, err := s.List(ctx, "space-a", KindDatabase, "task-a")
+	copies, err := s.List(ctx, "space-a", KindDatabase, "task-a", "")
 	require.NoError(t, err)
 	require.Len(t, copies, 1)
 	require.Nil(t, copies[0].ExpiresAt)
@@ -190,15 +190,15 @@ func TestMetadataCopyRequiresSuccessfulFullMinIO(t *testing.T) {
 	objects := &fakeObjects{fail: true}
 	s.objects = objects
 	p := policy(spec.JobResultTarget{Type: "database", Mode: "metadata"}, spec.JobResultTarget{Type: "minio", Mode: "full"})
-	_, err := s.PutResult(ctx, "space-a", "task-a", p, bytes.NewReader(resultBytes(t)))
+	_, err := s.PutResult(ctx, "space-a", "task-a", p, bytes.NewReader(resultBytes(t)), "")
 	require.NoError(t, err)
 	require.NoError(t, s.ReconcilePending(ctx, 10))
 	statuses := byTarget(t, s)
 	require.Equal(t, DeliveryFailed, statuses["database"].State)
 	require.Contains(t, statuses["database"].LastError, "successful MinIO")
 	objects.fail = false
-	require.NoError(t, s.Retry(ctx, "space-a", "task-a", "database"))
-	require.NoError(t, s.Retry(ctx, "space-a", "task-a", "minio"))
+	require.NoError(t, s.Retry(ctx, "space-a", "task-a", "database", ""))
+	require.NoError(t, s.Retry(ctx, "space-a", "task-a", "minio", ""))
 	require.NoError(t, s.ReconcilePending(ctx, 10))
 	statuses = byTarget(t, s)
 	require.Equal(t, DeliverySucceeded, statuses["database"].State)
@@ -207,7 +207,7 @@ func TestMetadataCopyRequiresSuccessfulFullMinIO(t *testing.T) {
 	require.Zero(t, copy.Chunks)
 	require.NotEmpty(t, copy.Reference)
 	var out bytes.Buffer
-	require.NoError(t, s.DownloadDelivery(ctx, "space-a", "task-a", "database", &out))
+	require.NoError(t, s.DownloadDelivery(ctx, "space-a", "task-a", "database", &out, ""))
 	require.Equal(t, resultBytes(t), out.Bytes())
 }
 
@@ -216,19 +216,19 @@ func TestExpiredSourceRejectsRetryAndGuardRollsBack(t *testing.T) {
 	ctx := context.Background()
 	p := policy(spec.JobResultTarget{Type: "minio", Mode: "full"})
 	rejected := errors.New("stale execution token")
-	_, err := s.PutResultGuarded(ctx, "space-a", "task-a", p, bytes.NewReader(resultBytes(t)), func(Backend) error { return rejected })
+	_, err := s.PutResultGuarded(ctx, "space-a", "task-a", p, bytes.NewReader(resultBytes(t)), func(Backend) error { return rejected }, "")
 	require.ErrorIs(t, err, rejected)
 	count, err := db.Count(ctx, &model.JobArtifact{WorkspaceID: "space-a", Kind: KindSource}, nil)
 	require.NoError(t, err)
 	require.Zero(t, count)
-	source, err := s.PutResult(ctx, "space-a", "task-a", p, bytes.NewReader(resultBytes(t)))
+	source, err := s.PutResult(ctx, "space-a", "task-a", p, bytes.NewReader(resultBytes(t)), "")
 	require.NoError(t, err)
 	require.NoError(t, s.ReconcilePending(ctx, 10))
 	require.Equal(t, DeliveryFailed, byTarget(t, s)["minio"].State)
 	_, err = db.CompareAndSwap(ctx, source, "expired", false, map[string]interface{}{"expires_at": time.Now().UTC().Add(-time.Hour)})
 	require.NoError(t, err)
-	require.ErrorIs(t, s.Retry(ctx, "space-a", "task-a", "minio"), ErrSourceExpired)
-	require.ErrorIs(t, s.SetRetention(ctx, "space-a", "task-a", 90), ErrSourceExpired)
+	require.ErrorIs(t, s.Retry(ctx, "space-a", "task-a", "minio", ""), ErrSourceExpired)
+	require.ErrorIs(t, s.SetRetention(ctx, "space-a", "task-a", 90, ""), ErrSourceExpired)
 }
 
 func TestDeliveryRecoveryFencesStaleCompletion(t *testing.T) {
@@ -236,7 +236,7 @@ func TestDeliveryRecoveryFencesStaleCompletion(t *testing.T) {
 	ctx := context.Background()
 	objects := &fakeObjects{}
 	s.objects = objects
-	_, err := s.PutResult(ctx, "space-a", "task-a", policy(spec.JobResultTarget{Type: "minio", Mode: "full"}), bytes.NewReader(resultBytes(t)))
+	_, err := s.PutResult(ctx, "space-a", "task-a", policy(spec.JobResultTarget{Type: "minio", Mode: "full"}), bytes.NewReader(resultBytes(t)), "")
 	require.NoError(t, err)
 	d := byTarget(t, s)["minio"]
 	objects.onPut = func() {
@@ -264,7 +264,7 @@ func TestDatabaseChunkedCopyRetainsExactArchive(t *testing.T) {
 	_, err := rand.New(rand.NewSource(1)).Read(payload)
 	require.NoError(t, err)
 	data := archiveBytes(t, testEntry{name: "outputs/artifact.bin", content: string(payload)})
-	source, err := s.PutResult(ctx, "space-a", "task-a", spec.DefaultJobResultPolicy(), bytes.NewReader(data))
+	source, err := s.PutResult(ctx, "space-a", "task-a", spec.DefaultJobResultPolicy(), bytes.NewReader(data), "")
 	require.NoError(t, err)
 	require.Greater(t, source.Chunks, 3)
 	chunks, err := db.List(ctx, &model.ArtifactChunk{ArtifactID: source.ID}, nil)
@@ -274,7 +274,7 @@ func TestDatabaseChunkedCopyRetainsExactArchive(t *testing.T) {
 	}
 	require.NoError(t, s.ReconcilePending(ctx, 10))
 	var out bytes.Buffer
-	require.NoError(t, s.DownloadDelivery(ctx, "space-a", "task-a", "database", &out))
+	require.NoError(t, s.DownloadDelivery(ctx, "space-a", "task-a", "database", &out, ""))
 	require.Equal(t, data, out.Bytes())
 	// Persisted chunk corruption must not be silently accepted as a valid archive.
 	first := chunks[0].(*model.ArtifactChunk)
@@ -286,11 +286,11 @@ func TestDatabaseChunkedCopyRetainsExactArchive(t *testing.T) {
 func TestStorageRejectsMissingScopeAndInvalidPolicy(t *testing.T) {
 	s, _ := testStore(t)
 	ctx := context.Background()
-	_, err := s.List(ctx, "", KindDataset, "")
+	_, err := s.List(ctx, "", KindDataset, "", "")
 	require.Error(t, err)
-	_, err = s.Deliveries(ctx, "space-a", "")
+	_, err = s.Deliveries(ctx, "space-a", "", "")
 	require.Error(t, err)
-	_, err = s.PutResult(ctx, "space-a", "task-a", policy(spec.JobResultTarget{Type: "database", Mode: "metadata"}), bytes.NewReader(nil))
+	_, err = s.PutResult(ctx, "space-a", "task-a", policy(spec.JobResultTarget{Type: "database", Mode: "metadata"}), bytes.NewReader(nil), "")
 	require.Error(t, err)
 	for _, limit := range []int{0, 1001} {
 		require.Error(t, s.CleanupExpired(ctx, limit))
@@ -314,7 +314,7 @@ func TestDatasetPaginationIsStableAndScoped(t *testing.T) {
 	require.NoError(t, db.Add(ctx, &model.JobArtifact{ID: "other-dataset", WorkspaceID: "space-b", Kind: KindDataset}))
 	var ids []string
 	for page := 1; page <= 3; page++ {
-		rows, err := s.ListPage(ctx, "space-a", KindDataset, "", page, 2)
+		rows, err := s.ListPage(ctx, "space-a", KindDataset, "", page, 2, "")
 		require.NoError(t, err)
 		for _, row := range rows {
 			ids = append(ids, row.ID)
@@ -322,7 +322,7 @@ func TestDatasetPaginationIsStableAndScoped(t *testing.T) {
 	}
 	require.Equal(t, []string{"dataset-4", "dataset-3", "dataset-2", "dataset-1", "dataset-0"}, ids)
 	for _, args := range [][2]int{{0, 1}, {1, 0}, {1, 101}} {
-		_, err := s.ListPage(ctx, "space-a", KindDataset, "", args[0], args[1])
+		_, err := s.ListPage(ctx, "space-a", KindDataset, "", args[0], args[1], "")
 		require.ErrorIs(t, err, ErrInvalidInput)
 	}
 	_, err := s.UploadDataset(ctx, "space-a", "", bytes.NewReader(nil))
@@ -371,4 +371,14 @@ func TestResultsAndDeliveriesAreIsolatedByExecution(t *testing.T) {
 	require.WithinDuration(t, time.Now().Add(24*time.Hour), *first.ExpiresAt, 2*time.Second)
 	require.WithinDuration(t, time.Now().Add(90*24*time.Hour), *second.ExpiresAt, 2*time.Second)
 	require.ErrorIs(t, s.Retry(ctx, "space-a", "task-a", "database", "missing"), datastore.ErrRecordNotExist)
+}
+
+// Fixed identifiers protect stored rows when execution keys become explicit.
+func TestArtifactIdentifiersPreserveStoredKeys(t *testing.T) {
+	require.Equal(t, "e5236cb121514ab6e4cf93a9b72ebd8b4acc08a1f4e1d905f21569dfde456094", sourceID("workspace", "task", ""))
+	require.Equal(t, "8dae661d02903a31c6a0fe713a270b4631a9881f6c0e6d63cc64837289fda36b", sourceID("workspace", "task", "attempt-1"))
+	require.Equal(t, "5649e744f4c36791f0d7d6e1e3dbaa66f66298017f2881cc9c1106b15b1e44d8", deliveryID("workspace", "task", "database", ""))
+	require.Equal(t, "428b3d7f15de24f5c99f71d61d474f13f638a74b3d3d7cd636071c93290ff0b4", deliveryID("workspace", "task", "database", "attempt-1"))
+	require.Equal(t, "06266d5d0210decd248a206014b5672d9266803a041f6dbcb166fa4dc4ef6a3c", databaseID("workspace", "task", ""))
+	require.Equal(t, "2bbfd02cb0b35c8c8a3061121d1fa741947c968f0ba14343ce0c32f7ec4a6217", databaseID("workspace", "task", "attempt-1"))
 }

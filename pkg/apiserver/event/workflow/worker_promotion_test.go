@@ -5,14 +5,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/rest"
+
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
-	"github.com/stretchr/testify/require"
-	"k8s.io/client-go/rest"
 )
 
 type promotionPolicyStore struct {
@@ -30,7 +31,7 @@ func (s *promotionPolicyStore) Get(ctx context.Context, entity datastore.Entity)
 func TestClaimedWorkflowPreparationUsesExecutionContextAfterPromotion(t *testing.T) {
 	for _, action := range []string{"complete", "stop execution", "ownership replaced"} {
 		t.Run(action, func(t *testing.T) {
-			w := newWorkflowForAckTests(t, true)
+			w := newWorkflowForAckTests(t)
 			configureWorkflowAckTestCancelClient(t, w)
 			store := w.Store.(*workflowAckTestStore)
 			w.Store = &workspaceControllerTestStore{DataStore: store, appID: store.taskSnapshot().AppID}

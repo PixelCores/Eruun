@@ -70,8 +70,7 @@ func NewDBError(err error) error {
 
 // Config datastore config
 type Config struct {
-	Type string
-	URL  string
+	URL string
 	// MaxIdleConns defines the maximum number of idle connections kept in the pool.
 	MaxIdleConns int
 	// MaxOpenConns limits the total number of open connections to the database.
@@ -230,4 +229,24 @@ type ReadCommittedTransactional interface {
 // It must be used on a datastore supplied by a transaction.
 type RowLocker interface {
 	GetForUpdate(context.Context, Entity) error
+}
+
+// RuntimeStore is the required production persistence contract. Read-only
+// consumers may still accept DataStore without advertising unused capabilities.
+type RuntimeStore interface {
+	DataStore
+	ConditionalCompareAndSwap
+	DatabaseClock
+	Transactional
+	ReadCommittedTransactional
+	RowLocker
+}
+
+// RequireRuntimeStore rejects incomplete adapters before runtime work begins.
+func RequireRuntimeStore(store DataStore) (RuntimeStore, error) {
+	runtimeStore, ok := store.(RuntimeStore)
+	if !ok {
+		return nil, fmt.Errorf("runtime datastore requires conditional updates, database clock, transactions, read-committed transactions and row locking")
+	}
+	return runtimeStore, nil
 }

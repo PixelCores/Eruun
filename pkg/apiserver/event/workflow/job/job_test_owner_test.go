@@ -66,6 +66,16 @@ func (s *jobTestOwnerStore) WithTransaction(ctx context.Context, fn func(datasto
 	return fn(s)
 }
 
+func (s *jobTestOwnerStore) WithReadCommittedTransaction(ctx context.Context, fn func(datastore.DataStore) error) error {
+	if tx, ok := s.DataStore.(datastore.ReadCommittedTransactional); ok {
+		return tx.WithReadCommittedTransaction(ctx, func(store datastore.DataStore) error {
+			return fn(&jobTestOwnerStore{DataStore: store, owners: s.owners})
+		})
+	}
+	// In-memory owner fixtures use their existing recorded transaction boundary.
+	return s.WithTransaction(ctx, fn)
+}
+
 func (s *jobTestOwnerStore) CurrentDatabaseTime(ctx context.Context) (time.Time, error) {
 	if clock, ok := s.DataStore.(datastore.DatabaseClock); ok {
 		return clock.CurrentDatabaseTime(ctx)

@@ -12,9 +12,6 @@ import (
 // MigrateSchema runs the datastore migration lifecycle without constructing
 // Kubernetes, cache, messaging, API, or workflow runtime dependencies.
 func MigrateSchema(ctx context.Context, cfg config.Config) error {
-	if cfg.Datastore.Type != config.MYSQL {
-		return fmt.Errorf("unsupported datastore type: %s", cfg.Datastore.Type)
-	}
 	models, err := model.BuiltinModels()
 	if err != nil {
 		return fmt.Errorf("build model set: %w", err)
