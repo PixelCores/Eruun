@@ -289,13 +289,13 @@ func RunJobs(ctx context.Context, jobs []*model.JobTask, run *Runtime) error {
 				}
 				continue
 			}
-			if config.IsWorkspaceJobType(config.JobType(task.JobType)) {
+			if config.IsWorkspaceJobType(config.JobType(task.JobType)) || task.AppID == "" && task.JobType == string(config.JobDeployPVC) {
 				if task.TaskID == "" || task.WorkspaceID != scope.WorkspaceID || (task.AppID != "" && task.JobType != string(config.JobEval)) {
 					return fmt.Errorf("job workspace does not match execution scope")
 				}
 				if task.AppID == "" {
 					if err := access.NewStore(store).Check(ctx, &model.JobInfo{
-						TaskID: task.TaskID, WorkspaceID: task.WorkspaceID, Type: task.JobType,
+						TaskID: task.TaskID, WorkspaceID: task.WorkspaceID, Type: task.JobType, ServiceName: resolveJobServiceName(task),
 					}); err != nil {
 						return fmt.Errorf("authorize workspace job: %w", err)
 					}

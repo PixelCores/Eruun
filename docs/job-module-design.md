@@ -1,10 +1,10 @@
 # 自定义 Job 模块设计
 
-> 状态：Draft / Proposal。2026-10-17 已与用户确认方向（方案 A、stages、K8s `backoffLimit`），但尚未实现。当前可用行为以 [`workspace-jobs-api.md`](workspace-jobs-api.md) 为准。
+> 状态：第 1 阶段（DSL 与编译）为 Implemented Reference；第 2、3 阶段（定义、延迟与 cron 触发）仍为 Draft / Proposal。2026-10-17 已与用户确认方向（方案 A、stages、K8s `backoffLimit`）。当前可用行为以 [`workspace-jobs-api.md`](workspace-jobs-api.md) 为准；本文第 4、6 节涉及定义与触发的表、字段、路由尚未实现。
 
 ## 1. 背景与问题
 
-当前独立 Job 由 `POST /api/v1/jobs` 写入一条 `WorkflowQueue{Type: job, AppID: ""}`，派发、租约、fencing、JobInfo 和恢复都借用 Workflow 运行时。执行本身不依赖 AppID，但用户需要的四项能力，要么缺失，要么只在 Application 语义下才存在：
+设计前的独立 Job 由 `POST /api/v1/jobs` 写入一条 `WorkflowQueue{Type: job, AppID: ""}`，派发、租约、fencing、JobInfo 和恢复都借用 Workflow 运行时。执行本身不依赖 AppID，但用户需要的四项能力，要么缺失，要么只在 Application 语义下才存在：
 
 | 能力 | 现状 | 卡住的位置 |
 | --- | --- | --- |
@@ -142,19 +142,24 @@ type JobStep struct {
 }
 
 type JobStepRetry struct {
-	BackoffLimit int32 `json:"backoffLimit"` // 0..10, written to batchv1.JobSpec.BackoffLimit
+	BackoffLimit int32 `json:"backoffLimit"` // command only: 0..10, written to batchv1.JobSpec.BackoffLimit
 }
 ```
 
 校验规则（提交时一次性完成，fail-fast）：
 
-- stage 名、step 名都只能有一个写法，并且在本 Job 内唯一；至少一个 stage，每个 stage 至少一个 step。
-- 拒绝 `ingress`、`service`、`rollout`、`share` 等长期运行负载才需要的 trait；`type: job` 步骤沿用现有评测 trait 的限制。
-- 一个 stage 内有多个步骤并声明了 `volume` 时，`accessMode` 必须是 `ReadWriteMany`。
-- OOM 重试继续使用 traits 中的 `jobRetryPolicy`，`retry.backoffLimit` 只负责一般失败时的 Pod 重启。
+- stage 名、step 名均不能为空，各自在本 Job 内唯一；至少一个 stage，每个 stage 至少一个 step。每个 step 生成的 `eruun-job-<taskID>-<step>` 必须复用现有 Kubernetes 命名和长度校验；当前 taskID 长度下 step 名上限为 28 字节。
+- command step 拒绝 `ingress`、`service`、`rollout`、`share`；顶层以及 init/sidecar 嵌套 traits 都检查 AdditionalObjects。`persistent` 存储只能引用已有 PVC，不允许 `tmpCreate`、`size` 或 `storageClass`；`ApplyTraits` 为此产生的 PVC 对象不编译为 JobTask，Eruun 不创建该 PVC，Pod 只引用已有 claim。
+- 除上述已有 PVC 引用外，任何 AdditionalObjects（包括新建 PVC、RBAC 的 ServiceAccount/Role/Binding、Ingress 等）均在提交时拒绝，错误中指出具体 trait。共享存储由顶层 `volume` 承担。
+- `type: job` step 沿用 `NormalizeEvaluationTraits` 的现有限制，不接受 command `spec`，不挂载运行 volume。不接受 step 的 `retry`（包括 `backoffLimit: 0`）；Runner Job 的 `BackoffLimit` 固定为 0，评测恢复由 `traits.eval.recovery` 控制。同一 task 支持多个评测执行，结果操作必须显式选择 `executionKey`；复用现有 Runner 授权与恢复协议。
+- 一个 stage 内有多个步骤并声明了 `volume` 时，`accessMode` 必须是 `ReadWriteMany`。声明 volume 后，`workspace` 卷名和 `/workspace` 路径保留给运行卷，顶层和 init/sidecar traits 的 storage 均不能占用。
+- volume 的 `storageClass` 继续受既有 `workspace.storageClasses` 白名单约束；省略时仅在管理员允许默认存储类的情况下可用。该权限校验沿用资源准备流程，不新增存储授权入口。
+- command step 的 `retry.backoffLimit` 范围为 0–10，默认 0，写入 Kubernetes Job 的 `BackoffLimit`。现有 `jobRetryPolicy` 属于 Application properties，并非共享 Traits 字段；独立 command 的执行器 OOM 策略保持 `stop`，本阶段不新增 OOM 重试配置。
 - 所有写入 Kubernetes label 的值都按 [`kubernetes-label-normalization.md`](kubernetes-label-normalization.md) 归一化。
 
 ## 6. API
+
+以下定义 CRUD、`executeAt`、按定义列出运行均属于第 2、3 阶段 Proposal；第 1 阶段只更新既有 `POST /api/v1/jobs` 的 stages 请求体，不新增路由或触发方式。
 
 | 方法与路由 | 权限 | 作用 |
 | --- | --- | --- |
@@ -209,15 +214,15 @@ stateDiagram-v2
   Cancelled --> VolumeReleased: 取消恢复确认 Pod 已停止后
 ```
 
-- 声明了 `volume` 时，编译阶段把 PVC 放进第一个 stage 的最高优先级 JobTask，名称为 `eruun-job-<taskID>-work`，并打上 `eruun.io/job-task=<taskID>` 标签；所有步骤都挂载到 `/workspace`。
-- SQL 回滚无法撤销 Kubernetes 副作用，所以卷的删除不放在运行流程里。运行进入终态后，由 `Maintain` 按标签幂等删除该运行自己的 PVC，失败则下一轮重试。只删除这个运行拥有的卷，不碰空间内的其他 PVC。
+- 声明了 `volume` 时，编译阶段把 PVC 放进第一个 stage 的最高优先级 JobTask，名称为 `eruun-job-<taskID>-work`，并打上 `eruun.io/job-task=<归一化后的 taskID>` 标签；所有 command step 都挂载到 `/workspace`，eval step 不挂载。
+- SQL 回滚无法撤销 Kubernetes 副作用，所以卷的删除不放在运行流程里。`Maintain` 以集群中带 `eruun.io/job-task` 标签的存活 PVC 为待办，跨 namespace 按每页 100 个的 `Limit/Continue` 列表分页，不再扫描历史运行。由 label 值读取 `WorkflowQueue`，不存在时记 V(2) 日志并保留 PVC；只有 `Type == job`、`AppID` 为空、JobSpec 声明了 volume、PVC 名称等于该运行卷名且 namespace 等于所属空间 namespace 时才允许清理，其余身份或声明不匹配记录错误并跳过。运行进入终态后幂等删除，取消运行仍等待既有取消恢复确认 Job 已停止；删除附带 UID 和 ResourceVersion 前置条件，失败则下一轮重试，清理规模只随存活卷数量增长。
 - stage 内任一步骤失败后，后续 stage 不再执行，沿用 `cleanup_failed` 失败策略。
 
 ## 8. 运行时改动
 
 | 位置 | 改动 |
 | --- | --- |
-| `jobs.BuildTask` | 把 stages 编译成按 stage 分组的 JobTask；步骤通过临时 `ApplicationComponent` 复用 `traits.ApplyTraits`；写入 `BackoffLimit` |
+| `jobs.BuildTask` | 把 stages 编译成按 stage 分组的 JobTask；步骤通过临时 `ApplicationComponent` 复用 `traits.ApplyTraits`；仅 command 写入可配置的 `BackoffLimit` |
 | `event/workflow.GenerateJobTasks` | 每个 stage 生成一个 `StepExecution`（多个步骤用 `DAG`，单个用 `StepByStep`） |
 | `ClaimTaskForDispatch` | `Type == job` 的延迟任务直接 CAS 认领，不拿应用锁，不检查 fence |
 | `jobs.Service.Maintain` | 增加 cron 触发与运行卷清理 |
@@ -229,13 +234,13 @@ lease、generation/token、reaper、全局准入和取消恢复都不改。
 
 每个阶段一个 PR，按顺序合并：
 
-1. **DSL 与编译**：`JobSpec` 改为 stages，加入 volume、traits 复用和 `backoffLimit`；一次性 `/jobs` 切到新请求体；增加运行卷清理；同步 `workspace-jobs-api.md` 和示例。
-2. **定义与触发**：新增 `JobDefinition` 表与 CRUD、`/runs` 手动和延迟触发、`WorkflowQueue` 的两个新列，以及 `ClaimTaskForDispatch` 对 Job 的放行。
-3. **cron**：`Maintain` 里的 cron 触发、三种并发策略、幂等键和 `last_skip_reason`。
+1. **DSL 与编译（已实现）**：`JobSpec` 改为 stages，加入 volume、traits 复用和 `backoffLimit`；一次性 `/jobs` 切到新请求体；增加运行卷清理；同步 `workspace-jobs-api.md` 和示例。
+2. **定义与触发（Proposal）**：新增 `JobDefinition` 表与 CRUD、`/runs` 手动和延迟触发、`WorkflowQueue` 的两个新列，以及 `ClaimTaskForDispatch` 对 Job 的放行。
+3. **cron（Proposal）**：`Maintain` 里的 cron 触发、三种并发策略、幂等键和 `last_skip_reason`。
 
 ## 10. 风险与验证
 
-- `/jobs` 请求体是破坏性变更，升级前需要排空旧格式的 Waiting 运行。
+- `/jobs` 请求体是破坏性变更，升级前需要排空旧格式的 Waiting/Queued 运行，并完成或取消旧运行、确认 Kubernetes Job 已停止；本阶段不迁移旧持久化快照。
 - 同一 stage 内的并行步骤配 RWO 卷会在提交时被拒绝；RWX 的可用性由存储类决定，需要在目标集群验证。
 - Replace 策略依赖取消恢复确认旧 Pod 停止，新旧运行使用各自的卷，彼此不冲突。
 - 本地和 fake 测试不能证明真实 MySQL 隔离、PVC 挂载与回收、cron 在 Leader 切换时只触发一次；这些需要在真实集群上验收。

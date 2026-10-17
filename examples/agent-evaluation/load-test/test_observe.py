@@ -18,8 +18,8 @@ import observe
 def detail(task_id="job-1", status="completed", collection="collected", deliveries=None):
     return {
         "taskId": task_id, "type": "job", "status": status, "collectionState": collection,
-        "job": {"traits": {"eval": {"resultPolicy": {
-            "targets": [{"type": "database", "mode": "full"}]}}}},
+        "job": {"stages": [{"name": "main", "steps": [{"name": "evaluate", "type": "job", "traits": {"eval": {"resultPolicy": {
+            "targets": [{"type": "database", "mode": "full"}]}}}}]}]},
         "deliveries": ([{"target": "database", "mode": "full", "state": "succeeded"}]
                        if deliveries is None else deliveries),
     }
@@ -71,7 +71,7 @@ class ObserverTests(unittest.TestCase):
 
     def test_multiple_targets_and_missing_targets_cannot_succeed(self):
         value = detail()
-        value["job"]["traits"]["eval"]["resultPolicy"]["targets"] = [
+        value["job"]["stages"][0]["steps"][0]["traits"]["eval"]["resultPolicy"]["targets"] = [
             {"type": "minio", "mode": "full"}, {"type": "database", "mode": "metadata"}]
         value["deliveries"][0]["mode"] = "metadata"
         self.assertIsNone(observe.outcome(observe.snapshot(value, "job-1")))

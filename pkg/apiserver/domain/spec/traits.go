@@ -32,10 +32,8 @@ type Traits struct {
 	Rollout *RolloutTraitSpec `json:"rollout,omitempty"`
 }
 
-// JobTraits is the subset of traits a standalone Job can carry. Traits that
-// only decorate long-running workloads (init, sidecar, ingress, service, rbac,
-// probes, targetWorkEnv, share, rollout) are absent by construction, so the
-// decoder rejects them instead of each Job entry point re-checking for them.
+// JobTraits is the restricted projection used by evaluation normalization and
+// Runner rendering. Public Job steps use the same Traits as Application components.
 type JobTraits struct {
 	Evaluation     *EvaluationTraitSpec `json:"eval,omitempty"`
 	Storage        []StorageTraitSpec   `json:"storage,omitempty"`

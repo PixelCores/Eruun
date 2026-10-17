@@ -28,7 +28,8 @@ service JobsService {
 }
 
 // execution_key is required for Application workflow evaluation results.
-// Standalone Jobs can omit it; CancelJob accepts only the parent task_id.
+// Standalone Jobs can omit it only when the evaluation execution is unique.
+// CancelJob accepts only the parent task_id.
 message JobTaskRequest { string task_id = 1; string execution_key = 2; }
 message JobArtifactRequest { string task_id = 1; string artifact_id = 2; string execution_key = 3; }
 message JobDeliveryRequest { string task_id = 1; string target = 2; string execution_key = 3; }
@@ -38,63 +39,35 @@ message ListJobDatasetsRequest { optional int32 page = 1; optional int32 page_si
 
 message JobStoragePolicy { repeated string available_targets = 1; JobResultPolicy policy = 2; }
 
-message JobStorageTrait {
+message JobVolume {
+  string size = 1;
+  string storage_class = 2;
+  string access_mode = 3;
+}
+message JobStepRetry { int32 backoff_limit = 1; }
+message JobStep {
   string name = 1;
   string type = 2;
-  string mount_path = 3;
-  string sub_path = 4;
-  string sub_path_expr = 5;
-  bool read_only = 6;
-  string source_name = 7;
-  bool tmp_create = 8;
-  string size = 9;
-  string claim_name = 10;
-  string storage_class = 11;
+  // Command inputs only. Evaluation steps use traits.eval and omit spec.
+  google.protobuf.Value spec = 3;
+  AppSpecTraits traits = 4;
+  JobStepRetry retry = 5;
 }
-message JobResourceTrait {
-  string cpu = 1;
-  string memory = 2;
-  string gpu = 3;
-  string cpu_limit = 4;
-  string memory_limit = 5;
-}
-message JobSecretSelector { string name = 1; string key = 2; }
-message JobConfigSelector { string name = 1; string key = 2; }
-message JobValueSource {
-  optional string static = 1;
-  JobSecretSelector secret = 2;
-  JobConfigSelector config = 3;
-  optional string field = 4;
-}
-message JobEnv { string name = 1; JobValueSource value_from = 2; }
-message JobEnvFrom { string type = 1; string source_name = 2; }
-message JobTraits {
-  repeated JobStorageTrait storage = 1;
-  repeated JobEnvFrom env_from = 2;
-  repeated JobEnv envs = 3;
-  map<string, string> target_work_env = 4;
-  JobResourceTrait resources = 5;
-  AppKubeCoreSecurityContext security_policy = 6 [json_name = "securityPolicy"];
-  EvaluationTrait eval = 7;
-}
-
+message JobStage { string name = 1; repeated JobStep steps = 2; }
 message SubmitJobRequest {
   string workspace_id = 1;
   string name = 2;
-  string type = 3;
-  // Command inputs only. Evaluation Jobs use traits.eval and omit spec.
-  google.protobuf.Value spec = 4;
-  JobTraits traits = 5;
-  reserved 6;
-  reserved "result_policy";
+  reserved 3, 4, 5, 6;
+  reserved "type", "spec", "traits", "result_policy";
+  JobVolume volume = 7;
+  repeated JobStage stages = 8;
 }
 message JobSpec {
   string name = 1;
-  string type = 2;
-  google.protobuf.Value spec = 3;
-  JobTraits traits = 4;
-  reserved 5;
-  reserved "result_policy";
+  reserved 2, 3, 4, 5;
+  reserved "type", "spec", "traits", "result_policy";
+  JobVolume volume = 6;
+  repeated JobStage stages = 7;
 }
 message JobAccepted {
   string task_id = 1;

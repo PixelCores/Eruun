@@ -148,7 +148,7 @@ func TestResourceImportGenerationFailurePersistsSafeClientReason(t *testing.T) {
 
 func TestStandaloneJobResolvesWorkspaceWithoutApplication(t *testing.T) {
 	task := &model.WorkflowQueue{TaskID: "command-task", WorkspaceID: "workspace", Type: config.WorkflowTaskTypeJob,
-		JobSpec: `{"name":"command","type":"command","spec":{"image":"busybox:1.37.0","command":["true"]}}`}
+		JobSpec: `{"name":"command","stages":[{"name":"run","steps":[{"name":"command","type":"command","spec":{"image":"busybox:1.37.0","command":["true"]}}]}]}`}
 	ctl := newTestWorkflowController(t, task, nil, &controllerTestStore{})
 	ctl.accountConfig = &spec.AccountConfig{}
 	ctl.KubeConfig = &rest.Config{Host: "https://kubernetes.example.invalid"}
@@ -160,6 +160,11 @@ func TestStandaloneJobResolvesWorkspaceWithoutApplication(t *testing.T) {
 	require.Equal(t, "workspace", scope.WorkspaceID)
 	require.Equal(t, config.DefaultNamespace, scope.Namespace)
 	require.Empty(t, ctl.snapshotTask().AppID)
+	ctl.mutateTask(func(task *model.WorkflowQueue) {
+		task.JobSpec = `{"name":"pipeline","stages":[{"name":"prepare","steps":[{"name":"fetch","type":"command","spec":{"image":"busybox:1.37.0","command":["true"]}}]},{"name":"score","steps":[{"name":"evaluate","type":"job","traits":{"eval":{"env":"ack","agent":"oracle","taskPackageId":"11111111-1111-1111-1111-111111111111"}}}]}]}`
+	})
+	_, err = ctl.prepareWorkspace(context.Background())
+	require.ErrorContains(t, err, `evaluation runner configuration is required for stage "score" step "evaluate"`)
 	ctl.mutateTask(func(task *model.WorkflowQueue) { task.AppID = "forged-app" })
 	_, err = ctl.prepareWorkspace(context.Background())
 	require.ErrorContains(t, err, "workspace Job has application or workflow ownership")

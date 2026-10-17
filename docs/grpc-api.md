@@ -64,13 +64,15 @@ make grpc-gen
 make grpc-gen-check
 ```
 
-Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交多个属性条目；`GetApplicationSpec` 和 `ListApplicationWorkflows` 返回的可编辑 `spec` 也保留完整数组。更新已有 Workflow 时，省略 `failure_policy` 会保留现有策略，显式提交空字符串会重置为默认 `cleanup_all`。数据库重置的 `init_sqlurl` 仅在省略时视为未提供；显式空字符串是无效 URL，调用会失败且不会创建任务。独立 `command` Job 的 `traits.security_policy` 可设置容器安全上下文，提交和读取 Job 时均保留该字段。
+Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交多个属性条目；`GetApplicationSpec` 和 `ListApplicationWorkflows` 返回的可编辑 `spec` 也保留完整数组。更新已有 Workflow 时，省略 `failure_policy` 会保留现有策略，显式提交空字符串会重置为默认 `cleanup_all`。数据库重置的 `init_sqlurl` 仅在省略时视为未提供；显式空字符串是无效 URL，调用会失败且不会创建任务。独立 `command` step 的 `stages[].steps[].traits.security_policy` 可设置容器安全上下文，提交和读取 Job 时均保留该字段。
 
 ## LLM 测评声明与结果选择
 
-独立 `SubmitJob` 与 Application 的 `type: "job"` 组件共用 `EvaluationTrait`：测评配置放在 `traits.eval`，包含 `env`、`model`、`agent`、`task_package_id`、试验次数、并发、超时、Sandbox 资源及结果保存策略。`JobTraits.eval` 和 `AppSpecTraits.eval` 沿用原字段号 7 和 15；二进制消息字段号不变，ProtoJSON 使用 `eval` 并拒绝旧 `evaluation` 键。独立测评请求使用 `type: "job"` 并省略 `spec`；`command` 请求继续使用 `type: "command"` 和 `spec`。旧 `type: "eval"`、评测 `spec` 及顶层 `result_policy` 均不再接受；结果策略迁移至 `traits.eval.result_policy`。旧二进制客户端传入已删除的顶层结果策略也会被拒绝，不会静默忽略。框架版本由平台固定，`GetJob` 的 `framework_version` 返回所选执行实际冻结的版本。字段示例及约束见 [Job API](workspace-jobs-api.md)。
+独立 `SubmitJobRequest` 使用 `workspace_id`、`name`、可选 `volume` 和 `stages`；每个 `JobStage` 包含 `name` 和 `steps`。`JobStep` 包含 `name`、`type`、`spec`、`traits` 和可选 `retry.backoff_limit`（0–10）；`traits` 直接复用 applications.proto 的 `AppSpecTraits`。command step 提交 `type: "command"` 和 `spec`；评测 step 提交 `type: "job"`，将测评配置放在 `traits.eval` 并省略 `spec`；两类 step 均支持 `retry.backoff_limit`。评测与 Application 组件共享 `EvaluationTrait`，包括 `env`、`model`、`agent`、`task_package_id`、试验次数、并发、超时、Sandbox 资源及结果保存策略。
 
-同一 Application Workflow 可以包含多个测评 Job。调用 `GetJob`、`GetJobResults`、结果/投递下载、投递重试和保留期更新时，Application 调用方必须同时提供父 `task_id` 与目标 Job 的 `execution_key`；响应中的 Job 明细、结果和投递也返回该标识。独立 Job 可以省略 `execution_key`，服务端在执行唯一时解析它。结果按执行分别保存，不能用一个执行的标识读取同一 Workflow 中另一个执行的制品。`CancelJob` 仅接受独立 Job 的父 `task_id`，不接受 `execution_key`；Application 仍通过 Workflow 取消接口取消任务。
+这是破坏性变更：原 `SubmitJobRequest` 顶层 `type/spec/traits` 已删除，连同更早移除的 `result_policy` 一起保留字段号并拒绝旧二进制请求；不提供兼容路径。`GetJob` 的 `JobSpec` 同步返回 stages，`JobAccepted.type` 统一为 `job`。`volume` 字段为 `size/storage_class/access_mode`，只挂载 command steps 到 `/workspace`；stage 并行与卷约束、trait 附属资源拒绝规则和终态清理与 HTTP 一致。框架版本由平台固定，`GetJob.framework_version` 返回所选执行实际冻结的版本。字段示例及约束见 [Job API](workspace-jobs-api.md)。
+
+同一 Application Workflow 可以包含多个测评 Job。调用 `GetJob`、`GetJobResults`、结果/投递下载、投递重试和保留期更新时，Application 调用方必须同时提供父 `task_id` 与目标 Job 的 `execution_key`；响应中的 Job 明细、结果和投递也返回该标识。独立 Job 仅在评测执行唯一时可以省略 `execution_key`；同一 task 存在多个评测执行时必须显式指定。结果按执行分别保存，不能用一个执行的标识读取同一 Workflow 中另一个执行的制品。`CancelJob` 仅接受独立 Job 的父 `task_id`，不接受 `execution_key`；Application 仍通过 Workflow 取消接口取消任务。
 
 ## HTTP 路由到 RPC 对照
 

@@ -16,15 +16,15 @@ import (
 )
 
 func TestJobSecurityPolicyTraitsRoundTrip(t *testing.T) {
-	input := &eruunv1.JobTraits{
+	input := &eruunv1.AppSpecTraits{
 		SecurityPolicy: &eruunv1.AppKubeCoreSecurityContext{
 			RunAsUser: ptr.To(int64(1000)), RunAsNonRoot: ptr.To(false),
 			Capabilities:   &eruunv1.AppKubeCoreCapabilities{Drop: []string{"ALL"}},
 			SeccompProfile: &eruunv1.AppKubeCoreSeccompProfile{Type: "RuntimeDefault"},
 		},
-		Resources: &eruunv1.JobResourceTrait{Cpu: "100m", Memory: "128Mi"},
+		Resources: &eruunv1.AppSpecResourceTraitsSpec{Cpu: "100m", Memory: "128Mi"},
 	}
-	traits, err := jobTraitsInput(input)
+	traits, err := decodeTypedRequest[spec.Traits](input)
 	require.NoError(t, err)
 	require.NotNil(t, traits.SecurityPolicy)
 	require.EqualValues(t, 1000, *traits.SecurityPolicy.RunAsUser)
@@ -35,16 +35,18 @@ func TestJobSecurityPolicyTraitsRoundTrip(t *testing.T) {
 	require.Equal(t, "100m", traits.Resources.CPU)
 
 	job, err := jobSpecOutput(spec.JobSpec{
-		Name: "run", Type: "command", Spec: json.RawMessage(`{"image":"busybox:1.37.0"}`), Traits: traits,
+		Name: "run", Stages: []spec.JobStage{{Name: "main", Steps: []spec.JobStep{{
+			Name: "run", Type: "command", Spec: json.RawMessage(`{"image":"busybox:1.37.0"}`), Traits: traits,
+		}}}},
 	})
 	require.NoError(t, err)
-	require.NotNil(t, job.Traits.SecurityPolicy)
-	require.NotNil(t, job.Traits.SecurityPolicy.RunAsNonRoot)
-	require.False(t, *job.Traits.SecurityPolicy.RunAsNonRoot)
-	require.Equal(t, input.SecurityPolicy.GetRunAsUser(), job.Traits.SecurityPolicy.GetRunAsUser())
-	require.Equal(t, input.SecurityPolicy.Capabilities.Drop, job.Traits.SecurityPolicy.Capabilities.Drop)
-	require.Equal(t, input.SecurityPolicy.SeccompProfile.Type, job.Traits.SecurityPolicy.SeccompProfile.Type)
-	require.Equal(t, "100m", job.Traits.Resources.Cpu)
+	require.NotNil(t, job.Stages[0].Steps[0].Traits.SecurityPolicy)
+	require.NotNil(t, job.Stages[0].Steps[0].Traits.SecurityPolicy.RunAsNonRoot)
+	require.False(t, *job.Stages[0].Steps[0].Traits.SecurityPolicy.RunAsNonRoot)
+	require.Equal(t, input.SecurityPolicy.GetRunAsUser(), job.Stages[0].Steps[0].Traits.SecurityPolicy.GetRunAsUser())
+	require.Equal(t, input.SecurityPolicy.Capabilities.Drop, job.Stages[0].Steps[0].Traits.SecurityPolicy.Capabilities.Drop)
+	require.Equal(t, input.SecurityPolicy.SeccompProfile.Type, job.Stages[0].Steps[0].Traits.SecurityPolicy.SeccompProfile.Type)
+	require.Equal(t, "100m", job.Stages[0].Steps[0].Traits.Resources.Cpu)
 }
 
 func TestEvaluationTraitSharedAcrossJobAndApplication(t *testing.T) {
@@ -55,12 +57,12 @@ func TestEvaluationTraitSharedAcrossJobAndApplication(t *testing.T) {
 		ResultPolicy:     &eruunv1.JobResultPolicy{RetentionDays: 30, Targets: []*eruunv1.JobResultTarget{{Type: "database", Mode: "full"}}},
 		Recovery:         &eruunv1.EvaluationRecovery{AgentVersion: spec.CodexRecoveryVersion, ReplaySafe: true, CheckpointIntervalSeconds: 300},
 	}
-	standalone, err := jobSubmitInput(&eruunv1.SubmitJobRequest{Name: "evaluate", Type: "job", Traits: &eruunv1.JobTraits{Eval: evaluation}})
+	standalone, err := jobSubmitInput(&eruunv1.SubmitJobRequest{Name: "evaluate", Stages: []*eruunv1.JobStage{{Name: "main", Steps: []*eruunv1.JobStep{{Name: "evaluate", Type: "job", Traits: &eruunv1.AppSpecTraits{Eval: evaluation}}}}}})
 	require.NoError(t, err)
-	require.Empty(t, standalone.Spec)
+	require.Empty(t, standalone.Stages[0].Steps[0].Spec)
 	app, err := decodeTypedRequest[spec.Traits](&eruunv1.AppSpecTraits{Eval: evaluation})
 	require.NoError(t, err)
-	require.Equal(t, app.Evaluation, standalone.Traits.Evaluation)
+	require.Equal(t, app.Evaluation, standalone.Stages[0].Steps[0].Traits.Evaluation)
 	require.Equal(t, int64(600), app.Evaluation.TimeoutSeconds)
 	require.Equal(t, "2", app.Evaluation.SandboxResources.CPU)
 	require.Equal(t, 30, app.Evaluation.ResultPolicy.RetentionDays)
@@ -70,21 +72,19 @@ func TestEvaluationTraitSharedAcrossJobAndApplication(t *testing.T) {
 
 	output, err := jobSpecOutput(standalone.JobSpec)
 	require.NoError(t, err)
-	require.Nil(t, output.Spec)
-	require.True(t, proto.Equal(evaluation, output.Traits.Eval))
+	require.Nil(t, output.Stages[0].Steps[0].Spec)
+	require.True(t, proto.Equal(evaluation, output.Stages[0].Steps[0].Traits.Eval))
 	appOutput, err := encodeTypedResponse(app, &eruunv1.AppSpecTraits{})
 	require.NoError(t, err)
-	require.True(t, proto.Equal(output.Traits.Eval, appOutput.Eval))
+	require.True(t, proto.Equal(output.Stages[0].Steps[0].Traits.Eval, appOutput.Eval))
 	require.NoError(t, standalone.Normalize())
-	for _, traits := range []proto.Message{output.Traits, appOutput} {
+	for _, traits := range []proto.Message{output.Stages[0].Steps[0].Traits, appOutput} {
 		encoded, err := protojson.Marshal(traits)
 		require.NoError(t, err)
 		require.Contains(t, string(encoded), `"eval":`)
 		require.NotContains(t, string(encoded), `"evaluation":`)
 	}
-	for _, traits := range []proto.Message{&eruunv1.JobTraits{}, &eruunv1.AppSpecTraits{}} {
-		require.Error(t, protojson.Unmarshal([]byte(`{"evaluation":{}}`), traits))
-	}
+	require.Error(t, protojson.Unmarshal([]byte(`{"evaluation":{}}`), &eruunv1.AppSpecTraits{}))
 }
 
 func TestEvaluationRecoveryProtoRejectsUnapprovedReplayAndPreservesOmission(t *testing.T) {
@@ -99,11 +99,11 @@ func TestEvaluationRecoveryProtoRejectsUnapprovedReplayAndPreservesOmission(t *t
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			evaluation := &eruunv1.EvaluationTrait{Env: "ack", Agent: "codex", Model: "openai/model", TaskPackageId: "12345678-1234-1234-1234-123456789012", Recovery: tc.recovery}
-			input, err := jobSubmitInput(&eruunv1.SubmitJobRequest{Name: "evaluate", Type: "job", Traits: &eruunv1.JobTraits{Eval: evaluation}})
+			input, err := jobSubmitInput(&eruunv1.SubmitJobRequest{Name: "evaluate", Stages: []*eruunv1.JobStage{{Name: "main", Steps: []*eruunv1.JobStep{{Name: "evaluate", Type: "job", Traits: &eruunv1.AppSpecTraits{Eval: evaluation}}}}}})
 			require.NoError(t, err)
 			app, err := decodeTypedRequest[spec.Traits](&eruunv1.AppSpecTraits{Eval: evaluation})
 			require.NoError(t, err)
-			for _, trait := range []*spec.EvaluationTraitSpec{input.Traits.Evaluation, app.Evaluation} {
+			for _, trait := range []*spec.EvaluationTraitSpec{input.Stages[0].Steps[0].Traits.Evaluation, app.Evaluation} {
 				err = trait.Normalize()
 				if tc.wantError != "" {
 					require.ErrorContains(t, err, tc.wantError)
@@ -120,18 +120,18 @@ func TestJobSubmitInputDeclarationContract(t *testing.T) {
 	command, err := structpb.NewValue(map[string]any{"image": "busybox:1.37.0", "command": []any{"true"}})
 	require.NoError(t, err)
 	for _, tc := range []struct {
-		name    string
-		request *eruunv1.SubmitJobRequest
-		valid   bool
+		name  string
+		step  *eruunv1.JobStep
+		valid bool
 	}{
-		{name: "command", request: &eruunv1.SubmitJobRequest{Name: "run", Type: "command", Spec: command}, valid: true},
-		{name: "missing command spec", request: &eruunv1.SubmitJobRequest{Name: "run", Type: "command"}},
-		{name: "removed eval type", request: &eruunv1.SubmitJobRequest{Name: "run", Type: "eval", Spec: command}},
-		{name: "job requires evaluation trait", request: &eruunv1.SubmitJobRequest{Name: "run", Type: "job"}},
-		{name: "job rejects spec", request: &eruunv1.SubmitJobRequest{Name: "run", Type: "job", Spec: command}},
+		{name: "command", step: &eruunv1.JobStep{Name: "run", Type: "command", Spec: command}, valid: true},
+		{name: "missing command spec", step: &eruunv1.JobStep{Name: "run", Type: "command"}},
+		{name: "removed eval type", step: &eruunv1.JobStep{Name: "run", Type: "eval", Spec: command}},
+		{name: "job requires evaluation trait", step: &eruunv1.JobStep{Name: "run", Type: "job"}},
+		{name: "job rejects spec", step: &eruunv1.JobStep{Name: "run", Type: "job", Spec: command}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			input, err := jobSubmitInput(tc.request)
+			input, err := jobSubmitInput(&eruunv1.SubmitJobRequest{Name: "run", Stages: []*eruunv1.JobStage{{Name: "main", Steps: []*eruunv1.JobStep{tc.step}}}})
 			require.NoError(t, err)
 			err = input.Normalize()
 			if tc.valid {
@@ -143,29 +143,50 @@ func TestJobSubmitInputDeclarationContract(t *testing.T) {
 	}
 }
 
-func TestJobSubmitRejectsRemovedResultPolicyWireField(t *testing.T) {
-	// Old binary clients can still transmit field 6 despite its reserved name.
-	// Reject it instead of silently replacing the requested policy with defaults.
-	wire := protowire.AppendTag(nil, 6, protowire.BytesType)
-	wire = protowire.AppendBytes(wire, []byte{8, 30})
-	request := &eruunv1.SubmitJobRequest{}
-	require.NoError(t, proto.Unmarshal(wire, request))
-	_, err := jobSubmitInput(request)
-	require.Error(t, err)
+func TestJobSubmitRejectsRemovedTopLevelFields(t *testing.T) {
+	for _, field := range []protowire.Number{3, 4, 5, 6} {
+		wire := protowire.AppendTag(nil, field, protowire.BytesType)
+		wire = protowire.AppendBytes(wire, []byte("legacy"))
+		request := &eruunv1.SubmitJobRequest{}
+		require.NoError(t, proto.Unmarshal(wire, request))
+		_, err := jobSubmitInput(request)
+		require.Error(t, err, "removed field %d must fail closed", field)
+	}
+	for _, raw := range []string{`{"name":"run","type":"command"}`, `{"name":"run","spec":{}}`, `{"name":"run","traits":{}}`} {
+		require.Error(t, protojson.Unmarshal([]byte(raw), &eruunv1.SubmitJobRequest{}))
+	}
 }
 
-func TestJobTraitsWithoutSecurityPolicy(t *testing.T) {
-	input, err := jobTraitsInput(&eruunv1.JobTraits{Resources: &eruunv1.JobResourceTrait{Cpu: "1", Memory: "2Gi"}})
+func TestJobStagesVolumeAndRetryRoundTrip(t *testing.T) {
+	command, err := structpb.NewValue(map[string]any{"image": "busybox:1.37.0", "command": []any{"true"}})
 	require.NoError(t, err)
-	require.Nil(t, input.SecurityPolicy)
-	require.Equal(t, "1", input.Resources.CPU)
-
-	output, err := jobTraitsOutput(input)
+	request := &eruunv1.SubmitJobRequest{
+		WorkspaceId: "workspace", Name: "pipeline",
+		Volume: &eruunv1.JobVolume{Size: "1Gi", StorageClass: "shared", AccessMode: "ReadWriteMany"},
+		Stages: []*eruunv1.JobStage{
+			{Name: "prepare", Steps: []*eruunv1.JobStep{{Name: "first", Type: "command", Spec: command, Retry: &eruunv1.JobStepRetry{BackoffLimit: 0}}}},
+			{Name: "run", Steps: []*eruunv1.JobStep{
+				{Name: "second", Type: "command", Spec: command, Retry: &eruunv1.JobStepRetry{BackoffLimit: 10}},
+				{Name: "third", Type: "command", Spec: command, Traits: &eruunv1.AppSpecTraits{Resources: &eruunv1.AppSpecResourceTraitsSpec{Cpu: "1", Memory: "2Gi"}}},
+			}},
+		},
+	}
+	input, err := jobSubmitInput(request)
 	require.NoError(t, err)
-	require.Nil(t, output.SecurityPolicy)
-	require.Equal(t, "1", output.Resources.Cpu)
-
-	missing, err := jobTraitsInput(nil)
+	require.Equal(t, "workspace", input.WorkspaceID)
+	require.NoError(t, input.Normalize())
+	require.NotNil(t, input.Stages[0].Steps[0].Retry)
+	require.Zero(t, input.Stages[0].Steps[0].Retry.BackoffLimit)
+	require.Nil(t, input.Stages[1].Steps[1].Retry)
+	output, err := jobSpecOutput(input.JobSpec)
 	require.NoError(t, err)
-	require.Nil(t, missing.SecurityPolicy)
+	require.Equal(t, "ReadWriteMany", output.Volume.AccessMode)
+	require.Equal(t, "shared", output.Volume.StorageClass)
+	require.Len(t, output.Stages, 2)
+	require.Len(t, output.Stages[1].Steps, 2)
+	require.NotNil(t, output.Stages[0].Steps[0].Retry)
+	require.EqualValues(t, 10, output.Stages[1].Steps[0].Retry.BackoffLimit)
+	require.Nil(t, output.Stages[1].Steps[1].Retry)
+	require.Equal(t, "1", output.Stages[1].Steps[1].Traits.Resources.Cpu)
+	require.Nil(t, output.Stages[1].Steps[1].Traits.SecurityPolicy)
 }

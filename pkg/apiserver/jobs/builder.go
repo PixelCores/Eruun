@@ -17,9 +17,11 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 )
 
@@ -77,7 +79,7 @@ func SetEvaluationTraits(job *model.JobTask, traits spec.JobTraits) error {
 	return nil
 }
 
-func BuildTask(task *model.WorkflowQueue, namespace string) (*model.JobTask, error) {
+func BuildTask(task *model.WorkflowQueue, namespace string) ([][]*model.JobTask, error) {
 	if task == nil || task.Type != config.WorkflowTaskTypeJob || task.AppID != "" || task.WorkspaceID == "" || task.TaskID == "" {
 		return nil, fmt.Errorf("invalid standalone Job identity")
 	}
@@ -88,25 +90,76 @@ func BuildTask(task *model.WorkflowQueue, namespace string) (*model.JobTask, err
 	if err := declaration.Normalize(); err != nil {
 		return nil, err
 	}
-	job := &model.JobTask{Name: "eruun-job-" + task.TaskID, Namespace: namespace, WorkspaceID: task.WorkspaceID, TaskID: task.TaskID, JobType: declaration.Type, Status: config.StatusQueued}
-	if declaration.Traits.Evaluation != nil {
-		if err := SetEvaluationTraits(job, declaration.Traits); err != nil {
-			return nil, err
+	stages := make([][]*model.JobTask, len(declaration.Stages))
+	volumeName := spec.JobVolumeName(task.TaskID)
+	if volume := declaration.Volume; volume != nil {
+		if naming.PVCName("work", "eruun-job-"+task.TaskID) != volumeName {
+			return nil, fmt.Errorf("invalid Job volume name %q", volumeName)
 		}
-		return job, nil
+		size, err := resource.ParseQuantity(volume.Size)
+		if err != nil {
+			return nil, fmt.Errorf("parse Job volume size: %w", err)
+		}
+		pvc := &corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: volumeName, Namespace: namespace,
+				Labels: map[string]string{spec.JobTaskLabel: naming.NormalizeLabelValue(task.TaskID)}},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.PersistentVolumeAccessMode(volume.AccessMode)},
+				Resources:   corev1.VolumeResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceStorage: size}},
+			},
+		}
+		if volume.StorageClass != "" {
+			pvc.Spec.StorageClassName = ptr.To(volume.StorageClass)
+		}
+		stages[0] = append(stages[0], &model.JobTask{Name: volumeName, Namespace: namespace,
+			WorkspaceID: task.WorkspaceID, TaskID: task.TaskID, JobType: string(config.JobDeployPVC),
+			Status: config.StatusQueued, Timeout: config.DeployTimeout, JobInfo: pvc})
 	}
-	var command spec.CommandJobSpec
-	if err := spec.DecodeJobJSON(declaration.Spec, &command); err != nil {
-		return nil, err
+	for stageIndex, stage := range declaration.Stages {
+		for _, step := range stage.Steps {
+			job := &model.JobTask{Name: "eruun-job-" + task.TaskID + "-" + step.Name, Namespace: namespace,
+				WorkspaceID: task.WorkspaceID, TaskID: task.TaskID, JobType: step.Type, Status: config.StatusQueued}
+			if naming.JobName(step.Name, "eruun-job-"+task.TaskID) != job.Name {
+				return nil, fmt.Errorf("stage %q step %q generates invalid Kubernetes Job name %q", stage.Name, step.Name, job.Name)
+			}
+			if step.Traits.Evaluation != nil {
+				evaluationTraits := spec.JobTraits{Evaluation: step.Traits.Evaluation, Storage: step.Traits.Storage,
+					EnvFrom: step.Traits.EnvFrom, Envs: step.Traits.Envs, Resources: step.Traits.Resources,
+					SecurityPolicy: step.Traits.SecurityPolicy}
+				if err := SetEvaluationTraits(job, evaluationTraits); err != nil {
+					return nil, fmt.Errorf("stage %q step %q: %w", stage.Name, step.Name, err)
+				}
+				stages[stageIndex] = append(stages[stageIndex], job)
+				continue
+			}
+			var command spec.CommandJobSpec
+			if err := spec.DecodeJobJSON(step.Spec, &command); err != nil {
+				return nil, fmt.Errorf("stage %q step %q: %w", stage.Name, step.Name, err)
+			}
+			workload, err := buildCommandJob(job.Name, namespace, command, step.Traits)
+			if err != nil {
+				return nil, fmt.Errorf("stage %q step %q: %w", stage.Name, step.Name, err)
+			}
+			if step.Retry != nil {
+				workload.Spec.BackoffLimit = ptr.To(step.Retry.BackoffLimit)
+			}
+			if declaration.Volume != nil {
+				pod := &workload.Spec.Template.Spec
+				pod.Volumes = append(pod.Volumes, corev1.Volume{Name: "workspace", VolumeSource: corev1.VolumeSource{
+					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: volumeName}}})
+				for _, containers := range [][]corev1.Container{pod.Containers, pod.InitContainers} {
+					for i := range containers {
+						containers[i].VolumeMounts = append(containers[i].VolumeMounts, corev1.VolumeMount{Name: "workspace", MountPath: "/workspace"})
+					}
+				}
+			}
+			job.Timeout = command.TimeoutSeconds
+			job.JobInfo = workload
+			workload.Spec.ActiveDeadlineSeconds = ptr.To(job.Timeout)
+			stages[stageIndex] = append(stages[stageIndex], job)
+		}
 	}
-	workload, err := buildCommandJob(job.Name, namespace, command, declaration.Traits)
-	if err != nil {
-		return nil, err
-	}
-	job.Timeout = command.TimeoutSeconds
-	job.JobInfo = workload
-	workload.Spec.ActiveDeadlineSeconds = ptr.To(job.Timeout)
-	return job, nil
+	return stages, nil
 }
 
 // BuildEvaluationTask renders both standalone and Application evaluation Jobs.
@@ -174,7 +227,10 @@ func BuildEvaluationTask(ctx context.Context, store datastore.DataStore, cfg *co
 	if dataset.Kind != artifacts.KindDataset || dataset.WorkspaceID != job.WorkspaceID || dataset.Expired {
 		return fmt.Errorf("task package is unavailable in this workspace")
 	}
-	workload, err := buildCommandJob(job.Name, job.Namespace, spec.CommandJobSpec{Image: cfg.Jobs.RunnerImage, Command: []string{"python", "/opt/eruun/runner.py"}, TimeoutSeconds: evaluation.TimeoutSeconds}, info.Traits)
+	workload, err := buildCommandJob(job.Name, job.Namespace, spec.CommandJobSpec{Image: cfg.Jobs.RunnerImage, Command: []string{"python", "/opt/eruun/runner.py"}, TimeoutSeconds: evaluation.TimeoutSeconds}, spec.Traits{
+		Resources: info.Traits.Resources, Envs: info.Traits.Envs, EnvFrom: info.Traits.EnvFrom,
+		Storage: info.Traits.Storage, SecurityPolicy: info.Traits.SecurityPolicy,
+	})
 	if err != nil {
 		return err
 	}

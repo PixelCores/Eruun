@@ -4,11 +4,11 @@
 
 ## 身份与提交
 
-普通命令使用 `type: command` 和 `spec`；LLM 评测使用 `type: job` 和 `traits.eval`。评测声明也可直接用于 Application 的 `type: job` 组件，两种入口共享规格、校验和 Harbor Runner。执行复用 WorkflowQueue、JobInfo、现有调度与执行租约。
+独立 Job 使用 `name`、可选 `volume` 和 `stages[].steps[]`。普通命令 step 使用 `type: command` 和 `spec`；LLM 评测 step 使用 `type: job` 和 `traits.eval`。评测声明也可直接用于 Application 的 `type: job` 组件，两种入口共享规格、校验和 Harbor Runner。执行复用 WorkflowQueue、JobInfo、现有调度与执行租约。
 
 独立 Job 由平台生成 `taskId`，不要求 `appId`，不创建占位应用。Application 内评测沿用所属 Workflow 的 AppID 和 TaskID，以各 Job 的 `executionKey` 区分配置、状态、结果与保存策略。
 
-**契约迁移**：Trait 键由 `traits.evaluation` 改为 `traits.eval`，旧键不再接受；旧 `type: eval`、评测 `spec`、`framework/frameworkVersion`、`datasetId`、嵌套 `agent.model`、`options` 或顶层 `resultPolicy` 也不再接受。升级前排空或取消旧评测并确认 Kubernetes Job 已停止，导出所需历史结果，然后升级数据库 schema 和各运行节点。普通 `command` 请求不变。
+**破坏性契约变更**：独立 `/jobs` 的旧顶层 `type/spec/traits` 已删除，命令和评测都必须迁入 `stages[].steps[]`，不提供兼容入口；`JobAccepted.type` 和详情顶层 `type` 统一为 `job`，执行类型由各 step 的 `type` 表示。旧 `traits.evaluation`、`type: eval`、评测 `spec`、`framework/frameworkVersion`、`datasetId`、嵌套 `agent.model`、`options` 和顶层 `resultPolicy` 继续拒绝。升级前排空旧格式的 Waiting/Queued 运行，并完成或取消旧运行、确认 Kubernetes Job 已停止，导出所需历史结果；旧格式的持久化快照不会自动迁移。Application 组件请求体不变。
 
 业务接口使用登录 Bearer Token 和 `X-Eruun-Workspace-ID`。读取需要空间成员权限，viewer 可读取；提交、上传、修改策略、取消及重试要求 member 或更高角色。创建请求可省略 `workspaceId`，由已授权的请求空间决定；若显式填写，必须与该空间一致。空间 ID 在创建空间时生成，不会为每个 Job 新建空间。
 
@@ -17,21 +17,50 @@
 ```json
 {
   "name": "hello",
-  "type": "command",
-  "spec": {
-    "image": "busybox:1.37.0",
-    "command": ["sh", "-c"],
-    "args": ["echo hello"],
-    "timeoutSeconds": 300
-  },
-  "traits": {
-    "securityPolicy": {"runAsUser": 1000, "runAsNonRoot": true},
-    "resources": {"cpu": "100m", "memory": "128Mi", "cpuLimit": "500m", "memoryLimit": "256Mi"}
-  }
+  "stages": [
+    {
+      "name": "main",
+      "steps": [
+        {
+          "name": "hello",
+          "type": "command",
+          "spec": {
+            "image": "busybox:1.37.0",
+            "command": [
+              "sh",
+              "-c"
+            ],
+            "args": [
+              "echo hello"
+            ],
+            "timeoutSeconds": 300
+          },
+          "traits": {
+            "securityPolicy": {
+              "runAsUser": 1000,
+              "runAsNonRoot": true
+            },
+            "resources": {
+              "cpu": "100m",
+              "memory": "128Mi",
+              "cpuLimit": "500m",
+              "memoryLimit": "256Mi"
+            }
+          }
+        }
+      ]
+    }
+  ]
 }
 ```
 
-提交到 `POST /api/v1/jobs`，返回 HTTP 202，响应 `data` 包含 `taskId`、`workspaceId`、`type`、`status`。名称不承担资源唯一性，相同名称可以重复提交。命令默认超时 3600 秒，范围 1–86400 秒；不支持 cron、延迟执行或失败自动重跑。普通命令支持资源、安全、环境变量、envFrom 及现有 PVC/ConfigMap/Secret 挂载；不创建附属存储、服务、RBAC 或应用实体。
+提交到 `POST /api/v1/jobs`，返回 HTTP 202，响应 `data` 包含 `taskId`、`workspaceId`、`type: "job"`、`status`。名称不承担运行唯一性，相同名称可以重复提交。至少一个 stage，每个 stage 至少一个 step；stage 名在本 Job 内唯一，step 名也必须在整个 Job 内唯一，均不能为空。step 名还必须使 `eruun-job-<taskID>-<step>` 符合 Kubernetes Job 的现有名称和长度限制；当前 taskID 长度下，step 名上限为 28 字节。
+
+stage 依次执行；同一 stage 的多个 step 并行执行。命令默认超时 3600 秒，范围 1–86400 秒；可选 `retry: {"backoffLimit": 2}` 控制 Kubernetes Job 的失败重试次数，范围 0–10，省略时默认 0。评测 step（`type: job`）不接受 `retry`，即使 `backoffLimit` 为 0 也会拒绝；Runner Job 的 `BackoffLimit` 固定为 0，评测恢复由 `traits.eval.recovery` 控制，继续使用既有 execution identity、Runner claim 和恢复协议。当前不支持 JobDefinition、cron、延迟执行或平台级重跑。
+
+command step 的 `traits` 与 Application 组件使用同一规格，经现有 trait 处理器应用。拒绝 `ingress`、`service`、`rollout`、`share`；顶层以及 init/sidecar 嵌套 traits 都会检查附属资源。`persistent` 存储只能引用已有 PVC，不能指定 `tmpCreate`、`size`、`storageClass`；处理器为此返回的 PVC 对象不会生成创建任务，Pod 只引用现有 claim。其他任何附属资源（包括新建 PVC、RBAC 的 ServiceAccount/Role/Binding、Ingress）均在提交时拒绝，错误指出具体 trait。共享工作存储由顶层 `volume` 声明。
+
+例如，为不同 stage 的命令共享文件，在顶层添加 `"volume": {"size": "1Gi", "storageClass": "<storage-class>", "accessMode": "ReadWriteOnce"}`。`storageClass` 必须位于管理员配置的 `workspace.storageClasses` 白名单；省略时也要求管理员已允许使用默认存储类，未授权的存储类会在现有资源准备流程中被拒绝。省略 accessMode 时默认为 `ReadWriteOnce`；任何 stage 有多个 step 时必须使用 `ReadWriteMany`。声明 volume 后，`workspace` 卷名和 `/workspace` 挂载路径保留给运行卷，顶层及 init/sidecar traits 的 storage 不能占用。平台先创建本次运行专属的 `eruun-job-<taskID>-work` PVC，再将其挂载到每个 command step 的 `/workspace`；eval step 不挂载此卷。维护循环以集群中带 `eruun.io/job-task` label 的存活 PVC 为待办，跨 namespace 每页列出 100 个，并通过 `Limit/Continue` 翻页，不扫描历史运行。按 label 值读取运行后，仅在其为独立 Job（`type == job`、`appId` 为空）、声明了 volume，且 PVC 名称与运行卷名相符、namespace 与所属空间一致时才允许清理；找不到运行时保留 PVC，其余身份或声明不匹配记录错误并跳过。运行进入终态后删除，取消运行仍等待既有取消恢复确认 Job 已停止；删除附带 UID 和 ResourceVersion 前置条件，不存在视为完成，其他删除错误记录后在下一轮重试。已有 PVC 和其他资源不会由此清理。真实 RWX 支持、挂载和回收仍需在目标存储类验证。
 
 ## Harbor 评测 JSON
 
@@ -40,42 +69,52 @@
 ```json
 {
   "name": "model-benchmark",
-  "type": "job",
-  "traits": {
-    "eval": {
-      "env": "ack",
-      "model": "<provider/model>",
-      "agent": "terminus-2",
-      "taskPackageId": "<任务包上传返回的 ID>",
-      "attempts": 1,
-      "concurrency": 1,
-      "timeoutSeconds": 3600,
-      "resultPolicy": {
-        "retentionDays": 90,
-        "targets": [
-          {
-            "type": "database",
-            "mode": "full"
-          }
-        ]
-      }
-    },
-    "resources": {
-      "cpu": "1",
-      "memory": "2Gi"
-    },
-    "envs": [
-      {
-        "name": "OPENAI_API_KEY",
-        "valueFrom": {
-          "secret": {
-            "name": "evaluation-model",
-            "key": "api-key"
+  "stages": [
+    {
+      "name": "main",
+      "steps": [
+        {
+          "name": "model-benchmark",
+          "type": "job",
+          "traits": {
+            "eval": {
+              "env": "ack",
+              "model": "<provider/model>",
+              "agent": "terminus-2",
+              "taskPackageId": "<任务包上传返回的 ID>",
+              "attempts": 1,
+              "concurrency": 1,
+              "timeoutSeconds": 3600,
+              "resultPolicy": {
+                "retentionDays": 90,
+                "targets": [
+                  {
+                    "type": "database",
+                    "mode": "full"
+                  }
+                ]
+              }
+            },
+            "resources": {
+              "cpu": "1",
+              "memory": "2Gi"
+            },
+            "envs": [
+              {
+                "name": "OPENAI_API_KEY",
+                "valueFrom": {
+                  "secret": {
+                    "name": "evaluation-model",
+                    "key": "api-key"
+                  }
+                }
+              }
+            ]
           }
         }
-      }
-    ]
-  }
+      ]
+    }
+  ]
 }
 ```
 
@@ -105,9 +144,9 @@ Runner 工作目录使用有大小上限的 emptyDir，`runnerWorkStorageMiB` �
 
 ## Application / Workflow 中的评测
 
-Application 的顶层组件可使用同一段 `{"name":"model-benchmark","type":"job","traits":{...}}`，无需填写 image。Workflow 使用既有 `jobType: deploy` 引用该组件，不新增评测步骤类型或调度器。可执行结构见 [应用内评测示例](../examples/agent-evaluation/application.json)。原生 task 内的步骤、工具调用和 verifier 仍由 Harbor 执行，不拆成 Eruun Workflow steps。
+Application 的顶层组件可使用 step 内的同一段 `{"name":"model-benchmark","type":"job","traits":{...}}`，无需填写 image。Workflow 使用既有 `jobType: deploy` 引用该组件，不新增评测步骤类型或调度器。可执行结构见 [应用内评测示例](../examples/agent-evaluation/application.json)。原生 task 内的步骤、工具调用和 verifier 仍由 Harbor 执行，不拆成 Eruun Workflow steps。
 
-评测只适用于顶层 `job`；不能放在 webservice、initContainer 或 sidecar 中，也不能同时声明容器命令、端口、schedule、startTime、runPolicy 或 retry。Workflow 的执行顺序、并发与失败策略继续生效。取消应用内评测通过所属应用的 Workflow 取消接口；独立 `/jobs/:taskID/cancel` 不扩展为应用取消入口。
+Application 评测只适用于顶层 `job` 组件；不能放在 webservice、initContainer 或 sidecar 中，也不能同时声明容器命令、端口、schedule、startTime、runPolicy 或 retry。Workflow 的执行顺序、并发与失败策略继续生效。取消应用内评测通过所属应用的 Workflow 取消接口；独立 `/jobs/:taskID/cancel` 不扩展为应用取消入口。
 
 保留 Sandbox 为补采维持容器；Runner 丢失后，内部进程可能继续运行并消耗算力，直到显式清理或云侧 shutdownTime。第一阶段不提供进程冻结，也不把 Job 的执行期限等同于控制面故障下所有云资源已经物理终止。
 

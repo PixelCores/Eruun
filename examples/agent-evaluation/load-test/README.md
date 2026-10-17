@@ -92,7 +92,7 @@ python3 examples/agent-evaluation/load-test/observe.py \
 - `--timeout` 是单次请求的 socket 超时，且不大于剩余总预算；`--deadline` 是整个观察阶段的时长上限。DNS、缓慢流式响应等超出 socket 超时覆盖的阻塞不会阻止命令在总 deadline 结束，剩余任务标为 `unknown/deadline`。结束时在途响应不作为成功证据。
 - HTTP/API 错误、超时及无法识别的响应会记录固定错误类别，并在相同全局预算下重试 GET，直到收敛或总 deadline。最多读取 8 MiB 的单个详情响应；超过上限记录 `response_too_large`。重定向被拒绝，Token 不会随重定向转发。
 
-成功要求：执行 `status` 为 `completed/passed`，`collectionState=collected`，且从 `job.traits.eval.resultPolicy.targets` 取得的**全部所选目标**在 `deliveries` 中均为 `succeeded`，保存模式与快照一致。目标缺失不会误报成功；不能从 `deliveries=[]` 推断“不需要保存”。`failed/timeout/cancelled/reject/notRun/skipped` 作为非成功执行立即记录，避免失败任务永久等待不存在的完整采集。成功执行如果采集 `incomplete/unavailable/expired` 或任一保存目标 `failed`，分别记录采集或保存失败；需要按已有 API 人工处理，不会被脚本改成执行成功。
+成功要求：执行 `status` 为 `completed/passed`，`collectionState=collected`，且从 `job.stages[0].steps[0].traits.eval.resultPolicy.targets` 取得的**全部所选目标**在 `deliveries` 中均为 `succeeded`，保存模式与快照一致。目标缺失不会误报成功；不能从 `deliveries=[]` 推断“不需要保存”。`failed/timeout/cancelled/reject/notRun/skipped` 作为非成功执行立即记录，避免失败任务永久等待不存在的完整采集。成功执行如果采集 `incomplete/unavailable/expired` 或任一保存目标 `failed`，分别记录采集或保存失败；需要按已有 API 人工处理，不会被脚本改成执行成功。
 
 输出文件以 `0600` 独占创建，拒绝覆盖。JSONL 依次包含输入统计、观察配置、状态变化/API 错误、每个 ID 的最终记录与汇总；状态未变时不重复写入，成功采样次数仍累计。记录仅保留 ID、固定状态/错误类别、计数和客户端时刻，不保存 Token、原始结果、manifest、执行详情、保存地址或错误正文。退出码 0 表示全部唯一已接受任务收敛成功且无未接受提交；存在失败、未知或未接受提交时为 1，输入/参数/输出文件错误为 2。
 

@@ -59,11 +59,11 @@ func testJobService(t *testing.T) (*Service, *sqlstore.Driver, context.Context) 
 }
 
 func commandRequest() SubmitRequest {
-	return SubmitRequest{WorkspaceID: "space", JobSpec: spec.JobSpec{Name: "one command", Type: "command", Spec: json.RawMessage(`{"image":"busybox:1.37.0","command":["echo"],"args":["hello"]}`)}}
+	return SubmitRequest{WorkspaceID: "space", JobSpec: spec.JobSpec{Name: "one command", Stages: []spec.JobStage{{Name: "run", Steps: []spec.JobStep{{Name: "command", Type: "command", Spec: json.RawMessage(`{"image":"busybox:1.37.0","command":["echo"],"args":["hello"]}`)}}}}}}
 }
 
 func evaluationDeclaration(name, taskPackageID, agent, modelName string) spec.JobSpec {
-	return spec.JobSpec{Name: name, Type: "job", Traits: spec.JobTraits{Evaluation: &spec.EvaluationTraitSpec{Env: "ack", TaskPackageID: taskPackageID, Agent: agent, Model: modelName}}}
+	return spec.JobSpec{Name: name, Stages: []spec.JobStage{{Name: "run", Steps: []spec.JobStep{{Name: "evaluate", Type: "job", Traits: spec.Traits{Evaluation: &spec.EvaluationTraitSpec{Env: "ack", TaskPackageID: taskPackageID, Agent: agent, Model: modelName}}}}}}}
 }
 
 func TestSubmitCommandUsesWorkspaceQueueWithoutApplication(t *testing.T) {
@@ -108,8 +108,9 @@ func TestSubmitEvalUsesAuthorizedWorkspaceAndKeepsInternalJobType(t *testing.T) 
 	require.NoError(t, raw.Get(ctx, parent))
 	require.Equal(t, "space", parent.WorkspaceID)
 	require.Contains(t, parent.JobSpec, `"eval"`)
-	task, err := BuildTask(parent, "space-ns")
+	stages, err := BuildTask(parent, "space-ns")
 	require.NoError(t, err)
+	task := stages[0][0]
 	require.Equal(t, string(config.JobEval), task.JobType)
 	detail, err := service.Get(ctx, accepted.TaskID)
 	require.NoError(t, err)
@@ -119,6 +120,40 @@ func TestSubmitEvalUsesAuthorizedWorkspaceAndKeepsInternalJobType(t *testing.T) 
 	request.WorkspaceID = "other"
 	_, err = service.Submit(ctx, request)
 	require.ErrorIs(t, err, bcode.ErrForbidden)
+}
+
+func TestSubmitStagesValidatesAllStepsBeforeEnqueue(t *testing.T) {
+	service, raw, ctx := testJobService(t)
+	datasetID := "11111111-1111-1111-1111-111111111111"
+	require.NoError(t, raw.Add(ctx, &model.JobArtifact{ID: datasetID, WorkspaceID: "space", Kind: artifacts.KindDataset, Digest: strings.Repeat("a", 64)}))
+	request := commandRequest()
+	first := evaluationDeclaration("evaluation", datasetID, "oracle", "").Stages[0].Steps[0]
+	second := evaluationDeclaration("evaluation", datasetID, "oracle", "").Stages[0].Steps[0]
+	second.Name = "verify"
+	request.Stages = append(request.Stages, spec.JobStage{Name: "evaluate", Steps: []spec.JobStep{first, second}})
+	// The last step must be rendered and checked before the parent is durable.
+	second.Traits.Evaluation.TaskPackageID = "22222222-2222-2222-2222-222222222222"
+	_, err := service.Submit(ctx, request)
+	require.Error(t, err)
+	count, err := raw.Count(ctx, &model.WorkflowQueue{}, nil)
+	require.NoError(t, err)
+	require.Zero(t, count)
+
+	second.Traits.Evaluation.TaskPackageID = datasetID
+	accepted, err := service.Submit(ctx, request)
+	require.NoError(t, err)
+	require.Equal(t, "job", accepted.Type)
+	parent := &model.WorkflowQueue{TaskID: accepted.TaskID}
+	require.NoError(t, raw.Get(ctx, parent))
+	var stored spec.JobSpec
+	require.NoError(t, spec.DecodeJobJSON([]byte(parent.JobSpec), &stored))
+	require.Len(t, stored.Stages, 2)
+	for _, step := range stored.Stages[1].Steps {
+		require.Equal(t, spec.DefaultJobResultPolicy(), *step.Traits.Evaluation.ResultPolicy)
+	}
+	count, err = raw.Count(ctx, &model.WorkflowQueue{}, nil)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, count)
 }
 
 type runnerFixture struct {
@@ -147,8 +182,9 @@ func newRunnerFixtureForService(t *testing.T, service *Service, raw *sqlstore.Dr
 	require.NoError(t, raw.Get(ctx, parent))
 	parent.Status, parent.RunGeneration, parent.RunToken, parent.WorkerID = config.StatusRunning, 4, "replacement-lease", "replacement-worker"
 	require.NoError(t, raw.Put(ctx, parent))
-	task, err := BuildTask(parent, "space-ns")
+	stages, err := BuildTask(parent, "space-ns")
 	require.NoError(t, err)
+	task := stages[0][0]
 	task.RunGeneration, task.OwnerRunGeneration, task.ExecutionKey = 2, 4, "original-execution"
 	require.NoError(t, BuildEvaluationTask(ctx, service.Store, service.Config, task, spec.JobTraits{}))
 	workflowjob.ApplyTaskIDAnnotation(task)
@@ -785,8 +821,9 @@ func TestCommandRuntimePersistsCheckpointAndTerminalResultThroughScopedStore(t *
 	require.NoError(t, raw.Get(ctx, parent))
 	parent.Status, parent.RunGeneration, parent.RunToken, parent.WorkerID = config.StatusRunning, 1, "lease", "worker"
 	require.NoError(t, raw.Put(ctx, parent))
-	task, err := BuildTask(parent, "space-ns")
+	stages, err := BuildTask(parent, "space-ns")
 	require.NoError(t, err)
+	task := stages[0][0]
 	task.RunGeneration, task.OwnerRunGeneration, task.OwnerStatus = 1, 1, config.StatusRunning
 	task.RunToken, task.WorkerID, task.ExecutionKey = parent.RunToken, parent.WorkerID, "command-execution"
 	workflowjob.ApplyTaskIDAnnotation(task)
@@ -843,7 +880,7 @@ func TestApplicationEvaluationUsesItsExecutionCapabilityAndResultIdentity(t *tes
 	require.NoError(t, err)
 	require.Equal(t, "job", detail.Type)
 	require.Equal(t, "model-benchmark", detail.Job.Name)
-	require.Equal(t, "ack", detail.Job.Traits.Evaluation.Env)
+	require.Equal(t, "ack", detail.Job.Stages[0].Steps[0].Traits.Evaluation.Env)
 	require.Equal(t, *f.record.ExecutionKey, detail.ExecutionKey)
 	require.Equal(t, spec.HarborVersion, detail.FrameworkVersion)
 	require.Len(t, detail.Executions, 1)

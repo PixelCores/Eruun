@@ -101,10 +101,10 @@ func TestGenerateEvaluationTakeoverDuringCollectionPreservesAttempt(t *testing.T
 	for _, remaining := range []time.Duration{480 * time.Second, -time.Second} {
 		t.Run(remaining.String(), func(t *testing.T) {
 			ctx := account.WithScope(context.Background(), account.Scope{WorkspaceID: "space", Namespace: "space-ns", Role: "member"})
-			declaration := spec.JobSpec{Name: "evaluation", Type: "job", Traits: spec.JobTraits{Evaluation: &spec.EvaluationTraitSpec{
+			declaration := spec.JobSpec{Name: "evaluation", Stages: []spec.JobStage{{Name: "run", Steps: []spec.JobStep{{Name: "evaluate", Type: "job", Traits: spec.Traits{Evaluation: &spec.EvaluationTraitSpec{
 				Env: "ack", Agent: "codex", Model: "openai/model", TaskPackageID: "11111111-1111-1111-1111-111111111111",
 				Recovery: &spec.EvaluationRecoverySpec{AgentVersion: spec.CodexRecoveryVersion, ReplaySafe: true},
-			}}}
+			}}}}}}}
 			raw, err := json.Marshal(declaration)
 			require.NoError(t, err)
 			parent := &model.WorkflowQueue{TaskID: "takeover", WorkspaceID: "space", Type: config.WorkflowTaskTypeJob,

@@ -68,7 +68,7 @@ func TestMySQLRunnerClaimRowLockHasOneWinner(t *testing.T) {
 	require.NoError(t, driver.Add(ctx, &model.JobArtifact{ID: datasetID, WorkspaceID: workspaceID, Kind: artifacts.KindDataset, Digest: strings.Repeat("a", 64)}))
 	declaration := evaluationDeclaration("evaluation", datasetID, "oracle", "")
 	policy := spec.DefaultJobResultPolicy()
-	declaration.Traits.Evaluation.ResultPolicy = &policy
+	declaration.Stages[0].Steps[0].Traits.Evaluation.ResultPolicy = &policy
 	require.NoError(t, declaration.Normalize())
 	declarationJSON, err := json.Marshal(declaration)
 	require.NoError(t, err)
@@ -82,8 +82,9 @@ func TestMySQLRunnerClaimRowLockHasOneWinner(t *testing.T) {
 	service, err := New(account.NewStore(driver), client, cfg)
 	require.NoError(t, err)
 	scoped := account.WithScope(ctx, account.Scope{WorkspaceID: workspaceID, Namespace: namespace, Role: "member"})
-	task, err := BuildTask(parent, namespace)
+	stages, err := BuildTask(parent, namespace)
 	require.NoError(t, err)
+	task := stages[0][0]
 	task.ExecutionKey, task.RunGeneration, task.Attempt = "execution", 1, 1
 	require.NoError(t, BuildEvaluationTask(scoped, service.Store, cfg, task, spec.JobTraits{}))
 	info, err := decodeEvaluationInfo(task.EvaluationInfo)

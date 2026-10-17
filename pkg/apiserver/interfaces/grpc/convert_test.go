@@ -69,13 +69,13 @@ func TestTypedNestedDynamicFieldsAndEmbeddedRequest(t *testing.T) {
 
 	jobValue, err := structpb.NewValue(map[string]any{"image": "example:1", "timeoutSeconds": float64(0)})
 	require.NoError(t, err)
-	job := &eruunv1.SubmitJobRequest{Name: "run", Type: "command", Spec: jobValue}
+	job := &eruunv1.SubmitJobRequest{Name: "run", Stages: []*eruunv1.JobStage{{Name: "main", Steps: []*eruunv1.JobStep{{Name: "run", Type: "command", Spec: jobValue}}}}}
 	encoded, err := proto.Marshal(job)
 	require.NoError(t, err)
 	copyJob := &eruunv1.SubmitJobRequest{}
 	require.NoError(t, proto.Unmarshal(encoded, copyJob))
-	require.Equal(t, float64(0), copyJob.Spec.GetStructValue().Fields["timeoutSeconds"].GetNumberValue())
-	jsonBody, err := json.Marshal(copyJob.Spec.AsInterface())
+	require.Equal(t, float64(0), copyJob.Stages[0].Steps[0].Spec.GetStructValue().Fields["timeoutSeconds"].GetNumberValue())
+	jsonBody, err := json.Marshal(copyJob.Stages[0].Steps[0].Spec.AsInterface())
 	require.NoError(t, err)
 	require.Contains(t, string(jsonBody), "timeoutSeconds")
 }

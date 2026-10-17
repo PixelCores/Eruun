@@ -1635,9 +1635,11 @@ func (w *WorkflowCtl) prepareWorkspace(ctx context.Context) (context.Context, er
 		if err := definition.Normalize(); err != nil {
 			return ctx, fmt.Errorf("validate workspace Job definition: %w", err)
 		}
-		if definition.Traits.Evaluation != nil {
-			if w.runtimeConfig == nil || w.runtimeConfig.Jobs == nil || w.runtimeConfig.Jobs.RunnerImage == "" {
-				return ctx, fmt.Errorf("evaluation runner configuration is required")
+		for _, stage := range definition.Stages {
+			for _, step := range stage.Steps {
+				if step.Traits.Evaluation != nil && (w.runtimeConfig == nil || w.runtimeConfig.Jobs == nil || w.runtimeConfig.Jobs.RunnerImage == "") {
+					return ctx, fmt.Errorf("evaluation runner configuration is required for stage %q step %q", stage.Name, step.Name)
+				}
 			}
 		}
 	}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
@@ -104,5 +105,71 @@ func TestWorkflowEvaluationJobsHaveIndependentExecutionsAndRecoverSnapshots(t *t
 		require.Equal(t, original.EvaluationInfo, task.EvaluationInfo)
 		require.EqualValues(t, 1, task.RunGeneration)
 		require.EqualValues(t, 2, task.OwnerRunGeneration)
+	}
+}
+
+func TestStandaloneJobStagesCompileToExecutionsAndRestoreEvaluations(t *testing.T) {
+	ctx := account.WithScope(context.Background(), account.Scope{WorkspaceID: "space", Namespace: "space-ns", Role: "member"})
+	command := json.RawMessage(`{"image":"busybox:1.37.0","command":["true"],"timeoutSeconds":60}`)
+	evaluation := spec.Traits{Evaluation: &spec.EvaluationTraitSpec{Env: "ack", Agent: "oracle", TaskPackageID: "11111111-1111-1111-1111-111111111111"}}
+	declaration := spec.JobSpec{Name: "pipeline", Volume: &spec.JobVolume{Size: "1Gi", AccessMode: "ReadWriteMany"}, Stages: []spec.JobStage{
+		{Name: "prepare", Steps: []spec.JobStep{{Name: "fetch", Type: "command", Spec: command}}},
+		{Name: "evaluate", Steps: []spec.JobStep{
+			{Name: "first", Type: "job", Traits: evaluation},
+			{Name: "second", Type: "job", Traits: evaluation},
+		}},
+		{Name: "finish", Steps: []spec.JobStep{{Name: "publish", Type: "command", Spec: command}}},
+	}}
+	raw, err := json.Marshal(declaration)
+	require.NoError(t, err)
+	parent := &model.WorkflowQueue{TaskID: "stages-task", WorkspaceID: "space", Type: config.WorkflowTaskTypeJob, JobSpec: string(raw), RunGeneration: 1}
+	store := &evaluationWorkflowStore{}
+	cfg := &config.Config{Jobs: &spec.JobsRuntimeConfig{RunnerImage: "example.com/runner:0.22.0", APIURL: "https://api.example.com"}}
+	executions, err := GenerateJobTasks(ctx, parent, store, 3600, cfg)
+	require.NoError(t, err)
+	require.Len(t, executions, 3)
+	require.Equal(t, "prepare", executions[0].Name)
+	require.Equal(t, config.WorkflowModeStepByStep, executions[0].Mode, "the PVC does not turn a single step into DAG")
+	require.Len(t, executions[0].Jobs[config.JobPriorityMaxHigh], 1)
+	require.Equal(t, string(config.JobDeployPVC), executions[0].Jobs[config.JobPriorityMaxHigh][0].JobType)
+	require.Len(t, executions[0].Jobs[config.JobPriorityNormal], 1)
+	require.Equal(t, "evaluate", executions[1].Name)
+	require.Equal(t, config.WorkflowModeDAG, executions[1].Mode)
+	require.Len(t, executions[1].Jobs[config.JobPriorityNormal], 2)
+	require.Equal(t, "finish", executions[2].Name)
+	require.Equal(t, config.WorkflowModeStepByStep, executions[2].Mode)
+	seen := map[string]bool{}
+	for _, execution := range executions {
+		require.Equal(t, workflowconfig.WorkflowFailurePolicyCleanupFailed, execution.FailurePolicy)
+		for _, tasks := range execution.Jobs {
+			for _, task := range tasks {
+				require.NotEmpty(t, task.ExecutionKey)
+				require.False(t, seen[task.ExecutionKey])
+				seen[task.ExecutionKey] = true
+			}
+		}
+	}
+	evaluations := executions[1].Jobs[config.JobPriorityNormal]
+	require.NotEqual(t, evaluations[0].EvaluationInfo, evaluations[1].EvaluationInfo)
+	for _, task := range evaluations {
+		workload := task.JobInfo.(*batchv1.Job)
+		require.Equal(t, "runner", workload.Spec.Template.Spec.Containers[0].Name)
+		for _, volume := range workload.Spec.Template.Spec.Volumes {
+			require.NotEqual(t, "workspace", volume.Name)
+		}
+		require.EqualValues(t, 0, *workload.Spec.BackoffLimit, "evaluation Runners never replay trials through Pod retries")
+		key := task.ExecutionKey
+		store.jobInfos = append(store.jobInfos, &model.JobInfo{Type: task.JobType, TaskID: parent.TaskID, WorkspaceID: "space",
+			ExecutionKey: &key, RunGeneration: 1, Status: string(config.StatusCompleted), EvaluationInfo: task.EvaluationInfo})
+	}
+	parent.RunGeneration = 2
+	recovered, err := GenerateJobTasks(ctx, parent, store, 3600)
+	require.NoError(t, err)
+	require.Len(t, recovered, 3)
+	for index, original := range evaluations {
+		task := recovered[1].Jobs[config.JobPriorityNormal][index]
+		require.Equal(t, config.StatusCompleted, task.Status)
+		require.Equal(t, original.ExecutionKey, task.ExecutionKey)
+		require.Equal(t, original.EvaluationInfo, task.EvaluationInfo)
 	}
 }
