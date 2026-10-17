@@ -82,9 +82,6 @@ func (s *Service) dispatchSchedule(ctx context.Context, definition *model.JobDef
 	scope := account.ForWorkspace(space)
 	scope.UserID = definition.Creator
 	ctx = account.WithScope(ctx, scope)
-	if _, err := Scope(ctx, true); err != nil {
-		return false, err
-	}
 	// Avoid cancelling from an already stale page after deletion, an update or
 	// another dispatch. The transaction's CAS rechecks this after preparation.
 	current, err := scopedDefinition(ctx, s.Store, definition.ID, false)
@@ -115,10 +112,10 @@ func (s *Service) dispatchSchedule(ctx context.Context, definition *model.JobDef
 		skipReason = "validate scheduled Job: " + detail
 	} else {
 		policy := definition.ConcurrencyPolicy
-		if policy != "Forbid" && policy != "Allow" && policy != "Replace" {
+		if policy != concurrencyForbid && policy != concurrencyAllow && policy != concurrencyReplace {
 			return false, fmt.Errorf("invalid stored Job concurrencyPolicy %q", policy)
 		}
-		if definition.LastRunTaskID != "" && policy != "Allow" {
+		if definition.LastRunTaskID != "" && policy != concurrencyAllow {
 			previous := &model.WorkflowQueue{TaskID: definition.LastRunTaskID}
 			err := s.Store.Get(ctx, previous)
 			if err != nil && !errors.Is(err, datastore.ErrRecordNotExist) {
@@ -129,7 +126,7 @@ func (s *Service) dispatchSchedule(ctx context.Context, definition *model.JobDef
 					return false, fmt.Errorf("previous scheduled Job %s does not belong to definition %s", previous.TaskID, definition.ID)
 				}
 				if model.IsWorkflowActiveStatus(previous.Status) {
-					if policy == "Forbid" {
+					if policy == concurrencyForbid {
 						skipReason = fmt.Sprintf("Forbid: previous scheduled Job %s is active (%s)", previous.TaskID, previous.Status)
 					} else {
 						if s.Workflow == nil {

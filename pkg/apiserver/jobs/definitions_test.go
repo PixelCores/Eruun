@@ -23,6 +23,14 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
+func TestDefinitionScheduleAcceptsWorkflowScheduleCronForms(t *testing.T) {
+	service, _, ctx := testJobService(t)
+	request := DefinitionRequest{JobSpec: commandRequest().JobSpec, Schedule: &ScheduleRequest{Cron: " 0 0 2 * * * ", Enabled: true}}
+	created, err := service.CreateDefinition(ctx, request)
+	require.NoError(t, err)
+	require.Equal(t, "0 2 * * *", created.Schedule.Cron, "a zero seconds field is normalized away, as for WorkflowSchedule")
+}
+
 func TestDefinitionScheduleValidation(t *testing.T) {
 	for _, tc := range []struct {
 		name, message string
@@ -31,9 +39,9 @@ func TestDefinitionScheduleValidation(t *testing.T) {
 		{"invalid cron", "schedule cron:", &ScheduleRequest{Cron: "61 * * * *"}},
 		{"invalid policy", "concurrencyPolicy must", &ScheduleRequest{Cron: "* * * * *", ConcurrencyPolicy: "forbid"}},
 		{"enabled without cron", "cron is required", &ScheduleRequest{Enabled: true}},
-		{"seconds", "5 fields", &ScheduleRequest{Cron: "0 * * * * *"}},
-		{"descriptor", "5 fields", &ScheduleRequest{Cron: "@hourly"}},
-		{"timezone", "5 fields", &ScheduleRequest{Cron: "CRON_TZ=Asia/Shanghai * * * * *"}},
+		{"non-zero seconds", "seconds field must be 0", &ScheduleRequest{Cron: "30 * * * * *"}},
+		{"descriptor", "5 or 6 fields", &ScheduleRequest{Cron: "@hourly"}},
+		{"timezone", "seconds field must be 0", &ScheduleRequest{Cron: "CRON_TZ=Asia/Shanghai * * * * *"}},
 		{"oversized cron", "64 bytes", &ScheduleRequest{Cron: strings.Repeat("0,", 32) + "0 * * * *"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

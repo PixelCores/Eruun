@@ -323,17 +323,22 @@ func TestWorkspaceJobStagesLimitExecutionTypesAndVolumeOwnership(t *testing.T) {
 			require.False(t, workspaceTaskJobAllowed(parent, job))
 		})
 	}
-	for _, snapshot := range []string{
-		`{"type":"command"}`,
-		`{"name":"missing-stages"}`,
-		`{"name":"empty-stage","stages":[{"name":"main","steps":[]}]}`,
-		`{"name":"invalid-type","stages":[{"name":"main","steps":[{"name":"run","type":"cleanup_resources"}]}]}`,
-		`{"name":"invalid-evaluation","stages":[{"name":"main","steps":[{"name":"run","type":"job","traits":{"eval":{}}}]}]}`,
-	} {
+	for _, snapshot := range []string{`{"type":"command"}`, `not json`} {
 		parent := &model.WorkflowQueue{TaskID: "task", Type: config.WorkflowTaskTypeJob, JobSpec: snapshot}
-		require.False(t, workspaceOwnedTask(parent))
+		require.False(t, workspaceOwnedTask(parent), "undecodable snapshots are never owned")
 		require.False(t, workspaceTaskJobAllowed(parent, &model.JobInfo{Type: string(config.JobCommand)}))
 	}
+	// A persisted snapshot that today's DSL rules would reject (here an invalid
+	// step name and a missing command spec) keeps authorizing its declared types,
+	// so tightening validation never revokes queued or historical runs.
+	stale := &model.WorkflowQueue{TaskID: "task", Type: config.WorkflowTaskTypeJob,
+		JobSpec: `{"name":"stale","stages":[{"name":"main","steps":[{"name":"Run_Old","type":"command"}]}]}`}
+	require.True(t, workspaceOwnedTask(stale))
+	require.True(t, workspaceTaskJobAllowed(stale, &model.JobInfo{Type: string(config.JobCommand)}))
+	require.False(t, workspaceTaskJobAllowed(stale, &model.JobInfo{Type: string(config.JobEval)}), "undeclared types stay rejected")
+	unknownType := &model.WorkflowQueue{TaskID: "task", Type: config.WorkflowTaskTypeJob,
+		JobSpec: `{"name":"invalid-type","stages":[{"name":"main","steps":[{"name":"run","type":"cleanup_resources"}]}]}`}
+	require.False(t, workspaceTaskJobAllowed(unknownType, &model.JobInfo{Type: string(config.JobCleanupResources)}))
 }
 
 func TestJobArtifactsStayInTheirWorkspaceAcrossStoreOperations(t *testing.T) {

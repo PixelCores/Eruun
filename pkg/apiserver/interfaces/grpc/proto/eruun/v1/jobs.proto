@@ -62,7 +62,7 @@ message UpdateJobDefinitionRequest {
   JobScheduleRequest schedule = 5;
 }
 message JobScheduleRequest {
-  // Five fields, interpreted in UTC.
+  // Five fields, or six with a zero seconds field (normalized to five), in UTC.
   string cron = 1;
   // Forbid (default), Allow, or Replace.
   string concurrency_policy = 2;

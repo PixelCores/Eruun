@@ -600,7 +600,7 @@ func (x *UpdateJobDefinitionRequest) GetSchedule() *JobScheduleRequest {
 
 type JobScheduleRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Five fields, interpreted in UTC.
+	// Five fields, or six with a zero seconds field (normalized to five), in UTC.
 	Cron string `protobuf:"bytes,1,opt,name=cron,proto3" json:"cron,omitempty"`
 	// Forbid (default), Allow, or Replace.
 	ConcurrencyPolicy string `protobuf:"bytes,2,opt,name=concurrency_policy,json=concurrencyPolicy,proto3" json:"concurrency_policy,omitempty"`

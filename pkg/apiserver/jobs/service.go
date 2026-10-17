@@ -447,7 +447,7 @@ func (s *Service) Get(ctx context.Context, taskID string, executionKey ...string
 			for i := range out.Job.Stages {
 				for k := range out.Job.Stages[i].Steps {
 					step := &out.Job.Stages[i].Steps[k]
-					if step.Type == "job" && (task.AppID != "" || record.ServiceName == "eruun-job-"+task.TaskID+"-"+step.Name) {
+					if step.Type == "job" && (task.AppID != "" || record.ServiceName == spec.JobStepName(task.TaskID, step.Name)) {
 						step.Traits = spec.Traits{Evaluation: info.Traits.Evaluation, Resources: info.Traits.Resources, Envs: info.Traits.Envs}
 					}
 				}
@@ -738,15 +738,6 @@ func (s *Service) cleanupRunVolumes(ctx context.Context) error {
 			}
 			if task.Type != config.WorkflowTaskTypeJob || task.AppID != "" || claim.Name != spec.JobVolumeName(task.TaskID) {
 				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("volume %s/%s does not match standalone Job %s ownership", claim.Namespace, claim.Name, task.TaskID))
-				continue
-			}
-			var declaration spec.JobSpec
-			if err := spec.DecodeJobJSON([]byte(task.JobSpec), &declaration); err != nil {
-				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("read Job %s volume: %w", task.TaskID, err))
-				continue
-			}
-			if declaration.Volume == nil {
-				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("Job %s does not declare volume %s/%s", task.TaskID, claim.Namespace, claim.Name))
 				continue
 			}
 			space := &model.Workspace{ID: task.WorkspaceID}

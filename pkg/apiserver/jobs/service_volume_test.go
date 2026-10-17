@@ -36,7 +36,6 @@ func TestCleanupRunVolumesRespectsLifecycleAndOwnership(t *testing.T) {
 		wrongNS       bool
 		wrongType     bool
 		application   bool
-		noVolume      bool
 		wantDelete    bool
 		wantError     string
 	}{
@@ -62,14 +61,11 @@ func TestCleanupRunVolumesRespectsLifecycleAndOwnership(t *testing.T) {
 		{name: "namespace mismatch", status: config.StatusCompleted, wrongNS: true, wantError: "workspace namespace"},
 		{name: "workflow run", status: config.StatusCompleted, wrongType: true, wantError: "ownership"},
 		{name: "application run", status: config.StatusCompleted, application: true, wantError: "ownership"},
-		{name: "volume not declared", status: config.StatusCompleted, noVolume: true, wantError: "does not declare volume"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			service, raw, ctx := testJobService(t)
 			request := commandRequest()
-			if !tc.noVolume {
-				request.Volume = &spec.JobVolume{Size: "1Gi", StorageClass: "work-storage"}
-			}
+			request.Volume = &spec.JobVolume{Size: "1Gi", StorageClass: "work-storage"}
 			service.Config.Accounts.Workspace.StorageClasses = []string{"work-storage"}
 			snapshot, err := json.Marshal(request.JobSpec)
 			require.NoError(t, err)

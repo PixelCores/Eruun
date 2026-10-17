@@ -133,7 +133,9 @@ func workspaceTaskJobAllowed(task *model.WorkflowQueue, job *model.JobInfo) bool
 		return query || job.Type == string(config.JobResourceImportManage)
 	case config.WorkflowTaskTypeJob:
 		var snapshot spec.JobSpec
-		if spec.DecodeJobJSON([]byte(task.JobSpec), &snapshot) != nil || snapshot.Normalize() != nil {
+		// Authorize from the persisted snapshot only. Re-running today's DSL
+		// validation here would revoke queued and historical runs whenever a rule tightens.
+		if spec.DecodeJobJSON([]byte(task.JobSpec), &snapshot) != nil {
 			return false
 		}
 		if query {
