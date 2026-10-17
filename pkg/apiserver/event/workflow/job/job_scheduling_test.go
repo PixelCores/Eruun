@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -41,7 +42,7 @@ func TestJobAdmissionUsesTaskWorkspaceAndApplication(t *testing.T) {
 		{name: "application", job: config.JobDeployService, appID: "app"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, Logger: logger.Default.LogMode(logger.Silent)})
+			db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "scheduling.db")), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, Logger: logger.Default.LogMode(logger.Silent)})
 			require.NoError(t, err)
 			connection, err := db.DB()
 			require.NoError(t, err)
@@ -77,7 +78,7 @@ func TestJobAdmissionUsesTaskWorkspaceAndApplication(t *testing.T) {
 }
 
 func TestJobRunnerWaitsForGlobalPriorityAdmission(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, Logger: logger.Default.LogMode(logger.Silent)})
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "scheduling.db")), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
 	connection, err := db.DB()
 	require.NoError(t, err)
@@ -135,7 +136,7 @@ func TestJobRunnerWaitsForGlobalPriorityAdmission(t *testing.T) {
 }
 
 func TestCancelledKubernetesJobKeepsAdmissionWhenOnlineCleanupFails(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, Logger: logger.Default.LogMode(logger.Silent)})
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "scheduling.db")), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
 	connection, err := db.DB()
 	require.NoError(t, err)
@@ -234,7 +235,7 @@ func TestJobAdmissionWaitExitReleasesQueueWithoutKubernetesEffects(t *testing.T)
 	for _, concurrency := range []int{1, 2} {
 		for _, reason := range []string{"cancel", "cancel after database commit", "database cancellation before signal", "infrastructure stop", "ownership transfer", "cancel after ownership transfer"} {
 			t.Run(fmt.Sprintf("%d/%s", concurrency, reason), func(t *testing.T) {
-				db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, Logger: logger.Default.LogMode(logger.Silent)})
+				db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "scheduling.db")), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, Logger: logger.Default.LogMode(logger.Silent)})
 				require.NoError(t, err)
 				connection, err := db.DB()
 				require.NoError(t, err)
@@ -319,7 +320,7 @@ func TestJobAdmissionWaitExitReleasesQueueWithoutKubernetesEffects(t *testing.T)
 func TestJobRunnerRechecksApplicationAfterAdmission(t *testing.T) {
 	for _, change := range []string{"observe", "deleted", "unchanged"} {
 		t.Run(change, func(t *testing.T) {
-			db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, Logger: logger.Default.LogMode(logger.Silent)})
+			db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "scheduling.db")), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, Logger: logger.Default.LogMode(logger.Silent)})
 			require.NoError(t, err)
 			connection, err := db.DB()
 			require.NoError(t, err)
