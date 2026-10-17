@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -143,11 +144,14 @@ func (s *JobsServer) SubmitJob(ctx context.Context, req *eruunv1.SubmitJobReques
 	return &eruunv1.JobAccepted{TaskId: accepted.TaskID, WorkspaceId: accepted.WorkspaceID, Type: accepted.Type, Status: string(accepted.Status)}, nil
 }
 
-func (s *JobsServer) CreateJobDefinition(ctx context.Context, req *eruunv1.JobSpec) (*eruunv1.JobDefinition, error) {
+func (s *JobsServer) CreateJobDefinition(ctx context.Context, req *eruunv1.CreateJobDefinitionRequest) (*eruunv1.JobDefinition, error) {
 	if req == nil || len(req.ProtoReflect().GetUnknown()) != 0 {
 		return nil, rpcError(bcode.ErrJobInput)
 	}
-	input, err := decodeTypedRequest[spec.JobSpec](req)
+	if req.Schedule != nil && len(req.Schedule.ProtoReflect().GetUnknown()) != 0 {
+		return nil, rpcError(bcode.ErrJobInput)
+	}
+	input, err := decodeTypedRequest[jobs.DefinitionRequest](req)
 	if err != nil {
 		return nil, rpcError(bcode.ErrJobInput)
 	}
@@ -190,14 +194,21 @@ func (s *JobsServer) ListJobDefinitions(ctx context.Context, req *eruunv1.ListJo
 }
 
 func (s *JobsServer) UpdateJobDefinition(ctx context.Context, req *eruunv1.UpdateJobDefinitionRequest) (*eruunv1.JobDefinition, error) {
-	if req == nil || req.DefinitionId == "" || req.Spec == nil || len(req.ProtoReflect().GetUnknown()) != 0 || len(req.Spec.ProtoReflect().GetUnknown()) != 0 {
+	if req == nil || req.DefinitionId == "" || len(req.ProtoReflect().GetUnknown()) != 0 {
 		return nil, rpcError(bcode.ErrJobInput)
 	}
-	input, err := decodeTypedRequest[spec.JobSpec](req.Spec)
+	if req.Schedule != nil && len(req.Schedule.ProtoReflect().GetUnknown()) != 0 {
+		return nil, rpcError(bcode.ErrJobInput)
+	}
+	// The body shares CreateJobDefinitionRequest's fields; the path identity is
+	// not part of the strict definition document.
+	body := proto.Clone(req).(*eruunv1.UpdateJobDefinitionRequest)
+	body.DefinitionId = ""
+	declaration, err := decodeTypedRequest[jobs.DefinitionRequest](body)
 	if err != nil {
 		return nil, rpcError(bcode.ErrJobInput)
 	}
-	definition, err := s.Jobs.UpdateDefinition(ctx, req.DefinitionId, input)
+	definition, err := s.Jobs.UpdateDefinition(ctx, req.DefinitionId, declaration)
 	if err != nil {
 		return nil, rpcError(jobFailure(err))
 	}
@@ -213,7 +224,7 @@ func (s *JobsServer) DeleteJobDefinition(ctx context.Context, req *eruunv1.JobDe
 }
 
 func (s *JobsServer) RunJobDefinition(ctx context.Context, req *eruunv1.RunJobDefinitionRequest) (*eruunv1.JobAccepted, error) {
-	if req == nil || req.DefinitionId == "" {
+	if req == nil || req.DefinitionId == "" || len(req.ProtoReflect().GetUnknown()) != 0 {
 		return nil, rpcError(bcode.ErrJobInput)
 	}
 	accepted, err := s.Jobs.Run(ctx, req.DefinitionId, req.ExecuteAt)

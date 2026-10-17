@@ -49,7 +49,7 @@ const (
 //
 // JobsService is the user-session API. Runner capability callbacks are HTTP-only.
 type JobsServiceClient interface {
-	CreateJobDefinition(ctx context.Context, in *JobSpec, opts ...grpc.CallOption) (*JobDefinition, error)
+	CreateJobDefinition(ctx context.Context, in *CreateJobDefinitionRequest, opts ...grpc.CallOption) (*JobDefinition, error)
 	GetJobDefinition(ctx context.Context, in *JobDefinitionRequest, opts ...grpc.CallOption) (*JobDefinition, error)
 	ListJobDefinitions(ctx context.Context, in *ListJobDefinitionsRequest, opts ...grpc.CallOption) (*JobDefinitions, error)
 	UpdateJobDefinition(ctx context.Context, in *UpdateJobDefinitionRequest, opts ...grpc.CallOption) (*JobDefinition, error)
@@ -80,7 +80,7 @@ func NewJobsServiceClient(cc grpc.ClientConnInterface) JobsServiceClient {
 	return &jobsServiceClient{cc}
 }
 
-func (c *jobsServiceClient) CreateJobDefinition(ctx context.Context, in *JobSpec, opts ...grpc.CallOption) (*JobDefinition, error) {
+func (c *jobsServiceClient) CreateJobDefinition(ctx context.Context, in *CreateJobDefinitionRequest, opts ...grpc.CallOption) (*JobDefinition, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(JobDefinition)
 	err := c.cc.Invoke(ctx, JobsService_CreateJobDefinition_FullMethodName, in, out, cOpts...)
@@ -326,7 +326,7 @@ type JobsService_DownloadJobDatasetClient = grpc.ServerStreamingClient[ArchiveCh
 //
 // JobsService is the user-session API. Runner capability callbacks are HTTP-only.
 type JobsServiceServer interface {
-	CreateJobDefinition(context.Context, *JobSpec) (*JobDefinition, error)
+	CreateJobDefinition(context.Context, *CreateJobDefinitionRequest) (*JobDefinition, error)
 	GetJobDefinition(context.Context, *JobDefinitionRequest) (*JobDefinition, error)
 	ListJobDefinitions(context.Context, *ListJobDefinitionsRequest) (*JobDefinitions, error)
 	UpdateJobDefinition(context.Context, *UpdateJobDefinitionRequest) (*JobDefinition, error)
@@ -357,7 +357,7 @@ type JobsServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedJobsServiceServer struct{}
 
-func (UnimplementedJobsServiceServer) CreateJobDefinition(context.Context, *JobSpec) (*JobDefinition, error) {
+func (UnimplementedJobsServiceServer) CreateJobDefinition(context.Context, *CreateJobDefinitionRequest) (*JobDefinition, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateJobDefinition not implemented")
 }
 func (UnimplementedJobsServiceServer) GetJobDefinition(context.Context, *JobDefinitionRequest) (*JobDefinition, error) {
@@ -442,7 +442,7 @@ func RegisterJobsServiceServer(s grpc.ServiceRegistrar, srv JobsServiceServer) {
 }
 
 func _JobsService_CreateJobDefinition_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(JobSpec)
+	in := new(CreateJobDefinitionRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -454,7 +454,7 @@ func _JobsService_CreateJobDefinition_Handler(srv interface{}, ctx context.Conte
 		FullMethod: JobsService_CreateJobDefinition_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(JobsServiceServer).CreateJobDefinition(ctx, req.(*JobSpec))
+		return srv.(JobsServiceServer).CreateJobDefinition(ctx, req.(*CreateJobDefinitionRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

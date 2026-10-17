@@ -120,7 +120,7 @@ func (a *workspaceJobs) list(c *gin.Context) {
 }
 
 func (a *workspaceJobs) createDefinition(c *gin.Context) {
-	request, ok := bindStrictJSON[spec.JobSpec](c, bcode.ErrJobInput, true)
+	request, ok := bindStrictJSON[jobs.DefinitionRequest](c, bcode.ErrJobInput, true)
 	if !ok {
 		return
 	}
@@ -147,7 +147,7 @@ func (a *workspaceJobs) definition(c *gin.Context) {
 }
 
 func (a *workspaceJobs) updateDefinition(c *gin.Context) {
-	request, ok := bindStrictJSON[spec.JobSpec](c, bcode.ErrJobInput, true)
+	request, ok := bindStrictJSON[jobs.DefinitionRequest](c, bcode.ErrJobInput, true)
 	if !ok {
 		return
 	}
