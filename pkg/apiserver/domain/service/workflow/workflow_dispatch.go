@@ -17,11 +17,16 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
-// ClaimTaskForDispatch rechecks delayed tasks under the same application lock
+// ClaimTaskForDispatch rechecks delayed application tasks under the same lock
 // used by enqueue and version updates, then creates the fenced dispatch lease.
 func (w *workflowServiceImpl) ClaimTaskForDispatch(ctx context.Context, task *model.WorkflowQueue, leaseDuration time.Duration) (*model.WorkflowQueue, bool, error) {
 	if task == nil || strings.TrimSpace(task.TaskID) == "" {
 		return nil, false, datastore.ErrPrimaryEmpty
+	}
+	// Independent Jobs have no application, so neither the application lock nor
+	// the StatefulSet cleanup fence applies, including for delayed execution.
+	if task.Type == config.WorkflowTaskTypeJob {
+		return repository.ClaimWorkflowTaskForDispatch(ctx, w.Store, task, leaseDuration)
 	}
 	// Immediate and cron tasks stay active for idle checks from enqueue onward.
 	// Only delayed tasks can outlive the safety decision made when enqueued.

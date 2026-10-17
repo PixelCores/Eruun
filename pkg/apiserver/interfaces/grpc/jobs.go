@@ -143,6 +143,112 @@ func (s *JobsServer) SubmitJob(ctx context.Context, req *eruunv1.SubmitJobReques
 	return &eruunv1.JobAccepted{TaskId: accepted.TaskID, WorkspaceId: accepted.WorkspaceID, Type: accepted.Type, Status: string(accepted.Status)}, nil
 }
 
+func (s *JobsServer) CreateJobDefinition(ctx context.Context, req *eruunv1.JobSpec) (*eruunv1.JobDefinition, error) {
+	if req == nil || len(req.ProtoReflect().GetUnknown()) != 0 {
+		return nil, rpcError(bcode.ErrJobInput)
+	}
+	input, err := decodeTypedRequest[spec.JobSpec](req)
+	if err != nil {
+		return nil, rpcError(bcode.ErrJobInput)
+	}
+	definition, err := s.Jobs.CreateDefinition(ctx, input)
+	if err != nil {
+		return nil, rpcError(jobFailure(err))
+	}
+	out, err := encodeTypedResponse(definition, &eruunv1.JobDefinition{})
+	return out, rpcError(err)
+}
+
+func (s *JobsServer) GetJobDefinition(ctx context.Context, req *eruunv1.JobDefinitionRequest) (*eruunv1.JobDefinition, error) {
+	if req == nil || req.DefinitionId == "" {
+		return nil, rpcError(bcode.ErrJobInput)
+	}
+	definition, err := s.Jobs.GetDefinition(ctx, req.DefinitionId)
+	if err != nil {
+		return nil, rpcError(jobFailure(err))
+	}
+	out, err := encodeTypedResponse(definition, &eruunv1.JobDefinition{})
+	return out, rpcError(err)
+}
+
+func (s *JobsServer) ListJobDefinitions(ctx context.Context, req *eruunv1.ListJobDefinitionsRequest) (*eruunv1.JobDefinitions, error) {
+	page, size := 1, 20
+	if req != nil {
+		if req.Page != nil {
+			page = int(*req.Page)
+		}
+		if req.PageSize != nil {
+			size = int(*req.PageSize)
+		}
+	}
+	definitions, err := s.Jobs.ListDefinitions(ctx, page, size)
+	if err != nil {
+		return nil, rpcError(jobFailure(err))
+	}
+	out, err := encodeTypedResponse(definitions, &eruunv1.JobDefinitions{})
+	return out, rpcError(err)
+}
+
+func (s *JobsServer) UpdateJobDefinition(ctx context.Context, req *eruunv1.UpdateJobDefinitionRequest) (*eruunv1.JobDefinition, error) {
+	if req == nil || req.DefinitionId == "" || req.Spec == nil || len(req.ProtoReflect().GetUnknown()) != 0 || len(req.Spec.ProtoReflect().GetUnknown()) != 0 {
+		return nil, rpcError(bcode.ErrJobInput)
+	}
+	input, err := decodeTypedRequest[spec.JobSpec](req.Spec)
+	if err != nil {
+		return nil, rpcError(bcode.ErrJobInput)
+	}
+	definition, err := s.Jobs.UpdateDefinition(ctx, req.DefinitionId, input)
+	if err != nil {
+		return nil, rpcError(jobFailure(err))
+	}
+	out, err := encodeTypedResponse(definition, &eruunv1.JobDefinition{})
+	return out, rpcError(err)
+}
+
+func (s *JobsServer) DeleteJobDefinition(ctx context.Context, req *eruunv1.JobDefinitionRequest) (*emptypb.Empty, error) {
+	if req == nil || req.DefinitionId == "" {
+		return nil, rpcError(bcode.ErrJobInput)
+	}
+	return &emptypb.Empty{}, rpcError(jobFailure(s.Jobs.DeleteDefinition(ctx, req.DefinitionId)))
+}
+
+func (s *JobsServer) RunJobDefinition(ctx context.Context, req *eruunv1.RunJobDefinitionRequest) (*eruunv1.JobAccepted, error) {
+	if req == nil || req.DefinitionId == "" {
+		return nil, rpcError(bcode.ErrJobInput)
+	}
+	accepted, err := s.Jobs.Run(ctx, req.DefinitionId, req.ExecuteAt)
+	if err != nil {
+		return nil, rpcError(jobFailure(err))
+	}
+	return &eruunv1.JobAccepted{TaskId: accepted.TaskID, WorkspaceId: accepted.WorkspaceID, Type: accepted.Type, Status: string(accepted.Status)}, nil
+}
+
+func (s *JobsServer) ListJobs(ctx context.Context, req *eruunv1.ListJobsRequest) (*eruunv1.JobRuns, error) {
+	page, size, definitionID := 1, 20, ""
+	if req != nil {
+		definitionID = req.DefinitionId
+		if req.Page != nil {
+			page = int(*req.Page)
+		}
+		if req.PageSize != nil {
+			size = int(*req.PageSize)
+		}
+	}
+	runs, err := s.Jobs.List(ctx, definitionID, page, size)
+	if err != nil {
+		return nil, rpcError(jobFailure(err))
+	}
+	out := &eruunv1.JobRuns{Total: runs.Total, Page: int32(runs.Page), PageSize: int32(runs.PageSize)}
+	for _, run := range runs.Items {
+		out.Items = append(out.Items, &eruunv1.JobRun{
+			Accepted: &eruunv1.JobAccepted{TaskId: run.TaskID, WorkspaceId: run.WorkspaceID, Type: run.Type, Status: string(run.Status)},
+			Name:     run.Name, JobDefinitionId: run.JobDefinitionID, JobDefinitionRevision: run.JobDefinitionRevision,
+			ExecuteAt: run.ExecuteAt, Creator: run.Creator, CreateTime: timeMessage(run.CreateTime), UpdateTime: timeMessage(run.UpdateTime),
+		})
+	}
+	return out, nil
+}
+
 func (s *JobsServer) GetJob(ctx context.Context, req *eruunv1.JobTaskRequest) (*eruunv1.JobDetail, error) {
 	if req == nil || req.TaskId == "" {
 		return nil, rpcError(bcode.ErrJobInput)

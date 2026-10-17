@@ -55,6 +55,13 @@ var privateAccountRoutes = map[string]bool{
 // A route added without a policy remains denied, including for administrators.
 var businessRoutes = map[string]string{
 	"POST /api/v1/jobs":                                                       "member",
+	"GET /api/v1/jobs":                                                        "viewer",
+	"POST /api/v1/job-definitions":                                            "member",
+	"GET /api/v1/job-definitions":                                             "viewer",
+	"GET /api/v1/job-definitions/:definitionID":                               "viewer",
+	"PUT /api/v1/job-definitions/:definitionID":                               "member",
+	"DELETE /api/v1/job-definitions/:definitionID":                            "member",
+	"POST /api/v1/job-definitions/:definitionID/runs":                         "member",
 	"GET /api/v1/jobs/:taskID":                                                "viewer",
 	"POST /api/v1/jobs/:taskID/cancel":                                        "member",
 	"GET /api/v1/jobs/:taskID/results":                                        "viewer",

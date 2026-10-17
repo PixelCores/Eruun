@@ -18,37 +18,39 @@ const (
 )
 
 // WorkflowQueue is a durable execution instance, including standalone workspace
-// Jobs. Workflow holds the reusable definition; message queues only dispatch this
+// Jobs. Workflow and JobDefinition hold reusable definitions; message queues dispatch this
 // record. Status writes still require the repository's transaction and ownership guards.
 type WorkflowQueue struct {
-	TaskID              string                  `json:"task_id" gorm:"primaryKey;type:varchar(255);column:task_id"`
-	WorkspaceID         string                  `json:"workspaceId,omitempty" gorm:"type:varchar(36);column:workspace_id;index"`
-	IdempotencyKey      *string                 `json:"idempotencyKey,omitempty" gorm:"type:varchar(255);column:idempotency_key;uniqueIndex:idx_workflow_queue_idempotency_key"`
-	ProjectID           string                  `json:"projectId" gorm:"type:varchar(64);column:project_id"`
-	WorkflowName        string                  `json:"workflow_name" gorm:"type:varchar(255);column:workflow_name"`
-	AppID               string                  `json:"app_id" gorm:"type:varchar(64);column:app_id"`
-	WorkflowID          string                  `json:"workflow_id" gorm:"type:varchar(64);column:workflow_id"`
-	WorkflowDisplayName string                  `json:"workflow_display_name" gorm:"type:varchar(255);column:workflow_display_name"`
-	Status              config.Status           `json:"status,omitempty" gorm:"type:varchar(32);column:status;index:idx_workflow_queue_reaper,priority:1;index:idx_workflow_queue_dispatch,priority:1"`
-	TaskCreator         string                  `json:"task_creator,omitempty" gorm:"type:varchar(128);column:task_creator"`
-	TaskRevoker         string                  `json:"task_revoker,omitempty" gorm:"type:varchar(128);column:task_revoker"`
-	CancelSource        string                  `json:"cancel_source,omitempty" gorm:"type:varchar(32);column:cancel_source"`
-	Type                config.WorkflowTaskType `json:"type,omitempty" gorm:"type:varchar(32);column:type"`
-	ExecuteAt           int64                   `json:"executeAt,omitempty" gorm:"type:bigint;column:execute_at;index:idx_workflow_queue_dispatch,priority:2"`
-	CurrentStep         int                     `json:"currentStep,omitempty" gorm:"type:int;column:current_step"`
-	ApprovalPending     bool                    `json:"approvalPending,omitempty" gorm:"column:approval_pending"`
-	PendingApprovalStep string                  `json:"pendingApprovalStep,omitempty" gorm:"type:varchar(255);column:pending_approval_step"`
-	Callback            *JSONStruct             `json:"callback,omitempty" gorm:"serializer:json"`
-	CleanupInfo         string                  `json:"-" gorm:"type:longtext;column:cleanup_info"`
-	ResourceActionInfo  string                  `json:"-" gorm:"type:longtext;column:resource_action_info"`
-	JobSpec             string                  `json:"-" gorm:"type:longtext;column:job_spec"`
-	RunGeneration       uint64                  `json:"runGeneration,omitempty" gorm:"column:run_generation;not null;default:0;index:idx_workflow_queue_run_lease,priority:2"`
-	RunToken            string                  `json:"-" gorm:"type:varchar(64);column:run_token;index:idx_workflow_queue_run_lease,priority:3"`
-	WorkerID            string                  `json:"workerId,omitempty" gorm:"type:varchar(255);column:worker_id;index"`
-	HeartbeatAt         *time.Time              `json:"heartbeatAt,omitempty" gorm:"column:heartbeat_at"`
-	LeaseExpiresAt      *time.Time              `json:"leaseExpiresAt,omitempty" gorm:"column:lease_expires_at;index:idx_workflow_queue_run_lease,priority:1;index:idx_workflow_queue_reaper,priority:2"`
-	DispatchAttempts    uint                    `json:"dispatchAttempts,omitempty" gorm:"column:dispatch_attempts;not null;default:0"`
-	SchedulingReason    string                  `json:"schedulingReason,omitempty" gorm:"type:varchar(255);column:scheduling_reason"`
+	TaskID                string                  `json:"task_id" gorm:"primaryKey;type:varchar(255);column:task_id"`
+	WorkspaceID           string                  `json:"workspaceId,omitempty" gorm:"type:varchar(36);column:workspace_id;index"`
+	IdempotencyKey        *string                 `json:"idempotencyKey,omitempty" gorm:"type:varchar(255);column:idempotency_key;uniqueIndex:idx_workflow_queue_idempotency_key"`
+	ProjectID             string                  `json:"projectId" gorm:"type:varchar(64);column:project_id"`
+	WorkflowName          string                  `json:"workflow_name" gorm:"type:varchar(255);column:workflow_name"`
+	AppID                 string                  `json:"app_id" gorm:"type:varchar(64);column:app_id"`
+	WorkflowID            string                  `json:"workflow_id" gorm:"type:varchar(64);column:workflow_id"`
+	WorkflowDisplayName   string                  `json:"workflow_display_name" gorm:"type:varchar(255);column:workflow_display_name"`
+	Status                config.Status           `json:"status,omitempty" gorm:"type:varchar(32);column:status;index:idx_workflow_queue_reaper,priority:1;index:idx_workflow_queue_dispatch,priority:1"`
+	TaskCreator           string                  `json:"task_creator,omitempty" gorm:"type:varchar(128);column:task_creator"`
+	TaskRevoker           string                  `json:"task_revoker,omitempty" gorm:"type:varchar(128);column:task_revoker"`
+	CancelSource          string                  `json:"cancel_source,omitempty" gorm:"type:varchar(32);column:cancel_source"`
+	Type                  config.WorkflowTaskType `json:"type,omitempty" gorm:"type:varchar(32);column:type"`
+	ExecuteAt             int64                   `json:"executeAt,omitempty" gorm:"type:bigint;column:execute_at;index:idx_workflow_queue_dispatch,priority:2"`
+	CurrentStep           int                     `json:"currentStep,omitempty" gorm:"type:int;column:current_step"`
+	ApprovalPending       bool                    `json:"approvalPending,omitempty" gorm:"column:approval_pending"`
+	PendingApprovalStep   string                  `json:"pendingApprovalStep,omitempty" gorm:"type:varchar(255);column:pending_approval_step"`
+	Callback              *JSONStruct             `json:"callback,omitempty" gorm:"serializer:json"`
+	CleanupInfo           string                  `json:"-" gorm:"type:longtext;column:cleanup_info"`
+	ResourceActionInfo    string                  `json:"-" gorm:"type:longtext;column:resource_action_info"`
+	JobDefinitionID       string                  `json:"jobDefinitionId,omitempty" gorm:"type:varchar(24);column:job_definition_id;index"`
+	JobDefinitionRevision uint64                  `json:"jobDefinitionRevision,omitempty" gorm:"column:job_definition_revision"`
+	JobSpec               string                  `json:"-" gorm:"type:longtext;column:job_spec"`
+	RunGeneration         uint64                  `json:"runGeneration,omitempty" gorm:"column:run_generation;not null;default:0;index:idx_workflow_queue_run_lease,priority:2"`
+	RunToken              string                  `json:"-" gorm:"type:varchar(64);column:run_token;index:idx_workflow_queue_run_lease,priority:3"`
+	WorkerID              string                  `json:"workerId,omitempty" gorm:"type:varchar(255);column:worker_id;index"`
+	HeartbeatAt           *time.Time              `json:"heartbeatAt,omitempty" gorm:"column:heartbeat_at"`
+	LeaseExpiresAt        *time.Time              `json:"leaseExpiresAt,omitempty" gorm:"column:lease_expires_at;index:idx_workflow_queue_run_lease,priority:1;index:idx_workflow_queue_reaper,priority:2"`
+	DispatchAttempts      uint                    `json:"dispatchAttempts,omitempty" gorm:"column:dispatch_attempts;not null;default:0"`
+	SchedulingReason      string                  `json:"schedulingReason,omitempty" gorm:"type:varchar(255);column:scheduling_reason"`
 	BaseModel
 }
 

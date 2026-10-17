@@ -1,6 +1,6 @@
 package grpcapi
 
-// routeRPC is the versioned route-to-RPC contract for the 99 user-facing
+// routeRPC is the versioned route-to-RPC contract for the 106 user-facing
 // HTTP routes. Browser OAuth, Runner callbacks and probes are deliberately
 // omitted; every new route needs an explicit decision.
 var routeRPC = map[string]string{
@@ -77,6 +77,13 @@ var routeRPC = map[string]string{
 	"POST /api/v1/applications/try":                                           "/eruun.v1.ApplicationService/TryApplication",
 	"POST /api/v1/applications/:appID/workflow/try":                           "/eruun.v1.ApplicationService/TryWorkflow",
 	"POST /api/v1/jobs":                                                       "/eruun.v1.JobsService/SubmitJob",
+	"GET /api/v1/jobs":                                                        "/eruun.v1.JobsService/ListJobs",
+	"POST /api/v1/job-definitions":                                            "/eruun.v1.JobsService/CreateJobDefinition",
+	"GET /api/v1/job-definitions":                                             "/eruun.v1.JobsService/ListJobDefinitions",
+	"GET /api/v1/job-definitions/:definitionID":                               "/eruun.v1.JobsService/GetJobDefinition",
+	"PUT /api/v1/job-definitions/:definitionID":                               "/eruun.v1.JobsService/UpdateJobDefinition",
+	"DELETE /api/v1/job-definitions/:definitionID":                            "/eruun.v1.JobsService/DeleteJobDefinition",
+	"POST /api/v1/job-definitions/:definitionID/runs":                         "/eruun.v1.JobsService/RunJobDefinition",
 	"GET /api/v1/jobs/:taskID":                                                "/eruun.v1.JobsService/GetJob",
 	"POST /api/v1/jobs/:taskID/cancel":                                        "/eruun.v1.JobsService/CancelJob",
 	"GET /api/v1/jobs/:taskID/results":                                        "/eruun.v1.JobsService/GetJobResults",

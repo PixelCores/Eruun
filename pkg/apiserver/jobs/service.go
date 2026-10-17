@@ -15,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -58,6 +59,7 @@ func New(store datastore.DataStore, kube kubernetes.Interface, cfg *config.Confi
 
 type SubmitRequest struct {
 	WorkspaceID string `json:"workspaceId,omitempty"`
+	ExecuteAt   int64  `json:"executeAt,omitempty"`
 	spec.JobSpec
 }
 
@@ -168,13 +170,24 @@ func (s *Service) Submit(ctx context.Context, request SubmitRequest) (*Accepted,
 	if request.WorkspaceID != "" && request.WorkspaceID != scope.WorkspaceID {
 		return nil, bcode.ErrForbidden
 	}
-	if err = request.JobSpec.Normalize(); err != nil {
+	task, err := s.prepareTask(ctx, scope, request.JobSpec)
+	if err != nil {
+		return nil, err
+	}
+	return s.enqueue(ctx, scope, task, request.ExecuteAt)
+}
+
+// prepareTask validates the complete declaration through the same renderer and
+// workspace policy for both reusable definitions and one-time submissions. It
+// creates no application, namespace, component, or Kubernetes resources.
+func (s *Service) prepareTask(ctx context.Context, scope account.Scope, declaration spec.JobSpec) (*model.WorkflowQueue, error) {
+	if err := declaration.Normalize(); err != nil {
 		return nil, invalid(err)
 	}
 	if s.Config == nil || s.Config.Accounts == nil {
 		return nil, bcode.ErrServiceUnavailable
 	}
-	for _, stage := range request.Stages {
+	for _, stage := range declaration.Stages {
 		for _, step := range stage.Steps {
 			if step.Traits.Evaluation == nil {
 				continue
@@ -189,7 +202,7 @@ func (s *Service) Submit(ctx context.Context, request SubmitRequest) (*Accepted,
 				}
 				step.Traits.Evaluation.ResultPolicy = &p.Policy
 			}
-			if err = s.validatePolicy(*step.Traits.Evaluation.ResultPolicy); err != nil {
+			if err := s.validatePolicy(*step.Traits.Evaluation.ResultPolicy); err != nil {
 				return nil, err
 			}
 			// Normalize already restricted evaluation envs to Secret references;
@@ -212,17 +225,15 @@ func (s *Service) Submit(ctx context.Context, request SubmitRequest) (*Accepted,
 		}
 	}
 	random := make([]byte, 12)
-	if _, err = rand.Read(random); err != nil {
+	if _, err := rand.Read(random); err != nil {
 		return nil, err
 	}
 	taskID := hex.EncodeToString(random)
-	declaration, err := json.Marshal(request.JobSpec)
+	snapshot, err := json.Marshal(declaration)
 	if err != nil {
 		return nil, err
 	}
-	task := &model.WorkflowQueue{TaskID: taskID, WorkspaceID: scope.WorkspaceID, WorkflowName: request.Name, WorkflowDisplayName: request.Name, TaskCreator: scope.UserID, Type: config.WorkflowTaskTypeJob, Status: config.StatusWaiting, JobSpec: string(declaration)}
-	// Validate the exact renderer and workspace policy before enqueueing. Building
-	// does not create namespace, application, component, or Kubernetes resources.
+	task := &model.WorkflowQueue{TaskID: taskID, WorkspaceID: scope.WorkspaceID, WorkflowName: declaration.Name, WorkflowDisplayName: declaration.Name, TaskCreator: scope.UserID, Type: config.WorkflowTaskTypeJob, Status: config.StatusWaiting, JobSpec: string(snapshot)}
 	stages, err := BuildTask(task, scope.Namespace)
 	if err != nil {
 		return nil, invalid(err)
@@ -246,6 +257,16 @@ func (s *Service) Submit(ctx context.Context, request SubmitRequest) (*Accepted,
 			}
 		}
 	}
+	return task, nil
+}
+
+// enqueue is the single durable submission path for one-time and definition runs.
+func (s *Service) enqueue(ctx context.Context, scope account.Scope, task *model.WorkflowQueue, executeAt int64) (*Accepted, error) {
+	normalized, err := workflow.NormalizeExecuteAt(executeAt)
+	if err != nil {
+		return nil, invalid(fmt.Errorf("executeAt must be non-negative"))
+	}
+	task.ExecuteAt = normalized
 	err = artifacts.WithTransaction(ctx, s.Store, func(tx artifacts.Backend) error {
 		locked := &model.Workspace{ID: scope.WorkspaceID}
 
@@ -260,7 +281,7 @@ func (s *Service) Submit(ctx context.Context, request SubmitRequest) (*Accepted,
 	if err != nil {
 		return nil, fmt.Errorf("submit Job: %w", err)
 	}
-	return &Accepted{TaskID: taskID, WorkspaceID: scope.WorkspaceID, Type: string(config.WorkflowTaskTypeJob), Status: task.Status}, nil
+	return &Accepted{TaskID: task.TaskID, WorkspaceID: scope.WorkspaceID, Type: string(config.WorkflowTaskTypeJob), Status: task.Status}, nil
 }
 
 // scopedTask authorizes only the parent workspace; public App reads additionally

@@ -28,6 +28,9 @@ type dispatchCleanupFenceStore struct {
 }
 
 func (s *dispatchCleanupFenceStore) List(ctx context.Context, query datastore.Entity, opts *datastore.ListOptions) ([]datastore.Entity, error) {
+	if task, ok := query.(*model.WorkflowQueue); ok && task.Status == config.StatusWaiting {
+		return []datastore.Entity{s.taskSnapshot()}, nil
+	}
 	if _, ok := query.(*model.WorkflowQueue); ok && s.pendingTask != nil {
 		return []datastore.Entity{s.pendingTask}, nil
 	}
@@ -50,6 +53,8 @@ func TestDispatchClaimPreservesStatefulSetCleanupFence(t *testing.T) {
 		migration        int
 		immediate        bool
 		cron             bool
+		job              bool
+		future           bool
 		lockHeld         bool
 		staleGeneration  bool
 		concurrentClaim  bool
@@ -64,6 +69,10 @@ func TestDispatchClaimPreservesStatefulSetCleanupFence(t *testing.T) {
 		{name: "delayed claim uses application lock", pending: true, lockHeld: true},
 		{name: "immediate task needs no application lock", immediate: true, pending: true, lockHeld: true, wantDispatch: true},
 		{name: "cron task needs no application lock", immediate: true, cron: true, pending: true, lockHeld: true, wantDispatch: true},
+		{name: "immediate Job has no application", job: true, immediate: true, lockHeld: true, wantDispatch: true},
+		{name: "delayed Job has no application lock or cleanup fence", job: true, pending: true, lockHeld: true, wantDispatch: true},
+		{name: "future Job stays waiting until due", job: true, future: true},
+		{name: "delayed Job preserves the generation fence", job: true, staleGeneration: true},
 		{name: "stale dispatch cannot claim a newer generation", staleGeneration: true},
 		{name: "CAS preserves generation after safety check", concurrentClaim: true},
 		{name: "cleanup rejection preserves a newer generation", pending: true, concurrentClaim: true},
@@ -77,6 +86,14 @@ func TestDispatchClaimPreservesStatefulSetCleanupFence(t *testing.T) {
 			task.Callback = callback
 			if tc.immediate {
 				task.ExecuteAt = 0
+			}
+			if tc.job {
+				task.Type = config.WorkflowTaskTypeJob
+				task.AppID = ""
+				task.WorkflowID = ""
+			}
+			if tc.future {
+				task.ExecuteAt = time.Now().Add(time.Hour).Unix()
 			}
 			if tc.cron {
 				key := "cron:schedule-1:123"
@@ -103,7 +120,7 @@ func TestDispatchClaimPreservesStatefulSetCleanupFence(t *testing.T) {
 				candidate.RunGeneration--
 			}
 			store.claimHook = func() {
-				if !tc.immediate {
+				if !tc.immediate && !tc.job {
 					// The lock must cover the ownership CAS, not only the check.
 					err := probe.TryLock(ctx)
 					if err == nil {
@@ -131,6 +148,19 @@ func TestDispatchClaimPreservesStatefulSetCleanupFence(t *testing.T) {
 			}
 			require.NoError(t, beans.Populate())
 			w := &Workflow{Store: store, WorkflowService: svc, Cfg: cfg}
+			if tc.job {
+				// The dispatcher filters ExecuteAt using the database clock before
+				// the ownership CAS; direct claims do not make timing decisions.
+				waiting, err := w.waitingTasks(ctx)
+				require.NoError(t, err)
+				if tc.future {
+					require.Empty(t, waiting)
+					require.Equal(t, config.StatusWaiting, store.taskSnapshot().Status)
+					require.EqualValues(t, 2, store.taskSnapshot().RunGeneration)
+					return
+				}
+				require.Len(t, waiting, 1)
+			}
 			var dispatched *model.WorkflowQueue
 			w.claimAndProcessTask(ctx, &candidate, func(_ context.Context, claimed *model.WorkflowQueue) error {
 				dispatched = claimed

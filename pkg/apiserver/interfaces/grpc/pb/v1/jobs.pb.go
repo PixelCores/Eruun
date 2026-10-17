@@ -355,6 +355,266 @@ func (x *ListJobDatasetsRequest) GetPageSize() int32 {
 	return 0
 }
 
+type JobDefinitionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DefinitionId  string                 `protobuf:"bytes,1,opt,name=definition_id,json=definitionId,proto3" json:"definition_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JobDefinitionRequest) Reset() {
+	*x = JobDefinitionRequest{}
+	mi := &file_eruun_v1_jobs_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobDefinitionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobDefinitionRequest) ProtoMessage() {}
+
+func (x *JobDefinitionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_jobs_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobDefinitionRequest.ProtoReflect.Descriptor instead.
+func (*JobDefinitionRequest) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *JobDefinitionRequest) GetDefinitionId() string {
+	if x != nil {
+		return x.DefinitionId
+	}
+	return ""
+}
+
+type ListJobDefinitionsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Page          *int32                 `protobuf:"varint,1,opt,name=page,proto3,oneof" json:"page,omitempty"`
+	PageSize      *int32                 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3,oneof" json:"page_size,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListJobDefinitionsRequest) Reset() {
+	*x = ListJobDefinitionsRequest{}
+	mi := &file_eruun_v1_jobs_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListJobDefinitionsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListJobDefinitionsRequest) ProtoMessage() {}
+
+func (x *ListJobDefinitionsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_jobs_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListJobDefinitionsRequest.ProtoReflect.Descriptor instead.
+func (*ListJobDefinitionsRequest) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *ListJobDefinitionsRequest) GetPage() int32 {
+	if x != nil && x.Page != nil {
+		return *x.Page
+	}
+	return 0
+}
+
+func (x *ListJobDefinitionsRequest) GetPageSize() int32 {
+	if x != nil && x.PageSize != nil {
+		return *x.PageSize
+	}
+	return 0
+}
+
+type UpdateJobDefinitionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DefinitionId  string                 `protobuf:"bytes,1,opt,name=definition_id,json=definitionId,proto3" json:"definition_id,omitempty"`
+	Spec          *JobSpec               `protobuf:"bytes,2,opt,name=spec,proto3" json:"spec,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateJobDefinitionRequest) Reset() {
+	*x = UpdateJobDefinitionRequest{}
+	mi := &file_eruun_v1_jobs_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateJobDefinitionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateJobDefinitionRequest) ProtoMessage() {}
+
+func (x *UpdateJobDefinitionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_jobs_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateJobDefinitionRequest.ProtoReflect.Descriptor instead.
+func (*UpdateJobDefinitionRequest) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *UpdateJobDefinitionRequest) GetDefinitionId() string {
+	if x != nil {
+		return x.DefinitionId
+	}
+	return ""
+}
+
+func (x *UpdateJobDefinitionRequest) GetSpec() *JobSpec {
+	if x != nil {
+		return x.Spec
+	}
+	return nil
+}
+
+type RunJobDefinitionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DefinitionId  string                 `protobuf:"bytes,1,opt,name=definition_id,json=definitionId,proto3" json:"definition_id,omitempty"`
+	ExecuteAt     int64                  `protobuf:"varint,2,opt,name=execute_at,json=executeAt,proto3" json:"execute_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RunJobDefinitionRequest) Reset() {
+	*x = RunJobDefinitionRequest{}
+	mi := &file_eruun_v1_jobs_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RunJobDefinitionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RunJobDefinitionRequest) ProtoMessage() {}
+
+func (x *RunJobDefinitionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_jobs_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RunJobDefinitionRequest.ProtoReflect.Descriptor instead.
+func (*RunJobDefinitionRequest) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *RunJobDefinitionRequest) GetDefinitionId() string {
+	if x != nil {
+		return x.DefinitionId
+	}
+	return ""
+}
+
+func (x *RunJobDefinitionRequest) GetExecuteAt() int64 {
+	if x != nil {
+		return x.ExecuteAt
+	}
+	return 0
+}
+
+type ListJobsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DefinitionId  string                 `protobuf:"bytes,1,opt,name=definition_id,json=definitionId,proto3" json:"definition_id,omitempty"`
+	Page          *int32                 `protobuf:"varint,2,opt,name=page,proto3,oneof" json:"page,omitempty"`
+	PageSize      *int32                 `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3,oneof" json:"page_size,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListJobsRequest) Reset() {
+	*x = ListJobsRequest{}
+	mi := &file_eruun_v1_jobs_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListJobsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListJobsRequest) ProtoMessage() {}
+
+func (x *ListJobsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_jobs_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListJobsRequest.ProtoReflect.Descriptor instead.
+func (*ListJobsRequest) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *ListJobsRequest) GetDefinitionId() string {
+	if x != nil {
+		return x.DefinitionId
+	}
+	return ""
+}
+
+func (x *ListJobsRequest) GetPage() int32 {
+	if x != nil && x.Page != nil {
+		return *x.Page
+	}
+	return 0
+}
+
+func (x *ListJobsRequest) GetPageSize() int32 {
+	if x != nil && x.PageSize != nil {
+		return *x.PageSize
+	}
+	return 0
+}
+
 type JobStoragePolicy struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	AvailableTargets []string               `protobuf:"bytes,1,rep,name=available_targets,json=availableTargets,proto3" json:"available_targets,omitempty"`
@@ -365,7 +625,7 @@ type JobStoragePolicy struct {
 
 func (x *JobStoragePolicy) Reset() {
 	*x = JobStoragePolicy{}
-	mi := &file_eruun_v1_jobs_proto_msgTypes[6]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -377,7 +637,7 @@ func (x *JobStoragePolicy) String() string {
 func (*JobStoragePolicy) ProtoMessage() {}
 
 func (x *JobStoragePolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_jobs_proto_msgTypes[6]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -390,7 +650,7 @@ func (x *JobStoragePolicy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobStoragePolicy.ProtoReflect.Descriptor instead.
 func (*JobStoragePolicy) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{6}
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *JobStoragePolicy) GetAvailableTargets() []string {
@@ -418,7 +678,7 @@ type JobVolume struct {
 
 func (x *JobVolume) Reset() {
 	*x = JobVolume{}
-	mi := &file_eruun_v1_jobs_proto_msgTypes[7]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -430,7 +690,7 @@ func (x *JobVolume) String() string {
 func (*JobVolume) ProtoMessage() {}
 
 func (x *JobVolume) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_jobs_proto_msgTypes[7]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -443,7 +703,7 @@ func (x *JobVolume) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobVolume.ProtoReflect.Descriptor instead.
 func (*JobVolume) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{7}
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *JobVolume) GetSize() string {
@@ -476,7 +736,7 @@ type JobStepRetry struct {
 
 func (x *JobStepRetry) Reset() {
 	*x = JobStepRetry{}
-	mi := &file_eruun_v1_jobs_proto_msgTypes[8]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -488,7 +748,7 @@ func (x *JobStepRetry) String() string {
 func (*JobStepRetry) ProtoMessage() {}
 
 func (x *JobStepRetry) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_jobs_proto_msgTypes[8]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -501,7 +761,7 @@ func (x *JobStepRetry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobStepRetry.ProtoReflect.Descriptor instead.
 func (*JobStepRetry) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{8}
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *JobStepRetry) GetBackoffLimit() int32 {
@@ -525,7 +785,7 @@ type JobStep struct {
 
 func (x *JobStep) Reset() {
 	*x = JobStep{}
-	mi := &file_eruun_v1_jobs_proto_msgTypes[9]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -537,7 +797,7 @@ func (x *JobStep) String() string {
 func (*JobStep) ProtoMessage() {}
 
 func (x *JobStep) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_jobs_proto_msgTypes[9]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -550,7 +810,7 @@ func (x *JobStep) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobStep.ProtoReflect.Descriptor instead.
 func (*JobStep) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{9}
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *JobStep) GetName() string {
@@ -598,7 +858,7 @@ type JobStage struct {
 
 func (x *JobStage) Reset() {
 	*x = JobStage{}
-	mi := &file_eruun_v1_jobs_proto_msgTypes[10]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -610,7 +870,7 @@ func (x *JobStage) String() string {
 func (*JobStage) ProtoMessage() {}
 
 func (x *JobStage) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_jobs_proto_msgTypes[10]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -623,7 +883,7 @@ func (x *JobStage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobStage.ProtoReflect.Descriptor instead.
 func (*JobStage) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{10}
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *JobStage) GetName() string {
@@ -641,18 +901,20 @@ func (x *JobStage) GetSteps() []*JobStep {
 }
 
 type SubmitJobRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	WorkspaceId   string                 `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Volume        *JobVolume             `protobuf:"bytes,7,opt,name=volume,proto3" json:"volume,omitempty"`
-	Stages        []*JobStage            `protobuf:"bytes,8,rep,name=stages,proto3" json:"stages,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	WorkspaceId string                 `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	Name        string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Volume      *JobVolume             `protobuf:"bytes,7,opt,name=volume,proto3" json:"volume,omitempty"`
+	Stages      []*JobStage            `protobuf:"bytes,8,rep,name=stages,proto3" json:"stages,omitempty"`
+	// Unix seconds; zero or past times execute immediately, negatives are invalid.
+	ExecuteAt     int64 `protobuf:"varint,9,opt,name=execute_at,json=executeAt,proto3" json:"execute_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SubmitJobRequest) Reset() {
 	*x = SubmitJobRequest{}
-	mi := &file_eruun_v1_jobs_proto_msgTypes[11]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -664,7 +926,7 @@ func (x *SubmitJobRequest) String() string {
 func (*SubmitJobRequest) ProtoMessage() {}
 
 func (x *SubmitJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_jobs_proto_msgTypes[11]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -677,7 +939,7 @@ func (x *SubmitJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitJobRequest.ProtoReflect.Descriptor instead.
 func (*SubmitJobRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{11}
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *SubmitJobRequest) GetWorkspaceId() string {
@@ -708,6 +970,13 @@ func (x *SubmitJobRequest) GetStages() []*JobStage {
 	return nil
 }
 
+func (x *SubmitJobRequest) GetExecuteAt() int64 {
+	if x != nil {
+		return x.ExecuteAt
+	}
+	return 0
+}
+
 type JobSpec struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -719,7 +988,7 @@ type JobSpec struct {
 
 func (x *JobSpec) Reset() {
 	*x = JobSpec{}
-	mi := &file_eruun_v1_jobs_proto_msgTypes[12]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -731,7 +1000,7 @@ func (x *JobSpec) String() string {
 func (*JobSpec) ProtoMessage() {}
 
 func (x *JobSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_jobs_proto_msgTypes[12]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -744,7 +1013,7 @@ func (x *JobSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobSpec.ProtoReflect.Descriptor instead.
 func (*JobSpec) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{12}
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *JobSpec) GetName() string {
@@ -780,7 +1049,7 @@ type JobAccepted struct {
 
 func (x *JobAccepted) Reset() {
 	*x = JobAccepted{}
-	mi := &file_eruun_v1_jobs_proto_msgTypes[13]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -792,7 +1061,7 @@ func (x *JobAccepted) String() string {
 func (*JobAccepted) ProtoMessage() {}
 
 func (x *JobAccepted) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_jobs_proto_msgTypes[13]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -805,7 +1074,7 @@ func (x *JobAccepted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobAccepted.ProtoReflect.Descriptor instead.
 func (*JobAccepted) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{13}
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *JobAccepted) GetTaskId() string {
@@ -834,6 +1103,334 @@ func (x *JobAccepted) GetStatus() string {
 		return x.Status
 	}
 	return ""
+}
+
+type JobDefinition struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Revision      uint64                 `protobuf:"varint,3,opt,name=revision,proto3" json:"revision,omitempty"`
+	Spec          *JobSpec               `protobuf:"bytes,4,opt,name=spec,proto3" json:"spec,omitempty"`
+	Creator       string                 `protobuf:"bytes,5,opt,name=creator,proto3" json:"creator,omitempty"`
+	CreateTime    *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
+	UpdateTime    *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JobDefinition) Reset() {
+	*x = JobDefinition{}
+	mi := &file_eruun_v1_jobs_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobDefinition) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobDefinition) ProtoMessage() {}
+
+func (x *JobDefinition) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_jobs_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobDefinition.ProtoReflect.Descriptor instead.
+func (*JobDefinition) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *JobDefinition) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *JobDefinition) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *JobDefinition) GetRevision() uint64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
+func (x *JobDefinition) GetSpec() *JobSpec {
+	if x != nil {
+		return x.Spec
+	}
+	return nil
+}
+
+func (x *JobDefinition) GetCreator() string {
+	if x != nil {
+		return x.Creator
+	}
+	return ""
+}
+
+func (x *JobDefinition) GetCreateTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreateTime
+	}
+	return nil
+}
+
+func (x *JobDefinition) GetUpdateTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdateTime
+	}
+	return nil
+}
+
+type JobDefinitions struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Items         []*JobDefinition       `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	Total         int64                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+	Page          int32                  `protobuf:"varint,3,opt,name=page,proto3" json:"page,omitempty"`
+	PageSize      int32                  `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JobDefinitions) Reset() {
+	*x = JobDefinitions{}
+	mi := &file_eruun_v1_jobs_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobDefinitions) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobDefinitions) ProtoMessage() {}
+
+func (x *JobDefinitions) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_jobs_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobDefinitions.ProtoReflect.Descriptor instead.
+func (*JobDefinitions) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *JobDefinitions) GetItems() []*JobDefinition {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+func (x *JobDefinitions) GetTotal() int64 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+func (x *JobDefinitions) GetPage() int32 {
+	if x != nil {
+		return x.Page
+	}
+	return 0
+}
+
+func (x *JobDefinitions) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+type JobRun struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	Accepted              *JobAccepted           `protobuf:"bytes,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
+	Name                  string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	JobDefinitionId       string                 `protobuf:"bytes,3,opt,name=job_definition_id,json=jobDefinitionId,proto3" json:"job_definition_id,omitempty"`
+	JobDefinitionRevision uint64                 `protobuf:"varint,4,opt,name=job_definition_revision,json=jobDefinitionRevision,proto3" json:"job_definition_revision,omitempty"`
+	ExecuteAt             int64                  `protobuf:"varint,5,opt,name=execute_at,json=executeAt,proto3" json:"execute_at,omitempty"`
+	Creator               string                 `protobuf:"bytes,6,opt,name=creator,proto3" json:"creator,omitempty"`
+	CreateTime            *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
+	UpdateTime            *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *JobRun) Reset() {
+	*x = JobRun{}
+	mi := &file_eruun_v1_jobs_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobRun) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobRun) ProtoMessage() {}
+
+func (x *JobRun) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_jobs_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobRun.ProtoReflect.Descriptor instead.
+func (*JobRun) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *JobRun) GetAccepted() *JobAccepted {
+	if x != nil {
+		return x.Accepted
+	}
+	return nil
+}
+
+func (x *JobRun) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *JobRun) GetJobDefinitionId() string {
+	if x != nil {
+		return x.JobDefinitionId
+	}
+	return ""
+}
+
+func (x *JobRun) GetJobDefinitionRevision() uint64 {
+	if x != nil {
+		return x.JobDefinitionRevision
+	}
+	return 0
+}
+
+func (x *JobRun) GetExecuteAt() int64 {
+	if x != nil {
+		return x.ExecuteAt
+	}
+	return 0
+}
+
+func (x *JobRun) GetCreator() string {
+	if x != nil {
+		return x.Creator
+	}
+	return ""
+}
+
+func (x *JobRun) GetCreateTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreateTime
+	}
+	return nil
+}
+
+func (x *JobRun) GetUpdateTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdateTime
+	}
+	return nil
+}
+
+type JobRuns struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Items         []*JobRun              `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	Total         int64                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+	Page          int32                  `protobuf:"varint,3,opt,name=page,proto3" json:"page,omitempty"`
+	PageSize      int32                  `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JobRuns) Reset() {
+	*x = JobRuns{}
+	mi := &file_eruun_v1_jobs_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobRuns) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobRuns) ProtoMessage() {}
+
+func (x *JobRuns) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_jobs_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobRuns.ProtoReflect.Descriptor instead.
+func (*JobRuns) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *JobRuns) GetItems() []*JobRun {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+func (x *JobRuns) GetTotal() int64 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+func (x *JobRuns) GetPage() int32 {
+	if x != nil {
+		return x.Page
+	}
+	return 0
+}
+
+func (x *JobRuns) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
 }
 
 type JobExecution struct {
@@ -869,7 +1466,7 @@ type JobExecution struct {
 
 func (x *JobExecution) Reset() {
 	*x = JobExecution{}
-	mi := &file_eruun_v1_jobs_proto_msgTypes[14]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -881,7 +1478,7 @@ func (x *JobExecution) String() string {
 func (*JobExecution) ProtoMessage() {}
 
 func (x *JobExecution) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_jobs_proto_msgTypes[14]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -894,7 +1491,7 @@ func (x *JobExecution) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobExecution.ProtoReflect.Descriptor instead.
 func (*JobExecution) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{14}
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *JobExecution) GetId() int64 {
@@ -1095,7 +1692,7 @@ type JobArtifact struct {
 
 func (x *JobArtifact) Reset() {
 	*x = JobArtifact{}
-	mi := &file_eruun_v1_jobs_proto_msgTypes[15]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1107,7 +1704,7 @@ func (x *JobArtifact) String() string {
 func (*JobArtifact) ProtoMessage() {}
 
 func (x *JobArtifact) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_jobs_proto_msgTypes[15]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1120,7 +1717,7 @@ func (x *JobArtifact) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobArtifact.ProtoReflect.Descriptor instead.
 func (*JobArtifact) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{15}
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *JobArtifact) GetId() string {
@@ -1249,7 +1846,7 @@ type JobDelivery struct {
 
 func (x *JobDelivery) Reset() {
 	*x = JobDelivery{}
-	mi := &file_eruun_v1_jobs_proto_msgTypes[16]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1261,7 +1858,7 @@ func (x *JobDelivery) String() string {
 func (*JobDelivery) ProtoMessage() {}
 
 func (x *JobDelivery) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_jobs_proto_msgTypes[16]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1274,7 +1871,7 @@ func (x *JobDelivery) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobDelivery.ProtoReflect.Descriptor instead.
 func (*JobDelivery) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{16}
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *JobDelivery) GetId() string {
@@ -1378,7 +1975,7 @@ type JobRunnerProgress struct {
 
 func (x *JobRunnerProgress) Reset() {
 	*x = JobRunnerProgress{}
-	mi := &file_eruun_v1_jobs_proto_msgTypes[17]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1390,7 +1987,7 @@ func (x *JobRunnerProgress) String() string {
 func (*JobRunnerProgress) ProtoMessage() {}
 
 func (x *JobRunnerProgress) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_jobs_proto_msgTypes[17]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1403,7 +2000,7 @@ func (x *JobRunnerProgress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobRunnerProgress.ProtoReflect.Descriptor instead.
 func (*JobRunnerProgress) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{17}
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *JobRunnerProgress) GetCompletedTrials() int32 {
@@ -1436,7 +2033,7 @@ type JobRunnerTerminal struct {
 
 func (x *JobRunnerTerminal) Reset() {
 	*x = JobRunnerTerminal{}
-	mi := &file_eruun_v1_jobs_proto_msgTypes[18]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1448,7 +2045,7 @@ func (x *JobRunnerTerminal) String() string {
 func (*JobRunnerTerminal) ProtoMessage() {}
 
 func (x *JobRunnerTerminal) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_jobs_proto_msgTypes[18]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1461,7 +2058,7 @@ func (x *JobRunnerTerminal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobRunnerTerminal.ProtoReflect.Descriptor instead.
 func (*JobRunnerTerminal) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{18}
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *JobRunnerTerminal) GetOutcome() string {
@@ -1534,7 +2131,7 @@ type JobRunnerStatus struct {
 
 func (x *JobRunnerStatus) Reset() {
 	*x = JobRunnerStatus{}
-	mi := &file_eruun_v1_jobs_proto_msgTypes[19]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1546,7 +2143,7 @@ func (x *JobRunnerStatus) String() string {
 func (*JobRunnerStatus) ProtoMessage() {}
 
 func (x *JobRunnerStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_jobs_proto_msgTypes[19]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1559,7 +2156,7 @@ func (x *JobRunnerStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobRunnerStatus.ProtoReflect.Descriptor instead.
 func (*JobRunnerStatus) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{19}
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *JobRunnerStatus) GetPhase() string {
@@ -1624,7 +2221,7 @@ type JobSandboxStatus struct {
 
 func (x *JobSandboxStatus) Reset() {
 	*x = JobSandboxStatus{}
-	mi := &file_eruun_v1_jobs_proto_msgTypes[20]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1636,7 +2233,7 @@ func (x *JobSandboxStatus) String() string {
 func (*JobSandboxStatus) ProtoMessage() {}
 
 func (x *JobSandboxStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_jobs_proto_msgTypes[20]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1649,7 +2246,7 @@ func (x *JobSandboxStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobSandboxStatus.ProtoReflect.Descriptor instead.
 func (*JobSandboxStatus) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{20}
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *JobSandboxStatus) GetTrialId() string {
@@ -1748,7 +2345,7 @@ type JobDetail struct {
 
 func (x *JobDetail) Reset() {
 	*x = JobDetail{}
-	mi := &file_eruun_v1_jobs_proto_msgTypes[21]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1760,7 +2357,7 @@ func (x *JobDetail) String() string {
 func (*JobDetail) ProtoMessage() {}
 
 func (x *JobDetail) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_jobs_proto_msgTypes[21]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1773,7 +2370,7 @@ func (x *JobDetail) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobDetail.ProtoReflect.Descriptor instead.
 func (*JobDetail) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{21}
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *JobDetail) GetAccepted() *JobAccepted {
@@ -1865,7 +2462,7 @@ type JobResults struct {
 
 func (x *JobResults) Reset() {
 	*x = JobResults{}
-	mi := &file_eruun_v1_jobs_proto_msgTypes[22]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1877,7 +2474,7 @@ func (x *JobResults) String() string {
 func (*JobResults) ProtoMessage() {}
 
 func (x *JobResults) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_jobs_proto_msgTypes[22]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1890,7 +2487,7 @@ func (x *JobResults) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobResults.ProtoReflect.Descriptor instead.
 func (*JobResults) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{22}
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *JobResults) GetCollectionState() string {
@@ -1930,7 +2527,7 @@ type JobArtifacts struct {
 
 func (x *JobArtifacts) Reset() {
 	*x = JobArtifacts{}
-	mi := &file_eruun_v1_jobs_proto_msgTypes[23]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1942,7 +2539,7 @@ func (x *JobArtifacts) String() string {
 func (*JobArtifacts) ProtoMessage() {}
 
 func (x *JobArtifacts) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_jobs_proto_msgTypes[23]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1955,7 +2552,7 @@ func (x *JobArtifacts) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobArtifacts.ProtoReflect.Descriptor instead.
 func (*JobArtifacts) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{23}
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *JobArtifacts) GetArtifacts() []*JobArtifact {
@@ -1974,7 +2571,7 @@ type UploadDatasetHeader struct {
 
 func (x *UploadDatasetHeader) Reset() {
 	*x = UploadDatasetHeader{}
-	mi := &file_eruun_v1_jobs_proto_msgTypes[24]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1986,7 +2583,7 @@ func (x *UploadDatasetHeader) String() string {
 func (*UploadDatasetHeader) ProtoMessage() {}
 
 func (x *UploadDatasetHeader) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_jobs_proto_msgTypes[24]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1999,7 +2596,7 @@ func (x *UploadDatasetHeader) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadDatasetHeader.ProtoReflect.Descriptor instead.
 func (*UploadDatasetHeader) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{24}
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *UploadDatasetHeader) GetName() string {
@@ -2022,7 +2619,7 @@ type UploadDatasetPart struct {
 
 func (x *UploadDatasetPart) Reset() {
 	*x = UploadDatasetPart{}
-	mi := &file_eruun_v1_jobs_proto_msgTypes[25]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2034,7 +2631,7 @@ func (x *UploadDatasetPart) String() string {
 func (*UploadDatasetPart) ProtoMessage() {}
 
 func (x *UploadDatasetPart) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_jobs_proto_msgTypes[25]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2047,7 +2644,7 @@ func (x *UploadDatasetPart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadDatasetPart.ProtoReflect.Descriptor instead.
 func (*UploadDatasetPart) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{25}
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *UploadDatasetPart) GetPart() isUploadDatasetPart_Part {
@@ -2100,7 +2697,7 @@ type ArchiveChunk struct {
 
 func (x *ArchiveChunk) Reset() {
 	*x = ArchiveChunk{}
-	mi := &file_eruun_v1_jobs_proto_msgTypes[26]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2112,7 +2709,7 @@ func (x *ArchiveChunk) String() string {
 func (*ArchiveChunk) ProtoMessage() {}
 
 func (x *ArchiveChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_jobs_proto_msgTypes[26]
+	mi := &file_eruun_v1_jobs_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2125,7 +2722,7 @@ func (x *ArchiveChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArchiveChunk.ProtoReflect.Descriptor instead.
 func (*ArchiveChunk) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{26}
+	return file_eruun_v1_jobs_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *ArchiveChunk) GetData() []byte {
@@ -2164,6 +2761,28 @@ const file_eruun_v1_jobs_proto_rawDesc = "" +
 	"\tpage_size\x18\x02 \x01(\x05H\x01R\bpageSize\x88\x01\x01B\a\n" +
 	"\x05_pageB\f\n" +
 	"\n" +
+	"_page_size\";\n" +
+	"\x14JobDefinitionRequest\x12#\n" +
+	"\rdefinition_id\x18\x01 \x01(\tR\fdefinitionId\"m\n" +
+	"\x19ListJobDefinitionsRequest\x12\x17\n" +
+	"\x04page\x18\x01 \x01(\x05H\x00R\x04page\x88\x01\x01\x12 \n" +
+	"\tpage_size\x18\x02 \x01(\x05H\x01R\bpageSize\x88\x01\x01B\a\n" +
+	"\x05_pageB\f\n" +
+	"\n" +
+	"_page_size\"h\n" +
+	"\x1aUpdateJobDefinitionRequest\x12#\n" +
+	"\rdefinition_id\x18\x01 \x01(\tR\fdefinitionId\x12%\n" +
+	"\x04spec\x18\x02 \x01(\v2\x11.eruun.v1.JobSpecR\x04spec\"]\n" +
+	"\x17RunJobDefinitionRequest\x12#\n" +
+	"\rdefinition_id\x18\x01 \x01(\tR\fdefinitionId\x12\x1d\n" +
+	"\n" +
+	"execute_at\x18\x02 \x01(\x03R\texecuteAt\"\x88\x01\n" +
+	"\x0fListJobsRequest\x12#\n" +
+	"\rdefinition_id\x18\x01 \x01(\tR\fdefinitionId\x12\x17\n" +
+	"\x04page\x18\x02 \x01(\x05H\x00R\x04page\x88\x01\x01\x12 \n" +
+	"\tpage_size\x18\x03 \x01(\x05H\x01R\bpageSize\x88\x01\x01B\a\n" +
+	"\x05_pageB\f\n" +
+	"\n" +
 	"_page_size\"r\n" +
 	"\x10JobStoragePolicy\x12+\n" +
 	"\x11available_targets\x18\x01 \x03(\tR\x10availableTargets\x121\n" +
@@ -2183,12 +2802,14 @@ const file_eruun_v1_jobs_proto_rawDesc = "" +
 	"\x05retry\x18\x05 \x01(\v2\x16.eruun.v1.JobStepRetryR\x05retry\"G\n" +
 	"\bJobStage\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12'\n" +
-	"\x05steps\x18\x02 \x03(\v2\x11.eruun.v1.JobStepR\x05steps\"\xdd\x01\n" +
+	"\x05steps\x18\x02 \x03(\v2\x11.eruun.v1.JobStepR\x05steps\"\xfc\x01\n" +
 	"\x10SubmitJobRequest\x12!\n" +
 	"\fworkspace_id\x18\x01 \x01(\tR\vworkspaceId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12+\n" +
 	"\x06volume\x18\a \x01(\v2\x13.eruun.v1.JobVolumeR\x06volume\x12*\n" +
-	"\x06stages\x18\b \x03(\v2\x12.eruun.v1.JobStageR\x06stagesJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aR\x04typeR\x04specR\x06traitsR\rresult_policy\"\xb1\x01\n" +
+	"\x06stages\x18\b \x03(\v2\x12.eruun.v1.JobStageR\x06stages\x12\x1d\n" +
+	"\n" +
+	"execute_at\x18\t \x01(\x03R\texecuteAtJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aR\x04typeR\x04specR\x06traitsR\rresult_policy\"\xb1\x01\n" +
 	"\aJobSpec\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12+\n" +
 	"\x06volume\x18\x06 \x01(\v2\x13.eruun.v1.JobVolumeR\x06volume\x12*\n" +
@@ -2197,7 +2818,39 @@ const file_eruun_v1_jobs_proto_rawDesc = "" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12!\n" +
 	"\fworkspace_id\x18\x02 \x01(\tR\vworkspaceId\x12\x12\n" +
 	"\x04type\x18\x03 \x01(\tR\x04type\x12\x16\n" +
-	"\x06status\x18\x04 \x01(\tR\x06status\"\x9c\a\n" +
+	"\x06status\x18\x04 \x01(\tR\x06status\"\x8a\x02\n" +
+	"\rJobDefinition\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1a\n" +
+	"\brevision\x18\x03 \x01(\x04R\brevision\x12%\n" +
+	"\x04spec\x18\x04 \x01(\v2\x11.eruun.v1.JobSpecR\x04spec\x12\x18\n" +
+	"\acreator\x18\x05 \x01(\tR\acreator\x12;\n" +
+	"\vcreate_time\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"createTime\x12;\n" +
+	"\vupdate_time\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"updateTime\"\x86\x01\n" +
+	"\x0eJobDefinitions\x12-\n" +
+	"\x05items\x18\x01 \x03(\v2\x17.eruun.v1.JobDefinitionR\x05items\x12\x14\n" +
+	"\x05total\x18\x02 \x01(\x03R\x05total\x12\x12\n" +
+	"\x04page\x18\x03 \x01(\x05R\x04page\x12\x1b\n" +
+	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\"\xe6\x02\n" +
+	"\x06JobRun\x121\n" +
+	"\baccepted\x18\x01 \x01(\v2\x15.eruun.v1.JobAcceptedR\baccepted\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12*\n" +
+	"\x11job_definition_id\x18\x03 \x01(\tR\x0fjobDefinitionId\x126\n" +
+	"\x17job_definition_revision\x18\x04 \x01(\x04R\x15jobDefinitionRevision\x12\x1d\n" +
+	"\n" +
+	"execute_at\x18\x05 \x01(\x03R\texecuteAt\x12\x18\n" +
+	"\acreator\x18\x06 \x01(\tR\acreator\x12;\n" +
+	"\vcreate_time\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"createTime\x12;\n" +
+	"\vupdate_time\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"updateTime\"x\n" +
+	"\aJobRuns\x12&\n" +
+	"\x05items\x18\x01 \x03(\v2\x10.eruun.v1.JobRunR\x05items\x12\x14\n" +
+	"\x05total\x18\x02 \x01(\x03R\x05total\x12\x12\n" +
+	"\x04page\x18\x03 \x01(\x05R\x04page\x12\x1b\n" +
+	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\"\x9c\a\n" +
 	"\fJobExecution\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12\x1f\n" +
@@ -2341,9 +2994,16 @@ const file_eruun_v1_jobs_proto_rawDesc = "" +
 	"\x05chunk\x18\x02 \x01(\fH\x00R\x05chunkB\x06\n" +
 	"\x04part\"\"\n" +
 	"\fArchiveChunk\x12\x12\n" +
-	"\x04data\x18\x01 \x01(\fR\x04data2\xf7\a\n" +
-	"\vJobsService\x12>\n" +
-	"\tSubmitJob\x12\x1a.eruun.v1.SubmitJobRequest\x1a\x15.eruun.v1.JobAccepted\x127\n" +
+	"\x04data\x18\x01 \x01(\fR\x04data2\x89\f\n" +
+	"\vJobsService\x12A\n" +
+	"\x13CreateJobDefinition\x12\x11.eruun.v1.JobSpec\x1a\x17.eruun.v1.JobDefinition\x12K\n" +
+	"\x10GetJobDefinition\x12\x1e.eruun.v1.JobDefinitionRequest\x1a\x17.eruun.v1.JobDefinition\x12S\n" +
+	"\x12ListJobDefinitions\x12#.eruun.v1.ListJobDefinitionsRequest\x1a\x18.eruun.v1.JobDefinitions\x12T\n" +
+	"\x13UpdateJobDefinition\x12$.eruun.v1.UpdateJobDefinitionRequest\x1a\x17.eruun.v1.JobDefinition\x12M\n" +
+	"\x13DeleteJobDefinition\x12\x1e.eruun.v1.JobDefinitionRequest\x1a\x16.google.protobuf.Empty\x12L\n" +
+	"\x10RunJobDefinition\x12!.eruun.v1.RunJobDefinitionRequest\x1a\x15.eruun.v1.JobAccepted\x12>\n" +
+	"\tSubmitJob\x12\x1a.eruun.v1.SubmitJobRequest\x1a\x15.eruun.v1.JobAccepted\x128\n" +
+	"\bListJobs\x12\x19.eruun.v1.ListJobsRequest\x1a\x11.eruun.v1.JobRuns\x127\n" +
 	"\x06GetJob\x12\x18.eruun.v1.JobTaskRequest\x1a\x13.eruun.v1.JobDetail\x12=\n" +
 	"\tCancelJob\x12\x18.eruun.v1.JobTaskRequest\x1a\x16.google.protobuf.Empty\x12?\n" +
 	"\rGetJobResults\x12\x18.eruun.v1.JobTaskRequest\x1a\x14.eruun.v1.JobResults\x12K\n" +
@@ -2370,109 +3030,141 @@ func file_eruun_v1_jobs_proto_rawDescGZIP() []byte {
 	return file_eruun_v1_jobs_proto_rawDescData
 }
 
-var file_eruun_v1_jobs_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_eruun_v1_jobs_proto_msgTypes = make([]protoimpl.MessageInfo, 36)
 var file_eruun_v1_jobs_proto_goTypes = []any{
-	(*JobTaskRequest)(nil),         // 0: eruun.v1.JobTaskRequest
-	(*JobArtifactRequest)(nil),     // 1: eruun.v1.JobArtifactRequest
-	(*JobDeliveryRequest)(nil),     // 2: eruun.v1.JobDeliveryRequest
-	(*JobDatasetRequest)(nil),      // 3: eruun.v1.JobDatasetRequest
-	(*SetJobRetentionRequest)(nil), // 4: eruun.v1.SetJobRetentionRequest
-	(*ListJobDatasetsRequest)(nil), // 5: eruun.v1.ListJobDatasetsRequest
-	(*JobStoragePolicy)(nil),       // 6: eruun.v1.JobStoragePolicy
-	(*JobVolume)(nil),              // 7: eruun.v1.JobVolume
-	(*JobStepRetry)(nil),           // 8: eruun.v1.JobStepRetry
-	(*JobStep)(nil),                // 9: eruun.v1.JobStep
-	(*JobStage)(nil),               // 10: eruun.v1.JobStage
-	(*SubmitJobRequest)(nil),       // 11: eruun.v1.SubmitJobRequest
-	(*JobSpec)(nil),                // 12: eruun.v1.JobSpec
-	(*JobAccepted)(nil),            // 13: eruun.v1.JobAccepted
-	(*JobExecution)(nil),           // 14: eruun.v1.JobExecution
-	(*JobArtifact)(nil),            // 15: eruun.v1.JobArtifact
-	(*JobDelivery)(nil),            // 16: eruun.v1.JobDelivery
-	(*JobRunnerProgress)(nil),      // 17: eruun.v1.JobRunnerProgress
-	(*JobRunnerTerminal)(nil),      // 18: eruun.v1.JobRunnerTerminal
-	(*JobRunnerStatus)(nil),        // 19: eruun.v1.JobRunnerStatus
-	(*JobSandboxStatus)(nil),       // 20: eruun.v1.JobSandboxStatus
-	(*JobDetail)(nil),              // 21: eruun.v1.JobDetail
-	(*JobResults)(nil),             // 22: eruun.v1.JobResults
-	(*JobArtifacts)(nil),           // 23: eruun.v1.JobArtifacts
-	(*UploadDatasetHeader)(nil),    // 24: eruun.v1.UploadDatasetHeader
-	(*UploadDatasetPart)(nil),      // 25: eruun.v1.UploadDatasetPart
-	(*ArchiveChunk)(nil),           // 26: eruun.v1.ArchiveChunk
-	(*JobResultPolicy)(nil),        // 27: eruun.v1.JobResultPolicy
-	(*structpb.Value)(nil),         // 28: google.protobuf.Value
-	(*AppSpecTraits)(nil),          // 29: eruun.v1.AppSpecTraits
-	(*timestamppb.Timestamp)(nil),  // 30: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),          // 31: google.protobuf.Empty
+	(*JobTaskRequest)(nil),             // 0: eruun.v1.JobTaskRequest
+	(*JobArtifactRequest)(nil),         // 1: eruun.v1.JobArtifactRequest
+	(*JobDeliveryRequest)(nil),         // 2: eruun.v1.JobDeliveryRequest
+	(*JobDatasetRequest)(nil),          // 3: eruun.v1.JobDatasetRequest
+	(*SetJobRetentionRequest)(nil),     // 4: eruun.v1.SetJobRetentionRequest
+	(*ListJobDatasetsRequest)(nil),     // 5: eruun.v1.ListJobDatasetsRequest
+	(*JobDefinitionRequest)(nil),       // 6: eruun.v1.JobDefinitionRequest
+	(*ListJobDefinitionsRequest)(nil),  // 7: eruun.v1.ListJobDefinitionsRequest
+	(*UpdateJobDefinitionRequest)(nil), // 8: eruun.v1.UpdateJobDefinitionRequest
+	(*RunJobDefinitionRequest)(nil),    // 9: eruun.v1.RunJobDefinitionRequest
+	(*ListJobsRequest)(nil),            // 10: eruun.v1.ListJobsRequest
+	(*JobStoragePolicy)(nil),           // 11: eruun.v1.JobStoragePolicy
+	(*JobVolume)(nil),                  // 12: eruun.v1.JobVolume
+	(*JobStepRetry)(nil),               // 13: eruun.v1.JobStepRetry
+	(*JobStep)(nil),                    // 14: eruun.v1.JobStep
+	(*JobStage)(nil),                   // 15: eruun.v1.JobStage
+	(*SubmitJobRequest)(nil),           // 16: eruun.v1.SubmitJobRequest
+	(*JobSpec)(nil),                    // 17: eruun.v1.JobSpec
+	(*JobAccepted)(nil),                // 18: eruun.v1.JobAccepted
+	(*JobDefinition)(nil),              // 19: eruun.v1.JobDefinition
+	(*JobDefinitions)(nil),             // 20: eruun.v1.JobDefinitions
+	(*JobRun)(nil),                     // 21: eruun.v1.JobRun
+	(*JobRuns)(nil),                    // 22: eruun.v1.JobRuns
+	(*JobExecution)(nil),               // 23: eruun.v1.JobExecution
+	(*JobArtifact)(nil),                // 24: eruun.v1.JobArtifact
+	(*JobDelivery)(nil),                // 25: eruun.v1.JobDelivery
+	(*JobRunnerProgress)(nil),          // 26: eruun.v1.JobRunnerProgress
+	(*JobRunnerTerminal)(nil),          // 27: eruun.v1.JobRunnerTerminal
+	(*JobRunnerStatus)(nil),            // 28: eruun.v1.JobRunnerStatus
+	(*JobSandboxStatus)(nil),           // 29: eruun.v1.JobSandboxStatus
+	(*JobDetail)(nil),                  // 30: eruun.v1.JobDetail
+	(*JobResults)(nil),                 // 31: eruun.v1.JobResults
+	(*JobArtifacts)(nil),               // 32: eruun.v1.JobArtifacts
+	(*UploadDatasetHeader)(nil),        // 33: eruun.v1.UploadDatasetHeader
+	(*UploadDatasetPart)(nil),          // 34: eruun.v1.UploadDatasetPart
+	(*ArchiveChunk)(nil),               // 35: eruun.v1.ArchiveChunk
+	(*JobResultPolicy)(nil),            // 36: eruun.v1.JobResultPolicy
+	(*structpb.Value)(nil),             // 37: google.protobuf.Value
+	(*AppSpecTraits)(nil),              // 38: eruun.v1.AppSpecTraits
+	(*timestamppb.Timestamp)(nil),      // 39: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),              // 40: google.protobuf.Empty
 }
 var file_eruun_v1_jobs_proto_depIdxs = []int32{
-	27, // 0: eruun.v1.JobStoragePolicy.policy:type_name -> eruun.v1.JobResultPolicy
-	28, // 1: eruun.v1.JobStep.spec:type_name -> google.protobuf.Value
-	29, // 2: eruun.v1.JobStep.traits:type_name -> eruun.v1.AppSpecTraits
-	8,  // 3: eruun.v1.JobStep.retry:type_name -> eruun.v1.JobStepRetry
-	9,  // 4: eruun.v1.JobStage.steps:type_name -> eruun.v1.JobStep
-	7,  // 5: eruun.v1.SubmitJobRequest.volume:type_name -> eruun.v1.JobVolume
-	10, // 6: eruun.v1.SubmitJobRequest.stages:type_name -> eruun.v1.JobStage
-	7,  // 7: eruun.v1.JobSpec.volume:type_name -> eruun.v1.JobVolume
-	10, // 8: eruun.v1.JobSpec.stages:type_name -> eruun.v1.JobStage
-	30, // 9: eruun.v1.JobExecution.scheduling_queued_at:type_name -> google.protobuf.Timestamp
-	30, // 10: eruun.v1.JobExecution.create_time:type_name -> google.protobuf.Timestamp
-	30, // 11: eruun.v1.JobExecution.update_time:type_name -> google.protobuf.Timestamp
-	28, // 12: eruun.v1.JobArtifact.manifest:type_name -> google.protobuf.Value
-	28, // 13: eruun.v1.JobArtifact.summary:type_name -> google.protobuf.Value
-	30, // 14: eruun.v1.JobArtifact.expires_at:type_name -> google.protobuf.Timestamp
-	30, // 15: eruun.v1.JobArtifact.create_time:type_name -> google.protobuf.Timestamp
-	30, // 16: eruun.v1.JobArtifact.update_time:type_name -> google.protobuf.Timestamp
-	30, // 17: eruun.v1.JobDelivery.create_time:type_name -> google.protobuf.Timestamp
-	30, // 18: eruun.v1.JobDelivery.update_time:type_name -> google.protobuf.Timestamp
-	30, // 19: eruun.v1.JobRunnerStatus.last_heartbeat_at:type_name -> google.protobuf.Timestamp
-	17, // 20: eruun.v1.JobRunnerStatus.progress:type_name -> eruun.v1.JobRunnerProgress
-	18, // 21: eruun.v1.JobRunnerStatus.terminal:type_name -> eruun.v1.JobRunnerTerminal
-	30, // 22: eruun.v1.JobSandboxStatus.retain_until:type_name -> google.protobuf.Timestamp
-	13, // 23: eruun.v1.JobDetail.accepted:type_name -> eruun.v1.JobAccepted
-	12, // 24: eruun.v1.JobDetail.job:type_name -> eruun.v1.JobSpec
-	14, // 25: eruun.v1.JobDetail.executions:type_name -> eruun.v1.JobExecution
-	15, // 26: eruun.v1.JobDetail.results:type_name -> eruun.v1.JobArtifact
-	16, // 27: eruun.v1.JobDetail.deliveries:type_name -> eruun.v1.JobDelivery
-	19, // 28: eruun.v1.JobDetail.runner_status:type_name -> eruun.v1.JobRunnerStatus
-	20, // 29: eruun.v1.JobDetail.sandboxes:type_name -> eruun.v1.JobSandboxStatus
-	15, // 30: eruun.v1.JobResults.artifacts:type_name -> eruun.v1.JobArtifact
-	16, // 31: eruun.v1.JobResults.deliveries:type_name -> eruun.v1.JobDelivery
-	15, // 32: eruun.v1.JobArtifacts.artifacts:type_name -> eruun.v1.JobArtifact
-	24, // 33: eruun.v1.UploadDatasetPart.header:type_name -> eruun.v1.UploadDatasetHeader
-	11, // 34: eruun.v1.JobsService.SubmitJob:input_type -> eruun.v1.SubmitJobRequest
-	0,  // 35: eruun.v1.JobsService.GetJob:input_type -> eruun.v1.JobTaskRequest
-	0,  // 36: eruun.v1.JobsService.CancelJob:input_type -> eruun.v1.JobTaskRequest
-	0,  // 37: eruun.v1.JobsService.GetJobResults:input_type -> eruun.v1.JobTaskRequest
-	1,  // 38: eruun.v1.JobsService.DownloadJobResult:input_type -> eruun.v1.JobArtifactRequest
-	2,  // 39: eruun.v1.JobsService.DownloadJobDelivery:input_type -> eruun.v1.JobDeliveryRequest
-	2,  // 40: eruun.v1.JobsService.RetryJobDelivery:input_type -> eruun.v1.JobDeliveryRequest
-	4,  // 41: eruun.v1.JobsService.SetJobRetention:input_type -> eruun.v1.SetJobRetentionRequest
-	31, // 42: eruun.v1.JobsService.GetJobStoragePolicy:input_type -> google.protobuf.Empty
-	27, // 43: eruun.v1.JobsService.SetJobStoragePolicy:input_type -> eruun.v1.JobResultPolicy
-	25, // 44: eruun.v1.JobsService.UploadJobDataset:input_type -> eruun.v1.UploadDatasetPart
-	5,  // 45: eruun.v1.JobsService.ListJobDatasets:input_type -> eruun.v1.ListJobDatasetsRequest
-	3,  // 46: eruun.v1.JobsService.GetJobDataset:input_type -> eruun.v1.JobDatasetRequest
-	3,  // 47: eruun.v1.JobsService.DownloadJobDataset:input_type -> eruun.v1.JobDatasetRequest
-	13, // 48: eruun.v1.JobsService.SubmitJob:output_type -> eruun.v1.JobAccepted
-	21, // 49: eruun.v1.JobsService.GetJob:output_type -> eruun.v1.JobDetail
-	31, // 50: eruun.v1.JobsService.CancelJob:output_type -> google.protobuf.Empty
-	22, // 51: eruun.v1.JobsService.GetJobResults:output_type -> eruun.v1.JobResults
-	26, // 52: eruun.v1.JobsService.DownloadJobResult:output_type -> eruun.v1.ArchiveChunk
-	26, // 53: eruun.v1.JobsService.DownloadJobDelivery:output_type -> eruun.v1.ArchiveChunk
-	31, // 54: eruun.v1.JobsService.RetryJobDelivery:output_type -> google.protobuf.Empty
-	31, // 55: eruun.v1.JobsService.SetJobRetention:output_type -> google.protobuf.Empty
-	6,  // 56: eruun.v1.JobsService.GetJobStoragePolicy:output_type -> eruun.v1.JobStoragePolicy
-	31, // 57: eruun.v1.JobsService.SetJobStoragePolicy:output_type -> google.protobuf.Empty
-	15, // 58: eruun.v1.JobsService.UploadJobDataset:output_type -> eruun.v1.JobArtifact
-	23, // 59: eruun.v1.JobsService.ListJobDatasets:output_type -> eruun.v1.JobArtifacts
-	15, // 60: eruun.v1.JobsService.GetJobDataset:output_type -> eruun.v1.JobArtifact
-	26, // 61: eruun.v1.JobsService.DownloadJobDataset:output_type -> eruun.v1.ArchiveChunk
-	48, // [48:62] is the sub-list for method output_type
-	34, // [34:48] is the sub-list for method input_type
-	34, // [34:34] is the sub-list for extension type_name
-	34, // [34:34] is the sub-list for extension extendee
-	0,  // [0:34] is the sub-list for field type_name
+	17, // 0: eruun.v1.UpdateJobDefinitionRequest.spec:type_name -> eruun.v1.JobSpec
+	36, // 1: eruun.v1.JobStoragePolicy.policy:type_name -> eruun.v1.JobResultPolicy
+	37, // 2: eruun.v1.JobStep.spec:type_name -> google.protobuf.Value
+	38, // 3: eruun.v1.JobStep.traits:type_name -> eruun.v1.AppSpecTraits
+	13, // 4: eruun.v1.JobStep.retry:type_name -> eruun.v1.JobStepRetry
+	14, // 5: eruun.v1.JobStage.steps:type_name -> eruun.v1.JobStep
+	12, // 6: eruun.v1.SubmitJobRequest.volume:type_name -> eruun.v1.JobVolume
+	15, // 7: eruun.v1.SubmitJobRequest.stages:type_name -> eruun.v1.JobStage
+	12, // 8: eruun.v1.JobSpec.volume:type_name -> eruun.v1.JobVolume
+	15, // 9: eruun.v1.JobSpec.stages:type_name -> eruun.v1.JobStage
+	17, // 10: eruun.v1.JobDefinition.spec:type_name -> eruun.v1.JobSpec
+	39, // 11: eruun.v1.JobDefinition.create_time:type_name -> google.protobuf.Timestamp
+	39, // 12: eruun.v1.JobDefinition.update_time:type_name -> google.protobuf.Timestamp
+	19, // 13: eruun.v1.JobDefinitions.items:type_name -> eruun.v1.JobDefinition
+	18, // 14: eruun.v1.JobRun.accepted:type_name -> eruun.v1.JobAccepted
+	39, // 15: eruun.v1.JobRun.create_time:type_name -> google.protobuf.Timestamp
+	39, // 16: eruun.v1.JobRun.update_time:type_name -> google.protobuf.Timestamp
+	21, // 17: eruun.v1.JobRuns.items:type_name -> eruun.v1.JobRun
+	39, // 18: eruun.v1.JobExecution.scheduling_queued_at:type_name -> google.protobuf.Timestamp
+	39, // 19: eruun.v1.JobExecution.create_time:type_name -> google.protobuf.Timestamp
+	39, // 20: eruun.v1.JobExecution.update_time:type_name -> google.protobuf.Timestamp
+	37, // 21: eruun.v1.JobArtifact.manifest:type_name -> google.protobuf.Value
+	37, // 22: eruun.v1.JobArtifact.summary:type_name -> google.protobuf.Value
+	39, // 23: eruun.v1.JobArtifact.expires_at:type_name -> google.protobuf.Timestamp
+	39, // 24: eruun.v1.JobArtifact.create_time:type_name -> google.protobuf.Timestamp
+	39, // 25: eruun.v1.JobArtifact.update_time:type_name -> google.protobuf.Timestamp
+	39, // 26: eruun.v1.JobDelivery.create_time:type_name -> google.protobuf.Timestamp
+	39, // 27: eruun.v1.JobDelivery.update_time:type_name -> google.protobuf.Timestamp
+	39, // 28: eruun.v1.JobRunnerStatus.last_heartbeat_at:type_name -> google.protobuf.Timestamp
+	26, // 29: eruun.v1.JobRunnerStatus.progress:type_name -> eruun.v1.JobRunnerProgress
+	27, // 30: eruun.v1.JobRunnerStatus.terminal:type_name -> eruun.v1.JobRunnerTerminal
+	39, // 31: eruun.v1.JobSandboxStatus.retain_until:type_name -> google.protobuf.Timestamp
+	18, // 32: eruun.v1.JobDetail.accepted:type_name -> eruun.v1.JobAccepted
+	17, // 33: eruun.v1.JobDetail.job:type_name -> eruun.v1.JobSpec
+	23, // 34: eruun.v1.JobDetail.executions:type_name -> eruun.v1.JobExecution
+	24, // 35: eruun.v1.JobDetail.results:type_name -> eruun.v1.JobArtifact
+	25, // 36: eruun.v1.JobDetail.deliveries:type_name -> eruun.v1.JobDelivery
+	28, // 37: eruun.v1.JobDetail.runner_status:type_name -> eruun.v1.JobRunnerStatus
+	29, // 38: eruun.v1.JobDetail.sandboxes:type_name -> eruun.v1.JobSandboxStatus
+	24, // 39: eruun.v1.JobResults.artifacts:type_name -> eruun.v1.JobArtifact
+	25, // 40: eruun.v1.JobResults.deliveries:type_name -> eruun.v1.JobDelivery
+	24, // 41: eruun.v1.JobArtifacts.artifacts:type_name -> eruun.v1.JobArtifact
+	33, // 42: eruun.v1.UploadDatasetPart.header:type_name -> eruun.v1.UploadDatasetHeader
+	17, // 43: eruun.v1.JobsService.CreateJobDefinition:input_type -> eruun.v1.JobSpec
+	6,  // 44: eruun.v1.JobsService.GetJobDefinition:input_type -> eruun.v1.JobDefinitionRequest
+	7,  // 45: eruun.v1.JobsService.ListJobDefinitions:input_type -> eruun.v1.ListJobDefinitionsRequest
+	8,  // 46: eruun.v1.JobsService.UpdateJobDefinition:input_type -> eruun.v1.UpdateJobDefinitionRequest
+	6,  // 47: eruun.v1.JobsService.DeleteJobDefinition:input_type -> eruun.v1.JobDefinitionRequest
+	9,  // 48: eruun.v1.JobsService.RunJobDefinition:input_type -> eruun.v1.RunJobDefinitionRequest
+	16, // 49: eruun.v1.JobsService.SubmitJob:input_type -> eruun.v1.SubmitJobRequest
+	10, // 50: eruun.v1.JobsService.ListJobs:input_type -> eruun.v1.ListJobsRequest
+	0,  // 51: eruun.v1.JobsService.GetJob:input_type -> eruun.v1.JobTaskRequest
+	0,  // 52: eruun.v1.JobsService.CancelJob:input_type -> eruun.v1.JobTaskRequest
+	0,  // 53: eruun.v1.JobsService.GetJobResults:input_type -> eruun.v1.JobTaskRequest
+	1,  // 54: eruun.v1.JobsService.DownloadJobResult:input_type -> eruun.v1.JobArtifactRequest
+	2,  // 55: eruun.v1.JobsService.DownloadJobDelivery:input_type -> eruun.v1.JobDeliveryRequest
+	2,  // 56: eruun.v1.JobsService.RetryJobDelivery:input_type -> eruun.v1.JobDeliveryRequest
+	4,  // 57: eruun.v1.JobsService.SetJobRetention:input_type -> eruun.v1.SetJobRetentionRequest
+	40, // 58: eruun.v1.JobsService.GetJobStoragePolicy:input_type -> google.protobuf.Empty
+	36, // 59: eruun.v1.JobsService.SetJobStoragePolicy:input_type -> eruun.v1.JobResultPolicy
+	34, // 60: eruun.v1.JobsService.UploadJobDataset:input_type -> eruun.v1.UploadDatasetPart
+	5,  // 61: eruun.v1.JobsService.ListJobDatasets:input_type -> eruun.v1.ListJobDatasetsRequest
+	3,  // 62: eruun.v1.JobsService.GetJobDataset:input_type -> eruun.v1.JobDatasetRequest
+	3,  // 63: eruun.v1.JobsService.DownloadJobDataset:input_type -> eruun.v1.JobDatasetRequest
+	19, // 64: eruun.v1.JobsService.CreateJobDefinition:output_type -> eruun.v1.JobDefinition
+	19, // 65: eruun.v1.JobsService.GetJobDefinition:output_type -> eruun.v1.JobDefinition
+	20, // 66: eruun.v1.JobsService.ListJobDefinitions:output_type -> eruun.v1.JobDefinitions
+	19, // 67: eruun.v1.JobsService.UpdateJobDefinition:output_type -> eruun.v1.JobDefinition
+	40, // 68: eruun.v1.JobsService.DeleteJobDefinition:output_type -> google.protobuf.Empty
+	18, // 69: eruun.v1.JobsService.RunJobDefinition:output_type -> eruun.v1.JobAccepted
+	18, // 70: eruun.v1.JobsService.SubmitJob:output_type -> eruun.v1.JobAccepted
+	22, // 71: eruun.v1.JobsService.ListJobs:output_type -> eruun.v1.JobRuns
+	30, // 72: eruun.v1.JobsService.GetJob:output_type -> eruun.v1.JobDetail
+	40, // 73: eruun.v1.JobsService.CancelJob:output_type -> google.protobuf.Empty
+	31, // 74: eruun.v1.JobsService.GetJobResults:output_type -> eruun.v1.JobResults
+	35, // 75: eruun.v1.JobsService.DownloadJobResult:output_type -> eruun.v1.ArchiveChunk
+	35, // 76: eruun.v1.JobsService.DownloadJobDelivery:output_type -> eruun.v1.ArchiveChunk
+	40, // 77: eruun.v1.JobsService.RetryJobDelivery:output_type -> google.protobuf.Empty
+	40, // 78: eruun.v1.JobsService.SetJobRetention:output_type -> google.protobuf.Empty
+	11, // 79: eruun.v1.JobsService.GetJobStoragePolicy:output_type -> eruun.v1.JobStoragePolicy
+	40, // 80: eruun.v1.JobsService.SetJobStoragePolicy:output_type -> google.protobuf.Empty
+	24, // 81: eruun.v1.JobsService.UploadJobDataset:output_type -> eruun.v1.JobArtifact
+	32, // 82: eruun.v1.JobsService.ListJobDatasets:output_type -> eruun.v1.JobArtifacts
+	24, // 83: eruun.v1.JobsService.GetJobDataset:output_type -> eruun.v1.JobArtifact
+	35, // 84: eruun.v1.JobsService.DownloadJobDataset:output_type -> eruun.v1.ArchiveChunk
+	64, // [64:85] is the sub-list for method output_type
+	43, // [43:64] is the sub-list for method input_type
+	43, // [43:43] is the sub-list for extension type_name
+	43, // [43:43] is the sub-list for extension extendee
+	0,  // [0:43] is the sub-list for field type_name
 }
 
 func init() { file_eruun_v1_jobs_proto_init() }
@@ -2482,9 +3174,11 @@ func file_eruun_v1_jobs_proto_init() {
 	}
 	file_eruun_v1_applications_proto_init()
 	file_eruun_v1_jobs_proto_msgTypes[5].OneofWrappers = []any{}
-	file_eruun_v1_jobs_proto_msgTypes[14].OneofWrappers = []any{}
-	file_eruun_v1_jobs_proto_msgTypes[18].OneofWrappers = []any{}
-	file_eruun_v1_jobs_proto_msgTypes[25].OneofWrappers = []any{
+	file_eruun_v1_jobs_proto_msgTypes[7].OneofWrappers = []any{}
+	file_eruun_v1_jobs_proto_msgTypes[10].OneofWrappers = []any{}
+	file_eruun_v1_jobs_proto_msgTypes[23].OneofWrappers = []any{}
+	file_eruun_v1_jobs_proto_msgTypes[27].OneofWrappers = []any{}
+	file_eruun_v1_jobs_proto_msgTypes[34].OneofWrappers = []any{
 		(*UploadDatasetPart_Header)(nil),
 		(*UploadDatasetPart_Chunk)(nil),
 	}
@@ -2494,7 +3188,7 @@ func file_eruun_v1_jobs_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_eruun_v1_jobs_proto_rawDesc), len(file_eruun_v1_jobs_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   27,
+			NumMessages:   36,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

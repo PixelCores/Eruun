@@ -75,6 +75,13 @@ var administrationMethodPolicies = map[string]string{
 }
 
 var jobsMethodPolicies = map[string]string{
+	eruunv1.JobsService_CreateJobDefinition_FullMethodName: "member",
+	eruunv1.JobsService_GetJobDefinition_FullMethodName:    "viewer",
+	eruunv1.JobsService_ListJobDefinitions_FullMethodName:  "viewer",
+	eruunv1.JobsService_UpdateJobDefinition_FullMethodName: "member",
+	eruunv1.JobsService_DeleteJobDefinition_FullMethodName: "member",
+	eruunv1.JobsService_RunJobDefinition_FullMethodName:    "member",
+	eruunv1.JobsService_ListJobs_FullMethodName:            "viewer",
 	eruunv1.JobsService_SubmitJob_FullMethodName:           "member",
 	eruunv1.JobsService_GetJob_FullMethodName:              "viewer",
 	eruunv1.JobsService_CancelJob_FullMethodName:           "member",

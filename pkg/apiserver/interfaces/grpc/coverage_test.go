@@ -38,10 +38,10 @@ func TestRouteRPCCoverageAndExceptions(t *testing.T) {
 		eruunv1.JobsService_ServiceDesc, eruunv1.SettingsService_ServiceDesc,
 		eruunv1.ProgrammingLanguagesService_ServiceDesc, eruunv1.ResourceImportService_ServiceDesc,
 	)
-	require.Len(t, router.Routes(), 114)
-	require.Len(t, routeRPC, 99)
+	require.Len(t, router.Routes(), 121)
+	require.Len(t, routeRPC, 106)
 	require.Len(t, grpcRouteExceptions, 11)
-	require.Len(t, methods, 99)
+	require.Len(t, methods, 106)
 	routes := map[string]bool{}
 	for _, route := range router.Routes() {
 		key := route.Method + " " + route.Path

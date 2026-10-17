@@ -28,6 +28,13 @@ func NewWorkspaceJobs() Interface { return &workspaceJobs{} }
 
 func (a *workspaceJobs) RegisterRoutes(group *gin.RouterGroup) {
 	group.POST("/jobs", a.submit)
+	group.GET("/jobs", a.list)
+	group.POST("/job-definitions", a.createDefinition)
+	group.GET("/job-definitions", a.definitions)
+	group.GET("/job-definitions/:definitionID", a.definition)
+	group.PUT("/job-definitions/:definitionID", a.updateDefinition)
+	group.DELETE("/job-definitions/:definitionID", a.deleteDefinition)
+	group.POST("/job-definitions/:definitionID/runs", a.runDefinition)
 	group.GET("/jobs/:taskID", a.get)
 	group.POST("/jobs/:taskID/cancel", a.cancel)
 	group.GET("/jobs/:taskID/results", a.results)
@@ -96,6 +103,71 @@ func (a *workspaceJobs) submit(c *gin.Context) {
 func (a *workspaceJobs) get(c *gin.Context) {
 	result, err := a.Service.Get(c.Request.Context(), c.Param("taskID"), c.Query("executionKey"))
 	jobResponse(c, http.StatusOK, result, err)
+}
+
+func (a *workspaceJobs) list(c *gin.Context) {
+	query := struct {
+		DefinitionID string `form:"definitionId"`
+		Page         int    `form:"page"`
+		PageSize     int    `form:"pageSize"`
+	}{Page: 1, PageSize: 20}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		jobResponse(c, 0, nil, bcode.ErrJobInput)
+		return
+	}
+	result, err := a.Service.List(c.Request.Context(), query.DefinitionID, query.Page, query.PageSize)
+	jobResponse(c, http.StatusOK, result, err)
+}
+
+func (a *workspaceJobs) createDefinition(c *gin.Context) {
+	request, ok := bindStrictJSON[spec.JobSpec](c, bcode.ErrJobInput, true)
+	if !ok {
+		return
+	}
+	result, err := a.Service.CreateDefinition(c.Request.Context(), *request)
+	jobResponse(c, http.StatusCreated, result, err)
+}
+
+func (a *workspaceJobs) definitions(c *gin.Context) {
+	query := struct {
+		Page     int `form:"page"`
+		PageSize int `form:"pageSize"`
+	}{Page: 1, PageSize: 20}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		jobResponse(c, 0, nil, bcode.ErrJobInput)
+		return
+	}
+	result, err := a.Service.ListDefinitions(c.Request.Context(), query.Page, query.PageSize)
+	jobResponse(c, http.StatusOK, result, err)
+}
+
+func (a *workspaceJobs) definition(c *gin.Context) {
+	result, err := a.Service.GetDefinition(c.Request.Context(), c.Param("definitionID"))
+	jobResponse(c, http.StatusOK, result, err)
+}
+
+func (a *workspaceJobs) updateDefinition(c *gin.Context) {
+	request, ok := bindStrictJSON[spec.JobSpec](c, bcode.ErrJobInput, true)
+	if !ok {
+		return
+	}
+	result, err := a.Service.UpdateDefinition(c.Request.Context(), c.Param("definitionID"), *request)
+	jobResponse(c, http.StatusOK, result, err)
+}
+
+func (a *workspaceJobs) deleteDefinition(c *gin.Context) {
+	jobResponse(c, http.StatusOK, nil, a.Service.DeleteDefinition(c.Request.Context(), c.Param("definitionID")))
+}
+
+func (a *workspaceJobs) runDefinition(c *gin.Context) {
+	request, ok := bindStrictJSONAllowEOF[struct {
+		ExecuteAt int64 `json:"executeAt"`
+	}](c, bcode.ErrJobInput, true)
+	if !ok {
+		return
+	}
+	result, err := a.Service.Run(c.Request.Context(), c.Param("definitionID"), request.ExecuteAt)
+	jobResponse(c, http.StatusAccepted, result, err)
 }
 func (a *workspaceJobs) cancel(c *gin.Context) {
 	scope, err := jobs.Scope(c.Request.Context(), true)
