@@ -68,15 +68,23 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 
 ## LLM 测评声明与结果选择
 
-独立 `SubmitJobRequest` 使用 `workspace_id`、`name`、可选 `volume` 和 `stages`；每个 `JobStage` 包含 `name` 和 `steps`。`JobStep` 包含 `name`、`type`、`spec`、`traits` 和可选 `retry.backoff_limit`（0–10）；`traits` 直接复用 applications.proto 的 `AppSpecTraits`。command step 提交 `type: "command"` 和 `spec`；评测 step 提交 `type: "job"`，将测评配置放在 `traits.eval` 并省略 `spec`；两类 step 均支持 `retry.backoff_limit`。评测与 Application 组件共享 `EvaluationTrait`，包括 `env`、`model`、`agent`、`task_package_id`、试验次数、并发、超时、Sandbox 资源及结果保存策略。
+独立 `SubmitJobRequest` 使用 `workspace_id`、`name`、可选 `volume`、`stages` 和可选 `execute_at`（Unix 秒）；每个 `JobStage` 包含 `name` 和 `steps`。`JobStep` 包含 `name`、`type`、`spec`、`traits` 和可选 `retry.backoff_limit`（0–10）；`traits` 直接复用 applications.proto 的 `AppSpecTraits`。command step 提交 `type: "command"` 和 `spec`，支持 `retry.backoff_limit`；评测 step 提交 `type: "job"`，将测评配置放在 `traits.eval` 并省略 `spec` 和 `retry`。评测与 Application 组件共享 `EvaluationTrait`，包括 `env`、`model`、`agent`、`task_package_id`、试验次数、并发、超时、Sandbox 资源及结果保存策略。
 
 这是破坏性变更：原 `SubmitJobRequest` 顶层 `type/spec/traits` 已删除，连同更早移除的 `result_policy` 一起保留字段号并拒绝旧二进制请求；不提供兼容路径。`GetJob` 的 `JobSpec` 同步返回 stages，`JobAccepted.type` 统一为 `job`。`volume` 字段为 `size/storage_class/access_mode`，只挂载 command steps 到 `/workspace`；stage 并行与卷约束、trait 附属资源拒绝规则和终态清理与 HTTP 一致。框架版本由平台固定，`GetJob.framework_version` 返回所选执行实际冻结的版本。字段示例及约束见 [Job API](workspace-jobs-api.md)。
 
 同一 Application Workflow 可以包含多个测评 Job。调用 `GetJob`、`GetJobResults`、结果/投递下载、投递重试和保留期更新时，Application 调用方必须同时提供父 `task_id` 与目标 Job 的 `execution_key`；响应中的 Job 明细、结果和投递也返回该标识。独立 Job 仅在评测执行唯一时可以省略 `execution_key`；同一 task 存在多个评测执行时必须显式指定。结果按执行分别保存，不能用一个执行的标识读取同一 Workflow 中另一个执行的制品。`CancelJob` 仅接受独立 Job 的父 `task_id`，不接受 `execution_key`；Application 仍通过 Workflow 取消接口取消任务。
 
+## Job 定义与手动、延迟触发
+
+`CreateJobDefinition` 直接接收 `JobSpec`；`UpdateJobDefinition` 接收 `definition_id` 和完整的 `spec`，整体替换成功后 `revision` 加 1。`GetJobDefinition`、`DeleteJobDefinition` 使用 `JobDefinitionRequest.definition_id`。定义响应包含 `id/name/revision/spec/creator/create_time/update_time`，不包含 cron 或并发策略。删除只删除定义，已有运行及其定义 ID、版本和规格快照保留。
+
+`RunJobDefinition` 接收 `definition_id` 和可选 `execute_at`，返回与 `SubmitJob` 相同的 `JobAccepted`。两者的 `execute_at` 均为 Unix 秒：负数返回 `InvalidArgument`，省略、0 或过去的时间立即可派发，未来时间保持 `waiting` 直到到期。定义触发把当时的规格与版本写入运行，后续替换定义不改变已入队的运行。
+
+`ListJobDefinitions` 和 `ListJobs` 使用可选 `page/page_size`，省略时为 1/20，`page` 范围 1–10000000，`page_size` 范围 1–100；响应包含 `items/total/page/page_size`。`ListJobs` 只列当前空间的独立运行，按创建时间倒序；可选 `definition_id` 过滤也适用于已删除定义留下的运行。每项 `JobRun` 包含 `accepted`、`name`、`job_definition_id`、`job_definition_revision`、`execute_at`、创建者和时间。读需要 viewer，创建、替换、删除和触发需要 member，空间通过现有 metadata 选择。
+
 ## HTTP 路由到 RPC 对照
 
-当前 HTTP 路由共 114 条；以下 99 条用户可调用路由各映射一个 RPC。表中全名与生成客户端方法一一对应，具体字段及请求/响应类型见各 `.proto` 文件。
+当前 HTTP 路由共 121 条；以下 106 条用户可调用路由各映射一个 RPC。表中全名与生成客户端方法一一对应，具体字段及请求/响应类型见各 `.proto` 文件。
 
 | HTTP 路由 | gRPC 方法全名 |
 | --- | --- |
@@ -84,6 +92,7 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 | `DELETE /api/v1/applications/:appID/resources` | `/eruun.v1.ApplicationService/ApplyApplicationResourceCleanup` |
 | `DELETE /api/v1/applications/:appID/workflow/schedule/:workflowID` | `/eruun.v1.ApplicationService/DeleteWorkflowSchedule` |
 | `DELETE /api/v1/auth/identities/:identityID` | `/eruun.v1.AccountService/UnbindIdentity` |
+| `DELETE /api/v1/job-definitions/:definitionID` | `/eruun.v1.JobsService/DeleteJobDefinition` |
 | `DELETE /api/v1/programming-languages/:id` | `/eruun.v1.ProgrammingLanguagesService/DeleteProgrammingLanguage` |
 | `DELETE /api/v1/settings/:type` | `/eruun.v1.SettingsService/DeleteSetting` |
 | `DELETE /api/v1/workspaces/:workspaceID` | `/eruun.v1.AccountService/DeleteWorkspace` |
@@ -108,7 +117,10 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 | `GET /api/v1/job-datasets` | `/eruun.v1.JobsService/ListJobDatasets` |
 | `GET /api/v1/job-datasets/:datasetID` | `/eruun.v1.JobsService/GetJobDataset` |
 | `GET /api/v1/job-datasets/:datasetID/download` | `/eruun.v1.JobsService/DownloadJobDataset` |
+| `GET /api/v1/job-definitions` | `/eruun.v1.JobsService/ListJobDefinitions` |
+| `GET /api/v1/job-definitions/:definitionID` | `/eruun.v1.JobsService/GetJobDefinition` |
 | `GET /api/v1/job-storage-policy` | `/eruun.v1.JobsService/GetJobStoragePolicy` |
+| `GET /api/v1/jobs` | `/eruun.v1.JobsService/ListJobs` |
 | `GET /api/v1/jobs/:taskID` | `/eruun.v1.JobsService/GetJob` |
 | `GET /api/v1/jobs/:taskID/deliveries/:target/download` | `/eruun.v1.JobsService/DownloadJobDelivery` |
 | `GET /api/v1/jobs/:taskID/results` | `/eruun.v1.JobsService/GetJobResults` |
@@ -161,6 +173,8 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 | `POST /api/v1/auth/refresh` | `/eruun.v1.AccountService/Refresh` |
 | `POST /api/v1/auth/register` | `/eruun.v1.AccountService/Register` |
 | `POST /api/v1/job-datasets` | `/eruun.v1.JobsService/UploadJobDataset` |
+| `POST /api/v1/job-definitions` | `/eruun.v1.JobsService/CreateJobDefinition` |
+| `POST /api/v1/job-definitions/:definitionID/runs` | `/eruun.v1.JobsService/RunJobDefinition` |
 | `POST /api/v1/jobs` | `/eruun.v1.JobsService/SubmitJob` |
 | `POST /api/v1/jobs/:taskID/cancel` | `/eruun.v1.JobsService/CancelJob` |
 | `POST /api/v1/jobs/:taskID/deliveries/:target/retry` | `/eruun.v1.JobsService/RetryJobDelivery` |
@@ -175,6 +189,7 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 | `POST /api/v1/workspaces/:workspaceID/transfer` | `/eruun.v1.AccountService/TransferWorkspace` |
 | `PUT /api/v1/applications/:appID/workflow` | `/eruun.v1.ApplicationService/UpdateApplicationWorkflow` |
 | `PUT /api/v1/auth/password` | `/eruun.v1.AccountService/ChangePassword` |
+| `PUT /api/v1/job-definitions/:definitionID` | `/eruun.v1.JobsService/UpdateJobDefinition` |
 | `PUT /api/v1/job-storage-policy` | `/eruun.v1.JobsService/SetJobStoragePolicy` |
 | `PUT /api/v1/jobs/:taskID/retention` | `/eruun.v1.JobsService/SetJobRetention` |
 | `PUT /api/v1/programming-languages/:id` | `/eruun.v1.ProgrammingLanguagesService/UpdateProgrammingLanguage` |

@@ -403,6 +403,7 @@ func (s *Service) DeleteWorkspace(ctx context.Context, p *Principal, id string, 
 			&model.JobArtifact{WorkspaceID: id},
 			&model.JobInfo{WorkspaceID: id},
 			&model.WorkflowQueue{WorkspaceID: id},
+			&model.JobDefinition{WorkspaceID: id},
 			&model.WorkspaceInvitation{WorkspaceID: id},
 			&model.WorkspaceMember{WorkspaceID: id},
 		} {

@@ -87,6 +87,7 @@ func testAccounts(t *testing.T) (*Service, *miniredis.Miniredis, *testDelivery) 
 		&model.SystemSetting{},
 		&model.Applications{},
 		&model.WorkflowQueue{},
+		&model.JobDefinition{},
 		&model.JobInfo{},
 		&model.JobArtifact{}, &model.ArtifactChunk{}, &model.JobDelivery{}, &model.JobSandbox{}, &model.JobCheckpoint{},
 	))

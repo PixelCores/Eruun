@@ -11,7 +11,14 @@ import "eruun/v1/applications.proto";
 
 // JobsService is the user-session API. Runner capability callbacks are HTTP-only.
 service JobsService {
+  rpc CreateJobDefinition(JobSpec) returns (JobDefinition);
+  rpc GetJobDefinition(JobDefinitionRequest) returns (JobDefinition);
+  rpc ListJobDefinitions(ListJobDefinitionsRequest) returns (JobDefinitions);
+  rpc UpdateJobDefinition(UpdateJobDefinitionRequest) returns (JobDefinition);
+  rpc DeleteJobDefinition(JobDefinitionRequest) returns (google.protobuf.Empty);
+  rpc RunJobDefinition(RunJobDefinitionRequest) returns (JobAccepted);
   rpc SubmitJob(SubmitJobRequest) returns (JobAccepted);
+  rpc ListJobs(ListJobsRequest) returns (JobRuns);
   rpc GetJob(JobTaskRequest) returns (JobDetail);
   rpc CancelJob(JobTaskRequest) returns (google.protobuf.Empty);
   rpc GetJobResults(JobTaskRequest) returns (JobResults);
@@ -36,6 +43,15 @@ message JobDeliveryRequest { string task_id = 1; string target = 2; string execu
 message JobDatasetRequest { string dataset_id = 1; }
 message SetJobRetentionRequest { string task_id = 1; int32 retention_days = 2; string execution_key = 3; }
 message ListJobDatasetsRequest { optional int32 page = 1; optional int32 page_size = 2; }
+message JobDefinitionRequest { string definition_id = 1; }
+message ListJobDefinitionsRequest { optional int32 page = 1; optional int32 page_size = 2; }
+message UpdateJobDefinitionRequest { string definition_id = 1; JobSpec spec = 2; }
+message RunJobDefinitionRequest { string definition_id = 1; int64 execute_at = 2; }
+message ListJobsRequest {
+  string definition_id = 1;
+  optional int32 page = 2;
+  optional int32 page_size = 3;
+}
 
 message JobStoragePolicy { repeated string available_targets = 1; JobResultPolicy policy = 2; }
 
@@ -61,6 +77,8 @@ message SubmitJobRequest {
   reserved "type", "spec", "traits", "result_policy";
   JobVolume volume = 7;
   repeated JobStage stages = 8;
+  // Unix seconds; zero or past times execute immediately, negatives are invalid.
+  int64 execute_at = 9;
 }
 message JobSpec {
   string name = 1;
@@ -74,6 +92,37 @@ message JobAccepted {
   string workspace_id = 2;
   string type = 3;
   string status = 4;
+}
+message JobDefinition {
+  string id = 1;
+  string name = 2;
+  uint64 revision = 3;
+  JobSpec spec = 4;
+  string creator = 5;
+  google.protobuf.Timestamp create_time = 6;
+  google.protobuf.Timestamp update_time = 7;
+}
+message JobDefinitions {
+  repeated JobDefinition items = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+message JobRun {
+  JobAccepted accepted = 1;
+  string name = 2;
+  string job_definition_id = 3;
+  uint64 job_definition_revision = 4;
+  int64 execute_at = 5;
+  string creator = 6;
+  google.protobuf.Timestamp create_time = 7;
+  google.protobuf.Timestamp update_time = 8;
+}
+message JobRuns {
+  repeated JobRun items = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
 }
 message JobExecution {
   int64 id = 1;

@@ -1,6 +1,6 @@
 # 自定义 Job 模块设计
 
-> 状态：第 1 阶段（DSL 与编译）为 Implemented Reference；第 2、3 阶段（定义、延迟与 cron 触发）仍为 Draft / Proposal。2026-10-17 已与用户确认方向（方案 A、stages、K8s `backoffLimit`）。当前可用行为以 [`workspace-jobs-api.md`](workspace-jobs-api.md) 为准；本文第 4、6 节涉及定义与触发的表、字段、路由尚未实现。
+> 状态：第 1、2 阶段（DSL 与编译、定义与手动/延迟触发）为 Implemented Reference；第 3 阶段（cron 与并发策略）仍为 Draft / Proposal。2026-10-17 已与用户确认方向（方案 A、stages、K8s `backoffLimit`）。当前可用行为以 [`workspace-jobs-api.md`](workspace-jobs-api.md) 为准；本文 cron 相关设计不构成已实现契约。
 
 ## 1. 背景与问题
 
@@ -59,24 +59,18 @@ flowchart LR
 
 ## 4. 数据模型
 
-新增一张表：
+第 2 阶段新增一张表，定义的创建和整体替换复用一次性提交的完整规格校验：
 
 ```go
-// JobDefinition is a reusable Job specification. Every trigger snapshots Spec
-// into the run so later edits never change a queued or running execution.
+// JobDefinition stores a reusable Job specification. Runs copy Spec and Revision
+// into WorkflowQueue so later updates or deletion cannot change queued work.
 type JobDefinition struct {
-	ID                string `json:"id" gorm:"primaryKey;type:varchar(24)"`
-	WorkspaceID       string `json:"workspaceId" gorm:"type:varchar(36);not null;uniqueIndex:idx_job_definition_name,priority:1"`
-	Name              string `json:"name" gorm:"type:varchar(128);not null;uniqueIndex:idx_job_definition_name,priority:2"`
-	Revision          uint64 `json:"revision" gorm:"not null"`
-	Spec              string `json:"-" gorm:"type:longtext;not null"`
-	Cron              string `json:"cron,omitempty" gorm:"type:varchar(64)"`
-	ConcurrencyPolicy string `json:"concurrencyPolicy,omitempty" gorm:"type:varchar(16)"`
-	ScheduleEnabled   bool   `json:"scheduleEnabled" gorm:"index:idx_job_definition_next_run,priority:1"`
-	NextRun           int64  `json:"nextRun,omitempty" gorm:"index:idx_job_definition_next_run,priority:2"`
-	LastRunTaskID     string `json:"lastRunTaskId,omitempty" gorm:"type:varchar(255)"`
-	LastSkipReason    string `json:"lastSkipReason,omitempty" gorm:"type:varchar(255)"`
-	Creator           string `json:"creator" gorm:"type:varchar(128)"`
+	ID          string `json:"id" gorm:"primaryKey;type:varchar(24);column:id"`
+	WorkspaceID string `json:"workspaceId" gorm:"type:varchar(36);column:workspace_id;not null;uniqueIndex:idx_job_definition_name,priority:1"`
+	Name        string `json:"name" gorm:"type:varchar(128);column:name;not null;uniqueIndex:idx_job_definition_name,priority:2"`
+	Revision    uint64 `json:"revision" gorm:"column:revision;not null"`
+	Spec        string `json:"-" gorm:"type:longtext;column:spec;not null"`
+	Creator     string `json:"creator" gorm:"type:varchar(128);column:creator"`
 	BaseModel
 }
 ```
@@ -88,9 +82,33 @@ JobDefinitionID       string `json:"jobDefinitionId,omitempty" gorm:"type:varcha
 JobDefinitionRevision uint64 `json:"jobDefinitionRevision,omitempty" gorm:"column:job_definition_revision"`
 ```
 
-一次性运行的这两列为空。`JobSpec` 列继续保存本次运行的完整规格快照。
+一次性运行的定义 ID 为空、revision 为 0。`JobSpec` 列继续保存本次运行的完整规格快照。定义 ID 与运行 ID 都沿用 12 个随机字节编码为 24 字符十六进制的方式；`(WorkspaceID, Name)` 唯一。定义初始 `Revision=1`，整体替换在行锁事务内加 1；每次触发将读取到的定义 Spec 与 Revision 一起写入新运行，后续修改或删除定义均不改写已有运行，删除也不清空运行中的定义 ID。
 
-`ConcurrencyPolicy` 取值为 `Forbid`（默认）、`Allow`、`Replace`。cron 按 UTC 计算，与 `WorkflowSchedule` 一致；`Cron` 为空时 `ScheduleEnabled` 必须为 false。
+模型已注册到 `model.BuiltinModels()`，由既有启动流程执行 schema 迁移。相对第 1 阶段，MySQL 8 的完整增量 DDL 如下，供人工管理 schema 的部署使用；若启动迁移已完成，不重复执行：
+
+```sql
+CREATE TABLE eruun_job_definition (
+  id varchar(24) NOT NULL,
+  workspace_id varchar(36) NOT NULL,
+  name varchar(128) NOT NULL,
+  revision bigint unsigned NOT NULL,
+  spec longtext NOT NULL,
+  creator varchar(128) NULL,
+  create_time datetime(3) NULL,
+  update_time datetime(3) NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY idx_job_definition_name (workspace_id, name)
+);
+
+ALTER TABLE eruun_workflow_queue
+  ADD COLUMN job_definition_id varchar(24) NULL,
+  ADD COLUMN job_definition_revision bigint unsigned NULL,
+  ADD INDEX idx_eruun_workflow_queue_job_definition_id (job_definition_id);
+```
+
+不建立指向定义表的外键或级联删除关系，历史运行在定义删除后仍保留归属信息。本地验证使用 SQLite；上述 DDL、MySQL 行锁与并发唯一约束仍需部署方在隔离 MySQL 环境验收。
+
+**第 3 阶段 Proposal**：`Cron`、`ConcurrencyPolicy`、`ScheduleEnabled`、`NextRun`、`LastRunTaskID`、`LastSkipReason` 尚未加入模型或 API。计划中的并发策略为 `Forbid`（默认）、`Allow`、`Replace`；cron 按 UTC 计算，与 `WorkflowSchedule` 一致；`Cron` 为空时 `ScheduleEnabled` 必须为 false。
 
 ## 5. DSL
 
@@ -159,23 +177,27 @@ type JobStepRetry struct {
 
 ## 6. API
 
-以下定义 CRUD、`executeAt`、按定义列出运行均属于第 2、3 阶段 Proposal；第 1 阶段只更新既有 `POST /api/v1/jobs` 的 stages 请求体，不新增路由或触发方式。
+以下接口已在第 2 阶段实现。定义创建和更新直接接收内联 `JobSpec`（`name`、可选 `volume`、`stages`），不接收 cron 配置、revision 请求参数或局部更新。
 
 | 方法与路由 | 权限 | 作用 |
 | --- | --- | --- |
-| `POST /api/v1/job-definitions` | member | 创建定义，可同时设置 `cron`、`concurrencyPolicy`、`scheduleEnabled` |
-| `GET /api/v1/job-definitions`、`GET /job-definitions/:id` | viewer | 列表与详情（含 `revision`、`nextRun`、`lastRunTaskId`、`lastSkipReason`） |
-| `PUT /api/v1/job-definitions/:id` | member | 整体替换规格与触发设置，`revision` 加 1，已入队的运行不受影响 |
-| `DELETE /api/v1/job-definitions/:id` | member | 删除定义并停止 cron；已有运行保留并可继续查询 |
-| `POST /api/v1/job-definitions/:id/runs` | member | 手动或延迟触发，请求体 `{"executeAt": 0}`，返回 `taskId` |
-| `POST /api/v1/jobs` | member | 一次性运行（内联 `JobSpec`），可带 `executeAt` |
-| `GET /api/v1/jobs?definitionId=<id>` | viewer | 按定义列出运行 |
+| `POST /api/v1/job-definitions` | member | 创建定义，返回 201 和详情，初始 revision 为 1 |
+| `GET /api/v1/job-definitions`、`GET /api/v1/job-definitions/:definitionID` | viewer | 列表与详情：id、name、revision、spec、creator、createTime、updateTime |
+| `PUT /api/v1/job-definitions/:definitionID` | member | 整体替换规格，事务内 revision 加 1，已入队运行不受影响 |
+| `DELETE /api/v1/job-definitions/:definitionID` | member | 只删除定义，返回 200；已有运行保留并可继续查询 |
+| `POST /api/v1/job-definitions/:definitionID/runs` | member | 手动或延迟触发，接收可省略的 executeAt，返回与 POST /jobs 相同的 202 Accepted |
+| `POST /api/v1/jobs` | member | 一次性运行（内联 JobSpec），可带 executeAt |
+| `GET /api/v1/jobs?definitionId=<id>` | viewer | 列出当前空间的独立运行，可选 definitionId 过滤，删除定义后仍可按原 ID 查询 |
+
+两种列表均使用 `page` / `pageSize`，默认 1 / 20，page 范围 1–10000000，pageSize 为 1–100；响应 `data` 包含 `items`、`total`、`page`、`pageSize`，按创建时间倒序。所有查询限定当前授权空间；viewer 只能读，写入和触发需要 member。
+
+`executeAt` 使用 Unix 秒，两个提交入口共同调用 `workflow.NormalizeExecuteAt`：负数拒绝，省略、0 或过去时间归一化为 0，未来时间保留。入队状态均为 Waiting；调度查询以数据库时钟选择已到期运行。定义与一次性运行共用 Normalize、BuildTask、每步 PrepareTask / 评测校验及入队事务，不创建占位应用。定义同名冲突使用 HTTP 409、业务码 34005。
 
 `/jobs/:taskID` 下现有的详情、取消、结果、交付和保留期接口保持不变。gRPC 按 [`grpc-api.md`](grpc-api.md) 的对照表同步增加对应 RPC。
 
 ## 7. 主要流程
 
-### 7.1 cron 触发
+### 7.1 cron 触发（第 3 阶段 Proposal）
 
 ```mermaid
 sequenceDiagram
@@ -225,7 +247,7 @@ stateDiagram-v2
 | `jobs.BuildTask` | 把 stages 编译成按 stage 分组的 JobTask；步骤通过临时 `ApplicationComponent` 复用 `traits.ApplyTraits`；仅 command 写入可配置的 `BackoffLimit` |
 | `event/workflow.GenerateJobTasks` | 每个 stage 生成一个 `StepExecution`（多个步骤用 `DAG`，单个用 `StepByStep`） |
 | `ClaimTaskForDispatch` | `Type == job` 的延迟任务直接 CAS 认领，不拿应用锁，不检查 fence |
-| `jobs.Service.Maintain` | 增加 cron 触发与运行卷清理 |
+| `jobs.Service.Maintain` | 第 1 阶段已实现运行卷清理；cron 触发仍为第 3 阶段 Proposal |
 | `jobs.Service.Submit` | 一次性运行和定义触发共用同一条入队路径 |
 
 lease、generation/token、reaper、全局准入和取消恢复都不改。
@@ -235,7 +257,7 @@ lease、generation/token、reaper、全局准入和取消恢复都不改。
 每个阶段一个 PR，按顺序合并：
 
 1. **DSL 与编译（已实现）**：`JobSpec` 改为 stages，加入 volume、traits 复用和 `backoffLimit`；一次性 `/jobs` 切到新请求体；增加运行卷清理；同步 `workspace-jobs-api.md` 和示例。
-2. **定义与触发（Proposal）**：新增 `JobDefinition` 表与 CRUD、`/runs` 手动和延迟触发、`WorkflowQueue` 的两个新列，以及 `ClaimTaskForDispatch` 对 Job 的放行。
+2. **定义与手动/延迟触发（已实现）**：新增 `JobDefinition` 表与 CRUD、`/runs` 手动和延迟触发、一次性提交的 executeAt、独立运行列表、`WorkflowQueue` 的定义 ID / Revision 两列，以及 `ClaimTaskForDispatch` 对 Job 的放行；HTTP / gRPC 同步提供这些能力。
 3. **cron（Proposal）**：`Maintain` 里的 cron 触发、三种并发策略、幂等键和 `last_skip_reason`。
 
 ## 10. 风险与验证

@@ -20,7 +20,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
+	JobsService_CreateJobDefinition_FullMethodName = "/eruun.v1.JobsService/CreateJobDefinition"
+	JobsService_GetJobDefinition_FullMethodName    = "/eruun.v1.JobsService/GetJobDefinition"
+	JobsService_ListJobDefinitions_FullMethodName  = "/eruun.v1.JobsService/ListJobDefinitions"
+	JobsService_UpdateJobDefinition_FullMethodName = "/eruun.v1.JobsService/UpdateJobDefinition"
+	JobsService_DeleteJobDefinition_FullMethodName = "/eruun.v1.JobsService/DeleteJobDefinition"
+	JobsService_RunJobDefinition_FullMethodName    = "/eruun.v1.JobsService/RunJobDefinition"
 	JobsService_SubmitJob_FullMethodName           = "/eruun.v1.JobsService/SubmitJob"
+	JobsService_ListJobs_FullMethodName            = "/eruun.v1.JobsService/ListJobs"
 	JobsService_GetJob_FullMethodName              = "/eruun.v1.JobsService/GetJob"
 	JobsService_CancelJob_FullMethodName           = "/eruun.v1.JobsService/CancelJob"
 	JobsService_GetJobResults_FullMethodName       = "/eruun.v1.JobsService/GetJobResults"
@@ -42,7 +49,14 @@ const (
 //
 // JobsService is the user-session API. Runner capability callbacks are HTTP-only.
 type JobsServiceClient interface {
+	CreateJobDefinition(ctx context.Context, in *JobSpec, opts ...grpc.CallOption) (*JobDefinition, error)
+	GetJobDefinition(ctx context.Context, in *JobDefinitionRequest, opts ...grpc.CallOption) (*JobDefinition, error)
+	ListJobDefinitions(ctx context.Context, in *ListJobDefinitionsRequest, opts ...grpc.CallOption) (*JobDefinitions, error)
+	UpdateJobDefinition(ctx context.Context, in *UpdateJobDefinitionRequest, opts ...grpc.CallOption) (*JobDefinition, error)
+	DeleteJobDefinition(ctx context.Context, in *JobDefinitionRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	RunJobDefinition(ctx context.Context, in *RunJobDefinitionRequest, opts ...grpc.CallOption) (*JobAccepted, error)
 	SubmitJob(ctx context.Context, in *SubmitJobRequest, opts ...grpc.CallOption) (*JobAccepted, error)
+	ListJobs(ctx context.Context, in *ListJobsRequest, opts ...grpc.CallOption) (*JobRuns, error)
 	GetJob(ctx context.Context, in *JobTaskRequest, opts ...grpc.CallOption) (*JobDetail, error)
 	CancelJob(ctx context.Context, in *JobTaskRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetJobResults(ctx context.Context, in *JobTaskRequest, opts ...grpc.CallOption) (*JobResults, error)
@@ -66,10 +80,80 @@ func NewJobsServiceClient(cc grpc.ClientConnInterface) JobsServiceClient {
 	return &jobsServiceClient{cc}
 }
 
+func (c *jobsServiceClient) CreateJobDefinition(ctx context.Context, in *JobSpec, opts ...grpc.CallOption) (*JobDefinition, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(JobDefinition)
+	err := c.cc.Invoke(ctx, JobsService_CreateJobDefinition_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *jobsServiceClient) GetJobDefinition(ctx context.Context, in *JobDefinitionRequest, opts ...grpc.CallOption) (*JobDefinition, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(JobDefinition)
+	err := c.cc.Invoke(ctx, JobsService_GetJobDefinition_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *jobsServiceClient) ListJobDefinitions(ctx context.Context, in *ListJobDefinitionsRequest, opts ...grpc.CallOption) (*JobDefinitions, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(JobDefinitions)
+	err := c.cc.Invoke(ctx, JobsService_ListJobDefinitions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *jobsServiceClient) UpdateJobDefinition(ctx context.Context, in *UpdateJobDefinitionRequest, opts ...grpc.CallOption) (*JobDefinition, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(JobDefinition)
+	err := c.cc.Invoke(ctx, JobsService_UpdateJobDefinition_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *jobsServiceClient) DeleteJobDefinition(ctx context.Context, in *JobDefinitionRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, JobsService_DeleteJobDefinition_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *jobsServiceClient) RunJobDefinition(ctx context.Context, in *RunJobDefinitionRequest, opts ...grpc.CallOption) (*JobAccepted, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(JobAccepted)
+	err := c.cc.Invoke(ctx, JobsService_RunJobDefinition_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *jobsServiceClient) SubmitJob(ctx context.Context, in *SubmitJobRequest, opts ...grpc.CallOption) (*JobAccepted, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(JobAccepted)
 	err := c.cc.Invoke(ctx, JobsService_SubmitJob_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *jobsServiceClient) ListJobs(ctx context.Context, in *ListJobsRequest, opts ...grpc.CallOption) (*JobRuns, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(JobRuns)
+	err := c.cc.Invoke(ctx, JobsService_ListJobs_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +326,14 @@ type JobsService_DownloadJobDatasetClient = grpc.ServerStreamingClient[ArchiveCh
 //
 // JobsService is the user-session API. Runner capability callbacks are HTTP-only.
 type JobsServiceServer interface {
+	CreateJobDefinition(context.Context, *JobSpec) (*JobDefinition, error)
+	GetJobDefinition(context.Context, *JobDefinitionRequest) (*JobDefinition, error)
+	ListJobDefinitions(context.Context, *ListJobDefinitionsRequest) (*JobDefinitions, error)
+	UpdateJobDefinition(context.Context, *UpdateJobDefinitionRequest) (*JobDefinition, error)
+	DeleteJobDefinition(context.Context, *JobDefinitionRequest) (*emptypb.Empty, error)
+	RunJobDefinition(context.Context, *RunJobDefinitionRequest) (*JobAccepted, error)
 	SubmitJob(context.Context, *SubmitJobRequest) (*JobAccepted, error)
+	ListJobs(context.Context, *ListJobsRequest) (*JobRuns, error)
 	GetJob(context.Context, *JobTaskRequest) (*JobDetail, error)
 	CancelJob(context.Context, *JobTaskRequest) (*emptypb.Empty, error)
 	GetJobResults(context.Context, *JobTaskRequest) (*JobResults, error)
@@ -266,8 +357,29 @@ type JobsServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedJobsServiceServer struct{}
 
+func (UnimplementedJobsServiceServer) CreateJobDefinition(context.Context, *JobSpec) (*JobDefinition, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateJobDefinition not implemented")
+}
+func (UnimplementedJobsServiceServer) GetJobDefinition(context.Context, *JobDefinitionRequest) (*JobDefinition, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetJobDefinition not implemented")
+}
+func (UnimplementedJobsServiceServer) ListJobDefinitions(context.Context, *ListJobDefinitionsRequest) (*JobDefinitions, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListJobDefinitions not implemented")
+}
+func (UnimplementedJobsServiceServer) UpdateJobDefinition(context.Context, *UpdateJobDefinitionRequest) (*JobDefinition, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateJobDefinition not implemented")
+}
+func (UnimplementedJobsServiceServer) DeleteJobDefinition(context.Context, *JobDefinitionRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteJobDefinition not implemented")
+}
+func (UnimplementedJobsServiceServer) RunJobDefinition(context.Context, *RunJobDefinitionRequest) (*JobAccepted, error) {
+	return nil, status.Error(codes.Unimplemented, "method RunJobDefinition not implemented")
+}
 func (UnimplementedJobsServiceServer) SubmitJob(context.Context, *SubmitJobRequest) (*JobAccepted, error) {
 	return nil, status.Error(codes.Unimplemented, "method SubmitJob not implemented")
+}
+func (UnimplementedJobsServiceServer) ListJobs(context.Context, *ListJobsRequest) (*JobRuns, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListJobs not implemented")
 }
 func (UnimplementedJobsServiceServer) GetJob(context.Context, *JobTaskRequest) (*JobDetail, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetJob not implemented")
@@ -329,6 +441,114 @@ func RegisterJobsServiceServer(s grpc.ServiceRegistrar, srv JobsServiceServer) {
 	s.RegisterService(&JobsService_ServiceDesc, srv)
 }
 
+func _JobsService_CreateJobDefinition_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(JobSpec)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(JobsServiceServer).CreateJobDefinition(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: JobsService_CreateJobDefinition_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(JobsServiceServer).CreateJobDefinition(ctx, req.(*JobSpec))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _JobsService_GetJobDefinition_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(JobDefinitionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(JobsServiceServer).GetJobDefinition(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: JobsService_GetJobDefinition_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(JobsServiceServer).GetJobDefinition(ctx, req.(*JobDefinitionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _JobsService_ListJobDefinitions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListJobDefinitionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(JobsServiceServer).ListJobDefinitions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: JobsService_ListJobDefinitions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(JobsServiceServer).ListJobDefinitions(ctx, req.(*ListJobDefinitionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _JobsService_UpdateJobDefinition_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateJobDefinitionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(JobsServiceServer).UpdateJobDefinition(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: JobsService_UpdateJobDefinition_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(JobsServiceServer).UpdateJobDefinition(ctx, req.(*UpdateJobDefinitionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _JobsService_DeleteJobDefinition_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(JobDefinitionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(JobsServiceServer).DeleteJobDefinition(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: JobsService_DeleteJobDefinition_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(JobsServiceServer).DeleteJobDefinition(ctx, req.(*JobDefinitionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _JobsService_RunJobDefinition_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RunJobDefinitionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(JobsServiceServer).RunJobDefinition(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: JobsService_RunJobDefinition_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(JobsServiceServer).RunJobDefinition(ctx, req.(*RunJobDefinitionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _JobsService_SubmitJob_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SubmitJobRequest)
 	if err := dec(in); err != nil {
@@ -343,6 +563,24 @@ func _JobsService_SubmitJob_Handler(srv interface{}, ctx context.Context, dec fu
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(JobsServiceServer).SubmitJob(ctx, req.(*SubmitJobRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _JobsService_ListJobs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListJobsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(JobsServiceServer).ListJobs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: JobsService_ListJobs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(JobsServiceServer).ListJobs(ctx, req.(*ListJobsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -557,8 +795,36 @@ var JobsService_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*JobsServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
+			MethodName: "CreateJobDefinition",
+			Handler:    _JobsService_CreateJobDefinition_Handler,
+		},
+		{
+			MethodName: "GetJobDefinition",
+			Handler:    _JobsService_GetJobDefinition_Handler,
+		},
+		{
+			MethodName: "ListJobDefinitions",
+			Handler:    _JobsService_ListJobDefinitions_Handler,
+		},
+		{
+			MethodName: "UpdateJobDefinition",
+			Handler:    _JobsService_UpdateJobDefinition_Handler,
+		},
+		{
+			MethodName: "DeleteJobDefinition",
+			Handler:    _JobsService_DeleteJobDefinition_Handler,
+		},
+		{
+			MethodName: "RunJobDefinition",
+			Handler:    _JobsService_RunJobDefinition_Handler,
+		},
+		{
 			MethodName: "SubmitJob",
 			Handler:    _JobsService_SubmitJob_Handler,
+		},
+		{
+			MethodName: "ListJobs",
+			Handler:    _JobsService_ListJobs_Handler,
 		},
 		{
 			MethodName: "GetJob",

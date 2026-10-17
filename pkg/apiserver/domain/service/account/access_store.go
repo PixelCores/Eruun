@@ -31,6 +31,8 @@ func (s *Store) CountStartingSandboxes(ctx context.Context) (int64, error) {
 
 func artifactWorkspace(e datastore.Entity) (string, bool) {
 	switch value := e.(type) {
+	case *model.JobDefinition:
+		return value.WorkspaceID, true
 	case *model.JobArtifact:
 		return value.WorkspaceID, true
 	case *model.ArtifactChunk:
@@ -207,6 +209,19 @@ func (s *Store) options(ctx context.Context, e datastore.Entity, input *datastor
 			opts.In = append(opts.In, datastore.InQueryOption{Key: "workspace_id", Values: []string{scope.WorkspaceID}})
 			return &opts, nil
 		}
+	}
+	if task, ok := e.(*model.WorkflowQueue); ok && task.Type == config.WorkflowTaskTypeJob && task.AppID == "" && task.WorkspaceID != "" {
+		if task.WorkspaceID != scope.WorkspaceID {
+			return nil, bcode.ErrForbidden
+		}
+		// Standalone Job listings have no application ID. Keep their workspace
+		// and type predicates in SQL before counting or applying pagination.
+		opts.In = append(opts.In,
+			datastore.InQueryOption{Key: "workspace_id", Values: []string{scope.WorkspaceID}},
+			datastore.InQueryOption{Key: "type", Values: []string{string(config.WorkflowTaskTypeJob)}},
+			datastore.InQueryOption{Key: "app_id", Values: []string{""}},
+		)
+		return &opts, nil
 	}
 	if appID != "" {
 		if err := s.Check(ctx, e); err != nil {

@@ -2,14 +2,21 @@ package account
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func TestInvitationBeforeRegistrationOwnershipAndRemoval(t *testing.T) {
@@ -151,6 +158,8 @@ func TestWorkspaceDeleteRequiresEmptyResources(t *testing.T) {
 	_, p := registerTestUser(t, s, d, "email", "owner@example.com")
 	w, err := s.CreateWorkspace(ctx, p, "Team")
 	require.NoError(t, err)
+	require.NoError(t, s.Repo.Store.Add(ctx, &model.JobDefinition{ID: "team-definition", WorkspaceID: w.ID, Name: "reusable", Revision: 1, Spec: "{}"}))
+	require.NoError(t, s.Repo.Store.Add(ctx, &model.JobDefinition{ID: "foreign-definition", WorkspaceID: "foreign", Name: "reusable", Revision: 1, Spec: "{}"}))
 	app := &model.Applications{ID: "app", Name: "app", WorkspaceID: w.ID, Namespace: w.Namespace}
 	require.NoError(t, s.Repo.Store.Add(ctx, app))
 	calls := 0
@@ -184,6 +193,51 @@ func TestWorkspaceDeleteRequiresEmptyResources(t *testing.T) {
 	n, err = s.Repo.Store.Count(ctx, &model.JobInfo{WorkspaceID: w.ID}, nil)
 	require.NoError(t, err)
 	require.Zero(t, n)
+	n, err = s.Repo.Store.Count(ctx, &model.JobDefinition{WorkspaceID: w.ID}, nil)
+	require.NoError(t, err)
+	require.Zero(t, n)
+	require.NoError(t, s.Repo.Store.Get(ctx, &model.JobDefinition{ID: "foreign-definition"}))
 	_, err = s.Workspace(ctx, p, w.ID)
 	require.Error(t, err)
+}
+
+// The deletion path uses SQL and the injected namespace callback; it does not
+// need account registration, Redis, or a listening network port.
+func TestWorkspaceDeletionCleansOnlyOwnedDefinitions(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "workspace-definition.db")), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, TranslateError: true, Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	conn, err := db.DB()
+	require.NoError(t, err)
+	conn.SetMaxOpenConns(1)
+	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+	require.NoError(t, db.AutoMigrate(
+		&model.Workspace{}, &model.WorkspaceMember{}, &model.WorkspaceInvitation{},
+		&model.Applications{}, &model.WorkflowQueue{}, &model.JobInfo{}, &model.JobDefinition{},
+		&model.JobArtifact{}, &model.ArtifactChunk{}, &model.JobDelivery{}, &model.JobSandbox{}, &model.JobCheckpoint{},
+	))
+	store := &sqlstore.Driver{Client: *db}
+	service := New(store, nil, nil, nil)
+	ctx := context.Background()
+	workspace := &model.Workspace{ID: "team", Kind: "team", OwnerID: "owner", Namespace: "team-ns"}
+	for _, row := range []datastore.Entity{
+		workspace,
+		&model.WorkspaceMember{ID: "owner-member", WorkspaceID: workspace.ID, UserID: "owner", Role: "admin"},
+		&model.JobDefinition{ID: "team-definition", WorkspaceID: workspace.ID, Name: "reusable", Revision: 1, Spec: "{}"},
+		&model.JobDefinition{ID: "foreign-definition", WorkspaceID: "foreign", Name: "reusable", Revision: 1, Spec: "{}"},
+	} {
+		require.NoError(t, store.Add(ctx, row))
+	}
+	now, err := store.CurrentDatabaseTime(ctx)
+	require.NoError(t, err)
+	principal := &Principal{User: &model.User{ID: "owner"}, Session: &model.Session{AuthenticatedAt: now.Add(-time.Second)}}
+	calls := 0
+	require.NoError(t, service.DeleteWorkspace(ctx, principal, workspace.ID, func(_ context.Context, deleted *model.Workspace) error {
+		calls++
+		require.Equal(t, workspace.ID, deleted.ID)
+		return nil
+	}))
+	require.Equal(t, 1, calls)
+	require.ErrorIs(t, store.Get(ctx, &model.Workspace{ID: workspace.ID}), datastore.ErrRecordNotExist)
+	require.ErrorIs(t, store.Get(ctx, &model.JobDefinition{ID: "team-definition"}), datastore.ErrRecordNotExist)
+	require.NoError(t, store.Get(ctx, &model.JobDefinition{ID: "foreign-definition"}))
 }

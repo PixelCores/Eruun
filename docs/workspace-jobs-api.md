@@ -56,11 +56,68 @@
 
 提交到 `POST /api/v1/jobs`，返回 HTTP 202，响应 `data` 包含 `taskId`、`workspaceId`、`type: "job"`、`status`。名称不承担运行唯一性，相同名称可以重复提交。至少一个 stage，每个 stage 至少一个 step；stage 名在本 Job 内唯一，step 名也必须在整个 Job 内唯一，均不能为空。step 名还必须使 `eruun-job-<taskID>-<step>` 符合 Kubernetes Job 的现有名称和长度限制；当前 taskID 长度下，step 名上限为 28 字节。
 
-stage 依次执行；同一 stage 的多个 step 并行执行。命令默认超时 3600 秒，范围 1–86400 秒；可选 `retry: {"backoffLimit": 2}` 控制 Kubernetes Job 的失败重试次数，范围 0–10，省略时默认 0。评测 step（`type: job`）不接受 `retry`，即使 `backoffLimit` 为 0 也会拒绝；Runner Job 的 `BackoffLimit` 固定为 0，评测恢复由 `traits.eval.recovery` 控制，继续使用既有 execution identity、Runner claim 和恢复协议。当前不支持 JobDefinition、cron、延迟执行或平台级重跑。
+stage 依次执行；同一 stage 的多个 step 并行执行。命令默认超时 3600 秒，范围 1–86400 秒；可选 `retry: {"backoffLimit": 2}` 控制 Kubernetes Job 的失败重试次数，范围 0–10，省略时默认 0。评测 step（`type: job`）不接受 `retry`，即使 `backoffLimit` 为 0 也会拒绝；Runner Job 的 `BackoffLimit` 固定为 0，评测恢复由 `traits.eval.recovery` 控制，继续使用既有 execution identity、Runner claim 和恢复协议。当前支持可复用 JobDefinition、手动和延迟触发；cron、并发策略与平台级重跑尚未实现。
 
 command step 的 `traits` 与 Application 组件使用同一规格，经现有 trait 处理器应用。拒绝 `ingress`、`service`、`rollout`、`share`；顶层以及 init/sidecar 嵌套 traits 都会检查附属资源。`persistent` 存储只能引用已有 PVC，不能指定 `tmpCreate`、`size`、`storageClass`；处理器为此返回的 PVC 对象不会生成创建任务，Pod 只引用现有 claim。其他任何附属资源（包括新建 PVC、RBAC 的 ServiceAccount/Role/Binding、Ingress）均在提交时拒绝，错误指出具体 trait。共享工作存储由顶层 `volume` 声明。
 
 例如，为不同 stage 的命令共享文件，在顶层添加 `"volume": {"size": "1Gi", "storageClass": "<storage-class>", "accessMode": "ReadWriteOnce"}`。`storageClass` 必须位于管理员配置的 `workspace.storageClasses` 白名单；省略时也要求管理员已允许使用默认存储类，未授权的存储类会在现有资源准备流程中被拒绝。省略 accessMode 时默认为 `ReadWriteOnce`；任何 stage 有多个 step 时必须使用 `ReadWriteMany`。声明 volume 后，`workspace` 卷名和 `/workspace` 挂载路径保留给运行卷，顶层及 init/sidecar traits 的 storage 不能占用。平台先创建本次运行专属的 `eruun-job-<taskID>-work` PVC，再将其挂载到每个 command step 的 `/workspace`；eval step 不挂载此卷。维护循环以集群中带 `eruun.io/job-task` label 的存活 PVC 为待办，跨 namespace 每页列出 100 个，并通过 `Limit/Continue` 翻页，不扫描历史运行。按 label 值读取运行后，仅在其为独立 Job（`type == job`、`appId` 为空）、声明了 volume，且 PVC 名称与运行卷名相符、namespace 与所属空间一致时才允许清理；找不到运行时保留 PVC，其余身份或声明不匹配记录错误并跳过。运行进入终态后删除，取消运行仍等待既有取消恢复确认 Job 已停止；删除附带 UID 和 ResourceVersion 前置条件，不存在视为完成，其他删除错误记录后在下一轮重试。已有 PVC 和其他资源不会由此清理。真实 RWX 支持、挂载和回收仍需在目标存储类验证。
+
+## 定义、手动与延迟触发
+
+定义保存可复用的 `JobSpec`，不启动运行。`POST /api/v1/job-definitions` 和 `PUT /api/v1/job-definitions/:definitionID` 均直接接收与一次性提交相同的 `name`、可选 `volume`、`stages`，不额外包一层 `spec`；定义不接受 `workspaceId` 或 `executeAt`，所属空间取自已授权请求。定义保存前复用提交的完整校验，包括 Normalize、BuildTask、所有 step 的资源准备以及评测任务包、凭据和策略检查。
+
+```sh
+curl -X POST "$ERUUN_URL/api/v1/job-definitions" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "X-Eruun-Workspace-ID: $WORKSPACE_ID" \
+  -H 'Content-Type: application/json' \
+  --data-binary '{
+    "name": "daily-report",
+    "stages": [{"name": "main", "steps": [{
+      "name": "report", "type": "command",
+      "spec": {"image": "busybox:1.37.0", "command": ["sh", "-c"], "args": ["echo report"], "timeoutSeconds": 300}
+    }]}]
+  }'
+```
+
+创建返回 HTTP 201，`data` 为定义详情：`id`、`name`、`revision`、`spec`、`creator`、`createTime`、`updateTime`。`spec` 是规范化后的完整 JobSpec，包含 name。初始 `revision` 为 1；同一空间内 name 唯一，同名创建或改名冲突返回 HTTP 409、`code: 34005`。不同空间允许同名，所有读写按当前空间隔离。
+
+以响应的 `data.id` 设置 `DEFINITION_ID`，即可立即触发：
+
+```sh
+curl -X POST "$ERUUN_URL/api/v1/job-definitions/$DEFINITION_ID/runs" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "X-Eruun-Workspace-ID: $WORKSPACE_ID" \
+  -H 'Content-Type: application/json' --data-binary '{}'
+```
+
+延迟触发在同一路径传 `{"executeAt": 1893456000}`（2030-01-01 00:00:00 UTC，使用时替换为目标 Unix 秒）。两种触发均返回 HTTP 202，响应结构与一次性提交一致：
+
+```json
+{"code":0,"message":"","data":{"taskId":"<运行 ID>","workspaceId":"<空间 ID>","type":"job","status":"waiting"}}
+```
+
+202 只表示已入队。`executeAt` 省略或为 0 时立即参与派发；过去的时间同样归一化为 0；负数返回 HTTP 400。未来的时间保存到队列，到期前保持 Waiting，由既有调度查询根据数据库时钟选择。一次性 `POST /api/v1/jobs` 也支持在 `name`、`stages` 同级添加可选 `executeAt`，使用完全相同的归一化和入队路径。
+
+`PUT /job-definitions/:definitionID` 整体替换 JobSpec，返回 HTTP 200 和新详情；不支持 PATCH，也不要求传入 revision。Revision 在同一行锁事务中加 1，creator 与创建时间保留。每次 `/runs` 使用读到的完整规格和 revision 创建独立快照；修改定义不会修改已排队或运行中的快照。`DELETE` 返回 HTTP 200，只删除定义，已有运行继续执行和保留；运行记录中的定义 ID、revision 不清空，仍可查询、取消和访问已有结果。
+
+读取定义详情和列表需要 viewer；创建、更新、删除与触发需要 member。不存在或跨空间的定义返回 NotFound / Forbidden，不泄露其他空间的规格。
+
+## 定义与运行列表
+
+```sh
+curl "$ERUUN_URL/api/v1/job-definitions?page=1&pageSize=20" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "X-Eruun-Workspace-ID: $WORKSPACE_ID"
+
+curl "$ERUUN_URL/api/v1/jobs?definitionId=$DEFINITION_ID&page=1&pageSize=20" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "X-Eruun-Workspace-ID: $WORKSPACE_ID"
+```
+
+两个列表的 `data` 均为 `{"items": [...], "total": 42, "page": 1, "pageSize": 20}`。默认 page=1、pageSize=20；page 范围 1–10000000、pageSize 范围 1–100，非法参数返回 HTTP 400。结果按创建时间倒序，同一创建时间再按 ID 倒序；空列表返回 `items: []`、`total: 0`。
+
+`GET /jobs` 只列出当前空间、没有 AppID 的独立 Job，省略 `definitionId` 时包括一次性运行和定义触发运行。过滤在数据库分页前进行，total 也采用相同过滤。定义删除后仍可使用原 ID 过滤；其他空间的 ID 不会返回其他空间运行。每项包含 `taskId`、`workspaceId`、`type`、`status`、`name`、`executeAt`、`creator`、`createTime`、`updateTime`，以及有定义时的 `jobDefinitionId`、`jobDefinitionRevision`。完整规格与执行结果仍通过 `GET /jobs/:taskID` 获取。
 
 ## Harbor 评测 JSON
 
@@ -190,13 +247,20 @@ Application 内评测使用 `GET /api/v1/jobs/:taskID?executionKey=<Job executio
 
 原始数据保留期从采集成功开始计算。`PUT /api/v1/jobs/:taskID/retention` 接收 `{"retentionDays":30}`，将尚未过期的原始数据改为从本次操作起再保留 30 天。周期清理只删除源字节，保留可查询的过期元数据，**不删除 MinIO 或数据库保存副本**。每个 trial 的原始数据完整下载到 Runner 后可清理其 Sandbox 和关联 Pod；未完整取回文件或日志的 Sandbox 在任务结束后独立保留 24 小时，供诊断或人工补采，不随 Runner Pod 回收。最终归档或上传失败时，Runner 中已有的原始文件继续保留。
 
-显式删除整个团队空间沿用“资源必须为空”的规则，且要求没有等待或正在保存的目标。空间删除会删除其数据库数据和索引；MinIO 已保存对象不由原始结果保留策略或空间删除 API 清除，需要存储管理员独立管理。
+显式删除整个团队空间沿用“资源必须为空”的规则，且要求没有等待或正在保存的目标。空间删除会删除其定义、运行及其他数据库数据和索引；这与只删除定义并保留运行的接口不同。MinIO 已保存对象不由原始结果保留策略或空间删除 API 清除，需要存储管理员独立管理。
 
 ## 接口清单
 
 | 方法与路径（均加 `/api/v1`） | 用途 |
 | --- | --- |
-| `POST /jobs` | 创建独立 Job，返回 202 |
+| `POST /jobs` | 一次性独立 Job，可带 executeAt，返回 202 |
+| `GET /jobs?definitionId=...&page=1&pageSize=20` | 当前空间独立运行列表，definitionId 可省略 |
+| `POST /job-definitions` | 保存定义，返回 201 |
+| `GET /job-definitions?page=1&pageSize=20` | 当前空间定义列表 |
+| `GET /job-definitions/:definitionID` | 定义详情与 revision |
+| `PUT /job-definitions/:definitionID` | 整体替换规格，revision 加 1 |
+| `DELETE /job-definitions/:definitionID` | 删除定义，保留已有运行 |
+| `POST /job-definitions/:definitionID/runs` | 手动或延迟触发，返回 202 |
 | `GET /jobs/:taskID` | 类型、执行、采集及保存状态 |
 | `POST /jobs/:taskID/cancel` | 取消已有任务；无需 AppID |
 | `POST /job-datasets?name=...` | 上传原生任务 tar.gz，返回 201 |
