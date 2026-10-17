@@ -10,10 +10,12 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
@@ -33,12 +35,15 @@ import (
 )
 
 type Service struct {
-	Store           artifacts.Backend
-	Artifacts       *artifacts.Store
-	Kube            kubernetes.Interface
-	Config          *config.Config
-	SandboxClient   dynamic.Interface
-	SandboxObserver informer.SandboxObserver
+	Workflow             service.WorkflowService `inject:""`
+	scheduleDispatchMu   sync.Mutex
+	scheduleDispatchPage int
+	Store                artifacts.Backend
+	Artifacts            *artifacts.Store
+	Kube                 kubernetes.Interface
+	Config               *config.Config
+	SandboxClient        dynamic.Interface
+	SandboxObserver      informer.SandboxObserver
 }
 
 func New(store datastore.DataStore, kube kubernetes.Interface, cfg *config.Config) (*Service, error) {
@@ -174,7 +179,7 @@ func (s *Service) Submit(ctx context.Context, request SubmitRequest) (*Accepted,
 	if err != nil {
 		return nil, err
 	}
-	return s.enqueue(ctx, scope, task, request.ExecuteAt)
+	return s.enqueue(ctx, nil, scope, task, request.ExecuteAt)
 }
 
 // prepareTask validates the complete declaration through the same renderer and
@@ -261,23 +266,45 @@ func (s *Service) prepareTask(ctx context.Context, scope account.Scope, declarat
 }
 
 // enqueue is the single durable submission path for one-time and definition runs.
-func (s *Service) enqueue(ctx context.Context, scope account.Scope, task *model.WorkflowQueue, executeAt int64) (*Accepted, error) {
+// A supplied transaction also owns the schedule claim; nil starts a submission transaction.
+func (s *Service) enqueue(ctx context.Context, tx artifacts.Backend, scope account.Scope, task *model.WorkflowQueue, executeAt int64) (*Accepted, error) {
 	normalized, err := workflow.NormalizeExecuteAt(executeAt)
 	if err != nil {
 		return nil, invalid(fmt.Errorf("executeAt must be non-negative"))
 	}
 	task.ExecuteAt = normalized
-	err = artifacts.WithTransaction(ctx, s.Store, func(tx artifacts.Backend) error {
+	insert := func(tx artifacts.Backend) error {
 		locked := &model.Workspace{ID: scope.WorkspaceID}
-
 		if err := tx.GetForUpdate(ctx, locked); err != nil {
 			return err
 		}
 		if locked.Namespace != scope.Namespace {
 			return bcode.ErrForbidden
 		}
-		return tx.Add(ctx, task)
-	})
+		if err := tx.Add(ctx, task); err != nil {
+			if !errors.Is(err, datastore.ErrRecordExist) || task.IdempotencyKey == nil {
+				return err
+			}
+			rows, lookupErr := tx.List(ctx, &model.WorkflowQueue{WorkspaceID: scope.WorkspaceID, Type: config.WorkflowTaskTypeJob, IdempotencyKey: task.IdempotencyKey}, &datastore.ListOptions{Page: 1, PageSize: 1})
+			if lookupErr != nil {
+				return fmt.Errorf("resolve Job idempotency conflict: %w", lookupErr)
+			}
+			if len(rows) == 0 {
+				return err
+			}
+			existing := rows[0].(*model.WorkflowQueue)
+			if existing.WorkspaceID != scope.WorkspaceID || existing.Type != config.WorkflowTaskTypeJob || existing.AppID != "" || existing.JobDefinitionID != task.JobDefinitionID {
+				return fmt.Errorf("Job idempotency key collision: %s", *task.IdempotencyKey)
+			}
+			task = existing
+		}
+		return nil
+	}
+	if tx == nil {
+		err = artifacts.WithTransaction(ctx, s.Store, insert)
+	} else {
+		err = insert(tx)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("submit Job: %w", err)
 	}
@@ -679,6 +706,10 @@ func (s *Service) Maintain(ctx context.Context) {
 	run(15*time.Second, "expire original Job results", func(ctx context.Context) error { return s.Artifacts.CleanupExpired(ctx, 100) })
 	run(5*time.Second, "reconcile evaluation Sandboxes", func(ctx context.Context) error { return s.reconcileSandboxes(ctx, 100) })
 	run(5*time.Second, "release terminal Job volumes", s.cleanupRunVolumes)
+	run(5*time.Second, "dispatch Job schedules", func(ctx context.Context) error {
+		_, err := s.DispatchSchedules(ctx)
+		return err
+	})
 	run(5*time.Second, "reconcile evaluation checkpoints", func(ctx context.Context) error { return s.reconcileCheckpoints(ctx, 100) })
 	_ = group.Wait() // Each loop exits without error only after ctx cancellation.
 }

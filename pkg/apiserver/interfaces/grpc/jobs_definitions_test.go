@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 	"gorm.io/driver/sqlite"
@@ -46,16 +47,21 @@ func TestJobDefinitionRPCsAndRunPagination(t *testing.T) {
 	input := &eruunv1.JobSpec{Name: "daily", Stages: []*eruunv1.JobStage{{Name: "run", Steps: []*eruunv1.JobStep{{
 		Name: "command", Type: "command", Spec: command, Retry: &eruunv1.JobStepRetry{BackoffLimit: 2},
 	}}}}}
-	definition, err := server.CreateJobDefinition(ctx, input)
+	schedule := &eruunv1.JobScheduleRequest{Cron: "0 2 * * *", Enabled: true}
+	definition, err := server.CreateJobDefinition(ctx, &eruunv1.CreateJobDefinitionRequest{Name: input.Name, Volume: input.Volume, Stages: input.Stages, Schedule: schedule})
 	require.NoError(t, err)
 	require.Len(t, definition.Id, 24)
 	require.EqualValues(t, 1, definition.Revision)
 	require.Equal(t, "member", definition.Creator)
 	require.NotNil(t, definition.CreateTime)
+	require.Equal(t, "0 2 * * *", definition.Schedule.Cron)
+	require.Equal(t, "Forbid", definition.Schedule.ConcurrencyPolicy)
+	require.True(t, definition.Schedule.Enabled)
+	require.Positive(t, definition.Schedule.NextRun)
 	require.Equal(t, "busybox:1.37.0", definition.Spec.Stages[0].Steps[0].Spec.GetStructValue().Fields["image"].GetStringValue())
 	require.Equal(t, "true", definition.Spec.Stages[0].Steps[0].Spec.GetStructValue().Fields["command"].GetListValue().Values[0].GetStringValue())
 	require.EqualValues(t, 2, definition.Spec.Stages[0].Steps[0].Retry.BackoffLimit)
-	_, err = server.CreateJobDefinition(ctx, input)
+	_, err = server.CreateJobDefinition(ctx, &eruunv1.CreateJobDefinitionRequest{Name: input.Name, Volume: input.Volume, Stages: input.Stages})
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
 
 	future := time.Now().Add(time.Hour).Unix()
@@ -70,6 +76,13 @@ func TestJobDefinitionRPCsAndRunPagination(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 2, updated.Revision)
 	require.Equal(t, "updated", updated.Spec.Name)
+	require.Nil(t, updated.Schedule, "replacement without schedule must clear it")
+	schedule.ConcurrencyPolicy = "Replace"
+	updated, err = server.UpdateJobDefinition(ctx, &eruunv1.UpdateJobDefinitionRequest{DefinitionId: definition.Id, Spec: input, Schedule: schedule})
+	require.NoError(t, err)
+	require.Equal(t, "Replace", updated.Schedule.ConcurrencyPolicy)
+	require.True(t, updated.Schedule.Enabled)
+	require.Positive(t, updated.Schedule.NextRun)
 	read, err := server.GetJobDefinition(ctx, &eruunv1.JobDefinitionRequest{DefinitionId: definition.Id})
 	require.NoError(t, err)
 	require.True(t, proto.Equal(updated, read))
@@ -138,5 +151,29 @@ func TestJobDefinitionRPCsRejectMissingInput(t *testing.T) {
 	_, err = server.DeleteJobDefinition(ctx, nil)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	_, err = server.RunJobDefinition(ctx, &eruunv1.RunJobDefinitionRequest{})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+func TestJobRPCSchedulesRemainDefinitionOnly(t *testing.T) {
+	server := &JobsServer{}
+	ctx := context.Background()
+	for _, request := range []proto.Message{&eruunv1.SubmitJobRequest{}, &eruunv1.RunJobDefinitionRequest{}} {
+		require.Error(t, protojson.Unmarshal([]byte(`{"schedule":{"cron":"* * * * *","enabled":true}}`), request))
+	}
+	// Binary protobuf unknown fields also remain invalid instead of silently
+	// accepting a future or forged schedule field on execution requests.
+	submit := &eruunv1.SubmitJobRequest{}
+	submit.ProtoReflect().SetUnknown([]byte{0x52, 0x00})
+	_, err := server.SubmitJob(ctx, submit)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	run := &eruunv1.RunJobDefinitionRequest{DefinitionId: "definition"}
+	run.ProtoReflect().SetUnknown([]byte{0x1a, 0x00})
+	_, err = server.RunJobDefinition(ctx, run)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	schedule := &eruunv1.JobScheduleRequest{}
+	schedule.ProtoReflect().SetUnknown([]byte{0x20, 0x01})
+	_, err = server.CreateJobDefinition(ctx, &eruunv1.CreateJobDefinitionRequest{Schedule: schedule})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	_, err = server.UpdateJobDefinition(ctx, &eruunv1.UpdateJobDefinitionRequest{DefinitionId: "definition", Spec: &eruunv1.JobSpec{}, Schedule: schedule})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }

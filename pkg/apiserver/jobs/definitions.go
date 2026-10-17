@@ -4,21 +4,43 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
+
+type ScheduleRequest struct {
+	Cron              string `json:"cron"`
+	ConcurrencyPolicy string `json:"concurrencyPolicy"`
+	Enabled           bool   `json:"enabled"`
+}
+
+type DefinitionRequest struct {
+	spec.JobSpec
+	Schedule *ScheduleRequest `json:"schedule,omitempty"`
+}
+
+type Schedule struct {
+	ScheduleRequest
+	NextRun        int64  `json:"nextRun"`
+	LastRunTaskID  string `json:"lastRunTaskId"`
+	LastSkipReason string `json:"lastSkipReason"`
+}
 
 type Definition struct {
 	ID         string       `json:"id"`
 	Name       string       `json:"name"`
 	Revision   uint64       `json:"revision"`
 	Spec       spec.JobSpec `json:"spec"`
+	Schedule   *Schedule    `json:"schedule,omitempty"`
 	Creator    string       `json:"creator"`
 	CreateTime time.Time    `json:"createTime"`
 	UpdateTime time.Time    `json:"updateTime"`
@@ -54,7 +76,54 @@ func definitionResponse(record *model.JobDefinition) (*Definition, error) {
 	if err := spec.DecodeJobJSON([]byte(record.Spec), &out.Spec); err != nil {
 		return nil, fmt.Errorf("read Job definition specification: %w", err)
 	}
+	if record.ConcurrencyPolicy != "" {
+		out.Schedule = &Schedule{
+			ScheduleRequest: ScheduleRequest{Cron: record.Cron, ConcurrencyPolicy: record.ConcurrencyPolicy, Enabled: record.ScheduleEnabled},
+			NextRun:         record.NextRun, LastRunTaskID: record.LastRunTaskID, LastSkipReason: record.LastSkipReason,
+		}
+	}
 	return out, nil
+}
+
+func prepareDefinitionSchedule(request *ScheduleRequest, now time.Time) (ScheduleRequest, int64, error) {
+	if request == nil {
+		return ScheduleRequest{}, 0, nil
+	}
+	schedule := *request
+	if schedule.ConcurrencyPolicy == "" {
+		schedule.ConcurrencyPolicy = "Forbid"
+	}
+	switch schedule.ConcurrencyPolicy {
+	case "Forbid", "Allow", "Replace":
+	default:
+		return ScheduleRequest{}, 0, invalid(fmt.Errorf("schedule concurrencyPolicy must be Forbid, Allow, or Replace"))
+	}
+	schedule.Cron = strings.TrimSpace(schedule.Cron)
+	if schedule.Cron == "" {
+		if schedule.Enabled {
+			return ScheduleRequest{}, 0, invalid(fmt.Errorf("schedule cron is required when enabled"))
+		}
+		return schedule, 0, nil
+	}
+	if len(strings.Fields(schedule.Cron)) != 5 {
+		return ScheduleRequest{}, 0, invalid(fmt.Errorf("schedule cron must have 5 fields"))
+	}
+	cron, err := utils.NormalizeCronSchedule(schedule.Cron)
+	if err != nil {
+		return ScheduleRequest{}, 0, invalid(fmt.Errorf("schedule cron: %w", err))
+	}
+	if len(cron) > 64 {
+		return ScheduleRequest{}, 0, invalid(fmt.Errorf("schedule cron exceeds 64 bytes"))
+	}
+	nextRun, err := workflow.NextScheduleRun(cron, now)
+	if err != nil {
+		return ScheduleRequest{}, 0, invalid(fmt.Errorf("schedule cron: %w", err))
+	}
+	schedule.Cron = cron
+	if !schedule.Enabled {
+		nextRun = 0
+	}
+	return schedule, nextRun, nil
 }
 
 // scopedDefinition also checks raw backends used without account.Store. Locked
@@ -82,16 +151,21 @@ func scopedDefinition(ctx context.Context, store artifacts.Backend, id string, l
 	return record, nil
 }
 
-func (s *Service) CreateDefinition(ctx context.Context, declaration spec.JobSpec) (*Definition, error) {
+func (s *Service) CreateDefinition(ctx context.Context, declaration DefinitionRequest) (*Definition, error) {
 	scope, err := Scope(ctx, true)
 	if err != nil {
 		return nil, err
 	}
-	task, err := s.prepareTask(ctx, scope, declaration)
+	schedule, nextRun, err := prepareDefinitionSchedule(declaration.Schedule, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+	task, err := s.prepareTask(ctx, scope, declaration.JobSpec)
 	if err != nil {
 		return nil, err
 	}
 	record := &model.JobDefinition{ID: task.TaskID, WorkspaceID: scope.WorkspaceID, Name: task.WorkflowName, Revision: 1, Spec: task.JobSpec, Creator: scope.UserID}
+	record.Cron, record.ConcurrencyPolicy, record.ScheduleEnabled, record.NextRun = schedule.Cron, schedule.ConcurrencyPolicy, schedule.Enabled, nextRun
 	err = artifacts.WithTransaction(ctx, s.Store, func(tx artifacts.Backend) error {
 		space := &model.Workspace{ID: scope.WorkspaceID}
 		if err := tx.GetForUpdate(ctx, space); err != nil {
@@ -147,7 +221,7 @@ func (s *Service) ListDefinitions(ctx context.Context, page, pageSize int) (*Def
 	return out, nil
 }
 
-func (s *Service) UpdateDefinition(ctx context.Context, id string, declaration spec.JobSpec) (*Definition, error) {
+func (s *Service) UpdateDefinition(ctx context.Context, id string, declaration DefinitionRequest) (*Definition, error) {
 	scope, err := Scope(ctx, true)
 	if err != nil {
 		return nil, err
@@ -157,7 +231,11 @@ func (s *Service) UpdateDefinition(ctx context.Context, id string, declaration s
 	}
 	// Validation can read workspace policy and artifacts. Complete it before
 	// opening the write transaction, then lock the current revision for update.
-	task, err := s.prepareTask(ctx, scope, declaration)
+	schedule, nextRun, err := prepareDefinitionSchedule(declaration.Schedule, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+	task, err := s.prepareTask(ctx, scope, declaration.JobSpec)
 	if err != nil {
 		return nil, err
 	}
@@ -172,8 +250,30 @@ func (s *Service) UpdateDefinition(ctx context.Context, id string, declaration s
 			return fmt.Errorf("Job definition revision is exhausted")
 		}
 		record.Name, record.Spec = task.WorkflowName, task.JobSpec
+		if record.Cron != schedule.Cron || record.ScheduleEnabled != schedule.Enabled {
+			record.NextRun = nextRun
+		}
+		record.Cron, record.ConcurrencyPolicy, record.ScheduleEnabled = schedule.Cron, schedule.ConcurrencyPolicy, schedule.Enabled
+		if declaration.Schedule == nil {
+			// Keep LastRunTaskID so a later Forbid or Replace still sees an active run.
+			record.NextRun, record.LastSkipReason = 0, ""
+		}
 		record.Revision++
-		return tx.Put(ctx, record)
+		// Put uses struct updates, which omit false, zero, and empty strings.
+		// Persist the full replacement so disabling or removing a schedule is durable.
+		updated, err := tx.CompareAndSwap(ctx, record, "revision", record.Revision-1, map[string]interface{}{
+			"name": record.Name, "spec": record.Spec, "revision": record.Revision,
+			"cron": record.Cron, "concurrency_policy": record.ConcurrencyPolicy,
+			"schedule_enabled": record.ScheduleEnabled, "next_run": record.NextRun,
+			"last_run_task_id": record.LastRunTaskID, "last_skip_reason": record.LastSkipReason,
+		})
+		if err != nil {
+			return err
+		}
+		if !updated {
+			return fmt.Errorf("Job definition revision changed while locked")
+		}
+		return nil
 	})
 	if errors.Is(err, datastore.ErrRecordExist) {
 		return nil, bcode.ErrJobDefinitionConflict
@@ -222,7 +322,7 @@ func (s *Service) Run(ctx context.Context, id string, executeAt int64) (*Accepte
 	}
 	task.JobSpec = record.Spec
 	task.JobDefinitionID, task.JobDefinitionRevision = record.ID, record.Revision
-	return s.enqueue(ctx, scope, task, executeAt)
+	return s.enqueue(ctx, nil, scope, task, executeAt)
 }
 
 func (s *Service) List(ctx context.Context, definitionID string, page, pageSize int) (*RunPage, error) {

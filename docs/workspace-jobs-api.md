@@ -56,7 +56,7 @@
 
 提交到 `POST /api/v1/jobs`，返回 HTTP 202，响应 `data` 包含 `taskId`、`workspaceId`、`type: "job"`、`status`。名称不承担运行唯一性，相同名称可以重复提交。至少一个 stage，每个 stage 至少一个 step；stage 名在本 Job 内唯一，step 名也必须在整个 Job 内唯一，均不能为空。step 名还必须使 `eruun-job-<taskID>-<step>` 符合 Kubernetes Job 的现有名称和长度限制；当前 taskID 长度下，step 名上限为 28 字节。
 
-stage 依次执行；同一 stage 的多个 step 并行执行。命令默认超时 3600 秒，范围 1–86400 秒；可选 `retry: {"backoffLimit": 2}` 控制 Kubernetes Job 的失败重试次数，范围 0–10，省略时默认 0。评测 step（`type: job`）不接受 `retry`，即使 `backoffLimit` 为 0 也会拒绝；Runner Job 的 `BackoffLimit` 固定为 0，评测恢复由 `traits.eval.recovery` 控制，继续使用既有 execution identity、Runner claim 和恢复协议。当前支持可复用 JobDefinition、手动和延迟触发；cron、并发策略与平台级重跑尚未实现。
+stage 依次执行；同一 stage 的多个 step 并行执行。命令默认超时 3600 秒，范围 1–86400 秒；可选 `retry: {"backoffLimit": 2}` 控制 Kubernetes Job 的失败重试次数，范围 0–10，省略时默认 0。评测 step（`type: job`）不接受 `retry`，即使 `backoffLimit` 为 0 也会拒绝；Runner Job 的 `BackoffLimit` 固定为 0，评测恢复由 `traits.eval.recovery` 控制，继续使用既有 execution identity、Runner claim 和恢复协议。当前支持可复用 JobDefinition、手动、延迟和 cron 触发，以及 cron 的 Forbid、Allow、Replace 并发策略；平台级重跑尚未实现。
 
 command step 的 `traits` 与 Application 组件使用同一规格，经现有 trait 处理器应用。拒绝 `ingress`、`service`、`rollout`、`share`；顶层以及 init/sidecar 嵌套 traits 都会检查附属资源。`persistent` 存储只能引用已有 PVC，不能指定 `tmpCreate`、`size`、`storageClass`；处理器为此返回的 PVC 对象不会生成创建任务，Pod 只引用现有 claim。其他任何附属资源（包括新建 PVC、RBAC 的 ServiceAccount/Role/Binding、Ingress）均在提交时拒绝，错误指出具体 trait。共享工作存储由顶层 `volume` 声明。
 
@@ -64,7 +64,7 @@ command step 的 `traits` 与 Application 组件使用同一规格，经现有 t
 
 ## 定义、手动与延迟触发
 
-定义保存可复用的 `JobSpec`，不启动运行。`POST /api/v1/job-definitions` 和 `PUT /api/v1/job-definitions/:definitionID` 均直接接收与一次性提交相同的 `name`、可选 `volume`、`stages`，不额外包一层 `spec`；定义不接受 `workspaceId` 或 `executeAt`，所属空间取自已授权请求。定义保存前复用提交的完整校验，包括 Normalize、BuildTask、所有 step 的资源准备以及评测任务包、凭据和策略检查。
+定义保存可复用的 `JobSpec`，保存本身不入队运行。`POST /api/v1/job-definitions` 和 `PUT /api/v1/job-definitions/:definitionID` 均直接接收 `name`、可选 `volume`、`stages`，以及可选的 `schedule` 对象，不额外包一层 `spec`；定义不接受 `workspaceId` 或 `executeAt`，所属空间取自已授权请求。`schedule` 仅属于定义请求；一次性 `POST /api/v1/jobs` 和 `POST /api/v1/job-definitions/:definitionID/runs` 均严格拒绝该字段。定义保存前复用提交的完整校验，包括 Normalize、BuildTask、所有 step 的资源准备以及评测任务包、凭据和策略检查。
 
 ```sh
 curl -X POST "$ERUUN_URL/api/v1/job-definitions" \
@@ -80,7 +80,7 @@ curl -X POST "$ERUUN_URL/api/v1/job-definitions" \
   }'
 ```
 
-创建返回 HTTP 201，`data` 为定义详情：`id`、`name`、`revision`、`spec`、`creator`、`createTime`、`updateTime`。`spec` 是规范化后的完整 JobSpec，包含 name。初始 `revision` 为 1；同一空间内 name 唯一，同名创建或改名冲突返回 HTTP 409、`code: 34005`。不同空间允许同名，所有读写按当前空间隔离。
+创建返回 HTTP 201，`data` 为定义详情：`id`、`name`、`revision`、`spec`、`creator`、`createTime`、`updateTime`，以及配置了调度时的 `schedule`。`spec` 是规范化后的完整 JobSpec，包含 name；调度配置独立放在 `schedule`，未配置时省略该字段。初始 `revision` 为 1；同一空间内 name 唯一，同名创建或改名冲突返回 HTTP 409、`code: 34005`。不同空间允许同名，所有读写按当前空间隔离。
 
 以响应的 `data.id` 设置 `DEFINITION_ID`，即可立即触发：
 
@@ -99,9 +99,57 @@ curl -X POST "$ERUUN_URL/api/v1/job-definitions/$DEFINITION_ID/runs" \
 
 202 只表示已入队。`executeAt` 省略或为 0 时立即参与派发；过去的时间同样归一化为 0；负数返回 HTTP 400。未来的时间保存到队列，到期前保持 Waiting，由既有调度查询根据数据库时钟选择。一次性 `POST /api/v1/jobs` 也支持在 `name`、`stages` 同级添加可选 `executeAt`，使用完全相同的归一化和入队路径。
 
-`PUT /job-definitions/:definitionID` 整体替换 JobSpec，返回 HTTP 200 和新详情；不支持 PATCH，也不要求传入 revision。Revision 在同一行锁事务中加 1，creator 与创建时间保留。每次 `/runs` 使用读到的完整规格和 revision 创建独立快照；修改定义不会修改已排队或运行中的快照。`DELETE` 返回 HTTP 200，只删除定义，已有运行继续执行和保留；运行记录中的定义 ID、revision 不清空，仍可查询、取消和访问已有结果。
+`PUT /job-definitions/:definitionID` 整体替换 JobSpec 和 schedule，返回 HTTP 200 和新详情；省略 `schedule` 表示清空调度，不支持 PATCH，也不要求传入 revision。Revision 在同一行锁事务中加 1，creator 与创建时间保留。每次 `/runs` 使用读到的完整规格和 revision 创建独立快照；修改定义不会修改已排队或运行中的快照。`DELETE` 返回 HTTP 200，只删除定义并停止后续定时触发，已有运行继续执行和保留；运行记录中的定义 ID、revision 不清空，仍可查询、取消和访问已有结果。
 
 读取定义详情和列表需要 viewer；创建、更新、删除与触发需要 member。不存在或跨空间的定义返回 NotFound / Forbidden，不泄露其他空间的规格。
+
+## cron 调度
+
+创建或整体替换定义时，可在 JobSpec 字段旁添加 `schedule`。以下定义每天 02:00 UTC 触发一次：
+
+```sh
+curl -X POST "$ERUUN_URL/api/v1/job-definitions" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "X-Eruun-Workspace-ID: $WORKSPACE_ID" \
+  -H 'Content-Type: application/json' \
+  --data-binary '{
+    "name": "nightly-report",
+    "stages": [{"name": "main", "steps": [{
+      "name": "report", "type": "command",
+      "spec": {"image": "busybox:1.37.0", "command": ["sh", "-c"], "args": ["echo report"], "timeoutSeconds": 300}
+    }]}],
+    "schedule": {"cron": "0 2 * * *", "concurrencyPolicy": "Forbid", "enabled": true}
+  }'
+```
+
+`cron` 使用与 WorkflowSchedule 相同的五段表达式（分、时、日、月、星期），固定按 UTC 计算，不支持秒字段或时区设置。`concurrencyPolicy` 省略或为空时默认为 `Forbid`，只接受 `Forbid`、`Allow`、`Replace`。`enabled` 省略时为 false；设为 true 必须提供非空且合法的 cron。已填写的 cron 即使处于禁用状态也必须合法。非法 cron、非法策略或启用但未填写 cron 返回 HTTP 400。
+
+定义详情中的调度形状如下。`nextRun` 是下次触发的 Unix 秒，禁用时为 0；`lastRunTaskId` 和 `lastSkipReason` 尚无值时为空字符串：
+
+```json
+{
+  "cron": "0 2 * * *",
+  "concurrencyPolicy": "Forbid",
+  "enabled": true,
+  "nextRun": 1893463200,
+  "lastRunTaskId": "",
+  "lastSkipReason": ""
+}
+```
+
+上面的 `nextRun` 仅为字段示例（2030-01-01 02:00:00 UTC），实际返回值由服务端根据时间计算。创建启用调度的定义时，从当前时刻计算下一次触发。整体替换时，仅 cron 或 enabled 变化才重算 nextRun；禁用时置 0。只修改 JobSpec 或 concurrencyPolicy 会保留原 nextRun，包括已经到期但尚未处理的触发。更新时继续传入完整 schedule 才会保留调度；省略 schedule 会清空调度；服务端仍保留最近一次定时运行的 ID，之后重新启用时 Forbid/Replace 继续以它判断是否有运行仍在进行。暂停和恢复通过整体替换中的 enabled 完成，没有独立暂停或恢复接口。
+
+每次定时触发只检查 `lastRunTaskId` 对应运行是否处于 `model.IsWorkflowActiveStatus` 定义的活跃状态；手动、延迟触发的运行及更早的定时运行不参与此次并发判断。
+
+| concurrencyPolicy | 上次定时运行仍活跃时的行为 |
+| --- | --- |
+| `Forbid`（默认） | 跳过本次触发，推进 nextRun，并写入 lastSkipReason |
+| `Allow` | 继续入队新运行 |
+| `Replace` | 先通过现有 CancelWorkflowTask 取消上次运行，reason 为 `replaced by schedule`；取消成功后才进入推进 nextRun 和入队新运行的事务。取消失败不推进 nextRun，记录错误并在后续轮次重试 |
+
+Leader 的维护循环每 5 秒查询到期定义，每批 100 条并跨轮分页轮转。每条定义先按所属空间构造执行 scope，再重新执行完整的任务准备和校验；策略、资源或评测输入已失效时，在事务中 CAS 推进 nextRun，写入截断至 255 字节的 lastSkipReason，本次不入队。Forbid 的跳过同样在一个事务中推进 nextRun 并写原因。
+
+成功触发在同一事务中 CAS 认领旧 nextRun、推进到下一次、保存运行快照并更新 lastRunTaskId，同时清空 lastSkipReason。运行冻结定义 ID、revision、规格和定义 creator，幂等键为 `jobdef:<definitionID>:<被认领的 nextRun>`；CAS 未命中跳过，幂等键已存在不重复入队。下一次时间始终从处理时的当前时刻计算，错过的多次触发不补跑。禁用、未配置 cron 或已删除的定义不会触发；单条错误会记录并继续处理本批其他定义。
 
 ## 定义与运行列表
 

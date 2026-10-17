@@ -434,7 +434,7 @@ func TestDispatchWorkflowSchedulesProgressesPastUnchangedBatch(t *testing.T) {
 			if tt.blockedBy == "cron" {
 				cron = "0 0 31 2 *"
 				var err error
-				blockedNext, err = nextWorkflowScheduleRun(cron, now)
+				blockedNext, err = NextScheduleRun(cron, now)
 				require.NoError(t, err)
 				require.Negative(t, blockedNext)
 			}

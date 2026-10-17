@@ -74,9 +74,17 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 
 同一 Application Workflow 可以包含多个测评 Job。调用 `GetJob`、`GetJobResults`、结果/投递下载、投递重试和保留期更新时，Application 调用方必须同时提供父 `task_id` 与目标 Job 的 `execution_key`；响应中的 Job 明细、结果和投递也返回该标识。独立 Job 仅在评测执行唯一时可以省略 `execution_key`；同一 task 存在多个评测执行时必须显式指定。结果按执行分别保存，不能用一个执行的标识读取同一 Workflow 中另一个执行的制品。`CancelJob` 仅接受独立 Job 的父 `task_id`，不接受 `execution_key`；Application 仍通过 Workflow 取消接口取消任务。
 
-## Job 定义与手动、延迟触发
+## Job 定义、手动、延迟与 cron 触发
 
-`CreateJobDefinition` 直接接收 `JobSpec`；`UpdateJobDefinition` 接收 `definition_id` 和完整的 `spec`，整体替换成功后 `revision` 加 1。`GetJobDefinition`、`DeleteJobDefinition` 使用 `JobDefinitionRequest.definition_id`。定义响应包含 `id/name/revision/spec/creator/create_time/update_time`，不包含 cron 或并发策略。删除只删除定义，已有运行及其定义 ID、版本和规格快照保留。
+`CreateJobDefinition` 使用 `CreateJobDefinitionRequest`，直接接收 `name`、可选 `volume`、`stages` 和可选 `schedule`；`UpdateJobDefinition` 接收 `definition_id`、完整的 `spec: JobSpec` 和可选 `schedule`。schedule 使用 `JobScheduleRequest`，字段为 `cron`、`concurrency_policy`、`enabled`，不属于共享 JobSpec。整体替换成功后 revision 加 1；省略 schedule 会清空调度。`GetJobDefinition`、`DeleteJobDefinition` 使用 `JobDefinitionRequest.definition_id`。定义响应包含 `id/name/revision/spec/creator/create_time/update_time`，有调度时增加 `schedule: JobSchedule`，包含 `cron/concurrency_policy/enabled/next_run/last_run_task_id/last_skip_reason`。没有调度时不设置该 message。删除定义会停止后续定时触发，已有运行及其定义 ID、版本和规格快照保留。
+
+schedule 的五段 cron 固定按 UTC 计算，与 WorkflowSchedule 复用同一解析器。`concurrency_policy` 省略或为空默认为 `Forbid`，仅接受 `Forbid`、`Allow`、`Replace`；enabled 默认为 false，true 时必须提供非空合法 cron，禁用但填写了 cron 也必须合法。非法配置返回 `InvalidArgument`。`SubmitJobRequest` 和 `RunJobDefinitionRequest` 没有 schedule，调用方不能通过这两个入口配置调度。
+
+创建启用调度的定义时，从当前时刻计算 `next_run`（Unix 秒）；更新只有 cron 或 enabled 变化才重算，禁用时置 0，只改规格或 concurrency_policy 保留原 next_run，包括已到期但尚未处理的触发。保留 schedule 时，也保留 last_run_task_id 和 last_skip_reason；省略 schedule 时清空 cron、concurrency_policy、enabled、next_run 和 last_skip_reason，但保留 last_run_task_id，以便之后重新启用时 Forbid/Replace 仍能识别仍在运行的上一次触发。没有独立暂停/恢复 RPC，通过整体替换的 enabled 控制。
+
+并发策略只检查 last_run_task_id 对应的最近一次定时运行：`Forbid` 在运行活跃时推进 next_run 并写 last_skip_reason，不入队；`Allow` 仍入队；`Replace` 先调用现有 CancelWorkflowTask（reason 为 `replaced by schedule`），成功后才进入推进 next_run 和入队的事务，取消失败不推进 next_run，记录错误并在后续轮次重试。手动或延迟运行不参与策略判断。
+
+Leader 每 5 秒按每批 100 条轮转处理到期定义，先按所属空间重新校验任务；校验失败 CAS 推进 next_run、写入最多 255 字节的 last_skip_reason，本次不入队。成功触发在同一事务中 CAS 推进 next_run、保存规格及 revision 快照、更新 last_run_task_id 并清空 last_skip_reason，运行 creator 使用定义 creator。幂等键为 `jobdef:<definitionID>:<被认领的 nextRun>`；CAS 未命中或幂等键已存在不重复入队。错过的多次触发不补跑，下一次从处理时的当前时刻计算。完整 HTTP JSON 示例见 [cron 调度](workspace-jobs-api.md#cron-调度)。
 
 `RunJobDefinition` 接收 `definition_id` 和可选 `execute_at`，返回与 `SubmitJob` 相同的 `JobAccepted`。两者的 `execute_at` 均为 Unix 秒：负数返回 `InvalidArgument`，省略、0 或过去的时间立即可派发，未来时间保持 `waiting` 直到到期。定义触发把当时的规格与版本写入运行，后续替换定义不改变已入队的运行。
 

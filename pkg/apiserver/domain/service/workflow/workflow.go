@@ -568,7 +568,7 @@ func (w *workflowServiceImpl) upsertWorkflowScheduleUnlocked(ctx context.Context
 	}
 	var nextRun int64
 	if enabled {
-		nextRun, err = nextWorkflowScheduleRun(normalizedCron, time.Now().UTC())
+		nextRun, err = NextScheduleRun(normalizedCron, time.Now().UTC())
 		if err != nil {
 			return nil, bcode.ErrWorkflowConfig
 		}
@@ -748,7 +748,7 @@ func (w *workflowServiceImpl) dispatchWorkflowSchedule(ctx context.Context, txSt
 	}
 	nowUnix := now.Unix()
 	if schedule.NextRun <= 0 {
-		nextRun, err := nextWorkflowScheduleRun(schedule.Cron, now)
+		nextRun, err := NextScheduleRun(schedule.Cron, now)
 		if err != nil {
 			return false, err
 		}
@@ -771,7 +771,7 @@ func (w *workflowServiceImpl) dispatchWorkflowSchedule(ctx context.Context, txSt
 		return false, nil
 	}
 	claimedNextRun := schedule.NextRun
-	nextRun, err := nextWorkflowScheduleRun(schedule.Cron, now)
+	nextRun, err := NextScheduleRun(schedule.Cron, now)
 	if err != nil {
 		return false, err
 	}
@@ -828,7 +828,8 @@ func (w *workflowServiceImpl) dispatchWorkflowSchedule(ctx context.Context, txSt
 	return queued, nil
 }
 
-func nextWorkflowScheduleRun(spec string, base time.Time) (int64, error) {
+// NextScheduleRun calculates the next five-field cron occurrence in UTC.
+func NextScheduleRun(spec string, base time.Time) (int64, error) {
 	next, err := workflowScheduleParser.Parse(spec)
 	if err != nil {
 		return 0, err

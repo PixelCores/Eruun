@@ -171,3 +171,56 @@ func TestJobDefinitionsHTTPAuthorization(t *testing.T) {
 		require.Equal(t, http.StatusForbidden, recorder.Code, recorder.Body.String())
 	}
 }
+
+func TestJobDefinitionScheduleHTTPContract(t *testing.T) {
+	router := jobDefinitionsRouter(t)
+	declaration := `{"name":"daily","stages":[{"name":"main","steps":[{"name":"hello","type":"command","spec":{"image":"busybox:1.37.0","command":["echo","hello"]}}]}]}`
+	scheduled := strings.TrimSuffix(declaration, "}") + `,"schedule":{"cron":"0 2 * * *","enabled":true}}`
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/job-definitions", strings.NewReader(scheduled))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+	require.Equal(t, http.StatusCreated, recorder.Code, recorder.Body.String())
+	var response struct {
+		Data jobs.Definition `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
+	require.NotNil(t, response.Data.Schedule)
+	require.Equal(t, "0 2 * * *", response.Data.Schedule.Cron)
+	require.Equal(t, "Forbid", response.Data.Schedule.ConcurrencyPolicy)
+	require.True(t, response.Data.Schedule.Enabled)
+	require.Positive(t, response.Data.Schedule.NextRun)
+	var wire struct {
+		Data struct {
+			Schedule map[string]json.RawMessage `json:"schedule"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &wire))
+	require.Len(t, wire.Data.Schedule, 6)
+	for _, field := range []string{"cron", "concurrencyPolicy", "enabled", "nextRun", "lastRunTaskId", "lastSkipReason"} {
+		require.Contains(t, wire.Data.Schedule, field)
+	}
+	path := "/api/v1/job-definitions/" + response.Data.ID
+	for _, tc := range []struct{ method, path, body string }{
+		{http.MethodPost, "/api/v1/jobs", scheduled},
+		{http.MethodPost, path + "/runs", `{"schedule":{"cron":"* * * * *","enabled":true}}`},
+		{http.MethodPost, "/api/v1/job-definitions", strings.Replace(scheduled, `"enabled":true`, `"enabled":true,"nextRun":1`, 1)},
+		{http.MethodPut, path, strings.Replace(scheduled, `"enabled":true`, `"enabled":true,"lastRunTaskId":"injected"`, 1)},
+	} {
+		request := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+		request.Header.Set("Content-Type", "application/json")
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, request)
+		require.Equal(t, http.StatusBadRequest, recorder.Code, recorder.Body.String())
+	}
+	request = httptest.NewRequest(http.MethodPut, path, strings.NewReader(declaration))
+	request.Header.Set("Content-Type", "application/json")
+	recorder = httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	var replacement struct {
+		Data map[string]json.RawMessage `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &replacement))
+	require.NotContains(t, replacement.Data, "schedule", "omitting schedule clears it from the definition")
+}

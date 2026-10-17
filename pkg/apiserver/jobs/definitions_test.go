@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -22,10 +23,116 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
+func TestDefinitionScheduleValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name, message string
+		schedule      *ScheduleRequest
+	}{
+		{"invalid cron", "schedule cron:", &ScheduleRequest{Cron: "61 * * * *"}},
+		{"invalid policy", "concurrencyPolicy must", &ScheduleRequest{Cron: "* * * * *", ConcurrencyPolicy: "forbid"}},
+		{"enabled without cron", "cron is required", &ScheduleRequest{Enabled: true}},
+		{"seconds", "5 fields", &ScheduleRequest{Cron: "0 * * * * *"}},
+		{"descriptor", "5 fields", &ScheduleRequest{Cron: "@hourly"}},
+		{"timezone", "5 fields", &ScheduleRequest{Cron: "CRON_TZ=Asia/Shanghai * * * * *"}},
+		{"oversized cron", "64 bytes", &ScheduleRequest{Cron: strings.Repeat("0,", 32) + "0 * * * *"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service, raw, ctx := testJobService(t)
+			request := DefinitionRequest{JobSpec: commandRequest().JobSpec}
+			created, err := service.CreateDefinition(ctx, request)
+			require.NoError(t, err)
+			request.Schedule = tc.schedule
+			_, err = service.CreateDefinition(ctx, request)
+			require.ErrorIs(t, err, bcode.ErrJobInput)
+			require.Contains(t, bcode.SafeClientMessage(err), tc.message)
+			_, err = service.UpdateDefinition(ctx, created.ID, request)
+			require.ErrorIs(t, err, bcode.ErrJobInput)
+			require.Contains(t, bcode.SafeClientMessage(err), tc.message)
+			count, err := raw.Count(ctx, &model.JobDefinition{}, nil)
+			require.NoError(t, err)
+			require.EqualValues(t, 1, count)
+			stored, err := service.GetDefinition(ctx, created.ID)
+			require.NoError(t, err)
+			require.Nil(t, stored.Schedule)
+			require.EqualValues(t, 1, stored.Revision)
+		})
+	}
+}
+
+func TestDefinitionScheduleReplacementAndNextRun(t *testing.T) {
+	service, raw, ctx := testJobService(t)
+	request := DefinitionRequest{JobSpec: commandRequest().JobSpec, Schedule: &ScheduleRequest{Cron: "  *  * * * *  ", Enabled: true}}
+	before := time.Now().Unix()
+	created, err := service.CreateDefinition(ctx, request)
+	require.NoError(t, err)
+	require.NotNil(t, created.Schedule)
+	require.Equal(t, "* * * * *", created.Schedule.Cron)
+	require.Equal(t, "Forbid", created.Schedule.ConcurrencyPolicy)
+	require.True(t, created.Schedule.Enabled)
+	require.Greater(t, created.Schedule.NextRun, before)
+	require.LessOrEqual(t, created.Schedule.NextRun, time.Now().Unix()+60)
+
+	due := time.Now().Add(-time.Minute).Unix()
+	record := &model.JobDefinition{ID: created.ID}
+	require.NoError(t, raw.Get(ctx, record))
+	record.NextRun, record.LastRunTaskID, record.LastSkipReason = due, "previous-run", "previous skip"
+	require.NoError(t, raw.Put(ctx, record))
+	request.Name = "changed specification"
+	updated, err := service.UpdateDefinition(ctx, created.ID, request)
+	require.NoError(t, err)
+	require.Equal(t, due, updated.Schedule.NextRun, "specification changes must preserve the overdue occurrence")
+	require.Equal(t, "previous-run", updated.Schedule.LastRunTaskID)
+	require.Equal(t, "previous skip", updated.Schedule.LastSkipReason)
+	request.Schedule.ConcurrencyPolicy = "Allow"
+	updated, err = service.UpdateDefinition(ctx, created.ID, request)
+	require.NoError(t, err)
+	require.Equal(t, due, updated.Schedule.NextRun, "policy changes must preserve the overdue occurrence")
+	require.Equal(t, "Allow", updated.Schedule.ConcurrencyPolicy)
+
+	request.Schedule.Cron = "0 2 * * *"
+	before = time.Now().Unix()
+	updated, err = service.UpdateDefinition(ctx, created.ID, request)
+	require.NoError(t, err)
+	require.Greater(t, updated.Schedule.NextRun, before)
+	next := time.Unix(updated.Schedule.NextRun, 0).UTC()
+	require.Equal(t, 2, next.Hour())
+	require.Zero(t, next.Minute())
+	request.Schedule.Enabled = false
+	updated, err = service.UpdateDefinition(ctx, created.ID, request)
+	require.NoError(t, err)
+	require.Zero(t, updated.Schedule.NextRun)
+	stored, err := service.GetDefinition(ctx, created.ID)
+	require.NoError(t, err)
+	require.False(t, stored.Schedule.Enabled)
+	require.Zero(t, stored.Schedule.NextRun)
+	request.Schedule.Enabled = true
+	before = time.Now().Unix()
+	updated, err = service.UpdateDefinition(ctx, created.ID, request)
+	require.NoError(t, err)
+	require.Greater(t, updated.Schedule.NextRun, before)
+
+	request.Schedule = nil
+	updated, err = service.UpdateDefinition(ctx, created.ID, request)
+	require.NoError(t, err)
+	require.Nil(t, updated.Schedule)
+	require.NoError(t, raw.Get(ctx, record))
+	require.Empty(t, record.Cron)
+	require.Empty(t, record.ConcurrencyPolicy)
+	require.False(t, record.ScheduleEnabled)
+	require.Zero(t, record.NextRun)
+	require.Equal(t, "previous-run", record.LastRunTaskID, "removing the schedule keeps the last run for later Forbid or Replace checks")
+	require.Empty(t, record.LastSkipReason)
+
+	request.Schedule = &ScheduleRequest{}
+	updated, err = service.UpdateDefinition(ctx, created.ID, request)
+	require.NoError(t, err)
+	require.Equal(t, &Schedule{ScheduleRequest: ScheduleRequest{ConcurrencyPolicy: "Forbid"}, LastRunTaskID: "previous-run"}, updated.Schedule)
+}
+
 func TestDefinitionCRUDKeepsRunSnapshotsAfterUpdateAndDelete(t *testing.T) {
 	service, raw, ctx := testJobService(t)
 	declaration := commandRequest().JobSpec
-	created, err := service.CreateDefinition(ctx, declaration)
+	created, err := service.CreateDefinition(ctx, DefinitionRequest{JobSpec: declaration})
 	require.NoError(t, err)
 	require.Len(t, created.ID, 24)
 	require.EqualValues(t, 1, created.Revision)
@@ -46,13 +153,13 @@ func TestDefinitionCRUDKeepsRunSnapshotsAfterUpdateAndDelete(t *testing.T) {
 	require.Equal(t, created.Revision, read.Revision)
 	created = read
 
-	_, err = service.CreateDefinition(ctx, commandRequest().JobSpec)
+	_, err = service.CreateDefinition(ctx, DefinitionRequest{JobSpec: commandRequest().JobSpec})
 	require.ErrorIs(t, err, bcode.ErrJobDefinitionConflict)
 	otherSpec := commandRequest().JobSpec
 	otherSpec.Name = "another definition"
-	other, err := service.CreateDefinition(ctx, otherSpec)
+	other, err := service.CreateDefinition(ctx, DefinitionRequest{JobSpec: otherSpec})
 	require.NoError(t, err)
-	_, err = service.UpdateDefinition(ctx, created.ID, otherSpec)
+	_, err = service.UpdateDefinition(ctx, created.ID, DefinitionRequest{JobSpec: otherSpec})
 	require.ErrorIs(t, err, bcode.ErrJobDefinitionConflict)
 	read, err = service.GetDefinition(ctx, created.ID)
 	require.NoError(t, err)
@@ -70,7 +177,7 @@ func TestDefinitionCRUDKeepsRunSnapshotsAfterUpdateAndDelete(t *testing.T) {
 	replacement.Name = "replaced definition"
 	replacement.Stages = []spec.JobStage{{Name: "new stage", Steps: []spec.JobStep{{Name: "replacement", Type: "command", Spec: json.RawMessage(`{"image":"busybox:1.37.0","command":["true"]}`)}}}}
 	editor := account.WithScope(ctx, account.Scope{WorkspaceID: "space", Namespace: "space-ns", Role: "member", UserID: "editor"})
-	updated, err := service.UpdateDefinition(editor, created.ID, replacement)
+	updated, err := service.UpdateDefinition(editor, created.ID, DefinitionRequest{JobSpec: replacement})
 	require.NoError(t, err)
 	require.Equal(t, created.ID, updated.ID)
 	require.EqualValues(t, 2, updated.Revision)
@@ -113,7 +220,7 @@ func TestDefinitionCRUDKeepsRunSnapshotsAfterUpdateAndDelete(t *testing.T) {
 
 func TestDefinitionsRequireWorkspaceScopeAndMemberWrites(t *testing.T) {
 	service, raw, ctx := testJobService(t)
-	created, err := service.CreateDefinition(ctx, commandRequest().JobSpec)
+	created, err := service.CreateDefinition(ctx, DefinitionRequest{JobSpec: commandRequest().JobSpec})
 	require.NoError(t, err)
 	viewer := account.WithScope(ctx, account.Scope{WorkspaceID: "space", Namespace: "space-ns", Role: "viewer"})
 	_, err = service.GetDefinition(viewer, created.ID)
@@ -124,11 +231,11 @@ func TestDefinitionsRequireWorkspaceScopeAndMemberWrites(t *testing.T) {
 	require.NoError(t, err)
 	writes := map[string]func(context.Context) error{
 		"create": func(ctx context.Context) error {
-			_, err := service.CreateDefinition(ctx, commandRequest().JobSpec)
+			_, err := service.CreateDefinition(ctx, DefinitionRequest{JobSpec: commandRequest().JobSpec})
 			return err
 		},
 		"update": func(ctx context.Context) error {
-			_, err := service.UpdateDefinition(ctx, created.ID, commandRequest().JobSpec)
+			_, err := service.UpdateDefinition(ctx, created.ID, DefinitionRequest{JobSpec: commandRequest().JobSpec})
 			return err
 		},
 		"delete": func(ctx context.Context) error { return service.DeleteDefinition(ctx, created.ID) },
@@ -142,13 +249,13 @@ func TestDefinitionsRequireWorkspaceScopeAndMemberWrites(t *testing.T) {
 	}
 	foreign := account.WithScope(ctx, account.Scope{WorkspaceID: "other", Namespace: "other-ns", Role: "member"})
 	require.NoError(t, raw.Add(ctx, &model.Workspace{ID: "other", Namespace: "other-ns"}))
-	other, err := service.CreateDefinition(foreign, commandRequest().JobSpec)
+	other, err := service.CreateDefinition(foreign, DefinitionRequest{JobSpec: commandRequest().JobSpec})
 	require.NoError(t, err, "definition names are unique per workspace")
 	require.NotEqual(t, created.ID, other.ID)
 	for name, action := range map[string]func() error{
 		"get": func() error { _, err := service.GetDefinition(foreign, created.ID); return err },
 		"update": func() error {
-			_, err := service.UpdateDefinition(foreign, created.ID, commandRequest().JobSpec)
+			_, err := service.UpdateDefinition(foreign, created.ID, DefinitionRequest{JobSpec: commandRequest().JobSpec})
 			return err
 		},
 		"delete": func() error { return service.DeleteDefinition(foreign, created.ID) },
@@ -181,7 +288,7 @@ func TestDefinitionsRequireWorkspaceScopeAndMemberWrites(t *testing.T) {
 
 func TestDefinitionUpdatesSerializeRevisionInTransaction(t *testing.T) {
 	service, _, ctx := testJobService(t)
-	created, err := service.CreateDefinition(ctx, commandRequest().JobSpec)
+	created, err := service.CreateDefinition(ctx, DefinitionRequest{JobSpec: commandRequest().JobSpec})
 	require.NoError(t, err)
 	const writers = 6
 	results := make(chan *Definition, writers)
@@ -191,7 +298,7 @@ func TestDefinitionUpdatesSerializeRevisionInTransaction(t *testing.T) {
 		wg.Go(func() {
 			declaration := commandRequest().JobSpec
 			declaration.Name = fmt.Sprintf("revision writer %d", i)
-			updated, err := service.UpdateDefinition(ctx, created.ID, declaration)
+			updated, err := service.UpdateDefinition(ctx, created.ID, DefinitionRequest{JobSpec: declaration})
 			results <- updated
 			errors <- err
 		})
@@ -215,7 +322,7 @@ func TestDefinitionUpdatesSerializeRevisionInTransaction(t *testing.T) {
 
 func TestSubmitAndDefinitionRunNormalizeExecuteAt(t *testing.T) {
 	service, raw, ctx := testJobService(t)
-	definition, err := service.CreateDefinition(ctx, commandRequest().JobSpec)
+	definition, err := service.CreateDefinition(ctx, DefinitionRequest{JobSpec: commandRequest().JobSpec})
 	require.NoError(t, err)
 	now := time.Now().Unix()
 	for _, entry := range []struct {
@@ -262,7 +369,7 @@ func TestSubmitAndDefinitionRunNormalizeExecuteAt(t *testing.T) {
 
 func TestDefinitionWritesReuseFullSubmissionValidation(t *testing.T) {
 	service, raw, ctx := testJobService(t)
-	created, err := service.CreateDefinition(ctx, commandRequest().JobSpec)
+	created, err := service.CreateDefinition(ctx, DefinitionRequest{JobSpec: commandRequest().JobSpec})
 	require.NoError(t, err)
 	created, err = service.GetDefinition(ctx, created.ID)
 	require.NoError(t, err)
@@ -286,9 +393,9 @@ func TestDefinitionWritesReuseFullSubmissionValidation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			_, submitErr := service.Submit(ctx, SubmitRequest{JobSpec: tc.declaration()})
 			require.Error(t, submitErr)
-			_, createErr := service.CreateDefinition(ctx, tc.declaration())
+			_, createErr := service.CreateDefinition(ctx, DefinitionRequest{JobSpec: tc.declaration()})
 			require.EqualError(t, createErr, submitErr.Error())
-			_, updateErr := service.UpdateDefinition(ctx, created.ID, tc.declaration())
+			_, updateErr := service.UpdateDefinition(ctx, created.ID, DefinitionRequest{JobSpec: tc.declaration()})
 			require.EqualError(t, updateErr, submitErr.Error())
 			read, err := service.GetDefinition(ctx, created.ID)
 			require.NoError(t, err)
@@ -304,18 +411,18 @@ func TestDefinitionWritesReuseFullSubmissionValidation(t *testing.T) {
 
 	datasetID := "11111111-1111-1111-1111-111111111111"
 	require.NoError(t, raw.Add(ctx, &model.JobArtifact{ID: datasetID, WorkspaceID: "space", Kind: artifacts.KindDataset}))
-	evaluation, err := service.CreateDefinition(ctx, evaluationDeclaration("valid evaluation", datasetID, "oracle", ""))
+	evaluation, err := service.CreateDefinition(ctx, DefinitionRequest{JobSpec: evaluationDeclaration("valid evaluation", datasetID, "oracle", "")})
 	require.NoError(t, err)
 	require.Equal(t, spec.DefaultJobResultPolicy(), *evaluation.Spec.Stages[0].Steps[0].Traits.Evaluation.ResultPolicy)
 }
 
 func TestJobListingsFilterAndPaginateWithinWorkspace(t *testing.T) {
 	service, raw, ctx := testJobService(t)
-	definition, err := service.CreateDefinition(ctx, commandRequest().JobSpec)
+	definition, err := service.CreateDefinition(ctx, DefinitionRequest{JobSpec: commandRequest().JobSpec})
 	require.NoError(t, err)
 	otherSpec := commandRequest().JobSpec
 	otherSpec.Name = "second definition"
-	second, err := service.CreateDefinition(ctx, otherSpec)
+	second, err := service.CreateDefinition(ctx, DefinitionRequest{JobSpec: otherSpec})
 	require.NoError(t, err)
 	base := time.Now().Add(-time.Hour)
 	require.NoError(t, raw.Client.Model(&model.JobDefinition{}).Where("id = ?", definition.ID).Update("create_time", base).Error)

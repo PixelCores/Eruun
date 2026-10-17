@@ -11,7 +11,7 @@ import "eruun/v1/applications.proto";
 
 // JobsService is the user-session API. Runner capability callbacks are HTTP-only.
 service JobsService {
-  rpc CreateJobDefinition(JobSpec) returns (JobDefinition);
+  rpc CreateJobDefinition(CreateJobDefinitionRequest) returns (JobDefinition);
   rpc GetJobDefinition(JobDefinitionRequest) returns (JobDefinition);
   rpc ListJobDefinitions(ListJobDefinitionsRequest) returns (JobDefinitions);
   rpc UpdateJobDefinition(UpdateJobDefinitionRequest) returns (JobDefinition);
@@ -45,7 +45,33 @@ message SetJobRetentionRequest { string task_id = 1; int32 retention_days = 2; s
 message ListJobDatasetsRequest { optional int32 page = 1; optional int32 page_size = 2; }
 message JobDefinitionRequest { string definition_id = 1; }
 message ListJobDefinitionsRequest { optional int32 page = 1; optional int32 page_size = 2; }
-message UpdateJobDefinitionRequest { string definition_id = 1; JobSpec spec = 2; }
+message CreateJobDefinitionRequest {
+  string name = 1;
+  JobVolume volume = 2;
+  repeated JobStage stages = 3;
+  JobScheduleRequest schedule = 4;
+}
+message UpdateJobDefinitionRequest {
+  string definition_id = 1;
+  JobSpec spec = 2;
+  // Omission clears the schedule as part of the full replacement.
+  JobScheduleRequest schedule = 3;
+}
+message JobScheduleRequest {
+  // Five fields, interpreted in UTC.
+  string cron = 1;
+  // Forbid (default), Allow, or Replace.
+  string concurrency_policy = 2;
+  bool enabled = 3;
+}
+message JobSchedule {
+  string cron = 1;
+  string concurrency_policy = 2;
+  bool enabled = 3;
+  int64 next_run = 4;
+  string last_run_task_id = 5;
+  string last_skip_reason = 6;
+}
 message RunJobDefinitionRequest { string definition_id = 1; int64 execute_at = 2; }
 message ListJobsRequest {
   string definition_id = 1;
@@ -101,6 +127,7 @@ message JobDefinition {
   string creator = 5;
   google.protobuf.Timestamp create_time = 6;
   google.protobuf.Timestamp update_time = 7;
+  JobSchedule schedule = 8;
 }
 message JobDefinitions {
   repeated JobDefinition items = 1;
