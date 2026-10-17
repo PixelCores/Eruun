@@ -122,7 +122,7 @@ curl -X POST "$ERUUN_URL/api/v1/job-definitions" \
   }'
 ```
 
-`cron` 使用与 WorkflowSchedule 相同的五段表达式（分、时、日、月、星期），固定按 UTC 计算，不支持秒字段或时区设置。`concurrencyPolicy` 省略或为空时默认为 `Forbid`，只接受 `Forbid`、`Allow`、`Replace`。`enabled` 省略时为 false；设为 true 必须提供非空且合法的 cron。已填写的 cron 即使处于禁用状态也必须合法。非法 cron、非法策略或启用但未填写 cron 返回 HTTP 400。
+`cron` 与 WorkflowSchedule 使用同一套规则：5 段（分、时、日、月、星期），或秒位为 0 的 6 段（保存时去掉秒位），固定按 UTC 计算；不支持 `@hourly` 这类描述符，也不支持时区设置。`concurrencyPolicy` 省略或为空时默认为 `Forbid`，只接受 `Forbid`、`Allow`、`Replace`。`enabled` 省略时为 false；设为 true 必须提供非空且合法的 cron。已填写的 cron 即使处于禁用状态也必须合法。非法 cron、非法策略或启用但未填写 cron 返回 HTTP 400。
 
 定义详情中的调度形状如下。`nextRun` 是下次触发的 Unix 秒，禁用时为 0；`lastRunTaskId` 和 `lastSkipReason` 尚无值时为空字符串：
 

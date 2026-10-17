@@ -17,6 +17,14 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
+// Concurrency policies decide what a cron occurrence does while the previous
+// scheduled run is still active.
+const (
+	concurrencyForbid  = "Forbid"
+	concurrencyAllow   = "Allow"
+	concurrencyReplace = "Replace"
+)
+
 type ScheduleRequest struct {
 	Cron              string `json:"cron"`
 	ConcurrencyPolicy string `json:"concurrencyPolicy"`
@@ -91,10 +99,10 @@ func prepareDefinitionSchedule(request *ScheduleRequest, now time.Time) (Schedul
 	}
 	schedule := *request
 	if schedule.ConcurrencyPolicy == "" {
-		schedule.ConcurrencyPolicy = "Forbid"
+		schedule.ConcurrencyPolicy = concurrencyForbid
 	}
 	switch schedule.ConcurrencyPolicy {
-	case "Forbid", "Allow", "Replace":
+	case concurrencyForbid, concurrencyAllow, concurrencyReplace:
 	default:
 		return ScheduleRequest{}, 0, invalid(fmt.Errorf("schedule concurrencyPolicy must be Forbid, Allow, or Replace"))
 	}
@@ -105,9 +113,7 @@ func prepareDefinitionSchedule(request *ScheduleRequest, now time.Time) (Schedul
 		}
 		return schedule, 0, nil
 	}
-	if len(strings.Fields(schedule.Cron)) != 5 {
-		return ScheduleRequest{}, 0, invalid(fmt.Errorf("schedule cron must have 5 fields"))
-	}
+	// Same cron rules as WorkflowSchedule: five fields, or six with a zero seconds field.
 	cron, err := utils.NormalizeCronSchedule(schedule.Cron)
 	if err != nil {
 		return ScheduleRequest{}, 0, invalid(fmt.Errorf("schedule cron: %w", err))
@@ -245,9 +251,6 @@ func (s *Service) UpdateDefinition(ctx context.Context, id string, declaration D
 		record, err = scopedDefinition(ctx, tx, id, true)
 		if err != nil {
 			return err
-		}
-		if record.Revision == ^uint64(0) {
-			return fmt.Errorf("Job definition revision is exhausted")
 		}
 		record.Name, record.Spec = task.WorkflowName, task.JobSpec
 		if record.Cron != schedule.Cron || record.ScheduleEnabled != schedule.Enabled {

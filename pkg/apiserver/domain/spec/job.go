@@ -36,10 +36,13 @@ const (
 	CheckpointManifestLimit       = 1 << 20
 )
 
+func jobRunPrefix(taskID string) string { return "eruun-job-" + taskID }
+
 // JobVolumeName identifies the shared volume owned by one standalone run.
-func JobVolumeName(taskID string) string {
-	return "eruun-job-" + taskID + "-work"
-}
+func JobVolumeName(taskID string) string { return jobRunPrefix(taskID) + "-work" }
+
+// JobStepName identifies the Kubernetes Job of one step in a standalone run.
+func JobStepName(taskID, step string) string { return jobRunPrefix(taskID) + "-" + step }
 
 // JobSpec describes a standalone run whose stages execute in order.
 type JobSpec struct {
@@ -285,8 +288,8 @@ func (j *JobSpec) Normalize() error {
 			stepNames[step.Name] = true
 			// Submit generates task IDs from 12 random bytes encoded as 24 hex
 			// characters. Reject names that naming would rewrite or truncate.
-			prefix := "eruun-job-" + strings.Repeat("0", 24)
-			if naming.JobName(step.Name, prefix) != prefix+"-"+step.Name {
+			placeholder := strings.Repeat("0", 24)
+			if naming.JobName(step.Name, jobRunPrefix(placeholder)) != JobStepName(placeholder, step.Name) {
 				return fmt.Errorf("step %q: generated Kubernetes Job name must use lowercase DNS label characters and contain at most 63 bytes (step name at most 28 bytes)", step.Name)
 			}
 			switch step.Type {

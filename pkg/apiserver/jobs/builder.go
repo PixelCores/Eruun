@@ -93,9 +93,6 @@ func BuildTask(task *model.WorkflowQueue, namespace string) ([][]*model.JobTask,
 	stages := make([][]*model.JobTask, len(declaration.Stages))
 	volumeName := spec.JobVolumeName(task.TaskID)
 	if volume := declaration.Volume; volume != nil {
-		if naming.PVCName("work", "eruun-job-"+task.TaskID) != volumeName {
-			return nil, fmt.Errorf("invalid Job volume name %q", volumeName)
-		}
 		size, err := resource.ParseQuantity(volume.Size)
 		if err != nil {
 			return nil, fmt.Errorf("parse Job volume size: %w", err)
@@ -117,11 +114,8 @@ func BuildTask(task *model.WorkflowQueue, namespace string) ([][]*model.JobTask,
 	}
 	for stageIndex, stage := range declaration.Stages {
 		for _, step := range stage.Steps {
-			job := &model.JobTask{Name: "eruun-job-" + task.TaskID + "-" + step.Name, Namespace: namespace,
+			job := &model.JobTask{Name: spec.JobStepName(task.TaskID, step.Name), Namespace: namespace,
 				WorkspaceID: task.WorkspaceID, TaskID: task.TaskID, JobType: step.Type, Status: config.StatusQueued}
-			if naming.JobName(step.Name, "eruun-job-"+task.TaskID) != job.Name {
-				return nil, fmt.Errorf("stage %q step %q generates invalid Kubernetes Job name %q", stage.Name, step.Name, job.Name)
-			}
 			if step.Traits.Evaluation != nil {
 				evaluationTraits := spec.JobTraits{Evaluation: step.Traits.Evaluation, Storage: step.Traits.Storage,
 					EnvFrom: step.Traits.EnvFrom, Envs: step.Traits.Envs, Resources: step.Traits.Resources,

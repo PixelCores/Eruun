@@ -254,5 +254,5 @@ func TestBuildTaskRejectsInvalidGeneratedNameForPersistedTask(t *testing.T) {
 	raw, err := json.Marshal(request.JobSpec)
 	require.NoError(t, err)
 	_, err = BuildTask(&model.WorkflowQueue{TaskID: strings.Repeat("a", 60), WorkspaceID: "space", Type: config.WorkflowTaskTypeJob, JobSpec: string(raw)}, "space-ns")
-	require.ErrorContains(t, err, "generates invalid Kubernetes Job name")
+	require.ErrorContains(t, err, "invalid Job name", "BuildTask still rejects a persisted run whose generated name is not a DNS label")
 }

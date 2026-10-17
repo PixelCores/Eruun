@@ -155,7 +155,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | --- | --- | --- |
 | `workflow-architecture-guide.md` | Implemented Reference | 工作流引擎架构详解 |
 | `workspace-jobs-and-harbor-requirements.md` | Implemented Reference | 先于实现确认的统一 Job 与 Harbor 需求基线：任务包、空间授权、全部输出、多目标保存与原始结果保留 |
-| `job-module-design.md` | Implemented Reference | 第 1、2、3 阶段均已实现：stages、运行卷、可复用定义、手动/延迟/cron 触发、并发策略、CAS 与幂等入队，以及各阶段增量 DDL |
+| `job-module-design.md` | Implemented Reference | 自定义 Job 模块的设计取舍：为何复用 WorkflowQueue、stages、运行卷、traits 复用、重试边界、cron 并发策略与 Replace 顺序；行为细节见 `workspace-jobs-api.md` |
 | `agent-evaluation-runner-service-design.md` | Implemented Reference | Harbor Runner 单实例 claim、v1 阶段/心跳/进度/终态事件、结果门禁与 Kubernetes 故障兜底 |
 | `workflow-global-scheduler-design.md` | Implemented Reference | Job 全局优先级、FIFO、等待老化、空间并发上限、ownership 准入与 OOM 策略 |
 | `enterprise-distributed-runtime-design.md` | Implemented Reference | 分布式运行时：角色依赖、API Redis readiness、Leader Election、数据库 lease/fencing、延迟任务恢复与通知去重、Cron 有界分页与失败计划重试、Worker observer 和 Helm 拓扑 |
