@@ -72,13 +72,13 @@ func TestJobDefinitionRPCsAndRunPagination(t *testing.T) {
 	_, err = server.RunJobDefinition(ctx, &eruunv1.RunJobDefinitionRequest{DefinitionId: definition.Id, ExecuteAt: -1})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	input.Name = "updated"
-	updated, err := server.UpdateJobDefinition(ctx, &eruunv1.UpdateJobDefinitionRequest{DefinitionId: definition.Id, Spec: input})
+	updated, err := server.UpdateJobDefinition(ctx, &eruunv1.UpdateJobDefinitionRequest{DefinitionId: definition.Id, Name: input.Name, Volume: input.Volume, Stages: input.Stages})
 	require.NoError(t, err)
 	require.EqualValues(t, 2, updated.Revision)
 	require.Equal(t, "updated", updated.Spec.Name)
 	require.Nil(t, updated.Schedule, "replacement without schedule must clear it")
 	schedule.ConcurrencyPolicy = "Replace"
-	updated, err = server.UpdateJobDefinition(ctx, &eruunv1.UpdateJobDefinitionRequest{DefinitionId: definition.Id, Spec: input, Schedule: schedule})
+	updated, err = server.UpdateJobDefinition(ctx, &eruunv1.UpdateJobDefinitionRequest{DefinitionId: definition.Id, Name: input.Name, Volume: input.Volume, Stages: input.Stages, Schedule: schedule})
 	require.NoError(t, err)
 	require.Equal(t, "Replace", updated.Schedule.ConcurrencyPolicy)
 	require.True(t, updated.Schedule.Enabled)
@@ -146,7 +146,7 @@ func TestJobDefinitionRPCsRejectMissingInput(t *testing.T) {
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	_, err = server.GetJobDefinition(ctx, &eruunv1.JobDefinitionRequest{})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	_, err = server.UpdateJobDefinition(ctx, &eruunv1.UpdateJobDefinitionRequest{DefinitionId: "definition"})
+	_, err = server.UpdateJobDefinition(ctx, &eruunv1.UpdateJobDefinitionRequest{Name: "daily"})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	_, err = server.DeleteJobDefinition(ctx, nil)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
@@ -174,6 +174,6 @@ func TestJobRPCSchedulesRemainDefinitionOnly(t *testing.T) {
 	schedule.ProtoReflect().SetUnknown([]byte{0x20, 0x01})
 	_, err = server.CreateJobDefinition(ctx, &eruunv1.CreateJobDefinitionRequest{Schedule: schedule})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	_, err = server.UpdateJobDefinition(ctx, &eruunv1.UpdateJobDefinitionRequest{DefinitionId: "definition", Spec: &eruunv1.JobSpec{}, Schedule: schedule})
+	_, err = server.UpdateJobDefinition(ctx, &eruunv1.UpdateJobDefinitionRequest{DefinitionId: "definition", Schedule: schedule})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }

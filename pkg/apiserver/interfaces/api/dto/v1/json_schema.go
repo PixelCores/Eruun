@@ -73,6 +73,7 @@ type canonicalJobJSON struct {
 	Name        string          `json:"name"`
 	Volume      *spec.JobVolume `json:"volume,omitempty"`
 	Stages      []spec.JobStage `json:"stages"`
+	ExecuteAt   int64           `json:"executeAt,omitempty"`
 }
 
 // CanonicalJSONSchema returns the discoverable JSON Schema bundle for the
@@ -266,6 +267,9 @@ func (b *schemaBuilder) applyFieldConstraints(definition, field string, schema m
 		schema["minimum"], schema["maximum"] = 0, 10
 	case definition == "Job" && field == "name":
 		schema["minLength"], schema["maxLength"] = 1, 128
+	case definition == "Job" && field == "executeAt":
+		schema["minimum"] = 0
+		schema["description"] = "Unix seconds. Omitted, zero or past times run immediately."
 	case definition == "EvaluationTraitSpec" && field == "env":
 		schema["const"] = "ack"
 	case definition == "EvaluationTraitSpec" && field == "agent":

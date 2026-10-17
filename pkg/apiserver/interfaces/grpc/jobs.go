@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -193,23 +194,19 @@ func (s *JobsServer) ListJobDefinitions(ctx context.Context, req *eruunv1.ListJo
 }
 
 func (s *JobsServer) UpdateJobDefinition(ctx context.Context, req *eruunv1.UpdateJobDefinitionRequest) (*eruunv1.JobDefinition, error) {
-	if req == nil || req.DefinitionId == "" || req.Spec == nil || len(req.ProtoReflect().GetUnknown()) != 0 || len(req.Spec.ProtoReflect().GetUnknown()) != 0 {
+	if req == nil || req.DefinitionId == "" || len(req.ProtoReflect().GetUnknown()) != 0 {
 		return nil, rpcError(bcode.ErrJobInput)
 	}
-	input, err := decodeTypedRequest[spec.JobSpec](req.Spec)
+	if req.Schedule != nil && len(req.Schedule.ProtoReflect().GetUnknown()) != 0 {
+		return nil, rpcError(bcode.ErrJobInput)
+	}
+	// The body shares CreateJobDefinitionRequest's fields; the path identity is
+	// not part of the strict definition document.
+	body := proto.Clone(req).(*eruunv1.UpdateJobDefinitionRequest)
+	body.DefinitionId = ""
+	declaration, err := decodeTypedRequest[jobs.DefinitionRequest](body)
 	if err != nil {
 		return nil, rpcError(bcode.ErrJobInput)
-	}
-	declaration := jobs.DefinitionRequest{JobSpec: input}
-	if req.Schedule != nil {
-		if len(req.Schedule.ProtoReflect().GetUnknown()) != 0 {
-			return nil, rpcError(bcode.ErrJobInput)
-		}
-		schedule, err := decodeTypedRequest[jobs.ScheduleRequest](req.Schedule)
-		if err != nil {
-			return nil, rpcError(bcode.ErrJobInput)
-		}
-		declaration.Schedule = &schedule
 	}
 	definition, err := s.Jobs.UpdateDefinition(ctx, req.DefinitionId, declaration)
 	if err != nil {

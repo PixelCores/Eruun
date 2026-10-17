@@ -51,11 +51,15 @@ message CreateJobDefinitionRequest {
   repeated JobStage stages = 3;
   JobScheduleRequest schedule = 4;
 }
+// Full replacement with the same fields as CreateJobDefinitionRequest.
 message UpdateJobDefinitionRequest {
   string definition_id = 1;
-  JobSpec spec = 2;
-  // Omission clears the schedule as part of the full replacement.
-  JobScheduleRequest schedule = 3;
+  string name = 2;
+  JobVolume volume = 3;
+  repeated JobStage stages = 4;
+  // Omission clears cron, concurrency_policy, enabled, next_run and
+  // last_skip_reason; last_run_task_id is kept for later Forbid/Replace checks.
+  JobScheduleRequest schedule = 5;
 }
 message JobScheduleRequest {
   // Five fields, interpreted in UTC.

@@ -76,7 +76,7 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 
 ## Job 定义、手动、延迟与 cron 触发
 
-`CreateJobDefinition` 使用 `CreateJobDefinitionRequest`，直接接收 `name`、可选 `volume`、`stages` 和可选 `schedule`；`UpdateJobDefinition` 接收 `definition_id`、完整的 `spec: JobSpec` 和可选 `schedule`。schedule 使用 `JobScheduleRequest`，字段为 `cron`、`concurrency_policy`、`enabled`，不属于共享 JobSpec。整体替换成功后 revision 加 1；省略 schedule 会清空调度。`GetJobDefinition`、`DeleteJobDefinition` 使用 `JobDefinitionRequest.definition_id`。定义响应包含 `id/name/revision/spec/creator/create_time/update_time`，有调度时增加 `schedule: JobSchedule`，包含 `cron/concurrency_policy/enabled/next_run/last_run_task_id/last_skip_reason`。没有调度时不设置该 message。删除定义会停止后续定时触发，已有运行及其定义 ID、版本和规格快照保留。
+`CreateJobDefinition` 使用 `CreateJobDefinitionRequest`，直接接收 `name`、可选 `volume`、`stages` 和可选 `schedule`；`UpdateJobDefinition` 接收 `definition_id`，其余字段与 Create 相同（`name`、可选 `volume`、`stages`、可选 `schedule`），按整体替换处理。schedule 使用 `JobScheduleRequest`，字段为 `cron`、`concurrency_policy`、`enabled`，不属于共享 JobSpec。整体替换成功后 revision 加 1；省略 schedule 会清空调度。`GetJobDefinition`、`DeleteJobDefinition` 使用 `JobDefinitionRequest.definition_id`。定义响应包含 `id/name/revision/spec/creator/create_time/update_time`，有调度时增加 `schedule: JobSchedule`，包含 `cron/concurrency_policy/enabled/next_run/last_run_task_id/last_skip_reason`。没有调度时不设置该 message。删除定义会停止后续定时触发，已有运行及其定义 ID、版本和规格快照保留。
 
 schedule 的五段 cron 固定按 UTC 计算，与 WorkflowSchedule 复用同一解析器。`concurrency_policy` 省略或为空默认为 `Forbid`，仅接受 `Forbid`、`Allow`、`Replace`；enabled 默认为 false，true 时必须提供非空合法 cron，禁用但填写了 cron 也必须合法。非法配置返回 `InvalidArgument`。`SubmitJobRequest` 和 `RunJobDefinitionRequest` 没有 schedule，调用方不能通过这两个入口配置调度。
 
