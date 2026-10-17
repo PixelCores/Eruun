@@ -33,6 +33,7 @@ func (w *workflowServiceImpl) ClaimTaskForDispatch(ctx context.Context, task *mo
 		return nil, false, err
 	}
 	var queued *model.WorkflowQueue
+	var failed *model.WorkflowQueue
 	var claimed bool
 	err = schedulelock.WithAppScheduleLock(ctx, lockProvider, task.AppID, "dispatch-workflow-task", true, func(lockCtx context.Context) error {
 		current, err := repository.TaskByID(lockCtx, w.Store, task.TaskID)
@@ -56,19 +57,41 @@ func (w *workflowServiceImpl) ClaimTaskForDispatch(ctx context.Context, task *mo
 		// validated while the version update held this same application lock.
 		if !migrationTask {
 			if err := EnsureNoPendingStatefulSetCleanup(lockCtx, w.Store, current.AppID); err != nil {
-				return err
+				if !errors.Is(err, errPendingStatefulSetCleanup) {
+					return err
+				}
+				reason := "delayed workflow dispatch rejected: unfinished StatefulSet cleanup; resume the migration with the version update API"
+				updated, err := repository.UpdateTaskFieldsIfConditions(lockCtx, w.Store, current.TaskID, map[string]interface{}{
+					"status":         config.StatusWaiting,
+					"run_generation": current.RunGeneration,
+				}, map[string]interface{}{
+					"status":            config.StatusFailed,
+					"scheduling_reason": reason,
+				})
+				if err != nil {
+					return fmt.Errorf("fail delayed workflow task after cleanup fence: %w", err)
+				}
+				if updated {
+					current.Status = config.StatusFailed
+					current.SchedulingReason = reason
+					failed = current
+				}
+				return nil
 			}
 		}
 		queued, claimed, err = repository.ClaimWorkflowTaskForDispatch(lockCtx, w.Store, current, leaseDuration)
 		return err
 	})
-	if errors.Is(err, bcode.ErrApplicationOperationLocked) || errors.Is(err, errPendingStatefulSetCleanup) {
-		// Expected deferrals keep the task Waiting for the next dispatch pass.
+	if errors.Is(err, bcode.ErrApplicationOperationLocked) {
+		// Lock contention keeps the task Waiting for the next dispatch pass.
 		klog.V(2).InfoS("defer delayed workflow task dispatch", "taskID", task.TaskID, "appID", task.AppID, "reason", err)
 		return nil, false, nil
 	}
 	if err != nil {
 		return nil, false, err
+	}
+	if failed != nil {
+		w.triggerWorkflowTerminalCallbackOnApprovalActionAsync(ctx, failed, config.StatusFailed, failed.SchedulingReason)
 	}
 	return queued, claimed, nil
 }

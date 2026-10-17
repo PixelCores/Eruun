@@ -47,7 +47,7 @@ O01–O21 见历史审计；O22–O28 由草稿 PR #124 使用，相关修复经
 
 普通延迟任务入队后，后续 StatefulSet 迁移可能失败并留下 pending cleanup；任务到期时必须重新检查。立即任务和 Cron 入队后已经参与活跃任务判断，不能无故增加 locker 依赖。
 
-本轮新增服务派发入口 `ClaimTaskForDispatch` 并接到真实 dispatcher：延迟任务在应用锁内复读 Waiting 状态、generation 和 AppID，非迁移任务检查 pending cleanup，再执行原有 repository CAS。清理未完成或应用锁被占用时保持 Waiting，按预期延后记 V(2) 日志并在下一轮派发重试，不再每 3 秒记一条 Error；其他错误仍按失败记录。合法迁移任务保留豁免。删除死方法、孤立 DTO 和旧校验，回归测试通过实际 `claimAndProcessTask` 加真实服务/IoC 注入执行。
+本轮新增服务派发入口 `ClaimTaskForDispatch` 并接到真实 dispatcher：延迟任务在应用锁内复读 Waiting 状态、generation 和 AppID，非迁移任务检查 pending cleanup，再执行原有 repository CAS。到期的非迁移延迟任务遇到清理未完成时，在同一应用锁内按 Waiting 和 generation 做 CAS 转为 Failed，记录因 StatefulSet 清理未完成而拒绝执行的原因，并沿用现有终态 callback 入口；CAS 未命中视为未认领，不报错。只有应用锁被占用时保持 Waiting，按预期延后记 V(2) 日志并在下一轮派发重试；其他错误仍按失败记录。合法迁移任务保留豁免。删除死方法、孤立 DTO 和旧校验，回归测试通过实际 `claimAndProcessTask` 加真实服务/IoC 注入执行。
 
 **契约影响：** 除 Go 符号精简外，延迟派发行为确有变化，不能写成“仅影响 Go 符号”。HTTP 路由和持久化格式不变。
 

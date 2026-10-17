@@ -45,29 +45,36 @@ func (s *dispatchCleanupFenceStore) CompareAndSwapWithConditions(ctx context.Con
 // through the same injection container used by the server.
 func TestDispatchClaimPreservesStatefulSetCleanupFence(t *testing.T) {
 	for _, tc := range []struct {
-		name            string
-		pending         bool
-		migration       int
-		immediate       bool
-		cron            bool
-		lockHeld        bool
-		staleGeneration bool
-		concurrentClaim bool
-		wantDispatch    bool
+		name             string
+		pending          bool
+		migration        int
+		immediate        bool
+		cron             bool
+		lockHeld         bool
+		staleGeneration  bool
+		concurrentClaim  bool
+		concurrentStatus bool
+		wantDispatch     bool
+		wantFailed       bool
 	}{
-		{name: "delayed ordinary task waits for failed cleanup", pending: true},
+		{name: "delayed ordinary task fails for unfinished cleanup", pending: true, wantFailed: true},
 		{name: "delayed task without cleanup dispatches", wantDispatch: true},
 		{name: "v2 migration resolves failed cleanup", pending: true, migration: model.VersionUpdateCleanupInfoVersionStatefulSetDeletion, wantDispatch: true},
 		{name: "v3 migration resolves failed cleanup", pending: true, migration: model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion, wantDispatch: true},
-		{name: "delayed claim uses application lock", lockHeld: true},
+		{name: "delayed claim uses application lock", pending: true, lockHeld: true},
 		{name: "immediate task needs no application lock", immediate: true, pending: true, lockHeld: true, wantDispatch: true},
 		{name: "cron task needs no application lock", immediate: true, cron: true, pending: true, lockHeld: true, wantDispatch: true},
 		{name: "stale dispatch cannot claim a newer generation", staleGeneration: true},
 		{name: "CAS preserves generation after safety check", concurrentClaim: true},
+		{name: "cleanup rejection preserves a newer generation", pending: true, concurrentClaim: true},
+		{name: "cleanup rejection preserves a changed status", pending: true, concurrentStatus: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
 			task := &model.WorkflowQueue{TaskID: "delayed", AppID: "app-1", WorkflowID: "workflow-1", Status: config.StatusWaiting, ExecuteAt: time.Now().Add(-time.Second).Unix(), RunGeneration: 2, RunToken: "previous-token"}
+			callback, err := model.NewJSONStructByStruct(&model.WorkflowCallback{})
+			require.NoError(t, err)
+			task.Callback = callback
 			if tc.immediate {
 				task.ExecuteAt = 0
 			}
@@ -107,6 +114,9 @@ func TestDispatchClaimPreservesStatefulSetCleanupFence(t *testing.T) {
 				if tc.concurrentClaim {
 					store.mutateTask(func(current *model.WorkflowQueue) { current.RunGeneration++ })
 				}
+				if tc.concurrentStatus {
+					store.mutateTask(func(current *model.WorkflowQueue) { current.Status = config.StatusRunning })
+				}
 			}
 			cfg := config.NewConfig()
 			svc := workflowservice.NewWorkflowService()
@@ -128,14 +138,31 @@ func TestDispatchClaimPreservesStatefulSetCleanupFence(t *testing.T) {
 			})
 			if !tc.wantDispatch {
 				if tc.pending || tc.lockHeld {
-					// Expected deferrals are not dispatch failures.
+					// Rejected or deferred tasks remain unclaimed without an error.
 					_, claimed, err := svc.ClaimTaskForDispatch(ctx, &candidate, time.Minute)
 					require.NoError(t, err)
 					require.False(t, claimed)
 				}
 				require.Nil(t, dispatched)
-				require.Equal(t, config.StatusWaiting, store.taskSnapshot().Status)
-				require.Equal(t, "previous-token", store.taskSnapshot().RunToken)
+				current := store.taskSnapshot()
+				wantStatus := config.StatusWaiting
+				if tc.wantFailed {
+					wantStatus = config.StatusFailed
+					require.Contains(t, current.SchedulingReason, "delayed workflow dispatch rejected")
+					require.Contains(t, current.SchedulingReason, "unfinished StatefulSet cleanup")
+				} else {
+					require.Empty(t, current.SchedulingReason)
+				}
+				if tc.concurrentStatus {
+					wantStatus = config.StatusRunning
+				}
+				require.Equal(t, wantStatus, current.Status)
+				wantGeneration := uint64(2)
+				if tc.concurrentClaim {
+					wantGeneration++
+				}
+				require.Equal(t, wantGeneration, current.RunGeneration)
+				require.Equal(t, "previous-token", current.RunToken)
 				return
 			}
 			require.NotNil(t, dispatched)
