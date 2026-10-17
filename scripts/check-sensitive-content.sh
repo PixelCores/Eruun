@@ -6,6 +6,11 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ROOT_DIR=$(cd "${SCRIPT_DIR}/.." && pwd)
 cd "${ROOT_DIR}"
 
+if ! command -v rg >/dev/null; then
+  printf 'Sensitive-content check requires rg (ripgrep)\n' >&2
+  exit 1
+fi
+
 failed=0
 
 reportMatches() {

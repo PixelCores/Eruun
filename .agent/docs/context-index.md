@@ -1,6 +1,6 @@
 # Context Index (项目上下文索引)
 
-Eruun 的上下文入口，帮助快速定位关键信息。
+仅在需要了解 Eruun 基本概念时阅读。当前目录、模块所有权与实现事实以目标仓库的 `docs/README.md`、相关代码和 Current 文档为准。
 
 ---
 
@@ -15,47 +15,14 @@ Eruun 的上下文入口，帮助快速定位关键信息。
 
 ---
 
-## Project Layout (目录结构)
+## Authoritative References (事实入口)
 
-| 目录 | 职责 |
-|------|------|
-| `cmd/main.go` | API Server 入口 |
-| `pkg/apiserver/interfaces/api` | HTTP 路由、DTO 与 assembler |
-| `pkg/apiserver/domain` | 模型、仓储契约和业务服务 |
-| `pkg/apiserver/event/workflow` | 调度、执行与 Kubernetes Job |
-| `pkg/apiserver/infrastructure` | MySQL、Redis、Kafka、Kubernetes 与观测适配 |
-| `pkg/apiserver/workflow` | Traits 与资源命名 |
-| `config/` | 默认配置 |
-| `docs/` | 设计与使用文档 |
-| `devlogs/` | 重要代码变更的技术选型与取舍记录 |
-| `examples/` | API 请求示例 |
+以下路径均相对于目标仓库根目录：
 
----
-
-## Single Source of Truth (单一事实源)
-
-| 类型 | 位置 |
-|------|------|
-| Constants | `pkg/apiserver/config/consts.go` |
-| Spec/Schema | `pkg/apiserver/domain/spec`, `docs/` Current 文档 |
-| Decision Records | `devlogs/` |
-| Errors | `pkg/apiserver/utils/bcode`, `docs/api-error-response-contract.md` |
-
----
-
-## Common Commands (常用命令)
-
-```bash
-# 单测
-go test ./...
-
-# 格式化
-gofmt -w .
-
-# 静态检查
-go vet ./...
-golangci-lint run
-```
+- `AGENTS.md`：项目约束、验证命令及其适用范围。
+- `docs/README.md`：需求定位、目录职责、当前能力和专题文档状态。
+- 相关代码、测试与 Current 专题文档：本次改动的行为与契约证据。
+- `devlogs/README.md` 与相关决策记录：需要追溯非显然技术取舍时阅读；历史记录不能覆盖当前实现。
 
 ---
 
@@ -73,4 +40,4 @@ golangci-lint run
 |------|------|
 | error contract | 错误契约（错误类型/码及调用方依赖方式） |
 | operational usage | 运维使用方式（部署/升级/迁移/运行参数） |
-| devlog | 每 PR/主题一篇的技术决策记录，用于说明重要代码变更为什么这样实现 |
+| devlog | 仅为持久且非显然的技术决策记录原因与取舍；普通修复无需创建 |

@@ -1,4 +1,4 @@
 interface:
   display_name: "Eruun Code"
-  short_description: "Eruun repo code and PR workflow"
-  default_prompt: "Use $eruun-code to plan a focused Eruun code change."
+  short_description: "Clean, minimal Eruun code changes"
+  default_prompt: "Use $eruun-code to complete a focused Eruun change end to end with the simplest correct design."
