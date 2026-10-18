@@ -25,12 +25,10 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/importsecret"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
@@ -85,33 +83,19 @@ type WorkflowCtl struct {
 	callbackTimeoutMax       time.Duration
 	terminalReason           string
 	urlSecurityPolicy        *spec.URLSecurityPolicySpec
-	importSecretKeyring      *importsecret.Keyring
 	runtimeConfig            *config.Config
-	resourceImportExecutor   job.ResourceImportExecutor
 	runCancel                context.CancelCauseFunc
 	// ctx holds the workflow execution context for use in callbacks like updateWorkflowTask.
 	// This avoids using context.Background() which would break tracing and cancellation.
 	ctx context.Context
 }
 
-func NewWorkflowController(workflowTask *model.WorkflowQueue, client kubernetes.Interface, kubeConfig *rest.Config, store datastore.DataStore, cfg *config.Config, redisClient *redis.Client, cache cache.ICache, urlSecurityPolicy *spec.URLSecurityPolicySpec, resourceImportExecutors ...job.ResourceImportExecutor) (*WorkflowCtl, error) {
+func NewWorkflowController(workflowTask *model.WorkflowQueue, client kubernetes.Interface, kubeConfig *rest.Config, store datastore.DataStore, cfg *config.Config, redisClient *redis.Client, cache cache.ICache, urlSecurityPolicy *spec.URLSecurityPolicySpec) (*WorkflowCtl, error) {
 	if workflowTask == nil {
 		return nil, fmt.Errorf("workflow task is nil")
 	}
 	if urlSecurityPolicy == nil {
 		return nil, fmt.Errorf("url security policy is required")
-	}
-	var importSecretKeyring *importsecret.Keyring
-	var resourceImportExecutor job.ResourceImportExecutor
-	if len(resourceImportExecutors) > 0 {
-		resourceImportExecutor = resourceImportExecutors[0]
-	}
-	if cfg != nil {
-		var err error
-		importSecretKeyring, err = importsecret.Load(cfg.ImportSecretKeyring, cfg.ImportSecretKeyringFile)
-		if err != nil {
-			return nil, fmt.Errorf("load workflow import secret keyring: %w", err)
-		}
 	}
 	ctl := &WorkflowCtl{
 		workflowTask:             workflowTask,
@@ -126,8 +110,6 @@ func NewWorkflowController(workflowTask *model.WorkflowQueue, client kubernetes.
 		defaultJobTimeoutSeconds: resolveDefaultJobTimeout(cfg),
 		callbackTimeoutMax:       workflowconfig.ResolveWorkflowCallbackTimeoutMax(cfg.WorkflowRuntime()),
 		urlSecurityPolicy:        urlSecurityPolicy,
-		importSecretKeyring:      importSecretKeyring,
-		resourceImportExecutor:   resourceImportExecutor,
 	}
 	if cfg != nil {
 		ctl.accountConfig = cfg.Accounts
@@ -173,10 +155,6 @@ func (w *WorkflowCtl) updateWorkflowTask() {
 	}
 	if taskSnapshot.Status == config.StatusCancelled && wf.IsTerminalCallbackPending(taskSnapshot.SchedulingReason) {
 		updates["scheduling_reason"] = taskSnapshot.SchedulingReason
-	}
-	if isResourceImportWorkflowTask(taskSnapshot.Type) &&
-		taskSnapshot.SchedulingReason == importcontract.PreExecutionFailureReason {
-		updates["scheduling_reason"] = importcontract.PreExecutionFailureReason
 	}
 	authoritativeTask, err := w.persistWorkflowTaskSnapshot(persistCtx, taskSnapshot, expectedStatus, updates)
 	if err != nil {
@@ -259,11 +237,6 @@ func workflowTaskPersistenceFieldsEqual(left, right *model.WorkflowQueue) bool {
 		left.CurrentStep == right.CurrentStep &&
 		left.ApprovalPending == right.ApprovalPending &&
 		left.PendingApprovalStep == right.PendingApprovalStep
-	if fieldsEqual &&
-		isResourceImportWorkflowTask(right.Type) &&
-		right.SchedulingReason == importcontract.PreExecutionFailureReason {
-		fieldsEqual = left.SchedulingReason == right.SchedulingReason
-	}
 	if !fieldsEqual {
 		return false
 	}
@@ -304,9 +277,6 @@ func (w *WorkflowCtl) Run(ctx context.Context, concurrency int) error {
 		w.ctx = ctx
 		w.mutateTask(func(task *model.WorkflowQueue) {
 			task.Status = config.StatusFailed
-			if isResourceImportWorkflowTask(task.Type) {
-				task.SchedulingReason = importcontract.PreExecutionFailureReason
-			}
 		})
 		w.ack()
 		return fmt.Errorf("prepare workflow workspace: %w", err)
@@ -465,9 +435,6 @@ func (r *workflowRun) run(concurrency int) error {
 						r.suppressTerminalCallback = true
 						r.mutateTask(func(t *model.WorkflowQueue) {
 							t.Status = config.StatusFailed
-							if isResourceImportWorkflowTask(t.Type) {
-								t.SchedulingReason = importcontract.PreExecutionFailureReason
-							}
 						})
 						return err
 					}
@@ -491,11 +458,6 @@ func (r *workflowRun) runSteps(taskForGeneration model.WorkflowQueue, stepExecut
 			}
 		}
 		r.setTerminalStatus(config.StatusFailed, err.Error())
-		if isResourceImportWorkflowTask(taskForGeneration.Type) {
-			r.mutateTask(func(task *model.WorkflowQueue) {
-				task.SchedulingReason = importcontract.PreExecutionFailureReason
-			})
-		}
 		r.failureReason = r.snapshotTerminalReason()
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "Workflow generation failed")
@@ -774,8 +736,6 @@ func isWorkflowFailureCleanupTriggerJob(jobType config.JobType) bool {
 		config.JobDeployRoleBinding,
 		config.JobDeployClusterRole,
 		config.JobDeployClusterRoleBinding,
-		config.JobDeployPodDisruptionBudget,
-		config.JobDeployNetworkPolicy,
 		config.JobDeployInstant,
 		config.JobDeployScheduled,
 		config.JobDeployCloud:
@@ -787,19 +747,17 @@ func isWorkflowFailureCleanupTriggerJob(jobType config.JobType) bool {
 
 func (w *WorkflowCtl) runJobs(ctx context.Context, tasks []*model.JobTask, concurrency int, ack func(), stopOnFailure bool) error {
 	return job.RunJobs(ctx, tasks, &job.Runtime{
-		Concurrency:            concurrency,
-		Client:                 w.Client,
-		Store:                  w.Store,
-		Ack:                    ack,
-		StopOnFailure:          stopOnFailure,
-		RedisClient:            w.RedisClient,
-		Cache:                  w.Cache,
-		URLSecurityPolicy:      w.urlSecurityPolicy,
-		DelayQueue:             w.DelayQueue,
-		ResourceWaiter:         w.ResourceWaiter,
-		KubeConfig:             w.KubeConfig,
-		ImportSecretKeyring:    w.importSecretKeyring,
-		ResourceImportExecutor: w.resourceImportExecutor,
+		Concurrency:       concurrency,
+		Client:            w.Client,
+		Store:             w.Store,
+		Ack:               ack,
+		StopOnFailure:     stopOnFailure,
+		RedisClient:       w.RedisClient,
+		Cache:             w.Cache,
+		URLSecurityPolicy: w.urlSecurityPolicy,
+		DelayQueue:        w.DelayQueue,
+		ResourceWaiter:    w.ResourceWaiter,
+		KubeConfig:        w.KubeConfig,
 	})
 }
 
@@ -1576,14 +1534,7 @@ func (w *WorkflowCtl) prepareWorkspace(ctx context.Context) (context.Context, er
 	task := w.snapshotTask()
 	workspaceID := ""
 	expectedNamespace := ""
-	if isResourceImportWorkflowTask(task.Type) {
-		workspaceID = strings.TrimSpace(task.WorkspaceID)
-		var info importcontract.TaskEnvelope
-		if err := json.Unmarshal([]byte(task.ResourceActionInfo), &info); err != nil {
-			return ctx, fmt.Errorf("decode resource import workspace: %w", err)
-		}
-		expectedNamespace = strings.TrimSpace(info.Namespace)
-	} else if task.Type == config.WorkflowTaskTypeJob {
+	if task.Type == config.WorkflowTaskTypeJob {
 		if task.AppID != "" || task.WorkflowID != "" {
 			return ctx, fmt.Errorf("workspace Job has application or workflow ownership")
 		}

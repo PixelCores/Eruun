@@ -148,29 +148,6 @@ func TestBuildWorkflowFailureCleanupJobsCoversAllComponents(t *testing.T) {
 	}
 }
 
-func TestBuildWorkflowFailureCleanupJobsSkipsAdoptedApplication(t *testing.T) {
-	sourceUID := "deployment-uid"
-	store := &fakeDataStore{
-		application: &model.Applications{
-			ID:             "app-1",
-			Name:           "ImportedApp",
-			ManagementMode: spec.ManagementModeAdopted,
-		},
-		components: []*model.ApplicationComponent{{
-			Name:              "api",
-			AppID:             "app-1",
-			Namespace:         "default",
-			ComponentType:     config.ServerJob,
-			SourceWorkloadUID: &sourceUID,
-		}},
-	}
-	task := &model.WorkflowQueue{TaskID: "task-1", AppID: "app-1"}
-
-	jobs, err := buildWorkflowFailureCleanupJobs(context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
-	require.NoError(t, err)
-	require.Empty(t, jobs)
-}
-
 func TestWorkflowFailureCleanupAllPreservesClaimNamePVC(t *testing.T) {
 	ctx := context.Background()
 

@@ -100,14 +100,7 @@ POST /api/v1/applications/:appID/version/cancel
 - 普通 `restart` 仍沿用现有 restart-only 逻辑；restart-only 请求只保留前置审批步骤并追加 `version_restart` job。
 - 非法 `executionScope` 会返回应用配置错误，不会静默回退。
 
-`adopted` 兼容性规则：
-
-- workflow 执行仍遵守 `full_workflow` / `changed_components` 的既有裁剪和审批边界；worker 只把 snapshot 中与被保留 workload 关联的 exclusive 依赖补成 source-bound Job。
-- workload 更新允许 image、replicas 和合并式字面量 env；任意 properties 替换、未知 traits 变化、StatefulSet VCT 身份/容量变化会在 DB 写入前拒绝。已有 standalone PVC 仅允许在线扩容，最终仍由 live StorageClass/PVC 预检决定。
-- `database_reset`、`remove cleanup_all`、普通 remove/add 和无签名资源清理不会对 adopted 应用入队；删除资源必须使用专用 cleanup plan/fingerprint 契约。
-- `restart` 会再次校验 source UID；暂停的 Deployment、`OnDelete` StatefulSet、非零 `rollingUpdate.partition` 以及不安全 PVC 状态都会在 PodTemplate 写入前失败。
-
-版本提交（包括 `autoExec=false`）在数据库事务内先锁应用行，再写组件。预检后应用或组件配置发生变化时返回 `409 / 10043`，不会用旧快照覆盖新配置；调用方应重新读取当前配置，确认更新意图后重新提交。直接提交的结构性或 adopted 更新会在锁内复核原有 idle 条件，普通原地配置更新保持原规则。
+版本提交（包括 `autoExec=false`）在数据库事务内先锁应用行，再写组件。预检后应用或组件配置发生变化时返回 `409 / 10043`，不会用旧快照覆盖新配置；调用方应重新读取当前配置，确认更新意图后重新提交。直接提交的结构性更新会在锁内复核原有 idle 条件，普通原地配置更新保持原规则。
 
 `autoExec=true` 的执行语义：
 - 默认执行选定 workflow 的完整步骤；只有显式传入 `executionScope=changed_components` 时，才按本次实际变更组件裁剪 workflow deploy/默认 component jobs。

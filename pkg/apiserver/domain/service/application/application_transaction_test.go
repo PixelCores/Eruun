@@ -348,7 +348,7 @@ func TestDirectVersionUpdateRechecksIdleAtCommit(t *testing.T) {
 }
 
 func testDirectVersionUpdateRechecksIdleAtCommit(t *testing.T, newStore func(*testing.T) *sqlstore.Driver) {
-	for _, scenario := range []string{"add", "remove", "adopted update", "native update"} {
+	for _, scenario := range []string{"add", "remove", "native update"} {
 		t.Run(scenario, func(t *testing.T) {
 			ctx := context.Background()
 			store := newStore(t)
@@ -359,9 +359,6 @@ func testDirectVersionUpdateRechecksIdleAtCommit(t *testing.T, newStore func(*te
 				req.Components = []apisv1.ComponentUpdateSpec{{Name: "extra", Action: "add", Image: "extra:v1", ComponentType: config.ServerJob}}
 			case "remove":
 				req.Components = []apisv1.ComponentUpdateSpec{{Name: "api", Action: "remove"}}
-			case "adopted update":
-				app.ManagementMode = spec.ManagementModeAdopted
-				require.NoError(t, store.Put(ctx, app))
 			}
 			require.NoError(t, workflowservice.EnsureAppWorkflowIdle(ctx, store, app.ID), "preflight passed before another submission")
 			require.NoError(t, store.Add(ctx, &model.WorkflowQueue{TaskID: uuid.NewString(), AppID: app.ID, Status: config.StatusWaiting}))
@@ -461,7 +458,7 @@ func testVersionUpdateAcceptsRuntimeSnapshotChanges(t *testing.T, newStore func(
 			store := newStore(t)
 			app, components, workflow := seedTransactionApp(t, store)
 			// JSON numbers round-trip through SQL with a different Go representation.
-			app.AdoptionSnapshot = &model.JSONStruct{"generation": int64(1)}
+			app.Callback = &model.JSONStruct{"timeoutSeconds": int64(1)}
 			require.NoError(t, store.Put(ctx, app))
 			current := *components["api"]
 			current.Status, current.ReadyReplicas, current.LastAbnormal = "Running", 1, "latest observation"

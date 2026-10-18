@@ -245,7 +245,7 @@ GET spec -> 编辑 data -> POST /applications/try -> 取 normalizedSpec -> POST 
 
 带 `ID` 的 Application 写入只在根级显式提供 `callback` 时覆盖 App 及其全部 Workflow callback。为了保证原样重提不会抹掉某个 Workflow 的独立 callback，当任一已存 Workflow callback 与 App callback 不一致或依赖 App fallback 时，GET spec 会省略根级 `callback`；省略该字段会保留现有 App/Workflow callback。需要统一覆盖全部 callback 时由调用方显式加入根级 `callback`，只修改单个 Workflow 时使用 Workflow `spec`。
 
-只有 `native` 管理模式的 Application 支持该接口；observe/adopted 资源不是 Eruun 完整拥有的声明，因此不会伪造可重提 spec。该响应可能包含组件 credential 或 secret 属性，viewer 角色不能读取，调用方也不得记录或公开原始响应。
+该响应可能包含组件 credential 或 secret 属性，viewer 角色不能读取，调用方也不得记录或公开原始响应。
 
 `GET /api/v1/applications/:appID/workflows` 返回的每个 Workflow 还包含 `spec` 字段。该字段可直接作为 `PUT /api/v1/applications/:appID/workflow` 的请求体：
 

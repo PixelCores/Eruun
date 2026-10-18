@@ -484,7 +484,7 @@ func loadJobInfos(ctx context.Context, store datastore.DataStore, taskID, jobTyp
 	if jobType == string(config.JobDeployPVC) {
 		query.Type, query.ServiceName = jobType, serviceName
 	}
-	if isResourceImportJobType(config.JobType(jobType)) || config.IsWorkspaceJobType(config.JobType(jobType)) {
+	if config.IsWorkspaceJobType(config.JobType(jobType)) {
 		if scope, ok := access.FromContext(ctx); ok {
 			if config.JobType(jobType) == config.JobEval {
 				parent := &model.WorkflowQueue{TaskID: query.TaskID}

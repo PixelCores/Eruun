@@ -69,9 +69,6 @@ var administrationMethodPolicies = map[string]string{
 	eruunv1.ProgrammingLanguagesService_CreateProgrammingLanguage_FullMethodName: "system",
 	eruunv1.ProgrammingLanguagesService_UpdateProgrammingLanguage_FullMethodName: "system",
 	eruunv1.ProgrammingLanguagesService_DeleteProgrammingLanguage_FullMethodName: "system",
-	eruunv1.ResourceImportService_SubmitResourceImportScan_FullMethodName:        "system_workspace",
-	eruunv1.ResourceImportService_SubmitResourceImportManage_FullMethodName:      "system_workspace",
-	eruunv1.ResourceImportService_GetResourceImportJob_FullMethodName:            "system_workspace",
 }
 
 var jobsMethodPolicies = map[string]string{
@@ -108,8 +105,6 @@ var applicationMethodPolicies = map[string]string{
 	eruunv1.ApplicationService_CreateAndExecApplications_FullMethodName:       "member",
 	eruunv1.ApplicationService_BatchGetApplications_FullMethodName:            "member",
 	eruunv1.ApplicationService_ConvertApplications_FullMethodName:             "member",
-	eruunv1.ApplicationService_ImportNamespaceApplications_FullMethodName:     "system_workspace",
-	eruunv1.ApplicationService_TryImportNamespaceApplications_FullMethodName:  "system_workspace",
 	eruunv1.ApplicationService_ListApplicationWorkflows_FullMethodName:        "member",
 	eruunv1.ApplicationService_GetApplicationSpec_FullMethodName:              "member",
 	eruunv1.ApplicationService_GetApplicationStatus_FullMethodName:            "viewer",
@@ -126,8 +121,7 @@ var applicationMethodPolicies = map[string]string{
 	eruunv1.ApplicationService_ListWorkflowSchedules_FullMethodName:           "member",
 	eruunv1.ApplicationService_UpsertWorkflowSchedule_FullMethodName:          "member",
 	eruunv1.ApplicationService_DeleteWorkflowSchedule_FullMethodName:          "member",
-	eruunv1.ApplicationService_PlanApplicationResourceCleanup_FullMethodName:  "member",
-	eruunv1.ApplicationService_ApplyApplicationResourceCleanup_FullMethodName: "member",
+	eruunv1.ApplicationService_CleanupApplicationResources_FullMethodName:     "member",
 	eruunv1.ApplicationService_ResetApplicationDatabases_FullMethodName:       "member",
 	eruunv1.ApplicationService_DownloadLogArchive_FullMethodName:              "member",
 	eruunv1.ApplicationService_RestartApplicationWorkloads_FullMethodName:     "member",
@@ -159,7 +153,6 @@ func NewServer(accounts *account.Service, namespaces *workspace.Manager, adminis
 	eruunv1.RegisterAccountServiceServer(s, &AccountServer{Accounts: accounts, Namespaces: namespaces})
 	eruunv1.RegisterSettingsServiceServer(s, administration)
 	eruunv1.RegisterProgrammingLanguagesServiceServer(s, administration)
-	eruunv1.RegisterResourceImportServiceServer(s, administration)
 	eruunv1.RegisterJobsServiceServer(s, jobsAdapter)
 	eruunv1.RegisterApplicationServiceServer(s, applications)
 	return s
@@ -300,9 +293,6 @@ func authorizeRPC(ctx context.Context, method string, accounts *account.Service,
 					return nil, rpcError(bcode.ErrForbidden)
 				}
 			} else {
-				if minimum == "system_workspace" && !p.User.SystemAdmin {
-					return nil, rpcError(bcode.ErrForbidden)
-				}
 				workspaceID, metadataErr := selectedWorkspaceID(ctx)
 				if metadataErr != nil {
 					return nil, rpcError(metadataErr)
@@ -317,7 +307,7 @@ func authorizeRPC(ctx context.Context, method string, accounts *account.Service,
 				ctx = account.WithScope(ctx, account.Scope{
 					UserID: p.User.ID, WorkspaceID: access.Workspace.ID,
 					Namespace: access.Workspace.Namespace, Role: access.Role,
-					SystemAdmin: p.User.SystemAdmin, ClusterOperation: minimum == "system_workspace",
+					SystemAdmin: p.User.SystemAdmin,
 				})
 			}
 		}

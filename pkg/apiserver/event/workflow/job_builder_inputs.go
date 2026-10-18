@@ -9,15 +9,11 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 func loadWorkflowJobTaskInputs(ctx context.Context, task *model.WorkflowQueue, ds datastore.DataStore) (*model.WorkflowSteps, map[string]*model.ApplicationComponent, error) {
-	if err := workflowjob.ValidateApplicationManagementModeForJob(ctx, ds, task.AppID); err != nil {
-		return nil, nil, err
-	}
 	workflow := model.Workflow{ID: task.WorkflowID}
 	if err := ds.Get(ctx, &workflow); err != nil {
 		return nil, nil, fmt.Errorf("get workflow %s: %w", task.WorkflowID, err)

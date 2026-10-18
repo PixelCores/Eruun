@@ -17,8 +17,6 @@ Eruun 的应用状态分为两层：
 | `GET /api/v1/applications/:appID/components/status` | 查询单个 APP 下所有组件运行态明细 | 组件原始状态，如 `Running`、`Starting` |
 | `POST /api/v1/applications/components/status` | 批量查询一个或多个 APP 的应用聚合状态 | 小写聚合状态，如 `running`、`starting` |
 
-`adopted` 组件保存内部 source workload identity。组件日志、容器列表、文件下载/上传和 exec 不按 Eruun 生成名称或管理标签猜测 Pod，而是校验 source owner UID 链：Deployment 通过 `Deployment -> ReplicaSet -> Pod`，StatefulSet/DaemonSet/Job 直接匹配 Pod owner，CronJob 通过 `CronJob -> Job -> Pod`。同名但 owner UID 不匹配的 Pod 不会进入查询结果。
-
 状态事实源来自 `eruun_app_components.status`、`eruun_app_components.ready_replicas`、`eruun_app_components.last_abnormal` 和组件 `update_time`。上述三个状态接口都会直接读取组件 repository 的最新持久化快照，不读取也不回填普通 Components API 使用的 24 小时组件缓存；读取后仍沿用既有的 ready 副本纠正规则。应用聚合状态基于同一组组件快照计算，但会应用聚合优先级、服务组件优先规则、`/version` 活跃任务覆盖规则，以及 3 分钟 transient failed 平滑规则。
 
 生命周期操作范围和应用状态语义不是同一层概念：`start` / `stop` 只控制 `webservice` 对应的 Deployment；应用聚合状态表达服务可用性。若应用包含生命周期可控的 `webservice`，普通可用性状态（`pending`、`running`、`stopped`、`not_deploy`、`unknown`）优先由这些 managed webservice 决定。未配置 `share` 和 `share=force` 的组件属于 managed；`share=default` / `share=ignore` 不参与 managed availability，避免复用的 proxy 等公共 workload 覆盖本应用的启停或就绪状态。`store`、共享组件等任意组件的 `failed`、`deploying`、`updating`、`restarting`、`starting`、`cleaning` 仍会作为全局高优先级状态影响应用聚合结果。若应用只有共享 webservice，则回退按这些共享组件的真实状态聚合，不把“存在共享资源”伪造为 `running`。

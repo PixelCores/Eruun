@@ -33,27 +33,6 @@ func TestApproveWorkflowTaskContinue(t *testing.T) {
 	require.Equal(t, "", store.task.PendingApprovalStep)
 }
 
-func TestApproveWorkflowTaskHidesResourceImportTasks(t *testing.T) {
-	for _, taskType := range []config.WorkflowTaskType{
-		config.WorkflowTaskTypeResourceImportScan,
-		config.WorkflowTaskTypeResourceImportManage,
-	} {
-		t.Run(string(taskType), func(t *testing.T) {
-			store := &statusDataStore{task: &model.WorkflowQueue{
-				TaskID:          "resource-import-task",
-				Type:            taskType,
-				Status:          config.StatusWaitingApprove,
-				ApprovalPending: true,
-			}}
-			svc := &workflowServiceImpl{Store: store}
-
-			_, err := svc.ApproveWorkflowTask(context.Background(), store.task.TaskID, "continue", "approver", "")
-			require.ErrorIs(t, err, bcode.ErrWorkflowTaskNotExist)
-			require.True(t, store.task.ApprovalPending)
-		})
-	}
-}
-
 func TestApproveWorkflowTaskRejectsInvalidAction(t *testing.T) {
 	store := &statusDataStore{
 		task: &model.WorkflowQueue{

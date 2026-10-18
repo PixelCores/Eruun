@@ -144,10 +144,11 @@ func TestScopedStoreFiltersBeforePaginationAndDeniesWrites(t *testing.T) {
 	require.Len(t, rows, 1)
 	require.Equal(t, "task-a", rows[0].(*model.WorkflowQueue).TaskID)
 
-	resourceImportTask := &model.WorkflowQueue{
-		TaskID:      "resource-import-a",
+	workspaceJobTask := &model.WorkflowQueue{
+		TaskID:      "workspace-job-a",
 		WorkspaceID: "personal-a",
-		Type:        config.WorkflowTaskTypeResourceImportScan,
+		Type:        config.WorkflowTaskTypeJob,
+		JobSpec:     `{"name":"command","stages":[{"name":"main","steps":[{"name":"run","type":"command","spec":{"image":"busybox:1.37.0","command":["true"]}}]}]}`,
 		Status:      config.StatusWaiting,
 	}
 	require.ErrorIs(t, store.Add(ctx, &model.WorkflowQueue{
@@ -155,26 +156,26 @@ func TestScopedStoreFiltersBeforePaginationAndDeniesWrites(t *testing.T) {
 		WorkspaceID: "personal-a",
 		Type:        config.WorkflowTaskTypeWorkflow,
 	}), bcode.ErrForbidden)
-	require.NoError(t, store.Add(ctx, resourceImportTask))
-	resourceImportJob := &model.JobInfo{
-		TaskID:      resourceImportTask.TaskID,
-		WorkspaceID: resourceImportTask.WorkspaceID,
-		Type:        string(config.JobResourceImportScan),
+	require.NoError(t, store.Add(ctx, workspaceJobTask))
+	workspaceJob := &model.JobInfo{
+		TaskID:      workspaceJobTask.TaskID,
+		WorkspaceID: workspaceJobTask.WorkspaceID,
+		Type:        string(config.JobCommand),
 		Status:      string(config.StatusCompleted),
 	}
 	require.ErrorIs(t, store.Add(ctx, &model.JobInfo{
-		TaskID:      resourceImportTask.TaskID,
-		WorkspaceID: resourceImportTask.WorkspaceID,
+		TaskID:      workspaceJobTask.TaskID,
+		WorkspaceID: workspaceJobTask.WorkspaceID,
 		Type:        string(config.JobDeploy),
 	}), bcode.ErrForbidden)
-	require.NoError(t, store.Add(ctx, resourceImportJob))
-	rows, err = store.List(ctx, &model.JobInfo{TaskID: resourceImportTask.TaskID, WorkspaceID: resourceImportTask.WorkspaceID}, nil)
+	require.NoError(t, store.Add(ctx, workspaceJob))
+	rows, err = store.List(ctx, &model.JobInfo{TaskID: workspaceJobTask.TaskID, WorkspaceID: workspaceJobTask.WorkspaceID}, nil)
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
-	require.Equal(t, resourceImportTask.TaskID, rows[0].(*model.JobInfo).TaskID)
+	require.Equal(t, workspaceJobTask.TaskID, rows[0].(*model.JobInfo).TaskID)
 
 	otherWorkspace := account.WithScope(context.Background(), account.Scope{UserID: "b", WorkspaceID: "personal-b", Namespace: "ns-b", Role: "owner"})
-	require.ErrorIs(t, store.Get(otherWorkspace, &model.WorkflowQueue{TaskID: resourceImportTask.TaskID}), bcode.ErrForbidden)
+	require.ErrorIs(t, store.Get(otherWorkspace, &model.WorkflowQueue{TaskID: workspaceJobTask.TaskID}), bcode.ErrForbidden)
 }
 
 func TestAuthFailsClosedWithoutDependencies(t *testing.T) {

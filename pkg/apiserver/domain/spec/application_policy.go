@@ -3,26 +3,6 @@ package spec
 import "strings"
 
 type VersionUpdateExecutionScope string
-type ManagementMode string
-
-const (
-	ManagementModeNative  ManagementMode = "native"
-	ManagementModeObserve ManagementMode = "observe"
-	ManagementModeAdopted ManagementMode = "adopted"
-)
-
-func NormalizeManagementMode(value string) (ManagementMode, bool) {
-	switch ManagementMode(strings.ToLower(strings.TrimSpace(value))) {
-	case ManagementModeNative:
-		return ManagementModeNative, true
-	case ManagementModeObserve:
-		return ManagementModeObserve, true
-	case ManagementModeAdopted:
-		return ManagementModeAdopted, true
-	default:
-		return "", false
-	}
-}
 
 // UpdateStrategy is the legacy version-update request field; workload rollout
 // behavior is controlled by component traits, not this value.

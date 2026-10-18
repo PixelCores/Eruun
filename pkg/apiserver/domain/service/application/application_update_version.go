@@ -7,9 +7,7 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -50,92 +48,6 @@ func (c *applicationsServiceImpl) updateVersionLocked(ctx context.Context, app *
 		return nil, err
 	}
 	return c.finalizeVersionUpdateRun(ctx, run), nil
-}
-
-func validateAdoptedVersionUpdateActions(
-	specs []apisv1.ComponentUpdateSpec,
-	components map[string]*model.ApplicationComponent,
-) error {
-	for _, spec := range specs {
-		action, err := parseVersionUpdateComponentAction(spec)
-		if err != nil {
-			return err
-		}
-		name := strings.TrimSpace(spec.Name)
-		if action == domainspec.ComponentActionAdd {
-			return fmt.Errorf(
-				"%w: adopted applications cannot add component %q without an explicit source binding",
-				bcode.ErrApplicationManagementMode,
-				name,
-			)
-		}
-		if action == domainspec.ComponentActionRemove {
-			return fmt.Errorf(
-				"%w: adopted component %q must be detached through an adoption-aware operation",
-				bcode.ErrApplicationManagementMode,
-				name,
-			)
-		}
-		if spec.Properties != nil && spec.Properties.Secret != nil {
-			return fmt.Errorf(
-				"%w: adopted Secret values require the encrypted keyring-aware update path",
-				bcode.ErrApplicationManagementMode,
-			)
-		}
-		component := components[strings.ToLower(name)]
-		if component == nil {
-			return fmt.Errorf(
-				"%w: adopted component %q has no source workload binding",
-				bcode.ErrApplicationManagementMode,
-				name,
-			)
-		}
-		if err := validateAdoptedComponentSourceBinding(component); err != nil {
-			return err
-		}
-		if err := validateAdoptedVersionUpdateCompatibility(component, spec); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func validateAdoptedComponentSourceBinding(component *model.ApplicationComponent) error {
-	if component == nil || !component.HasSourceWorkload() {
-		return fmt.Errorf("%w: adopted component has no source workload binding", bcode.ErrApplicationManagementMode)
-	}
-	if strings.TrimSpace(component.SourceWorkloadAPIVersion) != "apps/v1" {
-		return fmt.Errorf(
-			"%w: adopted component %q has unsupported source apiVersion %q",
-			bcode.ErrApplicationManagementMode,
-			component.Name,
-			component.SourceWorkloadAPIVersion,
-		)
-	}
-	expectedKind := ""
-	switch component.ComponentType {
-	case config.ServerJob:
-		expectedKind = "Deployment"
-	case config.StoreJob:
-		expectedKind = "StatefulSet"
-	default:
-		return fmt.Errorf(
-			"%w: adopted component %q has unsupported type %q",
-			bcode.ErrApplicationManagementMode,
-			component.Name,
-			component.ComponentType,
-		)
-	}
-	if strings.TrimSpace(component.SourceWorkloadKind) != expectedKind {
-		return fmt.Errorf(
-			"%w: adopted component %q source kind %q does not match type %q",
-			bcode.ErrApplicationManagementMode,
-			component.Name,
-			component.SourceWorkloadKind,
-			component.ComponentType,
-		)
-	}
-	return nil
 }
 
 func (c *applicationsServiceImpl) updateComponentInStore(ctx context.Context, store datastore.DataStore, comp *model.ApplicationComponent, spec apisv1.ComponentUpdateSpec) (bool, error) {

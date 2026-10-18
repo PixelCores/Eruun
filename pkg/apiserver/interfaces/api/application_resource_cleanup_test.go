@@ -21,10 +21,9 @@ type fakeCleanupApplicationService struct {
 	err  error
 }
 
-func (f *fakeCleanupApplicationService) ApplyApplicationResourceCleanup(
+func (f *fakeCleanupApplicationService) CleanupApplicationResources(
 	context.Context,
 	string,
-	apis.CleanupApplicationResourcesRequest,
 ) (*apis.CleanupApplicationResourcesResponse, error) {
 	return f.resp, f.err
 }
@@ -33,10 +32,9 @@ func TestDeleteApplicationResourcesEndpointPartialErrorReturnsDetails(t *testing
 	gin.SetMode(gin.TestMode)
 	appSvc := &fakeCleanupApplicationService{
 		resp: &apis.CleanupApplicationResourcesResponse{
-			AppID:             "app-123",
-			DeletedResources:  []string{"Deployment:default/web"},
-			FailedResources:   []string{"Secret:default/config"},
-			RetainedResources: []string{"PersistentVolumeClaim:default/data"},
+			AppID:            "app-123",
+			DeletedResources: []string{"Deployment:default/web"},
+			FailedResources:  []string{"Secret:default/config"},
 		},
 		err: errors.New("partial cleanup failures"),
 	}

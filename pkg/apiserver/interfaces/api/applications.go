@@ -1,18 +1,10 @@
 package api
 
 import (
-	"context"
-
 	"github.com/gin-gonic/gin"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
-	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 )
-
-type namespaceImportService interface {
-	ImportNamespaceResources(context.Context, apisv1.ImportNamespaceApplicationsRequest) (*apisv1.ImportNamespaceApplicationsResponse, error)
-	TryImportNamespaceResources(context.Context, apisv1.TryImportNamespaceApplicationsRequest) (*apisv1.TryImportNamespaceApplicationsResponse, error)
-}
 
 type applications struct {
 	ApplicationService     service.ApplicationsService       `inject:""`
@@ -20,7 +12,6 @@ type applications struct {
 	WorkflowService        service.WorkflowService           `inject:""`
 	ValidationService      service.ValidationService         `inject:""`
 	ConversionService      service.ConversionService         `inject:""`
-	ImportService          namespaceImportService            `inject:""`
 }
 
 // NewApplications new applications manage
@@ -38,8 +29,6 @@ func (app *applications) RegisterRoutes(group *gin.RouterGroup) {
 	group.POST("/applications/create-and-exec", app.createAndExecApplications)
 	group.POST("/applications/query", app.batchGetApplications)
 	group.POST("/applications/convert", app.convertApplications)
-	group.POST("/applications/import/namespace", app.importNamespaceApplications)
-	group.POST("/applications/import/namespace/try", app.tryImportNamespaceApplications)
 	group.GET("/applications/:appID/workflows", app.listApplicationWorkflows)
 	group.GET("/applications/:appID/spec", app.getApplicationSpec)
 	group.GET("/applications/:appID/status", app.getApplicationStatus)
@@ -53,7 +42,6 @@ func (app *applications) RegisterRoutes(group *gin.RouterGroup) {
 	group.POST("/applications/:appID/components/:componentName/shell/stream", app.streamComponentShellScript)
 	group.DELETE("/applications/:appID", app.deleteApplication)
 	group.PUT("/applications/:appID/workflow", app.updateApplicationWorkflow)
-	group.POST("/applications/:appID/resources/cleanup-plan", app.planApplicationResourceCleanup)
 	group.DELETE("/applications/:appID/resources", app.deleteApplicationResources)
 	group.POST("/applications/:appID/database-reset", app.resetApplicationDatabases)
 	group.POST("/applications/:appID/log-archives", app.downloadLogArchive)

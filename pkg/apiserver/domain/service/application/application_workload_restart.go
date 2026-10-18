@@ -54,7 +54,6 @@ func (c *applicationsServiceImpl) restartApplicationWorkloadsLocked(ctx context.
 	restartedAt := formatWorkloadRestartAt(time.Now())
 	reporter := newRestartReporter()
 	restartedComponents := make([]string, 0, len(components))
-	adopted := isAdoptedApplication(app)
 	var markErr error
 	var task *model.WorkflowQueue
 	var taskID string
@@ -73,77 +72,21 @@ func (c *applicationsServiceImpl) restartApplicationWorkloadsLocked(ctx context.
 		)
 		return taskErr
 	}
-	if adopted {
-		lockedApp, err := c.withAdoptedLifecycleLock(
-			ctx,
-			app.ID,
-			adoptedLifecycleRestart,
-			func(
-				lockCtx context.Context,
-				lockedApp *model.Applications,
-				lockedComponents []*model.ApplicationComponent,
-			) error {
-				targets, skippedTargets, err := c.preflightAdoptedLifecycle(
-					lockCtx,
-					lockedComponents,
-					adoptedLifecycleRestart,
-				)
-				if err != nil {
-					return err
-				}
-				for _, target := range skippedTargets {
-					reporter.record(target.kind, target.namespace, target.name, true, nil)
-				}
-				for _, target := range targets {
-					err := c.updateAdoptedLifecycleTarget(lockCtx, target, adoptedLifecycleRestart, restartedAt)
-					reporter.record(target.kind, target.namespace, target.name, false, err)
-					if err == nil {
-						restartedComponents = append(restartedComponents, target.component.Name)
-					}
-				}
-				if len(restartedComponents) > 0 {
-					if err := c.markComponentsStatus(lockCtx, lockedApp.ID, restartedComponents, config.ComponentStatusRestarting); err != nil {
-						markErr = fmt.Errorf("mark components restarting: %w", err)
-						statusTarget := formatResource(
-							"ComponentStatus",
-							pickNamespace(lockedApp.Namespace, config.DefaultNamespace),
-							lockedApp.ID,
-						)
-						reporter.failedResources = append(
-							reporter.failedResources,
-							operationJobRecord{name: statusTarget, errMsg: fmt.Sprint(markErr)},
-						)
-					}
-				}
-				if err := recordTask(lockCtx, lockedApp); err != nil {
-					return fmt.Errorf("Kubernetes restart may already have taken effect, but operation record commit could not be confirmed; inspect operation records and Kubernetes resources before retrying: %w", err)
-				}
-				return nil
-			},
-		)
-		if err != nil {
-			return nil, err
-		}
-		app = lockedApp
-	} else {
-		patch, err := buildRestartPatch(restartedAt)
-		if err != nil {
-			return nil, err
-		}
-		restartedComponents = c.restartNativeApplicationComponents(ctx, components, patch, reporter)
+	patch, err := buildRestartPatch(restartedAt)
+	if err != nil {
+		return nil, err
 	}
+	restartedComponents = c.restartNativeApplicationComponents(ctx, components, patch, reporter)
 
-	if !adopted && len(restartedComponents) > 0 {
+	if len(restartedComponents) > 0 {
 		if err := c.markComponentsStatus(ctx, app.ID, restartedComponents, config.ComponentStatusRestarting); err != nil {
 			markErr = fmt.Errorf("mark components restarting: %w", err)
 			statusTarget := formatResource("ComponentStatus", pickNamespace(app.Namespace, config.DefaultNamespace), app.ID)
 			reporter.failedResources = append(reporter.failedResources, operationJobRecord{name: statusTarget, errMsg: fmt.Sprint(markErr)})
 		}
 	}
-	if !adopted {
-		if taskErr := recordTask(ctx, app); taskErr != nil {
-			return nil, fmt.Errorf("Kubernetes restart may already have taken effect, but operation record commit could not be confirmed; inspect operation records and Kubernetes resources before retrying: %w", taskErr)
-		}
+	if taskErr := recordTask(ctx, app); taskErr != nil {
+		return nil, fmt.Errorf("Kubernetes restart may already have taken effect, but operation record commit could not be confirmed; inspect operation records and Kubernetes resources before retrying: %w", taskErr)
 	}
 
 	resp := &apisv1.RestartApplicationWorkloadsResponse{

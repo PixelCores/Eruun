@@ -64,7 +64,7 @@ Workflow 中每个 component step 可写 `schedulingClass`，subStep 可覆盖�
 
 原 `JobPriority*` bucket 表达资源依赖顺序，保持不变。Job 只有在前置步骤、审批、资源 bucket 和 Worker 本地并发条件允许执行时才进入全局 ready 队列。优先级不能把后置 Job 提到依赖之前，也不替换当前 StepByStep/DAG 语义。队列排序覆盖已经登记的 ready Job；尚未由 Worker 接管的 Workflow 或尚未到达的步骤没有提前占用 Job 槽位。
 
-覆盖范围：普通生成 Job、失败清理、审批通知、终态 callback、资源扫描/纳管、到期 delayed Job 的实际分发。审批通知继承审批 step 的 class；没有用户标记的内部 Job 使用 `normal`。Kubernetes CronJob 创建的后续 batch Job/Pod 属于 Kubernetes 控制器，不是新的 Eruun JobTask。
+覆盖范围：普通生成 Job、失败清理、审批通知、终态 callback、到期 delayed Job 的实际分发。审批通知继承审批 step 的 class；没有用户标记的内部 Job 使用 `normal`。Kubernetes CronJob 创建的后续 batch Job/Pod 属于 Kubernetes 控制器，不是新的 Eruun JobTask。
 
 ## 4. 全局策略与选择规则
 

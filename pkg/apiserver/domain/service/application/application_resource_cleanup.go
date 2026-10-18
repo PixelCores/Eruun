@@ -58,10 +58,6 @@ func (c *applicationsServiceImpl) cleanupApplicationResourcesUnlocked(
 		}
 		return nil, err
 	}
-	if app.EffectiveManagementMode() != domainspec.ManagementModeNative {
-		return nil, fmt.Errorf("%w: resource cleanup is disabled for %s applications",
-			bcode.ErrApplicationManagementMode, app.EffectiveManagementMode())
-	}
 	if !bypassWorkflowGuards {
 		if err := workflowservice.EnsureAppWorkflowIdle(ctx, c.Store, app.ID); err != nil {
 			return nil, err

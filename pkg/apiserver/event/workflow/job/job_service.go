@@ -2,7 +2,6 @@ package job
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -64,18 +63,6 @@ func (c *DeployServiceJobCtl) run(ctx context.Context) error {
 	}
 	name := service.Name
 	namespace := service.Namespace
-	if binding, adopted, sourceErr := adoptedResourceForJob(
-		ctx,
-		c.store,
-		c.job,
-		"Service",
-		namespace,
-		name,
-	); sourceErr != nil {
-		return sourceErr
-	} else if adopted {
-		return c.reconcileAdoptedService(ctx, serviceWithDefaults(service), binding)
-	}
 
 	unlock, skipped, err := resolveSharedResourceAccess(ctx, sharedResourceAccessOptions{
 		job:          c.job,
@@ -123,205 +110,6 @@ func (c *DeployServiceJobCtl) run(ctx context.Context) error {
 	klog.Infof("Service %q applied successfully.", updated.Name)
 
 	return nil
-}
-
-func (c *DeployServiceJobCtl) reconcileAdoptedService(
-	ctx context.Context,
-	desired *corev1.Service,
-	binding *adoptedResourceBinding,
-) error {
-	if desired == nil || desired.Name == "" || desired.Namespace == "" {
-		return fmt.Errorf("adopted service desired resource identity is required")
-	}
-	writable, err := adoptedResourceAllowsWrite(binding)
-	if err != nil {
-		return err
-	}
-	if !writable {
-		return nil
-	}
-	cli := c.client.CoreV1().Services(desired.Namespace)
-	current, err := cli.Get(ctx, desired.Name, metav1.GetOptions{})
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return c.recreateAdoptedService(ctx, desired, binding)
-		}
-		return fmt.Errorf("get adopted service %s/%s: %w", desired.Namespace, desired.Name, err)
-	}
-	if err := validateAdoptedSnapshotUID(current.UID, binding); err != nil {
-		recovered, recoverErr := recoverPendingAdoptedDependency(
-			ctx, c.store, binding, current, current, c.runtime, c.shareLocker,
-		)
-		if recoverErr != nil {
-			return fmt.Errorf("recover recreated adopted service binding: %w", recoverErr)
-		}
-		if !recovered {
-			return err
-		}
-	}
-	if !adoptedServiceNeedsUpdate(current, desired) {
-		markResourceObserved(ctx, spec.ResourceService, desired.Namespace, desired.Name)
-		return nil
-	}
-	if err := updateResourceWithRetry(ctx, func(ctx context.Context) (*corev1.Service, error) {
-		return cli.Get(ctx, desired.Name, metav1.GetOptions{})
-	}, func(ctx context.Context, latest *corev1.Service) error {
-		if err := validateAdoptedSnapshotUID(latest.UID, binding); err != nil {
-			return err
-		}
-		candidate := adoptedServiceForExistingUpdate(latest, desired)
-		if apiequality.Semantic.DeepEqual(latest.Labels, candidate.Labels) &&
-			apiequality.Semantic.DeepEqual(latest.Annotations, candidate.Annotations) &&
-			apiequality.Semantic.DeepEqual(latest.Spec, candidate.Spec) {
-			return nil
-		}
-		_, err := cli.Update(ctx, candidate, metav1.UpdateOptions{})
-		return err
-	}); err != nil {
-		return fmt.Errorf("update adopted service %s/%s: %w", desired.Namespace, desired.Name, err)
-	}
-	markResourceObserved(ctx, spec.ResourceService, desired.Namespace, desired.Name)
-	return nil
-}
-
-func (c *DeployServiceJobCtl) recreateAdoptedService(
-	ctx context.Context,
-	desired *corev1.Service,
-	binding *adoptedResourceBinding,
-) error {
-	recreation, err := prepareAdoptedDependencyRecreation(c.store, binding)
-	if err != nil {
-		return fmt.Errorf("prepare adopted service recreation: %w", err)
-	}
-	var baseline corev1.Service
-	if err := json.Unmarshal(recreation.resource.Manifest, &baseline); err != nil {
-		return fmt.Errorf("decode adopted service recreation manifest: %w", err)
-	}
-	if baseline.Name != desired.Name || baseline.Namespace != desired.Namespace {
-		return fmt.Errorf(
-			"adopted service recreation manifest identity %s/%s does not match %s/%s",
-			baseline.Namespace,
-			baseline.Name,
-			desired.Namespace,
-			desired.Name,
-		)
-	}
-	candidate := adoptedServiceForExistingUpdate(&baseline, desired)
-	cleanObjectMeta(&candidate.ObjectMeta)
-	candidate.TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "Service"}
-	guard, err := recreation.adoptedResourceBinding.prepareRecreationCandidate(ctx, c.store, candidate, c.runtime, c.shareLocker)
-	if err != nil {
-		return fmt.Errorf("persist adopted service recreation claim: %w", err)
-	}
-	defer guard.release()
-	recreationCtx := guard.Context()
-	created, err := c.client.CoreV1().Services(candidate.Namespace).Create(recreationCtx, candidate, metav1.CreateOptions{})
-	if err != nil {
-		if k8serrors.IsAlreadyExists(err) {
-			replacement, getErr := c.client.CoreV1().Services(candidate.Namespace).Get(recreationCtx, candidate.Name, metav1.GetOptions{})
-			if getErr != nil {
-				return fmt.Errorf("get concurrent recreated adopted service %s/%s: %w", candidate.Namespace, candidate.Name, getErr)
-			}
-			recovered, recoverErr := recoverPendingAdoptedDependencyLocked(
-				recreationCtx,
-				c.store,
-				&recreation.adoptedResourceBinding,
-				replacement,
-				replacement,
-				c.runtime,
-			)
-			if recoverErr != nil {
-				return fmt.Errorf("recover concurrent adopted service recreation: %w", recoverErr)
-			}
-			if recovered {
-				guard.release()
-				return c.reconcileAdoptedService(ctx, desired, &recreation.adoptedResourceBinding)
-			}
-			return fmt.Errorf(
-				"adopted service ownership conflict for %s/%s: expected missing UID %q, found %q",
-				candidate.Namespace,
-				candidate.Name,
-				recreation.resource.Source.UID,
-				replacement.UID,
-			)
-		}
-		return fmt.Errorf("recreate adopted service %s/%s: %w", candidate.Namespace, candidate.Name, err)
-	}
-	if err := recreation.persistCreated(recreationCtx, created, created, c.runtime); err != nil {
-		return fmt.Errorf("persist recreated adopted service binding; pending claim retained: %w", err)
-	}
-	markResourceObserved(ctx, spec.ResourceService, created.Namespace, created.Name)
-	return nil
-}
-
-func adoptedServiceForExistingUpdate(current, desired *corev1.Service) *corev1.Service {
-	updated := current.DeepCopy()
-	if desired == nil {
-		return updated
-	}
-	updated.Labels = adoptedManagedStringMap(current.Labels, desired.Labels, eruunSystemLabelKeys)
-	updated.Annotations = adoptedManagedStringMap(
-		current.Annotations,
-		desired.Annotations,
-		[]string{config.AnnotationComponentName},
-	)
-	if desired.Spec.Type != "" {
-		updated.Spec.Type = desired.Spec.Type
-	}
-	if desired.Spec.Selector != nil {
-		updated.Spec.Selector = utils.CopyStringMap(desired.Spec.Selector)
-	}
-	if desired.Spec.Ports != nil {
-		updated.Spec.Ports = mergeAdoptedServicePorts(current.Spec.Ports, desired.Spec.Ports)
-	}
-	if desired.Spec.Type == corev1.ServiceTypeExternalName || desired.Spec.ExternalName != "" {
-		updated.Spec.ExternalName = desired.Spec.ExternalName
-	}
-	copyServicePreservedFields(updated, current)
-	return updated
-}
-
-func mergeAdoptedServicePorts(current, desired []corev1.ServicePort) []corev1.ServicePort {
-	merged := append([]corev1.ServicePort(nil), current...)
-	for _, desiredPort := range desired {
-		index := -1
-		for currentIndex := range merged {
-			if desiredPort.Name != "" && merged[currentIndex].Name == desiredPort.Name {
-				index = currentIndex
-				break
-			}
-			if desiredPort.Name == "" &&
-				merged[currentIndex].Port == desiredPort.Port &&
-				merged[currentIndex].Protocol == desiredPort.Protocol {
-				index = currentIndex
-				break
-			}
-		}
-		if index < 0 {
-			merged = append(merged, desiredPort)
-			continue
-		}
-		// The desired port may come from an older adoption snapshot. Keep live
-		// fields that Service traits cannot configure.
-		desiredPort.NodePort = merged[index].NodePort
-		desiredPort.AppProtocol = merged[index].AppProtocol
-		// A Service trait cannot currently represent a named targetPort.
-		// Adopted Services therefore keep the live target identity; supported
-		// adopted version updates do not include Service port changes.
-		desiredPort.TargetPort = merged[index].TargetPort
-		merged[index] = desiredPort
-	}
-	return merged
-}
-
-func adoptedServiceNeedsUpdate(current, desired *corev1.Service) bool {
-	if current == nil || desired == nil {
-		return false
-	}
-	updated := adoptedServiceForExistingUpdate(current, desired)
-	return !apiequality.Semantic.DeepEqual(current.Labels, updated.Labels) ||
-		!apiequality.Semantic.DeepEqual(current.Annotations, updated.Annotations) ||
-		!apiequality.Semantic.DeepEqual(current.Spec, updated.Spec)
 }
 
 func (c *DeployServiceJobCtl) timeout() int {
@@ -512,11 +300,6 @@ func bindManagedServiceSelectorIdentity(selector map[string]string, component *m
 	if len(selector) == 0 || component == nil {
 		return
 	}
-	// Adopted workloads retain their live source identity so existing Services
-	// continue to match the selector labels preserved on the source Pod template.
-	if component.HasSourceWorkload() {
-		return
-	}
 	if _, exists := selector[config.LabelAppID]; exists {
 		selector[config.LabelAppID] = component.AppID
 	}
@@ -580,8 +363,8 @@ func copyServicePreservedFields(dst, src *corev1.Service) {
 	dst.ResourceVersion = src.ResourceVersion
 	// ClusterIP/ClusterIPs are allocated identities (including the literal
 	// "None" for a headless Service), never an apply-time desired state. Keep
-	// the live allocation so adopted and native reconciles cannot accidentally
-	// replace an immutable address or family assignment.
+	// the live allocation so reconciles cannot accidentally replace an
+	// immutable address or family assignment.
 	if src.Spec.ClusterIP != "" {
 		dst.Spec.ClusterIP = src.Spec.ClusterIP
 	}

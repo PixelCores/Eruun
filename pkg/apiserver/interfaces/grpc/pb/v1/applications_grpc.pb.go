@@ -29,8 +29,6 @@ const (
 	ApplicationService_CreateAndExecApplications_FullMethodName       = "/eruun.v1.ApplicationService/CreateAndExecApplications"
 	ApplicationService_BatchGetApplications_FullMethodName            = "/eruun.v1.ApplicationService/BatchGetApplications"
 	ApplicationService_ConvertApplications_FullMethodName             = "/eruun.v1.ApplicationService/ConvertApplications"
-	ApplicationService_ImportNamespaceApplications_FullMethodName     = "/eruun.v1.ApplicationService/ImportNamespaceApplications"
-	ApplicationService_TryImportNamespaceApplications_FullMethodName  = "/eruun.v1.ApplicationService/TryImportNamespaceApplications"
 	ApplicationService_ListApplicationWorkflows_FullMethodName        = "/eruun.v1.ApplicationService/ListApplicationWorkflows"
 	ApplicationService_GetApplicationSpec_FullMethodName              = "/eruun.v1.ApplicationService/GetApplicationSpec"
 	ApplicationService_GetApplicationStatus_FullMethodName            = "/eruun.v1.ApplicationService/GetApplicationStatus"
@@ -47,8 +45,7 @@ const (
 	ApplicationService_ListWorkflowSchedules_FullMethodName           = "/eruun.v1.ApplicationService/ListWorkflowSchedules"
 	ApplicationService_UpsertWorkflowSchedule_FullMethodName          = "/eruun.v1.ApplicationService/UpsertWorkflowSchedule"
 	ApplicationService_DeleteWorkflowSchedule_FullMethodName          = "/eruun.v1.ApplicationService/DeleteWorkflowSchedule"
-	ApplicationService_PlanApplicationResourceCleanup_FullMethodName  = "/eruun.v1.ApplicationService/PlanApplicationResourceCleanup"
-	ApplicationService_ApplyApplicationResourceCleanup_FullMethodName = "/eruun.v1.ApplicationService/ApplyApplicationResourceCleanup"
+	ApplicationService_CleanupApplicationResources_FullMethodName     = "/eruun.v1.ApplicationService/CleanupApplicationResources"
 	ApplicationService_ResetApplicationDatabases_FullMethodName       = "/eruun.v1.ApplicationService/ResetApplicationDatabases"
 	ApplicationService_DownloadLogArchive_FullMethodName              = "/eruun.v1.ApplicationService/DownloadLogArchive"
 	ApplicationService_RestartApplicationWorkloads_FullMethodName     = "/eruun.v1.ApplicationService/RestartApplicationWorkloads"
@@ -83,8 +80,6 @@ type ApplicationServiceClient interface {
 	CreateAndExecApplications(ctx context.Context, in *AppDTOCreateAndExecApplicationRequest, opts ...grpc.CallOption) (*AppDTOCreateAndExecApplicationResponse, error)
 	BatchGetApplications(ctx context.Context, in *AppDTOBatchGetApplicationsRequest, opts ...grpc.CallOption) (*AppDTOBatchGetApplicationsResponse, error)
 	ConvertApplications(ctx context.Context, in *AppDTOConvertApplicationsRequest, opts ...grpc.CallOption) (*AppDTOConvertApplicationsResponse, error)
-	ImportNamespaceApplications(ctx context.Context, in *AppDTOImportNamespaceApplicationsRequest, opts ...grpc.CallOption) (*AppDTOImportNamespaceApplicationsResponse, error)
-	TryImportNamespaceApplications(ctx context.Context, in *AppDTOTryImportNamespaceApplicationsRequest, opts ...grpc.CallOption) (*AppDTOTryImportNamespaceApplicationsResponse, error)
 	ListApplicationWorkflows(ctx context.Context, in *ApplicationIDRequest, opts ...grpc.CallOption) (*AppDTOListApplicationWorkflowsResponse, error)
 	GetApplicationSpec(ctx context.Context, in *ApplicationIDRequest, opts ...grpc.CallOption) (*AppDTOCreateApplicationsRequest, error)
 	GetApplicationStatus(ctx context.Context, in *ApplicationIDRequest, opts ...grpc.CallOption) (*AppDTOApplicationStatusResponse, error)
@@ -101,8 +96,7 @@ type ApplicationServiceClient interface {
 	ListWorkflowSchedules(ctx context.Context, in *ApplicationIDRequest, opts ...grpc.CallOption) (*AppDTOListWorkflowSchedulesResponse, error)
 	UpsertWorkflowSchedule(ctx context.Context, in *UpsertWorkflowScheduleRPCRequest, opts ...grpc.CallOption) (*AppDTOUpsertWorkflowScheduleResponse, error)
 	DeleteWorkflowSchedule(ctx context.Context, in *ApplicationWorkflowRequest, opts ...grpc.CallOption) (*AppDTODeleteWorkflowScheduleResponse, error)
-	PlanApplicationResourceCleanup(ctx context.Context, in *ApplicationIDRequest, opts ...grpc.CallOption) (*AppDTOCleanupApplicationResourcesPlanResponse, error)
-	ApplyApplicationResourceCleanup(ctx context.Context, in *CleanupApplicationRPCRequest, opts ...grpc.CallOption) (*AppDTOCleanupApplicationResourcesResponse, error)
+	CleanupApplicationResources(ctx context.Context, in *ApplicationIDRequest, opts ...grpc.CallOption) (*AppDTOCleanupApplicationResourcesResponse, error)
 	ResetApplicationDatabases(ctx context.Context, in *ResetApplicationDatabasesRPCRequest, opts ...grpc.CallOption) (*AppDTODatabaseResetResponse, error)
 	DownloadLogArchive(ctx context.Context, in *LogArchiveRPCRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ComponentFileChunk], error)
 	RestartApplicationWorkloads(ctx context.Context, in *ApplicationLifecycleRPCRequest, opts ...grpc.CallOption) (*AppDTORestartApplicationWorkloadsResponse, error)
@@ -214,26 +208,6 @@ func (c *applicationServiceClient) ConvertApplications(ctx context.Context, in *
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AppDTOConvertApplicationsResponse)
 	err := c.cc.Invoke(ctx, ApplicationService_ConvertApplications_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *applicationServiceClient) ImportNamespaceApplications(ctx context.Context, in *AppDTOImportNamespaceApplicationsRequest, opts ...grpc.CallOption) (*AppDTOImportNamespaceApplicationsResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(AppDTOImportNamespaceApplicationsResponse)
-	err := c.cc.Invoke(ctx, ApplicationService_ImportNamespaceApplications_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *applicationServiceClient) TryImportNamespaceApplications(ctx context.Context, in *AppDTOTryImportNamespaceApplicationsRequest, opts ...grpc.CallOption) (*AppDTOTryImportNamespaceApplicationsResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(AppDTOTryImportNamespaceApplicationsResponse)
-	err := c.cc.Invoke(ctx, ApplicationService_TryImportNamespaceApplications_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -427,20 +401,10 @@ func (c *applicationServiceClient) DeleteWorkflowSchedule(ctx context.Context, i
 	return out, nil
 }
 
-func (c *applicationServiceClient) PlanApplicationResourceCleanup(ctx context.Context, in *ApplicationIDRequest, opts ...grpc.CallOption) (*AppDTOCleanupApplicationResourcesPlanResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(AppDTOCleanupApplicationResourcesPlanResponse)
-	err := c.cc.Invoke(ctx, ApplicationService_PlanApplicationResourceCleanup_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *applicationServiceClient) ApplyApplicationResourceCleanup(ctx context.Context, in *CleanupApplicationRPCRequest, opts ...grpc.CallOption) (*AppDTOCleanupApplicationResourcesResponse, error) {
+func (c *applicationServiceClient) CleanupApplicationResources(ctx context.Context, in *ApplicationIDRequest, opts ...grpc.CallOption) (*AppDTOCleanupApplicationResourcesResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AppDTOCleanupApplicationResourcesResponse)
-	err := c.cc.Invoke(ctx, ApplicationService_ApplyApplicationResourceCleanup_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, ApplicationService_CleanupApplicationResources_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -641,8 +605,6 @@ type ApplicationServiceServer interface {
 	CreateAndExecApplications(context.Context, *AppDTOCreateAndExecApplicationRequest) (*AppDTOCreateAndExecApplicationResponse, error)
 	BatchGetApplications(context.Context, *AppDTOBatchGetApplicationsRequest) (*AppDTOBatchGetApplicationsResponse, error)
 	ConvertApplications(context.Context, *AppDTOConvertApplicationsRequest) (*AppDTOConvertApplicationsResponse, error)
-	ImportNamespaceApplications(context.Context, *AppDTOImportNamespaceApplicationsRequest) (*AppDTOImportNamespaceApplicationsResponse, error)
-	TryImportNamespaceApplications(context.Context, *AppDTOTryImportNamespaceApplicationsRequest) (*AppDTOTryImportNamespaceApplicationsResponse, error)
 	ListApplicationWorkflows(context.Context, *ApplicationIDRequest) (*AppDTOListApplicationWorkflowsResponse, error)
 	GetApplicationSpec(context.Context, *ApplicationIDRequest) (*AppDTOCreateApplicationsRequest, error)
 	GetApplicationStatus(context.Context, *ApplicationIDRequest) (*AppDTOApplicationStatusResponse, error)
@@ -659,8 +621,7 @@ type ApplicationServiceServer interface {
 	ListWorkflowSchedules(context.Context, *ApplicationIDRequest) (*AppDTOListWorkflowSchedulesResponse, error)
 	UpsertWorkflowSchedule(context.Context, *UpsertWorkflowScheduleRPCRequest) (*AppDTOUpsertWorkflowScheduleResponse, error)
 	DeleteWorkflowSchedule(context.Context, *ApplicationWorkflowRequest) (*AppDTODeleteWorkflowScheduleResponse, error)
-	PlanApplicationResourceCleanup(context.Context, *ApplicationIDRequest) (*AppDTOCleanupApplicationResourcesPlanResponse, error)
-	ApplyApplicationResourceCleanup(context.Context, *CleanupApplicationRPCRequest) (*AppDTOCleanupApplicationResourcesResponse, error)
+	CleanupApplicationResources(context.Context, *ApplicationIDRequest) (*AppDTOCleanupApplicationResourcesResponse, error)
 	ResetApplicationDatabases(context.Context, *ResetApplicationDatabasesRPCRequest) (*AppDTODatabaseResetResponse, error)
 	DownloadLogArchive(*LogArchiveRPCRequest, grpc.ServerStreamingServer[ComponentFileChunk]) error
 	RestartApplicationWorkloads(context.Context, *ApplicationLifecycleRPCRequest) (*AppDTORestartApplicationWorkloadsResponse, error)
@@ -715,12 +676,6 @@ func (UnimplementedApplicationServiceServer) BatchGetApplications(context.Contex
 func (UnimplementedApplicationServiceServer) ConvertApplications(context.Context, *AppDTOConvertApplicationsRequest) (*AppDTOConvertApplicationsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ConvertApplications not implemented")
 }
-func (UnimplementedApplicationServiceServer) ImportNamespaceApplications(context.Context, *AppDTOImportNamespaceApplicationsRequest) (*AppDTOImportNamespaceApplicationsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ImportNamespaceApplications not implemented")
-}
-func (UnimplementedApplicationServiceServer) TryImportNamespaceApplications(context.Context, *AppDTOTryImportNamespaceApplicationsRequest) (*AppDTOTryImportNamespaceApplicationsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method TryImportNamespaceApplications not implemented")
-}
 func (UnimplementedApplicationServiceServer) ListApplicationWorkflows(context.Context, *ApplicationIDRequest) (*AppDTOListApplicationWorkflowsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListApplicationWorkflows not implemented")
 }
@@ -769,11 +724,8 @@ func (UnimplementedApplicationServiceServer) UpsertWorkflowSchedule(context.Cont
 func (UnimplementedApplicationServiceServer) DeleteWorkflowSchedule(context.Context, *ApplicationWorkflowRequest) (*AppDTODeleteWorkflowScheduleResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteWorkflowSchedule not implemented")
 }
-func (UnimplementedApplicationServiceServer) PlanApplicationResourceCleanup(context.Context, *ApplicationIDRequest) (*AppDTOCleanupApplicationResourcesPlanResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method PlanApplicationResourceCleanup not implemented")
-}
-func (UnimplementedApplicationServiceServer) ApplyApplicationResourceCleanup(context.Context, *CleanupApplicationRPCRequest) (*AppDTOCleanupApplicationResourcesResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ApplyApplicationResourceCleanup not implemented")
+func (UnimplementedApplicationServiceServer) CleanupApplicationResources(context.Context, *ApplicationIDRequest) (*AppDTOCleanupApplicationResourcesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CleanupApplicationResources not implemented")
 }
 func (UnimplementedApplicationServiceServer) ResetApplicationDatabases(context.Context, *ResetApplicationDatabasesRPCRequest) (*AppDTODatabaseResetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ResetApplicationDatabases not implemented")
@@ -1005,42 +957,6 @@ func _ApplicationService_ConvertApplications_Handler(srv interface{}, ctx contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ApplicationServiceServer).ConvertApplications(ctx, req.(*AppDTOConvertApplicationsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _ApplicationService_ImportNamespaceApplications_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(AppDTOImportNamespaceApplicationsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ApplicationServiceServer).ImportNamespaceApplications(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ApplicationService_ImportNamespaceApplications_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ApplicationServiceServer).ImportNamespaceApplications(ctx, req.(*AppDTOImportNamespaceApplicationsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _ApplicationService_TryImportNamespaceApplications_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(AppDTOTryImportNamespaceApplicationsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ApplicationServiceServer).TryImportNamespaceApplications(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ApplicationService_TryImportNamespaceApplications_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ApplicationServiceServer).TryImportNamespaceApplications(ctx, req.(*AppDTOTryImportNamespaceApplicationsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1312,38 +1228,20 @@ func _ApplicationService_DeleteWorkflowSchedule_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ApplicationService_PlanApplicationResourceCleanup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _ApplicationService_CleanupApplicationResources_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ApplicationIDRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ApplicationServiceServer).PlanApplicationResourceCleanup(ctx, in)
+		return srv.(ApplicationServiceServer).CleanupApplicationResources(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ApplicationService_PlanApplicationResourceCleanup_FullMethodName,
+		FullMethod: ApplicationService_CleanupApplicationResources_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ApplicationServiceServer).PlanApplicationResourceCleanup(ctx, req.(*ApplicationIDRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _ApplicationService_ApplyApplicationResourceCleanup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CleanupApplicationRPCRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ApplicationServiceServer).ApplyApplicationResourceCleanup(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ApplicationService_ApplyApplicationResourceCleanup_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ApplicationServiceServer).ApplyApplicationResourceCleanup(ctx, req.(*CleanupApplicationRPCRequest))
+		return srv.(ApplicationServiceServer).CleanupApplicationResources(ctx, req.(*ApplicationIDRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1691,14 +1589,6 @@ var ApplicationService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ApplicationService_ConvertApplications_Handler,
 		},
 		{
-			MethodName: "ImportNamespaceApplications",
-			Handler:    _ApplicationService_ImportNamespaceApplications_Handler,
-		},
-		{
-			MethodName: "TryImportNamespaceApplications",
-			Handler:    _ApplicationService_TryImportNamespaceApplications_Handler,
-		},
-		{
 			MethodName: "ListApplicationWorkflows",
 			Handler:    _ApplicationService_ListApplicationWorkflows_Handler,
 		},
@@ -1751,12 +1641,8 @@ var ApplicationService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ApplicationService_DeleteWorkflowSchedule_Handler,
 		},
 		{
-			MethodName: "PlanApplicationResourceCleanup",
-			Handler:    _ApplicationService_PlanApplicationResourceCleanup_Handler,
-		},
-		{
-			MethodName: "ApplyApplicationResourceCleanup",
-			Handler:    _ApplicationService_ApplyApplicationResourceCleanup_Handler,
+			MethodName: "CleanupApplicationResources",
+			Handler:    _ApplicationService_CleanupApplicationResources_Handler,
 		},
 		{
 			MethodName: "ResetApplicationDatabases",

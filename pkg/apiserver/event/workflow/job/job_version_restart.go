@@ -4,13 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
-	"strconv"
 	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -19,7 +16,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
@@ -115,13 +111,6 @@ func (c *VersionRestartJobCtl) restartDeployment(
 	restartedAt string,
 	patch []byte,
 ) (*versionRestartWaitTarget, error) {
-	source, adopted, sourceErr := adoptedSourceForJob(ctx, c.store, c.job, "Deployment")
-	if sourceErr != nil {
-		return nil, sourceErr
-	}
-	if adopted {
-		return c.restartAdoptedDeployment(ctx, source, restartedAt)
-	}
 	properties, err := ParseProperties(component.Properties)
 	if err != nil {
 		return nil, err
@@ -166,13 +155,6 @@ func (c *VersionRestartJobCtl) restartStatefulSet(
 	restartedAt string,
 	patch []byte,
 ) (*versionRestartWaitTarget, error) {
-	source, adopted, sourceErr := adoptedSourceForJob(ctx, c.store, c.job, "StatefulSet")
-	if sourceErr != nil {
-		return nil, sourceErr
-	}
-	if adopted {
-		return c.restartAdoptedStatefulSet(ctx, source, restartedAt)
-	}
 	result, err := GenerateStoreService(component)
 	if err != nil {
 		return nil, err
@@ -205,185 +187,6 @@ func (c *VersionRestartJobCtl) restartStatefulSet(
 		desiredReplicas: desiredReplicasFromStatefulSet(statefulSet),
 		expectedImages:  podSpecImages(statefulSet.Spec.Template.Spec),
 	}, nil
-}
-
-func (c *VersionRestartJobCtl) restartAdoptedDeployment(
-	ctx context.Context,
-	source *model.ApplicationComponent,
-	restartedAt string,
-) (*versionRestartWaitTarget, error) {
-	namespace := adoptedSourceNamespace(source, c.job.Namespace)
-	name := strings.TrimSpace(source.SourceWorkloadName)
-	var updated *appsv1.Deployment
-	if err := updateResourceWithRetry(ctx, func(ctx context.Context) (*appsv1.Deployment, error) {
-		return c.client.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
-	}, func(ctx context.Context, latest *appsv1.Deployment) error {
-		if err := validateAdoptedSourceUID(latest.UID, source, "Deployment", namespace, name); err != nil {
-			return err
-		}
-		if latest.Spec.Paused {
-			return fmt.Errorf("deployment is paused")
-		}
-		candidate := latest.DeepCopy()
-		applyAdoptedRestartMetadata(&candidate.Spec.Template, source, restartedAt)
-		var err error
-		updated, err = c.client.AppsV1().Deployments(namespace).Update(ctx, candidate, metav1.UpdateOptions{})
-		return err
-	}); err != nil {
-		return nil, fmt.Errorf("rollout restart adopted deployment %s/%s: %w", namespace, name, err)
-	}
-	return &versionRestartWaitTarget{
-		kind:            "Deployment",
-		namespace:       namespace,
-		name:            name,
-		componentLabel:  naming.BoundedLabelValue(source.Name),
-		desiredReplicas: desiredReplicasFromDeployment(updated),
-		expectedImages:  podSpecImages(updated.Spec.Template.Spec),
-	}, nil
-}
-
-func (c *VersionRestartJobCtl) restartAdoptedStatefulSet(
-	ctx context.Context,
-	source *model.ApplicationComponent,
-	restartedAt string,
-) (*versionRestartWaitTarget, error) {
-	namespace := adoptedSourceNamespace(source, c.job.Namespace)
-	name := strings.TrimSpace(source.SourceWorkloadName)
-	current, err := c.client.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("get adopted statefulset %s/%s for restart: %w", namespace, name, err)
-	}
-	if err := validateAdoptedSourceUID(current.UID, source, "StatefulSet", namespace, name); err != nil {
-		return nil, err
-	}
-	if err := c.validateAdoptedStatefulSetRestart(ctx, current, source); err != nil {
-		return nil, fmt.Errorf("preflight adopted statefulset %s/%s restart: %w", namespace, name, err)
-	}
-
-	var updated *appsv1.StatefulSet
-	if err := updateResourceWithRetry(ctx, func(ctx context.Context) (*appsv1.StatefulSet, error) {
-		return c.client.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
-	}, func(ctx context.Context, latest *appsv1.StatefulSet) error {
-		if err := validateAdoptedSourceUID(latest.UID, source, "StatefulSet", namespace, name); err != nil {
-			return err
-		}
-		// Re-run the destructive-retention and PVC checks immediately before
-		// the write; the resource may have changed since the first GET.
-		if err := c.validateAdoptedStatefulSetRestart(ctx, latest, source); err != nil {
-			return err
-		}
-		candidate := latest.DeepCopy()
-		applyAdoptedRestartMetadata(&candidate.Spec.Template, source, restartedAt)
-		var err error
-		updated, err = c.client.AppsV1().StatefulSets(namespace).Update(ctx, candidate, metav1.UpdateOptions{})
-		return err
-	}); err != nil {
-		return nil, fmt.Errorf("rollout restart adopted statefulset %s/%s: %w", namespace, name, err)
-	}
-	return &versionRestartWaitTarget{
-		kind:            "StatefulSet",
-		namespace:       namespace,
-		name:            name,
-		componentLabel:  naming.BoundedLabelValue(source.Name),
-		desiredReplicas: desiredReplicasFromStatefulSet(updated),
-		expectedImages:  podSpecImages(updated.Spec.Template.Spec),
-	}, nil
-}
-
-func applyAdoptedRestartMetadata(
-	template *corev1.PodTemplateSpec,
-	source *model.ApplicationComponent,
-	restartedAt string,
-) {
-	if template == nil || source == nil {
-		return
-	}
-	if template.Labels == nil {
-		template.Labels = make(map[string]string)
-	}
-	template.Labels[config.LabelAppID] = source.AppID
-	template.Labels[config.LabelComponentName] = naming.BoundedLabelValue(source.Name)
-	template.Labels[config.LabelComponentID] = strconv.Itoa(source.ID)
-	if template.Annotations == nil {
-		template.Annotations = make(map[string]string)
-	}
-	template.Annotations[config.AnnotationWorkloadRestartAt] = restartedAt
-}
-
-func (c *VersionRestartJobCtl) validateAdoptedStatefulSetRestart(
-	ctx context.Context,
-	statefulSet *appsv1.StatefulSet,
-	source *model.ApplicationComponent,
-) error {
-	if statefulSet == nil {
-		return fmt.Errorf("statefulset is nil")
-	}
-	if err := importcontract.ValidateStatefulSetRestartStrategy(statefulSet); err != nil {
-		return err
-	}
-	retention := statefulSet.Spec.PersistentVolumeClaimRetentionPolicy
-	if retention != nil && retention.WhenScaled == appsv1.DeletePersistentVolumeClaimRetentionPolicyType {
-		return fmt.Errorf("persistentVolumeClaimRetentionPolicy.whenScaled=Delete would remove PVCs")
-	}
-	replicas := desiredReplicasFromStatefulSet(statefulSet)
-	if replicas <= 0 && source != nil && source.ResumeReplicas != nil {
-		replicas = *source.ResumeReplicas
-	}
-	if replicas <= 0 {
-		return fmt.Errorf("replica snapshot must be greater than 0")
-	}
-	for _, claimName := range adoptedStatefulSetRestartPVCNames(statefulSet, replicas) {
-		pvc, err := c.client.CoreV1().PersistentVolumeClaims(statefulSet.Namespace).Get(ctx, claimName, metav1.GetOptions{})
-		if err != nil {
-			return fmt.Errorf("get referenced PVC %s/%s: %w", statefulSet.Namespace, claimName, err)
-		}
-		if pvc.DeletionTimestamp != nil {
-			return fmt.Errorf("referenced PVC %s/%s is terminating", statefulSet.Namespace, claimName)
-		}
-		if pvc.Status.Phase != corev1.ClaimBound {
-			return fmt.Errorf(
-				"referenced PVC %s/%s must be Bound, got %s",
-				statefulSet.Namespace,
-				claimName,
-				pvc.Status.Phase,
-			)
-		}
-	}
-	return nil
-}
-
-func adoptedStatefulSetRestartPVCNames(statefulSet *appsv1.StatefulSet, replicas int32) []string {
-	if statefulSet == nil {
-		return nil
-	}
-	names := make(map[string]struct{})
-	for _, volume := range statefulSet.Spec.Template.Spec.Volumes {
-		if volume.PersistentVolumeClaim == nil {
-			continue
-		}
-		if name := strings.TrimSpace(volume.PersistentVolumeClaim.ClaimName); name != "" {
-			names[name] = struct{}{}
-		}
-	}
-	startOrdinal := int32(0)
-	if statefulSet.Spec.Ordinals != nil {
-		startOrdinal = statefulSet.Spec.Ordinals.Start
-	}
-	for _, template := range statefulSet.Spec.VolumeClaimTemplates {
-		templateName := strings.TrimSpace(template.Name)
-		if templateName == "" {
-			continue
-		}
-		for ordinal := startOrdinal; ordinal < startOrdinal+replicas; ordinal++ {
-			names[fmt.Sprintf("%s-%s-%d", templateName, statefulSet.Name, ordinal)] = struct{}{}
-		}
-	}
-	result := make([]string, 0, len(names))
-	for name := range names {
-		result = append(result, name)
-	}
-	sort.Strings(result)
-	return result
 }
 
 func (c *VersionRestartJobCtl) waitRestartReady(ctx context.Context, component *model.ApplicationComponent, target *versionRestartWaitTarget, restartedAt string) error {

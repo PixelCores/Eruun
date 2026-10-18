@@ -647,14 +647,14 @@ func TestRunJob_SkippedWritesJobInfo(t *testing.T) {
 }
 
 type componentStatusStore struct {
-	components     []*model.ApplicationComponent
-	updated        *model.ApplicationComponent
-	updates        []*model.ApplicationComponent
-	statuses       []string
-	jobInfos       []*model.JobInfo
-	managementMode domainspec.ManagementMode
-	putErr         error
-	afterCAS       func()
+	components []*model.ApplicationComponent
+	updated    *model.ApplicationComponent
+	updates    []*model.ApplicationComponent
+	statuses   []string
+	jobInfos   []*model.JobInfo
+	appMissing bool
+	putErr     error
+	afterCAS   func()
 }
 
 func (s *componentStatusStore) Add(_ context.Context, entity datastore.Entity) error {
@@ -681,8 +681,8 @@ func (s *componentStatusStore) DeleteByFilter(context.Context, datastore.Entity,
 	return nil
 }
 func (s *componentStatusStore) Get(_ context.Context, entity datastore.Entity) error {
-	if app, ok := entity.(*model.Applications); ok {
-		app.ManagementMode = s.managementMode
+	if _, ok := entity.(*model.Applications); ok && s.appMissing {
+		return datastore.ErrRecordNotExist
 	}
 	return nil
 }

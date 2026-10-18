@@ -24,7 +24,6 @@ func ConvertAppModelToBase(app *model.Applications, workflowID string) *apisv1.A
 		Icon:            app.Icon,
 		WorkflowID:      workflowID,
 		TemplateEnabled: app.TemplateEnabled,
-		ManagementMode:  app.EffectiveManagementMode(),
 	}
 	return appBase
 }

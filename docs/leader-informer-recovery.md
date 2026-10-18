@@ -17,7 +17,7 @@
 Leader 的 Controller 任期包含：
 
 - 创建新的 Informer runtime 并等待 initial sync。
-- 启动 Controller event workers、状态同步和 adoption 协调。
+- 启动 Controller event workers 和状态同步。
 - 任期结束时取消对应上下文并停止本轮 Informer。
 
 再次成为 Leader 时会重新创建 `SharedInformerFactory` 与 stop channel。Controller 的 Informer 负责状态投影；它不是 Workflow Worker 判断 Deployment、StatefulSet 或 Job Ready 的唯一来源。

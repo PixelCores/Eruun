@@ -20,7 +20,6 @@ It serves as an execution backend for self-hosted platforms, bringing applicatio
 | Multi-component application delivery and operations | Sequential or DAG workflows, approvals, version updates, start/stop operations, failure cleanup, status, and logs | Component declarations, execution steps, storage, and network configuration |
 | One-off container tasks | Submit a `command` Job directly, inspect its status, or cancel it without creating an application | An image, command, and inputs compatible with the workspace security policy |
 | LLM evaluation | Upload native Harbor task packages, declare `type: job` with `traits.eval` as a standalone Job or application component, and retain rewards, trajectories, logs, and artifacts | Prebuilt task images, verifiers, Runner configuration, and Secret-backed credentials when using a model |
-| Bringing existing Kubernetes applications into Eruun | Read-only observation or explicit adoption through dry-run and signed plans | Clear resource ownership, a supported resource scope, and adoption key configuration |
 
 If you only need to apply a few Kubernetes manifests, Eruun’s database, queue, and multi-node deployment add operational cost. These dependencies become more useful when you need durable tasks, workspace authorization, multi-component execution, and a common query interface.
 
@@ -43,13 +42,12 @@ For example, an application can contain a `webservice` API and a `store` databas
 
 | Capability | Available today | Detailed contract |
 | --- | --- | --- |
-| Application lifecycle | Create, execute, update versions, start, stop, restart, and clean up resources; management mode constrains write access | [Create and execute](docs/create-and-exec-application-api.md), [Version updates](docs/version-update-api.md), [Management modes](docs/application-management-mode.md) |
+| Application lifecycle | Create, execute, update versions, start, stop, restart, and clean up resources | [Create and execute](docs/create-and-exec-application-api.md), [Version updates](docs/version-update-api.md) |
 | Workflows | StepByStep/DAG execution, approval pause/resume, cancellation, timeouts, failure cleanup, callbacks, and execution recovery | [Execution architecture](docs/workflow-architecture-guide.md), [Approvals](docs/workflow-approval-pause-resume.md), [Failure policies](docs/workflow-failure-policy.md) |
 | Standalone tasks and evaluation | `command` container tasks; standalone or application-workflow Harbor evaluation using `traits.eval`, with task packages, execution progress, complete results, and independent storage destinations | [Workspace Job API](docs/workspace-jobs-api.md), [Evaluation example](examples/agent-evaluation/README.md) |
 | Programmatic integration | HTTP `/api/v1`, gRPC v1, canonical JSON Schema, Try validation, editable specification retrieval, submission idempotency, and `allowedActions` | [Canonical JSON](docs/canonical-json-profile.md), [gRPC](docs/grpc-api.md) |
 | Runtime diagnostics | Application/component/task status, container information, log streams, log archives, file export, and shell execution | [Status](docs/application-status-api.md), [Logs](docs/component-log-stream-api.md), [Files and execution](docs/component-pod-file-exec-api.md) |
 | Accounts and workspaces | Login sessions, personal/team workspaces, member roles, resource ownership, and Kubernetes workspace security baselines | [Accounts and workspaces](docs/account-auth-workspaces.md) |
-| Existing resource adoption | Read-only `observe` mode, explicit `adopted` ownership, and controlled reconciliation/cleanup | [Namespace import](docs/import-existing-namespace-api.md) |
 
 ### Components and traits
 

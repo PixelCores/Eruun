@@ -168,9 +168,10 @@ func TestWorkspaceDeleteRequiresEmptyResources(t *testing.T) {
 	require.Zero(t, calls)
 	require.NoError(t, s.Repo.Store.Delete(ctx, app))
 	task := &model.WorkflowQueue{
-		TaskID:      "resource-import-task",
+		TaskID:      "workspace-job-task",
 		WorkspaceID: w.ID,
-		Type:        config.WorkflowTaskTypeResourceImportScan,
+		Type:        config.WorkflowTaskTypeJob,
+		JobSpec:     `{"name":"command","stages":[{"name":"main","steps":[{"name":"run","type":"command","spec":{"image":"busybox:1.37.0","command":["true"]}}]}]}`,
 		Status:      config.StatusWaiting,
 	}
 	require.NoError(t, s.Repo.Store.Add(ctx, task))
@@ -182,7 +183,7 @@ func TestWorkspaceDeleteRequiresEmptyResources(t *testing.T) {
 		ID:          100,
 		TaskID:      task.TaskID,
 		WorkspaceID: w.ID,
-		Type:        string(config.JobResourceImportScan),
+		Type:        string(config.JobCommand),
 		Status:      string(config.StatusCompleted),
 	}))
 	require.NoError(t, s.DeleteWorkspace(ctx, p, w.ID, remove))

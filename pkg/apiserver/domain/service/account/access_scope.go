@@ -7,12 +7,11 @@ import (
 )
 
 type Scope struct {
-	UserID           string
-	WorkspaceID      string
-	Namespace        string
-	Role             string
-	SystemAdmin      bool
-	ClusterOperation bool
+	UserID      string
+	WorkspaceID string
+	Namespace   string
+	Role        string
+	SystemAdmin bool
 }
 type contextKey struct{}
 

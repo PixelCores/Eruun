@@ -1,6 +1,6 @@
 package grpcapi
 
-// routeRPC is the versioned route-to-RPC contract for the 106 user-facing
+// routeRPC is the versioned route-to-RPC contract for the 100 user-facing
 // HTTP routes. Browser OAuth, Runner callbacks and probes are deliberately
 // omitted; every new route needs an explicit decision.
 var routeRPC = map[string]string{
@@ -39,8 +39,6 @@ var routeRPC = map[string]string{
 	"POST /api/v1/applications/create-and-exec":                               "/eruun.v1.ApplicationService/CreateAndExecApplications",
 	"POST /api/v1/applications/query":                                         "/eruun.v1.ApplicationService/BatchGetApplications",
 	"POST /api/v1/applications/convert":                                       "/eruun.v1.ApplicationService/ConvertApplications",
-	"POST /api/v1/applications/import/namespace":                              "/eruun.v1.ApplicationService/ImportNamespaceApplications",
-	"POST /api/v1/applications/import/namespace/try":                          "/eruun.v1.ApplicationService/TryImportNamespaceApplications",
 	"GET /api/v1/applications/:appID/workflows":                               "/eruun.v1.ApplicationService/ListApplicationWorkflows",
 	"GET /api/v1/applications/:appID/spec":                                    "/eruun.v1.ApplicationService/GetApplicationSpec",
 	"GET /api/v1/applications/:appID/status":                                  "/eruun.v1.ApplicationService/GetApplicationStatus",
@@ -57,8 +55,7 @@ var routeRPC = map[string]string{
 	"GET /api/v1/applications/:appID/workflow/schedules":                      "/eruun.v1.ApplicationService/ListWorkflowSchedules",
 	"POST /api/v1/applications/:appID/workflow/schedule":                      "/eruun.v1.ApplicationService/UpsertWorkflowSchedule",
 	"DELETE /api/v1/applications/:appID/workflow/schedule/:workflowID":        "/eruun.v1.ApplicationService/DeleteWorkflowSchedule",
-	"POST /api/v1/applications/:appID/resources/cleanup-plan":                 "/eruun.v1.ApplicationService/PlanApplicationResourceCleanup",
-	"DELETE /api/v1/applications/:appID/resources":                            "/eruun.v1.ApplicationService/ApplyApplicationResourceCleanup",
+	"DELETE /api/v1/applications/:appID/resources":                            "/eruun.v1.ApplicationService/CleanupApplicationResources",
 	"POST /api/v1/applications/:appID/database-reset":                         "/eruun.v1.ApplicationService/ResetApplicationDatabases",
 	"POST /api/v1/applications/:appID/log-archives":                           "/eruun.v1.ApplicationService/DownloadLogArchive",
 	"POST /api/v1/applications/:appID/restart":                                "/eruun.v1.ApplicationService/RestartApplicationWorkloads",
@@ -107,9 +104,6 @@ var routeRPC = map[string]string{
 	"POST /api/v1/programming-languages":                                      "/eruun.v1.ProgrammingLanguagesService/CreateProgrammingLanguage",
 	"PUT /api/v1/programming-languages/:id":                                   "/eruun.v1.ProgrammingLanguagesService/UpdateProgrammingLanguage",
 	"DELETE /api/v1/programming-languages/:id":                                "/eruun.v1.ProgrammingLanguagesService/DeleteProgrammingLanguage",
-	"POST /api/v1/resource-import/jobs/scan":                                  "/eruun.v1.ResourceImportService/SubmitResourceImportScan",
-	"POST /api/v1/resource-import/jobs/manage":                                "/eruun.v1.ResourceImportService/SubmitResourceImportManage",
-	"GET /api/v1/resource-import/jobs/:taskID":                                "/eruun.v1.ResourceImportService/GetResourceImportJob",
 }
 
 var grpcRouteExceptions = map[string]bool{

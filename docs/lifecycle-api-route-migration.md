@@ -118,8 +118,6 @@ curl -X DELETE "$ERUUN_API_URL/api/v1/applications/app-123" \
 
 删除接口在存在 `warnings`、`activeTaskIds` 或 `failedResources` 时仍可能返回 HTTP 200，前端应展示这些明细，不要只按 HTTP 状态判断是否完全成功。
 
-`observe` 和 `adopted` 应用的默认删除都只解除 Eruun 元数据关系，响应包含 `resourcesRetained=true`，不会进入 native 资源清理。adopted 的显式资源删除必须先调用 `POST /api/v1/applications/:appID/resources/cleanup-plan` 获取 HMAC 签名计划，再向 `DELETE /api/v1/applications/:appID/resources` 提交匹配的 `planFingerprint`；无指纹 DELETE 只保留 native 兼容行为，不能绕过 adopted 的签名校验。
-
 ## 取消应用下所有 workflow tasks
 
 ### 旧接口
@@ -259,19 +257,6 @@ POST /api/v1/applications/:appID/restart
 ```
 
 `taskId`、`skippedResources`、`failedResources` 为空时可能省略。前端需要兼容字段缺失和空数组两种形态。
-
-## Adopted 生命周期契约
-
-显式接管由 namespace adopted dry-run/apply 创建；现有 `native` 路由和响应保持兼容。
-
-- stop、start、restart 与 workflow 调度共用应用级分布式锁。锁内会重新读取应用和组件并确认没有活动任务，避免预检与 Kubernetes 写入之间发生并发漂移。
-- 每个目标必须按持久化的 source `apiVersion/kind/name/UID` 命中原 Deployment 或 StatefulSet；同名异 UID 会在写入前失败。
-- 任何目标存在 HPA 时，本次生命周期请求整体拒绝。StatefulSet 还会预检 PVC：被引用的 standalone/VCT PVC 必须存在、未删除且处于 `Bound`。
-- stop 保存每个 source workload 的 live replicas 后缩容；start 只恢复该快照中的正副本数，不采用可能漂移的导入配置。
-- restart 使用纳秒精度的 `kubectl.kubernetes.io/restartedAt`。暂停的 Deployment、`OnDelete` StatefulSet 和非零 `rollingUpdate.partition` 会在写入前拒绝。
-- 共享或受保护目标只会出现在 `skippedResources`，不会被生命周期操作改写。
-
-adopted cleanup apply 会先 quiesce root Deployment/StatefulSet，再重扫并删除签名覆盖的 runtime child，最后删除 root 和仍为 exclusive 的非数据依赖。调用方必须先获取 cleanup plan 并提交匹配指纹。PVC/PV、shared/external 依赖始终保留；UID/resourceVersion 漂移、晚到 child、finalizer 或部分失败都会停止后续依赖删除并允许使用新计划安全重试。
 
 ## 不再支持的路径
 

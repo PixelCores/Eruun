@@ -352,20 +352,6 @@ long_workload_release=$(repeatChar r 53)
 assertEqual   "$(serviceName "${long_workload_release}" "")"   "${long_workload_release}-eruun"   "maximum valid release name must render a valid Service name"
 assertEqual   "$(serviceName eruun "$(repeatChar t 62)-suffix")"   "$(repeatChar t 62)"   "truncated trailing hyphen must be removed from Service names"
 
-keyring_manifest="${TEST_ROOT}/keyring-deployment.yaml"
-runHelm template eruun "${TEST_DIR}" \
-  --namespace eruun-system \
-  --show-only templates/runtime-deployments.yaml \
-  --set-string importSecretKeyring.existingSecret=eruun-import-keyring \
-  --set-string importSecretKeyring.key=keys.json > "${keyring_manifest}"
-assertEqual "$(grep -c 'name: ERUUN_IMPORT_SECRET_KEYRING_FILE' "${keyring_manifest}")" "1" "runtime must expose the import keyring"
-grep -q 'value: /var/run/secrets/eruun/import-secret-keyring/keyring.json' "${keyring_manifest}" ||
-  fail "keyring file environment variable must point at the mounted file"
-assertEqual "$(grep -c 'secretName: "eruun-import-keyring"' "${keyring_manifest}")" "1" "runtime must mount the import keyring"
-assertEqual "$(grep -c 'name: import-secret-keyring' "${keyring_manifest}")" "2" "runtime must render one keyring volume and volumeMount"
-grep -q 'key: "keys.json"' "${keyring_manifest}" ||
-  fail "existing keyring Secret key was not rendered"
-
 default_deployment_manifest="${TEST_ROOT}/default-deployment.yaml"
 runHelm template eruun "${TEST_DIR}" \
   --namespace eruun-system > "${default_deployment_manifest}"
@@ -382,12 +368,6 @@ assertEqual \
   "bundled datastore credential Secrets must be retained with their persistent volumes"
 grep -q 'service-port:' "${default_deployment_manifest}" ||
   fail "retained Redis credentials must preserve the immutable service port"
-if grep -q 'ERUUN_IMPORT_SECRET_KEYRING_FILE' "${default_deployment_manifest}"; then
-  fail "default deployment must not configure an import keyring"
-fi
-if grep -q 'name: import-secret-keyring' "${default_deployment_manifest}"; then
-  fail "default deployment must not mount an import keyring"
-fi
 assertEqual \
   "$(grep -c 'terminationGracePeriodSeconds: 90' "${default_deployment_manifest}")" \
   "1" \
@@ -410,14 +390,6 @@ assertEqual \
   "$(grep -c 'redis-cli -h 127.0.0.1 -p 16379' "${custom_dependency_ports_manifest}")" \
   "2" \
   "bundled Redis probes must use redis.servicePort"
-
-if runHelm template eruun "${TEST_DIR}" \
-  --namespace eruun-system \
-  --show-only templates/runtime-deployments.yaml \
-  --set-string importSecretKeyring.existingSecret=eruun-import-keyring \
-  --set-string importSecretKeyring.key= >/dev/null 2>&1; then
-  fail "configured keyring Secret must require a non-empty key"
-fi
 
 runtime_manifest="${TEST_ROOT}/runtime.yaml"
 if runHelm template eruun "${TEST_DIR}" \

@@ -166,35 +166,6 @@ func TestGenerateServiceFromTrait_RebindsManagedIdentitySelectors(t *testing.T) 
 	require.Equal(t, "backend", svc.Spec.Selector["role"])
 }
 
-func TestGenerateServiceFromTrait_PreservesAdoptedIdentitySelectors(t *testing.T) {
-	sourceUID := "deployment-uid"
-	component := &model.ApplicationComponent{
-		Name:                     "api",
-		AppID:                    "target-app",
-		ID:                       7,
-		Namespace:                "default",
-		SourceWorkloadAPIVersion: "apps/v1",
-		SourceWorkloadKind:       "Deployment",
-		SourceWorkloadName:       "source-api",
-		SourceWorkloadUID:        &sourceUID,
-	}
-	trait := spec.ServiceTraitSpec{
-		Selector: map[string]string{
-			config.LabelAppID:         "source-app",
-			config.LabelComponentID:   "41",
-			config.LabelComponentName: "source-api",
-		},
-		Ports: []spec.ServicePortTraitSpec{{Port: 8080}},
-	}
-
-	svc := GenerateServiceFromTrait(component, nil, trait)
-
-	require.NotNil(t, svc)
-	require.Equal(t, "source-app", svc.Spec.Selector[config.LabelAppID])
-	require.Equal(t, "41", svc.Spec.Selector[config.LabelComponentID])
-	require.Equal(t, "source-api", svc.Spec.Selector[config.LabelComponentName])
-}
-
 func TestGenerateServiceFromTrait_NormalizesGeneratedSelectorsAndPreservesValidExternalSelectors(t *testing.T) {
 	component := &model.ApplicationComponent{
 		Name:      "API",

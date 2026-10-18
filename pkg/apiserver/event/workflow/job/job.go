@@ -27,7 +27,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/importsecret"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
@@ -39,23 +38,6 @@ type JobCtl interface {
 	Run(ctx context.Context) error
 	Clean(ctx context.Context)
 	SaveInfo(ctx context.Context) error
-}
-
-// ResourceImportExecutor is implemented by the resource-import module. Keeping
-// this consumer-owned interface here lets the workflow runtime execute durable
-// import jobs without importing the module's service package.
-type ResourceImportExecutor interface {
-	PrepareResourceImportJob(
-		context.Context,
-		config.WorkflowTaskType,
-		json.RawMessage,
-	) (json.RawMessage, error)
-	ExecuteResourceImportJob(
-		context.Context,
-		config.WorkflowTaskType,
-		json.RawMessage,
-		json.RawMessage,
-	) (json.RawMessage, error)
 }
 
 type GenerateServiceResult struct {
@@ -74,23 +56,19 @@ const (
 // Runtime contains the dependencies and execution policy for a RunJobs call.
 // RunJobs creates fresh lock and persistence state for each invocation.
 type Runtime struct {
-	Concurrency             int
-	Client                  kubernetes.Interface
-	Store                   datastore.DataStore
-	Ack                     func()
-	StopOnFailure           bool
-	RedisClient             *redis.Client
-	Cache                   cache.ICache
-	URLSecurityPolicy       *spec.URLSecurityPolicySpec
-	DelayQueue              msg.Queue
-	ResourceWaiter          informer.ComponentReadyObserver
-	KubeConfig              *rest.Config
-	ImportSecretKeyring     *importsecret.Keyring
-	ResourceImportExecutor  ResourceImportExecutor
-	shareLocker             locker.Locker
-	archiveUploader         ArchiveUploader
-	adoptionPersistenceOnce sync.Once
-	adoptionPersistenceGate chan struct{}
+	Concurrency       int
+	Client            kubernetes.Interface
+	Store             datastore.DataStore
+	Ack               func()
+	StopOnFailure     bool
+	RedisClient       *redis.Client
+	Cache             cache.ICache
+	URLSecurityPolicy *spec.URLSecurityPolicySpec
+	DelayQueue        msg.Queue
+	ResourceWaiter    informer.ComponentReadyObserver
+	KubeConfig        *rest.Config
+	shareLocker       locker.Locker
+	archiveUploader   ArchiveUploader
 }
 
 func newJobRuntime(config *Runtime) *Runtime {
@@ -98,21 +76,19 @@ func newJobRuntime(config *Runtime) *Runtime {
 		config = &Runtime{}
 	}
 	return &Runtime{
-		Concurrency:            config.Concurrency,
-		Client:                 config.Client,
-		Store:                  config.Store,
-		Ack:                    config.Ack,
-		StopOnFailure:          config.StopOnFailure,
-		RedisClient:            config.RedisClient,
-		Cache:                  config.Cache,
-		URLSecurityPolicy:      config.URLSecurityPolicy,
-		DelayQueue:             config.DelayQueue,
-		ResourceWaiter:         config.ResourceWaiter,
-		KubeConfig:             config.KubeConfig,
-		ImportSecretKeyring:    config.ImportSecretKeyring,
-		ResourceImportExecutor: config.ResourceImportExecutor,
-		shareLocker:            newShareLocker(config.RedisClient),
-		archiveUploader:        currentArchiveUploader(),
+		Concurrency:       config.Concurrency,
+		Client:            config.Client,
+		Store:             config.Store,
+		Ack:               config.Ack,
+		StopOnFailure:     config.StopOnFailure,
+		RedisClient:       config.RedisClient,
+		Cache:             config.Cache,
+		URLSecurityPolicy: config.URLSecurityPolicy,
+		DelayQueue:        config.DelayQueue,
+		ResourceWaiter:    config.ResourceWaiter,
+		KubeConfig:        config.KubeConfig,
+		shareLocker:       newShareLocker(config.RedisClient),
+		archiveUploader:   currentArchiveUploader(),
 	}
 }
 
@@ -123,25 +99,6 @@ func (r *Runtime) close() {
 	if err := r.shareLocker.Close(); err != nil {
 		klog.ErrorS(err, "close share locker failed")
 	}
-}
-
-func (r *Runtime) withAdoptionPersistenceContext(ctx context.Context, fn func() error) error {
-	if r == nil {
-		return fn()
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	r.adoptionPersistenceOnce.Do(func() {
-		r.adoptionPersistenceGate = make(chan struct{}, 1)
-	})
-	select {
-	case r.adoptionPersistenceGate <- struct{}{}:
-		defer func() { <-r.adoptionPersistenceGate }()
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-	return fn()
 }
 
 // StatusError wraps an error with an explicit job status for persistence.
@@ -217,10 +174,6 @@ func initJobCtl(job *model.JobTask, runtime *Runtime) JobCtl {
 		return NewDeployClusterRoleJobCtl(job, runtime, runtime.shareLocker)
 	case string(config.JobDeployClusterRoleBinding):
 		return NewDeployClusterRoleBindingJobCtl(job, runtime, runtime.shareLocker)
-	case string(config.JobDeployPodDisruptionBudget):
-		return NewDeployAdoptedPodDisruptionBudgetJobCtl(job, runtime, runtime.shareLocker)
-	case string(config.JobDeployNetworkPolicy):
-		return NewDeployAdoptedNetworkPolicyJobCtl(job, runtime, runtime.shareLocker)
 	case string(config.JobDeployInstant), string(config.JobCommand), string(config.JobEval):
 		return NewInstantJobCtl(job, runtime)
 	case string(config.JobDeployScheduled):
@@ -241,8 +194,6 @@ func initJobCtl(job *model.JobTask, runtime *Runtime) JobCtl {
 		return NewLogArchiveUploadJobCtl(job, runtime)
 	case string(config.JobVersionRestart):
 		return NewVersionRestartJobCtl(job, runtime)
-	case string(config.JobResourceImportScan), string(config.JobResourceImportManage):
-		return NewResourceImportJobCtl(job, runtime.Store, runtime.ResourceImportExecutor)
 	default:
 		klog.ErrorS(fmt.Errorf("unknown job type"), "init job controller failed", "jobName", job.Name, "jobType", job.JobType)
 		return nil
@@ -283,12 +234,6 @@ func RunJobs(ctx context.Context, jobs []*model.JobTask, run *Runtime) error {
 			if task == nil || task.Namespace != scope.Namespace {
 				return fmt.Errorf("job namespace does not match workspace")
 			}
-			if isResourceImportJobType(config.JobType(task.JobType)) {
-				if task.AppID != "" || task.WorkspaceID != scope.WorkspaceID {
-					return fmt.Errorf("resource import job workspace does not match execution scope")
-				}
-				continue
-			}
 			if config.IsWorkspaceJobType(config.JobType(task.JobType)) || task.AppID == "" && task.JobType == string(config.JobDeployPVC) {
 				if task.TaskID == "" || task.WorkspaceID != scope.WorkspaceID || (task.AppID != "" && task.JobType != string(config.JobEval)) {
 					return fmt.Errorf("job workspace does not match execution scope")
@@ -311,7 +256,7 @@ func RunJobs(ctx context.Context, jobs []*model.JobTask, run *Runtime) error {
 				return err
 			}
 			switch config.JobType(task.JobType) {
-			case config.JobDeployCloud, config.JobDeployServiceAccount, config.JobDeployRole, config.JobDeployRoleBinding, config.JobDeployClusterRole, config.JobDeployClusterRoleBinding, config.JobDeployNetworkPolicy:
+			case config.JobDeployCloud, config.JobDeployServiceAccount, config.JobDeployRole, config.JobDeployRoleBinding, config.JobDeployClusterRole, config.JobDeployClusterRoleBinding:
 				return fmt.Errorf("job type %s is forbidden in workspaces", task.JobType)
 			}
 		}
@@ -564,12 +509,12 @@ func runJob(ctx context.Context, job *model.JobTask, runtime *Runtime) (resultEr
 
 func runAdmittedJob(jobCtx context.Context, jobCtl JobCtl, job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), runtime *Runtime, span trace.Span) (resultErr error) {
 	logger := klog.FromContext(jobCtx)
-	// Admission may wait while an application changes management mode. Check
-	// write permission after that wait, immediately before execution side effects.
+	// Admission may wait while the application is deleted. Check it still exists
+	// after that wait, immediately before execution side effects.
 	if jobRequiresApplicationWritePermission(job.JobType) {
-		if err := validateApplicationManagementModeForWrite(jobCtx, store, job.AppID, true); err != nil {
+		if err := requireApplicationForWrite(jobCtx, store, job.AppID); err != nil {
 			if signal.IsInfrastructureStop(jobCtx) {
-				logger.Info("Skip management mode failure after infrastructure stop", "cause", context.Cause(jobCtx))
+				logger.Info("Skip missing application failure after infrastructure stop", "cause", context.Cause(jobCtx))
 				return
 			}
 			job.Status = config.StatusFailed
@@ -579,9 +524,9 @@ func runAdmittedJob(jobCtx context.Context, jobCtl JobCtl, job *model.JobTask, c
 			if ack != nil {
 				ack()
 			}
-			span.SetStatus(codes.Error, "Application management mode rejected job")
+			span.SetStatus(codes.Error, "Application check rejected job")
 			span.RecordError(err)
-			logger.Error(err, "Refusing job for application management mode")
+			logger.Error(err, "Refusing job for missing application")
 			return terminalJobPersistenceFailure(job, "persist rejected job state", persistTerminalJobState(jobCtx, jobCtl, job, store, runtime))
 		}
 	}
@@ -817,44 +762,21 @@ func jobExecutionAlreadySettled(job *model.JobTask) bool {
 	}
 }
 
-// ValidateApplicationManagementModeForJob rechecks persisted state at the
-// point of execution. Queue-time validation is insufficient because an
-// application can be migrated to observe mode while an older task is waiting.
-func ValidateApplicationManagementModeForJob(
-	ctx context.Context,
-	store datastore.DataStore,
-	appID string,
-) error {
-	return validateApplicationManagementModeForWrite(ctx, store, appID, false)
-}
-
-func validateApplicationManagementModeForWrite(
-	ctx context.Context,
-	store datastore.DataStore,
-	appID string,
-	requireApplication bool,
-) error {
+// requireApplicationForWrite rechecks persisted state at the point of
+// execution: a write job must not run after its application was deleted.
+func requireApplicationForWrite(ctx context.Context, store datastore.DataStore, appID string) error {
 	appID = strings.TrimSpace(appID)
 	if appID == "" {
 		return nil
 	}
 	if store == nil {
-		return fmt.Errorf("load application management mode: datastore is nil")
+		return fmt.Errorf("load application: datastore is nil")
 	}
-	app := &model.Applications{ID: appID}
-	if err := store.Get(ctx, app); err != nil {
+	if err := store.Get(ctx, &model.Applications{ID: appID}); err != nil {
 		if errors.Is(err, datastore.ErrRecordNotExist) {
-			if !requireApplication {
-				// Callback and recovery workflows may outlive application metadata.
-				// Runtime write jobs perform the stricter check above.
-				return nil
-			}
 			return fmt.Errorf("application %q no longer exists", appID)
 		}
-		return fmt.Errorf("load application %q management mode: %w", appID, err)
-	}
-	if app.EffectiveManagementMode() == spec.ManagementModeObserve {
-		return fmt.Errorf("application %q is in read-only observe mode", appID)
+		return fmt.Errorf("load application %q: %w", appID, err)
 	}
 	return nil
 }
@@ -873,8 +795,6 @@ func jobRequiresApplicationWritePermission(jobType string) bool {
 		config.JobDeployRoleBinding,
 		config.JobDeployClusterRole,
 		config.JobDeployClusterRoleBinding,
-		config.JobDeployPodDisruptionBudget,
-		config.JobDeployNetworkPolicy,
 		config.JobDeployInstant,
 		config.JobDeployScheduled,
 		config.JobDeployCloud,

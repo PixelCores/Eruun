@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"errors"
 	"strings"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -50,42 +49,6 @@ func (app *applications) convertApplications(c *gin.Context) {
 			return app.ConversionService.ConvertKubeResources(ctx, *req)
 		},
 	)
-}
-
-func (app *applications) importNamespaceApplications(c *gin.Context) {
-	req, ok := bindStrictJSON[apis.ImportNamespaceApplicationsRequest](c, bcode.ErrApplicationConfig, true)
-	if !ok {
-		return
-	}
-	if !app.validateNamespaceImportPreconditions(c, req.Namespace) {
-		return
-	}
-	resp, err := app.ImportService.ImportNamespaceResources(c.Request.Context(), *req)
-	respondWithResult(c, resp, err)
-}
-
-func (app *applications) tryImportNamespaceApplications(c *gin.Context) {
-	req, ok := bindRequest[apis.TryImportNamespaceApplicationsRequest](c, bcode.ErrApplicationConfig, true)
-	if !ok {
-		return
-	}
-	if !app.validateNamespaceImportPreconditions(c, req.Namespace) {
-		return
-	}
-	resp, err := app.ImportService.TryImportNamespaceResources(c.Request.Context(), *req)
-	respondWithResult(c, resp, err)
-}
-
-func (app *applications) validateNamespaceImportPreconditions(c *gin.Context, namespace string) bool {
-	if strings.EqualFold(strings.TrimSpace(namespace), config.DefaultNamespace) {
-		apiresponse.ReturnErrorWithMessage(c, bcode.ErrApplicationConfig, "import from default namespace is not allowed")
-		return false
-	}
-	if app.ImportService == nil {
-		apiresponse.ReturnError(c, errors.New("import service is not initialized"))
-		return false
-	}
-	return true
 }
 
 func (app *applications) listApplications(c *gin.Context) {
@@ -148,11 +111,7 @@ func (app *applications) deleteApplicationResources(c *gin.Context) {
 	if !ok {
 		return
 	}
-	req, ok := bindJSONAllowEOF[apis.CleanupApplicationResourcesRequest](c, bcode.ErrApplicationConfig, true)
-	if !ok {
-		return
-	}
-	resp, err := app.ApplicationService.ApplyApplicationResourceCleanup(c.Request.Context(), appID, *req)
+	resp, err := app.ApplicationService.CleanupApplicationResources(c.Request.Context(), appID)
 	if err != nil {
 		if resp != nil {
 			klog.ErrorS(err, "application resource cleanup reported partial failures", "appID", appID)
@@ -163,10 +122,6 @@ func (app *applications) deleteApplicationResources(c *gin.Context) {
 		return
 	}
 	apiresponse.ReturnSuccess(c, resp)
-}
-
-func (app *applications) planApplicationResourceCleanup(c *gin.Context) {
-	handlePathResult(c, appIDPathParam, app.ApplicationService.PlanApplicationResourceCleanup)
 }
 
 func (app *applications) resetApplicationDatabases(c *gin.Context) {

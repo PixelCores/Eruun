@@ -34,6 +34,7 @@ func ApplyEnvOverrides(fs *pflag.FlagSet, prefix string) error {
 	}
 	for _, removed := range []string{
 		"datastore-type", "cache-type", "msg-type",
+		"import-secret-keyring", "import-secret-keyring-file",
 		"msg-kafka-brokers", "msg-kafka-group-id", "msg-kafka-offset-reset",
 		"msg-kafka-topic-partitions", "msg-kafka-topic-replication-factor",
 	} {

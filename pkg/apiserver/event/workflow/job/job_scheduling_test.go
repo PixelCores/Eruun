@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"testing"
 	"time"
 
@@ -36,8 +35,6 @@ func TestJobAdmissionUsesTaskWorkspaceAndApplication(t *testing.T) {
 		job      config.JobType
 		appID    string
 	}{
-		{name: "import scan", workflow: config.WorkflowTaskTypeResourceImportScan, job: config.JobResourceImportScan},
-		{name: "import manage", workflow: config.WorkflowTaskTypeResourceImportManage, job: config.JobResourceImportManage},
 		{name: "application", job: config.JobDeployService, appID: "app"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -317,7 +314,7 @@ func TestJobAdmissionWaitExitReleasesQueueWithoutKubernetesEffects(t *testing.T)
 }
 
 func TestJobRunnerRechecksApplicationAfterAdmission(t *testing.T) {
-	for _, change := range []string{"observe", "deleted", "unchanged"} {
+	for _, change := range []string{"deleted", "unchanged"} {
 		t.Run(change, func(t *testing.T) {
 			db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, Logger: logger.Default.LogMode(logger.Silent)})
 			require.NoError(t, err)
@@ -330,7 +327,7 @@ func TestJobRunnerRechecksApplicationAfterAdmission(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			require.NoError(t, repository.EnsureJobSchedulerPolicy(ctx, store))
-			app := &model.Applications{ID: "app", WorkspaceID: "workspace", ManagementMode: domainspec.ManagementModeNative}
+			app := &model.Applications{ID: "app", WorkspaceID: "workspace"}
 			require.NoError(t, store.Add(ctx, app))
 			lease := time.Now().Add(time.Minute)
 			owner := &model.WorkflowQueue{TaskID: "task", WorkspaceID: app.WorkspaceID, Status: config.StatusRunning, RunGeneration: 1,
@@ -347,10 +344,7 @@ func TestJobRunnerRechecksApplicationAfterAdmission(t *testing.T) {
 				return db.Model(&model.JobInfo{}).Where("execution_key = ? AND scheduling_state = ?", task.ExecutionKey, "queued").Count(&count).Error == nil && count == 1
 			}, time.Second, 10*time.Millisecond)
 			require.Empty(t, client.Actions())
-			switch change {
-			case "observe":
-				require.NoError(t, db.Model(app).Update("management_mode", domainspec.ManagementModeObserve).Error)
-			case "deleted":
+			if change == "deleted" {
 				require.NoError(t, store.Delete(ctx, app))
 			}
 			admitted, err := repository.AdmitQueuedJobs(ctx, store)
@@ -368,7 +362,7 @@ func TestJobRunnerRechecksApplicationAfterAdmission(t *testing.T) {
 				require.NoError(t, err)
 			} else {
 				require.Equal(t, config.StatusFailed, task.Status)
-				require.Empty(t, client.Actions(), "an application losing write permission while queued must not access Kubernetes")
+				require.Empty(t, client.Actions(), "an application deleted while queued must not access Kubernetes")
 			}
 			var stored model.JobInfo
 			require.NoError(t, db.Where("execution_key = ?", task.ExecutionKey).First(&stored).Error)

@@ -21,7 +21,7 @@ Eruun 管理标签仍走既有管理标签路径，例如 `app.kubernetes.io/man
 - 空 label value 是 Kubernetes 合法值，会保留为空字符串。
 - 写入 `metadata.labels` 的非空 value 会转成小写 RFC 1123 风格：非法字符和空白折叠为 `-`，首尾 `-` 会被移除。
 - 超过 63 字符的 value 会截断并追加稳定 hash 后缀，保证同一输入得到同一输出。
-- native 组件的 `traits.service[].selector` 如果包含 `eruun.io/app-id`、`eruun.io/component-id` 或 `eruun.io/component-name`，这些值会绑定到当前目标组件生成的身份标签，不能继续引用源应用身份；adopted 组件保留源工作负载 selector。
+- 组件的 `traits.service[].selector` 如果包含 `eruun.io/app-id`、`eruun.io/component-id` 或 `eruun.io/component-name`，这些值会绑定到当前目标组件生成的身份标签，不能继续引用源应用身份。
 - `traits.service[].selector` 中的 `app.kubernetes.io/managed-by`，以及 key 同时存在于 `properties.labels` 的 selector value，会按 Eruun 生成 Pod label 的同一规则规范化。
 - 其他 `traits.service[].selector` value 如果已经是 Kubernetes 合法 label value，会原样保留，例如 `version: v1.2.3` 和 `track: canary_A`；只有非法 value 才会被规范化。
 

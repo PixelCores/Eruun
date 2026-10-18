@@ -13,7 +13,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
@@ -358,7 +357,7 @@ func TestPersistTerminalJobStateSkipsInfrastructureCancellation(t *testing.T) {
 func TestRunAdmittedJobReturnsRejectedStatePersistenceFailure(t *testing.T) {
 	persistErr := errors.New("database unavailable")
 	controller := &recordingTerminalJobCtl{saveErr: persistErr}
-	store := &componentStatusStore{managementMode: domainspec.ManagementModeObserve}
+	store := &componentStatusStore{appMissing: true}
 	job := &model.JobTask{
 		AppID:        "app-1",
 		TaskID:       "task-1",

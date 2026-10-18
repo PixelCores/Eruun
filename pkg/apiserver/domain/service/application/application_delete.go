@@ -14,7 +14,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/cancelsignal"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
 	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
@@ -77,16 +76,12 @@ func (c *applicationsServiceImpl) DeleteApplicationCascade(ctx context.Context, 
 		}
 
 		resp = &apisv1.DeleteApplicationResponse{
-			AppID:             app.ID,
-			DeletedCounts:     counts,
-			ResourcesRetained: app.EffectiveManagementMode() != domainspec.ManagementModeNative,
+			AppID:         app.ID,
+			DeletedCounts: counts,
 		}
 
-		nativeApplication := app.EffectiveManagementMode() == domainspec.ManagementModeNative
-		if nativeApplication {
-			if err := c.deleteApplicationSchedulesTx(lockCtx, txStore, app.ID); err != nil {
-				return err
-			}
+		if err := c.deleteApplicationSchedulesTx(lockCtx, txStore, app.ID); err != nil {
+			return err
 		}
 
 		cancelReason := fmt.Sprintf("application %s is being deleted", app.ID)
@@ -99,24 +94,20 @@ func (c *applicationsServiceImpl) DeleteApplicationCascade(ctx context.Context, 
 		resp.Warnings = append(resp.Warnings, warnings...)
 
 		if len(activeTaskIDs) > 0 {
-			return fmt.Errorf("refusing to detach %s application while workflow tasks remain active: %s",
-				app.EffectiveManagementMode(), strings.Join(uniqueStrings(activeTaskIDs), ","))
+			return fmt.Errorf("refusing to delete application while workflow tasks remain active: %s",
+				strings.Join(uniqueStrings(activeTaskIDs), ","))
 		}
 
-		if nativeApplication {
-			// Cascading deletion is the terminal application override: it already owns
-			// the application lock and has cancelled in-flight tasks, so it intentionally
-			// bypasses the idle/pending migration guards without acquiring a nested lock.
-			cleanupResp, cleanupErr := c.cleanupApplicationResourcesUnlocked(lockCtx, app.ID, true)
-			if cleanupResp != nil {
-				resp.DeletedResources = append(resp.DeletedResources, cleanupResp.DeletedResources...)
-				resp.FailedResources = append(resp.FailedResources, cleanupResp.FailedResources...)
-			}
-			if cleanupErr != nil {
-				resp.Warnings = append(resp.Warnings, fmt.Sprintf("cleanup resources reported failures: %v", cleanupErr))
-			}
-		} else if err := c.deleteApplicationSchedulesTx(lockCtx, txStore, app.ID); err != nil {
-			return err
+		// Cascading deletion is the terminal application override: it already owns
+		// the application lock and has cancelled in-flight tasks, so it intentionally
+		// bypasses the idle/pending migration guards without acquiring a nested lock.
+		cleanupResp, cleanupErr := c.cleanupApplicationResourcesUnlocked(lockCtx, app.ID, true)
+		if cleanupResp != nil {
+			resp.DeletedResources = append(resp.DeletedResources, cleanupResp.DeletedResources...)
+			resp.FailedResources = append(resp.FailedResources, cleanupResp.FailedResources...)
+		}
+		if cleanupErr != nil {
+			resp.Warnings = append(resp.Warnings, fmt.Sprintf("cleanup resources reported failures: %v", cleanupErr))
 		}
 
 		cancelledTaskIDs, activeTaskIDs, warnings, err = c.cancelAndWaitAppTasks(lockCtx, app.ID, waitSeconds, cancelReason, "post-cleanup")
@@ -127,8 +118,8 @@ func (c *applicationsServiceImpl) DeleteApplicationCascade(ctx context.Context, 
 		resp.ActiveTaskIDs = append(resp.ActiveTaskIDs, activeTaskIDs...)
 		resp.Warnings = append(resp.Warnings, warnings...)
 		if len(activeTaskIDs) > 0 {
-			return fmt.Errorf("refusing to detach %s application while workflow tasks remain active: %s",
-				app.EffectiveManagementMode(), strings.Join(uniqueStrings(activeTaskIDs), ","))
+			return fmt.Errorf("refusing to delete application while workflow tasks remain active: %s",
+				strings.Join(uniqueStrings(activeTaskIDs), ","))
 		}
 
 		if err := c.deleteApplicationMetadataTx(lockCtx, txStore, app); err != nil {

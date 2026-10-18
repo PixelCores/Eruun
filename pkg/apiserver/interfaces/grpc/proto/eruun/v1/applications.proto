@@ -19,8 +19,6 @@ service ApplicationService {
   rpc CreateAndExecApplications(AppDTOCreateAndExecApplicationRequest) returns (AppDTOCreateAndExecApplicationResponse);
   rpc BatchGetApplications(AppDTOBatchGetApplicationsRequest) returns (AppDTOBatchGetApplicationsResponse);
   rpc ConvertApplications(AppDTOConvertApplicationsRequest) returns (AppDTOConvertApplicationsResponse);
-  rpc ImportNamespaceApplications(AppDTOImportNamespaceApplicationsRequest) returns (AppDTOImportNamespaceApplicationsResponse);
-  rpc TryImportNamespaceApplications(AppDTOTryImportNamespaceApplicationsRequest) returns (AppDTOTryImportNamespaceApplicationsResponse);
   rpc ListApplicationWorkflows(ApplicationIDRequest) returns (AppDTOListApplicationWorkflowsResponse);
   rpc GetApplicationSpec(ApplicationIDRequest) returns (AppDTOCreateApplicationsRequest);
   rpc GetApplicationStatus(ApplicationIDRequest) returns (AppDTOApplicationStatusResponse);
@@ -37,8 +35,7 @@ service ApplicationService {
   rpc ListWorkflowSchedules(ApplicationIDRequest) returns (AppDTOListWorkflowSchedulesResponse);
   rpc UpsertWorkflowSchedule(UpsertWorkflowScheduleRPCRequest) returns (AppDTOUpsertWorkflowScheduleResponse);
   rpc DeleteWorkflowSchedule(ApplicationWorkflowRequest) returns (AppDTODeleteWorkflowScheduleResponse);
-  rpc PlanApplicationResourceCleanup(ApplicationIDRequest) returns (AppDTOCleanupApplicationResourcesPlanResponse);
-  rpc ApplyApplicationResourceCleanup(CleanupApplicationRPCRequest) returns (AppDTOCleanupApplicationResourcesResponse);
+  rpc CleanupApplicationResources(ApplicationIDRequest) returns (AppDTOCleanupApplicationResourcesResponse);
   rpc ResetApplicationDatabases(ResetApplicationDatabasesRPCRequest) returns (AppDTODatabaseResetResponse);
   rpc DownloadLogArchive(LogArchiveRPCRequest) returns (stream ComponentFileChunk);
   rpc RestartApplicationWorkloads(ApplicationLifecycleRPCRequest) returns (AppDTORestartApplicationWorkloadsResponse);
@@ -105,7 +102,6 @@ message ComponentFileChunk {
 message DeleteApplicationRPCRequest { string app_id = 1; AppDTODeleteApplicationRequest request = 2; }
 message UpdateApplicationWorkflowRPCRequest { string app_id = 1; AppDTOUpdateApplicationWorkflowRequest request = 2; }
 message UpsertWorkflowScheduleRPCRequest { string app_id = 1; AppDTOUpsertWorkflowScheduleRequest request = 2; }
-message CleanupApplicationRPCRequest { string app_id = 1; AppDTOCleanupApplicationResourcesRequest request = 2; }
 message ResetApplicationDatabasesRPCRequest { string app_id = 1; AppDTODatabaseResetRequest request = 2; }
 message LogArchiveRPCRequest { string app_id = 1; AppDTOLogArchiveDownloadRequest request = 2; }
 message ApplicationLifecycleRPCRequest { string app_id = 1; AppDTOApplicationLifecycleRequest request = 2; }
@@ -170,7 +166,6 @@ message AppDTOApplicationBase {
   string icon = 11 [json_name = "icon"];
   string workflow_id = 12 [json_name = "workflowId"];
   bool template_enabled = 13 [json_name = "templateEnabled"];
-  string management_mode = 14 [json_name = "managementMode"];
   AppDTOApplicationResources resources = 15 [json_name = "resources"];
 }
 
@@ -257,7 +252,6 @@ message AppDTOApplicationWithComponents {
   string icon = 11 [json_name = "icon"];
   string workflow_id = 12 [json_name = "workflowId"];
   bool template_enabled = 13 [json_name = "templateEnabled"];
-  string management_mode = 14 [json_name = "managementMode"];
   AppDTOApplicationResources resources = 15 [json_name = "resources"];
   repeated AppDTOBatchApplicationComponent components = 16 [json_name = "components"];
 }
@@ -332,23 +326,11 @@ message AppDTOCancelWorkflowResponse {
   string status = 2 [json_name = "status"];
 }
 
-message AppDTOCleanupApplicationResourcesPlanResponse {
-  string app_id = 1 [json_name = "appId"];
-  string plan_fingerprint = 2 [json_name = "planFingerprint"];
-  repeated AppDTOImportNamespaceResourceResult resource_results = 3 [json_name = "resourceResults"];
-  repeated string warnings = 4 [json_name = "warnings"];
-}
-
-message AppDTOCleanupApplicationResourcesRequest {
-  string plan_fingerprint = 1 [json_name = "planFingerprint"];
-}
-
 message AppDTOCleanupApplicationResourcesResponse {
   string app_id = 1 [json_name = "appId"];
   string task_id = 2 [json_name = "taskId"];
   repeated string deleted_resources = 3 [json_name = "deletedResources"];
   repeated string failed_resources = 4 [json_name = "failedResources"];
-  repeated string retained_resources = 5 [json_name = "retainedResources"];
 }
 
 message AppDTOComponentContainerInfo {
@@ -552,7 +534,6 @@ message AppDTODeleteApplicationResponse {
   repeated string failed_resources = 5 [json_name = "failedResources"];
   repeated string warnings = 6 [json_name = "warnings"];
   AppDTODeleteResourceCount deleted_counts = 7 [json_name = "deletedCounts"];
-  bool resources_retained = 8 [json_name = "resourcesRetained"];
 }
 
 message AppDTODeleteResourceCount {
@@ -636,86 +617,6 @@ message AppDTOExportComponentFilesRequest {
 message AppDTOExternalLink {
   string type = 1 [json_name = "type"];
   string value = 2 [json_name = "value"];
-}
-
-message AppDTOImportNamespaceAppResult {
-  string app_id = 1 [json_name = "appId"];
-  string name = 2 [json_name = "name"];
-  bool workflow_disabled = 3 [json_name = "workflowDisabled"];
-  repeated string components = 4 [json_name = "components"];
-  string error = 5 [json_name = "error"];
-}
-
-message AppDTOImportNamespaceApplicationMapping {
-  string name = 1 [json_name = "name"];
-  string alias = 2 [json_name = "alias"];
-  string target_app_id = 3 [json_name = "targetAppId"];
-  repeated AppDTOImportNamespaceComponentMapping components = 4 [json_name = "components"];
-}
-
-message AppDTOImportNamespaceApplicationsRequest {
-  string namespace = 1 [json_name = "namespace"];
-  string mode = 2 [json_name = "mode"];
-  string management_mode = 3 [json_name = "managementMode"];
-  repeated AppDTOImportNamespaceApplicationMapping applications = 4 [json_name = "applications"];
-  string plan_fingerprint = 5 [json_name = "planFingerprint"];
-  repeated string include_kinds = 6 [json_name = "includeKinds"];
-}
-
-message AppDTOImportNamespaceApplicationsResponse {
-  string namespace = 1 [json_name = "namespace"];
-  string mode = 2 [json_name = "mode"];
-  string management_mode = 3 [json_name = "managementMode"];
-  string plan_fingerprint = 4 [json_name = "planFingerprint"];
-  AppDTOImportNamespaceSummary summary = 5 [json_name = "summary"];
-  repeated AppDTOImportNamespaceAppResult apps = 6 [json_name = "apps"];
-  repeated AppDTOImportNamespaceResourceResult resource_results = 7 [json_name = "resourceResults"];
-  repeated string warnings = 8 [json_name = "warnings"];
-}
-
-message AppDTOImportNamespaceComponentMapping {
-  string name = 1 [json_name = "name"];
-  AppDTOImportNamespaceWorkloadReference workload = 2 [json_name = "workload"];
-}
-
-message AppDTOImportNamespaceResourceIdentity {
-  string api_version = 1 [json_name = "apiVersion"];
-  string kind = 2 [json_name = "kind"];
-  string namespace = 3 [json_name = "namespace"];
-  string name = 4 [json_name = "name"];
-  string uid = 5 [json_name = "uid"];
-  string resource_version = 6 [json_name = "resourceVersion"];
-  string spec_digest = 7 [json_name = "specDigest"];
-}
-
-message AppDTOImportNamespaceResourceResult {
-  string kind = 1 [json_name = "kind"];
-  string namespace = 2 [json_name = "namespace"];
-  string name = 3 [json_name = "name"];
-  AppDTOImportNamespaceResourceIdentity source = 4 [json_name = "source"];
-  string app_id = 5 [json_name = "appId"];
-  string component_name = 6 [json_name = "componentName"];
-  string dependency_role = 7 [json_name = "dependencyRole"];
-  string ownership = 8 [json_name = "ownership"];
-  string disposition = 9 [json_name = "disposition"];
-  string status = 10 [json_name = "status"];
-  string error = 11 [json_name = "error"];
-}
-
-message AppDTOImportNamespaceSummary {
-  int32 apps_planned = 1 [json_name = "appsPlanned"];
-  int32 apps_applied = 2 [json_name = "appsApplied"];
-  int32 components_planned = 3 [json_name = "componentsPlanned"];
-  int32 components_applied = 4 [json_name = "componentsApplied"];
-  int32 resources_scanned = 5 [json_name = "resourcesScanned"];
-  int32 resources_labeled_success = 6 [json_name = "resourcesLabeledSuccess"];
-  int32 resources_labeled_failed = 7 [json_name = "resourcesLabeledFailed"];
-}
-
-message AppDTOImportNamespaceWorkloadReference {
-  string api_version = 1 [json_name = "apiVersion"];
-  string kind = 2 [json_name = "kind"];
-  string name = 3 [json_name = "name"];
 }
 
 message AppDTOListApplicationComponentsResponse {
@@ -848,42 +749,6 @@ message AppDTOTryApplicationResponse {
   repeated AppDTOTryValidationError errors = 2 [json_name = "errors"];
   AppDTOCreateApplicationsRequest normalized_spec = 3 [json_name = "normalizedSpec"];
   AppDTOExecutionPlan plan = 4 [json_name = "plan"];
-}
-
-message AppDTOTryImportNamespaceAppResult {
-  string app_id = 1 [json_name = "appId"];
-  string name = 2 [json_name = "name"];
-  repeated string scanned_components = 3 [json_name = "scannedComponents"];
-  repeated string orphan_component_names = 4 [json_name = "orphanComponentNames"];
-  string error = 5 [json_name = "error"];
-}
-
-message AppDTOTryImportNamespaceApplicationsRequest {
-  string namespace = 1 [json_name = "namespace"];
-  repeated string include_kinds = 2 [json_name = "includeKinds"];
-}
-
-message AppDTOTryImportNamespaceApplicationsResponse {
-  string namespace = 1 [json_name = "namespace"];
-  AppDTOTryImportNamespaceSummary summary = 2 [json_name = "summary"];
-  repeated AppDTOTryImportNamespaceAppResult apps = 3 [json_name = "apps"];
-  repeated AppDTOTryImportNamespaceOrphanComponent orphan_components = 4 [json_name = "orphanComponents"];
-  repeated string warnings = 5 [json_name = "warnings"];
-}
-
-message AppDTOTryImportNamespaceOrphanComponent {
-  string app_id = 1 [json_name = "appId"];
-  string app_name = 2 [json_name = "appName"];
-  string component_name = 3 [json_name = "componentName"];
-  string component_type = 4 [json_name = "componentType"];
-  string reason = 5 [json_name = "reason"];
-  repeated string matched_include_kinds = 6 [json_name = "matchedIncludeKinds"];
-}
-
-message AppDTOTryImportNamespaceSummary {
-  int32 resources_scanned = 1 [json_name = "resourcesScanned"];
-  int32 apps_matched = 2 [json_name = "appsMatched"];
-  int32 orphans_detected = 3 [json_name = "orphansDetected"];
 }
 
 message AppDTOTryValidationError {

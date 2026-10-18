@@ -3,17 +3,14 @@ package application
 import (
 	"context"
 	"fmt"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"io"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
 
@@ -23,61 +20,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
 )
-
-func TestListComponentPodsUsesSourceUIDWithoutManagedLabels(t *testing.T) {
-	controller := true
-	deploymentUID := types.UID("deployment-uid")
-	replicaSetUID := types.UID("replicaset-uid")
-	selector, err := model.NewJSONStructByStruct(map[string]string{"app": "api"})
-	require.NoError(t, err)
-	uid := string(deploymentUID)
-	component := &model.ApplicationComponent{
-		AppID:                    "app-1",
-		Name:                     "api",
-		Namespace:                config.DefaultNamespace,
-		SourceWorkloadAPIVersion: "apps/v1",
-		SourceWorkloadKind:       "Deployment",
-		SourceWorkloadName:       "legacy-api",
-		SourceWorkloadUID:        &uid,
-		SourcePodSelector:        selector,
-	}
-	replicaSet := &appsv1.ReplicaSet{ObjectMeta: metav1.ObjectMeta{
-		Name:      "legacy-api-rs",
-		Namespace: config.DefaultNamespace,
-		UID:       replicaSetUID,
-		OwnerReferences: []metav1.OwnerReference{{
-			APIVersion: "apps/v1",
-			Kind:       "Deployment",
-			Name:       component.SourceWorkloadName,
-			UID:        deploymentUID,
-			Controller: &controller,
-		}},
-	}}
-	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
-		Name:      "legacy-api-rs-abc",
-		Namespace: config.DefaultNamespace,
-		Labels:    map[string]string{"app": "api"},
-		OwnerReferences: []metav1.OwnerReference{{
-			APIVersion: "apps/v1",
-			Kind:       "ReplicaSet",
-			Name:       replicaSet.Name,
-			UID:        replicaSetUID,
-			Controller: &controller,
-		}},
-	}}
-	unrelated := pod.DeepCopy()
-	unrelated.Name = "unrelated"
-	unrelated.OwnerReferences[0].UID = types.UID("other-replicaset-uid")
-
-	svc := newMockServiceWithStore(newInMemoryAppStore())
-	svc.KubeClient = k8sfake.NewSimpleClientset(replicaSet, pod, unrelated)
-	pods, err := svc.listComponentPods(context.Background(), component.AppID, component)
-
-	require.NoError(t, err)
-	require.Len(t, pods.Items, 1)
-	require.Equal(t, pod.Name, pods.Items[0].Name)
-	require.Empty(t, pods.Items[0].Labels[config.LabelAppID])
-}
 
 func TestExportComponentFilesZipSelectsLatestReadyPod(t *testing.T) {
 	store := newInMemoryAppStore()
@@ -185,7 +127,7 @@ func TestComponentPodOperationsRejectCompletedPods(t *testing.T) {
 	for _, phase := range []corev1.PodPhase{corev1.PodSucceeded, corev1.PodFailed} {
 		t.Run(string(phase), func(t *testing.T) {
 			store := newInMemoryAppStore()
-			require.NoError(t, store.Add(context.Background(), &model.Applications{ID: "app-1", ManagementMode: domainspec.ManagementModeNative}))
+			require.NoError(t, store.Add(context.Background(), &model.Applications{ID: "app-1"}))
 			require.NoError(t, store.Add(context.Background(), &model.ApplicationComponent{
 				AppID: "app-1", Name: "api", Namespace: config.DefaultNamespace,
 			}))
@@ -253,7 +195,7 @@ func TestExportComponentFilesZipMapsArchivePathLookupError(t *testing.T) {
 
 func TestExecComponentShellScriptReturnsExitCodeResult(t *testing.T) {
 	store := newInMemoryAppStore()
-	require.NoError(t, store.Add(context.Background(), &model.Applications{ID: "app-1", ManagementMode: domainspec.ManagementModeNative}))
+	require.NoError(t, store.Add(context.Background(), &model.Applications{ID: "app-1"}))
 	require.NoError(t, store.Add(context.Background(), &model.ApplicationComponent{
 		AppID:     "app-1",
 		Name:      "api",
@@ -289,7 +231,7 @@ func TestExecComponentShellScriptReturnsExitCodeResult(t *testing.T) {
 
 func TestExecComponentShellScriptRejectsInvalidContainer(t *testing.T) {
 	store := newInMemoryAppStore()
-	require.NoError(t, store.Add(context.Background(), &model.Applications{ID: "app-1", ManagementMode: domainspec.ManagementModeNative}))
+	require.NoError(t, store.Add(context.Background(), &model.Applications{ID: "app-1"}))
 	require.NoError(t, store.Add(context.Background(), &model.ApplicationComponent{
 		AppID:     "app-1",
 		Name:      "api",
@@ -317,7 +259,7 @@ func TestExecComponentShellScriptRejectsInvalidContainer(t *testing.T) {
 
 func TestStreamComponentShellScriptReturnsEventStream(t *testing.T) {
 	store := newInMemoryAppStore()
-	require.NoError(t, store.Add(context.Background(), &model.Applications{ID: "app-1", ManagementMode: domainspec.ManagementModeNative}))
+	require.NoError(t, store.Add(context.Background(), &model.Applications{ID: "app-1"}))
 	require.NoError(t, store.Add(context.Background(), &model.ApplicationComponent{
 		AppID:     "app-1",
 		Name:      "api",
@@ -358,16 +300,4 @@ func TestStreamComponentShellScriptReturnsEventStream(t *testing.T) {
 	require.True(t, received.Succeeded)
 	_, ok = <-stream.Events
 	require.False(t, ok)
-}
-
-func TestExecComponentShellScriptRejectsObserveApplication(t *testing.T) {
-	store := newInMemoryAppStore()
-	require.NoError(t, store.Add(context.Background(), &model.Applications{ID: "app-1", ManagementMode: domainspec.ManagementModeObserve}))
-
-	svc := newMockServiceWithStore(store)
-	svc.KubeConfig = &rest.Config{Host: "https://example.test"}
-
-	resp, err := svc.ExecComponentShellScript(context.Background(), "app-1", "api", apisv1.ExecComponentShellScriptRequest{Script: "touch /tmp/mutated"})
-	require.Nil(t, resp)
-	require.ErrorIs(t, err, bcode.ErrApplicationManagementMode)
 }

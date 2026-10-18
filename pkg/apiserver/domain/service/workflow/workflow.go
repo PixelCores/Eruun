@@ -23,7 +23,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/cancelsignal"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -115,9 +114,6 @@ func (w *workflowServiceImpl) GetTaskStatus(ctx context.Context, taskID string) 
 			return nil, bcode.ErrWorkflowTaskNotExist
 		}
 		return nil, err
-	}
-	if isResourceImportTaskType(task.Type) {
-		return nil, bcode.ErrWorkflowTaskNotExist
 	}
 
 	componentAggregates := make(map[string]*apis.ComponentTaskStatus)
@@ -212,9 +208,6 @@ func (w *workflowServiceImpl) GetTaskStages(ctx context.Context, taskID string) 
 			return nil, bcode.ErrWorkflowTaskNotExist
 		}
 		return nil, err
-	}
-	if isResourceImportTaskType(task.Type) {
-		return nil, bcode.ErrWorkflowTaskNotExist
 	}
 
 	jobEntities, err := w.Store.List(ctx, &model.JobInfo{TaskID: taskID}, &datastore.ListOptions{
@@ -537,15 +530,11 @@ func (w *workflowServiceImpl) upsertWorkflowScheduleUnlocked(ctx context.Context
 	if workflowID == "" {
 		return nil, bcode.ErrWorkflowConfig
 	}
-	app, err := repository.ApplicationByID(ctx, w.Store, appID)
-	if err != nil {
+	if _, err := repository.ApplicationByID(ctx, w.Store, appID); err != nil {
 		if errors.Is(err, datastore.ErrRecordNotExist) {
 			return nil, bcode.ErrApplicationNotExist
 		}
 		return nil, err
-	}
-	if app.EffectiveManagementMode() == domainspec.ManagementModeObserve {
-		return nil, fmt.Errorf("%w: observe applications are read-only", bcode.ErrApplicationManagementMode)
 	}
 	normalizedCron, err := utils.NormalizeCronSchedule(req.Cron)
 	if err != nil {
@@ -979,9 +968,6 @@ func (w *workflowServiceImpl) ApproveWorkflowTask(ctx context.Context, taskID, a
 		}
 		return nil, err
 	}
-	if isResourceImportTaskType(task.Type) {
-		return nil, bcode.ErrWorkflowTaskNotExist
-	}
 	if !task.ApprovalPending {
 		return nil, bcode.ErrWorkflowTaskNotAwaitingApproval
 	}
@@ -1072,11 +1058,6 @@ func (w *workflowServiceImpl) ApproveWorkflowTask(ctx context.Context, taskID, a
 		Action: normalizedAction,
 		Status: string(config.StatusCancelled),
 	}, nil
-}
-
-func isResourceImportTaskType(taskType config.WorkflowTaskType) bool {
-	return taskType == config.WorkflowTaskTypeResourceImportScan ||
-		taskType == config.WorkflowTaskTypeResourceImportManage
 }
 
 func (w *workflowServiceImpl) cancelWorkflowTask(ctx context.Context, task *model.WorkflowQueue, userName, reason string) error {
@@ -1875,24 +1856,6 @@ func validateWorkflowTaskEnqueue(ctx context.Context, store datastore.DataStore,
 	if err := validateWorkflowTaskJobTypes(workflow); err != nil {
 		return err
 	}
-	if workflow.AppID != "" {
-		app, err := repository.ApplicationByID(ctx, store, workflow.AppID)
-		if err != nil && !errors.Is(err, datastore.ErrRecordNotExist) {
-			return err
-		}
-		if app != nil {
-			switch app.EffectiveManagementMode() {
-			case domainspec.ManagementModeObserve:
-				return fmt.Errorf("%w: observe applications are read-only", bcode.ErrApplicationManagementMode)
-			case domainspec.ManagementModeAdopted:
-				if workflowContainsJobType(workflow, config.JobDatabaseReset) ||
-					workflowContainsJobType(workflow, config.JobCleanupResources) {
-					return fmt.Errorf("%w: adopted workflows cannot reset databases or perform unfingerprinted cleanup", bcode.ErrApplicationManagementMode)
-				}
-			}
-		}
-	}
-
 	if requireComponentInventory && workflow.AppID != "" && workflowRequiresComponents(workflow) {
 		components, err := repository.FindComponentsByAppID(ctx, store, workflow.AppID)
 		if err != nil && !errors.Is(err, datastore.ErrRecordNotExist) {
@@ -1903,30 +1866,6 @@ func validateWorkflowTaskEnqueue(ctx context.Context, store datastore.DataStore,
 		}
 	}
 	return nil
-}
-
-func workflowContainsJobType(workflow *model.Workflow, target config.JobType) bool {
-	if workflow == nil || workflow.Steps == nil {
-		return false
-	}
-	var steps model.WorkflowSteps
-	if err := decodeJSONStruct(workflow.Steps, &steps); err != nil {
-		return false
-	}
-	for _, step := range steps.Steps {
-		if step == nil {
-			continue
-		}
-		if step.WorkflowType == target {
-			return true
-		}
-		for _, sub := range step.SubSteps {
-			if sub != nil && sub.WorkflowType == target {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func validateWorkflowTaskJobTypes(workflow *model.Workflow) error {

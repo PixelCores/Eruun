@@ -1063,9 +1063,8 @@ func buildServiceTrait(svc *corev1.Service) spec.ServiceTraitSpec {
 
 func normalizeConvertedServiceSelector(selector map[string]string) map[string]string {
 	normalized := utils.CopyStringMap(selector)
-	// Keep managed identity keys so non-external Service traits remain valid.
-	// Native generation rebinds their values to the target component, while
-	// adopted generation keeps the source selector identity unchanged.
+	// Keep managed identity keys so non-external Service traits remain valid;
+	// generation rebinds their values to the target component.
 	if _, exists := normalized[config.LabelManagedBy]; exists {
 		normalized[config.LabelManagedBy] = config.ManagedByEruun
 	}
@@ -1121,10 +1120,6 @@ func ensureShareLabels(labels map[string]string, name string) map[string]string 
 		labels[config.LabelShareStrategy] = string(spec.ShareStrategyDefault)
 	}
 	return labels
-}
-
-func EnsureShareLabels(labels map[string]string, name string) map[string]string {
-	return ensureShareLabels(labels, name)
 }
 
 func buildShareTrait(primaryLabels, fallbackLabels map[string]string) (*spec.ShareTraitSpec, []string) {

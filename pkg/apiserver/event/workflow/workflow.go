@@ -19,7 +19,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
@@ -50,8 +49,7 @@ type Workflow struct {
 	Cache                     cache.ICache   `inject:"cache"`
 	RedisClient               *redis.Client  `inject:"redisClient"`
 	ResourceWaiter            informer.ComponentReadyObserver
-	ResourceImportExecutor    job.ResourceImportExecutor `inject:""`
-	URLSecurityPolicyProvider *urlpolicy.Provider        `inject:""`
+	URLSecurityPolicyProvider *urlpolicy.Provider `inject:""`
 	controllerLifecycleMu     sync.Mutex
 	schedulerLifecycleMu      sync.Mutex
 	workerLimiterOnce         sync.Once
@@ -437,7 +435,7 @@ func (w *Workflow) runWorkflowTask(ctx context.Context, workerRun *workflowWorke
 		stopHeartbeat()
 		return false, fmt.Errorf("acquire workflow slot: %w", err)
 	}
-	controller, err := NewWorkflowController(task, w.KubeClient, w.KubeConfig, w.Store, w.Cfg, w.RedisClient, w.Cache, urlPolicy, w.ResourceImportExecutor)
+	controller, err := NewWorkflowController(task, w.KubeClient, w.KubeConfig, w.Store, w.Cfg, w.RedisClient, w.Cache, urlPolicy)
 	if err != nil {
 		runErr := fmt.Errorf("init workflow controller: %w", err)
 		w.markTaskRunStartFailure(runnerCtx, task, runErr)
@@ -637,7 +635,6 @@ func (w *Workflow) runWorkflowControllerWithPersistenceRecovery(ctx context.Cont
 			w.RedisClient,
 			w.Cache,
 			current.urlSecurityPolicy,
-			w.ResourceImportExecutor,
 		)
 		if err != nil {
 			return errors.Join(
@@ -717,10 +714,6 @@ func (w *Workflow) markTaskRunStartFailure(ctx context.Context, task *model.Work
 	expectedStatus := task.Status
 	task.Status = config.StatusFailed
 	updates := map[string]interface{}{"status": config.StatusFailed}
-	if isResourceImportWorkflowTask(task.Type) {
-		task.SchedulingReason = importcontract.PreExecutionFailureReason
-		updates["scheduling_reason"] = importcontract.PreExecutionFailureReason
-	}
 	baseCtx := ctx
 	if baseCtx == nil || baseCtx.Err() != nil {
 		baseCtx = context.Background()

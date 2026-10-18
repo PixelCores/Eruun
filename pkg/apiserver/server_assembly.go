@@ -121,17 +121,12 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 	if err := s.beanContainer.ProvideWithName("redisClient", redisClient); err != nil {
 		return fmt.Errorf("provide Redis coordination client: %w", err)
 	}
-	for name, prefix := range map[string]string{
-		"appScheduleLocker": "eruun-app-schedule",
-		"managementLocker":  "eruun-adopted-import",
-	} {
-		lockProvider, err := locker.NewRedisLocker(redisClient, prefix)
-		if err != nil {
-			return fmt.Errorf("initialize %s: %w", name, err)
-		}
-		if err := s.beanContainer.ProvideWithName(name, lockProvider); err != nil {
-			return fmt.Errorf("provide %s: %w", name, err)
-		}
+	scheduleLocker, err := locker.NewRedisLocker(redisClient, "eruun-app-schedule")
+	if err != nil {
+		return fmt.Errorf("initialize appScheduleLocker: %w", err)
+	}
+	if err := s.beanContainer.ProvideWithName("appScheduleLocker", scheduleLocker); err != nil {
+		return fmt.Errorf("provide appScheduleLocker: %w", err)
 	}
 
 	// 将db 注入到IOC中

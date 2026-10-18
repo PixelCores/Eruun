@@ -40,7 +40,6 @@ const (
 
 type ApplicationsService interface {
 	CreateApplications(context.Context, apisv1.CreateApplicationsRequest) (*apisv1.ApplicationBase, error)
-	CreateApplicationsWithMutation(context.Context, apisv1.CreateApplicationsRequest, ApplicationCreateMutation) (*apisv1.ApplicationBase, error)
 	MarkInitialDeployingWorkflowComponents(context.Context, string, string) error
 	HasImmediateActiveVersionUpdateTask(context.Context, string, int64) (bool, error)
 	GetApplicationSpec(ctx context.Context, appID string) (*apisv1.CreateApplicationsRequest, error)
@@ -49,8 +48,6 @@ type ApplicationsService interface {
 	BatchGetApplications(ctx context.Context, appIDs []string) (*apisv1.BatchGetApplicationsResponse, error)
 	DeleteApplicationCascade(ctx context.Context, appID string, req apisv1.DeleteApplicationRequest) (*apisv1.DeleteApplicationResponse, error)
 	CleanupApplicationResources(ctx context.Context, appID string) (*apisv1.CleanupApplicationResourcesResponse, error)
-	PlanApplicationResourceCleanup(ctx context.Context, appID string) (*apisv1.CleanupApplicationResourcesPlanResponse, error)
-	ApplyApplicationResourceCleanup(ctx context.Context, appID string, req apisv1.CleanupApplicationResourcesRequest) (*apisv1.CleanupApplicationResourcesResponse, error)
 	ResetApplicationDatabases(ctx context.Context, appID string, req apisv1.DatabaseResetRequest) (*apisv1.DatabaseResetResponse, error)
 	DownloadLogArchive(ctx context.Context, appID string, req apisv1.LogArchiveDownloadRequest) (*ComponentFileArchiveStream, error)
 	RestartApplicationWorkloads(ctx context.Context, appID string, req apisv1.ApplicationLifecycleRequest) (*apisv1.RestartApplicationWorkloadsResponse, error)
@@ -71,17 +68,6 @@ type ApplicationsService interface {
 	UpdateVersion(ctx context.Context, appID string, req apisv1.UpdateVersionRequest) (*apisv1.UpdateVersionResponse, error)
 	DiffUpdateVersion(ctx context.Context, targetAppID string, req apisv1.DiffUpdateVersionRequest) (*apisv1.DiffUpdateVersionResponse, error)
 }
-
-// ApplicationCreateMutation lets trusted namespace import code attach adoption
-// state inside the same transaction that creates an application, its components,
-// and its managed workflows. A successful mutation must leave the application in
-// adopted mode.
-type ApplicationCreateMutation func(
-	ctx context.Context,
-	store datastore.DataStore,
-	app *model.Applications,
-	components []*model.ApplicationComponent,
-) error
 
 type ListApplicationsOptions struct {
 	Page     int
@@ -122,7 +108,6 @@ type workflowUpsertOptions struct {
 	alwaysUpdateAlias       bool
 	setWorkflowTypeOnUpdate bool
 	setCallbackOnUpdate     bool
-	syncDisabledWithAppMode bool
 	pickTarget              func([]*model.Workflow) *model.Workflow
 }
 
@@ -131,41 +116,15 @@ func NewApplicationService() ApplicationsService {
 }
 
 func (c *applicationsServiceImpl) CreateApplications(ctx context.Context, req apisv1.CreateApplicationsRequest) (*apisv1.ApplicationBase, error) {
-	// Observe imports are trusted internal calls derived from existing Kubernetes
-	// resources; public HTTP/gRPC requests cannot set ImportAsObserve.
-	if !req.ImportAsObserve && !spec.ValidAPIName(req.Name, datastore.PrimaryKeyMaxLength) {
+	if !spec.ValidAPIName(req.Name, datastore.PrimaryKeyMaxLength) {
 		return nil, bcode.ErrApplicationConfig
 	}
-	return c.createApplicationsWithScheduleLock(ctx, req, nil, "create-or-replace-application")
-}
-
-func (c *applicationsServiceImpl) CreateApplicationsWithMutation(
-	ctx context.Context,
-	req apisv1.CreateApplicationsRequest,
-	mutation ApplicationCreateMutation,
-) (*apisv1.ApplicationBase, error) {
-	if mutation == nil {
-		return c.CreateApplications(ctx, req)
-	}
-	if req.ImportAsObserve {
-		return nil, fmt.Errorf(
-			"%w: adopted application mutation cannot import as observe",
-			bcode.ErrApplicationManagementMode,
-		)
-	}
-	if c.Store == nil {
-		return nil, fmt.Errorf("datastore is not initialized")
-	}
-	if _, ok := c.Store.(datastore.Transactional); !ok {
-		return nil, fmt.Errorf("atomic application creation requires a transactional datastore")
-	}
-	return c.createApplicationsWithScheduleLock(ctx, req, mutation, "create-application-with-mutation")
+	return c.createApplicationsWithScheduleLock(ctx, req, "create-or-replace-application")
 }
 
 func (c *applicationsServiceImpl) createApplicationsWithScheduleLock(
 	ctx context.Context,
 	req apisv1.CreateApplicationsRequest,
-	mutation ApplicationCreateMutation,
 	operation string,
 ) (*apisv1.ApplicationBase, error) {
 	if scope, ok := access.FromContext(ctx); ok {
@@ -180,7 +139,7 @@ func (c *applicationsServiceImpl) createApplicationsWithScheduleLock(
 		return nil, err
 	}
 	if strings.TrimSpace(req.ID) == "" {
-		return c.createApplications(ctx, req, mutation)
+		return c.createApplications(ctx, req)
 	}
 	lockProvider, err := c.appScheduleLocker()
 	if err != nil {
@@ -190,7 +149,7 @@ func (c *applicationsServiceImpl) createApplicationsWithScheduleLock(
 	err = schedulelock.WithAppScheduleLock(ctx, lockProvider, req.ID, operation, true, func(lockCtx context.Context) error {
 		lockCtx = context.WithValue(lockCtx, applicationMutationLockContextKey{}, strings.TrimSpace(req.ID))
 		var createErr error
-		result, createErr = c.createApplications(lockCtx, req, mutation)
+		result, createErr = c.createApplications(lockCtx, req)
 		return createErr
 	})
 	if err != nil {
@@ -237,7 +196,6 @@ func (c *applicationsServiceImpl) resolveCreateApplicationReplacement(ctx contex
 func (c *applicationsServiceImpl) createApplications(
 	ctx context.Context,
 	req apisv1.CreateApplicationsRequest,
-	mutation ApplicationCreateMutation,
 ) (*apisv1.ApplicationBase, error) {
 	if req.Version == "" {
 		req.Version = "1.0.0"
@@ -249,7 +207,7 @@ func (c *applicationsServiceImpl) createApplications(
 	if c.Store == nil {
 		return nil, fmt.Errorf("datastore is not initialized")
 	}
-	application, createTransaction, err := c.prepareApplicationForCreate(ctx, req, mutation != nil)
+	application, createTransaction, err := c.prepareApplicationForCreate(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +254,7 @@ func (c *applicationsServiceImpl) createApplications(
 			if err := workflowservice.EnsureNoPendingStatefulSetCleanup(ctx, store, application.ID); err != nil {
 				return err
 			}
-			currentApplication, err := c.refreshExistingApplication(ctx, store, req, mutation != nil)
+			currentApplication, err := c.refreshExistingApplication(ctx, store, req)
 			if err != nil {
 				return err
 			}
@@ -305,9 +263,6 @@ func (c *applicationsServiceImpl) createApplications(
 			}
 			if currentApplication.Namespace == "" {
 				currentApplication.Namespace = config.DefaultNamespace
-			}
-			if req.ImportAsObserve {
-				currentApplication.ManagementMode = spec.ManagementModeObserve
 			}
 			if callbackSelection.setCallback {
 				currentApplication.Callback = callbackSelection.callback
@@ -318,7 +273,7 @@ func (c *applicationsServiceImpl) createApplications(
 				return err
 			}
 		}
-		workflow, err = c.persistCreatedApplication(ctx, store, application, components, req, resolvedComponents, callbackSelection, mutation, refreshAppID)
+		workflow, err = c.persistCreatedApplication(ctx, store, application, components, req, resolvedComponents, callbackSelection)
 		return err
 	}
 
@@ -333,7 +288,7 @@ func (c *applicationsServiceImpl) createApplications(
 	return base, nil
 }
 
-func (c *applicationsServiceImpl) prepareApplicationForCreate(ctx context.Context, req apisv1.CreateApplicationsRequest, hasMutation bool) (*model.Applications, datastore.Transactional, error) {
+func (c *applicationsServiceImpl) prepareApplicationForCreate(ctx context.Context, req apisv1.CreateApplicationsRequest) (*model.Applications, datastore.Transactional, error) {
 	var (
 		application *model.Applications
 		err         error
@@ -353,7 +308,7 @@ func (c *applicationsServiceImpl) prepareApplicationForCreate(ctx context.Contex
 		if err := workflowservice.EnsureNoPendingStatefulSetCleanup(ctx, c.Store, refreshAppID); err != nil {
 			return nil, nil, err
 		}
-		application, err = c.refreshExistingApplication(ctx, c.Store, req, hasMutation)
+		application, err = c.refreshExistingApplication(ctx, c.Store, req)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -384,16 +339,6 @@ func (c *applicationsServiceImpl) prepareApplicationForCreate(ctx context.Contex
 			templateEnabled,
 		)
 	}
-	if !hasMutation && !req.ImportAsObserve && application.EffectiveManagementMode() != spec.ManagementModeNative {
-		return nil, nil, fmt.Errorf(
-			"%w: generic application replacement is disabled for %s applications",
-			bcode.ErrApplicationManagementMode,
-			application.EffectiveManagementMode(),
-		)
-	}
-	if req.ImportAsObserve {
-		application.ManagementMode = spec.ManagementModeObserve
-	}
 	if application.Namespace == "" {
 		application.Namespace = config.DefaultNamespace
 	}
@@ -404,20 +349,7 @@ func (c *applicationsServiceImpl) prepareApplicationForCreate(ctx context.Contex
 	return application, createTransaction, nil
 }
 
-func (c *applicationsServiceImpl) persistCreatedApplication(ctx context.Context, store datastore.DataStore, application *model.Applications, components []*model.ApplicationComponent, req apisv1.CreateApplicationsRequest, resolvedComponents []apisv1.CreateComponentRequest, callbackSelection applicationCallbackSelection, mutation ApplicationCreateMutation, refreshAppID string) (*model.Workflow, error) {
-	managementModeBeforeMutation := application.EffectiveManagementMode()
-	if mutation != nil {
-		if err := mutation(ctx, store, application, components); err != nil {
-			return nil, err
-		}
-		if application.EffectiveManagementMode() != spec.ManagementModeAdopted {
-			return nil, fmt.Errorf(
-				"%w: adopted application mutation produced %s mode",
-				bcode.ErrApplicationManagementMode,
-				application.EffectiveManagementMode(),
-			)
-		}
-	}
+func (c *applicationsServiceImpl) persistCreatedApplication(ctx context.Context, store datastore.DataStore, application *model.Applications, components []*model.ApplicationComponent, req apisv1.CreateApplicationsRequest, resolvedComponents []apisv1.CreateComponentRequest, callbackSelection applicationCallbackSelection) (*model.Workflow, error) {
 	if err := repository.CreateApplications(ctx, store, application); err != nil {
 		return nil, err
 	}
@@ -434,33 +366,12 @@ func (c *applicationsServiceImpl) persistCreatedApplication(ctx context.Context,
 		klog.Errorf("batch create components for application %s failed: %v", application.ID, err)
 		return nil, bcode.ErrCreateComponents
 	}
-	syncWorkflowDisabled := mutation != nil &&
-		refreshAppID != "" &&
-		managementModeBeforeMutation == spec.ManagementModeObserve
-	wf, err := c.upsertDefaultWorkflow(ctx, store, application, req, resolvedComponents, callbackSelection, syncWorkflowDisabled)
+	wf, err := c.upsertDefaultWorkflow(ctx, store, application, req, resolvedComponents, callbackSelection)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := c.upsertUpdateWorkflow(ctx, store, application, req, resolvedComponents, callbackSelection, syncWorkflowDisabled); err != nil {
+	if _, err := c.upsertUpdateWorkflow(ctx, store, application, req, resolvedComponents, callbackSelection); err != nil {
 		return nil, err
-	}
-	if application.EffectiveManagementMode() == spec.ManagementModeObserve {
-		workflows, err := repository.FindWorkflowsByAppID(ctx, store, application.ID)
-		if err != nil {
-			return nil, err
-		}
-		for _, managedWorkflow := range workflows {
-			if managedWorkflow == nil || managedWorkflow.Disabled {
-				continue
-			}
-			managedWorkflow.Disabled = true
-			if err := store.Put(ctx, managedWorkflow); err != nil {
-				return nil, err
-			}
-		}
-		if err := repository.DeleteWorkflowSchedulesByAppID(ctx, store, application.ID); err != nil {
-			return nil, fmt.Errorf("delete observe application workflow schedules: %w", err)
-		}
 	}
 	if callbackSelection.overwriteAll {
 		if err := updateWorkflowCallbacksForApp(ctx, store, application.ID, callbackSelection.callback); err != nil {
@@ -481,7 +392,7 @@ func batchAddComponents(ctx context.Context, store datastore.DataStore, componen
 	return store.BatchAdd(ctx, entities)
 }
 
-func (c *applicationsServiceImpl) upsertDefaultWorkflow(ctx context.Context, store datastore.DataStore, app *model.Applications, req apisv1.CreateApplicationsRequest, resolvedComponents []apisv1.CreateComponentRequest, callbackSelection applicationCallbackSelection, syncDisabledWithAppMode bool) (*model.Workflow, error) {
+func (c *applicationsServiceImpl) upsertDefaultWorkflow(ctx context.Context, store datastore.DataStore, app *model.Applications, req apisv1.CreateApplicationsRequest, resolvedComponents []apisv1.CreateComponentRequest, callbackSelection applicationCallbackSelection) (*model.Workflow, error) {
 	workflowAliasBase := req.Alias
 	if workflowAliasBase == "" {
 		workflowAliasBase = req.Name
@@ -491,20 +402,19 @@ func (c *applicationsServiceImpl) upsertDefaultWorkflow(ctx context.Context, sto
 	desiredName := fmt.Sprintf("%s-workflow", req.Name)
 
 	return c.upsertApplicationWorkflow(ctx, store, app, req, resolvedComponents, workflowUpsertOptions{
-		desiredName:             desiredName,
-		desiredAlias:            desiredAlias,
-		workflowType:            config.WorkflowTaskTypeWorkflow,
-		callback:                callbackSelection.callback,
-		createErrLog:            "create workflow failed",
-		setCallbackOnUpdate:     callbackSelection.setCallback,
-		syncDisabledWithAppMode: syncDisabledWithAppMode,
+		desiredName:         desiredName,
+		desiredAlias:        desiredAlias,
+		workflowType:        config.WorkflowTaskTypeWorkflow,
+		callback:            callbackSelection.callback,
+		createErrLog:        "create workflow failed",
+		setCallbackOnUpdate: callbackSelection.setCallback,
 		pickTarget: func(workflows []*model.Workflow) *model.Workflow {
 			return pickDefaultWorkflow(workflows, desiredName, desiredAlias)
 		},
 	})
 }
 
-func (c *applicationsServiceImpl) upsertUpdateWorkflow(ctx context.Context, store datastore.DataStore, app *model.Applications, req apisv1.CreateApplicationsRequest, resolvedComponents []apisv1.CreateComponentRequest, callbackSelection applicationCallbackSelection, syncDisabledWithAppMode bool) (*model.Workflow, error) {
+func (c *applicationsServiceImpl) upsertUpdateWorkflow(ctx context.Context, store datastore.DataStore, app *model.Applications, req apisv1.CreateApplicationsRequest, resolvedComponents []apisv1.CreateComponentRequest, callbackSelection applicationCallbackSelection) (*model.Workflow, error) {
 	appName := req.Name
 	if appName == "" {
 		appName = app.Name
@@ -521,7 +431,6 @@ func (c *applicationsServiceImpl) upsertUpdateWorkflow(ctx context.Context, stor
 		alwaysUpdateAlias:       true,
 		setWorkflowTypeOnUpdate: true,
 		setCallbackOnUpdate:     callbackSelection.setCallback,
-		syncDisabledWithAppMode: syncDisabledWithAppMode,
 		pickTarget: func(workflows []*model.Workflow) *model.Workflow {
 			return pickWorkflowByType(workflows, config.WorkflowTaskTypeUpdate)
 		},
@@ -571,7 +480,6 @@ func newApplicationWorkflow(app *model.Applications, workflows []*model.Workflow
 		Namespace:    app.Namespace,
 		AppID:        app.ID,
 		Alias:        opts.desiredAlias,
-		Disabled:     app.EffectiveManagementMode() == spec.ManagementModeObserve,
 		ProjectID:    app.Project,
 		Description:  app.Description,
 		WorkflowType: opts.workflowType,
@@ -591,10 +499,6 @@ func updateApplicationWorkflowFields(target *model.Workflow, app *model.Applicat
 	target.Namespace = app.Namespace
 	target.ProjectID = app.Project
 	target.Description = app.Description
-	managementMode := app.EffectiveManagementMode()
-	if managementMode == spec.ManagementModeObserve || opts.syncDisabledWithAppMode {
-		target.Disabled = managementMode == spec.ManagementModeObserve
-	}
 	if opts.setWorkflowTypeOnUpdate {
 		target.WorkflowType = opts.workflowType
 	}
@@ -732,7 +636,7 @@ func pickWorkflowByType(workflows []*model.Workflow, workflowType config.Workflo
 	return best
 }
 
-func (c *applicationsServiceImpl) refreshExistingApplication(ctx context.Context, store datastore.DataStore, req apisv1.CreateApplicationsRequest, allowAdoptedMutation bool) (*model.Applications, error) {
+func (c *applicationsServiceImpl) refreshExistingApplication(ctx context.Context, store datastore.DataStore, req apisv1.CreateApplicationsRequest) (*model.Applications, error) {
 	if store == nil {
 		return nil, fmt.Errorf("datastore is not initialized")
 	}
@@ -740,31 +644,6 @@ func (c *applicationsServiceImpl) refreshExistingApplication(ctx context.Context
 	if err != nil {
 		return nil, bcode.ErrApplicationNotExist
 	}
-	managementMode := application.EffectiveManagementMode()
-	if allowAdoptedMutation {
-		if managementMode != spec.ManagementModeObserve &&
-			managementMode != spec.ManagementModeAdopted {
-			return nil, fmt.Errorf(
-				"%w: adopted application mutation is disabled for %s applications",
-				bcode.ErrApplicationManagementMode,
-				managementMode,
-			)
-		}
-	} else if req.ImportAsObserve {
-		if managementMode == spec.ManagementModeAdopted {
-			return nil, fmt.Errorf(
-				"%w: observe import cannot replace an adopted application",
-				bcode.ErrApplicationManagementMode,
-			)
-		}
-	} else if managementMode != spec.ManagementModeNative {
-		return nil, fmt.Errorf(
-			"%w: generic application replacement is disabled for %s applications",
-			bcode.ErrApplicationManagementMode,
-			managementMode,
-		)
-	}
-
 	targetTemplateEnabled := application.TemplateEnabled
 	if req.TemplateEnabled != nil {
 		targetTemplateEnabled = *req.TemplateEnabled

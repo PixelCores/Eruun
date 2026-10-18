@@ -1,6 +1,5 @@
 {{- include "eruun.validateRuntime" . -}}
 {{- $root := . -}}
-{{- $usesImportSecretKeyring := .Values.importSecretKeyring.existingSecret -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -78,10 +77,6 @@ spec:
                 secretKeyRef:
                   name: {{ include "eruun.suffixedName" (dict "root" $root "suffix" "redis") }}
                   key: password
-            {{- if $usesImportSecretKeyring }}
-            - name: ERUUN_IMPORT_SECRET_KEYRING_FILE
-              value: /var/run/secrets/eruun/import-secret-keyring/keyring.json
-            {{- end }}
             {{- range $root.Values.env }}
             - name: {{ .name }}
               value: {{ .value | quote }}
@@ -93,11 +88,6 @@ spec:
           {{- if $root.Values.jobs.existingSecret }}
             - name: jobs-config
               mountPath: /var/run/secrets/eruun/jobs
-              readOnly: true
-          {{- end }}
-          {{- if $usesImportSecretKeyring }}
-            - name: import-secret-keyring
-              mountPath: /var/run/secrets/eruun/import-secret-keyring
               readOnly: true
           {{- end }}
           startupProbe:
@@ -139,14 +129,6 @@ spec:
             items:
               - key: {{ $root.Values.auth.key | quote }}
                 path: accounts.json
-      {{- if $usesImportSecretKeyring }}
-        - name: import-secret-keyring
-          secret:
-            secretName: {{ $root.Values.importSecretKeyring.existingSecret | quote }}
-            items:
-              - key: {{ required "importSecretKeyring.key is required when importSecretKeyring.existingSecret is set" $root.Values.importSecretKeyring.key | quote }}
-                path: keyring.json
-      {{- end }}
       {{- with $root.Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

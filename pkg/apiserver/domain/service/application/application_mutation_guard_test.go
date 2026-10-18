@@ -9,7 +9,6 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
@@ -46,18 +45,16 @@ func TestApplicationMutationsPreserveIDAndReadOnlyGuards(t *testing.T) {
 		for _, tc := range []struct {
 			name  string
 			appID string
-			mode  spec.ManagementMode
 			want  error
 		}{
 			{name: "empty", want: bcode.ErrApplicationNotExist},
 			{name: "whitespace", appID: " ", want: bcode.ErrApplicationNotExist},
 			{name: "padded", appID: " app-1 ", want: bcode.ErrApplicationNotExist},
 			{name: "missing", appID: "missing", want: bcode.ErrApplicationNotExist},
-			{name: "observe", appID: "app-1", mode: spec.ManagementModeObserve, want: bcode.ErrApplicationManagementMode},
 		} {
 			t.Run(operation.name+"/"+tc.name, func(t *testing.T) {
 				store := newInMemoryAppStore()
-				store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "shop", Version: "1.0.0", ManagementMode: tc.mode}
+				store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "shop", Version: "1.0.0"}
 				svc := newMockServiceWithStore(store)
 				client := fake.NewSimpleClientset()
 				svc.KubeClient = client
@@ -103,16 +100,4 @@ func TestUpdateVersionPreservesDatastoreIDResolution(t *testing.T) {
 			require.Equal(t, "1.1.0", store.apps[app.ID].Version)
 		})
 	}
-}
-
-func TestUpdateVersionChecksManagementModeOfRawID(t *testing.T) {
-	store := newInMemoryAppStore()
-	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "shop", Version: "1.0.0"}
-	store.apps[" app-1 "] = &model.Applications{ID: " app-1 ", Name: "observed-shop", ManagementMode: spec.ManagementModeObserve}
-	svc := newMockServiceWithStore(store)
-
-	_, err := svc.UpdateVersion(context.Background(), " app-1 ", apisv1.UpdateVersionRequest{Version: "1.1.0", AutoExec: boolPtr(false)})
-
-	require.ErrorIs(t, err, bcode.ErrApplicationManagementMode)
-	require.Equal(t, "1.0.0", store.apps["app-1"].Version)
 }

@@ -3,7 +3,6 @@ package application
 import (
 	"context"
 	"errors"
-	"fmt"
 	"reflect"
 	"sort"
 	"strings"
@@ -52,9 +51,6 @@ func (c *applicationsServiceImpl) DiffUpdateVersion(ctx context.Context, targetA
 			return nil, bcode.ErrApplicationNotExist
 		}
 		return nil, err
-	}
-	if !req.DryRun && targetApp.EffectiveManagementMode() == domainspec.ManagementModeObserve {
-		return nil, fmt.Errorf("%w: observe applications are read-only", bcode.ErrApplicationManagementMode)
 	}
 	sourceVersion := strings.TrimSpace(sourceApp.Version)
 	if sourceVersion == "" {
@@ -143,23 +139,12 @@ func (c *applicationsServiceImpl) buildApplicationVersionDiff(ctx context.Contex
 		}
 		targetComponentMap[strings.ToLower(strings.TrimSpace(component.Name))] = component
 	}
-	if targetApp.EffectiveManagementMode() == domainspec.ManagementModeAdopted {
-		if err := validateAdoptedDiffUpdateInputs(sourceComponents, targetComponents); err != nil {
-			return nil, err
-		}
-	}
 
 	diff, err := buildVersionDiff(sourceComponents, targetComponents)
 	if err != nil {
 		return nil, err
 	}
-	if targetApp.EffectiveManagementMode() == domainspec.ManagementModeAdopted {
-		blockUnsupportedAdoptedVersionDiffs(diff, targetComponents)
-	}
 	applyDiffUpdateTargetOnlyStrategy(diff, targetOnlyStrategy)
-	if targetApp.EffectiveManagementMode() == domainspec.ManagementModeAdopted {
-		blockUnsupportedAdoptedTargetOnlyRemovals(diff)
-	}
 	if err := blockNonExecutableStatefulSetVersionDiffs(targetComponentMap, diff); err != nil {
 		return nil, err
 	}
@@ -211,142 +196,6 @@ func annotateVersionDiffComponentActions(diff *versionDiffResult, reason string)
 			annotate(diff.extra[index : index+1])
 		}
 	}
-}
-
-func blockUnsupportedAdoptedVersionDiffs(
-	diff *versionDiffResult,
-	targetComponents []*model.ApplicationComponent,
-) {
-	if diff == nil || len(diff.updated) == 0 {
-		return
-	}
-	targets := make(map[string]*model.ApplicationComponent, len(targetComponents))
-	for _, component := range targetComponents {
-		if component != nil {
-			targets[strings.ToLower(strings.TrimSpace(component.Name))] = component
-		}
-	}
-	executable := make([]apisv1.VersionComponentDiff, 0, len(diff.updated))
-	for _, item := range diff.updated {
-		target := targets[strings.ToLower(strings.TrimSpace(item.Name))]
-		if target == nil || item.After == nil {
-			item.Action = apisv1.DiffUpdateComponentActionBlock
-			item.Reason = "adopted source binding is missing"
-			diff.blocked = append(diff.blocked, item)
-			continue
-		}
-		update := apisv1.ComponentUpdateSpec{
-			Action: string(domainspec.ComponentActionUpdate),
-			Name:   item.Name,
-		}
-		for _, field := range item.Fields {
-			switch field.Field {
-			case versionDiffFieldImage:
-				update.Image = item.After.Image
-			case versionDiffFieldReplicas:
-				replicas := item.After.Replicas
-				update.Replicas = &replicas
-			case versionDiffFieldProperties:
-				properties := item.After.Properties
-				update.Properties = &properties
-			case versionDiffFieldTraits:
-				traits := item.After.Traits
-				update.Traits = &traits
-			}
-		}
-		if err := validateAdoptedVersionUpdateCompatibility(target, update); err != nil {
-			item.Action = apisv1.DiffUpdateComponentActionBlock
-			item.Reason = err.Error()
-			diff.blocked = append(diff.blocked, item)
-			continue
-		}
-		executable = append(executable, item)
-	}
-	diff.updated = executable
-}
-
-func blockUnsupportedAdoptedTargetOnlyRemovals(diff *versionDiffResult) {
-	if diff == nil || len(diff.extra) == 0 {
-		return
-	}
-	executable := make([]apisv1.VersionComponentDiff, 0, len(diff.extra))
-	for _, item := range diff.extra {
-		if item.Action != string(domainspec.ComponentActionRemove) {
-			executable = append(executable, item)
-			continue
-		}
-		item.Action = apisv1.DiffUpdateComponentActionBlock
-		item.Reason = "adopted components must be detached through an adoption-aware operation"
-		diff.blocked = append(diff.blocked, item)
-	}
-	diff.extra = executable
-}
-
-func validateAdoptedDiffUpdateInputs(
-	sourceComponents []*model.ApplicationComponent,
-	targetComponents []*model.ApplicationComponent,
-) error {
-	targets := make(map[string]*model.ApplicationComponent, len(targetComponents))
-	for _, component := range targetComponents {
-		if component == nil {
-			continue
-		}
-		if err := validateAdoptedComponentSourceBinding(component); err != nil {
-			return err
-		}
-		if hasSecret, err := componentHasOrdinarySecretProperties(component); err != nil {
-			return err
-		} else if hasSecret {
-			return fmt.Errorf(
-				"%w: adopted component %q contains ordinary Secret properties",
-				bcode.ErrApplicationManagementMode,
-				component.Name,
-			)
-		}
-		targets[strings.ToLower(strings.TrimSpace(component.Name))] = component
-	}
-	for _, source := range sourceComponents {
-		if source == nil {
-			continue
-		}
-		target := targets[strings.ToLower(strings.TrimSpace(source.Name))]
-		if target == nil {
-			return fmt.Errorf(
-				"%w: adopted applications cannot add component %q from a diff source",
-				bcode.ErrApplicationManagementMode,
-				source.Name,
-			)
-		}
-		if source.ComponentType != target.ComponentType {
-			return fmt.Errorf(
-				"%w: adopted component %q source type %q does not match target type %q",
-				bcode.ErrApplicationManagementMode,
-				source.Name,
-				source.ComponentType,
-				target.ComponentType,
-			)
-		}
-		if hasSecret, err := componentHasOrdinarySecretProperties(source); err != nil {
-			return err
-		} else if hasSecret {
-			return fmt.Errorf(
-				"%w: adopted Secret values require the encrypted keyring-aware update path",
-				bcode.ErrApplicationManagementMode,
-			)
-		}
-	}
-	return nil
-}
-
-func componentHasOrdinarySecretProperties(component *model.ApplicationComponent) (bool, error) {
-	if component == nil || component.Properties == nil {
-		return false, nil
-	}
-	var properties apisv1.Properties
-	if err := decodeJSONStruct(component.Properties, &properties); err != nil {
-		return false, fmt.Errorf("decode component %q properties: %w", component.Name, err)
-	}
-	return properties.Secret != nil, nil
 }
 
 type versionDiffResult struct {

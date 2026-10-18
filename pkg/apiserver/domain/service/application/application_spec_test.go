@@ -3,7 +3,6 @@ package application
 import (
 	"context"
 	"encoding/json"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -80,14 +79,6 @@ func TestGetApplicationSpecIncludesUniformCallback(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, spec.Callback)
 	require.Equal(t, "https://example.com/success", spec.Callback.Success)
-}
-
-func TestGetApplicationSpecRejectsNonNativeApplication(t *testing.T) {
-	store := newInMemoryAppStore()
-	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "demo", ManagementMode: domainspec.ManagementModeObserve}
-
-	_, err := newMockServiceWithStore(store).GetApplicationSpec(context.Background(), "app-1")
-	require.Error(t, err)
 }
 
 func TestGetApplicationSpecRejectsViewerBecauseSpecCanContainCredentials(t *testing.T) {

@@ -462,7 +462,6 @@ func TestJobListingsFilterAndPaginateWithinWorkspace(t *testing.T) {
 		{TaskID: "foreign-run", WorkspaceID: "other", Type: config.WorkflowTaskTypeJob, JobDefinitionID: definition.ID},
 		{TaskID: "application-job", WorkspaceID: "space", AppID: "app", Type: config.WorkflowTaskTypeJob},
 		{TaskID: "application-workflow", WorkspaceID: "space", AppID: "app", Type: config.WorkflowTaskTypeWorkflow},
-		{TaskID: "workspace-import", WorkspaceID: "space", Type: config.WorkflowTaskTypeResourceImportScan},
 	} {
 		require.NoError(t, raw.Add(ctx, task))
 	}
