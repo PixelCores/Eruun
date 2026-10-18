@@ -15,7 +15,7 @@ flowchart TB
     Leader -. 参与选举 .-> Lease[Kubernetes 单 Lease]
     Workers -. 参与选举 .-> Lease
     Leader <--> DB[(MySQL：业务状态与任务 ownership)]
-    Leader --> Queue[Redis Streams / Kafka]
+    Leader --> Queue[Redis Streams]
     Queue --> Workers
     Workers <--> DB
     Workers --> K8s[Kubernetes workloads]
@@ -28,7 +28,7 @@ flowchart TB
 - 健康 Worker 为 PodReady，但 Service 只选择 Leader 的 Pod UID 标签。EndpointSlice 由 Kubernetes 管理。
 - 调度、Controller 后台维护与业务 API 使用同一任期；失主停止这些职责后恢复 Worker。
 - MySQL 是任务状态及 ownership 事实源；消息允许重复交付，Worker 仍须数据库 CAS 认领。
-- 选择 Kafka 后 Redis 仍是依赖。该图不代表全部网络与权限关系。
+- 该图不代表全部网络与权限关系。
 
 部署、客户端重试及恢复边界见[分布式运行时设计](enterprise-distributed-runtime-design.md)。
 
@@ -41,7 +41,7 @@ sequenceDiagram
     participant A as Leader API
     participant D as MySQL
     participant S as Leader 内调度
-    participant Q as Redis/Kafka
+    participant Q as Redis Streams
     participant W as Worker
     participant K as Kubernetes
     participant O as Leader 内 Controller

@@ -26,25 +26,11 @@ type blockingDispatcherQueue struct {
 	autoClaimStarted chan struct{}
 	readOnce         sync.Once
 	autoClaimOnce    sync.Once
-	doneMu           sync.Mutex
-	done             []string
 }
 
 type resultConcurrencyQueue struct {
 	dispatcherAckQueue
 	acked chan string
-}
-
-type lifecycleDispatcherQueue struct {
-	dispatcherAckQueue
-	done []string
-}
-
-func (q *lifecycleDispatcherQueue) MarkMessageHandlingStart(string) {}
-func (q *lifecycleDispatcherQueue) MarkMessageHandlingDone(id string, acked bool) {
-	if !acked {
-		q.done = append(q.done, id)
-	}
 }
 
 func (q *resultConcurrencyQueue) Ack(_ context.Context, _ string, ids ...string) error {
@@ -79,15 +65,6 @@ func (q *blockingDispatcherQueue) AutoClaim(ctx context.Context, _ string, _ str
 func (q *blockingDispatcherQueue) Close(context.Context) error { return nil }
 func (q *blockingDispatcherQueue) Stats(context.Context, string) (int64, int64, error) {
 	return 0, 0, nil
-}
-func (q *blockingDispatcherQueue) MarkMessageHandlingStart(string) {}
-func (q *blockingDispatcherQueue) MarkMessageHandlingDone(id string, acked bool) {
-	if acked {
-		return
-	}
-	q.doneMu.Lock()
-	q.done = append(q.done, id)
-	q.doneMu.Unlock()
 }
 
 func TestDelayDispatcherHelperBranches(t *testing.T) {
@@ -132,14 +109,12 @@ func TestDelayDispatcherRequeueDoesNotNotify(t *testing.T) {
 }
 
 func TestDelayDispatcherReleasesPendingMessagesOnStop(t *testing.T) {
-	queue := &lifecycleDispatcherQueue{}
-	dispatcher := NewDelayDispatcher(queue, nil, nil, "group", "consumer")
+	dispatcher := NewDelayDispatcher(&dispatcherAckQueue{}, nil, nil, "group", "consumer")
 	require.True(t, dispatcher.addPending(&delayItem{msgID: "delay-1", key: "execution-1"}))
 	require.True(t, dispatcher.addPending(&delayItem{msgID: "delay-2", key: "execution-2"}))
 
 	dispatcher.releasePendingMessages()
 
-	require.ElementsMatch(t, []string{"delay-1", "delay-2"}, queue.done)
 	require.Empty(t, dispatcher.items)
 	require.Empty(t, dispatcher.pending)
 }
@@ -177,22 +152,22 @@ func TestDelayDispatcherRunReleasesItemWaitingOnTimer(t *testing.T) {
 		t.Fatal("delay dispatcher did not stop")
 	}
 
-	queue.doneMu.Lock()
-	released := append([]string(nil), queue.done...)
-	queue.doneMu.Unlock()
-	require.Equal(t, []string{"future-delay"}, released)
+	dispatcher.mu.Lock()
+	defer dispatcher.mu.Unlock()
+	require.Empty(t, dispatcher.items)
+	require.Empty(t, dispatcher.pending)
 }
 
 func TestDelayDispatcherAckAndDecodePayload(t *testing.T) {
 	var nilDispatcher *DelayDispatcher
-	require.NoError(t, nilDispatcher.ackMessage(context.Background(), "id-1", "reason", true))
+	require.NoError(t, nilDispatcher.ackMessage(context.Background(), "id-1", "reason"))
 
 	queue := &dispatcherAckQueue{ackErr: errors.New("ack failed")}
 	dispatcher := &DelayDispatcher{
 		queue: queue,
 		group: "delay-workers",
 	}
-	require.Error(t, dispatcher.ackMessage(context.Background(), "id-1", "reason", true))
+	require.Error(t, dispatcher.ackMessage(context.Background(), "id-1", "reason"))
 	require.EqualValues(t, 1, dispatcher.ackFailures.Load())
 
 	_, err := dispatcher.decodePayload([]byte(`{"job":`))
@@ -219,14 +194,12 @@ func TestResultDispatcherHelperBranches(t *testing.T) {
 }
 
 func TestResultDispatcherReleasesUndispatchedMessagesOnStop(t *testing.T) {
-	queue := &lifecycleDispatcherQueue{}
-	dispatcher := NewResultDispatcher(queue, nil, nil, "group", "consumer")
+	dispatcher := NewResultDispatcher(&dispatcherAckQueue{}, nil, nil, "group", "consumer")
 	require.True(t, dispatcher.markMessageInFlight("result-1"))
 	require.True(t, dispatcher.markMessageInFlight("result-2"))
 
 	dispatcher.releaseInFlightMessages()
 
-	require.ElementsMatch(t, []string{"result-1", "result-2"}, queue.done)
 	require.Empty(t, dispatcher.inFlight)
 }
 

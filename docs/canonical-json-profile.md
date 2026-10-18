@@ -93,7 +93,7 @@ Application 的组件列表只使用根级 `components`，工作流步骤只使�
 
 ### 2.3 Step 与 properties
 
-规范 Step 使用 `jobType`，使用组件名数组表达目标。需要额外参数时，`properties` 固定为对象数组：
+规范 Step 和 SubStep 使用 `jobType`，使用组件名数组表达目标；`workflowType` 不是 Step 字段，单个对象形式的 `properties` 也会被拒绝。Workflow 读接口的 `steps[]` 同样返回 `jobType`。需要额外参数时，`properties` 固定为对象数组：
 
 ```json
 {

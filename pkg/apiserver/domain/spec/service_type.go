@@ -1,8 +1,6 @@
 package spec
 
 import (
-	"strings"
-
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -16,19 +14,14 @@ const (
 	ServiceAccessExternal ServiceAccessType = "external"
 )
 
-// NormalizeServiceAccessType normalizes user input and keeps backward compatibility
-// with native Kubernetes values (ClusterIP/NodePort/LoadBalancer/ExternalName).
+// NormalizeServiceAccessType accepts only Eruun's exposure vocabulary; an empty
+// value means internal.
 func NormalizeServiceAccessType(raw string) (ServiceAccessType, bool) {
-	normalized := strings.ToLower(strings.TrimSpace(raw))
-	switch normalized {
-	case "", string(ServiceAccessInternal), strings.ToLower(string(corev1.ServiceTypeClusterIP)):
+	switch ServiceAccessType(raw) {
+	case "", ServiceAccessInternal:
 		return ServiceAccessInternal, true
-	case string(ServiceAccessNode), strings.ToLower(string(corev1.ServiceTypeNodePort)):
-		return ServiceAccessNode, true
-	case string(ServiceAccessPublic), strings.ToLower(string(corev1.ServiceTypeLoadBalancer)):
-		return ServiceAccessPublic, true
-	case string(ServiceAccessExternal), strings.ToLower(string(corev1.ServiceTypeExternalName)):
-		return ServiceAccessExternal, true
+	case ServiceAccessNode, ServiceAccessPublic, ServiceAccessExternal:
+		return ServiceAccessType(raw), true
 	default:
 		return ServiceAccessInternal, false
 	}

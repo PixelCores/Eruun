@@ -15,7 +15,7 @@
 - provider 未注册或 action 不在白名单时统一 fail-fast
 - `aliyun` provider 已接入真实阿里云 NAS SDK 和 Kubernetes StorageClass 创建逻辑
 
-仓库中的 `custom` provider 是扩展模板，不会自动注册。当前 Provider 都是进程内 Go 实现；新增或替换实现需要重新编译和重启，不存在动态插件加载或热更新。
+当前 Provider 都是进程内 Go 实现：新增 Provider 需实现 `cloudjob.CloudProvider`，在 `pkg/apiserver/event/workflow/job/cloud_provider_bridge.go` 注册；需要系统设置时，在 `systemsetting` 的内置设置表中加入对应 `CloudProviderSettingSupport`。新增或替换实现需要重新编译和重启，不存在动态插件加载或热更新。
 
 ## 代码组织
 
@@ -141,7 +141,7 @@ action 映射是 provider 的内部数据，不再通过独立的 `ActionRegistr
 
 ## 边界（当前版本）
 
-- 只自动注册 `aliyun` provider；`custom` 只是未注册模板
+- 只注册 `aliyun` provider
 - 不提供托管模型、embedding、Agent evaluation 或其他通用 AI Provider action
 - 不支持运行时插件发现、独立插件进程、RPC、热更新或版本选择
 - 不做跨步骤变量透传（建议按 `tenantId` 从云侧状态来源读取）

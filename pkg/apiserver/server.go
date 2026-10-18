@@ -103,10 +103,9 @@ func (s *restServer) RuntimeReady() (bool, string) {
 }
 
 var (
-	ensureKafkaMessaging = clients.EnsureKafka
-	newRedisClient       = clients.NewRedisClient
-	runLeaderElector     = leaderelection.RunOrDie
-	releaseLeaderLock    = bestEffortReleaseLeaderLock
+	newRedisClient    = clients.NewRedisClient
+	runLeaderElector  = leaderelection.RunOrDie
+	releaseLeaderLock = bestEffortReleaseLeaderLock
 )
 
 const leaderElectionRetryPeriod = 2 * time.Second

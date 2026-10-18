@@ -20,8 +20,6 @@ func TestNewConfigHasSequentialConcurrencyDefault(t *testing.T) {
 	require.Equal(t, "127.0.0.1:9001", cfg.GRPCBindAddr)
 	require.Equal(t, 1, cfg.Workflow.SequentialMaxConcurrency)
 	require.Equal(t, workflowconfig.DefaultWorkflowCallbackTimeoutMax, cfg.Workflow.CallbackTimeoutMax)
-	require.Equal(t, 1, cfg.Messaging.KafkaTopicPartitions)
-	require.Equal(t, 1, cfg.Messaging.KafkaTopicReplicationFactor)
 	require.Equal(t, 15*time.Second, cfg.LeaderConfig.Duration)
 	require.Equal(t, "eruun-runtime", cfg.LeaderConfig.LockName)
 	require.Empty(t, cfg.LeaderConfig.ServiceName)
@@ -86,11 +84,8 @@ func TestTracingFlagEnvironmentAndExporter(t *testing.T) {
 				require.Equal(t, tc.want, cfg.EnableTracing)
 				require.Equal(t, endpoint, cfg.JaegerEndpoint)
 				cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
-				for _, backend := range []string{REDIS, KAFKA} {
-					cfg.Messaging.Type = backend
-					require.Empty(t, cfg.Validate())
-					require.Equal(t, tc.want, cfg.EnableTracing)
-				}
+				require.Empty(t, cfg.Validate())
+				require.Equal(t, tc.want, cfg.EnableTracing)
 			}
 		})
 	}
@@ -171,7 +166,6 @@ func TestMigrateOnlyValidatesOnlyDatastoreInputs(t *testing.T) {
 	cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
 	cfg.BindAddr = ""
 	cfg.Cache.CacheHost = ""
-	cfg.Messaging.Type = "invalid"
 	cfg.Workflow = workflowconfig.RuntimeConfig{}
 
 	require.Empty(t, cfg.Validate())
@@ -184,12 +178,6 @@ func TestWorkflowLeaseFencingHasNoDisableFlag(t *testing.T) {
 	cfg.AddFlags(flags, cfg)
 
 	require.Nil(t, flags.Lookup("workflow-lease-fencing-enabled"))
-}
-
-func TestRuntimeMessagingTopics(t *testing.T) {
-	cfg := NewConfig()
-	cfg.Messaging.ChannelPrefix = "tenant"
-	require.Equal(t, []string{"tenant.workflow.dispatch", "tenant.job.delay", "tenant.job.result"}, cfg.RuntimeMessagingTopics())
 }
 
 func TestRemovedRuntimeConfigurationRejected(t *testing.T) {
@@ -248,20 +236,13 @@ func TestValidateWorkflowLeaseWindow(t *testing.T) {
 	require.Contains(t, errorsJoin(cfg.Validate()), "lease duration must be greater than heartbeat interval")
 }
 
-func TestNewConfigHasMySQLAndKafkaDefaults(t *testing.T) {
+func TestNewConfigHasMySQLDefaults(t *testing.T) {
 	cfg := NewConfig()
 	require.Equal(t, "eruun:__REPLACE_WITH_MYSQL_PASSWORD__@tcp(127.0.0.1:3306)/eruun?charset=utf8mb4&parseTime=true", cfg.Datastore.URL)
-	require.Equal(t, REDIS, cfg.Messaging.Type)
-	require.Equal(t, []string{"localhost:9092"}, cfg.Messaging.KafkaBrokers)
-	require.Equal(t, "eruun-workflow-workers", cfg.Messaging.KafkaGroupID)
-	require.Equal(t, "earliest", cfg.Messaging.KafkaAutoOffsetReset)
 
 	flags := pflag.NewFlagSet("connection-defaults", pflag.ContinueOnError)
 	cfg.AddFlags(flags, cfg)
 	require.Equal(t, cfg.Datastore.URL, flags.Lookup("datastore-url").DefValue)
-	require.Equal(t, "[localhost:9092]", flags.Lookup("msg-kafka-brokers").DefValue)
-	require.Equal(t, cfg.Messaging.KafkaGroupID, flags.Lookup("msg-kafka-group-id").DefValue)
-	require.Equal(t, cfg.Messaging.KafkaAutoOffsetReset, flags.Lookup("msg-kafka-offset-reset").DefValue)
 
 	for _, mode := range []string{DatastoreSchemaModeMigrate, DatastoreSchemaModeValidate, DatastoreSchemaModeMigrateOnly} {
 		t.Run(mode, func(t *testing.T) {
@@ -279,35 +260,15 @@ func TestConnectionConfigFlagAndEnvironmentOverrides(t *testing.T) {
 		args     []string
 		dsn      string
 		database string
-		brokers  []string
-		group    string
-		offset   string
 	}{
-		{
-			name: "environment overrides defaults", dsn: envDSN, database: "from-env",
-			brokers: []string{"kafka-env-1.example:9092", "kafka-env-2.example:9092"},
-			group:   "env-workers", offset: "latest",
-		},
-		{
-			name: "flags override environment",
-			args: []string{
-				"--datastore-url=" + cliDSN,
-				"--msg-kafka-brokers=kafka-cli.example:9093",
-				"--msg-kafka-group-id=cli-workers",
-				"--msg-kafka-offset-reset=earliest",
-			},
-			dsn: cliDSN, database: "from-flag", brokers: []string{"kafka-cli.example:9093"},
-			group: "cli-workers", offset: "earliest",
-		},
+		{name: "environment overrides defaults", dsn: envDSN, database: "from-env"},
+		{name: "flags override environment", args: []string{"--datastore-url=" + cliDSN}, dsn: cliDSN, database: "from-flag"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := NewConfig()
 			flags := pflag.NewFlagSet("connection-overrides", pflag.ContinueOnError)
 			cfg.AddFlags(flags, cfg)
 			t.Setenv("ERUUN_DATASTORE_URL", envDSN)
-			t.Setenv("ERUUN_MSG_KAFKA_BROKERS", "kafka-env-1.example:9092,kafka-env-2.example:9092")
-			t.Setenv("ERUUN_MSG_KAFKA_GROUP_ID", "env-workers")
-			t.Setenv("ERUUN_MSG_KAFKA_OFFSET_RESET", "latest")
 			require.NoError(t, flags.Parse(tc.args))
 			require.NoError(t, ApplyEnvOverrides(flags, EnvPrefix))
 
@@ -315,10 +276,6 @@ func TestConnectionConfigFlagAndEnvironmentOverrides(t *testing.T) {
 			dsn, err := mysqldsn.ParseDSN(cfg.Datastore.URL)
 			require.NoError(t, err)
 			require.Equal(t, tc.database, dsn.DBName)
-			require.Equal(t, tc.brokers, cfg.Messaging.KafkaBrokers)
-			require.Equal(t, tc.group, cfg.Messaging.KafkaGroupID)
-			require.Equal(t, tc.offset, cfg.Messaging.KafkaAutoOffsetReset)
-			cfg.Messaging.Type = KAFKA
 			require.Empty(t, cfg.Validate())
 		})
 	}
@@ -540,47 +497,6 @@ func TestValidateLeaderLeaseDuration(t *testing.T) {
 	})
 }
 
-func TestValidateKafkaTopicAutoCreateConfig(t *testing.T) {
-	base := NewConfig()
-	base.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
-	base.Messaging.Type = "kafka"
-
-	t.Run("valid_defaults", func(t *testing.T) {
-		require.Empty(t, base.Validate())
-	})
-
-	t.Run("explicit_empty_brokers", func(t *testing.T) {
-		cfg := *base
-		flags := pflag.NewFlagSet("empty-kafka-brokers", pflag.ContinueOnError)
-		cfg.AddFlags(flags, &cfg)
-		require.NoError(t, flags.Parse([]string{"--msg-kafka-brokers="}))
-		require.Empty(t, cfg.Messaging.KafkaBrokers)
-		require.Contains(t, errorsJoin(cfg.Validate()), "kafka brokers cannot be empty")
-	})
-
-	t.Run("invalid_partitions", func(t *testing.T) {
-		cfg := *base
-		cfg.Messaging.KafkaTopicPartitions = 0
-		errs := cfg.Validate()
-		require.Contains(t, errorsJoin(errs), "kafka topic partitions must be > 0")
-	})
-
-	t.Run("invalid_replication_factor", func(t *testing.T) {
-		cfg := *base
-		cfg.Messaging.KafkaTopicReplicationFactor = 0
-		errs := cfg.Validate()
-		require.Contains(t, errorsJoin(errs), "kafka topic replication factor must be > 0")
-	})
-
-	t.Run("valid_kafka_topic_auto_create_config", func(t *testing.T) {
-		cfg := *base
-		cfg.Messaging.KafkaTopicPartitions = 3
-		cfg.Messaging.KafkaTopicReplicationFactor = 2
-		errs := cfg.Validate()
-		require.Empty(t, errs)
-	})
-}
-
 func errorsJoin(errs []error) string {
 	var b strings.Builder
 	for i, err := range errs {
@@ -593,7 +509,11 @@ func errorsJoin(errs []error) string {
 }
 
 func TestRemovedBackendSelectorsRejected(t *testing.T) {
-	for _, selector := range []string{"datastore-type", "cache-type"} {
+	for _, selector := range []string{
+		"datastore-type", "cache-type", "msg-type",
+		"msg-kafka-brokers", "msg-kafka-group-id", "msg-kafka-offset-reset",
+		"msg-kafka-topic-partitions", "msg-kafka-topic-replication-factor",
+	} {
 		t.Run(selector, func(t *testing.T) {
 			cfg := NewConfig()
 			flags := pflag.NewFlagSet("removed-backends", pflag.ContinueOnError)

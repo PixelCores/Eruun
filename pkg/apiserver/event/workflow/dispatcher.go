@@ -186,12 +186,10 @@ func (w *Workflow) StartWorker(consumerCtx, executionCtx context.Context, ready,
 			currentDelay = backoffMin
 			var acknowledgements []dispatchAck
 			for _, m := range mags {
-				msg.MarkMessageHandlingStart(w.Queue, m.ID)
 				if ack, taskID := w.processDispatchMessage(consumerCtx, workerRun, m); ack {
 					acknowledgements = append(acknowledgements, dispatchAck{id: m.ID, taskID: taskID, claimed: true})
 				} else {
 					klog.V(4).Infof("consumer=%s left %s pending id=%s task=%s for retry", consumer, dispatchMessageLogLabel(true), m.ID, taskID)
-					msg.MarkMessageHandlingDone(w.Queue, m.ID, false)
 				}
 			}
 			w.ackDispatchMessages(consumerCtx, group, consumer, acknowledgements)
@@ -218,12 +216,10 @@ func (w *Workflow) StartWorker(consumerCtx, executionCtx context.Context, ready,
 			currentDelay = backoffMin
 			var acknowledgements []dispatchAck
 			for _, m := range mags {
-				msg.MarkMessageHandlingStart(w.Queue, m.ID)
 				if ack, taskID := w.processDispatchMessage(consumerCtx, workerRun, m); ack {
 					acknowledgements = append(acknowledgements, dispatchAck{id: m.ID, taskID: taskID, claimed: false})
 				} else {
 					klog.V(4).Infof("consumer=%s left %s pending id=%s task=%s for retry", consumer, dispatchMessageLogLabel(false), m.ID, taskID)
-					msg.MarkMessageHandlingDone(w.Queue, m.ID, false)
 				}
 			}
 			w.ackDispatchMessages(consumerCtx, group, consumer, acknowledgements)
@@ -292,13 +288,11 @@ func (w *Workflow) ackDispatchMessages(ctx context.Context, group, consumer stri
 	}
 	if err := w.ackMessage(ctx, group, ids...); err != nil {
 		for _, ack := range acks {
-			msg.MarkMessageHandlingDone(w.Queue, ack.id, false)
 			klog.Errorf("failed to ack %s id=%s task=%s: %v", dispatchMessageLogLabel(ack.claimed), ack.id, ack.taskID, err)
 		}
 		return
 	}
 	for _, ack := range acks {
-		msg.MarkMessageHandlingDone(w.Queue, ack.id, true)
 		klog.Infof("consumer=%s acked %s id=%s task=%s", consumer, dispatchMessageLogLabel(ack.claimed), ack.id, ack.taskID)
 	}
 }

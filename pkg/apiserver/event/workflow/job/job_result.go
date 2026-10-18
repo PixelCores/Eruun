@@ -185,7 +185,7 @@ func (d *ResultDispatcher) claimLoop(ctx context.Context, slots chan struct{}, p
 }
 
 func (d *ResultDispatcher) dispatchMessages(ctx context.Context, messages []msg.Message, slots chan struct{}, processingWG *sync.WaitGroup) {
-	for i, message := range messages {
+	for _, message := range messages {
 		if !d.markMessageInFlight(message.ID) {
 			klog.V(4).InfoS("skip result message already being handled", "msgID", message.ID)
 			continue
@@ -193,37 +193,25 @@ func (d *ResultDispatcher) dispatchMessages(ctx context.Context, messages []msg.
 		select {
 		case slots <- struct{}{}:
 		case <-ctx.Done():
-			for _, pending := range messages[i+1:] {
-				d.markMessageInFlight(pending.ID)
-			}
 			return
 		}
 		message := message
-		msg.MarkMessageHandlingStart(d.queue, message.ID)
 		processingWG.Add(1)
 		go func() {
 			defer processingWG.Done()
 			defer func() { <-slots }()
 			defer d.markMessageDone(message.ID)
-			if !d.handleMessage(ctx, message) {
-				msg.MarkMessageHandlingDone(d.queue, message.ID, false)
-			}
+			d.handleMessage(ctx, message)
 		}()
 	}
 }
 
+// releaseInFlightMessages drops local dedup state; unacked deliveries stay in
+// the stream's pending list and are reclaimed by the next tenure.
 func (d *ResultDispatcher) releaseInFlightMessages() {
 	d.inFlightMu.Lock()
-	ids := make([]string, 0, len(d.inFlight))
-	for id := range d.inFlight {
-		ids = append(ids, id)
-	}
 	d.inFlight = nil
 	d.inFlightMu.Unlock()
-
-	for _, id := range ids {
-		msg.MarkMessageHandlingDone(d.queue, id, false)
-	}
 }
 
 func (d *ResultDispatcher) markMessageInFlight(id string) bool {
@@ -425,12 +413,10 @@ func (d *ResultDispatcher) ackMessage(ctx context.Context, msgID, reason string)
 		return nil
 	}
 	if err := d.queue.Ack(ctx, d.group, msgID); err != nil {
-		msg.MarkMessageHandlingDone(d.queue, msgID, false)
 		failures := d.ackFailures.Add(1)
 		klog.ErrorS(err, "result dispatcher ack failed", "group", d.group, "msgID", msgID, "reason", reason, "failureCount", failures)
 		return err
 	}
-	msg.MarkMessageHandlingDone(d.queue, msgID, true)
 	klog.V(4).InfoS("result dispatcher ack succeeded", "group", d.group, "msgID", msgID, "reason", reason)
 	return nil
 }

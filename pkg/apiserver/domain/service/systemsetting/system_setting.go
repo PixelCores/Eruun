@@ -296,9 +296,6 @@ func getSystemSettingSupport(settingType string) (CloudProviderSettingSupport, b
 	if normalized == "" {
 		return nil, false
 	}
-	if support, ok := GetCloudProviderSettingSupport(normalized); ok {
-		return support, true
-	}
 	support, ok := builtinSystemSettingSupports[normalized]
 	return support, ok
 }

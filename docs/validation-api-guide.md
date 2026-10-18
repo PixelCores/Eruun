@@ -914,14 +914,14 @@ spec:
 
 - `traits.service[].ports` 必填且不能为空
 - 每个 `ports[].port` 必须为正整数
-- `type` 建议使用口语化值：
+- `type` 只接受以下值，空值等同 `internal`：
   - `internal`：集群内访问（对应 Kubernetes `ClusterIP`）
   - `node`：节点端口访问（对应 Kubernetes `NodePort`）
   - `public`：负载均衡公网访问（对应 Kubernetes `LoadBalancer`）
   - `external`：外部域名映射（对应 Kubernetes `ExternalName`）
 - 非 `external` 类型必须提供 `selector`
 - `headless=true` 仅允许 `type=internal`
-- 为兼容历史配置，仍接受 `ClusterIP/NodePort/LoadBalancer/ExternalName`
+- Kubernetes 原生值 `ClusterIP/NodePort/LoadBalancer/ExternalName` 会被拒绝
 - `traits.service[].labels` 不能覆盖 Eruun 托管 label，例如 `eruun.io/app-id`、`eruun.io/component-name`、`eruun.io/component-id`、`app.kubernetes.io/managed-by`
 
 ### Label 规则

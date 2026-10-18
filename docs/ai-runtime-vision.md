@@ -82,7 +82,7 @@ flowchart LR
     User[用户或平台] --> API[Leader API]
     API --> DB[(MySQL\n状态与 ownership)]
     Scheduler[Leader 内 Scheduler] --> DB
-    Scheduler --> Queue[Redis Streams 或 Kafka]
+    Scheduler --> Queue[Redis Streams]
     Queue --> Worker[Worker node]
     Worker --> K8s[Kubernetes workloads]
     Worker --> External[模型、MCP、对象存储、云 API]

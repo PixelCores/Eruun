@@ -61,15 +61,8 @@ func (c *cancelState) get() string {
 	return c.reason
 }
 
-// Watch establishes a cancellation watcher for the given workflow task. When Redis
-// is not configured, setup fails so callers do not silently lose cross-process cancellation.
-// Note: Prefer WatchWithClient for dependency injection.
-func Watch(ctx context.Context, taskID string) (*CancelWatcher, context.Context, context.CancelFunc, error) {
-	return WatchWithClient(ctx, taskID, nil)
-}
-
-// WatchWithClient is like Watch but accepts an explicit Redis client for dependency injection.
-// This variant enables unit testing with mock Redis clients.
+// WatchWithClient establishes a cancellation watcher for the given workflow task.
+// A nil Redis client fails setup so callers do not silently lose cross-process cancellation.
 func WatchWithClient(ctx context.Context, taskID string, cli *redis.Client) (*CancelWatcher, context.Context, context.CancelFunc, error) {
 	taskID = strings.TrimSpace(taskID)
 	if taskID == "" {
@@ -108,14 +101,8 @@ func WatchWithClient(ctx context.Context, taskID string, cli *redis.Client) (*Ca
 	return watcher, derivedCtx, cancelFn, nil
 }
 
-// Cancel marks the workflow task as cancelled. Running watchers will detect the
-// marker and cancel their contexts.
-// Note: Prefer CancelWithClient for dependency injection.
-func Cancel(ctx context.Context, taskID, reason string) error {
-	return CancelWithClient(ctx, taskID, reason, nil)
-}
-
-// CancelWithClient is like Cancel but accepts an explicit Redis client for dependency injection.
+// CancelWithClient marks the workflow task as cancelled. Running watchers detect
+// the marker and cancel their contexts.
 func CancelWithClient(ctx context.Context, taskID, reason string, cli *redis.Client) error {
 	taskID = strings.TrimSpace(taskID)
 	if taskID == "" {

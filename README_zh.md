@@ -91,7 +91,7 @@ flowchart TB
     Leader -. 选举 .-> Lease[Kubernetes 单 Lease]
     Worker[Worker 节点＋候选] -. 选举 .-> Lease
     Leader <--> DB[(MySQL：业务状态与执行租约)]
-    Leader --> Queue[Redis Streams 或 Kafka]
+    Leader --> Queue[Redis Streams]
     Queue --> Worker
     Worker <--> DB
     Worker --> K8s[Kubernetes 工作负载]
@@ -107,8 +107,7 @@ flowchart TB
 | 依赖 | 负责什么 | 边界 |
 | --- | --- | --- |
 | MySQL | 应用、任务、账号、配置及 execution lease/generation/token | 持久化任务状态与执行所有权的事实源 |
-| Redis | 缓存、应用变更锁、取消信号、默认 Redis Streams 消息 | 使用 Kafka 时仍需要 Redis |
-| Kafka（可选） | 替代 Redis Streams 传输工作流消息 | 不持有任务状态，也不替代数据库租约 |
+| Redis | 缓存、应用变更锁、取消信号、Redis Streams 消息 | 不持有任务状态，也不替代数据库租约 |
 | Kubernetes | 运行容器、资源调和、调度和隔离 | 实际资源状态由 Kubernetes 提供，业务查询主要读取数据库投影 |
 | MinIO（可选） | 评测结果的完整文件保存目标 | 可仅使用数据库保存；目标保存失败可单独重试 |
 
@@ -208,18 +207,17 @@ curl --fail-with-body "$ERUUN_URL/api/v1/jobs/$TASK_ID" \
 | `ERUUN_BIND_ADDR` / `ERUUN_GRPC_BIND_ADDR` | 本地 HTTP 默认 `127.0.0.1:8001`，API gRPC 默认 `127.0.0.1:9001`；集群分别使用 8000 / 9000 |
 | `ERUUN_DATASTORE_URL` | 实际 MySQL DSN，必须替换密码占位符 |
 | `ERUUN_CACHE_HOST` / `ERUUN_CACHE_PASSWORD` | Redis 连接配置 |
-| `ERUUN_MSG_TYPE` / `ERUUN_MSG_KAFKA_BROKERS` | 默认 Redis Streams；选择 Kafka 时配置 Broker，仍保留 Redis |
 | `ERUUN_ENABLE_TRACING` / `ERUUN_JAEGER_ENDPOINT` | 单一开关控制追踪；Jaeger 地址只控制 Span 导出 |
 | `ERUUN_AUTH_CONFIG_FILE` | 账号、会话与空间策略 JSON |
 | `ERUUN_JOBS_CONFIG_FILE` | 启用 Harbor Runner 及可选 MinIO，所有节点使用相同配置 |
 
 所有节点的缓存、认证与协调都依赖 Redis。后端固定为 MySQL 和 Redis。升级时删除 `--datastore-type` / `--cache-type` 与 `ERUUN_DATASTORE_TYPE` / `ERUUN_CACHE_TYPE`；旧选择器会被明确拒绝，环境变量为空也不例外。`--datastore-schema-mode=migrate-only` 仅校验数据库配置。
 
-追踪默认配置为 `ERUUN_ENABLE_TRACING=true`，设为 `false` 即可关闭。该开关同时控制 Trace Provider 和 HTTP 中间件，与 Redis/Kafka 后端无关；仅设置 Jaeger 地址不会启用追踪。未设置地址时，追踪仍可在 API 请求日志中附带 trace ID，但不会导出 Span。静态部署清单默认启用追踪。
+追踪默认配置为 `ERUUN_ENABLE_TRACING=true`，设为 `false` 即可关闭。该开关同时控制 Trace Provider 和 HTTP 中间件，与消息后端无关；仅设置 Jaeger 地址不会启用追踪。未设置地址时，追踪仍可在 API 请求日志中附带 trace ID，但不会导出 Span。静态部署清单默认启用追踪。
 
 迁移：已移除 `--auto-tracing` 和 `ERUUN_AUTO_TRACING`。删除旧配置，将 `--enable-tracing` / `ERUUN_ENABLE_TRACING` 设为旧两个开关的逻辑 OR 结果（旧默认值的结果为开启）。旧 CLI 参数或环境变量仍存在时启动会报错，旧环境变量为空或为 `false` 也必须删除。保留的开关仍遵循 CLI 优先于环境变量的规则。
 
-本地源码开发需要 Go 1.27；使用 Make 目标时需 GNU Make。先按 [本地依赖说明](docs/local-docker-dependencies.md) 启动并配置 MySQL、Redis 和可选 Kafka，准备账号配置及 Kubernetes 访问，再启动节点：
+本地源码开发需要 Go 1.27；使用 Make 目标时需 GNU Make。先按 [本地依赖说明](docs/local-docker-dependencies.md) 启动并配置 MySQL 和 Redis，准备账号配置及 Kubernetes 访问，再启动节点：
 
 ```bash
 go run ./cmd/main.go

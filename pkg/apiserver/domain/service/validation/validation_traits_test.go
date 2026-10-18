@@ -1062,7 +1062,7 @@ func TestValidationService_TryApplication_InvalidServiceTraitHeadlessType(t *tes
 	assert.True(t, found, "Expected headless/type conflict error")
 }
 
-func TestValidationService_TryApplication_ValidServiceTraitLegacyType(t *testing.T) {
+func TestValidationService_TryApplication_RejectsKubernetesServiceType(t *testing.T) {
 	svc := &validationServiceImpl{}
 	ctx := context.Background()
 
@@ -1092,7 +1092,7 @@ func TestValidationService_TryApplication_ValidServiceTraitLegacyType(t *testing
 	}
 
 	resp := svc.TryApplication(ctx, req)
-	assert.True(t, resp.Valid, "Expected legacy service type to remain compatible")
+	assert.False(t, resp.Valid, "Kubernetes service types are not part of the trait vocabulary")
 }
 
 func TestValidationService_TryApplication_InvalidReservedServiceTraitLabels(t *testing.T) {

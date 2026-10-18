@@ -857,7 +857,7 @@ func TestValidationService_TryWorkflow_PropertiesArrayValidatesEveryLogArchivePa
 		"name": "log-flow",
 		"workflow": [{
 			"name": "archive",
-			"workflowType": "log_archive_upload",
+			"jobType": "log_archive_upload",
 			"mode": "StepByStep",
 			"properties": [
 				{"policies": ["api"], "path": "/var/log/api"},
@@ -889,7 +889,7 @@ func TestValidationService_TryWorkflow_PropertiesArrayValidatesEveryComponentRef
 		"name": "log-flow",
 		"workflow": [{
 			"name": "archive",
-			"workflowType": "log_archive_upload",
+			"jobType": "log_archive_upload",
 			"mode": "StepByStep",
 			"properties": [
 				{"policies": ["api"], "path": "/var/log/api"},
@@ -921,7 +921,7 @@ func TestValidationService_TryWorkflow_PropertiesArrayRejectsDuplicatePolicies(t
 		"name": "deploy-flow",
 		"workflow": [{
 			"name": "deploy-api",
-			"workflowType": "deploy",
+			"jobType": "deploy",
 			"mode": "StepByStep",
 			"properties": [
 				{"policies": ["api"]},
@@ -955,7 +955,7 @@ func TestValidationService_TryWorkflow_PropertiesArrayRejectsComponentsMismatch(
 		"name": "deploy-flow",
 		"workflow": [{
 			"name": "deploy-components",
-			"workflowType": "deploy",
+			"jobType": "deploy",
 			"mode": "StepByStep",
 			"components": ["api", "worker"],
 			"properties": [
@@ -990,7 +990,7 @@ func TestValidationService_TryWorkflow_PropertiesArrayAllowsMatchingComponents(t
 		"name": "deploy-flow",
 		"workflow": [{
 			"name": "deploy-components",
-			"workflowType": "deploy",
+			"jobType": "deploy",
 			"mode": "StepByStep",
 			"components": ["Worker", "API"],
 			"properties": [
@@ -1032,7 +1032,7 @@ func TestValidationService_TryWorkflow_SubStepPropertiesArrayValidatesEveryLogAr
 			"mode": "StepByStep",
 			"subSteps": [{
 				"name": "archive-sub",
-				"workflowType": "log_archive_upload",
+				"jobType": "log_archive_upload",
 				"properties": [
 					{"policies": ["api"], "path": "/var/log/api"},
 					{"policies": ["worker"]}
@@ -1064,7 +1064,7 @@ func TestValidationService_TryWorkflow_SinglePropertiesArrayMergesExplicitCompon
 		"name": "log-flow",
 		"workflow": [{
 			"name": "archive-api",
-			"workflowType": "log_archive_upload",
+			"jobType": "log_archive_upload",
 			"mode": "StepByStep",
 			"components": ["api"],
 			"properties": [{"path": "/var/log/api"}]

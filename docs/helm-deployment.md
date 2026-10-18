@@ -80,7 +80,7 @@ generation/token ownership 始终启用，不提供关闭开关。
 
 旧 `--datastore-database` / `ERUUN_DATASTORE_DATABASE` 已移除，即使旧 env 为空也须删除；数据库名由 `--datastore-url` / `ERUUN_DATASTORE_URL` 的 DSN 指定。Chart 的 `mysql.database` 保持现有含义。
 
-内置 MySQL/Redis 是单副本开发依赖。生产需要外部 HA 数据库/缓存或多 Broker Kafka、备份恢复验证与受控接入配置；同构节点不自动提供数据面 HA。
+内置 MySQL/Redis 是单副本开发依赖。生产需要外部 HA 数据库/缓存、备份恢复验证与受控接入配置；同构节点不自动提供数据面 HA。
 
 ## Adopted import keyring
 

@@ -30,17 +30,17 @@ func TestUpdateApplicationWorkflowPreservesComponentsForEmptyPropertiesArray(t *
 		"workflow": [
 			{
 				"name": "deploy-web",
-				"workflowType": "deploy",
+				"jobType": "deploy",
 				"components": [" Web "],
 				"properties": []
 			},
 			{
 				"name": "deploy-group",
-				"workflowType": "deploy",
+				"jobType": "deploy",
 				"subSteps": [
 					{
 						"name": "deploy-worker",
-						"workflowType": "deploy",
+						"jobType": "deploy",
 						"components": ["WORKER"],
 						"properties": []
 					}
@@ -76,7 +76,7 @@ func TestUpdateApplicationWorkflowValidatesComponentsForEmptyPropertiesArray(t *
 		"workflow": [
 			{
 				"name": "deploy-web",
-				"workflowType": "deploy",
+				"jobType": "deploy",
 				"components": ["web"],
 				"properties": []
 			}
@@ -113,7 +113,7 @@ func TestUpdateApplicationWorkflowAcceptsReadResponsePropertiesArray(t *testing.
 		"workflow": [
 			{
 				"name": "archive-pods",
-				"workflowType": "log_archive_upload",
+				"jobType": "log_archive_upload",
 				"components": [" API ", "WORKER"],
 				"properties": [
 					{"policies": [" API ", "api"], "path": "/var/log/api", "container": "api"},
@@ -122,7 +122,7 @@ func TestUpdateApplicationWorkflowAcceptsReadResponsePropertiesArray(t *testing.
 				"subSteps": [
 					{
 						"name": "archive-sidecar",
-						"workflowType": "log_archive_upload",
+						"jobType": "log_archive_upload",
 						"components": [" SideCar "],
 						"properties": [
 							{"policies": ["SideCar"], "path": "/var/log/sidecar", "container": "logs"}
@@ -174,7 +174,7 @@ func TestUpdateApplicationWorkflowRejectsComponentsMismatchForPropertiesArray(t 
 		"workflow": [
 			{
 				"name": "deploy-components",
-				"workflowType": "deploy",
+				"jobType": "deploy",
 				"components": ["api", "worker"],
 				"properties": [
 					{"policies": ["api"]},
@@ -215,7 +215,7 @@ func TestUpdateApplicationWorkflowAcceptsPropertiesArrayWithoutExplicitComponent
 		"workflow": [
 			{
 				"name": "deploy-components",
-				"workflowType": "deploy",
+				"jobType": "deploy",
 				"properties": [
 					{"policies": ["API"]},
 					{"policies": ["worker"]}
@@ -259,7 +259,7 @@ func TestUpdateApplicationWorkflowRejectsAmbiguousPropertiesArray(t *testing.T) 
 		"workflow": [
 			{
 				"name": "archive-pods",
-				"workflowType": "log_archive_upload",
+				"jobType": "log_archive_upload",
 				"components": ["api"],
 				"properties": [
 					{"policies": ["  "], "path": "/var/log/api"},
@@ -297,7 +297,7 @@ func TestUpdateApplicationWorkflowRejectsDuplicatePropertiesArrayPolicies(t *tes
 		"workflow": [
 			{
 				"name": "deploy-api",
-				"workflowType": "deploy",
+				"jobType": "deploy",
 				"properties": [
 					{"policies": ["api"]},
 					{"policies": ["API"]}
@@ -338,7 +338,7 @@ func TestUpdateApplicationWorkflowRejectsDuplicateSubStepPropertiesArrayPolicies
 				"subSteps": [
 					{
 						"name": "deploy-api",
-						"workflowType": "deploy",
+						"jobType": "deploy",
 						"properties": [
 							{"policies": ["api"]},
 							{"policies": ["API"]}
@@ -383,7 +383,7 @@ func TestUpdateApplicationWorkflowRejectsSubStepComponentsMismatchForPropertiesA
 				"subSteps": [
 					{
 						"name": "deploy-sub",
-						"workflowType": "deploy",
+						"jobType": "deploy",
 						"components": ["api", "worker"],
 						"properties": [
 							{"policies": ["api"]},

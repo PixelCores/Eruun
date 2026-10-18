@@ -116,16 +116,10 @@ func registerAliyunCloudSettingProvider(t *testing.T, connectivityErr error) *fa
 		settingType:     model.SystemSettingTypeAliyunCloud,
 		connectivityErr: connectivityErr,
 	}
-	ResetCloudProviderSettingsForTest()
-	ReplaceCloudProviderSettingSupport(nil, provider)
-	t.Cleanup(ResetCloudProviderSettingsForTest)
+	builtin := builtinSystemSettingSupports[model.SystemSettingTypeAliyunCloud]
+	builtinSystemSettingSupports[model.SystemSettingTypeAliyunCloud] = provider
+	t.Cleanup(func() { builtinSystemSettingSupports[model.SystemSettingTypeAliyunCloud] = builtin })
 	return provider
-}
-
-func resetCloudProviderRegistryForTest(t *testing.T) {
-	t.Helper()
-	ResetCloudProviderSettingsForTest()
-	t.Cleanup(ResetCloudProviderSettingsForTest)
 }
 
 func TestSystemSettingService_CreateAndGet(t *testing.T) {
@@ -342,9 +336,7 @@ func TestSystemSettingService_AliyunCloudValueNormalizationAndRedaction(t *testi
 	}`, string(got.Value))
 }
 
-func TestSystemSettingService_AliyunCloudFallbackSupportWithoutRegistry(t *testing.T) {
-	resetCloudProviderRegistryForTest(t)
-
+func TestSystemSettingService_AliyunCloudBuiltinSupport(t *testing.T) {
 	repo := newMockSystemSettingRepo()
 	repo.items[model.SystemSettingTypeAliyunCloud] = &model.SystemSetting{
 		Type: model.SystemSettingTypeAliyunCloud,

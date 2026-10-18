@@ -28,36 +28,3 @@ type Queue interface {
 	// Stats returns stream backlog size and pending count for a group.
 	Stats(ctx context.Context, group string) (backlog int64, pending int64, err error)
 }
-
-// MessageHandlingLifecycle is an optional extension for queue implementations
-// that need to track per-message handling state locally.
-type MessageHandlingLifecycle interface {
-	MarkMessageHandlingStart(id string)
-	MarkMessageHandlingDone(id string, acked bool)
-}
-
-// MarkMessageHandlingStart marks the beginning of message handling if the queue
-// implementation supports lifecycle tracking.
-func MarkMessageHandlingStart(queue Queue, id string) {
-	if queue == nil || id == "" {
-		return
-	}
-	lifecycle, ok := queue.(MessageHandlingLifecycle)
-	if !ok {
-		return
-	}
-	lifecycle.MarkMessageHandlingStart(id)
-}
-
-// MarkMessageHandlingDone marks message handling completion if the queue
-// implementation supports lifecycle tracking.
-func MarkMessageHandlingDone(queue Queue, id string, acked bool) {
-	if queue == nil || id == "" {
-		return
-	}
-	lifecycle, ok := queue.(MessageHandlingLifecycle)
-	if !ok {
-		return
-	}
-	lifecycle.MarkMessageHandlingDone(id, acked)
-}

@@ -28,7 +28,7 @@ func TestWorkflowStepCanonicalPropertiesKeepsSingleInitSQLURL(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(`{
 		"name":"database-reset",
 		"jobType":"database_reset",
-		"properties":{"policies":["mysql"],"initSqlUrl":"https://files.example/game.sql"}
+		"properties":[{"policies":["mysql"],"initSqlUrl":"https://files.example/game.sql"}]
 	}`), &step))
 	require.True(t, step.HasWorkflowInitSQLURL())
 	raw, err := json.Marshal(step)
@@ -38,6 +38,20 @@ func TestWorkflowStepCanonicalPropertiesKeepsSingleInitSQLURL(t *testing.T) {
 		"jobType":"database_reset",
 		"properties":[{"policies":["mysql"],"initSqlUrl":"https://files.example/game.sql"}]
 	}`, string(raw))
+}
+
+func TestWorkflowStepRejectsNonCanonicalFields(t *testing.T) {
+	for name, input := range map[string]string{
+		"workflowType alias":       `{"name":"deploy-web","workflowType":"deploy","components":["web"]}`,
+		"object properties":        `{"name":"archive","jobType":"log_archive_upload","properties":{"path":"/var/log"}}`,
+		"sub-step workflowType":    `{"name":"group","subSteps":[{"name":"web","workflowType":"deploy"}]}`,
+		"sub-step object property": `{"name":"group","subSteps":[{"name":"web","jobType":"deploy","properties":{"policies":["web"]}}]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			var step CreateWorkflowStepRequest
+			require.Error(t, json.Unmarshal([]byte(input), &step))
+		})
+	}
 }
 
 func TestDatabaseResetRequestDistinguishesOmittedAndProvidedInitSQLURL(t *testing.T) {
@@ -319,35 +333,6 @@ func TestTryApplicationRequestRejectsWorkflowOnlyAppIDShape(t *testing.T) {
 	require.Contains(t, err.Error(), `unknown field "appId"`)
 }
 
-func TestCreateWorkflowStepRequestAcceptsWorkflowTypeAlias(t *testing.T) {
-	input := `{"name":"deploy-web","workflowType":"deploy","components":["web"],"subSteps":[{"name":"cleanup-web","workflowType":"cleanup_resources","components":["web"]}]}`
-
-	var step CreateWorkflowStepRequest
-	err := json.Unmarshal([]byte(input), &step)
-	require.NoError(t, err)
-	require.Equal(t, config.JobDeploy, step.WorkflowType)
-	require.Len(t, step.SubSteps, 1)
-	require.Equal(t, config.JobCleanupResources, step.SubSteps[0].WorkflowType)
-}
-
-func TestCreateWorkflowStepRequestRejectsJobTypeAliasConflict(t *testing.T) {
-	input := `{"name":"deploy-web","jobType":"deploy","workflowType":"deploy","components":["web"]}`
-
-	var step CreateWorkflowStepRequest
-	err := json.Unmarshal([]byte(input), &step)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "cannot both be set")
-}
-
-func TestCreateWorkflowSubStepRequestRejectsJobTypeAliasConflict(t *testing.T) {
-	input := `{"name":"cleanup-web","jobType":"cleanup_resources","workflowType":"cleanup_resources","components":["web"]}`
-
-	var step CreateWorkflowSubStepRequest
-	err := json.Unmarshal([]byte(input), &step)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "cannot both be set")
-}
-
 func TestWorkflowSchedulingClassJSONContract(t *testing.T) {
 	const steps = `[{"name":"deploy","schedulingClass":"high","subSteps":[{"name":"background","schedulingClass":"background"},{"name":"inherited"},{"name":"explicit-default","schedulingClass":"normal"}]}]`
 	var request CreateApplicationsRequest
@@ -429,7 +414,7 @@ func TestUpdateApplicationWorkflowRequestTracksFailurePolicyPresence(t *testing.
 }
 
 func TestUpdateApplicationWorkflowRequestAcceptsReadResponsePropertiesArray(t *testing.T) {
-	input := `{"workflowId":"wf-1","workflowType":"log_archive_upload","workflow":[{"name":"archive-api","workflowType":"log_archive_upload","components":["api"],"properties":[{"policies":["api"],"path":"/var/log/api","container":"api"}],"subSteps":[{"name":"archive-worker","workflowType":"log_archive_upload","components":["worker"],"properties":[{"policies":["worker"],"path":"/var/log/worker"}]}]}]}`
+	input := `{"workflowId":"wf-1","workflowType":"log_archive_upload","workflow":[{"name":"archive-api","jobType":"log_archive_upload","components":["api"],"properties":[{"policies":["api"],"path":"/var/log/api","container":"api"}],"subSteps":[{"name":"archive-worker","jobType":"log_archive_upload","components":["worker"],"properties":[{"policies":["worker"],"path":"/var/log/worker"}]}]}]}`
 
 	var req UpdateApplicationWorkflowRequest
 	err := json.Unmarshal([]byte(input), &req)

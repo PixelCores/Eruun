@@ -47,7 +47,7 @@ var (
 	ErrEntityInvalid = NewDBError(fmt.Errorf("entity is invalid"))
 )
 
-// PrimaryKeyMaxLength The primary key length should be limited when the datastore is kube-api
+// PrimaryKeyMaxLength bounds application and workflow names accepted by the API.
 var PrimaryKeyMaxLength = 31
 
 // DBError datastore error

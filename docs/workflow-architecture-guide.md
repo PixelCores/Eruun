@@ -173,12 +173,7 @@ func runJob(ctx context.Context, job *model.JobTask, ...) {
 
 ### 2.4 弹性与容错
 
-工作流引擎当前要求显式配置外部消息队列，可根据部署规模在两种分布式后端之间选择：
-
-| 模式 | 适用场景 | 特点 |
-|------|----------|------|
-| Redis 分布式 | 中小规模部署、低延迟场景 | 使用 Redis Streams，支持任务分发和故障恢复 |
-| Kafka 分布式 | 大规模部署、高吞吐场景 | 使用 Kafka，支持高吞吐任务分发和重平衡恢复 |
+工作流引擎固定使用 Redis Streams 分发任务，未认领消息由 AutoClaim 恢复；任务状态与执行租约仍以 MySQL 为准。
 
 启动逻辑：
 
@@ -520,12 +515,7 @@ type Queue interface {
 }
 ```
 
-目前支持两种实现：
-
-| 实现 | 说明 | 使用场景 |
-|------|------|----------|
-| RedisStreams | 基于 Redis Streams 的分布式队列 | 生产环境，多实例部署 |
-| KafkaQueue | 基于 Apache Kafka 的分布式队列 | 大规模生产环境，需要高吞吐量 |
+唯一实现是 `RedisStreams`，复用缓存的 Redis 连接。
 
 ---
 
@@ -930,13 +920,13 @@ func Cancel(ctx context.Context, taskID, reason string) error {
 
 ### 6.2 固定队列执行要求
 
-所有工作流任务固定先持久化到数据库，再由 Scheduler 发布到 Redis Streams 或 Kafka，由 Worker 消费执行；运行时不存在本地执行或回退开关。
+所有工作流任务固定先持久化到数据库，再由 Scheduler 发布到 Redis Streams，由 Worker 消费执行；运行时不存在本地执行或回退开关。
 
-如果 `msg-type=redis` 或 `msg-type=kafka` 对应依赖不可用，服务会在启动阶段直接失败。
+Redis 不可用时服务在启动阶段直接失败。
 
 ### 6.3 队列执行流程
 
-`msg-type=redis` 与 `msg-type=kafka` 只选择消息后端。`scheduler` 角色负责发现任务并发布到消息队列，`worker` 角色消费执行。
+Leader 上的 Scheduler 负责发现任务并发布到 Redis Streams，Worker 消费执行。
 
 Scheduler 在 `waiting -> queued` 时始终生成 `runGeneration/runToken` 并发布版本 2 消息；Worker 必须用相同 ownership 认领为 `running` 后才能 ACK，后续恢复由数据库 lease 承担。缺少版本、generation 或 token 的消息会被拒绝，不进入兼容执行路径。
 
@@ -963,9 +953,9 @@ Scheduler             Database              Message Queue          Worker       
 
 **关键点**：
 - **Scheduler/Dispatcher**：轮询数据库发现 `waiting` 任务；v2 以 CAS 创建新 generation/token 后发布消息
-- **消息队列**：作为任务分发通道，支持 Redis Streams 或 Kafka
+- **消息队列**：Redis Streams 作为任务分发通道
 - **Worker**：从消息队列消费；v2 ownership CAS 成功后 ACK，并每 10 秒续租
-- **故障恢复**：未认领消息依赖 AutoClaim/Rebalance；已 ACK 的 v2 任务由 30 秒数据库租约和 10 秒 reaper 恢复
+- **故障恢复**：未认领消息依赖 AutoClaim；已 ACK 的 v2 任务由 30 秒数据库租约和 10 秒 reaper 恢复
 - **延迟 Instant Job**：精确 `executionKey/runGeneration` 的 JobInfo 进入 `distributed` 后即形成持久化执行承诺；父 Workflow 后续 generation rollover 不得丢弃该延迟消息。只有尚未承诺的消息继续按当前 generation/token fencing
 
 **为什么 Dispatcher 要轮询数据库？**
@@ -2023,25 +2013,10 @@ Worker 的读取和认领错误不会因为累计次数而退出；取消运行 
 ```go
 // config/config.go
 type MessagingConfig struct {
-    // 消息队列类型：redis | kafka
-    Type          string
-    
-    // 消息通道/Topic 前缀
+    // 消息通道前缀
     ChannelPrefix string
-    
-    // === Redis 配置 ===
     // Redis Stream 最大长度，<=0 表示不限制
     RedisStreamMaxLen int64
-    
-    // === Kafka 配置 ===
-    // Kafka Broker 地址列表
-    KafkaBrokers []string
-    
-    // Kafka 消费者组 ID（默认: eruun-workflow-workers）
-    KafkaGroupID string
-    
-    // Kafka 偏移量重置策略: earliest | latest（默认: earliest）
-    KafkaAutoOffsetReset string
 }
 ```
 
@@ -2072,17 +2047,10 @@ type MessagingConfig struct {
 
 | 参数 | 默认值 | 说明 | 推荐配置 |
 |------|--------|------|----------|
-| `--msg-type` | redis | 消息队列类型 | redis/kafka |
 | `--msg-channel-prefix` | 空（运行时按 `eruun` 生效） | 消息通道前缀 | 根据环境区分，如 eruun-prod |
 | `--msg-redis-maxlen` | 50000 | Redis Stream 最大长度 | 根据消息量和内存调整 |
 
-#### Kafka 参数
-
-| 参数 | 默认值 | 说明 | 推荐配置 |
-|------|--------|------|----------|
-| `--msg-kafka-brokers` | - | Kafka Broker 地址 | 生产环境建议配置多个 |
-| `--msg-kafka-group-id` | eruun-workflow-workers | 消费者组 ID | 不同环境使用不同 ID |
-| `--msg-kafka-offset-reset` | earliest | 偏移量重置策略 | 生产环境建议 earliest |
+`--msg-type` 与 `--msg-kafka-*` 已移除，对应环境变量会使启动失败。
 
 #### 日志参数
 
@@ -2108,14 +2076,8 @@ type MessagingConfig struct {
 --workflow-max-concurrent=100               # 每个 Worker 最大并发工作流数
 
 # 消息队列相关参数
---msg-type=redis                            # 队列类型：redis|kafka
 --msg-channel-prefix=eruun                # 消息通道前缀
 --msg-redis-maxlen=50000                    # Redis Stream 最大长度
-
-# Kafka 相关参数（当 msg-type=kafka 时使用）
---msg-kafka-brokers=localhost:9092          # Kafka broker 地址列表
---msg-kafka-group-id=eruun-workflow       # Kafka 消费者组 ID
---msg-kafka-offset-reset=earliest           # 偏移量重置策略：earliest|latest
 
 # 日志相关参数
 --log_dir=./logs                            # 日志目录（工作目录下）
@@ -2125,7 +2087,7 @@ type MessagingConfig struct {
 
 ### 11.5 配置示例
 
-#### 开发环境配置（Redis 模式）
+#### 开发环境配置
 
 ```yaml
 # config-dev.yaml - 开发环境使用本地 Redis，保持与生产一致的调度路径
@@ -2141,11 +2103,10 @@ workflow:
   maxConcurrentWorkflows: 5
 
 messaging:
-  type: redis
   channelPrefix: eruun-dev
 ```
 
-#### 生产环境配置（Redis 模式）
+#### 生产环境配置
 
 ```yaml
 # config-prod-redis.yaml - 中等规模生产环境推荐配置
@@ -2161,7 +2122,6 @@ workflow:
   maxConcurrentWorkflows: 20     # 根据 K8s API 承载能力调整
 
 messaging:
-  type: redis
   channelPrefix: eruun-prod
   redisStreamMaxLen: 100000      # 根据内存和消息量调整
 
@@ -2172,32 +2132,6 @@ cache:
   cacheDB: 0
   cacheTTL: 24h
   keyPrefix: "eruun:cache:"
-```
-
-#### 大规模生产环境配置（Kafka 模式）
-
-```yaml
-# config-prod-kafka.yaml - 大规模生产环境推荐配置
-workflow:
-  sequentialMaxConcurrency: 5
-  dispatchPollInterval: 3s
-  workerStaleInterval: 20s
-  workerAutoClaimMinIdle: 120s   # Kafka rebalance 可能需要更长时间
-  workerAutoClaimCount: 100
-  workerReadCount: 20            # Kafka 吞吐量高，可增加读取数
-  workerReadBlock: 3s
-  defaultJobTimeout: 120s
-  maxConcurrentWorkflows: 50     # 大规模部署
-
-messaging:
-  type: kafka
-  channelPrefix: eruun-prod
-  kafkaBrokers:
-    - kafka-0.kafka.prod.svc.cluster.local:9092
-    - kafka-1.kafka.prod.svc.cluster.local:9092
-    - kafka-2.kafka.prod.svc.cluster.local:9092
-  kafkaGroupID: eruun-workflow-workers
-  kafkaAutoOffsetReset: earliest
 ```
 
 ### 11.6 配置调优建议
@@ -2211,40 +2145,17 @@ messaging:
 | 资源受限 | `maxConcurrentWorkflows=5`, `workerReadCount=3` | 限制并发避免过载 |
 | 长时任务 | `defaultJobTimeout=300s`, `workerAutoClaimMinIdle=360s` | 延长超时时间 |
 
-#### 消息队列选型建议
-
-| 场景 | 推荐 | 原因 |
-|------|------|------|
-| 开发测试 | redis | 与生产同路径，便于提前暴露依赖问题 |
-| 中小规模 (<100 任务/s) | redis | 部署简单，延迟低 |
-| 大规模 (>100 任务/s) | kafka | 高吞吐量，强持久化 |
-| 已有 Redis 基础设施 | redis | 复用现有资源 |
-| 已有 Kafka 基础设施 | kafka | 复用现有资源 |
-| 需要消息回溯 | kafka | 支持历史消息重放 |
-
 #### 关键配置约束
 
 1. **workerAutoClaimMinIdle > defaultJobTimeout**：确保任务超时后才被认领
 2. **workerStaleInterval < workerAutoClaimMinIdle**：确保定期检查过期任务
 3. **Redis maxLen**：根据消息量和内存设置，防止内存溢出
-4. **Kafka partitions >= workers**：确保每个 Worker 都能分配到分区
 
 ---
 
 ## 12. 优势总结
 
-### 12.1 多后端部署灵活性
-
-| 特性 | Redis 分布式 | Kafka 分布式 |
-|------|--------------|--------------|
-| 依赖 | MySQL + Redis | MySQL + Kafka |
-| 部署 | 多实例 | 多实例 |
-| 故障恢复 | AutoClaim 自动恢复 | Rebalance 自动恢复 |
-| 适用场景 | 中小规模生产环境 | 大规模生产环境 |
-| 吞吐量 | 中等 | 高 |
-| 配置 | msg-type=redis | msg-type=kafka |
-
-### 12.2 完善的可观测性
+### 12.1 完善的可观测性
 
 - **分布式追踪**：集成 OpenTelemetry，支持 Jaeger 等后端
 - **结构化日志**：使用 klog 带 traceID、workflowName、taskID
@@ -2254,22 +2165,21 @@ messaging:
 - **应用运行态查询**：提供 `/applications/:appID/status` API（从 app_components 聚合应用状态）
 - **组件运行态查询**：提供 `/applications/:appID/components/status` API（返回 app_components 中每个组件的 Running/Pending/Failed 等运行态）
 
-### 12.3 安全的资源清理
+### 12.2 安全的资源清理
 
 - **精确清理**：只清理本次创建的资源，不影响已有资源
 - **幂等设计**：支持重复执行，更新场景不会误删
 - **超时保护**：清理过程有 30s 超时限制
 - **panic 恢复**：异常情况下也能正确清理
 
-### 12.4 高可用的消息处理
+### 12.3 高可用的消息处理
 
 - **消费者组**：支持多 Worker 负载均衡
-- **消息恢复**：Redis 使用 AutoClaim 自动认领超时消息，Kafka 使用原生 Rebalance 机制
+- **消息恢复**：Redis Streams AutoClaim 自动认领超时消息
 - **指数退避**：错误时智能重试，避免雪崩
 - **弹性配置**：可配置最大失败次数，0 表示无限重试
-- **多后端支持**：支持 Redis Streams 和 Apache Kafka 两种分布式队列
 
-### 12.5 灵活的执行控制
+### 12.4 灵活的执行控制
 
 - **优先级调度**：确保依赖资源优先创建
 - **串行/并行模式**：满足不同业务场景
@@ -2295,7 +2205,6 @@ messaging:
 | 取消信号 | `pkg/apiserver/workflow/signal/cancel.go` |
 | 队列接口 | `pkg/apiserver/infrastructure/messaging/queue.go` |
 | Redis Streams | `pkg/apiserver/infrastructure/messaging/redis_streams.go` |
-| Kafka Queue | `pkg/apiserver/infrastructure/messaging/kafka.go` |
 | 数据模型 | `pkg/apiserver/domain/model/workflow.go` |
 | 配置定义 | `pkg/apiserver/config/config.go` |
 | 常量定义 | `pkg/apiserver/config/consts.go` |

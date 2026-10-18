@@ -16,7 +16,6 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	workflowevent "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 )
@@ -620,22 +619,10 @@ func TestBestEffortReleaseLeaderLockSkipsChangedHolderAndFailures(t *testing.T) 
 	})
 }
 
-func TestBuildQueueRejectsInvalidMessagingType(t *testing.T) {
-	server := &restServer{
-		cfg: config.Config{
-			Messaging: config.MessagingConfig{Type: "noop"},
-		},
-	}
-	queue, err := server.buildQueue("demo", nil)
-	require.Nil(t, queue)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "unsupported messaging type")
-}
-
 func TestBuildRedisQueueRequiresClient(t *testing.T) {
 	server := &restServer{
 		cfg: config.Config{
-			Messaging: config.MessagingConfig{Type: "redis"},
+			Messaging: config.MessagingConfig{},
 		},
 	}
 	queue, err := server.buildRedisQueue("demo", nil)
@@ -656,8 +643,7 @@ func TestInitRedisClientForConfiguredBackendsFailsRedisCache(t *testing.T) {
 
 	server := &restServer{
 		cfg: config.Config{
-			Cache:     config.RedisCacheConfig{},
-			Messaging: config.MessagingConfig{Type: "kafka"},
+			Cache: config.RedisCacheConfig{},
 		},
 	}
 	client, err := server.initRedisClientForConfiguredBackends()
@@ -677,8 +663,7 @@ func TestInitRedisClientForConfiguredBackendsRejectsMissingClient(t *testing.T) 
 
 	server := &restServer{
 		cfg: config.Config{
-			Cache:     config.RedisCacheConfig{},
-			Messaging: config.MessagingConfig{Type: "kafka"},
+			Cache: config.RedisCacheConfig{},
 		},
 	}
 	client, err := server.initRedisClientForConfiguredBackends()
@@ -701,52 +686,12 @@ func TestInitRedisClientForConfiguredBackendsUsesRedisForCache(t *testing.T) {
 
 	server := &restServer{
 		cfg: config.Config{
-			Cache:     config.RedisCacheConfig{},
-			Messaging: config.MessagingConfig{Type: "kafka"},
+			Cache: config.RedisCacheConfig{},
 		},
 	}
 	client, err := server.initRedisClientForConfiguredBackends()
 	require.NoError(t, err)
 	require.Same(t, expectedClient, client)
-}
-
-func TestEnsureKafkaMessagingReadySkipsNonKafka(t *testing.T) {
-	server := &restServer{
-		cfg: config.Config{
-			Messaging: config.MessagingConfig{Type: "redis"},
-		},
-	}
-	require.NoError(t, server.ensureKafkaMessagingReady())
-}
-
-func TestEnsureKafkaMessagingReadyPreparesAllRuntimeTopics(t *testing.T) {
-	oldEnsureKafka := ensureKafkaMessaging
-	var captured clients.KafkaConfig
-	calls := 0
-	ensureKafkaMessaging = func(cfg clients.KafkaConfig) error {
-		calls++
-		captured = cfg
-		return nil
-	}
-	t.Cleanup(func() {
-		ensureKafkaMessaging = oldEnsureKafka
-	})
-
-	base := config.Config{Messaging: config.MessagingConfig{
-		Type:                        "kafka",
-		ChannelPrefix:               "tenant-a",
-		KafkaBrokers:                []string{"broker-1:9092"},
-		KafkaTopicPartitions:        3,
-		KafkaTopicReplicationFactor: 2,
-	}}
-	server := &restServer{cfg: base}
-	require.NoError(t, server.ensureKafkaMessagingReady())
-	require.Equal(t, 1, calls)
-	require.Equal(t, []string{"tenant-a.workflow.dispatch", "tenant-a.job.delay", "tenant-a.job.result"}, captured.Topics)
-	require.Equal(t, []string{"broker-1:9092"}, captured.Brokers)
-	require.Equal(t, 3, captured.TopicPartitions)
-	require.Equal(t, 2, captured.TopicReplicationFactor)
-
 }
 
 func TestServerLifecycleRejectsNilContext(t *testing.T) {

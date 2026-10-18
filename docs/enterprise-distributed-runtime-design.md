@@ -23,7 +23,7 @@ Chart 默认 `runtime.replicas=4`，稳定状态为 1 个 Leader＋3 个 Worker�
 
 `--leader-service-name` / `ERUUN_LEADER_SERVICE_NAME` 指定集群入口 Service；集群部署设置该值，本地可留空并直接访问已当选节点。已接受业务请求的 HTTP 连接和全部 gRPC 连接绑定当前 Leader 任期，失主时关闭，包括空闲连接；Service 尚未收敛时，Worker 对业务 HTTP 返回 503 并关闭连接，对新 gRPC 连接直接断开，健康探针仍可用。客户端重新连接固定 Service 后先查任务状态，只有契约支持时才用相同幂等键重试，不能盲目重放创建任务或刷新会话。
 
-Redis 仍用于缓存、应用变更锁和取消信号；选择 Kafka 只替换消息后端。提交应用 Workflow 的 Redis 锁续期失败会取消业务 context。同一应用的手动执行、Cron、数据库重置、版本自动执行和直接版本提交仍使用应用行锁与 READ COMMITTED 事务。版本提交验证预检快照，配置变化返回 HTTP 409（10043），避免旧快照覆盖；这些 D1 保障不会因只有一个 Leader 而删除。
+Redis 用于缓存、应用变更锁、取消信号和 Redis Streams 消息。提交应用 Workflow 的 Redis 锁续期失败会取消业务 context。同一应用的手动执行、Cron、数据库重置、版本自动执行和直接版本提交仍使用应用行锁与 READ COMMITTED 事务。版本提交验证预检快照，配置变化返回 HTTP 409（10043），避免旧快照覆盖；这些 D1 保障不会因只有一个 Leader 而删除。
 
 ## 3. 单 Leader 任期与切换
 
@@ -69,7 +69,7 @@ Waiting task 到期判断也以数据库时间为准；时钟查询失败或返�
 
 Cron schedule 按 `next_run, id` 稳定排序，在同一进程的后续轮询中推进页码，读到末页后回到第一页。即使整批计划因错误、应用锁争用或无可运行日期而未推进 `next_run`，后面的到期计划也会获得处理机会。成功派发、删除或禁用计划导致候选集缩小时，移入前页的记录会在下一轮扫描中重新被读取；进程重启从第一页开始。分页不改写计划的 `next_run`、`last_run` 或幂等键，派发失败仍按原有事务语义回滚并返回错误。
 
-进程启动不会全表重置 active task。未认领消息依赖 Redis AutoClaim 或 Kafka Rebalance；已经 ACK 的任务依赖数据库 lease reaper。
+进程启动不会全表重置 active task。未认领消息依赖 Redis AutoClaim；已经 ACK 的任务依赖数据库 lease reaper。
 
 ## 5. Job 执行身份
 
@@ -77,7 +77,7 @@ Cron schedule 按 `next_run, id` 稳定排序，在同一进程的后续轮询�
 
 一次性延迟 Job 在发送队列通知前，先把完整载荷、到期时间和 `pending` 检查点写入 `JobInfo`。新队列通知使用 `version: 2`，只带 `executeAt`、`taskId`、`jobType`、`serviceName`、`executionKey`、`runGeneration` 和 `runToken`；Controller 读取数据库中的完整载荷，核对通知身份后执行。未标版本、旧/未知版本或携带 `job` 字段的通知均作为无效消息确认并丢弃，不执行工作负载；已提交检查点仍由数据库恢复。检查点必须已保存与应用一致的 workspace 身份，不再推断或回填缺失身份；校验失败只对同一代次、仍待执行的记录写入失败，数据库写入失败则重试。Redis Stream 只负责降低到期发现延迟；Controller Leader 还会按 `(status, delay_state, delay_execute_at)` 索引轮询已到期检查点并直接恢复。因此 consumer group 被重建、Stream 被裁剪、Redis 暂时不可用或进程在写库后/入队前退出，都不会让已提交的延迟执行永久丢失。成功创建同身份 Kubernetes Job 并持久化 result outbox 后，检查点才变为 `dispatched`。
 
-数据库恢复每次轮询最多读取 100 条记录，按记录 ID 倒序推进游标，到末尾后重新扫描。持续重试、无效载荷或扫描期间记录状态变化不会阻塞后续到期任务；新到达的记录在下一轮扫描中纳入。队列通知按执行键去重，被去重的消息释放处理标记并保持未确认状态，允许 Kafka 再次认领并在执行完成后确认。
+数据库恢复每次轮询最多读取 100 条记录，按记录 ID 倒序推进游标，到末尾后重新扫描。持续重试、无效载荷或扫描期间记录状态变化不会阻塞后续到期任务；新到达的记录在下一轮扫描中纳入。队列通知按执行键去重，被去重的消息保持未确认状态，由 Redis AutoClaim 再次认领并在执行完成后确认。
 
 Harbor 恢复资格、恢复任务剩余预算、Job 恢复准入预检查及持久化 Job retry 的 deadline/RetryAt 使用数据库时间。恢复时把剩余时长换算为本进程的单调计时预算，保持原 deadline，不因节点时钟差或接管而重新获得完整超时。数据库时钟缺失、失败或零值会停止推进；这不替代 Kubernetes、Runner 与数据库之间的实际时钟同步要求。
 
@@ -116,7 +116,7 @@ Chart 使用一个 runtime Deployment 和 ServiceAccount，`runtime.replicas` �
 ## 9. 依赖与安全
 
 - MySQL 保存 Workflow、Job 和 ownership 状态；生产环境应使用经过验证的 HA 实例。
-- Redis 用于缓存、应用变更分布式锁及可选的 Streams 消息；Kafka 可作为消息后端，Workflow 执行租约由 MySQL 管理。
+- Redis 用于缓存、应用变更分布式锁及 Streams 消息，Workflow 执行租约由 MySQL 管理。
 - 内置 MySQL/Redis 只适合开发和演示。
 - run token 属于执行凭据，不写入业务日志、trace 或指标标签。
 - 所有节点都可能接任 Leader，因此使用统一运行身份与所需的显式 Kubernetes 权限；业务空间仍使用受限身份，任务 ownership 与授权边界不变。具体权限见 `helm-deployment.md`。
