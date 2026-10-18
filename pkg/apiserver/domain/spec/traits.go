@@ -230,8 +230,7 @@ type RewritePolicy struct {
 // ServiceTraitSpec describes a Service generated for the component.
 type ServiceTraitSpec struct {
 	Name string `json:"name,omitempty"`
-	// Type supports user-facing values: internal/node/public/external.
-	// Legacy Kubernetes values are still accepted for backward compatibility.
+	// Type is one of internal/node/public/external; empty means internal.
 	Type         string                 `json:"type,omitempty"`
 	ExternalName string                 `json:"externalName,omitempty"`
 	Headless     bool                   `json:"headless,omitempty"`

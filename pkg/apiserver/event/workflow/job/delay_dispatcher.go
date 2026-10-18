@@ -153,18 +153,13 @@ func (d *DelayDispatcher) runLoops(ctx context.Context) {
 	d.releasePendingMessages()
 }
 
+// releasePendingMessages drops local scheduling state; unacked deliveries stay
+// in the stream's pending list and are reclaimed by the next tenure.
 func (d *DelayDispatcher) releasePendingMessages() {
 	d.mu.Lock()
-	items := d.items
 	d.items = nil
 	d.pending = make(map[string]struct{})
 	d.mu.Unlock()
-
-	for _, item := range items {
-		if item != nil {
-			msg.MarkMessageHandlingDone(d.queue, item.msgID, false)
-		}
-	}
 }
 
 func (d *DelayDispatcher) readLoop(ctx context.Context) {
@@ -189,7 +184,6 @@ func (d *DelayDispatcher) readLoop(ctx context.Context) {
 		}
 		currentDelay = d.backoffMin
 		for _, m := range messages {
-			msg.MarkMessageHandlingStart(d.queue, m.ID)
 			d.handleMessage(ctx, m)
 		}
 	}
@@ -210,7 +204,6 @@ func (d *DelayDispatcher) claimLoop(ctx context.Context) {
 			continue
 		}
 		for _, m := range messages {
-			msg.MarkMessageHandlingStart(d.queue, m.ID)
 			d.handleMessage(ctx, m)
 		}
 	}
@@ -221,13 +214,13 @@ func (d *DelayDispatcher) handleMessage(ctx context.Context, message msg.Message
 		return
 	}
 	if len(message.Payload) == 0 {
-		d.ackMessage(ctx, message.ID, "empty_payload", true)
+		d.ackMessage(ctx, message.ID, "empty_payload")
 		return
 	}
 	payload, err := d.decodeNotification(message.Payload)
 	if err != nil {
 		klog.ErrorS(err, "delay dispatcher decode payload failed", "msgID", message.ID)
-		d.ackMessage(ctx, message.ID, "decode_payload_failed", true)
+		d.ackMessage(ctx, message.ID, "decode_payload_failed")
 		return
 	}
 	executeAt := payload.ExecuteAt
@@ -242,7 +235,6 @@ func (d *DelayDispatcher) handleMessage(ctx context.Context, message msg.Message
 	}
 	if !d.addPending(item) {
 		// The existing item owns dispatch; leave this delivery unacked but reclaimable.
-		msg.MarkMessageHandlingDone(d.queue, message.ID, false)
 		return
 	}
 	d.notify()
@@ -464,7 +456,7 @@ func (d *DelayDispatcher) finish(ctx context.Context, item *delayItem) {
 
 // Rejected or invalid deliveries must not mark an uncreated Job dispatched.
 func (d *DelayDispatcher) acknowledge(ctx context.Context, item *delayItem) {
-	if err := d.ackMessage(ctx, item.msgID, "dispatch_finished", false); err != nil {
+	if err := d.ackMessage(ctx, item.msgID, "dispatch_finished"); err != nil {
 		item.attempts++
 		item.executeAt = time.Now().Add(d.retryDelay(item.attempts)).Unix()
 		d.requeue(item)
@@ -490,19 +482,15 @@ func (d *DelayDispatcher) itemKey(item *delayItem) string {
 	return strings.TrimSpace(item.msgID)
 }
 
-func (d *DelayDispatcher) ackMessage(ctx context.Context, msgID, reason string, releaseOnFailure bool) error {
+func (d *DelayDispatcher) ackMessage(ctx context.Context, msgID, reason string) error {
 	if d == nil || d.queue == nil || msgID == "" {
 		return nil
 	}
 	if err := d.queue.Ack(ctx, d.group, msgID); err != nil {
-		if releaseOnFailure {
-			msg.MarkMessageHandlingDone(d.queue, msgID, false)
-		}
 		failures := d.ackFailures.Add(1)
 		klog.ErrorS(err, "delay dispatcher ack failed", "group", d.group, "msgID", msgID, "reason", reason, "failureCount", failures)
 		return err
 	}
-	msg.MarkMessageHandlingDone(d.queue, msgID, true)
 	klog.V(4).InfoS("delay dispatcher ack succeeded", "group", d.group, "msgID", msgID, "reason", reason)
 	return nil
 }

@@ -97,16 +97,6 @@ func TestDelayDispatcherRecoveryAdvancesPastFirstBatch(t *testing.T) {
 	}
 }
 
-type delayMessageLifecycleQueue struct {
-	dispatcherAckQueue
-	inFlight map[string]bool
-}
-
-func (q *delayMessageLifecycleQueue) MarkMessageHandlingStart(id string) { q.inFlight[id] = true }
-func (q *delayMessageLifecycleQueue) MarkMessageHandlingDone(id string, _ bool) {
-	q.inFlight[id] = false
-}
-
 func TestDelayDispatcherDeduplicatedMessagesRemainRetryable(t *testing.T) {
 	for _, source := range []string{"database", "queue"} {
 		t.Run(source, func(t *testing.T) {
@@ -115,7 +105,7 @@ func TestDelayDispatcherDeduplicatedMessagesRemainRetryable(t *testing.T) {
 			payload := seedDelayRecoveryCheckpoint(t, store, 1, time.Now().Add(-time.Minute).Unix())
 			raw, err := json.Marshal(notificationForDelayJob(payload))
 			require.NoError(t, err)
-			queue := &delayMessageLifecycleQueue{inFlight: make(map[string]bool)}
+			queue := &dispatcherAckQueue{}
 			client := fake.NewSimpleClientset()
 			createErr := errors.New("kubernetes unavailable")
 			createAttempts := 0
@@ -130,13 +120,10 @@ func TestDelayDispatcherDeduplicatedMessagesRemainRetryable(t *testing.T) {
 			if source == "database" {
 				require.NoError(t, dispatcher.recoverDueCheckpoints(ctx))
 			} else {
-				msg.MarkMessageHandlingStart(queue, "original")
 				dispatcher.handleMessage(ctx, msg.Message{ID: "original", Payload: raw})
 			}
 			duplicate := msg.Message{ID: "duplicate", Payload: raw}
-			msg.MarkMessageHandlingStart(queue, duplicate.ID)
 			dispatcher.handleMessage(ctx, duplicate)
-			require.False(t, queue.inFlight[duplicate.ID], "Kafka must be able to reclaim the deduplicated message")
 			require.Empty(t, queue.ackCalls, "deduplication must not acknowledge uncompleted work")
 			require.Len(t, dispatcher.items, 1)
 
@@ -146,9 +133,7 @@ func TestDelayDispatcherDeduplicatedMessagesRemainRetryable(t *testing.T) {
 			require.ErrorIs(t, dispatcher.dispatchJob(ctx, item, client), createErr)
 			dispatcher.requeue(item)
 			// Reclaiming while dispatch is retrying must remain safe and retryable.
-			msg.MarkMessageHandlingStart(queue, duplicate.ID)
 			dispatcher.handleMessage(ctx, duplicate)
-			require.False(t, queue.inFlight[duplicate.ID])
 			require.Empty(t, queue.ackCalls)
 			require.Len(t, dispatcher.items, 1)
 			item, _ = dispatcher.nextItem()
@@ -156,7 +141,6 @@ func TestDelayDispatcherDeduplicatedMessagesRemainRetryable(t *testing.T) {
 			dispatcher.finish(ctx, item)
 
 			// Once dispatch finishes, reclaiming the notification must ACK it without another Job create.
-			msg.MarkMessageHandlingStart(queue, duplicate.ID)
 			dispatcher.handleMessage(ctx, duplicate)
 			item, _ = dispatcher.nextItem()
 			require.NotNil(t, item)
@@ -164,7 +148,6 @@ func TestDelayDispatcherDeduplicatedMessagesRemainRetryable(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, dispatcher.dispatchJob(ctx, item, client))
 			dispatcher.finish(ctx, item)
-			require.False(t, queue.inFlight[duplicate.ID])
 			require.Equal(t, []string{duplicate.ID}, queue.ackCalls[len(queue.ackCalls)-1].ids)
 			require.Equal(t, 2, createAttempts)
 			require.Len(t, store.outboxes, 1)

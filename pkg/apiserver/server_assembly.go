@@ -3,7 +3,6 @@ package apiserver
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -145,9 +144,6 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 	}
 
 	// Every node can become Leader and requires all runtime queues.
-	if err := s.ensureKafkaMessagingReady(); err != nil {
-		return err
-	}
 	runtimeQueues, err := s.buildRuntimeQueues(redisClient)
 	if err != nil {
 		return err
@@ -266,36 +262,18 @@ func (s *restServer) resultTopic() string {
 	return workflowconfig.ResultTopic(s.cfg.Messaging.ChannelPrefix)
 }
 
-func (s *restServer) ensureKafkaMessagingReady() error {
-	if !strings.EqualFold(strings.TrimSpace(s.cfg.Messaging.Type), config.KAFKA) {
-		return nil
-	}
-	topics := s.cfg.RuntimeMessagingTopics()
-
-	err := ensureKafkaMessaging(clients.KafkaConfig{
-		Brokers:                s.cfg.Messaging.KafkaBrokers,
-		Topics:                 topics,
-		TopicPartitions:        s.cfg.Messaging.KafkaTopicPartitions,
-		TopicReplicationFactor: s.cfg.Messaging.KafkaTopicReplicationFactor,
-	})
-	if err != nil {
-		return fmt.Errorf("init kafka client failed: %w", err)
-	}
-	return nil
-}
-
 func (s *restServer) buildRuntimeQueues(redisClient *redis.Client) (*msg.RuntimeQueues, error) {
 	queues := &msg.RuntimeQueues{}
 	var err error
-	queues.Dispatch, err = s.buildQueue(s.dispatchTopic(), redisClient)
+	queues.Dispatch, err = s.buildRedisQueue(s.dispatchTopic(), redisClient)
 	if err != nil {
 		return nil, fmt.Errorf("initialize dispatch queue: %w", err)
 	}
-	queues.Delay, err = s.buildQueue(s.delayTopic(), redisClient)
+	queues.Delay, err = s.buildRedisQueue(s.delayTopic(), redisClient)
 	if err != nil {
 		return nil, fmt.Errorf("initialize delay queue: %w", err)
 	}
-	queues.Result, err = s.buildQueue(s.resultTopic(), redisClient)
+	queues.Result, err = s.buildRedisQueue(s.resultTopic(), redisClient)
 	if err != nil {
 		return nil, fmt.Errorf("initialize result queue: %w", err)
 	}
@@ -345,18 +323,6 @@ func (s *restServer) initRedisClientForConfiguredBackends() (*redis.Client, erro
 	return redisClient, nil
 }
 
-func (s *restServer) buildQueue(streamKey string, redisClient *redis.Client) (msg.Queue, error) {
-	msgType := strings.ToLower(strings.TrimSpace(s.cfg.Messaging.Type))
-	switch msgType {
-	case config.REDIS:
-		return s.buildRedisQueue(streamKey, redisClient)
-	case config.KAFKA:
-		return s.buildKafkaQueue(streamKey)
-	default:
-		return nil, fmt.Errorf("unsupported messaging type: %s", s.cfg.Messaging.Type)
-	}
-}
-
 func (s *restServer) buildRedisQueue(streamKey string, redisClient *redis.Client) (msg.Queue, error) {
 	if redisClient == nil {
 		return nil, fmt.Errorf("redis client is not initialized")
@@ -366,19 +332,4 @@ func (s *restServer) buildRedisQueue(streamKey string, redisClient *redis.Client
 		return nil, fmt.Errorf("init redis streams with client failed: %w", err)
 	}
 	return rq, nil
-}
-
-func (s *restServer) buildKafkaQueue(topic string) (msg.Queue, error) {
-	queueCfg := msg.KafkaConfig{
-		Brokers:         s.cfg.Messaging.KafkaBrokers,
-		Topic:           topic,
-		GroupID:         s.cfg.Messaging.KafkaGroupID,
-		AutoOffsetReset: s.cfg.Messaging.KafkaAutoOffsetReset,
-	}
-
-	kq, err := msg.NewKafkaQueue(queueCfg)
-	if err != nil {
-		return nil, fmt.Errorf("init kafka queue failed: %w", err)
-	}
-	return kq, nil
 }

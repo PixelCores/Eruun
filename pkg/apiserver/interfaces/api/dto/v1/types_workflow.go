@@ -341,7 +341,7 @@ type WorkflowStepDetail struct {
 	SchedulingClass string                  `json:"schedulingClass,omitempty"`
 	Name            string                  `json:"name"`
 	StepType        config.WorkflowStepType `json:"stepType,omitempty"`
-	WorkflowType    config.JobType          `json:"workflowType,omitempty"`
+	WorkflowType    config.JobType          `json:"jobType,omitempty"`
 	Mode            config.WorkflowMode     `json:"mode,omitempty"`
 	Approval        *WorkflowStepApproval   `json:"approval,omitempty"`
 	Components      []string                `json:"components,omitempty"`
@@ -352,7 +352,7 @@ type WorkflowStepDetail struct {
 type WorkflowSubStepDetail struct {
 	SchedulingClass string               `json:"schedulingClass,omitempty"`
 	Name            string               `json:"name"`
-	WorkflowType    config.JobType       `json:"workflowType,omitempty"`
+	WorkflowType    config.JobType       `json:"jobType,omitempty"`
 	Components      []string             `json:"components,omitempty"`
 	Properties      []WorkflowProperties `json:"properties,omitempty"`
 }

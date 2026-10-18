@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -83,14 +85,13 @@ func TestSandboxPlatformClientKeepsTenantScopeAndSharedRequestBudget(t *testing.
 
 func TestRuntimeNodeBuildsAllRoleDependencies(t *testing.T) {
 	cfg := config.NewConfig()
-	cfg.Messaging.Type = config.KAFKA
-	cfg.Messaging.KafkaBrokers = []string{"127.0.0.1:9092"}
 	server := New(*cfg).(*restServer)
-	queues, err := server.buildRuntimeQueues(nil)
+	redisClient := redis.NewClient(&redis.Options{Addr: miniredis.RunT(t).Addr()})
+	t.Cleanup(func() { _ = redisClient.Close() })
+	queues, err := server.buildRuntimeQueues(redisClient)
 	require.NoError(t, err)
 	for _, queue := range []msg.Queue{queues.Dispatch, queues.Delay, queues.Result} {
 		require.NotNil(t, queue)
-		require.NoError(t, queue.Close(context.Background()))
 	}
 	server.initRuntimeObservers(fake.NewSimpleClientset())
 	require.NotNil(t, server.InformerManager)

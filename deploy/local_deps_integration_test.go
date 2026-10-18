@@ -1,7 +1,6 @@
 package deploy_test
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"database/sql"
@@ -16,7 +15,6 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/redis/go-redis/v9"
-	"github.com/segmentio/kafka-go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -32,8 +30,8 @@ func TestLocalDependenciesIntegration(t *testing.T) {
 	require.NoError(t, err)
 	project := "eruun-deps-test-" + strings.ToLower(rand.Text())
 	password := rand.Text()
-	ports := make([]string, 3)
-	// Hold all three listeners until allocation is complete so ports are distinct.
+	ports := make([]string, 2)
+	// Hold both listeners until allocation is complete so ports are distinct.
 	var listeners []net.Listener
 	for i := range ports {
 		listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -48,7 +46,7 @@ func TestLocalDependenciesIntegration(t *testing.T) {
 	env := append(os.Environ(),
 		"COMPOSE_PROJECT_NAME="+project,
 		"MYSQL_ROOT_PASSWORD="+rand.Text(), "MYSQL_PASSWORD="+password, "REDIS_PASSWORD="+password,
-		"MYSQL_DATABASE=eruun", "MYSQL_PORT="+ports[0], "REDIS_PORT="+ports[1], "KAFKA_PORT="+ports[2],
+		"MYSQL_DATABASE=eruun", "MYSQL_PORT="+ports[0], "REDIS_PORT="+ports[1],
 	)
 	run := func(timeout time.Duration, command string, args ...string) ([]byte, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -79,19 +77,7 @@ func TestLocalDependenciesIntegration(t *testing.T) {
 	t.Cleanup(func() { _ = rdb.Close() })
 	require.NoError(t, rdb.Set(ctx, "dependency-smoke", "persistent", 0).Err())
 
-	broker := "localhost:" + ports[2]
-	conn, err := kafka.DialContext(ctx, "tcp", broker)
-	require.NoError(t, err)
-	require.NoError(t, conn.SetDeadline(time.Now().Add(15*time.Second)))
-	err = conn.CreateTopics(kafka.TopicConfig{Topic: "dependency-smoke", NumPartitions: 1, ReplicationFactor: 1})
-	require.NoError(t, conn.Close())
-	require.NoError(t, err)
-	writer := &kafka.Writer{Addr: kafka.TCP(broker), Topic: "dependency-smoke", RequiredAcks: kafka.RequireAll}
-	err = writer.WriteMessages(ctx, kafka.Message{Value: []byte("persistent")})
-	require.NoError(t, writer.Close())
-	require.NoError(t, err, "host client must reach the advertised Kafka listener")
-
-	// A second start must retain all three stores and the original credentials.
+	// A second start must retain both stores and the original credentials.
 	output, err = run(time.Minute, "docker", "compose", "-p", project, "-f", compose, "stop")
 	require.NoError(t, err, "%s", output)
 	output, err = run(4*time.Minute, "bash", script)
@@ -104,9 +90,4 @@ func TestLocalDependenciesIntegration(t *testing.T) {
 	value, err = rdb.Get(readCtx, "dependency-smoke").Result()
 	require.NoError(t, err)
 	require.Equal(t, "persistent", value)
-	reader := kafka.NewReader(kafka.ReaderConfig{Brokers: []string{broker}, Topic: "dependency-smoke", Partition: 0, MinBytes: 1, MaxBytes: 1024, MaxWait: time.Second})
-	t.Cleanup(func() { _ = reader.Close() })
-	message, err := reader.ReadMessage(readCtx)
-	require.NoError(t, err)
-	require.True(t, bytes.Equal([]byte("persistent"), message.Value))
 }

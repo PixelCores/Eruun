@@ -9,15 +9,12 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/redis/go-redis/v9"
 )
-
-var checkKafkaReadiness = clients.CheckKafkaReadiness
 
 const databaseReadinessTimeout = 2 * time.Second
 
@@ -83,7 +80,6 @@ func (h *health) readinessCheck(c *gin.Context) {
 			return
 		}
 	}
-	isKafka := h.Cfg != nil && strings.EqualFold(strings.TrimSpace(h.Cfg.Messaging.Type), "kafka")
 	checks := h.requiredQueueChecks()
 
 	var degraded []string
@@ -95,17 +91,6 @@ func (h *health) readinessCheck(c *gin.Context) {
 	if len(degraded) > 0 {
 		apiresponse.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: external queue degraded ("+strings.Join(degraded, ", ")+")")
 		return
-	}
-
-	if isKafka && len(checks) > 0 {
-		if err := checkKafkaReadiness(ctx, clients.KafkaConfig{
-			Brokers: h.Cfg.Messaging.KafkaBrokers,
-			Topics:  kafkaTopicsForHealth(h.Cfg),
-		}); err != nil {
-			klog.V(4).InfoS("readiness check failed", "dependency", "kafka", "err", err)
-			apiresponse.ReturnErrorWithMessage(c, bcode.ErrServiceUnavailable, "not ready: kafka readiness failed")
-			return
-		}
 	}
 
 	for _, check := range checks {
@@ -152,11 +137,4 @@ func (h *health) requiredQueueChecks() []healthQueueCheck {
 
 func queueIsReady(queue msg.Queue) bool {
 	return queue != nil
-}
-
-func kafkaTopicsForHealth(cfg *config.Config) []string {
-	if cfg == nil {
-		return nil
-	}
-	return cfg.RuntimeMessagingTopics()
 }

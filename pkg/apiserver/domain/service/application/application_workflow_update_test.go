@@ -393,7 +393,7 @@ func TestUpdateApplicationWorkflowCanonicalizesMixedCaseComponentRefs(t *testing
 		"workflow": [
 			{
 				"name": "deploy-web",
-				"workflowType": "deploy",
+				"jobType": "deploy",
 				"components": [" web ", "WEB"],
 				"properties": [
 					{"policies": ["WEB"]}
@@ -401,11 +401,11 @@ func TestUpdateApplicationWorkflowCanonicalizesMixedCaseComponentRefs(t *testing
 			},
 			{
 				"name": "deploy-group",
-				"workflowType": "deploy",
+				"jobType": "deploy",
 				"subSteps": [
 					{
 						"name": "deploy-worker",
-						"workflowType": "deploy",
+						"jobType": "deploy",
 						"components": ["worker"],
 						"properties": [
 							{"policies": ["WORKER"]}
@@ -415,10 +415,10 @@ func TestUpdateApplicationWorkflowCanonicalizesMixedCaseComponentRefs(t *testing
 			},
 			{
 				"name": "web",
-				"workflowType": "log_archive_upload",
-				"properties": {
-					"path": "/var/log/web"
-				}
+				"jobType": "log_archive_upload",
+				"properties": [
+					{"path": "/var/log/web"}
+				]
 			}
 		]
 	}`), &req))

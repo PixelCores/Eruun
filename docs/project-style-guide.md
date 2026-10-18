@@ -11,7 +11,7 @@
 - Domain 承载应用、工作流、系统设置、校验和转换等核心业务规则。
 - Resource Import 模块承载存量 Kubernetes 资源的一次性扫描、用户选择和纳管编排。
 - Workflow/Event 承载任务调度、队列消费、状态机推进和 Job 执行。
-- Infrastructure 承载 MySQL、Redis、Kafka、Kubernetes、Informer、Locker、Tracing 等外部系统适配。
+- Infrastructure 承载 MySQL、Redis、Kubernetes、Informer、Locker、Tracing 等外部系统适配。
 - OAM-style traits 负责把声明式组件扩展转换成 Kubernetes workload 变更。
 
 本文描述的是当前实现风格，不替代具体 API、字段和运行契约文档。涉及跨层字段语义时，仍以 `core-module-boundary-and-cross-layer-contracts.md` 为准；涉及工作流执行时，仍以 `workflow-architecture-guide.md` 为准。
@@ -156,7 +156,7 @@ Traits 是组件声明到 Kubernetes workload 变更的扩展层。当前实现�
 
 ### 4.6 Infrastructure 风格
 
-Infrastructure 只适配外部系统，包括 Kubernetes client、Redis、Kafka、MySQL、Informer、Locker、Tracing。它可以实现接口、封装 SDK、提供重试或连接健康检查，但不应决定应用生命周期、组件状态优先级或 API 展示语义。
+Infrastructure 只适配外部系统，包括 Kubernetes client、Redis、MySQL、Informer、Locker、Tracing。它可以实现接口、封装 SDK、提供重试或连接健康检查，但不应决定应用生命周期、组件状态优先级或 API 展示语义。
 
 配置错误、连接错误和不支持的后端应 fail-fast。运行期可恢复错误要可观测，并由调用方决定是否继续。
 

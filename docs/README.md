@@ -46,7 +46,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 - API 前缀：`/api/v1`。
 - 用户业务 gRPC v1 与 HTTP 并行：仅当前 Leader 在本地默认提供 `127.0.0.1:9001`，集群内 Leader Pod/固定 Service 使用 9000；见 [`grpc-api.md`](grpc-api.md)。
 - 服务进程本地默认监听：`127.0.0.1:8001`；`deploy/eruun-stack.yaml` 会通过 `ERUUN_BIND_ADDR=0.0.0.0:8000` 覆盖该默认值并暴露集群内服务。
-- MySQL 默认 DSN 是 `127.0.0.1:3306/eruun` 的本地连接模板，必须替换密码占位符；Kafka 默认 Broker 为 `localhost:9092`，消息后端仍默认 Redis。字段与覆盖方式见 [`config/apiserver-default.yaml`](../config/apiserver-default.yaml) 和 [Kafka 配置说明](kafka-queue-implementation.md#4-配置说明)。
+- MySQL 默认 DSN 是 `127.0.0.1:3306/eruun` 的本地连接模板，必须替换密码占位符；运行时队列固定使用 Redis Streams。字段与覆盖方式见 [`config/apiserver-default.yaml`](../config/apiserver-default.yaml)。
 - 所有服务端节点参与同一个 Leader 选举；Leader 提供业务 API、调度和后台维护，其他节点是 Worker＋候选。开发阶段直接使用当前统一节点配置部署。
 - Workflow 固定使用 v2 generation/token ownership 与数据库执行租约，Worker 不再获取 Redis 执行锁；不存在关闭 fencing 或处理 v1 dispatch 的运行模式。
 - 顶层 `/workflow`、`/workflow/exec`、`/workflow/cancel` 路由不再注册；应用维度 workflow API 是当前主路径。
@@ -77,7 +77,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `pkg/apiserver/workflow/traits` | OAM Traits 处理器 | storage、env、probe、resources、sidecar、rbac、ingress 等 Trait | 新 Trait 需要处理顺序、测试和文档 |
 | `pkg/apiserver/workflow/config` | 工作流运行配置、执行策略与 topic 命名 | 调度/Worker 默认值、配置校验、回调超时、镜像拉取策略与队列名称 | 模块配置不反向依赖全局配置、领域模型或执行器 |
 | `pkg/apiserver/workflow/naming` | 资源命名规则 | Kubernetes 资源名、PVC/Service 命名 | 命名变化影响状态同步和清理 |
-| `pkg/apiserver/infrastructure` | 外部系统与安全机制适配（含 Aliyun NAS 客户端与连通性检查） | K8s、Redis、Kafka、MySQL、Informer、锁、可观测性、adopted Secret 加密 | 出站 URL 安全客户端在 `clients/http.go`；`workspace` 只承接资源载荷策略及 Kubernetes 写入边界，任务准备由 Job 所属包负责；Infrastructure 实现接口，不反向承载业务规则；导入 Secret 的加密/签名位于 `infrastructure/importsecret` |
+| `pkg/apiserver/infrastructure` | 外部系统与安全机制适配（含 Aliyun NAS 客户端与连通性检查） | K8s、Redis、MySQL、Informer、锁、可观测性、adopted Secret 加密 | 出站 URL 安全客户端在 `clients/http.go`；`workspace` 只承接资源载荷策略及 Kubernetes 写入边界，任务准备由 Job 所属包负责；Infrastructure 实现接口，不反向承载业务规则；导入 Secret 的加密/签名位于 `infrastructure/importsecret` |
 | `pkg/apiserver/infrastructure/observability` | 进程可观测性 | Trace Provider 初始化、klog 文件保留与清理 | 后台清理受进程 context 控制 |
 | `pkg/apiserver/infrastructure/cache` | 内存与 Redis 缓存适配 | 缓存读写、删除、过期及共享缓存键 | ApplicationComponentsKey 是查询、执行与状态同步共同使用的存储命名契约 |
 | `pkg/apiserver/utils` | 通用工具 | 错误码、K8s helper、profiling | 新工具必须可复用，避免放业务分支 |
@@ -97,7 +97,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | 组件状态、Pod 日志/文件/执行 | `pkg/apiserver/domain/service`, `pkg/apiserver/interfaces/api` | component query、pod ops、logs/files/exec API、Log archive workflow | `application-status-api.md`, `component-log-stream-api.md`, `component-pod-file-exec-api.md`, `log-archive-upload-workflow.md`, `component-container-info-api.md` |
 | 认证、授权、OAuth、团队空间 | `pkg/apiserver/domain/service/account` | account、middleware、account workspace scope、infrastructure/workspace | `account-auth-workspaces.md` |
 | 配置、系统设置、安全策略 | `pkg/apiserver/config`, `pkg/apiserver/domain/spec` | config defaults、validation、system setting service | `system-setting.md`, `url-security-policy.md` |
-| 消息队列或分布式执行 | `pkg/apiserver/infrastructure/messaging`, `pkg/apiserver/domain/repository/workflow_lease.go` | 运行角色、Redis Streams、Kafka、workflow worker、DB lease/fencing | `enterprise-distributed-runtime-design.md`, `leader-informer-recovery.md`, `kafka-queue-implementation.md`, `workflow-architecture-guide.md` |
+| 消息队列或分布式执行 | `pkg/apiserver/infrastructure/messaging`, `pkg/apiserver/domain/repository/workflow_lease.go` | 运行角色、Redis Streams、workflow worker、DB lease/fencing | `enterprise-distributed-runtime-design.md`, `leader-informer-recovery.md`, `workflow-architecture-guide.md` |
 | 独立 Job 与 Harbor 评测 | `pkg/apiserver/jobs`, `pkg/apiserver/jobs/runners/harbor` | 提交、执行身份、任务包、结果保存与空间策略 | `workspace-jobs-api.md`, `workspace-jobs-and-harbor-requirements.md` |
 | 更多 Agent、MCP、评测框架、模型或 AI Provider 方向 | 先读 `ai-runtime-vision.md` | 先校准 Current 能力与 Proposal 门禁，再决定是否进入实现 | 对应 AI 专题 Proposal；不得把草案字段当成现有契约 |
 
@@ -105,13 +105,13 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
-| `local-docker-dependencies.md` | Current | MySQL、Redis、Kafka 本地 Compose 分组、凭据、连接配置、健康检查和数据保留 |
+| `local-docker-dependencies.md` | Current | MySQL、Redis 本地 Compose 分组、凭据、连接配置、健康检查和数据保留 |
 | `workspace-jobs-api.md` | Current | 独立 Job stages、定义 CRUD 与手动/延迟/cron 触发、Forbid/Allow/Replace 策略与 NextRun 规则、独立运行分页查询、command 与 evaluation step、运行共享卷与失败重试、两种入口共享 evaluation Trait、原生任务包、完整结果与 MinIO/数据库独立保存、空间策略和部署配置 |
 | [`../examples/agent-evaluation/README.md`](../examples/agent-evaluation/README.md) | Current | Harbor 评测 Job 端到端示例：镜像、任务包、dataset 上传、Job 提交、状态查询与结果下载 |
 | `account-auth-workspaces.md` | Current | GitHub/Google、邮箱/手机号登录、会话、团队权限、延迟任务隔离与失败收尾、重复部署幂等性、前端与部署接入 |
 | [`../examples/account-auth-workspaces/README.md`](../examples/account-auth-workspaces/README.md) | Current | 账号与团队 API 实操：curl 注册/登录/刷新、OAuth 浏览器回调、身份绑定、邀请和空间资源访问 |
 | `api-error-response-contract.md` | Current | API 统一错误响应与通用错误脱敏契约 |
-| `grpc-api.md` | Current | gRPC v1 启动、认证、流式边界、Go 客户端示例及 99 条 HTTP 路由—RPC 对照 |
+| `grpc-api.md` | Current | gRPC v1 启动、认证、流式边界、Go 客户端示例及 106 条 HTTP 路由—RPC 对照 |
 | `canonical-json-profile.md` | Current | 面向 Agent 的唯一 Application/Workflow JSON、Schema、Try、read-edit-submit、幂等与 allowedActions 契约 |
 | `system-setting.md` | Current | 系统设置类型、API 与默认初始化 |
 | `settings-page-api.md` | Current | 前端设置页字段归属、请求参数与保存策略 |
@@ -161,9 +161,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `enterprise-distributed-runtime-design.md` | Implemented Reference | 分布式运行时：角色依赖、API Redis readiness、Leader Election、数据库 lease/fencing、延迟任务恢复与通知去重、Cron 有界分页与失败计划重试、Worker observer 和 Helm 拓扑 |
 | `架构文档.md` | Implemented Reference | 当前同构节点、HTTP/gRPC、数据所有权、Component/Workflow、独立空间 Job、Traits 与空间权限边界 |
 | `architecture-diagrams.md` | Implemented Reference | 当前同构节点、Workflow/独立 Job 执行、评测结果保存和 Trait 映射图 |
-| `kafka-queue-implementation.md` | Implemented Reference | Kafka 队列实现 |
 | `cloudjob-skeleton.md` | Implemented Reference | CloudJob 基础说明 |
-| `cloudjob-custom-provider-template.md` | Implemented Reference | Custom CloudJob Provider 扩展 |
 | `core-module-boundary-and-cross-layer-contracts.md` | Implemented Reference | 核心模块边界与跨层字段契约 |
 | `project-style-guide.md` | Implemented Reference | 项目命名、模块边界与架构风格维护基线 |
 | `statefulset-pvc-volume-naming.md` | Implemented Reference | StatefulSet PVC 命名分析 |

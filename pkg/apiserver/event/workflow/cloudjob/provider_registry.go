@@ -5,7 +5,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob/contracts"
 )
 
@@ -33,9 +32,6 @@ func RegisterCloudProvider(provider CloudProvider) {
 	}
 	cloudProvidersMu.Lock()
 	defer cloudProvidersMu.Unlock()
-	previous, _ := cloudProviders[name].(systemsetting.CloudProviderSettingSupport)
-	next, _ := provider.(systemsetting.CloudProviderSettingSupport)
-	systemsetting.ReplaceCloudProviderSettingSupport(previous, next)
 	cloudProviders[name] = provider
 }
 
@@ -58,5 +54,4 @@ func ResetCloudProvidersForTest() {
 	cloudProvidersMu.Lock()
 	defer cloudProvidersMu.Unlock()
 	cloudProviders = map[string]CloudProvider{}
-	systemsetting.ResetCloudProviderSettingsForTest()
 }

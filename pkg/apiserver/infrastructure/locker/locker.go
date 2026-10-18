@@ -32,9 +32,6 @@ var (
 	// ErrLockAcquireFailed is returned when lock acquisition fails after retries.
 	ErrLockAcquireFailed = errors.New("failed to acquire lock")
 
-	// ErrLockExtendFailed is returned when lock extension/renewal fails.
-	ErrLockExtendFailed = errors.New("failed to extend lock")
-
 	// ErrLockerClosed is returned when operations are attempted on a closed locker.
 	ErrLockerClosed = errors.New("locker is closed")
 )

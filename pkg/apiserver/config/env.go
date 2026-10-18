@@ -32,7 +32,11 @@ func ApplyEnvOverrides(fs *pflag.FlagSet, prefix string) error {
 			return fmt.Errorf("%s is no longer supported; all nodes now share one leader election configured by --leader-lock-name", key)
 		}
 	}
-	for _, removed := range []string{"datastore-type", "cache-type"} {
+	for _, removed := range []string{
+		"datastore-type", "cache-type", "msg-type",
+		"msg-kafka-brokers", "msg-kafka-group-id", "msg-kafka-offset-reset",
+		"msg-kafka-topic-partitions", "msg-kafka-topic-replication-factor",
+	} {
 		key := buildEnvKey(prefix, removed)
 		if _, exists := os.LookupEnv(key); exists {
 			return fmt.Errorf("%s is no longer supported; remove it: MySQL and Redis are required backends", key)

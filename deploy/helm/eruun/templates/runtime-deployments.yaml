@@ -78,8 +78,6 @@ spec:
                 secretKeyRef:
                   name: {{ include "eruun.suffixedName" (dict "root" $root "suffix" "redis") }}
                   key: password
-            - name: ERUUN_MSG_TYPE
-              value: redis
             {{- if $usesImportSecretKeyring }}
             - name: ERUUN_IMPORT_SECRET_KEYRING_FILE
               value: /var/run/secrets/eruun/import-secret-keyring/keyring.json

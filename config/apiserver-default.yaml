@@ -17,18 +17,12 @@ jobsConfigFile: ""
 datastore:
   url: "eruun:__REPLACE_WITH_MYSQL_PASSWORD__@tcp(127.0.0.1:3306)/eruun?charset=utf8mb4&parseTime=true"
 
-# Kafka defaults apply only when --msg-type / ERUUN_MSG_TYPE is kafka.
-# Flags/env override these local defaults; deployment broker addresses must be explicit.
+# Runtime queues are Redis Streams on the cache connection.
 messaging:
-  type: redis
-  # --msg-kafka-brokers / ERUUN_MSG_KAFKA_BROKERS (comma-separated)
-  kafkaBrokers: ["localhost:9092"]
-  # --msg-kafka-group-id / ERUUN_MSG_KAFKA_GROUP_ID
-  kafkaGroupID: eruun-workflow-workers
-  # --msg-kafka-offset-reset / ERUUN_MSG_KAFKA_OFFSET_RESET
-  kafkaAutoOffsetReset: earliest
-  kafkaTopicPartitions: 1
-  kafkaTopicReplicationFactor: 1
+  # --msg-channel-prefix / ERUUN_MSG_CHANNEL_PREFIX
+  channelPrefix: eruun
+  # --msg-redis-maxlen / ERUUN_MSG_REDIS_MAXLEN (<=0 disables the XADD MAXLEN cap)
+  redisStreamMaxLen: 50000
 
 # Every node participates in the same Lease election. Only its leader serves
 # business APIs and scheduling; other nodes execute tasks.

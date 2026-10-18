@@ -186,7 +186,6 @@ func (r *CreateWorkflowStepRequest) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*r = CreateWorkflowStepRequest{}
-	var jobTypeField string
 
 	for name, raw := range fields {
 		switch name {
@@ -202,11 +201,7 @@ func (r *CreateWorkflowStepRequest) UnmarshalJSON(data []byte) error {
 			if err := decodeStrictJSON(raw, &r.StepType); err != nil {
 				return err
 			}
-		case "jobType", "workflowType":
-			if jobTypeField != "" {
-				return fmt.Errorf("json: fields %q and %q cannot both be set", jobTypeField, name)
-			}
-			jobTypeField = name
+		case "jobType":
 			if err := decodeStrictJSON(raw, &r.WorkflowType); err != nil {
 				return err
 			}
@@ -272,7 +267,6 @@ func (r *CreateWorkflowSubStepRequest) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*r = CreateWorkflowSubStepRequest{}
-	var jobTypeField string
 
 	for name, raw := range fields {
 		switch name {
@@ -284,11 +278,7 @@ func (r *CreateWorkflowSubStepRequest) UnmarshalJSON(data []byte) error {
 			if err := decodeStrictJSON(raw, &r.Name); err != nil {
 				return err
 			}
-		case "jobType", "workflowType":
-			if jobTypeField != "" {
-				return fmt.Errorf("json: fields %q and %q cannot both be set", jobTypeField, name)
-			}
-			jobTypeField = name
+		case "jobType":
 			if err := decodeStrictJSON(raw, &r.WorkflowType); err != nil {
 				return err
 			}
@@ -344,11 +334,7 @@ func decodeWorkflowStepProperties(raw json.RawMessage) (WorkflowProperties, []Wo
 		return WorkflowProperties{}, nil, false, nil
 	}
 	if trimmed[0] != '[' {
-		var properties WorkflowProperties
-		if err := decodeStrictJSON(raw, &properties); err != nil {
-			return WorkflowProperties{}, nil, false, err
-		}
-		return properties, nil, false, nil
+		return WorkflowProperties{}, nil, false, errors.New("workflow step properties must be an array")
 	}
 
 	var propertiesList []WorkflowProperties

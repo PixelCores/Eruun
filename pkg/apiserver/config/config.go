@@ -103,28 +103,11 @@ type RedisCacheConfig struct {
 	KeyPrefix string
 }
 
-// MessagingConfig holds pub/sub configuration
+// MessagingConfig holds Redis Streams configuration for runtime queues.
 type MessagingConfig struct {
-	Type          string // redis|kafka
 	ChannelPrefix string
-
-	// Redis-specific configuration
 	// RedisStreamMaxLen sets XADD MAXLEN to cap stream length (<=0 disables).
 	RedisStreamMaxLen int64
-
-	// Kafka-specific configuration
-	// KafkaBrokers is a list of Kafka broker addresses (e.g., "localhost:9092").
-	KafkaBrokers []string
-	// KafkaGroupID is the consumer group ID for Kafka consumers.
-	// Defaults to "eruun-workflow-workers" if not set.
-	KafkaGroupID string
-	// KafkaAutoOffsetReset determines where to start consuming when no offset exists.
-	// Valid values: "earliest" (default) or "latest".
-	KafkaAutoOffsetReset string
-	// KafkaTopicPartitions is the default partition count when auto-creating topics.
-	KafkaTopicPartitions int
-	// KafkaTopicReplicationFactor is the default replication factor when auto-creating topics.
-	KafkaTopicReplicationFactor int
 }
 
 // WorkflowRuntime returns the workflow settings, or zero settings for a nil server config.
@@ -172,13 +155,7 @@ func NewConfig() *Config {
 		AllowPrivateURLTargets: false,
 		//JaegerEndpoint:   "http://localhost:14268/api/traces",
 		Messaging: MessagingConfig{
-			Type:                        REDIS,
-			RedisStreamMaxLen:           50000,
-			KafkaBrokers:                []string{"localhost:9092"},
-			KafkaGroupID:                "eruun-workflow-workers",
-			KafkaAutoOffsetReset:        "earliest",
-			KafkaTopicPartitions:        1,
-			KafkaTopicReplicationFactor: 1,
+			RedisStreamMaxLen: 50000,
 		},
 		Workflow: workflowconfig.DefaultRuntimeConfig(),
 	}
@@ -223,7 +200,6 @@ func (c *Config) Validate() []error {
 			errs = append(errs, err)
 		}
 	}
-	errs = append(errs, c.validateMessaging()...)
 	return errs
 }
 
@@ -258,42 +234,6 @@ func (c *Config) validateLeaderElection() []error {
 	return errs
 }
 
-func (c *Config) validateMessaging() []error {
-	var errs []error
-	// messaging basic checks
-	msgType := strings.ToLower(strings.TrimSpace(c.Messaging.Type))
-	switch msgType {
-	case "":
-		errs = append(errs, fmt.Errorf("messaging type cannot be empty"))
-	case REDIS:
-		// Redis mode: reuses RedisCacheConfig for connection settings
-		if strings.TrimSpace(c.Cache.CacheHost) == "" {
-			errs = append(errs, fmt.Errorf("redis cache host cannot be empty when messaging type is redis"))
-		}
-		if c.Cache.CacheProt <= 0 {
-			errs = append(errs, fmt.Errorf("redis cache port must be > 0 when messaging type is redis"))
-		}
-	case KAFKA:
-		// Kafka mode: requires Kafka-specific configuration
-		if len(c.Messaging.KafkaBrokers) == 0 {
-			errs = append(errs, fmt.Errorf("kafka brokers cannot be empty when messaging type is kafka"))
-		}
-		offsetReset := strings.ToLower(strings.TrimSpace(c.Messaging.KafkaAutoOffsetReset))
-		if offsetReset != "" && offsetReset != "earliest" && offsetReset != "latest" {
-			errs = append(errs, fmt.Errorf("kafka auto offset reset must be 'earliest' or 'latest', got: %s", c.Messaging.KafkaAutoOffsetReset))
-		}
-		if c.Messaging.KafkaTopicPartitions <= 0 {
-			errs = append(errs, fmt.Errorf("kafka topic partitions must be > 0 when messaging type is kafka"))
-		}
-		if c.Messaging.KafkaTopicReplicationFactor <= 0 {
-			errs = append(errs, fmt.Errorf("kafka topic replication factor must be > 0 when messaging type is kafka"))
-		}
-	default:
-		errs = append(errs, fmt.Errorf("unsupported messaging type: %s", c.Messaging.Type))
-	}
-	return errs
-}
-
 // AddFlags adds flags to the specified FlagSet
 func (c *Config) AddFlags(fs *pflag.FlagSet, configParameter *Config) {
 	fs.StringVar(&c.AuthConfigFile, "auth-config-file", c.AuthConfigFile, "Mounted Secret JSON containing account and workspace configuration (required)")
@@ -319,17 +259,9 @@ func (c *Config) AddFlags(fs *pflag.FlagSet, configParameter *Config) {
 	fs.DurationVar(&c.Datastore.ConnMaxIdleTime, "mysql-conn-max-idle-time", configParameter.Datastore.ConnMaxIdleTime, "maximum amount of time a MySQL connection may remain idle (<=0 disables)")
 	fs.BoolVar(&c.EnableTracing, "enable-tracing", configParameter.EnableTracing, "Enable tracing; exporting spans requires --jaeger-endpoint.")
 	fs.StringVar(&c.JaegerEndpoint, "jaeger-endpoint", configParameter.JaegerEndpoint, "Jaeger collector endpoint for exporting spans when tracing is enabled.")
-	// messaging basic flags (broker type & channel prefix). Redis connection will reuse RedisCacheConfig.
-	fs.StringVar(&c.Messaging.Type, "msg-type", configParameter.Messaging.Type, "messaging broker type: redis|kafka")
+	// Runtime queues use Redis Streams over the RedisCacheConfig connection.
 	fs.StringVar(&c.Messaging.ChannelPrefix, "msg-channel-prefix", configParameter.Messaging.ChannelPrefix, "messaging channel prefix for topics")
 	fs.Int64Var(&c.Messaging.RedisStreamMaxLen, "msg-redis-maxlen", configParameter.Messaging.RedisStreamMaxLen, "redis streams XADD MAXLEN cap (<=0 to disable)")
-	// kafka-specific flags
-	fs.StringSliceVar(&c.Messaging.KafkaBrokers, "msg-kafka-brokers", configParameter.Messaging.KafkaBrokers, "kafka broker addresses (e.g., localhost:9092)")
-	fs.StringVar(&c.Messaging.KafkaGroupID, "msg-kafka-group-id", configParameter.Messaging.KafkaGroupID, "kafka consumer group ID")
-	fs.StringVar(&c.Messaging.KafkaAutoOffsetReset, "msg-kafka-offset-reset", configParameter.Messaging.KafkaAutoOffsetReset, "kafka auto offset reset strategy: earliest|latest")
-	fs.IntVar(&c.Messaging.KafkaTopicPartitions, "msg-kafka-topic-partitions", configParameter.Messaging.KafkaTopicPartitions, "kafka topic partitions for auto-created topics (must be > 0)")
-	fs.IntVar(&c.Messaging.KafkaTopicReplicationFactor, "msg-kafka-topic-replication-factor", configParameter.Messaging.KafkaTopicReplicationFactor, "kafka topic replication factor for auto-created topics (must be > 0)")
-	// cache-specific flags
 	fs.StringVar(&c.Cache.CacheHost, "cache-host", configParameter.Cache.CacheHost, "cache host for redis backend")
 	fs.IntVar(&c.Cache.CacheProt, "cache-port", configParameter.Cache.CacheProt, "cache port for redis backend")
 	fs.Int64Var(&c.Cache.CacheDB, "cache-db", configParameter.Cache.CacheDB, "cache database index for redis backend")
@@ -381,12 +313,4 @@ func (c Config) NormalizedDatastoreSchemaMode() string {
 
 func (c Config) MigrateSchemaOnly() bool {
 	return c.NormalizedDatastoreSchemaMode() == DatastoreSchemaModeMigrateOnly
-}
-
-func (c Config) RuntimeMessagingTopics() []string {
-	return []string{
-		workflowconfig.DispatchTopic(c.Messaging.ChannelPrefix),
-		workflowconfig.DelayTopic(c.Messaging.ChannelPrefix),
-		workflowconfig.ResultTopic(c.Messaging.ChannelPrefix),
-	}
 }

@@ -24,10 +24,10 @@
 4. **Job 与消息幂等**
    - Delay 和 Result 内部消息都要求 `executionKey + runGeneration`，缺失时拒绝。
    - Job 与 Result Outbox 使用执行身份生成确定性键；结果更新同时过滤 execution key 和 generation。
-   - Redis AutoClaim 或 Kafka Rebalance 可以重复交付消息，但不能绕过数据库 ownership。
+   - Redis AutoClaim 可以重复交付消息，但不能绕过数据库 ownership。
 
 ## 运行约束
 
 - 生产 datastore 必须实现多条件 CAS；不支持时服务或写入路径直接报错。
-- Redis/Kafka 是消息后端选择，不改变上述 ownership 协议。
+- Redis Streams 只负责消息传输，不改变上述 ownership 协议。
 - Workflow 执行认领、续租和状态写入统一由数据库 generation/token/worker ownership 约束；Worker 不再获取 Redis task-run lock。

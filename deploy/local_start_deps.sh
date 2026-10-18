@@ -33,11 +33,10 @@ require_credential REDIS_PASSWORD "${REDIS_PASSWORD}"
 export MYSQL_ROOT_PASSWORD MYSQL_PASSWORD REDIS_PASSWORD
 
 docker compose version >/dev/null
-printf '%s\n' 'Starting local MySQL, Redis and Kafka dependencies for Eruun...'
+printf '%s\n' 'Starting local MySQL and Redis dependencies for Eruun...'
 docker compose -f "${SCRIPT_DIR}/compose.yaml" up -d --wait --wait-timeout 180
 
 printf 'MySQL: 127.0.0.1:%s, database=%s, user=eruun\n' "${MYSQL_PORT:-3306}" "${MYSQL_DATABASE:-eruun}"
 printf 'Redis: 127.0.0.1:%s\n' "${REDIS_PORT:-6379}"
-printf 'Kafka: localhost:%s (host), kafka:19092 (Compose network)\n' "${KAFKA_PORT:-9092}"
 printf '%s\n' 'Credentials are mounted as Compose secrets and are intentionally not printed.'
 printf '%s\n' 'Existing containers and data volumes are preserved. See docs/local-docker-dependencies.md for server configuration and stop commands.'

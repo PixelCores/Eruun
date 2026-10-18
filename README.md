@@ -91,7 +91,7 @@ flowchart TB
     Leader -. election .-> Lease[One Kubernetes Lease]
     Worker[Worker nodes and candidates] -. election .-> Lease
     Leader <--> DB[(MySQL: domain state and execution leases)]
-    Leader --> Queue[Redis Streams or Kafka]
+    Leader --> Queue[Redis Streams]
     Queue --> Worker
     Worker <--> DB
     Worker --> K8s[Kubernetes workloads]
@@ -107,8 +107,7 @@ The execution path is: **Leader API persists a task → Leader dispatches it →
 | Dependency | Responsibility | Boundary |
 | --- | --- | --- |
 | MySQL | Applications, tasks, accounts, configuration, and execution lease/generation/token | Source of truth for durable task state and execution ownership |
-| Redis | Cache, application mutation locks, cancellation signals, and default Redis Streams messaging | Still required when using Kafka |
-| Kafka (optional) | Replaces Redis Streams as the workflow message transport | Does not own task state or replace database leases |
+| Redis | Cache, application mutation locks, cancellation signals, and Redis Streams messaging | Does not own task state or replace database leases |
 | Kubernetes | Container execution, resource reconciliation, scheduling, and isolation | Provides actual resource state; business queries primarily read database projections |
 | MinIO (optional) | Stores complete evaluation result files | Database-only storage is supported; failed storage destinations can be retried independently |
 
@@ -208,18 +207,17 @@ Configure the server through flags or `ERUUN_` environment variables; for exampl
 | `ERUUN_BIND_ADDR` / `ERUUN_GRPC_BIND_ADDR` | Local HTTP defaults to `127.0.0.1:8001`; API gRPC defaults to `127.0.0.1:9001`; cluster deployments use 8000 / 9000 respectively |
 | `ERUUN_DATASTORE_URL` | The actual MySQL DSN; the password placeholder must be replaced |
 | `ERUUN_CACHE_HOST` / `ERUUN_CACHE_PASSWORD` | Redis connection configuration |
-| `ERUUN_MSG_TYPE` / `ERUUN_MSG_KAFKA_BROKERS` | Redis Streams by default; configure brokers when selecting Kafka, and retain Redis |
 | `ERUUN_ENABLE_TRACING` / `ERUUN_JAEGER_ENDPOINT` | Enable tracing with one flag; the Jaeger endpoint controls span export |
 | `ERUUN_AUTH_CONFIG_FILE` | Account, session, and workspace policy JSON |
 | `ERUUN_JOBS_CONFIG_FILE` | Enables the Harbor Runner and optional MinIO; use the same configuration for all nodes |
 
 All runtime nodes require Redis for cache, authentication, and coordination. MySQL and Redis are fixed backends. Remove the old `--datastore-type` / `--cache-type` flags and `ERUUN_DATASTORE_TYPE` / `ERUUN_CACHE_TYPE` environment variables; these selectors are now rejected, even when an environment variable is empty. In `--datastore-schema-mode=migrate-only`, validation checks only datastore configuration.
 
-Tracing defaults to `ERUUN_ENABLE_TRACING=true`; set it to `false` to disable tracing. This setting controls both the tracer provider and HTTP middleware, independently of the Redis/Kafka backend. Setting a Jaeger endpoint alone does not enable tracing. Without an endpoint, tracing can add trace IDs to API request logs but does not export spans. The static stack manifest enables tracing.
+Tracing defaults to `ERUUN_ENABLE_TRACING=true`; set it to `false` to disable tracing. This setting controls both the tracer provider and HTTP middleware, independently of the messaging backend. Setting a Jaeger endpoint alone does not enable tracing. Without an endpoint, tracing can add trace IDs to API request logs but does not export spans. The static stack manifest enables tracing.
 
 Migration: `--auto-tracing` and `ERUUN_AUTO_TRACING` have been removed. Remove the old setting and set `--enable-tracing` / `ERUUN_ENABLE_TRACING` to the logical OR of the previous two flags (previous defaults: enabled). The removed CLI flag or environment variable now causes startup to fail, including when the old environment variable is empty or `false`. Explicit CLI settings take precedence over the remaining environment setting.
 
-Local source development requires Go 1.27, plus GNU Make when using Make targets. Start and configure MySQL, Redis, and optional Kafka using the [local dependencies guide](docs/local-docker-dependencies.md), prepare account configuration and Kubernetes access, then start a node:
+Local source development requires Go 1.27, plus GNU Make when using Make targets. Start and configure MySQL and Redis using the [local dependencies guide](docs/local-docker-dependencies.md), prepare account configuration and Kubernetes access, then start a node:
 
 ```bash
 go run ./cmd/main.go

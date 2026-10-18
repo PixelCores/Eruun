@@ -1,8 +1,6 @@
 package api
 
 import (
-	"encoding/json"
-	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -57,19 +55,7 @@ func (a *accounts) RegisterRoutes(g *gin.RouterGroup) {
 }
 
 func bindAccount[T any](c *gin.Context) (*T, bool) {
-	var body T
-	d := json.NewDecoder(c.Request.Body)
-	d.DisallowUnknownFields()
-	if d.Decode(&body) != nil {
-		apiresponse.ReturnError(c, bcode.ErrAccountInput)
-		return nil, false
-	}
-	var extra interface{}
-	if d.Decode(&extra) != io.EOF {
-		apiresponse.ReturnError(c, bcode.ErrAccountInput)
-		return nil, false
-	}
-	return &body, true
+	return bindStrictJSON[T](c, bcode.ErrAccountInput, false)
 }
 func accountResult(c *gin.Context, value interface{}, err error) {
 	if err != nil {

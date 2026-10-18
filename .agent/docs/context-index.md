@@ -23,7 +23,7 @@ Eruun 的上下文入口，帮助快速定位关键信息。
 | `pkg/apiserver/interfaces/api` | HTTP 路由、DTO 与 assembler |
 | `pkg/apiserver/domain` | 模型、仓储契约和业务服务 |
 | `pkg/apiserver/event/workflow` | 调度、执行与 Kubernetes Job |
-| `pkg/apiserver/infrastructure` | MySQL、Redis、Kafka、Kubernetes 与观测适配 |
+| `pkg/apiserver/infrastructure` | MySQL、Redis、Kubernetes 与观测适配 |
 | `pkg/apiserver/workflow` | Traits 与资源命名 |
 | `config/` | 默认配置 |
 | `docs/` | 设计与使用文档 |

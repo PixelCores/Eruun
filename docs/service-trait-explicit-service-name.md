@@ -9,7 +9,7 @@
 1. 当 `name` 非空时，直接作为最终 Service 的 `metadata.name`。
 2. 当 `name` 为空时，使用默认资源命名体系：非 shared 组件按规范化后的 `appName + componentName` 生成；带 `traits.share` 的组件按 `componentName` 生成。
 3. 当组件来自模板克隆时，非空 `name` 会先实例化为当前应用可读的 Service 名：
-   - 当 `type` 字面值为 `internal` 时，使用 `<appName>-<oldServiceName>`，例如应用 `game-db` 中的 `mysql-master` -> `game-db-mysql-master`。空 `type` 或 Kubernetes 原生 `ClusterIP` 虽然运行时也会归一化为 internal，但不触发这条短命名规则。
+   - 当 `type` 字面值为 `internal` 时，使用 `<appName>-<oldServiceName>`，例如应用 `game-db` 中的 `mysql-master` -> `game-db-mysql-master`。空 `type` 虽然按 internal 部署，但不触发这条短命名规则。
    - 包含模板组件名的完整 `-` 分隔片段时，将模板组件名替换为克隆后的组件名，例如 `tmp-mysql-8-master` -> `game-db-mysql-master`。
    - 如果模板组件名本身包含 `-`，仍按完整片段匹配，例如 `mysql-8` -> `new-mysql-8` 时，已经是目标名的 `new-mysql-8-master` 不会再次变成 `new-new-mysql-8-master`。
    - 不包含模板组件名时，使用 `<newComponentName>-<oldServiceName>`，避免多个克隆应用共享同一个固定 Service 名。

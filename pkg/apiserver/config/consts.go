@@ -8,8 +8,6 @@ import (
 )
 
 const (
-	REDIS     = "redis"
-	KAFKA     = "kafka"
 	NAMESPACE = "eruun-system"
 )
 
