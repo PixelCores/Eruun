@@ -20,6 +20,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
@@ -417,22 +418,41 @@ func TestWorkflowRunReturnsErrorWhenApprovalCheckpointPersistFails(t *testing.T)
 	require.Equal(t, "", persisted.PendingApprovalStep)
 }
 
-func TestWorkflowRunApprovalStepTimesOut(t *testing.T) {
-	steps := &model.WorkflowSteps{
-		Steps: []*model.WorkflowStep{
-			{
-				Name:     "manual-check",
-				StepType: config.WorkflowStepTypeApproval,
-				Mode:     config.WorkflowModeStepByStep,
-				Approval: &model.WorkflowStepApproval{
-					TimeoutSeconds: 1,
-				},
-			},
-		},
-	}
-	stepsJSON, err := model.NewJSONStructByStruct(steps)
-	require.NoError(t, err)
+type approvalClockFailureStore struct {
+	*controllerTestStore
+}
 
+func (s approvalClockFailureStore) CurrentDatabaseTime(context.Context) (time.Time, error) {
+	return time.Time{}, errors.New("database clock unavailable")
+}
+
+func approvalTimeoutTestSteps(t *testing.T, stepName string) *model.JSONStruct {
+	t.Helper()
+	stepsJSON, err := model.NewJSONStructByStruct(&model.WorkflowSteps{
+		Steps: []*model.WorkflowStep{{
+			Name:     stepName,
+			StepType: config.WorkflowStepTypeApproval,
+			Mode:     config.WorkflowModeStepByStep,
+			Approval: &model.WorkflowStepApproval{TimeoutSeconds: 60},
+		}},
+	})
+	require.NoError(t, err)
+	return stepsJSON
+}
+
+// expireStoredApprovalDeadline moves the persisted deadline into the past,
+// standing in for the wall-clock wait after the pausing Worker has exited.
+func expireStoredApprovalDeadline(t *testing.T, store *controllerTestStore) {
+	t.Helper()
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	require.NotNil(t, store.task.ApprovalDeadline)
+	require.WithinDuration(t, time.Now().Add(time.Minute), *store.task.ApprovalDeadline, 5*time.Second)
+	expired := time.Now().UTC().Add(-time.Second)
+	store.task.ApprovalDeadline = &expired
+}
+
+func TestApprovalTimeoutFiresAfterPausingWorkerExits(t *testing.T) {
 	task := &model.WorkflowQueue{
 		TaskID:       "task-approval-timeout",
 		WorkflowID:   "wf-approval-timeout",
@@ -449,7 +469,7 @@ func TestWorkflowRunApprovalStepTimesOut(t *testing.T) {
 	store := &controllerTestStore{
 		workflow: &model.Workflow{
 			ID:    "wf-approval-timeout",
-			Steps: stepsJSON,
+			Steps: approvalTimeoutTestSteps(t, "manual-check"),
 		},
 		task: cloneWorkflowQueue(task),
 		jobs: []*model.JobInfo{
@@ -465,212 +485,125 @@ func TestWorkflowRunApprovalStepTimesOut(t *testing.T) {
 	}
 
 	ctl := newTestWorkflowController(t, task, nil, store)
-	err = ctl.run(context.Background(), 1)
-	require.NoError(t, err)
-	require.Equal(t, config.StatusWaitingApprove, task.Status)
+	require.NoError(t, ctl.run(context.Background(), 1))
+	require.Equal(t, config.StatusWaitingApprove, ctl.snapshotTask().Status)
+	expireStoredApprovalDeadline(t, store)
 
-	require.Eventually(t, func() bool {
-		snapshot := ctl.snapshotTask()
-		return snapshot.Status == config.StatusTimeout &&
-			!snapshot.ApprovalPending &&
-			snapshot.PendingApprovalStep == ""
-	}, 3*time.Second, 100*time.Millisecond)
+	// Only the Leader runtime acts; the Worker that paused the task is gone.
+	(&Workflow{Store: store}).expireApprovalDeadlines(context.Background(), 10)
 
 	store.mu.Lock()
 	defer store.mu.Unlock()
+	require.Equal(t, config.StatusTimeout, store.task.Status)
+	require.False(t, store.task.ApprovalPending)
+	require.Empty(t, store.task.PendingApprovalStep)
+	require.Empty(t, store.task.RunToken)
+	require.Empty(t, store.task.WorkerID)
 	require.Equal(t, string(config.StatusTimeout), store.jobs[0].Status)
 	require.Contains(t, store.jobs[0].Error, "manual-check")
 	require.NotZero(t, store.jobs[0].EndTime)
 }
 
-func TestWorkflowRunApprovalTimeoutCallbackSentOnce(t *testing.T) {
-	notifyStarted := make(chan struct{}, 1)
-	releaseNotify := make(chan struct{})
-	notifyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		select {
-		case notifyStarted <- struct{}{}:
-		default:
-		}
-		<-releaseNotify
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer notifyServer.Close()
-
+func TestApprovalTimeoutCallbackSentOnceByLeader(t *testing.T) {
 	var callbackCount int32
-	var releaseOnce sync.Once
-	defer releaseOnce.Do(func() { close(releaseNotify) })
-	timeoutCallbackServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	callbackServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&callbackCount, 1)
-		releaseOnce.Do(func() {
-			close(releaseNotify)
-		})
 		w.WriteHeader(http.StatusOK)
 	}))
-	defer timeoutCallbackServer.Close()
-
-	callback, err := model.NewJSONStructByStruct(&model.WorkflowCallback{
-		Timeout: timeoutCallbackServer.URL,
-	})
-	require.NoError(t, err)
-
-	steps := &model.WorkflowSteps{
-		Steps: []*model.WorkflowStep{
-			{
-				Name:     "manual-check",
-				StepType: config.WorkflowStepTypeApproval,
-				Mode:     config.WorkflowModeStepByStep,
-				Approval: &model.WorkflowStepApproval{
-					NotifyURL:      notifyServer.URL,
-					TimeoutSeconds: 5,
-				},
-			},
-		},
-	}
-	stepsJSON, err := model.NewJSONStructByStruct(steps)
+	defer callbackServer.Close()
+	callback, err := model.NewJSONStructByStruct(&model.WorkflowCallback{Timeout: callbackServer.URL})
 	require.NoError(t, err)
 
 	task := &model.WorkflowQueue{
 		TaskID:       "task-approval-timeout-callback-once",
+		WorkspaceID:  "workspace-1",
 		WorkflowID:   "wf-approval-timeout-callback-once",
 		WorkflowName: "approval-workflow",
 		AppID:        "app-1",
 		Status:       config.StatusWaiting,
 	}
 	store := &controllerTestStore{
+		application: &model.Applications{ID: "app-1", WorkspaceID: "workspace-1", Namespace: "default"},
 		workflow: &model.Workflow{
 			ID:       "wf-approval-timeout-callback-once",
-			Steps:    stepsJSON,
+			Steps:    approvalTimeoutTestSteps(t, "manual-check"),
 			Callback: callback,
 		},
 		task: cloneWorkflowQueue(task),
 	}
+	ctl := newTestWorkflowController(t, task, nil, store)
+	require.NoError(t, ctl.run(context.Background(), 1))
+	expireStoredApprovalDeadline(t, store)
 
-	ctl := newTestWorkflowController(t, task, kubefake.NewSimpleClientset(), store)
-	runDone := make(chan error, 1)
-	go func() {
-		runDone <- ctl.run(context.Background(), 1)
-	}()
-
-	select {
-	case <-notifyStarted:
-	case <-time.After(2 * time.Second):
-		t.Fatal("approval notification was not sent")
+	runtime := &Workflow{
+		Store:                     store,
+		Cfg:                       &config.Config{AllowPrivateURLTargets: true},
+		URLSecurityPolicyProvider: newTestURLSecurityPolicyProvider(t, spec.URLSecurityPolicySpec{AllowPrivateByDefault: true}),
 	}
-
-	ctl.markApprovalTimeout(task.TaskID, "manual-check", 0, time.Second)
-
-	select {
-	case err := <-runDone:
-		require.NoError(t, err)
-	case <-time.After(3 * time.Second):
-		t.Fatal("workflow run did not return")
-	}
+	runtime.expireApprovalDeadlines(context.Background(), 10)
+	runtime.expireApprovalDeadlines(context.Background(), 10)
 
 	require.Eventually(t, func() bool {
 		return atomic.LoadInt32(&callbackCount) >= 1
-	}, 2*time.Second, 50*time.Millisecond)
+	}, 3*time.Second, 50*time.Millisecond)
 	time.Sleep(200 * time.Millisecond)
 	require.Equal(t, int32(1), atomic.LoadInt32(&callbackCount))
 }
 
-func TestWorkflowRunApprovalTimeoutFromPreviousStepDoesNotAffectCurrentStep(t *testing.T) {
-	steps := &model.WorkflowSteps{
-		Steps: []*model.WorkflowStep{
-			{
-				Name:     "manual-check-1",
-				StepType: config.WorkflowStepTypeApproval,
-				Mode:     config.WorkflowModeStepByStep,
-				Approval: &model.WorkflowStepApproval{
-					TimeoutSeconds: 1,
-				},
-			},
-			{
-				Name:     "manual-check-2",
-				StepType: config.WorkflowStepTypeApproval,
-				Mode:     config.WorkflowModeStepByStep,
-				Approval: &model.WorkflowStepApproval{
-					TimeoutSeconds: 4,
-				},
-			},
-		},
-	}
-	stepsJSON, err := model.NewJSONStructByStruct(steps)
-	require.NoError(t, err)
-
-	task := &model.WorkflowQueue{
-		TaskID:       "task-approval-multi-step",
-		WorkflowID:   "wf-approval-multi-step",
-		WorkflowName: "approval-workflow",
-		AppID:        "app-1",
-		Status:       config.StatusWaiting,
-	}
-	store := &controllerTestStore{
-		workflow: &model.Workflow{
-			ID:    "wf-approval-multi-step",
-			Steps: stepsJSON,
-		},
-		task: cloneWorkflowQueue(task),
-	}
-
-	ctl := newTestWorkflowController(t, task, nil, store)
-	err = ctl.run(context.Background(), 1)
-	require.NoError(t, err)
-	require.Equal(t, config.StatusWaitingApprove, task.Status)
-	require.Equal(t, "manual-check-1", task.PendingApprovalStep)
-
-	task.CurrentStep = 1
-	task.Status = config.StatusWaiting
-	task.ApprovalPending = false
-	task.PendingApprovalStep = ""
-	store.mu.Lock()
-	store.task = cloneWorkflowQueue(task)
-	store.mu.Unlock()
-
-	err = ctl.run(context.Background(), 1)
-	require.NoError(t, err)
-	secondStep := ctl.snapshotTask()
-	require.Equal(t, config.StatusWaitingApprove, secondStep.Status)
-	require.Equal(t, "manual-check-2", secondStep.PendingApprovalStep)
-
-	time.Sleep(1500 * time.Millisecond)
-
-	snapshot := ctl.snapshotTask()
-	require.Equal(t, config.StatusWaitingApprove, snapshot.Status)
-	require.True(t, snapshot.ApprovalPending)
-	require.Equal(t, "manual-check-2", snapshot.PendingApprovalStep)
-}
-
-func TestMarkApprovalTimeoutDoesNotAffectReusedStepNameAfterCheckpointTransition(t *testing.T) {
+func TestApprovalTimeoutDoesNotAffectNewerCheckpointWithReusedStepName(t *testing.T) {
+	expired := time.Now().UTC().Add(-time.Minute)
 	task := &model.WorkflowQueue{
 		TaskID:              "task-approval-reused-name",
 		WorkflowID:          "wf-approval-reused-name",
-		WorkflowName:        "approval-workflow",
 		AppID:               "app-1",
 		Status:              config.StatusWaitingApprove,
 		CurrentStep:         0,
 		ApprovalPending:     true,
 		PendingApprovalStep: "manual-check",
+		ApprovalDeadline:    &expired,
 	}
+	ensureTestWorkflowExecutionIdentity(task)
+	newer := time.Now().UTC().Add(time.Hour)
 	store := &controllerTestStore{
 		task: cloneWorkflowQueue(task),
-		beforeCompareHook: func(t *model.WorkflowQueue) {
-			// Simulate checkpoint transition between pre-check and CAS:
-			// moved to next approval step with reused step name.
-			t.CurrentStep = 1
-			t.Status = config.StatusWaitingApprove
-			t.ApprovalPending = true
-			t.PendingApprovalStep = "manual-check"
+		beforeCompareHook: func(current *model.WorkflowQueue) {
+			// The task resumed and paused again at a later step with the same name.
+			current.CurrentStep = 1
+			current.ApprovalDeadline = &newer
 		},
 	}
 
-	ctl := newTestWorkflowController(t, task, nil, store)
-	ctl.markApprovalTimeout(task.TaskID, "manual-check", 0, time.Second)
+	(&Workflow{Store: store}).expireApprovalDeadlines(context.Background(), 10)
 
 	store.mu.Lock()
-	persisted := *store.task
-	store.mu.Unlock()
-	require.Equal(t, config.StatusWaitingApprove, persisted.Status)
-	require.True(t, persisted.ApprovalPending)
-	require.Equal(t, 1, persisted.CurrentStep)
-	require.Equal(t, "manual-check", persisted.PendingApprovalStep)
+	defer store.mu.Unlock()
+	require.Equal(t, config.StatusWaitingApprove, store.task.Status)
+	require.True(t, store.task.ApprovalPending)
+	require.Equal(t, 1, store.task.CurrentStep)
+	require.Equal(t, "manual-check", store.task.PendingApprovalStep)
+}
+
+func TestPauseAtApprovalStepFailsWithoutDatabaseClock(t *testing.T) {
+	task := &model.WorkflowQueue{
+		TaskID:       "task-approval-clock",
+		WorkflowID:   "wf-approval-clock",
+		WorkflowName: "approval-workflow",
+		AppID:        "app-1",
+		Status:       config.StatusWaiting,
+	}
+	ensureTestWorkflowExecutionIdentity(task)
+	base := &controllerTestStore{
+		workflow: &model.Workflow{ID: "wf-approval-clock", Steps: approvalTimeoutTestSteps(t, "manual-check")},
+		task:     cloneWorkflowQueue(task),
+	}
+
+	ctl := newTestWorkflowController(t, task, nil, approvalClockFailureStore{base})
+	runErr := ctl.run(context.Background(), 1)
+
+	require.ErrorContains(t, runErr, "database clock unavailable")
+	base.mu.Lock()
+	defer base.mu.Unlock()
+	require.Equal(t, config.StatusRunning, base.task.Status)
+	require.False(t, base.task.ApprovalPending)
+	require.Nil(t, base.task.ApprovalDeadline)
 }

@@ -270,6 +270,20 @@ func (s *controllerTestStore) List(_ context.Context, query datastore.Entity, op
 			result = append(result, &cp)
 		}
 		return result, nil
+	case *model.WorkflowQueue:
+		if s.task == nil || (q.Status != "" && s.task.Status != q.Status) {
+			return nil, nil
+		}
+		if opts != nil {
+			for _, filter := range opts.LessThan {
+				before, ok := filter.Value.(time.Time)
+				if filter.Key != "approval_deadline" || !ok || s.task.ApprovalDeadline == nil || !s.task.ApprovalDeadline.Before(before) {
+					return nil, nil
+				}
+			}
+		}
+		cp := *s.task
+		return []datastore.Entity{&cp}, nil
 	}
 	return nil, fmt.Errorf("unsupported query %T", query)
 }
@@ -470,6 +484,9 @@ func matchWorkflowQueueField(task *model.WorkflowQueue, field string, condition 
 	case "lease_expires_at":
 		expected, ok := condition.(time.Time)
 		return ok && task.LeaseExpiresAt != nil && task.LeaseExpiresAt.Equal(expected)
+	case "approval_deadline":
+		expected, ok := condition.(time.Time)
+		return ok && task.ApprovalDeadline != nil && task.ApprovalDeadline.Equal(expected)
 	default:
 		return false
 	}
@@ -565,6 +582,12 @@ func applyWorkflowQueueUpdate(task *model.WorkflowQueue, key string, value inter
 			task.LeaseExpiresAt = &v
 		} else if value == nil {
 			task.LeaseExpiresAt = nil
+		}
+	case "approval_deadline":
+		if v, ok := value.(time.Time); ok {
+			task.ApprovalDeadline = &v
+		} else if value == nil {
+			task.ApprovalDeadline = nil
 		}
 	case "dispatch_attempts":
 		if v, ok := value.(uint); ok {

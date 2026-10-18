@@ -42,11 +42,9 @@ const (
 	approvalEventName          = "approval_required"
 	approvalPathTemplate       = "/api/v1/workflow/tasks/%s/approval"
 	approvalUpdateTimeout      = 5 * time.Second
-	approvalProbeInterval      = 2 * time.Second
 	approvalNotifyTimeout      = workflowconfig.DefaultWorkflowCallbackTimeout
 	taskPersistenceCASAttempts = 2
-	approvalTimeoutReasonFmt   = "approval step %q timed out after %s"
-	approvalTimeoutStepReason  = "approval step timed out after %s"
+	approvalTimeoutReasonFmt   = "approval step %q timed out"
 )
 
 var errWorkflowTaskPersistenceUncertain = errors.New("workflow task persistence state is uncertain")
@@ -952,7 +950,11 @@ func (w *WorkflowCtl) pauseAtApprovalStep(ctx context.Context, stepExec *StepExe
 		return false, fmt.Errorf("invalid workflow task context for approval checkpoint")
 	}
 
-	persisted, err := w.persistApprovalCheckpoint(taskID, stepName, stepIndex)
+	var timeout time.Duration
+	if stepExec.Approval != nil && stepExec.Approval.TimeoutSeconds > 0 {
+		timeout = time.Duration(stepExec.Approval.TimeoutSeconds) * time.Second
+	}
+	persisted, err := w.persistApprovalCheckpoint(taskID, stepName, stepIndex, timeout)
 	if err != nil {
 		return false, fmt.Errorf("persist approval checkpoint: %w", err)
 	}
@@ -979,41 +981,16 @@ func (w *WorkflowCtl) pauseAtApprovalStep(ctx context.Context, stepExec *StepExe
 		task.ApprovalPending = true
 		task.PendingApprovalStep = stepName
 	})
-	w.scheduleApprovalTimeout(stepExec, stepName, stepIndex)
 	w.triggerApprovalNotification(ctx, stepExec, stepName)
 	return true, nil
 }
 
-func (w *WorkflowCtl) persistApprovalCheckpoint(taskID, stepName string, stepIndex int) (bool, error) {
-	updates := map[string]interface{}{
-		"status":                config.StatusWaitingApprove,
-		"current_step":          stepIndex,
-		"approval_pending":      true,
-		"pending_approval_step": stepName,
-	}
+func (w *WorkflowCtl) persistApprovalCheckpoint(taskID, stepName string, stepIndex int, timeout time.Duration) (bool, error) {
 	updateCtx, cancel := approvalUpdateContext(context.Background(), approvalUpdateContextDetached)
 	defer cancel()
 	taskSnapshot := w.snapshotTask()
-	if taskSnapshot.RunGeneration == 0 || taskSnapshot.RunToken == "" || taskSnapshot.WorkerID == "" {
-		return false, repository.ErrWorkflowOwnershipRequired
-	}
-	casStore, ok := w.Store.(datastore.ConditionalCompareAndSwap)
-	if !ok {
-		return false, repository.ErrWorkflowFencingUnsupported
-	}
-	conditions := map[string]interface{}{
-		"status":         config.StatusRunning,
-		"current_step":   stepIndex,
-		"run_generation": taskSnapshot.RunGeneration,
-		"run_token":      taskSnapshot.RunToken,
-		"worker_id":      taskSnapshot.WorkerID,
-	}
-	return casStore.CompareAndSwapWithConditions(
-		updateCtx,
-		&model.WorkflowQueue{TaskID: taskID},
-		conditions,
-		updates,
-	)
+	taskSnapshot.TaskID = taskID
+	return repository.PersistApprovalCheckpoint(updateCtx, w.Store, &taskSnapshot, stepName, stepIndex, timeout)
 }
 
 func (w *WorkflowCtl) reloadTaskSnapshot(taskID string) error {
@@ -1141,138 +1118,6 @@ func (w *WorkflowCtl) triggerApprovalNotification(ctx context.Context, stepExec 
 			klog.ErrorS(err, "workflow callback execution failed", "taskID", callbackJob.TaskID, "jobName", callbackJob.Name)
 		}
 	}()
-}
-
-func (w *WorkflowCtl) scheduleApprovalTimeout(stepExec *StepExecution, stepName string, stepIndex int) {
-	if stepExec == nil || stepExec.Approval == nil || w == nil || w.Store == nil {
-		return
-	}
-	if stepExec.Approval.TimeoutSeconds <= 0 {
-		return
-	}
-	task := w.snapshotTask()
-	taskID := strings.TrimSpace(task.TaskID)
-	if taskID == "" {
-		return
-	}
-	timeout := time.Duration(stepExec.Approval.TimeoutSeconds) * time.Second
-	// Approval state may be changed by another process, so the timer observes the
-	// persisted checkpoint instead of relying on process-local cancellation.
-	go func() {
-		timer := time.NewTimer(timeout)
-		defer timer.Stop()
-		probeEvery := approvalProbeInterval
-		if timeout < probeEvery {
-			probeEvery = timeout
-		}
-		probeTicker := time.NewTicker(probeEvery)
-		defer probeTicker.Stop()
-		for {
-			select {
-			case <-timer.C:
-				w.markApprovalTimeout(taskID, stepName, stepIndex, timeout)
-				return
-			case <-probeTicker.C:
-				if !w.isApprovalCheckpointPending(taskID, stepName, stepIndex) {
-					return
-				}
-			}
-		}
-	}()
-}
-
-func (w *WorkflowCtl) isApprovalCheckpointPending(taskID, stepName string, stepIndex int) bool {
-	if w == nil || w.Store == nil {
-		return false
-	}
-	updateCtx, cancel := approvalUpdateContext(context.Background(), approvalUpdateContextDetached)
-	defer cancel()
-
-	task, err := repository.TaskByID(updateCtx, w.Store, taskID)
-	if err != nil {
-		if errors.Is(err, datastore.ErrRecordNotExist) {
-			return false
-		}
-		klog.Warningf("probe approval task %s failed: %v", taskID, err)
-		return true
-	}
-	if task == nil {
-		return false
-	}
-	return task.Status == config.StatusWaitingApprove &&
-		task.ApprovalPending &&
-		task.CurrentStep == stepIndex &&
-		strings.TrimSpace(task.PendingApprovalStep) == strings.TrimSpace(stepName)
-}
-
-func (w *WorkflowCtl) markApprovalTimeout(taskID, stepName string, stepIndex int, timeout time.Duration) {
-	updateCtx, cancel := approvalUpdateContext(context.Background(), approvalUpdateContextDetached)
-	defer cancel()
-
-	task, err := repository.TaskByID(updateCtx, w.Store, taskID)
-	if err != nil || task == nil {
-		if err != nil {
-			klog.Warningf("load approval task %s for timeout failed: %v", taskID, err)
-		}
-		return
-	}
-	if task.Status != config.StatusWaitingApprove || !task.ApprovalPending {
-		return
-	}
-	if task.CurrentStep != stepIndex {
-		return
-	}
-	if strings.TrimSpace(task.PendingApprovalStep) != strings.TrimSpace(stepName) {
-		return
-	}
-
-	updates := map[string]interface{}{
-		"status":                config.StatusTimeout,
-		"approval_pending":      false,
-		"pending_approval_step": "",
-	}
-	updated, err := w.compareAndSwapApprovalTimeoutCheckpoint(updateCtx, taskID, stepName, stepIndex, updates)
-	if err != nil {
-		klog.Warningf("mark approval timeout failed task=%s step=%s: %v", taskID, stepName, err)
-		return
-	}
-	if !updated {
-		return
-	}
-
-	reason := fmt.Sprintf(approvalTimeoutStepReason, timeout)
-	if strings.TrimSpace(stepName) != "" {
-		reason = fmt.Sprintf(approvalTimeoutReasonFmt, stepName, timeout)
-	}
-	w.terminalizePrecreatedVersionUpdateCleanupJobs(updateCtx, taskID, config.StatusTimeout, reason)
-
-	w.mutateTask(func(task *model.WorkflowQueue) {
-		task.Status = config.StatusTimeout
-		task.ApprovalPending = false
-		task.PendingApprovalStep = ""
-	})
-	w.triggerWorkflowCallbackOnce(context.Background(), config.StatusTimeout, reason)
-}
-
-func (w *WorkflowCtl) compareAndSwapApprovalTimeoutCheckpoint(
-	ctx context.Context,
-	taskID, stepName string,
-	stepIndex int,
-	updates map[string]interface{},
-) (bool, error) {
-	task := &model.WorkflowQueue{TaskID: taskID}
-	normalizedStep := strings.TrimSpace(stepName)
-	if casStore, ok := w.Store.(datastore.ConditionalCompareAndSwap); ok {
-		conditions := map[string]interface{}{
-			"status":                config.StatusWaitingApprove,
-			"approval_pending":      true,
-			"current_step":          stepIndex,
-			"pending_approval_step": normalizedStep,
-		}
-		return casStore.CompareAndSwapWithConditions(ctx, task, conditions, updates)
-	}
-	// Fallback for stores without multi-condition CAS support.
-	return w.Store.CompareAndSwap(ctx, task, "status", config.StatusWaitingApprove, updates)
 }
 
 func (w *WorkflowCtl) triggerWorkflowCallbackOnce(ctx context.Context, status config.Status, reason string) {

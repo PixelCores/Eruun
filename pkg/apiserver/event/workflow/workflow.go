@@ -156,6 +156,7 @@ func (w *Workflow) startLeaseReaper(ctx context.Context, wg *sync.WaitGroup) {
 			} else if recovered > 0 {
 				klog.InfoS("recovered expired workflow execution leases", "count", recovered)
 			}
+			w.expireApprovalDeadlines(ctx, limit)
 		}
 	}
 	if wg == nil {
@@ -167,6 +168,28 @@ func (w *Workflow) startLeaseReaper(ctx context.Context, wg *sync.WaitGroup) {
 		defer wg.Done()
 		run()
 	}()
+}
+
+// expireApprovalDeadlines times out approval checkpoints from the database, so
+// the timeout does not depend on the Worker that paused the task staying alive.
+// The terminal callback keeps the single-attempt delivery contract.
+func (w *Workflow) expireApprovalDeadlines(ctx context.Context, limit int) {
+	expireCtx, cancel := context.WithTimeout(ctx, config.TaskStateTransitionTimeout)
+	expired, err := repository.ExpireApprovalDeadlines(expireCtx, w.Store, limit)
+	cancel()
+	if err != nil {
+		klog.ErrorS(err, "expire workflow approval deadlines")
+	}
+	for _, task := range expired {
+		reason := fmt.Sprintf(approvalTimeoutReasonFmt, task.PendingApprovalStep)
+		klog.InfoS("workflow approval timed out", "taskID", task.TaskID, "step", task.PendingApprovalStep)
+		cleanupCtx, cleanupCancel := context.WithTimeout(ctx, config.TaskStateTransitionTimeout)
+		if err := service.TerminalizePrecreatedVersionUpdateCleanupJobs(cleanupCtx, w.Store, task.TaskID, config.StatusTimeout, reason); err != nil {
+			klog.ErrorS(err, "terminalize cleanup jobs after approval timeout", "taskID", task.TaskID)
+		}
+		cleanupCancel()
+		workflowservice.TriggerWorkflowTerminalCallbackAsync(ctx, w.Store, w.Cfg, w.URLSecurityPolicyProvider, task, config.StatusTimeout, reason)
+	}
 }
 
 func (w *Workflow) startCancelledWorkflowRecovery(ctx context.Context, wg *sync.WaitGroup) {

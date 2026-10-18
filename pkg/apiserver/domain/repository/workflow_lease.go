@@ -189,6 +189,107 @@ func ExpireWorkflowTaskLease(ctx context.Context, store datastore.DataStore, tas
 	})
 }
 
+// PersistApprovalCheckpoint pauses the fenced running owner at an approval
+// step. A positive timeout records its deadline from the database clock, so any
+// Leader can expire the checkpoint after the Worker has exited.
+func PersistApprovalCheckpoint(ctx context.Context, store datastore.DataStore, task *model.WorkflowQueue, stepName string, stepIndex int, timeout time.Duration) (bool, error) {
+	if task == nil {
+		return false, datastore.ErrPrimaryEmpty
+	}
+	if err := validateWorkflowExecutionIdentity(task.TaskID, task.RunGeneration, task.RunToken); err != nil {
+		return false, err
+	}
+	if strings.TrimSpace(task.WorkerID) == "" {
+		return false, fmt.Errorf("%w: approval checkpoint requires worker identity", ErrWorkflowOwnershipRequired)
+	}
+	var deadline interface{}
+	if timeout > 0 {
+		now, err := currentWorkflowDatabaseTime(ctx, store)
+		if err != nil {
+			return false, err
+		}
+		deadline = now.Add(timeout)
+	}
+	return compareWorkflowTaskWithConditions(ctx, store, task.TaskID, map[string]interface{}{
+		"status":         config.StatusRunning,
+		"current_step":   stepIndex,
+		"run_generation": task.RunGeneration,
+		"run_token":      task.RunToken,
+		"worker_id":      task.WorkerID,
+	}, map[string]interface{}{
+		"status":                config.StatusWaitingApprove,
+		"current_step":          stepIndex,
+		"approval_pending":      true,
+		"pending_approval_step": stepName,
+		"approval_deadline":     deadline,
+	})
+}
+
+// ExpireApprovalDeadlines moves approval checkpoints whose database-clock
+// deadline has passed to timeout. The checkpoint and its deadline form the CAS
+// fence, so a concurrent approval action or a newer checkpoint wins. It returns
+// the expired checkpoints as observed before the timeout write.
+func ExpireApprovalDeadlines(ctx context.Context, store datastore.DataStore, limit int) ([]*model.WorkflowQueue, error) {
+	if limit < 1 || limit > 10000 {
+		return nil, fmt.Errorf("approval deadline batch limit must be 1..10000")
+	}
+	now, err := currentWorkflowDatabaseTime(ctx, store)
+	if err != nil {
+		return nil, err
+	}
+	entities, err := store.List(ctx, &model.WorkflowQueue{Status: config.StatusWaitingApprove}, &datastore.ListOptions{
+		FilterOptions: datastore.FilterOptions{
+			LessThan: []datastore.ComparisonQueryOption{{Key: "approval_deadline", Value: now}},
+		},
+		Page:     1,
+		PageSize: limit,
+		SortBy: []datastore.SortOption{{
+			Key: "approval_deadline", Order: datastore.SortOrderAscending,
+		}},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(entities) > limit {
+		entities = entities[:limit]
+	}
+	var expired []*model.WorkflowQueue
+	for _, entity := range entities {
+		task, ok := entity.(*model.WorkflowQueue)
+		if !ok || task == nil {
+			return expired, datastore.ErrEntityInvalid
+		}
+		if task.Status != config.StatusWaitingApprove || !task.ApprovalPending ||
+			task.ApprovalDeadline == nil || !task.ApprovalDeadline.Before(now) {
+			continue
+		}
+		updated, err := compareWorkflowTaskWithConditions(ctx, store, task.TaskID, map[string]interface{}{
+			"status":                config.StatusWaitingApprove,
+			"approval_pending":      true,
+			"current_step":          task.CurrentStep,
+			"pending_approval_step": task.PendingApprovalStep,
+			"run_generation":        task.RunGeneration,
+			"approval_deadline":     *task.ApprovalDeadline,
+		}, map[string]interface{}{
+			"status":                config.StatusTimeout,
+			"approval_pending":      false,
+			"pending_approval_step": "",
+			"run_token":             "",
+			"worker_id":             "",
+			"heartbeat_at":          nil,
+			"lease_expires_at":      nil,
+			"scheduling_reason":     "approval deadline exceeded",
+		})
+		if err != nil {
+			return expired, err
+		}
+		if updated {
+			expired = append(expired, task)
+		}
+	}
+	return expired, nil
+}
+
 func UpdateTaskFieldsIfOwned(ctx context.Context, store datastore.DataStore, task *model.WorkflowQueue, expectedStatus config.Status, updates map[string]interface{}) (bool, error) {
 	if task == nil || task.TaskID == "" {
 		return false, datastore.ErrPrimaryEmpty
