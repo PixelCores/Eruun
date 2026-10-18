@@ -17,7 +17,6 @@ type templateRewriteMap struct {
 	serviceExact     map[string]string
 	serviceAmbiguous map[string][]string
 	text             map[string]string
-	exactKey         []string
 	textKey          []string
 }
 
@@ -392,7 +391,6 @@ func (m *templateRewriteMap) refresh() {
 	if m == nil {
 		return
 	}
-	m.exactKey = sortedRewriteKeys(m.exact)
 	m.textKey = sortedRewriteKeys(m.text)
 }
 

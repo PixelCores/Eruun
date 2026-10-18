@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/go-redsync/redsync/v4"
 	goredis "github.com/go-redsync/redsync/v4/redis/goredis/v9"
@@ -33,7 +32,6 @@ import (
 // It uses the redsync library for distributed locking.
 type RedisLocker struct {
 	mu      sync.RWMutex
-	client  *redis.Client
 	redsync *redsync.Redsync
 	prefix  string
 	closed  bool
@@ -49,7 +47,6 @@ func NewRedisLocker(client *redis.Client, prefix string) (*RedisLocker, error) {
 	rs := redsync.New(pool)
 
 	return &RedisLocker{
-		client:  client,
 		redsync: rs,
 		prefix:  prefix,
 	}, nil
@@ -86,9 +83,8 @@ func (l *RedisLocker) NewMutex(key string, opts ...Option) Mutex {
 	mutex := l.redsync.NewMutex(fullKey, rsOpts...)
 
 	return &RedisMutex{
-		key:     fullKey,
-		mutex:   mutex,
-		options: options,
+		key:   fullKey,
+		mutex: mutex,
 	}
 }
 
@@ -110,9 +106,8 @@ func (l *RedisLocker) prefixedKey(key string) string {
 
 // RedisMutex implements Mutex using Redis/redsync.
 type RedisMutex struct {
-	key     string
-	mutex   *redsync.Mutex
-	options *Options
+	key   string
+	mutex *redsync.Mutex
 }
 
 // Lock acquires the lock, blocking until available or ctx is cancelled.
@@ -199,38 +194,3 @@ var (
 	_ Mutex  = (*RedisMutex)(nil)
 	_ Mutex  = (*degradedMutex)(nil)
 )
-
-// ---- Helper Functions ----
-
-// AutoExtend starts a goroutine that periodically extends the lock's TTL.
-// It stops when ctx is cancelled or the returned cancel function is called.
-// This is useful for long-running operations that need to hold the lock.
-func AutoExtend(ctx context.Context, mutex Mutex, interval time.Duration) (cancel func()) {
-	if interval <= 0 {
-		interval = DefaultTTL / 3
-	}
-
-	extendCtx, cancelFunc := context.WithCancel(ctx)
-
-	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-extendCtx.Done():
-				return
-			case <-ticker.C:
-				if err := mutex.Extend(extendCtx); err != nil {
-					if extendCtx.Err() != nil {
-						return
-					}
-					klog.Warningf("failed to extend lock %s: %v", mutex.Key(), err)
-					return
-				}
-			}
-		}
-	}()
-
-	return cancelFunc
-}

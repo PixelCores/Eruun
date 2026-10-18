@@ -1682,7 +1682,7 @@ func runJob(ctx context.Context, job *model.JobTask, ...) {
     
     // 设置取消信号监听
     if taskID := TaskIDFromContext(ctx); taskID != "" {
-        watcher, jobCtx, cancelFn, _ = signal.Watch(ctx, taskID)
+        watcher, jobCtx, cancelFn, _ = signal.WatchWithClient(ctx, taskID, redisClient)
     }
     
     defer func() {
