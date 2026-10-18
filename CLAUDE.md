@@ -18,3 +18,7 @@ deploy/all_in_one_install_quickstart_test.sh
 Server flags are exposed through `ERUUN_`-prefixed environment variables. The REST API remains under `/api/v1`. Eruun contains no client command-line application; use HTTP, Helm, and Kubernetes examples.
 
 Keep API, domain, workflow, infrastructure, and deployment boundaries described in `AGENTS.md`. Never commit credentials or private/internal references.
+
+## Skills
+
+Load the `eruun-code` skill for any work in this repository, including analysis, audits, architecture or DSL design, and reviews, not only code edits. Use `go-code` for Go quality gates and `codex-efficiency-protocol` for multi-step or publish-sensitive work, as `AGENTS.md` describes.
