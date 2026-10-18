@@ -71,6 +71,7 @@ func TestValidationService_TryApplication_EmitsComponentsArray(t *testing.T) {
 		{name: "omitted components", req: apisv1.CreateApplicationsRequest{Name: "ab"}, valid: true},
 		{name: "explicit empty components", req: apisv1.CreateApplicationsRequest{Name: "ab", Components: []apisv1.CreateComponentRequest{}}, valid: true},
 		{name: "name at write limit", req: apisv1.CreateApplicationsRequest{Name: strings.Repeat("a", 31)}, valid: true},
+		{name: "dotted application name", req: apisv1.CreateApplicationsRequest{Name: "demo.app"}, valid: true},
 		{name: "repository error", req: apisv1.CreateApplicationsRequest{ID: "missing", Name: "ab"}, valid: false},
 	}
 
@@ -496,6 +497,8 @@ func TestValidationService_TryApplication_InvalidName(t *testing.T) {
 		{"invalid characters", "My_App", apisv1.ErrCodeInvalidNameFormat},
 		{"starts with hyphen", "-app", apisv1.ErrCodeInvalidNameFormat},
 		{"ends with hyphen", "app-", apisv1.ErrCodeInvalidNameFormat},
+		{"empty subdomain segment", "demo..app", apisv1.ErrCodeInvalidNameFormat},
+		{"subdomain segment starts with hyphen", "demo.-app", apisv1.ErrCodeInvalidNameFormat},
 	}
 
 	for _, tc := range testCases {
