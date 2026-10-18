@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -24,7 +25,7 @@ import (
 
 func testStore(t *testing.T) (*Store, *sqldriver.Driver) {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "artifacts.db")), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.Workspace{}, &model.WorkflowQueue{}, &model.JobArtifact{}, &model.ArtifactChunk{}, &model.JobDelivery{}))
 	sqlDB, err := db.DB()

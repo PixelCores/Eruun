@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -30,7 +31,7 @@ func TestJobAdmissionCancellationStopsRecoveredInstantExecution(t *testing.T) {
 	for _, concurrency := range []int{1, 2} {
 		for _, reason := range []string{"signal first", "database first", "database before signal", "new generation", "new token", "new worker"} {
 			t.Run(fmt.Sprintf("%d/%s", concurrency, reason), func(t *testing.T) {
-				db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, Logger: logger.Default.LogMode(logger.Silent)})
+				db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "admission-recovery.db")), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, Logger: logger.Default.LogMode(logger.Silent)})
 				require.NoError(t, err)
 				connection, err := db.DB()
 				require.NoError(t, err)
