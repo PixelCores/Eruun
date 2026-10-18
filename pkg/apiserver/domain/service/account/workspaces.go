@@ -336,8 +336,7 @@ func (s *Service) RevokeInvitation(ctx context.Context, p *Principal, id, invita
 }
 
 // Namespace removal is injected by the API assembly, keeping Kubernetes IO out
-// of the account model. The workspace lock also serializes application creation
-// and app-less resource-import task submission.
+// of the account model. The workspace lock also serializes application creation.
 func (s *Service) DeleteWorkspace(ctx context.Context, p *Principal, id string, deleteNamespace func(context.Context, *model.Workspace) error) error {
 	if err := s.requireRecentAuthentication(ctx, p); err != nil {
 		return err

@@ -86,12 +86,12 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 
 ## HTTP 路由到 RPC 对照
 
-当前 HTTP 路由共 121 条；以下 106 条用户可调用路由各映射一个 RPC。表中全名与生成客户端方法一一对应，具体字段及请求/响应类型见各 `.proto` 文件。
+当前 HTTP 路由共 115 条；以下 100 条用户可调用路由各映射一个 RPC。表中全名与生成客户端方法一一对应，具体字段及请求/响应类型见各 `.proto` 文件。
 
 | HTTP 路由 | gRPC 方法全名 |
 | --- | --- |
 | `DELETE /api/v1/applications/:appID` | `/eruun.v1.ApplicationService/DeleteApplication` |
-| `DELETE /api/v1/applications/:appID/resources` | `/eruun.v1.ApplicationService/ApplyApplicationResourceCleanup` |
+| `DELETE /api/v1/applications/:appID/resources` | `/eruun.v1.ApplicationService/CleanupApplicationResources` |
 | `DELETE /api/v1/applications/:appID/workflow/schedule/:workflowID` | `/eruun.v1.ApplicationService/DeleteWorkflowSchedule` |
 | `DELETE /api/v1/auth/identities/:identityID` | `/eruun.v1.AccountService/UnbindIdentity` |
 | `DELETE /api/v1/job-definitions/:definitionID` | `/eruun.v1.JobsService/DeleteJobDefinition` |
@@ -129,7 +129,6 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 | `GET /api/v1/jobs/:taskID/results/:artifactID/download` | `/eruun.v1.JobsService/DownloadJobResult` |
 | `GET /api/v1/programming-languages` | `/eruun.v1.ProgrammingLanguagesService/ListProgrammingLanguages` |
 | `GET /api/v1/programming-languages/:id` | `/eruun.v1.ProgrammingLanguagesService/GetProgrammingLanguage` |
-| `GET /api/v1/resource-import/jobs/:taskID` | `/eruun.v1.ResourceImportService/GetResourceImportJob` |
 | `GET /api/v1/scheduledjobs` | `/eruun.v1.ApplicationService/ListScheduledJobs` |
 | `GET /api/v1/schemas/v1/canonical.json` | `/eruun.v1.ApplicationService/GetCanonicalJSONSchema` |
 | `GET /api/v1/settings` | `/eruun.v1.SettingsService/ListSettings` |
@@ -148,7 +147,6 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 | `POST /api/v1/applications/:appID/components/:componentName/shell/stream` | `/eruun.v1.ApplicationService/StreamComponentShell` |
 | `POST /api/v1/applications/:appID/database-reset` | `/eruun.v1.ApplicationService/ResetApplicationDatabases` |
 | `POST /api/v1/applications/:appID/log-archives` | `/eruun.v1.ApplicationService/DownloadLogArchive` |
-| `POST /api/v1/applications/:appID/resources/cleanup-plan` | `/eruun.v1.ApplicationService/PlanApplicationResourceCleanup` |
 | `POST /api/v1/applications/:appID/restart` | `/eruun.v1.ApplicationService/RestartApplicationWorkloads` |
 | `POST /api/v1/applications/:appID/start` | `/eruun.v1.ApplicationService/StartApplicationDeployments` |
 | `POST /api/v1/applications/:appID/stop` | `/eruun.v1.ApplicationService/StopApplicationDeployments` |
@@ -163,8 +161,6 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 | `POST /api/v1/applications/components/status` | `/eruun.v1.ApplicationService/BatchApplicationComponentStatus` |
 | `POST /api/v1/applications/convert` | `/eruun.v1.ApplicationService/ConvertApplications` |
 | `POST /api/v1/applications/create-and-exec` | `/eruun.v1.ApplicationService/CreateAndExecApplications` |
-| `POST /api/v1/applications/import/namespace` | `/eruun.v1.ApplicationService/ImportNamespaceApplications` |
-| `POST /api/v1/applications/import/namespace/try` | `/eruun.v1.ApplicationService/TryImportNamespaceApplications` |
 | `POST /api/v1/applications/query` | `/eruun.v1.ApplicationService/BatchGetApplications` |
 | `POST /api/v1/applications/try` | `/eruun.v1.ApplicationService/TryApplication` |
 | `POST /api/v1/auth/codes` | `/eruun.v1.AccountService/SendAuthCode` |
@@ -181,8 +177,6 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 | `POST /api/v1/jobs/:taskID/cancel` | `/eruun.v1.JobsService/CancelJob` |
 | `POST /api/v1/jobs/:taskID/deliveries/:target/retry` | `/eruun.v1.JobsService/RetryJobDelivery` |
 | `POST /api/v1/programming-languages` | `/eruun.v1.ProgrammingLanguagesService/CreateProgrammingLanguage` |
-| `POST /api/v1/resource-import/jobs/manage` | `/eruun.v1.ResourceImportService/SubmitResourceImportManage` |
-| `POST /api/v1/resource-import/jobs/scan` | `/eruun.v1.ResourceImportService/SubmitResourceImportScan` |
 | `POST /api/v1/settings` | `/eruun.v1.SettingsService/CreateSetting` |
 | `POST /api/v1/workflow/tasks/:taskID/approval` | `/eruun.v1.ApplicationService/ApproveWorkflowTask` |
 | `POST /api/v1/workspace-invitations/accept` | `/eruun.v1.AccountService/AcceptWorkspaceInvitation` |

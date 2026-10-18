@@ -17,7 +17,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	assembler "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/assembler/v1"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
@@ -466,10 +465,6 @@ func (c *applicationsServiceImpl) GetApplicationSpec(ctx context.Context, appID 
 	if app == nil {
 		return nil, bcode.ErrApplicationNotExist
 	}
-	if app.EffectiveManagementMode() != domainspec.ManagementModeNative {
-		return nil, fmt.Errorf("%w: only native applications have a resubmittable canonical spec", bcode.ErrApplicationManagementMode)
-	}
-
 	components, err := c.ComponentRepo.FindByAppID(ctx, appID)
 	if err != nil && !errors.Is(err, datastore.ErrRecordNotExist) {
 		return nil, err

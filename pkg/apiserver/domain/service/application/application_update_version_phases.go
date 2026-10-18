@@ -110,9 +110,6 @@ func (c *applicationsServiceImpl) prepareVersionUpdateRun(
 	if err != nil {
 		return nil, err
 	}
-	if app.EffectiveManagementMode() == domainspec.ManagementModeAdopted && run.resourceActions.fullCleanup {
-		return nil, fmt.Errorf("%w: adopted full cleanup requires an explicit cleanup plan fingerprint", bcode.ErrApplicationManagementMode)
-	}
 	if err := validateVersionUpdateExecutionScopeActions(run.executionScope, run.resourceActions); err != nil {
 		return nil, err
 	}
@@ -171,11 +168,6 @@ func (c *applicationsServiceImpl) preflightVersionUpdateRun(
 	if err := validateVersionUpdateActionContract(run.normalReq.Components, run.componentMap); err != nil {
 		return err
 	}
-	if run.app.EffectiveManagementMode() == domainspec.ManagementModeAdopted {
-		if err := validateAdoptedVersionUpdateActions(run.normalReq.Components, run.componentMap); err != nil {
-			return err
-		}
-	}
 	if err := validateVersionUpdateSharedRemovals(run.normalReq.Components, run.componentMap); err != nil {
 		return err
 	}
@@ -233,11 +225,6 @@ func (c *applicationsServiceImpl) preflightVersionUpdateRun(
 	run.hasPlannedChanges, err = hasVersionUpdateComponentChanges(run.componentMap, run.normalReq.Components)
 	if err != nil {
 		return err
-	}
-	if run.app.EffectiveManagementMode() == domainspec.ManagementModeAdopted {
-		if err := workflowservice.EnsureAppWorkflowIdle(ctx, c.Store, run.app.ID); err != nil {
-			return fmt.Errorf("update adopted application version: %w", err)
-		}
 	}
 	return nil
 }
@@ -312,12 +299,12 @@ func (c *applicationsServiceImpl) commitDirectVersionUpdate(ctx context.Context,
 		}
 		// Use the same app-before-component order as automatic submissions.
 		// Redis lease loss can let a task commit after preflight, so repeat only
-		// the idle checks already required for structural/adopted changes.
+		// the idle checks already required for structural changes.
 		requiresIdle, err := hasWorkflowStructureChanges(run.normalReq.Components, run.componentMap)
 		if err != nil {
 			return err
 		}
-		if requiresIdle || run.app.EffectiveManagementMode() == domainspec.ManagementModeAdopted {
+		if requiresIdle {
 			if err := workflowservice.EnsureAppWorkflowIdle(ctx, tx, run.app.ID); err != nil {
 				return err
 			}
@@ -325,11 +312,8 @@ func (c *applicationsServiceImpl) commitDirectVersionUpdate(ctx context.Context,
 		run.updatedComponents, run.addedComponents, run.removedComponents, err = c.applyVersionUpdateChangesInStore(
 			ctx, tx, run.app, run.componentMap, run.normalReq, run.newVersion, "",
 			func(ctx context.Context, component *model.ApplicationComponent) error {
-				if run.app.EffectiveManagementMode() == domainspec.ManagementModeNative || !component.HasSourceWorkload() {
-					cleanupAttempted = true
-					return c.cleanupVersionUpdateRemovedComponent(ctx, component)
-				}
-				return nil
+				cleanupAttempted = true
+				return c.cleanupVersionUpdateRemovedComponent(ctx, component)
 			},
 		)
 		if err != nil {

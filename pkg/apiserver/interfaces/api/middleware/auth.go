@@ -84,11 +84,6 @@ var businessRoutes = map[string]string{
 	"POST /api/v1/applications/create-and-exec":                               "member",
 	"POST /api/v1/applications/query":                                         "member",
 	"POST /api/v1/applications/convert":                                       "member",
-	"POST /api/v1/applications/import/namespace":                              "system",
-	"POST /api/v1/applications/import/namespace/try":                          "system",
-	"POST /api/v1/resource-import/jobs/scan":                                  "system",
-	"POST /api/v1/resource-import/jobs/manage":                                "system",
-	"GET /api/v1/resource-import/jobs/:taskID":                                "system",
 	"GET /api/v1/applications/:appID/workflows":                               "member",
 	"GET /api/v1/applications/:appID/spec":                                    "member",
 	"GET /api/v1/applications/:appID/status":                                  "viewer",
@@ -105,7 +100,6 @@ var businessRoutes = map[string]string{
 	"GET /api/v1/applications/:appID/workflow/schedules":                      "member",
 	"POST /api/v1/applications/:appID/workflow/schedule":                      "member",
 	"DELETE /api/v1/applications/:appID/workflow/schedule/:workflowID":        "member",
-	"POST /api/v1/applications/:appID/resources/cleanup-plan":                 "member",
 	"DELETE /api/v1/applications/:appID/resources":                            "member",
 	"POST /api/v1/applications/:appID/database-reset":                         "member",
 	"POST /api/v1/applications/:appID/log-archives":                           "member",
@@ -175,11 +169,7 @@ func HasAuthPolicy(method, path string) bool {
 // BusinessRoutePolicy returns the authorization class of a business endpoint.
 // Empty means no business policy; unknown routes remain denied by Auth.
 func BusinessRoutePolicy(method, path string) string {
-	minimum := businessRoutes[method+" "+path]
-	if minimum == "system" && (strings.HasPrefix(path, "/api/v1/applications/") || strings.HasPrefix(path, "/api/v1/resource-import/")) {
-		return "system_workspace"
-	}
-	return minimum
+	return businessRoutes[method+" "+path]
 }
 
 func Auth(opts AuthOptions) gin.HandlerFunc {
@@ -244,7 +234,7 @@ func Auth(opts AuthOptions) gin.HandlerFunc {
 			return
 		}
 		minimum := BusinessRoutePolicy(c.Request.Method, path)
-		if minimum == "" || ((minimum == "system" || minimum == "system_workspace") && !p.User.SystemAdmin) {
+		if minimum == "" || (minimum == "system" && !p.User.SystemAdmin) {
 			apiresponse.ReturnError(c, bcode.ErrForbidden)
 			c.Abort()
 			return
@@ -265,7 +255,6 @@ func Auth(opts AuthOptions) gin.HandlerFunc {
 			return
 		}
 		scope := account.Scope{UserID: p.User.ID, WorkspaceID: a.Workspace.ID, Namespace: a.Workspace.Namespace, Role: a.Role, SystemAdmin: p.User.SystemAdmin}
-		scope.ClusterOperation = minimum == "system_workspace"
 		ctx := account.WithScope(c.Request.Context(), scope)
 		c.Request = c.Request.WithContext(ctx)
 		guard := account.NewStore(s.Repo.Store)

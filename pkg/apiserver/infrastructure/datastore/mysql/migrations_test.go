@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"strings"
 	"testing"
 	"time"
@@ -247,7 +246,6 @@ func TestMigrationSettingsHaveTimestamps(t *testing.T) {
 		name, settingType string
 		migrate           func(context.Context, *gorm.DB) error
 	}{
-		{"application management marker", applicationManagementModeMigrationMarker, migrateApplicationManagementMode},
 		{"schema marker", schemaMigrationMarker, writeSchemaMigrationMarker},
 		{"imported setting", model.SystemSettingTypeNodeSelector, func(ctx context.Context, db *gorm.DB) error {
 			return migrateSettingFromTable(ctx, db, "legacy_profiles", model.SystemSettingTypeNodeSelector, func(rows []nodeSelectorProfileRow) (json.RawMessage, error) {
@@ -484,58 +482,6 @@ func TestMigrateApplicationComponentRuntimeStatusStopsAfterBackfillError(t *test
 	require.ErrorIs(t, err, sentinel)
 	require.ErrorContains(t, err, "backfill application component ready_replicas")
 	require.Equal(t, 2, updates)
-}
-
-func TestMigrateApplicationManagementModeRunsNativeAndObserveBackfills(t *testing.T) {
-	db := newDryRunMySQL(t)
-	var statements []string
-	require.NoError(t, db.Callback().Update().After("gorm:update").Register(
-		"test:capture_application_management_mode_backfills",
-		func(tx *gorm.DB) {
-			statements = append(statements, tx.Statement.SQL.String())
-		},
-	))
-
-	require.NoError(t, migrateApplicationManagementModeTx(db.WithContext(context.Background())))
-	require.Len(t, statements, 2)
-	require.Contains(t, statements[0], "management_mode")
-	require.Contains(t, statements[1], "LOWER(project) = ? AND LOWER(version) = ?")
-}
-
-func TestMigrateApplicationManagementModeDoesNotRepeatAfterMarkerExists(t *testing.T) {
-	db := newDryRunMySQL(t)
-	var updates int
-	require.NoError(t, db.Callback().Create().Before("gorm:create").Register(
-		"test:existing_application_management_mode_marker",
-		func(tx *gorm.DB) {
-			if setting, ok := tx.Statement.Dest.(*model.SystemSetting); ok &&
-				setting.Type == applicationManagementModeMigrationMarker {
-				tx.AddError(gorm.ErrDuplicatedKey)
-			}
-		},
-	))
-	require.NoError(t, db.Callback().Update().Before("gorm:update").Register(
-		"test:no_repeated_application_management_mode_backfill",
-		func(*gorm.DB) { updates++ },
-	))
-
-	require.NoError(t, migrateApplicationManagementModeTx(db.WithContext(context.Background())))
-	require.Zero(t, updates)
-}
-
-func TestApplicationManagementModeSchemaKeepsLegacyWritesNullable(t *testing.T) {
-	db := newDryRunMySQL(t)
-	statement := &gorm.Statement{DB: db}
-	require.NoError(t, statement.Parse(&model.Applications{}))
-
-	field := statement.Schema.LookUpField("ManagementMode")
-	require.NotNil(t, field)
-	require.False(t, field.NotNull)
-	require.False(t, field.HasDefaultValue)
-	require.Empty(t, field.DefaultValue)
-
-	legacyImportedAfterMarker := &model.Applications{Project: "imported", Version: "imported"}
-	require.Equal(t, domainspec.ManagementModeObserve, legacyImportedAfterMarker.EffectiveManagementMode())
 }
 
 func newDryRunMySQL(t *testing.T) *gorm.DB {

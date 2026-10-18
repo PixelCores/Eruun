@@ -173,9 +173,6 @@ func (c *CleanupResourcesJobCtl) run(ctx context.Context) error {
 		componentCopy.Namespace = config.DefaultNamespace
 	}
 	component = &componentCopy
-	if component.HasSourceWorkload() {
-		return fmt.Errorf("adopted source resource cleanup requires an explicit cleanup plan fingerprint")
-	}
 	if err := c.ensureVersionUpdateCleanupTargetNotReused(ctx, component); err != nil {
 		return err
 	}

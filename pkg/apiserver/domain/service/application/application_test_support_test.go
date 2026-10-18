@@ -244,14 +244,6 @@ func cloneComponentsMap(in map[string]*model.ApplicationComponent) map[string]*m
 		cp := *value
 		cp.Properties = cloneJSONStruct(value.Properties)
 		cp.Traits = cloneJSONStruct(value.Traits)
-		if value.SourceWorkloadUID != nil {
-			sourceWorkloadUID := *value.SourceWorkloadUID
-			cp.SourceWorkloadUID = &sourceWorkloadUID
-		}
-		if value.ResumeReplicas != nil {
-			resumeReplicas := *value.ResumeReplicas
-			cp.ResumeReplicas = &resumeReplicas
-		}
 		out[key] = &cp
 	}
 	return out
@@ -759,11 +751,6 @@ func matchesComponentRuntimeConditions(component *model.ApplicationComponent, co
 			if !ok || component.ID != id {
 				return false
 			}
-		case "source_workload_uid":
-			sourceUID, ok := value.(string)
-			if !ok || component.SourceWorkloadUID == nil || *component.SourceWorkloadUID != sourceUID {
-				return false
-			}
 		default:
 			return false
 		}
@@ -788,18 +775,6 @@ func applyComponentRuntimeUpdates(component *model.ApplicationComponent, updates
 		case "last_abnormal":
 			if lastAbnormal, ok := value.(string); ok {
 				component.LastAbnormal = lastAbnormal
-			}
-		case "resume_replicas":
-			switch resumeReplicas := value.(type) {
-			case int32:
-				component.ResumeReplicas = &resumeReplicas
-			case *int32:
-				if resumeReplicas == nil {
-					component.ResumeReplicas = nil
-					continue
-				}
-				valueCopy := *resumeReplicas
-				component.ResumeReplicas = &valueCopy
 			}
 		}
 	}

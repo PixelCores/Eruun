@@ -18,7 +18,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
@@ -96,39 +95,6 @@ func TestDeleteApplicationCascadeSuccess(t *testing.T) {
 	}
 	if _, err := clientset.CoreV1().Namespaces().Get(context.Background(), "tenant-a", metav1.GetOptions{}); err != nil {
 		t.Fatalf("namespace should be preserved: %v", err)
-	}
-}
-
-func TestDeleteApplicationCascadeReloadsManagementModeAfterLock(t *testing.T) {
-	store := newCascadeDeleteStore()
-	seedCascadeStoreData(store)
-	appRepo := &transitioningCascadeAppRepo{
-		cascadeAppRepo: &cascadeAppRepo{store: store},
-		transitionMode: domainspec.ManagementModeObserve,
-	}
-	svc := &applicationsServiceImpl{
-		KubeClient:     fake.NewSimpleClientset(),
-		Store:          store,
-		AppRepo:        appRepo,
-		ComponentRepo:  &cascadeComponentRepo{store: store},
-		ScheduleLocker: locker.NewMemoryLocker("test-app-schedule"),
-		RedisClient:    newTestApplicationDeleteCancelSignalClient(t),
-	}
-
-	resp, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{
-		WaitSeconds: int64Ptr(0),
-	})
-	if err != nil {
-		t.Fatalf("delete observe application: %v", err)
-	}
-	if resp == nil || !resp.ResourcesRetained {
-		t.Fatalf("expected retained resources response, got %+v", resp)
-	}
-	if len(resp.DeletedResources) != 0 {
-		t.Fatalf("observe delete must not delete Kubernetes resources: %+v", resp.DeletedResources)
-	}
-	if appRepo.findCalls < 2 {
-		t.Fatalf("expected mode reload after lock, got %d reads", appRepo.findCalls)
 	}
 }
 
@@ -955,26 +921,6 @@ func containsString(values []string, target string) bool {
 type cascadeAppRepo struct {
 	store *cascadeDeleteStore
 }
-
-type transitioningCascadeAppRepo struct {
-	*cascadeAppRepo
-	findCalls      int
-	transitionMode domainspec.ManagementMode
-}
-
-func (r *transitioningCascadeAppRepo) FindByID(ctx context.Context, id string) (*model.Applications, error) {
-	app, err := r.cascadeAppRepo.FindByID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	r.findCalls++
-	if r.findCalls == 1 {
-		r.store.apps[id].ManagementMode = r.transitionMode
-	}
-	return app, nil
-}
-
-var _ repository.ApplicationRepository = (*transitioningCascadeAppRepo)(nil)
 
 func (r *cascadeAppRepo) FindByID(ctx context.Context, id string) (*model.Applications, error) {
 	app := &model.Applications{ID: id}

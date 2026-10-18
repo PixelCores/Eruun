@@ -974,58 +974,6 @@ func (x *UpsertWorkflowScheduleRPCRequest) GetRequest() *AppDTOUpsertWorkflowSch
 	return nil
 }
 
-type CleanupApplicationRPCRequest struct {
-	state         protoimpl.MessageState                    `protogen:"open.v1"`
-	AppId         string                                    `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
-	Request       *AppDTOCleanupApplicationResourcesRequest `protobuf:"bytes,2,opt,name=request,proto3" json:"request,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *CleanupApplicationRPCRequest) Reset() {
-	*x = CleanupApplicationRPCRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[17]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *CleanupApplicationRPCRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*CleanupApplicationRPCRequest) ProtoMessage() {}
-
-func (x *CleanupApplicationRPCRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[17]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use CleanupApplicationRPCRequest.ProtoReflect.Descriptor instead.
-func (*CleanupApplicationRPCRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{17}
-}
-
-func (x *CleanupApplicationRPCRequest) GetAppId() string {
-	if x != nil {
-		return x.AppId
-	}
-	return ""
-}
-
-func (x *CleanupApplicationRPCRequest) GetRequest() *AppDTOCleanupApplicationResourcesRequest {
-	if x != nil {
-		return x.Request
-	}
-	return nil
-}
-
 type ResetApplicationDatabasesRPCRequest struct {
 	state         protoimpl.MessageState      `protogen:"open.v1"`
 	AppId         string                      `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
@@ -1036,7 +984,7 @@ type ResetApplicationDatabasesRPCRequest struct {
 
 func (x *ResetApplicationDatabasesRPCRequest) Reset() {
 	*x = ResetApplicationDatabasesRPCRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[18]
+	mi := &file_eruun_v1_applications_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1048,7 +996,7 @@ func (x *ResetApplicationDatabasesRPCRequest) String() string {
 func (*ResetApplicationDatabasesRPCRequest) ProtoMessage() {}
 
 func (x *ResetApplicationDatabasesRPCRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[18]
+	mi := &file_eruun_v1_applications_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1061,7 +1009,7 @@ func (x *ResetApplicationDatabasesRPCRequest) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use ResetApplicationDatabasesRPCRequest.ProtoReflect.Descriptor instead.
 func (*ResetApplicationDatabasesRPCRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{18}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ResetApplicationDatabasesRPCRequest) GetAppId() string {
@@ -1088,7 +1036,7 @@ type LogArchiveRPCRequest struct {
 
 func (x *LogArchiveRPCRequest) Reset() {
 	*x = LogArchiveRPCRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[19]
+	mi := &file_eruun_v1_applications_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1100,7 +1048,7 @@ func (x *LogArchiveRPCRequest) String() string {
 func (*LogArchiveRPCRequest) ProtoMessage() {}
 
 func (x *LogArchiveRPCRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[19]
+	mi := &file_eruun_v1_applications_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1113,7 +1061,7 @@ func (x *LogArchiveRPCRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogArchiveRPCRequest.ProtoReflect.Descriptor instead.
 func (*LogArchiveRPCRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{19}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *LogArchiveRPCRequest) GetAppId() string {
@@ -1140,7 +1088,7 @@ type ApplicationLifecycleRPCRequest struct {
 
 func (x *ApplicationLifecycleRPCRequest) Reset() {
 	*x = ApplicationLifecycleRPCRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[20]
+	mi := &file_eruun_v1_applications_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1152,7 +1100,7 @@ func (x *ApplicationLifecycleRPCRequest) String() string {
 func (*ApplicationLifecycleRPCRequest) ProtoMessage() {}
 
 func (x *ApplicationLifecycleRPCRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[20]
+	mi := &file_eruun_v1_applications_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1165,7 +1113,7 @@ func (x *ApplicationLifecycleRPCRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplicationLifecycleRPCRequest.ProtoReflect.Descriptor instead.
 func (*ApplicationLifecycleRPCRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{20}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ApplicationLifecycleRPCRequest) GetAppId() string {
@@ -1192,7 +1140,7 @@ type ExecWorkflowRPCRequest struct {
 
 func (x *ExecWorkflowRPCRequest) Reset() {
 	*x = ExecWorkflowRPCRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[21]
+	mi := &file_eruun_v1_applications_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1204,7 +1152,7 @@ func (x *ExecWorkflowRPCRequest) String() string {
 func (*ExecWorkflowRPCRequest) ProtoMessage() {}
 
 func (x *ExecWorkflowRPCRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[21]
+	mi := &file_eruun_v1_applications_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1217,7 +1165,7 @@ func (x *ExecWorkflowRPCRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecWorkflowRPCRequest.ProtoReflect.Descriptor instead.
 func (*ExecWorkflowRPCRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{21}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ExecWorkflowRPCRequest) GetAppId() string {
@@ -1244,7 +1192,7 @@ type CancelWorkflowRPCRequest struct {
 
 func (x *CancelWorkflowRPCRequest) Reset() {
 	*x = CancelWorkflowRPCRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[22]
+	mi := &file_eruun_v1_applications_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1256,7 +1204,7 @@ func (x *CancelWorkflowRPCRequest) String() string {
 func (*CancelWorkflowRPCRequest) ProtoMessage() {}
 
 func (x *CancelWorkflowRPCRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[22]
+	mi := &file_eruun_v1_applications_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1269,7 +1217,7 @@ func (x *CancelWorkflowRPCRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelWorkflowRPCRequest.ProtoReflect.Descriptor instead.
 func (*CancelWorkflowRPCRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{22}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *CancelWorkflowRPCRequest) GetAppId() string {
@@ -1296,7 +1244,7 @@ type TaskApprovalRPCRequest struct {
 
 func (x *TaskApprovalRPCRequest) Reset() {
 	*x = TaskApprovalRPCRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[23]
+	mi := &file_eruun_v1_applications_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1308,7 +1256,7 @@ func (x *TaskApprovalRPCRequest) String() string {
 func (*TaskApprovalRPCRequest) ProtoMessage() {}
 
 func (x *TaskApprovalRPCRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[23]
+	mi := &file_eruun_v1_applications_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1321,7 +1269,7 @@ func (x *TaskApprovalRPCRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskApprovalRPCRequest.ProtoReflect.Descriptor instead.
 func (*TaskApprovalRPCRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{23}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *TaskApprovalRPCRequest) GetTaskId() string {
@@ -1348,7 +1296,7 @@ type UpdateVersionRPCRequest struct {
 
 func (x *UpdateVersionRPCRequest) Reset() {
 	*x = UpdateVersionRPCRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[24]
+	mi := &file_eruun_v1_applications_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1360,7 +1308,7 @@ func (x *UpdateVersionRPCRequest) String() string {
 func (*UpdateVersionRPCRequest) ProtoMessage() {}
 
 func (x *UpdateVersionRPCRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[24]
+	mi := &file_eruun_v1_applications_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1373,7 +1321,7 @@ func (x *UpdateVersionRPCRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateVersionRPCRequest.ProtoReflect.Descriptor instead.
 func (*UpdateVersionRPCRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{24}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *UpdateVersionRPCRequest) GetAppId() string {
@@ -1400,7 +1348,7 @@ type DiffUpdateVersionRPCRequest struct {
 
 func (x *DiffUpdateVersionRPCRequest) Reset() {
 	*x = DiffUpdateVersionRPCRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[25]
+	mi := &file_eruun_v1_applications_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1412,7 +1360,7 @@ func (x *DiffUpdateVersionRPCRequest) String() string {
 func (*DiffUpdateVersionRPCRequest) ProtoMessage() {}
 
 func (x *DiffUpdateVersionRPCRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[25]
+	mi := &file_eruun_v1_applications_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1425,7 +1373,7 @@ func (x *DiffUpdateVersionRPCRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiffUpdateVersionRPCRequest.ProtoReflect.Descriptor instead.
 func (*DiffUpdateVersionRPCRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{25}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *DiffUpdateVersionRPCRequest) GetAppId() string {
@@ -1456,7 +1404,7 @@ type AppDTOCreateAndExecApplicationResponse struct {
 
 func (x *AppDTOCreateAndExecApplicationResponse) Reset() {
 	*x = AppDTOCreateAndExecApplicationResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[26]
+	mi := &file_eruun_v1_applications_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1468,7 +1416,7 @@ func (x *AppDTOCreateAndExecApplicationResponse) String() string {
 func (*AppDTOCreateAndExecApplicationResponse) ProtoMessage() {}
 
 func (x *AppDTOCreateAndExecApplicationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[26]
+	mi := &file_eruun_v1_applications_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1481,7 +1429,7 @@ func (x *AppDTOCreateAndExecApplicationResponse) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use AppDTOCreateAndExecApplicationResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOCreateAndExecApplicationResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{26}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *AppDTOCreateAndExecApplicationResponse) GetApplication() *AppDTOApplicationBase {
@@ -1544,7 +1492,7 @@ type AppDTOCronJobInfo struct {
 
 func (x *AppDTOCronJobInfo) Reset() {
 	*x = AppDTOCronJobInfo{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[27]
+	mi := &file_eruun_v1_applications_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1556,7 +1504,7 @@ func (x *AppDTOCronJobInfo) String() string {
 func (*AppDTOCronJobInfo) ProtoMessage() {}
 
 func (x *AppDTOCronJobInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[27]
+	mi := &file_eruun_v1_applications_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1569,7 +1517,7 @@ func (x *AppDTOCronJobInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOCronJobInfo.ProtoReflect.Descriptor instead.
 func (*AppDTOCronJobInfo) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{27}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *AppDTOCronJobInfo) GetName() string {
@@ -1661,7 +1609,7 @@ type AppDTOScheduledJobInfo struct {
 
 func (x *AppDTOScheduledJobInfo) Reset() {
 	*x = AppDTOScheduledJobInfo{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[28]
+	mi := &file_eruun_v1_applications_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1673,7 +1621,7 @@ func (x *AppDTOScheduledJobInfo) String() string {
 func (*AppDTOScheduledJobInfo) ProtoMessage() {}
 
 func (x *AppDTOScheduledJobInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[28]
+	mi := &file_eruun_v1_applications_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1686,7 +1634,7 @@ func (x *AppDTOScheduledJobInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOScheduledJobInfo.ProtoReflect.Descriptor instead.
 func (*AppDTOScheduledJobInfo) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{28}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *AppDTOScheduledJobInfo) GetAppId() string {
@@ -1778,7 +1726,7 @@ type AppDTOAllowedAction struct {
 
 func (x *AppDTOAllowedAction) Reset() {
 	*x = AppDTOAllowedAction{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[29]
+	mi := &file_eruun_v1_applications_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1790,7 +1738,7 @@ func (x *AppDTOAllowedAction) String() string {
 func (*AppDTOAllowedAction) ProtoMessage() {}
 
 func (x *AppDTOAllowedAction) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[29]
+	mi := &file_eruun_v1_applications_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1803,7 +1751,7 @@ func (x *AppDTOAllowedAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOAllowedAction.ProtoReflect.Descriptor instead.
 func (*AppDTOAllowedAction) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{29}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *AppDTOAllowedAction) GetName() string {
@@ -1849,7 +1797,6 @@ type AppDTOApplicationBase struct {
 	Icon            string                      `protobuf:"bytes,11,opt,name=icon,proto3" json:"icon,omitempty"`
 	WorkflowId      string                      `protobuf:"bytes,12,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
 	TemplateEnabled bool                        `protobuf:"varint,13,opt,name=template_enabled,json=templateEnabled,proto3" json:"template_enabled,omitempty"`
-	ManagementMode  string                      `protobuf:"bytes,14,opt,name=management_mode,json=managementMode,proto3" json:"management_mode,omitempty"`
 	Resources       *AppDTOApplicationResources `protobuf:"bytes,15,opt,name=resources,proto3" json:"resources,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
@@ -1857,7 +1804,7 @@ type AppDTOApplicationBase struct {
 
 func (x *AppDTOApplicationBase) Reset() {
 	*x = AppDTOApplicationBase{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[30]
+	mi := &file_eruun_v1_applications_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1869,7 +1816,7 @@ func (x *AppDTOApplicationBase) String() string {
 func (*AppDTOApplicationBase) ProtoMessage() {}
 
 func (x *AppDTOApplicationBase) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[30]
+	mi := &file_eruun_v1_applications_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1882,7 +1829,7 @@ func (x *AppDTOApplicationBase) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOApplicationBase.ProtoReflect.Descriptor instead.
 func (*AppDTOApplicationBase) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{30}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *AppDTOApplicationBase) GetWorkspaceId() string {
@@ -1976,13 +1923,6 @@ func (x *AppDTOApplicationBase) GetTemplateEnabled() bool {
 	return false
 }
 
-func (x *AppDTOApplicationBase) GetManagementMode() string {
-	if x != nil {
-		return x.ManagementMode
-	}
-	return ""
-}
-
 func (x *AppDTOApplicationBase) GetResources() *AppDTOApplicationResources {
 	if x != nil {
 		return x.Resources
@@ -2017,7 +1957,7 @@ type AppDTOApplicationComponent struct {
 
 func (x *AppDTOApplicationComponent) Reset() {
 	*x = AppDTOApplicationComponent{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[31]
+	mi := &file_eruun_v1_applications_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2029,7 +1969,7 @@ func (x *AppDTOApplicationComponent) String() string {
 func (*AppDTOApplicationComponent) ProtoMessage() {}
 
 func (x *AppDTOApplicationComponent) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[31]
+	mi := &file_eruun_v1_applications_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2042,7 +1982,7 @@ func (x *AppDTOApplicationComponent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOApplicationComponent.ProtoReflect.Descriptor instead.
 func (*AppDTOApplicationComponent) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{31}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *AppDTOApplicationComponent) GetId() int32 {
@@ -2193,7 +2133,7 @@ type AppDTOApplicationComponentStatus struct {
 
 func (x *AppDTOApplicationComponentStatus) Reset() {
 	*x = AppDTOApplicationComponentStatus{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[32]
+	mi := &file_eruun_v1_applications_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2205,7 +2145,7 @@ func (x *AppDTOApplicationComponentStatus) String() string {
 func (*AppDTOApplicationComponentStatus) ProtoMessage() {}
 
 func (x *AppDTOApplicationComponentStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[32]
+	mi := &file_eruun_v1_applications_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2218,7 +2158,7 @@ func (x *AppDTOApplicationComponentStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOApplicationComponentStatus.ProtoReflect.Descriptor instead.
 func (*AppDTOApplicationComponentStatus) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{32}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *AppDTOApplicationComponentStatus) GetName() string {
@@ -2280,7 +2220,7 @@ type AppDTOApplicationComponentStatusResponse struct {
 
 func (x *AppDTOApplicationComponentStatusResponse) Reset() {
 	*x = AppDTOApplicationComponentStatusResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[33]
+	mi := &file_eruun_v1_applications_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2292,7 +2232,7 @@ func (x *AppDTOApplicationComponentStatusResponse) String() string {
 func (*AppDTOApplicationComponentStatusResponse) ProtoMessage() {}
 
 func (x *AppDTOApplicationComponentStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[33]
+	mi := &file_eruun_v1_applications_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2305,7 +2245,7 @@ func (x *AppDTOApplicationComponentStatusResponse) ProtoReflect() protoreflect.M
 
 // Deprecated: Use AppDTOApplicationComponentStatusResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOApplicationComponentStatusResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{33}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *AppDTOApplicationComponentStatusResponse) GetAppId() string {
@@ -2331,7 +2271,7 @@ type AppDTOApplicationLifecycleRequest struct {
 
 func (x *AppDTOApplicationLifecycleRequest) Reset() {
 	*x = AppDTOApplicationLifecycleRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[34]
+	mi := &file_eruun_v1_applications_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2343,7 +2283,7 @@ func (x *AppDTOApplicationLifecycleRequest) String() string {
 func (*AppDTOApplicationLifecycleRequest) ProtoMessage() {}
 
 func (x *AppDTOApplicationLifecycleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[34]
+	mi := &file_eruun_v1_applications_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2356,7 +2296,7 @@ func (x *AppDTOApplicationLifecycleRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use AppDTOApplicationLifecycleRequest.ProtoReflect.Descriptor instead.
 func (*AppDTOApplicationLifecycleRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{34}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *AppDTOApplicationLifecycleRequest) GetCallback() *AppDTOWorkflowCallback {
@@ -2379,7 +2319,7 @@ type AppDTOApplicationResources struct {
 
 func (x *AppDTOApplicationResources) Reset() {
 	*x = AppDTOApplicationResources{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[35]
+	mi := &file_eruun_v1_applications_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2391,7 +2331,7 @@ func (x *AppDTOApplicationResources) String() string {
 func (*AppDTOApplicationResources) ProtoMessage() {}
 
 func (x *AppDTOApplicationResources) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[35]
+	mi := &file_eruun_v1_applications_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2404,7 +2344,7 @@ func (x *AppDTOApplicationResources) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOApplicationResources.ProtoReflect.Descriptor instead.
 func (*AppDTOApplicationResources) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{35}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *AppDTOApplicationResources) GetCpuReq() string {
@@ -2452,7 +2392,7 @@ type AppDTOApplicationStatusResponse struct {
 
 func (x *AppDTOApplicationStatusResponse) Reset() {
 	*x = AppDTOApplicationStatusResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[36]
+	mi := &file_eruun_v1_applications_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2464,7 +2404,7 @@ func (x *AppDTOApplicationStatusResponse) String() string {
 func (*AppDTOApplicationStatusResponse) ProtoMessage() {}
 
 func (x *AppDTOApplicationStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[36]
+	mi := &file_eruun_v1_applications_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2477,7 +2417,7 @@ func (x *AppDTOApplicationStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOApplicationStatusResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOApplicationStatusResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{36}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *AppDTOApplicationStatusResponse) GetAppId() string {
@@ -2514,7 +2454,7 @@ type AppDTOApplicationTask struct {
 
 func (x *AppDTOApplicationTask) Reset() {
 	*x = AppDTOApplicationTask{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[37]
+	mi := &file_eruun_v1_applications_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2526,7 +2466,7 @@ func (x *AppDTOApplicationTask) String() string {
 func (*AppDTOApplicationTask) ProtoMessage() {}
 
 func (x *AppDTOApplicationTask) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[37]
+	mi := &file_eruun_v1_applications_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2539,7 +2479,7 @@ func (x *AppDTOApplicationTask) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOApplicationTask.ProtoReflect.Descriptor instead.
 func (*AppDTOApplicationTask) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{37}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *AppDTOApplicationTask) GetTaskId() string {
@@ -2641,7 +2581,6 @@ type AppDTOApplicationWithComponents struct {
 	Icon            string                             `protobuf:"bytes,11,opt,name=icon,proto3" json:"icon,omitempty"`
 	WorkflowId      string                             `protobuf:"bytes,12,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
 	TemplateEnabled bool                               `protobuf:"varint,13,opt,name=template_enabled,json=templateEnabled,proto3" json:"template_enabled,omitempty"`
-	ManagementMode  string                             `protobuf:"bytes,14,opt,name=management_mode,json=managementMode,proto3" json:"management_mode,omitempty"`
 	Resources       *AppDTOApplicationResources        `protobuf:"bytes,15,opt,name=resources,proto3" json:"resources,omitempty"`
 	Components      []*AppDTOBatchApplicationComponent `protobuf:"bytes,16,rep,name=components,proto3" json:"components,omitempty"`
 	unknownFields   protoimpl.UnknownFields
@@ -2650,7 +2589,7 @@ type AppDTOApplicationWithComponents struct {
 
 func (x *AppDTOApplicationWithComponents) Reset() {
 	*x = AppDTOApplicationWithComponents{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[38]
+	mi := &file_eruun_v1_applications_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2662,7 +2601,7 @@ func (x *AppDTOApplicationWithComponents) String() string {
 func (*AppDTOApplicationWithComponents) ProtoMessage() {}
 
 func (x *AppDTOApplicationWithComponents) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[38]
+	mi := &file_eruun_v1_applications_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2675,7 +2614,7 @@ func (x *AppDTOApplicationWithComponents) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOApplicationWithComponents.ProtoReflect.Descriptor instead.
 func (*AppDTOApplicationWithComponents) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{38}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *AppDTOApplicationWithComponents) GetWorkspaceId() string {
@@ -2769,13 +2708,6 @@ func (x *AppDTOApplicationWithComponents) GetTemplateEnabled() bool {
 	return false
 }
 
-func (x *AppDTOApplicationWithComponents) GetManagementMode() string {
-	if x != nil {
-		return x.ManagementMode
-	}
-	return ""
-}
-
 func (x *AppDTOApplicationWithComponents) GetResources() *AppDTOApplicationResources {
 	if x != nil {
 		return x.Resources
@@ -2813,7 +2745,7 @@ type AppDTOApplicationWorkflow struct {
 
 func (x *AppDTOApplicationWorkflow) Reset() {
 	*x = AppDTOApplicationWorkflow{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[39]
+	mi := &file_eruun_v1_applications_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2825,7 +2757,7 @@ func (x *AppDTOApplicationWorkflow) String() string {
 func (*AppDTOApplicationWorkflow) ProtoMessage() {}
 
 func (x *AppDTOApplicationWorkflow) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[39]
+	mi := &file_eruun_v1_applications_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2838,7 +2770,7 @@ func (x *AppDTOApplicationWorkflow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOApplicationWorkflow.ProtoReflect.Descriptor instead.
 func (*AppDTOApplicationWorkflow) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{39}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *AppDTOApplicationWorkflow) GetId() string {
@@ -2961,7 +2893,7 @@ type AppDTOBatchApplicationComponent struct {
 
 func (x *AppDTOBatchApplicationComponent) Reset() {
 	*x = AppDTOBatchApplicationComponent{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[40]
+	mi := &file_eruun_v1_applications_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2973,7 +2905,7 @@ func (x *AppDTOBatchApplicationComponent) String() string {
 func (*AppDTOBatchApplicationComponent) ProtoMessage() {}
 
 func (x *AppDTOBatchApplicationComponent) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[40]
+	mi := &file_eruun_v1_applications_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2986,7 +2918,7 @@ func (x *AppDTOBatchApplicationComponent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOBatchApplicationComponent.ProtoReflect.Descriptor instead.
 func (*AppDTOBatchApplicationComponent) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{40}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *AppDTOBatchApplicationComponent) GetId() int32 {
@@ -3047,7 +2979,7 @@ type AppDTOBatchApplicationComponentProperties struct {
 
 func (x *AppDTOBatchApplicationComponentProperties) Reset() {
 	*x = AppDTOBatchApplicationComponentProperties{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[41]
+	mi := &file_eruun_v1_applications_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3059,7 +2991,7 @@ func (x *AppDTOBatchApplicationComponentProperties) String() string {
 func (*AppDTOBatchApplicationComponentProperties) ProtoMessage() {}
 
 func (x *AppDTOBatchApplicationComponentProperties) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[41]
+	mi := &file_eruun_v1_applications_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3072,7 +3004,7 @@ func (x *AppDTOBatchApplicationComponentProperties) ProtoReflect() protoreflect.
 
 // Deprecated: Use AppDTOBatchApplicationComponentProperties.ProtoReflect.Descriptor instead.
 func (*AppDTOBatchApplicationComponentProperties) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{41}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *AppDTOBatchApplicationComponentProperties) GetPorts() []*AppSpecPorts {
@@ -3091,7 +3023,7 @@ type AppDTOBatchApplicationComponentStatusRequest struct {
 
 func (x *AppDTOBatchApplicationComponentStatusRequest) Reset() {
 	*x = AppDTOBatchApplicationComponentStatusRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[42]
+	mi := &file_eruun_v1_applications_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3103,7 +3035,7 @@ func (x *AppDTOBatchApplicationComponentStatusRequest) String() string {
 func (*AppDTOBatchApplicationComponentStatusRequest) ProtoMessage() {}
 
 func (x *AppDTOBatchApplicationComponentStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[42]
+	mi := &file_eruun_v1_applications_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3116,7 +3048,7 @@ func (x *AppDTOBatchApplicationComponentStatusRequest) ProtoReflect() protorefle
 
 // Deprecated: Use AppDTOBatchApplicationComponentStatusRequest.ProtoReflect.Descriptor instead.
 func (*AppDTOBatchApplicationComponentStatusRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{42}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *AppDTOBatchApplicationComponentStatusRequest) GetAppIDs() []string {
@@ -3135,7 +3067,7 @@ type AppDTOBatchApplicationComponentStatusResponse struct {
 
 func (x *AppDTOBatchApplicationComponentStatusResponse) Reset() {
 	*x = AppDTOBatchApplicationComponentStatusResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[43]
+	mi := &file_eruun_v1_applications_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3147,7 +3079,7 @@ func (x *AppDTOBatchApplicationComponentStatusResponse) String() string {
 func (*AppDTOBatchApplicationComponentStatusResponse) ProtoMessage() {}
 
 func (x *AppDTOBatchApplicationComponentStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[43]
+	mi := &file_eruun_v1_applications_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3160,7 +3092,7 @@ func (x *AppDTOBatchApplicationComponentStatusResponse) ProtoReflect() protorefl
 
 // Deprecated: Use AppDTOBatchApplicationComponentStatusResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOBatchApplicationComponentStatusResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{43}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *AppDTOBatchApplicationComponentStatusResponse) GetResults() []*AppDTOBatchApplicationComponentStatusResult {
@@ -3181,7 +3113,7 @@ type AppDTOBatchApplicationComponentStatusResult struct {
 
 func (x *AppDTOBatchApplicationComponentStatusResult) Reset() {
 	*x = AppDTOBatchApplicationComponentStatusResult{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[44]
+	mi := &file_eruun_v1_applications_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3193,7 +3125,7 @@ func (x *AppDTOBatchApplicationComponentStatusResult) String() string {
 func (*AppDTOBatchApplicationComponentStatusResult) ProtoMessage() {}
 
 func (x *AppDTOBatchApplicationComponentStatusResult) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[44]
+	mi := &file_eruun_v1_applications_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3206,7 +3138,7 @@ func (x *AppDTOBatchApplicationComponentStatusResult) ProtoReflect() protoreflec
 
 // Deprecated: Use AppDTOBatchApplicationComponentStatusResult.ProtoReflect.Descriptor instead.
 func (*AppDTOBatchApplicationComponentStatusResult) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{44}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *AppDTOBatchApplicationComponentStatusResult) GetAppId() string {
@@ -3239,7 +3171,7 @@ type AppDTOBatchGetApplicationsRequest struct {
 
 func (x *AppDTOBatchGetApplicationsRequest) Reset() {
 	*x = AppDTOBatchGetApplicationsRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[45]
+	mi := &file_eruun_v1_applications_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3251,7 +3183,7 @@ func (x *AppDTOBatchGetApplicationsRequest) String() string {
 func (*AppDTOBatchGetApplicationsRequest) ProtoMessage() {}
 
 func (x *AppDTOBatchGetApplicationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[45]
+	mi := &file_eruun_v1_applications_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3264,7 +3196,7 @@ func (x *AppDTOBatchGetApplicationsRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use AppDTOBatchGetApplicationsRequest.ProtoReflect.Descriptor instead.
 func (*AppDTOBatchGetApplicationsRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{45}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *AppDTOBatchGetApplicationsRequest) GetAppIDs() []string {
@@ -3283,7 +3215,7 @@ type AppDTOBatchGetApplicationsResponse struct {
 
 func (x *AppDTOBatchGetApplicationsResponse) Reset() {
 	*x = AppDTOBatchGetApplicationsResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[46]
+	mi := &file_eruun_v1_applications_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3295,7 +3227,7 @@ func (x *AppDTOBatchGetApplicationsResponse) String() string {
 func (*AppDTOBatchGetApplicationsResponse) ProtoMessage() {}
 
 func (x *AppDTOBatchGetApplicationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[46]
+	mi := &file_eruun_v1_applications_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3308,7 +3240,7 @@ func (x *AppDTOBatchGetApplicationsResponse) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use AppDTOBatchGetApplicationsResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOBatchGetApplicationsResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{46}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *AppDTOBatchGetApplicationsResponse) GetApplications() []*AppDTOApplicationWithComponents {
@@ -3328,7 +3260,7 @@ type AppDTOCancelAllApplicationWorkflowsResponse struct {
 
 func (x *AppDTOCancelAllApplicationWorkflowsResponse) Reset() {
 	*x = AppDTOCancelAllApplicationWorkflowsResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[47]
+	mi := &file_eruun_v1_applications_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3340,7 +3272,7 @@ func (x *AppDTOCancelAllApplicationWorkflowsResponse) String() string {
 func (*AppDTOCancelAllApplicationWorkflowsResponse) ProtoMessage() {}
 
 func (x *AppDTOCancelAllApplicationWorkflowsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[47]
+	mi := &file_eruun_v1_applications_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3353,7 +3285,7 @@ func (x *AppDTOCancelAllApplicationWorkflowsResponse) ProtoReflect() protoreflec
 
 // Deprecated: Use AppDTOCancelAllApplicationWorkflowsResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOCancelAllApplicationWorkflowsResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{47}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *AppDTOCancelAllApplicationWorkflowsResponse) GetAppId() string {
@@ -3381,7 +3313,7 @@ type AppDTOCancelWorkflowRequest struct {
 
 func (x *AppDTOCancelWorkflowRequest) Reset() {
 	*x = AppDTOCancelWorkflowRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[48]
+	mi := &file_eruun_v1_applications_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3393,7 +3325,7 @@ func (x *AppDTOCancelWorkflowRequest) String() string {
 func (*AppDTOCancelWorkflowRequest) ProtoMessage() {}
 
 func (x *AppDTOCancelWorkflowRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[48]
+	mi := &file_eruun_v1_applications_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3406,7 +3338,7 @@ func (x *AppDTOCancelWorkflowRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOCancelWorkflowRequest.ProtoReflect.Descriptor instead.
 func (*AppDTOCancelWorkflowRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{48}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *AppDTOCancelWorkflowRequest) GetTaskId() string {
@@ -3440,7 +3372,7 @@ type AppDTOCancelWorkflowResponse struct {
 
 func (x *AppDTOCancelWorkflowResponse) Reset() {
 	*x = AppDTOCancelWorkflowResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[49]
+	mi := &file_eruun_v1_applications_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3452,7 +3384,7 @@ func (x *AppDTOCancelWorkflowResponse) String() string {
 func (*AppDTOCancelWorkflowResponse) ProtoMessage() {}
 
 func (x *AppDTOCancelWorkflowResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[49]
+	mi := &file_eruun_v1_applications_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3465,7 +3397,7 @@ func (x *AppDTOCancelWorkflowResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOCancelWorkflowResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOCancelWorkflowResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{49}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *AppDTOCancelWorkflowResponse) GetTaskId() string {
@@ -3482,132 +3414,19 @@ func (x *AppDTOCancelWorkflowResponse) GetStatus() string {
 	return ""
 }
 
-type AppDTOCleanupApplicationResourcesPlanResponse struct {
-	state           protoimpl.MessageState                 `protogen:"open.v1"`
-	AppId           string                                 `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
-	PlanFingerprint string                                 `protobuf:"bytes,2,opt,name=plan_fingerprint,json=planFingerprint,proto3" json:"plan_fingerprint,omitempty"`
-	ResourceResults []*AppDTOImportNamespaceResourceResult `protobuf:"bytes,3,rep,name=resource_results,json=resourceResults,proto3" json:"resource_results,omitempty"`
-	Warnings        []string                               `protobuf:"bytes,4,rep,name=warnings,proto3" json:"warnings,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
-}
-
-func (x *AppDTOCleanupApplicationResourcesPlanResponse) Reset() {
-	*x = AppDTOCleanupApplicationResourcesPlanResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[50]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AppDTOCleanupApplicationResourcesPlanResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AppDTOCleanupApplicationResourcesPlanResponse) ProtoMessage() {}
-
-func (x *AppDTOCleanupApplicationResourcesPlanResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[50]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AppDTOCleanupApplicationResourcesPlanResponse.ProtoReflect.Descriptor instead.
-func (*AppDTOCleanupApplicationResourcesPlanResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{50}
-}
-
-func (x *AppDTOCleanupApplicationResourcesPlanResponse) GetAppId() string {
-	if x != nil {
-		return x.AppId
-	}
-	return ""
-}
-
-func (x *AppDTOCleanupApplicationResourcesPlanResponse) GetPlanFingerprint() string {
-	if x != nil {
-		return x.PlanFingerprint
-	}
-	return ""
-}
-
-func (x *AppDTOCleanupApplicationResourcesPlanResponse) GetResourceResults() []*AppDTOImportNamespaceResourceResult {
-	if x != nil {
-		return x.ResourceResults
-	}
-	return nil
-}
-
-func (x *AppDTOCleanupApplicationResourcesPlanResponse) GetWarnings() []string {
-	if x != nil {
-		return x.Warnings
-	}
-	return nil
-}
-
-type AppDTOCleanupApplicationResourcesRequest struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	PlanFingerprint string                 `protobuf:"bytes,1,opt,name=plan_fingerprint,json=planFingerprint,proto3" json:"plan_fingerprint,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
-}
-
-func (x *AppDTOCleanupApplicationResourcesRequest) Reset() {
-	*x = AppDTOCleanupApplicationResourcesRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[51]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AppDTOCleanupApplicationResourcesRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AppDTOCleanupApplicationResourcesRequest) ProtoMessage() {}
-
-func (x *AppDTOCleanupApplicationResourcesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[51]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AppDTOCleanupApplicationResourcesRequest.ProtoReflect.Descriptor instead.
-func (*AppDTOCleanupApplicationResourcesRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{51}
-}
-
-func (x *AppDTOCleanupApplicationResourcesRequest) GetPlanFingerprint() string {
-	if x != nil {
-		return x.PlanFingerprint
-	}
-	return ""
-}
-
 type AppDTOCleanupApplicationResourcesResponse struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	AppId             string                 `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
-	TaskId            string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
-	DeletedResources  []string               `protobuf:"bytes,3,rep,name=deleted_resources,json=deletedResources,proto3" json:"deleted_resources,omitempty"`
-	FailedResources   []string               `protobuf:"bytes,4,rep,name=failed_resources,json=failedResources,proto3" json:"failed_resources,omitempty"`
-	RetainedResources []string               `protobuf:"bytes,5,rep,name=retained_resources,json=retainedResources,proto3" json:"retained_resources,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	AppId            string                 `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
+	TaskId           string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	DeletedResources []string               `protobuf:"bytes,3,rep,name=deleted_resources,json=deletedResources,proto3" json:"deleted_resources,omitempty"`
+	FailedResources  []string               `protobuf:"bytes,4,rep,name=failed_resources,json=failedResources,proto3" json:"failed_resources,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *AppDTOCleanupApplicationResourcesResponse) Reset() {
 	*x = AppDTOCleanupApplicationResourcesResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[52]
+	mi := &file_eruun_v1_applications_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3619,7 +3438,7 @@ func (x *AppDTOCleanupApplicationResourcesResponse) String() string {
 func (*AppDTOCleanupApplicationResourcesResponse) ProtoMessage() {}
 
 func (x *AppDTOCleanupApplicationResourcesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[52]
+	mi := &file_eruun_v1_applications_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3632,7 +3451,7 @@ func (x *AppDTOCleanupApplicationResourcesResponse) ProtoReflect() protoreflect.
 
 // Deprecated: Use AppDTOCleanupApplicationResourcesResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOCleanupApplicationResourcesResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{52}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *AppDTOCleanupApplicationResourcesResponse) GetAppId() string {
@@ -3663,13 +3482,6 @@ func (x *AppDTOCleanupApplicationResourcesResponse) GetFailedResources() []strin
 	return nil
 }
 
-func (x *AppDTOCleanupApplicationResourcesResponse) GetRetainedResources() []string {
-	if x != nil {
-		return x.RetainedResources
-	}
-	return nil
-}
-
 type AppDTOComponentContainerInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -3684,7 +3496,7 @@ type AppDTOComponentContainerInfo struct {
 
 func (x *AppDTOComponentContainerInfo) Reset() {
 	*x = AppDTOComponentContainerInfo{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[53]
+	mi := &file_eruun_v1_applications_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3696,7 +3508,7 @@ func (x *AppDTOComponentContainerInfo) String() string {
 func (*AppDTOComponentContainerInfo) ProtoMessage() {}
 
 func (x *AppDTOComponentContainerInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[53]
+	mi := &file_eruun_v1_applications_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3709,7 +3521,7 @@ func (x *AppDTOComponentContainerInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOComponentContainerInfo.ProtoReflect.Descriptor instead.
 func (*AppDTOComponentContainerInfo) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{53}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *AppDTOComponentContainerInfo) GetName() string {
@@ -3766,7 +3578,7 @@ type AppDTOComponentContainersResponse struct {
 
 func (x *AppDTOComponentContainersResponse) Reset() {
 	*x = AppDTOComponentContainersResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[54]
+	mi := &file_eruun_v1_applications_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3778,7 +3590,7 @@ func (x *AppDTOComponentContainersResponse) String() string {
 func (*AppDTOComponentContainersResponse) ProtoMessage() {}
 
 func (x *AppDTOComponentContainersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[54]
+	mi := &file_eruun_v1_applications_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3791,7 +3603,7 @@ func (x *AppDTOComponentContainersResponse) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use AppDTOComponentContainersResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOComponentContainersResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{54}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *AppDTOComponentContainersResponse) GetAppId() string {
@@ -3836,7 +3648,7 @@ type AppDTOComponentCredentialInfo struct {
 
 func (x *AppDTOComponentCredentialInfo) Reset() {
 	*x = AppDTOComponentCredentialInfo{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[55]
+	mi := &file_eruun_v1_applications_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3848,7 +3660,7 @@ func (x *AppDTOComponentCredentialInfo) String() string {
 func (*AppDTOComponentCredentialInfo) ProtoMessage() {}
 
 func (x *AppDTOComponentCredentialInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[55]
+	mi := &file_eruun_v1_applications_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3861,7 +3673,7 @@ func (x *AppDTOComponentCredentialInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOComponentCredentialInfo.ProtoReflect.Descriptor instead.
 func (*AppDTOComponentCredentialInfo) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{55}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *AppDTOComponentCredentialInfo) GetSource() string {
@@ -3920,7 +3732,7 @@ type AppDTOComponentIngressInfo struct {
 
 func (x *AppDTOComponentIngressInfo) Reset() {
 	*x = AppDTOComponentIngressInfo{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[56]
+	mi := &file_eruun_v1_applications_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3932,7 +3744,7 @@ func (x *AppDTOComponentIngressInfo) String() string {
 func (*AppDTOComponentIngressInfo) ProtoMessage() {}
 
 func (x *AppDTOComponentIngressInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[56]
+	mi := &file_eruun_v1_applications_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3945,7 +3757,7 @@ func (x *AppDTOComponentIngressInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOComponentIngressInfo.ProtoReflect.Descriptor instead.
 func (*AppDTOComponentIngressInfo) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{56}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *AppDTOComponentIngressInfo) GetName() string {
@@ -4006,7 +3818,7 @@ type AppDTOComponentIngressRouteInfo struct {
 
 func (x *AppDTOComponentIngressRouteInfo) Reset() {
 	*x = AppDTOComponentIngressRouteInfo{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[57]
+	mi := &file_eruun_v1_applications_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4018,7 +3830,7 @@ func (x *AppDTOComponentIngressRouteInfo) String() string {
 func (*AppDTOComponentIngressRouteInfo) ProtoMessage() {}
 
 func (x *AppDTOComponentIngressRouteInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[57]
+	mi := &file_eruun_v1_applications_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4031,7 +3843,7 @@ func (x *AppDTOComponentIngressRouteInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOComponentIngressRouteInfo.ProtoReflect.Descriptor instead.
 func (*AppDTOComponentIngressRouteInfo) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{57}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *AppDTOComponentIngressRouteInfo) GetHost() string {
@@ -4102,7 +3914,7 @@ type AppDTOComponentPodContainers struct {
 
 func (x *AppDTOComponentPodContainers) Reset() {
 	*x = AppDTOComponentPodContainers{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[58]
+	mi := &file_eruun_v1_applications_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4114,7 +3926,7 @@ func (x *AppDTOComponentPodContainers) String() string {
 func (*AppDTOComponentPodContainers) ProtoMessage() {}
 
 func (x *AppDTOComponentPodContainers) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[58]
+	mi := &file_eruun_v1_applications_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4127,7 +3939,7 @@ func (x *AppDTOComponentPodContainers) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOComponentPodContainers.ProtoReflect.Descriptor instead.
 func (*AppDTOComponentPodContainers) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{58}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *AppDTOComponentPodContainers) GetPodName() string {
@@ -4173,7 +3985,7 @@ type AppDTOComponentResourceConfig struct {
 
 func (x *AppDTOComponentResourceConfig) Reset() {
 	*x = AppDTOComponentResourceConfig{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[59]
+	mi := &file_eruun_v1_applications_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4185,7 +3997,7 @@ func (x *AppDTOComponentResourceConfig) String() string {
 func (*AppDTOComponentResourceConfig) ProtoMessage() {}
 
 func (x *AppDTOComponentResourceConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[59]
+	mi := &file_eruun_v1_applications_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4198,7 +4010,7 @@ func (x *AppDTOComponentResourceConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOComponentResourceConfig.ProtoReflect.Descriptor instead.
 func (*AppDTOComponentResourceConfig) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{59}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *AppDTOComponentResourceConfig) GetScope() string {
@@ -4264,7 +4076,7 @@ type AppDTOComponentServiceInfo struct {
 
 func (x *AppDTOComponentServiceInfo) Reset() {
 	*x = AppDTOComponentServiceInfo{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[60]
+	mi := &file_eruun_v1_applications_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4276,7 +4088,7 @@ func (x *AppDTOComponentServiceInfo) String() string {
 func (*AppDTOComponentServiceInfo) ProtoMessage() {}
 
 func (x *AppDTOComponentServiceInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[60]
+	mi := &file_eruun_v1_applications_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4289,7 +4101,7 @@ func (x *AppDTOComponentServiceInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOComponentServiceInfo.ProtoReflect.Descriptor instead.
 func (*AppDTOComponentServiceInfo) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{60}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *AppDTOComponentServiceInfo) GetName() string {
@@ -4346,7 +4158,7 @@ type AppDTOComponentServicePortInfo struct {
 
 func (x *AppDTOComponentServicePortInfo) Reset() {
 	*x = AppDTOComponentServicePortInfo{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[61]
+	mi := &file_eruun_v1_applications_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4358,7 +4170,7 @@ func (x *AppDTOComponentServicePortInfo) String() string {
 func (*AppDTOComponentServicePortInfo) ProtoMessage() {}
 
 func (x *AppDTOComponentServicePortInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[61]
+	mi := &file_eruun_v1_applications_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4371,7 +4183,7 @@ func (x *AppDTOComponentServicePortInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOComponentServicePortInfo.ProtoReflect.Descriptor instead.
 func (*AppDTOComponentServicePortInfo) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{61}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *AppDTOComponentServicePortInfo) GetName() string {
@@ -4416,7 +4228,7 @@ type AppDTOComponentTaskStatus struct {
 
 func (x *AppDTOComponentTaskStatus) Reset() {
 	*x = AppDTOComponentTaskStatus{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[62]
+	mi := &file_eruun_v1_applications_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4428,7 +4240,7 @@ func (x *AppDTOComponentTaskStatus) String() string {
 func (*AppDTOComponentTaskStatus) ProtoMessage() {}
 
 func (x *AppDTOComponentTaskStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[62]
+	mi := &file_eruun_v1_applications_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4441,7 +4253,7 @@ func (x *AppDTOComponentTaskStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOComponentTaskStatus.ProtoReflect.Descriptor instead.
 func (*AppDTOComponentTaskStatus) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{62}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *AppDTOComponentTaskStatus) GetName() string {
@@ -4502,7 +4314,7 @@ type AppDTOComponentUpdateSpec struct {
 
 func (x *AppDTOComponentUpdateSpec) Reset() {
 	*x = AppDTOComponentUpdateSpec{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[63]
+	mi := &file_eruun_v1_applications_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4514,7 +4326,7 @@ func (x *AppDTOComponentUpdateSpec) String() string {
 func (*AppDTOComponentUpdateSpec) ProtoMessage() {}
 
 func (x *AppDTOComponentUpdateSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[63]
+	mi := &file_eruun_v1_applications_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4527,7 +4339,7 @@ func (x *AppDTOComponentUpdateSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOComponentUpdateSpec.ProtoReflect.Descriptor instead.
 func (*AppDTOComponentUpdateSpec) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{63}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *AppDTOComponentUpdateSpec) GetAction() string {
@@ -4597,7 +4409,7 @@ type AppDTOConvertApplicationsRequest struct {
 
 func (x *AppDTOConvertApplicationsRequest) Reset() {
 	*x = AppDTOConvertApplicationsRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[64]
+	mi := &file_eruun_v1_applications_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4609,7 +4421,7 @@ func (x *AppDTOConvertApplicationsRequest) String() string {
 func (*AppDTOConvertApplicationsRequest) ProtoMessage() {}
 
 func (x *AppDTOConvertApplicationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[64]
+	mi := &file_eruun_v1_applications_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4622,7 +4434,7 @@ func (x *AppDTOConvertApplicationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOConvertApplicationsRequest.ProtoReflect.Descriptor instead.
 func (*AppDTOConvertApplicationsRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{64}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *AppDTOConvertApplicationsRequest) GetYaml() string {
@@ -4658,7 +4470,7 @@ type AppDTOConvertApplicationsResponse struct {
 
 func (x *AppDTOConvertApplicationsResponse) Reset() {
 	*x = AppDTOConvertApplicationsResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[65]
+	mi := &file_eruun_v1_applications_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4670,7 +4482,7 @@ func (x *AppDTOConvertApplicationsResponse) String() string {
 func (*AppDTOConvertApplicationsResponse) ProtoMessage() {}
 
 func (x *AppDTOConvertApplicationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[65]
+	mi := &file_eruun_v1_applications_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4683,7 +4495,7 @@ func (x *AppDTOConvertApplicationsResponse) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use AppDTOConvertApplicationsResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOConvertApplicationsResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{65}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *AppDTOConvertApplicationsResponse) GetComponents() []*AppDTOCreateComponentRequest {
@@ -4737,7 +4549,7 @@ type AppDTOCreateAndExecApplicationRequest struct {
 
 func (x *AppDTOCreateAndExecApplicationRequest) Reset() {
 	*x = AppDTOCreateAndExecApplicationRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[66]
+	mi := &file_eruun_v1_applications_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4749,7 +4561,7 @@ func (x *AppDTOCreateAndExecApplicationRequest) String() string {
 func (*AppDTOCreateAndExecApplicationRequest) ProtoMessage() {}
 
 func (x *AppDTOCreateAndExecApplicationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[66]
+	mi := &file_eruun_v1_applications_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4762,7 +4574,7 @@ func (x *AppDTOCreateAndExecApplicationRequest) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use AppDTOCreateAndExecApplicationRequest.ProtoReflect.Descriptor instead.
 func (*AppDTOCreateAndExecApplicationRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{66}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *AppDTOCreateAndExecApplicationRequest) GetId() string {
@@ -4891,7 +4703,7 @@ type AppDTOCreateApplicationsRequest struct {
 
 func (x *AppDTOCreateApplicationsRequest) Reset() {
 	*x = AppDTOCreateApplicationsRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[67]
+	mi := &file_eruun_v1_applications_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4903,7 +4715,7 @@ func (x *AppDTOCreateApplicationsRequest) String() string {
 func (*AppDTOCreateApplicationsRequest) ProtoMessage() {}
 
 func (x *AppDTOCreateApplicationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[67]
+	mi := &file_eruun_v1_applications_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4916,7 +4728,7 @@ func (x *AppDTOCreateApplicationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOCreateApplicationsRequest.ProtoReflect.Descriptor instead.
 func (*AppDTOCreateApplicationsRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{67}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *AppDTOCreateApplicationsRequest) GetId() string {
@@ -5026,7 +4838,7 @@ type AppDTOCreateComponentRequest struct {
 
 func (x *AppDTOCreateComponentRequest) Reset() {
 	*x = AppDTOCreateComponentRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[68]
+	mi := &file_eruun_v1_applications_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5038,7 +4850,7 @@ func (x *AppDTOCreateComponentRequest) String() string {
 func (*AppDTOCreateComponentRequest) ProtoMessage() {}
 
 func (x *AppDTOCreateComponentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[68]
+	mi := &file_eruun_v1_applications_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5051,7 +4863,7 @@ func (x *AppDTOCreateComponentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOCreateComponentRequest.ProtoReflect.Descriptor instead.
 func (*AppDTOCreateComponentRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{68}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *AppDTOCreateComponentRequest) GetName() string {
@@ -5127,7 +4939,7 @@ type AppDTOCreateWorkflowStepRequest struct {
 
 func (x *AppDTOCreateWorkflowStepRequest) Reset() {
 	*x = AppDTOCreateWorkflowStepRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[69]
+	mi := &file_eruun_v1_applications_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5139,7 +4951,7 @@ func (x *AppDTOCreateWorkflowStepRequest) String() string {
 func (*AppDTOCreateWorkflowStepRequest) ProtoMessage() {}
 
 func (x *AppDTOCreateWorkflowStepRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[69]
+	mi := &file_eruun_v1_applications_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5152,7 +4964,7 @@ func (x *AppDTOCreateWorkflowStepRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOCreateWorkflowStepRequest.ProtoReflect.Descriptor instead.
 func (*AppDTOCreateWorkflowStepRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{69}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *AppDTOCreateWorkflowStepRequest) GetSchedulingClass() string {
@@ -5231,7 +5043,7 @@ type AppDTOCreateWorkflowSubStepRequest struct {
 
 func (x *AppDTOCreateWorkflowSubStepRequest) Reset() {
 	*x = AppDTOCreateWorkflowSubStepRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[70]
+	mi := &file_eruun_v1_applications_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5243,7 +5055,7 @@ func (x *AppDTOCreateWorkflowSubStepRequest) String() string {
 func (*AppDTOCreateWorkflowSubStepRequest) ProtoMessage() {}
 
 func (x *AppDTOCreateWorkflowSubStepRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[70]
+	mi := &file_eruun_v1_applications_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5256,7 +5068,7 @@ func (x *AppDTOCreateWorkflowSubStepRequest) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use AppDTOCreateWorkflowSubStepRequest.ProtoReflect.Descriptor instead.
 func (*AppDTOCreateWorkflowSubStepRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{70}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *AppDTOCreateWorkflowSubStepRequest) GetSchedulingClass() string {
@@ -5304,7 +5116,7 @@ type AppDTODatabaseResetRequest struct {
 
 func (x *AppDTODatabaseResetRequest) Reset() {
 	*x = AppDTODatabaseResetRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[71]
+	mi := &file_eruun_v1_applications_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5316,7 +5128,7 @@ func (x *AppDTODatabaseResetRequest) String() string {
 func (*AppDTODatabaseResetRequest) ProtoMessage() {}
 
 func (x *AppDTODatabaseResetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[71]
+	mi := &file_eruun_v1_applications_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5329,7 +5141,7 @@ func (x *AppDTODatabaseResetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTODatabaseResetRequest.ProtoReflect.Descriptor instead.
 func (*AppDTODatabaseResetRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{71}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *AppDTODatabaseResetRequest) GetComponents() []string {
@@ -5359,7 +5171,7 @@ type AppDTODatabaseResetResponse struct {
 
 func (x *AppDTODatabaseResetResponse) Reset() {
 	*x = AppDTODatabaseResetResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[72]
+	mi := &file_eruun_v1_applications_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5371,7 +5183,7 @@ func (x *AppDTODatabaseResetResponse) String() string {
 func (*AppDTODatabaseResetResponse) ProtoMessage() {}
 
 func (x *AppDTODatabaseResetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[72]
+	mi := &file_eruun_v1_applications_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5384,7 +5196,7 @@ func (x *AppDTODatabaseResetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTODatabaseResetResponse.ProtoReflect.Descriptor instead.
 func (*AppDTODatabaseResetResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{72}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *AppDTODatabaseResetResponse) GetAppId() string {
@@ -5431,7 +5243,7 @@ type AppDTODeleteApplicationRequest struct {
 
 func (x *AppDTODeleteApplicationRequest) Reset() {
 	*x = AppDTODeleteApplicationRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[73]
+	mi := &file_eruun_v1_applications_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5443,7 +5255,7 @@ func (x *AppDTODeleteApplicationRequest) String() string {
 func (*AppDTODeleteApplicationRequest) ProtoMessage() {}
 
 func (x *AppDTODeleteApplicationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[73]
+	mi := &file_eruun_v1_applications_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5456,7 +5268,7 @@ func (x *AppDTODeleteApplicationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTODeleteApplicationRequest.ProtoReflect.Descriptor instead.
 func (*AppDTODeleteApplicationRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{73}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *AppDTODeleteApplicationRequest) GetWaitSeconds() int64 {
@@ -5467,22 +5279,21 @@ func (x *AppDTODeleteApplicationRequest) GetWaitSeconds() int64 {
 }
 
 type AppDTODeleteApplicationResponse struct {
-	state             protoimpl.MessageState     `protogen:"open.v1"`
-	AppId             string                     `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
-	CancelledTaskIDs  []string                   `protobuf:"bytes,2,rep,name=cancelled_task_i_ds,json=cancelledTaskIds,proto3" json:"cancelled_task_i_ds,omitempty"`
-	ActiveTaskIDs     []string                   `protobuf:"bytes,3,rep,name=active_task_i_ds,json=activeTaskIds,proto3" json:"active_task_i_ds,omitempty"`
-	DeletedResources  []string                   `protobuf:"bytes,4,rep,name=deleted_resources,json=deletedResources,proto3" json:"deleted_resources,omitempty"`
-	FailedResources   []string                   `protobuf:"bytes,5,rep,name=failed_resources,json=failedResources,proto3" json:"failed_resources,omitempty"`
-	Warnings          []string                   `protobuf:"bytes,6,rep,name=warnings,proto3" json:"warnings,omitempty"`
-	DeletedCounts     *AppDTODeleteResourceCount `protobuf:"bytes,7,opt,name=deleted_counts,json=deletedCounts,proto3" json:"deleted_counts,omitempty"`
-	ResourcesRetained bool                       `protobuf:"varint,8,opt,name=resources_retained,json=resourcesRetained,proto3" json:"resources_retained,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state            protoimpl.MessageState     `protogen:"open.v1"`
+	AppId            string                     `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
+	CancelledTaskIDs []string                   `protobuf:"bytes,2,rep,name=cancelled_task_i_ds,json=cancelledTaskIds,proto3" json:"cancelled_task_i_ds,omitempty"`
+	ActiveTaskIDs    []string                   `protobuf:"bytes,3,rep,name=active_task_i_ds,json=activeTaskIds,proto3" json:"active_task_i_ds,omitempty"`
+	DeletedResources []string                   `protobuf:"bytes,4,rep,name=deleted_resources,json=deletedResources,proto3" json:"deleted_resources,omitempty"`
+	FailedResources  []string                   `protobuf:"bytes,5,rep,name=failed_resources,json=failedResources,proto3" json:"failed_resources,omitempty"`
+	Warnings         []string                   `protobuf:"bytes,6,rep,name=warnings,proto3" json:"warnings,omitempty"`
+	DeletedCounts    *AppDTODeleteResourceCount `protobuf:"bytes,7,opt,name=deleted_counts,json=deletedCounts,proto3" json:"deleted_counts,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *AppDTODeleteApplicationResponse) Reset() {
 	*x = AppDTODeleteApplicationResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[74]
+	mi := &file_eruun_v1_applications_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5494,7 +5305,7 @@ func (x *AppDTODeleteApplicationResponse) String() string {
 func (*AppDTODeleteApplicationResponse) ProtoMessage() {}
 
 func (x *AppDTODeleteApplicationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[74]
+	mi := &file_eruun_v1_applications_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5507,7 +5318,7 @@ func (x *AppDTODeleteApplicationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTODeleteApplicationResponse.ProtoReflect.Descriptor instead.
 func (*AppDTODeleteApplicationResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{74}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *AppDTODeleteApplicationResponse) GetAppId() string {
@@ -5559,13 +5370,6 @@ func (x *AppDTODeleteApplicationResponse) GetDeletedCounts() *AppDTODeleteResour
 	return nil
 }
 
-func (x *AppDTODeleteApplicationResponse) GetResourcesRetained() bool {
-	if x != nil {
-		return x.ResourcesRetained
-	}
-	return false
-}
-
 type AppDTODeleteResourceCount struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Schedules     int64                  `protobuf:"varint,1,opt,name=schedules,proto3" json:"schedules,omitempty"`
@@ -5580,7 +5384,7 @@ type AppDTODeleteResourceCount struct {
 
 func (x *AppDTODeleteResourceCount) Reset() {
 	*x = AppDTODeleteResourceCount{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[75]
+	mi := &file_eruun_v1_applications_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5592,7 +5396,7 @@ func (x *AppDTODeleteResourceCount) String() string {
 func (*AppDTODeleteResourceCount) ProtoMessage() {}
 
 func (x *AppDTODeleteResourceCount) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[75]
+	mi := &file_eruun_v1_applications_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5605,7 +5409,7 @@ func (x *AppDTODeleteResourceCount) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTODeleteResourceCount.ProtoReflect.Descriptor instead.
 func (*AppDTODeleteResourceCount) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{75}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *AppDTODeleteResourceCount) GetSchedules() int64 {
@@ -5659,7 +5463,7 @@ type AppDTODeleteWorkflowScheduleResponse struct {
 
 func (x *AppDTODeleteWorkflowScheduleResponse) Reset() {
 	*x = AppDTODeleteWorkflowScheduleResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[76]
+	mi := &file_eruun_v1_applications_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5671,7 +5475,7 @@ func (x *AppDTODeleteWorkflowScheduleResponse) String() string {
 func (*AppDTODeleteWorkflowScheduleResponse) ProtoMessage() {}
 
 func (x *AppDTODeleteWorkflowScheduleResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[76]
+	mi := &file_eruun_v1_applications_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5684,7 +5488,7 @@ func (x *AppDTODeleteWorkflowScheduleResponse) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use AppDTODeleteWorkflowScheduleResponse.ProtoReflect.Descriptor instead.
 func (*AppDTODeleteWorkflowScheduleResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{76}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *AppDTODeleteWorkflowScheduleResponse) GetWorkflowId() string {
@@ -5711,7 +5515,7 @@ type AppDTODiffUpdateVersionRequest struct {
 
 func (x *AppDTODiffUpdateVersionRequest) Reset() {
 	*x = AppDTODiffUpdateVersionRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[77]
+	mi := &file_eruun_v1_applications_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5723,7 +5527,7 @@ func (x *AppDTODiffUpdateVersionRequest) String() string {
 func (*AppDTODiffUpdateVersionRequest) ProtoMessage() {}
 
 func (x *AppDTODiffUpdateVersionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[77]
+	mi := &file_eruun_v1_applications_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5736,7 +5540,7 @@ func (x *AppDTODiffUpdateVersionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTODiffUpdateVersionRequest.ProtoReflect.Descriptor instead.
 func (*AppDTODiffUpdateVersionRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{77}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *AppDTODiffUpdateVersionRequest) GetSourceAppId() string {
@@ -5825,7 +5629,7 @@ type AppDTODiffUpdateVersionResponse struct {
 
 func (x *AppDTODiffUpdateVersionResponse) Reset() {
 	*x = AppDTODiffUpdateVersionResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[78]
+	mi := &file_eruun_v1_applications_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5837,7 +5641,7 @@ func (x *AppDTODiffUpdateVersionResponse) String() string {
 func (*AppDTODiffUpdateVersionResponse) ProtoMessage() {}
 
 func (x *AppDTODiffUpdateVersionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[78]
+	mi := &file_eruun_v1_applications_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5850,7 +5654,7 @@ func (x *AppDTODiffUpdateVersionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTODiffUpdateVersionResponse.ProtoReflect.Descriptor instead.
 func (*AppDTODiffUpdateVersionResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{78}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *AppDTODiffUpdateVersionResponse) GetTargetAppId() string {
@@ -5968,7 +5772,7 @@ type AppDTOExecComponentShellScriptRequest struct {
 
 func (x *AppDTOExecComponentShellScriptRequest) Reset() {
 	*x = AppDTOExecComponentShellScriptRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[79]
+	mi := &file_eruun_v1_applications_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5980,7 +5784,7 @@ func (x *AppDTOExecComponentShellScriptRequest) String() string {
 func (*AppDTOExecComponentShellScriptRequest) ProtoMessage() {}
 
 func (x *AppDTOExecComponentShellScriptRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[79]
+	mi := &file_eruun_v1_applications_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5993,7 +5797,7 @@ func (x *AppDTOExecComponentShellScriptRequest) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use AppDTOExecComponentShellScriptRequest.ProtoReflect.Descriptor instead.
 func (*AppDTOExecComponentShellScriptRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{79}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *AppDTOExecComponentShellScriptRequest) GetScript() string {
@@ -6025,7 +5829,7 @@ type AppDTOExecComponentShellScriptResponse struct {
 
 func (x *AppDTOExecComponentShellScriptResponse) Reset() {
 	*x = AppDTOExecComponentShellScriptResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[80]
+	mi := &file_eruun_v1_applications_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6037,7 +5841,7 @@ func (x *AppDTOExecComponentShellScriptResponse) String() string {
 func (*AppDTOExecComponentShellScriptResponse) ProtoMessage() {}
 
 func (x *AppDTOExecComponentShellScriptResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[80]
+	mi := &file_eruun_v1_applications_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6050,7 +5854,7 @@ func (x *AppDTOExecComponentShellScriptResponse) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use AppDTOExecComponentShellScriptResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOExecComponentShellScriptResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{80}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *AppDTOExecComponentShellScriptResponse) GetNamespace() string {
@@ -6112,7 +5916,7 @@ type AppDTOExecWorkflowRequest struct {
 
 func (x *AppDTOExecWorkflowRequest) Reset() {
 	*x = AppDTOExecWorkflowRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[81]
+	mi := &file_eruun_v1_applications_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6124,7 +5928,7 @@ func (x *AppDTOExecWorkflowRequest) String() string {
 func (*AppDTOExecWorkflowRequest) ProtoMessage() {}
 
 func (x *AppDTOExecWorkflowRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[81]
+	mi := &file_eruun_v1_applications_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6137,7 +5941,7 @@ func (x *AppDTOExecWorkflowRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOExecWorkflowRequest.ProtoReflect.Descriptor instead.
 func (*AppDTOExecWorkflowRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{81}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *AppDTOExecWorkflowRequest) GetWorkflowId() string {
@@ -6165,7 +5969,7 @@ type AppDTOExecWorkflowResponse struct {
 
 func (x *AppDTOExecWorkflowResponse) Reset() {
 	*x = AppDTOExecWorkflowResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[82]
+	mi := &file_eruun_v1_applications_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6177,7 +5981,7 @@ func (x *AppDTOExecWorkflowResponse) String() string {
 func (*AppDTOExecWorkflowResponse) ProtoMessage() {}
 
 func (x *AppDTOExecWorkflowResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[82]
+	mi := &file_eruun_v1_applications_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6190,7 +5994,7 @@ func (x *AppDTOExecWorkflowResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOExecWorkflowResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOExecWorkflowResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{82}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *AppDTOExecWorkflowResponse) GetTaskId() string {
@@ -6223,7 +6027,7 @@ type AppDTOExecutionPlan struct {
 
 func (x *AppDTOExecutionPlan) Reset() {
 	*x = AppDTOExecutionPlan{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[83]
+	mi := &file_eruun_v1_applications_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6235,7 +6039,7 @@ func (x *AppDTOExecutionPlan) String() string {
 func (*AppDTOExecutionPlan) ProtoMessage() {}
 
 func (x *AppDTOExecutionPlan) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[83]
+	mi := &file_eruun_v1_applications_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6248,7 +6052,7 @@ func (x *AppDTOExecutionPlan) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOExecutionPlan.ProtoReflect.Descriptor instead.
 func (*AppDTOExecutionPlan) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{83}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *AppDTOExecutionPlan) GetActions() []*AppDTOPlanAction {
@@ -6268,7 +6072,7 @@ type AppDTOExportComponentFilesRequest struct {
 
 func (x *AppDTOExportComponentFilesRequest) Reset() {
 	*x = AppDTOExportComponentFilesRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[84]
+	mi := &file_eruun_v1_applications_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6280,7 +6084,7 @@ func (x *AppDTOExportComponentFilesRequest) String() string {
 func (*AppDTOExportComponentFilesRequest) ProtoMessage() {}
 
 func (x *AppDTOExportComponentFilesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[84]
+	mi := &file_eruun_v1_applications_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6293,7 +6097,7 @@ func (x *AppDTOExportComponentFilesRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use AppDTOExportComponentFilesRequest.ProtoReflect.Descriptor instead.
 func (*AppDTOExportComponentFilesRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{84}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *AppDTOExportComponentFilesRequest) GetPath() string {
@@ -6320,7 +6124,7 @@ type AppDTOExternalLink struct {
 
 func (x *AppDTOExternalLink) Reset() {
 	*x = AppDTOExternalLink{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[85]
+	mi := &file_eruun_v1_applications_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6332,7 +6136,7 @@ func (x *AppDTOExternalLink) String() string {
 func (*AppDTOExternalLink) ProtoMessage() {}
 
 func (x *AppDTOExternalLink) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[85]
+	mi := &file_eruun_v1_applications_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6345,7 +6149,7 @@ func (x *AppDTOExternalLink) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOExternalLink.ProtoReflect.Descriptor instead.
 func (*AppDTOExternalLink) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{85}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *AppDTOExternalLink) GetType() string {
@@ -6362,754 +6166,6 @@ func (x *AppDTOExternalLink) GetValue() string {
 	return ""
 }
 
-type AppDTOImportNamespaceAppResult struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	AppId            string                 `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
-	Name             string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	WorkflowDisabled bool                   `protobuf:"varint,3,opt,name=workflow_disabled,json=workflowDisabled,proto3" json:"workflow_disabled,omitempty"`
-	Components       []string               `protobuf:"bytes,4,rep,name=components,proto3" json:"components,omitempty"`
-	Error            string                 `protobuf:"bytes,5,opt,name=error,proto3" json:"error,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
-}
-
-func (x *AppDTOImportNamespaceAppResult) Reset() {
-	*x = AppDTOImportNamespaceAppResult{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[86]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AppDTOImportNamespaceAppResult) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AppDTOImportNamespaceAppResult) ProtoMessage() {}
-
-func (x *AppDTOImportNamespaceAppResult) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[86]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AppDTOImportNamespaceAppResult.ProtoReflect.Descriptor instead.
-func (*AppDTOImportNamespaceAppResult) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{86}
-}
-
-func (x *AppDTOImportNamespaceAppResult) GetAppId() string {
-	if x != nil {
-		return x.AppId
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceAppResult) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceAppResult) GetWorkflowDisabled() bool {
-	if x != nil {
-		return x.WorkflowDisabled
-	}
-	return false
-}
-
-func (x *AppDTOImportNamespaceAppResult) GetComponents() []string {
-	if x != nil {
-		return x.Components
-	}
-	return nil
-}
-
-func (x *AppDTOImportNamespaceAppResult) GetError() string {
-	if x != nil {
-		return x.Error
-	}
-	return ""
-}
-
-type AppDTOImportNamespaceApplicationMapping struct {
-	state         protoimpl.MessageState                   `protogen:"open.v1"`
-	Name          string                                   `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Alias         string                                   `protobuf:"bytes,2,opt,name=alias,proto3" json:"alias,omitempty"`
-	TargetAppId   string                                   `protobuf:"bytes,3,opt,name=target_app_id,json=targetAppId,proto3" json:"target_app_id,omitempty"`
-	Components    []*AppDTOImportNamespaceComponentMapping `protobuf:"bytes,4,rep,name=components,proto3" json:"components,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *AppDTOImportNamespaceApplicationMapping) Reset() {
-	*x = AppDTOImportNamespaceApplicationMapping{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[87]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AppDTOImportNamespaceApplicationMapping) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AppDTOImportNamespaceApplicationMapping) ProtoMessage() {}
-
-func (x *AppDTOImportNamespaceApplicationMapping) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[87]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AppDTOImportNamespaceApplicationMapping.ProtoReflect.Descriptor instead.
-func (*AppDTOImportNamespaceApplicationMapping) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{87}
-}
-
-func (x *AppDTOImportNamespaceApplicationMapping) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceApplicationMapping) GetAlias() string {
-	if x != nil {
-		return x.Alias
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceApplicationMapping) GetTargetAppId() string {
-	if x != nil {
-		return x.TargetAppId
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceApplicationMapping) GetComponents() []*AppDTOImportNamespaceComponentMapping {
-	if x != nil {
-		return x.Components
-	}
-	return nil
-}
-
-type AppDTOImportNamespaceApplicationsRequest struct {
-	state           protoimpl.MessageState                     `protogen:"open.v1"`
-	Namespace       string                                     `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
-	Mode            string                                     `protobuf:"bytes,2,opt,name=mode,proto3" json:"mode,omitempty"`
-	ManagementMode  string                                     `protobuf:"bytes,3,opt,name=management_mode,json=managementMode,proto3" json:"management_mode,omitempty"`
-	Applications    []*AppDTOImportNamespaceApplicationMapping `protobuf:"bytes,4,rep,name=applications,proto3" json:"applications,omitempty"`
-	PlanFingerprint string                                     `protobuf:"bytes,5,opt,name=plan_fingerprint,json=planFingerprint,proto3" json:"plan_fingerprint,omitempty"`
-	IncludeKinds    []string                                   `protobuf:"bytes,6,rep,name=include_kinds,json=includeKinds,proto3" json:"include_kinds,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
-}
-
-func (x *AppDTOImportNamespaceApplicationsRequest) Reset() {
-	*x = AppDTOImportNamespaceApplicationsRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[88]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AppDTOImportNamespaceApplicationsRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AppDTOImportNamespaceApplicationsRequest) ProtoMessage() {}
-
-func (x *AppDTOImportNamespaceApplicationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[88]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AppDTOImportNamespaceApplicationsRequest.ProtoReflect.Descriptor instead.
-func (*AppDTOImportNamespaceApplicationsRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{88}
-}
-
-func (x *AppDTOImportNamespaceApplicationsRequest) GetNamespace() string {
-	if x != nil {
-		return x.Namespace
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceApplicationsRequest) GetMode() string {
-	if x != nil {
-		return x.Mode
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceApplicationsRequest) GetManagementMode() string {
-	if x != nil {
-		return x.ManagementMode
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceApplicationsRequest) GetApplications() []*AppDTOImportNamespaceApplicationMapping {
-	if x != nil {
-		return x.Applications
-	}
-	return nil
-}
-
-func (x *AppDTOImportNamespaceApplicationsRequest) GetPlanFingerprint() string {
-	if x != nil {
-		return x.PlanFingerprint
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceApplicationsRequest) GetIncludeKinds() []string {
-	if x != nil {
-		return x.IncludeKinds
-	}
-	return nil
-}
-
-type AppDTOImportNamespaceApplicationsResponse struct {
-	state           protoimpl.MessageState                 `protogen:"open.v1"`
-	Namespace       string                                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
-	Mode            string                                 `protobuf:"bytes,2,opt,name=mode,proto3" json:"mode,omitempty"`
-	ManagementMode  string                                 `protobuf:"bytes,3,opt,name=management_mode,json=managementMode,proto3" json:"management_mode,omitempty"`
-	PlanFingerprint string                                 `protobuf:"bytes,4,opt,name=plan_fingerprint,json=planFingerprint,proto3" json:"plan_fingerprint,omitempty"`
-	Summary         *AppDTOImportNamespaceSummary          `protobuf:"bytes,5,opt,name=summary,proto3" json:"summary,omitempty"`
-	Apps            []*AppDTOImportNamespaceAppResult      `protobuf:"bytes,6,rep,name=apps,proto3" json:"apps,omitempty"`
-	ResourceResults []*AppDTOImportNamespaceResourceResult `protobuf:"bytes,7,rep,name=resource_results,json=resourceResults,proto3" json:"resource_results,omitempty"`
-	Warnings        []string                               `protobuf:"bytes,8,rep,name=warnings,proto3" json:"warnings,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
-}
-
-func (x *AppDTOImportNamespaceApplicationsResponse) Reset() {
-	*x = AppDTOImportNamespaceApplicationsResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[89]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AppDTOImportNamespaceApplicationsResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AppDTOImportNamespaceApplicationsResponse) ProtoMessage() {}
-
-func (x *AppDTOImportNamespaceApplicationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[89]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AppDTOImportNamespaceApplicationsResponse.ProtoReflect.Descriptor instead.
-func (*AppDTOImportNamespaceApplicationsResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{89}
-}
-
-func (x *AppDTOImportNamespaceApplicationsResponse) GetNamespace() string {
-	if x != nil {
-		return x.Namespace
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceApplicationsResponse) GetMode() string {
-	if x != nil {
-		return x.Mode
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceApplicationsResponse) GetManagementMode() string {
-	if x != nil {
-		return x.ManagementMode
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceApplicationsResponse) GetPlanFingerprint() string {
-	if x != nil {
-		return x.PlanFingerprint
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceApplicationsResponse) GetSummary() *AppDTOImportNamespaceSummary {
-	if x != nil {
-		return x.Summary
-	}
-	return nil
-}
-
-func (x *AppDTOImportNamespaceApplicationsResponse) GetApps() []*AppDTOImportNamespaceAppResult {
-	if x != nil {
-		return x.Apps
-	}
-	return nil
-}
-
-func (x *AppDTOImportNamespaceApplicationsResponse) GetResourceResults() []*AppDTOImportNamespaceResourceResult {
-	if x != nil {
-		return x.ResourceResults
-	}
-	return nil
-}
-
-func (x *AppDTOImportNamespaceApplicationsResponse) GetWarnings() []string {
-	if x != nil {
-		return x.Warnings
-	}
-	return nil
-}
-
-type AppDTOImportNamespaceComponentMapping struct {
-	state         protoimpl.MessageState                  `protogen:"open.v1"`
-	Name          string                                  `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Workload      *AppDTOImportNamespaceWorkloadReference `protobuf:"bytes,2,opt,name=workload,proto3" json:"workload,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *AppDTOImportNamespaceComponentMapping) Reset() {
-	*x = AppDTOImportNamespaceComponentMapping{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[90]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AppDTOImportNamespaceComponentMapping) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AppDTOImportNamespaceComponentMapping) ProtoMessage() {}
-
-func (x *AppDTOImportNamespaceComponentMapping) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[90]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AppDTOImportNamespaceComponentMapping.ProtoReflect.Descriptor instead.
-func (*AppDTOImportNamespaceComponentMapping) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{90}
-}
-
-func (x *AppDTOImportNamespaceComponentMapping) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceComponentMapping) GetWorkload() *AppDTOImportNamespaceWorkloadReference {
-	if x != nil {
-		return x.Workload
-	}
-	return nil
-}
-
-type AppDTOImportNamespaceResourceIdentity struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	ApiVersion      string                 `protobuf:"bytes,1,opt,name=api_version,json=apiVersion,proto3" json:"api_version,omitempty"`
-	Kind            string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
-	Namespace       string                 `protobuf:"bytes,3,opt,name=namespace,proto3" json:"namespace,omitempty"`
-	Name            string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
-	Uid             string                 `protobuf:"bytes,5,opt,name=uid,proto3" json:"uid,omitempty"`
-	ResourceVersion string                 `protobuf:"bytes,6,opt,name=resource_version,json=resourceVersion,proto3" json:"resource_version,omitempty"`
-	SpecDigest      string                 `protobuf:"bytes,7,opt,name=spec_digest,json=specDigest,proto3" json:"spec_digest,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
-}
-
-func (x *AppDTOImportNamespaceResourceIdentity) Reset() {
-	*x = AppDTOImportNamespaceResourceIdentity{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[91]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AppDTOImportNamespaceResourceIdentity) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AppDTOImportNamespaceResourceIdentity) ProtoMessage() {}
-
-func (x *AppDTOImportNamespaceResourceIdentity) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[91]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AppDTOImportNamespaceResourceIdentity.ProtoReflect.Descriptor instead.
-func (*AppDTOImportNamespaceResourceIdentity) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{91}
-}
-
-func (x *AppDTOImportNamespaceResourceIdentity) GetApiVersion() string {
-	if x != nil {
-		return x.ApiVersion
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceResourceIdentity) GetKind() string {
-	if x != nil {
-		return x.Kind
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceResourceIdentity) GetNamespace() string {
-	if x != nil {
-		return x.Namespace
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceResourceIdentity) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceResourceIdentity) GetUid() string {
-	if x != nil {
-		return x.Uid
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceResourceIdentity) GetResourceVersion() string {
-	if x != nil {
-		return x.ResourceVersion
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceResourceIdentity) GetSpecDigest() string {
-	if x != nil {
-		return x.SpecDigest
-	}
-	return ""
-}
-
-type AppDTOImportNamespaceResourceResult struct {
-	state          protoimpl.MessageState                 `protogen:"open.v1"`
-	Kind           string                                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
-	Namespace      string                                 `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`
-	Name           string                                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
-	Source         *AppDTOImportNamespaceResourceIdentity `protobuf:"bytes,4,opt,name=source,proto3" json:"source,omitempty"`
-	AppId          string                                 `protobuf:"bytes,5,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
-	ComponentName  string                                 `protobuf:"bytes,6,opt,name=component_name,json=componentName,proto3" json:"component_name,omitempty"`
-	DependencyRole string                                 `protobuf:"bytes,7,opt,name=dependency_role,json=dependencyRole,proto3" json:"dependency_role,omitempty"`
-	Ownership      string                                 `protobuf:"bytes,8,opt,name=ownership,proto3" json:"ownership,omitempty"`
-	Disposition    string                                 `protobuf:"bytes,9,opt,name=disposition,proto3" json:"disposition,omitempty"`
-	Status         string                                 `protobuf:"bytes,10,opt,name=status,proto3" json:"status,omitempty"`
-	Error          string                                 `protobuf:"bytes,11,opt,name=error,proto3" json:"error,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
-}
-
-func (x *AppDTOImportNamespaceResourceResult) Reset() {
-	*x = AppDTOImportNamespaceResourceResult{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[92]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AppDTOImportNamespaceResourceResult) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AppDTOImportNamespaceResourceResult) ProtoMessage() {}
-
-func (x *AppDTOImportNamespaceResourceResult) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[92]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AppDTOImportNamespaceResourceResult.ProtoReflect.Descriptor instead.
-func (*AppDTOImportNamespaceResourceResult) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{92}
-}
-
-func (x *AppDTOImportNamespaceResourceResult) GetKind() string {
-	if x != nil {
-		return x.Kind
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceResourceResult) GetNamespace() string {
-	if x != nil {
-		return x.Namespace
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceResourceResult) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceResourceResult) GetSource() *AppDTOImportNamespaceResourceIdentity {
-	if x != nil {
-		return x.Source
-	}
-	return nil
-}
-
-func (x *AppDTOImportNamespaceResourceResult) GetAppId() string {
-	if x != nil {
-		return x.AppId
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceResourceResult) GetComponentName() string {
-	if x != nil {
-		return x.ComponentName
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceResourceResult) GetDependencyRole() string {
-	if x != nil {
-		return x.DependencyRole
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceResourceResult) GetOwnership() string {
-	if x != nil {
-		return x.Ownership
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceResourceResult) GetDisposition() string {
-	if x != nil {
-		return x.Disposition
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceResourceResult) GetStatus() string {
-	if x != nil {
-		return x.Status
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceResourceResult) GetError() string {
-	if x != nil {
-		return x.Error
-	}
-	return ""
-}
-
-type AppDTOImportNamespaceSummary struct {
-	state                   protoimpl.MessageState `protogen:"open.v1"`
-	AppsPlanned             int32                  `protobuf:"varint,1,opt,name=apps_planned,json=appsPlanned,proto3" json:"apps_planned,omitempty"`
-	AppsApplied             int32                  `protobuf:"varint,2,opt,name=apps_applied,json=appsApplied,proto3" json:"apps_applied,omitempty"`
-	ComponentsPlanned       int32                  `protobuf:"varint,3,opt,name=components_planned,json=componentsPlanned,proto3" json:"components_planned,omitempty"`
-	ComponentsApplied       int32                  `protobuf:"varint,4,opt,name=components_applied,json=componentsApplied,proto3" json:"components_applied,omitempty"`
-	ResourcesScanned        int32                  `protobuf:"varint,5,opt,name=resources_scanned,json=resourcesScanned,proto3" json:"resources_scanned,omitempty"`
-	ResourcesLabeledSuccess int32                  `protobuf:"varint,6,opt,name=resources_labeled_success,json=resourcesLabeledSuccess,proto3" json:"resources_labeled_success,omitempty"`
-	ResourcesLabeledFailed  int32                  `protobuf:"varint,7,opt,name=resources_labeled_failed,json=resourcesLabeledFailed,proto3" json:"resources_labeled_failed,omitempty"`
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
-}
-
-func (x *AppDTOImportNamespaceSummary) Reset() {
-	*x = AppDTOImportNamespaceSummary{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[93]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AppDTOImportNamespaceSummary) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AppDTOImportNamespaceSummary) ProtoMessage() {}
-
-func (x *AppDTOImportNamespaceSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[93]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AppDTOImportNamespaceSummary.ProtoReflect.Descriptor instead.
-func (*AppDTOImportNamespaceSummary) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{93}
-}
-
-func (x *AppDTOImportNamespaceSummary) GetAppsPlanned() int32 {
-	if x != nil {
-		return x.AppsPlanned
-	}
-	return 0
-}
-
-func (x *AppDTOImportNamespaceSummary) GetAppsApplied() int32 {
-	if x != nil {
-		return x.AppsApplied
-	}
-	return 0
-}
-
-func (x *AppDTOImportNamespaceSummary) GetComponentsPlanned() int32 {
-	if x != nil {
-		return x.ComponentsPlanned
-	}
-	return 0
-}
-
-func (x *AppDTOImportNamespaceSummary) GetComponentsApplied() int32 {
-	if x != nil {
-		return x.ComponentsApplied
-	}
-	return 0
-}
-
-func (x *AppDTOImportNamespaceSummary) GetResourcesScanned() int32 {
-	if x != nil {
-		return x.ResourcesScanned
-	}
-	return 0
-}
-
-func (x *AppDTOImportNamespaceSummary) GetResourcesLabeledSuccess() int32 {
-	if x != nil {
-		return x.ResourcesLabeledSuccess
-	}
-	return 0
-}
-
-func (x *AppDTOImportNamespaceSummary) GetResourcesLabeledFailed() int32 {
-	if x != nil {
-		return x.ResourcesLabeledFailed
-	}
-	return 0
-}
-
-type AppDTOImportNamespaceWorkloadReference struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ApiVersion    string                 `protobuf:"bytes,1,opt,name=api_version,json=apiVersion,proto3" json:"api_version,omitempty"`
-	Kind          string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
-	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *AppDTOImportNamespaceWorkloadReference) Reset() {
-	*x = AppDTOImportNamespaceWorkloadReference{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[94]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AppDTOImportNamespaceWorkloadReference) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AppDTOImportNamespaceWorkloadReference) ProtoMessage() {}
-
-func (x *AppDTOImportNamespaceWorkloadReference) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[94]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AppDTOImportNamespaceWorkloadReference.ProtoReflect.Descriptor instead.
-func (*AppDTOImportNamespaceWorkloadReference) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{94}
-}
-
-func (x *AppDTOImportNamespaceWorkloadReference) GetApiVersion() string {
-	if x != nil {
-		return x.ApiVersion
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceWorkloadReference) GetKind() string {
-	if x != nil {
-		return x.Kind
-	}
-	return ""
-}
-
-func (x *AppDTOImportNamespaceWorkloadReference) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
 type AppDTOListApplicationComponentsResponse struct {
 	state         protoimpl.MessageState        `protogen:"open.v1"`
 	Components    []*AppDTOApplicationComponent `protobuf:"bytes,1,rep,name=components,proto3" json:"components,omitempty"`
@@ -7119,7 +6175,7 @@ type AppDTOListApplicationComponentsResponse struct {
 
 func (x *AppDTOListApplicationComponentsResponse) Reset() {
 	*x = AppDTOListApplicationComponentsResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[95]
+	mi := &file_eruun_v1_applications_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7131,7 +6187,7 @@ func (x *AppDTOListApplicationComponentsResponse) String() string {
 func (*AppDTOListApplicationComponentsResponse) ProtoMessage() {}
 
 func (x *AppDTOListApplicationComponentsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[95]
+	mi := &file_eruun_v1_applications_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7144,7 +6200,7 @@ func (x *AppDTOListApplicationComponentsResponse) ProtoReflect() protoreflect.Me
 
 // Deprecated: Use AppDTOListApplicationComponentsResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOListApplicationComponentsResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{95}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *AppDTOListApplicationComponentsResponse) GetComponents() []*AppDTOApplicationComponent {
@@ -7163,7 +6219,7 @@ type AppDTOListApplicationResponse struct {
 
 func (x *AppDTOListApplicationResponse) Reset() {
 	*x = AppDTOListApplicationResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[96]
+	mi := &file_eruun_v1_applications_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7175,7 +6231,7 @@ func (x *AppDTOListApplicationResponse) String() string {
 func (*AppDTOListApplicationResponse) ProtoMessage() {}
 
 func (x *AppDTOListApplicationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[96]
+	mi := &file_eruun_v1_applications_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7188,7 +6244,7 @@ func (x *AppDTOListApplicationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOListApplicationResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOListApplicationResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{96}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *AppDTOListApplicationResponse) GetApplications() []*AppDTOApplicationBase {
@@ -7207,7 +6263,7 @@ type AppDTOListApplicationTasksResponse struct {
 
 func (x *AppDTOListApplicationTasksResponse) Reset() {
 	*x = AppDTOListApplicationTasksResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[97]
+	mi := &file_eruun_v1_applications_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7219,7 +6275,7 @@ func (x *AppDTOListApplicationTasksResponse) String() string {
 func (*AppDTOListApplicationTasksResponse) ProtoMessage() {}
 
 func (x *AppDTOListApplicationTasksResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[97]
+	mi := &file_eruun_v1_applications_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7232,7 +6288,7 @@ func (x *AppDTOListApplicationTasksResponse) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use AppDTOListApplicationTasksResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOListApplicationTasksResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{97}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *AppDTOListApplicationTasksResponse) GetTasks() []*AppDTOApplicationTask {
@@ -7251,7 +6307,7 @@ type AppDTOListApplicationWorkflowsResponse struct {
 
 func (x *AppDTOListApplicationWorkflowsResponse) Reset() {
 	*x = AppDTOListApplicationWorkflowsResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[98]
+	mi := &file_eruun_v1_applications_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7263,7 +6319,7 @@ func (x *AppDTOListApplicationWorkflowsResponse) String() string {
 func (*AppDTOListApplicationWorkflowsResponse) ProtoMessage() {}
 
 func (x *AppDTOListApplicationWorkflowsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[98]
+	mi := &file_eruun_v1_applications_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7276,7 +6332,7 @@ func (x *AppDTOListApplicationWorkflowsResponse) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use AppDTOListApplicationWorkflowsResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOListApplicationWorkflowsResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{98}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{86}
 }
 
 func (x *AppDTOListApplicationWorkflowsResponse) GetWorkflows() []*AppDTOApplicationWorkflow {
@@ -7295,7 +6351,7 @@ type AppDTOListWorkflowSchedulesResponse struct {
 
 func (x *AppDTOListWorkflowSchedulesResponse) Reset() {
 	*x = AppDTOListWorkflowSchedulesResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[99]
+	mi := &file_eruun_v1_applications_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7307,7 +6363,7 @@ func (x *AppDTOListWorkflowSchedulesResponse) String() string {
 func (*AppDTOListWorkflowSchedulesResponse) ProtoMessage() {}
 
 func (x *AppDTOListWorkflowSchedulesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[99]
+	mi := &file_eruun_v1_applications_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7320,7 +6376,7 @@ func (x *AppDTOListWorkflowSchedulesResponse) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use AppDTOListWorkflowSchedulesResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOListWorkflowSchedulesResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{99}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *AppDTOListWorkflowSchedulesResponse) GetSchedules() []*AppDTOWorkflowSchedule {
@@ -7344,7 +6400,7 @@ type AppDTOLogArchiveDownloadRequest struct {
 
 func (x *AppDTOLogArchiveDownloadRequest) Reset() {
 	*x = AppDTOLogArchiveDownloadRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[100]
+	mi := &file_eruun_v1_applications_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7356,7 +6412,7 @@ func (x *AppDTOLogArchiveDownloadRequest) String() string {
 func (*AppDTOLogArchiveDownloadRequest) ProtoMessage() {}
 
 func (x *AppDTOLogArchiveDownloadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[100]
+	mi := &file_eruun_v1_applications_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7369,7 +6425,7 @@ func (x *AppDTOLogArchiveDownloadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOLogArchiveDownloadRequest.ProtoReflect.Descriptor instead.
 func (*AppDTOLogArchiveDownloadRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{100}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *AppDTOLogArchiveDownloadRequest) GetName() string {
@@ -7429,7 +6485,7 @@ type AppDTOPlanAction struct {
 
 func (x *AppDTOPlanAction) Reset() {
 	*x = AppDTOPlanAction{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[101]
+	mi := &file_eruun_v1_applications_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7441,7 +6497,7 @@ func (x *AppDTOPlanAction) String() string {
 func (*AppDTOPlanAction) ProtoMessage() {}
 
 func (x *AppDTOPlanAction) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[101]
+	mi := &file_eruun_v1_applications_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7454,7 +6510,7 @@ func (x *AppDTOPlanAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOPlanAction.ProtoReflect.Descriptor instead.
 func (*AppDTOPlanAction) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{101}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *AppDTOPlanAction) GetOrder() int32 {
@@ -7520,7 +6576,7 @@ type AppDTORestartApplicationWorkloadsResponse struct {
 
 func (x *AppDTORestartApplicationWorkloadsResponse) Reset() {
 	*x = AppDTORestartApplicationWorkloadsResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[102]
+	mi := &file_eruun_v1_applications_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7532,7 +6588,7 @@ func (x *AppDTORestartApplicationWorkloadsResponse) String() string {
 func (*AppDTORestartApplicationWorkloadsResponse) ProtoMessage() {}
 
 func (x *AppDTORestartApplicationWorkloadsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[102]
+	mi := &file_eruun_v1_applications_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7545,7 +6601,7 @@ func (x *AppDTORestartApplicationWorkloadsResponse) ProtoReflect() protoreflect.
 
 // Deprecated: Use AppDTORestartApplicationWorkloadsResponse.ProtoReflect.Descriptor instead.
 func (*AppDTORestartApplicationWorkloadsResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{102}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{90}
 }
 
 func (x *AppDTORestartApplicationWorkloadsResponse) GetAppId() string {
@@ -7604,7 +6660,7 @@ type AppDTOStartApplicationDeploymentsResponse struct {
 
 func (x *AppDTOStartApplicationDeploymentsResponse) Reset() {
 	*x = AppDTOStartApplicationDeploymentsResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[103]
+	mi := &file_eruun_v1_applications_proto_msgTypes[91]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7616,7 +6672,7 @@ func (x *AppDTOStartApplicationDeploymentsResponse) String() string {
 func (*AppDTOStartApplicationDeploymentsResponse) ProtoMessage() {}
 
 func (x *AppDTOStartApplicationDeploymentsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[103]
+	mi := &file_eruun_v1_applications_proto_msgTypes[91]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7629,7 +6685,7 @@ func (x *AppDTOStartApplicationDeploymentsResponse) ProtoReflect() protoreflect.
 
 // Deprecated: Use AppDTOStartApplicationDeploymentsResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOStartApplicationDeploymentsResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{103}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{91}
 }
 
 func (x *AppDTOStartApplicationDeploymentsResponse) GetAppId() string {
@@ -7688,7 +6744,7 @@ type AppDTOStopApplicationDeploymentsResponse struct {
 
 func (x *AppDTOStopApplicationDeploymentsResponse) Reset() {
 	*x = AppDTOStopApplicationDeploymentsResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[104]
+	mi := &file_eruun_v1_applications_proto_msgTypes[92]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7700,7 +6756,7 @@ func (x *AppDTOStopApplicationDeploymentsResponse) String() string {
 func (*AppDTOStopApplicationDeploymentsResponse) ProtoMessage() {}
 
 func (x *AppDTOStopApplicationDeploymentsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[104]
+	mi := &file_eruun_v1_applications_proto_msgTypes[92]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7713,7 +6769,7 @@ func (x *AppDTOStopApplicationDeploymentsResponse) ProtoReflect() protoreflect.M
 
 // Deprecated: Use AppDTOStopApplicationDeploymentsResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOStopApplicationDeploymentsResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{104}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{92}
 }
 
 func (x *AppDTOStopApplicationDeploymentsResponse) GetAppId() string {
@@ -7769,7 +6825,7 @@ type AppDTOTaskApprovalRequest struct {
 
 func (x *AppDTOTaskApprovalRequest) Reset() {
 	*x = AppDTOTaskApprovalRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[105]
+	mi := &file_eruun_v1_applications_proto_msgTypes[93]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7781,7 +6837,7 @@ func (x *AppDTOTaskApprovalRequest) String() string {
 func (*AppDTOTaskApprovalRequest) ProtoMessage() {}
 
 func (x *AppDTOTaskApprovalRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[105]
+	mi := &file_eruun_v1_applications_proto_msgTypes[93]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7794,7 +6850,7 @@ func (x *AppDTOTaskApprovalRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOTaskApprovalRequest.ProtoReflect.Descriptor instead.
 func (*AppDTOTaskApprovalRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{105}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{93}
 }
 
 func (x *AppDTOTaskApprovalRequest) GetAction() string {
@@ -7829,7 +6885,7 @@ type AppDTOTaskApprovalResponse struct {
 
 func (x *AppDTOTaskApprovalResponse) Reset() {
 	*x = AppDTOTaskApprovalResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[106]
+	mi := &file_eruun_v1_applications_proto_msgTypes[94]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7841,7 +6897,7 @@ func (x *AppDTOTaskApprovalResponse) String() string {
 func (*AppDTOTaskApprovalResponse) ProtoMessage() {}
 
 func (x *AppDTOTaskApprovalResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[106]
+	mi := &file_eruun_v1_applications_proto_msgTypes[94]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7854,7 +6910,7 @@ func (x *AppDTOTaskApprovalResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOTaskApprovalResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOTaskApprovalResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{106}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{94}
 }
 
 func (x *AppDTOTaskApprovalResponse) GetTaskId() string {
@@ -7894,7 +6950,7 @@ type AppDTOTaskStageDetail struct {
 
 func (x *AppDTOTaskStageDetail) Reset() {
 	*x = AppDTOTaskStageDetail{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[107]
+	mi := &file_eruun_v1_applications_proto_msgTypes[95]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7906,7 +6962,7 @@ func (x *AppDTOTaskStageDetail) String() string {
 func (*AppDTOTaskStageDetail) ProtoMessage() {}
 
 func (x *AppDTOTaskStageDetail) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[107]
+	mi := &file_eruun_v1_applications_proto_msgTypes[95]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7919,7 +6975,7 @@ func (x *AppDTOTaskStageDetail) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOTaskStageDetail.ProtoReflect.Descriptor instead.
 func (*AppDTOTaskStageDetail) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{107}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{95}
 }
 
 func (x *AppDTOTaskStageDetail) GetId() int32 {
@@ -7989,7 +7045,7 @@ type AppDTOTaskStageMessage struct {
 
 func (x *AppDTOTaskStageMessage) Reset() {
 	*x = AppDTOTaskStageMessage{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[108]
+	mi := &file_eruun_v1_applications_proto_msgTypes[96]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8001,7 +7057,7 @@ func (x *AppDTOTaskStageMessage) String() string {
 func (*AppDTOTaskStageMessage) ProtoMessage() {}
 
 func (x *AppDTOTaskStageMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[108]
+	mi := &file_eruun_v1_applications_proto_msgTypes[96]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8014,7 +7070,7 @@ func (x *AppDTOTaskStageMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOTaskStageMessage.ProtoReflect.Descriptor instead.
 func (*AppDTOTaskStageMessage) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{108}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{96}
 }
 
 func (x *AppDTOTaskStageMessage) GetComponent() string {
@@ -8055,7 +7111,7 @@ type AppDTOTaskStagesResponse struct {
 
 func (x *AppDTOTaskStagesResponse) Reset() {
 	*x = AppDTOTaskStagesResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[109]
+	mi := &file_eruun_v1_applications_proto_msgTypes[97]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8067,7 +7123,7 @@ func (x *AppDTOTaskStagesResponse) String() string {
 func (*AppDTOTaskStagesResponse) ProtoMessage() {}
 
 func (x *AppDTOTaskStagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[109]
+	mi := &file_eruun_v1_applications_proto_msgTypes[97]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8080,7 +7136,7 @@ func (x *AppDTOTaskStagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOTaskStagesResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOTaskStagesResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{109}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{97}
 }
 
 func (x *AppDTOTaskStagesResponse) GetTaskId() string {
@@ -8163,7 +7219,7 @@ type AppDTOTaskStatusResponse struct {
 
 func (x *AppDTOTaskStatusResponse) Reset() {
 	*x = AppDTOTaskStatusResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[110]
+	mi := &file_eruun_v1_applications_proto_msgTypes[98]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8175,7 +7231,7 @@ func (x *AppDTOTaskStatusResponse) String() string {
 func (*AppDTOTaskStatusResponse) ProtoMessage() {}
 
 func (x *AppDTOTaskStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[110]
+	mi := &file_eruun_v1_applications_proto_msgTypes[98]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8188,7 +7244,7 @@ func (x *AppDTOTaskStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOTaskStatusResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOTaskStatusResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{110}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{98}
 }
 
 func (x *AppDTOTaskStatusResponse) GetTaskId() string {
@@ -8265,7 +7321,7 @@ type AppDTOTemplateRef struct {
 
 func (x *AppDTOTemplateRef) Reset() {
 	*x = AppDTOTemplateRef{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[111]
+	mi := &file_eruun_v1_applications_proto_msgTypes[99]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8277,7 +7333,7 @@ func (x *AppDTOTemplateRef) String() string {
 func (*AppDTOTemplateRef) ProtoMessage() {}
 
 func (x *AppDTOTemplateRef) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[111]
+	mi := &file_eruun_v1_applications_proto_msgTypes[99]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8290,7 +7346,7 @@ func (x *AppDTOTemplateRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOTemplateRef.ProtoReflect.Descriptor instead.
 func (*AppDTOTemplateRef) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{111}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{99}
 }
 
 func (x *AppDTOTemplateRef) GetId() string {
@@ -8326,7 +7382,7 @@ type AppDTOTryApplicationResponse struct {
 
 func (x *AppDTOTryApplicationResponse) Reset() {
 	*x = AppDTOTryApplicationResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[112]
+	mi := &file_eruun_v1_applications_proto_msgTypes[100]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8338,7 +7394,7 @@ func (x *AppDTOTryApplicationResponse) String() string {
 func (*AppDTOTryApplicationResponse) ProtoMessage() {}
 
 func (x *AppDTOTryApplicationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[112]
+	mi := &file_eruun_v1_applications_proto_msgTypes[100]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8351,7 +7407,7 @@ func (x *AppDTOTryApplicationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOTryApplicationResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOTryApplicationResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{112}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{100}
 }
 
 func (x *AppDTOTryApplicationResponse) GetValid() bool {
@@ -8382,354 +7438,6 @@ func (x *AppDTOTryApplicationResponse) GetPlan() *AppDTOExecutionPlan {
 	return nil
 }
 
-type AppDTOTryImportNamespaceAppResult struct {
-	state                protoimpl.MessageState `protogen:"open.v1"`
-	AppId                string                 `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
-	Name                 string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	ScannedComponents    []string               `protobuf:"bytes,3,rep,name=scanned_components,json=scannedComponents,proto3" json:"scanned_components,omitempty"`
-	OrphanComponentNames []string               `protobuf:"bytes,4,rep,name=orphan_component_names,json=orphanComponentNames,proto3" json:"orphan_component_names,omitempty"`
-	Error                string                 `protobuf:"bytes,5,opt,name=error,proto3" json:"error,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
-}
-
-func (x *AppDTOTryImportNamespaceAppResult) Reset() {
-	*x = AppDTOTryImportNamespaceAppResult{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[113]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AppDTOTryImportNamespaceAppResult) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AppDTOTryImportNamespaceAppResult) ProtoMessage() {}
-
-func (x *AppDTOTryImportNamespaceAppResult) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[113]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AppDTOTryImportNamespaceAppResult.ProtoReflect.Descriptor instead.
-func (*AppDTOTryImportNamespaceAppResult) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{113}
-}
-
-func (x *AppDTOTryImportNamespaceAppResult) GetAppId() string {
-	if x != nil {
-		return x.AppId
-	}
-	return ""
-}
-
-func (x *AppDTOTryImportNamespaceAppResult) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *AppDTOTryImportNamespaceAppResult) GetScannedComponents() []string {
-	if x != nil {
-		return x.ScannedComponents
-	}
-	return nil
-}
-
-func (x *AppDTOTryImportNamespaceAppResult) GetOrphanComponentNames() []string {
-	if x != nil {
-		return x.OrphanComponentNames
-	}
-	return nil
-}
-
-func (x *AppDTOTryImportNamespaceAppResult) GetError() string {
-	if x != nil {
-		return x.Error
-	}
-	return ""
-}
-
-type AppDTOTryImportNamespaceApplicationsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Namespace     string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
-	IncludeKinds  []string               `protobuf:"bytes,2,rep,name=include_kinds,json=includeKinds,proto3" json:"include_kinds,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *AppDTOTryImportNamespaceApplicationsRequest) Reset() {
-	*x = AppDTOTryImportNamespaceApplicationsRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[114]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AppDTOTryImportNamespaceApplicationsRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AppDTOTryImportNamespaceApplicationsRequest) ProtoMessage() {}
-
-func (x *AppDTOTryImportNamespaceApplicationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[114]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AppDTOTryImportNamespaceApplicationsRequest.ProtoReflect.Descriptor instead.
-func (*AppDTOTryImportNamespaceApplicationsRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{114}
-}
-
-func (x *AppDTOTryImportNamespaceApplicationsRequest) GetNamespace() string {
-	if x != nil {
-		return x.Namespace
-	}
-	return ""
-}
-
-func (x *AppDTOTryImportNamespaceApplicationsRequest) GetIncludeKinds() []string {
-	if x != nil {
-		return x.IncludeKinds
-	}
-	return nil
-}
-
-type AppDTOTryImportNamespaceApplicationsResponse struct {
-	state            protoimpl.MessageState                     `protogen:"open.v1"`
-	Namespace        string                                     `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
-	Summary          *AppDTOTryImportNamespaceSummary           `protobuf:"bytes,2,opt,name=summary,proto3" json:"summary,omitempty"`
-	Apps             []*AppDTOTryImportNamespaceAppResult       `protobuf:"bytes,3,rep,name=apps,proto3" json:"apps,omitempty"`
-	OrphanComponents []*AppDTOTryImportNamespaceOrphanComponent `protobuf:"bytes,4,rep,name=orphan_components,json=orphanComponents,proto3" json:"orphan_components,omitempty"`
-	Warnings         []string                                   `protobuf:"bytes,5,rep,name=warnings,proto3" json:"warnings,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
-}
-
-func (x *AppDTOTryImportNamespaceApplicationsResponse) Reset() {
-	*x = AppDTOTryImportNamespaceApplicationsResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[115]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AppDTOTryImportNamespaceApplicationsResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AppDTOTryImportNamespaceApplicationsResponse) ProtoMessage() {}
-
-func (x *AppDTOTryImportNamespaceApplicationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[115]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AppDTOTryImportNamespaceApplicationsResponse.ProtoReflect.Descriptor instead.
-func (*AppDTOTryImportNamespaceApplicationsResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{115}
-}
-
-func (x *AppDTOTryImportNamespaceApplicationsResponse) GetNamespace() string {
-	if x != nil {
-		return x.Namespace
-	}
-	return ""
-}
-
-func (x *AppDTOTryImportNamespaceApplicationsResponse) GetSummary() *AppDTOTryImportNamespaceSummary {
-	if x != nil {
-		return x.Summary
-	}
-	return nil
-}
-
-func (x *AppDTOTryImportNamespaceApplicationsResponse) GetApps() []*AppDTOTryImportNamespaceAppResult {
-	if x != nil {
-		return x.Apps
-	}
-	return nil
-}
-
-func (x *AppDTOTryImportNamespaceApplicationsResponse) GetOrphanComponents() []*AppDTOTryImportNamespaceOrphanComponent {
-	if x != nil {
-		return x.OrphanComponents
-	}
-	return nil
-}
-
-func (x *AppDTOTryImportNamespaceApplicationsResponse) GetWarnings() []string {
-	if x != nil {
-		return x.Warnings
-	}
-	return nil
-}
-
-type AppDTOTryImportNamespaceOrphanComponent struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	AppId               string                 `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
-	AppName             string                 `protobuf:"bytes,2,opt,name=app_name,json=appName,proto3" json:"app_name,omitempty"`
-	ComponentName       string                 `protobuf:"bytes,3,opt,name=component_name,json=componentName,proto3" json:"component_name,omitempty"`
-	ComponentType       string                 `protobuf:"bytes,4,opt,name=component_type,json=componentType,proto3" json:"component_type,omitempty"`
-	Reason              string                 `protobuf:"bytes,5,opt,name=reason,proto3" json:"reason,omitempty"`
-	MatchedIncludeKinds []string               `protobuf:"bytes,6,rep,name=matched_include_kinds,json=matchedIncludeKinds,proto3" json:"matched_include_kinds,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
-}
-
-func (x *AppDTOTryImportNamespaceOrphanComponent) Reset() {
-	*x = AppDTOTryImportNamespaceOrphanComponent{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[116]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AppDTOTryImportNamespaceOrphanComponent) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AppDTOTryImportNamespaceOrphanComponent) ProtoMessage() {}
-
-func (x *AppDTOTryImportNamespaceOrphanComponent) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[116]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AppDTOTryImportNamespaceOrphanComponent.ProtoReflect.Descriptor instead.
-func (*AppDTOTryImportNamespaceOrphanComponent) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{116}
-}
-
-func (x *AppDTOTryImportNamespaceOrphanComponent) GetAppId() string {
-	if x != nil {
-		return x.AppId
-	}
-	return ""
-}
-
-func (x *AppDTOTryImportNamespaceOrphanComponent) GetAppName() string {
-	if x != nil {
-		return x.AppName
-	}
-	return ""
-}
-
-func (x *AppDTOTryImportNamespaceOrphanComponent) GetComponentName() string {
-	if x != nil {
-		return x.ComponentName
-	}
-	return ""
-}
-
-func (x *AppDTOTryImportNamespaceOrphanComponent) GetComponentType() string {
-	if x != nil {
-		return x.ComponentType
-	}
-	return ""
-}
-
-func (x *AppDTOTryImportNamespaceOrphanComponent) GetReason() string {
-	if x != nil {
-		return x.Reason
-	}
-	return ""
-}
-
-func (x *AppDTOTryImportNamespaceOrphanComponent) GetMatchedIncludeKinds() []string {
-	if x != nil {
-		return x.MatchedIncludeKinds
-	}
-	return nil
-}
-
-type AppDTOTryImportNamespaceSummary struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	ResourcesScanned int32                  `protobuf:"varint,1,opt,name=resources_scanned,json=resourcesScanned,proto3" json:"resources_scanned,omitempty"`
-	AppsMatched      int32                  `protobuf:"varint,2,opt,name=apps_matched,json=appsMatched,proto3" json:"apps_matched,omitempty"`
-	OrphansDetected  int32                  `protobuf:"varint,3,opt,name=orphans_detected,json=orphansDetected,proto3" json:"orphans_detected,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
-}
-
-func (x *AppDTOTryImportNamespaceSummary) Reset() {
-	*x = AppDTOTryImportNamespaceSummary{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[117]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AppDTOTryImportNamespaceSummary) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AppDTOTryImportNamespaceSummary) ProtoMessage() {}
-
-func (x *AppDTOTryImportNamespaceSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[117]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AppDTOTryImportNamespaceSummary.ProtoReflect.Descriptor instead.
-func (*AppDTOTryImportNamespaceSummary) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{117}
-}
-
-func (x *AppDTOTryImportNamespaceSummary) GetResourcesScanned() int32 {
-	if x != nil {
-		return x.ResourcesScanned
-	}
-	return 0
-}
-
-func (x *AppDTOTryImportNamespaceSummary) GetAppsMatched() int32 {
-	if x != nil {
-		return x.AppsMatched
-	}
-	return 0
-}
-
-func (x *AppDTOTryImportNamespaceSummary) GetOrphansDetected() int32 {
-	if x != nil {
-		return x.OrphansDetected
-	}
-	return 0
-}
-
 type AppDTOTryValidationError struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
@@ -8741,7 +7449,7 @@ type AppDTOTryValidationError struct {
 
 func (x *AppDTOTryValidationError) Reset() {
 	*x = AppDTOTryValidationError{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[118]
+	mi := &file_eruun_v1_applications_proto_msgTypes[101]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8753,7 +7461,7 @@ func (x *AppDTOTryValidationError) String() string {
 func (*AppDTOTryValidationError) ProtoMessage() {}
 
 func (x *AppDTOTryValidationError) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[118]
+	mi := &file_eruun_v1_applications_proto_msgTypes[101]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8766,7 +7474,7 @@ func (x *AppDTOTryValidationError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOTryValidationError.ProtoReflect.Descriptor instead.
 func (*AppDTOTryValidationError) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{118}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{101}
 }
 
 func (x *AppDTOTryValidationError) GetPath() string {
@@ -8805,7 +7513,7 @@ type AppDTOTryWorkflowRequest struct {
 
 func (x *AppDTOTryWorkflowRequest) Reset() {
 	*x = AppDTOTryWorkflowRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[119]
+	mi := &file_eruun_v1_applications_proto_msgTypes[102]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8817,7 +7525,7 @@ func (x *AppDTOTryWorkflowRequest) String() string {
 func (*AppDTOTryWorkflowRequest) ProtoMessage() {}
 
 func (x *AppDTOTryWorkflowRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[119]
+	mi := &file_eruun_v1_applications_proto_msgTypes[102]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8830,7 +7538,7 @@ func (x *AppDTOTryWorkflowRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOTryWorkflowRequest.ProtoReflect.Descriptor instead.
 func (*AppDTOTryWorkflowRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{119}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{102}
 }
 
 func (x *AppDTOTryWorkflowRequest) GetWorkflowId() string {
@@ -8894,7 +7602,7 @@ type AppDTOTryWorkflowResponse struct {
 
 func (x *AppDTOTryWorkflowResponse) Reset() {
 	*x = AppDTOTryWorkflowResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[120]
+	mi := &file_eruun_v1_applications_proto_msgTypes[103]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8906,7 +7614,7 @@ func (x *AppDTOTryWorkflowResponse) String() string {
 func (*AppDTOTryWorkflowResponse) ProtoMessage() {}
 
 func (x *AppDTOTryWorkflowResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[120]
+	mi := &file_eruun_v1_applications_proto_msgTypes[103]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8919,7 +7627,7 @@ func (x *AppDTOTryWorkflowResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOTryWorkflowResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOTryWorkflowResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{120}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{103}
 }
 
 func (x *AppDTOTryWorkflowResponse) GetValid() bool {
@@ -8965,7 +7673,7 @@ type AppDTOUpdateApplicationWorkflowRequest struct {
 
 func (x *AppDTOUpdateApplicationWorkflowRequest) Reset() {
 	*x = AppDTOUpdateApplicationWorkflowRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[121]
+	mi := &file_eruun_v1_applications_proto_msgTypes[104]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8977,7 +7685,7 @@ func (x *AppDTOUpdateApplicationWorkflowRequest) String() string {
 func (*AppDTOUpdateApplicationWorkflowRequest) ProtoMessage() {}
 
 func (x *AppDTOUpdateApplicationWorkflowRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[121]
+	mi := &file_eruun_v1_applications_proto_msgTypes[104]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8990,7 +7698,7 @@ func (x *AppDTOUpdateApplicationWorkflowRequest) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use AppDTOUpdateApplicationWorkflowRequest.ProtoReflect.Descriptor instead.
 func (*AppDTOUpdateApplicationWorkflowRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{121}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{104}
 }
 
 func (x *AppDTOUpdateApplicationWorkflowRequest) GetWorkflowId() string {
@@ -9060,7 +7768,7 @@ type AppDTOUpdateVersionRequest struct {
 
 func (x *AppDTOUpdateVersionRequest) Reset() {
 	*x = AppDTOUpdateVersionRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[122]
+	mi := &file_eruun_v1_applications_proto_msgTypes[105]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9072,7 +7780,7 @@ func (x *AppDTOUpdateVersionRequest) String() string {
 func (*AppDTOUpdateVersionRequest) ProtoMessage() {}
 
 func (x *AppDTOUpdateVersionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[122]
+	mi := &file_eruun_v1_applications_proto_msgTypes[105]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9085,7 +7793,7 @@ func (x *AppDTOUpdateVersionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOUpdateVersionRequest.ProtoReflect.Descriptor instead.
 func (*AppDTOUpdateVersionRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{122}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{105}
 }
 
 func (x *AppDTOUpdateVersionRequest) GetVersion() string {
@@ -9177,7 +7885,7 @@ type AppDTOUpdateVersionResponse struct {
 
 func (x *AppDTOUpdateVersionResponse) Reset() {
 	*x = AppDTOUpdateVersionResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[123]
+	mi := &file_eruun_v1_applications_proto_msgTypes[106]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9189,7 +7897,7 @@ func (x *AppDTOUpdateVersionResponse) String() string {
 func (*AppDTOUpdateVersionResponse) ProtoMessage() {}
 
 func (x *AppDTOUpdateVersionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[123]
+	mi := &file_eruun_v1_applications_proto_msgTypes[106]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9202,7 +7910,7 @@ func (x *AppDTOUpdateVersionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOUpdateVersionResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOUpdateVersionResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{123}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{106}
 }
 
 func (x *AppDTOUpdateVersionResponse) GetAppId() string {
@@ -9291,7 +7999,7 @@ type AppDTOUpdateWorkflowResponse struct {
 
 func (x *AppDTOUpdateWorkflowResponse) Reset() {
 	*x = AppDTOUpdateWorkflowResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[124]
+	mi := &file_eruun_v1_applications_proto_msgTypes[107]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9303,7 +8011,7 @@ func (x *AppDTOUpdateWorkflowResponse) String() string {
 func (*AppDTOUpdateWorkflowResponse) ProtoMessage() {}
 
 func (x *AppDTOUpdateWorkflowResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[124]
+	mi := &file_eruun_v1_applications_proto_msgTypes[107]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9316,7 +8024,7 @@ func (x *AppDTOUpdateWorkflowResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOUpdateWorkflowResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOUpdateWorkflowResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{124}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{107}
 }
 
 func (x *AppDTOUpdateWorkflowResponse) GetWorkflowId() string {
@@ -9337,7 +8045,7 @@ type AppDTOUpsertWorkflowScheduleRequest struct {
 
 func (x *AppDTOUpsertWorkflowScheduleRequest) Reset() {
 	*x = AppDTOUpsertWorkflowScheduleRequest{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[125]
+	mi := &file_eruun_v1_applications_proto_msgTypes[108]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9349,7 +8057,7 @@ func (x *AppDTOUpsertWorkflowScheduleRequest) String() string {
 func (*AppDTOUpsertWorkflowScheduleRequest) ProtoMessage() {}
 
 func (x *AppDTOUpsertWorkflowScheduleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[125]
+	mi := &file_eruun_v1_applications_proto_msgTypes[108]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9362,7 +8070,7 @@ func (x *AppDTOUpsertWorkflowScheduleRequest) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use AppDTOUpsertWorkflowScheduleRequest.ProtoReflect.Descriptor instead.
 func (*AppDTOUpsertWorkflowScheduleRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{125}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{108}
 }
 
 func (x *AppDTOUpsertWorkflowScheduleRequest) GetWorkflowId() string {
@@ -9395,7 +8103,7 @@ type AppDTOUpsertWorkflowScheduleResponse struct {
 
 func (x *AppDTOUpsertWorkflowScheduleResponse) Reset() {
 	*x = AppDTOUpsertWorkflowScheduleResponse{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[126]
+	mi := &file_eruun_v1_applications_proto_msgTypes[109]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9407,7 +8115,7 @@ func (x *AppDTOUpsertWorkflowScheduleResponse) String() string {
 func (*AppDTOUpsertWorkflowScheduleResponse) ProtoMessage() {}
 
 func (x *AppDTOUpsertWorkflowScheduleResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[126]
+	mi := &file_eruun_v1_applications_proto_msgTypes[109]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9420,7 +8128,7 @@ func (x *AppDTOUpsertWorkflowScheduleResponse) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use AppDTOUpsertWorkflowScheduleResponse.ProtoReflect.Descriptor instead.
 func (*AppDTOUpsertWorkflowScheduleResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{126}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{109}
 }
 
 func (x *AppDTOUpsertWorkflowScheduleResponse) GetSchedule() *AppDTOWorkflowSchedule {
@@ -9441,7 +8149,7 @@ type AppDTOValidationError struct {
 
 func (x *AppDTOValidationError) Reset() {
 	*x = AppDTOValidationError{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[127]
+	mi := &file_eruun_v1_applications_proto_msgTypes[110]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9453,7 +8161,7 @@ func (x *AppDTOValidationError) String() string {
 func (*AppDTOValidationError) ProtoMessage() {}
 
 func (x *AppDTOValidationError) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[127]
+	mi := &file_eruun_v1_applications_proto_msgTypes[110]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9466,7 +8174,7 @@ func (x *AppDTOValidationError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOValidationError.ProtoReflect.Descriptor instead.
 func (*AppDTOValidationError) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{127}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{110}
 }
 
 func (x *AppDTOValidationError) GetField() string {
@@ -9505,7 +8213,7 @@ type AppDTOVersionComponentDiff struct {
 
 func (x *AppDTOVersionComponentDiff) Reset() {
 	*x = AppDTOVersionComponentDiff{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[128]
+	mi := &file_eruun_v1_applications_proto_msgTypes[111]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9517,7 +8225,7 @@ func (x *AppDTOVersionComponentDiff) String() string {
 func (*AppDTOVersionComponentDiff) ProtoMessage() {}
 
 func (x *AppDTOVersionComponentDiff) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[128]
+	mi := &file_eruun_v1_applications_proto_msgTypes[111]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9530,7 +8238,7 @@ func (x *AppDTOVersionComponentDiff) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOVersionComponentDiff.ProtoReflect.Descriptor instead.
 func (*AppDTOVersionComponentDiff) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{128}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{111}
 }
 
 func (x *AppDTOVersionComponentDiff) GetAction() string {
@@ -9593,7 +8301,7 @@ type AppDTOVersionComponentField struct {
 
 func (x *AppDTOVersionComponentField) Reset() {
 	*x = AppDTOVersionComponentField{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[129]
+	mi := &file_eruun_v1_applications_proto_msgTypes[112]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9605,7 +8313,7 @@ func (x *AppDTOVersionComponentField) String() string {
 func (*AppDTOVersionComponentField) ProtoMessage() {}
 
 func (x *AppDTOVersionComponentField) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[129]
+	mi := &file_eruun_v1_applications_proto_msgTypes[112]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9618,7 +8326,7 @@ func (x *AppDTOVersionComponentField) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOVersionComponentField.ProtoReflect.Descriptor instead.
 func (*AppDTOVersionComponentField) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{129}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{112}
 }
 
 func (x *AppDTOVersionComponentField) GetField() string {
@@ -9656,7 +8364,7 @@ type AppDTOVersionComponentState struct {
 
 func (x *AppDTOVersionComponentState) Reset() {
 	*x = AppDTOVersionComponentState{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[130]
+	mi := &file_eruun_v1_applications_proto_msgTypes[113]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9668,7 +8376,7 @@ func (x *AppDTOVersionComponentState) String() string {
 func (*AppDTOVersionComponentState) ProtoMessage() {}
 
 func (x *AppDTOVersionComponentState) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[130]
+	mi := &file_eruun_v1_applications_proto_msgTypes[113]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9681,7 +8389,7 @@ func (x *AppDTOVersionComponentState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOVersionComponentState.ProtoReflect.Descriptor instead.
 func (*AppDTOVersionComponentState) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{130}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{113}
 }
 
 func (x *AppDTOVersionComponentState) GetName() string {
@@ -9742,7 +8450,7 @@ type AppDTOWorkflowCallback struct {
 
 func (x *AppDTOWorkflowCallback) Reset() {
 	*x = AppDTOWorkflowCallback{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[131]
+	mi := &file_eruun_v1_applications_proto_msgTypes[114]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9754,7 +8462,7 @@ func (x *AppDTOWorkflowCallback) String() string {
 func (*AppDTOWorkflowCallback) ProtoMessage() {}
 
 func (x *AppDTOWorkflowCallback) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[131]
+	mi := &file_eruun_v1_applications_proto_msgTypes[114]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9767,7 +8475,7 @@ func (x *AppDTOWorkflowCallback) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOWorkflowCallback.ProtoReflect.Descriptor instead.
 func (*AppDTOWorkflowCallback) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{131}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{114}
 }
 
 func (x *AppDTOWorkflowCallback) GetSuccess() string {
@@ -9838,7 +8546,7 @@ type AppDTOWorkflowProperties struct {
 
 func (x *AppDTOWorkflowProperties) Reset() {
 	*x = AppDTOWorkflowProperties{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[132]
+	mi := &file_eruun_v1_applications_proto_msgTypes[115]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9850,7 +8558,7 @@ func (x *AppDTOWorkflowProperties) String() string {
 func (*AppDTOWorkflowProperties) ProtoMessage() {}
 
 func (x *AppDTOWorkflowProperties) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[132]
+	mi := &file_eruun_v1_applications_proto_msgTypes[115]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9863,7 +8571,7 @@ func (x *AppDTOWorkflowProperties) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOWorkflowProperties.ProtoReflect.Descriptor instead.
 func (*AppDTOWorkflowProperties) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{132}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{115}
 }
 
 func (x *AppDTOWorkflowProperties) GetPolicies() []string {
@@ -9913,7 +8621,7 @@ type AppDTOWorkflowSchedule struct {
 
 func (x *AppDTOWorkflowSchedule) Reset() {
 	*x = AppDTOWorkflowSchedule{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[133]
+	mi := &file_eruun_v1_applications_proto_msgTypes[116]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9925,7 +8633,7 @@ func (x *AppDTOWorkflowSchedule) String() string {
 func (*AppDTOWorkflowSchedule) ProtoMessage() {}
 
 func (x *AppDTOWorkflowSchedule) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[133]
+	mi := &file_eruun_v1_applications_proto_msgTypes[116]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9938,7 +8646,7 @@ func (x *AppDTOWorkflowSchedule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOWorkflowSchedule.ProtoReflect.Descriptor instead.
 func (*AppDTOWorkflowSchedule) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{133}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{116}
 }
 
 func (x *AppDTOWorkflowSchedule) GetId() string {
@@ -10031,7 +8739,7 @@ type AppDTOWorkflowStepApproval struct {
 
 func (x *AppDTOWorkflowStepApproval) Reset() {
 	*x = AppDTOWorkflowStepApproval{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[134]
+	mi := &file_eruun_v1_applications_proto_msgTypes[117]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10043,7 +8751,7 @@ func (x *AppDTOWorkflowStepApproval) String() string {
 func (*AppDTOWorkflowStepApproval) ProtoMessage() {}
 
 func (x *AppDTOWorkflowStepApproval) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[134]
+	mi := &file_eruun_v1_applications_proto_msgTypes[117]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10056,7 +8764,7 @@ func (x *AppDTOWorkflowStepApproval) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOWorkflowStepApproval.ProtoReflect.Descriptor instead.
 func (*AppDTOWorkflowStepApproval) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{134}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{117}
 }
 
 func (x *AppDTOWorkflowStepApproval) GetNotifyUrl() string {
@@ -10111,7 +8819,7 @@ type AppDTOWorkflowStepDetail struct {
 
 func (x *AppDTOWorkflowStepDetail) Reset() {
 	*x = AppDTOWorkflowStepDetail{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[135]
+	mi := &file_eruun_v1_applications_proto_msgTypes[118]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10123,7 +8831,7 @@ func (x *AppDTOWorkflowStepDetail) String() string {
 func (*AppDTOWorkflowStepDetail) ProtoMessage() {}
 
 func (x *AppDTOWorkflowStepDetail) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[135]
+	mi := &file_eruun_v1_applications_proto_msgTypes[118]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10136,7 +8844,7 @@ func (x *AppDTOWorkflowStepDetail) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOWorkflowStepDetail.ProtoReflect.Descriptor instead.
 func (*AppDTOWorkflowStepDetail) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{135}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{118}
 }
 
 func (x *AppDTOWorkflowStepDetail) GetSchedulingClass() string {
@@ -10215,7 +8923,7 @@ type AppDTOWorkflowSubStepDetail struct {
 
 func (x *AppDTOWorkflowSubStepDetail) Reset() {
 	*x = AppDTOWorkflowSubStepDetail{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[136]
+	mi := &file_eruun_v1_applications_proto_msgTypes[119]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10227,7 +8935,7 @@ func (x *AppDTOWorkflowSubStepDetail) String() string {
 func (*AppDTOWorkflowSubStepDetail) ProtoMessage() {}
 
 func (x *AppDTOWorkflowSubStepDetail) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[136]
+	mi := &file_eruun_v1_applications_proto_msgTypes[119]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10240,7 +8948,7 @@ func (x *AppDTOWorkflowSubStepDetail) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppDTOWorkflowSubStepDetail.ProtoReflect.Descriptor instead.
 func (*AppDTOWorkflowSubStepDetail) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{136}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{119}
 }
 
 func (x *AppDTOWorkflowSubStepDetail) GetSchedulingClass() string {
@@ -10288,7 +8996,7 @@ type AppKubeCoreAppArmorProfile struct {
 
 func (x *AppKubeCoreAppArmorProfile) Reset() {
 	*x = AppKubeCoreAppArmorProfile{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[137]
+	mi := &file_eruun_v1_applications_proto_msgTypes[120]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10300,7 +9008,7 @@ func (x *AppKubeCoreAppArmorProfile) String() string {
 func (*AppKubeCoreAppArmorProfile) ProtoMessage() {}
 
 func (x *AppKubeCoreAppArmorProfile) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[137]
+	mi := &file_eruun_v1_applications_proto_msgTypes[120]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10313,7 +9021,7 @@ func (x *AppKubeCoreAppArmorProfile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppKubeCoreAppArmorProfile.ProtoReflect.Descriptor instead.
 func (*AppKubeCoreAppArmorProfile) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{137}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{120}
 }
 
 func (x *AppKubeCoreAppArmorProfile) GetType() string {
@@ -10340,7 +9048,7 @@ type AppKubeCoreCapabilities struct {
 
 func (x *AppKubeCoreCapabilities) Reset() {
 	*x = AppKubeCoreCapabilities{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[138]
+	mi := &file_eruun_v1_applications_proto_msgTypes[121]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10352,7 +9060,7 @@ func (x *AppKubeCoreCapabilities) String() string {
 func (*AppKubeCoreCapabilities) ProtoMessage() {}
 
 func (x *AppKubeCoreCapabilities) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[138]
+	mi := &file_eruun_v1_applications_proto_msgTypes[121]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10365,7 +9073,7 @@ func (x *AppKubeCoreCapabilities) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppKubeCoreCapabilities.ProtoReflect.Descriptor instead.
 func (*AppKubeCoreCapabilities) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{138}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{121}
 }
 
 func (x *AppKubeCoreCapabilities) GetAdd() []string {
@@ -10394,7 +9102,7 @@ type AppKubeCoreSELinuxOptions struct {
 
 func (x *AppKubeCoreSELinuxOptions) Reset() {
 	*x = AppKubeCoreSELinuxOptions{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[139]
+	mi := &file_eruun_v1_applications_proto_msgTypes[122]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10406,7 +9114,7 @@ func (x *AppKubeCoreSELinuxOptions) String() string {
 func (*AppKubeCoreSELinuxOptions) ProtoMessage() {}
 
 func (x *AppKubeCoreSELinuxOptions) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[139]
+	mi := &file_eruun_v1_applications_proto_msgTypes[122]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10419,7 +9127,7 @@ func (x *AppKubeCoreSELinuxOptions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppKubeCoreSELinuxOptions.ProtoReflect.Descriptor instead.
 func (*AppKubeCoreSELinuxOptions) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{139}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{122}
 }
 
 func (x *AppKubeCoreSELinuxOptions) GetUser() string {
@@ -10460,7 +9168,7 @@ type AppKubeCoreSeccompProfile struct {
 
 func (x *AppKubeCoreSeccompProfile) Reset() {
 	*x = AppKubeCoreSeccompProfile{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[140]
+	mi := &file_eruun_v1_applications_proto_msgTypes[123]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10472,7 +9180,7 @@ func (x *AppKubeCoreSeccompProfile) String() string {
 func (*AppKubeCoreSeccompProfile) ProtoMessage() {}
 
 func (x *AppKubeCoreSeccompProfile) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[140]
+	mi := &file_eruun_v1_applications_proto_msgTypes[123]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10485,7 +9193,7 @@ func (x *AppKubeCoreSeccompProfile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppKubeCoreSeccompProfile.ProtoReflect.Descriptor instead.
 func (*AppKubeCoreSeccompProfile) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{140}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{123}
 }
 
 func (x *AppKubeCoreSeccompProfile) GetType() string {
@@ -10522,7 +9230,7 @@ type AppKubeCoreSecurityContext struct {
 
 func (x *AppKubeCoreSecurityContext) Reset() {
 	*x = AppKubeCoreSecurityContext{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[141]
+	mi := &file_eruun_v1_applications_proto_msgTypes[124]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10534,7 +9242,7 @@ func (x *AppKubeCoreSecurityContext) String() string {
 func (*AppKubeCoreSecurityContext) ProtoMessage() {}
 
 func (x *AppKubeCoreSecurityContext) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[141]
+	mi := &file_eruun_v1_applications_proto_msgTypes[124]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10547,7 +9255,7 @@ func (x *AppKubeCoreSecurityContext) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppKubeCoreSecurityContext.ProtoReflect.Descriptor instead.
 func (*AppKubeCoreSecurityContext) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{141}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{124}
 }
 
 func (x *AppKubeCoreSecurityContext) GetCapabilities() *AppKubeCoreCapabilities {
@@ -10646,7 +9354,7 @@ type AppKubeCoreWindowsSecurityContextOptions struct {
 
 func (x *AppKubeCoreWindowsSecurityContextOptions) Reset() {
 	*x = AppKubeCoreWindowsSecurityContextOptions{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[142]
+	mi := &file_eruun_v1_applications_proto_msgTypes[125]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10658,7 +9366,7 @@ func (x *AppKubeCoreWindowsSecurityContextOptions) String() string {
 func (*AppKubeCoreWindowsSecurityContextOptions) ProtoMessage() {}
 
 func (x *AppKubeCoreWindowsSecurityContextOptions) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[142]
+	mi := &file_eruun_v1_applications_proto_msgTypes[125]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10671,7 +9379,7 @@ func (x *AppKubeCoreWindowsSecurityContextOptions) ProtoReflect() protoreflect.M
 
 // Deprecated: Use AppKubeCoreWindowsSecurityContextOptions.ProtoReflect.Descriptor instead.
 func (*AppKubeCoreWindowsSecurityContextOptions) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{142}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{125}
 }
 
 func (x *AppKubeCoreWindowsSecurityContextOptions) GetGmsaCredentialSpecName() string {
@@ -10713,7 +9421,7 @@ type AppSpecCloudSpec struct {
 
 func (x *AppSpecCloudSpec) Reset() {
 	*x = AppSpecCloudSpec{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[143]
+	mi := &file_eruun_v1_applications_proto_msgTypes[126]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10725,7 +9433,7 @@ func (x *AppSpecCloudSpec) String() string {
 func (*AppSpecCloudSpec) ProtoMessage() {}
 
 func (x *AppSpecCloudSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[143]
+	mi := &file_eruun_v1_applications_proto_msgTypes[126]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10738,7 +9446,7 @@ func (x *AppSpecCloudSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecCloudSpec.ProtoReflect.Descriptor instead.
 func (*AppSpecCloudSpec) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{143}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{126}
 }
 
 func (x *AppSpecCloudSpec) GetProvider() string {
@@ -10772,7 +9480,7 @@ type AppSpecConfigMapSelectorSpec struct {
 
 func (x *AppSpecConfigMapSelectorSpec) Reset() {
 	*x = AppSpecConfigMapSelectorSpec{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[144]
+	mi := &file_eruun_v1_applications_proto_msgTypes[127]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10784,7 +9492,7 @@ func (x *AppSpecConfigMapSelectorSpec) String() string {
 func (*AppSpecConfigMapSelectorSpec) ProtoMessage() {}
 
 func (x *AppSpecConfigMapSelectorSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[144]
+	mi := &file_eruun_v1_applications_proto_msgTypes[127]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10797,7 +9505,7 @@ func (x *AppSpecConfigMapSelectorSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecConfigMapSelectorSpec.ProtoReflect.Descriptor instead.
 func (*AppSpecConfigMapSelectorSpec) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{144}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{127}
 }
 
 func (x *AppSpecConfigMapSelectorSpec) GetName() string {
@@ -10824,7 +9532,7 @@ type AppSpecEnvFromSourceSpec struct {
 
 func (x *AppSpecEnvFromSourceSpec) Reset() {
 	*x = AppSpecEnvFromSourceSpec{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[145]
+	mi := &file_eruun_v1_applications_proto_msgTypes[128]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10836,7 +9544,7 @@ func (x *AppSpecEnvFromSourceSpec) String() string {
 func (*AppSpecEnvFromSourceSpec) ProtoMessage() {}
 
 func (x *AppSpecEnvFromSourceSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[145]
+	mi := &file_eruun_v1_applications_proto_msgTypes[128]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10849,7 +9557,7 @@ func (x *AppSpecEnvFromSourceSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecEnvFromSourceSpec.ProtoReflect.Descriptor instead.
 func (*AppSpecEnvFromSourceSpec) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{145}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{128}
 }
 
 func (x *AppSpecEnvFromSourceSpec) GetType() string {
@@ -10875,7 +9583,7 @@ type AppSpecExecProbe struct {
 
 func (x *AppSpecExecProbe) Reset() {
 	*x = AppSpecExecProbe{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[146]
+	mi := &file_eruun_v1_applications_proto_msgTypes[129]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10887,7 +9595,7 @@ func (x *AppSpecExecProbe) String() string {
 func (*AppSpecExecProbe) ProtoMessage() {}
 
 func (x *AppSpecExecProbe) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[146]
+	mi := &file_eruun_v1_applications_proto_msgTypes[129]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10900,7 +9608,7 @@ func (x *AppSpecExecProbe) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecExecProbe.ProtoReflect.Descriptor instead.
 func (*AppSpecExecProbe) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{146}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{129}
 }
 
 func (x *AppSpecExecProbe) GetCommand() []string {
@@ -10922,7 +9630,7 @@ type AppSpecHTTPGetProbe struct {
 
 func (x *AppSpecHTTPGetProbe) Reset() {
 	*x = AppSpecHTTPGetProbe{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[147]
+	mi := &file_eruun_v1_applications_proto_msgTypes[130]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10934,7 +9642,7 @@ func (x *AppSpecHTTPGetProbe) String() string {
 func (*AppSpecHTTPGetProbe) ProtoMessage() {}
 
 func (x *AppSpecHTTPGetProbe) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[147]
+	mi := &file_eruun_v1_applications_proto_msgTypes[130]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10947,7 +9655,7 @@ func (x *AppSpecHTTPGetProbe) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecHTTPGetProbe.ProtoReflect.Descriptor instead.
 func (*AppSpecHTTPGetProbe) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{147}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{130}
 }
 
 func (x *AppSpecHTTPGetProbe) GetPath() string {
@@ -10990,7 +9698,7 @@ type AppSpecIngressRoute struct {
 
 func (x *AppSpecIngressRoute) Reset() {
 	*x = AppSpecIngressRoute{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[148]
+	mi := &file_eruun_v1_applications_proto_msgTypes[131]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11002,7 +9710,7 @@ func (x *AppSpecIngressRoute) String() string {
 func (*AppSpecIngressRoute) ProtoMessage() {}
 
 func (x *AppSpecIngressRoute) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[148]
+	mi := &file_eruun_v1_applications_proto_msgTypes[131]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11015,7 +9723,7 @@ func (x *AppSpecIngressRoute) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecIngressRoute.ProtoReflect.Descriptor instead.
 func (*AppSpecIngressRoute) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{148}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{131}
 }
 
 func (x *AppSpecIngressRoute) GetServiceName() string {
@@ -11059,7 +9767,7 @@ type AppSpecIngressRoutes struct {
 
 func (x *AppSpecIngressRoutes) Reset() {
 	*x = AppSpecIngressRoutes{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[149]
+	mi := &file_eruun_v1_applications_proto_msgTypes[132]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11071,7 +9779,7 @@ func (x *AppSpecIngressRoutes) String() string {
 func (*AppSpecIngressRoutes) ProtoMessage() {}
 
 func (x *AppSpecIngressRoutes) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[149]
+	mi := &file_eruun_v1_applications_proto_msgTypes[132]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11084,7 +9792,7 @@ func (x *AppSpecIngressRoutes) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecIngressRoutes.ProtoReflect.Descriptor instead.
 func (*AppSpecIngressRoutes) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{149}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{132}
 }
 
 func (x *AppSpecIngressRoutes) GetPath() string {
@@ -11132,7 +9840,7 @@ type AppSpecIngressTLSConfig struct {
 
 func (x *AppSpecIngressTLSConfig) Reset() {
 	*x = AppSpecIngressTLSConfig{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[150]
+	mi := &file_eruun_v1_applications_proto_msgTypes[133]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11144,7 +9852,7 @@ func (x *AppSpecIngressTLSConfig) String() string {
 func (*AppSpecIngressTLSConfig) ProtoMessage() {}
 
 func (x *AppSpecIngressTLSConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[150]
+	mi := &file_eruun_v1_applications_proto_msgTypes[133]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11157,7 +9865,7 @@ func (x *AppSpecIngressTLSConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecIngressTLSConfig.ProtoReflect.Descriptor instead.
 func (*AppSpecIngressTLSConfig) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{150}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{133}
 }
 
 func (x *AppSpecIngressTLSConfig) GetSecretName() string {
@@ -11191,7 +9899,7 @@ type AppSpecIngressTraitsSpec struct {
 
 func (x *AppSpecIngressTraitsSpec) Reset() {
 	*x = AppSpecIngressTraitsSpec{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[151]
+	mi := &file_eruun_v1_applications_proto_msgTypes[134]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11203,7 +9911,7 @@ func (x *AppSpecIngressTraitsSpec) String() string {
 func (*AppSpecIngressTraitsSpec) ProtoMessage() {}
 
 func (x *AppSpecIngressTraitsSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[151]
+	mi := &file_eruun_v1_applications_proto_msgTypes[134]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11216,7 +9924,7 @@ func (x *AppSpecIngressTraitsSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecIngressTraitsSpec.ProtoReflect.Descriptor instead.
 func (*AppSpecIngressTraitsSpec) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{151}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{134}
 }
 
 func (x *AppSpecIngressTraitsSpec) GetName() string {
@@ -11294,7 +10002,7 @@ type AppSpecInitTraitSpec struct {
 
 func (x *AppSpecInitTraitSpec) Reset() {
 	*x = AppSpecInitTraitSpec{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[152]
+	mi := &file_eruun_v1_applications_proto_msgTypes[135]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11306,7 +10014,7 @@ func (x *AppSpecInitTraitSpec) String() string {
 func (*AppSpecInitTraitSpec) ProtoMessage() {}
 
 func (x *AppSpecInitTraitSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[152]
+	mi := &file_eruun_v1_applications_proto_msgTypes[135]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11319,7 +10027,7 @@ func (x *AppSpecInitTraitSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecInitTraitSpec.ProtoReflect.Descriptor instead.
 func (*AppSpecInitTraitSpec) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{152}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{135}
 }
 
 func (x *AppSpecInitTraitSpec) GetName() string {
@@ -11359,7 +10067,7 @@ type AppSpecPorts struct {
 
 func (x *AppSpecPorts) Reset() {
 	*x = AppSpecPorts{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[153]
+	mi := &file_eruun_v1_applications_proto_msgTypes[136]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11371,7 +10079,7 @@ func (x *AppSpecPorts) String() string {
 func (*AppSpecPorts) ProtoMessage() {}
 
 func (x *AppSpecPorts) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[153]
+	mi := &file_eruun_v1_applications_proto_msgTypes[136]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11384,7 +10092,7 @@ func (x *AppSpecPorts) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecPorts.ProtoReflect.Descriptor instead.
 func (*AppSpecPorts) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{153}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{136}
 }
 
 func (x *AppSpecPorts) GetPort() int32 {
@@ -11411,7 +10119,7 @@ type AppSpecProbeTraitsSpec struct {
 
 func (x *AppSpecProbeTraitsSpec) Reset() {
 	*x = AppSpecProbeTraitsSpec{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[154]
+	mi := &file_eruun_v1_applications_proto_msgTypes[137]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11423,7 +10131,7 @@ func (x *AppSpecProbeTraitsSpec) String() string {
 func (*AppSpecProbeTraitsSpec) ProtoMessage() {}
 
 func (x *AppSpecProbeTraitsSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[154]
+	mi := &file_eruun_v1_applications_proto_msgTypes[137]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11436,7 +10144,7 @@ func (x *AppSpecProbeTraitsSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecProbeTraitsSpec.ProtoReflect.Descriptor instead.
 func (*AppSpecProbeTraitsSpec) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{154}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{137}
 }
 
 func (x *AppSpecProbeTraitsSpec) GetType() string {
@@ -11524,7 +10232,7 @@ type AppSpecProperties struct {
 
 func (x *AppSpecProperties) Reset() {
 	*x = AppSpecProperties{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[155]
+	mi := &file_eruun_v1_applications_proto_msgTypes[138]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11536,7 +10244,7 @@ func (x *AppSpecProperties) String() string {
 func (*AppSpecProperties) ProtoMessage() {}
 
 func (x *AppSpecProperties) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[155]
+	mi := &file_eruun_v1_applications_proto_msgTypes[138]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11549,7 +10257,7 @@ func (x *AppSpecProperties) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecProperties.ProtoReflect.Descriptor instead.
 func (*AppSpecProperties) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{155}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{138}
 }
 
 func (x *AppSpecProperties) GetPorts() []*AppSpecPorts {
@@ -11669,7 +10377,7 @@ type AppSpecRBACPolicySpec struct {
 
 func (x *AppSpecRBACPolicySpec) Reset() {
 	*x = AppSpecRBACPolicySpec{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[156]
+	mi := &file_eruun_v1_applications_proto_msgTypes[139]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11681,7 +10389,7 @@ func (x *AppSpecRBACPolicySpec) String() string {
 func (*AppSpecRBACPolicySpec) ProtoMessage() {}
 
 func (x *AppSpecRBACPolicySpec) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[156]
+	mi := &file_eruun_v1_applications_proto_msgTypes[139]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11694,7 +10402,7 @@ func (x *AppSpecRBACPolicySpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecRBACPolicySpec.ProtoReflect.Descriptor instead.
 func (*AppSpecRBACPolicySpec) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{156}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{139}
 }
 
 func (x *AppSpecRBACPolicySpec) GetServiceAccount() string {
@@ -11787,7 +10495,7 @@ type AppSpecRBACRuleSpec struct {
 
 func (x *AppSpecRBACRuleSpec) Reset() {
 	*x = AppSpecRBACRuleSpec{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[157]
+	mi := &file_eruun_v1_applications_proto_msgTypes[140]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11799,7 +10507,7 @@ func (x *AppSpecRBACRuleSpec) String() string {
 func (*AppSpecRBACRuleSpec) ProtoMessage() {}
 
 func (x *AppSpecRBACRuleSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[157]
+	mi := &file_eruun_v1_applications_proto_msgTypes[140]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11812,7 +10520,7 @@ func (x *AppSpecRBACRuleSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecRBACRuleSpec.ProtoReflect.Descriptor instead.
 func (*AppSpecRBACRuleSpec) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{157}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{140}
 }
 
 func (x *AppSpecRBACRuleSpec) GetApiGroups() []string {
@@ -11863,7 +10571,7 @@ type AppSpecResourceTraitsSpec struct {
 
 func (x *AppSpecResourceTraitsSpec) Reset() {
 	*x = AppSpecResourceTraitsSpec{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[158]
+	mi := &file_eruun_v1_applications_proto_msgTypes[141]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11875,7 +10583,7 @@ func (x *AppSpecResourceTraitsSpec) String() string {
 func (*AppSpecResourceTraitsSpec) ProtoMessage() {}
 
 func (x *AppSpecResourceTraitsSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[158]
+	mi := &file_eruun_v1_applications_proto_msgTypes[141]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11888,7 +10596,7 @@ func (x *AppSpecResourceTraitsSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecResourceTraitsSpec.ProtoReflect.Descriptor instead.
 func (*AppSpecResourceTraitsSpec) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{158}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{141}
 }
 
 func (x *AppSpecResourceTraitsSpec) GetCpu() string {
@@ -11937,7 +10645,7 @@ type AppSpecRewritePolicy struct {
 
 func (x *AppSpecRewritePolicy) Reset() {
 	*x = AppSpecRewritePolicy{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[159]
+	mi := &file_eruun_v1_applications_proto_msgTypes[142]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11949,7 +10657,7 @@ func (x *AppSpecRewritePolicy) String() string {
 func (*AppSpecRewritePolicy) ProtoMessage() {}
 
 func (x *AppSpecRewritePolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[159]
+	mi := &file_eruun_v1_applications_proto_msgTypes[142]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11962,7 +10670,7 @@ func (x *AppSpecRewritePolicy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecRewritePolicy.ProtoReflect.Descriptor instead.
 func (*AppSpecRewritePolicy) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{159}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{142}
 }
 
 func (x *AppSpecRewritePolicy) GetType() string {
@@ -11997,7 +10705,7 @@ type AppSpecRolloutRollingUpdateSpec struct {
 
 func (x *AppSpecRolloutRollingUpdateSpec) Reset() {
 	*x = AppSpecRolloutRollingUpdateSpec{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[160]
+	mi := &file_eruun_v1_applications_proto_msgTypes[143]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12009,7 +10717,7 @@ func (x *AppSpecRolloutRollingUpdateSpec) String() string {
 func (*AppSpecRolloutRollingUpdateSpec) ProtoMessage() {}
 
 func (x *AppSpecRolloutRollingUpdateSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[160]
+	mi := &file_eruun_v1_applications_proto_msgTypes[143]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12022,7 +10730,7 @@ func (x *AppSpecRolloutRollingUpdateSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecRolloutRollingUpdateSpec.ProtoReflect.Descriptor instead.
 func (*AppSpecRolloutRollingUpdateSpec) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{160}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{143}
 }
 
 func (x *AppSpecRolloutRollingUpdateSpec) GetMaxSurge() *structpb.Value {
@@ -12056,7 +10764,7 @@ type AppSpecRolloutTraitSpec struct {
 
 func (x *AppSpecRolloutTraitSpec) Reset() {
 	*x = AppSpecRolloutTraitSpec{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[161]
+	mi := &file_eruun_v1_applications_proto_msgTypes[144]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12068,7 +10776,7 @@ func (x *AppSpecRolloutTraitSpec) String() string {
 func (*AppSpecRolloutTraitSpec) ProtoMessage() {}
 
 func (x *AppSpecRolloutTraitSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[161]
+	mi := &file_eruun_v1_applications_proto_msgTypes[144]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12081,7 +10789,7 @@ func (x *AppSpecRolloutTraitSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecRolloutTraitSpec.ProtoReflect.Descriptor instead.
 func (*AppSpecRolloutTraitSpec) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{161}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{144}
 }
 
 func (x *AppSpecRolloutTraitSpec) GetType() string {
@@ -12108,7 +10816,7 @@ type AppSpecSecretSelectorSpec struct {
 
 func (x *AppSpecSecretSelectorSpec) Reset() {
 	*x = AppSpecSecretSelectorSpec{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[162]
+	mi := &file_eruun_v1_applications_proto_msgTypes[145]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12120,7 +10828,7 @@ func (x *AppSpecSecretSelectorSpec) String() string {
 func (*AppSpecSecretSelectorSpec) ProtoMessage() {}
 
 func (x *AppSpecSecretSelectorSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[162]
+	mi := &file_eruun_v1_applications_proto_msgTypes[145]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12133,7 +10841,7 @@ func (x *AppSpecSecretSelectorSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecSecretSelectorSpec.ProtoReflect.Descriptor instead.
 func (*AppSpecSecretSelectorSpec) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{162}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{145}
 }
 
 func (x *AppSpecSecretSelectorSpec) GetName() string {
@@ -12162,7 +10870,7 @@ type AppSpecServicePortTraitSpec struct {
 
 func (x *AppSpecServicePortTraitSpec) Reset() {
 	*x = AppSpecServicePortTraitSpec{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[163]
+	mi := &file_eruun_v1_applications_proto_msgTypes[146]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12174,7 +10882,7 @@ func (x *AppSpecServicePortTraitSpec) String() string {
 func (*AppSpecServicePortTraitSpec) ProtoMessage() {}
 
 func (x *AppSpecServicePortTraitSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[163]
+	mi := &file_eruun_v1_applications_proto_msgTypes[146]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12187,7 +10895,7 @@ func (x *AppSpecServicePortTraitSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecServicePortTraitSpec.ProtoReflect.Descriptor instead.
 func (*AppSpecServicePortTraitSpec) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{163}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{146}
 }
 
 func (x *AppSpecServicePortTraitSpec) GetName() string {
@@ -12233,7 +10941,7 @@ type AppSpecServiceTraitSpec struct {
 
 func (x *AppSpecServiceTraitSpec) Reset() {
 	*x = AppSpecServiceTraitSpec{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[164]
+	mi := &file_eruun_v1_applications_proto_msgTypes[147]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12245,7 +10953,7 @@ func (x *AppSpecServiceTraitSpec) String() string {
 func (*AppSpecServiceTraitSpec) ProtoMessage() {}
 
 func (x *AppSpecServiceTraitSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[164]
+	mi := &file_eruun_v1_applications_proto_msgTypes[147]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12258,7 +10966,7 @@ func (x *AppSpecServiceTraitSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecServiceTraitSpec.ProtoReflect.Descriptor instead.
 func (*AppSpecServiceTraitSpec) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{164}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{147}
 }
 
 func (x *AppSpecServiceTraitSpec) GetName() string {
@@ -12319,7 +11027,7 @@ type AppSpecShareTraitSpec struct {
 
 func (x *AppSpecShareTraitSpec) Reset() {
 	*x = AppSpecShareTraitSpec{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[165]
+	mi := &file_eruun_v1_applications_proto_msgTypes[148]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12331,7 +11039,7 @@ func (x *AppSpecShareTraitSpec) String() string {
 func (*AppSpecShareTraitSpec) ProtoMessage() {}
 
 func (x *AppSpecShareTraitSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[165]
+	mi := &file_eruun_v1_applications_proto_msgTypes[148]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12344,7 +11052,7 @@ func (x *AppSpecShareTraitSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecShareTraitSpec.ProtoReflect.Descriptor instead.
 func (*AppSpecShareTraitSpec) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{165}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{148}
 }
 
 func (x *AppSpecShareTraitSpec) GetStrategy() string {
@@ -12368,7 +11076,7 @@ type AppSpecSidecarTraitsSpec struct {
 
 func (x *AppSpecSidecarTraitsSpec) Reset() {
 	*x = AppSpecSidecarTraitsSpec{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[166]
+	mi := &file_eruun_v1_applications_proto_msgTypes[149]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12380,7 +11088,7 @@ func (x *AppSpecSidecarTraitsSpec) String() string {
 func (*AppSpecSidecarTraitsSpec) ProtoMessage() {}
 
 func (x *AppSpecSidecarTraitsSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[166]
+	mi := &file_eruun_v1_applications_proto_msgTypes[149]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12393,7 +11101,7 @@ func (x *AppSpecSidecarTraitsSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecSidecarTraitsSpec.ProtoReflect.Descriptor instead.
 func (*AppSpecSidecarTraitsSpec) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{166}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{149}
 }
 
 func (x *AppSpecSidecarTraitsSpec) GetName() string {
@@ -12448,7 +11156,7 @@ type AppSpecSimplifiedEnvSpec struct {
 
 func (x *AppSpecSimplifiedEnvSpec) Reset() {
 	*x = AppSpecSimplifiedEnvSpec{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[167]
+	mi := &file_eruun_v1_applications_proto_msgTypes[150]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12460,7 +11168,7 @@ func (x *AppSpecSimplifiedEnvSpec) String() string {
 func (*AppSpecSimplifiedEnvSpec) ProtoMessage() {}
 
 func (x *AppSpecSimplifiedEnvSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[167]
+	mi := &file_eruun_v1_applications_proto_msgTypes[150]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12473,7 +11181,7 @@ func (x *AppSpecSimplifiedEnvSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecSimplifiedEnvSpec.ProtoReflect.Descriptor instead.
 func (*AppSpecSimplifiedEnvSpec) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{167}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{150}
 }
 
 func (x *AppSpecSimplifiedEnvSpec) GetName() string {
@@ -12509,7 +11217,7 @@ type AppSpecStorageTraitSpec struct {
 
 func (x *AppSpecStorageTraitSpec) Reset() {
 	*x = AppSpecStorageTraitSpec{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[168]
+	mi := &file_eruun_v1_applications_proto_msgTypes[151]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12521,7 +11229,7 @@ func (x *AppSpecStorageTraitSpec) String() string {
 func (*AppSpecStorageTraitSpec) ProtoMessage() {}
 
 func (x *AppSpecStorageTraitSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[168]
+	mi := &file_eruun_v1_applications_proto_msgTypes[151]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12534,7 +11242,7 @@ func (x *AppSpecStorageTraitSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecStorageTraitSpec.ProtoReflect.Descriptor instead.
 func (*AppSpecStorageTraitSpec) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{168}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{151}
 }
 
 func (x *AppSpecStorageTraitSpec) GetName() string {
@@ -12624,7 +11332,7 @@ type AppSpecTCPSocketProbe struct {
 
 func (x *AppSpecTCPSocketProbe) Reset() {
 	*x = AppSpecTCPSocketProbe{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[169]
+	mi := &file_eruun_v1_applications_proto_msgTypes[152]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12636,7 +11344,7 @@ func (x *AppSpecTCPSocketProbe) String() string {
 func (*AppSpecTCPSocketProbe) ProtoMessage() {}
 
 func (x *AppSpecTCPSocketProbe) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[169]
+	mi := &file_eruun_v1_applications_proto_msgTypes[152]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12649,7 +11357,7 @@ func (x *AppSpecTCPSocketProbe) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecTCPSocketProbe.ProtoReflect.Descriptor instead.
 func (*AppSpecTCPSocketProbe) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{169}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{152}
 }
 
 func (x *AppSpecTCPSocketProbe) GetPort() int32 {
@@ -12689,7 +11397,7 @@ type AppSpecTraits struct {
 
 func (x *AppSpecTraits) Reset() {
 	*x = AppSpecTraits{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[170]
+	mi := &file_eruun_v1_applications_proto_msgTypes[153]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12701,7 +11409,7 @@ func (x *AppSpecTraits) String() string {
 func (*AppSpecTraits) ProtoMessage() {}
 
 func (x *AppSpecTraits) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[170]
+	mi := &file_eruun_v1_applications_proto_msgTypes[153]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12714,7 +11422,7 @@ func (x *AppSpecTraits) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecTraits.ProtoReflect.Descriptor instead.
 func (*AppSpecTraits) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{170}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{153}
 }
 
 func (x *AppSpecTraits) GetInit() []*AppSpecInitTraitSpec {
@@ -12841,7 +11549,7 @@ type EvaluationTrait struct {
 
 func (x *EvaluationTrait) Reset() {
 	*x = EvaluationTrait{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[171]
+	mi := &file_eruun_v1_applications_proto_msgTypes[154]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12853,7 +11561,7 @@ func (x *EvaluationTrait) String() string {
 func (*EvaluationTrait) ProtoMessage() {}
 
 func (x *EvaluationTrait) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[171]
+	mi := &file_eruun_v1_applications_proto_msgTypes[154]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12866,7 +11574,7 @@ func (x *EvaluationTrait) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvaluationTrait.ProtoReflect.Descriptor instead.
 func (*EvaluationTrait) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{171}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{154}
 }
 
 func (x *EvaluationTrait) GetEnv() string {
@@ -12951,7 +11659,7 @@ type EvaluationRecovery struct {
 
 func (x *EvaluationRecovery) Reset() {
 	*x = EvaluationRecovery{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[172]
+	mi := &file_eruun_v1_applications_proto_msgTypes[155]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12963,7 +11671,7 @@ func (x *EvaluationRecovery) String() string {
 func (*EvaluationRecovery) ProtoMessage() {}
 
 func (x *EvaluationRecovery) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[172]
+	mi := &file_eruun_v1_applications_proto_msgTypes[155]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12976,7 +11684,7 @@ func (x *EvaluationRecovery) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvaluationRecovery.ProtoReflect.Descriptor instead.
 func (*EvaluationRecovery) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{172}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{155}
 }
 
 func (x *EvaluationRecovery) GetAgentVersion() string {
@@ -13010,7 +11718,7 @@ type JobResultTarget struct {
 
 func (x *JobResultTarget) Reset() {
 	*x = JobResultTarget{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[173]
+	mi := &file_eruun_v1_applications_proto_msgTypes[156]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13022,7 +11730,7 @@ func (x *JobResultTarget) String() string {
 func (*JobResultTarget) ProtoMessage() {}
 
 func (x *JobResultTarget) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[173]
+	mi := &file_eruun_v1_applications_proto_msgTypes[156]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13035,7 +11743,7 @@ func (x *JobResultTarget) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobResultTarget.ProtoReflect.Descriptor instead.
 func (*JobResultTarget) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{173}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{156}
 }
 
 func (x *JobResultTarget) GetType() string {
@@ -13062,7 +11770,7 @@ type JobResultPolicy struct {
 
 func (x *JobResultPolicy) Reset() {
 	*x = JobResultPolicy{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[174]
+	mi := &file_eruun_v1_applications_proto_msgTypes[157]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13074,7 +11782,7 @@ func (x *JobResultPolicy) String() string {
 func (*JobResultPolicy) ProtoMessage() {}
 
 func (x *JobResultPolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[174]
+	mi := &file_eruun_v1_applications_proto_msgTypes[157]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13087,7 +11795,7 @@ func (x *JobResultPolicy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobResultPolicy.ProtoReflect.Descriptor instead.
 func (*JobResultPolicy) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{174}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{157}
 }
 
 func (x *JobResultPolicy) GetRetentionDays() int32 {
@@ -13116,7 +11824,7 @@ type AppSpecValueSource struct {
 
 func (x *AppSpecValueSource) Reset() {
 	*x = AppSpecValueSource{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[175]
+	mi := &file_eruun_v1_applications_proto_msgTypes[158]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13128,7 +11836,7 @@ func (x *AppSpecValueSource) String() string {
 func (*AppSpecValueSource) ProtoMessage() {}
 
 func (x *AppSpecValueSource) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[175]
+	mi := &file_eruun_v1_applications_proto_msgTypes[158]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13141,7 +11849,7 @@ func (x *AppSpecValueSource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppSpecValueSource.ProtoReflect.Descriptor instead.
 func (*AppSpecValueSource) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{175}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{158}
 }
 
 func (x *AppSpecValueSource) GetStatic() string {
@@ -13186,7 +11894,7 @@ type AppWorkflowConfigJobRetryPolicy struct {
 
 func (x *AppWorkflowConfigJobRetryPolicy) Reset() {
 	*x = AppWorkflowConfigJobRetryPolicy{}
-	mi := &file_eruun_v1_applications_proto_msgTypes[176]
+	mi := &file_eruun_v1_applications_proto_msgTypes[159]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13198,7 +11906,7 @@ func (x *AppWorkflowConfigJobRetryPolicy) String() string {
 func (*AppWorkflowConfigJobRetryPolicy) ProtoMessage() {}
 
 func (x *AppWorkflowConfigJobRetryPolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_applications_proto_msgTypes[176]
+	mi := &file_eruun_v1_applications_proto_msgTypes[159]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13211,7 +11919,7 @@ func (x *AppWorkflowConfigJobRetryPolicy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppWorkflowConfigJobRetryPolicy.ProtoReflect.Descriptor instead.
 func (*AppWorkflowConfigJobRetryPolicy) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{176}
+	return file_eruun_v1_applications_proto_rawDescGZIP(), []int{159}
 }
 
 func (x *AppWorkflowConfigJobRetryPolicy) GetOnOom() string {
@@ -13328,10 +12036,7 @@ const file_eruun_v1_applications_proto_rawDesc = "" +
 	"\arequest\x18\x02 \x01(\v20.eruun.v1.AppDTOUpdateApplicationWorkflowRequestR\arequest\"\x82\x01\n" +
 	" UpsertWorkflowScheduleRPCRequest\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12G\n" +
-	"\arequest\x18\x02 \x01(\v2-.eruun.v1.AppDTOUpsertWorkflowScheduleRequestR\arequest\"\x83\x01\n" +
-	"\x1cCleanupApplicationRPCRequest\x12\x15\n" +
-	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12L\n" +
-	"\arequest\x18\x02 \x01(\v22.eruun.v1.AppDTOCleanupApplicationResourcesRequestR\arequest\"|\n" +
+	"\arequest\x18\x02 \x01(\v2-.eruun.v1.AppDTOUpsertWorkflowScheduleRequestR\arequest\"|\n" +
 	"#ResetApplicationDatabasesRPCRequest\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12>\n" +
 	"\arequest\x18\x02 \x01(\v2$.eruun.v1.AppDTODatabaseResetRequestR\arequest\"r\n" +
@@ -13402,7 +12107,7 @@ const file_eruun_v1_applications_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
 	"\x06method\x18\x02 \x01(\tR\x06method\x12\x12\n" +
 	"\x04path\x18\x03 \x01(\tR\x04path\x12+\n" +
-	"\x04body\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x04body\"\xaf\x04\n" +
+	"\x04body\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x04body\"\x86\x04\n" +
 	"\x15AppDTOApplicationBase\x12!\n" +
 	"\fworkspace_id\x18\x01 \x01(\tR\vworkspaceID\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\x12\x12\n" +
@@ -13420,8 +12125,7 @@ const file_eruun_v1_applications_proto_rawDesc = "" +
 	"\x04icon\x18\v \x01(\tR\x04icon\x12\x1f\n" +
 	"\vworkflow_id\x18\f \x01(\tR\n" +
 	"workflowId\x12)\n" +
-	"\x10template_enabled\x18\r \x01(\bR\x0ftemplateEnabled\x12'\n" +
-	"\x0fmanagement_mode\x18\x0e \x01(\tR\x0emanagementMode\x12B\n" +
+	"\x10template_enabled\x18\r \x01(\bR\x0ftemplateEnabled\x12B\n" +
 	"\tresources\x18\x0f \x01(\v2$.eruun.v1.AppDTOApplicationResourcesR\tresources\"\x94\a\n" +
 	"\x1aAppDTOApplicationComponent\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x05R\x02id\x12\x15\n" +
@@ -13488,7 +12192,7 @@ const file_eruun_v1_applications_proto_rawDesc = "" +
 	"createTime\x12;\n" +
 	"\vupdate_time\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"updateTime\x12F\n" +
-	"\x0fallowed_actions\x18\f \x03(\v2\x1d.eruun.v1.AppDTOAllowedActionR\x0eallowedActions\"\x84\x05\n" +
+	"\x0fallowed_actions\x18\f \x03(\v2\x1d.eruun.v1.AppDTOAllowedActionR\x0eallowedActions\"\xdb\x04\n" +
 	"\x1fAppDTOApplicationWithComponents\x12!\n" +
 	"\fworkspace_id\x18\x01 \x01(\tR\vworkspaceID\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\x12\x12\n" +
@@ -13506,8 +12210,7 @@ const file_eruun_v1_applications_proto_rawDesc = "" +
 	"\x04icon\x18\v \x01(\tR\x04icon\x12\x1f\n" +
 	"\vworkflow_id\x18\f \x01(\tR\n" +
 	"workflowId\x12)\n" +
-	"\x10template_enabled\x18\r \x01(\bR\x0ftemplateEnabled\x12'\n" +
-	"\x0fmanagement_mode\x18\x0e \x01(\tR\x0emanagementMode\x12B\n" +
+	"\x10template_enabled\x18\r \x01(\bR\x0ftemplateEnabled\x12B\n" +
 	"\tresources\x18\x0f \x01(\v2$.eruun.v1.AppDTOApplicationResourcesR\tresources\x12I\n" +
 	"\n" +
 	"components\x18\x10 \x03(\v2).eruun.v1.AppDTOBatchApplicationComponentR\n" +
@@ -13565,20 +12268,12 @@ const file_eruun_v1_applications_proto_rawDesc = "" +
 	"\x06reason\x18\x03 \x01(\tR\x06reason\"O\n" +
 	"\x1cAppDTOCancelWorkflowResponse\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x16\n" +
-	"\x06status\x18\x02 \x01(\tR\x06status\"\xe7\x01\n" +
-	"-AppDTOCleanupApplicationResourcesPlanResponse\x12\x15\n" +
-	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12)\n" +
-	"\x10plan_fingerprint\x18\x02 \x01(\tR\x0fplanFingerprint\x12X\n" +
-	"\x10resource_results\x18\x03 \x03(\v2-.eruun.v1.AppDTOImportNamespaceResourceResultR\x0fresourceResults\x12\x1a\n" +
-	"\bwarnings\x18\x04 \x03(\tR\bwarnings\"U\n" +
-	"(AppDTOCleanupApplicationResourcesRequest\x12)\n" +
-	"\x10plan_fingerprint\x18\x01 \x01(\tR\x0fplanFingerprint\"\xe2\x01\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\"\xb3\x01\n" +
 	")AppDTOCleanupApplicationResourcesResponse\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12+\n" +
 	"\x11deleted_resources\x18\x03 \x03(\tR\x10deletedResources\x12)\n" +
-	"\x10failed_resources\x18\x04 \x03(\tR\x0ffailedResources\x12-\n" +
-	"\x12retained_resources\x18\x05 \x03(\tR\x11retainedResources\"\xb1\x01\n" +
+	"\x10failed_resources\x18\x04 \x03(\tR\x0ffailedResources\"\xb1\x01\n" +
 	"\x1cAppDTOComponentContainerInfo\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05image\x18\x02 \x01(\tR\x05image\x12\x14\n" +
@@ -13775,7 +12470,7 @@ const file_eruun_v1_applications_proto_rawDesc = "" +
 	"\x12restart_components\x18\x05 \x03(\tR\x11restartComponents\"Y\n" +
 	"\x1eAppDTODeleteApplicationRequest\x12&\n" +
 	"\fwait_seconds\x18\x01 \x01(\x03H\x00R\vwaitSeconds\x88\x01\x01B\x0f\n" +
-	"\r_wait_seconds\"\xff\x02\n" +
+	"\r_wait_seconds\"\xd0\x02\n" +
 	"\x1fAppDTODeleteApplicationResponse\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12-\n" +
 	"\x13cancelled_task_i_ds\x18\x02 \x03(\tR\x10cancelledTaskIds\x12'\n" +
@@ -13783,8 +12478,7 @@ const file_eruun_v1_applications_proto_rawDesc = "" +
 	"\x11deleted_resources\x18\x04 \x03(\tR\x10deletedResources\x12)\n" +
 	"\x10failed_resources\x18\x05 \x03(\tR\x0ffailedResources\x12\x1a\n" +
 	"\bwarnings\x18\x06 \x03(\tR\bwarnings\x12J\n" +
-	"\x0edeleted_counts\x18\a \x01(\v2#.eruun.v1.AppDTODeleteResourceCountR\rdeletedCounts\x12-\n" +
-	"\x12resources_retained\x18\b \x01(\bR\x11resourcesRetained\"\xb5\x01\n" +
+	"\x0edeleted_counts\x18\a \x01(\v2#.eruun.v1.AppDTODeleteResourceCountR\rdeletedCounts\"\xb5\x01\n" +
 	"\x19AppDTODeleteResourceCount\x12\x1c\n" +
 	"\tschedules\x18\x01 \x01(\x03R\tschedules\x12\x1c\n" +
 	"\tworkflows\x18\x02 \x01(\x03R\tworkflows\x12\x1e\n" +
@@ -13858,77 +12552,7 @@ const file_eruun_v1_applications_proto_rawDesc = "" +
 	"\tcontainer\x18\x02 \x01(\tR\tcontainer\">\n" +
 	"\x12AppDTOExternalLink\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value\"\xae\x01\n" +
-	"\x1eAppDTOImportNamespaceAppResult\x12\x15\n" +
-	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\x12+\n" +
-	"\x11workflow_disabled\x18\x03 \x01(\bR\x10workflowDisabled\x12\x1e\n" +
-	"\n" +
-	"components\x18\x04 \x03(\tR\n" +
-	"components\x12\x14\n" +
-	"\x05error\x18\x05 \x01(\tR\x05error\"\xc8\x01\n" +
-	"'AppDTOImportNamespaceApplicationMapping\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
-	"\x05alias\x18\x02 \x01(\tR\x05alias\x12\"\n" +
-	"\rtarget_app_id\x18\x03 \x01(\tR\vtargetAppId\x12O\n" +
-	"\n" +
-	"components\x18\x04 \x03(\v2/.eruun.v1.AppDTOImportNamespaceComponentMappingR\n" +
-	"components\"\xac\x02\n" +
-	"(AppDTOImportNamespaceApplicationsRequest\x12\x1c\n" +
-	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
-	"\x04mode\x18\x02 \x01(\tR\x04mode\x12'\n" +
-	"\x0fmanagement_mode\x18\x03 \x01(\tR\x0emanagementMode\x12U\n" +
-	"\fapplications\x18\x04 \x03(\v21.eruun.v1.AppDTOImportNamespaceApplicationMappingR\fapplications\x12)\n" +
-	"\x10plan_fingerprint\x18\x05 \x01(\tR\x0fplanFingerprint\x12#\n" +
-	"\rinclude_kinds\x18\x06 \x03(\tR\fincludeKinds\"\xa7\x03\n" +
-	")AppDTOImportNamespaceApplicationsResponse\x12\x1c\n" +
-	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
-	"\x04mode\x18\x02 \x01(\tR\x04mode\x12'\n" +
-	"\x0fmanagement_mode\x18\x03 \x01(\tR\x0emanagementMode\x12)\n" +
-	"\x10plan_fingerprint\x18\x04 \x01(\tR\x0fplanFingerprint\x12@\n" +
-	"\asummary\x18\x05 \x01(\v2&.eruun.v1.AppDTOImportNamespaceSummaryR\asummary\x12<\n" +
-	"\x04apps\x18\x06 \x03(\v2(.eruun.v1.AppDTOImportNamespaceAppResultR\x04apps\x12X\n" +
-	"\x10resource_results\x18\a \x03(\v2-.eruun.v1.AppDTOImportNamespaceResourceResultR\x0fresourceResults\x12\x1a\n" +
-	"\bwarnings\x18\b \x03(\tR\bwarnings\"\x89\x01\n" +
-	"%AppDTOImportNamespaceComponentMapping\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12L\n" +
-	"\bworkload\x18\x02 \x01(\v20.eruun.v1.AppDTOImportNamespaceWorkloadReferenceR\bworkload\"\xec\x01\n" +
-	"%AppDTOImportNamespaceResourceIdentity\x12\x1f\n" +
-	"\vapi_version\x18\x01 \x01(\tR\n" +
-	"apiVersion\x12\x12\n" +
-	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x1c\n" +
-	"\tnamespace\x18\x03 \x01(\tR\tnamespace\x12\x12\n" +
-	"\x04name\x18\x04 \x01(\tR\x04name\x12\x10\n" +
-	"\x03uid\x18\x05 \x01(\tR\x03uid\x12)\n" +
-	"\x10resource_version\x18\x06 \x01(\tR\x0fresourceVersion\x12\x1f\n" +
-	"\vspec_digest\x18\a \x01(\tR\n" +
-	"specDigest\"\x89\x03\n" +
-	"#AppDTOImportNamespaceResourceResult\x12\x12\n" +
-	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x1c\n" +
-	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12\x12\n" +
-	"\x04name\x18\x03 \x01(\tR\x04name\x12G\n" +
-	"\x06source\x18\x04 \x01(\v2/.eruun.v1.AppDTOImportNamespaceResourceIdentityR\x06source\x12\x15\n" +
-	"\x06app_id\x18\x05 \x01(\tR\x05appId\x12%\n" +
-	"\x0ecomponent_name\x18\x06 \x01(\tR\rcomponentName\x12'\n" +
-	"\x0fdependency_role\x18\a \x01(\tR\x0edependencyRole\x12\x1c\n" +
-	"\townership\x18\b \x01(\tR\townership\x12 \n" +
-	"\vdisposition\x18\t \x01(\tR\vdisposition\x12\x16\n" +
-	"\x06status\x18\n" +
-	" \x01(\tR\x06status\x12\x14\n" +
-	"\x05error\x18\v \x01(\tR\x05error\"\xe5\x02\n" +
-	"\x1cAppDTOImportNamespaceSummary\x12!\n" +
-	"\fapps_planned\x18\x01 \x01(\x05R\vappsPlanned\x12!\n" +
-	"\fapps_applied\x18\x02 \x01(\x05R\vappsApplied\x12-\n" +
-	"\x12components_planned\x18\x03 \x01(\x05R\x11componentsPlanned\x12-\n" +
-	"\x12components_applied\x18\x04 \x01(\x05R\x11componentsApplied\x12+\n" +
-	"\x11resources_scanned\x18\x05 \x01(\x05R\x10resourcesScanned\x12:\n" +
-	"\x19resources_labeled_success\x18\x06 \x01(\x05R\x17resourcesLabeledSuccess\x128\n" +
-	"\x18resources_labeled_failed\x18\a \x01(\x05R\x16resourcesLabeledFailed\"q\n" +
-	"&AppDTOImportNamespaceWorkloadReference\x12\x1f\n" +
-	"\vapi_version\x18\x01 \x01(\tR\n" +
-	"apiVersion\x12\x12\n" +
-	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x12\n" +
-	"\x04name\x18\x03 \x01(\tR\x04name\"o\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\"o\n" +
 	"'AppDTOListApplicationComponentsResponse\x12D\n" +
 	"\n" +
 	"components\x18\x01 \x03(\v2$.eruun.v1.AppDTOApplicationComponentR\n" +
@@ -14038,33 +12662,7 @@ const file_eruun_v1_applications_proto_rawDesc = "" +
 	"\x05valid\x18\x01 \x01(\bR\x05valid\x12:\n" +
 	"\x06errors\x18\x02 \x03(\v2\".eruun.v1.AppDTOTryValidationErrorR\x06errors\x12R\n" +
 	"\x0fnormalized_spec\x18\x03 \x01(\v2).eruun.v1.AppDTOCreateApplicationsRequestR\x0enormalizedSpec\x121\n" +
-	"\x04plan\x18\x04 \x01(\v2\x1d.eruun.v1.AppDTOExecutionPlanR\x04plan\"\xc9\x01\n" +
-	"!AppDTOTryImportNamespaceAppResult\x12\x15\n" +
-	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\x12-\n" +
-	"\x12scanned_components\x18\x03 \x03(\tR\x11scannedComponents\x124\n" +
-	"\x16orphan_component_names\x18\x04 \x03(\tR\x14orphanComponentNames\x12\x14\n" +
-	"\x05error\x18\x05 \x01(\tR\x05error\"p\n" +
-	"+AppDTOTryImportNamespaceApplicationsRequest\x12\x1c\n" +
-	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12#\n" +
-	"\rinclude_kinds\x18\x02 \x03(\tR\fincludeKinds\"\xce\x02\n" +
-	",AppDTOTryImportNamespaceApplicationsResponse\x12\x1c\n" +
-	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12C\n" +
-	"\asummary\x18\x02 \x01(\v2).eruun.v1.AppDTOTryImportNamespaceSummaryR\asummary\x12?\n" +
-	"\x04apps\x18\x03 \x03(\v2+.eruun.v1.AppDTOTryImportNamespaceAppResultR\x04apps\x12^\n" +
-	"\x11orphan_components\x18\x04 \x03(\v21.eruun.v1.AppDTOTryImportNamespaceOrphanComponentR\x10orphanComponents\x12\x1a\n" +
-	"\bwarnings\x18\x05 \x03(\tR\bwarnings\"\xf5\x01\n" +
-	"'AppDTOTryImportNamespaceOrphanComponent\x12\x15\n" +
-	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12\x19\n" +
-	"\bapp_name\x18\x02 \x01(\tR\aappName\x12%\n" +
-	"\x0ecomponent_name\x18\x03 \x01(\tR\rcomponentName\x12%\n" +
-	"\x0ecomponent_type\x18\x04 \x01(\tR\rcomponentType\x12\x16\n" +
-	"\x06reason\x18\x05 \x01(\tR\x06reason\x122\n" +
-	"\x15matched_include_kinds\x18\x06 \x03(\tR\x13matchedIncludeKinds\"\x9c\x01\n" +
-	"\x1fAppDTOTryImportNamespaceSummary\x12+\n" +
-	"\x11resources_scanned\x18\x01 \x01(\x05R\x10resourcesScanned\x12!\n" +
-	"\fapps_matched\x18\x02 \x01(\x05R\vappsMatched\x12)\n" +
-	"\x10orphans_detected\x18\x03 \x01(\x05R\x0forphansDetected\"\\\n" +
+	"\x04plan\x18\x04 \x01(\v2\x1d.eruun.v1.AppDTOExecutionPlanR\x04plan\"\\\n" +
 	"\x18AppDTOTryValidationError\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x12\n" +
 	"\x04code\x18\x02 \x01(\tR\x04code\x12\x18\n" +
@@ -14561,7 +13159,7 @@ const file_eruun_v1_applications_proto_rawDesc = "" +
 	"\rmax_resources\x18\x06 \x03(\v2;.eruun.v1.AppWorkflowConfigJobRetryPolicy.MaxResourcesEntryR\fmaxResources\x1a?\n" +
 	"\x11MaxResourcesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x012\xe3&\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x012\xc1#\n" +
 	"\x12ApplicationService\x12O\n" +
 	"\x16GetCanonicalJSONSchema\x12\x16.google.protobuf.Empty\x1a\x1d.eruun.v1.CanonicalJSONSchema\x12]\n" +
 	"\x10ListApplications\x12 .eruun.v1.ApplicationListRequest\x1a'.eruun.v1.AppDTOListApplicationResponse\x12e\n" +
@@ -14571,9 +13169,7 @@ const file_eruun_v1_applications_proto_rawDesc = "" +
 	"\x12CreateApplications\x12).eruun.v1.AppDTOCreateApplicationsRequest\x1a\x1f.eruun.v1.AppDTOApplicationBase\x12~\n" +
 	"\x19CreateAndExecApplications\x12/.eruun.v1.AppDTOCreateAndExecApplicationRequest\x1a0.eruun.v1.AppDTOCreateAndExecApplicationResponse\x12q\n" +
 	"\x14BatchGetApplications\x12+.eruun.v1.AppDTOBatchGetApplicationsRequest\x1a,.eruun.v1.AppDTOBatchGetApplicationsResponse\x12n\n" +
-	"\x13ConvertApplications\x12*.eruun.v1.AppDTOConvertApplicationsRequest\x1a+.eruun.v1.AppDTOConvertApplicationsResponse\x12\x86\x01\n" +
-	"\x1bImportNamespaceApplications\x122.eruun.v1.AppDTOImportNamespaceApplicationsRequest\x1a3.eruun.v1.AppDTOImportNamespaceApplicationsResponse\x12\x8f\x01\n" +
-	"\x1eTryImportNamespaceApplications\x125.eruun.v1.AppDTOTryImportNamespaceApplicationsRequest\x1a6.eruun.v1.AppDTOTryImportNamespaceApplicationsResponse\x12l\n" +
+	"\x13ConvertApplications\x12*.eruun.v1.AppDTOConvertApplicationsRequest\x1a+.eruun.v1.AppDTOConvertApplicationsResponse\x12l\n" +
 	"\x18ListApplicationWorkflows\x12\x1e.eruun.v1.ApplicationIDRequest\x1a0.eruun.v1.AppDTOListApplicationWorkflowsResponse\x12_\n" +
 	"\x12GetApplicationSpec\x12\x1e.eruun.v1.ApplicationIDRequest\x1a).eruun.v1.AppDTOCreateApplicationsRequest\x12a\n" +
 	"\x14GetApplicationStatus\x12\x1e.eruun.v1.ApplicationIDRequest\x1a).eruun.v1.AppDTOApplicationStatusResponse\x12n\n" +
@@ -14589,9 +13185,8 @@ const file_eruun_v1_applications_proto_rawDesc = "" +
 	"\x19UpdateApplicationWorkflow\x12-.eruun.v1.UpdateApplicationWorkflowRPCRequest\x1a&.eruun.v1.AppDTOUpdateWorkflowResponse\x12f\n" +
 	"\x15ListWorkflowSchedules\x12\x1e.eruun.v1.ApplicationIDRequest\x1a-.eruun.v1.AppDTOListWorkflowSchedulesResponse\x12t\n" +
 	"\x16UpsertWorkflowSchedule\x12*.eruun.v1.UpsertWorkflowScheduleRPCRequest\x1a..eruun.v1.AppDTOUpsertWorkflowScheduleResponse\x12n\n" +
-	"\x16DeleteWorkflowSchedule\x12$.eruun.v1.ApplicationWorkflowRequest\x1a..eruun.v1.AppDTODeleteWorkflowScheduleResponse\x12y\n" +
-	"\x1ePlanApplicationResourceCleanup\x12\x1e.eruun.v1.ApplicationIDRequest\x1a7.eruun.v1.AppDTOCleanupApplicationResourcesPlanResponse\x12~\n" +
-	"\x1fApplyApplicationResourceCleanup\x12&.eruun.v1.CleanupApplicationRPCRequest\x1a3.eruun.v1.AppDTOCleanupApplicationResourcesResponse\x12q\n" +
+	"\x16DeleteWorkflowSchedule\x12$.eruun.v1.ApplicationWorkflowRequest\x1a..eruun.v1.AppDTODeleteWorkflowScheduleResponse\x12r\n" +
+	"\x1bCleanupApplicationResources\x12\x1e.eruun.v1.ApplicationIDRequest\x1a3.eruun.v1.AppDTOCleanupApplicationResourcesResponse\x12q\n" +
 	"\x19ResetApplicationDatabases\x12-.eruun.v1.ResetApplicationDatabasesRPCRequest\x1a%.eruun.v1.AppDTODatabaseResetResponse\x12T\n" +
 	"\x12DownloadLogArchive\x12\x1e.eruun.v1.LogArchiveRPCRequest\x1a\x1c.eruun.v1.ComponentFileChunk0\x01\x12|\n" +
 	"\x1bRestartApplicationWorkloads\x12(.eruun.v1.ApplicationLifecycleRPCRequest\x1a3.eruun.v1.AppDTORestartApplicationWorkloadsResponse\x12z\n" +
@@ -14622,7 +13217,7 @@ func file_eruun_v1_applications_proto_rawDescGZIP() []byte {
 	return file_eruun_v1_applications_proto_rawDescData
 }
 
-var file_eruun_v1_applications_proto_msgTypes = make([]protoimpl.MessageInfo, 199)
+var file_eruun_v1_applications_proto_msgTypes = make([]protoimpl.MessageInfo, 182)
 var file_eruun_v1_applications_proto_goTypes = []any{
 	(*CanonicalJSONSchema)(nil),                           // 0: eruun.v1.CanonicalJSONSchema
 	(*ApplicationListRequest)(nil),                        // 1: eruun.v1.ApplicationListRequest
@@ -14641,492 +13236,457 @@ var file_eruun_v1_applications_proto_goTypes = []any{
 	(*DeleteApplicationRPCRequest)(nil),                   // 14: eruun.v1.DeleteApplicationRPCRequest
 	(*UpdateApplicationWorkflowRPCRequest)(nil),           // 15: eruun.v1.UpdateApplicationWorkflowRPCRequest
 	(*UpsertWorkflowScheduleRPCRequest)(nil),              // 16: eruun.v1.UpsertWorkflowScheduleRPCRequest
-	(*CleanupApplicationRPCRequest)(nil),                  // 17: eruun.v1.CleanupApplicationRPCRequest
-	(*ResetApplicationDatabasesRPCRequest)(nil),           // 18: eruun.v1.ResetApplicationDatabasesRPCRequest
-	(*LogArchiveRPCRequest)(nil),                          // 19: eruun.v1.LogArchiveRPCRequest
-	(*ApplicationLifecycleRPCRequest)(nil),                // 20: eruun.v1.ApplicationLifecycleRPCRequest
-	(*ExecWorkflowRPCRequest)(nil),                        // 21: eruun.v1.ExecWorkflowRPCRequest
-	(*CancelWorkflowRPCRequest)(nil),                      // 22: eruun.v1.CancelWorkflowRPCRequest
-	(*TaskApprovalRPCRequest)(nil),                        // 23: eruun.v1.TaskApprovalRPCRequest
-	(*UpdateVersionRPCRequest)(nil),                       // 24: eruun.v1.UpdateVersionRPCRequest
-	(*DiffUpdateVersionRPCRequest)(nil),                   // 25: eruun.v1.DiffUpdateVersionRPCRequest
-	(*AppDTOCreateAndExecApplicationResponse)(nil),        // 26: eruun.v1.AppDTOCreateAndExecApplicationResponse
-	(*AppDTOCronJobInfo)(nil),                             // 27: eruun.v1.AppDTOCronJobInfo
-	(*AppDTOScheduledJobInfo)(nil),                        // 28: eruun.v1.AppDTOScheduledJobInfo
-	(*AppDTOAllowedAction)(nil),                           // 29: eruun.v1.AppDTOAllowedAction
-	(*AppDTOApplicationBase)(nil),                         // 30: eruun.v1.AppDTOApplicationBase
-	(*AppDTOApplicationComponent)(nil),                    // 31: eruun.v1.AppDTOApplicationComponent
-	(*AppDTOApplicationComponentStatus)(nil),              // 32: eruun.v1.AppDTOApplicationComponentStatus
-	(*AppDTOApplicationComponentStatusResponse)(nil),      // 33: eruun.v1.AppDTOApplicationComponentStatusResponse
-	(*AppDTOApplicationLifecycleRequest)(nil),             // 34: eruun.v1.AppDTOApplicationLifecycleRequest
-	(*AppDTOApplicationResources)(nil),                    // 35: eruun.v1.AppDTOApplicationResources
-	(*AppDTOApplicationStatusResponse)(nil),               // 36: eruun.v1.AppDTOApplicationStatusResponse
-	(*AppDTOApplicationTask)(nil),                         // 37: eruun.v1.AppDTOApplicationTask
-	(*AppDTOApplicationWithComponents)(nil),               // 38: eruun.v1.AppDTOApplicationWithComponents
-	(*AppDTOApplicationWorkflow)(nil),                     // 39: eruun.v1.AppDTOApplicationWorkflow
-	(*AppDTOBatchApplicationComponent)(nil),               // 40: eruun.v1.AppDTOBatchApplicationComponent
-	(*AppDTOBatchApplicationComponentProperties)(nil),     // 41: eruun.v1.AppDTOBatchApplicationComponentProperties
-	(*AppDTOBatchApplicationComponentStatusRequest)(nil),  // 42: eruun.v1.AppDTOBatchApplicationComponentStatusRequest
-	(*AppDTOBatchApplicationComponentStatusResponse)(nil), // 43: eruun.v1.AppDTOBatchApplicationComponentStatusResponse
-	(*AppDTOBatchApplicationComponentStatusResult)(nil),   // 44: eruun.v1.AppDTOBatchApplicationComponentStatusResult
-	(*AppDTOBatchGetApplicationsRequest)(nil),             // 45: eruun.v1.AppDTOBatchGetApplicationsRequest
-	(*AppDTOBatchGetApplicationsResponse)(nil),            // 46: eruun.v1.AppDTOBatchGetApplicationsResponse
-	(*AppDTOCancelAllApplicationWorkflowsResponse)(nil),   // 47: eruun.v1.AppDTOCancelAllApplicationWorkflowsResponse
-	(*AppDTOCancelWorkflowRequest)(nil),                   // 48: eruun.v1.AppDTOCancelWorkflowRequest
-	(*AppDTOCancelWorkflowResponse)(nil),                  // 49: eruun.v1.AppDTOCancelWorkflowResponse
-	(*AppDTOCleanupApplicationResourcesPlanResponse)(nil), // 50: eruun.v1.AppDTOCleanupApplicationResourcesPlanResponse
-	(*AppDTOCleanupApplicationResourcesRequest)(nil),      // 51: eruun.v1.AppDTOCleanupApplicationResourcesRequest
-	(*AppDTOCleanupApplicationResourcesResponse)(nil),     // 52: eruun.v1.AppDTOCleanupApplicationResourcesResponse
-	(*AppDTOComponentContainerInfo)(nil),                  // 53: eruun.v1.AppDTOComponentContainerInfo
-	(*AppDTOComponentContainersResponse)(nil),             // 54: eruun.v1.AppDTOComponentContainersResponse
-	(*AppDTOComponentCredentialInfo)(nil),                 // 55: eruun.v1.AppDTOComponentCredentialInfo
-	(*AppDTOComponentIngressInfo)(nil),                    // 56: eruun.v1.AppDTOComponentIngressInfo
-	(*AppDTOComponentIngressRouteInfo)(nil),               // 57: eruun.v1.AppDTOComponentIngressRouteInfo
-	(*AppDTOComponentPodContainers)(nil),                  // 58: eruun.v1.AppDTOComponentPodContainers
-	(*AppDTOComponentResourceConfig)(nil),                 // 59: eruun.v1.AppDTOComponentResourceConfig
-	(*AppDTOComponentServiceInfo)(nil),                    // 60: eruun.v1.AppDTOComponentServiceInfo
-	(*AppDTOComponentServicePortInfo)(nil),                // 61: eruun.v1.AppDTOComponentServicePortInfo
-	(*AppDTOComponentTaskStatus)(nil),                     // 62: eruun.v1.AppDTOComponentTaskStatus
-	(*AppDTOComponentUpdateSpec)(nil),                     // 63: eruun.v1.AppDTOComponentUpdateSpec
-	(*AppDTOConvertApplicationsRequest)(nil),              // 64: eruun.v1.AppDTOConvertApplicationsRequest
-	(*AppDTOConvertApplicationsResponse)(nil),             // 65: eruun.v1.AppDTOConvertApplicationsResponse
-	(*AppDTOCreateAndExecApplicationRequest)(nil),         // 66: eruun.v1.AppDTOCreateAndExecApplicationRequest
-	(*AppDTOCreateApplicationsRequest)(nil),               // 67: eruun.v1.AppDTOCreateApplicationsRequest
-	(*AppDTOCreateComponentRequest)(nil),                  // 68: eruun.v1.AppDTOCreateComponentRequest
-	(*AppDTOCreateWorkflowStepRequest)(nil),               // 69: eruun.v1.AppDTOCreateWorkflowStepRequest
-	(*AppDTOCreateWorkflowSubStepRequest)(nil),            // 70: eruun.v1.AppDTOCreateWorkflowSubStepRequest
-	(*AppDTODatabaseResetRequest)(nil),                    // 71: eruun.v1.AppDTODatabaseResetRequest
-	(*AppDTODatabaseResetResponse)(nil),                   // 72: eruun.v1.AppDTODatabaseResetResponse
-	(*AppDTODeleteApplicationRequest)(nil),                // 73: eruun.v1.AppDTODeleteApplicationRequest
-	(*AppDTODeleteApplicationResponse)(nil),               // 74: eruun.v1.AppDTODeleteApplicationResponse
-	(*AppDTODeleteResourceCount)(nil),                     // 75: eruun.v1.AppDTODeleteResourceCount
-	(*AppDTODeleteWorkflowScheduleResponse)(nil),          // 76: eruun.v1.AppDTODeleteWorkflowScheduleResponse
-	(*AppDTODiffUpdateVersionRequest)(nil),                // 77: eruun.v1.AppDTODiffUpdateVersionRequest
-	(*AppDTODiffUpdateVersionResponse)(nil),               // 78: eruun.v1.AppDTODiffUpdateVersionResponse
-	(*AppDTOExecComponentShellScriptRequest)(nil),         // 79: eruun.v1.AppDTOExecComponentShellScriptRequest
-	(*AppDTOExecComponentShellScriptResponse)(nil),        // 80: eruun.v1.AppDTOExecComponentShellScriptResponse
-	(*AppDTOExecWorkflowRequest)(nil),                     // 81: eruun.v1.AppDTOExecWorkflowRequest
-	(*AppDTOExecWorkflowResponse)(nil),                    // 82: eruun.v1.AppDTOExecWorkflowResponse
-	(*AppDTOExecutionPlan)(nil),                           // 83: eruun.v1.AppDTOExecutionPlan
-	(*AppDTOExportComponentFilesRequest)(nil),             // 84: eruun.v1.AppDTOExportComponentFilesRequest
-	(*AppDTOExternalLink)(nil),                            // 85: eruun.v1.AppDTOExternalLink
-	(*AppDTOImportNamespaceAppResult)(nil),                // 86: eruun.v1.AppDTOImportNamespaceAppResult
-	(*AppDTOImportNamespaceApplicationMapping)(nil),       // 87: eruun.v1.AppDTOImportNamespaceApplicationMapping
-	(*AppDTOImportNamespaceApplicationsRequest)(nil),      // 88: eruun.v1.AppDTOImportNamespaceApplicationsRequest
-	(*AppDTOImportNamespaceApplicationsResponse)(nil),     // 89: eruun.v1.AppDTOImportNamespaceApplicationsResponse
-	(*AppDTOImportNamespaceComponentMapping)(nil),         // 90: eruun.v1.AppDTOImportNamespaceComponentMapping
-	(*AppDTOImportNamespaceResourceIdentity)(nil),         // 91: eruun.v1.AppDTOImportNamespaceResourceIdentity
-	(*AppDTOImportNamespaceResourceResult)(nil),           // 92: eruun.v1.AppDTOImportNamespaceResourceResult
-	(*AppDTOImportNamespaceSummary)(nil),                  // 93: eruun.v1.AppDTOImportNamespaceSummary
-	(*AppDTOImportNamespaceWorkloadReference)(nil),        // 94: eruun.v1.AppDTOImportNamespaceWorkloadReference
-	(*AppDTOListApplicationComponentsResponse)(nil),       // 95: eruun.v1.AppDTOListApplicationComponentsResponse
-	(*AppDTOListApplicationResponse)(nil),                 // 96: eruun.v1.AppDTOListApplicationResponse
-	(*AppDTOListApplicationTasksResponse)(nil),            // 97: eruun.v1.AppDTOListApplicationTasksResponse
-	(*AppDTOListApplicationWorkflowsResponse)(nil),        // 98: eruun.v1.AppDTOListApplicationWorkflowsResponse
-	(*AppDTOListWorkflowSchedulesResponse)(nil),           // 99: eruun.v1.AppDTOListWorkflowSchedulesResponse
-	(*AppDTOLogArchiveDownloadRequest)(nil),               // 100: eruun.v1.AppDTOLogArchiveDownloadRequest
-	(*AppDTOPlanAction)(nil),                              // 101: eruun.v1.AppDTOPlanAction
-	(*AppDTORestartApplicationWorkloadsResponse)(nil),     // 102: eruun.v1.AppDTORestartApplicationWorkloadsResponse
-	(*AppDTOStartApplicationDeploymentsResponse)(nil),     // 103: eruun.v1.AppDTOStartApplicationDeploymentsResponse
-	(*AppDTOStopApplicationDeploymentsResponse)(nil),      // 104: eruun.v1.AppDTOStopApplicationDeploymentsResponse
-	(*AppDTOTaskApprovalRequest)(nil),                     // 105: eruun.v1.AppDTOTaskApprovalRequest
-	(*AppDTOTaskApprovalResponse)(nil),                    // 106: eruun.v1.AppDTOTaskApprovalResponse
-	(*AppDTOTaskStageDetail)(nil),                         // 107: eruun.v1.AppDTOTaskStageDetail
-	(*AppDTOTaskStageMessage)(nil),                        // 108: eruun.v1.AppDTOTaskStageMessage
-	(*AppDTOTaskStagesResponse)(nil),                      // 109: eruun.v1.AppDTOTaskStagesResponse
-	(*AppDTOTaskStatusResponse)(nil),                      // 110: eruun.v1.AppDTOTaskStatusResponse
-	(*AppDTOTemplateRef)(nil),                             // 111: eruun.v1.AppDTOTemplateRef
-	(*AppDTOTryApplicationResponse)(nil),                  // 112: eruun.v1.AppDTOTryApplicationResponse
-	(*AppDTOTryImportNamespaceAppResult)(nil),             // 113: eruun.v1.AppDTOTryImportNamespaceAppResult
-	(*AppDTOTryImportNamespaceApplicationsRequest)(nil),   // 114: eruun.v1.AppDTOTryImportNamespaceApplicationsRequest
-	(*AppDTOTryImportNamespaceApplicationsResponse)(nil),  // 115: eruun.v1.AppDTOTryImportNamespaceApplicationsResponse
-	(*AppDTOTryImportNamespaceOrphanComponent)(nil),       // 116: eruun.v1.AppDTOTryImportNamespaceOrphanComponent
-	(*AppDTOTryImportNamespaceSummary)(nil),               // 117: eruun.v1.AppDTOTryImportNamespaceSummary
-	(*AppDTOTryValidationError)(nil),                      // 118: eruun.v1.AppDTOTryValidationError
-	(*AppDTOTryWorkflowRequest)(nil),                      // 119: eruun.v1.AppDTOTryWorkflowRequest
-	(*AppDTOTryWorkflowResponse)(nil),                     // 120: eruun.v1.AppDTOTryWorkflowResponse
-	(*AppDTOUpdateApplicationWorkflowRequest)(nil),        // 121: eruun.v1.AppDTOUpdateApplicationWorkflowRequest
-	(*AppDTOUpdateVersionRequest)(nil),                    // 122: eruun.v1.AppDTOUpdateVersionRequest
-	(*AppDTOUpdateVersionResponse)(nil),                   // 123: eruun.v1.AppDTOUpdateVersionResponse
-	(*AppDTOUpdateWorkflowResponse)(nil),                  // 124: eruun.v1.AppDTOUpdateWorkflowResponse
-	(*AppDTOUpsertWorkflowScheduleRequest)(nil),           // 125: eruun.v1.AppDTOUpsertWorkflowScheduleRequest
-	(*AppDTOUpsertWorkflowScheduleResponse)(nil),          // 126: eruun.v1.AppDTOUpsertWorkflowScheduleResponse
-	(*AppDTOValidationError)(nil),                         // 127: eruun.v1.AppDTOValidationError
-	(*AppDTOVersionComponentDiff)(nil),                    // 128: eruun.v1.AppDTOVersionComponentDiff
-	(*AppDTOVersionComponentField)(nil),                   // 129: eruun.v1.AppDTOVersionComponentField
-	(*AppDTOVersionComponentState)(nil),                   // 130: eruun.v1.AppDTOVersionComponentState
-	(*AppDTOWorkflowCallback)(nil),                        // 131: eruun.v1.AppDTOWorkflowCallback
-	(*AppDTOWorkflowProperties)(nil),                      // 132: eruun.v1.AppDTOWorkflowProperties
-	(*AppDTOWorkflowSchedule)(nil),                        // 133: eruun.v1.AppDTOWorkflowSchedule
-	(*AppDTOWorkflowStepApproval)(nil),                    // 134: eruun.v1.AppDTOWorkflowStepApproval
-	(*AppDTOWorkflowStepDetail)(nil),                      // 135: eruun.v1.AppDTOWorkflowStepDetail
-	(*AppDTOWorkflowSubStepDetail)(nil),                   // 136: eruun.v1.AppDTOWorkflowSubStepDetail
-	(*AppKubeCoreAppArmorProfile)(nil),                    // 137: eruun.v1.AppKubeCoreAppArmorProfile
-	(*AppKubeCoreCapabilities)(nil),                       // 138: eruun.v1.AppKubeCoreCapabilities
-	(*AppKubeCoreSELinuxOptions)(nil),                     // 139: eruun.v1.AppKubeCoreSELinuxOptions
-	(*AppKubeCoreSeccompProfile)(nil),                     // 140: eruun.v1.AppKubeCoreSeccompProfile
-	(*AppKubeCoreSecurityContext)(nil),                    // 141: eruun.v1.AppKubeCoreSecurityContext
-	(*AppKubeCoreWindowsSecurityContextOptions)(nil),      // 142: eruun.v1.AppKubeCoreWindowsSecurityContextOptions
-	(*AppSpecCloudSpec)(nil),                              // 143: eruun.v1.AppSpecCloudSpec
-	(*AppSpecConfigMapSelectorSpec)(nil),                  // 144: eruun.v1.AppSpecConfigMapSelectorSpec
-	(*AppSpecEnvFromSourceSpec)(nil),                      // 145: eruun.v1.AppSpecEnvFromSourceSpec
-	(*AppSpecExecProbe)(nil),                              // 146: eruun.v1.AppSpecExecProbe
-	(*AppSpecHTTPGetProbe)(nil),                           // 147: eruun.v1.AppSpecHTTPGetProbe
-	(*AppSpecIngressRoute)(nil),                           // 148: eruun.v1.AppSpecIngressRoute
-	(*AppSpecIngressRoutes)(nil),                          // 149: eruun.v1.AppSpecIngressRoutes
-	(*AppSpecIngressTLSConfig)(nil),                       // 150: eruun.v1.AppSpecIngressTLSConfig
-	(*AppSpecIngressTraitsSpec)(nil),                      // 151: eruun.v1.AppSpecIngressTraitsSpec
-	(*AppSpecInitTraitSpec)(nil),                          // 152: eruun.v1.AppSpecInitTraitSpec
-	(*AppSpecPorts)(nil),                                  // 153: eruun.v1.AppSpecPorts
-	(*AppSpecProbeTraitsSpec)(nil),                        // 154: eruun.v1.AppSpecProbeTraitsSpec
-	(*AppSpecProperties)(nil),                             // 155: eruun.v1.AppSpecProperties
-	(*AppSpecRBACPolicySpec)(nil),                         // 156: eruun.v1.AppSpecRBACPolicySpec
-	(*AppSpecRBACRuleSpec)(nil),                           // 157: eruun.v1.AppSpecRBACRuleSpec
-	(*AppSpecResourceTraitsSpec)(nil),                     // 158: eruun.v1.AppSpecResourceTraitsSpec
-	(*AppSpecRewritePolicy)(nil),                          // 159: eruun.v1.AppSpecRewritePolicy
-	(*AppSpecRolloutRollingUpdateSpec)(nil),               // 160: eruun.v1.AppSpecRolloutRollingUpdateSpec
-	(*AppSpecRolloutTraitSpec)(nil),                       // 161: eruun.v1.AppSpecRolloutTraitSpec
-	(*AppSpecSecretSelectorSpec)(nil),                     // 162: eruun.v1.AppSpecSecretSelectorSpec
-	(*AppSpecServicePortTraitSpec)(nil),                   // 163: eruun.v1.AppSpecServicePortTraitSpec
-	(*AppSpecServiceTraitSpec)(nil),                       // 164: eruun.v1.AppSpecServiceTraitSpec
-	(*AppSpecShareTraitSpec)(nil),                         // 165: eruun.v1.AppSpecShareTraitSpec
-	(*AppSpecSidecarTraitsSpec)(nil),                      // 166: eruun.v1.AppSpecSidecarTraitsSpec
-	(*AppSpecSimplifiedEnvSpec)(nil),                      // 167: eruun.v1.AppSpecSimplifiedEnvSpec
-	(*AppSpecStorageTraitSpec)(nil),                       // 168: eruun.v1.AppSpecStorageTraitSpec
-	(*AppSpecTCPSocketProbe)(nil),                         // 169: eruun.v1.AppSpecTCPSocketProbe
-	(*AppSpecTraits)(nil),                                 // 170: eruun.v1.AppSpecTraits
-	(*EvaluationTrait)(nil),                               // 171: eruun.v1.EvaluationTrait
-	(*EvaluationRecovery)(nil),                            // 172: eruun.v1.EvaluationRecovery
-	(*JobResultTarget)(nil),                               // 173: eruun.v1.JobResultTarget
-	(*JobResultPolicy)(nil),                               // 174: eruun.v1.JobResultPolicy
-	(*AppSpecValueSource)(nil),                            // 175: eruun.v1.AppSpecValueSource
-	(*AppWorkflowConfigJobRetryPolicy)(nil),               // 176: eruun.v1.AppWorkflowConfigJobRetryPolicy
-	nil,                                                   // 177: eruun.v1.AppDTOComponentIngressInfo.AnnotationsEntry
-	nil,                                                   // 178: eruun.v1.AppDTOComponentIngressRouteInfo.HeadersEntry
-	nil,                                                   // 179: eruun.v1.AppDTOComponentUpdateSpec.EnvEntry
-	nil,                                                   // 180: eruun.v1.AppDTOWorkflowCallback.MethodsEntry
-	nil,                                                   // 181: eruun.v1.AppDTOWorkflowCallback.HeadersEntry
-	nil,                                                   // 182: eruun.v1.AppDTOWorkflowStepApproval.HeadersEntry
-	nil,                                                   // 183: eruun.v1.AppSpecIngressRoute.HeadersEntry
-	nil,                                                   // 184: eruun.v1.AppSpecIngressTraitsSpec.LabelEntry
-	nil,                                                   // 185: eruun.v1.AppSpecIngressTraitsSpec.AnnotationsEntry
-	nil,                                                   // 186: eruun.v1.AppSpecProperties.EnvEntry
-	nil,                                                   // 187: eruun.v1.AppSpecProperties.ConfEntry
-	nil,                                                   // 188: eruun.v1.AppSpecProperties.SecretEntry
-	nil,                                                   // 189: eruun.v1.AppSpecProperties.LabelsEntry
-	nil,                                                   // 190: eruun.v1.AppSpecRBACPolicySpec.ServiceAccountLabelsEntry
-	nil,                                                   // 191: eruun.v1.AppSpecRBACPolicySpec.ServiceAccountAnnotationsEntry
-	nil,                                                   // 192: eruun.v1.AppSpecRBACPolicySpec.RoleLabelsEntry
-	nil,                                                   // 193: eruun.v1.AppSpecRBACPolicySpec.BindingLabelsEntry
-	nil,                                                   // 194: eruun.v1.AppSpecServiceTraitSpec.SelectorEntry
-	nil,                                                   // 195: eruun.v1.AppSpecServiceTraitSpec.LabelsEntry
-	nil,                                                   // 196: eruun.v1.AppSpecSidecarTraitsSpec.EnvEntry
-	nil,                                                   // 197: eruun.v1.AppSpecTraits.TargetWorkEnvEntry
-	nil,                                                   // 198: eruun.v1.AppWorkflowConfigJobRetryPolicy.MaxResourcesEntry
-	(*timestamppb.Timestamp)(nil),                         // 199: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),                               // 200: google.protobuf.Struct
-	(*structpb.Value)(nil),                                // 201: google.protobuf.Value
-	(*emptypb.Empty)(nil),                                 // 202: google.protobuf.Empty
+	(*ResetApplicationDatabasesRPCRequest)(nil),           // 17: eruun.v1.ResetApplicationDatabasesRPCRequest
+	(*LogArchiveRPCRequest)(nil),                          // 18: eruun.v1.LogArchiveRPCRequest
+	(*ApplicationLifecycleRPCRequest)(nil),                // 19: eruun.v1.ApplicationLifecycleRPCRequest
+	(*ExecWorkflowRPCRequest)(nil),                        // 20: eruun.v1.ExecWorkflowRPCRequest
+	(*CancelWorkflowRPCRequest)(nil),                      // 21: eruun.v1.CancelWorkflowRPCRequest
+	(*TaskApprovalRPCRequest)(nil),                        // 22: eruun.v1.TaskApprovalRPCRequest
+	(*UpdateVersionRPCRequest)(nil),                       // 23: eruun.v1.UpdateVersionRPCRequest
+	(*DiffUpdateVersionRPCRequest)(nil),                   // 24: eruun.v1.DiffUpdateVersionRPCRequest
+	(*AppDTOCreateAndExecApplicationResponse)(nil),        // 25: eruun.v1.AppDTOCreateAndExecApplicationResponse
+	(*AppDTOCronJobInfo)(nil),                             // 26: eruun.v1.AppDTOCronJobInfo
+	(*AppDTOScheduledJobInfo)(nil),                        // 27: eruun.v1.AppDTOScheduledJobInfo
+	(*AppDTOAllowedAction)(nil),                           // 28: eruun.v1.AppDTOAllowedAction
+	(*AppDTOApplicationBase)(nil),                         // 29: eruun.v1.AppDTOApplicationBase
+	(*AppDTOApplicationComponent)(nil),                    // 30: eruun.v1.AppDTOApplicationComponent
+	(*AppDTOApplicationComponentStatus)(nil),              // 31: eruun.v1.AppDTOApplicationComponentStatus
+	(*AppDTOApplicationComponentStatusResponse)(nil),      // 32: eruun.v1.AppDTOApplicationComponentStatusResponse
+	(*AppDTOApplicationLifecycleRequest)(nil),             // 33: eruun.v1.AppDTOApplicationLifecycleRequest
+	(*AppDTOApplicationResources)(nil),                    // 34: eruun.v1.AppDTOApplicationResources
+	(*AppDTOApplicationStatusResponse)(nil),               // 35: eruun.v1.AppDTOApplicationStatusResponse
+	(*AppDTOApplicationTask)(nil),                         // 36: eruun.v1.AppDTOApplicationTask
+	(*AppDTOApplicationWithComponents)(nil),               // 37: eruun.v1.AppDTOApplicationWithComponents
+	(*AppDTOApplicationWorkflow)(nil),                     // 38: eruun.v1.AppDTOApplicationWorkflow
+	(*AppDTOBatchApplicationComponent)(nil),               // 39: eruun.v1.AppDTOBatchApplicationComponent
+	(*AppDTOBatchApplicationComponentProperties)(nil),     // 40: eruun.v1.AppDTOBatchApplicationComponentProperties
+	(*AppDTOBatchApplicationComponentStatusRequest)(nil),  // 41: eruun.v1.AppDTOBatchApplicationComponentStatusRequest
+	(*AppDTOBatchApplicationComponentStatusResponse)(nil), // 42: eruun.v1.AppDTOBatchApplicationComponentStatusResponse
+	(*AppDTOBatchApplicationComponentStatusResult)(nil),   // 43: eruun.v1.AppDTOBatchApplicationComponentStatusResult
+	(*AppDTOBatchGetApplicationsRequest)(nil),             // 44: eruun.v1.AppDTOBatchGetApplicationsRequest
+	(*AppDTOBatchGetApplicationsResponse)(nil),            // 45: eruun.v1.AppDTOBatchGetApplicationsResponse
+	(*AppDTOCancelAllApplicationWorkflowsResponse)(nil),   // 46: eruun.v1.AppDTOCancelAllApplicationWorkflowsResponse
+	(*AppDTOCancelWorkflowRequest)(nil),                   // 47: eruun.v1.AppDTOCancelWorkflowRequest
+	(*AppDTOCancelWorkflowResponse)(nil),                  // 48: eruun.v1.AppDTOCancelWorkflowResponse
+	(*AppDTOCleanupApplicationResourcesResponse)(nil),     // 49: eruun.v1.AppDTOCleanupApplicationResourcesResponse
+	(*AppDTOComponentContainerInfo)(nil),                  // 50: eruun.v1.AppDTOComponentContainerInfo
+	(*AppDTOComponentContainersResponse)(nil),             // 51: eruun.v1.AppDTOComponentContainersResponse
+	(*AppDTOComponentCredentialInfo)(nil),                 // 52: eruun.v1.AppDTOComponentCredentialInfo
+	(*AppDTOComponentIngressInfo)(nil),                    // 53: eruun.v1.AppDTOComponentIngressInfo
+	(*AppDTOComponentIngressRouteInfo)(nil),               // 54: eruun.v1.AppDTOComponentIngressRouteInfo
+	(*AppDTOComponentPodContainers)(nil),                  // 55: eruun.v1.AppDTOComponentPodContainers
+	(*AppDTOComponentResourceConfig)(nil),                 // 56: eruun.v1.AppDTOComponentResourceConfig
+	(*AppDTOComponentServiceInfo)(nil),                    // 57: eruun.v1.AppDTOComponentServiceInfo
+	(*AppDTOComponentServicePortInfo)(nil),                // 58: eruun.v1.AppDTOComponentServicePortInfo
+	(*AppDTOComponentTaskStatus)(nil),                     // 59: eruun.v1.AppDTOComponentTaskStatus
+	(*AppDTOComponentUpdateSpec)(nil),                     // 60: eruun.v1.AppDTOComponentUpdateSpec
+	(*AppDTOConvertApplicationsRequest)(nil),              // 61: eruun.v1.AppDTOConvertApplicationsRequest
+	(*AppDTOConvertApplicationsResponse)(nil),             // 62: eruun.v1.AppDTOConvertApplicationsResponse
+	(*AppDTOCreateAndExecApplicationRequest)(nil),         // 63: eruun.v1.AppDTOCreateAndExecApplicationRequest
+	(*AppDTOCreateApplicationsRequest)(nil),               // 64: eruun.v1.AppDTOCreateApplicationsRequest
+	(*AppDTOCreateComponentRequest)(nil),                  // 65: eruun.v1.AppDTOCreateComponentRequest
+	(*AppDTOCreateWorkflowStepRequest)(nil),               // 66: eruun.v1.AppDTOCreateWorkflowStepRequest
+	(*AppDTOCreateWorkflowSubStepRequest)(nil),            // 67: eruun.v1.AppDTOCreateWorkflowSubStepRequest
+	(*AppDTODatabaseResetRequest)(nil),                    // 68: eruun.v1.AppDTODatabaseResetRequest
+	(*AppDTODatabaseResetResponse)(nil),                   // 69: eruun.v1.AppDTODatabaseResetResponse
+	(*AppDTODeleteApplicationRequest)(nil),                // 70: eruun.v1.AppDTODeleteApplicationRequest
+	(*AppDTODeleteApplicationResponse)(nil),               // 71: eruun.v1.AppDTODeleteApplicationResponse
+	(*AppDTODeleteResourceCount)(nil),                     // 72: eruun.v1.AppDTODeleteResourceCount
+	(*AppDTODeleteWorkflowScheduleResponse)(nil),          // 73: eruun.v1.AppDTODeleteWorkflowScheduleResponse
+	(*AppDTODiffUpdateVersionRequest)(nil),                // 74: eruun.v1.AppDTODiffUpdateVersionRequest
+	(*AppDTODiffUpdateVersionResponse)(nil),               // 75: eruun.v1.AppDTODiffUpdateVersionResponse
+	(*AppDTOExecComponentShellScriptRequest)(nil),         // 76: eruun.v1.AppDTOExecComponentShellScriptRequest
+	(*AppDTOExecComponentShellScriptResponse)(nil),        // 77: eruun.v1.AppDTOExecComponentShellScriptResponse
+	(*AppDTOExecWorkflowRequest)(nil),                     // 78: eruun.v1.AppDTOExecWorkflowRequest
+	(*AppDTOExecWorkflowResponse)(nil),                    // 79: eruun.v1.AppDTOExecWorkflowResponse
+	(*AppDTOExecutionPlan)(nil),                           // 80: eruun.v1.AppDTOExecutionPlan
+	(*AppDTOExportComponentFilesRequest)(nil),             // 81: eruun.v1.AppDTOExportComponentFilesRequest
+	(*AppDTOExternalLink)(nil),                            // 82: eruun.v1.AppDTOExternalLink
+	(*AppDTOListApplicationComponentsResponse)(nil),       // 83: eruun.v1.AppDTOListApplicationComponentsResponse
+	(*AppDTOListApplicationResponse)(nil),                 // 84: eruun.v1.AppDTOListApplicationResponse
+	(*AppDTOListApplicationTasksResponse)(nil),            // 85: eruun.v1.AppDTOListApplicationTasksResponse
+	(*AppDTOListApplicationWorkflowsResponse)(nil),        // 86: eruun.v1.AppDTOListApplicationWorkflowsResponse
+	(*AppDTOListWorkflowSchedulesResponse)(nil),           // 87: eruun.v1.AppDTOListWorkflowSchedulesResponse
+	(*AppDTOLogArchiveDownloadRequest)(nil),               // 88: eruun.v1.AppDTOLogArchiveDownloadRequest
+	(*AppDTOPlanAction)(nil),                              // 89: eruun.v1.AppDTOPlanAction
+	(*AppDTORestartApplicationWorkloadsResponse)(nil),     // 90: eruun.v1.AppDTORestartApplicationWorkloadsResponse
+	(*AppDTOStartApplicationDeploymentsResponse)(nil),     // 91: eruun.v1.AppDTOStartApplicationDeploymentsResponse
+	(*AppDTOStopApplicationDeploymentsResponse)(nil),      // 92: eruun.v1.AppDTOStopApplicationDeploymentsResponse
+	(*AppDTOTaskApprovalRequest)(nil),                     // 93: eruun.v1.AppDTOTaskApprovalRequest
+	(*AppDTOTaskApprovalResponse)(nil),                    // 94: eruun.v1.AppDTOTaskApprovalResponse
+	(*AppDTOTaskStageDetail)(nil),                         // 95: eruun.v1.AppDTOTaskStageDetail
+	(*AppDTOTaskStageMessage)(nil),                        // 96: eruun.v1.AppDTOTaskStageMessage
+	(*AppDTOTaskStagesResponse)(nil),                      // 97: eruun.v1.AppDTOTaskStagesResponse
+	(*AppDTOTaskStatusResponse)(nil),                      // 98: eruun.v1.AppDTOTaskStatusResponse
+	(*AppDTOTemplateRef)(nil),                             // 99: eruun.v1.AppDTOTemplateRef
+	(*AppDTOTryApplicationResponse)(nil),                  // 100: eruun.v1.AppDTOTryApplicationResponse
+	(*AppDTOTryValidationError)(nil),                      // 101: eruun.v1.AppDTOTryValidationError
+	(*AppDTOTryWorkflowRequest)(nil),                      // 102: eruun.v1.AppDTOTryWorkflowRequest
+	(*AppDTOTryWorkflowResponse)(nil),                     // 103: eruun.v1.AppDTOTryWorkflowResponse
+	(*AppDTOUpdateApplicationWorkflowRequest)(nil),        // 104: eruun.v1.AppDTOUpdateApplicationWorkflowRequest
+	(*AppDTOUpdateVersionRequest)(nil),                    // 105: eruun.v1.AppDTOUpdateVersionRequest
+	(*AppDTOUpdateVersionResponse)(nil),                   // 106: eruun.v1.AppDTOUpdateVersionResponse
+	(*AppDTOUpdateWorkflowResponse)(nil),                  // 107: eruun.v1.AppDTOUpdateWorkflowResponse
+	(*AppDTOUpsertWorkflowScheduleRequest)(nil),           // 108: eruun.v1.AppDTOUpsertWorkflowScheduleRequest
+	(*AppDTOUpsertWorkflowScheduleResponse)(nil),          // 109: eruun.v1.AppDTOUpsertWorkflowScheduleResponse
+	(*AppDTOValidationError)(nil),                         // 110: eruun.v1.AppDTOValidationError
+	(*AppDTOVersionComponentDiff)(nil),                    // 111: eruun.v1.AppDTOVersionComponentDiff
+	(*AppDTOVersionComponentField)(nil),                   // 112: eruun.v1.AppDTOVersionComponentField
+	(*AppDTOVersionComponentState)(nil),                   // 113: eruun.v1.AppDTOVersionComponentState
+	(*AppDTOWorkflowCallback)(nil),                        // 114: eruun.v1.AppDTOWorkflowCallback
+	(*AppDTOWorkflowProperties)(nil),                      // 115: eruun.v1.AppDTOWorkflowProperties
+	(*AppDTOWorkflowSchedule)(nil),                        // 116: eruun.v1.AppDTOWorkflowSchedule
+	(*AppDTOWorkflowStepApproval)(nil),                    // 117: eruun.v1.AppDTOWorkflowStepApproval
+	(*AppDTOWorkflowStepDetail)(nil),                      // 118: eruun.v1.AppDTOWorkflowStepDetail
+	(*AppDTOWorkflowSubStepDetail)(nil),                   // 119: eruun.v1.AppDTOWorkflowSubStepDetail
+	(*AppKubeCoreAppArmorProfile)(nil),                    // 120: eruun.v1.AppKubeCoreAppArmorProfile
+	(*AppKubeCoreCapabilities)(nil),                       // 121: eruun.v1.AppKubeCoreCapabilities
+	(*AppKubeCoreSELinuxOptions)(nil),                     // 122: eruun.v1.AppKubeCoreSELinuxOptions
+	(*AppKubeCoreSeccompProfile)(nil),                     // 123: eruun.v1.AppKubeCoreSeccompProfile
+	(*AppKubeCoreSecurityContext)(nil),                    // 124: eruun.v1.AppKubeCoreSecurityContext
+	(*AppKubeCoreWindowsSecurityContextOptions)(nil),      // 125: eruun.v1.AppKubeCoreWindowsSecurityContextOptions
+	(*AppSpecCloudSpec)(nil),                              // 126: eruun.v1.AppSpecCloudSpec
+	(*AppSpecConfigMapSelectorSpec)(nil),                  // 127: eruun.v1.AppSpecConfigMapSelectorSpec
+	(*AppSpecEnvFromSourceSpec)(nil),                      // 128: eruun.v1.AppSpecEnvFromSourceSpec
+	(*AppSpecExecProbe)(nil),                              // 129: eruun.v1.AppSpecExecProbe
+	(*AppSpecHTTPGetProbe)(nil),                           // 130: eruun.v1.AppSpecHTTPGetProbe
+	(*AppSpecIngressRoute)(nil),                           // 131: eruun.v1.AppSpecIngressRoute
+	(*AppSpecIngressRoutes)(nil),                          // 132: eruun.v1.AppSpecIngressRoutes
+	(*AppSpecIngressTLSConfig)(nil),                       // 133: eruun.v1.AppSpecIngressTLSConfig
+	(*AppSpecIngressTraitsSpec)(nil),                      // 134: eruun.v1.AppSpecIngressTraitsSpec
+	(*AppSpecInitTraitSpec)(nil),                          // 135: eruun.v1.AppSpecInitTraitSpec
+	(*AppSpecPorts)(nil),                                  // 136: eruun.v1.AppSpecPorts
+	(*AppSpecProbeTraitsSpec)(nil),                        // 137: eruun.v1.AppSpecProbeTraitsSpec
+	(*AppSpecProperties)(nil),                             // 138: eruun.v1.AppSpecProperties
+	(*AppSpecRBACPolicySpec)(nil),                         // 139: eruun.v1.AppSpecRBACPolicySpec
+	(*AppSpecRBACRuleSpec)(nil),                           // 140: eruun.v1.AppSpecRBACRuleSpec
+	(*AppSpecResourceTraitsSpec)(nil),                     // 141: eruun.v1.AppSpecResourceTraitsSpec
+	(*AppSpecRewritePolicy)(nil),                          // 142: eruun.v1.AppSpecRewritePolicy
+	(*AppSpecRolloutRollingUpdateSpec)(nil),               // 143: eruun.v1.AppSpecRolloutRollingUpdateSpec
+	(*AppSpecRolloutTraitSpec)(nil),                       // 144: eruun.v1.AppSpecRolloutTraitSpec
+	(*AppSpecSecretSelectorSpec)(nil),                     // 145: eruun.v1.AppSpecSecretSelectorSpec
+	(*AppSpecServicePortTraitSpec)(nil),                   // 146: eruun.v1.AppSpecServicePortTraitSpec
+	(*AppSpecServiceTraitSpec)(nil),                       // 147: eruun.v1.AppSpecServiceTraitSpec
+	(*AppSpecShareTraitSpec)(nil),                         // 148: eruun.v1.AppSpecShareTraitSpec
+	(*AppSpecSidecarTraitsSpec)(nil),                      // 149: eruun.v1.AppSpecSidecarTraitsSpec
+	(*AppSpecSimplifiedEnvSpec)(nil),                      // 150: eruun.v1.AppSpecSimplifiedEnvSpec
+	(*AppSpecStorageTraitSpec)(nil),                       // 151: eruun.v1.AppSpecStorageTraitSpec
+	(*AppSpecTCPSocketProbe)(nil),                         // 152: eruun.v1.AppSpecTCPSocketProbe
+	(*AppSpecTraits)(nil),                                 // 153: eruun.v1.AppSpecTraits
+	(*EvaluationTrait)(nil),                               // 154: eruun.v1.EvaluationTrait
+	(*EvaluationRecovery)(nil),                            // 155: eruun.v1.EvaluationRecovery
+	(*JobResultTarget)(nil),                               // 156: eruun.v1.JobResultTarget
+	(*JobResultPolicy)(nil),                               // 157: eruun.v1.JobResultPolicy
+	(*AppSpecValueSource)(nil),                            // 158: eruun.v1.AppSpecValueSource
+	(*AppWorkflowConfigJobRetryPolicy)(nil),               // 159: eruun.v1.AppWorkflowConfigJobRetryPolicy
+	nil,                                                   // 160: eruun.v1.AppDTOComponentIngressInfo.AnnotationsEntry
+	nil,                                                   // 161: eruun.v1.AppDTOComponentIngressRouteInfo.HeadersEntry
+	nil,                                                   // 162: eruun.v1.AppDTOComponentUpdateSpec.EnvEntry
+	nil,                                                   // 163: eruun.v1.AppDTOWorkflowCallback.MethodsEntry
+	nil,                                                   // 164: eruun.v1.AppDTOWorkflowCallback.HeadersEntry
+	nil,                                                   // 165: eruun.v1.AppDTOWorkflowStepApproval.HeadersEntry
+	nil,                                                   // 166: eruun.v1.AppSpecIngressRoute.HeadersEntry
+	nil,                                                   // 167: eruun.v1.AppSpecIngressTraitsSpec.LabelEntry
+	nil,                                                   // 168: eruun.v1.AppSpecIngressTraitsSpec.AnnotationsEntry
+	nil,                                                   // 169: eruun.v1.AppSpecProperties.EnvEntry
+	nil,                                                   // 170: eruun.v1.AppSpecProperties.ConfEntry
+	nil,                                                   // 171: eruun.v1.AppSpecProperties.SecretEntry
+	nil,                                                   // 172: eruun.v1.AppSpecProperties.LabelsEntry
+	nil,                                                   // 173: eruun.v1.AppSpecRBACPolicySpec.ServiceAccountLabelsEntry
+	nil,                                                   // 174: eruun.v1.AppSpecRBACPolicySpec.ServiceAccountAnnotationsEntry
+	nil,                                                   // 175: eruun.v1.AppSpecRBACPolicySpec.RoleLabelsEntry
+	nil,                                                   // 176: eruun.v1.AppSpecRBACPolicySpec.BindingLabelsEntry
+	nil,                                                   // 177: eruun.v1.AppSpecServiceTraitSpec.SelectorEntry
+	nil,                                                   // 178: eruun.v1.AppSpecServiceTraitSpec.LabelsEntry
+	nil,                                                   // 179: eruun.v1.AppSpecSidecarTraitsSpec.EnvEntry
+	nil,                                                   // 180: eruun.v1.AppSpecTraits.TargetWorkEnvEntry
+	nil,                                                   // 181: eruun.v1.AppWorkflowConfigJobRetryPolicy.MaxResourcesEntry
+	(*timestamppb.Timestamp)(nil),                         // 182: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),                               // 183: google.protobuf.Struct
+	(*structpb.Value)(nil),                                // 184: google.protobuf.Value
+	(*emptypb.Empty)(nil),                                 // 185: google.protobuf.Empty
 }
 var file_eruun_v1_applications_proto_depIdxs = []int32{
-	27,  // 0: eruun.v1.ApplicationCronJobs.jobs:type_name -> eruun.v1.AppDTOCronJobInfo
-	28,  // 1: eruun.v1.ApplicationScheduledJobs.jobs:type_name -> eruun.v1.AppDTOScheduledJobInfo
-	84,  // 2: eruun.v1.ComponentFilesRequest.request:type_name -> eruun.v1.AppDTOExportComponentFilesRequest
-	79,  // 3: eruun.v1.ComponentShellRequest.request:type_name -> eruun.v1.AppDTOExecComponentShellScriptRequest
-	73,  // 4: eruun.v1.DeleteApplicationRPCRequest.request:type_name -> eruun.v1.AppDTODeleteApplicationRequest
-	121, // 5: eruun.v1.UpdateApplicationWorkflowRPCRequest.request:type_name -> eruun.v1.AppDTOUpdateApplicationWorkflowRequest
-	125, // 6: eruun.v1.UpsertWorkflowScheduleRPCRequest.request:type_name -> eruun.v1.AppDTOUpsertWorkflowScheduleRequest
-	51,  // 7: eruun.v1.CleanupApplicationRPCRequest.request:type_name -> eruun.v1.AppDTOCleanupApplicationResourcesRequest
-	71,  // 8: eruun.v1.ResetApplicationDatabasesRPCRequest.request:type_name -> eruun.v1.AppDTODatabaseResetRequest
-	100, // 9: eruun.v1.LogArchiveRPCRequest.request:type_name -> eruun.v1.AppDTOLogArchiveDownloadRequest
-	34,  // 10: eruun.v1.ApplicationLifecycleRPCRequest.request:type_name -> eruun.v1.AppDTOApplicationLifecycleRequest
-	81,  // 11: eruun.v1.ExecWorkflowRPCRequest.request:type_name -> eruun.v1.AppDTOExecWorkflowRequest
-	48,  // 12: eruun.v1.CancelWorkflowRPCRequest.request:type_name -> eruun.v1.AppDTOCancelWorkflowRequest
-	105, // 13: eruun.v1.TaskApprovalRPCRequest.request:type_name -> eruun.v1.AppDTOTaskApprovalRequest
-	122, // 14: eruun.v1.UpdateVersionRPCRequest.request:type_name -> eruun.v1.AppDTOUpdateVersionRequest
-	77,  // 15: eruun.v1.DiffUpdateVersionRPCRequest.request:type_name -> eruun.v1.AppDTODiffUpdateVersionRequest
-	30,  // 16: eruun.v1.AppDTOCreateAndExecApplicationResponse.application:type_name -> eruun.v1.AppDTOApplicationBase
-	29,  // 17: eruun.v1.AppDTOCreateAndExecApplicationResponse.allowed_actions:type_name -> eruun.v1.AppDTOAllowedAction
-	199, // 18: eruun.v1.AppDTOCronJobInfo.last_schedule_time:type_name -> google.protobuf.Timestamp
-	199, // 19: eruun.v1.AppDTOCronJobInfo.last_successful_time:type_name -> google.protobuf.Timestamp
-	199, // 20: eruun.v1.AppDTOCronJobInfo.create_time:type_name -> google.protobuf.Timestamp
-	199, // 21: eruun.v1.AppDTOScheduledJobInfo.create_time:type_name -> google.protobuf.Timestamp
-	199, // 22: eruun.v1.AppDTOScheduledJobInfo.update_time:type_name -> google.protobuf.Timestamp
-	200, // 23: eruun.v1.AppDTOAllowedAction.body:type_name -> google.protobuf.Struct
-	199, // 24: eruun.v1.AppDTOApplicationBase.create_time:type_name -> google.protobuf.Timestamp
-	199, // 25: eruun.v1.AppDTOApplicationBase.update_time:type_name -> google.protobuf.Timestamp
-	35,  // 26: eruun.v1.AppDTOApplicationBase.resources:type_name -> eruun.v1.AppDTOApplicationResources
-	155, // 27: eruun.v1.AppDTOApplicationComponent.properties:type_name -> eruun.v1.AppSpecProperties
-	170, // 28: eruun.v1.AppDTOApplicationComponent.traits:type_name -> eruun.v1.AppSpecTraits
-	166, // 29: eruun.v1.AppDTOApplicationComponent.sidecars:type_name -> eruun.v1.AppSpecSidecarTraitsSpec
-	60,  // 30: eruun.v1.AppDTOApplicationComponent.services:type_name -> eruun.v1.AppDTOComponentServiceInfo
-	56,  // 31: eruun.v1.AppDTOApplicationComponent.ingresses:type_name -> eruun.v1.AppDTOComponentIngressInfo
-	59,  // 32: eruun.v1.AppDTOApplicationComponent.resource_configs:type_name -> eruun.v1.AppDTOComponentResourceConfig
-	55,  // 33: eruun.v1.AppDTOApplicationComponent.credentials:type_name -> eruun.v1.AppDTOComponentCredentialInfo
-	85,  // 34: eruun.v1.AppDTOApplicationComponent.external_links:type_name -> eruun.v1.AppDTOExternalLink
-	199, // 35: eruun.v1.AppDTOApplicationComponent.create_time:type_name -> google.protobuf.Timestamp
-	199, // 36: eruun.v1.AppDTOApplicationComponent.update_time:type_name -> google.protobuf.Timestamp
-	32,  // 37: eruun.v1.AppDTOApplicationComponentStatusResponse.components:type_name -> eruun.v1.AppDTOApplicationComponentStatus
-	131, // 38: eruun.v1.AppDTOApplicationLifecycleRequest.callback:type_name -> eruun.v1.AppDTOWorkflowCallback
-	199, // 39: eruun.v1.AppDTOApplicationTask.create_time:type_name -> google.protobuf.Timestamp
-	199, // 40: eruun.v1.AppDTOApplicationTask.update_time:type_name -> google.protobuf.Timestamp
-	29,  // 41: eruun.v1.AppDTOApplicationTask.allowed_actions:type_name -> eruun.v1.AppDTOAllowedAction
-	199, // 42: eruun.v1.AppDTOApplicationWithComponents.create_time:type_name -> google.protobuf.Timestamp
-	199, // 43: eruun.v1.AppDTOApplicationWithComponents.update_time:type_name -> google.protobuf.Timestamp
-	35,  // 44: eruun.v1.AppDTOApplicationWithComponents.resources:type_name -> eruun.v1.AppDTOApplicationResources
-	40,  // 45: eruun.v1.AppDTOApplicationWithComponents.components:type_name -> eruun.v1.AppDTOBatchApplicationComponent
-	135, // 46: eruun.v1.AppDTOApplicationWorkflow.steps:type_name -> eruun.v1.AppDTOWorkflowStepDetail
-	131, // 47: eruun.v1.AppDTOApplicationWorkflow.callback:type_name -> eruun.v1.AppDTOWorkflowCallback
-	199, // 48: eruun.v1.AppDTOApplicationWorkflow.create_time:type_name -> google.protobuf.Timestamp
-	199, // 49: eruun.v1.AppDTOApplicationWorkflow.update_time:type_name -> google.protobuf.Timestamp
-	121, // 50: eruun.v1.AppDTOApplicationWorkflow.spec:type_name -> eruun.v1.AppDTOUpdateApplicationWorkflowRequest
-	41,  // 51: eruun.v1.AppDTOBatchApplicationComponent.properties:type_name -> eruun.v1.AppDTOBatchApplicationComponentProperties
-	153, // 52: eruun.v1.AppDTOBatchApplicationComponentProperties.ports:type_name -> eruun.v1.AppSpecPorts
-	44,  // 53: eruun.v1.AppDTOBatchApplicationComponentStatusResponse.results:type_name -> eruun.v1.AppDTOBatchApplicationComponentStatusResult
-	38,  // 54: eruun.v1.AppDTOBatchGetApplicationsResponse.applications:type_name -> eruun.v1.AppDTOApplicationWithComponents
-	92,  // 55: eruun.v1.AppDTOCleanupApplicationResourcesPlanResponse.resource_results:type_name -> eruun.v1.AppDTOImportNamespaceResourceResult
-	58,  // 56: eruun.v1.AppDTOComponentContainersResponse.pods:type_name -> eruun.v1.AppDTOComponentPodContainers
-	177, // 57: eruun.v1.AppDTOComponentIngressInfo.annotations:type_name -> eruun.v1.AppDTOComponentIngressInfo.AnnotationsEntry
-	150, // 58: eruun.v1.AppDTOComponentIngressInfo.tls:type_name -> eruun.v1.AppSpecIngressTLSConfig
-	57,  // 59: eruun.v1.AppDTOComponentIngressInfo.routes:type_name -> eruun.v1.AppDTOComponentIngressRouteInfo
-	178, // 60: eruun.v1.AppDTOComponentIngressRouteInfo.headers:type_name -> eruun.v1.AppDTOComponentIngressRouteInfo.HeadersEntry
-	159, // 61: eruun.v1.AppDTOComponentIngressRouteInfo.rewrite:type_name -> eruun.v1.AppSpecRewritePolicy
-	53,  // 62: eruun.v1.AppDTOComponentPodContainers.containers:type_name -> eruun.v1.AppDTOComponentContainerInfo
-	61,  // 63: eruun.v1.AppDTOComponentServiceInfo.ports:type_name -> eruun.v1.AppDTOComponentServicePortInfo
-	179, // 64: eruun.v1.AppDTOComponentUpdateSpec.env:type_name -> eruun.v1.AppDTOComponentUpdateSpec.EnvEntry
-	155, // 65: eruun.v1.AppDTOComponentUpdateSpec.properties:type_name -> eruun.v1.AppSpecProperties
-	170, // 66: eruun.v1.AppDTOComponentUpdateSpec.traits:type_name -> eruun.v1.AppSpecTraits
-	68,  // 67: eruun.v1.AppDTOConvertApplicationsResponse.components:type_name -> eruun.v1.AppDTOCreateComponentRequest
-	127, // 68: eruun.v1.AppDTOConvertApplicationsResponse.errors:type_name -> eruun.v1.AppDTOValidationError
-	68,  // 69: eruun.v1.AppDTOCreateAndExecApplicationRequest.components:type_name -> eruun.v1.AppDTOCreateComponentRequest
-	69,  // 70: eruun.v1.AppDTOCreateAndExecApplicationRequest.workflow:type_name -> eruun.v1.AppDTOCreateWorkflowStepRequest
-	131, // 71: eruun.v1.AppDTOCreateAndExecApplicationRequest.callback:type_name -> eruun.v1.AppDTOWorkflowCallback
-	68,  // 72: eruun.v1.AppDTOCreateApplicationsRequest.components:type_name -> eruun.v1.AppDTOCreateComponentRequest
-	69,  // 73: eruun.v1.AppDTOCreateApplicationsRequest.workflow:type_name -> eruun.v1.AppDTOCreateWorkflowStepRequest
-	131, // 74: eruun.v1.AppDTOCreateApplicationsRequest.callback:type_name -> eruun.v1.AppDTOWorkflowCallback
-	155, // 75: eruun.v1.AppDTOCreateComponentRequest.properties:type_name -> eruun.v1.AppSpecProperties
-	170, // 76: eruun.v1.AppDTOCreateComponentRequest.traits:type_name -> eruun.v1.AppSpecTraits
-	111, // 77: eruun.v1.AppDTOCreateComponentRequest.template:type_name -> eruun.v1.AppDTOTemplateRef
-	134, // 78: eruun.v1.AppDTOCreateWorkflowStepRequest.approval:type_name -> eruun.v1.AppDTOWorkflowStepApproval
-	132, // 79: eruun.v1.AppDTOCreateWorkflowStepRequest.properties:type_name -> eruun.v1.AppDTOWorkflowProperties
-	70,  // 80: eruun.v1.AppDTOCreateWorkflowStepRequest.sub_steps:type_name -> eruun.v1.AppDTOCreateWorkflowSubStepRequest
-	132, // 81: eruun.v1.AppDTOCreateWorkflowSubStepRequest.properties:type_name -> eruun.v1.AppDTOWorkflowProperties
-	75,  // 82: eruun.v1.AppDTODeleteApplicationResponse.deleted_counts:type_name -> eruun.v1.AppDTODeleteResourceCount
-	128, // 83: eruun.v1.AppDTODiffUpdateVersionResponse.updated_components:type_name -> eruun.v1.AppDTOVersionComponentDiff
-	128, // 84: eruun.v1.AppDTODiffUpdateVersionResponse.added_components:type_name -> eruun.v1.AppDTOVersionComponentDiff
-	128, // 85: eruun.v1.AppDTODiffUpdateVersionResponse.extra_components:type_name -> eruun.v1.AppDTOVersionComponentDiff
-	128, // 86: eruun.v1.AppDTODiffUpdateVersionResponse.blocked_components:type_name -> eruun.v1.AppDTOVersionComponentDiff
-	123, // 87: eruun.v1.AppDTODiffUpdateVersionResponse.update_result:type_name -> eruun.v1.AppDTOUpdateVersionResponse
-	29,  // 88: eruun.v1.AppDTOExecWorkflowResponse.allowed_actions:type_name -> eruun.v1.AppDTOAllowedAction
-	101, // 89: eruun.v1.AppDTOExecutionPlan.actions:type_name -> eruun.v1.AppDTOPlanAction
-	90,  // 90: eruun.v1.AppDTOImportNamespaceApplicationMapping.components:type_name -> eruun.v1.AppDTOImportNamespaceComponentMapping
-	87,  // 91: eruun.v1.AppDTOImportNamespaceApplicationsRequest.applications:type_name -> eruun.v1.AppDTOImportNamespaceApplicationMapping
-	93,  // 92: eruun.v1.AppDTOImportNamespaceApplicationsResponse.summary:type_name -> eruun.v1.AppDTOImportNamespaceSummary
-	86,  // 93: eruun.v1.AppDTOImportNamespaceApplicationsResponse.apps:type_name -> eruun.v1.AppDTOImportNamespaceAppResult
-	92,  // 94: eruun.v1.AppDTOImportNamespaceApplicationsResponse.resource_results:type_name -> eruun.v1.AppDTOImportNamespaceResourceResult
-	94,  // 95: eruun.v1.AppDTOImportNamespaceComponentMapping.workload:type_name -> eruun.v1.AppDTOImportNamespaceWorkloadReference
-	91,  // 96: eruun.v1.AppDTOImportNamespaceResourceResult.source:type_name -> eruun.v1.AppDTOImportNamespaceResourceIdentity
-	31,  // 97: eruun.v1.AppDTOListApplicationComponentsResponse.components:type_name -> eruun.v1.AppDTOApplicationComponent
-	30,  // 98: eruun.v1.AppDTOListApplicationResponse.applications:type_name -> eruun.v1.AppDTOApplicationBase
-	37,  // 99: eruun.v1.AppDTOListApplicationTasksResponse.tasks:type_name -> eruun.v1.AppDTOApplicationTask
-	39,  // 100: eruun.v1.AppDTOListApplicationWorkflowsResponse.workflows:type_name -> eruun.v1.AppDTOApplicationWorkflow
-	133, // 101: eruun.v1.AppDTOListWorkflowSchedulesResponse.schedules:type_name -> eruun.v1.AppDTOWorkflowSchedule
-	108, // 102: eruun.v1.AppDTOTaskStageDetail.info:type_name -> eruun.v1.AppDTOTaskStageMessage
-	108, // 103: eruun.v1.AppDTOTaskStageDetail.error:type_name -> eruun.v1.AppDTOTaskStageMessage
-	107, // 104: eruun.v1.AppDTOTaskStagesResponse.stages:type_name -> eruun.v1.AppDTOTaskStageDetail
-	29,  // 105: eruun.v1.AppDTOTaskStagesResponse.allowed_actions:type_name -> eruun.v1.AppDTOAllowedAction
-	62,  // 106: eruun.v1.AppDTOTaskStatusResponse.components:type_name -> eruun.v1.AppDTOComponentTaskStatus
-	29,  // 107: eruun.v1.AppDTOTaskStatusResponse.allowed_actions:type_name -> eruun.v1.AppDTOAllowedAction
-	118, // 108: eruun.v1.AppDTOTryApplicationResponse.errors:type_name -> eruun.v1.AppDTOTryValidationError
-	67,  // 109: eruun.v1.AppDTOTryApplicationResponse.normalized_spec:type_name -> eruun.v1.AppDTOCreateApplicationsRequest
-	83,  // 110: eruun.v1.AppDTOTryApplicationResponse.plan:type_name -> eruun.v1.AppDTOExecutionPlan
-	117, // 111: eruun.v1.AppDTOTryImportNamespaceApplicationsResponse.summary:type_name -> eruun.v1.AppDTOTryImportNamespaceSummary
-	113, // 112: eruun.v1.AppDTOTryImportNamespaceApplicationsResponse.apps:type_name -> eruun.v1.AppDTOTryImportNamespaceAppResult
-	116, // 113: eruun.v1.AppDTOTryImportNamespaceApplicationsResponse.orphan_components:type_name -> eruun.v1.AppDTOTryImportNamespaceOrphanComponent
-	131, // 114: eruun.v1.AppDTOTryWorkflowRequest.callback:type_name -> eruun.v1.AppDTOWorkflowCallback
-	69,  // 115: eruun.v1.AppDTOTryWorkflowRequest.workflow:type_name -> eruun.v1.AppDTOCreateWorkflowStepRequest
-	118, // 116: eruun.v1.AppDTOTryWorkflowResponse.errors:type_name -> eruun.v1.AppDTOTryValidationError
-	121, // 117: eruun.v1.AppDTOTryWorkflowResponse.normalized_spec:type_name -> eruun.v1.AppDTOUpdateApplicationWorkflowRequest
-	83,  // 118: eruun.v1.AppDTOTryWorkflowResponse.plan:type_name -> eruun.v1.AppDTOExecutionPlan
-	131, // 119: eruun.v1.AppDTOUpdateApplicationWorkflowRequest.callback:type_name -> eruun.v1.AppDTOWorkflowCallback
-	69,  // 120: eruun.v1.AppDTOUpdateApplicationWorkflowRequest.workflow:type_name -> eruun.v1.AppDTOCreateWorkflowStepRequest
-	63,  // 121: eruun.v1.AppDTOUpdateVersionRequest.components:type_name -> eruun.v1.AppDTOComponentUpdateSpec
-	131, // 122: eruun.v1.AppDTOUpdateVersionRequest.callback:type_name -> eruun.v1.AppDTOWorkflowCallback
-	133, // 123: eruun.v1.AppDTOUpsertWorkflowScheduleResponse.schedule:type_name -> eruun.v1.AppDTOWorkflowSchedule
-	129, // 124: eruun.v1.AppDTOVersionComponentDiff.fields:type_name -> eruun.v1.AppDTOVersionComponentField
-	130, // 125: eruun.v1.AppDTOVersionComponentDiff.before:type_name -> eruun.v1.AppDTOVersionComponentState
-	130, // 126: eruun.v1.AppDTOVersionComponentDiff.after:type_name -> eruun.v1.AppDTOVersionComponentState
-	201, // 127: eruun.v1.AppDTOVersionComponentField.before:type_name -> google.protobuf.Value
-	201, // 128: eruun.v1.AppDTOVersionComponentField.after:type_name -> google.protobuf.Value
-	155, // 129: eruun.v1.AppDTOVersionComponentState.properties:type_name -> eruun.v1.AppSpecProperties
-	170, // 130: eruun.v1.AppDTOVersionComponentState.traits:type_name -> eruun.v1.AppSpecTraits
-	180, // 131: eruun.v1.AppDTOWorkflowCallback.methods:type_name -> eruun.v1.AppDTOWorkflowCallback.MethodsEntry
-	181, // 132: eruun.v1.AppDTOWorkflowCallback.headers:type_name -> eruun.v1.AppDTOWorkflowCallback.HeadersEntry
-	199, // 133: eruun.v1.AppDTOWorkflowSchedule.create_time:type_name -> google.protobuf.Timestamp
-	199, // 134: eruun.v1.AppDTOWorkflowSchedule.update_time:type_name -> google.protobuf.Timestamp
-	182, // 135: eruun.v1.AppDTOWorkflowStepApproval.headers:type_name -> eruun.v1.AppDTOWorkflowStepApproval.HeadersEntry
-	134, // 136: eruun.v1.AppDTOWorkflowStepDetail.approval:type_name -> eruun.v1.AppDTOWorkflowStepApproval
-	132, // 137: eruun.v1.AppDTOWorkflowStepDetail.properties:type_name -> eruun.v1.AppDTOWorkflowProperties
-	136, // 138: eruun.v1.AppDTOWorkflowStepDetail.sub_steps:type_name -> eruun.v1.AppDTOWorkflowSubStepDetail
-	132, // 139: eruun.v1.AppDTOWorkflowSubStepDetail.properties:type_name -> eruun.v1.AppDTOWorkflowProperties
-	138, // 140: eruun.v1.AppKubeCoreSecurityContext.capabilities:type_name -> eruun.v1.AppKubeCoreCapabilities
-	139, // 141: eruun.v1.AppKubeCoreSecurityContext.se_linux_options:type_name -> eruun.v1.AppKubeCoreSELinuxOptions
-	142, // 142: eruun.v1.AppKubeCoreSecurityContext.windows_options:type_name -> eruun.v1.AppKubeCoreWindowsSecurityContextOptions
-	140, // 143: eruun.v1.AppKubeCoreSecurityContext.seccomp_profile:type_name -> eruun.v1.AppKubeCoreSeccompProfile
-	137, // 144: eruun.v1.AppKubeCoreSecurityContext.app_armor_profile:type_name -> eruun.v1.AppKubeCoreAppArmorProfile
-	200, // 145: eruun.v1.AppSpecCloudSpec.params:type_name -> google.protobuf.Struct
-	183, // 146: eruun.v1.AppSpecIngressRoute.headers:type_name -> eruun.v1.AppSpecIngressRoute.HeadersEntry
-	148, // 147: eruun.v1.AppSpecIngressRoutes.backend:type_name -> eruun.v1.AppSpecIngressRoute
-	159, // 148: eruun.v1.AppSpecIngressRoutes.rewrite:type_name -> eruun.v1.AppSpecRewritePolicy
-	184, // 149: eruun.v1.AppSpecIngressTraitsSpec.label:type_name -> eruun.v1.AppSpecIngressTraitsSpec.LabelEntry
-	185, // 150: eruun.v1.AppSpecIngressTraitsSpec.annotations:type_name -> eruun.v1.AppSpecIngressTraitsSpec.AnnotationsEntry
-	150, // 151: eruun.v1.AppSpecIngressTraitsSpec.tls:type_name -> eruun.v1.AppSpecIngressTLSConfig
-	149, // 152: eruun.v1.AppSpecIngressTraitsSpec.routes:type_name -> eruun.v1.AppSpecIngressRoutes
-	170, // 153: eruun.v1.AppSpecInitTraitSpec.traits:type_name -> eruun.v1.AppSpecTraits
-	155, // 154: eruun.v1.AppSpecInitTraitSpec.properties:type_name -> eruun.v1.AppSpecProperties
-	146, // 155: eruun.v1.AppSpecProbeTraitsSpec.exec:type_name -> eruun.v1.AppSpecExecProbe
-	147, // 156: eruun.v1.AppSpecProbeTraitsSpec.http_get:type_name -> eruun.v1.AppSpecHTTPGetProbe
-	169, // 157: eruun.v1.AppSpecProbeTraitsSpec.tcp_socket:type_name -> eruun.v1.AppSpecTCPSocketProbe
-	153, // 158: eruun.v1.AppSpecProperties.ports:type_name -> eruun.v1.AppSpecPorts
-	186, // 159: eruun.v1.AppSpecProperties.env:type_name -> eruun.v1.AppSpecProperties.EnvEntry
-	187, // 160: eruun.v1.AppSpecProperties.conf:type_name -> eruun.v1.AppSpecProperties.ConfEntry
-	188, // 161: eruun.v1.AppSpecProperties.secret:type_name -> eruun.v1.AppSpecProperties.SecretEntry
-	189, // 162: eruun.v1.AppSpecProperties.labels:type_name -> eruun.v1.AppSpecProperties.LabelsEntry
-	143, // 163: eruun.v1.AppSpecProperties.cloud:type_name -> eruun.v1.AppSpecCloudSpec
-	176, // 164: eruun.v1.AppSpecProperties.job_retry_policy:type_name -> eruun.v1.AppWorkflowConfigJobRetryPolicy
-	190, // 165: eruun.v1.AppSpecRBACPolicySpec.service_account_labels:type_name -> eruun.v1.AppSpecRBACPolicySpec.ServiceAccountLabelsEntry
-	191, // 166: eruun.v1.AppSpecRBACPolicySpec.service_account_annotations:type_name -> eruun.v1.AppSpecRBACPolicySpec.ServiceAccountAnnotationsEntry
-	192, // 167: eruun.v1.AppSpecRBACPolicySpec.role_labels:type_name -> eruun.v1.AppSpecRBACPolicySpec.RoleLabelsEntry
-	193, // 168: eruun.v1.AppSpecRBACPolicySpec.binding_labels:type_name -> eruun.v1.AppSpecRBACPolicySpec.BindingLabelsEntry
-	157, // 169: eruun.v1.AppSpecRBACPolicySpec.rules:type_name -> eruun.v1.AppSpecRBACRuleSpec
-	201, // 170: eruun.v1.AppSpecRolloutRollingUpdateSpec.max_surge:type_name -> google.protobuf.Value
-	201, // 171: eruun.v1.AppSpecRolloutRollingUpdateSpec.max_unavailable:type_name -> google.protobuf.Value
-	160, // 172: eruun.v1.AppSpecRolloutTraitSpec.rolling_update:type_name -> eruun.v1.AppSpecRolloutRollingUpdateSpec
-	194, // 173: eruun.v1.AppSpecServiceTraitSpec.selector:type_name -> eruun.v1.AppSpecServiceTraitSpec.SelectorEntry
-	195, // 174: eruun.v1.AppSpecServiceTraitSpec.labels:type_name -> eruun.v1.AppSpecServiceTraitSpec.LabelsEntry
-	163, // 175: eruun.v1.AppSpecServiceTraitSpec.ports:type_name -> eruun.v1.AppSpecServicePortTraitSpec
-	196, // 176: eruun.v1.AppSpecSidecarTraitsSpec.env:type_name -> eruun.v1.AppSpecSidecarTraitsSpec.EnvEntry
-	170, // 177: eruun.v1.AppSpecSidecarTraitsSpec.traits:type_name -> eruun.v1.AppSpecTraits
-	175, // 178: eruun.v1.AppSpecSimplifiedEnvSpec.value_from:type_name -> eruun.v1.AppSpecValueSource
-	152, // 179: eruun.v1.AppSpecTraits.init:type_name -> eruun.v1.AppSpecInitTraitSpec
-	168, // 180: eruun.v1.AppSpecTraits.storage:type_name -> eruun.v1.AppSpecStorageTraitSpec
-	166, // 181: eruun.v1.AppSpecTraits.sidecar:type_name -> eruun.v1.AppSpecSidecarTraitsSpec
-	151, // 182: eruun.v1.AppSpecTraits.ingress:type_name -> eruun.v1.AppSpecIngressTraitsSpec
-	164, // 183: eruun.v1.AppSpecTraits.service:type_name -> eruun.v1.AppSpecServiceTraitSpec
-	156, // 184: eruun.v1.AppSpecTraits.rbac:type_name -> eruun.v1.AppSpecRBACPolicySpec
-	145, // 185: eruun.v1.AppSpecTraits.env_from:type_name -> eruun.v1.AppSpecEnvFromSourceSpec
-	167, // 186: eruun.v1.AppSpecTraits.envs:type_name -> eruun.v1.AppSpecSimplifiedEnvSpec
-	154, // 187: eruun.v1.AppSpecTraits.probes:type_name -> eruun.v1.AppSpecProbeTraitsSpec
-	197, // 188: eruun.v1.AppSpecTraits.target_work_env:type_name -> eruun.v1.AppSpecTraits.TargetWorkEnvEntry
-	158, // 189: eruun.v1.AppSpecTraits.resources:type_name -> eruun.v1.AppSpecResourceTraitsSpec
-	141, // 190: eruun.v1.AppSpecTraits.security_policy:type_name -> eruun.v1.AppKubeCoreSecurityContext
-	165, // 191: eruun.v1.AppSpecTraits.share:type_name -> eruun.v1.AppSpecShareTraitSpec
-	161, // 192: eruun.v1.AppSpecTraits.rollout:type_name -> eruun.v1.AppSpecRolloutTraitSpec
-	171, // 193: eruun.v1.AppSpecTraits.eval:type_name -> eruun.v1.EvaluationTrait
-	158, // 194: eruun.v1.EvaluationTrait.sandbox_resources:type_name -> eruun.v1.AppSpecResourceTraitsSpec
-	174, // 195: eruun.v1.EvaluationTrait.result_policy:type_name -> eruun.v1.JobResultPolicy
-	172, // 196: eruun.v1.EvaluationTrait.recovery:type_name -> eruun.v1.EvaluationRecovery
-	173, // 197: eruun.v1.JobResultPolicy.targets:type_name -> eruun.v1.JobResultTarget
-	162, // 198: eruun.v1.AppSpecValueSource.secret:type_name -> eruun.v1.AppSpecSecretSelectorSpec
-	144, // 199: eruun.v1.AppSpecValueSource.config:type_name -> eruun.v1.AppSpecConfigMapSelectorSpec
-	198, // 200: eruun.v1.AppWorkflowConfigJobRetryPolicy.max_resources:type_name -> eruun.v1.AppWorkflowConfigJobRetryPolicy.MaxResourcesEntry
-	202, // 201: eruun.v1.ApplicationService.GetCanonicalJSONSchema:input_type -> google.protobuf.Empty
-	1,   // 202: eruun.v1.ApplicationService.ListApplications:input_type -> eruun.v1.ApplicationListRequest
-	1,   // 203: eruun.v1.ApplicationService.ListTemplateApplications:input_type -> eruun.v1.ApplicationListRequest
-	202, // 204: eruun.v1.ApplicationService.ListCronJobs:input_type -> google.protobuf.Empty
-	202, // 205: eruun.v1.ApplicationService.ListScheduledJobs:input_type -> google.protobuf.Empty
-	67,  // 206: eruun.v1.ApplicationService.CreateApplications:input_type -> eruun.v1.AppDTOCreateApplicationsRequest
-	66,  // 207: eruun.v1.ApplicationService.CreateAndExecApplications:input_type -> eruun.v1.AppDTOCreateAndExecApplicationRequest
-	45,  // 208: eruun.v1.ApplicationService.BatchGetApplications:input_type -> eruun.v1.AppDTOBatchGetApplicationsRequest
-	64,  // 209: eruun.v1.ApplicationService.ConvertApplications:input_type -> eruun.v1.AppDTOConvertApplicationsRequest
-	88,  // 210: eruun.v1.ApplicationService.ImportNamespaceApplications:input_type -> eruun.v1.AppDTOImportNamespaceApplicationsRequest
-	114, // 211: eruun.v1.ApplicationService.TryImportNamespaceApplications:input_type -> eruun.v1.AppDTOTryImportNamespaceApplicationsRequest
-	2,   // 212: eruun.v1.ApplicationService.ListApplicationWorkflows:input_type -> eruun.v1.ApplicationIDRequest
-	2,   // 213: eruun.v1.ApplicationService.GetApplicationSpec:input_type -> eruun.v1.ApplicationIDRequest
-	2,   // 214: eruun.v1.ApplicationService.GetApplicationStatus:input_type -> eruun.v1.ApplicationIDRequest
-	2,   // 215: eruun.v1.ApplicationService.ListApplicationComponents:input_type -> eruun.v1.ApplicationIDRequest
-	2,   // 216: eruun.v1.ApplicationService.GetApplicationComponentStatus:input_type -> eruun.v1.ApplicationIDRequest
-	5,   // 217: eruun.v1.ApplicationService.ListComponentContainers:input_type -> eruun.v1.ApplicationComponentRequest
-	42,  // 218: eruun.v1.ApplicationService.BatchApplicationComponentStatus:input_type -> eruun.v1.AppDTOBatchApplicationComponentStatusRequest
-	8,   // 219: eruun.v1.ApplicationService.StreamComponentLogs:input_type -> eruun.v1.ComponentLogsRequest
-	10,  // 220: eruun.v1.ApplicationService.ExportComponentFiles:input_type -> eruun.v1.ComponentFilesRequest
-	11,  // 221: eruun.v1.ApplicationService.ExecComponentShell:input_type -> eruun.v1.ComponentShellRequest
-	11,  // 222: eruun.v1.ApplicationService.StreamComponentShell:input_type -> eruun.v1.ComponentShellRequest
-	14,  // 223: eruun.v1.ApplicationService.DeleteApplication:input_type -> eruun.v1.DeleteApplicationRPCRequest
-	15,  // 224: eruun.v1.ApplicationService.UpdateApplicationWorkflow:input_type -> eruun.v1.UpdateApplicationWorkflowRPCRequest
-	2,   // 225: eruun.v1.ApplicationService.ListWorkflowSchedules:input_type -> eruun.v1.ApplicationIDRequest
-	16,  // 226: eruun.v1.ApplicationService.UpsertWorkflowSchedule:input_type -> eruun.v1.UpsertWorkflowScheduleRPCRequest
-	4,   // 227: eruun.v1.ApplicationService.DeleteWorkflowSchedule:input_type -> eruun.v1.ApplicationWorkflowRequest
-	2,   // 228: eruun.v1.ApplicationService.PlanApplicationResourceCleanup:input_type -> eruun.v1.ApplicationIDRequest
-	17,  // 229: eruun.v1.ApplicationService.ApplyApplicationResourceCleanup:input_type -> eruun.v1.CleanupApplicationRPCRequest
-	18,  // 230: eruun.v1.ApplicationService.ResetApplicationDatabases:input_type -> eruun.v1.ResetApplicationDatabasesRPCRequest
-	19,  // 231: eruun.v1.ApplicationService.DownloadLogArchive:input_type -> eruun.v1.LogArchiveRPCRequest
-	20,  // 232: eruun.v1.ApplicationService.RestartApplicationWorkloads:input_type -> eruun.v1.ApplicationLifecycleRPCRequest
-	20,  // 233: eruun.v1.ApplicationService.StopApplicationDeployments:input_type -> eruun.v1.ApplicationLifecycleRPCRequest
-	20,  // 234: eruun.v1.ApplicationService.StartApplicationDeployments:input_type -> eruun.v1.ApplicationLifecycleRPCRequest
-	21,  // 235: eruun.v1.ApplicationService.ExecApplicationWorkflow:input_type -> eruun.v1.ExecWorkflowRPCRequest
-	22,  // 236: eruun.v1.ApplicationService.CancelApplicationWorkflow:input_type -> eruun.v1.CancelWorkflowRPCRequest
-	2,   // 237: eruun.v1.ApplicationService.CancelAllApplicationWorkflows:input_type -> eruun.v1.ApplicationIDRequest
-	2,   // 238: eruun.v1.ApplicationService.ListApplicationTasks:input_type -> eruun.v1.ApplicationIDRequest
-	23,  // 239: eruun.v1.ApplicationService.ApproveWorkflowTask:input_type -> eruun.v1.TaskApprovalRPCRequest
-	3,   // 240: eruun.v1.ApplicationService.GetWorkflowTaskStatus:input_type -> eruun.v1.WorkflowTaskIDRequest
-	3,   // 241: eruun.v1.ApplicationService.GetWorkflowTaskStages:input_type -> eruun.v1.WorkflowTaskIDRequest
-	24,  // 242: eruun.v1.ApplicationService.UpdateApplicationVersion:input_type -> eruun.v1.UpdateVersionRPCRequest
-	25,  // 243: eruun.v1.ApplicationService.DiffUpdateApplicationVersion:input_type -> eruun.v1.DiffUpdateVersionRPCRequest
-	22,  // 244: eruun.v1.ApplicationService.CancelDelayedVersionUpdate:input_type -> eruun.v1.CancelWorkflowRPCRequest
-	67,  // 245: eruun.v1.ApplicationService.TryApplication:input_type -> eruun.v1.AppDTOCreateApplicationsRequest
-	15,  // 246: eruun.v1.ApplicationService.TryWorkflow:input_type -> eruun.v1.UpdateApplicationWorkflowRPCRequest
-	0,   // 247: eruun.v1.ApplicationService.GetCanonicalJSONSchema:output_type -> eruun.v1.CanonicalJSONSchema
-	96,  // 248: eruun.v1.ApplicationService.ListApplications:output_type -> eruun.v1.AppDTOListApplicationResponse
-	96,  // 249: eruun.v1.ApplicationService.ListTemplateApplications:output_type -> eruun.v1.AppDTOListApplicationResponse
-	6,   // 250: eruun.v1.ApplicationService.ListCronJobs:output_type -> eruun.v1.ApplicationCronJobs
-	7,   // 251: eruun.v1.ApplicationService.ListScheduledJobs:output_type -> eruun.v1.ApplicationScheduledJobs
-	30,  // 252: eruun.v1.ApplicationService.CreateApplications:output_type -> eruun.v1.AppDTOApplicationBase
-	26,  // 253: eruun.v1.ApplicationService.CreateAndExecApplications:output_type -> eruun.v1.AppDTOCreateAndExecApplicationResponse
-	46,  // 254: eruun.v1.ApplicationService.BatchGetApplications:output_type -> eruun.v1.AppDTOBatchGetApplicationsResponse
-	65,  // 255: eruun.v1.ApplicationService.ConvertApplications:output_type -> eruun.v1.AppDTOConvertApplicationsResponse
-	89,  // 256: eruun.v1.ApplicationService.ImportNamespaceApplications:output_type -> eruun.v1.AppDTOImportNamespaceApplicationsResponse
-	115, // 257: eruun.v1.ApplicationService.TryImportNamespaceApplications:output_type -> eruun.v1.AppDTOTryImportNamespaceApplicationsResponse
-	98,  // 258: eruun.v1.ApplicationService.ListApplicationWorkflows:output_type -> eruun.v1.AppDTOListApplicationWorkflowsResponse
-	67,  // 259: eruun.v1.ApplicationService.GetApplicationSpec:output_type -> eruun.v1.AppDTOCreateApplicationsRequest
-	36,  // 260: eruun.v1.ApplicationService.GetApplicationStatus:output_type -> eruun.v1.AppDTOApplicationStatusResponse
-	95,  // 261: eruun.v1.ApplicationService.ListApplicationComponents:output_type -> eruun.v1.AppDTOListApplicationComponentsResponse
-	33,  // 262: eruun.v1.ApplicationService.GetApplicationComponentStatus:output_type -> eruun.v1.AppDTOApplicationComponentStatusResponse
-	54,  // 263: eruun.v1.ApplicationService.ListComponentContainers:output_type -> eruun.v1.AppDTOComponentContainersResponse
-	43,  // 264: eruun.v1.ApplicationService.BatchApplicationComponentStatus:output_type -> eruun.v1.AppDTOBatchApplicationComponentStatusResponse
-	9,   // 265: eruun.v1.ApplicationService.StreamComponentLogs:output_type -> eruun.v1.ComponentLogLine
-	13,  // 266: eruun.v1.ApplicationService.ExportComponentFiles:output_type -> eruun.v1.ComponentFileChunk
-	80,  // 267: eruun.v1.ApplicationService.ExecComponentShell:output_type -> eruun.v1.AppDTOExecComponentShellScriptResponse
-	12,  // 268: eruun.v1.ApplicationService.StreamComponentShell:output_type -> eruun.v1.ComponentShellEvent
-	74,  // 269: eruun.v1.ApplicationService.DeleteApplication:output_type -> eruun.v1.AppDTODeleteApplicationResponse
-	124, // 270: eruun.v1.ApplicationService.UpdateApplicationWorkflow:output_type -> eruun.v1.AppDTOUpdateWorkflowResponse
-	99,  // 271: eruun.v1.ApplicationService.ListWorkflowSchedules:output_type -> eruun.v1.AppDTOListWorkflowSchedulesResponse
-	126, // 272: eruun.v1.ApplicationService.UpsertWorkflowSchedule:output_type -> eruun.v1.AppDTOUpsertWorkflowScheduleResponse
-	76,  // 273: eruun.v1.ApplicationService.DeleteWorkflowSchedule:output_type -> eruun.v1.AppDTODeleteWorkflowScheduleResponse
-	50,  // 274: eruun.v1.ApplicationService.PlanApplicationResourceCleanup:output_type -> eruun.v1.AppDTOCleanupApplicationResourcesPlanResponse
-	52,  // 275: eruun.v1.ApplicationService.ApplyApplicationResourceCleanup:output_type -> eruun.v1.AppDTOCleanupApplicationResourcesResponse
-	72,  // 276: eruun.v1.ApplicationService.ResetApplicationDatabases:output_type -> eruun.v1.AppDTODatabaseResetResponse
-	13,  // 277: eruun.v1.ApplicationService.DownloadLogArchive:output_type -> eruun.v1.ComponentFileChunk
-	102, // 278: eruun.v1.ApplicationService.RestartApplicationWorkloads:output_type -> eruun.v1.AppDTORestartApplicationWorkloadsResponse
-	104, // 279: eruun.v1.ApplicationService.StopApplicationDeployments:output_type -> eruun.v1.AppDTOStopApplicationDeploymentsResponse
-	103, // 280: eruun.v1.ApplicationService.StartApplicationDeployments:output_type -> eruun.v1.AppDTOStartApplicationDeploymentsResponse
-	82,  // 281: eruun.v1.ApplicationService.ExecApplicationWorkflow:output_type -> eruun.v1.AppDTOExecWorkflowResponse
-	49,  // 282: eruun.v1.ApplicationService.CancelApplicationWorkflow:output_type -> eruun.v1.AppDTOCancelWorkflowResponse
-	47,  // 283: eruun.v1.ApplicationService.CancelAllApplicationWorkflows:output_type -> eruun.v1.AppDTOCancelAllApplicationWorkflowsResponse
-	97,  // 284: eruun.v1.ApplicationService.ListApplicationTasks:output_type -> eruun.v1.AppDTOListApplicationTasksResponse
-	106, // 285: eruun.v1.ApplicationService.ApproveWorkflowTask:output_type -> eruun.v1.AppDTOTaskApprovalResponse
-	110, // 286: eruun.v1.ApplicationService.GetWorkflowTaskStatus:output_type -> eruun.v1.AppDTOTaskStatusResponse
-	109, // 287: eruun.v1.ApplicationService.GetWorkflowTaskStages:output_type -> eruun.v1.AppDTOTaskStagesResponse
-	123, // 288: eruun.v1.ApplicationService.UpdateApplicationVersion:output_type -> eruun.v1.AppDTOUpdateVersionResponse
-	78,  // 289: eruun.v1.ApplicationService.DiffUpdateApplicationVersion:output_type -> eruun.v1.AppDTODiffUpdateVersionResponse
-	49,  // 290: eruun.v1.ApplicationService.CancelDelayedVersionUpdate:output_type -> eruun.v1.AppDTOCancelWorkflowResponse
-	112, // 291: eruun.v1.ApplicationService.TryApplication:output_type -> eruun.v1.AppDTOTryApplicationResponse
-	120, // 292: eruun.v1.ApplicationService.TryWorkflow:output_type -> eruun.v1.AppDTOTryWorkflowResponse
-	247, // [247:293] is the sub-list for method output_type
-	201, // [201:247] is the sub-list for method input_type
-	201, // [201:201] is the sub-list for extension type_name
-	201, // [201:201] is the sub-list for extension extendee
-	0,   // [0:201] is the sub-list for field type_name
+	26,  // 0: eruun.v1.ApplicationCronJobs.jobs:type_name -> eruun.v1.AppDTOCronJobInfo
+	27,  // 1: eruun.v1.ApplicationScheduledJobs.jobs:type_name -> eruun.v1.AppDTOScheduledJobInfo
+	81,  // 2: eruun.v1.ComponentFilesRequest.request:type_name -> eruun.v1.AppDTOExportComponentFilesRequest
+	76,  // 3: eruun.v1.ComponentShellRequest.request:type_name -> eruun.v1.AppDTOExecComponentShellScriptRequest
+	70,  // 4: eruun.v1.DeleteApplicationRPCRequest.request:type_name -> eruun.v1.AppDTODeleteApplicationRequest
+	104, // 5: eruun.v1.UpdateApplicationWorkflowRPCRequest.request:type_name -> eruun.v1.AppDTOUpdateApplicationWorkflowRequest
+	108, // 6: eruun.v1.UpsertWorkflowScheduleRPCRequest.request:type_name -> eruun.v1.AppDTOUpsertWorkflowScheduleRequest
+	68,  // 7: eruun.v1.ResetApplicationDatabasesRPCRequest.request:type_name -> eruun.v1.AppDTODatabaseResetRequest
+	88,  // 8: eruun.v1.LogArchiveRPCRequest.request:type_name -> eruun.v1.AppDTOLogArchiveDownloadRequest
+	33,  // 9: eruun.v1.ApplicationLifecycleRPCRequest.request:type_name -> eruun.v1.AppDTOApplicationLifecycleRequest
+	78,  // 10: eruun.v1.ExecWorkflowRPCRequest.request:type_name -> eruun.v1.AppDTOExecWorkflowRequest
+	47,  // 11: eruun.v1.CancelWorkflowRPCRequest.request:type_name -> eruun.v1.AppDTOCancelWorkflowRequest
+	93,  // 12: eruun.v1.TaskApprovalRPCRequest.request:type_name -> eruun.v1.AppDTOTaskApprovalRequest
+	105, // 13: eruun.v1.UpdateVersionRPCRequest.request:type_name -> eruun.v1.AppDTOUpdateVersionRequest
+	74,  // 14: eruun.v1.DiffUpdateVersionRPCRequest.request:type_name -> eruun.v1.AppDTODiffUpdateVersionRequest
+	29,  // 15: eruun.v1.AppDTOCreateAndExecApplicationResponse.application:type_name -> eruun.v1.AppDTOApplicationBase
+	28,  // 16: eruun.v1.AppDTOCreateAndExecApplicationResponse.allowed_actions:type_name -> eruun.v1.AppDTOAllowedAction
+	182, // 17: eruun.v1.AppDTOCronJobInfo.last_schedule_time:type_name -> google.protobuf.Timestamp
+	182, // 18: eruun.v1.AppDTOCronJobInfo.last_successful_time:type_name -> google.protobuf.Timestamp
+	182, // 19: eruun.v1.AppDTOCronJobInfo.create_time:type_name -> google.protobuf.Timestamp
+	182, // 20: eruun.v1.AppDTOScheduledJobInfo.create_time:type_name -> google.protobuf.Timestamp
+	182, // 21: eruun.v1.AppDTOScheduledJobInfo.update_time:type_name -> google.protobuf.Timestamp
+	183, // 22: eruun.v1.AppDTOAllowedAction.body:type_name -> google.protobuf.Struct
+	182, // 23: eruun.v1.AppDTOApplicationBase.create_time:type_name -> google.protobuf.Timestamp
+	182, // 24: eruun.v1.AppDTOApplicationBase.update_time:type_name -> google.protobuf.Timestamp
+	34,  // 25: eruun.v1.AppDTOApplicationBase.resources:type_name -> eruun.v1.AppDTOApplicationResources
+	138, // 26: eruun.v1.AppDTOApplicationComponent.properties:type_name -> eruun.v1.AppSpecProperties
+	153, // 27: eruun.v1.AppDTOApplicationComponent.traits:type_name -> eruun.v1.AppSpecTraits
+	149, // 28: eruun.v1.AppDTOApplicationComponent.sidecars:type_name -> eruun.v1.AppSpecSidecarTraitsSpec
+	57,  // 29: eruun.v1.AppDTOApplicationComponent.services:type_name -> eruun.v1.AppDTOComponentServiceInfo
+	53,  // 30: eruun.v1.AppDTOApplicationComponent.ingresses:type_name -> eruun.v1.AppDTOComponentIngressInfo
+	56,  // 31: eruun.v1.AppDTOApplicationComponent.resource_configs:type_name -> eruun.v1.AppDTOComponentResourceConfig
+	52,  // 32: eruun.v1.AppDTOApplicationComponent.credentials:type_name -> eruun.v1.AppDTOComponentCredentialInfo
+	82,  // 33: eruun.v1.AppDTOApplicationComponent.external_links:type_name -> eruun.v1.AppDTOExternalLink
+	182, // 34: eruun.v1.AppDTOApplicationComponent.create_time:type_name -> google.protobuf.Timestamp
+	182, // 35: eruun.v1.AppDTOApplicationComponent.update_time:type_name -> google.protobuf.Timestamp
+	31,  // 36: eruun.v1.AppDTOApplicationComponentStatusResponse.components:type_name -> eruun.v1.AppDTOApplicationComponentStatus
+	114, // 37: eruun.v1.AppDTOApplicationLifecycleRequest.callback:type_name -> eruun.v1.AppDTOWorkflowCallback
+	182, // 38: eruun.v1.AppDTOApplicationTask.create_time:type_name -> google.protobuf.Timestamp
+	182, // 39: eruun.v1.AppDTOApplicationTask.update_time:type_name -> google.protobuf.Timestamp
+	28,  // 40: eruun.v1.AppDTOApplicationTask.allowed_actions:type_name -> eruun.v1.AppDTOAllowedAction
+	182, // 41: eruun.v1.AppDTOApplicationWithComponents.create_time:type_name -> google.protobuf.Timestamp
+	182, // 42: eruun.v1.AppDTOApplicationWithComponents.update_time:type_name -> google.protobuf.Timestamp
+	34,  // 43: eruun.v1.AppDTOApplicationWithComponents.resources:type_name -> eruun.v1.AppDTOApplicationResources
+	39,  // 44: eruun.v1.AppDTOApplicationWithComponents.components:type_name -> eruun.v1.AppDTOBatchApplicationComponent
+	118, // 45: eruun.v1.AppDTOApplicationWorkflow.steps:type_name -> eruun.v1.AppDTOWorkflowStepDetail
+	114, // 46: eruun.v1.AppDTOApplicationWorkflow.callback:type_name -> eruun.v1.AppDTOWorkflowCallback
+	182, // 47: eruun.v1.AppDTOApplicationWorkflow.create_time:type_name -> google.protobuf.Timestamp
+	182, // 48: eruun.v1.AppDTOApplicationWorkflow.update_time:type_name -> google.protobuf.Timestamp
+	104, // 49: eruun.v1.AppDTOApplicationWorkflow.spec:type_name -> eruun.v1.AppDTOUpdateApplicationWorkflowRequest
+	40,  // 50: eruun.v1.AppDTOBatchApplicationComponent.properties:type_name -> eruun.v1.AppDTOBatchApplicationComponentProperties
+	136, // 51: eruun.v1.AppDTOBatchApplicationComponentProperties.ports:type_name -> eruun.v1.AppSpecPorts
+	43,  // 52: eruun.v1.AppDTOBatchApplicationComponentStatusResponse.results:type_name -> eruun.v1.AppDTOBatchApplicationComponentStatusResult
+	37,  // 53: eruun.v1.AppDTOBatchGetApplicationsResponse.applications:type_name -> eruun.v1.AppDTOApplicationWithComponents
+	55,  // 54: eruun.v1.AppDTOComponentContainersResponse.pods:type_name -> eruun.v1.AppDTOComponentPodContainers
+	160, // 55: eruun.v1.AppDTOComponentIngressInfo.annotations:type_name -> eruun.v1.AppDTOComponentIngressInfo.AnnotationsEntry
+	133, // 56: eruun.v1.AppDTOComponentIngressInfo.tls:type_name -> eruun.v1.AppSpecIngressTLSConfig
+	54,  // 57: eruun.v1.AppDTOComponentIngressInfo.routes:type_name -> eruun.v1.AppDTOComponentIngressRouteInfo
+	161, // 58: eruun.v1.AppDTOComponentIngressRouteInfo.headers:type_name -> eruun.v1.AppDTOComponentIngressRouteInfo.HeadersEntry
+	142, // 59: eruun.v1.AppDTOComponentIngressRouteInfo.rewrite:type_name -> eruun.v1.AppSpecRewritePolicy
+	50,  // 60: eruun.v1.AppDTOComponentPodContainers.containers:type_name -> eruun.v1.AppDTOComponentContainerInfo
+	58,  // 61: eruun.v1.AppDTOComponentServiceInfo.ports:type_name -> eruun.v1.AppDTOComponentServicePortInfo
+	162, // 62: eruun.v1.AppDTOComponentUpdateSpec.env:type_name -> eruun.v1.AppDTOComponentUpdateSpec.EnvEntry
+	138, // 63: eruun.v1.AppDTOComponentUpdateSpec.properties:type_name -> eruun.v1.AppSpecProperties
+	153, // 64: eruun.v1.AppDTOComponentUpdateSpec.traits:type_name -> eruun.v1.AppSpecTraits
+	65,  // 65: eruun.v1.AppDTOConvertApplicationsResponse.components:type_name -> eruun.v1.AppDTOCreateComponentRequest
+	110, // 66: eruun.v1.AppDTOConvertApplicationsResponse.errors:type_name -> eruun.v1.AppDTOValidationError
+	65,  // 67: eruun.v1.AppDTOCreateAndExecApplicationRequest.components:type_name -> eruun.v1.AppDTOCreateComponentRequest
+	66,  // 68: eruun.v1.AppDTOCreateAndExecApplicationRequest.workflow:type_name -> eruun.v1.AppDTOCreateWorkflowStepRequest
+	114, // 69: eruun.v1.AppDTOCreateAndExecApplicationRequest.callback:type_name -> eruun.v1.AppDTOWorkflowCallback
+	65,  // 70: eruun.v1.AppDTOCreateApplicationsRequest.components:type_name -> eruun.v1.AppDTOCreateComponentRequest
+	66,  // 71: eruun.v1.AppDTOCreateApplicationsRequest.workflow:type_name -> eruun.v1.AppDTOCreateWorkflowStepRequest
+	114, // 72: eruun.v1.AppDTOCreateApplicationsRequest.callback:type_name -> eruun.v1.AppDTOWorkflowCallback
+	138, // 73: eruun.v1.AppDTOCreateComponentRequest.properties:type_name -> eruun.v1.AppSpecProperties
+	153, // 74: eruun.v1.AppDTOCreateComponentRequest.traits:type_name -> eruun.v1.AppSpecTraits
+	99,  // 75: eruun.v1.AppDTOCreateComponentRequest.template:type_name -> eruun.v1.AppDTOTemplateRef
+	117, // 76: eruun.v1.AppDTOCreateWorkflowStepRequest.approval:type_name -> eruun.v1.AppDTOWorkflowStepApproval
+	115, // 77: eruun.v1.AppDTOCreateWorkflowStepRequest.properties:type_name -> eruun.v1.AppDTOWorkflowProperties
+	67,  // 78: eruun.v1.AppDTOCreateWorkflowStepRequest.sub_steps:type_name -> eruun.v1.AppDTOCreateWorkflowSubStepRequest
+	115, // 79: eruun.v1.AppDTOCreateWorkflowSubStepRequest.properties:type_name -> eruun.v1.AppDTOWorkflowProperties
+	72,  // 80: eruun.v1.AppDTODeleteApplicationResponse.deleted_counts:type_name -> eruun.v1.AppDTODeleteResourceCount
+	111, // 81: eruun.v1.AppDTODiffUpdateVersionResponse.updated_components:type_name -> eruun.v1.AppDTOVersionComponentDiff
+	111, // 82: eruun.v1.AppDTODiffUpdateVersionResponse.added_components:type_name -> eruun.v1.AppDTOVersionComponentDiff
+	111, // 83: eruun.v1.AppDTODiffUpdateVersionResponse.extra_components:type_name -> eruun.v1.AppDTOVersionComponentDiff
+	111, // 84: eruun.v1.AppDTODiffUpdateVersionResponse.blocked_components:type_name -> eruun.v1.AppDTOVersionComponentDiff
+	106, // 85: eruun.v1.AppDTODiffUpdateVersionResponse.update_result:type_name -> eruun.v1.AppDTOUpdateVersionResponse
+	28,  // 86: eruun.v1.AppDTOExecWorkflowResponse.allowed_actions:type_name -> eruun.v1.AppDTOAllowedAction
+	89,  // 87: eruun.v1.AppDTOExecutionPlan.actions:type_name -> eruun.v1.AppDTOPlanAction
+	30,  // 88: eruun.v1.AppDTOListApplicationComponentsResponse.components:type_name -> eruun.v1.AppDTOApplicationComponent
+	29,  // 89: eruun.v1.AppDTOListApplicationResponse.applications:type_name -> eruun.v1.AppDTOApplicationBase
+	36,  // 90: eruun.v1.AppDTOListApplicationTasksResponse.tasks:type_name -> eruun.v1.AppDTOApplicationTask
+	38,  // 91: eruun.v1.AppDTOListApplicationWorkflowsResponse.workflows:type_name -> eruun.v1.AppDTOApplicationWorkflow
+	116, // 92: eruun.v1.AppDTOListWorkflowSchedulesResponse.schedules:type_name -> eruun.v1.AppDTOWorkflowSchedule
+	96,  // 93: eruun.v1.AppDTOTaskStageDetail.info:type_name -> eruun.v1.AppDTOTaskStageMessage
+	96,  // 94: eruun.v1.AppDTOTaskStageDetail.error:type_name -> eruun.v1.AppDTOTaskStageMessage
+	95,  // 95: eruun.v1.AppDTOTaskStagesResponse.stages:type_name -> eruun.v1.AppDTOTaskStageDetail
+	28,  // 96: eruun.v1.AppDTOTaskStagesResponse.allowed_actions:type_name -> eruun.v1.AppDTOAllowedAction
+	59,  // 97: eruun.v1.AppDTOTaskStatusResponse.components:type_name -> eruun.v1.AppDTOComponentTaskStatus
+	28,  // 98: eruun.v1.AppDTOTaskStatusResponse.allowed_actions:type_name -> eruun.v1.AppDTOAllowedAction
+	101, // 99: eruun.v1.AppDTOTryApplicationResponse.errors:type_name -> eruun.v1.AppDTOTryValidationError
+	64,  // 100: eruun.v1.AppDTOTryApplicationResponse.normalized_spec:type_name -> eruun.v1.AppDTOCreateApplicationsRequest
+	80,  // 101: eruun.v1.AppDTOTryApplicationResponse.plan:type_name -> eruun.v1.AppDTOExecutionPlan
+	114, // 102: eruun.v1.AppDTOTryWorkflowRequest.callback:type_name -> eruun.v1.AppDTOWorkflowCallback
+	66,  // 103: eruun.v1.AppDTOTryWorkflowRequest.workflow:type_name -> eruun.v1.AppDTOCreateWorkflowStepRequest
+	101, // 104: eruun.v1.AppDTOTryWorkflowResponse.errors:type_name -> eruun.v1.AppDTOTryValidationError
+	104, // 105: eruun.v1.AppDTOTryWorkflowResponse.normalized_spec:type_name -> eruun.v1.AppDTOUpdateApplicationWorkflowRequest
+	80,  // 106: eruun.v1.AppDTOTryWorkflowResponse.plan:type_name -> eruun.v1.AppDTOExecutionPlan
+	114, // 107: eruun.v1.AppDTOUpdateApplicationWorkflowRequest.callback:type_name -> eruun.v1.AppDTOWorkflowCallback
+	66,  // 108: eruun.v1.AppDTOUpdateApplicationWorkflowRequest.workflow:type_name -> eruun.v1.AppDTOCreateWorkflowStepRequest
+	60,  // 109: eruun.v1.AppDTOUpdateVersionRequest.components:type_name -> eruun.v1.AppDTOComponentUpdateSpec
+	114, // 110: eruun.v1.AppDTOUpdateVersionRequest.callback:type_name -> eruun.v1.AppDTOWorkflowCallback
+	116, // 111: eruun.v1.AppDTOUpsertWorkflowScheduleResponse.schedule:type_name -> eruun.v1.AppDTOWorkflowSchedule
+	112, // 112: eruun.v1.AppDTOVersionComponentDiff.fields:type_name -> eruun.v1.AppDTOVersionComponentField
+	113, // 113: eruun.v1.AppDTOVersionComponentDiff.before:type_name -> eruun.v1.AppDTOVersionComponentState
+	113, // 114: eruun.v1.AppDTOVersionComponentDiff.after:type_name -> eruun.v1.AppDTOVersionComponentState
+	184, // 115: eruun.v1.AppDTOVersionComponentField.before:type_name -> google.protobuf.Value
+	184, // 116: eruun.v1.AppDTOVersionComponentField.after:type_name -> google.protobuf.Value
+	138, // 117: eruun.v1.AppDTOVersionComponentState.properties:type_name -> eruun.v1.AppSpecProperties
+	153, // 118: eruun.v1.AppDTOVersionComponentState.traits:type_name -> eruun.v1.AppSpecTraits
+	163, // 119: eruun.v1.AppDTOWorkflowCallback.methods:type_name -> eruun.v1.AppDTOWorkflowCallback.MethodsEntry
+	164, // 120: eruun.v1.AppDTOWorkflowCallback.headers:type_name -> eruun.v1.AppDTOWorkflowCallback.HeadersEntry
+	182, // 121: eruun.v1.AppDTOWorkflowSchedule.create_time:type_name -> google.protobuf.Timestamp
+	182, // 122: eruun.v1.AppDTOWorkflowSchedule.update_time:type_name -> google.protobuf.Timestamp
+	165, // 123: eruun.v1.AppDTOWorkflowStepApproval.headers:type_name -> eruun.v1.AppDTOWorkflowStepApproval.HeadersEntry
+	117, // 124: eruun.v1.AppDTOWorkflowStepDetail.approval:type_name -> eruun.v1.AppDTOWorkflowStepApproval
+	115, // 125: eruun.v1.AppDTOWorkflowStepDetail.properties:type_name -> eruun.v1.AppDTOWorkflowProperties
+	119, // 126: eruun.v1.AppDTOWorkflowStepDetail.sub_steps:type_name -> eruun.v1.AppDTOWorkflowSubStepDetail
+	115, // 127: eruun.v1.AppDTOWorkflowSubStepDetail.properties:type_name -> eruun.v1.AppDTOWorkflowProperties
+	121, // 128: eruun.v1.AppKubeCoreSecurityContext.capabilities:type_name -> eruun.v1.AppKubeCoreCapabilities
+	122, // 129: eruun.v1.AppKubeCoreSecurityContext.se_linux_options:type_name -> eruun.v1.AppKubeCoreSELinuxOptions
+	125, // 130: eruun.v1.AppKubeCoreSecurityContext.windows_options:type_name -> eruun.v1.AppKubeCoreWindowsSecurityContextOptions
+	123, // 131: eruun.v1.AppKubeCoreSecurityContext.seccomp_profile:type_name -> eruun.v1.AppKubeCoreSeccompProfile
+	120, // 132: eruun.v1.AppKubeCoreSecurityContext.app_armor_profile:type_name -> eruun.v1.AppKubeCoreAppArmorProfile
+	183, // 133: eruun.v1.AppSpecCloudSpec.params:type_name -> google.protobuf.Struct
+	166, // 134: eruun.v1.AppSpecIngressRoute.headers:type_name -> eruun.v1.AppSpecIngressRoute.HeadersEntry
+	131, // 135: eruun.v1.AppSpecIngressRoutes.backend:type_name -> eruun.v1.AppSpecIngressRoute
+	142, // 136: eruun.v1.AppSpecIngressRoutes.rewrite:type_name -> eruun.v1.AppSpecRewritePolicy
+	167, // 137: eruun.v1.AppSpecIngressTraitsSpec.label:type_name -> eruun.v1.AppSpecIngressTraitsSpec.LabelEntry
+	168, // 138: eruun.v1.AppSpecIngressTraitsSpec.annotations:type_name -> eruun.v1.AppSpecIngressTraitsSpec.AnnotationsEntry
+	133, // 139: eruun.v1.AppSpecIngressTraitsSpec.tls:type_name -> eruun.v1.AppSpecIngressTLSConfig
+	132, // 140: eruun.v1.AppSpecIngressTraitsSpec.routes:type_name -> eruun.v1.AppSpecIngressRoutes
+	153, // 141: eruun.v1.AppSpecInitTraitSpec.traits:type_name -> eruun.v1.AppSpecTraits
+	138, // 142: eruun.v1.AppSpecInitTraitSpec.properties:type_name -> eruun.v1.AppSpecProperties
+	129, // 143: eruun.v1.AppSpecProbeTraitsSpec.exec:type_name -> eruun.v1.AppSpecExecProbe
+	130, // 144: eruun.v1.AppSpecProbeTraitsSpec.http_get:type_name -> eruun.v1.AppSpecHTTPGetProbe
+	152, // 145: eruun.v1.AppSpecProbeTraitsSpec.tcp_socket:type_name -> eruun.v1.AppSpecTCPSocketProbe
+	136, // 146: eruun.v1.AppSpecProperties.ports:type_name -> eruun.v1.AppSpecPorts
+	169, // 147: eruun.v1.AppSpecProperties.env:type_name -> eruun.v1.AppSpecProperties.EnvEntry
+	170, // 148: eruun.v1.AppSpecProperties.conf:type_name -> eruun.v1.AppSpecProperties.ConfEntry
+	171, // 149: eruun.v1.AppSpecProperties.secret:type_name -> eruun.v1.AppSpecProperties.SecretEntry
+	172, // 150: eruun.v1.AppSpecProperties.labels:type_name -> eruun.v1.AppSpecProperties.LabelsEntry
+	126, // 151: eruun.v1.AppSpecProperties.cloud:type_name -> eruun.v1.AppSpecCloudSpec
+	159, // 152: eruun.v1.AppSpecProperties.job_retry_policy:type_name -> eruun.v1.AppWorkflowConfigJobRetryPolicy
+	173, // 153: eruun.v1.AppSpecRBACPolicySpec.service_account_labels:type_name -> eruun.v1.AppSpecRBACPolicySpec.ServiceAccountLabelsEntry
+	174, // 154: eruun.v1.AppSpecRBACPolicySpec.service_account_annotations:type_name -> eruun.v1.AppSpecRBACPolicySpec.ServiceAccountAnnotationsEntry
+	175, // 155: eruun.v1.AppSpecRBACPolicySpec.role_labels:type_name -> eruun.v1.AppSpecRBACPolicySpec.RoleLabelsEntry
+	176, // 156: eruun.v1.AppSpecRBACPolicySpec.binding_labels:type_name -> eruun.v1.AppSpecRBACPolicySpec.BindingLabelsEntry
+	140, // 157: eruun.v1.AppSpecRBACPolicySpec.rules:type_name -> eruun.v1.AppSpecRBACRuleSpec
+	184, // 158: eruun.v1.AppSpecRolloutRollingUpdateSpec.max_surge:type_name -> google.protobuf.Value
+	184, // 159: eruun.v1.AppSpecRolloutRollingUpdateSpec.max_unavailable:type_name -> google.protobuf.Value
+	143, // 160: eruun.v1.AppSpecRolloutTraitSpec.rolling_update:type_name -> eruun.v1.AppSpecRolloutRollingUpdateSpec
+	177, // 161: eruun.v1.AppSpecServiceTraitSpec.selector:type_name -> eruun.v1.AppSpecServiceTraitSpec.SelectorEntry
+	178, // 162: eruun.v1.AppSpecServiceTraitSpec.labels:type_name -> eruun.v1.AppSpecServiceTraitSpec.LabelsEntry
+	146, // 163: eruun.v1.AppSpecServiceTraitSpec.ports:type_name -> eruun.v1.AppSpecServicePortTraitSpec
+	179, // 164: eruun.v1.AppSpecSidecarTraitsSpec.env:type_name -> eruun.v1.AppSpecSidecarTraitsSpec.EnvEntry
+	153, // 165: eruun.v1.AppSpecSidecarTraitsSpec.traits:type_name -> eruun.v1.AppSpecTraits
+	158, // 166: eruun.v1.AppSpecSimplifiedEnvSpec.value_from:type_name -> eruun.v1.AppSpecValueSource
+	135, // 167: eruun.v1.AppSpecTraits.init:type_name -> eruun.v1.AppSpecInitTraitSpec
+	151, // 168: eruun.v1.AppSpecTraits.storage:type_name -> eruun.v1.AppSpecStorageTraitSpec
+	149, // 169: eruun.v1.AppSpecTraits.sidecar:type_name -> eruun.v1.AppSpecSidecarTraitsSpec
+	134, // 170: eruun.v1.AppSpecTraits.ingress:type_name -> eruun.v1.AppSpecIngressTraitsSpec
+	147, // 171: eruun.v1.AppSpecTraits.service:type_name -> eruun.v1.AppSpecServiceTraitSpec
+	139, // 172: eruun.v1.AppSpecTraits.rbac:type_name -> eruun.v1.AppSpecRBACPolicySpec
+	128, // 173: eruun.v1.AppSpecTraits.env_from:type_name -> eruun.v1.AppSpecEnvFromSourceSpec
+	150, // 174: eruun.v1.AppSpecTraits.envs:type_name -> eruun.v1.AppSpecSimplifiedEnvSpec
+	137, // 175: eruun.v1.AppSpecTraits.probes:type_name -> eruun.v1.AppSpecProbeTraitsSpec
+	180, // 176: eruun.v1.AppSpecTraits.target_work_env:type_name -> eruun.v1.AppSpecTraits.TargetWorkEnvEntry
+	141, // 177: eruun.v1.AppSpecTraits.resources:type_name -> eruun.v1.AppSpecResourceTraitsSpec
+	124, // 178: eruun.v1.AppSpecTraits.security_policy:type_name -> eruun.v1.AppKubeCoreSecurityContext
+	148, // 179: eruun.v1.AppSpecTraits.share:type_name -> eruun.v1.AppSpecShareTraitSpec
+	144, // 180: eruun.v1.AppSpecTraits.rollout:type_name -> eruun.v1.AppSpecRolloutTraitSpec
+	154, // 181: eruun.v1.AppSpecTraits.eval:type_name -> eruun.v1.EvaluationTrait
+	141, // 182: eruun.v1.EvaluationTrait.sandbox_resources:type_name -> eruun.v1.AppSpecResourceTraitsSpec
+	157, // 183: eruun.v1.EvaluationTrait.result_policy:type_name -> eruun.v1.JobResultPolicy
+	155, // 184: eruun.v1.EvaluationTrait.recovery:type_name -> eruun.v1.EvaluationRecovery
+	156, // 185: eruun.v1.JobResultPolicy.targets:type_name -> eruun.v1.JobResultTarget
+	145, // 186: eruun.v1.AppSpecValueSource.secret:type_name -> eruun.v1.AppSpecSecretSelectorSpec
+	127, // 187: eruun.v1.AppSpecValueSource.config:type_name -> eruun.v1.AppSpecConfigMapSelectorSpec
+	181, // 188: eruun.v1.AppWorkflowConfigJobRetryPolicy.max_resources:type_name -> eruun.v1.AppWorkflowConfigJobRetryPolicy.MaxResourcesEntry
+	185, // 189: eruun.v1.ApplicationService.GetCanonicalJSONSchema:input_type -> google.protobuf.Empty
+	1,   // 190: eruun.v1.ApplicationService.ListApplications:input_type -> eruun.v1.ApplicationListRequest
+	1,   // 191: eruun.v1.ApplicationService.ListTemplateApplications:input_type -> eruun.v1.ApplicationListRequest
+	185, // 192: eruun.v1.ApplicationService.ListCronJobs:input_type -> google.protobuf.Empty
+	185, // 193: eruun.v1.ApplicationService.ListScheduledJobs:input_type -> google.protobuf.Empty
+	64,  // 194: eruun.v1.ApplicationService.CreateApplications:input_type -> eruun.v1.AppDTOCreateApplicationsRequest
+	63,  // 195: eruun.v1.ApplicationService.CreateAndExecApplications:input_type -> eruun.v1.AppDTOCreateAndExecApplicationRequest
+	44,  // 196: eruun.v1.ApplicationService.BatchGetApplications:input_type -> eruun.v1.AppDTOBatchGetApplicationsRequest
+	61,  // 197: eruun.v1.ApplicationService.ConvertApplications:input_type -> eruun.v1.AppDTOConvertApplicationsRequest
+	2,   // 198: eruun.v1.ApplicationService.ListApplicationWorkflows:input_type -> eruun.v1.ApplicationIDRequest
+	2,   // 199: eruun.v1.ApplicationService.GetApplicationSpec:input_type -> eruun.v1.ApplicationIDRequest
+	2,   // 200: eruun.v1.ApplicationService.GetApplicationStatus:input_type -> eruun.v1.ApplicationIDRequest
+	2,   // 201: eruun.v1.ApplicationService.ListApplicationComponents:input_type -> eruun.v1.ApplicationIDRequest
+	2,   // 202: eruun.v1.ApplicationService.GetApplicationComponentStatus:input_type -> eruun.v1.ApplicationIDRequest
+	5,   // 203: eruun.v1.ApplicationService.ListComponentContainers:input_type -> eruun.v1.ApplicationComponentRequest
+	41,  // 204: eruun.v1.ApplicationService.BatchApplicationComponentStatus:input_type -> eruun.v1.AppDTOBatchApplicationComponentStatusRequest
+	8,   // 205: eruun.v1.ApplicationService.StreamComponentLogs:input_type -> eruun.v1.ComponentLogsRequest
+	10,  // 206: eruun.v1.ApplicationService.ExportComponentFiles:input_type -> eruun.v1.ComponentFilesRequest
+	11,  // 207: eruun.v1.ApplicationService.ExecComponentShell:input_type -> eruun.v1.ComponentShellRequest
+	11,  // 208: eruun.v1.ApplicationService.StreamComponentShell:input_type -> eruun.v1.ComponentShellRequest
+	14,  // 209: eruun.v1.ApplicationService.DeleteApplication:input_type -> eruun.v1.DeleteApplicationRPCRequest
+	15,  // 210: eruun.v1.ApplicationService.UpdateApplicationWorkflow:input_type -> eruun.v1.UpdateApplicationWorkflowRPCRequest
+	2,   // 211: eruun.v1.ApplicationService.ListWorkflowSchedules:input_type -> eruun.v1.ApplicationIDRequest
+	16,  // 212: eruun.v1.ApplicationService.UpsertWorkflowSchedule:input_type -> eruun.v1.UpsertWorkflowScheduleRPCRequest
+	4,   // 213: eruun.v1.ApplicationService.DeleteWorkflowSchedule:input_type -> eruun.v1.ApplicationWorkflowRequest
+	2,   // 214: eruun.v1.ApplicationService.CleanupApplicationResources:input_type -> eruun.v1.ApplicationIDRequest
+	17,  // 215: eruun.v1.ApplicationService.ResetApplicationDatabases:input_type -> eruun.v1.ResetApplicationDatabasesRPCRequest
+	18,  // 216: eruun.v1.ApplicationService.DownloadLogArchive:input_type -> eruun.v1.LogArchiveRPCRequest
+	19,  // 217: eruun.v1.ApplicationService.RestartApplicationWorkloads:input_type -> eruun.v1.ApplicationLifecycleRPCRequest
+	19,  // 218: eruun.v1.ApplicationService.StopApplicationDeployments:input_type -> eruun.v1.ApplicationLifecycleRPCRequest
+	19,  // 219: eruun.v1.ApplicationService.StartApplicationDeployments:input_type -> eruun.v1.ApplicationLifecycleRPCRequest
+	20,  // 220: eruun.v1.ApplicationService.ExecApplicationWorkflow:input_type -> eruun.v1.ExecWorkflowRPCRequest
+	21,  // 221: eruun.v1.ApplicationService.CancelApplicationWorkflow:input_type -> eruun.v1.CancelWorkflowRPCRequest
+	2,   // 222: eruun.v1.ApplicationService.CancelAllApplicationWorkflows:input_type -> eruun.v1.ApplicationIDRequest
+	2,   // 223: eruun.v1.ApplicationService.ListApplicationTasks:input_type -> eruun.v1.ApplicationIDRequest
+	22,  // 224: eruun.v1.ApplicationService.ApproveWorkflowTask:input_type -> eruun.v1.TaskApprovalRPCRequest
+	3,   // 225: eruun.v1.ApplicationService.GetWorkflowTaskStatus:input_type -> eruun.v1.WorkflowTaskIDRequest
+	3,   // 226: eruun.v1.ApplicationService.GetWorkflowTaskStages:input_type -> eruun.v1.WorkflowTaskIDRequest
+	23,  // 227: eruun.v1.ApplicationService.UpdateApplicationVersion:input_type -> eruun.v1.UpdateVersionRPCRequest
+	24,  // 228: eruun.v1.ApplicationService.DiffUpdateApplicationVersion:input_type -> eruun.v1.DiffUpdateVersionRPCRequest
+	21,  // 229: eruun.v1.ApplicationService.CancelDelayedVersionUpdate:input_type -> eruun.v1.CancelWorkflowRPCRequest
+	64,  // 230: eruun.v1.ApplicationService.TryApplication:input_type -> eruun.v1.AppDTOCreateApplicationsRequest
+	15,  // 231: eruun.v1.ApplicationService.TryWorkflow:input_type -> eruun.v1.UpdateApplicationWorkflowRPCRequest
+	0,   // 232: eruun.v1.ApplicationService.GetCanonicalJSONSchema:output_type -> eruun.v1.CanonicalJSONSchema
+	84,  // 233: eruun.v1.ApplicationService.ListApplications:output_type -> eruun.v1.AppDTOListApplicationResponse
+	84,  // 234: eruun.v1.ApplicationService.ListTemplateApplications:output_type -> eruun.v1.AppDTOListApplicationResponse
+	6,   // 235: eruun.v1.ApplicationService.ListCronJobs:output_type -> eruun.v1.ApplicationCronJobs
+	7,   // 236: eruun.v1.ApplicationService.ListScheduledJobs:output_type -> eruun.v1.ApplicationScheduledJobs
+	29,  // 237: eruun.v1.ApplicationService.CreateApplications:output_type -> eruun.v1.AppDTOApplicationBase
+	25,  // 238: eruun.v1.ApplicationService.CreateAndExecApplications:output_type -> eruun.v1.AppDTOCreateAndExecApplicationResponse
+	45,  // 239: eruun.v1.ApplicationService.BatchGetApplications:output_type -> eruun.v1.AppDTOBatchGetApplicationsResponse
+	62,  // 240: eruun.v1.ApplicationService.ConvertApplications:output_type -> eruun.v1.AppDTOConvertApplicationsResponse
+	86,  // 241: eruun.v1.ApplicationService.ListApplicationWorkflows:output_type -> eruun.v1.AppDTOListApplicationWorkflowsResponse
+	64,  // 242: eruun.v1.ApplicationService.GetApplicationSpec:output_type -> eruun.v1.AppDTOCreateApplicationsRequest
+	35,  // 243: eruun.v1.ApplicationService.GetApplicationStatus:output_type -> eruun.v1.AppDTOApplicationStatusResponse
+	83,  // 244: eruun.v1.ApplicationService.ListApplicationComponents:output_type -> eruun.v1.AppDTOListApplicationComponentsResponse
+	32,  // 245: eruun.v1.ApplicationService.GetApplicationComponentStatus:output_type -> eruun.v1.AppDTOApplicationComponentStatusResponse
+	51,  // 246: eruun.v1.ApplicationService.ListComponentContainers:output_type -> eruun.v1.AppDTOComponentContainersResponse
+	42,  // 247: eruun.v1.ApplicationService.BatchApplicationComponentStatus:output_type -> eruun.v1.AppDTOBatchApplicationComponentStatusResponse
+	9,   // 248: eruun.v1.ApplicationService.StreamComponentLogs:output_type -> eruun.v1.ComponentLogLine
+	13,  // 249: eruun.v1.ApplicationService.ExportComponentFiles:output_type -> eruun.v1.ComponentFileChunk
+	77,  // 250: eruun.v1.ApplicationService.ExecComponentShell:output_type -> eruun.v1.AppDTOExecComponentShellScriptResponse
+	12,  // 251: eruun.v1.ApplicationService.StreamComponentShell:output_type -> eruun.v1.ComponentShellEvent
+	71,  // 252: eruun.v1.ApplicationService.DeleteApplication:output_type -> eruun.v1.AppDTODeleteApplicationResponse
+	107, // 253: eruun.v1.ApplicationService.UpdateApplicationWorkflow:output_type -> eruun.v1.AppDTOUpdateWorkflowResponse
+	87,  // 254: eruun.v1.ApplicationService.ListWorkflowSchedules:output_type -> eruun.v1.AppDTOListWorkflowSchedulesResponse
+	109, // 255: eruun.v1.ApplicationService.UpsertWorkflowSchedule:output_type -> eruun.v1.AppDTOUpsertWorkflowScheduleResponse
+	73,  // 256: eruun.v1.ApplicationService.DeleteWorkflowSchedule:output_type -> eruun.v1.AppDTODeleteWorkflowScheduleResponse
+	49,  // 257: eruun.v1.ApplicationService.CleanupApplicationResources:output_type -> eruun.v1.AppDTOCleanupApplicationResourcesResponse
+	69,  // 258: eruun.v1.ApplicationService.ResetApplicationDatabases:output_type -> eruun.v1.AppDTODatabaseResetResponse
+	13,  // 259: eruun.v1.ApplicationService.DownloadLogArchive:output_type -> eruun.v1.ComponentFileChunk
+	90,  // 260: eruun.v1.ApplicationService.RestartApplicationWorkloads:output_type -> eruun.v1.AppDTORestartApplicationWorkloadsResponse
+	92,  // 261: eruun.v1.ApplicationService.StopApplicationDeployments:output_type -> eruun.v1.AppDTOStopApplicationDeploymentsResponse
+	91,  // 262: eruun.v1.ApplicationService.StartApplicationDeployments:output_type -> eruun.v1.AppDTOStartApplicationDeploymentsResponse
+	79,  // 263: eruun.v1.ApplicationService.ExecApplicationWorkflow:output_type -> eruun.v1.AppDTOExecWorkflowResponse
+	48,  // 264: eruun.v1.ApplicationService.CancelApplicationWorkflow:output_type -> eruun.v1.AppDTOCancelWorkflowResponse
+	46,  // 265: eruun.v1.ApplicationService.CancelAllApplicationWorkflows:output_type -> eruun.v1.AppDTOCancelAllApplicationWorkflowsResponse
+	85,  // 266: eruun.v1.ApplicationService.ListApplicationTasks:output_type -> eruun.v1.AppDTOListApplicationTasksResponse
+	94,  // 267: eruun.v1.ApplicationService.ApproveWorkflowTask:output_type -> eruun.v1.AppDTOTaskApprovalResponse
+	98,  // 268: eruun.v1.ApplicationService.GetWorkflowTaskStatus:output_type -> eruun.v1.AppDTOTaskStatusResponse
+	97,  // 269: eruun.v1.ApplicationService.GetWorkflowTaskStages:output_type -> eruun.v1.AppDTOTaskStagesResponse
+	106, // 270: eruun.v1.ApplicationService.UpdateApplicationVersion:output_type -> eruun.v1.AppDTOUpdateVersionResponse
+	75,  // 271: eruun.v1.ApplicationService.DiffUpdateApplicationVersion:output_type -> eruun.v1.AppDTODiffUpdateVersionResponse
+	48,  // 272: eruun.v1.ApplicationService.CancelDelayedVersionUpdate:output_type -> eruun.v1.AppDTOCancelWorkflowResponse
+	100, // 273: eruun.v1.ApplicationService.TryApplication:output_type -> eruun.v1.AppDTOTryApplicationResponse
+	103, // 274: eruun.v1.ApplicationService.TryWorkflow:output_type -> eruun.v1.AppDTOTryWorkflowResponse
+	232, // [232:275] is the sub-list for method output_type
+	189, // [189:232] is the sub-list for method input_type
+	189, // [189:189] is the sub-list for extension type_name
+	189, // [189:189] is the sub-list for extension extendee
+	0,   // [0:189] is the sub-list for field type_name
 }
 
 func init() { file_eruun_v1_applications_proto_init() }
@@ -15136,32 +13696,32 @@ func file_eruun_v1_applications_proto_init() {
 	}
 	file_eruun_v1_applications_proto_msgTypes[1].OneofWrappers = []any{}
 	file_eruun_v1_applications_proto_msgTypes[12].OneofWrappers = []any{}
-	file_eruun_v1_applications_proto_msgTypes[27].OneofWrappers = []any{}
+	file_eruun_v1_applications_proto_msgTypes[26].OneofWrappers = []any{}
+	file_eruun_v1_applications_proto_msgTypes[60].OneofWrappers = []any{}
+	file_eruun_v1_applications_proto_msgTypes[61].OneofWrappers = []any{}
 	file_eruun_v1_applications_proto_msgTypes[63].OneofWrappers = []any{}
 	file_eruun_v1_applications_proto_msgTypes[64].OneofWrappers = []any{}
-	file_eruun_v1_applications_proto_msgTypes[66].OneofWrappers = []any{}
-	file_eruun_v1_applications_proto_msgTypes[67].OneofWrappers = []any{}
-	file_eruun_v1_applications_proto_msgTypes[71].OneofWrappers = []any{}
-	file_eruun_v1_applications_proto_msgTypes[73].OneofWrappers = []any{}
-	file_eruun_v1_applications_proto_msgTypes[77].OneofWrappers = []any{}
-	file_eruun_v1_applications_proto_msgTypes[121].OneofWrappers = []any{}
-	file_eruun_v1_applications_proto_msgTypes[122].OneofWrappers = []any{}
+	file_eruun_v1_applications_proto_msgTypes[68].OneofWrappers = []any{}
+	file_eruun_v1_applications_proto_msgTypes[70].OneofWrappers = []any{}
+	file_eruun_v1_applications_proto_msgTypes[74].OneofWrappers = []any{}
+	file_eruun_v1_applications_proto_msgTypes[104].OneofWrappers = []any{}
+	file_eruun_v1_applications_proto_msgTypes[105].OneofWrappers = []any{}
+	file_eruun_v1_applications_proto_msgTypes[108].OneofWrappers = []any{}
+	file_eruun_v1_applications_proto_msgTypes[120].OneofWrappers = []any{}
+	file_eruun_v1_applications_proto_msgTypes[123].OneofWrappers = []any{}
+	file_eruun_v1_applications_proto_msgTypes[124].OneofWrappers = []any{}
 	file_eruun_v1_applications_proto_msgTypes[125].OneofWrappers = []any{}
-	file_eruun_v1_applications_proto_msgTypes[137].OneofWrappers = []any{}
-	file_eruun_v1_applications_proto_msgTypes[140].OneofWrappers = []any{}
-	file_eruun_v1_applications_proto_msgTypes[141].OneofWrappers = []any{}
-	file_eruun_v1_applications_proto_msgTypes[142].OneofWrappers = []any{}
-	file_eruun_v1_applications_proto_msgTypes[155].OneofWrappers = []any{}
-	file_eruun_v1_applications_proto_msgTypes[156].OneofWrappers = []any{}
-	file_eruun_v1_applications_proto_msgTypes[160].OneofWrappers = []any{}
-	file_eruun_v1_applications_proto_msgTypes[175].OneofWrappers = []any{}
+	file_eruun_v1_applications_proto_msgTypes[138].OneofWrappers = []any{}
+	file_eruun_v1_applications_proto_msgTypes[139].OneofWrappers = []any{}
+	file_eruun_v1_applications_proto_msgTypes[143].OneofWrappers = []any{}
+	file_eruun_v1_applications_proto_msgTypes[158].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_eruun_v1_applications_proto_rawDesc), len(file_eruun_v1_applications_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   199,
+			NumMessages:   182,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

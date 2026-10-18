@@ -2,22 +2,16 @@ package job
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	importcontract "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/resourceimport/contract"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
@@ -59,18 +53,6 @@ func (c *DeployPVCJobCtl) run(ctx context.Context) error {
 	}
 	if pvc.Namespace == "" {
 		pvc.Namespace = c.job.Namespace
-	}
-	if binding, adopted, sourceErr := adoptedResourceForJob(
-		ctx,
-		c.store,
-		c.job,
-		"PersistentVolumeClaim",
-		pvc.Namespace,
-		pvc.Name,
-	); sourceErr != nil {
-		return sourceErr
-	} else if adopted {
-		return c.reconcileAdoptedPVC(ctx, pvc, binding)
 	}
 
 	observeExistingPVC := func(ctx context.Context, current *corev1.PersistentVolumeClaim) error {
@@ -121,192 +103,6 @@ func (c *DeployPVCJobCtl) run(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-func (c *DeployPVCJobCtl) reconcileAdoptedPVC(
-	ctx context.Context,
-	desired *corev1.PersistentVolumeClaim,
-	binding *adoptedResourceBinding,
-) error {
-	if desired == nil || binding == nil || binding.resource == nil {
-		return fmt.Errorf("adopted pvc desired resource and source binding are required")
-	}
-	resource := binding.resource
-	if resource.Disposition == importcontract.DispositionDataProtected {
-		if resource.Ownership != importcontract.OwnershipDataProtected &&
-			resource.Ownership != importcontract.OwnershipExclusive {
-			return fmt.Errorf(
-				"adopted pvc %s/%s has unsafe ownership %q",
-				desired.Namespace,
-				desired.Name,
-				resource.Ownership,
-			)
-		}
-	} else {
-		writable, err := adoptedResourceAllowsWrite(binding)
-		if err != nil {
-			return err
-		}
-		if !writable {
-			return nil
-		}
-	}
-	cli := c.client.CoreV1().PersistentVolumeClaims(desired.Namespace)
-	current, err := cli.Get(ctx, desired.Name, metav1.GetOptions{})
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return fmt.Errorf(
-				"adopted pvc %s/%s is missing; protected data resources are never recreated",
-				desired.Namespace,
-				desired.Name,
-			)
-		}
-		return fmt.Errorf("get adopted pvc %s/%s: %w", desired.Namespace, desired.Name, err)
-	}
-	if err := validateAdoptedSnapshotUID(current.UID, binding); err != nil {
-		return err
-	}
-	changed, err := c.validateAdoptedPVCResize(ctx, current, desired, binding.snapshot)
-	if err != nil {
-		return fmt.Errorf("adopted pvc %s/%s: %w", desired.Namespace, desired.Name, err)
-	}
-	if !changed {
-		markResourceObserved(ctx, domainspec.ResourcePVC, desired.Namespace, desired.Name)
-		return nil
-	}
-	if err := updateResourceWithRetry(ctx, func(ctx context.Context) (*corev1.PersistentVolumeClaim, error) {
-		return cli.Get(ctx, desired.Name, metav1.GetOptions{})
-	}, func(ctx context.Context, latest *corev1.PersistentVolumeClaim) error {
-		if err := validateAdoptedSnapshotUID(latest.UID, binding); err != nil {
-			return err
-		}
-		changed, err := c.validateAdoptedPVCResize(ctx, latest, desired, binding.snapshot)
-		if err != nil || !changed {
-			return err
-		}
-		requested := desired.Spec.Resources.Requests[corev1.ResourceStorage]
-		candidate := latest.DeepCopy()
-		if candidate.Spec.Resources.Requests == nil {
-			candidate.Spec.Resources.Requests = corev1.ResourceList{}
-		}
-		candidate.Spec.Resources.Requests[corev1.ResourceStorage] = requested.DeepCopy()
-		_, err = cli.Update(ctx, candidate, metav1.UpdateOptions{})
-		return err
-	}); err != nil {
-		return fmt.Errorf("resize adopted pvc %s/%s: %w", desired.Namespace, desired.Name, err)
-	}
-	markResourceObserved(ctx, domainspec.ResourcePVC, desired.Namespace, desired.Name)
-	return nil
-}
-
-func (c *DeployPVCJobCtl) validateAdoptedPVCResize(
-	ctx context.Context,
-	current, desired *corev1.PersistentVolumeClaim,
-	snapshot *importcontract.Snapshot,
-) (bool, error) {
-	if current == nil || desired == nil {
-		return false, fmt.Errorf("live and desired pvc are required")
-	}
-	if desired.Spec.StorageClassName != nil &&
-		!apiequality.Semantic.DeepEqual(current.Spec.StorageClassName, desired.Spec.StorageClassName) {
-		return false, fmt.Errorf("storageClassName changes are forbidden")
-	}
-	if len(desired.Spec.AccessModes) > 0 &&
-		!apiequality.Semantic.DeepEqual(current.Spec.AccessModes, desired.Spec.AccessModes) {
-		return false, fmt.Errorf("accessModes changes are forbidden")
-	}
-	if desired.Spec.VolumeMode != nil &&
-		!apiequality.Semantic.DeepEqual(current.Spec.VolumeMode, desired.Spec.VolumeMode) {
-		return false, fmt.Errorf("volumeMode changes are forbidden")
-	}
-	if desired.Spec.VolumeName != "" && desired.Spec.VolumeName != current.Spec.VolumeName {
-		return false, fmt.Errorf("bound volumeName changes are forbidden")
-	}
-	if desired.Spec.Selector != nil && !apiequality.Semantic.DeepEqual(current.Spec.Selector, desired.Spec.Selector) {
-		return false, fmt.Errorf("selector changes are forbidden")
-	}
-	if desired.Spec.DataSource != nil && !apiequality.Semantic.DeepEqual(current.Spec.DataSource, desired.Spec.DataSource) {
-		return false, fmt.Errorf("dataSource changes are forbidden")
-	}
-	if desired.Spec.DataSourceRef != nil && !apiequality.Semantic.DeepEqual(current.Spec.DataSourceRef, desired.Spec.DataSourceRef) {
-		return false, fmt.Errorf("dataSourceRef changes are forbidden")
-	}
-
-	requested, hasRequested := desired.Spec.Resources.Requests[corev1.ResourceStorage]
-	if !hasRequested {
-		return false, nil
-	}
-	currentRequest, hasCurrentRequest := current.Spec.Resources.Requests[corev1.ResourceStorage]
-	if !hasCurrentRequest {
-		return false, fmt.Errorf("live pvc has no storage request")
-	}
-	switch requested.Cmp(currentRequest) {
-	case -1:
-		return false, fmt.Errorf("storage shrink from %s to %s is forbidden", currentRequest.String(), requested.String())
-	case 0:
-		return false, nil
-	}
-	if pvcBelongsToStatefulSetVCT(current, snapshot) {
-		return false, fmt.Errorf("volumeClaimTemplate pvc resize is forbidden")
-	}
-	if current.Status.Phase != corev1.ClaimBound {
-		return false, fmt.Errorf("online expansion requires a Bound pvc")
-	}
-	if current.Spec.StorageClassName == nil || strings.TrimSpace(*current.Spec.StorageClassName) == "" {
-		return false, fmt.Errorf("online expansion requires an explicit storageClassName")
-	}
-	storageClassName := strings.TrimSpace(*current.Spec.StorageClassName)
-	storageClass, err := c.client.StorageV1().StorageClasses().Get(ctx, storageClassName, metav1.GetOptions{})
-	if err != nil {
-		return false, fmt.Errorf("get storageclass %q: %w", storageClassName, err)
-	}
-	if storageClass.AllowVolumeExpansion == nil || !*storageClass.AllowVolumeExpansion {
-		return false, fmt.Errorf("storageclass %q does not allow volume expansion", storageClassName)
-	}
-	return true, nil
-}
-
-func pvcBelongsToStatefulSetVCT(
-	pvc *corev1.PersistentVolumeClaim,
-	snapshot *importcontract.Snapshot,
-) bool {
-	if pvc == nil {
-		return false
-	}
-	for _, owner := range pvc.OwnerReferences {
-		if strings.EqualFold(owner.Kind, "StatefulSet") {
-			return true
-		}
-	}
-	if snapshot == nil {
-		return false
-	}
-	for _, resource := range snapshot.Resources {
-		sourceNamespace := resource.Source.Namespace
-		if sourceNamespace == "" {
-			sourceNamespace = snapshot.Namespace
-		}
-		if !strings.EqualFold(resource.Source.Kind, "StatefulSet") ||
-			sourceNamespace != pvc.Namespace ||
-			len(resource.Manifest) == 0 {
-			continue
-		}
-		var statefulSet appsv1.StatefulSet
-		if err := json.Unmarshal(resource.Manifest, &statefulSet); err != nil {
-			continue
-		}
-		for _, template := range statefulSet.Spec.VolumeClaimTemplates {
-			prefix := template.Name + "-" + statefulSet.Name + "-"
-			if !strings.HasPrefix(pvc.Name, prefix) {
-				continue
-			}
-			ordinal := strings.TrimPrefix(pvc.Name, prefix)
-			if value, err := strconv.Atoi(ordinal); err == nil && value >= 0 {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func (c *DeployPVCJobCtl) wait(ctx context.Context) error {

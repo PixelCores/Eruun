@@ -127,10 +127,6 @@ func workspaceTaskJobAllowed(task *model.WorkflowQueue, job *model.JobInfo) bool
 	}
 	query := job == nil || job.Type == ""
 	switch task.Type {
-	case config.WorkflowTaskTypeResourceImportScan:
-		return query || job.Type == string(config.JobResourceImportScan)
-	case config.WorkflowTaskTypeResourceImportManage:
-		return query || job.Type == string(config.JobResourceImportManage)
 	case config.WorkflowTaskTypeJob:
 		var snapshot spec.JobSpec
 		// Authorize from the persisted snapshot only. Re-running today's DSL

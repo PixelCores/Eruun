@@ -12,7 +12,6 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/importsecret"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/profiling"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
@@ -82,13 +81,6 @@ type Config struct {
 
 	// Workflow configures workflow scheduling behaviour.
 	Workflow workflowconfig.RuntimeConfig
-
-	// ImportSecretKeyring is an inline JSON AES-256-GCM keyring used only for
-	// adopted Kubernetes Secret payloads and import plan fingerprints.
-	ImportSecretKeyring string
-	// ImportSecretKeyringFile points at a mounted file containing the same JSON
-	// document. It is mutually exclusive with ImportSecretKeyring.
-	ImportSecretKeyringFile string
 }
 
 type RedisCacheConfig struct {
@@ -195,11 +187,6 @@ func (c *Config) Validate() []error {
 		errs = append(errs, fmt.Errorf("redis cache host/port is invalid"))
 	}
 	errs = append(errs, c.Workflow.Validate()...)
-	if strings.TrimSpace(c.ImportSecretKeyring) != "" || strings.TrimSpace(c.ImportSecretKeyringFile) != "" {
-		if _, err := importsecret.Load(c.ImportSecretKeyring, c.ImportSecretKeyringFile); err != nil {
-			errs = append(errs, err)
-		}
-	}
 	return errs
 }
 
@@ -284,8 +271,6 @@ func (c *Config) AddFlags(fs *pflag.FlagSet, configParameter *Config) {
 	fs.DurationVar(&c.Workflow.LeaseReaperInterval, "workflow-lease-reaper-interval", configParameter.Workflow.LeaseReaperInterval, "interval for recovering expired workflow leases")
 	fs.IntVar(&c.Workflow.LeaseReaperBatchSize, "workflow-lease-reaper-batch-size", configParameter.Workflow.LeaseReaperBatchSize, "maximum expired workflow leases recovered per pass (1..10000)")
 	fs.DurationVar(&c.Workflow.WorkerDrainTimeout, "workflow-worker-drain-timeout", configParameter.Workflow.WorkerDrainTimeout, "maximum graceful worker drain duration")
-	fs.StringVar(&c.ImportSecretKeyring, "import-secret-keyring", configParameter.ImportSecretKeyring, "inline JSON keyring for adopted Secret encryption and import plan fingerprints")
-	fs.StringVar(&c.ImportSecretKeyringFile, "import-secret-keyring-file", configParameter.ImportSecretKeyringFile, "mounted JSON keyring file for adopted Secret encryption and import plan fingerprints")
 	// profiling flags live in the profiling package; wire them here for convenience
 	profiling.AddFlags(fs)
 }

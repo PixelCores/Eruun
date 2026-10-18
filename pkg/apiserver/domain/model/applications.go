@@ -9,19 +9,17 @@ import (
 )
 
 type Applications struct {
-	WorkspaceID      string              `json:"workspaceId" gorm:"type:varchar(36);not null;index"`
-	ID               string              `json:"id" gorm:"primaryKey;type:varchar(64);column:id"`
-	Name             string              `json:"name" gorm:"type:varchar(255);column:name"`          //应用名称
-	Namespace        string              `json:"namespace" gorm:"type:varchar(64);column:namespace"` //命名空间，但是不对外暴露
-	Version          string              `json:"version" gorm:"type:varchar(64);column:version"`     //版本，如果为空则默认为1.0.0
-	Alias            string              `json:"alias" gorm:"type:varchar(128);column:alias"`        //别名
-	Project          string              `json:"project" gorm:"type:varchar(128);column:project"`    //项目
-	Description      string              `json:"description" gorm:"type:text;column:description"`    //详情
-	Icon             string              `json:"icon" gorm:"type:varchar(255);column:icon"`          //图标
-	TemplateEnabled  bool                `json:"templateEnabled" gorm:"column:tmp_enable"`           // 是否允许作为模板被引用
-	ManagementMode   spec.ManagementMode `json:"managementMode" gorm:"type:varchar(16);column:management_mode;index"`
-	AdoptionSnapshot *JSONStruct         `json:"-" gorm:"column:adoption_snapshot;type:longtext;serializer:json"`
-	Callback         *JSONStruct         `json:"callback,omitempty" gorm:"serializer:json"`
+	WorkspaceID     string      `json:"workspaceId" gorm:"type:varchar(36);not null;index"`
+	ID              string      `json:"id" gorm:"primaryKey;type:varchar(64);column:id"`
+	Name            string      `json:"name" gorm:"type:varchar(255);column:name"`          //应用名称
+	Namespace       string      `json:"namespace" gorm:"type:varchar(64);column:namespace"` //命名空间，但是不对外暴露
+	Version         string      `json:"version" gorm:"type:varchar(64);column:version"`     //版本，如果为空则默认为1.0.0
+	Alias           string      `json:"alias" gorm:"type:varchar(128);column:alias"`        //别名
+	Project         string      `json:"project" gorm:"type:varchar(128);column:project"`    //项目
+	Description     string      `json:"description" gorm:"type:text;column:description"`    //详情
+	Icon            string      `json:"icon" gorm:"type:varchar(255);column:icon"`          //图标
+	TemplateEnabled bool        `json:"templateEnabled" gorm:"column:tmp_enable"`           // 是否允许作为模板被引用
+	Callback        *JSONStruct `json:"callback,omitempty" gorm:"serializer:json"`
 	BaseModel
 }
 
@@ -36,7 +34,6 @@ func NewApplications(id, name, namespace, version, alias, project, description, 
 		Description:     description,
 		Icon:            icon,
 		TemplateEnabled: templateEnabled,
-		ManagementMode:  spec.ManagementModeNative,
 	}
 }
 
@@ -69,51 +66,20 @@ func (a *Applications) Index() map[string]interface{} {
 	if a.TemplateEnabled {
 		index["tmp_enable"] = a.TemplateEnabled
 	}
-	// A zero-value query must not implicitly filter out observe/adopted rows.
-	if mode, ok := spec.NormalizeManagementMode(string(a.ManagementMode)); ok {
-		index["management_mode"] = mode
-	}
 	return index
-}
-
-// EffectiveManagementMode keeps legacy and rolling-upgrade rows fail-closed
-// when an older writer omitted the nullable management_mode column.
-func (a *Applications) EffectiveManagementMode() spec.ManagementMode {
-	if a == nil {
-		return spec.ManagementModeNative
-	}
-	rawMode := strings.TrimSpace(string(a.ManagementMode))
-	if rawMode != "" {
-		if mode, ok := spec.NormalizeManagementMode(rawMode); ok {
-			return mode
-		}
-		return spec.ManagementModeObserve
-	}
-	if strings.EqualFold(strings.TrimSpace(a.Project), "imported") &&
-		strings.EqualFold(strings.TrimSpace(a.Version), "imported") {
-		return spec.ManagementModeObserve
-	}
-	return spec.ManagementModeNative
 }
 
 // ApplicationComponent delivery database model 组件信息
 type ApplicationComponent struct {
-	ID                       int            `json:"id" gorm:"primaryKey;column:id"`
-	AppID                    string         `json:"appId" gorm:"type:varchar(64);column:app_id"`
-	Name                     string         `json:"name" gorm:"type:varchar(255);column:name"`
-	Namespace                string         `json:"namespace" gorm:"type:varchar(64);column:namespace"`
-	Image                    string         `json:"image" gorm:"type:varchar(255);column:image"`
-	Replicas                 int32          `json:"replicas" gorm:"column:replicas"`
-	ComponentType            config.JobType `json:"componentType" gorm:"type:varchar(32);column:component_type"`
-	Properties               *JSONStruct    `json:"properties,omitempty" gorm:"serializer:json"`
-	Traits                   *JSONStruct    `json:"traits" gorm:"serializer:json"`
-	SourceWorkloadAPIVersion string         `json:"-" gorm:"type:varchar(64);column:source_workload_api_version"`
-	SourceWorkloadKind       string         `json:"-" gorm:"type:varchar(32);column:source_workload_kind"`
-	SourceWorkloadName       string         `json:"-" gorm:"type:varchar(253);column:source_workload_name"`
-	SourceWorkloadUID        *string        `json:"-" gorm:"type:varchar(128);column:source_workload_uid;uniqueIndex:uidx_component_source_workload_uid"`
-	SourcePodSelector        *JSONStruct    `json:"-" gorm:"column:source_pod_selector;type:longtext;serializer:json"`
-	ResumeReplicas           *int32         `json:"-" gorm:"column:resume_replicas"`
-	AdoptedSecretData        *JSONStruct    `json:"-" gorm:"column:adopted_secret_data;type:longtext;serializer:json"`
+	ID            int            `json:"id" gorm:"primaryKey;column:id"`
+	AppID         string         `json:"appId" gorm:"type:varchar(64);column:app_id"`
+	Name          string         `json:"name" gorm:"type:varchar(255);column:name"`
+	Namespace     string         `json:"namespace" gorm:"type:varchar(64);column:namespace"`
+	Image         string         `json:"image" gorm:"type:varchar(255);column:image"`
+	Replicas      int32          `json:"replicas" gorm:"column:replicas"`
+	ComponentType config.JobType `json:"componentType" gorm:"type:varchar(32);column:component_type"`
+	Properties    *JSONStruct    `json:"properties,omitempty" gorm:"serializer:json"`
+	Traits        *JSONStruct    `json:"traits" gorm:"serializer:json"`
 	// 运行时状态（由 Informer 同步）
 	Status          string `json:"status" gorm:"type:varchar(32);column:status"`                 // Running/Pending/Failed/Unknown
 	ReadyReplicas   int32  `json:"readyReplicas" gorm:"column:ready_replicas"`                   // 就绪副本数
@@ -132,15 +98,6 @@ type ComponentStatusUpdate struct {
 	ReadyReplicas *int32                  // 就绪副本数
 	Replicas      *int32                  // 观察到的副本数
 	LastAbnormal  *string                 // 最近一次异常信息（指向空字符串表示清空）
-}
-
-func (w *ApplicationComponent) HasSourceWorkload() bool {
-	return w != nil &&
-		strings.TrimSpace(w.SourceWorkloadAPIVersion) != "" &&
-		strings.TrimSpace(w.SourceWorkloadKind) != "" &&
-		strings.TrimSpace(w.SourceWorkloadName) != "" &&
-		w.SourceWorkloadUID != nil &&
-		strings.TrimSpace(*w.SourceWorkloadUID) != ""
 }
 
 func (w *ApplicationComponent) PrimaryKey() string {

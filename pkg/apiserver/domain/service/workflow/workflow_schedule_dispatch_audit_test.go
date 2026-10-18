@@ -3,7 +3,6 @@ package workflow
 import (
 	"context"
 	"fmt"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 
 	"testing"
 	"time"
@@ -746,76 +745,6 @@ func TestEnqueueWorkflowRejectsMixedApprovalAndComponentWorkflowWithoutComponent
 	}, 0)
 	require.ErrorIs(t, err, bcode.ErrApplicationNoComponents)
 	require.Len(t, store.queues, 0)
-}
-
-func TestEnqueueWorkflowRejectsObserveApplication(t *testing.T) {
-	steps, err := model.NewJSONStructByStruct(&model.WorkflowSteps{
-		Steps: []*model.WorkflowStep{{Name: "deploy", WorkflowType: config.JobDeploy}},
-	})
-	require.NoError(t, err)
-
-	store := &enqueueWorkflowDataStore{
-		scheduleDataStore: scheduleDataStore{app: &model.Applications{
-			ID:             "observe-app",
-			ManagementMode: domainspec.ManagementModeObserve,
-		}},
-		components: []*model.ApplicationComponent{{AppID: "observe-app", Name: "api"}},
-	}
-	svc := &workflowServiceImpl{}
-	_, err = svc.enqueueWorkflowTaskWithStore(context.Background(), store, &model.Workflow{
-		ID:    "wf-observe",
-		AppID: "observe-app",
-		Name:  "deploy",
-		Steps: steps,
-	}, 0)
-	require.ErrorIs(t, err, bcode.ErrApplicationManagementMode)
-	require.Empty(t, store.queues)
-}
-
-func TestEnqueueWorkflowRejectsUnsafeAdoptedJobs(t *testing.T) {
-	tests := []struct {
-		name string
-		step *model.WorkflowStep
-	}{
-		{
-			name: "database reset",
-			step: &model.WorkflowStep{Name: "reset", WorkflowType: config.JobDatabaseReset},
-		},
-		{
-			name: "nested cleanup",
-			step: &model.WorkflowStep{
-				Name:     "parallel",
-				StepType: config.WorkflowStepTypeComponent,
-				SubSteps: []*model.WorkflowSubStep{{Name: "cleanup", WorkflowType: config.JobCleanupResources}},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			steps, err := model.NewJSONStructByStruct(&model.WorkflowSteps{
-				Steps: []*model.WorkflowStep{tt.step},
-			})
-			require.NoError(t, err)
-
-			store := &enqueueWorkflowDataStore{
-				scheduleDataStore: scheduleDataStore{app: &model.Applications{
-					ID:             "adopted-app",
-					ManagementMode: domainspec.ManagementModeAdopted,
-				}},
-				components: []*model.ApplicationComponent{{AppID: "adopted-app", Name: "api"}},
-			}
-			svc := &workflowServiceImpl{}
-			_, err = svc.enqueueWorkflowTaskWithStore(context.Background(), store, &model.Workflow{
-				ID:    "wf-adopted",
-				AppID: "adopted-app",
-				Name:  "unsafe",
-				Steps: steps,
-			}, 0)
-			require.ErrorIs(t, err, bcode.ErrApplicationManagementMode)
-			require.Empty(t, store.queues)
-		})
-	}
 }
 
 func TestExecWorkflowTaskForAppSerializesIdleCheckAndTaskInsert(t *testing.T) {

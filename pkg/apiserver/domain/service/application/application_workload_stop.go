@@ -52,7 +52,6 @@ func (c *applicationsServiceImpl) stopApplicationDeploymentsLocked(ctx context.C
 	setResourceAppNameForComponents(components, applicationResourceNameKey(app))
 
 	reporter := newDeploymentScaleReporter()
-	adopted := isAdoptedApplication(app)
 	var task *model.WorkflowQueue
 	var taskID string
 	recordTask := func(taskCtx context.Context, taskApp *model.Applications) error {
@@ -70,83 +69,34 @@ func (c *applicationsServiceImpl) stopApplicationDeploymentsLocked(ctx context.C
 		)
 		return taskErr
 	}
-	if adopted {
-		lockedApp, err := c.withAdoptedLifecycleLock(
-			ctx,
-			app.ID,
-			adoptedLifecycleStop,
-			func(
-				lockCtx context.Context,
-				lockedApp *model.Applications,
-				lockedComponents []*model.ApplicationComponent,
-			) error {
-				targets, skippedTargets, err := c.preflightAdoptedLifecycle(
-					lockCtx,
-					lockedComponents,
-					adoptedLifecycleStop,
-				)
-				if err != nil {
-					return err
-				}
-				for _, target := range skippedTargets {
-					reporter.record(target.kind, target.namespace, target.name, true, nil)
-				}
-				if err := c.persistAdoptedResumeReplicas(lockCtx, targets); err != nil {
-					return err
-				}
-				for _, target := range targets {
-					if err := c.updateAdoptedLifecycleTarget(lockCtx, target, adoptedLifecycleStop, ""); err != nil {
-						reporter.record(target.kind, target.namespace, target.name, false, err)
-						continue
-					}
-					if err := c.markComponentStopped(lockCtx, target.component); err != nil {
-						reporter.record(target.kind, target.namespace, target.name, false, err)
-						continue
-					}
-					reporter.record(target.kind, target.namespace, target.name, false, nil)
-				}
-				if err := recordTask(lockCtx, lockedApp); err != nil {
-					return fmt.Errorf("Kubernetes stop may already have taken effect, but operation record commit could not be confirmed; inspect operation records and Kubernetes resources before retrying: %w", err)
-				}
-				return nil
-			},
-		)
-		if err != nil {
-			return nil, err
+	patch, err := buildDeploymentReplicasPatch(0)
+	if err != nil {
+		return nil, err
+	}
+	for _, component := range components {
+		if component == nil || component.ComponentType != config.ServerJob {
+			continue
 		}
-		app = lockedApp
-	} else {
-		patch, err := buildDeploymentReplicasPatch(0)
-		if err != nil {
-			return nil, err
+		deployNS, deployName := resolveDeploymentTarget(component)
+		if strategy, shared := SharedLifecycleStrategyForComponent(component); shared {
+			klog.Infof("stop: skip shared component %s/%s (strategy=%s)", component.Namespace, component.Name, strategy)
+			reporter.record("Deployment", deployNS, deployName, true, nil)
+			continue
 		}
-		for _, component := range components {
-			if component == nil || component.ComponentType != config.ServerJob {
-				continue
-			}
-			deployNS, deployName := resolveDeploymentTarget(component)
-			if strategy, shared := SharedLifecycleStrategyForComponent(component); shared {
-				klog.Infof("stop: skip shared component %s/%s (strategy=%s)", component.Namespace, component.Name, strategy)
-				reporter.record("Deployment", deployNS, deployName, true, nil)
-				continue
-			}
-			skipped, err := c.scaleDeployment(ctx, deployNS, deployName, patch)
-			if err != nil || skipped {
-				reporter.record("Deployment", deployNS, deployName, skipped, err)
-				continue
-			}
-			if err := c.markComponentStopped(ctx, component); err != nil {
-				reporter.record("Deployment", deployNS, deployName, false, err)
-				continue
-			}
-			reporter.record("Deployment", deployNS, deployName, false, nil)
+		skipped, err := c.scaleDeployment(ctx, deployNS, deployName, patch)
+		if err != nil || skipped {
+			reporter.record("Deployment", deployNS, deployName, skipped, err)
+			continue
 		}
+		if err := c.markComponentStopped(ctx, component); err != nil {
+			reporter.record("Deployment", deployNS, deployName, false, err)
+			continue
+		}
+		reporter.record("Deployment", deployNS, deployName, false, nil)
 	}
 
-	if !adopted {
-		if taskErr := recordTask(ctx, app); taskErr != nil {
-			return nil, fmt.Errorf("Kubernetes stop may already have taken effect, but operation record commit could not be confirmed; inspect operation records and Kubernetes resources before retrying: %w", taskErr)
-		}
+	if taskErr := recordTask(ctx, app); taskErr != nil {
+		return nil, fmt.Errorf("Kubernetes stop may already have taken effect, but operation record commit could not be confirmed; inspect operation records and Kubernetes resources before retrying: %w", taskErr)
 	}
 	stoppedAt := time.Now().UTC().Format(time.RFC3339)
 	resp := &apisv1.StopApplicationDeploymentsResponse{
@@ -198,7 +148,6 @@ func (c *applicationsServiceImpl) startApplicationDeploymentsLocked(ctx context.
 	setResourceAppNameForComponents(components, applicationResourceNameKey(app))
 
 	reporter := newDeploymentScaleReporter()
-	adopted := isAdoptedApplication(app)
 	var task *model.WorkflowQueue
 	var taskID string
 	recordTask := func(taskCtx context.Context, taskApp *model.Applications) error {
@@ -216,91 +165,45 @@ func (c *applicationsServiceImpl) startApplicationDeploymentsLocked(ctx context.
 		)
 		return taskErr
 	}
-	if adopted {
-		lockedApp, err := c.withAdoptedLifecycleLock(
-			ctx,
-			app.ID,
-			adoptedLifecycleStart,
-			func(
-				lockCtx context.Context,
-				lockedApp *model.Applications,
-				lockedComponents []*model.ApplicationComponent,
-			) error {
-				targets, skippedTargets, err := c.preflightAdoptedLifecycle(
-					lockCtx,
-					lockedComponents,
-					adoptedLifecycleStart,
-				)
-				if err != nil {
-					return err
-				}
-				for _, target := range skippedTargets {
-					reporter.record(target.kind, target.namespace, target.name, true, nil)
-				}
-				for _, target := range targets {
-					if err := c.updateAdoptedLifecycleTarget(lockCtx, target, adoptedLifecycleStart, ""); err != nil {
-						reporter.record(target.kind, target.namespace, target.name, false, err)
-						continue
-					}
-					if err := c.markComponentStarted(lockCtx, target.component); err != nil {
-						reporter.record(target.kind, target.namespace, target.name, false, err)
-						continue
-					}
-					reporter.record(target.kind, target.namespace, target.name, false, nil)
-				}
-				if err := recordTask(lockCtx, lockedApp); err != nil {
-					return fmt.Errorf("Kubernetes start may already have taken effect, but operation record commit could not be confirmed; inspect operation records and Kubernetes resources before retrying: %w", err)
-				}
-				return nil
-			},
-		)
+	for _, component := range components {
+		if component == nil || component.ComponentType != config.ServerJob {
+			continue
+		}
+		deployNS, deployName := resolveDeploymentTarget(component)
+		if strategy, shared := SharedLifecycleStrategyForComponent(component); shared {
+			klog.Infof("start: skip shared component %s/%s (strategy=%s)", component.Namespace, component.Name, strategy)
+			reporter.record("Deployment", deployNS, deployName, true, nil)
+			continue
+		}
+		if component.Status != string(config.ComponentStatusStopped) {
+			klog.Infof("start: skip non-stopped component %s/%s (status=%s)", component.Namespace, component.Name, component.Status)
+			reporter.record("Deployment", deployNS, deployName, true, nil)
+			continue
+		}
+		desiredReplicas := component.Replicas
+		if desiredReplicas <= 0 {
+			reporter.record("Deployment", deployNS, deployName, false, fmt.Errorf("stored replicas must be greater than 0"))
+			continue
+		}
+		patch, err := buildDeploymentReplicasPatch(desiredReplicas)
 		if err != nil {
-			return nil, err
+			reporter.record("Deployment", deployNS, deployName, false, err)
+			continue
 		}
-		app = lockedApp
-	} else {
-		for _, component := range components {
-			if component == nil || component.ComponentType != config.ServerJob {
-				continue
-			}
-			deployNS, deployName := resolveDeploymentTarget(component)
-			if strategy, shared := SharedLifecycleStrategyForComponent(component); shared {
-				klog.Infof("start: skip shared component %s/%s (strategy=%s)", component.Namespace, component.Name, strategy)
-				reporter.record("Deployment", deployNS, deployName, true, nil)
-				continue
-			}
-			if component.Status != string(config.ComponentStatusStopped) {
-				klog.Infof("start: skip non-stopped component %s/%s (status=%s)", component.Namespace, component.Name, component.Status)
-				reporter.record("Deployment", deployNS, deployName, true, nil)
-				continue
-			}
-			desiredReplicas := component.Replicas
-			if desiredReplicas <= 0 {
-				reporter.record("Deployment", deployNS, deployName, false, fmt.Errorf("stored replicas must be greater than 0"))
-				continue
-			}
-			patch, err := buildDeploymentReplicasPatch(desiredReplicas)
-			if err != nil {
-				reporter.record("Deployment", deployNS, deployName, false, err)
-				continue
-			}
-			skipped, err := c.scaleDeployment(ctx, deployNS, deployName, patch)
-			if err != nil || skipped {
-				reporter.record("Deployment", deployNS, deployName, skipped, err)
-				continue
-			}
-			if err := c.markComponentStarted(ctx, component); err != nil {
-				reporter.record("Deployment", deployNS, deployName, false, err)
-				continue
-			}
-			reporter.record("Deployment", deployNS, deployName, false, nil)
+		skipped, err := c.scaleDeployment(ctx, deployNS, deployName, patch)
+		if err != nil || skipped {
+			reporter.record("Deployment", deployNS, deployName, skipped, err)
+			continue
 		}
+		if err := c.markComponentStarted(ctx, component); err != nil {
+			reporter.record("Deployment", deployNS, deployName, false, err)
+			continue
+		}
+		reporter.record("Deployment", deployNS, deployName, false, nil)
 	}
 
-	if !adopted {
-		if taskErr := recordTask(ctx, app); taskErr != nil {
-			return nil, fmt.Errorf("Kubernetes start may already have taken effect, but operation record commit could not be confirmed; inspect operation records and Kubernetes resources before retrying: %w", taskErr)
-		}
+	if taskErr := recordTask(ctx, app); taskErr != nil {
+		return nil, fmt.Errorf("Kubernetes start may already have taken effect, but operation record commit could not be confirmed; inspect operation records and Kubernetes resources before retrying: %w", taskErr)
 	}
 	startedAt := time.Now().UTC().Format(time.RFC3339)
 	resp := &apisv1.StartApplicationDeploymentsResponse{

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -49,9 +48,6 @@ func (c *applicationsServiceImpl) withWritableApplicationLock(
 			}
 			return nil, err
 		}
-		if app.EffectiveManagementMode() == domainspec.ManagementModeObserve {
-			return nil, fmt.Errorf("%w: observe applications are read-only", bcode.ErrApplicationManagementMode)
-		}
 		if run != nil {
 			if err := run(lockCtx, app); err != nil {
 				return nil, err
@@ -93,9 +89,6 @@ func (c *applicationsServiceImpl) applicationForRequestedID(ctx context.Context,
 			return nil, bcode.ErrApplicationNotExist
 		}
 		return nil, err
-	}
-	if app.EffectiveManagementMode() == domainspec.ManagementModeObserve {
-		return nil, fmt.Errorf("%w: observe applications are read-only", bcode.ErrApplicationManagementMode)
 	}
 	return app, nil
 }

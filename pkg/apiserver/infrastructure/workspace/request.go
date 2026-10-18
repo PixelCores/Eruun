@@ -30,7 +30,7 @@ type requestTransport struct {
 
 func (t *requestTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	scope, scoped := access.FromContext(req.Context())
-	if !scoped || scope.ClusterOperation {
+	if !scoped {
 		return t.next.RoundTrip(req)
 	}
 	copy := req.Clone(req.Context())

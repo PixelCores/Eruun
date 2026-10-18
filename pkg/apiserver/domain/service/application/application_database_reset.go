@@ -14,7 +14,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
 	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
@@ -56,11 +55,6 @@ func (c *applicationsServiceImpl) resetApplicationDatabasesUnlocked(ctx context.
 		}
 		return nil, err
 	}
-	if app.EffectiveManagementMode() != domainspec.ManagementModeNative {
-		return nil, fmt.Errorf("%w: database reset is disabled for %s applications",
-			bcode.ErrApplicationManagementMode, app.EffectiveManagementMode())
-	}
-
 	components, err := c.ComponentRepo.FindByAppID(ctx, app.ID)
 	if err != nil {
 		return nil, err
@@ -85,10 +79,6 @@ func (c *applicationsServiceImpl) resetApplicationDatabasesUnlocked(ctx context.
 			return nil, bcode.ErrApplicationNotExist
 		}
 		return nil, err
-	}
-	if lockedApp.EffectiveManagementMode() != domainspec.ManagementModeNative {
-		return nil, fmt.Errorf("%w: database reset is disabled for %s applications",
-			bcode.ErrApplicationManagementMode, lockedApp.EffectiveManagementMode())
 	}
 	app = lockedApp
 	err = repository.WithApplicationSchedulingTransaction(ctx, c.Store, app.ID, func(tx datastore.DataStore) error {

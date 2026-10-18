@@ -81,31 +81,6 @@ func ServiceNamespaceOrDefault(namespace string) string {
 	return serviceNamespaceOrDefault(namespace)
 }
 
-func PickNamespace(candidate, fallback string) string {
-	return pickNamespace(candidate, fallback)
-}
-
-func CreateComponentShareEnabled(component apisv1.CreateComponentRequest) bool {
-	return createComponentShareEnabled(component)
-}
-
-func ResolvedServiceResourceNames(component apisv1.CreateComponentRequest, resourceAppName string) []string {
-	return resolvedServiceResourceNames(component, resourceAppName)
-}
-
-func ResolvedIngressResourceNames(component apisv1.CreateComponentRequest, resourceAppName string) []string {
-	return resolvedIngressResourceNames(component, resourceAppName)
-}
-
-func ResolvedPVCResourceNames(component apisv1.CreateComponentRequest) []string {
-	resolved := resolvedPVCResourceNames(component)
-	names := make([]string, 0, len(resolved))
-	for _, item := range resolved {
-		names = append(names, item.name)
-	}
-	return names
-}
-
 func ReservedComponentLabelKeys() map[string]struct{} {
 	keys := make(map[string]struct{}, len(reservedComponentLabelKeys))
 	for key := range reservedComponentLabelKeys {

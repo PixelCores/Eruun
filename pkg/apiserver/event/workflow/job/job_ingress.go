@@ -2,7 +2,6 @@ package job
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -54,23 +53,6 @@ func (c *DeployIngressJobCtl) run(ctx context.Context) error {
 	}
 	if ingress.Namespace == "" {
 		ingress.Namespace = c.namespace
-	}
-	if binding, adopted, sourceErr := adoptedResourceForJob(
-		ctx,
-		c.store,
-		c.job,
-		"Ingress",
-		ingress.Namespace,
-		ingress.Name,
-	); sourceErr != nil {
-		return sourceErr
-	} else if adopted {
-		ingress.Name = binding.resource.Source.Name
-		ingress.Namespace = binding.resource.Source.Namespace
-		if ingress.Namespace == "" {
-			ingress.Namespace = c.namespace
-		}
-		return c.reconcileAdoptedIngress(ctx, ingress, binding)
 	}
 
 	if reusableName, err := c.findReusableIngressName(ctx, ingress); err != nil {
@@ -143,168 +125,6 @@ func (c *DeployIngressJobCtl) run(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-func (c *DeployIngressJobCtl) reconcileAdoptedIngress(
-	ctx context.Context,
-	desired *networkingv1.Ingress,
-	binding *adoptedResourceBinding,
-) error {
-	if desired == nil {
-		return fmt.Errorf("adopted ingress desired resource is required")
-	}
-	writable, err := adoptedResourceAllowsWrite(binding)
-	if err != nil {
-		return err
-	}
-	if !writable {
-		return nil
-	}
-	cli := c.client.NetworkingV1().Ingresses(desired.Namespace)
-	current, err := cli.Get(ctx, desired.Name, metav1.GetOptions{})
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return c.recreateAdoptedIngress(ctx, desired, binding)
-		}
-		return fmt.Errorf("get adopted ingress %s/%s: %w", desired.Namespace, desired.Name, err)
-	}
-	if err := validateAdoptedSnapshotUID(current.UID, binding); err != nil {
-		recovered, recoverErr := recoverPendingAdoptedDependency(
-			ctx, c.store, binding, current, current, c.runtime, c.shareLocker,
-		)
-		if recoverErr != nil {
-			return fmt.Errorf("recover recreated adopted ingress binding: %w", recoverErr)
-		}
-		if !recovered {
-			return err
-		}
-	}
-	if !adoptedIngressNeedsUpdate(current, desired) {
-		markResourceObserved(ctx, domainspec.ResourceIngress, desired.Namespace, desired.Name)
-		return nil
-	}
-	if err := updateResourceWithRetry(ctx, func(ctx context.Context) (*networkingv1.Ingress, error) {
-		return cli.Get(ctx, desired.Name, metav1.GetOptions{})
-	}, func(ctx context.Context, latest *networkingv1.Ingress) error {
-		if err := validateAdoptedSnapshotUID(latest.UID, binding); err != nil {
-			return err
-		}
-		candidate := adoptedIngressForExistingUpdate(latest, desired)
-		if apiequality.Semantic.DeepEqual(latest.Labels, candidate.Labels) &&
-			apiequality.Semantic.DeepEqual(latest.Annotations, candidate.Annotations) &&
-			apiequality.Semantic.DeepEqual(latest.Spec, candidate.Spec) {
-			return nil
-		}
-		_, err := cli.Update(ctx, candidate, metav1.UpdateOptions{})
-		return err
-	}); err != nil {
-		return fmt.Errorf("update adopted ingress %s/%s: %w", desired.Namespace, desired.Name, err)
-	}
-	markResourceObserved(ctx, domainspec.ResourceIngress, desired.Namespace, desired.Name)
-	return nil
-}
-
-func (c *DeployIngressJobCtl) recreateAdoptedIngress(
-	ctx context.Context,
-	desired *networkingv1.Ingress,
-	binding *adoptedResourceBinding,
-) error {
-	recreation, err := prepareAdoptedDependencyRecreation(c.store, binding)
-	if err != nil {
-		return fmt.Errorf("prepare adopted ingress recreation: %w", err)
-	}
-	var baseline networkingv1.Ingress
-	if err := json.Unmarshal(recreation.resource.Manifest, &baseline); err != nil {
-		return fmt.Errorf("decode adopted ingress recreation manifest: %w", err)
-	}
-	if baseline.Name != desired.Name || baseline.Namespace != desired.Namespace {
-		return fmt.Errorf(
-			"adopted ingress recreation manifest identity %s/%s does not match %s/%s",
-			baseline.Namespace,
-			baseline.Name,
-			desired.Namespace,
-			desired.Name,
-		)
-	}
-	candidate := adoptedIngressForExistingUpdate(&baseline, desired)
-	cleanObjectMeta(&candidate.ObjectMeta)
-	candidate.TypeMeta = metav1.TypeMeta{APIVersion: "networking.k8s.io/v1", Kind: "Ingress"}
-	guard, err := recreation.adoptedResourceBinding.prepareRecreationCandidate(ctx, c.store, candidate, c.runtime, c.shareLocker)
-	if err != nil {
-		return fmt.Errorf("persist adopted ingress recreation claim: %w", err)
-	}
-	defer guard.release()
-	recreationCtx := guard.Context()
-	created, err := c.client.NetworkingV1().Ingresses(candidate.Namespace).Create(recreationCtx, candidate, metav1.CreateOptions{})
-	if err != nil {
-		if k8serrors.IsAlreadyExists(err) {
-			replacement, getErr := c.client.NetworkingV1().Ingresses(candidate.Namespace).Get(recreationCtx, candidate.Name, metav1.GetOptions{})
-			if getErr != nil {
-				return fmt.Errorf("get concurrent recreated adopted ingress %s/%s: %w", candidate.Namespace, candidate.Name, getErr)
-			}
-			recovered, recoverErr := recoverPendingAdoptedDependencyLocked(
-				recreationCtx,
-				c.store,
-				&recreation.adoptedResourceBinding,
-				replacement,
-				replacement,
-				c.runtime,
-			)
-			if recoverErr != nil {
-				return fmt.Errorf("recover concurrent adopted ingress recreation: %w", recoverErr)
-			}
-			if recovered {
-				guard.release()
-				return c.reconcileAdoptedIngress(ctx, desired, &recreation.adoptedResourceBinding)
-			}
-			return fmt.Errorf(
-				"adopted ingress ownership conflict for %s/%s: expected missing UID %q, found %q",
-				candidate.Namespace,
-				candidate.Name,
-				recreation.resource.Source.UID,
-				replacement.UID,
-			)
-		}
-		return fmt.Errorf("recreate adopted ingress %s/%s: %w", candidate.Namespace, candidate.Name, err)
-	}
-	if err := recreation.persistCreated(recreationCtx, created, created, c.runtime); err != nil {
-		return fmt.Errorf("persist recreated adopted ingress binding; pending claim retained: %w", err)
-	}
-	markResourceObserved(ctx, domainspec.ResourceIngress, created.Namespace, created.Name)
-	return nil
-}
-
-func adoptedIngressForExistingUpdate(current, desired *networkingv1.Ingress) *networkingv1.Ingress {
-	updated := current.DeepCopy()
-	if desired == nil {
-		return updated
-	}
-	updated.Labels = adoptedOverlayStringMap(current.Labels, desired.Labels)
-	updated.Annotations = adoptedOverlayStringMap(current.Annotations, desired.Annotations)
-	if desired.Spec.DefaultBackend != nil {
-		updated.Spec.DefaultBackend = desired.Spec.DefaultBackend.DeepCopy()
-	}
-	if desired.Spec.IngressClassName != nil {
-		className := *desired.Spec.IngressClassName
-		updated.Spec.IngressClassName = &className
-	}
-	if desired.Spec.TLS != nil {
-		updated.Spec.TLS = append([]networkingv1.IngressTLS(nil), desired.Spec.TLS...)
-	}
-	if desired.Spec.Rules != nil {
-		updated.Spec.Rules = append([]networkingv1.IngressRule(nil), desired.Spec.Rules...)
-	}
-	return updated
-}
-
-func adoptedIngressNeedsUpdate(current, desired *networkingv1.Ingress) bool {
-	if current == nil || desired == nil {
-		return false
-	}
-	updated := adoptedIngressForExistingUpdate(current, desired)
-	return !apiequality.Semantic.DeepEqual(current.Labels, updated.Labels) ||
-		!apiequality.Semantic.DeepEqual(current.Annotations, updated.Annotations) ||
-		!apiequality.Semantic.DeepEqual(current.Spec, updated.Spec)
 }
 
 func (c *DeployIngressJobCtl) findReusableIngressName(ctx context.Context, desired *networkingv1.Ingress) (string, error) {

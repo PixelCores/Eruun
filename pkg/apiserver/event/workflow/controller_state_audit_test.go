@@ -1,11 +1,7 @@
 package workflow
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
-
-	"fmt"
 
 	"testing"
 
@@ -13,7 +9,6 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
 func TestNewWorkflowControllerRequiresURLSecurityPolicy(t *testing.T) {
@@ -21,43 +16,6 @@ func TestNewWorkflowControllerRequiresURLSecurityPolicy(t *testing.T) {
 	require.Nil(t, ctl)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "url security policy is required")
-}
-
-func TestNewWorkflowControllerLoadsImportSecretKeyring(t *testing.T) {
-	key := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{9}, 32))
-	cfg := &config.Config{
-		ImportSecretKeyring: fmt.Sprintf(
-			`{"activeKeyId":"active","keys":{"active":%q}}`,
-			key,
-		),
-	}
-	ctl, err := NewWorkflowController(
-		&model.WorkflowQueue{TaskID: "task-1"},
-		nil,
-		nil,
-		&controllerTestStore{},
-		cfg,
-		nil, nil,
-		&spec.URLSecurityPolicySpec{},
-	)
-	require.NoError(t, err)
-	require.NotNil(t, ctl.importSecretKeyring)
-	require.Equal(t, "active", ctl.importSecretKeyring.ActiveKeyID())
-}
-
-func TestNewWorkflowControllerRejectsInvalidImportSecretKeyring(t *testing.T) {
-	ctl, err := NewWorkflowController(
-		&model.WorkflowQueue{TaskID: "task-1"},
-		nil,
-		nil,
-		&controllerTestStore{},
-		&config.Config{ImportSecretKeyring: `{"activeKeyId":"missing","keys":{}}`},
-		nil, nil,
-		&spec.URLSecurityPolicySpec{},
-	)
-	require.Nil(t, ctl)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "load workflow import secret keyring")
 }
 
 func TestUpdateWorkflowStatusDoesNotOverwriteCancelledTask(t *testing.T) {

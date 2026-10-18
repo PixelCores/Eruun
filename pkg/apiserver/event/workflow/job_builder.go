@@ -86,18 +86,6 @@ func GenerateJobTasks(ctx context.Context, task *model.WorkflowQueue, ds datasto
 		}
 		return executions, nil
 	}
-	if execution, matched, resourceImportErr := buildResourceImportJobExecution(task, defaultJobTimeoutSeconds); matched {
-		if resourceImportErr != nil {
-			logger.Error(resourceImportErr, "Failed to prepare resource import job", "taskID", task.TaskID)
-			return []StepExecution{*failedWorkflowGenerationExecution(task, defaultJobTimeoutSeconds, resourceImportErr)}, nil
-		}
-		executions := []StepExecution{*execution}
-		applyWorkflowExecutionIdentity(executions, task)
-		if err := restoreCommittedJobExecutions(ctx, executions, task, ds); err != nil {
-			return nil, err
-		}
-		return executions, nil
-	}
 	workflowSteps, componentMap, err := loadWorkflowJobTaskInputs(ctx, task, ds)
 	if err != nil {
 		logger.Error(err, "Failed to prepare workflow job tasks", "workflowID", task.WorkflowID, "appID", task.AppID)
@@ -140,11 +128,6 @@ func GenerateJobTasks(ctx context.Context, task *model.WorkflowQueue, ds datasto
 
 	stepGroups, err := buildWorkflowStepExecutionGroups(ctx, workflowSteps, componentMap, task, defaultJobTimeoutSeconds)
 	if err != nil {
-		return []StepExecution{*failedWorkflowGenerationExecution(task, defaultJobTimeoutSeconds, err)}, nil
-	}
-	stepGroups, err = augmentAdoptedDependencyJobs(ctx, stepGroups, task, ds, defaultJobTimeoutSeconds)
-	if err != nil {
-		logger.Error(err, "Failed to prepare adopted dependency jobs", "workflowID", task.WorkflowID, "appID", task.AppID)
 		return []StepExecution{*failedWorkflowGenerationExecution(task, defaultJobTimeoutSeconds, err)}, nil
 	}
 	cleanupExecutions := buildPersistedCleanupExecutions(ctx, task, ds, defaultJobTimeoutSeconds, len(workflowSteps.Steps), logger)
@@ -250,7 +233,7 @@ func restoreCommittedJobExecutions(ctx context.Context, executions []StepExecuti
 		return fmt.Errorf("restore committed job executions: datastore is nil")
 	}
 	query := &model.JobInfo{TaskID: task.TaskID, AppID: task.AppID}
-	if isResourceImportWorkflowTask(task.Type) || task.Type == config.WorkflowTaskTypeJob {
+	if task.Type == config.WorkflowTaskTypeJob {
 		query.WorkspaceID = task.WorkspaceID
 	}
 	entities, err := ds.List(ctx, query, &datastore.ListOptions{

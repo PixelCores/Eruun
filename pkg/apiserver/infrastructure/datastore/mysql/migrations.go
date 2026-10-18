@@ -3,9 +3,7 @@ package mysql
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"math"
 	"time"
 
@@ -18,10 +16,9 @@ import (
 )
 
 const (
-	applicationManagementModeMigrationMarker = "migration.application-management-mode.v1"
-	schemaMigrationMarker                    = "migration.schema.v1"
-	completedSchemaMigrationJSON             = `{"completed":true}`
-	incompleteSchemaMigrationJSON            = `{"completed":false}`
+	schemaMigrationMarker         = "migration.schema.v1"
+	completedSchemaMigrationJSON  = `{"completed":true}`
+	incompleteSchemaMigrationJSON = `{"completed":false}`
 )
 
 type schemaMigrationState struct {
@@ -71,55 +68,6 @@ func migrateApplicationComponentRuntimeStatus(ctx context.Context, db *gorm.DB) 
 	}
 	if fieldUpdates > 0 {
 		klog.InfoS("backfilled nullable application component runtime fields", "fieldUpdates", fieldUpdates)
-	}
-	return nil
-}
-
-// migrateApplicationManagementMode makes management intent explicit once.
-// Historical namespace imports become read-only until a later explicit
-// adoption flow takes ownership of them.
-func migrateApplicationManagementMode(ctx context.Context, db *gorm.DB) error {
-	if db == nil {
-		return fmt.Errorf("gorm db is nil")
-	}
-	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return migrateApplicationManagementModeTx(tx)
-	})
-}
-
-func migrateApplicationManagementModeTx(tx *gorm.DB) error {
-	now := tx.NowFunc()
-	marker := &model.SystemSetting{
-		Type:      applicationManagementModeMigrationMarker,
-		Value:     json.RawMessage(`{"completed":true}`),
-		BaseModel: model.BaseModel{CreateTime: now, UpdateTime: now},
-	}
-	if err := tx.Create(marker).Error; err != nil {
-		if errors.Is(err, gorm.ErrDuplicatedKey) {
-			return nil
-		}
-		return fmt.Errorf("claim application management mode migration: %w", err)
-	}
-
-	table := (&model.Applications{}).TableName()
-	native := tx.Table(table).
-		Where("management_mode IS NULL OR management_mode = ?", "").
-		UpdateColumn("management_mode", domainspec.ManagementModeNative)
-	if native.Error != nil {
-		return fmt.Errorf("backfill native application management mode: %w", native.Error)
-	}
-
-	observed := tx.Table(table).
-		Where("LOWER(project) = ? AND LOWER(version) = ? AND management_mode = ?",
-			"imported", "imported", domainspec.ManagementModeNative).
-		UpdateColumn("management_mode", domainspec.ManagementModeObserve)
-	if observed.Error != nil {
-		return fmt.Errorf("migrate historical imported applications to observe: %w", observed.Error)
-	}
-	if native.RowsAffected+observed.RowsAffected > 0 {
-		klog.InfoS("backfilled application management modes",
-			"nativeRows", native.RowsAffected,
-			"observeRows", observed.RowsAffected)
 	}
 	return nil
 }

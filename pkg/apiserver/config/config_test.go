@@ -1,7 +1,6 @@
 package config
 
 import (
-	"encoding/base64"
 	"fmt"
 	"strings"
 	"testing"
@@ -336,33 +335,6 @@ func TestValidateDatastoreInputsInEverySchemaMode(t *testing.T) {
 	}
 }
 
-func TestValidateImportSecretKeyring(t *testing.T) {
-	validKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
-	document := fmt.Sprintf(`{"activeKeyId":"active","keys":{"active":%q}}`, validKey)
-
-	t.Run("valid inline", func(t *testing.T) {
-		cfg := NewConfig()
-		cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
-		cfg.ImportSecretKeyring = document
-		require.Empty(t, cfg.Validate())
-	})
-
-	t.Run("inline and file are mutually exclusive", func(t *testing.T) {
-		cfg := NewConfig()
-		cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
-		cfg.ImportSecretKeyring = document
-		cfg.ImportSecretKeyringFile = "/mounted/keyring.json"
-		require.Contains(t, errorsJoin(cfg.Validate()), "mutually exclusive")
-	})
-
-	t.Run("invalid key length fails startup validation", func(t *testing.T) {
-		cfg := NewConfig()
-		cfg.Datastore.URL = "root:strong-pass@tcp(127.0.0.1:3306)/eruun?charset=utf8&parseTime=true"
-		cfg.ImportSecretKeyring = `{"activeKeyId":"active","keys":{"active":"YWJj"}}`
-		require.Contains(t, errorsJoin(cfg.Validate()), "must decode to 32 bytes")
-	})
-}
-
 func TestValidateSequentialConcurrency(t *testing.T) {
 	t.Run("invalid_zero", func(t *testing.T) {
 		cfg := NewConfig()
@@ -511,6 +483,7 @@ func errorsJoin(errs []error) string {
 func TestRemovedBackendSelectorsRejected(t *testing.T) {
 	for _, selector := range []string{
 		"datastore-type", "cache-type", "msg-type",
+		"import-secret-keyring", "import-secret-keyring-file",
 		"msg-kafka-brokers", "msg-kafka-group-id", "msg-kafka-offset-reset",
 		"msg-kafka-topic-partitions", "msg-kafka-topic-replication-factor",
 	} {

@@ -19,10 +19,8 @@ import (
 type AdministrationServer struct {
 	eruunv1.UnimplementedSettingsServiceServer
 	eruunv1.UnimplementedProgrammingLanguagesServiceServer
-	eruunv1.UnimplementedResourceImportServiceServer
 	Settings             service.SystemSettingService       `inject:""`
 	ProgrammingLanguages service.ProgrammingLanguageService `inject:""`
-	ResourceImport       service.ResourceImportService      `inject:""`
 }
 
 func valueBytes(value *structpb.Value) ([]byte, error) {

@@ -1,6 +1,6 @@
 # 显式 Namespace Adoption API 激活记录
 
-> 状态：Implemented Reference。当前对外契约以 `docs/import-existing-namespace-api.md` 为准。
+> 状态：Historical / Audit。该能力已于 2026-10-18 删除，见 `2026-10-18-remove-import-and-kafka.md`。
 
 ## 目标
 

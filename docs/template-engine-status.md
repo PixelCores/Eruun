@@ -24,7 +24,6 @@
 - `POST /applications` 支持通过 `components[].tmp.id` 引用已启用模板的应用，并按模板组件克隆生成新应用组件。创建响应的 `resources` 会从本次解析后的第一个主组件 `traits.resources` 推导。
 - `GET /applications/templates` 返回 `templateEnabled=true` 的应用列表，供客户端发现可引用模板。每个模板对象会在 `resources` 内带上主组件资源摘要：`cpuReq`、`memReq`、`cpuLimit`、`memLimit`、`replicas`。主组件按模板组件的 `ID` 升序、`name` 升序选择第一个可部署 workload 组件（`webservice`、`store`、`job`、`scheduledjob`），跳过 `config`、`secret`、`cloudjob` 等辅助或非 Pod workload 组件。
 - `traits.resources.cpu` / `traits.resources.memory` 表示 Kubernetes Requests；`traits.resources.cpuLimit` / `traits.resources.memoryLimit` 表示 Limits。为兼容旧模板，limit 字段为空时会回退到对应 request 值，因此旧的 `cpu` / `memory` 配置仍会同时生成 request 和 limit；显式配置 limit 时必须大于等于对应 request。
-- `POST /applications/import/namespace` 与 `POST /applications/import/namespace/try` 走 `NamespaceImportService` 路径，不依赖独立模板引擎。
 
 ## 维护约定
 

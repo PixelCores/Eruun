@@ -41,8 +41,7 @@ fi
   "$proto_root/eruun/v1/account.proto" \
   "$proto_root/eruun/v1/administration.proto" \
   "$proto_root/eruun/v1/applications.proto" \
-  "$proto_root/eruun/v1/jobs.proto" \
-  "$proto_root/eruun/v1/resource_import.proto"
+  "$proto_root/eruun/v1/jobs.proto"
 
 if [[ "$mode" == check ]]; then
   for generated in "$output"/pkg/apiserver/interfaces/grpc/pb/v1/*.pb.go; do

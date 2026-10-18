@@ -29,6 +29,7 @@ Devlog 不替代 `docs/`。`docs/` 记录当前对外行为、API、配置和工
 
 | 日期 | 文件 | 主题 |
 | --- | --- | --- |
+| 2026-10-18 | `2026-10-18-remove-import-and-kafka.md` | 删除存量资源导入能力线与 Kafka 消息后端 |
 | 2026-09-02 | `2026-09-02-independent-open-source-baseline.md` | Eruun 独立开源产品基线与全新安装边界 |
 | 2026-08-09 | `2026-08-09-adopted-recreation-recovery.md` | Adopted 资源重建的可恢复持久化协议 |
 | 2026-08-08 | `2026-08-08-statefulset-immutable-rebuild-safety.md` | StatefulSet 不可变字段显式重建安全边界 |

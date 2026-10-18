@@ -82,20 +82,6 @@ generation/token ownership 始终启用，不提供关闭开关。
 
 内置 MySQL/Redis 是单副本开发依赖。生产需要外部 HA 数据库/缓存、备份恢复验证与受控接入配置；同构节点不自动提供数据面 HA。
 
-## Adopted import keyring
-
-显式 adopted 接管使用 AES-256-GCM 保存导入 Secret，并使用 HMAC 签发导入与 cleanup 计划指纹。启用 adopted API 前，必须预先创建包含完整 keyring JSON 的 Kubernetes Secret：
-
-```yaml
-importSecretKeyring:
-  existingSecret: eruun-import-keyring
-  key: keyring.json
-```
-
-Chart 把该 Secret 挂载到所有统一节点，路径为 `/var/run/secrets/eruun/import-secret-keyring/keyring.json`，并设置 `ERUUN_IMPORT_SECRET_KEYRING_FILE`。内联配置与文件配置互斥；同时存在或 keyring 无法解析时进程启动失败。未设置 `existingSecret` 时不渲染对应 env、volume 或 volumeMount。
-
-每个 key 值必须是恰好 32 字节密钥的 Base64 编码。
-
 ```json
 {
   "activeKeyId": "2026-08",
@@ -118,7 +104,7 @@ Chart 把该 Secret 挂载到所有统一节点，路径为 `/var/run/secrets/er
 
 每个节点都可能当选，运行身份必须包含 Lease、入口 Service/Pod 标签更新、API 管理、Controller 观察/结果维护以及 Worker 执行权限。权限以渲染清单中的显式规则为准，不绑定内置 `cluster-admin`；业务空间的受限 ServiceAccount、授权检查、执行身份及 UID 清理约束仍保留。
 
-账号、Jobs 和可选 import keyring Secret 挂载到所有节点，统一配置支持接任。扩大到统一运行身份是部署取舍，不应再宣称 API/Controller/Worker 之间存在静态 RBAC 隔离。
+账号与 Jobs Secret 挂载到所有节点，统一配置支持接任。扩大到统一运行身份是部署取舍，不应再宣称 API/Controller/Worker 之间存在静态 RBAC 隔离。
 
 ```bash
 helm upgrade --install eruun deploy/helm/eruun \

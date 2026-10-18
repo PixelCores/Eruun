@@ -16,32 +16,6 @@ import (
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 )
 
-func TestCleanupResourcesRejectsSourceBoundComponent(t *testing.T) {
-	uid := "deployment-uid"
-	component := &model.ApplicationComponent{
-		AppID:                    "app-1",
-		Name:                     "api",
-		Namespace:                "ops",
-		ComponentType:            config.ServerJob,
-		SourceWorkloadAPIVersion: "apps/v1",
-		SourceWorkloadKind:       "Deployment",
-		SourceWorkloadName:       "legacy-api",
-		SourceWorkloadUID:        &uid,
-	}
-	ctl := NewCleanupResourcesJobCtl(
-		&model.JobTask{AppID: "app-1", Name: "api", JobInfo: component},
-		&Runtime{
-			Client: fake.NewSimpleClientset(),
-			Store:  &noopStore{},
-			Ack:    nil,
-		},
-	)
-	require.NotNil(t, ctl)
-
-	err := ctl.run(context.Background())
-	require.ErrorContains(t, err, "explicit cleanup plan fingerprint")
-}
-
 func TestCleanupResourcesJobCtlPrioritizesContextTerminationOverOpaqueWorkflowTaskReadError(t *testing.T) {
 	tests := []struct {
 		name       string

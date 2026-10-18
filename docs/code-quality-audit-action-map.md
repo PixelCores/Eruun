@@ -22,7 +22,7 @@
 | --- | --- | --- | --- | --- |
 | Q-016 | Partial | 移除 domain -> transport 反向依赖 | programming-language 链路已改为 domain command/model，并把 DTO mapping 留在 interfaces；后续按链路迁移，不先建通用 usecase framework | route -> DTO -> assembler -> service -> persistence -> tests -> docs |
 | Q-017 | Partial | datastore typed intent 试点 | application batch lookup 已由 `ApplicationRepository.FindByIDs` 承接；继续逐个收敛高频 string/map query，保留主 DataStore 兼容 | 表名、primary key、CAS、事务、rows affected、error identity |
-| Q-018 | Partial | 窄 consumer interface + 有效构造 | namespace import/event workflow 已用窄接口；programming-language repository/service 已提供 fail-fast 显式构造并由 server assembly 使用 | fake 规模、缺失依赖 fail-fast、server assembly 与 API 回归 |
+| Q-018 | Partial | 窄 consumer interface + 有效构造 | event workflow 已用窄接口；programming-language repository/service 已提供 fail-fast 显式构造并由 server assembly 使用 | fake 规模、缺失依赖 fail-fast、server assembly 与 API 回归 |
 | Q-019 | Partial | 全局 registry 实例化 | model 已移除 `init`/全局 registry，改由 `BuiltinModels` 向 server assembly 返回有序快照；API/trait/provider 后续分别迁移 | 顺序、重复注册、并行测试、server 多实例、`-race` |
 | Q-020 | Partial | context owner 收敛 | server lifecycle 已拒绝 nil context；继续逐 package 移除内部 fallback，并保留明确 timeout 的 persistence/shutdown/callback context | cancel、deadline、unlock、callback、terminal write、worker shutdown |
 
@@ -45,7 +45,7 @@
 | Q-013 | Closed | Makefile 已有 `staticcheck`、`gocyclo`、`quality` target；工具安装是环境前置。 |
 | Q-014 | Closed | 本行动映射持续维护审计到小 PR 的关系。 |
 | Q-015 | Obsolete | 被引用的 `fallback-degradation-audit.md` 已不存在；后续 fallback 必须从当前代码和 Current 文档重新取证。 |
-| Q-001 | Closed | namespace import 已拆为 prepare/response/verify/apply 阶段，ownership inference、reference assignment、grouping 与 presentation 已拆为命名 helper。 |
+| Q-001 | Obsolete | namespace import 模块已于 2026-10-18 随存量导入能力整体删除。 |
 | Q-003 | Closed | version update 主入口已拆为 normalize/preflight、workflow selection、三路径 commit 与 response/finalize 阶段。 |
 | Q-009 | Closed | server composition 已按 core、assembly、bootstrap、leader、worker 与 status sync 拆分为同包文件。 |
 | Q-010 | Closed | DTO 已按 application/workflow/status/component/version 拆分；component assembler 已按 core/service/resource/credential/link 拆分。 |

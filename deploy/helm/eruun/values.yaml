@@ -70,13 +70,6 @@ serviceAccount:
 rbac:
   create: true
 
-importSecretKeyring:
-  # Name of a user-managed Secret containing the adopted import keyring JSON.
-  # The Chart never creates this Secret. Leave empty when adopted imports are
-  # not enabled.
-  existingSecret: ""
-  key: keyring.json
-
 jobs:
   # User-managed Secret with the Harbor Runner and optional MinIO JSON config.
   # Leave empty to keep command Jobs available without enabling evaluation.

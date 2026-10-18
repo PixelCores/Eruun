@@ -11,7 +11,6 @@ var reservedComponentLabelKeys = map[string]struct{}{
 	config.LabelAppID:         {},
 	config.LabelComponentID:   {},
 	config.LabelComponentName: {},
-	config.LabelImportAppKey:  {},
 	config.LabelShareName:     {},
 	config.LabelShareStrategy: {},
 }

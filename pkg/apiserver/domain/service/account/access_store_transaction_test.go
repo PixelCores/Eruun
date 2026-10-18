@@ -62,8 +62,6 @@ func TestScopedJobAdmissionLifecycle(t *testing.T) {
 	}{
 		{name: "command", workflow: config.WorkflowTaskTypeJob, job: config.JobCommand},
 		{name: "eval", workflow: config.WorkflowTaskTypeJob, job: config.JobEval},
-		{name: "import scan", workflow: config.WorkflowTaskTypeResourceImportScan, job: config.JobResourceImportScan},
-		{name: "import manage", workflow: config.WorkflowTaskTypeResourceImportManage, job: config.JobResourceImportManage},
 		{name: "application", job: config.JobDeployService, app: true},
 		{name: "terminal callback", job: config.JobDeployCallback, app: true, terminal: true},
 		{name: "detached job", job: config.JobDeployInstant, app: true, detached: true},
@@ -119,48 +117,6 @@ func TestScopedJobAdmissionLifecycle(t *testing.T) {
 			require.NoError(t, repository.ReleaseJobAdmission(scopedCtx, store, owner, key, "finished", job.SchedulingExpiresAt))
 			require.NoError(t, raw.Get(ctx, job))
 			require.Equal(t, "released", job.SchedulingState)
-		})
-	}
-}
-
-func TestScopedImportAdmissionRejectsForeignAndForgedOwners(t *testing.T) {
-	service, _, _ := testAccounts(t)
-	raw, ctx := service.Repo.Store, context.Background()
-	store := NewStore(raw)
-	require.NoError(t, repository.EnsureJobSchedulerPolicy(ctx, store))
-	lease := time.Now().Add(time.Hour)
-	owner := &model.WorkflowQueue{TaskID: "import", WorkspaceID: "allowed", Type: config.WorkflowTaskTypeResourceImportScan,
-		Status: config.StatusRunning, RunGeneration: 1, RunToken: "token", WorkerID: "worker", LeaseExpiresAt: &lease}
-	require.NoError(t, raw.Add(ctx, owner))
-	other := *owner
-	other.TaskID = "other-import"
-	require.NoError(t, raw.Add(ctx, &other))
-	key := "import-execution"
-	job := &model.JobInfo{TaskID: owner.TaskID, WorkspaceID: owner.WorkspaceID, Type: string(config.JobResourceImportScan),
-		Status: string(config.StatusPrepare), ExecutionKey: &key, RunGeneration: 1}
-	require.NoError(t, repository.EnqueueJobForScheduling(ctx, store, owner, job, nil))
-	_, err := repository.AdmitQueuedJobs(ctx, store)
-	require.NoError(t, err)
-	forged := *owner
-	forged.WorkspaceID = "foreign"
-	for _, tc := range []struct {
-		name, workspace string
-		owner           model.WorkflowQueue
-	}{
-		{name: "foreign workspace", workspace: "foreign", owner: *owner},
-		{name: "different task with same execution identity", workspace: "allowed", owner: other},
-		{name: "forged workspace", workspace: "foreign", owner: forged},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			scopedCtx := WithScope(ctx, Scope{WorkspaceID: tc.workspace, Namespace: tc.workspace + "-ns"})
-			copy := *job
-			require.Error(t, repository.EnqueueJobForScheduling(scopedCtx, store, &tc.owner, &copy, nil))
-			admitted, err := repository.IsJobAdmitted(scopedCtx, store, &tc.owner, key)
-			require.Error(t, err)
-			require.False(t, admitted)
-			require.Error(t, repository.ReleaseJobAdmission(scopedCtx, store, &tc.owner, key, "forged release"))
-			require.NoError(t, raw.Get(ctx, job))
-			require.Equal(t, "admitted", job.SchedulingState)
 		})
 	}
 }
@@ -305,7 +261,6 @@ func TestWorkspaceJobStagesLimitExecutionTypesAndVolumeOwnership(t *testing.T) {
 		{"PVC query without identity", []spec.JobStep{command}, true, config.JobDeployPVC, "", false},
 		{"arbitrary deployment", []spec.JobStep{command, evaluation}, true, config.JobDeploy, spec.JobVolumeName("task"), false},
 		{"arbitrary cleanup", []spec.JobStep{command, evaluation}, true, config.JobCleanupResources, spec.JobVolumeName("task"), false},
-		{"import operation", []spec.JobStep{command, evaluation}, true, config.JobResourceImportScan, "", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			snapshot := spec.JobSpec{Name: "pipeline", Stages: []spec.JobStage{{Name: "main", Steps: tc.steps}}}

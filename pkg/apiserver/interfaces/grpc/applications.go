@@ -20,20 +20,15 @@ import (
 type applicationRuntimeReader interface {
 	ListApplicationRuntimeComponents(context.Context, string) ([]*model.ApplicationComponent, error)
 }
-type applicationNamespaceImporter interface {
-	ImportNamespaceResources(context.Context, apis.ImportNamespaceApplicationsRequest) (*apis.ImportNamespaceApplicationsResponse, error)
-	TryImportNamespaceResources(context.Context, apis.TryImportNamespaceApplicationsRequest) (*apis.TryImportNamespaceApplicationsResponse, error)
-}
 
 // ApplicationsServer composes the same domain services as the HTTP adapter.
 type ApplicationsServer struct {
 	eruunv1.UnimplementedApplicationServiceServer
-	Applications service.ApplicationsService  `inject:""`
-	Runtime      applicationRuntimeReader     `inject:""`
-	Workflow     service.WorkflowService      `inject:""`
-	Validation   service.ValidationService    `inject:""`
-	Conversion   service.ConversionService    `inject:""`
-	Import       applicationNamespaceImporter `inject:""`
+	Applications service.ApplicationsService `inject:""`
+	Runtime      applicationRuntimeReader    `inject:""`
+	Workflow     service.WorkflowService     `inject:""`
+	Validation   service.ValidationService   `inject:""`
+	Conversion   service.ConversionService   `inject:""`
 }
 
 func typedResult[P proto.Message](value any, err error, target P) (P, error) {
@@ -133,37 +128,6 @@ func (s *ApplicationsServer) ConvertApplications(ctx context.Context, req *eruun
 	}
 	resp, err := s.Conversion.ConvertKubeResources(ctx, input)
 	return typedResult(resp, err, &eruunv1.AppDTOConvertApplicationsResponse{})
-}
-
-func importNamespaceCheck(namespace string) error {
-	if strings.EqualFold(strings.TrimSpace(namespace), config.DefaultNamespace) {
-		return bcode.WithSafeClientMessage(bcode.ErrApplicationConfig, "import from default namespace is not allowed")
-	}
-	return nil
-}
-
-func (s *ApplicationsServer) ImportNamespaceApplications(ctx context.Context, req *eruunv1.AppDTOImportNamespaceApplicationsRequest) (*eruunv1.AppDTOImportNamespaceApplicationsResponse, error) {
-	input, err := decodeTypedRequest[apis.ImportNamespaceApplicationsRequest](req)
-	if err != nil {
-		return nil, rpcError(bcode.ErrApplicationConfig)
-	}
-	if err := importNamespaceCheck(input.Namespace); err != nil {
-		return nil, rpcError(err)
-	}
-	resp, err := s.Import.ImportNamespaceResources(ctx, input)
-	return typedResult(resp, err, &eruunv1.AppDTOImportNamespaceApplicationsResponse{})
-}
-
-func (s *ApplicationsServer) TryImportNamespaceApplications(ctx context.Context, req *eruunv1.AppDTOTryImportNamespaceApplicationsRequest) (*eruunv1.AppDTOTryImportNamespaceApplicationsResponse, error) {
-	input, err := decodeTypedRequest[apis.TryImportNamespaceApplicationsRequest](req)
-	if err != nil {
-		return nil, rpcError(bcode.ErrApplicationConfig)
-	}
-	if err := importNamespaceCheck(input.Namespace); err != nil {
-		return nil, rpcError(err)
-	}
-	resp, err := s.Import.TryImportNamespaceResources(ctx, input)
-	return typedResult(resp, err, &eruunv1.AppDTOTryImportNamespaceApplicationsResponse{})
 }
 
 func (s *ApplicationsServer) ListApplicationWorkflows(ctx context.Context, req *eruunv1.ApplicationIDRequest) (*eruunv1.AppDTOListApplicationWorkflowsResponse, error) {
@@ -280,27 +244,11 @@ func (s *ApplicationsServer) DeleteWorkflowSchedule(ctx context.Context, req *er
 	return typedResult(apis.DeleteWorkflowScheduleResponse{WorkflowID: req.WorkflowId}, err, &eruunv1.AppDTODeleteWorkflowScheduleResponse{})
 }
 
-func (s *ApplicationsServer) PlanApplicationResourceCleanup(ctx context.Context, req *eruunv1.ApplicationIDRequest) (*eruunv1.AppDTOCleanupApplicationResourcesPlanResponse, error) {
+func (s *ApplicationsServer) CleanupApplicationResources(ctx context.Context, req *eruunv1.ApplicationIDRequest) (*eruunv1.AppDTOCleanupApplicationResourcesResponse, error) {
 	if req == nil || appID(req.AppId) != nil {
 		return nil, rpcError(bcode.ErrApplicationConfig)
 	}
-	resp, err := s.Applications.PlanApplicationResourceCleanup(ctx, req.AppId)
-	return typedResult(resp, err, &eruunv1.AppDTOCleanupApplicationResourcesPlanResponse{})
-}
-
-func (s *ApplicationsServer) ApplyApplicationResourceCleanup(ctx context.Context, req *eruunv1.CleanupApplicationRPCRequest) (*eruunv1.AppDTOCleanupApplicationResourcesResponse, error) {
-	if req == nil || appID(req.AppId) != nil {
-		return nil, rpcError(bcode.ErrApplicationConfig)
-	}
-	input := apis.CleanupApplicationResourcesRequest{}
-	if req.Request != nil {
-		var err error
-		input, err = decodeTypedRequest[apis.CleanupApplicationResourcesRequest](req.Request)
-		if err != nil {
-			return nil, rpcError(bcode.ErrApplicationConfig)
-		}
-	}
-	resp, err := s.Applications.ApplyApplicationResourceCleanup(ctx, req.AppId, input)
+	resp, err := s.Applications.CleanupApplicationResources(ctx, req.AppId)
 	if resp != nil && err != nil {
 		return typedResult(resp, nil, &eruunv1.AppDTOCleanupApplicationResourcesResponse{})
 	}

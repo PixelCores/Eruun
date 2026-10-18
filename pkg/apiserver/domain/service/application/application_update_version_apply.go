@@ -364,9 +364,8 @@ func validateVersionUpdateSnapshot(ctx context.Context, store datastore.DataStor
 	expectedApp, actualApp := *app, *currentApp
 	expectedApp.BaseModel, actualApp.BaseModel = model.BaseModel{}, model.BaseModel{}
 	// Canonical JSON compares persisted JSON objects independently of Go numeric
-	// representations. Include persisted json:"-" fields explicitly; API visibility
-	// must not exclude adoption identity/configuration from the conflict check.
-	matches := func(expected, actual []any) error {
+	// representations.
+	matches := func(expected, actual any) error {
 		before, err := json.Marshal(expected)
 		if err != nil {
 			return fmt.Errorf("encode version update preflight snapshot: %w", err)
@@ -380,7 +379,7 @@ func validateVersionUpdateSnapshot(ctx context.Context, store datastore.DataStor
 		}
 		return nil
 	}
-	if err := matches([]any{expectedApp, expectedApp.AdoptionSnapshot}, []any{actualApp, actualApp.AdoptionSnapshot}); err != nil {
+	if err := matches(expectedApp, actualApp); err != nil {
 		return err
 	}
 	current, err := repository.FindComponentsByAppID(ctx, store, app.ID)
@@ -400,10 +399,7 @@ func validateVersionUpdateSnapshot(ctx context.Context, store datastore.DataStor
 		before.Status, after.Status = "", ""
 		before.ReadyReplicas, after.ReadyReplicas = 0, 0
 		before.LastAbnormal, after.LastAbnormal = "", ""
-		if err := matches(
-			[]any{before, before.SourceWorkloadAPIVersion, before.SourceWorkloadKind, before.SourceWorkloadName, before.SourceWorkloadUID, before.SourcePodSelector, before.ResumeReplicas, before.AdoptedSecretData},
-			[]any{after, after.SourceWorkloadAPIVersion, after.SourceWorkloadKind, after.SourceWorkloadName, after.SourceWorkloadUID, after.SourcePodSelector, after.ResumeReplicas, after.AdoptedSecretData},
-		); err != nil {
+		if err := matches(before, after); err != nil {
 			return err
 		}
 	}

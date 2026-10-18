@@ -2,7 +2,6 @@ package job
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -52,19 +51,6 @@ func NewDeployJobCtl(job *model.JobTask, runtime *Runtime, shareLocker locker.Lo
 
 func (c *DeployJobCtl) Clean(ctx context.Context) {
 	if c.client == nil {
-		return
-	}
-	ownershipCtx, ownershipCancel := adoptedRecoveryContext(ctx)
-	_, _, adopted, err := adoptedApplicationForJob(ownershipCtx, c.store, c.job)
-	ownershipCancel()
-	if err != nil {
-		// Failure cleanup is intentionally fail-closed. A datastore outage or a
-		// detached application must never turn an adopted source workload into a
-		// deletion candidate.
-		klog.Warningf("cleanup: keep deployment because application ownership could not be resolved: %v", err)
-		return
-	} else if adopted {
-		klog.V(4).Infof("cleanup: keep adopted deployment for application %s", c.job.AppID)
 		return
 	}
 	namespace := c.job.Namespace
@@ -121,21 +107,6 @@ func (c *DeployJobCtl) run(ctx context.Context) error {
 	}
 	deployName = buildWebServiceName(c.job.Name, c.job.ResourceAppNameOrID())
 	deploy.Name = deployName
-	if source, adopted, sourceErr := adoptedSourceForJob(ctx, c.store, c.job, "Deployment"); sourceErr != nil {
-		return sourceErr
-	} else if adopted {
-		deploy.Name = source.SourceWorkloadName
-		deploy.Namespace = adoptedSourceNamespace(source, deploy.Namespace)
-		if deploy.Namespace == "" {
-			deploy.Namespace = c.job.Namespace
-		}
-		if deploy.Spec.Replicas != nil {
-			c.desiredReplicas = *deploy.Spec.Replicas
-		} else {
-			c.desiredReplicas = 1
-		}
-		return c.reconcileAdoptedDeployment(ctx, deploy, source)
-	}
 	if deploy.Spec.Replicas != nil {
 		c.desiredReplicas = *deploy.Spec.Replicas
 	} else {
@@ -334,154 +305,6 @@ func (c *DeployJobCtl) updateDeployment(ctx context.Context, deploy *appsv1.Depl
 		return nil, fmt.Errorf("update deployment failed: %w", err)
 	}
 	return result, nil
-}
-
-func (c *DeployJobCtl) reconcileAdoptedDeployment(ctx context.Context, desired *appsv1.Deployment, source *model.ApplicationComponent) error {
-	if desired == nil || source == nil {
-		return fmt.Errorf("adopted deployment desired resource and source binding are required")
-	}
-	current, err := c.client.AppsV1().Deployments(desired.Namespace).Get(ctx, desired.Name, metav1.GetOptions{})
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return c.recreateAdoptedDeployment(ctx, desired, source)
-		}
-		return fmt.Errorf("get adopted deployment %s/%s: %w", desired.Namespace, desired.Name, err)
-	}
-	if err := validateAdoptedSourceUID(current.UID, source, "Deployment", desired.Namespace, desired.Name); err != nil {
-		recovered, recoverErr := recoverPendingAdoptedWorkload(
-			ctx,
-			c.store,
-			c.job,
-			source,
-			"Deployment",
-			desired.Namespace,
-			desired.Name,
-			current,
-			current,
-			c.runtime,
-			c.shareLocker,
-		)
-		if recoverErr != nil {
-			return fmt.Errorf("recover recreated adopted deployment binding: %w", recoverErr)
-		}
-		if !recovered {
-			return err
-		}
-	}
-	if !adoptedDeploymentNeedsUpdate(current, desired) {
-		c.expectedPodTemplateAnnotations = podTemplateReadyWaitAnnotationsFromTemplate(c.job, &current.Spec.Template)
-		markResourceObserved(ctx, domainspec.ResourceDeployment, desired.Namespace, desired.Name)
-		return nil
-	}
-	if err := updateResourceWithRetry(ctx, func(ctx context.Context) (*appsv1.Deployment, error) {
-		return c.client.AppsV1().Deployments(desired.Namespace).Get(ctx, desired.Name, metav1.GetOptions{})
-	}, func(ctx context.Context, latest *appsv1.Deployment) error {
-		if err := validateAdoptedSourceUID(latest.UID, source, "Deployment", desired.Namespace, desired.Name); err != nil {
-			return err
-		}
-		candidate := adoptedDeploymentForExistingUpdate(latest, desired)
-		if !adoptedDeploymentNeedsUpdate(latest, desired) {
-			return nil
-		}
-		if !apiequality.Semantic.DeepEqual(latest.Spec.Template, candidate.Spec.Template) {
-			applyPodTemplateReadyWaitAnnotations(c.job, &candidate.Spec.Template)
-		}
-		_, err := c.updateDeployment(ctx, candidate)
-		return err
-	}); err != nil {
-		return fmt.Errorf("update adopted deployment %s/%s: %w", desired.Namespace, desired.Name, err)
-	}
-	updated, err := c.client.AppsV1().Deployments(desired.Namespace).Get(ctx, desired.Name, metav1.GetOptions{})
-	if err != nil {
-		return fmt.Errorf("get updated adopted deployment %s/%s: %w", desired.Namespace, desired.Name, err)
-	}
-	c.expectedPodTemplateAnnotations = podTemplateReadyWaitAnnotationsFromTemplate(c.job, &updated.Spec.Template)
-	markResourceObserved(ctx, domainspec.ResourceDeployment, desired.Namespace, desired.Name)
-	return nil
-}
-
-func (c *DeployJobCtl) recreateAdoptedDeployment(
-	ctx context.Context,
-	desired *appsv1.Deployment,
-	source *model.ApplicationComponent,
-) error {
-	recreation, err := prepareAdoptedWorkloadRecreation(
-		ctx,
-		c.store,
-		c.job,
-		source,
-		"Deployment",
-		desired.Namespace,
-		desired.Name,
-	)
-	if err != nil {
-		return fmt.Errorf("prepare adopted deployment recreation: %w", err)
-	}
-	var baseline appsv1.Deployment
-	if err := json.Unmarshal(recreation.resource.Manifest, &baseline); err != nil {
-		return fmt.Errorf("decode adopted deployment recreation manifest: %w", err)
-	}
-	if baseline.Name != desired.Name || baseline.Namespace != desired.Namespace {
-		return fmt.Errorf(
-			"adopted deployment recreation manifest identity %s/%s does not match %s/%s",
-			baseline.Namespace,
-			baseline.Name,
-			desired.Namespace,
-			desired.Name,
-		)
-	}
-	candidate := adoptedDeploymentForExistingUpdate(&baseline, desired)
-	cleanObjectMeta(&candidate.ObjectMeta)
-	candidate.TypeMeta = metav1.TypeMeta{APIVersion: "apps/v1", Kind: "Deployment"}
-	expectedAnnotations := applyPodTemplateReadyWaitAnnotations(c.job, &candidate.Spec.Template)
-	guard, err := recreation.adoptedResourceBinding.prepareRecreationCandidate(ctx, c.store, candidate, c.runtime, c.shareLocker)
-	if err != nil {
-		return fmt.Errorf("persist adopted deployment recreation claim: %w", err)
-	}
-	defer guard.release()
-	recreationCtx := guard.Context()
-	created, err := c.client.AppsV1().Deployments(candidate.Namespace).Create(recreationCtx, candidate, metav1.CreateOptions{})
-	if err != nil {
-		if k8serrors.IsAlreadyExists(err) {
-			replacement, getErr := c.client.AppsV1().Deployments(candidate.Namespace).Get(recreationCtx, candidate.Name, metav1.GetOptions{})
-			if getErr != nil {
-				return fmt.Errorf("get concurrent recreated adopted deployment %s/%s: %w", candidate.Namespace, candidate.Name, getErr)
-			}
-			recovered, recoverErr := recoverPendingAdoptedWorkloadLocked(
-				recreationCtx,
-				c.store,
-				c.job,
-				source,
-				"Deployment",
-				candidate.Namespace,
-				candidate.Name,
-				replacement,
-				replacement,
-				c.runtime,
-			)
-			if recoverErr != nil {
-				return fmt.Errorf("recover concurrent adopted deployment recreation: %w", recoverErr)
-			}
-			if recovered {
-				guard.release()
-				return c.reconcileAdoptedDeployment(ctx, desired, source)
-			}
-			return fmt.Errorf(
-				"adopted deployment ownership conflict for %s/%s: expected missing UID %q, found %q",
-				candidate.Namespace,
-				candidate.Name,
-				recreation.resource.Source.UID,
-				replacement.UID,
-			)
-		}
-		return fmt.Errorf("recreate adopted deployment %s/%s: %w", candidate.Namespace, candidate.Name, err)
-	}
-	if err := recreation.persistCreated(recreationCtx, created, created, c.runtime); err != nil {
-		return fmt.Errorf("persist recreated adopted deployment binding; pending claim retained: %w", err)
-	}
-	c.expectedPodTemplateAnnotations = expectedAnnotations
-	markResourceObserved(ctx, domainspec.ResourceDeployment, created.Namespace, created.Name)
-	return nil
 }
 
 func deploymentForExistingUpdate(current, desired *appsv1.Deployment) *appsv1.Deployment {

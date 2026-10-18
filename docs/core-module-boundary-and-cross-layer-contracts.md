@@ -57,7 +57,7 @@ flowchart LR
 
 | 状态/数据 | 修改责任 | 必须保留的边界 |
 | --- | --- | --- |
-| 应用/组件期望配置、版本与 Workflow 定义 | `domain/service/application`、`domain/service/workflow` 的相应用例；资源导入按纳管契约建立配置 | 授权与空间归属校验；执行提交、版本变更通过应用调度事务串行化空闲检查和相关写入 |
+| 应用/组件期望配置、版本与 Workflow 定义 | `domain/service/application`、`domain/service/workflow` 的相应用例 | 授权与空间归属校验；执行提交、版本变更通过应用调度事务串行化空闲检查和相关写入 |
 | `WorkflowQueue` 执行状态、审批与 ownership | API 用例执行取消/审批；Scheduler claim/recover；Worker 的 `WorkflowCtl` 推进步骤 | 状态条件与 generation/token/worker fencing；队列消息不能直接成为权威状态 |
 | `JobInfo` 执行状态与检查点 | Job 控制器、延迟/结果处理及 Runner 协议的相应执行路径 | execution key、attempt、父任务 ownership 或相应结果租约；恢复复用已提交身份 |
 | 组件生命周期状态与运行态投影 | 应用/Job 生命周期路径设定执行状态；`SyncComponentStatus` 接受观察并裁决运行态写入 | Informer 传递 `model.ComponentStatusUpdate`；保护 `Not Deploy`、`Stopped`、`Cleaning` 等状态，按旧快照条件写入并使缓存失效 |
@@ -110,27 +110,6 @@ flowchart LR
 | `app:list:v3` 缓存键 | 列表接口响应 | 来源 `Applications` + 默认 workflow 推导 | 键 `app:list:v3` | 无 | JSON 序列化缓存 | DB 优先，缓存可失效重建 |
 | `app:template:list:v4` 缓存键 | 模板列表接口响应 | 来源 `Applications.TemplateEnabled` + workflow 推导 + `resources` 摘要 | 键 `app:template:list:v4` | 无 | JSON 序列化缓存 | DB 优先，缓存可失效重建 |
 | `app:components:v6:<appId>` 缓存键 | 组件列表接口响应 | 来源 `ApplicationComponent` + 读路径纠正状态 | 键 `app:components:v6:<appId>` | 状态变更时由 informer 触发失效 | JSON 序列化缓存 | DB 优先，缓存仅加速 |
-| `adoptionSnapshot.resources[].pendingRecreation.token` | 不作为公共 API 字段返回 | `Applications.AdoptionSnapshot`（`eruun_applications.adoption_snapshot` JSON）内的写前重建声明 | 无 | 同值写入待创建对象注解 `eruun.io/adopted-recreation-token` | opaque UUID，不承载 Secret；仅用于匹配一次重建声明与替代对象 | DB 中的 pending claim 是声明事实源；K8s 注解只有与当前 pending token 一致时才可用于恢复/完成重建 |
-
-## Adopted 资源重建的一致性契约
-
-`ResourceSnapshot.PendingRecreation` 不是第二套 Kubernetes ownership：资源所有权仍由 adoption snapshot 中的 `source.uid` 约束。它是缺失的 adopted 资源在重建期间使用的 write-ahead claim，用于跨重试、进程重启和 `Create` 结果不确定场景，将一份已持久化意图与一个替代对象绑定起来。
-
-| 阶段 | DB / Domain 状态 | Kubernetes 状态 | 一致性要求 |
-| --- | --- | --- | --- |
-| Prepare | 先按 app ID + resource identity 获取可续期的分布式 recreation lease，再在锁内重新加载 canonical application snapshot；仅允许 `ownership=exclusive`、`disposition=managed`、具有旧 `source.uid` 和可重建 manifest 的资源。若没有 claim，先通过 application `update_time` CAS 写入非空 token；已有 claim 时复用其 token | 尚未创建替代对象；候选对象复制原注解并写入 `eruun.io/adopted-recreation-token=<token>` | lease 不可用时 fail closed；claim 持久化成功后才能调用 Kubernetes `Create`，且当前 recreate 调用持有 lease 直到 Create、`AlreadyExists` 恢复与 finalize 结束。等待 lease 的旧执行者取得锁后必须先重读 canonical UID；CAS、UID 或前置校验失败时不得写 K8s |
-| Create / recover | pending claim 保留，旧 `source.uid` 仍是 ownership baseline | `Create` 成功、返回 `AlreadyExists`，或下一次 reconcile 发现同名对象时，均可进入恢复 | `AlreadyExists` 恢复复用当前 recreate 已持有的 lease；后续 reconcile 的恢复先获取同一 resource lease，且不会重新执行 `Create`。只有对象的 namespace/name 符合 snapshot、UID 非空且不同于旧 UID、未处于 terminating，并且 annotation token 等于当前 pending token，才能将其视为本次重建结果 |
-| Finalize | 在同一 resource lease 内重新加载 canonical snapshot 并再次校验 claim；把 `source.uid`、`resourceVersion`、`specDigest` 更新为替代对象，随后清除 `pendingRecreation`。Workload 同一事务更新 `ApplicationComponent.SourceWorkloadUID`；Secret 同一事务更新相关加密数据；普通依赖更新 application snapshot | 替代对象继续存在 | 事务/CAS 成功只确认 ownership 迁移；任务仍须按当前 desired state 完成本类型的正常调和后才能成功。若另一执行者已经提交相同对象 UID 且 claim 已清除，恢复路径将其视为已完成，而不是重复写入；任何推进 UID 或清除 claim 的路径都不得绕过该 lease |
-| Persistence failure | 明确确认未提交时保留旧 `source.uid` 与 pending claim；若提交结果不明确，则回读 canonical snapshot 与 workload 绑定，回读也失败时 DB 状态保持 unknown（可能仍 pending，也可能已经完成） | 已创建的替代对象保留，不执行补偿删除 | 采用 no-rollback：删除可能误删已被另一执行者确认的对象。后续 reconcile 重读 canonical 状态：仍 pending 时按同一 token 恢复，已写入替代 UID 时按已完成处理；无法确认时返回可观测错误，仍不删除对象 |
-
-Finalize 清除的是 DB snapshot 中的 `pendingRecreation`。替代对象上的 recreation token 注解不会在 finalize 中主动删除，但 claim 清除后它不再构成有效的重建授权；生成 snapshot manifest 或计算 `specDigest` 时会剥离该注解，因此它不会污染期望配置或制造永久 drift。
-
-版本兼容边界如下：
-
-- Snapshot v1 与 v2 都可读取和校验；v1 不允许携带 `pendingRecreation`。
-- 新建 adoption snapshot 使用 v2。历史 v1 snapshot 在没有 pending claim 时与等价 v2 snapshot 按同一导入契约比较，不要求为了读取而立即回写迁移。
-- 首次为历史 snapshot 持久化 recreation claim 时，写入版本升级为 v2；空 token、缺少旧 `source.uid`、非 exclusive/managed 资源或缺少 manifest 都会校验失败。
-- v2 的新增语义仅是 write-ahead recreation claim。Token 不是 Secret，也不是长期 ownership 事实；它只授权当前 pending transition。Finalize 校验当前 token、对象 identity、非 terminating 状态以及非空且不同于旧值的新 UID，成功后由写回的 Kubernetes UID 继续承担 ownership 约束；谁可创建或修改带 token 的对象仍由 Kubernetes RBAC 与 exclusive management 边界控制。
 
 ## 关键优先级规则（必须保持）
 
@@ -143,7 +122,7 @@ K8s 不是组件查询实时事实源，而是通过 informer 异步回写 DB。
 
 3. Secret 值语义规则  
 `properties.secret` 与 `credentials.value` 按文本字面量处理；即使看起来像 base64，也不在读路径自动解码。  
-导入/转换 K8s Secret 时仅接受可表示为 UTF-8 文本的数据。
+转换 K8s Secret 时仅接受可表示为 UTF-8 文本的数据。
 
 4. 标签关联规则  
 `eruun.io/app-id`、`eruun.io/component-id` 与 `eruun.io/component-name` 必须完整参与 K8s 资源关联与状态同步定位，缺一则不能视为可回写目标。
@@ -152,9 +131,6 @@ K8s 不是组件查询实时事实源，而是通过 informer 异步回写 DB。
 组件状态更新、应用增删改等会触发对应缓存失效；缓存失败不影响主流程正确性，DB 保持事实源。
 缓存读写与读取过程中损坏条目的清理透传调用者 `context.Context`；Redis 在父 context 上追加 5 秒操作上限（`List` 为 30 秒），客户端启用 context deadline。数据变更后的缓存失效保留 context 值，但使用独立的 5 秒超时，不随原请求取消或到期而跳过删除；应用更新、Informer 和 Job 状态同步遵循同一规则。等待连接或重试时可响应取消；已经进行的 socket I/O 仍受 go-redis 的读写 deadline 控制，手动取消不保证立即中断该 I/O。
 锁与 Workflow 取消信号由 server 显式提供 Redis/Locker 依赖，不经缓存对象获取。使用内存缓存或禁用读取缓存不会禁用协调能力；协调依赖缺失仍拒绝相应操作。
-
-6. Adopted 重建声明规则
-必须先取得按 app/resource 隔离的可续期 lease，并在锁内重读 canonical UID、持久化 `pendingRecreation.token`，再创建带同值注解的替代对象；当前 recreate 调用持有 lease 到绑定完成，后续 reconcile 也必须取得同一 lease 才能推进 UID 或清除 claim。创建后的 DB 写入失败始终保留 live object：明确未提交时保留 claim 供重试恢复，提交状态无法确认时由后续 reconcile 在 lease 内重读 canonical UID/claim 收敛；两种情况都不做补偿删除。
 
 ## 变更前检查清单（面向新增/调整返回字段）
 
@@ -174,9 +150,6 @@ K8s 不是组件查询实时事实源，而是通过 informer 异步回写 DB。
 - 空间删除：`pkg/apiserver/domain/service/account/workspaces.go` 中的 `DeleteWorkspace`、`teamMutation`
 - 结果接受和交付：`pkg/apiserver/jobs/artifacts/store.go`、`pkg/apiserver/jobs/artifacts/delivery.go`
 - Secret 落地与编码边界：`pkg/apiserver/event/workflow/job/job_secret.go`
-- 纳管 snapshot 版本、校验与 digest 归一化：`pkg/apiserver/domain/service/resourceimport/contract/snapshot.go`
-- Adopted 重建 claim、恢复与 finalize：`pkg/apiserver/event/workflow/job/job_adopted_source.go`
-- Recreation token annotation 常量：`pkg/apiserver/config/consts.go`
 - 模型与表映射：`pkg/apiserver/domain/model/*.go`
 
 评测的模型、harness、任务包、并发与预算由共享 `EvaluationTraitSpec` 定义。独立 Job 和 Application 的顶层 job 组件共享构建器；框架版本由 Runner 固定并记入执行快照。结果制品和保存目标用 WorkspaceID、TaskID、ExecutionKey 区分；应用内多个评测不能仅以父 TaskID 寻址。

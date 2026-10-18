@@ -702,8 +702,8 @@ func scheduledJobByExecutionKey(ctx context.Context, store datastore.DataStore, 
 	}
 	query := &model.JobInfo{}
 	if owner != nil && owner.AppID == "" {
-		// Resource import Jobs have no application. Their task and workspace
-		// let the access store validate the parent before querying these rows.
+		// Workspace Jobs have no application. Their task and workspace let the
+		// access store validate the parent before querying these rows.
 		query.TaskID, query.WorkspaceID = owner.TaskID, owner.WorkspaceID
 	}
 	entities, err := store.List(ctx, query, &datastore.ListOptions{Page: 1, PageSize: 2, FilterOptions: datastore.FilterOptions{In: []datastore.InQueryOption{{Key: "execution_key", Values: []string{key}}}}})

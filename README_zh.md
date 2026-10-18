@@ -20,7 +20,6 @@ Eruun 当前提供 **Kubernetes 应用与工作流运行时、独立命令任务
 | 多组件应用发布与运维 | 串行或 DAG 工作流、审批、版本更新、启停、失败清理、状态与日志 | 组件声明、执行步骤、存储和网络配置 |
 | 一次性容器任务 | 直接提交 `command` Job，查询状态或取消，无需先创建应用 | 可在空间安全策略下运行的镜像、命令和输入 |
 | LLM 评测 | 上传 Harbor 原生任务包，以 `type: job` + `traits.eval` 声明独立 Job 或应用组件，保存奖励、轨迹、日志与制品 | 预构建任务镜像、verifier、Runner 配置；使用模型时提供 Secret 凭据 |
-| 已有 Kubernetes 应用接入 | 只读观察，或经过 dry-run 与签名计划显式接管已有资源 | 明确资源归属、支持的资源范围及接管密钥配置 |
 
 如果需求只是提交几份 Kubernetes 清单，Eruun 的数据库、队列和多节点部署会增加运维成本。需要任务持久化、空间授权、多组件执行和统一查询时，这些基础设施才更有价值。
 
@@ -43,13 +42,12 @@ Eruun 采用 OAM 启发的「组件 + Traits + 工作流」模型，提供应用
 
 | 能力 | 当前支持 | 详细契约 |
 | --- | --- | --- |
-| 应用生命周期 | 创建、执行、版本更新、启停、重启、资源清理；写权限受管理模式约束 | [创建并执行](docs/create-and-exec-application-api.md)、[版本更新](docs/version-update-api.md)、[管理模式](docs/application-management-mode.md) |
+| 应用生命周期 | 创建、执行、版本更新、启停、重启、资源清理 | [创建并执行](docs/create-and-exec-application-api.md)、[版本更新](docs/version-update-api.md) |
 | Workflow | StepByStep/DAG、审批暂停/继续、取消、超时、失败清理、回调与执行恢复 | [执行架构](docs/workflow-architecture-guide.md)、[审批](docs/workflow-approval-pause-resume.md)、[失败策略](docs/workflow-failure-policy.md) |
 | 独立任务与评测 | `command` 容器任务；通过 `traits.eval` 声明独立或应用 Workflow 内的 Harbor 评测，支持任务包、执行进度、完整结果和独立保存目标 | [空间 Job API](docs/workspace-jobs-api.md)、[评测示例](examples/agent-evaluation/README.md) |
 | 程序化接入 | HTTP `/api/v1`、gRPC v1、规范 JSON Schema、Try 校验、可编辑规范回读、提交幂等与 `allowedActions` | [Canonical JSON](docs/canonical-json-profile.md)、[gRPC](docs/grpc-api.md) |
 | 运行诊断 | 应用/组件/任务状态、容器信息、日志流、日志归档、文件导出和 Shell 执行 | [状态](docs/application-status-api.md)、[日志](docs/component-log-stream-api.md)、[文件与执行](docs/component-pod-file-exec-api.md) |
 | 账号与空间 | 登录会话、个人/团队空间、成员角色、资源归属和 Kubernetes 空间安全基线 | [账号与空间](docs/account-auth-workspaces.md) |
-| 存量资源纳管 | `observe` 只读模式、显式 `adopted` 接管及受控调和/清理 | [Namespace 导入](docs/import-existing-namespace-api.md) |
 
 ### 组件与 Traits
 

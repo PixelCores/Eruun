@@ -484,13 +484,13 @@ func TestRunJobsParallelDoesNotStartJobsWithCancelledContext(t *testing.T) {
 	require.Empty(t, jobs[1].Status)
 }
 
-type blockingManagementModeStore struct {
+type blockingApplicationCheckStore struct {
 	*componentStatusStore
 	started chan struct{}
 	once    sync.Once
 }
 
-func (s *blockingManagementModeStore) Get(ctx context.Context, entity datastore.Entity) error {
+func (s *blockingApplicationCheckStore) Get(ctx context.Context, entity datastore.Entity) error {
 	if _, ok := entity.(*model.Applications); !ok {
 		return s.componentStatusStore.Get(ctx, entity)
 	}
@@ -521,9 +521,9 @@ func (h *blockingRedisGetHook) ProcessPipelineHook(next redis.ProcessPipelineHoo
 	return next
 }
 
-func TestRunJobInfrastructureStopDuringManagementModeCheckDoesNotPersistFailure(t *testing.T) {
+func TestRunJobInfrastructureStopDuringApplicationCheckDoesNotPersistFailure(t *testing.T) {
 	ctx, cancel := context.WithCancelCause(context.Background())
-	store := &blockingManagementModeStore{
+	store := &blockingApplicationCheckStore{
 		componentStatusStore: &componentStatusStore{},
 		started:              make(chan struct{}),
 	}
@@ -576,20 +576,6 @@ func TestRunJobInfrastructureStopDuringCancellationWatcherSetupDoesNotPersistFai
 	require.Equal(t, 1, ackCount)
 	require.Empty(t, store.jobInfos)
 	require.Nil(t, store.updated)
-}
-
-func TestJobRuntimeDoesNotReusePersistenceGateAcrossRuns(t *testing.T) {
-	config := &Runtime{}
-	config.adoptionPersistenceOnce.Do(func() {
-		config.adoptionPersistenceGate = make(chan struct{}, 1)
-	})
-
-	first := newJobRuntime(config)
-	second := newJobRuntime(config)
-	require.NoError(t, first.withAdoptionPersistenceContext(context.Background(), func() error { return nil }))
-	require.NoError(t, second.withAdoptionPersistenceContext(context.Background(), func() error { return nil }))
-	require.NotEqual(t, config.adoptionPersistenceGate, first.adoptionPersistenceGate)
-	require.NotEqual(t, first.adoptionPersistenceGate, second.adoptionPersistenceGate)
 }
 
 func infrastructureStopTestJob() *model.JobTask {

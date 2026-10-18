@@ -63,10 +63,6 @@ var ErrDistributedLockUnavailable = NewBcode(503, 10032, "distributed lock backe
 // ErrVersionUpdateTaskNotCancellable delayed version update task cannot be cancelled
 var ErrVersionUpdateTaskNotCancellable = NewBcode(409, 10033, "version update task is not cancellable")
 
-// ErrApplicationManagementMode indicates that the requested mutation is not
-// permitted for the application's management boundary.
-var ErrApplicationManagementMode = NewBcode(409, 10040, "operation is not allowed for the application management mode")
-
 // ErrComponentLogContainerInvalid requested component log container is invalid
 var ErrComponentLogContainerInvalid = NewBcode(400, 10034, "invalid container name for component logs")
 
@@ -84,14 +80,6 @@ var ErrComponentShellScriptInvalid = NewBcode(400, 10038, "invalid shell script 
 
 // ErrApplicationNoComponents application has no components and cannot be deployed
 var ErrApplicationNoComponents = NewBcode(400, 10039, "application has no components, deployment is not allowed")
-
-// ErrNamespaceImportPlanDrift indicates that live Kubernetes or application
-// state no longer matches a signed adoption or cleanup plan.
-var ErrNamespaceImportPlanDrift = NewBcode(409, 10041, "namespace import plan drifted; run dry-run again")
-
-// ErrAdoptedResourceConflict indicates that a source name now resolves to a
-// different Kubernetes UID and must never be overwritten.
-var ErrAdoptedResourceConflict = NewBcode(409, 10042, "adopted resource identity conflict")
 
 // ErrVersionUpdateConflict indicates that application configuration changed
 // after version-update preflight and the request must be validated again.
