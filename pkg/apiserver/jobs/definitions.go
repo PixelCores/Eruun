@@ -199,13 +199,20 @@ func (s *Service) GetDefinition(ctx context.Context, id string) (*Definition, er
 	return definitionResponse(record)
 }
 
+func checkPage(page, pageSize int) error {
+	if page < 1 || page > 10000000 || pageSize < 1 || pageSize > 100 {
+		return invalid(fmt.Errorf("page must be 1..10000000 and pageSize must be 1..100"))
+	}
+	return nil
+}
+
 func (s *Service) ListDefinitions(ctx context.Context, page, pageSize int) (*DefinitionPage, error) {
 	scope, err := Scope(ctx, false)
 	if err != nil {
 		return nil, err
 	}
-	if page < 1 || page > 10000000 || pageSize < 1 || pageSize > 100 {
-		return nil, invalid(fmt.Errorf("page must be 1..10000000 and pageSize must be 1..100"))
+	if err := checkPage(page, pageSize); err != nil {
+		return nil, err
 	}
 	query := &model.JobDefinition{WorkspaceID: scope.WorkspaceID}
 	total, err := s.Store.Count(ctx, query, nil)
@@ -333,8 +340,8 @@ func (s *Service) List(ctx context.Context, definitionID string, page, pageSize 
 	if err != nil {
 		return nil, err
 	}
-	if page < 1 || page > 10000000 || pageSize < 1 || pageSize > 100 {
-		return nil, invalid(fmt.Errorf("page must be 1..10000000 and pageSize must be 1..100"))
+	if err := checkPage(page, pageSize); err != nil {
+		return nil, err
 	}
 	query := &model.WorkflowQueue{WorkspaceID: scope.WorkspaceID, Type: config.WorkflowTaskTypeJob}
 	options := &datastore.ListOptions{
