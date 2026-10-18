@@ -232,24 +232,30 @@ func (w *Workflow) startTerminalCallbackRecovery(ctx context.Context, wg *sync.W
 		defer ticker.Stop()
 		results := make(chan terminalCallbackRecoveryResult, maxActive)
 		active := make(map[string]struct{}, maxActive)
+		var pending []*model.WorkflowQueue
 		page := 1
 		schedule := func() {
-			queryCtx, cancel := context.WithTimeout(ctx, config.TaskStateTransitionTimeout)
-			tasks, err := workflowservice.PendingWorkflowTerminalCallbacks(queryCtx, w.Store, page, batchSize)
-			cancel()
-			if err != nil {
-				klog.ErrorS(err, "list pending workflow terminal callbacks", "page", page)
+			if len(active) >= maxActive {
 				return
 			}
-			if len(tasks) < batchSize {
-				page = 1
-			} else {
-				page++
-			}
-			for _, task := range tasks {
-				if len(active) >= maxActive {
-					break
+			if len(pending) == 0 {
+				queryCtx, cancel := context.WithTimeout(ctx, config.TaskStateTransitionTimeout)
+				tasks, err := workflowservice.PendingWorkflowTerminalCallbacks(queryCtx, w.Store, page, batchSize)
+				cancel()
+				if err != nil {
+					klog.ErrorS(err, "list pending workflow terminal callbacks", "page", page)
+					return
 				}
+				if len(tasks) < batchSize {
+					page = 1
+				} else {
+					page++
+				}
+				pending = tasks
+			}
+			for len(pending) > 0 && len(active) < maxActive {
+				task := pending[0]
+				pending = pending[1:]
 				if task == nil || task.TaskID == "" {
 					continue
 				}
