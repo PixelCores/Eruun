@@ -916,12 +916,6 @@ func (w *WorkflowCtl) terminalCallbackSuppressed() bool {
 	return w.taskPersistenceStopped && (w.taskPersistenceUncertain || w.taskOwnershipLost)
 }
 
-func (w *WorkflowCtl) setStatus(status config.Status) {
-	w.mutateTask(func(task *model.WorkflowQueue) {
-		task.Status = status
-	})
-}
-
 func (w *WorkflowCtl) setTerminalStatus(status config.Status, reason string) {
 	w.workflowTaskMutex.Lock()
 	defer w.workflowTaskMutex.Unlock()

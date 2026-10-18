@@ -426,10 +426,11 @@ func TestPendingStatefulSetPVCDeletionKeepsResourceIdentitiesSeparate(t *testing
 			Status: string(config.StatusFailed), InternalInfo: marker,
 		}}
 	}
-	valid, err := updatePendingStatefulSetPVCDeletion(
+	valid, err := updatePendingStatefulSetDeletion(
 		pending,
 		&model.WorkflowQueue{TaskID: "task-old", Status: config.StatusFailed},
 		failedJob("task-old"),
+		model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion,
 		nonSharedCleanup,
 	)
 	require.NoError(t, err)
@@ -437,10 +438,11 @@ func TestPendingStatefulSetPVCDeletionKeepsResourceIdentitiesSeparate(t *testing
 
 	completedSharedJob := failedJob("task-shared-completed")
 	completedSharedJob[0].Status = string(config.StatusCompleted)
-	valid, err = updatePendingStatefulSetPVCDeletion(
+	valid, err = updatePendingStatefulSetDeletion(
 		pending,
 		&model.WorkflowQueue{TaskID: "task-shared-completed", Status: config.StatusCompleted},
 		completedSharedJob,
+		model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion,
 		sharedCleanup,
 	)
 	require.NoError(t, err)
@@ -448,10 +450,11 @@ func TestPendingStatefulSetPVCDeletionKeepsResourceIdentitiesSeparate(t *testing
 	require.Contains(t, pending["mysql"], nonSharedIdentity)
 	require.NotContains(t, pending["mysql"], sharedIdentity)
 
-	valid, err = updatePendingStatefulSetPVCDeletion(
+	valid, err = updatePendingStatefulSetDeletion(
 		pending,
 		&model.WorkflowQueue{TaskID: "task-shared-failed", Status: config.StatusFailed},
 		failedJob("task-shared-failed"),
+		model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion,
 		sharedCleanup,
 	)
 	require.NoError(t, err)

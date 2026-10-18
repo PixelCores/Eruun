@@ -114,7 +114,7 @@ func TestCleanupResourcesJobCtlRetainsAllStatefulSetPVCsBeforeRequiredDeletion(t
 					if getErr != nil {
 						return true, nil, getErr
 					}
-					unsafe = unsafe || statefulSetPVCDeletionOwnerReferencePresent(current, pvcObj.(*corev1.PersistentVolumeClaim))
+					require.Empty(t, pvcObj.(*corev1.PersistentVolumeClaim).OwnerReferences, "PVC deletion owners must be removed before deleting the StatefulSet")
 				}
 				if unsafe {
 					for _, pvcName := range []string{dataPVCName, cachePVCName} {

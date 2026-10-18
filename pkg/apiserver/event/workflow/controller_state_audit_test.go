@@ -59,7 +59,9 @@ func TestUpdateWorkflowTaskTreatsMatchingCASMissAsNoopSuccess(t *testing.T) {
 	_, _, stopped := ctl.snapshotTaskPersistence()
 	require.False(t, stopped)
 
-	ctl.setStatus(config.StatusCompleted)
+	ctl.mutateTask(func(task *model.WorkflowQueue) {
+		task.Status = config.StatusCompleted
+	})
 	ctl.updateWorkflowTask()
 
 	store.mu.Lock()
@@ -85,23 +87,6 @@ func TestWorkflowCtlSnapshotTask(t *testing.T) {
 	require.Equal(t, "task-123", snapshot.TaskID)
 	require.Equal(t, "test-workflow", snapshot.WorkflowName)
 	require.Equal(t, config.StatusQueued, snapshot.Status)
-}
-
-func TestWorkflowCtlSetStatus(t *testing.T) {
-	task := &model.WorkflowQueue{
-		TaskID: "task-123",
-		Status: config.StatusQueued,
-	}
-
-	ctl := &WorkflowCtl{
-		workflowTask: task,
-	}
-
-	ctl.setStatus(config.StatusRunning)
-	require.Equal(t, config.StatusRunning, ctl.workflowTask.Status)
-
-	ctl.setStatus(config.StatusCompleted)
-	require.Equal(t, config.StatusCompleted, ctl.workflowTask.Status)
 }
 
 func TestWorkflowCtlMutateTask(t *testing.T) {

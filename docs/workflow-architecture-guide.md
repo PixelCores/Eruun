@@ -1768,20 +1768,16 @@ const (
 
 ### 9.3 CAS 状态更新
 
-为防止并发冲突，状态转换使用 CAS (Compare-And-Swap)：
+为防止并发冲突，状态转换使用 CAS (Compare-And-Swap)。按状态转换使用 `UpdateTaskFieldsIfStatus`；已领取任务的 Worker 写入使用 `UpdateTaskFieldsIfOwned`，同时校验执行 generation、token 和 Worker 身份：
 
 ```go
 // domain/repository/workflow.go
-func UpdateTaskStatus(ctx context.Context, store datastore.DataStore, taskID string, from, to config.Status) (bool, error) {
-    // 使用条件更新：WHERE task_id=? AND status=?
-    result := db.Model(&model.WorkflowQueue{}).
-        Where("task_id = ? AND status = ?", taskID, from).
-        Update("status", to)
-    
-    if result.RowsAffected == 0 {
-        return false, nil  // 状态已被其他实例修改
+func UpdateTaskFieldsIfStatus(ctx context.Context, store datastore.DataStore, taskID string, status config.Status, fields map[string]interface{}) (bool, error) {
+    if taskID == "" {
+        return false, datastore.ErrPrimaryEmpty
     }
-    return true, nil
+    task := &model.WorkflowQueue{TaskID: taskID}
+    return store.CompareAndSwap(ctx, task, "status", status, fields)
 }
 ```
 

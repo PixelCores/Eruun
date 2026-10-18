@@ -691,23 +691,3 @@ func TestDiffUpdateVersionUsesMaterializedTemplateComponents(t *testing.T) {
 	require.Equal(t, "mysql:8", resp.UpdatedComponents[0].After.Image)
 	require.Equal(t, "mysql:5.7", resp.UpdatedComponents[0].Before.Image)
 }
-
-func TestIncrementVersion(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{"1.0.0", "1.0.1"},
-		{"2.3.5", "2.3.6"},
-		{"1.0.9", "1.0.10"},
-		{"0.0.0", "0.0.1"},
-		{"", "1.0.1"},
-		{"1", "2"},
-		{"10", "11"},
-	}
-
-	for _, tc := range tests {
-		result := incrementVersion(tc.input)
-		require.Equal(t, tc.expected, result, "incrementVersion(%q) should be %q", tc.input, tc.expected)
-	}
-}

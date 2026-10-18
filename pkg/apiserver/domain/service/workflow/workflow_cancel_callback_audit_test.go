@@ -20,6 +20,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
+	wf "github.com/PixelCores/Eruun/pkg/apiserver/workflow"
 )
 
 func TestCancelDelayedVersionTaskForAppWithReadCacheDisabled(t *testing.T) {
@@ -1284,7 +1285,7 @@ func TestReconcileWorkflowTerminalCallbacksCompletesSettledIntentWithoutResendin
 		TaskID: "task-settled-marker", AppID: "app-1", WorkflowID: "wf-settled-marker",
 		WorkflowName: "settled-marker", Type: config.WorkflowTaskTypeWorkflow,
 		Status: config.StatusCancelled, RunGeneration: 3,
-		SchedulingReason: terminalCallbackPendingReason("manual cancel"),
+		SchedulingReason: wf.TerminalCallbackPendingReason("manual cancel"),
 	}
 	store := &statusDataStore{workflow: &model.Workflow{ID: task.WorkflowID, AppID: task.AppID, Callback: callback}}
 	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
@@ -1300,7 +1301,7 @@ func TestReconcileWorkflowTerminalCallbacksCompletesSettledIntentWithoutResendin
 	require.NoError(t, err)
 	require.Equal(t, 1, reconciled)
 	require.Equal(t, int32(0), atomic.LoadInt32(&callbackCount))
-	require.Equal(t, terminalCallbackReconciledReason, store.task.SchedulingReason)
+	require.Equal(t, wf.TerminalCallbackReconciledReason, store.task.SchedulingReason)
 }
 
 func TestReconcileWorkflowTerminalCallbacksCompletesFailedAttemptWithoutRetry(t *testing.T) {
@@ -1316,7 +1317,7 @@ func TestReconcileWorkflowTerminalCallbacksCompletesFailedAttemptWithoutRetry(t 
 		TaskID: "task-failed-marker", AppID: "app-1", WorkflowID: "wf-failed-marker",
 		WorkflowName: "failed-marker", Type: config.WorkflowTaskTypeWorkflow,
 		Status: config.StatusCancelled, RunGeneration: 3,
-		SchedulingReason: terminalCallbackPendingReason("manual cancel"),
+		SchedulingReason: wf.TerminalCallbackPendingReason("manual cancel"),
 	}
 	store := &statusDataStore{workflow: &model.Workflow{ID: task.WorkflowID, AppID: task.AppID, Callback: callback}}
 	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
@@ -1327,7 +1328,7 @@ func TestReconcileWorkflowTerminalCallbacksCompletesFailedAttemptWithoutRetry(t 
 	require.NoError(t, err)
 	require.Equal(t, 1, reconciled)
 	require.Equal(t, int32(1), atomic.LoadInt32(&callbackCount))
-	require.Equal(t, terminalCallbackReconciledReason, store.task.SchedulingReason)
+	require.Equal(t, wf.TerminalCallbackReconciledReason, store.task.SchedulingReason)
 	require.Len(t, store.jobs, 1)
 	require.Equal(t, string(config.StatusFailed), store.jobs[0].Status)
 	require.Contains(t, store.jobs[0].Error, "status: 503")
@@ -1352,7 +1353,7 @@ func TestReconcileWorkflowTerminalCallbacksWaitsForActiveChild(t *testing.T) {
 		TaskID: "task-active-child", AppID: "app-1", WorkflowID: "wf-active-child",
 		WorkflowName: "active-child", Type: config.WorkflowTaskTypeWorkflow,
 		Status: config.StatusCancelled, RunGeneration: 2,
-		SchedulingReason: terminalCallbackPendingReason("manual cancel"),
+		SchedulingReason: wf.TerminalCallbackPendingReason("manual cancel"),
 	}
 	store := &statusDataStore{workflow: &model.Workflow{ID: task.WorkflowID, AppID: task.AppID, Callback: callback}}
 	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
@@ -1368,7 +1369,7 @@ func TestReconcileWorkflowTerminalCallbacksWaitsForActiveChild(t *testing.T) {
 	require.NoError(t, err)
 	require.Zero(t, reconciled)
 	require.Equal(t, int32(0), atomic.LoadInt32(&callbackCount))
-	require.Equal(t, terminalCallbackPendingReason("manual cancel"), store.task.SchedulingReason)
+	require.Equal(t, wf.TerminalCallbackPendingReason("manual cancel"), store.task.SchedulingReason)
 	jobs, err := svc.Store.List(context.Background(), &model.JobInfo{TaskID: task.TaskID}, &datastore.ListOptions{})
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
@@ -1388,7 +1389,7 @@ func TestReconcileWorkflowTerminalCallbacksCancelsOlderCallbackWithoutSelfLock(t
 		TaskID: "task-old-callback", AppID: "app-1", WorkflowID: "wf-old-callback",
 		WorkflowName: "old-callback", Type: config.WorkflowTaskTypeWorkflow,
 		Status: config.StatusCancelled, RunGeneration: 4,
-		SchedulingReason: terminalCallbackPendingReason("manual cancel"),
+		SchedulingReason: wf.TerminalCallbackPendingReason("manual cancel"),
 	}
 	store := &statusDataStore{workflow: &model.Workflow{ID: task.WorkflowID, AppID: task.AppID, Callback: callback}}
 	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})

@@ -225,22 +225,3 @@ func (c *applicationsServiceImpl) mergeComponentEnv(comp *model.ApplicationCompo
 	comp.Properties = newProps
 	return true, nil
 }
-
-// incrementVersion 递增版本号 (如 1.0.0 -> 1.0.1)
-func incrementVersion(version string) string {
-	if version == "" {
-		return "1.0.1"
-	}
-	parts := strings.Split(version, ".")
-	if len(parts) == 0 {
-		return version + ".1"
-	}
-
-	// 递增最后一位
-	lastIdx := len(parts) - 1
-	var lastNum int
-	fmt.Sscanf(parts[lastIdx], "%d", &lastNum)
-	parts[lastIdx] = fmt.Sprintf("%d", lastNum+1)
-
-	return strings.Join(parts, ".")
-}

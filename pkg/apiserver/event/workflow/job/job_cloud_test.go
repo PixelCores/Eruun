@@ -19,6 +19,15 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
+func resetCloudProvidersForTest() {
+	wfcloudjob.ResetCloudProvidersForTest()
+}
+
+func restoreBuiltinCloudProvidersForTest() {
+	wfcloudjob.ResetCloudProvidersForTest()
+	registerBuiltinCloudProviders()
+}
+
 type fakeCloudProvider struct {
 	name       string
 	ctx        context.Context

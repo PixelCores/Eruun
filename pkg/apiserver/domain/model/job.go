@@ -118,10 +118,3 @@ func (j *JobInfo) Index() map[string]interface{} {
 	}
 	return index
 }
-
-type JobDeployInfo struct {
-	Name          string
-	Ready         bool
-	Replicas      int32 //期望副本数量
-	ReadyReplicas int32 //就绪副本数量
-}

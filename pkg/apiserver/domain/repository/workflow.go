@@ -221,21 +221,6 @@ func WaitingTasks(ctx context.Context, store datastore.DataStore) (list []*model
 	return
 }
 
-func UpdateTaskFields(ctx context.Context, store datastore.DataStore, taskID string, fields map[string]interface{}) error {
-	if taskID == "" {
-		return datastore.ErrPrimaryEmpty
-	}
-	task := &model.WorkflowQueue{TaskID: taskID}
-	updated, err := store.CompareAndSwap(ctx, task, "task_id", taskID, fields)
-	if err != nil {
-		return err
-	}
-	if !updated {
-		return datastore.ErrRecordNotExist
-	}
-	return nil
-}
-
 // UpdateTaskFieldsIfStatus updates a workflow task only while it still has the
 // expected status. The returned boolean is false when another worker won the
 // state transition race.
@@ -355,34 +340,6 @@ func TaskByIdempotencyKey(ctx context.Context, store datastore.DataStore, idempo
 		return task, nil
 	}
 	return nil, datastore.ErrRecordNotExist
-}
-
-// UpdateTaskStatus performs an atomic compare-and-swap to update task status.
-// It only updates if the current status matches 'from' (when from is not empty).
-// Returns (true, nil) if update succeeded, (false, nil) if condition not met or task not found.
-func UpdateTaskStatus(ctx context.Context, store datastore.DataStore, taskID string, from, to config.Status) (bool, error) {
-	task := &model.WorkflowQueue{TaskID: taskID}
-
-	// If no from condition, use simple Put (backward compatible)
-	if from == "" {
-		if err := store.Get(ctx, task); err != nil {
-			if errors.Is(err, datastore.ErrRecordNotExist) {
-				return false, nil
-			}
-			return false, err
-		}
-		task.Status = to
-		if err := store.Put(ctx, task); err != nil {
-			return false, err
-		}
-		return true, nil
-	}
-
-	// Atomic CAS: UPDATE ... WHERE task_id = ? AND status = ?
-	updates := map[string]interface{}{
-		"status": to,
-	}
-	return store.CompareAndSwap(ctx, task, "status", from, updates)
 }
 
 type ApproveTaskCondition struct {

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -434,21 +433,6 @@ func statefulSetPVCRetentionIsRetain(statefulSet *appsv1.StatefulSet) bool {
 func statefulSetVolumeClaimTemplatePVC(statefulSetName string, templates []string, pvcName string) bool {
 	for _, template := range templates {
 		if isStatefulSetTemplatePVCName(template, statefulSetName, pvcName) {
-			return true
-		}
-	}
-	return false
-}
-
-func statefulSetPVCDeletionOwnerReferencePresent(statefulSet *appsv1.StatefulSet, pvc *corev1.PersistentVolumeClaim) bool {
-	if statefulSet == nil || pvc == nil {
-		return false
-	}
-	for _, owner := range pvc.OwnerReferences {
-		switch {
-		case strings.EqualFold(owner.Kind, string(domainspec.KubeKindStatefulSet)) && statefulSetOwnerReferenceMatches(statefulSet.Name, statefulSet.UID, owner.Name, owner.UID):
-			return true
-		case strings.EqualFold(owner.Kind, "Pod") && isStatefulSetOrdinalPodName(statefulSet.Name, owner.Name):
 			return true
 		}
 	}

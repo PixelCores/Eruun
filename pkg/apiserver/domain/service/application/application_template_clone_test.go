@@ -231,8 +231,8 @@ func TestResolveComponentsWithSourceIndexes(t *testing.T) {
 	}
 	svc := newMockServiceWithStore(store)
 
-	t.Run("legacy wrapper preserves template resolution", func(t *testing.T) {
-		components, err := ResolveComponents(context.Background(), svc.AppRepo, svc.ComponentRepo, config.DefaultNamespace, "cloned", []apisv1.CreateComponentRequest{{
+	t.Run("template resolution preserves target selection", func(t *testing.T) {
+		components, _, err := ResolveComponentsWithSourceIndexes(context.Background(), svc.AppRepo, svc.ComponentRepo, config.DefaultNamespace, "cloned", []apisv1.CreateComponentRequest{{
 			Name:          "legacy-job",
 			ComponentType: config.InstantJob,
 			Template:      &apisv1.TemplateRef{ID: "tmpl-source-index", Target: "template-job"},

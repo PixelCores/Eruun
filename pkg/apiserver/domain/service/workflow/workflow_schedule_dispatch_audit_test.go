@@ -558,12 +558,12 @@ func TestEnqueueWorkflowAllowsComponentlessApprovalOnlyWorkflow(t *testing.T) {
 
 	store := &enqueueWorkflowDataStore{}
 	svc := &workflowServiceImpl{}
-	resp, err := svc.enqueueWorkflowTaskWithStore(context.Background(), store, &model.Workflow{
+	resp, err := svc.enqueueWorkflowTaskWithStoreAndIdempotencyKey(context.Background(), store, &model.Workflow{
 		ID:    "wf-approval-only",
 		AppID: "app-without-components",
 		Name:  "approval-only",
 		Steps: steps,
-	}, 0)
+	}, 0, "")
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.TaskID)
 	require.Len(t, store.queues, 1)
@@ -577,12 +577,12 @@ func TestEnqueueWorkflowRejectsEmptyWorkflowWithoutQueueTask(t *testing.T) {
 
 	store := &enqueueWorkflowDataStore{}
 	svc := &workflowServiceImpl{}
-	resp, err := svc.enqueueWorkflowTaskWithStore(context.Background(), store, &model.Workflow{
+	resp, err := svc.enqueueWorkflowTaskWithStoreAndIdempotencyKey(context.Background(), store, &model.Workflow{
 		ID:    "wf-empty",
 		AppID: "app-without-components",
 		Name:  "empty",
 		Steps: steps,
-	}, 0)
+	}, 0, "")
 	require.ErrorIs(t, err, bcode.ErrWorkflowEmpty)
 	require.Nil(t, resp)
 	require.Len(t, store.queues, 0)
@@ -602,12 +602,12 @@ func TestEnqueueWorkflowAllowsMissingStepJobTypeAsDeployDefault(t *testing.T) {
 		},
 	}
 	svc := &workflowServiceImpl{}
-	resp, err := svc.enqueueWorkflowTaskWithStore(context.Background(), store, &model.Workflow{
+	resp, err := svc.enqueueWorkflowTaskWithStoreAndIdempotencyKey(context.Background(), store, &model.Workflow{
 		ID:    "wf-missing-job-type",
 		AppID: "app-1",
 		Name:  "deploy",
 		Steps: steps,
-	}, 0)
+	}, 0, "")
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.NotEmpty(t, resp.TaskID)
@@ -624,12 +624,12 @@ func TestEnqueueWorkflowRejectsUnsupportedStepJobTypeWithoutQueueTask(t *testing
 
 	store := &enqueueWorkflowDataStore{}
 	svc := &workflowServiceImpl{}
-	resp, err := svc.enqueueWorkflowTaskWithStore(context.Background(), store, &model.Workflow{
+	resp, err := svc.enqueueWorkflowTaskWithStoreAndIdempotencyKey(context.Background(), store, &model.Workflow{
 		ID:    "wf-unsupported-job-type",
 		AppID: "app-without-components",
 		Name:  "deploy",
 		Steps: steps,
-	}, 0)
+	}, 0, "")
 	require.ErrorIs(t, err, bcode.ErrWorkflowConfig)
 	require.Contains(t, err.Error(), "unsupported_job_type")
 	require.Nil(t, resp)
@@ -655,12 +655,12 @@ func TestEnqueueWorkflowAllowsMissingSubStepJobTypeAsDeployDefault(t *testing.T)
 		},
 	}
 	svc := &workflowServiceImpl{}
-	resp, err := svc.enqueueWorkflowTaskWithStore(context.Background(), store, &model.Workflow{
+	resp, err := svc.enqueueWorkflowTaskWithStoreAndIdempotencyKey(context.Background(), store, &model.Workflow{
 		ID:    "wf-missing-substep-job-type",
 		AppID: "app-1",
 		Name:  "deploy",
 		Steps: steps,
-	}, 0)
+	}, 0, "")
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.NotEmpty(t, resp.TaskID)
@@ -682,12 +682,12 @@ func TestEnqueueWorkflowRejectsUnsupportedSubStepJobTypeWithoutQueueTask(t *test
 
 	store := &enqueueWorkflowDataStore{}
 	svc := &workflowServiceImpl{}
-	resp, err := svc.enqueueWorkflowTaskWithStore(context.Background(), store, &model.Workflow{
+	resp, err := svc.enqueueWorkflowTaskWithStoreAndIdempotencyKey(context.Background(), store, &model.Workflow{
 		ID:    "wf-unsupported-substep-job-type",
 		AppID: "app-without-components",
 		Name:  "deploy",
 		Steps: steps,
-	}, 0)
+	}, 0, "")
 	require.ErrorIs(t, err, bcode.ErrWorkflowConfig)
 	require.Contains(t, err.Error(), "unsupported_job_type")
 	require.Nil(t, resp)
@@ -707,12 +707,12 @@ func TestEnqueueWorkflowRejectsComponentWorkflowWithoutComponents(t *testing.T) 
 
 	store := &enqueueWorkflowDataStore{}
 	svc := &workflowServiceImpl{}
-	_, err = svc.enqueueWorkflowTaskWithStore(context.Background(), store, &model.Workflow{
+	_, err = svc.enqueueWorkflowTaskWithStoreAndIdempotencyKey(context.Background(), store, &model.Workflow{
 		ID:    "wf-component",
 		AppID: "app-without-components",
 		Name:  "deploy",
 		Steps: steps,
-	}, 0)
+	}, 0, "")
 	require.ErrorIs(t, err, bcode.ErrApplicationNoComponents)
 	require.Len(t, store.queues, 0)
 }
@@ -737,12 +737,12 @@ func TestEnqueueWorkflowRejectsMixedApprovalAndComponentWorkflowWithoutComponent
 
 	store := &enqueueWorkflowDataStore{}
 	svc := &workflowServiceImpl{}
-	_, err = svc.enqueueWorkflowTaskWithStore(context.Background(), store, &model.Workflow{
+	_, err = svc.enqueueWorkflowTaskWithStoreAndIdempotencyKey(context.Background(), store, &model.Workflow{
 		ID:    "wf-mixed",
 		AppID: "app-without-components",
 		Name:  "approval-then-deploy",
 		Steps: steps,
-	}, 0)
+	}, 0, "")
 	require.ErrorIs(t, err, bcode.ErrApplicationNoComponents)
 	require.Len(t, store.queues, 0)
 }

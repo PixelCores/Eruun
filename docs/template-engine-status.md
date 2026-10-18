@@ -6,12 +6,12 @@
 
 当前代码库没有独立的 `pkg/apiserver/utils/template` 模板引擎包，也没有单独的模板引擎扩展抽象文件。
 
-模板相关能力主要体现在两类代码中：
+模板相关能力主要体现在应用模板克隆链路与已有应用模型中：
 
-- 应用模板克隆链路：`pkg/apiserver/domain/service/application_template_clone.go`
-- 模板模型定义：`pkg/apiserver/domain/model/template.go`
+- 应用模板克隆链路：`pkg/apiserver/domain/service/application/application_template_clone.go`
+- 模板来源及实例：`pkg/apiserver/domain/model/applications.go` 中的 `Applications` 和 `ApplicationComponent`，复用应用与组件存储。
 
-其中，对外创建应用请求中的 `components[].tmp` 会被解析为 `TemplateRef`，进入 `CreateApplications` 后由 `resolveComponents` 与 `cloneComponentsFromTemplate` 展开为实际组件创建请求。
+其中，对外创建应用请求中的 `components[].tmp` 会被解析为 `TemplateRef`，进入 `CreateApplications` 后由 `resolveComponentsWithSourceIndexes` 与 `cloneComponentsFromTemplate` 展开为实际组件创建请求。
 
 ## 术语边界
 
@@ -27,6 +27,6 @@
 
 ## 维护约定
 
-当前不新增独立模板引擎抽象。后续维护应优先保持现有应用模板克隆链路和模型定义清晰，避免在没有接线需求时增加预留实体。
+当前不新增独立模板引擎抽象。后续维护应优先保持现有应用模板克隆链路和应用、组件模型定义清晰，避免在没有接线需求时增加预留实体。
 
 若未来确实需要平台化模板渲染或扩展机制，应先明确对外 API、领域契约、存储模型和调用路径，再引入新的包或接口。

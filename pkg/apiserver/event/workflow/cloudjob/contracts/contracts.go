@@ -58,9 +58,6 @@ type CloudAction interface {
 	Run(ctx context.Context, runtime CloudRuntime, req *CloudJobRequest, state map[string]interface{}) (*CloudActionProgress, error)
 }
 
-// CloudActionFactory builds a CloudAction implementation on demand.
-type CloudActionFactory func() CloudAction
-
 func CloneCloudParams(src map[string]interface{}) map[string]interface{} {
 	if len(src) == 0 {
 		return nil
