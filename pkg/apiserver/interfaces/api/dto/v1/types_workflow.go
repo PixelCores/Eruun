@@ -19,11 +19,6 @@ type WorkflowProperties struct {
 	InitSQLURL string   `json:"initSqlUrl,omitempty"`
 }
 
-type WorkflowTraits struct {
-	Type       string                 `json:"type"`
-	Properties map[string]interface{} `json:"properties"`
-}
-
 type CreateWorkflowSubStepRequest struct {
 	SchedulingClass string             `json:"schedulingClass,omitempty"`
 	Name            string             `json:"name"`
@@ -91,39 +86,6 @@ func (r *CreateWorkflowSubStepRequest) SetWorkflowPropertiesList(properties []Wo
 	if len(properties) > 0 {
 		r.Properties = properties[0]
 	}
-}
-
-type CreateConfigMapFromMapRequest struct {
-	Name        string            `json:"name" validate:"required"`
-	Namespace   string            `json:"namespace"`
-	Labels      map[string]string `json:"labels,omitempty"`
-	Annotations map[string]string `json:"annotations,omitempty"`
-	Data        map[string]string `json:"data" validate:"required"`
-}
-
-type CreateConfigMapFromURLRequest struct {
-	Name        string            `json:"name" validate:"required"`
-	Namespace   string            `json:"namespace"`
-	Labels      map[string]string `json:"labels,omitempty"`
-	Annotations map[string]string `json:"annotations,omitempty"`
-	URL         string            `json:"url" validate:"required,url"`
-	FileName    string            `json:"fileName,omitempty"`
-}
-
-type ConfigMapResponse struct {
-	Name        string            `json:"name"`
-	Namespace   string            `json:"namespace"`
-	Labels      map[string]string `json:"labels,omitempty"`
-	Annotations map[string]string `json:"annotations,omitempty"`
-	Data        map[string]string `json:"data"`
-	CreateTime  time.Time         `json:"createTime"`
-	UpdateTime  time.Time         `json:"updateTime"`
-}
-
-type WorkflowPolicies struct {
-	Policies  []string `json:"policies"`
-	Path      string   `json:"path,omitempty"`
-	Container string   `json:"container,omitempty"`
 }
 
 type WorkflowCallback struct {

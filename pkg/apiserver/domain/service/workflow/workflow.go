@@ -53,12 +53,6 @@ type WorkflowService interface {
 
 const cancelWorkflowTaskCASMaxAttempts = 3
 
-const terminalCallbackReconciledReason = wf.TerminalCallbackReconciledReason
-
-func terminalCallbackPendingReason(reason string) string {
-	return wf.TerminalCallbackPendingReason(reason)
-}
-
 type workflowServiceImpl struct {
 	Store                     datastore.DataStore  `inject:"datastore"`
 	KubeClient                kubernetes.Interface `inject:"kubeClient"`
@@ -1822,10 +1816,6 @@ func decodeWorkflowCallbackForTerminal(raw *model.JSONStruct, target interface{}
 		return err
 	}
 	return json.Unmarshal(data, target)
-}
-
-func (w *workflowServiceImpl) enqueueWorkflowTaskWithStore(ctx context.Context, store datastore.DataStore, workflow *model.Workflow, executeAt int64) (*apis.ExecWorkflowResponse, error) {
-	return w.enqueueWorkflowTaskWithStoreAndIdempotencyKey(ctx, store, workflow, executeAt, "")
 }
 
 func (w *workflowServiceImpl) enqueueWorkflowTaskWithStoreAndIdempotencyKey(ctx context.Context, store datastore.DataStore, workflow *model.Workflow, executeAt int64, idempotencyKey string) (*apis.ExecWorkflowResponse, error) {

@@ -34,23 +34,6 @@ type ApplicationResources struct {
 	Replicas int32  `json:"replicas"`
 }
 
-// ProjectBase project base model
-type ProjectBase struct {
-	Name        string    `json:"name"`
-	Alias       string    `json:"alias"`
-	Description string    `json:"description"`
-	CreateTime  time.Time `json:"createTime"`
-	UpdateTime  time.Time `json:"updateTime"`
-	Owner       NameAlias `json:"owner,omitempty"`
-	Namespace   string    `json:"namespace"`
-}
-
-// NameAlias name and alias
-type NameAlias struct {
-	Name  string `json:"name"`
-	Alias string `json:"alias"`
-}
-
 type CreateApplicationsRequest struct {
 	ID          string                      `json:"id,omitempty"`
 	Name        string                      `json:"name" validate:"checkname"`
@@ -153,11 +136,6 @@ type BatchGetApplicationsResponse struct {
 type ListApplicationsQuery struct {
 	Page     int `form:"page"`
 	PageSize int `form:"pageSize"`
-}
-
-type ApplicationsDeployRequest struct {
-	WorkflowName string `json:"workflowName"`
-	Name         string `json:"appName"`
 }
 
 type CleanupApplicationResourcesResponse struct {

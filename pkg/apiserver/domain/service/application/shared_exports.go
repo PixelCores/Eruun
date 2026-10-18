@@ -11,11 +11,6 @@ import (
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 )
 
-func ResolveComponents(ctx context.Context, appRepo repository.ApplicationRepository, componentRepo repository.ComponentRepository, namespace, appName string, reqComponents []apisv1.CreateComponentRequest, cfg *config.Config) ([]apisv1.CreateComponentRequest, error) {
-	components, _, err := resolveComponentsWithSourceIndexes(ctx, appRepo, componentRepo, namespace, appName, reqComponents, cfg)
-	return components, err
-}
-
 func ResolveComponentsWithSourceIndexes(ctx context.Context, appRepo repository.ApplicationRepository, componentRepo repository.ComponentRepository, namespace, appName string, reqComponents []apisv1.CreateComponentRequest, cfg *config.Config) ([]apisv1.CreateComponentRequest, []int, error) {
 	return resolveComponentsWithSourceIndexes(ctx, appRepo, componentRepo, namespace, appName, reqComponents, cfg)
 }

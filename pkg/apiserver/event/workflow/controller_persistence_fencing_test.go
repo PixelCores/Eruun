@@ -58,7 +58,9 @@ func TestUpdateWorkflowTaskStopsWithoutPersistingAfterExecutionContextCancellati
 	ctx, cancel := context.WithCancelCause(context.Background())
 	cancel(repository.ErrWorkflowLeaseRenewalFailed)
 	ctl.ctx = ctx
-	ctl.setStatus(config.StatusCancelled)
+	ctl.mutateTask(func(task *model.WorkflowQueue) {
+		task.Status = config.StatusCancelled
+	})
 
 	ctl.updateWorkflowTask()
 

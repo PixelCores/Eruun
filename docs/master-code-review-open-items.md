@@ -57,7 +57,7 @@
 | Q-005 | Closed | Job result enqueue 失败不会进入本地执行器；outbox 保持在队列状态机中并由固定结果队列路径重试。 | `pkg/apiserver/event/workflow/job/job_result_outbox.go` |
 | S-006 | Closed | Informer 状态同步已接入 `BoundedExecutor`，并有 overflow replay 路径。 | `pkg/apiserver/infrastructure/informer/waiter.go:33-34`、`pkg/apiserver/infrastructure/informer/waiter.go:100-105`、`pkg/apiserver/infrastructure/informer/waiter.go:636-650` |
 | S-002 | Closed | `scanNamespaceResources` 已委托到表驱动扫描流程。 | `pkg/apiserver/domain/service/namespace_import.go:1082-1083`、`pkg/apiserver/domain/service/namespace_import_scan.go:15-48` |
-| S-004 | Obsolete | 当前代码库未发现旧文档描述的独立模板引擎扩展抽象文件；模板相关能力主要体现在应用模板克隆与模型定义中。 | `pkg/apiserver/domain/service/application_template_clone.go`、`pkg/apiserver/domain/model/template.go` |
+| S-004 | Obsolete | 当前代码库没有独立模板引擎扩展抽象；模板克隆复用应用和组件模型。 | `pkg/apiserver/domain/service/application/application_template_clone.go`、`pkg/apiserver/domain/model/applications.go` 中的 `Applications` / `ApplicationComponent` |
 
 ### 工作流调度
 

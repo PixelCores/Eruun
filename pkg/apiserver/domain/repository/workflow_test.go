@@ -152,25 +152,18 @@ func (s *updateTaskFieldStore) CompareAndSwap(_ context.Context, _ datastore.Ent
 	return s.swapped, nil
 }
 
-func TestUpdateTaskFieldsWritesZeroValuesWithMapUpdates(t *testing.T) {
+func TestUpdateTaskFieldsIfStatusWritesZeroValuesWithMapUpdates(t *testing.T) {
 	store := &updateTaskFieldStore{swapped: true}
-	err := UpdateTaskFields(context.Background(), store, "task-1", map[string]interface{}{
+	updated, err := UpdateTaskFieldsIfStatus(context.Background(), store, "task-1", config.StatusWaitingApprove, map[string]interface{}{
 		"approval_pending":      false,
 		"pending_approval_step": "",
 	})
 	require.NoError(t, err)
-	require.Equal(t, "task_id", store.conditionField)
-	require.Equal(t, "task-1", store.conditionValue)
+	require.True(t, updated)
+	require.Equal(t, "status", store.conditionField)
+	require.Equal(t, config.StatusWaitingApprove, store.conditionValue)
 	require.Equal(t, false, store.updates["approval_pending"])
 	require.Equal(t, "", store.updates["pending_approval_step"])
-}
-
-func TestUpdateTaskFieldsReturnsNotExistWhenCASNotSwapped(t *testing.T) {
-	store := &updateTaskFieldStore{swapped: false}
-	err := UpdateTaskFields(context.Background(), store, "task-404", map[string]interface{}{
-		"status": "cancelled",
-	})
-	require.ErrorIs(t, err, datastore.ErrRecordNotExist)
 }
 
 func TestUpdateTaskFieldsIfStatusUsesStatusCondition(t *testing.T) {

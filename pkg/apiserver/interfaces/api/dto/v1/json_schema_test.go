@@ -2,6 +2,8 @@ package v1
 
 import (
 	"encoding/json"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
@@ -26,6 +28,13 @@ func TestCanonicalJSONSchemaDefinesStrictPublicProfiles(t *testing.T) {
 	require.Contains(t, applicationProperties, "components")
 	require.NotContains(t, applicationProperties, "component")
 	require.Equal(t, float64(31), applicationProperties["name"].(map[string]any)["maxLength"])
+	applicationNamePattern := regexp.MustCompile(applicationProperties["name"].(map[string]any)["pattern"].(string))
+	for _, name := range []string{"demo.app", "demo-app", strings.Repeat("a", 31)} {
+		require.True(t, applicationNamePattern.MatchString(name), "application name %q must match the write API", name)
+	}
+	for _, name := range []string{"demo..app", "demo.-app", "Demo.app"} {
+		require.False(t, applicationNamePattern.MatchString(name), "invalid application name %q", name)
+	}
 	require.Equal(t, "array", applicationProperties["components"].(map[string]any)["type"])
 	workflowProperties := definitions["Workflow"].(map[string]any)["properties"].(map[string]any)
 	require.Contains(t, workflowProperties, "workflow")

@@ -442,21 +442,6 @@ func versionUpdateCleanupJobsForTask(ctx context.Context, store datastore.DataSt
 	return jobs, nil
 }
 
-func updatePendingStatefulSetPVCDeletion(
-	pending map[string]map[string]*pendingStatefulSetPVCDeletion,
-	task *model.WorkflowQueue,
-	jobs []*model.JobInfo,
-	cleanupComponent model.VersionUpdateCleanupComponent,
-) (bool, error) {
-	return updatePendingStatefulSetDeletion(
-		pending,
-		task,
-		jobs,
-		model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion,
-		cleanupComponent,
-	)
-}
-
 func updatePendingStatefulSetDeletion(
 	pending map[string]map[string]*pendingStatefulSetPVCDeletion,
 	task *model.WorkflowQueue,

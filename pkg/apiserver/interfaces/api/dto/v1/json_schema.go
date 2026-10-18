@@ -311,6 +311,7 @@ func (b *schemaBuilder) applyFieldConstraints(definition, field string, schema m
 		schema["minLength"] = 2
 		schema["maxLength"] = 63
 		if definition == "Application" {
+			schema["pattern"] = spec.APINamePattern
 			schema["maxLength"] = datastore.PrimaryKeyMaxLength
 		}
 	case definition == "Component" && field == "type":

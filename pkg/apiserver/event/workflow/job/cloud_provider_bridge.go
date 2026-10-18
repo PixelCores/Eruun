@@ -38,12 +38,3 @@ func getCloudProvider(name string) (CloudProvider, bool) {
 func normalizeProviderName(name string) string {
 	return wfcloudjob.NormalizeProviderName(name)
 }
-
-func resetCloudProvidersForTest() {
-	wfcloudjob.ResetCloudProvidersForTest()
-}
-
-func restoreBuiltinCloudProvidersForTest() {
-	wfcloudjob.ResetCloudProvidersForTest()
-	registerBuiltinCloudProviders()
-}

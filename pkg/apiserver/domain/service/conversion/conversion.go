@@ -43,10 +43,6 @@ func NewConversionService() ConversionService {
 	return &conversionServiceImpl{}
 }
 
-func NewConversionServiceWithValidation(validationService ValidationService) ConversionService {
-	return &conversionServiceImpl{ValidationService: validationService}
-}
-
 func (c *conversionServiceImpl) ConvertKubeResources(ctx context.Context, req v1.ConvertApplicationsRequest) (*v1.ConvertApplicationsResponse, error) {
 	var urlPolicy *spec.URLSecurityPolicySpec
 	var err error

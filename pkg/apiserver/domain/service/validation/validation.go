@@ -23,7 +23,8 @@ import (
 var (
 	// DNS-1123 subdomain pattern: lowercase alphanumeric, may contain hyphens
 	// Must start and end with alphanumeric character
-	nameRegexp = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+	nameRegexp            = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+	applicationNameRegexp = regexp.MustCompile(spec.APINamePattern)
 
 	// Kubernetes resource quantity pattern for storage size validation
 	storageQuantityRegexp = regexp.MustCompile(`^[0-9]+(\.[0-9]+)?(Ki|Mi|Gi|Ti|Pi|Ei|K|M|G|T|P|E)?$`)
@@ -126,7 +127,7 @@ func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.C
 	}
 
 	// 1. Validate application name
-	errors = append(errors, v.validateName(effectiveReq.Name, "name", datastore.PrimaryKeyMaxLength, false)...)
+	errors = append(errors, v.validateName(effectiveReq.Name, "name", datastore.PrimaryKeyMaxLength, false, applicationNameRegexp)...)
 	if _, ok := workflowconfig.NormalizeWorkflowFailurePolicy(effectiveReq.FailurePolicy); !ok {
 		errors = append(errors, apisv1.ValidationError{
 			Field:   "failurePolicy",
@@ -283,7 +284,7 @@ func (v *validationServiceImpl) validateTryApplicationResourceNames(ctx context.
 }
 
 // validateName validates a name against the requested length and case rules.
-func (v *validationServiceImpl) validateName(name, field string, maxLength int, allowUppercase bool) []apisv1.ValidationError {
+func (v *validationServiceImpl) validateName(name, field string, maxLength int, allowUppercase bool, pattern *regexp.Regexp) []apisv1.ValidationError {
 	var errors []apisv1.ValidationError
 
 	if name == "" {
@@ -315,11 +316,15 @@ func (v *validationServiceImpl) validateName(name, field string, maxLength int, 
 	if allowUppercase {
 		checkedName = strings.ToLower(name)
 	}
-	if !nameRegexp.MatchString(checkedName) {
+	if !pattern.MatchString(checkedName) {
+		format := "lowercase alphanumeric, may contain hyphens, must start and end with alphanumeric"
+		if pattern == applicationNameRegexp {
+			format = "lowercase alphanumeric labels separated by dots, may contain hyphens, each label must start and end with alphanumeric"
+		}
 		errors = append(errors, apisv1.ValidationError{
 			Field:   field,
 			Code:    apisv1.ErrCodeInvalidNameFormat,
-			Message: fmt.Sprintf("%s must match DNS-1123 subdomain (lowercase alphanumeric, may contain hyphens, must start and end with alphanumeric)", field),
+			Message: fmt.Sprintf("%s must match DNS-1123 subdomain (%s)", field, format),
 		})
 	}
 
@@ -332,7 +337,7 @@ func (v *validationServiceImpl) validateComponent(comp apisv1.CreateComponentReq
 
 	// Validate component name
 	nameField := fmt.Sprintf("%s.name", fieldPrefix)
-	errors = append(errors, v.validateName(comp.Name, nameField, maxNameLength, true)...)
+	errors = append(errors, v.validateName(comp.Name, nameField, maxNameLength, true, nameRegexp)...)
 
 	// Check for duplicate component names
 	lowerName := strings.ToLower(comp.Name)

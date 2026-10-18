@@ -57,7 +57,7 @@ spec:
     - port: 80
       targetPort: 80
 `
-	converter := conversion.NewConversionServiceWithValidation(nil)
+	converter := conversion.NewConversionService()
 
 	resp, err := converter.ConvertKubeResources(context.Background(), apis.ConvertApplicationsRequest{YAML: yamlText})
 
