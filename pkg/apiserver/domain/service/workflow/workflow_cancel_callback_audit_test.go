@@ -1304,6 +1304,39 @@ func TestReconcileWorkflowTerminalCallbacksCompletesSettledIntentWithoutResendin
 	require.Equal(t, wf.TerminalCallbackReconciledReason, store.task.SchedulingReason)
 }
 
+func TestReconcileWorkflowTerminalCallbacksUsesFailureFallbackKey(t *testing.T) {
+	var callbackCount int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&callbackCount, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	// Without a cancelled URL, cancellation is delivered as the failure event.
+	callback, err := model.NewJSONStructByStruct(&model.WorkflowCallback{Failure: server.URL})
+	require.NoError(t, err)
+	task := &model.WorkflowQueue{
+		TaskID: "task-failure-fallback", AppID: "app-1", WorkflowID: "wf-failure-fallback",
+		WorkflowName: "failure-fallback", Type: config.WorkflowTaskTypeWorkflow,
+		Status: config.StatusCancelled, RunGeneration: 3,
+		SchedulingReason: wf.TerminalCallbackPendingReason("manual cancel"),
+	}
+	store := &statusDataStore{workflow: &model.Workflow{ID: task.WorkflowID, AppID: task.AppID, Callback: callback}}
+	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
+	prepareTerminalCallbackFixture(t, svc, store, task, config.StatusCancelled)
+	key := workflowjob.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, "failure")
+	require.NoError(t, svc.Store.Add(context.Background(), &model.JobInfo{
+		TaskID: task.TaskID, WorkspaceID: "callback-space", Type: string(config.JobDeployCallback),
+		Status: string(config.StatusCompleted), ExecutionKey: &key, RunGeneration: task.RunGeneration,
+	}))
+
+	reconciled, err := ReconcileWorkflowTerminalCallbacks(context.Background(), svc.Store, svc.Cfg, svc.URLSecurityPolicyProvider)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, reconciled)
+	require.Equal(t, int32(0), atomic.LoadInt32(&callbackCount))
+	require.Equal(t, wf.TerminalCallbackReconciledReason, store.task.SchedulingReason)
+}
+
 func TestReconcileWorkflowTerminalCallbacksCompletesFailedAttemptWithoutRetry(t *testing.T) {
 	var callbackCount int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

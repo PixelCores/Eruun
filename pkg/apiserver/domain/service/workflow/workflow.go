@@ -1473,38 +1473,53 @@ func (w *workflowServiceImpl) triggerWorkflowTerminalCallbackOnApprovalAction(ct
 	if w == nil || w.Store == nil || task == nil {
 		return nil
 	}
+	callback, err := w.loadWorkflowTerminalCallback(ctx, task)
+	if err != nil || callback == nil {
+		return err
+	}
+	return w.runWorkflowTerminalCallback(ctx, task, status, reason, callback)
+}
+
+// loadWorkflowTerminalCallback resolves the callback configuration once, so
+// the recovery key and the sent callback derive from the same terminal event.
+func (w *workflowServiceImpl) loadWorkflowTerminalCallback(ctx context.Context, task *model.WorkflowQueue) (*model.WorkflowCallback, error) {
 	workflowID := strings.TrimSpace(task.WorkflowID)
 	parentCtx := inheritWorkflowCallbackParentContext(ctx)
 	callbackSource := model.WorkflowCallbackSource(task, nil, nil)
 	if callbackSource == nil {
 		if workflowID == "" {
-			return nil
+			return nil, nil
 		}
 		workflow := &model.Workflow{ID: workflowID}
 		loadCtx, cancel := inheritWorkflowCallbackTimeout(parentCtx, 5*time.Second)
 		defer cancel()
 		if err := w.Store.Get(loadCtx, workflow); err != nil {
 			klog.Errorf("load workflow %s for callback failed: %v", workflowID, err)
-			return fmt.Errorf("load workflow %s for callback: %w", workflowID, err)
+			return nil, fmt.Errorf("load workflow %s for callback: %w", workflowID, err)
 		}
 		callbackSource = model.WorkflowCallbackSource(nil, workflow, nil)
 		if callbackSource == nil && strings.TrimSpace(task.AppID) != "" {
 			app := &model.Applications{ID: task.AppID}
 			if err := w.Store.Get(loadCtx, app); err != nil {
 				klog.Errorf("load application %s for callback failed: %v", task.AppID, err)
-				return fmt.Errorf("load application %s for callback: %w", task.AppID, err)
+				return nil, fmt.Errorf("load application %s for callback: %w", task.AppID, err)
 			}
 			callbackSource = model.WorkflowCallbackSource(nil, workflow, app)
 		}
 	}
 	if callbackSource == nil {
-		return nil
+		return nil, nil
 	}
 	var callback model.WorkflowCallback
 	if err := decodeWorkflowCallbackForTerminal(callbackSource, &callback); err != nil {
 		klog.Errorf("decode workflow %s callback failed: %v", workflowID, err)
-		return nil
+		return nil, nil
 	}
+	return &callback, nil
+}
+
+func (w *workflowServiceImpl) runWorkflowTerminalCallback(ctx context.Context, task *model.WorkflowQueue, status config.Status, reason string, callback *model.WorkflowCallback) error {
+	parentCtx := inheritWorkflowCallbackParentContext(ctx)
 	event, targetURL, method := callback.TerminalTarget(status)
 	if targetURL == "" {
 		return nil
@@ -1624,7 +1639,12 @@ func (w *workflowServiceImpl) reconcileWorkflowTerminalCallback(ctx context.Cont
 		return false, nil
 	}
 	callbackReason := wf.TerminalCallbackReason(current.SchedulingReason)
-	callbackKey := workflowjob.TerminalCallbackExecutionKey(current.TaskID, current.RunGeneration, "cancelled")
+	callback, err := w.loadWorkflowTerminalCallback(ctx, current)
+	if err != nil {
+		return false, err
+	}
+	event, _, _ := callback.TerminalTarget(status)
+	callbackKey := workflowjob.TerminalCallbackExecutionKey(current.TaskID, current.RunGeneration, event)
 	active, err := workflowHasActiveChildExecution(ctx, w.Store, current.TaskID)
 	if err != nil {
 		return false, err
@@ -1639,8 +1659,8 @@ func (w *workflowServiceImpl) reconcileWorkflowTerminalCallback(ctx context.Cont
 	if err != nil {
 		return false, err
 	}
-	if !settled {
-		if err := w.triggerWorkflowTerminalCallbackOnApprovalAction(ctx, current, status, callbackReason); err != nil {
+	if !settled && callback != nil {
+		if err := w.runWorkflowTerminalCallback(ctx, current, status, callbackReason, callback); err != nil {
 			return false, err
 		}
 	}
