@@ -321,11 +321,13 @@ func TestDatasetPaginationIsStableAndScoped(t *testing.T) {
 		}
 	}
 	require.Equal(t, []string{"dataset-4", "dataset-3", "dataset-2", "dataset-1", "dataset-0"}, ids)
-	for _, args := range [][2]int{{0, 1}, {1, 0}, {1, 101}} {
+	for _, args := range [][2]int{{0, 1}, {1, 0}, {1, 101}, {10000001, 1}} {
 		_, err := s.ListPage(ctx, "space-a", KindDataset, "", args[0], args[1], "")
 		require.ErrorIs(t, err, ErrInvalidInput)
 	}
-	_, err := s.UploadDataset(ctx, "space-a", "", bytes.NewReader(nil))
+	_, err := s.ListPage(ctx, "space-a", KindDataset, "", 10000000, 100, "")
+	require.NoError(t, err)
+	_, err = s.UploadDataset(ctx, "space-a", "", bytes.NewReader(nil))
 	require.ErrorIs(t, err, ErrInvalidInput)
 }
 

@@ -424,6 +424,41 @@ func TestDefinitionWritesReuseFullSubmissionValidation(t *testing.T) {
 	require.Equal(t, spec.DefaultJobResultPolicy(), *evaluation.Spec.Stages[0].Steps[0].Traits.Evaluation.ResultPolicy)
 }
 
+func TestJobListingsPaginationBounds(t *testing.T) {
+	service, _, ctx := testJobService(t)
+	for _, tc := range []struct {
+		name           string
+		page, pageSize int
+		invalid        bool
+	}{
+		{"minimum", 1, 1, false},
+		{"maximum", 10000000, 100, false},
+		{"page below minimum", 0, 20, true},
+		{"page above maximum", 10000001, 20, true},
+		{"pageSize below minimum", 1, 0, true},
+		{"pageSize above maximum", 1, 101, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Run("ListDefinitions", func(t *testing.T) {
+				_, err := service.ListDefinitions(ctx, tc.page, tc.pageSize)
+				if tc.invalid {
+					require.ErrorIs(t, err, bcode.ErrJobInput)
+				} else {
+					require.NoError(t, err)
+				}
+			})
+			t.Run("List", func(t *testing.T) {
+				_, err := service.List(ctx, "", tc.page, tc.pageSize)
+				if tc.invalid {
+					require.ErrorIs(t, err, bcode.ErrJobInput)
+				} else {
+					require.NoError(t, err)
+				}
+			})
+		})
+	}
+}
+
 func TestJobListingsFilterAndPaginateWithinWorkspace(t *testing.T) {
 	service, raw, ctx := testJobService(t)
 	definition, err := service.CreateDefinition(ctx, DefinitionRequest{JobSpec: commandRequest().JobSpec})

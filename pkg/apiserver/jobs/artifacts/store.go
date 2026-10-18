@@ -274,7 +274,7 @@ func (s *Store) ListPage(ctx context.Context, workspaceID, kind, taskID string, 
 		return nil, err
 	}
 	if page < 1 || pageSize < 1 || pageSize > 100 || page > 10000000 {
-		return nil, fmt.Errorf("%w: page must be positive and pageSize must be 1..100", ErrInvalidInput)
+		return nil, fmt.Errorf("%w: page must be 1..10000000 and pageSize must be 1..100", ErrInvalidInput)
 	}
 	records, err := s.db.List(ctx, &model.JobArtifact{WorkspaceID: workspaceID, Kind: kind, TaskID: taskID, ExecutionKey: executionKey}, &datastore.ListOptions{Page: page, PageSize: pageSize, SortBy: []datastore.SortOption{{Key: "create_time", Order: datastore.SortOrderDescending}, {Key: "id", Order: datastore.SortOrderDescending}}})
 	if err != nil {
