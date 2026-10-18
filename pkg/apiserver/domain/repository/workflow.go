@@ -106,14 +106,6 @@ func CreateWorkflow(ctx context.Context, store datastore.DataStore, workflow *mo
 	return nil
 }
 
-func DelWorkflow(ctx context.Context, store datastore.DataStore, workflow *model.Workflow) error {
-	err := store.Delete(ctx, workflow)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 func DelWorkflowsByAppID(ctx context.Context, store datastore.DataStore, appID string) error {
 	workflows, err := FindWorkflowsByAppID(ctx, store, appID)
 	if err != nil {
@@ -148,14 +140,6 @@ func FindWorkflowsByAppID(ctx context.Context, store datastore.DataStore, appID 
 		workflows = append(workflows, component)
 	}
 	return workflows, nil
-}
-
-func CreateComponents(ctx context.Context, store datastore.DataStore, workflow *model.ApplicationComponent) error {
-	err := store.Add(ctx, workflow)
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func DelComponentsByAppID(ctx context.Context, store datastore.DataStore, appID string) error {

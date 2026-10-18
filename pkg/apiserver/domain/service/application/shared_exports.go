@@ -65,10 +65,6 @@ func ValidateWorkflowCallback(ctx context.Context, cfg *config.Config, provider 
 	return err
 }
 
-func WorkflowCallbackIsEmpty(callback *apisv1.WorkflowCallback) bool {
-	return callbackIsEmpty(callback)
-}
-
 func LoadURLSecurityPolicy(ctx context.Context, provider *urlpolicy.Provider) (*spec.URLSecurityPolicySpec, error) {
 	return loadURLSecurityPolicy(ctx, provider)
 }

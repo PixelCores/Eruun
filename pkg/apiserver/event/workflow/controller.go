@@ -68,7 +68,6 @@ type WorkflowCtl struct {
 	taskPersistenceStopped   bool
 	taskOwnershipLost        bool
 	taskPersistenceUncertain bool
-	terminalCallbackBlocked  bool
 	terminalCallbackOnce     sync.Once
 	Client                   kubernetes.Interface
 	KubeConfig               *rest.Config
@@ -845,7 +844,6 @@ func (w *WorkflowCtl) resetTaskPersistenceForRun() {
 	w.persistedTaskStatus = w.workflowTask.Status
 	w.taskPersistenceStopped = false
 	w.taskPersistenceUncertain = false
-	w.terminalCallbackBlocked = false
 	w.runCancel = nil
 	w.taskOwnershipLost = false
 }

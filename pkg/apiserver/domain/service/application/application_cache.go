@@ -16,11 +16,6 @@ const (
 	templateApplicationListCacheKey = "app:template:list:v5"
 )
 
-// ApplicationComponentsCacheKey returns the cache key for application components query.
-func ApplicationComponentsCacheKey(appID string) string {
-	return applicationComponentsCacheKey(appID)
-}
-
 func applicationComponentsCacheKey(appID string) string {
 	return cacheutil.ApplicationComponentsKey(appID)
 }

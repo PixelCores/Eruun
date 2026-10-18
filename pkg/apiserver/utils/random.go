@@ -7,15 +7,6 @@ import (
 	"time"
 )
 
-func RandStringBytes(n int) string {
-	letterBytes := "abcdefghijklmnopqrstuvwxyz"
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = letterBytes[rand.Intn(len(letterBytes))]
-	}
-	return string(b)
-}
-
 // RandStringByNumLowercase 生成指定长度的随机字符串，包含小写字母和数字
 func RandStringByNumLowercase(n int) string {
 	const letterBytes = "abcdefghijklmnopqrstuvwxyz0123456789"

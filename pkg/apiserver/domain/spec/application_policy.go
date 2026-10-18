@@ -55,19 +55,3 @@ const (
 	// ComponentActionRestart 重启组件工作负载
 	ComponentActionRestart ComponentAction = "restart"
 )
-
-// ParseComponentAction 解析组件操作类型，默认返回更新
-func ParseComponentAction(action string) ComponentAction {
-	switch ComponentAction(action) {
-	case ComponentActionAdd:
-		return ComponentActionAdd
-	case ComponentActionRemove:
-		return ComponentActionRemove
-	case ComponentActionRestart:
-		return ComponentActionRestart
-	case ComponentActionUpdate:
-		return ComponentActionUpdate
-	default:
-		return ComponentActionUpdate
-	}
-}

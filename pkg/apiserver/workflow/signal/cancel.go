@@ -34,14 +34,12 @@ func IsInfrastructureStop(ctx context.Context) bool {
 
 // CancelWatcher coordinates redis-backed cancellation signalling for a workflow task.
 type CancelWatcher struct {
-	cli      *redis.Client
-	key      string
-	stopCh   chan struct{}
-	once     sync.Once
-	wg       sync.WaitGroup
-	state    *cancelState
-	taskID   string
-	cancelFn context.CancelFunc
+	cli    *redis.Client
+	key    string
+	stopCh chan struct{}
+	once   sync.Once
+	wg     sync.WaitGroup
+	state  *cancelState
 }
 
 type cancelState struct {
@@ -61,8 +59,8 @@ func (c *cancelState) get() string {
 	return c.reason
 }
 
-// WatchWithClient establishes a cancellation watcher for the given workflow task.
-// A nil Redis client fails setup so callers do not silently lose cross-process cancellation.
+// WatchWithClient establishes a cancellation watcher using an explicit Redis client.
+// A nil client fails setup so callers do not silently lose cross-process cancellation.
 func WatchWithClient(ctx context.Context, taskID string, cli *redis.Client) (*CancelWatcher, context.Context, context.CancelFunc, error) {
 	taskID = strings.TrimSpace(taskID)
 	if taskID == "" {
@@ -78,7 +76,6 @@ func WatchWithClient(ctx context.Context, taskID string, cli *redis.Client) (*Ca
 		key:    key,
 		stopCh: make(chan struct{}),
 		state:  &cancelState{},
-		taskID: taskID,
 	}
 
 	existing, err := cli.Get(ctx, key).Result()
@@ -88,7 +85,6 @@ func WatchWithClient(ctx context.Context, taskID string, cli *redis.Client) (*Ca
 
 	derivedCtx, cancelFn := context.WithCancel(ctx)
 	derivedCtx = context.WithValue(derivedCtx, cancelStateKey{}, watcher.state)
-	watcher.cancelFn = cancelFn
 	if isCancelledToken(existing) {
 		watcher.state.set(extractCancelReason(existing))
 		cancelFn()
@@ -101,8 +97,8 @@ func WatchWithClient(ctx context.Context, taskID string, cli *redis.Client) (*Ca
 	return watcher, derivedCtx, cancelFn, nil
 }
 
-// CancelWithClient marks the workflow task as cancelled. Running watchers detect
-// the marker and cancel their contexts.
+// CancelWithClient marks the workflow task as cancelled using an explicit Redis client.
+// Running watchers detect the marker and cancel their contexts.
 func CancelWithClient(ctx context.Context, taskID, reason string, cli *redis.Client) error {
 	taskID = strings.TrimSpace(taskID)
 	if taskID == "" {
