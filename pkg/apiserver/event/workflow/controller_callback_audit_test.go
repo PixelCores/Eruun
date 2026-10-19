@@ -49,6 +49,39 @@ func TestCancelledCallbackUsesDurablePendingReason(t *testing.T) {
 	}
 }
 
+func TestCancelledCallbackFailureFallbackKeepsCancellationKey(t *testing.T) {
+	received := make(chan job.CallbackPayload, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		var payload job.CallbackPayload
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+		require.Equal(t, http.MethodPut, r.Method)
+		received <- payload
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	callback, err := model.NewJSONStructByStruct(&model.WorkflowCallback{
+		Failure: server.URL, Methods: map[string]string{"failure": http.MethodPut},
+	})
+	require.NoError(t, err)
+	task := &model.WorkflowQueue{
+		TaskID: "task-cancelled-failure-fallback", WorkflowID: "workflow-1", Status: config.StatusCancelled,
+		Callback: callback,
+	}
+	ctl := newTestWorkflowController(t, task, kubefake.NewSimpleClientset(), &controllerTestStore{})
+
+	ctl.triggerWorkflowCallback(context.Background(), config.StatusCancelled, "manual cancel")
+
+	select {
+	case payload := <-received:
+		require.Equal(t, "failure", payload.Event)
+		require.Equal(t, string(config.StatusCancelled), payload.Status)
+		require.Equal(t, job.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, "cancelled"), payload.ExecutionKey)
+	case <-time.After(2 * time.Second):
+		t.Fatal("cancelled callback with failure fallback was not received")
+	}
+}
+
 func TestCallbackContextUsesDefaultWhenTimeoutIsZero(t *testing.T) {
 	ctx, cancel := callbackContext(context.Background(), 0, 72*time.Hour)
 	defer cancel()

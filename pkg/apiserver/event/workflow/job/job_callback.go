@@ -40,6 +40,14 @@ func TerminalCallbackExecutionKey(taskID string, generation uint64, event string
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(identity)))
 }
 
+// TerminalCallbackKeyEvent keeps cancellation identity independent of callback configuration.
+func TerminalCallbackKeyEvent(status config.Status, event string) string {
+	if status == config.StatusCancelled {
+		return "cancelled"
+	}
+	return event
+}
+
 type CallbackPayload struct {
 	Event        string                  `json:"event"`
 	Status       string                  `json:"status"`
