@@ -10,20 +10,19 @@ import (
 
 // ApplicationBase application base model
 type ApplicationBase struct {
-	WorkspaceID     string               `json:"workspaceID"`
-	ID              string               `json:"id"`
-	Name            string               `json:"name"`
-	Namespace       string               `json:"namespace"`
-	Alias           string               `json:"alias"`
-	Project         string               `json:"project"`
-	Version         string               `json:"version"`
-	Description     string               `json:"description"`
-	CreateTime      time.Time            `json:"createTime"`
-	UpdateTime      time.Time            `json:"updateTime"`
-	Icon            string               `json:"icon"`
-	WorkflowID      string               `json:"workflowId"`
-	TemplateEnabled bool                 `json:"templateEnabled"`
-	Resources       ApplicationResources `json:"resources"`
+	WorkspaceID string               `json:"workspaceID"`
+	ID          string               `json:"id"`
+	Name        string               `json:"name"`
+	Namespace   string               `json:"namespace"`
+	Alias       string               `json:"alias"`
+	Project     string               `json:"project"`
+	Version     string               `json:"version"`
+	Description string               `json:"description"`
+	CreateTime  time.Time            `json:"createTime"`
+	UpdateTime  time.Time            `json:"updateTime"`
+	Icon        string               `json:"icon"`
+	WorkflowID  string               `json:"workflowId"`
+	Resources   ApplicationResources `json:"resources"`
 }
 
 type ApplicationResources struct {
@@ -49,9 +48,6 @@ type CreateApplicationsRequest struct {
 	// FailurePolicy applies to the Application's workflow. Workflow-specific
 	// callback overrides remain available through the Workflow update API.
 	FailurePolicy workflowconfig.WorkflowFailurePolicy `json:"failurePolicy,omitempty"`
-
-	// TemplateEnabled 标记该应用是否允许作为模板被引用
-	TemplateEnabled *bool `json:"templateEnabled,omitempty"`
 }
 
 // CreateAndExecApplicationRequest combines application creation with workflow execution.
@@ -61,22 +57,7 @@ type CreateAndExecApplicationRequest struct {
 	ExecuteAt  int64  `json:"executeAt,omitempty"`
 }
 
-type ConvertApplicationsRequest struct {
-	YAML     string `json:"yaml,omitempty"`
-	FileURL  string `json:"fileUrl,omitempty"`
-	Validate *bool  `json:"validate,omitempty"`
-}
-
-type ConvertApplicationsResponse struct {
-	Components []CreateComponentRequest `json:"components"`
-	Valid      bool                     `json:"valid"`
-	Errors     []ValidationError        `json:"errors,omitempty"`
-	Warnings   []string                 `json:"warnings,omitempty"`
-}
-
 type CreateComponentRequest = spec.Component
-
-type TemplateRef = spec.TemplateRef
 
 type CreateWorkflowStepRequest struct {
 	SchedulingClass string                         `json:"schedulingClass,omitempty"`
@@ -200,22 +181,6 @@ type StartApplicationDeploymentsResponse struct {
 	StartedResources []string `json:"startedResources"`
 	SkippedResources []string `json:"skippedResources,omitempty"`
 	FailedResources  []string `json:"failedResources,omitempty"`
-}
-
-// DatabaseResetRequest requests a workflow-backed reset of selected database components.
-type DatabaseResetRequest struct {
-	Components         []string `json:"components" validate:"required,min=1,dive,required"`
-	InitSQLURL         string   `json:"initSqlUrl,omitempty"`
-	initSQLURLProvided bool
-}
-
-// DatabaseResetResponse reports the queued database reset workflow task.
-type DatabaseResetResponse struct {
-	AppID              string   `json:"appId"`
-	WorkflowID         string   `json:"workflowId"`
-	TaskID             string   `json:"taskId"`
-	DatabaseComponents []string `json:"databaseComponents"`
-	RestartComponents  []string `json:"restartComponents"`
 }
 
 type ExportComponentFilesRequest struct {

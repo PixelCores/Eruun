@@ -3,7 +3,6 @@ package model
 import "encoding/json"
 
 const (
-	SystemSettingTypeAliyunCloud       = "aliyunCloud"
 	SystemSettingTypeURLSecurityPolicy = "urlSecurityPolicy"
 	SystemSettingTypePodRestartMonitor = "podRestartMonitor"
 	SystemSettingTypeWorkflowScheduler = "workflow_scheduler"

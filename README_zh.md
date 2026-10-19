@@ -57,7 +57,6 @@ Eruun 采用 OAM 启发的「组件 + Traits + 工作流」模型，提供应用
 | `store` | StatefulSet，承载需要稳定身份或持久化存储的服务 |
 | `job` | 应用内 Kubernetes Job |
 | `config` / `secret` | ConfigMap / Secret |
-| `cloudjob` | 引擎中的已注册 Provider/Action 扩展；当前空间应用策略拒绝提交 |
 
 以下是组件模型已有的 Trait 字段。**字段存在不代表任意空间都获准使用**；平台会继续校验空间、网络、存储和容器权限。
 
@@ -114,8 +113,8 @@ flowchart TB
 ## 能力边界与路线图
 
 - **产品交付**：仓库提供服务端运行时、Helm/Manifest 和 API 示例。客户端使用 `curl` 或 gRPC 接入；Eruun 不提供客户端命令行应用，平台界面与业务审批系统由接入方建设。
-- **Kubernetes 边界**：需要已有集群。当前不是集群安装器、多集群控制平台或通用云资源管理平台；已有 CloudJob 扩展不代表通用 AI Provider 已可用。
-- **权限边界**：平台登录权限、工作负载 Kubernetes 身份与容器权限分别校验。当前空间策略拒绝特权/宿主机能力、跨 namespace、额外 RBAC、CloudJob、NodePort/LoadBalancer 等请求；网络隔离依赖支持 NetworkPolicy 的 CNI。详见 [空间安全契约](docs/account-auth-workspaces.md)。
+- **Kubernetes 边界**：需要已有集群。当前不是集群安装器、多集群控制平台或通用云资源管理平台。
+- **权限边界**：平台登录权限、工作负载 Kubernetes 身份与容器权限分别校验。当前空间策略拒绝特权/宿主机能力、跨 namespace、额外 RBAC、NodePort/LoadBalancer 等请求；网络隔离依赖支持 NetworkPolicy 的 CNI。详见 [空间安全契约](docs/account-auth-workspaces.md)。
 - **工作流边界**：当前没有通用步骤输出数据流、`dependsOn` 或条件分支契约。独立 `command` 不支持 cron、延迟执行或失败自动重跑；周期执行使用 Workflow 调度或可复用 Job 定义。
 - **评测边界**：`traits.eval` 使用固定 Harbor 适配，模型是评测对象，`agent` 指定执行任务的 harness。平台拉取预构建镜像，不在线构建任务包中的 Dockerfile，也不接受任意评测框架或 Python adapter。该 Trait 仅适用于独立或应用顶层 `job`。评测奖励与任务执行成功是不同结果。
 - **AI 能力边界**：已有资源声明和容器执行基础，不等于已有 Agent 会话/记忆、MCP 授权审计、vLLM 专用部署或 GPU 感知调度能力。

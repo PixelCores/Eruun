@@ -39,7 +39,6 @@ func TestComponentSpecPreservesPersistedInput(t *testing.T) {
 	require.Equal(t, "logger", result.Traits.Sidecar[0].Name)
 	require.Equal(t, "logger:1", result.Traits.Sidecar[0].Image)
 	require.NotNil(t, result.Traits.Envs)
-	require.Nil(t, result.Template)
 
 	// Mutating the decoded input must not mutate the persistence snapshot.
 	result.Properties.Secret["token"] = "changed"

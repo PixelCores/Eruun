@@ -137,8 +137,7 @@ func extractPolicyNames(policies []Policies) []string {
 }
 
 type Policies struct {
-	Policies   []string `json:"policies"`
-	InitSQLURL string   `json:"initSqlUrl,omitempty"`
+	Policies []string `json:"policies"`
 }
 
 func (w *Workflow) PrimaryKey() string {

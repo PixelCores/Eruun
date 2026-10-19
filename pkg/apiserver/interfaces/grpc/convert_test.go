@@ -14,10 +14,9 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
-func TestTypedApplicationRoundTripAndPresence(t *testing.T) {
-	falseValue := false
+func TestTypedApplicationRoundTrip(t *testing.T) {
 	input := apis.CreateApplicationsRequest{
-		Name: "demo", Namespace: "team", TemplateEnabled: &falseValue,
+		Name: "demo", Namespace: "team",
 		Components: []apis.CreateComponentRequest{{
 			Name: "api", Image: "registry.example.com/demo:1.0.0", Replicas: 0,
 			Properties: spec.Properties{Env: map[string]string{"MODE": "test"}},
@@ -26,23 +25,13 @@ func TestTypedApplicationRoundTripAndPresence(t *testing.T) {
 	}
 	message, err := encodeTypedResponse(input, &eruunv1.AppDTOCreateApplicationsRequest{})
 	require.NoError(t, err)
-	require.True(t, message.ProtoReflect().Has(message.ProtoReflect().Descriptor().Fields().ByName("template_enabled")))
-	require.False(t, message.GetTemplateEnabled())
 	require.Len(t, message.Components, 1)
 	require.Equal(t, int32(0), message.Components[0].Replicas)
 	decoded, err := decodeTypedRequest[apis.CreateApplicationsRequest](message)
 	require.NoError(t, err)
 	require.Equal(t, input.Name, decoded.Name)
-	require.NotNil(t, decoded.TemplateEnabled)
-	require.False(t, *decoded.TemplateEnabled)
 	require.Equal(t, input.Components[0].Traits.Resources.CPU, decoded.Components[0].Traits.Resources.CPU)
 	require.Equal(t, input.Components[0].Properties.Env, decoded.Components[0].Properties.Env)
-
-	absent := &eruunv1.AppDTOCreateApplicationsRequest{Name: "demo"}
-	require.False(t, absent.ProtoReflect().Has(absent.ProtoReflect().Descriptor().Fields().ByName("template_enabled")))
-	decodedAbsent, err := decodeTypedRequest[apis.CreateApplicationsRequest](absent)
-	require.NoError(t, err)
-	require.Nil(t, decodedAbsent.TemplateEnabled)
 }
 
 func TestTypedNestedDynamicFieldsAndEmbeddedRequest(t *testing.T) {
@@ -143,20 +132,4 @@ func TestTypedRequestPreservesExplicitEmptyOptionalStrings(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, selectedUpdate.FailurePolicySet)
 	require.Equal(t, selectedPolicy, string(selectedUpdate.FailurePolicy))
-
-	reset := &eruunv1.AppDTODatabaseResetRequest{Components: []string{"mysql"}, InitSqlurl: &empty}
-	require.True(t, reset.ProtoReflect().Has(reset.ProtoReflect().Descriptor().Fields().ByName("init_sqlurl")))
-	resetRequest, err := decodeTypedRequest[apis.DatabaseResetRequest](reset)
-	require.NoError(t, err)
-	require.True(t, resetRequest.InitSQLURLProvided())
-	require.Empty(t, resetRequest.InitSQLURL)
-
-	omittedReset, err := decodeTypedRequest[apis.DatabaseResetRequest](&eruunv1.AppDTODatabaseResetRequest{Components: []string{"mysql"}})
-	require.NoError(t, err)
-	require.False(t, omittedReset.InitSQLURLProvided())
-	url := "https://files.example/game.sql"
-	selectedReset, err := decodeTypedRequest[apis.DatabaseResetRequest](&eruunv1.AppDTODatabaseResetRequest{Components: []string{"mysql"}, InitSqlurl: &url})
-	require.NoError(t, err)
-	require.True(t, selectedReset.InitSQLURLProvided())
-	require.Equal(t, url, selectedReset.InitSQLURL)
 }

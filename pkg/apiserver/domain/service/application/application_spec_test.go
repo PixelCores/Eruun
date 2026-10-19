@@ -17,7 +17,7 @@ import (
 func TestGetApplicationSpecRoundTripPreservesIndependentWorkflowCallback(t *testing.T) {
 	store := newInMemoryAppStore()
 	store.apps["app-1"] = &model.Applications{
-		ID: "app-1", Name: "demo", Namespace: "default", Version: "1.2.3", TemplateEnabled: true,
+		ID: "app-1", Name: "demo", Namespace: "default", Version: "1.2.3",
 		Callback: mustJSONStruct(&model.WorkflowCallback{Success: "https://example.com/app-success"}),
 	}
 	store.components["web"] = &model.ApplicationComponent{

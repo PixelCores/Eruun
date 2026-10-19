@@ -53,8 +53,8 @@ func resourceFreeJob(kind string) bool {
 	case config.JobDeployService, config.JobDeployPVC, config.JobDeployConfigMap, config.JobDeploySecret,
 		config.JobDeployIngress, config.JobDeployServiceAccount, config.JobDeployRole, config.JobDeployRoleBinding,
 		config.JobDeployClusterRole, config.JobDeployClusterRoleBinding,
-		config.JobDeployCloud, config.JobDeployCallback, config.JobCleanupResources,
-		config.JobDatabaseReset, config.JobVersionRestart:
+		config.JobDeployCallback, config.JobCleanupResources,
+		config.JobVersionRestart:
 		return true
 	default:
 		return false

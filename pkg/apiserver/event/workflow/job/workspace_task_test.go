@@ -66,7 +66,7 @@ func TestApplicationTaskIdentity(t *testing.T) {
 	_, err = PrepareTask(task, "app", w, cfg)
 	require.ErrorIs(t, err, bcode.ErrForbidden)
 	task.AppID = "app"
-	task.JobType = string(config.JobDeployCloud)
+	task.JobType = "unknown_deploy"
 	_, err = PrepareTask(task, "app", w, cfg)
 	require.ErrorIs(t, err, bcode.ErrForbidden)
 }

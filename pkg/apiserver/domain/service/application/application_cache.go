@@ -12,8 +12,7 @@ import (
 )
 
 const (
-	applicationListCacheKey         = "app:list:v4"
-	templateApplicationListCacheKey = "app:template:list:v5"
+	applicationListCacheKey = "app:list:v4"
 )
 
 func applicationComponentsCacheKey(appID string) string {
@@ -71,7 +70,6 @@ func (c *applicationsServiceImpl) invalidateCacheKey(ctx context.Context, key st
 
 func (c *applicationsServiceImpl) invalidateApplicationListCaches(ctx context.Context) {
 	c.invalidateCacheKey(ctx, scopedListCacheKey(ctx, applicationListCacheKey))
-	c.invalidateCacheKey(ctx, scopedListCacheKey(ctx, templateApplicationListCacheKey))
 }
 
 func (c *applicationsServiceImpl) invalidateApplicationComponentsCache(ctx context.Context, appID string) {

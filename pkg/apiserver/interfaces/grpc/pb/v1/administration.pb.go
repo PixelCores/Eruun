@@ -407,442 +407,6 @@ func (x *DeleteSettingResponse) GetType() string {
 	return ""
 }
 
-type ListProgrammingLanguagesRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ListProgrammingLanguagesRequest) Reset() {
-	*x = ListProgrammingLanguagesRequest{}
-	mi := &file_eruun_v1_administration_proto_msgTypes[8]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ListProgrammingLanguagesRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ListProgrammingLanguagesRequest) ProtoMessage() {}
-
-func (x *ListProgrammingLanguagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_administration_proto_msgTypes[8]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ListProgrammingLanguagesRequest.ProtoReflect.Descriptor instead.
-func (*ListProgrammingLanguagesRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_administration_proto_rawDescGZIP(), []int{8}
-}
-
-type ProgrammingLanguageIDRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ProgrammingLanguageIDRequest) Reset() {
-	*x = ProgrammingLanguageIDRequest{}
-	mi := &file_eruun_v1_administration_proto_msgTypes[9]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ProgrammingLanguageIDRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ProgrammingLanguageIDRequest) ProtoMessage() {}
-
-func (x *ProgrammingLanguageIDRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_administration_proto_msgTypes[9]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ProgrammingLanguageIDRequest.ProtoReflect.Descriptor instead.
-func (*ProgrammingLanguageIDRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_administration_proto_rawDescGZIP(), []int{9}
-}
-
-func (x *ProgrammingLanguageIDRequest) GetId() string {
-	if x != nil {
-		return x.Id
-	}
-	return ""
-}
-
-type CreateProgrammingLanguageRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Version       string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
-	Enabled       *bool                  `protobuf:"varint,3,opt,name=enabled,proto3,oneof" json:"enabled,omitempty"`
-	CpuReq        string                 `protobuf:"bytes,4,opt,name=cpu_req,json=cpuReq,proto3" json:"cpu_req,omitempty"`
-	MemReq        string                 `protobuf:"bytes,5,opt,name=mem_req,json=memReq,proto3" json:"mem_req,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *CreateProgrammingLanguageRequest) Reset() {
-	*x = CreateProgrammingLanguageRequest{}
-	mi := &file_eruun_v1_administration_proto_msgTypes[10]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *CreateProgrammingLanguageRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*CreateProgrammingLanguageRequest) ProtoMessage() {}
-
-func (x *CreateProgrammingLanguageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_administration_proto_msgTypes[10]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use CreateProgrammingLanguageRequest.ProtoReflect.Descriptor instead.
-func (*CreateProgrammingLanguageRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_administration_proto_rawDescGZIP(), []int{10}
-}
-
-func (x *CreateProgrammingLanguageRequest) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *CreateProgrammingLanguageRequest) GetVersion() string {
-	if x != nil {
-		return x.Version
-	}
-	return ""
-}
-
-func (x *CreateProgrammingLanguageRequest) GetEnabled() bool {
-	if x != nil && x.Enabled != nil {
-		return *x.Enabled
-	}
-	return false
-}
-
-func (x *CreateProgrammingLanguageRequest) GetCpuReq() string {
-	if x != nil {
-		return x.CpuReq
-	}
-	return ""
-}
-
-func (x *CreateProgrammingLanguageRequest) GetMemReq() string {
-	if x != nil {
-		return x.MemReq
-	}
-	return ""
-}
-
-type UpdateProgrammingLanguageRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name          *string                `protobuf:"bytes,2,opt,name=name,proto3,oneof" json:"name,omitempty"`
-	Version       *string                `protobuf:"bytes,3,opt,name=version,proto3,oneof" json:"version,omitempty"`
-	Enabled       *bool                  `protobuf:"varint,4,opt,name=enabled,proto3,oneof" json:"enabled,omitempty"`
-	CpuReq        *string                `protobuf:"bytes,5,opt,name=cpu_req,json=cpuReq,proto3,oneof" json:"cpu_req,omitempty"`
-	MemReq        *string                `protobuf:"bytes,6,opt,name=mem_req,json=memReq,proto3,oneof" json:"mem_req,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *UpdateProgrammingLanguageRequest) Reset() {
-	*x = UpdateProgrammingLanguageRequest{}
-	mi := &file_eruun_v1_administration_proto_msgTypes[11]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *UpdateProgrammingLanguageRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*UpdateProgrammingLanguageRequest) ProtoMessage() {}
-
-func (x *UpdateProgrammingLanguageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_administration_proto_msgTypes[11]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use UpdateProgrammingLanguageRequest.ProtoReflect.Descriptor instead.
-func (*UpdateProgrammingLanguageRequest) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_administration_proto_rawDescGZIP(), []int{11}
-}
-
-func (x *UpdateProgrammingLanguageRequest) GetId() string {
-	if x != nil {
-		return x.Id
-	}
-	return ""
-}
-
-func (x *UpdateProgrammingLanguageRequest) GetName() string {
-	if x != nil && x.Name != nil {
-		return *x.Name
-	}
-	return ""
-}
-
-func (x *UpdateProgrammingLanguageRequest) GetVersion() string {
-	if x != nil && x.Version != nil {
-		return *x.Version
-	}
-	return ""
-}
-
-func (x *UpdateProgrammingLanguageRequest) GetEnabled() bool {
-	if x != nil && x.Enabled != nil {
-		return *x.Enabled
-	}
-	return false
-}
-
-func (x *UpdateProgrammingLanguageRequest) GetCpuReq() string {
-	if x != nil && x.CpuReq != nil {
-		return *x.CpuReq
-	}
-	return ""
-}
-
-func (x *UpdateProgrammingLanguageRequest) GetMemReq() string {
-	if x != nil && x.MemReq != nil {
-		return *x.MemReq
-	}
-	return ""
-}
-
-type ProgrammingLanguage struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Code          string                 `protobuf:"bytes,2,opt,name=code,proto3" json:"code,omitempty"`
-	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
-	Version       string                 `protobuf:"bytes,4,opt,name=version,proto3" json:"version,omitempty"`
-	Enabled       bool                   `protobuf:"varint,5,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	CpuReq        string                 `protobuf:"bytes,6,opt,name=cpu_req,json=cpuReq,proto3" json:"cpu_req,omitempty"`
-	MemReq        string                 `protobuf:"bytes,7,opt,name=mem_req,json=memReq,proto3" json:"mem_req,omitempty"`
-	CreateTime    *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
-	UpdateTime    *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ProgrammingLanguage) Reset() {
-	*x = ProgrammingLanguage{}
-	mi := &file_eruun_v1_administration_proto_msgTypes[12]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ProgrammingLanguage) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ProgrammingLanguage) ProtoMessage() {}
-
-func (x *ProgrammingLanguage) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_administration_proto_msgTypes[12]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ProgrammingLanguage.ProtoReflect.Descriptor instead.
-func (*ProgrammingLanguage) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_administration_proto_rawDescGZIP(), []int{12}
-}
-
-func (x *ProgrammingLanguage) GetId() string {
-	if x != nil {
-		return x.Id
-	}
-	return ""
-}
-
-func (x *ProgrammingLanguage) GetCode() string {
-	if x != nil {
-		return x.Code
-	}
-	return ""
-}
-
-func (x *ProgrammingLanguage) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *ProgrammingLanguage) GetVersion() string {
-	if x != nil {
-		return x.Version
-	}
-	return ""
-}
-
-func (x *ProgrammingLanguage) GetEnabled() bool {
-	if x != nil {
-		return x.Enabled
-	}
-	return false
-}
-
-func (x *ProgrammingLanguage) GetCpuReq() string {
-	if x != nil {
-		return x.CpuReq
-	}
-	return ""
-}
-
-func (x *ProgrammingLanguage) GetMemReq() string {
-	if x != nil {
-		return x.MemReq
-	}
-	return ""
-}
-
-func (x *ProgrammingLanguage) GetCreateTime() *timestamppb.Timestamp {
-	if x != nil {
-		return x.CreateTime
-	}
-	return nil
-}
-
-func (x *ProgrammingLanguage) GetUpdateTime() *timestamppb.Timestamp {
-	if x != nil {
-		return x.UpdateTime
-	}
-	return nil
-}
-
-type ListProgrammingLanguagesResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Languages     []*ProgrammingLanguage `protobuf:"bytes,1,rep,name=languages,proto3" json:"languages,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ListProgrammingLanguagesResponse) Reset() {
-	*x = ListProgrammingLanguagesResponse{}
-	mi := &file_eruun_v1_administration_proto_msgTypes[13]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ListProgrammingLanguagesResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ListProgrammingLanguagesResponse) ProtoMessage() {}
-
-func (x *ListProgrammingLanguagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_administration_proto_msgTypes[13]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ListProgrammingLanguagesResponse.ProtoReflect.Descriptor instead.
-func (*ListProgrammingLanguagesResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_administration_proto_rawDescGZIP(), []int{13}
-}
-
-func (x *ListProgrammingLanguagesResponse) GetLanguages() []*ProgrammingLanguage {
-	if x != nil {
-		return x.Languages
-	}
-	return nil
-}
-
-type DeleteProgrammingLanguageResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *DeleteProgrammingLanguageResponse) Reset() {
-	*x = DeleteProgrammingLanguageResponse{}
-	mi := &file_eruun_v1_administration_proto_msgTypes[14]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DeleteProgrammingLanguageResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DeleteProgrammingLanguageResponse) ProtoMessage() {}
-
-func (x *DeleteProgrammingLanguageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eruun_v1_administration_proto_msgTypes[14]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DeleteProgrammingLanguageResponse.ProtoReflect.Descriptor instead.
-func (*DeleteProgrammingLanguageResponse) Descriptor() ([]byte, []int) {
-	return file_eruun_v1_administration_proto_rawDescGZIP(), []int{14}
-}
-
-func (x *DeleteProgrammingLanguageResponse) GetId() string {
-	if x != nil {
-		return x.Id
-	}
-	return ""
-}
-
 var File_eruun_v1_administration_proto protoreflect.FileDescriptor
 
 const file_eruun_v1_administration_proto_rawDesc = "" +
@@ -869,63 +433,14 @@ const file_eruun_v1_administration_proto_rawDesc = "" +
 	"\x14ListSettingsResponse\x123\n" +
 	"\bsettings\x18\x01 \x03(\v2\x17.eruun.v1.SystemSettingR\bsettings\"+\n" +
 	"\x15DeleteSettingResponse\x12\x12\n" +
-	"\x04type\x18\x01 \x01(\tR\x04type\"!\n" +
-	"\x1fListProgrammingLanguagesRequest\".\n" +
-	"\x1cProgrammingLanguageIDRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\"\xad\x01\n" +
-	" CreateProgrammingLanguageRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
-	"\aversion\x18\x02 \x01(\tR\aversion\x12\x1d\n" +
-	"\aenabled\x18\x03 \x01(\bH\x00R\aenabled\x88\x01\x01\x12\x17\n" +
-	"\acpu_req\x18\x04 \x01(\tR\x06cpuReq\x12\x17\n" +
-	"\amem_req\x18\x05 \x01(\tR\x06memReqB\n" +
-	"\n" +
-	"\b_enabled\"\xfe\x01\n" +
-	" UpdateProgrammingLanguageRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
-	"\x04name\x18\x02 \x01(\tH\x00R\x04name\x88\x01\x01\x12\x1d\n" +
-	"\aversion\x18\x03 \x01(\tH\x01R\aversion\x88\x01\x01\x12\x1d\n" +
-	"\aenabled\x18\x04 \x01(\bH\x02R\aenabled\x88\x01\x01\x12\x1c\n" +
-	"\acpu_req\x18\x05 \x01(\tH\x03R\x06cpuReq\x88\x01\x01\x12\x1c\n" +
-	"\amem_req\x18\x06 \x01(\tH\x04R\x06memReq\x88\x01\x01B\a\n" +
-	"\x05_nameB\n" +
-	"\n" +
-	"\b_versionB\n" +
-	"\n" +
-	"\b_enabledB\n" +
-	"\n" +
-	"\b_cpu_reqB\n" +
-	"\n" +
-	"\b_mem_req\"\xad\x02\n" +
-	"\x13ProgrammingLanguage\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
-	"\x04code\x18\x02 \x01(\tR\x04code\x12\x12\n" +
-	"\x04name\x18\x03 \x01(\tR\x04name\x12\x18\n" +
-	"\aversion\x18\x04 \x01(\tR\aversion\x12\x18\n" +
-	"\aenabled\x18\x05 \x01(\bR\aenabled\x12\x17\n" +
-	"\acpu_req\x18\x06 \x01(\tR\x06cpuReq\x12\x17\n" +
-	"\amem_req\x18\a \x01(\tR\x06memReq\x12;\n" +
-	"\vcreate_time\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"createTime\x12;\n" +
-	"\vupdate_time\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"updateTime\"_\n" +
-	" ListProgrammingLanguagesResponse\x12;\n" +
-	"\tlanguages\x18\x01 \x03(\v2\x1d.eruun.v1.ProgrammingLanguageR\tlanguages\"3\n" +
-	"!DeleteProgrammingLanguageResponse\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id2\x8a\x03\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type2\x8a\x03\n" +
 	"\x0fSettingsService\x12M\n" +
 	"\fListSettings\x12\x1d.eruun.v1.ListSettingsRequest\x1a\x1e.eruun.v1.ListSettingsResponse\x12B\n" +
 	"\n" +
 	"GetSetting\x12\x1b.eruun.v1.GetSettingRequest\x1a\x17.eruun.v1.SystemSetting\x12H\n" +
 	"\rCreateSetting\x12\x1e.eruun.v1.CreateSettingRequest\x1a\x17.eruun.v1.SystemSetting\x12H\n" +
 	"\rUpdateSetting\x12\x1e.eruun.v1.UpdateSettingRequest\x1a\x17.eruun.v1.SystemSetting\x12P\n" +
-	"\rDeleteSetting\x12\x1e.eruun.v1.DeleteSettingRequest\x1a\x1f.eruun.v1.DeleteSettingResponse2\xb3\x04\n" +
-	"\x1bProgrammingLanguagesService\x12q\n" +
-	"\x18ListProgrammingLanguages\x12).eruun.v1.ListProgrammingLanguagesRequest\x1a*.eruun.v1.ListProgrammingLanguagesResponse\x12_\n" +
-	"\x16GetProgrammingLanguage\x12&.eruun.v1.ProgrammingLanguageIDRequest\x1a\x1d.eruun.v1.ProgrammingLanguage\x12f\n" +
-	"\x19CreateProgrammingLanguage\x12*.eruun.v1.CreateProgrammingLanguageRequest\x1a\x1d.eruun.v1.ProgrammingLanguage\x12f\n" +
-	"\x19UpdateProgrammingLanguage\x12*.eruun.v1.UpdateProgrammingLanguageRequest\x1a\x1d.eruun.v1.ProgrammingLanguage\x12p\n" +
-	"\x19DeleteProgrammingLanguage\x12&.eruun.v1.ProgrammingLanguageIDRequest\x1a+.eruun.v1.DeleteProgrammingLanguageResponseBIZGgithub.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1;eruunv1b\x06proto3"
+	"\rDeleteSetting\x12\x1e.eruun.v1.DeleteSettingRequest\x1a\x1f.eruun.v1.DeleteSettingResponseBIZGgithub.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1;eruunv1b\x06proto3"
 
 var (
 	file_eruun_v1_administration_proto_rawDescOnce sync.Once
@@ -939,61 +454,41 @@ func file_eruun_v1_administration_proto_rawDescGZIP() []byte {
 	return file_eruun_v1_administration_proto_rawDescData
 }
 
-var file_eruun_v1_administration_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_eruun_v1_administration_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_eruun_v1_administration_proto_goTypes = []any{
-	(*ListSettingsRequest)(nil),               // 0: eruun.v1.ListSettingsRequest
-	(*GetSettingRequest)(nil),                 // 1: eruun.v1.GetSettingRequest
-	(*CreateSettingRequest)(nil),              // 2: eruun.v1.CreateSettingRequest
-	(*UpdateSettingRequest)(nil),              // 3: eruun.v1.UpdateSettingRequest
-	(*DeleteSettingRequest)(nil),              // 4: eruun.v1.DeleteSettingRequest
-	(*SystemSetting)(nil),                     // 5: eruun.v1.SystemSetting
-	(*ListSettingsResponse)(nil),              // 6: eruun.v1.ListSettingsResponse
-	(*DeleteSettingResponse)(nil),             // 7: eruun.v1.DeleteSettingResponse
-	(*ListProgrammingLanguagesRequest)(nil),   // 8: eruun.v1.ListProgrammingLanguagesRequest
-	(*ProgrammingLanguageIDRequest)(nil),      // 9: eruun.v1.ProgrammingLanguageIDRequest
-	(*CreateProgrammingLanguageRequest)(nil),  // 10: eruun.v1.CreateProgrammingLanguageRequest
-	(*UpdateProgrammingLanguageRequest)(nil),  // 11: eruun.v1.UpdateProgrammingLanguageRequest
-	(*ProgrammingLanguage)(nil),               // 12: eruun.v1.ProgrammingLanguage
-	(*ListProgrammingLanguagesResponse)(nil),  // 13: eruun.v1.ListProgrammingLanguagesResponse
-	(*DeleteProgrammingLanguageResponse)(nil), // 14: eruun.v1.DeleteProgrammingLanguageResponse
-	(*structpb.Value)(nil),                    // 15: google.protobuf.Value
-	(*timestamppb.Timestamp)(nil),             // 16: google.protobuf.Timestamp
+	(*ListSettingsRequest)(nil),   // 0: eruun.v1.ListSettingsRequest
+	(*GetSettingRequest)(nil),     // 1: eruun.v1.GetSettingRequest
+	(*CreateSettingRequest)(nil),  // 2: eruun.v1.CreateSettingRequest
+	(*UpdateSettingRequest)(nil),  // 3: eruun.v1.UpdateSettingRequest
+	(*DeleteSettingRequest)(nil),  // 4: eruun.v1.DeleteSettingRequest
+	(*SystemSetting)(nil),         // 5: eruun.v1.SystemSetting
+	(*ListSettingsResponse)(nil),  // 6: eruun.v1.ListSettingsResponse
+	(*DeleteSettingResponse)(nil), // 7: eruun.v1.DeleteSettingResponse
+	(*structpb.Value)(nil),        // 8: google.protobuf.Value
+	(*timestamppb.Timestamp)(nil), // 9: google.protobuf.Timestamp
 }
 var file_eruun_v1_administration_proto_depIdxs = []int32{
-	15, // 0: eruun.v1.CreateSettingRequest.value:type_name -> google.protobuf.Value
-	15, // 1: eruun.v1.UpdateSettingRequest.value:type_name -> google.protobuf.Value
-	15, // 2: eruun.v1.SystemSetting.value:type_name -> google.protobuf.Value
-	16, // 3: eruun.v1.SystemSetting.create_time:type_name -> google.protobuf.Timestamp
-	16, // 4: eruun.v1.SystemSetting.update_time:type_name -> google.protobuf.Timestamp
+	8,  // 0: eruun.v1.CreateSettingRequest.value:type_name -> google.protobuf.Value
+	8,  // 1: eruun.v1.UpdateSettingRequest.value:type_name -> google.protobuf.Value
+	8,  // 2: eruun.v1.SystemSetting.value:type_name -> google.protobuf.Value
+	9,  // 3: eruun.v1.SystemSetting.create_time:type_name -> google.protobuf.Timestamp
+	9,  // 4: eruun.v1.SystemSetting.update_time:type_name -> google.protobuf.Timestamp
 	5,  // 5: eruun.v1.ListSettingsResponse.settings:type_name -> eruun.v1.SystemSetting
-	16, // 6: eruun.v1.ProgrammingLanguage.create_time:type_name -> google.protobuf.Timestamp
-	16, // 7: eruun.v1.ProgrammingLanguage.update_time:type_name -> google.protobuf.Timestamp
-	12, // 8: eruun.v1.ListProgrammingLanguagesResponse.languages:type_name -> eruun.v1.ProgrammingLanguage
-	0,  // 9: eruun.v1.SettingsService.ListSettings:input_type -> eruun.v1.ListSettingsRequest
-	1,  // 10: eruun.v1.SettingsService.GetSetting:input_type -> eruun.v1.GetSettingRequest
-	2,  // 11: eruun.v1.SettingsService.CreateSetting:input_type -> eruun.v1.CreateSettingRequest
-	3,  // 12: eruun.v1.SettingsService.UpdateSetting:input_type -> eruun.v1.UpdateSettingRequest
-	4,  // 13: eruun.v1.SettingsService.DeleteSetting:input_type -> eruun.v1.DeleteSettingRequest
-	8,  // 14: eruun.v1.ProgrammingLanguagesService.ListProgrammingLanguages:input_type -> eruun.v1.ListProgrammingLanguagesRequest
-	9,  // 15: eruun.v1.ProgrammingLanguagesService.GetProgrammingLanguage:input_type -> eruun.v1.ProgrammingLanguageIDRequest
-	10, // 16: eruun.v1.ProgrammingLanguagesService.CreateProgrammingLanguage:input_type -> eruun.v1.CreateProgrammingLanguageRequest
-	11, // 17: eruun.v1.ProgrammingLanguagesService.UpdateProgrammingLanguage:input_type -> eruun.v1.UpdateProgrammingLanguageRequest
-	9,  // 18: eruun.v1.ProgrammingLanguagesService.DeleteProgrammingLanguage:input_type -> eruun.v1.ProgrammingLanguageIDRequest
-	6,  // 19: eruun.v1.SettingsService.ListSettings:output_type -> eruun.v1.ListSettingsResponse
-	5,  // 20: eruun.v1.SettingsService.GetSetting:output_type -> eruun.v1.SystemSetting
-	5,  // 21: eruun.v1.SettingsService.CreateSetting:output_type -> eruun.v1.SystemSetting
-	5,  // 22: eruun.v1.SettingsService.UpdateSetting:output_type -> eruun.v1.SystemSetting
-	7,  // 23: eruun.v1.SettingsService.DeleteSetting:output_type -> eruun.v1.DeleteSettingResponse
-	13, // 24: eruun.v1.ProgrammingLanguagesService.ListProgrammingLanguages:output_type -> eruun.v1.ListProgrammingLanguagesResponse
-	12, // 25: eruun.v1.ProgrammingLanguagesService.GetProgrammingLanguage:output_type -> eruun.v1.ProgrammingLanguage
-	12, // 26: eruun.v1.ProgrammingLanguagesService.CreateProgrammingLanguage:output_type -> eruun.v1.ProgrammingLanguage
-	12, // 27: eruun.v1.ProgrammingLanguagesService.UpdateProgrammingLanguage:output_type -> eruun.v1.ProgrammingLanguage
-	14, // 28: eruun.v1.ProgrammingLanguagesService.DeleteProgrammingLanguage:output_type -> eruun.v1.DeleteProgrammingLanguageResponse
-	19, // [19:29] is the sub-list for method output_type
-	9,  // [9:19] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	0,  // 6: eruun.v1.SettingsService.ListSettings:input_type -> eruun.v1.ListSettingsRequest
+	1,  // 7: eruun.v1.SettingsService.GetSetting:input_type -> eruun.v1.GetSettingRequest
+	2,  // 8: eruun.v1.SettingsService.CreateSetting:input_type -> eruun.v1.CreateSettingRequest
+	3,  // 9: eruun.v1.SettingsService.UpdateSetting:input_type -> eruun.v1.UpdateSettingRequest
+	4,  // 10: eruun.v1.SettingsService.DeleteSetting:input_type -> eruun.v1.DeleteSettingRequest
+	6,  // 11: eruun.v1.SettingsService.ListSettings:output_type -> eruun.v1.ListSettingsResponse
+	5,  // 12: eruun.v1.SettingsService.GetSetting:output_type -> eruun.v1.SystemSetting
+	5,  // 13: eruun.v1.SettingsService.CreateSetting:output_type -> eruun.v1.SystemSetting
+	5,  // 14: eruun.v1.SettingsService.UpdateSetting:output_type -> eruun.v1.SystemSetting
+	7,  // 15: eruun.v1.SettingsService.DeleteSetting:output_type -> eruun.v1.DeleteSettingResponse
+	11, // [11:16] is the sub-list for method output_type
+	6,  // [6:11] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_eruun_v1_administration_proto_init() }
@@ -1001,17 +496,15 @@ func file_eruun_v1_administration_proto_init() {
 	if File_eruun_v1_administration_proto != nil {
 		return
 	}
-	file_eruun_v1_administration_proto_msgTypes[10].OneofWrappers = []any{}
-	file_eruun_v1_administration_proto_msgTypes[11].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_eruun_v1_administration_proto_rawDesc), len(file_eruun_v1_administration_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   15,
+			NumMessages:   8,
 			NumExtensions: 0,
-			NumServices:   2,
+			NumServices:   1,
 		},
 		GoTypes:           file_eruun_v1_administration_proto_goTypes,
 		DependencyIndexes: file_eruun_v1_administration_proto_depIdxs,

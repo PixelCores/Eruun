@@ -40,16 +40,6 @@ func (app *applications) createAndExecApplications(c *gin.Context) {
 	respondWithResult(c, resp, err)
 }
 
-func (app *applications) convertApplications(c *gin.Context) {
-	handleBoundResult(
-		c,
-		validatedRequestBody[apis.ConvertApplicationsRequest](bcode.ErrApplicationConfig, true),
-		func(ctx context.Context, req *apis.ConvertApplicationsRequest) (*apis.ConvertApplicationsResponse, error) {
-			return app.ConversionService.ConvertKubeResources(ctx, *req)
-		},
-	)
-}
-
 func (app *applications) listApplications(c *gin.Context) {
 	opts, ok := bindListApplicationsOptions(c)
 	if !ok {
@@ -74,15 +64,6 @@ func (app *applications) batchGetApplications(c *gin.Context) {
 	}
 	resp, err := app.ApplicationService.BatchGetApplications(c.Request.Context(), req.AppIDs)
 	respondWithResult(c, resp, err)
-}
-
-func (app *applications) listTemplateApplications(c *gin.Context) {
-	opts, ok := bindListApplicationsOptions(c)
-	if !ok {
-		return
-	}
-	apps, err := app.ApplicationService.ListTemplateApplications(c.Request.Context(), opts)
-	respondWithResult(c, apis.ListApplicationResponse{Applications: apps}, err)
 }
 
 func bindListApplicationsOptions(c *gin.Context) (service.ListApplicationsOptions, bool) {
@@ -113,19 +94,6 @@ func (app *applications) deleteApplicationResources(c *gin.Context) {
 		return
 	}
 	apiresponse.ReturnSuccess(c, resp)
-}
-
-func (app *applications) resetApplicationDatabases(c *gin.Context) {
-	appID, ok := appIDPathParam(c)
-	if !ok {
-		return
-	}
-	req, ok := bindAndValidateStrictJSON[apis.DatabaseResetRequest](c, bcode.ErrApplicationConfig, true)
-	if !ok {
-		return
-	}
-	resp, err := app.ApplicationService.ResetApplicationDatabases(c.Request.Context(), appID, *req)
-	respondWithResult(c, resp, err)
 }
 
 func (app *applications) deleteApplication(c *gin.Context) {
@@ -257,36 +225,5 @@ func (app *applications) updateVersion(c *gin.Context) {
 	}
 
 	klog.InfoS("update version succeeded", "appID", appID, "newVersion", resp.Version, "taskID", resp.TaskID)
-	apiresponse.ReturnSuccess(c, resp)
-}
-
-// diffUpdateVersion compares a source app version snapshot with the target app
-// and optionally applies the generated update.
-func (app *applications) diffUpdateVersion(c *gin.Context) {
-	targetAppID, ok := appIDPathParam(c)
-	if !ok {
-		return
-	}
-
-	req, ok := bindStrictJSON[apis.DiffUpdateVersionRequest](c, bcode.ErrApplicationConfig, true)
-	if !ok {
-		return
-	}
-	if err := validate.Struct(req); err != nil {
-		apiresponse.ReturnError(c, bcode.ErrApplicationConfig)
-		return
-	}
-
-	ctx := c.Request.Context()
-	klog.InfoS("diff update version request received", "targetAppID", targetAppID, "sourceAppID", req.SourceAppID, "dryRun", req.DryRun, "targetOnlyStrategy", req.TargetOnlyStrategy, "strategy", req.Strategy)
-
-	resp, err := app.ApplicationService.DiffUpdateVersion(ctx, targetAppID, *req)
-	if err != nil {
-		klog.ErrorS(err, "diff update version failed", "targetAppID", targetAppID, "sourceAppID", req.SourceAppID)
-		apiresponse.ReturnError(c, err)
-		return
-	}
-
-	klog.InfoS("diff update version succeeded", "targetAppID", targetAppID, "sourceAppID", req.SourceAppID, "targetVersion", resp.TargetVersion, "executable", resp.Executable, "dryRun", resp.DryRun)
 	apiresponse.ReturnSuccess(c, resp)
 }

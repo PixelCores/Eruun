@@ -583,10 +583,9 @@ Istio provider：
 3. 新 `traits.gateway(provider=istio)` 能生成 VirtualService。
 4. 显式 Istio 配置错误时 fail-fast，不静默降级。
 5. `gateway` 与 `ingress` 并存时只生成 gateway 对应资源。
-6. `/applications/convert` 能识别 Ingress 与 VirtualService。
-7. 组件详情能展示 gateway routes 和 gateway external links。
-8. 不引入 DB schema 变更。
-9. 不引入 Istio SDK 依赖。
+6. 组件详情能展示 gateway routes 和 gateway external links。
+7. 不引入 DB schema 变更。
+8. 不引入 Istio SDK 依赖。
 
 ## 10. 风险与规避
 

@@ -22,11 +22,9 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	ApplicationService_GetCanonicalJSONSchema_FullMethodName          = "/eruun.v1.ApplicationService/GetCanonicalJSONSchema"
 	ApplicationService_ListApplications_FullMethodName                = "/eruun.v1.ApplicationService/ListApplications"
-	ApplicationService_ListTemplateApplications_FullMethodName        = "/eruun.v1.ApplicationService/ListTemplateApplications"
 	ApplicationService_CreateApplications_FullMethodName              = "/eruun.v1.ApplicationService/CreateApplications"
 	ApplicationService_CreateAndExecApplications_FullMethodName       = "/eruun.v1.ApplicationService/CreateAndExecApplications"
 	ApplicationService_BatchGetApplications_FullMethodName            = "/eruun.v1.ApplicationService/BatchGetApplications"
-	ApplicationService_ConvertApplications_FullMethodName             = "/eruun.v1.ApplicationService/ConvertApplications"
 	ApplicationService_ListApplicationWorkflows_FullMethodName        = "/eruun.v1.ApplicationService/ListApplicationWorkflows"
 	ApplicationService_GetApplicationSpec_FullMethodName              = "/eruun.v1.ApplicationService/GetApplicationSpec"
 	ApplicationService_GetApplicationStatus_FullMethodName            = "/eruun.v1.ApplicationService/GetApplicationStatus"
@@ -44,7 +42,6 @@ const (
 	ApplicationService_UpsertWorkflowSchedule_FullMethodName          = "/eruun.v1.ApplicationService/UpsertWorkflowSchedule"
 	ApplicationService_DeleteWorkflowSchedule_FullMethodName          = "/eruun.v1.ApplicationService/DeleteWorkflowSchedule"
 	ApplicationService_CleanupApplicationResources_FullMethodName     = "/eruun.v1.ApplicationService/CleanupApplicationResources"
-	ApplicationService_ResetApplicationDatabases_FullMethodName       = "/eruun.v1.ApplicationService/ResetApplicationDatabases"
 	ApplicationService_RestartApplicationWorkloads_FullMethodName     = "/eruun.v1.ApplicationService/RestartApplicationWorkloads"
 	ApplicationService_StopApplicationDeployments_FullMethodName      = "/eruun.v1.ApplicationService/StopApplicationDeployments"
 	ApplicationService_StartApplicationDeployments_FullMethodName     = "/eruun.v1.ApplicationService/StartApplicationDeployments"
@@ -56,7 +53,6 @@ const (
 	ApplicationService_GetWorkflowTaskStatus_FullMethodName           = "/eruun.v1.ApplicationService/GetWorkflowTaskStatus"
 	ApplicationService_GetWorkflowTaskStages_FullMethodName           = "/eruun.v1.ApplicationService/GetWorkflowTaskStages"
 	ApplicationService_UpdateApplicationVersion_FullMethodName        = "/eruun.v1.ApplicationService/UpdateApplicationVersion"
-	ApplicationService_DiffUpdateApplicationVersion_FullMethodName    = "/eruun.v1.ApplicationService/DiffUpdateApplicationVersion"
 	ApplicationService_CancelDelayedVersionUpdate_FullMethodName      = "/eruun.v1.ApplicationService/CancelDelayedVersionUpdate"
 	ApplicationService_TryApplication_FullMethodName                  = "/eruun.v1.ApplicationService/TryApplication"
 	ApplicationService_TryWorkflow_FullMethodName                     = "/eruun.v1.ApplicationService/TryWorkflow"
@@ -70,11 +66,9 @@ const (
 type ApplicationServiceClient interface {
 	GetCanonicalJSONSchema(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*CanonicalJSONSchema, error)
 	ListApplications(ctx context.Context, in *ApplicationListRequest, opts ...grpc.CallOption) (*AppDTOListApplicationResponse, error)
-	ListTemplateApplications(ctx context.Context, in *ApplicationListRequest, opts ...grpc.CallOption) (*AppDTOListApplicationResponse, error)
 	CreateApplications(ctx context.Context, in *AppDTOCreateApplicationsRequest, opts ...grpc.CallOption) (*AppDTOApplicationBase, error)
 	CreateAndExecApplications(ctx context.Context, in *AppDTOCreateAndExecApplicationRequest, opts ...grpc.CallOption) (*AppDTOCreateAndExecApplicationResponse, error)
 	BatchGetApplications(ctx context.Context, in *AppDTOBatchGetApplicationsRequest, opts ...grpc.CallOption) (*AppDTOBatchGetApplicationsResponse, error)
-	ConvertApplications(ctx context.Context, in *AppDTOConvertApplicationsRequest, opts ...grpc.CallOption) (*AppDTOConvertApplicationsResponse, error)
 	ListApplicationWorkflows(ctx context.Context, in *ApplicationIDRequest, opts ...grpc.CallOption) (*AppDTOListApplicationWorkflowsResponse, error)
 	GetApplicationSpec(ctx context.Context, in *ApplicationIDRequest, opts ...grpc.CallOption) (*AppDTOCreateApplicationsRequest, error)
 	GetApplicationStatus(ctx context.Context, in *ApplicationIDRequest, opts ...grpc.CallOption) (*AppDTOApplicationStatusResponse, error)
@@ -92,7 +86,6 @@ type ApplicationServiceClient interface {
 	UpsertWorkflowSchedule(ctx context.Context, in *UpsertWorkflowScheduleRPCRequest, opts ...grpc.CallOption) (*AppDTOUpsertWorkflowScheduleResponse, error)
 	DeleteWorkflowSchedule(ctx context.Context, in *ApplicationWorkflowRequest, opts ...grpc.CallOption) (*AppDTODeleteWorkflowScheduleResponse, error)
 	CleanupApplicationResources(ctx context.Context, in *ApplicationIDRequest, opts ...grpc.CallOption) (*AppDTOCleanupApplicationResourcesResponse, error)
-	ResetApplicationDatabases(ctx context.Context, in *ResetApplicationDatabasesRPCRequest, opts ...grpc.CallOption) (*AppDTODatabaseResetResponse, error)
 	RestartApplicationWorkloads(ctx context.Context, in *ApplicationLifecycleRPCRequest, opts ...grpc.CallOption) (*AppDTORestartApplicationWorkloadsResponse, error)
 	StopApplicationDeployments(ctx context.Context, in *ApplicationLifecycleRPCRequest, opts ...grpc.CallOption) (*AppDTOStopApplicationDeploymentsResponse, error)
 	StartApplicationDeployments(ctx context.Context, in *ApplicationLifecycleRPCRequest, opts ...grpc.CallOption) (*AppDTOStartApplicationDeploymentsResponse, error)
@@ -104,7 +97,6 @@ type ApplicationServiceClient interface {
 	GetWorkflowTaskStatus(ctx context.Context, in *WorkflowTaskIDRequest, opts ...grpc.CallOption) (*AppDTOTaskStatusResponse, error)
 	GetWorkflowTaskStages(ctx context.Context, in *WorkflowTaskIDRequest, opts ...grpc.CallOption) (*AppDTOTaskStagesResponse, error)
 	UpdateApplicationVersion(ctx context.Context, in *UpdateVersionRPCRequest, opts ...grpc.CallOption) (*AppDTOUpdateVersionResponse, error)
-	DiffUpdateApplicationVersion(ctx context.Context, in *DiffUpdateVersionRPCRequest, opts ...grpc.CallOption) (*AppDTODiffUpdateVersionResponse, error)
 	CancelDelayedVersionUpdate(ctx context.Context, in *CancelWorkflowRPCRequest, opts ...grpc.CallOption) (*AppDTOCancelWorkflowResponse, error)
 	TryApplication(ctx context.Context, in *AppDTOCreateApplicationsRequest, opts ...grpc.CallOption) (*AppDTOTryApplicationResponse, error)
 	TryWorkflow(ctx context.Context, in *UpdateApplicationWorkflowRPCRequest, opts ...grpc.CallOption) (*AppDTOTryWorkflowResponse, error)
@@ -138,16 +130,6 @@ func (c *applicationServiceClient) ListApplications(ctx context.Context, in *App
 	return out, nil
 }
 
-func (c *applicationServiceClient) ListTemplateApplications(ctx context.Context, in *ApplicationListRequest, opts ...grpc.CallOption) (*AppDTOListApplicationResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(AppDTOListApplicationResponse)
-	err := c.cc.Invoke(ctx, ApplicationService_ListTemplateApplications_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *applicationServiceClient) CreateApplications(ctx context.Context, in *AppDTOCreateApplicationsRequest, opts ...grpc.CallOption) (*AppDTOApplicationBase, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AppDTOApplicationBase)
@@ -172,16 +154,6 @@ func (c *applicationServiceClient) BatchGetApplications(ctx context.Context, in 
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AppDTOBatchGetApplicationsResponse)
 	err := c.cc.Invoke(ctx, ApplicationService_BatchGetApplications_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *applicationServiceClient) ConvertApplications(ctx context.Context, in *AppDTOConvertApplicationsRequest, opts ...grpc.CallOption) (*AppDTOConvertApplicationsResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(AppDTOConvertApplicationsResponse)
-	err := c.cc.Invoke(ctx, ApplicationService_ConvertApplications_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -385,16 +357,6 @@ func (c *applicationServiceClient) CleanupApplicationResources(ctx context.Conte
 	return out, nil
 }
 
-func (c *applicationServiceClient) ResetApplicationDatabases(ctx context.Context, in *ResetApplicationDatabasesRPCRequest, opts ...grpc.CallOption) (*AppDTODatabaseResetResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(AppDTODatabaseResetResponse)
-	err := c.cc.Invoke(ctx, ApplicationService_ResetApplicationDatabases_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *applicationServiceClient) RestartApplicationWorkloads(ctx context.Context, in *ApplicationLifecycleRPCRequest, opts ...grpc.CallOption) (*AppDTORestartApplicationWorkloadsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AppDTORestartApplicationWorkloadsResponse)
@@ -505,16 +467,6 @@ func (c *applicationServiceClient) UpdateApplicationVersion(ctx context.Context,
 	return out, nil
 }
 
-func (c *applicationServiceClient) DiffUpdateApplicationVersion(ctx context.Context, in *DiffUpdateVersionRPCRequest, opts ...grpc.CallOption) (*AppDTODiffUpdateVersionResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(AppDTODiffUpdateVersionResponse)
-	err := c.cc.Invoke(ctx, ApplicationService_DiffUpdateApplicationVersion_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *applicationServiceClient) CancelDelayedVersionUpdate(ctx context.Context, in *CancelWorkflowRPCRequest, opts ...grpc.CallOption) (*AppDTOCancelWorkflowResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AppDTOCancelWorkflowResponse)
@@ -553,11 +505,9 @@ func (c *applicationServiceClient) TryWorkflow(ctx context.Context, in *UpdateAp
 type ApplicationServiceServer interface {
 	GetCanonicalJSONSchema(context.Context, *emptypb.Empty) (*CanonicalJSONSchema, error)
 	ListApplications(context.Context, *ApplicationListRequest) (*AppDTOListApplicationResponse, error)
-	ListTemplateApplications(context.Context, *ApplicationListRequest) (*AppDTOListApplicationResponse, error)
 	CreateApplications(context.Context, *AppDTOCreateApplicationsRequest) (*AppDTOApplicationBase, error)
 	CreateAndExecApplications(context.Context, *AppDTOCreateAndExecApplicationRequest) (*AppDTOCreateAndExecApplicationResponse, error)
 	BatchGetApplications(context.Context, *AppDTOBatchGetApplicationsRequest) (*AppDTOBatchGetApplicationsResponse, error)
-	ConvertApplications(context.Context, *AppDTOConvertApplicationsRequest) (*AppDTOConvertApplicationsResponse, error)
 	ListApplicationWorkflows(context.Context, *ApplicationIDRequest) (*AppDTOListApplicationWorkflowsResponse, error)
 	GetApplicationSpec(context.Context, *ApplicationIDRequest) (*AppDTOCreateApplicationsRequest, error)
 	GetApplicationStatus(context.Context, *ApplicationIDRequest) (*AppDTOApplicationStatusResponse, error)
@@ -575,7 +525,6 @@ type ApplicationServiceServer interface {
 	UpsertWorkflowSchedule(context.Context, *UpsertWorkflowScheduleRPCRequest) (*AppDTOUpsertWorkflowScheduleResponse, error)
 	DeleteWorkflowSchedule(context.Context, *ApplicationWorkflowRequest) (*AppDTODeleteWorkflowScheduleResponse, error)
 	CleanupApplicationResources(context.Context, *ApplicationIDRequest) (*AppDTOCleanupApplicationResourcesResponse, error)
-	ResetApplicationDatabases(context.Context, *ResetApplicationDatabasesRPCRequest) (*AppDTODatabaseResetResponse, error)
 	RestartApplicationWorkloads(context.Context, *ApplicationLifecycleRPCRequest) (*AppDTORestartApplicationWorkloadsResponse, error)
 	StopApplicationDeployments(context.Context, *ApplicationLifecycleRPCRequest) (*AppDTOStopApplicationDeploymentsResponse, error)
 	StartApplicationDeployments(context.Context, *ApplicationLifecycleRPCRequest) (*AppDTOStartApplicationDeploymentsResponse, error)
@@ -587,7 +536,6 @@ type ApplicationServiceServer interface {
 	GetWorkflowTaskStatus(context.Context, *WorkflowTaskIDRequest) (*AppDTOTaskStatusResponse, error)
 	GetWorkflowTaskStages(context.Context, *WorkflowTaskIDRequest) (*AppDTOTaskStagesResponse, error)
 	UpdateApplicationVersion(context.Context, *UpdateVersionRPCRequest) (*AppDTOUpdateVersionResponse, error)
-	DiffUpdateApplicationVersion(context.Context, *DiffUpdateVersionRPCRequest) (*AppDTODiffUpdateVersionResponse, error)
 	CancelDelayedVersionUpdate(context.Context, *CancelWorkflowRPCRequest) (*AppDTOCancelWorkflowResponse, error)
 	TryApplication(context.Context, *AppDTOCreateApplicationsRequest) (*AppDTOTryApplicationResponse, error)
 	TryWorkflow(context.Context, *UpdateApplicationWorkflowRPCRequest) (*AppDTOTryWorkflowResponse, error)
@@ -607,9 +555,6 @@ func (UnimplementedApplicationServiceServer) GetCanonicalJSONSchema(context.Cont
 func (UnimplementedApplicationServiceServer) ListApplications(context.Context, *ApplicationListRequest) (*AppDTOListApplicationResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListApplications not implemented")
 }
-func (UnimplementedApplicationServiceServer) ListTemplateApplications(context.Context, *ApplicationListRequest) (*AppDTOListApplicationResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListTemplateApplications not implemented")
-}
 func (UnimplementedApplicationServiceServer) CreateApplications(context.Context, *AppDTOCreateApplicationsRequest) (*AppDTOApplicationBase, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateApplications not implemented")
 }
@@ -618,9 +563,6 @@ func (UnimplementedApplicationServiceServer) CreateAndExecApplications(context.C
 }
 func (UnimplementedApplicationServiceServer) BatchGetApplications(context.Context, *AppDTOBatchGetApplicationsRequest) (*AppDTOBatchGetApplicationsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method BatchGetApplications not implemented")
-}
-func (UnimplementedApplicationServiceServer) ConvertApplications(context.Context, *AppDTOConvertApplicationsRequest) (*AppDTOConvertApplicationsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ConvertApplications not implemented")
 }
 func (UnimplementedApplicationServiceServer) ListApplicationWorkflows(context.Context, *ApplicationIDRequest) (*AppDTOListApplicationWorkflowsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListApplicationWorkflows not implemented")
@@ -673,9 +615,6 @@ func (UnimplementedApplicationServiceServer) DeleteWorkflowSchedule(context.Cont
 func (UnimplementedApplicationServiceServer) CleanupApplicationResources(context.Context, *ApplicationIDRequest) (*AppDTOCleanupApplicationResourcesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CleanupApplicationResources not implemented")
 }
-func (UnimplementedApplicationServiceServer) ResetApplicationDatabases(context.Context, *ResetApplicationDatabasesRPCRequest) (*AppDTODatabaseResetResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ResetApplicationDatabases not implemented")
-}
 func (UnimplementedApplicationServiceServer) RestartApplicationWorkloads(context.Context, *ApplicationLifecycleRPCRequest) (*AppDTORestartApplicationWorkloadsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RestartApplicationWorkloads not implemented")
 }
@@ -708,9 +647,6 @@ func (UnimplementedApplicationServiceServer) GetWorkflowTaskStages(context.Conte
 }
 func (UnimplementedApplicationServiceServer) UpdateApplicationVersion(context.Context, *UpdateVersionRPCRequest) (*AppDTOUpdateVersionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateApplicationVersion not implemented")
-}
-func (UnimplementedApplicationServiceServer) DiffUpdateApplicationVersion(context.Context, *DiffUpdateVersionRPCRequest) (*AppDTODiffUpdateVersionResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method DiffUpdateApplicationVersion not implemented")
 }
 func (UnimplementedApplicationServiceServer) CancelDelayedVersionUpdate(context.Context, *CancelWorkflowRPCRequest) (*AppDTOCancelWorkflowResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CancelDelayedVersionUpdate not implemented")
@@ -778,24 +714,6 @@ func _ApplicationService_ListApplications_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ApplicationService_ListTemplateApplications_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ApplicationListRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ApplicationServiceServer).ListTemplateApplications(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ApplicationService_ListTemplateApplications_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ApplicationServiceServer).ListTemplateApplications(ctx, req.(*ApplicationListRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _ApplicationService_CreateApplications_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AppDTOCreateApplicationsRequest)
 	if err := dec(in); err != nil {
@@ -846,24 +764,6 @@ func _ApplicationService_BatchGetApplications_Handler(srv interface{}, ctx conte
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ApplicationServiceServer).BatchGetApplications(ctx, req.(*AppDTOBatchGetApplicationsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _ApplicationService_ConvertApplications_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(AppDTOConvertApplicationsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ApplicationServiceServer).ConvertApplications(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ApplicationService_ConvertApplications_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ApplicationServiceServer).ConvertApplications(ctx, req.(*AppDTOConvertApplicationsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1153,24 +1053,6 @@ func _ApplicationService_CleanupApplicationResources_Handler(srv interface{}, ct
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ApplicationService_ResetApplicationDatabases_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ResetApplicationDatabasesRPCRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ApplicationServiceServer).ResetApplicationDatabases(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ApplicationService_ResetApplicationDatabases_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ApplicationServiceServer).ResetApplicationDatabases(ctx, req.(*ResetApplicationDatabasesRPCRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _ApplicationService_RestartApplicationWorkloads_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ApplicationLifecycleRPCRequest)
 	if err := dec(in); err != nil {
@@ -1369,24 +1251,6 @@ func _ApplicationService_UpdateApplicationVersion_Handler(srv interface{}, ctx c
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ApplicationService_DiffUpdateApplicationVersion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DiffUpdateVersionRPCRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ApplicationServiceServer).DiffUpdateApplicationVersion(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ApplicationService_DiffUpdateApplicationVersion_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ApplicationServiceServer).DiffUpdateApplicationVersion(ctx, req.(*DiffUpdateVersionRPCRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _ApplicationService_CancelDelayedVersionUpdate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CancelWorkflowRPCRequest)
 	if err := dec(in); err != nil {
@@ -1457,10 +1321,6 @@ var ApplicationService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ApplicationService_ListApplications_Handler,
 		},
 		{
-			MethodName: "ListTemplateApplications",
-			Handler:    _ApplicationService_ListTemplateApplications_Handler,
-		},
-		{
 			MethodName: "CreateApplications",
 			Handler:    _ApplicationService_CreateApplications_Handler,
 		},
@@ -1471,10 +1331,6 @@ var ApplicationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "BatchGetApplications",
 			Handler:    _ApplicationService_BatchGetApplications_Handler,
-		},
-		{
-			MethodName: "ConvertApplications",
-			Handler:    _ApplicationService_ConvertApplications_Handler,
 		},
 		{
 			MethodName: "ListApplicationWorkflows",
@@ -1533,10 +1389,6 @@ var ApplicationService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ApplicationService_CleanupApplicationResources_Handler,
 		},
 		{
-			MethodName: "ResetApplicationDatabases",
-			Handler:    _ApplicationService_ResetApplicationDatabases_Handler,
-		},
-		{
 			MethodName: "RestartApplicationWorkloads",
 			Handler:    _ApplicationService_RestartApplicationWorkloads_Handler,
 		},
@@ -1579,10 +1431,6 @@ var ApplicationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateApplicationVersion",
 			Handler:    _ApplicationService_UpdateApplicationVersion_Handler,
-		},
-		{
-			MethodName: "DiffUpdateApplicationVersion",
-			Handler:    _ApplicationService_DiffUpdateApplicationVersion_Handler,
 		},
 		{
 			MethodName: "CancelDelayedVersionUpdate",

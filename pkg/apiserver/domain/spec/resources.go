@@ -12,7 +12,6 @@ const (
 	ResourceSecret             ResourceKind = "secret"
 	ResourceIngress            ResourceKind = "ingress"
 	ResourceJob                ResourceKind = "job"
-	ResourceCloudJob           ResourceKind = "cloudjob"
 	ResourceServiceAccount     ResourceKind = "serviceaccount"
 	ResourceRole               ResourceKind = "role"
 	ResourceRoleBinding        ResourceKind = "rolebinding"
@@ -23,21 +22,8 @@ const (
 type KubeKind string
 
 const (
-	KubeKindStatefulSet           KubeKind = "StatefulSet"
-	KubeKindDeployment            KubeKind = "Deployment"
-	KubeKindDaemonSet             KubeKind = "DaemonSet"
-	KubeKindService               KubeKind = "Service"
-	KubeKindConfigMap             KubeKind = "ConfigMap"
-	KubeKindSecret                KubeKind = "Secret"
-	KubeKindIngress               KubeKind = "Ingress"
-	KubeKindJob                   KubeKind = "Job"
-	KubeKindServiceAccount        KubeKind = "ServiceAccount"
-	KubeKindRole                  KubeKind = "Role"
-	KubeKindRoleBinding           KubeKind = "RoleBinding"
-	KubeKindClusterRole           KubeKind = "ClusterRole"
-	KubeKindClusterRoleBinding    KubeKind = "ClusterRoleBinding"
-	KubeKindPersistentVolumeClaim KubeKind = "PersistentVolumeClaim"
-	KubeKindList                  KubeKind = "List"
+	KubeKindStatefulSet KubeKind = "StatefulSet"
+	KubeKindJob         KubeKind = "Job"
 )
 
 const (

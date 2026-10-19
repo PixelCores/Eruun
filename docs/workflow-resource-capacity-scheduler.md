@@ -1,12 +1,12 @@
 # Workflow 资源容量准入与补偿方向
 
-> 状态：Draft / Proposal。本文描述 Workflow 执行前的资源容量准入与可选容量补偿边界；当前运行链路尚未实现该能力，本文不定义公共字段、CloudJob action、节点标签、状态值、默认策略或固定超时。
+> 状态：Draft / Proposal。本文描述 Workflow 执行前的资源容量准入与可选容量补偿边界；当前运行链路尚未实现该能力，本文不定义公共字段、Provider action、节点标签、状态值、默认策略或固定超时。
 
 ## 1. 当前事实
 
 Eruun 当前由 Scheduler 派发 waiting Workflow，由 Worker 执行 Workflow/Job。Pod 的最终放置仍由 Kubernetes Scheduler 决定；当资源或调度约束无法满足时，工作负载会进入 Pending。
 
-当前 `resources` Trait 只稳定表达 CPU、内存和 `nvidia.com/gpu`，`targetWorkEnv` 映射为 `nodeSelector`。Eruun 尚未在 Workflow 派发前聚合集群容量，也没有自动创建计算节点或扩容节点池的内置 CloudJob action。
+当前 `resources` Trait 只稳定表达 CPU、内存和 `nvidia.com/gpu`，`targetWorkEnv` 映射为 `nodeSelector`。Eruun 尚未在 Workflow 派发前聚合集群容量，也没有自动创建计算节点或扩容节点池的内置能力。
 
 ## 2. 目标与非目标
 
@@ -50,7 +50,7 @@ Eruun 当前由 Scheduler 派发 waiting Workflow，由 Worker 执行 Workflow/J
 
 外部资源创建成功不等于容量可用。补偿只有在目标资源已进入 Kubernetes、满足声明的硬约束并通过重新准入后，才可以让原 Workflow 继续。
 
-具体 Provider/action 设计遵循 [AI Provider 集成方向](ai-provider-integration-design.md)。当前 CloudJob 内置能力只覆盖阿里云 NAS 与 StorageClass 引导，不能被描述成已经支持计算节点扩容。
+具体 Provider/action 设计遵循 [AI Provider 集成方向](ai-provider-integration-design.md)。当前没有云 Provider 组件，不能被描述成已经支持计算节点扩容。
 
 ## 5. 调度提示
 

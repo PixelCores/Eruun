@@ -30,7 +30,6 @@
 - standalone PVC 部署时如果同名 PVC 已存在，Eruun 不更新容量、StorageClass、AccessModes 或其他 spec，直接视为成功。
 - workflow cleanup 和同步资源 cleanup 都不主动删除 standalone PVC；显式 `claimName` PVC、标签命中的 PVC、命名空间共享日志 PVC 都会保留。
 - `tmpCreate=true` 的 StatefulSet `volumeClaimTemplates` PVC 不属于 standalone PVC；StatefulSet 删除后的 PVC 生命周期由 Kubernetes retention policy 决定。
-- `database-reset` 是独立的数据库重置契约，仍会按目标组件删除或重建数据库 PVC。
 
 ## `subPathExpr` 来源
 

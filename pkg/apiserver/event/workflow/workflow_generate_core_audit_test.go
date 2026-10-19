@@ -646,10 +646,9 @@ func TestGenerateJobTasksUsesApplicationNameForResourceNames(t *testing.T) {
 	store := &fakeDataStore{
 		workflow: &model.Workflow{ID: "wf-store", Steps: stepsJSON},
 		application: &model.Applications{
-			ID:              appID,
-			Name:            appName,
-			Version:         "8.0.41",
-			TemplateEnabled: true,
+			ID:      appID,
+			Name:    appName,
+			Version: "8.0.41",
 		},
 		components: []*model.ApplicationComponent{component},
 	}

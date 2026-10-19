@@ -8,7 +8,6 @@
     "version": "1.0.0",
     "description": "Create app and execute workflow in one request",
     "workflowId": "wf-default-123",
-    "templateEnabled": false,
     "resources": {
       "cpuReq": "",
       "memReq": "",

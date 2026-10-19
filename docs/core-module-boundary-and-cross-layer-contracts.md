@@ -99,7 +99,6 @@ flowchart LR
 | `properties.jobRetryPolicy` | 同步立即执行 job 组件的 `onOOM`、次数、退避及资源增长上限 | Component Properties → Job annotation；JobInfo `internal_info` 保存尝试和资源快照 | 无 | `eruun.io/job-retry-policy` / `eruun.io/job-attempt`；UID 保护删除重建 | checkpoint 不作为公共请求字段 | DB checkpoint 保留跨 generation 预算和 deadline；详见 [失败策略](workflow-failure-policy.md) |
 | `workflow_queue.status` | 任务状态相关 API 输出 | `WorkflowQueue.Status`（`eruun_workflow_queue.status`） | 无 | 无 | 非敏感 | `eruun_workflow_queue` 主事实源 |
 | `workflow_queue.cancel_source` | 取消任务响应可见 | `WorkflowQueue.CancelSource`（`eruun_workflow_queue.cancel_source`） | 无 | 无 | 非敏感 | `eruun_workflow_queue` 主事实源 |
-| `templateEnabled` | `ApplicationBase.templateEnabled` | `Applications.TemplateEnabled`（`eruun_applications.tmp_enable`） | `app:list:v3` / `app:template:list:v4` | 无 | 布尔值 | DB 主事实源，缓存只做加速 |
 | `properties.secret[*]` | 组件 `properties.secret`（`secret` 组件） | `ApplicationComponent.Properties` JSON 内 `secret` map | 缓存中的组件 `properties.secret` | `Secret.StringData/Data` | 仅文本语义；不自动 base64 解码 | Domain/DB 为输入事实源；K8s 由 API server 完成字节化 |
 | `credentials.value` | `components[].credentials[].value` | 由 assembler 从同应用同命名空间 `secret` 组件推导，不单独落库 | 随组件列表缓存 | 不直接来自实时 K8s Secret 读取 | 明文返回，必须按敏感信息处理 | Domain 组装结果；来源仍是 DB 中 `properties.secret` |
 | `credentials.resolved` | `components[].credentials[].resolved` | 运行时推导布尔值，不单独落库 | 随组件列表缓存 | 无 | `value` 为空或缺失则 `false` | Domain 组装结果 |
@@ -108,7 +107,6 @@ flowchart LR
 | `traits.storage[].sourceName(type=secret)` | 组件 traits 存储引用 | `ApplicationComponent.Traits` JSON | 随组件列表缓存 | 最终映射为 `Volume.Secret.SecretName` | 仅引用，不携带值 | Traits 配置为事实源 |
 | `k8s secret payload` | API 不直接暴露该底层形态 | `SecretInput.Data`（字符串 map） | 无 | 创建时主要通过 `Secret.StringData`，落地后 K8s 存为 `Data` 字节 | K8s API 自动进行 base64 传输层处理 | Domain 输入语义优先；K8s 为承载格式 |
 | `app:list:v3` 缓存键 | 列表接口响应 | 来源 `Applications` + 默认 workflow 推导 | 键 `app:list:v3` | 无 | JSON 序列化缓存 | DB 优先，缓存可失效重建 |
-| `app:template:list:v4` 缓存键 | 模板列表接口响应 | 来源 `Applications.TemplateEnabled` + workflow 推导 + `resources` 摘要 | 键 `app:template:list:v4` | 无 | JSON 序列化缓存 | DB 优先，缓存可失效重建 |
 | `app:components:v6:<appId>` 缓存键 | 组件列表接口响应 | 来源 `ApplicationComponent` + 读路径纠正状态 | 键 `app:components:v6:<appId>` | 状态变更时由 informer 触发失效 | JSON 序列化缓存 | DB 优先，缓存仅加速 |
 
 ## 关键优先级规则（必须保持）

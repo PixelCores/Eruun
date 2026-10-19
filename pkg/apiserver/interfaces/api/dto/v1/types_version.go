@@ -1,7 +1,6 @@
 package v1
 
 import (
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
@@ -76,90 +75,4 @@ type UpdateVersionResponse struct {
 
 	// RestartedComponents 已接受重启的组件名称列表
 	RestartedComponents []string `json:"restartedComponents,omitempty"`
-}
-
-const (
-	DiffUpdateTargetOnlyStrategyPreserve = "preserve"
-	DiffUpdateTargetOnlyStrategyRemove   = "remove"
-	DiffUpdateTargetOnlyStrategyBlock    = "block"
-
-	DiffUpdateComponentActionPreserve = "preserve"
-	DiffUpdateComponentActionBlock    = "block"
-)
-
-// DiffUpdateVersionRequest compares a source app with the target app from the path
-// and optionally applies the generated version update.
-type DiffUpdateVersionRequest struct {
-	// SourceAppID source application ID used as the desired version/component snapshot
-	SourceAppID string `json:"sourceAppId" validate:"required"`
-
-	// DryRun returns the diff without applying it when true
-	DryRun bool `json:"dryRun,omitempty"`
-
-	// TargetOnlyStrategy handles components that exist only in the target app:
-	// preserve (default), remove, or block.
-	TargetOnlyStrategy string `json:"targetOnlyStrategy,omitempty"`
-
-	// Strategy 历史占位字段，仅接受空值或 rolling；实际更新策略由组件 traits.rollout 控制
-	Strategy string `json:"strategy,omitempty"`
-
-	// ExecutionScope workflow 执行范围：full_workflow（默认）或 changed_components
-	ExecutionScope string `json:"executionScope,omitempty"`
-
-	// WorkflowID 指定自动执行的工作流（可选）
-	WorkflowID string `json:"workflowId,omitempty"`
-
-	// ExecuteAt 延迟执行时间（Unix 秒）；仅在 autoExec=true 且有组件变更时生效
-	ExecuteAt int64 `json:"executeAt,omitempty"`
-
-	// AutoExec 是否自动执行工作流，默认 true
-	AutoExec *bool `json:"autoExec,omitempty"`
-
-	// Description 更新说明
-	Description string `json:"description,omitempty"`
-}
-
-// DiffUpdateVersionResponse describes component differences and the optional
-// update result produced from those differences.
-type DiffUpdateVersionResponse struct {
-	TargetAppID           string                 `json:"targetAppId"`
-	SourceAppID           string                 `json:"sourceAppId"`
-	TargetPreviousVersion string                 `json:"targetPreviousVersion"`
-	TargetVersion         string                 `json:"targetVersion"`
-	SourceVersion         string                 `json:"sourceVersion"`
-	DryRun                bool                   `json:"dryRun"`
-	TargetOnlyStrategy    string                 `json:"targetOnlyStrategy"`
-	VersionChanged        bool                   `json:"versionChanged"`
-	HasChanges            bool                   `json:"hasChanges"`
-	Executable            bool                   `json:"executable"`
-	UpdatedComponents     []VersionComponentDiff `json:"updatedComponents,omitempty"`
-	AddedComponents       []VersionComponentDiff `json:"addedComponents,omitempty"`
-	ExtraComponents       []VersionComponentDiff `json:"extraComponents,omitempty"`
-	BlockedComponents     []VersionComponentDiff `json:"blockedComponents,omitempty"`
-	UpdateResult          *UpdateVersionResponse `json:"updateResult,omitempty"`
-}
-
-type VersionComponentDiff struct {
-	Action string                  `json:"action"`
-	Name   string                  `json:"name"`
-	Type   config.JobType          `json:"type,omitempty"`
-	Reason string                  `json:"reason,omitempty"`
-	Fields []VersionComponentField `json:"fields,omitempty"`
-	Before *VersionComponentState  `json:"before,omitempty"`
-	After  *VersionComponentState  `json:"after,omitempty"`
-}
-
-type VersionComponentField struct {
-	Field  string `json:"field"`
-	Before any    `json:"before,omitempty"`
-	After  any    `json:"after,omitempty"`
-}
-
-type VersionComponentState struct {
-	Name       string         `json:"name"`
-	Type       config.JobType `json:"type,omitempty"`
-	Image      string         `json:"image,omitempty"`
-	Replicas   int32          `json:"replicas"`
-	Properties Properties     `json:"properties"`
-	Traits     Traits         `json:"traits"`
 }

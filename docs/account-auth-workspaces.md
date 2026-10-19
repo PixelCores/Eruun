@@ -141,11 +141,11 @@ OAuth 前端先 POST start，再导航到 authorizationURL。回调页从当前 
 | `GET /admin/users?page=1&pageSize=20` | 系统管理员；pageSize 最大 100 |
 | `PATCH /admin/users/:userID` | `{disabled:true|false}`；不能停用系统管理员，停用撤销所有会话 |
 
-业务请求通过 `X-Eruun-Workspace-ID` 选空间，省略用个人空间。客户端 namespace 与空间不一致直接拒绝。应用和任务 ID、批量查询、模板引用都校验归属；数据库查询先加空间过滤再分页，应用列表缓存按空间分开。权限不来自客户端角色或令牌声明。系统设置、集群导入和编程语言写入仅系统管理员可操作；导入目标也须属于选中空间。未明确加入权限表的新路由默认拒绝；自动化测试会遍历实际 Gin 路由，要求每条路由恰好属于一个授权类别或显式健康检查例外。
+业务请求通过 `X-Eruun-Workspace-ID` 选空间，省略用个人空间。客户端 namespace 与空间不一致直接拒绝。应用和任务 ID、批量查询都校验归属；数据库查询先加空间过滤再分页，应用列表缓存按空间分开。权限不来自客户端角色或令牌声明。系统设置、集群导入和编程语言写入仅系统管理员可操作；导入目标也须属于选中空间。未明确加入权限表的新路由默认拒绝；自动化测试会遍历实际 Gin 路由，要求每条路由恰好属于一个授权类别或显式健康检查例外。
 
 注册、团队创建、保存应用只写数据库。首次部署在任何工作负载写入前完成 namespace、安全身份、Pod Security Restricted、NetworkPolicy、ResourceQuota 和 LimitRange。已有同名 namespace 的 `eruun.io/workspace-id` 不一致会失败；并发创建重新读取验证归属。初始化部分失败可幂等重试，不删除已有资源，也不开始工作负载。
 
-API 资源操作及后台执行使用 namespace 内受限 `eruun-runner` 身份；工作负载本身使用无 token 挂载的 default ServiceAccount。Pod 必须非 root、禁止提权、drop ALL capabilities、RuntimeDefault seccomp。镜像须支持非 root USER，或在 securityPolicy 设置非零 runAsUser。入口及展开后的最终容器（含 init、sidecar）均校验；拒绝 host namespace、hostPath、hostPort、任意 ServiceAccount、额外 RBAC、CloudJob、跨 namespace、NodePort/LoadBalancer、任意 Ingress 注解/域名/默认后端、不允许的存储类。
+API 资源操作及后台执行使用 namespace 内受限 `eruun-runner` 身份；工作负载本身使用无 token 挂载的 default ServiceAccount。Pod 必须非 root、禁止提权、drop ALL capabilities、RuntimeDefault seccomp。镜像须支持非 root USER，或在 securityPolicy 设置非零 runAsUser。入口及展开后的最终容器（含 init、sidecar）均校验；拒绝 host namespace、hostPath、hostPort、任意 ServiceAccount、额外 RBAC、跨 namespace、NodePort/LoadBalancer、任意 Ingress 注解/域名/默认后端、不允许的存储类。
 
 展开后的任务在资源比较和持久化之前写入与请求边界相同的安全默认值；规范化会完整替换对象内容，包括清除已移除的嵌套字段（如 Localhost seccomp 的 localhostProfile），相同配置再次部署不会因这些默认值触发 Deployment/StatefulSet 滚动更新。延迟 Job 到期时从已提交 JobInfo 的 AppID 读取应用及空间，重新验证 namespace 归属，并使用该空间的受限客户端执行。延迟执行继续使用空间受限身份；节点的统一 RBAC 不取消 namespace 与指定 `eruun-runner` impersonation 的边界。
 

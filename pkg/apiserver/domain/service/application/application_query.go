@@ -199,144 +199,6 @@ func (c *applicationsServiceImpl) applicationsByIDs(ctx context.Context, appIDs 
 	return appsByID, nil
 }
 
-// ListTemplateApplications lists applications marked as templates (templateEnabled=true)
-func (c *applicationsServiceImpl) ListTemplateApplications(ctx context.Context, opts ListApplicationsOptions) ([]*apisv1.ApplicationBase, error) {
-	if opts.FullScan() {
-		var cached []*apisv1.ApplicationBase
-		if c.loadJSONCache(ctx, scopedListCacheKey(ctx, templateApplicationListCacheKey), &cached) {
-			return cached, nil
-		}
-	}
-
-	listOptions := datastore.ListOptions{
-		Page:     0,
-		PageSize: 0,
-		SortBy:   applicationListSortOptions(),
-	}
-	if !opts.FullScan() {
-		listOptions.Page = opts.NormalizedPage()
-		listOptions.PageSize = opts.PageSize
-	}
-
-	apps, err := c.AppRepo.ListByQuery(ctx, &model.Applications{TemplateEnabled: true}, listOptions)
-	if err != nil {
-		return nil, err
-	}
-
-	list, err := c.applicationBasesWithDefaultWorkflow(ctx, apps)
-	if err != nil {
-		return nil, err
-	}
-	if err := c.enrichTemplateApplicationResourceSummary(ctx, list); err != nil {
-		return nil, err
-	}
-	if opts.FullScan() {
-		c.storeJSONCache(ctx, scopedListCacheKey(ctx, templateApplicationListCacheKey), list)
-	}
-	return list, nil
-}
-
-func (c *applicationsServiceImpl) enrichTemplateApplicationResourceSummary(ctx context.Context, apps []*apisv1.ApplicationBase) error {
-	appIDs := make([]string, 0, len(apps))
-	for _, app := range apps {
-		if app == nil {
-			continue
-		}
-		appID := strings.TrimSpace(app.ID)
-		if appID == "" {
-			continue
-		}
-		appIDs = append(appIDs, appID)
-	}
-	componentsByAppID, err := c.componentsByAppIDs(ctx, appIDs)
-	if err != nil {
-		return err
-	}
-	for _, app := range apps {
-		if app == nil {
-			continue
-		}
-		component := selectTemplateMainComponent(componentsByAppID[strings.TrimSpace(app.ID)])
-		if component == nil {
-			continue
-		}
-		resources, err := summarizeApplicationResourcesFromModelComponent(component)
-		if err != nil {
-			return fmt.Errorf("convert template component %s traits: %w", component.Name, err)
-		}
-		app.Resources = resources
-	}
-	return nil
-}
-
-func (c *applicationsServiceImpl) componentsByAppIDs(ctx context.Context, appIDs []string) (map[string][]*model.ApplicationComponent, error) {
-	normalized := make([]string, 0, len(appIDs))
-	requested := make(map[string]struct{}, len(appIDs))
-	for _, appID := range appIDs {
-		appID = strings.TrimSpace(appID)
-		if appID == "" {
-			continue
-		}
-		if _, exists := requested[appID]; exists {
-			continue
-		}
-		requested[appID] = struct{}{}
-		normalized = append(normalized, appID)
-	}
-	if len(normalized) == 0 {
-		return map[string][]*model.ApplicationComponent{}, nil
-	}
-	if c.Store == nil {
-		return nil, fmt.Errorf("datastore is nil")
-	}
-	entities, err := c.Store.List(ctx, &model.ApplicationComponent{}, &datastore.ListOptions{
-		FilterOptions: datastore.FilterOptions{
-			In: []datastore.InQueryOption{
-				{Key: workflowAppIDColumn, Values: normalized},
-			},
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-	result := make(map[string][]*model.ApplicationComponent, len(normalized))
-	for _, entity := range entities {
-		component, ok := entity.(*model.ApplicationComponent)
-		if !ok {
-			return nil, fmt.Errorf("unexpected component entity type: %T", entity)
-		}
-		if component == nil {
-			continue
-		}
-		appID := strings.TrimSpace(component.AppID)
-		if _, ok := requested[appID]; !ok {
-			continue
-		}
-		result[appID] = append(result[appID], component)
-	}
-	return result, nil
-}
-
-func selectTemplateMainComponent(components []*model.ApplicationComponent) *model.ApplicationComponent {
-	candidates := make([]*model.ApplicationComponent, 0, len(components))
-	for _, component := range components {
-		if component == nil || !isApplicationResourceSummaryComponentType(component.ComponentType) {
-			continue
-		}
-		candidates = append(candidates, component)
-	}
-	if len(candidates) == 0 {
-		return nil
-	}
-	sort.Slice(candidates, func(i, j int) bool {
-		if candidates[i].ID != candidates[j].ID {
-			return candidates[i].ID < candidates[j].ID
-		}
-		return strings.TrimSpace(candidates[i].Name) < strings.TrimSpace(candidates[j].Name)
-	})
-	return candidates[0]
-}
-
 func (c *applicationsServiceImpl) applicationBasesWithDefaultWorkflow(ctx context.Context, apps []*model.Applications) ([]*apisv1.ApplicationBase, error) {
 	appIDs := make([]string, 0, len(apps))
 	for _, app := range apps {
@@ -486,18 +348,16 @@ func (c *applicationsServiceImpl) GetApplicationSpec(ctx context.Context, appID 
 		componentSpecs = append(componentSpecs, componentSpec)
 	}
 
-	templateEnabled := app.TemplateEnabled
 	spec := &apisv1.CreateApplicationsRequest{
-		ID:              app.ID,
-		Name:            app.Name,
-		Namespace:       app.Namespace,
-		Alias:           app.Alias,
-		Version:         app.Version,
-		Project:         app.Project,
-		Description:     app.Description,
-		Icon:            app.Icon,
-		Components:      componentSpecs,
-		TemplateEnabled: &templateEnabled,
+		ID:          app.ID,
+		Name:        app.Name,
+		Namespace:   app.Namespace,
+		Alias:       app.Alias,
+		Version:     app.Version,
+		Project:     app.Project,
+		Description: app.Description,
+		Icon:        app.Icon,
+		Components:  componentSpecs,
 	}
 	workflows, err := c.WorkflowRepo.FindByAppID(ctx, appID)
 	if err != nil && !errors.Is(err, datastore.ErrRecordNotExist) {

@@ -1,7 +1,6 @@
 package job
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -61,32 +60,6 @@ func TestBuildJobInfoRecordFallsBackToBoundedComponentLabel(t *testing.T) {
 	})
 
 	require.Equal(t, "api-v1", record.ServiceName)
-}
-
-func TestSaveOrUpdateJobInfoIsolatesExecutionsWithinOneGeneration(t *testing.T) {
-	store := newCloudJobCheckpointStore()
-	first := &model.JobTask{
-		TaskID: "task-1", JobType: string(config.JobDeployService), Name: "api",
-		RunGeneration: 7, ExecutionKey: "step-0", Status: config.StatusRunning,
-	}
-	second := *first
-	second.ExecutionKey = "step-1"
-	second.Status = config.StatusWaiting
-	ownedStore := withJobTestOwner(store, first, &second)
-
-	require.NoError(t, saveOrUpdateJobInfo(context.Background(), ownedStore, first))
-	require.NoError(t, saveOrUpdateJobInfo(context.Background(), ownedStore, &second))
-	first.Status = config.StatusCompleted
-	require.NoError(t, saveOrUpdateJobInfo(context.Background(), ownedStore, first))
-
-	statuses := make(map[string]string, len(store.records))
-	for _, record := range store.records {
-		require.NotNil(t, record.ExecutionKey)
-		statuses[*record.ExecutionKey] = record.Status
-	}
-	require.Len(t, statuses, 2)
-	require.Equal(t, string(config.StatusCompleted), statuses["step-0"])
-	require.Equal(t, string(config.StatusWaiting), statuses["step-1"])
 }
 
 func TestServiceJobInfoMetadataHandlesTypedNil(t *testing.T) {

@@ -28,7 +28,6 @@ type ApplicationsServer struct {
 	Runtime      applicationRuntimeReader    `inject:""`
 	Workflow     service.WorkflowService     `inject:""`
 	Validation   service.ValidationService   `inject:""`
-	Conversion   service.ConversionService   `inject:""`
 }
 
 func typedResult[P proto.Message](value any, err error, target P) (P, error) {
@@ -84,11 +83,6 @@ func (s *ApplicationsServer) ListApplications(ctx context.Context, req *eruunv1.
 	return typedResult(apis.ListApplicationResponse{Applications: items}, nil, &eruunv1.AppDTOListApplicationResponse{})
 }
 
-func (s *ApplicationsServer) ListTemplateApplications(ctx context.Context, req *eruunv1.ApplicationListRequest) (*eruunv1.AppDTOListApplicationResponse, error) {
-	items, err := s.Applications.ListTemplateApplications(ctx, listApplicationOptions(req))
-	return typedResult(apis.ListApplicationResponse{Applications: items}, err, &eruunv1.AppDTOListApplicationResponse{})
-}
-
 func (s *ApplicationsServer) CreateApplications(ctx context.Context, req *eruunv1.AppDTOCreateApplicationsRequest) (*eruunv1.AppDTOApplicationBase, error) {
 	input, err := decodeTypedRequest[apis.CreateApplicationsRequest](req)
 	if err != nil {
@@ -105,15 +99,6 @@ func (s *ApplicationsServer) BatchGetApplications(ctx context.Context, req *eruu
 	}
 	resp, err := s.Applications.BatchGetApplications(ctx, input.AppIDs)
 	return typedResult(resp, err, &eruunv1.AppDTOBatchGetApplicationsResponse{})
-}
-
-func (s *ApplicationsServer) ConvertApplications(ctx context.Context, req *eruunv1.AppDTOConvertApplicationsRequest) (*eruunv1.AppDTOConvertApplicationsResponse, error) {
-	input, err := decodeTypedRequest[apis.ConvertApplicationsRequest](req)
-	if err != nil {
-		return nil, rpcError(bcode.ErrApplicationConfig)
-	}
-	resp, err := s.Conversion.ConvertKubeResources(ctx, input)
-	return typedResult(resp, err, &eruunv1.AppDTOConvertApplicationsResponse{})
 }
 
 func (s *ApplicationsServer) ListApplicationWorkflows(ctx context.Context, req *eruunv1.ApplicationIDRequest) (*eruunv1.AppDTOListApplicationWorkflowsResponse, error) {
@@ -241,18 +226,6 @@ func (s *ApplicationsServer) CleanupApplicationResources(ctx context.Context, re
 	return typedResult(resp, err, &eruunv1.AppDTOCleanupApplicationResourcesResponse{})
 }
 
-func (s *ApplicationsServer) ResetApplicationDatabases(ctx context.Context, req *eruunv1.ResetApplicationDatabasesRPCRequest) (*eruunv1.AppDTODatabaseResetResponse, error) {
-	if req == nil || appID(req.AppId) != nil {
-		return nil, rpcError(bcode.ErrApplicationConfig)
-	}
-	input, err := decodeTypedRequest[apis.DatabaseResetRequest](req.Request)
-	if err != nil {
-		return nil, rpcError(bcode.ErrApplicationConfig)
-	}
-	resp, err := s.Applications.ResetApplicationDatabases(ctx, req.AppId, input)
-	return typedResult(resp, err, &eruunv1.AppDTODatabaseResetResponse{})
-}
-
 func (s *ApplicationsServer) RestartApplicationWorkloads(ctx context.Context, req *eruunv1.ApplicationLifecycleRPCRequest) (*eruunv1.AppDTORestartApplicationWorkloadsResponse, error) {
 	if req == nil || appID(req.AppId) != nil {
 		return nil, rpcError(bcode.ErrApplicationConfig)
@@ -323,18 +296,6 @@ func (s *ApplicationsServer) UpdateApplicationVersion(ctx context.Context, req *
 	}
 	resp, err := s.Applications.UpdateVersion(ctx, req.AppId, input)
 	return typedResult(resp, err, &eruunv1.AppDTOUpdateVersionResponse{})
-}
-
-func (s *ApplicationsServer) DiffUpdateApplicationVersion(ctx context.Context, req *eruunv1.DiffUpdateVersionRPCRequest) (*eruunv1.AppDTODiffUpdateVersionResponse, error) {
-	if req == nil || appID(req.AppId) != nil {
-		return nil, rpcError(bcode.ErrApplicationConfig)
-	}
-	input, err := decodeTypedRequest[apis.DiffUpdateVersionRequest](req.Request)
-	if err != nil {
-		return nil, rpcError(bcode.ErrApplicationConfig)
-	}
-	resp, err := s.Applications.DiffUpdateVersion(ctx, req.AppId, input)
-	return typedResult(resp, err, &eruunv1.AppDTODiffUpdateVersionResponse{})
 }
 
 func (s *ApplicationsServer) TryApplication(ctx context.Context, req *eruunv1.AppDTOCreateApplicationsRequest) (*eruunv1.AppDTOTryApplicationResponse, error) {

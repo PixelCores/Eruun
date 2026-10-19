@@ -174,8 +174,6 @@ func initJobCtl(job *model.JobTask, runtime *Runtime) JobCtl {
 		return NewDeployClusterRoleBindingJobCtl(job, runtime, runtime.shareLocker)
 	case string(config.JobDeployInstant), string(config.JobCommand), string(config.JobEval):
 		return NewInstantJobCtl(job, runtime)
-	case string(config.JobDeployCloud):
-		return NewCloudJobCtl(job, runtime.Store)
 	case string(config.JobDeployCallback):
 		return NewCallbackJobCtl(job, runtime.Store, runtime.URLSecurityPolicy)
 	case string(config.JobCleanupResources):
@@ -184,8 +182,6 @@ func initJobCtl(job *model.JobTask, runtime *Runtime) JobCtl {
 			return nil
 		}
 		return cleanupCtl
-	case string(config.JobDatabaseReset):
-		return NewDatabaseResetJobCtl(job, runtime)
 	case string(config.JobVersionRestart):
 		return NewVersionRestartJobCtl(job, runtime)
 	default:
@@ -250,7 +246,7 @@ func RunJobs(ctx context.Context, jobs []*model.JobTask, run *Runtime) error {
 				return err
 			}
 			switch config.JobType(task.JobType) {
-			case config.JobDeployCloud, config.JobDeployServiceAccount, config.JobDeployRole, config.JobDeployRoleBinding, config.JobDeployClusterRole, config.JobDeployClusterRoleBinding:
+			case config.JobDeployServiceAccount, config.JobDeployRole, config.JobDeployRoleBinding, config.JobDeployClusterRole, config.JobDeployClusterRoleBinding:
 				return fmt.Errorf("job type %s is forbidden in workspaces", task.JobType)
 			}
 		}
@@ -790,9 +786,7 @@ func jobRequiresApplicationWritePermission(jobType string) bool {
 		config.JobDeployClusterRole,
 		config.JobDeployClusterRoleBinding,
 		config.JobDeployInstant,
-		config.JobDeployCloud,
 		config.JobCleanupResources,
-		config.JobDatabaseReset,
 		config.JobVersionRestart:
 		return true
 	default:

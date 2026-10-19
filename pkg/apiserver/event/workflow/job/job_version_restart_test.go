@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,12 +22,13 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
 func TestVersionRestartJobCtlRestartsDeployment(t *testing.T) {
-	api := databaseResetServerComponent(t, "api")
-	store := newDatabaseResetComponentStore(api)
-	deployment := databaseResetDeployment(t, api)
+	api := restartServerComponent(t, "api")
+	store := newRestartComponentStore(api)
+	deployment := restartDeployment(t, api)
 	client := fake.NewSimpleClientset(deployment)
 	task := versionRestartTask(api)
 	_, err := client.CoreV1().Pods("default").Create(context.Background(), versionRestartReadyPod(api, "api-old", "old-restarted-at"), metav1.CreateOptions{})
@@ -59,9 +61,9 @@ func TestVersionRestartJobCtlRestartsDeployment(t *testing.T) {
 }
 
 func TestVersionRestartJobCtlRestartsStatefulSet(t *testing.T) {
-	db := databaseResetStoreComponent(t, "mysql", nil)
-	store := newDatabaseResetComponentStore(db)
-	_, statefulSet := databaseResetStatefulSet(t, db)
+	db := restartStoreComponent(t, "mysql", nil)
+	store := newRestartComponentStore(db)
+	_, statefulSet := restartStatefulSet(t, db)
 	client := fake.NewSimpleClientset(statefulSet)
 	task := versionRestartTask(db)
 	_, err := client.CoreV1().Pods("default").Create(context.Background(), versionRestartReadyPod(db, "mysql-old", "old-restarted-at"), metav1.CreateOptions{})
@@ -88,10 +90,10 @@ func TestVersionRestartJobCtlRestartsStatefulSet(t *testing.T) {
 }
 
 func TestVersionRestartJobCtlSkipsStoppedComponent(t *testing.T) {
-	api := databaseResetServerComponent(t, "api")
+	api := restartServerComponent(t, "api")
 	api.Status = string(config.ComponentStatusStopped)
-	store := newDatabaseResetComponentStore(api)
-	deployment := databaseResetDeployment(t, api)
+	store := newRestartComponentStore(api)
+	deployment := restartDeployment(t, api)
 	client := fake.NewSimpleClientset(deployment)
 	task := versionRestartTask(api)
 	ctl := NewVersionRestartJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
@@ -119,15 +121,15 @@ func TestVersionRestartJobCtlHonorsShareLifecyclePolicy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			api := databaseResetServerComponent(t, "api")
+			api := restartServerComponent(t, "api")
 			if !tt.wantSkip {
 				api.Replicas = 0
 			}
-			api.Traits = mustDatabaseResetJSON(t, &spec.Traits{
+			api.Traits = mustRestartJSON(t, &spec.Traits{
 				Share: &spec.ShareTraitSpec{Strategy: tt.strategy},
 			})
-			store := newDatabaseResetComponentStore(api)
-			deployment := databaseResetDeployment(t, api)
+			store := newRestartComponentStore(api)
+			deployment := restartDeployment(t, api)
 			client := fake.NewSimpleClientset(deployment)
 			task := versionRestartTask(api)
 			ctl := NewVersionRestartJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
@@ -162,8 +164,8 @@ func TestFormatVersionRestartAtPreservesNanoseconds(t *testing.T) {
 }
 
 func TestVersionRestartJobCtlSkipsMissingDeployment(t *testing.T) {
-	api := databaseResetServerComponent(t, "api")
-	store := newDatabaseResetComponentStore(api)
+	api := restartServerComponent(t, "api")
+	store := newRestartComponentStore(api)
 	client := fake.NewSimpleClientset()
 	task := versionRestartTask(api)
 	ctl := NewVersionRestartJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
@@ -174,9 +176,9 @@ func TestVersionRestartJobCtlSkipsMissingDeployment(t *testing.T) {
 }
 
 func TestVersionRestartJobCtlFailsOnPatchError(t *testing.T) {
-	api := databaseResetServerComponent(t, "api")
-	store := newDatabaseResetComponentStore(api)
-	deployment := databaseResetDeployment(t, api)
+	api := restartServerComponent(t, "api")
+	store := newRestartComponentStore(api)
+	deployment := restartDeployment(t, api)
 	client := fake.NewSimpleClientset(deployment)
 	client.Fake.PrependReactor("patch", "deployments", func(action k8stesting.Action) (bool, runtime.Object, error) {
 		return true, nil, errors.New("patch denied")
@@ -192,9 +194,9 @@ func TestVersionRestartJobCtlFailsOnPatchError(t *testing.T) {
 }
 
 func TestVersionRestartJobCtlTreatsNotFoundPatchAsSkipped(t *testing.T) {
-	api := databaseResetServerComponent(t, "api")
-	store := newDatabaseResetComponentStore(api)
-	deployment := databaseResetDeployment(t, api)
+	api := restartServerComponent(t, "api")
+	store := newRestartComponentStore(api)
+	deployment := restartDeployment(t, api)
 	client := fake.NewSimpleClientset(deployment)
 	client.Fake.PrependReactor("patch", "deployments", func(action k8stesting.Action) (bool, runtime.Object, error) {
 		return true, nil, k8serrors.NewNotFound(schema.GroupResource{Group: "apps", Resource: "deployments"}, deployment.Name)
@@ -208,9 +210,9 @@ func TestVersionRestartJobCtlTreatsNotFoundPatchAsSkipped(t *testing.T) {
 }
 
 func TestVersionRestartJobCtlFailsWhenRestartedDeploymentPodCrashLoops(t *testing.T) {
-	api := databaseResetServerComponent(t, "api")
-	store := newDatabaseResetComponentStore(api)
-	deployment := databaseResetDeployment(t, api)
+	api := restartServerComponent(t, "api")
+	store := newRestartComponentStore(api)
+	deployment := restartDeployment(t, api)
 	client := fake.NewSimpleClientset(deployment)
 	task := versionRestartTask(api)
 	task.Timeout = 3
@@ -237,9 +239,9 @@ func TestVersionRestartJobCtlFailsWhenRestartedDeploymentPodCrashLoops(t *testin
 }
 
 func TestVersionRestartJobCtlFailsWhenRestartedStatefulSetPodCrashLoops(t *testing.T) {
-	db := databaseResetStoreComponent(t, "mysql", nil)
-	store := newDatabaseResetComponentStore(db)
-	_, statefulSet := databaseResetStatefulSet(t, db)
+	db := restartStoreComponent(t, "mysql", nil)
+	store := newRestartComponentStore(db)
+	_, statefulSet := restartStatefulSet(t, db)
 	client := fake.NewSimpleClientset(statefulSet)
 	task := versionRestartTask(db)
 	task.Timeout = 3
@@ -266,9 +268,9 @@ func TestVersionRestartJobCtlFailsWhenRestartedStatefulSetPodCrashLoops(t *testi
 }
 
 func TestVersionRestartJobCtlFailsWhenResourceWaiterMissing(t *testing.T) {
-	api := databaseResetServerComponent(t, "api")
-	store := newDatabaseResetComponentStore(api)
-	deployment := databaseResetDeployment(t, api)
+	api := restartServerComponent(t, "api")
+	store := newRestartComponentStore(api)
+	deployment := restartDeployment(t, api)
 	client := fake.NewSimpleClientset(deployment)
 	task := versionRestartTask(api)
 	ctl := NewVersionRestartJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
@@ -401,4 +403,102 @@ func versionRestartPod(component *model.ApplicationComponent, name, restartedAt 
 			}},
 		},
 	}
+}
+
+type restartComponentStore struct {
+	noopStore
+	components map[string]*model.ApplicationComponent
+}
+
+func newRestartComponentStore(components ...*model.ApplicationComponent) *restartComponentStore {
+	store := &restartComponentStore{components: make(map[string]*model.ApplicationComponent, len(components))}
+	for _, component := range components {
+		store.components[component.Name] = component
+	}
+	return store
+}
+
+func (s *restartComponentStore) CompareAndSwapWithConditions(_ context.Context, entity datastore.Entity, conditions map[string]interface{}, updates map[string]interface{}) (bool, error) {
+	if component, ok := entity.(*model.ApplicationComponent); !ok || component == nil {
+		return false, nil
+	}
+	for _, stored := range s.components {
+		if componentMatchesConditions(stored, conditions) {
+			applyComponentRuntimeUpdateMap(stored, updates)
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (s *restartComponentStore) IsExistByCondition(_ context.Context, _ string, conditions map[string]interface{}, _ interface{}) (bool, error) {
+	for _, component := range s.components {
+		if componentMatchesConditions(component, conditions) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func restartServerComponent(t *testing.T, name string) *model.ApplicationComponent {
+	t.Helper()
+	return &model.ApplicationComponent{
+		ID:              len(name) + 100,
+		AppID:           "app-1",
+		Name:            name,
+		Namespace:       "default",
+		Image:           "nginx:latest",
+		Replicas:        1,
+		ComponentType:   config.ServerJob,
+		ResourceAppName: "demo",
+		Properties:      mustRestartJSON(t, &model.Properties{Ports: []model.Ports{{Port: 8080}}}),
+		Traits:          mustRestartJSON(t, &spec.Traits{}),
+	}
+}
+
+func restartStoreComponent(t *testing.T, name string, storage []spec.StorageTraitSpec) *model.ApplicationComponent {
+	t.Helper()
+	return &model.ApplicationComponent{
+		ID:              len(name),
+		AppID:           "app-1",
+		Name:            name,
+		Namespace:       "default",
+		Image:           "mysql:8.0",
+		Replicas:        1,
+		ComponentType:   config.StoreJob,
+		ResourceAppName: "demo",
+		Properties:      mustRestartJSON(t, &model.Properties{}),
+		Traits:          mustRestartJSON(t, &spec.Traits{Storage: storage}),
+	}
+}
+
+func restartDeployment(t *testing.T, component *model.ApplicationComponent) *appsv1.Deployment {
+	t.Helper()
+	properties, err := ParseProperties(component.Properties)
+	require.NoError(t, err)
+	result, err := GenerateWebService(component, &properties)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	deployment, ok := result.Service.(*appsv1.Deployment)
+	require.True(t, ok)
+	return deployment
+}
+
+func restartStatefulSet(t *testing.T, component *model.ApplicationComponent) (*GenerateServiceResult, *appsv1.StatefulSet) {
+	t.Helper()
+	result, err := GenerateStoreService(component)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	statefulSet, ok := result.Service.(*appsv1.StatefulSet)
+	require.True(t, ok)
+	statefulSet.Status.Replicas = 1
+	statefulSet.Status.ReadyReplicas = 1
+	return result, statefulSet
+}
+
+func mustRestartJSON(t *testing.T, value interface{}) *model.JSONStruct {
+	t.Helper()
+	result, err := model.NewJSONStructByStruct(value)
+	require.NoError(t, err)
+	return result
 }

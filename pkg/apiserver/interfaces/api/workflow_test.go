@@ -214,13 +214,6 @@ func (s workflowListApplicationService) ListApplicationWorkflows(context.Context
 	return s.workflows, s.err
 }
 
-type templateApplicationService struct {
-	noopApplicationsService
-	templates []*apis.ApplicationBase
-	err       error
-	lastOpts  service.ListApplicationsOptions
-}
-
 type componentListApplicationService struct {
 	noopApplicationsService
 	components          []*model.ApplicationComponent
@@ -474,11 +467,6 @@ func (s *cacheBackedComponentListService) ListApplicationComponents(ctx context.
 	return result, nil
 }
 
-func (s *templateApplicationService) ListTemplateApplications(_ context.Context, opts service.ListApplicationsOptions) ([]*apis.ApplicationBase, error) {
-	s.lastOpts = opts
-	return s.templates, s.err
-}
-
 type listApplicationService struct {
 	noopApplicationsService
 	apps     []*apis.ApplicationBase
@@ -550,14 +538,10 @@ func (s *fakeCreateAndExecApplicationService) MarkInitialDeployingWorkflowCompon
 
 type fakeUpdateVersionService struct {
 	noopApplicationsService
-	updateResp  *apis.UpdateVersionResponse
-	updateErr   error
-	diffResp    *apis.DiffUpdateVersionResponse
-	diffErr     error
-	lastAppID   string
-	lastReq     apis.UpdateVersionRequest
-	lastDiffID  string
-	lastDiffReq apis.DiffUpdateVersionRequest
+	updateResp *apis.UpdateVersionResponse
+	updateErr  error
+	lastAppID  string
+	lastReq    apis.UpdateVersionRequest
 }
 
 func (f *fakeUpdateVersionService) UpdateVersion(_ context.Context, appID string, req apis.UpdateVersionRequest) (*apis.UpdateVersionResponse, error) {
@@ -576,28 +560,5 @@ func (f *fakeUpdateVersionService) UpdateVersion(_ context.Context, appID string
 		Strategy:          req.Strategy,
 		ExecutionScope:    req.ExecutionScope,
 		UpdatedComponents: []string{"backend"},
-	}, nil
-}
-
-func (f *fakeUpdateVersionService) DiffUpdateVersion(_ context.Context, targetAppID string, req apis.DiffUpdateVersionRequest) (*apis.DiffUpdateVersionResponse, error) {
-	f.lastDiffID = targetAppID
-	f.lastDiffReq = req
-	if f.diffErr != nil {
-		return nil, f.diffErr
-	}
-	if f.diffResp != nil {
-		return f.diffResp, nil
-	}
-	return &apis.DiffUpdateVersionResponse{
-		TargetAppID:           targetAppID,
-		SourceAppID:           req.SourceAppID,
-		TargetPreviousVersion: "1.0.0",
-		TargetVersion:         "1.0.1",
-		SourceVersion:         "1.0.1",
-		DryRun:                req.DryRun,
-		TargetOnlyStrategy:    req.TargetOnlyStrategy,
-		VersionChanged:        true,
-		HasChanges:            true,
-		Executable:            true,
 	}, nil
 }

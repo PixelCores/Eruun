@@ -18,7 +18,6 @@ func BuiltinModels() ([]Interface, error) {
 		&JobInfo{},
 		&JobArtifact{}, &ArtifactChunk{}, &JobDelivery{}, &JobSandbox{}, &JobCheckpoint{}, &ResourceCreationBudget{},
 		&SystemSetting{},
-		&ProgrammingLanguage{},
 		&JobResultOutbox{},
 		&WorkflowSchedule{},
 	})

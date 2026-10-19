@@ -183,27 +183,18 @@ func (s *restServer) buildIoCContainer(ctx context.Context) error {
 }
 
 func (s *restServer) provideDomainAndEventBeans(runtimeQueues *msg.RuntimeQueues) error {
-	programmingLanguageRepository, err := repository.NewProgrammingLanguageRepositoryWithStore(s.dataStore)
-	if err != nil {
-		return err
-	}
-	programmingLanguageService, err := service.NewProgrammingLanguageServiceWithRepository(programmingLanguageRepository)
-	if err != nil {
-		return err
-	}
-
 	appRepo := repository.NewApplicationRepository(s.dataStore)
 	componentRepo := repository.NewComponentRepository(s.dataStore)
 	validationService := validation.NewValidationService(&s.cfg, s.urlSecurityPolicyProvider, appRepo, componentRepo)
 
 	// domain - repository (注入 Repository，依赖 datastore)
-	repositories := append(repository.InitRepositoryBean(appRepo, componentRepo), programmingLanguageRepository)
+	repositories := repository.InitRepositoryBean(appRepo, componentRepo)
 	if err := s.beanContainer.Provides(repositories...); err != nil {
 		return fmt.Errorf("fail to provides the repository bean to the container: %w", err)
 	}
 
 	// domain - service (注入 Service，可依赖 Repository)
-	services := append(service.InitServiceBean(validationService), programmingLanguageService)
+	services := service.InitServiceBean(validationService)
 	for _, svc := range services {
 		if err := s.beanContainer.Provides(svc); err != nil {
 			return fmt.Errorf("fail to provides the service bean to the container: %w", err)

@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
@@ -17,29 +16,12 @@ import (
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
-var builtinSystemSettingSupports = map[string]CloudProviderSettingSupport{
-	model.SystemSettingTypeAliyunCloud: AliyunSettingSupport{},
-}
-
-type systemSettingCodec struct {
-	accept    func(interface{}) bool
-	normalize func(json.RawMessage) (json.RawMessage, error)
-	sanitize  func(json.RawMessage) json.RawMessage
-}
-
-var builtinSystemSettingCodecs = map[string]systemSettingCodec{
-	model.SystemSettingTypeWorkflowScheduler: {
-		accept:    isJSONObject,
-		normalize: workflowconfig.NormalizeJobSchedulerPolicyValue,
-	},
-	model.SystemSettingTypeURLSecurityPolicy: {
-		accept:    isJSONObject,
-		normalize: normalizeURLSecurityPolicySettingValue,
-	},
-	model.SystemSettingTypePodRestartMonitor: {
-		accept:    isJSONObject,
-		normalize: spec.NormalizePodRestartMonitorSettingValue,
-	},
+// systemSettingNormalizers lists every public setting type. Each value is a
+// JSON object normalized by its owner before it is stored.
+var systemSettingNormalizers = map[string]func(json.RawMessage) (json.RawMessage, error){
+	model.SystemSettingTypeWorkflowScheduler: workflowconfig.NormalizeJobSchedulerPolicyValue,
+	model.SystemSettingTypeURLSecurityPolicy: normalizeURLSecurityPolicySettingValue,
+	model.SystemSettingTypePodRestartMonitor: spec.NormalizePodRestartMonitorSettingValue,
 }
 
 // SystemSettingService manages system settings.
@@ -69,17 +51,6 @@ func (s *systemSettingServiceImpl) Create(ctx context.Context, req apisv1.Create
 	if err != nil {
 		return nil, err
 	}
-	if _, ok := getSystemSettingSupport(settingType); ok {
-		if _, err := s.SettingRepo.FindByType(ctx, settingType); err == nil {
-			return nil, bcode.ErrSystemSettingExists
-		} else if !errors.Is(err, datastore.ErrRecordNotExist) {
-			return nil, err
-		}
-		if err := validateProviderSettingConnectivity(ctx, settingType, normalizedValue); err != nil {
-			return nil, err
-		}
-	}
-
 	setting := &model.SystemSetting{
 		Type:  settingType,
 		Value: normalizedValue,
@@ -108,9 +79,6 @@ func (s *systemSettingServiceImpl) Update(ctx context.Context, settingType strin
 		if errors.Is(err, datastore.ErrRecordNotExist) {
 			return nil, bcode.ErrSystemSettingNotFound
 		}
-		return nil, err
-	}
-	if err := validateProviderSettingConnectivity(ctx, settingType, normalizedValue); err != nil {
 		return nil, err
 	}
 	setting.Value = normalizedValue
@@ -171,7 +139,7 @@ func (s *systemSettingServiceImpl) List(ctx context.Context) ([]*apisv1.SystemSe
 }
 
 func validateSettingType(settingType string) error {
-	if _, ok := getSystemSettingCodec(settingType); ok {
+	if _, ok := systemSettingNormalizers[strings.TrimSpace(settingType)]; ok {
 		return nil
 	}
 	return bcode.ErrSystemSettingTypeInvalid
@@ -179,27 +147,11 @@ func validateSettingType(settingType string) error {
 
 func normalizeAndValidateSettingValue(settingType string, value json.RawMessage) (json.RawMessage, error) {
 	trimmed := bytes.TrimSpace(value)
-	if len(trimmed) == 0 {
+	var decoded map[string]interface{}
+	if err := json.Unmarshal(trimmed, &decoded); err != nil || decoded == nil {
 		return nil, bcode.ErrSystemSettingValueInvalid
 	}
-	var decoded interface{}
-	if err := json.Unmarshal(trimmed, &decoded); err != nil {
-		return nil, bcode.ErrSystemSettingValueInvalid
-	}
-	switch decoded.(type) {
-	case map[string]interface{}, []interface{}:
-		// ok
-	default:
-		return nil, bcode.ErrSystemSettingValueInvalid
-	}
-	codec, ok := getSystemSettingCodec(settingType)
-	if !ok {
-		return json.RawMessage(trimmed), nil
-	}
-	if codec.accept != nil && !codec.accept(decoded) {
-		return nil, bcode.ErrSystemSettingValueInvalid
-	}
-	normalized, err := codec.normalize(trimmed)
+	normalized, err := systemSettingNormalizers[settingType](trimmed)
 	if err != nil {
 		return nil, bcode.ErrSystemSettingValueInvalid
 	}
@@ -217,66 +169,14 @@ func normalizeURLSecurityPolicySettingValue(value json.RawMessage) (json.RawMess
 	return json.RawMessage(value), nil
 }
 
-func isJSONObject(decoded interface{}) bool {
-	_, ok := decoded.(map[string]interface{})
-	return ok
-}
-
-func validateProviderSettingConnectivity(ctx context.Context, settingType string, value json.RawMessage) error {
-	settingSupport, ok := getSystemSettingSupport(settingType)
-	if !ok {
-		return nil
-	}
-	if err := settingSupport.ValidateSystemSettingConnectivity(ctx, value); err != nil {
-		return fmt.Errorf("%w: %v", bcode.ErrSystemSettingConnectivityCheckFailed, err)
-	}
-	return nil
-}
-
 func toSystemSettingDTO(setting *model.SystemSetting) *apisv1.SystemSetting {
 	if setting == nil {
 		return nil
 	}
-	value := sanitizeSystemSettingValue(setting.Type, setting.Value)
 	return &apisv1.SystemSetting{
 		Type:       setting.Type,
-		Value:      value,
+		Value:      setting.Value,
 		CreateTime: setting.CreateTime,
 		UpdateTime: setting.UpdateTime,
 	}
-}
-
-func sanitizeSystemSettingValue(settingType string, value json.RawMessage) json.RawMessage {
-	codec, ok := getSystemSettingCodec(settingType)
-	if !ok || codec.sanitize == nil {
-		return json.RawMessage(value)
-	}
-	return codec.sanitize(value)
-}
-
-func getSystemSettingCodec(settingType string) (systemSettingCodec, bool) {
-	normalized := strings.TrimSpace(settingType)
-	if normalized == "" {
-		return systemSettingCodec{}, false
-	}
-	if codec, ok := builtinSystemSettingCodecs[normalized]; ok {
-		return codec, true
-	}
-	if settingSupport, ok := getSystemSettingSupport(normalized); ok {
-		return systemSettingCodec{
-			accept:    isJSONObject,
-			normalize: settingSupport.NormalizeSystemSettingValue,
-			sanitize:  settingSupport.SanitizeSystemSettingValue,
-		}, true
-	}
-	return systemSettingCodec{}, false
-}
-
-func getSystemSettingSupport(settingType string) (CloudProviderSettingSupport, bool) {
-	normalized := strings.TrimSpace(settingType)
-	if normalized == "" {
-		return nil, false
-	}
-	support, ok := builtinSystemSettingSupports[normalized]
-	return support, ok
 }

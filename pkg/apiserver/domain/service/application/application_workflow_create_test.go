@@ -512,148 +512,6 @@ func TestCreateApplicationsRejectsInvalidApprovalWorkflowStep(t *testing.T) {
 	require.ErrorIs(t, err, bcode.ErrWorkflowConfig)
 }
 
-func TestCreateApplications_TemplateWithoutWorkflow_GeneratesPhasedDefaultWorkflow(t *testing.T) {
-	store := newInMemoryAppStore()
-	templateApp := &model.Applications{ID: "tmpl-phase", Name: "tmpl-phase", TemplateEnabled: true}
-	store.apps[templateApp.ID] = templateApp
-
-	store.components["tpl-config"] = &model.ApplicationComponent{
-		Name:          "tpl-config",
-		AppID:         templateApp.ID,
-		Namespace:     config.DefaultNamespace,
-		ComponentType: config.ConfJob,
-	}
-	store.components["tpl-secret"] = &model.ApplicationComponent{
-		Name:          "tpl-secret",
-		AppID:         templateApp.ID,
-		Namespace:     config.DefaultNamespace,
-		ComponentType: config.SecretJob,
-	}
-	store.components["tpl-store"] = &model.ApplicationComponent{
-		Name:          "tpl-store",
-		AppID:         templateApp.ID,
-		Namespace:     config.DefaultNamespace,
-		Image:         "mysql:8.0",
-		ComponentType: config.StoreJob,
-	}
-	store.components["tpl-job"] = &model.ApplicationComponent{
-		Name:          "tpl-job",
-		AppID:         templateApp.ID,
-		Namespace:     config.DefaultNamespace,
-		Image:         "busybox:1.36",
-		ComponentType: config.InstantJob,
-	}
-	store.components["tpl-web"] = &model.ApplicationComponent{
-		Name:          "tpl-web",
-		AppID:         templateApp.ID,
-		Namespace:     config.DefaultNamespace,
-		Image:         "nginx:1.25",
-		ComponentType: config.ServerJob,
-	}
-
-	svc := newMockServiceWithStore(store)
-	req := apisv1.CreateApplicationsRequest{
-		Name: "phase-app",
-		Components: []apisv1.CreateComponentRequest{
-			{Name: "cfg", ComponentType: config.ConfJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "tpl-config"}},
-			{Name: "sec", ComponentType: config.SecretJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "tpl-secret"}},
-			{Name: "db", ComponentType: config.StoreJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "tpl-store"}},
-			{Name: "runner", ComponentType: config.InstantJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "tpl-job"}},
-			{Name: "init-sql", ComponentType: config.InstantJob, Image: "busybox:1.36"},
-			{Name: "api", ComponentType: config.ServerJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "tpl-web"}},
-		},
-	}
-
-	resp, err := svc.CreateApplications(context.Background(), req)
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-
-	defaultWorkflow := store.workflows[resp.WorkflowID]
-	require.NotNil(t, defaultWorkflow)
-	defaultSteps := decodeWorkflowSteps(t, defaultWorkflow.Steps)
-	require.Len(t, defaultSteps.Steps, 4)
-	require.Equal(t, "phase-2-config-secret", defaultSteps.Steps[0].Name)
-	require.Equal(t, "phase-3-store", defaultSteps.Steps[1].Name)
-	require.Equal(t, "phase-4-job", defaultSteps.Steps[2].Name)
-	require.Equal(t, "phase-5-webservice", defaultSteps.Steps[3].Name)
-	require.ElementsMatch(t, []string{"cfg", "sec"}, defaultSteps.Steps[0].ComponentNames())
-	require.ElementsMatch(t, []string{"db"}, defaultSteps.Steps[1].ComponentNames())
-	require.ElementsMatch(t, []string{"runner", "init-sql"}, defaultSteps.Steps[2].ComponentNames())
-	require.ElementsMatch(t, []string{"api"}, defaultSteps.Steps[3].ComponentNames())
-	for _, step := range defaultSteps.Steps {
-		require.Equal(t, config.WorkflowModeDAG, step.Mode)
-	}
-
-	var updateWorkflow *model.Workflow
-	for _, wf := range store.workflows {
-		if wf != nil && wf.WorkflowType == config.WorkflowTaskTypeUpdate {
-			updateWorkflow = wf
-			break
-		}
-	}
-	require.NotNil(t, updateWorkflow)
-
-	updateSteps := decodeWorkflowSteps(t, updateWorkflow.Steps)
-	require.Len(t, updateSteps.Steps, 4)
-	require.Equal(t, "phase-2-config-secret", updateSteps.Steps[0].Name)
-	require.Equal(t, "phase-3-store", updateSteps.Steps[1].Name)
-	require.Equal(t, "phase-4-job", updateSteps.Steps[2].Name)
-	require.Equal(t, "phase-5-webservice", updateSteps.Steps[3].Name)
-	require.ElementsMatch(t, []string{"cfg", "sec"}, updateSteps.Steps[0].ComponentNames())
-	require.ElementsMatch(t, []string{"db"}, updateSteps.Steps[1].ComponentNames())
-	require.ElementsMatch(t, []string{"runner", "init-sql"}, updateSteps.Steps[2].ComponentNames())
-	require.ElementsMatch(t, []string{"api"}, updateSteps.Steps[3].ComponentNames())
-	for _, step := range updateSteps.Steps {
-		require.Equal(t, config.WorkflowModeDAG, step.Mode)
-	}
-}
-
-func TestCreateApplications_TemplateWithExplicitWorkflow_DoesNotRewrite(t *testing.T) {
-	store := newInMemoryAppStore()
-	templateApp := &model.Applications{ID: "tmpl-explicit", Name: "tmpl-explicit", TemplateEnabled: true}
-	store.apps[templateApp.ID] = templateApp
-
-	store.components["tpl-store"] = &model.ApplicationComponent{
-		Name:          "tpl-store",
-		AppID:         templateApp.ID,
-		Namespace:     config.DefaultNamespace,
-		Image:         "mysql:8.0",
-		ComponentType: config.StoreJob,
-	}
-
-	svc := newMockServiceWithStore(store)
-	req := apisv1.CreateApplicationsRequest{
-		Name: "explicit-app",
-		Components: []apisv1.CreateComponentRequest{
-			{
-				Name:          "tenant-store",
-				ComponentType: config.StoreJob,
-				Template:      &apisv1.TemplateRef{ID: templateApp.ID, Target: "tpl-store"},
-			},
-		},
-		Workflow: []apisv1.CreateWorkflowStepRequest{
-			{
-				Name:         "custom-step",
-				WorkflowType: config.JobDeploy,
-				Mode:         string(config.WorkflowModeStepByStep),
-				Components:   []string{"tenant-store"},
-			},
-		},
-	}
-
-	resp, err := svc.CreateApplications(context.Background(), req)
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-
-	defaultWorkflow := store.workflows[resp.WorkflowID]
-	require.NotNil(t, defaultWorkflow)
-	steps := decodeWorkflowSteps(t, defaultWorkflow.Steps)
-	require.Len(t, steps.Steps, 1)
-	require.Equal(t, "custom-step", steps.Steps[0].Name)
-	require.Equal(t, config.WorkflowModeStepByStep, steps.Steps[0].Mode)
-	require.ElementsMatch(t, []string{"tenant-store"}, steps.Steps[0].ComponentNames())
-}
-
 func TestCreateApplicationsPreservesWorkflowComponentReferenceCasing(t *testing.T) {
 	store := newInMemoryAppStore()
 	svc := newMockServiceWithStore(store)
@@ -711,10 +569,10 @@ func TestCreateApplications_NonTemplateWithoutWorkflow_GeneratesPhasedDefaultWor
 	require.NotNil(t, defaultWorkflow)
 	steps := decodeWorkflowSteps(t, defaultWorkflow.Steps)
 	require.Len(t, steps.Steps, 4)
-	require.Equal(t, "phase-2-config-secret", steps.Steps[0].Name)
-	require.Equal(t, "phase-3-store", steps.Steps[1].Name)
-	require.Equal(t, "phase-4-job", steps.Steps[2].Name)
-	require.Equal(t, "phase-5-webservice", steps.Steps[3].Name)
+	require.Equal(t, "phase-1-config-secret", steps.Steps[0].Name)
+	require.Equal(t, "phase-2-store", steps.Steps[1].Name)
+	require.Equal(t, "phase-3-job", steps.Steps[2].Name)
+	require.Equal(t, "phase-4-webservice", steps.Steps[3].Name)
 	require.ElementsMatch(t, []string{"config-a"}, steps.Steps[0].ComponentNames())
 	require.ElementsMatch(t, []string{"store-a"}, steps.Steps[1].ComponentNames())
 	require.ElementsMatch(t, []string{"init-sql"}, steps.Steps[2].ComponentNames())

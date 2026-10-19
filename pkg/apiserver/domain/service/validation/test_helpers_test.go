@@ -56,9 +56,6 @@ func (s *inMemoryAppStore) List(_ context.Context, query datastore.Entity, _ *da
 			if q.Name != "" && app.Name != q.Name {
 				continue
 			}
-			if q.TemplateEnabled && !app.TemplateEnabled {
-				continue
-			}
 			result = append(result, app)
 		}
 		return result, nil

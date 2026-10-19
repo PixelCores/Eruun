@@ -11,33 +11,14 @@ import (
 )
 
 func TestCreateApplicationsRequestJSONTags(t *testing.T) {
-	input := `{"name":"demo","namespace":"default","templateEnabled":true,"components":[{"name":"web","type":"webservice","namespace":"comp-ns","replicas":1,"properties":{},"traits":{}}]}`
+	input := `{"name":"demo","namespace":"default","components":[{"name":"web","type":"webservice","namespace":"comp-ns","replicas":1,"properties":{},"traits":{}}]}`
 
 	var req CreateApplicationsRequest
 	err := json.Unmarshal([]byte(input), &req)
 	require.NoError(t, err)
 	require.Equal(t, "default", req.Namespace)
-	require.NotNil(t, req.TemplateEnabled)
-	require.True(t, *req.TemplateEnabled)
 	require.Len(t, req.Components, 1)
 	require.Equal(t, "comp-ns", req.Components[0].Namespace)
-}
-
-func TestWorkflowStepCanonicalPropertiesKeepsSingleInitSQLURL(t *testing.T) {
-	var step CreateWorkflowStepRequest
-	require.NoError(t, json.Unmarshal([]byte(`{
-		"name":"database-reset",
-		"jobType":"database_reset",
-		"properties":[{"policies":["mysql"],"initSqlUrl":"https://files.example/game.sql"}]
-	}`), &step))
-	require.True(t, step.HasWorkflowInitSQLURL())
-	raw, err := json.Marshal(step)
-	require.NoError(t, err)
-	require.JSONEq(t, `{
-		"name":"database-reset",
-		"jobType":"database_reset",
-		"properties":[{"policies":["mysql"],"initSqlUrl":"https://files.example/game.sql"}]
-	}`, string(raw))
 }
 
 func TestWorkflowStepRejectsNonCanonicalFields(t *testing.T) {
@@ -50,73 +31,6 @@ func TestWorkflowStepRejectsNonCanonicalFields(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			var step CreateWorkflowStepRequest
 			require.Error(t, json.Unmarshal([]byte(input), &step))
-		})
-	}
-}
-
-func TestDatabaseResetRequestDistinguishesOmittedAndProvidedInitSQLURL(t *testing.T) {
-	tests := []struct {
-		name             string
-		input            string
-		expectedURL      string
-		expectedProvided bool
-	}{
-		{
-			name:  "omitted",
-			input: `{"components":["mysql"]}`,
-		},
-		{
-			name:             "valid URL",
-			input:            `{"components":["mysql"],"initSqlUrl":"https://files.example/game.sql"}`,
-			expectedURL:      "https://files.example/game.sql",
-			expectedProvided: true,
-		},
-		{
-			name:             "empty string",
-			input:            `{"components":["mysql"],"initSqlUrl":""}`,
-			expectedProvided: true,
-		},
-		{
-			name:             "whitespace",
-			input:            `{"components":["mysql"],"initSqlUrl":"   "}`,
-			expectedURL:      "   ",
-			expectedProvided: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var req DatabaseResetRequest
-			require.NoError(t, json.Unmarshal([]byte(tt.input), &req))
-			require.Equal(t, tt.expectedURL, req.InitSQLURL)
-			require.Equal(t, tt.expectedProvided, req.InitSQLURLProvided())
-		})
-	}
-}
-
-func TestDatabaseResetRequestRejectsInvalidInitSQLURLJSON(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-	}{
-		{
-			name:  "null",
-			input: `{"components":["mysql"],"initSqlUrl":null}`,
-		},
-		{
-			name:  "non-string",
-			input: `{"components":["mysql"],"initSqlUrl":42}`,
-		},
-		{
-			name:  "unknown field",
-			input: `{"components":["mysql"],"initSqlUrl":"https://files.example/game.sql","unknown":true}`,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var req DatabaseResetRequest
-			require.Error(t, json.Unmarshal([]byte(tt.input), &req))
 		})
 	}
 }
@@ -459,11 +373,10 @@ func TestUpdateApplicationWorkflowRequestRejectsWorkflowObject(t *testing.T) {
 
 func TestApplicationBaseJSONTags(t *testing.T) {
 	base := ApplicationBase{
-		ID:              "app-1",
-		Name:            "demo",
-		Namespace:       "default",
-		WorkflowID:      "wf-1",
-		TemplateEnabled: true,
+		ID:         "app-1",
+		Name:       "demo",
+		Namespace:  "default",
+		WorkflowID: "wf-1",
 		Resources: ApplicationResources{
 			CPUReq:   "160m",
 			MemReq:   "260Mi",
@@ -479,7 +392,7 @@ func TestApplicationBaseJSONTags(t *testing.T) {
 	var payload map[string]any
 	err = json.Unmarshal(data, &payload)
 	require.NoError(t, err)
-	require.Equal(t, true, payload["templateEnabled"])
+	require.NotContains(t, payload, "templateEnabled")
 	require.Equal(t, "wf-1", payload["workflowId"])
 	require.NotContains(t, payload, "cpuReq")
 	require.NotContains(t, payload, "memReq")

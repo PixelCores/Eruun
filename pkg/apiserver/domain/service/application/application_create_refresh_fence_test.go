@@ -13,7 +13,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
@@ -48,24 +47,6 @@ func TestCreateApplicationsRefreshRejectsPendingStatefulSetCleanupWithoutWrites(
 			require.Empty(t, kubeClient.Actions(), "pending cleanup must fail before namespace reads or writes")
 		})
 	}
-}
-
-func TestCreateApplicationsTemplateRefreshRejectsPendingStatefulSetCleanupWithoutWrites(t *testing.T) {
-	store := newCreateRefreshFenceStore()
-	store.apps["app-1"].TemplateEnabled = true
-	addCreateRefreshPendingCleanup(t, store, model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion)
-	before := store.snapshot()
-	svc := newMockServiceWithStore(store)
-	templateEnabled := true
-	req := createRefreshRequest("", "1.0.0")
-	req.TemplateEnabled = &templateEnabled
-	req.Description = "must-not-be-written"
-
-	resp, err := svc.CreateApplications(context.Background(), req)
-
-	require.Nil(t, resp)
-	require.ErrorIs(t, err, bcode.ErrApplicationConfig)
-	requireCreateRefreshStoreEqual(t, before, store)
 }
 
 func TestCreateApplicationsRefreshRechecksFencesInsideTransaction(t *testing.T) {
@@ -134,36 +115,20 @@ func TestCreateApplicationsRefreshRequiresTransactionBeforeKubernetesSideEffects
 }
 
 func TestCreateApplicationsNewApplicationDoesNotRequireScheduleLocker(t *testing.T) {
-	tests := []struct {
-		name            string
-		templateEnabled bool
-	}{
-		{name: "standard application"},
-		{name: "template key miss", templateEnabled: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			store := newInMemoryAppStore()
-			svc := newMockServiceWithStore(store)
-			svc.ScheduleLocker = nil
-			svc.Cache = nil
-			req := apisv1.CreateApplicationsRequest{
-				Name:      "new-app",
-				Namespace: config.DefaultNamespace,
-			}
-			if tt.templateEnabled {
-				req.TemplateEnabled = &tt.templateEnabled
-			}
+	store := newInMemoryAppStore()
+	svc := newMockServiceWithStore(store)
+	svc.ScheduleLocker = nil
+	svc.Cache = nil
 
-			resp, err := svc.CreateApplications(context.Background(), req)
+	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
+		Name:      "new-app",
+		Namespace: config.DefaultNamespace,
+	})
 
-			require.NoError(t, err)
-			require.NotNil(t, resp)
-			require.NotEmpty(t, resp.ID)
-			require.Contains(t, store.apps, resp.ID)
-			require.Equal(t, tt.templateEnabled, store.apps[resp.ID].TemplateEnabled)
-		})
-	}
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NotEmpty(t, resp.ID)
+	require.Contains(t, store.apps, resp.ID)
 }
 
 func TestCreateApplicationsRefreshNormalizesLegacyEmptyNamespaceInsideTransaction(t *testing.T) {
@@ -202,61 +167,6 @@ func TestCreateApplicationsRefreshUsesCanonicalApplicationScheduleLock(t *testin
 	require.Equal(t, "1.0.0", store.apps["app-1"].Version)
 	require.Equal(t, 101, store.components["mysql"].ID)
 	require.Empty(t, store.workflows)
-}
-
-func TestCreateApplicationsTemplateRefreshUsesCanonicalApplicationScheduleLock(t *testing.T) {
-	store := newCreateRefreshFenceStore()
-	store.apps["app-1"].TemplateEnabled = true
-	before := store.snapshot()
-	svc := newMockServiceWithStore(store)
-	lockProvider := locker.NewMemoryLocker("test-app-schedule")
-	svc.ScheduleLocker = lockProvider
-	held := lockProvider.NewMutex("app-schedule:app-1")
-	require.NoError(t, held.TryLock(context.Background()))
-	t.Cleanup(func() { _ = held.Unlock(context.Background()) })
-	templateEnabled := true
-	req := createRefreshRequest("", "1.0.0")
-	req.TemplateEnabled = &templateEnabled
-
-	resp, err := svc.CreateApplications(context.Background(), req)
-
-	require.Nil(t, resp)
-	require.ErrorIs(t, err, bcode.ErrApplicationOperationLocked)
-	requireCreateRefreshStoreEqual(t, before, store)
-}
-
-func TestCreateApplicationsTemplateRefreshPreservesExistingIDCallbackOverwriteSemantics(t *testing.T) {
-	store := newCreateRefreshFenceStore()
-	setTestURLSecurityPolicy(t, store, spec.URLSecurityPolicySpec{AllowPrivateByDefault: true})
-	store.apps["app-1"].TemplateEnabled = true
-	oldCallback := mustJSONStruct(&model.WorkflowCallback{Success: "https://example.com/old"})
-	store.apps["app-1"].Callback = oldCallback
-	steps := mustJSONStruct(&model.WorkflowSteps{})
-	store.workflows["wf-default"] = &model.Workflow{
-		ID: "wf-default", AppID: "app-1", Name: "shop-workflow", Alias: "shop-workflow",
-		Namespace: config.DefaultNamespace, WorkflowType: config.WorkflowTaskTypeWorkflow,
-		Steps: steps, Callback: oldCallback,
-	}
-	store.workflows["wf-custom"] = &model.Workflow{
-		ID: "wf-custom", AppID: "app-1", Name: "custom-workflow",
-		Namespace: config.DefaultNamespace, WorkflowType: config.WorkflowTaskTypeUpdate,
-		Steps: steps, Callback: oldCallback,
-	}
-	svc := newMockServiceWithStore(store)
-	templateEnabled := true
-	req := createRefreshRequest("", "1.0.0")
-	req.TemplateEnabled = &templateEnabled
-	req.Callback = &apisv1.WorkflowCallback{Success: "http://127.0.0.1/callback"}
-
-	resp, err := svc.CreateApplications(context.Background(), req)
-
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.Equal(t, "app-1", resp.ID)
-	requireWorkflowCallbackSuccess(t, store.apps["app-1"].Callback, "http://127.0.0.1/callback")
-	for _, workflow := range store.workflows {
-		requireWorkflowCallbackSuccess(t, workflow.Callback, "http://127.0.0.1/callback")
-	}
 }
 
 func TestCreateApplicationsExistingRefreshRequiresAvailableScheduleLockerWithoutWrites(t *testing.T) {
@@ -303,12 +213,6 @@ func TestCreateApplicationsRefreshSerializesWithUpdateAndReset(t *testing.T) {
 	})
 	require.Nil(t, updateResp)
 	require.ErrorIs(t, updateErr, bcode.ErrApplicationOperationLocked)
-
-	resetResp, resetErr := svc.ResetApplicationDatabases(context.Background(), "APP-1", apisv1.DatabaseResetRequest{
-		Components: []string{"mysql"},
-	})
-	require.Nil(t, resetResp)
-	require.ErrorIs(t, resetErr, bcode.ErrApplicationOperationLocked)
 
 	close(release)
 	require.NoError(t, <-refreshDone)

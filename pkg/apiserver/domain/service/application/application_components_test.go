@@ -289,13 +289,6 @@ func TestMarkInitialDeployingWorkflowComponentsScopesToWorkflowDeploySteps(t *te
 		Status:        string(config.ComponentStatusNotDeploy),
 		LastAbnormal:  "old secret reason",
 	}
-	store.components["cloud"] = &model.ApplicationComponent{
-		Name:          "cloud",
-		AppID:         "app-1",
-		ComponentType: config.CloudJob,
-		Status:        string(config.ComponentStatusNotDeploy),
-		LastAbnormal:  "old cloud reason",
-	}
 	store.components["running"] = &model.ApplicationComponent{
 		Name:          "running",
 		AppID:         "app-1",
@@ -321,7 +314,7 @@ func TestMarkInitialDeployingWorkflowComponentsScopesToWorkflowDeploySteps(t *te
 				Name:         "deploy-api",
 				WorkflowType: config.JobDeploy,
 				Properties: []model.Policies{{
-					Policies: []string{"API", "api", "cloud", "running", "stopped"},
+					Policies: []string{"API", "api", "running", "stopped"},
 				}},
 			},
 			{
@@ -346,7 +339,6 @@ func TestMarkInitialDeployingWorkflowComponentsScopesToWorkflowDeploySteps(t *te
 				WorkflowType: config.JobDeploy,
 				Properties:   []model.Policies{{Policies: []string{"not-deploy"}}},
 			},
-			{Name: "database-reset", WorkflowType: config.JobDatabaseReset, Properties: []model.Policies{{Policies: []string{"not-deploy"}}}},
 		},
 	})
 	require.NoError(t, err)
@@ -366,8 +358,6 @@ func TestMarkInitialDeployingWorkflowComponentsScopesToWorkflowDeploySteps(t *te
 	require.Empty(t, store.components["api"].LastAbnormal)
 	require.Equal(t, string(config.ComponentStatusDeploying), store.components["secret"].Status)
 	require.Empty(t, store.components["secret"].LastAbnormal)
-	require.Equal(t, string(config.ComponentStatusNotDeploy), store.components["cloud"].Status)
-	require.Equal(t, "old cloud reason", store.components["cloud"].LastAbnormal)
 	require.Equal(t, string(config.ComponentStatusRunning), store.components["running"].Status)
 	require.Equal(t, string(config.ComponentStatusStopped), store.components["stopped"].Status)
 	require.Equal(t, string(config.ComponentStatusNotDeploy), store.components["other"].Status)
@@ -391,7 +381,6 @@ func TestMarkInitialDeployingWorkflowComponentsNoopsForNonDeployWorkflow(t *test
 				Properties:   []model.Policies{{Policies: []string{"api"}}},
 			},
 			{Name: "cleanup", WorkflowType: config.JobCleanupResources, Properties: []model.Policies{{Policies: []string{"api"}}}},
-			{Name: "database-reset", WorkflowType: config.JobDatabaseReset, Properties: []model.Policies{{Policies: []string{"api"}}}},
 		},
 	})
 	require.NoError(t, err)

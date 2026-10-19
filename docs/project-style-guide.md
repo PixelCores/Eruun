@@ -31,7 +31,6 @@
 | `pkg/apiserver/domain/spec` | 共享规格、策略和值语义 | Traits、组件变更规格、资源类型及共享策略等跨 DTO/Domain 的语义结构优先放这里；不把所有可变规格都称为不可变值对象 |
 | `pkg/apiserver/event/workflow` | 工作流调度和控制器 | 以 DB 状态机为事实源，队列只承载分发，控制器负责状态推进和 ack |
 | `pkg/apiserver/event/workflow/job` | Kubernetes 资源 Job 控制器 | 每类资源独立控制器，生成、应用、等待、清理语义要保持一致 |
-| `pkg/apiserver/event/workflow/cloudjob` | 云资源 Provider 合约 | Provider、Action、上下文和状态字符串集中定义，避免散落魔法字符串 |
 | `pkg/apiserver/workflow/traits` | Trait Processor | Processor 有序注册、无状态、返回聚合结果，由框架统一应用到 workload |
 | `pkg/apiserver/workflow/config` | 工作流运行配置和执行策略 | 集中运行参数、默认值、校验、失败/运行策略、回调超时、镜像拉取默认值和 topic 命名；不依赖全局配置、领域模型或执行器 |
 | `pkg/apiserver/workflow/naming` | Kubernetes 资源命名 | 所有资源名生成优先复用这里，避免局部拼接造成清理和同步不一致 |
@@ -56,7 +55,7 @@
 
 ### 3.2 API、JSON 和字段命名
 
-- 外部 JSON 字段以 camelCase 为主，例如 `appId`、`componentName`、`templateEnabled`、`readyReplicas`。
+- 外部 JSON 字段以 camelCase 为主，例如 `appId`、`componentName`、`readyReplicas`。
 - 路径参数沿用当前 API 风格，例如 `:appID`、`:componentName`、`:taskID`。
 - 请求/响应结构放在 `dto/v1`，不要把 Domain model 直接作为新的 API 契约暴露。
 - Handler 参数绑定和校验失败应走统一响应封装和错误码路径。

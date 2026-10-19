@@ -20,8 +20,6 @@ func buildWorkloadInfo(jobType config.JobType, info interface{}, fallbackNamespa
 		kind = domainspec.ResourceDeployment
 	case config.JobDeployStore:
 		kind = domainspec.ResourceStatefulSet
-	case config.CloudJob, config.JobDeployCloud:
-		kind = domainspec.ResourceCloudJob
 	case config.InstantJob:
 		kind = domainspec.ResourceJob
 	}

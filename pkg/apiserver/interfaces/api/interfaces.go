@@ -21,7 +21,6 @@ func NewHandlers() []Interface {
 		&applicationWorkflows{},
 		NewWorkspaceJobs(),
 		NewSettings(),
-		NewProgrammingLanguages(),
 		NewAccounts(),
 		NewHealth(),
 	}

@@ -59,16 +59,11 @@ var authAccountMethods = map[string]bool{
 }
 
 var administrationMethodPolicies = map[string]string{
-	eruunv1.SettingsService_ListSettings_FullMethodName:                          "system",
-	eruunv1.SettingsService_GetSetting_FullMethodName:                            "system",
-	eruunv1.SettingsService_CreateSetting_FullMethodName:                         "system",
-	eruunv1.SettingsService_UpdateSetting_FullMethodName:                         "system",
-	eruunv1.SettingsService_DeleteSetting_FullMethodName:                         "system",
-	eruunv1.ProgrammingLanguagesService_ListProgrammingLanguages_FullMethodName:  "member",
-	eruunv1.ProgrammingLanguagesService_GetProgrammingLanguage_FullMethodName:    "member",
-	eruunv1.ProgrammingLanguagesService_CreateProgrammingLanguage_FullMethodName: "system",
-	eruunv1.ProgrammingLanguagesService_UpdateProgrammingLanguage_FullMethodName: "system",
-	eruunv1.ProgrammingLanguagesService_DeleteProgrammingLanguage_FullMethodName: "system",
+	eruunv1.SettingsService_ListSettings_FullMethodName:  "system",
+	eruunv1.SettingsService_GetSetting_FullMethodName:    "system",
+	eruunv1.SettingsService_CreateSetting_FullMethodName: "system",
+	eruunv1.SettingsService_UpdateSetting_FullMethodName: "system",
+	eruunv1.SettingsService_DeleteSetting_FullMethodName: "system",
 }
 
 var jobsMethodPolicies = map[string]string{
@@ -98,11 +93,9 @@ var jobsMethodPolicies = map[string]string{
 var applicationMethodPolicies = map[string]string{
 	eruunv1.ApplicationService_GetCanonicalJSONSchema_FullMethodName:          "viewer",
 	eruunv1.ApplicationService_ListApplications_FullMethodName:                "viewer",
-	eruunv1.ApplicationService_ListTemplateApplications_FullMethodName:        "member",
 	eruunv1.ApplicationService_CreateApplications_FullMethodName:              "member",
 	eruunv1.ApplicationService_CreateAndExecApplications_FullMethodName:       "member",
 	eruunv1.ApplicationService_BatchGetApplications_FullMethodName:            "member",
-	eruunv1.ApplicationService_ConvertApplications_FullMethodName:             "member",
 	eruunv1.ApplicationService_ListApplicationWorkflows_FullMethodName:        "member",
 	eruunv1.ApplicationService_GetApplicationSpec_FullMethodName:              "member",
 	eruunv1.ApplicationService_GetApplicationStatus_FullMethodName:            "viewer",
@@ -120,7 +113,6 @@ var applicationMethodPolicies = map[string]string{
 	eruunv1.ApplicationService_UpsertWorkflowSchedule_FullMethodName:          "member",
 	eruunv1.ApplicationService_DeleteWorkflowSchedule_FullMethodName:          "member",
 	eruunv1.ApplicationService_CleanupApplicationResources_FullMethodName:     "member",
-	eruunv1.ApplicationService_ResetApplicationDatabases_FullMethodName:       "member",
 	eruunv1.ApplicationService_RestartApplicationWorkloads_FullMethodName:     "member",
 	eruunv1.ApplicationService_StopApplicationDeployments_FullMethodName:      "member",
 	eruunv1.ApplicationService_StartApplicationDeployments_FullMethodName:     "member",
@@ -132,7 +124,6 @@ var applicationMethodPolicies = map[string]string{
 	eruunv1.ApplicationService_GetWorkflowTaskStatus_FullMethodName:           "member",
 	eruunv1.ApplicationService_GetWorkflowTaskStages_FullMethodName:           "member",
 	eruunv1.ApplicationService_UpdateApplicationVersion_FullMethodName:        "member",
-	eruunv1.ApplicationService_DiffUpdateApplicationVersion_FullMethodName:    "member",
 	eruunv1.ApplicationService_CancelDelayedVersionUpdate_FullMethodName:      "member",
 	eruunv1.ApplicationService_TryApplication_FullMethodName:                  "member",
 	eruunv1.ApplicationService_TryWorkflow_FullMethodName:                     "member",
@@ -149,7 +140,6 @@ func NewServer(accounts *account.Service, namespaces *workspace.Manager, adminis
 	s := grpc.NewServer(options...)
 	eruunv1.RegisterAccountServiceServer(s, &AccountServer{Accounts: accounts, Namespaces: namespaces})
 	eruunv1.RegisterSettingsServiceServer(s, administration)
-	eruunv1.RegisterProgrammingLanguagesServiceServer(s, administration)
 	eruunv1.RegisterJobsServiceServer(s, jobsAdapter)
 	eruunv1.RegisterApplicationServiceServer(s, applications)
 	return s

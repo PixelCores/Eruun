@@ -41,7 +41,6 @@
       "updateTime": "2026-04-30T00:00:00Z",
       "icon": "",
       "workflowId": "workflow-1",
-      "templateEnabled": false,
       "resources": {
         "cpuReq": "",
         "memReq": "",

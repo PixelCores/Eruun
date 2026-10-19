@@ -23,19 +23,18 @@ var (
 )
 
 type canonicalApplicationJSON struct {
-	ID              string                      `json:"id,omitempty"`
-	Name            string                      `json:"name"`
-	Namespace       string                      `json:"namespace,omitempty"`
-	Alias           string                      `json:"alias,omitempty"`
-	Version         string                      `json:"version,omitempty"`
-	Project         string                      `json:"project,omitempty"`
-	Description     string                      `json:"description,omitempty"`
-	Icon            string                      `json:"icon,omitempty"`
-	Components      []CreateComponentRequest    `json:"components"`
-	Workflow        []CreateWorkflowStepRequest `json:"workflow,omitempty"`
-	Callback        *WorkflowCallback           `json:"callback,omitempty"`
-	FailurePolicy   string                      `json:"failurePolicy,omitempty"`
-	TemplateEnabled *bool                       `json:"templateEnabled,omitempty"`
+	ID            string                      `json:"id,omitempty"`
+	Name          string                      `json:"name"`
+	Namespace     string                      `json:"namespace,omitempty"`
+	Alias         string                      `json:"alias,omitempty"`
+	Version       string                      `json:"version,omitempty"`
+	Project       string                      `json:"project,omitempty"`
+	Description   string                      `json:"description,omitempty"`
+	Icon          string                      `json:"icon,omitempty"`
+	Components    []CreateComponentRequest    `json:"components"`
+	Workflow      []CreateWorkflowStepRequest `json:"workflow,omitempty"`
+	Callback      *WorkflowCallback           `json:"callback,omitempty"`
+	FailurePolicy string                      `json:"failurePolicy,omitempty"`
 }
 
 type canonicalWorkflowJSON struct {
@@ -315,9 +314,9 @@ func (b *schemaBuilder) applyFieldConstraints(definition, field string, schema m
 			schema["maxLength"] = datastore.PrimaryKeyMaxLength
 		}
 	case definition == "Component" && field == "type":
-		schema["enum"] = []string{"webservice", "store", "config", "secret", "cloudjob", "job"}
+		schema["enum"] = []string{"webservice", "store", "config", "secret", "job"}
 	case (definition == "WorkflowStep" || definition == "WorkflowSubStep") && field == "jobType":
-		schema["enum"] = []string{"deploy", "cleanup_resources", "database_reset"}
+		schema["enum"] = []string{"deploy", "cleanup_resources"}
 	case (definition == "WorkflowStep" || definition == "WorkflowSubStep") && field == "schedulingClass":
 		schema["enum"] = []string{"normal", "background", "high"}
 	case definition == "WorkflowStep" && field == "stepType":
@@ -330,7 +329,6 @@ func (b *schemaBuilder) applyFieldConstraints(definition, field string, schema m
 		schema["enum"] = []string{
 			string(config.WorkflowTaskTypeWorkflow),
 			string(config.WorkflowTaskTypeUpdate),
-			string(config.WorkflowTaskTypeDatabaseReset),
 		}
 	case definition == "Workflow" && field == "workflow":
 		schema["minItems"] = 1

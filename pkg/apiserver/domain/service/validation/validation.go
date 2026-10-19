@@ -49,7 +49,6 @@ var (
 		config.StoreJob:   true,
 		config.ConfJob:    true,
 		config.SecretJob:  true,
-		config.CloudJob:   true,
 		config.InstantJob: true,
 	}
 
@@ -133,76 +132,35 @@ func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.C
 			Message: fmt.Sprintf("unsupported workflow failurePolicy: %s", effectiveReq.FailurePolicy),
 		})
 	}
-	templateInputErrors := validateTemplateRequestNestedJobFailurePolicies(effectiveReq.Components)
-	errors = append(errors, templateInputErrors...)
-
 	resolvedComponents := effectiveReq.Components
-	// Invalid template overrides can be discarded during expansion. Keep the
-	// source components in normalizedSpec so their error paths remain locatable.
-	componentsResolved := len(templateInputErrors) == 0
-	if componentsResolved && requestUsesTemplate(effectiveReq.Components) {
-		if v.AppRepo == nil || v.ComponentRepo == nil {
-			componentsResolved = false
-			errors = append(errors, apisv1.ValidationError{
-				Field:   "component",
-				Code:    apisv1.ErrCodeInvalidTraitConfig,
-				Message: "template repositories are required to validate template components",
-			})
-		} else {
-			components, _, err := applicationservice.ResolveComponentsWithSourceIndexes(ctx, v.AppRepo, v.ComponentRepo, applicationservice.ServiceNamespaceOrDefault(effectiveReq.Namespace), effectiveReq.Name, effectiveReq.Components, v.Cfg)
-			if err != nil {
-				componentsResolved = false
-				errors = append(errors, apisv1.ValidationError{
-					Field:   "component",
-					Code:    apisv1.ErrCodeInvalidTraitConfig,
-					Message: err.Error(),
-				})
+	componentNames := make(map[string]bool)
+	for i, comp := range effectiveReq.Components {
+		fieldPrefix := fmt.Sprintf("component[%d]", i)
+		if scope, ok := access.FromContext(ctx); ok {
+			var err error
+			if v.Cfg == nil || v.Cfg.Accounts == nil || (comp.Namespace != "" && comp.Namespace != scope.Namespace) {
+				err = bcode.ErrForbidden
 			} else {
-				resolvedComponents = components
+				err = workspace.ValidateTraits(scope.Namespace, comp.Name, &comp.Traits, &comp.Properties, v.Cfg.Accounts.Workspace)
+			}
+			if err != nil {
+				errors = append(errors, apisv1.ValidationError{Field: fieldPrefix, Code: apisv1.ErrCodeInvalidTraitConfig, Message: err.Error()})
 			}
 		}
+		if err := spec.NormalizeComponentEvaluation(string(comp.ComponentType), comp.Image, comp.Properties, &comp.Traits); err == nil {
+			effectiveReq.Components[i] = comp
+		}
+		errors = append(errors, v.validateComponent(comp, fieldPrefix, componentNames)...)
 	}
 
-	if componentsResolved {
-		effectiveReq.Components = resolvedComponents
-	}
-	if componentsResolved || len(templateInputErrors) > 0 {
-		// Validate resolved components, or just the direct components when an
-		// invalid template override requires retaining the source indexes.
-		componentNames := make(map[string]bool)
-		for i, comp := range effectiveReq.Components {
-			if !componentsResolved && comp.Template != nil && strings.TrimSpace(comp.Template.ID) != "" {
-				continue
-			}
-			fieldPrefix := fmt.Sprintf("component[%d]", i)
-			if scope, ok := access.FromContext(ctx); ok {
-				var err error
-				if v.Cfg == nil || v.Cfg.Accounts == nil || comp.ComponentType == config.CloudJob || (comp.Namespace != "" && comp.Namespace != scope.Namespace) {
-					err = bcode.ErrForbidden
-				} else {
-					err = workspace.ValidateTraits(scope.Namespace, comp.Name, &comp.Traits, &comp.Properties, v.Cfg.Accounts.Workspace)
-				}
-				if err != nil {
-					errors = append(errors, apisv1.ValidationError{Field: fieldPrefix, Code: apisv1.ErrCodeInvalidTraitConfig, Message: err.Error()})
-				}
-			}
-			if err := spec.NormalizeComponentEvaluation(string(comp.ComponentType), comp.Image, comp.Properties, &comp.Traits); err == nil {
-				effectiveReq.Components[i] = comp
-			}
-			errors = append(errors, v.validateComponent(comp, fieldPrefix, componentNames)...)
-		}
-	}
-
-	if componentsResolved {
-		// Validate workflow steps and component references against resolved names.
-		errors = append(errors, v.validateWorkflowSteps(effectiveReq.Workflow, workflowComponentIndexFromCreateComponents(resolvedComponents), "workflow")...)
-		if resourceErr := v.validateTryApplicationResourceNames(ctx, effectiveReq, resolvedComponents); resourceErr != nil {
-			errors = append(errors, apisv1.ValidationError{
-				Field:   "component",
-				Code:    apisv1.ErrCodeInvalidTraitConfig,
-				Message: resourceErr.Error(),
-			})
-		}
+	// Validate workflow steps and component references against resolved names.
+	errors = append(errors, v.validateWorkflowSteps(effectiveReq.Workflow, workflowComponentIndexFromCreateComponents(resolvedComponents), "workflow")...)
+	if resourceErr := v.validateTryApplicationResourceNames(ctx, effectiveReq, resolvedComponents); resourceErr != nil {
+		errors = append(errors, apisv1.ValidationError{
+			Field:   "component",
+			Code:    apisv1.ErrCodeInvalidTraitConfig,
+			Message: resourceErr.Error(),
+		})
 	}
 
 	errors = append(errors, v.validateApplicationCallback(ctx, effectiveReq)...)
@@ -261,20 +219,7 @@ func (v *validationServiceImpl) effectiveTryApplicationRequest(ctx context.Conte
 	if strings.TrimSpace(effective.Version) == "" {
 		effective.Version = app.Version
 	}
-	if effective.TemplateEnabled == nil {
-		templateEnabled := app.TemplateEnabled
-		effective.TemplateEnabled = &templateEnabled
-	}
 	return effective, nil
-}
-
-func requestUsesTemplate(components []apisv1.CreateComponentRequest) bool {
-	for _, component := range components {
-		if component.Template != nil && strings.TrimSpace(component.Template.ID) != "" {
-			return true
-		}
-	}
-	return false
 }
 
 func (v *validationServiceImpl) validateTryApplicationResourceNames(ctx context.Context, req apisv1.CreateApplicationsRequest, components []apisv1.CreateComponentRequest) error {
@@ -354,7 +299,7 @@ func (v *validationServiceImpl) validateComponent(comp apisv1.CreateComponentReq
 		errors = append(errors, apisv1.ValidationError{
 			Field:   fmt.Sprintf("%s.type", fieldPrefix),
 			Code:    apisv1.ErrCodeInvalidComponentType,
-			Message: fmt.Sprintf("invalid component type: %s, must be one of: webservice, store, config, secret, cloudjob, job", comp.ComponentType),
+			Message: fmt.Sprintf("invalid component type: %s, must be one of: webservice, store, config, secret, job", comp.ComponentType),
 		})
 	}
 
@@ -458,29 +403,6 @@ func (v *validationServiceImpl) validateJobProperties(comp apisv1.CreateComponen
 	}
 
 	switch comp.ComponentType {
-	case config.CloudJob:
-		if props.Cloud == nil {
-			errors = append(errors, apisv1.ValidationError{
-				Field:   fmt.Sprintf("%s.properties.cloud", fieldPrefix),
-				Code:    apisv1.ErrCodeMissingRequiredField,
-				Message: "cloudjob requires properties.cloud",
-			})
-			return errors
-		}
-		if strings.TrimSpace(props.Cloud.Provider) == "" {
-			errors = append(errors, apisv1.ValidationError{
-				Field:   fmt.Sprintf("%s.properties.cloud.provider", fieldPrefix),
-				Code:    apisv1.ErrCodeMissingRequiredField,
-				Message: "cloudjob requires properties.cloud.provider",
-			})
-		}
-		if strings.TrimSpace(props.Cloud.Action) == "" {
-			errors = append(errors, apisv1.ValidationError{
-				Field:   fmt.Sprintf("%s.properties.cloud.action", fieldPrefix),
-				Code:    apisv1.ErrCodeMissingRequiredField,
-				Message: "cloudjob requires properties.cloud.action",
-			})
-		}
 	case config.InstantJob:
 		if startTime < 0 {
 			errors = append(errors, apisv1.ValidationError{

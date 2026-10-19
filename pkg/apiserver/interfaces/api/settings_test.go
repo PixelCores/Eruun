@@ -14,7 +14,6 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
 type mockSettingService struct {
@@ -139,50 +138,4 @@ func TestSettingsAPI_List(t *testing.T) {
 	requireSuccessResponse(t, resp.Body.Bytes(), &payload)
 	require.Len(t, payload.Settings, 1)
 	require.Equal(t, model.SystemSettingTypeURLSecurityPolicy, payload.Settings[0].Type)
-}
-
-func TestSettingsAPI_CreateConnectivityCheckFailure(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	service := &mockSettingService{
-		createFn: func(context.Context, apis.CreateSystemSettingRequest) (*apis.SystemSetting, error) {
-			return nil, bcode.ErrSystemSettingConnectivityCheckFailed
-		},
-	}
-
-	h := &settings{SystemSettingService: service}
-	r := gin.New()
-	r.POST("/settings", h.createSetting)
-
-	req := httptest.NewRequest(http.MethodPost, "/settings", strings.NewReader(`{"type":"aliyunCloud","value":{"accessKeyId":"ak","accessKeySecret":"sk","regionId":"cn-hangzhou"}}`))
-	req.Header.Set("Content-Type", "application/json")
-	resp := httptest.NewRecorder()
-	r.ServeHTTP(resp, req)
-
-	require.Equal(t, http.StatusBadRequest, resp.Code)
-	envelope := decodeResponse(t, resp.Body.Bytes(), nil)
-	require.Equal(t, bcode.ErrSystemSettingConnectivityCheckFailed.BusinessCode, envelope.Code)
-}
-
-func TestSettingsAPI_UpdateConnectivityCheckFailure(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	service := &mockSettingService{
-		updateFn: func(context.Context, string, apis.UpdateSystemSettingRequest) (*apis.SystemSetting, error) {
-			return nil, bcode.ErrSystemSettingConnectivityCheckFailed
-		},
-	}
-
-	h := &settings{SystemSettingService: service}
-	r := gin.New()
-	r.PUT("/settings/:type", h.updateSetting)
-
-	req := httptest.NewRequest(http.MethodPut, "/settings/aliyunCloud", strings.NewReader(`{"value":{"accessKeyId":"ak","accessKeySecret":"sk","regionId":"cn-hangzhou"}}`))
-	req.Header.Set("Content-Type", "application/json")
-	resp := httptest.NewRecorder()
-	r.ServeHTTP(resp, req)
-
-	require.Equal(t, http.StatusBadRequest, resp.Code)
-	envelope := decodeResponse(t, resp.Body.Bytes(), nil)
-	require.Equal(t, bcode.ErrSystemSettingConnectivityCheckFailed.BusinessCode, envelope.Code)
 }

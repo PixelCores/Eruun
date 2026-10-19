@@ -207,11 +207,6 @@ func (c *applicationsServiceImpl) preflightVersionUpdateRun(
 
 	validationApp := *run.app
 	validationApp.Version = run.newVersion
-	if validationApp.TemplateEnabled {
-		if err := c.ensureTemplateApplicationKeyAvailable(ctx, validationApp.Namespace, validationApp.Name, validationApp.Version, validationApp.ID); err != nil {
-			return err
-		}
-	}
 	resolvedComponents, err := buildVersionUpdateResolvedComponents(components, run.normalReq.Components)
 	if err != nil {
 		return err
@@ -384,7 +379,7 @@ func (c *applicationsServiceImpl) validateVersionUpdateWorkspaceComponents(ctx c
 		}
 		for i := range resolvedComponents {
 			component := &resolvedComponents[i]
-			if (component.Namespace != "" && component.Namespace != scope.Namespace) || component.ComponentType == config.CloudJob {
+			if component.Namespace != "" && component.Namespace != scope.Namespace {
 				return bcode.ErrForbidden
 			}
 			if err := workspace.ValidateTraits(scope.Namespace, component.Name, &component.Traits, &component.Properties, c.Cfg.Accounts.Workspace); err != nil {

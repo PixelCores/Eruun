@@ -15,8 +15,7 @@ import (
 )
 
 const (
-	templatePhaseCloudJob = iota
-	templatePhaseConfigSecret
+	templatePhaseConfigSecret = iota
 	templatePhaseStore
 	templatePhaseJob
 	templatePhaseWebService
@@ -24,18 +23,10 @@ const (
 )
 
 var templatePhaseNames = [templatePhaseCount]string{
-	"phase-1-job",
-	"phase-2-config-secret",
-	"phase-3-store",
-	"phase-4-job",
-	"phase-5-webservice",
-}
-
-var legacyTemplatePhaseNameAliases = map[string]int{
-	"phase-1-config-secret": templatePhaseConfigSecret,
-	"phase-2-store":         templatePhaseStore,
-	"phase-3-job":           templatePhaseJob,
-	"phase-4-webservice":    templatePhaseWebService,
+	"phase-1-config-secret",
+	"phase-2-store",
+	"phase-3-job",
+	"phase-4-webservice",
 }
 
 func defaultWorkflowBodyForCreate(req apisv1.CreateApplicationsRequest, resolvedComponents []apisv1.CreateComponentRequest) interface{} {
@@ -163,8 +154,6 @@ func isTemplatePhasedWorkflow(steps *model.WorkflowSteps) bool {
 
 func templatePhaseByComponentType(componentType config.JobType) int {
 	switch componentType {
-	case config.CloudJob:
-		return templatePhaseCloudJob
 	case config.ConfJob, config.SecretJob:
 		return templatePhaseConfigSecret
 	case config.StoreJob:
@@ -184,9 +173,6 @@ func templatePhaseIndexByName(name string) (int, bool) {
 		if normalized == phaseName {
 			return idx, true
 		}
-	}
-	if idx, ok := legacyTemplatePhaseNameAliases[normalized]; ok {
-		return idx, true
 	}
 	return 0, false
 }
@@ -252,8 +238,7 @@ func workflowModelPoliciesFromRequest(explicit []string, properties apisv1.Workf
 			continue
 		}
 		result = append(result, model.Policies{
-			Policies:   policyComponentNames,
-			InitSQLURL: strings.TrimSpace(item.InitSQLURL),
+			Policies: policyComponentNames,
 		})
 	}
 	return result
@@ -265,8 +250,7 @@ func workflowModelPoliciesFromSingleProperty(explicit []string, properties apisv
 		return nil
 	}
 	return []model.Policies{{
-		Policies:   policyComponentNames,
-		InitSQLURL: strings.TrimSpace(properties.InitSQLURL),
+		Policies: policyComponentNames,
 	}}
 }
 
@@ -485,12 +469,10 @@ func validateWorkflowComponentRefs(steps []apisv1.CreateWorkflowStepRequest, exi
 		}
 		stepPolicies, err := validateWorkflowRequestProperties(
 			step.Name,
-			step.WorkflowType,
 			step.Components,
 			step.Properties,
 			step.WorkflowPropertiesList(),
 			step.WorkflowPropertiesFromArray(),
-			len(step.SubSteps) == 0,
 		)
 		if err != nil {
 			return err
@@ -521,12 +503,10 @@ func validateWorkflowComponentRefs(steps []apisv1.CreateWorkflowStepRequest, exi
 		for _, sub := range step.SubSteps {
 			subPolicies, err := validateWorkflowRequestProperties(
 				sub.Name,
-				sub.WorkflowType,
 				sub.Components,
 				sub.Properties,
 				sub.WorkflowPropertiesList(),
 				sub.WorkflowPropertiesFromArray(),
-				true,
 			)
 			if err != nil {
 				return err
@@ -541,18 +521,7 @@ func validateWorkflowComponentRefs(steps []apisv1.CreateWorkflowStepRequest, exi
 	return nil
 }
 
-func validateWorkflowRequestProperties(name string, jobType config.JobType, explicit []string, properties apisv1.WorkflowProperties, propertiesList []apisv1.WorkflowProperties, fromArray bool, executable bool) ([]model.Policies, error) {
-	if fromArray {
-		for _, item := range propertiesList {
-			hasTarget := len(mergeWorkflowComponents(explicit, item.Policies, nil)) > 0
-			if err := ValidateWorkflowInitSQLURL(jobType, item.InitSQLURL, hasTarget, executable); err != nil {
-				return nil, fmt.Errorf("workflow step %q: %w", name, err)
-			}
-		}
-	} else if err := ValidateWorkflowInitSQLURL(jobType, properties.InitSQLURL,
-		len(mergeWorkflowComponents(explicit, properties.Policies, nil)) > 0, executable); err != nil {
-		return nil, fmt.Errorf("workflow step %q: %w", name, err)
-	}
+func validateWorkflowRequestProperties(name string, explicit []string, properties apisv1.WorkflowProperties, propertiesList []apisv1.WorkflowProperties, fromArray bool) ([]model.Policies, error) {
 	if fromArray && len(propertiesList) > 1 {
 		seen := make(map[string]struct{})
 		var propertyComponents []string
@@ -574,28 +543,6 @@ func validateWorkflowRequestProperties(name string, jobType config.JobType, expl
 		}
 	}
 	return workflowModelPoliciesFromRequest(explicit, properties, propertiesList, fromArray, nil), nil
-}
-
-// ValidateWorkflowInitSQLURL keeps database reset parameters within the same
-// HTTP(S) URL contract as the database reset submission endpoint and requires
-// an executable target component so the URL survives persistence and execution.
-func ValidateWorkflowInitSQLURL(jobType config.JobType, raw string, hasTarget, executable bool) error {
-	if raw == "" {
-		return nil
-	}
-	if jobType != config.JobDatabaseReset {
-		return fmt.Errorf("%w: initSqlUrl is only supported for database_reset jobType", bcode.ErrWorkflowConfig)
-	}
-	if _, err := normalizeDatabaseResetInitSQLURL(raw, true); err != nil {
-		return fmt.Errorf("%w: initSqlUrl must be a non-empty absolute HTTP(S) URL", bcode.ErrWorkflowConfig)
-	}
-	if !executable {
-		return fmt.Errorf("%w: initSqlUrl cannot be set on a parent step with subSteps", bcode.ErrWorkflowConfig)
-	}
-	if !hasTarget {
-		return fmt.Errorf("%w: initSqlUrl requires a target component", bcode.ErrWorkflowConfig)
-	}
-	return nil
 }
 
 func validateWorkflowComponentsMatchProperties(name string, explicit []string, properties []string) error {
@@ -637,7 +584,7 @@ func ensureComponentsExist(names []string, existing map[string]config.JobType) e
 }
 
 func validateApprovalWorkflowStep(step apisv1.CreateWorkflowStepRequest, stepComponents []string) error {
-	if len(stepComponents) > 0 || len(step.SubSteps) > 0 || step.HasWorkflowInitSQLURL() {
+	if len(stepComponents) > 0 || len(step.SubSteps) > 0 {
 		return fmt.Errorf("%w: approval step %q cannot contain components/properties/substeps", bcode.ErrWorkflowConfig, step.Name)
 	}
 	if step.Approval == nil || strings.TrimSpace(step.Approval.NotifyURL) == "" {

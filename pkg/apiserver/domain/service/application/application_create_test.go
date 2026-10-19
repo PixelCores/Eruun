@@ -155,12 +155,10 @@ func TestCreateApplicationsAllowsDuplicateNormalNameAcrossNamespaces(t *testing.
 func TestCreateApplicationsReturnsMainComponentResourceSummary(t *testing.T) {
 	store := newInMemoryAppStore()
 	svc := newMockServiceWithStore(store)
-	templateEnabled := true
 
 	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
-		Name:            "mysql",
-		Namespace:       config.DefaultNamespace,
-		TemplateEnabled: &templateEnabled,
+		Name:      "mysql",
+		Namespace: config.DefaultNamespace,
 		Components: []apisv1.CreateComponentRequest{
 			{
 				Name:          "mysql-config",

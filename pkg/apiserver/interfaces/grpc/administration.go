@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
-	assembler "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/assembler/v1"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	eruunv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -18,9 +16,7 @@ import (
 // services used by HTTP. Its dependencies are populated by the API IoC graph.
 type AdministrationServer struct {
 	eruunv1.UnimplementedSettingsServiceServer
-	eruunv1.UnimplementedProgrammingLanguagesServiceServer
-	Settings             service.SystemSettingService       `inject:""`
-	ProgrammingLanguages service.ProgrammingLanguageService `inject:""`
+	Settings service.SystemSettingService `inject:""`
 }
 
 func valueBytes(value *structpb.Value) ([]byte, error) {
@@ -116,85 +112,4 @@ func (s *AdministrationServer) DeleteSetting(ctx context.Context, req *eruunv1.D
 		return nil, rpcError(err)
 	}
 	return &eruunv1.DeleteSettingResponse{Type: req.Type}, nil
-}
-
-func programmingLanguageMessage(item *model.ProgrammingLanguage) (*eruunv1.ProgrammingLanguage, error) {
-	if item == nil || item.Enabled == nil {
-		return nil, fmt.Errorf("programming-language service returned incomplete item")
-	}
-	return &eruunv1.ProgrammingLanguage{
-		Id: item.ID, Code: item.Code, Name: item.Name, Version: item.Version,
-		Enabled: *item.Enabled, CpuReq: item.CPUReq, MemReq: item.MemReq,
-		CreateTime: timeMessage(item.CreateTime), UpdateTime: timeMessage(item.UpdateTime),
-	}, nil
-}
-
-func (s *AdministrationServer) ListProgrammingLanguages(ctx context.Context, _ *eruunv1.ListProgrammingLanguagesRequest) (*eruunv1.ListProgrammingLanguagesResponse, error) {
-	items, err := s.ProgrammingLanguages.List(ctx)
-	if err != nil {
-		return nil, rpcError(err)
-	}
-	resp := &eruunv1.ListProgrammingLanguagesResponse{}
-	for _, item := range items {
-		converted, convertErr := programmingLanguageMessage(item)
-		if convertErr != nil {
-			return nil, rpcError(convertErr)
-		}
-		resp.Languages = append(resp.Languages, converted)
-	}
-	return resp, nil
-}
-
-func (s *AdministrationServer) GetProgrammingLanguage(ctx context.Context, req *eruunv1.ProgrammingLanguageIDRequest) (*eruunv1.ProgrammingLanguage, error) {
-	if req == nil {
-		return nil, rpcError(bcode.ErrProgrammingLanguageInvalid)
-	}
-	item, err := s.ProgrammingLanguages.Get(ctx, req.Id)
-	if err != nil {
-		return nil, rpcError(err)
-	}
-	converted, err := programmingLanguageMessage(item)
-	return converted, rpcError(err)
-}
-
-func (s *AdministrationServer) CreateProgrammingLanguage(ctx context.Context, req *eruunv1.CreateProgrammingLanguageRequest) (*eruunv1.ProgrammingLanguage, error) {
-	if req == nil || req.Enabled == nil {
-		return nil, rpcError(bcode.ErrProgrammingLanguageInvalid)
-	}
-	command := assembler.CreateProgrammingLanguageCommand(apisv1.CreateProgrammingLanguageRequest{
-		Name: req.Name, Version: req.Version, Enabled: req.Enabled,
-		CPUReq: req.CpuReq, MemReq: req.MemReq,
-	})
-	item, err := s.ProgrammingLanguages.Create(ctx, command)
-	if err != nil {
-		return nil, rpcError(err)
-	}
-	converted, err := programmingLanguageMessage(item)
-	return converted, rpcError(err)
-}
-
-func (s *AdministrationServer) UpdateProgrammingLanguage(ctx context.Context, req *eruunv1.UpdateProgrammingLanguageRequest) (*eruunv1.ProgrammingLanguage, error) {
-	if req == nil {
-		return nil, rpcError(bcode.ErrProgrammingLanguageInvalid)
-	}
-	command := assembler.UpdateProgrammingLanguageCommand(apisv1.UpdateProgrammingLanguageRequest{
-		Name: req.Name, Version: req.Version, Enabled: req.Enabled,
-		CPUReq: req.CpuReq, MemReq: req.MemReq,
-	})
-	item, err := s.ProgrammingLanguages.Update(ctx, req.Id, command)
-	if err != nil {
-		return nil, rpcError(err)
-	}
-	converted, err := programmingLanguageMessage(item)
-	return converted, rpcError(err)
-}
-
-func (s *AdministrationServer) DeleteProgrammingLanguage(ctx context.Context, req *eruunv1.ProgrammingLanguageIDRequest) (*eruunv1.DeleteProgrammingLanguageResponse, error) {
-	if req == nil {
-		return nil, rpcError(bcode.ErrProgrammingLanguageInvalid)
-	}
-	if err := s.ProgrammingLanguages.Delete(ctx, req.Id); err != nil {
-		return nil, rpcError(err)
-	}
-	return &eruunv1.DeleteProgrammingLanguageResponse{Id: req.Id}, nil
 }

@@ -425,48 +425,6 @@ func TestUpdateVersionAutoExecIdleRaceRollsBack(t *testing.T) {
 	require.Empty(t, store.tasks)
 }
 
-func TestUpdateVersionTemplateVersionOnlyDoesNotAutoExecWhenResourceKeyIsStable(t *testing.T) {
-	store := newInMemoryAppStore()
-	store.apps["tmpl-1"] = &model.Applications{
-		ID:              "tmpl-1",
-		Name:            "mysql",
-		Version:         "1.0.0",
-		Namespace:       "default",
-		TemplateEnabled: true,
-	}
-	store.components["backend"] = &model.ApplicationComponent{
-		Name:     "backend",
-		AppID:    "tmpl-1",
-		Image:    "backend:v1",
-		Replicas: 1,
-		Status:   string(config.ComponentStatusRunning),
-	}
-	store.workflows["wf-template"] = &model.Workflow{
-		ID:           "wf-template",
-		AppID:        "tmpl-1",
-		WorkflowType: config.WorkflowTaskTypeWorkflow,
-		BaseModel:    model.BaseModel{UpdateTime: time.Now()},
-		Steps: mustJSONStruct(&model.WorkflowSteps{
-			Steps: []*model.WorkflowStep{
-				{Name: "backend", WorkflowType: config.JobDeploy},
-			},
-		}),
-	}
-
-	svc := newMockServiceWithStore(store)
-
-	resp, err := svc.UpdateVersion(context.Background(), "tmpl-1", apisv1.UpdateVersionRequest{
-		Version: "2.0.0",
-	})
-	require.NoError(t, err)
-	require.NotEmpty(t, resp.TaskID)
-	require.NotNil(t, store.tasks[resp.TaskID])
-	require.Equal(t, config.WorkflowTaskTypeUpdate, store.tasks[resp.TaskID].Type)
-	require.Empty(t, store.tasks[resp.TaskID].WorkflowID)
-	require.Equal(t, "2.0.0", store.apps["tmpl-1"].Version)
-	require.Equal(t, string(config.ComponentStatusRunning), store.components["backend"].Status)
-}
-
 func TestUpdateVersionNonTemplateVersionOnlyDoesNotAutoExecWorkflow(t *testing.T) {
 	store := newInMemoryAppStore()
 	store.apps["app-1"] = &model.Applications{

@@ -12,11 +12,9 @@ import "google/protobuf/timestamp.proto";
 service ApplicationService {
   rpc GetCanonicalJSONSchema(google.protobuf.Empty) returns (CanonicalJSONSchema);
   rpc ListApplications(ApplicationListRequest) returns (AppDTOListApplicationResponse);
-  rpc ListTemplateApplications(ApplicationListRequest) returns (AppDTOListApplicationResponse);
   rpc CreateApplications(AppDTOCreateApplicationsRequest) returns (AppDTOApplicationBase);
   rpc CreateAndExecApplications(AppDTOCreateAndExecApplicationRequest) returns (AppDTOCreateAndExecApplicationResponse);
   rpc BatchGetApplications(AppDTOBatchGetApplicationsRequest) returns (AppDTOBatchGetApplicationsResponse);
-  rpc ConvertApplications(AppDTOConvertApplicationsRequest) returns (AppDTOConvertApplicationsResponse);
   rpc ListApplicationWorkflows(ApplicationIDRequest) returns (AppDTOListApplicationWorkflowsResponse);
   rpc GetApplicationSpec(ApplicationIDRequest) returns (AppDTOCreateApplicationsRequest);
   rpc GetApplicationStatus(ApplicationIDRequest) returns (AppDTOApplicationStatusResponse);
@@ -34,7 +32,6 @@ service ApplicationService {
   rpc UpsertWorkflowSchedule(UpsertWorkflowScheduleRPCRequest) returns (AppDTOUpsertWorkflowScheduleResponse);
   rpc DeleteWorkflowSchedule(ApplicationWorkflowRequest) returns (AppDTODeleteWorkflowScheduleResponse);
   rpc CleanupApplicationResources(ApplicationIDRequest) returns (AppDTOCleanupApplicationResourcesResponse);
-  rpc ResetApplicationDatabases(ResetApplicationDatabasesRPCRequest) returns (AppDTODatabaseResetResponse);
   rpc RestartApplicationWorkloads(ApplicationLifecycleRPCRequest) returns (AppDTORestartApplicationWorkloadsResponse);
   rpc StopApplicationDeployments(ApplicationLifecycleRPCRequest) returns (AppDTOStopApplicationDeploymentsResponse);
   rpc StartApplicationDeployments(ApplicationLifecycleRPCRequest) returns (AppDTOStartApplicationDeploymentsResponse);
@@ -46,7 +43,6 @@ service ApplicationService {
   rpc GetWorkflowTaskStatus(WorkflowTaskIDRequest) returns (AppDTOTaskStatusResponse);
   rpc GetWorkflowTaskStages(WorkflowTaskIDRequest) returns (AppDTOTaskStagesResponse);
   rpc UpdateApplicationVersion(UpdateVersionRPCRequest) returns (AppDTOUpdateVersionResponse);
-  rpc DiffUpdateApplicationVersion(DiffUpdateVersionRPCRequest) returns (AppDTODiffUpdateVersionResponse);
   rpc CancelDelayedVersionUpdate(CancelWorkflowRPCRequest) returns (AppDTOCancelWorkflowResponse);
   rpc TryApplication(AppDTOCreateApplicationsRequest) returns (AppDTOTryApplicationResponse);
   rpc TryWorkflow(UpdateApplicationWorkflowRPCRequest) returns (AppDTOTryWorkflowResponse);
@@ -97,13 +93,11 @@ message ComponentFileChunk {
 message DeleteApplicationRPCRequest { string app_id = 1; AppDTODeleteApplicationRequest request = 2; }
 message UpdateApplicationWorkflowRPCRequest { string app_id = 1; AppDTOUpdateApplicationWorkflowRequest request = 2; }
 message UpsertWorkflowScheduleRPCRequest { string app_id = 1; AppDTOUpsertWorkflowScheduleRequest request = 2; }
-message ResetApplicationDatabasesRPCRequest { string app_id = 1; AppDTODatabaseResetRequest request = 2; }
 message ApplicationLifecycleRPCRequest { string app_id = 1; AppDTOApplicationLifecycleRequest request = 2; }
 message ExecWorkflowRPCRequest { string app_id = 1; AppDTOExecWorkflowRequest request = 2; }
 message CancelWorkflowRPCRequest { string app_id = 1; AppDTOCancelWorkflowRequest request = 2; }
 message TaskApprovalRPCRequest { string task_id = 1; AppDTOTaskApprovalRequest request = 2; }
 message UpdateVersionRPCRequest { string app_id = 1; AppDTOUpdateVersionRequest request = 2; }
-message DiffUpdateVersionRPCRequest { string app_id = 1; AppDTODiffUpdateVersionRequest request = 2; }
 message AppDTOCreateAndExecApplicationResponse {
   AppDTOApplicationBase application = 1 [json_name = "application"];
   string workflow_id = 2 [json_name = "workflowId"];
@@ -133,7 +127,6 @@ message AppDTOApplicationBase {
   google.protobuf.Timestamp update_time = 10 [json_name = "updateTime"];
   string icon = 11 [json_name = "icon"];
   string workflow_id = 12 [json_name = "workflowId"];
-  bool template_enabled = 13 [json_name = "templateEnabled"];
   AppDTOApplicationResources resources = 15 [json_name = "resources"];
 }
 
@@ -219,7 +212,6 @@ message AppDTOApplicationWithComponents {
   google.protobuf.Timestamp update_time = 10 [json_name = "updateTime"];
   string icon = 11 [json_name = "icon"];
   string workflow_id = 12 [json_name = "workflowId"];
-  bool template_enabled = 13 [json_name = "templateEnabled"];
   AppDTOApplicationResources resources = 15 [json_name = "resources"];
   repeated AppDTOBatchApplicationComponent components = 16 [json_name = "components"];
 }
@@ -399,19 +391,6 @@ message AppDTOComponentUpdateSpec {
   AppSpecTraits traits = 8 [json_name = "traits"];
 }
 
-message AppDTOConvertApplicationsRequest {
-  string yaml = 1 [json_name = "yaml"];
-  string file_url = 2 [json_name = "fileUrl"];
-  optional bool validate = 3 [json_name = "validate"];
-}
-
-message AppDTOConvertApplicationsResponse {
-  repeated AppDTOCreateComponentRequest components = 1 [json_name = "components"];
-  bool valid = 2 [json_name = "valid"];
-  repeated AppDTOValidationError errors = 3 [json_name = "errors"];
-  repeated string warnings = 4 [json_name = "warnings"];
-}
-
 message AppDTOCreateAndExecApplicationRequest {
   string id = 1 [json_name = "id"];
   string name = 2 [json_name = "name"];
@@ -425,7 +404,6 @@ message AppDTOCreateAndExecApplicationRequest {
   repeated AppDTOCreateWorkflowStepRequest workflow = 10 [json_name = "workflow"];
   AppDTOWorkflowCallback callback = 11 [json_name = "callback"];
   string failure_policy = 12 [json_name = "failurePolicy"];
-  optional bool template_enabled = 13 [json_name = "templateEnabled"];
   string workflow_id = 14 [json_name = "workflowId"];
   int64 execute_at = 15 [json_name = "executeAt"];
 }
@@ -443,7 +421,6 @@ message AppDTOCreateApplicationsRequest {
   repeated AppDTOCreateWorkflowStepRequest workflow = 10 [json_name = "workflow"];
   AppDTOWorkflowCallback callback = 11 [json_name = "callback"];
   string failure_policy = 12 [json_name = "failurePolicy"];
-  optional bool template_enabled = 13 [json_name = "templateEnabled"];
 }
 
 message AppDTOCreateComponentRequest {
@@ -454,7 +431,6 @@ message AppDTOCreateComponentRequest {
   int32 replicas = 5 [json_name = "replicas"];
   AppSpecProperties properties = 6 [json_name = "properties"];
   AppSpecTraits traits = 7 [json_name = "traits"];
-  AppDTOTemplateRef template = 8 [json_name = "tmp"];
 }
 
 message AppDTOCreateWorkflowStepRequest {
@@ -475,19 +451,6 @@ message AppDTOCreateWorkflowSubStepRequest {
   string workflow_type = 3 [json_name = "jobType"];
   repeated AppDTOWorkflowProperties properties = 4 [json_name = "properties"];
   repeated string components = 5 [json_name = "components"];
-}
-
-message AppDTODatabaseResetRequest {
-  repeated string components = 1 [json_name = "components"];
-  optional string init_sqlurl = 2 [json_name = "initSqlUrl"];
-}
-
-message AppDTODatabaseResetResponse {
-  string app_id = 1 [json_name = "appId"];
-  string workflow_id = 2 [json_name = "workflowId"];
-  string task_id = 3 [json_name = "taskId"];
-  repeated string database_components = 4 [json_name = "databaseComponents"];
-  repeated string restart_components = 5 [json_name = "restartComponents"];
 }
 
 message AppDTODeleteApplicationRequest {
@@ -515,36 +478,6 @@ message AppDTODeleteResourceCount {
 
 message AppDTODeleteWorkflowScheduleResponse {
   string workflow_id = 1 [json_name = "workflowId"];
-}
-
-message AppDTODiffUpdateVersionRequest {
-  string source_app_id = 1 [json_name = "sourceAppId"];
-  bool dry_run = 2 [json_name = "dryRun"];
-  string target_only_strategy = 3 [json_name = "targetOnlyStrategy"];
-  string strategy = 4 [json_name = "strategy"];
-  string execution_scope = 5 [json_name = "executionScope"];
-  string workflow_id = 6 [json_name = "workflowId"];
-  int64 execute_at = 7 [json_name = "executeAt"];
-  optional bool auto_exec = 8 [json_name = "autoExec"];
-  string description = 9 [json_name = "description"];
-}
-
-message AppDTODiffUpdateVersionResponse {
-  string target_app_id = 1 [json_name = "targetAppId"];
-  string source_app_id = 2 [json_name = "sourceAppId"];
-  string target_previous_version = 3 [json_name = "targetPreviousVersion"];
-  string target_version = 4 [json_name = "targetVersion"];
-  string source_version = 5 [json_name = "sourceVersion"];
-  bool dry_run = 6 [json_name = "dryRun"];
-  string target_only_strategy = 7 [json_name = "targetOnlyStrategy"];
-  bool version_changed = 8 [json_name = "versionChanged"];
-  bool has_changes = 9 [json_name = "hasChanges"];
-  bool executable = 10 [json_name = "executable"];
-  repeated AppDTOVersionComponentDiff updated_components = 11 [json_name = "updatedComponents"];
-  repeated AppDTOVersionComponentDiff added_components = 12 [json_name = "addedComponents"];
-  repeated AppDTOVersionComponentDiff extra_components = 13 [json_name = "extraComponents"];
-  repeated AppDTOVersionComponentDiff blocked_components = 14 [json_name = "blockedComponents"];
-  AppDTOUpdateVersionResponse update_result = 15 [json_name = "updateResult"];
 }
 
 message AppDTOExecComponentShellScriptRequest {
@@ -697,12 +630,6 @@ message AppDTOTaskStatusResponse {
   repeated AppDTOAllowedAction allowed_actions = 9 [json_name = "allowedActions"];
 }
 
-message AppDTOTemplateRef {
-  string id = 1 [json_name = "id"];
-  string target = 2 [json_name = "target"];
-  string default_storage_class = 3 [json_name = "defaultStorageClass"];
-}
-
 message AppDTOTryApplicationResponse {
   bool valid = 1 [json_name = "valid"];
   repeated AppDTOTryValidationError errors = 2 [json_name = "errors"];
@@ -790,31 +717,6 @@ message AppDTOValidationError {
   string message = 3 [json_name = "message"];
 }
 
-message AppDTOVersionComponentDiff {
-  string action = 1 [json_name = "action"];
-  string name = 2 [json_name = "name"];
-  string type = 3 [json_name = "type"];
-  string reason = 4 [json_name = "reason"];
-  repeated AppDTOVersionComponentField fields = 5 [json_name = "fields"];
-  AppDTOVersionComponentState before = 6 [json_name = "before"];
-  AppDTOVersionComponentState after = 7 [json_name = "after"];
-}
-
-message AppDTOVersionComponentField {
-  string field = 1 [json_name = "field"];
-  google.protobuf.Value before = 2 [json_name = "before"];
-  google.protobuf.Value after = 3 [json_name = "after"];
-}
-
-message AppDTOVersionComponentState {
-  string name = 1 [json_name = "name"];
-  string type = 2 [json_name = "type"];
-  string image = 3 [json_name = "image"];
-  int32 replicas = 4 [json_name = "replicas"];
-  AppSpecProperties properties = 5 [json_name = "properties"];
-  AppSpecTraits traits = 6 [json_name = "traits"];
-}
-
 message AppDTOWorkflowCallback {
   string success = 1 [json_name = "success"];
   string failure = 2 [json_name = "failure"];
@@ -828,7 +730,6 @@ message AppDTOWorkflowCallback {
 
 message AppDTOWorkflowProperties {
   repeated string policies = 1 [json_name = "policies"];
-  string init_sqlurl = 2 [json_name = "initSqlUrl"];
 }
 
 message AppDTOWorkflowSchedule {
@@ -917,12 +818,6 @@ message AppKubeCoreWindowsSecurityContextOptions {
   optional bool host_process = 4 [json_name = "hostProcess"];
 }
 
-message AppSpecCloudSpec {
-  string provider = 1 [json_name = "provider"];
-  string action = 2 [json_name = "action"];
-  google.protobuf.Struct params = 3 [json_name = "params"];
-}
-
 message AppSpecConfigMapSelectorSpec {
   string name = 1 [json_name = "name"];
   string key = 2 [json_name = "key"];
@@ -1006,7 +901,6 @@ message AppSpecProperties {
   map<string, string> secret = 4 [json_name = "secret"];
   repeated string command = 5 [json_name = "command"];
   map<string, string> labels = 6 [json_name = "labels"];
-  AppSpecCloudSpec cloud = 7 [json_name = "cloud"];
   int64 start_time = 9 [json_name = "startTime"];
   string run_policy = 10 [json_name = "runPolicy"];
   AppWorkflowConfigJobRetryPolicy job_retry_policy = 11 [json_name = "jobRetryPolicy"];

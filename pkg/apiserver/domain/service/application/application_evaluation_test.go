@@ -80,24 +80,3 @@ func TestVersionUpdateEvaluationValidatesMergedComponent(t *testing.T) {
 	_, err = service.applyComponentUpdate(component, apisv1.ComponentUpdateSpec{Name: request.Name, Properties: &spec.Properties{Command: []string{"true"}}})
 	require.Error(t, err)
 }
-
-func TestEvaluationTemplateOverridesReplaceBusinessInput(t *testing.T) {
-	template := evaluationComponent()
-	traits, err := model.NewJSONStructByStruct(template.Traits)
-	require.NoError(t, err)
-	override := spec.Traits{Evaluation: &spec.EvaluationTraitSpec{Env: "ack", Agent: "codex", Model: "openai/test-model",
-		TaskPackageID: "87654321-1234-1234-1234-123456789012", SandboxResources: &spec.ResourceTraitsSpec{CPU: "2", Memory: "3Gi"}}}
-	component, err := convertComponentFromTemplate(&model.ApplicationComponent{Name: template.Name, ComponentType: config.InstantJob, Traits: traits},
-		"evaluate-copy", "app", "space", spec.Properties{}, override, "", nil)
-	require.NoError(t, err)
-	require.Equal(t, "codex", component.Traits.Evaluation.Agent)
-	require.Equal(t, override.Evaluation.TaskPackageID, component.Traits.Evaluation.TaskPackageID)
-	require.NotSame(t, override.Evaluation, component.Traits.Evaluation)
-	require.NotSame(t, override.Evaluation.SandboxResources, component.Traits.Evaluation.SandboxResources)
-	require.Equal(t, "2", component.Traits.Evaluation.SandboxResources.CPULimit)
-	require.Empty(t, override.Evaluation.SandboxResources.CPULimit, "normalization must not mutate the override input")
-
-	_, err = convertComponentFromTemplate(&model.ApplicationComponent{Name: template.Name, ComponentType: config.InstantJob, Traits: traits},
-		"evaluate-copy", "app", "space", spec.Properties{Command: []string{"true"}}, spec.Traits{}, "", nil)
-	require.Error(t, err, "unsupported command overrides must not disappear during template expansion")
-}

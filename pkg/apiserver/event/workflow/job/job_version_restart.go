@@ -2,6 +2,7 @@ package job
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -126,7 +127,7 @@ func (c *VersionRestartJobCtl) restartDeployment(
 	if !ok || deploy == nil {
 		return nil, fmt.Errorf("server component %s did not generate a Deployment", component.Name)
 	}
-	namespace := databaseResetNamespaceOrDefault(deploy.Namespace, component.Namespace)
+	namespace := namespaceOrDefault(pickNonEmpty(deploy.Namespace, component.Namespace))
 	name := strings.TrimSpace(deploy.Name)
 	if name == "" {
 		name = buildWebServiceName(component.Name, component.ResourceNameKey())
@@ -166,7 +167,7 @@ func (c *VersionRestartJobCtl) restartStatefulSet(
 	if !ok || statefulSet == nil {
 		return nil, fmt.Errorf("store component %s did not generate a StatefulSet", component.Name)
 	}
-	namespace := databaseResetNamespaceOrDefault(statefulSet.Namespace, component.Namespace)
+	namespace := namespaceOrDefault(pickNonEmpty(statefulSet.Namespace, component.Namespace))
 	name := strings.TrimSpace(statefulSet.Name)
 	if name == "" {
 		name = buildStoreSeverName(component.Name, component.ResourceNameKey())
@@ -282,4 +283,19 @@ func versionRestartShareStrategyForComponent(component *model.ApplicationCompone
 
 func formatVersionRestartAt(now time.Time) string {
 	return now.UTC().Format(time.RFC3339Nano)
+}
+
+func buildWorkloadRestartPatch(restartedAt string) ([]byte, error) {
+	patch := map[string]interface{}{
+		"spec": map[string]interface{}{
+			"template": map[string]interface{}{
+				"metadata": map[string]interface{}{
+					"annotations": map[string]string{
+						config.AnnotationWorkloadRestartAt: restartedAt,
+					},
+				},
+			},
+		},
+	}
+	return json.Marshal(patch)
 }

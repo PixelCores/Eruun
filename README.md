@@ -57,7 +57,6 @@ For example, an application can contain a `webservice` API and a `store` databas
 | `store` | A StatefulSet for a service requiring stable identity or persistent storage |
 | `job` | An application-owned Kubernetes Job |
 | `config` / `secret` | A ConfigMap / Secret |
-| `cloudjob` | A registered Provider/Action extension in the engine; current workspace application policy rejects submission |
 
 The component model includes the following trait fields. **A field’s presence does not authorize every workspace to use it.** The platform also checks workspace, network, storage, and container permissions.
 
@@ -114,8 +113,8 @@ The queue delivers messages at least once. Database leases and generation/token 
 ## Capability boundaries and roadmap
 
 - **Product delivery:** The repository ships the server runtime, Helm/manifests, and API examples. Clients integrate using `curl` or gRPC. Eruun does not ship a client command-line application; the integrating platform provides its UI and business approval system.
-- **Kubernetes:** An existing cluster is required. Eruun is not currently a cluster installer, multi-cluster control platform, or general-purpose cloud resource manager. Existing CloudJob extensions do not make general-purpose AI Providers available.
-- **Permissions:** Platform login permissions, workload Kubernetes identities, and container permissions are checked separately. Current workspace policy rejects privileged/host capabilities, cross-namespace requests, additional RBAC, CloudJob, and NodePort/LoadBalancer, among other restrictions. Network isolation requires a CNI that enforces NetworkPolicy. See the [workspace security contract](docs/account-auth-workspaces.md).
+- **Kubernetes:** An existing cluster is required. Eruun is not currently a cluster installer, multi-cluster control platform, or general-purpose cloud resource manager.
+- **Permissions:** Platform login permissions, workload Kubernetes identities, and container permissions are checked separately. Current workspace policy rejects privileged/host capabilities, cross-namespace requests, additional RBAC, and NodePort/LoadBalancer, among other restrictions. Network isolation requires a CNI that enforces NetworkPolicy. See the [workspace security contract](docs/account-auth-workspaces.md).
 - **Workflows:** There is no general-purpose step output dataflow, `dependsOn`, or conditional branching contract today. Standalone `command` Jobs do not support cron, delayed execution, or automatic reruns on failure; recurring execution uses Workflow schedules or reusable Job definitions.
 - **Evaluation:** `traits.eval` uses a fixed Harbor adapter. The model is the object of evaluation; `agent` selects the harness that executes the task. The platform pulls prebuilt images; it does not build the Dockerfiles in task packages online or accept arbitrary evaluation frameworks or Python adapters. The trait is restricted to standalone or top-level application `job` declarations. Evaluation rewards and successful task execution are distinct outcomes.
 - **AI capabilities:** Resource declarations and container execution do not imply support for agent sessions/memory, MCP authorization and auditing, dedicated vLLM deployment, or GPU-aware scheduling.

@@ -559,58 +559,6 @@ func TestListApplicationTasksEndpoint(t *testing.T) {
 	}
 }
 
-func TestListTemplateApplicationsEndpoint(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	appSvc := &templateApplicationService{
-		templates: []*apis.ApplicationBase{
-			{ID: "app-tmpl-1", Name: "tmpl-1", TemplateEnabled: true, Resources: apis.ApplicationResources{
-				CPUReq:   "160m",
-				MemReq:   "260Mi",
-				CPULimit: "300m",
-				MemLimit: "600Mi",
-				Replicas: 1,
-			}},
-			{ID: "app-tmpl-2", Name: "tmpl-2", TemplateEnabled: true},
-		},
-	}
-	appHandler := &applications{
-		ApplicationService: appSvc,
-		WorkflowService:    &fakeWorkflowService{},
-	}
-	r := gin.New()
-	r.GET("/applications/templates", appHandler.listTemplateApplications)
-
-	req := httptest.NewRequest(http.MethodGet, "/applications/templates", nil)
-	resp := httptest.NewRecorder()
-
-	r.ServeHTTP(resp, req)
-
-	if resp.Code != http.StatusOK {
-		t.Fatalf("unexpected status code: %d", resp.Code)
-	}
-
-	var payload apis.ListApplicationResponse
-	requireSuccessResponse(t, resp.Body.Bytes(), &payload)
-	if len(payload.Applications) != 2 {
-		t.Fatalf("expected 2 templates, got %d", len(payload.Applications))
-	}
-	if payload.Applications[0].ID != "app-tmpl-1" {
-		t.Fatalf("unexpected first template: %+v", payload.Applications[0])
-	}
-	require.Equal(t, "160m", payload.Applications[0].Resources.CPUReq)
-	require.Equal(t, "260Mi", payload.Applications[0].Resources.MemReq)
-	require.Equal(t, "300m", payload.Applications[0].Resources.CPULimit)
-	require.Equal(t, "600Mi", payload.Applications[0].Resources.MemLimit)
-	require.EqualValues(t, 1, payload.Applications[0].Resources.Replicas)
-	require.Contains(t, resp.Body.String(), `"resources":{"cpuReq":"160m","memReq":"260Mi","cpuLimit":"300m","memLimit":"600Mi","replicas":1}`)
-	require.Contains(t, resp.Body.String(), `"cpuReq":"160m"`)
-	require.Contains(t, resp.Body.String(), `"memReq":"260Mi"`)
-	require.Contains(t, resp.Body.String(), `"cpuLimit":"300m"`)
-	require.Contains(t, resp.Body.String(), `"memLimit":"600Mi"`)
-	require.Contains(t, resp.Body.String(), `"replicas":1`)
-	require.NotContains(t, resp.Body.String(), `"templateEnabled":true,"cpuReq"`)
-}
-
 func TestListApplicationsEndpointPassesPaginationOptions(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	appSvc := &listApplicationService{
@@ -682,27 +630,6 @@ func TestQueryApplicationsEndpoint(t *testing.T) {
 	require.NotContains(t, resp.Body.String(), `"command"`)
 	require.NotContains(t, resp.Body.String(), `"labels"`)
 	require.NotContains(t, resp.Body.String(), "traits")
-}
-
-func TestListTemplateApplicationsEndpointPassesPaginationOptions(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	appSvc := &templateApplicationService{
-		templates: []*apis.ApplicationBase{{ID: "app-tmpl-1", Name: "tmpl-1", TemplateEnabled: true}},
-	}
-	appHandler := &applications{
-		ApplicationService: appSvc,
-		WorkflowService:    &fakeWorkflowService{},
-	}
-	r := gin.New()
-	r.GET("/applications/templates", appHandler.listTemplateApplications)
-
-	req := httptest.NewRequest(http.MethodGet, "/applications/templates?page=1&pageSize=5", nil)
-	resp := httptest.NewRecorder()
-	r.ServeHTTP(resp, req)
-
-	require.Equal(t, http.StatusOK, resp.Code)
-	require.Equal(t, 1, appSvc.lastOpts.Page)
-	require.Equal(t, 5, appSvc.lastOpts.PageSize)
 }
 
 func TestUpdateVersionEndpoint(t *testing.T) {
@@ -1080,93 +1007,6 @@ func TestUpdateVersionEndpointImageUpdate(t *testing.T) {
 	if appSvc.lastReq.Components[0].Image != "myapp/backend:v1.1.0" {
 		t.Fatalf("unexpected image: %s", appSvc.lastReq.Components[0].Image)
 	}
-}
-
-func TestDiffUpdateVersionEndpointDryRun(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	appSvc := &fakeUpdateVersionService{
-		diffResp: &apis.DiffUpdateVersionResponse{
-			TargetAppID:           "target-app",
-			SourceAppID:           "source-app",
-			TargetPreviousVersion: "1.0.0",
-			TargetVersion:         "1.0.1",
-			SourceVersion:         "1.0.1",
-			DryRun:                true,
-			TargetOnlyStrategy:    apis.DiffUpdateTargetOnlyStrategyRemove,
-			VersionChanged:        true,
-			HasChanges:            true,
-			Executable:            true,
-			UpdatedComponents: []apis.VersionComponentDiff{{
-				Action: "update",
-				Name:   "backend",
-				Type:   config.ServerJob,
-				Fields: []apis.VersionComponentField{{
-					Field:  "image",
-					Before: "backend:v1.0.0",
-					After:  "backend:v1.0.1",
-				}},
-			}},
-		},
-	}
-	appHandler := &applications{
-		ApplicationService: appSvc,
-		WorkflowService:    &fakeWorkflowService{},
-	}
-	r := gin.New()
-	r.POST("/applications/:appID/version/diff-update", appHandler.diffUpdateVersion)
-
-	body := `{
-		"sourceAppId": "source-app",
-		"dryRun": true,
-		"targetOnlyStrategy": "remove",
-		"strategy": "rolling",
-		"executionScope": "changed_components",
-		"autoExec": false,
-		"description": "sync from source"
-	}`
-	req := httptest.NewRequest(http.MethodPost, "/applications/target-app/version/diff-update", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp := httptest.NewRecorder()
-
-	r.ServeHTTP(resp, req)
-
-	require.Equal(t, http.StatusOK, resp.Code)
-	var payload apis.DiffUpdateVersionResponse
-	requireSuccessResponse(t, resp.Body.Bytes(), &payload)
-	require.Equal(t, "target-app", payload.TargetAppID)
-	require.Equal(t, "source-app", payload.SourceAppID)
-	require.True(t, payload.DryRun)
-	require.Equal(t, apis.DiffUpdateTargetOnlyStrategyRemove, payload.TargetOnlyStrategy)
-	require.Len(t, payload.UpdatedComponents, 1)
-	require.Equal(t, "target-app", appSvc.lastDiffID)
-	require.Equal(t, "source-app", appSvc.lastDiffReq.SourceAppID)
-	require.True(t, appSvc.lastDiffReq.DryRun)
-	require.Equal(t, apis.DiffUpdateTargetOnlyStrategyRemove, appSvc.lastDiffReq.TargetOnlyStrategy)
-	require.Equal(t, "changed_components", appSvc.lastDiffReq.ExecutionScope)
-	require.NotNil(t, appSvc.lastDiffReq.AutoExec)
-	require.False(t, *appSvc.lastDiffReq.AutoExec)
-}
-
-func TestDiffUpdateVersionEndpointRejectsMissingSourceAppID(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	appSvc := &fakeUpdateVersionService{}
-	appHandler := &applications{
-		ApplicationService: appSvc,
-		WorkflowService:    &fakeWorkflowService{},
-	}
-	r := gin.New()
-	r.POST("/applications/:appID/version/diff-update", appHandler.diffUpdateVersion)
-
-	req := httptest.NewRequest(http.MethodPost, "/applications/target-app/version/diff-update", strings.NewReader(`{"dryRun":true}`))
-	req.Header.Set("Content-Type", "application/json")
-	resp := httptest.NewRecorder()
-
-	r.ServeHTTP(resp, req)
-
-	require.Equal(t, http.StatusBadRequest, resp.Code)
-	envelope := decodeResponse(t, resp.Body.Bytes(), nil)
-	require.Equal(t, bcode.ErrApplicationConfig.BusinessCode, envelope.Code)
-	require.Empty(t, appSvc.lastDiffID)
 }
 
 func TestCancelDelayedVersionUpdateEndpoint(t *testing.T) {

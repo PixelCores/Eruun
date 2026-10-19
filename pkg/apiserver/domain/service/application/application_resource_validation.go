@@ -60,16 +60,12 @@ func validateApplicationResourceNames(ctx context.Context, appRepo repository.Ap
 	namespace := serviceNamespaceOrDefault(app.Namespace)
 	seenResources := make(map[string]resolvedResourceRef)
 	seenComponentLabels := make(map[string]resolvedComponentLabelRef)
-	if app.TemplateEnabled {
-		return trackResolvedApplicationResources(seenResources, seenComponentLabels, applicationResourceNameKey(app), namespace, app.ID, app.Name, components, true)
-	}
-
 	apps, err := appRepo.List(ctx, datastore.ListOptions{})
 	if err != nil {
 		return err
 	}
 	for _, existingApp := range apps {
-		if existingApp == nil || existingApp.TemplateEnabled || existingApp.ID == app.ID || serviceNamespaceOrDefault(existingApp.Namespace) != namespace {
+		if existingApp == nil || existingApp.ID == app.ID || serviceNamespaceOrDefault(existingApp.Namespace) != namespace {
 			continue
 		}
 		existingComponents, err := componentRepo.FindByAppID(ctx, existingApp.ID)
@@ -299,7 +295,7 @@ func trackComponentLabelValue(seen map[string]resolvedComponentLabelRef, current
 
 func resolvedServiceResourceNames(component apisv1.CreateComponentRequest, resourceAppName string) []string {
 	switch component.ComponentType {
-	case config.InstantJob, config.CloudJob:
+	case config.InstantJob:
 		return nil
 	}
 	componentName := strings.TrimSpace(component.Name)

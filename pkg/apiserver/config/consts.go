@@ -42,7 +42,6 @@ const (
 	DefaultNamespace                      = "default"
 	DeployTimeout                         = 60 * 20 // 20 minutes
 	DefaultVersionUpdateImageReadyTimeout = 60 * 5  // 5 minutes
-	CloudJobTimeout                       = 60 * 20 // 20 minutes
 	DelTimeOut                            = 30 * time.Second
 
 	// ServerJob JobType 的类型分为几种：1.无状态服务 2.存储服务 3.网络服务
@@ -50,7 +49,6 @@ const (
 	StoreJob   JobType = "store"
 	ConfJob    JobType = "config"
 	SecretJob  JobType = "secret"
-	CloudJob   JobType = "cloudjob"
 	Service    JobType = "service"
 	InstantJob JobType = "job"
 
@@ -67,10 +65,8 @@ const (
 	JobDeployClusterRole        JobType = "cluster_role_deploy"
 	JobDeployClusterRoleBinding JobType = "cluster_role_binding_deploy"
 	JobDeployInstant            JobType = "instant_job"
-	JobDeployCloud              JobType = "cloudjob_deploy"
 	JobDeployCallback           JobType = "callback"
 	JobCleanupResources         JobType = "cleanup_resources"
-	JobDatabaseReset            JobType = "database_reset"
 	JobVersionRestart           JobType = "version_restart"
 	JobCommand                  JobType = "command"
 	JobEval                     JobType = "eval"
@@ -82,14 +78,13 @@ const (
 )
 
 const (
-	WorkflowTaskTypeWorkflow      WorkflowTaskType = "workflow"
-	WorkflowTaskTypeUpdate        WorkflowTaskType = "update"
-	WorkflowTaskTypeCleanup       WorkflowTaskType = "cleanup"
-	WorkflowTaskTypeRestart       WorkflowTaskType = "restart"
-	WorkflowTaskTypeStop          WorkflowTaskType = "stop"
-	WorkflowTaskTypeStart         WorkflowTaskType = "start"
-	WorkflowTaskTypeDatabaseReset WorkflowTaskType = "database_reset"
-	WorkflowTaskTypeJob           WorkflowTaskType = "job"
+	WorkflowTaskTypeWorkflow WorkflowTaskType = "workflow"
+	WorkflowTaskTypeUpdate   WorkflowTaskType = "update"
+	WorkflowTaskTypeCleanup  WorkflowTaskType = "cleanup"
+	WorkflowTaskTypeRestart  WorkflowTaskType = "restart"
+	WorkflowTaskTypeStop     WorkflowTaskType = "stop"
+	WorkflowTaskTypeStart    WorkflowTaskType = "start"
+	WorkflowTaskTypeJob      WorkflowTaskType = "job"
 
 	WorkflowModeStepByStep WorkflowMode = "StepByStep"
 	WorkflowModeDAG        WorkflowMode = "DAG"
@@ -200,8 +195,7 @@ func NormalizeWorkflowTaskType(value WorkflowTaskType) WorkflowTaskType {
 func IsSupportedWorkflowTaskType(value WorkflowTaskType) bool {
 	switch NormalizeWorkflowTaskType(value) {
 	case WorkflowTaskTypeWorkflow,
-		WorkflowTaskTypeUpdate,
-		WorkflowTaskTypeDatabaseReset:
+		WorkflowTaskTypeUpdate:
 		return true
 	default:
 		return false
@@ -232,7 +226,7 @@ func ParseWorkflowStepType(stepType string) WorkflowStepType {
 
 func IsSupportedWorkflowJobType(jobType JobType) bool {
 	switch JobType(strings.TrimSpace(string(jobType))) {
-	case "", JobDeploy, JobCleanupResources, JobDatabaseReset:
+	case "", JobDeploy, JobCleanupResources:
 		return true
 	default:
 		return false

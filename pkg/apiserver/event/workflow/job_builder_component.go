@@ -52,14 +52,6 @@ func setDeployTimeout(jobTask *model.JobTask) {
 	jobTask.Timeout = config.DeployTimeout
 }
 
-// setCloudJobTimeout forces cloudjob tasks to use cloudjob-specific timeout.
-func setCloudJobTimeout(jobTask *model.JobTask) {
-	if jobTask == nil {
-		return
-	}
-	jobTask.Timeout = config.CloudJobTimeout
-}
-
 func createObjectJobsFromResult(additionalObjects []client.Object, component *model.ApplicationComponent, task *model.WorkflowQueue, jobs []*model.JobTask, defaultJobTimeoutSeconds int64, share shareConfig) ([]*model.JobTask, error) {
 	if len(additionalObjects) == 0 {
 		return jobs, nil
@@ -263,14 +255,6 @@ func appendComponentGroup(
 	executionKeyForComponent func(componentIndex int) string,
 ) error {
 	logger := klog.FromContext(ctx)
-	if workflowType == config.JobDatabaseReset {
-		executionKey := ""
-		if executionKeyForComponent != nil {
-			executionKey = executionKeyForComponent(0)
-		}
-		mergeJobBuckets(buckets, buildDatabaseResetJobs(ctx, componentNames, workflowProperties, componentMap, task, defaultJobTimeoutSeconds, executionKey))
-		return nil
-	}
 	for componentIndex, name := range componentNames {
 		component, ok := componentMap[name]
 		if !ok {
@@ -318,105 +302,13 @@ func buildCleanupJobsForComponent(
 	return buckets
 }
 
-func buildDatabaseResetJobs(
-	ctx context.Context,
-	componentNames []string,
-	workflowProperties []model.Policies,
-	componentMap map[string]*model.ApplicationComponent,
-	task *model.WorkflowQueue,
-	defaultJobTimeoutSeconds int64,
-	executionKey string,
-) map[int][]*model.JobTask {
-	logger := klog.FromContext(ctx)
-	buckets := newJobBuckets()
-	if task == nil || len(componentNames) == 0 {
-		return buckets
-	}
-
-	databaseComponents := make([]*model.ApplicationComponent, 0, len(componentNames))
-	seenDatabases := make(map[string]struct{}, len(componentNames))
-	for _, name := range componentNames {
-		component, ok := componentMap[name]
-		if !ok || component == nil {
-			logger.Info("Database reset component referenced in workflow step not found", "componentName", name)
-			continue
-		}
-		if component.ComponentType != config.StoreJob {
-			logger.Info("Database reset skips non-store component", "componentName", component.Name, "componentType", component.ComponentType)
-			continue
-		}
-		key := strings.ToLower(strings.TrimSpace(component.Name))
-		if _, ok := seenDatabases[key]; ok {
-			continue
-		}
-		seenDatabases[key] = struct{}{}
-		databaseComponents = append(databaseComponents, cloneDatabaseResetComponent(component))
-	}
-	if len(databaseComponents) == 0 {
-		return buckets
-	}
-
-	namespace := databaseComponents[0].Namespace
-	if strings.TrimSpace(namespace) == "" {
-		namespace = config.DefaultNamespace
-	}
-	resourceAppName := databaseComponents[0].ResourceNameKey()
-	jobTask := NewJobTask(databaseResetWorkflowName(), namespace, task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, resourceAppName)
-	jobTask.JobType = string(config.JobDatabaseReset)
-	jobTask.JobInfo = &job.DatabaseResetJobInfo{
-		DatabaseComponents: databaseComponents,
-		InitSQLURL:         databaseResetInitSQLURL(workflowProperties),
-		ExecutionKey:       strings.TrimSpace(executionKey),
-	}
-	jobTask.Info = fmt.Sprintf("database reset: %s", strings.Join(componentNamesForInfo(databaseComponents), ", "))
-	setDeployTimeout(jobTask)
-	buckets[config.JobPriorityLow] = append(buckets[config.JobPriorityLow], jobTask)
-	return buckets
-}
-
-func databaseResetInitSQLURL(properties []model.Policies) string {
-	for _, property := range properties {
-		if value := strings.TrimSpace(property.InitSQLURL); value != "" {
-			return value
-		}
-	}
-	return ""
-}
-
-func cloneDatabaseResetComponent(component *model.ApplicationComponent) *model.ApplicationComponent {
-	if component == nil {
-		return nil
-	}
-	cp := *component
-	if strings.TrimSpace(cp.Namespace) == "" {
-		cp.Namespace = config.DefaultNamespace
-	}
-	return &cp
-}
-
-func componentNamesForInfo(components []*model.ApplicationComponent) []string {
-	names := make([]string, 0, len(components))
-	for _, component := range components {
-		if component == nil {
-			continue
-		}
-		names = append(names, component.Name)
-	}
-	return names
-}
-
-func databaseResetWorkflowName() string {
-	return "database-reset"
-}
-
 func buildJobsForComponent(
 	ctx context.Context,
 	component *model.ApplicationComponent,
 	task *model.WorkflowQueue,
 	defaultJobTimeoutSeconds int64,
-	cloudExecutionKey string,
+	executionKey string,
 ) (map[int][]*model.JobTask, error) {
-	logger := klog.FromContext(ctx)
 	buckets := newJobBuckets()
 	if component == nil {
 		return buckets, nil
@@ -473,22 +365,6 @@ func buildJobsForComponent(
 		setDeployTimeout(jobTask)
 		markJobSkippedIfIgnored(share, jobTask)
 		buckets[config.JobPriorityMaxHigh] = append(buckets[config.JobPriorityMaxHigh], jobTask)
-	case config.CloudJob:
-		cloudInfo := &job.CloudJobInfo{}
-		if properties.Cloud == nil {
-			logger.Info("Cloudjob component missing properties.cloud, enqueuing fail-fast cloud job", "componentName", component.Name)
-		} else {
-			cloudInfo.Provider = properties.Cloud.Provider
-			cloudInfo.Action = properties.Cloud.Action
-			cloudInfo.Params = cloneMapInterface(properties.Cloud.Params)
-		}
-		cloudInfo.ExecutionKey = strings.TrimSpace(cloudExecutionKey)
-		jobTask := NewJobTask(component.Name, namespace, task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, resourceAppName)
-		jobTask.JobType = string(config.JobDeployCloud)
-		jobTask.JobInfo = cloudInfo
-		jobTask.Info = buildResourceInfo(domainspec.ResourceCloudJob, namespace, component.Name)
-		setCloudJobTimeout(jobTask)
-		buckets[config.JobPriorityNormal] = append(buckets[config.JobPriorityNormal], jobTask)
 	case config.InstantJob:
 		var traits domainspec.Traits
 		if component.Traits != nil {
@@ -501,7 +377,7 @@ func buildJobsForComponent(
 			}
 		}
 		if traits.Evaluation != nil {
-			identity := sha256.Sum256([]byte(task.TaskID + "|" + cloudExecutionKey + "|" + component.Name))
+			identity := sha256.Sum256([]byte(task.TaskID + "|" + executionKey + "|" + component.Name))
 			name := fmt.Sprintf("eruun-eval-%x", identity[:16])
 			jobTask := NewJobTask(name, namespace, task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, resourceAppName)
 			jobTask.WorkspaceID = task.WorkspaceID
@@ -549,7 +425,7 @@ func buildJobsForComponent(
 		applyJobFailurePolicyOverride(jobTask, properties.FailurePolicy)
 	}
 
-	if component.ComponentType != config.InstantJob && component.ComponentType != config.CloudJob {
+	if component.ComponentType != config.InstantJob {
 		serviceTraits := serviceTraitsForComponent(component, &properties, componentTraits)
 		if len(serviceTraits) > 0 {
 			for _, trait := range serviceTraits {

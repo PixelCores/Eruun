@@ -13,7 +13,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 )
 
 func requireVersionUpdateCleanupInfo(t *testing.T, task *model.WorkflowQueue) model.VersionUpdateCleanupInfo {
@@ -62,14 +61,6 @@ func versionUpdateCleanupIndexes(cleanupInfo model.VersionUpdateCleanupInfo) map
 		indexes[cleanupComponent.Component.Name] = cleanupComponent.InsertBeforeStepIndex
 	}
 	return indexes
-}
-
-func diffFieldNames(fields []apisv1.VersionComponentField) []string {
-	names := make([]string, 0, len(fields))
-	for _, field := range fields {
-		names = append(names, field.Field)
-	}
-	return names
 }
 
 func findComponentByAppAndName(store *inMemoryAppStore, appID, name string) *model.ApplicationComponent {
@@ -913,9 +904,6 @@ func (s *inMemoryAppStore) listApplications(q *model.Applications, opts *datasto
 			continue
 		}
 		if q.Project != "" && app.Project != q.Project {
-			continue
-		}
-		if q.TemplateEnabled && !app.TemplateEnabled {
 			continue
 		}
 		cp := *app

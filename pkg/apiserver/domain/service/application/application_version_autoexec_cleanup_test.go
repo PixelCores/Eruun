@@ -281,13 +281,6 @@ func TestUpdateVersionAutoExecRemovePersistsCleanupJobAfterCommit(t *testing.T) 
 		Secret:  map[string]string{"api-key": "secret-payload-value"},
 		Command: []string{"sh", "-c", "echo command-secret"},
 		Labels:  map[string]string{"credential": "label-secret"},
-		Cloud: &spec.CloudSpec{
-			Provider: "aliyun",
-			Action:   "provision",
-			Params: map[string]interface{}{
-				"accessKeySecret": "cloud-secret-value",
-			},
-		},
 	})
 	require.NoError(t, err)
 	removedTraits, err := model.NewJSONStructByStruct(spec.Traits{
@@ -426,7 +419,6 @@ func TestUpdateVersionAutoExecRemovePersistsCleanupJobAfterCommit(t *testing.T) 
 	require.Empty(t, cleanupProperties.Secret)
 	require.Empty(t, cleanupProperties.Command)
 	require.Empty(t, cleanupProperties.Labels)
-	require.Nil(t, cleanupProperties.Cloud)
 	require.NotNil(t, cleanupPayload.Component.Traits)
 	var cleanupTraits spec.Traits
 	require.NoError(t, json.Unmarshal([]byte(mustJSON(t, cleanupPayload.Component.Traits)), &cleanupTraits))
@@ -701,19 +693,19 @@ func TestUpdateVersionAutoExecRemoveCleanupPlacementSkipsEmptiedTemplatePhase(t 
 		Steps: mustJSONStruct(&model.WorkflowSteps{
 			Steps: []*model.WorkflowStep{
 				{
-					Name:         "phase-2-config-secret",
+					Name:         "phase-1-config-secret",
 					WorkflowType: config.JobDeploy,
 					Mode:         config.WorkflowModeDAG,
 					Properties:   []model.Policies{{Policies: []string{"cfg", "secret"}}},
 				},
 				{
-					Name:         "phase-4-job",
+					Name:         "phase-3-job",
 					WorkflowType: config.JobDeploy,
 					Mode:         config.WorkflowModeDAG,
 					Properties:   []model.Policies{{Policies: []string{"worker"}}},
 				},
 				{
-					Name:         "phase-5-webservice",
+					Name:         "phase-4-webservice",
 					WorkflowType: config.JobDeploy,
 					Mode:         config.WorkflowModeDAG,
 					Properties:   []model.Policies{{Policies: []string{"api"}}},
@@ -775,19 +767,19 @@ func TestUpdateVersionAutoExecRemoveCleanupPlacementCountsPartiallySurvivingTemp
 		Steps: mustJSONStruct(&model.WorkflowSteps{
 			Steps: []*model.WorkflowStep{
 				{
-					Name:         "phase-2-config-secret",
+					Name:         "phase-1-config-secret",
 					WorkflowType: config.JobDeploy,
 					Mode:         config.WorkflowModeDAG,
 					Properties:   []model.Policies{{Policies: []string{"cfg", "secret"}}},
 				},
 				{
-					Name:         "phase-4-job",
+					Name:         "phase-3-job",
 					WorkflowType: config.JobDeploy,
 					Mode:         config.WorkflowModeDAG,
 					Properties:   []model.Policies{{Policies: []string{"worker"}}},
 				},
 				{
-					Name:         "phase-5-webservice",
+					Name:         "phase-4-webservice",
 					WorkflowType: config.JobDeploy,
 					Mode:         config.WorkflowModeDAG,
 					Properties:   []model.Policies{{Policies: []string{"api"}}},

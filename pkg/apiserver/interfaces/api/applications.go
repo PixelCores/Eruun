@@ -11,7 +11,6 @@ type applications struct {
 	RuntimeComponentReader applicationRuntimeComponentReader `inject:""`
 	WorkflowService        service.WorkflowService           `inject:""`
 	ValidationService      service.ValidationService         `inject:""`
-	ConversionService      service.ConversionService         `inject:""`
 }
 
 // NewApplications new applications manage
@@ -22,11 +21,9 @@ func NewApplications() Interface {
 func (app *applications) RegisterRoutes(group *gin.RouterGroup) {
 	group.GET("/schemas/v1/canonical.json", app.getCanonicalJSONSchema)
 	group.GET("/applications", app.listApplications)
-	group.GET("/applications/templates", app.listTemplateApplications)
 	group.POST("/applications", app.createApplications)
 	group.POST("/applications/create-and-exec", app.createAndExecApplications)
 	group.POST("/applications/query", app.batchGetApplications)
-	group.POST("/applications/convert", app.convertApplications)
 	group.GET("/applications/:appID/workflows", app.listApplicationWorkflows)
 	group.GET("/applications/:appID/spec", app.getApplicationSpec)
 	group.GET("/applications/:appID/status", app.getApplicationStatus)
@@ -41,13 +38,11 @@ func (app *applications) RegisterRoutes(group *gin.RouterGroup) {
 	group.DELETE("/applications/:appID", app.deleteApplication)
 	group.PUT("/applications/:appID/workflow", app.updateApplicationWorkflow)
 	group.DELETE("/applications/:appID/resources", app.deleteApplicationResources)
-	group.POST("/applications/:appID/database-reset", app.resetApplicationDatabases)
 	group.POST("/applications/:appID/restart", app.restartApplicationWorkloads)
 	group.POST("/applications/:appID/stop", app.stopApplicationDeployments)
 	group.POST("/applications/:appID/start", app.startApplicationDeployments)
 	group.GET("/applications/:appID/workflow/tasks", app.listApplicationTasks)
 	group.POST("/applications/:appID/version", app.updateVersion)
-	group.POST("/applications/:appID/version/diff-update", app.diffUpdateVersion)
 	group.POST("/applications/try", app.tryApplication)
 	group.POST("/applications/:appID/workflow/try", app.tryWorkflow)
 }

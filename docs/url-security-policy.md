@@ -8,7 +8,6 @@
   - 应用工作流回调 URL 校验
   - Workflow Callback Job 请求发送
   - ConfigMap/Secret 远程 URL 拉取
-  - `/applications/convert` 的 `fileURL` 拉取
 - 关键改进：
   - 私网目标不再仅告警，默认阻断
   - 重定向逐跳校验，防止“首跳公网、次跳私网”绕过

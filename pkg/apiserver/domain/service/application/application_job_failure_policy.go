@@ -95,15 +95,3 @@ func validateNoNestedJobFailurePoliciesForWrite(traits apisv1.Traits, fieldPrefi
 	}
 	return nil
 }
-
-func validateTemplateRequestJobFailurePolicyOverrides(components []apisv1.CreateComponentRequest) error {
-	for i, component := range components {
-		if component.Template == nil || strings.TrimSpace(component.Template.ID) == "" {
-			continue
-		}
-		if err := validateNoNestedJobFailurePoliciesForWrite(component.Traits, fmt.Sprintf("component[%d].traits", i)); err != nil {
-			return err
-		}
-	}
-	return nil
-}

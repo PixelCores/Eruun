@@ -42,7 +42,7 @@ func PrepareTask(task *model.JobTask, appID string, w *model.Workspace, cfg spec
 		resource = "ingresses"
 	case config.JobDeployInstant, config.JobCommand, config.JobEval:
 		resource = "jobs"
-	case config.JobDeployCallback, config.JobCleanupResources, config.JobDatabaseReset, config.JobVersionRestart:
+	case config.JobDeployCallback, config.JobCleanupResources, config.JobVersionRestart:
 		return false, nil
 	default:
 		return false, bcode.ErrForbidden

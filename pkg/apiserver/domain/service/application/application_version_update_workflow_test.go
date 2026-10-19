@@ -13,126 +13,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
-func TestUpdateVersionTemplateRejectsRequestedVersionCollision(t *testing.T) {
-	store := newInMemoryAppStore()
-	store.apps["tmpl-1"] = &model.Applications{
-		ID:              "tmpl-1",
-		Name:            "foo",
-		Version:         "1.0.0",
-		Namespace:       config.DefaultNamespace,
-		TemplateEnabled: true,
-	}
-	store.apps["tmpl-2"] = &model.Applications{
-		ID:              "tmpl-2",
-		Name:            "foo",
-		Version:         "2.0.0",
-		Namespace:       config.DefaultNamespace,
-		TemplateEnabled: true,
-	}
-	store.components["api"] = &model.ApplicationComponent{
-		Name:          "api",
-		AppID:         "tmpl-1",
-		Namespace:     config.DefaultNamespace,
-		ComponentType: config.ServerJob,
-		Image:         "nginx:1.0",
-	}
-
-	svc := newMockServiceWithStore(store)
-	req := apisv1.UpdateVersionRequest{
-		Version: "2.0.0",
-		Components: []apisv1.ComponentUpdateSpec{{
-			Name:  "api",
-			Image: "nginx:2.0",
-		}},
-		AutoExec: boolPtr(false),
-	}
-
-	_, err := svc.UpdateVersion(context.Background(), "tmpl-1", req)
-	require.ErrorIs(t, err, bcode.ErrApplicationExist)
-	require.Equal(t, "1.0.0", store.apps["tmpl-1"].Version)
-	require.Equal(t, "nginx:1.0", store.components["api"].Image)
-}
-
-func TestUpdateVersionTemplateAllowsRequestedVersionAcrossNamespaces(t *testing.T) {
-	store := newInMemoryAppStore()
-	store.apps["tmpl-1"] = &model.Applications{
-		ID:              "tmpl-1",
-		Name:            "foo",
-		Version:         "1.0.0",
-		Namespace:       config.DefaultNamespace,
-		TemplateEnabled: true,
-	}
-	store.apps["tmpl-team-b"] = &model.Applications{
-		ID:              "tmpl-team-b",
-		Name:            "foo",
-		Version:         "2.0.0",
-		Namespace:       "team-b",
-		TemplateEnabled: true,
-	}
-	store.components["api"] = &model.ApplicationComponent{
-		Name:          "api",
-		AppID:         "tmpl-1",
-		Namespace:     config.DefaultNamespace,
-		ComponentType: config.ServerJob,
-		Image:         "nginx:1.0",
-	}
-
-	svc := newMockServiceWithStore(store)
-	req := apisv1.UpdateVersionRequest{
-		Version: "2.0.0",
-		Components: []apisv1.ComponentUpdateSpec{{
-			Name:  "api",
-			Image: "nginx:2.0",
-		}},
-		AutoExec: boolPtr(false),
-	}
-
-	resp, err := svc.UpdateVersion(context.Background(), "tmpl-1", req)
-	require.NoError(t, err)
-	require.Equal(t, "2.0.0", resp.Version)
-	require.Equal(t, "2.0.0", store.apps["tmpl-1"].Version)
-	require.Equal(t, "team-b", store.apps["tmpl-team-b"].Namespace)
-	require.Equal(t, "nginx:2.0", store.components["api"].Image)
-}
-
-func TestUpdateVersionTemplateDoesNotUseVersionForResourceKey(t *testing.T) {
-	store := newInMemoryAppStore()
-	store.apps["app-standard"] = &model.Applications{
-		ID:        "app-standard",
-		Name:      "foo-2-0-0",
-		Namespace: config.DefaultNamespace,
-	}
-	store.apps["tmpl-1"] = &model.Applications{
-		ID:              "tmpl-1",
-		Name:            "foo",
-		Version:         "1.0.0",
-		Namespace:       config.DefaultNamespace,
-		TemplateEnabled: true,
-	}
-	store.components["api"] = &model.ApplicationComponent{
-		Name:          "api",
-		AppID:         "tmpl-1",
-		Namespace:     config.DefaultNamespace,
-		ComponentType: config.ServerJob,
-		Image:         "nginx:1.0",
-	}
-
-	svc := newMockServiceWithStore(store)
-	req := apisv1.UpdateVersionRequest{
-		Version: "2.0.0",
-		Components: []apisv1.ComponentUpdateSpec{{
-			Name:  "api",
-			Image: "nginx:2.0",
-		}},
-		AutoExec: boolPtr(false),
-	}
-
-	_, err := svc.UpdateVersion(context.Background(), "tmpl-1", req)
-	require.NoError(t, err)
-	require.Equal(t, "2.0.0", store.apps["tmpl-1"].Version)
-	require.Equal(t, "nginx:2.0", store.components["api"].Image)
-}
-
 func TestUpdateVersionKeepsCommittedChangesWhenWorkflowStepSyncFails(t *testing.T) {
 	store := newInMemoryAppStore()
 	store.apps["app-1"] = &model.Applications{
@@ -292,9 +172,9 @@ func TestUpdateVersionSyncTemplatePhasedWorkflowOnAdd(t *testing.T) {
 
 	steps := decodeWorkflowSteps(t, store.workflows["wf-default"].Steps)
 	require.Len(t, steps.Steps, 3)
-	require.Equal(t, "phase-2-config-secret", steps.Steps[0].Name)
-	require.Equal(t, "phase-3-store", steps.Steps[1].Name)
-	require.Equal(t, "phase-5-webservice", steps.Steps[2].Name)
+	require.Equal(t, "phase-1-config-secret", steps.Steps[0].Name)
+	require.Equal(t, "phase-2-store", steps.Steps[1].Name)
+	require.Equal(t, "phase-4-webservice", steps.Steps[2].Name)
 	require.ElementsMatch(t, []string{"cfg"}, steps.Steps[0].ComponentNames())
 	require.ElementsMatch(t, []string{"redis"}, steps.Steps[1].ComponentNames())
 	require.ElementsMatch(t, []string{"api"}, steps.Steps[2].ComponentNames())

@@ -967,7 +967,7 @@ Scheduler             Database              Message Queue          Worker       
 
 工作流由多个 Step 组成，每个 Step 包含一组组件。Step 之间按顺序执行，Step 内部根据执行模式（StepByStep 或 DAG）决定组件的执行方式。同时，每个组件生成的 Job 按优先级分组执行，确保依赖资源（如 ConfigMap、Secret）优先创建。
 
-创建应用时如果没有显式提供 `workflow`，服务端会按组件类型生成默认阶段化工作流：`cloudjob` -> `phase-1-job`，`config`/`secret` -> `phase-2-config-secret`，`store` -> `phase-3-store`，普通 `job` -> `phase-4-job`，`webservice`/`service` -> `phase-5-webservice`。因此初始化 SQL 这类普通 Job 默认会排在 Store 创建之后执行；如果请求中显式提供 `workflow`，则严格按请求中的 Step 顺序执行，不再自动重排。
+创建应用时如果没有显式提供 `workflow`，服务端会按组件类型生成默认阶段化工作流：`config`/`secret` -> `phase-1-config-secret`，`store` -> `phase-2-store`，`job` -> `phase-3-job`，`webservice`/`service` -> `phase-4-webservice`。因此初始化 SQL 这类普通 Job 默认会排在 Store 创建之后执行；如果请求中显式提供 `workflow`，则严格按请求中的 Step 顺序执行，不再自动重排。
 
 ```
 Workflow Steps 定义:
@@ -2216,13 +2216,10 @@ cache:
 | POST | `/applications/:appID/workflow/exec` | 执行工作流任务 |
 | POST | `/applications/:appID/workflow/cancel` | 取消工作流任务 |
 | POST | `/applications/:appID/workflow/tasks/cancel-all` | 取消应用下所有活跃工作流任务 |
-| POST | `/applications/convert` | 转换 Kubernetes YAML 为组件配置 |
 | GET | `/workflow/tasks/:taskID/status` | 查询任务状态 |
 | GET | `/workflow/tasks/:taskID/stages` | 查询任务阶段详情 |
 | GET | `/applications/:appID/status` | 查询应用聚合运行态 |
 | GET | `/applications/:appID/components/status` | 查询应用组件运行态明细 |
-
-`/applications/convert` 采用 best-effort 转换契约：请求成功表示至少生成了可返回的组件配置；无法表达、缺字段、无法匹配或有损映射的 Kubernetes 资源/字段会被跳过并进入 `warnings`。响应中的 `valid` 只表示转换后的 Eruun 应用模型是否通过 `TryApplication` 校验，不代表输入 YAML 已被无损转换。
 
 ### C. 状态码定义
 

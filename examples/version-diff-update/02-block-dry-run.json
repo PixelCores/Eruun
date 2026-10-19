@@ -1,8 +1,0 @@
-{
-  "sourceAppId": "app-version-101",
-  "dryRun": true,
-  "targetOnlyStrategy": "block",
-  "strategy": "rolling",
-  "autoExec": false,
-  "description": "preview target app update and block execution when target-only components exist"
-}

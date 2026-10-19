@@ -4,9 +4,7 @@
 
 ## 1. 当前事实
 
-当前 `cloudjob` 是 Application Component 类型，使用 `properties.cloud.provider/action/params` 选择进程内已注册实现。`main` 只自动注册 `aliyun` Provider，当前内置动作聚焦 NAS 文件系统、挂载点和 Kubernetes StorageClass 引导。
-
-仓库内的 `custom` 包是扩展模板，不会自动注册，也不是动态插件系统。新增 Provider 当前需要编译并重启 Eruun。完整当前契约见 [CloudJob 说明](cloudjob-skeleton.md)。
+当前没有云 Provider 组件类型或进程内 Provider 注册。早期的 `cloudjob` 组件（只内置阿里云 NAS 与 StorageClass 引导）已在 2026-10-19 删除：空间授权本就拒绝该组件类型和 `properties.cloud`，它在业务 API 下不可达。下文的 Provider 集成仍是方向草案，进入实现前需要重新设计契约。
 
 ## 2. 目标
 
@@ -76,17 +74,17 @@ checkpoint 至少需要绑定：
 
 这些状态不能简化成一个“插件健康”布尔值。运行中的任务应绑定实际 Provider/action 版本；升级后的重试是否允许迁移版本必须由 action 明确决定。
 
-## 8. 与 CloudJob 的关系
+## 8. 运行载体
 
-CloudJob 已具备 provider/action 分发、多阶段 state 和执行记录，可以作为首个 AI Provider 的实现载体。采用它之前需要验证：
+早期 `cloudjob` 组件的 provider/action 分发与多阶段 state 已随该组件删除，不再作为实现载体。首个 AI Provider 需要先回答：
 
-- action 是否适合 Application-scoped Workflow。
+- action 是否适合 Application-scoped Workflow，还是应作为独立 Job。
 - 输入是否能通过结构化、版本化 schema 校验，而不是任意 `params`。
 - checkpoint 是否足以跨进程恢复。
 - 凭据、成本、审计和结果制品是否有统一边界。
 - 取消和清理是否与 Workflow 终态一致。
 
-如果这些需求可以增量完善现有 CloudJob，就不新增第二套 Provider runtime。只有隔离、部署或生命周期证据表明进程内实现不够时，才评估外部进程、RPC 或 operator 形态。
+优先复用现有 WorkflowQueue、JobInfo 与执行租约；只有隔离、部署或生命周期证据表明进程内实现不够时，才评估外部进程、RPC 或 operator 形态。
 
 ## 9. 首个实现门禁
 

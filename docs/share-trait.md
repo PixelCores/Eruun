@@ -76,8 +76,6 @@ RBAC 调和继续遵守现有托管边界：同名对象不是 Eruun 托管资�
 - 未知 share 策略按 `default` 的保守保护语义处理。
 - `share=force` 继续按普通 managed 组件处理，可以被上述生命周期操作控制。
 
-`database-reset` 不重启任何 `webservice`，因此无论是否配置 share、使用何种策略，服务组件都保持重置前的运行状态。调用方需要停机重置时应自行编排 `/stop`、`/database-reset`、`/start`。
-
 ## 实现细节
 
 ### shareName 生成规则

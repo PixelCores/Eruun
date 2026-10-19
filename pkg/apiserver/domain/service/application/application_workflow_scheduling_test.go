@@ -54,11 +54,11 @@ func TestWorkflowSchedulingClassRequestPersistenceAndResponse(t *testing.T) {
 }
 
 func TestWorkflowSchedulingClassSurvivesTemplatePhaseSync(t *testing.T) {
-	for _, oldWebPhaseName := range []string{"phase-5-webservice", "phase-4-webservice"} {
+	for _, oldWebPhaseName := range []string{"phase-4-webservice"} {
 		t.Run(oldWebPhaseName, func(t *testing.T) {
 			workflow := &model.Workflow{ID: "wf-1", Steps: mustJSONStruct(&model.WorkflowSteps{
 				Steps: []*model.WorkflowStep{
-					{Name: "phase-2-config-secret", SchedulingClass: "background", Mode: config.WorkflowModeDAG, WorkflowType: config.JobDeploy, Properties: []model.Policies{{Policies: []string{"cfg"}}}},
+					{Name: "phase-1-config-secret", SchedulingClass: "background", Mode: config.WorkflowModeDAG, WorkflowType: config.JobDeploy, Properties: []model.Policies{{Policies: []string{"cfg"}}}},
 					{Name: oldWebPhaseName, SchedulingClass: "high", Mode: config.WorkflowModeDAG, WorkflowType: config.JobDeploy, Properties: []model.Policies{{Policies: []string{"api", "removed"}}}},
 				},
 			})}

@@ -405,10 +405,3 @@ func intOrStringIsNilOrDefaultDeploymentPercent(value *intstr.IntOrString) bool 
 	defaultValue := intstr.FromString(defaultDeploymentRollingUpdatePercent)
 	return apiequality.Semantic.DeepEqual(*value, defaultValue)
 }
-
-func cleanObjectMeta(meta *metav1.ObjectMeta) {
-	meta.ResourceVersion = ""
-	meta.UID = ""
-	meta.CreationTimestamp = metav1.Time{}
-	meta.ManagedFields = nil
-}

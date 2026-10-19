@@ -51,35 +51,6 @@ func (r *CreateAndExecApplicationRequest) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (r *DatabaseResetRequest) UnmarshalJSON(data []byte) error {
-	var request struct {
-		Components []string        `json:"components"`
-		InitSQLURL json.RawMessage `json:"initSqlUrl"`
-	}
-	if err := decodeStrictJSON(data, &request); err != nil {
-		return err
-	}
-
-	*r = DatabaseResetRequest{Components: request.Components}
-	if len(request.InitSQLURL) == 0 {
-		return nil
-	}
-	if bytes.Equal(bytes.TrimSpace(request.InitSQLURL), []byte("null")) {
-		return errors.New("initSqlUrl must be a string")
-	}
-	if err := decodeStrictJSON(request.InitSQLURL, &r.InitSQLURL); err != nil {
-		return err
-	}
-	r.initSQLURLProvided = true
-	return nil
-}
-
-// InitSQLURLProvided reports whether initSqlUrl was present in the JSON request.
-// A non-empty programmatic value is also treated as provided.
-func (r DatabaseResetRequest) InitSQLURLProvided() bool {
-	return r.initSQLURLProvided || r.InitSQLURL != ""
-}
-
 func decodeCreateApplicationsRequest(data []byte, req *CreateApplicationsRequest, extra map[string]func(json.RawMessage) error) error {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(data, &fields); err != nil {
@@ -128,8 +99,6 @@ func decodeCreateApplicationField(fieldName string, raw json.RawMessage, req *Cr
 		return decodeStrictJSON(raw, &req.Callback)
 	case "failurePolicy":
 		return decodeStrictJSON(raw, &req.FailurePolicy)
-	case "templateEnabled":
-		return decodeStrictJSON(raw, &req.TemplateEnabled)
 	default:
 		return extra[fieldName](raw)
 	}
@@ -322,7 +291,7 @@ func canonicalWorkflowProperties(single WorkflowProperties, list []WorkflowPrope
 	if fromArray {
 		return list
 	}
-	if len(single.Policies) == 0 && single.InitSQLURL == "" {
+	if len(single.Policies) == 0 {
 		return nil
 	}
 	return []WorkflowProperties{single}

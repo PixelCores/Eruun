@@ -1,7 +1,0 @@
-{
-  "components": [
-    "mysql",
-    "redis"
-  ],
-  "initSqlUrl": "https://files.example/game-1.0.8.sql"
-}

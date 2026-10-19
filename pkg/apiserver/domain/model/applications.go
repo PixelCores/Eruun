@@ -9,31 +9,29 @@ import (
 )
 
 type Applications struct {
-	WorkspaceID     string      `json:"workspaceId" gorm:"type:varchar(36);not null;index"`
-	ID              string      `json:"id" gorm:"primaryKey;type:varchar(64);column:id"`
-	Name            string      `json:"name" gorm:"type:varchar(255);column:name"`          //应用名称
-	Namespace       string      `json:"namespace" gorm:"type:varchar(64);column:namespace"` //命名空间，但是不对外暴露
-	Version         string      `json:"version" gorm:"type:varchar(64);column:version"`     //版本，如果为空则默认为1.0.0
-	Alias           string      `json:"alias" gorm:"type:varchar(128);column:alias"`        //别名
-	Project         string      `json:"project" gorm:"type:varchar(128);column:project"`    //项目
-	Description     string      `json:"description" gorm:"type:text;column:description"`    //详情
-	Icon            string      `json:"icon" gorm:"type:varchar(255);column:icon"`          //图标
-	TemplateEnabled bool        `json:"templateEnabled" gorm:"column:tmp_enable"`           // 是否允许作为模板被引用
-	Callback        *JSONStruct `json:"callback,omitempty" gorm:"serializer:json"`
+	WorkspaceID string      `json:"workspaceId" gorm:"type:varchar(36);not null;index"`
+	ID          string      `json:"id" gorm:"primaryKey;type:varchar(64);column:id"`
+	Name        string      `json:"name" gorm:"type:varchar(255);column:name"`          //应用名称
+	Namespace   string      `json:"namespace" gorm:"type:varchar(64);column:namespace"` //命名空间，但是不对外暴露
+	Version     string      `json:"version" gorm:"type:varchar(64);column:version"`     //版本，如果为空则默认为1.0.0
+	Alias       string      `json:"alias" gorm:"type:varchar(128);column:alias"`        //别名
+	Project     string      `json:"project" gorm:"type:varchar(128);column:project"`    //项目
+	Description string      `json:"description" gorm:"type:text;column:description"`    //详情
+	Icon        string      `json:"icon" gorm:"type:varchar(255);column:icon"`          //图标
+	Callback    *JSONStruct `json:"callback,omitempty" gorm:"serializer:json"`
 	BaseModel
 }
 
-func NewApplications(id, name, namespace, version, alias, project, description, icon string, templateEnabled bool) *Applications {
+func NewApplications(id, name, namespace, version, alias, project, description, icon string) *Applications {
 	return &Applications{
-		ID:              id,
-		Name:            name,
-		Namespace:       namespace,
-		Version:         version,
-		Alias:           alias,
-		Project:         project,
-		Description:     description,
-		Icon:            icon,
-		TemplateEnabled: templateEnabled,
+		ID:          id,
+		Name:        name,
+		Namespace:   namespace,
+		Version:     version,
+		Alias:       alias,
+		Project:     project,
+		Description: description,
+		Icon:        icon,
 	}
 }
 
@@ -62,9 +60,6 @@ func (a *Applications) Index() map[string]interface{} {
 	}
 	if a.Project != "" {
 		index["project"] = a.Project
-	}
-	if a.TemplateEnabled {
-		index["tmp_enable"] = a.TemplateEnabled
 	}
 	return index
 }

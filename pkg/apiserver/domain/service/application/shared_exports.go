@@ -7,20 +7,14 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 )
 
-func ResolveComponentsWithSourceIndexes(ctx context.Context, appRepo repository.ApplicationRepository, componentRepo repository.ComponentRepository, namespace, appName string, reqComponents []apisv1.CreateComponentRequest, cfg *config.Config) ([]apisv1.CreateComponentRequest, []int, error) {
-	return resolveComponentsWithSourceIndexes(ctx, appRepo, componentRepo, namespace, appName, reqComponents, cfg)
-}
-
 func ValidateTryApplicationResourceNames(ctx context.Context, appRepo repository.ApplicationRepository, componentRepo repository.ComponentRepository, req apisv1.CreateApplicationsRequest, components []apisv1.CreateComponentRequest) error {
 	resourceApp := &model.Applications{
-		ID:              req.ID,
-		Name:            req.Name,
-		Namespace:       req.Namespace,
-		TemplateEnabled: req.TemplateEnabled != nil && *req.TemplateEnabled,
+		ID:        req.ID,
+		Name:      req.Name,
+		Namespace: req.Namespace,
 	}
 	if resourceApp.ID == "" {
 		if appRepo != nil && componentRepo != nil {
@@ -39,9 +33,6 @@ func ValidateTryApplicationResourceNames(ctx context.Context, appRepo repository
 		if resourceApp.Namespace == "" {
 			resourceApp.Namespace = app.Namespace
 		}
-		if req.TemplateEnabled == nil {
-			resourceApp.TemplateEnabled = app.TemplateEnabled
-		}
 	}
 	return validateApplicationResourceNames(ctx, appRepo, componentRepo, resourceApp, components)
 }
@@ -58,10 +49,6 @@ func ValidateCreateApplicationCallback(ctx context.Context, cfg *config.Config, 
 func ValidateWorkflowCallback(ctx context.Context, cfg *config.Config, provider *urlpolicy.Provider, callback *apisv1.WorkflowCallback) error {
 	_, err := normalizeWorkflowCallbackForWrite(ctx, cfg, provider, callback)
 	return err
-}
-
-func LoadURLSecurityPolicy(ctx context.Context, provider *urlpolicy.Provider) (*spec.URLSecurityPolicySpec, error) {
-	return loadURLSecurityPolicy(ctx, provider)
 }
 
 func CopyStringMap(source map[string]string) map[string]string {

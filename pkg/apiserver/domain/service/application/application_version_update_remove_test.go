@@ -525,8 +525,8 @@ func TestUpdateVersionSyncTemplatePhasedWorkflowOnRemove(t *testing.T) {
 
 	steps := decodeWorkflowSteps(t, store.workflows["wf-default"].Steps)
 	require.Len(t, steps.Steps, 2)
-	require.Equal(t, "phase-2-config-secret", steps.Steps[0].Name)
-	require.Equal(t, "phase-5-webservice", steps.Steps[1].Name)
+	require.Equal(t, "phase-1-config-secret", steps.Steps[0].Name)
+	require.Equal(t, "phase-4-webservice", steps.Steps[1].Name)
 	require.ElementsMatch(t, []string{"cfg"}, steps.Steps[0].ComponentNames())
 	require.ElementsMatch(t, []string{"api"}, steps.Steps[1].ComponentNames())
 	for _, step := range steps.Steps {
@@ -538,88 +538,6 @@ func TestUpdateVersionSyncTemplatePhasedWorkflowOnRemove(t *testing.T) {
 	updateSteps := decodeWorkflowSteps(t, store.workflows["wf-update"].Steps)
 	require.Len(t, updateSteps.Steps, 1)
 	require.Equal(t, "legacy-update-step", updateSteps.Steps[0].Name)
-}
-
-func TestUpdateVersionSyncTemplatePhasedWorkflowOnRemoveLegacyPhaseNames(t *testing.T) {
-	store := newInMemoryAppStore()
-	store.apps["app-1"] = &model.Applications{
-		ID:        "app-1",
-		Name:      "DemoApp",
-		Version:   "1.0.0",
-		Namespace: "default",
-	}
-	store.components["cfg"] = &model.ApplicationComponent{
-		Name:          "cfg",
-		AppID:         "app-1",
-		Namespace:     "default",
-		ComponentType: config.ConfJob,
-	}
-	store.components["db"] = &model.ApplicationComponent{
-		Name:          "db",
-		AppID:         "app-1",
-		Namespace:     "default",
-		ComponentType: config.StoreJob,
-	}
-	store.components["api"] = &model.ApplicationComponent{
-		Name:          "api",
-		AppID:         "app-1",
-		Namespace:     "default",
-		ComponentType: config.ServerJob,
-	}
-
-	store.workflows["wf-default"] = &model.Workflow{
-		ID:           "wf-default",
-		AppID:        "app-1",
-		WorkflowType: config.WorkflowTaskTypeWorkflow,
-		Steps: mustJSONStruct(&model.WorkflowSteps{
-			Steps: []*model.WorkflowStep{
-				{
-					Name:         "phase-1-config-secret",
-					WorkflowType: config.JobDeploy,
-					Mode:         config.WorkflowModeDAG,
-					Properties:   []model.Policies{{Policies: []string{"cfg"}}},
-				},
-				{
-					Name:         "phase-2-store",
-					WorkflowType: config.JobDeploy,
-					Mode:         config.WorkflowModeDAG,
-					Properties:   []model.Policies{{Policies: []string{"db"}}},
-				},
-				{
-					Name:         "phase-4-webservice",
-					WorkflowType: config.JobDeploy,
-					Mode:         config.WorkflowModeDAG,
-					Properties:   []model.Policies{{Policies: []string{"api"}}},
-				},
-			},
-		}),
-	}
-
-	svc := newMockServiceWithStore(store)
-	svc.KubeClient = fake.NewSimpleClientset()
-	req := apisv1.UpdateVersionRequest{
-		Version: "1.1.0",
-		Components: []apisv1.ComponentUpdateSpec{
-			{Action: "remove", Name: "db"},
-		},
-		AutoExec: boolPtr(false),
-	}
-
-	resp, err := svc.UpdateVersion(context.Background(), "app-1", req)
-	require.NoError(t, err)
-	require.Contains(t, resp.RemovedComponents, "db")
-
-	steps := decodeWorkflowSteps(t, store.workflows["wf-default"].Steps)
-	require.Len(t, steps.Steps, 2)
-	require.Equal(t, "phase-2-config-secret", steps.Steps[0].Name)
-	require.Equal(t, "phase-5-webservice", steps.Steps[1].Name)
-	require.ElementsMatch(t, []string{"cfg"}, steps.Steps[0].ComponentNames())
-	require.ElementsMatch(t, []string{"api"}, steps.Steps[1].ComponentNames())
-	for _, step := range steps.Steps {
-		for _, name := range step.ComponentNames() {
-			require.NotEqual(t, "db", name)
-		}
-	}
 }
 
 func TestUpdateVersionRejectsMissingRemoveComponent(t *testing.T) {

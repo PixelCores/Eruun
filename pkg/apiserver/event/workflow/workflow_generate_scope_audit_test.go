@@ -758,8 +758,8 @@ func TestGenerateJobTasksChangedComponentsExecutionScopeSkipsNonDeployJobs(t *te
 				Properties:   []model.Policies{{Policies: []string{"mysql"}}},
 			},
 			{
-				Name:         "reset-mysql",
-				WorkflowType: config.JobDatabaseReset,
+				Name:         "cleanup-mysql",
+				WorkflowType: config.JobCleanupResources,
 				Mode:         config.WorkflowModeStepByStep,
 				Properties:   []model.Policies{{Policies: []string{"mysql"}}},
 			},
@@ -768,8 +768,8 @@ func TestGenerateJobTasksChangedComponentsExecutionScopeSkipsNonDeployJobs(t *te
 				Mode: config.WorkflowModeStepByStep,
 				SubSteps: []*model.WorkflowSubStep{
 					{
-						Name:         "reset-mysql-substep",
-						WorkflowType: config.JobDatabaseReset,
+						Name:         "cleanup-mysql-substep",
+						WorkflowType: config.JobCleanupResources,
 						Properties:   []model.Policies{{Policies: []string{"mysql"}}},
 					},
 				},
@@ -800,7 +800,7 @@ func TestGenerateJobTasksChangedComponentsExecutionScopeSkipsNonDeployJobs(t *te
 	for _, execution := range executions {
 		for _, jobs := range execution.Jobs {
 			for _, job := range jobs {
-				require.NotEqual(t, string(config.JobDatabaseReset), job.JobType)
+				require.NotEqual(t, string(config.JobCleanupResources), job.JobType)
 			}
 		}
 	}

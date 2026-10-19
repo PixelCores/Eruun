@@ -86,7 +86,7 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 
 ## HTTP 路由到 RPC 对照
 
-当前 HTTP 路由共 112 条；以下 97 条用户可调用路由各映射一个 RPC。表中全名与生成客户端方法一一对应，具体字段及请求/响应类型见各 `.proto` 文件。
+当前 HTTP 路由共 103 条；以下 88 条用户可调用路由各映射一个 RPC。表中全名与生成客户端方法一一对应，具体字段及请求/响应类型见各 `.proto` 文件。
 
 | HTTP 路由 | gRPC 方法全名 |
 | --- | --- |
@@ -95,7 +95,6 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 | `DELETE /api/v1/applications/:appID/workflow/schedule/:workflowID` | `/eruun.v1.ApplicationService/DeleteWorkflowSchedule` |
 | `DELETE /api/v1/auth/identities/:identityID` | `/eruun.v1.AccountService/UnbindIdentity` |
 | `DELETE /api/v1/job-definitions/:definitionID` | `/eruun.v1.JobsService/DeleteJobDefinition` |
-| `DELETE /api/v1/programming-languages/:id` | `/eruun.v1.ProgrammingLanguagesService/DeleteProgrammingLanguage` |
 | `DELETE /api/v1/settings/:type` | `/eruun.v1.SettingsService/DeleteSetting` |
 | `DELETE /api/v1/workspaces/:workspaceID` | `/eruun.v1.AccountService/DeleteWorkspace` |
 | `DELETE /api/v1/workspaces/:workspaceID/invitations/:invitationID` | `/eruun.v1.AccountService/RevokeWorkspaceInvitation` |
@@ -111,7 +110,6 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 | `GET /api/v1/applications/:appID/workflow/schedules` | `/eruun.v1.ApplicationService/ListWorkflowSchedules` |
 | `GET /api/v1/applications/:appID/workflow/tasks` | `/eruun.v1.ApplicationService/ListApplicationTasks` |
 | `GET /api/v1/applications/:appID/workflows` | `/eruun.v1.ApplicationService/ListApplicationWorkflows` |
-| `GET /api/v1/applications/templates` | `/eruun.v1.ApplicationService/ListTemplateApplications` |
 | `GET /api/v1/auth/identities` | `/eruun.v1.AccountService/ListIdentities` |
 | `GET /api/v1/auth/me` | `/eruun.v1.AccountService/GetMe` |
 | `GET /api/v1/auth/methods` | `/eruun.v1.AccountService/GetAuthMethods` |
@@ -126,8 +124,6 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 | `GET /api/v1/jobs/:taskID/deliveries/:target/download` | `/eruun.v1.JobsService/DownloadJobDelivery` |
 | `GET /api/v1/jobs/:taskID/results` | `/eruun.v1.JobsService/GetJobResults` |
 | `GET /api/v1/jobs/:taskID/results/:artifactID/download` | `/eruun.v1.JobsService/DownloadJobResult` |
-| `GET /api/v1/programming-languages` | `/eruun.v1.ProgrammingLanguagesService/ListProgrammingLanguages` |
-| `GET /api/v1/programming-languages/:id` | `/eruun.v1.ProgrammingLanguagesService/GetProgrammingLanguage` |
 | `GET /api/v1/schemas/v1/canonical.json` | `/eruun.v1.ApplicationService/GetCanonicalJSONSchema` |
 | `GET /api/v1/settings` | `/eruun.v1.SettingsService/ListSettings` |
 | `GET /api/v1/settings/:type` | `/eruun.v1.SettingsService/GetSetting` |
@@ -143,20 +139,17 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 | `POST /api/v1/applications/:appID/components/:componentName/files/export` | `/eruun.v1.ApplicationService/ExportComponentFiles` |
 | `POST /api/v1/applications/:appID/components/:componentName/shell/exec` | `/eruun.v1.ApplicationService/ExecComponentShell` |
 | `POST /api/v1/applications/:appID/components/:componentName/shell/stream` | `/eruun.v1.ApplicationService/StreamComponentShell` |
-| `POST /api/v1/applications/:appID/database-reset` | `/eruun.v1.ApplicationService/ResetApplicationDatabases` |
 | `POST /api/v1/applications/:appID/restart` | `/eruun.v1.ApplicationService/RestartApplicationWorkloads` |
 | `POST /api/v1/applications/:appID/start` | `/eruun.v1.ApplicationService/StartApplicationDeployments` |
 | `POST /api/v1/applications/:appID/stop` | `/eruun.v1.ApplicationService/StopApplicationDeployments` |
 | `POST /api/v1/applications/:appID/version` | `/eruun.v1.ApplicationService/UpdateApplicationVersion` |
 | `POST /api/v1/applications/:appID/version/cancel` | `/eruun.v1.ApplicationService/CancelDelayedVersionUpdate` |
-| `POST /api/v1/applications/:appID/version/diff-update` | `/eruun.v1.ApplicationService/DiffUpdateApplicationVersion` |
 | `POST /api/v1/applications/:appID/workflow/cancel` | `/eruun.v1.ApplicationService/CancelApplicationWorkflow` |
 | `POST /api/v1/applications/:appID/workflow/exec` | `/eruun.v1.ApplicationService/ExecApplicationWorkflow` |
 | `POST /api/v1/applications/:appID/workflow/schedule` | `/eruun.v1.ApplicationService/UpsertWorkflowSchedule` |
 | `POST /api/v1/applications/:appID/workflow/tasks/cancel-all` | `/eruun.v1.ApplicationService/CancelAllApplicationWorkflows` |
 | `POST /api/v1/applications/:appID/workflow/try` | `/eruun.v1.ApplicationService/TryWorkflow` |
 | `POST /api/v1/applications/components/status` | `/eruun.v1.ApplicationService/BatchApplicationComponentStatus` |
-| `POST /api/v1/applications/convert` | `/eruun.v1.ApplicationService/ConvertApplications` |
 | `POST /api/v1/applications/create-and-exec` | `/eruun.v1.ApplicationService/CreateAndExecApplications` |
 | `POST /api/v1/applications/query` | `/eruun.v1.ApplicationService/BatchGetApplications` |
 | `POST /api/v1/applications/try` | `/eruun.v1.ApplicationService/TryApplication` |
@@ -173,7 +166,6 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 | `POST /api/v1/jobs` | `/eruun.v1.JobsService/SubmitJob` |
 | `POST /api/v1/jobs/:taskID/cancel` | `/eruun.v1.JobsService/CancelJob` |
 | `POST /api/v1/jobs/:taskID/deliveries/:target/retry` | `/eruun.v1.JobsService/RetryJobDelivery` |
-| `POST /api/v1/programming-languages` | `/eruun.v1.ProgrammingLanguagesService/CreateProgrammingLanguage` |
 | `POST /api/v1/settings` | `/eruun.v1.SettingsService/CreateSetting` |
 | `POST /api/v1/workflow/tasks/:taskID/approval` | `/eruun.v1.ApplicationService/ApproveWorkflowTask` |
 | `POST /api/v1/workspace-invitations/accept` | `/eruun.v1.AccountService/AcceptWorkspaceInvitation` |
@@ -185,7 +177,6 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 | `PUT /api/v1/job-definitions/:definitionID` | `/eruun.v1.JobsService/UpdateJobDefinition` |
 | `PUT /api/v1/job-storage-policy` | `/eruun.v1.JobsService/SetJobStoragePolicy` |
 | `PUT /api/v1/jobs/:taskID/retention` | `/eruun.v1.JobsService/SetJobRetention` |
-| `PUT /api/v1/programming-languages/:id` | `/eruun.v1.ProgrammingLanguagesService/UpdateProgrammingLanguage` |
 | `PUT /api/v1/settings/:type` | `/eruun.v1.SettingsService/UpdateSetting` |
 
 不映射的 15 条路由是四条 HTTP 健康路由（`/health`、`/healthz`、`/ready`、`/readyz`）、九条内部 Job Runner 接口（dataset/results/events、Sandbox 申请/查询/释放，以及 Checkpoint 上传/查询/材料下载）以及两条浏览器 OAuth start/callback。该入口不涉及角色间通信、Runner 协议或 Agent/模型工作负载调用；现有 HTTP JSON 与 Cookie 契约不变。

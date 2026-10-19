@@ -265,8 +265,8 @@ assertEqual \
   "Worker must observe Jobs and adopt reusable Jobs into a new execution generation"
 assertEqual \
   "$(clusterRoleRuleVerbs "${default_manifest}" storage.k8s.io storageclasses)" \
-  "get create" \
-  "StorageClass rule must grant only cloudjob Get/Create access"
+  "" \
+  "runtime must not manage StorageClasses"
 assertEqual \
   "$(clusterRoleRuleVerbs "${default_manifest}" "" pods)" \
   "get list watch patch delete" \

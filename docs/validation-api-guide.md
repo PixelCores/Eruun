@@ -27,9 +27,9 @@ Try Application 会校验根级 `failurePolicy`。非法值返回 `INVALID_WORKF
 
 `GET /api/v1/schemas/v1/canonical.json` 的 `$defs.Job` 描述独立 Job，`$defs.EvaluationTraitSpec` 描述两种入口共享的评测 Trait。独立 Job 的提交校验在 `POST /api/v1/jobs` 中执行；Try Application 仍接收完整 Application，不能直接提交独立 Job 请求。详见 [Canonical JSON Profile](canonical-json-profile.md)。
 
-Try Application 会执行与 `POST /api/v1/applications` 一致的资源名校验：提前计算 Deployment/StatefulSet/Service/Ingress/Job/ConfigMap/Secret 等独占资源名，并检查同一请求内以及同命名空间普通应用之间的冲突。资源命名遵循当前运行时契约：非 shared 组件使用 `appName + componentName`，shared 组件使用 `componentName`，模板版本不参与运行时资源名。standalone PVC 只校验 Kubernetes 名称合法性，允许同命名空间内多个组件或应用共享；`tmpCreate: true` 的 StatefulSet `volumeClaimTemplates` 不作为 standalone PVC 参与冲突校验。
+Try Application 会执行与 `POST /api/v1/applications` 一致的资源名校验：提前计算 Deployment/StatefulSet/Service/Ingress/Job/ConfigMap/Secret 等独占资源名，并检查同一请求内以及同命名空间普通应用之间的冲突。资源命名遵循当前运行时契约：非 shared 组件使用 `appName + componentName`，shared 组件使用 `componentName`。standalone PVC 只校验 Kubernetes 名称合法性，允许同命名空间内多个组件或应用共享；`tmpCreate: true` 的 StatefulSet `volumeClaimTemplates` 不作为 standalone PVC 参与冲突校验。
 
-当请求携带 `ID` 用于校验更新/upsert 时，Try Application 会先读取已保存的 App，并以其 `namespace`、`version`、`templateEnabled` 等元数据作为默认值；请求体中显式传入的字段会覆盖这些默认值。这样 dry-run 的资源名校验与真实创建/更新路径保持一致。
+当请求携带 `ID` 用于校验更新/upsert 时，Try Application 会先读取已保存的 App，并以其 `namespace`、`version` 等元数据作为默认值；请求体中显式传入的字段会覆盖这些默认值。这样 dry-run 的资源名校验与真实创建/更新路径保持一致。
 
 Try/DryRun 不会创建数据库记录或 Kubernetes 资源，也不是原子创建保证。它基于请求内容和当前可读取的持久化数据做预校验；真实创建仍可能因为并发提交、Kubernetes 集群状态变化、外部依赖不可用或运行期执行错误而失败。
 
@@ -135,7 +135,6 @@ Job 组件暂时只支持最小集能力：
 - `properties.startTime` 使用 Unix 秒时间戳（仅对 `job` 生效）；组件 properties 不接受 `schedule`。
 - `properties.runPolicy` 可选，支持 `recreate` / `skip_if_completed`，默认 `skip_if_completed`。
 - `properties.failurePolicy` 仅支持顶层 `type=job` 组件，唯一显式值为 `cleanup_failed`；Job 空值继承 workflow，`cleanup_all`、未知值、其他组件类型（包括显式空值）和 init container 中使用时返回 `INVALID_JOB_FAILURE_POLICY`。
-- 模板请求会在展开后校验实际组件类型，但错误路径仍使用原始请求的 `/components/{i}` 下标；模板自动生成且没有对应 override 的组件继续使用展开后的下标。
 
 ## Job 组件 JSON 示例
 

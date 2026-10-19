@@ -292,20 +292,6 @@ func (v *validationServiceImpl) validateInitTrait(init spec.InitTraitSpec, field
 	return errors
 }
 
-func validateTemplateRequestNestedJobFailurePolicies(components []apisv1.CreateComponentRequest) []apisv1.ValidationError {
-	var errors []apisv1.ValidationError
-	for i, component := range components {
-		if component.Template == nil || strings.TrimSpace(component.Template.ID) == "" {
-			continue
-		}
-		if err := spec.ValidateNestedEvaluationTraits(&component.Traits); err != nil {
-			errors = append(errors, apisv1.ValidationError{Field: fmt.Sprintf("component[%d].traits", i), Code: apisv1.ErrCodeInvalidTraitConfig, Message: err.Error()})
-		}
-		errors = append(errors, validateNestedJobFailurePolicies(component.Traits, fmt.Sprintf("component[%d].traits", i))...)
-	}
-	return errors
-}
-
 func validateNestedJobFailurePolicies(traits apisv1.Traits, fieldPrefix string) []apisv1.ValidationError {
 	var errors []apisv1.ValidationError
 	for i, init := range traits.Init {

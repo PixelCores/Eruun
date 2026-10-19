@@ -15,14 +15,6 @@ service SettingsService {
   rpc DeleteSetting(DeleteSettingRequest) returns (DeleteSettingResponse);
 }
 
-service ProgrammingLanguagesService {
-  rpc ListProgrammingLanguages(ListProgrammingLanguagesRequest) returns (ListProgrammingLanguagesResponse);
-  rpc GetProgrammingLanguage(ProgrammingLanguageIDRequest) returns (ProgrammingLanguage);
-  rpc CreateProgrammingLanguage(CreateProgrammingLanguageRequest) returns (ProgrammingLanguage);
-  rpc UpdateProgrammingLanguage(UpdateProgrammingLanguageRequest) returns (ProgrammingLanguage);
-  rpc DeleteProgrammingLanguage(ProgrammingLanguageIDRequest) returns (DeleteProgrammingLanguageResponse);
-}
-
 message ListSettingsRequest {}
 message GetSettingRequest { string type = 1; }
 message CreateSettingRequest {
@@ -44,36 +36,3 @@ message SystemSetting {
 
 message ListSettingsResponse { repeated SystemSetting settings = 1; }
 message DeleteSettingResponse { string type = 1; }
-
-message ListProgrammingLanguagesRequest {}
-message ProgrammingLanguageIDRequest { string id = 1; }
-message CreateProgrammingLanguageRequest {
-  string name = 1;
-  string version = 2;
-  optional bool enabled = 3;
-  string cpu_req = 4;
-  string mem_req = 5;
-}
-message UpdateProgrammingLanguageRequest {
-  string id = 1;
-  optional string name = 2;
-  optional string version = 3;
-  optional bool enabled = 4;
-  optional string cpu_req = 5;
-  optional string mem_req = 6;
-}
-
-message ProgrammingLanguage {
-  string id = 1;
-  string code = 2;
-  string name = 3;
-  string version = 4;
-  bool enabled = 5;
-  string cpu_req = 6;
-  string mem_req = 7;
-  google.protobuf.Timestamp create_time = 8;
-  google.protobuf.Timestamp update_time = 9;
-}
-
-message ListProgrammingLanguagesResponse { repeated ProgrammingLanguage languages = 1; }
-message DeleteProgrammingLanguageResponse { string id = 1; }

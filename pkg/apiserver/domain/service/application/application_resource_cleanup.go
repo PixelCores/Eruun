@@ -343,9 +343,6 @@ func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, 
 			c.deleteAdditionalObjects(ctx, componentPtr.Namespace, result.AdditionalObjects, reporter)
 		}
 		reporter.record("Job", jobNS, jobName, c.deleteJob(ctx, jobNS, jobName))
-	case config.CloudJob:
-		// cloudjob is API-invocation only in v1 skeleton, no Kubernetes resources to delete.
-		return nil
 	}
 
 	c.deleteServiceForComponent(ctx, componentPtr, &props, reporter)

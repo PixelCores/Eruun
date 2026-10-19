@@ -4,8 +4,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
@@ -40,16 +38,4 @@ func TestJobRetryPolicyWriteValidation(t *testing.T) {
 	require.ErrorContains(t, err, "jobRetryPolicy")
 	err = validateNoNestedJobFailurePoliciesForWrite(apisv1.Traits{Init: []spec.InitTraitSpec{{Properties: apisv1.Properties{JobRetryPolicy: &workflowconfig.JobRetryPolicy{OnOOM: "stop"}}}}}, "component[0].traits")
 	require.ErrorContains(t, err, "properties.jobRetryPolicy")
-}
-
-func TestJobRetryPolicyTemplateOverride(t *testing.T) {
-	props := apisv1.Properties{JobRetryPolicy: &workflowconfig.JobRetryPolicy{OnOOM: "stop"}}
-	applyPropertyOverrides(&props, apisv1.Properties{}, config.InstantJob)
-	require.Equal(t, "stop", props.JobRetryPolicy.OnOOM)
-	policy := &workflowconfig.JobRetryPolicy{OnOOM: "resize", MaxRetries: 1, BackoffSeconds: 1, MemoryGrowthFactor: 2,
-		MaxResources: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1Gi")}}
-	applyPropertyOverrides(&props, apisv1.Properties{JobRetryPolicy: policy}, config.InstantJob)
-	require.Equal(t, policy, props.JobRetryPolicy)
-	policy.MaxResources[corev1.ResourceMemory] = resource.MustParse("2Gi")
-	require.Equal(t, "1Gi", props.JobRetryPolicy.MaxResources.Memory().String())
 }

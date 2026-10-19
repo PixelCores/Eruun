@@ -67,16 +67,15 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `pkg/apiserver/interfaces/api/assembler/v1` | Domain 对象到 DTO 的组装 | 响应字段推导、脱敏、兼容字段 | 不放持久化或 K8s 调用逻辑 |
 | `pkg/apiserver/domain/model` | GORM 模型和领域实体 | 新表字段、状态字段、业务实体 | 字段语义必须同步跨层契约文档 |
 | `pkg/apiserver/domain/repository` | 仓储接口和数据访问契约（含按 ID 排序的类型化账号查询） | 查询/写入方法、事务边界 | 接口表达业务意图，不暴露上层 DTO |
-| `pkg/apiserver/domain/service` | 应用生命周期、转换、查询、工作流创建；`account` 统一管理员用户查询、授权和分页规则 | 创建/更新/删除应用、组件查询、K8s YAML 转换 | 工作流步骤校验在 `application/application_workflow_steps.go`；保持核心领域规则集中 |
+| `pkg/apiserver/domain/service` | 应用生命周期、查询、工作流创建；`account` 统一管理员用户查询、授权和分页规则 | 创建/更新/删除应用、组件查询 | 工作流步骤校验在 `application/application_workflow_steps.go`；保持核心领域规则集中 |
 | `pkg/apiserver/domain/service/application` | 应用生命周期与组件业务规则 | 应用变更、组件查询、Informer 运行态回写 | `SyncComponentStatus` 负责状态保护、条件写入和缓存失效；server 只装配有界回调 |
-| `pkg/apiserver/domain/spec` | 共享规格、资源契约、策略和校验（含 Aliyun 设置脱敏） | Auth、OAuth、URL 安全、云资源配置、资源类型、Service 暴露类型与共享策略 | 业务取值及归一化与对应规格集中定义；Storage/Volume 类型与映射集中在 `storage.go`；更新策略、执行范围与组件动作集中在 `application_policy.go` |
+| `pkg/apiserver/domain/spec` | 共享规格、资源契约、策略和校验 | Auth、OAuth、URL 安全、资源类型、Service 暴露类型与共享策略 | 业务取值及归一化与对应规格集中定义；Storage/Volume 类型与映射集中在 `storage.go`；更新策略、执行范围与组件动作集中在 `application_policy.go` |
 | `pkg/apiserver/event/workflow` | Workflow 调度、分发、状态推进、审批/超时 | 任务状态、队列消费、分布式执行 | DB 状态机是任务事实源 |
 | `pkg/apiserver/event/workflow/job` | 具体 Job 控制器、通用任务准备和 K8s 资源调和 | Deployment、StatefulSet、Service、PVC、Secret、RBAC 等资源执行 | ConfigMap/Secret 内部执行输入在 `configmap_input.go`；保持资源生成、等待和清理语义一致 |
-| `pkg/apiserver/event/workflow/cloudjob` | 云资源 Provider 合约与实现 | 云资源步骤、Provider 注册、外部云动作 | 合约字符串集中为常量；Provider 可选设置支持由 `domain/service/systemsetting` 管理 |
 | `pkg/apiserver/workflow/traits` | OAM Traits 处理器 | storage、env、probe、resources、sidecar、rbac、ingress 等 Trait | 新 Trait 需要处理顺序、测试和文档 |
 | `pkg/apiserver/workflow/config` | 工作流运行配置、执行策略与 topic 命名 | 调度/Worker 默认值、配置校验、回调超时、镜像拉取策略与队列名称 | 模块配置不反向依赖全局配置、领域模型或执行器 |
 | `pkg/apiserver/workflow/naming` | 资源命名规则 | Kubernetes 资源名、PVC/Service 命名 | 命名变化影响状态同步和清理 |
-| `pkg/apiserver/infrastructure` | 外部系统与安全机制适配（含 Aliyun NAS 客户端与连通性检查） | K8s、Redis、MySQL、Informer、锁、可观测性 | 出站 URL 安全客户端在 `clients/http.go`；`workspace` 只承接资源载荷策略及 Kubernetes 写入边界，任务准备由 Job 所属包负责；Infrastructure 实现接口，不反向承载业务规则 |
+| `pkg/apiserver/infrastructure` | 外部系统与安全机制适配 | K8s、Redis、MySQL、Informer、锁、可观测性 | 出站 URL 安全客户端在 `clients/http.go`；`workspace` 只承接资源载荷策略及 Kubernetes 写入边界，任务准备由 Job 所属包负责；Infrastructure 实现接口，不反向承载业务规则 |
 | `pkg/apiserver/infrastructure/observability` | 进程可观测性 | Trace Provider 初始化、klog 文件保留与清理 | 后台清理受进程 context 控制 |
 | `pkg/apiserver/infrastructure/cache` | 内存与 Redis 缓存适配 | 缓存读写、删除、过期及共享缓存键 | ApplicationComponentsKey 是查询、执行与状态同步共同使用的存储命名契约 |
 | `pkg/apiserver/utils` | 通用工具 | 错误码、K8s helper、profiling | 新工具必须可复用，避免放业务分支 |
@@ -88,7 +87,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | 需求类型 | 先看哪里 | 常改哪里 | 必查文档 |
 | --- | --- | --- | --- |
 | 新增或修改 API | `pkg/apiserver/interfaces/api` | handler、DTO、assembler、domain service、examples | `validation-api-guide.md`, `core-module-boundary-and-cross-layer-contracts.md` |
-| 应用创建/更新/删除流程 | `pkg/apiserver/domain/service/application*.go` | domain service、repository、workflow 触发点 | `create-and-exec-application-api.md`, `version-update-api.md`, `database-reset-workflow.md`；`reset-workflow.md` 仅作兼容/废弃参考 |
+| 应用创建/更新/删除流程 | `pkg/apiserver/domain/service/application*.go` | domain service、repository、workflow 触发点 | `create-and-exec-application-api.md`, `version-update-api.md`；`reset-workflow.md` 仅作兼容/废弃参考 |
 | 工作流状态、队列或并发 | `pkg/apiserver/event/workflow` | dispatcher、controller、queue、job 状态推进 | `workflow-architecture-guide.md`, `workflow-testing-guide.md` |
 | Kubernetes 资源生成或等待 | `pkg/apiserver/event/workflow/job` | resource generation、job controller、waiter | `architecture-diagrams.md`, `statefulset-pvc-volume-naming.md` |
 | Trait 能力 | `pkg/apiserver/workflow/traits` | trait processor、job builder、相关 API 示例 | `架构文档.md`, `share-trait.md`, `rollout-trait.md` |
@@ -109,11 +108,10 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `account-auth-workspaces.md` | Current | GitHub/Google、邮箱/手机号登录、会话、团队权限、延迟任务隔离与失败收尾、重复部署幂等性、前端与部署接入 |
 | [`../examples/account-auth-workspaces/README.md`](../examples/account-auth-workspaces/README.md) | Current | 账号与团队 API 实操：curl 注册/登录/刷新、OAuth 浏览器回调、身份绑定、邀请和空间资源访问 |
 | `api-error-response-contract.md` | Current | API 统一错误响应与通用错误脱敏契约 |
-| `grpc-api.md` | Current | gRPC v1 启动、认证、流式边界、Go 客户端示例及 97 条 HTTP 路由—RPC 对照 |
+| `grpc-api.md` | Current | gRPC v1 启动、认证、流式边界、Go 客户端示例及 88 条 HTTP 路由—RPC 对照 |
 | `canonical-json-profile.md` | Current | 面向 Agent 的唯一 Application/Workflow JSON、Schema、Try、read-edit-submit、幂等与 allowedActions 契约 |
 | `system-setting.md` | Current | 系统设置类型、API 与默认初始化 |
 | `settings-page-api.md` | Current | 前端设置页字段归属、请求参数与保存策略 |
-| `programming-language-api.md` | Current | 管理员维护编程语言选项的 CRUD API |
 | `url-security-policy.md` | Current | 出站 URL 安全策略 |
 | `validation-api-guide.md` | Current | Try/DryRun 校验 API |
 | `create-and-exec-application-api.md` | Current | 创建并执行应用 API |
@@ -129,8 +127,6 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `component-pod-file-exec-api.md` | Current | 组件文件导出与 Shell 执行 |
 | `components-api-sidecar-field.md` | Current | Components API 字段说明 |
 | `version-update-api.md` | Current | 版本更新 API；`executionScope` 控制 workflow task 执行范围；全量清理/全量部署使用 `remove cleanup_all` / `add all` 保留动作 |
-| `version-diff-update-api.md` | Current | 版本差异更新 API；执行时透传 `/version` 的 `executionScope` |
-| `database-reset-workflow.md` | Current | 指定 `store` 组件数据库 PVC 数据重置 API、异步 Workflow 执行模型和 `examples/database-reset-workflow/` 示例 |
 | `reset-workflow.md` | Deprecated | 指定组件 Reset Workflow；全量 reset 入口已迁移到 `/version` |
 | `workflow-approval-pause-resume.md` | Current | 审批暂停/继续 |
 | `workflow-timeout-status-disambiguation.md` | Current | 超时状态区分 |
@@ -139,8 +135,6 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `share-trait.md` | Current | Share Trait |
 | `service-trait-explicit-service-name.md` | Current | Service Trait 显式命名 |
 | `kubernetes-label-normalization.md` | Current | Kubernetes label value 规范化规则 |
-| `template-engine-status.md` | Current | 模板能力状态 |
-| `mysql-template-init-env-example.md` | Current | MySQL 模板初始化环境变量示例 |
 | `tcp-ingress-nginx-dependencies.md` | Current | Redis/MySQL TCP 外部访问配置 |
 | `helm-deployment.md` | Current | Helm 同构节点拓扑、schema 迁移与数据库配置、探针、PDB、topology spread 与统一 ServiceAccount/RBAC |
 
@@ -156,12 +150,9 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `enterprise-distributed-runtime-design.md` | Implemented Reference | 分布式运行时：角色依赖、API Redis readiness、Leader Election、数据库 lease/fencing、延迟任务恢复与通知去重、Cron 有界分页与失败计划重试、Worker observer 和 Helm 拓扑 |
 | `架构文档.md` | Implemented Reference | 当前同构节点、HTTP/gRPC、数据所有权、Component/Workflow、独立空间 Job、Traits 与空间权限边界 |
 | `architecture-diagrams.md` | Implemented Reference | 当前同构节点、Workflow/独立 Job 执行、评测结果保存和 Trait 映射图 |
-| `cloudjob-skeleton.md` | Implemented Reference | CloudJob 基础说明 |
 | `core-module-boundary-and-cross-layer-contracts.md` | Implemented Reference | 核心模块边界与跨层字段契约 |
 | `project-style-guide.md` | Implemented Reference | 项目命名、模块边界与架构风格维护基线 |
 | `statefulset-pvc-volume-naming.md` | Implemented Reference | StatefulSet PVC 命名分析 |
-| `template-instantiation-from-tem-id.md` | Implemented Reference | 基于模板 ID 的实例化 |
-| `template-storage-identity-fix-plan.md` | Implemented Reference | 模板持久化存储 Identity 的当前实现与回归验证 |
 | `workflow-task-deduplication-zh.md` | Implemented Reference | 工作流任务去重方案 |
 
 ## 测试与审计

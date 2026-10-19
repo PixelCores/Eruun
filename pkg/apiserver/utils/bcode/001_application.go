@@ -16,18 +16,6 @@ var ErrInvalidProperties = NewBcode(400, 10004, "properties is invalid")
 // ErrApplicationNotExist application is not found
 var ErrApplicationNotExist = NewBcode(200, 10005, "application not found")
 
-// ErrTemplateNotEnabled template app is not marked as usable
-var ErrTemplateNotEnabled = NewBcode(400, 10007, "template application is not enabled")
-
-// ErrTemplateComponentMissing template app has no components to clone
-var ErrTemplateComponentMissing = NewBcode(400, 10008, "template application has no components")
-
-// ErrTemplateIDMissing template id is required when using tmp
-var ErrTemplateIDMissing = NewBcode(400, 10009, "template id is required")
-
-// ErrTemplateTargetNotFound template target not found or mismatch
-var ErrTemplateTargetNotFound = NewBcode(400, 10010, "template target component not found or type mismatch")
-
 // ErrVersionUpdateFailed version update operation failed
 var ErrVersionUpdateFailed = NewBcode(500, 10011, "version update failed")
 

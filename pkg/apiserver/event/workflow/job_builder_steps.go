@@ -58,9 +58,6 @@ func buildWorkflowStepExecutions(
 	if len(componentNames) == 0 {
 		return nil, nil
 	}
-	if step.WorkflowType == config.JobDatabaseReset {
-		return buildDatabaseResetStepExecution(ctx, step.Name, componentNames, step.Properties, componentMap, task, defaultJobTimeoutSeconds, workflowStepExecutionKey(stepIndex, 0))
-	}
 	if mode.IsParallel() && len(componentNames) > 1 {
 		return buildParallelComponentExecution(ctx, step.Name, "parallel-group", mode, componentNames, step.WorkflowType, step.Properties, componentMap, task, defaultJobTimeoutSeconds, func(componentIndex int) string {
 			return workflowStepExecutionKey(stepIndex, componentIndex)
@@ -202,28 +199,6 @@ func buildParallelComponentExecution(
 	return []StepExecution{{
 		Name:     firstNonEmptyJobStepName(stepName, fallbackStepName),
 		Mode:     mode,
-		StepType: config.WorkflowStepTypeComponent,
-		Jobs:     buckets,
-	}}, nil
-}
-
-func buildDatabaseResetStepExecution(
-	ctx context.Context,
-	stepName string,
-	componentNames []string,
-	workflowProperties []model.Policies,
-	componentMap map[string]*model.ApplicationComponent,
-	task *model.WorkflowQueue,
-	defaultJobTimeoutSeconds int64,
-	executionKey string,
-) ([]StepExecution, error) {
-	buckets := buildDatabaseResetJobs(ctx, componentNames, workflowProperties, componentMap, task, defaultJobTimeoutSeconds, executionKey)
-	if bucketsEmpty(buckets) {
-		return nil, nil
-	}
-	return []StepExecution{{
-		Name:     firstNonEmptyJobStepName(stepName, "database-reset"),
-		Mode:     config.WorkflowModeStepByStep,
 		StepType: config.WorkflowStepTypeComponent,
 		Jobs:     buckets,
 	}}, nil

@@ -35,10 +35,6 @@ func settingTypePathParam(c *gin.Context) (string, bool) {
 	return requiredPathParam(c, "type", bcode.ErrSystemSettingValueInvalid)
 }
 
-func programmingLanguageIDPathParam(c *gin.Context) (string, bool) {
-	return requiredPathParam(c, "id", bcode.ErrProgrammingLanguageNotFound)
-}
-
 func componentRouteParams(c *gin.Context) (string, string, bool) {
 	appID := strings.TrimSpace(c.Param("appID"))
 	componentName := strings.TrimSpace(c.Param("componentName"))

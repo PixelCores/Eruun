@@ -160,25 +160,6 @@ func preserveEvaluationRunnerCheckpoint(existing, desired *model.JobInfo) error 
 	return SetEvaluationRunnerCheckpoint(desired, state)
 }
 
-func saveOrUpdateJobInfo(ctx context.Context, store datastore.DataStore, job *model.JobTask) error {
-	jobInfo := buildJobInfoRecord(job)
-	existing, err := findExistingJobInfo(ctx, store, job)
-	if err != nil {
-		return err
-	}
-	if existing == nil {
-		return addJobInfoIfWorkflowOwned(ctx, store, job, &jobInfo)
-	}
-	if job.JobType == string(config.JobDatabaseReset) {
-		if err := preservePreparedDatabaseResetCheckpointForSave(job, existing, &jobInfo); err != nil {
-			return err
-		}
-	}
-	updated := *existing
-	copyJobInfoRecord(&updated, jobInfo)
-	return putJobInfoIfWorkflowOwned(ctx, store, job, &updated)
-}
-
 func saveOrUpdateVersionUpdateCleanupJobInfo(ctx context.Context, store datastore.DataStore, job *model.JobTask) error {
 	desired := buildJobInfoRecord(job)
 	for attempt := 1; attempt <= jobInfoSaveMaxAttempts; attempt++ {
@@ -368,35 +349,27 @@ func findExistingJobInfo(ctx context.Context, store datastore.DataStore, job *mo
 		}
 		candidates = generationCandidates
 	}
-	if job.JobType != string(config.JobDatabaseReset) && job.JobType != string(config.JobDeployCloud) {
-		executionKey := strings.TrimSpace(job.ExecutionKey)
-		if executionKey != "" {
-			for _, candidate := range candidates {
-				if candidate != nil && jobInfoExecutionKey(*candidate) == executionKey {
-					return candidate, nil
-				}
+	executionKey := strings.TrimSpace(job.ExecutionKey)
+	if executionKey != "" {
+		for _, candidate := range candidates {
+			if candidate != nil && jobInfoExecutionKey(*candidate) == executionKey {
+				return candidate, nil
 			}
-			return nil, nil
 		}
+		return nil, nil
 	}
-	if job.JobType == string(config.JobDatabaseReset) {
-		return selectDatabaseResetCheckpointJobInfo(job, candidates)
-	}
-	if job.JobType != string(config.JobDeployCloud) {
-		if job.ExecutionKey != "" {
-			for _, candidate := range candidates {
-				if candidate != nil && candidate.ExecutionKey != nil && *candidate.ExecutionKey == job.ExecutionKey {
-					return candidate, nil
-				}
+	if job.ExecutionKey != "" {
+		for _, candidate := range candidates {
+			if candidate != nil && candidate.ExecutionKey != nil && *candidate.ExecutionKey == job.ExecutionKey {
+				return candidate, nil
 			}
-			return nil, nil
 		}
-		if len(candidates) == 0 {
-			return nil, nil
-		}
-		return candidates[0], nil
+		return nil, nil
 	}
-	return selectCloudCheckpointJobInfo(job, candidates), nil
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+	return candidates[0], nil
 }
 
 func findExistingVersionUpdateCleanupJobInfo(ctx context.Context, store datastore.DataStore, job *model.JobTask) (*model.JobInfo, error) {

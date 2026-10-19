@@ -44,11 +44,9 @@ type ApplicationsService interface {
 	HasImmediateActiveVersionUpdateTask(context.Context, string, int64) (bool, error)
 	GetApplicationSpec(ctx context.Context, appID string) (*apisv1.CreateApplicationsRequest, error)
 	ListApplications(ctx context.Context, opts ListApplicationsOptions) ([]*apisv1.ApplicationBase, error)
-	ListTemplateApplications(ctx context.Context, opts ListApplicationsOptions) ([]*apisv1.ApplicationBase, error)
 	BatchGetApplications(ctx context.Context, appIDs []string) (*apisv1.BatchGetApplicationsResponse, error)
 	DeleteApplicationCascade(ctx context.Context, appID string, req apisv1.DeleteApplicationRequest) (*apisv1.DeleteApplicationResponse, error)
 	CleanupApplicationResources(ctx context.Context, appID string) (*apisv1.CleanupApplicationResourcesResponse, error)
-	ResetApplicationDatabases(ctx context.Context, appID string, req apisv1.DatabaseResetRequest) (*apisv1.DatabaseResetResponse, error)
 	RestartApplicationWorkloads(ctx context.Context, appID string, req apisv1.ApplicationLifecycleRequest) (*apisv1.RestartApplicationWorkloadsResponse, error)
 	StopApplicationDeployments(ctx context.Context, appID string, req apisv1.ApplicationLifecycleRequest) (*apisv1.StopApplicationDeploymentsResponse, error)
 	StartApplicationDeployments(ctx context.Context, appID string, req apisv1.ApplicationLifecycleRequest) (*apisv1.StartApplicationDeploymentsResponse, error)
@@ -63,7 +61,6 @@ type ApplicationsService interface {
 	StreamComponentShellScript(ctx context.Context, appID, componentName string, req apisv1.ExecComponentShellScriptRequest) (*ComponentShellScriptStream, error)
 	// UpdateVersion 更新应用版本，支持组件的更新、新增、删除操作
 	UpdateVersion(ctx context.Context, appID string, req apisv1.UpdateVersionRequest) (*apisv1.UpdateVersionResponse, error)
-	DiffUpdateVersion(ctx context.Context, targetAppID string, req apisv1.DiffUpdateVersionRequest) (*apisv1.DiffUpdateVersionResponse, error)
 }
 
 type ListApplicationsOptions struct {
@@ -173,20 +170,6 @@ func (c *applicationsServiceImpl) resolveCreateApplicationReplacement(ctx contex
 		req.ID = existing.ID
 		return req, nil
 	}
-	if req.TemplateEnabled == nil || !*req.TemplateEnabled {
-		return req, nil
-	}
-	if strings.TrimSpace(req.Version) == "" {
-		req.Version = "1.0.0"
-	}
-	existing, err := c.findTemplateApplication(ctx, serviceNamespaceOrDefault(req.Namespace), req.Name, req.Version)
-	if err != nil {
-		if errors.Is(err, datastore.ErrRecordNotExist) {
-			return req, nil
-		}
-		return req, err
-	}
-	req.ID = existing.ID
 	return req, nil
 }
 
@@ -218,12 +201,8 @@ func (c *applicationsServiceImpl) createApplications(
 		application.Callback = callbackSelection.callback
 	}
 
-	if err := validateTemplateRequestJobFailurePolicyOverrides(req.Components); err != nil {
-		return nil, err
-	}
-
 	//分解所有的组件
-	resolvedComponents, _, err := resolveComponentsWithSourceIndexes(ctx, c.AppRepo, c.ComponentRepo, application.Namespace, application.Name, req.Components, c.Cfg)
+	resolvedComponents, err := resolveComponents(ctx, application.Namespace, req.Components, c.Cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +269,6 @@ func (c *applicationsServiceImpl) prepareApplicationForCreate(ctx context.Contex
 		application *model.Applications
 		err         error
 	)
-	templateEnabled := req.TemplateEnabled != nil && *req.TemplateEnabled
 	refreshAppID := strings.TrimSpace(req.ID)
 	var createTransaction datastore.Transactional
 	if refreshAppID != "" {
@@ -319,10 +297,8 @@ func (c *applicationsServiceImpl) prepareApplicationForCreate(ctx context.Contex
 			return nil, nil, fmt.Errorf("application creation requires transactional datastore")
 		}
 		targetNamespace := serviceNamespaceOrDefault(req.Namespace)
-		if !templateEnabled {
-			if err := c.ensureStandardApplicationNameAvailable(ctx, targetNamespace, req.Name, ""); err != nil {
-				return nil, nil, err
-			}
+		if err := c.ensureStandardApplicationNameAvailable(ctx, targetNamespace, req.Name, ""); err != nil {
+			return nil, nil, err
 		}
 		application = model.NewApplications(
 			utils.RandStringByNumLowercase(24),
@@ -333,7 +309,6 @@ func (c *applicationsServiceImpl) prepareApplicationForCreate(ctx context.Contex
 			req.Project,
 			req.Description,
 			req.Icon,
-			templateEnabled,
 		)
 	}
 	if application.Namespace == "" {
@@ -641,32 +616,15 @@ func (c *applicationsServiceImpl) refreshExistingApplication(ctx context.Context
 	if err != nil {
 		return nil, bcode.ErrApplicationNotExist
 	}
-	targetTemplateEnabled := application.TemplateEnabled
-	if req.TemplateEnabled != nil {
-		targetTemplateEnabled = *req.TemplateEnabled
+	if application.Name != req.Name {
+		return nil, fmt.Errorf("%w: application name is immutable", bcode.ErrApplicationConfig)
 	}
-	if targetTemplateEnabled {
-		if !application.TemplateEnabled && application.Name != req.Name {
-			return nil, fmt.Errorf("%w: application name is immutable", bcode.ErrApplicationConfig)
-		}
-		targetNamespace := serviceNamespaceOrDefault(application.Namespace)
-		if req.Namespace != "" {
-			targetNamespace = serviceNamespaceOrDefault(req.Namespace)
-		}
-		if err := ensureTemplateApplicationKeyAvailableInStore(ctx, store, targetNamespace, req.Name, req.Version, application.ID); err != nil {
-			return nil, err
-		}
-	} else {
-		if application.Name != req.Name {
-			return nil, fmt.Errorf("%w: application name is immutable", bcode.ErrApplicationConfig)
-		}
-		targetNamespace := serviceNamespaceOrDefault(application.Namespace)
-		if req.Namespace != "" {
-			targetNamespace = serviceNamespaceOrDefault(req.Namespace)
-		}
-		if err := ensureStandardApplicationNameAvailableInStore(ctx, store, targetNamespace, req.Name, application.ID); err != nil {
-			return nil, err
-		}
+	targetNamespace := serviceNamespaceOrDefault(application.Namespace)
+	if req.Namespace != "" {
+		targetNamespace = serviceNamespaceOrDefault(req.Namespace)
+	}
+	if err := ensureStandardApplicationNameAvailableInStore(ctx, store, targetNamespace, req.Name, application.ID); err != nil {
+		return nil, err
 	}
 
 	application.Name = req.Name
@@ -677,9 +635,6 @@ func (c *applicationsServiceImpl) refreshExistingApplication(ctx context.Context
 	application.Icon = req.Icon
 	if req.Namespace != "" {
 		application.Namespace = req.Namespace
-	}
-	if req.TemplateEnabled != nil {
-		application.TemplateEnabled = *req.TemplateEnabled
 	}
 	return application, nil
 }
@@ -694,7 +649,7 @@ func ensureStandardApplicationNameAvailableInStore(ctx context.Context, store da
 		return err
 	}
 	for _, app := range apps {
-		if app == nil || app.TemplateEnabled || app.ID == currentAppID || serviceNamespaceOrDefault(app.Namespace) != namespace {
+		if app == nil || app.ID == currentAppID || serviceNamespaceOrDefault(app.Namespace) != namespace {
 			continue
 		}
 		return bcode.ErrApplicationExist
@@ -702,54 +657,8 @@ func ensureStandardApplicationNameAvailableInStore(ctx context.Context, store da
 	return nil
 }
 
-func ensureTemplateApplicationKeyAvailableInStore(ctx context.Context, store datastore.DataStore, namespace, name, version, currentAppID string) error {
-	existing, err := findTemplateApplicationInStore(ctx, store, namespace, name, version)
-	if err != nil {
-		if errors.Is(err, datastore.ErrRecordNotExist) {
-			return nil
-		}
-		return err
-	}
-	if existing.ID != "" && existing.ID != currentAppID {
-		return bcode.ErrApplicationExist
-	}
-	return nil
-}
-
-func findTemplateApplicationInStore(ctx context.Context, store datastore.DataStore, namespace, name, version string) (*model.Applications, error) {
-	if store == nil {
-		return nil, fmt.Errorf("datastore is not initialized")
-	}
-	if name == "" || version == "" {
-		return nil, datastore.ErrRecordNotExist
-	}
-	namespace = serviceNamespaceOrDefault(namespace)
-	apps, err := repository.ListApplicationsByQuery(ctx, store, &model.Applications{
-		Name:            name,
-		Version:         version,
-		TemplateEnabled: true,
-	}, datastore.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for _, app := range apps {
-		if app != nil && serviceNamespaceOrDefault(app.Namespace) == namespace {
-			return app, nil
-		}
-	}
-	return nil, datastore.ErrRecordNotExist
-}
-
 func (c *applicationsServiceImpl) ensureStandardApplicationNameAvailable(ctx context.Context, namespace, name, currentAppID string) error {
 	return ensureStandardApplicationNameAvailableInStore(ctx, c.Store, namespace, name, currentAppID)
-}
-
-func (c *applicationsServiceImpl) ensureTemplateApplicationKeyAvailable(ctx context.Context, namespace, name, version, currentAppID string) error {
-	return ensureTemplateApplicationKeyAvailableInStore(ctx, c.Store, namespace, name, version, currentAppID)
-}
-
-func (c *applicationsServiceImpl) findTemplateApplication(ctx context.Context, namespace, name, version string) (*model.Applications, error) {
-	return findTemplateApplicationInStore(ctx, c.Store, namespace, name, version)
 }
 
 func prepareComponents(appID, namespace string, reqComponents []apisv1.CreateComponentRequest) ([]*model.ApplicationComponent, error) {
