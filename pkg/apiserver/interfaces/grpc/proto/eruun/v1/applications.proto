@@ -13,8 +13,6 @@ service ApplicationService {
   rpc GetCanonicalJSONSchema(google.protobuf.Empty) returns (CanonicalJSONSchema);
   rpc ListApplications(ApplicationListRequest) returns (AppDTOListApplicationResponse);
   rpc ListTemplateApplications(ApplicationListRequest) returns (AppDTOListApplicationResponse);
-  rpc ListCronJobs(google.protobuf.Empty) returns (ApplicationCronJobs);
-  rpc ListScheduledJobs(google.protobuf.Empty) returns (ApplicationScheduledJobs);
   rpc CreateApplications(AppDTOCreateApplicationsRequest) returns (AppDTOApplicationBase);
   rpc CreateAndExecApplications(AppDTOCreateAndExecApplicationRequest) returns (AppDTOCreateAndExecApplicationResponse);
   rpc BatchGetApplications(AppDTOBatchGetApplicationsRequest) returns (AppDTOBatchGetApplicationsResponse);
@@ -37,7 +35,6 @@ service ApplicationService {
   rpc DeleteWorkflowSchedule(ApplicationWorkflowRequest) returns (AppDTODeleteWorkflowScheduleResponse);
   rpc CleanupApplicationResources(ApplicationIDRequest) returns (AppDTOCleanupApplicationResourcesResponse);
   rpc ResetApplicationDatabases(ResetApplicationDatabasesRPCRequest) returns (AppDTODatabaseResetResponse);
-  rpc DownloadLogArchive(LogArchiveRPCRequest) returns (stream ComponentFileChunk);
   rpc RestartApplicationWorkloads(ApplicationLifecycleRPCRequest) returns (AppDTORestartApplicationWorkloadsResponse);
   rpc StopApplicationDeployments(ApplicationLifecycleRPCRequest) returns (AppDTOStopApplicationDeploymentsResponse);
   rpc StartApplicationDeployments(ApplicationLifecycleRPCRequest) returns (AppDTOStartApplicationDeploymentsResponse);
@@ -62,8 +59,6 @@ message ApplicationIDRequest { string app_id = 1; }
 message WorkflowTaskIDRequest { string task_id = 1; }
 message ApplicationWorkflowRequest { string app_id = 1; string workflow_id = 2; }
 message ApplicationComponentRequest { string app_id = 1; string component_name = 2; }
-message ApplicationCronJobs { repeated AppDTOCronJobInfo jobs = 1; }
-message ApplicationScheduledJobs { repeated AppDTOScheduledJobInfo jobs = 1; }
 
 message ComponentLogsRequest { string app_id = 1; string component_name = 2; string container = 3; }
 message ComponentLogLine {
@@ -103,7 +98,6 @@ message DeleteApplicationRPCRequest { string app_id = 1; AppDTODeleteApplication
 message UpdateApplicationWorkflowRPCRequest { string app_id = 1; AppDTOUpdateApplicationWorkflowRequest request = 2; }
 message UpsertWorkflowScheduleRPCRequest { string app_id = 1; AppDTOUpsertWorkflowScheduleRequest request = 2; }
 message ResetApplicationDatabasesRPCRequest { string app_id = 1; AppDTODatabaseResetRequest request = 2; }
-message LogArchiveRPCRequest { string app_id = 1; AppDTOLogArchiveDownloadRequest request = 2; }
 message ApplicationLifecycleRPCRequest { string app_id = 1; AppDTOApplicationLifecycleRequest request = 2; }
 message ExecWorkflowRPCRequest { string app_id = 1; AppDTOExecWorkflowRequest request = 2; }
 message CancelWorkflowRPCRequest { string app_id = 1; AppDTOCancelWorkflowRequest request = 2; }
@@ -119,32 +113,6 @@ message AppDTOCreateAndExecApplicationResponse {
   repeated AppDTOAllowedAction allowed_actions = 6 [json_name = "allowedActions"];
 }
 
-message AppDTOCronJobInfo {
-  string name = 1 [json_name = "name"];
-  string namespace = 2 [json_name = "namespace"];
-  string schedule = 3 [json_name = "schedule"];
-  bool suspend = 4 [json_name = "suspend"];
-  string concurrency_policy = 5 [json_name = "concurrencyPolicy"];
-  optional int32 successful_jobs_history_limit = 6 [json_name = "successfulJobsHistoryLimit"];
-  optional int32 failed_jobs_history_limit = 7 [json_name = "failedJobsHistoryLimit"];
-  google.protobuf.Timestamp last_schedule_time = 8 [json_name = "lastScheduleTime"];
-  google.protobuf.Timestamp last_successful_time = 9 [json_name = "lastSuccessfulTime"];
-  google.protobuf.Timestamp create_time = 10 [json_name = "createTime"];
-}
-
-message AppDTOScheduledJobInfo {
-  string app_id = 1 [json_name = "appId"];
-  string app_name = 2 [json_name = "appName"];
-  string app_namespace = 3 [json_name = "appNamespace"];
-  string component_name = 4 [json_name = "componentName"];
-  string component_namespace = 5 [json_name = "componentNamespace"];
-  string image = 6 [json_name = "image"];
-  string schedule = 7 [json_name = "schedule"];
-  int64 start_time = 8 [json_name = "startTime"];
-  string run_policy = 9 [json_name = "runPolicy"];
-  google.protobuf.Timestamp create_time = 10 [json_name = "createTime"];
-  google.protobuf.Timestamp update_time = 11 [json_name = "updateTime"];
-}
 message AppDTOAllowedAction {
   string name = 1 [json_name = "name"];
   string method = 2 [json_name = "method"];
@@ -639,15 +607,6 @@ message AppDTOListWorkflowSchedulesResponse {
   repeated AppDTOWorkflowSchedule schedules = 1 [json_name = "schedules"];
 }
 
-message AppDTOLogArchiveDownloadRequest {
-  string name = 1 [json_name = "name"];
-  string job_type = 2 [json_name = "jobType"];
-  string mode = 3 [json_name = "mode"];
-  repeated string components = 4 [json_name = "components"];
-  string path = 5 [json_name = "path"];
-  string container = 6 [json_name = "container"];
-}
-
 message AppDTOPlanAction {
   int32 order = 1 [json_name = "order"];
   string action = 2 [json_name = "action"];
@@ -869,9 +828,7 @@ message AppDTOWorkflowCallback {
 
 message AppDTOWorkflowProperties {
   repeated string policies = 1 [json_name = "policies"];
-  string path = 2 [json_name = "path"];
-  string container = 3 [json_name = "container"];
-  string init_sqlurl = 4 [json_name = "initSqlUrl"];
+  string init_sqlurl = 2 [json_name = "initSqlUrl"];
 }
 
 message AppDTOWorkflowSchedule {
@@ -1050,13 +1007,10 @@ message AppSpecProperties {
   repeated string command = 5 [json_name = "command"];
   map<string, string> labels = 6 [json_name = "labels"];
   AppSpecCloudSpec cloud = 7 [json_name = "cloud"];
-  string schedule = 8 [json_name = "schedule"];
   int64 start_time = 9 [json_name = "startTime"];
   string run_policy = 10 [json_name = "runPolicy"];
   AppWorkflowConfigJobRetryPolicy job_retry_policy = 11 [json_name = "jobRetryPolicy"];
   optional string failure_policy = 12 [json_name = "failurePolicy"];
-  optional int32 successful_jobs_history_limit = 13 [json_name = "successfulJobsHistoryLimit"];
-  optional int32 failed_jobs_history_limit = 14 [json_name = "failedJobsHistoryLimit"];
 }
 
 message AppSpecRBACPolicySpec {

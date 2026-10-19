@@ -676,7 +676,7 @@ func recoverableKubernetesJobInfo(job *model.JobInfo) bool {
 	if job == nil {
 		return false
 	}
-	return config.IsInstantJobType(config.JobType(job.Type)) || job.Type == string(config.JobDeployScheduled)
+	return config.IsInstantJobType(config.JobType(job.Type))
 }
 
 func cancelledKubernetesCleanupPending(job *model.JobInfo) bool {

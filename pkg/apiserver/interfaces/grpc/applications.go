@@ -89,20 +89,6 @@ func (s *ApplicationsServer) ListTemplateApplications(ctx context.Context, req *
 	return typedResult(apis.ListApplicationResponse{Applications: items}, err, &eruunv1.AppDTOListApplicationResponse{})
 }
 
-func (s *ApplicationsServer) ListCronJobs(ctx context.Context, _ *emptypb.Empty) (*eruunv1.ApplicationCronJobs, error) {
-	items, err := s.Applications.ListCronJobs(ctx)
-	return typedResult(struct {
-		Jobs []*apis.CronJobInfo `json:"jobs"`
-	}{items}, err, &eruunv1.ApplicationCronJobs{})
-}
-
-func (s *ApplicationsServer) ListScheduledJobs(ctx context.Context, _ *emptypb.Empty) (*eruunv1.ApplicationScheduledJobs, error) {
-	items, err := s.Applications.ListScheduledJobs(ctx)
-	return typedResult(struct {
-		Jobs []*apis.ScheduledJobInfo `json:"jobs"`
-	}{items}, err, &eruunv1.ApplicationScheduledJobs{})
-}
-
 func (s *ApplicationsServer) CreateApplications(ctx context.Context, req *eruunv1.AppDTOCreateApplicationsRequest) (*eruunv1.AppDTOApplicationBase, error) {
 	input, err := decodeTypedRequest[apis.CreateApplicationsRequest](req)
 	if err != nil {

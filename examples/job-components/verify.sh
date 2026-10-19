@@ -18,7 +18,6 @@ require_cmd kubectl
 require_cmd python3
 
 component_name=""
-resource_kind=""
 payload=""
 start_time=""
 
@@ -26,16 +25,9 @@ case "$mode" in
   instant)
     payload="$root_dir/examples/job-components/instant-job.json"
     component_name="instant-task"
-    resource_kind="job"
-    ;;
-  cron)
-    payload="$root_dir/examples/job-components/scheduled-job-cron.json"
-    component_name="cron-task"
-    resource_kind="cronjob"
     ;;
   delay)
     component_name="delay-task"
-    resource_kind="job"
     start_time="$(( $(date +%s) + 30 ))"
     payload="$(mktemp)"
     cat >"$payload" <<EOF
@@ -72,7 +64,7 @@ EOF
     trap 'rm -f "$payload"' EXIT
     ;;
   *)
-    echo "usage: $0 {instant|cron|delay}" >&2
+    echo "usage: $0 {instant|delay}" >&2
     exit 1
     ;;
 esac
@@ -94,11 +86,6 @@ curl -fsS -X POST "${api_addr}/applications/${app_id}/workflow/exec" \
   -d "{\"workflowId\":\"${workflow_ref}\"}" >/dev/null
 
 label="eruun.io/component-name=${component_name}"
-
-if [[ "$resource_kind" == "cronjob" ]]; then
-  kubectl -n "$namespace" get cronjob -l "$label"
-  exit 0
-fi
 
 if [[ "$mode" == "delay" && -n "$start_time" ]]; then
   now="$(date +%s)"

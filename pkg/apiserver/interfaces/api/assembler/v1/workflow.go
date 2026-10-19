@@ -134,13 +134,11 @@ func convertWorkflowProperties(policies []model.Policies) []apisv1.WorkflowPrope
 	}
 	result := make([]apisv1.WorkflowProperties, 0, len(policies))
 	for _, policy := range policies {
-		if len(policy.Policies) == 0 && policy.Path == "" && policy.Container == "" && policy.InitSQLURL == "" {
+		if len(policy.Policies) == 0 && policy.InitSQLURL == "" {
 			continue
 		}
 		result = append(result, apisv1.WorkflowProperties{
 			Policies:   append([]string(nil), policy.Policies...),
-			Path:       policy.Path,
-			Container:  policy.Container,
 			InitSQLURL: policy.InitSQLURL,
 		})
 	}

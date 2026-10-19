@@ -138,8 +138,6 @@ func extractPolicyNames(policies []Policies) []string {
 
 type Policies struct {
 	Policies   []string `json:"policies"`
-	Path       string   `json:"path,omitempty"`
-	Container  string   `json:"container,omitempty"`
 	InitSQLURL string   `json:"initSqlUrl,omitempty"`
 }
 

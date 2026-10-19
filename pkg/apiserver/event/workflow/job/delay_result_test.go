@@ -264,7 +264,7 @@ func TestDelayResultPayloadAndDecode(t *testing.T) {
 
 	delayPayload := &DelayJobPayload{
 		TaskID:        "task-2",
-		JobType:       string(config.JobDeployScheduled),
+		JobType:       string(config.JobDeployInstant),
 		Namespace:     "ns-1",
 		ExecutionKey:  "execution-2",
 		RunGeneration: 8,
@@ -304,7 +304,7 @@ func TestUpdateJobInfoStatusDoesNotTargetNewerExecution(t *testing.T) {
 	newExecutionKey := "execution-new"
 	newest := &model.JobInfo{
 		TaskID:        "task-shared",
-		Type:          string(config.JobDeployScheduled),
+		Type:          string(config.JobDeployInstant),
 		ServiceName:   "svc-a",
 		Status:        string(config.StatusRunning),
 		ExecutionKey:  &newExecutionKey,
@@ -395,7 +395,7 @@ func TestUpdateJobInfoStatusDoesNotDowngradeCompletedStatus(t *testing.T) {
 	ctx := context.Background()
 	payload := &JobResultPayload{
 		TaskID:        "task-keep-completed",
-		JobType:       string(config.JobDeployScheduled),
+		JobType:       string(config.JobDeployInstant),
 		ServiceName:   "svc-a",
 		Namespace:     "default",
 		Name:          "job-1",

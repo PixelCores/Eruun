@@ -181,10 +181,6 @@ func applyShareLabelsToJobInfo(jobInfo interface{}, share shareConfig) {
 	case *batchv1.Job:
 		applyShareLabelsToObject(info, share)
 		info.Spec.Template.Labels = applyShareLabels(info.Spec.Template.Labels, share)
-	case *batchv1.CronJob:
-		applyShareLabelsToObject(info, share)
-		info.Spec.JobTemplate.Labels = applyShareLabels(info.Spec.JobTemplate.Labels, share)
-		info.Spec.JobTemplate.Spec.Template.Labels = applyShareLabels(info.Spec.JobTemplate.Spec.Template.Labels, share)
 	case metav1.Object:
 		applyShareLabelsToObject(info, share)
 	case *workflowjob.ConfigMapInput:

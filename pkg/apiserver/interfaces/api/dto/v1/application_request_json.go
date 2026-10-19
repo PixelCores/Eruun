@@ -322,7 +322,7 @@ func canonicalWorkflowProperties(single WorkflowProperties, list []WorkflowPrope
 	if fromArray {
 		return list
 	}
-	if len(single.Policies) == 0 && single.Path == "" && single.Container == "" && single.InitSQLURL == "" {
+	if len(single.Policies) == 0 && single.InitSQLURL == "" {
 		return nil
 	}
 	return []WorkflowProperties{single}

@@ -792,55 +792,6 @@ func TestValidationService_TryApplication_JobProperties(t *testing.T) {
 		expectedField string
 	}{
 		{
-			name: "scheduled job missing schedule",
-			component: apisv1.CreateComponentRequest{
-				Name:          "job",
-				ComponentType: config.ScheduledJob,
-				Image:         "busybox:latest",
-			},
-			expectedCode:  apisv1.ErrCodeMissingRequiredField,
-			expectedField: "component[0].properties.schedule",
-		},
-		{
-			name: "scheduled job invalid schedule fields",
-			component: apisv1.CreateComponentRequest{
-				Name:          "job",
-				ComponentType: config.ScheduledJob,
-				Image:         "busybox:latest",
-				Properties: apisv1.Properties{
-					Schedule: "0 * * *",
-				},
-			},
-			expectedCode:  apisv1.ErrCodeInvalidJobSchedule,
-			expectedField: "component[0].properties.schedule",
-		},
-		{
-			name: "scheduled job invalid seconds field",
-			component: apisv1.CreateComponentRequest{
-				Name:          "job",
-				ComponentType: config.ScheduledJob,
-				Image:         "busybox:latest",
-				Properties: apisv1.Properties{
-					Schedule: "1 0 * * * *",
-				},
-			},
-			expectedCode:  apisv1.ErrCodeInvalidJobSchedule,
-			expectedField: "component[0].properties.schedule",
-		},
-		{
-			name: "instant job with schedule",
-			component: apisv1.CreateComponentRequest{
-				Name:          "job",
-				ComponentType: config.InstantJob,
-				Image:         "busybox:latest",
-				Properties: apisv1.Properties{
-					Schedule: "0 0 * * * *",
-				},
-			},
-			expectedCode:  apisv1.ErrCodeInvalidJobSchedule,
-			expectedField: "component[0].properties.schedule",
-		},
-		{
 			name: "invalid runPolicy",
 			component: apisv1.CreateComponentRequest{
 				Name:          "job",
@@ -874,20 +825,6 @@ func TestValidationService_TryApplication_JobProperties(t *testing.T) {
 				Image:         "busybox:latest",
 				Properties: apisv1.Properties{
 					FailurePolicy: jobFailurePolicyPointer("unknown"),
-				},
-			},
-			expectedCode:  apisv1.ErrCodeInvalidJobFailurePolicy,
-			expectedField: "component[0].properties.failurePolicy",
-		},
-		{
-			name: "scheduled job failure policy",
-			component: apisv1.CreateComponentRequest{
-				Name:          "job",
-				ComponentType: config.ScheduledJob,
-				Image:         "busybox:latest",
-				Properties: apisv1.Properties{
-					Schedule:      "0 * * * *",
-					FailurePolicy: jobFailurePolicyPointer(workflowconfig.WorkflowFailurePolicyCleanupFailed),
 				},
 			},
 			expectedCode:  apisv1.ErrCodeInvalidJobFailurePolicy,

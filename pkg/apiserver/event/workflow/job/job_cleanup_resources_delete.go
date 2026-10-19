@@ -99,8 +99,6 @@ func (c *CleanupResourcesJobCtl) resourceLabels(ctx context.Context, ref cleanup
 		obj, err = c.client.AppsV1().StatefulSets(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
 	case domainspec.ResourceJob:
 		obj, err = c.client.BatchV1().Jobs(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case domainspec.ResourceCronJob:
-		obj, err = c.client.BatchV1().CronJobs(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
 	case domainspec.ResourceService:
 		obj, err = c.client.CoreV1().Services(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
 	case domainspec.ResourceConfigMap:
@@ -230,13 +228,6 @@ func (c *CleanupResourcesJobCtl) deleteJob(ctx context.Context, namespace, name 
 	return c.client.BatchV1().Jobs(namespaceOrDefault(namespace)).Delete(ctx, name, metav1.DeleteOptions{})
 }
 
-func (c *CleanupResourcesJobCtl) deleteCronJob(ctx context.Context, namespace, name string) error {
-	if strings.TrimSpace(name) == "" {
-		return nil
-	}
-	return c.client.BatchV1().CronJobs(namespaceOrDefault(namespace)).Delete(ctx, name, metav1.DeleteOptions{})
-}
-
 func (c *CleanupResourcesJobCtl) deleteService(ctx context.Context, namespace, name string) error {
 	if strings.TrimSpace(name) == "" {
 		return nil
@@ -328,7 +319,7 @@ func cleanupLabelSelector(component *model.ApplicationComponent) string {
 
 func cleanupComponentUsesPods(componentType config.JobType) bool {
 	switch componentType {
-	case config.ServerJob, config.StoreJob, config.InstantJob, config.ScheduledJob:
+	case config.ServerJob, config.StoreJob, config.InstantJob:
 		return true
 	default:
 		return false

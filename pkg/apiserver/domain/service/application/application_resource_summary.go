@@ -55,7 +55,7 @@ func applicationResourceLimitOrRequest(limit, request string) string {
 
 func isApplicationResourceSummaryComponentType(componentType config.JobType) bool {
 	switch componentType {
-	case config.ServerJob, config.StoreJob, config.InstantJob, config.ScheduledJob:
+	case config.ServerJob, config.StoreJob, config.InstantJob:
 		return true
 	default:
 		return false

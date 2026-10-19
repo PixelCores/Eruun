@@ -62,7 +62,7 @@ func (m *Manager) ensure(ctx context.Context, w *model.Workspace) error {
 	role := &rbacv1.Role{ObjectMeta: meta(runnerName), Rules: []rbacv1.PolicyRule{
 		{APIGroups: []string{""}, Resources: []string{"pods", "pods/log", "pods/exec", "services", "configmaps", "secrets", "persistentvolumeclaims", "events"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
 		{APIGroups: []string{"apps"}, Resources: []string{"deployments", "deployments/scale", "statefulsets", "statefulsets/scale", "replicasets"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
-		{APIGroups: []string{"batch"}, Resources: []string{"jobs", "cronjobs"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
+		{APIGroups: []string{"batch"}, Resources: []string{"jobs"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
 		{APIGroups: []string{"networking.k8s.io"}, Resources: []string{"ingresses"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
 	}}
 	if old, e := m.Client.RbacV1().Roles(w.Namespace).Get(ctx, runnerName, metav1.GetOptions{}); apierrors.IsNotFound(e) {

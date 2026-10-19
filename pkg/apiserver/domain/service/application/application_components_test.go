@@ -347,7 +347,6 @@ func TestMarkInitialDeployingWorkflowComponentsScopesToWorkflowDeploySteps(t *te
 				Properties:   []model.Policies{{Policies: []string{"not-deploy"}}},
 			},
 			{Name: "database-reset", WorkflowType: config.JobDatabaseReset, Properties: []model.Policies{{Policies: []string{"not-deploy"}}}},
-			{Name: "log-archive-upload", WorkflowType: config.JobLogArchiveUpload, Properties: []model.Policies{{Policies: []string{"not-deploy"}}}},
 		},
 	})
 	require.NoError(t, err)
@@ -393,7 +392,6 @@ func TestMarkInitialDeployingWorkflowComponentsNoopsForNonDeployWorkflow(t *test
 			},
 			{Name: "cleanup", WorkflowType: config.JobCleanupResources, Properties: []model.Policies{{Policies: []string{"api"}}}},
 			{Name: "database-reset", WorkflowType: config.JobDatabaseReset, Properties: []model.Policies{{Policies: []string{"api"}}}},
-			{Name: "log-archive-upload", WorkflowType: config.JobLogArchiveUpload, Properties: []model.Policies{{Policies: []string{"api"}}}},
 		},
 	})
 	require.NoError(t, err)

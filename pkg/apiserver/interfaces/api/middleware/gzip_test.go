@@ -80,29 +80,6 @@ func TestGzipSkipsComponentLogsRoute(t *testing.T) {
 	}
 }
 
-func TestGzipSkipsLogArchivesRoute(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	r := gin.New()
-	r.Use(Gzip())
-	r.POST("/applications/:appID/log-archives", func(c *gin.Context) {
-		c.Header("Content-Type", "application/zip")
-		_, _ = c.Writer.Write([]byte("zipdata"))
-	})
-
-	req := httptest.NewRequest(http.MethodPost, "/applications/app-1/log-archives", nil)
-	req.Header.Set("Accept-Encoding", "gzip")
-	resp := httptest.NewRecorder()
-	r.ServeHTTP(resp, req)
-
-	if got := resp.Header().Get("Content-Encoding"); got != "" {
-		t.Fatalf("expected no content-encoding, got %q", got)
-	}
-	if body := resp.Body.String(); body != "zipdata" {
-		t.Fatalf("unexpected body: %q", body)
-	}
-}
-
 func TestGzipCompressesOtherRoutes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

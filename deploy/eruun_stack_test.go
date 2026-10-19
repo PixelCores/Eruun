@@ -260,7 +260,7 @@ func assertUnifiedRuntimePermissions(t *testing.T, clusterRoles map[string]map[s
 	require.ElementsMatch(t, []string{"get", "list", "watch", "patch", "delete"}, verbsFor(runtimeRole, "", "pods"), "Controller must observe, label, and clean up completed Job Pods")
 	require.Equal(t, []string{"get"}, verbsFor(runtimeRole, "", "pods/log"), "ResultDispatcher must collect completed Job logs")
 	require.ElementsMatch(t, []string{"get", "list", "watch", "create", "update", "patch", "delete"}, verbsFor(runtimeRole, "batch", "jobs"), "runtime must dispatch, observe, adopt and clean up executions")
-	require.ElementsMatch(t, []string{"get", "list", "create", "update", "patch", "delete"}, verbsFor(runtimeRole, "batch", "cronjobs"))
+	require.Empty(t, verbsFor(runtimeRole, "batch", "cronjobs"))
 	require.ElementsMatch(t, []string{"get", "list", "update", "delete"}, verbsFor(runtimeRole, "apps", "replicasets"))
 	require.ElementsMatch(t, []string{"get", "list", "create", "update", "patch", "delete"}, verbsFor(runtimeRole, "", "secrets"))
 	require.Equal(t, []string{"create"}, verbsFor(runtimeRole, "", "pods/exec"))

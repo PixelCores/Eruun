@@ -87,9 +87,8 @@ func (s *workflowOwnershipStore) CompareAndSwapWithConditions(_ context.Context,
 	return false, nil
 }
 
-func TestNewInstantAndScheduledCtlNilJob(t *testing.T) {
+func TestNewInstantCtlNilJob(t *testing.T) {
 	require.Nil(t, NewInstantJobCtl(nil, &Runtime{Client: nil, Store: nil, Ack: nil}))
-	require.Nil(t, NewScheduledJobCtl(nil, &Runtime{Client: nil, Store: nil, Ack: nil}))
 }
 func TestDelayedJobControllersPropagateWorkflowOwnership(t *testing.T) {
 	newTask := func(jobType config.JobType) *model.JobTask {
@@ -137,24 +136,10 @@ func TestDelayedJobControllersPropagateWorkflowOwnership(t *testing.T) {
 		require.Equal(t, config.JobDelayStatePending, task.DelayState)
 		require.NotEmpty(t, task.DelayPayload)
 	})
-
-	t.Run("scheduled", func(t *testing.T) {
-		queue := &enqueueCaptureQueue{enqueueID: "delay-scheduled"}
-		task := newTask(config.JobDeployScheduled)
-		store := &workflowOwnershipStore{noopStore: &noopStore{}, task: model.WorkflowQueue{
-			TaskID: task.TaskID, Status: config.StatusRunning, RunGeneration: 3, RunToken: "run-3", WorkerID: "worker-delayed",
-		}}
-		ctl := NewScheduledJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() {}, DelayQueue: queue})
-
-		require.NoError(t, ctl.runOneTimeJob(context.Background(), task.JobInfo.(*batchv1.Job)))
-		assertPayload(t, queue)
-		require.Equal(t, config.StatusDistributed, task.Status)
-		require.Equal(t, config.JobDelayStatePending, task.DelayState)
-	})
 }
 
 func TestDelayedJobControllersCommitWithoutQueue(t *testing.T) {
-	for _, jobType := range []config.JobType{config.JobDeployInstant, config.JobDeployScheduled} {
+	for _, jobType := range []config.JobType{config.JobDeployInstant} {
 		t.Run(string(jobType), func(t *testing.T) {
 			store := &jobInfoSaveStore{}
 			jobObj := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
@@ -179,11 +164,7 @@ func TestDelayedJobControllersCommitWithoutQueue(t *testing.T) {
 			_, err := PrepareTask(task, "app", &model.Workspace{ID: "workspace", Namespace: "default"}, spec.WorkspaceConfig{})
 			require.NoError(t, err)
 			var ctl JobCtl
-			if jobType == config.JobDeployInstant {
-				ctl = NewInstantJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: withJobTestOwner(store, task), Ack: func() {}})
-			} else {
-				ctl = NewScheduledJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: withJobTestOwner(store, task), Ack: func() {}})
-			}
+			ctl = NewInstantJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: withJobTestOwner(store, task), Ack: func() {}})
 
 			require.NoError(t, ctl.Run(context.Background()))
 			require.Equal(t, config.StatusDistributed, task.Status)
@@ -198,7 +179,7 @@ func TestDelayedJobControllersCommitWithoutQueue(t *testing.T) {
 }
 
 func TestImmediateJobControllersRejectStaleWorkflowOwnerBeforeKubernetesAccess(t *testing.T) {
-	for _, jobType := range []config.JobType{config.JobDeployInstant, config.JobDeployScheduled} {
+	for _, jobType := range []config.JobType{config.JobDeployInstant} {
 		t.Run(string(jobType), func(t *testing.T) {
 			jobObj := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
 				Name: "demo", Namespace: "default",
@@ -215,13 +196,8 @@ func TestImmediateJobControllersRejectStaleWorkflowOwnerBeforeKubernetesAccess(t
 			client := fake.NewSimpleClientset()
 
 			var err error
-			if jobType == config.JobDeployInstant {
-				ctl := NewInstantJobCtl(jobTask, &Runtime{Client: client, Store: store, Ack: func() {}})
-				err = ctl.run(context.Background())
-			} else {
-				ctl := NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: store, Ack: func() {}})
-				err = ctl.runOneTimeJob(context.Background(), jobObj)
-			}
+			ctl := NewInstantJobCtl(jobTask, &Runtime{Client: client, Store: store, Ack: func() {}})
+			err = ctl.run(context.Background())
 
 			require.ErrorIs(t, err, errWorkflowJobOwnershipChanged)
 			require.Empty(t, client.Actions())
@@ -230,7 +206,7 @@ func TestImmediateJobControllersRejectStaleWorkflowOwnerBeforeKubernetesAccess(t
 }
 
 func TestImmediateJobControllersDoNotDeleteNewerExecution(t *testing.T) {
-	for _, jobType := range []config.JobType{config.JobDeployInstant, config.JobDeployScheduled} {
+	for _, jobType := range []config.JobType{config.JobDeployInstant} {
 		t.Run(string(jobType), func(t *testing.T) {
 			desired := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
 				Name: "demo", Namespace: "default",
@@ -254,13 +230,8 @@ func TestImmediateJobControllersDoNotDeleteNewerExecution(t *testing.T) {
 			client := fake.NewSimpleClientset(existing)
 
 			var err error
-			if jobType == config.JobDeployInstant {
-				ctl := NewInstantJobCtl(jobTask, &Runtime{Client: client, Store: store, Ack: func() {}})
-				err = ctl.run(context.Background())
-			} else {
-				ctl := NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: store, Ack: func() {}})
-				err = ctl.runOneTimeJob(context.Background(), desired)
-			}
+			ctl := NewInstantJobCtl(jobTask, &Runtime{Client: client, Store: store, Ack: func() {}})
+			err = ctl.run(context.Background())
 
 			require.Error(t, err)
 			require.True(t, errors.Is(err, errJobExecutionIdentityChanged))
@@ -416,106 +387,6 @@ func TestInstantJobCtlRunCompletesFromOwnedSucceededPodFallback(t *testing.T) {
 	require.Equal(t, "", jobTask.Error)
 }
 
-func TestScheduledJobCtlRunUnexpectedJobInfoType(t *testing.T) {
-	ackCount := 0
-	jobTask := &model.JobTask{
-		Name:      "demo",
-		Namespace: "default",
-		JobType:   string(config.JobDeployScheduled),
-		JobInfo:   "invalid",
-	}
-	ctl := NewScheduledJobCtl(jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: &noopStore{}, Ack: func() { ackCount++ }})
-	require.NotNil(t, ctl)
-
-	err := ctl.Run(context.Background())
-	require.Error(t, err)
-	require.Equal(t, 1, ackCount)
-	require.Equal(t, config.StatusFailed, jobTask.Status)
-}
-
-func TestScheduledJobCtlRunOneTimeSkip(t *testing.T) {
-	ctx := context.Background()
-	client := fake.NewSimpleClientset()
-	existing := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "demo",
-			Namespace: "default",
-		},
-		Status: batchv1.JobStatus{
-			Conditions: []batchv1.JobCondition{
-				{
-					Type:   batchv1.JobComplete,
-					Status: corev1.ConditionTrue,
-				},
-			},
-		},
-	}
-	_, err := client.BatchV1().Jobs("default").Create(ctx, existing, metav1.CreateOptions{})
-	require.NoError(t, err)
-
-	ackCount := 0
-	jobTask := &model.JobTask{
-		Name:      "demo",
-		Namespace: "default",
-		JobType:   string(config.JobDeployScheduled),
-		JobInfo: &batchv1.Job{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "demo",
-				Namespace: "default",
-				Annotations: map[string]string{
-					config.AnnotationJobRunPolicy: string(workflowconfig.JobRunPolicySkipIfCompleted),
-				},
-			},
-		},
-	}
-	ctl := NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() { ackCount++ }})
-	require.NotNil(t, ctl)
-
-	err = ctl.Run(ctx)
-	require.NoError(t, err)
-	require.Equal(t, 2, ackCount)
-	require.Equal(t, config.StatusSkipped, jobTask.Status)
-	require.Equal(t, "", jobTask.Error)
-}
-
-func TestScheduledJobCtlRunCronJobPath(t *testing.T) {
-	ctx := context.Background()
-	client := fake.NewSimpleClientset()
-	jobTask := &model.JobTask{
-		Name:      "demo-cron",
-		Namespace: "default",
-		JobType:   string(config.JobDeployScheduled),
-		JobInfo: &batchv1.CronJob{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "demo-cron",
-				Namespace: "default",
-			},
-			Spec: batchv1.CronJobSpec{
-				Schedule: "*/5 * * * *",
-				JobTemplate: batchv1.JobTemplateSpec{
-					Spec: batchv1.JobSpec{
-						Template: corev1.PodTemplateSpec{
-							Spec: corev1.PodSpec{
-								RestartPolicy: corev1.RestartPolicyNever,
-								Containers: []corev1.Container{{
-									Name:  "demo",
-									Image: "busybox",
-								}},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-	ctl := NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}})
-	require.NotNil(t, ctl)
-
-	err := ctl.Run(ctx)
-	require.NoError(t, err)
-	require.Equal(t, config.StatusCompleted, jobTask.Status)
-}
-
 func TestInstantJobCtlHelpers(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	store := &jobInfoStore{}
@@ -535,41 +406,6 @@ func TestInstantJobCtlHelpers(t *testing.T) {
 	require.Equal(t, 1, store.addCount)
 
 	created, err := ctl.createBatchJob(context.Background(), jobTask.JobInfo.(*batchv1.Job))
-	require.NoError(t, err)
-	require.True(t, created)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	status, _, err := ctl.waitBatchJob(ctx)
-	require.Error(t, err)
-	require.Equal(t, config.StatusTimeout, status)
-
-	ctl.Clean(context.Background())
-}
-
-func TestScheduledJobCtlHelpers(t *testing.T) {
-	client := fake.NewSimpleClientset()
-	store := &jobInfoStore{}
-	jobObj := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scheduled-job",
-			Namespace: "default",
-		},
-	}
-	jobTask := &model.JobTask{
-		Name:      "scheduled-job",
-		TaskID:    "task-2",
-		Namespace: "default",
-		JobType:   string(config.JobDeployScheduled),
-		JobInfo:   jobObj,
-	}
-	ctl := NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: withJobTestOwner(store, jobTask), Ack: func() {}})
-	require.NotNil(t, ctl)
-
-	require.NoError(t, ctl.SaveInfo(context.Background()))
-	require.Equal(t, 1, store.addCount)
-
-	created, err := ctl.createBatchJob(context.Background(), jobObj)
 	require.NoError(t, err)
 	require.True(t, created)
 
@@ -610,7 +446,7 @@ func TestImmediateJobControllersRejectReplacementAfterRecreateWait(t *testing.T)
 	newOwner := model.WorkflowQueue{
 		TaskID: "task-1", Status: config.StatusRunning, RunGeneration: 2, RunToken: "token-2", WorkerID: "worker-new",
 	}
-	for _, jobType := range []config.JobType{config.JobDeployInstant, config.JobDeployScheduled} {
+	for _, jobType := range []config.JobType{config.JobDeployInstant} {
 		for _, tc := range []struct {
 			name            string
 			owners          []model.WorkflowQueue
@@ -678,11 +514,7 @@ func TestImmediateJobControllersRejectReplacementAfterRecreateWait(t *testing.T)
 				})
 
 				var err error
-				if jobType == config.JobDeployInstant {
-					err = NewInstantJobCtl(jobTask, &Runtime{Client: client, Store: store, Ack: func() {}}).run(context.Background())
-				} else {
-					err = NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: store, Ack: func() {}}).runOneTimeJob(context.Background(), desired)
-				}
+				err = NewInstantJobCtl(jobTask, &Runtime{Client: client, Store: store, Ack: func() {}}).run(context.Background())
 
 				require.ErrorIs(t, err, tc.expectedErr)
 				require.Equal(t, tc.expectedGetJobs, getJobs)
@@ -705,7 +537,7 @@ func TestRunJobsPreservesNonTerminalStateAfterRecreateOwnershipReadFailure(t *te
 		{name: "serial", concurrency: 1},
 		{name: "parallel", concurrency: 2},
 	} {
-		for _, jobType := range []config.JobType{config.JobDeployInstant, config.JobDeployScheduled} {
+		for _, jobType := range []config.JobType{config.JobDeployInstant} {
 			t.Run(concurrencyCase.name+"/"+string(jobType), func(t *testing.T) {
 				temporaryErr := errors.New("temporary database outage")
 				desired := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
@@ -793,7 +625,7 @@ func TestRunJobsPreservesNonTerminalStateAfterRecreateOwnershipReadFailure(t *te
 }
 
 func TestImmediateJobCreateRejectsAlreadyExistsReplacement(t *testing.T) {
-	for _, jobType := range []config.JobType{config.JobDeployInstant, config.JobDeployScheduled} {
+	for _, jobType := range []config.JobType{config.JobDeployInstant} {
 		t.Run(string(jobType), func(t *testing.T) {
 			desired := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
 				Name: "demo", Namespace: "default",
@@ -830,11 +662,7 @@ func TestImmediateJobCreateRejectsAlreadyExistsReplacement(t *testing.T) {
 
 			var created bool
 			var err error
-			if jobType == config.JobDeployInstant {
-				created, err = NewInstantJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}).createBatchJob(context.Background(), desired)
-			} else {
-				created, err = NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}).createBatchJob(context.Background(), desired)
-			}
+			created, err = NewInstantJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}).createBatchJob(context.Background(), desired)
 
 			require.False(t, created)
 			require.ErrorIs(t, err, errJobExecutionIdentityChanged)

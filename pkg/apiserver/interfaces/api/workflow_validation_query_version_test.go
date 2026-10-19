@@ -285,16 +285,16 @@ func TestTryWorkflowAcceptsCanonicalWorkflow(t *testing.T) {
 
 	body := `{
 		"workflowId": "wf-1",
-		"name": "archive-flow",
-		"workflowType": "log_archive_upload",
-		"callback": {"success": "https://example.com/archive/success"},
+		"name": "cleanup-flow",
+		"workflowType": "update",
+		"callback": {"success": "https://example.com/cleanup/success"},
 		"workflow": [
 			{
-				"name": "Archive-API",
-				"jobType": "log_archive_upload",
+				"name": "Cleanup-API",
+				"jobType": "cleanup_resources",
 				"components": ["API"],
 				"properties": [
-					{"policies": ["API"], "path": "/var/log/api", "container": "api"}
+					{"policies": ["API"]}
 				]
 			}
 		]
@@ -312,13 +312,13 @@ func TestTryWorkflowAcceptsCanonicalWorkflow(t *testing.T) {
 	require.True(t, validationSvc.called)
 	require.Equal(t, "app-1", validationSvc.appID)
 	require.Equal(t, "wf-1", validationSvc.workflow.WorkflowID)
-	require.Equal(t, "archive-flow", validationSvc.workflow.Name)
-	require.Equal(t, config.WorkflowTaskTypeLogArchiveUpload, validationSvc.workflow.WorkflowType)
+	require.Equal(t, "cleanup-flow", validationSvc.workflow.Name)
+	require.Equal(t, config.WorkflowTaskTypeUpdate, validationSvc.workflow.WorkflowType)
 	require.NotNil(t, validationSvc.workflow.Callback)
-	require.Equal(t, "https://example.com/archive/success", validationSvc.workflow.Callback.Success)
+	require.Equal(t, "https://example.com/cleanup/success", validationSvc.workflow.Callback.Success)
 	require.Len(t, validationSvc.workflow.Workflow, 1)
-	require.Equal(t, "archive-api", validationSvc.workflow.Workflow[0].Name)
-	require.Equal(t, config.JobLogArchiveUpload, validationSvc.workflow.Workflow[0].WorkflowType)
+	require.Equal(t, "cleanup-api", validationSvc.workflow.Workflow[0].Name)
+	require.Equal(t, config.JobCleanupResources, validationSvc.workflow.Workflow[0].WorkflowType)
 	require.Equal(t, []string{"API"}, validationSvc.workflow.Workflow[0].Components)
 	require.True(t, validationSvc.workflow.Workflow[0].WorkflowPropertiesFromArray())
 	require.Equal(t, []string{"API"}, validationSvc.workflow.Workflow[0].WorkflowPropertiesList()[0].Policies)

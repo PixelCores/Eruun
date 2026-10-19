@@ -3,8 +3,6 @@ package model
 import "encoding/json"
 
 const (
-	SystemSettingTypeNodeSelector      = "nodeSelector"
-	SystemSettingTypeRBACPolicies      = "rbacPolicies"
 	SystemSettingTypeAliyunCloud       = "aliyunCloud"
 	SystemSettingTypeURLSecurityPolicy = "urlSecurityPolicy"
 	SystemSettingTypePodRestartMonitor = "podRestartMonitor"

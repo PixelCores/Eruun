@@ -109,35 +109,6 @@ func TestSecretFromJobInfo(t *testing.T) {
 	})
 }
 
-func TestScheduledJobInfo(t *testing.T) {
-	t.Run("cronjob", func(t *testing.T) {
-		expected := &batchv1.CronJob{ObjectMeta: metav1.ObjectMeta{Name: "cron"}}
-
-		cron, oneTime, err := scheduledJobInfo(&model.JobTask{JobInfo: expected})
-
-		require.NoError(t, err)
-		require.Same(t, expected, cron)
-		require.Nil(t, oneTime)
-	})
-
-	t.Run("one-time-job", func(t *testing.T) {
-		expected := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "one-time"}}
-
-		cron, oneTime, err := scheduledJobInfo(&model.JobTask{JobInfo: expected})
-
-		require.NoError(t, err)
-		require.Nil(t, cron)
-		require.Same(t, expected, oneTime)
-	})
-
-	t.Run("invalid", func(t *testing.T) {
-		_, _, err := scheduledJobInfo(&model.JobTask{JobInfo: "bad"})
-
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "scheduled job info has unexpected type")
-	})
-}
-
 func TestApplyTaskIDAnnotation(t *testing.T) {
 	jobObj := &batchv1.Job{}
 	ApplyTaskIDAnnotation(&model.JobTask{

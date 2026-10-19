@@ -15,7 +15,6 @@ const (
 	gzipSkipComponentFilesExportSuffix = "/applications/:appID/components/:componentName/files/export"
 	gzipSkipComponentLogsSuffix        = "/applications/:appID/components/:componentName/logs"
 	gzipSkipComponentShellStreamSuffix = "/applications/:appID/components/:componentName/shell/stream"
-	gzipSkipLogArchivesSuffix          = "/applications/:appID/log-archives"
 )
 
 // Gzip is a minimal gzip middleware for gin that compresses responses when
@@ -53,8 +52,7 @@ func shouldSkipGzip(c *gin.Context) bool {
 	}
 	return strings.HasSuffix(fullPath, gzipSkipComponentFilesExportSuffix) ||
 		strings.HasSuffix(fullPath, gzipSkipComponentLogsSuffix) ||
-		strings.HasSuffix(fullPath, gzipSkipComponentShellStreamSuffix) ||
-		strings.HasSuffix(fullPath, gzipSkipLogArchivesSuffix)
+		strings.HasSuffix(fullPath, gzipSkipComponentShellStreamSuffix)
 }
 
 // acceptsGzip honors explicit quality values before the wildcard encoding.

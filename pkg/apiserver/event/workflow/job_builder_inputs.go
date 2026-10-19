@@ -51,9 +51,6 @@ func loadWorkflowJobTaskInputs(ctx context.Context, task *model.WorkflowQueue, d
 			componentMap[component.Name] = &componentCopy
 		}
 	}
-	if err := validateLogArchiveUploadWorkflowInputs(&workflowSteps, componentMap); err != nil {
-		return nil, nil, err
-	}
 	return &workflowSteps, componentMap, nil
 }
 
@@ -88,58 +85,6 @@ func validateWorkflowJobType(jobType config.JobType, stepName string) error {
 		return nil
 	}
 	return fmt.Errorf("workflow step %q has unsupported jobType %q", stepName, jobType)
-}
-
-func validateLogArchiveUploadWorkflowInputs(steps *model.WorkflowSteps, componentMap map[string]*model.ApplicationComponent) error {
-	if steps == nil {
-		return nil
-	}
-	componentsByName := make(map[string]*model.ApplicationComponent, len(componentMap))
-	for name, component := range componentMap {
-		normalizedName := strings.ToLower(strings.TrimSpace(name))
-		if normalizedName == "" || component == nil {
-			continue
-		}
-		componentsByName[normalizedName] = component
-	}
-	for _, step := range steps.Steps {
-		if step == nil || config.ParseWorkflowStepType(string(step.StepType)) == config.WorkflowStepTypeApproval {
-			continue
-		}
-		if err := validateLogArchiveUploadStepInputs(step.Name, step.WorkflowType, step.Properties, step.ComponentNames(), componentsByName); err != nil {
-			return err
-		}
-		for _, sub := range step.SubSteps {
-			if sub == nil {
-				continue
-			}
-			if err := validateLogArchiveUploadStepInputs(sub.Name, sub.WorkflowType, sub.Properties, sub.ComponentNames(), componentsByName); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func validateLogArchiveUploadStepInputs(stepName string, jobType config.JobType, properties []model.Policies, componentNames []string, componentsByName map[string]*model.ApplicationComponent) error {
-	if config.JobType(strings.TrimSpace(string(jobType))) != config.JobLogArchiveUpload {
-		return nil
-	}
-	for _, name := range componentNames {
-		componentName := strings.TrimSpace(name)
-		component := componentsByName[strings.ToLower(componentName)]
-		if component == nil {
-			return fmt.Errorf("workflow step %q references missing component %q for jobType %q", stepName, componentName, jobType)
-		}
-		if !config.ComponentTypeUsesPods(component.ComponentType) {
-			return fmt.Errorf("workflow step %q component %q with type %q does not use pods for jobType %q", stepName, component.Name, component.ComponentType, jobType)
-		}
-		path, _ := logArchiveUploadOptionsForComponent(componentName, properties)
-		if strings.TrimSpace(path) == "" {
-			return fmt.Errorf("workflow step %q requires properties.path for component %q and jobType %q", stepName, componentName, jobType)
-		}
-	}
-	return nil
 }
 
 func loadResourceAppName(ctx context.Context, task *model.WorkflowQueue, ds datastore.DataStore) (string, error) {

@@ -454,8 +454,6 @@ func getPodTemplateFromWorkload(workload runtime.Object) (*corev1.PodTemplateSpe
 		return &w.Spec.Template, nil
 	case *batchv1.Job:
 		return &w.Spec.Template, nil
-	case *batchv1.CronJob:
-		return &w.Spec.JobTemplate.Spec.Template, nil
 	default:
 		return nil, fmt.Errorf("unsupported workload type: %T", workload)
 	}

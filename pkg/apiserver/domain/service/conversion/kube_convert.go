@@ -203,21 +203,6 @@ func buildWorkloadConversionInput(obj *unstructured.Unstructured) (workloadConve
 				applyJobMetadataToComponent(&job, comp)
 			},
 		}, nil
-	case string(spec.KubeKindCronJob):
-		var cron batchv1.CronJob
-		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &cron); err != nil {
-			return workloadConversionInput{}, err
-		}
-		return workloadConversionInput{
-			meta:          cron.ObjectMeta,
-			podSpec:       cron.Spec.JobTemplate.Spec.Template.Spec,
-			podLabels:     cron.Spec.JobTemplate.Spec.Template.Labels,
-			componentType: config.ScheduledJob,
-			kind:          string(spec.KubeKindCronJob),
-			applyMetadata: func(comp *apis.CreateComponentRequest) {
-				applyCronJobMetadataToComponent(&cron, comp)
-			},
-		}, nil
 	default:
 		return workloadConversionInput{}, fmt.Errorf("unsupported workload kind %s", strings.TrimSpace(obj.GetKind()))
 	}
@@ -248,19 +233,6 @@ func applyJobMetadataToComponent(job *batchv1.Job, comp *apis.CreateComponentReq
 		if value, err := strconv.ParseInt(raw, 10, 64); err == nil {
 			comp.Properties.StartTime = value
 		}
-	}
-}
-
-func applyCronJobMetadataToComponent(cron *batchv1.CronJob, comp *apis.CreateComponentRequest) {
-	if cron == nil || comp == nil {
-		return
-	}
-	comp.Properties.Schedule = strings.TrimSpace(cron.Spec.Schedule)
-	if cron.Spec.SuccessfulJobsHistoryLimit != nil {
-		comp.Properties.SuccessfulJobsHistoryLimit = cron.Spec.SuccessfulJobsHistoryLimit
-	}
-	if cron.Spec.FailedJobsHistoryLimit != nil {
-		comp.Properties.FailedJobsHistoryLimit = cron.Spec.FailedJobsHistoryLimit
 	}
 }
 

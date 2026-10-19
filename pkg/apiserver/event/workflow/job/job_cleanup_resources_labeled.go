@@ -60,16 +60,6 @@ func (c *CleanupResourcesJobCtl) deleteLabeledWorkloads(ctx context.Context, ns 
 			})
 		}
 	}
-	if list, err := c.client.BatchV1().CronJobs(ns).List(ctx, listOptions); err != nil {
-		deleted.errs = append(deleted.errs, fmt.Errorf("list labeled cronjobs: %w", err))
-	} else {
-		for i := range list.Items {
-			item := &list.Items[i]
-			c.deleteTrackedResource(ctx, deleted, domainspec.ResourceCronJob, item.Namespace, item.Name, false, func(deleteCtx context.Context) error {
-				return c.deleteCronJob(deleteCtx, item.Namespace, item.Name)
-			})
-		}
-	}
 }
 
 func (c *CleanupResourcesJobCtl) deleteLabeledCoreResources(ctx context.Context, ns string, listOptions metav1.ListOptions, deleted *cleanupResourceSet) {

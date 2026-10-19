@@ -13,7 +13,6 @@ import (
 type kubeObjectBuckets struct {
 	workloads           []*unstructured.Unstructured
 	jobs                []*unstructured.Unstructured
-	cronJobs            []*unstructured.Unstructured
 	services            []*unstructured.Unstructured
 	configMaps          []*unstructured.Unstructured
 	secrets             []*unstructured.Unstructured
@@ -76,12 +75,6 @@ func ConvertKubeObjectsWithSources(objects []*unstructured.Unstructured) ([]apis
 		return nil, nil, warnings, err
 	}
 
-	stageWarnings, err = state.appendWorkloads(buckets.cronJobs)
-	warnings = append(warnings, stageWarnings...)
-	if err != nil {
-		return nil, nil, warnings, err
-	}
-
 	stageWarnings, err = state.applyServiceTraits(buckets.services)
 	warnings = append(warnings, stageWarnings...)
 	if err != nil {
@@ -129,8 +122,6 @@ func classifyKubeObjects(objects []*unstructured.Unstructured) (kubeObjectBucket
 			buckets.workloads = append(buckets.workloads, obj)
 		case string(domainspec.KubeKindJob):
 			buckets.jobs = append(buckets.jobs, obj)
-		case string(domainspec.KubeKindCronJob):
-			buckets.cronJobs = append(buckets.cronJobs, obj)
 		case string(domainspec.KubeKindService):
 			buckets.services = append(buckets.services, obj)
 		case string(domainspec.KubeKindConfigMap):

@@ -32,13 +32,6 @@ var builtinSystemSettingCodecs = map[string]systemSettingCodec{
 		accept:    isJSONObject,
 		normalize: workflowconfig.NormalizeJobSchedulerPolicyValue,
 	},
-	model.SystemSettingTypeNodeSelector: {
-		normalize: normalizeRawSystemSettingValue,
-	},
-	model.SystemSettingTypeRBACPolicies: {
-		accept:    isJSONArray,
-		normalize: normalizeRawSystemSettingValue,
-	},
 	model.SystemSettingTypeURLSecurityPolicy: {
 		accept:    isJSONObject,
 		normalize: normalizeURLSecurityPolicySettingValue,
@@ -167,12 +160,9 @@ func (s *systemSettingServiceImpl) List(ctx context.Context) ([]*apisv1.SystemSe
 	}
 	out := make([]*apisv1.SystemSetting, 0, len(items))
 	for _, item := range items {
-		if item == nil {
-			continue
-		}
-		if strings.HasPrefix(strings.TrimSpace(item.Type), "migration.") {
-			// Internal migration markers share the persistence table but are not
-			// part of the public system-setting API.
+		// Internal markers and retired types share the persistence table but are
+		// not part of the public system-setting API.
+		if item == nil || validateSettingType(item.Type) != nil {
 			continue
 		}
 		out = append(out, toSystemSettingDTO(item))
@@ -216,10 +206,6 @@ func normalizeAndValidateSettingValue(settingType string, value json.RawMessage)
 	return normalized, nil
 }
 
-func normalizeRawSystemSettingValue(value json.RawMessage) (json.RawMessage, error) {
-	return json.RawMessage(value), nil
-}
-
 func normalizeURLSecurityPolicySettingValue(value json.RawMessage) (json.RawMessage, error) {
 	var cfg spec.URLSecurityPolicySpec
 	if err := json.Unmarshal(value, &cfg); err != nil {
@@ -233,11 +219,6 @@ func normalizeURLSecurityPolicySettingValue(value json.RawMessage) (json.RawMess
 
 func isJSONObject(decoded interface{}) bool {
 	_, ok := decoded.(map[string]interface{})
-	return ok
-}
-
-func isJSONArray(decoded interface{}) bool {
-	_, ok := decoded.([]interface{})
 	return ok
 }
 

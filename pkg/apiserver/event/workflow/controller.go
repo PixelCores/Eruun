@@ -675,7 +675,7 @@ func isJobSuccessStatus(task *model.JobTask) bool {
 	case config.StatusCompleted, config.StatusSkipped, config.StatusPassed:
 		return true
 	}
-	if task.JobType == string(config.JobDeployScheduled) || task.JobType == string(config.JobDeployInstant) {
+	if task.JobType == string(config.JobDeployInstant) {
 		switch task.Status {
 		case config.StatusDistributed, config.StatusQueued, config.StatusWaiting:
 			return true
@@ -734,7 +734,6 @@ func isWorkflowFailureCleanupTriggerJob(jobType config.JobType) bool {
 		config.JobDeployClusterRole,
 		config.JobDeployClusterRoleBinding,
 		config.JobDeployInstant,
-		config.JobDeployScheduled,
 		config.JobDeployCloud:
 		return true
 	default:

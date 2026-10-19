@@ -49,11 +49,6 @@ func JobName(name, appName string) string {
 	return buildResourceName(maxResourceNameLength, appName, name)
 }
 
-// CronJobName builds a deterministic CronJob name for scheduled tasks.
-func CronJobName(name, appName string) string {
-	return buildResourceName(maxControllerOwnedResourceNameLength, appName, name)
-}
-
 // ApplicationResourceKey normalizes the app segment used in generated names.
 func ApplicationResourceKey(appName string) string {
 	return normalizeSegment(appName, defaultAppSegment)

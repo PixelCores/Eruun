@@ -764,15 +764,6 @@ func TestGenerateJobTasksChangedComponentsExecutionScopeSkipsNonDeployJobs(t *te
 				Properties:   []model.Policies{{Policies: []string{"mysql"}}},
 			},
 			{
-				Name:         "archive-mysql",
-				WorkflowType: config.JobLogArchiveUpload,
-				Mode:         config.WorkflowModeStepByStep,
-				Properties: []model.Policies{{
-					Policies: []string{"mysql"},
-					Path:     "/var/log/mysql",
-				}},
-			},
-			{
 				Name: "maintenance",
 				Mode: config.WorkflowModeStepByStep,
 				SubSteps: []*model.WorkflowSubStep{
@@ -780,14 +771,6 @@ func TestGenerateJobTasksChangedComponentsExecutionScopeSkipsNonDeployJobs(t *te
 						Name:         "reset-mysql-substep",
 						WorkflowType: config.JobDatabaseReset,
 						Properties:   []model.Policies{{Policies: []string{"mysql"}}},
-					},
-					{
-						Name:         "archive-mysql-substep",
-						WorkflowType: config.JobLogArchiveUpload,
-						Properties: []model.Policies{{
-							Policies: []string{"mysql"},
-							Path:     "/var/log/mysql",
-						}},
 					},
 				},
 			},
@@ -818,7 +801,6 @@ func TestGenerateJobTasksChangedComponentsExecutionScopeSkipsNonDeployJobs(t *te
 		for _, jobs := range execution.Jobs {
 			for _, job := range jobs {
 				require.NotEqual(t, string(config.JobDatabaseReset), job.JobType)
-				require.NotEqual(t, string(config.JobLogArchiveUpload), job.JobType)
 			}
 		}
 	}

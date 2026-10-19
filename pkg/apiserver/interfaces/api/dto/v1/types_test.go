@@ -43,7 +43,7 @@ func TestWorkflowStepCanonicalPropertiesKeepsSingleInitSQLURL(t *testing.T) {
 func TestWorkflowStepRejectsNonCanonicalFields(t *testing.T) {
 	for name, input := range map[string]string{
 		"workflowType alias":       `{"name":"deploy-web","workflowType":"deploy","components":["web"]}`,
-		"object properties":        `{"name":"archive","jobType":"log_archive_upload","properties":{"path":"/var/log"}}`,
+		"object properties":        `{"name":"cleanup","jobType":"cleanup_resources","properties":{"policies":["web"]}}`,
 		"sub-step workflowType":    `{"name":"group","subSteps":[{"name":"web","workflowType":"deploy"}]}`,
 		"sub-step object property": `{"name":"group","subSteps":[{"name":"web","jobType":"deploy","properties":{"policies":["web"]}}]}`,
 	} {
@@ -414,7 +414,7 @@ func TestUpdateApplicationWorkflowRequestTracksFailurePolicyPresence(t *testing.
 }
 
 func TestUpdateApplicationWorkflowRequestAcceptsReadResponsePropertiesArray(t *testing.T) {
-	input := `{"workflowId":"wf-1","workflowType":"log_archive_upload","workflow":[{"name":"archive-api","jobType":"log_archive_upload","components":["api"],"properties":[{"policies":["api"],"path":"/var/log/api","container":"api"}],"subSteps":[{"name":"archive-worker","jobType":"log_archive_upload","components":["worker"],"properties":[{"policies":["worker"],"path":"/var/log/worker"}]}]}]}`
+	input := `{"workflowId":"wf-1","workflowType":"update","workflow":[{"name":"cleanup-api","jobType":"cleanup_resources","components":["api"],"properties":[{"policies":["api"]}],"subSteps":[{"name":"cleanup-worker","jobType":"cleanup_resources","components":["worker"],"properties":[{"policies":["worker"]}]}]}]}`
 
 	var req UpdateApplicationWorkflowRequest
 	err := json.Unmarshal([]byte(input), &req)
@@ -423,28 +423,17 @@ func TestUpdateApplicationWorkflowRequestAcceptsReadResponsePropertiesArray(t *t
 
 	step := req.Workflow[0]
 	require.True(t, step.WorkflowPropertiesFromArray())
-	require.Equal(t, config.JobLogArchiveUpload, step.WorkflowType)
-	require.Equal(t, WorkflowProperties{
-		Policies:  []string{"api"},
-		Path:      "/var/log/api",
-		Container: "api",
-	}, step.Properties)
-	require.Equal(t, []WorkflowProperties{{
-		Policies:  []string{"api"},
-		Path:      "/var/log/api",
-		Container: "api",
-	}}, step.WorkflowPropertiesList())
+	require.Equal(t, config.JobCleanupResources, step.WorkflowType)
+	require.Equal(t, WorkflowProperties{Policies: []string{"api"}}, step.Properties)
+	require.Equal(t, []WorkflowProperties{{Policies: []string{"api"}}}, step.WorkflowPropertiesList())
 
 	require.Len(t, step.SubSteps, 1)
 	require.True(t, step.SubSteps[0].WorkflowPropertiesFromArray())
-	require.Equal(t, []WorkflowProperties{{
-		Policies: []string{"worker"},
-		Path:     "/var/log/worker",
-	}}, step.SubSteps[0].WorkflowPropertiesList())
+	require.Equal(t, []WorkflowProperties{{Policies: []string{"worker"}}}, step.SubSteps[0].WorkflowPropertiesList())
 }
 
 func TestCreateWorkflowStepRequestRejectsPropertiesArrayUnknownField(t *testing.T) {
-	input := `{"name":"archive-api","jobType":"log_archive_upload","properties":[{"policies":["api"],"path":"/var/log/api","extra":true}]}`
+	input := `{"name":"deploy-api","jobType":"deploy","properties":[{"policies":["api"],"extra":true}]}`
 
 	var step CreateWorkflowStepRequest
 	err := json.Unmarshal([]byte(input), &step)

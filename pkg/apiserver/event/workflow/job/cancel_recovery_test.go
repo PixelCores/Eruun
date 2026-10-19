@@ -65,13 +65,13 @@ func TestCleanupRecoveredCancelledJobsPageUsesExactSQLFilters(t *testing.T) {
 			require.Zero(t, listed)
 			// Exercise the real datastore query builder: JobInfo.Index does not expose status.
 			// Equality excludes running rows and reasons that only contain the pending marker.
-			require.Contains(t, query, "`type` IN (?,?,?,?)")
+			require.Contains(t, query, "`type` IN (?,?,?)")
 			require.Contains(t, query, "`status` = ?")
 			require.Contains(t, query, "`scheduling_reason` = ?")
 			require.NotContains(t, query, "LIKE")
 			require.Contains(t, query, "ORDER BY `update_time` LIMIT ? OFFSET ?")
 			require.Equal(t, []interface{}{
-				string(config.JobDeployInstant), string(config.JobCommand), string(config.JobEval), string(config.JobDeployScheduled),
+				string(config.JobDeployInstant), string(config.JobCommand), string(config.JobEval),
 				string(config.StatusCancelled), cancelledJobCleanupPending, tc.limit, tc.limit,
 			}, args)
 		})
@@ -228,69 +228,4 @@ func TestCleanupRecoveredCancelledJobsRetriesDeletionFailure(t *testing.T) {
 	require.Equal(t, 1, cleaned)
 	require.Equal(t, cancelledJobCleanupComplete, record.SchedulingReason)
 	require.Equal(t, workflowconfig.JobSchedulingReleased, record.SchedulingState)
-}
-
-func TestCleanupRecoveredCancelledJobsDeletesExactCronJob(t *testing.T) {
-	key := "execution-1"
-	record := &model.JobInfo{
-		ID: 1, TaskID: "task-1", WorkspaceID: "space-1", Type: string(config.JobDeployScheduled),
-		Status: string(config.StatusCancelled), ServiceName: "cron-1", ExecutionKey: &key,
-		RunGeneration: 2, Attempt: 1, SchedulingReason: cancelledJobCleanupPending,
-	}
-	cron := &batchv1.CronJob{ObjectMeta: metav1.ObjectMeta{
-		Name: "cron-1", Namespace: "space-ns", UID: types.UID("uid-1"),
-		Annotations: map[string]string{
-			config.AnnotationJobTaskID: record.TaskID, config.AnnotationJobExecutionKey: key,
-			config.AnnotationJobRunGeneration:   strconv.FormatUint(record.RunGeneration, 10),
-			workflowconfig.AnnotationJobAttempt: strconv.FormatUint(uint64(record.Attempt), 10),
-		},
-	}}
-	client := fake.NewSimpleClientset(cron)
-	store := &cancelledJobRecoveryStore{space: model.Workspace{ID: "space-1", Namespace: "space-ns"}, record: record}
-
-	cleaned, err := CleanupRecoveredCancelledJobs(context.Background(), client, store)
-
-	require.NoError(t, err)
-	require.Equal(t, 1, cleaned)
-	require.Equal(t, cancelledJobCleanupComplete, record.SchedulingReason)
-	_, err = client.BatchV1().CronJobs(cron.Namespace).Get(context.Background(), cron.Name, metav1.GetOptions{})
-	require.Error(t, err)
-}
-
-func TestCleanupRecoveredCancelledScheduledJobIgnoresReplacementJobAndDeletesExactCronJob(t *testing.T) {
-	key := "execution-1"
-	record := &model.JobInfo{
-		ID: 1, TaskID: "task-1", WorkspaceID: "space-1", Type: string(config.JobDeployScheduled),
-		Status: string(config.StatusCancelled), ServiceName: "scheduled-1", ExecutionKey: &key,
-		RunGeneration: 2, Attempt: 1, SchedulingReason: cancelledJobCleanupPending,
-	}
-	replacement := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
-		Name: "scheduled-1", Namespace: "space-ns", UID: types.UID("replacement-job"),
-		Annotations: map[string]string{
-			config.AnnotationJobTaskID:          record.TaskID,
-			config.AnnotationJobExecutionKey:    "old-execution",
-			config.AnnotationJobRunGeneration:   "1",
-			workflowconfig.AnnotationJobAttempt: "1",
-		},
-	}}
-	cron := &batchv1.CronJob{ObjectMeta: metav1.ObjectMeta{
-		Name: "scheduled-1", Namespace: "space-ns", UID: types.UID("current-cron"),
-		Annotations: map[string]string{
-			config.AnnotationJobTaskID: record.TaskID, config.AnnotationJobExecutionKey: key,
-			config.AnnotationJobRunGeneration:   strconv.FormatUint(record.RunGeneration, 10),
-			workflowconfig.AnnotationJobAttempt: strconv.FormatUint(uint64(record.Attempt), 10),
-		},
-	}}
-	client := fake.NewSimpleClientset(replacement, cron)
-	store := &cancelledJobRecoveryStore{space: model.Workspace{ID: "space-1", Namespace: "space-ns"}, record: record}
-
-	cleaned, err := CleanupRecoveredCancelledJobs(context.Background(), client, store)
-
-	require.NoError(t, err)
-	require.Equal(t, 1, cleaned)
-	require.Equal(t, cancelledJobCleanupComplete, record.SchedulingReason)
-	_, err = client.BatchV1().Jobs(replacement.Namespace).Get(context.Background(), replacement.Name, metav1.GetOptions{})
-	require.NoError(t, err)
-	_, err = client.BatchV1().CronJobs(cron.Namespace).Get(context.Background(), cron.Name, metav1.GetOptions{})
-	require.Error(t, err)
 }

@@ -21,8 +21,7 @@ func NormalizeComponentEvaluation(componentType, image string, properties Proper
 		len(properties.Conf) > 0 || len(properties.Secret) > 0 || properties.Cloud != nil {
 		return fmt.Errorf("evaluation owns its image, command and runtime properties; use credential env traits")
 	}
-	if properties.StartTime != 0 || properties.Schedule != "" || properties.RunPolicy != "" ||
-		properties.JobRetryPolicy != nil || properties.SuccessfulJobsHistoryLimit != nil || properties.FailedJobsHistoryLimit != nil {
+	if properties.StartTime != 0 || properties.RunPolicy != "" || properties.JobRetryPolicy != nil {
 		return fmt.Errorf("evaluation only supports immediate execution without scheduling, runPolicy or retry overrides")
 	}
 	if len(traits.Init)+len(traits.Sidecar)+len(traits.Ingress)+len(traits.Service)+len(traits.RBAC)+len(traits.Probes)+len(traits.TargetWorkEnv) > 0 ||

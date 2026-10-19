@@ -184,7 +184,7 @@ func componentDeploysService(component *apisv1.ApplicationComponent) bool {
 		return false
 	}
 	switch component.ComponentType {
-	case config.InstantJob, config.ScheduledJob, config.CloudJob:
+	case config.InstantJob, config.CloudJob:
 		return false
 	default:
 		return true
@@ -196,7 +196,7 @@ func componentDeploysIngress(component *apisv1.ApplicationComponent) bool {
 		return false
 	}
 	switch component.ComponentType {
-	case config.ServerJob, config.StoreJob, config.InstantJob, config.ScheduledJob:
+	case config.ServerJob, config.StoreJob, config.InstantJob:
 		return true
 	default:
 		return false

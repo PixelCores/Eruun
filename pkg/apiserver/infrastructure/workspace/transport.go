@@ -134,10 +134,6 @@ func (t *tenantTransport) prepare(kind string, obj map[string]interface{}) error
 				}
 			}
 		}
-	case "cronjobs":
-		if jt := mapAt(specification, "jobTemplate"); jt != nil {
-			return t.prepare("jobs", jt)
-		}
 	case "pods":
 		return securePodMap(specification)
 	case "services":

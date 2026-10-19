@@ -72,7 +72,7 @@ func completedJobForFinalize(jobTask *model.JobTask) (*batchv1.Job, bool) {
 	if jobTask.Status != config.StatusCompleted {
 		return nil, false
 	}
-	if !config.IsInstantJobType(config.JobType(jobTask.JobType)) && jobTask.JobType != string(config.JobDeployScheduled) {
+	if !config.IsInstantJobType(config.JobType(jobTask.JobType)) {
 		return nil, false
 	}
 	jobObj, err := batchJobFromJobInfo(jobTask)

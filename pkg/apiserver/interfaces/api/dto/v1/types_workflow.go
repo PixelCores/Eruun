@@ -14,8 +14,6 @@ type Traits = spec.Traits
 
 type WorkflowProperties struct {
 	Policies   []string `json:"policies"`
-	Path       string   `json:"path,omitempty"`
-	Container  string   `json:"container,omitempty"`
 	InitSQLURL string   `json:"initSqlUrl,omitempty"`
 }
 
@@ -317,31 +315,4 @@ type WorkflowSubStepDetail struct {
 	WorkflowType    config.JobType       `json:"jobType,omitempty"`
 	Components      []string             `json:"components,omitempty"`
 	Properties      []WorkflowProperties `json:"properties,omitempty"`
-}
-
-type CronJobInfo struct {
-	Name                       string     `json:"name"`
-	Namespace                  string     `json:"namespace"`
-	Schedule                   string     `json:"schedule"`
-	Suspend                    bool       `json:"suspend"`
-	ConcurrencyPolicy          string     `json:"concurrencyPolicy,omitempty"`
-	SuccessfulJobsHistoryLimit *int32     `json:"successfulJobsHistoryLimit,omitempty"`
-	FailedJobsHistoryLimit     *int32     `json:"failedJobsHistoryLimit,omitempty"`
-	LastScheduleTime           *time.Time `json:"lastScheduleTime,omitempty"`
-	LastSuccessfulTime         *time.Time `json:"lastSuccessfulTime,omitempty"`
-	CreateTime                 time.Time  `json:"createTime"`
-}
-
-type ScheduledJobInfo struct {
-	AppID              string    `json:"appId"`
-	AppName            string    `json:"appName"`
-	AppNamespace       string    `json:"appNamespace"`
-	ComponentName      string    `json:"componentName"`
-	ComponentNamespace string    `json:"componentNamespace"`
-	Image              string    `json:"image,omitempty"`
-	Schedule           string    `json:"schedule,omitempty"`
-	StartTime          int64     `json:"startTime,omitempty"`
-	RunPolicy          string    `json:"runPolicy,omitempty"`
-	CreateTime         time.Time `json:"createTime"`
-	UpdateTime         time.Time `json:"updateTime"`
 }

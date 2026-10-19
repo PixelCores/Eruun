@@ -42,10 +42,7 @@ func PrepareTask(task *model.JobTask, appID string, w *model.Workspace, cfg spec
 		resource = "ingresses"
 	case config.JobDeployInstant, config.JobCommand, config.JobEval:
 		resource = "jobs"
-	case config.JobDeployScheduled:
-		// Scheduled execution supports CronJob and one-shot Job payloads.
-		resource = "cronjobs"
-	case config.JobDeployCallback, config.JobCleanupResources, config.JobDatabaseReset, config.JobLogArchiveUpload, config.JobVersionRestart:
+	case config.JobDeployCallback, config.JobCleanupResources, config.JobDatabaseReset, config.JobVersionRestart:
 		return false, nil
 	default:
 		return false, bcode.ErrForbidden
@@ -57,13 +54,6 @@ func PrepareTask(task *model.JobTask, appID string, w *model.Workspace, cfg spec
 	var obj map[string]interface{}
 	if json.Unmarshal(raw, &obj) != nil || obj == nil {
 		return false, bcode.ErrForbidden
-	}
-	if resource == "cronjobs" {
-		spec, _ := obj["spec"].(map[string]interface{})
-		template, _ := spec["jobTemplate"].(map[string]interface{})
-		if template == nil {
-			resource = "jobs"
-		}
 	}
 	if err = workspace.PrepareResource(w.Namespace, resource, obj, cfg); err != nil {
 		return false, err

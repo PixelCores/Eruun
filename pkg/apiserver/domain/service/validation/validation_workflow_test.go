@@ -671,210 +671,9 @@ func TestValidationService_TryWorkflow_UnsupportedWorkflowTypeIsRejected(t *test
 	requireValidationError(t, resp.Errors, "workflowType", apisv1.ErrCodeInvalidWorkflowStepType)
 }
 
-func TestValidationService_TryApplication_LogArchiveUploadRequiresPath(t *testing.T) {
-	svc := &validationServiceImpl{}
-
-	resp := svc.TryApplication(context.Background(), apisv1.CreateApplicationsRequest{
-		Name:      "log-app",
-		Namespace: "default",
-		Components: []apisv1.CreateComponentRequest{{
-			Name:          "api",
-			ComponentType: config.ServerJob,
-			Image:         "nginx:latest",
-		}},
-		Workflow: []apisv1.CreateWorkflowStepRequest{{
-			Name:         "archive-api",
-			WorkflowType: config.JobLogArchiveUpload,
-			Mode:         "StepByStep",
-			Components:   []string{"api"},
-		}},
-	})
-
-	require.False(t, resp.Valid)
-	requireValidationError(t, resp.Errors, "workflow[0].properties.path", apisv1.ErrCodeMissingRequiredField)
-}
-
-func TestValidationService_TryApplication_LogArchiveUploadAllowsNameBasedStep(t *testing.T) {
-	svc := &validationServiceImpl{}
-
-	resp := svc.TryApplication(context.Background(), apisv1.CreateApplicationsRequest{
-		Name:      "log-app",
-		Namespace: "default",
-		Components: []apisv1.CreateComponentRequest{{
-			Name:          "api",
-			ComponentType: config.ServerJob,
-			Image:         "nginx:latest",
-		}},
-		Workflow: []apisv1.CreateWorkflowStepRequest{{
-			Name:         "api",
-			WorkflowType: config.JobLogArchiveUpload,
-			Mode:         "StepByStep",
-			Properties: apisv1.WorkflowProperties{
-				Path: "/var/log/api",
-			},
-		}},
-	})
-
-	require.True(t, resp.Valid, "expected name-based log archive step to pass: %+v", resp.Errors)
-}
-
-func TestValidationService_TryApplication_LogArchiveUploadRejectsNonPodComponent(t *testing.T) {
-	svc := &validationServiceImpl{}
-
-	resp := svc.TryApplication(context.Background(), apisv1.CreateApplicationsRequest{
-		Name:      "log-app",
-		Namespace: "default",
-		Components: []apisv1.CreateComponentRequest{{
-			Name:          "app-config",
-			ComponentType: config.ConfJob,
-			Properties: apisv1.Properties{
-				Conf: map[string]string{"app.yaml": "debug: true"},
-			},
-		}},
-		Workflow: []apisv1.CreateWorkflowStepRequest{{
-			Name:         "archive-config",
-			WorkflowType: config.JobLogArchiveUpload,
-			Mode:         "StepByStep",
-			Components:   []string{"app-config"},
-			Properties: apisv1.WorkflowProperties{
-				Path: "/var/log/app",
-			},
-		}},
-	})
-
-	require.False(t, resp.Valid)
-	requireValidationError(t, resp.Errors, "workflow[0].components[0]", apisv1.ErrCodeInvalidWorkflowStepType)
-}
-
-func TestValidationService_TryWorkflow_LogArchiveUploadSubStepRequiresPath(t *testing.T) {
-	store := newInMemoryAppStore()
-	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "log-app", Namespace: "default"}
-	store.components["api"] = &model.ApplicationComponent{
-		AppID:         "app-1",
-		Name:          "api",
-		Namespace:     "default",
-		ComponentType: config.ServerJob,
-		Image:         "nginx:latest",
-	}
-	repos := newMockServiceWithStore(store)
-	svc := &validationServiceImpl{AppRepo: repos.AppRepo, ComponentRepo: repos.ComponentRepo}
-
-	resp := svc.TryWorkflow(context.Background(), "app-1", apisv1.TryWorkflowRequest{
-		Name: "log-flow",
-		Workflow: []apisv1.CreateWorkflowStepRequest{{
-			Name: "archive-group",
-			Mode: "StepByStep",
-			SubSteps: []apisv1.CreateWorkflowSubStepRequest{{
-				Name:         "archive-api",
-				WorkflowType: config.JobLogArchiveUpload,
-				Components:   []string{"api"},
-			}},
-		}},
-	})
-
-	require.False(t, resp.Valid)
-	requireValidationError(t, resp.Errors, "workflow[0].subSteps[0].properties.path", apisv1.ErrCodeMissingRequiredField)
-}
-
-func TestValidationService_TryWorkflow_LogArchiveUploadAllowsNameBasedStep(t *testing.T) {
-	store := newInMemoryAppStore()
-	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "log-app", Namespace: "default"}
-	store.components["api"] = &model.ApplicationComponent{
-		AppID:         "app-1",
-		Name:          "api",
-		Namespace:     "default",
-		ComponentType: config.ServerJob,
-		Image:         "nginx:latest",
-	}
-	repos := newMockServiceWithStore(store)
-	svc := &validationServiceImpl{AppRepo: repos.AppRepo, ComponentRepo: repos.ComponentRepo}
-
-	resp := svc.TryWorkflow(context.Background(), "app-1", apisv1.TryWorkflowRequest{
-		Name: "log-flow",
-		Workflow: []apisv1.CreateWorkflowStepRequest{{
-			Name:         "api",
-			WorkflowType: config.JobLogArchiveUpload,
-			Mode:         "StepByStep",
-			Properties: apisv1.WorkflowProperties{
-				Path: "/var/log/api",
-			},
-		}},
-	})
-
-	require.True(t, resp.Valid, "expected name-based log archive step to pass: %+v", resp.Errors)
-}
-
-func TestValidationService_TryWorkflow_LogArchiveUploadRejectsNonPodComponent(t *testing.T) {
-	store := newInMemoryAppStore()
-	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "log-app", Namespace: "default"}
-	store.components["app-config"] = &model.ApplicationComponent{
-		AppID:         "app-1",
-		Name:          "app-config",
-		Namespace:     "default",
-		ComponentType: config.ConfJob,
-	}
-	repos := newMockServiceWithStore(store)
-	svc := &validationServiceImpl{AppRepo: repos.AppRepo, ComponentRepo: repos.ComponentRepo}
-
-	resp := svc.TryWorkflow(context.Background(), "app-1", apisv1.TryWorkflowRequest{
-		Name: "log-flow",
-		Workflow: []apisv1.CreateWorkflowStepRequest{{
-			Name:         "archive-config",
-			WorkflowType: config.JobLogArchiveUpload,
-			Mode:         "StepByStep",
-			Components:   []string{"app-config"},
-			Properties: apisv1.WorkflowProperties{
-				Path: "/var/log/app",
-			},
-		}},
-	})
-
-	require.False(t, resp.Valid)
-	requireValidationError(t, resp.Errors, "workflow[0].components[0]", apisv1.ErrCodeInvalidWorkflowStepType)
-}
-
-func TestValidationService_TryWorkflow_PropertiesArrayValidatesEveryLogArchivePath(t *testing.T) {
-	store := newInMemoryAppStore()
-	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "log-app", Namespace: "default"}
-	store.components["api"] = &model.ApplicationComponent{
-		AppID:         "app-1",
-		Name:          "api",
-		Namespace:     "default",
-		ComponentType: config.ServerJob,
-		Image:         "nginx:latest",
-	}
-	store.components["worker"] = &model.ApplicationComponent{
-		AppID:         "app-1",
-		Name:          "worker",
-		Namespace:     "default",
-		ComponentType: config.ServerJob,
-		Image:         "nginx:latest",
-	}
-	repos := newMockServiceWithStore(store)
-	svc := &validationServiceImpl{AppRepo: repos.AppRepo, ComponentRepo: repos.ComponentRepo}
-
-	req := tryWorkflowRequestFromUpdateJSON(t, `{
-		"name": "log-flow",
-		"workflow": [{
-			"name": "archive",
-			"jobType": "log_archive_upload",
-			"mode": "StepByStep",
-			"properties": [
-				{"policies": ["api"], "path": "/var/log/api"},
-				{"policies": ["worker"]}
-			]
-		}]
-	}`)
-
-	resp := svc.TryWorkflow(context.Background(), "app-1", req)
-
-	require.False(t, resp.Valid)
-	requireValidationError(t, resp.Errors, "workflow[0].properties[1].path", apisv1.ErrCodeMissingRequiredField)
-}
-
 func TestValidationService_TryWorkflow_PropertiesArrayValidatesEveryComponentRef(t *testing.T) {
 	store := newInMemoryAppStore()
-	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "log-app", Namespace: "default"}
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "deploy-app", Namespace: "default"}
 	store.components["api"] = &model.ApplicationComponent{
 		AppID:         "app-1",
 		Name:          "api",
@@ -886,14 +685,14 @@ func TestValidationService_TryWorkflow_PropertiesArrayValidatesEveryComponentRef
 	svc := &validationServiceImpl{AppRepo: repos.AppRepo, ComponentRepo: repos.ComponentRepo}
 
 	req := tryWorkflowRequestFromUpdateJSON(t, `{
-		"name": "log-flow",
+		"name": "deploy-flow",
 		"workflow": [{
-			"name": "archive",
-			"jobType": "log_archive_upload",
+			"name": "deploy",
+			"jobType": "deploy",
 			"mode": "StepByStep",
 			"properties": [
-				{"policies": ["api"], "path": "/var/log/api"},
-				{"policies": ["missing"], "path": "/var/log/missing"}
+				{"policies": ["api"]},
+				{"policies": ["missing"]}
 			]
 		}]
 	}`)
@@ -1005,51 +804,9 @@ func TestValidationService_TryWorkflow_PropertiesArrayAllowsMatchingComponents(t
 	require.True(t, resp.Valid, "expected properties policies to match explicit components: %+v", resp.Errors)
 }
 
-func TestValidationService_TryWorkflow_SubStepPropertiesArrayValidatesEveryLogArchivePath(t *testing.T) {
-	store := newInMemoryAppStore()
-	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "log-app", Namespace: "default"}
-	store.components["api"] = &model.ApplicationComponent{
-		AppID:         "app-1",
-		Name:          "api",
-		Namespace:     "default",
-		ComponentType: config.ServerJob,
-		Image:         "nginx:latest",
-	}
-	store.components["worker"] = &model.ApplicationComponent{
-		AppID:         "app-1",
-		Name:          "worker",
-		Namespace:     "default",
-		ComponentType: config.ServerJob,
-		Image:         "nginx:latest",
-	}
-	repos := newMockServiceWithStore(store)
-	svc := &validationServiceImpl{AppRepo: repos.AppRepo, ComponentRepo: repos.ComponentRepo}
-
-	req := tryWorkflowRequestFromUpdateJSON(t, `{
-		"name": "log-flow",
-		"workflow": [{
-			"name": "archive-group",
-			"mode": "StepByStep",
-			"subSteps": [{
-				"name": "archive-sub",
-				"jobType": "log_archive_upload",
-				"properties": [
-					{"policies": ["api"], "path": "/var/log/api"},
-					{"policies": ["worker"]}
-				]
-			}]
-		}]
-	}`)
-
-	resp := svc.TryWorkflow(context.Background(), "app-1", req)
-
-	require.False(t, resp.Valid)
-	requireValidationError(t, resp.Errors, "workflow[0].subSteps[0].properties[1].path", apisv1.ErrCodeMissingRequiredField)
-}
-
 func TestValidationService_TryWorkflow_SinglePropertiesArrayMergesExplicitComponents(t *testing.T) {
 	store := newInMemoryAppStore()
-	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "log-app", Namespace: "default"}
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "deploy-app", Namespace: "default"}
 	store.components["api"] = &model.ApplicationComponent{
 		AppID:         "app-1",
 		Name:          "api",
@@ -1061,13 +818,13 @@ func TestValidationService_TryWorkflow_SinglePropertiesArrayMergesExplicitCompon
 	svc := &validationServiceImpl{AppRepo: repos.AppRepo, ComponentRepo: repos.ComponentRepo}
 
 	req := tryWorkflowRequestFromUpdateJSON(t, `{
-		"name": "log-flow",
+		"name": "deploy-flow",
 		"workflow": [{
-			"name": "archive-api",
-			"jobType": "log_archive_upload",
+			"name": "deploy-api",
+			"jobType": "deploy",
 			"mode": "StepByStep",
 			"components": ["api"],
-			"properties": [{"path": "/var/log/api"}]
+			"properties": [{"policies": []}]
 		}]
 	}`)
 

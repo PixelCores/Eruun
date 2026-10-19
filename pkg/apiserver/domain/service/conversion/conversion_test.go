@@ -1270,7 +1270,7 @@ spec:
 	require.Equal(t, "fast", storage.StorageClass)
 }
 
-func TestConvertKubeResources_JobAndCronJob(t *testing.T) {
+func TestConvertKubeResources_JobAndUnsupportedCronJob(t *testing.T) {
 	yamlText := `
 apiVersion: batch/v1
 kind: Job
@@ -1325,17 +1325,8 @@ spec:
 	require.Equal(t, "recreate", once.Properties.RunPolicy)
 	require.Equal(t, int64(1710000000), once.Properties.StartTime)
 
-	cron := findComponent(resp.Components, "cron-job")
-	require.NotNil(t, cron)
-	require.Equal(t, config.ScheduledJob, cron.ComponentType)
-	require.Equal(t, "busybox:1.36", cron.Image)
-	require.Equal(t, "*/5 * * * *", cron.Properties.Schedule)
-	if cron.Properties.SuccessfulJobsHistoryLimit != nil {
-		require.Equal(t, int32(2), *cron.Properties.SuccessfulJobsHistoryLimit)
-	}
-	if cron.Properties.FailedJobsHistoryLimit != nil {
-		require.Equal(t, int32(1), *cron.Properties.FailedJobsHistoryLimit)
-	}
+	require.Nil(t, findComponent(resp.Components, "cron-job"))
+	require.Contains(t, resp.Warnings, "unsupported kind CronJob ignored")
 }
 
 func TestConvertKubeResources_TargetWorkEnv(t *testing.T) {

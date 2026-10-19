@@ -248,7 +248,7 @@ func TestUpdateJobInfoStatusUsesResultOutboxFence(t *testing.T) {
 		t.Run(claimState, func(t *testing.T) {
 			ctx := context.Background()
 			store := &resultLeaseClockStore{resultOutboxTestStore: newResultOutboxTestStore(), now: time.Now().UTC()}
-			payload := &JobResultPayload{TaskID: "task-result", Name: "job-svc-a", Namespace: "default", JobType: string(config.JobDeployScheduled), ServiceName: "svc-a", ExecutionKey: "execution-current", RunGeneration: 2}
+			payload := &JobResultPayload{TaskID: "task-result", Name: "job-svc-a", Namespace: "default", JobType: string(config.JobDeployInstant), ServiceName: "svc-a", ExecutionKey: "execution-current", RunGeneration: 2}
 			for id := 1; id <= 3; id++ {
 				record := testResultJobInfo(id, payload)
 				record.Status = string(config.StatusDistributed)

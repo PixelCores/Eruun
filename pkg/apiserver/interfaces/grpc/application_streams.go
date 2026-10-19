@@ -8,7 +8,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	eruunv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1"
@@ -186,28 +185,4 @@ func (s *ApplicationsServer) StreamComponentShell(req *eruunv1.ComponentShellReq
 			}
 		}
 	}
-}
-
-func (s *ApplicationsServer) DownloadLogArchive(req *eruunv1.LogArchiveRPCRequest, stream eruunv1.ApplicationService_DownloadLogArchiveServer) error {
-	if req == nil || appID(req.AppId) != nil {
-		return rpcError(bcode.ErrApplicationConfig)
-	}
-	input, err := decodeTypedRequest[apis.LogArchiveDownloadRequest](req.Request)
-	if err != nil {
-		return rpcError(bcode.ErrApplicationConfig)
-	}
-	if input.JobType != "" && input.JobType != config.JobLogArchiveUpload {
-		return rpcError(bcode.ErrApplicationConfig)
-	}
-	if len(input.Components) != 1 || strings.TrimSpace(input.Components[0]) == "" {
-		return rpcError(bcode.ErrApplicationConfig)
-	}
-	if strings.TrimSpace(input.Path) == "" {
-		return rpcError(bcode.ErrComponentFilePathInvalid)
-	}
-	archive, err := s.Applications.DownloadLogArchive(stream.Context(), req.AppId, input)
-	if err != nil {
-		return rpcError(err)
-	}
-	return streamComponentFile(stream.Context(), archive, stream.Send)
 }

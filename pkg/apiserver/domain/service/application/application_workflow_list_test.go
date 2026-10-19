@@ -22,7 +22,6 @@ func TestConvertWorkflowStepByTemplatePhasesGrouping(t *testing.T) {
 		{Name: "batch-runner", ComponentType: config.InstantJob},
 		{Name: "shared-secret", ComponentType: config.SecretJob},
 		{Name: "mysql", ComponentType: config.StoreJob},
-		{Name: "nightly", ComponentType: config.ScheduledJob},
 		{Name: "web-access", ComponentType: config.Service},
 		{Name: "legacy", ComponentType: config.JobType("legacy")},
 	}
@@ -45,7 +44,7 @@ func TestConvertWorkflowStepByTemplatePhasesGrouping(t *testing.T) {
 	require.ElementsMatch(t, []string{"shared-config", "shared-secret"}, steps.Steps[1].ComponentNames())
 	require.ElementsMatch(t, []string{"mysql"}, steps.Steps[2].ComponentNames())
 	require.ElementsMatch(t, []string{"batch-runner"}, steps.Steps[3].ComponentNames())
-	require.ElementsMatch(t, []string{"frontend", "nightly", "web-access", "legacy"}, steps.Steps[4].ComponentNames())
+	require.ElementsMatch(t, []string{"frontend", "web-access", "legacy"}, steps.Steps[4].ComponentNames())
 }
 
 func TestListApplicationWorkflows(t *testing.T) {

@@ -44,14 +44,6 @@
         "id": "tmpl-mixed-stack-id",
         "target": "tpl-web"
       }
-    },
-    {
-      "name": "tenant-a-nightly",
-      "type": "scheduledjob",
-      "tmp": {
-        "id": "tmpl-mixed-stack-id",
-        "target": "tpl-cron"
-      }
     }
   ]
 }

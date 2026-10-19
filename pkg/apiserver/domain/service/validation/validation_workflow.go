@@ -181,8 +181,6 @@ func (v *validationServiceImpl) validateWorkflowSteps(steps []apisv1.CreateWorkf
 		}
 
 		propertyItems, propertyErrors := workflowPropertiesValidationItems(
-			step.Name,
-			step.WorkflowType,
 			step.Components,
 			step.Properties,
 			step.WorkflowPropertiesList(),
@@ -202,7 +200,6 @@ func (v *validationServiceImpl) validateWorkflowSteps(steps []apisv1.CreateWorkf
 
 		for _, item := range propertyItems {
 			errors = append(errors, validateWorkflowPropertyInitSQLURL(step.WorkflowType, item, len(step.SubSteps) == 0)...)
-			errors = append(errors, validateLogArchiveUploadWorkflowStep(step.WorkflowType, item.properties, item.componentRefs, componentIndex, item.propertiesField)...)
 			errors = append(errors, validateWorkflowComponentRefs(item.componentRefs, componentIndex)...)
 		}
 
@@ -227,8 +224,6 @@ func (v *validationServiceImpl) validateWorkflowSteps(steps []apisv1.CreateWorkf
 			}
 
 			subPropertyItems, subPropertyErrors := workflowPropertiesValidationItems(
-				subStep.Name,
-				subStep.WorkflowType,
 				subStep.Components,
 				subStep.Properties,
 				subStep.WorkflowPropertiesList(),
@@ -239,7 +234,6 @@ func (v *validationServiceImpl) validateWorkflowSteps(steps []apisv1.CreateWorkf
 
 			for _, item := range subPropertyItems {
 				errors = append(errors, validateWorkflowPropertyInitSQLURL(subStep.WorkflowType, item, true)...)
-				errors = append(errors, validateLogArchiveUploadWorkflowStep(subStep.WorkflowType, item.properties, item.componentRefs, componentIndex, item.propertiesField)...)
 				errors = append(errors, validateWorkflowComponentRefs(item.componentRefs, componentIndex)...)
 			}
 		}
@@ -270,19 +264,19 @@ type workflowPropertiesValidationItem struct {
 	componentRefs   []workflowComponentValidationRef
 }
 
-func workflowPropertiesValidationItems(name string, jobType config.JobType, explicit []string, properties apisv1.WorkflowProperties, propertiesList []apisv1.WorkflowProperties, fromArray bool, fieldPrefix string) ([]workflowPropertiesValidationItem, []apisv1.ValidationError) {
+func workflowPropertiesValidationItems(explicit []string, properties apisv1.WorkflowProperties, propertiesList []apisv1.WorkflowProperties, fromArray bool, fieldPrefix string) ([]workflowPropertiesValidationItem, []apisv1.ValidationError) {
 	if !fromArray {
 		return []workflowPropertiesValidationItem{{
 			properties:      properties,
 			propertiesField: fmt.Sprintf("%s.properties", fieldPrefix),
-			componentRefs:   workflowTargetComponentRefs(name, jobType, explicit, properties.Policies, fmt.Sprintf("%s.components", fieldPrefix), fmt.Sprintf("%s.components", fieldPrefix)),
+			componentRefs:   workflowTargetComponentRefs(explicit, properties.Policies, fmt.Sprintf("%s.components", fieldPrefix), fmt.Sprintf("%s.components", fieldPrefix)),
 		}}, nil
 	}
 	if len(propertiesList) == 0 {
 		return []workflowPropertiesValidationItem{{
 			properties:      apisv1.WorkflowProperties{},
 			propertiesField: fmt.Sprintf("%s.properties", fieldPrefix),
-			componentRefs:   workflowTargetComponentRefs(name, jobType, explicit, nil, fmt.Sprintf("%s.components", fieldPrefix), fmt.Sprintf("%s.components", fieldPrefix)),
+			componentRefs:   workflowTargetComponentRefs(explicit, nil, fmt.Sprintf("%s.components", fieldPrefix), fmt.Sprintf("%s.components", fieldPrefix)),
 		}}, nil
 	}
 
@@ -294,7 +288,7 @@ func workflowPropertiesValidationItems(name string, jobType config.JobType, expl
 		policiesField := fmt.Sprintf("%s.policies", propertiesField)
 		componentRefs := workflowPolicyComponentRefs(item.Policies, policiesField)
 		if len(propertiesList) == 1 {
-			componentRefs = workflowTargetComponentRefs(name, jobType, explicit, item.Policies, fmt.Sprintf("%s.components", fieldPrefix), policiesField)
+			componentRefs = workflowTargetComponentRefs(explicit, item.Policies, fmt.Sprintf("%s.components", fieldPrefix), policiesField)
 		} else if len(componentRefs) == 0 {
 			errors = append(errors, apisv1.ValidationError{
 				Field:   policiesField,
@@ -327,20 +321,9 @@ func workflowPropertiesComponentRefCount(items []workflowPropertiesValidationIte
 	return count
 }
 
-func workflowTargetComponentRefs(name string, jobType config.JobType, explicit []string, policies []string, explicitField string, policiesField string) []workflowComponentValidationRef {
+func workflowTargetComponentRefs(explicit []string, policies []string, explicitField string, policiesField string) []workflowComponentValidationRef {
 	refs := workflowComponentRefs(explicit, explicitField, nil)
-	refs = workflowComponentRefs(policies, policiesField, refs)
-	if len(refs) > 0 || config.JobType(strings.TrimSpace(string(jobType))) != config.JobLogArchiveUpload {
-		return refs
-	}
-	name = strings.ToLower(strings.TrimSpace(name))
-	if name == "" {
-		return nil
-	}
-	return []workflowComponentValidationRef{{
-		name:  name,
-		field: fmt.Sprintf("%s[0]", explicitField),
-	}}
+	return workflowComponentRefs(policies, policiesField, refs)
 }
 
 func workflowPolicyComponentRefs(policies []string, policiesField string) []workflowComponentValidationRef {
@@ -421,34 +404,6 @@ func validateWorkflowComponentRefs(componentRefs []workflowComponentValidationRe
 				Field:   ref.field,
 				Code:    apisv1.ErrCodeComponentNotFound,
 				Message: fmt.Sprintf("component '%s' not found in application", ref.name),
-			})
-		}
-	}
-	return errors
-}
-
-func validateLogArchiveUploadWorkflowStep(jobType config.JobType, properties apisv1.WorkflowProperties, componentRefs []workflowComponentValidationRef, componentIndex workflowComponentIndex, propertiesField string) []apisv1.ValidationError {
-	if config.JobType(strings.TrimSpace(string(jobType))) != config.JobLogArchiveUpload {
-		return nil
-	}
-	var errors []apisv1.ValidationError
-	if strings.TrimSpace(properties.Path) == "" {
-		errors = append(errors, apisv1.ValidationError{
-			Field:   fmt.Sprintf("%s.path", propertiesField),
-			Code:    apisv1.ErrCodeMissingRequiredField,
-			Message: fmt.Sprintf("properties.path is required for workflow jobType: %s", jobType),
-		})
-	}
-	for _, ref := range componentRefs {
-		componentType, ok := componentIndex[ref.name]
-		if !ok {
-			continue
-		}
-		if !config.ComponentTypeUsesPods(componentType) {
-			errors = append(errors, apisv1.ValidationError{
-				Field:   ref.field,
-				Code:    apisv1.ErrCodeInvalidWorkflowStepType,
-				Message: fmt.Sprintf("component '%s' with type '%s' does not use pods for workflow jobType: %s", ref.name, componentType, jobType),
 			})
 		}
 	}

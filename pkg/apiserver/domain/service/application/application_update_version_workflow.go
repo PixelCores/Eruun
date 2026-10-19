@@ -167,7 +167,7 @@ func shouldMarkInitialDeployingComponent(component *model.ApplicationComponent) 
 
 func componentSupportsInitialDeployingStatus(componentType config.JobType) bool {
 	switch config.JobType(strings.TrimSpace(string(componentType))) {
-	case config.ServerJob, config.StoreJob, config.InstantJob, config.ScheduledJob, config.ConfJob, config.SecretJob:
+	case config.ServerJob, config.StoreJob, config.InstantJob, config.ConfJob, config.SecretJob:
 		return true
 	default:
 		return false

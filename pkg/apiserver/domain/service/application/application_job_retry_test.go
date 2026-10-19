@@ -22,7 +22,6 @@ func TestJobRetryPolicyWriteValidation(t *testing.T) {
 		valid     bool
 	}{
 		{"instant", config.InstantJob, 0, "stop", true},
-		{"scheduled", config.ScheduledJob, 0, "stop", false},
 		{"delayed", config.InstantJob, 1, "stop", false},
 		{"bad action", config.InstantJob, 0, "invalid", false},
 	} {
@@ -36,7 +35,7 @@ func TestJobRetryPolicyWriteValidation(t *testing.T) {
 			}
 		})
 	}
-	_, err := normalizeVersionUpdateJobFailurePolicies([]apisv1.ComponentUpdateSpec{{Name: "job", Action: "add", ComponentType: config.ScheduledJob,
+	_, err := normalizeVersionUpdateJobFailurePolicies([]apisv1.ComponentUpdateSpec{{Name: "job", Action: "add", ComponentType: config.ServerJob,
 		Properties: &apisv1.Properties{JobRetryPolicy: &workflowconfig.JobRetryPolicy{OnOOM: "stop"}}}}, nil)
 	require.ErrorContains(t, err, "jobRetryPolicy")
 	err = validateNoNestedJobFailurePoliciesForWrite(apisv1.Traits{Init: []spec.InitTraitSpec{{Properties: apisv1.Properties{JobRetryPolicy: &workflowconfig.JobRetryPolicy{OnOOM: "stop"}}}}}, "component[0].traits")

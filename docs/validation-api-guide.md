@@ -27,7 +27,7 @@ Try Application 会校验根级 `failurePolicy`。非法值返回 `INVALID_WORKF
 
 `GET /api/v1/schemas/v1/canonical.json` 的 `$defs.Job` 描述独立 Job，`$defs.EvaluationTraitSpec` 描述两种入口共享的评测 Trait。独立 Job 的提交校验在 `POST /api/v1/jobs` 中执行；Try Application 仍接收完整 Application，不能直接提交独立 Job 请求。详见 [Canonical JSON Profile](canonical-json-profile.md)。
 
-Try Application 会执行与 `POST /api/v1/applications` 一致的资源名校验：提前计算 Deployment/StatefulSet/Service/Ingress/Job/CronJob/ConfigMap/Secret 等独占资源名，并检查同一请求内以及同命名空间普通应用之间的冲突。资源命名遵循当前运行时契约：非 shared 组件使用 `appName + componentName`，shared 组件使用 `componentName`，模板版本不参与运行时资源名。standalone PVC 只校验 Kubernetes 名称合法性，允许同命名空间内多个组件或应用共享；`tmpCreate: true` 的 StatefulSet `volumeClaimTemplates` 不作为 standalone PVC 参与冲突校验。
+Try Application 会执行与 `POST /api/v1/applications` 一致的资源名校验：提前计算 Deployment/StatefulSet/Service/Ingress/Job/ConfigMap/Secret 等独占资源名，并检查同一请求内以及同命名空间普通应用之间的冲突。资源命名遵循当前运行时契约：非 shared 组件使用 `appName + componentName`，shared 组件使用 `componentName`，模板版本不参与运行时资源名。standalone PVC 只校验 Kubernetes 名称合法性，允许同命名空间内多个组件或应用共享；`tmpCreate: true` 的 StatefulSet `volumeClaimTemplates` 不作为 standalone PVC 参与冲突校验。
 
 当请求携带 `ID` 用于校验更新/upsert 时，Try Application 会先读取已保存的 App，并以其 `namespace`、`version`、`templateEnabled` 等元数据作为默认值；请求体中显式传入的字段会覆盖这些默认值。这样 dry-run 的资源名校验与真实创建/更新路径保持一致。
 
@@ -56,17 +56,11 @@ curl -X POST http://localhost:8000/api/v1/applications/try \
 
 **请求体**: 与 `PUT /api/v1/applications/:appID/workflow` 的更新工作流请求体同构，步骤只使用根级 `workflow`。如果包含 `callback`，Try Workflow 会按真实更新路径校验 method、URL、timeout 与 URL 安全策略，但不会写入 Workflow。Try Workflow 也会校验顶层 `failurePolicy`，非法值返回 `INVALID_WORKFLOW_FAILURE_POLICY`，错误路径为 `/failurePolicy`；显式空值表示重置为默认策略，返回的 `normalizedSpec` 会将其写成 `cleanup_all`，而省略字段仍表示更新时保留现值。
 
-Workflow 的组件引用（`components`、`properties.policies`、`properties[].policies`、`subSteps[]` 以及 `log_archive_upload` 的 step name fallback）按大小写不敏感方式匹配已存在组件；真实创建或更新工作流时，持久化引用会使用组件自身 `Name` 的实际大小写。
+Workflow 的组件引用（`components`、`properties.policies`、`properties[].policies`、`subSteps[]`）按大小写不敏感方式匹配已存在组件；真实创建或更新工作流时，持久化引用会使用组件自身 `Name` 的实际大小写。
 
 顶层 `workflow[]` 的 `mode` 只接受省略、空字符串、`StepByStep` 或 `DAG`；空值仍默认为 `StepByStep`。非空步骤名按大小写不敏感方式判重。Try Application / Try Workflow 与真实应用创建、工作流更新使用相同的 mode 和重名规则：Try 分别返回 `INVALID_WORKFLOW_MODE`（`/workflow/{index}/mode`）和 `DUPLICATE_WORKFLOW_STEP`（`/workflow/{index}/name`），写入接口返回工作流配置错误且不保存请求。
 
 迁移旧请求时，请将未知 mode 改为上述合法值，并为重名步骤指定不同名称；写入接口不再将未知 mode 静默当作 `StepByStep`。`stepType` 的既有非法值拒绝规则保持不变。
-
-Try Application 与 Try Workflow 都会校验公开 workflow jobType 的附加契约。对于 `log_archive_upload`：
-
-- `properties.path` 必填；缺失时返回 `MISSING_REQUIRED_FIELD`。
-- 目标组件必须是会产生 Pod 的组件类型（`webservice`、`store`、`job`、`scheduledjob`）；`config`、`secret`、`cloudjob` 等非 Pod 组件会返回 `INVALID_WORKFLOW_STEP_TYPE`。
-- 顶层 step 与 `subSteps[]` 使用同一套校验规则。
 
 **示例调用**:
 ```bash
@@ -129,10 +123,7 @@ curl -X POST http://localhost:8000/api/v1/applications/your-app-id/workflow/try 
 
 ## 组件类型补充说明
 
-新增两类 Job 组件类型：
-
-- `job`：即时执行 Job，对应 Kubernetes Job。
-- `scheduledjob`：定时执行 Job，对应 Kubernetes CronJob。
+`job` 组件即时或按 `startTime` 延迟执行一次，对应 Kubernetes Job。周期执行使用 Workflow 调度（`/applications/:appID/workflow/schedule`）或可复用 Job 定义的 cron 触发，见 [空间 Job](workspace-jobs-api.md)。
 
 Job 组件暂时只支持最小集能力：
 
@@ -141,14 +132,10 @@ Job 组件暂时只支持最小集能力：
 
 校验要点：
 
-- `job` 不允许 `properties.schedule`，允许 `properties.startTime`。
-- `scheduledjob` 必须提供 `properties.schedule`。
-- `properties.startTime` 使用 Unix 秒时间戳（仅对 `job` 生效）。
-- Cron 表达式支持 **5 段或 6 段**；6 段时秒字段必须为 0，系统会去掉秒字段用于 CronJob。
+- `properties.startTime` 使用 Unix 秒时间戳（仅对 `job` 生效）；组件 properties 不接受 `schedule`。
 - `properties.runPolicy` 可选，支持 `recreate` / `skip_if_completed`，默认 `skip_if_completed`。
 - `properties.failurePolicy` 仅支持顶层 `type=job` 组件，唯一显式值为 `cleanup_failed`；Job 空值继承 workflow，`cleanup_all`、未知值、其他组件类型（包括显式空值）和 init container 中使用时返回 `INVALID_JOB_FAILURE_POLICY`。
 - 模板请求会在展开后校验实际组件类型，但错误路径仍使用原始请求的 `/components/{i}` 下标；模板自动生成且没有对应 override 的组件继续使用展开后的下标。
-- `scheduledjob` 可选 `properties.successfulJobsHistoryLimit` / `properties.failedJobsHistoryLimit` 控制 CronJob 保留历史数。
 
 ## Job 组件 JSON 示例
 
@@ -226,47 +213,6 @@ Job 组件暂时只支持最小集能力：
       "mode": "StepByStep",
       "components": [
         "delay-task"
-      ]
-    }
-  ]
-}
-```
-
-### 示例 3：scheduledjob（cron）
-
-```json
-{
-  "name": "job-demo-cron",
-  "namespace": "default",
-  "version": "1.0.0",
-  "project": "demo-project",
-  "description": "Scheduled job (cron) demo",
-  "components": [
-    {
-      "name": "cron-task",
-      "type": "scheduledjob",
-      "image": "busybox:1.36",
-      "namespace": "default",
-      "replicas": 1,
-      "properties": {
-        "schedule": "0 0 * * *",
-        "successfulJobsHistoryLimit": 3,
-        "failedJobsHistoryLimit": 3,
-        "command": [
-          "/bin/sh",
-          "-c",
-          "date"
-        ]
-      },
-      "traits": {}
-    }
-  ],
-  "workflow": [
-    {
-      "name": "create-cron-task",
-      "mode": "StepByStep",
-      "components": [
-        "cron-task"
       ]
     }
   ]

@@ -89,43 +89,6 @@ func buildJob(component *model.ApplicationComponent, properties *model.Propertie
 	return job
 }
 
-func buildCronJob(component *model.ApplicationComponent, properties *model.Properties, schedule string) *batchv1.CronJob {
-	if component == nil {
-		return nil
-	}
-	labels := BuildLabels(component, properties)
-	successfulLimit := cronHistoryLimit(properties, true)
-	failedLimit := cronHistoryLimit(properties, false)
-	jobSpec := batchv1.JobSpec{
-		TTLSecondsAfterFinished: jobTTLSeconds(),
-		Template: corev1.PodTemplateSpec{
-			ObjectMeta: metav1.ObjectMeta{
-				Labels: labels,
-			},
-			Spec: corev1.PodSpec{
-				RestartPolicy: corev1.RestartPolicyNever,
-				Containers: []corev1.Container{
-					buildJobContainer(component, properties),
-				},
-			},
-		},
-	}
-	return &batchv1.CronJob{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        buildCronJobName(component.Name, component.ResourceNameKey()),
-			Namespace:   component.Namespace,
-			Labels:      labels,
-			Annotations: BuildAnnotations(component),
-		},
-		Spec: batchv1.CronJobSpec{
-			Schedule:                   schedule,
-			SuccessfulJobsHistoryLimit: successfulLimit,
-			FailedJobsHistoryLimit:     failedLimit,
-			JobTemplate:                batchv1.JobTemplateSpec{Spec: jobSpec},
-		},
-	}
-}
-
 func buildJobContainer(component *model.ApplicationComponent, properties *model.Properties) corev1.Container {
 	containerName := utils.NormalizeLowerStrip(component.Name)
 	if containerName == "" {
@@ -152,26 +115,6 @@ func buildJobContainer(component *model.ApplicationComponent, properties *model.
 func jobTTLSeconds() *int32 {
 	ttl := config.DefaultJobTTLSeconds
 	return &ttl
-}
-
-func cronHistoryLimit(properties *model.Properties, success bool) *int32 {
-	var provided *int32
-	if properties != nil {
-		if success {
-			provided = properties.SuccessfulJobsHistoryLimit
-		} else {
-			provided = properties.FailedJobsHistoryLimit
-		}
-	}
-	if provided != nil {
-		return provided
-	}
-	if success {
-		limit := config.DefaultCronJobSuccessfulLimit
-		return &limit
-	}
-	limit := config.DefaultCronJobFailedLimit
-	return &limit
 }
 
 // Job annotations and status helpers.

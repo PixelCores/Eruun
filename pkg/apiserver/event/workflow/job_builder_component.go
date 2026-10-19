@@ -20,7 +20,6 @@ import (
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	workspacejobs "github.com/PixelCores/Eruun/pkg/apiserver/jobs"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
@@ -272,10 +271,6 @@ func appendComponentGroup(
 		mergeJobBuckets(buckets, buildDatabaseResetJobs(ctx, componentNames, workflowProperties, componentMap, task, defaultJobTimeoutSeconds, executionKey))
 		return nil
 	}
-	if workflowType == config.JobLogArchiveUpload {
-		mergeJobBuckets(buckets, buildLogArchiveUploadJobs(ctx, componentNames, componentMap, task, defaultJobTimeoutSeconds, workflowProperties))
-		return nil
-	}
 	for componentIndex, name := range componentNames {
 		component, ok := componentMap[name]
 		if !ok {
@@ -321,83 +316,6 @@ func buildCleanupJobsForComponent(
 	setDeployTimeout(jobTask)
 	buckets[config.JobPriorityLow] = append(buckets[config.JobPriorityLow], jobTask)
 	return buckets
-}
-
-func buildLogArchiveUploadJobs(
-	ctx context.Context,
-	componentNames []string,
-	componentMap map[string]*model.ApplicationComponent,
-	task *model.WorkflowQueue,
-	defaultJobTimeoutSeconds int64,
-	workflowProperties []model.Policies,
-) map[int][]*model.JobTask {
-	logger := klog.FromContext(ctx)
-	buckets := newJobBuckets()
-	if task == nil || len(componentNames) == 0 {
-		return buckets
-	}
-
-	seen := make(map[string]struct{}, len(componentNames))
-	for _, name := range componentNames {
-		key := strings.ToLower(strings.TrimSpace(name))
-		if key == "" {
-			continue
-		}
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		component, ok := componentMap[name]
-		if !ok || component == nil {
-			logger.Info("Log archive upload component referenced in workflow step not found", "componentName", name)
-			continue
-		}
-		path, container := logArchiveUploadOptionsForComponent(component.Name, workflowProperties)
-		componentCopy := cloneLogArchiveUploadComponent(component)
-		namespace := componentCopy.Namespace
-		jobTask := NewJobTask(componentCopy.Name, namespace, task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, componentCopy.ResourceNameKey())
-		jobTask.JobType = string(config.JobLogArchiveUpload)
-		jobTask.JobInfo = &job.LogArchiveUploadJobInfo{
-			Component: componentCopy,
-			Path:      strings.TrimSpace(path),
-			Container: strings.TrimSpace(container),
-		}
-		jobTask.Info = fmt.Sprintf("log archive upload: %s/%s %s", namespace, componentCopy.Name, strings.TrimSpace(path))
-		setDeployTimeout(jobTask)
-		buckets[config.JobPriorityLow] = append(buckets[config.JobPriorityLow], jobTask)
-	}
-	return buckets
-}
-
-func cloneLogArchiveUploadComponent(component *model.ApplicationComponent) *model.ApplicationComponent {
-	if component == nil {
-		return nil
-	}
-	cp := *component
-	if strings.TrimSpace(cp.Namespace) == "" {
-		cp.Namespace = config.DefaultNamespace
-	}
-	return &cp
-}
-
-func logArchiveUploadOptionsForComponent(componentName string, properties []model.Policies) (string, string) {
-	normalizedComponentName := strings.ToLower(strings.TrimSpace(componentName))
-	var fallbackPath string
-	var fallbackContainer string
-	for _, property := range properties {
-		path := strings.TrimSpace(property.Path)
-		container := strings.TrimSpace(property.Container)
-		if fallbackPath == "" && path != "" {
-			fallbackPath = path
-			fallbackContainer = container
-		}
-		for _, policy := range property.Policies {
-			if strings.ToLower(strings.TrimSpace(policy)) == normalizedComponentName {
-				return path, container
-			}
-		}
-	}
-	return fallbackPath, fallbackContainer
 }
 
 func buildDatabaseResetJobs(
@@ -629,25 +547,9 @@ func buildJobsForComponent(
 			return nil, err
 		}
 		applyJobFailurePolicyOverride(jobTask, properties.FailurePolicy)
-	case config.ScheduledJob:
-		if schedule := strings.TrimSpace(properties.Schedule); schedule != "" {
-			normalized, err := utils.NormalizeCronSchedule(schedule)
-			if err != nil {
-				return nil, fmt.Errorf("normalize cron schedule: %w", err)
-			}
-			result, err := job.GenerateScheduledCronJob(component, &properties, normalized)
-			if err != nil {
-				return nil, err
-			}
-			fallbackName := naming.CronJobName(component.Name, resourceAppName)
-			if _, err := appendBatchJob(buckets, component, task, namespace, config.ScheduledJob, config.JobDeployScheduled, result, defaultJobTimeoutSeconds, share, fallbackName); err != nil {
-				return nil, err
-			}
-			break
-		}
 	}
 
-	if component.ComponentType != config.InstantJob && component.ComponentType != config.ScheduledJob && component.ComponentType != config.CloudJob {
+	if component.ComponentType != config.InstantJob && component.ComponentType != config.CloudJob {
 		serviceTraits := serviceTraitsForComponent(component, &properties, componentTraits)
 		if len(serviceTraits) > 0 {
 			for _, trait := range serviceTraits {

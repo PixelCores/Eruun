@@ -3,7 +3,6 @@ package application
 import (
 	"context"
 
-	"errors"
 	"testing"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
@@ -103,39 +102,6 @@ func TestCreateApplications_UpdatePreservesWorkflowID(t *testing.T) {
 	require.Equal(t, "demo-update-workflow", updateWorkflow.Name)
 	require.Equal(t, "app-1-update-workflow", updateWorkflow.Alias)
 	require.Equal(t, config.WorkflowTaskTypeUpdate, updateWorkflow.WorkflowType)
-}
-
-func TestCreateApplicationsRejectsLogArchiveWorkflowForNonPodComponent(t *testing.T) {
-	store := newInMemoryAppStore()
-	svc := newMockServiceWithStore(store)
-
-	resp, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
-		Name:      "demo",
-		Namespace: config.DefaultNamespace,
-		Version:   "1.0.0",
-		Project:   "proj-1",
-		Components: []apisv1.CreateComponentRequest{{
-			Name:          "config",
-			ComponentType: config.ConfJob,
-			Properties: apisv1.Properties{
-				Conf: map[string]string{"app.yaml": "debug: true"},
-			},
-		}},
-		Workflow: []apisv1.CreateWorkflowStepRequest{{
-			Name:         "archive-config",
-			WorkflowType: config.JobLogArchiveUpload,
-			Components:   []string{"config"},
-			Mode:         string(config.WorkflowModeStepByStep),
-			Properties: apisv1.WorkflowProperties{
-				Path: "/var/log/api",
-			},
-		}},
-	})
-
-	require.Error(t, err)
-	require.Nil(t, resp)
-	require.True(t, errors.Is(err, bcode.ErrWorkflowConfig))
-	require.Contains(t, err.Error(), "does not use pods")
 }
 
 func TestCreateApplicationsDefaultWorkflowsUseAppCallback(t *testing.T) {
@@ -320,7 +286,7 @@ func TestCreateApplicationsUpdateAppCallbackOverwritesAllWorkflowCallbacks(t *te
 		Name:         "custom-workflow",
 		AppID:        app.ID,
 		Namespace:    app.Namespace,
-		WorkflowType: config.WorkflowTaskTypeTesting,
+		WorkflowType: config.WorkflowTaskTypeUpdate,
 		Steps:        steps,
 		Callback:     oldCallback,
 	}
@@ -397,7 +363,7 @@ func TestCreateApplicationsUpdateEmptyAppCallbackClearsSQLStyleCallbacks(t *test
 		Name:         "custom-workflow",
 		AppID:        app.ID,
 		Namespace:    app.Namespace,
-		WorkflowType: config.WorkflowTaskTypeTesting,
+		WorkflowType: config.WorkflowTaskTypeUpdate,
 		Steps:        steps,
 		Callback:     oldCallback,
 	}
@@ -584,13 +550,6 @@ func TestCreateApplications_TemplateWithoutWorkflow_GeneratesPhasedDefaultWorkfl
 		Image:         "nginx:1.25",
 		ComponentType: config.ServerJob,
 	}
-	store.components["tpl-cron"] = &model.ApplicationComponent{
-		Name:          "tpl-cron",
-		AppID:         templateApp.ID,
-		Namespace:     config.DefaultNamespace,
-		Image:         "busybox:1.36",
-		ComponentType: config.ScheduledJob,
-	}
 
 	svc := newMockServiceWithStore(store)
 	req := apisv1.CreateApplicationsRequest{
@@ -602,7 +561,6 @@ func TestCreateApplications_TemplateWithoutWorkflow_GeneratesPhasedDefaultWorkfl
 			{Name: "runner", ComponentType: config.InstantJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "tpl-job"}},
 			{Name: "init-sql", ComponentType: config.InstantJob, Image: "busybox:1.36"},
 			{Name: "api", ComponentType: config.ServerJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "tpl-web"}},
-			{Name: "nightly", ComponentType: config.ScheduledJob, Template: &apisv1.TemplateRef{ID: templateApp.ID, Target: "tpl-cron"}},
 		},
 	}
 
@@ -621,7 +579,7 @@ func TestCreateApplications_TemplateWithoutWorkflow_GeneratesPhasedDefaultWorkfl
 	require.ElementsMatch(t, []string{"cfg", "sec"}, defaultSteps.Steps[0].ComponentNames())
 	require.ElementsMatch(t, []string{"db"}, defaultSteps.Steps[1].ComponentNames())
 	require.ElementsMatch(t, []string{"runner", "init-sql"}, defaultSteps.Steps[2].ComponentNames())
-	require.ElementsMatch(t, []string{"api", "nightly"}, defaultSteps.Steps[3].ComponentNames())
+	require.ElementsMatch(t, []string{"api"}, defaultSteps.Steps[3].ComponentNames())
 	for _, step := range defaultSteps.Steps {
 		require.Equal(t, config.WorkflowModeDAG, step.Mode)
 	}
@@ -644,7 +602,7 @@ func TestCreateApplications_TemplateWithoutWorkflow_GeneratesPhasedDefaultWorkfl
 	require.ElementsMatch(t, []string{"cfg", "sec"}, updateSteps.Steps[0].ComponentNames())
 	require.ElementsMatch(t, []string{"db"}, updateSteps.Steps[1].ComponentNames())
 	require.ElementsMatch(t, []string{"runner", "init-sql"}, updateSteps.Steps[2].ComponentNames())
-	require.ElementsMatch(t, []string{"api", "nightly"}, updateSteps.Steps[3].ComponentNames())
+	require.ElementsMatch(t, []string{"api"}, updateSteps.Steps[3].ComponentNames())
 	for _, step := range updateSteps.Steps {
 		require.Equal(t, config.WorkflowModeDAG, step.Mode)
 	}

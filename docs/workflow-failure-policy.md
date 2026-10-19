@@ -33,7 +33,7 @@
 
 - 创建应用或通过 `/version add` 新增普通 `type=job` 组件时，省略或传空值表示继承 workflow 的 `failurePolicy`；Job 层只允许显式 `cleanup_failed`，不接受 `cleanup_all` 或其他值。
 - `/version update` 继续使用 Properties 全量替换语义：省略整个 `properties` 会保留已有 Properties（包括已有 Job override）；显式携带 `properties` 时，省略或清空其中的 `failurePolicy` 会清除已有 override 并改为继承 workflow。
-- 该字段只支持顶层 `type=job` 组件；`scheduledjob`、`cloudjob`、其他组件类型或 init container properties 即使显式传空值也会被拒绝。
+- 该字段只支持顶层 `type=job` 组件；`cloudjob`、其他组件类型或 init container properties 即使显式传空值也会被拒绝。
 - Job 显式值优先于 workflow 策略，但只覆盖该组件的主 `instant_job` 任务；PVC、RBAC 等附属资源任务仍继承 workflow 策略。RBAC Job 即使进入失败清理，其 `Clean` 也不会删除对象。
 - `runPolicy` 与 `failurePolicy` 相互独立：前者控制同名 Kubernetes Job 的重建/复用，后者只控制失败后是否扩大为 workflow 全量清理。
 - 字段随现有 Component `properties` JSON 持久化，不新增数据库列或 Kubernetes annotation。
@@ -84,10 +84,10 @@
 }
 ```
 
-- `jobRetryPolicy` 只支持顶层即时 Job。`startTime` 非零、`scheduledjob`、CloudJob、Deployment 等组件，以及 init container properties 中的该字段，均被写入校验拒绝。Job 中的 init container 若确实 OOM，可由顶层策略增长其资源。
+- `jobRetryPolicy` 只支持顶层即时 Job。`startTime` 非零、CloudJob、Deployment 等组件，以及 init container properties 中的该字段，均被写入校验拒绝。Job 中的 init container 若确实 OOM，可由顶层策略增长其资源。
 - OOM 证据必须来自同一个 Job UID 控制的 Failed Pod，且当前容器终止原因是 `OOMKilled`。单独的退出码 137、CPU throttling、eviction、上一次重启的 OOM、同名但其他 Job UID 的 Pod 均不会触发增长。注入到 Pod、但不存在于提交的 Job 模板中的 OOM 容器无法 resize，执行停止。
 - 显式启用后设置 Kubernetes `backoffLimit=0`、`restartPolicy=Never`，由 Eruun 统一计数。已有未完成 Job 若要切换到该策略，必须显式 `runPolicy=recreate`；已完成 Job 仍可由 `skip_if_completed` 跳过。
-- 策略随 Component properties 持久化并写入 `eruun.io/job-retry-policy` annotation；每次执行写入 `eruun.io/job-attempt`。实际资源与次数保存在原有 `JobInfo.InternalInfo` / `Attempt`，不会回写 Component 配置或修改 Deployment、StatefulSet、CronJob。
+- 策略随 Component properties 持久化并写入 `eruun.io/job-retry-policy` annotation；每次执行写入 `eruun.io/job-attempt`。实际资源与次数保存在原有 `JobInfo.InternalInfo` / `Attempt`，不会回写 Component 配置或修改 Deployment、StatefulSet。
 - 首次创建和每次重试之前保存受 workflow generation/token 保护的 checkpoint。恢复保留目标 Job、次数、退避时间、超时及 UID；删除旧 Job 使用 UID/resourceVersion 前置条件，等待旧 UID Job 消失及其 Pod 终止后才创建下一次。已确认创建的 UID 消失或被同名其他对象替换时拒绝自动重放，进入基础设施恢复处理。
 - 启用策略的 Job 在创建前设置覆盖剩余绝对超时加原有一小时清理余量的 TTL，确保整个恢复期限内保留 Job 及 Pod 证据。执行成功或已确定失败后，先采集日志并持久化终态，再立即清理；保存失败保留原 UID 供新 Worker 恢复，保存后进程退出或清理失败则由 TTL 最终回收。取消或超时仍及时停止活动资源。历史无 TTL 的检查点在恢复时补齐该期限。策略省略时原有成功清理与 TTL 默认值保持不变。
 - 用户取消会先落盘父工作流状态，再发布取消信号。重试控制器识别同一 generation/token/worker 的 `cancelled` 状态并停止执行，按检查点 UID 清理当前尝试；执行租约改变或同名资源 UID 不匹配时仍拒绝删除。

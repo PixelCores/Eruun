@@ -67,8 +67,6 @@ func (c *CleanupResourcesJobCtl) resourceGone(ctx context.Context, ref cleanupRe
 		_, err = c.client.AppsV1().StatefulSets(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
 	case domainspec.ResourceJob:
 		_, err = c.client.BatchV1().Jobs(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
-	case domainspec.ResourceCronJob:
-		_, err = c.client.BatchV1().CronJobs(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
 	case domainspec.ResourceService:
 		_, err = c.client.CoreV1().Services(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
 	case domainspec.ResourceConfigMap:

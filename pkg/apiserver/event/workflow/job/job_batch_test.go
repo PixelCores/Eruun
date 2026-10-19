@@ -56,58 +56,6 @@ func TestGenerateInstantJobSetsTTL(t *testing.T) {
 	require.Equal(t, workflowconfig.DefaultWorkflowImagePullPolicy, jobObj.Spec.Template.Spec.Containers[0].ImagePullPolicy)
 }
 
-func TestGenerateScheduledCronJobSetsTTL(t *testing.T) {
-	component := &model.ApplicationComponent{
-		Name:      "demo",
-		AppID:     "app",
-		Namespace: "default",
-		Image:     "busybox",
-	}
-	props := &model.Properties{}
-
-	result, err := GenerateScheduledCronJob(component, props, "0 * * * *")
-	if err != nil {
-		t.Fatal(err)
-	}
-	require.NotNil(t, result)
-	cronObj, ok := result.Service.(*batchv1.CronJob)
-	require.True(t, ok)
-	require.NotNil(t, cronObj.Spec.JobTemplate.Spec.TTLSecondsAfterFinished)
-	require.Equal(t, config.DefaultJobTTLSeconds, *cronObj.Spec.JobTemplate.Spec.TTLSecondsAfterFinished)
-	require.NotNil(t, cronObj.Spec.SuccessfulJobsHistoryLimit)
-	require.NotNil(t, cronObj.Spec.FailedJobsHistoryLimit)
-	require.Equal(t, config.DefaultCronJobSuccessfulLimit, *cronObj.Spec.SuccessfulJobsHistoryLimit)
-	require.Equal(t, config.DefaultCronJobFailedLimit, *cronObj.Spec.FailedJobsHistoryLimit)
-	require.Equal(t, workflowconfig.DefaultWorkflowImagePullPolicy, cronObj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].ImagePullPolicy)
-}
-
-func TestGenerateScheduledCronJobOverridesHistoryLimit(t *testing.T) {
-	component := &model.ApplicationComponent{
-		Name:      "demo",
-		AppID:     "app",
-		Namespace: "default",
-		Image:     "busybox",
-	}
-	successLimit := int32(1)
-	failedLimit := int32(2)
-	props := &model.Properties{
-		SuccessfulJobsHistoryLimit: &successLimit,
-		FailedJobsHistoryLimit:     &failedLimit,
-	}
-
-	result, err := GenerateScheduledCronJob(component, props, "0 * * * *")
-	if err != nil {
-		t.Fatal(err)
-	}
-	require.NotNil(t, result)
-	cronObj, ok := result.Service.(*batchv1.CronJob)
-	require.True(t, ok)
-	require.NotNil(t, cronObj.Spec.SuccessfulJobsHistoryLimit)
-	require.NotNil(t, cronObj.Spec.FailedJobsHistoryLimit)
-	require.Equal(t, successLimit, *cronObj.Spec.SuccessfulJobsHistoryLimit)
-	require.Equal(t, failedLimit, *cronObj.Spec.FailedJobsHistoryLimit)
-}
-
 func TestApplyJobRunPolicy(t *testing.T) {
 	const (
 		name      = "demo-job"

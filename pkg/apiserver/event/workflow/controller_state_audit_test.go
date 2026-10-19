@@ -153,18 +153,8 @@ func TestIsJobSuccessStatus(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "scheduled-distributed",
-			task:     &model.JobTask{JobType: string(config.JobDeployScheduled), Status: config.StatusDistributed},
-			expected: true,
-		},
-		{
 			name:     "instant-distributed",
 			task:     &model.JobTask{JobType: string(config.JobDeployInstant), Status: config.StatusDistributed},
-			expected: true,
-		},
-		{
-			name:     "scheduled-waiting",
-			task:     &model.JobTask{JobType: string(config.JobDeployScheduled), Status: config.StatusWaiting},
 			expected: true,
 		},
 		{

@@ -4,12 +4,10 @@
 
 ## 数据与接口
 
-`eruun_system_setting` 使用 `type` 唯一键和 JSON `value`。当前支持六种配置：
+`eruun_system_setting` 使用 `type` 唯一键和 JSON `value`。当前支持四种配置：
 
 | type | value 契约 |
 | --- | --- |
-| `nodeSelector` | 调度 nodeSelector、affinity、tolerations 对象或 profile 数组 |
-| `rbacPolicies` | RBAC policy 数组，面向系统管理；普通空间拒绝 RBAC trait |
 | `aliyunCloud` | 云适配器配置；普通空间拒绝 CloudJob |
 | `urlSecurityPolicy` | 服务端出站 URL 私网白名单，见 [URL 安全策略](url-security-policy.md) |
 | `podRestartMonitor` | `{enabled,windowSeconds,threshold}`，默认 true、1800、3 |
@@ -32,7 +30,7 @@ curl --fail "$SERVER/api/v1/settings/urlSecurityPolicy" \
 
 `aliyunCloud` 包含 accessKeyId、accessKeySecret、endpoint、regionId、zoneId、vpcId、vswId。读取只返回掩码密钥，写入必须提供真实值，不能提交掩码。保存前调用阿里云 NAS 只读接口验证凭据和默认区域，失败不落库。该云配置和账号登录短信配置相互独立。
 
-运行时只自动补齐 `urlSecurityPolicy`、`podRestartMonitor` 和 `workflow_scheduler` 默认记录。`scripts/init-system-setting.sql` 可幂等补齐其余设置，保留现有值。前端字段和保存交互见 [设置页接入](settings-page-api.md)。
+运行时自动补齐 `urlSecurityPolicy`、`podRestartMonitor` 和 `workflow_scheduler` 默认记录，`aliyunCloud` 需管理员创建。`GET /api/v1/settings` 只返回上表中的类型，内部标记和已移除类型的残留行不会出现在列表里。前端字段和保存交互见 [设置页接入](settings-page-api.md)。
 
 旧认证设置类型、JWT 角色映射及动态 authz 路由接口已移除；新接入必须使用统一账号和空间 API。
 

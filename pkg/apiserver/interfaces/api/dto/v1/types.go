@@ -218,16 +218,6 @@ type DatabaseResetResponse struct {
 	RestartComponents  []string `json:"restartComponents"`
 }
 
-// LogArchiveDownloadRequest downloads one component log archive as a file stream.
-type LogArchiveDownloadRequest struct {
-	Name       string              `json:"name,omitempty"`
-	JobType    config.JobType      `json:"jobType,omitempty"`
-	Mode       config.WorkflowMode `json:"mode,omitempty"`
-	Components []string            `json:"components" validate:"required,min=1,dive,required"`
-	Path       string              `json:"path" validate:"required"`
-	Container  string              `json:"container,omitempty"`
-}
-
 type ExportComponentFilesRequest struct {
 	Path      string `json:"path"`
 	Container string `json:"container,omitempty"`

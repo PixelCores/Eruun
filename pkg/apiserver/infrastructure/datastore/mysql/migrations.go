@@ -25,20 +25,6 @@ type schemaMigrationState struct {
 	Completed bool `json:"completed"`
 }
 
-type nodeSelectorProfileRow struct {
-	ID          string          `json:"id"`
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	Selection   json.RawMessage `json:"selection" gorm:"column:selection"`
-}
-
-type rbacProfileRow struct {
-	ID          string          `json:"id"`
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	Policies    json.RawMessage `json:"policies" gorm:"column:policies"`
-}
-
 type applicationComponentRuntimeNullBackfill struct {
 	column string
 	value  interface{}
@@ -134,73 +120,6 @@ func backfillApplicationComponentRuntimeNull(db *gorm.DB, table string, field ap
 	return db.Table(table).
 		Where(map[string]interface{}{field.column: nil}).
 		UpdateColumn(field.column, field.value)
-}
-
-func migrateSystemSettings(ctx context.Context, db *gorm.DB) error {
-	migrator := db.Migrator()
-	settingsTable := (&model.SystemSetting{}).TableName()
-	nodeTable := (&model.NodeSelectorProfile{}).TableName()
-	rbacTable := (&model.RBACProfile{}).TableName()
-
-	hasSettingsTable, err := schemaTableExists(ctx, db, settingsTable)
-	if err != nil {
-		return fmt.Errorf("inspect system settings table: %w", err)
-	}
-	if !hasSettingsTable {
-		if err := db.WithContext(ctx).AutoMigrate(&model.SystemSetting{}); err != nil {
-			return err
-		}
-	}
-
-	nodeErr := migrateSettingFromTable(ctx, db, nodeTable, model.SystemSettingTypeNodeSelector, func(rows []nodeSelectorProfileRow) (json.RawMessage, error) {
-		if len(rows) == 0 {
-			return nil, nil
-		}
-		payload, err := json.Marshal(rows)
-		if err != nil {
-			return nil, err
-		}
-		return json.RawMessage(payload), nil
-	})
-	if nodeErr != nil {
-		return nodeErr
-	}
-
-	rbacErr := migrateSettingFromTable(ctx, db, rbacTable, model.SystemSettingTypeRBACPolicies, func(rows []rbacProfileRow) (json.RawMessage, error) {
-		if len(rows) == 0 {
-			return nil, nil
-		}
-		payload, err := json.Marshal(rows)
-		if err != nil {
-			return nil, err
-		}
-		return json.RawMessage(payload), nil
-	})
-	if rbacErr != nil {
-		return rbacErr
-	}
-
-	hasNodeTable, err := schemaTableExists(ctx, db, nodeTable)
-	if err != nil {
-		return fmt.Errorf("inspect legacy node selector table: %w", err)
-	}
-	if hasNodeTable {
-		if err := migrator.DropTable(nodeTable); err != nil {
-			return err
-		}
-	}
-	hasRBACTable, err := schemaTableExists(ctx, db, rbacTable)
-	if err != nil {
-		return fmt.Errorf("inspect legacy RBAC table: %w", err)
-	}
-	if hasRBACTable {
-		if err := migrator.DropTable(rbacTable); err != nil {
-			return err
-		}
-	}
-
-	klog.Info("system setting migration completed")
-	return nil
 }
 
 func migrateTextOnlySecretSchema(ctx context.Context, db *gorm.DB) error {
@@ -367,50 +286,5 @@ func validateSchemaMigrationMarker(ctx context.Context, db *gorm.DB) error {
 	if err := json.Unmarshal(marker.Value, &state); err != nil || !state.Completed {
 		return fmt.Errorf("schema validation failed: migration marker %q is incomplete", schemaMigrationMarker)
 	}
-	return nil
-}
-
-func migrateSettingFromTable[T any](ctx context.Context, db *gorm.DB, tableName, settingType string, buildValue func([]T) (json.RawMessage, error)) error {
-	hasTable, err := schemaTableExists(ctx, db, tableName)
-	if err != nil {
-		return fmt.Errorf("inspect legacy setting table %s: %w", tableName, err)
-	}
-	if !hasTable {
-		return nil
-	}
-
-	var existing model.SystemSetting
-	lookup := db.WithContext(ctx).Table((&model.SystemSetting{}).TableName()).Where("type = ?", settingType).Limit(1).Find(&existing)
-	if lookup.Error != nil {
-		return lookup.Error
-	}
-	if lookup.RowsAffected > 0 {
-		return nil
-	}
-
-	var rows []T
-	if err := db.WithContext(ctx).Table(tableName).Find(&rows).Error; err != nil {
-		return err
-	}
-
-	value, err := buildValue(rows)
-	if err != nil {
-		return err
-	}
-	if len(value) == 0 {
-		return nil
-	}
-
-	now := db.NowFunc()
-	setting := &model.SystemSetting{
-		Type:      settingType,
-		Value:     value,
-		BaseModel: model.BaseModel{CreateTime: now, UpdateTime: now},
-	}
-	if err := db.WithContext(ctx).Create(setting).Error; err != nil {
-		return err
-	}
-
-	klog.Infof("migrated system setting type=%s from table=%s", settingType, tableName)
 	return nil
 }

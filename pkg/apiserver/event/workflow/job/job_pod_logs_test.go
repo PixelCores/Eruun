@@ -263,11 +263,11 @@ func TestProcessJobResultStopsWhenSameNameJobIsReplaced(t *testing.T) {
 	})
 	store := newResultOutboxTestStore()
 	key := "execution-old"
-	require.NoError(t, store.Add(context.Background(), &model.JobInfo{ID: 1, TaskID: "task-old", Status: string(config.StatusRunning), Type: string(config.JobDeployScheduled), ExecutionKey: &key, RunGeneration: 1}))
+	require.NoError(t, store.Add(context.Background(), &model.JobInfo{ID: 1, TaskID: "task-old", Status: string(config.StatusRunning), Type: string(config.JobDeployInstant), ExecutionKey: &key, RunGeneration: 1}))
 	started := time.Now()
 	err := processClaimedTestJobResult(t, context.Background(), client, store, &JobResultPayload{
 		TaskID:         "task-old",
-		JobType:        string(config.JobDeployScheduled),
+		JobType:        string(config.JobDeployInstant),
 		Namespace:      oldJob.Namespace,
 		Name:           oldJob.Name,
 		ExecutionKey:   "execution-old",

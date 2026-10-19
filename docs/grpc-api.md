@@ -86,7 +86,7 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 
 ## HTTP 路由到 RPC 对照
 
-当前 HTTP 路由共 115 条；以下 100 条用户可调用路由各映射一个 RPC。表中全名与生成客户端方法一一对应，具体字段及请求/响应类型见各 `.proto` 文件。
+当前 HTTP 路由共 112 条；以下 97 条用户可调用路由各映射一个 RPC。表中全名与生成客户端方法一一对应，具体字段及请求/响应类型见各 `.proto` 文件。
 
 | HTTP 路由 | gRPC 方法全名 |
 | --- | --- |
@@ -115,7 +115,6 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 | `GET /api/v1/auth/identities` | `/eruun.v1.AccountService/ListIdentities` |
 | `GET /api/v1/auth/me` | `/eruun.v1.AccountService/GetMe` |
 | `GET /api/v1/auth/methods` | `/eruun.v1.AccountService/GetAuthMethods` |
-| `GET /api/v1/cronjobs` | `/eruun.v1.ApplicationService/ListCronJobs` |
 | `GET /api/v1/job-datasets` | `/eruun.v1.JobsService/ListJobDatasets` |
 | `GET /api/v1/job-datasets/:datasetID` | `/eruun.v1.JobsService/GetJobDataset` |
 | `GET /api/v1/job-datasets/:datasetID/download` | `/eruun.v1.JobsService/DownloadJobDataset` |
@@ -129,7 +128,6 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 | `GET /api/v1/jobs/:taskID/results/:artifactID/download` | `/eruun.v1.JobsService/DownloadJobResult` |
 | `GET /api/v1/programming-languages` | `/eruun.v1.ProgrammingLanguagesService/ListProgrammingLanguages` |
 | `GET /api/v1/programming-languages/:id` | `/eruun.v1.ProgrammingLanguagesService/GetProgrammingLanguage` |
-| `GET /api/v1/scheduledjobs` | `/eruun.v1.ApplicationService/ListScheduledJobs` |
 | `GET /api/v1/schemas/v1/canonical.json` | `/eruun.v1.ApplicationService/GetCanonicalJSONSchema` |
 | `GET /api/v1/settings` | `/eruun.v1.SettingsService/ListSettings` |
 | `GET /api/v1/settings/:type` | `/eruun.v1.SettingsService/GetSetting` |
@@ -146,7 +144,6 @@ Workflow 步骤及子步骤的 `properties` 是重复字段，可按顺序提交
 | `POST /api/v1/applications/:appID/components/:componentName/shell/exec` | `/eruun.v1.ApplicationService/ExecComponentShell` |
 | `POST /api/v1/applications/:appID/components/:componentName/shell/stream` | `/eruun.v1.ApplicationService/StreamComponentShell` |
 | `POST /api/v1/applications/:appID/database-reset` | `/eruun.v1.ApplicationService/ResetApplicationDatabases` |
-| `POST /api/v1/applications/:appID/log-archives` | `/eruun.v1.ApplicationService/DownloadLogArchive` |
 | `POST /api/v1/applications/:appID/restart` | `/eruun.v1.ApplicationService/RestartApplicationWorkloads` |
 | `POST /api/v1/applications/:appID/start` | `/eruun.v1.ApplicationService/StartApplicationDeployments` |
 | `POST /api/v1/applications/:appID/stop` | `/eruun.v1.ApplicationService/StopApplicationDeployments` |

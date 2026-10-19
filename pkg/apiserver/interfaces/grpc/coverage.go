@@ -1,6 +1,6 @@
 package grpcapi
 
-// routeRPC is the versioned route-to-RPC contract for the 100 user-facing
+// routeRPC is the versioned route-to-RPC contract for the 97 user-facing
 // HTTP routes. Browser OAuth, Runner callbacks and probes are deliberately
 // omitted; every new route needs an explicit decision.
 var routeRPC = map[string]string{
@@ -33,8 +33,6 @@ var routeRPC = map[string]string{
 	"GET /api/v1/schemas/v1/canonical.json":                                   "/eruun.v1.ApplicationService/GetCanonicalJSONSchema",
 	"GET /api/v1/applications":                                                "/eruun.v1.ApplicationService/ListApplications",
 	"GET /api/v1/applications/templates":                                      "/eruun.v1.ApplicationService/ListTemplateApplications",
-	"GET /api/v1/cronjobs":                                                    "/eruun.v1.ApplicationService/ListCronJobs",
-	"GET /api/v1/scheduledjobs":                                               "/eruun.v1.ApplicationService/ListScheduledJobs",
 	"POST /api/v1/applications":                                               "/eruun.v1.ApplicationService/CreateApplications",
 	"POST /api/v1/applications/create-and-exec":                               "/eruun.v1.ApplicationService/CreateAndExecApplications",
 	"POST /api/v1/applications/query":                                         "/eruun.v1.ApplicationService/BatchGetApplications",
@@ -57,7 +55,6 @@ var routeRPC = map[string]string{
 	"DELETE /api/v1/applications/:appID/workflow/schedule/:workflowID":        "/eruun.v1.ApplicationService/DeleteWorkflowSchedule",
 	"DELETE /api/v1/applications/:appID/resources":                            "/eruun.v1.ApplicationService/CleanupApplicationResources",
 	"POST /api/v1/applications/:appID/database-reset":                         "/eruun.v1.ApplicationService/ResetApplicationDatabases",
-	"POST /api/v1/applications/:appID/log-archives":                           "/eruun.v1.ApplicationService/DownloadLogArchive",
 	"POST /api/v1/applications/:appID/restart":                                "/eruun.v1.ApplicationService/RestartApplicationWorkloads",
 	"POST /api/v1/applications/:appID/stop":                                   "/eruun.v1.ApplicationService/StopApplicationDeployments",
 	"POST /api/v1/applications/:appID/start":                                  "/eruun.v1.ApplicationService/StartApplicationDeployments",

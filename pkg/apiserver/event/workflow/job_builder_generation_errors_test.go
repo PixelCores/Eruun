@@ -30,9 +30,7 @@ func TestGenerateJobTasksPropagatesResourceErrors(t *testing.T) {
 		{"statefulset conflict", config.StoreJob, nil, conflictTraits, "conflicting additional object"},
 		{"instant conflict", config.InstantJob, nil, conflictTraits, "conflicting additional object"},
 		{"one time conflict", config.InstantJob, &model.JSONStruct{"startTime": 123}, conflictTraits, "conflicting additional object"},
-		{"cron conflict", config.ScheduledJob, &model.JSONStruct{"schedule": "0 * * * *"}, conflictTraits, "conflicting additional object"},
 		{"corrupt properties", config.ServerJob, &model.JSONStruct{"ports": "invalid"}, nil, "decode component properties"},
-		{"invalid cron", config.ScheduledJob, &model.JSONStruct{"schedule": "invalid"}, nil, "normalize cron schedule"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			component := &model.ApplicationComponent{Name: "broken", AppID: "app", Namespace: "default", Image: "nginx:1.27", ComponentType: tt.kind, Properties: tt.properties, Traits: tt.traits}

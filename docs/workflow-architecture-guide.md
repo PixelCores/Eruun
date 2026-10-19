@@ -718,7 +718,7 @@ func buildJobsForComponent(ctx context.Context, component *model.ApplicationComp
 
 ### 5.4 Job Controllers - 资源控制器
 
-`webservice` / `store` 等 workload 组件在更新后等待目标 Pod Ready；`job` / `scheduledjob` 这类 batch Job 组件不要求 Pod 处于 Running。即时或一次性调度的 Kubernetes Job 会先以 Job `Complete` / `Failed` condition 和 `status.succeeded` 判定终态；当 Job condition 尚未同步但归属该 Job UID 的 Pod 已经 `Succeeded` 且数量达到 `spec.completions` 时，也会把 workflow JobTask 置为 `completed`。完成后控制器会先收集 Job Pod 日志，再以 UID 前置条件删除 Kubernetes Job；只有确认旧 UID 已消失，才清理仍残留且归属该 UID 的 `Succeeded` Pod，避免删除 Pod 后仍存活的 Job 补建并重复执行。
+`webservice` / `store` 等 workload 组件在更新后等待目标 Pod Ready；`job` 这类 batch Job 组件不要求 Pod 处于 Running。即时或一次性调度的 Kubernetes Job 会先以 Job `Complete` / `Failed` condition 和 `status.succeeded` 判定终态；当 Job condition 尚未同步但归属该 Job UID 的 Pod 已经 `Succeeded` 且数量达到 `spec.completions` 时，也会把 workflow JobTask 置为 `completed`。完成后控制器会先收集 Job Pod 日志，再以 UID 前置条件删除 Kubernetes Job；只有确认旧 UID 已消失，才清理仍残留且归属该 UID 的 `Succeeded` Pod，避免删除 Pod 后仍存活的 Job 补建并重复执行。
 
 以 `DeployJobCtl` 为例说明 Job 控制器的实现：
 
@@ -967,7 +967,7 @@ Scheduler             Database              Message Queue          Worker       
 
 工作流由多个 Step 组成，每个 Step 包含一组组件。Step 之间按顺序执行，Step 内部根据执行模式（StepByStep 或 DAG）决定组件的执行方式。同时，每个组件生成的 Job 按优先级分组执行，确保依赖资源（如 ConfigMap、Secret）优先创建。
 
-创建应用时如果没有显式提供 `workflow`，服务端会按组件类型生成默认阶段化工作流：`cloudjob` -> `phase-1-job`，`config`/`secret` -> `phase-2-config-secret`，`store` -> `phase-3-store`，普通 `job` -> `phase-4-job`，`webservice`/`scheduledjob`/`service` -> `phase-5-webservice`。因此初始化 SQL 这类普通 Job 默认会排在 Store 创建之后执行；如果请求中显式提供 `workflow`，则严格按请求中的 Step 顺序执行，不再自动重排。
+创建应用时如果没有显式提供 `workflow`，服务端会按组件类型生成默认阶段化工作流：`cloudjob` -> `phase-1-job`，`config`/`secret` -> `phase-2-config-secret`，`store` -> `phase-3-store`，普通 `job` -> `phase-4-job`，`webservice`/`service` -> `phase-5-webservice`。因此初始化 SQL 这类普通 Job 默认会排在 Store 创建之后执行；如果请求中显式提供 `workflow`，则严格按请求中的 Step 顺序执行，不再自动重排。
 
 ```
 Workflow Steps 定义:

@@ -15,7 +15,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
@@ -46,13 +45,12 @@ var (
 
 	// Valid component types
 	validComponentTypes = map[config.JobType]bool{
-		config.ServerJob:    true,
-		config.StoreJob:     true,
-		config.ConfJob:      true,
-		config.SecretJob:    true,
-		config.CloudJob:     true,
-		config.InstantJob:   true,
-		config.ScheduledJob: true,
+		config.ServerJob:  true,
+		config.StoreJob:   true,
+		config.ConfJob:    true,
+		config.SecretJob:  true,
+		config.CloudJob:   true,
+		config.InstantJob: true,
 	}
 
 	validWorkflowStepTypes = map[config.WorkflowStepType]bool{
@@ -356,7 +354,7 @@ func (v *validationServiceImpl) validateComponent(comp apisv1.CreateComponentReq
 		errors = append(errors, apisv1.ValidationError{
 			Field:   fmt.Sprintf("%s.type", fieldPrefix),
 			Code:    apisv1.ErrCodeInvalidComponentType,
-			Message: fmt.Sprintf("invalid component type: %s, must be one of: webservice, store, config, secret, cloudjob, job, scheduledjob", comp.ComponentType),
+			Message: fmt.Sprintf("invalid component type: %s, must be one of: webservice, store, config, secret, cloudjob, job", comp.ComponentType),
 		})
 	}
 
@@ -369,12 +367,11 @@ func (v *validationServiceImpl) validateComponent(comp apisv1.CreateComponentReq
 	// Validate image requirement for webservice and store types
 	if (comp.ComponentType == config.ServerJob ||
 		comp.ComponentType == config.StoreJob ||
-		(comp.ComponentType == config.InstantJob && comp.Traits.Evaluation == nil) ||
-		comp.ComponentType == config.ScheduledJob) && comp.Image == "" {
+		(comp.ComponentType == config.InstantJob && comp.Traits.Evaluation == nil)) && comp.Image == "" {
 		errors = append(errors, apisv1.ValidationError{
 			Field:   fmt.Sprintf("%s.image", fieldPrefix),
 			Code:    apisv1.ErrCodeMissingImage,
-			Message: "image is required for webservice, store, job, and scheduledjob component types",
+			Message: "image is required for webservice, store, and job component types",
 		})
 	}
 
@@ -415,7 +412,6 @@ func validateReservedLabelMap(labels map[string]string, fieldPrefix, source stri
 func (v *validationServiceImpl) validateJobProperties(comp apisv1.CreateComponentRequest, fieldPrefix string) []apisv1.ValidationError {
 	var errors []apisv1.ValidationError
 	props := comp.Properties
-	schedule := strings.TrimSpace(props.Schedule)
 	runPolicy := strings.TrimSpace(props.RunPolicy)
 	startTime := props.StartTime
 	if props.JobRetryPolicy != nil {
@@ -486,37 +482,12 @@ func (v *validationServiceImpl) validateJobProperties(comp apisv1.CreateComponen
 			})
 		}
 	case config.InstantJob:
-		if schedule != "" {
-			errors = append(errors, apisv1.ValidationError{
-				Field:   fmt.Sprintf("%s.properties.schedule", fieldPrefix),
-				Code:    apisv1.ErrCodeInvalidJobSchedule,
-				Message: "job does not allow schedule",
-			})
-		}
 		if startTime < 0 {
 			errors = append(errors, apisv1.ValidationError{
 				Field:   fmt.Sprintf("%s.properties.startTime", fieldPrefix),
 				Code:    apisv1.ErrCodeInvalidJobStartTime,
 				Message: "startTime must be a unix second timestamp",
 			})
-		}
-	case config.ScheduledJob:
-		if schedule == "" {
-			errors = append(errors, apisv1.ValidationError{
-				Field:   fmt.Sprintf("%s.properties.schedule", fieldPrefix),
-				Code:    apisv1.ErrCodeMissingRequiredField,
-				Message: "scheduledjob requires schedule",
-			})
-			return errors
-		}
-		if schedule != "" {
-			if _, err := utils.NormalizeCronSchedule(schedule); err != nil {
-				errors = append(errors, apisv1.ValidationError{
-					Field:   fmt.Sprintf("%s.properties.schedule", fieldPrefix),
-					Code:    apisv1.ErrCodeInvalidJobSchedule,
-					Message: err.Error(),
-				})
-			}
 		}
 	}
 	return errors

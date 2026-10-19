@@ -62,13 +62,7 @@
   - `*.svc.cluster.local`
   - `*.paas.example.com`（占位示例，上线前请替换为真实 PaaS 域名）
 
-可用初始化脚本：
-- `scripts/init-system-setting.sql`
-
-执行示例：
-```bash
-mysql -h <host> -u <user> -p <database> < scripts/init-system-setting.sql
-```
+服务启动时若不存在 `urlSecurityPolicy` 记录，会按上述默认值自动创建；`allowPrivateByDefault` 取自 `ERUUN_ALLOW_PRIVATE_URL_TARGETS` 对应的启动配置。
 
 ## API 管理示例
 使用已有系统设置接口即可，无需新增路由。

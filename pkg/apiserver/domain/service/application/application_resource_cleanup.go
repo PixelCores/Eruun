@@ -27,7 +27,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
@@ -344,8 +343,6 @@ func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, 
 			c.deleteAdditionalObjects(ctx, componentPtr.Namespace, result.AdditionalObjects, reporter)
 		}
 		reporter.record("Job", jobNS, jobName, c.deleteJob(ctx, jobNS, jobName))
-	case config.ScheduledJob:
-		c.deleteScheduledJobForComponent(ctx, componentPtr, &props, reporter)
 	case config.CloudJob:
 		// cloudjob is API-invocation only in v1 skeleton, no Kubernetes resources to delete.
 		return nil
@@ -552,15 +549,6 @@ func (c *applicationsServiceImpl) deleteJob(ctx context.Context, namespace, name
 	})
 }
 
-func (c *applicationsServiceImpl) deleteCronJob(ctx context.Context, namespace, name string) error {
-	if name == "" {
-		return nil
-	}
-	return c.deleteNamespaced(ctx, namespace, func(opCtx context.Context, ns string) error {
-		return c.KubeClient.BatchV1().CronJobs(ns).Delete(opCtx, name, metav1.DeleteOptions{})
-	})
-}
-
 func (c *applicationsServiceImpl) deleteService(ctx context.Context, namespace, name string) error {
 	if name == "" {
 		return nil
@@ -662,33 +650,4 @@ func pickNamespace(candidate, fallback string) string {
 		return fallback
 	}
 	return config.DefaultNamespace
-}
-
-func (c *applicationsServiceImpl) deleteScheduledJobForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, reporter *cleanupReporter) {
-	schedule := strings.TrimSpace(props.Schedule)
-	if schedule != "" {
-		normalized, err := utils.NormalizeCronSchedule(schedule)
-		if err != nil {
-			klog.Errorf("cleanup scheduled job cron normalize failed: %v", err)
-		}
-		result, err := job.GenerateScheduledCronJob(component, props, normalized)
-		if err != nil {
-			reporter.record("CronJob", component.Namespace, naming.CronJobName(component.Name, component.ResourceNameKey()), err)
-			return
-		}
-		cronNS := component.Namespace
-		cronName := naming.CronJobName(component.Name, component.ResourceNameKey())
-		if result != nil {
-			if cronObj, ok := result.Service.(*batchv1.CronJob); ok && cronObj != nil {
-				if cronObj.Namespace != "" {
-					cronNS = cronObj.Namespace
-				}
-				if cronObj.Name != "" {
-					cronName = cronObj.Name
-				}
-			}
-			c.deleteAdditionalObjects(ctx, component.Namespace, result.AdditionalObjects, reporter)
-		}
-		reporter.record("CronJob", cronNS, cronName, c.deleteCronJob(ctx, cronNS, cronName))
-	}
 }

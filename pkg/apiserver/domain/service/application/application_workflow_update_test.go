@@ -414,10 +414,10 @@ func TestUpdateApplicationWorkflowCanonicalizesMixedCaseComponentRefs(t *testing
 				]
 			},
 			{
-				"name": "web",
-				"jobType": "log_archive_upload",
+				"name": "cleanup-web",
+				"jobType": "cleanup_resources",
 				"properties": [
-					{"path": "/var/log/web"}
+					{"policies": ["WEB"]}
 				]
 			}
 		]
@@ -434,7 +434,7 @@ func TestUpdateApplicationWorkflowCanonicalizesMixedCaseComponentRefs(t *testing
 	require.Equal(t, []model.Policies{{Policies: []string{"Web"}}}, steps.Steps[0].Properties)
 	require.Len(t, steps.Steps[1].SubSteps, 1)
 	require.Equal(t, []model.Policies{{Policies: []string{"Worker"}}}, steps.Steps[1].SubSteps[0].Properties)
-	require.Equal(t, []model.Policies{{Policies: []string{"Web"}, Path: "/var/log/web"}}, steps.Steps[2].Properties)
+	require.Equal(t, []model.Policies{{Policies: []string{"Web"}}}, steps.Steps[2].Properties)
 }
 
 func TestUpdateApplicationWorkflowRejectsUnsupportedJobType(t *testing.T) {
@@ -513,148 +513,6 @@ func TestUpdateApplicationWorkflowSetsWorkflowType(t *testing.T) {
 	stored := store.workflows[resp.WorkflowID]
 	require.NotNil(t, stored)
 	require.Equal(t, config.WorkflowTaskTypeUpdate, stored.WorkflowType)
-}
-
-func TestUpdateApplicationWorkflowAllowsLogArchiveWorkflowType(t *testing.T) {
-	store := newInMemoryAppStore()
-	store.apps["app-1"] = &model.Applications{
-		ID:      "app-1",
-		Name:    "DemoApp",
-		Project: "proj-1",
-	}
-	store.components["api"] = &model.ApplicationComponent{Name: "api", AppID: "app-1", ComponentType: config.ServerJob, Image: "nginx:latest"}
-
-	svc := newMockServiceWithStore(store)
-
-	req := apisv1.UpdateApplicationWorkflowRequest{
-		Name:         "log-archive-upload",
-		WorkflowType: config.WorkflowTaskTypeLogArchiveUpload,
-		Workflow: []apisv1.CreateWorkflowStepRequest{
-			{
-				Name:         "archive-api",
-				WorkflowType: config.JobLogArchiveUpload,
-				Components:   []string{"api"},
-				Properties: apisv1.WorkflowProperties{
-					Path: "/var/log/api",
-				},
-			},
-		},
-	}
-
-	resp, err := svc.UpdateApplicationWorkflow(context.Background(), "app-1", req)
-	require.NoError(t, err)
-
-	stored := store.workflows[resp.WorkflowID]
-	require.NotNil(t, stored)
-	require.Equal(t, config.WorkflowTaskTypeLogArchiveUpload, stored.WorkflowType)
-}
-
-func TestUpdateApplicationWorkflowPreservesLogArchivePathForNameBasedStep(t *testing.T) {
-	store := newInMemoryAppStore()
-	store.apps["app-1"] = &model.Applications{
-		ID:      "app-1",
-		Name:    "DemoApp",
-		Project: "proj-1",
-	}
-	store.components["api"] = &model.ApplicationComponent{Name: "api", AppID: "app-1", ComponentType: config.ServerJob, Image: "nginx:latest"}
-
-	svc := newMockServiceWithStore(store)
-
-	resp, err := svc.UpdateApplicationWorkflow(context.Background(), "app-1", apisv1.UpdateApplicationWorkflowRequest{
-		Name:         "log-archive-upload",
-		WorkflowType: config.WorkflowTaskTypeLogArchiveUpload,
-		Workflow: []apisv1.CreateWorkflowStepRequest{{
-			Name:         "api",
-			WorkflowType: config.JobLogArchiveUpload,
-			Properties: apisv1.WorkflowProperties{
-				Path:      "/var/log/api",
-				Container: "api",
-			},
-		}},
-	})
-	require.NoError(t, err)
-
-	stored := store.workflows[resp.WorkflowID]
-	require.NotNil(t, stored)
-	steps := decodeWorkflowSteps(t, stored.Steps)
-	require.Len(t, steps.Steps, 1)
-	require.Equal(t, []model.Policies{{
-		Policies:  []string{"api"},
-		Path:      "/var/log/api",
-		Container: "api",
-	}}, steps.Steps[0].Properties)
-}
-
-func TestUpdateApplicationWorkflowPreservesLogArchivePathForNameBasedSubStep(t *testing.T) {
-	store := newInMemoryAppStore()
-	store.apps["app-1"] = &model.Applications{
-		ID:      "app-1",
-		Name:    "DemoApp",
-		Project: "proj-1",
-	}
-	store.components["api"] = &model.ApplicationComponent{Name: "api", AppID: "app-1", ComponentType: config.ServerJob, Image: "nginx:latest"}
-
-	svc := newMockServiceWithStore(store)
-
-	resp, err := svc.UpdateApplicationWorkflow(context.Background(), "app-1", apisv1.UpdateApplicationWorkflowRequest{
-		Name:         "log-archive-upload",
-		WorkflowType: config.WorkflowTaskTypeLogArchiveUpload,
-		Workflow: []apisv1.CreateWorkflowStepRequest{{
-			Name: "archive-group",
-			Mode: string(config.WorkflowModeStepByStep),
-			SubSteps: []apisv1.CreateWorkflowSubStepRequest{{
-				Name:         "api",
-				WorkflowType: config.JobLogArchiveUpload,
-				Properties: apisv1.WorkflowProperties{
-					Path: "/var/log/api",
-				},
-			}},
-		}},
-	})
-	require.NoError(t, err)
-
-	stored := store.workflows[resp.WorkflowID]
-	require.NotNil(t, stored)
-	steps := decodeWorkflowSteps(t, stored.Steps)
-	require.Len(t, steps.Steps, 1)
-	require.Len(t, steps.Steps[0].SubSteps, 1)
-	require.Equal(t, []model.Policies{{
-		Policies: []string{"api"},
-		Path:     "/var/log/api",
-	}}, steps.Steps[0].SubSteps[0].Properties)
-}
-
-func TestUpdateApplicationWorkflowRejectsLogArchiveNonPodComponent(t *testing.T) {
-	store := newInMemoryAppStore()
-	store.apps["app-1"] = &model.Applications{
-		ID:      "app-1",
-		Name:    "DemoApp",
-		Project: "proj-1",
-	}
-	store.components["config"] = &model.ApplicationComponent{Name: "config", AppID: "app-1", ComponentType: config.ConfJob}
-
-	svc := newMockServiceWithStore(store)
-
-	req := apisv1.UpdateApplicationWorkflowRequest{
-		Name:         "log-archive-upload",
-		WorkflowType: config.WorkflowTaskTypeLogArchiveUpload,
-		Workflow: []apisv1.CreateWorkflowStepRequest{
-			{
-				Name:         "archive-config",
-				WorkflowType: config.JobLogArchiveUpload,
-				Components:   []string{"config"},
-				Properties: apisv1.WorkflowProperties{
-					Path: "/var/log/api",
-				},
-			},
-		},
-	}
-
-	resp, err := svc.UpdateApplicationWorkflow(context.Background(), "app-1", req)
-	require.Error(t, err)
-	require.Nil(t, resp)
-	require.True(t, errors.Is(err, bcode.ErrWorkflowConfig))
-	require.Contains(t, err.Error(), "does not use pods")
 }
 
 func TestUpdateApplicationWorkflowUpdatesExisting(t *testing.T) {

@@ -239,7 +239,7 @@ func TestCreateApplicationsTemplateRefreshPreservesExistingIDCallbackOverwriteSe
 	}
 	store.workflows["wf-custom"] = &model.Workflow{
 		ID: "wf-custom", AppID: "app-1", Name: "custom-workflow",
-		Namespace: config.DefaultNamespace, WorkflowType: config.WorkflowTaskTypeTesting,
+		Namespace: config.DefaultNamespace, WorkflowType: config.WorkflowTaskTypeUpdate,
 		Steps: steps, Callback: oldCallback,
 	}
 	svc := newMockServiceWithStore(store)

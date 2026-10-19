@@ -92,7 +92,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | 工作流状态、队列或并发 | `pkg/apiserver/event/workflow` | dispatcher、controller、queue、job 状态推进 | `workflow-architecture-guide.md`, `workflow-testing-guide.md` |
 | Kubernetes 资源生成或等待 | `pkg/apiserver/event/workflow/job` | resource generation、job controller、waiter | `architecture-diagrams.md`, `statefulset-pvc-volume-naming.md` |
 | Trait 能力 | `pkg/apiserver/workflow/traits` | trait processor、job builder、相关 API 示例 | `架构文档.md`, `share-trait.md`, `rollout-trait.md` |
-| 组件状态、Pod 日志/文件/执行 | `pkg/apiserver/domain/service`, `pkg/apiserver/interfaces/api` | component query、pod ops、logs/files/exec API、Log archive workflow | `application-status-api.md`, `component-log-stream-api.md`, `component-pod-file-exec-api.md`, `log-archive-upload-workflow.md`, `component-container-info-api.md` |
+| 组件状态、Pod 日志/文件/执行 | `pkg/apiserver/domain/service`, `pkg/apiserver/interfaces/api` | component query、pod ops、logs/files/exec API | `application-status-api.md`, `component-log-stream-api.md`, `component-pod-file-exec-api.md`, `component-container-info-api.md` |
 | 认证、授权、OAuth、团队空间 | `pkg/apiserver/domain/service/account` | account、middleware、account workspace scope、infrastructure/workspace | `account-auth-workspaces.md` |
 | 配置、系统设置、安全策略 | `pkg/apiserver/config`, `pkg/apiserver/domain/spec` | config defaults、validation、system setting service | `system-setting.md`, `url-security-policy.md` |
 | 消息队列或分布式执行 | `pkg/apiserver/infrastructure/messaging`, `pkg/apiserver/domain/repository/workflow_lease.go` | 运行角色、Redis Streams、workflow worker、DB lease/fencing | `enterprise-distributed-runtime-design.md`, `leader-informer-recovery.md`, `workflow-architecture-guide.md` |
@@ -109,7 +109,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `account-auth-workspaces.md` | Current | GitHub/Google、邮箱/手机号登录、会话、团队权限、延迟任务隔离与失败收尾、重复部署幂等性、前端与部署接入 |
 | [`../examples/account-auth-workspaces/README.md`](../examples/account-auth-workspaces/README.md) | Current | 账号与团队 API 实操：curl 注册/登录/刷新、OAuth 浏览器回调、身份绑定、邀请和空间资源访问 |
 | `api-error-response-contract.md` | Current | API 统一错误响应与通用错误脱敏契约 |
-| `grpc-api.md` | Current | gRPC v1 启动、认证、流式边界、Go 客户端示例及 100 条 HTTP 路由—RPC 对照 |
+| `grpc-api.md` | Current | gRPC v1 启动、认证、流式边界、Go 客户端示例及 97 条 HTTP 路由—RPC 对照 |
 | `canonical-json-profile.md` | Current | 面向 Agent 的唯一 Application/Workflow JSON、Schema、Try、read-edit-submit、幂等与 allowedActions 契约 |
 | `system-setting.md` | Current | 系统设置类型、API 与默认初始化 |
 | `settings-page-api.md` | Current | 前端设置页字段归属、请求参数与保存策略 |
@@ -127,7 +127,6 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `component-container-info-api.md` | Current | 组件容器信息查询 API |
 | `component-log-stream-api.md` | Current | 组件日志 SSE API |
 | `component-pod-file-exec-api.md` | Current | 组件文件导出与 Shell 执行 |
-| `log-archive-upload-workflow.md` | Current | 组件日志归档同步下载 API、保留的 workflow jobType 与 uploader 接入边界 |
 | `components-api-sidecar-field.md` | Current | Components API 字段说明 |
 | `version-update-api.md` | Current | 版本更新 API；`executionScope` 控制 workflow task 执行范围；全量清理/全量部署使用 `remove cleanup_all` / `add all` 保留动作 |
 | `version-diff-update-api.md` | Current | 版本差异更新 API；执行时透传 `/version` 的 `executionScope` |

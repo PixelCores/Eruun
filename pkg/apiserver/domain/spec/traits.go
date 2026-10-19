@@ -113,20 +113,17 @@ type ConfigMapSelectorSpec struct {
 
 // Properties describes container-level properties shared by traits.
 type Properties struct {
-	Ports                      []Ports                               `json:"ports"`
-	Env                        map[string]string                     `json:"env"`
-	Conf                       map[string]string                     `json:"conf"`
-	Secret                     map[string]string                     `json:"secret"`
-	Command                    []string                              `json:"command"`
-	Labels                     map[string]string                     `json:"labels"`
-	Cloud                      *CloudSpec                            `json:"cloud,omitempty"`
-	Schedule                   string                                `json:"schedule,omitempty"`
-	StartTime                  int64                                 `json:"startTime,omitempty"`
-	RunPolicy                  string                                `json:"runPolicy,omitempty"`
-	JobRetryPolicy             *workflowconfig.JobRetryPolicy        `json:"jobRetryPolicy,omitempty"`
-	FailurePolicy              *workflowconfig.WorkflowFailurePolicy `json:"failurePolicy,omitempty"`
-	SuccessfulJobsHistoryLimit *int32                                `json:"successfulJobsHistoryLimit,omitempty"`
-	FailedJobsHistoryLimit     *int32                                `json:"failedJobsHistoryLimit,omitempty"`
+	Ports          []Ports                               `json:"ports"`
+	Env            map[string]string                     `json:"env"`
+	Conf           map[string]string                     `json:"conf"`
+	Secret         map[string]string                     `json:"secret"`
+	Command        []string                              `json:"command"`
+	Labels         map[string]string                     `json:"labels"`
+	Cloud          *CloudSpec                            `json:"cloud,omitempty"`
+	StartTime      int64                                 `json:"startTime,omitempty"`
+	RunPolicy      string                                `json:"runPolicy,omitempty"`
+	JobRetryPolicy *workflowconfig.JobRetryPolicy        `json:"jobRetryPolicy,omitempty"`
+	FailurePolicy  *workflowconfig.WorkflowFailurePolicy `json:"failurePolicy,omitempty"`
 }
 
 // CloudSpec defines the generic cloud provider invocation shape for cloudjob components.

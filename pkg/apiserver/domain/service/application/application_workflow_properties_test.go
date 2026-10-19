@@ -108,24 +108,23 @@ func TestUpdateApplicationWorkflowAcceptsReadResponsePropertiesArray(t *testing.
 
 	var req apisv1.UpdateApplicationWorkflowRequest
 	require.NoError(t, json.Unmarshal([]byte(`{
-		"name": "log-archive-upload",
-		"workflowType": "log_archive_upload",
+		"name": "deploy-pods",
 		"workflow": [
 			{
-				"name": "archive-pods",
-				"jobType": "log_archive_upload",
+				"name": "deploy-pods",
+				"jobType": "deploy",
 				"components": [" API ", "WORKER"],
 				"properties": [
-					{"policies": [" API ", "api"], "path": "/var/log/api", "container": "api"},
-					{"policies": ["Worker"], "path": "/var/log/worker"}
+					{"policies": [" API ", "api"]},
+					{"policies": ["Worker"]}
 				],
 				"subSteps": [
 					{
-						"name": "archive-sidecar",
-						"jobType": "log_archive_upload",
+						"name": "deploy-sidecar",
+						"jobType": "deploy",
 						"components": [" SideCar "],
 						"properties": [
-							{"policies": ["SideCar"], "path": "/var/log/sidecar", "container": "logs"}
+							{"policies": ["SideCar"]}
 						]
 					}
 				]
@@ -142,12 +141,12 @@ func TestUpdateApplicationWorkflowAcceptsReadResponsePropertiesArray(t *testing.
 	steps := decodeWorkflowSteps(t, stored.Steps)
 	require.Len(t, steps.Steps, 1)
 	require.Equal(t, []model.Policies{
-		{Policies: []string{"api"}, Path: "/var/log/api", Container: "api"},
-		{Policies: []string{"worker"}, Path: "/var/log/worker"},
+		{Policies: []string{"api"}},
+		{Policies: []string{"worker"}},
 	}, steps.Steps[0].Properties)
 	require.Len(t, steps.Steps[0].SubSteps, 1)
 	require.Equal(t, []model.Policies{
-		{Policies: []string{"sidecar"}, Path: "/var/log/sidecar", Container: "logs"},
+		{Policies: []string{"sidecar"}},
 	}, steps.Steps[0].SubSteps[0].Properties)
 }
 
@@ -254,16 +253,15 @@ func TestUpdateApplicationWorkflowRejectsAmbiguousPropertiesArray(t *testing.T) 
 
 	var req apisv1.UpdateApplicationWorkflowRequest
 	require.NoError(t, json.Unmarshal([]byte(`{
-		"name": "log-archive-upload",
-		"workflowType": "log_archive_upload",
+		"name": "deploy-pods",
 		"workflow": [
 			{
-				"name": "archive-pods",
-				"jobType": "log_archive_upload",
+				"name": "deploy-pods",
+				"jobType": "deploy",
 				"components": ["api"],
 				"properties": [
-					{"policies": ["  "], "path": "/var/log/api"},
-					{"policies": ["api"], "path": "/var/log/api2"}
+					{"policies": ["  "]},
+					{"policies": ["api"]}
 				]
 			}
 		]

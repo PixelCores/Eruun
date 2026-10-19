@@ -16,7 +16,6 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
@@ -56,7 +55,7 @@ func CleanupRecoveredCancelledJobsPage(ctx context.Context, client kubernetes.In
 			In: []datastore.InQueryOption{{
 				Key: "type", Values: []string{
 					string(config.JobDeployInstant), string(config.JobCommand),
-					string(config.JobEval), string(config.JobDeployScheduled),
+					string(config.JobEval),
 				},
 			},
 				{Key: "status", Values: []string{string(config.StatusCancelled)}},
@@ -143,21 +142,6 @@ func cleanupRecoveredCancelledJob(ctx context.Context, client kubernetes.Interfa
 				}
 			}
 			if err := deleteCancelledKubernetesJob(ctx, client, space.Namespace, live); err != nil {
-				return err
-			}
-			return finishCancelledJobCleanup(ctx, store, record, cancelledJobCleanupComplete)
-		}
-	}
-	if record.Type == string(config.JobDeployScheduled) {
-		cron, cronErr := client.BatchV1().CronJobs(space.Namespace).Get(ctx, record.ServiceName, metav1.GetOptions{})
-		if cronErr != nil && !k8serrors.IsNotFound(cronErr) {
-			return fmt.Errorf("get cancelled Kubernetes CronJob: %w", cronErr)
-		}
-		if cronErr == nil {
-			if !cancelledCronJobMatches(record, cron) {
-				return finishCancelledJobCleanup(ctx, store, record, cancelledJobCleanupPreserved)
-			}
-			if err := deleteCancelledKubernetesCronJob(ctx, client, space.Namespace, cron); err != nil {
 				return err
 			}
 			return finishCancelledJobCleanup(ctx, store, record, cancelledJobCleanupComplete)
@@ -267,37 +251,6 @@ func (c *InstantJobCtl) CleanCancelled(ctx context.Context) (string, error) {
 	return cancelledJobCleanupComplete, deleteCancelledBatchJob(ctx, c.client, c.namespace, c.job)
 }
 
-func (c *ScheduledJobCtl) CleanCancelled(ctx context.Context) (string, error) {
-	if _, ok := optionalJobInfo[*batchv1.Job](c.job); ok {
-		return cancelledJobCleanupComplete, deleteCancelledBatchJob(ctx, c.client, c.namespace, c.job)
-	}
-	for _, ref := range resourcesForCleanup(ctx, domainspec.ResourceCronJob) {
-		if !ref.Created {
-			continue
-		}
-		namespace := ref.Namespace
-		if namespace == "" {
-			namespace = c.namespace
-		}
-		cron, err := c.client.BatchV1().CronJobs(namespace).Get(ctx, ref.Name, metav1.GetOptions{})
-		if k8serrors.IsNotFound(err) {
-			return cancelledJobCleanupComplete, nil
-		}
-		if err != nil {
-			return "", fmt.Errorf("get cancelled Kubernetes CronJob: %w", err)
-		}
-		record := buildJobInfoRecord(c.job)
-		if !cancelledCronJobMatches(&record, cron) {
-			return "", fmt.Errorf("cancelled Kubernetes CronJob execution identity changed")
-		}
-		if err := deleteCancelledKubernetesCronJob(ctx, c.client, namespace, cron); err != nil {
-			return "", err
-		}
-		return cancelledJobCleanupComplete, nil
-	}
-	return cancelledJobCleanupPreserved, nil
-}
-
 func deleteCancelledBatchJob(ctx context.Context, client kubernetes.Interface, namespace string, task *model.JobTask) error {
 	if client == nil || task == nil {
 		return fmt.Errorf("cancelled Kubernetes Job dependencies are incomplete")
@@ -354,23 +307,6 @@ func deleteCancelledKubernetesJob(ctx context.Context, client kubernetes.Interfa
 	}, live.UID, "Job")
 }
 
-func deleteCancelledKubernetesCronJob(ctx context.Context, client kubernetes.Interface, namespace string, live *batchv1.CronJob) error {
-	uid := live.UID
-	policy := metav1.DeletePropagationForeground
-	if err := client.BatchV1().CronJobs(namespace).Delete(ctx, live.Name, metav1.DeleteOptions{
-		Preconditions: &metav1.Preconditions{UID: &uid}, PropagationPolicy: &policy,
-	}); err != nil && !k8serrors.IsNotFound(err) {
-		return fmt.Errorf("delete cancelled Kubernetes CronJob: %w", err)
-	}
-	return waitForCancelledKubernetesResourceDeletion(ctx, func(ctx context.Context) (types.UID, error) {
-		current, err := client.BatchV1().CronJobs(namespace).Get(ctx, live.Name, metav1.GetOptions{})
-		if err != nil {
-			return "", err
-		}
-		return current.UID, nil
-	}, uid, "CronJob")
-}
-
 func waitForCancelledKubernetesResourceDeletion(ctx context.Context, currentUID func(context.Context) (types.UID, error), deletedUID types.UID, kind string) error {
 	ticker := time.NewTicker(200 * time.Millisecond)
 	defer ticker.Stop()
@@ -391,7 +327,7 @@ func waitForCancelledKubernetesResourceDeletion(ctx context.Context, currentUID 
 }
 
 func recoverableKubernetesJobType(jobType string) bool {
-	return config.IsInstantJobType(config.JobType(jobType)) || jobType == string(config.JobDeployScheduled)
+	return config.IsInstantJobType(config.JobType(jobType))
 }
 
 func cancelledKubernetesJobMatches(record *model.JobInfo, live *batchv1.Job) bool {
@@ -400,12 +336,4 @@ func cancelledKubernetesJobMatches(record *model.JobInfo, live *batchv1.Job) boo
 		live.Annotations[config.AnnotationJobExecutionKey] == *record.ExecutionKey &&
 		live.Annotations[config.AnnotationJobRunGeneration] == strconv.FormatUint(record.RunGeneration, 10) &&
 		(record.Attempt == 0 || live.Annotations[workflowconfig.AnnotationJobAttempt] == strconv.FormatUint(uint64(record.Attempt), 10))
-}
-
-func cancelledCronJobMatches(record *model.JobInfo, live *batchv1.CronJob) bool {
-	return record != nil && record.ExecutionKey != nil && live != nil && live.UID != "" &&
-		live.Annotations[config.AnnotationJobTaskID] == record.TaskID &&
-		live.Annotations[config.AnnotationJobExecutionKey] == *record.ExecutionKey &&
-		live.Annotations[config.AnnotationJobRunGeneration] == strconv.FormatUint(record.RunGeneration, 10) &&
-		live.Annotations[workflowconfig.AnnotationJobAttempt] == strconv.FormatUint(uint64(record.Attempt), 10)
 }

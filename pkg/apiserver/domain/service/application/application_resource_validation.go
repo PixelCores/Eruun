@@ -174,12 +174,6 @@ func trackResolvedApplicationResources(
 			if err := track(spec.ResourceJob, naming.JobName(componentName, componentResourceAppName), "generated job"); err != nil {
 				return err
 			}
-		case config.ScheduledJob:
-			if strings.TrimSpace(component.Properties.Schedule) != "" {
-				if err := track(spec.ResourceCronJob, naming.CronJobName(componentName, componentResourceAppName), "generated cronjob"); err != nil {
-					return err
-				}
-			}
 		}
 
 		for _, pvc := range resolvedPVCResourceNames(component) {
@@ -305,7 +299,7 @@ func trackComponentLabelValue(seen map[string]resolvedComponentLabelRef, current
 
 func resolvedServiceResourceNames(component apisv1.CreateComponentRequest, resourceAppName string) []string {
 	switch component.ComponentType {
-	case config.InstantJob, config.ScheduledJob, config.CloudJob:
+	case config.InstantJob, config.CloudJob:
 		return nil
 	}
 	componentName := strings.TrimSpace(component.Name)

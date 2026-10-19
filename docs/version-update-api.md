@@ -96,7 +96,7 @@ POST /api/v1/applications/:appID/version/cancel
 - `changed_components` 不会自动推断依赖组件。如果本次 backend 更新还需要 config/secret 同步，必须把对应组件也作为本次实际变更提交，或使用默认 `full_workflow`。
 - `changed_components` 不能和 `add all` 或 `remove cleanup_all` 组合；这两个资源动作语义上要求全量 workflow。
 - `changed_components` 下，若任一本次实际变更组件未被选定 workflow 的可执行组件节点覆盖，请求会在事务内失败并回滚，不会创建“部分组件只改 DB、没有 job reconcile”的 workflow task。
-- `changed_components` 不会因为组件同名纳入 `database_reset`、`log_archive_upload` 等非部署 workflow job；需要执行这些动作时应使用对应专用 API/workflow，或使用默认 `full_workflow`。
+- `changed_components` 不会因为组件同名纳入 `database_reset` 等非部署 workflow job；需要执行这些动作时应使用对应专用 API/workflow，或使用默认 `full_workflow`。
 - 普通 `restart` 仍沿用现有 restart-only 逻辑；restart-only 请求只保留前置审批步骤并追加 `version_restart` job。
 - 非法 `executionScope` 会返回应用配置错误，不会静默回退。
 

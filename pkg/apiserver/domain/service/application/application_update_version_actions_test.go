@@ -47,7 +47,6 @@ func TestVersionUpdateWorkflowDeploymentComponents(t *testing.T) {
 				{Name: "deploy", WorkflowType: " deploy "},
 				{Name: "cleanup", WorkflowType: config.JobCleanupResources},
 				{Name: "reset", WorkflowType: config.JobDatabaseReset},
-				{Name: "archive", WorkflowType: config.JobLogArchiveUpload},
 				{Name: "unsupported", WorkflowType: "DEPLOY"},
 			},
 			want: map[string]struct{}{"omitted": {}, "whitespace": {}, "deploy": {}},

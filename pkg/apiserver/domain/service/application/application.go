@@ -49,7 +49,6 @@ type ApplicationsService interface {
 	DeleteApplicationCascade(ctx context.Context, appID string, req apisv1.DeleteApplicationRequest) (*apisv1.DeleteApplicationResponse, error)
 	CleanupApplicationResources(ctx context.Context, appID string) (*apisv1.CleanupApplicationResourcesResponse, error)
 	ResetApplicationDatabases(ctx context.Context, appID string, req apisv1.DatabaseResetRequest) (*apisv1.DatabaseResetResponse, error)
-	DownloadLogArchive(ctx context.Context, appID string, req apisv1.LogArchiveDownloadRequest) (*ComponentFileArchiveStream, error)
 	RestartApplicationWorkloads(ctx context.Context, appID string, req apisv1.ApplicationLifecycleRequest) (*apisv1.RestartApplicationWorkloadsResponse, error)
 	StopApplicationDeployments(ctx context.Context, appID string, req apisv1.ApplicationLifecycleRequest) (*apisv1.StopApplicationDeploymentsResponse, error)
 	StartApplicationDeployments(ctx context.Context, appID string, req apisv1.ApplicationLifecycleRequest) (*apisv1.StartApplicationDeploymentsResponse, error)
@@ -57,8 +56,6 @@ type ApplicationsService interface {
 	ListApplicationWorkflows(ctx context.Context, appID string) ([]*model.Workflow, error)
 	ListApplicationComponents(ctx context.Context, appID string) ([]*model.ApplicationComponent, error)
 	ListApplicationTasks(ctx context.Context, appID string) ([]*model.WorkflowQueue, error)
-	ListCronJobs(ctx context.Context) ([]*apisv1.CronJobInfo, error)
-	ListScheduledJobs(ctx context.Context) ([]*apisv1.ScheduledJobInfo, error)
 	ListComponentContainers(ctx context.Context, appID, componentName string) (*apisv1.ComponentContainersResponse, error)
 	StreamComponentLogs(ctx context.Context, appID, componentName, requestedContainer string) (*ComponentLogStream, error)
 	ExportComponentFilesZip(ctx context.Context, appID, componentName string, req apisv1.ExportComponentFilesRequest) (*ComponentFileArchiveStream, error)
@@ -763,8 +760,7 @@ func prepareComponents(appID, namespace string, reqComponents []apisv1.CreateCom
 		}
 		if (reqComponent.ComponentType == config.ServerJob ||
 			reqComponent.ComponentType == config.StoreJob ||
-			(reqComponent.ComponentType == config.InstantJob && reqComponent.Traits.Evaluation == nil) ||
-			reqComponent.ComponentType == config.ScheduledJob) && reqComponent.Image == "" {
+			(reqComponent.ComponentType == config.InstantJob && reqComponent.Traits.Evaluation == nil)) && reqComponent.Image == "" {
 			return nil, bcode.ErrComponentNotImageSet
 		}
 		if reserved := reservedComponentLabelsIn(reqComponent.Properties.Labels); len(reserved) > 0 {

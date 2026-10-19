@@ -60,13 +60,14 @@ spec: {}
 	input := append([]*unstructured.Unstructured{nil, duplicate}, objects...)
 	components, sources, warnings, err := ConvertKubeObjectsWithSources(input)
 	require.NoError(t, err)
-	require.Len(t, components, 6)
+	require.Len(t, components, 5)
 	require.Len(t, sources, len(components))
-	wantSources := []*unstructured.Unstructured{duplicate, objects[2], objects[4], objects[1], objects[3], objects[0]}
+	wantSources := []*unstructured.Unstructured{duplicate, objects[2], objects[4], objects[1], objects[3]}
 	for i, source := range sources {
 		require.Same(t, wantSources[i], source)
 		require.Equal(t, source.GetName(), components[i].Name)
 	}
+	require.Contains(t, warnings, "unsupported kind CronJob ignored")
 	require.Contains(t, warnings, "configmap missing metadata.name; skipped")
 	require.Contains(t, warnings, "deployment skipped has no containers; skipped")
 

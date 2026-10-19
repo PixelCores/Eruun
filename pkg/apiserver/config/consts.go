@@ -46,14 +46,13 @@ const (
 	DelTimeOut                            = 30 * time.Second
 
 	// ServerJob JobType 的类型分为几种：1.无状态服务 2.存储服务 3.网络服务
-	ServerJob    JobType = "webservice"
-	StoreJob     JobType = "store"
-	ConfJob      JobType = "config"
-	SecretJob    JobType = "secret"
-	CloudJob     JobType = "cloudjob"
-	Service      JobType = "service"
-	InstantJob   JobType = "job"
-	ScheduledJob JobType = "scheduledjob"
+	ServerJob  JobType = "webservice"
+	StoreJob   JobType = "store"
+	ConfJob    JobType = "config"
+	SecretJob  JobType = "secret"
+	CloudJob   JobType = "cloudjob"
+	Service    JobType = "service"
+	InstantJob JobType = "job"
 
 	JobDeploy                   JobType = "deploy"
 	JobDeployService            JobType = "service_deploy"
@@ -68,12 +67,10 @@ const (
 	JobDeployClusterRole        JobType = "cluster_role_deploy"
 	JobDeployClusterRoleBinding JobType = "cluster_role_binding_deploy"
 	JobDeployInstant            JobType = "instant_job"
-	JobDeployScheduled          JobType = "scheduled_job"
 	JobDeployCloud              JobType = "cloudjob_deploy"
 	JobDeployCallback           JobType = "callback"
 	JobCleanupResources         JobType = "cleanup_resources"
 	JobDatabaseReset            JobType = "database_reset"
-	JobLogArchiveUpload         JobType = "log_archive_upload"
 	JobVersionRestart           JobType = "version_restart"
 	JobCommand                  JobType = "command"
 	JobEval                     JobType = "eval"
@@ -85,18 +82,14 @@ const (
 )
 
 const (
-	WorkflowTaskTypeWorkflow         WorkflowTaskType = "workflow"
-	WorkflowTaskTypeTesting          WorkflowTaskType = "test"
-	WorkflowTaskTypeScanning         WorkflowTaskType = "scan"
-	WorkflowTaskTypeDelivery         WorkflowTaskType = "delivery"
-	WorkflowTaskTypeUpdate           WorkflowTaskType = "update"
-	WorkflowTaskTypeCleanup          WorkflowTaskType = "cleanup"
-	WorkflowTaskTypeRestart          WorkflowTaskType = "restart"
-	WorkflowTaskTypeStop             WorkflowTaskType = "stop"
-	WorkflowTaskTypeStart            WorkflowTaskType = "start"
-	WorkflowTaskTypeDatabaseReset    WorkflowTaskType = "database_reset"
-	WorkflowTaskTypeLogArchiveUpload WorkflowTaskType = "log_archive_upload"
-	WorkflowTaskTypeJob              WorkflowTaskType = "job"
+	WorkflowTaskTypeWorkflow      WorkflowTaskType = "workflow"
+	WorkflowTaskTypeUpdate        WorkflowTaskType = "update"
+	WorkflowTaskTypeCleanup       WorkflowTaskType = "cleanup"
+	WorkflowTaskTypeRestart       WorkflowTaskType = "restart"
+	WorkflowTaskTypeStop          WorkflowTaskType = "stop"
+	WorkflowTaskTypeStart         WorkflowTaskType = "start"
+	WorkflowTaskTypeDatabaseReset WorkflowTaskType = "database_reset"
+	WorkflowTaskTypeJob           WorkflowTaskType = "job"
 
 	WorkflowModeStepByStep WorkflowMode = "StepByStep"
 	WorkflowModeDAG        WorkflowMode = "DAG"
@@ -117,14 +110,12 @@ const (
 	DelayQueueGroup             = "job-delay-dispatcher"
 	ResultQueueGroup            = "job-result-dispatcher"
 
-	WaitingTasksQueryTimeout            = 5 * time.Second
-	TaskStateTransitionTimeout          = 5 * time.Second
-	QueueDispatchTimeout                = 5 * time.Second
-	DefaultJobTaskTimeout               = 20 * time.Minute //超时时间设置为20分钟
-	DefaultJobTTLSeconds          int32 = 3600             // 默认 1 小时后清理完成的 Job
-	DefaultCronJobSuccessfulLimit int32 = 3                // 默认保留成功的 CronJob 历史数
-	DefaultCronJobFailedLimit     int32 = 3                // 默认保留失败的 CronJob 历史数
-	DefaultRequestBodyLimitBytes  int64 = 24 * 1024 * 1024 // 默认请求体上限 24MB（覆盖 10MB inline YAML 的 JSON 包装开销）
+	WaitingTasksQueryTimeout           = 5 * time.Second
+	TaskStateTransitionTimeout         = 5 * time.Second
+	QueueDispatchTimeout               = 5 * time.Second
+	DefaultJobTaskTimeout              = 20 * time.Minute //超时时间设置为20分钟
+	DefaultJobTTLSeconds         int32 = 3600             // 默认 1 小时后清理完成的 Job
+	DefaultRequestBodyLimitBytes int64 = 24 * 1024 * 1024 // 默认请求体上限 24MB（覆盖 10MB inline YAML 的 JSON 包装开销）
 
 	DefaultApplicationCleanupTimeout                    = 10 * time.Second
 	DefaultApplicationWorkloadRestartTimeout            = 10 * time.Second
@@ -210,11 +201,7 @@ func IsSupportedWorkflowTaskType(value WorkflowTaskType) bool {
 	switch NormalizeWorkflowTaskType(value) {
 	case WorkflowTaskTypeWorkflow,
 		WorkflowTaskTypeUpdate,
-		WorkflowTaskTypeTesting,
-		WorkflowTaskTypeScanning,
-		WorkflowTaskTypeDelivery,
-		WorkflowTaskTypeDatabaseReset,
-		WorkflowTaskTypeLogArchiveUpload:
+		WorkflowTaskTypeDatabaseReset:
 		return true
 	default:
 		return false
@@ -245,7 +232,7 @@ func ParseWorkflowStepType(stepType string) WorkflowStepType {
 
 func IsSupportedWorkflowJobType(jobType JobType) bool {
 	switch JobType(strings.TrimSpace(string(jobType))) {
-	case "", JobDeploy, JobCleanupResources, JobDatabaseReset, JobLogArchiveUpload:
+	case "", JobDeploy, JobCleanupResources, JobDatabaseReset:
 		return true
 	default:
 		return false
@@ -254,7 +241,7 @@ func IsSupportedWorkflowJobType(jobType JobType) bool {
 
 func ComponentTypeUsesPods(componentType JobType) bool {
 	switch JobType(strings.TrimSpace(string(componentType))) {
-	case ServerJob, StoreJob, InstantJob, ScheduledJob:
+	case ServerJob, StoreJob, InstantJob:
 		return true
 	default:
 		return false

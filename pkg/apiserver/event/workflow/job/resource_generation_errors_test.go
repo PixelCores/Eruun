@@ -32,9 +32,6 @@ func TestResourceGeneratorsReturnTraitConflict(t *testing.T) {
 		{"one time", func(c *model.ApplicationComponent, p *model.Properties) (*GenerateServiceResult, error) {
 			return GenerateOneTimeJob(c, p, "", 123)
 		}},
-		{"cron", func(c *model.ApplicationComponent, p *model.Properties) (*GenerateServiceResult, error) {
-			return GenerateScheduledCronJob(c, p, "0 * * * *")
-		}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			component := &model.ApplicationComponent{Name: "api", Namespace: "default", Image: "nginx:1.27", Traits: traits}

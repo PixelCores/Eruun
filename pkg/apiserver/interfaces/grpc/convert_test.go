@@ -83,11 +83,11 @@ func TestTypedNestedDynamicFieldsAndEmbeddedRequest(t *testing.T) {
 func TestTypedWorkflowPropertiesArrayRoundTrip(t *testing.T) {
 	step := apis.CreateWorkflowStepRequest{Name: "archive"}
 	step.SetWorkflowPropertiesList([]apis.WorkflowProperties{
-		{Policies: []string{"api"}, Path: "/var/log/api"},
-		{Policies: []string{"worker"}, Path: "/var/log/worker"},
+		{Policies: []string{"api"}},
+		{Policies: []string{"worker"}},
 	})
 	subStep := apis.CreateWorkflowSubStepRequest{Name: "archive-sidecar"}
-	subStep.SetWorkflowPropertiesList([]apis.WorkflowProperties{{Policies: []string{"sidecar"}, Container: "logs"}})
+	subStep.SetWorkflowPropertiesList([]apis.WorkflowProperties{{Policies: []string{"sidecar"}}})
 	step.SubSteps = []apis.CreateWorkflowSubStepRequest{subStep}
 
 	applicationSpec := apis.CreateApplicationsRequest{Name: "demo", Workflow: []apis.CreateWorkflowStepRequest{step}}
@@ -105,10 +105,10 @@ func TestTypedWorkflowPropertiesArrayRoundTrip(t *testing.T) {
 	// stored Workflow. Its canonical JSON also contains properties arrays.
 	storedSteps, err := model.NewJSONStructByStruct(model.WorkflowSteps{Steps: []*model.WorkflowStep{{
 		Name: "archive", Properties: []model.Policies{
-			{Policies: []string{"api"}, Path: "/var/log/api"},
-			{Policies: []string{"worker"}, Path: "/var/log/worker"},
+			{Policies: []string{"api"}},
+			{Policies: []string{"worker"}},
 		},
-		SubSteps: []*model.WorkflowSubStep{{Name: "archive-sidecar", Properties: []model.Policies{{Policies: []string{"sidecar"}, Container: "logs"}}}},
+		SubSteps: []*model.WorkflowSubStep{{Name: "archive-sidecar", Properties: []model.Policies{{Policies: []string{"sidecar"}}}}},
 	}}})
 	require.NoError(t, err)
 	assembled, err := assembler.ConvertWorkflowModelToDTO(&model.Workflow{ID: "wf-1", Name: "demo", Steps: storedSteps})

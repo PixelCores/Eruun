@@ -213,7 +213,7 @@ func TestRunSchemaMigrationKeepsMarkerIncompleteWhenMigrationProbeFails(t *testi
 	ctx, cancel := context.WithCancel(context.Background())
 	err = runSchemaMigration(ctx, db, func() error {
 		cancel()
-		return migrateSystemSettings(ctx, db)
+		return migrateTextOnlySecretSchema(ctx, db)
 	})
 
 	require.ErrorIs(t, err, context.Canceled)
@@ -247,11 +247,6 @@ func TestMigrationSettingsHaveTimestamps(t *testing.T) {
 		migrate           func(context.Context, *gorm.DB) error
 	}{
 		{"schema marker", schemaMigrationMarker, writeSchemaMigrationMarker},
-		{"imported setting", model.SystemSettingTypeNodeSelector, func(ctx context.Context, db *gorm.DB) error {
-			return migrateSettingFromTable(ctx, db, "legacy_profiles", model.SystemSettingTypeNodeSelector, func(rows []nodeSelectorProfileRow) (json.RawMessage, error) {
-				return json.Marshal(rows)
-			})
-		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			now := time.Date(2026, time.September, 3, 12, 0, 0, 0, time.UTC)
@@ -268,10 +263,6 @@ func TestMigrationSettingsHaveTimestamps(t *testing.T) {
 			sqlDB.SetMaxOpenConns(1)
 			t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
 			require.NoError(t, db.AutoMigrate(&model.SystemSetting{}, &model.Applications{}))
-			require.NoError(t, db.Table("legacy_profiles").AutoMigrate(&nodeSelectorProfileRow{}))
-			require.NoError(t, db.Table("legacy_profiles").Create(&nodeSelectorProfileRow{
-				ID: "profile-1", Name: "local", Selection: json.RawMessage(`{"region":"local"}`),
-			}).Error)
 
 			require.NoError(t, tc.migrate(context.Background(), db))
 			var setting model.SystemSetting

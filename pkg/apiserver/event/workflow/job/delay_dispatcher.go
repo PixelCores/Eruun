@@ -673,7 +673,7 @@ func (d *DelayDispatcher) dispatchJob(ctx context.Context, item *delayItem, clie
 		RunGeneration: item.payload.RunGeneration,
 	}, jobObj)
 
-	jobType := config.JobDeployScheduled
+	jobType := config.JobDeployInstant
 	if item.payload.JobType != "" {
 		jobType = config.JobType(item.payload.JobType)
 	}

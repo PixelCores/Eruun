@@ -70,26 +70,3 @@ func TestApplicationTaskIdentity(t *testing.T) {
 	_, err = PrepareTask(task, "app", w, cfg)
 	require.ErrorIs(t, err, bcode.ErrForbidden)
 }
-
-func TestPrepareScheduledPayloadPreservesPointerAndPolicy(t *testing.T) {
-	for _, cron := range []bool{false, true} {
-		pod := corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "job", Image: "busybox:1.37.0"}}}}
-		jobSpec := batchv1.JobSpec{Template: pod}
-		payload := interface{}(&batchv1.Job{Spec: jobSpec})
-		if cron {
-			payload = &batchv1.CronJob{Spec: batchv1.CronJobSpec{JobTemplate: batchv1.JobTemplateSpec{Spec: jobSpec}}}
-		}
-		task := &model.JobTask{AppID: "app", Namespace: "own", JobType: string(config.JobDeployScheduled), JobInfo: payload}
-		deploy, err := PrepareTask(task, "app", &model.Workspace{Namespace: "own"}, taskWorkspaceConfig(t))
-		require.NoError(t, err)
-		require.True(t, deploy)
-		require.Same(t, payload, task.JobInfo)
-		if cron {
-			pod = payload.(*batchv1.CronJob).Spec.JobTemplate.Spec.Template
-		} else {
-			pod = payload.(*batchv1.Job).Spec.Template
-		}
-		require.False(t, *pod.Spec.AutomountServiceAccountToken)
-		require.True(t, *pod.Spec.Containers[0].SecurityContext.RunAsNonRoot)
-	}
-}

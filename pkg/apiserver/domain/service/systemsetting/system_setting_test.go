@@ -127,15 +127,15 @@ func TestSystemSettingService_CreateAndGet(t *testing.T) {
 	svc := &systemSettingServiceImpl{SettingRepo: repo}
 	ctx := context.Background()
 
-	value := json.RawMessage(`{"nodeSelector":{"node.kubernetes.io/test":"on"}}`)
+	value := json.RawMessage(`{"enabled":true,"windowSeconds":600,"threshold":3}`)
 	created, err := svc.Create(ctx, apisv1.CreateSystemSettingRequest{
-		Type:  model.SystemSettingTypeNodeSelector,
+		Type:  model.SystemSettingTypePodRestartMonitor,
 		Value: value,
 	})
 	require.NoError(t, err)
-	require.Equal(t, model.SystemSettingTypeNodeSelector, created.Type)
+	require.Equal(t, model.SystemSettingTypePodRestartMonitor, created.Type)
 
-	got, err := svc.Get(ctx, model.SystemSettingTypeNodeSelector)
+	got, err := svc.Get(ctx, model.SystemSettingTypePodRestartMonitor)
 	require.NoError(t, err)
 	require.JSONEq(t, string(value), string(got.Value))
 }
@@ -157,15 +157,15 @@ func TestSystemSettingServiceMapsWrappedRepositoryErrors(t *testing.T) {
 				repo.lookupErr, repo.createErr, repo.deleteErr = repoErr, repoErr, repoErr
 				svc := &systemSettingServiceImpl{SettingRepo: repo}
 				ctx := context.Background()
-				settingType := model.SystemSettingTypeNodeSelector
+				settingType := model.SystemSettingTypePodRestartMonitor
 				var err error
 				switch operation {
 				case "create":
-					_, err = svc.Create(ctx, apisv1.CreateSystemSettingRequest{Type: settingType, Value: json.RawMessage(`{}`)})
+					_, err = svc.Create(ctx, apisv1.CreateSystemSettingRequest{Type: settingType, Value: json.RawMessage(`{"enabled":true,"windowSeconds":600,"threshold":3}`)})
 				case "get":
 					_, err = svc.Get(ctx, settingType)
 				case "update":
-					_, err = svc.Update(ctx, settingType, apisv1.UpdateSystemSettingRequest{Value: json.RawMessage(`{}`)})
+					_, err = svc.Update(ctx, settingType, apisv1.UpdateSystemSettingRequest{Value: json.RawMessage(`{"enabled":true,"windowSeconds":600,"threshold":3}`)})
 				case "delete":
 					err = svc.Delete(ctx, settingType)
 				}
@@ -193,20 +193,28 @@ func TestSystemSettingServiceCreateProviderHandlesWrappedLookupErrors(t *testing
 
 func TestSystemSettingServiceListHidesInternalRows(t *testing.T) {
 	repo := newMockSystemSettingRepo()
-	repo.items[model.SystemSettingTypeNodeSelector] = &model.SystemSetting{
-		Type:  model.SystemSettingTypeNodeSelector,
+	repo.items[model.SystemSettingTypePodRestartMonitor] = &model.SystemSetting{
+		Type:  model.SystemSettingTypePodRestartMonitor,
 		Value: json.RawMessage(`{}`),
 	}
 	repo.items["migration.application-management-mode.v1"] = &model.SystemSetting{
 		Type:  "migration.application-management-mode.v1",
 		Value: json.RawMessage(`{"completed":true}`),
 	}
+	repo.items["accounts.bootstrap.v1"] = &model.SystemSetting{
+		Type:  "accounts.bootstrap.v1",
+		Value: json.RawMessage(`{"completed":true}`),
+	}
+	repo.items["nodeSelector"] = &model.SystemSetting{
+		Type:  "nodeSelector",
+		Value: json.RawMessage(`{}`),
+	}
 	svc := &systemSettingServiceImpl{SettingRepo: repo}
 
 	items, err := svc.List(context.Background())
 	require.NoError(t, err)
 	require.Len(t, items, 1)
-	require.Equal(t, model.SystemSettingTypeNodeSelector, items[0].Type)
+	require.Equal(t, model.SystemSettingTypePodRestartMonitor, items[0].Type)
 }
 
 func TestSystemSettingService_Validation(t *testing.T) {
@@ -218,11 +226,11 @@ func TestSystemSettingService_Validation(t *testing.T) {
 	_, err := svc.Create(ctx, apisv1.CreateSystemSettingRequest{Type: "", Value: json.RawMessage(`{}`)})
 	require.ErrorIs(t, err, bcode.ErrSystemSettingTypeInvalid)
 
-	_, err = svc.Create(ctx, apisv1.CreateSystemSettingRequest{Type: model.SystemSettingTypeNodeSelector, Value: json.RawMessage(`"text"`)})
+	_, err = svc.Create(ctx, apisv1.CreateSystemSettingRequest{Type: model.SystemSettingTypePodRestartMonitor, Value: json.RawMessage(`"text"`)})
 	require.ErrorIs(t, err, bcode.ErrSystemSettingValueInvalid)
 
-	_, err = svc.Create(ctx, apisv1.CreateSystemSettingRequest{Type: model.SystemSettingTypeRBACPolicies, Value: json.RawMessage(`{"serviceAccount":"sa"}`)})
-	require.ErrorIs(t, err, bcode.ErrSystemSettingValueInvalid)
+	_, err = svc.Create(ctx, apisv1.CreateSystemSettingRequest{Type: "nodeSelector", Value: json.RawMessage(`{}`)})
+	require.ErrorIs(t, err, bcode.ErrSystemSettingTypeInvalid)
 
 	validAliyunCloud := buildValidAliyunCloudSettingValue(t)
 	createdAliyunCloud, err := svc.Create(ctx, apisv1.CreateSystemSettingRequest{Type: model.SystemSettingTypeAliyunCloud, Value: validAliyunCloud})
@@ -544,6 +552,6 @@ func TestSystemSettingService_UpdateNotFound(t *testing.T) {
 	svc := &systemSettingServiceImpl{SettingRepo: repo}
 	ctx := context.Background()
 
-	_, err := svc.Update(ctx, model.SystemSettingTypeNodeSelector, apisv1.UpdateSystemSettingRequest{Value: json.RawMessage(`{}`)})
+	_, err := svc.Update(ctx, model.SystemSettingTypePodRestartMonitor, apisv1.UpdateSystemSettingRequest{Value: json.RawMessage(`{"enabled":true,"windowSeconds":600,"threshold":3}`)})
 	require.ErrorIs(t, err, bcode.ErrSystemSettingNotFound)
 }

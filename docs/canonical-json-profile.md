@@ -97,15 +97,12 @@ Application 的组件列表只使用根级 `components`，工作流步骤只使�
 
 ```json
 {
-  "name": "archive-web",
-  "jobType": "log_archive_upload",
-  "components": ["web"],
+  "name": "deploy-web",
+  "jobType": "deploy",
+  "components": ["web", "worker"],
   "properties": [
-    {
-      "policies": ["web"],
-      "path": "/var/log/web",
-      "container": "web"
-    }
+    {"policies": ["web"]},
+    {"policies": ["worker"]}
   ]
 }
 ```

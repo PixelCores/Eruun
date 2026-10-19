@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -25,13 +24,6 @@ func buildWorkloadInfo(jobType config.JobType, info interface{}, fallbackNamespa
 		kind = domainspec.ResourceCloudJob
 	case config.InstantJob:
 		kind = domainspec.ResourceJob
-	case config.ScheduledJob:
-		switch v := info.(type) {
-		case *batchv1.CronJob:
-			return buildResourceInfo(domainspec.ResourceCronJob, v.Namespace, v.Name)
-		case *batchv1.Job:
-			return buildResourceInfo(domainspec.ResourceJob, v.Namespace, v.Name)
-		}
 	}
 	if obj, ok := info.(metav1.Object); ok {
 		return buildResourceInfo(kind, obj.GetNamespace(), obj.GetName())

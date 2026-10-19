@@ -76,7 +76,7 @@ sequenceDiagram
 ```mermaid
 flowchart LR
     App["Application<br/>workspace 归属"]
-    Components["Components<br/>webservice / store / job / scheduledjob<br/>config / secret / cloudjob"]
+    Components["Components<br/>webservice / store / job<br/>config / secret / cloudjob"]
     Traits["Traits<br/>storage / env / resources / security / RBAC / …"]
     Workflow["Workflow<br/>StepByStep 或 DAG"]
     WorkspaceJob["独立空间 Job<br/>command 或 job + traits.eval，无 AppID"]

@@ -23,8 +23,6 @@ const (
 	ApplicationService_GetCanonicalJSONSchema_FullMethodName          = "/eruun.v1.ApplicationService/GetCanonicalJSONSchema"
 	ApplicationService_ListApplications_FullMethodName                = "/eruun.v1.ApplicationService/ListApplications"
 	ApplicationService_ListTemplateApplications_FullMethodName        = "/eruun.v1.ApplicationService/ListTemplateApplications"
-	ApplicationService_ListCronJobs_FullMethodName                    = "/eruun.v1.ApplicationService/ListCronJobs"
-	ApplicationService_ListScheduledJobs_FullMethodName               = "/eruun.v1.ApplicationService/ListScheduledJobs"
 	ApplicationService_CreateApplications_FullMethodName              = "/eruun.v1.ApplicationService/CreateApplications"
 	ApplicationService_CreateAndExecApplications_FullMethodName       = "/eruun.v1.ApplicationService/CreateAndExecApplications"
 	ApplicationService_BatchGetApplications_FullMethodName            = "/eruun.v1.ApplicationService/BatchGetApplications"
@@ -47,7 +45,6 @@ const (
 	ApplicationService_DeleteWorkflowSchedule_FullMethodName          = "/eruun.v1.ApplicationService/DeleteWorkflowSchedule"
 	ApplicationService_CleanupApplicationResources_FullMethodName     = "/eruun.v1.ApplicationService/CleanupApplicationResources"
 	ApplicationService_ResetApplicationDatabases_FullMethodName       = "/eruun.v1.ApplicationService/ResetApplicationDatabases"
-	ApplicationService_DownloadLogArchive_FullMethodName              = "/eruun.v1.ApplicationService/DownloadLogArchive"
 	ApplicationService_RestartApplicationWorkloads_FullMethodName     = "/eruun.v1.ApplicationService/RestartApplicationWorkloads"
 	ApplicationService_StopApplicationDeployments_FullMethodName      = "/eruun.v1.ApplicationService/StopApplicationDeployments"
 	ApplicationService_StartApplicationDeployments_FullMethodName     = "/eruun.v1.ApplicationService/StartApplicationDeployments"
@@ -74,8 +71,6 @@ type ApplicationServiceClient interface {
 	GetCanonicalJSONSchema(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*CanonicalJSONSchema, error)
 	ListApplications(ctx context.Context, in *ApplicationListRequest, opts ...grpc.CallOption) (*AppDTOListApplicationResponse, error)
 	ListTemplateApplications(ctx context.Context, in *ApplicationListRequest, opts ...grpc.CallOption) (*AppDTOListApplicationResponse, error)
-	ListCronJobs(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ApplicationCronJobs, error)
-	ListScheduledJobs(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ApplicationScheduledJobs, error)
 	CreateApplications(ctx context.Context, in *AppDTOCreateApplicationsRequest, opts ...grpc.CallOption) (*AppDTOApplicationBase, error)
 	CreateAndExecApplications(ctx context.Context, in *AppDTOCreateAndExecApplicationRequest, opts ...grpc.CallOption) (*AppDTOCreateAndExecApplicationResponse, error)
 	BatchGetApplications(ctx context.Context, in *AppDTOBatchGetApplicationsRequest, opts ...grpc.CallOption) (*AppDTOBatchGetApplicationsResponse, error)
@@ -98,7 +93,6 @@ type ApplicationServiceClient interface {
 	DeleteWorkflowSchedule(ctx context.Context, in *ApplicationWorkflowRequest, opts ...grpc.CallOption) (*AppDTODeleteWorkflowScheduleResponse, error)
 	CleanupApplicationResources(ctx context.Context, in *ApplicationIDRequest, opts ...grpc.CallOption) (*AppDTOCleanupApplicationResourcesResponse, error)
 	ResetApplicationDatabases(ctx context.Context, in *ResetApplicationDatabasesRPCRequest, opts ...grpc.CallOption) (*AppDTODatabaseResetResponse, error)
-	DownloadLogArchive(ctx context.Context, in *LogArchiveRPCRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ComponentFileChunk], error)
 	RestartApplicationWorkloads(ctx context.Context, in *ApplicationLifecycleRPCRequest, opts ...grpc.CallOption) (*AppDTORestartApplicationWorkloadsResponse, error)
 	StopApplicationDeployments(ctx context.Context, in *ApplicationLifecycleRPCRequest, opts ...grpc.CallOption) (*AppDTOStopApplicationDeploymentsResponse, error)
 	StartApplicationDeployments(ctx context.Context, in *ApplicationLifecycleRPCRequest, opts ...grpc.CallOption) (*AppDTOStartApplicationDeploymentsResponse, error)
@@ -148,26 +142,6 @@ func (c *applicationServiceClient) ListTemplateApplications(ctx context.Context,
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AppDTOListApplicationResponse)
 	err := c.cc.Invoke(ctx, ApplicationService_ListTemplateApplications_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *applicationServiceClient) ListCronJobs(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ApplicationCronJobs, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ApplicationCronJobs)
-	err := c.cc.Invoke(ctx, ApplicationService_ListCronJobs_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *applicationServiceClient) ListScheduledJobs(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ApplicationScheduledJobs, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ApplicationScheduledJobs)
-	err := c.cc.Invoke(ctx, ApplicationService_ListScheduledJobs_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -421,25 +395,6 @@ func (c *applicationServiceClient) ResetApplicationDatabases(ctx context.Context
 	return out, nil
 }
 
-func (c *applicationServiceClient) DownloadLogArchive(ctx context.Context, in *LogArchiveRPCRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ComponentFileChunk], error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &ApplicationService_ServiceDesc.Streams[3], ApplicationService_DownloadLogArchive_FullMethodName, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &grpc.GenericClientStream[LogArchiveRPCRequest, ComponentFileChunk]{ClientStream: stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ApplicationService_DownloadLogArchiveClient = grpc.ServerStreamingClient[ComponentFileChunk]
-
 func (c *applicationServiceClient) RestartApplicationWorkloads(ctx context.Context, in *ApplicationLifecycleRPCRequest, opts ...grpc.CallOption) (*AppDTORestartApplicationWorkloadsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AppDTORestartApplicationWorkloadsResponse)
@@ -599,8 +554,6 @@ type ApplicationServiceServer interface {
 	GetCanonicalJSONSchema(context.Context, *emptypb.Empty) (*CanonicalJSONSchema, error)
 	ListApplications(context.Context, *ApplicationListRequest) (*AppDTOListApplicationResponse, error)
 	ListTemplateApplications(context.Context, *ApplicationListRequest) (*AppDTOListApplicationResponse, error)
-	ListCronJobs(context.Context, *emptypb.Empty) (*ApplicationCronJobs, error)
-	ListScheduledJobs(context.Context, *emptypb.Empty) (*ApplicationScheduledJobs, error)
 	CreateApplications(context.Context, *AppDTOCreateApplicationsRequest) (*AppDTOApplicationBase, error)
 	CreateAndExecApplications(context.Context, *AppDTOCreateAndExecApplicationRequest) (*AppDTOCreateAndExecApplicationResponse, error)
 	BatchGetApplications(context.Context, *AppDTOBatchGetApplicationsRequest) (*AppDTOBatchGetApplicationsResponse, error)
@@ -623,7 +576,6 @@ type ApplicationServiceServer interface {
 	DeleteWorkflowSchedule(context.Context, *ApplicationWorkflowRequest) (*AppDTODeleteWorkflowScheduleResponse, error)
 	CleanupApplicationResources(context.Context, *ApplicationIDRequest) (*AppDTOCleanupApplicationResourcesResponse, error)
 	ResetApplicationDatabases(context.Context, *ResetApplicationDatabasesRPCRequest) (*AppDTODatabaseResetResponse, error)
-	DownloadLogArchive(*LogArchiveRPCRequest, grpc.ServerStreamingServer[ComponentFileChunk]) error
 	RestartApplicationWorkloads(context.Context, *ApplicationLifecycleRPCRequest) (*AppDTORestartApplicationWorkloadsResponse, error)
 	StopApplicationDeployments(context.Context, *ApplicationLifecycleRPCRequest) (*AppDTOStopApplicationDeploymentsResponse, error)
 	StartApplicationDeployments(context.Context, *ApplicationLifecycleRPCRequest) (*AppDTOStartApplicationDeploymentsResponse, error)
@@ -657,12 +609,6 @@ func (UnimplementedApplicationServiceServer) ListApplications(context.Context, *
 }
 func (UnimplementedApplicationServiceServer) ListTemplateApplications(context.Context, *ApplicationListRequest) (*AppDTOListApplicationResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListTemplateApplications not implemented")
-}
-func (UnimplementedApplicationServiceServer) ListCronJobs(context.Context, *emptypb.Empty) (*ApplicationCronJobs, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListCronJobs not implemented")
-}
-func (UnimplementedApplicationServiceServer) ListScheduledJobs(context.Context, *emptypb.Empty) (*ApplicationScheduledJobs, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListScheduledJobs not implemented")
 }
 func (UnimplementedApplicationServiceServer) CreateApplications(context.Context, *AppDTOCreateApplicationsRequest) (*AppDTOApplicationBase, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateApplications not implemented")
@@ -729,9 +675,6 @@ func (UnimplementedApplicationServiceServer) CleanupApplicationResources(context
 }
 func (UnimplementedApplicationServiceServer) ResetApplicationDatabases(context.Context, *ResetApplicationDatabasesRPCRequest) (*AppDTODatabaseResetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ResetApplicationDatabases not implemented")
-}
-func (UnimplementedApplicationServiceServer) DownloadLogArchive(*LogArchiveRPCRequest, grpc.ServerStreamingServer[ComponentFileChunk]) error {
-	return status.Error(codes.Unimplemented, "method DownloadLogArchive not implemented")
 }
 func (UnimplementedApplicationServiceServer) RestartApplicationWorkloads(context.Context, *ApplicationLifecycleRPCRequest) (*AppDTORestartApplicationWorkloadsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RestartApplicationWorkloads not implemented")
@@ -849,42 +792,6 @@ func _ApplicationService_ListTemplateApplications_Handler(srv interface{}, ctx c
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ApplicationServiceServer).ListTemplateApplications(ctx, req.(*ApplicationListRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _ApplicationService_ListCronJobs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ApplicationServiceServer).ListCronJobs(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ApplicationService_ListCronJobs_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ApplicationServiceServer).ListCronJobs(ctx, req.(*emptypb.Empty))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _ApplicationService_ListScheduledJobs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ApplicationServiceServer).ListScheduledJobs(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ApplicationService_ListScheduledJobs_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ApplicationServiceServer).ListScheduledJobs(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1264,17 +1171,6 @@ func _ApplicationService_ResetApplicationDatabases_Handler(srv interface{}, ctx 
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ApplicationService_DownloadLogArchive_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(LogArchiveRPCRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(ApplicationServiceServer).DownloadLogArchive(m, &grpc.GenericServerStream[LogArchiveRPCRequest, ComponentFileChunk]{ServerStream: stream})
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ApplicationService_DownloadLogArchiveServer = grpc.ServerStreamingServer[ComponentFileChunk]
-
 func _ApplicationService_RestartApplicationWorkloads_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ApplicationLifecycleRPCRequest)
 	if err := dec(in); err != nil {
@@ -1565,14 +1461,6 @@ var ApplicationService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ApplicationService_ListTemplateApplications_Handler,
 		},
 		{
-			MethodName: "ListCronJobs",
-			Handler:    _ApplicationService_ListCronJobs_Handler,
-		},
-		{
-			MethodName: "ListScheduledJobs",
-			Handler:    _ApplicationService_ListScheduledJobs_Handler,
-		},
-		{
 			MethodName: "CreateApplications",
 			Handler:    _ApplicationService_CreateApplications_Handler,
 		},
@@ -1723,11 +1611,6 @@ var ApplicationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "StreamComponentShell",
 			Handler:       _ApplicationService_StreamComponentShell_Handler,
-			ServerStreams: true,
-		},
-		{
-			StreamName:    "DownloadLogArchive",
-			Handler:       _ApplicationService_DownloadLogArchive_Handler,
 			ServerStreams: true,
 		},
 	},

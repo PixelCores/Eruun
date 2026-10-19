@@ -12,8 +12,6 @@ func NormalizeWorkflowSteps(steps []CreateWorkflowStepRequest) {
 	for i := range steps {
 		step := &steps[i]
 		normalizeWorkflowStepNode(&step.Name, step.Components, step.Properties.Policies)
-		step.Properties.Path = strings.TrimSpace(step.Properties.Path)
-		step.Properties.Container = strings.TrimSpace(step.Properties.Container)
 		step.StepType = config.WorkflowStepType(strings.ToLower(strings.TrimSpace(string(step.StepType))))
 		if step.Approval != nil {
 			step.Approval.NotifyURL = strings.TrimSpace(step.Approval.NotifyURL)
@@ -23,8 +21,6 @@ func NormalizeWorkflowSteps(steps []CreateWorkflowStepRequest) {
 		for j := range step.SubSteps {
 			subStep := &step.SubSteps[j]
 			normalizeWorkflowStepNode(&subStep.Name, subStep.Components, subStep.Properties.Policies)
-			subStep.Properties.Path = strings.TrimSpace(subStep.Properties.Path)
-			subStep.Properties.Container = strings.TrimSpace(subStep.Properties.Container)
 		}
 	}
 }

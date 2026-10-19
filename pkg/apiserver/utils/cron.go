@@ -6,7 +6,7 @@ import (
 )
 
 // NormalizeCronSchedule normalizes 5 or 6-field cron expressions.
-// For 6-field expressions, it only accepts a leading zero second field and strips it for CronJob usage.
+// For 6-field expressions, it only accepts a leading zero second field and strips it.
 func NormalizeCronSchedule(schedule string) (string, error) {
 	trimmed := strings.TrimSpace(schedule)
 	if trimmed == "" {

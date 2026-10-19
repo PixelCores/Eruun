@@ -220,9 +220,6 @@ func migrateSchema(ctx context.Context, db *gorm.DB, models []model.Interface) e
 		if err := migrateApplicationComponentRuntimeStatus(ctx, db.WithContext(ctx)); err != nil {
 			return err
 		}
-		if err := migrateSystemSettings(ctx, db.WithContext(ctx)); err != nil {
-			return err
-		}
 		return migrateTextOnlySecretSchema(ctx, db.WithContext(ctx))
 	})
 }

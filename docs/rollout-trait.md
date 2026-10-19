@@ -10,7 +10,7 @@
 
 - `webservice`：渲染为 Kubernetes `Deployment.spec.strategy`。
 - `store`：渲染为 Kubernetes `StatefulSet.spec.updateStrategy`。
-- `job`、`scheduledjob`、`config`、`secret`、`cloudjob` 不支持 `rollout`；配置后会在校验阶段报错。
+- `job`、`config`、`secret`、`cloudjob` 不支持 `rollout`；配置后会在校验阶段报错。
 - `rollout` 只能放在组件顶层 `traits.rollout`，不能放在 `init[].traits` 或 `sidecar[].traits` 中。
 
 ## 字段

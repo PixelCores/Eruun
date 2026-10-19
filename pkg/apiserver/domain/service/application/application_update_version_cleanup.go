@@ -205,11 +205,8 @@ func versionUpdateCleanupPropertiesDescriptor(raw *model.JSONStruct) (*model.JSO
 	if err := decodeJSONStruct(raw, &properties); err != nil {
 		return nil, fmt.Errorf("decode cleanup component properties: %w", err)
 	}
-	descriptor := model.Properties{
-		Ports:    append([]model.Ports(nil), properties.Ports...),
-		Schedule: strings.TrimSpace(properties.Schedule),
-	}
-	if len(descriptor.Ports) == 0 && descriptor.Schedule == "" {
+	descriptor := model.Properties{Ports: append([]model.Ports(nil), properties.Ports...)}
+	if len(descriptor.Ports) == 0 {
 		return nil, nil
 	}
 	return model.NewJSONStructByStruct(descriptor)

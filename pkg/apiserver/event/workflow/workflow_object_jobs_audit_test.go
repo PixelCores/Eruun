@@ -361,8 +361,7 @@ func TestBuildJobsForComponentAddsShareLabelsToWorkloadPodTemplates(t *testing.T
 	})
 	require.NoError(t, err)
 	propsJSON, err := model.NewJSONStructByStruct(model.Properties{
-		Ports:    []model.Ports{{Port: 80}},
-		Schedule: "* * * * *",
+		Ports: []model.Ports{{Port: 80}},
 	})
 	require.NoError(t, err)
 
@@ -452,28 +451,6 @@ func TestBuildJobsForComponentAddsShareLabelsToWorkloadPodTemplates(t *testing.T
 		require.Equal(t, "batch", jobInfo.Name)
 		shareAssertions(t, jobInfo.Labels)
 		shareAssertions(t, jobInfo.Spec.Template.Labels)
-	})
-
-	t.Run("cronjob", func(t *testing.T) {
-		component := &model.ApplicationComponent{
-			Name:          "scheduled",
-			AppID:         task.AppID,
-			Namespace:     "default",
-			Image:         "busybox:1.36",
-			ComponentType: config.ScheduledJob,
-			Properties:    propsJSON,
-			Traits:        traitsJSON,
-		}
-		buckets, err := buildJobsForComponent(context.Background(), component, task, int64(config.DefaultJobTaskTimeout.Seconds()), "")
-		if err != nil {
-			t.Fatal(err)
-		}
-		cronInfo, ok := buckets[config.JobPriorityNormal][0].JobInfo.(*batchv1.CronJob)
-		require.True(t, ok)
-		require.Equal(t, "scheduled", cronInfo.Name)
-		shareAssertions(t, cronInfo.Labels)
-		shareAssertions(t, cronInfo.Spec.JobTemplate.Labels)
-		shareAssertions(t, cronInfo.Spec.JobTemplate.Spec.Template.Labels)
 	})
 }
 

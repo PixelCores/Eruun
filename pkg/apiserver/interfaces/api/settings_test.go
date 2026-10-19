@@ -63,10 +63,10 @@ func (m *mockSettingService) List(ctx context.Context) ([]*apis.SystemSetting, e
 func TestSettingsAPI_CreateAndGet(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	createdValue := json.RawMessage(`{"nodeSelector":{"node.kubernetes.io/test":"on"}}`)
+	createdValue := json.RawMessage(`{"enabled":true,"windowSeconds":600,"threshold":3}`)
 	service := &mockSettingService{
 		createFn: func(_ context.Context, req apis.CreateSystemSettingRequest) (*apis.SystemSetting, error) {
-			require.Equal(t, model.SystemSettingTypeNodeSelector, req.Type)
+			require.Equal(t, model.SystemSettingTypePodRestartMonitor, req.Type)
 			return &apis.SystemSetting{
 				Type:       req.Type,
 				Value:      req.Value,
@@ -75,7 +75,7 @@ func TestSettingsAPI_CreateAndGet(t *testing.T) {
 			}, nil
 		},
 		getFn: func(_ context.Context, settingType string) (*apis.SystemSetting, error) {
-			require.Equal(t, model.SystemSettingTypeNodeSelector, settingType)
+			require.Equal(t, model.SystemSettingTypePodRestartMonitor, settingType)
 			return &apis.SystemSetting{Type: settingType, Value: createdValue}, nil
 		},
 		updateFn: func(context.Context, string, apis.UpdateSystemSettingRequest) (*apis.SystemSetting, error) {
@@ -90,7 +90,7 @@ func TestSettingsAPI_CreateAndGet(t *testing.T) {
 	r.POST("/settings", h.createSetting)
 	r.GET("/settings/:type", h.getSetting)
 
-	body := `{"type":"nodeSelector","value":{"nodeSelector":{"node.kubernetes.io/test":"on"}}}`
+	body := `{"type":"podRestartMonitor","value":{"enabled":true,"windowSeconds":600,"threshold":3}}`
 	req := httptest.NewRequest(http.MethodPost, "/settings", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
@@ -101,14 +101,14 @@ func TestSettingsAPI_CreateAndGet(t *testing.T) {
 	requireSuccessResponse(t, resp.Body.Bytes(), &created)
 	require.JSONEq(t, string(createdValue), string(created.Value))
 
-	getReq := httptest.NewRequest(http.MethodGet, "/settings/nodeSelector", nil)
+	getReq := httptest.NewRequest(http.MethodGet, "/settings/podRestartMonitor", nil)
 	getResp := httptest.NewRecorder()
 	r.ServeHTTP(getResp, getReq)
 
 	require.Equal(t, http.StatusOK, getResp.Code)
 	var got apis.SystemSetting
 	requireSuccessResponse(t, getResp.Body.Bytes(), &got)
-	require.Equal(t, model.SystemSettingTypeNodeSelector, got.Type)
+	require.Equal(t, model.SystemSettingTypePodRestartMonitor, got.Type)
 }
 
 func TestSettingsAPI_List(t *testing.T) {
@@ -116,7 +116,7 @@ func TestSettingsAPI_List(t *testing.T) {
 
 	service := &mockSettingService{
 		listFn: func(context.Context) ([]*apis.SystemSetting, error) {
-			return []*apis.SystemSetting{{Type: model.SystemSettingTypeRBACPolicies}}, nil
+			return []*apis.SystemSetting{{Type: model.SystemSettingTypeURLSecurityPolicy}}, nil
 		},
 		createFn: func(context.Context, apis.CreateSystemSettingRequest) (*apis.SystemSetting, error) { return nil, nil },
 		updateFn: func(context.Context, string, apis.UpdateSystemSettingRequest) (*apis.SystemSetting, error) {
@@ -138,7 +138,7 @@ func TestSettingsAPI_List(t *testing.T) {
 	var payload apis.ListSystemSettingResponse
 	requireSuccessResponse(t, resp.Body.Bytes(), &payload)
 	require.Len(t, payload.Settings, 1)
-	require.Equal(t, model.SystemSettingTypeRBACPolicies, payload.Settings[0].Type)
+	require.Equal(t, model.SystemSettingTypeURLSecurityPolicy, payload.Settings[0].Type)
 }
 
 func TestSettingsAPI_CreateConnectivityCheckFailure(t *testing.T) {

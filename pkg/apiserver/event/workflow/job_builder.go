@@ -339,7 +339,7 @@ func isRestorableCommittedJobStatus(jobTask *model.JobTask, status config.Status
 			return false
 		}
 		jobType := config.JobType(jobTask.JobType)
-		return config.IsInstantJobType(jobType) || jobType == config.JobDeployScheduled
+		return config.IsInstantJobType(jobType)
 	default:
 		return false
 	}

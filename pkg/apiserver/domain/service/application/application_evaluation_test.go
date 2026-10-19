@@ -41,7 +41,6 @@ func TestPrepareEvaluationComponentRejectsConflicts(t *testing.T) {
 		{"command", func(c *apisv1.CreateComponentRequest) { c.Properties.Command = []string{"true"} }},
 		{"plaintext env", func(c *apisv1.CreateComponentRequest) { c.Properties.Env = map[string]string{"OPENAI_API_KEY": "key"} }},
 		{"delayed", func(c *apisv1.CreateComponentRequest) { c.Properties.StartTime = 100 }},
-		{"cron", func(c *apisv1.CreateComponentRequest) { c.Properties.Schedule = "* * * * *" }},
 		{"run policy", func(c *apisv1.CreateComponentRequest) { c.Properties.RunPolicy = "skip_if_completed" }},
 		{"retry", func(c *apisv1.CreateComponentRequest) { c.Properties.JobRetryPolicy = &workflowconfig.JobRetryPolicy{} }},
 		{"webservice", func(c *apisv1.CreateComponentRequest) { c.ComponentType = config.ServerJob }},

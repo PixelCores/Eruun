@@ -35,7 +35,6 @@ func TestControllerOwnedNamesReserveHashRoom(t *testing.T) {
 	componentName := "database-cluster-with-a-very-long-component-name"
 
 	require.LessOrEqual(t, len(StoreServerName(componentName, appName)), maxControllerOwnedResourceNameLength)
-	require.LessOrEqual(t, len(CronJobName(componentName, appName)), maxControllerOwnedResourceNameLength)
 	require.LessOrEqual(t, len(StoreServerName(componentName, appName)+"-"+strings.Repeat("a", hashSuffixLength)), maxResourceNameLength)
 }
 

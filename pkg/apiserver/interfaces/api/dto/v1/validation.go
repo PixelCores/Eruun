@@ -118,7 +118,6 @@ const (
 	ErrCodeMissingServiceName    = "MISSING_SERVICE_NAME"
 	ErrCodeInvalidEnvFromType    = "INVALID_ENVFROM_TYPE"
 	ErrCodeInvalidEnvValueSource = "INVALID_ENV_VALUE_SOURCE"
-	ErrCodeInvalidJobSchedule    = "INVALID_JOB_SCHEDULE"
 	ErrCodeInvalidJobRunPolicy   = "INVALID_JOB_RUN_POLICY"
 	ErrCodeInvalidJobStartTime   = "INVALID_JOB_START_TIME"
 

@@ -136,26 +136,6 @@ func secretFromJobInfo(ctx context.Context, job *model.JobTask, urlSecurityPolic
 	}
 }
 
-func scheduledJobInfo(job *model.JobTask) (*batchv1.CronJob, *batchv1.Job, error) {
-	if job == nil {
-		return nil, nil, fmt.Errorf("job task is nil")
-	}
-	switch info := job.JobInfo.(type) {
-	case *batchv1.CronJob:
-		if info == nil {
-			return nil, nil, fmt.Errorf("job info %s is nil", jobInfoTypeName[*batchv1.CronJob]())
-		}
-		return info, nil, nil
-	case *batchv1.Job:
-		if info == nil {
-			return nil, nil, fmt.Errorf("job info %s is nil", jobInfoTypeName[*batchv1.Job]())
-		}
-		return nil, info, nil
-	default:
-		return nil, nil, fmt.Errorf("scheduled job info has unexpected type %T", job.JobInfo)
-	}
-}
-
 func serviceFromJobInfo(job *model.JobTask) (*corev1.Service, error) {
 	return requiredJobInfo[*corev1.Service](job)
 }

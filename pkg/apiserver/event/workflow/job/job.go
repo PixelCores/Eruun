@@ -68,7 +68,6 @@ type Runtime struct {
 	ResourceWaiter    informer.ComponentReadyObserver
 	KubeConfig        *rest.Config
 	shareLocker       locker.Locker
-	archiveUploader   ArchiveUploader
 }
 
 func newJobRuntime(config *Runtime) *Runtime {
@@ -88,7 +87,6 @@ func newJobRuntime(config *Runtime) *Runtime {
 		ResourceWaiter:    config.ResourceWaiter,
 		KubeConfig:        config.KubeConfig,
 		shareLocker:       newShareLocker(config.RedisClient),
-		archiveUploader:   currentArchiveUploader(),
 	}
 }
 
@@ -176,8 +174,6 @@ func initJobCtl(job *model.JobTask, runtime *Runtime) JobCtl {
 		return NewDeployClusterRoleBindingJobCtl(job, runtime, runtime.shareLocker)
 	case string(config.JobDeployInstant), string(config.JobCommand), string(config.JobEval):
 		return NewInstantJobCtl(job, runtime)
-	case string(config.JobDeployScheduled):
-		return NewScheduledJobCtl(job, runtime)
 	case string(config.JobDeployCloud):
 		return NewCloudJobCtl(job, runtime.Store)
 	case string(config.JobDeployCallback):
@@ -190,8 +186,6 @@ func initJobCtl(job *model.JobTask, runtime *Runtime) JobCtl {
 		return cleanupCtl
 	case string(config.JobDatabaseReset):
 		return NewDatabaseResetJobCtl(job, runtime)
-	case string(config.JobLogArchiveUpload):
-		return NewLogArchiveUploadJobCtl(job, runtime)
 	case string(config.JobVersionRestart):
 		return NewVersionRestartJobCtl(job, runtime)
 	default:
@@ -756,7 +750,7 @@ func jobExecutionAlreadySettled(job *model.JobTask) bool {
 		return true
 	case config.StatusDistributed:
 		jobType := config.JobType(job.JobType)
-		return config.IsInstantJobType(jobType) || jobType == config.JobDeployScheduled
+		return config.IsInstantJobType(jobType)
 	default:
 		return false
 	}
@@ -796,7 +790,6 @@ func jobRequiresApplicationWritePermission(jobType string) bool {
 		config.JobDeployClusterRole,
 		config.JobDeployClusterRoleBinding,
 		config.JobDeployInstant,
-		config.JobDeployScheduled,
 		config.JobDeployCloud,
 		config.JobCleanupResources,
 		config.JobDatabaseReset,
@@ -915,7 +908,7 @@ func invalidateComponentsCache(ctx context.Context, runtime *Runtime, appID stri
 
 func shouldMarkComponentPendingOnJobStart(jobType string) bool {
 	switch config.JobType(jobType) {
-	case config.JobDeploy, config.JobDeployStore, config.JobDeployInstant, config.JobDeployScheduled:
+	case config.JobDeploy, config.JobDeployStore, config.JobDeployInstant:
 		return true
 	default:
 		return false

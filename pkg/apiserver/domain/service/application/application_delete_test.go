@@ -46,7 +46,7 @@ func TestDeleteApplicationCascadeSuccess(t *testing.T) {
 	store := newCascadeDeleteStore()
 	seedCascadeStoreData(store)
 	store.apps["app-1"].Namespace = "tenant-a"
-	store.components["cron-task"].Namespace = "tenant-a"
+	store.components["batch-task"].Namespace = "tenant-a"
 	namespace := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "tenant-a",
@@ -604,14 +604,14 @@ func seedCascadeStoreData(store *cascadeDeleteStore) {
 		Enabled:    true,
 		NextRun:    1,
 	}
-	store.components["cron-task"] = &model.ApplicationComponent{
+	store.components["batch-task"] = &model.ApplicationComponent{
 		ID:            1,
 		AppID:         "app-1",
-		Name:          "cron-task",
+		Name:          "batch-task",
 		Namespace:     "default",
 		Image:         "busybox:latest",
-		ComponentType: config.ScheduledJob,
-		Properties:    mustJSONStruct(model.Properties{Schedule: "*/5 * * * *"}),
+		ComponentType: config.InstantJob,
+		Properties:    mustJSONStruct(model.Properties{Command: []string{"true"}}),
 	}
 	store.tasks["task-1"] = &model.WorkflowQueue{
 		TaskID:       "task-1",

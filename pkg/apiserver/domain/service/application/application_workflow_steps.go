@@ -171,7 +171,7 @@ func templatePhaseByComponentType(componentType config.JobType) int {
 		return templatePhaseStore
 	case config.InstantJob:
 		return templatePhaseJob
-	case config.ServerJob, config.ScheduledJob, config.Service:
+	case config.ServerJob, config.Service:
 		return templatePhaseWebService
 	default:
 		return templatePhaseWebService
@@ -208,8 +208,6 @@ func convertWorkflowStepsFromRequest(steps []apisv1.CreateWorkflowStepRequest, c
 			continue
 		}
 		step.Properties = workflowModelPoliciesFromRequest(
-			reqStep.Name,
-			reqStep.WorkflowType,
 			reqStep.Components,
 			reqStep.Properties,
 			reqStep.WorkflowPropertiesList(),
@@ -223,8 +221,6 @@ func convertWorkflowStepsFromRequest(steps []apisv1.CreateWorkflowStepRequest, c
 				WorkflowType:    subReq.WorkflowType,
 			}
 			subStep.Properties = workflowModelPoliciesFromRequest(
-				subReq.Name,
-				subReq.WorkflowType,
 				subReq.Components,
 				subReq.Properties,
 				subReq.WorkflowPropertiesList(),
@@ -238,42 +234,38 @@ func convertWorkflowStepsFromRequest(steps []apisv1.CreateWorkflowStepRequest, c
 	return workflowSteps
 }
 
-func workflowModelPoliciesFromRequest(name string, jobType config.JobType, explicit []string, properties apisv1.WorkflowProperties, propertiesList []apisv1.WorkflowProperties, fromArray bool, componentNames map[string]string) []model.Policies {
+func workflowModelPoliciesFromRequest(explicit []string, properties apisv1.WorkflowProperties, propertiesList []apisv1.WorkflowProperties, fromArray bool, componentNames map[string]string) []model.Policies {
 	if !fromArray {
-		return workflowModelPoliciesFromSingleProperty(name, jobType, explicit, properties, componentNames)
+		return workflowModelPoliciesFromSingleProperty(explicit, properties, componentNames)
 	}
 	if len(propertiesList) == 0 {
-		return workflowModelPoliciesFromSingleProperty(name, jobType, explicit, apisv1.WorkflowProperties{}, componentNames)
+		return workflowModelPoliciesFromSingleProperty(explicit, apisv1.WorkflowProperties{}, componentNames)
 	}
 
 	result := make([]model.Policies, 0, len(propertiesList))
 	for _, item := range propertiesList {
 		policyComponentNames := canonicalWorkflowComponentRefs(item.Policies, componentNames)
 		if len(propertiesList) == 1 {
-			policyComponentNames = workflowTargetComponents(name, jobType, explicit, item.Policies, componentNames)
+			policyComponentNames = mergeWorkflowComponents(explicit, item.Policies, componentNames)
 		}
 		if len(policyComponentNames) == 0 {
 			continue
 		}
 		result = append(result, model.Policies{
 			Policies:   policyComponentNames,
-			Path:       strings.TrimSpace(item.Path),
-			Container:  strings.TrimSpace(item.Container),
 			InitSQLURL: strings.TrimSpace(item.InitSQLURL),
 		})
 	}
 	return result
 }
 
-func workflowModelPoliciesFromSingleProperty(name string, jobType config.JobType, explicit []string, properties apisv1.WorkflowProperties, componentNames map[string]string) []model.Policies {
-	policyComponentNames := workflowTargetComponents(name, jobType, explicit, properties.Policies, componentNames)
+func workflowModelPoliciesFromSingleProperty(explicit []string, properties apisv1.WorkflowProperties, componentNames map[string]string) []model.Policies {
+	policyComponentNames := mergeWorkflowComponents(explicit, properties.Policies, componentNames)
 	if len(policyComponentNames) == 0 {
 		return nil
 	}
 	return []model.Policies{{
 		Policies:   policyComponentNames,
-		Path:       strings.TrimSpace(properties.Path),
-		Container:  strings.TrimSpace(properties.Container),
 		InitSQLURL: strings.TrimSpace(properties.InitSQLURL),
 	}}
 }
@@ -310,14 +302,6 @@ func mergeWorkflowComponents(explicit []string, policies []string, componentName
 	combined := append([]string{}, explicit...)
 	combined = append(combined, policies...)
 	return canonicalWorkflowComponentRefs(combined, componentNames)
-}
-
-func workflowTargetComponents(name string, jobType config.JobType, explicit []string, policies []string, componentNames map[string]string) []string {
-	components := mergeWorkflowComponents(explicit, policies, componentNames)
-	if len(components) > 0 || config.JobType(strings.TrimSpace(string(jobType))) != config.JobLogArchiveUpload {
-		return components
-	}
-	return canonicalWorkflowComponentRefs([]string{name}, componentNames)
 }
 
 func canonicalWorkflowComponentRefs(values []string, componentNames map[string]string) []string {
@@ -517,26 +501,8 @@ func validateWorkflowComponentRefs(steps []apisv1.CreateWorkflowStepRequest, exi
 			if err := validateWorkflowJobType(step.WorkflowType, step.Name); err != nil {
 				return err
 			}
-			if err := validateLogArchiveUploadWorkflowProperties(step.WorkflowType, step.Name, stepPolicies); err != nil {
-				return err
-			}
 			for _, sub := range step.SubSteps {
-				subPolicies, err := validateWorkflowRequestProperties(
-					sub.Name,
-					sub.WorkflowType,
-					sub.Components,
-					sub.Properties,
-					sub.WorkflowPropertiesList(),
-					sub.WorkflowPropertiesFromArray(),
-					true,
-				)
-				if err != nil {
-					return err
-				}
 				if err := validateWorkflowJobType(sub.WorkflowType, sub.Name); err != nil {
-					return err
-				}
-				if err := validateLogArchiveUploadWorkflowProperties(sub.WorkflowType, sub.Name, subPolicies); err != nil {
 					return err
 				}
 			}
@@ -550,9 +516,6 @@ func validateWorkflowComponentRefs(steps []apisv1.CreateWorkflowStepRequest, exi
 		}
 		if err := ensureComponentsExist(stepComponents, existing); err != nil {
 			klog.Errorf("workflow step=%s references missing components: %v", step.Name, err)
-			return err
-		}
-		if err := validateLogArchiveUploadWorkflowComponents(step.WorkflowType, step.Name, stepComponents, existing); err != nil {
 			return err
 		}
 		for _, sub := range step.SubSteps {
@@ -573,9 +536,6 @@ func validateWorkflowComponentRefs(steps []apisv1.CreateWorkflowStepRequest, exi
 				klog.Errorf("workflow substep=%s references missing components: %v", sub.Name, err)
 				return err
 			}
-			if err := validateLogArchiveUploadWorkflowComponents(sub.WorkflowType, sub.Name, subComponents, existing); err != nil {
-				return err
-			}
 		}
 	}
 	return nil
@@ -584,13 +544,13 @@ func validateWorkflowComponentRefs(steps []apisv1.CreateWorkflowStepRequest, exi
 func validateWorkflowRequestProperties(name string, jobType config.JobType, explicit []string, properties apisv1.WorkflowProperties, propertiesList []apisv1.WorkflowProperties, fromArray bool, executable bool) ([]model.Policies, error) {
 	if fromArray {
 		for _, item := range propertiesList {
-			hasTarget := len(workflowTargetComponents(name, jobType, explicit, item.Policies, nil)) > 0
+			hasTarget := len(mergeWorkflowComponents(explicit, item.Policies, nil)) > 0
 			if err := ValidateWorkflowInitSQLURL(jobType, item.InitSQLURL, hasTarget, executable); err != nil {
 				return nil, fmt.Errorf("workflow step %q: %w", name, err)
 			}
 		}
 	} else if err := ValidateWorkflowInitSQLURL(jobType, properties.InitSQLURL,
-		len(workflowTargetComponents(name, jobType, explicit, properties.Policies, nil)) > 0, executable); err != nil {
+		len(mergeWorkflowComponents(explicit, properties.Policies, nil)) > 0, executable); err != nil {
 		return nil, fmt.Errorf("workflow step %q: %w", name, err)
 	}
 	if fromArray && len(propertiesList) > 1 {
@@ -613,7 +573,7 @@ func validateWorkflowRequestProperties(name string, jobType config.JobType, expl
 			return nil, err
 		}
 	}
-	return workflowModelPoliciesFromRequest(name, jobType, explicit, properties, propertiesList, fromArray, nil), nil
+	return workflowModelPoliciesFromRequest(explicit, properties, propertiesList, fromArray, nil), nil
 }
 
 // ValidateWorkflowInitSQLURL keeps database reset parameters within the same
@@ -654,37 +614,6 @@ func validateWorkflowComponentsMatchProperties(name string, explicit []string, p
 	for _, componentName := range components {
 		if _, ok := seen[componentName]; !ok {
 			return fmt.Errorf("%w: workflow step %q components must match properties policies when multiple properties are provided", bcode.ErrWorkflowConfig, name)
-		}
-	}
-	return nil
-}
-
-func validateLogArchiveUploadWorkflowProperties(jobType config.JobType, stepName string, policies []model.Policies) error {
-	if jobType != config.JobLogArchiveUpload {
-		return nil
-	}
-	if len(policies) == 0 {
-		return fmt.Errorf("%w: workflow step %q requires properties.path for jobType %q", bcode.ErrWorkflowConfig, stepName, jobType)
-	}
-	for _, policy := range policies {
-		if strings.TrimSpace(policy.Path) == "" {
-			return fmt.Errorf("%w: workflow step %q requires properties.path for jobType %q", bcode.ErrWorkflowConfig, stepName, jobType)
-		}
-	}
-	return nil
-}
-
-func validateLogArchiveUploadWorkflowComponents(jobType config.JobType, stepName string, componentNames []string, existing map[string]config.JobType) error {
-	if config.JobType(strings.TrimSpace(string(jobType))) != config.JobLogArchiveUpload {
-		return nil
-	}
-	for _, name := range componentNames {
-		componentType, ok := existing[strings.ToLower(strings.TrimSpace(name))]
-		if !ok {
-			continue
-		}
-		if !config.ComponentTypeUsesPods(componentType) {
-			return fmt.Errorf("%w: workflow step %q component %q with type %q does not use pods for jobType %q", bcode.ErrWorkflowConfig, stepName, name, componentType, jobType)
 		}
 	}
 	return nil

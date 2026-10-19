@@ -678,25 +678,6 @@ func stampJobExecutionIdentity(jobTask *model.JobTask, jobObj *batchv1.Job) {
 	stampWorkspaceJobPodIdentity(jobTask, jobObj)
 }
 
-func stampCronJobExecutionIdentity(jobTask *model.JobTask, cron *batchv1.CronJob) {
-	if jobTask == nil || cron == nil {
-		return
-	}
-	if cron.Annotations == nil {
-		cron.Annotations = make(map[string]string)
-	}
-	cron.Annotations[config.AnnotationJobTaskID] = strings.TrimSpace(jobTask.TaskID)
-	cron.Annotations[config.AnnotationJobExecutionKey] = strings.TrimSpace(jobTask.ExecutionKey)
-	if jobTask.RunGeneration > 0 {
-		cron.Annotations[config.AnnotationJobRunGeneration] = strconv.FormatUint(jobTask.RunGeneration, 10)
-	}
-	attempt := jobTask.Attempt
-	if attempt == 0 {
-		attempt = uint(jobTask.RetryCount + 1)
-	}
-	cron.Annotations[workflowconfig.AnnotationJobAttempt] = strconv.FormatUint(uint64(attempt), 10)
-}
-
 func stampWorkspaceJobPodIdentity(task *model.JobTask, workload *batchv1.Job) {
 	if !config.IsWorkspaceJobType(config.JobType(task.JobType)) {
 		return

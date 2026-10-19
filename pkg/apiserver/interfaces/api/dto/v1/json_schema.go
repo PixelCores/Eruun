@@ -315,9 +315,9 @@ func (b *schemaBuilder) applyFieldConstraints(definition, field string, schema m
 			schema["maxLength"] = datastore.PrimaryKeyMaxLength
 		}
 	case definition == "Component" && field == "type":
-		schema["enum"] = []string{"webservice", "store", "config", "secret", "cloudjob", "job", "scheduledjob"}
+		schema["enum"] = []string{"webservice", "store", "config", "secret", "cloudjob", "job"}
 	case (definition == "WorkflowStep" || definition == "WorkflowSubStep") && field == "jobType":
-		schema["enum"] = []string{"deploy", "cleanup_resources", "database_reset", "log_archive_upload"}
+		schema["enum"] = []string{"deploy", "cleanup_resources", "database_reset"}
 	case (definition == "WorkflowStep" || definition == "WorkflowSubStep") && field == "schedulingClass":
 		schema["enum"] = []string{"normal", "background", "high"}
 	case definition == "WorkflowStep" && field == "stepType":
@@ -330,11 +330,7 @@ func (b *schemaBuilder) applyFieldConstraints(definition, field string, schema m
 		schema["enum"] = []string{
 			string(config.WorkflowTaskTypeWorkflow),
 			string(config.WorkflowTaskTypeUpdate),
-			string(config.WorkflowTaskTypeTesting),
-			string(config.WorkflowTaskTypeScanning),
-			string(config.WorkflowTaskTypeDelivery),
 			string(config.WorkflowTaskTypeDatabaseReset),
-			string(config.WorkflowTaskTypeLogArchiveUpload),
 		}
 	case definition == "Workflow" && field == "workflow":
 		schema["minItems"] = 1

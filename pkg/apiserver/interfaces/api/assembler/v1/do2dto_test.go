@@ -63,19 +63,19 @@ func TestConvertWorkflowStepsPreservesProperties(t *testing.T) {
 				},
 			},
 			{
-				Name:         "log-archive-upload",
-				WorkflowType: config.JobLogArchiveUpload,
+				Name:         "cleanup",
+				WorkflowType: config.JobCleanupResources,
 				Mode:         config.WorkflowModeStepByStep,
 				Properties: []model.Policies{
-					{Policies: []string{"api"}, Path: "/var/log/api", Container: "api"},
-					{Policies: []string{"worker"}, Path: "/var/log/worker"},
+					{Policies: []string{"api"}},
+					{Policies: []string{"worker"}},
 				},
 				SubSteps: []*model.WorkflowSubStep{
 					{
-						Name:         "archive-sidecar",
-						WorkflowType: config.JobLogArchiveUpload,
+						Name:         "cleanup-sidecar",
+						WorkflowType: config.JobCleanupResources,
 						Properties: []model.Policies{
-							{Policies: []string{"sidecar"}, Path: "/var/log/sidecar", Container: "logs"},
+							{Policies: []string{"sidecar"}},
 						},
 					},
 				},
@@ -96,13 +96,13 @@ func TestConvertWorkflowStepsPreservesProperties(t *testing.T) {
 	}, details[0].Properties)
 	require.Equal(t, []string{"api", "worker"}, details[1].Components)
 	require.Equal(t, []apisv1.WorkflowProperties{
-		{Policies: []string{"api"}, Path: "/var/log/api", Container: "api"},
-		{Policies: []string{"worker"}, Path: "/var/log/worker"},
+		{Policies: []string{"api"}},
+		{Policies: []string{"worker"}},
 	}, details[1].Properties)
 	require.Len(t, details[1].SubSteps, 1)
 	require.Equal(t, []string{"sidecar"}, details[1].SubSteps[0].Components)
 	require.Equal(t, []apisv1.WorkflowProperties{
-		{Policies: []string{"sidecar"}, Path: "/var/log/sidecar", Container: "logs"},
+		{Policies: []string{"sidecar"}},
 	}, details[1].SubSteps[0].Properties)
 }
 
@@ -513,7 +513,6 @@ func TestConvertComponentModelToDTOSkipsServiceSummariesForNonServiceDeployCompo
 		componentType config.JobType
 	}{
 		{name: "instant job", componentType: config.InstantJob},
-		{name: "scheduled job", componentType: config.ScheduledJob},
 		{name: "cloud job", componentType: config.CloudJob},
 	}
 
