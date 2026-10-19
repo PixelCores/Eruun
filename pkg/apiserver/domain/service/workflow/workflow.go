@@ -1480,8 +1480,7 @@ func (w *workflowServiceImpl) triggerWorkflowTerminalCallbackOnApprovalAction(ct
 	return w.runWorkflowTerminalCallback(ctx, task, status, reason, callback)
 }
 
-// loadWorkflowTerminalCallback resolves the callback configuration once, so
-// the recovery key and the sent callback derive from the same terminal event.
+// loadWorkflowTerminalCallback resolves the callback configuration once for sending.
 func (w *workflowServiceImpl) loadWorkflowTerminalCallback(ctx context.Context, task *model.WorkflowQueue) (*model.WorkflowCallback, error) {
 	workflowID := strings.TrimSpace(task.WorkflowID)
 	parentCtx := inheritWorkflowCallbackParentContext(ctx)
@@ -1571,7 +1570,7 @@ func (w *workflowServiceImpl) runWorkflowTerminalCallback(ctx context.Context, t
 		AppID:         task.AppID,
 		TaskID:        task.TaskID,
 		JobType:       string(config.JobDeployCallback),
-		ExecutionKey:  workflowjob.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, event),
+		ExecutionKey:  workflowjob.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, workflowjob.TerminalCallbackKeyEvent(status, event)),
 		RunGeneration: task.RunGeneration,
 		OwnerStatus:   task.Status,
 		RunToken:      task.RunToken,
@@ -1643,8 +1642,7 @@ func (w *workflowServiceImpl) reconcileWorkflowTerminalCallback(ctx context.Cont
 	if err != nil {
 		return false, err
 	}
-	event, _, _ := callback.TerminalTarget(status)
-	callbackKey := workflowjob.TerminalCallbackExecutionKey(current.TaskID, current.RunGeneration, event)
+	callbackKey := workflowjob.TerminalCallbackExecutionKey(current.TaskID, current.RunGeneration, "cancelled")
 	active, err := workflowHasActiveChildExecution(ctx, w.Store, current.TaskID)
 	if err != nil {
 		return false, err

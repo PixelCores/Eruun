@@ -20,6 +20,25 @@ import (
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
+func TestTerminalCallbackKeyEvent(t *testing.T) {
+	for _, tt := range []struct {
+		status config.Status
+		event  string
+		want   string
+	}{
+		{config.StatusCancelled, "cancelled", "cancelled"},
+		{config.StatusCancelled, "failure", "cancelled"},
+		{config.StatusCompleted, "success", "success"},
+		{config.StatusFailed, "failure", "failure"},
+		{config.StatusTimeout, "failure", "failure"},
+		{config.StatusReject, "failure", "failure"},
+	} {
+		t.Run(string(tt.status)+"/"+tt.event, func(t *testing.T) {
+			require.Equal(t, tt.want, TerminalCallbackKeyEvent(tt.status, tt.event))
+		})
+	}
+}
+
 func newCallbackTestServer(t *testing.T, handler http.HandlerFunc, connState ...func(net.Conn, http.ConnState)) *httptest.Server {
 	t.Helper()
 

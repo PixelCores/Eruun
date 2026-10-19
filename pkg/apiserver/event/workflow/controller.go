@@ -1364,7 +1364,7 @@ func (w *WorkflowCtl) triggerWorkflowCallback(ctx context.Context, status config
 		AppID:         task.AppID,
 		TaskID:        task.TaskID,
 		JobType:       string(config.JobDeployCallback),
-		ExecutionKey:  job.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, event),
+		ExecutionKey:  job.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, job.TerminalCallbackKeyEvent(status, event)),
 		RunGeneration: task.RunGeneration,
 		OwnerStatus:   status,
 		RunToken:      task.RunToken,

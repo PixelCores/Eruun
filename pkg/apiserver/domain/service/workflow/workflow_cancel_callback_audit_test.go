@@ -1304,15 +1304,8 @@ func TestReconcileWorkflowTerminalCallbacksCompletesSettledIntentWithoutResendin
 	require.Equal(t, wf.TerminalCallbackReconciledReason, store.task.SchedulingReason)
 }
 
-func TestReconcileWorkflowTerminalCallbacksUsesFailureFallbackKey(t *testing.T) {
-	var callbackCount int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		atomic.AddInt32(&callbackCount, 1)
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-	// Without a cancelled URL, cancellation is delivered as the failure event.
-	callback, err := model.NewJSONStructByStruct(&model.WorkflowCallback{Failure: server.URL})
+func TestReconcileWorkflowTerminalCallbacksCompletesSettledIntentAfterCallbackConfigurationChanges(t *testing.T) {
+	callback, err := model.NewJSONStructByStruct(&model.WorkflowCallback{Cancelled: "https://callback.example/cancelled"})
 	require.NoError(t, err)
 	task := &model.WorkflowQueue{
 		TaskID: "task-failure-fallback", AppID: "app-1", WorkflowID: "wf-failure-fallback",
@@ -1323,17 +1316,31 @@ func TestReconcileWorkflowTerminalCallbacksUsesFailureFallbackKey(t *testing.T) 
 	store := &statusDataStore{workflow: &model.Workflow{ID: task.WorkflowID, AppID: task.AppID, Callback: callback}}
 	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
 	prepareTerminalCallbackFixture(t, svc, store, task, config.StatusCancelled)
-	key := workflowjob.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, "failure")
+	key := workflowjob.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, "cancelled")
 	require.NoError(t, svc.Store.Add(context.Background(), &model.JobInfo{
 		TaskID: task.TaskID, WorkspaceID: "callback-space", Type: string(config.JobDeployCallback),
 		Status: string(config.StatusCompleted), ExecutionKey: &key, RunGeneration: task.RunGeneration,
 	}))
+	// The workflow callback is mutable while the task's pending marker survives.
+	store.workflow.Callback, err = model.NewJSONStructByStruct(&model.WorkflowCallback{Failure: "http://127.0.0.1:1/failure"})
+	require.NoError(t, err)
+	workflowLoads := 0
+	store.onGet = func(_ context.Context, entity datastore.Entity) {
+		if _, ok := entity.(*model.Workflow); ok {
+			workflowLoads++
+		}
+	}
 
 	reconciled, err := ReconcileWorkflowTerminalCallbacks(context.Background(), svc.Store, svc.Cfg, svc.URLSecurityPolicyProvider)
 
 	require.NoError(t, err)
 	require.Equal(t, 1, reconciled)
-	require.Equal(t, int32(0), atomic.LoadInt32(&callbackCount))
+	require.Equal(t, 1, workflowLoads)
+	jobs, err := svc.Store.List(context.Background(), &model.JobInfo{TaskID: task.TaskID}, &datastore.ListOptions{})
+	require.NoError(t, err)
+	require.Len(t, jobs, 1, "settled cancellation must not create another callback attempt")
+	require.Equal(t, &key, jobs[0].(*model.JobInfo).ExecutionKey)
+	require.Equal(t, string(config.StatusCompleted), jobs[0].(*model.JobInfo).Status)
 	require.Equal(t, wf.TerminalCallbackReconciledReason, store.task.SchedulingReason)
 }
 

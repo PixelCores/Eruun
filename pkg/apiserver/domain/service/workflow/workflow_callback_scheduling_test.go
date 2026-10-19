@@ -25,6 +25,69 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
 )
 
+func TestTerminalCallbackFailureFallbackKeepsCancellationKeyAndSurvivesTerminalization(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "callbacks.db")), &gorm.Config{
+		NamingStrategy: sqlnamer.SQLNamer{}, TranslateError: true, Logger: logger.Default.LogMode(logger.Silent),
+	})
+	require.NoError(t, err)
+	connection, err := db.DB()
+	require.NoError(t, err)
+	connection.SetMaxOpenConns(1)
+	t.Cleanup(func() { require.NoError(t, connection.Close()) })
+	require.NoError(t, db.AutoMigrate(&model.Applications{}, &model.WorkflowQueue{}, &model.JobInfo{}, &model.SystemSetting{}))
+	store := &sqlstore.Driver{Client: *db}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, repository.EnsureJobSchedulerPolicy(ctx, store))
+	app := &model.Applications{ID: "app", WorkspaceID: "workspace", Namespace: "workspace-ns"}
+	require.NoError(t, store.Add(ctx, app))
+	callback, err := model.NewJSONStructByStruct(&model.WorkflowCallback{Failure: "https://callback.example/failure", Methods: map[string]string{"failure": http.MethodPut}})
+	require.NoError(t, err)
+	task := &model.WorkflowQueue{
+		TaskID: "task-failure-fallback", AppID: app.ID, Status: config.StatusCancelled,
+		Type: config.WorkflowTaskTypeWorkflow, RunGeneration: 3, Callback: callback,
+	}
+	require.NoError(t, store.Add(ctx, task))
+	service := withAllowPrivateURLPolicy(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{}})
+	done := make(chan error, 1)
+	go func() {
+		done <- service.triggerWorkflowTerminalCallbackOnApprovalAction(ctx, task, config.StatusCancelled, "manual cancel")
+	}()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case err := <-done:
+			require.ErrorIs(t, err, context.Canceled)
+		case <-time.After(5 * time.Second):
+			t.Error("queued terminal callback did not stop")
+		}
+	})
+	// Leave global admission queued: inspect the real persisted callback without sending HTTP.
+	require.Eventually(t, func() bool {
+		var count int64
+		return db.Model(&model.JobInfo{}).Where("scheduling_state = ?", "queued").Count(&count).Error == nil && count == 1
+	}, time.Second, time.Millisecond)
+	var record model.JobInfo
+	require.NoError(t, db.First(&record).Error)
+	key := workflowjob.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, "cancelled")
+	require.Equal(t, &key, record.ExecutionKey)
+	require.NoError(t, store.Add(ctx, &model.JobInfo{
+		TaskID: task.TaskID, Type: string(config.JobCleanupResources), Status: string(config.StatusWaiting),
+	}))
+
+	require.NoError(t, repository.TerminalizeCancelledWorkflowJobs(ctx, store, task.TaskID, "manual cancel", key))
+
+	preserved := &model.JobInfo{ID: record.ID}
+	require.NoError(t, store.Get(ctx, preserved))
+	require.Equal(t, record.Status, preserved.Status)
+	require.Equal(t, "queued", preserved.SchedulingState)
+	require.Empty(t, preserved.Error)
+	require.Zero(t, preserved.EndTime)
+	var cleanup model.JobInfo
+	require.NoError(t, db.Where("type = ?", string(config.JobCleanupResources)).First(&cleanup).Error)
+	require.Equal(t, string(config.StatusCancelled), cleanup.Status)
+}
+
 func TestTerminalCallbackUsesGlobalAdmissionWithoutWorker(t *testing.T) {
 	for _, outcome := range []string{"admitted", "duplicate while queued", "duplicate while admitted", "cancelled while queued", "parent status changed", "parent generation changed"} {
 		t.Run(outcome, func(t *testing.T) {
