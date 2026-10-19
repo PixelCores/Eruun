@@ -546,7 +546,7 @@ func (w *Workflow) StartWorker(
 
 Controller 与 Scheduler 的入口运行于同一个 Leader 任期，业务 API 同样受该任期约束。所有节点参与一个选举；非 Leader 领取 Worker 任务，升主停止新接单但已有任务继续完成。不存在 `all` 或其他静态角色选项，v2 ownership 保持不变。
 
-任务恢复不执行启动时全表重置：Scheduler reaper 只以 CAS 回收已过期且 ownership 完整的 `queued/running` execution lease，下一次派发生成新的 `runGeneration/runToken`。Worker 关闭时先停止 intake，再用独立 `executionCtx` 排空已启动任务。
+任务恢复不执行启动时全表重置：Scheduler reaper 只以 CAS 回收已过期且 ownership 完整的 `queued/running` execution lease，下一次派发生成新的 `runGeneration/runToken`。同一 reaper 周期还按数据库时钟把 `approval_deadline` 已过的 `wait_for_approval` 任务 CAS 为 `timeout`，见 [工作流审批暂停/继续说明](workflow-approval-pause-resume.md)。Worker 关闭时先停止 intake，再用独立 `executionCtx` 排空已启动任务。
 
 ### 5.2 WorkflowController - 任务控制器
 
