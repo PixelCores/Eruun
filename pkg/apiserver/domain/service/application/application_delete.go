@@ -122,7 +122,7 @@ func (c *applicationsServiceImpl) DeleteApplicationCascade(ctx context.Context, 
 				strings.Join(uniqueStrings(activeTaskIDs), ","))
 		}
 
-		if err := c.deleteApplicationMetadataTx(lockCtx, txStore, app); err != nil {
+		if err := c.deleteApplicationMetadataTx(lockCtx, app); err != nil {
 			return err
 		}
 
@@ -147,7 +147,7 @@ func (c *applicationsServiceImpl) DeleteApplicationCascade(ctx context.Context, 
 	return resp, nil
 }
 
-func (c *applicationsServiceImpl) filterActiveTasks(ctx context.Context, tasks []*model.WorkflowQueue) ([]*model.WorkflowQueue, error) {
+func (c *applicationsServiceImpl) filterActiveTasks(ctx context.Context, store datastore.DataStore, tasks []*model.WorkflowQueue) ([]*model.WorkflowQueue, error) {
 	if len(tasks) == 0 {
 		return nil, nil
 	}
@@ -173,7 +173,7 @@ func (c *applicationsServiceImpl) filterActiveTasks(ctx context.Context, tasks [
 			active = append(active, task)
 			continue
 		}
-		hasJobs, err := workflowservice.TaskHasActiveJobs(ctx, c.Store, task.TaskID)
+		hasJobs, err := workflowservice.TaskHasActiveJobs(ctx, store, task.TaskID)
 		if err != nil {
 			return nil, err
 		}
@@ -331,7 +331,7 @@ func (c *applicationsServiceImpl) activeTaskIDs(ctx context.Context, appID strin
 	if err != nil && !errors.Is(err, datastore.ErrRecordNotExist) {
 		return nil, err
 	}
-	active, err := c.filterActiveTasks(ctx, tasks)
+	active, err := c.filterActiveTasks(ctx, c.Store, tasks)
 	if err != nil {
 		return nil, err
 	}
@@ -351,7 +351,7 @@ func (c *applicationsServiceImpl) cancelAndWaitAppTasks(ctx context.Context, app
 		return nil, nil, nil, err
 	}
 
-	activeTasks, err := c.filterActiveTasks(ctx, tasks)
+	activeTasks, err := c.filterActiveTasks(ctx, c.Store, tasks)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -443,15 +443,31 @@ func (c *applicationsServiceImpl) deleteApplicationSchedulesTx(ctx context.Conte
 	})
 }
 
-func (c *applicationsServiceImpl) deleteApplicationMetadataTx(ctx context.Context, txStore datastore.Transactional, app *model.Applications) error {
+// deleteApplicationMetadataTx re-arbitrates on the application row. The Redis
+// lock serializes the long delete flow, but a lost Redis lease must not let a
+// task enqueued under the same row lock be deleted while it may be running.
+func (c *applicationsServiceImpl) deleteApplicationMetadataTx(ctx context.Context, app *model.Applications) error {
 	if app == nil || strings.TrimSpace(app.ID) == "" {
 		return bcode.ErrApplicationNotExist
 	}
-	if txStore == nil {
-		return fmt.Errorf("transactional datastore is nil")
-	}
 
-	return txStore.WithTransaction(ctx, func(tx datastore.DataStore) error {
+	err := repository.WithApplicationSchedulingTransaction(ctx, c.Store, app.ID, func(tx datastore.DataStore) error {
+		tasks, err := repository.FindWorkflowTasksByAppID(ctx, tx, app.ID)
+		if err != nil {
+			return err
+		}
+		activeTasks, err := c.filterActiveTasks(ctx, tx, tasks)
+		if err != nil {
+			return err
+		}
+		if len(activeTasks) > 0 {
+			activeTaskIDs := make([]string, 0, len(activeTasks))
+			for _, task := range activeTasks {
+				activeTaskIDs = append(activeTaskIDs, task.TaskID)
+			}
+			return fmt.Errorf("refusing to delete application while workflow tasks remain active: %s",
+				strings.Join(uniqueStrings(activeTaskIDs), ","))
+		}
 		if err := repository.DeleteWorkflowSchedulesByAppID(ctx, tx, app.ID); err != nil {
 			return err
 		}
@@ -467,11 +483,12 @@ func (c *applicationsServiceImpl) deleteApplicationMetadataTx(ctx context.Contex
 		if err := repository.DeleteJobInfosByAppID(ctx, tx, app.ID); err != nil {
 			return err
 		}
-		if err := tx.Delete(ctx, app); err != nil && !errors.Is(err, datastore.ErrRecordNotExist) {
-			return err
-		}
-		return nil
+		return tx.Delete(ctx, app)
 	})
+	if errors.Is(err, datastore.ErrRecordNotExist) {
+		return bcode.ErrApplicationNotExist
+	}
+	return err
 }
 
 func uniqueStrings(values []string) []string {

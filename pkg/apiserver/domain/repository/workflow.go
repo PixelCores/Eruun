@@ -368,11 +368,9 @@ func ApproveTaskCAS(
 		"pending_approval_step": expected.PendingApprovalStep,
 	}
 
-	if casStore, ok := store.(datastore.ConditionalCompareAndSwap); ok {
-		return casStore.CompareAndSwapWithConditions(ctx, task, conditions, updates)
+	casStore, ok := store.(datastore.ConditionalCompareAndSwap)
+	if !ok {
+		return false, ErrWorkflowFencingUnsupported
 	}
-
-	// Fallback for stores without multi-condition CAS support:
-	// at least guard by expected status to prevent waiting->queued stale overwrite.
-	return store.CompareAndSwap(ctx, task, "status", expected.Status, updates)
+	return casStore.CompareAndSwapWithConditions(ctx, task, conditions, updates)
 }

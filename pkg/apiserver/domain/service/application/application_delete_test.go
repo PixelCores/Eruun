@@ -473,6 +473,101 @@ func TestDeleteApplicationCascadeDeletesRecreatedSchedulesInFinalTx(t *testing.T
 	}
 }
 
+// A submission that took the Redis lock after this delete lost its lease
+// commits under the application row lock. The final metadata transaction must
+// observe it there instead of deleting a task that may already be running.
+func TestDeleteApplicationCascadeRearbitratesActiveTasksUnderAppRowLock(t *testing.T) {
+	store := newCascadeDeleteStore()
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "demo", Namespace: "default"}
+	store.workflows["wf-1"] = &model.Workflow{ID: "wf-1", AppID: "app-1", Name: "deploy"}
+	lateTask := func() *model.WorkflowQueue {
+		return &model.WorkflowQueue{TaskID: "task-late", AppID: "app-1", WorkflowID: "wf-1", WorkflowName: "deploy", Status: config.StatusRunning}
+	}
+	store.beforeRowLock = func(tx *cascadeDeleteStore) {
+		store.tasks["task-late"] = lateTask()
+		tx.tasks["task-late"] = lateTask()
+	}
+
+	svc := &applicationsServiceImpl{
+		KubeClient:     fake.NewSimpleClientset(),
+		Store:          store,
+		AppRepo:        &cascadeAppRepo{store: store},
+		ComponentRepo:  &cascadeComponentRepo{store: store},
+		ScheduleLocker: locker.NewNoopLocker("test-app-schedule"),
+		Cache:          cache.NewMemCache(),
+	}
+
+	_, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{
+		WaitSeconds: int64Ptr(0),
+	})
+	if err == nil || !strings.Contains(err.Error(), "workflow tasks remain active: task-late") {
+		t.Fatalf("expected final transaction to reject the late active task, got %v", err)
+	}
+	if _, ok := store.apps["app-1"]; !ok {
+		t.Fatalf("application metadata must survive a rejected final transaction")
+	}
+	if _, ok := store.tasks["task-late"]; !ok {
+		t.Fatalf("late active task must not be deleted")
+	}
+}
+
+// The final transaction must read JobInfo through its own transaction: a
+// cancelled task whose job is still running is visible only there.
+func TestDeleteApplicationCascadeRejectsCancelledTaskWithActiveJobInFinalTx(t *testing.T) {
+	store := newCascadeDeleteStore()
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "demo", Namespace: "default"}
+	store.beforeRowLock = func(tx *cascadeDeleteStore) {
+		tx.tasks["task-cancelled"] = &model.WorkflowQueue{TaskID: "task-cancelled", AppID: "app-1", Status: config.StatusCancelled}
+		tx.jobs[99] = &model.JobInfo{ID: 99, AppID: "app-1", TaskID: "task-cancelled", Status: string(config.StatusRunning)}
+	}
+
+	svc := &applicationsServiceImpl{
+		KubeClient:     fake.NewSimpleClientset(),
+		Store:          store,
+		AppRepo:        &cascadeAppRepo{store: store},
+		ComponentRepo:  &cascadeComponentRepo{store: store},
+		ScheduleLocker: locker.NewNoopLocker("test-app-schedule"),
+		Cache:          cache.NewMemCache(),
+	}
+
+	_, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{
+		WaitSeconds: int64Ptr(0),
+	})
+	if err == nil || !strings.Contains(err.Error(), "workflow tasks remain active: task-cancelled") {
+		t.Fatalf("expected final transaction to reject the cancelled task with an active job, got %v", err)
+	}
+	if _, ok := store.apps["app-1"]; !ok {
+		t.Fatalf("application metadata must survive a rejected final transaction")
+	}
+}
+
+// A concurrent delete that committed first leaves no row to lock; the caller
+// gets the not-found contract instead of a wrapped datastore error.
+func TestDeleteApplicationCascadeMapsMissingAppAtRowLock(t *testing.T) {
+	store := newCascadeDeleteStore()
+	store.apps["app-1"] = &model.Applications{ID: "app-1", Name: "demo", Namespace: "default"}
+	store.beforeRowLock = func(tx *cascadeDeleteStore) {
+		delete(store.apps, "app-1")
+		delete(tx.apps, "app-1")
+	}
+
+	svc := &applicationsServiceImpl{
+		KubeClient:     fake.NewSimpleClientset(),
+		Store:          store,
+		AppRepo:        &cascadeAppRepo{store: store},
+		ComponentRepo:  &cascadeComponentRepo{store: store},
+		ScheduleLocker: locker.NewNoopLocker("test-app-schedule"),
+		Cache:          cache.NewMemCache(),
+	}
+
+	_, err := svc.DeleteApplicationCascade(context.Background(), "app-1", apisv1.DeleteApplicationRequest{
+		WaitSeconds: int64Ptr(0),
+	})
+	if !errors.Is(err, bcode.ErrApplicationNotExist) {
+		t.Fatalf("expected ErrApplicationNotExist, got %v", err)
+	}
+}
+
 type cascadeDeleteStore struct {
 	apps            map[string]*model.Applications
 	workflows       map[string]*model.Workflow
@@ -482,6 +577,9 @@ type cascadeDeleteStore struct {
 	jobs            map[int]*model.JobInfo
 	nextJobID       int
 	afterTaskCreate func(context.Context, *cascadeDeleteStore, *model.WorkflowQueue) error
+	// beforeRowLock simulates writes committed by another transaction while
+	// this one waits for the application row lock.
+	beforeRowLock func(tx *cascadeDeleteStore)
 }
 
 func newCascadeDeleteStore() *cascadeDeleteStore {
@@ -536,6 +634,7 @@ func (s *cascadeDeleteStore) clone() *cascadeDeleteStore {
 	cp := newCascadeDeleteStore()
 	cp.nextJobID = s.nextJobID
 	cp.afterTaskCreate = s.afterTaskCreate
+	cp.beforeRowLock = s.beforeRowLock
 	for k, v := range s.apps {
 		tmp := *v
 		cp.apps[k] = &tmp
@@ -885,6 +984,17 @@ func (s *cascadeDeleteStore) WithTransaction(ctx context.Context, fn func(tx dat
 	}
 	*s = *txStore
 	return nil
+}
+
+func (s *cascadeDeleteStore) WithReadCommittedTransaction(ctx context.Context, fn func(tx datastore.DataStore) error) error {
+	return s.WithTransaction(ctx, fn)
+}
+
+func (s *cascadeDeleteStore) GetForUpdate(ctx context.Context, entity datastore.Entity) error {
+	if s.beforeRowLock != nil {
+		s.beforeRowLock(s)
+	}
+	return s.Get(ctx, entity)
 }
 
 func matchInFilter(filterOptions *datastore.FilterOptions, key, value string) bool {
