@@ -50,7 +50,7 @@
 
 CAS 成功后，Leader 把版本更新预创建且未开始的清理记录置为 `timeout`，再异步发送终态 `timeout` callback（reason 为 `approval step "<name>" timed out`）。因此：
 
-1. Worker 重启、滚动升级或 OOM 不影响超时触发；实际触发时间在截止时间后的一个 reaper 周期内。
+1. Worker 重启、滚动升级或 OOM 不影响超时触发；每个 reaper 周期按截止时间升序最多处理一批已到期任务，批量上限取自 `Workflow.LeaseReaperBatchSize`（`--workflow-lease-reaper-batch-size`，默认常量 `DefaultWorkflowLeaseReaperBatchSize` 为 100）；实际触发时间还受任务积压、数据库耗时和 Leader 切换影响。
 2. 审批 `continue/cancel` 与超时竞争同一组检查点条件，只有一方 CAS 成功；输掉的一方不改变任务状态（审批接口返回任务不在审批中）。
 3. 任务继续后再次暂停到后续审批步骤（即使步骤名相同）会写入新的 `currentStep` 和截止时间，旧扫描快照无法命中。
 4. 终态 callback 与其他终态回调一样单次投递：Leader 在 CAS 提交后、callback 发出前退出时，状态仍正确收敛为 `timeout`，但该次 callback 不会补发。
