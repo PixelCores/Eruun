@@ -383,7 +383,7 @@ func TestApproveTaskCAS(t *testing.T) {
 		require.Equal(t, config.StatusWaitingApprove, store.casConditions["status"])
 	})
 
-	t.Run("fallback to single-field CAS", func(t *testing.T) {
+	t.Run("rejects stores without conditional CAS", func(t *testing.T) {
 		baseStore := &repositoryTestStore{casSwapped: true}
 		store := &repositoryTestStoreNoConditional{
 			DataStore: baseStore,
@@ -392,9 +392,9 @@ func TestApproveTaskCAS(t *testing.T) {
 		updated, err := ApproveTaskCAS(context.Background(), store, "task-1", ApproveTaskCondition{
 			Status: config.StatusWaitingApprove,
 		}, map[string]interface{}{"status": config.StatusQueued})
-		require.NoError(t, err)
-		require.True(t, updated)
-		require.Equal(t, "status", store.store.casField)
+		require.ErrorIs(t, err, ErrWorkflowFencingUnsupported)
+		require.False(t, updated)
+		require.Empty(t, store.store.casField)
 	})
 }
 
