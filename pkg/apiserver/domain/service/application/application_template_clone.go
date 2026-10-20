@@ -147,9 +147,6 @@ func resolveComponentsWithSourceIndexes(ctx context.Context, appRepo repository.
 				return nil, nil, bcode.ErrForbidden
 			}
 			comp.Namespace = scope.Namespace
-			if comp.ComponentType == config.CloudJob {
-				return nil, nil, bcode.ErrForbidden
-			}
 			if err := workspace.ValidateTraits(namespace, comp.Name, &comp.Traits, &comp.Properties, cfg.Accounts.Workspace); err != nil {
 				return nil, nil, err
 			}

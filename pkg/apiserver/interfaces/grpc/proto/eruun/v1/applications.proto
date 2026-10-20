@@ -960,12 +960,6 @@ message AppKubeCoreWindowsSecurityContextOptions {
   optional bool host_process = 4 [json_name = "hostProcess"];
 }
 
-message AppSpecCloudSpec {
-  string provider = 1 [json_name = "provider"];
-  string action = 2 [json_name = "action"];
-  google.protobuf.Struct params = 3 [json_name = "params"];
-}
-
 message AppSpecConfigMapSelectorSpec {
   string name = 1 [json_name = "name"];
   string key = 2 [json_name = "key"];
@@ -1043,13 +1037,15 @@ message AppSpecProbeTraitsSpec {
 }
 
 message AppSpecProperties {
+  reserved 7;
+  reserved "cloud";
+
   repeated AppSpecPorts ports = 1 [json_name = "ports"];
   map<string, string> env = 2 [json_name = "env"];
   map<string, string> conf = 3 [json_name = "conf"];
   map<string, string> secret = 4 [json_name = "secret"];
   repeated string command = 5 [json_name = "command"];
   map<string, string> labels = 6 [json_name = "labels"];
-  AppSpecCloudSpec cloud = 7 [json_name = "cloud"];
   string schedule = 8 [json_name = "schedule"];
   int64 start_time = 9 [json_name = "startTime"];
   string run_policy = 10 [json_name = "runPolicy"];

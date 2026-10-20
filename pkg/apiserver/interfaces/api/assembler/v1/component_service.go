@@ -184,7 +184,7 @@ func componentDeploysService(component *apisv1.ApplicationComponent) bool {
 		return false
 	}
 	switch component.ComponentType {
-	case config.InstantJob, config.ScheduledJob, config.CloudJob:
+	case config.InstantJob, config.ScheduledJob:
 		return false
 	default:
 		return true

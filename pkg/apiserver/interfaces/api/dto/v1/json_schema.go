@@ -315,7 +315,7 @@ func (b *schemaBuilder) applyFieldConstraints(definition, field string, schema m
 			schema["maxLength"] = datastore.PrimaryKeyMaxLength
 		}
 	case definition == "Component" && field == "type":
-		schema["enum"] = []string{"webservice", "store", "config", "secret", "cloudjob", "job", "scheduledjob"}
+		schema["enum"] = []string{"webservice", "store", "config", "secret", "job", "scheduledjob"}
 	case (definition == "WorkflowStep" || definition == "WorkflowSubStep") && field == "jobType":
 		schema["enum"] = []string{"deploy", "cleanup_resources", "database_reset", "log_archive_upload"}
 	case (definition == "WorkflowStep" || definition == "WorkflowSubStep") && field == "schedulingClass":

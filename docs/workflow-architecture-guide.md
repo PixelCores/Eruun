@@ -116,7 +116,7 @@ pkg/apiserver/event/workflow/job/
 ├── jobresult/             # 结果派发与 outbox
 ├── jobinstant/            # 一次性 Job、重试与准入
 ├── jobdelay/              # 延迟派发与定时 Job
-└── jobcloud/ databasereset/ logarchive/ jobcallback/
+└── databasereset/ logarchive/ jobcallback/
 ```
 
 每个 Job 控制器实现统一的接口：
@@ -965,7 +965,7 @@ Scheduler             Database              Message Queue          Worker       
 
 工作流由多个 Step 组成，每个 Step 包含一组组件。Step 之间按顺序执行，Step 内部根据执行模式（StepByStep 或 DAG）决定组件的执行方式。同时，每个组件生成的 Job 按优先级分组执行，确保依赖资源（如 ConfigMap、Secret）优先创建。
 
-创建应用时如果没有显式提供 `workflow`，服务端会按组件类型生成默认阶段化工作流：`cloudjob` -> `phase-1-job`，`config`/`secret` -> `phase-2-config-secret`，`store` -> `phase-3-store`，普通 `job` -> `phase-4-job`，`webservice`/`scheduledjob`/`service` -> `phase-5-webservice`。因此初始化 SQL 这类普通 Job 默认会排在 Store 创建之后执行；如果请求中显式提供 `workflow`，则严格按请求中的 Step 顺序执行，不再自动重排。
+创建应用时如果没有显式提供 `workflow`，服务端会按组件类型生成默认阶段化工作流：`config`/`secret` -> `phase-2-config-secret`，`store` -> `phase-3-store`，普通 `job` -> `phase-4-job`，`webservice`/`scheduledjob`/`service` -> `phase-5-webservice`。阶段名称保持原样，以便已保存工作流按名称同步。因此初始化 SQL 这类普通 Job 默认会排在 Store 创建之后执行；如果请求中显式提供 `workflow`，则严格按请求中的 Step 顺序执行，不再自动重排。
 
 ```
 Workflow Steps 定义:

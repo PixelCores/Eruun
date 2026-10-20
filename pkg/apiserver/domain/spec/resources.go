@@ -13,7 +13,6 @@ const (
 	ResourceIngress            ResourceKind = "ingress"
 	ResourceJob                ResourceKind = "job"
 	ResourceCronJob            ResourceKind = "cronjob"
-	ResourceCloudJob           ResourceKind = "cloudjob"
 	ResourceServiceAccount     ResourceKind = "serviceaccount"
 	ResourceRole               ResourceKind = "role"
 	ResourceRoleBinding        ResourceKind = "rolebinding"

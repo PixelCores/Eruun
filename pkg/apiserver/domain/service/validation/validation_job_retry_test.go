@@ -23,7 +23,6 @@ func TestValidateJobRetryPolicyScope(t *testing.T) {
 		{"delayed instant", config.InstantJob, 1, "stop", false},
 		{"cron", config.ScheduledJob, 0, "stop", false},
 		{"webservice", config.ServerJob, 0, "stop", false},
-		{"cloud", config.CloudJob, 0, "stop", false},
 		{"bad action", config.InstantJob, 0, "unknown", false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

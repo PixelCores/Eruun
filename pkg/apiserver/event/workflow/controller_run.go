@@ -495,8 +495,7 @@ func isWorkflowFailureCleanupTriggerJob(jobType config.JobType) bool {
 		config.JobDeployClusterRole,
 		config.JobDeployClusterRoleBinding,
 		config.JobDeployInstant,
-		config.JobDeployScheduled,
-		config.JobDeployCloud:
+		config.JobDeployScheduled:
 		return true
 	default:
 		return false

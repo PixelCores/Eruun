@@ -355,9 +355,6 @@ func (m *Manager) checkEmptyResource(ctx context.Context, w *model.Workspace, gr
 // in tenantTransport remain authoritative after templates and traits expand.
 func ValidateTraits(namespace, name string, traits *spec.Traits, properties *spec.Properties, cfg spec.WorkspaceConfig) error {
 	if properties != nil {
-		if properties.Cloud != nil {
-			return bcode.ErrForbidden
-		}
 		for key := range properties.Labels {
 			if strings.HasPrefix(key, "eruun.io/") {
 				return bcode.ErrForbidden

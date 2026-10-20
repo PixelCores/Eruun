@@ -5,9 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobcloud"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 )
 
@@ -112,13 +110,6 @@ func (s *stageAggregate) finalize() apis.TaskStageDetail {
 func publicStageInfoMessage(job *model.JobInfo) string {
 	if job == nil {
 		return ""
-	}
-	if config.JobType(job.Type) == config.JobDeployCloud {
-		raw := strings.TrimSpace(job.InternalInfo)
-		if raw == "" {
-			raw = strings.TrimSpace(job.Info)
-		}
-		return jobcloud.PublicCloudJobInfoMessage(raw)
 	}
 	return strings.TrimSpace(job.Info)
 }

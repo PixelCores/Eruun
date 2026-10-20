@@ -4,9 +4,7 @@
 
 ## 1. 当前事实
 
-当前 `cloudjob` 是 Application Component 类型，使用 `properties.cloud.provider/action/params` 选择进程内已注册实现。`main` 只自动注册 `aliyun` Provider，当前内置动作聚焦 NAS 文件系统、挂载点和 Kubernetes StorageClass 引导。
-
-仓库内的 `custom` 包是扩展模板，不会自动注册，也不是动态插件系统。新增 Provider 当前需要编译并重启 Eruun。完整当前契约见 [CloudJob 说明](cloudjob-skeleton.md)。
+CloudJob 及其 Aliyun Provider 已删除。Eruun 当前没有通用 AI Provider 执行能力；将来的 AI Provider 按新需求设计，不再以 CloudJob 为载体。
 
 ## 2. 目标
 
@@ -78,15 +76,7 @@ checkpoint 至少需要绑定：
 
 ## 8. 与 CloudJob 的关系
 
-CloudJob 已具备 provider/action 分发、多阶段 state 和执行记录，可以作为首个 AI Provider 的实现载体。采用它之前需要验证：
-
-- action 是否适合 Application-scoped Workflow。
-- 输入是否能通过结构化、版本化 schema 校验，而不是任意 `params`。
-- checkpoint 是否足以跨进程恢复。
-- 凭据、成本、审计和结果制品是否有统一边界。
-- 取消和清理是否与 Workflow 终态一致。
-
-如果这些需求可以增量完善现有 CloudJob，就不新增第二套 Provider runtime。只有隔离、部署或生命周期证据表明进程内实现不够时，才评估外部进程、RPC 或 operator 形态。
+CloudJob 已删除，将来的 AI Provider 按新需求设计，不再以 CloudJob 为载体。实现前需要确认 action 的执行范围、结构化输入、凭据与成本归属、检查点恢复、取消和清理边界，再选择最简单的运行方式。
 
 ## 9. 首个实现门禁
 

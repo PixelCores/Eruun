@@ -73,14 +73,3 @@ func nameOrFallback(name, fallback string) string {
 	}
 	return fallback
 }
-
-func cloneMapInterface(src map[string]interface{}) map[string]interface{} {
-	if len(src) == 0 {
-		return nil
-	}
-	dst := make(map[string]interface{}, len(src))
-	for k, v := range src {
-		dst[k] = v
-	}
-	return dst
-}

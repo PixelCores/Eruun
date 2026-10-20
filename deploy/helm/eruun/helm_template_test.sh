@@ -263,10 +263,9 @@ assertEqual \
   "$(clusterRoleRuleVerbs "${default_manifest}" batch jobs)" \
   "get list watch create update patch delete" \
   "Worker must observe Jobs and adopt reusable Jobs into a new execution generation"
-assertEqual \
-  "$(clusterRoleRuleVerbs "${default_manifest}" storage.k8s.io storageclasses)" \
-  "get create" \
-  "StorageClass rule must grant only cloudjob Get/Create access"
+if grep -q 'storageclasses' "${default_manifest}"; then
+  fail "ClusterRole must not contain a StorageClass rule"
+fi
 assertEqual \
   "$(clusterRoleRuleVerbs "${default_manifest}" "" pods)" \
   "get list watch patch delete" \

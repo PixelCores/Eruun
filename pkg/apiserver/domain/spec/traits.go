@@ -119,7 +119,6 @@ type Properties struct {
 	Secret                     map[string]string                     `json:"secret"`
 	Command                    []string                              `json:"command"`
 	Labels                     map[string]string                     `json:"labels"`
-	Cloud                      *CloudSpec                            `json:"cloud,omitempty"`
 	Schedule                   string                                `json:"schedule,omitempty"`
 	StartTime                  int64                                 `json:"startTime,omitempty"`
 	RunPolicy                  string                                `json:"runPolicy,omitempty"`
@@ -127,13 +126,6 @@ type Properties struct {
 	FailurePolicy              *workflowconfig.WorkflowFailurePolicy `json:"failurePolicy,omitempty"`
 	SuccessfulJobsHistoryLimit *int32                                `json:"successfulJobsHistoryLimit,omitempty"`
 	FailedJobsHistoryLimit     *int32                                `json:"failedJobsHistoryLimit,omitempty"`
-}
-
-// CloudSpec defines the generic cloud provider invocation shape for cloudjob components.
-type CloudSpec struct {
-	Provider string                 `json:"provider,omitempty"`
-	Action   string                 `json:"action,omitempty"`
-	Params   map[string]interface{} `json:"params,omitempty"`
 }
 
 type Ports struct {

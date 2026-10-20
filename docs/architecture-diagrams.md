@@ -76,7 +76,7 @@ sequenceDiagram
 ```mermaid
 flowchart LR
     App["Application<br/>workspace 归属"]
-    Components["Components<br/>webservice / store / job / scheduledjob<br/>config / secret / cloudjob"]
+    Components["Components<br/>webservice / store / job / scheduledjob<br/>config / secret"]
     Traits["Traits<br/>storage / env / resources / security / RBAC / …"]
     Workflow["Workflow<br/>StepByStep 或 DAG"]
     WorkspaceJob["独立空间 Job<br/>command 或 job + traits.eval，无 AppID"]
@@ -95,7 +95,7 @@ flowchart LR
 
 - Component 描述要运行或生成的对象。
 - Trait 为 Component 增加正交能力；它不是独立运行实体。
-- 图中包含引擎内部扩展；空间业务路径拒绝 CloudJob、额外 RBAC、任意 ServiceAccount、host/跨 namespace 操作及 NodePort/LoadBalancer，不能仅凭类型或 Trait 的存在判断可用权限。
+- 图中包含引擎内部扩展；空间业务路径拒绝额外 RBAC、任意 ServiceAccount、host/跨 namespace 操作及 NodePort/LoadBalancer，不能仅凭类型或 Trait 的存在判断可用权限。
 - Workflow 引用 Component 并定义执行顺序、审批和失败策略。
 - 独立空间 Job 直接声明任务规格，复用相同的调度、执行租约和 Job 生命周期。
 - JobTask 是内部执行计划，JobInfo 保存执行明细；它们不形成新的用户侧顶层队列。

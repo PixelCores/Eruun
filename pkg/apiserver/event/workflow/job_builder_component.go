@@ -57,14 +57,6 @@ func setDeployTimeout(jobTask *model.JobTask) {
 	jobTask.Timeout = config.DeployTimeout
 }
 
-// setCloudJobTimeout forces cloudjob tasks to use cloudjob-specific timeout.
-func setCloudJobTimeout(jobTask *model.JobTask) {
-	if jobTask == nil {
-		return
-	}
-	jobTask.Timeout = config.CloudJobTimeout
-}
-
 func createObjectJobsFromResult(additionalObjects []client.Object, component *model.ApplicationComponent, task *model.WorkflowQueue, jobs []*model.JobTask, defaultJobTimeoutSeconds int64, share shareConfig) ([]*model.JobTask, error) {
 	if len(additionalObjects) == 0 {
 		return jobs, nil
@@ -500,9 +492,8 @@ func buildJobsForComponent(
 	component *model.ApplicationComponent,
 	task *model.WorkflowQueue,
 	defaultJobTimeoutSeconds int64,
-	cloudExecutionKey string,
+	componentExecutionKey string,
 ) (map[int][]*model.JobTask, error) {
-	logger := klog.FromContext(ctx)
 	buckets := newJobBuckets()
 	if component == nil {
 		return buckets, nil
@@ -559,22 +550,6 @@ func buildJobsForComponent(
 		setDeployTimeout(jobTask)
 		markJobSkippedIfIgnored(share, jobTask)
 		buckets[config.JobPriorityMaxHigh] = append(buckets[config.JobPriorityMaxHigh], jobTask)
-	case config.CloudJob:
-		cloudInfo := &jobinfo.CloudJobInfo{}
-		if properties.Cloud == nil {
-			logger.Info("Cloudjob component missing properties.cloud, enqueuing fail-fast cloud job", "componentName", component.Name)
-		} else {
-			cloudInfo.Provider = properties.Cloud.Provider
-			cloudInfo.Action = properties.Cloud.Action
-			cloudInfo.Params = cloneMapInterface(properties.Cloud.Params)
-		}
-		cloudInfo.ExecutionKey = strings.TrimSpace(cloudExecutionKey)
-		jobTask := NewJobTask(component.Name, namespace, task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, resourceAppName)
-		jobTask.JobType = string(config.JobDeployCloud)
-		jobTask.JobInfo = cloudInfo
-		jobTask.Info = buildResourceInfo(domainspec.ResourceCloudJob, namespace, component.Name)
-		setCloudJobTimeout(jobTask)
-		buckets[config.JobPriorityNormal] = append(buckets[config.JobPriorityNormal], jobTask)
 	case config.InstantJob:
 		var traits domainspec.Traits
 		if component.Traits != nil {
@@ -587,7 +562,7 @@ func buildJobsForComponent(
 			}
 		}
 		if traits.Evaluation != nil {
-			identity := sha256.Sum256([]byte(task.TaskID + "|" + cloudExecutionKey + "|" + component.Name))
+			identity := sha256.Sum256([]byte(task.TaskID + "|" + componentExecutionKey + "|" + component.Name))
 			name := fmt.Sprintf("eruun-eval-%x", identity[:16])
 			jobTask := NewJobTask(name, namespace, task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, resourceAppName)
 			jobTask.WorkspaceID = task.WorkspaceID
@@ -651,7 +626,7 @@ func buildJobsForComponent(
 		}
 	}
 
-	if component.ComponentType != config.InstantJob && component.ComponentType != config.ScheduledJob && component.ComponentType != config.CloudJob {
+	if component.ComponentType != config.InstantJob && component.ComponentType != config.ScheduledJob {
 		serviceTraits := serviceTraitsForComponent(component, &properties, componentTraits)
 		if len(serviceTraits) > 0 {
 			for _, trait := range serviceTraits {

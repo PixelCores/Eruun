@@ -69,14 +69,13 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `pkg/apiserver/domain/repository` | 仓储接口和数据访问契约（含按 ID 排序的类型化账号查询） | 查询/写入方法、事务边界 | 接口表达业务意图，不暴露上层 DTO |
 | `pkg/apiserver/domain/service` | 应用生命周期、转换、查询、工作流创建；`account` 统一管理员用户查询、授权和分页规则 | 创建/更新/删除应用、组件查询、K8s YAML 转换 | 工作流步骤校验在 `application/application_workflow_steps.go`；保持核心领域规则集中 |
 | `pkg/apiserver/domain/service/application` | 应用生命周期与组件业务规则 | 应用变更、组件查询、Informer 运行态回写 | `SyncComponentStatus` 负责状态保护、条件写入和缓存失效；server 只装配有界回调 |
-| `pkg/apiserver/domain/spec` | 共享规格、资源契约、策略和校验（含 Aliyun 设置脱敏） | Auth、OAuth、URL 安全、云资源配置、资源类型、Service 暴露类型与共享策略 | 业务取值及归一化与对应规格集中定义；Storage/Volume 类型与映射集中在 `storage.go`；更新策略、执行范围与组件动作集中在 `application_policy.go` |
+| `pkg/apiserver/domain/spec` | 共享规格、资源契约、策略和校验 | Auth、OAuth、URL 安全、资源类型、Service 暴露类型与共享策略 | 业务取值及归一化与对应规格集中定义；Storage/Volume 类型与映射集中在 `storage.go`；更新策略、执行范围与组件动作集中在 `application_policy.go` |
 | `pkg/apiserver/event/workflow` | Workflow 调度、分发、状态推进、审批/超时 | 任务状态、队列消费、分布式执行 | DB 状态机是任务事实源 |
-| `pkg/apiserver/event/workflow/job` | Job 执行入口（`RunJobs`、`initJobCtl` 工厂、`Pool`、评测恢复），具体能力分在子包 | 新增 Job 类型、调整执行主流程；Deployment、StatefulSet、Service、PVC、Secret、RBAC 等资源执行在 `jobdeploy` | 子包单向依赖：`jobinfo`（JobInfo 记录、载荷、检查点）→ `jobexec`（Runtime、控制器基类、K8s Job 原语、共享资源保护、清理跟踪、取消恢复）→ `jobdeploy` → `jobcleanup`、`jobresult` → `jobinstant`、`jobdelay`、`jobcloud`、`databasereset`、`logarchive`、`jobcallback`；ConfigMap/Secret 内部执行输入在 `jobinfo/configmap_input.go`；分层见 `job-package-layering-design.md` |
-| `pkg/apiserver/event/workflow/cloudjob` | 云资源 Provider 合约与实现 | 云资源步骤、Provider 注册、外部云动作 | 合约字符串集中为常量；Provider 可选设置支持由 `domain/service/systemsetting` 管理 |
+| `pkg/apiserver/event/workflow/job` | Job 执行入口（`RunJobs`、`initJobCtl` 工厂、`Pool`、评测恢复），具体能力分在子包 | 新增 Job 类型、调整执行主流程；Deployment、StatefulSet、Service、PVC、Secret、RBAC 等资源执行在 `jobdeploy` | 子包单向依赖：`jobinfo`（JobInfo 记录、载荷、检查点）→ `jobexec`（Runtime、控制器基类、K8s Job 原语、共享资源保护、清理跟踪、取消恢复）→ `jobdeploy` → `jobcleanup`、`jobresult` → `jobinstant`、`jobdelay`、`databasereset`、`logarchive`、`jobcallback`；ConfigMap/Secret 内部执行输入在 `jobinfo/configmap_input.go`；分层见 `job-package-layering-design.md` |
 | `pkg/apiserver/workflow/traits` | OAM Traits 处理器 | storage、env、probe、resources、sidecar、rbac、ingress 等 Trait | 新 Trait 需要处理顺序、测试和文档 |
 | `pkg/apiserver/workflow/config` | 工作流运行配置、执行策略与 topic 命名 | 调度/Worker 默认值、配置校验、回调超时、镜像拉取策略与队列名称 | 模块配置不反向依赖全局配置、领域模型或执行器 |
 | `pkg/apiserver/workflow/naming` | 资源命名规则 | Kubernetes 资源名、PVC/Service 命名 | 命名变化影响状态同步和清理 |
-| `pkg/apiserver/infrastructure` | 外部系统与安全机制适配（含 Aliyun NAS 客户端与连通性检查） | K8s、Redis、MySQL、Informer、锁、可观测性 | 出站 URL 安全客户端在 `clients/http.go`；`workspace` 只承接资源载荷策略及 Kubernetes 写入边界，任务准备由 Job 所属包负责；Infrastructure 实现接口，不反向承载业务规则 |
+| `pkg/apiserver/infrastructure` | 外部系统与安全机制适配 | K8s、Redis、MySQL、Informer、锁、可观测性 | 出站 URL 安全客户端在 `clients/http.go`；`workspace` 只承接资源载荷策略及 Kubernetes 写入边界，任务准备由 Job 所属包负责；Infrastructure 实现接口，不反向承载业务规则 |
 | `pkg/apiserver/infrastructure/observability` | 进程可观测性 | Trace Provider 初始化、klog 文件保留与清理 | 后台清理受进程 context 控制 |
 | `pkg/apiserver/infrastructure/cache` | 内存与 Redis 缓存适配 | 缓存读写、删除、过期及共享缓存键 | ApplicationComponentsKey 是查询、执行与状态同步共同使用的存储命名契约 |
 | `pkg/apiserver/utils` | 通用工具 | 错误码、K8s helper、profiling | 新工具必须可复用，避免放业务分支 |
@@ -151,14 +150,13 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | --- | --- | --- |
 | `workflow-architecture-guide.md` | Implemented Reference | 工作流引擎架构详解 |
 | `workspace-jobs-and-harbor-requirements.md` | Implemented Reference | 先于实现确认的统一 Job 与 Harbor 需求基线：任务包、空间授权、全部输出、多目标保存与原始结果保留 |
-| [`job-package-layering-design.md`](job-package-layering-design.md) | Implemented Reference | `event/workflow/job` 分层拆成 12 个子包的设计与实施结果：子包边界、依赖方向、导出代价与测试迁移规则 |
+| [`job-package-layering-design.md`](job-package-layering-design.md) | Implemented Reference | `event/workflow/job` 按职责分层的设计与实施结果：子包边界、依赖方向、导出代价与测试迁移规则 |
 | `job-module-design.md` | Implemented Reference | 自定义 Job 模块的设计取舍：为何复用 WorkflowQueue、stages、运行卷、traits 复用、重试边界、cron 并发策略与 Replace 顺序；行为细节见 `workspace-jobs-api.md` |
 | `agent-evaluation-runner-service-design.md` | Implemented Reference | Harbor Runner 单实例 claim、v1 阶段/心跳/进度/终态事件、结果门禁与 Kubernetes 故障兜底 |
 | `workflow-global-scheduler-design.md` | Implemented Reference | Job 全局优先级、FIFO、等待老化、空间并发上限、ownership 准入与 OOM 策略 |
 | `enterprise-distributed-runtime-design.md` | Implemented Reference | 分布式运行时：角色依赖、API Redis readiness、Leader Election、数据库 lease/fencing、延迟任务恢复与通知去重、Cron 有界分页与失败计划重试、Worker observer 和 Helm 拓扑 |
 | `架构文档.md` | Implemented Reference | 当前同构节点、HTTP/gRPC、数据所有权、Component/Workflow、独立空间 Job、Traits 与空间权限边界 |
 | `architecture-diagrams.md` | Implemented Reference | 当前同构节点、Workflow/独立 Job 执行、评测结果保存和 Trait 映射图 |
-| `cloudjob-skeleton.md` | Implemented Reference | CloudJob 基础说明 |
 | `core-module-boundary-and-cross-layer-contracts.md` | Implemented Reference | 核心模块边界与跨层字段契约 |
 | `project-style-guide.md` | Implemented Reference | 项目命名、模块边界与架构风格维护基线 |
 | `statefulset-pvc-volume-naming.md` | Implemented Reference | StatefulSet PVC 命名分析 |

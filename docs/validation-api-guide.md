@@ -65,7 +65,7 @@ Workflow 的组件引用（`components`、`properties.policies`、`properties[].
 Try Application 与 Try Workflow 都会校验公开 workflow jobType 的附加契约。对于 `log_archive_upload`：
 
 - `properties.path` 必填；缺失时返回 `MISSING_REQUIRED_FIELD`。
-- 目标组件必须是会产生 Pod 的组件类型（`webservice`、`store`、`job`、`scheduledjob`）；`config`、`secret`、`cloudjob` 等非 Pod 组件会返回 `INVALID_WORKFLOW_STEP_TYPE`。
+- 目标组件必须是会产生 Pod 的组件类型（`webservice`、`store`、`job`、`scheduledjob`）；`config`、`secret` 等非 Pod 组件会返回 `INVALID_WORKFLOW_STEP_TYPE`。
 - 顶层 step 与 `subSteps[]` 使用同一套校验规则。
 
 **示例调用**:

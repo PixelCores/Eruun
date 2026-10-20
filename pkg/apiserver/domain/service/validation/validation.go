@@ -50,7 +50,6 @@ var (
 		config.StoreJob:     true,
 		config.ConfJob:      true,
 		config.SecretJob:    true,
-		config.CloudJob:     true,
 		config.InstantJob:   true,
 		config.ScheduledJob: true,
 	}
@@ -179,7 +178,7 @@ func (v *validationServiceImpl) TryApplication(ctx context.Context, req apisv1.C
 			fieldPrefix := fmt.Sprintf("component[%d]", i)
 			if scope, ok := access.FromContext(ctx); ok {
 				var err error
-				if v.Cfg == nil || v.Cfg.Accounts == nil || comp.ComponentType == config.CloudJob || (comp.Namespace != "" && comp.Namespace != scope.Namespace) {
+				if v.Cfg == nil || v.Cfg.Accounts == nil || (comp.Namespace != "" && comp.Namespace != scope.Namespace) {
 					err = bcode.ErrForbidden
 				} else {
 					err = workspace.ValidateTraits(scope.Namespace, comp.Name, &comp.Traits, &comp.Properties, v.Cfg.Accounts.Workspace)
@@ -356,7 +355,7 @@ func (v *validationServiceImpl) validateComponent(comp apisv1.CreateComponentReq
 		errors = append(errors, apisv1.ValidationError{
 			Field:   fmt.Sprintf("%s.type", fieldPrefix),
 			Code:    apisv1.ErrCodeInvalidComponentType,
-			Message: fmt.Sprintf("invalid component type: %s, must be one of: webservice, store, config, secret, cloudjob, job, scheduledjob", comp.ComponentType),
+			Message: fmt.Sprintf("invalid component type: %s, must be one of: webservice, store, config, secret, job, scheduledjob", comp.ComponentType),
 		})
 	}
 
@@ -462,29 +461,6 @@ func (v *validationServiceImpl) validateJobProperties(comp apisv1.CreateComponen
 	}
 
 	switch comp.ComponentType {
-	case config.CloudJob:
-		if props.Cloud == nil {
-			errors = append(errors, apisv1.ValidationError{
-				Field:   fmt.Sprintf("%s.properties.cloud", fieldPrefix),
-				Code:    apisv1.ErrCodeMissingRequiredField,
-				Message: "cloudjob requires properties.cloud",
-			})
-			return errors
-		}
-		if strings.TrimSpace(props.Cloud.Provider) == "" {
-			errors = append(errors, apisv1.ValidationError{
-				Field:   fmt.Sprintf("%s.properties.cloud.provider", fieldPrefix),
-				Code:    apisv1.ErrCodeMissingRequiredField,
-				Message: "cloudjob requires properties.cloud.provider",
-			})
-		}
-		if strings.TrimSpace(props.Cloud.Action) == "" {
-			errors = append(errors, apisv1.ValidationError{
-				Field:   fmt.Sprintf("%s.properties.cloud.action", fieldPrefix),
-				Code:    apisv1.ErrCodeMissingRequiredField,
-				Message: "cloudjob requires properties.cloud.action",
-			})
-		}
 	case config.InstantJob:
 		if schedule != "" {
 			errors = append(errors, apisv1.ValidationError{

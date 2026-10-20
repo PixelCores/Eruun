@@ -305,7 +305,7 @@ func trackComponentLabelValue(seen map[string]resolvedComponentLabelRef, current
 
 func resolvedServiceResourceNames(component apisv1.CreateComponentRequest, resourceAppName string) []string {
 	switch component.ComponentType {
-	case config.InstantJob, config.ScheduledJob, config.CloudJob:
+	case config.InstantJob, config.ScheduledJob:
 		return nil
 	}
 	componentName := strings.TrimSpace(component.Name)

@@ -22,7 +22,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/databasereset"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobcallback"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobcleanup"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobcloud"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdelay"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
@@ -99,8 +98,6 @@ func initJobCtl(job *model.JobTask, runtime *jobexec.Runtime) JobCtl {
 		return jobinstant.NewInstantJobCtl(job, runtime)
 	case string(config.JobDeployScheduled):
 		return jobdelay.NewScheduledJobCtl(job, runtime)
-	case string(config.JobDeployCloud):
-		return jobcloud.NewCloudJobCtl(job, runtime.Store)
 	case string(config.JobDeployCallback):
 		return jobcallback.NewCallbackJobCtl(job, runtime.Store, runtime.URLSecurityPolicy)
 	case string(config.JobCleanupResources):
@@ -177,7 +174,7 @@ func RunJobs(ctx context.Context, jobs []*model.JobTask, run *jobexec.Runtime) e
 				return err
 			}
 			switch config.JobType(task.JobType) {
-			case config.JobDeployCloud, config.JobDeployServiceAccount, config.JobDeployRole, config.JobDeployRoleBinding, config.JobDeployClusterRole, config.JobDeployClusterRoleBinding:
+			case config.JobDeployServiceAccount, config.JobDeployRole, config.JobDeployRoleBinding, config.JobDeployClusterRole, config.JobDeployClusterRoleBinding:
 				return fmt.Errorf("job type %s is forbidden in workspaces", task.JobType)
 			}
 		}
@@ -711,7 +708,6 @@ func jobRequiresApplicationWritePermission(jobType string) bool {
 		config.JobDeployClusterRoleBinding,
 		config.JobDeployInstant,
 		config.JobDeployScheduled,
-		config.JobDeployCloud,
 		config.JobCleanupResources,
 		config.JobDatabaseReset,
 		config.JobVersionRestart:

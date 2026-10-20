@@ -281,13 +281,6 @@ func TestUpdateVersionAutoExecRemovePersistsCleanupJobAfterCommit(t *testing.T) 
 		Secret:  map[string]string{"api-key": "secret-payload-value"},
 		Command: []string{"sh", "-c", "echo command-secret"},
 		Labels:  map[string]string{"credential": "label-secret"},
-		Cloud: &spec.CloudSpec{
-			Provider: "aliyun",
-			Action:   "provision",
-			Params: map[string]interface{}{
-				"accessKeySecret": "cloud-secret-value",
-			},
-		},
 	})
 	require.NoError(t, err)
 	removedTraits, err := model.NewJSONStructByStruct(spec.Traits{
@@ -406,13 +399,11 @@ func TestUpdateVersionAutoExecRemovePersistsCleanupJobAfterCommit(t *testing.T) 
 	require.NotContains(t, cleanupJob.InternalInfo, "secret-payload-value")
 	require.NotContains(t, cleanupJob.InternalInfo, "command-secret")
 	require.NotContains(t, cleanupJob.InternalInfo, "label-secret")
-	require.NotContains(t, cleanupJob.InternalInfo, "cloud-secret-value")
 	require.NotContains(t, store.tasks[resp.TaskID].CleanupInfo, "env-secret-token")
 	require.NotContains(t, store.tasks[resp.TaskID].CleanupInfo, "conf-secret-password")
 	require.NotContains(t, store.tasks[resp.TaskID].CleanupInfo, "secret-payload-value")
 	require.NotContains(t, store.tasks[resp.TaskID].CleanupInfo, "command-secret")
 	require.NotContains(t, store.tasks[resp.TaskID].CleanupInfo, "label-secret")
-	require.NotContains(t, store.tasks[resp.TaskID].CleanupInfo, "cloud-secret-value")
 	require.NotContains(t, store.tasks[resp.TaskID].CleanupInfo, "init-secret-token")
 	require.NotContains(t, store.tasks[resp.TaskID].CleanupInfo, "init-command-secret")
 	require.NotContains(t, store.tasks[resp.TaskID].CleanupInfo, "sidecar-secret-token")
@@ -426,7 +417,6 @@ func TestUpdateVersionAutoExecRemovePersistsCleanupJobAfterCommit(t *testing.T) 
 	require.Empty(t, cleanupProperties.Secret)
 	require.Empty(t, cleanupProperties.Command)
 	require.Empty(t, cleanupProperties.Labels)
-	require.Nil(t, cleanupProperties.Cloud)
 	require.NotNil(t, cleanupPayload.Component.Traits)
 	var cleanupTraits spec.Traits
 	require.NoError(t, json.Unmarshal([]byte(mustJSON(t, cleanupPayload.Component.Traits)), &cleanupTraits))

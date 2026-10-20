@@ -106,7 +106,7 @@ func workloadIdentityFromObject(resource client.Object, namespace, name string) 
 }
 
 func (c *CleanupResourcesJobCtl) deleteServicesForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, deleted *cleanupResourceSet) {
-	if component.ComponentType == config.InstantJob || component.ComponentType == config.ScheduledJob || component.ComponentType == config.CloudJob {
+	if component.ComponentType == config.InstantJob || component.ComponentType == config.ScheduledJob {
 		return
 	}
 

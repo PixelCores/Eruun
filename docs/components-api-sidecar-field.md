@@ -52,7 +52,7 @@
 
 ### ingresses
 
-`ingresses` 只会对当前 workflow 实际会部署 Ingress 资源的组件类型生效，并基于对应的 `traits.ingress` 补齐名称、命名空间和默认后端服务。像 `config`、`secret`、`cloudjob` 这类不会走 Ingress trait 落地链路的组件，即使请求体里带了 `traits.ingress`，这里也会返回空。`routes[].host` 优先使用路由级 `host`；当路由级 `host` 为空且 Ingress 级 `hosts` 有值时，按 `hosts` 展开路由摘要；两者都为空时保留无 host 规则。
+`ingresses` 只会对当前 workflow 实际会部署 Ingress 资源的组件类型生效，并基于对应的 `traits.ingress` 补齐名称、命名空间和默认后端服务。像 `config`、`secret` 这类不会走 Ingress trait 落地链路的组件，即使请求体里带了 `traits.ingress`，这里也会返回空。`routes[].host` 优先使用路由级 `host`；当路由级 `host` 为空且 Ingress 级 `hosts` 有值时，按 `hosts` 展开路由摘要；两者都为空时保留无 host 规则。
 
 其中 `ingresses[].name` 和 `ingresses[].namespace` 表示 workflow 实际会部署的 Ingress 资源标识，可用于定位集群中的 Ingress 对象；它们仍然不应视为对外访问入口。调用方如果需要对外可访问的固定路由，应优先使用：
 
