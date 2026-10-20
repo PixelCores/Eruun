@@ -71,11 +71,3 @@ func CopyStringMap(source map[string]string) map[string]string {
 func ServiceNamespaceOrDefault(namespace string) string {
 	return serviceNamespaceOrDefault(namespace)
 }
-
-func ReservedComponentLabelKeys() map[string]struct{} {
-	keys := make(map[string]struct{}, len(reservedComponentLabelKeys))
-	for key := range reservedComponentLabelKeys {
-		keys[key] = struct{}{}
-	}
-	return keys
-}

@@ -503,7 +503,7 @@ func validateReservedLabelMap(labels map[string]string, field, labelName string)
 	}
 	var errors []apisv1.ValidationError
 	for key := range labels {
-		if _, reserved := reservedComponentLabelKeys[key]; reserved {
+		if spec.IsReservedComponentLabel(key) {
 			errors = append(errors, apisv1.ValidationError{
 				Field:   field,
 				Code:    apisv1.ErrCodeInvalidTraitConfig,
@@ -512,13 +512,4 @@ func validateReservedLabelMap(labels map[string]string, field, labelName string)
 		}
 	}
 	return errors
-}
-
-var reservedComponentLabelKeys = map[string]struct{}{
-	config.LabelManagedBy:     {},
-	config.LabelAppID:         {},
-	config.LabelComponentID:   {},
-	config.LabelComponentName: {},
-	config.LabelShareName:     {},
-	config.LabelShareStrategy: {},
 }
