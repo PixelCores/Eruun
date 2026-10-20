@@ -320,7 +320,7 @@ func TestCreateApplicationsUpdateAppCallbackOverwritesAllWorkflowCallbacks(t *te
 		Name:         "custom-workflow",
 		AppID:        app.ID,
 		Namespace:    app.Namespace,
-		WorkflowType: config.WorkflowTaskTypeTesting,
+		WorkflowType: config.WorkflowTaskTypeUpdate,
 		Steps:        steps,
 		Callback:     oldCallback,
 	}
@@ -397,7 +397,7 @@ func TestCreateApplicationsUpdateEmptyAppCallbackClearsSQLStyleCallbacks(t *test
 		Name:         "custom-workflow",
 		AppID:        app.ID,
 		Namespace:    app.Namespace,
-		WorkflowType: config.WorkflowTaskTypeTesting,
+		WorkflowType: config.WorkflowTaskTypeUpdate,
 		Steps:        steps,
 		Callback:     oldCallback,
 	}

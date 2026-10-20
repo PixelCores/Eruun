@@ -330,9 +330,6 @@ func (b *schemaBuilder) applyFieldConstraints(definition, field string, schema m
 		schema["enum"] = []string{
 			string(config.WorkflowTaskTypeWorkflow),
 			string(config.WorkflowTaskTypeUpdate),
-			string(config.WorkflowTaskTypeTesting),
-			string(config.WorkflowTaskTypeScanning),
-			string(config.WorkflowTaskTypeDelivery),
 			string(config.WorkflowTaskTypeDatabaseReset),
 			string(config.WorkflowTaskTypeLogArchiveUpload),
 		}
