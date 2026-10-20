@@ -19,6 +19,7 @@ import (
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobcleanup"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	evaluationjobs "github.com/PixelCores/Eruun/pkg/apiserver/jobs"
@@ -209,7 +210,7 @@ func (r *workflowRun) runSteps(taskForGeneration model.WorkflowQueue, stepExecut
 	if len(stepExecutions) == 1 && stepExecutions[0].generationError != nil {
 		err := stepExecutions[0].generationError
 		for _, task := range stepExecutions[0].Jobs[config.JobPriorityLow] {
-			controller := job.NewCleanupResourcesJobCtl(task, &jobexec.Runtime{Client: r.Client, Store: r.Store})
+			controller := jobcleanup.NewCleanupResourcesJobCtl(task, &jobexec.Runtime{Client: r.Client, Store: r.Store})
 			if persistErr := controller.SaveInfo(ctx); persistErr != nil {
 				return r.stopForJobInfrastructure(fmt.Errorf("persist workflow generation failure: %w", persistErr))
 			}

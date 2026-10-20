@@ -115,22 +115,31 @@ func (s *jobInfoStore) Add(_ context.Context, entity datastore.Entity) error {
 }
 
 func (s *jobInfoStore) BatchAdd(context.Context, []datastore.Entity) error { return nil }
-func (s *jobInfoStore) Put(context.Context, datastore.Entity) error        { return nil }
-func (s *jobInfoStore) Delete(context.Context, datastore.Entity) error     { return nil }
+
+func (s *jobInfoStore) Put(context.Context, datastore.Entity) error { return nil }
+
+func (s *jobInfoStore) Delete(context.Context, datastore.Entity) error { return nil }
+
 func (s *jobInfoStore) DeleteByFilter(context.Context, datastore.Entity, *datastore.FilterOptions) error {
 	return nil
 }
+
 func (s *jobInfoStore) Get(context.Context, datastore.Entity) error { return nil }
+
 func (s *jobInfoStore) List(context.Context, datastore.Entity, *datastore.ListOptions) ([]datastore.Entity, error) {
 	return nil, nil
 }
+
 func (s *jobInfoStore) Count(context.Context, datastore.Entity, *datastore.FilterOptions) (int64, error) {
 	return 0, nil
 }
+
 func (s *jobInfoStore) IsExist(context.Context, datastore.Entity) (bool, error) { return false, nil }
+
 func (s *jobInfoStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {
 	return false, nil
 }
+
 func (s *jobInfoStore) CompareAndSwap(context.Context, datastore.Entity, string, interface{}, map[string]interface{}) (bool, error) {
 	return false, nil
 }
@@ -178,7 +187,9 @@ func (s *componentStatusStore) Add(_ context.Context, entity datastore.Entity) e
 	}
 	return nil
 }
+
 func (s *componentStatusStore) BatchAdd(context.Context, []datastore.Entity) error { return nil }
+
 func (s *componentStatusStore) Put(_ context.Context, entity datastore.Entity) error {
 	if s.putErr != nil {
 		return s.putErr
@@ -190,16 +201,20 @@ func (s *componentStatusStore) Put(_ context.Context, entity datastore.Entity) e
 	}
 	return nil
 }
+
 func (s *componentStatusStore) Delete(context.Context, datastore.Entity) error { return nil }
+
 func (s *componentStatusStore) DeleteByFilter(context.Context, datastore.Entity, *datastore.FilterOptions) error {
 	return nil
 }
+
 func (s *componentStatusStore) Get(_ context.Context, entity datastore.Entity) error {
 	if _, ok := entity.(*model.Applications); ok && s.appMissing {
 		return datastore.ErrRecordNotExist
 	}
 	return nil
 }
+
 func (s *componentStatusStore) List(_ context.Context, query datastore.Entity, _ *datastore.ListOptions) ([]datastore.Entity, error) {
 	compQuery, ok := query.(*model.ApplicationComponent)
 	if !ok {
@@ -217,15 +232,19 @@ func (s *componentStatusStore) List(_ context.Context, query datastore.Entity, _
 	}
 	return out, nil
 }
+
 func (s *componentStatusStore) Count(context.Context, datastore.Entity, *datastore.FilterOptions) (int64, error) {
 	return 0, nil
 }
+
 func (s *componentStatusStore) IsExist(context.Context, datastore.Entity) (bool, error) {
 	return false, nil
 }
+
 func (s *componentStatusStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {
 	return false, nil
 }
+
 func (s *componentStatusStore) CompareAndSwap(context.Context, datastore.Entity, string, interface{}, map[string]interface{}) (bool, error) {
 	return false, nil
 }
@@ -238,10 +257,10 @@ func (s *componentStatusStore) CompareAndSwapWithConditions(_ context.Context, e
 		return false, nil
 	}
 	for _, comp := range s.components {
-		if !componentMatchesConditions(comp, conditions) {
+		if !jobtest.ComponentMatchesConditions(comp, conditions) {
 			continue
 		}
-		applyComponentRuntimeUpdateMap(comp, updates)
+		jobtest.ApplyComponentRuntimeUpdateMap(comp, updates)
 		copied := *comp
 		s.updated = &copied
 		s.updates = append(s.updates, &copied)
@@ -254,45 +273,8 @@ func (s *componentStatusStore) CompareAndSwapWithConditions(_ context.Context, e
 	return false, nil
 }
 
-func componentMatchesConditions(component *model.ApplicationComponent, conditions map[string]interface{}) bool {
-	if component == nil {
-		return false
-	}
-	if appID, ok := conditions["app_id"].(string); ok && component.AppID != appID {
-		return false
-	}
-	if name, ok := conditions["name"].(string); ok && component.Name != name {
-		return false
-	}
-	if id, ok := conditions["id"].(int); ok && component.ID != id {
-		return false
-	}
-	return true
-}
-
-func applyComponentRuntimeUpdateMap(component *model.ApplicationComponent, updates map[string]interface{}) {
-	if component == nil {
-		return
-	}
-	for key, value := range updates {
-		switch key {
-		case "status":
-			if status, ok := value.(string); ok {
-				component.Status = status
-			}
-		case "ready_replicas":
-			if readyReplicas, ok := value.(int32); ok {
-				component.ReadyReplicas = readyReplicas
-			}
-		case "last_abnormal":
-			if lastAbnormal, ok := value.(string); ok {
-				component.LastAbnormal = lastAbnormal
-			}
-		}
-	}
-}
-
 var _ datastore.DataStore = (*componentStatusStore)(nil)
+
 var _ datastore.ConditionalCompareAndSwap = (*componentStatusStore)(nil)
 
 func TestRunJob_ConfigMapUpdatesComponentStatus(t *testing.T) {

@@ -163,8 +163,8 @@ func (s *databaseResetComponentStore) CompareAndSwapWithConditions(_ context.Con
 		return false, nil
 	}
 	for _, stored := range s.components {
-		if componentMatchesConditions(stored, conditions) {
-			applyComponentRuntimeUpdateMap(stored, updates)
+		if jobtest.ComponentMatchesConditions(stored, conditions) {
+			jobtest.ApplyComponentRuntimeUpdateMap(stored, updates)
 			return true, nil
 		}
 	}
@@ -173,7 +173,7 @@ func (s *databaseResetComponentStore) CompareAndSwapWithConditions(_ context.Con
 
 func (s *databaseResetComponentStore) IsExistByCondition(_ context.Context, _ string, conditions map[string]interface{}, _ interface{}) (bool, error) {
 	for _, component := range s.components {
-		if componentMatchesConditions(component, conditions) {
+		if jobtest.ComponentMatchesConditions(component, conditions) {
 			return true, nil
 		}
 	}

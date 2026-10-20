@@ -19,6 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobcleanup"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
@@ -97,7 +98,7 @@ func initJobCtl(job *model.JobTask, runtime *jobexec.Runtime) JobCtl {
 	case string(config.JobDeployCallback):
 		return NewCallbackJobCtl(job, runtime.Store, runtime.URLSecurityPolicy)
 	case string(config.JobCleanupResources):
-		cleanupCtl := NewCleanupResourcesJobCtl(job, runtime)
+		cleanupCtl := jobcleanup.NewCleanupResourcesJobCtl(job, runtime)
 		if cleanupCtl == nil {
 			return nil
 		}

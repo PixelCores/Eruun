@@ -15,6 +15,7 @@ import (
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobresult"
 )
 
 type ScheduledJobCtl struct {
@@ -97,7 +98,7 @@ func (c *ScheduledJobCtl) runCronJob(ctx context.Context, cron *batchv1.CronJob)
 		namespace = c.Namespace
 		cron.Namespace = namespace
 	}
-	stampCronJobExecutionIdentity(c.Job, cron)
+	jobresult.StampCronJobExecutionIdentity(c.Job, cron)
 	updateCronJob := func(ctx context.Context, existing *batchv1.CronJob) error {
 		cron.ResourceVersion = existing.ResourceVersion
 		_, err := c.Client.BatchV1().CronJobs(namespace).Update(ctx, cron, metav1.UpdateOptions{})
@@ -123,7 +124,7 @@ func (c *ScheduledJobCtl) runOneTimeJob(ctx context.Context, jobObj *batchv1.Job
 		namespace = c.Namespace
 		jobObj.Namespace = namespace
 	}
-	stampJobExecutionIdentity(c.Job, jobObj)
+	jobresult.StampJobExecutionIdentity(c.Job, jobObj)
 
 	jobType := jobexec.JobTypeForTask(c.Job, config.JobDeployScheduled)
 	if err := jobexec.EnsureCurrentJobWorkflowOwnership(ctx, c.Store, c.Job); err != nil {

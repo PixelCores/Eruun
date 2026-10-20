@@ -23,6 +23,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobresult"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -76,10 +78,6 @@ func seedCommittedDelayTestCheckpoint(t *testing.T, store *resultOutboxTestStore
 	record.DelayState = config.JobDelayStatePending
 	record.DelayExecuteAt = payload.ExecuteAt
 	record.DelayPayload = string(raw)
-}
-
-type contextCheckingResultOutboxStore struct {
-	*resultOutboxTestStore
 }
 
 type delayFencingStore struct {
@@ -149,77 +147,10 @@ func newResultOutboxTestStore() *resultOutboxTestStore {
 	}
 }
 
-func ensureActiveTestContext(ctx context.Context) error {
-	if ctx == nil {
-		return nil
-	}
-	return ctx.Err()
-}
-
-func (s *contextCheckingResultOutboxStore) Add(ctx context.Context, entity datastore.Entity) error {
-	if err := ensureActiveTestContext(ctx); err != nil {
-		return err
-	}
-	return s.resultOutboxTestStore.Add(ctx, entity)
-}
-
-func (s *contextCheckingResultOutboxStore) BatchAdd(ctx context.Context, entities []datastore.Entity) error {
-	if err := ensureActiveTestContext(ctx); err != nil {
-		return err
-	}
-	return s.resultOutboxTestStore.BatchAdd(ctx, entities)
-}
-
-func (s *contextCheckingResultOutboxStore) Put(ctx context.Context, entity datastore.Entity) error {
-	if err := ensureActiveTestContext(ctx); err != nil {
-		return err
-	}
-	return s.resultOutboxTestStore.Put(ctx, entity)
-}
-
-func (s *contextCheckingResultOutboxStore) Delete(ctx context.Context, entity datastore.Entity) error {
-	if err := ensureActiveTestContext(ctx); err != nil {
-		return err
-	}
-	return s.resultOutboxTestStore.Delete(ctx, entity)
-}
-
-func (s *contextCheckingResultOutboxStore) Get(ctx context.Context, entity datastore.Entity) error {
-	if err := ensureActiveTestContext(ctx); err != nil {
-		return err
-	}
-	return s.resultOutboxTestStore.Get(ctx, entity)
-}
-
-func (s *contextCheckingResultOutboxStore) List(ctx context.Context, query datastore.Entity, opts *datastore.ListOptions) ([]datastore.Entity, error) {
-	if err := ensureActiveTestContext(ctx); err != nil {
-		return nil, err
-	}
-	return s.resultOutboxTestStore.List(ctx, query, opts)
-}
-
-func (s *contextCheckingResultOutboxStore) CompareAndSwap(ctx context.Context, entity datastore.Entity, conditionField string, conditionValue interface{}, updates map[string]interface{}) (bool, error) {
-	if err := ensureActiveTestContext(ctx); err != nil {
-		return false, err
-	}
-	return s.resultOutboxTestStore.CompareAndSwap(ctx, entity, conditionField, conditionValue, updates)
-}
-
-func (s *contextCheckingResultOutboxStore) CompareAndSwapWithConditions(ctx context.Context, entity datastore.Entity, conditions map[string]interface{}, updates map[string]interface{}) (bool, error) {
-	if err := ensureActiveTestContext(ctx); err != nil {
-		return false, err
-	}
-	return s.resultOutboxTestStore.CompareAndSwapWithConditions(ctx, entity, conditions, updates)
-}
-
-func outboxTransitionKey(from, to config.JobResultOutboxState) string {
-	return string(from) + "->" + string(to)
-}
-
 func (s *resultOutboxTestStore) rejectNextTransition(from, to config.JobResultOutboxState) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.rejectTransitions[outboxTransitionKey(from, to)]++
+	s.rejectTransitions[jobtest.OutboxTransitionKey(from, to)]++
 }
 
 func (s *resultOutboxTestStore) Add(_ context.Context, entity datastore.Entity) error {
@@ -359,7 +290,7 @@ func (s *resultOutboxTestStore) List(_ context.Context, query datastore.Entity, 
 			if q.State != "" && outbox.State != q.State {
 				continue
 			}
-			if !matchOutboxFilters(outbox, opts) {
+			if !jobtest.MatchOutboxFilters(outbox, opts) {
 				continue
 			}
 			copy := *outbox
@@ -383,14 +314,14 @@ func (s *resultOutboxTestStore) List(_ context.Context, query datastore.Entity, 
 			}
 			return outboxes[i].CreateTime.Before(outboxes[j].CreateTime)
 		})
-		return paginateOutboxes(outboxes, opts), nil
+		return jobtest.PaginateOutboxes(outboxes, opts), nil
 	case *model.JobInfo:
 		jobInfos := make([]*model.JobInfo, 0, len(s.jobInfos))
 		for _, jobInfo := range s.jobInfos {
 			if q.TaskID != "" && jobInfo.TaskID != q.TaskID {
 				continue
 			}
-			if !matchJobInfoFilters(jobInfo, opts) {
+			if !jobtest.MatchJobInfoFilters(jobInfo, opts) {
 				continue
 			}
 			copy := *jobInfo
@@ -409,7 +340,7 @@ func (s *resultOutboxTestStore) List(_ context.Context, query datastore.Entity, 
 			}
 			return jobInfos[i].CreateTime.After(jobInfos[j].CreateTime)
 		})
-		return paginateJobInfos(jobInfos, opts), nil
+		return jobtest.PaginateJobInfos(jobInfos, opts), nil
 	default:
 		return nil, datastore.ErrEntityInvalid
 	}
@@ -531,11 +462,11 @@ func (s *resultOutboxTestStore) CompareAndSwapWithConditions(_ context.Context, 
 		}
 	}
 	toState, _ := updates["state"].(config.JobResultOutboxState)
-	if count := s.rejectTransitions[outboxTransitionKey(current.State, toState)]; count > 0 {
-		s.rejectTransitions[outboxTransitionKey(current.State, toState)] = count - 1
+	if count := s.rejectTransitions[jobtest.OutboxTransitionKey(current.State, toState)]; count > 0 {
+		s.rejectTransitions[jobtest.OutboxTransitionKey(current.State, toState)] = count - 1
 		return false, nil
 	}
-	applyOutboxUpdates(current, updates)
+	jobtest.ApplyOutboxUpdates(current, updates)
 	current.UpdateTime = time.Now()
 	return true, nil
 }
@@ -599,138 +530,6 @@ func resultOutboxJobInfoMatchesConditions(current *model.JobInfo, conditions map
 		}
 	}
 	return true, nil
-}
-
-func matchOutboxFilters(outbox *model.JobResultOutbox, opts *datastore.ListOptions) bool {
-	if opts == nil {
-		return true
-	}
-	for _, filter := range opts.FilterOptions.In {
-		if filter.Key != "state" {
-			continue
-		}
-		matched := false
-		for _, value := range filter.Values {
-			if string(outbox.State) == value {
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			return false
-		}
-	}
-	return true
-}
-
-func matchJobInfoFilters(jobInfo *model.JobInfo, opts *datastore.ListOptions) bool {
-	if opts == nil {
-		return true
-	}
-	for _, filter := range opts.FilterOptions.In {
-		switch filter.Key {
-		case "status":
-			if !containsString(filter.Values, jobInfo.Status) {
-				return false
-			}
-		case "delay_state":
-			if !containsString(filter.Values, string(jobInfo.DelayState)) {
-				return false
-			}
-		case "type":
-			if !containsString(filter.Values, jobInfo.Type) {
-				return false
-			}
-		case "service_name":
-			if !containsString(filter.Values, jobInfo.ServiceName) {
-				return false
-			}
-		case "execution_key":
-			if jobInfo.ExecutionKey == nil || !containsString(filter.Values, *jobInfo.ExecutionKey) {
-				return false
-			}
-		case "run_generation":
-			if !containsString(filter.Values, fmt.Sprint(jobInfo.RunGeneration)) {
-				return false
-			}
-		}
-	}
-	for _, filter := range opts.FilterOptions.LessThan {
-		switch filter.Key {
-		case "delay_execute_at":
-			deadline, ok := filter.Value.(int64)
-			if !ok || jobInfo.DelayExecuteAt >= deadline {
-				return false
-			}
-		case "id":
-			beforeID, ok := filter.Value.(int)
-			if !ok || jobInfo.ID >= beforeID {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-func containsString(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
-}
-
-func paginateOutboxes(outboxes []*model.JobResultOutbox, opts *datastore.ListOptions) []datastore.Entity {
-	start, end := pageBounds(len(outboxes), opts)
-	list := make([]datastore.Entity, 0, end-start)
-	for _, outbox := range outboxes[start:end] {
-		list = append(list, outbox)
-	}
-	return list
-}
-
-func paginateJobInfos(jobInfos []*model.JobInfo, opts *datastore.ListOptions) []datastore.Entity {
-	start, end := pageBounds(len(jobInfos), opts)
-	list := make([]datastore.Entity, 0, end-start)
-	for _, jobInfo := range jobInfos[start:end] {
-		list = append(list, jobInfo)
-	}
-	return list
-}
-
-func pageBounds(length int, opts *datastore.ListOptions) (int, int) {
-	if opts == nil || opts.PageSize <= 0 || opts.Page <= 0 {
-		return 0, length
-	}
-	start := (opts.Page - 1) * opts.PageSize
-	if start >= length {
-		return length, length
-	}
-	end := start + opts.PageSize
-	if end > length {
-		end = length
-	}
-	return start, end
-}
-
-func applyOutboxUpdates(outbox *model.JobResultOutbox, updates map[string]interface{}) {
-	for key, value := range updates {
-		switch key {
-		case "state":
-			outbox.State = value.(config.JobResultOutboxState)
-		case "message_id":
-			outbox.MessageID = value.(string)
-		case "job_uid":
-			outbox.JobUID = value.(string)
-		case "lease_expires_at":
-			outbox.LeaseExpiresAt, _ = value.(*time.Time)
-		case "attempts":
-			outbox.Attempts = value.(int)
-		case "last_error":
-			outbox.LastError = value.(string)
-		}
-	}
 }
 
 func (s *resultOutboxTestStore) jobInfoByTaskID(taskID string) *model.JobInfo {
@@ -1029,8 +828,8 @@ func TestDelayDispatcherDoesNotRecreateWhenResultSettlesBetweenReads(t *testing.
 			},
 		}},
 	}
-	resultPayload := newJobResultPayloadFromDelay(payload, payload.Job)
-	outbox := buildJobResultOutbox(resultPayload, config.JobResultOutboxStateResultPending)
+	resultPayload := jobresult.NewJobResultPayloadFromDelay(payload, payload.Job)
+	outbox := jobresult.BuildJobResultOutbox(resultPayload, config.JobResultOutboxStateResultPending)
 	require.NoError(t, resultStore.Add(context.Background(), outbox))
 	store := &settlingDelayStore{
 		delayFencingStore: &delayFencingStore{
@@ -1101,8 +900,8 @@ func TestDelayDispatcherDispatchPersistsResultOutboxWithoutQueueDependency(t *te
 	seedCommittedDelayTestCheckpoint(t, store.resultOutboxTestStore, item.payload)
 	require.NoError(t, dispatcher.dispatchJob(context.Background(), item, client))
 
-	resultPayload := newJobResultPayloadFromDelay(item.payload, jobObj)
-	outbox, err := getJobResultOutboxByPayload(context.Background(), store, resultPayload)
+	resultPayload := jobresult.NewJobResultPayloadFromDelay(item.payload, jobObj)
+	outbox, err := jobresult.GetJobResultOutboxByPayload(context.Background(), store, resultPayload)
 	require.NoError(t, err)
 	require.Equal(t, config.JobResultOutboxStateResultPending, outbox.State)
 
@@ -1188,8 +987,8 @@ func TestDelayDispatcherDispatchDoesNotPersistOutboxBeforeJobExists(t *testing.T
 	err := dispatcher.dispatchJob(context.Background(), item, client)
 	require.EqualError(t, err, "create failed before job persisted")
 
-	resultPayload := newJobResultPayloadFromDelay(item.payload, jobObj)
-	_, getErr := getJobResultOutboxByPayload(context.Background(), store, resultPayload)
+	resultPayload := jobresult.NewJobResultPayloadFromDelay(item.payload, jobObj)
+	_, getErr := jobresult.GetJobResultOutboxByPayload(context.Background(), store, resultPayload)
 	require.ErrorIs(t, getErr, datastore.ErrRecordNotExist)
 }
 
@@ -1238,8 +1037,8 @@ func TestDelayDispatcherDispatchPersistsOutboxWhenCreateErrorLeavesJobPresent(t 
 	seedCommittedDelayTestCheckpoint(t, store.resultOutboxTestStore, item.payload)
 	require.NoError(t, dispatcher.dispatchJob(context.Background(), item, client))
 
-	resultPayload := newJobResultPayloadFromDelay(item.payload, jobObj)
-	outbox, getErr := getJobResultOutboxByPayload(context.Background(), store, resultPayload)
+	resultPayload := jobresult.NewJobResultPayloadFromDelay(item.payload, jobObj)
+	outbox, getErr := jobresult.GetJobResultOutboxByPayload(context.Background(), store, resultPayload)
 	require.NoError(t, getErr)
 	require.Equal(t, config.JobResultOutboxStateResultPending, outbox.State)
 }
@@ -1278,7 +1077,7 @@ func TestDelayDispatcherDispatchRejectsDifferentJobAfterCreateError(t *testing.T
 		TimeoutSeconds: 60,
 		Job:            jobObj,
 	}
-	resultPayload := newJobResultPayloadFromDelay(payload, jobObj)
+	resultPayload := jobresult.NewJobResultPayloadFromDelay(payload, jobObj)
 	jobInfo := testResultJobInfo(4, resultPayload)
 	jobInfo.Status = string(config.StatusDistributed)
 	require.NoError(t, store.Add(context.Background(), jobInfo))
@@ -1288,7 +1087,7 @@ func TestDelayDispatcherDispatchRejectsDifferentJobAfterCreateError(t *testing.T
 	require.ErrorIs(t, err, errDelayDispatchNoRetry)
 	require.ErrorContains(t, err, "foreign-task")
 
-	_, getErr := getJobResultOutboxByPayload(context.Background(), store, resultPayload)
+	_, getErr := jobresult.GetJobResultOutboxByPayload(context.Background(), store, resultPayload)
 	require.ErrorIs(t, getErr, datastore.ErrRecordNotExist)
 	storedJobInfo := store.jobInfoByTaskID(payload.TaskID)
 	require.NotNil(t, storedJobInfo)
@@ -1315,384 +1114,11 @@ func TestDelayDispatcherDispatchDoesNotRecreateWhenResultOutboxPendingAndJobMiss
 		TimeoutSeconds: 60,
 		Job:            jobObj,
 	}
-	resultPayload := newJobResultPayloadFromDelay(payload, jobObj)
-	require.NoError(t, store.Add(context.Background(), buildJobResultOutbox(resultPayload, config.JobResultOutboxStateResultPending)))
+	resultPayload := jobresult.NewJobResultPayloadFromDelay(payload, jobObj)
+	require.NoError(t, store.Add(context.Background(), jobresult.BuildJobResultOutbox(resultPayload, config.JobResultOutboxStateResultPending)))
 
 	seedCommittedDelayTestCheckpoint(t, store.resultOutboxTestStore, payload)
 	err := dispatcher.dispatchJob(context.Background(), &delayItem{payload: payload}, client)
 	require.NoError(t, err)
 	require.Empty(t, client.Actions())
-}
-
-func TestResultOutboxDispatcherClaimsPendingBeforeEnqueue(t *testing.T) {
-	store := newResultOutboxTestStore()
-	queue := &enqueueCaptureQueue{enqueueID: "result-1"}
-	dispatcher := NewResultOutboxDispatcher(queue, store)
-
-	payload := &JobResultPayload{
-		TaskID:         "task-delay-claim",
-		ExecutionKey:   "execution-delay-claim",
-		RunGeneration:  1,
-		JobType:        string(config.JobDeployScheduled),
-		Namespace:      "default",
-		Name:           "delay-job-claim",
-		ServiceName:    "svc-a",
-		TimeoutSeconds: 60,
-	}
-	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultPending)
-	require.NoError(t, store.Add(context.Background(), outbox))
-	store.rejectNextTransition(config.JobResultOutboxStateResultPending, config.JobResultOutboxStateResultDispatching)
-
-	require.NoError(t, dispatcher.dispatchPendingOutbox(context.Background(), outbox))
-	require.Empty(t, queue.enqueued)
-
-	refreshed, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
-	require.NoError(t, err)
-	require.Equal(t, config.JobResultOutboxStateResultPending, refreshed.State)
-	require.Equal(t, "", refreshed.MessageID)
-}
-
-func TestResultOutboxDispatcherPersistsQueuedStateAfterSuccessfulEnqueue(t *testing.T) {
-	store := newResultOutboxTestStore()
-	queue := &enqueueCaptureQueue{enqueueID: "result-queued-1"}
-	dispatcher := NewResultOutboxDispatcher(queue, store)
-
-	payload := &JobResultPayload{
-		TaskID:         "task-delay-queued",
-		ExecutionKey:   "execution-delay-queued",
-		RunGeneration:  1,
-		JobType:        string(config.JobDeployScheduled),
-		Namespace:      "default",
-		Name:           "delay-job-queued",
-		ServiceName:    "svc-a",
-		TimeoutSeconds: 60,
-	}
-	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultPending)
-	require.NoError(t, store.Add(context.Background(), outbox))
-
-	require.NoError(t, dispatcher.dispatchPendingOutbox(context.Background(), outbox))
-
-	refreshed, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
-	require.NoError(t, err)
-	require.Equal(t, config.JobResultOutboxStateResultQueued, refreshed.State)
-	require.Equal(t, "result-queued-1", refreshed.MessageID)
-	require.Equal(t, "", refreshed.LastError)
-}
-
-func TestResultOutboxDispatcherTransitionsOnlyTargetOutbox(t *testing.T) {
-	store := newResultOutboxTestStore()
-	queue := &enqueueCaptureQueue{enqueueID: "result-7"}
-	dispatcher := NewResultOutboxDispatcher(queue, store)
-
-	targetPayload := &JobResultPayload{
-		TaskID:         "task-delay-target",
-		ExecutionKey:   "execution-delay-target",
-		RunGeneration:  1,
-		JobType:        string(config.JobDeployScheduled),
-		Namespace:      "default",
-		Name:           "delay-job-target",
-		ServiceName:    "svc-a",
-		TimeoutSeconds: 60,
-	}
-	siblingPayload := &JobResultPayload{
-		TaskID:         "task-delay-sibling",
-		ExecutionKey:   "execution-delay-sibling",
-		RunGeneration:  1,
-		JobType:        string(config.JobDeployScheduled),
-		Namespace:      "default",
-		Name:           "delay-job-sibling",
-		ServiceName:    "svc-b",
-		TimeoutSeconds: 60,
-	}
-	targetOutbox := buildJobResultOutbox(targetPayload, config.JobResultOutboxStateResultPending)
-	siblingOutbox := buildJobResultOutbox(siblingPayload, config.JobResultOutboxStateResultPending)
-	require.NoError(t, store.Add(context.Background(), targetOutbox))
-	require.NoError(t, store.Add(context.Background(), siblingOutbox))
-
-	require.NoError(t, dispatcher.dispatchPendingOutbox(context.Background(), targetOutbox))
-
-	refreshedTarget, err := getJobResultOutboxByID(context.Background(), store, targetOutbox.ID)
-	require.NoError(t, err)
-	require.Equal(t, config.JobResultOutboxStateResultQueued, refreshedTarget.State)
-	require.Equal(t, "result-7", refreshedTarget.MessageID)
-
-	refreshedSibling, err := getJobResultOutboxByID(context.Background(), store, siblingOutbox.ID)
-	require.NoError(t, err)
-	require.Equal(t, config.JobResultOutboxStateResultPending, refreshedSibling.State)
-}
-
-func TestResultOutboxDispatcherReturnsToPendingWhenEnqueueFails(t *testing.T) {
-	store := newResultOutboxTestStore()
-	queue := &enqueueCaptureQueue{enqueueErr: errors.New("queue down")}
-	dispatcher := NewResultOutboxDispatcher(queue, store)
-
-	payload := &JobResultPayload{
-		TaskID:         "task-delay-enqueue-fail",
-		ExecutionKey:   "execution-delay-enqueue-fail",
-		RunGeneration:  1,
-		JobType:        string(config.JobDeployScheduled),
-		Namespace:      "default",
-		Name:           "delay-job-enqueue-fail",
-		ServiceName:    "svc-a",
-		TimeoutSeconds: 60,
-	}
-	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultPending)
-	require.NoError(t, store.Add(context.Background(), outbox))
-	require.NoError(t, store.Add(context.Background(), &model.JobInfo{
-		ID:          3,
-		TaskID:      payload.TaskID,
-		Type:        payload.JobType,
-		ServiceName: payload.ServiceName,
-		Status:      string(config.StatusWaiting),
-	}))
-
-	require.NoError(t, dispatcher.dispatchPendingOutbox(context.Background(), outbox))
-
-	refreshed, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
-	require.NoError(t, err)
-	require.Equal(t, config.JobResultOutboxStateResultPending, refreshed.State)
-	require.Equal(t, 1, refreshed.Attempts)
-	require.Contains(t, refreshed.LastError, "result enqueue failed")
-	require.Contains(t, refreshed.LastError, "queue down")
-	require.Equal(t, "", refreshed.MessageID)
-
-	jobInfo := store.jobInfoByTaskID(payload.TaskID)
-	require.NotNil(t, jobInfo)
-	require.Equal(t, string(config.StatusWaiting), jobInfo.Status)
-}
-
-func TestResultOutboxDispatcherLeavesDispatchingWhenPendingRequeueClaimLost(t *testing.T) {
-	store := newResultOutboxTestStore()
-	queue := &enqueueCaptureQueue{enqueueErr: errors.New("queue down")}
-	dispatcher := NewResultOutboxDispatcher(queue, store)
-
-	payload := &JobResultPayload{
-		TaskID:         "task-delay-requeue-cas-lost",
-		ExecutionKey:   "execution-delay-requeue-cas-lost",
-		RunGeneration:  1,
-		JobType:        string(config.JobDeployScheduled),
-		Namespace:      "default",
-		Name:           "delay-job-requeue-cas-lost",
-		ServiceName:    "svc-a",
-		TimeoutSeconds: 60,
-	}
-	outbox := buildJobResultOutbox(payload, config.JobResultOutboxStateResultPending)
-	require.NoError(t, store.Add(context.Background(), outbox))
-	store.rejectNextTransition(config.JobResultOutboxStateResultDispatching, config.JobResultOutboxStateResultPending)
-
-	require.NoError(t, dispatcher.dispatchPendingOutbox(context.Background(), outbox))
-
-	refreshed, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
-	require.NoError(t, err)
-	require.Equal(t, config.JobResultOutboxStateResultDispatching, refreshed.State)
-	require.Equal(t, 0, refreshed.Attempts)
-}
-
-func TestResultOutboxDispatcherRecoversExpiredProcessingAcrossBatches(t *testing.T) {
-	store := newResultOutboxTestStore()
-	dispatcher := NewResultOutboxDispatcher(&enqueueCaptureQueue{}, store)
-	dispatcher.batchSize = 2
-
-	for i := 0; i < 3; i++ {
-		payload := &JobResultPayload{
-			TaskID:         fmt.Sprintf("task-recover-%d", i),
-			ExecutionKey:   fmt.Sprintf("execution-recover-%d", i),
-			RunGeneration:  1,
-			JobType:        string(config.JobDeployScheduled),
-			Namespace:      "default",
-			Name:           fmt.Sprintf("delay-job-recover-%d", i),
-			ServiceName:    "svc-a",
-			TimeoutSeconds: 60,
-		}
-		outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultProcessingQueue)
-		expired := time.Now().Add(-time.Minute)
-		outbox.LeaseExpiresAt = &expired
-		require.NoError(t, store.Add(context.Background(), outbox))
-	}
-
-	for i := 0; i < 2; i++ {
-		require.NoError(t, dispatcher.recoverResultOutboxes(context.Background(), []config.JobResultOutboxState{config.JobResultOutboxStateResultProcessingQueue}))
-	}
-
-	pending, err := listJobResultOutboxesByStates(context.Background(), store, []config.JobResultOutboxState{config.JobResultOutboxStateResultPending}, 10)
-	require.NoError(t, err)
-	require.Len(t, pending, 3)
-
-	processing, err := listJobResultOutboxesByStates(context.Background(), store, []config.JobResultOutboxState{config.JobResultOutboxStateResultProcessingQueue}, 10)
-	require.NoError(t, err)
-	require.Empty(t, processing)
-}
-
-func TestResultOutboxDispatcherRecoversStaleDispatchingOutbox(t *testing.T) {
-	store := newResultOutboxTestStore()
-	dispatcher := NewResultOutboxDispatcher(&enqueueCaptureQueue{}, store)
-
-	payload := &JobResultPayload{
-		TaskID:         "task-dispatching-stale",
-		ExecutionKey:   "execution-dispatching-stale",
-		RunGeneration:  1,
-		JobType:        string(config.JobDeployScheduled),
-		Namespace:      "default",
-		Name:           "delay-job-dispatching-stale",
-		ServiceName:    "svc-a",
-		TimeoutSeconds: 60,
-	}
-	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultDispatching)
-	outbox.CreateTime = time.Now().Add(-2 * time.Minute)
-	outbox.UpdateTime = time.Now().Add(-time.Minute)
-	expired := time.Now().Add(-time.Minute)
-	outbox.LeaseExpiresAt = &expired
-	require.NoError(t, store.Add(context.Background(), outbox))
-
-	require.NoError(t, dispatcher.recoverResultOutboxes(context.Background(), []config.JobResultOutboxState{config.JobResultOutboxStateResultDispatching}))
-
-	refreshed, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
-	require.NoError(t, err)
-	require.Equal(t, config.JobResultOutboxStateResultPending, refreshed.State)
-	require.Equal(t, 1, refreshed.Attempts)
-	require.Contains(t, refreshed.LastError, "exceeded recovery grace")
-}
-
-func TestResultOutboxDispatcherKeepsFreshDispatchingOutbox(t *testing.T) {
-	store := newResultOutboxTestStore()
-	dispatcher := NewResultOutboxDispatcher(&enqueueCaptureQueue{}, store)
-
-	payload := &JobResultPayload{
-		TaskID:         "task-dispatching-fresh",
-		ExecutionKey:   "execution-dispatching-fresh",
-		RunGeneration:  1,
-		JobType:        string(config.JobDeployScheduled),
-		Namespace:      "default",
-		Name:           "delay-job-dispatching-fresh",
-		ServiceName:    "svc-a",
-		TimeoutSeconds: 60,
-	}
-	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultDispatching)
-	deadline := time.Now().Add(time.Minute)
-	outbox.LeaseExpiresAt = &deadline
-	require.NoError(t, store.Add(context.Background(), outbox))
-
-	require.NoError(t, dispatcher.recoverResultOutboxes(context.Background(), []config.JobResultOutboxState{config.JobResultOutboxStateResultDispatching}))
-
-	refreshed, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
-	require.NoError(t, err)
-	require.Equal(t, config.JobResultOutboxStateResultDispatching, refreshed.State)
-	require.Equal(t, 0, refreshed.Attempts)
-	require.Equal(t, "", refreshed.LastError)
-}
-
-func TestResultOutboxDispatcherRecoversStaleQueueProcessingOutbox(t *testing.T) {
-	store := newResultOutboxTestStore()
-	dispatcher := NewResultOutboxDispatcher(&enqueueCaptureQueue{}, store)
-	dispatcher.pollInterval = 5 * time.Millisecond
-
-	payload := &JobResultPayload{
-		TaskID:         "task-queue-processing-stale",
-		ExecutionKey:   "execution-queue-processing-stale",
-		RunGeneration:  1,
-		JobType:        string(config.JobDeployScheduled),
-		Namespace:      "default",
-		Name:           "delay-job-queue-processing-stale",
-		ServiceName:    "svc-a",
-		TimeoutSeconds: 1,
-	}
-	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultProcessingQueue)
-	outbox.CreateTime = time.Now().Add(-2 * time.Minute)
-	outbox.UpdateTime = time.Now().Add(-2 * time.Minute)
-	expired := time.Now().Add(-time.Minute)
-	outbox.LeaseExpiresAt = &expired
-	require.NoError(t, store.Add(context.Background(), outbox))
-
-	require.NoError(t, dispatcher.recoverResultOutboxes(context.Background(), []config.JobResultOutboxState{config.JobResultOutboxStateResultProcessingQueue}))
-
-	refreshed, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
-	require.NoError(t, err)
-	require.Equal(t, config.JobResultOutboxStateResultPending, refreshed.State)
-	require.Equal(t, 1, refreshed.Attempts)
-	require.Contains(t, refreshed.LastError, "exceeded recovery grace")
-}
-
-func TestResultOutboxDispatcherKeepsFreshQueueProcessingOutbox(t *testing.T) {
-	store := newResultOutboxTestStore()
-	dispatcher := NewResultOutboxDispatcher(&enqueueCaptureQueue{}, store)
-	dispatcher.pollInterval = 5 * time.Millisecond
-
-	payload := &JobResultPayload{
-		TaskID:         "task-queue-processing-fresh",
-		ExecutionKey:   "execution-queue-processing-fresh",
-		RunGeneration:  1,
-		JobType:        string(config.JobDeployScheduled),
-		Namespace:      "default",
-		Name:           "delay-job-queue-processing-fresh",
-		ServiceName:    "svc-a",
-		TimeoutSeconds: 60,
-	}
-	outbox := buildLeasedTestResultOutbox(t, store, payload, config.JobResultOutboxStateResultProcessingQueue)
-	deadline := time.Now().Add(time.Minute)
-	outbox.LeaseExpiresAt = &deadline
-	require.NoError(t, store.Add(context.Background(), outbox))
-
-	require.NoError(t, dispatcher.recoverResultOutboxes(context.Background(), []config.JobResultOutboxState{config.JobResultOutboxStateResultProcessingQueue}))
-
-	refreshed, err := getJobResultOutboxByID(context.Background(), store, outbox.ID)
-	require.NoError(t, err)
-	require.Equal(t, config.JobResultOutboxStateResultProcessingQueue, refreshed.State)
-	require.Equal(t, 0, refreshed.Attempts)
-	require.Equal(t, "", refreshed.LastError)
-}
-
-func TestJobResultPayloadFromOutboxRequiresMandatoryFields(t *testing.T) {
-	valid := &model.JobResultOutbox{
-		ID:            "outbox-valid",
-		TaskID:        "task-1",
-		ExecutionKey:  "execution-1",
-		RunGeneration: 7,
-		Namespace:     "default",
-		Name:          "job-1",
-	}
-	payload := jobResultPayloadFromOutbox(valid)
-	require.NotNil(t, payload)
-	require.Equal(t, "execution-1", payload.ExecutionKey)
-	require.Equal(t, uint64(7), payload.RunGeneration)
-
-	missingTask := &model.JobResultOutbox{
-		ID:        "outbox-missing-task",
-		Namespace: "default",
-		Name:      "job-1",
-	}
-	require.Nil(t, jobResultPayloadFromOutbox(missingTask))
-
-	missingNamespace := &model.JobResultOutbox{
-		ID:     "outbox-missing-namespace",
-		TaskID: "task-1",
-		Name:   "job-1",
-	}
-	require.Nil(t, jobResultPayloadFromOutbox(missingNamespace))
-
-	missingName := &model.JobResultOutbox{
-		ID:        "outbox-missing-name",
-		TaskID:    "task-1",
-		Namespace: "default",
-	}
-	require.Nil(t, jobResultPayloadFromOutbox(missingName))
-}
-
-func TestJobResultOutboxIDIsScopedByExecutionIdentity(t *testing.T) {
-	first := &JobResultPayload{
-		TaskID:        "task-1",
-		Namespace:     "default",
-		Name:          "job-1",
-		ExecutionKey:  "execution-1",
-		RunGeneration: 1,
-	}
-	second := *first
-	second.ExecutionKey = "execution-2"
-	nextGeneration := *first
-	nextGeneration.RunGeneration = 2
-	incomplete := *first
-	incomplete.ExecutionKey = ""
-
-	require.NotEqual(t, jobResultOutboxID(first), jobResultOutboxID(&second))
-	require.NotEqual(t, jobResultOutboxID(first), jobResultOutboxID(&nextGeneration))
-	require.Empty(t, jobResultOutboxID(&incomplete))
 }

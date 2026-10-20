@@ -22,6 +22,7 @@ import (
 	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobresult"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
@@ -395,7 +396,7 @@ func (w *Workflow) startResultDispatcher(ctx context.Context, wg *sync.WaitGroup
 		return
 	}
 	consumer := w.resultConsumerName()
-	dispatcher := job.NewResultDispatcher(w.ResultQueue, w.KubeClient, w.Store, config.ResultQueueGroup, consumer)
+	dispatcher := jobresult.NewResultDispatcher(w.ResultQueue, w.KubeClient, w.Store, config.ResultQueueGroup, consumer)
 	if wg == nil {
 		dispatcher.Start(ctx)
 		return
@@ -411,7 +412,7 @@ func (w *Workflow) startResultOutboxDispatcher(ctx context.Context, wg *sync.Wai
 	if w.ResultQueue == nil {
 		return
 	}
-	dispatcher := job.NewResultOutboxDispatcher(w.ResultQueue, w.Store)
+	dispatcher := jobresult.NewResultOutboxDispatcher(w.ResultQueue, w.Store)
 	if wg == nil {
 		dispatcher.Start(ctx)
 		return

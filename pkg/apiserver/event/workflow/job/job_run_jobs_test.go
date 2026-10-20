@@ -139,7 +139,7 @@ func TestRunJobsReturnsInfrastructureStopWhenDistributedCheckpointFails(t *testi
 			store := &ownedCheckpointFailureStore{
 				jobInfoStore: &jobInfoStore{addErr: checkpointErr},
 			}
-			queue := &enqueueCaptureQueue{enqueueID: "delay-checkpoint"}
+			queue := &jobtest.EnqueueCaptureQueue{EnqueueID: "delay-checkpoint"}
 			task := &model.JobTask{
 				Name:          "delayed-job",
 				Namespace:     "default",
@@ -170,7 +170,7 @@ func TestRunJobsReturnsInfrastructureStopWhenDistributedCheckpointFails(t *testi
 			require.ErrorIs(t, err, checkpointErr)
 			require.Equal(t, config.StatusPrepare, task.Status)
 			require.Empty(t, task.Error)
-			require.Empty(t, queue.enqueued, "queue notification must not precede the durable checkpoint")
+			require.Empty(t, queue.Enqueued, "queue notification must not precede the durable checkpoint")
 			require.Equal(t, 1, store.addCount)
 		})
 	}
@@ -540,9 +540,9 @@ func TestRunJobInfrastructureStopDuringApplicationCheckDoesNotPersistFailure(t *
 		close(done)
 	}()
 
-	requireClosed(t, store.started)
+	jobtest.RequireClosed(t, store.started)
 	cancel(signal.ErrInfrastructureStop)
-	requireClosed(t, done)
+	jobtest.RequireClosed(t, done)
 
 	require.Equal(t, config.StatusPrepare, job.Status)
 	require.Empty(t, job.Error)
@@ -570,9 +570,9 @@ func TestRunJobInfrastructureStopDuringCancellationWatcherSetupDoesNotPersistFai
 		close(done)
 	}()
 
-	requireClosed(t, hook.started)
+	jobtest.RequireClosed(t, hook.started)
 	cancel(signal.ErrInfrastructureStop)
-	requireClosed(t, done)
+	jobtest.RequireClosed(t, done)
 
 	require.Equal(t, config.StatusPrepare, job.Status)
 	require.Empty(t, job.Error)

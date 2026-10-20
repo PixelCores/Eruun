@@ -1,0 +1,212 @@
+package jobcleanup
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
+)
+
+func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, deleted *cleanupResourceSet) {
+	switch component.ComponentType {
+	case config.ServerJob:
+		result, err := jobdeploy.GenerateWebService(component, props)
+		if err != nil {
+			deleted.errs = append(deleted.errs, err)
+			return
+		}
+		ns := component.Namespace
+		name := naming.WebServiceName(component.Name, component.ResourceNameKey())
+		if result != nil {
+			ns, name = workloadIdentityFromObject(result.Service, ns, name)
+			c.deleteAdditionalObjects(ctx, component.Namespace, result.AdditionalObjects, deleted)
+		}
+		c.deleteTrackedResource(ctx, deleted, spec.ResourceDeployment, ns, name, false, func(deleteCtx context.Context) error {
+			return c.deleteDeployment(deleteCtx, ns, name)
+		})
+	case config.StoreJob:
+		result, err := jobdeploy.GenerateStoreService(component)
+		if err != nil {
+			deleted.errs = append(deleted.errs, err)
+			return
+		}
+		ns := component.Namespace
+		name := naming.StoreServerName(component.Name, component.ResourceNameKey())
+		if result != nil {
+			ns, name = workloadIdentityFromObject(result.Service, ns, name)
+			c.deleteAdditionalObjects(ctx, component.Namespace, result.AdditionalObjects, deleted)
+		}
+		c.deleteTrackedResource(ctx, deleted, spec.ResourceStatefulSet, ns, name, false, func(deleteCtx context.Context) error {
+			return c.deleteStatefulSet(deleteCtx, ns, name)
+		})
+	case config.ConfJob:
+		c.deleteConfigMapForComponent(ctx, component, props, deleted)
+	case config.SecretJob:
+		c.deleteSecretForComponent(ctx, component, props, deleted)
+	case config.InstantJob:
+		if component.Traits != nil && component.Traits.Properties()["eval"] != nil {
+			// Evaluation runners have execution-specific names and are removed
+			// through the component labels, not the ordinary Job naming rule.
+			break
+		}
+		result, err := jobdeploy.GenerateInstantJob(component, props, props.RunPolicy)
+		if err != nil {
+			deleted.errs = append(deleted.errs, err)
+			return
+		}
+		ns := component.Namespace
+		name := naming.JobName(component.Name, component.ResourceNameKey())
+		if result != nil {
+			ns, name = workloadIdentityFromObject(result.Service, ns, name)
+			c.deleteAdditionalObjects(ctx, component.Namespace, result.AdditionalObjects, deleted)
+		}
+		c.deleteTrackedResource(ctx, deleted, spec.ResourceJob, ns, name, false, func(deleteCtx context.Context) error {
+			return c.deleteJob(deleteCtx, ns, name)
+		})
+	case config.ScheduledJob:
+		if strings.TrimSpace(props.Schedule) == "" {
+			break
+		}
+		result, err := jobdeploy.GenerateScheduledCronJob(component, props, props.Schedule)
+		if err != nil {
+			deleted.errs = append(deleted.errs, err)
+			return
+		}
+		ns := component.Namespace
+		name := naming.CronJobName(component.Name, component.ResourceNameKey())
+		if result != nil {
+			ns, name = workloadIdentityFromObject(result.Service, ns, name)
+			c.deleteAdditionalObjects(ctx, component.Namespace, result.AdditionalObjects, deleted)
+		}
+		c.deleteTrackedResource(ctx, deleted, spec.ResourceCronJob, ns, name, false, func(deleteCtx context.Context) error {
+			return c.deleteCronJob(deleteCtx, ns, name)
+		})
+	}
+
+	c.deleteServicesForComponent(ctx, component, props, deleted)
+}
+
+func workloadIdentityFromObject(resource client.Object, namespace, name string) (string, string) {
+	if resource == nil {
+		return namespace, name
+	}
+	return pickNonEmpty(resource.GetNamespace(), namespace), pickNonEmpty(resource.GetName(), name)
+}
+
+func (c *CleanupResourcesJobCtl) deleteServicesForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, deleted *cleanupResourceSet) {
+	if component.ComponentType == config.InstantJob || component.ComponentType == config.ScheduledJob || component.ComponentType == config.CloudJob {
+		return
+	}
+
+	serviceTraits, err := cleanupServiceTraits(component)
+	if err != nil {
+		deleted.errs = append(deleted.errs, err)
+		return
+	}
+	for _, trait := range serviceTraits {
+		svc := jobdeploy.GenerateServiceFromTrait(component, props, trait)
+		ns := component.Namespace
+		name := strings.TrimSpace(trait.Name)
+		if name == "" {
+			name = naming.ServiceName(component.Name, component.ResourceNameKey())
+		}
+		if svc != nil {
+			name = pickNonEmpty(svc.Name, name)
+			ns = pickNonEmpty(svc.Namespace, ns)
+		}
+		c.deleteTrackedResource(ctx, deleted, spec.ResourceService, ns, name, false, func(deleteCtx context.Context) error {
+			return c.deleteService(deleteCtx, ns, name)
+		})
+	}
+
+	if len(props.Ports) > 0 {
+		svc := jobdeploy.GenerateService(component, props)
+		ns := component.Namespace
+		name := naming.ServiceName(component.Name, component.ResourceNameKey())
+		if svc != nil {
+			name = pickNonEmpty(svc.Name, name)
+			ns = pickNonEmpty(svc.Namespace, ns)
+		}
+		c.deleteTrackedResource(ctx, deleted, spec.ResourceService, ns, name, false, func(deleteCtx context.Context) error {
+			return c.deleteService(deleteCtx, ns, name)
+		})
+	}
+}
+
+func cleanupServiceTraits(component *model.ApplicationComponent) ([]spec.ServiceTraitSpec, error) {
+	if component == nil || component.Traits == nil {
+		return nil, nil
+	}
+	raw, err := json.Marshal(component.Traits)
+	if err != nil {
+		return nil, fmt.Errorf("marshal component traits: %w", err)
+	}
+	if string(raw) == "{}" || string(raw) == "null" {
+		return nil, nil
+	}
+	var traits spec.Traits
+	if err := json.Unmarshal(raw, &traits); err != nil {
+		return nil, fmt.Errorf("unmarshal component traits: %w", err)
+	}
+	return traits.Service, nil
+}
+
+func (c *CleanupResourcesJobCtl) deleteAdditionalObjects(ctx context.Context, fallbackNamespace string, objs []client.Object, deleted *cleanupResourceSet) {
+	for _, obj := range objs {
+		switch resource := obj.(type) {
+		case *corev1.PersistentVolumeClaim:
+			ns := pickNonEmpty(resource.Namespace, fallbackNamespace)
+			klog.V(4).Infof("cleanup resources: preserving pvc %s/%s", ns, resource.Name)
+		case *networkingv1.Ingress:
+			ns := pickNonEmpty(resource.Namespace, fallbackNamespace)
+			c.deleteTrackedResource(ctx, deleted, spec.ResourceIngress, ns, resource.Name, false, func(deleteCtx context.Context) error {
+				return c.deleteIngress(deleteCtx, ns, resource.Name)
+			})
+		case *corev1.ServiceAccount:
+			ns := pickNonEmpty(resource.Namespace, fallbackNamespace)
+			klog.V(4).Infof("cleanup resources: preserving serviceaccount %s/%s", ns, resource.Name)
+		case *rbacv1.Role:
+			ns := pickNonEmpty(resource.Namespace, fallbackNamespace)
+			klog.V(4).Infof("cleanup resources: preserving role %s/%s", ns, resource.Name)
+		case *rbacv1.RoleBinding:
+			ns := pickNonEmpty(resource.Namespace, fallbackNamespace)
+			klog.V(4).Infof("cleanup resources: preserving rolebinding %s/%s", ns, resource.Name)
+		case *rbacv1.ClusterRole:
+			klog.V(4).Infof("cleanup resources: preserving clusterrole %s", resource.Name)
+		case *rbacv1.ClusterRoleBinding:
+			klog.V(4).Infof("cleanup resources: preserving clusterrolebinding %s", resource.Name)
+		default:
+			klog.V(4).Infof("cleanup resources: unsupported additional object type %T", obj)
+		}
+	}
+}
+
+func (c *CleanupResourcesJobCtl) deleteConfigMapForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, deleted *cleanupResourceSet) {
+	cm := jobdeploy.GenerateConfigMap(component, props)
+	ns := pickNonEmpty(cm.Namespace, component.Namespace)
+	name := pickNonEmpty(cm.Name, component.Name)
+	c.deleteTrackedResource(ctx, deleted, spec.ResourceConfigMap, ns, name, false, func(deleteCtx context.Context) error {
+		return c.deleteConfigMap(deleteCtx, ns, name)
+	})
+}
+
+func (c *CleanupResourcesJobCtl) deleteSecretForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, deleted *cleanupResourceSet) {
+	sec := jobdeploy.GenerateSecret(component, props)
+	ns := pickNonEmpty(sec.Namespace, component.Namespace)
+	name := pickNonEmpty(sec.Name, component.Name)
+	c.deleteTrackedResource(ctx, deleted, spec.ResourceSecret, ns, name, false, func(deleteCtx context.Context) error {
+		return c.deleteSecret(deleteCtx, ns, name)
+	})
+}
