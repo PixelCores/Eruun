@@ -17,6 +17,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
@@ -144,7 +146,7 @@ func TestCleanupResourcesJobCtlFailsClosedForOrphanOrdinalPodOnFreshRetry(t *tes
 		Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: versionUpdateRequireStatefulSetDeletionInternalInfo(), Timeout: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: nil})
 	require.NotNil(t, ctl)
 
 	err := ctl.ensureRequiredStatefulSetPodDeletionAllowed(ctx, component)
@@ -234,7 +236,7 @@ func TestCleanupResourcesJobCtlStopsWhenCheckpointPersistRacesCancellation(t *te
 
 	err := ctl.ensureRequiredStatefulSetPodDeletionAllowed(ctx, component)
 	require.Error(t, err)
-	statusErr, ok := ExtractStatusError(err)
+	statusErr, ok := jobinfo.ExtractStatusError(err)
 	require.True(t, ok)
 	require.Equal(t, config.StatusCancelled, statusErr.Status)
 	require.Equal(t, 0, countClientActions(client, "delete", "statefulsets"))
@@ -297,7 +299,7 @@ func TestCleanupResourcesJobCtlStopsWhenWorkflowTaskIsCancelledButJobInfoIsRunni
 
 	err := ctl.Run(ctx)
 	require.Error(t, err)
-	statusErr, ok := ExtractStatusError(err)
+	statusErr, ok := jobinfo.ExtractStatusError(err)
 	require.True(t, ok)
 	require.Equal(t, config.StatusCancelled, statusErr.Status)
 	require.Equal(t, config.StatusCancelled, job.Status)
@@ -370,7 +372,7 @@ func TestCleanupResourcesJobCtlStopsOldGenerationBeforeStatefulSetCleanup(t *tes
 
 	err := ctl.Run(ctx)
 	require.Error(t, err)
-	statusErr, ok := ExtractStatusError(err)
+	statusErr, ok := jobinfo.ExtractStatusError(err)
 	require.True(t, ok)
 	require.Equal(t, config.StatusCancelled, statusErr.Status)
 	require.Equal(t, config.StatusCancelled, job.Status)
@@ -458,7 +460,7 @@ func newRequiredStatefulSetPodController(t *testing.T) (
 		Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: versionUpdateRequireStatefulSetDeletionInternalInfo(), Timeout: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: nil})
 	require.NotNil(t, ctl)
 	return component, statefulSet, pod, client, ctl
 }

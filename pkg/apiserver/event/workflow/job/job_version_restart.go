@@ -17,6 +17,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
@@ -59,7 +60,7 @@ func (c *VersionRestartJobCtl) run(ctx context.Context) error {
 	if c.store == nil {
 		return fmt.Errorf("store is nil")
 	}
-	info, err := requiredJobInfo[*VersionRestartJobInfo](c.job)
+	info, err := jobinfo.RequiredJobInfo[*VersionRestartJobInfo](c.job)
 	if err != nil {
 		return err
 	}
@@ -208,7 +209,7 @@ func (c *VersionRestartJobCtl) waitRestartReady(ctx context.Context, component *
 	}
 	var waitErr *informer.WaitError
 	if errors.As(err, &waitErr) {
-		return NewStatusError(waitErr.Status, workloadWaitError(ctx, c.client, c.job, target.kind, target.namespace, target.name, target.componentLabel, waitErr.Err))
+		return jobinfo.NewStatusError(waitErr.Status, workloadWaitError(ctx, c.client, c.job, target.kind, target.namespace, target.name, target.componentLabel, waitErr.Err))
 	}
 	return workloadWaitError(ctx, c.client, c.job, target.kind, target.namespace, target.name, target.componentLabel, err)
 }

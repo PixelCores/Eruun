@@ -20,6 +20,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -1045,7 +1046,7 @@ func newRequiredStatefulSetOwnerJobPodController(t *testing.T) (
 		Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: versionUpdateRequireStatefulSetDeletionInternalInfo(), Timeout: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
+	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: nil})
 	require.NotNil(t, ctl)
 	require.NoError(t, ctl.ensureRequiredStatefulSetPodDeletionAllowed(ctx, component))
 	require.True(t, ctl.requiredStatefulSetPodTarget.checkpointPersisted)

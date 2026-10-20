@@ -11,11 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -24,6 +19,13 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
 	"k8s.io/utils/ptr"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 )
 
 type workspaceRoundTripper func(*http.Request) (*http.Response, error)
@@ -161,11 +163,11 @@ func (s *delayedWorkspaceStore) List(ctx context.Context, e datastore.Entity, op
 	}
 	return s.resultOutboxTestStore.List(ctx, e, opts)
 }
-func delayedWorkspaceFixture(t *testing.T) (*delayedWorkspaceStore, *workspace.Manager, []*DelayJobPayload) {
+func delayedWorkspaceFixture(t *testing.T) (*delayedWorkspaceStore, *workspace.Manager, []*jobinfo.DelayJobPayload) {
 	t.Helper()
 	store := &delayedWorkspaceStore{resultOutboxTestStore: newResultOutboxTestStore(), apps: map[string]*model.Applications{}, spaces: map[string]*model.Workspace{}}
 	root := fake.NewSimpleClientset()
-	var payloads []*DelayJobPayload
+	var payloads []*jobinfo.DelayJobPayload
 	for id := 1; id <= 2; id++ {
 		space := &model.Workspace{ID: fmt.Sprintf("space-%d", id), Namespace: fmt.Sprintf("namespace-%d", id)}
 		app := &model.Applications{ID: fmt.Sprintf("app-%d", id), WorkspaceID: space.ID, Namespace: space.Namespace}
@@ -227,16 +229,18 @@ func TestDelayedJobsUsePersistedWorkspaceAndRestrictedClient(t *testing.T) {
 func TestDelayedJobsRejectInvalidPersistedWorkloadBeforeKubernetesWrites(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*delayedWorkspaceStore, *workspace.Manager, *DelayJobPayload)
+		mutate func(*delayedWorkspaceStore, *workspace.Manager, *jobinfo.DelayJobPayload)
 	}{
-		{"checkpoint namespace", func(_ *delayedWorkspaceStore, _ *workspace.Manager, p *DelayJobPayload) { p.Namespace = "namespace-2" }},
-		{"job namespace", func(_ *delayedWorkspaceStore, _ *workspace.Manager, p *DelayJobPayload) {
+		{"checkpoint namespace", func(_ *delayedWorkspaceStore, _ *workspace.Manager, p *jobinfo.DelayJobPayload) {
+			p.Namespace = "namespace-2"
+		}},
+		{"job namespace", func(_ *delayedWorkspaceStore, _ *workspace.Manager, p *jobinfo.DelayJobPayload) {
 			p.Job.Namespace = "namespace-2"
 		}},
-		{"privileged init", func(_ *delayedWorkspaceStore, _ *workspace.Manager, p *DelayJobPayload) {
+		{"privileged init", func(_ *delayedWorkspaceStore, _ *workspace.Manager, p *jobinfo.DelayJobPayload) {
 			p.Job.Spec.Template.Spec.InitContainers[0].SecurityContext = &corev1.SecurityContext{Privileged: ptr.To(true)}
 		}},
-		{"privileged sidecar", func(_ *delayedWorkspaceStore, _ *workspace.Manager, p *DelayJobPayload) {
+		{"privileged sidecar", func(_ *delayedWorkspaceStore, _ *workspace.Manager, p *jobinfo.DelayJobPayload) {
 			p.Job.Spec.Template.Spec.Containers[1].SecurityContext = &corev1.SecurityContext{AllowPrivilegeEscalation: ptr.To(true)}
 		}},
 	}

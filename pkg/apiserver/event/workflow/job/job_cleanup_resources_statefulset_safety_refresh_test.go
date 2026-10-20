@@ -17,6 +17,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -175,7 +176,7 @@ func TestCleanupResourcesJobCtlSafetyRefreshRetryStopsOnPersistedCancellation(t 
 	err := ctl.deleteStatefulSet(ctx, component.Namespace, statefulSet.Name)
 
 	require.Error(t, err)
-	statusErr, ok := ExtractStatusError(err)
+	statusErr, ok := jobinfo.ExtractStatusError(err)
 	require.True(t, ok)
 	require.Equal(t, config.StatusCancelled, statusErr.Status)
 	require.Equal(t, 4, getCount, "cancellation must stop before another Kubernetes safety read")

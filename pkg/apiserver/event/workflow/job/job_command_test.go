@@ -14,6 +14,8 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
@@ -27,12 +29,12 @@ func TestWorkspaceJobTypesUseDurableStopCheckpoint(t *testing.T) {
 			client := fake.NewSimpleClientset()
 			var created []*batchv1.Job
 			installRetryJobReactor(t, client, 1, "OOMKilled", &created)
-			ctl := newObservedInstantJobCtl(t, task, client, newRetryCreationBudgetStore(t, withJobTestOwner(store, task)), func() {})
+			ctl := newObservedInstantJobCtl(t, task, client, newRetryCreationBudgetStore(t, jobtest.WithJobTestOwner(store, task)), func() {})
 			err := ctl.Run(WithCleanupTracker(context.Background()))
 			require.ErrorContains(t, err, "job failed after attempt 1")
 			require.Len(t, created, 1)
 			require.Equal(t, string(jobType), store.record.Type)
-			require.True(t, HasInstantJobRetryCheckpoint(store.record))
+			require.True(t, jobinfo.HasInstantJobRetryCheckpoint(store.record))
 		})
 	}
 }
@@ -46,7 +48,7 @@ func TestWorkspaceJobCleanupWaitsForCommittedResult(t *testing.T) {
 			live.UID, live.ResourceVersion = "owned-job", "1"
 			live.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
 			live.Status.Conditions = []batchv1.JobCondition{{Type: batchv1.JobComplete, Status: corev1.ConditionTrue}}
-			checkpoint := instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Attempt: 1,
+			checkpoint := jobinfo.InstantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Attempt: 1,
 				Deadline: time.Now().Add(time.Hour).UnixNano(), Job: live, CurrentUID: live.UID}
 			if jobType == config.JobEval {
 				checkpoint.Runner = json.RawMessage(`{"terminal":{"outcome":"succeeded","collectionComplete":true}}`)
@@ -63,7 +65,7 @@ func TestWorkspaceJobCleanupWaitsForCommittedResult(t *testing.T) {
 			if jobType == config.JobEval {
 				store.artifact = &model.JobArtifact{WorkspaceID: task.WorkspaceID, TaskID: task.TaskID, ExecutionKey: task.ExecutionKey, Kind: "source", Summary: json.RawMessage(`{"collectionComplete":true}`)}
 			}
-			ctl := NewInstantJobCtl(task, &Runtime{Client: client, Store: withJobTestOwner(store, task), Ack: func() {}})
+			ctl := NewInstantJobCtl(task, &Runtime{Client: client, Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
 			require.NoError(t, ctl.SaveInfo(context.Background()))
 			require.Equal(t, string(config.StatusCompleted), store.record.Status)
 			_, err = client.BatchV1().Jobs(live.Namespace).Get(context.Background(), live.Name, metav1.GetOptions{})
@@ -103,14 +105,14 @@ func TestEvaluationCleanupRetainsResultsUntilArchiveIsCommitted(t *testing.T) {
 			if status == config.StatusCompleted {
 				outcome = "succeeded"
 			}
-			raw, err := json.Marshal(instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Attempt: 1,
+			raw, err := json.Marshal(jobinfo.InstantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Attempt: 1,
 				Deadline: time.Now().Add(time.Hour).UnixNano(), Job: live, CurrentUID: live.UID,
 				Runner: json.RawMessage(`{"terminal":{"outcome":"` + outcome + `","collectionComplete":true}}`)})
 			require.NoError(t, err)
 			task.InternalInfo, task.JobInfo = string(raw), live
 			client := fake.NewSimpleClientset(live)
 			store := &workspaceJobArtifactStore{}
-			ctl := NewInstantJobCtl(task, &Runtime{Client: client, Store: withJobTestOwner(store, task), Ack: func() {}})
+			ctl := NewInstantJobCtl(task, &Runtime{Client: client, Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
 			ctl.Clean(context.Background())
 			if status == config.StatusCancelled || status == config.StatusTimeout {
 				require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
@@ -145,7 +147,7 @@ func TestEvaluationExitWithoutArchiveIsFailedAndRetained(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	var created []*batchv1.Job
 	installRetryJobReactor(t, client, 0, "", &created)
-	ctl := newObservedInstantJobCtl(t, task, client, newRetryCreationBudgetStore(t, withJobTestOwner(store, task)), func() {})
+	ctl := newObservedInstantJobCtl(t, task, client, newRetryCreationBudgetStore(t, jobtest.WithJobTestOwner(store, task)), func() {})
 	require.ErrorContains(t, ctl.Run(context.Background()), "without a collected result archive")
 	require.Equal(t, config.StatusFailed, task.Status)
 	require.Len(t, created, 1)
@@ -158,7 +160,7 @@ func TestWorkspaceJobPayloadCarriesRunnerExecutionIdentity(t *testing.T) {
 	for _, jobType := range []config.JobType{config.JobCommand, config.JobEval} {
 		task := retryTestTask(t, &workflowconfig.JobRetryPolicy{OnOOM: "stop"})
 		task.JobType = string(jobType)
-		ApplyExecutionIdentity(task)
+		jobinfo.ApplyExecutionIdentity(task)
 		payload := task.JobInfo.(*batchv1.Job)
 		require.Equal(t, task.TaskID, payload.Spec.Template.Annotations[config.AnnotationJobTaskID])
 		require.Equal(t, task.ExecutionKey, payload.Spec.Template.Annotations[config.AnnotationJobExecutionKey])

@@ -21,6 +21,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
@@ -42,7 +43,7 @@ type delayItem struct {
 	attempts  int
 	msgID     string
 	key       string
-	payload   *DelayJobPayload
+	payload   *jobinfo.DelayJobPayload
 }
 
 type DelayDispatcher struct {
@@ -360,18 +361,18 @@ func (d *DelayDispatcher) recoverDueCheckpoints(ctx context.Context) error {
 	return errors.Join(recoveryErrs...)
 }
 
-func (d *DelayDispatcher) decodePayload(raw []byte) (*DelayJobPayload, error) {
-	var payload DelayJobPayload
+func (d *DelayDispatcher) decodePayload(raw []byte) (*jobinfo.DelayJobPayload, error) {
+	var payload jobinfo.DelayJobPayload
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return nil, err
 	}
-	if err := validateDelayJobPayload(&payload); err != nil {
+	if err := jobinfo.ValidateDelayJobPayload(&payload); err != nil {
 		return nil, err
 	}
 	return &payload, nil
 }
 
-func (d *DelayDispatcher) decodeNotification(raw []byte) (*DelayJobPayload, error) {
+func (d *DelayDispatcher) decodeNotification(raw []byte) (*jobinfo.DelayJobPayload, error) {
 	var envelope struct {
 		Version int             `json:"version"`
 		Job     json.RawMessage `json:"job"`
@@ -379,17 +380,17 @@ func (d *DelayDispatcher) decodeNotification(raw []byte) (*DelayJobPayload, erro
 	if err := json.Unmarshal(raw, &envelope); err != nil {
 		return nil, err
 	}
-	if envelope.Version != delayJobNotificationVersion {
+	if envelope.Version != jobinfo.DelayJobNotificationVersion {
 		return nil, fmt.Errorf("unsupported delay notification version %d", envelope.Version)
 	}
 	if len(envelope.Job) != 0 {
 		return nil, fmt.Errorf("version %d delay notification includes a workload", envelope.Version)
 	}
-	var payload DelayJobPayload
+	var payload jobinfo.DelayJobPayload
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return nil, err
 	}
-	if err := validateDelayJobIdentity(&payload); err != nil {
+	if err := jobinfo.ValidateDelayJobIdentity(&payload); err != nil {
 		return nil, err
 	}
 	return &payload, nil
@@ -499,9 +500,9 @@ func (d *DelayDispatcher) dispatch(ctx context.Context, item *delayItem) error {
 	if item == nil || item.payload == nil {
 		return fmt.Errorf("delay item is nil")
 	}
-	validate := validateDelayJobPayload
+	validate := jobinfo.ValidateDelayJobPayload
 	if item.payload.Job == nil {
-		validate = validateDelayJobIdentity
+		validate = jobinfo.ValidateDelayJobIdentity
 	}
 	if err := validate(item.payload); err != nil {
 		return errors.Join(errDelayDispatchNoRetry, err)
@@ -567,7 +568,7 @@ func (d *DelayDispatcher) dispatch(ctx context.Context, item *delayItem) error {
 	return d.dispatchJob(ctx, &scopedItem, client)
 }
 
-func (d *DelayDispatcher) checkpointWorkspace(ctx context.Context, checkpoint *model.JobInfo, payload *DelayJobPayload) (*model.Applications, *model.Workspace, error) {
+func (d *DelayDispatcher) checkpointWorkspace(ctx context.Context, checkpoint *model.JobInfo, payload *jobinfo.DelayJobPayload) (*model.Applications, *model.Workspace, error) {
 	if checkpoint.AppID == "" {
 		return nil, nil, d.rejectCheckpoint(ctx, checkpoint, fmt.Errorf("delayed checkpoint has no application"))
 	}
@@ -595,12 +596,12 @@ func (d *DelayDispatcher) checkpointWorkspace(ctx context.Context, checkpoint *m
 	return app, space, nil
 }
 
-func (d *DelayDispatcher) validateCheckpointNotification(checkpoint *model.JobInfo, payload *DelayJobPayload) (*DelayJobPayload, error) {
+func (d *DelayDispatcher) validateCheckpointNotification(checkpoint *model.JobInfo, payload *jobinfo.DelayJobPayload) (*jobinfo.DelayJobPayload, error) {
 	committed, err := d.decodePayload([]byte(checkpoint.DelayPayload))
 	if err != nil {
 		return nil, fmt.Errorf("decode committed delayed workload: %w", err)
 	}
-	if notificationForDelayJob(committed) != notificationForDelayJob(payload) {
+	if jobinfo.NotificationForDelayJob(committed) != jobinfo.NotificationForDelayJob(payload) {
 		return nil, fmt.Errorf("%w: notification differs from delayed checkpoint", errDelayDispatchNoRetry)
 	}
 	return committed, nil
@@ -615,7 +616,7 @@ func (d *DelayDispatcher) rejectCheckpoint(ctx context.Context, checkpoint *mode
 		return fmt.Errorf("reject delayed checkpoint: conditional updates are required")
 	}
 	updated, err := conditional.CompareAndSwapWithConditions(ctx, checkpoint, map[string]interface{}{
-		"app_id": checkpoint.AppID, "execution_key": jobInfoExecutionKey(*checkpoint),
+		"app_id": checkpoint.AppID, "execution_key": jobinfo.JobInfoExecutionKey(*checkpoint),
 		"run_generation": checkpoint.RunGeneration, "status": string(config.StatusDistributed),
 		"delay_state": string(config.JobDelayStatePending),
 	}, map[string]interface{}{
@@ -630,7 +631,7 @@ func (d *DelayDispatcher) rejectCheckpoint(ctx context.Context, checkpoint *mode
 		if err := d.store.Get(ctx, latest); err != nil && !errors.Is(err, datastore.ErrRecordNotExist) {
 			return fmt.Errorf("reload rejected delayed checkpoint: %w", err)
 		}
-		if latest.AppID == checkpoint.AppID && jobInfoExecutionKey(*latest) == jobInfoExecutionKey(*checkpoint) &&
+		if latest.AppID == checkpoint.AppID && jobinfo.JobInfoExecutionKey(*latest) == jobinfo.JobInfoExecutionKey(*checkpoint) &&
 			latest.RunGeneration == checkpoint.RunGeneration && latest.Status == string(config.StatusDistributed) &&
 			latest.DelayState == config.JobDelayStatePending {
 			return fmt.Errorf("reject delayed checkpoint: concurrent transition did not converge")
@@ -645,7 +646,7 @@ func (d *DelayDispatcher) dispatchJob(ctx context.Context, item *delayItem, clie
 	if item == nil || item.payload == nil || item.payload.Job == nil {
 		return fmt.Errorf("delay item is nil")
 	}
-	if err := validateDelayJobPayload(item.payload); err != nil {
+	if err := jobinfo.ValidateDelayJobPayload(item.payload); err != nil {
 		return errors.Join(errDelayDispatchNoRetry, err)
 	}
 	current, err := d.delayExecutionCurrent(ctx, item.payload)
@@ -729,9 +730,9 @@ func (d *DelayDispatcher) dispatchJob(ctx context.Context, item *delayItem, clie
 
 	action, err := applyJobRunPolicy(ctx, client, d.store, jobObj, jobType)
 	if err != nil {
-		if _, ok := ExtractStatusError(err); ok {
+		if _, ok := jobinfo.ExtractStatusError(err); ok {
 			if resultPayload != nil {
-				updateJobInfoStatus(ctx, d.store, resultPayload, statusFromError(err), jobErrorMessage(err, ""), 0, 0, "")
+				updateJobInfoStatus(ctx, d.store, resultPayload, jobinfo.StatusFromError(err), jobinfo.JobErrorMessage(err, ""), 0, 0, "")
 			}
 			return fmt.Errorf("%w: %v", errDelayDispatchNoRetry, err)
 		}
@@ -791,7 +792,7 @@ func (d *DelayDispatcher) createDelayedJob(ctx context.Context, client kubernete
 	return d.ensureDelayedResultOutboxPending(ctx, resultPayload)
 }
 
-func (d *DelayDispatcher) delayExecutionCurrent(ctx context.Context, payload *DelayJobPayload) (bool, error) {
+func (d *DelayDispatcher) delayExecutionCurrent(ctx context.Context, payload *jobinfo.DelayJobPayload) (bool, error) {
 	if payload == nil || payload.RunGeneration == 0 {
 		return true, nil
 	}
@@ -833,11 +834,11 @@ func (d *DelayDispatcher) delayExecutionCurrent(ctx context.Context, payload *De
 	return true, nil
 }
 
-func (d *DelayDispatcher) delayedExecutionCommitted(ctx context.Context, payload *DelayJobPayload) (committed, settled bool, err error) {
+func (d *DelayDispatcher) delayedExecutionCommitted(ctx context.Context, payload *jobinfo.DelayJobPayload) (committed, settled bool, err error) {
 	if d == nil || d.store == nil || payload == nil || strings.TrimSpace(payload.ExecutionKey) == "" || payload.RunGeneration == 0 {
 		return false, false, nil
 	}
-	jobInfos, err := loadJobInfos(
+	jobInfos, err := jobinfo.LoadJobInfos(
 		ctx,
 		d.store,
 		strings.TrimSpace(payload.TaskID),
@@ -856,12 +857,12 @@ func (d *DelayDispatcher) delayedExecutionCommitted(ctx context.Context, payload
 			continue
 		}
 		status := config.Status(jobInfo.Status)
-		return status == config.StatusDistributed, isSettledDelayedExecutionStatus(status), nil
+		return status == config.StatusDistributed, jobinfo.IsSettledDelayedExecutionStatus(status), nil
 	}
 	return false, false, nil
 }
 
-func (d *DelayDispatcher) markDelayCheckpointDispatched(ctx context.Context, payload *DelayJobPayload) error {
+func (d *DelayDispatcher) markDelayCheckpointDispatched(ctx context.Context, payload *jobinfo.DelayJobPayload) error {
 	if d == nil || d.store == nil || payload == nil {
 		return nil
 	}
@@ -869,7 +870,7 @@ func (d *DelayDispatcher) markDelayCheckpointDispatched(ctx context.Context, pay
 	if err != nil {
 		return err
 	}
-	if record == nil || record.DelayState == "" || record.DelayState == config.JobDelayStateDispatched || isSettledDelayedExecutionStatus(config.Status(record.Status)) {
+	if record == nil || record.DelayState == "" || record.DelayState == config.JobDelayStateDispatched || jobinfo.IsSettledDelayedExecutionStatus(config.Status(record.Status)) {
 		return nil
 	}
 	if record.DelayState != config.JobDelayStatePending {
@@ -881,7 +882,7 @@ func (d *DelayDispatcher) markDelayCheckpointDispatched(ctx context.Context, pay
 	}
 	updated, err := conditional.CompareAndSwapWithConditions(ctx, record, map[string]interface{}{
 		"delay_state": string(config.JobDelayStatePending), "status": string(config.StatusDistributed),
-		"execution_key": jobInfoExecutionKey(*record), "run_generation": record.RunGeneration,
+		"execution_key": jobinfo.JobInfoExecutionKey(*record), "run_generation": record.RunGeneration,
 	}, map[string]interface{}{
 		"delay_state": string(config.JobDelayStateDispatched),
 	})
@@ -901,11 +902,11 @@ func (d *DelayDispatcher) markDelayCheckpointDispatched(ctx context.Context, pay
 	return fmt.Errorf("mark delay checkpoint dispatched: concurrent state did not converge")
 }
 
-func (d *DelayDispatcher) findDelayCheckpoint(ctx context.Context, payload *DelayJobPayload) (*model.JobInfo, error) {
+func (d *DelayDispatcher) findDelayCheckpoint(ctx context.Context, payload *jobinfo.DelayJobPayload) (*model.JobInfo, error) {
 	if d == nil || d.store == nil || payload == nil {
 		return nil, nil
 	}
-	records, err := loadJobInfos(
+	records, err := jobinfo.LoadJobInfos(
 		ctx,
 		d.store,
 		strings.TrimSpace(payload.TaskID),
@@ -917,7 +918,7 @@ func (d *DelayDispatcher) findDelayCheckpoint(ctx context.Context, payload *Dela
 	}
 	executionKey := strings.TrimSpace(payload.ExecutionKey)
 	for _, record := range records {
-		if record == nil || record.RunGeneration != payload.RunGeneration || jobInfoExecutionKey(*record) != executionKey {
+		if record == nil || record.RunGeneration != payload.RunGeneration || jobinfo.JobInfoExecutionKey(*record) != executionKey {
 			continue
 		}
 		return record, nil

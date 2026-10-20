@@ -18,12 +18,13 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 )
 
-func delayedWorkspaceSQLFixture(t *testing.T, storedWorkspace interface{}) (*gorm.DB, *sqlstore.Driver, *DelayDispatcher, *DelayJobPayload, *int) {
+func delayedWorkspaceSQLFixture(t *testing.T, storedWorkspace interface{}) (*gorm.DB, *sqlstore.Driver, *DelayDispatcher, *jobinfo.DelayJobPayload, *int) {
 	t.Helper()
 	fixture, manager, payloads := delayedWorkspaceFixture(t)
 	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "delay.db")), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, Logger: logger.Default.LogMode(logger.Silent)})
@@ -69,7 +70,7 @@ func TestDelayedNotificationDispatchesCommittedWorkload(t *testing.T) {
 	db, store, dispatcher, payload, creates := delayedWorkspaceSQLFixture(t, "space-1")
 	ctx := context.Background()
 	producer := &enqueueCaptureQueue{}
-	_, err := EnqueueDelayJob(ctx, producer, payload)
+	_, err := jobinfo.EnqueueDelayJob(ctx, producer, payload)
 	require.NoError(t, err)
 	raw := producer.enqueued[0]
 	committed, err := json.Marshal(payload)
@@ -104,20 +105,20 @@ func TestDelayedNotificationDispatchesCommittedWorkload(t *testing.T) {
 func TestDelayedIdentityNotificationRejectsChangedCheckpointIdentity(t *testing.T) {
 	tests := []struct {
 		name             string
-		change           func(*delayJobNotification)
+		change           func(*jobinfo.DelayJobPayload)
 		expectNoRetryErr bool
 	}{
-		{"execute time", func(n *delayJobNotification) { n.ExecuteAt++ }, true},
-		{"run token", func(n *delayJobNotification) { n.RunToken = "other-run" }, true},
-		{"execution key", func(n *delayJobNotification) { n.ExecutionKey = "other-execution" }, false},
-		{"generation", func(n *delayJobNotification) { n.RunGeneration++ }, false},
+		{"execute time", func(n *jobinfo.DelayJobPayload) { n.ExecuteAt++ }, true},
+		{"run token", func(n *jobinfo.DelayJobPayload) { n.RunToken = "other-run" }, true},
+		{"execution key", func(n *jobinfo.DelayJobPayload) { n.ExecutionKey = "other-execution" }, false},
+		{"generation", func(n *jobinfo.DelayJobPayload) { n.RunGeneration++ }, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			db, _, dispatcher, payload, creates := delayedWorkspaceSQLFixture(t, "space-1")
-			notification := notificationForDelayJob(payload)
+			notification := *payload
 			tt.change(&notification)
-			raw, err := json.Marshal(notification)
+			raw, err := json.Marshal(jobinfo.NotificationForDelayJob(&notification))
 			require.NoError(t, err)
 			queue := &dispatcherAckQueue{}
 			dispatcher.queue = queue

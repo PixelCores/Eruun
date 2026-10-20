@@ -26,6 +26,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
@@ -66,7 +68,7 @@ func TestRunJobsSerialContinuesWhenStopOnFailureFalse(t *testing.T) {
 
 	RunJobs(context.Background(), jobs, &Runtime{
 		Concurrency: 1,
-		Store:       &noopStore{},
+		Store:       &jobtest.NoopStore{},
 		Ack:         func() {},
 	})
 
@@ -82,7 +84,7 @@ func TestRunJobsSerialStopsWhenStopOnFailureTrue(t *testing.T) {
 
 	RunJobs(context.Background(), jobs, &Runtime{
 		Concurrency:   1,
-		Store:         &noopStore{},
+		Store:         &jobtest.NoopStore{},
 		Ack:           func() {},
 		StopOnFailure: true,
 	})
@@ -117,7 +119,7 @@ func TestRunJobsSerialStopsWhenAckCancelsContext(t *testing.T) {
 	RunJobs(ctx, jobs, &Runtime{
 		Concurrency: 1,
 		Client:      fake.NewSimpleClientset(),
-		Store:       withJobTestOwner(store, jobs[0]),
+		Store:       jobtest.WithJobTestOwner(store, jobs[0]),
 		Ack:         cancel,
 	})
 
@@ -239,7 +241,7 @@ func TestRunJobsReturnsInfrastructureStopWhenTerminalPersistenceFails(t *testing
 			now := time.Now().UTC()
 			lease := now.Add(time.Minute)
 			require.NoError(t, store.Add(context.Background(), &model.WorkflowQueue{TaskID: task.TaskID, WorkspaceID: task.WorkspaceID, Status: config.StatusRunning, RunGeneration: task.RunGeneration, RunToken: task.RunToken, WorkerID: task.WorkerID, LeaseExpiresAt: &lease}))
-			record := buildJobInfoRecord(task)
+			record := jobinfo.BuildJobInfoRecord(task)
 			record.Status = string(config.StatusPrepare)
 			record.SchedulingState = "admitted"
 			record.SchedulingOwnerStatus = config.StatusRunning
@@ -386,7 +388,7 @@ func TestRunJobsReturnsTerminalCallbackPersistenceFailureWithoutWorker(t *testin
 			defer server.Close()
 			task := &model.JobTask{Name: "callback", WorkspaceID: owner.WorkspaceID, TaskID: owner.TaskID,
 				ExecutionKey: TerminalCallbackExecutionKey(owner.TaskID, 0, "cancelled"), OwnerStatus: owner.Status,
-				JobType: string(config.JobDeployCallback), JobInfo: &CallbackJobInfo{Event: "cancelled", URL: server.URL}}
+				JobType: string(config.JobDeployCallback), JobInfo: &jobinfo.CallbackJobInfo{Event: "cancelled", URL: server.URL}}
 			persistErr := errors.New("injected callback terminal persistence failure")
 			require.NoError(t, db.Callback().Update().Before("gorm:update").Register("fail-terminal-callback-write", func(tx *gorm.DB) {
 				if _, ok := tx.Statement.Model.(*model.JobInfo); !ok {
@@ -476,7 +478,7 @@ func TestRunJobsParallelDoesNotStartJobsWithCancelledContext(t *testing.T) {
 
 	RunJobs(ctx, jobs, &Runtime{
 		Concurrency: 2,
-		Store:       &noopStore{},
+		Store:       &jobtest.NoopStore{},
 		Ack:         func() {},
 	})
 

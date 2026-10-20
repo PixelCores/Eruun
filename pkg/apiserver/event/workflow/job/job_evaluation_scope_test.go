@@ -24,6 +24,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -76,7 +77,7 @@ func evaluationScopeTask(t *testing.T, store *access.Store, appID string) *model
 		TaskID: parent.TaskID, JobType: string(config.JobEval), JobInfo: workload, Timeout: 60,
 		ExecutionKey: "evaluation-execution", RunGeneration: 1, OwnerRunGeneration: 1, RunToken: parent.RunToken, WorkerID: parent.WorkerID,
 		EvaluationInfo: `{"runnerToken":"private-evaluation-capability"}`}
-	ApplyExecutionIdentity(task)
+	jobinfo.ApplyExecutionIdentity(task)
 	return task
 }
 
@@ -123,7 +124,7 @@ func TestEvaluationScopeRunsThroughAdmissionAndPersistsPrivateSnapshot(t *testin
 			}
 			require.Len(t, created, 1)
 			require.Equal(t, config.StatusFailed, task.Status, "the synthetic Runner failure must reach terminal SaveInfo")
-			saved, err := findExistingJobInfo(scopedCtx, store, task)
+			saved, err := jobinfo.FindExistingJobInfo(scopedCtx, store, task)
 			require.NoError(t, err)
 			require.NotNil(t, saved)
 			require.Equal(t, appID, saved.AppID)
@@ -131,7 +132,7 @@ func TestEvaluationScopeRunsThroughAdmissionAndPersistsPrivateSnapshot(t *testin
 			require.Equal(t, task.EvaluationInfo, saved.EvaluationInfo)
 			require.Equal(t, string(config.StatusFailed), saved.Status)
 			require.Equal(t, "released", saved.SchedulingState)
-			require.True(t, HasInstantJobRetryCheckpoint(saved))
+			require.True(t, jobinfo.HasInstantJobRetryCheckpoint(saved))
 			if appID != "" {
 				require.Equal(t, "benchmark", saved.ServiceName)
 			}
@@ -171,7 +172,7 @@ func TestEvaluationScopeRejectsForeignAndForgedOwnership(t *testing.T) {
 			}))
 			require.Empty(t, client.Actions())
 			if name == "foreign application" {
-				_, err := findExistingJobInfo(ctx, store, task)
+				_, err := jobinfo.FindExistingJobInfo(ctx, store, task)
 				require.Error(t, err, "parent scope must also protect lifecycle lookup")
 			}
 		})
@@ -193,7 +194,7 @@ func TestStandaloneJobVolumeRunsThroughPVCController(t *testing.T) {
 			task := &model.JobTask{Name: name, Namespace: "space-ns", WorkspaceID: "space", TaskID: parent.TaskID,
 				JobType: string(config.JobDeployPVC), JobInfo: pvc, Timeout: 60, Status: config.StatusQueued,
 				ExecutionKey: "volume-execution", RunGeneration: 1, OwnerRunGeneration: 1, RunToken: parent.RunToken, WorkerID: parent.WorkerID}
-			ApplyExecutionIdentity(task)
+			jobinfo.ApplyExecutionIdentity(task)
 			client := fake.NewSimpleClientset()
 			client.PrependReactor("create", "persistentvolumeclaims", func(action k8stesting.Action) (bool, runtime.Object, error) {
 				action.(k8stesting.CreateAction).GetObject().(*corev1.PersistentVolumeClaim).Status.Phase = corev1.ClaimPending
@@ -206,7 +207,7 @@ func TestStandaloneJobVolumeRunsThroughPVCController(t *testing.T) {
 				err := RunJobs(ctx, []*model.JobTask{task}, run)
 				require.ErrorContains(t, err, "authorize workspace job")
 				require.Empty(t, client.Actions(), "foreign PVC must be rejected before Kubernetes access")
-				_, err = findExistingJobInfo(ctx, store, task)
+				_, err = jobinfo.FindExistingJobInfo(ctx, store, task)
 				require.Error(t, err, "lifecycle lookup must retain the PVC name authorization")
 				var count int64
 				require.NoError(t, db.Model(&model.JobInfo{}).Count(&count).Error)
@@ -232,7 +233,7 @@ func TestStandaloneJobVolumeRunsThroughPVCController(t *testing.T) {
 			created, err := client.CoreV1().PersistentVolumeClaims("space-ns").Get(ctx, name, metav1.GetOptions{})
 			require.NoError(t, err)
 			require.Equal(t, "parent", created.Labels[spec.JobTaskLabel])
-			saved, err := findExistingJobInfo(ctx, store, task)
+			saved, err := jobinfo.FindExistingJobInfo(ctx, store, task)
 			require.NoError(t, err)
 			require.NotNil(t, saved)
 			require.Equal(t, name, saved.ServiceName)

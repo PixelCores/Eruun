@@ -14,7 +14,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -104,7 +104,7 @@ func TestRecoveryRenderingPreservesCommittedDeadline(t *testing.T) {
 			encoded, err := json.Marshal(info)
 			require.NoError(t, err)
 			task.EvaluationInfo, task.Status = string(encoded), tt.status
-			workflowjob.ApplyTaskIDAnnotation(task)
+			jobinfo.ApplyTaskIDAnnotation(task)
 			workload := task.JobInfo.(*batchv1.Job)
 			workload.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
 			workload.Spec.Template.Spec.Containers[0].Image = "example.com/committed-runner:1"
@@ -134,7 +134,7 @@ func TestRecoveryRenderingPreservesCommittedDeadline(t *testing.T) {
 			require.JSONEq(t, string(wantWorkload), string(gotWorkload), "takeover must retain the committed workload, including its original image and budget")
 			require.Equal(t, before, task.InternalInfo)
 			require.Equal(t, string(encoded), task.EvaluationInfo)
-			_, deadline, err := workflowjob.EvaluationRunnerCheckpoint(&model.JobInfo{Type: task.JobType,
+			_, deadline, err := jobinfo.EvaluationRunnerCheckpoint(&model.JobInfo{Type: task.JobType,
 				TaskID: task.TaskID, ExecutionKey: &task.ExecutionKey, RunGeneration: task.RunGeneration,
 				Attempt: task.Attempt, InternalInfo: task.InternalInfo})
 			require.NoError(t, err)

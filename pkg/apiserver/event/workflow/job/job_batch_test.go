@@ -23,6 +23,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -231,7 +233,7 @@ func TestApplyJobRunPolicy(t *testing.T) {
 				if err == nil {
 					t.Fatalf("expected error")
 				}
-				var statusErr *StatusError
+				var statusErr *jobinfo.StatusError
 				if !errors.As(err, &statusErr) {
 					t.Fatalf("expected StatusError, got %v", err)
 				}
@@ -315,7 +317,7 @@ func TestAdoptReusableJobExecution(t *testing.T) {
 			client := fake.NewSimpleClientset(existing)
 
 			_, err := adoptReusableJobExecution(context.Background(), client, desired, existing)
-			require.ErrorIs(t, err, errJobExecutionIdentityChanged)
+			require.ErrorIs(t, err, jobinfo.ErrJobExecutionIdentityChanged)
 			require.Empty(t, client.Actions())
 		})
 	}
@@ -525,7 +527,7 @@ func succeededPodForJob(jobObj *batchv1.Job, name string, ownerUID types.UID) *c
 }
 
 type runPolicyStore struct {
-	noopStore
+	jobtest.NoopStore
 	count int64
 	err   error
 }
@@ -636,7 +638,7 @@ func TestRunJob_SkippedWritesJobInfo(t *testing.T) {
 		Status:     config.StatusSkipped,
 	}
 
-	runJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: withJobTestOwner(store, jobTask), Ack: func() {}})
+	runJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(store, jobTask), Ack: func() {}})
 
 	require.Equal(t, 1, store.addCount)
 	info, ok := store.lastAdded.(*model.JobInfo)
@@ -843,7 +845,7 @@ func TestRunJob_ConfigMapSharedDefaultSkippedMapsRunning(t *testing.T) {
 		},
 	}
 
-	runJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: withJobTestOwner(store, jobTask), Ack: func() {}})
+	runJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(store, jobTask), Ack: func() {}})
 
 	require.NotNil(t, store.updated)
 	require.Equal(t, string(config.ComponentStatusRunning), store.updated.Status)
@@ -880,7 +882,7 @@ func TestRunJob_ConfigMapSharedIgnoreSkippedDoesNotMapRunning(t *testing.T) {
 		},
 	}
 
-	runJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: withJobTestOwner(store, jobTask), Ack: func() {}})
+	runJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(store, jobTask), Ack: func() {}})
 
 	require.Nil(t, store.updated)
 	require.Equal(t, string(config.ComponentStatusNotDeploy), store.components[0].Status)
@@ -1016,7 +1018,7 @@ func TestConfigComponentStatusInvalidatesCacheAfterCommittedWriteCancelsContext(
 	})
 	defer runtime.close()
 
-	err := syncConfigComponentStatusIfWorkflowOwned(ctx, jobTask, withJobTestOwner(store, jobTask), runtime)
+	err := syncConfigComponentStatusIfWorkflowOwned(ctx, jobTask, jobtest.WithJobTestOwner(store, jobTask), runtime)
 
 	require.NoError(t, err)
 	require.ErrorIs(t, ctx.Err(), context.Canceled)
@@ -1094,7 +1096,7 @@ func TestRunJob_SecretSharedDefaultSkippedMapsRunning(t *testing.T) {
 		},
 	}
 
-	runJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: withJobTestOwner(store, jobTask), Ack: func() {}})
+	runJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(store, jobTask), Ack: func() {}})
 
 	require.NotNil(t, store.updated)
 	require.Equal(t, string(config.ComponentStatusRunning), store.updated.Status)

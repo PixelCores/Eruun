@@ -13,6 +13,7 @@ import (
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -173,7 +174,7 @@ func renderEvaluationExecutions(ctx context.Context, executions []StepExecution,
 				if err := jobs.BuildEvaluationTask(ctx, ds, cfg, task, spec.JobTraits{}); err != nil {
 					return fmt.Errorf("render evaluation %s: %w", task.Name, err)
 				}
-				workflowjob.ApplyExecutionIdentity(task)
+				jobinfo.ApplyExecutionIdentity(task)
 			}
 		}
 	}
@@ -209,7 +210,7 @@ func applyWorkflowJobExecutionIdentity(jobs []*model.JobTask, task *model.Workfl
 		jobTask.RunToken = task.RunToken
 		jobTask.WorkerID = task.WorkerID
 		jobTask.Attempt = uint(jobTask.RetryCount + 1)
-		workflowjob.ApplyExecutionIdentity(jobTask)
+		jobinfo.ApplyExecutionIdentity(jobTask)
 	}
 }
 
@@ -267,7 +268,7 @@ func restoreCommittedJobExecutions(ctx context.Context, executions []StepExecuti
 						return datastore.ErrEntityInvalid
 					}
 					status := config.Status(strings.TrimSpace(jobInfo.Status))
-					retryCheckpoint := status == config.StatusRunning && workflowjob.HasInstantJobRetryCheckpoint(jobInfo)
+					retryCheckpoint := status == config.StatusRunning && jobinfo.HasInstantJobRetryCheckpoint(jobInfo)
 					if jobInfo.ExecutionKey == nil ||
 						jobInfo.RunGeneration == 0 || jobInfo.RunGeneration > task.RunGeneration {
 						continue
@@ -312,7 +313,7 @@ func restoreCommittedJobExecutions(ctx context.Context, executions []StepExecuti
 					if selected.Attempt > 0 {
 						jobTask.Attempt = selected.Attempt
 					}
-					if jobTask.Status == config.StatusRunning && workflowjob.HasInstantJobRetryCheckpoint(selected) {
+					if jobTask.Status == config.StatusRunning && jobinfo.HasInstantJobRetryCheckpoint(selected) {
 						if err := workflowjob.RestoreInstantJobRetryCheckpoint(jobTask); err != nil {
 							return fmt.Errorf("restore instant job retry: %w", err)
 						}

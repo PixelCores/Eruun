@@ -15,6 +15,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
@@ -726,7 +728,7 @@ func TestDeployJobCtlRunReplacesStaleDeploymentVolumeMounts(t *testing.T) {
 		JobType:   string(config.JobDeploy),
 		JobInfo:   desired,
 	}
-	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.run(ctx))
@@ -798,7 +800,7 @@ func TestDeployJobCtlRunSkipsDeploymentWithOnlyLiveSystemLabels(t *testing.T) {
 		JobType:   string(config.JobDeploy),
 		JobInfo:   desired,
 	}
-	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.run(ctx))
@@ -845,7 +847,7 @@ func TestDeployJobCtlRunSkipsDeploymentWithOnlyImmutableSelectorDrift(t *testing
 		JobType:   string(config.JobDeploy),
 		JobInfo:   desired,
 	}
-	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.run(ctx))
@@ -887,7 +889,7 @@ func TestDeployJobCtlRunUpdatesDeploymentReplicasOnly(t *testing.T) {
 		JobType:   string(config.JobDeploy),
 		JobInfo:   desired,
 	}
-	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.run(ctx))
@@ -942,7 +944,7 @@ func TestDeployJobCtlRunAnnotatesChangedPodTemplateWithTaskID(t *testing.T) {
 		JobType:   string(config.JobDeploy),
 		JobInfo:   desired,
 	}
-	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.run(ctx))
@@ -991,7 +993,7 @@ func TestDeployJobCtlRunRestoresTaskAnnotationForUpToDateDeployment(t *testing.T
 		JobType:   string(config.JobDeploy),
 		JobInfo:   desired,
 	}
-	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.run(ctx))
@@ -1068,7 +1070,7 @@ func TestDeployJobCtlRunReplacesStaleDeploymentVolumeSource(t *testing.T) {
 		JobType:   string(config.JobDeploy),
 		JobInfo:   desired,
 	}
-	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.run(ctx))
@@ -1098,7 +1100,7 @@ func TestDeployJobCtlWaitTimeoutWithPodAbnormalReturnsFailed(t *testing.T) {
 	err := ctl.wait(context.Background())
 	require.Error(t, err)
 
-	statusErr, ok := ExtractStatusError(err)
+	statusErr, ok := jobinfo.ExtractStatusError(err)
 	require.True(t, ok)
 	require.Equal(t, config.StatusFailed, statusErr.Status)
 	require.Contains(t, err.Error(), "CrashLoopBackOff")
@@ -1159,7 +1161,7 @@ func TestDeployJobCtlWaitTimeoutWithPendingPodReturnsTimeout(t *testing.T) {
 	err := ctl.wait(context.Background())
 	require.Error(t, err)
 
-	statusErr, ok := ExtractStatusError(err)
+	statusErr, ok := jobinfo.ExtractStatusError(err)
 	require.True(t, ok)
 	require.Equal(t, config.StatusTimeout, statusErr.Status)
 }
@@ -1186,7 +1188,7 @@ func TestDeployJobCtlWaitIgnoresReadyPodWithDifferentImage(t *testing.T) {
 	err := ctl.wait(context.Background())
 	require.Error(t, err)
 
-	statusErr, ok := ExtractStatusError(err)
+	statusErr, ok := jobinfo.ExtractStatusError(err)
 	require.True(t, ok)
 	require.Equal(t, config.StatusTimeout, statusErr.Status)
 }
@@ -1245,7 +1247,7 @@ func TestDeployJobCtlWaitRequiresExpectedTaskAnnotationWithSameImage(t *testing.
 	err := ctl.wait(context.Background())
 	require.Error(t, err)
 
-	statusErr, ok := ExtractStatusError(err)
+	statusErr, ok := jobinfo.ExtractStatusError(err)
 	require.True(t, ok)
 	require.Equal(t, config.StatusFailed, statusErr.Status)
 	require.Contains(t, err.Error(), "CrashLoopBackOff")

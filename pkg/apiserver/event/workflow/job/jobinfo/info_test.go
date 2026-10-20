@@ -1,4 +1,4 @@
-package job
+package jobinfo
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 )
 
 func TestBuildJobInfoRecordUsesRawComponentNameAnnotation(t *testing.T) {
@@ -25,7 +26,7 @@ func TestBuildJobInfoRecordUsesRawComponentNameAnnotation(t *testing.T) {
 		},
 	}
 
-	record := buildJobInfoRecord(&model.JobTask{
+	record := BuildJobInfoRecord(&model.JobTask{
 		JobInfo: deployment,
 	})
 
@@ -39,7 +40,7 @@ func TestBuildJobInfoRecordUsesRawComponentNameAnnotationFromService(t *testing.
 		Annotations: map[string]string{config.AnnotationComponentName: "api.v1"},
 	}}
 
-	record := buildJobInfoRecord(&model.JobTask{
+	record := BuildJobInfoRecord(&model.JobTask{
 		Name:    "public-api",
 		JobInfo: service,
 	})
@@ -56,7 +57,7 @@ func TestBuildJobInfoRecordFallsBackToBoundedComponentLabel(t *testing.T) {
 		},
 	}
 
-	record := buildJobInfoRecord(&model.JobTask{
+	record := BuildJobInfoRecord(&model.JobTask{
 		JobInfo: deployment,
 	})
 
@@ -64,7 +65,7 @@ func TestBuildJobInfoRecordFallsBackToBoundedComponentLabel(t *testing.T) {
 }
 
 func TestSaveOrUpdateJobInfoIsolatesExecutionsWithinOneGeneration(t *testing.T) {
-	store := newCloudJobCheckpointStore()
+	store := jobtest.NewCloudJobCheckpointStore()
 	first := &model.JobTask{
 		TaskID: "task-1", JobType: string(config.JobDeployService), Name: "api",
 		RunGeneration: 7, ExecutionKey: "step-0", Status: config.StatusRunning,
@@ -72,15 +73,15 @@ func TestSaveOrUpdateJobInfoIsolatesExecutionsWithinOneGeneration(t *testing.T) 
 	second := *first
 	second.ExecutionKey = "step-1"
 	second.Status = config.StatusWaiting
-	ownedStore := withJobTestOwner(store, first, &second)
+	ownedStore := jobtest.WithJobTestOwner(store, first, &second)
 
-	require.NoError(t, saveOrUpdateJobInfo(context.Background(), ownedStore, first))
-	require.NoError(t, saveOrUpdateJobInfo(context.Background(), ownedStore, &second))
+	require.NoError(t, SaveOrUpdateJobInfo(context.Background(), ownedStore, first))
+	require.NoError(t, SaveOrUpdateJobInfo(context.Background(), ownedStore, &second))
 	first.Status = config.StatusCompleted
-	require.NoError(t, saveOrUpdateJobInfo(context.Background(), ownedStore, first))
+	require.NoError(t, SaveOrUpdateJobInfo(context.Background(), ownedStore, first))
 
-	statuses := make(map[string]string, len(store.records))
-	for _, record := range store.records {
+	statuses := make(map[string]string, len(store.Records()))
+	for _, record := range store.Records() {
 		require.NotNil(t, record.ExecutionKey)
 		statuses[*record.ExecutionKey] = record.Status
 	}
@@ -93,6 +94,6 @@ func TestServiceJobInfoMetadataHandlesTypedNil(t *testing.T) {
 	var service *corev1.Service
 	require.Nil(t, jobInfoLabels(service))
 	require.Nil(t, jobInfoAnnotations(service))
-	_, err := serviceFromJobInfo(&model.JobTask{JobInfo: service})
+	_, err := ServiceFromJobInfo(&model.JobTask{JobInfo: service})
 	require.ErrorContains(t, err, "nil")
 }

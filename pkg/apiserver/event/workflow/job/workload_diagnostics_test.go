@@ -16,6 +16,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 )
 
@@ -48,7 +49,7 @@ func TestDeployJobCtlWaitAddsPodFailureDiagnostics(t *testing.T) {
 	err := ctl.wait(context.Background())
 	require.Error(t, err)
 
-	statusErr, ok := ExtractStatusError(err)
+	statusErr, ok := jobinfo.ExtractStatusError(err)
 	require.True(t, ok)
 	require.Equal(t, config.StatusFailed, statusErr.Status)
 
@@ -95,7 +96,7 @@ func TestDeployStatefulSetJobCtlWaitAddsPodFailureDiagnostics(t *testing.T) {
 	err := ctl.wait(context.Background())
 	require.Error(t, err)
 
-	statusErr, ok := ExtractStatusError(err)
+	statusErr, ok := jobinfo.ExtractStatusError(err)
 	require.True(t, ok)
 	require.Equal(t, config.StatusFailed, statusErr.Status)
 	require.Contains(t, err.Error(), "kind: StatefulSet")

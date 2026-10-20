@@ -32,6 +32,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
@@ -187,8 +188,8 @@ func newRunnerFixtureForService(t *testing.T, service *Service, raw *sqlstore.Dr
 	task := stages[0][0]
 	task.RunGeneration, task.OwnerRunGeneration, task.ExecutionKey = 2, 4, "original-execution"
 	require.NoError(t, BuildEvaluationTask(ctx, service.Store, service.Config, task, spec.JobTraits{}))
-	workflowjob.ApplyTaskIDAnnotation(task)
-	workflowjob.ApplyExecutionIdentity(task)
+	jobinfo.ApplyTaskIDAnnotation(task)
+	jobinfo.ApplyExecutionIdentity(task)
 	workload := task.JobInfo.(*batchv1.Job)
 	workload.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
 	workload.UID = "original-job"
@@ -716,7 +717,7 @@ func TestRunnerEventsStopAndStaleUseDatabaseReceiveTime(t *testing.T) {
 	state.LastReceivedAt = state.ClaimedAt
 	raw, err := json.Marshal(state)
 	require.NoError(t, err)
-	require.NoError(t, workflowjob.SetEvaluationRunnerCheckpoint(f.record, raw))
+	require.NoError(t, jobinfo.SetEvaluationRunnerCheckpoint(f.record, raw))
 	require.NoError(t, f.raw.Put(context.Background(), f.record))
 	ctx := account.WithScope(context.Background(), account.Scope{WorkspaceID: "space", Namespace: "space-ns", Role: "viewer"})
 	detail, err := f.service.Get(ctx, f.parent.TaskID)
@@ -826,8 +827,8 @@ func TestCommandRuntimePersistsCheckpointAndTerminalResultThroughScopedStore(t *
 	task := stages[0][0]
 	task.RunGeneration, task.OwnerRunGeneration, task.OwnerStatus = 1, 1, config.StatusRunning
 	task.RunToken, task.WorkerID, task.ExecutionKey = parent.RunToken, parent.WorkerID, "command-execution"
-	workflowjob.ApplyTaskIDAnnotation(task)
-	workflowjob.ApplyExecutionIdentity(task)
+	jobinfo.ApplyTaskIDAnnotation(task)
+	jobinfo.ApplyExecutionIdentity(task)
 	client := service.Kube.(*fake.Clientset)
 	client.PrependReactor("create", "jobs", func(action k8stesting.Action) (bool, runtime.Object, error) {
 		live := action.(k8stesting.CreateAction).GetObject().(*batchv1.Job).DeepCopy()
@@ -851,7 +852,7 @@ func TestCommandRuntimePersistsCheckpointAndTerminalResultThroughScopedStore(t *
 	record := records[0].(*model.JobInfo)
 	require.Equal(t, string(config.JobCommand), record.Type)
 	require.Equal(t, string(config.StatusCompleted), record.Status)
-	require.True(t, workflowjob.HasInstantJobRetryCheckpoint(record))
+	require.True(t, jobinfo.HasInstantJobRetryCheckpoint(record))
 	_, err = client.BatchV1().Jobs(task.Namespace).Get(ctx, task.Name, metav1.GetOptions{})
 	require.Error(t, err, "terminal state must be committed before cleanup")
 }
@@ -926,8 +927,8 @@ func TestSiblingEvaluationRunnersCannotExchangeCapabilities(t *testing.T) {
 	info, err := decodeEvaluationInfo(f.record.EvaluationInfo)
 	require.NoError(t, err)
 	require.NoError(t, BuildEvaluationTask(ctx, f.service.Store, f.service.Config, other, info.Traits))
-	workflowjob.ApplyTaskIDAnnotation(other)
-	workflowjob.ApplyExecutionIdentity(other)
+	jobinfo.ApplyTaskIDAnnotation(other)
+	jobinfo.ApplyExecutionIdentity(other)
 	workload := other.JobInfo.(*batchv1.Job)
 	workload.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
 	workload.UID = "sibling-job"

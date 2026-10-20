@@ -13,6 +13,8 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
@@ -53,7 +55,7 @@ func TestCleanupResourcesJobCtlPrioritizesContextTerminationOverOpaqueWorkflowTa
 			err := ctl.Run(gateCtx)
 			require.Error(t, err)
 			require.ErrorIs(t, err, tt.contextErr)
-			statusErr, ok := ExtractStatusError(err)
+			statusErr, ok := jobinfo.ExtractStatusError(err)
 			require.True(t, ok)
 			require.Equal(t, tt.wantStatus, statusErr.Status)
 			require.Equal(t, tt.wantStatus, job.Status)
@@ -101,7 +103,7 @@ func TestCleanupResourcesJobCtlDoesNotStartWhenCleanupTerminalizesDuringStart(t 
 	skipCleanup, err := ctl.markVersionUpdateCleanupRunning(context.Background())
 	require.Error(t, err)
 	require.False(t, skipCleanup)
-	statusErr, ok := ExtractStatusError(err)
+	statusErr, ok := jobinfo.ExtractStatusError(err)
 	require.True(t, ok)
 	require.Equal(t, config.StatusFailed, statusErr.Status)
 	require.True(t, ctl.skipSaveInfo)
@@ -151,7 +153,7 @@ func TestCleanupResourcesJobCtlValidatesInputs(t *testing.T) {
 	require.Nil(t, ctl)
 
 	task := &model.JobTask{JobType: string(config.JobCleanupResources), JobInfo: "invalid"}
-	ctl = NewCleanupResourcesJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: &noopStore{}, Ack: nil})
+	ctl = NewCleanupResourcesJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: &jobtest.NoopStore{}, Ack: nil})
 	require.NotNil(t, ctl)
 	require.Error(t, ctl.Run(context.Background()))
 	require.Equal(t, config.StatusFailed, task.Status)

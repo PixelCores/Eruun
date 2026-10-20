@@ -7,16 +7,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/ptr"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 )
 
 type checkpointAckQueue struct {
@@ -35,7 +37,7 @@ func (q *checkpointAckQueue) Ack(_ context.Context, _ string, ids ...string) err
 	q.acked <- ids[0]
 	return nil
 }
-func runDelayedScheduleUntilAck(t *testing.T, d *DelayDispatcher, p *DelayJobPayload) *checkpointAckQueue {
+func runDelayedScheduleUntilAck(t *testing.T, d *DelayDispatcher, p *jobinfo.DelayJobPayload) *checkpointAckQueue {
 	t.Helper()
 	q, ok := d.queue.(*checkpointAckQueue)
 	if !ok {

@@ -11,6 +11,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
@@ -58,15 +59,15 @@ func (b *deployNamespacedResourceJobBase) cleanCreated(ctx context.Context, kind
 }
 
 func (b *deployNamespacedResourceJobBase) SaveInfo(ctx context.Context) error {
-	return saveJobInfo(ctx, b.store, b.job)
+	return jobinfo.SaveJobInfo(ctx, b.store, b.job)
 }
 
-func (b *deployNamespacedResourceJobBase) runWithStatus(ctx context.Context, runFn runJobFunc, logMsg string) error {
-	return runJobWithStatus(ctx, b.job, b.ack, runFn, logMsg)
+func (b *deployNamespacedResourceJobBase) runWithStatus(ctx context.Context, runFn jobinfo.RunJobFunc, logMsg string) error {
+	return jobinfo.RunJobWithStatus(ctx, b.job, b.ack, runFn, logMsg)
 }
 
-func (b *deployNamespacedResourceJobBase) runWithWait(ctx context.Context, runFn runJobFunc, waitFn waitJobFunc, runLogMsg, waitLogMsg string) error {
-	return runJobWithWait(ctx, b.job, b.ack, runFn, waitFn, runLogMsg, waitLogMsg)
+func (b *deployNamespacedResourceJobBase) runWithWait(ctx context.Context, runFn jobinfo.RunJobFunc, waitFn jobinfo.WaitJobFunc, runLogMsg, waitLogMsg string) error {
+	return jobinfo.RunJobWithWait(ctx, b.job, b.ack, runFn, waitFn, runLogMsg, waitLogMsg)
 }
 
 func (b *deployNamespacedResourceJobBase) cleanCreatedBatchJobs(ctx context.Context, successSuffix string) {

@@ -1,4 +1,4 @@
-package job
+package jobinfo
 
 import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"

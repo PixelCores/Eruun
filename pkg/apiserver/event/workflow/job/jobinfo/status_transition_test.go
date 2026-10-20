@@ -1,4 +1,4 @@
-package job
+package jobinfo
 
 import (
 	"context"
@@ -15,7 +15,7 @@ func TestRunJobWithWaitCompletes(t *testing.T) {
 	job := &model.JobTask{}
 	ackCount := 0
 
-	err := runJobWithWait(context.Background(), job, func() { ackCount++ }, func(context.Context) error {
+	err := RunJobWithWait(context.Background(), job, func() { ackCount++ }, func(context.Context) error {
 		return nil
 	}, func(context.Context) error {
 		return nil
@@ -30,7 +30,7 @@ func TestRunJobWithWaitCompletes(t *testing.T) {
 func TestRunJobWithWaitPreservesSkippedStatus(t *testing.T) {
 	job := &model.JobTask{}
 
-	err := runJobWithWait(context.Background(), job, nil, func(context.Context) error {
+	err := RunJobWithWait(context.Background(), job, nil, func(context.Context) error {
 		job.Status = config.StatusSkipped
 		return nil
 	}, func(context.Context) error {
@@ -47,7 +47,7 @@ func TestRunJobWithWaitUsesStatusErrorFromWait(t *testing.T) {
 	job := &model.JobTask{}
 	expected := NewStatusError(config.StatusTimeout, errors.New("wait timeout"))
 
-	err := runJobWithWait(context.Background(), job, nil, func(context.Context) error {
+	err := RunJobWithWait(context.Background(), job, nil, func(context.Context) error {
 		return nil
 	}, func(context.Context) error {
 		return expected
@@ -62,7 +62,7 @@ func TestApplyJobErrorUsesExplicitMessageAndStatusError(t *testing.T) {
 	job := &model.JobTask{}
 	err := NewStatusError(config.StatusCancelled, errors.New("context canceled"))
 
-	applyJobError(job, err, "cancelled by user")
+	ApplyJobError(job, err, "cancelled by user")
 
 	require.Equal(t, config.StatusCancelled, job.Status)
 	require.Equal(t, "cancelled by user", job.Error)
@@ -71,7 +71,7 @@ func TestApplyJobErrorUsesExplicitMessageAndStatusError(t *testing.T) {
 func TestApplyJobErrorDefaultsPlainErrorsToFailed(t *testing.T) {
 	job := &model.JobTask{}
 
-	applyJobError(job, errors.New("boom"), "")
+	ApplyJobError(job, errors.New("boom"), "")
 
 	require.Equal(t, config.StatusFailed, job.Status)
 	require.Equal(t, "boom", job.Error)

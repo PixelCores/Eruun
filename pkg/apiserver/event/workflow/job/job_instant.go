@@ -13,6 +13,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
@@ -76,7 +77,7 @@ func (c *InstantJobCtl) Clean(ctx context.Context) {
 }
 
 func (c *InstantJobCtl) SaveInfo(ctx context.Context) error {
-	if err := saveJobInfo(ctx, c.store, c.job); err != nil {
+	if err := jobinfo.SaveJobInfo(ctx, c.store, c.job); err != nil {
 		return err
 	}
 	// Retry recovery needs the exact live UID until its terminal result,
@@ -94,12 +95,12 @@ func (c *InstantJobCtl) Run(ctx context.Context) error {
 	c.job.Status = config.StatusRunning
 	c.job.Error = ""
 	c.ack()
-	if desired, ok := optionalJobInfo[*batchv1.Job](c.job); ok && (desired.Annotations[workflowconfig.AnnotationJobRetryPolicy] != "" || c.job.InternalInfo != "") {
+	if desired, ok := jobinfo.OptionalJobInfo[*batchv1.Job](c.job); ok && (desired.Annotations[workflowconfig.AnnotationJobRetryPolicy] != "" || c.job.InternalInfo != "") {
 		if desired.Namespace == "" {
 			desired.Namespace = c.namespace
 		}
 		stampJobExecutionIdentity(c.job, desired)
-		policy, err := retryPolicyFromJob(desired)
+		policy, err := jobinfo.RetryPolicyFromJob(desired)
 		if err == nil {
 			err = c.runWithRetryPolicy(ctx, desired, policy)
 		}
@@ -124,17 +125,17 @@ func (c *InstantJobCtl) Run(ctx context.Context) error {
 		}
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
-				err = NewStatusError(config.StatusCancelled, err)
+				err = jobinfo.NewStatusError(config.StatusCancelled, err)
 			} else if errors.Is(err, context.DeadlineExceeded) {
-				err = NewStatusError(config.StatusTimeout, err)
+				err = jobinfo.NewStatusError(config.StatusTimeout, err)
 			}
-			applyJobError(c.job, err, "")
+			jobinfo.ApplyJobError(c.job, err, "")
 		}
 		return err
 	}
 
 	if err := c.run(ctx); err != nil {
-		applyJobError(c.job, err, "")
+		jobinfo.ApplyJobError(c.job, err, "")
 		return err
 	}
 	if c.job.Status == config.StatusSkipped {
@@ -147,7 +148,7 @@ func (c *InstantJobCtl) Run(ctx context.Context) error {
 	}
 	status, message, err := c.waitBatchJob(ctx)
 	if err != nil {
-		applyJobError(c.job, err, message)
+		jobinfo.ApplyJobError(c.job, err, message)
 		return err
 	}
 	if status != "" {
@@ -163,7 +164,7 @@ func (c *InstantJobCtl) run(ctx context.Context) error {
 	if c.client == nil {
 		return fmt.Errorf("client is nil")
 	}
-	jobObj, err := batchJobFromJobInfo(c.job)
+	jobObj, err := jobinfo.BatchJobFromJobInfo(c.job)
 	if err != nil {
 		return err
 	}
@@ -178,7 +179,7 @@ func (c *InstantJobCtl) run(ctx context.Context) error {
 	now := time.Now().Unix()
 	if hasStart && startTime > now {
 		jobType := jobTypeForTask(c.job, config.JobDeployInstant)
-		payload := &DelayJobPayload{
+		payload := &jobinfo.DelayJobPayload{
 			ExecuteAt:      startTime,
 			Namespace:      namespace,
 			JobType:        string(jobType),
@@ -187,13 +188,13 @@ func (c *InstantJobCtl) run(ctx context.Context) error {
 			ExecutionKey:   c.job.ExecutionKey,
 			RunGeneration:  c.job.RunGeneration,
 			RunToken:       c.job.RunToken,
-			ServiceName:    resolveJobServiceName(c.job),
+			ServiceName:    jobinfo.ResolveJobServiceName(c.job),
 			TimeoutSeconds: c.job.Timeout,
 		}
-		if err := persistDelayJobCheckpoint(ctx, c.store, c.job, payload); err != nil {
+		if err := jobinfo.PersistDelayJobCheckpoint(ctx, c.store, c.job, payload); err != nil {
 			return err
 		}
-		if _, err := EnqueueDelayJob(ctx, c.delayQueue, payload); err != nil {
+		if _, err := jobinfo.EnqueueDelayJob(ctx, c.delayQueue, payload); err != nil {
 			klog.ErrorS(err, "delay queue notification failed; database recovery remains active", "taskID", c.job.TaskID, "executionKey", c.job.ExecutionKey)
 		}
 		c.ack()
@@ -239,7 +240,7 @@ func (c *InstantJobCtl) evaluationSourceReady(ctx context.Context) (bool, error)
 	if c.store == nil || c.job.WorkspaceID == "" || c.job.TaskID == "" {
 		return false, fmt.Errorf("evaluation result collection identity is incomplete")
 	}
-	record, err := findExistingJobInfo(ctx, c.store, c.job)
+	record, err := jobinfo.FindExistingJobInfo(ctx, c.store, c.job)
 	if err != nil {
 		return false, err
 	}

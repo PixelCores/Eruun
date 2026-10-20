@@ -3,19 +3,18 @@ package job
 import (
 	"context"
 	"encoding/json"
-
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
 type cleanupComponentStore struct {
-	noopStore
+	jobtest.NoopStore
 	component             *model.ApplicationComponent
 	workflowTask          *model.WorkflowQueue
 	beforeWorkflowTaskGet func()
@@ -39,7 +38,7 @@ func (c *cleanupMutableErrorContext) Err() error { return c.err }
 func (s *cleanupComponentStore) Get(ctx context.Context, entity datastore.Entity) error {
 	task, ok := entity.(*model.WorkflowQueue)
 	if !ok {
-		return s.noopStore.Get(ctx, entity)
+		return s.NoopStore.Get(ctx, entity)
 	}
 	if s.beforeWorkflowTaskGet != nil {
 		hook := s.beforeWorkflowTaskGet

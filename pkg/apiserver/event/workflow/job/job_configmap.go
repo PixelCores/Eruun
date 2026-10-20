@@ -12,6 +12,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
 
@@ -49,7 +50,7 @@ func (c *DeployConfigMapJobCtl) run(ctx context.Context) error {
 		return fmt.Errorf("client is nil")
 	}
 
-	cm, err := configMapFromJobInfo(ctx, c.job, c.urlSecurityPolicy)
+	cm, err := jobinfo.ConfigMapFromJobInfo(ctx, c.job, c.urlSecurityPolicy)
 	if err != nil {
 		return err
 	}
@@ -127,11 +128,11 @@ func (c *DeployConfigMapJobCtl) deployConfigMap(ctx context.Context, cm *corev1.
 
 // GenerateConfigMap Generate a simplified ConfigMap input based on components and attributes.
 // First, read the external file URL from Conf["config.url"]; otherwise, directly use the content in Conf as the content of ConfigMap.
-func GenerateConfigMap(component *model.ApplicationComponent, properties *model.Properties) *ConfigMapInput {
+func GenerateConfigMap(component *model.ApplicationComponent, properties *model.Properties) *jobinfo.ConfigMapInput {
 	name, namespace := generatedResourceIdentity(component)
 
 	if url, fileName, ok := externalConfigFileInput(properties, true); ok {
-		return &ConfigMapInput{
+		return &jobinfo.ConfigMapInput{
 			Name:      name,
 			Namespace: namespace,
 			URL:       url,
@@ -146,7 +147,7 @@ func GenerateConfigMap(component *model.ApplicationComponent, properties *model.
 		data = properties.Conf
 	}
 
-	return &ConfigMapInput{
+	return &jobinfo.ConfigMapInput{
 		Name:      name,
 		Namespace: namespace,
 		Labels:    labels,

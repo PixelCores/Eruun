@@ -20,6 +20,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 )
 
 type statefulSetRetentionTarget struct {
@@ -57,7 +58,7 @@ func newRequiredStatefulSetSafetyRefreshError(err error) *requiredStatefulSetSaf
 // convergence or before the final StatefulSet delete.
 func (c *CleanupResourcesJobCtl) ensureRequiredStatefulSetSafetyCurrent(ctx context.Context) error {
 	if c == nil || c.job == nil || c.job.Status != config.StatusRunning ||
-		!versionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo) {
+		!jobinfo.VersionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo) {
 		return nil
 	}
 	target := c.requiredStatefulSetPodTarget
@@ -76,7 +77,7 @@ func (c *CleanupResourcesJobCtl) ensureRequiredStatefulSetSafetyCurrent(ctx cont
 		return fmt.Errorf("required StatefulSet %s safety checkpoint records UID %q for a missing StatefulSet", cleanupResourceDisplayName(target.ref), target.statefulSetUID)
 	}
 
-	component, err := cleanupComponentFromJobInfo(c.job)
+	component, err := jobinfo.CleanupComponentFromJobInfo(c.job)
 	if err != nil {
 		return fmt.Errorf("load required StatefulSet cleanup component while refreshing safety: %w", err)
 	}
@@ -111,14 +112,14 @@ func (c *CleanupResourcesJobCtl) ensureRequiredStatefulSetSafetyCurrent(ctx cont
 }
 
 func (c *CleanupResourcesJobCtl) prepareRequiredStatefulSetDeletion(ctx context.Context, component *model.ApplicationComponent) error {
-	if c == nil || c.job == nil || !versionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo) {
+	if c == nil || c.job == nil || !jobinfo.VersionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo) {
 		return nil
 	}
 	ref, err := requiredStatefulSetCleanupRef(component)
 	if err != nil {
 		return err
 	}
-	templates := versionUpdateCleanupStatefulSetPVCTemplatesToDelete(c.job.InternalInfo)
+	templates := jobinfo.VersionUpdateCleanupStatefulSetPVCTemplatesToDelete(c.job.InternalInfo)
 	generated, err := GenerateStoreService(component)
 	if err != nil {
 		return err
@@ -241,9 +242,9 @@ func (c *CleanupResourcesJobCtl) ensureStatefulSetPVCRetention(ctx context.Conte
 	})
 	if wait.Interrupted(err) && !errors.Is(err, context.Canceled) {
 		if lastRetryableErr != nil {
-			return NewStatusError(config.StatusTimeout, fmt.Errorf("wait for StatefulSet %s PVC retention convergence: %w", cleanupResourceDisplayName(ref), lastRetryableErr))
+			return jobinfo.NewStatusError(config.StatusTimeout, fmt.Errorf("wait for StatefulSet %s PVC retention convergence: %w", cleanupResourceDisplayName(ref), lastRetryableErr))
 		}
-		return NewStatusError(config.StatusTimeout, fmt.Errorf("wait for StatefulSet %s PVC retention convergence timeout", cleanupResourceDisplayName(ref)))
+		return jobinfo.NewStatusError(config.StatusTimeout, fmt.Errorf("wait for StatefulSet %s PVC retention convergence timeout", cleanupResourceDisplayName(ref)))
 	}
 	return err
 }
@@ -278,7 +279,7 @@ func (c *CleanupResourcesJobCtl) ensureStatefulSetPVCOwnerReferencesRemoved(
 	}
 	var plannedDeletionTemplates []string
 	if c.job != nil {
-		plannedDeletionTemplates = versionUpdateCleanupStatefulSetPVCTemplatesToDelete(c.job.InternalInfo)
+		plannedDeletionTemplates = jobinfo.VersionUpdateCleanupStatefulSetPVCTemplatesToDelete(c.job.InternalInfo)
 	}
 	updatedAny := false
 	for i := range list.Items {

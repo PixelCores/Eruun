@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"testing"
 	"time"
 
@@ -16,7 +15,8 @@ import (
 	wfcloudjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob"
 	wfaliyun "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob/aliyun"
 	wfcloudcontract "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob/contracts"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 )
 
 func resetCloudProvidersForTest() {
@@ -33,16 +33,16 @@ type fakeCloudProvider struct {
 	ctx        context.Context
 	runtime    CloudRuntime
 	runtimeErr error
-	req        *CloudJobRequest
+	req        *jobinfo.CloudJobRequest
 	registry   *fakeCloudActionRegistry
-	newRuntime func(context.Context, *CloudJobRequest) (CloudRuntime, error)
+	newRuntime func(context.Context, *jobinfo.CloudJobRequest) (CloudRuntime, error)
 }
 
 func (f *fakeCloudProvider) Name() string {
 	return f.name
 }
 
-func (f *fakeCloudProvider) NewRuntime(ctx context.Context, req *CloudJobRequest) (CloudRuntime, error) {
+func (f *fakeCloudProvider) NewRuntime(ctx context.Context, req *jobinfo.CloudJobRequest) (CloudRuntime, error) {
 	f.ctx = ctx
 	f.req = req
 	if f.newRuntime != nil {
@@ -61,10 +61,10 @@ func TestCloudJobCtlRunInjectsDataStoreIntoProviderContext(t *testing.T) {
 	resetCloudProvidersForTest()
 	defer restoreBuiltinCloudProvidersForTest()
 
-	store := &noopStore{}
+	store := &jobtest.NoopStore{}
 	provider := &fakeCloudProvider{
 		name:    "mock",
-		runtime: &fakeCloudRuntime{result: &CloudJobResult{Message: "ok"}},
+		runtime: &fakeCloudRuntime{result: &jobinfo.CloudJobResult{Message: "ok"}},
 		registry: &fakeCloudActionRegistry{
 			actions: map[string]CloudAction{
 				"create": newForwardCloudAction("create"),
@@ -76,12 +76,12 @@ func TestCloudJobCtlRunInjectsDataStoreIntoProviderContext(t *testing.T) {
 	task := &model.JobTask{
 		Name:    "cloud-store-context",
 		JobType: string(config.JobDeployCloud),
-		JobInfo: &CloudJobInfo{
+		JobInfo: &jobinfo.CloudJobInfo{
 			Provider: "mock",
 			Action:   "create",
 		},
 	}
-	ownedStore := withJobTestOwner(store, task)
+	ownedStore := jobtest.WithJobTestOwner(store, task)
 	ctl := NewCloudJobCtl(task, ownedStore)
 	require.NotNil(t, ctl)
 
@@ -138,149 +138,28 @@ func TestRegisterBuiltinCloudProvidersRegistersAliyunWhenMissing(t *testing.T) {
 }
 
 type fakeCloudRuntime struct {
-	result *CloudJobResult
+	result *jobinfo.CloudJobResult
 	err    error
 	action string
 	params map[string]interface{}
 }
 
-type cloudJobCheckpointStore struct {
-	records map[int]*model.JobInfo
-	nextID  int
-}
-
-func newCloudJobCheckpointStore() *cloudJobCheckpointStore {
-	return &cloudJobCheckpointStore{
-		records: map[int]*model.JobInfo{},
-	}
-}
-
-func cloneJobInfo(info *model.JobInfo) *model.JobInfo {
-	if info == nil {
-		return nil
-	}
-	clone := *info
-	return &clone
-}
-
-func matchesInFilters(opts *datastore.ListOptions, key, value string) bool {
-	if opts == nil {
-		return true
-	}
-	for _, item := range opts.FilterOptions.In {
-		if item.Key != key {
-			continue
-		}
-		for _, candidate := range item.Values {
-			if candidate == value {
-				return true
-			}
-		}
-		return false
-	}
-	return true
-}
-
-func (s *cloudJobCheckpointStore) Add(_ context.Context, entity datastore.Entity) error {
-	info, ok := entity.(*model.JobInfo)
-	if !ok {
-		return datastore.ErrEntityInvalid
-	}
-	s.nextID++
-	clone := cloneJobInfo(info)
-	clone.ID = s.nextID
-	if clone.CreateTime.IsZero() {
-		clone.CreateTime = time.Now()
-	}
-	s.records[clone.ID] = clone
-	return nil
-}
-
-func (s *cloudJobCheckpointStore) BatchAdd(context.Context, []datastore.Entity) error { return nil }
-
-func (s *cloudJobCheckpointStore) Put(_ context.Context, entity datastore.Entity) error {
-	info, ok := entity.(*model.JobInfo)
-	if !ok {
-		return datastore.ErrEntityInvalid
-	}
-	clone := cloneJobInfo(info)
-	if clone.ID == 0 {
-		s.nextID++
-		clone.ID = s.nextID
-	}
-	if clone.CreateTime.IsZero() {
-		clone.CreateTime = time.Now()
-	}
-	clone.UpdateTime = time.Now()
-	s.records[clone.ID] = clone
-	return nil
-}
-
-func (s *cloudJobCheckpointStore) Delete(context.Context, datastore.Entity) error { return nil }
-func (s *cloudJobCheckpointStore) DeleteByFilter(context.Context, datastore.Entity, *datastore.FilterOptions) error {
-	return nil
-}
-func (s *cloudJobCheckpointStore) Get(context.Context, datastore.Entity) error { return nil }
-
-func (s *cloudJobCheckpointStore) List(_ context.Context, query datastore.Entity, opts *datastore.ListOptions) ([]datastore.Entity, error) {
-	jobInfo, ok := query.(*model.JobInfo)
-	if !ok {
-		return nil, datastore.ErrEntityInvalid
-	}
-	out := make([]datastore.Entity, 0, len(s.records))
-	for _, item := range s.records {
-		if jobInfo.TaskID != "" && item.TaskID != jobInfo.TaskID {
-			continue
-		}
-		if !matchesInFilters(opts, "type", item.Type) {
-			continue
-		}
-		if !matchesInFilters(opts, "service_name", item.ServiceName) {
-			continue
-		}
-		out = append(out, cloneJobInfo(item))
-	}
-	sort.Slice(out, func(i, j int) bool {
-		left := out[i].(*model.JobInfo)
-		right := out[j].(*model.JobInfo)
-		return left.CreateTime.After(right.CreateTime)
-	})
-	if opts != nil && opts.PageSize > 0 && len(out) > opts.PageSize {
-		out = out[:opts.PageSize]
-	}
-	return out, nil
-}
-
-func (s *cloudJobCheckpointStore) Count(context.Context, datastore.Entity, *datastore.FilterOptions) (int64, error) {
-	return int64(len(s.records)), nil
-}
-
-func (s *cloudJobCheckpointStore) IsExist(context.Context, datastore.Entity) (bool, error) {
-	return false, nil
-}
-func (s *cloudJobCheckpointStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {
-	return false, nil
-}
-func (s *cloudJobCheckpointStore) CompareAndSwap(context.Context, datastore.Entity, string, interface{}, map[string]interface{}) (bool, error) {
-	return false, nil
-}
-
-func findStoredJobInfoByExecutionKey(t *testing.T, store *cloudJobCheckpointStore, executionKey string) *model.JobInfo {
+func findStoredJobInfoByExecutionKey(t *testing.T, store *jobtest.CloudJobCheckpointStore, executionKey string) *model.JobInfo {
 	t.Helper()
-	for _, item := range store.records {
-		record := parseCloudCheckpointFromJobInfo(item)
+	for _, item := range store.Records() {
+		record := jobinfo.ParseCloudCheckpointFromJobInfo(item)
 		if record == nil {
 			continue
 		}
-		if cloudJobExecutionKeyFromRecord(record) == executionKey {
-			return cloneJobInfo(item)
+		if jobinfo.CloudJobExecutionKey(&jobinfo.CloudJobInfo{ExecutionKey: record.ExecutionKey}) == executionKey {
+			return jobtest.CloneJobInfo(item)
 		}
 	}
 	t.Fatalf("job info with execution key %q not found", executionKey)
 	return nil
 }
 
-func (f *fakeCloudRuntime) Call(_ context.Context, action string, params map[string]interface{}) (*CloudJobResult, error) {
+func (f *fakeCloudRuntime) Call(_ context.Context, action string, params map[string]interface{}) (*jobinfo.CloudJobResult, error) {
 	f.action = action
 	f.params = params
 	return f.result, f.err
@@ -289,14 +168,14 @@ func (f *fakeCloudRuntime) Call(_ context.Context, action string, params map[str
 type fakeCloudAction struct {
 	validateErr error
 	runErr      error
-	run         func(ctx context.Context, runtime CloudRuntime, req *CloudJobRequest, state map[string]interface{}) (*CloudActionProgress, error)
+	run         func(ctx context.Context, runtime CloudRuntime, req *jobinfo.CloudJobRequest, state map[string]interface{}) (*CloudActionProgress, error)
 }
 
-func (f *fakeCloudAction) Validate(_ *CloudJobRequest) error {
+func (f *fakeCloudAction) Validate(_ *jobinfo.CloudJobRequest) error {
 	return f.validateErr
 }
 
-func (f *fakeCloudAction) Run(ctx context.Context, runtime CloudRuntime, req *CloudJobRequest, state map[string]interface{}) (*CloudActionProgress, error) {
+func (f *fakeCloudAction) Run(ctx context.Context, runtime CloudRuntime, req *jobinfo.CloudJobRequest, state map[string]interface{}) (*CloudActionProgress, error) {
 	if f.runErr != nil {
 		return nil, f.runErr
 	}
@@ -309,7 +188,7 @@ func (f *fakeCloudAction) Run(ctx context.Context, runtime CloudRuntime, req *Cl
 func newForwardCloudAction(action string) CloudAction {
 	return &fakeCloudAction{
 		validateErr: nil,
-		run: func(ctx context.Context, runtime CloudRuntime, req *CloudJobRequest, _ map[string]interface{}) (*CloudActionProgress, error) {
+		run: func(ctx context.Context, runtime CloudRuntime, req *jobinfo.CloudJobRequest, _ map[string]interface{}) (*CloudActionProgress, error) {
 			if runtime == nil {
 				return nil, fmt.Errorf("cloud runtime is nil")
 			}
@@ -335,12 +214,12 @@ func TestCloudJobCtlRunProviderNotRegistered(t *testing.T) {
 	task := &model.JobTask{
 		Name:    "cloud-create",
 		JobType: string(config.JobDeployCloud),
-		JobInfo: &CloudJobInfo{
+		JobInfo: &jobinfo.CloudJobInfo{
 			Provider: "missing",
 			Action:   "create",
 		},
 	}
-	ctl := NewCloudJobCtl(task, withJobTestOwner(&noopStore{}, task))
+	ctl := NewCloudJobCtl(task, jobtest.WithJobTestOwner(&jobtest.NoopStore{}, task))
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -348,7 +227,7 @@ func TestCloudJobCtlRunProviderNotRegistered(t *testing.T) {
 	require.ErrorIs(t, err, errCloudProviderNotFound)
 	require.NotEmpty(t, task.Info)
 
-	var record CloudJobRecord
+	var record jobinfo.CloudJobRecord
 	require.NoError(t, json.Unmarshal([]byte(task.InternalInfo), &record))
 	require.Equal(t, config.StatusFailed, record.Status)
 	require.Equal(t, "missing", record.Provider)
@@ -361,12 +240,12 @@ func TestCloudJobCtlRunAliyunUnknownActionReturnsNotRegistered(t *testing.T) {
 	task := &model.JobTask{
 		Name:    "cloud-aliyun",
 		JobType: string(config.JobDeployCloud),
-		JobInfo: &CloudJobInfo{
+		JobInfo: &jobinfo.CloudJobInfo{
 			Provider: "aliyun",
 			Action:   "create-ecs",
 		},
 	}
-	ctl := NewCloudJobCtl(task, withJobTestOwner(&noopStore{}, task))
+	ctl := NewCloudJobCtl(task, jobtest.WithJobTestOwner(&jobtest.NoopStore{}, task))
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -375,7 +254,7 @@ func TestCloudJobCtlRunAliyunUnknownActionReturnsNotRegistered(t *testing.T) {
 	require.Contains(t, err.Error(), "aliyun/create-ecs")
 	require.NotEmpty(t, task.Info)
 
-	var record CloudJobRecord
+	var record jobinfo.CloudJobRecord
 	require.NoError(t, json.Unmarshal([]byte(task.InternalInfo), &record))
 	require.Equal(t, config.StatusFailed, record.Status)
 	require.Equal(t, "aliyun", record.Provider)
@@ -387,7 +266,7 @@ func TestCloudJobCtlRunWithRegisteredProviderSuccess(t *testing.T) {
 	defer restoreBuiltinCloudProvidersForTest()
 
 	runtime := &fakeCloudRuntime{
-		result: &CloudJobResult{
+		result: &jobinfo.CloudJobResult{
 			RequestID: "req-1",
 			Message:   "ok",
 			Output: map[string]interface{}{
@@ -414,7 +293,7 @@ func TestCloudJobCtlRunWithRegisteredProviderSuccess(t *testing.T) {
 		AppID:      "app-1",
 		TaskID:     "task-1",
 		JobType:    string(config.JobDeployCloud),
-		JobInfo: &CloudJobInfo{
+		JobInfo: &jobinfo.CloudJobInfo{
 			Provider: "mock",
 			Action:   "create",
 			Params: map[string]interface{}{
@@ -422,7 +301,7 @@ func TestCloudJobCtlRunWithRegisteredProviderSuccess(t *testing.T) {
 			},
 		},
 	}
-	ctl := NewCloudJobCtl(task, withJobTestOwner(&noopStore{}, task))
+	ctl := NewCloudJobCtl(task, jobtest.WithJobTestOwner(&jobtest.NoopStore{}, task))
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -436,7 +315,7 @@ func TestCloudJobCtlRunWithRegisteredProviderSuccess(t *testing.T) {
 	require.Equal(t, "create", runtime.action)
 	require.Equal(t, "cn-hangzhou-a", runtime.params["zone"])
 
-	var record CloudJobRecord
+	var record jobinfo.CloudJobRecord
 	require.NoError(t, json.Unmarshal([]byte(task.InternalInfo), &record))
 	require.Equal(t, config.StatusCompleted, record.Status)
 	require.NotNil(t, record.Result)
@@ -450,10 +329,10 @@ func TestCloudJobCtlRunKeepsRuntimeProviderSnapshotOutOfCheckpoints(t *testing.T
 	defer restoreBuiltinCloudProvidersForTest()
 
 	actionCalls := 0
-	store := newCloudJobCheckpointStore()
+	store := jobtest.NewCloudJobCheckpointStore()
 	provider := &fakeCloudProvider{
 		name: "mock",
-		newRuntime: func(_ context.Context, req *CloudJobRequest) (CloudRuntime, error) {
+		newRuntime: func(_ context.Context, req *jobinfo.CloudJobRequest) (CloudRuntime, error) {
 			req.RuntimeProviderSnapshot = map[string]string{
 				"endpoint": "nas.cn-hangzhou.aliyuncs.com",
 				"regionId": "cn-hangzhou",
@@ -464,9 +343,9 @@ func TestCloudJobCtlRunKeepsRuntimeProviderSnapshotOutOfCheckpoints(t *testing.T
 		registry: &fakeCloudActionRegistry{
 			actions: map[string]CloudAction{
 				"create": &fakeCloudAction{
-					run: func(_ context.Context, _ CloudRuntime, req *CloudJobRequest, _ map[string]interface{}) (*CloudActionProgress, error) {
-						require.NotEmpty(t, store.records)
-						for _, checkpoint := range store.records {
+					run: func(_ context.Context, _ CloudRuntime, req *jobinfo.CloudJobRequest, _ map[string]interface{}) (*CloudActionProgress, error) {
+						require.NotEmpty(t, store.Records())
+						for _, checkpoint := range store.Records() {
 							require.NotContains(t, checkpoint.InternalInfo, "runtime-only-secret")
 							require.NotContains(t, checkpoint.InternalInfo, "nas.cn-hangzhou.aliyuncs.com")
 						}
@@ -483,7 +362,7 @@ func TestCloudJobCtlRunKeepsRuntimeProviderSnapshotOutOfCheckpoints(t *testing.T
 						}
 						return &CloudActionProgress{
 							Done:   true,
-							Result: &CloudJobResult{Message: "done"},
+							Result: &jobinfo.CloudJobResult{Message: "done"},
 						}, nil
 					},
 				},
@@ -496,13 +375,13 @@ func TestCloudJobCtlRunKeepsRuntimeProviderSnapshotOutOfCheckpoints(t *testing.T
 		Name:      "cloud-public-safe",
 		Namespace: "default",
 		JobType:   string(config.JobDeployCloud),
-		JobInfo: &CloudJobInfo{
+		JobInfo: &jobinfo.CloudJobInfo{
 			Provider:     "mock",
 			Action:       "create",
 			ExecutionKey: "step:0/component:0",
 		},
 	}
-	ownedStore := withJobTestOwner(store, task)
+	ownedStore := jobtest.WithJobTestOwner(store, task)
 	ctl := NewCloudJobCtl(task, ownedStore)
 	require.NotNil(t, ctl)
 	ctl.waitFunc = func(context.Context, time.Duration) error { return nil }
@@ -519,7 +398,7 @@ func TestCloudJobCtlRunKeepsRuntimeProviderSnapshotOutOfCheckpoints(t *testing.T
 	require.NotContains(t, task.InternalInfo, "nas.cn-hangzhou.aliyuncs.com")
 	require.NotContains(t, task.InternalInfo, "runtime-only-secret")
 
-	var record CloudJobRecord
+	var record jobinfo.CloudJobRecord
 	require.NoError(t, json.Unmarshal([]byte(task.InternalInfo), &record))
 	require.NotNil(t, record.Request)
 	require.Nil(t, record.Request.RuntimeProviderSnapshot)
@@ -538,21 +417,21 @@ func TestCloudJobCheckpointPreservesLegacyRequestParamsAndDistinctExecutionKeys(
 		t.Run(tc.name, func(t *testing.T) {
 			// Old top-level params are deliberately different from both the
 			// current component and the persisted request. They never own recovery.
-			checkpoint := parseCloudJobRecord(`{"provider":"mock","action":"create","params":{"zone":"unused-top-level-zone"},"executionKey":"component-step","state":{"step":"waiting"}` + tc.request + `}`)
+			checkpoint := jobinfo.ParseCloudJobRecord(`{"provider":"mock","action":"create","params":{"zone":"unused-top-level-zone"},"executionKey":"component-step","state":{"step":"waiting"}` + tc.request + `}`)
 			require.NotNil(t, checkpoint)
-			info := &CloudJobInfo{Provider: "mock", Action: "create", ExecutionKey: "component-step", Params: map[string]interface{}{"zone": "current-zone"}}
+			info := &jobinfo.CloudJobInfo{Provider: "mock", Action: "create", ExecutionKey: "component-step", Params: map[string]interface{}{"zone": "current-zone"}}
 			request := buildCloudJobRequest(&model.JobTask{ExecutionKey: "current-job-execution"}, info, checkpoint)
 			require.Equal(t, tc.wantZone, request.Params["zone"])
 			require.True(t, request.ResumeFromPersistedState)
 			require.Nil(t, request.RuntimeProviderSnapshot)
 			require.Equal(t, "current-job-execution", request.ExecutionKey)
-			require.Equal(t, "component-step", cloudJobExecutionKeyFromRecord(checkpoint))
+			require.Equal(t, "component-step", jobinfo.CloudJobExecutionKey(&jobinfo.CloudJobInfo{ExecutionKey: checkpoint.ExecutionKey}))
 
 			raw := recordCloudJobResult(info, request, nil, checkpoint.State, config.StatusRunning, tc.checkpointErr)
 			var encoded map[string]json.RawMessage
 			require.NoError(t, json.Unmarshal([]byte(raw), &encoded))
 			require.NotContains(t, encoded, "params")
-			record := parseCloudJobRecord(raw)
+			record := jobinfo.ParseCloudJobRecord(raw)
 			require.NotNil(t, record)
 			require.Equal(t, tc.wantZone, record.Request.Params["zone"])
 			require.Equal(t, "component-step", record.ExecutionKey)
@@ -584,19 +463,19 @@ func TestCloudJobCtlRunProviderReturnsError(t *testing.T) {
 	task := &model.JobTask{
 		Name:    "cloud-broken",
 		JobType: string(config.JobDeployCloud),
-		JobInfo: &CloudJobInfo{
+		JobInfo: &jobinfo.CloudJobInfo{
 			Provider: "broken",
 			Action:   "create",
 		},
 	}
-	ctl := NewCloudJobCtl(task, withJobTestOwner(&noopStore{}, task))
+	ctl := NewCloudJobCtl(task, jobtest.WithJobTestOwner(&jobtest.NoopStore{}, task))
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
 	require.Error(t, err)
 	require.ErrorIs(t, err, expectedErr)
 
-	var record CloudJobRecord
+	var record jobinfo.CloudJobRecord
 	require.NoError(t, json.Unmarshal([]byte(task.InternalInfo), &record))
 	require.Equal(t, config.StatusFailed, record.Status)
 	require.Equal(t, "provider failed", record.Error)
@@ -623,19 +502,19 @@ func TestCloudJobCtlRunSDKReturnsError(t *testing.T) {
 	task := &model.JobTask{
 		Name:    "cloud-runtime-error",
 		JobType: string(config.JobDeployCloud),
-		JobInfo: &CloudJobInfo{
+		JobInfo: &jobinfo.CloudJobInfo{
 			Provider: "mock",
 			Action:   "create",
 		},
 	}
-	ctl := NewCloudJobCtl(task, withJobTestOwner(&noopStore{}, task))
+	ctl := NewCloudJobCtl(task, jobtest.WithJobTestOwner(&jobtest.NoopStore{}, task))
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
 	require.Error(t, err)
 	require.ErrorIs(t, err, expectedErr)
 
-	var record CloudJobRecord
+	var record jobinfo.CloudJobRecord
 	require.NoError(t, json.Unmarshal([]byte(task.InternalInfo), &record))
 	require.Equal(t, config.StatusFailed, record.Status)
 	require.Equal(t, "runtime call failed", record.Error)
@@ -655,19 +534,19 @@ func TestCloudJobCtlRunActionNotRegistered(t *testing.T) {
 	task := &model.JobTask{
 		Name:    "cloud-no-action",
 		JobType: string(config.JobDeployCloud),
-		JobInfo: &CloudJobInfo{
+		JobInfo: &jobinfo.CloudJobInfo{
 			Provider: "mock",
 			Action:   "create",
 		},
 	}
-	ctl := NewCloudJobCtl(task, withJobTestOwner(&noopStore{}, task))
+	ctl := NewCloudJobCtl(task, jobtest.WithJobTestOwner(&jobtest.NoopStore{}, task))
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
 	require.Error(t, err)
 	require.ErrorIs(t, err, errCloudActionNotFound)
 
-	var record CloudJobRecord
+	var record jobinfo.CloudJobRecord
 	require.NoError(t, json.Unmarshal([]byte(task.InternalInfo), &record))
 	require.Equal(t, config.StatusFailed, record.Status)
 }
@@ -691,19 +570,19 @@ func TestCloudJobCtlRunActionValidateError(t *testing.T) {
 	task := &model.JobTask{
 		Name:    "cloud-invalid",
 		JobType: string(config.JobDeployCloud),
-		JobInfo: &CloudJobInfo{
+		JobInfo: &jobinfo.CloudJobInfo{
 			Provider: "mock",
 			Action:   "create",
 		},
 	}
-	ctl := NewCloudJobCtl(task, withJobTestOwner(&noopStore{}, task))
+	ctl := NewCloudJobCtl(task, jobtest.WithJobTestOwner(&jobtest.NoopStore{}, task))
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
 	require.Error(t, err)
 	require.ErrorIs(t, err, validateErr)
 
-	var record CloudJobRecord
+	var record jobinfo.CloudJobRecord
 	require.NoError(t, json.Unmarshal([]byte(task.InternalInfo), &record))
 	require.Equal(t, config.StatusFailed, record.Status)
 	require.Equal(t, "invalid params", record.Error)
@@ -715,7 +594,7 @@ func TestCloudJobCtlRunMultiStepAction(t *testing.T) {
 
 	runCount := 0
 	action := &fakeCloudAction{
-		run: func(_ context.Context, _ CloudRuntime, _ *CloudJobRequest, state map[string]interface{}) (*CloudActionProgress, error) {
+		run: func(_ context.Context, _ CloudRuntime, _ *jobinfo.CloudJobRequest, state map[string]interface{}) (*CloudActionProgress, error) {
 			runCount++
 			switch state["step"] {
 			case nil:
@@ -725,7 +604,7 @@ func TestCloudJobCtlRunMultiStepAction(t *testing.T) {
 					State: map[string]interface{}{
 						"step": "nas-ready",
 					},
-					Result: &CloudJobResult{Message: "nas ready"},
+					Result: &jobinfo.CloudJobResult{Message: "nas ready"},
 				}, nil
 			case "nas-ready":
 				return &CloudActionProgress{
@@ -734,7 +613,7 @@ func TestCloudJobCtlRunMultiStepAction(t *testing.T) {
 					State: map[string]interface{}{
 						"step": "ecs-ready",
 					},
-					Result: &CloudJobResult{Message: "ecs ready"},
+					Result: &jobinfo.CloudJobResult{Message: "ecs ready"},
 				}, nil
 			default:
 				return &CloudActionProgress{
@@ -742,7 +621,7 @@ func TestCloudJobCtlRunMultiStepAction(t *testing.T) {
 					State: map[string]interface{}{
 						"step": "completed",
 					},
-					Result: &CloudJobResult{
+					Result: &jobinfo.CloudJobResult{
 						RequestID: "req-final",
 						Message:   "done",
 						Output: map[string]interface{}{
@@ -768,12 +647,12 @@ func TestCloudJobCtlRunMultiStepAction(t *testing.T) {
 	task := &model.JobTask{
 		Name:    "cloud-multi-step",
 		JobType: string(config.JobDeployCloud),
-		JobInfo: &CloudJobInfo{
+		JobInfo: &jobinfo.CloudJobInfo{
 			Provider: "mock",
 			Action:   "provision",
 		},
 	}
-	ctl := NewCloudJobCtl(task, withJobTestOwner(&noopStore{}, task))
+	ctl := NewCloudJobCtl(task, jobtest.WithJobTestOwner(&jobtest.NoopStore{}, task))
 	require.NotNil(t, ctl)
 	ctl.waitFunc = func(_ context.Context, _ time.Duration) error { return nil }
 
@@ -781,7 +660,7 @@ func TestCloudJobCtlRunMultiStepAction(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 3, runCount)
 
-	var record CloudJobRecord
+	var record jobinfo.CloudJobRecord
 	require.NoError(t, json.Unmarshal([]byte(task.InternalInfo), &record))
 	require.Equal(t, config.StatusCompleted, record.Status)
 	require.Equal(t, "completed", record.State["step"])
@@ -794,7 +673,7 @@ func TestCloudJobCtlRunFailsToResumePersistedStateWithoutRuntimeProviderSnapshot
 	resetCloudProvidersForTest()
 	defer restoreBuiltinCloudProvidersForTest()
 
-	store := newCloudJobCheckpointStore()
+	store := jobtest.NewCloudJobCheckpointStore()
 	seedTask := &model.JobTask{
 		Name:       "cloud-restore",
 		Namespace:  "default",
@@ -804,34 +683,34 @@ func TestCloudJobCtlRunFailsToResumePersistedStateWithoutRuntimeProviderSnapshot
 		TaskID:     "task-restore",
 		JobType:    string(config.JobDeployCloud),
 		Status:     config.StatusRunning,
-		JobInfo: &CloudJobInfo{
+		JobInfo: &jobinfo.CloudJobInfo{
 			Provider: "mock",
 			Action:   "provision",
 			Params: map[string]interface{}{
 				"zone": "cn-hangzhou-a",
 			},
 		},
-		InternalInfo: recordCloudJobResult(&CloudJobInfo{
+		InternalInfo: recordCloudJobResult(&jobinfo.CloudJobInfo{
 			Provider: "mock",
 			Action:   "provision",
 			Params: map[string]interface{}{
 				"zone": "cn-hangzhou-a",
 			},
-		}, &CloudJobRequest{
+		}, &jobinfo.CloudJobRequest{
 			Provider: "mock",
 			Action:   "provision",
 			Params: map[string]interface{}{
 				"zone": "cn-hangzhou-a",
 			},
-		}, &CloudJobResult{Message: "checkpoint"}, map[string]interface{}{
+		}, &jobinfo.CloudJobResult{Message: "checkpoint"}, map[string]interface{}{
 			"step": "nas-ready",
 		}, config.StatusRunning, nil),
 	}
-	require.NoError(t, saveOrUpdateJobInfo(context.Background(), withJobTestOwner(store, seedTask), seedTask))
+	require.NoError(t, jobinfo.SaveOrUpdateJobInfo(context.Background(), jobtest.WithJobTestOwner(store, seedTask), seedTask))
 
 	provider := &fakeCloudProvider{
 		name: "mock",
-		newRuntime: func(_ context.Context, req *CloudJobRequest) (CloudRuntime, error) {
+		newRuntime: func(_ context.Context, req *jobinfo.CloudJobRequest) (CloudRuntime, error) {
 			require.True(t, req.ResumeFromPersistedState)
 			require.Equal(t, "cn-hangzhou-a", req.Params["zone"])
 			require.Nil(t, req.RuntimeProviderSnapshot)
@@ -853,7 +732,7 @@ func TestCloudJobCtlRunFailsToResumePersistedStateWithoutRuntimeProviderSnapshot
 		AppID:      "app-1",
 		TaskID:     "task-restore",
 		JobType:    string(config.JobDeployCloud),
-		JobInfo: &CloudJobInfo{
+		JobInfo: &jobinfo.CloudJobInfo{
 			Provider: "mock",
 			Action:   "provision",
 			Params: map[string]interface{}{
@@ -861,7 +740,7 @@ func TestCloudJobCtlRunFailsToResumePersistedStateWithoutRuntimeProviderSnapshot
 			},
 		},
 	}
-	ownedStore := withJobTestOwner(store, task)
+	ownedStore := jobtest.WithJobTestOwner(store, task)
 	ctl := NewCloudJobCtl(task, ownedStore)
 	require.NotNil(t, ctl)
 
@@ -870,7 +749,7 @@ func TestCloudJobCtlRunFailsToResumePersistedStateWithoutRuntimeProviderSnapshot
 	require.Contains(t, err.Error(), "cannot resume safely after process restart")
 	require.Equal(t, config.StatusFailed, task.Status)
 
-	var record CloudJobRecord
+	var record jobinfo.CloudJobRecord
 	require.NoError(t, json.Unmarshal([]byte(task.InternalInfo), &record))
 	require.Equal(t, config.StatusFailed, record.Status)
 	require.Equal(t, "nas-ready", record.State["step"])
@@ -883,7 +762,7 @@ func TestCloudJobCtlRunDoesNotReuseLegacyCheckpointWithoutExecutionKey(t *testin
 	resetCloudProvidersForTest()
 	defer restoreBuiltinCloudProvidersForTest()
 
-	store := newCloudJobCheckpointStore()
+	store := jobtest.NewCloudJobCheckpointStore()
 	legacyTask := &model.JobTask{
 		Name:       "cloud-legacy-restore",
 		Namespace:  "default",
@@ -893,20 +772,20 @@ func TestCloudJobCtlRunDoesNotReuseLegacyCheckpointWithoutExecutionKey(t *testin
 		TaskID:     "task-legacy-restore",
 		JobType:    string(config.JobDeployCloud),
 		Status:     config.StatusRunning,
-		JobInfo: &CloudJobInfo{
+		JobInfo: &jobinfo.CloudJobInfo{
 			Provider: "mock",
 			Action:   "provision",
 			Params: map[string]interface{}{
 				"zone": "cn-hangzhou-a",
 			},
 		},
-		Info: recordCloudJobResult(&CloudJobInfo{
+		Info: recordCloudJobResult(&jobinfo.CloudJobInfo{
 			Provider: "mock",
 			Action:   "provision",
 			Params: map[string]interface{}{
 				"zone": "cn-hangzhou-a",
 			},
-		}, &CloudJobRequest{
+		}, &jobinfo.CloudJobRequest{
 			Provider: "mock",
 			Action:   "provision",
 			Params: map[string]interface{}{
@@ -914,11 +793,11 @@ func TestCloudJobCtlRunDoesNotReuseLegacyCheckpointWithoutExecutionKey(t *testin
 			},
 		}, nil, nil, config.StatusRunning, nil),
 	}
-	require.NoError(t, saveOrUpdateJobInfo(context.Background(), withJobTestOwner(store, legacyTask), legacyTask))
+	require.NoError(t, jobinfo.SaveOrUpdateJobInfo(context.Background(), jobtest.WithJobTestOwner(store, legacyTask), legacyTask))
 
 	provider := &fakeCloudProvider{
 		name: "mock",
-		newRuntime: func(_ context.Context, req *CloudJobRequest) (CloudRuntime, error) {
+		newRuntime: func(_ context.Context, req *jobinfo.CloudJobRequest) (CloudRuntime, error) {
 			require.False(t, req.ResumeFromPersistedState)
 			require.Equal(t, "cn-shanghai-b", req.Params["zone"])
 			return &fakeCloudRuntime{}, nil
@@ -926,13 +805,13 @@ func TestCloudJobCtlRunDoesNotReuseLegacyCheckpointWithoutExecutionKey(t *testin
 		registry: &fakeCloudActionRegistry{
 			actions: map[string]CloudAction{
 				"provision": &fakeCloudAction{
-					run: func(_ context.Context, _ CloudRuntime, req *CloudJobRequest, state map[string]interface{}) (*CloudActionProgress, error) {
+					run: func(_ context.Context, _ CloudRuntime, req *jobinfo.CloudJobRequest, state map[string]interface{}) (*CloudActionProgress, error) {
 						require.Equal(t, "cn-shanghai-b", req.Params["zone"])
 						require.Nil(t, state)
 						return &CloudActionProgress{
 							Done:   true,
 							State:  map[string]interface{}{"step": "completed"},
-							Result: &CloudJobResult{Message: "done"},
+							Result: &jobinfo.CloudJobResult{Message: "done"},
 						}, nil
 					},
 				},
@@ -949,14 +828,14 @@ func TestCloudJobCtlRunDoesNotReuseLegacyCheckpointWithoutExecutionKey(t *testin
 		AppID:      "app-legacy",
 		TaskID:     "task-legacy-restore",
 		JobType:    string(config.JobDeployCloud),
-		JobInfo: &CloudJobInfo{
+		JobInfo: &jobinfo.CloudJobInfo{
 			Provider:     "mock",
 			Action:       "provision",
 			Params:       map[string]interface{}{"zone": "cn-shanghai-b"},
 			ExecutionKey: "step:0/component:0",
 		},
 	}
-	ownedStore := withJobTestOwner(store, task)
+	ownedStore := jobtest.WithJobTestOwner(store, task)
 	ctl := NewCloudJobCtl(task, ownedStore)
 	require.NotNil(t, ctl)
 
@@ -964,13 +843,13 @@ func TestCloudJobCtlRunDoesNotReuseLegacyCheckpointWithoutExecutionKey(t *testin
 	require.NoError(t, err)
 	require.Equal(t, config.StatusCompleted, task.Status)
 	require.NoError(t, ctl.SaveInfo(context.Background()))
-	require.Len(t, store.records, 2)
+	require.Len(t, store.Records(), 2)
 
-	legacyRecord := parseCloudCheckpointFromJobInfo(findStoredJobInfoByExecutionKey(t, store, ""))
+	legacyRecord := jobinfo.ParseCloudCheckpointFromJobInfo(findStoredJobInfoByExecutionKey(t, store, ""))
 	require.NotNil(t, legacyRecord)
 	require.Nil(t, legacyRecord.State)
 
-	var record CloudJobRecord
+	var record jobinfo.CloudJobRecord
 	require.NoError(t, json.Unmarshal([]byte(task.InternalInfo), &record))
 	require.Equal(t, "completed", record.State["step"])
 	require.NotNil(t, record.Request)
@@ -982,7 +861,7 @@ func TestCloudJobCtlRunMatchesCheckpointByExecutionKey(t *testing.T) {
 	resetCloudProvidersForTest()
 	defer restoreBuiltinCloudProvidersForTest()
 
-	store := newCloudJobCheckpointStore()
+	store := jobtest.NewCloudJobCheckpointStore()
 	firstExecutionKey := "step:0/component:0"
 	secondExecutionKey := "step:1/component:0"
 	firstGenerationKey := "generation-1-step-0"
@@ -999,19 +878,19 @@ func TestCloudJobCtlRunMatchesCheckpointByExecutionKey(t *testing.T) {
 		Status:        config.StatusRunning,
 		ExecutionKey:  firstGenerationKey,
 		RunGeneration: 1,
-		JobInfo: &CloudJobInfo{
+		JobInfo: &jobinfo.CloudJobInfo{
 			Provider:     "mock",
 			Action:       "provision",
 			Params:       map[string]interface{}{"zone": "cn-hangzhou-a"},
 			ExecutionKey: firstExecutionKey,
 		},
 		Info: "cloudjob: default/cloud-repeat",
-		InternalInfo: recordCloudJobResult(&CloudJobInfo{
+		InternalInfo: recordCloudJobResult(&jobinfo.CloudJobInfo{
 			Provider:     "mock",
 			Action:       "provision",
 			Params:       map[string]interface{}{"zone": "cn-hangzhou-a"},
 			ExecutionKey: firstExecutionKey,
-		}, &CloudJobRequest{
+		}, &jobinfo.CloudJobRequest{
 			Provider: "mock",
 			Action:   "provision",
 			Params:   map[string]interface{}{"zone": "cn-hangzhou-a"},
@@ -1028,31 +907,31 @@ func TestCloudJobCtlRunMatchesCheckpointByExecutionKey(t *testing.T) {
 		Status:        config.StatusRunning,
 		ExecutionKey:  secondGenerationKey,
 		RunGeneration: 1,
-		JobInfo: &CloudJobInfo{
+		JobInfo: &jobinfo.CloudJobInfo{
 			Provider:     "mock",
 			Action:       "provision",
 			Params:       map[string]interface{}{"zone": "cn-shanghai-b"},
 			ExecutionKey: secondExecutionKey,
 		},
 		Info: "cloudjob: default/cloud-repeat",
-		InternalInfo: recordCloudJobResult(&CloudJobInfo{
+		InternalInfo: recordCloudJobResult(&jobinfo.CloudJobInfo{
 			Provider:     "mock",
 			Action:       "provision",
 			Params:       map[string]interface{}{"zone": "cn-shanghai-b"},
 			ExecutionKey: secondExecutionKey,
-		}, &CloudJobRequest{
+		}, &jobinfo.CloudJobRequest{
 			Provider: "mock",
 			Action:   "provision",
 			Params:   map[string]interface{}{"zone": "cn-shanghai-b"},
 		}, nil, nil, config.StatusRunning, nil),
 	}
-	require.NoError(t, saveOrUpdateJobInfo(context.Background(), withJobTestOwner(store, firstTask), firstTask))
-	require.NoError(t, saveOrUpdateJobInfo(context.Background(), withJobTestOwner(store, secondTask), secondTask))
-	require.Len(t, store.records, 2)
+	require.NoError(t, jobinfo.SaveOrUpdateJobInfo(context.Background(), jobtest.WithJobTestOwner(store, firstTask), firstTask))
+	require.NoError(t, jobinfo.SaveOrUpdateJobInfo(context.Background(), jobtest.WithJobTestOwner(store, secondTask), secondTask))
+	require.Len(t, store.Records(), 2)
 
 	provider := &fakeCloudProvider{
 		name: "mock",
-		newRuntime: func(_ context.Context, req *CloudJobRequest) (CloudRuntime, error) {
+		newRuntime: func(_ context.Context, req *jobinfo.CloudJobRequest) (CloudRuntime, error) {
 			require.False(t, req.ResumeFromPersistedState)
 			require.Equal(t, "cn-shanghai-b", req.Params["zone"])
 			return &fakeCloudRuntime{}, nil
@@ -1060,13 +939,13 @@ func TestCloudJobCtlRunMatchesCheckpointByExecutionKey(t *testing.T) {
 		registry: &fakeCloudActionRegistry{
 			actions: map[string]CloudAction{
 				"provision": &fakeCloudAction{
-					run: func(_ context.Context, _ CloudRuntime, req *CloudJobRequest, state map[string]interface{}) (*CloudActionProgress, error) {
+					run: func(_ context.Context, _ CloudRuntime, req *jobinfo.CloudJobRequest, state map[string]interface{}) (*CloudActionProgress, error) {
 						require.Equal(t, "cn-shanghai-b", req.Params["zone"])
 						require.Nil(t, state)
 						return &CloudActionProgress{
 							Done:   true,
 							State:  map[string]interface{}{"step": "completed"},
-							Result: &CloudJobResult{Message: "done"},
+							Result: &jobinfo.CloudJobResult{Message: "done"},
 						}, nil
 					},
 				},
@@ -1086,29 +965,29 @@ func TestCloudJobCtlRunMatchesCheckpointByExecutionKey(t *testing.T) {
 		Info:          "cloudjob: default/cloud-repeat",
 		ExecutionKey:  secondGenerationKey,
 		RunGeneration: 1,
-		JobInfo: &CloudJobInfo{
+		JobInfo: &jobinfo.CloudJobInfo{
 			Provider:     "mock",
 			Action:       "provision",
 			Params:       map[string]interface{}{"zone": "cn-beijing-c"},
 			ExecutionKey: secondExecutionKey,
 		},
 	}
-	ownedStore := withJobTestOwner(store, task)
+	ownedStore := jobtest.WithJobTestOwner(store, task)
 	ctl := NewCloudJobCtl(task, ownedStore)
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
 	require.NoError(t, err)
 	require.NoError(t, ctl.SaveInfo(context.Background()))
-	require.Len(t, store.records, 2)
+	require.Len(t, store.Records(), 2)
 
 	firstStored := findStoredJobInfoByExecutionKey(t, store, firstExecutionKey)
-	firstRecord := parseCloudCheckpointFromJobInfo(firstStored)
+	firstRecord := jobinfo.ParseCloudCheckpointFromJobInfo(firstStored)
 	require.NotNil(t, firstRecord)
 	require.Equal(t, "first", firstRecord.State["step"])
 
 	secondStored := findStoredJobInfoByExecutionKey(t, store, secondExecutionKey)
-	secondRecord := parseCloudCheckpointFromJobInfo(secondStored)
+	secondRecord := jobinfo.ParseCloudCheckpointFromJobInfo(secondStored)
 	require.NotNil(t, secondRecord)
 	require.Equal(t, "completed", secondRecord.State["step"])
 	require.NotNil(t, secondRecord.Request)
@@ -1125,7 +1004,7 @@ func TestCloudJobCtlRunInProgressWithoutRequeueDelay(t *testing.T) {
 		registry: &fakeCloudActionRegistry{
 			actions: map[string]CloudAction{
 				"provision": &fakeCloudAction{
-					run: func(_ context.Context, _ CloudRuntime, _ *CloudJobRequest, _ map[string]interface{}) (*CloudActionProgress, error) {
+					run: func(_ context.Context, _ CloudRuntime, _ *jobinfo.CloudJobRequest, _ map[string]interface{}) (*CloudActionProgress, error) {
 						return &CloudActionProgress{
 							Done:  false,
 							State: map[string]interface{}{"step": "waiting"},
@@ -1140,19 +1019,19 @@ func TestCloudJobCtlRunInProgressWithoutRequeueDelay(t *testing.T) {
 	task := &model.JobTask{
 		Name:    "cloud-missing-requeue",
 		JobType: string(config.JobDeployCloud),
-		JobInfo: &CloudJobInfo{
+		JobInfo: &jobinfo.CloudJobInfo{
 			Provider: "mock",
 			Action:   "provision",
 		},
 	}
-	ctl := NewCloudJobCtl(task, withJobTestOwner(&noopStore{}, task))
+	ctl := NewCloudJobCtl(task, jobtest.WithJobTestOwner(&jobtest.NoopStore{}, task))
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "did not provide requeue delay")
 
-	var record CloudJobRecord
+	var record jobinfo.CloudJobRecord
 	require.NoError(t, json.Unmarshal([]byte(task.InternalInfo), &record))
 	require.Equal(t, config.StatusFailed, record.Status)
 	require.Equal(t, "waiting", record.State["step"])
@@ -1178,22 +1057,22 @@ func TestCloudJobCtlRunReturnsStatusTimeoutWhenActionTimesOut(t *testing.T) {
 	task := &model.JobTask{
 		Name:    "cloud-timeout",
 		JobType: string(config.JobDeployCloud),
-		JobInfo: &CloudJobInfo{
+		JobInfo: &jobinfo.CloudJobInfo{
 			Provider: "mock",
 			Action:   "provision",
 		},
 	}
-	ctl := NewCloudJobCtl(task, withJobTestOwner(&noopStore{}, task))
+	ctl := NewCloudJobCtl(task, jobtest.WithJobTestOwner(&jobtest.NoopStore{}, task))
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
-	statusErr, ok := ExtractStatusError(err)
+	statusErr, ok := jobinfo.ExtractStatusError(err)
 	require.True(t, ok)
 	require.Equal(t, config.StatusTimeout, statusErr.Status)
 
-	var record CloudJobRecord
+	var record jobinfo.CloudJobRecord
 	require.NoError(t, json.Unmarshal([]byte(task.InternalInfo), &record))
 	require.Equal(t, config.StatusTimeout, record.Status)
 }
@@ -1208,7 +1087,7 @@ func TestCloudJobCtlRunReturnsStatusTimeoutWhenWaitTimesOut(t *testing.T) {
 		registry: &fakeCloudActionRegistry{
 			actions: map[string]CloudAction{
 				"provision": &fakeCloudAction{
-					run: func(_ context.Context, _ CloudRuntime, _ *CloudJobRequest, _ map[string]interface{}) (*CloudActionProgress, error) {
+					run: func(_ context.Context, _ CloudRuntime, _ *jobinfo.CloudJobRequest, _ map[string]interface{}) (*CloudActionProgress, error) {
 						return &CloudActionProgress{
 							Done:         false,
 							RequeueAfter: time.Millisecond,
@@ -1226,12 +1105,12 @@ func TestCloudJobCtlRunReturnsStatusTimeoutWhenWaitTimesOut(t *testing.T) {
 	task := &model.JobTask{
 		Name:    "cloud-wait-timeout",
 		JobType: string(config.JobDeployCloud),
-		JobInfo: &CloudJobInfo{
+		JobInfo: &jobinfo.CloudJobInfo{
 			Provider: "mock",
 			Action:   "provision",
 		},
 	}
-	ctl := NewCloudJobCtl(task, withJobTestOwner(&noopStore{}, task))
+	ctl := NewCloudJobCtl(task, jobtest.WithJobTestOwner(&jobtest.NoopStore{}, task))
 	require.NotNil(t, ctl)
 	ctl.waitFunc = func(_ context.Context, _ time.Duration) error {
 		return context.DeadlineExceeded
@@ -1240,11 +1119,11 @@ func TestCloudJobCtlRunReturnsStatusTimeoutWhenWaitTimesOut(t *testing.T) {
 	err := ctl.Run(context.Background())
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
-	statusErr, ok := ExtractStatusError(err)
+	statusErr, ok := jobinfo.ExtractStatusError(err)
 	require.True(t, ok)
 	require.Equal(t, config.StatusTimeout, statusErr.Status)
 
-	var record CloudJobRecord
+	var record jobinfo.CloudJobRecord
 	require.NoError(t, json.Unmarshal([]byte(task.InternalInfo), &record))
 	require.Equal(t, config.StatusTimeout, record.Status)
 	require.Equal(t, "waiting", record.State["step"])
@@ -1260,7 +1139,7 @@ func TestCloudJobCtlRunAppliesJobTimeoutContextToLoop(t *testing.T) {
 		registry: &fakeCloudActionRegistry{
 			actions: map[string]CloudAction{
 				"provision": &fakeCloudAction{
-					run: func(ctx context.Context, _ CloudRuntime, _ *CloudJobRequest, _ map[string]interface{}) (*CloudActionProgress, error) {
+					run: func(ctx context.Context, _ CloudRuntime, _ *jobinfo.CloudJobRequest, _ map[string]interface{}) (*CloudActionProgress, error) {
 						if _, ok := ctx.Deadline(); !ok {
 							return nil, fmt.Errorf("cloud job context missing deadline")
 						}
@@ -1282,12 +1161,12 @@ func TestCloudJobCtlRunAppliesJobTimeoutContextToLoop(t *testing.T) {
 		Name:    "cloud-timeout-context",
 		JobType: string(config.JobDeployCloud),
 		Timeout: 1,
-		JobInfo: &CloudJobInfo{
+		JobInfo: &jobinfo.CloudJobInfo{
 			Provider: "mock",
 			Action:   "provision",
 		},
 	}
-	ctl := NewCloudJobCtl(task, withJobTestOwner(&noopStore{}, task))
+	ctl := NewCloudJobCtl(task, jobtest.WithJobTestOwner(&jobtest.NoopStore{}, task))
 	require.NotNil(t, ctl)
 	ctl.waitFunc = func(ctx context.Context, _ time.Duration) error {
 		if _, ok := ctx.Deadline(); !ok {
@@ -1299,11 +1178,11 @@ func TestCloudJobCtlRunAppliesJobTimeoutContextToLoop(t *testing.T) {
 	err := ctl.Run(context.Background())
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
-	statusErr, ok := ExtractStatusError(err)
+	statusErr, ok := jobinfo.ExtractStatusError(err)
 	require.True(t, ok)
 	require.Equal(t, config.StatusTimeout, statusErr.Status)
 
-	var record CloudJobRecord
+	var record jobinfo.CloudJobRecord
 	require.NoError(t, json.Unmarshal([]byte(task.InternalInfo), &record))
 	require.Equal(t, config.StatusTimeout, record.Status)
 	require.Equal(t, "waiting", record.State["step"])
@@ -1312,7 +1191,7 @@ func TestCloudJobCtlRunAppliesJobTimeoutContextToLoop(t *testing.T) {
 func TestBuildCloudJobRequestIncludesExecutionKey(t *testing.T) {
 	request := buildCloudJobRequest(&model.JobTask{
 		Name: "cloud", TaskID: "task-1", ExecutionKey: "execution-1",
-	}, &CloudJobInfo{Provider: "mock", Action: "provision"}, nil)
+	}, &jobinfo.CloudJobInfo{Provider: "mock", Action: "provision"}, nil)
 
 	require.Equal(t, "execution-1", request.ExecutionKey)
 }

@@ -14,6 +14,8 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
 
@@ -32,7 +34,7 @@ func TestGenerateConfigMap(t *testing.T) {
 				"key2": "value2",
 			},
 		}
-		expected := &ConfigMapInput{
+		expected := &jobinfo.ConfigMapInput{
 			Name:      "my-configmap",
 			Namespace: "default",
 			Labels:    map[string]string{config.LabelManagedBy: config.ManagedByEruun, config.LabelAppID: "test-app", config.LabelComponentID: "1", config.LabelComponentName: "my-configmap"},
@@ -65,7 +67,7 @@ func TestGenerateConfigMap(t *testing.T) {
 				"config.fileName": "my-config-file.txt",
 			},
 		}
-		expected := &ConfigMapInput{
+		expected := &jobinfo.ConfigMapInput{
 			Name:      "my-configmap-from-url",
 			Namespace: "kube-system",
 			URL:       "http://example.com/config.txt",
@@ -92,7 +94,7 @@ func TestGenerateConfigMap(t *testing.T) {
 			AppID:     "test-app",
 			ID:        3,
 		}
-		expected := &ConfigMapInput{
+		expected := &jobinfo.ConfigMapInput{
 			Name:      "nil-props-configmap",
 			Namespace: "default",
 			Labels:    map[string]string{config.LabelManagedBy: config.ManagedByEruun, config.LabelAppID: "test-app", config.LabelComponentID: "3", config.LabelComponentName: "nil-props-configmap"},
@@ -115,7 +117,7 @@ func TestGenerateConfigMap(t *testing.T) {
 		properties := &model.Properties{
 			Conf: map[string]string{},
 		}
-		expected := &ConfigMapInput{
+		expected := &jobinfo.ConfigMapInput{
 			Name:      "empty-configmap",
 			Namespace: "default",
 			Labels:    map[string]string{config.LabelManagedBy: config.ManagedByEruun, config.LabelAppID: "test-app", config.LabelComponentID: "4", config.LabelComponentName: "empty-configmap"},
@@ -137,7 +139,7 @@ func TestGenerateConfigMap(t *testing.T) {
 		properties := &model.Properties{
 			Conf: map[string]string{"key": "value"},
 		}
-		expected := &ConfigMapInput{
+		expected := &jobinfo.ConfigMapInput{
 			Name:      "no-namespace-configmap",
 			Namespace: config.DefaultNamespace,
 			Labels:    map[string]string{config.LabelManagedBy: config.ManagedByEruun, config.LabelAppID: "test-app", config.LabelComponentID: "5", config.LabelComponentName: "no-namespace-configmap"},
@@ -178,7 +180,7 @@ func TestDeployConfigMapJobCtl_CreateAlreadyExists(t *testing.T) {
 			Data: map[string]string{"foo": "bar"},
 		},
 	}
-	ctl := NewDeployConfigMapJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}, URLSecurityPolicy: nil}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployConfigMapJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}, URLSecurityPolicy: nil}, locker.NewNoopLocker(shareLockerPrefix))
 	ctx := WithCleanupTracker(context.Background())
 
 	if err := ctl.Run(ctx); err != nil {

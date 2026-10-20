@@ -16,6 +16,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
@@ -41,13 +42,13 @@ func (c *CleanupResourcesJobCtl) SaveInfo(ctx context.Context) error {
 	if c.skipSaveInfo {
 		return nil
 	}
-	if isVersionUpdateRemoveCleanupInternalInfo(c.job.InternalInfo) {
-		if versionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo) {
+	if jobinfo.IsVersionUpdateRemoveCleanupInternalInfo(c.job.InternalInfo) {
+		if jobinfo.VersionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo) {
 			return c.saveRequiredStatefulSetCleanupJobInfo(ctx)
 		}
-		return saveOrUpdateVersionUpdateCleanupJobInfo(ctx, c.store, c.job)
+		return jobinfo.SaveOrUpdateVersionUpdateCleanupJobInfo(ctx, c.store, c.job)
 	}
-	return saveJobInfo(ctx, c.store, c.job)
+	return jobinfo.SaveJobInfo(ctx, c.store, c.job)
 }
 
 func (c *CleanupResourcesJobCtl) saveRequiredStatefulSetCleanupJobInfo(ctx context.Context) error {
@@ -61,10 +62,10 @@ func (c *CleanupResourcesJobCtl) saveRequiredStatefulSetCleanupJobInfo(ctx conte
 	if !ok {
 		return fmt.Errorf("save required StatefulSet cleanup job info: datastore does not support conditional compare-and-swap")
 	}
-	desired := buildJobInfoRecord(c.job)
+	desired := jobinfo.BuildJobInfoRecord(c.job)
 	checkpointAdvanceFailure := false
-	for attempt := 1; attempt <= jobInfoSaveMaxAttempts; attempt++ {
-		existing, err := findExistingVersionUpdateCleanupJobInfo(ctx, c.store, c.job)
+	for attempt := 1; attempt <= jobinfo.JobInfoSaveMaxAttempts; attempt++ {
+		existing, err := jobinfo.FindExistingVersionUpdateCleanupJobInfo(ctx, c.store, c.job)
 		if err != nil {
 			return err
 		}
@@ -72,7 +73,7 @@ func (c *CleanupResourcesJobCtl) saveRequiredStatefulSetCleanupJobInfo(ctx conte
 			desired.InternalInfo = c.job.InternalInfo
 			return c.store.Add(ctx, &desired)
 		}
-		if versionUpdateCleanupJobInfoWriteIsStale(*existing, desired) {
+		if jobinfo.VersionUpdateCleanupJobInfoWriteIsStale(*existing, desired) {
 			klog.V(2).InfoS("ignore stale required StatefulSet cleanup job info write",
 				"taskID", desired.TaskID,
 				"serviceName", desired.ServiceName,
@@ -83,7 +84,7 @@ func (c *CleanupResourcesJobCtl) saveRequiredStatefulSetCleanupJobInfo(ctx conte
 			return nil
 		}
 		existingStatus := config.Status(strings.TrimSpace(existing.Status))
-		if versionUpdateCleanupJobInfoSameExecution(*existing, desired) && isTerminalVersionUpdateCleanupStatus(existingStatus) {
+		if jobinfo.VersionUpdateCleanupJobInfoSameExecution(*existing, desired) && isTerminalVersionUpdateCleanupStatus(existingStatus) {
 			// A terminal database record for the same execution is authoritative,
 			// including when a duplicate worker carries an older checkpoint.
 			// Never downgrade an already completed cleanup to the recoverable
@@ -107,12 +108,12 @@ func (c *CleanupResourcesJobCtl) saveRequiredStatefulSetCleanupJobInfo(ctx conte
 			c.job.Status = config.StatusFailed
 			c.job.Error = message
 			checkpointAdvanceFailure = true
-			desired = buildJobInfoRecord(c.job)
+			desired = jobinfo.BuildJobInfoRecord(c.job)
 			updated, err := conditionalStore.CompareAndSwapWithConditions(
 				ctx,
 				existing,
-				versionUpdateCleanupJobInfoConditions(existing),
-				versionUpdateCleanupJobInfoUpdates(desired, false),
+				jobinfo.VersionUpdateCleanupJobInfoConditions(existing),
+				jobinfo.VersionUpdateCleanupJobInfoUpdates(desired, false),
 			)
 			if err != nil {
 				return fmt.Errorf("save required StatefulSet cleanup checkpoint-advance failure: %w", err)
@@ -130,8 +131,8 @@ func (c *CleanupResourcesJobCtl) saveRequiredStatefulSetCleanupJobInfo(ctx conte
 		updated, err := conditionalStore.CompareAndSwapWithConditions(
 			ctx,
 			existing,
-			versionUpdateCleanupJobInfoConditions(existing),
-			versionUpdateCleanupJobInfoUpdates(desired, false),
+			jobinfo.VersionUpdateCleanupJobInfoConditions(existing),
+			jobinfo.VersionUpdateCleanupJobInfoUpdates(desired, false),
 		)
 		if err != nil {
 			return fmt.Errorf("save required StatefulSet cleanup job info: %w", err)
@@ -143,14 +144,14 @@ func (c *CleanupResourcesJobCtl) saveRequiredStatefulSetCleanupJobInfo(ctx conte
 			return nil
 		}
 	}
-	latest, err := findExistingVersionUpdateCleanupJobInfo(ctx, c.store, c.job)
+	latest, err := jobinfo.FindExistingVersionUpdateCleanupJobInfo(ctx, c.store, c.job)
 	if err != nil {
 		return fmt.Errorf("save required StatefulSet cleanup job info: reload after concurrent changes: %w", err)
 	}
 	if latest != nil {
 		c.job.InternalInfo = latest.InternalInfo
 	}
-	return fmt.Errorf("save required StatefulSet cleanup job info: concurrent identity, status, or checkpoint changes did not converge after %d attempts", jobInfoSaveMaxAttempts)
+	return fmt.Errorf("save required StatefulSet cleanup job info: concurrent identity, status, or checkpoint changes did not converge after %d attempts", jobinfo.JobInfoSaveMaxAttempts)
 }
 
 func (c *CleanupResourcesJobCtl) Run(ctx context.Context) error {
@@ -164,7 +165,7 @@ func (c *CleanupResourcesJobCtl) run(ctx context.Context) error {
 	if c.store == nil {
 		return fmt.Errorf("store is nil")
 	}
-	component, err := cleanupComponentFromJobInfo(c.job)
+	component, err := jobinfo.CleanupComponentFromJobInfo(c.job)
 	if err != nil {
 		return err
 	}
@@ -210,10 +211,10 @@ func (c *CleanupResourcesJobCtl) ensureRequiredStatefulSetDeletionAllowed(ctx co
 	if c == nil || c.job == nil {
 		return nil
 	}
-	if err := validateVersionUpdateCleanupInternalInfo(c.job.InternalInfo, component); err != nil {
+	if err := jobinfo.ValidateVersionUpdateCleanupInternalInfo(c.job.InternalInfo, component); err != nil {
 		return err
 	}
-	if !versionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo) {
+	if !jobinfo.VersionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo) {
 		return nil
 	}
 	if component == nil || component.ComponentType != config.StoreJob {
@@ -278,10 +279,10 @@ func (c *CleanupResourcesJobCtl) ensureRequiredStatefulSetDeletionTargetsAllowed
 }
 
 func (c *CleanupResourcesJobCtl) requiredStatefulSetDeletionProtectedError(ref cleanupResourceRef) error {
-	if c == nil || c.job == nil || ref.kind != domainspec.ResourceStatefulSet || !versionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo) {
+	if c == nil || c.job == nil || ref.kind != domainspec.ResourceStatefulSet || !jobinfo.VersionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo) {
 		return nil
 	}
-	componentName := strings.TrimSpace(resolveJobServiceName(c.job))
+	componentName := strings.TrimSpace(jobinfo.ResolveJobServiceName(c.job))
 	if componentName == "" {
 		componentName = "<unknown>"
 	}
@@ -289,7 +290,7 @@ func (c *CleanupResourcesJobCtl) requiredStatefulSetDeletionProtectedError(ref c
 }
 
 func (c *CleanupResourcesJobCtl) markVersionUpdateCleanupRunning(ctx context.Context) (bool, error) {
-	if !isVersionUpdateRemoveCleanupInternalInfo(c.job.InternalInfo) {
+	if !jobinfo.IsVersionUpdateRemoveCleanupInternalInfo(c.job.InternalInfo) {
 		return false, nil
 	}
 	c.job.Status = config.StatusRunning
@@ -298,18 +299,18 @@ func (c *CleanupResourcesJobCtl) markVersionUpdateCleanupRunning(ctx context.Con
 	}
 	c.job.EndTime = 0
 	c.job.Error = ""
-	desired := buildJobInfoRecord(c.job)
+	desired := jobinfo.BuildJobInfoRecord(c.job)
 	conditionalStore, ok := c.store.(datastore.ConditionalCompareAndSwap)
 	if !ok {
 		return false, fmt.Errorf("start version update cleanup: datastore does not support conditional compare-and-swap")
 	}
-	for attempt := 1; attempt <= jobInfoSaveMaxAttempts; attempt++ {
-		existing, err := findExistingVersionUpdateCleanupJobInfo(ctx, c.store, c.job)
+	for attempt := 1; attempt <= jobinfo.JobInfoSaveMaxAttempts; attempt++ {
+		existing, err := jobinfo.FindExistingVersionUpdateCleanupJobInfo(ctx, c.store, c.job)
 		if err != nil {
 			return false, err
 		}
 		if existing == nil {
-			return false, fmt.Errorf("precreated version update cleanup job info not found for task %s component %s", c.job.TaskID, resolveJobServiceName(c.job))
+			return false, fmt.Errorf("precreated version update cleanup job info not found for task %s component %s", c.job.TaskID, jobinfo.ResolveJobServiceName(c.job))
 		}
 		status := config.Status(strings.TrimSpace(existing.Status))
 		if isSuccessfulVersionUpdateCleanupStatus(status) {
@@ -323,10 +324,10 @@ func (c *CleanupResourcesJobCtl) markVersionUpdateCleanupRunning(ctx context.Con
 		if isTerminalVersionUpdateCleanupStatus(status) {
 			return false, c.abortTerminalizedVersionUpdateCleanup(status, existing.Status)
 		}
-		if versionUpdateCleanupJobInfoWriteIsStale(*existing, desired) {
+		if jobinfo.VersionUpdateCleanupJobInfoWriteIsStale(*existing, desired) {
 			return false, c.versionUpdateCleanupOwnershipError(existing, "starting cleanup")
 		}
-		if versionUpdateCleanupJobInfoOwnershipMatches(*existing, desired) && status == config.StatusRunning {
+		if jobinfo.VersionUpdateCleanupJobInfoOwnershipMatches(*existing, desired) && status == config.StatusRunning {
 			c.job.InternalInfo = existing.InternalInfo
 			if existing.StartTime > 0 {
 				c.job.StartTime = existing.StartTime
@@ -334,15 +335,15 @@ func (c *CleanupResourcesJobCtl) markVersionUpdateCleanupRunning(ctx context.Con
 			return false, nil
 		}
 		if status != config.StatusRunning && !isStartableVersionUpdateCleanupStatus(status) {
-			return false, fmt.Errorf("version update cleanup job info for task %s component %s is %s, expected queued or running", c.job.TaskID, resolveJobServiceName(c.job), existing.Status)
+			return false, fmt.Errorf("version update cleanup job info for task %s component %s is %s, expected queued or running", c.job.TaskID, jobinfo.ResolveJobServiceName(c.job), existing.Status)
 		}
 		c.job.InternalInfo = existing.InternalInfo
 		desired.InternalInfo = existing.InternalInfo
 		updated, err := conditionalStore.CompareAndSwapWithConditions(
 			ctx,
 			existing,
-			versionUpdateCleanupJobInfoConditions(existing),
-			versionUpdateCleanupJobInfoUpdates(desired, false),
+			jobinfo.VersionUpdateCleanupJobInfoConditions(existing),
+			jobinfo.VersionUpdateCleanupJobInfoUpdates(desired, false),
 		)
 		if err != nil {
 			return false, err
@@ -351,15 +352,15 @@ func (c *CleanupResourcesJobCtl) markVersionUpdateCleanupRunning(ctx context.Con
 			return false, nil
 		}
 	}
-	return false, fmt.Errorf("start version update cleanup: concurrent identity or status changes did not converge after %d attempts", jobInfoSaveMaxAttempts)
+	return false, fmt.Errorf("start version update cleanup: concurrent identity or status changes did not converge after %d attempts", jobinfo.JobInfoSaveMaxAttempts)
 }
 
 func (c *CleanupResourcesJobCtl) ensureVersionUpdateCleanupJobInfoOwned(existing *model.JobInfo, operation string) error {
 	if c == nil || c.job == nil || existing == nil {
 		return nil
 	}
-	desired := buildJobInfoRecord(c.job)
-	if versionUpdateCleanupJobInfoOwnershipMatches(*existing, desired) {
+	desired := jobinfo.BuildJobInfoRecord(c.job)
+	if jobinfo.VersionUpdateCleanupJobInfoOwnershipMatches(*existing, desired) {
 		return nil
 	}
 	return c.versionUpdateCleanupOwnershipError(existing, operation)
@@ -371,9 +372,9 @@ func (c *CleanupResourcesJobCtl) versionUpdateCleanupOwnershipError(existing *mo
 	storedExecutionKey := ""
 	if existing != nil {
 		storedGeneration = existing.RunGeneration
-		storedExecutionKey = jobInfoExecutionKey(*existing)
+		storedExecutionKey = jobinfo.JobInfoExecutionKey(*existing)
 	}
-	return NewStatusError(config.StatusCancelled, fmt.Errorf(
+	return jobinfo.NewStatusError(config.StatusCancelled, fmt.Errorf(
 		"version update cleanup ownership changed before %s: task %s execution %q generation %d, stored execution %q generation %d",
 		operation,
 		c.job.TaskID,
@@ -386,7 +387,7 @@ func (c *CleanupResourcesJobCtl) versionUpdateCleanupOwnershipError(existing *mo
 
 func (c *CleanupResourcesJobCtl) abortTerminalizedVersionUpdateCleanup(status config.Status, rawStatus string) error {
 	c.skipSaveInfo = true
-	return NewStatusError(versionUpdateCleanupAbortStatus(status), fmt.Errorf("version update cleanup job info for task %s component %s is already %s", c.job.TaskID, resolveJobServiceName(c.job), rawStatus))
+	return jobinfo.NewStatusError(versionUpdateCleanupAbortStatus(status), fmt.Errorf("version update cleanup job info for task %s component %s is already %s", c.job.TaskID, jobinfo.ResolveJobServiceName(c.job), rawStatus))
 }
 
 func versionUpdateCleanupAbortStatus(status config.Status) config.Status {
@@ -399,7 +400,7 @@ func versionUpdateCleanupAbortStatus(status config.Status) config.Status {
 }
 
 func (c *CleanupResourcesJobCtl) ensureRequiredStatefulSetWorkflowTaskActive(ctx context.Context, operation string) error {
-	if c == nil || c.job == nil || !versionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo) {
+	if c == nil || c.job == nil || !jobinfo.VersionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo) {
 		return nil
 	}
 	if c.job.Status != config.StatusRunning {
@@ -413,10 +414,10 @@ func (c *CleanupResourcesJobCtl) ensureRequiredStatefulSetWorkflowTaskActive(ctx
 		return requiredStatefulSetWorkflowTaskContextError(taskID, operation, err)
 	}
 	if taskID == "" {
-		return NewStatusError(config.StatusFailed, fmt.Errorf("required StatefulSet cleanup workflow task id is empty before %s", operation))
+		return jobinfo.NewStatusError(config.StatusFailed, fmt.Errorf("required StatefulSet cleanup workflow task id is empty before %s", operation))
 	}
 	if c.store == nil {
-		return NewStatusError(config.StatusFailed, fmt.Errorf("load workflow task %s before %s: store is nil", taskID, operation))
+		return jobinfo.NewStatusError(config.StatusFailed, fmt.Errorf("load workflow task %s before %s: store is nil", taskID, operation))
 	}
 
 	for attempt := 1; ; attempt++ {
@@ -425,7 +426,7 @@ func (c *CleanupResourcesJobCtl) ensureRequiredStatefulSetWorkflowTaskActive(ctx
 			if contextErr := ctx.Err(); contextErr != nil {
 				return requiredStatefulSetWorkflowTaskContextError(taskID, operation, contextErr)
 			}
-			return NewStatusError(config.StatusFailed, fmt.Errorf("load workflow task %s before %s: %w", taskID, operation, err))
+			return jobinfo.NewStatusError(config.StatusFailed, fmt.Errorf("load workflow task %s before %s: %w", taskID, operation, err))
 		}
 		if err := ctx.Err(); err != nil {
 			return requiredStatefulSetWorkflowTaskContextError(taskID, operation, err)
@@ -441,13 +442,13 @@ func (c *CleanupResourcesJobCtl) ensureRequiredStatefulSetWorkflowTaskActive(ctx
 				// Unlike a terminal JobInfo, a terminal workflow task must not suppress
 				// SaveInfo: cancellation can commit while signalling the running worker
 				// fails, and that JobInfo still needs to be terminalized by this worker.
-				return NewStatusError(versionUpdateCleanupAbortStatus(status), err)
+				return jobinfo.NewStatusError(versionUpdateCleanupAbortStatus(status), err)
 			}
-			return NewStatusError(config.StatusFailed, err)
+			return jobinfo.NewStatusError(config.StatusFailed, err)
 		}
 		if c.job.RunGeneration > 0 && task.RunGeneration != c.job.RunGeneration {
 			c.skipSaveInfo = true
-			return NewStatusError(config.StatusCancelled, fmt.Errorf(
+			return jobinfo.NewStatusError(config.StatusCancelled, fmt.Errorf(
 				"workflow task %s generation changed from %d to %d before %s",
 				taskID,
 				c.job.RunGeneration,
@@ -480,7 +481,7 @@ func requiredStatefulSetWorkflowTaskContextError(taskID, operation string, err e
 	if errors.Is(err, context.DeadlineExceeded) {
 		status = config.StatusTimeout
 	}
-	return NewStatusError(status, fmt.Errorf("workflow task %s context ended before %s: %w", taskID, operation, err))
+	return jobinfo.NewStatusError(status, fmt.Errorf("workflow task %s context ended before %s: %w", taskID, operation, err))
 }
 
 func isStartableVersionUpdateCleanupStatus(status config.Status) bool {
@@ -518,7 +519,7 @@ func (c *CleanupResourcesJobCtl) deleteComponentResources(ctx context.Context, c
 }
 
 func (c *CleanupResourcesJobCtl) ensureVersionUpdateCleanupTargetNotReused(ctx context.Context, component *model.ApplicationComponent) error {
-	if c == nil || c.job == nil || !isVersionUpdateRemoveCleanupInternalInfo(c.job.InternalInfo) {
+	if c == nil || c.job == nil || !jobinfo.IsVersionUpdateRemoveCleanupInternalInfo(c.job.InternalInfo) {
 		return nil
 	}
 	current, err := c.currentComponentByName(ctx, component)

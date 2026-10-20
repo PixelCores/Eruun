@@ -2,19 +2,18 @@ package job
 
 import (
 	"context"
-
 	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -102,7 +101,7 @@ func TestCleanupResourcesJobCtlDoesNotRestartTerminalizedVersionUpdateCleanup(t 
 	skipCleanup, err := ctl.markVersionUpdateCleanupRunning(context.Background())
 	require.Error(t, err)
 	require.False(t, skipCleanup)
-	statusErr, ok := ExtractStatusError(err)
+	statusErr, ok := jobinfo.ExtractStatusError(err)
 	require.True(t, ok)
 	require.Equal(t, config.StatusCancelled, statusErr.Status)
 	require.True(t, ctl.skipSaveInfo)
@@ -308,7 +307,7 @@ func TestCleanupResourcesJobCtlSaveInfoUpdatesVersionUpdateCleanupJob(t *testing
 		Error:        "delete deployment failed",
 		InternalInfo: existing.InternalInfo,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: withJobTestOwner(store, task), Ack: nil})
+	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(store, task), Ack: nil})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.SaveInfo(context.Background()))
@@ -351,7 +350,7 @@ func TestVersionUpdateCleanupJobInfoRejectsStaleGenerationWrite(t *testing.T) {
 		RunGeneration: 2,
 		Attempt:       1,
 	}
-	ownerStore := withJobTestOwner(store, newerTask)
+	ownerStore := jobtest.WithJobTestOwner(store, newerTask)
 	newerCtl := NewCleanupResourcesJobCtl(newerTask, &Runtime{Client: fake.NewSimpleClientset(), Store: ownerStore, Ack: nil})
 	require.NotNil(t, newerCtl)
 
@@ -420,7 +419,7 @@ func TestCleanupResourcesJobCtlSaveInfoAddsRegularCleanupJobRecord(t *testing.T)
 		JobInfo:    "regular cleanup payload",
 		Status:     config.StatusCompleted,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: withJobTestOwner(store, task), Ack: nil})
+	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(store, task), Ack: nil})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.SaveInfo(context.Background()))
@@ -455,7 +454,7 @@ func TestCleanupResourcesJobCtlSaveInfoDoesNotUpdateUnmarkedCleanupRecord(t *tes
 		Error:        "cleanup failed",
 		InternalInfo: versionUpdateRemoveCleanupInternalInfo(),
 	}
-	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: withJobTestOwner(store, task), Ack: nil})
+	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(store, task), Ack: nil})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.SaveInfo(context.Background()))

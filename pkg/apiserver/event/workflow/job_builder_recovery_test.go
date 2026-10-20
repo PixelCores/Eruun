@@ -9,16 +9,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+	batchv1 "k8s.io/api/batch/v1"
+	"k8s.io/utils/ptr"
+
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	evaluationjobs "github.com/PixelCores/Eruun/pkg/apiserver/jobs"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
-	"github.com/stretchr/testify/require"
-	batchv1 "k8s.io/api/batch/v1"
-	"k8s.io/utils/ptr"
 )
 
 func TestRestoreEvaluationChoosesReservedSuccessorAcrossLeaseTakeover(t *testing.T) {
@@ -128,8 +129,8 @@ func TestGenerateEvaluationTakeoverDuringCollectionPreservesAttempt(t *testing.T
 			original.Name, original.ExecutionKey = metadata["recoveryName"].(string), key
 			workload := original.JobInfo.(*batchv1.Job)
 			workload.Name = original.Name
-			workflowjob.ApplyTaskIDAnnotation(original)
-			workflowjob.ApplyExecutionIdentity(original)
+			jobinfo.ApplyTaskIDAnnotation(original)
+			jobinfo.ApplyExecutionIdentity(original)
 			workload.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
 			checkpoint, err := json.Marshal(map[string]any{"kind": "instant_job_retry", "version": 1, "attempt": 1,
 				"job": workload, "currentUID": "running-successor", "deadline": deadline})

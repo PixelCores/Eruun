@@ -26,6 +26,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
@@ -34,7 +36,7 @@ import (
 )
 
 type workflowOwnershipStore struct {
-	*noopStore
+	*jobtest.NoopStore
 	mu        sync.Mutex
 	task      model.WorkflowQueue
 	tasks     []model.WorkflowQueue
@@ -45,7 +47,7 @@ type workflowOwnershipStore struct {
 func (s *workflowOwnershipStore) Get(_ context.Context, entity datastore.Entity) error {
 	task, ok := entity.(*model.WorkflowQueue)
 	if !ok {
-		return s.noopStore.Get(context.Background(), entity)
+		return s.NoopStore.Get(context.Background(), entity)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -127,7 +129,7 @@ func TestDelayedJobControllersPropagateWorkflowOwnership(t *testing.T) {
 	t.Run("instant", func(t *testing.T) {
 		queue := &enqueueCaptureQueue{enqueueID: "delay-instant"}
 		task := newTask(config.JobDeployInstant)
-		store := &workflowOwnershipStore{noopStore: &noopStore{}, task: model.WorkflowQueue{
+		store := &workflowOwnershipStore{NoopStore: &jobtest.NoopStore{}, task: model.WorkflowQueue{
 			TaskID: task.TaskID, Status: config.StatusRunning, RunGeneration: 3, RunToken: "run-3", WorkerID: "worker-delayed",
 		}}
 		ctl := NewInstantJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() {}, DelayQueue: queue})
@@ -141,7 +143,7 @@ func TestDelayedJobControllersPropagateWorkflowOwnership(t *testing.T) {
 	t.Run("scheduled", func(t *testing.T) {
 		queue := &enqueueCaptureQueue{enqueueID: "delay-scheduled"}
 		task := newTask(config.JobDeployScheduled)
-		store := &workflowOwnershipStore{noopStore: &noopStore{}, task: model.WorkflowQueue{
+		store := &workflowOwnershipStore{NoopStore: &jobtest.NoopStore{}, task: model.WorkflowQueue{
 			TaskID: task.TaskID, Status: config.StatusRunning, RunGeneration: 3, RunToken: "run-3", WorkerID: "worker-delayed",
 		}}
 		ctl := NewScheduledJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() {}, DelayQueue: queue})
@@ -180,9 +182,9 @@ func TestDelayedJobControllersCommitWithoutQueue(t *testing.T) {
 			require.NoError(t, err)
 			var ctl JobCtl
 			if jobType == config.JobDeployInstant {
-				ctl = NewInstantJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: withJobTestOwner(store, task), Ack: func() {}})
+				ctl = NewInstantJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
 			} else {
-				ctl = NewScheduledJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: withJobTestOwner(store, task), Ack: func() {}})
+				ctl = NewScheduledJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
 			}
 
 			require.NoError(t, ctl.Run(context.Background()))
@@ -190,7 +192,7 @@ func TestDelayedJobControllersCommitWithoutQueue(t *testing.T) {
 			require.NotNil(t, store.added)
 			require.Equal(t, config.JobDelayStatePending, store.added.DelayState)
 			require.NotEmpty(t, store.added.DelayPayload)
-			var persisted DelayJobPayload
+			var persisted jobinfo.DelayJobPayload
 			require.NoError(t, json.Unmarshal([]byte(store.added.DelayPayload), &persisted))
 			requireWorkspacePodSecurity(t, persisted.Job.Spec.Template.Spec)
 		})
@@ -209,7 +211,7 @@ func TestImmediateJobControllersRejectStaleWorkflowOwnerBeforeKubernetesAccess(t
 				ExecutionKey: "execution-1", RunGeneration: 1, RunToken: "token-1",
 				OwnerRunGeneration: 1, WorkerID: "worker-old",
 			}
-			store := &workflowOwnershipStore{noopStore: &noopStore{}, task: model.WorkflowQueue{
+			store := &workflowOwnershipStore{NoopStore: &jobtest.NoopStore{}, task: model.WorkflowQueue{
 				TaskID: "task-1", Status: config.StatusRunning, RunGeneration: 2, RunToken: "token-2", WorkerID: "worker-new",
 			}}
 			client := fake.NewSimpleClientset()
@@ -241,7 +243,7 @@ func TestImmediateJobControllersDoNotDeleteNewerExecution(t *testing.T) {
 				ExecutionKey: "execution-1", RunGeneration: 1, RunToken: "token-1",
 				OwnerRunGeneration: 1, WorkerID: "worker-old",
 			}
-			store := &workflowOwnershipStore{noopStore: &noopStore{}, task: model.WorkflowQueue{
+			store := &workflowOwnershipStore{NoopStore: &jobtest.NoopStore{}, task: model.WorkflowQueue{
 				TaskID: "task-1", Status: config.StatusRunning, RunGeneration: 1, RunToken: "token-1", WorkerID: "worker-old",
 			}}
 			existing := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
@@ -263,7 +265,7 @@ func TestImmediateJobControllersDoNotDeleteNewerExecution(t *testing.T) {
 			}
 
 			require.Error(t, err)
-			require.True(t, errors.Is(err, errJobExecutionIdentityChanged))
+			require.True(t, errors.Is(err, jobinfo.ErrJobExecutionIdentityChanged))
 			for _, action := range client.Actions() {
 				require.False(t, action.Matches("delete", "jobs"), "newer Job must not be deleted: %#v", action)
 			}
@@ -291,7 +293,7 @@ func TestExistingJobExecutionIdentityComparesGenerationsWithinOneTask(t *testing
 		{
 			name:          "active old task blocks replacement",
 			oldTaskStatus: config.StatusRunning,
-			wantErr:       errJobExecutionIdentityChanged,
+			wantErr:       jobinfo.ErrJobExecutionIdentityChanged,
 		},
 		{
 			name:     "old task lookup failure stops infrastructure",
@@ -319,7 +321,7 @@ func TestExistingJobExecutionIdentityComparesGenerationsWithinOneTask(t *testing
 				},
 			}}
 			store := &workflowOwnershipStore{
-				noopStore: &noopStore{},
+				NoopStore: &jobtest.NoopStore{},
 				tasksByID: map[string]model.WorkflowQueue{
 					"task-old": {TaskID: "task-old", Status: tc.oldTaskStatus},
 				},
@@ -372,7 +374,7 @@ func TestInstantJobCtlRunClientNil(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"},
 		},
 	}
-	ctl := NewInstantJobCtl(jobTask, &Runtime{Client: nil, Store: &noopStore{}, Ack: func() { ackCount++ }})
+	ctl := NewInstantJobCtl(jobTask, &Runtime{Client: nil, Store: &jobtest.NoopStore{}, Ack: func() { ackCount++ }})
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -388,7 +390,7 @@ func TestInstantJobCtlRunUnexpectedJobInfoType(t *testing.T) {
 		JobType:   string(config.JobDeployInstant),
 		JobInfo:   "invalid",
 	}
-	ctl := NewInstantJobCtl(jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: &noopStore{}, Ack: func() {}})
+	ctl := NewInstantJobCtl(jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: &jobtest.NoopStore{}, Ack: func() {}})
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -406,7 +408,7 @@ func TestInstantJobCtlRunCompletesFromOwnedSucceededPodFallback(t *testing.T) {
 		JobType:   string(config.JobDeployInstant),
 		JobInfo:   jobObj,
 	}
-	ctl := NewInstantJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() { ackCount++ }})
+	ctl := NewInstantJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() { ackCount++ }})
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -424,7 +426,7 @@ func TestScheduledJobCtlRunUnexpectedJobInfoType(t *testing.T) {
 		JobType:   string(config.JobDeployScheduled),
 		JobInfo:   "invalid",
 	}
-	ctl := NewScheduledJobCtl(jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: &noopStore{}, Ack: func() { ackCount++ }})
+	ctl := NewScheduledJobCtl(jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: &jobtest.NoopStore{}, Ack: func() { ackCount++ }})
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -468,7 +470,7 @@ func TestScheduledJobCtlRunOneTimeSkip(t *testing.T) {
 			},
 		},
 	}
-	ctl := NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() { ackCount++ }})
+	ctl := NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() { ackCount++ }})
 	require.NotNil(t, ctl)
 
 	err = ctl.Run(ctx)
@@ -508,7 +510,7 @@ func TestScheduledJobCtlRunCronJobPath(t *testing.T) {
 			},
 		},
 	}
-	ctl := NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}})
+	ctl := NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}})
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(ctx)
@@ -528,7 +530,7 @@ func TestInstantJobCtlHelpers(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "instant-job", Namespace: "default"},
 		},
 	}
-	ctl := NewInstantJobCtl(jobTask, &Runtime{Client: client, Store: withJobTestOwner(store, jobTask), Ack: func() {}})
+	ctl := NewInstantJobCtl(jobTask, &Runtime{Client: client, Store: jobtest.WithJobTestOwner(store, jobTask), Ack: func() {}})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.SaveInfo(context.Background()))
@@ -563,7 +565,7 @@ func TestScheduledJobCtlHelpers(t *testing.T) {
 		JobType:   string(config.JobDeployScheduled),
 		JobInfo:   jobObj,
 	}
-	ctl := NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: withJobTestOwner(store, jobTask), Ack: func() {}})
+	ctl := NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: jobtest.WithJobTestOwner(store, jobTask), Ack: func() {}})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.SaveInfo(context.Background()))
@@ -634,7 +636,7 @@ func TestImmediateJobControllersRejectReplacementAfterRecreateWait(t *testing.T)
 			{
 				name:            "replacement identity changed",
 				owners:          []model.WorkflowQueue{currentOwner, currentOwner},
-				expectedErr:     errJobExecutionIdentityChanged,
+				expectedErr:     jobinfo.ErrJobExecutionIdentityChanged,
 				expectedGetJobs: 3,
 			},
 		} {
@@ -649,7 +651,7 @@ func TestImmediateJobControllersRejectReplacementAfterRecreateWait(t *testing.T)
 					OwnerRunGeneration: 1, WorkerID: "worker-old",
 				}
 				store := &workflowOwnershipStore{
-					noopStore: &noopStore{},
+					NoopStore: &jobtest.NoopStore{},
 					tasks:     append([]model.WorkflowQueue(nil), tc.owners...),
 					errs:      append([]error(nil), tc.ownershipErrs...),
 				}
@@ -729,7 +731,7 @@ func TestRunJobsPreservesNonTerminalStateAfterRecreateOwnershipReadFailure(t *te
 				owner := currentOwner
 				owner.LeaseExpiresAt = &lease
 				require.NoError(t, store.Add(context.Background(), &owner))
-				record := buildJobInfoRecord(jobTask)
+				record := jobinfo.BuildJobInfoRecord(jobTask)
 				record.Status = string(config.StatusPrepare)
 				record.SchedulingState = workflowconfig.JobSchedulingAdmitted
 				record.SchedulingOwnerStatus = config.StatusRunning
@@ -831,13 +833,13 @@ func TestImmediateJobCreateRejectsAlreadyExistsReplacement(t *testing.T) {
 			var created bool
 			var err error
 			if jobType == config.JobDeployInstant {
-				created, err = NewInstantJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}).createBatchJob(context.Background(), desired)
+				created, err = NewInstantJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}).createBatchJob(context.Background(), desired)
 			} else {
-				created, err = NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}).createBatchJob(context.Background(), desired)
+				created, err = NewScheduledJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}).createBatchJob(context.Background(), desired)
 			}
 
 			require.False(t, created)
-			require.ErrorIs(t, err, errJobExecutionIdentityChanged)
+			require.ErrorIs(t, err, jobinfo.ErrJobExecutionIdentityChanged)
 			require.Equal(t, 2, getJobs)
 		})
 	}

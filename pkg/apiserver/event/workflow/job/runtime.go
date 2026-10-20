@@ -12,6 +12,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
@@ -85,7 +86,7 @@ func isSharedDefaultSkippedConfigJob(job *model.JobTask) bool {
 	if !isConfigComponentJobType(job.JobType) {
 		return false
 	}
-	strategy, shared := shareStrategyFromJobInfo(job.JobInfo)
+	strategy, shared := jobinfo.ShareStrategyFromJobInfo(job.JobInfo)
 	if !shared {
 		return false
 	}

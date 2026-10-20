@@ -15,7 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
 
@@ -32,7 +32,7 @@ func TestDeployServiceAccountJobCtl_Create(t *testing.T) {
 			},
 		},
 	}
-	ctl := NewDeployServiceAccountJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployServiceAccountJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	ctx := WithCleanupTracker(context.Background())
 
 	if err := ctl.Run(ctx); err != nil {
@@ -74,7 +74,7 @@ func TestDeployServiceAccountJobCtl_CreateAlreadyExists(t *testing.T) {
 			},
 		},
 	}
-	ctl := NewDeployServiceAccountJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployServiceAccountJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	ctx := WithCleanupTracker(context.Background())
 
 	if err := ctl.Run(ctx); err != nil {
@@ -112,7 +112,7 @@ func TestDeployServiceAccountJobCtl_SkipUnmanaged(t *testing.T) {
 			},
 		},
 	}
-	ctl := NewDeployServiceAccountJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployServiceAccountJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	ctx := WithCleanupTracker(context.Background())
 
 	if err := ctl.Run(ctx); err != nil {
@@ -156,7 +156,7 @@ func TestDeployServiceAccountJobCtl_ShareDefaultStillReconcilesWithoutLocker(t *
 			},
 		},
 	}
-	ctl := NewDeployServiceAccountJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, nil)
+	ctl := NewDeployServiceAccountJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, nil)
 	ctx := WithCleanupTracker(context.Background())
 
 	if err := ctl.Run(ctx); err != nil {
@@ -179,7 +179,7 @@ func TestDeployRBACJobControllersCleanPreservesResources(t *testing.T) {
 		&rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: "shared-cluster-role"}},
 		&rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: "shared-cluster-binding"}},
 	)
-	store := &noopStore{}
+	store := &jobtest.NoopStore{}
 	shareLocker := locker.NewNoopLocker(shareLockerPrefix)
 
 	NewDeployServiceAccountJobCtl(&model.JobTask{Name: "shared-sa", Namespace: "ops"}, &Runtime{Client: client, Store: store, Ack: nil}, shareLocker).Clean(ctx)
@@ -249,7 +249,7 @@ func TestDeployRoleJobCtl_UpdateManaged(t *testing.T) {
 			}},
 		},
 	}
-	ctl := NewDeployRoleJobCtl(jobTask, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployRoleJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	ctx := WithCleanupTracker(context.Background())
 
 	if err := ctl.Run(ctx); err != nil {
@@ -263,29 +263,4 @@ func TestDeployRoleJobCtl_UpdateManaged(t *testing.T) {
 	if len(updated.Rules) != 1 || len(updated.Rules[0].Verbs) != 2 {
 		t.Fatalf("expected role rules to be updated, got %+v", updated.Rules)
 	}
-}
-
-// noopStore is a minimal datastore implementation for tests that do not persist.
-type noopStore struct{}
-
-func (*noopStore) Add(context.Context, datastore.Entity) error        { return nil }
-func (*noopStore) BatchAdd(context.Context, []datastore.Entity) error { return nil }
-func (*noopStore) Put(context.Context, datastore.Entity) error        { return nil }
-func (*noopStore) Delete(context.Context, datastore.Entity) error     { return nil }
-func (*noopStore) DeleteByFilter(context.Context, datastore.Entity, *datastore.FilterOptions) error {
-	return nil
-}
-func (*noopStore) Get(context.Context, datastore.Entity) error { return nil }
-func (*noopStore) List(context.Context, datastore.Entity, *datastore.ListOptions) ([]datastore.Entity, error) {
-	return nil, nil
-}
-func (*noopStore) Count(context.Context, datastore.Entity, *datastore.FilterOptions) (int64, error) {
-	return 0, nil
-}
-func (*noopStore) IsExist(context.Context, datastore.Entity) (bool, error) { return false, nil }
-func (*noopStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {
-	return false, nil
-}
-func (*noopStore) CompareAndSwap(context.Context, datastore.Entity, string, interface{}, map[string]interface{}) (bool, error) {
-	return true, nil
 }

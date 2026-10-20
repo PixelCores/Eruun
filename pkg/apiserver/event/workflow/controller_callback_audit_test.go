@@ -15,15 +15,16 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	wf "github.com/PixelCores/Eruun/pkg/apiserver/workflow"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 func TestCancelledCallbackUsesDurablePendingReason(t *testing.T) {
-	received := make(chan job.CallbackPayload, 1)
+	received := make(chan jobinfo.CallbackPayload, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
-		var payload job.CallbackPayload
+		var payload jobinfo.CallbackPayload
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
 		received <- payload
 		w.WriteHeader(http.StatusOK)
@@ -50,10 +51,10 @@ func TestCancelledCallbackUsesDurablePendingReason(t *testing.T) {
 }
 
 func TestCancelledCallbackFailureFallbackKeepsCancellationKey(t *testing.T) {
-	received := make(chan job.CallbackPayload, 1)
+	received := make(chan jobinfo.CallbackPayload, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
-		var payload job.CallbackPayload
+		var payload jobinfo.CallbackPayload
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
 		require.Equal(t, http.MethodPut, r.Method)
 		received <- payload
@@ -135,10 +136,10 @@ func TestCancelledTerminalCallbackOutlivesTaskCancellationWhileRenewingLease(t *
 		ExecutionKey: "cancelled-callback-execution", RunGeneration: task.RunGeneration,
 		OwnerStatus: task.Status, RunToken: task.RunToken, WorkerID: task.WorkerID,
 		Status: config.StatusWaiting,
-		JobInfo: &job.CallbackJobInfo{
+		JobInfo: &jobinfo.CallbackJobInfo{
 			Event: "cancelled", URL: server.URL, Method: http.MethodPost, TimeoutSeconds: 1,
 			TimeoutMaxNS: int64(time.Second),
-			Payload:      job.CallbackPayload{Event: "cancelled", Status: string(config.StatusCancelled), TaskID: task.TaskID},
+			Payload:      jobinfo.CallbackPayload{Event: "cancelled", Status: string(config.StatusCancelled), TaskID: task.TaskID},
 		},
 	}
 

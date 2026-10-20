@@ -17,6 +17,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
@@ -56,7 +57,7 @@ func newCallbackTestServer(t *testing.T, handler http.HandlerFunc, connState ...
 }
 
 func TestCallbackJobCtlRunPostSuccess(t *testing.T) {
-	var payload CallbackPayload
+	var payload jobinfo.CallbackPayload
 	var idempotencyKey string
 	closed := make(chan struct{}, 1)
 	server := newCallbackTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -84,11 +85,11 @@ func TestCallbackJobCtlRunPostSuccess(t *testing.T) {
 		TaskID:       "task-1",
 		JobType:      string(config.JobDeployCallback),
 		ExecutionKey: "execution-1",
-		JobInfo: &CallbackJobInfo{
+		JobInfo: &jobinfo.CallbackJobInfo{
 			Event:  "success",
 			URL:    server.URL,
 			Method: http.MethodPost,
-			Payload: CallbackPayload{
+			Payload: jobinfo.CallbackPayload{
 				Event:        "success",
 				Status:       string(config.StatusCompleted),
 				AppID:        "app-1",
@@ -138,11 +139,11 @@ func TestCallbackJobCtlRunGetSuccess(t *testing.T) {
 		AppID:      "app-1",
 		TaskID:     "task-1",
 		JobType:    string(config.JobDeployCallback),
-		JobInfo: &CallbackJobInfo{
+		JobInfo: &jobinfo.CallbackJobInfo{
 			Event:  "success",
 			URL:    server.URL,
 			Method: http.MethodGet,
-			Payload: CallbackPayload{
+			Payload: jobinfo.CallbackPayload{
 				Event:        "success",
 				Status:       string(config.StatusCompleted),
 				AppID:        "app-1",
@@ -180,7 +181,7 @@ func TestCallbackJobCtlRunRecordsResponseFailures(t *testing.T) {
 			})
 			defer server.Close()
 			jobTask := &model.JobTask{
-				JobInfo: &CallbackJobInfo{Event: "success", URL: server.URL, Method: http.MethodPost},
+				JobInfo: &jobinfo.CallbackJobInfo{Event: "success", URL: server.URL, Method: http.MethodPost},
 			}
 			ctl := NewCallbackJobCtl(jobTask, nil, &spec.URLSecurityPolicySpec{AllowPrivateByDefault: true})
 
@@ -210,11 +211,11 @@ func TestCallbackJobCtlRunRejectsPrivateTargetWhenDisabled(t *testing.T) {
 		AppID:      "app-1",
 		TaskID:     "task-1",
 		JobType:    string(config.JobDeployCallback),
-		JobInfo: &CallbackJobInfo{
+		JobInfo: &jobinfo.CallbackJobInfo{
 			Event:  "success",
 			URL:    server.URL,
 			Method: http.MethodGet,
-			Payload: CallbackPayload{
+			Payload: jobinfo.CallbackPayload{
 				Event:        "success",
 				Status:       string(config.StatusCompleted),
 				AppID:        "app-1",
@@ -240,7 +241,7 @@ func TestCallbackJobCtlRunRequiresURLSecurityPolicy(t *testing.T) {
 		AppID:      "app-1",
 		TaskID:     "task-1",
 		JobType:    string(config.JobDeployCallback),
-		JobInfo: &CallbackJobInfo{
+		JobInfo: &jobinfo.CallbackJobInfo{
 			Event:  "success",
 			URL:    "https://example.com/callback",
 			Method: http.MethodGet,
@@ -272,11 +273,11 @@ func TestCallbackJobCtlRunRejectsRedirectToPrivateTarget(t *testing.T) {
 		AppID:      "app-1",
 		TaskID:     "task-1",
 		JobType:    string(config.JobDeployCallback),
-		JobInfo: &CallbackJobInfo{
+		JobInfo: &jobinfo.CallbackJobInfo{
 			Event:  "success",
 			URL:    entryURL,
 			Method: http.MethodGet,
-			Payload: CallbackPayload{
+			Payload: jobinfo.CallbackPayload{
 				Event:        "success",
 				Status:       string(config.StatusCompleted),
 				AppID:        "app-1",
@@ -316,7 +317,7 @@ func TestCallbackJobCtlRunRejectsCrossOriginRedirectBeforeForwardingHeaders(t *t
 		AppID:      "app-1",
 		TaskID:     "task-1",
 		JobType:    string(config.JobDeployCallback),
-		JobInfo: &CallbackJobInfo{
+		JobInfo: &jobinfo.CallbackJobInfo{
 			Event:  "success",
 			URL:    entry.URL,
 			Method: http.MethodGet,
@@ -358,7 +359,7 @@ func TestCallbackJobCtlRunAllowsSameOriginRedirect(t *testing.T) {
 		AppID:      "app-1",
 		TaskID:     "task-1",
 		JobType:    string(config.JobDeployCallback),
-		JobInfo: &CallbackJobInfo{
+		JobInfo: &jobinfo.CallbackJobInfo{
 			Event:   "success",
 			URL:     server.URL + "/start",
 			Method:  http.MethodGet,

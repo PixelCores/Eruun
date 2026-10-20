@@ -10,7 +10,6 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -20,6 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
@@ -56,7 +56,7 @@ func (c *DeployJobCtl) Clean(ctx context.Context) {
 	namespace := c.job.Namespace
 	name := naming.WebServiceName(c.job.Name, c.job.ResourceAppNameOrID())
 	var labels map[string]string
-	if deploy, ok := optionalJobInfo[*appsv1.Deployment](c.job); ok {
+	if deploy, ok := jobinfo.OptionalJobInfo[*appsv1.Deployment](c.job); ok {
 		if deploy.Namespace != "" {
 			namespace = deploy.Namespace
 		}
@@ -101,7 +101,7 @@ func (c *DeployJobCtl) run(ctx context.Context) error {
 		deploy     *appsv1.Deployment
 		deployName string
 	)
-	deploy, err := deploymentFromJobInfo(c.job)
+	deploy, err := jobinfo.DeploymentFromJobInfo(c.job)
 	if err != nil {
 		return err
 	}
@@ -197,7 +197,7 @@ func (c *DeployJobCtl) wait(ctx context.Context) error {
 	targetName := naming.WebServiceName(c.job.Name, c.job.ResourceAppNameOrID())
 	namespace := c.job.Namespace
 	var expectedImages []string
-	if deploy, ok := optionalJobInfo[*appsv1.Deployment](c.job); ok {
+	if deploy, ok := jobinfo.OptionalJobInfo[*appsv1.Deployment](c.job); ok {
 		if deploy.Namespace != "" {
 			namespace = deploy.Namespace
 		}
@@ -221,7 +221,7 @@ func (c *DeployJobCtl) wait(ctx context.Context) error {
 	if err != nil {
 		var we *informer.WaitError
 		if errors.As(err, &we) {
-			return NewStatusError(we.Status, workloadWaitError(ctx, c.client, c.job, "Deployment", namespace, targetName, naming.BoundedLabelValue(c.job.Name), we.Err))
+			return jobinfo.NewStatusError(we.Status, workloadWaitError(ctx, c.client, c.job, "Deployment", namespace, targetName, naming.BoundedLabelValue(c.job.Name), we.Err))
 		}
 		return workloadWaitError(ctx, c.client, c.job, "Deployment", namespace, targetName, naming.BoundedLabelValue(c.job.Name), err)
 	}

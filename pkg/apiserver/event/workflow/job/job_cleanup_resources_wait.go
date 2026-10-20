@@ -15,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 )
 
 const cleanupPollInterval = 500 * time.Millisecond
@@ -53,7 +54,7 @@ func (c *CleanupResourcesJobCtl) waitForCleanup(ctx context.Context, component *
 		return true, nil
 	})
 	if wait.Interrupted(err) && !errors.Is(err, context.Canceled) {
-		return NewStatusError(config.StatusTimeout, fmt.Errorf("cleanup resources for component %s timeout", component.Name))
+		return jobinfo.NewStatusError(config.StatusTimeout, fmt.Errorf("cleanup resources for component %s timeout", component.Name))
 	}
 	return err
 }
@@ -102,7 +103,7 @@ func (c *CleanupResourcesJobCtl) resourceGone(ctx context.Context, ref cleanupRe
 }
 
 func (c *CleanupResourcesJobCtl) componentPodsGone(ctx context.Context, component *model.ApplicationComponent) (bool, error) {
-	requireStatefulSetDeletion := c != nil && c.job != nil && versionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo)
+	requireStatefulSetDeletion := c != nil && c.job != nil && jobinfo.VersionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo)
 	if requireStatefulSetDeletion {
 		return c.requiredStatefulSetPodsGone(ctx, component)
 	}

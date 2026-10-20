@@ -20,6 +20,8 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	sqldatastore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
@@ -27,7 +29,7 @@ import (
 )
 
 type cancelledJobRecoveryStore struct {
-	noopStore
+	jobtest.NoopStore
 	space  model.Workspace
 	record *model.JobInfo
 }
@@ -134,19 +136,19 @@ func TestCleanupRecoveredCancelledJobsDeletesOnlyExactExecution(t *testing.T) {
 }
 
 func TestCleanupRecoveredCancelledJobsDeletesExactRetryCheckpoint(t *testing.T) {
-	task := retryTestTask(t, retryTestPolicy())
+	task := retryTestTask(t, jobtest.RetryTestPolicy())
 	task.WorkspaceID = "space-1"
 	desired := task.JobInfo.(*batchv1.Job)
 	live := desired.DeepCopy()
 	live.UID = types.UID("retry-job-current")
-	checkpoint := &instantJobRetryCheckpoint{
+	checkpoint := &jobinfo.InstantJobRetryCheckpoint{
 		Kind: "instant_job_retry", Version: 1, Job: desired, Attempt: task.Attempt,
 		CurrentUID: live.UID, Deadline: time.Now().Add(time.Hour).UnixNano(),
 	}
 	raw, err := json.Marshal(checkpoint)
 	require.NoError(t, err)
 	task.InternalInfo = string(raw)
-	record := buildJobInfoRecord(task)
+	record := jobinfo.BuildJobInfoRecord(task)
 	record.ID = 1
 	record.Status = string(config.StatusCancelled)
 	record.SchedulingReason = cancelledJobCleanupPending

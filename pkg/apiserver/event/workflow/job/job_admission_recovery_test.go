@@ -21,6 +21,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -50,7 +51,7 @@ func TestJobAdmissionCancellationStopsRecoveredInstantExecution(t *testing.T) {
 				desired.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
 				live := desired.DeepCopy()
 				live.UID = "original-live-job"
-				checkpoint := &instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: desired, Attempt: 1,
+				checkpoint := &jobinfo.InstantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: desired, Attempt: 1,
 					CurrentUID: live.UID, Deadline: time.Now().Add(time.Hour).UnixNano()}
 				encoded, err := json.Marshal(checkpoint)
 				require.NoError(t, err)
@@ -59,7 +60,7 @@ func TestJobAdmissionCancellationStopsRecoveredInstantExecution(t *testing.T) {
 				owner := &model.WorkflowQueue{TaskID: task.TaskID, WorkspaceID: task.WorkspaceID, Status: config.StatusRunning,
 					RunGeneration: 2, RunToken: task.RunToken, WorkerID: task.WorkerID, LeaseExpiresAt: &lease}
 				require.NoError(t, store.Add(context.Background(), owner))
-				record := buildJobInfoRecord(task)
+				record := jobinfo.BuildJobInfoRecord(task)
 				require.NoError(t, store.Add(context.Background(), &record))
 				pod := retryTestPod(live, "")
 				pod.Spec = live.Spec.Template.Spec

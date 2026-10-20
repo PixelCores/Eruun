@@ -19,6 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
@@ -151,7 +152,7 @@ func RunJobs(ctx context.Context, jobs []*model.JobTask, run *Runtime) error {
 				}
 				if task.AppID == "" {
 					if err := access.NewStore(store).Check(ctx, &model.JobInfo{
-						TaskID: task.TaskID, WorkspaceID: task.WorkspaceID, Type: task.JobType, ServiceName: resolveJobServiceName(task),
+						TaskID: task.TaskID, WorkspaceID: task.WorkspaceID, Type: task.JobType, ServiceName: jobinfo.ResolveJobServiceName(task),
 					}); err != nil {
 						return fmt.Errorf("authorize workspace job: %w", err)
 					}
@@ -385,11 +386,11 @@ func runJob(ctx context.Context, job *model.JobTask, runtime *Runtime) (resultEr
 				}
 				return persistTerminalJobState(jobCtx, jobCtl, job, store, runtime)
 			}
-			if statusErr, ok := ExtractStatusError(admissionErr); ok && statusErr.Status == config.StatusTimeout && status == config.StatusRunning {
+			if statusErr, ok := jobinfo.ExtractStatusError(admissionErr); ok && statusErr.Status == config.StatusTimeout && status == config.StatusRunning {
 				// Expired checkpoints consume no new admission. Fence cleanup by
 				// the same DB ownership check as the admitted execution path.
 				ownershipCtx, cancel := persistenceContext(jobCtx)
-				ownershipErr := withJobInfoOwnership(ownershipCtx, store, job, func(datastore.DataStore) error { return nil })
+				ownershipErr := jobinfo.WithJobInfoOwnership(ownershipCtx, store, job, func(datastore.DataStore) error { return nil })
 				cancel()
 				if ownershipErr != nil {
 					return errors.Join(signal.ErrInfrastructureStop, admissionErr, ownershipErr)
@@ -397,7 +398,7 @@ func runJob(ctx context.Context, job *model.JobTask, runtime *Runtime) (resultEr
 				if signal.IsInfrastructureStop(jobCtx) {
 					return context.Cause(jobCtx)
 				}
-				applyJobError(job, statusErr, "")
+				jobinfo.ApplyJobError(job, statusErr, "")
 				job.EndTime = time.Now().Unix()
 				jobCtl.Clean(jobCtx)
 				if ack != nil {
@@ -436,7 +437,7 @@ func runAdmittedJob(jobCtx context.Context, jobCtl JobCtl, job *model.JobTask, c
 	}
 	persistCtx, persistCancel := persistenceContext(jobCtx)
 	var startStatusAppID string
-	ownershipErr := withJobInfoOwnership(persistCtx, store, job, func(writeStore datastore.DataStore) error {
+	ownershipErr := jobinfo.WithJobInfoOwnership(persistCtx, store, job, func(writeStore datastore.DataStore) error {
 		var err error
 		startStatusAppID, err = syncComponentStatusOnJobStart(persistCtx, job, writeStore)
 		return err
@@ -523,7 +524,7 @@ func runAdmittedJob(jobCtx context.Context, jobCtl JobCtl, job *model.JobTask, c
 			cancelErr = jobCtx.Err()
 		}
 		reason := signal.ReasonFromContext(jobCtx)
-		applyJobError(job, cancelErr, reason)
+		jobinfo.ApplyJobError(job, cancelErr, reason)
 		job.Status = config.StatusCancelled
 		job.EndTime = time.Now().Unix()
 		span.SetStatus(codes.Error, "Job execution cancelled")
@@ -541,7 +542,7 @@ func runAdmittedJob(jobCtx context.Context, jobCtl JobCtl, job *model.JobTask, c
 		}
 		span.SetStatus(codes.Error, "Job execution failed")
 		span.RecordError(runErr)
-		applyJobError(job, runErr, job.Error)
+		jobinfo.ApplyJobError(job, runErr, job.Error)
 		if job.Status != config.StatusFailed && job.Status != config.StatusCancelled && job.Status != config.StatusTimeout {
 			job.Status = config.StatusFailed
 		}

@@ -16,6 +16,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 )
 
 type requiredStatefulSetPodDeletionTarget struct {
@@ -48,11 +49,11 @@ type requiredStatefulSetPodOwnerJobTarget struct {
 // reconciler below handles both checkpointed and label-discovered Jobs.
 func (c *CleanupResourcesJobCtl) deferRequiredStatefulSetJobDelete(ref cleanupResourceRef) bool {
 	return c != nil && c.job != nil && ref.kind == domainspec.ResourceJob &&
-		versionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo)
+		jobinfo.VersionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo)
 }
 
 func (c *CleanupResourcesJobCtl) ensureRequiredStatefulSetPodDeletionAllowed(ctx context.Context, component *model.ApplicationComponent) error {
-	if c == nil || c.job == nil || !versionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo) {
+	if c == nil || c.job == nil || !jobinfo.VersionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo) {
 		return nil
 	}
 	if err := c.ensureRequiredStatefulSetWorkflowTaskActive(ctx, "checking required StatefulSet Pod deletion"); err != nil {

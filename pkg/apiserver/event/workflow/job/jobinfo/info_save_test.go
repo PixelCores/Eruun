@@ -1,4 +1,4 @@
-package job
+package jobinfo
 
 import (
 	"context"
@@ -12,12 +12,13 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 type jobInfoSaveStore struct {
-	noopStore
+	jobtest.NoopStore
 	existing  []*model.JobInfo
 	added     *model.JobInfo
 	updated   *model.JobInfo
@@ -74,7 +75,7 @@ func (s *jobInfoSaveStore) CompareAndSwapWithConditions(_ context.Context, entit
 		}
 		if current.Status != conditions["status"] ||
 			current.InternalInfo != conditions["internal_info"] ||
-			jobInfoExecutionKey(*current) != conditions["execution_key"] ||
+			JobInfoExecutionKey(*current) != conditions["execution_key"] ||
 			current.RunGeneration != conditions["run_generation"] ||
 			current.Attempt != conditions["attempt"] {
 			return false, nil
@@ -102,7 +103,7 @@ func evaluationCheckpoint(t *testing.T, task *model.JobTask, sequence uint64) st
 	if sequence > 0 {
 		runner = json.RawMessage(fmt.Sprintf(`{"protocolVersion":"v1","lastSequence":%d}`, sequence))
 	}
-	checkpoint := instantJobRetryCheckpoint{
+	checkpoint := InstantJobRetryCheckpoint{
 		Kind: "instant_job_retry", Version: 1, Attempt: attempt, Deadline: time.Now().Add(time.Hour).UnixNano(), Job: job, Runner: runner,
 	}
 	if attempt > 1 {
@@ -127,7 +128,7 @@ func TestSaveJobInfoPreservesConcurrentEvaluationRunnerCheckpoint(t *testing.T) 
 		store.existing[0].InternalInfo = evaluationCheckpoint(t, task, 5)
 	}
 
-	require.NoError(t, saveJobInfo(context.Background(), withJobTestOwner(store, task), task))
+	require.NoError(t, SaveJobInfo(context.Background(), jobtest.WithJobTestOwner(store, task), task))
 	require.NotNil(t, store.updated)
 	state, _, err := EvaluationRunnerCheckpoint(store.updated)
 	require.NoError(t, err)
@@ -135,7 +136,7 @@ func TestSaveJobInfoPreservesConcurrentEvaluationRunnerCheckpoint(t *testing.T) 
 }
 
 func TestNewEvaluationAttemptDoesNotInheritRunnerCheckpoint(t *testing.T) {
-	task := retryTestTask(t, retryTestPolicy())
+	task := retryTestTask(t, jobtest.RetryTestPolicy())
 	task.JobType, task.WorkspaceID = string(config.JobEval), "space"
 	executionKey := task.ExecutionKey
 	existing := &model.JobInfo{Type: task.JobType, TaskID: task.TaskID, WorkspaceID: task.WorkspaceID, ExecutionKey: &executionKey,
@@ -174,7 +175,7 @@ func TestSaveJobInfoUpdatesRecoveredExecutionTerminalState(t *testing.T) {
 		Attempt:       1,
 	}
 
-	require.NoError(t, saveJobInfo(context.Background(), withJobTestOwner(store, job), job))
+	require.NoError(t, SaveJobInfo(context.Background(), jobtest.WithJobTestOwner(store, job), job))
 	require.Nil(t, store.added)
 	require.NotNil(t, store.updated)
 	require.Equal(t, 7, store.updated.ID)
@@ -204,7 +205,7 @@ func TestSaveJobInfoKeepsDistinctExecutionsSeparate(t *testing.T) {
 		Attempt:       1,
 	}
 
-	require.NoError(t, saveJobInfo(context.Background(), withJobTestOwner(store, job), job))
+	require.NoError(t, SaveJobInfo(context.Background(), jobtest.WithJobTestOwner(store, job), job))
 	require.Nil(t, store.updated)
 	require.NotNil(t, store.added)
 	require.NotNil(t, store.added.ExecutionKey)
@@ -233,7 +234,7 @@ func TestSaveJobInfoPreservesSuccessfulTerminalState(t *testing.T) {
 		Attempt:       1,
 	}
 
-	require.NoError(t, saveJobInfo(context.Background(), withJobTestOwner(store, job), job))
+	require.NoError(t, SaveJobInfo(context.Background(), jobtest.WithJobTestOwner(store, job), job))
 	require.Nil(t, store.added)
 	require.Nil(t, store.updated)
 	require.Equal(t, string(config.StatusCompleted), store.existing[0].Status)
@@ -264,7 +265,7 @@ func TestSaveJobInfoReloadsAfterConcurrentTerminalUpdate(t *testing.T) {
 		Attempt:       1,
 	}
 
-	require.NoError(t, saveJobInfo(context.Background(), withJobTestOwner(store, job), job))
+	require.NoError(t, SaveJobInfo(context.Background(), jobtest.WithJobTestOwner(store, job), job))
 	require.Nil(t, store.added)
 	require.Nil(t, store.updated)
 	require.Equal(t, string(config.StatusCompleted), store.existing[0].Status)

@@ -13,17 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
-	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"golang.org/x/sync/errgroup"
 	batchv1 "k8s.io/api/batch/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -31,6 +20,19 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
+	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
 type Service struct {
@@ -591,7 +593,7 @@ func (s *Service) authorizeRunner(ctx context.Context, identity RunnerIdentity) 
 				if live.UID != owner.UID {
 					return nil, bcode.ErrUnauthorized
 				}
-				if workflowjob.ValidateInstantJobRetryExecution(job, live) != nil {
+				if jobinfo.ValidateInstantJobRetryExecution(job, live) != nil {
 					return nil, bcode.ErrUnauthorized
 				}
 				auth := &runnerAuthorization{task: task, job: job, liveJob: live, namespace: space.Namespace, jobUID: string(live.UID), identity: identity, evaluation: evaluation}

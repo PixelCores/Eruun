@@ -14,6 +14,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -151,7 +152,7 @@ func (c *CleanupResourcesJobCtl) deleteStatefulSet(ctx context.Context, namespac
 	if !ok {
 		return nil
 	}
-	if c != nil && c.job != nil && versionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo) {
+	if c != nil && c.job != nil && jobinfo.VersionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo) {
 		if err := c.ensureStatefulSetPVCRetention(ctx, ref); err != nil {
 			return err
 		}

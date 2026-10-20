@@ -23,6 +23,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -59,7 +61,7 @@ func TestJobAdmissionUsesTaskWorkspaceAndApplication(t *testing.T) {
 			task := &model.JobTask{TaskID: owner.TaskID, AppID: owner.AppID, WorkspaceID: owner.WorkspaceID,
 				JobType: string(tc.job), ExecutionKey: "execution", Status: config.StatusPrepare,
 				RunGeneration: 1, RunToken: owner.RunToken, WorkerID: owner.WorkerID}
-			record := buildJobInfoRecord(task)
+			record := jobinfo.BuildJobInfoRecord(task)
 			require.NoError(t, repository.EnqueueJobForScheduling(ctx, store, owner, &record, nil))
 			n, err := repository.AdmitQueuedJobs(ctx, store)
 			require.NoError(t, err)
@@ -380,7 +382,7 @@ func TestJobAdmissionUnfencedCallsCannotImpersonateApprovalOwner(t *testing.T) {
 				JobType: string(config.JobDeployCallback), OwnerStatus: status}
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
-			release, err := waitForJobAdmission(ctx, &noopStore{}, task, nil)
+			release, err := waitForJobAdmission(ctx, &jobtest.NoopStore{}, task, nil)
 			if status == config.StatusWaitingApprove {
 				require.ErrorIs(t, err, repository.ErrWorkflowOwnershipRequired)
 			} else {

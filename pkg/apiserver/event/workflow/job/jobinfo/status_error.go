@@ -1,4 +1,4 @@
-package job
+package jobinfo
 
 import (
 	"errors"
@@ -36,4 +36,4 @@ func ExtractStatusError(err error) (*StatusError, bool) {
 	return nil, false
 }
 
-var errJobExecutionIdentityChanged = errors.New("job execution identity changed")
+var ErrJobExecutionIdentityChanged = errors.New("job execution identity changed")

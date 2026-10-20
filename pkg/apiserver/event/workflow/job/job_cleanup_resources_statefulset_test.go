@@ -2,25 +2,26 @@ package job
 
 import (
 	"context"
-
 	"errors"
+	"testing"
+	"time"
+
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	"testing"
-	"time"
-
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 func TestCleanupResourcesJobCtlEnforcesRequiredStatefulSetDeletion(t *testing.T) {
@@ -471,7 +472,7 @@ func TestCleanupResourcesJobCtlRejectsUnversionedStatefulSetPVCDeletionMarker(t 
 		Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: `{"source":"` + config.JobInfoSourceVersionUpdateRemove + `","requireStatefulSetDeletion":true,"statefulSetPVCTemplatesToDelete":["data"]}`,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: fake.NewSimpleClientset(), Store: &noopStore{}, Ack: nil})
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: fake.NewSimpleClientset(), Store: &jobtest.NoopStore{}, Ack: nil})
 	require.NotNil(t, ctl)
 
 	err := ctl.ensureRequiredStatefulSetDeletionAllowed(context.Background(), component)
@@ -496,7 +497,7 @@ func TestCleanupResourcesJobCtlDoesNotSilentlySkipRequiredStatefulSetDeletion(t 
 		Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: versionUpdateRequireStatefulSetDeletionInternalInfo(),
 	}
-	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
+	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: nil})
 	require.NotNil(t, ctl)
 	deleted := cleanupResourceSet{seen: make(map[string]struct{})}
 	deleteCalled := false

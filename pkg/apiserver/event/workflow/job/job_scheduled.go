@@ -13,6 +13,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 )
 
 type ScheduledJobCtl struct {
@@ -42,7 +43,7 @@ func (c *ScheduledJobCtl) Run(ctx context.Context) error {
 	c.ack()
 
 	if err := c.run(ctx); err != nil {
-		applyJobError(c.job, err, "")
+		jobinfo.ApplyJobError(c.job, err, "")
 		return err
 	}
 	if c.job.Status == config.StatusSkipped {
@@ -53,14 +54,14 @@ func (c *ScheduledJobCtl) Run(ctx context.Context) error {
 		c.job.Error = ""
 		return nil
 	}
-	if _, ok := optionalJobInfo[*batchv1.CronJob](c.job); ok {
+	if _, ok := jobinfo.OptionalJobInfo[*batchv1.CronJob](c.job); ok {
 		c.job.Status = config.StatusCompleted
 		c.job.Error = ""
 		return nil
 	}
 	status, message, err := c.waitBatchJob(ctx)
 	if err != nil {
-		applyJobError(c.job, err, message)
+		jobinfo.ApplyJobError(c.job, err, message)
 		return err
 	}
 	if status != "" {
@@ -76,7 +77,7 @@ func (c *ScheduledJobCtl) run(ctx context.Context) error {
 	if c.client == nil {
 		return fmt.Errorf("client is nil")
 	}
-	cron, oneTime, err := scheduledJobInfo(c.job)
+	cron, oneTime, err := jobinfo.ScheduledJobInfo(c.job)
 	if err != nil {
 		return err
 	}
@@ -145,7 +146,7 @@ func (c *ScheduledJobCtl) runOneTimeJob(ctx context.Context, jobObj *batchv1.Job
 		if jobType == "" {
 			jobType = string(config.JobDeployScheduled)
 		}
-		payload := &DelayJobPayload{
+		payload := &jobinfo.DelayJobPayload{
 			ExecuteAt:      startTime,
 			Namespace:      namespace,
 			JobType:        jobType,
@@ -153,14 +154,14 @@ func (c *ScheduledJobCtl) runOneTimeJob(ctx context.Context, jobObj *batchv1.Job
 			ExecutionKey:   c.job.ExecutionKey,
 			RunGeneration:  c.job.RunGeneration,
 			RunToken:       c.job.RunToken,
-			ServiceName:    resolveJobServiceName(c.job),
+			ServiceName:    jobinfo.ResolveJobServiceName(c.job),
 			TimeoutSeconds: c.job.Timeout,
 			Job:            jobObj,
 		}
-		if err := persistDelayJobCheckpoint(ctx, c.store, c.job, payload); err != nil {
+		if err := jobinfo.PersistDelayJobCheckpoint(ctx, c.store, c.job, payload); err != nil {
 			return err
 		}
-		if _, err := EnqueueDelayJob(ctx, c.delayQueue, payload); err != nil {
+		if _, err := jobinfo.EnqueueDelayJob(ctx, c.delayQueue, payload); err != nil {
 			klog.ErrorS(err, "delay queue notification failed; database recovery remains active", "taskID", c.job.TaskID, "executionKey", c.job.ExecutionKey)
 		}
 		c.ack()
@@ -174,7 +175,7 @@ func (c *ScheduledJobCtl) runOneTimeJob(ctx context.Context, jobObj *batchv1.Job
 }
 
 func (c *ScheduledJobCtl) CleanCancelled(ctx context.Context) (string, error) {
-	if _, ok := optionalJobInfo[*batchv1.Job](c.job); ok {
+	if _, ok := jobinfo.OptionalJobInfo[*batchv1.Job](c.job); ok {
 		return cancelledJobCleanupComplete, deleteCancelledBatchJob(ctx, c.client, c.namespace, c.job)
 	}
 	for _, ref := range resourcesForCleanup(ctx, domainspec.ResourceCronJob) {
@@ -192,7 +193,7 @@ func (c *ScheduledJobCtl) CleanCancelled(ctx context.Context) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("get cancelled Kubernetes CronJob: %w", err)
 		}
-		record := buildJobInfoRecord(c.job)
+		record := jobinfo.BuildJobInfoRecord(c.job)
 		if !cancelledCronJobMatches(&record, cron) {
 			return "", fmt.Errorf("cancelled Kubernetes CronJob execution identity changed")
 		}

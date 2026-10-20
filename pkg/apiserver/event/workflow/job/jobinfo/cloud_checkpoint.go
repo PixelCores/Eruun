@@ -1,4 +1,4 @@
-package job
+package jobinfo
 
 import (
 	"encoding/json"
@@ -26,7 +26,7 @@ type CloudJobRecord struct {
 	Error        string                 `json:"error,omitempty"`
 }
 
-func cloudJobExecutionKey(info *CloudJobInfo) string {
+func CloudJobExecutionKey(info *CloudJobInfo) string {
 	if info == nil {
 		return ""
 	}
@@ -37,11 +37,11 @@ func cloudJobExecutionKeyFromJob(job *model.JobTask) string {
 	if job == nil {
 		return ""
 	}
-	info, ok := optionalJobInfo[*CloudJobInfo](job)
+	info, ok := OptionalJobInfo[*CloudJobInfo](job)
 	if !ok {
 		return ""
 	}
-	return cloudJobExecutionKey(info)
+	return CloudJobExecutionKey(info)
 }
 
 func cloudJobExecutionKeyFromRecord(record *CloudJobRecord) string {
@@ -51,7 +51,7 @@ func cloudJobExecutionKeyFromRecord(record *CloudJobRecord) string {
 	return strings.TrimSpace(record.ExecutionKey)
 }
 
-func parseCloudJobRecord(raw string) *CloudJobRecord {
+func ParseCloudJobRecord(raw string) *CloudJobRecord {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil
@@ -63,17 +63,17 @@ func parseCloudJobRecord(raw string) *CloudJobRecord {
 	return &record
 }
 
-func parseCloudCheckpointFromJobInfo(jobInfo *model.JobInfo) *CloudJobRecord {
+func ParseCloudCheckpointFromJobInfo(jobInfo *model.JobInfo) *CloudJobRecord {
 	if jobInfo == nil {
 		return nil
 	}
-	if record := parseCloudJobRecord(jobInfo.InternalInfo); record != nil {
+	if record := ParseCloudJobRecord(jobInfo.InternalInfo); record != nil {
 		return record
 	}
-	return parseCloudJobRecord(jobInfo.Info)
+	return ParseCloudJobRecord(jobInfo.Info)
 }
 
-func selectCloudCheckpointJobInfo(job *model.JobTask, candidates []*model.JobInfo) *model.JobInfo {
+func SelectCloudCheckpointJobInfo(job *model.JobTask, candidates []*model.JobInfo) *model.JobInfo {
 	if len(candidates) == 0 {
 		return nil
 	}
@@ -82,7 +82,7 @@ func selectCloudCheckpointJobInfo(job *model.JobTask, candidates []*model.JobInf
 		return candidates[0]
 	}
 	for _, candidate := range candidates {
-		record := parseCloudCheckpointFromJobInfo(candidate)
+		record := ParseCloudCheckpointFromJobInfo(candidate)
 		if record == nil {
 			continue
 		}

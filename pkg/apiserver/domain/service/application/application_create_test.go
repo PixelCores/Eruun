@@ -15,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	assembler "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/assembler/v1"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
@@ -820,7 +821,7 @@ func TestPrepareComponentsPreservesEmptySecretMapForURLBackedSecret(t *testing.T
 	require.NotNil(t, properties.Secret)
 	require.Empty(t, properties.Secret)
 
-	require.Equal(t, &job.SecretInput{
+	require.Equal(t, &jobinfo.SecretInput{
 		Name:      "remote-secret",
 		Namespace: config.DefaultNamespace,
 		Labels: map[string]string{

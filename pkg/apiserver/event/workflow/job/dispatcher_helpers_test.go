@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/stretchr/testify/require"
 	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,8 +16,10 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 )
 
 type blockingDispatcherQueue struct {
@@ -124,7 +125,7 @@ func TestDelayDispatcherRunReleasesItemWaitingOnTimer(t *testing.T) {
 	dispatcher := NewDelayDispatcher(
 		queue,
 		&workspace.Manager{Client: fake.NewSimpleClientset(), RESTConfig: &rest.Config{}},
-		&noopStore{},
+		&jobtest.NoopStore{},
 		"group",
 		"consumer",
 	)
@@ -204,7 +205,7 @@ func TestResultDispatcherReleasesUndispatchedMessagesOnStop(t *testing.T) {
 }
 
 type delayRecoveryQueryStore struct {
-	noopStore
+	jobtest.NoopStore
 	query datastore.Entity
 	opts  *datastore.ListOptions
 }
@@ -242,7 +243,7 @@ func TestDispatcherConstructorsAndStartGuards(t *testing.T) {
 	delay.Start(context.Background())
 
 	ctxDelay, cancelDelay := context.WithCancel(context.Background())
-	delay = NewDelayDispatcher(&dispatcherAckQueue{}, &workspace.Manager{Client: fake.NewSimpleClientset(), RESTConfig: &rest.Config{}}, &noopStore{}, "", "")
+	delay = NewDelayDispatcher(&dispatcherAckQueue{}, &workspace.Manager{Client: fake.NewSimpleClientset(), RESTConfig: &rest.Config{}}, &jobtest.NoopStore{}, "", "")
 	delay.readBlock = 5 * time.Millisecond
 	delay.autoClaimInterval = 5 * time.Millisecond
 	delay.Start(ctxDelay)
@@ -260,7 +261,7 @@ func TestDispatcherConstructorsAndStartGuards(t *testing.T) {
 	result.Start(context.Background())
 
 	ctxResult, cancelResult := context.WithCancel(context.Background())
-	result = NewResultDispatcher(&dispatcherAckQueue{}, fake.NewSimpleClientset(), &noopStore{}, "", "")
+	result = NewResultDispatcher(&dispatcherAckQueue{}, fake.NewSimpleClientset(), &jobtest.NoopStore{}, "", "")
 	result.readBlock = 5 * time.Millisecond
 	result.autoClaimInterval = 5 * time.Millisecond
 	result.Start(ctxResult)
@@ -271,7 +272,7 @@ func TestDispatcherConstructorsAndStartGuards(t *testing.T) {
 	require.EqualValues(t, 0, result.ensureFailures.Load())
 
 	ctxOutbox, cancelOutbox := context.WithCancel(context.Background())
-	outbox := NewResultOutboxDispatcher(&dispatcherAckQueue{}, &noopStore{})
+	outbox := NewResultOutboxDispatcher(&dispatcherAckQueue{}, &jobtest.NoopStore{})
 	outbox.pollInterval = time.Hour
 	startDone := make(chan struct{})
 	go func() {
@@ -290,7 +291,7 @@ func TestDispatcherConstructorsAndStartGuards(t *testing.T) {
 func TestDispatcherStartCountsEnsureGroupFailures(t *testing.T) {
 	ctxDelay, cancelDelay := context.WithCancel(context.Background())
 	defer cancelDelay()
-	delay := NewDelayDispatcher(&dispatcherAckQueue{ensureGroupErr: errors.New("ensure delay failed")}, &workspace.Manager{Client: fake.NewSimpleClientset(), RESTConfig: &rest.Config{}}, &noopStore{}, "", "")
+	delay := NewDelayDispatcher(&dispatcherAckQueue{ensureGroupErr: errors.New("ensure delay failed")}, &workspace.Manager{Client: fake.NewSimpleClientset(), RESTConfig: &rest.Config{}}, &jobtest.NoopStore{}, "", "")
 	delay.readBlock = time.Millisecond
 	delay.autoClaimInterval = time.Millisecond
 	delay.Start(ctxDelay)
@@ -300,7 +301,7 @@ func TestDispatcherStartCountsEnsureGroupFailures(t *testing.T) {
 
 	ctxResult, cancelResult := context.WithCancel(context.Background())
 	defer cancelResult()
-	result := NewResultDispatcher(&dispatcherAckQueue{ensureGroupErr: errors.New("ensure result failed")}, fake.NewSimpleClientset(), &noopStore{}, "", "")
+	result := NewResultDispatcher(&dispatcherAckQueue{ensureGroupErr: errors.New("ensure result failed")}, fake.NewSimpleClientset(), &jobtest.NoopStore{}, "", "")
 	result.readBlock = time.Millisecond
 	result.autoClaimInterval = time.Millisecond
 	result.Start(ctxResult)
@@ -313,7 +314,7 @@ func TestDispatchersRunBlocksUntilContextCancelled(t *testing.T) {
 	t.Run("delay", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		queue := newBlockingDispatcherQueue()
-		dispatcher := NewDelayDispatcher(queue, &workspace.Manager{Client: fake.NewSimpleClientset(), RESTConfig: &rest.Config{}}, &noopStore{}, "", "")
+		dispatcher := NewDelayDispatcher(queue, &workspace.Manager{Client: fake.NewSimpleClientset(), RESTConfig: &rest.Config{}}, &jobtest.NoopStore{}, "", "")
 		dispatcher.autoClaimInterval = time.Millisecond
 		done := make(chan struct{})
 		go func() {
@@ -330,7 +331,7 @@ func TestDispatchersRunBlocksUntilContextCancelled(t *testing.T) {
 	t.Run("result", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		queue := newBlockingDispatcherQueue()
-		dispatcher := NewResultDispatcher(queue, fake.NewSimpleClientset(), &noopStore{}, "", "")
+		dispatcher := NewResultDispatcher(queue, fake.NewSimpleClientset(), &jobtest.NoopStore{}, "", "")
 		dispatcher.autoClaimInterval = time.Millisecond
 		done := make(chan struct{})
 		go func() {
@@ -346,7 +347,7 @@ func TestDispatchersRunBlocksUntilContextCancelled(t *testing.T) {
 
 	t.Run("result_outbox", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
-		dispatcher := NewResultOutboxDispatcher(&dispatcherAckQueue{}, &noopStore{})
+		dispatcher := NewResultOutboxDispatcher(&dispatcherAckQueue{}, &jobtest.NoopStore{})
 		dispatcher.pollInterval = time.Hour
 		done := make(chan struct{})
 		go func() {
@@ -518,5 +519,5 @@ func TestProcessJobResultEarlyBranches(t *testing.T) {
 	require.ErrorIs(t, processJobResultWithOutbox(ctx, nil, nil, nil, nil), errResultDispatchNoRetry)
 	require.ErrorIs(t, processJobResultWithOutbox(ctx, nil, nil, &JobResultPayload{}, nil), errResultDispatchNoRetry)
 	require.ErrorIs(t, processJobResultWithOutbox(ctx, nil, nil, &JobResultPayload{Name: "job", TaskID: "task"}, nil), errResultDispatchNoRetry)
-	require.ErrorIs(t, processJobResultWithOutbox(ctx, fake.NewSimpleClientset(), &noopStore{}, &JobResultPayload{Name: "job", TaskID: "task"}, nil), errResultDispatchNoRetry)
+	require.ErrorIs(t, processJobResultWithOutbox(ctx, fake.NewSimpleClientset(), &jobtest.NoopStore{}, &JobResultPayload{Name: "job", TaskID: "task"}, nil), errResultDispatchNoRetry)
 }

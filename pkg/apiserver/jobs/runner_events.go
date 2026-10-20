@@ -13,16 +13,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"k8s.io/klog/v2"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
 const (
@@ -217,7 +219,7 @@ func runnerEventDigest(event RunnerEvent) (string, error) {
 }
 
 func decodeRunnerState(record *model.JobInfo) (*evaluationRunnerState, int64, error) {
-	raw, deadline, err := workflowjob.EvaluationRunnerCheckpoint(record)
+	raw, deadline, err := jobinfo.EvaluationRunnerCheckpoint(record)
 	if err != nil || len(raw) == 0 {
 		return nil, deadline, err
 	}
@@ -334,7 +336,7 @@ func (s *Service) RunnerEvent(ctx context.Context, identity RunnerIdentity, even
 		if err != nil {
 			return err
 		}
-		if err := workflowjob.SetEvaluationRunnerCheckpoint(record, raw); err != nil {
+		if err := jobinfo.SetEvaluationRunnerCheckpoint(record, raw); err != nil {
 			return err
 		}
 		if err := tx.Put(ctx, record); err != nil {
@@ -387,7 +389,7 @@ func validateLockedRunnerJob(ctx context.Context, store artifacts.Backend, recor
 		*record.ExecutionKey != *auth.job.ExecutionKey || record.EvaluationInfo != auth.job.EvaluationInfo || record.RunGeneration != auth.job.RunGeneration || record.Attempt != auth.job.Attempt {
 		return bcode.ErrUnauthorized
 	}
-	if workflowjob.ValidateInstantJobRetryExecution(record, auth.liveJob) != nil {
+	if jobinfo.ValidateInstantJobRetryExecution(record, auth.liveJob) != nil {
 		return bcode.ErrUnauthorized
 	}
 	return runnerParentAuthorized(ctx, store, parentStatus, record, auth)

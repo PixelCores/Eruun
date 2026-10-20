@@ -6,16 +6,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
-
 	networkingv1 "k8s.io/api/networking/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
 
 type DeployIngressJobCtl struct {
@@ -47,7 +48,7 @@ func (c *DeployIngressJobCtl) run(ctx context.Context) error {
 		return fmt.Errorf("client is nil")
 	}
 
-	ingress, err := ingressFromJobInfo(c.job)
+	ingress, err := jobinfo.IngressFromJobInfo(c.job)
 	if err != nil {
 		return err
 	}
@@ -264,7 +265,7 @@ func (c *DeployIngressJobCtl) wait(ctx context.Context) error {
 	defer ticker.Stop()
 
 	getIngressName := func() string {
-		if ingressObj, ok := optionalJobInfo[*networkingv1.Ingress](c.job); ok && ingressObj.Name != "" {
+		if ingressObj, ok := jobinfo.OptionalJobInfo[*networkingv1.Ingress](c.job); ok && ingressObj.Name != "" {
 			return ingressObj.Name
 		}
 		return c.job.Name
@@ -274,10 +275,10 @@ func (c *DeployIngressJobCtl) wait(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			name := getIngressName()
-			return NewStatusError(config.StatusCancelled, fmt.Errorf("ingress %s cancelled: %w", name, ctx.Err()))
+			return jobinfo.NewStatusError(config.StatusCancelled, fmt.Errorf("ingress %s cancelled: %w", name, ctx.Err()))
 		case <-timeout:
 			name := getIngressName()
-			return NewStatusError(config.StatusTimeout, fmt.Errorf("wait ingress %s timeout", name))
+			return jobinfo.NewStatusError(config.StatusTimeout, fmt.Errorf("wait ingress %s timeout", name))
 		case <-ticker.C:
 			ingressName := getIngressName()
 			ing, err := c.client.NetworkingV1().Ingresses(c.job.Namespace).Get(ctx, ingressName, metav1.GetOptions{})

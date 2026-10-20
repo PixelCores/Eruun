@@ -18,6 +18,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
 )
 
@@ -75,7 +76,7 @@ func completedJobForFinalize(jobTask *model.JobTask) (*batchv1.Job, bool) {
 	if !config.IsInstantJobType(config.JobType(jobTask.JobType)) && jobTask.JobType != string(config.JobDeployScheduled) {
 		return nil, false
 	}
-	jobObj, err := batchJobFromJobInfo(jobTask)
+	jobObj, err := jobinfo.BatchJobFromJobInfo(jobTask)
 	if err != nil {
 		return nil, false
 	}

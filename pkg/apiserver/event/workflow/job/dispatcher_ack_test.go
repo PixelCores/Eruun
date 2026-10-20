@@ -20,6 +20,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 )
@@ -154,7 +155,7 @@ func TestDelayDispatcherHandleMessageAcksMissingJob(t *testing.T) {
 		queue: queue,
 		group: "delay-workers",
 	}
-	raw, err := json.Marshal(&DelayJobPayload{})
+	raw, err := json.Marshal(&jobinfo.DelayJobPayload{})
 	require.NoError(t, err)
 
 	dispatcher.handleMessage(context.Background(), msg.Message{
