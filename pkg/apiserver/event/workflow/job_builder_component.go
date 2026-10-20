@@ -22,6 +22,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinstant"
 	workspacejobs "github.com/PixelCores/Eruun/pkg/apiserver/jobs"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -610,7 +611,7 @@ func buildJobsForComponent(
 			break
 		}
 		if properties.StartTime > 0 {
-			result, err := job.GenerateOneTimeJob(component, &properties, properties.RunPolicy, properties.StartTime)
+			result, err := jobinstant.GenerateOneTimeJob(component, &properties, properties.RunPolicy, properties.StartTime)
 			if err != nil {
 				return nil, err
 			}

@@ -19,8 +19,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinstant"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
@@ -314,7 +314,7 @@ func BuildEvaluationTask(ctx context.Context, store datastore.DataStore, cfg *co
 			// Takeover observes the committed attempt, including its collection
 			// window. Admission handles an elapsed absolute deadline as Timeout;
 			// only a new recovery must still have time to start its agent.
-			return workflowjob.RestoreInstantJobRetryCheckpoint(job)
+			return jobinstant.RestoreInstantJobRetryCheckpoint(job)
 		}
 		clock, ok := store.(datastore.DatabaseClock)
 		if !ok {

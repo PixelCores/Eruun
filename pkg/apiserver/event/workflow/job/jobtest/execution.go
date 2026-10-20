@@ -9,6 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
@@ -101,4 +102,26 @@ func (s *WorkflowOwnershipStore) CompareAndSwapWithConditions(_ context.Context,
 		return true, nil
 	}
 	return false, nil
+}
+
+func NewDelayedJobTask(jobType config.JobType) *model.JobTask {
+	return &model.JobTask{
+		Name:               "delayed-job",
+		TaskID:             "task-delayed",
+		Namespace:          "default",
+		JobType:            string(jobType),
+		ExecutionKey:       "execution-delayed",
+		RunGeneration:      3,
+		OwnerRunGeneration: 3,
+		OwnerStatus:        config.StatusRunning,
+		RunToken:           "run-3",
+		WorkerID:           "worker-delayed",
+		JobInfo: &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
+			Name:      "delayed-job",
+			Namespace: "default",
+			Annotations: map[string]string{
+				config.AnnotationJobStartTime: "4102444800",
+			},
+		}},
+	}
 }

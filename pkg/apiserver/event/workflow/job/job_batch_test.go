@@ -102,52 +102,8 @@ func TestGenerateScheduledCronJobOverridesHistoryLimit(t *testing.T) {
 	require.Equal(t, failedLimit, *cronObj.Spec.FailedJobsHistoryLimit)
 }
 
-type jobInfoStore struct {
-	addCount  int
-	addErr    error
-	lastAdded datastore.Entity
-}
-
-func (s *jobInfoStore) Add(_ context.Context, entity datastore.Entity) error {
-	s.addCount++
-	s.lastAdded = entity
-	return s.addErr
-}
-
-func (s *jobInfoStore) BatchAdd(context.Context, []datastore.Entity) error { return nil }
-
-func (s *jobInfoStore) Put(context.Context, datastore.Entity) error { return nil }
-
-func (s *jobInfoStore) Delete(context.Context, datastore.Entity) error { return nil }
-
-func (s *jobInfoStore) DeleteByFilter(context.Context, datastore.Entity, *datastore.FilterOptions) error {
-	return nil
-}
-
-func (s *jobInfoStore) Get(context.Context, datastore.Entity) error { return nil }
-
-func (s *jobInfoStore) List(context.Context, datastore.Entity, *datastore.ListOptions) ([]datastore.Entity, error) {
-	return nil, nil
-}
-
-func (s *jobInfoStore) Count(context.Context, datastore.Entity, *datastore.FilterOptions) (int64, error) {
-	return 0, nil
-}
-
-func (s *jobInfoStore) IsExist(context.Context, datastore.Entity) (bool, error) { return false, nil }
-
-func (s *jobInfoStore) IsExistByCondition(context.Context, string, map[string]interface{}, interface{}) (bool, error) {
-	return false, nil
-}
-
-func (s *jobInfoStore) CompareAndSwap(context.Context, datastore.Entity, string, interface{}, map[string]interface{}) (bool, error) {
-	return false, nil
-}
-
-var _ datastore.DataStore = (*jobInfoStore)(nil)
-
 func TestRunJob_SkippedWritesJobInfo(t *testing.T) {
-	store := &jobInfoStore{}
+	store := &jobtest.JobInfoStore{}
 	jobTask := &model.JobTask{
 		Name:       "demo",
 		Namespace:  "default",
@@ -161,8 +117,8 @@ func TestRunJob_SkippedWritesJobInfo(t *testing.T) {
 
 	runJob(context.Background(), jobTask, &jobexec.Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(store, jobTask), Ack: func() {}})
 
-	require.Equal(t, 1, store.addCount)
-	info, ok := store.lastAdded.(*model.JobInfo)
+	require.Equal(t, 1, store.AddCount)
+	info, ok := store.LastAdded.(*model.JobInfo)
 	require.True(t, ok)
 	require.Equal(t, string(config.StatusSkipped), info.Status)
 	require.NotZero(t, info.StartTime)

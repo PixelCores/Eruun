@@ -64,7 +64,7 @@ func TestJobAdmissionCancellationStopsRecoveredInstantExecution(t *testing.T) {
 				require.NoError(t, store.Add(context.Background(), owner))
 				record := jobinfo.BuildJobInfoRecord(task)
 				require.NoError(t, store.Add(context.Background(), &record))
-				pod := retryTestPod(live, "")
+				pod := jobtest.RetryTestPod(live, "")
 				pod.Spec = live.Spec.Template.Spec
 				pod.Status = corev1.PodStatus{Phase: corev1.PodRunning}
 				client := fake.NewSimpleClientset(live, pod)

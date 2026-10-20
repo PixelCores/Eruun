@@ -31,9 +31,9 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinstant"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
@@ -842,7 +842,7 @@ func TestCommandRuntimePersistsCheckpointAndTerminalResultThroughScopedStore(t *
 	observerCtx, stopObserver := context.WithCancel(context.Background())
 	t.Cleanup(stopObserver)
 	require.NoError(t, observer.Start(observerCtx))
-	ctl := workflowjob.NewInstantJobCtl(task, &jobexec.Runtime{Client: service.Kube, Store: service.Store, Ack: func() {}, ResourceWaiter: observer})
+	ctl := jobinstant.NewInstantJobCtl(task, &jobexec.Runtime{Client: service.Kube, Store: service.Store, Ack: func() {}, ResourceWaiter: observer})
 	require.NoError(t, ctl.Run(ctx))
 	require.Equal(t, config.StatusCompleted, task.Status)
 	require.NoError(t, ctl.SaveInfo(ctx))

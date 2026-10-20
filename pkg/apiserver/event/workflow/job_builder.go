@@ -12,8 +12,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinstant"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -314,7 +314,7 @@ func restoreCommittedJobExecutions(ctx context.Context, executions []StepExecuti
 						jobTask.Attempt = selected.Attempt
 					}
 					if jobTask.Status == config.StatusRunning && jobinfo.HasInstantJobRetryCheckpoint(selected) {
-						if err := workflowjob.RestoreInstantJobRetryCheckpoint(jobTask); err != nil {
+						if err := jobinstant.RestoreInstantJobRetryCheckpoint(jobTask); err != nil {
 							return fmt.Errorf("restore instant job retry: %w", err)
 						}
 					}

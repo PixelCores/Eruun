@@ -13,7 +13,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinstant"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
@@ -50,7 +50,7 @@ func TestTaskStagesAndJobJSONKeepRetryCheckpointPrivate(t *testing.T) {
 	require.NoError(t, err)
 	// Exercise a real recovery snapshot, including the full private Pod spec.
 	recovered := &model.JobTask{TaskID: "task-retry", ExecutionKey: executionKey, RunGeneration: 1, InternalInfo: string(checkpoint)}
-	require.NoError(t, workflowjob.RestoreInstantJobRetryCheckpoint(recovered))
+	require.NoError(t, jobinstant.RestoreInstantJobRetryCheckpoint(recovered))
 	require.Equal(t, envSecret, recovered.JobInfo.(*batchv1.Job).Spec.Template.Spec.Containers[0].Env[0].Value)
 
 	queuedAt := time.Date(2026, 9, 7, 9, 0, 0, 0, time.UTC)

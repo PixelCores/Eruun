@@ -1,16 +1,17 @@
-package job
+package jobinstant
 
 import (
 	"encoding/json"
 	"testing"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/stretchr/testify/require"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/utils/ptr"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 )
 
 func TestAdmissionPodResourceAccountsForInitSidecarsAndOverhead(t *testing.T) {
