@@ -201,6 +201,7 @@ L0  jobinfo             JobInfo 记录、载荷、检查点、状态转换
 
 - **生产代码需要新导出 147 个符号**：`jobinfo` 71 个、`jobexec` 63 个、`jobresult` 8 个、`jobdeploy` 2 个、`jobcleanup`/`logarchive`/`jobinstant` 各 1 个，完整清单见附录。
 - **测试另需 54 个**（见第 10 节），合计约 200 个。
+- **还有字段**：依赖图把字段访问记成“依赖所属类型”，所以上面的数字不含结构体字段。实施时发现，控制器基类 `deployNamespacedResourceJobBase` 的 9 个字段（`job`、`client`、`store`、`namespace`、`ack` 等）被嵌入它的控制器大量直接访问，例如 `c.job` 约 450 处、`c.client` 约 180 处。抽出 `jobexec` 时这些字段也要导出，涉及 25 个控制器文件、约 750 行机械替换。
 - **命名规则**：只把首字母改成大写；与已有导出名冲突时，按新包语境去掉冗余前缀，例如 `record.saveJobInfo` → `record.Save`。改名清单在各 PR 里逐个列出，不在本文预先确定。
 - **关于 `internal`**：可以把 `jobinfo`、`jobexec` 放进 `job/internal/`，让新导出的符号只对 `job/...` 可见。但 `job` 目录外现在要用其中 23 个符号（`jobinfo` 12 个，如 `CallbackJobInfo`、`ApplyExecutionIdentity`；`jobexec` 11 个，如 `Runtime`、`BuildLabels`、`PrepareTask`）。要用 `internal`，就得把这部分对外类型再拆到非 internal 包，或者由 `job` 转发。本文建议不用 `internal`，代价是导出面变大，靠评审约束写入路径（见第 12 节）。
 
