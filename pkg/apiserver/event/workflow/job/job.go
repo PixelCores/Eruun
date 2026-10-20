@@ -2,11 +2,9 @@ package job
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -14,7 +12,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
@@ -30,7 +27,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
-	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
 
@@ -814,165 +810,6 @@ func jobStatusFailed(status config.Status) bool {
 	return false
 }
 
-func syncConfigComponentStatus(ctx context.Context, job *model.JobTask, store datastore.DataStore) (string, error) {
-	target := findComponentForJob(ctx, job, store)
-	if target == nil {
-		return "", nil
-	}
-	if target.ComponentType != config.ConfJob && target.ComponentType != config.SecretJob {
-		return "", nil
-	}
-	if target.Status == string(config.ComponentStatusCleaning) {
-		klog.V(4).InfoS("skip updating component status from cleaning", "component", target.Name, "status", target.Status)
-		return "", nil
-	}
-	if !isConfigComponentJobType(job.JobType) {
-		return "", nil
-	}
-	status, ok := componentStatusForJob(job.Status)
-	if !ok {
-		if !isSharedDefaultSkippedConfigJob(job) {
-			return "", nil
-		}
-		status = config.ComponentStatusRunning
-	}
-
-	lastAbnormal := ""
-	target.Status = string(status)
-	if status == config.ComponentStatusFailed {
-		lastAbnormal = strings.TrimSpace(job.Error)
-	}
-	target.LastAbnormal = lastAbnormal
-
-	if err := repository.UpdateComponentRuntimeFields(ctx, store, target, map[string]interface{}{
-		"status":        string(status),
-		"last_abnormal": lastAbnormal,
-	}); err != nil {
-		return "", fmt.Errorf("update component %s status to %s: %w", target.Name, status, err)
-	}
-	return target.AppID, nil
-}
-
-func syncConfigComponentStatusIfWorkflowOwned(
-	ctx context.Context,
-	job *model.JobTask,
-	store datastore.DataStore,
-	runtime *Runtime,
-) error {
-	if job == nil || store == nil || !isConfigComponentJobType(job.JobType) {
-		return nil
-	}
-	var appID string
-	err := withJobInfoOwnership(ctx, store, job, func(tx datastore.DataStore) error {
-		var syncErr error
-		appID, syncErr = syncConfigComponentStatus(ctx, job, tx)
-		return syncErr
-	})
-	if err != nil {
-		return err
-	}
-	invalidateComponentsCache(ctx, runtime, appID, "config status sync")
-	return nil
-}
-
-func syncComponentStatusOnJobStart(ctx context.Context, job *model.JobTask, store datastore.DataStore) (string, error) {
-	target := findComponentForJob(ctx, job, store)
-	if target == nil {
-		return "", nil
-	}
-	if !shouldMarkComponentPendingOnJobStart(job.JobType) {
-		return "", nil
-	}
-	status := config.ComponentStatusPending
-	readyReplicas := int32(0)
-	lastAbnormal := ""
-	target.Status = string(status)
-	target.ReadyReplicas = readyReplicas
-	target.LastAbnormal = lastAbnormal
-	if err := repository.UpdateComponentRuntimeFields(ctx, store, target, map[string]interface{}{
-		"status":         string(status),
-		"ready_replicas": readyReplicas,
-		"last_abnormal":  lastAbnormal,
-	}); err != nil {
-		return "", fmt.Errorf("update component %s status to pending: %w", target.Name, err)
-	}
-	return target.AppID, nil
-}
-
-func invalidateComponentsCache(ctx context.Context, runtime *Runtime, appID string, reason string) {
-	if runtime == nil || runtime.Cache == nil {
-		return
-	}
-	appID = strings.TrimSpace(appID)
-	if appID == "" {
-		return
-	}
-	cacheKey := cache.ApplicationComponentsKey(appID)
-	if err := cache.InvalidateAfterWrite(ctx, runtime.Cache, cacheKey); err != nil {
-		klog.V(4).InfoS("invalidate component cache failed", "reason", reason, "appID", appID, "err", err)
-	}
-}
-
-func shouldMarkComponentPendingOnJobStart(jobType string) bool {
-	switch config.JobType(jobType) {
-	case config.JobDeploy, config.JobDeployStore, config.JobDeployInstant, config.JobDeployScheduled:
-		return true
-	default:
-		return false
-	}
-}
-
-func findComponentForJob(ctx context.Context, job *model.JobTask, store datastore.DataStore) *model.ApplicationComponent {
-	if job == nil || store == nil {
-		return nil
-	}
-	appID := strings.TrimSpace(job.AppID)
-	if appID == "" {
-		appID = strings.TrimSpace(job.WorkflowID)
-	}
-	name := strings.TrimSpace(job.Name)
-	if appID == "" || name == "" {
-		return nil
-	}
-	entities, err := store.List(ctx, &model.ApplicationComponent{AppID: appID}, &datastore.ListOptions{})
-	if err != nil {
-		if !errors.Is(err, datastore.ErrRecordNotExist) {
-			klog.ErrorS(err, "list components for app failed", "appID", appID)
-		}
-		return nil
-	}
-	for _, entity := range entities {
-		component, ok := entity.(*model.ApplicationComponent)
-		if !ok || component == nil {
-			continue
-		}
-		if component.Name == name {
-			return component
-		}
-	}
-	return nil
-}
-
-func isConfigComponentJobType(jobType string) bool {
-	switch config.JobType(jobType) {
-	case config.JobDeployConfigMap, config.JobDeploySecret:
-		return true
-	default:
-		return false
-	}
-}
-
-func componentStatusForJob(status config.Status) (config.ComponentStatus, bool) {
-	switch status {
-	case config.StatusCompleted, config.StatusPassed:
-		return config.ComponentStatusRunning, true
-	case config.StatusFailed, config.StatusTimeout, config.StatusReject, config.StatusCancelled:
-		return config.ComponentStatusFailed, true
-	default:
-		return "", false
-	}
-}
-
 func persistTerminalJobState(ctx context.Context, jobCtl JobCtl, job *model.JobTask, store datastore.DataStore, runtime *Runtime) error {
 	if jobCtl == nil || job == nil || store == nil {
 		return nil
@@ -1054,138 +891,4 @@ func persistenceContext(ctx context.Context) (context.Context, context.CancelFun
 		return ctx, func() {}
 	}
 	return context.WithTimeout(context.Background(), 5*time.Second)
-}
-
-type Pool struct {
-	Jobs        []*model.JobTask
-	jobsChan    chan *model.JobTask
-	ctx         context.Context
-	cancel      context.CancelCauseFunc
-	wg          sync.WaitGroup
-	failureOnce sync.Once
-	runErrOnce  sync.Once
-	runErr      error
-	runtime     *Runtime
-}
-
-func (p *Pool) Run() error {
-	defer p.cancel(nil)
-	for i := 0; i < p.runtime.Concurrency; i++ {
-		go p.work()
-	}
-enqueue:
-	for _, task := range p.Jobs {
-		if p.ctx.Err() != nil {
-			break
-		}
-		p.wg.Add(1)
-		select {
-		case p.jobsChan <- task:
-		case <-p.ctx.Done():
-			p.wg.Done()
-			break enqueue
-		}
-	}
-	// all workers return
-	close(p.jobsChan)
-	p.wg.Wait()
-	return p.runErr
-}
-
-// The work loop for any single goroutine.
-func (p *Pool) work() {
-	for job := range p.jobsChan {
-		if p.ctx.Err() != nil {
-			p.wg.Done()
-			continue
-		}
-		if err := runJobWithEvaluationRecovery(p.ctx, job, p.runtime); err != nil {
-			p.runErrOnce.Do(func() {
-				p.runErr = err
-			})
-			p.cancel(err)
-		}
-		if p.runtime.StopOnFailure && jobStatusFailed(job.Status) {
-			p.failureOnce.Do(func() {
-				p.cancel(nil)
-			})
-		}
-		p.wg.Done()
-	}
-}
-
-// NewPool initializes a pool using the run's concurrency and dependencies.
-func NewPool(ctx context.Context, jobs []*model.JobTask, runtime *Runtime) *Pool {
-	ctxForPool, cancel := context.WithCancelCause(ctx)
-	return &Pool{
-		Jobs:     jobs,
-		jobsChan: make(chan *model.JobTask),
-		ctx:      ctxForPool,
-		cancel:   cancel,
-		runtime:  runtime,
-	}
-}
-
-func ParseProperties(properties *model.JSONStruct) (model.Properties, error) {
-	encoded, err := json.Marshal(properties)
-	if err != nil {
-		return model.Properties{}, fmt.Errorf("marshal component properties: %w", err)
-	}
-	var parsed model.Properties
-	if err := json.Unmarshal(encoded, &parsed); err != nil {
-		return model.Properties{}, fmt.Errorf("decode component properties: %w", err)
-	}
-	return parsed, nil
-}
-
-func BuildLabels(c *model.ApplicationComponent, p *model.Properties) map[string]string {
-	labels := make(map[string]string)
-	if p != nil {
-		for k, v := range naming.NormalizeLabelValues(p.Labels) {
-			labels[k] = v
-		}
-	}
-	return ApplyComponentManagedLabels(labels, c)
-}
-
-func ApplyComponentManagedLabels(labels map[string]string, c *model.ApplicationComponent) map[string]string {
-	if labels == nil {
-		labels = make(map[string]string)
-	}
-	if c == nil {
-		return labels
-	}
-	labels[config.LabelManagedBy] = config.ManagedByEruun
-	labels[config.LabelComponentID] = fmt.Sprintf("%d", c.ID)
-	labels[config.LabelAppID] = c.AppID
-	labels[config.LabelComponentName] = naming.BoundedLabelValue(c.Name)
-	return labels
-}
-
-func BuildAnnotations(c *model.ApplicationComponent) map[string]string {
-	if c == nil {
-		return nil
-	}
-	name := strings.TrimSpace(c.Name)
-	if name == "" {
-		return nil
-	}
-	return map[string]string{
-		config.AnnotationComponentName: name,
-	}
-}
-
-func ApplyComponentAnnotationsToObject(obj metav1.Object, component *model.ApplicationComponent) {
-	annotations := BuildAnnotations(component)
-	if len(annotations) == 0 || obj == nil {
-		return
-	}
-	current := obj.GetAnnotations()
-	if current == nil {
-		current = make(map[string]string, len(annotations))
-	}
-	for k, v := range annotations {
-		current[k] = v
-	}
-	obj.SetAnnotations(current)
 }
