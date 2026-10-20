@@ -54,7 +54,7 @@ func TestRetrySharedJobObserverDoesNotPollRunningJob(t *testing.T) {
 	terminal, err := ctl.waitRetryAttempt(ctx, cp)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Nil(t, terminal)
-	require.Zero(t, countClientActions(client, "get", "jobs"))
+	require.Zero(t, jobtest.CountClientActions(client, "get", "jobs"))
 
 	live.Status.Conditions = []batchv1.JobCondition{{Type: batchv1.JobComplete, Status: corev1.ConditionTrue}}
 	live.ResourceVersion = "11"
@@ -65,7 +65,7 @@ func TestRetrySharedJobObserverDoesNotPollRunningJob(t *testing.T) {
 	terminal, err = ctl.waitRetryAttempt(terminalCtx, cp)
 	require.NoError(t, err)
 	require.Equal(t, live.UID, terminal.UID)
-	require.Equal(t, 1, countClientActions(client, "get", "jobs"), "only the terminal candidate needs authoritative confirmation")
+	require.Equal(t, 1, jobtest.CountClientActions(client, "get", "jobs"), "only the terminal candidate needs authoritative confirmation")
 }
 
 type fixedJobSnapshotObserver struct {
@@ -122,7 +122,7 @@ func TestRetryConfirmsCachedTerminalIdentityAndFreshStatus(t *testing.T) {
 			} else {
 				require.ErrorIs(t, err, context.DeadlineExceeded)
 			}
-			require.Equal(t, 1, countClientActions(client, "get", "jobs"))
+			require.Equal(t, 1, jobtest.CountClientActions(client, "get", "jobs"))
 		})
 	}
 }
@@ -136,14 +136,14 @@ func TestRetrySelectorExitAndMissingObserverDoNotProduceTerminal(t *testing.T) {
 	ctl := NewInstantJobCtl(task, &jobexec.Runtime{Client: client, Store: &retryCheckpointStore{}, Ack: func() {}})
 	_, err := ctl.waitRetryAttempt(context.Background(), cp)
 	require.ErrorIs(t, err, signal.ErrInfrastructureStop)
-	require.Zero(t, countClientActions(client, "get", "jobs"))
+	require.Zero(t, jobtest.CountClientActions(client, "get", "jobs"))
 	ctl.ResourceWaiter = fixedJobSnapshotObserver{}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
 	terminal, err := ctl.waitRetryAttempt(ctx, cp)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Nil(t, terminal)
-	require.Equal(t, 2, countClientActions(client, "get", "jobs"), "absence must be confirmed for each notification")
+	require.Equal(t, 2, jobtest.CountClientActions(client, "get", "jobs"), "absence must be confirmed for each notification")
 }
 
 func TestRetryConfirmsAbsentOrChangedRunningIdentity(t *testing.T) {
@@ -190,8 +190,8 @@ func TestRetryConfirmsAbsentOrChangedRunningIdentity(t *testing.T) {
 			} else {
 				require.ErrorIs(t, err, signal.ErrInfrastructureStop)
 			}
-			require.Equal(t, 1, countClientActions(client, "get", "jobs"))
-			require.Zero(t, countClientActions(client, "create", "jobs"))
+			require.Equal(t, 1, jobtest.CountClientActions(client, "get", "jobs"))
+			require.Zero(t, jobtest.CountClientActions(client, "create", "jobs"))
 		})
 	}
 }
@@ -215,7 +215,7 @@ func TestRetrySelectorExitRepairsObservationBeforeLaterDeletion(t *testing.T) {
 		done, err = check(repaired)
 		require.NoError(t, err)
 		require.False(t, done)
-		require.Equal(t, 1, countClientActions(client, "get", "jobs"))
+		require.Equal(t, 1, jobtest.CountClientActions(client, "get", "jobs"))
 		require.NoError(t, client.BatchV1().Jobs(live.Namespace).Delete(context.Background(), live.Name, metav1.DeleteOptions{}))
 		_, err = check(nil)
 		return err
@@ -224,9 +224,9 @@ func TestRetrySelectorExitRepairsObservationBeforeLaterDeletion(t *testing.T) {
 	require.Nil(t, terminal)
 	require.ErrorIs(t, err, signal.ErrInfrastructureStop)
 	require.True(t, apierrors.IsNotFound(err))
-	require.Equal(t, 2, countClientActions(client, "get", "jobs"))
-	require.Equal(t, 1, countClientActions(client, "update", "jobs"))
-	require.Zero(t, countClientActions(client, "create", "jobs"))
+	require.Equal(t, 2, jobtest.CountClientActions(client, "get", "jobs"))
+	require.Equal(t, 1, jobtest.CountClientActions(client, "update", "jobs"))
+	require.Zero(t, jobtest.CountClientActions(client, "create", "jobs"))
 }
 
 func TestRetryObserverRepairMarksOnlyAuthoritativeExecutionLoss(t *testing.T) {
@@ -262,7 +262,7 @@ func TestRetryObserverRepairMarksOnlyAuthoritativeExecutionLoss(t *testing.T) {
 			if !tc.wantLost {
 				require.ErrorIs(t, err, transientErr)
 			}
-			require.Equal(t, 1, countClientActions(client, "update", "jobs"))
+			require.Equal(t, 1, jobtest.CountClientActions(client, "update", "jobs"))
 		})
 	}
 }
@@ -314,7 +314,7 @@ func TestRetryAddsObserverLabelOnlyToFencedOwnedJob(t *testing.T) {
 				require.Nil(t, live.Labels, "the authoritative snapshot must not be mutated")
 			}
 			if tc.otherUID || tc.otherOwner {
-				require.Zero(t, countClientActions(client, "update", "jobs"))
+				require.Zero(t, jobtest.CountClientActions(client, "update", "jobs"))
 			}
 		})
 	}
@@ -336,7 +336,7 @@ func TestRetryLabelBackfillStopsAfterLeaseLoss(t *testing.T) {
 	}}
 	ctl := NewInstantJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: func() {}})
 	require.ErrorIs(t, ctl.retainLiveRetryAttempt(context.Background(), cp, live), signal.ErrInfrastructureStop)
-	require.Zero(t, countClientActions(client, "update", "jobs"))
+	require.Zero(t, jobtest.CountClientActions(client, "update", "jobs"))
 }
 
 type countingObservationStore struct {
@@ -380,7 +380,7 @@ func TestRetryEventsDoNotPollOwnershipAndTerminalStillFences(t *testing.T) {
 			require.False(t, done)
 		}
 		require.Equal(t, 1, store.reads, "nonterminal notifications must not add database polling")
-		require.Zero(t, countClientActions(client, "get", "jobs"))
+		require.Zero(t, jobtest.CountClientActions(client, "get", "jobs"))
 		store.owner.RunGeneration = 2
 		_, err := check(terminal)
 		return err
@@ -389,5 +389,5 @@ func TestRetryEventsDoNotPollOwnershipAndTerminalStillFences(t *testing.T) {
 	require.ErrorIs(t, err, signal.ErrInfrastructureStop)
 	require.Nil(t, got)
 	require.Equal(t, 2, store.reads)
-	require.Equal(t, 1, countClientActions(client, "get", "jobs"))
+	require.Equal(t, 1, jobtest.CountClientActions(client, "get", "jobs"))
 }

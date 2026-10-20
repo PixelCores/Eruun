@@ -19,6 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	workspacejobs "github.com/PixelCores/Eruun/pkg/apiserver/jobs"
@@ -522,7 +523,7 @@ func buildJobsForComponent(
 
 	switch component.ComponentType {
 	case config.ServerJob:
-		serviceJobs, err := job.GenerateWebService(component, &properties)
+		serviceJobs, err := jobdeploy.GenerateWebService(component, &properties)
 		if err != nil {
 			return nil, err
 		}
@@ -530,7 +531,7 @@ func buildJobsForComponent(
 			return nil, err
 		}
 	case config.StoreJob:
-		storeJobs, err := job.GenerateStoreService(component)
+		storeJobs, err := jobdeploy.GenerateStoreService(component)
 		if err != nil {
 			return nil, err
 		}
@@ -541,7 +542,7 @@ func buildJobsForComponent(
 	case config.ConfJob:
 		jobTask := NewJobTask(component.Name, namespace, task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, resourceAppName)
 		jobTask.JobType = string(config.JobDeployConfigMap)
-		jobTask.JobInfo = job.GenerateConfigMap(component, &properties)
+		jobTask.JobInfo = jobdeploy.GenerateConfigMap(component, &properties)
 		applyShareLabelsToJobInfo(jobTask.JobInfo, share)
 		jobTask.Info = buildConfigLikeInfo(domainspec.ResourceConfigMap, jobTask.JobInfo, namespace, component.Name)
 		setDeployTimeout(jobTask)
@@ -551,7 +552,7 @@ func buildJobsForComponent(
 	case config.SecretJob:
 		jobTask := NewJobTask(component.Name, namespace, task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, resourceAppName)
 		jobTask.JobType = string(config.JobDeploySecret)
-		jobTask.JobInfo = job.GenerateSecret(component, &properties)
+		jobTask.JobInfo = jobdeploy.GenerateSecret(component, &properties)
 		applyShareLabelsToJobInfo(jobTask.JobInfo, share)
 		jobTask.Info = buildConfigLikeInfo(domainspec.ResourceSecret, jobTask.JobInfo, namespace, component.Name)
 		setDeployTimeout(jobTask)
@@ -621,7 +622,7 @@ func buildJobsForComponent(
 			applyJobFailurePolicyOverride(jobTask, properties.FailurePolicy)
 			break
 		}
-		result, err := job.GenerateInstantJob(component, &properties, properties.RunPolicy)
+		result, err := jobdeploy.GenerateInstantJob(component, &properties, properties.RunPolicy)
 		if err != nil {
 			return nil, err
 		}
@@ -637,7 +638,7 @@ func buildJobsForComponent(
 			if err != nil {
 				return nil, fmt.Errorf("normalize cron schedule: %w", err)
 			}
-			result, err := job.GenerateScheduledCronJob(component, &properties, normalized)
+			result, err := jobdeploy.GenerateScheduledCronJob(component, &properties, normalized)
 			if err != nil {
 				return nil, err
 			}
@@ -659,7 +660,7 @@ func buildJobsForComponent(
 				}
 				svcJob := NewJobTask(svcName, namespace, task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, resourceAppName)
 				svcJob.JobType = string(config.JobDeployService)
-				svcInfo := job.GenerateServiceFromTrait(component, &properties, trait)
+				svcInfo := jobdeploy.GenerateServiceFromTrait(component, &properties, trait)
 				svcJob.JobInfo = svcInfo
 				applyShareLabelsToJobInfo(svcJob.JobInfo, share)
 				svcJob.Info = buildServiceDeployInfo(svcInfo, svcName, namespace)
@@ -670,7 +671,7 @@ func buildJobsForComponent(
 		} else if len(properties.Ports) > 0 {
 			svcJob := NewJobTask(component.Name, namespace, task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, resourceAppName)
 			svcJob.JobType = string(config.JobDeployService)
-			svcInfo := job.GenerateService(component, &properties)
+			svcInfo := jobdeploy.GenerateService(component, &properties)
 			svcJob.JobInfo = svcInfo
 			applyShareLabelsToJobInfo(svcJob.JobInfo, share)
 			svcJob.Info = buildServiceDeployInfo(svcInfo, component.Name, namespace)

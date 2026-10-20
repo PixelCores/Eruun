@@ -121,7 +121,7 @@ func TestDelayedJobControllersCommitWithoutQueue(t *testing.T) {
 				JobInfo:       jobObj,
 			}
 			task.AppID = "app"
-			jobObj.Spec.Template.Spec = workspacePodSpec()
+			jobObj.Spec.Template.Spec = jobtest.WorkspacePodSpec()
 			jobObj.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
 			_, err := jobexec.PrepareTask(task, "app", &model.Workspace{ID: "workspace", Namespace: "default"}, spec.WorkspaceConfig{})
 			require.NoError(t, err)
@@ -139,7 +139,7 @@ func TestDelayedJobControllersCommitWithoutQueue(t *testing.T) {
 			require.NotEmpty(t, store.added.DelayPayload)
 			var persisted jobinfo.DelayJobPayload
 			require.NoError(t, json.Unmarshal([]byte(store.added.DelayPayload), &persisted))
-			requireWorkspacePodSecurity(t, persisted.Job.Spec.Template.Spec)
+			jobtest.RequireWorkspacePodSecurity(t, persisted.Job.Spec.Template.Spec)
 		})
 	}
 }

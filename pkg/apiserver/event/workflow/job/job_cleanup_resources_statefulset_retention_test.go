@@ -147,11 +147,11 @@ func TestCleanupResourcesJobCtlRetainsAllStatefulSetPVCsBeforeRequiredDeletion(t
 			require.NotNil(t, ctl)
 
 			require.NoError(t, ctl.Run(ctx))
-			require.Equal(t, 1, countClientActions(client, "update", "statefulsets"))
-			require.Equal(t, 2, countClientActions(client, "patch", "persistentvolumeclaims"))
+			require.Equal(t, 1, jobtest.CountClientActions(client, "update", "statefulsets"))
+			require.Equal(t, 2, jobtest.CountClientActions(client, "patch", "persistentvolumeclaims"))
 			requirePVCOwnerReferencePatchesUseResourceVersion(t, client)
 			requireStatefulSetDeleteUsesOrphanPropagation(t, client, statefulSetName, statefulSetUID, "11")
-			require.Equal(t, tt.wantPVCDeleteOps, countClientActions(client, "delete", "persistentvolumeclaims"))
+			require.Equal(t, tt.wantPVCDeleteOps, jobtest.CountClientActions(client, "delete", "persistentvolumeclaims"))
 			dataPVC, dataErr := client.CoreV1().PersistentVolumeClaims(component.Namespace).Get(ctx, dataPVCName, metav1.GetOptions{})
 			if tt.wantDataDeleted {
 				require.True(t, k8serrors.IsNotFound(dataErr))
@@ -221,7 +221,7 @@ func TestCleanupResourcesJobCtlTreatsMissingStatefulSetAsRetentionConverged(t *t
 	require.NoError(t, err)
 
 	require.NoError(t, ctl.ensureStatefulSetPVCRetention(context.Background(), ref))
-	require.Equal(t, 0, countClientActions(client, "update", "statefulsets"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "update", "statefulsets"))
 }
 
 func TestCleanupResourcesJobCtlClearsStatefulSetPVCOwnerReferencesWithoutLivePods(t *testing.T) {
@@ -238,7 +238,7 @@ func TestCleanupResourcesJobCtlClearsStatefulSetPVCOwnerReferencesWithoutLivePod
 		&appsv1.StatefulSet{
 			ObjectMeta: metav1.ObjectMeta{Name: statefulSetName, Namespace: component.Namespace, UID: statefulSetUID, Generation: 2},
 			Spec: appsv1.StatefulSetSpec{
-				Replicas: int32Ptr(1),
+				Replicas: jobtest.Int32Ptr(1),
 				PersistentVolumeClaimRetentionPolicy: &appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy{
 					WhenDeleted: appsv1.RetainPersistentVolumeClaimRetentionPolicyType,
 					WhenScaled:  appsv1.RetainPersistentVolumeClaimRetentionPolicyType,
@@ -275,10 +275,10 @@ func TestCleanupResourcesJobCtlClearsStatefulSetPVCOwnerReferencesWithoutLivePod
 	require.NoError(t, err)
 
 	require.NoError(t, ctl.ensureStatefulSetPVCRetention(ctx, ref))
-	require.Equal(t, 0, countClientActions(client, "update", "statefulsets"))
-	require.Equal(t, 2, countClientActions(client, "patch", "persistentvolumeclaims"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "update", "statefulsets"))
+	require.Equal(t, 2, jobtest.CountClientActions(client, "patch", "persistentvolumeclaims"))
 	requirePVCOwnerReferencePatchesUseResourceVersion(t, client)
-	require.Equal(t, 0, countClientActions(client, "delete", "pods"), "scaled-down ordinal has no Pod to delete")
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"), "scaled-down ordinal has no Pod to delete")
 	dataPVC, err := client.CoreV1().PersistentVolumeClaims(component.Namespace).Get(ctx, dataPVCName, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Equal(t, []metav1.OwnerReference{unrelatedStatefulSetOwner}, dataPVC.OwnerReferences)
@@ -380,9 +380,9 @@ func TestCleanupResourcesJobCtlFailsClosedWhenStatefulSetPVCOwnerReferencePatchF
 			require.Equal(t, tt.wantStatus, task.Status)
 			require.GreaterOrEqual(t, patchAttempts, tt.wantMinAttempts)
 			requirePVCOwnerReferencePatchesUseResourceVersion(t, client)
-			require.Equal(t, 0, countClientActions(client, "delete", "statefulsets"))
-			require.Equal(t, 0, countClientActions(client, "delete", "pods"))
-			require.Equal(t, 0, countClientActions(client, "delete", "persistentvolumeclaims"))
+			require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "statefulsets"))
+			require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"))
+			require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "persistentvolumeclaims"))
 			_, getErr := client.AppsV1().StatefulSets(component.Namespace).Get(ctx, statefulSetName, metav1.GetOptions{})
 			require.NoError(t, getErr)
 			pvc, getErr := client.CoreV1().PersistentVolumeClaims(component.Namespace).Get(ctx, pvcName, metav1.GetOptions{})
@@ -504,7 +504,7 @@ func TestCleanupResourcesJobCtlRechecksRequiredStatefulSetShareLabelsAfterRetent
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "required StatefulSet deletion blocked")
-	require.Equal(t, 0, countClientActions(client, "delete", "statefulsets"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "statefulsets"))
 	statefulSet, err := client.AppsV1().StatefulSets(component.Namespace).Get(ctx, statefulSetName, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Equal(t, "late-shared-mysql", statefulSet.Labels[config.LabelShareName])
@@ -585,7 +585,7 @@ func TestCleanupResourcesJobCtlFailsClosedIfRequiredStatefulSetChangesAfterReten
 			require.Error(t, err)
 			require.True(t, k8serrors.IsConflict(err))
 			require.Contains(t, err.Error(), tt.want)
-			require.Equal(t, 0, countClientActions(client, "delete", "statefulsets"))
+			require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "statefulsets"))
 		})
 	}
 }
@@ -626,7 +626,7 @@ func TestCleanupResourcesJobCtlRemembersMarkerTemplatesWhenStatefulSetAlreadyMis
 	gone, err = ctl.componentPodsGone(ctx, component)
 	require.NoError(t, err)
 	require.True(t, gone)
-	require.Equal(t, 1, countClientActions(client, "patch", "persistentvolumeclaims"))
+	require.Equal(t, 1, jobtest.CountClientActions(client, "patch", "persistentvolumeclaims"))
 	requirePVCOwnerReferencePatchesUseResourceVersion(t, client)
 	pvc, err := client.CoreV1().PersistentVolumeClaims(component.Namespace).Get(ctx, pvcName, metav1.GetOptions{})
 	require.NoError(t, err)

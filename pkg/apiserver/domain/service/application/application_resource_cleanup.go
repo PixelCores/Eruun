@@ -24,7 +24,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
@@ -281,7 +281,7 @@ func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, 
 
 	switch component.ComponentType {
 	case config.ServerJob:
-		result, err := job.GenerateWebService(componentPtr, &props)
+		result, err := jobdeploy.GenerateWebService(componentPtr, &props)
 		if err != nil {
 			return err
 		}
@@ -300,7 +300,7 @@ func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, 
 		}
 		reporter.record("Deployment", deployNS, deployName, c.deleteDeployment(ctx, deployNS, deployName))
 	case config.StoreJob:
-		result, err := job.GenerateStoreService(componentPtr)
+		result, err := jobdeploy.GenerateStoreService(componentPtr)
 		if err != nil {
 			return err
 		}
@@ -327,7 +327,7 @@ func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, 
 			c.deleteEvaluationJobsForComponent(ctx, componentPtr, reporter)
 			break
 		}
-		result, err := job.GenerateInstantJob(componentPtr, &props, props.RunPolicy)
+		result, err := jobdeploy.GenerateInstantJob(componentPtr, &props, props.RunPolicy)
 		if err != nil {
 			return err
 		}
@@ -430,7 +430,7 @@ func (c *applicationsServiceImpl) deleteServiceForComponent(ctx context.Context,
 	if props == nil || len(props.Ports) == 0 {
 		return
 	}
-	svc := job.GenerateService(component, props)
+	svc := jobdeploy.GenerateService(component, props)
 	name := naming.ServiceName(component.Name, component.ResourceNameKey())
 	if svc != nil && svc.Name != "" {
 		name = svc.Name
@@ -479,7 +479,7 @@ func (c *applicationsServiceImpl) deleteIngressForComponent(ctx context.Context,
 }
 
 func (c *applicationsServiceImpl) deleteConfigMapForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, reporter *cleanupReporter) {
-	cm := job.GenerateConfigMap(component, props)
+	cm := jobdeploy.GenerateConfigMap(component, props)
 	ns := pickNamespace(cm.Namespace, component.Namespace)
 	name := cm.Name
 	if name == "" {
@@ -489,7 +489,7 @@ func (c *applicationsServiceImpl) deleteConfigMapForComponent(ctx context.Contex
 }
 
 func (c *applicationsServiceImpl) deleteSecretForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, reporter *cleanupReporter) {
-	sec := job.GenerateSecret(component, props)
+	sec := jobdeploy.GenerateSecret(component, props)
 	ns := pickNamespace(sec.Namespace, component.Namespace)
 	name := sec.Name
 	if name == "" {
@@ -672,7 +672,7 @@ func (c *applicationsServiceImpl) deleteScheduledJobForComponent(ctx context.Con
 		if err != nil {
 			klog.Errorf("cleanup scheduled job cron normalize failed: %v", err)
 		}
-		result, err := job.GenerateScheduledCronJob(component, props, normalized)
+		result, err := jobdeploy.GenerateScheduledCronJob(component, props, normalized)
 		if err != nil {
 			reporter.record("CronJob", component.Namespace, naming.CronJobName(component.Name, component.ResourceNameKey()), err)
 			return

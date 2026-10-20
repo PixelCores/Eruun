@@ -310,7 +310,7 @@ func TestCleanupResourcesJobCtlBlocksStatefulSetPVCDeletionForProtectedPVC(t *te
 	require.Contains(t, err.Error(), "required StatefulSet PVC deletion blocked")
 	_, getErr := client.CoreV1().PersistentVolumeClaims(component.Namespace).Get(ctx, templatePVCName, metav1.GetOptions{})
 	require.NoError(t, getErr)
-	require.Equal(t, 0, countClientActions(client, "delete", "persistentvolumeclaims"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "persistentvolumeclaims"))
 }
 
 func TestCleanupResourcesJobCtlPreflightsProtectedPodsBeforeAnyDelete(t *testing.T) {
@@ -460,9 +460,9 @@ func TestCleanupResourcesJobCtlRechecksProtectedPodsBeforePVCDeletion(t *testing
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "required StatefulSet deletion blocked")
 	require.Contains(t, err.Error(), "pod default/mysql-0 is protected")
-	require.Equal(t, 1, countClientActions(client, "delete", "statefulsets"))
-	require.Equal(t, 0, countClientActions(client, "delete", "pods"))
-	require.Equal(t, 0, countClientActions(client, "delete", "persistentvolumeclaims"))
+	require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "statefulsets"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "persistentvolumeclaims"))
 }
 
 func TestCleanupResourcesJobCtlRejectsUnversionedStatefulSetPVCDeletionMarker(t *testing.T) {
@@ -663,7 +663,7 @@ func TestCleanupResourcesJobCtlDeletesStatefulSetWithoutForcingTemplatePVCRetent
 	require.True(t, k8serrors.IsNotFound(err))
 	_, err = client.CoreV1().PersistentVolumeClaims(component.Namespace).Get(ctx, templatePVCName, metav1.GetOptions{})
 	require.NoError(t, err)
-	require.Equal(t, 0, countClientActions(client, "delete", "persistentvolumeclaims"))
-	require.Equal(t, 0, countClientActions(client, "update", "statefulsets"))
-	require.Equal(t, 0, countClientActions(client, "update", "persistentvolumeclaims"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "persistentvolumeclaims"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "update", "statefulsets"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "update", "persistentvolumeclaims"))
 }

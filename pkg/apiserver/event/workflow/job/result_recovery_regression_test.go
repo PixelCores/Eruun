@@ -723,7 +723,7 @@ func TestResultRecoveryCompletedJobWithUnstartedFailedPod(t *testing.T) {
 		Name: failed.Spec.Containers[0].Name, State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "ContainerCreating"}},
 	}}}
 	deleted := false
-	client, err := kubernetes.NewForConfig(&rest.Config{Host: "https://kubernetes.example", Transport: workspaceRoundTripper(func(r *http.Request) (*http.Response, error) {
+	client, err := kubernetes.NewForConfig(&rest.Config{Host: "https://kubernetes.example", Transport: jobtest.WorkspaceRoundTripper(func(r *http.Request) (*http.Response, error) {
 		status := http.StatusOK
 		var object interface{}
 		var raw string

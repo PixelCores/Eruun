@@ -287,7 +287,7 @@ func TestInstantJobRetryCheckpointResumesWithoutDoubleGrowth(t *testing.T) {
 	require.NoError(t, newObservedInstantJobCtl(t, recovered, client, newRetryCreationBudgetStore(t, jobtest.WithJobTestOwner(store, recovered)), func() {}).Run(context.Background()))
 	require.Len(t, created, 2)
 	require.Equal(t, "512Mi", created[1].Spec.Template.Spec.Containers[0].Resources.Limits.Memory().String())
-	require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
+	require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "jobs"))
 }
 
 func TestInstantJobRetryCheckpointFailurePreventsDeletion(t *testing.T) {
@@ -303,7 +303,7 @@ func TestInstantJobRetryCheckpointFailurePreventsDeletion(t *testing.T) {
 	}}
 	err := newObservedInstantJobCtl(t, task, client, newRetryCreationBudgetStore(t, jobtest.WithJobTestOwner(store, task)), func() {}).Run(context.Background())
 	require.ErrorIs(t, err, signal.ErrInfrastructureStop)
-	require.Zero(t, countClientActions(client, "delete", "jobs"))
+	require.Zero(t, jobtest.CountClientActions(client, "delete", "jobs"))
 	require.Len(t, created, 1)
 	require.Equal(t, uint(1), store.record.Attempt)
 }
@@ -365,7 +365,7 @@ func TestRetryAttemptWaitsForPreviousOwnedPods(t *testing.T) {
 	defer cancel()
 	err := NewInstantJobCtl(task, &jobexec.Runtime{Client: client, Store: &retryCheckpointStore{}, Ack: func() {}}).ensureRetryAttempt(ctx, cp)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
-	require.Zero(t, countClientActions(client, "create", "jobs"))
+	require.Zero(t, jobtest.CountClientActions(client, "create", "jobs"))
 }
 
 func TestRetryCheckpointCannotReplayMissingOrForeignJob(t *testing.T) {
@@ -384,8 +384,8 @@ func TestRetryCheckpointCannotReplayMissingOrForeignJob(t *testing.T) {
 			err := NewInstantJobCtl(task, &jobexec.Runtime{Client: client, Store: &retryCheckpointStore{}, Ack: func() {}}).ensureRetryAttempt(context.Background(), cp)
 			require.ErrorIs(t, err, signal.ErrInfrastructureStop)
 			require.NotErrorIs(t, err, errJobAdmissionRecoveryExecutionLost, "resize retries do not use the stop-policy admission recovery exemption")
-			require.Zero(t, countClientActions(client, "delete", "jobs"))
-			require.Zero(t, countClientActions(client, "create", "jobs"))
+			require.Zero(t, jobtest.CountClientActions(client, "delete", "jobs"))
+			require.Zero(t, jobtest.CountClientActions(client, "create", "jobs"))
 		})
 	}
 }
@@ -439,8 +439,8 @@ func TestRetryDeletionRechecksWorkflowFence(t *testing.T) {
 	client := fake.NewSimpleClientset(previous)
 	err := NewInstantJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: func() {}}).ensureRetryAttempt(context.Background(), cp)
 	require.ErrorIs(t, err, signal.ErrInfrastructureStop)
-	require.Zero(t, countClientActions(client, "delete", "jobs"))
-	require.Zero(t, countClientActions(client, "create", "jobs"))
+	require.Zero(t, jobtest.CountClientActions(client, "delete", "jobs"))
+	require.Zero(t, jobtest.CountClientActions(client, "create", "jobs"))
 }
 
 func TestRetryDeletionUsesUIDAndResourceVersion(t *testing.T) {
@@ -495,7 +495,7 @@ func TestRetryCleanupRecoveredTimeoutUsesCheckpointOwnership(t *testing.T) {
 			ctl := newObservedInstantJobCtl(t, task, client, &retryCheckpointStore{}, func() {})
 			require.ErrorIs(t, ctl.Run(context.Background()), context.DeadlineExceeded)
 			ctl.Clean(context.Background())
-			require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
+			require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "jobs"))
 		})
 	}
 }
@@ -524,7 +524,7 @@ func TestRetryCleanupRejectsForeignExecutionOrUID(t *testing.T) {
 			client := fake.NewSimpleClientset(live)
 			err = NewInstantJobCtl(task, &jobexec.Runtime{Client: client, Store: &retryCheckpointStore{}, Ack: func() {}}).cleanRetryAttempt(context.Background())
 			require.ErrorIs(t, err, jobinfo.ErrJobExecutionIdentityChanged)
-			require.Zero(t, countClientActions(client, "delete", "jobs"))
+			require.Zero(t, jobtest.CountClientActions(client, "delete", "jobs"))
 		})
 	}
 }
@@ -620,7 +620,7 @@ func TestRetryCancellationRecognizesCommittedParentBeforeSignal(t *testing.T) {
 			}
 			ctl := newObservedInstantJobCtl(t, task, client, store, func() {})
 			ctl.Clean(ctx)
-			require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
+			require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "jobs"))
 			require.Equal(t, config.StatusCancelled, task.OwnerStatus)
 			task.Status = config.StatusCancelled
 			require.NoError(t, persistTerminalJobState(context.Background(), ctl, task, store, nil))
@@ -650,7 +650,7 @@ func TestRetryCancellationCleanupRejectsDifferentLease(t *testing.T) {
 			store := &retryOwnedCheckpointStore{owner: owner}
 			err := NewInstantJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: func() {}}).deleteRetryJob(context.Background(), live)
 			require.ErrorIs(t, err, signal.ErrInfrastructureStop)
-			require.Zero(t, countClientActions(client, "delete", "jobs"))
+			require.Zero(t, jobtest.CountClientActions(client, "delete", "jobs"))
 		})
 	}
 }
@@ -682,8 +682,8 @@ func TestRetryCancellationDuringCreatedUIDCheckpoint(t *testing.T) {
 	require.NotErrorIs(t, err, signal.ErrInfrastructureStop)
 	require.Equal(t, config.StatusCancelled, task.OwnerStatus)
 	ctl.Clean(context.Background())
-	require.Equal(t, 1, countClientActions(client, "create", "jobs"))
-	require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
+	require.Equal(t, 1, jobtest.CountClientActions(client, "create", "jobs"))
+	require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "jobs"))
 	task.Status = config.StatusCancelled
 	require.NoError(t, persistTerminalJobState(context.Background(), ctl, task, store, nil))
 	require.Equal(t, string(config.StatusCancelled), store.record.Status)
@@ -757,8 +757,8 @@ func TestRetryCancellationWithoutLiveJobPersistsTerminal(t *testing.T) {
 				require.Equal(t, tc.wantOwnerStatus, task.OwnerStatus)
 				require.Equal(t, string(tc.wantStoredStatus), store.record.Status)
 				require.Equal(t, attempt, store.record.Attempt)
-				require.Zero(t, countClientActions(client, "create", "jobs"))
-				require.Zero(t, countClientActions(client, "delete", "jobs"))
+				require.Zero(t, jobtest.CountClientActions(client, "create", "jobs"))
+				require.Zero(t, jobtest.CountClientActions(client, "delete", "jobs"))
 			})
 		}
 	}
@@ -786,11 +786,11 @@ func TestRetrySuccessKeepsEvidenceUntilResultAndLogsAreSaved(t *testing.T) {
 	require.NoError(t, client.Tracker().Add(pod))
 	jobexec.FinalizeCompletedJobIfNeeded(context.Background(), client, task)
 	require.NotEmpty(t, task.Info)
-	require.Zero(t, countClientActions(client, "delete", "jobs"))
+	require.Zero(t, jobtest.CountClientActions(client, "delete", "jobs"))
 	store.afterSave = func(*model.JobInfo) error { return errors.New("database unavailable during terminal save") }
 	require.ErrorContains(t, persistTerminalJobState(context.Background(), ctl, task, store, nil), "database unavailable")
 	require.Equal(t, string(config.StatusRunning), store.record.Status)
-	require.Zero(t, countClientActions(client, "delete", "jobs"))
+	require.Zero(t, jobtest.CountClientActions(client, "delete", "jobs"))
 	store.afterSave = nil
 
 	// A new lease resumes the same execution and completed attempt without a
@@ -804,12 +804,12 @@ func TestRetrySuccessKeepsEvidenceUntilResultAndLogsAreSaved(t *testing.T) {
 	recoveredCtl := newObservedInstantJobCtl(t, recovered, client, store, func() {})
 	require.NoError(t, recoveredCtl.Run(context.Background()))
 	jobexec.FinalizeCompletedJobIfNeeded(context.Background(), client, recovered)
-	require.Zero(t, countClientActions(client, "delete", "jobs"))
+	require.Zero(t, jobtest.CountClientActions(client, "delete", "jobs"))
 	require.Equal(t, task.Info, recovered.Info)
 	require.NoError(t, persistTerminalJobState(context.Background(), recoveredCtl, recovered, store, nil))
 	require.Equal(t, string(config.StatusCompleted), store.record.Status)
 	require.Equal(t, recovered.Info, store.record.Info)
-	require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
+	require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "jobs"))
 	require.Len(t, created, 1)
 	var restored jobinfo.InstantJobRetryCheckpoint
 	require.NoError(t, json.Unmarshal([]byte(store.record.InternalInfo), &restored))
@@ -835,14 +835,14 @@ func TestRetryFailureKeepsEvidenceUntilResultIsSaved(t *testing.T) {
 			originalCheckpoint := store.record.InternalInfo
 			// runJob invokes Clean before its deferred terminal persistence.
 			ctl.Clean(context.Background())
-			require.Zero(t, countClientActions(client, "delete", "jobs"))
+			require.Zero(t, jobtest.CountClientActions(client, "delete", "jobs"))
 			require.Equal(t, string(config.StatusRunning), store.record.Status)
 
 			if interruption == "terminal save failure" {
 				store.afterSave = func(*model.JobInfo) error { return errors.New("database unavailable during terminal save") }
 				require.ErrorContains(t, persistTerminalJobState(context.Background(), ctl, task, store, nil), "database unavailable")
 				require.Equal(t, string(config.StatusRunning), store.record.Status)
-				require.Zero(t, countClientActions(client, "delete", "jobs"))
+				require.Zero(t, jobtest.CountClientActions(client, "delete", "jobs"))
 				store.afterSave = nil
 			}
 			if interruption != "none" {
@@ -861,10 +861,10 @@ func TestRetryFailureKeepsEvidenceUntilResultIsSaved(t *testing.T) {
 				task = recovered
 			}
 			require.Equal(t, originalCheckpoint, task.InternalInfo, "recovery must keep its attempt, UID, resources and deadline")
-			require.Zero(t, countClientActions(client, "delete", "jobs"))
+			require.Zero(t, jobtest.CountClientActions(client, "delete", "jobs"))
 			require.NoError(t, persistTerminalJobState(context.Background(), ctl, task, store, nil))
 			require.Equal(t, string(config.StatusFailed), store.record.Status)
-			require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
+			require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "jobs"))
 			require.Len(t, created, 1, "terminal recovery must not execute the workload again")
 		})
 	}
@@ -893,7 +893,7 @@ func TestRetryFailedTerminalSaveRejectsDifferentLease(t *testing.T) {
 			ctl.Clean(context.Background())
 			require.ErrorIs(t, persistTerminalJobState(context.Background(), ctl, task, store, nil), repository.ErrWorkflowOwnershipLost)
 			require.Equal(t, string(config.StatusRunning), store.record.Status)
-			require.Zero(t, countClientActions(client, "delete", "jobs"))
+			require.Zero(t, jobtest.CountClientActions(client, "delete", "jobs"))
 		})
 	}
 }
@@ -916,5 +916,5 @@ func TestRetryRecoveryAddsRetentionToExistingCheckpointAndJob(t *testing.T) {
 	require.GreaterOrEqual(t, *retained.Spec.TTLSecondsAfterFinished, int32(3*time.Hour/time.Second)+config.DefaultJobTTLSeconds)
 	require.Equal(t, cp.Job.Spec.TTLSecondsAfterFinished, retained.Spec.TTLSecondsAfterFinished)
 	require.Equal(t, cp.CurrentUID, retained.UID)
-	require.Zero(t, countClientActions(client, "create", "jobs"))
+	require.Zero(t, jobtest.CountClientActions(client, "create", "jobs"))
 }

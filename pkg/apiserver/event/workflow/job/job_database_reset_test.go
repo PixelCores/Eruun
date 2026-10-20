@@ -20,6 +20,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
@@ -1148,7 +1149,7 @@ func databaseResetServerComponent(t *testing.T, name string) *model.ApplicationC
 
 func databaseResetStatefulSet(t *testing.T, component *model.ApplicationComponent) (*jobexec.GenerateServiceResult, *appsv1.StatefulSet) {
 	t.Helper()
-	result, err := GenerateStoreService(component)
+	result, err := jobdeploy.GenerateStoreService(component)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1178,7 +1179,7 @@ func databaseResetDeployment(t *testing.T, component *model.ApplicationComponent
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := GenerateWebService(component, &properties)
+	result, err := jobdeploy.GenerateWebService(component, &properties)
 	if err != nil {
 		t.Fatal(err)
 	}

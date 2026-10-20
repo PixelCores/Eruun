@@ -14,7 +14,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	assembler "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/assembler/v1"
@@ -832,7 +832,7 @@ func TestPrepareComponentsPreservesEmptySecretMapForURLBackedSecret(t *testing.T
 		},
 		URL:      "http://example.com/secret",
 		FileName: "remote.txt",
-	}, job.GenerateSecret(components[0], &properties))
+	}, jobdeploy.GenerateSecret(components[0], &properties))
 }
 
 func TestCreateApplicationsPreservesBase64LookingSecretTextDuringRefresh(t *testing.T) {

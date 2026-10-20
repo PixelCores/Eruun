@@ -19,6 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -64,29 +65,29 @@ func initJobCtl(job *model.JobTask, runtime *jobexec.Runtime) JobCtl {
 	}
 	switch job.JobType {
 	case string(config.JobDeploy):
-		return NewDeployJobCtl(job, runtime, runtime.ShareLocker)
+		return jobdeploy.NewDeployJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployService):
-		return NewDeployServiceJobCtl(job, runtime, runtime.ShareLocker)
+		return jobdeploy.NewDeployServiceJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployStore):
-		return NewDeployStatefulSetJobCtl(job, runtime, runtime.ShareLocker)
+		return jobdeploy.NewDeployStatefulSetJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployPVC):
-		return NewDeployPVCJobCtl(job, runtime, runtime.ShareLocker)
+		return jobdeploy.NewDeployPVCJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployConfigMap):
-		return NewDeployConfigMapJobCtl(job, runtime, runtime.ShareLocker)
+		return jobdeploy.NewDeployConfigMapJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeploySecret):
-		return NewDeploySecretJobCtl(job, runtime, runtime.ShareLocker)
+		return jobdeploy.NewDeploySecretJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployIngress):
-		return NewDeployIngressJobCtl(job, runtime, runtime.ShareLocker)
+		return jobdeploy.NewDeployIngressJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployServiceAccount):
-		return NewDeployServiceAccountJobCtl(job, runtime, runtime.ShareLocker)
+		return jobdeploy.NewDeployServiceAccountJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployRole):
-		return NewDeployRoleJobCtl(job, runtime, runtime.ShareLocker)
+		return jobdeploy.NewDeployRoleJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployRoleBinding):
-		return NewDeployRoleBindingJobCtl(job, runtime, runtime.ShareLocker)
+		return jobdeploy.NewDeployRoleBindingJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployClusterRole):
-		return NewDeployClusterRoleJobCtl(job, runtime, runtime.ShareLocker)
+		return jobdeploy.NewDeployClusterRoleJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployClusterRoleBinding):
-		return NewDeployClusterRoleBindingJobCtl(job, runtime, runtime.ShareLocker)
+		return jobdeploy.NewDeployClusterRoleBindingJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployInstant), string(config.JobCommand), string(config.JobEval):
 		return NewInstantJobCtl(job, runtime)
 	case string(config.JobDeployScheduled):
@@ -106,7 +107,7 @@ func initJobCtl(job *model.JobTask, runtime *jobexec.Runtime) JobCtl {
 	case string(config.JobLogArchiveUpload):
 		return NewLogArchiveUploadJobCtl(job, runtime)
 	case string(config.JobVersionRestart):
-		return NewVersionRestartJobCtl(job, runtime)
+		return jobdeploy.NewVersionRestartJobCtl(job, runtime)
 	default:
 		klog.ErrorS(fmt.Errorf("unknown job type"), "init job controller failed", "jobName", job.Name, "jobType", job.JobType)
 		return nil
