@@ -833,10 +833,8 @@ func validateComponentTraitsForWrite(componentType config.JobType, traits apisv1
 	if err := spec.NormalizeComponentEvaluation(string(componentType), "", spec.Properties{}, &traits); err != nil {
 		return fmt.Errorf("%w: %s: %v", bcode.ErrApplicationConfig, fieldPrefix, err)
 	}
-	for i, ingress := range traits.Ingress {
-		if errors := traitvalidation.ValidateIngressTraitSpec(ingress, fmt.Sprintf("%s.ingress[%d]", fieldPrefix, i)); len(errors) > 0 {
-			return fmt.Errorf("%w: %s", bcode.ErrApplicationConfig, errors[0].Message)
-		}
+	if err := validateIngressTraitsForWrite(traits, fieldPrefix); err != nil {
+		return err
 	}
 	for i, service := range traits.Service {
 		if errors := traitvalidation.ValidateServiceTraitSpec(service, fmt.Sprintf("%s.service[%d]", fieldPrefix, i)); len(errors) > 0 {
@@ -863,6 +861,27 @@ func validateComponentTraitsForWrite(componentType config.JobType, traits apisv1
 	}
 	if err := validateNoNestedJobFailurePoliciesForWrite(traits, fieldPrefix); err != nil {
 		return err
+	}
+	return nil
+}
+
+// validateIngressTraitsForWrite applies Try's ingress rules to every ingress the
+// trait processor renders, including ones declared inside init or sidecar traits.
+func validateIngressTraitsForWrite(traits apisv1.Traits, fieldPrefix string) error {
+	for i, ingress := range traits.Ingress {
+		if errors := traitvalidation.ValidateIngressTraitSpec(ingress, fmt.Sprintf("%s.ingress[%d]", fieldPrefix, i)); len(errors) > 0 {
+			return fmt.Errorf("%w: %s", bcode.ErrApplicationConfig, errors[0].Message)
+		}
+	}
+	for i, initTrait := range traits.Init {
+		if err := validateIngressTraitsForWrite(initTrait.Traits, fmt.Sprintf("%s.init[%d].traits", fieldPrefix, i)); err != nil {
+			return err
+		}
+	}
+	for i, sidecar := range traits.Sidecar {
+		if err := validateIngressTraitsForWrite(sidecar.Traits, fmt.Sprintf("%s.sidecar[%d].traits", fieldPrefix, i)); err != nil {
+			return err
+		}
 	}
 	return nil
 }
