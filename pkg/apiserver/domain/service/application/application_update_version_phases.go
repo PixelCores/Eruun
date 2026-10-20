@@ -384,7 +384,7 @@ func (c *applicationsServiceImpl) validateVersionUpdateWorkspaceComponents(ctx c
 		}
 		for i := range resolvedComponents {
 			component := &resolvedComponents[i]
-			if (component.Namespace != "" && component.Namespace != scope.Namespace) || component.ComponentType == config.CloudJob {
+			if component.Namespace != "" && component.Namespace != scope.Namespace {
 				return bcode.ErrForbidden
 			}
 			if err := workspace.ValidateTraits(scope.Namespace, component.Name, &component.Traits, &component.Properties, c.Cfg.Accounts.Workspace); err != nil {

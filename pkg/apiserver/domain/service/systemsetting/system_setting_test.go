@@ -3,14 +3,12 @@ package systemsetting
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -78,50 +76,6 @@ func (m *mockSystemSettingRepo) List(_ context.Context, _ datastore.ListOptions)
 	return out, nil
 }
 
-type fakeCloudSettingProvider struct {
-	settingType        string
-	connectivityErr    error
-	connectivityChecks int
-}
-
-func (f *fakeCloudSettingProvider) SystemSettingType() string {
-	return f.settingType
-}
-
-func (f *fakeCloudSettingProvider) NormalizeSystemSettingValue(value json.RawMessage) (json.RawMessage, error) {
-	return spec.NormalizeAliyunCloudSettingValue(value)
-}
-
-func (f *fakeCloudSettingProvider) SanitizeSystemSettingValue(value json.RawMessage) json.RawMessage {
-	setting, err := spec.ParseAliyunCloudSetting(value)
-	if err != nil {
-		return json.RawMessage(`{}`)
-	}
-	setting.AccessKeySecret = spec.AliyunCloudSecretMaskedValue
-	out, err := json.Marshal(setting)
-	if err != nil {
-		return json.RawMessage(`{}`)
-	}
-	return json.RawMessage(out)
-}
-
-func (f *fakeCloudSettingProvider) ValidateSystemSettingConnectivity(context.Context, json.RawMessage) error {
-	f.connectivityChecks++
-	return f.connectivityErr
-}
-
-func registerAliyunCloudSettingProvider(t *testing.T, connectivityErr error) *fakeCloudSettingProvider {
-	t.Helper()
-	provider := &fakeCloudSettingProvider{
-		settingType:     model.SystemSettingTypeAliyunCloud,
-		connectivityErr: connectivityErr,
-	}
-	builtin := builtinSystemSettingSupports[model.SystemSettingTypeAliyunCloud]
-	builtinSystemSettingSupports[model.SystemSettingTypeAliyunCloud] = provider
-	t.Cleanup(func() { builtinSystemSettingSupports[model.SystemSettingTypeAliyunCloud] = builtin })
-	return provider
-}
-
 func TestSystemSettingService_CreateAndGet(t *testing.T) {
 	repo := newMockSystemSettingRepo()
 	svc := &systemSettingServiceImpl{SettingRepo: repo}
@@ -175,22 +129,6 @@ func TestSystemSettingServiceMapsWrappedRepositoryErrors(t *testing.T) {
 	}
 }
 
-func TestSystemSettingServiceCreateProviderHandlesWrappedLookupErrors(t *testing.T) {
-	provider := registerAliyunCloudSettingProvider(t, nil)
-	repo := newMockSystemSettingRepo()
-	repo.lookupErr = fmt.Errorf("load setting: %w", datastore.ErrRecordNotExist)
-	svc := &systemSettingServiceImpl{SettingRepo: repo}
-	req := apisv1.CreateSystemSettingRequest{Type: model.SystemSettingTypeAliyunCloud, Value: buildValidAliyunCloudSettingValue(t)}
-	_, err := svc.Create(context.Background(), req)
-	require.NoError(t, err)
-	require.Equal(t, 1, provider.connectivityChecks)
-
-	repo.lookupErr = fmt.Errorf("load setting: %w", context.DeadlineExceeded)
-	_, err = svc.Create(context.Background(), req)
-	require.ErrorIs(t, err, context.DeadlineExceeded)
-	require.Equal(t, 1, provider.connectivityChecks, "an unavailable repository must stop provider validation")
-}
-
 func TestSystemSettingServiceListHidesInternalRows(t *testing.T) {
 	repo := newMockSystemSettingRepo()
 	repo.items[model.SystemSettingTypeNodeSelector] = &model.SystemSetting{
@@ -213,7 +151,6 @@ func TestSystemSettingService_Validation(t *testing.T) {
 	repo := newMockSystemSettingRepo()
 	svc := &systemSettingServiceImpl{SettingRepo: repo}
 	ctx := context.Background()
-	cloudProvider := registerAliyunCloudSettingProvider(t, nil)
 
 	_, err := svc.Create(ctx, apisv1.CreateSystemSettingRequest{Type: "", Value: json.RawMessage(`{}`)})
 	require.ErrorIs(t, err, bcode.ErrSystemSettingTypeInvalid)
@@ -223,19 +160,6 @@ func TestSystemSettingService_Validation(t *testing.T) {
 
 	_, err = svc.Create(ctx, apisv1.CreateSystemSettingRequest{Type: model.SystemSettingTypeRBACPolicies, Value: json.RawMessage(`{"serviceAccount":"sa"}`)})
 	require.ErrorIs(t, err, bcode.ErrSystemSettingValueInvalid)
-
-	validAliyunCloud := buildValidAliyunCloudSettingValue(t)
-	createdAliyunCloud, err := svc.Create(ctx, apisv1.CreateSystemSettingRequest{Type: model.SystemSettingTypeAliyunCloud, Value: validAliyunCloud})
-	require.NoError(t, err)
-	require.JSONEq(t, `{
-		"accessKeyId":"test-ak",
-		"accessKeySecret":"******",
-		"endpoint":"nas.cn-hangzhou.aliyuncs.com",
-		"regionId":"cn-hangzhou",
-		"zoneId":"cn-hangzhou-i",
-		"vpcId":"vpc-001",
-		"vswId":"vsw-001"
-	}`, string(createdAliyunCloud.Value))
 
 	validURLSecurityPolicy := buildValidURLSecurityPolicySettingValue(t)
 	_, err = svc.Create(ctx, apisv1.CreateSystemSettingRequest{Type: model.SystemSettingTypeURLSecurityPolicy, Value: validURLSecurityPolicy})
@@ -271,239 +195,19 @@ func TestSystemSettingService_Validation(t *testing.T) {
 		Value: json.RawMessage(`{"allowedCIDRs":["10.0.0.0"]}`),
 	})
 	require.ErrorIs(t, err, bcode.ErrSystemSettingValueInvalid)
-
-	_, err = svc.Update(ctx, model.SystemSettingTypeAliyunCloud, apisv1.UpdateSystemSettingRequest{
-		Value: json.RawMessage(`{"accessKeyId":"test-ak","accessKeySecret":"******","regionId":"cn-hangzhou"}`),
-	})
-	require.ErrorIs(t, err, bcode.ErrSystemSettingValueInvalid)
-
-	_, err = svc.Update(ctx, model.SystemSettingTypeAliyunCloud, apisv1.UpdateSystemSettingRequest{
-		Value: json.RawMessage(`{"accessKeyId":"test-ak","accessKeySecret":"test-sk","regionId":"cn-hangzhou","region_endpoint":"nas.cn-hangzhou.aliyuncs.com"}`),
-	})
-	require.ErrorIs(t, err, bcode.ErrSystemSettingValueInvalid)
-	require.Equal(t, 1, cloudProvider.connectivityChecks)
 }
 
-func TestSystemSettingService_AliyunCloudValueNormalizationAndRedaction(t *testing.T) {
-	repo := newMockSystemSettingRepo()
-	svc := &systemSettingServiceImpl{SettingRepo: repo}
+func TestSystemSettingServiceRejectsUnsupportedType(t *testing.T) {
+	// Invalid types must fail before reaching persistence, even with valid JSON.
+	svc := &systemSettingServiceImpl{}
 	ctx := context.Background()
-	cloudProvider := registerAliyunCloudSettingProvider(t, nil)
-
-	input := json.RawMessage(`{
-		"access_key_id": " test-ak ",
-		"access_key_secret": " test-sk ",
-		"endpoint": " nas.cn-hangzhou.aliyuncs.com ",
-		"region_id": " cn-hangzhou ",
-		"zone_id": " cn-hangzhou-i ",
-		"vpc_id": " vpc-001 ",
-		"vsw_id": " vsw-001 "
-	}`)
-
-	created, err := svc.Create(ctx, apisv1.CreateSystemSettingRequest{
-		Type:  model.SystemSettingTypeAliyunCloud,
-		Value: input,
-	})
-	require.NoError(t, err)
-	require.NotContains(t, string(created.Value), "test-sk")
-	require.Contains(t, string(created.Value), spec.AliyunCloudSecretMaskedValue)
-	require.Equal(t, 1, cloudProvider.connectivityChecks)
-
-	stored, ok := repo.items[model.SystemSettingTypeAliyunCloud]
-	require.True(t, ok)
-	require.JSONEq(t, `{
-		"accessKeyId":"test-ak",
-		"accessKeySecret":"test-sk",
-		"endpoint":"nas.cn-hangzhou.aliyuncs.com",
-		"regionId":"cn-hangzhou",
-		"zoneId":"cn-hangzhou-i",
-		"vpcId":"vpc-001",
-		"vswId":"vsw-001"
-	}`, string(stored.Value))
-
-	got, err := svc.Get(ctx, model.SystemSettingTypeAliyunCloud)
-	require.NoError(t, err)
-	require.NotContains(t, string(got.Value), "test-sk")
-	require.Contains(t, string(got.Value), spec.AliyunCloudSecretMaskedValue)
-	require.JSONEq(t, `{
-		"accessKeyId":"test-ak",
-		"accessKeySecret":"******",
-		"endpoint":"nas.cn-hangzhou.aliyuncs.com",
-		"regionId":"cn-hangzhou",
-		"zoneId":"cn-hangzhou-i",
-		"vpcId":"vpc-001",
-		"vswId":"vsw-001"
-	}`, string(got.Value))
-}
-
-func TestSystemSettingService_AliyunCloudBuiltinSupport(t *testing.T) {
-	repo := newMockSystemSettingRepo()
-	repo.items[model.SystemSettingTypeAliyunCloud] = &model.SystemSetting{
-		Type: model.SystemSettingTypeAliyunCloud,
-		Value: json.RawMessage(`{
-			"accessKeyId":"test-ak",
-			"accessKeySecret":"test-sk",
-			"endpoint":"nas.cn-hangzhou.aliyuncs.com",
-			"regionId":"cn-hangzhou",
-			"zoneId":"cn-hangzhou-i",
-			"vpcId":"vpc-001",
-			"vswId":"vsw-001"
-		}`),
-	}
-	svc := &systemSettingServiceImpl{SettingRepo: repo}
-	ctx := context.Background()
-
-	got, err := svc.Get(ctx, model.SystemSettingTypeAliyunCloud)
-	require.NoError(t, err)
-	require.NotContains(t, string(got.Value), "test-sk")
-	require.Contains(t, string(got.Value), spec.AliyunCloudSecretMaskedValue)
-
-	list, err := svc.List(ctx)
-	require.NoError(t, err)
-	require.Len(t, list, 1)
-	require.NotContains(t, string(list[0].Value), "test-sk")
-	require.Contains(t, string(list[0].Value), spec.AliyunCloudSecretMaskedValue)
-
-	normalized, err := normalizeAndValidateSettingValue(model.SystemSettingTypeAliyunCloud, json.RawMessage(`{
-		"access_key_id":" next-ak ",
-		"access_key_secret":" next-sk ",
-		"endpoint":" nas.cn-shanghai.aliyuncs.com ",
-		"region_id":" cn-shanghai ",
-		"zone_id":" cn-shanghai-b ",
-		"vpc_id":" vpc-002 ",
-		"vsw_id":" vsw-002 "
-	}`))
-	require.NoError(t, err)
-	require.JSONEq(t, `{
-		"accessKeyId":"next-ak",
-		"accessKeySecret":"next-sk",
-		"endpoint":"nas.cn-shanghai.aliyuncs.com",
-		"regionId":"cn-shanghai",
-		"zoneId":"cn-shanghai-b",
-		"vpcId":"vpc-002",
-		"vswId":"vsw-002"
-	}`, string(normalized))
-}
-
-func TestSystemSettingService_AliyunCloudUpdateRunsConnectivityCheck(t *testing.T) {
-	repo := newMockSystemSettingRepo()
-	repo.items[model.SystemSettingTypeAliyunCloud] = &model.SystemSetting{
-		Type:  model.SystemSettingTypeAliyunCloud,
-		Value: buildValidAliyunCloudSettingValue(t),
-	}
-	svc := &systemSettingServiceImpl{SettingRepo: repo}
-	ctx := context.Background()
-	cloudProvider := registerAliyunCloudSettingProvider(t, nil)
-
-	updated, err := svc.Update(ctx, model.SystemSettingTypeAliyunCloud, apisv1.UpdateSystemSettingRequest{
-		Value: json.RawMessage(`{
-			"access_key_id": " next-ak ",
-			"access_key_secret": " next-sk ",
-			"endpoint": " nas.cn-shanghai.aliyuncs.com ",
-			"region_id": " cn-shanghai ",
-			"zone_id": " cn-shanghai-b ",
-			"vpc_id": " vpc-002 ",
-			"vsw_id": " vsw-002 "
-		}`),
-	})
-	require.NoError(t, err)
-	require.Equal(t, 1, cloudProvider.connectivityChecks)
-	require.NotContains(t, string(updated.Value), "next-sk")
-	require.Contains(t, string(updated.Value), spec.AliyunCloudSecretMaskedValue)
-
-	stored, ok := repo.items[model.SystemSettingTypeAliyunCloud]
-	require.True(t, ok)
-	require.JSONEq(t, `{
-		"accessKeyId":"next-ak",
-		"accessKeySecret":"next-sk",
-		"endpoint":"nas.cn-shanghai.aliyuncs.com",
-		"regionId":"cn-shanghai",
-		"zoneId":"cn-shanghai-b",
-		"vpcId":"vpc-002",
-		"vswId":"vsw-002"
-	}`, string(stored.Value))
-}
-
-func TestSystemSettingService_AliyunCloudConnectivityCheckFailureOnCreate(t *testing.T) {
-	repo := newMockSystemSettingRepo()
-	svc := &systemSettingServiceImpl{SettingRepo: repo}
-	ctx := context.Background()
-	cloudProvider := registerAliyunCloudSettingProvider(t, errors.New("connectivity failed"))
-
-	_, err := svc.Create(ctx, apisv1.CreateSystemSettingRequest{
-		Type:  model.SystemSettingTypeAliyunCloud,
-		Value: buildValidAliyunCloudSettingValue(t),
-	})
-	require.ErrorIs(t, err, bcode.ErrSystemSettingConnectivityCheckFailed)
-	require.Equal(t, 1, cloudProvider.connectivityChecks)
-	_, ok := repo.items[model.SystemSettingTypeAliyunCloud]
-	require.False(t, ok)
-}
-
-func TestSystemSettingService_AliyunCloudCreateDuplicateSkipsConnectivityCheck(t *testing.T) {
-	repo := newMockSystemSettingRepo()
-	oldValue := buildValidAliyunCloudSettingValue(t)
-	repo.items[model.SystemSettingTypeAliyunCloud] = &model.SystemSetting{
-		Type:  model.SystemSettingTypeAliyunCloud,
-		Value: oldValue,
-	}
-	svc := &systemSettingServiceImpl{SettingRepo: repo}
-	ctx := context.Background()
-	cloudProvider := registerAliyunCloudSettingProvider(t, errors.New("connectivity failed"))
-
-	_, err := svc.Create(ctx, apisv1.CreateSystemSettingRequest{
-		Type:  model.SystemSettingTypeAliyunCloud,
-		Value: buildValidAliyunCloudSettingValue(t),
-	})
-	require.ErrorIs(t, err, bcode.ErrSystemSettingExists)
-	require.Equal(t, 0, cloudProvider.connectivityChecks)
-
-	stored, ok := repo.items[model.SystemSettingTypeAliyunCloud]
-	require.True(t, ok)
-	require.JSONEq(t, string(oldValue), string(stored.Value))
-}
-
-func TestSystemSettingService_AliyunCloudConnectivityCheckFailureOnUpdate(t *testing.T) {
-	repo := newMockSystemSettingRepo()
-	oldValue := buildValidAliyunCloudSettingValue(t)
-	repo.items[model.SystemSettingTypeAliyunCloud] = &model.SystemSetting{
-		Type:  model.SystemSettingTypeAliyunCloud,
-		Value: oldValue,
-	}
-	svc := &systemSettingServiceImpl{SettingRepo: repo}
-	ctx := context.Background()
-	cloudProvider := registerAliyunCloudSettingProvider(t, errors.New("connectivity failed"))
-
-	_, err := svc.Update(ctx, model.SystemSettingTypeAliyunCloud, apisv1.UpdateSystemSettingRequest{
-		Value: json.RawMessage(`{
-			"accessKeyId":"next-ak",
-			"accessKeySecret":"next-sk",
-			"endpoint":"nas.cn-shanghai.aliyuncs.com",
-			"regionId":"cn-shanghai",
-			"zoneId":"cn-shanghai-b",
-			"vpcId":"vpc-002",
-			"vswId":"vsw-002"
-		}`),
-	})
-	require.ErrorIs(t, err, bcode.ErrSystemSettingConnectivityCheckFailed)
-	require.Equal(t, 1, cloudProvider.connectivityChecks)
-
-	stored, ok := repo.items[model.SystemSettingTypeAliyunCloud]
-	require.True(t, ok)
-	require.JSONEq(t, string(oldValue), string(stored.Value))
-}
-
-func TestSystemSettingService_AliyunCloudUpdateNotFoundSkipsConnectivityCheck(t *testing.T) {
-	repo := newMockSystemSettingRepo()
-	svc := &systemSettingServiceImpl{SettingRepo: repo}
-	ctx := context.Background()
-	cloudProvider := registerAliyunCloudSettingProvider(t, errors.New("connectivity failed"))
-
-	_, err := svc.Update(ctx, model.SystemSettingTypeAliyunCloud, apisv1.UpdateSystemSettingRequest{
-		Value: buildValidAliyunCloudSettingValue(t),
-	})
-	require.ErrorIs(t, err, bcode.ErrSystemSettingNotFound)
-	require.Equal(t, 0, cloudProvider.connectivityChecks)
+	_, err := svc.Create(ctx, apisv1.CreateSystemSettingRequest{Type: "unsupported", Value: json.RawMessage(`{}`)})
+	require.ErrorIs(t, err, bcode.ErrSystemSettingTypeInvalid)
+	_, err = svc.Update(ctx, "unsupported", apisv1.UpdateSystemSettingRequest{Value: json.RawMessage(`{}`)})
+	require.ErrorIs(t, err, bcode.ErrSystemSettingTypeInvalid)
+	_, err = svc.Get(ctx, "unsupported")
+	require.ErrorIs(t, err, bcode.ErrSystemSettingTypeInvalid)
+	require.ErrorIs(t, svc.Delete(ctx, "unsupported"), bcode.ErrSystemSettingTypeInvalid)
 }
 
 func buildValidURLSecurityPolicySettingValue(t *testing.T) json.RawMessage {
@@ -517,22 +221,6 @@ func buildValidURLSecurityPolicySettingValue(t *testing.T) json.RawMessage {
 		"allowedCIDRs": []string{
 			"10.0.0.0/8",
 		},
-	}
-	data, err := json.Marshal(payload)
-	require.NoError(t, err)
-	return json.RawMessage(data)
-}
-
-func buildValidAliyunCloudSettingValue(t *testing.T) json.RawMessage {
-	t.Helper()
-	payload := map[string]interface{}{
-		"accessKeyId":     "test-ak",
-		"accessKeySecret": "test-sk",
-		"endpoint":        "nas.cn-hangzhou.aliyuncs.com",
-		"regionId":        "cn-hangzhou",
-		"zoneId":          "cn-hangzhou-i",
-		"vpcId":           "vpc-001",
-		"vswId":           "vsw-001",
 	}
 	data, err := json.Marshal(payload)
 	require.NoError(t, err)

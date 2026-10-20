@@ -514,7 +514,6 @@ func TestConvertComponentModelToDTOSkipsServiceSummariesForNonServiceDeployCompo
 	}{
 		{name: "instant job", componentType: config.InstantJob},
 		{name: "scheduled job", componentType: config.ScheduledJob},
-		{name: "cloud job", componentType: config.CloudJob},
 	}
 
 	for _, tc := range testCases {

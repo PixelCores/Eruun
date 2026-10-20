@@ -66,10 +66,6 @@ func TestApplicationTaskIdentity(t *testing.T) {
 	task.AppID = "other"
 	_, err = PrepareTask(task, "app", w, cfg)
 	require.ErrorIs(t, err, bcode.ErrForbidden)
-	task.AppID = "app"
-	task.JobType = string(config.JobDeployCloud)
-	_, err = PrepareTask(task, "app", w, cfg)
-	require.ErrorIs(t, err, bcode.ErrForbidden)
 }
 
 func TestPrepareScheduledPayloadPreservesPointerAndPolicy(t *testing.T) {

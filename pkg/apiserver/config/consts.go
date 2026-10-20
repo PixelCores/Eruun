@@ -36,7 +36,6 @@ const (
 	DefaultNamespace                      = "default"
 	DeployTimeout                         = 60 * 20 // 20 minutes
 	DefaultVersionUpdateImageReadyTimeout = 60 * 5  // 5 minutes
-	CloudJobTimeout                       = 60 * 20 // 20 minutes
 	DelTimeOut                            = 30 * time.Second
 
 	// ServerJob JobType 的类型分为几种：1.无状态服务 2.存储服务 3.网络服务
@@ -44,7 +43,6 @@ const (
 	StoreJob     JobType = "store"
 	ConfJob      JobType = "config"
 	SecretJob    JobType = "secret"
-	CloudJob     JobType = "cloudjob"
 	Service      JobType = "service"
 	InstantJob   JobType = "job"
 	ScheduledJob JobType = "scheduledjob"
@@ -63,7 +61,6 @@ const (
 	JobDeployClusterRoleBinding JobType = "cluster_role_binding_deploy"
 	JobDeployInstant            JobType = "instant_job"
 	JobDeployScheduled          JobType = "scheduled_job"
-	JobDeployCloud              JobType = "cloudjob_deploy"
 	JobDeployCallback           JobType = "callback"
 	JobCleanupResources         JobType = "cleanup_resources"
 	JobDatabaseReset            JobType = "database_reset"

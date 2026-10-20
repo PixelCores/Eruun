@@ -62,7 +62,7 @@
 
 ## 状态同步
 
-创建成功且 workflow 立即排队执行后，Eruun 会把本次 workflow 中 `workflowType` 为空或 `deploy` 的 component step/substep 覆盖、当前空状态或 `Not Deploy` 且具备部署终态回写路径的组件运行态标记为 `Deploying`，组件类型限于 `webservice`、`store`、`job`、`scheduledjob`、`config` 和 `secret`。未被本次 workflow 覆盖的组件、非部署步骤覆盖的组件、已有 `Running` / `Stopped` / `Cleaning` / `Updating` 等状态的组件以及 `cloudjob` 不会被标记。`GET /api/v1/applications/:appID/status` 和 `POST /api/v1/applications/components/status` 基于该组件态把应用聚合状态返回为 `deploying`，用于表达初次部署中。若请求使用未来时间的 `executeAt` 延迟执行，状态不会提前从 `not_deploy` 提升。
+创建成功且 workflow 立即排队执行后，Eruun 会把本次 workflow 中 `workflowType` 为空或 `deploy` 的 component step/substep 覆盖、当前空状态或 `Not Deploy` 且具备部署终态回写路径的组件运行态标记为 `Deploying`，组件类型限于 `webservice`、`store`、`job`、`scheduledjob`、`config` 和 `secret`。未被本次 workflow 覆盖的组件、非部署步骤覆盖的组件、已有 `Running` / `Stopped` / `Cleaning` / `Updating` 等状态的组件不会被标记。`GET /api/v1/applications/:appID/status` 和 `POST /api/v1/applications/components/status` 基于该组件态把应用聚合状态返回为 `deploying`，用于表达初次部署中。若请求使用未来时间的 `executeAt` 延迟执行，状态不会提前从 `not_deploy` 提升。
 
 ## 验证建议
 

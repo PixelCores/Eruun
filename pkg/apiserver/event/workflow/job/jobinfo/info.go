@@ -368,7 +368,7 @@ func FindExistingJobInfo(ctx context.Context, store datastore.DataStore, job *mo
 		}
 		candidates = generationCandidates
 	}
-	if job.JobType != string(config.JobDatabaseReset) && job.JobType != string(config.JobDeployCloud) {
+	if job.JobType != string(config.JobDatabaseReset) {
 		executionKey := strings.TrimSpace(job.ExecutionKey)
 		if executionKey != "" {
 			for _, candidate := range candidates {
@@ -382,21 +382,18 @@ func FindExistingJobInfo(ctx context.Context, store datastore.DataStore, job *mo
 	if job.JobType == string(config.JobDatabaseReset) {
 		return SelectDatabaseResetCheckpointJobInfo(job, candidates)
 	}
-	if job.JobType != string(config.JobDeployCloud) {
-		if job.ExecutionKey != "" {
-			for _, candidate := range candidates {
-				if candidate != nil && candidate.ExecutionKey != nil && *candidate.ExecutionKey == job.ExecutionKey {
-					return candidate, nil
-				}
+	if job.ExecutionKey != "" {
+		for _, candidate := range candidates {
+			if candidate != nil && candidate.ExecutionKey != nil && *candidate.ExecutionKey == job.ExecutionKey {
+				return candidate, nil
 			}
-			return nil, nil
 		}
-		if len(candidates) == 0 {
-			return nil, nil
-		}
-		return candidates[0], nil
+		return nil, nil
 	}
-	return SelectCloudCheckpointJobInfo(job, candidates), nil
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+	return candidates[0], nil
 }
 
 func FindExistingVersionUpdateCleanupJobInfo(ctx context.Context, store datastore.DataStore, job *model.JobTask) (*model.JobInfo, error) {

@@ -18,7 +18,7 @@ func NormalizeComponentEvaluation(componentType, image string, properties Proper
 		return fmt.Errorf("evaluation is only supported on a top-level job component")
 	}
 	if image != "" || len(properties.Command) > 0 || len(properties.Env) > 0 || len(properties.Ports) > 0 ||
-		len(properties.Conf) > 0 || len(properties.Secret) > 0 || properties.Cloud != nil {
+		len(properties.Conf) > 0 || len(properties.Secret) > 0 {
 		return fmt.Errorf("evaluation owns its image, command and runtime properties; use credential env traits")
 	}
 	if properties.StartTime != 0 || properties.Schedule != "" || properties.RunPolicy != "" ||

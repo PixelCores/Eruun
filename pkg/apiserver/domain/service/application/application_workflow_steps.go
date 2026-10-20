@@ -15,8 +15,7 @@ import (
 )
 
 const (
-	templatePhaseCloudJob = iota
-	templatePhaseConfigSecret
+	templatePhaseConfigSecret = iota
 	templatePhaseStore
 	templatePhaseJob
 	templatePhaseWebService
@@ -24,7 +23,6 @@ const (
 )
 
 var templatePhaseNames = [templatePhaseCount]string{
-	"phase-1-job",
 	"phase-2-config-secret",
 	"phase-3-store",
 	"phase-4-job",
@@ -163,8 +161,6 @@ func isTemplatePhasedWorkflow(steps *model.WorkflowSteps) bool {
 
 func templatePhaseByComponentType(componentType config.JobType) int {
 	switch componentType {
-	case config.CloudJob:
-		return templatePhaseCloudJob
 	case config.ConfJob, config.SecretJob:
 		return templatePhaseConfigSecret
 	case config.StoreJob:

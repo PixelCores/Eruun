@@ -33,7 +33,7 @@
 
 - 创建应用或通过 `/version add` 新增普通 `type=job` 组件时，省略或传空值表示继承 workflow 的 `failurePolicy`；Job 层只允许显式 `cleanup_failed`，不接受 `cleanup_all` 或其他值。
 - `/version update` 继续使用 Properties 全量替换语义：省略整个 `properties` 会保留已有 Properties（包括已有 Job override）；显式携带 `properties` 时，省略或清空其中的 `failurePolicy` 会清除已有 override 并改为继承 workflow。
-- 该字段只支持顶层 `type=job` 组件；`scheduledjob`、`cloudjob`、其他组件类型或 init container properties 即使显式传空值也会被拒绝。
+- 该字段只支持顶层 `type=job` 组件；`scheduledjob`、其他组件类型或 init container properties 即使显式传空值也会被拒绝。
 - Job 显式值优先于 workflow 策略，但只覆盖该组件的主 `instant_job` 任务；PVC、RBAC 等附属资源任务仍继承 workflow 策略。RBAC Job 即使进入失败清理，其 `Clean` 也不会删除对象。
 - `runPolicy` 与 `failurePolicy` 相互独立：前者控制同名 Kubernetes Job 的重建/复用，后者只控制失败后是否扩大为 workflow 全量清理。
 - 字段随现有 Component `properties` JSON 持久化，不新增数据库列或 Kubernetes annotation。
@@ -84,7 +84,7 @@
 }
 ```
 
-- `jobRetryPolicy` 只支持顶层即时 Job。`startTime` 非零、`scheduledjob`、CloudJob、Deployment 等组件，以及 init container properties 中的该字段，均被写入校验拒绝。Job 中的 init container 若确实 OOM，可由顶层策略增长其资源。
+- `jobRetryPolicy` 只支持顶层即时 Job。`startTime` 非零、`scheduledjob`、Deployment 等组件，以及 init container properties 中的该字段，均被写入校验拒绝。Job 中的 init container 若确实 OOM，可由顶层策略增长其资源。
 - OOM 证据必须来自同一个 Job UID 控制的 Failed Pod，且当前容器终止原因是 `OOMKilled`。单独的退出码 137、CPU throttling、eviction、上一次重启的 OOM、同名但其他 Job UID 的 Pod 均不会触发增长。注入到 Pod、但不存在于提交的 Job 模板中的 OOM 容器无法 resize，执行停止。
 - 显式启用后设置 Kubernetes `backoffLimit=0`、`restartPolicy=Never`，由 Eruun 统一计数。已有未完成 Job 若要切换到该策略，必须显式 `runPolicy=recreate`；已完成 Job 仍可由 `skip_if_completed` 跳过。
 - 策略随 Component properties 持久化并写入 `eruun.io/job-retry-policy` annotation；每次执行写入 `eruun.io/job-attempt`。实际资源与次数保存在原有 `JobInfo.InternalInfo` / `Attempt`，不会回写 Component 配置或修改 Deployment、StatefulSet、CronJob。

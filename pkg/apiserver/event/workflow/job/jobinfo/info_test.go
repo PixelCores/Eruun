@@ -66,7 +66,7 @@ func TestBuildJobInfoRecordFallsBackToBoundedComponentLabel(t *testing.T) {
 }
 
 func TestSaveOrUpdateJobInfoIsolatesExecutionsWithinOneGeneration(t *testing.T) {
-	store := jobtest.NewCloudJobCheckpointStore()
+	store := jobtest.NewJobInfoRecordStore()
 	first := &model.JobTask{
 		TaskID: "task-1", JobType: string(config.JobDeployService), Name: "api",
 		RunGeneration: 7, ExecutionKey: "step-0", Status: config.StatusRunning,

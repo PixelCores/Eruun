@@ -214,10 +214,6 @@ func ApplyExecutionIdentity(job *model.JobTask) {
 	}
 }
 
-func CloudInfoFromJobInfo(job *model.JobTask) (*CloudJobInfo, error) {
-	return RequiredJobInfo[*CloudJobInfo](job)
-}
-
 func CallbackInfoFromJobInfo(job *model.JobTask) (*CallbackJobInfo, error) {
 	return RequiredJobInfo[*CallbackJobInfo](job)
 }
