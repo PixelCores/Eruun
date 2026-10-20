@@ -15,14 +15,14 @@
 - provider 未注册或 action 不在白名单时统一 fail-fast
 - `aliyun` provider 已接入真实阿里云 NAS SDK 和 Kubernetes StorageClass 创建逻辑
 
-当前 Provider 都是进程内 Go 实现：新增 Provider 需实现 `cloudjob.CloudProvider`，在 `pkg/apiserver/event/workflow/job/cloud_provider_bridge.go` 注册；需要系统设置时，在 `systemsetting` 的内置设置表中加入对应 `CloudProviderSettingSupport`。新增或替换实现需要重新编译和重启，不存在动态插件加载或热更新。
+当前 Provider 都是进程内 Go 实现：新增 Provider 需实现 `cloudjob.CloudProvider`，在 `pkg/apiserver/event/workflow/job/jobcloud/cloud_provider_bridge.go` 注册；需要系统设置时，在 `systemsetting` 的内置设置表中加入对应 `CloudProviderSettingSupport`。新增或替换实现需要重新编译和重启，不存在动态插件加载或热更新。
 
 ## 代码组织
 
 - `pkg/apiserver/event/workflow/cloudjob`：云厂商 `CloudProvider` 接口与 provider 注册中心，不反向依赖具体厂商
 - `pkg/apiserver/event/workflow/cloudjob/contracts`：请求/响应、action/runtime 执行契约与通用参数拷贝
 - `pkg/apiserver/event/workflow/cloudjob/aliyun`：aliyun provider、内部 action 映射与 action 分文件实现
-- `pkg/apiserver/event/workflow/job/cloud_provider_bridge.go`：在工作流执行层装配内置 provider
+- `pkg/apiserver/event/workflow/job/jobcloud/cloud_provider_bridge.go`：在工作流执行层装配内置 provider
 
 每个云厂商 provider 必须直接实现同一组方法：
 

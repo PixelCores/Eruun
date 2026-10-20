@@ -1,6 +1,39 @@
 # job 包分层拆分设计
 
-> 状态：Draft / Proposal。本文是 `pkg/apiserver/event/workflow/job` 包按职责拆成子包的设计草案，尚未实施；它不改变任何 HTTP/gRPC、DSL、数据库或部署契约。
+> 状态：Implemented Reference。本文记录 `pkg/apiserver/event/workflow/job` 包按职责拆成子包的设计与实施结果。已于 2026-10-20 通过 #172–#178 实施，没有改变任何 HTTP/gRPC、DSL、数据库或部署契约。第 1–14 节保留实施前的设计，其中的数字是当时的静态分析估计；实际结果以“实施结果”一节为准。
+
+## 实施结果
+
+| PR | 内容 |
+|---|---|
+| #170 | 前置：4 个大文件在原包内按职责拆分 |
+| #172 | 单包内预整理：拆开同时包含多个目标包声明的文件，`CleanCancelled` 移回各自类型所在文件 |
+| #173 | 抽出 `jobinfo` |
+| #174 | 抽出 `jobexec` |
+| #175 | 抽出 `jobdeploy` |
+| #176 | 抽出 `jobcleanup`、`jobresult` |
+| #177 | 抽出 `jobinstant`、`jobdelay` |
+| #178 | 抽出 `jobcloud`、`databasereset`、`logarchive`、`jobcallback` |
+
+**最终结构**：`job` 包只剩 `job.go`、`job_pool.go`、`evaluation_recovery.go`，内容是 `RunJobs`/`runJob`、`initJobCtl` 工厂、`Pool` 和评测恢复。跨包共用的测试辅助代码放在 `job/jobtest`，这是一个非测试包，只被 `_test.go` import。
+
+**与设计的差异**：
+
+- **命名**：子包统一加 `job` 前缀，`databasereset`、`logarchive` 保持原名，原因见第 4.2 节的命名说明。
+- **导出的声明**：生产代码共新导出 148 个声明：`jobinfo` 71、`jobexec` 63、`jobresult` 9、`jobdeploy` 2、`jobcleanup` 1、`jobinstant` 1、`logarchive` 1。比设计多出的 1 个是 `jobresult.BuildJobResultOutbox`，为测试导出。
+- **导出的字段**：设计时没有统计字段，实际导出了 34 个：
+  - 控制器基类 `DeployNamespacedResourceJobBase` 的 9 个字段，控制器里 `c.job` 等访问随之改为 `c.Job`，约 750 行；
+  - `Runtime` 2 个、`JobBuildOptions` 2 个、`SharedResourceAccessOptions` 8 个、`TrackedResourceReconcileOptions` 7 个；
+  - `jobresult` 的 6 个配置和计数字段，为综合测试导出。
+- **测试**：只测某个子包内部的测试函数随代码迁移，保留白盒调用。同时覆盖多个子包的测试按包拆分，不改成调用公开入口。各步的测试函数数量都与基线一致，只有 #177 拆分综合测试时从 2679 个增加到 2684 个；断言数没有减少。
+- **待决事项**（第 14 节）均已决定：接受导出代价，不使用 `internal`，子包统一加 `job` 前缀，在没有其他 `job` 改动的窗口内连续实施。
+- **不变量**：fencing/CAS 原语保持未导出。每一步都做了逐声明 token 比对（只允许首字母大小写和包限定符不同），并跑了宿主机全量门禁。没有在真实集群上运行。
+
+**遗留的 P3**：
+
+- `jobresult.ResultDispatcher.EnsureFailures` 为测试导出后，包外代码也能修改；
+- 部分测试辅助代码在两个包里各有一份副本；
+- `jobtest.ShareLockerPrefix` 复制了生产常量的值。
 
 ## 1. 背景与目标
 
@@ -290,10 +323,10 @@ PR 2 和 PR 3 涉及核心路径，由主会话实现，不派发给执行者。
 
 ## 14. 待决事项
 
-1. **是否接受约 200 个新导出符号的代价**，换取按目录组织。如果不接受，就维持现状：单包加文件名前缀。
+1. ~~**是否接受约 200 个新导出符号的代价**~~（已决定：接受），换取按目录组织。如果不接受，就维持现状：单包加文件名前缀。
 2. ~~子包命名~~：已决定统一加 `job` 前缀（见第 4.2 节命名说明）。
-3. **是否把 `jobinfo`/`jobexec` 放进 `internal`**（见第 9 节）。
-4. **实施时机**：拆分期间 `job` 包不宜并行开发，需要选一个没有其他 `job` 改动的窗口。
+3. ~~**是否把 `jobinfo`/`jobexec` 放进 `internal`**~~（已决定：不放）。
+4. ~~**实施时机**~~：已于 2026-10-20 连续实施完成。
 
 ## 附录：生产代码需要新导出的符号（147）
 

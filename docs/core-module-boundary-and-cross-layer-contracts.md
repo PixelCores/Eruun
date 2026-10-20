@@ -149,7 +149,7 @@ K8s 不是组件查询实时事实源，而是通过 informer 异步回写 DB。
 - 直接版本更新中的资源清理：`pkg/apiserver/domain/service/application/application_update_version_phases.go` 中的 `commitDirectVersionUpdate`
 - 空间删除：`pkg/apiserver/domain/service/account/workspaces.go` 中的 `DeleteWorkspace`、`teamMutation`
 - 结果接受和交付：`pkg/apiserver/jobs/artifacts/store.go`、`pkg/apiserver/jobs/artifacts/delivery.go`
-- Secret 落地与编码边界：`pkg/apiserver/event/workflow/job/job_secret.go`
+- Secret 落地与编码边界：`pkg/apiserver/event/workflow/job/jobdeploy/secret.go`
 - 模型与表映射：`pkg/apiserver/domain/model/*.go`
 
 评测的模型、harness、任务包、并发与预算由共享 `EvaluationTraitSpec` 定义。独立 Job 和 Application 的顶层 job 组件共享构建器；框架版本由 Runner 固定并记入执行快照。结果制品和保存目标用 WorkspaceID、TaskID、ExecutionKey 区分；应用内多个评测不能仅以父 TaskID 寻址。

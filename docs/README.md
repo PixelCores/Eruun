@@ -71,7 +71,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `pkg/apiserver/domain/service/application` | 应用生命周期与组件业务规则 | 应用变更、组件查询、Informer 运行态回写 | `SyncComponentStatus` 负责状态保护、条件写入和缓存失效；server 只装配有界回调 |
 | `pkg/apiserver/domain/spec` | 共享规格、资源契约、策略和校验（含 Aliyun 设置脱敏） | Auth、OAuth、URL 安全、云资源配置、资源类型、Service 暴露类型与共享策略 | 业务取值及归一化与对应规格集中定义；Storage/Volume 类型与映射集中在 `storage.go`；更新策略、执行范围与组件动作集中在 `application_policy.go` |
 | `pkg/apiserver/event/workflow` | Workflow 调度、分发、状态推进、审批/超时 | 任务状态、队列消费、分布式执行 | DB 状态机是任务事实源 |
-| `pkg/apiserver/event/workflow/job` | 具体 Job 控制器、通用任务准备和 K8s 资源调和 | Deployment、StatefulSet、Service、PVC、Secret、RBAC 等资源执行 | ConfigMap/Secret 内部执行输入在 `configmap_input.go`；保持资源生成、等待和清理语义一致 |
+| `pkg/apiserver/event/workflow/job` | Job 执行入口（`RunJobs`、`initJobCtl` 工厂、`Pool`、评测恢复），具体能力分在子包 | 新增 Job 类型、调整执行主流程；Deployment、StatefulSet、Service、PVC、Secret、RBAC 等资源执行在 `jobdeploy` | 子包单向依赖：`jobinfo`（JobInfo 记录、载荷、检查点）→ `jobexec`（Runtime、控制器基类、K8s Job 原语、共享资源保护、清理跟踪、取消恢复）→ `jobdeploy` → `jobcleanup`、`jobresult` → `jobinstant`、`jobdelay`、`jobcloud`、`databasereset`、`logarchive`、`jobcallback`；ConfigMap/Secret 内部执行输入在 `jobinfo/configmap_input.go`；分层见 `job-package-layering-design.md` |
 | `pkg/apiserver/event/workflow/cloudjob` | 云资源 Provider 合约与实现 | 云资源步骤、Provider 注册、外部云动作 | 合约字符串集中为常量；Provider 可选设置支持由 `domain/service/systemsetting` 管理 |
 | `pkg/apiserver/workflow/traits` | OAM Traits 处理器 | storage、env、probe、resources、sidecar、rbac、ingress 等 Trait | 新 Trait 需要处理顺序、测试和文档 |
 | `pkg/apiserver/workflow/config` | 工作流运行配置、执行策略与 topic 命名 | 调度/Worker 默认值、配置校验、回调超时、镜像拉取策略与队列名称 | 模块配置不反向依赖全局配置、领域模型或执行器 |
@@ -90,7 +90,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | 新增或修改 API | `pkg/apiserver/interfaces/api` | handler、DTO、assembler、domain service、examples | `validation-api-guide.md`, `core-module-boundary-and-cross-layer-contracts.md` |
 | 应用创建/更新/删除流程 | `pkg/apiserver/domain/service/application*.go` | domain service、repository、workflow 触发点 | `create-and-exec-application-api.md`, `version-update-api.md`, `database-reset-workflow.md`；`reset-workflow.md` 仅作兼容/废弃参考 |
 | 工作流状态、队列或并发 | `pkg/apiserver/event/workflow` | dispatcher、controller、queue、job 状态推进 | `workflow-architecture-guide.md`, `workflow-testing-guide.md` |
-| Kubernetes 资源生成或等待 | `pkg/apiserver/event/workflow/job` | resource generation、job controller、waiter | `architecture-diagrams.md`, `statefulset-pvc-volume-naming.md` |
+| Kubernetes 资源生成或等待 | `pkg/apiserver/event/workflow/job/jobdeploy`、`job/jobexec` | resource generation、job controller、waiter | `architecture-diagrams.md`, `statefulset-pvc-volume-naming.md` |
 | Trait 能力 | `pkg/apiserver/workflow/traits` | trait processor、job builder、相关 API 示例 | `架构文档.md`, `share-trait.md`, `rollout-trait.md` |
 | 组件状态、Pod 日志/文件/执行 | `pkg/apiserver/domain/service`, `pkg/apiserver/interfaces/api` | component query、pod ops、logs/files/exec API、Log archive workflow | `application-status-api.md`, `component-log-stream-api.md`, `component-pod-file-exec-api.md`, `log-archive-upload-workflow.md`, `component-container-info-api.md` |
 | 认证、授权、OAuth、团队空间 | `pkg/apiserver/domain/service/account` | account、middleware、account workspace scope、infrastructure/workspace | `account-auth-workspaces.md` |
@@ -151,6 +151,7 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | --- | --- | --- |
 | `workflow-architecture-guide.md` | Implemented Reference | 工作流引擎架构详解 |
 | `workspace-jobs-and-harbor-requirements.md` | Implemented Reference | 先于实现确认的统一 Job 与 Harbor 需求基线：任务包、空间授权、全部输出、多目标保存与原始结果保留 |
+| [`job-package-layering-design.md`](job-package-layering-design.md) | Implemented Reference | `event/workflow/job` 分层拆成 12 个子包的设计与实施结果：子包边界、依赖方向、导出代价与测试迁移规则 |
 | `job-module-design.md` | Implemented Reference | 自定义 Job 模块的设计取舍：为何复用 WorkflowQueue、stages、运行卷、traits 复用、重试边界、cron 并发策略与 Replace 顺序；行为细节见 `workspace-jobs-api.md` |
 | `agent-evaluation-runner-service-design.md` | Implemented Reference | Harbor Runner 单实例 claim、v1 阶段/心跳/进度/终态事件、结果门禁与 Kubernetes 故障兜底 |
 | `workflow-global-scheduler-design.md` | Implemented Reference | Job 全局优先级、FIFO、等待老化、空间并发上限、ownership 准入与 OOM 策略 |
@@ -203,7 +204,6 @@ Eruun 的长期方向是面向 Agent、模型和 AI 工作负载的分布式运�
 | `vllm-hami-distributed-inference-design.md` | Draft / Proposal | 自托管模型服务、GPU、vLLM/HAMi 与多节点 adapter 方向 |
 | `workflow-conditional-branching-design.md` | Draft / Proposal | 条件分支设计 |
 | `workflow-resource-capacity-scheduler.md` | Draft / Proposal | Workflow 资源容量准入与可选容量补偿边界 |
-| [`job-package-layering-design.md`](job-package-layering-design.md) | Draft / Proposal | `event/workflow/job` 包分层拆子包：基础层符号、子包边界、`InstantJobCtl` 收拢、测试搬迁与 PR 拆分 |
 | `harbor-job-load-test-plan.md` | Draft / Proposal | 可构建的合成镜像、1000 个 Harbor Job 的批量提交与 60–300 秒休眠压测矩阵、数据口径和容量判定 |
 | [`harbor-runtime-stage1-plan.md`](harbor-runtime-stage1-plan.md) | Draft / Proposal | 第一阶段主 PR（实施中）：代码与手工压测交付、共享观察、按需 Sandbox、预算和真实规模验收 |
 | [`harbor-runtime-stage1-discussion.md`](harbor-runtime-stage1-discussion.md) | Draft / Proposal | 第一阶段讨论与评审核验：需求和代码依据、观察/标签迁移、协议发布、结果交付、纠正项及待冻结决策 |
