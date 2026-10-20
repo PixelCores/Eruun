@@ -8,7 +8,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/traitvalidation"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
-	k8svalidation "k8s.io/apimachinery/pkg/util/validation"
 )
 
 // validateTraits validates the traits configuration
@@ -99,27 +98,11 @@ func (v *validationServiceImpl) validateTargetWorkEnvTrait(targetWorkEnv map[str
 
 	for key, value := range targetWorkEnv {
 		itemField := fmt.Sprintf("%s[%q]", field, key)
-		if causes := k8svalidation.IsQualifiedName(key); len(causes) > 0 {
-			errors = append(errors, apisv1.ValidationError{
-				Field:   itemField,
-				Code:    apisv1.ErrCodeInvalidTraitConfig,
-				Message: fmt.Sprintf("targetWorkEnv key must be a valid label key: %s", strings.Join(causes, "; ")),
-			})
-		}
-		if value == "" {
-			errors = append(errors, apisv1.ValidationError{
-				Field:   itemField,
-				Code:    apisv1.ErrCodeInvalidTraitConfig,
-				Message: "targetWorkEnv value must not be empty",
-			})
-			continue
-		}
-		if causes := k8svalidation.IsValidLabelValue(value); len(causes) > 0 {
-			errors = append(errors, apisv1.ValidationError{
-				Field:   itemField,
-				Code:    apisv1.ErrCodeInvalidTraitConfig,
-				Message: fmt.Sprintf("targetWorkEnv value must be a valid label value: %s", strings.Join(causes, "; ")),
-			})
+		keyErr, valueErr := spec.ValidateNodeSelectorEntry(key, value)
+		for _, message := range []string{keyErr, valueErr} {
+			if message != "" {
+				errors = append(errors, apisv1.ValidationError{Field: itemField, Code: apisv1.ErrCodeInvalidTraitConfig, Message: "targetWorkEnv " + message})
+			}
 		}
 	}
 

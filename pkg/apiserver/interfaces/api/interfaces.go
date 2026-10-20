@@ -22,6 +22,8 @@ func NewHandlers() []Interface {
 		NewWorkspaceJobs(),
 		NewSettings(),
 		NewProgrammingLanguages(),
+		NewRBACProfiles(),
+		NewNodePools(),
 		NewAccounts(),
 		NewHealth(),
 	}

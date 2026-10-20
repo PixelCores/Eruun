@@ -5,7 +5,9 @@ import (
 	"fmt"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/nodepool"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/programminglanguage"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/rbacprofile"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	assembler "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/assembler/v1"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
@@ -15,13 +17,17 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
-// AdministrationServer calls the same setting and programming-language
-// services used by HTTP. Its dependencies are populated by the API IoC graph.
+// AdministrationServer calls the same administration services used by HTTP.
+// Its dependencies are populated by the API IoC graph.
 type AdministrationServer struct {
 	eruunv1.UnimplementedSettingsServiceServer
 	eruunv1.UnimplementedProgrammingLanguagesServiceServer
+	eruunv1.UnimplementedNodePoolsServiceServer
+	eruunv1.UnimplementedRBACProfilesServiceServer
 	Settings             systemsetting.SystemSettingService             `inject:""`
 	ProgrammingLanguages programminglanguage.ProgrammingLanguageService `inject:""`
+	NodePools            nodepool.NodePoolService                       `inject:""`
+	RBACProfiles         rbacprofile.RBACProfileService                 `inject:""`
 }
 
 func valueBytes(value *structpb.Value) ([]byte, error) {

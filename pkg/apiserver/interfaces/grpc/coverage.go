@@ -1,9 +1,21 @@
 package grpcapi
 
-// routeRPC is the versioned route-to-RPC contract for the 100 user-facing
+// routeRPC is the versioned route-to-RPC contract for the 112 user-facing
 // HTTP routes. Browser OAuth, Runner callbacks and probes are deliberately
 // omitted; every new route needs an explicit decision.
 var routeRPC = map[string]string{
+	"GET /api/v1/rbac-profiles":                                               "/eruun.v1.RBACProfilesService/ListRBACProfileOptions",
+	"GET /api/v1/admin/rbac-profiles":                                         "/eruun.v1.RBACProfilesService/ListRBACProfiles",
+	"GET /api/v1/admin/rbac-profiles/:name":                                   "/eruun.v1.RBACProfilesService/GetRBACProfile",
+	"POST /api/v1/admin/rbac-profiles":                                        "/eruun.v1.RBACProfilesService/CreateRBACProfile",
+	"PUT /api/v1/admin/rbac-profiles/:name":                                   "/eruun.v1.RBACProfilesService/UpdateRBACProfile",
+	"DELETE /api/v1/admin/rbac-profiles/:name":                                "/eruun.v1.RBACProfilesService/DeleteRBACProfile",
+	"GET /api/v1/node-pools":                                                  "/eruun.v1.NodePoolsService/ListNodePoolOptions",
+	"GET /api/v1/admin/node-pools":                                            "/eruun.v1.NodePoolsService/ListNodePools",
+	"GET /api/v1/admin/node-pools/:name":                                      "/eruun.v1.NodePoolsService/GetNodePool",
+	"POST /api/v1/admin/node-pools":                                           "/eruun.v1.NodePoolsService/CreateNodePool",
+	"PUT /api/v1/admin/node-pools/:name":                                      "/eruun.v1.NodePoolsService/UpdateNodePool",
+	"DELETE /api/v1/admin/node-pools/:name":                                   "/eruun.v1.NodePoolsService/DeleteNodePool",
 	"GET /api/v1/auth/methods":                                                "/eruun.v1.AccountService/GetAuthMethods",
 	"POST /api/v1/auth/codes":                                                 "/eruun.v1.AccountService/SendAuthCode",
 	"POST /api/v1/auth/register":                                              "/eruun.v1.AccountService/Register",

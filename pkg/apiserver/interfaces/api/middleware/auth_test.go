@@ -187,3 +187,54 @@ func TestAuthFailsClosedWithoutDependencies(t *testing.T) {
 	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/applications", nil))
 	require.Equal(t, 503, rec.Code)
 }
+
+func TestSchedulingProfileRouteAuthorization(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{NamingStrategy: sqlnamer.SQLNamer{}, TranslateError: true, Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	conn, err := db.DB()
+	require.NoError(t, err)
+	conn.SetMaxOpenConns(1)
+	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Session{}, &model.Workspace{}, &model.WorkspaceMember{}))
+	raw := &sqlstore.Driver{Client: *db}
+	accounts := account.New(raw, &spec.AccountConfig{}, nil, nil)
+	token := strings.Repeat("a", 43)
+	hash := sha256.Sum256([]byte(token))
+	now := time.Now()
+	for _, entity := range []datastore.Entity{
+		&model.User{ID: "a"},
+		&model.Session{ID: "session", UserID: "a", AccessHash: hex.EncodeToString(hash[:]), RefreshFamilyHash: "family", RefreshHash: "refresh", AccessExpiresAt: now.Add(time.Hour), ExpiresAt: now.Add(time.Hour), AuthenticatedAt: now},
+		&model.Workspace{ID: "team", OwnerID: "owner", Kind: "team", Namespace: "team-ns"},
+		&model.WorkspaceMember{ID: "member", WorkspaceID: "team", UserID: "a", Role: "viewer"},
+	} {
+		require.NoError(t, raw.Add(context.Background(), entity))
+	}
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(Auth(AuthOptions{Accounts: accounts}))
+	called := 0
+	for _, path := range []string{"node-pools", "rbac-profiles"} {
+		for _, route := range []struct{ verb, suffix string }{{"GET", ""}, {"POST", ""}, {"GET", "/:name"}, {"PUT", "/:name"}, {"DELETE", "/:name"}} {
+			router.Handle(route.verb, "/api/v1/admin/"+path+route.suffix, func(c *gin.Context) { called++; c.Status(200) })
+		}
+		router.GET("/api/v1/"+path, func(c *gin.Context) { called++; c.Status(200) })
+	}
+	for _, role := range []string{"viewer", "member", "admin"} {
+		_, err := accounts.Repo.Store.CompareAndSwap(context.Background(), &model.WorkspaceMember{ID: "member"}, "id", "member", map[string]interface{}{"role": role})
+		require.NoError(t, err)
+		for _, route := range router.Routes() {
+			req := httptest.NewRequest(route.Method, strings.ReplaceAll(route.Path, ":name", "example"), nil)
+			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Set("X-Eruun-Workspace-ID", "team")
+			rec := httptest.NewRecorder()
+			before := called
+			router.ServeHTTP(rec, req)
+			if strings.Contains(route.Path, "/admin/") {
+				require.Equal(t, 403, rec.Code)
+				require.Equal(t, before, called)
+			} else {
+				require.Equal(t, 200, rec.Code)
+			}
+		}
+	}
+}

@@ -54,6 +54,18 @@ var privateAccountRoutes = map[string]bool{
 // Each registered business route must make an explicit authorization decision.
 // A route added without a policy remains denied, including for administrators.
 var businessRoutes = map[string]string{
+	"GET /api/v1/rbac-profiles":                                               "viewer",
+	"GET /api/v1/admin/rbac-profiles":                                         "system",
+	"GET /api/v1/admin/rbac-profiles/:name":                                   "system",
+	"POST /api/v1/admin/rbac-profiles":                                        "system",
+	"PUT /api/v1/admin/rbac-profiles/:name":                                   "system",
+	"DELETE /api/v1/admin/rbac-profiles/:name":                                "system",
+	"GET /api/v1/node-pools":                                                  "viewer",
+	"GET /api/v1/admin/node-pools":                                            "system",
+	"GET /api/v1/admin/node-pools/:name":                                      "system",
+	"POST /api/v1/admin/node-pools":                                           "system",
+	"PUT /api/v1/admin/node-pools/:name":                                      "system",
+	"DELETE /api/v1/admin/node-pools/:name":                                   "system",
 	"POST /api/v1/jobs":                                                       "member",
 	"GET /api/v1/jobs":                                                        "viewer",
 	"POST /api/v1/job-definitions":                                            "member",

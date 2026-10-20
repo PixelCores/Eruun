@@ -9,6 +9,7 @@ package eruunv1
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	structpb "google.golang.org/protobuf/types/known/structpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
@@ -843,11 +844,945 @@ func (x *DeleteProgrammingLanguageResponse) GetId() string {
 	return ""
 }
 
+type NodePoolToleration struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Key               string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Operator          string                 `protobuf:"bytes,2,opt,name=operator,proto3" json:"operator,omitempty"`
+	Value             string                 `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`
+	Effect            string                 `protobuf:"bytes,4,opt,name=effect,proto3" json:"effect,omitempty"`
+	TolerationSeconds *int64                 `protobuf:"varint,5,opt,name=toleration_seconds,json=tolerationSeconds,proto3,oneof" json:"toleration_seconds,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *NodePoolToleration) Reset() {
+	*x = NodePoolToleration{}
+	mi := &file_eruun_v1_administration_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NodePoolToleration) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NodePoolToleration) ProtoMessage() {}
+
+func (x *NodePoolToleration) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_administration_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NodePoolToleration.ProtoReflect.Descriptor instead.
+func (*NodePoolToleration) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_administration_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *NodePoolToleration) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *NodePoolToleration) GetOperator() string {
+	if x != nil {
+		return x.Operator
+	}
+	return ""
+}
+
+func (x *NodePoolToleration) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
+func (x *NodePoolToleration) GetEffect() string {
+	if x != nil {
+		return x.Effect
+	}
+	return ""
+}
+
+func (x *NodePoolToleration) GetTolerationSeconds() int64 {
+	if x != nil && x.TolerationSeconds != nil {
+		return *x.TolerationSeconds
+	}
+	return 0
+}
+
+type ListNodePoolsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListNodePoolsRequest) Reset() {
+	*x = ListNodePoolsRequest{}
+	mi := &file_eruun_v1_administration_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListNodePoolsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListNodePoolsRequest) ProtoMessage() {}
+
+func (x *ListNodePoolsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_administration_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListNodePoolsRequest.ProtoReflect.Descriptor instead.
+func (*ListNodePoolsRequest) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_administration_proto_rawDescGZIP(), []int{16}
+}
+
+type NodePoolNameRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NodePoolNameRequest) Reset() {
+	*x = NodePoolNameRequest{}
+	mi := &file_eruun_v1_administration_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NodePoolNameRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NodePoolNameRequest) ProtoMessage() {}
+
+func (x *NodePoolNameRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_administration_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NodePoolNameRequest.ProtoReflect.Descriptor instead.
+func (*NodePoolNameRequest) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_administration_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *NodePoolNameRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type CreateNodePoolRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Description   string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
+	NodeSelector  map[string]string      `protobuf:"bytes,3,rep,name=node_selector,json=nodeSelector,proto3" json:"node_selector,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Tolerations   []*NodePoolToleration  `protobuf:"bytes,4,rep,name=tolerations,proto3" json:"tolerations,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateNodePoolRequest) Reset() {
+	*x = CreateNodePoolRequest{}
+	mi := &file_eruun_v1_administration_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateNodePoolRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateNodePoolRequest) ProtoMessage() {}
+
+func (x *CreateNodePoolRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_administration_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateNodePoolRequest.ProtoReflect.Descriptor instead.
+func (*CreateNodePoolRequest) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_administration_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *CreateNodePoolRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *CreateNodePoolRequest) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *CreateNodePoolRequest) GetNodeSelector() map[string]string {
+	if x != nil {
+		return x.NodeSelector
+	}
+	return nil
+}
+
+func (x *CreateNodePoolRequest) GetTolerations() []*NodePoolToleration {
+	if x != nil {
+		return x.Tolerations
+	}
+	return nil
+}
+
+type UpdateNodePoolRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// name identifies the existing configuration and is immutable.
+	Name          string                `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Description   string                `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
+	NodeSelector  map[string]string     `protobuf:"bytes,3,rep,name=node_selector,json=nodeSelector,proto3" json:"node_selector,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Tolerations   []*NodePoolToleration `protobuf:"bytes,4,rep,name=tolerations,proto3" json:"tolerations,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateNodePoolRequest) Reset() {
+	*x = UpdateNodePoolRequest{}
+	mi := &file_eruun_v1_administration_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateNodePoolRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateNodePoolRequest) ProtoMessage() {}
+
+func (x *UpdateNodePoolRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_administration_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateNodePoolRequest.ProtoReflect.Descriptor instead.
+func (*UpdateNodePoolRequest) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_administration_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *UpdateNodePoolRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *UpdateNodePoolRequest) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *UpdateNodePoolRequest) GetNodeSelector() map[string]string {
+	if x != nil {
+		return x.NodeSelector
+	}
+	return nil
+}
+
+func (x *UpdateNodePoolRequest) GetTolerations() []*NodePoolToleration {
+	if x != nil {
+		return x.Tolerations
+	}
+	return nil
+}
+
+type NodePool struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Description   string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
+	NodeSelector  map[string]string      `protobuf:"bytes,3,rep,name=node_selector,json=nodeSelector,proto3" json:"node_selector,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Tolerations   []*NodePoolToleration  `protobuf:"bytes,4,rep,name=tolerations,proto3" json:"tolerations,omitempty"`
+	CreateTime    *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
+	UpdateTime    *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NodePool) Reset() {
+	*x = NodePool{}
+	mi := &file_eruun_v1_administration_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NodePool) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NodePool) ProtoMessage() {}
+
+func (x *NodePool) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_administration_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NodePool.ProtoReflect.Descriptor instead.
+func (*NodePool) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_administration_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *NodePool) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *NodePool) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *NodePool) GetNodeSelector() map[string]string {
+	if x != nil {
+		return x.NodeSelector
+	}
+	return nil
+}
+
+func (x *NodePool) GetTolerations() []*NodePoolToleration {
+	if x != nil {
+		return x.Tolerations
+	}
+	return nil
+}
+
+func (x *NodePool) GetCreateTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreateTime
+	}
+	return nil
+}
+
+func (x *NodePool) GetUpdateTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdateTime
+	}
+	return nil
+}
+
+type NodePoolOption struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Description   string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NodePoolOption) Reset() {
+	*x = NodePoolOption{}
+	mi := &file_eruun_v1_administration_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NodePoolOption) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NodePoolOption) ProtoMessage() {}
+
+func (x *NodePoolOption) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_administration_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NodePoolOption.ProtoReflect.Descriptor instead.
+func (*NodePoolOption) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_administration_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *NodePoolOption) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *NodePoolOption) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+type ListNodePoolsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NodePools     []*NodePool            `protobuf:"bytes,1,rep,name=node_pools,json=nodePools,proto3" json:"node_pools,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListNodePoolsResponse) Reset() {
+	*x = ListNodePoolsResponse{}
+	mi := &file_eruun_v1_administration_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListNodePoolsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListNodePoolsResponse) ProtoMessage() {}
+
+func (x *ListNodePoolsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_administration_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListNodePoolsResponse.ProtoReflect.Descriptor instead.
+func (*ListNodePoolsResponse) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_administration_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *ListNodePoolsResponse) GetNodePools() []*NodePool {
+	if x != nil {
+		return x.NodePools
+	}
+	return nil
+}
+
+type ListNodePoolOptionsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NodePools     []*NodePoolOption      `protobuf:"bytes,1,rep,name=node_pools,json=nodePools,proto3" json:"node_pools,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListNodePoolOptionsResponse) Reset() {
+	*x = ListNodePoolOptionsResponse{}
+	mi := &file_eruun_v1_administration_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListNodePoolOptionsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListNodePoolOptionsResponse) ProtoMessage() {}
+
+func (x *ListNodePoolOptionsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_administration_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListNodePoolOptionsResponse.ProtoReflect.Descriptor instead.
+func (*ListNodePoolOptionsResponse) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_administration_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *ListNodePoolOptionsResponse) GetNodePools() []*NodePoolOption {
+	if x != nil {
+		return x.NodePools
+	}
+	return nil
+}
+
+type ListRBACProfilesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListRBACProfilesRequest) Reset() {
+	*x = ListRBACProfilesRequest{}
+	mi := &file_eruun_v1_administration_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListRBACProfilesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListRBACProfilesRequest) ProtoMessage() {}
+
+func (x *ListRBACProfilesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_administration_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListRBACProfilesRequest.ProtoReflect.Descriptor instead.
+func (*ListRBACProfilesRequest) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_administration_proto_rawDescGZIP(), []int{24}
+}
+
+type RBACProfileNameRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RBACProfileNameRequest) Reset() {
+	*x = RBACProfileNameRequest{}
+	mi := &file_eruun_v1_administration_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RBACProfileNameRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RBACProfileNameRequest) ProtoMessage() {}
+
+func (x *RBACProfileNameRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_administration_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RBACProfileNameRequest.ProtoReflect.Descriptor instead.
+func (*RBACProfileNameRequest) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_administration_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *RBACProfileNameRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type CreateRBACProfileRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Description   string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
+	Rules         []*AppSpecRBACRuleSpec `protobuf:"bytes,3,rep,name=rules,proto3" json:"rules,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateRBACProfileRequest) Reset() {
+	*x = CreateRBACProfileRequest{}
+	mi := &file_eruun_v1_administration_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateRBACProfileRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateRBACProfileRequest) ProtoMessage() {}
+
+func (x *CreateRBACProfileRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_administration_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateRBACProfileRequest.ProtoReflect.Descriptor instead.
+func (*CreateRBACProfileRequest) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_administration_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *CreateRBACProfileRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *CreateRBACProfileRequest) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *CreateRBACProfileRequest) GetRules() []*AppSpecRBACRuleSpec {
+	if x != nil {
+		return x.Rules
+	}
+	return nil
+}
+
+type UpdateRBACProfileRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// name identifies the existing configuration and is immutable.
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Description   string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
+	Rules         []*AppSpecRBACRuleSpec `protobuf:"bytes,3,rep,name=rules,proto3" json:"rules,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateRBACProfileRequest) Reset() {
+	*x = UpdateRBACProfileRequest{}
+	mi := &file_eruun_v1_administration_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateRBACProfileRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateRBACProfileRequest) ProtoMessage() {}
+
+func (x *UpdateRBACProfileRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_administration_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateRBACProfileRequest.ProtoReflect.Descriptor instead.
+func (*UpdateRBACProfileRequest) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_administration_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *UpdateRBACProfileRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *UpdateRBACProfileRequest) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *UpdateRBACProfileRequest) GetRules() []*AppSpecRBACRuleSpec {
+	if x != nil {
+		return x.Rules
+	}
+	return nil
+}
+
+type RBACProfile struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Description   string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
+	Rules         []*AppSpecRBACRuleSpec `protobuf:"bytes,3,rep,name=rules,proto3" json:"rules,omitempty"`
+	CreateTime    *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
+	UpdateTime    *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RBACProfile) Reset() {
+	*x = RBACProfile{}
+	mi := &file_eruun_v1_administration_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RBACProfile) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RBACProfile) ProtoMessage() {}
+
+func (x *RBACProfile) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_administration_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RBACProfile.ProtoReflect.Descriptor instead.
+func (*RBACProfile) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_administration_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *RBACProfile) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *RBACProfile) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *RBACProfile) GetRules() []*AppSpecRBACRuleSpec {
+	if x != nil {
+		return x.Rules
+	}
+	return nil
+}
+
+func (x *RBACProfile) GetCreateTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreateTime
+	}
+	return nil
+}
+
+func (x *RBACProfile) GetUpdateTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdateTime
+	}
+	return nil
+}
+
+type RBACProfileOption struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Description   string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RBACProfileOption) Reset() {
+	*x = RBACProfileOption{}
+	mi := &file_eruun_v1_administration_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RBACProfileOption) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RBACProfileOption) ProtoMessage() {}
+
+func (x *RBACProfileOption) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_administration_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RBACProfileOption.ProtoReflect.Descriptor instead.
+func (*RBACProfileOption) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_administration_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *RBACProfileOption) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *RBACProfileOption) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+type ListRBACProfilesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RbacProfiles  []*RBACProfile         `protobuf:"bytes,1,rep,name=rbac_profiles,json=rbacProfiles,proto3" json:"rbac_profiles,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListRBACProfilesResponse) Reset() {
+	*x = ListRBACProfilesResponse{}
+	mi := &file_eruun_v1_administration_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListRBACProfilesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListRBACProfilesResponse) ProtoMessage() {}
+
+func (x *ListRBACProfilesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_administration_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListRBACProfilesResponse.ProtoReflect.Descriptor instead.
+func (*ListRBACProfilesResponse) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_administration_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *ListRBACProfilesResponse) GetRbacProfiles() []*RBACProfile {
+	if x != nil {
+		return x.RbacProfiles
+	}
+	return nil
+}
+
+type ListRBACProfileOptionsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RbacProfiles  []*RBACProfileOption   `protobuf:"bytes,1,rep,name=rbac_profiles,json=rbacProfiles,proto3" json:"rbac_profiles,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListRBACProfileOptionsResponse) Reset() {
+	*x = ListRBACProfileOptionsResponse{}
+	mi := &file_eruun_v1_administration_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListRBACProfileOptionsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListRBACProfileOptionsResponse) ProtoMessage() {}
+
+func (x *ListRBACProfileOptionsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_eruun_v1_administration_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListRBACProfileOptionsResponse.ProtoReflect.Descriptor instead.
+func (*ListRBACProfileOptionsResponse) Descriptor() ([]byte, []int) {
+	return file_eruun_v1_administration_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *ListRBACProfileOptionsResponse) GetRbacProfiles() []*RBACProfileOption {
+	if x != nil {
+		return x.RbacProfiles
+	}
+	return nil
+}
+
 var File_eruun_v1_administration_proto protoreflect.FileDescriptor
 
 const file_eruun_v1_administration_proto_rawDesc = "" +
 	"\n" +
-	"\x1deruun/v1/administration.proto\x12\beruun.v1\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x15\n" +
+	"\x1deruun/v1/administration.proto\x12\beruun.v1\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1beruun/v1/applications.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x15\n" +
 	"\x13ListSettingsRequest\"'\n" +
 	"\x11GetSettingRequest\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\"X\n" +
@@ -912,7 +1847,80 @@ const file_eruun_v1_administration_proto_rawDesc = "" +
 	" ListProgrammingLanguagesResponse\x12;\n" +
 	"\tlanguages\x18\x01 \x03(\v2\x1d.eruun.v1.ProgrammingLanguageR\tlanguages\"3\n" +
 	"!DeleteProgrammingLanguageResponse\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id2\x8a\x03\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"\xbb\x01\n" +
+	"\x12NodePoolToleration\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x1a\n" +
+	"\boperator\x18\x02 \x01(\tR\boperator\x12\x14\n" +
+	"\x05value\x18\x03 \x01(\tR\x05value\x12\x16\n" +
+	"\x06effect\x18\x04 \x01(\tR\x06effect\x122\n" +
+	"\x12toleration_seconds\x18\x05 \x01(\x03H\x00R\x11tolerationSeconds\x88\x01\x01B\x15\n" +
+	"\x13_toleration_seconds\"\x16\n" +
+	"\x14ListNodePoolsRequest\")\n" +
+	"\x13NodePoolNameRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xa6\x02\n" +
+	"\x15CreateNodePoolRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescription\x12V\n" +
+	"\rnode_selector\x18\x03 \x03(\v21.eruun.v1.CreateNodePoolRequest.NodeSelectorEntryR\fnodeSelector\x12>\n" +
+	"\vtolerations\x18\x04 \x03(\v2\x1c.eruun.v1.NodePoolTolerationR\vtolerations\x1a?\n" +
+	"\x11NodeSelectorEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa6\x02\n" +
+	"\x15UpdateNodePoolRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescription\x12V\n" +
+	"\rnode_selector\x18\x03 \x03(\v21.eruun.v1.UpdateNodePoolRequest.NodeSelectorEntryR\fnodeSelector\x12>\n" +
+	"\vtolerations\x18\x04 \x03(\v2\x1c.eruun.v1.NodePoolTolerationR\vtolerations\x1a?\n" +
+	"\x11NodeSelectorEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x86\x03\n" +
+	"\bNodePool\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescription\x12I\n" +
+	"\rnode_selector\x18\x03 \x03(\v2$.eruun.v1.NodePool.NodeSelectorEntryR\fnodeSelector\x12>\n" +
+	"\vtolerations\x18\x04 \x03(\v2\x1c.eruun.v1.NodePoolTolerationR\vtolerations\x12;\n" +
+	"\vcreate_time\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"createTime\x12;\n" +
+	"\vupdate_time\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"updateTime\x1a?\n" +
+	"\x11NodeSelectorEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"F\n" +
+	"\x0eNodePoolOption\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescription\"J\n" +
+	"\x15ListNodePoolsResponse\x121\n" +
+	"\n" +
+	"node_pools\x18\x01 \x03(\v2\x12.eruun.v1.NodePoolR\tnodePools\"V\n" +
+	"\x1bListNodePoolOptionsResponse\x127\n" +
+	"\n" +
+	"node_pools\x18\x01 \x03(\v2\x18.eruun.v1.NodePoolOptionR\tnodePools\"\x19\n" +
+	"\x17ListRBACProfilesRequest\",\n" +
+	"\x16RBACProfileNameRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\x85\x01\n" +
+	"\x18CreateRBACProfileRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescription\x123\n" +
+	"\x05rules\x18\x03 \x03(\v2\x1d.eruun.v1.AppSpecRBACRuleSpecR\x05rules\"\x85\x01\n" +
+	"\x18UpdateRBACProfileRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescription\x123\n" +
+	"\x05rules\x18\x03 \x03(\v2\x1d.eruun.v1.AppSpecRBACRuleSpecR\x05rules\"\xf2\x01\n" +
+	"\vRBACProfile\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescription\x123\n" +
+	"\x05rules\x18\x03 \x03(\v2\x1d.eruun.v1.AppSpecRBACRuleSpecR\x05rules\x12;\n" +
+	"\vcreate_time\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"createTime\x12;\n" +
+	"\vupdate_time\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"updateTime\"I\n" +
+	"\x11RBACProfileOption\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescription\"V\n" +
+	"\x18ListRBACProfilesResponse\x12:\n" +
+	"\rrbac_profiles\x18\x01 \x03(\v2\x15.eruun.v1.RBACProfileR\frbacProfiles\"b\n" +
+	"\x1eListRBACProfileOptionsResponse\x12@\n" +
+	"\rrbac_profiles\x18\x01 \x03(\v2\x1b.eruun.v1.RBACProfileOptionR\frbacProfiles2\x8a\x03\n" +
 	"\x0fSettingsService\x12M\n" +
 	"\fListSettings\x12\x1d.eruun.v1.ListSettingsRequest\x1a\x1e.eruun.v1.ListSettingsResponse\x12B\n" +
 	"\n" +
@@ -925,7 +1933,21 @@ const file_eruun_v1_administration_proto_rawDesc = "" +
 	"\x16GetProgrammingLanguage\x12&.eruun.v1.ProgrammingLanguageIDRequest\x1a\x1d.eruun.v1.ProgrammingLanguage\x12f\n" +
 	"\x19CreateProgrammingLanguage\x12*.eruun.v1.CreateProgrammingLanguageRequest\x1a\x1d.eruun.v1.ProgrammingLanguage\x12f\n" +
 	"\x19UpdateProgrammingLanguage\x12*.eruun.v1.UpdateProgrammingLanguageRequest\x1a\x1d.eruun.v1.ProgrammingLanguage\x12p\n" +
-	"\x19DeleteProgrammingLanguage\x12&.eruun.v1.ProgrammingLanguageIDRequest\x1a+.eruun.v1.DeleteProgrammingLanguageResponseBIZGgithub.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1;eruunv1b\x06proto3"
+	"\x19DeleteProgrammingLanguage\x12&.eruun.v1.ProgrammingLanguageIDRequest\x1a+.eruun.v1.DeleteProgrammingLanguageResponse2\xdb\x03\n" +
+	"\x10NodePoolsService\x12P\n" +
+	"\rListNodePools\x12\x1e.eruun.v1.ListNodePoolsRequest\x1a\x1f.eruun.v1.ListNodePoolsResponse\x12@\n" +
+	"\vGetNodePool\x12\x1d.eruun.v1.NodePoolNameRequest\x1a\x12.eruun.v1.NodePool\x12E\n" +
+	"\x0eCreateNodePool\x12\x1f.eruun.v1.CreateNodePoolRequest\x1a\x12.eruun.v1.NodePool\x12E\n" +
+	"\x0eUpdateNodePool\x12\x1f.eruun.v1.UpdateNodePoolRequest\x1a\x12.eruun.v1.NodePool\x12G\n" +
+	"\x0eDeleteNodePool\x12\x1d.eruun.v1.NodePoolNameRequest\x1a\x16.google.protobuf.Empty\x12\\\n" +
+	"\x13ListNodePoolOptions\x12\x1e.eruun.v1.ListNodePoolsRequest\x1a%.eruun.v1.ListNodePoolOptionsResponse2\x91\x04\n" +
+	"\x13RBACProfilesService\x12Y\n" +
+	"\x10ListRBACProfiles\x12!.eruun.v1.ListRBACProfilesRequest\x1a\".eruun.v1.ListRBACProfilesResponse\x12I\n" +
+	"\x0eGetRBACProfile\x12 .eruun.v1.RBACProfileNameRequest\x1a\x15.eruun.v1.RBACProfile\x12N\n" +
+	"\x11CreateRBACProfile\x12\".eruun.v1.CreateRBACProfileRequest\x1a\x15.eruun.v1.RBACProfile\x12N\n" +
+	"\x11UpdateRBACProfile\x12\".eruun.v1.UpdateRBACProfileRequest\x1a\x15.eruun.v1.RBACProfile\x12M\n" +
+	"\x11DeleteRBACProfile\x12 .eruun.v1.RBACProfileNameRequest\x1a\x16.google.protobuf.Empty\x12e\n" +
+	"\x16ListRBACProfileOptions\x12!.eruun.v1.ListRBACProfilesRequest\x1a(.eruun.v1.ListRBACProfileOptionsResponseBIZGgithub.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1;eruunv1b\x06proto3"
 
 var (
 	file_eruun_v1_administration_proto_rawDescOnce sync.Once
@@ -939,7 +1961,7 @@ func file_eruun_v1_administration_proto_rawDescGZIP() []byte {
 	return file_eruun_v1_administration_proto_rawDescData
 }
 
-var file_eruun_v1_administration_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_eruun_v1_administration_proto_msgTypes = make([]protoimpl.MessageInfo, 35)
 var file_eruun_v1_administration_proto_goTypes = []any{
 	(*ListSettingsRequest)(nil),               // 0: eruun.v1.ListSettingsRequest
 	(*GetSettingRequest)(nil),                 // 1: eruun.v1.GetSettingRequest
@@ -956,44 +1978,107 @@ var file_eruun_v1_administration_proto_goTypes = []any{
 	(*ProgrammingLanguage)(nil),               // 12: eruun.v1.ProgrammingLanguage
 	(*ListProgrammingLanguagesResponse)(nil),  // 13: eruun.v1.ListProgrammingLanguagesResponse
 	(*DeleteProgrammingLanguageResponse)(nil), // 14: eruun.v1.DeleteProgrammingLanguageResponse
-	(*structpb.Value)(nil),                    // 15: google.protobuf.Value
-	(*timestamppb.Timestamp)(nil),             // 16: google.protobuf.Timestamp
+	(*NodePoolToleration)(nil),                // 15: eruun.v1.NodePoolToleration
+	(*ListNodePoolsRequest)(nil),              // 16: eruun.v1.ListNodePoolsRequest
+	(*NodePoolNameRequest)(nil),               // 17: eruun.v1.NodePoolNameRequest
+	(*CreateNodePoolRequest)(nil),             // 18: eruun.v1.CreateNodePoolRequest
+	(*UpdateNodePoolRequest)(nil),             // 19: eruun.v1.UpdateNodePoolRequest
+	(*NodePool)(nil),                          // 20: eruun.v1.NodePool
+	(*NodePoolOption)(nil),                    // 21: eruun.v1.NodePoolOption
+	(*ListNodePoolsResponse)(nil),             // 22: eruun.v1.ListNodePoolsResponse
+	(*ListNodePoolOptionsResponse)(nil),       // 23: eruun.v1.ListNodePoolOptionsResponse
+	(*ListRBACProfilesRequest)(nil),           // 24: eruun.v1.ListRBACProfilesRequest
+	(*RBACProfileNameRequest)(nil),            // 25: eruun.v1.RBACProfileNameRequest
+	(*CreateRBACProfileRequest)(nil),          // 26: eruun.v1.CreateRBACProfileRequest
+	(*UpdateRBACProfileRequest)(nil),          // 27: eruun.v1.UpdateRBACProfileRequest
+	(*RBACProfile)(nil),                       // 28: eruun.v1.RBACProfile
+	(*RBACProfileOption)(nil),                 // 29: eruun.v1.RBACProfileOption
+	(*ListRBACProfilesResponse)(nil),          // 30: eruun.v1.ListRBACProfilesResponse
+	(*ListRBACProfileOptionsResponse)(nil),    // 31: eruun.v1.ListRBACProfileOptionsResponse
+	nil,                                       // 32: eruun.v1.CreateNodePoolRequest.NodeSelectorEntry
+	nil,                                       // 33: eruun.v1.UpdateNodePoolRequest.NodeSelectorEntry
+	nil,                                       // 34: eruun.v1.NodePool.NodeSelectorEntry
+	(*structpb.Value)(nil),                    // 35: google.protobuf.Value
+	(*timestamppb.Timestamp)(nil),             // 36: google.protobuf.Timestamp
+	(*AppSpecRBACRuleSpec)(nil),               // 37: eruun.v1.AppSpecRBACRuleSpec
+	(*emptypb.Empty)(nil),                     // 38: google.protobuf.Empty
 }
 var file_eruun_v1_administration_proto_depIdxs = []int32{
-	15, // 0: eruun.v1.CreateSettingRequest.value:type_name -> google.protobuf.Value
-	15, // 1: eruun.v1.UpdateSettingRequest.value:type_name -> google.protobuf.Value
-	15, // 2: eruun.v1.SystemSetting.value:type_name -> google.protobuf.Value
-	16, // 3: eruun.v1.SystemSetting.create_time:type_name -> google.protobuf.Timestamp
-	16, // 4: eruun.v1.SystemSetting.update_time:type_name -> google.protobuf.Timestamp
+	35, // 0: eruun.v1.CreateSettingRequest.value:type_name -> google.protobuf.Value
+	35, // 1: eruun.v1.UpdateSettingRequest.value:type_name -> google.protobuf.Value
+	35, // 2: eruun.v1.SystemSetting.value:type_name -> google.protobuf.Value
+	36, // 3: eruun.v1.SystemSetting.create_time:type_name -> google.protobuf.Timestamp
+	36, // 4: eruun.v1.SystemSetting.update_time:type_name -> google.protobuf.Timestamp
 	5,  // 5: eruun.v1.ListSettingsResponse.settings:type_name -> eruun.v1.SystemSetting
-	16, // 6: eruun.v1.ProgrammingLanguage.create_time:type_name -> google.protobuf.Timestamp
-	16, // 7: eruun.v1.ProgrammingLanguage.update_time:type_name -> google.protobuf.Timestamp
+	36, // 6: eruun.v1.ProgrammingLanguage.create_time:type_name -> google.protobuf.Timestamp
+	36, // 7: eruun.v1.ProgrammingLanguage.update_time:type_name -> google.protobuf.Timestamp
 	12, // 8: eruun.v1.ListProgrammingLanguagesResponse.languages:type_name -> eruun.v1.ProgrammingLanguage
-	0,  // 9: eruun.v1.SettingsService.ListSettings:input_type -> eruun.v1.ListSettingsRequest
-	1,  // 10: eruun.v1.SettingsService.GetSetting:input_type -> eruun.v1.GetSettingRequest
-	2,  // 11: eruun.v1.SettingsService.CreateSetting:input_type -> eruun.v1.CreateSettingRequest
-	3,  // 12: eruun.v1.SettingsService.UpdateSetting:input_type -> eruun.v1.UpdateSettingRequest
-	4,  // 13: eruun.v1.SettingsService.DeleteSetting:input_type -> eruun.v1.DeleteSettingRequest
-	8,  // 14: eruun.v1.ProgrammingLanguagesService.ListProgrammingLanguages:input_type -> eruun.v1.ListProgrammingLanguagesRequest
-	9,  // 15: eruun.v1.ProgrammingLanguagesService.GetProgrammingLanguage:input_type -> eruun.v1.ProgrammingLanguageIDRequest
-	10, // 16: eruun.v1.ProgrammingLanguagesService.CreateProgrammingLanguage:input_type -> eruun.v1.CreateProgrammingLanguageRequest
-	11, // 17: eruun.v1.ProgrammingLanguagesService.UpdateProgrammingLanguage:input_type -> eruun.v1.UpdateProgrammingLanguageRequest
-	9,  // 18: eruun.v1.ProgrammingLanguagesService.DeleteProgrammingLanguage:input_type -> eruun.v1.ProgrammingLanguageIDRequest
-	6,  // 19: eruun.v1.SettingsService.ListSettings:output_type -> eruun.v1.ListSettingsResponse
-	5,  // 20: eruun.v1.SettingsService.GetSetting:output_type -> eruun.v1.SystemSetting
-	5,  // 21: eruun.v1.SettingsService.CreateSetting:output_type -> eruun.v1.SystemSetting
-	5,  // 22: eruun.v1.SettingsService.UpdateSetting:output_type -> eruun.v1.SystemSetting
-	7,  // 23: eruun.v1.SettingsService.DeleteSetting:output_type -> eruun.v1.DeleteSettingResponse
-	13, // 24: eruun.v1.ProgrammingLanguagesService.ListProgrammingLanguages:output_type -> eruun.v1.ListProgrammingLanguagesResponse
-	12, // 25: eruun.v1.ProgrammingLanguagesService.GetProgrammingLanguage:output_type -> eruun.v1.ProgrammingLanguage
-	12, // 26: eruun.v1.ProgrammingLanguagesService.CreateProgrammingLanguage:output_type -> eruun.v1.ProgrammingLanguage
-	12, // 27: eruun.v1.ProgrammingLanguagesService.UpdateProgrammingLanguage:output_type -> eruun.v1.ProgrammingLanguage
-	14, // 28: eruun.v1.ProgrammingLanguagesService.DeleteProgrammingLanguage:output_type -> eruun.v1.DeleteProgrammingLanguageResponse
-	19, // [19:29] is the sub-list for method output_type
-	9,  // [9:19] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	32, // 9: eruun.v1.CreateNodePoolRequest.node_selector:type_name -> eruun.v1.CreateNodePoolRequest.NodeSelectorEntry
+	15, // 10: eruun.v1.CreateNodePoolRequest.tolerations:type_name -> eruun.v1.NodePoolToleration
+	33, // 11: eruun.v1.UpdateNodePoolRequest.node_selector:type_name -> eruun.v1.UpdateNodePoolRequest.NodeSelectorEntry
+	15, // 12: eruun.v1.UpdateNodePoolRequest.tolerations:type_name -> eruun.v1.NodePoolToleration
+	34, // 13: eruun.v1.NodePool.node_selector:type_name -> eruun.v1.NodePool.NodeSelectorEntry
+	15, // 14: eruun.v1.NodePool.tolerations:type_name -> eruun.v1.NodePoolToleration
+	36, // 15: eruun.v1.NodePool.create_time:type_name -> google.protobuf.Timestamp
+	36, // 16: eruun.v1.NodePool.update_time:type_name -> google.protobuf.Timestamp
+	20, // 17: eruun.v1.ListNodePoolsResponse.node_pools:type_name -> eruun.v1.NodePool
+	21, // 18: eruun.v1.ListNodePoolOptionsResponse.node_pools:type_name -> eruun.v1.NodePoolOption
+	37, // 19: eruun.v1.CreateRBACProfileRequest.rules:type_name -> eruun.v1.AppSpecRBACRuleSpec
+	37, // 20: eruun.v1.UpdateRBACProfileRequest.rules:type_name -> eruun.v1.AppSpecRBACRuleSpec
+	37, // 21: eruun.v1.RBACProfile.rules:type_name -> eruun.v1.AppSpecRBACRuleSpec
+	36, // 22: eruun.v1.RBACProfile.create_time:type_name -> google.protobuf.Timestamp
+	36, // 23: eruun.v1.RBACProfile.update_time:type_name -> google.protobuf.Timestamp
+	28, // 24: eruun.v1.ListRBACProfilesResponse.rbac_profiles:type_name -> eruun.v1.RBACProfile
+	29, // 25: eruun.v1.ListRBACProfileOptionsResponse.rbac_profiles:type_name -> eruun.v1.RBACProfileOption
+	0,  // 26: eruun.v1.SettingsService.ListSettings:input_type -> eruun.v1.ListSettingsRequest
+	1,  // 27: eruun.v1.SettingsService.GetSetting:input_type -> eruun.v1.GetSettingRequest
+	2,  // 28: eruun.v1.SettingsService.CreateSetting:input_type -> eruun.v1.CreateSettingRequest
+	3,  // 29: eruun.v1.SettingsService.UpdateSetting:input_type -> eruun.v1.UpdateSettingRequest
+	4,  // 30: eruun.v1.SettingsService.DeleteSetting:input_type -> eruun.v1.DeleteSettingRequest
+	8,  // 31: eruun.v1.ProgrammingLanguagesService.ListProgrammingLanguages:input_type -> eruun.v1.ListProgrammingLanguagesRequest
+	9,  // 32: eruun.v1.ProgrammingLanguagesService.GetProgrammingLanguage:input_type -> eruun.v1.ProgrammingLanguageIDRequest
+	10, // 33: eruun.v1.ProgrammingLanguagesService.CreateProgrammingLanguage:input_type -> eruun.v1.CreateProgrammingLanguageRequest
+	11, // 34: eruun.v1.ProgrammingLanguagesService.UpdateProgrammingLanguage:input_type -> eruun.v1.UpdateProgrammingLanguageRequest
+	9,  // 35: eruun.v1.ProgrammingLanguagesService.DeleteProgrammingLanguage:input_type -> eruun.v1.ProgrammingLanguageIDRequest
+	16, // 36: eruun.v1.NodePoolsService.ListNodePools:input_type -> eruun.v1.ListNodePoolsRequest
+	17, // 37: eruun.v1.NodePoolsService.GetNodePool:input_type -> eruun.v1.NodePoolNameRequest
+	18, // 38: eruun.v1.NodePoolsService.CreateNodePool:input_type -> eruun.v1.CreateNodePoolRequest
+	19, // 39: eruun.v1.NodePoolsService.UpdateNodePool:input_type -> eruun.v1.UpdateNodePoolRequest
+	17, // 40: eruun.v1.NodePoolsService.DeleteNodePool:input_type -> eruun.v1.NodePoolNameRequest
+	16, // 41: eruun.v1.NodePoolsService.ListNodePoolOptions:input_type -> eruun.v1.ListNodePoolsRequest
+	24, // 42: eruun.v1.RBACProfilesService.ListRBACProfiles:input_type -> eruun.v1.ListRBACProfilesRequest
+	25, // 43: eruun.v1.RBACProfilesService.GetRBACProfile:input_type -> eruun.v1.RBACProfileNameRequest
+	26, // 44: eruun.v1.RBACProfilesService.CreateRBACProfile:input_type -> eruun.v1.CreateRBACProfileRequest
+	27, // 45: eruun.v1.RBACProfilesService.UpdateRBACProfile:input_type -> eruun.v1.UpdateRBACProfileRequest
+	25, // 46: eruun.v1.RBACProfilesService.DeleteRBACProfile:input_type -> eruun.v1.RBACProfileNameRequest
+	24, // 47: eruun.v1.RBACProfilesService.ListRBACProfileOptions:input_type -> eruun.v1.ListRBACProfilesRequest
+	6,  // 48: eruun.v1.SettingsService.ListSettings:output_type -> eruun.v1.ListSettingsResponse
+	5,  // 49: eruun.v1.SettingsService.GetSetting:output_type -> eruun.v1.SystemSetting
+	5,  // 50: eruun.v1.SettingsService.CreateSetting:output_type -> eruun.v1.SystemSetting
+	5,  // 51: eruun.v1.SettingsService.UpdateSetting:output_type -> eruun.v1.SystemSetting
+	7,  // 52: eruun.v1.SettingsService.DeleteSetting:output_type -> eruun.v1.DeleteSettingResponse
+	13, // 53: eruun.v1.ProgrammingLanguagesService.ListProgrammingLanguages:output_type -> eruun.v1.ListProgrammingLanguagesResponse
+	12, // 54: eruun.v1.ProgrammingLanguagesService.GetProgrammingLanguage:output_type -> eruun.v1.ProgrammingLanguage
+	12, // 55: eruun.v1.ProgrammingLanguagesService.CreateProgrammingLanguage:output_type -> eruun.v1.ProgrammingLanguage
+	12, // 56: eruun.v1.ProgrammingLanguagesService.UpdateProgrammingLanguage:output_type -> eruun.v1.ProgrammingLanguage
+	14, // 57: eruun.v1.ProgrammingLanguagesService.DeleteProgrammingLanguage:output_type -> eruun.v1.DeleteProgrammingLanguageResponse
+	22, // 58: eruun.v1.NodePoolsService.ListNodePools:output_type -> eruun.v1.ListNodePoolsResponse
+	20, // 59: eruun.v1.NodePoolsService.GetNodePool:output_type -> eruun.v1.NodePool
+	20, // 60: eruun.v1.NodePoolsService.CreateNodePool:output_type -> eruun.v1.NodePool
+	20, // 61: eruun.v1.NodePoolsService.UpdateNodePool:output_type -> eruun.v1.NodePool
+	38, // 62: eruun.v1.NodePoolsService.DeleteNodePool:output_type -> google.protobuf.Empty
+	23, // 63: eruun.v1.NodePoolsService.ListNodePoolOptions:output_type -> eruun.v1.ListNodePoolOptionsResponse
+	30, // 64: eruun.v1.RBACProfilesService.ListRBACProfiles:output_type -> eruun.v1.ListRBACProfilesResponse
+	28, // 65: eruun.v1.RBACProfilesService.GetRBACProfile:output_type -> eruun.v1.RBACProfile
+	28, // 66: eruun.v1.RBACProfilesService.CreateRBACProfile:output_type -> eruun.v1.RBACProfile
+	28, // 67: eruun.v1.RBACProfilesService.UpdateRBACProfile:output_type -> eruun.v1.RBACProfile
+	38, // 68: eruun.v1.RBACProfilesService.DeleteRBACProfile:output_type -> google.protobuf.Empty
+	31, // 69: eruun.v1.RBACProfilesService.ListRBACProfileOptions:output_type -> eruun.v1.ListRBACProfileOptionsResponse
+	48, // [48:70] is the sub-list for method output_type
+	26, // [26:48] is the sub-list for method input_type
+	26, // [26:26] is the sub-list for extension type_name
+	26, // [26:26] is the sub-list for extension extendee
+	0,  // [0:26] is the sub-list for field type_name
 }
 
 func init() { file_eruun_v1_administration_proto_init() }
@@ -1001,17 +2086,19 @@ func file_eruun_v1_administration_proto_init() {
 	if File_eruun_v1_administration_proto != nil {
 		return
 	}
+	file_eruun_v1_applications_proto_init()
 	file_eruun_v1_administration_proto_msgTypes[10].OneofWrappers = []any{}
 	file_eruun_v1_administration_proto_msgTypes[11].OneofWrappers = []any{}
+	file_eruun_v1_administration_proto_msgTypes[15].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_eruun_v1_administration_proto_rawDesc), len(file_eruun_v1_administration_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   15,
+			NumMessages:   35,
 			NumExtensions: 0,
-			NumServices:   2,
+			NumServices:   4,
 		},
 		GoTypes:           file_eruun_v1_administration_proto_goTypes,
 		DependencyIndexes: file_eruun_v1_administration_proto_depIdxs,
