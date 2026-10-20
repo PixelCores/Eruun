@@ -154,10 +154,10 @@ POST /api/v1/admin/rbac-profiles
 
 ### 5.3 gRPC
 
-和现有的 HTTP/gRPC 双入口保持一致：
+和现有的 HTTP/gRPC 双入口保持一致，写法参照 `ProgrammingLanguagesService`，每类配置一个 service，按方法分别设置权限：
 
-- `AdministrationService` 新增 `ListNodePools`、`GetNodePool`、`CreateNodePool`、`UpdateNodePool`、`DeleteNodePool`，以及对应的 5 个 RBACProfile 方法；
-- 成员只读接口新增 `ListNodePoolOptions`、`ListRBACProfileOptions`。
+- `NodePoolsService`：`ListNodePools`、`GetNodePool`、`CreateNodePool`、`UpdateNodePool`、`DeleteNodePool`（system），`ListNodePoolOptions`（viewer）；
+- `RBACProfilesService`：同样的 5 个管理方法（system），以及 `ListRBACProfileOptions`（viewer）。
 
 proto 改动后用 `scripts/generate_grpc.sh` 重新生成，用 `check` 模式校验。
 
@@ -238,7 +238,7 @@ Pod 的 `serviceAccountName` 设为 `<component>-sa`。这里复用现有的 `pr
 | Job 类型与控制器 | `DeployClusterRoleJobCtl`、`DeployClusterRoleBindingJobCtl` 及对应的 JobType、JobInfo 解码、清理分支 |
 | YAML 转换（`/applications/convert`） | 不再把 `nodeSelector`、`tolerations`、Role/RoleBinding/ClusterRole/ClusterRoleBinding 转成 traits，改为在 `warnings` 里提示“请在组件上选择节点池 / RBAC 配置”。删除 `kube_convert_rbac.go` 的映射逻辑 |
 | 系统设置 | `nodeSelector`、`rbacPolicies` 两个类型及其 codec |
-| MySQL 迁移 | `migrateSystemSettings` 里从旧 Profile 表导入设置的部分，以及旧模型 |
+| MySQL 迁移 | `migrateSystemSettings` 里从旧 Profile 表导入设置并删表的部分，以及旧模型。**必须和新表在同一个 PR 里删除**：这段迁移每次启动都会删除名为 `eruun_rbac_profiles` 的表，而新表正好同名 |
 | gRPC | `AppSpecTraits.rbac`、`target_work_env`、`AppSpecRBACPolicySpec`，新增 `node_pool`、`rbac_profile` |
 | Helm | ClusterRole 里 `clusterroles`、`clusterrolebindings` 的授权；保留 `roles`、`rolebindings`（创建命名空间内的 Role 仍然需要 `bind`、`escalate`） |
 | Console（另做 PR） | 设置页的“调度”和“访问控制（rbacPolicies）”区，换成节点池和 RBAC 配置的管理页；组件属性面板的 RBAC 编辑器换成下拉选择 |
@@ -259,9 +259,9 @@ Eruun 未发布，不做数据迁移和兼容：
 
 | PR | 内容 | 依赖 |
 |---|---|---|
-| 1 | 模型和仓储、管理员与成员接口（HTTP 和 gRPC）、错误码、单元测试 | — |
+| 1 | 模型和仓储、管理员与成员接口（HTTP 和 gRPC）、错误码、单元测试；**同时删除** `migrateSystemSettings` 中从旧 Profile 表导入并删表的逻辑，以及旧的 `NodeSelectorProfile`、`RBACProfile` 模型 | — |
 | 2 | DSL 切换：新增 `nodePool`/`rbacProfile`，删除 `targetWorkEnv`/`rbac`；写入校验、部署时解析、tolerations 渲染和变更比较、RBAC 渲染复用、版本更新清理；删除 ClusterRole 控制器；YAML 转换改为给出警告；更新 Current 文档和示例 | PR 1 |
-| 3 | 删除 `nodeSelector`/`rbacPolicies` 设置、旧模型和迁移代码；Helm 收回集群级 RBAC 授权 | PR 2 |
+| 3 | 删除 `nodeSelector`/`rbacPolicies` 两个设置类型；Helm 收回集群级 RBAC 授权 | PR 2 |
 | 4 | Eruun-Console：管理页和组件下拉选择 | PR 1、PR 2 |
 
 **验证边界**：本地测试用 fake client，覆盖不到真实集群的调度、污点容忍、RBAC 生效和 Helm 授权。真实 Kubernetes 上的验收由用户执行。
