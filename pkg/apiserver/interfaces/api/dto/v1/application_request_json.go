@@ -21,7 +21,6 @@ var createApplicationsRequestFields = []string{
 	"workflow",
 	"callback",
 	"failurePolicy",
-	"templateEnabled",
 }
 
 func (r *CreateApplicationsRequest) UnmarshalJSON(data []byte) error {
@@ -100,7 +99,11 @@ func decodeCreateApplicationField(fieldName string, raw json.RawMessage, req *Cr
 	case "failurePolicy":
 		return decodeStrictJSON(raw, &req.FailurePolicy)
 	default:
-		return extra[fieldName](raw)
+		decode, ok := extra[fieldName]
+		if !ok {
+			return fmt.Errorf("json: unknown field %q", fieldName)
+		}
+		return decode(raw)
 	}
 }
 

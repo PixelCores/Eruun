@@ -10,6 +10,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestCreateApplicationsRequestRejectsRemovedFields(t *testing.T) {
+	for name, input := range map[string]string{
+		"templateEnabled":     `{"name":"demo","templateEnabled":true,"components":[]}`,
+		"component tmp":       `{"name":"demo","components":[{"name":"web","type":"job","tmp":{"id":"tpl"}}]}`,
+		"properties.cloud":    `{"name":"demo","components":[{"name":"web","type":"job","properties":{"cloud":{}}}]}`,
+		"properties.schedule": `{"name":"demo","components":[{"name":"web","type":"job","properties":{"schedule":"* * * * *"}}]}`,
+		"workflow path":       `{"name":"demo","components":[],"workflow":[{"name":"s","properties":[{"policies":["web"],"path":"/x"}]}]}`,
+		"workflow initSqlUrl": `{"name":"demo","components":[],"workflow":[{"name":"s","properties":[{"policies":["web"],"initSqlUrl":"https://x"}]}]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			var req CreateApplicationsRequest
+			require.ErrorContains(t, json.Unmarshal([]byte(input), &req), "unknown field")
+		})
+	}
+}
+
 func TestCreateApplicationsRequestJSONTags(t *testing.T) {
 	input := `{"name":"demo","namespace":"default","components":[{"name":"web","type":"webservice","namespace":"comp-ns","replicas":1,"properties":{},"traits":{}}]}`
 
