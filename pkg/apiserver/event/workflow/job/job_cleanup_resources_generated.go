@@ -15,13 +15,14 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, deleted *cleanupResourceSet) {
 	switch component.ComponentType {
 	case config.ServerJob:
-		result, err := GenerateWebService(component, props)
+		result, err := jobdeploy.GenerateWebService(component, props)
 		if err != nil {
 			deleted.errs = append(deleted.errs, err)
 			return
@@ -36,7 +37,7 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 			return c.deleteDeployment(deleteCtx, ns, name)
 		})
 	case config.StoreJob:
-		result, err := GenerateStoreService(component)
+		result, err := jobdeploy.GenerateStoreService(component)
 		if err != nil {
 			deleted.errs = append(deleted.errs, err)
 			return
@@ -60,7 +61,7 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 			// through the component labels, not the ordinary Job naming rule.
 			break
 		}
-		result, err := GenerateInstantJob(component, props, props.RunPolicy)
+		result, err := jobdeploy.GenerateInstantJob(component, props, props.RunPolicy)
 		if err != nil {
 			deleted.errs = append(deleted.errs, err)
 			return
@@ -78,7 +79,7 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 		if strings.TrimSpace(props.Schedule) == "" {
 			break
 		}
-		result, err := GenerateScheduledCronJob(component, props, props.Schedule)
+		result, err := jobdeploy.GenerateScheduledCronJob(component, props, props.Schedule)
 		if err != nil {
 			deleted.errs = append(deleted.errs, err)
 			return
@@ -115,7 +116,7 @@ func (c *CleanupResourcesJobCtl) deleteServicesForComponent(ctx context.Context,
 		return
 	}
 	for _, trait := range serviceTraits {
-		svc := GenerateServiceFromTrait(component, props, trait)
+		svc := jobdeploy.GenerateServiceFromTrait(component, props, trait)
 		ns := component.Namespace
 		name := strings.TrimSpace(trait.Name)
 		if name == "" {
@@ -131,7 +132,7 @@ func (c *CleanupResourcesJobCtl) deleteServicesForComponent(ctx context.Context,
 	}
 
 	if len(props.Ports) > 0 {
-		svc := GenerateService(component, props)
+		svc := jobdeploy.GenerateService(component, props)
 		ns := component.Namespace
 		name := naming.ServiceName(component.Name, component.ResourceNameKey())
 		if svc != nil {
@@ -193,7 +194,7 @@ func (c *CleanupResourcesJobCtl) deleteAdditionalObjects(ctx context.Context, fa
 }
 
 func (c *CleanupResourcesJobCtl) deleteConfigMapForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, deleted *cleanupResourceSet) {
-	cm := GenerateConfigMap(component, props)
+	cm := jobdeploy.GenerateConfigMap(component, props)
 	ns := pickNonEmpty(cm.Namespace, component.Namespace)
 	name := pickNonEmpty(cm.Name, component.Name)
 	c.deleteTrackedResource(ctx, deleted, spec.ResourceConfigMap, ns, name, false, func(deleteCtx context.Context) error {
@@ -202,7 +203,7 @@ func (c *CleanupResourcesJobCtl) deleteConfigMapForComponent(ctx context.Context
 }
 
 func (c *CleanupResourcesJobCtl) deleteSecretForComponent(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, deleted *cleanupResourceSet) {
-	sec := GenerateSecret(component, props)
+	sec := jobdeploy.GenerateSecret(component, props)
 	ns := pickNonEmpty(sec.Namespace, component.Namespace)
 	name := pickNonEmpty(sec.Name, component.Name)
 	c.deleteTrackedResource(ctx, deleted, spec.ResourceSecret, ns, name, false, func(deleteCtx context.Context) error {

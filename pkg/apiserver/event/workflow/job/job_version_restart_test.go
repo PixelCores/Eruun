@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -20,7 +19,9 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 )
 
@@ -32,12 +33,12 @@ func TestVersionRestartJobCtlRestartsDeployment(t *testing.T) {
 	task := versionRestartTask(api)
 	_, err := client.CoreV1().Pods("default").Create(context.Background(), versionRestartReadyPod(api, "api-old", "old-restarted-at"), metav1.CreateOptions{})
 	require.NoError(t, err)
-	waiter := startWorkloadTestObserver(t, client)
+	waiter := jobtest.StartWorkloadTestObserver(t, client)
 	cacheStore := cacheutil.NewMemCache()
 	cacheKey := cacheutil.ApplicationComponentsKey(api.AppID)
 	require.NoError(t, cacheStore.Store(context.Background(), cacheKey, "stale"))
 	require.NotEmpty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))
-	ctl := NewVersionRestartJobCtl(task, newJobRuntime(&jobexec.Runtime{
+	ctl := jobdeploy.NewVersionRestartJobCtl(task, newJobRuntime(&jobexec.Runtime{
 		Client:         client,
 		Store:          store,
 		Cache:          cacheStore,
@@ -67,8 +68,8 @@ func TestVersionRestartJobCtlRestartsStatefulSet(t *testing.T) {
 	task := versionRestartTask(db)
 	_, err := client.CoreV1().Pods("default").Create(context.Background(), versionRestartReadyPod(db, "mysql-old", "old-restarted-at"), metav1.CreateOptions{})
 	require.NoError(t, err)
-	waiter := startWorkloadTestObserver(t, client)
-	ctl := NewVersionRestartJobCtl(task, newJobRuntime(&jobexec.Runtime{
+	waiter := jobtest.StartWorkloadTestObserver(t, client)
+	ctl := jobdeploy.NewVersionRestartJobCtl(task, newJobRuntime(&jobexec.Runtime{
 		Client:         client,
 		Store:          store,
 		ResourceWaiter: waiter,
@@ -95,7 +96,7 @@ func TestVersionRestartJobCtlSkipsStoppedComponent(t *testing.T) {
 	deployment := databaseResetDeployment(t, api)
 	client := fake.NewSimpleClientset(deployment)
 	task := versionRestartTask(api)
-	ctl := NewVersionRestartJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
+	ctl := jobdeploy.NewVersionRestartJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
 
 	require.NoError(t, ctl.Run(context.Background()))
 
@@ -131,7 +132,7 @@ func TestVersionRestartJobCtlHonorsShareLifecyclePolicy(t *testing.T) {
 			deployment := databaseResetDeployment(t, api)
 			client := fake.NewSimpleClientset(deployment)
 			task := versionRestartTask(api)
-			ctl := NewVersionRestartJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
+			ctl := jobdeploy.NewVersionRestartJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
 
 			require.NoError(t, ctl.Run(context.Background()))
 
@@ -150,24 +151,12 @@ func TestVersionRestartJobCtlHonorsShareLifecyclePolicy(t *testing.T) {
 	}
 }
 
-func TestWorkloadRestartPatchContainsKubectlAnnotation(t *testing.T) {
-	patch, err := buildWorkloadRestartPatch("2026-06-18T00:00:00Z")
-	require.NoError(t, err)
-	require.True(t, strings.Contains(string(patch), config.AnnotationWorkloadRestartAt))
-}
-
-func TestFormatVersionRestartAtPreservesNanoseconds(t *testing.T) {
-	now := time.Date(2026, time.August, 1, 12, 34, 56, 123456789, time.FixedZone("UTC+8", 8*60*60))
-
-	require.Equal(t, "2026-08-01T04:34:56.123456789Z", formatVersionRestartAt(now))
-}
-
 func TestVersionRestartJobCtlSkipsMissingDeployment(t *testing.T) {
 	api := databaseResetServerComponent(t, "api")
 	store := newDatabaseResetComponentStore(api)
 	client := fake.NewSimpleClientset()
 	task := versionRestartTask(api)
-	ctl := NewVersionRestartJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
+	ctl := jobdeploy.NewVersionRestartJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
 
 	require.NoError(t, ctl.Run(context.Background()))
 	require.Empty(t, api.Status)
@@ -183,7 +172,7 @@ func TestVersionRestartJobCtlFailsOnPatchError(t *testing.T) {
 		return true, nil, errors.New("patch denied")
 	})
 	task := versionRestartTask(api)
-	ctl := NewVersionRestartJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
+	ctl := jobdeploy.NewVersionRestartJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
 
 	err := ctl.Run(context.Background())
 	require.Error(t, err)
@@ -201,7 +190,7 @@ func TestVersionRestartJobCtlTreatsNotFoundPatchAsSkipped(t *testing.T) {
 		return true, nil, k8serrors.NewNotFound(schema.GroupResource{Group: "apps", Resource: "deployments"}, deployment.Name)
 	})
 	task := versionRestartTask(api)
-	ctl := NewVersionRestartJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
+	ctl := jobdeploy.NewVersionRestartJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
 
 	require.NoError(t, ctl.Run(context.Background()))
 	require.Empty(t, api.Status)
@@ -217,8 +206,8 @@ func TestVersionRestartJobCtlFailsWhenRestartedDeploymentPodCrashLoops(t *testin
 	task.Timeout = 3
 	_, err := client.CoreV1().Pods("default").Create(context.Background(), versionRestartReadyPod(api, "api-old", "old-restarted-at"), metav1.CreateOptions{})
 	require.NoError(t, err)
-	waiter := startWorkloadTestObserver(t, client)
-	ctl := NewVersionRestartJobCtl(task, newJobRuntime(&jobexec.Runtime{
+	waiter := jobtest.StartWorkloadTestObserver(t, client)
+	ctl := jobdeploy.NewVersionRestartJobCtl(task, newJobRuntime(&jobexec.Runtime{
 		Client:         client,
 		Store:          store,
 		ResourceWaiter: waiter,
@@ -246,8 +235,8 @@ func TestVersionRestartJobCtlFailsWhenRestartedStatefulSetPodCrashLoops(t *testi
 	task.Timeout = 3
 	_, err := client.CoreV1().Pods("default").Create(context.Background(), versionRestartReadyPod(db, "mysql-old", "old-restarted-at"), metav1.CreateOptions{})
 	require.NoError(t, err)
-	waiter := startWorkloadTestObserver(t, client)
-	ctl := NewVersionRestartJobCtl(task, newJobRuntime(&jobexec.Runtime{
+	waiter := jobtest.StartWorkloadTestObserver(t, client)
+	ctl := jobdeploy.NewVersionRestartJobCtl(task, newJobRuntime(&jobexec.Runtime{
 		Client:         client,
 		Store:          store,
 		ResourceWaiter: waiter,
@@ -272,7 +261,7 @@ func TestVersionRestartJobCtlFailsWhenResourceWaiterMissing(t *testing.T) {
 	deployment := databaseResetDeployment(t, api)
 	client := fake.NewSimpleClientset(deployment)
 	task := versionRestartTask(api)
-	ctl := NewVersionRestartJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
+	ctl := jobdeploy.NewVersionRestartJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
 
 	err := ctl.Run(context.Background())
 	require.Error(t, err)
@@ -288,13 +277,13 @@ func versionRestartTask(component *model.ApplicationComponent) *model.JobTask {
 		AppID:     component.AppID,
 		JobType:   string(config.JobVersionRestart),
 		Timeout:   5,
-		JobInfo: &VersionRestartJobInfo{
+		JobInfo: &jobdeploy.VersionRestartJobInfo{
 			Component: component,
 		},
 	}
 }
 
-func runVersionRestartAsync(ctl *VersionRestartJobCtl) <-chan error {
+func runVersionRestartAsync(ctl *jobdeploy.VersionRestartJobCtl) <-chan error {
 	result := make(chan error, 1)
 	go func() {
 		result <- ctl.Run(context.Background())

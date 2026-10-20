@@ -19,6 +19,7 @@ import (
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -148,7 +149,7 @@ func TestCleanupResourcesJobCtlRetriesTransientSafetyRefreshBeforeFinalStatefulS
 
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, getCount, 5)
-	require.Equal(t, 1, countClientActions(client, "delete", "statefulsets"))
+	require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "statefulsets"))
 }
 
 func TestCleanupResourcesJobCtlSafetyRefreshRetryStopsOnPersistedCancellation(t *testing.T) {
@@ -181,7 +182,7 @@ func TestCleanupResourcesJobCtlSafetyRefreshRetryStopsOnPersistedCancellation(t 
 	require.True(t, ok)
 	require.Equal(t, config.StatusCancelled, statusErr.Status)
 	require.Equal(t, 4, getCount, "cancellation must stop before another Kubernetes safety read")
-	require.Equal(t, 0, countClientActions(client, "delete", "statefulsets"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "statefulsets"))
 }
 
 func TestCleanupResourcesJobCtlRequiredStatefulSetSafetyRefreshRejectsNilClient(t *testing.T) {
@@ -214,7 +215,7 @@ func TestCleanupResourcesJobCtlRetriesTransientStatefulSetSafetyRefresh(t *testi
 	err := ctl.prepareRequiredStatefulSetDeletion(ctx, component)
 
 	require.NoError(t, err)
-	require.Equal(t, 1, countClientActions(client, "update", "statefulsets"))
+	require.Equal(t, 1, jobtest.CountClientActions(client, "update", "statefulsets"))
 }
 
 type requiredStatefulSetSafetyDrift string

@@ -41,7 +41,7 @@ func TestCleanupResourcesJobCtlDeletesPinnedStatefulSetPodAfterLabelDrift(t *tes
 	gone, err = ctl.componentPodsGone(ctx, component)
 	require.NoError(t, err)
 	require.True(t, gone)
-	require.Equal(t, 1, countClientActions(client, "delete", "pods"))
+	require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "pods"))
 }
 
 func TestCleanupResourcesJobCtlRechecksPinnedPodProtectionAfterOrphan(t *testing.T) {
@@ -64,7 +64,7 @@ func TestCleanupResourcesJobCtlRechecksPinnedPodProtectionAfterOrphan(t *testing
 		require.False(t, gone)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "pod "+component.Namespace+"/"+pod.Name+" is protected")
-		require.Equal(t, 0, countClientActions(client, "delete", "pods"))
+		require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"))
 	})
 
 	t.Run("live owner job share labels", func(t *testing.T) {
@@ -106,8 +106,8 @@ func TestCleanupResourcesJobCtlRechecksPinnedPodProtectionAfterOrphan(t *testing
 		require.False(t, gone)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "owner job "+ownerJob.Name+" is protected")
-		require.Equal(t, 0, countClientActions(client, "delete", "jobs"))
-		require.Equal(t, 0, countClientActions(client, "delete", "pods"))
+		require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "jobs"))
+		require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"))
 	})
 }
 
@@ -126,7 +126,7 @@ func TestCleanupResourcesJobCtlRejectsPinnedStatefulSetPodReplacement(t *testing
 	require.Error(t, err)
 	require.True(t, k8serrors.IsConflict(err))
 	require.Contains(t, err.Error(), "Pod UID changed")
-	require.Equal(t, 0, countClientActions(client, "delete", "pods"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"))
 }
 
 func TestCleanupResourcesJobCtlFailsClosedForOrphanOrdinalPodOnFreshRetry(t *testing.T) {
@@ -154,7 +154,7 @@ func TestCleanupResourcesJobCtlFailsClosedForOrphanOrdinalPodOnFreshRetry(t *tes
 	require.Error(t, err)
 	require.True(t, k8serrors.IsConflict(err))
 	require.Contains(t, err.Error(), "cannot be proven")
-	require.Equal(t, 0, countClientActions(client, "delete", "pods"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"))
 }
 
 func TestCleanupResourcesJobCtlRestoresPinnedPodIdentityOnSameTaskRetry(t *testing.T) {
@@ -203,7 +203,7 @@ func TestCleanupResourcesJobCtlRestoresPinnedPodIdentityOnSameTaskRetry(t *testi
 			if tt.wantConflict {
 				require.Error(t, err)
 				require.True(t, k8serrors.IsConflict(err))
-				require.Equal(t, 0, countClientActions(client, "delete", "pods"))
+				require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"))
 				return
 			}
 			require.NoError(t, err)
@@ -240,8 +240,8 @@ func TestCleanupResourcesJobCtlStopsWhenCheckpointPersistRacesCancellation(t *te
 	statusErr, ok := jobinfo.ExtractStatusError(err)
 	require.True(t, ok)
 	require.Equal(t, config.StatusCancelled, statusErr.Status)
-	require.Equal(t, 0, countClientActions(client, "delete", "statefulsets"))
-	require.Equal(t, 0, countClientActions(client, "delete", "pods"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "statefulsets"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"))
 }
 
 func TestCleanupResourcesJobCtlStopsWhenWorkflowTaskIsCancelledButJobInfoIsRunning(t *testing.T) {
@@ -309,7 +309,7 @@ func TestCleanupResourcesJobCtlStopsWhenWorkflowTaskIsCancelledButJobInfoIsRunni
 	require.Equal(t, string(config.StatusCancelled), store.jobInfo.Status)
 	for _, resource := range []string{"statefulsets", "pods", "persistentvolumeclaims"} {
 		for _, verb := range []string{"update", "patch", "delete"} {
-			require.Equal(t, 0, countClientActions(client, verb, resource), "%s %s must be fenced after persisted cancellation", verb, resource)
+			require.Equal(t, 0, jobtest.CountClientActions(client, verb, resource), "%s %s must be fenced after persisted cancellation", verb, resource)
 		}
 	}
 }
@@ -386,7 +386,7 @@ func TestCleanupResourcesJobCtlStopsOldGenerationBeforeStatefulSetCleanup(t *tes
 	require.Equal(t, oldExecutionKey, *store.jobInfo.ExecutionKey)
 	for _, resource := range []string{"statefulsets", "pods", "persistentvolumeclaims"} {
 		for _, verb := range []string{"update", "patch", "delete"} {
-			require.Equal(t, 0, countClientActions(client, verb, resource), "%s %s must be fenced after generation takeover", verb, resource)
+			require.Equal(t, 0, jobtest.CountClientActions(client, verb, resource), "%s %s must be fenced after generation takeover", verb, resource)
 		}
 	}
 }
@@ -424,7 +424,7 @@ func TestCleanupResourcesJobCtlKeepsCompletedRequiredStatefulSetCleanupIdempoten
 	require.Nil(t, store.putJobInfo)
 	for _, resource := range []string{"statefulsets", "pods", "persistentvolumeclaims"} {
 		for _, verb := range []string{"update", "patch", "delete"} {
-			require.Equal(t, 0, countClientActions(client, verb, resource))
+			require.Equal(t, 0, jobtest.CountClientActions(client, verb, resource))
 		}
 	}
 }

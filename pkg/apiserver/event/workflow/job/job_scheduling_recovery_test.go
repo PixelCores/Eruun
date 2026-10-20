@@ -68,14 +68,14 @@ func TestCreatedJobReattachesAfterOwnerAndQuotaChangeWithoutCreate(t *testing.T)
 	require.NoError(t, err, "existing Runner must attach even though its old bundle exceeds the new quota")
 	ctl := NewInstantJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: func() {}})
 	require.NoError(t, ctl.ensureRetryAttempt(ctx, cp))
-	require.Zero(t, countClientActions(client, "create", "jobs"))
+	require.Zero(t, jobtest.CountClientActions(client, "create", "jobs"))
 	// Losing the resource after confirmation still cannot turn that permission
 	// into a replacement Create, even though admission has already transferred.
 	require.NoError(t, client.BatchV1().Jobs(live.Namespace).Delete(ctx, live.Name, metav1.DeleteOptions{}))
 	policy, err := jobinfo.RetryPolicyFromJob(cp.Job)
 	require.NoError(t, err)
 	require.ErrorIs(t, ctl.runWithRetryPolicy(ctx, cp.Job, policy), signal.ErrInfrastructureStop)
-	require.Zero(t, countClientActions(client, "create", "jobs"))
+	require.Zero(t, jobtest.CountClientActions(client, "create", "jobs"))
 	require.NoError(t, release())
 	require.NoError(t, store.Get(ctx, &record))
 	require.Equal(t, workflowconfig.JobSchedulingReleased, record.SchedulingState)
@@ -133,7 +133,7 @@ func TestJobAdmissionRecoveryRequiresConfirmedStopPolicyUID(t *testing.T) {
 				require.NoError(t, err)
 			}
 			require.Equal(t, tc.wantProof, uid != "")
-			require.Zero(t, countClientActions(client, "create", "jobs"))
+			require.Zero(t, jobtest.CountClientActions(client, "create", "jobs"))
 		})
 	}
 }
@@ -206,7 +206,7 @@ func TestJobAdmissionRecoveryConfirmationReleasesOnlyAuthoritativeLoss(t *testin
 			} else {
 				require.Equal(t, workflowconfig.JobSchedulingAdmitted, record.SchedulingState)
 			}
-			require.Zero(t, countClientActions(client, "create", "jobs"))
+			require.Zero(t, jobtest.CountClientActions(client, "create", "jobs"))
 		})
 	}
 }
@@ -302,11 +302,11 @@ func TestExpiredRecoveredJobSettlesWithoutAdmission(t *testing.T) {
 				require.Equal(t, wantStatus, task.Status)
 				require.Equal(t, string(wantStatus), saved.Status)
 				require.Positive(t, saved.EndTime)
-				require.Zero(t, countClientActions(client, "create", "jobs"))
+				require.Zero(t, jobtest.CountClientActions(client, "create", "jobs"))
 				if tc.replacement || tc.missing {
-					require.Zero(t, countClientActions(client, "delete", "jobs"))
+					require.Zero(t, jobtest.CountClientActions(client, "delete", "jobs"))
 				} else {
-					require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
+					require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "jobs"))
 					for _, action := range client.Actions() {
 						if action.GetVerb() == "delete" && action.GetResource().Resource == "jobs" {
 							options := action.(k8stesting.DeleteAction).GetDeleteOptions()
@@ -402,8 +402,8 @@ func TestRecoveredJobAdmissionUsesDatabaseDeadline(t *testing.T) {
 					require.Equal(t, string(config.StatusRunning), record.Status)
 					require.Zero(t, record.EndTime)
 					require.Equal(t, string(raw), record.InternalInfo, "retain the original deadline and execution identity")
-					require.Zero(t, countClientActions(client, "create", "jobs"))
-					require.Zero(t, countClientActions(client, "delete", "jobs"))
+					require.Zero(t, jobtest.CountClientActions(client, "create", "jobs"))
+					require.Zero(t, jobtest.CountClientActions(client, "delete", "jobs"))
 				})
 			}
 		}

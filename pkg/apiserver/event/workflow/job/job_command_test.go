@@ -116,25 +116,25 @@ func TestEvaluationCleanupRetainsResultsUntilArchiveIsCommitted(t *testing.T) {
 			ctl := NewInstantJobCtl(task, &jobexec.Runtime{Client: client, Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
 			ctl.Clean(context.Background())
 			if status == config.StatusCancelled || status == config.StatusTimeout {
-				require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
+				require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "jobs"))
 				return
 			}
-			require.Zero(t, countClientActions(client, "delete", "jobs"))
+			require.Zero(t, jobtest.CountClientActions(client, "delete", "jobs"))
 			store.artifact = &model.JobArtifact{WorkspaceID: "other", TaskID: task.TaskID, Kind: "source", Summary: json.RawMessage(`{"collectionComplete":true}`)}
 			ctl.Clean(context.Background())
-			require.Zero(t, countClientActions(client, "delete", "jobs"))
+			require.Zero(t, jobtest.CountClientActions(client, "delete", "jobs"))
 			store.artifact.WorkspaceID = task.WorkspaceID
 			store.artifact.Summary = json.RawMessage(`{"collectionComplete":false}`)
 			ctl.Clean(context.Background())
-			require.Zero(t, countClientActions(client, "delete", "jobs"), "diagnostic-only archive cannot replace native outputs")
+			require.Zero(t, jobtest.CountClientActions(client, "delete", "jobs"), "diagnostic-only archive cannot replace native outputs")
 			store.artifact.Summary = json.RawMessage(`{"collectionComplete":true}`)
 			ctl.Clean(context.Background())
-			require.Zero(t, countClientActions(client, "delete", "jobs"), "complete outputs still require a committed execution result")
+			require.Zero(t, jobtest.CountClientActions(client, "delete", "jobs"), "complete outputs still require a committed execution result")
 			require.NoError(t, ctl.SaveInfo(context.Background()))
-			require.Zero(t, countClientActions(client, "delete", "jobs"), "another execution's archive cannot authorize cleanup")
+			require.Zero(t, jobtest.CountClientActions(client, "delete", "jobs"), "another execution's archive cannot authorize cleanup")
 			store.artifact.ExecutionKey = task.ExecutionKey
 			require.NoError(t, ctl.SaveInfo(context.Background()))
-			require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
+			require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "jobs"))
 		})
 	}
 }
@@ -154,7 +154,7 @@ func TestEvaluationExitWithoutArchiveIsFailedAndRetained(t *testing.T) {
 	require.Len(t, created, 1)
 	require.Equal(t, ttl, *created[0].Spec.TTLSecondsAfterFinished)
 	ctl.Clean(context.Background())
-	require.Zero(t, countClientActions(client, "delete", "jobs"))
+	require.Zero(t, jobtest.CountClientActions(client, "delete", "jobs"))
 }
 
 func TestWorkspaceJobPayloadCarriesRunnerExecutionIdentity(t *testing.T) {

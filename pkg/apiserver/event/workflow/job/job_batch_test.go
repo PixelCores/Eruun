@@ -14,6 +14,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
@@ -37,7 +38,7 @@ func TestGenerateInstantJobSetsTTL(t *testing.T) {
 	}
 	props := &model.Properties{}
 
-	result, err := GenerateInstantJob(component, props, "")
+	result, err := jobdeploy.GenerateInstantJob(component, props, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +59,7 @@ func TestGenerateScheduledCronJobSetsTTL(t *testing.T) {
 	}
 	props := &model.Properties{}
 
-	result, err := GenerateScheduledCronJob(component, props, "0 * * * *")
+	result, err := jobdeploy.GenerateScheduledCronJob(component, props, "0 * * * *")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +89,7 @@ func TestGenerateScheduledCronJobOverridesHistoryLimit(t *testing.T) {
 		FailedJobsHistoryLimit:     &failedLimit,
 	}
 
-	result, err := GenerateScheduledCronJob(component, props, "0 * * * *")
+	result, err := jobdeploy.GenerateScheduledCronJob(component, props, "0 * * * *")
 	if err != nil {
 		t.Fatal(err)
 	}

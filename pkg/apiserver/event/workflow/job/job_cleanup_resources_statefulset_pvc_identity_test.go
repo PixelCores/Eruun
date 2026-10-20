@@ -215,7 +215,7 @@ func TestCleanupResourcesJobCtlRejectsMissingPVCDeleteIdentity(t *testing.T) {
 				require.True(t, k8serrors.IsConflict(deleteErr))
 				require.Contains(t, deleteErr.Error(), tt.wantDetail)
 			}
-			require.Equal(t, 0, countClientActions(client, "delete", "persistentvolumeclaims"))
+			require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "persistentvolumeclaims"))
 		})
 	}
 }
@@ -269,7 +269,7 @@ func TestCleanupResourcesJobCtlRestoresPVCIdentityAndRejectsReplacementOnSameTas
 	require.Error(t, err)
 	require.True(t, k8serrors.IsConflict(err))
 	require.Contains(t, err.Error(), "PVC UID changed")
-	require.Equal(t, 0, countClientActions(client, "delete", "persistentvolumeclaims"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "persistentvolumeclaims"))
 }
 
 func TestCleanupResourcesJobCtlDoesNotOverwriteConcurrentPodCheckpoint(t *testing.T) {
@@ -333,7 +333,7 @@ func TestCleanupResourcesJobCtlDoesNotOverwriteConcurrentPodCheckpoint(t *testin
 	_, pvcCheckpointFound, parseErr = parseRequiredStatefulSetPVCDeletionCheckpoint(store.jobInfo.InternalInfo)
 	require.NoError(t, parseErr)
 	require.True(t, pvcCheckpointFound)
-	require.Equal(t, 0, countClientActions(client, "delete", "persistentvolumeclaims"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "persistentvolumeclaims"))
 }
 
 func TestCleanupResourcesJobCtlPodCheckpointDoesNotOverwriteConcurrentPVCCheckpoint(t *testing.T) {
@@ -371,7 +371,7 @@ func TestCleanupResourcesJobCtlPodCheckpointDoesNotOverwriteConcurrentPVCCheckpo
 	require.Equal(t, string(config.StatusRunning), store.jobInfo.Status)
 	for _, resource := range []string{"statefulsets", "pods", "persistentvolumeclaims"} {
 		for _, verb := range []string{"update", "patch", "delete"} {
-			require.Equal(t, 0, countClientActions(client, verb, resource))
+			require.Equal(t, 0, jobtest.CountClientActions(client, verb, resource))
 		}
 	}
 }
@@ -462,7 +462,7 @@ func TestCleanupResourcesJobCtlRejectsExtraLabelMatchedStatefulSetBeforeMutation
 	require.Equal(t, marker, store.jobInfo.InternalInfo, "unexpected target must be rejected before identity checkpoints mutate JobInfo")
 	for _, resource := range []string{"statefulsets", "pods", "persistentvolumeclaims"} {
 		for _, verb := range []string{"update", "patch", "delete"} {
-			require.Equal(t, 0, countClientActions(client, verb, resource), "%s %s must not run before preflight closes", verb, resource)
+			require.Equal(t, 0, jobtest.CountClientActions(client, verb, resource), "%s %s must not run before preflight closes", verb, resource)
 		}
 	}
 	_, err = client.AppsV1().StatefulSets(component.Namespace).Get(ctx, requiredStatefulSet.Name, metav1.GetOptions{})

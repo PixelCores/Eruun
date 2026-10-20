@@ -7,7 +7,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 )
 
 const versionUpdateRestartStepName = "restart-components"
@@ -94,7 +94,7 @@ func buildVersionRestartJobs(
 		componentCopy := cloneVersionRestartComponent(component)
 		jobTask := NewJobTask(componentCopy.Name, componentCopy.Namespace, task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, componentCopy.ResourceNameKey())
 		jobTask.JobType = string(config.JobVersionRestart)
-		jobTask.JobInfo = &workflowjob.VersionRestartJobInfo{Component: componentCopy}
+		jobTask.JobInfo = &jobdeploy.VersionRestartJobInfo{Component: componentCopy}
 		jobTask.Info = fmt.Sprintf("restart component: %s/%s", componentCopy.Namespace, componentCopy.Name)
 		setDeployTimeout(jobTask)
 		if restartReadyTimeoutSeconds > 0 {

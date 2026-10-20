@@ -204,7 +204,7 @@ func TestRetryBackoffUsesDatabaseClockAcrossNodeSkew(t *testing.T) {
 					err := ctl.ensureRetryAttempt(context.Background(), cp)
 					require.ErrorContains(t, err, "disappeared")
 					require.Equal(t, remaining, time.Since(start))
-					require.Zero(t, countClientActions(client, "create", "jobs"))
+					require.Zero(t, jobtest.CountClientActions(client, "create", "jobs"))
 				})
 			})
 		}

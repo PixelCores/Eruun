@@ -33,7 +33,7 @@ func TestCleanupResourcesJobCtlPinsOwnerJobAndPodDeleteIdentity(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, gone)
 	requireRequiredStatefulSetOwnerJobDeleteIdentity(t, client, ownerJob)
-	require.Equal(t, 0, countClientActions(client, "delete", "pods"), "Pod deletion must wait until the owner Job is confirmed gone")
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"), "Pod deletion must wait until the owner Job is confirmed gone")
 
 	gone, err = ctl.componentPodsGone(ctx, component)
 	require.NoError(t, err)
@@ -73,14 +73,14 @@ func TestCleanupResourcesJobCtlConvergesTerminatingPodOwnerJobBeforeImmediateRep
 	require.NoError(t, err)
 	require.False(t, gone)
 	require.True(t, replacementCreated)
-	require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
-	require.Equal(t, 0, countClientActions(client, "delete", "pods"), "a terminating Pod must not be deleted again")
+	require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "jobs"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"), "a terminating Pod must not be deleted again")
 
 	require.NoError(t, client.Tracker().Delete(corev1.SchemeGroupVersion.WithResource("pods"), component.Namespace, pod.Name))
 	gone, err = ctl.componentPodsGone(ctx, component)
 	require.NoError(t, err)
 	require.False(t, gone)
-	require.Equal(t, 0, countClientActions(client, "delete", "pods"), "the replacement must be checkpointed before deletion")
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"), "the replacement must be checkpointed before deletion")
 
 	gone, err = ctl.componentPodsGone(ctx, component)
 	require.NoError(t, err)
@@ -141,7 +141,7 @@ func TestCleanupResourcesJobCtlRestartsAfterPodDisappearsAndConvergesCheckpointe
 	require.NoError(t, err)
 	require.False(t, gone, "a restarted worker must not succeed while the checkpointed owner Job is still live")
 	requireRequiredStatefulSetOwnerJobDeleteIdentity(t, client, ownerJob)
-	require.Equal(t, 0, countClientActions(client, "delete", "pods"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"))
 
 	gone, err = retryCtl.componentPodsGone(ctx, component)
 	require.NoError(t, err)
@@ -207,8 +207,8 @@ func TestCleanupResourcesJobCtlRechecksLatePodShareBeforeCheckpointedOwnerJobDel
 	require.True(t, shareInjected)
 	require.Contains(t, err.Error(), "protected by live share labels")
 	require.Contains(t, err.Error(), nonCanonicalPod.Name)
-	require.Equal(t, 0, countClientActions(client, "delete", "jobs"))
-	require.Equal(t, 0, countClientActions(client, "delete", "pods"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "jobs"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"))
 }
 
 func TestCleanupResourcesJobCtlRechecksNonCanonicalPodUIDBeforeCheckpointedOwnerJobDelete(t *testing.T) {
@@ -270,8 +270,8 @@ func TestCleanupResourcesJobCtlRechecksNonCanonicalPodUIDBeforeCheckpointedOwner
 	require.True(t, k8serrors.IsConflict(err))
 	require.Contains(t, err.Error(), nonCanonicalPod.Name)
 	require.Contains(t, err.Error(), "Pod UID changed")
-	require.Equal(t, 0, countClientActions(client, "delete", "jobs"))
-	require.Equal(t, 0, countClientActions(client, "delete", "pods"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "jobs"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"))
 }
 
 func TestCleanupResourcesJobCtlPreflightsAllOwnerJobsBeforeAnyDelete(t *testing.T) {
@@ -375,8 +375,8 @@ func TestCleanupResourcesJobCtlPreflightsAllOwnerJobsBeforeAnyDelete(t *testing.
 			}
 			require.Contains(t, err.Error(), laterPod.Name)
 			require.Contains(t, err.Error(), tt.wantDetail)
-			require.Equal(t, 0, countClientActions(client, "delete", "jobs"), "global preflight must finish before deleting the earlier Job")
-			require.Equal(t, 0, countClientActions(client, "delete", "pods"))
+			require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "jobs"), "global preflight must finish before deleting the earlier Job")
+			require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"))
 		})
 	}
 }
@@ -475,8 +475,8 @@ func TestCleanupResourcesJobCtlReconcilesStaleLocalCheckpointAfterConcurrentExpa
 				require.Equal(t, concurrentPod.UID, staleCtl.requiredStatefulSetPodTarget.podUIDs[concurrentPod.Name], "a persisted strict superset must replace the stale local target")
 				require.Contains(t, staleCtl.requiredStatefulSetPodTarget.ownerJobs, concurrentOwnerJob.Name)
 			}
-			require.Equal(t, 0, countClientActions(client, "delete", "jobs"))
-			require.Equal(t, 0, countClientActions(client, "delete", "pods"))
+			require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "jobs"))
+			require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"))
 		})
 	}
 }
@@ -653,8 +653,8 @@ func TestCleanupResourcesJobCtlDoesNotRecreateDisappearedCheckpointAfterLocalExp
 	_, pvcCheckpointFound, err = parseRequiredStatefulSetPVCDeletionCheckpoint(store.jobInfo.InternalInfo)
 	require.NoError(t, err)
 	require.True(t, pvcCheckpointFound)
-	require.Equal(t, 0, countClientActions(client, "delete", "jobs"))
-	require.Equal(t, 0, countClientActions(client, "delete", "pods"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "jobs"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"))
 }
 
 func TestCleanupResourcesJobCtlRejectsRestartAfterPodDisappearsWithoutOwnerJobCheckpoint(t *testing.T) {
@@ -691,8 +691,8 @@ func TestCleanupResourcesJobCtlRejectsRestartAfterPodDisappearsWithoutOwnerJobCh
 	require.Error(t, err)
 	require.True(t, k8serrors.IsConflict(err))
 	require.Contains(t, err.Error(), "Pod disappeared before its owner Job identity was checkpointed")
-	require.Equal(t, 0, countClientActions(client, "delete", "jobs"))
-	require.Equal(t, 0, countClientActions(client, "delete", "pods"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "jobs"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"))
 }
 
 func TestCleanupResourcesJobCtlRetriesOwnerJobDeleteAfterBenignResourceVersionConflict(t *testing.T) {
@@ -729,19 +729,19 @@ func TestCleanupResourcesJobCtlRetriesOwnerJobDeleteAfterBenignResourceVersionCo
 	gone, err := ctl.componentPodsGone(ctx, component)
 	require.NoError(t, err)
 	require.False(t, gone)
-	require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
-	require.Equal(t, 0, countClientActions(client, "delete", "pods"), "Pod deletion must wait for the pinned owner Job retry")
+	require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "jobs"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"), "Pod deletion must wait for the pinned owner Job retry")
 
 	gone, err = ctl.componentPodsGone(ctx, component)
 	require.NoError(t, err)
 	require.False(t, gone)
-	require.Equal(t, 2, countClientActions(client, "delete", "jobs"))
-	require.Equal(t, 0, countClientActions(client, "delete", "pods"), "Pod deletion must wait until the owner Job is confirmed gone")
+	require.Equal(t, 2, jobtest.CountClientActions(client, "delete", "jobs"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"), "Pod deletion must wait until the owner Job is confirmed gone")
 
 	gone, err = ctl.componentPodsGone(ctx, component)
 	require.NoError(t, err)
 	require.False(t, gone)
-	require.Equal(t, 1, countClientActions(client, "delete", "pods"))
+	require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "pods"))
 
 	gone, err = ctl.componentPodsGone(ctx, component)
 	require.NoError(t, err)
@@ -782,19 +782,19 @@ func TestCleanupResourcesJobCtlRetriesPodDeleteAfterBenignResourceVersionConflic
 	gone, err := ctl.componentPodsGone(ctx, component)
 	require.NoError(t, err)
 	require.False(t, gone)
-	require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
-	require.Equal(t, 0, countClientActions(client, "delete", "pods"))
+	require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "jobs"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"))
 
 	gone, err = ctl.componentPodsGone(ctx, component)
 	require.NoError(t, err)
 	require.False(t, gone)
-	require.Equal(t, 1, countClientActions(client, "delete", "jobs"), "retry must accept the already-gone pinned owner Job")
-	require.Equal(t, 1, countClientActions(client, "delete", "pods"))
+	require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "jobs"), "retry must accept the already-gone pinned owner Job")
+	require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "pods"))
 
 	gone, err = ctl.componentPodsGone(ctx, component)
 	require.NoError(t, err)
 	require.False(t, gone)
-	require.Equal(t, 2, countClientActions(client, "delete", "pods"))
+	require.Equal(t, 2, jobtest.CountClientActions(client, "delete", "pods"))
 
 	gone, err = ctl.componentPodsGone(ctx, component)
 	require.NoError(t, err)
@@ -823,7 +823,7 @@ func TestCleanupResourcesJobCtlRejectsOwnerJobLabelResourceVersionRace(t *testin
 	require.False(t, gone)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "owner job "+ownerJob.Name+" is protected")
-	require.Equal(t, 0, countClientActions(client, "delete", "pods"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"))
 	currentPod, getErr := client.CoreV1().Pods(component.Namespace).Get(ctx, pod.Name, metav1.GetOptions{})
 	require.NoError(t, getErr)
 	require.Equal(t, pod.UID, currentPod.UID)
@@ -847,7 +847,7 @@ func TestCleanupResourcesJobCtlRejectsOwnerJobReplacementAfterDeleteNotFound(t *
 	require.Error(t, err)
 	require.True(t, k8serrors.IsConflict(err))
 	require.Contains(t, err.Error(), "Job UID changed")
-	require.Equal(t, 0, countClientActions(client, "delete", "pods"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"))
 	currentPod, getErr := client.CoreV1().Pods(component.Namespace).Get(ctx, pod.Name, metav1.GetOptions{})
 	require.NoError(t, getErr)
 	require.Equal(t, pod.UID, currentPod.UID)
@@ -876,7 +876,7 @@ func TestCleanupResourcesJobCtlRechecksPodAfterOwnerJobGC(t *testing.T) {
 	require.False(t, gone)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "pod "+component.Namespace+"/"+pod.Name+" is protected")
-	require.Equal(t, 0, countClientActions(client, "delete", "pods"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"))
 }
 
 func TestCleanupResourcesJobCtlRejectsPodLabelResourceVersionRace(t *testing.T) {
@@ -926,14 +926,14 @@ func TestCleanupResourcesJobCtlRetriesPodCleanupAfterOwnerJobIsGone(t *testing.T
 	gone, err := ctl.componentPodsGone(ctx, component)
 	require.False(t, gone)
 	require.NoError(t, err)
-	require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
-	require.Equal(t, 0, countClientActions(client, "delete", "pods"))
+	require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "jobs"))
+	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"))
 
 	gone, err = ctl.componentPodsGone(ctx, component)
 	require.False(t, gone)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "transient pod delete failure")
-	require.Equal(t, 1, countClientActions(client, "delete", "jobs"), "retry must accept the already-gone pinned owner Job")
+	require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "jobs"), "retry must accept the already-gone pinned owner Job")
 
 	gone, err = ctl.componentPodsGone(ctx, component)
 	require.NoError(t, err)
@@ -1004,8 +1004,8 @@ func TestCleanupResourcesJobCtlRejectsEmptyOwnerJobOrPodDeleteIdentity(t *testin
 			require.Error(t, err)
 			require.True(t, k8serrors.IsConflict(err))
 			require.Contains(t, err.Error(), tt.wantDetail)
-			require.Equal(t, 0, countClientActions(client, "delete", "jobs"))
-			require.Equal(t, 0, countClientActions(client, "delete", "pods"))
+			require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "jobs"))
+			require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"))
 		})
 	}
 }

@@ -23,6 +23,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -84,9 +85,9 @@ func TestJobAdmissionCancellationStopsRecoveredInstantExecution(t *testing.T) {
 					var count int64
 					return db.Model(&model.JobInfo{}).Where("execution_key = ? AND scheduling_state = ?", task.ExecutionKey, "queued").Count(&count).Error == nil && count == 1
 				}, time.Second, 10*time.Millisecond)
-				require.Equal(t, 1, countClientActions(client, "get", "jobs"), "verify the existing UID before ordinary admission")
+				require.Equal(t, 1, jobtest.CountClientActions(client, "get", "jobs"), "verify the existing UID before ordinary admission")
 				for _, verb := range []string{"create", "update", "patch", "delete"} {
-					require.Zero(t, countClientActions(client, verb, "jobs"), "recovery must not mutate the live workload while waiting")
+					require.Zero(t, jobtest.CountClientActions(client, verb, "jobs"), "recovery must not mutate the live workload while waiting")
 				}
 
 				staleOwner := reason == "new generation" || reason == "new token" || reason == "new worker"
@@ -120,11 +121,11 @@ func TestJobAdmissionCancellationStopsRecoveredInstantExecution(t *testing.T) {
 				if staleOwner || ownerStillRunning {
 					require.Equal(t, string(config.StatusRunning), saved.Status)
 					for _, verb := range []string{"create", "update", "patch", "delete"} {
-						require.Zero(t, countClientActions(client, verb, "jobs"), "a stale owner cannot mutate the current execution")
+						require.Zero(t, jobtest.CountClientActions(client, verb, "jobs"), "a stale owner cannot mutate the current execution")
 					}
 				} else {
 					require.Equal(t, string(config.StatusCancelled), saved.Status)
-					require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
+					require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "jobs"))
 					for _, action := range client.Actions() {
 						if action.Matches("delete", "jobs") {
 							deletion := action.(k8stesting.DeleteAction)
@@ -134,8 +135,8 @@ func TestJobAdmissionCancellationStopsRecoveredInstantExecution(t *testing.T) {
 						}
 					}
 				}
-				require.Zero(t, countClientActions(client, "create", "jobs"), "cancellation must not restart the checkpointed attempt")
-				require.Zero(t, countClientActions(client, "create", "pods"))
+				require.Zero(t, jobtest.CountClientActions(client, "create", "jobs"), "cancellation must not restart the checkpointed attempt")
+				require.Zero(t, jobtest.CountClientActions(client, "create", "pods"))
 				currentPod, err := client.CoreV1().Pods(pod.Namespace).Get(context.Background(), pod.Name, metav1.GetOptions{})
 				require.NoError(t, err)
 				require.Equal(t, corev1.RestartPolicyNever, currentPod.Spec.RestartPolicy)

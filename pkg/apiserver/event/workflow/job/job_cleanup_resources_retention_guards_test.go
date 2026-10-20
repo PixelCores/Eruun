@@ -75,10 +75,10 @@ func TestCleanupResourcesJobCtlPinsStatefulSetUIDAcrossRetentionPolls(t *testing
 		target, ok := ctl.statefulSetRetentionTargets[component.Namespace+"/"+statefulSetName]
 		require.True(t, ok)
 		require.Equal(t, initialUID, target.uid, "the first observed UID must remain pinned")
-		require.Equal(t, 0, countClientActions(client, "update", "statefulsets"))
-		require.Equal(t, 0, countClientActions(client, "patch", "persistentvolumeclaims"))
-		require.Equal(t, 0, countClientActions(client, "delete", "statefulsets"))
-		require.Equal(t, 0, countClientActions(client, "delete", "persistentvolumeclaims"))
+		require.Equal(t, 0, jobtest.CountClientActions(client, "update", "statefulsets"))
+		require.Equal(t, 0, jobtest.CountClientActions(client, "patch", "persistentvolumeclaims"))
+		require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "statefulsets"))
+		require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "persistentvolumeclaims"))
 
 		liveObject, getErr := client.Tracker().Get(statefulSetResource, component.Namespace, statefulSetName)
 		require.NoError(t, getErr)
@@ -130,7 +130,7 @@ func TestCleanupResourcesJobCtlPinsStatefulSetUIDAcrossRetentionPolls(t *testing
 		target, ok := ctl.statefulSetRetentionTargets[component.Namespace+"/"+statefulSetName]
 		require.True(t, ok)
 		require.Equal(t, statefulSetUID, target.uid)
-		require.Equal(t, 0, countClientActions(client, "update", "statefulsets"))
+		require.Equal(t, 0, jobtest.CountClientActions(client, "update", "statefulsets"))
 	})
 }
 
@@ -212,11 +212,11 @@ func TestCleanupResourcesJobCtlPinsPreflightStatefulSetIdentityBeforeFirstRetent
 			require.Error(t, err)
 			require.True(t, k8serrors.IsConflict(err))
 			require.Contains(t, err.Error(), tt.wantError)
-			require.Equal(t, 0, countClientActions(client, "update", "statefulsets"))
-			require.Equal(t, 0, countClientActions(client, "patch", "persistentvolumeclaims"))
-			require.Equal(t, 0, countClientActions(client, "delete", "statefulsets"))
-			require.Equal(t, 0, countClientActions(client, "delete", "pods"))
-			require.Equal(t, 0, countClientActions(client, "delete", "persistentvolumeclaims"))
+			require.Equal(t, 0, jobtest.CountClientActions(client, "update", "statefulsets"))
+			require.Equal(t, 0, jobtest.CountClientActions(client, "patch", "persistentvolumeclaims"))
+			require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "statefulsets"))
+			require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"))
+			require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "persistentvolumeclaims"))
 
 			liveReplacement, getErr := client.AppsV1().StatefulSets(component.Namespace).Get(ctx, statefulSetName, metav1.GetOptions{})
 			require.NoError(t, getErr)
@@ -275,9 +275,9 @@ func TestCleanupResourcesJobCtlRejectsTerminatingRetainedPVCs(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 			}
-			require.Equal(t, 0, countClientActions(client, "delete", "statefulsets"))
-			require.Equal(t, 0, countClientActions(client, "delete", "pods"))
-			require.Equal(t, 0, countClientActions(client, "delete", "persistentvolumeclaims"))
+			require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "statefulsets"))
+			require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"))
+			require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "persistentvolumeclaims"))
 		})
 
 		t.Run(tt.name+" before pod deletion", func(t *testing.T) {
@@ -313,11 +313,11 @@ func TestCleanupResourcesJobCtlRejectsTerminatingRetainedPVCs(t *testing.T) {
 				require.False(t, gone)
 				require.Error(t, err)
 				require.Contains(t, err.Error(), "PVC is already terminating and is not planned for deletion")
-				require.Equal(t, 0, countClientActions(client, "delete", "pods"))
+				require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "pods"))
 			} else {
 				require.NoError(t, err)
 				require.False(t, gone, "the allowed Pod deletion still requires a confirming poll")
-				require.Equal(t, 1, countClientActions(client, "delete", "pods"))
+				require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "pods"))
 			}
 		})
 	}

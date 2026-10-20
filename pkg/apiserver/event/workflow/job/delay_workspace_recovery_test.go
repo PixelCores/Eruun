@@ -19,6 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
@@ -43,16 +44,16 @@ func delayedWorkspaceSQLFixture(t *testing.T, storedWorkspace interface{}) (*gor
 	require.NoError(t, repository.EnsureJobSchedulerPolicy(ctx, store))
 	creates := 0
 	var created *batchv1.Job
-	manager.RESTConfig.Transport = workspaceRoundTripper(func(r *http.Request) (*http.Response, error) {
+	manager.RESTConfig.Transport = jobtest.WorkspaceRoundTripper(func(r *http.Request) (*http.Response, error) {
 		scope, ok := access.FromContext(r.Context())
 		require.True(t, ok)
 		require.Equal(t, "space-1", scope.WorkspaceID)
 		if r.Method == http.MethodGet {
 			if created == nil {
-				return workspaceResponse(404, []byte(`{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"NotFound","code":404}`)), nil
+				return jobtest.WorkspaceResponse(404, []byte(`{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"NotFound","code":404}`)), nil
 			}
 			raw, err := json.Marshal(created)
-			return workspaceResponse(200, raw), err
+			return jobtest.WorkspaceResponse(200, raw), err
 		}
 		require.Equal(t, http.MethodPost, r.Method)
 		creates++
@@ -61,7 +62,7 @@ func delayedWorkspaceSQLFixture(t *testing.T, storedWorkspace interface{}) (*gor
 		created.UID = "delayed-job-uid"
 		require.Equal(t, "namespace-1", created.Namespace)
 		raw, err := json.Marshal(created)
-		return workspaceResponse(201, raw), err
+		return jobtest.WorkspaceResponse(201, raw), err
 	})
 	return db, store, NewDelayDispatcher(nil, manager, access.NewStore(store), "", ""), payloads[0], &creates
 }

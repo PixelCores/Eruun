@@ -115,7 +115,7 @@ func TestCleanupResourcesJobCtlStatefulSetDeleteConflictStillFailsClosed(t *test
 
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tt.wantError)
-			require.Equal(t, 1, countClientActions(client, "delete", "statefulsets"))
+			require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "statefulsets"))
 			live, getErr := client.AppsV1().StatefulSets(component.Namespace).Get(ctx, statefulSet.Name, metav1.GetOptions{})
 			require.NoError(t, getErr)
 			require.Equal(t, tt.wantUID, live.UID)
@@ -151,7 +151,7 @@ func TestCleanupResourcesJobCtlStatefulSetDeleteConflictRechecksCancellation(t *
 	statusErr, ok := jobinfo.ExtractStatusError(err)
 	require.True(t, ok)
 	require.Equal(t, config.StatusCancelled, statusErr.Status)
-	require.Equal(t, 1, countClientActions(client, "delete", "statefulsets"))
+	require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "statefulsets"))
 }
 
 func TestCleanupResourcesJobCtlStatefulSetDeleteConflictRetryIsBoundedAndCancellationAware(t *testing.T) {
@@ -194,7 +194,7 @@ func TestCleanupResourcesJobCtlStatefulSetDeleteConflictRetryIsBoundedAndCancell
 
 			require.Error(t, err)
 			require.Equal(t, requiredStatefulSetSafetyRefreshMaxAttempts, deleteAttempts)
-			require.Equal(t, requiredStatefulSetSafetyRefreshMaxAttempts, countClientActions(client, "delete", "statefulsets"))
+			require.Equal(t, requiredStatefulSetSafetyRefreshMaxAttempts, jobtest.CountClientActions(client, "delete", "statefulsets"))
 			if tt.wantStatus != "" {
 				statusErr, ok := jobinfo.ExtractStatusError(err)
 				require.True(t, ok)
@@ -305,7 +305,7 @@ func TestCleanupResourcesJobCtlPVCDeleteConflictStillFailsClosed(t *testing.T) {
 			require.Error(t, err)
 			require.True(t, k8serrors.IsConflict(err))
 			require.Contains(t, err.Error(), tt.wantError)
-			require.Equal(t, 1, countClientActions(client, "delete", "persistentvolumeclaims"))
+			require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "persistentvolumeclaims"))
 			live := requiredStatefulSetPVCFromTracker(t, client, component.Namespace, pvc.Name)
 			require.Equal(t, tt.wantUID, live.UID)
 			_, protected := cleanupResourceShareProtected(live.Labels)

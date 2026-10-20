@@ -71,7 +71,7 @@ func TestCleanupResourcesJobCtlOnlyDefersGenericOwnerJobDeletesForRequiredStatef
 
 			require.Empty(t, deleted.errs)
 			require.Len(t, deleted.refs, tt.wantRefs)
-			require.Equal(t, tt.wantDeletes, countClientActions(client, "delete", "jobs"))
+			require.Equal(t, tt.wantDeletes, jobtest.CountClientActions(client, "delete", "jobs"))
 		})
 	}
 }
@@ -160,9 +160,9 @@ func TestCleanupResourcesJobCtlRunDefersLabeledOwnerJobToRequiredStatefulSetPodR
 			require.NoError(t, ctl.Run(ctx))
 			require.Equal(t, 0, nonOrphanCascades, "the generic Job delete must never run before the dedicated orphan delete")
 			require.Len(t, jobDeleteOptions, 1)
-			require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
+			require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "jobs"))
 			requireRequiredStatefulSetOwnerJobDeleteIdentity(t, client, ownerJob)
-			require.Equal(t, 1, countClientActions(client, "delete", "pods"), "the Pod must survive owner deletion and be removed explicitly")
+			require.Equal(t, 1, jobtest.CountClientActions(client, "delete", "pods"), "the Pod must survive owner deletion and be removed explicitly")
 
 			checkpoint, found, err := parseRequiredStatefulSetPodDeletionCheckpoint(store.jobInfo.InternalInfo)
 			require.NoError(t, err)
@@ -185,8 +185,8 @@ func TestCleanupResourcesJobCtlRunConvergesDeferredLabeledJobWithoutPods(t *test
 	))
 
 	require.NoError(t, fixture.ctl.Run(context.Background()))
-	require.Equal(t, 1, countClientActions(fixture.client, "delete", "jobs"))
-	require.Equal(t, 0, countClientActions(fixture.client, "delete", "pods"))
+	require.Equal(t, 1, jobtest.CountClientActions(fixture.client, "delete", "jobs"))
+	require.Equal(t, 0, jobtest.CountClientActions(fixture.client, "delete", "pods"))
 	requireRequiredStatefulSetOwnerJobDeleteIdentity(t, fixture.client, fixture.ownerJob)
 
 	checkpoint, found, err := parseRequiredStatefulSetPodDeletionCheckpoint(fixture.store.jobInfo.InternalInfo)
@@ -210,8 +210,8 @@ func TestCleanupResourcesJobCtlRunCapturesUnlabeledPodOwnedByDeferredLabeledJob(
 	))
 
 	require.NoError(t, fixture.ctl.Run(context.Background()))
-	require.Equal(t, 1, countClientActions(fixture.client, "delete", "jobs"))
-	require.Equal(t, 1, countClientActions(fixture.client, "delete", "pods"))
+	require.Equal(t, 1, jobtest.CountClientActions(fixture.client, "delete", "jobs"))
+	require.Equal(t, 1, jobtest.CountClientActions(fixture.client, "delete", "pods"))
 	requireRequiredStatefulSetOwnerJobDeleteIdentity(t, fixture.client, fixture.ownerJob)
 	requireRequiredStatefulSetPodDeleteIdentity(t, fixture.client, livePod)
 
@@ -277,8 +277,8 @@ func TestCleanupResourcesJobCtlRunNeverGenericallyDeletesChangedCheckpointedOwne
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tt.wantDetail)
 			require.True(t, mutatedAfterPreflight)
-			require.Equal(t, 0, countClientActions(fixture.client, "delete", "jobs"), "no generic Job reference may bypass the checkpointed identity/share checks")
-			require.Equal(t, 0, countClientActions(fixture.client, "delete", "pods"))
+			require.Equal(t, 0, jobtest.CountClientActions(fixture.client, "delete", "jobs"), "no generic Job reference may bypass the checkpointed identity/share checks")
+			require.Equal(t, 0, jobtest.CountClientActions(fixture.client, "delete", "pods"))
 			_, err = fixture.client.BatchV1().Jobs(fixture.ownerJob.Namespace).Get(context.Background(), fixture.ownerJob.Name, metav1.GetOptions{})
 			require.NoError(t, err)
 			_, err = fixture.client.CoreV1().Pods(fixture.pod.Namespace).Get(context.Background(), fixture.pod.Name, metav1.GetOptions{})

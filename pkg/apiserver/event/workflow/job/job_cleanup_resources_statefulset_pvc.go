@@ -17,6 +17,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -48,7 +49,7 @@ func requiredStatefulSetCleanupRef(component *model.ApplicationComponent) (clean
 	if component == nil {
 		return cleanupResourceRef{}, fmt.Errorf("required StatefulSet deletion component is nil")
 	}
-	result, err := GenerateStoreService(component)
+	result, err := jobdeploy.GenerateStoreService(component)
 	if err != nil {
 		return cleanupResourceRef{}, err
 	}

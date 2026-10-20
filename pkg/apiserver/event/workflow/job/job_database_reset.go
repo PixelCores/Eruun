@@ -21,6 +21,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
@@ -126,7 +127,7 @@ func (c *DatabaseResetJobCtl) checkpointDatabaseResetReplicas(ctx context.Contex
 		}
 		for i := range plans {
 			key := databaseResetReplicaCheckpointKey(plans[i].namespace, plans[i].name)
-			replicas := desiredReplicasFromStatefulSet(plans[i].statefulSet)
+			replicas := jobdeploy.DesiredReplicasFromStatefulSet(plans[i].statefulSet)
 			checkpoint.OriginalReplicas[key] = replicas
 			plans[i].originalReplicas = replicas
 			plans[i].originalReplicasCheckpointed = true
@@ -219,7 +220,7 @@ func (c *DatabaseResetJobCtl) prepareDatabaseResetPlans(ctx context.Context, com
 			continue
 		}
 		component := normalizeDatabaseResetComponent(rawComponent)
-		result, err := GenerateStoreService(component)
+		result, err := jobdeploy.GenerateStoreService(component)
 		if err != nil {
 			return nil, err
 		}
@@ -512,7 +513,7 @@ func (c *DatabaseResetJobCtl) deleteAndMaybeRecreatePVC(ctx context.Context, tar
 	var replacement *corev1.PersistentVolumeClaim
 	if target.recreate {
 		replacement = existing.DeepCopy()
-		cleanObjectMeta(&replacement.ObjectMeta)
+		jobdeploy.CleanObjectMeta(&replacement.ObjectMeta)
 		replacement.Finalizers = nil
 		replacement.OwnerReferences = nil
 		replacement.Spec.VolumeName = ""

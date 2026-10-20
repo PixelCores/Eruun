@@ -1,18 +1,15 @@
 package job
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
-	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,104 +20,11 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 )
-
-type workspaceRoundTripper func(*http.Request) (*http.Response, error)
-
-func (f workspaceRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
-func workspaceResponse(code int, body []byte) *http.Response {
-	return &http.Response{StatusCode: code, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(bytes.NewReader(body))}
-}
-func workspacePodSpec() corev1.PodSpec {
-	return corev1.PodSpec{
-		Containers:     []corev1.Container{{Name: "app", Image: "example.com/app:1"}, {Name: "sidecar", Image: "example.com/sidecar:1"}},
-		InitContainers: []corev1.Container{{Name: "init", Image: "example.com/init:1"}},
-	}
-}
-func requireWorkspacePodSecurity(t *testing.T, pod corev1.PodSpec) {
-	t.Helper()
-	require.Equal(t, ptr.To(false), pod.AutomountServiceAccountToken)
-	for _, c := range append(pod.Containers, pod.InitContainers...) {
-		require.NotNil(t, c.SecurityContext, c.Name)
-		require.Equal(t, ptr.To(false), c.SecurityContext.AllowPrivilegeEscalation)
-		require.Equal(t, ptr.To(true), c.SecurityContext.RunAsNonRoot)
-		require.Equal(t, []corev1.Capability{"ALL"}, c.SecurityContext.Capabilities.Drop)
-		require.Equal(t, corev1.SeccompProfileTypeRuntimeDefault, c.SecurityContext.SeccompProfile.Type)
-		require.Nil(t, c.SecurityContext.SeccompProfile.LocalhostProfile)
-	}
-}
-
-func TestWorkspaceRepeatedDeploymentDoesNotRollout(t *testing.T) {
-	space := &model.Workspace{ID: "workspace", Namespace: "space"}
-	manager := &workspace.Manager{RESTConfig: &rest.Config{Host: "https://kubernetes.example", Transport: workspaceRoundTripper(func(r *http.Request) (*http.Response, error) {
-		body, err := io.ReadAll(r.Body)
-		return workspaceResponse(http.StatusCreated, body), err
-	})}}
-	client, _, err := manager.TenantClient(space)
-	require.NoError(t, err)
-	for _, localhost := range []bool{false, true} {
-		podSpec := func() corev1.PodSpec {
-			pod := workspacePodSpec()
-			if localhost {
-				for _, containers := range [][]corev1.Container{pod.Containers, pod.InitContainers} {
-					for i := range containers {
-						containers[i].SecurityContext = &corev1.SecurityContext{SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeLocalhost, LocalhostProfile: ptr.To("profiles/app.json")}}
-					}
-				}
-			}
-			return pod
-		}
-		for _, kind := range []string{"deployment", "statefulset"} {
-			t.Run(fmt.Sprintf("%s/localhost=%t", kind, localhost), func(t *testing.T) {
-				meta := metav1.ObjectMeta{Name: "app", Namespace: space.Namespace}
-				template := corev1.PodTemplateSpec{Spec: podSpec()}
-				task := &model.JobTask{AppID: "app", Namespace: space.Namespace}
-				if kind == "deployment" {
-					desired := &appsv1.Deployment{ObjectMeta: meta, Spec: appsv1.DeploymentSpec{Template: template}}
-					task.JobType, task.JobInfo = string(config.JobDeploy), desired
-					_, err = jobexec.PrepareTask(task, "app", space, manager.Config)
-					require.NoError(t, err)
-					requireWorkspacePodSecurity(t, desired.Spec.Template.Spec)
-					current, err := client.AppsV1().Deployments(space.Namespace).Create(context.Background(), desired, metav1.CreateOptions{})
-					require.NoError(t, err)
-					// Regenerate the same source payload, as the next workflow invocation does.
-					desired.Spec.Template.Spec = podSpec()
-					_, err = jobexec.PrepareTask(task, "app", space, manager.Config)
-					require.NoError(t, err)
-					require.False(t, isDeploymentChanged(current, desired))
-					require.False(t, deploymentPodTemplateChanged(current, desired))
-					desired.Spec.Template.Spec.Containers[0].SecurityContext.RunAsUser = ptr.To(int64(1001))
-					_, err = jobexec.PrepareTask(task, "app", space, manager.Config)
-					require.NoError(t, err)
-					require.True(t, isDeploymentChanged(current, desired), "real security changes must still be applied")
-					require.True(t, deploymentPodTemplateChanged(current, desired))
-				} else {
-					desired := &appsv1.StatefulSet{ObjectMeta: meta, Spec: appsv1.StatefulSetSpec{Template: template}}
-					task.JobType, task.JobInfo = string(config.JobDeployStore), desired
-					_, err = jobexec.PrepareTask(task, "app", space, manager.Config)
-					require.NoError(t, err)
-					requireWorkspacePodSecurity(t, desired.Spec.Template.Spec)
-					current, err := client.AppsV1().StatefulSets(space.Namespace).Create(context.Background(), desired, metav1.CreateOptions{})
-					require.NoError(t, err)
-					desired.Spec.Template.Spec = podSpec()
-					_, err = jobexec.PrepareTask(task, "app", space, manager.Config)
-					require.NoError(t, err)
-					require.False(t, statefulSetPodTemplateChanged(current, desired))
-					require.False(t, statefulSetNeedsUpdate(current, desired))
-					desired.Spec.Template.Spec.InitContainers[0].SecurityContext.RunAsUser = ptr.To(int64(1001))
-					_, err = jobexec.PrepareTask(task, "app", space, manager.Config)
-					require.NoError(t, err)
-					require.True(t, statefulSetPodTemplateChanged(current, desired))
-					require.True(t, statefulSetNeedsUpdate(current, desired))
-				}
-			})
-		}
-	}
-}
 
 type delayedWorkspaceStore struct {
 	*resultOutboxTestStore
@@ -177,7 +81,7 @@ func delayedWorkspaceFixture(t *testing.T) (*delayedWorkspaceStore, *workspace.M
 		require.NoError(t, err)
 		payload := seedDelayRecoveryCheckpoint(t, store.resultOutboxTestStore, id, time.Now().Unix()-10)
 		payload.Namespace, payload.Job.Namespace = space.Namespace, space.Namespace
-		payload.Job.Spec.Template.Spec = workspacePodSpec()
+		payload.Job.Spec.Template.Spec = jobtest.WorkspacePodSpec()
 		payload.Job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
 		raw, err := json.Marshal(payload)
 		require.NoError(t, err)
@@ -192,7 +96,7 @@ func delayedWorkspaceFixture(t *testing.T) (*delayedWorkspaceStore, *workspace.M
 func TestDelayedJobsUsePersistedWorkspaceAndRestrictedClient(t *testing.T) {
 	store, manager, payloads := delayedWorkspaceFixture(t)
 	created := map[string]*batchv1.Job{}
-	manager.RESTConfig.Transport = workspaceRoundTripper(func(r *http.Request) (*http.Response, error) {
+	manager.RESTConfig.Transport = jobtest.WorkspaceRoundTripper(func(r *http.Request) (*http.Response, error) {
 		scope, ok := access.FromContext(r.Context())
 		require.True(t, ok)
 		require.Equal(t, "system:serviceaccount:"+scope.Namespace+":eruun-runner", r.Header.Get("Impersonate-User"))
@@ -200,18 +104,18 @@ func TestDelayedJobsUsePersistedWorkspaceAndRestrictedClient(t *testing.T) {
 		if r.Method == http.MethodGet {
 			if job := created[scope.Namespace]; job != nil {
 				raw, err := json.Marshal(job)
-				return workspaceResponse(200, raw), err
+				return jobtest.WorkspaceResponse(200, raw), err
 			}
-			return workspaceResponse(404, []byte(`{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"NotFound","code":404}`)), nil
+			return jobtest.WorkspaceResponse(404, []byte(`{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"NotFound","code":404}`)), nil
 		}
 		require.Equal(t, http.MethodPost, r.Method)
 		var job batchv1.Job
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&job))
 		require.Equal(t, scope.Namespace, job.Namespace)
-		requireWorkspacePodSecurity(t, job.Spec.Template.Spec)
+		jobtest.RequireWorkspacePodSecurity(t, job.Spec.Template.Spec)
 		created[scope.Namespace] = &job
 		raw, err := json.Marshal(job)
-		return workspaceResponse(201, raw), err
+		return jobtest.WorkspaceResponse(201, raw), err
 	})
 	dispatcher := NewDelayDispatcher(nil, manager, access.NewStore(store), "", "")
 	for _, payload := range payloads {
@@ -255,7 +159,7 @@ func TestDelayedJobsRejectInvalidPersistedWorkloadBeforeKubernetesWrites(t *test
 			require.NoError(t, err)
 			store.jobInfos[1].DelayPayload = string(raw)
 			unrelated := *store.jobInfos[2]
-			manager.RESTConfig.Transport = workspaceRoundTripper(func(*http.Request) (*http.Response, error) {
+			manager.RESTConfig.Transport = jobtest.WorkspaceRoundTripper(func(*http.Request) (*http.Response, error) {
 				t.Error("rejected workload reached Kubernetes")
 				return nil, fmt.Errorf("unexpected Kubernetes request")
 			})
