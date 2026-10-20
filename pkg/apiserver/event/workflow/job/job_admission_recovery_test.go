@@ -21,6 +21,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
@@ -71,7 +72,7 @@ func TestJobAdmissionCancellationStopsRecoveredInstantExecution(t *testing.T) {
 				defer cancel(nil)
 				result := make(chan error, 1)
 				go func() {
-					result <- RunJobs(ctx, []*model.JobTask{task}, &Runtime{
+					result <- RunJobs(ctx, []*model.JobTask{task}, &jobexec.Runtime{
 						Concurrency:   concurrency,
 						Client:        client,
 						Store:         store,

@@ -21,6 +21,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 )
@@ -57,7 +58,7 @@ func stampTestResultJob(jobObj *batchv1.Job, taskID string) {
 }
 
 func resultTestPod(job *batchv1.Job) *corev1.Pod {
-	pod := succeededPodForJob(job, job.Name+"-pod", job.UID)
+	pod := jobtest.SucceededPodForJob(job, job.Name+"-pod", job.UID)
 	pod.Spec.Containers = []corev1.Container{{Name: "main"}}
 	return pod
 }

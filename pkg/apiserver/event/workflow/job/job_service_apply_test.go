@@ -5,13 +5,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 )
 
 func countClientActions(client *fake.Clientset, verb, resource string) int {
@@ -49,7 +49,7 @@ func TestApplyService_PreservesHeadlessClusterIP(t *testing.T) {
 
 	clientset := fake.NewSimpleClientset()
 	ctl := &DeployServiceJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{client: clientset},
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{Client: clientset},
 	}
 	applied, err := ctl.ApplyService(context.Background(), desired)
 	if err != nil {
@@ -94,7 +94,7 @@ func TestApplyService_UpdatesExternalName(t *testing.T) {
 
 	clientset := fake.NewSimpleClientset(existing)
 	ctl := &DeployServiceJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{client: clientset},
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{Client: clientset},
 	}
 	applied, err := ctl.ApplyService(context.Background(), desired)
 	if err != nil {
@@ -139,7 +139,7 @@ func TestApplyService_SkipsUnchangedServiceUpdate(t *testing.T) {
 
 	clientset := fake.NewSimpleClientset(existing)
 	ctl := &DeployServiceJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{client: clientset},
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{Client: clientset},
 	}
 	applied, err := ctl.ApplyService(context.Background(), desired)
 	if err != nil {
@@ -183,7 +183,7 @@ func TestApplyService_SkipsUnchangedNodePortServiceUpdate(t *testing.T) {
 
 	clientset := fake.NewSimpleClientset(existing)
 	ctl := &DeployServiceJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{client: clientset},
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{Client: clientset},
 	}
 	applied, err := ctl.ApplyService(context.Background(), desired)
 	if err != nil {
@@ -229,7 +229,7 @@ func TestApplyService_SkipsUnchangedLoadBalancerServiceUpdate(t *testing.T) {
 
 	clientset := fake.NewSimpleClientset(existing)
 	ctl := &DeployServiceJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{client: clientset},
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{Client: clientset},
 	}
 	applied, err := ctl.ApplyService(context.Background(), desired)
 	if err != nil {
@@ -331,7 +331,7 @@ func TestApplyService_DefaultsAndPreservesInput(t *testing.T) {
 	}
 	original := desired.DeepCopy()
 	client := fake.NewSimpleClientset()
-	ctl := &DeployServiceJobCtl{deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{client: client}}
+	ctl := &DeployServiceJobCtl{DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{Client: client}}
 
 	created, err := ctl.ApplyService(context.Background(), desired)
 

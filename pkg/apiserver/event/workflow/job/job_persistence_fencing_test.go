@@ -13,6 +13,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -428,7 +429,7 @@ func TestRunAdmittedJobLeavesCancelledAttemptRecoverableAfterOwnershipDrift(t *t
 	err := runAdmittedJob(ctx, controller, job, nil, store, func() {}, nil, trace.SpanFromContext(ctx))
 
 	require.ErrorIs(t, err, signal.ErrInfrastructureStop)
-	require.ErrorIs(t, err, errWorkflowJobOwnershipChanged)
+	require.ErrorIs(t, err, jobexec.ErrWorkflowJobOwnershipChanged)
 	require.Zero(t, controller.cleanCalls)
 	require.Zero(t, controller.saveCalls)
 }

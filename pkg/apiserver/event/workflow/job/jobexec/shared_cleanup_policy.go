@@ -1,4 +1,4 @@
-package job
+package jobexec
 
 import (
 	"context"
@@ -13,12 +13,12 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
 )
 
-func shouldForceCleanupSharedWorkload(ctx context.Context, kubeClient kubernetes.Interface, namespace string, resourceLabels map[string]string) (bool, string) {
+func ShouldForceCleanupSharedWorkload(ctx context.Context, kubeClient kubernetes.Interface, namespace string, resourceLabels map[string]string) (bool, string) {
 	if kubeClient == nil {
 		return false, "kube client is nil"
 	}
 
-	shareName, strategy := shareInfoFromLabels(resourceLabels)
+	shareName, strategy := ShareInfoFromLabels(resourceLabels)
 	if shareName == "" {
 		return false, "share label missing"
 	}

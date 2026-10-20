@@ -49,8 +49,8 @@ func (c *CleanupResourcesJobCtl) initializeRequiredStatefulSetPodTarget(
 	statefulSet metav1.Object,
 	statefulSetFound bool,
 ) error {
-	if c.job.Status == config.StatusRunning {
-		existing, err := jobinfo.FindExistingVersionUpdateCleanupJobInfo(ctx, c.store, c.job)
+	if c.Job.Status == config.StatusRunning {
+		existing, err := jobinfo.FindExistingVersionUpdateCleanupJobInfo(ctx, c.Store, c.Job)
 		if err != nil {
 			return fmt.Errorf("load required StatefulSet pod identity checkpoint: %w", err)
 		}
@@ -70,7 +70,7 @@ func (c *CleanupResourcesJobCtl) initializeRequiredStatefulSetPodTarget(
 				return err
 			}
 			c.requiredStatefulSetPodTarget = target
-			c.job.InternalInfo = existing.InternalInfo
+			c.Job.InternalInfo = existing.InternalInfo
 			return c.verifyRequiredStatefulSetPodOwnerIdentity(ref, statefulSet, statefulSetFound)
 		}
 	}
@@ -94,19 +94,19 @@ func (c *CleanupResourcesJobCtl) persistRequiredStatefulSetPodTarget(ctx context
 	if target == nil {
 		return nil
 	}
-	if c.job == nil || c.job.Status != config.StatusRunning {
+	if c.Job == nil || c.Job.Status != config.StatusRunning {
 		// The production path reaches this helper only after markRunning. Direct
 		// package-level helper calls do not have a persistent execution to resume.
 		target.checkpointPersisted = true
 		return nil
 	}
-	conditionalStore, ok := c.store.(datastore.ConditionalCompareAndSwap)
+	conditionalStore, ok := c.Store.(datastore.ConditionalCompareAndSwap)
 	if !ok {
 		return fmt.Errorf("persist required StatefulSet pod identity checkpoint: datastore does not support conditional compare-and-swap")
 	}
 
 	for attempt := 1; attempt <= requiredStatefulSetPodCheckpointPersistMaxAttempts; attempt++ {
-		existing, err := jobinfo.FindExistingVersionUpdateCleanupJobInfo(ctx, c.store, c.job)
+		existing, err := jobinfo.FindExistingVersionUpdateCleanupJobInfo(ctx, c.Store, c.Job)
 		if err != nil {
 			return fmt.Errorf("load required StatefulSet pod identity checkpoint before persist: %w", err)
 		}
@@ -120,7 +120,7 @@ func (c *CleanupResourcesJobCtl) persistRequiredStatefulSetPodTarget(ctx context
 		if status != config.StatusRunning {
 			return c.requiredStatefulSetPodCheckpointStatusError(status, existing.Status)
 		}
-		c.job.InternalInfo = existing.InternalInfo
+		c.Job.InternalInfo = existing.InternalInfo
 		checkpoint := requiredStatefulSetPodCheckpointFromTarget(target)
 		current, found, err := parseRequiredStatefulSetPodDeletionCheckpoint(existing.InternalInfo)
 		if err != nil {
@@ -143,19 +143,19 @@ func (c *CleanupResourcesJobCtl) persistRequiredStatefulSetPodTarget(ctx context
 					return fmt.Errorf("adopt concurrent required StatefulSet pod identity checkpoint: %w", hydrateErr)
 				}
 				c.requiredStatefulSetPodTarget = hydrated
-				c.job.InternalInfo = existing.InternalInfo
+				c.Job.InternalInfo = existing.InternalInfo
 				return nil
 			case !persistedIsSubset:
 				return k8serrors.NewConflict(
 					schema.GroupResource{Resource: "jobinfos"},
-					c.job.TaskID,
+					c.Job.TaskID,
 					fmt.Errorf("required StatefulSet %s pod identity checkpoint forked concurrently", cleanupResourceDisplayName(target.ref)),
 				)
 			}
 		} else if target.checkpointEverPersisted {
 			return k8serrors.NewConflict(
 				schema.GroupResource{Resource: "jobinfos"},
-				c.job.TaskID,
+				c.Job.TaskID,
 				fmt.Errorf("required StatefulSet %s persisted pod identity checkpoint disappeared", cleanupResourceDisplayName(target.ref)),
 			)
 		}
@@ -178,12 +178,12 @@ func (c *CleanupResourcesJobCtl) persistRequiredStatefulSetPodTarget(ctx context
 		}
 		target.checkpointPersisted = true
 		target.checkpointEverPersisted = true
-		c.job.InternalInfo = nextInternalInfo
+		c.Job.InternalInfo = nextInternalInfo
 		return nil
 	}
 	return k8serrors.NewConflict(
 		schema.GroupResource{Resource: "jobinfos"},
-		c.job.TaskID,
+		c.Job.TaskID,
 		fmt.Errorf("required StatefulSet %s pod identity checkpoint did not converge after %d attempts", cleanupResourceDisplayName(target.ref), requiredStatefulSetPodCheckpointPersistMaxAttempts),
 	)
 }
@@ -192,7 +192,7 @@ func (c *CleanupResourcesJobCtl) requiredStatefulSetPodCheckpointStatusError(sta
 	if isTerminalVersionUpdateCleanupStatus(status) {
 		return c.abortTerminalizedVersionUpdateCleanup(status, rawStatus)
 	}
-	return fmt.Errorf("version update cleanup job info for task %s component %s is %s while persisting required StatefulSet pod identity, expected running", c.job.TaskID, jobinfo.ResolveJobServiceName(c.job), rawStatus)
+	return fmt.Errorf("version update cleanup job info for task %s component %s is %s while persisting required StatefulSet pod identity, expected running", c.Job.TaskID, jobinfo.ResolveJobServiceName(c.Job), rawStatus)
 }
 
 func requiredStatefulSetPodCheckpointFromTarget(target *requiredStatefulSetPodDeletionTarget) requiredStatefulSetPodDeletionCheckpoint {

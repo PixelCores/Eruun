@@ -1,4 +1,4 @@
-package job
+package jobexec
 
 import (
 	"context"
@@ -16,30 +16,30 @@ type createResourceFunc[T any] func(context.Context) (*T, error)
 type onExistingResourceFunc[T any] func(context.Context, *T) error
 type updateResourceFunc[T any] func(context.Context, *T) error
 
-type sharedResourceAccessOptions struct {
-	job             *model.JobTask
-	ack             func()
-	labels          map[string]string
-	kind            domainspec.ResourceKind
-	listFn          resourceListFn
-	lockProvider    locker.Locker
-	logSkip         func(domainspec.ShareStrategy)
-	reconcileShared bool
+type SharedResourceAccessOptions struct {
+	Job             *model.JobTask
+	Ack             func()
+	Labels          map[string]string
+	Kind            domainspec.ResourceKind
+	ListFn          resourceListFn
+	LockProvider    locker.Locker
+	LogSkip         func(domainspec.ShareStrategy)
+	ReconcileShared bool
 }
 
-type trackedResourceReconcileOptions[T any] struct {
-	sharedResourceAccessOptions
-	namespace       string
-	name            string
-	getFn           getResourceFunc[T]
-	createFn        createResourceFunc[T]
-	onExisting      onExistingResourceFunc[T]
-	isNotFound      func(error) bool
-	isAlreadyExists func(error) bool
+type TrackedResourceReconcileOptions[T any] struct {
+	SharedResourceAccessOptions
+	Namespace       string
+	Name            string
+	GetFn           getResourceFunc[T]
+	CreateFn        createResourceFunc[T]
+	OnExisting      onExistingResourceFunc[T]
+	IsNotFound      func(error) bool
+	IsAlreadyExists func(error) bool
 }
 
 // createOrUpdateResource updates an existing resource or creates a new one when missing.
-func createOrUpdateResource[T any](
+func CreateOrUpdateResource[T any](
 	ctx context.Context,
 	getFn getResourceFunc[T],
 	createFn createResourceFunc[T],
@@ -79,7 +79,7 @@ func createOrUpdateResource[T any](
 }
 
 // createOrUpdateTrackedResource wraps createOrUpdateResource and records resource ownership.
-func createOrUpdateTrackedResource[T any](
+func CreateOrUpdateTrackedResource[T any](
 	ctx context.Context,
 	kind domainspec.ResourceKind,
 	namespace string,
@@ -90,30 +90,30 @@ func createOrUpdateTrackedResource[T any](
 	isNotFound func(error) bool,
 	isAlreadyExists func(error) bool,
 ) (*T, bool, error) {
-	res, created, err := createOrUpdateResource(ctx, getFn, createFn, onExisting, isNotFound, isAlreadyExists)
+	res, created, err := CreateOrUpdateResource(ctx, getFn, createFn, onExisting, isNotFound, isAlreadyExists)
 	if err != nil {
 		return nil, false, err
 	}
 	if created {
 		MarkResourceCreated(ctx, kind, namespace, name)
 	} else {
-		markResourceObserved(ctx, kind, namespace, name)
+		MarkResourceObserved(ctx, kind, namespace, name)
 	}
 	return res, created, nil
 }
 
-func resolveSharedResourceAccess(ctx context.Context, opts sharedResourceAccessOptions) (func(), bool, error) {
-	if opts.reconcileShared {
-		_, strategy := shareInfoFromLabels(opts.labels)
+func ResolveSharedResourceAccess(ctx context.Context, opts SharedResourceAccessOptions) (func(), bool, error) {
+	if opts.ReconcileShared {
+		_, strategy := ShareInfoFromLabels(opts.Labels)
 		if strategy != domainspec.ShareStrategyIgnore {
 			return nil, false, nil
 		}
 	}
-	return handleSharedResource(ctx, opts.job, opts.ack, opts.labels, opts.kind, opts.listFn, opts.lockProvider, opts.logSkip)
+	return handleSharedResource(ctx, opts.Job, opts.Ack, opts.Labels, opts.Kind, opts.ListFn, opts.LockProvider, opts.LogSkip)
 }
 
-func reconcileTrackedResource[T any](ctx context.Context, opts trackedResourceReconcileOptions[T]) (*T, bool, error) {
-	unlock, skipped, err := resolveSharedResourceAccess(ctx, opts.sharedResourceAccessOptions)
+func ReconcileTrackedResource[T any](ctx context.Context, opts TrackedResourceReconcileOptions[T]) (*T, bool, error) {
+	unlock, skipped, err := ResolveSharedResourceAccess(ctx, opts.SharedResourceAccessOptions)
 	if err != nil {
 		return nil, false, err
 	}
@@ -123,10 +123,10 @@ func reconcileTrackedResource[T any](ctx context.Context, opts trackedResourceRe
 	if skipped {
 		return nil, false, nil
 	}
-	return createOrUpdateTrackedResource(ctx, opts.kind, opts.namespace, opts.name, opts.getFn, opts.createFn, opts.onExisting, opts.isNotFound, opts.isAlreadyExists)
+	return CreateOrUpdateTrackedResource(ctx, opts.Kind, opts.Namespace, opts.Name, opts.GetFn, opts.CreateFn, opts.OnExisting, opts.IsNotFound, opts.IsAlreadyExists)
 }
 
-func trackResourcePresence[T any](ctx context.Context, kind domainspec.ResourceKind, namespace, name string, getFn getResourceFunc[T], isNotFound func(error) bool) error {
+func TrackResourcePresence[T any](ctx context.Context, kind domainspec.ResourceKind, namespace, name string, getFn getResourceFunc[T], isNotFound func(error) bool) error {
 	existing, err := getFn(ctx)
 	if err != nil {
 		if isNotFound(err) {
@@ -136,13 +136,13 @@ func trackResourcePresence[T any](ctx context.Context, kind domainspec.ResourceK
 		return err
 	}
 	if existing != nil {
-		markResourceObserved(ctx, kind, namespace, name)
+		MarkResourceObserved(ctx, kind, namespace, name)
 	}
 	return nil
 }
 
 // updateResourceWithRetry wraps a get+update sequence with conflict retries.
-func updateResourceWithRetry[T any](
+func UpdateResourceWithRetry[T any](
 	ctx context.Context,
 	getFn getResourceFunc[T],
 	updateFn updateResourceFunc[T],

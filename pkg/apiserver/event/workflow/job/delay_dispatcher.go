@@ -21,6 +21,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
@@ -546,7 +547,7 @@ func (d *DelayDispatcher) dispatch(ctx context.Context, item *delayItem) error {
 	payload := *committed
 	payload.Job = payload.Job.DeepCopy()
 	task := &model.JobTask{AppID: app.ID, Namespace: space.Namespace, JobType: string(config.JobDeployInstant), JobInfo: payload.Job}
-	if _, err = PrepareTask(task, app.ID, space, d.workspaceManager.Config); err != nil {
+	if _, err = jobexec.PrepareTask(task, app.ID, space, d.workspaceManager.Config); err != nil {
 		return d.rejectCheckpoint(ctx, checkpoint, err)
 	}
 	// The worker initializes the full baseline before committing a delayed job.
@@ -704,7 +705,7 @@ func (d *DelayDispatcher) dispatchJob(ctx context.Context, item *delayItem, clie
 	if checkpoint == nil {
 		return fmt.Errorf("delayed job admission requires its committed checkpoint")
 	}
-	deadline := time.Now().Add(jobDeleteTimeout)
+	deadline := time.Now().Add(jobexec.JobDeleteTimeout)
 	if err := repository.EnqueueJobForScheduling(ctx, d.store, nil, checkpoint, &deadline); err != nil {
 		return fmt.Errorf("queue due delayed job: %w", err)
 	}
@@ -728,7 +729,7 @@ func (d *DelayDispatcher) dispatchJob(ctx context.Context, item *delayItem, clie
 		return err
 	}
 
-	action, err := applyJobRunPolicy(ctx, client, d.store, jobObj, jobType)
+	action, err := jobexec.ApplyJobRunPolicy(ctx, client, d.store, jobObj, jobType)
 	if err != nil {
 		if _, ok := jobinfo.ExtractStatusError(err); ok {
 			if resultPayload != nil {
@@ -738,7 +739,7 @@ func (d *DelayDispatcher) dispatchJob(ctx context.Context, item *delayItem, clie
 		}
 		return err
 	}
-	if action == runPolicyActionSkip {
+	if action == jobexec.RunPolicyActionSkip {
 		if resultPayload != nil {
 			updateJobInfoStatus(ctx, d.store, resultPayload, config.StatusSkipped, "", 0, 0, "")
 		}
@@ -750,7 +751,7 @@ func (d *DelayDispatcher) dispatchJob(ctx context.Context, item *delayItem, clie
 
 func (d *DelayDispatcher) verifyDelayedJobIdentity(ctx context.Context, client kubernetes.Interface, resultPayload *JobResultPayload) error {
 	if resultPayload != nil {
-		existingJob, exists, err := jobExists(ctx, client, resultPayload.Namespace, resultPayload.Name)
+		existingJob, exists, err := jobexec.JobExists(ctx, client, resultPayload.Namespace, resultPayload.Name)
 		if err != nil {
 			return err
 		}
@@ -764,7 +765,7 @@ func (d *DelayDispatcher) verifyDelayedJobIdentity(ctx context.Context, client k
 
 func (d *DelayDispatcher) createDelayedJob(ctx context.Context, client kubernetes.Interface, jobObj *batchv1.Job, resultPayload *JobResultPayload) error {
 	namespace := jobObj.Namespace
-	liveJob, _, err := createOrUpdateResource(ctx, func(ctx context.Context) (*batchv1.Job, error) {
+	liveJob, _, err := jobexec.CreateOrUpdateResource(ctx, func(ctx context.Context) (*batchv1.Job, error) {
 		return client.BatchV1().Jobs(namespace).Get(ctx, jobObj.Name, metav1.GetOptions{})
 	}, func(ctx context.Context) (*batchv1.Job, error) {
 		return client.BatchV1().Jobs(namespace).Create(ctx, jobObj, metav1.CreateOptions{})
@@ -965,7 +966,7 @@ func (d *DelayDispatcher) handleDelayedJobCreateError(ctx context.Context, clien
 	if payload == nil {
 		return createErr
 	}
-	existing, exists, err := jobExists(ctx, client, payload.Namespace, payload.Name)
+	existing, exists, err := jobexec.JobExists(ctx, client, payload.Namespace, payload.Name)
 	if err != nil {
 		return createErr
 	}

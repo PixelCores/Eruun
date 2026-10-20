@@ -18,6 +18,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
@@ -674,7 +675,7 @@ func TestListApplicationComponentsRefreshesAfterConfigJobStatusSync(t *testing.T
 			},
 		},
 	}
-	require.NoError(t, job.RunJobs(context.Background(), []*model.JobTask{jobTask}, &job.Runtime{
+	require.NoError(t, job.RunJobs(context.Background(), []*model.JobTask{jobTask}, &jobexec.Runtime{
 		Concurrency: 1,
 		Client:      fake.NewSimpleClientset(),
 		Store:       store,

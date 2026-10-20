@@ -7,11 +7,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
-	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -20,6 +15,12 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 func TestCleanupRunVolumesRespectsLifecycleAndOwnership(t *testing.T) {
@@ -86,7 +87,7 @@ func TestCleanupRunVolumesRespectsLifecycleAndOwnership(t *testing.T) {
 				record := &model.JobInfo{TaskID: task.TaskID, WorkspaceID: "space", Type: string(config.JobCommand), Status: string(tc.jobStatus)}
 				if tc.cancelPending {
 					record.SchedulingReason = "parent workflow cancelled"
-					require.True(t, workflowjob.IsCancelledJobCleanupPending(record))
+					require.True(t, jobexec.IsCancelledJobCleanupPending(record))
 				}
 				require.NoError(t, raw.Add(ctx, record))
 			}

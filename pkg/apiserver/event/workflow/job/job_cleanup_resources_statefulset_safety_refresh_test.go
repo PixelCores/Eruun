@@ -17,6 +17,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
@@ -156,7 +157,7 @@ func TestCleanupResourcesJobCtlSafetyRefreshRetryStopsOnPersistedCancellation(t 
 	require.NoError(t, ctl.ensureRequiredStatefulSetDeletionAllowed(ctx, component))
 	require.NoError(t, ctl.prepareRequiredStatefulSetDeletion(ctx, component))
 	client.ClearActions()
-	store, ok := ctl.store.(*cleanupComponentStore)
+	store, ok := ctl.Store.(*cleanupComponentStore)
 	require.True(t, ok)
 
 	getCount := 0
@@ -187,7 +188,7 @@ func TestCleanupResourcesJobCtlRequiredStatefulSetSafetyRefreshRejectsNilClient(
 	ctx := context.Background()
 	component, _, _, ctl := newRequiredStatefulSetSafetyRefreshController(t, true, false)
 	require.NoError(t, ctl.ensureRequiredStatefulSetDeletionAllowed(ctx, component))
-	ctl.client = nil
+	ctl.Client = nil
 
 	err := ctl.ensureRequiredStatefulSetSafetyCurrent(ctx)
 
@@ -283,7 +284,7 @@ func newRequiredStatefulSetSafetyRefreshController(
 		TaskID: "task-1", JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: marker, Status: config.StatusRunning, Timeout: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: store, Ack: nil})
+	ctl := NewCleanupResourcesJobCtl(job, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 	return component, statefulSet, client, ctl
 }

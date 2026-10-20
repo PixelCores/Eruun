@@ -14,6 +14,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -32,7 +33,7 @@ func waitForJobAdmission(ctx context.Context, store datastore.DataStore, task *m
 		return noop, nil
 	}
 	owner := &model.WorkflowQueue{
-		TaskID: task.TaskID, RunGeneration: jobOwnerGeneration(task),
+		TaskID: task.TaskID, RunGeneration: jobexec.JobOwnerGeneration(task),
 		AppID: task.AppID, WorkspaceID: task.WorkspaceID,
 		RunToken: task.RunToken, WorkerID: task.WorkerID, Status: task.OwnerStatus,
 	}
@@ -96,7 +97,7 @@ func releaseLostJobAdmission(ctx context.Context, store datastore.DataStore, tas
 		return cause
 	}
 	owner := &model.WorkflowQueue{
-		TaskID: task.TaskID, RunGeneration: jobOwnerGeneration(task),
+		TaskID: task.TaskID, RunGeneration: jobexec.JobOwnerGeneration(task),
 		AppID: task.AppID, WorkspaceID: task.WorkspaceID,
 		RunToken: task.RunToken, WorkerID: task.WorkerID, Status: task.OwnerStatus,
 	}
@@ -116,14 +117,14 @@ func releaseLostJobAdmission(ctx context.Context, store datastore.DataStore, tas
 // and all evaluation Runner attempts share the same persisted budget as trial
 // Sandbox creation, including across API and Worker replicas.
 func (c *InstantJobCtl) waitRetryCreationBudget(ctx context.Context) error {
-	if c.job.JobType != string(config.JobEval) && c.job.JobType != string(config.JobCommand) {
+	if c.Job.JobType != string(config.JobEval) && c.Job.JobType != string(config.JobCommand) {
 		return nil
 	}
 	for {
 		if err := c.ensureRetryWorkflowOwnership(ctx); err != nil {
 			return err
 		}
-		delay, err := repository.ReserveResourceCreation(ctx, c.store)
+		delay, err := repository.ReserveResourceCreation(ctx, c.Store)
 		if err != nil {
 			return errors.Join(signal.ErrInfrastructureStop, err)
 		}

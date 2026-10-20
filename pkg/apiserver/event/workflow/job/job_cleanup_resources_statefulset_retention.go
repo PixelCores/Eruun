@@ -20,6 +20,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 )
 
@@ -57,8 +58,8 @@ func newRequiredStatefulSetSafetyRefreshError(err error) *requiredStatefulSetSaf
 // decision made during the initial preflight cannot go stale during retention
 // convergence or before the final StatefulSet delete.
 func (c *CleanupResourcesJobCtl) ensureRequiredStatefulSetSafetyCurrent(ctx context.Context) error {
-	if c == nil || c.job == nil || c.job.Status != config.StatusRunning ||
-		!jobinfo.VersionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo) {
+	if c == nil || c.Job == nil || c.Job.Status != config.StatusRunning ||
+		!jobinfo.VersionUpdateCleanupRequiresStatefulSetDeletion(c.Job.InternalInfo) {
 		return nil
 	}
 	target := c.requiredStatefulSetPodTarget
@@ -67,7 +68,7 @@ func (c *CleanupResourcesJobCtl) ensureRequiredStatefulSetSafetyCurrent(ctx cont
 		// destructive mutation. Avoid recursively initializing that checkpoint.
 		return nil
 	}
-	if c.client == nil {
+	if c.Client == nil {
 		return fmt.Errorf("refresh required StatefulSet safety: client is nil")
 	}
 	if target.statefulSetWasFound && target.statefulSetUID == "" {
@@ -77,7 +78,7 @@ func (c *CleanupResourcesJobCtl) ensureRequiredStatefulSetSafetyCurrent(ctx cont
 		return fmt.Errorf("required StatefulSet %s safety checkpoint records UID %q for a missing StatefulSet", cleanupResourceDisplayName(target.ref), target.statefulSetUID)
 	}
 
-	component, err := jobinfo.CleanupComponentFromJobInfo(c.job)
+	component, err := jobinfo.CleanupComponentFromJobInfo(c.Job)
 	if err != nil {
 		return fmt.Errorf("load required StatefulSet cleanup component while refreshing safety: %w", err)
 	}
@@ -89,7 +90,7 @@ func (c *CleanupResourcesJobCtl) ensureRequiredStatefulSetSafetyCurrent(ctx cont
 		return fmt.Errorf("required StatefulSet safety target changed from %s to %s", cleanupResourceDisplayName(target.ref), cleanupResourceDisplayName(requiredRef))
 	}
 
-	statefulSet, err := c.client.AppsV1().StatefulSets(requiredRef.namespace).Get(ctx, requiredRef.name, metav1.GetOptions{})
+	statefulSet, err := c.Client.AppsV1().StatefulSets(requiredRef.namespace).Get(ctx, requiredRef.name, metav1.GetOptions{})
 	statefulSetFound := err == nil
 	if err != nil && !k8serrors.IsNotFound(err) {
 		return fmt.Errorf("get required StatefulSet %s while refreshing safety: %w", cleanupResourceDisplayName(requiredRef), err)
@@ -112,14 +113,14 @@ func (c *CleanupResourcesJobCtl) ensureRequiredStatefulSetSafetyCurrent(ctx cont
 }
 
 func (c *CleanupResourcesJobCtl) prepareRequiredStatefulSetDeletion(ctx context.Context, component *model.ApplicationComponent) error {
-	if c == nil || c.job == nil || !jobinfo.VersionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo) {
+	if c == nil || c.Job == nil || !jobinfo.VersionUpdateCleanupRequiresStatefulSetDeletion(c.Job.InternalInfo) {
 		return nil
 	}
 	ref, err := requiredStatefulSetCleanupRef(component)
 	if err != nil {
 		return err
 	}
-	templates := jobinfo.VersionUpdateCleanupStatefulSetPVCTemplatesToDelete(c.job.InternalInfo)
+	templates := jobinfo.VersionUpdateCleanupStatefulSetPVCTemplatesToDelete(c.Job.InternalInfo)
 	generated, err := GenerateStoreService(component)
 	if err != nil {
 		return err
@@ -153,7 +154,7 @@ func (c *CleanupResourcesJobCtl) prepareRequiredStatefulSetDeletion(ctx context.
 }
 
 func (c *CleanupResourcesJobCtl) ensureStatefulSetPVCRetention(ctx context.Context, ref cleanupResourceRef) error {
-	if c == nil || c.client == nil {
+	if c == nil || c.Client == nil {
 		return fmt.Errorf("client is nil")
 	}
 	if ref.kind != domainspec.ResourceStatefulSet || strings.TrimSpace(ref.name) == "" {
@@ -173,7 +174,7 @@ func (c *CleanupResourcesJobCtl) ensureStatefulSetPVCRetention(ctx context.Conte
 			}
 			return false, err
 		}
-		statefulSet, err := c.client.AppsV1().StatefulSets(ref.namespace).Get(checkCtx, ref.name, metav1.GetOptions{})
+		statefulSet, err := c.Client.AppsV1().StatefulSets(ref.namespace).Get(checkCtx, ref.name, metav1.GetOptions{})
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
 				return true, nil
@@ -205,7 +206,7 @@ func (c *CleanupResourcesJobCtl) ensureStatefulSetPVCRetention(ctx context.Conte
 				}
 				return false, err
 			}
-			statefulSet, err = c.client.AppsV1().StatefulSets(ref.namespace).Update(checkCtx, updated, metav1.UpdateOptions{})
+			statefulSet, err = c.Client.AppsV1().StatefulSets(ref.namespace).Update(checkCtx, updated, metav1.UpdateOptions{})
 			if err != nil {
 				if k8serrors.IsNotFound(err) {
 					return true, nil
@@ -273,13 +274,13 @@ func (c *CleanupResourcesJobCtl) ensureStatefulSetPVCOwnerReferencesRemoved(
 	statefulSetUID types.UID,
 	templates []string,
 ) (bool, error) {
-	list, err := c.client.CoreV1().PersistentVolumeClaims(ref.namespace).List(ctx, metav1.ListOptions{})
+	list, err := c.Client.CoreV1().PersistentVolumeClaims(ref.namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return false, fmt.Errorf("list StatefulSet %s PVCs while waiting for retention convergence: %w", cleanupResourceDisplayName(ref), err)
 	}
 	var plannedDeletionTemplates []string
-	if c.job != nil {
-		plannedDeletionTemplates = jobinfo.VersionUpdateCleanupStatefulSetPVCTemplatesToDelete(c.job.InternalInfo)
+	if c.Job != nil {
+		plannedDeletionTemplates = jobinfo.VersionUpdateCleanupStatefulSetPVCTemplatesToDelete(c.Job.InternalInfo)
 	}
 	updatedAny := false
 	for i := range list.Items {
@@ -313,7 +314,7 @@ func (c *CleanupResourcesJobCtl) ensureStatefulSetPVCOwnerReferencesRemoved(
 		if err := c.ensureRequiredStatefulSetWorkflowTaskActive(ctx, fmt.Sprintf("patching StatefulSet %s PVC %s/%s owner references", cleanupResourceDisplayName(ref), ref.namespace, pvc.Name)); err != nil {
 			return false, err
 		}
-		if _, err := c.client.CoreV1().PersistentVolumeClaims(ref.namespace).Patch(ctx, pvc.Name, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
+		if _, err := c.Client.CoreV1().PersistentVolumeClaims(ref.namespace).Patch(ctx, pvc.Name, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
 			if retryableStatefulSetRetentionError(err) {
 				return false, err
 			}
@@ -433,7 +434,7 @@ func statefulSetPVCRetentionIsRetain(statefulSet *appsv1.StatefulSet) bool {
 
 func statefulSetVolumeClaimTemplatePVC(statefulSetName string, templates []string, pvcName string) bool {
 	for _, template := range templates {
-		if isStatefulSetTemplatePVCName(template, statefulSetName, pvcName) {
+		if jobexec.IsStatefulSetTemplatePVCName(template, statefulSetName, pvcName) {
 			return true
 		}
 	}

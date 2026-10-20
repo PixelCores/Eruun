@@ -20,7 +20,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
@@ -405,7 +405,7 @@ func runnerJobStatusAuthorized(record *model.JobInfo, parentStatus config.Status
 	// Workflow cleanup ownership may expire before Kubernetes finishes deleting
 	// the runner Pod. Keep the exact claimed attempt authorized only while its
 	// durable cancellation cleanup intent remains pending.
-	return parentStatus == config.StatusCancelled && workflowjob.IsCancelledJobCleanupPending(record)
+	return parentStatus == config.StatusCancelled && jobexec.IsCancelledJobCleanupPending(record)
 }
 
 func (s *Service) applyRunnerEvent(ctx context.Context, store datastore.DataStore, auth *runnerAuthorization, state *evaluationRunnerState, event RunnerEvent) error {

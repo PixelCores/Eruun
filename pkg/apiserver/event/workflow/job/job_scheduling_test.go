@@ -23,6 +23,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
@@ -98,7 +99,7 @@ func TestJobRunnerWaitsForGlobalPriorityAdmission(t *testing.T) {
 		task := &model.JobTask{Name: name, TaskID: name, Namespace: "default", WorkspaceID: owner.WorkspaceID, ExecutionKey: name, RunGeneration: 1, OwnerRunGeneration: 1, RunToken: owner.RunToken, WorkerID: owner.WorkerID, JobType: string(config.JobDeployConfigMap), SchedulingClass: name, JobInfo: &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"}}}
 		result := make(chan error, 1)
 		results[name] = result
-		go func() { result <- runJob(ctx, task, &Runtime{Client: client, Store: store, Ack: func() {}}) }()
+		go func() { result <- runJob(ctx, task, &jobexec.Runtime{Client: client, Store: store, Ack: func() {}}) }()
 		require.Eventually(t, func() bool {
 			var count int64
 			return db.Model(&model.JobInfo{}).Where("execution_key = ? AND scheduling_state = ?", name, "queued").Count(&count).Error == nil && count == 1
@@ -174,7 +175,7 @@ func TestCancelledKubernetesJobKeepsAdmissionWhenOnlineCleanupFails(t *testing.T
 	runCtx, cancelRun := context.WithCancel(context.Background())
 	defer cancelRun()
 	result := make(chan error, 1)
-	go func() { result <- runJob(runCtx, task, &Runtime{Client: client, Store: store, Ack: func() {}}) }()
+	go func() { result <- runJob(runCtx, task, &jobexec.Runtime{Client: client, Store: store, Ack: func() {}}) }()
 	require.Eventually(t, func() bool {
 		var count int64
 		return db.Model(&model.JobInfo{}).Where("execution_key = ? AND scheduling_state = ?", task.ExecutionKey, workflowconfig.JobSchedulingQueued).Count(&count).Error == nil && count == 1
@@ -201,7 +202,7 @@ func TestCancelledKubernetesJobKeepsAdmissionWhenOnlineCleanupFails(t *testing.T
 	require.NoError(t, db.Where("execution_key = ?", task.ExecutionKey).First(&saved).Error)
 	require.Equal(t, string(config.StatusCancelled), saved.Status)
 	require.Equal(t, workflowconfig.JobSchedulingAdmitted, saved.SchedulingState)
-	require.Equal(t, cancelledJobCleanupPending, saved.SchedulingReason)
+	require.True(t, jobexec.IsCancelledJobCleanupPending(&saved))
 	_, err = client.BatchV1().Jobs(desired.Namespace).Get(ctx, desired.Name, metav1.GetOptions{})
 	require.NoError(t, err)
 
@@ -222,12 +223,12 @@ func TestCancelledKubernetesJobKeepsAdmissionWhenOnlineCleanupFails(t *testing.T
 	require.NoError(t, db.Where("execution_key = ?", waitingKey).First(waiting).Error)
 	require.Equal(t, workflowconfig.JobSchedulingQueued, waiting.SchedulingState)
 
-	cleaned, err := CleanupRecoveredCancelledJobs(ctx, client, store)
+	cleaned, err := jobexec.CleanupRecoveredCancelledJobs(ctx, client, store)
 	require.NoError(t, err)
 	require.Equal(t, 1, cleaned)
 	require.NoError(t, db.Where("execution_key = ?", task.ExecutionKey).First(&saved).Error)
 	require.Equal(t, workflowconfig.JobSchedulingReleased, saved.SchedulingState)
-	require.Equal(t, cancelledJobCleanupComplete, saved.SchedulingReason)
+	require.Equal(t, jobexec.CancelledJobCleanupComplete, saved.SchedulingReason)
 }
 
 func TestJobAdmissionWaitExitReleasesQueueWithoutKubernetesEffects(t *testing.T) {
@@ -255,7 +256,7 @@ func TestJobAdmissionWaitExitReleasesQueueWithoutKubernetesEffects(t *testing.T)
 				client := fake.NewSimpleClientset()
 				result := make(chan error, 1)
 				go func() {
-					result <- RunJobs(ctx, []*model.JobTask{task}, &Runtime{
+					result <- RunJobs(ctx, []*model.JobTask{task}, &jobexec.Runtime{
 						Concurrency:   concurrency,
 						Client:        client,
 						Store:         store,
@@ -341,7 +342,7 @@ func TestJobRunnerRechecksApplicationAfterAdmission(t *testing.T) {
 				JobType: string(config.JobDeployConfigMap), JobInfo: &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "work", Namespace: "default"}}}
 			client := fake.NewSimpleClientset()
 			result := make(chan error, 1)
-			go func() { result <- runJob(ctx, task, &Runtime{Client: client, Store: store, Ack: func() {}}) }()
+			go func() { result <- runJob(ctx, task, &jobexec.Runtime{Client: client, Store: store, Ack: func() {}}) }()
 			require.Eventually(t, func() bool {
 				var count int64
 				return db.Model(&model.JobInfo{}).Where("execution_key = ? AND scheduling_state = ?", task.ExecutionKey, "queued").Count(&count).Error == nil && count == 1

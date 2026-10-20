@@ -26,6 +26,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -66,7 +67,7 @@ func TestRunJobsSerialContinuesWhenStopOnFailureFalse(t *testing.T) {
 		{Name: "second", JobType: "unknown"},
 	}
 
-	RunJobs(context.Background(), jobs, &Runtime{
+	RunJobs(context.Background(), jobs, &jobexec.Runtime{
 		Concurrency: 1,
 		Store:       &jobtest.NoopStore{},
 		Ack:         func() {},
@@ -82,7 +83,7 @@ func TestRunJobsSerialStopsWhenStopOnFailureTrue(t *testing.T) {
 		{Name: "second", JobType: "unknown"},
 	}
 
-	RunJobs(context.Background(), jobs, &Runtime{
+	RunJobs(context.Background(), jobs, &jobexec.Runtime{
 		Concurrency:   1,
 		Store:         &jobtest.NoopStore{},
 		Ack:           func() {},
@@ -116,7 +117,7 @@ func TestRunJobsSerialStopsWhenAckCancelsContext(t *testing.T) {
 		{Name: "second", JobType: "unknown"},
 	}
 
-	RunJobs(ctx, jobs, &Runtime{
+	RunJobs(ctx, jobs, &jobexec.Runtime{
 		Concurrency: 1,
 		Client:      fake.NewSimpleClientset(),
 		Store:       jobtest.WithJobTestOwner(store, jobs[0]),
@@ -157,7 +158,7 @@ func TestRunJobsReturnsInfrastructureStopWhenDistributedCheckpointFails(t *testi
 				}},
 			}
 
-			err := RunJobs(context.Background(), []*model.JobTask{task}, &Runtime{
+			err := RunJobs(context.Background(), []*model.JobTask{task}, &jobexec.Runtime{
 				Concurrency: concurrency,
 				Client:      fake.NewSimpleClientset(),
 				Store:       store,
@@ -198,7 +199,7 @@ func TestRunJobsReturnsInfrastructureStopWhenStartOwnershipTransactionFails(t *t
 	client := fake.NewSimpleClientset()
 	ackCount := 0
 
-	err := RunJobs(context.Background(), []*model.JobTask{task}, &Runtime{
+	err := RunJobs(context.Background(), []*model.JobTask{task}, &jobexec.Runtime{
 		Concurrency:   1,
 		Client:        client,
 		Store:         store,
@@ -256,7 +257,7 @@ func TestRunJobsReturnsInfrastructureStopWhenTerminalPersistenceFails(t *testing
 					tx.AddError(persistErr)
 				}
 			}))
-			err = RunJobs(context.Background(), []*model.JobTask{task}, &Runtime{
+			err = RunJobs(context.Background(), []*model.JobTask{task}, &jobexec.Runtime{
 				Concurrency:   concurrency,
 				Client:        fake.NewSimpleClientset(),
 				Store:         store,
@@ -298,7 +299,7 @@ func TestRunJobReturnsInfrastructureStopWhenEarlyTerminalPersistenceFails(t *tes
 		{
 			name: "cancellation watcher unavailable",
 			ctx: func() (context.Context, context.CancelFunc) {
-				return WithTaskMetadata(context.Background(), "task-early-terminal"), func() {}
+				return jobexec.WithTaskMetadata(context.Background(), "task-early-terminal"), func() {}
 			},
 		},
 	} {
@@ -323,7 +324,7 @@ func TestRunJobReturnsInfrastructureStopWhenEarlyTerminalPersistenceFails(t *tes
 
 			client := fake.NewSimpleClientset()
 			ack := func() {}
-			err := runJob(ctx, task, &Runtime{Client: client, Store: store, Ack: ack})
+			err := runJob(ctx, task, &jobexec.Runtime{Client: client, Store: store, Ack: ack})
 
 			require.ErrorIs(t, err, signal.ErrInfrastructureStop)
 			require.ErrorIs(t, err, persistErr)
@@ -349,7 +350,7 @@ func TestRunJobsRejectsMissingOwnershipBeforeSideEffects(t *testing.T) {
 	}
 
 	client := fake.NewSimpleClientset()
-	err := RunJobs(context.Background(), []*model.JobTask{task}, &Runtime{
+	err := RunJobs(context.Background(), []*model.JobTask{task}, &jobexec.Runtime{
 		Concurrency:   1,
 		Client:        client,
 		Store:         store,
@@ -400,7 +401,7 @@ func TestRunJobsReturnsTerminalCallbackPersistenceFailureWithoutWorker(t *testin
 			}))
 			result := make(chan error, 1)
 			go func() {
-				result <- RunJobs(ctx, []*model.JobTask{task}, &Runtime{
+				result <- RunJobs(ctx, []*model.JobTask{task}, &jobexec.Runtime{
 					Concurrency:       concurrency,
 					Store:             store,
 					Ack:               func() {},
@@ -455,7 +456,7 @@ func TestRunJobsInfrastructureStopDoesNotPersistCancelledState(t *testing.T) {
 		cancel(signal.ErrInfrastructureStop)
 	}
 
-	RunJobs(ctx, jobs, &Runtime{
+	RunJobs(ctx, jobs, &jobexec.Runtime{
 		Concurrency: 1,
 		Client:      fake.NewSimpleClientset(),
 		Store:       store,
@@ -476,7 +477,7 @@ func TestRunJobsParallelDoesNotStartJobsWithCancelledContext(t *testing.T) {
 		{Name: "second", JobType: "unknown"},
 	}
 
-	RunJobs(ctx, jobs, &Runtime{
+	RunJobs(ctx, jobs, &jobexec.Runtime{
 		Concurrency: 2,
 		Store:       &jobtest.NoopStore{},
 		Ack:         func() {},
@@ -535,7 +536,7 @@ func TestRunJobInfrastructureStopDuringApplicationCheckDoesNotPersistFailure(t *
 	ack := func() { ackCount++ }
 	done := make(chan struct{})
 	go func() {
-		runJob(ctx, job, &Runtime{Client: client, Store: store, Ack: ack})
+		runJob(ctx, job, &jobexec.Runtime{Client: client, Store: store, Ack: ack})
 		close(done)
 	}()
 
@@ -552,7 +553,7 @@ func TestRunJobInfrastructureStopDuringApplicationCheckDoesNotPersistFailure(t *
 
 func TestRunJobInfrastructureStopDuringCancellationWatcherSetupDoesNotPersistFailure(t *testing.T) {
 	ctx, cancel := context.WithCancelCause(context.Background())
-	ctx = WithTaskMetadata(ctx, "task-infrastructure-stop")
+	ctx = jobexec.WithTaskMetadata(ctx, "task-infrastructure-stop")
 	store := &componentStatusStore{}
 	job := infrastructureStopTestJob()
 	hook := &blockingRedisGetHook{started: make(chan struct{})}
@@ -562,7 +563,7 @@ func TestRunJobInfrastructureStopDuringCancellationWatcherSetupDoesNotPersistFai
 	client := fake.NewSimpleClientset()
 	ackCount := 0
 	ack := func() { ackCount++ }
-	runtime := &Runtime{Client: client, Store: store, Ack: ack, RedisClient: redisClient}
+	runtime := &jobexec.Runtime{Client: client, Store: store, Ack: ack, RedisClient: redisClient}
 	done := make(chan struct{})
 	go func() {
 		runJob(ctx, job, runtime)

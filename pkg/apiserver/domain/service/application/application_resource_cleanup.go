@@ -25,6 +25,7 @@ import (
 	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
@@ -268,7 +269,7 @@ func (c *applicationsServiceImpl) sharedComponentHasAbnormalPods(ctx context.Con
 }
 
 func (c *applicationsServiceImpl) deleteComponentResources(ctx context.Context, component *model.ApplicationComponent, reporter *cleanupReporter) error {
-	props, err := job.ParseProperties(component.Properties)
+	props, err := jobexec.ParseProperties(component.Properties)
 	if err != nil {
 		return err
 	}

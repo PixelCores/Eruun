@@ -19,6 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
@@ -36,11 +37,11 @@ const (
 	cancelledJobCleanupRenewInterval = config.DelTimeOut / 3
 )
 
-func newJobRuntime(config *Runtime) *Runtime {
+func newJobRuntime(config *jobexec.Runtime) *jobexec.Runtime {
 	if config == nil {
-		config = &Runtime{}
+		config = &jobexec.Runtime{}
 	}
-	return &Runtime{
+	return &jobexec.Runtime{
 		Concurrency:       config.Concurrency,
 		Client:            config.Client,
 		Store:             config.Store,
@@ -52,40 +53,40 @@ func newJobRuntime(config *Runtime) *Runtime {
 		DelayQueue:        config.DelayQueue,
 		ResourceWaiter:    config.ResourceWaiter,
 		KubeConfig:        config.KubeConfig,
-		shareLocker:       newShareLocker(config.RedisClient),
-		archiveUploader:   currentArchiveUploader(),
+		ShareLocker:       jobexec.NewShareLocker(config.RedisClient),
+		ArchiveUploader:   currentArchiveUploader(),
 	}
 }
 
-func initJobCtl(job *model.JobTask, runtime *Runtime) JobCtl {
+func initJobCtl(job *model.JobTask, runtime *jobexec.Runtime) JobCtl {
 	if !validJobControllerDependencies(job, runtime) {
 		return nil
 	}
 	switch job.JobType {
 	case string(config.JobDeploy):
-		return NewDeployJobCtl(job, runtime, runtime.shareLocker)
+		return NewDeployJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployService):
-		return NewDeployServiceJobCtl(job, runtime, runtime.shareLocker)
+		return NewDeployServiceJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployStore):
-		return NewDeployStatefulSetJobCtl(job, runtime, runtime.shareLocker)
+		return NewDeployStatefulSetJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployPVC):
-		return NewDeployPVCJobCtl(job, runtime, runtime.shareLocker)
+		return NewDeployPVCJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployConfigMap):
-		return NewDeployConfigMapJobCtl(job, runtime, runtime.shareLocker)
+		return NewDeployConfigMapJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeploySecret):
-		return NewDeploySecretJobCtl(job, runtime, runtime.shareLocker)
+		return NewDeploySecretJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployIngress):
-		return NewDeployIngressJobCtl(job, runtime, runtime.shareLocker)
+		return NewDeployIngressJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployServiceAccount):
-		return NewDeployServiceAccountJobCtl(job, runtime, runtime.shareLocker)
+		return NewDeployServiceAccountJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployRole):
-		return NewDeployRoleJobCtl(job, runtime, runtime.shareLocker)
+		return NewDeployRoleJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployRoleBinding):
-		return NewDeployRoleBindingJobCtl(job, runtime, runtime.shareLocker)
+		return NewDeployRoleBindingJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployClusterRole):
-		return NewDeployClusterRoleJobCtl(job, runtime, runtime.shareLocker)
+		return NewDeployClusterRoleJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployClusterRoleBinding):
-		return NewDeployClusterRoleBindingJobCtl(job, runtime, runtime.shareLocker)
+		return NewDeployClusterRoleBindingJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployInstant), string(config.JobCommand), string(config.JobEval):
 		return NewInstantJobCtl(job, runtime)
 	case string(config.JobDeployScheduled):
@@ -112,7 +113,7 @@ func initJobCtl(job *model.JobTask, runtime *Runtime) JobCtl {
 	}
 }
 
-func validJobControllerDependencies(job *model.JobTask, runtime *Runtime) bool {
+func validJobControllerDependencies(job *model.JobTask, runtime *jobexec.Runtime) bool {
 	if runtime == nil || runtime.Store == nil {
 		klog.ErrorS(fmt.Errorf("store is nil"), "init job controller failed")
 		return false
@@ -129,14 +130,14 @@ func validJobControllerDependencies(job *model.JobTask, runtime *Runtime) bool {
 	return true
 }
 
-func RunJobs(ctx context.Context, jobs []*model.JobTask, run *Runtime) error {
+func RunJobs(ctx context.Context, jobs []*model.JobTask, run *jobexec.Runtime) error {
 	logger := klog.FromContext(ctx)
 	if len(jobs) == 0 {
 		logger.Info("no jobs to run")
 		return nil
 	}
 	if run == nil {
-		run = &Runtime{}
+		run = &jobexec.Runtime{}
 	}
 	store := run.Store
 	concurrency, stopOnFailure := run.Concurrency, run.StopOnFailure
@@ -174,19 +175,19 @@ func RunJobs(ctx context.Context, jobs []*model.JobTask, run *Runtime) error {
 		}
 	}
 	runtime := newJobRuntime(run)
-	defer runtime.close()
+	defer runtime.Close()
 
 	if concurrency == 1 {
 		for _, job := range jobs {
 			if ctx.Err() != nil {
-				return infrastructureStopCause(ctx)
+				return jobexec.InfrastructureStopCause(ctx)
 			}
 			logger.Info("Job started", "jobName", job.Name, "jobType", job.JobType)
 			if err := runJobWithEvaluationRecovery(ctx, job, runtime); err != nil {
 				return err
 			}
 			if ctx.Err() != nil {
-				return infrastructureStopCause(ctx)
+				return jobexec.InfrastructureStopCause(ctx)
 			}
 			// DEBUG: Log job completion status before checking for failure.
 			logger.Info("DEBUG: Job finished running", "jobName", job.Name, "status", job.Status)
@@ -204,10 +205,10 @@ func RunJobs(ctx context.Context, jobs []*model.JobTask, run *Runtime) error {
 	if err := jobPool.Run(); err != nil {
 		return err
 	}
-	return infrastructureStopCause(ctx)
+	return jobexec.InfrastructureStopCause(ctx)
 }
 
-func runJob(ctx context.Context, job *model.JobTask, runtime *Runtime) (resultErr error) {
+func runJob(ctx context.Context, job *model.JobTask, runtime *jobexec.Runtime) (resultErr error) {
 	if runtime == nil {
 		return fmt.Errorf("run job: runtime is nil")
 	}
@@ -224,7 +225,7 @@ func runJob(ctx context.Context, job *model.JobTask, runtime *Runtime) (resultEr
 		"jobName", job.Name,
 	)
 	ctx = klog.NewContext(ctx, logger)
-	ctx = WithCleanupTracker(ctx)
+	ctx = jobexec.WithCleanupTracker(ctx)
 
 	var (
 		watcher  *signal.CancelWatcher
@@ -314,7 +315,7 @@ func runJob(ctx context.Context, job *model.JobTask, runtime *Runtime) (resultEr
 		return
 	}
 
-	if taskID := TaskIDFromContext(ctx); taskID != "" {
+	if taskID := jobexec.TaskIDFromContext(ctx); taskID != "" {
 		var err error
 		var watcherCtx context.Context
 		var watcherCancel context.CancelFunc
@@ -348,7 +349,7 @@ func runJob(ctx context.Context, job *model.JobTask, runtime *Runtime) (resultEr
 	}
 	releaseAdmission, admissionErr := waitForJobAdmission(jobCtx, store, job, client)
 	defer func() {
-		if errors.Is(resultErr, signal.ErrInfrastructureStop) && job.Status == config.StatusCancelled && recoverableKubernetesJobType(job.JobType) {
+		if errors.Is(resultErr, signal.ErrInfrastructureStop) && job.Status == config.StatusCancelled && jobexec.RecoverableKubernetesJobType(job.JobType) {
 			return
 		}
 		if err := releaseAdmission(); err != nil {
@@ -361,7 +362,7 @@ func runJob(ctx context.Context, job *model.JobTask, runtime *Runtime) (resultEr
 			// poll can see that state first; only the same lease may finish this
 			// unstarted Job under the cancelled parent instead of running it.
 			ownershipCtx, cancel := context.WithTimeout(context.WithoutCancel(jobCtx), 5*time.Second)
-			status, ownershipErr := currentJobWorkflowOwnershipStatus(ownershipCtx, store, job)
+			status, ownershipErr := jobexec.CurrentJobWorkflowOwnershipStatus(ownershipCtx, store, job)
 			cancel()
 			if ownershipErr != nil {
 				return errors.Join(signal.ErrInfrastructureStop, admissionErr, ownershipErr)
@@ -412,7 +413,7 @@ func runJob(ctx context.Context, job *model.JobTask, runtime *Runtime) (resultEr
 	return runAdmittedJob(jobCtx, jobCtl, job, client, store, ack, runtime, span)
 }
 
-func runAdmittedJob(jobCtx context.Context, jobCtl JobCtl, job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), runtime *Runtime, span trace.Span) (resultErr error) {
+func runAdmittedJob(jobCtx context.Context, jobCtl JobCtl, job *model.JobTask, client kubernetes.Interface, store datastore.DataStore, ack func(), runtime *jobexec.Runtime, span trace.Span) (resultErr error) {
 	logger := klog.FromContext(jobCtx)
 	// Admission may wait while the application is deleted. Check it still exists
 	// after that wait, immediately before execution side effects.
@@ -439,7 +440,7 @@ func runAdmittedJob(jobCtx context.Context, jobCtl JobCtl, job *model.JobTask, c
 	var startStatusAppID string
 	ownershipErr := jobinfo.WithJobInfoOwnership(persistCtx, store, job, func(writeStore datastore.DataStore) error {
 		var err error
-		startStatusAppID, err = syncComponentStatusOnJobStart(persistCtx, job, writeStore)
+		startStatusAppID, err = jobexec.SyncComponentStatusOnJobStart(persistCtx, job, writeStore)
 		return err
 	})
 	persistCancel()
@@ -450,7 +451,7 @@ func runAdmittedJob(jobCtx context.Context, jobCtl JobCtl, job *model.JobTask, c
 			fmt.Errorf("verify workflow ownership before job execution: %w", ownershipErr),
 		)
 	}
-	invalidateComponentsCache(jobCtx, runtime, startStatusAppID, "job start status sync")
+	jobexec.InvalidateComponentsCache(jobCtx, runtime, startStatusAppID, "job start status sync")
 
 	cleaned := false
 
@@ -493,7 +494,7 @@ func runAdmittedJob(jobCtx context.Context, jobCtl JobCtl, job *model.JobTask, c
 	runErr := jobCtl.Run(jobCtx)
 	if signal.IsInfrastructureStop(jobCtx) || errors.Is(runErr, signal.ErrInfrastructureStop) || errors.Is(runErr, repository.ErrWorkflowOwnershipLost) {
 		ownershipCtx, cancel := context.WithTimeout(context.WithoutCancel(jobCtx), 5*time.Second)
-		status, ownershipErr := currentJobWorkflowOwnershipStatus(ownershipCtx, store, job)
+		status, ownershipErr := jobexec.CurrentJobWorkflowOwnershipStatus(ownershipCtx, store, job)
 		cancel()
 		if ownershipErr == nil && status == config.StatusCancelled {
 			job.OwnerStatus = config.StatusCancelled
@@ -551,7 +552,7 @@ func runAdmittedJob(jobCtx context.Context, jobCtl JobCtl, job *model.JobTask, c
 	}
 
 	if job.Status == config.StatusCompleted {
-		finalizeCompletedJobIfNeeded(jobCtx, client, job)
+		jobexec.FinalizeCompletedJobIfNeeded(jobCtx, client, job)
 	}
 
 	if !cleaned && jobStatusFailed(job.Status) {
@@ -561,7 +562,7 @@ func runAdmittedJob(jobCtx context.Context, jobCtl JobCtl, job *model.JobTask, c
 }
 
 func adoptCancelledWorkflowOwner(ctx context.Context, store datastore.DataStore, job *model.JobTask) (bool, error) {
-	status, err := currentJobWorkflowOwnershipStatus(ctx, store, job)
+	status, err := jobexec.CurrentJobWorkflowOwnershipStatus(ctx, store, job)
 	if err != nil {
 		return false, err
 	}
@@ -572,7 +573,7 @@ func adoptCancelledWorkflowOwner(ctx context.Context, store datastore.DataStore,
 		job.OwnerStatus = config.StatusCancelled
 		return true, nil
 	default:
-		return false, fmt.Errorf("%w: workflow is %s", errWorkflowJobOwnershipChanged, status)
+		return false, fmt.Errorf("%w: workflow is %s", jobexec.ErrWorkflowJobOwnershipChanged, status)
 	}
 }
 
@@ -582,7 +583,7 @@ func cleanCancelledJob(ctx context.Context, jobCtl JobCtl, store datastore.DataS
 	if err := renewCancelledJobCleanupLease(cleanupCtx, store, job); err != nil {
 		return err
 	}
-	if err := beginCancelledJobCleanup(cleanupCtx, store, job); err != nil {
+	if err := jobexec.BeginCancelledJobCleanup(cleanupCtx, store, job); err != nil {
 		return fmt.Errorf("persist cancelled job cleanup intent: %w", err)
 	}
 	renewCtx, stopRenew := context.WithCancel(cleanupCtx)
@@ -607,8 +608,8 @@ func cleanCancelledJob(ctx context.Context, jobCtl JobCtl, store datastore.DataS
 			}
 		}
 	}()
-	outcome := cancelledJobCleanupComplete
-	if cleaner, ok := jobCtl.(cancelledJobCleaner); ok {
+	outcome := jobexec.CancelledJobCleanupComplete
+	if cleaner, ok := jobCtl.(jobexec.CancelledJobCleaner); ok {
 		var err error
 		outcome, err = cleaner.CleanCancelled(cleanupCtx)
 		if err != nil {
@@ -619,7 +620,7 @@ func cleanCancelledJob(ctx context.Context, jobCtl JobCtl, store datastore.DataS
 	} else {
 		jobCtl.Clean(cleanupCtx)
 	}
-	if err := finishOnlineCancelledJobCleanup(cleanupCtx, store, job, outcome); err != nil {
+	if err := jobexec.FinishOnlineCancelledJobCleanup(cleanupCtx, store, job, outcome); err != nil {
 		stopRenew()
 		<-renewDone
 		return fmt.Errorf("complete cancelled job cleanup intent: %w", err)
@@ -636,13 +637,13 @@ func cleanCancelledJob(ctx context.Context, jobCtl JobCtl, store datastore.DataS
 
 func renewCancelledJobCleanupLease(ctx context.Context, store datastore.DataStore, job *model.JobTask) error {
 	renewed, err := repository.RenewCancelledWorkflowTaskLease(
-		ctx, store, job.TaskID, jobOwnerGeneration(job), job.RunToken, job.WorkerID, cancelledJobCleanupLeaseDuration,
+		ctx, store, job.TaskID, jobexec.JobOwnerGeneration(job), job.RunToken, job.WorkerID, cancelledJobCleanupLeaseDuration,
 	)
 	if err != nil {
 		return fmt.Errorf("renew cancelled workflow cleanup lease: %w", err)
 	}
 	if !renewed {
-		return fmt.Errorf("%w: cancelled workflow cleanup lease changed", errWorkflowJobOwnershipChanged)
+		return fmt.Errorf("%w: cancelled workflow cleanup lease changed", jobexec.ErrWorkflowJobOwnershipChanged)
 	}
 	return nil
 }
@@ -719,7 +720,7 @@ func jobStatusFailed(status config.Status) bool {
 	return false
 }
 
-func persistTerminalJobState(ctx context.Context, jobCtl JobCtl, job *model.JobTask, store datastore.DataStore, runtime *Runtime) error {
+func persistTerminalJobState(ctx context.Context, jobCtl JobCtl, job *model.JobTask, store datastore.DataStore, runtime *jobexec.Runtime) error {
 	if jobCtl == nil || job == nil || store == nil {
 		return nil
 	}
@@ -747,7 +748,7 @@ func persistTerminalJobState(ctx context.Context, jobCtl JobCtl, job *model.JobT
 		klog.FromContext(persistCtx).Error(saveErr, "Failed to update job info in db")
 		return saveErr
 	}
-	if err := syncConfigComponentStatusIfWorkflowOwned(persistCtx, job, store, runtime); err != nil {
+	if err := jobexec.SyncConfigComponentStatusIfWorkflowOwned(persistCtx, job, store, runtime); err != nil {
 		if errors.Is(err, repository.ErrWorkflowOwnershipLost) {
 			klog.FromContext(persistCtx).V(2).Info("Skip terminal component status projection after workflow ownership transfer")
 			return nil

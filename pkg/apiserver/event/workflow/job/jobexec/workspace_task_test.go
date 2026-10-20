@@ -1,17 +1,18 @@
-package job
+package jobexec
 
 import (
 	"testing"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
 func TestStandaloneCommandTaskRequiresWorkspaceIdentityAndUsesPodPolicy(t *testing.T) {

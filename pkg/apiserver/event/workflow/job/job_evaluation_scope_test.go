@@ -24,6 +24,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
@@ -99,7 +100,7 @@ func TestEvaluationScopeRunsThroughAdmissionAndPersistsPrivateSnapshot(t *testin
 			defer cancel()
 			result := make(chan error, 1)
 			go func() {
-				result <- RunJobs(ctx, []*model.JobTask{task}, &Runtime{
+				result <- RunJobs(ctx, []*model.JobTask{task}, &jobexec.Runtime{
 					Concurrency:    1,
 					Client:         client,
 					Store:          store,
@@ -163,7 +164,7 @@ func TestEvaluationScopeRejectsForeignAndForgedOwnership(t *testing.T) {
 				task.JobType = string(config.JobCommand)
 			}
 			client := fake.NewSimpleClientset()
-			require.Error(t, RunJobs(ctx, []*model.JobTask{task}, &Runtime{
+			require.Error(t, RunJobs(ctx, []*model.JobTask{task}, &jobexec.Runtime{
 				Concurrency:   1,
 				Client:        client,
 				Store:         store,
@@ -202,7 +203,7 @@ func TestStandaloneJobVolumeRunsThroughPVCController(t *testing.T) {
 			})
 			ctx, cancel := context.WithTimeout(scopedCtx, 5*time.Second)
 			defer cancel()
-			run := &Runtime{Concurrency: 1, Client: client, Store: store, Ack: func() {}, StopOnFailure: true}
+			run := &jobexec.Runtime{Concurrency: 1, Client: client, Store: store, Ack: func() {}, StopOnFailure: true}
 			if name == "foreign-pvc" {
 				err := RunJobs(ctx, []*model.JobTask{task}, run)
 				require.ErrorContains(t, err, "authorize workspace job")

@@ -1,4 +1,4 @@
-package job
+package jobexec
 
 import (
 	"context"
@@ -93,7 +93,7 @@ func TestCreateOrUpdateResource(t *testing.T) {
 				return nil
 			}
 
-			got, created, err := createOrUpdateResource(context.Background(), func(context.Context) (*fakeResource, error) {
+			got, created, err := CreateOrUpdateResource(context.Background(), func(context.Context) (*fakeResource, error) {
 				return tt.getFn()
 			}, func(context.Context) (*fakeResource, error) {
 				return tt.createFn()
@@ -126,7 +126,7 @@ func TestUpdateResourceWithRetry(t *testing.T) {
 
 	getCalls := 0
 	updateCalls := 0
-	err := updateResourceWithRetry(context.Background(), func(context.Context) (*fakeResource, error) {
+	err := UpdateResourceWithRetry(context.Background(), func(context.Context) (*fakeResource, error) {
 		getCalls++
 		return &fakeResource{value: "latest"}, nil
 	}, func(_ context.Context, res *fakeResource) error {
@@ -151,15 +151,15 @@ func TestResolveSharedResourceAccess_ReconcileSharedBypassesDefaultGuard(t *test
 	t.Parallel()
 
 	listCalled := false
-	unlock, skipped, err := resolveSharedResourceAccess(context.Background(), sharedResourceAccessOptions{
-		labels: map[string]string{
+	unlock, skipped, err := ResolveSharedResourceAccess(context.Background(), SharedResourceAccessOptions{
+		Labels: map[string]string{
 			config.LabelShareName:     "ops",
 			config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 		},
-		kind:            domainspec.ResourceServiceAccount,
-		lockProvider:    nil,
-		reconcileShared: true,
-		listFn: func(context.Context, metav1.ListOptions) (int, error) {
+		Kind:            domainspec.ResourceServiceAccount,
+		LockProvider:    nil,
+		ReconcileShared: true,
+		ListFn: func(context.Context, metav1.ListOptions) (int, error) {
 			listCalled = true
 			return 0, errors.New("shared list should not be called")
 		},
@@ -183,15 +183,15 @@ func TestResolveSharedResourceAccess_ReconcileSharedStillSkipsIgnore(t *testing.
 	t.Parallel()
 
 	listCalled := false
-	unlock, skipped, err := resolveSharedResourceAccess(context.Background(), sharedResourceAccessOptions{
-		labels: map[string]string{
+	unlock, skipped, err := ResolveSharedResourceAccess(context.Background(), SharedResourceAccessOptions{
+		Labels: map[string]string{
 			config.LabelShareName:     "ops",
 			config.LabelShareStrategy: string(domainspec.ShareStrategyIgnore),
 		},
-		kind:            domainspec.ResourceServiceAccount,
-		lockProvider:    nil,
-		reconcileShared: true,
-		listFn: func(context.Context, metav1.ListOptions) (int, error) {
+		Kind:            domainspec.ResourceServiceAccount,
+		LockProvider:    nil,
+		ReconcileShared: true,
+		ListFn: func(context.Context, metav1.ListOptions) (int, error) {
 			listCalled = true
 			return 0, errors.New("shared list should not be called")
 		},

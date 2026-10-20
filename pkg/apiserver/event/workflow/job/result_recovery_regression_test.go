@@ -25,6 +25,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 )
@@ -46,7 +47,7 @@ func (s *failingResultCommitStore) WithReadCommittedTransaction(ctx context.Cont
 
 func completedResultFixture(t *testing.T) (*JobResultPayload, *batchv1.Job, *corev1.Pod, *resultOutboxTestStore) {
 	t.Helper()
-	live := jobForPodFallback("durable-result", nil)
+	live := jobtest.JobForPodFallback("durable-result", nil)
 	stampTestResultJob(live, "durable-result-task")
 	live.Status.Conditions = []batchv1.JobCondition{{Type: batchv1.JobComplete, Status: corev1.ConditionTrue}}
 	pod := resultTestPod(live)

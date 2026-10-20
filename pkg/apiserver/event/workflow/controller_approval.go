@@ -12,7 +12,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
@@ -188,7 +188,7 @@ func (w *WorkflowCtl) triggerApprovalNotification(ctx context.Context, stepExec 
 		callbackJob.Namespace = w.workspace.Namespace
 	}
 	jobinfo.ApplyExecutionIdentity(callbackJob)
-	callbackCtx, cancel := approvalNotificationContext(job.WithTaskMetadata(context.WithoutCancel(ctx), ""), approvalNotifyTimeout)
+	callbackCtx, cancel := approvalNotificationContext(jobexec.WithTaskMetadata(context.WithoutCancel(ctx), ""), approvalNotifyTimeout)
 	go func() {
 		defer cancel()
 		// Notification jobs should not mutate workflow queue state.

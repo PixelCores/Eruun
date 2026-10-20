@@ -1,4 +1,4 @@
-package job
+package jobexec
 
 import (
 	"context"
@@ -55,7 +55,7 @@ func syncConfigComponentStatus(ctx context.Context, job *model.JobTask, store da
 	return target.AppID, nil
 }
 
-func syncConfigComponentStatusIfWorkflowOwned(
+func SyncConfigComponentStatusIfWorkflowOwned(
 	ctx context.Context,
 	job *model.JobTask,
 	store datastore.DataStore,
@@ -73,11 +73,11 @@ func syncConfigComponentStatusIfWorkflowOwned(
 	if err != nil {
 		return err
 	}
-	invalidateComponentsCache(ctx, runtime, appID, "config status sync")
+	InvalidateComponentsCache(ctx, runtime, appID, "config status sync")
 	return nil
 }
 
-func syncComponentStatusOnJobStart(ctx context.Context, job *model.JobTask, store datastore.DataStore) (string, error) {
+func SyncComponentStatusOnJobStart(ctx context.Context, job *model.JobTask, store datastore.DataStore) (string, error) {
 	target := findComponentForJob(ctx, job, store)
 	if target == nil {
 		return "", nil
@@ -101,7 +101,7 @@ func syncComponentStatusOnJobStart(ctx context.Context, job *model.JobTask, stor
 	return target.AppID, nil
 }
 
-func invalidateComponentsCache(ctx context.Context, runtime *Runtime, appID string, reason string) {
+func InvalidateComponentsCache(ctx context.Context, runtime *Runtime, appID string, reason string) {
 	if runtime == nil || runtime.Cache == nil {
 		return
 	}

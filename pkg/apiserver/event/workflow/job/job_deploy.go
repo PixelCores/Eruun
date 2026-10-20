@@ -19,6 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
@@ -29,34 +30,34 @@ import (
 )
 
 type DeployJobCtl struct {
-	deployNamespacedResourceJobBase
+	jobexec.DeployNamespacedResourceJobBase
 	desiredReplicas                int32
 	expectedPodTemplateAnnotations map[string]string
 }
 
 const defaultDeploymentRollingUpdatePercent = "25%"
 
-func NewDeployJobCtl(job *model.JobTask, runtime *Runtime, shareLocker locker.Locker) *DeployJobCtl {
+func NewDeployJobCtl(job *model.JobTask, runtime *jobexec.Runtime, shareLocker locker.Locker) *DeployJobCtl {
 	if runtime == nil || runtime.Client == nil || runtime.Store == nil {
 		return nil
 	}
-	base, ok := newDeployNamespacedResourceJobBase("DeployJobCtl", job, runtime, shareLocker)
+	base, ok := jobexec.NewDeployNamespacedResourceJobBase("DeployJobCtl", job, runtime, shareLocker)
 	if !ok {
 		return nil
 	}
 	return &DeployJobCtl{
-		deployNamespacedResourceJobBase: base,
+		DeployNamespacedResourceJobBase: base,
 	}
 }
 
 func (c *DeployJobCtl) Clean(ctx context.Context) {
-	if c.client == nil {
+	if c.Client == nil {
 		return
 	}
-	namespace := c.job.Namespace
-	name := naming.WebServiceName(c.job.Name, c.job.ResourceAppNameOrID())
+	namespace := c.Job.Namespace
+	name := naming.WebServiceName(c.Job.Name, c.Job.ResourceAppNameOrID())
 	var labels map[string]string
-	if deploy, ok := jobinfo.OptionalJobInfo[*appsv1.Deployment](c.job); ok {
+	if deploy, ok := jobinfo.OptionalJobInfo[*appsv1.Deployment](c.Job); ok {
 		if deploy.Namespace != "" {
 			namespace = deploy.Namespace
 		}
@@ -69,11 +70,11 @@ func (c *DeployJobCtl) Clean(ctx context.Context) {
 		namespace = config.DefaultNamespace
 	}
 
-	cleanupNamespacedResources(ctx, domainspec.ResourceDeployment, c.job.Namespace, config.DelTimeOut, "deployment", func(ctx context.Context, namespace, name string) error {
-		return c.client.AppsV1().Deployments(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+	jobexec.CleanupNamespacedResources(ctx, domainspec.ResourceDeployment, c.Job.Namespace, config.DelTimeOut, "deployment", func(ctx context.Context, namespace, name string) error {
+		return c.Client.AppsV1().Deployments(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	}, k8serrors.IsNotFound, "after job failure")
 
-	forceDelete, reason := shouldForceCleanupSharedWorkload(ctx, c.client, namespace, labels)
+	forceDelete, reason := jobexec.ShouldForceCleanupSharedWorkload(ctx, c.Client, namespace, labels)
 	if !forceDelete {
 		klog.V(4).Infof("cleanup: keep shared deployment %s/%s (%s)", namespace, name, reason)
 		return
@@ -81,7 +82,7 @@ func (c *DeployJobCtl) Clean(ctx context.Context) {
 
 	deleteCtx, cancel := context.WithTimeout(context.Background(), config.DelTimeOut)
 	defer cancel()
-	if err := c.client.AppsV1().Deployments(namespace).Delete(deleteCtx, name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+	if err := c.Client.AppsV1().Deployments(namespace).Delete(deleteCtx, name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
 		klog.Errorf("cleanup: delete shared deployment %s/%s failed: %v", namespace, name, err)
 		return
 	}
@@ -89,11 +90,11 @@ func (c *DeployJobCtl) Clean(ctx context.Context) {
 }
 
 func (c *DeployJobCtl) Run(ctx context.Context) error {
-	return c.runWithWait(ctx, c.run, c.wait, "", "")
+	return c.RunWithWait(ctx, c.run, c.wait, "", "")
 }
 
 func (c *DeployJobCtl) run(ctx context.Context) error {
-	if c.client == nil {
+	if c.Client == nil {
 		return fmt.Errorf("client is nil")
 	}
 	c.expectedPodTemplateAnnotations = nil
@@ -101,11 +102,11 @@ func (c *DeployJobCtl) run(ctx context.Context) error {
 		deploy     *appsv1.Deployment
 		deployName string
 	)
-	deploy, err := jobinfo.DeploymentFromJobInfo(c.job)
+	deploy, err := jobinfo.DeploymentFromJobInfo(c.Job)
 	if err != nil {
 		return err
 	}
-	deployName = naming.WebServiceName(c.job.Name, c.job.ResourceAppNameOrID())
+	deployName = naming.WebServiceName(c.Job.Name, c.Job.ResourceAppNameOrID())
 	deploy.Name = deployName
 	if deploy.Spec.Replicas != nil {
 		c.desiredReplicas = *deploy.Spec.Replicas
@@ -115,20 +116,20 @@ func (c *DeployJobCtl) run(ctx context.Context) error {
 
 	updateDeployment := func(ctx context.Context, current *appsv1.Deployment) error {
 		if !isDeploymentChanged(current, deploy) {
-			c.expectedPodTemplateAnnotations = podTemplateReadyWaitAnnotationsFromTemplate(c.job, &current.Spec.Template)
+			c.expectedPodTemplateAnnotations = podTemplateReadyWaitAnnotationsFromTemplate(c.Job, &current.Spec.Template)
 			klog.Infof("Deployment %q is up-to-date, skip update.", deploy.Name)
-			markResourceObserved(ctx, domainspec.ResourceDeployment, deploy.Namespace, deploy.Name)
+			jobexec.MarkResourceObserved(ctx, domainspec.ResourceDeployment, deploy.Namespace, deploy.Name)
 			return nil
 		}
 		podTemplateChanged := deploymentPodTemplateChanged(current, deploy)
 		var updated *appsv1.Deployment
 		var expectedAnnotations map[string]string
-		if err := updateResourceWithRetry(ctx, func(ctx context.Context) (*appsv1.Deployment, error) {
-			return c.client.AppsV1().Deployments(deploy.Namespace).Get(ctx, deploy.Name, metav1.GetOptions{})
+		if err := jobexec.UpdateResourceWithRetry(ctx, func(ctx context.Context) (*appsv1.Deployment, error) {
+			return c.Client.AppsV1().Deployments(deploy.Namespace).Get(ctx, deploy.Name, metav1.GetOptions{})
 		}, func(ctx context.Context, latest *appsv1.Deployment) error {
 			updateCandidate := deploymentForExistingUpdate(latest, deploy)
 			if podTemplateChanged {
-				expectedAnnotations = applyPodTemplateReadyWaitAnnotations(c.job, &updateCandidate.Spec.Template)
+				expectedAnnotations = applyPodTemplateReadyWaitAnnotations(c.Job, &updateCandidate.Spec.Template)
 			}
 			var err error
 			updated, err = c.updateDeployment(ctx, updateCandidate)
@@ -139,25 +140,25 @@ func (c *DeployJobCtl) run(ctx context.Context) error {
 		}
 		c.expectedPodTemplateAnnotations = expectedAnnotations
 		klog.Infof("Deployment %q updated successfully.", updated.Name)
-		markResourceObserved(ctx, domainspec.ResourceDeployment, deploy.Namespace, deploy.Name)
+		jobexec.MarkResourceObserved(ctx, domainspec.ResourceDeployment, deploy.Namespace, deploy.Name)
 		return nil
 	}
 
-	_, created, err := reconcileTrackedResource(ctx, trackedResourceReconcileOptions[appsv1.Deployment]{
-		sharedResourceAccessOptions: sharedResourceAccessOptions{
-			job:          c.job,
-			ack:          c.ack,
-			labels:       deploy.Labels,
-			kind:         domainspec.ResourceDeployment,
-			lockProvider: c.shareLocker,
-			listFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
-				list, err := c.client.AppsV1().Deployments(deploy.Namespace).List(ctx, opts)
+	_, created, err := jobexec.ReconcileTrackedResource(ctx, jobexec.TrackedResourceReconcileOptions[appsv1.Deployment]{
+		SharedResourceAccessOptions: jobexec.SharedResourceAccessOptions{
+			Job:          c.Job,
+			Ack:          c.Ack,
+			Labels:       deploy.Labels,
+			Kind:         domainspec.ResourceDeployment,
+			LockProvider: c.ShareLocker,
+			ListFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
+				list, err := c.Client.AppsV1().Deployments(deploy.Namespace).List(ctx, opts)
 				if err != nil {
 					return 0, err
 				}
 				return len(list.Items), nil
 			},
-			logSkip: func(strategy domainspec.ShareStrategy) {
+			LogSkip: func(strategy domainspec.ShareStrategy) {
 				if strategy == domainspec.ShareStrategyIgnore {
 					klog.Infof("Deployment %q marked as shared ignore; skipping", deploy.Name)
 				} else {
@@ -165,23 +166,23 @@ func (c *DeployJobCtl) run(ctx context.Context) error {
 				}
 			},
 		},
-		namespace: deploy.Namespace,
-		name:      deploy.Name,
-		getFn: func(ctx context.Context) (*appsv1.Deployment, error) {
-			return c.client.AppsV1().Deployments(deploy.Namespace).Get(ctx, deploy.Name, metav1.GetOptions{})
+		Namespace: deploy.Namespace,
+		Name:      deploy.Name,
+		GetFn: func(ctx context.Context) (*appsv1.Deployment, error) {
+			return c.Client.AppsV1().Deployments(deploy.Namespace).Get(ctx, deploy.Name, metav1.GetOptions{})
 		},
-		createFn: func(ctx context.Context) (*appsv1.Deployment, error) {
+		CreateFn: func(ctx context.Context) (*appsv1.Deployment, error) {
 			createCandidate := deploy.DeepCopy()
-			expectedAnnotations := applyPodTemplateReadyWaitAnnotations(c.job, &createCandidate.Spec.Template)
-			created, err := c.client.AppsV1().Deployments(deploy.Namespace).Create(ctx, createCandidate, metav1.CreateOptions{})
+			expectedAnnotations := applyPodTemplateReadyWaitAnnotations(c.Job, &createCandidate.Spec.Template)
+			created, err := c.Client.AppsV1().Deployments(deploy.Namespace).Create(ctx, createCandidate, metav1.CreateOptions{})
 			if err == nil {
 				c.expectedPodTemplateAnnotations = expectedAnnotations
 			}
 			return created, err
 		},
-		onExisting:      updateDeployment,
-		isNotFound:      k8serrors.IsNotFound,
-		isAlreadyExists: k8serrors.IsAlreadyExists,
+		OnExisting:      updateDeployment,
+		IsNotFound:      k8serrors.IsNotFound,
+		IsAlreadyExists: k8serrors.IsAlreadyExists,
 	})
 	if err != nil {
 		return fmt.Errorf("ensure deployment %q failed: %w", deploy.Name, err)
@@ -194,10 +195,10 @@ func (c *DeployJobCtl) run(ctx context.Context) error {
 }
 
 func (c *DeployJobCtl) wait(ctx context.Context) error {
-	targetName := naming.WebServiceName(c.job.Name, c.job.ResourceAppNameOrID())
-	namespace := c.job.Namespace
+	targetName := naming.WebServiceName(c.Job.Name, c.Job.ResourceAppNameOrID())
+	namespace := c.Job.Namespace
 	var expectedImages []string
-	if deploy, ok := jobinfo.OptionalJobInfo[*appsv1.Deployment](c.job); ok {
+	if deploy, ok := jobinfo.OptionalJobInfo[*appsv1.Deployment](c.Job); ok {
 		if deploy.Namespace != "" {
 			namespace = deploy.Namespace
 		}
@@ -208,34 +209,34 @@ func (c *DeployJobCtl) wait(ctx context.Context) error {
 	}
 	timeout := time.Duration(c.timeout()) * time.Second
 
-	waiter := c.resourceWaiter
+	waiter := c.ResourceWaiter
 	if waiter == nil {
-		return fmt.Errorf("resource waiter is required for deployment %s/%s", c.job.Namespace, targetName)
+		return fmt.Errorf("resource waiter is required for deployment %s/%s", c.Job.Namespace, targetName)
 	}
 
-	klog.V(4).Infof("Using informer-based wait for component %s/%s", c.job.AppID, c.job.Name)
-	err := waiter.WaitForComponentReadyWithOptions(ctx, c.job.AppID, naming.BoundedLabelValue(c.job.Name), c.desiredReplicas, informer.ComponentReadyWaitOptions{
+	klog.V(4).Infof("Using informer-based wait for component %s/%s", c.Job.AppID, c.Job.Name)
+	err := waiter.WaitForComponentReadyWithOptions(ctx, c.Job.AppID, naming.BoundedLabelValue(c.Job.Name), c.desiredReplicas, informer.ComponentReadyWaitOptions{
 		ExpectedImages:      expectedImages,
 		ExpectedAnnotations: c.expectedPodTemplateAnnotations,
 	}, timeout)
 	if err != nil {
 		var we *informer.WaitError
 		if errors.As(err, &we) {
-			return jobinfo.NewStatusError(we.Status, workloadWaitError(ctx, c.client, c.job, "Deployment", namespace, targetName, naming.BoundedLabelValue(c.job.Name), we.Err))
+			return jobinfo.NewStatusError(we.Status, workloadWaitError(ctx, c.Client, c.Job, "Deployment", namespace, targetName, naming.BoundedLabelValue(c.Job.Name), we.Err))
 		}
-		return workloadWaitError(ctx, c.client, c.job, "Deployment", namespace, targetName, naming.BoundedLabelValue(c.job.Name), err)
+		return workloadWaitError(ctx, c.Client, c.Job, "Deployment", namespace, targetName, naming.BoundedLabelValue(c.Job.Name), err)
 	}
 	return nil
 }
 
 func (c *DeployJobCtl) timeout() int64 {
-	if c.job.Timeout == 0 {
-		c.job.Timeout = config.DeployTimeout
+	if c.Job.Timeout == 0 {
+		c.Job.Timeout = config.DeployTimeout
 	}
-	return c.job.Timeout
+	return c.Job.Timeout
 }
 
-func GenerateWebService(component *model.ApplicationComponent, properties *model.Properties) (*GenerateServiceResult, error) {
+func GenerateWebService(component *model.ApplicationComponent, properties *model.Properties) (*jobexec.GenerateServiceResult, error) {
 	deploymentName := naming.WebServiceName(component.Name, component.ResourceNameKey())
 	containerName := utils.NormalizeLowerStrip(component.Name)
 	var ContainerPort []corev1.ContainerPort
@@ -250,7 +251,7 @@ func GenerateWebService(component *model.ApplicationComponent, properties *model
 		envs = append(envs, corev1.EnvVar{Name: name, Value: properties.Env[name]})
 	}
 
-	labels := BuildLabels(component, properties)
+	labels := jobexec.BuildLabels(component, properties)
 
 	container := corev1.Container{
 		Name:            containerName,
@@ -268,7 +269,7 @@ func GenerateWebService(component *model.ApplicationComponent, properties *model
 			Name:        deploymentName,
 			Namespace:   component.Namespace,
 			Labels:      labels, // 设置 Deployment 自身的 labels，供 Informer 过滤和状态同步
-			Annotations: BuildAnnotations(component),
+			Annotations: jobexec.BuildAnnotations(component),
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &component.Replicas,
@@ -278,7 +279,7 @@ func GenerateWebService(component *model.ApplicationComponent, properties *model
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels:      labels,
-					Annotations: BuildAnnotations(component),
+					Annotations: jobexec.BuildAnnotations(component),
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
@@ -293,14 +294,14 @@ func GenerateWebService(component *model.ApplicationComponent, properties *model
 	if err != nil {
 		return nil, fmt.Errorf("generate component %s: %w", component.Name, err)
 	}
-	return &GenerateServiceResult{
+	return &jobexec.GenerateServiceResult{
 		Service:           deployment,
 		AdditionalObjects: additionalObjects,
 	}, nil
 }
 
 func (c *DeployJobCtl) updateDeployment(ctx context.Context, deploy *appsv1.Deployment) (*appsv1.Deployment, error) {
-	result, err := c.client.AppsV1().Deployments(deploy.Namespace).Update(ctx, deploy, metav1.UpdateOptions{})
+	result, err := c.Client.AppsV1().Deployments(deploy.Namespace).Update(ctx, deploy, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("update deployment failed: %w", err)
 	}

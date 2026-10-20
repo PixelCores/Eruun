@@ -1,4 +1,4 @@
-package job
+package jobexec
 
 import (
 	"context"
@@ -25,7 +25,7 @@ func handleSharedResource(
 	lockProvider locker.Locker,
 	logSkip func(strategy domainspec.ShareStrategy),
 ) (func(), bool, error) {
-	shareName, shareStrategy := shareInfoFromLabels(labels)
+	shareName, shareStrategy := ShareInfoFromLabels(labels)
 	unlock, skipped, err := resolveSharedResource(ctx, shareName, shareStrategy, kind, listFn, lockProvider)
 	if err != nil {
 		return nil, false, err

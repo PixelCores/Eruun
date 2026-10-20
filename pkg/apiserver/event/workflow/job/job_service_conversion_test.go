@@ -10,6 +10,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/conversion"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 )
 
@@ -78,7 +79,7 @@ spec:
 		Namespace: component.Namespace,
 	}
 	properties := model.Properties(component.Properties)
-	podLabels := workflowjob.BuildLabels(targetComponent, &properties)
+	podLabels := jobexec.BuildLabels(targetComponent, &properties)
 	generatedService := workflowjob.GenerateServiceFromTrait(targetComponent, &properties, component.Traits.Service[0])
 	require.NotNil(t, generatedService)
 

@@ -1,4 +1,4 @@
-package job
+package jobexec
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 )
 
-func databaseResetNamespaceOrDefault(values ...string) string {
+func DatabaseResetNamespaceOrDefault(values ...string) string {
 	for _, value := range values {
 		if trimmed := strings.TrimSpace(value); trimmed != "" {
 			return trimmed
@@ -16,7 +16,7 @@ func databaseResetNamespaceOrDefault(values ...string) string {
 	return config.DefaultNamespace
 }
 
-func isStatefulSetTemplatePVCName(templateName, statefulSetName, pvcName string) bool {
+func IsStatefulSetTemplatePVCName(templateName, statefulSetName, pvcName string) bool {
 	templateName = strings.TrimSpace(templateName)
 	statefulSetName = strings.TrimSpace(statefulSetName)
 	pvcName = strings.TrimSpace(pvcName)

@@ -14,6 +14,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
@@ -180,8 +181,8 @@ func TestDeployConfigMapJobCtl_CreateAlreadyExists(t *testing.T) {
 			Data: map[string]string{"foo": "bar"},
 		},
 	}
-	ctl := NewDeployConfigMapJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}, URLSecurityPolicy: nil}, locker.NewNoopLocker(shareLockerPrefix))
-	ctx := WithCleanupTracker(context.Background())
+	ctl := NewDeployConfigMapJobCtl(jobTask, &jobexec.Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}, URLSecurityPolicy: nil}, locker.NewNoopLocker(jobtest.ShareLockerPrefix))
+	ctx := jobexec.WithCleanupTracker(context.Background())
 
 	if err := ctl.Run(ctx); err != nil {
 		t.Fatalf("Run returned error: %v", err)

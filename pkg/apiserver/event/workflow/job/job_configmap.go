@@ -12,22 +12,23 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
 
 type DeployConfigMapJobCtl struct {
-	deployNamespacedResourceJobBase
+	jobexec.DeployNamespacedResourceJobBase
 	urlSecurityPolicy *spec.URLSecurityPolicySpec
 }
 
-func NewDeployConfigMapJobCtl(job *model.JobTask, runtime *Runtime, shareLocker locker.Locker) *DeployConfigMapJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("DeployConfigMapJobCtl", job, runtime, shareLocker)
+func NewDeployConfigMapJobCtl(job *model.JobTask, runtime *jobexec.Runtime, shareLocker locker.Locker) *DeployConfigMapJobCtl {
+	base, ok := jobexec.NewDeployNamespacedResourceJobBase("DeployConfigMapJobCtl", job, runtime, shareLocker)
 	if !ok {
 		return nil
 	}
 	ctl := &DeployConfigMapJobCtl{
-		deployNamespacedResourceJobBase: base,
+		DeployNamespacedResourceJobBase: base,
 	}
 	if runtime != nil {
 		ctl.urlSecurityPolicy = runtime.URLSecurityPolicy
@@ -36,35 +37,35 @@ func NewDeployConfigMapJobCtl(job *model.JobTask, runtime *Runtime, shareLocker 
 }
 
 func (c *DeployConfigMapJobCtl) Clean(ctx context.Context) {
-	c.cleanCreated(ctx, spec.ResourceConfigMap, "configmap", func(ctx context.Context, namespace, name string) error {
-		return c.client.CoreV1().ConfigMaps(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+	c.CleanCreated(ctx, spec.ResourceConfigMap, "configmap", func(ctx context.Context, namespace, name string) error {
+		return c.Client.CoreV1().ConfigMaps(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	}, k8serrors.IsNotFound, "after job failure")
 }
 
 func (c *DeployConfigMapJobCtl) Run(ctx context.Context) error {
-	return c.runWithStatus(ctx, c.run, "DeployConfigMapJob run error")
+	return c.RunWithStatus(ctx, c.run, "DeployConfigMapJob run error")
 }
 
 func (c *DeployConfigMapJobCtl) run(ctx context.Context) error {
-	if c.client == nil {
+	if c.Client == nil {
 		return fmt.Errorf("client is nil")
 	}
 
-	cm, err := jobinfo.ConfigMapFromJobInfo(ctx, c.job, c.urlSecurityPolicy)
+	cm, err := jobinfo.ConfigMapFromJobInfo(ctx, c.Job, c.urlSecurityPolicy)
 	if err != nil {
 		return err
 	}
 	if cm.Namespace == "" {
-		cm.Namespace = c.job.Namespace
+		cm.Namespace = c.Job.Namespace
 	}
 	return c.deployConfigMap(ctx, cm)
 }
 
 func (c *DeployConfigMapJobCtl) deployConfigMap(ctx context.Context, cm *corev1.ConfigMap) error {
 	logger := klog.FromContext(ctx)
-	cli := c.client.CoreV1().ConfigMaps(cm.Namespace)
+	cli := c.Client.CoreV1().ConfigMaps(cm.Namespace)
 	updateConfigMap := func(ctx context.Context, _ *corev1.ConfigMap) error {
-		if err := updateResourceWithRetry(ctx, func(ctx context.Context) (*corev1.ConfigMap, error) {
+		if err := jobexec.UpdateResourceWithRetry(ctx, func(ctx context.Context) (*corev1.ConfigMap, error) {
 			return cli.Get(ctx, cm.Name, metav1.GetOptions{})
 		}, func(ctx context.Context, latest *corev1.ConfigMap) error {
 			cm.ResourceVersion = latest.ResourceVersion
@@ -74,25 +75,25 @@ func (c *DeployConfigMapJobCtl) deployConfigMap(ctx context.Context, cm *corev1.
 			return fmt.Errorf("update configmap %q failed: %w", cm.Name, err)
 		}
 		logger.Info("ConfigMap updated", "namespace", cm.Namespace, "name", cm.Name)
-		markResourceObserved(ctx, spec.ResourceConfigMap, cm.Namespace, cm.Name)
+		jobexec.MarkResourceObserved(ctx, spec.ResourceConfigMap, cm.Namespace, cm.Name)
 		return nil
 	}
 
-	_, created, err := reconcileTrackedResource(ctx, trackedResourceReconcileOptions[corev1.ConfigMap]{
-		sharedResourceAccessOptions: sharedResourceAccessOptions{
-			job:          c.job,
-			ack:          c.ack,
-			labels:       cm.Labels,
-			kind:         spec.ResourceConfigMap,
-			lockProvider: c.shareLocker,
-			listFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
+	_, created, err := jobexec.ReconcileTrackedResource(ctx, jobexec.TrackedResourceReconcileOptions[corev1.ConfigMap]{
+		SharedResourceAccessOptions: jobexec.SharedResourceAccessOptions{
+			Job:          c.Job,
+			Ack:          c.Ack,
+			Labels:       cm.Labels,
+			Kind:         spec.ResourceConfigMap,
+			LockProvider: c.ShareLocker,
+			ListFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
 				list, err := cli.List(ctx, opts)
 				if err != nil {
 					return 0, err
 				}
 				return len(list.Items), nil
 			},
-			logSkip: func(strategy spec.ShareStrategy) {
+			LogSkip: func(strategy spec.ShareStrategy) {
 				if strategy == spec.ShareStrategyIgnore {
 					logger.Info("ConfigMap marked as shared ignore; skipping", "namespace", cm.Namespace, "name", cm.Name)
 				} else {
@@ -100,17 +101,17 @@ func (c *DeployConfigMapJobCtl) deployConfigMap(ctx context.Context, cm *corev1.
 				}
 			},
 		},
-		namespace: cm.Namespace,
-		name:      cm.Name,
-		getFn: func(ctx context.Context) (*corev1.ConfigMap, error) {
+		Namespace: cm.Namespace,
+		Name:      cm.Name,
+		GetFn: func(ctx context.Context) (*corev1.ConfigMap, error) {
 			return cli.Get(ctx, cm.Name, metav1.GetOptions{})
 		},
-		createFn: func(ctx context.Context) (*corev1.ConfigMap, error) {
+		CreateFn: func(ctx context.Context) (*corev1.ConfigMap, error) {
 			return cli.Create(ctx, cm, metav1.CreateOptions{})
 		},
-		onExisting:      updateConfigMap,
-		isNotFound:      k8serrors.IsNotFound,
-		isAlreadyExists: k8serrors.IsAlreadyExists,
+		OnExisting:      updateConfigMap,
+		IsNotFound:      k8serrors.IsNotFound,
+		IsAlreadyExists: k8serrors.IsAlreadyExists,
 	})
 	if err != nil {
 		return fmt.Errorf("ensure configmap %q failed: %w", cm.Name, err)
@@ -119,9 +120,9 @@ func (c *DeployConfigMapJobCtl) deployConfigMap(ctx context.Context, cm *corev1.
 		logger.Info("ConfigMap created", "namespace", cm.Namespace, "name", cm.Name)
 	}
 
-	if c.job.Status != config.StatusSkipped {
-		c.job.Status = config.StatusCompleted
-		c.ack()
+	if c.Job.Status != config.StatusSkipped {
+		c.Job.Status = config.StatusCompleted
+		c.Ack()
 	}
 	return nil
 }
@@ -137,11 +138,11 @@ func GenerateConfigMap(component *model.ApplicationComponent, properties *model.
 			Namespace: namespace,
 			URL:       url,
 			FileName:  fileName,
-			Labels:    BuildLabels(component, properties),
+			Labels:    jobexec.BuildLabels(component, properties),
 		}
 	}
 
-	labels := BuildLabels(component, properties)
+	labels := jobexec.BuildLabels(component, properties)
 	var data map[string]string
 	if properties != nil {
 		data = properties.Conf

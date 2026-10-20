@@ -2,9 +2,7 @@ package job
 
 import (
 	"context"
-	"errors"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -17,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
@@ -51,7 +50,7 @@ func TestNormalizePodSpecForCompareIncludesVolumeMountSubPathFields(t *testing.T
 }
 
 func TestDeployPVCJobCtlCreatesMissingPVC(t *testing.T) {
-	ctx := WithCleanupTracker(context.Background())
+	ctx := jobexec.WithCleanupTracker(context.Background())
 	client := fake.NewSimpleClientset()
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
@@ -75,7 +74,7 @@ func TestDeployPVCJobCtlCreatesMissingPVC(t *testing.T) {
 		JobType:   string(config.JobDeployPVC),
 		JobInfo:   pvc.DeepCopy(),
 	}
-	ctl := NewDeployPVCJobCtl(job, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployPVCJobCtl(job, &jobexec.Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(jobtest.ShareLockerPrefix))
 
 	require.NoError(t, ctl.run(ctx))
 
@@ -88,7 +87,7 @@ func TestDeployPVCJobCtlCreatesMissingPVC(t *testing.T) {
 }
 
 func TestDeployPVCJobCtlSkipsExistingPVCSpecUpdate(t *testing.T) {
-	ctx := WithCleanupTracker(context.Background())
+	ctx := jobexec.WithCleanupTracker(context.Background())
 	client := fake.NewSimpleClientset()
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
@@ -119,7 +118,7 @@ func TestDeployPVCJobCtlSkipsExistingPVCSpecUpdate(t *testing.T) {
 		JobType:   string(config.JobDeployPVC),
 		JobInfo:   desired,
 	}
-	ctl := NewDeployPVCJobCtl(job, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployPVCJobCtl(job, &jobexec.Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(jobtest.ShareLockerPrefix))
 	if err := ctl.run(ctx); err != nil {
 		t.Fatalf("run returned error: %v", err)
 	}
@@ -133,7 +132,7 @@ func TestDeployPVCJobCtlSkipsExistingPVCSpecUpdate(t *testing.T) {
 }
 
 func TestDeployPVCJobCtlCleanPreservesTrackedPVC(t *testing.T) {
-	ctx := WithCleanupTracker(context.Background())
+	ctx := jobexec.WithCleanupTracker(context.Background())
 	client := fake.NewSimpleClientset()
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
@@ -143,7 +142,7 @@ func TestDeployPVCJobCtlCleanPreservesTrackedPVC(t *testing.T) {
 	}
 	_, err := client.CoreV1().PersistentVolumeClaims("ops").Create(ctx, pvc, metav1.CreateOptions{})
 	require.NoError(t, err)
-	MarkResourceCreated(ctx, domainspec.ResourcePVC, "ops", "data-mysql")
+	jobexec.MarkResourceCreated(ctx, domainspec.ResourcePVC, "ops", "data-mysql")
 
 	job := &model.JobTask{
 		Name:      pvc.Name,
@@ -152,7 +151,7 @@ func TestDeployPVCJobCtlCleanPreservesTrackedPVC(t *testing.T) {
 		JobType:   string(config.JobDeployPVC),
 		JobInfo:   pvc.DeepCopy(),
 	}
-	ctl := NewDeployPVCJobCtl(job, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployPVCJobCtl(job, &jobexec.Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(jobtest.ShareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	ctl.Clean(ctx)
@@ -165,23 +164,4 @@ func TestDeployPVCJobCtlCleanPreservesTrackedPVC(t *testing.T) {
 func TestIngressReady(t *testing.T) {
 	require.False(t, ingressReady(nil))
 	require.True(t, ingressReady(&networkingv1.Ingress{}))
-}
-
-func TestCleanupClusterResources(t *testing.T) {
-	ctx := WithCleanupTracker(context.Background())
-	MarkResourceCreated(ctx, domainspec.ResourceClusterRole, "", "role-a")
-	markResourceObserved(ctx, domainspec.ResourceClusterRole, "", "role-b")
-
-	var deleted []string
-	cleanupClusterResources(ctx, domainspec.ResourceClusterRole, time.Second, "clusterrole", func(_ context.Context, name string) error {
-		deleted = append(deleted, name)
-		return nil
-	}, nil)
-	require.Equal(t, []string{"role-a"}, deleted)
-
-	cleanupClusterResources(ctx, domainspec.ResourceClusterRole, time.Second, "clusterrole", func(context.Context, string) error {
-		return errors.New("not found")
-	}, func(err error) bool {
-		return err != nil && err.Error() == "not found"
-	})
 }

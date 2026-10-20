@@ -26,7 +26,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
@@ -256,7 +256,7 @@ func (s *Service) prepareTask(ctx context.Context, scope account.Scope, declarat
 				}
 				err = PrepareEvaluationTask(job, space, s.Config.Accounts.Workspace, s.Config.Jobs.RunnerImage)
 			} else {
-				_, err = workflowjob.PrepareTask(job, "", space, s.Config.Accounts.Workspace)
+				_, err = jobexec.PrepareTask(job, "", space, s.Config.Accounts.Workspace)
 			}
 			if err != nil {
 				return nil, err
@@ -768,7 +768,7 @@ func (s *Service) cleanupRunVolumes(ctx context.Context) error {
 				pending := false
 				for _, row := range jobs {
 					job := row.(*model.JobInfo)
-					if !terminal(config.Status(job.Status)) || workflowjob.IsCancelledJobCleanupPending(job) {
+					if !terminal(config.Status(job.Status)) || jobexec.IsCancelledJobCleanupPending(job) {
 						pending = true
 						break
 					}

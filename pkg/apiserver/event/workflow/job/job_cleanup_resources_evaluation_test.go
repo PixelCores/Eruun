@@ -17,6 +17,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -75,7 +76,7 @@ func TestEvaluationCleanupDeletesOnlyComponentRunners(t *testing.T) {
 				store.jobInfo = &model.JobInfo{ID: 8, Type: task.JobType, AppID: task.AppID, TaskID: task.TaskID,
 					ServiceName: task.Name, Status: string(config.StatusQueued), InternalInfo: task.InternalInfo}
 			}
-			ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
+			ctl := NewCleanupResourcesJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
 			require.NotNil(t, ctl)
 			require.NoError(t, ctl.Run(ctx))
 			require.Equal(t, config.StatusCompleted, task.Status)

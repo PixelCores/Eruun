@@ -32,6 +32,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
@@ -531,7 +532,7 @@ func TestRunnerResultPublicationFencesCheckpointAndAllowsCancellationUpload(t *t
 		f.parent.RunToken, f.parent.WorkerID, f.parent.LeaseExpiresAt = "", "", nil
 		f.record.Status = string(config.StatusCancelled)
 		f.record.SchedulingReason = "parent workflow cancelled"
-		require.True(t, workflowjob.IsCancelledJobCleanupPending(f.record))
+		require.True(t, jobexec.IsCancelledJobCleanupPending(f.record))
 		require.NoError(t, f.raw.Put(context.Background(), f.parent))
 		require.NoError(t, f.raw.Put(context.Background(), f.record))
 
@@ -841,7 +842,7 @@ func TestCommandRuntimePersistsCheckpointAndTerminalResultThroughScopedStore(t *
 	observerCtx, stopObserver := context.WithCancel(context.Background())
 	t.Cleanup(stopObserver)
 	require.NoError(t, observer.Start(observerCtx))
-	ctl := workflowjob.NewInstantJobCtl(task, &workflowjob.Runtime{Client: service.Kube, Store: service.Store, Ack: func() {}, ResourceWaiter: observer})
+	ctl := workflowjob.NewInstantJobCtl(task, &jobexec.Runtime{Client: service.Kube, Store: service.Store, Ack: func() {}, ResourceWaiter: observer})
 	require.NoError(t, ctl.Run(ctx))
 	require.Equal(t, config.StatusCompleted, task.Status)
 	require.NoError(t, ctl.SaveInfo(ctx))

@@ -6,13 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
-	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/stretchr/testify/require"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -24,6 +17,15 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/utils/ptr"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
 func newRecoverableEvaluation(t *testing.T) (*runnerFixture, *model.JobTask, *model.JobCheckpoint) {
@@ -81,7 +83,7 @@ func TestEvaluationRecoveryReservesNewIdentityAndOriginalDeadline(t *testing.T) 
 	workload := task.JobInfo.(*batchv1.Job)
 	require.NotEqual(t, f.workload.Name, workload.Name)
 	require.Equal(t, task.Name, workload.Name)
-	require.Equal(t, info.ExecutionDeadline, mustParseRecoveryDeadline(t, workload.Annotations[workflowjob.EvaluationDeadlineAnnotation]))
+	require.Equal(t, info.ExecutionDeadline, mustParseRecoveryDeadline(t, workload.Annotations[jobexec.EvaluationDeadlineAnnotation]))
 	require.LessOrEqual(t, *workload.Spec.ActiveDeadlineSeconds, int64(time.Until(point.SourceDeadline).Seconds())+1)
 	_, err = f.service.RunnerEvent(ctx, f.identity, RunnerEvent{ProtocolVersion: RunnerProtocolVersion, Sequence: 2, Kind: "heartbeat"})
 	require.Error(t, err, "old source token must not publish after successor reservation")
@@ -138,7 +140,7 @@ func TestEvaluationRecoveryDispatchesSuccessorThroughAdmission(t *testing.T) {
 			ctx = workflowjob.WithEvaluationRecovery(ctx, f.service.RecoverEvaluation)
 			finished := make(chan error, 1)
 			go func() {
-				finished <- workflowjob.RunJobs(ctx, []*model.JobTask{task}, &workflowjob.Runtime{
+				finished <- workflowjob.RunJobs(ctx, []*model.JobTask{task}, &jobexec.Runtime{
 					Concurrency:    1,
 					Client:         client,
 					Store:          f.service.Store,
@@ -693,7 +695,7 @@ func TestEvaluationRecoveryStartupFailureSettlesBeforeFirstCheckpoint(t *testing
 	ctx = workflowjob.WithEvaluationRecovery(ctx, f.service.RecoverEvaluation)
 	finished := make(chan error, 1)
 	go func() {
-		finished <- workflowjob.RunJobs(ctx, []*model.JobTask{task}, &workflowjob.Runtime{
+		finished <- workflowjob.RunJobs(ctx, []*model.JobTask{task}, &jobexec.Runtime{
 			Concurrency:   1,
 			Client:        client,
 			Store:         f.service.Store,
@@ -728,7 +730,7 @@ func TestEvaluationRecoveryStartupFailureSettlesBeforeFirstCheckpoint(t *testing
 	f.parent.RunToken, f.parent.WorkerID = "takeover-token", "takeover-worker"
 	task.OwnerRunGeneration, task.RunToken, task.WorkerID = f.parent.RunGeneration, f.parent.RunToken, f.parent.WorkerID
 	require.NoError(t, f.raw.Put(ctx, f.parent))
-	require.NoError(t, workflowjob.RunJobs(ctx, []*model.JobTask{task}, &workflowjob.Runtime{
+	require.NoError(t, workflowjob.RunJobs(ctx, []*model.JobTask{task}, &jobexec.Runtime{
 		Concurrency:   1,
 		Client:        client,
 		Store:         f.service.Store,

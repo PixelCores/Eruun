@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 )
 
 type Pool struct {
@@ -16,7 +17,7 @@ type Pool struct {
 	failureOnce sync.Once
 	runErrOnce  sync.Once
 	runErr      error
-	runtime     *Runtime
+	runtime     *jobexec.Runtime
 }
 
 func (p *Pool) Run() error {
@@ -66,7 +67,7 @@ func (p *Pool) work() {
 }
 
 // NewPool initializes a pool using the run's concurrency and dependencies.
-func NewPool(ctx context.Context, jobs []*model.JobTask, runtime *Runtime) *Pool {
+func NewPool(ctx context.Context, jobs []*model.JobTask, runtime *jobexec.Runtime) *Pool {
 	ctxForPool, cancel := context.WithCancelCause(ctx)
 	return &Pool{
 		Jobs:     jobs,

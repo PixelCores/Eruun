@@ -1,4 +1,4 @@
-package job
+package jobexec
 
 import (
 	"context"
@@ -42,15 +42,15 @@ type Runtime struct {
 	DelayQueue        msg.Queue
 	ResourceWaiter    informer.ComponentReadyObserver
 	KubeConfig        *rest.Config
-	shareLocker       locker.Locker
-	archiveUploader   ArchiveUploader
+	ShareLocker       locker.Locker
+	ArchiveUploader   ArchiveUploader
 }
 
-func (r *Runtime) close() {
-	if r == nil || r.shareLocker == nil {
+func (r *Runtime) Close() {
+	if r == nil || r.ShareLocker == nil {
 		return
 	}
-	if err := r.shareLocker.Close(); err != nil {
+	if err := r.ShareLocker.Close(); err != nil {
 		klog.ErrorS(err, "close share locker failed")
 	}
 }
@@ -69,7 +69,7 @@ func TaskIDFromContext(ctx context.Context) string {
 	return ""
 }
 
-func infrastructureStopCause(ctx context.Context) error {
+func InfrastructureStopCause(ctx context.Context) error {
 	if !signal.IsInfrastructureStop(ctx) {
 		return nil
 	}

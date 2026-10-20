@@ -1,4 +1,4 @@
-package job
+package jobexec
 
 import (
 	"context"
@@ -32,21 +32,21 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
 
-type jobBuildOptions struct {
-	runPolicy string
-	startTime int64
+type JobBuildOptions struct {
+	RunPolicy string
+	StartTime int64
 }
 
-func buildJob(component *model.ApplicationComponent, properties *model.Properties, opts jobBuildOptions) *batchv1.Job {
+func BuildJob(component *model.ApplicationComponent, properties *model.Properties, opts JobBuildOptions) *batchv1.Job {
 	if component == nil {
 		return nil
 	}
 	labels := BuildLabels(component, properties)
 	annotations := map[string]string{}
-	policy, _ := workflowconfig.NormalizeJobRunPolicy(opts.runPolicy)
+	policy, _ := workflowconfig.NormalizeJobRunPolicy(opts.RunPolicy)
 	annotations[config.AnnotationJobRunPolicy] = string(policy)
-	if opts.startTime > 0 {
-		annotations[config.AnnotationJobStartTime] = fmt.Sprintf("%d", opts.startTime)
+	if opts.StartTime > 0 {
+		annotations[config.AnnotationJobStartTime] = fmt.Sprintf("%d", opts.StartTime)
 	}
 	for k, v := range BuildAnnotations(component) {
 		annotations[k] = v
@@ -91,7 +91,7 @@ func buildJob(component *model.ApplicationComponent, properties *model.Propertie
 	return job
 }
 
-func buildCronJob(component *model.ApplicationComponent, properties *model.Properties, schedule string) *batchv1.CronJob {
+func BuildCronJob(component *model.ApplicationComponent, properties *model.Properties, schedule string) *batchv1.CronJob {
 	if component == nil {
 		return nil
 	}
@@ -177,7 +177,7 @@ func cronHistoryLimit(properties *model.Properties, success bool) *int32 {
 }
 
 // Job annotations and status helpers.
-func runPolicyFromJob(job *batchv1.Job) workflowconfig.JobRunPolicy {
+func RunPolicyFromJob(job *batchv1.Job) workflowconfig.JobRunPolicy {
 	if job == nil {
 		policy, _ := workflowconfig.NormalizeJobRunPolicy("")
 		return policy
@@ -192,11 +192,11 @@ type runPolicyAction int
 
 const (
 	runPolicyActionCreate runPolicyAction = iota
-	runPolicyActionSkip
+	RunPolicyActionSkip
 )
 
 // applyJobRunPolicy decides whether to create, skip, or recreate a job based on its run policy and current state.
-func applyJobRunPolicy(
+func ApplyJobRunPolicy(
 	ctx context.Context,
 	client kubernetes.Interface,
 	store datastore.DataStore,
@@ -218,8 +218,8 @@ func applyJobRunPolicy(
 		return runPolicyActionCreate, fmt.Errorf("job name is empty")
 	}
 
-	policy := runPolicyFromJob(jobObj)
-	existing, exists, err := jobExists(ctx, client, namespace, jobName)
+	policy := RunPolicyFromJob(jobObj)
+	existing, exists, err := JobExists(ctx, client, namespace, jobName)
 	if err != nil {
 		return runPolicyActionCreate, err
 	}
@@ -231,7 +231,7 @@ func applyJobRunPolicy(
 				return runPolicyActionCreate, nil
 			}
 			if completed {
-				return runPolicyActionSkip, nil
+				return RunPolicyActionSkip, nil
 			}
 		}
 		return runPolicyActionCreate, nil
@@ -242,11 +242,11 @@ func applyJobRunPolicy(
 		return runPolicyActionCreate, err
 	}
 
-	status, message, done := jobTerminalStatus(existing)
+	status, message, done := JobTerminalStatus(existing)
 	switch policy {
 	case workflowconfig.JobRunPolicySkipIfCompleted:
 		if done && status == config.StatusCompleted {
-			return runPolicyActionSkip, nil
+			return RunPolicyActionSkip, nil
 		}
 		if done && status == config.StatusFailed {
 			klog.Errorf("job %s already failed: %s", jobName, message)
@@ -329,9 +329,9 @@ func adoptReusableJobExecution(ctx context.Context, client kubernetes.Interface,
 	return live, nil
 }
 
-var errWorkflowJobOwnershipChanged = errors.New("workflow job ownership changed")
+var ErrWorkflowJobOwnershipChanged = errors.New("workflow job ownership changed")
 
-func jobOwnerGeneration(jobTask *model.JobTask) uint64 {
+func JobOwnerGeneration(jobTask *model.JobTask) uint64 {
 	if jobTask == nil {
 		return 0
 	}
@@ -341,13 +341,13 @@ func jobOwnerGeneration(jobTask *model.JobTask) uint64 {
 	return jobTask.RunGeneration
 }
 
-func ensureCurrentJobWorkflowOwnership(ctx context.Context, store datastore.DataStore, jobTask *model.JobTask) error {
-	status, err := currentJobWorkflowOwnershipStatus(ctx, store, jobTask)
+func EnsureCurrentJobWorkflowOwnership(ctx context.Context, store datastore.DataStore, jobTask *model.JobTask) error {
+	status, err := CurrentJobWorkflowOwnershipStatus(ctx, store, jobTask)
 	if err != nil {
 		return err
 	}
 	if status != config.StatusRunning {
-		return errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("%w: workflow is %s", errWorkflowJobOwnershipChanged, status))
+		return errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("%w: workflow is %s", ErrWorkflowJobOwnershipChanged, status))
 	}
 	return nil
 }
@@ -355,14 +355,14 @@ func ensureCurrentJobWorkflowOwnership(ctx context.Context, store datastore.Data
 // Status is returned only after the complete lease identity matches. Retry
 // cancellation may clean that same lease's resources after the API changes the
 // parent status, while ordinary execution still requires Running.
-func currentJobWorkflowOwnershipStatus(ctx context.Context, store datastore.DataStore, jobTask *model.JobTask) (config.Status, error) {
+func CurrentJobWorkflowOwnershipStatus(ctx context.Context, store datastore.DataStore, jobTask *model.JobTask) (config.Status, error) {
 	if jobTask == nil || (jobTask.OwnerRunGeneration == 0 && strings.TrimSpace(jobTask.WorkerID) == "") {
 		return config.StatusRunning, nil
 	}
-	generation := jobOwnerGeneration(jobTask)
+	generation := JobOwnerGeneration(jobTask)
 	if store == nil || strings.TrimSpace(jobTask.TaskID) == "" || generation == 0 ||
 		strings.TrimSpace(jobTask.RunToken) == "" || strings.TrimSpace(jobTask.WorkerID) == "" {
-		return "", errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("%w: incomplete ownership identity", errWorkflowJobOwnershipChanged))
+		return "", errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("%w: incomplete ownership identity", ErrWorkflowJobOwnershipChanged))
 	}
 	task, err := repository.TaskByID(ctx, store, strings.TrimSpace(jobTask.TaskID))
 	if err != nil {
@@ -376,14 +376,14 @@ func currentJobWorkflowOwnershipStatus(ctx context.Context, store datastore.Data
 		task.WorkerID != jobTask.WorkerID {
 		return "", errors.Join(
 			signal.ErrInfrastructureStop,
-			fmt.Errorf("%w: task %s generation %d is no longer owned by worker %s", errWorkflowJobOwnershipChanged, jobTask.TaskID, generation, jobTask.WorkerID),
+			fmt.Errorf("%w: task %s generation %d is no longer owned by worker %s", ErrWorkflowJobOwnershipChanged, jobTask.TaskID, generation, jobTask.WorkerID),
 		)
 	}
 	return task.Status, nil
 }
 
-func ensureJobWorkflowOwnership(ctx context.Context, jobTask *model.JobTask, store datastore.DataStore, operation string) error {
-	if err := ensureCurrentJobWorkflowOwnership(ctx, store, jobTask); err != nil {
+func EnsureJobWorkflowOwnership(ctx context.Context, jobTask *model.JobTask, store datastore.DataStore, operation string) error {
+	if err := EnsureCurrentJobWorkflowOwnership(ctx, store, jobTask); err != nil {
 		return fmt.Errorf("verify workflow ownership before %s: %w", operation, err)
 	}
 	return nil
@@ -453,7 +453,7 @@ func isTerminalWorkflowJobTaskStatus(status config.Status) bool {
 }
 
 // jobTypeForTask returns the job type for policy checks.
-func jobTypeForTask(job *model.JobTask, fallback config.JobType) config.JobType {
+func JobTypeForTask(job *model.JobTask, fallback config.JobType) config.JobType {
 	if job == nil {
 		return fallback
 	}
@@ -500,7 +500,7 @@ func completedJobFilters(appID, componentName string, jobType config.JobType) da
 	}
 }
 
-func startTimeFromJob(job *batchv1.Job) (int64, bool) {
+func StartTimeFromJob(job *batchv1.Job) (int64, bool) {
 	if job == nil {
 		return 0, false
 	}
@@ -515,7 +515,7 @@ func startTimeFromJob(job *batchv1.Job) (int64, bool) {
 	return value, true
 }
 
-func jobTerminalStatus(job *batchv1.Job) (config.Status, string, bool) {
+func JobTerminalStatus(job *batchv1.Job) (config.Status, string, bool) {
 	if job == nil {
 		return "", "", false
 	}
@@ -593,31 +593,31 @@ func podOwnedByJob(pod *corev1.Pod, job *batchv1.Job) bool {
 	return false
 }
 
-func (b *deployNamespacedResourceJobBase) createBatchJob(ctx context.Context, jobObj *batchv1.Job) (bool, error) {
-	if err := ensureCurrentJobWorkflowOwnership(ctx, b.store, b.job); err != nil {
+func (b *DeployNamespacedResourceJobBase) CreateBatchJob(ctx context.Context, jobObj *batchv1.Job) (bool, error) {
+	if err := EnsureCurrentJobWorkflowOwnership(ctx, b.Store, b.Job); err != nil {
 		return false, err
 	}
-	validateExisting := validateExistingJobExecutionIdentity(ctx, b.store, jobObj)
-	_, created, err := createOrUpdateTrackedResource(ctx, domainspec.ResourceJob, jobObj.Namespace, jobObj.Name, func(ctx context.Context) (*batchv1.Job, error) {
-		return b.client.BatchV1().Jobs(jobObj.Namespace).Get(ctx, jobObj.Name, metav1.GetOptions{})
+	validateExisting := validateExistingJobExecutionIdentity(ctx, b.Store, jobObj)
+	_, created, err := CreateOrUpdateTrackedResource(ctx, domainspec.ResourceJob, jobObj.Namespace, jobObj.Name, func(ctx context.Context) (*batchv1.Job, error) {
+		return b.Client.BatchV1().Jobs(jobObj.Namespace).Get(ctx, jobObj.Name, metav1.GetOptions{})
 	}, func(ctx context.Context) (*batchv1.Job, error) {
-		return b.client.BatchV1().Jobs(jobObj.Namespace).Create(ctx, jobObj, metav1.CreateOptions{})
+		return b.Client.BatchV1().Jobs(jobObj.Namespace).Create(ctx, jobObj, metav1.CreateOptions{})
 	}, func(_ context.Context, existing *batchv1.Job) error {
 		return validateExisting(existing)
 	}, k8serrors.IsNotFound, k8serrors.IsAlreadyExists)
 	return created, err
 }
 
-func (b *deployNamespacedResourceJobBase) waitBatchJob(ctx context.Context) (config.Status, string, error) {
-	timeout := b.job.Timeout
+func (b *DeployNamespacedResourceJobBase) WaitBatchJob(ctx context.Context) (config.Status, string, error) {
+	timeout := b.Job.Timeout
 	if timeout <= 0 {
 		timeout = int64(config.DefaultJobTaskTimeout.Seconds())
 	}
 	waitCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
-	namespace := b.namespace
-	name := b.job.Name
-	if jobObj, ok := jobinfo.OptionalJobInfo[*batchv1.Job](b.job); ok {
+	namespace := b.Namespace
+	name := b.Job.Name
+	if jobObj, ok := jobinfo.OptionalJobInfo[*batchv1.Job](b.Job); ok {
 		if jobObj.Namespace != "" {
 			namespace = jobObj.Namespace
 		}
@@ -625,25 +625,25 @@ func (b *deployNamespacedResourceJobBase) waitBatchJob(ctx context.Context) (con
 			name = jobObj.Name
 		}
 	}
-	return waitForJobCompletion(waitCtx, b.client, namespace, name)
+	return waitForJobCompletion(waitCtx, b.Client, namespace, name)
 }
 
 // Job wait helpers.
-const jobPollInterval = 2 * time.Second
+const JobPollInterval = 2 * time.Second
 
-const jobDeleteTimeout = 30 * time.Second
+const JobDeleteTimeout = 30 * time.Second
 
 func waitForJobCompletion(ctx context.Context, client kubernetes.Interface, namespace, name string) (config.Status, string, error) {
-	return waitForJobCompletionMatching(ctx, client, namespace, name, nil)
+	return WaitForJobCompletionMatching(ctx, client, namespace, name, nil)
 }
 
-func waitForJobCompletionMatching(ctx context.Context, client kubernetes.Interface, namespace, name string, matches func(*batchv1.Job) bool) (config.Status, string, error) {
+func WaitForJobCompletionMatching(ctx context.Context, client kubernetes.Interface, namespace, name string, matches func(*batchv1.Job) bool) (config.Status, string, error) {
 	if client == nil {
 		return config.StatusFailed, "client is nil", fmt.Errorf("client is nil")
 	}
 	var finalStatus config.Status
 	var finalMessage string
-	err := wait.PollUntilContextCancel(ctx, jobPollInterval, true, func(checkCtx context.Context) (bool, error) {
+	err := wait.PollUntilContextCancel(ctx, JobPollInterval, true, func(checkCtx context.Context) (bool, error) {
 		job, err := client.BatchV1().Jobs(namespace).Get(checkCtx, name, metav1.GetOptions{})
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
@@ -654,7 +654,7 @@ func waitForJobCompletionMatching(ctx context.Context, client kubernetes.Interfa
 		if matches != nil && !matches(job) {
 			return false, jobinfo.ErrJobExecutionIdentityChanged
 		}
-		status, message, done := jobTerminalStatus(job)
+		status, message, done := JobTerminalStatus(job)
 		if done {
 			finalStatus = status
 			finalMessage = message
@@ -683,7 +683,7 @@ func waitForJobCompletionMatching(ctx context.Context, client kubernetes.Interfa
 	return finalStatus, finalMessage, nil
 }
 
-func jobExists(ctx context.Context, client kubernetes.Interface, namespace, name string) (*batchv1.Job, bool, error) {
+func JobExists(ctx context.Context, client kubernetes.Interface, namespace, name string) (*batchv1.Job, bool, error) {
 	if client == nil {
 		return nil, false, fmt.Errorf("client is nil")
 	}

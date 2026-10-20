@@ -17,6 +17,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
@@ -36,31 +37,31 @@ type versionRestartWaitTarget struct {
 }
 
 type VersionRestartJobCtl struct {
-	deployNamespacedResourceJobBase
+	jobexec.DeployNamespacedResourceJobBase
 }
 
-func NewVersionRestartJobCtl(job *model.JobTask, runtime *Runtime) *VersionRestartJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("VersionRestartJobCtl", job, runtime, nil)
+func NewVersionRestartJobCtl(job *model.JobTask, runtime *jobexec.Runtime) *VersionRestartJobCtl {
+	base, ok := jobexec.NewDeployNamespacedResourceJobBase("VersionRestartJobCtl", job, runtime, nil)
 	if !ok {
 		return nil
 	}
-	return &VersionRestartJobCtl{deployNamespacedResourceJobBase: base}
+	return &VersionRestartJobCtl{DeployNamespacedResourceJobBase: base}
 }
 
 func (c *VersionRestartJobCtl) Clean(context.Context) {}
 
 func (c *VersionRestartJobCtl) Run(ctx context.Context) error {
-	return c.runWithStatus(ctx, c.run, "version restart job run error")
+	return c.RunWithStatus(ctx, c.run, "version restart job run error")
 }
 
 func (c *VersionRestartJobCtl) run(ctx context.Context) error {
-	if c.client == nil {
+	if c.Client == nil {
 		return fmt.Errorf("client is nil")
 	}
-	if c.store == nil {
+	if c.Store == nil {
 		return fmt.Errorf("store is nil")
 	}
-	info, err := jobinfo.RequiredJobInfo[*VersionRestartJobInfo](c.job)
+	info, err := jobinfo.RequiredJobInfo[*VersionRestartJobInfo](c.Job)
 	if err != nil {
 		return err
 	}
@@ -97,7 +98,7 @@ func (c *VersionRestartJobCtl) run(ctx context.Context) error {
 	default:
 		return fmt.Errorf("component %s with type %q cannot be restarted", component.Name, component.ComponentType)
 	}
-	if c.job.Status == config.StatusSkipped {
+	if c.Job.Status == config.StatusSkipped {
 		return nil
 	}
 	if err := c.markComponentRuntime(ctx, component, config.ComponentStatusRestarting, 0, ""); err != nil {
@@ -112,7 +113,7 @@ func (c *VersionRestartJobCtl) restartDeployment(
 	restartedAt string,
 	patch []byte,
 ) (*versionRestartWaitTarget, error) {
-	properties, err := ParseProperties(component.Properties)
+	properties, err := jobexec.ParseProperties(component.Properties)
 	if err != nil {
 		return nil, err
 	}
@@ -127,12 +128,12 @@ func (c *VersionRestartJobCtl) restartDeployment(
 	if !ok || deploy == nil {
 		return nil, fmt.Errorf("server component %s did not generate a Deployment", component.Name)
 	}
-	namespace := databaseResetNamespaceOrDefault(deploy.Namespace, component.Namespace)
+	namespace := jobexec.DatabaseResetNamespaceOrDefault(deploy.Namespace, component.Namespace)
 	name := strings.TrimSpace(deploy.Name)
 	if name == "" {
 		name = naming.WebServiceName(component.Name, component.ResourceNameKey())
 	}
-	if _, err := c.client.AppsV1().Deployments(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
+	if _, err := c.Client.AppsV1().Deployments(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
 		if k8serrors.IsNotFound(err) {
 			klog.V(4).InfoS("version restart target deployment not found, skipping", "namespace", namespace, "name", name, "component", component.Name)
 			c.skip(fmt.Sprintf("deployment %s/%s not found", namespace, name))
@@ -167,12 +168,12 @@ func (c *VersionRestartJobCtl) restartStatefulSet(
 	if !ok || statefulSet == nil {
 		return nil, fmt.Errorf("store component %s did not generate a StatefulSet", component.Name)
 	}
-	namespace := databaseResetNamespaceOrDefault(statefulSet.Namespace, component.Namespace)
+	namespace := jobexec.DatabaseResetNamespaceOrDefault(statefulSet.Namespace, component.Namespace)
 	name := strings.TrimSpace(statefulSet.Name)
 	if name == "" {
 		name = naming.StoreServerName(component.Name, component.ResourceNameKey())
 	}
-	if _, err := c.client.AppsV1().StatefulSets(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
+	if _, err := c.Client.AppsV1().StatefulSets(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
 		if k8serrors.IsNotFound(err) {
 			klog.V(4).InfoS("version restart target statefulset not found, skipping", "namespace", namespace, "name", name, "component", component.Name)
 			c.skip(fmt.Sprintf("statefulset %s/%s not found", namespace, name))
@@ -194,11 +195,11 @@ func (c *VersionRestartJobCtl) waitRestartReady(ctx context.Context, component *
 	if component == nil || target == nil || target.desiredReplicas <= 0 {
 		return nil
 	}
-	if c.resourceWaiter == nil {
+	if c.ResourceWaiter == nil {
 		return fmt.Errorf("resource waiter is required for version restart %s %s/%s", target.kind, target.namespace, target.name)
 	}
 	timeout := time.Duration(c.timeout()) * time.Second
-	err := c.resourceWaiter.WaitForComponentReadyWithOptions(ctx, component.AppID, target.componentLabel, target.desiredReplicas, informer.ComponentReadyWaitOptions{
+	err := c.ResourceWaiter.WaitForComponentReadyWithOptions(ctx, component.AppID, target.componentLabel, target.desiredReplicas, informer.ComponentReadyWaitOptions{
 		ExpectedImages: target.expectedImages,
 		ExpectedAnnotations: map[string]string{
 			config.AnnotationWorkloadRestartAt: restartedAt,
@@ -209,16 +210,16 @@ func (c *VersionRestartJobCtl) waitRestartReady(ctx context.Context, component *
 	}
 	var waitErr *informer.WaitError
 	if errors.As(err, &waitErr) {
-		return jobinfo.NewStatusError(waitErr.Status, workloadWaitError(ctx, c.client, c.job, target.kind, target.namespace, target.name, target.componentLabel, waitErr.Err))
+		return jobinfo.NewStatusError(waitErr.Status, workloadWaitError(ctx, c.Client, c.Job, target.kind, target.namespace, target.name, target.componentLabel, waitErr.Err))
 	}
-	return workloadWaitError(ctx, c.client, c.job, target.kind, target.namespace, target.name, target.componentLabel, err)
+	return workloadWaitError(ctx, c.Client, c.Job, target.kind, target.namespace, target.name, target.componentLabel, err)
 }
 
 func (c *VersionRestartJobCtl) timeout() int64 {
-	if c == nil || c.job == nil || c.job.Timeout <= 0 {
+	if c == nil || c.Job == nil || c.Job.Timeout <= 0 {
 		return config.DeployTimeout
 	}
-	return c.job.Timeout
+	return c.Job.Timeout
 }
 
 func desiredReplicasFromDeployment(deploy *appsv1.Deployment) int32 {
@@ -236,18 +237,18 @@ func desiredReplicasFromStatefulSet(statefulSet *appsv1.StatefulSet) int32 {
 }
 
 func (c *VersionRestartJobCtl) skip(reason string) {
-	if c == nil || c.job == nil {
+	if c == nil || c.Job == nil {
 		return
 	}
-	c.job.Status = config.StatusSkipped
-	c.job.Info = strings.TrimSpace(reason)
+	c.Job.Status = config.StatusSkipped
+	c.Job.Info = strings.TrimSpace(reason)
 }
 
 func (c *VersionRestartJobCtl) markComponentRuntime(ctx context.Context, component *model.ApplicationComponent, status config.ComponentStatus, readyReplicas int32, lastAbnormal string) error {
 	if component == nil {
 		return nil
 	}
-	if err := repository.UpdateComponentRuntimeFields(ctx, c.store, component, map[string]interface{}{
+	if err := repository.UpdateComponentRuntimeFields(ctx, c.Store, component, map[string]interface{}{
 		"status":         string(status),
 		"ready_replicas": readyReplicas,
 		"last_abnormal":  lastAbnormal,
@@ -258,7 +259,7 @@ func (c *VersionRestartJobCtl) markComponentRuntime(ctx context.Context, compone
 	component.Status = string(status)
 	component.ReadyReplicas = readyReplicas
 	component.LastAbnormal = lastAbnormal
-	invalidateComponentsCache(ctx, c.runtime, component.AppID, "version restart status sync")
+	jobexec.InvalidateComponentsCache(ctx, c.Runtime, component.AppID, "version restart status sync")
 	return nil
 }
 

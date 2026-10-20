@@ -25,7 +25,7 @@ func (c *CleanupResourcesJobCtl) deleteLabeledResources(ctx context.Context, com
 }
 
 func (c *CleanupResourcesJobCtl) deleteLabeledWorkloads(ctx context.Context, ns string, listOptions metav1.ListOptions, deleted *cleanupResourceSet) {
-	if list, err := c.client.AppsV1().Deployments(ns).List(ctx, listOptions); err != nil {
+	if list, err := c.Client.AppsV1().Deployments(ns).List(ctx, listOptions); err != nil {
 		deleted.errs = append(deleted.errs, fmt.Errorf("list labeled deployments: %w", err))
 	} else {
 		for i := range list.Items {
@@ -35,7 +35,7 @@ func (c *CleanupResourcesJobCtl) deleteLabeledWorkloads(ctx context.Context, ns 
 			})
 		}
 	}
-	if list, err := c.client.AppsV1().StatefulSets(ns).List(ctx, listOptions); err != nil {
+	if list, err := c.Client.AppsV1().StatefulSets(ns).List(ctx, listOptions); err != nil {
 		deleted.errs = append(deleted.errs, fmt.Errorf("list labeled statefulsets: %w", err))
 	} else {
 		for i := range list.Items {
@@ -45,7 +45,7 @@ func (c *CleanupResourcesJobCtl) deleteLabeledWorkloads(ctx context.Context, ns 
 			})
 		}
 	}
-	if list, err := c.client.BatchV1().Jobs(ns).List(ctx, listOptions); err != nil {
+	if list, err := c.Client.BatchV1().Jobs(ns).List(ctx, listOptions); err != nil {
 		deleted.errs = append(deleted.errs, fmt.Errorf("list labeled jobs: %w", err))
 	} else {
 		for i := range list.Items {
@@ -56,11 +56,11 @@ func (c *CleanupResourcesJobCtl) deleteLabeledWorkloads(ctx context.Context, ns 
 				if item.UID != "" {
 					options.Preconditions = &metav1.Preconditions{UID: &item.UID}
 				}
-				return c.client.BatchV1().Jobs(item.Namespace).Delete(deleteCtx, item.Name, options)
+				return c.Client.BatchV1().Jobs(item.Namespace).Delete(deleteCtx, item.Name, options)
 			})
 		}
 	}
-	if list, err := c.client.BatchV1().CronJobs(ns).List(ctx, listOptions); err != nil {
+	if list, err := c.Client.BatchV1().CronJobs(ns).List(ctx, listOptions); err != nil {
 		deleted.errs = append(deleted.errs, fmt.Errorf("list labeled cronjobs: %w", err))
 	} else {
 		for i := range list.Items {
@@ -73,7 +73,7 @@ func (c *CleanupResourcesJobCtl) deleteLabeledWorkloads(ctx context.Context, ns 
 }
 
 func (c *CleanupResourcesJobCtl) deleteLabeledCoreResources(ctx context.Context, ns string, listOptions metav1.ListOptions, deleted *cleanupResourceSet) {
-	if list, err := c.client.CoreV1().Services(ns).List(ctx, listOptions); err != nil {
+	if list, err := c.Client.CoreV1().Services(ns).List(ctx, listOptions); err != nil {
 		deleted.errs = append(deleted.errs, fmt.Errorf("list labeled services: %w", err))
 	} else {
 		for i := range list.Items {
@@ -83,7 +83,7 @@ func (c *CleanupResourcesJobCtl) deleteLabeledCoreResources(ctx context.Context,
 			})
 		}
 	}
-	if list, err := c.client.CoreV1().ConfigMaps(ns).List(ctx, listOptions); err != nil {
+	if list, err := c.Client.CoreV1().ConfigMaps(ns).List(ctx, listOptions); err != nil {
 		deleted.errs = append(deleted.errs, fmt.Errorf("list labeled configmaps: %w", err))
 	} else {
 		for i := range list.Items {
@@ -93,7 +93,7 @@ func (c *CleanupResourcesJobCtl) deleteLabeledCoreResources(ctx context.Context,
 			})
 		}
 	}
-	if list, err := c.client.CoreV1().Secrets(ns).List(ctx, listOptions); err != nil {
+	if list, err := c.Client.CoreV1().Secrets(ns).List(ctx, listOptions); err != nil {
 		deleted.errs = append(deleted.errs, fmt.Errorf("list labeled secrets: %w", err))
 	} else {
 		for i := range list.Items {
@@ -108,7 +108,7 @@ func (c *CleanupResourcesJobCtl) deleteLabeledCoreResources(ctx context.Context,
 }
 
 func (c *CleanupResourcesJobCtl) deleteLabeledNetworkingResources(ctx context.Context, ns string, listOptions metav1.ListOptions, deleted *cleanupResourceSet) {
-	if list, err := c.client.NetworkingV1().Ingresses(ns).List(ctx, listOptions); err != nil {
+	if list, err := c.Client.NetworkingV1().Ingresses(ns).List(ctx, listOptions); err != nil {
 		deleted.errs = append(deleted.errs, fmt.Errorf("list labeled ingresses: %w", err))
 	} else {
 		for i := range list.Items {

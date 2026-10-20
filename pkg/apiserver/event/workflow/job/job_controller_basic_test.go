@@ -12,13 +12,14 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
 
 func TestServiceJobCtlBasicBranches(t *testing.T) {
-	require.Nil(t, NewDeployServiceJobCtl(nil, &Runtime{Client: nil, Store: nil, Ack: nil}, nil))
+	require.Nil(t, NewDeployServiceJobCtl(nil, &jobexec.Runtime{Client: nil, Store: nil, Ack: nil}, nil))
 
 	ackCount := 0
 	service := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "svc-a", Namespace: "default"}}
@@ -28,7 +29,7 @@ func TestServiceJobCtlBasicBranches(t *testing.T) {
 		JobType:   string(config.JobDeployService),
 		JobInfo:   service,
 	}
-	ctl := NewDeployServiceJobCtl(jobTask, &Runtime{Client: nil, Store: &jobtest.NoopStore{}, Ack: func() { ackCount++ }}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployServiceJobCtl(jobTask, &jobexec.Runtime{Client: nil, Store: &jobtest.NoopStore{}, Ack: func() { ackCount++ }}, locker.NewNoopLocker(jobtest.ShareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -36,7 +37,7 @@ func TestServiceJobCtlBasicBranches(t *testing.T) {
 	require.Equal(t, 1, ackCount)
 	require.Equal(t, config.StatusFailed, jobTask.Status)
 
-	ctl.client = fake.NewSimpleClientset()
+	ctl.Client = fake.NewSimpleClientset()
 	jobTask.JobInfo = "invalid"
 	err = ctl.run(context.Background())
 	require.Error(t, err)
@@ -49,7 +50,7 @@ func TestServiceJobCtlBasicBranches(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, config.StatusCancelled, statusErr.Status)
 
-	ctl.job.Timeout = 0
+	ctl.Job.Timeout = 0
 	require.Greater(t, ctl.timeout(), 0)
 }
 
@@ -72,7 +73,7 @@ func TestGetServiceStatus(t *testing.T) {
 }
 
 func TestPVCJobCtlBasicBranches(t *testing.T) {
-	require.Nil(t, NewDeployPVCJobCtl(nil, &Runtime{Client: nil, Store: nil, Ack: nil}, nil))
+	require.Nil(t, NewDeployPVCJobCtl(nil, &jobexec.Runtime{Client: nil, Store: nil, Ack: nil}, nil))
 
 	ackCount := 0
 	jobTask := &model.JobTask{
@@ -83,7 +84,7 @@ func TestPVCJobCtlBasicBranches(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "pvc-a", Namespace: "default"},
 		},
 	}
-	ctl := NewDeployPVCJobCtl(jobTask, &Runtime{Client: nil, Store: &jobtest.NoopStore{}, Ack: func() { ackCount++ }}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployPVCJobCtl(jobTask, &jobexec.Runtime{Client: nil, Store: &jobtest.NoopStore{}, Ack: func() { ackCount++ }}, locker.NewNoopLocker(jobtest.ShareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -91,7 +92,7 @@ func TestPVCJobCtlBasicBranches(t *testing.T) {
 	require.Equal(t, 1, ackCount)
 	require.Equal(t, config.StatusFailed, jobTask.Status)
 
-	ctl.client = fake.NewSimpleClientset()
+	ctl.Client = fake.NewSimpleClientset()
 	jobTask.JobInfo = "invalid"
 	err = ctl.run(context.Background())
 	require.Error(t, err)
@@ -100,12 +101,12 @@ func TestPVCJobCtlBasicBranches(t *testing.T) {
 	_, err = ctl.getPVCStatus(context.Background())
 	require.Error(t, err)
 
-	ctl.job.Timeout = 0
+	ctl.Job.Timeout = 0
 	require.Greater(t, ctl.timeout(), int64(0))
 }
 
 func TestIngressJobCtlBasicBranches(t *testing.T) {
-	require.Nil(t, NewDeployIngressJobCtl(nil, &Runtime{Client: nil, Store: nil, Ack: nil}, nil))
+	require.Nil(t, NewDeployIngressJobCtl(nil, &jobexec.Runtime{Client: nil, Store: nil, Ack: nil}, nil))
 
 	ackCount := 0
 	jobTask := &model.JobTask{
@@ -116,7 +117,7 @@ func TestIngressJobCtlBasicBranches(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "ing-a", Namespace: "default"},
 		},
 	}
-	ctl := NewDeployIngressJobCtl(jobTask, &Runtime{Client: nil, Store: &jobtest.NoopStore{}, Ack: func() { ackCount++ }}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployIngressJobCtl(jobTask, &jobexec.Runtime{Client: nil, Store: &jobtest.NoopStore{}, Ack: func() { ackCount++ }}, locker.NewNoopLocker(jobtest.ShareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	err := ctl.Run(context.Background())
@@ -124,7 +125,7 @@ func TestIngressJobCtlBasicBranches(t *testing.T) {
 	require.Equal(t, 1, ackCount)
 	require.Equal(t, config.StatusFailed, jobTask.Status)
 
-	ctl.client = fake.NewSimpleClientset()
+	ctl.Client = fake.NewSimpleClientset()
 	jobTask.JobInfo = "invalid"
 	err = ctl.run(context.Background())
 	require.Error(t, err)
@@ -137,6 +138,6 @@ func TestIngressJobCtlBasicBranches(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, config.StatusCancelled, statusErr.Status)
 
-	ctl.job.Timeout = 0
+	ctl.Job.Timeout = 0
 	require.Greater(t, ctl.timeout(), int64(0))
 }

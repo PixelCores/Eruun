@@ -17,6 +17,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
@@ -67,7 +68,7 @@ func requiredStatefulSetCleanupRef(component *model.ApplicationComponent) (clean
 }
 
 func (c *CleanupResourcesJobCtl) ensureRequiredStatefulSetPVCDeletionAllowed(ctx context.Context, component *model.ApplicationComponent) error {
-	if c == nil || c.job == nil || len(jobinfo.VersionUpdateCleanupStatefulSetPVCTemplatesToDelete(c.job.InternalInfo)) == 0 {
+	if c == nil || c.Job == nil || len(jobinfo.VersionUpdateCleanupStatefulSetPVCTemplatesToDelete(c.Job.InternalInfo)) == 0 {
 		return nil
 	}
 	if err := c.ensureRequiredStatefulSetWorkflowTaskActive(ctx, "checking required StatefulSet PVC deletion"); err != nil {
@@ -92,7 +93,7 @@ func (c *CleanupResourcesJobCtl) ensureRequiredStatefulSetPVCDeletionAllowed(ctx
 }
 
 func (c *CleanupResourcesJobCtl) requiredStatefulSetPVCsGone(ctx context.Context, component *model.ApplicationComponent) (bool, error) {
-	if c == nil || c.job == nil || len(jobinfo.VersionUpdateCleanupStatefulSetPVCTemplatesToDelete(c.job.InternalInfo)) == 0 {
+	if c == nil || c.Job == nil || len(jobinfo.VersionUpdateCleanupStatefulSetPVCTemplatesToDelete(c.Job.InternalInfo)) == 0 {
 		return true, nil
 	}
 	if err := c.ensureRequiredStatefulSetWorkflowTaskActive(ctx, "reconciling required StatefulSet PVC deletion"); err != nil {
@@ -134,7 +135,7 @@ func (c *CleanupResourcesJobCtl) requiredStatefulSetPVCsGone(ctx context.Context
 			UID:             &uid,
 			ResourceVersion: &resourceVersion,
 		}}
-		if err := c.client.CoreV1().PersistentVolumeClaims(targetRef.namespace).Delete(ctx, targetRef.name, deleteOptions); err != nil {
+		if err := c.Client.CoreV1().PersistentVolumeClaims(targetRef.namespace).Delete(ctx, targetRef.name, deleteOptions); err != nil {
 			if k8serrors.IsNotFound(err) {
 				continue
 			}
@@ -208,10 +209,10 @@ func (c *CleanupResourcesJobCtl) refreshRequiredStatefulSetPVCTargets(ctx contex
 }
 
 func (c *CleanupResourcesJobCtl) requiredStatefulSetPVCTargetSpec(component *model.ApplicationComponent) (cleanupResourceRef, []string, error) {
-	if c == nil || c.job == nil {
+	if c == nil || c.Job == nil {
 		return cleanupResourceRef{}, nil, fmt.Errorf("required StatefulSet PVC deletion controller is nil")
 	}
-	templates := jobinfo.VersionUpdateCleanupStatefulSetPVCTemplatesToDelete(c.job.InternalInfo)
+	templates := jobinfo.VersionUpdateCleanupStatefulSetPVCTemplatesToDelete(c.Job.InternalInfo)
 	if len(templates) == 0 {
 		return cleanupResourceRef{}, nil, fmt.Errorf("required StatefulSet PVC deletion templates are empty")
 	}
@@ -230,7 +231,7 @@ func (c *CleanupResourcesJobCtl) listRequiredStatefulSetPVCs(
 	ref cleanupResourceRef,
 	templates []string,
 ) (map[string]*corev1.PersistentVolumeClaim, error) {
-	list, err := c.client.CoreV1().PersistentVolumeClaims(ref.namespace).List(ctx, metav1.ListOptions{})
+	list, err := c.Client.CoreV1().PersistentVolumeClaims(ref.namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("list required StatefulSet PVC deletion targets in namespace %s: %w", ref.namespace, err)
 	}
@@ -238,7 +239,7 @@ func (c *CleanupResourcesJobCtl) listRequiredStatefulSetPVCs(
 	for i := range list.Items {
 		pvc := &list.Items[i]
 		for _, template := range templates {
-			if isStatefulSetTemplatePVCName(template, ref.name, pvc.Name) {
+			if jobexec.IsStatefulSetTemplatePVCName(template, ref.name, pvc.Name) {
 				result[pvc.Name] = pvc.DeepCopy()
 				break
 			}
@@ -253,8 +254,8 @@ func (c *CleanupResourcesJobCtl) initializeRequiredStatefulSetPVCTarget(
 	templates []string,
 	current map[string]*corev1.PersistentVolumeClaim,
 ) error {
-	if c.job.Status == config.StatusRunning {
-		existing, err := jobinfo.FindExistingVersionUpdateCleanupJobInfo(ctx, c.store, c.job)
+	if c.Job.Status == config.StatusRunning {
+		existing, err := jobinfo.FindExistingVersionUpdateCleanupJobInfo(ctx, c.Store, c.Job)
 		if err != nil {
 			return fmt.Errorf("load required StatefulSet PVC identity checkpoint: %w", err)
 		}
@@ -274,7 +275,7 @@ func (c *CleanupResourcesJobCtl) initializeRequiredStatefulSetPVCTarget(
 				return err
 			}
 			c.requiredStatefulSetPVCTarget = target
-			c.job.InternalInfo = existing.InternalInfo
+			c.Job.InternalInfo = existing.InternalInfo
 			return nil
 		}
 	}
@@ -285,7 +286,7 @@ func (c *CleanupResourcesJobCtl) initializeRequiredStatefulSetPVCTarget(
 		pvcUIDs:   make(map[string]types.UID, len(current)),
 	}
 	for name, pvc := range current {
-		if c.job.Status == config.StatusRunning && pvc.UID == "" {
+		if c.Job.Status == config.StatusRunning && pvc.UID == "" {
 			return requiredStatefulSetPVCConflict(ref, name, "PVC has an empty UID during the persisted identity scan")
 		}
 		target.pvcUIDs[name] = pvc.UID
@@ -299,11 +300,11 @@ func (c *CleanupResourcesJobCtl) persistRequiredStatefulSetPVCTarget(ctx context
 	if target == nil {
 		return nil
 	}
-	if c.job == nil || c.job.Status != config.StatusRunning {
+	if c.Job == nil || c.Job.Status != config.StatusRunning {
 		target.checkpointPersisted = true
 		return nil
 	}
-	existing, err := jobinfo.FindExistingVersionUpdateCleanupJobInfo(ctx, c.store, c.job)
+	existing, err := jobinfo.FindExistingVersionUpdateCleanupJobInfo(ctx, c.Store, c.Job)
 	if err != nil {
 		return fmt.Errorf("load required StatefulSet PVC identity checkpoint before persist: %w", err)
 	}
@@ -317,14 +318,14 @@ func (c *CleanupResourcesJobCtl) persistRequiredStatefulSetPVCTarget(ctx context
 	if status != config.StatusRunning {
 		return c.requiredStatefulSetPVCCheckpointStatusError(status, existing.Status)
 	}
-	c.job.InternalInfo = existing.InternalInfo
+	c.Job.InternalInfo = existing.InternalInfo
 	checkpoint := requiredStatefulSetPVCCheckpointFromTarget(target)
 	if current, found, err := parseRequiredStatefulSetPVCDeletionCheckpoint(existing.InternalInfo); err != nil {
 		return fmt.Errorf("parse required StatefulSet PVC identity checkpoint before persist: %w", err)
 	} else if found {
 		if requiredStatefulSetPVCCheckpointsEqual(current, checkpoint) {
 			target.checkpointPersisted = true
-			c.job.InternalInfo = existing.InternalInfo
+			c.Job.InternalInfo = existing.InternalInfo
 			return nil
 		}
 		return requiredStatefulSetPVCConflict(target.ref, target.ref.name, "persisted PVC identity checkpoint changed concurrently")
@@ -339,7 +340,7 @@ func (c *CleanupResourcesJobCtl) persistRequiredStatefulSetPVCTarget(ctx context
 	if err := c.ensureRequiredStatefulSetWorkflowTaskActive(ctx, "persisting required StatefulSet PVC identity checkpoint"); err != nil {
 		return err
 	}
-	conditionalStore, ok := c.store.(datastore.ConditionalCompareAndSwap)
+	conditionalStore, ok := c.Store.(datastore.ConditionalCompareAndSwap)
 	if !ok {
 		return fmt.Errorf("persist required StatefulSet PVC identity checkpoint: datastore does not support conditional compare-and-swap")
 	}
@@ -350,7 +351,7 @@ func (c *CleanupResourcesJobCtl) persistRequiredStatefulSetPVCTarget(ctx context
 		return fmt.Errorf("persist required StatefulSet PVC identity checkpoint: %w", err)
 	}
 	if !updated {
-		latest, loadErr := jobinfo.FindExistingVersionUpdateCleanupJobInfo(ctx, c.store, c.job)
+		latest, loadErr := jobinfo.FindExistingVersionUpdateCleanupJobInfo(ctx, c.Store, c.Job)
 		if loadErr != nil {
 			return fmt.Errorf("reload required StatefulSet PVC identity checkpoint: %w", loadErr)
 		}
@@ -358,7 +359,7 @@ func (c *CleanupResourcesJobCtl) persistRequiredStatefulSetPVCTarget(ctx context
 			if ownershipErr := c.ensureVersionUpdateCleanupJobInfoOwned(latest, "reloading required StatefulSet PVC identity checkpoint"); ownershipErr != nil {
 				return ownershipErr
 			}
-			c.job.InternalInfo = latest.InternalInfo
+			c.Job.InternalInfo = latest.InternalInfo
 			latestStatus := config.Status(strings.TrimSpace(latest.Status))
 			if latestStatus != config.StatusRunning {
 				return c.requiredStatefulSetPVCCheckpointStatusError(latestStatus, latest.Status)
@@ -369,14 +370,14 @@ func (c *CleanupResourcesJobCtl) persistRequiredStatefulSetPVCTarget(ctx context
 			}
 			if found && requiredStatefulSetPVCCheckpointsEqual(current, checkpoint) {
 				target.checkpointPersisted = true
-				c.job.InternalInfo = latest.InternalInfo
+				c.Job.InternalInfo = latest.InternalInfo
 				return nil
 			}
 		}
 		return requiredStatefulSetPVCConflict(target.ref, target.ref.name, "PVC identity checkpoint changed concurrently")
 	}
 	target.checkpointPersisted = true
-	c.job.InternalInfo = nextInternalInfo
+	c.Job.InternalInfo = nextInternalInfo
 	return nil
 }
 
@@ -384,7 +385,7 @@ func (c *CleanupResourcesJobCtl) requiredStatefulSetPVCCheckpointStatusError(sta
 	if isTerminalVersionUpdateCleanupStatus(status) {
 		return c.abortTerminalizedVersionUpdateCleanup(status, rawStatus)
 	}
-	return fmt.Errorf("version update cleanup job info for task %s component %s is %s while persisting required StatefulSet PVC identity, expected running", c.job.TaskID, jobinfo.ResolveJobServiceName(c.job), rawStatus)
+	return fmt.Errorf("version update cleanup job info for task %s component %s is %s while persisting required StatefulSet PVC identity, expected running", c.Job.TaskID, jobinfo.ResolveJobServiceName(c.Job), rawStatus)
 }
 
 func requiredStatefulSetPVCCheckpointFromTarget(target *requiredStatefulSetPVCDeletionTarget) requiredStatefulSetPVCDeletionCheckpoint {
@@ -501,7 +502,7 @@ func (c *CleanupResourcesJobCtl) getRequiredStatefulSetPVCTarget(ctx context.Con
 	if !remembered {
 		return nil, false, fmt.Errorf("required StatefulSet PVC %s/%s was not remembered", target.ref.namespace, name)
 	}
-	pvc, err := c.client.CoreV1().PersistentVolumeClaims(target.ref.namespace).Get(ctx, name, metav1.GetOptions{})
+	pvc, err := c.Client.CoreV1().PersistentVolumeClaims(target.ref.namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil, false, nil
@@ -537,7 +538,7 @@ func (target *requiredStatefulSetPVCDeletionTarget) refForPVC(name string) clean
 
 func matchesStatefulSetTemplatePVCName(templates []string, statefulSetName, pvcName string) bool {
 	for _, template := range templates {
-		if isStatefulSetTemplatePVCName(template, statefulSetName, pvcName) {
+		if jobexec.IsStatefulSetTemplatePVCName(template, statefulSetName, pvcName) {
 			return true
 		}
 	}
@@ -566,8 +567,8 @@ func requiredStatefulSetPVCConflict(ref cleanupResourceRef, name, detail string)
 
 func (c *CleanupResourcesJobCtl) requiredStatefulSetPVCDeletionProtectedError(ref cleanupResourceRef) error {
 	componentName := "<unknown>"
-	if c != nil && c.job != nil {
-		if name := strings.TrimSpace(jobinfo.ResolveJobServiceName(c.job)); name != "" {
+	if c != nil && c.Job != nil {
+		if name := strings.TrimSpace(jobinfo.ResolveJobServiceName(c.Job)); name != "" {
 			componentName = name
 		}
 	}

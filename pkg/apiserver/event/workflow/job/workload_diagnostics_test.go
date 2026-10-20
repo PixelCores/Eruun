@@ -16,6 +16,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 )
@@ -33,15 +34,15 @@ func TestDeployJobCtlWaitAddsPodFailureDiagnostics(t *testing.T) {
 	waiter := newWorkloadTestObserver(t, pod)
 
 	ctl := &DeployJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
-			job: &model.JobTask{
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{
+			Job: &model.JobTask{
 				Name:      "api",
 				Namespace: "default",
 				AppID:     "app-1",
 				Timeout:   1,
 			},
-			client:         fake.NewSimpleClientset(pod, diagnosticEventForPod(pod)),
-			resourceWaiter: waiter,
+			Client:         fake.NewSimpleClientset(pod, diagnosticEventForPod(pod)),
+			ResourceWaiter: waiter,
 		},
 		desiredReplicas: 1,
 	}
@@ -80,15 +81,15 @@ func TestDeployStatefulSetJobCtlWaitAddsPodFailureDiagnostics(t *testing.T) {
 	waiter := newWorkloadTestObserver(t, pod)
 
 	ctl := &DeployStatefulSetJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
-			job: &model.JobTask{
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{
+			Job: &model.JobTask{
 				Name:      "mysql",
 				Namespace: "default",
 				AppID:     "app-1",
 				Timeout:   1,
 			},
-			client:         fake.NewSimpleClientset(pod),
-			resourceWaiter: waiter,
+			Client:         fake.NewSimpleClientset(pod),
+			ResourceWaiter: waiter,
 		},
 		desiredReplicas: 1,
 	}

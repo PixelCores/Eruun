@@ -2,7 +2,6 @@ package job
 
 import (
 	"context"
-
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -13,12 +12,12 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -65,7 +64,7 @@ func TestCleanupResourcesJobCtlDeletesGeneratedAndLabeledResources(t *testing.T)
 		JobInfo:   component,
 		Timeout:   1,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: client, Store: store, Ack: func() { ackCount++ }})
+	ctl := NewCleanupResourcesJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: func() { ackCount++ }})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.Run(ctx))
@@ -149,7 +148,7 @@ func TestCleanupResourcesJobCtlPreservesTraitGeneratedRBAC(t *testing.T) {
 		Name: component.Name, Namespace: component.Namespace, AppID: component.AppID,
 		JobType: string(config.JobCleanupResources), JobInfo: component, Timeout: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: client, Store: &cleanupComponentStore{component: component}, Ack: nil})
+	ctl := NewCleanupResourcesJobCtl(task, &jobexec.Runtime{Client: client, Store: &cleanupComponentStore{component: component}, Ack: nil})
 	require.NotNil(t, ctl)
 	require.NoError(t, ctl.Run(ctx))
 
@@ -226,7 +225,7 @@ func TestCleanupResourcesJobCtlKeepsProtectedSharedResources(t *testing.T) {
 		JobInfo:   component,
 		Timeout:   1,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
+	ctl := NewCleanupResourcesJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.Run(ctx))
@@ -302,7 +301,7 @@ func TestCleanupResourcesJobCtlDeletesResidualComponentPods(t *testing.T) {
 		JobInfo:   component,
 		Timeout:   2,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
+	ctl := NewCleanupResourcesJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.Run(ctx))
@@ -364,7 +363,7 @@ func TestCleanupResourcesJobCtlKeepsProtectedResidualPods(t *testing.T) {
 		JobInfo:   component,
 		Timeout:   1,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
+	ctl := NewCleanupResourcesJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.Run(ctx))
@@ -445,7 +444,7 @@ func TestCleanupResourcesJobCtlDeletesTraitDefinedServicesByName(t *testing.T) {
 		JobInfo:   component,
 		Timeout:   1,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
+	ctl := NewCleanupResourcesJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.Run(ctx))
@@ -509,7 +508,7 @@ func TestCleanupResourcesJobCtlKeepsProtectedTraitDefinedServices(t *testing.T) 
 		JobInfo:   component,
 		Timeout:   1,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
+	ctl := NewCleanupResourcesJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.Run(ctx))

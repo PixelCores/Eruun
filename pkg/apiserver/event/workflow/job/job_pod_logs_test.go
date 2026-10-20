@@ -19,185 +19,13 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 )
-
-func TestFinalizeLogContent_NoTruncate(t *testing.T) {
-	content := []byte("line-1\nline-2\n")
-	got, truncated := finalizeLogContent(content, int64(len(content)+10))
-	if truncated {
-		t.Fatalf("expected not truncated")
-	}
-	if got != string(content) {
-		t.Fatalf("expected %q, got %q", string(content), got)
-	}
-}
-
-func TestFinalizeLogContent_TruncateAddsMarker(t *testing.T) {
-	content := []byte("line-1\nline-2\n")
-	got, truncated := finalizeLogContent(content, int64(len(content)))
-	if !truncated {
-		t.Fatalf("expected truncated")
-	}
-	want := "line-1\nline-2\n" + logTruncatedMarker
-	if got != want {
-		t.Fatalf("expected %q, got %q", want, got)
-	}
-}
-
-func TestDeleteCompletedPodsForJobDeletesOnlyOwnedSucceededPods(t *testing.T) {
-	ctx := context.Background()
-	jobObj := jobForPodFallback("cleanup-job", nil)
-	ownedSucceeded := succeededPodForJob(jobObj, "cleanup-job-owned", jobObj.UID)
-	mismatchedOwner := succeededPodForJob(jobObj, "cleanup-job-mismatch", types.UID("other-job-uid"))
-	running := podForJobWithPhase(jobObj, "cleanup-job-running", jobObj.UID, corev1.PodRunning)
-	failed := podForJobWithPhase(jobObj, "cleanup-job-failed", jobObj.UID, corev1.PodFailed)
-	client := fake.NewSimpleClientset(jobObj, ownedSucceeded, mismatchedOwner, running, failed)
-
-	deleted, err := deleteCompletedPodsForJob(ctx, client, jobObj.Namespace, jobObj)
-	require.NoError(t, err)
-	require.Equal(t, 1, deleted)
-
-	_, err = client.CoreV1().Pods(jobObj.Namespace).Get(ctx, ownedSucceeded.Name, metav1.GetOptions{})
-	require.True(t, k8serrors.IsNotFound(err))
-
-	for _, pod := range []*corev1.Pod{mismatchedOwner, running, failed} {
-		_, err = client.CoreV1().Pods(jobObj.Namespace).Get(ctx, pod.Name, metav1.GetOptions{})
-		require.NoError(t, err)
-	}
-}
-
-func TestDeleteCompletedJobAndPodsDeletesJobBeforePodsWithUIDPrecondition(t *testing.T) {
-	ctx := context.Background()
-	jobObj := jobForPodFallback("ordered-cleanup-job", nil)
-	ownedSucceeded := succeededPodForJob(jobObj, "ordered-cleanup-job-owned", jobObj.UID)
-	client := fake.NewSimpleClientset(jobObj, ownedSucceeded)
-
-	err := deleteCompletedJobAndPods(ctx, client, jobObj.Namespace, jobObj.Name, jobObj)
-	require.NoError(t, err)
-
-	deleteActions := make([]k8stesting.DeleteAction, 0, 2)
-	for _, action := range client.Actions() {
-		if action.GetVerb() != "delete" {
-			continue
-		}
-		deleteAction, ok := action.(k8stesting.DeleteAction)
-		require.True(t, ok)
-		deleteActions = append(deleteActions, deleteAction)
-	}
-	require.Len(t, deleteActions, 2)
-	require.Equal(t, "jobs", deleteActions[0].GetResource().Resource)
-	require.Equal(t, "pods", deleteActions[1].GetResource().Resource)
-
-	deleteOptions := deleteActions[0].GetDeleteOptions()
-	require.NotNil(t, deleteOptions.Preconditions)
-	require.NotNil(t, deleteOptions.Preconditions.UID)
-	require.Equal(t, jobObj.UID, *deleteOptions.Preconditions.UID)
-	require.NotNil(t, deleteOptions.PropagationPolicy)
-	require.Equal(t, metav1.DeletePropagationBackground, *deleteOptions.PropagationPolicy)
-}
-
-func TestDeleteCompletedJobAndPodsKeepsPodWhenJobDeleteFails(t *testing.T) {
-	ctx := context.Background()
-	jobObj := jobForPodFallback("failed-delete-job", nil)
-	ownedSucceeded := succeededPodForJob(jobObj, "failed-delete-job-owned", jobObj.UID)
-	client := fake.NewSimpleClientset(jobObj, ownedSucceeded)
-	client.PrependReactor("delete", "jobs", func(k8stesting.Action) (bool, runtime.Object, error) {
-		return true, nil, errors.New("delete denied")
-	})
-
-	err := deleteCompletedJobAndPods(ctx, client, jobObj.Namespace, jobObj.Name, jobObj)
-	require.ErrorContains(t, err, "delete denied")
-
-	_, err = client.BatchV1().Jobs(jobObj.Namespace).Get(ctx, jobObj.Name, metav1.GetOptions{})
-	require.NoError(t, err)
-	_, err = client.CoreV1().Pods(jobObj.Namespace).Get(ctx, ownedSucceeded.Name, metav1.GetOptions{})
-	require.NoError(t, err)
-	for _, action := range client.Actions() {
-		require.False(t, action.Matches("delete", "pods"), "pod delete must not run after job delete failure")
-	}
-}
-
-func TestDeleteCompletedJobAndPodsKeepsReplacementJobAndPod(t *testing.T) {
-	ctx := context.Background()
-	oldJob := jobForPodFallback("reused-job", nil)
-	newJob := oldJob.DeepCopy()
-	newJob.UID = types.UID("reused-job-new-uid")
-	oldPod := succeededPodForJob(oldJob, "reused-job-old-pod", oldJob.UID)
-	newPod := succeededPodForJob(newJob, "reused-job-new-pod", newJob.UID)
-	client := fake.NewSimpleClientset(newJob, oldPod, newPod)
-	client.PrependReactor("delete", "jobs", func(action k8stesting.Action) (bool, runtime.Object, error) {
-		deleteAction, ok := action.(k8stesting.DeleteAction)
-		require.True(t, ok)
-		deleteOptions := deleteAction.GetDeleteOptions()
-		require.NotNil(t, deleteOptions.Preconditions)
-		require.NotNil(t, deleteOptions.Preconditions.UID)
-		require.Equal(t, oldJob.UID, *deleteOptions.Preconditions.UID)
-		return true, nil, k8serrors.NewConflict(
-			schema.GroupResource{Group: batchv1.GroupName, Resource: "jobs"},
-			oldJob.Name,
-			errors.New("UID precondition failed"),
-		)
-	})
-
-	err := deleteCompletedJobAndPods(ctx, client, oldJob.Namespace, oldJob.Name, oldJob)
-	require.NoError(t, err)
-
-	storedJob, err := client.BatchV1().Jobs(oldJob.Namespace).Get(ctx, oldJob.Name, metav1.GetOptions{})
-	require.NoError(t, err)
-	require.Equal(t, newJob.UID, storedJob.UID)
-	_, err = client.CoreV1().Pods(oldJob.Namespace).Get(ctx, oldPod.Name, metav1.GetOptions{})
-	require.True(t, k8serrors.IsNotFound(err))
-	_, err = client.CoreV1().Pods(oldJob.Namespace).Get(ctx, newPod.Name, metav1.GetOptions{})
-	require.NoError(t, err)
-}
-
-func TestDeleteCompletedJobAndPodsKeepsPodWhenUIDDeletionWaitTimesOut(t *testing.T) {
-	jobObj := jobForPodFallback("deletion-timeout-job", nil)
-	ownedSucceeded := succeededPodForJob(jobObj, "deletion-timeout-job-owned", jobObj.UID)
-	client := fake.NewSimpleClientset(jobObj, ownedSucceeded)
-	client.PrependReactor("delete", "jobs", func(k8stesting.Action) (bool, runtime.Object, error) {
-		return true, nil, nil
-	})
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-	defer cancel()
-
-	err := deleteCompletedJobAndPods(ctx, client, jobObj.Namespace, jobObj.Name, jobObj)
-	require.ErrorContains(t, err, "wait for job")
-
-	_, err = client.CoreV1().Pods(jobObj.Namespace).Get(context.Background(), ownedSucceeded.Name, metav1.GetOptions{})
-	require.NoError(t, err)
-	for _, action := range client.Actions() {
-		require.False(t, action.Matches("delete", "pods"), "pod delete must not run before the old job UID disappears")
-	}
-}
-
-func TestFinalizeCompletedJobDeletesCompletedOwnedPods(t *testing.T) {
-	ctx := context.Background()
-	liveJob := jobForPodFallback("finalize-job", nil)
-	ownedSucceeded := succeededPodForJob(liveJob, "finalize-job-owned", liveJob.UID)
-	client := fake.NewSimpleClientset(liveJob, ownedSucceeded)
-	task := &model.JobTask{
-		Name:      liveJob.Name,
-		Namespace: liveJob.Namespace,
-		Status:    config.StatusCompleted,
-	}
-
-	finalizeCompletedJob(ctx, client, task, &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      liveJob.Name,
-			Namespace: liveJob.Namespace,
-		},
-	})
-
-	_, err := client.CoreV1().Pods(liveJob.Namespace).Get(ctx, ownedSucceeded.Name, metav1.GetOptions{})
-	require.True(t, k8serrors.IsNotFound(err))
-	_, err = client.BatchV1().Jobs(liveJob.Namespace).Get(ctx, liveJob.Name, metav1.GetOptions{})
-	require.True(t, k8serrors.IsNotFound(err))
-}
 
 func TestProcessJobResultDeletesCompletedOwnedPods(t *testing.T) {
 	ctx := context.Background()
-	liveJob := jobForPodFallback("result-job", nil)
+	liveJob := jobtest.JobForPodFallback("result-job", nil)
 	taskID := "task-result"
 	stampTestResultJob(liveJob, taskID)
 	liveJob.Status.Conditions = []batchv1.JobCondition{{
@@ -283,7 +111,7 @@ func TestProcessJobResultStopsWhenSameNameJobIsReplaced(t *testing.T) {
 
 func TestProcessJobResultKeepsCompletedStatusWhenJobCleanupFails(t *testing.T) {
 	ctx := context.Background()
-	liveJob := jobForPodFallback("result-cleanup-failure-job", nil)
+	liveJob := jobtest.JobForPodFallback("result-cleanup-failure-job", nil)
 	taskID := "task-result-cleanup-failure"
 	stampTestResultJob(liveJob, taskID)
 	liveJob.Status.Conditions = []batchv1.JobCondition{{
@@ -322,37 +150,6 @@ func TestProcessJobResultKeepsCompletedStatusWhenJobCleanupFails(t *testing.T) {
 	stored.ID = 2
 	require.NoError(t, store.Get(ctx, &stored))
 	require.Equal(t, string(config.StatusCompleted), stored.Status)
-}
-
-func podForJobWithPhase(jobObj *batchv1.Job, name string, ownerUID types.UID, phase corev1.PodPhase) *corev1.Pod {
-	pod := succeededPodForJob(jobObj, name, ownerUID)
-	pod.Status.Phase = phase
-	return pod
-}
-
-func TestDeleteCompletedPodsForJobRetainsReplacementAfterList(t *testing.T) {
-	jobObj := jobForPodFallback("pod-name-reused", nil)
-	listed := succeededPodForJob(jobObj, "reused-pod", jobObj.UID)
-	listed.UID = "listed-pod-uid"
-	replacement := listed.DeepCopy()
-	replacement.UID = "replacement-pod-uid"
-	client := fake.NewSimpleClientset(replacement)
-	client.PrependReactor("list", "pods", func(k8stesting.Action) (bool, runtime.Object, error) {
-		return true, &corev1.PodList{Items: []corev1.Pod{*listed}}, nil
-	})
-	client.PrependReactor("delete", "pods", func(action k8stesting.Action) (bool, runtime.Object, error) {
-		options := action.(k8stesting.DeleteAction).GetDeleteOptions()
-		if options.Preconditions != nil && options.Preconditions.UID != nil && *options.Preconditions.UID == listed.UID {
-			return true, nil, k8serrors.NewConflict(schema.GroupResource{Resource: "pods"}, listed.Name, errors.New("UID precondition failed"))
-		}
-		return false, nil, nil
-	})
-	deleted, err := deleteCompletedPodsForJob(context.Background(), client, jobObj.Namespace, jobObj)
-	require.ErrorContains(t, err, "UID precondition failed")
-	require.Zero(t, deleted)
-	current, err := client.CoreV1().Pods(jobObj.Namespace).Get(context.Background(), replacement.Name, metav1.GetOptions{})
-	require.NoError(t, err)
-	require.Equal(t, replacement.UID, current.UID)
 }
 
 func TestProcessJobResultRejectsPodIdentityChangeDuringLogRead(t *testing.T) {
@@ -448,7 +245,7 @@ func TestCollectResultLogsOmitsOnlyKnownNeverStartedContainers(t *testing.T) {
 				}
 				return false, nil, nil
 			})
-			logs, err := collectJobPodLogsForJob(context.Background(), client, live.Namespace, live.Name, live)
+			logs, err := jobexec.CollectJobPodLogsForJob(context.Background(), client, live.Namespace, live.Name, live)
 			if tc.omit {
 				require.NoError(t, err)
 				require.Zero(t, reads)

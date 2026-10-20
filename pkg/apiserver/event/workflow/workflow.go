@@ -21,6 +21,7 @@ import (
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
@@ -207,7 +208,7 @@ func (w *Workflow) startCancelledWorkflowRecovery(ctx context.Context, wg *sync.
 			}
 
 			cleanupCtx, cleanupCancel := context.WithTimeout(ctx, config.DelTimeOut)
-			cleaned, examined, cleanupErr := job.CleanupRecoveredCancelledJobsPage(cleanupCtx, w.KubeClient, w.Store, cleanupPage, 100)
+			cleaned, examined, cleanupErr := jobexec.CleanupRecoveredCancelledJobsPage(cleanupCtx, w.KubeClient, w.Store, cleanupPage, 100)
 			cleanupCancel()
 			if examined < 100 {
 				cleanupPage = 1

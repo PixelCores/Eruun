@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/stretchr/testify/require"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 )
 
 func TestResourceGeneratorsReturnTraitConflict(t *testing.T) {
@@ -20,19 +22,19 @@ func TestResourceGeneratorsReturnTraitConflict(t *testing.T) {
 	require.NoError(t, err)
 	for _, tt := range []struct {
 		name     string
-		generate func(*model.ApplicationComponent, *model.Properties) (*GenerateServiceResult, error)
+		generate func(*model.ApplicationComponent, *model.Properties) (*jobexec.GenerateServiceResult, error)
 	}{
 		{"deployment", GenerateWebService},
-		{"statefulset", func(c *model.ApplicationComponent, _ *model.Properties) (*GenerateServiceResult, error) {
+		{"statefulset", func(c *model.ApplicationComponent, _ *model.Properties) (*jobexec.GenerateServiceResult, error) {
 			return GenerateStoreService(c)
 		}},
-		{"instant", func(c *model.ApplicationComponent, p *model.Properties) (*GenerateServiceResult, error) {
+		{"instant", func(c *model.ApplicationComponent, p *model.Properties) (*jobexec.GenerateServiceResult, error) {
 			return GenerateInstantJob(c, p, "")
 		}},
-		{"one time", func(c *model.ApplicationComponent, p *model.Properties) (*GenerateServiceResult, error) {
+		{"one time", func(c *model.ApplicationComponent, p *model.Properties) (*jobexec.GenerateServiceResult, error) {
 			return GenerateOneTimeJob(c, p, "", 123)
 		}},
-		{"cron", func(c *model.ApplicationComponent, p *model.Properties) (*GenerateServiceResult, error) {
+		{"cron", func(c *model.ApplicationComponent, p *model.Properties) (*jobexec.GenerateServiceResult, error) {
 			return GenerateScheduledCronJob(c, p, "0 * * * *")
 		}},
 	} {
@@ -57,7 +59,7 @@ func TestParsePropertiesReturnsDecodeError(t *testing.T) {
 		{name: "wrong field type", input: &model.JSONStruct{"ports": "invalid"}, wantError: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			properties, err := ParseProperties(tt.input)
+			properties, err := jobexec.ParseProperties(tt.input)
 			if tt.wantError {
 				var typeError *json.UnmarshalTypeError
 				require.ErrorAs(t, err, &typeError)
@@ -70,7 +72,7 @@ func TestParsePropertiesReturnsDecodeError(t *testing.T) {
 			}
 		})
 	}
-	_, err := ParseProperties(&model.JSONStruct{"unsupported": make(chan int)})
+	_, err := jobexec.ParseProperties(&model.JSONStruct{"unsupported": make(chan int)})
 	var unsupported *json.UnsupportedTypeError
 	require.ErrorAs(t, err, &unsupported)
 }

@@ -63,33 +63,33 @@ func (c *CleanupResourcesJobCtl) resourceGone(ctx context.Context, ref cleanupRe
 	var err error
 	switch ref.kind {
 	case domainspec.ResourceDeployment:
-		_, err = c.client.AppsV1().Deployments(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
+		_, err = c.Client.AppsV1().Deployments(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
 	case domainspec.ResourceStatefulSet:
-		_, err = c.client.AppsV1().StatefulSets(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
+		_, err = c.Client.AppsV1().StatefulSets(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
 	case domainspec.ResourceJob:
-		_, err = c.client.BatchV1().Jobs(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
+		_, err = c.Client.BatchV1().Jobs(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
 	case domainspec.ResourceCronJob:
-		_, err = c.client.BatchV1().CronJobs(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
+		_, err = c.Client.BatchV1().CronJobs(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
 	case domainspec.ResourceService:
-		_, err = c.client.CoreV1().Services(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
+		_, err = c.Client.CoreV1().Services(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
 	case domainspec.ResourceConfigMap:
-		_, err = c.client.CoreV1().ConfigMaps(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
+		_, err = c.Client.CoreV1().ConfigMaps(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
 	case domainspec.ResourceSecret:
-		_, err = c.client.CoreV1().Secrets(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
+		_, err = c.Client.CoreV1().Secrets(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
 	case domainspec.ResourcePVC:
-		_, err = c.client.CoreV1().PersistentVolumeClaims(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
+		_, err = c.Client.CoreV1().PersistentVolumeClaims(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
 	case domainspec.ResourceIngress:
-		_, err = c.client.NetworkingV1().Ingresses(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
+		_, err = c.Client.NetworkingV1().Ingresses(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
 	case domainspec.ResourceServiceAccount:
-		_, err = c.client.CoreV1().ServiceAccounts(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
+		_, err = c.Client.CoreV1().ServiceAccounts(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
 	case domainspec.ResourceRole:
-		_, err = c.client.RbacV1().Roles(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
+		_, err = c.Client.RbacV1().Roles(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
 	case domainspec.ResourceRoleBinding:
-		_, err = c.client.RbacV1().RoleBindings(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
+		_, err = c.Client.RbacV1().RoleBindings(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
 	case domainspec.ResourceClusterRole:
-		_, err = c.client.RbacV1().ClusterRoles().Get(ctx, ref.name, metav1.GetOptions{})
+		_, err = c.Client.RbacV1().ClusterRoles().Get(ctx, ref.name, metav1.GetOptions{})
 	case domainspec.ResourceClusterRoleBinding:
-		_, err = c.client.RbacV1().ClusterRoleBindings().Get(ctx, ref.name, metav1.GetOptions{})
+		_, err = c.Client.RbacV1().ClusterRoleBindings().Get(ctx, ref.name, metav1.GetOptions{})
 	default:
 		return false, fmt.Errorf("unsupported cleanup resource kind %q", ref.kind)
 	}
@@ -103,7 +103,7 @@ func (c *CleanupResourcesJobCtl) resourceGone(ctx context.Context, ref cleanupRe
 }
 
 func (c *CleanupResourcesJobCtl) componentPodsGone(ctx context.Context, component *model.ApplicationComponent) (bool, error) {
-	requireStatefulSetDeletion := c != nil && c.job != nil && jobinfo.VersionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo)
+	requireStatefulSetDeletion := c != nil && c.Job != nil && jobinfo.VersionUpdateCleanupRequiresStatefulSetDeletion(c.Job.InternalInfo)
 	if requireStatefulSetDeletion {
 		return c.requiredStatefulSetPodsGone(ctx, component)
 	}
@@ -112,7 +112,7 @@ func (c *CleanupResourcesJobCtl) componentPodsGone(ctx context.Context, componen
 		return true, nil
 	}
 	namespace := namespaceOrDefault(component.Namespace)
-	list, err := c.client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
+	list, err := c.Client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
 	if err != nil {
 		return false, err
 	}
@@ -146,7 +146,7 @@ func (c *CleanupResourcesJobCtl) componentPodsGone(ctx context.Context, componen
 				return false, fmt.Errorf("delete component pod owner job %s/%s: %w", namespace, ownerName, err)
 			}
 		}
-		if err := c.client.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+		if err := c.Client.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
 			return false, fmt.Errorf("delete component pod %s/%s: %w", namespace, pod.Name, err)
 		}
 		pendingDelete = true
@@ -182,8 +182,8 @@ func (c *CleanupResourcesJobCtl) componentPodOwnerJobs(ctx context.Context, name
 }
 
 func (c *CleanupResourcesJobCtl) timeout() int64 {
-	if c.job.Timeout <= 0 {
+	if c.Job.Timeout <= 0 {
 		return int64(config.DeployTimeout)
 	}
-	return c.job.Timeout
+	return c.Job.Timeout
 }

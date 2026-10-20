@@ -19,6 +19,7 @@ import (
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	evaluationjobs "github.com/PixelCores/Eruun/pkg/apiserver/jobs"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -60,7 +61,7 @@ func (w *WorkflowCtl) run(ctx context.Context, concurrency int) error {
 		"taskID", taskMeta.TaskID,
 	)
 	ctx = klog.NewContext(ctx, logger)
-	ctx = job.WithTaskMetadata(ctx, taskMeta.TaskID)
+	ctx = jobexec.WithTaskMetadata(ctx, taskMeta.TaskID)
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 	w.registerRunCancel(cancel)
@@ -208,7 +209,7 @@ func (r *workflowRun) runSteps(taskForGeneration model.WorkflowQueue, stepExecut
 	if len(stepExecutions) == 1 && stepExecutions[0].generationError != nil {
 		err := stepExecutions[0].generationError
 		for _, task := range stepExecutions[0].Jobs[config.JobPriorityLow] {
-			controller := job.NewCleanupResourcesJobCtl(task, &job.Runtime{Client: r.Client, Store: r.Store})
+			controller := job.NewCleanupResourcesJobCtl(task, &jobexec.Runtime{Client: r.Client, Store: r.Store})
 			if persistErr := controller.SaveInfo(ctx); persistErr != nil {
 				return r.stopForJobInfrastructure(fmt.Errorf("persist workflow generation failure: %w", persistErr))
 			}
@@ -502,7 +503,7 @@ func isWorkflowFailureCleanupTriggerJob(jobType config.JobType) bool {
 }
 
 func (w *WorkflowCtl) runJobs(ctx context.Context, tasks []*model.JobTask, concurrency int, ack func(), stopOnFailure bool) error {
-	return job.RunJobs(ctx, tasks, &job.Runtime{
+	return job.RunJobs(ctx, tasks, &jobexec.Runtime{
 		Concurrency:       concurrency,
 		Client:            w.Client,
 		Store:             w.Store,
@@ -531,7 +532,7 @@ func (w *WorkflowCtl) runWorkflowFailureCleanup(ctx context.Context, logger klog
 		ctx = context.Background()
 	}
 	cleanupCtx := klog.NewContext(ctx, logger.WithValues("failurePolicy", workflowconfig.WorkflowFailurePolicyCleanupAll))
-	cleanupCtx = job.WithTaskMetadata(cleanupCtx, task.TaskID)
+	cleanupCtx = jobexec.WithTaskMetadata(cleanupCtx, task.TaskID)
 	logger.Info("Running workflow failure cleanup jobs", "appID", task.AppID, "taskID", task.TaskID, "jobCount", len(cleanupJobs))
 	if err := w.runJobs(cleanupCtx, cleanupJobs, 1, w.ack, false); err != nil {
 		return err
@@ -634,5 +635,5 @@ func (w *WorkflowCtl) prepareJobTask(task *model.JobTask, appID string) (bool, e
 		}
 		return true, evaluationjobs.PrepareEvaluationTask(task, w.workspace, w.accountConfig.Workspace, w.runtimeConfig.Jobs.RunnerImage)
 	}
-	return job.PrepareTask(task, appID, w.workspace, w.accountConfig.Workspace)
+	return jobexec.PrepareTask(task, appID, w.workspace, w.accountConfig.Workspace)
 }

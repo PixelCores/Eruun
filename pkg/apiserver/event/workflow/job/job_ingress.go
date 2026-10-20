@@ -15,45 +15,46 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
 
 type DeployIngressJobCtl struct {
-	deployNamespacedResourceJobBase
+	jobexec.DeployNamespacedResourceJobBase
 }
 
-func NewDeployIngressJobCtl(job *model.JobTask, runtime *Runtime, shareLocker locker.Locker) *DeployIngressJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("DeployIngressJobCtl", job, runtime, shareLocker)
+func NewDeployIngressJobCtl(job *model.JobTask, runtime *jobexec.Runtime, shareLocker locker.Locker) *DeployIngressJobCtl {
+	base, ok := jobexec.NewDeployNamespacedResourceJobBase("DeployIngressJobCtl", job, runtime, shareLocker)
 	if !ok {
 		return nil
 	}
 	return &DeployIngressJobCtl{
-		deployNamespacedResourceJobBase: base,
+		DeployNamespacedResourceJobBase: base,
 	}
 }
 
 func (c *DeployIngressJobCtl) Clean(ctx context.Context) {
-	c.cleanCreated(ctx, domainspec.ResourceIngress, "ingress", func(ctx context.Context, namespace, name string) error {
-		return c.client.NetworkingV1().Ingresses(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+	c.CleanCreated(ctx, domainspec.ResourceIngress, "ingress", func(ctx context.Context, namespace, name string) error {
+		return c.Client.NetworkingV1().Ingresses(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	}, k8serrors.IsNotFound, "after job failure")
 }
 
 func (c *DeployIngressJobCtl) Run(ctx context.Context) error {
-	return c.runWithWait(ctx, c.run, c.wait, "DeployIngressJob run error", "")
+	return c.RunWithWait(ctx, c.run, c.wait, "DeployIngressJob run error", "")
 }
 
 func (c *DeployIngressJobCtl) run(ctx context.Context) error {
-	if c.client == nil {
+	if c.Client == nil {
 		return fmt.Errorf("client is nil")
 	}
 
-	ingress, err := jobinfo.IngressFromJobInfo(c.job)
+	ingress, err := jobinfo.IngressFromJobInfo(c.Job)
 	if err != nil {
 		return err
 	}
 	if ingress.Namespace == "" {
-		ingress.Namespace = c.namespace
+		ingress.Namespace = c.Namespace
 	}
 
 	if reusableName, err := c.findReusableIngressName(ctx, ingress); err != nil {
@@ -61,44 +62,44 @@ func (c *DeployIngressJobCtl) run(ctx context.Context) error {
 	} else if reusableName != "" && reusableName != ingress.Name {
 		klog.Infof("Ingress %s/%s overlaps existing route, reusing ingress name %s for update", ingress.Namespace, ingress.Name, reusableName)
 		ingress.Name = reusableName
-		c.job.Name = reusableName
+		c.Job.Name = reusableName
 	}
 
 	updateIngress := func(ctx context.Context, current *networkingv1.Ingress) error {
 		if !ingressNeedsUpdate(current, ingress) {
-			markResourceObserved(ctx, domainspec.ResourceIngress, ingress.Namespace, ingress.Name)
+			jobexec.MarkResourceObserved(ctx, domainspec.ResourceIngress, ingress.Namespace, ingress.Name)
 			klog.Infof("Ingress %s/%s is up-to-date; skipping update", ingress.Namespace, ingress.Name)
 			return nil
 		}
-		if err := updateResourceWithRetry(ctx, func(ctx context.Context) (*networkingv1.Ingress, error) {
-			return c.client.NetworkingV1().Ingresses(ingress.Namespace).Get(ctx, ingress.Name, metav1.GetOptions{})
+		if err := jobexec.UpdateResourceWithRetry(ctx, func(ctx context.Context) (*networkingv1.Ingress, error) {
+			return c.Client.NetworkingV1().Ingresses(ingress.Namespace).Get(ctx, ingress.Name, metav1.GetOptions{})
 		}, func(ctx context.Context, latest *networkingv1.Ingress) error {
 			updated := buildUpdatedIngress(latest, ingress)
-			_, err := c.client.NetworkingV1().Ingresses(ingress.Namespace).Update(ctx, updated, metav1.UpdateOptions{})
+			_, err := c.Client.NetworkingV1().Ingresses(ingress.Namespace).Update(ctx, updated, metav1.UpdateOptions{})
 			return err
 		}); err != nil {
 			return fmt.Errorf("update ingress %s/%s failed: %w", ingress.Namespace, ingress.Name, err)
 		}
-		markResourceObserved(ctx, domainspec.ResourceIngress, ingress.Namespace, ingress.Name)
+		jobexec.MarkResourceObserved(ctx, domainspec.ResourceIngress, ingress.Namespace, ingress.Name)
 		klog.Infof("Ingress %s/%s updated successfully", ingress.Namespace, ingress.Name)
 		return nil
 	}
 
-	_, created, err := reconcileTrackedResource(ctx, trackedResourceReconcileOptions[networkingv1.Ingress]{
-		sharedResourceAccessOptions: sharedResourceAccessOptions{
-			job:          c.job,
-			ack:          c.ack,
-			labels:       ingress.Labels,
-			kind:         domainspec.ResourceIngress,
-			lockProvider: c.shareLocker,
-			listFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
-				list, err := c.client.NetworkingV1().Ingresses(ingress.Namespace).List(ctx, opts)
+	_, created, err := jobexec.ReconcileTrackedResource(ctx, jobexec.TrackedResourceReconcileOptions[networkingv1.Ingress]{
+		SharedResourceAccessOptions: jobexec.SharedResourceAccessOptions{
+			Job:          c.Job,
+			Ack:          c.Ack,
+			Labels:       ingress.Labels,
+			Kind:         domainspec.ResourceIngress,
+			LockProvider: c.ShareLocker,
+			ListFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
+				list, err := c.Client.NetworkingV1().Ingresses(ingress.Namespace).List(ctx, opts)
 				if err != nil {
 					return 0, err
 				}
 				return len(list.Items), nil
 			},
-			logSkip: func(strategy domainspec.ShareStrategy) {
+			LogSkip: func(strategy domainspec.ShareStrategy) {
 				if strategy == domainspec.ShareStrategyIgnore {
 					klog.Infof("Ingress %s/%s marked as shared ignore; skipping", ingress.Namespace, ingress.Name)
 				} else {
@@ -106,17 +107,17 @@ func (c *DeployIngressJobCtl) run(ctx context.Context) error {
 				}
 			},
 		},
-		namespace: ingress.Namespace,
-		name:      ingress.Name,
-		getFn: func(ctx context.Context) (*networkingv1.Ingress, error) {
-			return c.client.NetworkingV1().Ingresses(ingress.Namespace).Get(ctx, ingress.Name, metav1.GetOptions{})
+		Namespace: ingress.Namespace,
+		Name:      ingress.Name,
+		GetFn: func(ctx context.Context) (*networkingv1.Ingress, error) {
+			return c.Client.NetworkingV1().Ingresses(ingress.Namespace).Get(ctx, ingress.Name, metav1.GetOptions{})
 		},
-		createFn: func(ctx context.Context) (*networkingv1.Ingress, error) {
-			return c.client.NetworkingV1().Ingresses(ingress.Namespace).Create(ctx, ingress, metav1.CreateOptions{})
+		CreateFn: func(ctx context.Context) (*networkingv1.Ingress, error) {
+			return c.Client.NetworkingV1().Ingresses(ingress.Namespace).Create(ctx, ingress, metav1.CreateOptions{})
 		},
-		onExisting:      updateIngress,
-		isNotFound:      k8serrors.IsNotFound,
-		isAlreadyExists: k8serrors.IsAlreadyExists,
+		OnExisting:      updateIngress,
+		IsNotFound:      k8serrors.IsNotFound,
+		IsAlreadyExists: k8serrors.IsAlreadyExists,
 	})
 	if err != nil {
 		return fmt.Errorf("ensure ingress %s/%s failed: %w", ingress.Namespace, ingress.Name, err)
@@ -129,14 +130,14 @@ func (c *DeployIngressJobCtl) run(ctx context.Context) error {
 }
 
 func (c *DeployIngressJobCtl) findReusableIngressName(ctx context.Context, desired *networkingv1.Ingress) (string, error) {
-	if c == nil || c.client == nil || desired == nil {
+	if c == nil || c.Client == nil || desired == nil {
 		return "", nil
 	}
 	ns := strings.TrimSpace(desired.Namespace)
 	if ns == "" {
 		ns = config.DefaultNamespace
 	}
-	list, err := c.client.NetworkingV1().Ingresses(ns).List(ctx, metav1.ListOptions{})
+	list, err := c.Client.NetworkingV1().Ingresses(ns).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -265,10 +266,10 @@ func (c *DeployIngressJobCtl) wait(ctx context.Context) error {
 	defer ticker.Stop()
 
 	getIngressName := func() string {
-		if ingressObj, ok := jobinfo.OptionalJobInfo[*networkingv1.Ingress](c.job); ok && ingressObj.Name != "" {
+		if ingressObj, ok := jobinfo.OptionalJobInfo[*networkingv1.Ingress](c.Job); ok && ingressObj.Name != "" {
 			return ingressObj.Name
 		}
-		return c.job.Name
+		return c.Job.Name
 	}
 
 	for {
@@ -281,7 +282,7 @@ func (c *DeployIngressJobCtl) wait(ctx context.Context) error {
 			return jobinfo.NewStatusError(config.StatusTimeout, fmt.Errorf("wait ingress %s timeout", name))
 		case <-ticker.C:
 			ingressName := getIngressName()
-			ing, err := c.client.NetworkingV1().Ingresses(c.job.Namespace).Get(ctx, ingressName, metav1.GetOptions{})
+			ing, err := c.Client.NetworkingV1().Ingresses(c.Job.Namespace).Get(ctx, ingressName, metav1.GetOptions{})
 			if err != nil {
 				if k8serrors.IsNotFound(err) {
 					continue
@@ -296,10 +297,10 @@ func (c *DeployIngressJobCtl) wait(ctx context.Context) error {
 }
 
 func (c *DeployIngressJobCtl) timeout() int64 {
-	if c.job.Timeout == 0 {
-		c.job.Timeout = config.DeployTimeout
+	if c.Job.Timeout == 0 {
+		c.Job.Timeout = config.DeployTimeout
 	}
-	return c.job.Timeout
+	return c.Job.Timeout
 }
 
 func ingressReady(ing *networkingv1.Ingress) bool {

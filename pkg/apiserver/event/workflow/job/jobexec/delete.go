@@ -1,4 +1,4 @@
-package job
+package jobexec
 
 import (
 	"context"
@@ -35,14 +35,14 @@ func foregroundJobDeleteTimeout(live *batchv1.Job) time.Duration {
 	if live != nil && live.Spec.Template.Spec.TerminationGracePeriodSeconds != nil && *live.Spec.Template.Spec.TerminationGracePeriodSeconds >= 0 {
 		grace = *live.Spec.Template.Spec.TerminationGracePeriodSeconds
 	}
-	return jobDeleteTimeout + time.Duration(grace)*time.Second
+	return JobDeleteTimeout + time.Duration(grace)*time.Second
 }
 
 func waitForJobUIDDeletion(ctx context.Context, client kubernetes.Interface, namespace, name string, uid types.UID, timeout time.Duration) error {
 	deleteCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	if err := wait.PollUntilContextCancel(deleteCtx, jobPollInterval, true, func(checkCtx context.Context) (bool, error) {
+	if err := wait.PollUntilContextCancel(deleteCtx, JobPollInterval, true, func(checkCtx context.Context) (bool, error) {
 		return jobUIDAbsent(checkCtx, client, namespace, name, uid)
 	}); err != nil {
 		return fmt.Errorf("wait for job %s/%s UID %q deletion: %w", namespace, name, uid, err)

@@ -15,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
@@ -28,7 +29,7 @@ func boolPtr(v bool) *bool    { return &v }
 
 func TestDeployStatefulSetJobCtl_UpdateExisting(t *testing.T) {
 	client := fake.NewSimpleClientset()
-	ctx := WithCleanupTracker(context.Background())
+	ctx := jobexec.WithCleanupTracker(context.Background())
 
 	job := &model.JobTask{
 		Name:      "mysql",
@@ -77,7 +78,7 @@ func TestDeployStatefulSetJobCtl_UpdateExisting(t *testing.T) {
 	}
 
 	job.JobInfo = desired
-	ctl := NewDeployStatefulSetJobCtl(job, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployStatefulSetJobCtl(job, &jobexec.Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(jobtest.ShareLockerPrefix))
 
 	if err := ctl.run(ctx); err != nil {
 		t.Fatalf("run returned error: %v", err)
@@ -110,7 +111,7 @@ func TestDeployStatefulSetJobCtl_UpdateExisting(t *testing.T) {
 
 func TestDeployStatefulSetJobCtl_SkipsUnchangedUpdate(t *testing.T) {
 	client := fake.NewSimpleClientset()
-	ctx := WithCleanupTracker(context.Background())
+	ctx := jobexec.WithCleanupTracker(context.Background())
 
 	job := &model.JobTask{
 		Name:      "mysql",
@@ -168,7 +169,7 @@ func TestDeployStatefulSetJobCtl_SkipsUnchangedUpdate(t *testing.T) {
 	desired.Spec.Template.Spec.TerminationGracePeriodSeconds = nil
 	desired.Spec.Template.Spec.EnableServiceLinks = nil
 	job.JobInfo = desired
-	ctl := NewDeployStatefulSetJobCtl(job, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployStatefulSetJobCtl(job, &jobexec.Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(jobtest.ShareLockerPrefix))
 
 	if err := ctl.run(ctx); err != nil {
 		t.Fatalf("run returned error: %v", err)
@@ -184,7 +185,7 @@ func TestDeployStatefulSetJobCtl_SkipsUnchangedUpdate(t *testing.T) {
 
 func TestDeployStatefulSetJobCtl_RestoresTaskAnnotationForUpToDateStatefulSet(t *testing.T) {
 	client := fake.NewSimpleClientset()
-	ctx := WithCleanupTracker(context.Background())
+	ctx := jobexec.WithCleanupTracker(context.Background())
 
 	job := &model.JobTask{
 		Name:      "mysql",
@@ -207,7 +208,7 @@ func TestDeployStatefulSetJobCtl_RestoresTaskAnnotationForUpToDateStatefulSet(t 
 	desired.Name = statefulSetName
 	desired.Namespace = "ops"
 	job.JobInfo = desired
-	ctl := NewDeployStatefulSetJobCtl(job, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployStatefulSetJobCtl(job, &jobexec.Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(jobtest.ShareLockerPrefix))
 
 	require.NoError(t, ctl.run(ctx))
 
@@ -649,13 +650,13 @@ func TestDeployStatefulSetJobCtlWaitTimeoutWithPodAbnormalReturnsFailed(t *testi
 	waiter := newWorkloadTestObserver(t, newWaitTestPod("app-1", "mysql", "CrashLoopBackOff"))
 
 	ctl := &DeployStatefulSetJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
-			job: &model.JobTask{
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{
+			Job: &model.JobTask{
 				Name:    "mysql",
 				AppID:   "app-1",
 				Timeout: 1,
 			},
-			resourceWaiter: waiter,
+			ResourceWaiter: waiter,
 		},
 		desiredReplicas: 1,
 	}
@@ -671,8 +672,8 @@ func TestDeployStatefulSetJobCtlWaitTimeoutWithPodAbnormalReturnsFailed(t *testi
 
 func TestDeployStatefulSetJobCtlWaitRequiresResourceWaiter(t *testing.T) {
 	ctl := &DeployStatefulSetJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
-			job: &model.JobTask{
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{
+			Job: &model.JobTask{
 				Name:      "mysql",
 				Namespace: "default",
 				AppID:     "app-1",
@@ -691,13 +692,13 @@ func TestDeployStatefulSetJobCtlWaitUsesBoundedComponentLabel(t *testing.T) {
 	waiter := newWorkloadTestObserver(t, newWaitReadyTestPod("app-1", naming.BoundedLabelValue("MySQL_DB")))
 
 	ctl := &DeployStatefulSetJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
-			job: &model.JobTask{
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{
+			Job: &model.JobTask{
 				Name:    "MySQL_DB",
 				AppID:   "app-1",
 				Timeout: 1,
 			},
-			resourceWaiter: waiter,
+			ResourceWaiter: waiter,
 		},
 		desiredReplicas: 1,
 	}
@@ -710,13 +711,13 @@ func TestDeployStatefulSetJobCtlWaitTimeoutWithPendingPodReturnsTimeout(t *testi
 	waiter := newWorkloadTestObserver(t, newWaitTestPod("app-1", "mysql", "ContainerCreating"))
 
 	ctl := &DeployStatefulSetJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
-			job: &model.JobTask{
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{
+			Job: &model.JobTask{
 				Name:    "mysql",
 				AppID:   "app-1",
 				Timeout: 1,
 			},
-			resourceWaiter: waiter,
+			ResourceWaiter: waiter,
 		},
 		desiredReplicas: 1,
 	}
@@ -733,14 +734,14 @@ func TestDeployStatefulSetJobCtlWaitIgnoresReadyPodWithDifferentImage(t *testing
 	waiter := newWorkloadTestObserver(t, withWaitPodImage(newWaitReadyTestPod("app-1", "mysql"), "mysql:5.7"))
 
 	ctl := &DeployStatefulSetJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
-			job: &model.JobTask{
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{
+			Job: &model.JobTask{
 				Name:    "mysql",
 				AppID:   "app-1",
 				Timeout: 1,
 				JobInfo: statefulSetWithImage("mysql:8.0"),
 			},
-			resourceWaiter: waiter,
+			ResourceWaiter: waiter,
 		},
 		desiredReplicas: 1,
 	}
@@ -757,14 +758,14 @@ func TestDeployStatefulSetJobCtlWaitUsesExpectedImage(t *testing.T) {
 	waiter := newWorkloadTestObserver(t, withWaitPodImage(newWaitReadyTestPod("app-1", "mysql"), "mysql:8.0"))
 
 	ctl := &DeployStatefulSetJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
-			job: &model.JobTask{
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{
+			Job: &model.JobTask{
 				Name:    "mysql",
 				AppID:   "app-1",
 				Timeout: 1,
 				JobInfo: statefulSetWithImage("mysql:8.0"),
 			},
-			resourceWaiter: waiter,
+			ResourceWaiter: waiter,
 		},
 		desiredReplicas: 1,
 	}
@@ -783,14 +784,14 @@ func TestDeployStatefulSetJobCtlWaitRequiresExpectedTaskAnnotationWithSameImage(
 	waiter := newWorkloadTestObserver(t, oldReady, newAbnormal)
 
 	ctl := &DeployStatefulSetJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
-			job: &model.JobTask{
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{
+			Job: &model.JobTask{
 				Name:    "mysql",
 				AppID:   "app-1",
 				Timeout: 1,
 				JobInfo: statefulSetWithImage("mysql:8.0"),
 			},
-			resourceWaiter: waiter,
+			ResourceWaiter: waiter,
 		},
 		desiredReplicas: 1,
 		expectedPodTemplateAnnotations: map[string]string{

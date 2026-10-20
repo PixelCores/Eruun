@@ -1,4 +1,4 @@
-package job
+package jobexec
 
 import (
 	"context"
@@ -19,7 +19,7 @@ import (
 const shareLockerPrefix = "eruun-share"
 
 // shareInfoFromLabels extracts share metadata from workload labels.
-func shareInfoFromLabels(labels map[string]string) (string, domainspec.ShareStrategy) {
+func ShareInfoFromLabels(labels map[string]string) (string, domainspec.ShareStrategy) {
 	if labels == nil {
 		return "", ""
 	}
@@ -75,7 +75,7 @@ func acquireShareLock(ctx context.Context, lockProvider locker.Locker, key strin
 	}, nil
 }
 
-func newShareLocker(redisClient *redis.Client) locker.Locker {
+func NewShareLocker(redisClient *redis.Client) locker.Locker {
 	if redisClient == nil {
 		return nil
 	}
