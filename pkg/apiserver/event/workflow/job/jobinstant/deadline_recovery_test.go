@@ -1,4 +1,4 @@
-package job
+package jobinstant
 
 import (
 	"context"
@@ -19,7 +19,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
@@ -103,15 +102,6 @@ func TestRetryCheckpointUsesDatabaseDeadlineAcrossNodeSkew(t *testing.T) {
 	}
 }
 
-type retryDeadlineObserver struct {
-	informer.ComponentReadyObserver
-	observe func(context.Context) error
-}
-
-func (o retryDeadlineObserver) WaitForJob(ctx context.Context, _, _ string, _ func(*batchv1.Job) (bool, error)) error {
-	return o.observe(ctx)
-}
-
 func TestRetryRecoveryUsesDatabaseRemainingBudget(t *testing.T) {
 	for _, skew := range []time.Duration{-24 * time.Hour, 24 * time.Hour} {
 		for _, budget := range []time.Duration{-time.Nanosecond, 0, 5 * time.Second} {
@@ -135,7 +125,7 @@ func TestRetryRecoveryUsesDatabaseRemainingBudget(t *testing.T) {
 				ctl := NewInstantJobCtl(task, &jobexec.Runtime{Client: client, Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
 				observed := false
 				stop := errors.New("stop after observing remaining budget")
-				ctl.ResourceWaiter = retryDeadlineObserver{observe: func(ctx context.Context) error {
+				ctl.ResourceWaiter = jobtest.RetryDeadlineObserver{Observe: func(ctx context.Context) error {
 					observed = true
 					localDeadline, ok := ctx.Deadline()
 					require.True(t, ok)
@@ -225,7 +215,7 @@ func TestRetryBackoffTimestampPreservesDatabaseDeadline(t *testing.T) {
 			}
 			client := fake.NewSimpleClientset()
 			var created []*batchv1.Job
-			installRetryJobReactor(t, client, 1, "OOMKilled", &created)
+			jobtest.InstallRetryJobReactor(t, client, 1, "OOMKilled", &created)
 			ctl := NewInstantJobCtl(task, &jobexec.Runtime{Client: client, Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
 			ctl.ResourceWaiter = fixedJobSnapshotObserver{}
 			err := ctl.runWithRetryPolicy(context.Background(), task.JobInfo.(*batchv1.Job), jobtest.RetryTestPolicy())

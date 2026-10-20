@@ -10,6 +10,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinstant"
 )
 
 func TestResourceGeneratorsReturnTraitConflict(t *testing.T) {
@@ -33,7 +34,7 @@ func TestResourceGeneratorsReturnTraitConflict(t *testing.T) {
 			return jobdeploy.GenerateInstantJob(c, p, "")
 		}},
 		{"one time", func(c *model.ApplicationComponent, p *model.Properties) (*jobexec.GenerateServiceResult, error) {
-			return GenerateOneTimeJob(c, p, "", 123)
+			return jobinstant.GenerateOneTimeJob(c, p, "", 123)
 		}},
 		{"cron", func(c *model.ApplicationComponent, p *model.Properties) (*jobexec.GenerateServiceResult, error) {
 			return jobdeploy.GenerateScheduledCronJob(c, p, "0 * * * *")

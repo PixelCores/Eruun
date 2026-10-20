@@ -1,4 +1,4 @@
-package job
+package jobdelay
 
 import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"

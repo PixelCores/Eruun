@@ -20,7 +20,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdelay"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobresult"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
@@ -379,7 +379,7 @@ func (w *Workflow) startDelayDispatcher(ctx context.Context, wg *sync.WaitGroup)
 	if w.Cfg != nil && w.Cfg.Accounts != nil {
 		manager = &workspace.Manager{Client: w.KubeClient, RESTConfig: w.KubeConfig, Config: w.Cfg.Accounts.Workspace}
 	}
-	dispatcher := job.NewDelayDispatcher(w.DelayQueue, manager, w.Store, config.DelayQueueGroup, consumer)
+	dispatcher := jobdelay.NewDelayDispatcher(w.DelayQueue, manager, w.Store, config.DelayQueueGroup, consumer)
 	if wg == nil {
 		dispatcher.Start(ctx)
 		return

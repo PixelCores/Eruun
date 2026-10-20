@@ -18,7 +18,9 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdelay"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinstant"
 )
 
 func TestFailedBatchJobCleanupCascadesOnlyCreatedJobs(t *testing.T) {
@@ -49,9 +51,9 @@ func TestFailedBatchJobCleanupCascadesOnlyCreatedJobs(t *testing.T) {
 					}
 					task := &model.JobTask{Name: live.Name, Namespace: live.Namespace, JobType: string(config.JobDeployInstant)}
 					if scheduled {
-						NewScheduledJobCtl(task, &jobexec.Runtime{Client: client}).Clean(ctx)
+						jobdelay.NewScheduledJobCtl(task, &jobexec.Runtime{Client: client}).Clean(ctx)
 					} else {
-						NewInstantJobCtl(task, &jobexec.Runtime{Client: client}).Clean(ctx)
+						jobinstant.NewInstantJobCtl(task, &jobexec.Runtime{Client: client}).Clean(ctx)
 					}
 					_, err := client.BatchV1().Jobs(live.Namespace).Get(ctx, live.Name, metav1.GetOptions{})
 					if created && !conflict {

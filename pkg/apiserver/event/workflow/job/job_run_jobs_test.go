@@ -36,7 +36,7 @@ import (
 )
 
 type ownedCheckpointFailureStore struct {
-	*jobInfoStore
+	*jobtest.JobInfoStore
 	transactionErr error
 }
 
@@ -137,7 +137,7 @@ func TestRunJobsReturnsInfrastructureStopWhenDistributedCheckpointFails(t *testi
 		t.Run(fmt.Sprintf("concurrency-%d", concurrency), func(t *testing.T) {
 			checkpointErr := errors.New("injected job info persistence failure")
 			store := &ownedCheckpointFailureStore{
-				jobInfoStore: &jobInfoStore{addErr: checkpointErr},
+				JobInfoStore: &jobtest.JobInfoStore{AddErr: checkpointErr},
 			}
 			queue := &jobtest.EnqueueCaptureQueue{EnqueueID: "delay-checkpoint"}
 			task := &model.JobTask{
@@ -171,7 +171,7 @@ func TestRunJobsReturnsInfrastructureStopWhenDistributedCheckpointFails(t *testi
 			require.Equal(t, config.StatusPrepare, task.Status)
 			require.Empty(t, task.Error)
 			require.Empty(t, queue.Enqueued, "queue notification must not precede the durable checkpoint")
-			require.Equal(t, 1, store.addCount)
+			require.Equal(t, 1, store.AddCount)
 		})
 	}
 }
@@ -179,7 +179,7 @@ func TestRunJobsReturnsInfrastructureStopWhenDistributedCheckpointFails(t *testi
 func TestRunJobsReturnsInfrastructureStopWhenStartOwnershipTransactionFails(t *testing.T) {
 	transactionErr := errors.New("injected ownership transaction failure")
 	store := &ownedCheckpointFailureStore{
-		jobInfoStore:   &jobInfoStore{},
+		JobInfoStore:   &jobtest.JobInfoStore{},
 		transactionErr: transactionErr,
 	}
 	task := &model.JobTask{
@@ -304,7 +304,7 @@ func TestRunJobReturnsInfrastructureStopWhenEarlyTerminalPersistenceFails(t *tes
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			store := &ownedCheckpointFailureStore{jobInfoStore: &jobInfoStore{addErr: persistErr}}
+			store := &ownedCheckpointFailureStore{JobInfoStore: &jobtest.JobInfoStore{AddErr: persistErr}}
 			task := &model.JobTask{
 				Name:          "app-config",
 				Namespace:     "default",
@@ -328,7 +328,7 @@ func TestRunJobReturnsInfrastructureStopWhenEarlyTerminalPersistenceFails(t *tes
 
 			require.ErrorIs(t, err, signal.ErrInfrastructureStop)
 			require.ErrorIs(t, err, persistErr)
-			require.Equal(t, 1, store.addCount)
+			require.Equal(t, 1, store.AddCount)
 		})
 	}
 }
@@ -336,7 +336,7 @@ func TestRunJobReturnsInfrastructureStopWhenEarlyTerminalPersistenceFails(t *tes
 func TestRunJobsRejectsMissingOwnershipBeforeSideEffects(t *testing.T) {
 	persistErr := errors.New("unexpected persistence attempt")
 	store := &ownedCheckpointFailureStore{
-		jobInfoStore: &jobInfoStore{addErr: persistErr},
+		JobInfoStore: &jobtest.JobInfoStore{AddErr: persistErr},
 	}
 	task := &model.JobTask{
 		Name:      "app-config",
@@ -361,7 +361,7 @@ func TestRunJobsRejectsMissingOwnershipBeforeSideEffects(t *testing.T) {
 	require.ErrorIs(t, err, signal.ErrInfrastructureStop)
 	require.ErrorIs(t, err, repository.ErrWorkflowOwnershipRequired)
 	require.NotEqual(t, config.StatusCompleted, task.Status)
-	require.Zero(t, store.addCount)
+	require.Zero(t, store.AddCount)
 	require.Empty(t, client.Actions())
 }
 

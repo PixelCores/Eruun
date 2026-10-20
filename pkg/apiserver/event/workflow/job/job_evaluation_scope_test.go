@@ -3,14 +3,10 @@ package job
 import (
 	"context"
 	"encoding/json"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -26,26 +22,9 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
-	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
-
-func evaluationScopeStore(t *testing.T) (*gorm.DB, *access.Store, context.Context) {
-	t.Helper()
-	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "evaluation.db")), &gorm.Config{
-		NamingStrategy: sqlnamer.SQLNamer{}, Logger: logger.Default.LogMode(logger.Silent),
-	})
-	require.NoError(t, err)
-	connection, err := db.DB()
-	require.NoError(t, err)
-	connection.SetMaxOpenConns(1)
-	t.Cleanup(func() { require.NoError(t, connection.Close()) })
-	require.NoError(t, db.AutoMigrate(&model.SystemSetting{}, &model.WorkflowQueue{}, &model.JobInfo{}, &model.JobArtifact{}, &model.Applications{}, &model.ApplicationComponent{}, &model.ResourceCreationBudget{}))
-	store := access.NewStore(&sqlstore.Driver{Client: *db})
-	require.NoError(t, repository.EnsureJobSchedulerPolicy(context.Background(), store))
-	return db, store, access.WithScope(context.Background(), access.Scope{WorkspaceID: "space", Namespace: "space-ns"})
-}
 
 func evaluationScopeTask(t *testing.T, store *access.Store, appID string) *model.JobTask {
 	t.Helper()
@@ -89,12 +68,12 @@ func TestEvaluationScopeRunsThroughAdmissionAndPersistsPrivateSnapshot(t *testin
 			name = "standalone"
 		}
 		t.Run(name, func(t *testing.T) {
-			db, store, scopedCtx := evaluationScopeStore(t)
+			db, store, scopedCtx := jobtest.EvaluationScopeStore(t)
 			task := evaluationScopeTask(t, store, appID)
 			client := fake.NewSimpleClientset()
 			var created []*batchv1.Job
-			installRetryJobReactor(t, client, 1, "OOMKilled", &created)
-			observer := startJobTestObserver(t, client)
+			jobtest.InstallRetryJobReactor(t, client, 1, "OOMKilled", &created)
+			observer := jobtest.StartJobTestObserver(t, client)
 			client.ClearActions()
 			ctx, cancel := context.WithTimeout(scopedCtx, 5*time.Second)
 			defer cancel()
@@ -147,7 +126,7 @@ func TestEvaluationScopeRunsThroughAdmissionAndPersistsPrivateSnapshot(t *testin
 func TestEvaluationScopeRejectsForeignAndForgedOwnership(t *testing.T) {
 	for _, name := range []string{"foreign application", "foreign workspace", "detached application evaluation", "application command", "forged standalone type"} {
 		t.Run(name, func(t *testing.T) {
-			db, store, ctx := evaluationScopeStore(t)
+			db, store, ctx := jobtest.EvaluationScopeStore(t)
 			appID := "app"
 			if name == "forged standalone type" {
 				appID = ""
@@ -183,7 +162,7 @@ func TestEvaluationScopeRejectsForeignAndForgedOwnership(t *testing.T) {
 func TestStandaloneJobVolumeRunsThroughPVCController(t *testing.T) {
 	for _, name := range []string{spec.JobVolumeName("parent"), "foreign-pvc"} {
 		t.Run(name, func(t *testing.T) {
-			db, store, scopedCtx := evaluationScopeStore(t)
+			db, store, scopedCtx := jobtest.EvaluationScopeStore(t)
 			lease := time.Now().Add(time.Hour)
 			parent := &model.WorkflowQueue{TaskID: "parent", WorkspaceID: "space", Type: config.WorkflowTaskTypeJob,
 				Status: config.StatusRunning, RunGeneration: 1, RunToken: "run-token", WorkerID: "worker", LeaseExpiresAt: &lease,

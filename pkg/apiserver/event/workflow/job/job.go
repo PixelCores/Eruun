@@ -20,9 +20,11 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobcleanup"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdelay"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinstant"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
@@ -90,9 +92,9 @@ func initJobCtl(job *model.JobTask, runtime *jobexec.Runtime) JobCtl {
 	case string(config.JobDeployClusterRoleBinding):
 		return jobdeploy.NewDeployClusterRoleBindingJobCtl(job, runtime, runtime.ShareLocker)
 	case string(config.JobDeployInstant), string(config.JobCommand), string(config.JobEval):
-		return NewInstantJobCtl(job, runtime)
+		return jobinstant.NewInstantJobCtl(job, runtime)
 	case string(config.JobDeployScheduled):
-		return NewScheduledJobCtl(job, runtime)
+		return jobdelay.NewScheduledJobCtl(job, runtime)
 	case string(config.JobDeployCloud):
 		return NewCloudJobCtl(job, runtime.Store)
 	case string(config.JobDeployCallback):
@@ -349,7 +351,7 @@ func runJob(ctx context.Context, job *model.JobTask, runtime *jobexec.Runtime) (
 		logger.Info("Skip job execution after infrastructure stop", "cause", context.Cause(jobCtx))
 		return context.Cause(jobCtx)
 	}
-	releaseAdmission, admissionErr := waitForJobAdmission(jobCtx, store, job, client)
+	releaseAdmission, admissionErr := jobinstant.WaitForJobAdmission(jobCtx, store, job, client)
 	defer func() {
 		if errors.Is(resultErr, signal.ErrInfrastructureStop) && job.Status == config.StatusCancelled && jobexec.RecoverableKubernetesJobType(job.JobType) {
 			return

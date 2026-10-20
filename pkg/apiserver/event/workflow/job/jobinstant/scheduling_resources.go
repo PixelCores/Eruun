@@ -1,4 +1,4 @@
-package job
+package jobinstant
 
 import (
 	"encoding/json"

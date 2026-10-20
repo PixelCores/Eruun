@@ -1,4 +1,4 @@
-package job
+package jobinstant
 
 import (
 	"context"
@@ -24,7 +24,7 @@ import (
 // Only ready jobs reach this point: the workflow controller has already enforced
 // step dependencies and its local concurrency limit. Queueing does not consume
 // the job's execution timeout, but remains bounded by the caller's cancellation.
-func waitForJobAdmission(ctx context.Context, store datastore.DataStore, task *model.JobTask, client kubernetes.Interface) (func() error, error) {
+func WaitForJobAdmission(ctx context.Context, store datastore.DataStore, task *model.JobTask, client kubernetes.Interface) (func() error, error) {
 	noop := func() error { return nil }
 	// Direct, non-distributed controller calls have no durable execution identity.
 	// Explicit non-running owners still require admission: API-side terminal
