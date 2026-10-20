@@ -380,10 +380,9 @@ func filterReservedConvertedLabels(labels map[string]string) map[string]string {
 	if len(labels) == 0 {
 		return nil
 	}
-	reserved := applicationservice.ReservedComponentLabelKeys()
 	filtered := make(map[string]string, len(labels))
 	for key, value := range labels {
-		if _, ok := reserved[key]; ok {
+		if spec.IsReservedComponentLabel(key) {
 			continue
 		}
 		filtered[key] = value

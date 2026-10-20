@@ -8,6 +8,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -92,7 +93,7 @@ func (c *applicationsServiceImpl) applyComponentUpdate(comp *model.ApplicationCo
 
 	// 覆盖完整 Properties（用于差异更新生成的组件补丁）
 	if spec.Properties != nil {
-		if reserved := reservedComponentLabelsIn(spec.Properties.Labels); len(reserved) > 0 {
+		if reserved := domainspec.ReservedComponentLabelsIn(spec.Properties.Labels); len(reserved) > 0 {
 			return false, fmt.Errorf("%w: component %s properties.labels contains reserved keys: %s", bcode.ErrInvalidProperties, spec.Name, strings.Join(reserved, ","))
 		}
 		equal, err := componentPropertiesEqual(comp.Properties, *spec.Properties)
@@ -169,7 +170,7 @@ func newVersionUpdateComponent(app *model.Applications, spec apisv1.ComponentUpd
 
 	// 设置 Properties
 	if spec.Properties != nil {
-		if reserved := reservedComponentLabelsIn(spec.Properties.Labels); len(reserved) > 0 {
+		if reserved := domainspec.ReservedComponentLabelsIn(spec.Properties.Labels); len(reserved) > 0 {
 			return nil, fmt.Errorf("%w: component %s properties.labels contains reserved keys: %s", bcode.ErrInvalidProperties, spec.Name, strings.Join(reserved, ","))
 		}
 		props, err := model.NewJSONStructByStruct(spec.Properties)

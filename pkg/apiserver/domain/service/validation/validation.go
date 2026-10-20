@@ -396,7 +396,7 @@ func (v *validationServiceImpl) validateReservedPropertiesLabels(labels map[stri
 }
 
 func validateReservedLabelMap(labels map[string]string, fieldPrefix, source string) []apisv1.ValidationError {
-	keys := reservedComponentLabelsIn(labels)
+	keys := spec.ReservedComponentLabelsIn(labels)
 	if len(keys) == 0 {
 		return nil
 	}

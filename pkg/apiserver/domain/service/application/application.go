@@ -767,7 +767,7 @@ func prepareComponents(appID, namespace string, reqComponents []apisv1.CreateCom
 			reqComponent.ComponentType == config.ScheduledJob) && reqComponent.Image == "" {
 			return nil, bcode.ErrComponentNotImageSet
 		}
-		if reserved := reservedComponentLabelsIn(reqComponent.Properties.Labels); len(reserved) > 0 {
+		if reserved := spec.ReservedComponentLabelsIn(reqComponent.Properties.Labels); len(reserved) > 0 {
 			return nil, fmt.Errorf("%w: component %s properties.labels contains reserved keys: %s", bcode.ErrInvalidProperties, reqComponent.Name, strings.Join(reserved, ","))
 		}
 		if err := normalizeJobFailurePolicyForWrite(reqComponent.ComponentType, &reqComponent.Properties, fmt.Sprintf("component[%d].properties.failurePolicy", idx)); err != nil {

@@ -12,14 +12,14 @@ const (
 )
 
 const (
-	LabelManagedBy     = "app.kubernetes.io/managed-by"
+	LabelManagedBy     = spec.LabelManagedBy
 	ManagedByEruun     = "eruun"
-	LabelAppID         = "eruun.io/app-id"
-	LabelComponentID   = "eruun.io/component-id"
-	LabelComponentName = "eruun.io/component-name"
+	LabelAppID         = spec.LabelAppID
+	LabelComponentID   = spec.LabelComponentID
+	LabelComponentName = spec.LabelComponentName
 	LabelStorageRole   = "eruun.io/pvc-role"
-	LabelShareName     = "eruun.io/share-name"
-	LabelShareStrategy = "eruun.io/share-strategy"
+	LabelShareName     = spec.LabelShareName
+	LabelShareStrategy = spec.LabelShareStrategy
 )
 
 type JobType = spec.JobType

@@ -246,7 +246,7 @@ func componentUpdateSpecToResolvedComponent(spec domainspec.ComponentUpdateSpec)
 		Replicas:      replicas,
 	}
 	if spec.Properties != nil {
-		if reserved := reservedComponentLabelsIn(spec.Properties.Labels); len(reserved) > 0 {
+		if reserved := domainspec.ReservedComponentLabelsIn(spec.Properties.Labels); len(reserved) > 0 {
 			return domainspec.Component{}, fmt.Errorf("%w: component %s properties.labels contains reserved keys: %s", bcode.ErrInvalidProperties, spec.Name, strings.Join(reserved, ","))
 		}
 		resolved.Properties = *spec.Properties
@@ -279,7 +279,7 @@ func applyComponentUpdateSpecToResolvedComponent(current domainspec.Component, s
 		current.Replicas = *spec.Replicas
 	}
 	if spec.Properties != nil {
-		if reserved := reservedComponentLabelsIn(spec.Properties.Labels); len(reserved) > 0 {
+		if reserved := domainspec.ReservedComponentLabelsIn(spec.Properties.Labels); len(reserved) > 0 {
 			return domainspec.Component{}, fmt.Errorf("%w: component %s properties.labels contains reserved keys: %s", bcode.ErrInvalidProperties, spec.Name, strings.Join(reserved, ","))
 		}
 		current.Properties = *spec.Properties
@@ -377,7 +377,7 @@ func componentUpdateSpecHasChanges(comp *model.ApplicationComponent, spec domain
 		hasChanges = true
 	}
 	if spec.Properties != nil {
-		if reserved := reservedComponentLabelsIn(spec.Properties.Labels); len(reserved) > 0 {
+		if reserved := domainspec.ReservedComponentLabelsIn(spec.Properties.Labels); len(reserved) > 0 {
 			return false, fmt.Errorf("%w: component %s properties.labels contains reserved keys: %s", bcode.ErrInvalidProperties, spec.Name, strings.Join(reserved, ","))
 		}
 		equal, err := componentPropertiesEqual(comp.Properties, *spec.Properties)
