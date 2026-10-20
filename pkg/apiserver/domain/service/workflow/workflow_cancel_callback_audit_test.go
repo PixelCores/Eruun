@@ -15,7 +15,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobcallback"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
@@ -1290,7 +1290,7 @@ func TestReconcileWorkflowTerminalCallbacksCompletesSettledIntentWithoutResendin
 	store := &statusDataStore{workflow: &model.Workflow{ID: task.WorkflowID, AppID: task.AppID, Callback: callback}}
 	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
 	prepareTerminalCallbackFixture(t, svc, store, task, config.StatusCancelled)
-	key := workflowjob.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, "cancelled")
+	key := jobcallback.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, "cancelled")
 	require.NoError(t, svc.Store.Add(context.Background(), &model.JobInfo{
 		TaskID: task.TaskID, WorkspaceID: "callback-space", Type: string(config.JobDeployCallback),
 		Status: string(config.StatusCompleted), ExecutionKey: &key, RunGeneration: task.RunGeneration,
@@ -1316,7 +1316,7 @@ func TestReconcileWorkflowTerminalCallbacksCompletesSettledIntentAfterCallbackCo
 	store := &statusDataStore{workflow: &model.Workflow{ID: task.WorkflowID, AppID: task.AppID, Callback: callback}}
 	svc := withImmediateCallbackAdmission(t, &workflowServiceImpl{Store: store, Cfg: &config.Config{AllowPrivateURLTargets: true}})
 	prepareTerminalCallbackFixture(t, svc, store, task, config.StatusCancelled)
-	key := workflowjob.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, "cancelled")
+	key := jobcallback.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, "cancelled")
 	require.NoError(t, svc.Store.Add(context.Background(), &model.JobInfo{
 		TaskID: task.TaskID, WorkspaceID: "callback-space", Type: string(config.JobDeployCallback),
 		Status: string(config.StatusCompleted), ExecutionKey: &key, RunGeneration: task.RunGeneration,

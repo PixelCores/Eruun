@@ -14,7 +14,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/cancelsignal"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/schedulelock"
 	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobcallback"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -263,7 +263,7 @@ func terminalizeUnclaimedAppDeleteTaskJobs(ctx context.Context, store datastore.
 	}
 	return repository.TerminalizeCancelledWorkflowJobs(
 		ctx, store, task.TaskID, strings.TrimSpace(reason),
-		workflowjob.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, "cancelled"),
+		jobcallback.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, "cancelled"),
 	)
 }
 

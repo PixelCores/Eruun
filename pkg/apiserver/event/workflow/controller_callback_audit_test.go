@@ -14,7 +14,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobcallback"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	wf "github.com/PixelCores/Eruun/pkg/apiserver/workflow"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -77,7 +77,7 @@ func TestCancelledCallbackFailureFallbackKeepsCancellationKey(t *testing.T) {
 	case payload := <-received:
 		require.Equal(t, "failure", payload.Event)
 		require.Equal(t, string(config.StatusCancelled), payload.Status)
-		require.Equal(t, job.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, "cancelled"), payload.ExecutionKey)
+		require.Equal(t, jobcallback.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, "cancelled"), payload.ExecutionKey)
 	case <-time.After(2 * time.Second):
 		t.Fatal("cancelled callback with failure fallback was not received")
 	}

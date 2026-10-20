@@ -15,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobcallback"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -145,7 +146,7 @@ func (w *workflowServiceImpl) runWorkflowTerminalCallback(ctx context.Context, t
 		AppID:         task.AppID,
 		TaskID:        task.TaskID,
 		JobType:       string(config.JobDeployCallback),
-		ExecutionKey:  workflowjob.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, workflowjob.TerminalCallbackKeyEvent(status, event)),
+		ExecutionKey:  jobcallback.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, jobcallback.TerminalCallbackKeyEvent(status, event)),
 		RunGeneration: task.RunGeneration,
 		OwnerStatus:   task.Status,
 		RunToken:      task.RunToken,
@@ -170,7 +171,7 @@ func (w *workflowServiceImpl) runWorkflowTerminalCallback(ctx context.Context, t
 		callbackJob.Status = config.StatusFailed
 		callbackJob.Error = fmt.Sprintf("load url security policy: %v", err)
 		callbackJob.EndTime = time.Now().Unix()
-		callbackCtl := workflowjob.NewCallbackJobCtl(callbackJob, w.Store, nil)
+		callbackCtl := jobcallback.NewCallbackJobCtl(callbackJob, w.Store, nil)
 		if callbackCtl != nil {
 			if saveErr := callbackCtl.SaveInfo(parentCtx); saveErr != nil {
 				klog.Warningf("save callback job info failed for workflow %s task %s: %v", task.WorkflowID, task.TaskID, saveErr)
@@ -217,7 +218,7 @@ func (w *workflowServiceImpl) reconcileWorkflowTerminalCallback(ctx context.Cont
 	if err != nil {
 		return false, err
 	}
-	callbackKey := workflowjob.TerminalCallbackExecutionKey(current.TaskID, current.RunGeneration, "cancelled")
+	callbackKey := jobcallback.TerminalCallbackExecutionKey(current.TaskID, current.RunGeneration, "cancelled")
 	active, err := workflowHasActiveChildExecution(ctx, w.Store, current.TaskID)
 	if err != nil {
 		return false, err

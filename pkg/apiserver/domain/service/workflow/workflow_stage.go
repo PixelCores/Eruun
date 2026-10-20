@@ -7,7 +7,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobcloud"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 )
 
@@ -118,7 +118,7 @@ func publicStageInfoMessage(job *model.JobInfo) string {
 		if raw == "" {
 			raw = strings.TrimSpace(job.Info)
 		}
-		return workflowjob.PublicCloudJobInfoMessage(raw)
+		return jobcloud.PublicCloudJobInfoMessage(raw)
 	}
 	return strings.TrimSpace(job.Info)
 }

@@ -20,7 +20,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobcallback"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
 )
@@ -69,7 +69,7 @@ func TestTerminalCallbackFailureFallbackKeepsCancellationKeyAndSurvivesTerminali
 	}, time.Second, time.Millisecond)
 	var record model.JobInfo
 	require.NoError(t, db.First(&record).Error)
-	key := workflowjob.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, "cancelled")
+	key := jobcallback.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, "cancelled")
 	require.Equal(t, &key, record.ExecutionKey)
 	require.NoError(t, store.Add(ctx, &model.JobInfo{
 		TaskID: task.TaskID, Type: string(config.JobCleanupResources), Status: string(config.StatusWaiting),
@@ -219,7 +219,7 @@ func TestTerminalCallbackUsesGlobalAdmissionWithoutWorker(t *testing.T) {
 				if sentKey == "" {
 					sentKey = <-idempotencyKey
 				}
-				require.Equal(t, workflowjob.TerminalCallbackExecutionKey(task.TaskID, 0, "cancelled"), sentKey)
+				require.Equal(t, jobcallback.TerminalCallbackExecutionKey(task.TaskID, 0, "cancelled"), sentKey)
 				service.triggerWorkflowTerminalCallbackOnApprovalAction(ctx, task, config.StatusCancelled, "duplicate trigger")
 				require.Equal(t, int32(1), sends.Load(), "committed callback must not execute again")
 				var records int64

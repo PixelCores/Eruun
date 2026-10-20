@@ -19,12 +19,16 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/databasereset"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobcallback"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobcleanup"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobcloud"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdelay"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinstant"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/logarchive"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
@@ -58,7 +62,7 @@ func newJobRuntime(config *jobexec.Runtime) *jobexec.Runtime {
 		ResourceWaiter:    config.ResourceWaiter,
 		KubeConfig:        config.KubeConfig,
 		ShareLocker:       jobexec.NewShareLocker(config.RedisClient),
-		ArchiveUploader:   currentArchiveUploader(),
+		ArchiveUploader:   logarchive.CurrentArchiveUploader(),
 	}
 }
 
@@ -96,9 +100,9 @@ func initJobCtl(job *model.JobTask, runtime *jobexec.Runtime) JobCtl {
 	case string(config.JobDeployScheduled):
 		return jobdelay.NewScheduledJobCtl(job, runtime)
 	case string(config.JobDeployCloud):
-		return NewCloudJobCtl(job, runtime.Store)
+		return jobcloud.NewCloudJobCtl(job, runtime.Store)
 	case string(config.JobDeployCallback):
-		return NewCallbackJobCtl(job, runtime.Store, runtime.URLSecurityPolicy)
+		return jobcallback.NewCallbackJobCtl(job, runtime.Store, runtime.URLSecurityPolicy)
 	case string(config.JobCleanupResources):
 		cleanupCtl := jobcleanup.NewCleanupResourcesJobCtl(job, runtime)
 		if cleanupCtl == nil {
@@ -106,9 +110,9 @@ func initJobCtl(job *model.JobTask, runtime *jobexec.Runtime) JobCtl {
 		}
 		return cleanupCtl
 	case string(config.JobDatabaseReset):
-		return NewDatabaseResetJobCtl(job, runtime)
+		return databasereset.NewDatabaseResetJobCtl(job, runtime)
 	case string(config.JobLogArchiveUpload):
-		return NewLogArchiveUploadJobCtl(job, runtime)
+		return logarchive.NewLogArchiveUploadJobCtl(job, runtime)
 	case string(config.JobVersionRestart):
 		return jobdeploy.NewVersionRestartJobCtl(job, runtime)
 	default:

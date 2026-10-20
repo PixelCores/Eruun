@@ -13,7 +13,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/internal/cancelsignal"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobcallback"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -207,7 +207,7 @@ func (w *workflowServiceImpl) ApproveWorkflowTask(ctx context.Context, taskID, a
 		}
 		return repository.TerminalizeCancelledWorkflowJobs(
 			ctx, store, task.TaskID, cancelReason,
-			workflowjob.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, "cancelled"),
+			jobcallback.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, "cancelled"),
 		)
 	}); err != nil {
 		return nil, err
@@ -303,7 +303,7 @@ func (w *workflowServiceImpl) cancelWorkflowTaskIfStatus(ctx context.Context, ta
 			if callbackWithoutWorker {
 				return repository.TerminalizeCancelledWorkflowJobs(
 					ctx, store, task.TaskID, reason,
-					workflowjob.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, "cancelled"),
+					jobcallback.TerminalCallbackExecutionKey(task.TaskID, task.RunGeneration, "cancelled"),
 				)
 			}
 			return nil
@@ -412,7 +412,7 @@ func (w *workflowServiceImpl) cancelWorkflowTaskState(
 			if callbackWithoutWorker {
 				if err := repository.TerminalizeCancelledWorkflowJobs(
 					ctx, store, current.TaskID, wf.TerminalCallbackReason(attemptUpdates["scheduling_reason"].(string)),
-					workflowjob.TerminalCallbackExecutionKey(current.TaskID, current.RunGeneration, "cancelled"),
+					jobcallback.TerminalCallbackExecutionKey(current.TaskID, current.RunGeneration, "cancelled"),
 				); err != nil {
 					return false, err
 				}

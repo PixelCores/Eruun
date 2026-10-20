@@ -18,11 +18,11 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinstant"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/logarchive"
 	workspacejobs "github.com/PixelCores/Eruun/pkg/apiserver/jobs"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -361,7 +361,7 @@ func buildLogArchiveUploadJobs(
 		namespace := componentCopy.Namespace
 		jobTask := NewJobTask(componentCopy.Name, namespace, task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, componentCopy.ResourceNameKey())
 		jobTask.JobType = string(config.JobLogArchiveUpload)
-		jobTask.JobInfo = &job.LogArchiveUploadJobInfo{
+		jobTask.JobInfo = &logarchive.LogArchiveUploadJobInfo{
 			Component: componentCopy,
 			Path:      strings.TrimSpace(path),
 			Container: strings.TrimSpace(container),
