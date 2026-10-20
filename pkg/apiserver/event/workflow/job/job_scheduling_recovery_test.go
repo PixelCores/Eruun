@@ -19,6 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -65,7 +66,7 @@ func TestCreatedJobReattachesAfterOwnerAndQuotaChangeWithoutCreate(t *testing.T)
 	defer cancel()
 	release, err := waitForJobAdmission(waitCtx, store, task, client)
 	require.NoError(t, err, "existing Runner must attach even though its old bundle exceeds the new quota")
-	ctl := NewInstantJobCtl(task, &Runtime{Client: client, Store: store, Ack: func() {}})
+	ctl := NewInstantJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: func() {}})
 	require.NoError(t, ctl.ensureRetryAttempt(ctx, cp))
 	require.Zero(t, countClientActions(client, "create", "jobs"))
 	// Losing the resource after confirmation still cannot turn that permission
@@ -281,7 +282,7 @@ func TestExpiredRecoveredJobSettlesWithoutAdmission(t *testing.T) {
 					cancel(signal.ErrInfrastructureStop)
 					ctx = stopped
 				}
-				err = runJob(ctx, task, &Runtime{Client: client, Store: store, Ack: func() {}})
+				err = runJob(ctx, task, &jobexec.Runtime{Client: client, Store: store, Ack: func() {}})
 				saved := &model.JobInfo{ID: record.ID}
 				require.NoError(t, store.Get(context.Background(), saved))
 				if tc.revokedOwner || tc.infrastructure {
@@ -315,7 +316,7 @@ func TestExpiredRecoveredJobSettlesWithoutAdmission(t *testing.T) {
 				}
 				// Terminal persistence prevents another takeover from repeating work.
 				before := len(client.Actions())
-				require.NoError(t, runJob(ctx, task, &Runtime{Client: client, Store: store, Ack: func() {}}))
+				require.NoError(t, runJob(ctx, task, &jobexec.Runtime{Client: client, Store: store, Ack: func() {}}))
 				require.Len(t, client.Actions(), before)
 			})
 		}
@@ -394,7 +395,7 @@ func TestRecoveredJobAdmissionUsesDatabaseDeadline(t *testing.T) {
 					observed := false
 					stop := errors.New("stop after valid recovery admission")
 					observer := retryDeadlineObserver{observe: func(context.Context) error { observed = true; return stop }}
-					err = runJob(ctx, task, &Runtime{Client: client, Store: store, Ack: func() {}, ResourceWaiter: observer})
+					err = runJob(ctx, task, &jobexec.Runtime{Client: client, Store: store, Ack: func() {}, ResourceWaiter: observer})
 					require.ErrorIs(t, err, stop)
 					require.True(t, observed)
 					require.NoError(t, store.Get(ctx, &record))
@@ -435,7 +436,7 @@ func TestRecoveredJobAdmissionClockFailureKeepsExecution(t *testing.T) {
 					store = struct{ datastore.DataStore }{rawStore}
 				}
 				client := fake.NewSimpleClientset(live)
-				err = runJob(context.Background(), task, &Runtime{Client: client, Store: store, Ack: func() {}})
+				err = runJob(context.Background(), task, &jobexec.Runtime{Client: client, Store: store, Ack: func() {}})
 				require.ErrorIs(t, err, signal.ErrInfrastructureStop)
 				require.ErrorContains(t, err, "database clock")
 				require.Empty(t, client.Actions())

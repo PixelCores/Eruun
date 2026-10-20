@@ -17,6 +17,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
@@ -50,7 +51,7 @@ func TestCleanupResourcesJobCtlOnlyDefersGenericOwnerJobDeletesForRequiredStatef
 				&model.JobTask{
 					JobType: string(config.JobCleanupResources), InternalInfo: tt.internalInfo,
 				},
-				&Runtime{
+				&jobexec.Runtime{
 					Client: client,
 					Store:  &jobtest.NoopStore{},
 					Ack:    nil,
@@ -153,7 +154,7 @@ func TestCleanupResourcesJobCtlRunDefersLabeledOwnerJobToRequiredStatefulSetPodR
 				TaskID: store.jobInfo.TaskID, JobType: string(config.JobCleanupResources), JobInfo: component,
 				InternalInfo: internalInfo, Timeout: 4,
 			}
-			ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
+			ctl := NewCleanupResourcesJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
 			require.NotNil(t, ctl)
 
 			require.NoError(t, ctl.Run(ctx))
@@ -349,7 +350,7 @@ func newRequiredStatefulSetLabeledOwnerRunFixture(
 		TaskID: taskID, JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: internalInfo, Timeout: 4,
 	}
-	ctl := NewCleanupResourcesJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
+	ctl := NewCleanupResourcesJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 	return &requiredStatefulSetLabeledOwnerRunFixture{
 		ownerJob: ownerJob, pod: pod, client: client, store: store, ctl: ctl,

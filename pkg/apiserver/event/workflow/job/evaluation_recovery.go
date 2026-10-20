@@ -5,6 +5,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 )
 
 type evaluationRecoveryKey struct{}
@@ -16,7 +17,7 @@ type EvaluationRecovery func(context.Context, *model.JobTask) (bool, error)
 func WithEvaluationRecovery(ctx context.Context, recover EvaluationRecovery) context.Context {
 	return context.WithValue(ctx, evaluationRecoveryKey{}, recover)
 }
-func runJobWithEvaluationRecovery(ctx context.Context, task *model.JobTask, runtime *Runtime) error {
+func runJobWithEvaluationRecovery(ctx context.Context, task *model.JobTask, runtime *jobexec.Runtime) error {
 	recover, _ := ctx.Value(evaluationRecoveryKey{}).(EvaluationRecovery)
 	if recover == nil || task.JobType != string(config.JobEval) {
 		return runJob(ctx, task, runtime)
@@ -30,7 +31,7 @@ func runJobWithEvaluationRecovery(ctx context.Context, task *model.JobTask, runt
 			return err
 		}
 		if ctx.Err() != nil {
-			return infrastructureStopCause(ctx)
+			return jobexec.InfrastructureStopCause(ctx)
 		}
 		again, err := recover(ctx, task)
 		if err != nil {

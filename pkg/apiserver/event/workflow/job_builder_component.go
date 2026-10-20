@@ -19,6 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	workspacejobs "github.com/PixelCores/Eruun/pkg/apiserver/jobs"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
@@ -71,7 +72,7 @@ func createObjectJobsFromResult(additionalObjects []client.Object, component *mo
 	resourceAppName := component.ResourceNameKey()
 
 	for _, obj := range additionalObjects {
-		job.ApplyComponentAnnotationsToObject(obj, component)
+		jobexec.ApplyComponentAnnotationsToObject(obj, component)
 
 		if pvc, ok := obj.(*corev1.PersistentVolumeClaim); ok {
 			ns := pvc.Namespace
@@ -106,15 +107,15 @@ func createObjectJobsFromResult(additionalObjects []client.Object, component *mo
 			if ingress.Namespace == "" {
 				ingress.Namespace = component.Namespace
 			}
-			properties, err := job.ParseProperties(component.Properties)
+			properties, err := jobexec.ParseProperties(component.Properties)
 			if err != nil {
 				return nil, fmt.Errorf("parse component %s properties: %w", component.Name, err)
 			}
-			labels := job.BuildLabels(component, &properties)
+			labels := jobexec.BuildLabels(component, &properties)
 			for k, v := range naming.NormalizeLabelValues(ingress.GetLabels()) {
 				labels[k] = v
 			}
-			ingress.SetLabels(job.ApplyComponentManagedLabels(labels, component))
+			ingress.SetLabels(jobexec.ApplyComponentManagedLabels(labels, component))
 			applyShareLabelsToObject(ingress, share)
 			ingressJob := NewJobTask(
 				ingress.Name,
@@ -511,7 +512,7 @@ func buildJobsForComponent(
 		component.Namespace = namespace
 	}
 
-	properties, err := job.ParseProperties(component.Properties)
+	properties, err := jobexec.ParseProperties(component.Properties)
 	if err != nil {
 		return nil, err
 	}
@@ -590,8 +591,8 @@ func buildJobsForComponent(
 			jobTask.WorkspaceID = task.WorkspaceID
 			jobTask.JobType = string(config.JobEval)
 			workload := &batchv1.Job{}
-			workload.Labels = job.BuildLabels(component, &properties)
-			job.ApplyComponentAnnotationsToObject(workload, component)
+			workload.Labels = jobexec.BuildLabels(component, &properties)
+			jobexec.ApplyComponentAnnotationsToObject(workload, component)
 			jobTask.JobInfo = workload
 			jobTask.Info = buildResourceInfo(domainspec.ResourceJob, namespace, name)
 			err := domainspec.NormalizeComponentEvaluation(string(component.ComponentType), component.Image, properties, &traits)
@@ -688,7 +689,7 @@ func queueServiceJobs(
 	task *model.WorkflowQueue,
 	namespace string,
 	jobType config.JobType,
-	result *job.GenerateServiceResult,
+	result *jobexec.GenerateServiceResult,
 	defaultJobTimeoutSeconds int64,
 	share shareConfig,
 ) error {
@@ -745,7 +746,7 @@ func appendBatchJob(
 	namespace string,
 	jobType config.JobType,
 	jobTaskType config.JobType,
-	result *job.GenerateServiceResult,
+	result *jobexec.GenerateServiceResult,
 	defaultJobTimeoutSeconds int64,
 	share shareConfig,
 	infoFallbackName string,

@@ -9,6 +9,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 )
 
 func TestGeneratedWorkloadEnvironmentIsStable(t *testing.T) {
@@ -38,7 +39,9 @@ func TestGeneratedWorkloadEnvironmentIsStable(t *testing.T) {
 			require.NotNil(t, result)
 			return result.Service.(*appsv1.StatefulSet).Spec.Template.Spec.Containers[0].Env
 		}},
-		{name: "job", generate: func() []corev1.EnvVar { return buildJobContainer(component, properties).Env }},
+		{name: "job", generate: func() []corev1.EnvVar {
+			return jobexec.BuildJob(component, properties, jobexec.JobBuildOptions{}).Spec.Template.Spec.Containers[0].Env
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			for range 32 {

@@ -17,6 +17,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
 )
 
@@ -33,7 +34,7 @@ type workloadPodLogReader func(ctx context.Context, client kubernetes.Interface,
 
 var (
 	workloadPodLogReaderMu sync.RWMutex
-	readWorkloadPodLogs    workloadPodLogReader = readPodContainerLogsWithMode
+	readWorkloadPodLogs    workloadPodLogReader = jobexec.ReadPodContainerLogsWithMode
 )
 
 func workloadWaitError(ctx context.Context, client kubernetes.Interface, task *model.JobTask, kind, namespace, name, componentName string, cause error) error {
@@ -407,7 +408,7 @@ func diagnosticContainerNames(pod *corev1.Pod) []string {
 	if len(names) > 0 {
 		return names
 	}
-	return podLogContainerNames(pod)
+	return jobexec.PodLogContainerNames(pod)
 }
 
 func containerNeedsDiagnostics(status corev1.ContainerStatus) bool {

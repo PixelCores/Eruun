@@ -1,4 +1,4 @@
-package job
+package jobexec
 
 import (
 	"context"
@@ -13,7 +13,7 @@ type cleanupContextKey struct{}
 
 // resourceRef stores the namespace/name of a resource along with whether the job
 // created it during the current execution.
-type resourceRef struct {
+type ResourceRef struct {
 	Kind      domainspec.ResourceKind
 	Namespace string
 	Name      string
@@ -23,10 +23,10 @@ type resourceRef struct {
 // cleanupTracker accumulates resources that should be cleaned up when a job fails.
 type cleanupTracker struct {
 	mu        sync.Mutex
-	resources []resourceRef
+	resources []ResourceRef
 }
 
-func (t *cleanupTracker) add(ref resourceRef) {
+func (t *cleanupTracker) add(ref ResourceRef) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	// Avoid duplicate entries for the same resource/kind.
@@ -38,10 +38,10 @@ func (t *cleanupTracker) add(ref resourceRef) {
 	t.resources = append(t.resources, ref)
 }
 
-func (t *cleanupTracker) list(kind domainspec.ResourceKind) []resourceRef {
+func (t *cleanupTracker) list(kind domainspec.ResourceKind) []ResourceRef {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	var out []resourceRef
+	var out []ResourceRef
 	for _, ref := range t.resources {
 		if kind == "" || ref.Kind == kind {
 			out = append(out, ref)
@@ -78,22 +78,22 @@ func MarkResourceCreated(ctx context.Context, kind domainspec.ResourceKind, name
 	if err != nil {
 		return
 	}
-	tracker.add(resourceRef{Kind: kind, Namespace: namespace, Name: name, Created: true})
+	tracker.add(ResourceRef{Kind: kind, Namespace: namespace, Name: name, Created: true})
 }
 
 // markResourceObserved records that the job interacted with the specified resource
 // without claiming ownership of its lifecycle.
-func markResourceObserved(ctx context.Context, kind domainspec.ResourceKind, namespace, name string) {
+func MarkResourceObserved(ctx context.Context, kind domainspec.ResourceKind, namespace, name string) {
 	tracker, err := trackerFromContext(ctx)
 	if err != nil {
 		return
 	}
-	tracker.add(resourceRef{Kind: kind, Namespace: namespace, Name: name, Created: false})
+	tracker.add(ResourceRef{Kind: kind, Namespace: namespace, Name: name, Created: false})
 }
 
 // resourcesForCleanup returns the tracked resources. When kind is empty, all resources
 // are returned. Only resources marked as Created should be deleted by cleanup routines.
-func resourcesForCleanup(ctx context.Context, kind domainspec.ResourceKind) []resourceRef {
+func ResourcesForCleanup(ctx context.Context, kind domainspec.ResourceKind) []ResourceRef {
 	tracker, err := trackerFromContext(ctx)
 	if err != nil {
 		return nil

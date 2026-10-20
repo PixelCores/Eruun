@@ -3,27 +3,18 @@ package job
 import (
 	"context"
 	"errors"
-	"io"
-	"net/http"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
-	"k8s.io/client-go/rest"
-	restfake "k8s.io/client-go/rest/fake"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -110,486 +101,6 @@ func TestGenerateScheduledCronJobOverridesHistoryLimit(t *testing.T) {
 	require.Equal(t, failedLimit, *cronObj.Spec.FailedJobsHistoryLimit)
 }
 
-func TestApplyJobRunPolicy(t *testing.T) {
-	const (
-		name      = "demo-job"
-		namespace = "default"
-	)
-
-	newJob := func(policy workflowconfig.JobRunPolicy) *batchv1.Job {
-		return &batchv1.Job{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name,
-				Namespace: namespace,
-				Annotations: map[string]string{
-					config.AnnotationJobRunPolicy:     string(policy),
-					config.AnnotationJobTaskID:        "task-1",
-					config.AnnotationJobExecutionKey:  "execution-2",
-					config.AnnotationJobRunGeneration: "2",
-				},
-				Labels: map[string]string{
-					config.LabelAppID:         "app-1",
-					config.LabelComponentName: "demo",
-				},
-			},
-		}
-	}
-
-	completedJob := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
-		Status: batchv1.JobStatus{
-			Conditions: []batchv1.JobCondition{
-				{
-					Type:   batchv1.JobComplete,
-					Status: corev1.ConditionTrue,
-				},
-			},
-		},
-	}
-	failedJob := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
-		Status: batchv1.JobStatus{
-			Conditions: []batchv1.JobCondition{
-				{
-					Type:   batchv1.JobFailed,
-					Status: corev1.ConditionTrue,
-				},
-			},
-		},
-	}
-	runningJob := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-			Annotations: map[string]string{
-				config.AnnotationJobTaskID:        "task-1",
-				config.AnnotationJobExecutionKey:  "execution-1",
-				config.AnnotationJobRunGeneration: "1",
-			},
-		},
-		Status: batchv1.JobStatus{
-			Active: 1,
-		},
-	}
-
-	tests := []struct {
-		name          string
-		policy        workflowconfig.JobRunPolicy
-		existing      *batchv1.Job
-		expectAction  runPolicyAction
-		expectErr     bool
-		expectStatus  config.Status
-		expectDeleted bool
-	}{
-		{
-			name:         "skip if completed",
-			policy:       workflowconfig.JobRunPolicySkipIfCompleted,
-			existing:     completedJob,
-			expectAction: runPolicyActionSkip,
-		},
-		{
-			name:         "skip if running allows existing job",
-			policy:       workflowconfig.JobRunPolicySkipIfCompleted,
-			existing:     runningJob,
-			expectAction: runPolicyActionCreate,
-		},
-		{
-			name:         "skip if failed returns error",
-			policy:       workflowconfig.JobRunPolicySkipIfCompleted,
-			existing:     failedJob,
-			expectErr:    true,
-			expectStatus: config.StatusFailed,
-		},
-		{
-			name:          "recreate deletes existing job",
-			policy:        workflowconfig.JobRunPolicyRecreate,
-			existing:      runningJob,
-			expectAction:  runPolicyActionCreate,
-			expectDeleted: true,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			ctx := context.Background()
-			client := fake.NewSimpleClientset()
-			if tc.existing != nil {
-				existing := tc.existing.DeepCopy()
-				existing.UID = "existing-job-uid"
-				existing.ResourceVersion = "1"
-				if _, err := client.BatchV1().Jobs(namespace).Create(ctx, existing, metav1.CreateOptions{}); err != nil {
-					t.Fatalf("create existing job: %v", err)
-				}
-			}
-
-			action, err := applyJobRunPolicy(ctx, client, nil, newJob(tc.policy), config.JobDeployInstant)
-			if tc.expectErr {
-				if err == nil {
-					t.Fatalf("expected error")
-				}
-				var statusErr *jobinfo.StatusError
-				if !errors.As(err, &statusErr) {
-					t.Fatalf("expected StatusError, got %v", err)
-				}
-				if statusErr.Status != tc.expectStatus {
-					t.Fatalf("expected status %s, got %s", tc.expectStatus, statusErr.Status)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if action != tc.expectAction {
-				t.Fatalf("expected action %v, got %v", tc.expectAction, action)
-			}
-			if tc.expectDeleted {
-				_, err := client.BatchV1().Jobs(namespace).Get(ctx, name, metav1.GetOptions{})
-				if err == nil || !k8serrors.IsNotFound(err) {
-					t.Fatalf("expected job to be deleted, got %v", err)
-				}
-			}
-		})
-	}
-}
-
-func TestAdoptReusableJobExecution(t *testing.T) {
-	desired := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
-		Name:      "shared-job",
-		Namespace: "default",
-		Annotations: map[string]string{
-			config.AnnotationJobTaskID:        "task-1",
-			config.AnnotationJobExecutionKey:  "execution-2",
-			config.AnnotationJobRunGeneration: "2",
-		},
-	}}
-
-	t.Run("adopts an older generation of the same task", func(t *testing.T) {
-		existing := desired.DeepCopy()
-		existing.Annotations[config.AnnotationJobExecutionKey] = "execution-1"
-		existing.Annotations[config.AnnotationJobRunGeneration] = "1"
-		client := fake.NewSimpleClientset(existing)
-
-		live, err := adoptReusableJobExecution(context.Background(), client, desired, existing)
-		require.NoError(t, err)
-		require.Equal(t, "task-1", live.Annotations[config.AnnotationJobTaskID])
-		require.Equal(t, "execution-2", live.Annotations[config.AnnotationJobExecutionKey])
-		require.Equal(t, "2", live.Annotations[config.AnnotationJobRunGeneration])
-	})
-
-	t.Run("keeps an exact identity unchanged", func(t *testing.T) {
-		existing := desired.DeepCopy()
-		client := fake.NewSimpleClientset(existing)
-
-		live, err := adoptReusableJobExecution(context.Background(), client, desired, existing)
-		require.NoError(t, err)
-		require.Same(t, existing, live)
-		require.Empty(t, client.Actions())
-	})
-
-	tests := []struct {
-		name   string
-		mutate func(*batchv1.Job)
-	}{
-		{
-			name: "rejects a newer generation",
-			mutate: func(existing *batchv1.Job) {
-				existing.Annotations[config.AnnotationJobExecutionKey] = "execution-3"
-				existing.Annotations[config.AnnotationJobRunGeneration] = "3"
-			},
-		},
-		{
-			name: "rejects a different execution in the same generation",
-			mutate: func(existing *batchv1.Job) {
-				existing.Annotations[config.AnnotationJobExecutionKey] = "execution-conflict"
-			},
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			existing := desired.DeepCopy()
-			tc.mutate(existing)
-			client := fake.NewSimpleClientset(existing)
-
-			_, err := adoptReusableJobExecution(context.Background(), client, desired, existing)
-			require.ErrorIs(t, err, jobinfo.ErrJobExecutionIdentityChanged)
-			require.Empty(t, client.Actions())
-		})
-	}
-}
-
-func TestStartTimeFromJob(t *testing.T) {
-	value, ok := startTimeFromJob(nil)
-	require.False(t, ok)
-	require.Zero(t, value)
-
-	job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}}
-	value, ok = startTimeFromJob(job)
-	require.False(t, ok)
-	require.Zero(t, value)
-
-	job.Annotations[config.AnnotationJobStartTime] = "invalid"
-	value, ok = startTimeFromJob(job)
-	require.False(t, ok)
-	require.Zero(t, value)
-
-	job.Annotations[config.AnnotationJobStartTime] = "123"
-	value, ok = startTimeFromJob(job)
-	require.True(t, ok)
-	require.Equal(t, int64(123), value)
-}
-
-func TestWaitBatchJobUsesTaskTargetAndTimeout(t *testing.T) {
-	tests := []struct {
-		name        string
-		jobInfo     interface{}
-		timeout     int64
-		wantTarget  string
-		wantTimeout time.Duration
-	}{
-		{
-			name: "task defaults", wantTarget: "task-namespace/jobs/task-name",
-			wantTimeout: config.DefaultJobTaskTimeout,
-		},
-		{
-			name: "empty job info and negative timeout", jobInfo: &batchv1.Job{}, timeout: -1,
-			wantTarget: "task-namespace/jobs/task-name", wantTimeout: config.DefaultJobTaskTimeout,
-		},
-		{
-			name: "job info namespace", jobInfo: &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: "job-namespace"}},
-			timeout: 15, wantTarget: "job-namespace/jobs/task-name", wantTimeout: 15 * time.Second,
-		},
-		{
-			name: "job info name", jobInfo: &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "job-name"}},
-			timeout: 10, wantTarget: "task-namespace/jobs/job-name", wantTimeout: 10 * time.Second,
-		},
-		{
-			name: "job info target", jobInfo: &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: "job-namespace", Name: "job-name"}},
-			wantTarget: "job-namespace/jobs/job-name", wantTimeout: config.DefaultJobTaskTimeout,
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			var requestPath string
-			var deadline time.Time
-			var hasDeadline bool
-			httpClient := restfake.CreateHTTPClient(func(request *http.Request) (*http.Response, error) {
-				requestPath = request.URL.Path
-				deadline, hasDeadline = request.Context().Deadline()
-				return &http.Response{
-					StatusCode: http.StatusOK,
-					Header:     http.Header{"Content-Type": []string{"application/json"}},
-					Body:       io.NopCloser(strings.NewReader(`{"apiVersion":"batch/v1","kind":"Job","status":{"conditions":[{"type":"Complete","status":"True"}]}}`)),
-				}, nil
-			})
-			client, err := kubernetes.NewForConfigAndClient(&rest.Config{Host: "https://kubernetes.example.test"}, httpClient)
-			require.NoError(t, err)
-			base := deployNamespacedResourceJobBase{
-				namespace: "task-namespace",
-				client:    client,
-				job: &model.JobTask{
-					Name: "task-name", Namespace: "task-namespace", Timeout: test.timeout, JobInfo: test.jobInfo,
-				},
-			}
-
-			started := time.Now()
-			status, message, err := base.waitBatchJob(context.Background())
-			finished := time.Now()
-			require.NoError(t, err)
-			require.Equal(t, config.StatusCompleted, status)
-			require.Empty(t, message)
-			require.Equal(t, "/apis/batch/v1/namespaces/"+test.wantTarget, requestPath)
-			require.True(t, hasDeadline)
-			require.False(t, deadline.Before(started.Add(test.wantTimeout)))
-			require.False(t, deadline.After(finished.Add(test.wantTimeout)))
-		})
-	}
-}
-
-func TestWaitForJobCompletionBranches(t *testing.T) {
-	status, msg, err := waitForJobCompletion(context.Background(), nil, "default", "job")
-	require.Error(t, err)
-	require.Equal(t, config.StatusFailed, status)
-	require.Equal(t, "client is nil", msg)
-
-	completedClient := fake.NewSimpleClientset(&batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{Name: "job-complete", Namespace: "default"},
-		Status: batchv1.JobStatus{
-			Conditions: []batchv1.JobCondition{{
-				Type:   batchv1.JobComplete,
-				Status: corev1.ConditionTrue,
-			}},
-		},
-	})
-	status, msg, err = waitForJobCompletion(context.Background(), completedClient, "default", "job-complete")
-	require.NoError(t, err)
-	require.Equal(t, config.StatusCompleted, status)
-	require.Equal(t, "", msg)
-
-	failedClient := fake.NewSimpleClientset(&batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{Name: "job-failed", Namespace: "default"},
-		Status: batchv1.JobStatus{
-			Conditions: []batchv1.JobCondition{{
-				Type:    batchv1.JobFailed,
-				Status:  corev1.ConditionTrue,
-				Message: "boom",
-			}},
-		},
-	})
-	status, msg, err = waitForJobCompletion(context.Background(), failedClient, "default", "job-failed")
-	require.Error(t, err)
-	require.Equal(t, config.StatusFailed, status)
-	require.Equal(t, "boom", msg)
-
-	runningClient := fake.NewSimpleClientset(&batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{Name: "job-running", Namespace: "default"},
-		Status: batchv1.JobStatus{
-			Active: 1,
-		},
-	})
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
-	defer cancel()
-	status, _, err = waitForJobCompletion(ctx, runningClient, "default", "job-running")
-	require.Error(t, err)
-	require.Equal(t, config.StatusTimeout, status)
-}
-
-func TestWaitForJobCompletionUsesOwnedSucceededPodFallback(t *testing.T) {
-	jobObj := jobForPodFallback("job-pod-complete", nil)
-	client := fake.NewSimpleClientset(jobObj, succeededPodForJob(jobObj, "job-pod-complete-abc", jobObj.UID))
-
-	status, msg, err := waitForJobCompletion(context.Background(), client, "default", jobObj.Name)
-	require.NoError(t, err)
-	require.Equal(t, config.StatusCompleted, status)
-	require.Equal(t, "", msg)
-}
-
-func TestWaitForJobCompletionWaitsForRequiredSucceededPods(t *testing.T) {
-	completions := int32(2)
-	jobObj := jobForPodFallback("job-two-completions", &completions)
-	client := fake.NewSimpleClientset(jobObj, succeededPodForJob(jobObj, "job-two-completions-abc", jobObj.UID))
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
-	defer cancel()
-	status, _, err := waitForJobCompletion(ctx, client, "default", jobObj.Name)
-	require.Error(t, err)
-	require.Equal(t, config.StatusTimeout, status)
-}
-
-func TestWaitForJobCompletionIgnoresSucceededPodWithMismatchedOwner(t *testing.T) {
-	jobObj := jobForPodFallback("job-owner-mismatch", nil)
-	client := fake.NewSimpleClientset(jobObj, succeededPodForJob(jobObj, "job-owner-mismatch-abc", types.UID("other-job-uid")))
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
-	defer cancel()
-	status, _, err := waitForJobCompletion(ctx, client, "default", jobObj.Name)
-	require.Error(t, err)
-	require.Equal(t, config.StatusTimeout, status)
-}
-
-func jobForPodFallback(name string, completions *int32) *batchv1.Job {
-	return &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: "default",
-			UID:       types.UID(name + "-uid"),
-		},
-		Spec: batchv1.JobSpec{
-			Completions: completions,
-		},
-	}
-}
-
-func succeededPodForJob(jobObj *batchv1.Job, name string, ownerUID types.UID) *corev1.Pod {
-	return &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: jobObj.Namespace,
-			Labels: map[string]string{
-				batchv1.JobNameLabel: jobObj.Name,
-			},
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion: "batch/v1",
-					Kind:       "Job",
-					Name:       jobObj.Name,
-					UID:        ownerUID,
-				},
-			},
-		},
-		Status: corev1.PodStatus{Phase: corev1.PodSucceeded},
-	}
-}
-
-type runPolicyStore struct {
-	jobtest.NoopStore
-	count int64
-	err   error
-}
-
-func (s *runPolicyStore) Count(context.Context, datastore.Entity, *datastore.FilterOptions) (int64, error) {
-	return s.count, s.err
-}
-
-func TestApplyJobRunPolicy_UsesStoreForSkipIfCompleted(t *testing.T) {
-	ctx := context.Background()
-	client := fake.NewSimpleClientset()
-	jobObj := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "demo-job",
-			Namespace: "default",
-			Annotations: map[string]string{
-				config.AnnotationJobRunPolicy: string(workflowconfig.JobRunPolicySkipIfCompleted),
-			},
-			Labels: map[string]string{
-				config.LabelAppID:         "app-1",
-				config.LabelComponentName: "demo",
-			},
-		},
-	}
-
-	store := &runPolicyStore{count: 1}
-	action, err := applyJobRunPolicy(ctx, client, store, jobObj, config.JobDeployInstant)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if action != runPolicyActionSkip {
-		t.Fatalf("expected skip action, got %v", action)
-	}
-}
-
-func TestApplyJobRunPolicy_StoreErrorContinues(t *testing.T) {
-	ctx := context.Background()
-	client := fake.NewSimpleClientset()
-	jobObj := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "demo-job",
-			Namespace: "default",
-			Annotations: map[string]string{
-				config.AnnotationJobRunPolicy: string(workflowconfig.JobRunPolicySkipIfCompleted),
-			},
-			Labels: map[string]string{
-				config.LabelAppID:         "app-1",
-				config.LabelComponentName: "demo",
-			},
-		},
-	}
-
-	store := &runPolicyStore{err: errors.New("db error")}
-	action, err := applyJobRunPolicy(ctx, client, store, jobObj, config.JobDeployInstant)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if action != runPolicyActionCreate {
-		t.Fatalf("expected create action, got %v", action)
-	}
-}
-
 type jobInfoStore struct {
 	addCount  int
 	addErr    error
@@ -638,7 +149,7 @@ func TestRunJob_SkippedWritesJobInfo(t *testing.T) {
 		Status:     config.StatusSkipped,
 	}
 
-	runJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(store, jobTask), Ack: func() {}})
+	runJob(context.Background(), jobTask, &jobexec.Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(store, jobTask), Ack: func() {}})
 
 	require.Equal(t, 1, store.addCount)
 	info, ok := store.lastAdded.(*model.JobInfo)
@@ -808,7 +319,7 @@ func TestRunJob_ConfigMapUpdatesComponentStatus(t *testing.T) {
 		},
 	}
 
-	runAdmittedTestJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() {}})
+	runAdmittedTestJob(context.Background(), jobTask, &jobexec.Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() {}})
 
 	require.NotNil(t, store.updated)
 	require.Equal(t, string(config.ComponentStatusRunning), store.updated.Status)
@@ -845,7 +356,7 @@ func TestRunJob_ConfigMapSharedDefaultSkippedMapsRunning(t *testing.T) {
 		},
 	}
 
-	runJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(store, jobTask), Ack: func() {}})
+	runJob(context.Background(), jobTask, &jobexec.Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(store, jobTask), Ack: func() {}})
 
 	require.NotNil(t, store.updated)
 	require.Equal(t, string(config.ComponentStatusRunning), store.updated.Status)
@@ -882,7 +393,7 @@ func TestRunJob_ConfigMapSharedIgnoreSkippedDoesNotMapRunning(t *testing.T) {
 		},
 	}
 
-	runJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(store, jobTask), Ack: func() {}})
+	runJob(context.Background(), jobTask, &jobexec.Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(store, jobTask), Ack: func() {}})
 
 	require.Nil(t, store.updated)
 	require.Equal(t, string(config.ComponentStatusNotDeploy), store.components[0].Status)
@@ -913,7 +424,7 @@ func TestRunJob_ConfigMapUpdatesComponentStatusWithWorkflowID(t *testing.T) {
 		},
 	}
 
-	runAdmittedTestJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() {}})
+	runAdmittedTestJob(context.Background(), jobTask, &jobexec.Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() {}})
 
 	require.NotNil(t, store.updated)
 	require.Equal(t, string(config.ComponentStatusRunning), store.updated.Status)
@@ -945,7 +456,7 @@ func TestRunJob_ConfigMapDoesNotSetPending(t *testing.T) {
 		},
 	}
 
-	runAdmittedTestJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() {}})
+	runAdmittedTestJob(context.Background(), jobTask, &jobexec.Runtime{Client: fake.NewSimpleClientset(), Store: store, Ack: func() {}})
 
 	require.NotEmpty(t, store.statuses)
 	for _, status := range store.statuses {
@@ -983,7 +494,7 @@ func TestRunJob_ConfigMapInvalidatesComponentsCache(t *testing.T) {
 		},
 	}
 
-	runtime := newJobRuntime(&Runtime{
+	runtime := newJobRuntime(&jobexec.Runtime{
 		Client: fake.NewSimpleClientset(),
 		Store:  store,
 		Ack:    func() {},
@@ -1013,12 +524,12 @@ func TestConfigComponentStatusInvalidatesCacheAfterCommittedWriteCancelsContext(
 		Name: "app-config", Namespace: "default", AppID: "app-3",
 		JobType: string(config.JobDeployConfigMap), Status: config.StatusCompleted,
 	}
-	runtime := newJobRuntime(&Runtime{
+	runtime := newJobRuntime(&jobexec.Runtime{
 		Cache: cacheStore,
 	})
-	defer runtime.close()
+	defer runtime.Close()
 
-	err := syncConfigComponentStatusIfWorkflowOwned(ctx, jobTask, jobtest.WithJobTestOwner(store, jobTask), runtime)
+	err := jobexec.SyncConfigComponentStatusIfWorkflowOwned(ctx, jobTask, jobtest.WithJobTestOwner(store, jobTask), runtime)
 
 	require.NoError(t, err)
 	require.ErrorIs(t, ctx.Err(), context.Canceled)
@@ -1052,7 +563,7 @@ func TestRunJob_SecretFailureInvalidatesComponentsCache(t *testing.T) {
 		JobInfo:   "bad-job-info-type",
 	}
 
-	runtime := newJobRuntime(&Runtime{
+	runtime := newJobRuntime(&jobexec.Runtime{
 		Client: fake.NewSimpleClientset(),
 		Store:  store,
 		Ack:    func() {},
@@ -1096,7 +607,7 @@ func TestRunJob_SecretSharedDefaultSkippedMapsRunning(t *testing.T) {
 		},
 	}
 
-	runJob(context.Background(), jobTask, &Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(store, jobTask), Ack: func() {}})
+	runJob(context.Background(), jobTask, &jobexec.Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(store, jobTask), Ack: func() {}})
 
 	require.NotNil(t, store.updated)
 	require.Equal(t, string(config.ComponentStatusRunning), store.updated.Status)
@@ -1133,7 +644,7 @@ func TestRunJob_ConfigMapDoesNotInvalidateCacheWhenStatusPersistFails(t *testing
 		},
 	}
 
-	runtime := newJobRuntime(&Runtime{
+	runtime := newJobRuntime(&jobexec.Runtime{
 		Client: fake.NewSimpleClientset(),
 		Store:  store,
 		Ack:    func() {},
@@ -1171,7 +682,7 @@ func TestRunJob_DeployStartInvalidatesComponentsCache(t *testing.T) {
 		JobInfo:   "bad-deploy-job-info",
 	}
 
-	runtime := newJobRuntime(&Runtime{
+	runtime := newJobRuntime(&jobexec.Runtime{
 		Client: fake.NewSimpleClientset(),
 		Store:  store,
 		Ack:    func() {},
@@ -1211,7 +722,7 @@ func TestRunJob_DeployStartDoesNotInvalidateCacheWhenStatusPersistFails(t *testi
 		JobInfo:   "bad-deploy-job-info",
 	}
 
-	runtime := newJobRuntime(&Runtime{
+	runtime := newJobRuntime(&jobexec.Runtime{
 		Client: fake.NewSimpleClientset(),
 		Store:  store,
 		Ack:    func() {},

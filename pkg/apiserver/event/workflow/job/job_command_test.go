@@ -14,6 +14,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -30,7 +31,7 @@ func TestWorkspaceJobTypesUseDurableStopCheckpoint(t *testing.T) {
 			var created []*batchv1.Job
 			installRetryJobReactor(t, client, 1, "OOMKilled", &created)
 			ctl := newObservedInstantJobCtl(t, task, client, newRetryCreationBudgetStore(t, jobtest.WithJobTestOwner(store, task)), func() {})
-			err := ctl.Run(WithCleanupTracker(context.Background()))
+			err := ctl.Run(jobexec.WithCleanupTracker(context.Background()))
 			require.ErrorContains(t, err, "job failed after attempt 1")
 			require.Len(t, created, 1)
 			require.Equal(t, string(jobType), store.record.Type)
@@ -58,14 +59,14 @@ func TestWorkspaceJobCleanupWaitsForCommittedResult(t *testing.T) {
 			task.InternalInfo, task.Status = string(raw), config.StatusCompleted
 			task.JobInfo = live
 			client := fake.NewSimpleClientset(live)
-			finalizeCompletedJobIfNeeded(context.Background(), client, task)
+			jobexec.FinalizeCompletedJobIfNeeded(context.Background(), client, task)
 			_, err = client.BatchV1().Jobs(live.Namespace).Get(context.Background(), live.Name, metav1.GetOptions{})
 			require.NoError(t, err, "finalization cannot delete before SaveInfo")
 			store := &workspaceJobArtifactStore{}
 			if jobType == config.JobEval {
 				store.artifact = &model.JobArtifact{WorkspaceID: task.WorkspaceID, TaskID: task.TaskID, ExecutionKey: task.ExecutionKey, Kind: "source", Summary: json.RawMessage(`{"collectionComplete":true}`)}
 			}
-			ctl := NewInstantJobCtl(task, &Runtime{Client: client, Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
+			ctl := NewInstantJobCtl(task, &jobexec.Runtime{Client: client, Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
 			require.NoError(t, ctl.SaveInfo(context.Background()))
 			require.Equal(t, string(config.StatusCompleted), store.record.Status)
 			_, err = client.BatchV1().Jobs(live.Namespace).Get(context.Background(), live.Name, metav1.GetOptions{})
@@ -112,7 +113,7 @@ func TestEvaluationCleanupRetainsResultsUntilArchiveIsCommitted(t *testing.T) {
 			task.InternalInfo, task.JobInfo = string(raw), live
 			client := fake.NewSimpleClientset(live)
 			store := &workspaceJobArtifactStore{}
-			ctl := NewInstantJobCtl(task, &Runtime{Client: client, Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
+			ctl := NewInstantJobCtl(task, &jobexec.Runtime{Client: client, Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
 			ctl.Clean(context.Background())
 			if status == config.StatusCancelled || status == config.StatusTimeout {
 				require.Equal(t, 1, countClientActions(client, "delete", "jobs"))

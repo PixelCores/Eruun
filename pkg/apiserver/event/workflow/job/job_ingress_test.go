@@ -10,6 +10,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 )
 
 func TestIngressNeedsUpdate(t *testing.T) {
@@ -165,7 +166,7 @@ func TestFindReusableIngressName(t *testing.T) {
 
 	clientset := fake.NewSimpleClientset(existing, other)
 	ctl := &DeployIngressJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{client: clientset},
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{Client: clientset},
 	}
 
 	name, err := ctl.findReusableIngressName(context.Background(), desired)

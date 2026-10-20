@@ -14,6 +14,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	wf "github.com/PixelCores/Eruun/pkg/apiserver/workflow"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -217,7 +218,7 @@ func callbackContext(ctx context.Context, timeoutSeconds int64, timeoutMax time.
 	}
 	parent := context.Background()
 	if ctx != nil {
-		parent = job.WithTaskMetadata(context.WithoutCancel(ctx), "")
+		parent = jobexec.WithTaskMetadata(context.WithoutCancel(ctx), "")
 	}
 	return context.WithTimeout(parent, timeout)
 }

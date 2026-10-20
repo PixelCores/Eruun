@@ -1,4 +1,4 @@
-package job
+package jobexec
 
 import (
 	"context"
@@ -130,7 +130,7 @@ func TestCleanupRecoveredCancelledJobsDeletesOnlyExactExecution(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, 1, cleaned)
-	require.Equal(t, cancelledJobCleanupComplete, record.SchedulingReason)
+	require.Equal(t, CancelledJobCleanupComplete, record.SchedulingReason)
 	_, err = client.BatchV1().Jobs(job.Namespace).Get(context.Background(), job.Name, metav1.GetOptions{})
 	require.Error(t, err)
 }
@@ -159,7 +159,7 @@ func TestCleanupRecoveredCancelledJobsDeletesExactRetryCheckpoint(t *testing.T) 
 
 	require.NoError(t, err)
 	require.Equal(t, 1, cleaned)
-	require.Equal(t, cancelledJobCleanupComplete, record.SchedulingReason)
+	require.Equal(t, CancelledJobCleanupComplete, record.SchedulingReason)
 	_, err = client.BatchV1().Jobs(live.Namespace).Get(context.Background(), live.Name, metav1.GetOptions{})
 	require.Error(t, err)
 }
@@ -187,7 +187,7 @@ func TestCleanupRecoveredCancelledJobsPreservesReplacementExecution(t *testing.T
 
 	require.NoError(t, err)
 	require.Equal(t, 1, cleaned)
-	require.Equal(t, cancelledJobCleanupPreserved, record.SchedulingReason)
+	require.Equal(t, CancelledJobCleanupPreserved, record.SchedulingReason)
 	_, err = client.BatchV1().Jobs(job.Namespace).Get(context.Background(), job.Name, metav1.GetOptions{})
 	require.NoError(t, err)
 }
@@ -228,7 +228,7 @@ func TestCleanupRecoveredCancelledJobsRetriesDeletionFailure(t *testing.T) {
 	cleaned, err = CleanupRecoveredCancelledJobs(context.Background(), client, store)
 	require.NoError(t, err)
 	require.Equal(t, 1, cleaned)
-	require.Equal(t, cancelledJobCleanupComplete, record.SchedulingReason)
+	require.Equal(t, CancelledJobCleanupComplete, record.SchedulingReason)
 	require.Equal(t, workflowconfig.JobSchedulingReleased, record.SchedulingState)
 }
 
@@ -254,7 +254,7 @@ func TestCleanupRecoveredCancelledJobsDeletesExactCronJob(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, 1, cleaned)
-	require.Equal(t, cancelledJobCleanupComplete, record.SchedulingReason)
+	require.Equal(t, CancelledJobCleanupComplete, record.SchedulingReason)
 	_, err = client.BatchV1().CronJobs(cron.Namespace).Get(context.Background(), cron.Name, metav1.GetOptions{})
 	require.Error(t, err)
 }
@@ -290,7 +290,7 @@ func TestCleanupRecoveredCancelledScheduledJobIgnoresReplacementJobAndDeletesExa
 
 	require.NoError(t, err)
 	require.Equal(t, 1, cleaned)
-	require.Equal(t, cancelledJobCleanupComplete, record.SchedulingReason)
+	require.Equal(t, CancelledJobCleanupComplete, record.SchedulingReason)
 	_, err = client.BatchV1().Jobs(replacement.Namespace).Get(context.Background(), replacement.Name, metav1.GetOptions{})
 	require.NoError(t, err)
 	_, err = client.BatchV1().CronJobs(cron.Namespace).Get(context.Background(), cron.Name, metav1.GetOptions{})

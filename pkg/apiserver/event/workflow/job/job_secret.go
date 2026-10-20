@@ -13,6 +13,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
@@ -21,17 +22,17 @@ import (
 // It assumes JobInfo carries a fully-formed *corev1.Secret (creation intent). Pure references
 // should not be routed to this JobCtl.
 type DeploySecretJobCtl struct {
-	deployNamespacedResourceJobBase
+	jobexec.DeployNamespacedResourceJobBase
 	urlSecurityPolicy *spec.URLSecurityPolicySpec
 }
 
-func NewDeploySecretJobCtl(job *model.JobTask, runtime *Runtime, shareLocker locker.Locker) *DeploySecretJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("NewDeploySecretJobCtl", job, runtime, shareLocker)
+func NewDeploySecretJobCtl(job *model.JobTask, runtime *jobexec.Runtime, shareLocker locker.Locker) *DeploySecretJobCtl {
+	base, ok := jobexec.NewDeployNamespacedResourceJobBase("NewDeploySecretJobCtl", job, runtime, shareLocker)
 	if !ok {
 		return nil
 	}
 	ctl := &DeploySecretJobCtl{
-		deployNamespacedResourceJobBase: base,
+		DeployNamespacedResourceJobBase: base,
 	}
 	if runtime != nil {
 		ctl.urlSecurityPolicy = runtime.URLSecurityPolicy
@@ -40,27 +41,27 @@ func NewDeploySecretJobCtl(job *model.JobTask, runtime *Runtime, shareLocker loc
 }
 
 func (c *DeploySecretJobCtl) Clean(ctx context.Context) {
-	c.cleanCreated(ctx, spec.ResourceSecret, "secret", func(ctx context.Context, namespace, name string) error {
-		return c.client.CoreV1().Secrets(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+	c.CleanCreated(ctx, spec.ResourceSecret, "secret", func(ctx context.Context, namespace, name string) error {
+		return c.Client.CoreV1().Secrets(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	}, k8serrors.IsNotFound, "after job failure")
 }
 
 func (c *DeploySecretJobCtl) Run(ctx context.Context) error {
-	return c.runWithStatus(ctx, c.run, "DeploySecretJob run error")
+	return c.RunWithStatus(ctx, c.run, "DeploySecretJob run error")
 }
 
 func (c *DeploySecretJobCtl) run(ctx context.Context) error {
 	logger := klog.FromContext(ctx)
-	if c.client == nil {
+	if c.Client == nil {
 		return fmt.Errorf("client is nil")
 	}
 
-	secret, err := jobinfo.SecretFromJobInfo(ctx, c.job, c.urlSecurityPolicy)
+	secret, err := jobinfo.SecretFromJobInfo(ctx, c.Job, c.urlSecurityPolicy)
 	if err != nil {
 		return err
 	}
 	if secret.Namespace == "" {
-		secret.Namespace = c.job.Namespace
+		secret.Namespace = c.Job.Namespace
 	}
 
 	// Default to Opaque if not set
@@ -68,7 +69,7 @@ func (c *DeploySecretJobCtl) run(ctx context.Context) error {
 		secret.Type = corev1.SecretTypeOpaque
 	}
 
-	cli := c.client.CoreV1().Secrets(secret.Namespace)
+	cli := c.Client.CoreV1().Secrets(secret.Namespace)
 
 	updateSecret := func(ctx context.Context, current *corev1.Secret) error {
 		if current.Immutable != nil && *current.Immutable {
@@ -76,10 +77,10 @@ func (c *DeploySecretJobCtl) run(ctx context.Context) error {
 				return fmt.Errorf("secret %s/%s is immutable; content differs and cannot be updated", secret.Namespace, secret.Name)
 			}
 			logger.Info("Secret is immutable and unchanged; skipping update", "secretName", secret.Name, "namespace", secret.Namespace)
-			markResourceObserved(ctx, spec.ResourceSecret, secret.Namespace, secret.Name)
+			jobexec.MarkResourceObserved(ctx, spec.ResourceSecret, secret.Namespace, secret.Name)
 			return nil
 		}
-		if err := updateResourceWithRetry(ctx, func(ctx context.Context) (*corev1.Secret, error) {
+		if err := jobexec.UpdateResourceWithRetry(ctx, func(ctx context.Context) (*corev1.Secret, error) {
 			return cli.Get(ctx, secret.Name, metav1.GetOptions{})
 		}, func(ctx context.Context, latest *corev1.Secret) error {
 			if latest.Immutable != nil && *latest.Immutable {
@@ -95,25 +96,25 @@ func (c *DeploySecretJobCtl) run(ctx context.Context) error {
 			return fmt.Errorf("update secret %q failed: %w", secret.Name, err)
 		}
 		logger.Info("Secret updated", "secretName", secret.Name, "namespace", secret.Namespace)
-		markResourceObserved(ctx, spec.ResourceSecret, secret.Namespace, secret.Name)
+		jobexec.MarkResourceObserved(ctx, spec.ResourceSecret, secret.Namespace, secret.Name)
 		return nil
 	}
 
-	_, created, err := reconcileTrackedResource(ctx, trackedResourceReconcileOptions[corev1.Secret]{
-		sharedResourceAccessOptions: sharedResourceAccessOptions{
-			job:          c.job,
-			ack:          c.ack,
-			labels:       secret.Labels,
-			kind:         spec.ResourceSecret,
-			lockProvider: c.shareLocker,
-			listFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
+	_, created, err := jobexec.ReconcileTrackedResource(ctx, jobexec.TrackedResourceReconcileOptions[corev1.Secret]{
+		SharedResourceAccessOptions: jobexec.SharedResourceAccessOptions{
+			Job:          c.Job,
+			Ack:          c.Ack,
+			Labels:       secret.Labels,
+			Kind:         spec.ResourceSecret,
+			LockProvider: c.ShareLocker,
+			ListFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
 				list, err := cli.List(ctx, opts)
 				if err != nil {
 					return 0, err
 				}
 				return len(list.Items), nil
 			},
-			logSkip: func(strategy spec.ShareStrategy) {
+			LogSkip: func(strategy spec.ShareStrategy) {
 				if strategy == spec.ShareStrategyIgnore {
 					logger.Info("Secret marked as shared ignore; skipping", "secretName", secret.Name, "namespace", secret.Namespace)
 				} else {
@@ -121,17 +122,17 @@ func (c *DeploySecretJobCtl) run(ctx context.Context) error {
 				}
 			},
 		},
-		namespace: secret.Namespace,
-		name:      secret.Name,
-		getFn: func(ctx context.Context) (*corev1.Secret, error) {
+		Namespace: secret.Namespace,
+		Name:      secret.Name,
+		GetFn: func(ctx context.Context) (*corev1.Secret, error) {
 			return cli.Get(ctx, secret.Name, metav1.GetOptions{})
 		},
-		createFn: func(ctx context.Context) (*corev1.Secret, error) {
+		CreateFn: func(ctx context.Context) (*corev1.Secret, error) {
 			return cli.Create(ctx, secret, metav1.CreateOptions{})
 		},
-		onExisting:      updateSecret,
-		isNotFound:      k8serrors.IsNotFound,
-		isAlreadyExists: k8serrors.IsAlreadyExists,
+		OnExisting:      updateSecret,
+		IsNotFound:      k8serrors.IsNotFound,
+		IsAlreadyExists: k8serrors.IsAlreadyExists,
 	})
 	if err != nil {
 		return fmt.Errorf("ensure secret %q failed: %w", secret.Name, err)
@@ -140,9 +141,9 @@ func (c *DeploySecretJobCtl) run(ctx context.Context) error {
 		logger.Info("Secret created", "secretName", secret.Name, "namespace", secret.Namespace)
 	}
 
-	if c.job.Status != config.StatusSkipped {
-		c.job.Status = config.StatusCompleted
-		c.ack()
+	if c.Job.Status != config.StatusSkipped {
+		c.Job.Status = config.StatusCompleted
+		c.Ack()
 	}
 	return nil
 }
@@ -195,11 +196,11 @@ func GenerateSecret(component *model.ApplicationComponent, properties *model.Pro
 			Namespace: namespace,
 			URL:       url,
 			FileName:  fileName,
-			Labels:    BuildLabels(component, properties),
+			Labels:    jobexec.BuildLabels(component, properties),
 		}
 	}
 
-	labels := BuildLabels(component, properties)
+	labels := jobexec.BuildLabels(component, properties)
 	var data map[string]string
 	if properties != nil {
 		data = properties.Secret

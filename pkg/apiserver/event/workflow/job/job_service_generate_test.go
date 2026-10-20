@@ -9,6 +9,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -89,7 +90,7 @@ func TestBuildLabels_ManagedLabelsOverridePropertiesLabels(t *testing.T) {
 		},
 	}
 
-	labels := BuildLabels(component, properties)
+	labels := jobexec.BuildLabels(component, properties)
 
 	require.Equal(t, config.ManagedByEruun, labels[config.LabelManagedBy])
 	require.Equal(t, "app-1", labels[config.LabelAppID])

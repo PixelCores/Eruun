@@ -15,6 +15,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -38,8 +39,8 @@ func TestRecoveredEvaluationRetryPreservesAbsoluteDeadline(t *testing.T) {
 			task.JobType = string(config.JobEval)
 			workload := task.JobInfo.(*batchv1.Job)
 			deadline := time.Now().Add(tc.deadline).UnixNano()
-			workload.Annotations[EvaluationDeadlineAnnotation] = strconv.FormatInt(deadline, 10)
-			ctl := NewInstantJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(&retryCheckpointStore{}, task), Ack: func() {}})
+			workload.Annotations[jobexec.EvaluationDeadlineAnnotation] = strconv.FormatInt(deadline, 10)
+			ctl := NewInstantJobCtl(task, &jobexec.Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(&retryCheckpointStore{}, task), Ack: func() {}})
 			checkpoint, err := ctl.newRetryCheckpoint(context.Background(), workload)
 			if !tc.valid {
 				require.ErrorContains(t, err, "invalid evaluation recovery deadline")
@@ -75,9 +76,9 @@ func TestRetryCheckpointUsesDatabaseDeadlineAcrossNodeSkew(t *testing.T) {
 				workload := task.JobInfo.(*batchv1.Job)
 				now := time.Now().Add(skew)
 				deadline := now.Add(budget).UnixNano()
-				workload.Annotations[EvaluationDeadlineAnnotation] = strconv.FormatInt(deadline, 10)
+				workload.Annotations[jobexec.EvaluationDeadlineAnnotation] = strconv.FormatInt(deadline, 10)
 				store := &retryDeadlineClockStore{retryCheckpointStore: &retryCheckpointStore{}, now: now}
-				ctl := NewInstantJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
+				ctl := NewInstantJobCtl(task, &jobexec.Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
 				cp, err := ctl.newRetryCheckpoint(context.Background(), workload)
 				if budget <= 0 || budget > 11*time.Second {
 					require.ErrorContains(t, err, "invalid evaluation recovery deadline")
@@ -93,7 +94,7 @@ func TestRetryCheckpointUsesDatabaseDeadlineAcrossNodeSkew(t *testing.T) {
 		t.Run(skew.String()+"/initial deadline", func(t *testing.T) {
 			task := retryTestTask(t, jobtest.RetryTestPolicy())
 			store := &retryDeadlineClockStore{retryCheckpointStore: &retryCheckpointStore{}, now: time.Now().Add(skew)}
-			ctl := NewInstantJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
+			ctl := NewInstantJobCtl(task, &jobexec.Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
 			cp, err := ctl.newRetryCheckpoint(context.Background(), task.JobInfo.(*batchv1.Job))
 			require.NoError(t, err)
 			require.Equal(t, store.now.Add(time.Duration(task.Timeout)*time.Second).UnixNano(), cp.Deadline)
@@ -131,10 +132,10 @@ func TestRetryRecoveryUsesDatabaseRemainingBudget(t *testing.T) {
 				task.InternalInfo = string(raw)
 				store := &retryDeadlineClockStore{retryCheckpointStore: &retryCheckpointStore{}, now: now}
 				client := fake.NewSimpleClientset(live)
-				ctl := NewInstantJobCtl(task, &Runtime{Client: client, Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
+				ctl := NewInstantJobCtl(task, &jobexec.Runtime{Client: client, Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
 				observed := false
 				stop := errors.New("stop after observing remaining budget")
-				ctl.resourceWaiter = retryDeadlineObserver{observe: func(ctx context.Context) error {
+				ctl.ResourceWaiter = retryDeadlineObserver{observe: func(ctx context.Context) error {
 					observed = true
 					localDeadline, ok := ctx.Deadline()
 					require.True(t, ok)
@@ -177,7 +178,7 @@ func TestRetryDeadlineClockFailureStopsBeforeKubernetes(t *testing.T) {
 					store = struct{ datastore.DataStore }{store}
 				}
 				client := fake.NewSimpleClientset()
-				ctl := NewInstantJobCtl(task, &Runtime{Client: client, Store: store, Ack: func() {}})
+				ctl := NewInstantJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: func() {}})
 				err := ctl.runWithRetryPolicy(context.Background(), workload, jobtest.RetryTestPolicy())
 				require.ErrorIs(t, err, signal.ErrInfrastructureStop)
 				require.ErrorContains(t, err, "database clock")
@@ -197,7 +198,7 @@ func TestRetryBackoffUsesDatabaseClockAcrossNodeSkew(t *testing.T) {
 					now := time.Now().Add(skew)
 					store := &retryDeadlineClockStore{retryCheckpointStore: &retryCheckpointStore{}, now: now}
 					client := fake.NewSimpleClientset()
-					ctl := NewInstantJobCtl(task, &Runtime{Client: client, Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
+					ctl := NewInstantJobCtl(task, &jobexec.Runtime{Client: client, Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
 					cp := &jobinfo.InstantJobRetryCheckpoint{Job: task.JobInfo.(*batchv1.Job), CurrentUID: "missing-owned-job", RetryAt: now.Add(remaining).UnixNano()}
 					start := time.Now()
 					err := ctl.ensureRetryAttempt(context.Background(), cp)
@@ -225,8 +226,8 @@ func TestRetryBackoffTimestampPreservesDatabaseDeadline(t *testing.T) {
 			client := fake.NewSimpleClientset()
 			var created []*batchv1.Job
 			installRetryJobReactor(t, client, 1, "OOMKilled", &created)
-			ctl := NewInstantJobCtl(task, &Runtime{Client: client, Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
-			ctl.resourceWaiter = fixedJobSnapshotObserver{}
+			ctl := NewInstantJobCtl(task, &jobexec.Runtime{Client: client, Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
+			ctl.ResourceWaiter = fixedJobSnapshotObserver{}
 			err := ctl.runWithRetryPolicy(context.Background(), task.JobInfo.(*batchv1.Job), jobtest.RetryTestPolicy())
 			require.ErrorIs(t, err, stop)
 			cp, err := jobinfo.DecodeInstantJobRetryCheckpoint(task)

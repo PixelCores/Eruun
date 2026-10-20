@@ -1,4 +1,4 @@
-package job
+package jobexec
 
 import (
 	"context"
@@ -41,7 +41,7 @@ func finalizeCompletedJob(ctx context.Context, client kubernetes.Interface, jobT
 		return
 	}
 
-	logs, err := collectJobPodLogs(ctx, client, namespace, name)
+	logs, err := CollectJobPodLogs(ctx, client, namespace, name)
 	if err != nil {
 		klog.Warningf("collect job logs %s/%s failed: %v", namespace, name, err)
 	} else if logs != "" {
@@ -53,12 +53,12 @@ func finalizeCompletedJob(ctx context.Context, client kubernetes.Interface, jobT
 		return
 	}
 
-	if err := deleteCompletedJobAndPods(ctx, client, namespace, name, jobObj); err != nil {
+	if err := DeleteCompletedJobAndPods(ctx, client, namespace, name, jobObj); err != nil {
 		klog.Warningf("clean completed job %s/%s failed: %v", namespace, name, err)
 	}
 }
 
-func finalizeCompletedJobIfNeeded(ctx context.Context, client kubernetes.Interface, jobTask *model.JobTask) {
+func FinalizeCompletedJobIfNeeded(ctx context.Context, client kubernetes.Interface, jobTask *model.JobTask) {
 	jobObj, ok := completedJobForFinalize(jobTask)
 	if !ok {
 		return
@@ -83,11 +83,11 @@ func completedJobForFinalize(jobTask *model.JobTask) (*batchv1.Job, bool) {
 	return jobObj, true
 }
 
-func collectJobPodLogs(ctx context.Context, client kubernetes.Interface, namespace, jobName string) (string, error) {
-	return collectJobPodLogsForJob(ctx, client, namespace, jobName, nil)
+func CollectJobPodLogs(ctx context.Context, client kubernetes.Interface, namespace, jobName string) (string, error) {
+	return CollectJobPodLogsForJob(ctx, client, namespace, jobName, nil)
 }
 
-func collectJobPodLogsForJob(ctx context.Context, client kubernetes.Interface, namespace, jobName string, owner *batchv1.Job) (string, error) {
+func CollectJobPodLogsForJob(ctx context.Context, client kubernetes.Interface, namespace, jobName string, owner *batchv1.Job) (string, error) {
 	if client == nil {
 		return "", fmt.Errorf("client is nil")
 	}
@@ -112,7 +112,7 @@ func collectJobPodLogsForJob(ctx context.Context, client kubernetes.Interface, n
 		if owner != nil && !podOwnedByJob(&pod, owner) {
 			continue
 		}
-		containerNames := podLogContainerNames(&pod)
+		containerNames := PodLogContainerNames(&pod)
 		if len(containerNames) == 0 {
 			continue
 		}
@@ -218,7 +218,7 @@ func jobForCompletedCleanup(ctx context.Context, client kubernetes.Interface, na
 	return jobObj, nil
 }
 
-func deleteCompletedJobAndPods(ctx context.Context, client kubernetes.Interface, namespace, name string, fallback *batchv1.Job) error {
+func DeleteCompletedJobAndPods(ctx context.Context, client kubernetes.Interface, namespace, name string, fallback *batchv1.Job) error {
 	cleanupJob, err := jobForCompletedCleanup(ctx, client, namespace, name, fallback)
 	if err != nil || cleanupJob == nil {
 		return err
@@ -236,7 +236,7 @@ func deleteCompletedJobAndPods(ctx context.Context, client kubernetes.Interface,
 	})
 	switch {
 	case deleteErr == nil:
-		if err := waitForJobUIDDeletion(ctx, client, namespace, name, uid, jobDeleteTimeout); err != nil {
+		if err := waitForJobUIDDeletion(ctx, client, namespace, name, uid, JobDeleteTimeout); err != nil {
 			return err
 		}
 	case k8serrors.IsNotFound(deleteErr):
@@ -304,7 +304,7 @@ func deleteCompletedPodsForJob(ctx context.Context, client kubernetes.Interface,
 	return deleted, firstErr
 }
 
-func podLogContainerNames(pod *corev1.Pod) []string {
+func PodLogContainerNames(pod *corev1.Pod) []string {
 	if pod == nil {
 		return nil
 	}
@@ -325,10 +325,10 @@ func podLogContainerNames(pod *corev1.Pod) []string {
 }
 
 func readPodContainerLogs(ctx context.Context, client kubernetes.Interface, namespace, podName, container string) (string, error) {
-	return readPodContainerLogsWithMode(ctx, client, namespace, podName, container, false)
+	return ReadPodContainerLogsWithMode(ctx, client, namespace, podName, container, false)
 }
 
-func readPodContainerLogsWithMode(ctx context.Context, client kubernetes.Interface, namespace, podName, container string, previous bool) (string, error) {
+func ReadPodContainerLogsWithMode(ctx context.Context, client kubernetes.Interface, namespace, podName, container string, previous bool) (string, error) {
 	tailLines := config.DefaultJobLogTailLines
 	limitBytes := config.DefaultJobLogLimitBytes
 	options := &corev1.PodLogOptions{Container: container, Previous: previous}

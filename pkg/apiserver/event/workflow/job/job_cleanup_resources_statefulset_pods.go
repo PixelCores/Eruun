@@ -48,12 +48,12 @@ type requiredStatefulSetPodOwnerJobTarget struct {
 // deciding this from the local ownerJobs map is unsafe. The dedicated
 // reconciler below handles both checkpointed and label-discovered Jobs.
 func (c *CleanupResourcesJobCtl) deferRequiredStatefulSetJobDelete(ref cleanupResourceRef) bool {
-	return c != nil && c.job != nil && ref.kind == domainspec.ResourceJob &&
-		jobinfo.VersionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo)
+	return c != nil && c.Job != nil && ref.kind == domainspec.ResourceJob &&
+		jobinfo.VersionUpdateCleanupRequiresStatefulSetDeletion(c.Job.InternalInfo)
 }
 
 func (c *CleanupResourcesJobCtl) ensureRequiredStatefulSetPodDeletionAllowed(ctx context.Context, component *model.ApplicationComponent) error {
-	if c == nil || c.job == nil || !jobinfo.VersionUpdateCleanupRequiresStatefulSetDeletion(c.job.InternalInfo) {
+	if c == nil || c.Job == nil || !jobinfo.VersionUpdateCleanupRequiresStatefulSetDeletion(c.Job.InternalInfo) {
 		return nil
 	}
 	if err := c.ensureRequiredStatefulSetWorkflowTaskActive(ctx, "checking required StatefulSet Pod deletion"); err != nil {
@@ -165,7 +165,7 @@ func (c *CleanupResourcesJobCtl) requiredStatefulSetPodsGone(ctx context.Context
 		if err := c.ensureRequiredStatefulSetWorkflowTaskActive(ctx, fmt.Sprintf("deleting required StatefulSet Pod %s/%s", livePod.Namespace, livePod.Name)); err != nil {
 			return false, err
 		}
-		if err := c.client.CoreV1().Pods(livePod.Namespace).Delete(ctx, livePod.Name, deleteOptions); err != nil {
+		if err := c.Client.CoreV1().Pods(livePod.Namespace).Delete(ctx, livePod.Name, deleteOptions); err != nil {
 			if k8serrors.IsConflict(err) || k8serrors.IsNotFound(err) {
 				gone, verifyErr := c.verifyRequiredStatefulSetPodDeleteFailure(ctx, component, livePod)
 				if verifyErr != nil {
@@ -198,7 +198,7 @@ func (c *CleanupResourcesJobCtl) deleteRequiredStatefulSetPodOwnerJob(
 	propagation := metav1.DeletePropagationOrphan
 	uid := target.uid
 	resourceVersion := target.resourceVersion
-	err := c.client.BatchV1().Jobs(pod.Namespace).Delete(ctx, target.name, metav1.DeleteOptions{
+	err := c.Client.BatchV1().Jobs(pod.Namespace).Delete(ctx, target.name, metav1.DeleteOptions{
 		PropagationPolicy: &propagation,
 		Preconditions: &metav1.Preconditions{
 			UID:             &uid,
@@ -212,7 +212,7 @@ func (c *CleanupResourcesJobCtl) deleteRequiredStatefulSetPodOwnerJob(
 		return false, fmt.Errorf("delete required StatefulSet pod owner Job %s/%s: %w", pod.Namespace, target.name, err)
 	}
 
-	job, getErr := c.client.BatchV1().Jobs(pod.Namespace).Get(ctx, target.name, metav1.GetOptions{})
+	job, getErr := c.Client.BatchV1().Jobs(pod.Namespace).Get(ctx, target.name, metav1.GetOptions{})
 	if getErr != nil {
 		if k8serrors.IsNotFound(getErr) {
 			return false, nil
@@ -306,7 +306,7 @@ func (c *CleanupResourcesJobCtl) requiredStatefulSetPodOwnerJobsGone(
 				pod = livePod
 			}
 		}
-		job, err := c.client.BatchV1().Jobs(target.ref.namespace).Get(ctx, identity.name, metav1.GetOptions{})
+		job, err := c.Client.BatchV1().Jobs(target.ref.namespace).Get(ctx, identity.name, metav1.GetOptions{})
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
 				continue
@@ -372,7 +372,7 @@ func (c *CleanupResourcesJobCtl) captureRequiredStatefulSetOwnerJobPods(
 		return false, nil
 	}
 
-	pods, err := c.client.CoreV1().Pods(target.ref.namespace).List(ctx, metav1.ListOptions{})
+	pods, err := c.Client.CoreV1().Pods(target.ref.namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return false, fmt.Errorf("list namespace Pods for required StatefulSet owner Job checkpoint: %w", err)
 	}
@@ -485,11 +485,11 @@ func (c *CleanupResourcesJobCtl) requiredStatefulSetLabeledJobsGone(
 		return false, fmt.Errorf("required StatefulSet deletion Job selector is empty for component %s", component.Name)
 	}
 
-	jobs, err := c.client.BatchV1().Jobs(target.ref.namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
+	jobs, err := c.Client.BatchV1().Jobs(target.ref.namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
 	if err != nil {
 		return false, fmt.Errorf("list labeled Jobs for required StatefulSet deletion: %w", err)
 	}
-	pods, err := c.client.CoreV1().Pods(target.ref.namespace).List(ctx, metav1.ListOptions{})
+	pods, err := c.Client.CoreV1().Pods(target.ref.namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return false, fmt.Errorf("list namespace Pods for required StatefulSet labeled Job deletion: %w", err)
 	}
@@ -683,7 +683,7 @@ func (c *CleanupResourcesJobCtl) refreshRequiredStatefulSetPodTargets(ctx contex
 		return fmt.Errorf("parse required StatefulSet deletion pod selector for component %s: %w", component.Name, err)
 	}
 
-	statefulSet, err := c.client.AppsV1().StatefulSets(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
+	statefulSet, err := c.Client.AppsV1().StatefulSets(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
 	if err == nil && statefulSet == nil {
 		return fmt.Errorf("get required StatefulSet %s before pod identity scan: returned nil object", cleanupResourceDisplayName(ref))
 	}
@@ -706,7 +706,7 @@ func (c *CleanupResourcesJobCtl) refreshRequiredStatefulSetPodTargets(ctx contex
 		}
 	}
 
-	list, err := c.client.CoreV1().Pods(ref.namespace).List(ctx, metav1.ListOptions{})
+	list, err := c.Client.CoreV1().Pods(ref.namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return fmt.Errorf("list namespace pods before required StatefulSet deletion: %w", err)
 	}
@@ -840,7 +840,7 @@ func (c *CleanupResourcesJobCtl) getRequiredStatefulSetPodTarget(ctx context.Con
 	if !remembered {
 		return nil, false, fmt.Errorf("required StatefulSet pod %s/%s was not remembered", target.ref.namespace, name)
 	}
-	pod, err := c.client.CoreV1().Pods(target.ref.namespace).Get(ctx, name, metav1.GetOptions{})
+	pod, err := c.Client.CoreV1().Pods(target.ref.namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil, false, nil
@@ -889,7 +889,7 @@ func (c *CleanupResourcesJobCtl) requiredStatefulSetPodOwnerJobs(
 		}
 		ownerUIDsByName[name] = owner.UID
 
-		job, err := c.client.BatchV1().Jobs(pod.Namespace).Get(ctx, name, metav1.GetOptions{})
+		job, err := c.Client.BatchV1().Jobs(pod.Namespace).Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
 				if owner.UID == "" {

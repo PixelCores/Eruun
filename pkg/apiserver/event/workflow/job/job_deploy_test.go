@@ -15,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
@@ -652,7 +653,7 @@ func TestDeploymentForExistingUpdateReplacesVolumeMounts(t *testing.T) {
 }
 
 func TestDeployJobCtlRunReplacesStaleDeploymentVolumeMounts(t *testing.T) {
-	ctx := WithCleanupTracker(context.Background())
+	ctx := jobexec.WithCleanupTracker(context.Background())
 	deployName := naming.WebServiceName("api", "app-1")
 	current := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	current.Name = deployName
@@ -728,7 +729,7 @@ func TestDeployJobCtlRunReplacesStaleDeploymentVolumeMounts(t *testing.T) {
 		JobType:   string(config.JobDeploy),
 		JobInfo:   desired,
 	}
-	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployJobCtl(jobTask, &jobexec.Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(jobtest.ShareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.run(ctx))
@@ -762,7 +763,7 @@ func TestDeployJobCtlRunReplacesStaleDeploymentVolumeMounts(t *testing.T) {
 }
 
 func TestDeployJobCtlRunSkipsDeploymentWithOnlyLiveSystemLabels(t *testing.T) {
-	ctx := WithCleanupTracker(context.Background())
+	ctx := jobexec.WithCleanupTracker(context.Background())
 	deployName := naming.WebServiceName("api", "app-1")
 	current := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	current.Name = deployName
@@ -800,7 +801,7 @@ func TestDeployJobCtlRunSkipsDeploymentWithOnlyLiveSystemLabels(t *testing.T) {
 		JobType:   string(config.JobDeploy),
 		JobInfo:   desired,
 	}
-	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployJobCtl(jobTask, &jobexec.Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(jobtest.ShareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.run(ctx))
@@ -814,7 +815,7 @@ func TestDeployJobCtlRunSkipsDeploymentWithOnlyLiveSystemLabels(t *testing.T) {
 }
 
 func TestDeployJobCtlRunSkipsDeploymentWithOnlyImmutableSelectorDrift(t *testing.T) {
-	ctx := WithCleanupTracker(context.Background())
+	ctx := jobexec.WithCleanupTracker(context.Background())
 	deployName := naming.WebServiceName("api", "app-1")
 	current := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	current.Name = deployName
@@ -847,7 +848,7 @@ func TestDeployJobCtlRunSkipsDeploymentWithOnlyImmutableSelectorDrift(t *testing
 		JobType:   string(config.JobDeploy),
 		JobInfo:   desired,
 	}
-	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployJobCtl(jobTask, &jobexec.Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(jobtest.ShareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.run(ctx))
@@ -861,7 +862,7 @@ func TestDeployJobCtlRunSkipsDeploymentWithOnlyImmutableSelectorDrift(t *testing
 }
 
 func TestDeployJobCtlRunUpdatesDeploymentReplicasOnly(t *testing.T) {
-	ctx := WithCleanupTracker(context.Background())
+	ctx := jobexec.WithCleanupTracker(context.Background())
 	deployName := naming.WebServiceName("api", "app-1")
 	current := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	current.Name = deployName
@@ -889,7 +890,7 @@ func TestDeployJobCtlRunUpdatesDeploymentReplicasOnly(t *testing.T) {
 		JobType:   string(config.JobDeploy),
 		JobInfo:   desired,
 	}
-	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployJobCtl(jobTask, &jobexec.Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(jobtest.ShareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.run(ctx))
@@ -905,7 +906,7 @@ func TestDeployJobCtlRunUpdatesDeploymentReplicasOnly(t *testing.T) {
 }
 
 func TestDeployJobCtlRunAnnotatesChangedPodTemplateWithTaskID(t *testing.T) {
-	ctx := WithCleanupTracker(context.Background())
+	ctx := jobexec.WithCleanupTracker(context.Background())
 	deployName := naming.WebServiceName("api", "app-1")
 	current := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	current.Name = deployName
@@ -944,7 +945,7 @@ func TestDeployJobCtlRunAnnotatesChangedPodTemplateWithTaskID(t *testing.T) {
 		JobType:   string(config.JobDeploy),
 		JobInfo:   desired,
 	}
-	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployJobCtl(jobTask, &jobexec.Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(jobtest.ShareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.run(ctx))
@@ -959,7 +960,7 @@ func TestDeployJobCtlRunAnnotatesChangedPodTemplateWithTaskID(t *testing.T) {
 }
 
 func TestDeployJobCtlRunRestoresTaskAnnotationForUpToDateDeployment(t *testing.T) {
-	ctx := WithCleanupTracker(context.Background())
+	ctx := jobexec.WithCleanupTracker(context.Background())
 	deployName := naming.WebServiceName("api", "app-1")
 	current := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	current.Name = deployName
@@ -993,7 +994,7 @@ func TestDeployJobCtlRunRestoresTaskAnnotationForUpToDateDeployment(t *testing.T
 		JobType:   string(config.JobDeploy),
 		JobInfo:   desired,
 	}
-	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployJobCtl(jobTask, &jobexec.Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(jobtest.ShareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.run(ctx))
@@ -1020,7 +1021,7 @@ func TestDeploymentPodTemplateChangedPreservesExistingTaskIDAnnotation(t *testin
 }
 
 func TestDeployJobCtlRunReplacesStaleDeploymentVolumeSource(t *testing.T) {
-	ctx := WithCleanupTracker(context.Background())
+	ctx := jobexec.WithCleanupTracker(context.Background())
 	deployName := naming.WebServiceName("api", "app-1")
 	current := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	current.Name = deployName
@@ -1070,7 +1071,7 @@ func TestDeployJobCtlRunReplacesStaleDeploymentVolumeSource(t *testing.T) {
 		JobType:   string(config.JobDeploy),
 		JobInfo:   desired,
 	}
-	ctl := NewDeployJobCtl(jobTask, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployJobCtl(jobTask, &jobexec.Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(jobtest.ShareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.run(ctx))
@@ -1086,13 +1087,13 @@ func TestDeployJobCtlWaitTimeoutWithPodAbnormalReturnsFailed(t *testing.T) {
 	waiter := newWorkloadTestObserver(t, newWaitTestPod("app-1", "api", "CrashLoopBackOff"))
 
 	ctl := &DeployJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
-			job: &model.JobTask{
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{
+			Job: &model.JobTask{
 				Name:    "api",
 				AppID:   "app-1",
 				Timeout: 1,
 			},
-			resourceWaiter: waiter,
+			ResourceWaiter: waiter,
 		},
 		desiredReplicas: 1,
 	}
@@ -1108,8 +1109,8 @@ func TestDeployJobCtlWaitTimeoutWithPodAbnormalReturnsFailed(t *testing.T) {
 
 func TestDeployJobCtlWaitRequiresResourceWaiter(t *testing.T) {
 	ctl := &DeployJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
-			job: &model.JobTask{
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{
+			Job: &model.JobTask{
 				Name:      "api",
 				Namespace: "default",
 				AppID:     "app-1",
@@ -1128,13 +1129,13 @@ func TestDeployJobCtlWaitUsesBoundedComponentLabel(t *testing.T) {
 	waiter := newWorkloadTestObserver(t, newWaitReadyTestPod("app-1", naming.BoundedLabelValue("API")))
 
 	ctl := &DeployJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
-			job: &model.JobTask{
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{
+			Job: &model.JobTask{
 				Name:    "API",
 				AppID:   "app-1",
 				Timeout: 1,
 			},
-			resourceWaiter: waiter,
+			ResourceWaiter: waiter,
 		},
 		desiredReplicas: 1,
 	}
@@ -1147,13 +1148,13 @@ func TestDeployJobCtlWaitTimeoutWithPendingPodReturnsTimeout(t *testing.T) {
 	waiter := newWorkloadTestObserver(t, newWaitTestPod("app-1", "api", "ContainerCreating"))
 
 	ctl := &DeployJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
-			job: &model.JobTask{
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{
+			Job: &model.JobTask{
 				Name:    "api",
 				AppID:   "app-1",
 				Timeout: 1,
 			},
-			resourceWaiter: waiter,
+			ResourceWaiter: waiter,
 		},
 		desiredReplicas: 1,
 	}
@@ -1173,14 +1174,14 @@ func TestDeployJobCtlWaitIgnoresReadyPodWithDifferentImage(t *testing.T) {
 	waiter := newWorkloadTestObserver(t, withWaitPodImage(newWaitReadyTestPod("app-1", "api"), "nginx:1.25"))
 
 	ctl := &DeployJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
-			job: &model.JobTask{
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{
+			Job: &model.JobTask{
 				Name:    "api",
 				AppID:   "app-1",
 				Timeout: 1,
 				JobInfo: deploy,
 			},
-			resourceWaiter: waiter,
+			ResourceWaiter: waiter,
 		},
 		desiredReplicas: 1,
 	}
@@ -1200,14 +1201,14 @@ func TestDeployJobCtlWaitUsesExpectedImage(t *testing.T) {
 	waiter := newWorkloadTestObserver(t, withWaitPodImage(newWaitReadyTestPod("app-1", "api"), "nginx:1.26"))
 
 	ctl := &DeployJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
-			job: &model.JobTask{
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{
+			Job: &model.JobTask{
 				Name:    "api",
 				AppID:   "app-1",
 				Timeout: 1,
 				JobInfo: deploy,
 			},
-			resourceWaiter: waiter,
+			ResourceWaiter: waiter,
 		},
 		desiredReplicas: 1,
 	}
@@ -1229,14 +1230,14 @@ func TestDeployJobCtlWaitRequiresExpectedTaskAnnotationWithSameImage(t *testing.
 	waiter := newWorkloadTestObserver(t, oldReady, newAbnormal)
 
 	ctl := &DeployJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
-			job: &model.JobTask{
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{
+			Job: &model.JobTask{
 				Name:    "api",
 				AppID:   "app-1",
 				Timeout: 1,
 				JobInfo: deploy,
 			},
-			resourceWaiter: waiter,
+			ResourceWaiter: waiter,
 		},
 		desiredReplicas: 1,
 		expectedPodTemplateAnnotations: map[string]string{

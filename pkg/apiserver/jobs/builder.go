@@ -9,20 +9,22 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
-	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
-	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
+	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 var errEvaluationPolicyUnavailable = errors.New("evaluation timeout policy unavailable")
@@ -332,7 +334,7 @@ func BuildEvaluationTask(ctx context.Context, store datastore.DataStore, cfg *co
 		if workload.Annotations == nil {
 			workload.Annotations = map[string]string{}
 		}
-		workload.Annotations[workflowjob.EvaluationDeadlineAnnotation] = fmt.Sprint(info.ExecutionDeadline)
+		workload.Annotations[jobexec.EvaluationDeadlineAnnotation] = fmt.Sprint(info.ExecutionDeadline)
 	}
 	workload.Spec.ActiveDeadlineSeconds = ptr.To(job.Timeout)
 	job.JobType = string(config.JobEval)

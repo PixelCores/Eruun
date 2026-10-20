@@ -21,6 +21,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
@@ -506,7 +507,7 @@ func processJobResultWithOutbox(ctx context.Context, client kubernetes.Interface
 	waitCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
 
-	status, message, err := waitForJobCompletionMatching(waitCtx, client, namespace, payload.Name, matchesExpectedJob)
+	status, message, err := jobexec.WaitForJobCompletionMatching(waitCtx, client, namespace, payload.Name, matchesExpectedJob)
 	if errors.Is(err, jobinfo.ErrJobExecutionIdentityChanged) {
 		klog.InfoS("discard stale job result after Kubernetes Job identity changed", "namespace", namespace, "name", payload.Name, "taskID", payload.TaskID, "runGeneration", payload.RunGeneration)
 		return nil
@@ -549,7 +550,7 @@ func processJobResultWithOutbox(ctx context.Context, client kubernetes.Interface
 
 	var logs string
 	if status == config.StatusCompleted {
-		logText, logErr := collectJobPodLogsForJob(ctx, client, namespace, payload.Name, jobObj)
+		logText, logErr := jobexec.CollectJobPodLogsForJob(ctx, client, namespace, payload.Name, jobObj)
 		if logErr != nil {
 			return fmt.Errorf("collect result logs before cleanup: %w", logErr)
 		}
@@ -628,7 +629,7 @@ func cleanupPersistedResult(ctx context.Context, client kubernetes.Interface, st
 	if err := withResultOutboxOwnership(ctx, store, outbox, func(datastore.DataStore, *model.JobResultOutbox) error { return nil }); err != nil {
 		return err
 	}
-	if err := deleteCompletedJobAndPods(ctx, client, payload.Namespace, payload.Name, jobObj); err != nil {
+	if err := jobexec.DeleteCompletedJobAndPods(ctx, client, payload.Namespace, payload.Name, jobObj); err != nil {
 		return fmt.Errorf("clean committed result: %w", err)
 	}
 	return nil

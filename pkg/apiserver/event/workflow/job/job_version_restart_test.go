@@ -20,6 +20,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 )
 
@@ -36,7 +37,7 @@ func TestVersionRestartJobCtlRestartsDeployment(t *testing.T) {
 	cacheKey := cacheutil.ApplicationComponentsKey(api.AppID)
 	require.NoError(t, cacheStore.Store(context.Background(), cacheKey, "stale"))
 	require.NotEmpty(t, cachedValue(t, cacheStore, context.Background(), cacheKey))
-	ctl := NewVersionRestartJobCtl(task, newJobRuntime(&Runtime{
+	ctl := NewVersionRestartJobCtl(task, newJobRuntime(&jobexec.Runtime{
 		Client:         client,
 		Store:          store,
 		Cache:          cacheStore,
@@ -67,7 +68,7 @@ func TestVersionRestartJobCtlRestartsStatefulSet(t *testing.T) {
 	_, err := client.CoreV1().Pods("default").Create(context.Background(), versionRestartReadyPod(db, "mysql-old", "old-restarted-at"), metav1.CreateOptions{})
 	require.NoError(t, err)
 	waiter := startWorkloadTestObserver(t, client)
-	ctl := NewVersionRestartJobCtl(task, newJobRuntime(&Runtime{
+	ctl := NewVersionRestartJobCtl(task, newJobRuntime(&jobexec.Runtime{
 		Client:         client,
 		Store:          store,
 		ResourceWaiter: waiter,
@@ -94,7 +95,7 @@ func TestVersionRestartJobCtlSkipsStoppedComponent(t *testing.T) {
 	deployment := databaseResetDeployment(t, api)
 	client := fake.NewSimpleClientset(deployment)
 	task := versionRestartTask(api)
-	ctl := NewVersionRestartJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
+	ctl := NewVersionRestartJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
 
 	require.NoError(t, ctl.Run(context.Background()))
 
@@ -130,7 +131,7 @@ func TestVersionRestartJobCtlHonorsShareLifecyclePolicy(t *testing.T) {
 			deployment := databaseResetDeployment(t, api)
 			client := fake.NewSimpleClientset(deployment)
 			task := versionRestartTask(api)
-			ctl := NewVersionRestartJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
+			ctl := NewVersionRestartJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
 
 			require.NoError(t, ctl.Run(context.Background()))
 
@@ -166,7 +167,7 @@ func TestVersionRestartJobCtlSkipsMissingDeployment(t *testing.T) {
 	store := newDatabaseResetComponentStore(api)
 	client := fake.NewSimpleClientset()
 	task := versionRestartTask(api)
-	ctl := NewVersionRestartJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
+	ctl := NewVersionRestartJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
 
 	require.NoError(t, ctl.Run(context.Background()))
 	require.Empty(t, api.Status)
@@ -182,7 +183,7 @@ func TestVersionRestartJobCtlFailsOnPatchError(t *testing.T) {
 		return true, nil, errors.New("patch denied")
 	})
 	task := versionRestartTask(api)
-	ctl := NewVersionRestartJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
+	ctl := NewVersionRestartJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
 
 	err := ctl.Run(context.Background())
 	require.Error(t, err)
@@ -200,7 +201,7 @@ func TestVersionRestartJobCtlTreatsNotFoundPatchAsSkipped(t *testing.T) {
 		return true, nil, k8serrors.NewNotFound(schema.GroupResource{Group: "apps", Resource: "deployments"}, deployment.Name)
 	})
 	task := versionRestartTask(api)
-	ctl := NewVersionRestartJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
+	ctl := NewVersionRestartJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
 
 	require.NoError(t, ctl.Run(context.Background()))
 	require.Empty(t, api.Status)
@@ -217,7 +218,7 @@ func TestVersionRestartJobCtlFailsWhenRestartedDeploymentPodCrashLoops(t *testin
 	_, err := client.CoreV1().Pods("default").Create(context.Background(), versionRestartReadyPod(api, "api-old", "old-restarted-at"), metav1.CreateOptions{})
 	require.NoError(t, err)
 	waiter := startWorkloadTestObserver(t, client)
-	ctl := NewVersionRestartJobCtl(task, newJobRuntime(&Runtime{
+	ctl := NewVersionRestartJobCtl(task, newJobRuntime(&jobexec.Runtime{
 		Client:         client,
 		Store:          store,
 		ResourceWaiter: waiter,
@@ -246,7 +247,7 @@ func TestVersionRestartJobCtlFailsWhenRestartedStatefulSetPodCrashLoops(t *testi
 	_, err := client.CoreV1().Pods("default").Create(context.Background(), versionRestartReadyPod(db, "mysql-old", "old-restarted-at"), metav1.CreateOptions{})
 	require.NoError(t, err)
 	waiter := startWorkloadTestObserver(t, client)
-	ctl := NewVersionRestartJobCtl(task, newJobRuntime(&Runtime{
+	ctl := NewVersionRestartJobCtl(task, newJobRuntime(&jobexec.Runtime{
 		Client:         client,
 		Store:          store,
 		ResourceWaiter: waiter,
@@ -271,7 +272,7 @@ func TestVersionRestartJobCtlFailsWhenResourceWaiterMissing(t *testing.T) {
 	deployment := databaseResetDeployment(t, api)
 	client := fake.NewSimpleClientset(deployment)
 	task := versionRestartTask(api)
-	ctl := NewVersionRestartJobCtl(task, &Runtime{Client: client, Store: store, Ack: nil})
+	ctl := NewVersionRestartJobCtl(task, &jobexec.Runtime{Client: client, Store: store, Ack: nil})
 
 	err := ctl.Run(context.Background())
 	require.Error(t, err)

@@ -1,4 +1,4 @@
-package job
+package jobexec
 
 import (
 	"context"
@@ -13,11 +13,11 @@ type deleteNamespacedFunc func(context.Context, string, string) error
 type deleteClusterFunc func(context.Context, string) error
 
 // cleanupNamespacedResources deletes created namespaced resources tracked in the cleanup context.
-func cleanupNamespacedResources(ctx context.Context, kind domainspec.ResourceKind, namespaceFallback string, timeout time.Duration, resourceLabel string, deleteFn deleteNamespacedFunc, isNotFound func(error) bool, successSuffix string) {
+func CleanupNamespacedResources(ctx context.Context, kind domainspec.ResourceKind, namespaceFallback string, timeout time.Duration, resourceLabel string, deleteFn deleteNamespacedFunc, isNotFound func(error) bool, successSuffix string) {
 	if deleteFn == nil {
 		return
 	}
-	refs := resourcesForCleanup(ctx, kind)
+	refs := ResourcesForCleanup(ctx, kind)
 	if len(refs) == 0 {
 		return
 	}
@@ -48,7 +48,7 @@ func cleanupClusterResources(ctx context.Context, kind domainspec.ResourceKind, 
 	if deleteFn == nil {
 		return
 	}
-	refs := resourcesForCleanup(ctx, kind)
+	refs := ResourcesForCleanup(ctx, kind)
 	if len(refs) == 0 {
 		return
 	}

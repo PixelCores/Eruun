@@ -19,6 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
@@ -29,29 +30,29 @@ import (
 )
 
 type DeployStatefulSetJobCtl struct {
-	deployNamespacedResourceJobBase
+	jobexec.DeployNamespacedResourceJobBase
 	desiredReplicas                int32
 	expectedPodTemplateAnnotations map[string]string
 }
 
-func NewDeployStatefulSetJobCtl(job *model.JobTask, runtime *Runtime, shareLocker locker.Locker) *DeployStatefulSetJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("DeployStatefulSetJobCtl", job, runtime, shareLocker)
+func NewDeployStatefulSetJobCtl(job *model.JobTask, runtime *jobexec.Runtime, shareLocker locker.Locker) *DeployStatefulSetJobCtl {
+	base, ok := jobexec.NewDeployNamespacedResourceJobBase("DeployStatefulSetJobCtl", job, runtime, shareLocker)
 	if !ok {
 		return nil
 	}
 	return &DeployStatefulSetJobCtl{
-		deployNamespacedResourceJobBase: base,
+		DeployNamespacedResourceJobBase: base,
 	}
 }
 
 func (c *DeployStatefulSetJobCtl) Clean(ctx context.Context) {
-	if c.client == nil {
+	if c.Client == nil {
 		return
 	}
-	namespace := c.namespace
-	name := naming.StoreServerName(c.job.Name, c.job.ResourceAppNameOrID())
+	namespace := c.Namespace
+	name := naming.StoreServerName(c.Job.Name, c.Job.ResourceAppNameOrID())
 	var labels map[string]string
-	if statefulSet, ok := jobinfo.OptionalJobInfo[*appsv1.StatefulSet](c.job); ok {
+	if statefulSet, ok := jobinfo.OptionalJobInfo[*appsv1.StatefulSet](c.Job); ok {
 		if statefulSet.Namespace != "" {
 			namespace = statefulSet.Namespace
 		}
@@ -64,11 +65,11 @@ func (c *DeployStatefulSetJobCtl) Clean(ctx context.Context) {
 		namespace = config.DefaultNamespace
 	}
 
-	cleanupNamespacedResources(ctx, spec.ResourceStatefulSet, c.namespace, config.DelTimeOut, "statefulset", func(ctx context.Context, namespace, name string) error {
-		return c.client.AppsV1().StatefulSets(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+	jobexec.CleanupNamespacedResources(ctx, spec.ResourceStatefulSet, c.Namespace, config.DelTimeOut, "statefulset", func(ctx context.Context, namespace, name string) error {
+		return c.Client.AppsV1().StatefulSets(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	}, errors.IsNotFound, "after job failure")
 
-	forceDelete, reason := shouldForceCleanupSharedWorkload(ctx, c.client, namespace, labels)
+	forceDelete, reason := jobexec.ShouldForceCleanupSharedWorkload(ctx, c.Client, namespace, labels)
 	if !forceDelete {
 		klog.V(4).Infof("cleanup: keep shared statefulset %s/%s (%s)", namespace, name, reason)
 		return
@@ -76,7 +77,7 @@ func (c *DeployStatefulSetJobCtl) Clean(ctx context.Context) {
 
 	deleteCtx, cancel := context.WithTimeout(context.Background(), config.DelTimeOut)
 	defer cancel()
-	if err := c.client.AppsV1().StatefulSets(namespace).Delete(deleteCtx, name, metav1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
+	if err := c.Client.AppsV1().StatefulSets(namespace).Delete(deleteCtx, name, metav1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
 		klog.Errorf("cleanup: delete shared statefulset %s/%s failed: %v", namespace, name, err)
 		return
 	}
@@ -84,18 +85,18 @@ func (c *DeployStatefulSetJobCtl) Clean(ctx context.Context) {
 }
 
 func (c *DeployStatefulSetJobCtl) Run(ctx context.Context) error {
-	return c.runWithWait(ctx, c.run, c.wait, "DeployServiceJob run error", "")
+	return c.RunWithWait(ctx, c.run, c.wait, "DeployServiceJob run error", "")
 }
 
 func (c *DeployStatefulSetJobCtl) run(ctx context.Context) error {
-	if c.client == nil {
+	if c.Client == nil {
 		return fmt.Errorf("client is nil")
 	}
 	c.expectedPodTemplateAnnotations = nil
 
 	//During execution, it is possible to determine which resources need to be created,
 	//but these resources are limited to those closely related to the components, such as PVC.
-	statefulSet, err := jobinfo.StatefulSetFromJobInfo(c.job)
+	statefulSet, err := jobinfo.StatefulSetFromJobInfo(c.Job)
 	if err != nil {
 		return err
 	}
@@ -105,54 +106,54 @@ func (c *DeployStatefulSetJobCtl) run(ctx context.Context) error {
 		c.desiredReplicas = 1
 	}
 
-	statefulSetName := naming.StoreServerName(c.job.Name, c.job.ResourceAppNameOrID())
+	statefulSetName := naming.StoreServerName(c.Job.Name, c.Job.ResourceAppNameOrID())
 	statefulSet.Name = statefulSetName
 	if statefulSet.Namespace == "" {
-		statefulSet.Namespace = c.namespace
+		statefulSet.Namespace = c.Namespace
 	}
 
 	updateStatefulSet := func(ctx context.Context, current *appsv1.StatefulSet) error {
 		if !statefulSetNeedsUpdate(current, statefulSet) {
-			c.expectedPodTemplateAnnotations = podTemplateReadyWaitAnnotationsFromTemplate(c.job, &current.Spec.Template)
-			markResourceObserved(ctx, spec.ResourceStatefulSet, statefulSet.Namespace, statefulSet.Name)
+			c.expectedPodTemplateAnnotations = podTemplateReadyWaitAnnotationsFromTemplate(c.Job, &current.Spec.Template)
+			jobexec.MarkResourceObserved(ctx, spec.ResourceStatefulSet, statefulSet.Namespace, statefulSet.Name)
 			klog.Infof("StatefulSet %s/%s is up-to-date; skipping update", statefulSet.Namespace, statefulSet.Name)
 			return nil
 		}
 		podTemplateChanged := statefulSetPodTemplateChanged(current, statefulSet)
 		var expectedAnnotations map[string]string
-		if err := updateResourceWithRetry(ctx, func(ctx context.Context) (*appsv1.StatefulSet, error) {
-			return c.client.AppsV1().StatefulSets(statefulSet.Namespace).Get(ctx, statefulSet.Name, metav1.GetOptions{})
+		if err := jobexec.UpdateResourceWithRetry(ctx, func(ctx context.Context) (*appsv1.StatefulSet, error) {
+			return c.Client.AppsV1().StatefulSets(statefulSet.Namespace).Get(ctx, statefulSet.Name, metav1.GetOptions{})
 		}, func(ctx context.Context, latest *appsv1.StatefulSet) error {
 			updated := buildUpdatedStatefulSet(latest, statefulSet)
 			if podTemplateChanged {
-				expectedAnnotations = applyPodTemplateReadyWaitAnnotations(c.job, &updated.Spec.Template)
+				expectedAnnotations = applyPodTemplateReadyWaitAnnotations(c.Job, &updated.Spec.Template)
 			}
-			_, err := c.client.AppsV1().StatefulSets(statefulSet.Namespace).Update(ctx, updated, metav1.UpdateOptions{})
+			_, err := c.Client.AppsV1().StatefulSets(statefulSet.Namespace).Update(ctx, updated, metav1.UpdateOptions{})
 			return err
 		}); err != nil {
 			return fmt.Errorf("update statefulset %s/%s failed: %w", statefulSet.Namespace, statefulSet.Name, err)
 		}
 		c.expectedPodTemplateAnnotations = expectedAnnotations
-		markResourceObserved(ctx, spec.ResourceStatefulSet, statefulSet.Namespace, statefulSet.Name)
+		jobexec.MarkResourceObserved(ctx, spec.ResourceStatefulSet, statefulSet.Namespace, statefulSet.Name)
 		klog.Infof("StatefulSet %s/%s updated successfully", statefulSet.Namespace, statefulSet.Name)
 		return nil
 	}
 
-	_, created, err := reconcileTrackedResource(ctx, trackedResourceReconcileOptions[appsv1.StatefulSet]{
-		sharedResourceAccessOptions: sharedResourceAccessOptions{
-			job:          c.job,
-			ack:          c.ack,
-			labels:       statefulSet.Labels,
-			kind:         spec.ResourceStatefulSet,
-			lockProvider: c.shareLocker,
-			listFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
-				list, err := c.client.AppsV1().StatefulSets(statefulSet.Namespace).List(ctx, opts)
+	_, created, err := jobexec.ReconcileTrackedResource(ctx, jobexec.TrackedResourceReconcileOptions[appsv1.StatefulSet]{
+		SharedResourceAccessOptions: jobexec.SharedResourceAccessOptions{
+			Job:          c.Job,
+			Ack:          c.Ack,
+			Labels:       statefulSet.Labels,
+			Kind:         spec.ResourceStatefulSet,
+			LockProvider: c.ShareLocker,
+			ListFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
+				list, err := c.Client.AppsV1().StatefulSets(statefulSet.Namespace).List(ctx, opts)
 				if err != nil {
 					return 0, err
 				}
 				return len(list.Items), nil
 			},
-			logSkip: func(strategy spec.ShareStrategy) {
+			LogSkip: func(strategy spec.ShareStrategy) {
 				if strategy == spec.ShareStrategyIgnore {
 					klog.Infof("StatefulSet %q marked as shared ignore; skipping", statefulSet.Name)
 				} else {
@@ -160,23 +161,23 @@ func (c *DeployStatefulSetJobCtl) run(ctx context.Context) error {
 				}
 			},
 		},
-		namespace: statefulSet.Namespace,
-		name:      statefulSet.Name,
-		getFn: func(ctx context.Context) (*appsv1.StatefulSet, error) {
-			return c.client.AppsV1().StatefulSets(statefulSet.Namespace).Get(ctx, statefulSet.Name, metav1.GetOptions{})
+		Namespace: statefulSet.Namespace,
+		Name:      statefulSet.Name,
+		GetFn: func(ctx context.Context) (*appsv1.StatefulSet, error) {
+			return c.Client.AppsV1().StatefulSets(statefulSet.Namespace).Get(ctx, statefulSet.Name, metav1.GetOptions{})
 		},
-		createFn: func(ctx context.Context) (*appsv1.StatefulSet, error) {
+		CreateFn: func(ctx context.Context) (*appsv1.StatefulSet, error) {
 			createCandidate := statefulSet.DeepCopy()
-			expectedAnnotations := applyPodTemplateReadyWaitAnnotations(c.job, &createCandidate.Spec.Template)
-			created, err := c.client.AppsV1().StatefulSets(statefulSet.Namespace).Create(ctx, createCandidate, metav1.CreateOptions{})
+			expectedAnnotations := applyPodTemplateReadyWaitAnnotations(c.Job, &createCandidate.Spec.Template)
+			created, err := c.Client.AppsV1().StatefulSets(statefulSet.Namespace).Create(ctx, createCandidate, metav1.CreateOptions{})
 			if err == nil {
 				c.expectedPodTemplateAnnotations = expectedAnnotations
 			}
 			return created, err
 		},
-		onExisting:      updateStatefulSet,
-		isNotFound:      errors.IsNotFound,
-		isAlreadyExists: errors.IsAlreadyExists,
+		OnExisting:      updateStatefulSet,
+		IsNotFound:      errors.IsNotFound,
+		IsAlreadyExists: errors.IsAlreadyExists,
 	})
 	if err != nil {
 		return fmt.Errorf("ensure statefulset %s/%s: %w", statefulSet.Namespace, statefulSet.Name, err)
@@ -189,10 +190,10 @@ func (c *DeployStatefulSetJobCtl) run(ctx context.Context) error {
 }
 
 func (c *DeployStatefulSetJobCtl) wait(ctx context.Context) error {
-	targetName := naming.StoreServerName(c.job.Name, c.job.ResourceAppNameOrID())
-	namespace := c.job.Namespace
+	targetName := naming.StoreServerName(c.Job.Name, c.Job.ResourceAppNameOrID())
+	namespace := c.Job.Namespace
 	var expectedImages []string
-	if statefulSet, ok := jobinfo.OptionalJobInfo[*appsv1.StatefulSet](c.job); ok {
+	if statefulSet, ok := jobinfo.OptionalJobInfo[*appsv1.StatefulSet](c.Job); ok {
 		if statefulSet.Namespace != "" {
 			namespace = statefulSet.Namespace
 		}
@@ -203,33 +204,33 @@ func (c *DeployStatefulSetJobCtl) wait(ctx context.Context) error {
 	}
 	timeout := time.Duration(c.timeout()) * time.Second
 
-	waiter := c.resourceWaiter
+	waiter := c.ResourceWaiter
 	if waiter == nil {
-		return fmt.Errorf("resource waiter is required for statefulset %s/%s", c.job.Namespace, targetName)
+		return fmt.Errorf("resource waiter is required for statefulset %s/%s", c.Job.Namespace, targetName)
 	}
 
-	klog.V(4).Infof("Using informer-based wait for component %s/%s", c.job.AppID, c.job.Name)
-	err := waiter.WaitForComponentReadyWithOptions(ctx, c.job.AppID, naming.BoundedLabelValue(c.job.Name), c.desiredReplicas, informer.ComponentReadyWaitOptions{
+	klog.V(4).Infof("Using informer-based wait for component %s/%s", c.Job.AppID, c.Job.Name)
+	err := waiter.WaitForComponentReadyWithOptions(ctx, c.Job.AppID, naming.BoundedLabelValue(c.Job.Name), c.desiredReplicas, informer.ComponentReadyWaitOptions{
 		ExpectedImages:      expectedImages,
 		ExpectedAnnotations: c.expectedPodTemplateAnnotations,
 	}, timeout)
 	if err != nil {
 		if we, ok := err.(*informer.WaitError); ok {
-			return jobinfo.NewStatusError(we.Status, workloadWaitError(ctx, c.client, c.job, "StatefulSet", namespace, targetName, naming.BoundedLabelValue(c.job.Name), we.Err))
+			return jobinfo.NewStatusError(we.Status, workloadWaitError(ctx, c.Client, c.Job, "StatefulSet", namespace, targetName, naming.BoundedLabelValue(c.Job.Name), we.Err))
 		}
-		return workloadWaitError(ctx, c.client, c.job, "StatefulSet", namespace, targetName, naming.BoundedLabelValue(c.job.Name), err)
+		return workloadWaitError(ctx, c.Client, c.Job, "StatefulSet", namespace, targetName, naming.BoundedLabelValue(c.Job.Name), err)
 	}
 	return nil
 }
 
 func (c *DeployStatefulSetJobCtl) timeout() int64 {
-	if c.job.Timeout == 0 {
-		c.job.Timeout = config.DeployTimeout
+	if c.Job.Timeout == 0 {
+		c.Job.Timeout = config.DeployTimeout
 	}
-	return c.job.Timeout
+	return c.Job.Timeout
 }
 
-func GenerateStoreService(component *model.ApplicationComponent) (*GenerateServiceResult, error) {
+func GenerateStoreService(component *model.ApplicationComponent) (*jobexec.GenerateServiceResult, error) {
 	// 如果命名空间为空，则使用默认的命名空间
 	if component.Namespace == "" {
 		component.Namespace = config.DefaultNamespace
@@ -237,13 +238,13 @@ func GenerateStoreService(component *model.ApplicationComponent) (*GenerateServi
 	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	containerName := utils.NormalizeLowerStrip(component.Name)
 
-	properties, err := ParseProperties(component.Properties)
+	properties, err := jobexec.ParseProperties(component.Properties)
 	if err != nil {
 		return nil, fmt.Errorf("parse component %s properties: %w", component.Name, err)
 	}
 
 	// 构建标签
-	labels := BuildLabels(component, &properties)
+	labels := jobexec.BuildLabels(component, &properties)
 
 	// 构建需要开放的端口
 	var ContainerPort []corev1.ContainerPort
@@ -280,7 +281,7 @@ func GenerateStoreService(component *model.ApplicationComponent) (*GenerateServi
 			Name:        statefulSetName,
 			Namespace:   component.Namespace,
 			Labels:      labels, // 设置 StatefulSet 自身的 labels，供 Informer 过滤和状态同步
-			Annotations: BuildAnnotations(component),
+			Annotations: jobexec.BuildAnnotations(component),
 		},
 		Spec: appsv1.StatefulSetSpec{
 			Replicas: &component.Replicas,
@@ -295,7 +296,7 @@ func GenerateStoreService(component *model.ApplicationComponent) (*GenerateServi
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels:      labels,
-					Annotations: BuildAnnotations(component),
+					Annotations: jobexec.BuildAnnotations(component),
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
@@ -311,7 +312,7 @@ func GenerateStoreService(component *model.ApplicationComponent) (*GenerateServi
 	if err != nil {
 		return nil, fmt.Errorf("generate component %s: %w", component.Name, err)
 	}
-	return &GenerateServiceResult{
+	return &jobexec.GenerateServiceResult{
 		Service:           statefulSet,
 		AdditionalObjects: additionalObjects,
 	}, nil

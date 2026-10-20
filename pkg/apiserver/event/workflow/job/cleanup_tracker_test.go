@@ -12,6 +12,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -19,15 +20,15 @@ func TestDeployCleanupDeletesCreatedDeployment(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	jobTask := &model.JobTask{Name: "web", Namespace: "default"}
 	ctl := &DeployJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
-			namespace: jobTask.Namespace,
-			job:       jobTask,
-			client:    client,
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{
+			Namespace: jobTask.Namespace,
+			Job:       jobTask,
+			Client:    client,
 		},
 	}
 
-	ctx := WithCleanupTracker(context.Background())
-	MarkResourceCreated(ctx, domainspec.ResourceDeployment, "default", "web")
+	ctx := jobexec.WithCleanupTracker(context.Background())
+	jobexec.MarkResourceCreated(ctx, domainspec.ResourceDeployment, "default", "web")
 
 	deploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "default"},
@@ -103,15 +104,15 @@ func TestDeployCleanupDeletesObservedSharedDeploymentWhenPodAbnormal(t *testing.
 		},
 	}
 	ctl := &DeployJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
-			namespace: jobTask.Namespace,
-			job:       jobTask,
-			client:    client,
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{
+			Namespace: jobTask.Namespace,
+			Job:       jobTask,
+			Client:    client,
 		},
 	}
 
-	ctx := WithCleanupTracker(context.Background())
-	markResourceObserved(ctx, domainspec.ResourceDeployment, "default", deployName)
+	ctx := jobexec.WithCleanupTracker(context.Background())
+	jobexec.MarkResourceObserved(ctx, domainspec.ResourceDeployment, "default", deployName)
 
 	ctl.Clean(ctx)
 
@@ -176,15 +177,15 @@ func TestDeployCleanupKeepsObservedSharedDeploymentWithoutAbnormalPod(t *testing
 		},
 	}
 	ctl := &DeployJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
-			namespace: jobTask.Namespace,
-			job:       jobTask,
-			client:    client,
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{
+			Namespace: jobTask.Namespace,
+			Job:       jobTask,
+			Client:    client,
 		},
 	}
 
-	ctx := WithCleanupTracker(context.Background())
-	markResourceObserved(ctx, domainspec.ResourceDeployment, "default", deployName)
+	ctx := jobexec.WithCleanupTracker(context.Background())
+	jobexec.MarkResourceObserved(ctx, domainspec.ResourceDeployment, "default", deployName)
 
 	ctl.Clean(ctx)
 
@@ -249,15 +250,15 @@ func TestStatefulSetCleanupDeletesObservedSharedStatefulSetWhenPodAbnormal(t *te
 		},
 	}
 	ctl := &DeployStatefulSetJobCtl{
-		deployNamespacedResourceJobBase: deployNamespacedResourceJobBase{
-			namespace: "default",
-			job:       jobTask,
-			client:    client,
+		DeployNamespacedResourceJobBase: jobexec.DeployNamespacedResourceJobBase{
+			Namespace: "default",
+			Job:       jobTask,
+			Client:    client,
 		},
 	}
 
-	ctx := WithCleanupTracker(context.Background())
-	markResourceObserved(ctx, domainspec.ResourceStatefulSet, "default", statefulSetName)
+	ctx := jobexec.WithCleanupTracker(context.Background())
+	jobexec.MarkResourceObserved(ctx, domainspec.ResourceStatefulSet, "default", statefulSetName)
 
 	ctl.Clean(ctx)
 

@@ -21,13 +21,14 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 type DatabaseResetJobCtl struct {
-	deployNamespacedResourceJobBase
+	jobexec.DeployNamespacedResourceJobBase
 }
 
 type pvcResetTarget struct {
@@ -47,35 +48,35 @@ type databaseResetPlan struct {
 	originalReplicasCheckpointed bool
 }
 
-func NewDatabaseResetJobCtl(job *model.JobTask, runtime *Runtime) *DatabaseResetJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("DatabaseResetJobCtl", job, runtime, nil)
+func NewDatabaseResetJobCtl(job *model.JobTask, runtime *jobexec.Runtime) *DatabaseResetJobCtl {
+	base, ok := jobexec.NewDeployNamespacedResourceJobBase("DatabaseResetJobCtl", job, runtime, nil)
 	if !ok {
 		return nil
 	}
-	return &DatabaseResetJobCtl{deployNamespacedResourceJobBase: base}
+	return &DatabaseResetJobCtl{DeployNamespacedResourceJobBase: base}
 }
 
 func (c *DatabaseResetJobCtl) Clean(context.Context) {}
 
 func (c *DatabaseResetJobCtl) SaveInfo(ctx context.Context) error {
-	if err := ensureDatabaseResetCheckpointIdentity(c.job); err != nil {
+	if err := ensureDatabaseResetCheckpointIdentity(c.Job); err != nil {
 		return fmt.Errorf("prepare database reset replica checkpoint identity: %w", err)
 	}
-	return jobinfo.SaveOrUpdateJobInfo(ctx, c.store, c.job)
+	return jobinfo.SaveOrUpdateJobInfo(ctx, c.Store, c.Job)
 }
 
 func (c *DatabaseResetJobCtl) Run(ctx context.Context) error {
-	return c.runWithStatus(ctx, c.run, "database reset job run error")
+	return c.RunWithStatus(ctx, c.run, "database reset job run error")
 }
 
 func (c *DatabaseResetJobCtl) run(ctx context.Context) error {
-	if c.client == nil {
+	if c.Client == nil {
 		return fmt.Errorf("client is nil")
 	}
-	if c.store == nil {
+	if c.Store == nil {
 		return fmt.Errorf("store is nil")
 	}
-	info, err := jobinfo.RequiredJobInfo[*jobinfo.DatabaseResetJobInfo](c.job)
+	info, err := jobinfo.RequiredJobInfo[*jobinfo.DatabaseResetJobInfo](c.Job)
 	if err != nil {
 		return err
 	}
@@ -119,7 +120,7 @@ func (c *DatabaseResetJobCtl) checkpointDatabaseResetReplicas(ctx context.Contex
 	if checkpoint == nil || !checkpoint.Prepared {
 		checkpoint = &jobinfo.DatabaseResetReplicaCheckpoint{
 			Version:          jobinfo.DatabaseResetReplicaCheckpointVersion,
-			ExecutionKey:     jobinfo.DatabaseResetExecutionKeyFromJob(c.job),
+			ExecutionKey:     jobinfo.DatabaseResetExecutionKeyFromJob(c.Job),
 			Prepared:         true,
 			OriginalReplicas: make(map[string]int32, len(plans)),
 		}
@@ -134,7 +135,7 @@ func (c *DatabaseResetJobCtl) checkpointDatabaseResetReplicas(ctx context.Contex
 		if marshalErr != nil {
 			return fmt.Errorf("marshal database reset replica checkpoint: %w", marshalErr)
 		}
-		c.job.InternalInfo = string(raw)
+		c.Job.InternalInfo = string(raw)
 		if saveErr := c.SaveInfo(ctx); saveErr != nil {
 			return fmt.Errorf("persist database reset replica checkpoint: %w", saveErr)
 		}
@@ -157,11 +158,11 @@ func (c *DatabaseResetJobCtl) checkpointDatabaseResetReplicas(ctx context.Contex
 }
 
 func (c *DatabaseResetJobCtl) loadDatabaseResetReplicaCheckpoint(ctx context.Context) (*jobinfo.DatabaseResetReplicaCheckpoint, error) {
-	candidates, err := jobinfo.LoadJobInfos(ctx, c.store, c.job.TaskID, c.job.JobType, jobinfo.ResolveJobServiceName(c.job))
+	candidates, err := jobinfo.LoadJobInfos(ctx, c.Store, c.Job.TaskID, c.Job.JobType, jobinfo.ResolveJobServiceName(c.Job))
 	if err != nil {
 		return nil, fmt.Errorf("load database reset replica checkpoint: %w", err)
 	}
-	existing, err := jobinfo.SelectDatabaseResetCheckpointJobInfo(c.job, candidates)
+	existing, err := jobinfo.SelectDatabaseResetCheckpointJobInfo(c.Job, candidates)
 	if err != nil {
 		return nil, fmt.Errorf("select database reset replica checkpoint: %w", err)
 	}
@@ -173,7 +174,7 @@ func (c *DatabaseResetJobCtl) loadDatabaseResetReplicaCheckpoint(ctx context.Con
 	if err != nil {
 		return nil, err
 	}
-	c.job.InternalInfo = raw
+	c.Job.InternalInfo = raw
 	return checkpoint, nil
 }
 
@@ -229,12 +230,12 @@ func (c *DatabaseResetJobCtl) prepareDatabaseResetPlans(ctx context.Context, com
 		if !ok || statefulSet == nil {
 			return nil, fmt.Errorf("store component %s did not generate a StatefulSet", component.Name)
 		}
-		namespace := databaseResetNamespaceOrDefault(statefulSet.Namespace, component.Namespace)
+		namespace := jobexec.DatabaseResetNamespaceOrDefault(statefulSet.Namespace, component.Namespace)
 		name := strings.TrimSpace(statefulSet.Name)
 		if name == "" {
 			name = naming.StoreServerName(component.Name, component.ResourceNameKey())
 		}
-		current, err := c.client.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
+		current, err := c.Client.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("get statefulset %s/%s: %w", namespace, name, err)
 		}
@@ -307,9 +308,9 @@ func (c *DatabaseResetJobCtl) resetDatabaseComponent(ctx context.Context, plan d
 }
 
 func (c *DatabaseResetJobCtl) updateStatefulSetInitSQLURL(ctx context.Context, namespace, name, initSQLURL string) error {
-	err := updateResourceWithRetry(ctx,
+	err := jobexec.UpdateResourceWithRetry(ctx,
 		func(getCtx context.Context) (*appsv1.StatefulSet, error) {
-			return c.client.AppsV1().StatefulSets(namespace).Get(getCtx, name, metav1.GetOptions{})
+			return c.Client.AppsV1().StatefulSets(namespace).Get(getCtx, name, metav1.GetOptions{})
 		},
 		func(updateCtx context.Context, latest *appsv1.StatefulSet) error {
 			matched := false
@@ -336,7 +337,7 @@ func (c *DatabaseResetJobCtl) updateStatefulSetInitSQLURL(ctx context.Context, n
 			if !changed {
 				return nil
 			}
-			_, err := c.client.AppsV1().StatefulSets(namespace).Update(updateCtx, latest, metav1.UpdateOptions{})
+			_, err := c.Client.AppsV1().StatefulSets(namespace).Update(updateCtx, latest, metav1.UpdateOptions{})
 			return err
 		},
 	)
@@ -384,7 +385,7 @@ func desiredDatabaseReplicas(component *model.ApplicationComponent) int32 {
 func (c *DatabaseResetJobCtl) collectPVCResetTargets(ctx context.Context, namespace string, statefulSet *appsv1.StatefulSet, additionalObjects []client.Object, desiredReplicas int32) ([]pvcResetTarget, error) {
 	targets := make(map[string]pvcResetTarget)
 	addTarget := func(target pvcResetTarget) {
-		target.namespace = databaseResetNamespaceOrDefault(target.namespace, namespace)
+		target.namespace = jobexec.DatabaseResetNamespaceOrDefault(target.namespace, namespace)
 		target.name = strings.TrimSpace(target.name)
 		if target.name == "" {
 			return
@@ -416,12 +417,12 @@ func (c *DatabaseResetJobCtl) collectPVCResetTargets(ctx context.Context, namesp
 					name:      fmt.Sprintf("%s-%s-%d", templateName, statefulSet.Name, ordinal),
 				})
 			}
-			list, err := c.client.CoreV1().PersistentVolumeClaims(namespace).List(ctx, metav1.ListOptions{})
+			list, err := c.Client.CoreV1().PersistentVolumeClaims(namespace).List(ctx, metav1.ListOptions{})
 			if err != nil {
 				return nil, fmt.Errorf("list pvcs in namespace %s: %w", namespace, err)
 			}
 			for _, pvc := range list.Items {
-				if isStatefulSetTemplatePVCName(templateName, statefulSet.Name, pvc.Name) {
+				if jobexec.IsStatefulSetTemplatePVCName(templateName, statefulSet.Name, pvc.Name) {
 					addTarget(pvcResetTarget{namespace: namespace, name: pvc.Name})
 				}
 			}
@@ -434,7 +435,7 @@ func (c *DatabaseResetJobCtl) collectPVCResetTargets(ctx context.Context, namesp
 			continue
 		}
 		addTarget(pvcResetTarget{
-			namespace: databaseResetNamespaceOrDefault(pvc.Namespace, namespace),
+			namespace: jobexec.DatabaseResetNamespaceOrDefault(pvc.Namespace, namespace),
 			name:      pvc.Name,
 			recreate:  true,
 		})
@@ -461,13 +462,13 @@ func sortPVCResetTargets(targets []pvcResetTarget) {
 }
 
 func (c *DatabaseResetJobCtl) scaleStatefulSet(ctx context.Context, namespace, name string, replicas int32) error {
-	current, err := c.client.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
+	current, err := c.Client.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("get statefulset %s/%s before scale: %w", namespace, name, err)
 	}
 	current = current.DeepCopy()
 	current.Spec.Replicas = &replicas
-	if _, err := c.client.AppsV1().StatefulSets(namespace).Update(ctx, current, metav1.UpdateOptions{}); err != nil {
+	if _, err := c.Client.AppsV1().StatefulSets(namespace).Update(ctx, current, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("scale statefulset %s/%s to %d: %w", namespace, name, replicas, err)
 	}
 	return nil
@@ -477,7 +478,7 @@ func (c *DatabaseResetJobCtl) waitStatefulSetPodsGone(ctx context.Context, names
 	selector := databaseResetPodSelector(statefulSet, component)
 	timeout := c.databaseResetTimeout()
 	err := wait.PollUntilContextTimeout(ctx, cleanupPollInterval, timeout, true, func(checkCtx context.Context) (bool, error) {
-		list, err := c.client.CoreV1().Pods(namespace).List(checkCtx, metav1.ListOptions{LabelSelector: selector})
+		list, err := c.Client.CoreV1().Pods(namespace).List(checkCtx, metav1.ListOptions{LabelSelector: selector})
 		if err != nil {
 			return false, err
 		}
@@ -500,7 +501,7 @@ func databaseResetPodSelector(statefulSet *appsv1.StatefulSet, component *model.
 }
 
 func (c *DatabaseResetJobCtl) deleteAndMaybeRecreatePVC(ctx context.Context, target pvcResetTarget) error {
-	existing, err := c.client.CoreV1().PersistentVolumeClaims(target.namespace).Get(ctx, target.name, metav1.GetOptions{})
+	existing, err := c.Client.CoreV1().PersistentVolumeClaims(target.namespace).Get(ctx, target.name, metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) && !target.recreate {
 			return nil
@@ -517,14 +518,14 @@ func (c *DatabaseResetJobCtl) deleteAndMaybeRecreatePVC(ctx context.Context, tar
 		replacement.Spec.VolumeName = ""
 	}
 
-	if err := c.client.CoreV1().PersistentVolumeClaims(target.namespace).Delete(ctx, target.name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+	if err := c.Client.CoreV1().PersistentVolumeClaims(target.namespace).Delete(ctx, target.name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
 		return fmt.Errorf("delete pvc %s/%s: %w", target.namespace, target.name, err)
 	}
 	if err := c.waitPVCDeleted(ctx, target.namespace, target.name); err != nil {
 		return err
 	}
 	if replacement != nil {
-		if _, err := c.client.CoreV1().PersistentVolumeClaims(target.namespace).Create(ctx, replacement, metav1.CreateOptions{}); err != nil {
+		if _, err := c.Client.CoreV1().PersistentVolumeClaims(target.namespace).Create(ctx, replacement, metav1.CreateOptions{}); err != nil {
 			return fmt.Errorf("recreate pvc %s/%s: %w", target.namespace, target.name, err)
 		}
 	}
@@ -534,7 +535,7 @@ func (c *DatabaseResetJobCtl) deleteAndMaybeRecreatePVC(ctx context.Context, tar
 func (c *DatabaseResetJobCtl) waitPVCDeleted(ctx context.Context, namespace, name string) error {
 	timeout := c.databaseResetTimeout()
 	err := wait.PollUntilContextTimeout(ctx, cleanupPollInterval, timeout, true, func(checkCtx context.Context) (bool, error) {
-		_, err := c.client.CoreV1().PersistentVolumeClaims(namespace).Get(checkCtx, name, metav1.GetOptions{})
+		_, err := c.Client.CoreV1().PersistentVolumeClaims(namespace).Get(checkCtx, name, metav1.GetOptions{})
 		if err == nil {
 			return false, nil
 		}
@@ -551,8 +552,8 @@ func (c *DatabaseResetJobCtl) waitPVCDeleted(ctx context.Context, namespace, nam
 
 func (c *DatabaseResetJobCtl) waitDatabaseComponentReady(ctx context.Context, namespace, name string, component *model.ApplicationComponent, desiredReplicas int32) error {
 	timeout := c.databaseResetTimeout()
-	if c.resourceWaiter != nil {
-		err := c.resourceWaiter.WaitForComponentReady(ctx, component.AppID, naming.BoundedLabelValue(component.Name), desiredReplicas, timeout)
+	if c.ResourceWaiter != nil {
+		err := c.ResourceWaiter.WaitForComponentReady(ctx, component.AppID, naming.BoundedLabelValue(component.Name), desiredReplicas, timeout)
 		if err != nil {
 			var we *informer.WaitError
 			if errors.As(err, &we) {
@@ -563,7 +564,7 @@ func (c *DatabaseResetJobCtl) waitDatabaseComponentReady(ctx context.Context, na
 		return nil
 	}
 	err := wait.PollUntilContextTimeout(ctx, cleanupPollInterval, timeout, true, func(checkCtx context.Context) (bool, error) {
-		current, err := c.client.AppsV1().StatefulSets(namespace).Get(checkCtx, name, metav1.GetOptions{})
+		current, err := c.Client.AppsV1().StatefulSets(namespace).Get(checkCtx, name, metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -579,7 +580,7 @@ func (c *DatabaseResetJobCtl) markComponentRuntime(ctx context.Context, componen
 	if component == nil {
 		return nil
 	}
-	if err := repository.UpdateComponentRuntimeFields(ctx, c.store, component, map[string]interface{}{
+	if err := repository.UpdateComponentRuntimeFields(ctx, c.Store, component, map[string]interface{}{
 		"status":         string(status),
 		"ready_replicas": readyReplicas,
 		"last_abnormal":  lastAbnormal,
@@ -590,14 +591,14 @@ func (c *DatabaseResetJobCtl) markComponentRuntime(ctx context.Context, componen
 	component.Status = string(status)
 	component.ReadyReplicas = readyReplicas
 	component.LastAbnormal = lastAbnormal
-	invalidateComponentsCache(ctx, c.runtime, component.AppID, "database reset status sync")
+	jobexec.InvalidateComponentsCache(ctx, c.Runtime, component.AppID, "database reset status sync")
 	return nil
 }
 
 func (c *DatabaseResetJobCtl) databaseResetTimeout() time.Duration {
 	timeout := int64(0)
-	if c != nil && c.job != nil {
-		timeout = c.job.Timeout
+	if c != nil && c.Job != nil {
+		timeout = c.Job.Timeout
 	}
 	if timeout <= 0 {
 		timeout = config.DeployTimeout

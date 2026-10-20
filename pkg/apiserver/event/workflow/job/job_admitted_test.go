@@ -8,14 +8,15 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 )
 
 // runAdmittedTestJob exercises component execution and persistence after admission.
 // Scheduler/admission tests retain runJob and their real durable scheduling state.
-func runAdmittedTestJob(ctx context.Context, task *model.JobTask, configRuntime *Runtime) error {
+func runAdmittedTestJob(ctx context.Context, task *model.JobTask, configRuntime *jobexec.Runtime) error {
 	runtime := newJobRuntime(configRuntime)
-	defer runtime.close()
+	defer runtime.Close()
 	runtime.Store = jobtest.WithJobTestOwner(runtime.Store, task)
 	if runtime.Ack == nil {
 		runtime.Ack = func() {}
@@ -24,6 +25,6 @@ func runAdmittedTestJob(ctx context.Context, task *model.JobTask, configRuntime 
 	task.Error = ""
 	task.StartTime = time.Now().Unix()
 	runtime.Ack()
-	ctx = WithCleanupTracker(ctx)
+	ctx = jobexec.WithCleanupTracker(ctx)
 	return runAdmittedJob(ctx, initJobCtl(task, runtime), task, runtime.Client, runtime.Store, runtime.Ack, runtime, trace.SpanFromContext(ctx))
 }

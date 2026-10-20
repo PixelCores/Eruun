@@ -15,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	wf "github.com/PixelCores/Eruun/pkg/apiserver/workflow"
@@ -180,8 +181,8 @@ func (w *workflowServiceImpl) runWorkflowTerminalCallback(ctx context.Context, t
 	}
 	// The cancellation signal applies to application work, not to its terminal
 	// notification. The callback keeps its own bounded timeout and parent fence.
-	runCtx = workflowjob.WithTaskMetadata(runCtx, "")
-	if err := workflowjob.RunJobs(runCtx, []*model.JobTask{callbackJob}, &workflowjob.Runtime{
+	runCtx = jobexec.WithTaskMetadata(runCtx, "")
+	if err := workflowjob.RunJobs(runCtx, []*model.JobTask{callbackJob}, &jobexec.Runtime{
 		Concurrency:       1,
 		Store:             w.Store,
 		Ack:               func() {},
@@ -338,7 +339,7 @@ func workflowHasActiveChildExecution(ctx context.Context, store datastore.DataSt
 		if jobInfo.Type == string(config.JobDeployCallback) {
 			continue
 		}
-		if workflowjob.IsCancelledJobCleanupPending(jobInfo) {
+		if jobexec.IsCancelledJobCleanupPending(jobInfo) {
 			return true, nil
 		}
 		if config.Status(jobInfo.Status) == config.StatusRunning || jobInfo.SchedulingState == workflowconfig.JobSchedulingAdmitted {

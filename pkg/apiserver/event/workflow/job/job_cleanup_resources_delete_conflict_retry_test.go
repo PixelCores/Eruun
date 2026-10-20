@@ -19,6 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
@@ -130,7 +131,7 @@ func TestCleanupResourcesJobCtlStatefulSetDeleteConflictRechecksCancellation(t *
 	require.NoError(t, ctl.ensureRequiredStatefulSetDeletionAllowed(ctx, component))
 	require.NoError(t, ctl.prepareRequiredStatefulSetDeletion(ctx, component))
 	client.ClearActions()
-	store := ctl.store.(*cleanupComponentStore)
+	store := ctl.Store.(*cleanupComponentStore)
 
 	client.Fake.PrependReactor("delete", "statefulsets", func(k8stesting.Action) (bool, k8sruntime.Object, error) {
 		current := requiredStatefulSetFromTracker(t, client, component.Namespace, statefulSet.Name).DeepCopy()
@@ -171,7 +172,7 @@ func TestCleanupResourcesJobCtlStatefulSetDeleteConflictRetryIsBoundedAndCancell
 			require.NoError(t, ctl.ensureRequiredStatefulSetDeletionAllowed(ctx, component))
 			require.NoError(t, ctl.prepareRequiredStatefulSetDeletion(ctx, component))
 			client.ClearActions()
-			store := ctl.store.(*cleanupComponentStore)
+			store := ctl.Store.(*cleanupComponentStore)
 			deleteAttempts := 0
 
 			client.Fake.PrependReactor("delete", "statefulsets", func(k8stesting.Action) (bool, k8sruntime.Object, error) {
@@ -330,7 +331,7 @@ func newRequiredStatefulSetPVCConflictRetryController(
 		Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: versionUpdateRequireStatefulSetPVCDeletionInternalInfo(t, "data"), Timeout: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: nil})
+	ctl := NewCleanupResourcesJobCtl(job, &jobexec.Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: nil})
 	require.NotNil(t, ctl)
 	return component, pvc, client, ctl
 }

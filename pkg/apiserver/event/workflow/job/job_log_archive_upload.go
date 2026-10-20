@@ -13,6 +13,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
@@ -22,20 +23,20 @@ var ErrArchiveUploaderNotConfigured = errors.New("archive uploader is not config
 
 var (
 	archiveUploaderMu       sync.RWMutex
-	defaultArchiveUploader  ArchiveUploader
+	defaultArchiveUploader  jobexec.ArchiveUploader
 	archivePodPathForUpload archivePodPathFunc = kube.ArchivePodPathAsZip
 )
 
 type archivePodPathFunc func(context.Context, *rest.Config, string, string, string, string) (*kube.PodPathArchiveStream, error)
 
 // SetArchiveUploader configures the default uploader used by workflow archive jobs.
-func SetArchiveUploader(uploader ArchiveUploader) {
+func SetArchiveUploader(uploader jobexec.ArchiveUploader) {
 	archiveUploaderMu.Lock()
 	defer archiveUploaderMu.Unlock()
 	defaultArchiveUploader = uploader
 }
 
-func currentArchiveUploader() ArchiveUploader {
+func currentArchiveUploader() jobexec.ArchiveUploader {
 	archiveUploaderMu.RLock()
 	defer archiveUploaderMu.RUnlock()
 	return defaultArchiveUploader
@@ -59,7 +60,7 @@ type LogArchiveUploadJobResult struct {
 }
 
 type LogArchiveUploadJobCtl struct {
-	deployNamespacedResourceJobBase
+	jobexec.DeployNamespacedResourceJobBase
 }
 
 type logArchiveUploadTarget struct {
@@ -68,28 +69,28 @@ type logArchiveUploadTarget struct {
 	ContainerName string
 }
 
-func NewLogArchiveUploadJobCtl(job *model.JobTask, runtime *Runtime) *LogArchiveUploadJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("LogArchiveUploadJobCtl", job, runtime, nil)
+func NewLogArchiveUploadJobCtl(job *model.JobTask, runtime *jobexec.Runtime) *LogArchiveUploadJobCtl {
+	base, ok := jobexec.NewDeployNamespacedResourceJobBase("LogArchiveUploadJobCtl", job, runtime, nil)
 	if !ok {
 		return nil
 	}
-	return &LogArchiveUploadJobCtl{deployNamespacedResourceJobBase: base}
+	return &LogArchiveUploadJobCtl{DeployNamespacedResourceJobBase: base}
 }
 
 func (c *LogArchiveUploadJobCtl) Clean(context.Context) {}
 
 func (c *LogArchiveUploadJobCtl) Run(ctx context.Context) error {
-	return c.runWithStatus(ctx, c.run, "log archive upload job run error")
+	return c.RunWithStatus(ctx, c.run, "log archive upload job run error")
 }
 
 func (c *LogArchiveUploadJobCtl) run(ctx context.Context) error {
-	if c.client == nil {
+	if c.Client == nil {
 		return fmt.Errorf("client is nil")
 	}
-	if c.store == nil {
+	if c.Store == nil {
 		return fmt.Errorf("store is nil")
 	}
-	info, err := jobinfo.RequiredJobInfo[*LogArchiveUploadJobInfo](c.job)
+	info, err := jobinfo.RequiredJobInfo[*LogArchiveUploadJobInfo](c.Job)
 	if err != nil {
 		return err
 	}
@@ -97,10 +98,10 @@ func (c *LogArchiveUploadJobCtl) run(ctx context.Context) error {
 	if targetPath == "" {
 		return fmt.Errorf("log archive upload path is required")
 	}
-	if c.runtime == nil || c.runtime.KubeConfig == nil {
+	if c.Runtime == nil || c.Runtime.KubeConfig == nil {
 		return fmt.Errorf("kube config is nil")
 	}
-	uploader := c.runtime.archiveUploader
+	uploader := c.Runtime.ArchiveUploader
 	if uploader == nil {
 		return ErrArchiveUploaderNotConfigured
 	}
@@ -114,7 +115,7 @@ func (c *LogArchiveUploadJobCtl) run(ctx context.Context) error {
 		return err
 	}
 
-	archive, err := archivePodPathForUpload(ctx, c.runtime.KubeConfig, target.Namespace, target.PodName, target.ContainerName, targetPath)
+	archive, err := archivePodPathForUpload(ctx, c.Runtime.KubeConfig, target.Namespace, target.PodName, target.ContainerName, targetPath)
 	if err != nil {
 		return err
 	}
@@ -130,13 +131,13 @@ func (c *LogArchiveUploadJobCtl) run(ctx context.Context) error {
 		fileName = fmt.Sprintf("%s.zip", component.Name)
 	}
 
-	result, err := uploader.UploadArchive(ctx, ArchiveUploadInput{
+	result, err := uploader.UploadArchive(ctx, jobexec.ArchiveUploadInput{
 		Reader:        archive.Reader,
 		FileName:      fileName,
 		ContentType:   archive.ContentType,
-		AppID:         c.job.AppID,
-		WorkflowID:    c.job.WorkflowID,
-		TaskID:        c.job.TaskID,
+		AppID:         c.Job.AppID,
+		WorkflowID:    c.Job.WorkflowID,
+		TaskID:        c.Job.TaskID,
 		ComponentName: component.Name,
 		Namespace:     target.Namespace,
 		PodName:       target.PodName,
@@ -168,7 +169,7 @@ func (c *LogArchiveUploadJobCtl) run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("marshal log archive upload result: %w", err)
 	}
-	c.job.Info = string(data)
+	c.Job.Info = string(data)
 	return nil
 }
 
@@ -177,7 +178,7 @@ func (c *LogArchiveUploadJobCtl) resolveLogArchiveUploadTarget(ctx context.Conte
 	if namespace == "" {
 		namespace = config.DefaultNamespace
 	}
-	pods, err := kube.ListPodsByLabels(ctx, c.client, namespace, labels.Set{
+	pods, err := kube.ListPodsByLabels(ctx, c.Client, namespace, labels.Set{
 		config.LabelAppID:         component.AppID,
 		config.LabelComponentName: naming.BoundedLabelValue(component.Name),
 	})

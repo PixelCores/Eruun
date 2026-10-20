@@ -18,6 +18,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
@@ -25,35 +26,35 @@ import (
 )
 
 type DeployServiceJobCtl struct {
-	deployNamespacedResourceJobBase
+	jobexec.DeployNamespacedResourceJobBase
 }
 
-func NewDeployServiceJobCtl(job *model.JobTask, runtime *Runtime, shareLocker locker.Locker) *DeployServiceJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("NewDeployServiceJobCtl", job, runtime, shareLocker)
+func NewDeployServiceJobCtl(job *model.JobTask, runtime *jobexec.Runtime, shareLocker locker.Locker) *DeployServiceJobCtl {
+	base, ok := jobexec.NewDeployNamespacedResourceJobBase("NewDeployServiceJobCtl", job, runtime, shareLocker)
 	if !ok {
 		return nil
 	}
 	return &DeployServiceJobCtl{
-		deployNamespacedResourceJobBase: base,
+		DeployNamespacedResourceJobBase: base,
 	}
 }
 
 func (c *DeployServiceJobCtl) Clean(ctx context.Context) {
-	c.cleanCreated(ctx, spec.ResourceService, "service", func(ctx context.Context, namespace, name string) error {
-		return c.client.CoreV1().Services(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+	c.CleanCreated(ctx, spec.ResourceService, "service", func(ctx context.Context, namespace, name string) error {
+		return c.Client.CoreV1().Services(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	}, k8serrors.IsNotFound, "after job failure")
 }
 
 func (c *DeployServiceJobCtl) Run(ctx context.Context) error {
-	return c.runWithWait(ctx, c.run, c.wait, "DeployServiceJob run error", "")
+	return c.RunWithWait(ctx, c.run, c.wait, "DeployServiceJob run error", "")
 }
 
 func (c *DeployServiceJobCtl) run(ctx context.Context) error {
-	if c.client == nil {
+	if c.Client == nil {
 		return fmt.Errorf("client is nil")
 	}
 
-	service, err := jobinfo.ServiceFromJobInfo(c.job)
+	service, err := jobinfo.ServiceFromJobInfo(c.Job)
 	if err != nil {
 		return err
 	}
@@ -65,20 +66,20 @@ func (c *DeployServiceJobCtl) run(ctx context.Context) error {
 	name := service.Name
 	namespace := service.Namespace
 
-	unlock, skipped, err := resolveSharedResourceAccess(ctx, sharedResourceAccessOptions{
-		job:          c.job,
-		ack:          c.ack,
-		labels:       service.Labels,
-		kind:         spec.ResourceService,
-		lockProvider: c.shareLocker,
-		listFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
-			list, err := c.client.CoreV1().Services(namespace).List(ctx, opts)
+	unlock, skipped, err := jobexec.ResolveSharedResourceAccess(ctx, jobexec.SharedResourceAccessOptions{
+		Job:          c.Job,
+		Ack:          c.Ack,
+		Labels:       service.Labels,
+		Kind:         spec.ResourceService,
+		LockProvider: c.ShareLocker,
+		ListFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
+			list, err := c.Client.CoreV1().Services(namespace).List(ctx, opts)
 			if err != nil {
 				return 0, err
 			}
 			return len(list.Items), nil
 		},
-		logSkip: func(strategy spec.ShareStrategy) {
+		LogSkip: func(strategy spec.ShareStrategy) {
 			if strategy == spec.ShareStrategyIgnore {
 				klog.Infof("Service %s/%s marked as shared ignore; skipping", namespace, name)
 			} else {
@@ -96,8 +97,8 @@ func (c *DeployServiceJobCtl) run(ctx context.Context) error {
 		return nil
 	}
 
-	if err := trackResourcePresence(ctx, spec.ResourceService, namespace, name, func(ctx context.Context) (*corev1.Service, error) {
-		return c.client.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err := jobexec.TrackResourcePresence(ctx, spec.ResourceService, namespace, name, func(ctx context.Context) (*corev1.Service, error) {
+		return c.Client.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{})
 	}, k8serrors.IsNotFound); err != nil {
 		return fmt.Errorf("check service existence failed: %w", err)
 	}
@@ -114,33 +115,33 @@ func (c *DeployServiceJobCtl) run(ctx context.Context) error {
 }
 
 func (c *DeployServiceJobCtl) timeout() int {
-	if c.job.Timeout == 0 {
-		c.job.Timeout = 60 * 10
+	if c.Job.Timeout == 0 {
+		c.Job.Timeout = 60 * 10
 	}
-	return int(c.job.Timeout)
+	return int(c.Job.Timeout)
 }
 
 func (c *DeployServiceJobCtl) wait(ctx context.Context) error {
-	serviceName := resolveServiceName(c.job)
+	serviceName := resolveServiceName(c.Job)
 	if serviceName == "" {
-		serviceName = naming.ServiceName(c.job.Name, c.job.ResourceAppNameOrID())
+		serviceName = naming.ServiceName(c.Job.Name, c.Job.ResourceAppNameOrID())
 	}
 	return waitForPolledResource(ctx, pollWaitOptions{
 		timeout:  time.Duration(c.timeout()) * time.Second,
 		interval: 2 * time.Second,
 		poll: func(ctx context.Context) (bool, error) {
-			return getServiceStatus(ctx, c.client, c.job.Namespace, serviceName)
+			return getServiceStatus(ctx, c.Client, c.Job.Namespace, serviceName)
 		},
 		onCancel: func(err error) error {
-			return jobinfo.NewStatusError(config.StatusCancelled, fmt.Errorf("service %s cancelled: %w", c.job.Name, err))
+			return jobinfo.NewStatusError(config.StatusCancelled, fmt.Errorf("service %s cancelled: %w", c.Job.Name, err))
 		},
 		onTimeout: func() error {
-			klog.Warningf("timed out waiting for service: %s", c.job.Name)
-			return jobinfo.NewStatusError(config.StatusTimeout, fmt.Errorf("wait service %s timeout", c.job.Name))
+			klog.Warningf("timed out waiting for service: %s", c.Job.Name)
+			return jobinfo.NewStatusError(config.StatusTimeout, fmt.Errorf("wait service %s timeout", c.Job.Name))
 		},
 		onError: func(err error) error {
 			klog.Errorf("error checking service status: %v", err)
-			return fmt.Errorf("wait service %s error: %w", c.job.Name, err)
+			return fmt.Errorf("wait service %s error: %w", c.Job.Name, err)
 		},
 	})
 }
@@ -177,8 +178,8 @@ func GenerateService(component *model.ApplicationComponent, properties *model.Pr
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        naming.ServiceName(component.Name, component.ResourceNameKey()),
 			Namespace:   component.Namespace,
-			Labels:      BuildLabels(component, properties),
-			Annotations: BuildAnnotations(component),
+			Labels:      jobexec.BuildLabels(component, properties),
+			Annotations: jobexec.BuildAnnotations(component),
 		},
 		Spec: corev1.ServiceSpec{
 			Type:     corev1.ServiceTypeClusterIP,
@@ -211,11 +212,11 @@ func GenerateServiceFromTrait(component *model.ApplicationComponent, properties 
 		})
 	}
 
-	labels := BuildLabels(component, properties)
+	labels := jobexec.BuildLabels(component, properties)
 	for k, v := range naming.NormalizeLabelValues(serviceTrait.Labels) {
 		labels[k] = v
 	}
-	labels = ApplyComponentManagedLabels(labels, component)
+	labels = jobexec.ApplyComponentManagedLabels(labels, component)
 	serviceType := serviceTypeFromTrait(serviceTrait.Type)
 	serviceName := strings.TrimSpace(serviceTrait.Name)
 	if serviceName == "" {
@@ -227,7 +228,7 @@ func GenerateServiceFromTrait(component *model.ApplicationComponent, properties 
 			Name:        serviceName,
 			Namespace:   component.Namespace,
 			Labels:      labels,
-			Annotations: BuildAnnotations(component),
+			Annotations: jobexec.BuildAnnotations(component),
 		},
 		Spec: corev1.ServiceSpec{Type: serviceType, Ports: servicePorts},
 	}
@@ -473,7 +474,7 @@ func (c *DeployServiceJobCtl) ApplyService(ctx context.Context, coreService *cor
 	updateService := func() (*corev1.Service, error) {
 		var appliedSvc *corev1.Service
 		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			existingService, err := c.client.CoreV1().Services(coreService.Namespace).Get(ctx, coreService.Name, metav1.GetOptions{})
+			existingService, err := c.Client.CoreV1().Services(coreService.Namespace).Get(ctx, coreService.Name, metav1.GetOptions{})
 			if err != nil {
 				return err
 			}
@@ -485,7 +486,7 @@ func (c *DeployServiceJobCtl) ApplyService(ctx context.Context, coreService *cor
 			}
 			copyServicePreservedFields(desired, existingService)
 			var updateErr error
-			appliedSvc, updateErr = c.client.CoreV1().Services(coreService.Namespace).Update(ctx, desired, metav1.UpdateOptions{})
+			appliedSvc, updateErr = c.Client.CoreV1().Services(coreService.Namespace).Update(ctx, desired, metav1.UpdateOptions{})
 			return updateErr
 		}); err != nil {
 			return nil, err
@@ -493,9 +494,9 @@ func (c *DeployServiceJobCtl) ApplyService(ctx context.Context, coreService *cor
 		return appliedSvc, nil
 	}
 
-	if _, err := c.client.CoreV1().Services(coreService.Namespace).Get(ctx, coreService.Name, metav1.GetOptions{}); err != nil {
+	if _, err := c.Client.CoreV1().Services(coreService.Namespace).Get(ctx, coreService.Name, metav1.GetOptions{}); err != nil {
 		if k8serrors.IsNotFound(err) {
-			appliedSvc, err := c.client.CoreV1().Services(coreService.Namespace).Create(ctx, coreService, metav1.CreateOptions{})
+			appliedSvc, err := c.Client.CoreV1().Services(coreService.Namespace).Create(ctx, coreService, metav1.CreateOptions{})
 			if err != nil {
 				if k8serrors.IsAlreadyExists(err) {
 					appliedSvc, err = updateService()

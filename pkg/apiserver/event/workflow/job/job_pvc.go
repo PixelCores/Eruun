@@ -13,70 +13,71 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
 
 type DeployPVCJobCtl struct {
-	deployNamespacedResourceJobBase
+	jobexec.DeployNamespacedResourceJobBase
 }
 
-func NewDeployPVCJobCtl(job *model.JobTask, runtime *Runtime, shareLocker locker.Locker) *DeployPVCJobCtl {
-	base, ok := newDeployNamespacedResourceJobBase("NewDeployPVCJobCtl", job, runtime, shareLocker)
+func NewDeployPVCJobCtl(job *model.JobTask, runtime *jobexec.Runtime, shareLocker locker.Locker) *DeployPVCJobCtl {
+	base, ok := jobexec.NewDeployNamespacedResourceJobBase("NewDeployPVCJobCtl", job, runtime, shareLocker)
 	if !ok {
 		return nil
 	}
 	return &DeployPVCJobCtl{
-		deployNamespacedResourceJobBase: base,
+		DeployNamespacedResourceJobBase: base,
 	}
 }
 
 func (c *DeployPVCJobCtl) Clean(ctx context.Context) {
-	if c == nil || c.job == nil {
+	if c == nil || c.Job == nil {
 		return
 	}
-	klog.V(4).Infof("cleanup: preserving pvc resources for failed pvc deploy job %s", c.job.Name)
+	klog.V(4).Infof("cleanup: preserving pvc resources for failed pvc deploy job %s", c.Job.Name)
 }
 
 func (c *DeployPVCJobCtl) Run(ctx context.Context) error {
-	return c.runWithWait(ctx, c.run, c.wait, "deploy pvc job run error", "deploy pvc wait error")
+	return c.RunWithWait(ctx, c.run, c.wait, "deploy pvc job run error", "deploy pvc wait error")
 }
 
 func (c *DeployPVCJobCtl) run(ctx context.Context) error {
 	logger := klog.FromContext(ctx)
-	if c.client == nil {
+	if c.Client == nil {
 		return fmt.Errorf("client is nil")
 	}
 
-	pvc, err := jobinfo.PvcFromJobInfo(c.job)
+	pvc, err := jobinfo.PvcFromJobInfo(c.Job)
 	if err != nil {
 		return err
 	}
 	if pvc.Namespace == "" {
-		pvc.Namespace = c.job.Namespace
+		pvc.Namespace = c.Job.Namespace
 	}
 
 	observeExistingPVC := func(ctx context.Context, current *corev1.PersistentVolumeClaim) error {
 		logger.Info("pvc already exists; skipping spec update", "pvcName", current.Name)
-		markResourceObserved(ctx, domainspec.ResourcePVC, pvc.Namespace, pvc.Name)
+		jobexec.MarkResourceObserved(ctx, domainspec.ResourcePVC, pvc.Namespace, pvc.Name)
 		return nil
 	}
 
-	_, created, err := reconcileTrackedResource(ctx, trackedResourceReconcileOptions[corev1.PersistentVolumeClaim]{
-		sharedResourceAccessOptions: sharedResourceAccessOptions{
-			job:          c.job,
-			ack:          c.ack,
-			labels:       pvc.Labels,
-			kind:         domainspec.ResourcePVC,
-			lockProvider: c.shareLocker,
-			listFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
-				list, err := c.client.CoreV1().PersistentVolumeClaims(pvc.Namespace).List(ctx, opts)
+	_, created, err := jobexec.ReconcileTrackedResource(ctx, jobexec.TrackedResourceReconcileOptions[corev1.PersistentVolumeClaim]{
+		SharedResourceAccessOptions: jobexec.SharedResourceAccessOptions{
+			Job:          c.Job,
+			Ack:          c.Ack,
+			Labels:       pvc.Labels,
+			Kind:         domainspec.ResourcePVC,
+			LockProvider: c.ShareLocker,
+			ListFn: func(ctx context.Context, opts metav1.ListOptions) (int, error) {
+				list, err := c.Client.CoreV1().PersistentVolumeClaims(pvc.Namespace).List(ctx, opts)
 				if err != nil {
 					return 0, err
 				}
 				return len(list.Items), nil
 			},
-			logSkip: func(strategy domainspec.ShareStrategy) {
+			LogSkip: func(strategy domainspec.ShareStrategy) {
 				if strategy == domainspec.ShareStrategyIgnore {
 					logger.Info("pvc marked as shared ignore; skipping", "pvcName", pvc.Name)
 				} else {
@@ -84,17 +85,17 @@ func (c *DeployPVCJobCtl) run(ctx context.Context) error {
 				}
 			},
 		},
-		namespace: pvc.Namespace,
-		name:      pvc.Name,
-		getFn: func(ctx context.Context) (*corev1.PersistentVolumeClaim, error) {
-			return c.client.CoreV1().PersistentVolumeClaims(pvc.Namespace).Get(ctx, pvc.Name, metav1.GetOptions{})
+		Namespace: pvc.Namespace,
+		Name:      pvc.Name,
+		GetFn: func(ctx context.Context) (*corev1.PersistentVolumeClaim, error) {
+			return c.Client.CoreV1().PersistentVolumeClaims(pvc.Namespace).Get(ctx, pvc.Name, metav1.GetOptions{})
 		},
-		createFn: func(ctx context.Context) (*corev1.PersistentVolumeClaim, error) {
-			return c.client.CoreV1().PersistentVolumeClaims(pvc.Namespace).Create(ctx, pvc, metav1.CreateOptions{})
+		CreateFn: func(ctx context.Context) (*corev1.PersistentVolumeClaim, error) {
+			return c.Client.CoreV1().PersistentVolumeClaims(pvc.Namespace).Create(ctx, pvc, metav1.CreateOptions{})
 		},
-		onExisting:      observeExistingPVC,
-		isNotFound:      k8serrors.IsNotFound,
-		isAlreadyExists: k8serrors.IsAlreadyExists,
+		OnExisting:      observeExistingPVC,
+		IsNotFound:      k8serrors.IsNotFound,
+		IsAlreadyExists: k8serrors.IsAlreadyExists,
 	})
 	if err != nil {
 		return fmt.Errorf("ensure pvc %q failed: %w", pvc.Name, err)
@@ -109,10 +110,10 @@ func (c *DeployPVCJobCtl) run(ctx context.Context) error {
 func (c *DeployPVCJobCtl) wait(ctx context.Context) error {
 	logger := klog.FromContext(ctx)
 	var pvcName string
-	if p, ok := jobinfo.OptionalJobInfo[*corev1.PersistentVolumeClaim](c.job); ok {
+	if p, ok := jobinfo.OptionalJobInfo[*corev1.PersistentVolumeClaim](c.Job); ok {
 		pvcName = p.Name
 	} else {
-		pvcName = c.job.Name
+		pvcName = c.Job.Name
 	}
 
 	return waitForPolledResource(ctx, pollWaitOptions{
@@ -140,13 +141,13 @@ func (c *DeployPVCJobCtl) wait(ctx context.Context) error {
 }
 
 func (c *DeployPVCJobCtl) getPVCStatus(ctx context.Context) (bool, error) {
-	pvcInfo, err := jobinfo.PvcFromJobInfo(c.job)
+	pvcInfo, err := jobinfo.PvcFromJobInfo(c.Job)
 	if err != nil {
-		return false, fmt.Errorf("failed to get PVC info from job %s: %w", c.job.Name, err)
+		return false, fmt.Errorf("failed to get PVC info from job %s: %w", c.Job.Name, err)
 	}
 	pvcName := pvcInfo.Name
 
-	pvc, err := c.client.CoreV1().PersistentVolumeClaims(c.job.Namespace).Get(ctx, pvcName, metav1.GetOptions{})
+	pvc, err := c.Client.CoreV1().PersistentVolumeClaims(c.Job.Namespace).Get(ctx, pvcName, metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return false, nil
@@ -159,8 +160,8 @@ func (c *DeployPVCJobCtl) getPVCStatus(ctx context.Context) (bool, error) {
 }
 
 func (c *DeployPVCJobCtl) timeout() int64 {
-	if c.job.Timeout == 0 {
-		c.job.Timeout = config.DeployTimeout
+	if c.Job.Timeout == 0 {
+		c.Job.Timeout = config.DeployTimeout
 	}
-	return c.job.Timeout
+	return c.Job.Timeout
 }
