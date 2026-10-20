@@ -27,6 +27,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobresult"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
@@ -60,10 +61,10 @@ func TestDelayedJobControllersPropagateWorkflowOwnership(t *testing.T) {
 			}},
 		}
 	}
-	assertPayload := func(t *testing.T, queue *enqueueCaptureQueue) {
+	assertPayload := func(t *testing.T, queue *jobtest.EnqueueCaptureQueue) {
 		t.Helper()
-		require.Len(t, queue.enqueued, 1)
-		payload, err := (&DelayDispatcher{}).decodeNotification(queue.enqueued[0])
+		require.Len(t, queue.Enqueued, 1)
+		payload, err := (&DelayDispatcher{}).decodeNotification(queue.Enqueued[0])
 		require.NoError(t, err)
 		require.Equal(t, "execution-delayed", payload.ExecutionKey)
 		require.Equal(t, uint64(3), payload.RunGeneration)
@@ -72,7 +73,7 @@ func TestDelayedJobControllersPropagateWorkflowOwnership(t *testing.T) {
 	}
 
 	t.Run("instant", func(t *testing.T) {
-		queue := &enqueueCaptureQueue{enqueueID: "delay-instant"}
+		queue := &jobtest.EnqueueCaptureQueue{EnqueueID: "delay-instant"}
 		task := newTask(config.JobDeployInstant)
 		store := &jobtest.WorkflowOwnershipStore{NoopStore: &jobtest.NoopStore{}, Task: model.WorkflowQueue{
 			TaskID: task.TaskID, Status: config.StatusRunning, RunGeneration: 3, RunToken: "run-3", WorkerID: "worker-delayed",
@@ -86,7 +87,7 @@ func TestDelayedJobControllersPropagateWorkflowOwnership(t *testing.T) {
 	})
 
 	t.Run("scheduled", func(t *testing.T) {
-		queue := &enqueueCaptureQueue{enqueueID: "delay-scheduled"}
+		queue := &jobtest.EnqueueCaptureQueue{EnqueueID: "delay-scheduled"}
 		task := newTask(config.JobDeployScheduled)
 		store := &jobtest.WorkflowOwnershipStore{NoopStore: &jobtest.NoopStore{}, Task: model.WorkflowQueue{
 			TaskID: task.TaskID, Status: config.StatusRunning, RunGeneration: 3, RunToken: "run-3", WorkerID: "worker-delayed",
@@ -224,7 +225,7 @@ func TestImmediateJobControllersDoNotDeleteNewerExecution(t *testing.T) {
 func TestStampJobExecutionIdentityAlwaysIncludesTaskID(t *testing.T) {
 	jobObj := &batchv1.Job{}
 
-	stampJobExecutionIdentity(&model.JobTask{TaskID: "task-1"}, jobObj)
+	jobresult.StampJobExecutionIdentity(&model.JobTask{TaskID: "task-1"}, jobObj)
 
 	require.Equal(t, "task-1", jobObj.Annotations[config.AnnotationJobTaskID])
 }

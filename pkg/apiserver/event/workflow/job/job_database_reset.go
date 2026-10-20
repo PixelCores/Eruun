@@ -21,6 +21,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobcleanup"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
@@ -478,7 +479,7 @@ func (c *DatabaseResetJobCtl) scaleStatefulSet(ctx context.Context, namespace, n
 func (c *DatabaseResetJobCtl) waitStatefulSetPodsGone(ctx context.Context, namespace string, statefulSet *appsv1.StatefulSet, component *model.ApplicationComponent) error {
 	selector := databaseResetPodSelector(statefulSet, component)
 	timeout := c.databaseResetTimeout()
-	err := wait.PollUntilContextTimeout(ctx, cleanupPollInterval, timeout, true, func(checkCtx context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(ctx, jobcleanup.CleanupPollInterval, timeout, true, func(checkCtx context.Context) (bool, error) {
 		list, err := c.Client.CoreV1().Pods(namespace).List(checkCtx, metav1.ListOptions{LabelSelector: selector})
 		if err != nil {
 			return false, err
@@ -535,7 +536,7 @@ func (c *DatabaseResetJobCtl) deleteAndMaybeRecreatePVC(ctx context.Context, tar
 
 func (c *DatabaseResetJobCtl) waitPVCDeleted(ctx context.Context, namespace, name string) error {
 	timeout := c.databaseResetTimeout()
-	err := wait.PollUntilContextTimeout(ctx, cleanupPollInterval, timeout, true, func(checkCtx context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(ctx, jobcleanup.CleanupPollInterval, timeout, true, func(checkCtx context.Context) (bool, error) {
 		_, err := c.Client.CoreV1().PersistentVolumeClaims(namespace).Get(checkCtx, name, metav1.GetOptions{})
 		if err == nil {
 			return false, nil
@@ -564,7 +565,7 @@ func (c *DatabaseResetJobCtl) waitDatabaseComponentReady(ctx context.Context, na
 		}
 		return nil
 	}
-	err := wait.PollUntilContextTimeout(ctx, cleanupPollInterval, timeout, true, func(checkCtx context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(ctx, jobcleanup.CleanupPollInterval, timeout, true, func(checkCtx context.Context) (bool, error) {
 		current, err := c.Client.AppsV1().StatefulSets(namespace).Get(checkCtx, name, metav1.GetOptions{})
 		if err != nil {
 			return false, err

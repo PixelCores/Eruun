@@ -15,7 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobcleanup"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -185,7 +185,7 @@ func TestWorkflowFailureCleanupAllPreservesClaimNamePVC(t *testing.T) {
 		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: deployName, Namespace: "default"}},
 		&corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: "default-logs-pvc", Namespace: "default"}},
 	)
-	ctl := workflowjob.NewCleanupResourcesJobCtl(jobs[0], &jobexec.Runtime{Client: client, Store: store, Ack: nil})
+	ctl := jobcleanup.NewCleanupResourcesJobCtl(jobs[0], &jobexec.Runtime{Client: client, Store: store, Ack: nil})
 	require.NotNil(t, ctl)
 
 	require.NoError(t, ctl.Run(ctx))

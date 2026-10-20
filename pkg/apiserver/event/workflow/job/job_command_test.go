@@ -16,6 +16,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobresult"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -166,7 +167,7 @@ func TestWorkspaceJobPayloadCarriesRunnerExecutionIdentity(t *testing.T) {
 		require.Equal(t, task.TaskID, payload.Spec.Template.Annotations[config.AnnotationJobTaskID])
 		require.Equal(t, task.ExecutionKey, payload.Spec.Template.Annotations[config.AnnotationJobExecutionKey])
 		require.Equal(t, "1", payload.Spec.Template.Annotations[config.AnnotationJobRunGeneration])
-		stampJobExecutionIdentity(task, payload)
+		jobresult.StampJobExecutionIdentity(task, payload)
 		require.Equal(t, payload.Annotations[config.AnnotationJobExecutionKey], payload.Spec.Template.Annotations[config.AnnotationJobExecutionKey])
 	}
 }

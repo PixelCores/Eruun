@@ -23,6 +23,7 @@ import (
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobresult"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
@@ -531,8 +532,8 @@ func (d *DelayDispatcher) dispatch(ctx context.Context, item *delayItem) error {
 	}
 	// A previously created Job is already owned by result processing. Replaying
 	// its notification must not fail it because the workspace changed afterward.
-	result := newJobResultPayloadFromDelay(committed, committed.Job)
-	if outbox, err := getJobResultOutboxByPayload(ctx, d.store, result); err == nil {
+	result := jobresult.NewJobResultPayloadFromDelay(committed, committed.Job)
+	if outbox, err := jobresult.GetJobResultOutboxByPayload(ctx, d.store, result); err == nil {
 		return d.resumeDelayedResultOutbox(ctx, outbox)
 	} else if !errors.Is(err, datastore.ErrRecordNotExist) {
 		return err
@@ -669,7 +670,7 @@ func (d *DelayDispatcher) dispatchJob(ctx context.Context, item *delayItem, clie
 	if jobObj.Name == "" {
 		return fmt.Errorf("delay job name is empty")
 	}
-	stampJobExecutionIdentity(&model.JobTask{
+	jobresult.StampJobExecutionIdentity(&model.JobTask{
 		TaskID:        item.payload.TaskID,
 		ExecutionKey:  item.payload.ExecutionKey,
 		RunGeneration: item.payload.RunGeneration,
@@ -679,9 +680,9 @@ func (d *DelayDispatcher) dispatchJob(ctx context.Context, item *delayItem, clie
 	if item.payload.JobType != "" {
 		jobType = config.JobType(item.payload.JobType)
 	}
-	resultPayload := newJobResultPayloadFromDelay(item.payload, jobObj)
+	resultPayload := jobresult.NewJobResultPayloadFromDelay(item.payload, jobObj)
 	if resultPayload != nil {
-		existingOutbox, err := getJobResultOutboxByPayload(ctx, d.store, resultPayload)
+		existingOutbox, err := jobresult.GetJobResultOutboxByPayload(ctx, d.store, resultPayload)
 		switch {
 		case err == nil:
 			return d.resumeDelayedResultOutbox(ctx, existingOutbox)
@@ -733,7 +734,7 @@ func (d *DelayDispatcher) dispatchJob(ctx context.Context, item *delayItem, clie
 	if err != nil {
 		if _, ok := jobinfo.ExtractStatusError(err); ok {
 			if resultPayload != nil {
-				updateJobInfoStatus(ctx, d.store, resultPayload, jobinfo.StatusFromError(err), jobinfo.JobErrorMessage(err, ""), 0, 0, "")
+				jobresult.UpdateJobInfoStatus(ctx, d.store, resultPayload, jobinfo.StatusFromError(err), jobinfo.JobErrorMessage(err, ""), 0, 0, "")
 			}
 			return fmt.Errorf("%w: %v", errDelayDispatchNoRetry, err)
 		}
@@ -741,7 +742,7 @@ func (d *DelayDispatcher) dispatchJob(ctx context.Context, item *delayItem, clie
 	}
 	if action == jobexec.RunPolicyActionSkip {
 		if resultPayload != nil {
-			updateJobInfoStatus(ctx, d.store, resultPayload, config.StatusSkipped, "", 0, 0, "")
+			jobresult.UpdateJobInfoStatus(ctx, d.store, resultPayload, config.StatusSkipped, "", 0, 0, "")
 		}
 		return nil
 	}
@@ -749,13 +750,13 @@ func (d *DelayDispatcher) dispatchJob(ctx context.Context, item *delayItem, clie
 	return d.createDelayedJob(ctx, client, jobObj, resultPayload)
 }
 
-func (d *DelayDispatcher) verifyDelayedJobIdentity(ctx context.Context, client kubernetes.Interface, resultPayload *JobResultPayload) error {
+func (d *DelayDispatcher) verifyDelayedJobIdentity(ctx context.Context, client kubernetes.Interface, resultPayload *jobresult.JobResultPayload) error {
 	if resultPayload != nil {
 		existingJob, exists, err := jobexec.JobExists(ctx, client, resultPayload.Namespace, resultPayload.Name)
 		if err != nil {
 			return err
 		}
-		if exists && !jobResultMatchesExecutionIdentity(resultPayload, existingJob) {
+		if exists && !jobresult.JobResultMatchesExecutionIdentity(resultPayload, existingJob) {
 			return d.failDelayedJobIdentityMismatch(ctx, resultPayload, existingJob)
 		}
 	}
@@ -763,14 +764,14 @@ func (d *DelayDispatcher) verifyDelayedJobIdentity(ctx context.Context, client k
 	return nil
 }
 
-func (d *DelayDispatcher) createDelayedJob(ctx context.Context, client kubernetes.Interface, jobObj *batchv1.Job, resultPayload *JobResultPayload) error {
+func (d *DelayDispatcher) createDelayedJob(ctx context.Context, client kubernetes.Interface, jobObj *batchv1.Job, resultPayload *jobresult.JobResultPayload) error {
 	namespace := jobObj.Namespace
 	liveJob, _, err := jobexec.CreateOrUpdateResource(ctx, func(ctx context.Context) (*batchv1.Job, error) {
 		return client.BatchV1().Jobs(namespace).Get(ctx, jobObj.Name, metav1.GetOptions{})
 	}, func(ctx context.Context) (*batchv1.Job, error) {
 		return client.BatchV1().Jobs(namespace).Create(ctx, jobObj, metav1.CreateOptions{})
 	}, func(_ context.Context, existing *batchv1.Job) error {
-		if jobResultMatchesExecutionIdentity(resultPayload, existing) {
+		if jobresult.JobResultMatchesExecutionIdentity(resultPayload, existing) {
 			return nil
 		}
 		return fmt.Errorf("existing delayed job %s/%s belongs to another execution", namespace, jobObj.Name)
@@ -787,7 +788,7 @@ func (d *DelayDispatcher) createDelayedJob(ctx context.Context, client kubernete
 	if resultPayload == nil {
 		return nil
 	}
-	if !jobResultMatchesExecutionIdentity(resultPayload, liveJob) {
+	if !jobresult.JobResultMatchesExecutionIdentity(resultPayload, liveJob) {
 		return d.failDelayedJobIdentityMismatch(ctx, resultPayload, liveJob)
 	}
 	return d.ensureDelayedResultOutboxPending(ctx, resultPayload)
@@ -948,11 +949,11 @@ func (d *DelayDispatcher) resumeDelayedResultOutbox(ctx context.Context, outbox 
 	}
 }
 
-func (d *DelayDispatcher) ensureDelayedResultOutboxPending(ctx context.Context, payload *JobResultPayload) error {
+func (d *DelayDispatcher) ensureDelayedResultOutboxPending(ctx context.Context, payload *jobresult.JobResultPayload) error {
 	if payload == nil {
 		return nil
 	}
-	outbox, err := createJobResultOutbox(ctx, d.store, payload, config.JobResultOutboxStateResultPending)
+	outbox, err := jobresult.CreateJobResultOutbox(ctx, d.store, payload, config.JobResultOutboxStateResultPending)
 	if err != nil {
 		return err
 	}
@@ -962,7 +963,7 @@ func (d *DelayDispatcher) ensureDelayedResultOutboxPending(ctx context.Context, 
 	return d.resumeDelayedResultOutbox(ctx, outbox)
 }
 
-func (d *DelayDispatcher) handleDelayedJobCreateError(ctx context.Context, client kubernetes.Interface, payload *JobResultPayload, createErr error) error {
+func (d *DelayDispatcher) handleDelayedJobCreateError(ctx context.Context, client kubernetes.Interface, payload *jobresult.JobResultPayload, createErr error) error {
 	if payload == nil {
 		return createErr
 	}
@@ -971,7 +972,7 @@ func (d *DelayDispatcher) handleDelayedJobCreateError(ctx context.Context, clien
 		return createErr
 	}
 	if exists {
-		if !jobResultMatchesExecutionIdentity(payload, existing) {
+		if !jobresult.JobResultMatchesExecutionIdentity(payload, existing) {
 			return d.failDelayedJobIdentityMismatch(ctx, payload, existing)
 		}
 		return d.ensureDelayedResultOutboxPending(ctx, payload)
@@ -979,7 +980,7 @@ func (d *DelayDispatcher) handleDelayedJobCreateError(ctx context.Context, clien
 	return createErr
 }
 
-func (d *DelayDispatcher) failDelayedJobIdentityMismatch(ctx context.Context, payload *JobResultPayload, jobObj *batchv1.Job) error {
+func (d *DelayDispatcher) failDelayedJobIdentityMismatch(ctx context.Context, payload *jobresult.JobResultPayload, jobObj *batchv1.Job) error {
 	if payload == nil {
 		return fmt.Errorf("%w: delayed job result payload is nil", errDelayDispatchNoRetry)
 	}
@@ -997,7 +998,7 @@ func (d *DelayDispatcher) failDelayedJobIdentityMismatch(ctx context.Context, pa
 		actualTaskID, actualExecutionKey, actualGeneration,
 		strings.TrimSpace(payload.TaskID), strings.TrimSpace(payload.ExecutionKey), payload.RunGeneration,
 	)
-	if err := updateJobInfoStatus(ctx, d.store, payload, config.StatusFailed, message, 0, time.Now().Unix(), ""); err != nil && !errors.Is(err, errResultDispatchNoRetry) {
+	if err := jobresult.UpdateJobInfoStatus(ctx, d.store, payload, config.StatusFailed, message, 0, time.Now().Unix(), ""); err != nil && !errors.Is(err, jobresult.ErrResultDispatchNoRetry) {
 		return err
 	}
 	return fmt.Errorf("%w: %s", errDelayDispatchNoRetry, message)

@@ -17,12 +17,14 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobresult"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 )
 
 type checkpointAckQueue struct {
-	dispatcherAckQueue
+	jobtest.DispatcherAckQueue
 	failures int
 	calls    int
 	acked    chan string
@@ -219,8 +221,8 @@ func TestDelayedRejectionPreservesConcurrentTransitions(t *testing.T) {
 func TestDelayedRejectionDoesNotFailPendingResult(t *testing.T) {
 	store, manager, payloads := delayedWorkspaceFixture(t)
 	changeDelayedNamespaceOwner(t, manager)
-	result := newJobResultPayloadFromDelay(payloads[0], payloads[0].Job)
-	require.NoError(t, store.Add(context.Background(), buildJobResultOutbox(result, config.JobResultOutboxStateResultPending)))
+	result := jobresult.NewJobResultPayloadFromDelay(payloads[0], payloads[0].Job)
+	require.NoError(t, store.Add(context.Background(), jobresult.BuildJobResultOutbox(result, config.JobResultOutboxStateResultPending)))
 	dispatcher := NewDelayDispatcher(nil, manager, access.NewStore(store), "", "")
 	runDelayedScheduleUntilAck(t, dispatcher, payloads[0])
 	require.Equal(t, string(config.StatusDistributed), store.jobInfos[1].Status)

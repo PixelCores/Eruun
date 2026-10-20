@@ -21,6 +21,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobresult"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
@@ -37,7 +38,7 @@ func TestCreatedJobReattachesAfterOwnerAndQuotaChangeWithoutCreate(t *testing.T)
 	task.EvaluationInfo = `{"traits":{"resources":{"cpu":"1","memory":"2Gi","cpuLimit":"2","memoryLimit":"4Gi"},"eval":{"concurrency":1,"sandboxResources":{"cpu":"1","memory":"2Gi","cpuLimit":"2","memoryLimit":"4Gi"}}}}`
 	live := task.JobInfo.(*batchv1.Job)
 	live.UID, live.ResourceVersion = "existing-runner", "1"
-	stampJobExecutionIdentity(task, live)
+	jobresult.StampJobExecutionIdentity(task, live)
 	live.Spec.Template.Spec.Containers[0].Resources = corev1.ResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("1"), corev1.ResourceMemory: resource.MustParse("2Gi")}, Limits: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("2"), corev1.ResourceMemory: resource.MustParse("4Gi")}}
 	owner := &model.WorkflowQueue{TaskID: task.TaskID}
 	ctx := context.Background()
@@ -158,7 +159,7 @@ func TestJobAdmissionRecoveryConfirmationReleasesOnlyAuthoritativeLoss(t *testin
 			task.Status, task.Attempt = config.StatusRunning, 1
 			live := task.JobInfo.(*batchv1.Job)
 			live.UID, live.ResourceVersion = "recorded-runner", "1"
-			stampJobExecutionIdentity(task, live)
+			jobresult.StampJobExecutionIdentity(task, live)
 			owner := &model.WorkflowQueue{TaskID: task.TaskID}
 			ctx := context.Background()
 			require.NoError(t, store.Get(ctx, owner))
@@ -241,7 +242,7 @@ func TestExpiredRecoveredJobSettlesWithoutAdmission(t *testing.T) {
 				task.Status, task.Attempt = config.StatusRunning, 1
 				live := task.JobInfo.(*batchv1.Job)
 				live.UID, live.ResourceVersion = "original-execution", "1"
-				stampJobExecutionIdentity(task, live)
+				jobresult.StampJobExecutionIdentity(task, live)
 				cp := &jobinfo.InstantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: live.DeepCopy(),
 					Attempt: 1, CurrentUID: live.UID, Deadline: time.Now().Add(-time.Second).UnixNano()}
 				if tc.noUID {
@@ -361,7 +362,7 @@ func TestRecoveredJobAdmissionUsesDatabaseDeadline(t *testing.T) {
 					live.Labels = map[string]string{config.LabelManagedBy: config.ManagedByEruun}
 					ttl := int32(7200)
 					live.Spec.TTLSecondsAfterFinished = &ttl
-					stampJobExecutionIdentity(task, live)
+					jobresult.StampJobExecutionIdentity(task, live)
 					cp := jobinfo.InstantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Attempt: 1, CurrentUID: live.UID, Job: live.DeepCopy(), Deadline: store.now.Add(remaining).UnixNano()}
 					raw, err := json.Marshal(cp)
 					require.NoError(t, err)
@@ -420,7 +421,7 @@ func TestRecoveredJobAdmissionClockFailureKeepsExecution(t *testing.T) {
 				task.JobType, task.Status, task.Attempt = string(kind), config.StatusRunning, 1
 				live := task.JobInfo.(*batchv1.Job)
 				live.UID = "existing-attempt"
-				stampJobExecutionIdentity(task, live)
+				jobresult.StampJobExecutionIdentity(task, live)
 				// Node time would already declare this execution expired.
 				raw, err := json.Marshal(jobinfo.InstantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Attempt: 1, CurrentUID: live.UID, Job: live.DeepCopy(), Deadline: time.Now().Add(-time.Hour).UnixNano()})
 				require.NoError(t, err)

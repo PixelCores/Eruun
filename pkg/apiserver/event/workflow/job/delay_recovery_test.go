@@ -19,6 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 )
@@ -106,7 +107,7 @@ func TestDelayDispatcherDeduplicatedMessagesRemainRetryable(t *testing.T) {
 			payload := seedDelayRecoveryCheckpoint(t, store, 1, time.Now().Add(-time.Minute).Unix())
 			raw, err := json.Marshal(jobinfo.NotificationForDelayJob(payload))
 			require.NoError(t, err)
-			queue := &dispatcherAckQueue{}
+			queue := &jobtest.DispatcherAckQueue{}
 			client := fake.NewSimpleClientset()
 			createErr := errors.New("kubernetes unavailable")
 			createAttempts := 0
@@ -125,7 +126,7 @@ func TestDelayDispatcherDeduplicatedMessagesRemainRetryable(t *testing.T) {
 			}
 			duplicate := msg.Message{ID: "duplicate", Payload: raw}
 			dispatcher.handleMessage(ctx, duplicate)
-			require.Empty(t, queue.ackCalls, "deduplication must not acknowledge uncompleted work")
+			require.Empty(t, queue.AckCalls, "deduplication must not acknowledge uncompleted work")
 			require.Len(t, dispatcher.items, 1)
 
 			item, _ := dispatcher.nextItem()
@@ -135,7 +136,7 @@ func TestDelayDispatcherDeduplicatedMessagesRemainRetryable(t *testing.T) {
 			dispatcher.requeue(item)
 			// Reclaiming while dispatch is retrying must remain safe and retryable.
 			dispatcher.handleMessage(ctx, duplicate)
-			require.Empty(t, queue.ackCalls)
+			require.Empty(t, queue.AckCalls)
 			require.Len(t, dispatcher.items, 1)
 			item, _ = dispatcher.nextItem()
 			require.NoError(t, dispatcher.dispatchJob(ctx, item, client))
@@ -149,7 +150,7 @@ func TestDelayDispatcherDeduplicatedMessagesRemainRetryable(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, dispatcher.dispatchJob(ctx, item, client))
 			dispatcher.finish(ctx, item)
-			require.Equal(t, []string{duplicate.ID}, queue.ackCalls[len(queue.ackCalls)-1].ids)
+			require.Equal(t, []string{duplicate.ID}, queue.AckCalls[len(queue.AckCalls)-1].Ids)
 			require.Equal(t, 2, createAttempts)
 			require.Len(t, store.outboxes, 1)
 			require.Empty(t, dispatcher.pending)

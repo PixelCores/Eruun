@@ -70,14 +70,14 @@ func delayedWorkspaceSQLFixture(t *testing.T, storedWorkspace interface{}) (*gor
 func TestDelayedNotificationDispatchesCommittedWorkload(t *testing.T) {
 	db, store, dispatcher, payload, creates := delayedWorkspaceSQLFixture(t, "space-1")
 	ctx := context.Background()
-	producer := &enqueueCaptureQueue{}
+	producer := &jobtest.EnqueueCaptureQueue{}
 	_, err := jobinfo.EnqueueDelayJob(ctx, producer, payload)
 	require.NoError(t, err)
-	raw := producer.enqueued[0]
+	raw := producer.Enqueued[0]
 	committed, err := json.Marshal(payload)
 	require.NoError(t, err)
 	require.Less(t, len(raw), len(committed))
-	queue := &dispatcherAckQueue{}
+	queue := &jobtest.DispatcherAckQueue{}
 	dispatcher.queue = queue
 	dispatcher.handleMessage(ctx, msg.Message{ID: "delivery", Payload: raw})
 	select {
@@ -96,8 +96,8 @@ func TestDelayedNotificationDispatchesCommittedWorkload(t *testing.T) {
 	require.NoError(t, dispatcher.dispatch(ctx, item))
 	dispatcher.finish(ctx, item)
 	require.Equal(t, 1, *creates)
-	require.Len(t, queue.ackCalls, 1)
-	require.Equal(t, []string{"delivery"}, queue.ackCalls[0].ids)
+	require.Len(t, queue.AckCalls, 1)
+	require.Equal(t, []string{"delivery"}, queue.AckCalls[0].Ids)
 	var record model.JobInfo
 	require.NoError(t, db.First(&record, 1).Error)
 	require.Equal(t, config.JobDelayStateDispatched, record.DelayState)
@@ -121,7 +121,7 @@ func TestDelayedIdentityNotificationRejectsChangedCheckpointIdentity(t *testing.
 			tt.change(&notification)
 			raw, err := json.Marshal(jobinfo.NotificationForDelayJob(&notification))
 			require.NoError(t, err)
-			queue := &dispatcherAckQueue{}
+			queue := &jobtest.DispatcherAckQueue{}
 			dispatcher.queue = queue
 			dispatcher.handleMessage(context.Background(), msg.Message{ID: "changed", Payload: raw})
 			item, _ := dispatcher.nextItem()
@@ -134,8 +134,8 @@ func TestDelayedIdentityNotificationRejectsChangedCheckpointIdentity(t *testing.
 				require.NoError(t, err, "unknown or stale identity must leave the committed checkpoint for recovery")
 				dispatcher.finish(context.Background(), item)
 			}
-			require.Len(t, queue.ackCalls, 1)
-			require.Equal(t, []string{"changed"}, queue.ackCalls[0].ids)
+			require.Len(t, queue.AckCalls, 1)
+			require.Equal(t, []string{"changed"}, queue.AckCalls[0].Ids)
 			require.Zero(t, *creates)
 			var record model.JobInfo
 			require.NoError(t, db.First(&record, 1).Error)
@@ -165,13 +165,13 @@ func TestDelayedNotificationRejectsObsoleteFormats(t *testing.T) {
 			}
 			raw, err = json.Marshal(envelope)
 			require.NoError(t, err)
-			queue := &dispatcherAckQueue{}
+			queue := &jobtest.DispatcherAckQueue{}
 			dispatcher.queue = queue
 			dispatcher.handleMessage(context.Background(), msg.Message{ID: "obsolete", Payload: raw})
 			item, _ := dispatcher.nextItem()
 			require.Nil(t, item, "unsupported wire formats must not reach scheduling")
-			require.Len(t, queue.ackCalls, 1)
-			require.Equal(t, []string{"obsolete"}, queue.ackCalls[0].ids)
+			require.Len(t, queue.AckCalls, 1)
+			require.Equal(t, []string{"obsolete"}, queue.AckCalls[0].Ids)
 			require.Zero(t, *creates)
 			var record model.JobInfo
 			require.NoError(t, db.First(&record, 1).Error)

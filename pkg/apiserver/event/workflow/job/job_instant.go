@@ -15,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobresult"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
@@ -100,7 +101,7 @@ func (c *InstantJobCtl) Run(ctx context.Context) error {
 		if desired.Namespace == "" {
 			desired.Namespace = c.Namespace
 		}
-		stampJobExecutionIdentity(c.Job, desired)
+		jobresult.StampJobExecutionIdentity(c.Job, desired)
 		policy, err := jobinfo.RetryPolicyFromJob(desired)
 		if err == nil {
 			err = c.runWithRetryPolicy(ctx, desired, policy)
@@ -174,7 +175,7 @@ func (c *InstantJobCtl) run(ctx context.Context) error {
 		namespace = c.Namespace
 		jobObj.Namespace = namespace
 	}
-	stampJobExecutionIdentity(c.Job, jobObj)
+	jobresult.StampJobExecutionIdentity(c.Job, jobObj)
 
 	startTime, hasStart := jobexec.StartTimeFromJob(jobObj)
 	now := time.Now().Unix()
