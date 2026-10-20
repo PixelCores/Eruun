@@ -17,10 +17,6 @@ func registerBuiltinCloudProviders() {
 	wfcloudjob.RegisterCloudProvider(wfaliyun.NewProvider())
 }
 
-type CloudJobInfo = wfcloudcontract.CloudJobInfo
-type CloudJobRequest = wfcloudcontract.CloudJobRequest
-type CloudJobResult = wfcloudcontract.CloudJobResult
-
 type CloudRuntime = wfcloudcontract.CloudRuntime
 type CloudActionProgress = wfcloudcontract.CloudActionProgress
 type CloudAction = wfcloudcontract.CloudAction

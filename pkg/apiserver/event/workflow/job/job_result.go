@@ -697,18 +697,6 @@ func stampCronJobExecutionIdentity(jobTask *model.JobTask, cron *batchv1.CronJob
 	cron.Annotations[workflowconfig.AnnotationJobAttempt] = strconv.FormatUint(uint64(attempt), 10)
 }
 
-func stampWorkspaceJobPodIdentity(task *model.JobTask, workload *batchv1.Job) {
-	if !config.IsWorkspaceJobType(config.JobType(task.JobType)) {
-		return
-	}
-	if workload.Spec.Template.Annotations == nil {
-		workload.Spec.Template.Annotations = map[string]string{}
-	}
-	workload.Spec.Template.Annotations[config.AnnotationJobTaskID] = task.TaskID
-	workload.Spec.Template.Annotations[config.AnnotationJobExecutionKey] = task.ExecutionKey
-	workload.Spec.Template.Annotations[config.AnnotationJobRunGeneration] = strconv.FormatUint(task.RunGeneration, 10)
-}
-
 func jobResultMatchesExecutionIdentity(payload *JobResultPayload, jobObj *batchv1.Job) bool {
 	if validateJobResultPayload(payload) != nil || jobObj == nil {
 		return false
@@ -808,23 +796,6 @@ func findJobInfoForResult(ctx context.Context, store datastore.DataStore, payloa
 		return nil, fmt.Errorf("job info type assertion failed")
 	}
 	return jobInfo, nil
-}
-
-func shouldKeepExistingJobInfoStatus(current string, next config.Status) bool {
-	currentStatus := config.Status(strings.TrimSpace(current))
-	if !isSuccessfulTerminalJobStatus(currentStatus) {
-		return false
-	}
-	return !isSuccessfulTerminalJobStatus(next)
-}
-
-func isSuccessfulTerminalJobStatus(status config.Status) bool {
-	switch status {
-	case config.StatusCompleted, config.StatusPassed, config.StatusSkipped:
-		return true
-	default:
-		return false
-	}
 }
 
 func newJobResultPayloadFromDelay(payload *DelayJobPayload, jobObj *batchv1.Job) *JobResultPayload {

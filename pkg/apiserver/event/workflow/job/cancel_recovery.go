@@ -16,7 +16,6 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
@@ -250,52 +249,6 @@ func finishCancelledJobCleanup(ctx context.Context, store datastore.DataStore, r
 
 type cancelledJobCleaner interface {
 	CleanCancelled(context.Context) (string, error)
-}
-
-func (c *InstantJobCtl) CleanCancelled(ctx context.Context) (string, error) {
-	if config.IsWorkspaceJobType(config.JobType(c.job.JobType)) {
-		logCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		logs, err := collectJobPodLogs(logCtx, c.client, c.namespace, c.job.Name)
-		cancel()
-		if err == nil && logs != "" {
-			c.job.Info = logs
-		}
-	}
-	if !c.allowEvaluationTerminalCleanup(ctx) {
-		return cancelledJobCleanupPreserved, nil
-	}
-	return cancelledJobCleanupComplete, deleteCancelledBatchJob(ctx, c.client, c.namespace, c.job)
-}
-
-func (c *ScheduledJobCtl) CleanCancelled(ctx context.Context) (string, error) {
-	if _, ok := optionalJobInfo[*batchv1.Job](c.job); ok {
-		return cancelledJobCleanupComplete, deleteCancelledBatchJob(ctx, c.client, c.namespace, c.job)
-	}
-	for _, ref := range resourcesForCleanup(ctx, domainspec.ResourceCronJob) {
-		if !ref.Created {
-			continue
-		}
-		namespace := ref.Namespace
-		if namespace == "" {
-			namespace = c.namespace
-		}
-		cron, err := c.client.BatchV1().CronJobs(namespace).Get(ctx, ref.Name, metav1.GetOptions{})
-		if k8serrors.IsNotFound(err) {
-			return cancelledJobCleanupComplete, nil
-		}
-		if err != nil {
-			return "", fmt.Errorf("get cancelled Kubernetes CronJob: %w", err)
-		}
-		record := buildJobInfoRecord(c.job)
-		if !cancelledCronJobMatches(&record, cron) {
-			return "", fmt.Errorf("cancelled Kubernetes CronJob execution identity changed")
-		}
-		if err := deleteCancelledKubernetesCronJob(ctx, c.client, namespace, cron); err != nil {
-			return "", err
-		}
-		return cancelledJobCleanupComplete, nil
-	}
-	return cancelledJobCleanupPreserved, nil
 }
 
 func deleteCancelledBatchJob(ctx context.Context, client kubernetes.Interface, namespace string, task *model.JobTask) error {

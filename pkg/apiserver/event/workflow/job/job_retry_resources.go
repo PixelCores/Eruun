@@ -54,34 +54,6 @@ func retryPodOwnedByJob(pod *corev1.Pod, job *batchv1.Job) bool {
 	return false
 }
 
-func validateRetryJobResources(job *batchv1.Job, policy *workflowconfig.JobRetryPolicy) error {
-	if policy.OnOOM != "resize" {
-		return nil
-	}
-	for _, containers := range [][]corev1.Container{job.Spec.Template.Spec.InitContainers, job.Spec.Template.Spec.Containers} {
-		for _, container := range containers {
-			for name, factor := range map[corev1.ResourceName]int64{
-				corev1.ResourceMemory: policy.MemoryGrowthFactor,
-				corev1.ResourceCPU:    policy.CPUGrowthFactor,
-			} {
-				if factor <= 1 {
-					continue
-				}
-				request := container.Resources.Requests[name]
-				limit := container.Resources.Limits[name]
-				cap := policy.MaxResources[name]
-				if request.Sign() <= 0 || limit.Sign() <= 0 || request.Cmp(limit) > 0 {
-					return fmt.Errorf("resize requires positive %s requests <= limits for container %s", name, container.Name)
-				}
-				if limit.Cmp(cap) > 0 {
-					return fmt.Errorf("container %s %s limit exceeds maxResources", container.Name, name)
-				}
-			}
-		}
-	}
-	return nil
-}
-
 func growOOMJobResources(job *batchv1.Job, policy *workflowconfig.JobRetryPolicy, oomContainers map[string]bool) (*batchv1.Job, error) {
 	next := job.DeepCopy()
 	if err := validateRetryJobResources(next, policy); err != nil {

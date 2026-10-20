@@ -23,22 +23,6 @@ type InstantJobCtl struct {
 	deployNamespacedResourceJobBase
 }
 
-// GenerateInstantJob Job builders.
-func GenerateInstantJob(component *model.ApplicationComponent, properties *model.Properties, runPolicy string) (*GenerateServiceResult, error) {
-	job := buildJob(component, properties, jobBuildOptions{runPolicy: runPolicy})
-	if job == nil {
-		return nil, nil
-	}
-	additionalObjects, err := traitsPlu.ApplyTraits(component, job)
-	if err != nil {
-		return nil, fmt.Errorf("generate component %s: %w", component.Name, err)
-	}
-	return &GenerateServiceResult{
-		Service:           job,
-		AdditionalObjects: additionalObjects,
-	}, nil
-}
-
 func GenerateOneTimeJob(component *model.ApplicationComponent, properties *model.Properties, runPolicy string, startTime int64) (*GenerateServiceResult, error) {
 	job := buildJob(component, properties, jobBuildOptions{runPolicy: runPolicy, startTime: startTime})
 	if job == nil {
@@ -283,4 +267,19 @@ func (c *InstantJobCtl) evaluationSourceReady(ctx context.Context) (bool, error)
 		}
 	}
 	return false, nil
+}
+
+func (c *InstantJobCtl) CleanCancelled(ctx context.Context) (string, error) {
+	if config.IsWorkspaceJobType(config.JobType(c.job.JobType)) {
+		logCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		logs, err := collectJobPodLogs(logCtx, c.client, c.namespace, c.job.Name)
+		cancel()
+		if err == nil && logs != "" {
+			c.job.Info = logs
+		}
+	}
+	if !c.allowEvaluationTerminalCleanup(ctx) {
+		return cancelledJobCleanupPreserved, nil
+	}
+	return cancelledJobCleanupComplete, deleteCancelledBatchJob(ctx, c.client, c.namespace, c.job)
 }
