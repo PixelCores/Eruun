@@ -999,3 +999,84 @@ func TestCreateApplicationsRejectsInvalidIngressNameAndHost(t *testing.T) {
 		})
 	}
 }
+
+func TestCreateApplicationsRejectsReservedLabelsOnNestedIngress(t *testing.T) {
+	ingressWithLabels := func(labels map[string]string) []spec.IngressTraitsSpec {
+		return []spec.IngressTraitsSpec{{
+			Name:  "side-ingress",
+			Hosts: []string{"side.example.com"},
+			Label: labels,
+			Routes: []spec.IngressRoutes{{
+				Path:    "/",
+				Backend: spec.IngressRoute{ServiceName: "backend", ServicePort: 80},
+			}},
+		}}
+	}
+	shareLabels := map[string]string{
+		spec.LabelShareName:     "demo",
+		spec.LabelShareStrategy: "ignore",
+	}
+	testCases := []struct {
+		name        string
+		traits      func(labels map[string]string) apisv1.Traits
+		labels      map[string]string
+		errContains string
+	}{
+		{
+			name: "init ingress",
+			traits: func(labels map[string]string) apisv1.Traits {
+				return apisv1.Traits{Init: []spec.InitTraitSpec{{
+					Name: "prepare", Image: "busybox:1.36",
+					Traits: apisv1.Traits{Ingress: ingressWithLabels(labels)},
+				}}}
+			},
+			labels:      shareLabels,
+			errContains: "must not contain reserved label",
+		},
+		{
+			name: "sidecar ingress",
+			traits: func(labels map[string]string) apisv1.Traits {
+				return apisv1.Traits{Sidecar: []spec.SidecarTraitsSpec{{
+					Name: "proxy", Image: "nginx:latest",
+					Traits: apisv1.Traits{Ingress: ingressWithLabels(labels)},
+				}}}
+			},
+			labels:      shareLabels,
+			errContains: "must not contain reserved label",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newInMemoryAppStore()
+			svc := newMockServiceWithStore(store)
+
+			_, err := svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
+				Name: "new-app",
+				Components: []apisv1.CreateComponentRequest{{
+					Name:          "backend",
+					ComponentType: config.ServerJob,
+					Image:         "nginx:latest",
+					Traits:        tc.traits(tc.labels),
+				}},
+			})
+			require.ErrorIs(t, err, bcode.ErrApplicationConfig)
+			require.Contains(t, err.Error(), tc.errContains)
+			require.Empty(t, store.apps)
+			require.Empty(t, store.components)
+			require.Empty(t, store.workflows)
+
+			// The same nested ingress with ordinary labels stays accepted.
+			_, err = svc.CreateApplications(context.Background(), apisv1.CreateApplicationsRequest{
+				Name: "new-app",
+				Components: []apisv1.CreateComponentRequest{{
+					Name:          "backend",
+					ComponentType: config.ServerJob,
+					Image:         "nginx:latest",
+					Traits:        tc.traits(map[string]string{"team": "platform"}),
+				}},
+			})
+			require.NoError(t, err)
+		})
+	}
+}
