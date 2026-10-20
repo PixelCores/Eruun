@@ -48,29 +48,29 @@
 
 ```text
 L5  job                 RunJobs / runJob / initJobCtl 工厂 / Pool / 评测恢复
-L4  instant  delay  cloud  databasereset  logarchive  callback
-L3  cleanup  result
-L2  deploy
-L1  execution           执行环境与 K8s 执行原语
-L0  record              JobInfo 记录、载荷、检查点、状态转换
+L4  jobinstant  jobdelay  jobcloud  databasereset  logarchive  jobcallback
+L3  jobcleanup  jobresult
+L2  jobdeploy
+L1  jobexec             执行环境与 K8s 执行原语
+L0  jobinfo             JobInfo 记录、载荷、检查点、状态转换
 ```
 
 只允许高层引用低层，同层之间不引用。分析得到的包间依赖（不含传递依赖）：
 
 | 包 | 直接依赖 |
 |---|---|
-| `job` | callback、cleanup、cloud、databasereset、delay、deploy、execution、instant、logarchive、record |
-| `instant` | result、execution、record |
-| `delay` | result、execution、record |
-| `databasereset` | cleanup、deploy、execution、record |
-| `logarchive` | execution、record |
-| `cloud` | record |
-| `callback` | record |
-| `cleanup` | deploy、execution、record |
-| `result` | execution、record |
-| `deploy` | execution、record |
-| `execution` | record |
-| `record` | 无（只依赖 `job` 目录以外的包） |
+| `job` | jobcallback、jobcleanup、jobcloud、databasereset、jobdelay、jobdeploy、jobexec、jobinstant、logarchive、jobinfo |
+| `jobinstant` | jobresult、jobexec、jobinfo |
+| `jobdelay` | jobresult、jobexec、jobinfo |
+| `databasereset` | jobcleanup、jobdeploy、jobexec、jobinfo |
+| `logarchive` | jobexec、jobinfo |
+| `jobcloud` | jobinfo |
+| `jobcallback` | jobinfo |
+| `jobcleanup` | jobdeploy、jobexec、jobinfo |
+| `jobresult` | jobexec、jobinfo |
+| `jobdeploy` | jobexec、jobinfo |
+| `jobexec` | jobinfo |
+| `jobinfo` | 无（只依赖 `job` 目录以外的包） |
 
 ### 4.2 包与职责
 
@@ -78,30 +78,30 @@ L0  record              JobInfo 记录、载荷、检查点、状态转换
 
 | 包（目录 `job/<name>`） | 规模 | 职责 | 主要来源 |
 |---|---:|---|---|
-| `record` | ~1480 | JobInfo 的持久化与所有权写入、各类 Job 载荷与检查点编解码、Job 状态转换、`StatusError`、延迟队列载荷 | `job_info`、`job_payload`、`job_status_transition`、`delay_queue`、`configmap_input`，以及从 cloud/databasereset/retry/callback/result 下沉的检查点与载荷声明 |
-| `execution` | ~2180 | `Runtime`、控制器基类、K8s Job 构建/等待/所有权校验、资源 reconcile 与共享资源保护、清理跟踪与执行器、Pod 日志收集、取消恢复、组件状态与元数据、`PrepareTask` | `job_batch`、`job_controller_base`、`resource_reconcile`、`shared_resource_*`、`cleanup_tracker`、`cleanup_resource_executor`、`job_delete`、`shared_cleanup_policy`、`job_pod_logs`、`cancel_recovery`、`job_component_*`、`workspace_task` |
-| `deploy` | ~3560 | 各类 K8s 资源控制器（Deployment、StatefulSet、Service、Ingress、ConfigMap、Secret、PVC、RBAC、版本重启）和全部 `Generate*` 生成器 | `job_deploy`、`job_statefulset`、`job_service`、`job_ingress`、`job_configmap`、`job_secret`、`job_pvc`、`job_rbac`、`job_version_restart`、`workload_*`、`podspec_compare`、`metadata_preserve`、`resource_generation`、`resource_wait` |
-| `cleanup` | ~3640 | `CleanupResourcesJobCtl` 及 StatefulSet Pod/PVC 清理、检查点与保留策略 | `job_cleanup_resources*` |
-| `result` | ~1250 | 结果派发与 outbox | `job_result`、`job_result_outbox` |
-| `instant` | ~1120 | `InstantJobCtl`：一次性 K8s Job、重试、准入预算 | `job_instant`、`job_retry`、`job_retry_resources`、`job_scheduling`、`job_scheduling_resources` |
-| `delay` | ~1150 | 延迟派发器与 `ScheduledJobCtl` | `delay_dispatcher`、`job_scheduled` |
-| `cloud` | ~400 | `CloudJobCtl` 与内置 Cloud Provider 注册 | `job_cloud`、`cloud_provider_bridge` |
+| `jobinfo` | ~1480 | JobInfo 的持久化与所有权写入、各类 Job 载荷与检查点编解码、Job 状态转换、`StatusError`、延迟队列载荷 | `job_info`、`job_payload`、`job_status_transition`、`delay_queue`、`configmap_input`，以及从 cloud/databasereset/retry/callback/result 下沉的检查点与载荷声明 |
+| `jobexec` | ~2180 | `Runtime`、控制器基类、K8s Job 构建/等待/所有权校验、资源 reconcile 与共享资源保护、清理跟踪与执行器、Pod 日志收集、取消恢复、组件状态与元数据、`PrepareTask` | `job_batch`、`job_controller_base`、`resource_reconcile`、`shared_resource_*`、`cleanup_tracker`、`cleanup_resource_executor`、`job_delete`、`shared_cleanup_policy`、`job_pod_logs`、`cancel_recovery`、`job_component_*`、`workspace_task` |
+| `jobdeploy` | ~3560 | 各类 K8s 资源控制器（Deployment、StatefulSet、Service、Ingress、ConfigMap、Secret、PVC、RBAC、版本重启）和全部 `Generate*` 生成器 | `job_deploy`、`job_statefulset`、`job_service`、`job_ingress`、`job_configmap`、`job_secret`、`job_pvc`、`job_rbac`、`job_version_restart`、`workload_*`、`podspec_compare`、`metadata_preserve`、`resource_generation`、`resource_wait` |
+| `jobcleanup` | ~3640 | `CleanupResourcesJobCtl` 及 StatefulSet Pod/PVC 清理、检查点与保留策略 | `job_cleanup_resources*` |
+| `jobresult` | ~1250 | 结果派发与 outbox | `job_result`、`job_result_outbox` |
+| `jobinstant` | ~1120 | `InstantJobCtl`：一次性 K8s Job、重试、准入预算 | `job_instant`、`job_retry`、`job_retry_resources`、`job_scheduling`、`job_scheduling_resources` |
+| `jobdelay` | ~1150 | 延迟派发器与 `ScheduledJobCtl` | `delay_dispatcher`、`job_scheduled` |
+| `jobcloud` | ~400 | `CloudJobCtl` 与内置 Cloud Provider 注册 | `job_cloud`、`cloud_provider_bridge` |
 | `databasereset` | ~550 | `DatabaseResetJobCtl` | `job_database_reset` |
 | `logarchive` | ~190 | 日志归档上传 Job 与上传器配置 | `job_log_archive_upload` |
-| `callback` | ~380 | 回调 Job | `job_callback` |
+| `jobcallback` | ~380 | 回调 Job | `job_callback` |
 | `job` | ~840 | 对外入口：`RunJobs`、`runJob`、`runAdmittedJob`、`initJobCtl` 工厂、`Pool`、`WithEvaluationRecovery` | `job.go`、`job_pool`、`evaluation_recovery` |
 
 命名说明：
 
 - 不用 `resource`：`k8s.io/apimachinery/pkg/api/resource` 在这个包里就被 import 为 `resource`，同名会造成混淆。
 - 不用 `batch`：它和 `batchv1` 语义重叠，而且这个包的核心类型是 `InstantJobCtl`。
-- `execution` 是暂定名，见第 11 节。
+- 子包统一加 `job` 前缀（`databasereset`、`logarchive` 无冲突，保持原名）。原因是 `record`、`result`、`callback`、`deploy`、`execution`、`cleanup`、`delay` 在这些代码里被大量用作局部变量名，例如 `record` 出现在 49 个文件、164 行；`result` 出现在 70 个文件、172 行。包名会被同名变量遮蔽，加前缀后零冲突，也不需要 import 别名。共享测试辅助包叫 `jobtest`。
 
 ## 5. 基础层
 
-基础层分两层：`record` 只管“数据和持久化”，`execution` 管“在 K8s 上执行”。分析表明这样拆是无环的：`execution` 依赖 `record`，`record` 不依赖 `execution`。前提是把 `StatusError` 系列和 `configmap_input` 放进 `record`，因为 `job_info.go` 和载荷代码直接用到它们。
+基础层分两层：`jobinfo` 只管“数据和持久化”，`jobexec` 管“在 K8s 上执行”。分析表明这样拆是无环的：`jobexec` 依赖 `jobinfo`，`jobinfo` 不依赖 `jobexec`。前提是把 `StatusError` 系列和 `configmap_input` 放进 `jobinfo`，因为 `job_info.go` 和载荷代码直接用到它们。
 
-### 5.1 `record`（L0）
+### 5.1 `jobinfo`（L0）
 
 按来源文件列出全部声明。带 `*` 的来自其他职责文件，是因为 `findExistingJobInfo` 等持久化代码要用到才下沉：
 
@@ -120,9 +120,9 @@ L0  record              JobInfo 记录、载荷、检查点、状态转换
 | `job_result.go`* | `isSuccessfulTerminalJobStatus`、`shouldKeepExistingJobInfoStatus`、`stampWorkspaceJobPodIdentity` |
 | 其他* | `isSettledDelayedExecutionStatus`（`delay_dispatcher.go`）、`errJobExecutionIdentityChanged`（`job_batch.go`） |
 
-**正确性约束**：JobInfo 的 fencing/CAS 核心 `compareAndSwapJobInfoIfWorkflowOwned`、`putJobInfoIfWorkflowOwned`、`addJobInfoIfWorkflowOwned` 只在 `record` 内部使用，拆分后保持未导出。对外只导出 `saveJobInfo`、`withJobInfoOwnership` 等原有的包装函数，写入路径不变。
+**正确性约束**：JobInfo 的 fencing/CAS 核心 `compareAndSwapJobInfoIfWorkflowOwned`、`putJobInfoIfWorkflowOwned`、`addJobInfoIfWorkflowOwned` 只在 `jobinfo` 内部使用，拆分后保持未导出。对外只导出 `saveJobInfo`、`withJobInfoOwnership` 等原有的包装函数，写入路径不变。
 
-### 5.2 `execution`（L1）
+### 5.2 `jobexec`（L1）
 
 | 来源 | 声明 |
 |---|---|
@@ -143,15 +143,15 @@ L0  record              JobInfo 记录、载荷、检查点、状态转换
 
 | 包 | 对 `job` 目录外暴露 | 不放进来的东西 |
 |---|---|---|
-| `deploy` | `Generate*` 生成器 8 个、`VersionRestartJobInfo`、各 `NewDeploy*JobCtl` | `GenerateInstantJob`、`GenerateScheduledCronJob` 放这里（`cleanup` 要用它们重算待删对象），控制器本身留在 `instant`/`delay` |
-| `cleanup` | `NewCleanupResourcesJobCtl` | 共享的删除、等待原语（在 `execution`） |
-| `result` | `NewResultDispatcher`、`NewResultOutboxDispatcher` | 执行身份戳以外的 JobInfo 写入（在 `record`） |
-| `instant` | `NewInstantJobCtl`、`GenerateOneTimeJob`、`RestoreInstantJobRetryCheckpoint` | 重试检查点编解码（在 `record`） |
-| `delay` | `NewDelayDispatcher`、`NewScheduledJobCtl` | 延迟队列载荷与入队（在 `record`） |
-| `cloud` | `PublicCloudJobInfoMessage`、`NewCloudJobCtl`；`init()` 注册内置 Aliyun Provider | Cloud 检查点解析（在 `record`） |
-| `databasereset` | `NewDatabaseResetJobCtl` | 检查点类型（在 `record`）、命名空间与 PVC 名判断（在 `execution`） |
-| `logarchive` | `LogArchiveUploadJobInfo`、`SetArchiveUploader`、`NewLogArchiveUploadJobCtl` | 上传器接口类型（在 `execution`） |
-| `callback` | `NewCallbackJobCtl`、`TerminalCallbackExecutionKey`、`TerminalCallbackKeyEvent` | `CallbackJobInfo`、`CallbackPayload`（在 `record`） |
+| `jobdeploy` | `Generate*` 生成器 8 个、`VersionRestartJobInfo`、各 `NewDeploy*JobCtl` | `GenerateInstantJob`、`GenerateScheduledCronJob` 放这里（`jobcleanup` 要用它们重算待删对象），控制器本身留在 `jobinstant`/`jobdelay` |
+| `jobcleanup` | `NewCleanupResourcesJobCtl` | 共享的删除、等待原语（在 `jobexec`） |
+| `jobresult` | `NewResultDispatcher`、`NewResultOutboxDispatcher` | 执行身份戳以外的 JobInfo 写入（在 `jobinfo`） |
+| `jobinstant` | `NewInstantJobCtl`、`GenerateOneTimeJob`、`RestoreInstantJobRetryCheckpoint` | 重试检查点编解码（在 `jobinfo`） |
+| `jobdelay` | `NewDelayDispatcher`、`NewScheduledJobCtl` | 延迟队列载荷与入队（在 `jobinfo`） |
+| `jobcloud` | `PublicCloudJobInfoMessage`、`NewCloudJobCtl`；`init()` 注册内置 Aliyun Provider | Cloud 检查点解析（在 `jobinfo`） |
+| `databasereset` | `NewDatabaseResetJobCtl` | 检查点类型（在 `jobinfo`）、命名空间与 PVC 名判断（在 `jobexec`） |
+| `logarchive` | `LogArchiveUploadJobInfo`、`SetArchiveUploader`、`NewLogArchiveUploadJobCtl` | 上传器接口类型（在 `jobexec`） |
+| `jobcallback` | `NewCallbackJobCtl`、`TerminalCallbackExecutionKey`、`TerminalCallbackKeyEvent` | `CallbackJobInfo`、`CallbackPayload`（在 `jobinfo`） |
 | `job` | `RunJobs`、`WithEvaluationRecovery`、`NewPool` | 其余全部下沉 |
 
 ## 7. `InstantJobCtl` 的收拢
@@ -167,13 +167,13 @@ L0  record              JobInfo 记录、载荷、检查点、状态转换
 
 收拢方式：
 
-1. 22 个方法全部进入 `instant` 包，文件名保持职责划分（`instant.go`、`retry.go`、`scheduling.go`、`cancel.go`）。
+1. 22 个方法全部进入 `jobinstant` 包，文件名保持职责划分（`instant.go`、`retry.go`、`scheduling.go`、`cancel.go`）。
 2. 不依赖 `InstantJobCtl` 的部分下沉：
-   - 重试检查点编解码和评测 Runner 检查点进入 `record`。`job_info.go` 的 `preserveEvaluationRunnerCheckpoint` 和取消恢复都要用。
-   - `GenerateInstantJob` 进入 `deploy`，因为 `cleanup` 要用它重算待删对象。
-3. 同样处理 `ScheduledJobCtl.CleanCancelled`：从 `cancel_recovery.go` 移到 `delay`，`cancel_recovery.go` 的其余部分进入 `execution`。
+   - 重试检查点编解码和评测 Runner 检查点进入 `jobinfo`。`job_info.go` 的 `preserveEvaluationRunnerCheckpoint` 和取消恢复都要用。
+   - `GenerateInstantJob` 进入 `jobdeploy`，因为 `jobcleanup` 要用它重算待删对象。
+3. 同样处理 `ScheduledJobCtl.CleanCancelled`：从 `cancel_recovery.go` 移到 `jobdelay`，`cancel_recovery.go` 的其余部分进入 `jobexec`。
 
-收拢只是搬移，方法体不改。`waitForJobAdmission` 由 `job` 包的 `runJob` 调用，需要从 `instant` 导出。
+收拢只是搬移，方法体不改。`waitForJobAdmission` 由 `job` 包的 `runJob` 调用，需要从 `jobinstant` 导出。
 
 ## 8. 必须拆散的现有文件
 
@@ -181,50 +181,50 @@ L0  record              JobInfo 记录、载荷、检查点、状态转换
 
 | 文件 | 去向 |
 |---|---|
-| `job.go` | `job` 748 行 / `execution` 51 行 / `record` 20 行 |
-| `job_database_reset.go` | `databasereset` 550 / `record` 106 / `execution` 27 / `deploy` 14 |
-| `job_retry.go` | `instant` 551 / `record` 123 |
-| `job_cloud.go` | `cloud` 381 / `record` 71 |
-| `cancel_recovery.go` | `execution` 320 / `delay` 30 / `instant` 14 |
-| `job_result.go` | `result` 785 / `record` 26 |
-| `job_callback.go` | `callback` 381 / `record` 25 |
-| `job_retry_resources.go` | `instant` 73 / `record` 27 |
-| `job_log_archive_upload.go` | `logarchive` 194 / `execution` 21 |
-| `job_instant.go` | `instant` 238 / `deploy` 14 |
-| `job_scheduled.go` | `delay` 151 / `deploy` 14 |
-| `delay_dispatcher.go` | `delay` 965 / `record` 8 |
-| `cloud_provider_bridge.go` | `cloud` 21 / `record` 3 |
-| `evaluation_recovery.go` | `job` 30 / `execution` 1 |
-| `job_batch.go` | `execution` 620 / `record` 1 |
+| `job.go` | `job` 748 行 / `jobexec` 51 行 / `jobinfo` 20 行 |
+| `job_database_reset.go` | `databasereset` 550 / `jobinfo` 106 / `jobexec` 27 / `jobdeploy` 14 |
+| `job_retry.go` | `jobinstant` 551 / `jobinfo` 123 |
+| `job_cloud.go` | `jobcloud` 381 / `jobinfo` 71 |
+| `cancel_recovery.go` | `jobexec` 320 / `jobdelay` 30 / `jobinstant` 14 |
+| `job_result.go` | `jobresult` 785 / `jobinfo` 26 |
+| `job_callback.go` | `jobcallback` 381 / `jobinfo` 25 |
+| `job_retry_resources.go` | `jobinstant` 73 / `jobinfo` 27 |
+| `job_log_archive_upload.go` | `logarchive` 194 / `jobexec` 21 |
+| `job_instant.go` | `jobinstant` 238 / `jobdeploy` 14 |
+| `job_scheduled.go` | `jobdelay` 151 / `jobdeploy` 14 |
+| `delay_dispatcher.go` | `jobdelay` 965 / `jobinfo` 8 |
+| `cloud_provider_bridge.go` | `jobcloud` 21 / `jobinfo` 3 |
+| `evaluation_recovery.go` | `job` 30 / `jobexec` 1 |
+| `job_batch.go` | `jobexec` 620 / `jobinfo` 1 |
 
 ## 9. 导出面
 
-- **生产代码需要新导出 147 个符号**：`record` 71 个、`execution` 63 个、`result` 8 个、`deploy` 2 个、`cleanup`/`logarchive`/`instant` 各 1 个，完整清单见附录。
+- **生产代码需要新导出 147 个符号**：`jobinfo` 71 个、`jobexec` 63 个、`jobresult` 8 个、`jobdeploy` 2 个、`jobcleanup`/`logarchive`/`jobinstant` 各 1 个，完整清单见附录。
 - **测试另需 54 个**（见第 10 节），合计约 200 个。
 - **命名规则**：只把首字母改成大写；与已有导出名冲突时，按新包语境去掉冗余前缀，例如 `record.saveJobInfo` → `record.Save`。改名清单在各 PR 里逐个列出，不在本文预先确定。
-- **关于 `internal`**：可以把 `record`、`execution` 放进 `job/internal/`，让新导出的符号只对 `job/...` 可见。但 `job` 目录外现在要用其中 23 个符号（`record` 12 个，如 `CallbackJobInfo`、`ApplyExecutionIdentity`；`execution` 11 个，如 `Runtime`、`BuildLabels`、`PrepareTask`）。要用 `internal`，就得把这部分对外类型再拆到非 internal 包，或者由 `job` 转发。本文建议不用 `internal`，代价是导出面变大，靠评审约束写入路径（见第 12 节）。
+- **关于 `internal`**：可以把 `jobinfo`、`jobexec` 放进 `job/internal/`，让新导出的符号只对 `job/...` 可见。但 `job` 目录外现在要用其中 23 个符号（`jobinfo` 12 个，如 `CallbackJobInfo`、`ApplyExecutionIdentity`；`jobexec` 11 个，如 `Runtime`、`BuildLabels`、`PrepareTask`）。要用 `internal`，就得把这部分对外类型再拆到非 internal 包，或者由 `job` 转发。本文建议不用 `internal`，代价是导出面变大，靠评审约束写入路径（见第 12 节）。
 
 ## 10. 测试搬迁
 
 71 个测试文件按“引用了哪些包的未导出声明”归类：
 
 - 35 个只引用单个目标包，跟着代码搬。
-- 34 个跨包引用。规则是放进它引用到的最高层包，因为那个包能 import 所有低层包。两个同层包都被引用时（例如同时引用 `instant` 和 `delay`），放进 `job`。
+- 34 个跨包引用。规则是放进它引用到的最高层包，因为那个包能 import 所有低层包。两个同层包都被引用时（例如同时引用 `jobinstant` 和 `jobdelay`），放进 `job`。
 - 按这个规则，最终分布如下：
 
 | 包 | 测试文件 | 行数 |
 |---|---:|---:|
 | `job` | 15 | ~6430 |
-| `cleanup` | 12 | ~6020 |
-| `deploy` | 14 | ~5120 |
-| `delay` | 7 | ~3780 |
-| `result` | 4 | ~1980 |
-| `cloud` | 1 | ~1320 |
+| `jobcleanup` | 12 | ~6020 |
+| `jobdeploy` | 14 | ~5120 |
+| `jobdelay` | 7 | ~3780 |
+| `jobresult` | 4 | ~1980 |
+| `jobcloud` | 1 | ~1320 |
 | `databasereset` | 1 | ~1300 |
-| `instant` | 5 | ~940 |
-| `execution` | 4 | ~660 |
-| `record` | 4 | ~640 |
-| `callback` | 1 | ~460 |
+| `jobinstant` | 5 | ~940 |
+| `jobexec` | 4 | ~660 |
+| `jobinfo` | 4 | ~640 |
+| `jobcallback` | 1 | ~460 |
 | `logarchive` | 1 | ~180 |
 
 - 测试会引用 93 个别的包里的未导出声明，其中 54 个不在生产代码的新导出清单里。处理方式二选一：
@@ -241,14 +241,14 @@ L0  record              JobInfo 记录、载荷、检查点、状态转换
 
 | 新包 | 被外部使用的符号 |
 |---|---|
-| `record` | 12 / 20：`ApplyExecutionIdentity`、`ApplyTaskIDAnnotation`、`CallbackJobInfo`、`CallbackPayload`、`CloudJobInfo`、`ConfigMapInput`、`SecretInput`、`DatabaseResetJobInfo`、`EvaluationRunnerCheckpoint`、`SetEvaluationRunnerCheckpoint`、`HasInstantJobRetryCheckpoint`、`ValidateInstantJobRetryExecution` |
-| `execution` | 11 / 15：`Runtime`、`GenerateServiceResult`、`WithTaskMetadata`、`PrepareTask`、`ParseProperties`、`BuildLabels`、`ApplyComponentManagedLabels`、`ApplyComponentAnnotationsToObject`、`EvaluationDeadlineAnnotation`、`IsCancelledJobCleanupPending`、`CleanupRecoveredCancelledJobsPage` |
-| `deploy` | 9 / 5：`Generate*` 8 个、`VersionRestartJobInfo` |
-| `callback` | 3 / 7 |
-| `instant` | 3 / 5 |
+| `jobinfo` | 12 / 20：`ApplyExecutionIdentity`、`ApplyTaskIDAnnotation`、`CallbackJobInfo`、`CallbackPayload`、`CloudJobInfo`、`ConfigMapInput`、`SecretInput`、`DatabaseResetJobInfo`、`EvaluationRunnerCheckpoint`、`SetEvaluationRunnerCheckpoint`、`HasInstantJobRetryCheckpoint`、`ValidateInstantJobRetryExecution` |
+| `jobexec` | 11 / 15：`Runtime`、`GenerateServiceResult`、`WithTaskMetadata`、`PrepareTask`、`ParseProperties`、`BuildLabels`、`ApplyComponentManagedLabels`、`ApplyComponentAnnotationsToObject`、`EvaluationDeadlineAnnotation`、`IsCancelledJobCleanupPending`、`CleanupRecoveredCancelledJobsPage` |
+| `jobdeploy` | 9 / 5：`Generate*` 8 个、`VersionRestartJobInfo` |
+| `jobcallback` | 3 / 7 |
+| `jobinstant` | 3 / 5 |
 | `job` | 2 / 4：`RunJobs`、`WithEvaluationRecovery` |
-| `result` | 2 / 1 |
-| `cleanup`、`delay`、`cloud`、`logarchive` | 各 1 |
+| `jobresult` | 2 / 1 |
+| `jobcleanup`、`jobdelay`、`jobcloud`、`logarchive` | 各 1 |
 
 调用方集中在 `event/workflow`（Job 构建器、控制器）、`domain/service/workflow`、`domain/service/application`、`jobs`。
 
@@ -256,12 +256,12 @@ L0  record              JobInfo 记录、载荷、检查点、状态转换
 
 | 风险 | 说明 | 处理 |
 |---|---|---|
-| fencing/CAS 被绕过 | 导出 `saveJobInfo`、`withJobInfoOwnership` 后，`job` 目录外的代码也能直接写 JobInfo | CAS 原语保持未导出；PR 评审检查新增的 `record` 调用方；必要时再评估 `internal` |
-| `init()` 顺序 | `cloud_provider_bridge.go` 的 `init()` 注册内置 Aliyun Provider。拆分后它只在 `cloud` 被 import 时执行 | `job` 的工厂会 import `cloud`，所有使用方都经由 `job`，顺序不变。PR 里要用启动测试确认 Provider 已注册 |
+| fencing/CAS 被绕过 | 导出 `saveJobInfo`、`withJobInfoOwnership` 后，`job` 目录外的代码也能直接写 JobInfo | CAS 原语保持未导出；PR 评审检查新增的 `jobinfo` 调用方；必要时再评估 `internal` |
+| `init()` 顺序 | `cloud_provider_bridge.go` 的 `init()` 注册内置 Aliyun Provider。拆分后它只在 `jobcloud` 被 import 时执行 | `job` 的工厂会 import `jobcloud`，所有使用方都经由 `job`，顺序不变。PR 里要用启动测试确认 Provider 已注册 |
 | 可变全局状态 | `logarchive` 的 `defaultArchiveUploader`（带锁）、`callbackHTTPClient` | 跟着所属包搬，不复制、不新增访问路径 |
 | 方法跨包失效 | 嵌入基类的未导出方法在其他包里无法提升调用 | 第 5.2 节列出的方法一律导出，由编译器检查 |
 | 大量冲突 | 每个 PR 都会改到几十个文件 | 每个 PR 只做一层，合并前 rebase 并重跑门禁；拆分期间暂停 `job` 包的其他改动 |
-| 核心路径 | `record` 和 `execution` 涉及执行身份、所有权、结果 outbox、取消恢复 | 按 `core` 类处理：自己实现，不派发给执行者；每个 PR 都做独立只读复核 |
+| 核心路径 | `jobinfo` 和 `jobexec` 涉及执行身份、所有权、结果 outbox、取消恢复 | 按 `core` 类处理：自己实现，不派发给执行者；每个 PR 都做独立只读复核 |
 
 ## 13. PR 拆分
 
@@ -271,12 +271,12 @@ L0  record              JobInfo 记录、载荷、检查点、状态转换
 |---|---|---|
 | 0 | 前置：合并 #170 | — |
 | 1 | **单包内预整理**：把第 8 节 15 个文件中要去往不同包的声明拆到按目标包命名的文件里；收拢 `InstantJobCtl` 的 22 个方法；把 `ScheduledJobCtl.CleanCancelled` 移回 `job_scheduled.go`。仍是一个包，用声明指纹校验 | 约 20 个文件，无导出变化 |
-| 2 | 抽出 `record` 和 `job/jobtest`：整文件移动，导出 71 个符号；改 `job` 包和 20 个外部文件的 import；搬 4 个测试文件 | 中 |
-| 3 | 抽出 `execution`：导出 63 个符号，控制器基类改名导出；改 15 个外部文件 | 大 |
-| 4 | 抽出 `deploy` | 中 |
-| 5 | 抽出 `cleanup`、`result` | 中 |
-| 6 | 抽出 `instant`、`delay` | 中 |
-| 7 | 抽出 `cloud`、`databasereset`、`logarchive`、`callback` | 小 |
+| 2 | 抽出 `jobinfo` 和 `job/jobtest`：整文件移动，导出 71 个符号；改 `job` 包和 20 个外部文件的 import；搬 4 个测试文件 | 中 |
+| 3 | 抽出 `jobexec`：导出 63 个符号，控制器基类改名导出；改 15 个外部文件 | 大 |
+| 4 | 抽出 `jobdeploy` | 中 |
+| 5 | 抽出 `jobcleanup`、`jobresult` | 中 |
+| 6 | 抽出 `jobinstant`、`jobdelay` | 中 |
+| 7 | 抽出 `jobcloud`、`databasereset`、`logarchive`、`jobcallback` | 小 |
 
 每个 PR 的验证：
 
@@ -290,16 +290,16 @@ PR 2 和 PR 3 涉及核心路径，由主会话实现，不派发给执行者。
 ## 14. 待决事项
 
 1. **是否接受约 200 个新导出符号的代价**，换取按目录组织。如果不接受，就维持现状：单包加文件名前缀。
-2. **`execution` 的名字**：备选 `kit`、`exec`。`runtime` 不可取，会和 `k8s.io/apimachinery/pkg/runtime` 冲突。
-3. **是否把 `record`/`execution` 放进 `internal`**（见第 9 节）。
+2. ~~子包命名~~：已决定统一加 `job` 前缀（见第 4.2 节命名说明）。
+3. **是否把 `jobinfo`/`jobexec` 放进 `internal`**（见第 9 节）。
 4. **实施时机**：拆分期间 `job` 包不宜并行开发，需要选一个没有其他 `job` 改动的窗口。
 
 ## 附录：生产代码需要新导出的符号（147）
 
-- **record（71）**：`applyJobError`、`batchJobFromJobInfo`、`buildJobInfoRecord`、`callbackInfoFromJobInfo`、`cleanupComponentFromJobInfo`、`cloudInfoFromJobInfo`、`cloudJobExecutionKey`、`clusterRoleBindingFromJobInfo`、`clusterRoleFromJobInfo`、`componentNameFromJobInfo`、`configMapFromJobInfo`、`databaseResetExecutionKey`、`databaseResetExecutionKeyFromJob`、`databaseResetReplicaCheckpoint`、`databaseResetReplicaCheckpointVersion`、`decodeDatabaseResetReplicaCheckpoint`、`decodeInstantJobRetryCheckpoint`、`delayJobNotificationVersion`、`deploymentFromJobInfo`、`errJobExecutionIdentityChanged`、`findExistingJobInfo`、`findExistingVersionUpdateCleanupJobInfo`、`ingressFromJobInfo`、`instantJobRetryCheckpoint`、`isSettledDelayedExecutionStatus`、`isVersionUpdateRemoveCleanupInternalInfo`、`jobErrorMessage`、`jobInfoExecutionKey`、`jobInfoSaveMaxAttempts`、`loadJobInfos`、`notificationForDelayJob`、`optionalJobInfo`、`parseCloudCheckpointFromJobInfo`、`parseCloudJobRecord`、`persistDelayJobCheckpoint`、`pvcFromJobInfo`、`requiredJobInfo`、`resolveJobServiceName`、`retryJobMatchesTask`、`retryPolicyFromJob`、`roleBindingFromJobInfo`、`roleFromJobInfo`、`runJobFunc`、`runJobWithStatus`、`runJobWithWait`、`saveJobInfo`、`saveOrUpdateJobInfo`、`saveOrUpdateVersionUpdateCleanupJobInfo`、`scheduledJobInfo`、`secretFromJobInfo`、`selectCloudCheckpointJobInfo`、`selectDatabaseResetCheckpointJobInfo`、`serviceAccountFromJobInfo`、`serviceFromJobInfo`、`shareStrategyFromJobInfo`、`stampWorkspaceJobPodIdentity`、`statefulSetFromJobInfo`、`statusFromError`、`validateDelayJobIdentity`、`validateDelayJobPayload`、`validateRetryJobResources`、`validateVersionUpdateCleanupInternalInfo`、`versionUpdateCleanupJobInfoConditions`、`versionUpdateCleanupJobInfoOwnershipMatches`、`versionUpdateCleanupJobInfoSameExecution`、`versionUpdateCleanupJobInfoUpdates`、`versionUpdateCleanupJobInfoWriteIsStale`、`versionUpdateCleanupRequiresStatefulSetDeletion`、`versionUpdateCleanupStatefulSetPVCTemplatesToDelete`、`waitJobFunc`、`withJobInfoOwnership`
-- **execution（63）**：`Runtime` 的方法 `close`；`deployNamespacedResourceJobBase` 及其方法 `cleanCreated`、`cleanCreatedBatchJobs`、`createBatchJob`、`runWithStatus`、`runWithWait`、`waitBatchJob`，`newDeployNamespacedResourceJobBase`、`applyJobRunPolicy`、`beginCancelledJobCleanup`、`buildCronJob`、`buildJob`、`cancelledCronJobMatches`、`cancelledJobCleaner`、`cancelledJobCleanupComplete`、`cancelledJobCleanupPreserved`、`cleanupNamespacedResources`、`collectJobPodLogs`、`collectJobPodLogsForJob`、`createOrUpdateResource`、`createOrUpdateTrackedResource`、`currentJobWorkflowOwnershipStatus`、`databaseResetNamespaceOrDefault`、`deleteCancelledBatchJob`、`deleteCancelledKubernetesCronJob`、`deleteCompletedJobAndPods`、`ensureCurrentJobWorkflowOwnership`、`ensureJobWorkflowOwnership`、`errWorkflowJobOwnershipChanged`、`finalizeCompletedJobIfNeeded`、`finishOnlineCancelledJobCleanup`、`infrastructureStopCause`、`invalidateComponentsCache`、`isStatefulSetTemplatePVCName`、`jobBuildOptions`、`jobDeleteTimeout`、`jobExists`、`jobOwnerGeneration`、`jobPollInterval`、`jobTerminalStatus`、`jobTypeForTask`、`markResourceObserved`、`newShareLocker`、`podLogContainerNames`、`readPodContainerLogsWithMode`、`reconcileTrackedResource`、`recoverableKubernetesJobType`、`resolveSharedResourceAccess`、`resourceRef`、`resourcesForCleanup`、`runPolicyActionSkip`、`runPolicyFromJob`、`shareInfoFromLabels`、`sharedResourceAccessOptions`、`shouldForceCleanupSharedWorkload`、`startTimeFromJob`、`syncComponentStatusOnJobStart`、`syncConfigComponentStatusIfWorkflowOwned`、`trackResourcePresence`、`trackedResourceReconcileOptions`、`updateResourceWithRetry`、`waitForJobCompletionMatching`
-- **result（8）**：`createJobResultOutbox`、`errResultDispatchNoRetry`、`getJobResultOutboxByPayload`、`jobResultMatchesExecutionIdentity`、`newJobResultPayloadFromDelay`、`stampCronJobExecutionIdentity`、`stampJobExecutionIdentity`、`updateJobInfoStatus`
-- **deploy（2）**：`cleanObjectMeta`、`desiredReplicasFromStatefulSet`
-- **cleanup（1）**：`cleanupPollInterval`
+- **jobinfo（71）**：`applyJobError`、`batchJobFromJobInfo`、`buildJobInfoRecord`、`callbackInfoFromJobInfo`、`cleanupComponentFromJobInfo`、`cloudInfoFromJobInfo`、`cloudJobExecutionKey`、`clusterRoleBindingFromJobInfo`、`clusterRoleFromJobInfo`、`componentNameFromJobInfo`、`configMapFromJobInfo`、`databaseResetExecutionKey`、`databaseResetExecutionKeyFromJob`、`databaseResetReplicaCheckpoint`、`databaseResetReplicaCheckpointVersion`、`decodeDatabaseResetReplicaCheckpoint`、`decodeInstantJobRetryCheckpoint`、`delayJobNotificationVersion`、`deploymentFromJobInfo`、`errJobExecutionIdentityChanged`、`findExistingJobInfo`、`findExistingVersionUpdateCleanupJobInfo`、`ingressFromJobInfo`、`instantJobRetryCheckpoint`、`isSettledDelayedExecutionStatus`、`isVersionUpdateRemoveCleanupInternalInfo`、`jobErrorMessage`、`jobInfoExecutionKey`、`jobInfoSaveMaxAttempts`、`loadJobInfos`、`notificationForDelayJob`、`optionalJobInfo`、`parseCloudCheckpointFromJobInfo`、`parseCloudJobRecord`、`persistDelayJobCheckpoint`、`pvcFromJobInfo`、`requiredJobInfo`、`resolveJobServiceName`、`retryJobMatchesTask`、`retryPolicyFromJob`、`roleBindingFromJobInfo`、`roleFromJobInfo`、`runJobFunc`、`runJobWithStatus`、`runJobWithWait`、`saveJobInfo`、`saveOrUpdateJobInfo`、`saveOrUpdateVersionUpdateCleanupJobInfo`、`scheduledJobInfo`、`secretFromJobInfo`、`selectCloudCheckpointJobInfo`、`selectDatabaseResetCheckpointJobInfo`、`serviceAccountFromJobInfo`、`serviceFromJobInfo`、`shareStrategyFromJobInfo`、`stampWorkspaceJobPodIdentity`、`statefulSetFromJobInfo`、`statusFromError`、`validateDelayJobIdentity`、`validateDelayJobPayload`、`validateRetryJobResources`、`validateVersionUpdateCleanupInternalInfo`、`versionUpdateCleanupJobInfoConditions`、`versionUpdateCleanupJobInfoOwnershipMatches`、`versionUpdateCleanupJobInfoSameExecution`、`versionUpdateCleanupJobInfoUpdates`、`versionUpdateCleanupJobInfoWriteIsStale`、`versionUpdateCleanupRequiresStatefulSetDeletion`、`versionUpdateCleanupStatefulSetPVCTemplatesToDelete`、`waitJobFunc`、`withJobInfoOwnership`
+- **jobexec（63）**：`Runtime` 的方法 `close`；`deployNamespacedResourceJobBase` 及其方法 `cleanCreated`、`cleanCreatedBatchJobs`、`createBatchJob`、`runWithStatus`、`runWithWait`、`waitBatchJob`，`newDeployNamespacedResourceJobBase`、`applyJobRunPolicy`、`beginCancelledJobCleanup`、`buildCronJob`、`buildJob`、`cancelledCronJobMatches`、`cancelledJobCleaner`、`cancelledJobCleanupComplete`、`cancelledJobCleanupPreserved`、`cleanupNamespacedResources`、`collectJobPodLogs`、`collectJobPodLogsForJob`、`createOrUpdateResource`、`createOrUpdateTrackedResource`、`currentJobWorkflowOwnershipStatus`、`databaseResetNamespaceOrDefault`、`deleteCancelledBatchJob`、`deleteCancelledKubernetesCronJob`、`deleteCompletedJobAndPods`、`ensureCurrentJobWorkflowOwnership`、`ensureJobWorkflowOwnership`、`errWorkflowJobOwnershipChanged`、`finalizeCompletedJobIfNeeded`、`finishOnlineCancelledJobCleanup`、`infrastructureStopCause`、`invalidateComponentsCache`、`isStatefulSetTemplatePVCName`、`jobBuildOptions`、`jobDeleteTimeout`、`jobExists`、`jobOwnerGeneration`、`jobPollInterval`、`jobTerminalStatus`、`jobTypeForTask`、`markResourceObserved`、`newShareLocker`、`podLogContainerNames`、`readPodContainerLogsWithMode`、`reconcileTrackedResource`、`recoverableKubernetesJobType`、`resolveSharedResourceAccess`、`resourceRef`、`resourcesForCleanup`、`runPolicyActionSkip`、`runPolicyFromJob`、`shareInfoFromLabels`、`sharedResourceAccessOptions`、`shouldForceCleanupSharedWorkload`、`startTimeFromJob`、`syncComponentStatusOnJobStart`、`syncConfigComponentStatusIfWorkflowOwned`、`trackResourcePresence`、`trackedResourceReconcileOptions`、`updateResourceWithRetry`、`waitForJobCompletionMatching`
+- **jobresult（8）**：`createJobResultOutbox`、`errResultDispatchNoRetry`、`getJobResultOutboxByPayload`、`jobResultMatchesExecutionIdentity`、`newJobResultPayloadFromDelay`、`stampCronJobExecutionIdentity`、`stampJobExecutionIdentity`、`updateJobInfoStatus`
+- **jobdeploy（2）**：`cleanObjectMeta`、`desiredReplicasFromStatefulSet`
+- **jobcleanup（1）**：`cleanupPollInterval`
 - **logarchive（1）**：`currentArchiveUploader`
-- **instant（1）**：`waitForJobAdmission`
+- **jobinstant（1）**：`waitForJobAdmission`
