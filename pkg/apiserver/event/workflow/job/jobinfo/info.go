@@ -577,7 +577,7 @@ func ComponentNameFromJobInfo(info interface{}) string {
 	if name := rawComponentNameFromJobInfo(info); name != "" {
 		return name
 	}
-	return strings.TrimSpace(jobInfoLabels(info)[config.LabelComponentName])
+	return strings.TrimSpace(jobInfoLabels(info)[domainspec.LabelComponentName])
 }
 
 func rawComponentNameFromJobInfo(info interface{}) string {
@@ -589,11 +589,11 @@ func ShareStrategyFromJobInfo(info interface{}) (domainspec.ShareStrategy, bool)
 	if len(labels) == 0 {
 		return "", false
 	}
-	shareName := strings.TrimSpace(labels[config.LabelShareName])
+	shareName := strings.TrimSpace(labels[domainspec.LabelShareName])
 	if shareName == "" {
 		return "", false
 	}
-	raw := strings.TrimSpace(labels[config.LabelShareStrategy])
+	raw := strings.TrimSpace(labels[domainspec.LabelShareStrategy])
 	strategy, ok := domainspec.NormalizeShareStrategy(raw)
 	if !ok && raw != "" {
 		return "", false

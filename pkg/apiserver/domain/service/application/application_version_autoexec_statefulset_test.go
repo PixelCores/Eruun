@@ -36,7 +36,7 @@ func TestUpdateVersionFullRebuildAllowsOnlyRecreatedStatefulSetImmutableChanges(
 				}},
 				Service: []spec.ServiceTraitSpec{{
 					Name: "mysql-headless", Type: string(spec.ServiceAccessInternal), Headless: true,
-					Selector: map[string]string{config.LabelComponentName: "mysql"},
+					Selector: map[string]string{spec.LabelComponentName: "mysql"},
 					Ports:    []spec.ServicePortTraitSpec{{Name: "mysql", Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
 				}},
 			}
@@ -392,7 +392,7 @@ func TestPendingStatefulSetPVCDeletionKeepsResourceIdentitiesSeparate(t *testing
 		}},
 		Service: []spec.ServiceTraitSpec{{
 			Name: "mysql-headless", Type: string(spec.ServiceAccessInternal), Headless: true,
-			Selector: map[string]string{config.LabelComponentName: "mysql"},
+			Selector: map[string]string{spec.LabelComponentName: "mysql"},
 		}},
 	}
 	nonShared := &model.ApplicationComponent{

@@ -323,8 +323,8 @@ func cleanupLabelSelector(component *model.ApplicationComponent) string {
 		return ""
 	}
 	return labels.Set{
-		config.LabelAppID:         appID,
-		config.LabelComponentName: naming.BoundedLabelValue(componentName),
+		domainspec.LabelAppID:         appID,
+		domainspec.LabelComponentName: naming.BoundedLabelValue(componentName),
 	}.AsSelector().String()
 }
 

@@ -102,8 +102,8 @@ func TestCleanupResourcesJobCtlRunDefersLabeledOwnerJobToRequiredStatefulSetPodR
 				ID: 1, Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 			}
 			labels := map[string]string{
-				config.LabelAppID:         component.AppID,
-				config.LabelComponentName: component.Name,
+				domainspec.LabelAppID:         component.AppID,
+				domainspec.LabelComponentName: component.Name,
 			}
 			statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 			statefulSet := &appsv1.StatefulSet{
@@ -248,8 +248,8 @@ func TestCleanupResourcesJobCtlRunNeverGenericallyDeletesChangedCheckpointedOwne
 				)
 				require.NoError(t, err)
 				job := object.(*batchv1.Job).DeepCopy()
-				job.Labels[config.LabelShareName] = "late-share"
-				job.Labels[config.LabelShareStrategy] = string(domainspec.ShareStrategyDefault)
+				job.Labels[domainspec.LabelShareName] = "late-share"
+				job.Labels[domainspec.LabelShareStrategy] = string(domainspec.ShareStrategyDefault)
 				job.ResourceVersion = "22"
 				require.NoError(t, fixture.client.Tracker().Update(
 					batchv1.SchemeGroupVersion.WithResource("jobs"), job, job.Namespace,
@@ -314,8 +314,8 @@ func newRequiredStatefulSetLabeledOwnerRunFixture(
 	}
 	resourceLabels := func() map[string]string {
 		return map[string]string{
-			config.LabelAppID:         component.AppID,
-			config.LabelComponentName: component.Name,
+			domainspec.LabelAppID:         component.AppID,
+			domainspec.LabelComponentName: component.Name,
 		}
 	}
 	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())

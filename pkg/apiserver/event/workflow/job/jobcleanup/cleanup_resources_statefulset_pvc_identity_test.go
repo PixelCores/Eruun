@@ -98,8 +98,8 @@ func TestCleanupResourcesJobCtlPVCDeletePreconditionsRejectLateProtection(t *tes
 		require.NoError(t, err)
 		current := currentObject.(*corev1.PersistentVolumeClaim).DeepCopy()
 		current.Labels = map[string]string{
-			config.LabelShareName:     "late-shared-data",
-			config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
+			domainspec.LabelShareName:     "late-shared-data",
+			domainspec.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 		}
 		current.ResourceVersion = "2"
 		require.NoError(t, client.Tracker().Update(corev1.SchemeGroupVersion.WithResource("persistentvolumeclaims"), current, component.Namespace))
@@ -426,8 +426,8 @@ func TestCleanupResourcesJobCtlRejectsExtraLabelMatchedStatefulSetBeforeMutation
 	}
 	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	componentLabels := map[string]string{
-		config.LabelAppID:         component.AppID,
-		config.LabelComponentName: component.Name,
+		domainspec.LabelAppID:         component.AppID,
+		domainspec.LabelComponentName: component.Name,
 	}
 	requiredStatefulSet := &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{
 		Name: statefulSetName, Namespace: component.Namespace, UID: types.UID("required-statefulset-uid"),

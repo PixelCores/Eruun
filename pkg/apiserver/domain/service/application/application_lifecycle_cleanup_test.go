@@ -242,8 +242,8 @@ func TestCleanupApplicationResourcesDeletesTraitServicesByLabels(t *testing.T) {
 				Name:      headlessName,
 				Namespace: "default",
 				Labels: map[string]string{
-					config.LabelAppID:         app.ID,
-					config.LabelComponentName: naming.BoundedLabelValue(component.Name),
+					spec.LabelAppID:         app.ID,
+					spec.LabelComponentName: naming.BoundedLabelValue(component.Name),
 				},
 			},
 		},
@@ -252,8 +252,8 @@ func TestCleanupApplicationResourcesDeletesTraitServicesByLabels(t *testing.T) {
 				Name:      rwName,
 				Namespace: "default",
 				Labels: map[string]string{
-					config.LabelAppID:         app.ID,
-					config.LabelComponentName: naming.BoundedLabelValue(component.Name),
+					spec.LabelAppID:         app.ID,
+					spec.LabelComponentName: naming.BoundedLabelValue(component.Name),
 				},
 			},
 		},
@@ -313,8 +313,8 @@ func TestCleanupApplicationResourcesDeletesIngressByLabels(t *testing.T) {
 				Name:      ingressName,
 				Namespace: "default",
 				Labels: map[string]string{
-					config.LabelAppID:         app.ID,
-					config.LabelComponentName: naming.BoundedLabelValue(component.Name),
+					spec.LabelAppID:         app.ID,
+					spec.LabelComponentName: naming.BoundedLabelValue(component.Name),
 				},
 			},
 		},
@@ -432,8 +432,8 @@ func TestCleanupApplicationResourcesSharedAbnormalPodAllowsDelete(t *testing.T) 
 				Name:      "shared-web-pod",
 				Namespace: "default",
 				Labels: map[string]string{
-					config.LabelAppID:         app.ID,
-					config.LabelComponentName: naming.BoundedLabelValue(component.Name),
+					spec.LabelAppID:         app.ID,
+					spec.LabelComponentName: naming.BoundedLabelValue(component.Name),
 				},
 			},
 			Status: corev1.PodStatus{
@@ -557,9 +557,9 @@ func TestCleanupApplicationResourcesKeepsCleaningWhenPodsRemain(t *testing.T) {
 			Name:      "web-pod",
 			Namespace: "default",
 			Labels: map[string]string{
-				config.LabelAppID:         app.ID,
-				config.LabelComponentName: naming.BoundedLabelValue(component.Name),
-				config.LabelComponentID:   "7",
+				spec.LabelAppID:         app.ID,
+				spec.LabelComponentName: naming.BoundedLabelValue(component.Name),
+				spec.LabelComponentID:   "7",
 			},
 		},
 	}

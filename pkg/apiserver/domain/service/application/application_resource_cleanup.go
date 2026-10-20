@@ -161,11 +161,11 @@ func (c *applicationsServiceImpl) shouldKeepCleaning(ctx context.Context, compon
 		namespace = config.DefaultNamespace
 	}
 	labelSet := labels.Set{
-		config.LabelAppID:         appID,
-		config.LabelComponentName: naming.BoundedLabelValue(name),
+		domainspec.LabelAppID:         appID,
+		domainspec.LabelComponentName: naming.BoundedLabelValue(name),
 	}
 	if component.ID > 0 {
-		labelSet[config.LabelComponentID] = strconv.Itoa(component.ID)
+		labelSet[domainspec.LabelComponentID] = strconv.Itoa(component.ID)
 	}
 	opCtx, cancel := context.WithTimeout(ctx, config.DefaultApplicationCleanupTimeout)
 	defer cancel()
@@ -241,11 +241,11 @@ func (c *applicationsServiceImpl) sharedComponentHasAbnormalPods(ctx context.Con
 	}
 	namespace := pickNamespace(strings.TrimSpace(component.Namespace), config.DefaultNamespace)
 	labelSet := labels.Set{
-		config.LabelAppID:         appID,
-		config.LabelComponentName: naming.BoundedLabelValue(componentName),
+		domainspec.LabelAppID:         appID,
+		domainspec.LabelComponentName: naming.BoundedLabelValue(componentName),
 	}
 	if component.ID > 0 {
-		labelSet[config.LabelComponentID] = strconv.Itoa(component.ID)
+		labelSet[domainspec.LabelComponentID] = strconv.Itoa(component.ID)
 	}
 
 	opCtx, cancel := context.WithTimeout(ctx, config.DefaultApplicationCleanupTimeout)
@@ -365,8 +365,8 @@ func (c *applicationsServiceImpl) deleteEvaluationJobsForComponent(ctx context.C
 		return
 	}
 	selector := labels.Set{
-		config.LabelAppID:         appID,
-		config.LabelComponentName: naming.BoundedLabelValue(componentName),
+		domainspec.LabelAppID:         appID,
+		domainspec.LabelComponentName: naming.BoundedLabelValue(componentName),
 	}.AsSelector().String()
 	opCtx, cancel := context.WithTimeout(ctx, config.DefaultApplicationCleanupTimeout)
 	jobs, err := c.KubeClient.BatchV1().Jobs(ns).List(opCtx, metav1.ListOptions{LabelSelector: selector})
@@ -400,8 +400,8 @@ func (c *applicationsServiceImpl) deleteServiceForComponent(ctx context.Context,
 		componentName := strings.TrimSpace(component.Name)
 		if appID != "" && componentName != "" {
 			labelSet := labels.Set{
-				config.LabelAppID:         appID,
-				config.LabelComponentName: naming.BoundedLabelValue(componentName),
+				domainspec.LabelAppID:         appID,
+				domainspec.LabelComponentName: naming.BoundedLabelValue(componentName),
 			}
 			opCtx, cancel := context.WithTimeout(ctx, config.DefaultApplicationCleanupTimeout)
 			serviceList, err := c.KubeClient.CoreV1().Services(ns).List(opCtx, metav1.ListOptions{
@@ -453,8 +453,8 @@ func (c *applicationsServiceImpl) deleteIngressForComponent(ctx context.Context,
 	}
 
 	labelSet := labels.Set{
-		config.LabelAppID:         appID,
-		config.LabelComponentName: naming.BoundedLabelValue(componentName),
+		domainspec.LabelAppID:         appID,
+		domainspec.LabelComponentName: naming.BoundedLabelValue(componentName),
 	}
 	opCtx, cancel := context.WithTimeout(ctx, config.DefaultApplicationCleanupTimeout)
 	ingressList, err := c.KubeClient.NetworkingV1().Ingresses(ns).List(opCtx, metav1.ListOptions{

@@ -283,8 +283,8 @@ func defaultServiceSelector(component *model.ApplicationComponent) map[string]st
 		return nil
 	}
 	selector := map[string]string{
-		config.LabelAppID:         component.AppID,
-		config.LabelComponentName: naming.BoundedLabelValue(component.Name),
+		spec.LabelAppID:         component.AppID,
+		spec.LabelComponentName: naming.BoundedLabelValue(component.Name),
 	}
 	return selector
 }
@@ -302,14 +302,14 @@ func bindManagedServiceSelectorIdentity(selector map[string]string, component *m
 	if len(selector) == 0 || component == nil {
 		return
 	}
-	if _, exists := selector[config.LabelAppID]; exists {
-		selector[config.LabelAppID] = component.AppID
+	if _, exists := selector[spec.LabelAppID]; exists {
+		selector[spec.LabelAppID] = component.AppID
 	}
-	if _, exists := selector[config.LabelComponentID]; exists {
-		selector[config.LabelComponentID] = fmt.Sprintf("%d", component.ID)
+	if _, exists := selector[spec.LabelComponentID]; exists {
+		selector[spec.LabelComponentID] = fmt.Sprintf("%d", component.ID)
 	}
-	if _, exists := selector[config.LabelComponentName]; exists {
-		selector[config.LabelComponentName] = naming.BoundedLabelValue(component.Name)
+	if _, exists := selector[spec.LabelComponentName]; exists {
+		selector[spec.LabelComponentName] = naming.BoundedLabelValue(component.Name)
 	}
 }
 
@@ -329,7 +329,7 @@ func normalizeServiceTraitSelector(selector map[string]string, properties *model
 }
 
 func selectorTargetsGeneratedLabel(key string, properties *model.Properties) bool {
-	if key == config.LabelComponentName {
+	if key == spec.LabelComponentName {
 		return true
 	}
 	if properties == nil {

@@ -16,6 +16,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
@@ -80,8 +81,8 @@ func TestExportComponentFilesZipPendingPodReturnsPendingError(t *testing.T) {
 			Name:      "pod-pending",
 			Namespace: config.DefaultNamespace,
 			Labels: map[string]string{
-				config.LabelAppID:         "app-1",
-				config.LabelComponentName: "api",
+				spec.LabelAppID:         "app-1",
+				spec.LabelComponentName: "api",
 			},
 		},
 		Spec:   corev1.PodSpec{Containers: []corev1.Container{{Name: "api"}}},

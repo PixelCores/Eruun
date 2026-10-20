@@ -15,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinstant"
@@ -173,7 +174,7 @@ func TestRecoveredJobAdmissionUsesDatabaseDeadline(t *testing.T) {
 					task.JobType, task.Status, task.Attempt = string(kind), config.StatusRunning, 1
 					live := task.JobInfo.(*batchv1.Job)
 					live.UID, live.ResourceVersion = "existing-attempt", "1"
-					live.Labels = map[string]string{config.LabelManagedBy: config.ManagedByEruun}
+					live.Labels = map[string]string{spec.LabelManagedBy: config.ManagedByEruun}
 					ttl := int32(7200)
 					live.Spec.TTLSecondsAfterFinished = &ttl
 					jobresult.StampJobExecutionIdentity(task, live)

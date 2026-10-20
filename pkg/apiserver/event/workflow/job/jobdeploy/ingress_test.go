@@ -10,6 +10,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 )
 
@@ -49,7 +50,7 @@ func TestIngressNeedsUpdate(t *testing.T) {
 		},
 		{
 			name:    "system labels preserved",
-			current: newIngressForTest("ing", baseSpec, map[string]string{"app": "a", config.LabelManagedBy: config.ManagedByEruun}, nil),
+			current: newIngressForTest("ing", baseSpec, map[string]string{"app": "a", domainspec.LabelManagedBy: config.ManagedByEruun}, nil),
 			desired: newIngressForTest("ing", baseSpec, map[string]string{"app": "a"}, nil),
 			want:    false,
 		},
@@ -126,21 +127,21 @@ func TestIngressSpecsOverlap(t *testing.T) {
 
 func TestReusableIngressScore(t *testing.T) {
 	desired := newIngressForTest("ing-demo-newappid", ingressSpecForTest("example.com", "/", networkingv1.PathTypePrefix), map[string]string{
-		config.LabelAppID:         "newappid",
-		config.LabelComponentName: "demo",
+		domainspec.LabelAppID:         "newappid",
+		domainspec.LabelComponentName: "demo",
 	}, nil)
 
 	sameApp := newIngressForTest("ing-demo-oldappid", desired.Spec, map[string]string{
-		config.LabelAppID:         "newappid",
-		config.LabelComponentName: "other",
+		domainspec.LabelAppID:         "newappid",
+		domainspec.LabelComponentName: "other",
 	}, nil)
 	sameComponent := newIngressForTest("ing-demo-oldappid", desired.Spec, map[string]string{
-		config.LabelAppID:         "otherappid",
-		config.LabelComponentName: "demo",
+		domainspec.LabelAppID:         "otherappid",
+		domainspec.LabelComponentName: "demo",
 	}, nil)
 	sameComponentSameApp := newIngressForTest("ing-demo-oldappid", desired.Spec, map[string]string{
-		config.LabelAppID:         "newappid",
-		config.LabelComponentName: "demo",
+		domainspec.LabelAppID:         "newappid",
+		domainspec.LabelComponentName: "demo",
 	}, nil)
 	sameLogicalBase := newIngressForTest("ing-demo-newappid", desired.Spec, nil, nil)
 	unknown := newIngressForTest("custom-ingress", desired.Spec, nil, nil)
@@ -154,13 +155,13 @@ func TestReusableIngressScore(t *testing.T) {
 
 func TestFindReusableIngressName(t *testing.T) {
 	desired := newIngressForTest("ing-game-socket-ingress-newid", ingressSpecForTest("socket.example.com", "/ws/abc/", networkingv1.PathTypePrefix), map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "game-socket",
+		domainspec.LabelAppID:         "app-1",
+		domainspec.LabelComponentName: "game-socket",
 	}, nil)
 
 	existing := newIngressForTest("ing-game-socket-ingress-oldid", desired.Spec, map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "game-socket",
+		domainspec.LabelAppID:         "app-1",
+		domainspec.LabelComponentName: "game-socket",
 	}, nil)
 	other := newIngressForTest("ing-other-app", ingressSpecForTest("example.com", "/", networkingv1.PathTypePrefix), nil, nil)
 

@@ -33,7 +33,7 @@ func rewriteServiceSelectorValues(values map[string]string, rewriteMap *template
 		return
 	}
 	for key, value := range values {
-		if key == config.LabelComponentName {
+		if key == spec.LabelComponentName {
 			if mapped, ok := rewriteMap.exactValue(value); ok {
 				values[key] = mapped
 			}

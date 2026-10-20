@@ -615,7 +615,7 @@ func TestCreateApplications_RejectsReservedPropertiesLabels(t *testing.T) {
 			Image:         "nginx:latest",
 			Properties: apisv1.Properties{
 				Labels: map[string]string{
-					config.LabelComponentName: "custom-backend",
+					spec.LabelComponentName: "custom-backend",
 				},
 			},
 		}},
@@ -825,10 +825,10 @@ func TestPrepareComponentsPreservesEmptySecretMapForURLBackedSecret(t *testing.T
 		Name:      "remote-secret",
 		Namespace: config.DefaultNamespace,
 		Labels: map[string]string{
-			config.LabelManagedBy:     config.ManagedByEruun,
-			config.LabelAppID:         "app-1",
-			config.LabelComponentID:   "0",
-			config.LabelComponentName: "remote-secret",
+			spec.LabelManagedBy:     config.ManagedByEruun,
+			spec.LabelAppID:         "app-1",
+			spec.LabelComponentID:   "0",
+			spec.LabelComponentName: "remote-secret",
 		},
 		URL:      "http://example.com/secret",
 		FileName: "remote.txt",

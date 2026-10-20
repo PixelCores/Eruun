@@ -1064,8 +1064,8 @@ func normalizeConvertedServiceSelector(selector map[string]string) map[string]st
 	normalized := utils.CopyStringMap(selector)
 	// Keep managed identity keys so non-external Service traits remain valid;
 	// generation rebinds their values to the target component.
-	if _, exists := normalized[config.LabelManagedBy]; exists {
-		normalized[config.LabelManagedBy] = config.ManagedByEruun
+	if _, exists := normalized[spec.LabelManagedBy]; exists {
+		normalized[spec.LabelManagedBy] = config.ManagedByEruun
 	}
 	return normalized
 }
@@ -1112,19 +1112,19 @@ func ensureShareLabels(labels map[string]string, name string) map[string]string 
 	if labels == nil {
 		labels = make(map[string]string, 2)
 	}
-	if strings.TrimSpace(labels[config.LabelShareName]) == "" {
-		labels[config.LabelShareName] = name
+	if strings.TrimSpace(labels[spec.LabelShareName]) == "" {
+		labels[spec.LabelShareName] = name
 	}
-	if strings.TrimSpace(labels[config.LabelShareStrategy]) == "" {
-		labels[config.LabelShareStrategy] = string(spec.ShareStrategyDefault)
+	if strings.TrimSpace(labels[spec.LabelShareStrategy]) == "" {
+		labels[spec.LabelShareStrategy] = string(spec.ShareStrategyDefault)
 	}
 	return labels
 }
 
 func buildShareTrait(primaryLabels, fallbackLabels map[string]string) (*spec.ShareTraitSpec, []string) {
-	strategy := strings.TrimSpace(primaryLabels[config.LabelShareStrategy])
+	strategy := strings.TrimSpace(primaryLabels[spec.LabelShareStrategy])
 	if strategy == "" && len(fallbackLabels) > 0 {
-		strategy = strings.TrimSpace(fallbackLabels[config.LabelShareStrategy])
+		strategy = strings.TrimSpace(fallbackLabels[spec.LabelShareStrategy])
 	}
 	if strategy == "" {
 		return nil, nil

@@ -22,6 +22,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
@@ -52,7 +53,7 @@ func TestStreamComponentLogsRequestOptions(t *testing.T) {
 					response := &http.Response{StatusCode: http.StatusOK, Header: make(http.Header)}
 					switch req.URL.Path {
 					case "/api/v1/namespaces/" + config.DefaultNamespace + "/pods":
-						require.Equal(t, config.LabelAppID+"=app-1,"+config.LabelComponentName+"=api", req.URL.Query().Get("labelSelector"))
+						require.Equal(t, spec.LabelAppID+"=app-1,"+spec.LabelComponentName+"=api", req.URL.Query().Get("labelSelector"))
 						response.Header.Set("Content-Type", "application/json")
 						response.Body = io.NopCloser(bytes.NewReader(podsJSON))
 					case "/api/v1/namespaces/" + config.DefaultNamespace + "/pods/pod-api/log":
@@ -135,8 +136,8 @@ func newComponentLogPod(name, namespace, appID, componentName string, containers
 			Name:      name,
 			Namespace: namespace,
 			Labels: map[string]string{
-				config.LabelAppID:         appID,
-				config.LabelComponentName: componentName,
+				spec.LabelAppID:         appID,
+				spec.LabelComponentName: componentName,
 			},
 			CreationTimestamp: metav1.NewTime(time.Now()),
 		},

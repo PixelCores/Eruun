@@ -121,14 +121,14 @@ func TestGenerateWebService_BoundsNameAndUsesStableSelector(t *testing.T) {
 	deploy, ok := result.Service.(*appsv1.Deployment)
 	require.True(t, ok)
 	require.LessOrEqual(t, len(deploy.Name), 63)
-	require.LessOrEqual(t, len(deploy.Labels[config.LabelManagedBy]), 63)
+	require.LessOrEqual(t, len(deploy.Labels[spec.LabelManagedBy]), 63)
 	require.Equal(t, map[string]string{
-		config.LabelAppID:         component.AppID,
-		config.LabelComponentName: naming.BoundedLabelValue(component.Name),
+		spec.LabelAppID:         component.AppID,
+		spec.LabelComponentName: naming.BoundedLabelValue(component.Name),
 	}, deploy.Spec.Selector.MatchLabels)
-	require.Equal(t, component.AppID, deploy.Spec.Template.Labels[config.LabelAppID])
-	require.Equal(t, naming.BoundedLabelValue(component.Name), deploy.Spec.Template.Labels[config.LabelComponentName])
-	require.LessOrEqual(t, len(deploy.Spec.Template.Labels[config.LabelComponentName]), 63)
+	require.Equal(t, component.AppID, deploy.Spec.Template.Labels[spec.LabelAppID])
+	require.Equal(t, naming.BoundedLabelValue(component.Name), deploy.Spec.Template.Labels[spec.LabelComponentName])
+	require.LessOrEqual(t, len(deploy.Spec.Template.Labels[spec.LabelComponentName]), 63)
 	require.Equal(t, "backend", deploy.Spec.Template.Labels["tier"])
 	require.Equal(t, "penalty-shootout-2026-m2606241344ccufxh-backend", deploy.Labels["name"])
 	require.Equal(t, "penalty-shootout-2026-m2606241344ccufxh-backend", deploy.Spec.Template.Labels["name"])
@@ -222,21 +222,21 @@ func TestIsDeploymentChangedWhenInitContainerImagePullPolicyDiffers(t *testing.T
 func TestIsDeploymentChangedIgnoresImmutableSelectorOnlyDrift(t *testing.T) {
 	current := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	current.Spec.Selector = &metav1.LabelSelector{MatchLabels: map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "API",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "API",
 	}}
 	current.Spec.Template.Labels = map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "API",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "API",
 	}
 	desired := current.DeepCopy()
 	desired.Spec.Selector = &metav1.LabelSelector{MatchLabels: map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: naming.BoundedLabelValue("API"),
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: naming.BoundedLabelValue("API"),
 	}}
 	desired.Spec.Template.Labels = map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: naming.BoundedLabelValue("API"),
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: naming.BoundedLabelValue("API"),
 	}
 
 	require.False(t, isDeploymentChanged(current, desired))
@@ -428,20 +428,20 @@ func TestIsDeploymentChangedIgnoresPodSpecDefaults(t *testing.T) {
 func TestIsDeploymentChangedWhenLiveOnlyCustomMetadataWouldBeRemoved(t *testing.T) {
 	current := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	current.Labels = map[string]string{
-		config.LabelAppID:   "app-1",
+		spec.LabelAppID:     "app-1",
 		"external.io/owner": "platform",
 	}
 	current.Annotations = map[string]string{
 		"external.io/revision": "42",
 	}
 	current.Spec.Selector = &metav1.LabelSelector{MatchLabels: map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
 	}}
 	current.Spec.Template.Labels = map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
-		"mesh.injected":           "true",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
+		"mesh.injected":         "true",
 	}
 	current.Spec.Template.Annotations = map[string]string{
 		"prometheus.io/scrape": "true",
@@ -449,12 +449,12 @@ func TestIsDeploymentChangedWhenLiveOnlyCustomMetadataWouldBeRemoved(t *testing.
 
 	desired := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	desired.Labels = map[string]string{
-		config.LabelAppID: "app-1",
+		spec.LabelAppID: "app-1",
 	}
 	desired.Spec.Selector = current.Spec.Selector.DeepCopy()
 	desired.Spec.Template.Labels = map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
 	}
 
 	require.True(t, isDeploymentChanged(current, desired))
@@ -463,27 +463,27 @@ func TestIsDeploymentChangedWhenLiveOnlyCustomMetadataWouldBeRemoved(t *testing.
 func TestIsDeploymentChangedIgnoresLiveOnlySystemLabels(t *testing.T) {
 	current := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	current.Labels = map[string]string{
-		config.LabelAppID:     "app-1",
-		config.LabelShareName: "shared",
+		spec.LabelAppID:     "app-1",
+		spec.LabelShareName: "shared",
 	}
 	current.Spec.Selector = &metav1.LabelSelector{MatchLabels: map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
 	}}
 	current.Spec.Template.Labels = map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
-		config.LabelShareStrategy: string(spec.ShareStrategyIgnore),
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
+		spec.LabelShareStrategy: string(spec.ShareStrategyIgnore),
 	}
 
 	desired := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	desired.Labels = map[string]string{
-		config.LabelAppID: "app-1",
+		spec.LabelAppID: "app-1",
 	}
 	desired.Spec.Selector = current.Spec.Selector.DeepCopy()
 	desired.Spec.Template.Labels = map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
 	}
 
 	require.False(t, isDeploymentChanged(current, desired))
@@ -501,13 +501,13 @@ func TestDeploymentForExistingUpdatePreservesImmutableSelector(t *testing.T) {
 
 	desired := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	desired.Spec.Selector = &metav1.LabelSelector{MatchLabels: map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
 	}}
 	desired.Spec.Template.Labels = map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
-		"tier":                    "backend",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
+		"tier":                  "backend",
 	}
 
 	update := deploymentForExistingUpdate(current, desired)
@@ -515,11 +515,11 @@ func TestDeploymentForExistingUpdatePreservesImmutableSelector(t *testing.T) {
 	require.Equal(t, "42", update.ResourceVersion)
 	require.Equal(t, current.Spec.Selector, update.Spec.Selector)
 	require.Equal(t, "true", update.Spec.Template.Labels["legacy-selector"])
-	require.Equal(t, "app-1", update.Spec.Template.Labels[config.LabelAppID])
-	require.Equal(t, "api", update.Spec.Template.Labels[config.LabelComponentName])
+	require.Equal(t, "app-1", update.Spec.Template.Labels[spec.LabelAppID])
+	require.Equal(t, "api", update.Spec.Template.Labels[spec.LabelComponentName])
 	require.Equal(t, "backend", update.Spec.Template.Labels["tier"])
 	require.NotSame(t, desired, update)
-	require.Equal(t, "api", desired.Spec.Selector.MatchLabels[config.LabelComponentName])
+	require.Equal(t, "api", desired.Spec.Selector.MatchLabels[spec.LabelComponentName])
 }
 
 func TestDeploymentForExistingUpdatePreservesSystemLabelsAndRemovesStaleCustomMetadata(t *testing.T) {
@@ -528,9 +528,9 @@ func TestDeploymentForExistingUpdatePreservesSystemLabelsAndRemovesStaleCustomMe
 	current.Namespace = "default"
 	current.ResourceVersion = "42"
 	current.Labels = map[string]string{
-		config.LabelManagedBy: config.ManagedByEruun,
-		config.LabelShareName: "shared",
-		"external.io/owner":   "platform",
+		spec.LabelManagedBy: config.ManagedByEruun,
+		spec.LabelShareName: "shared",
+		"external.io/owner": "platform",
 	}
 	current.Annotations = map[string]string{
 		"checksum/config":      "old-top",
@@ -540,10 +540,10 @@ func TestDeploymentForExistingUpdatePreservesSystemLabelsAndRemovesStaleCustomMe
 		"legacy-selector": "true",
 	}}
 	current.Spec.Template.Labels = map[string]string{
-		"legacy-selector":         "true",
-		"mesh.injected":           "true",
-		"tier":                    "old",
-		config.LabelShareStrategy: string(spec.ShareStrategyIgnore),
+		"legacy-selector":       "true",
+		"mesh.injected":         "true",
+		"tier":                  "old",
+		spec.LabelShareStrategy: string(spec.ShareStrategyIgnore),
 	}
 	current.Spec.Template.Annotations = map[string]string{
 		"checksum/config":      "old-template",
@@ -552,20 +552,20 @@ func TestDeploymentForExistingUpdatePreservesSystemLabelsAndRemovesStaleCustomMe
 
 	desired := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	desired.Labels = map[string]string{
-		config.LabelManagedBy: config.ManagedByEruun,
+		spec.LabelManagedBy: config.ManagedByEruun,
 	}
 	desired.Annotations = map[string]string{
 		"checksum/config":       "new-top",
 		"eruun.io/component-id": "7",
 	}
 	desired.Spec.Selector = &metav1.LabelSelector{MatchLabels: map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
 	}}
 	desired.Spec.Template.Labels = map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
-		"tier":                    "backend",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
+		"tier":                  "backend",
 	}
 	desired.Spec.Template.Annotations = map[string]string{
 		"checksum/config": "new-template",
@@ -576,18 +576,18 @@ func TestDeploymentForExistingUpdatePreservesSystemLabelsAndRemovesStaleCustomMe
 	require.Equal(t, "web-api", update.Name)
 	require.Equal(t, "default", update.Namespace)
 	require.Equal(t, "42", update.ResourceVersion)
-	require.Equal(t, config.ManagedByEruun, update.Labels[config.LabelManagedBy])
-	require.Equal(t, "shared", update.Labels[config.LabelShareName])
+	require.Equal(t, config.ManagedByEruun, update.Labels[spec.LabelManagedBy])
+	require.Equal(t, "shared", update.Labels[spec.LabelShareName])
 	require.NotContains(t, update.Labels, "external.io/owner")
 	require.NotContains(t, update.Annotations, "external.io/revision")
 	require.Equal(t, "new-top", update.Annotations["checksum/config"])
 	require.Equal(t, "7", update.Annotations["eruun.io/component-id"])
 	require.Equal(t, current.Spec.Selector, update.Spec.Selector)
 	require.Equal(t, "true", update.Spec.Template.Labels["legacy-selector"])
-	require.Equal(t, string(spec.ShareStrategyIgnore), update.Spec.Template.Labels[config.LabelShareStrategy])
+	require.Equal(t, string(spec.ShareStrategyIgnore), update.Spec.Template.Labels[spec.LabelShareStrategy])
 	require.NotContains(t, update.Spec.Template.Labels, "mesh.injected")
 	require.Equal(t, "backend", update.Spec.Template.Labels["tier"])
-	require.Equal(t, "api", update.Spec.Template.Labels[config.LabelComponentName])
+	require.Equal(t, "api", update.Spec.Template.Labels[spec.LabelComponentName])
 	require.NotContains(t, update.Spec.Template.Annotations, "prometheus.io/scrape")
 	require.Equal(t, "new-template", update.Spec.Template.Annotations["checksum/config"])
 }
@@ -616,12 +616,12 @@ func TestDeploymentForExistingUpdateReplacesVolumeMounts(t *testing.T) {
 
 	desired := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	desired.Spec.Selector = &metav1.LabelSelector{MatchLabels: map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
 	}}
 	desired.Spec.Template.Labels = map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
 	}
 	desired.Spec.Template.Annotations = map[string]string{
 		"checksum/config": "new-template",
@@ -659,20 +659,20 @@ func TestDeployJobCtlRunReplacesStaleDeploymentVolumeMounts(t *testing.T) {
 	current.Name = deployName
 	current.Namespace = "default"
 	current.Labels = map[string]string{
-		config.LabelShareName: "shared",
-		"external.io/owner":   "platform",
+		spec.LabelShareName: "shared",
+		"external.io/owner": "platform",
 	}
 	current.Annotations = map[string]string{
 		"external.io/revision": "42",
 	}
 	current.Spec.Selector = &metav1.LabelSelector{MatchLabels: map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
 	}}
 	current.Spec.Template.Labels = map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
-		"mesh.injected":           "true",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
+		"mesh.injected":         "true",
 	}
 	current.Spec.Template.Annotations = map[string]string{
 		"prometheus.io/scrape": "true",
@@ -695,15 +695,15 @@ func TestDeployJobCtlRunReplacesStaleDeploymentVolumeMounts(t *testing.T) {
 	desired := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	desired.Namespace = "default"
 	desired.Labels = map[string]string{
-		config.LabelAppID: "app-1",
+		spec.LabelAppID: "app-1",
 	}
 	desired.Annotations = map[string]string{
 		"eruun.io/component-id": "7",
 	}
 	desired.Spec.Selector = current.Spec.Selector.DeepCopy()
 	desired.Spec.Template.Labels = map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
 	}
 	desired.Spec.Template.Annotations = map[string]string{
 		"checksum/config": "new-template",
@@ -736,8 +736,8 @@ func TestDeployJobCtlRunReplacesStaleDeploymentVolumeMounts(t *testing.T) {
 
 	updated, err := client.AppsV1().Deployments("default").Get(ctx, deployName, metav1.GetOptions{})
 	require.NoError(t, err)
-	require.Equal(t, "app-1", updated.Labels[config.LabelAppID])
-	require.Equal(t, "shared", updated.Labels[config.LabelShareName])
+	require.Equal(t, "app-1", updated.Labels[spec.LabelAppID])
+	require.Equal(t, "shared", updated.Labels[spec.LabelShareName])
 	require.NotContains(t, updated.Labels, "external.io/owner")
 	require.NotContains(t, updated.Annotations, "external.io/revision")
 	require.Equal(t, "7", updated.Annotations["eruun.io/component-id"])
@@ -769,29 +769,29 @@ func TestDeployJobCtlRunSkipsDeploymentWithOnlyLiveSystemLabels(t *testing.T) {
 	current.Name = deployName
 	current.Namespace = "default"
 	current.Labels = map[string]string{
-		config.LabelAppID:     "app-1",
-		config.LabelShareName: "shared",
+		spec.LabelAppID:     "app-1",
+		spec.LabelShareName: "shared",
 	}
 	current.Spec.Selector = &metav1.LabelSelector{MatchLabels: map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
 	}}
 	current.Spec.Template.Labels = map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
-		config.LabelShareStrategy: string(spec.ShareStrategyIgnore),
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
+		spec.LabelShareStrategy: string(spec.ShareStrategyIgnore),
 	}
 
 	client := fake.NewSimpleClientset(current)
 	desired := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	desired.Namespace = "default"
 	desired.Labels = map[string]string{
-		config.LabelAppID: "app-1",
+		spec.LabelAppID: "app-1",
 	}
 	desired.Spec.Selector = current.Spec.Selector.DeepCopy()
 	desired.Spec.Template.Labels = map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
 	}
 
 	jobTask := &model.JobTask{
@@ -808,8 +808,8 @@ func TestDeployJobCtlRunSkipsDeploymentWithOnlyLiveSystemLabels(t *testing.T) {
 
 	updated, err := client.AppsV1().Deployments("default").Get(ctx, deployName, metav1.GetOptions{})
 	require.NoError(t, err)
-	require.Equal(t, "shared", updated.Labels[config.LabelShareName])
-	require.Equal(t, string(spec.ShareStrategyIgnore), updated.Spec.Template.Labels[config.LabelShareStrategy])
+	require.Equal(t, "shared", updated.Labels[spec.LabelShareName])
+	require.Equal(t, string(spec.ShareStrategyIgnore), updated.Spec.Template.Labels[spec.LabelShareStrategy])
 	require.Equal(t, 0, jobtest.CountClientActions(client, "update", "deployments"))
 	require.Equal(t, 0, jobtest.CountClientActions(client, "patch", "deployments"))
 }
@@ -821,24 +821,24 @@ func TestDeployJobCtlRunSkipsDeploymentWithOnlyImmutableSelectorDrift(t *testing
 	current.Name = deployName
 	current.Namespace = "default"
 	current.Spec.Selector = &metav1.LabelSelector{MatchLabels: map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "API",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "API",
 	}}
 	current.Spec.Template.Labels = map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "API",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "API",
 	}
 
 	client := fake.NewSimpleClientset(current)
 	desired := current.DeepCopy()
 	desired.Namespace = "default"
 	desired.Spec.Selector = &metav1.LabelSelector{MatchLabels: map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: naming.BoundedLabelValue("API"),
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: naming.BoundedLabelValue("API"),
 	}}
 	desired.Spec.Template.Labels = map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: naming.BoundedLabelValue("API"),
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: naming.BoundedLabelValue("API"),
 	}
 
 	jobTask := &model.JobTask{
@@ -856,7 +856,7 @@ func TestDeployJobCtlRunSkipsDeploymentWithOnlyImmutableSelectorDrift(t *testing
 	updated, err := client.AppsV1().Deployments("default").Get(ctx, deployName, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Equal(t, current.Spec.Selector, updated.Spec.Selector)
-	require.Equal(t, "API", updated.Spec.Template.Labels[config.LabelComponentName])
+	require.Equal(t, "API", updated.Spec.Template.Labels[spec.LabelComponentName])
 	require.Equal(t, 0, jobtest.CountClientActions(client, "update", "deployments"))
 	require.Equal(t, 0, jobtest.CountClientActions(client, "patch", "deployments"))
 }
@@ -869,12 +869,12 @@ func TestDeployJobCtlRunUpdatesDeploymentReplicasOnly(t *testing.T) {
 	current.Namespace = "default"
 	current.Spec.Replicas = jobtest.Int32Ptr(1)
 	current.Spec.Selector = &metav1.LabelSelector{MatchLabels: map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
 	}}
 	current.Spec.Template.Labels = map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
 	}
 
 	client := fake.NewSimpleClientset(current)
@@ -912,12 +912,12 @@ func TestDeployJobCtlRunAnnotatesChangedPodTemplateWithTaskID(t *testing.T) {
 	current.Name = deployName
 	current.Namespace = "default"
 	current.Spec.Selector = &metav1.LabelSelector{MatchLabels: map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
 	}}
 	current.Spec.Template.Labels = map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
 	}
 	current.Spec.Template.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{{
 		Name:      "logs",
@@ -929,8 +929,8 @@ func TestDeployJobCtlRunAnnotatesChangedPodTemplateWithTaskID(t *testing.T) {
 	desired.Namespace = "default"
 	desired.Spec.Selector = current.Spec.Selector.DeepCopy()
 	desired.Spec.Template.Labels = map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
 	}
 	desired.Spec.Template.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{{
 		Name:      "logs",
@@ -966,12 +966,12 @@ func TestDeployJobCtlRunRestoresTaskAnnotationForUpToDateDeployment(t *testing.T
 	current.Name = deployName
 	current.Namespace = "default"
 	current.Spec.Selector = &metav1.LabelSelector{MatchLabels: map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
 	}}
 	current.Spec.Template.Labels = map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
 	}
 	current.Spec.Template.Annotations = map[string]string{
 		config.AnnotationJobTaskID: "task-template-1",
@@ -982,8 +982,8 @@ func TestDeployJobCtlRunRestoresTaskAnnotationForUpToDateDeployment(t *testing.T
 	desired.Namespace = "default"
 	desired.Spec.Selector = current.Spec.Selector.DeepCopy()
 	desired.Spec.Template.Labels = map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
 	}
 
 	jobTask := &model.JobTask{
@@ -1027,12 +1027,12 @@ func TestDeployJobCtlRunReplacesStaleDeploymentVolumeSource(t *testing.T) {
 	current.Name = deployName
 	current.Namespace = "default"
 	current.Spec.Selector = &metav1.LabelSelector{MatchLabels: map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
 	}}
 	current.Spec.Template.Labels = map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
 	}
 	current.Spec.Template.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{{
 		Name:      "runtime-data",
@@ -1050,8 +1050,8 @@ func TestDeployJobCtlRunReplacesStaleDeploymentVolumeSource(t *testing.T) {
 	desired.Namespace = "default"
 	desired.Spec.Selector = current.Spec.Selector.DeepCopy()
 	desired.Spec.Template.Labels = map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
 	}
 	desired.Spec.Template.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{{
 		Name:      "runtime-data",
@@ -1279,9 +1279,9 @@ func newWaitReadyTestPod(appID, componentName string) *corev1.Pod {
 			Name:      "demo-pod",
 			Namespace: "default",
 			Labels: map[string]string{
-				config.LabelAppID:         appID,
-				config.LabelComponentName: componentName,
-				config.LabelComponentID:   "7",
+				spec.LabelAppID:         appID,
+				spec.LabelComponentName: componentName,
+				spec.LabelComponentID:   "7",
 			},
 		},
 		Status: corev1.PodStatus{
@@ -1310,9 +1310,9 @@ func newWaitTestPod(appID, componentName, waitingReason string) *corev1.Pod {
 			Name:      "demo-pod",
 			Namespace: "default",
 			Labels: map[string]string{
-				config.LabelAppID:         appID,
-				config.LabelComponentName: componentName,
-				config.LabelComponentID:   "7",
+				spec.LabelAppID:         appID,
+				spec.LabelComponentName: componentName,
+				spec.LabelComponentID:   "7",
 			},
 		},
 		Status: corev1.PodStatus{

@@ -6,9 +6,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/conversion"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
@@ -68,9 +68,9 @@ spec:
 	require.Len(t, resp.Components, 1)
 	component := resp.Components[0]
 	require.Len(t, component.Traits.Service, 1)
-	require.Equal(t, "source-app", component.Traits.Service[0].Selector[config.LabelAppID])
-	require.Equal(t, "41", component.Traits.Service[0].Selector[config.LabelComponentID])
-	require.Equal(t, "api", component.Traits.Service[0].Selector[config.LabelComponentName])
+	require.Equal(t, "source-app", component.Traits.Service[0].Selector[spec.LabelAppID])
+	require.Equal(t, "41", component.Traits.Service[0].Selector[spec.LabelComponentID])
+	require.Equal(t, "api", component.Traits.Service[0].Selector[spec.LabelComponentName])
 
 	targetComponent := &model.ApplicationComponent{
 		ID:        99,
@@ -83,9 +83,9 @@ spec:
 	generatedService := jobdeploy.GenerateServiceFromTrait(targetComponent, &properties, component.Traits.Service[0])
 	require.NotNil(t, generatedService)
 
-	require.Equal(t, "target-app", generatedService.Spec.Selector[config.LabelAppID])
-	require.Equal(t, "99", generatedService.Spec.Selector[config.LabelComponentID])
-	require.Equal(t, "api", generatedService.Spec.Selector[config.LabelComponentName])
+	require.Equal(t, "target-app", generatedService.Spec.Selector[spec.LabelAppID])
+	require.Equal(t, "99", generatedService.Spec.Selector[spec.LabelComponentID])
+	require.Equal(t, "api", generatedService.Spec.Selector[spec.LabelComponentName])
 	for key, value := range generatedService.Spec.Selector {
 		require.Equal(t, value, podLabels[key], "service selector %s must match the generated pod labels", key)
 	}

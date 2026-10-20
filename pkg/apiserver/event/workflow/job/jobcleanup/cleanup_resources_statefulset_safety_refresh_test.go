@@ -303,11 +303,11 @@ func applyRequiredStatefulSetSafetyDrift(
 		current := requiredStatefulSetFromTracker(t, client, component.Namespace, statefulSet.Name).DeepCopy()
 		current.ResourceVersion = "12"
 		current.Labels = requiredStatefulSetSafetyComponentLabels(component)
-		current.Labels[config.LabelShareName] = "late-shared-mysql"
+		current.Labels[domainspec.LabelShareName] = "late-shared-mysql"
 		if drift == requiredStatefulSetDefaultShareDrift {
-			current.Labels[config.LabelShareStrategy] = string(domainspec.ShareStrategyDefault)
+			current.Labels[domainspec.LabelShareStrategy] = string(domainspec.ShareStrategyDefault)
 		} else {
-			current.Labels[config.LabelShareStrategy] = string(domainspec.ShareStrategyIgnore)
+			current.Labels[domainspec.LabelShareStrategy] = string(domainspec.ShareStrategyIgnore)
 		}
 		require.NoError(t, client.Tracker().Update(appsv1.SchemeGroupVersion.WithResource("statefulsets"), current, component.Namespace))
 	case requiredStatefulSetExtraTargetDrift:
@@ -333,8 +333,8 @@ func requiredStatefulSetFromTracker(t *testing.T, client *fake.Clientset, namesp
 
 func requiredStatefulSetSafetyComponentLabels(component *model.ApplicationComponent) map[string]string {
 	return map[string]string{
-		config.LabelAppID:         component.AppID,
-		config.LabelComponentName: component.Name,
+		domainspec.LabelAppID:         component.AppID,
+		domainspec.LabelComponentName: component.Name,
 	}
 }
 

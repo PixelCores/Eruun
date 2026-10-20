@@ -12,14 +12,8 @@ const (
 )
 
 const (
-	LabelManagedBy     = spec.LabelManagedBy
-	ManagedByEruun     = "eruun"
-	LabelAppID         = spec.LabelAppID
-	LabelComponentID   = spec.LabelComponentID
-	LabelComponentName = spec.LabelComponentName
-	LabelStorageRole   = "eruun.io/pvc-role"
-	LabelShareName     = spec.LabelShareName
-	LabelShareStrategy = spec.LabelShareStrategy
+	ManagedByEruun   = "eruun"
+	LabelStorageRole = "eruun.io/pvc-role"
 )
 
 type JobType = spec.JobType

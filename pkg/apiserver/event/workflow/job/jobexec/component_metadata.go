@@ -9,6 +9,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -41,10 +42,10 @@ func ApplyComponentManagedLabels(labels map[string]string, c *model.ApplicationC
 	if c == nil {
 		return labels
 	}
-	labels[config.LabelManagedBy] = config.ManagedByEruun
-	labels[config.LabelComponentID] = fmt.Sprintf("%d", c.ID)
-	labels[config.LabelAppID] = c.AppID
-	labels[config.LabelComponentName] = naming.BoundedLabelValue(c.Name)
+	labels[spec.LabelManagedBy] = config.ManagedByEruun
+	labels[spec.LabelComponentID] = fmt.Sprintf("%d", c.ID)
+	labels[spec.LabelAppID] = c.AppID
+	labels[spec.LabelComponentName] = naming.BoundedLabelValue(c.Name)
 	return labels
 }
 

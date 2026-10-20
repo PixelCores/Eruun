@@ -48,10 +48,10 @@ func TestCleanupResourcesJobCtlEnforcesRequiredStatefulSetDeletion(t *testing.T)
 			statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 			templatePVCName := "data-" + statefulSetName + "-0"
 			shareLabels := map[string]string{
-				config.LabelAppID:         component.AppID,
-				config.LabelComponentName: component.Name,
-				config.LabelShareName:     "legacy-shared-mysql",
-				config.LabelShareStrategy: string(tt.shareStrategy),
+				spec.LabelAppID:         component.AppID,
+				spec.LabelComponentName: component.Name,
+				spec.LabelShareName:     "legacy-shared-mysql",
+				spec.LabelShareStrategy: string(tt.shareStrategy),
 			}
 			client := fake.NewSimpleClientset(
 				&appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{
@@ -60,8 +60,8 @@ func TestCleanupResourcesJobCtlEnforcesRequiredStatefulSetDeletion(t *testing.T)
 				&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{
 					Name: "mysql-config", Namespace: component.Namespace,
 					Labels: map[string]string{
-						config.LabelAppID:         component.AppID,
-						config.LabelComponentName: component.Name,
+						spec.LabelAppID:         component.AppID,
+						spec.LabelComponentName: component.Name,
 					},
 				}},
 				&corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{
@@ -215,8 +215,8 @@ func TestCleanupResourcesJobCtlDeletesStatefulSetPVCsAfterWorkloadAndPods(t *tes
 	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	templatePVCName := "data-" + statefulSetName + "-0"
 	componentLabels := map[string]string{
-		config.LabelAppID:         component.AppID,
-		config.LabelComponentName: component.Name,
+		spec.LabelAppID:         component.AppID,
+		spec.LabelComponentName: component.Name,
 	}
 	client := fake.NewSimpleClientset(
 		&appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{
@@ -283,8 +283,8 @@ func TestCleanupResourcesJobCtlBlocksStatefulSetPVCDeletionForProtectedPVC(t *te
 	client := fake.NewSimpleClientset(&corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{
 		Name: templatePVCName, Namespace: component.Namespace, UID: types.UID("protected-pvc-uid"),
 		Labels: map[string]string{
-			config.LabelShareName:     "shared-mysql-data",
-			config.LabelShareStrategy: string(spec.ShareStrategyDefault),
+			spec.LabelShareName:     "shared-mysql-data",
+			spec.LabelShareStrategy: string(spec.ShareStrategyDefault),
 		},
 	}})
 	internalInfo := jobtest.VersionUpdateRequireStatefulSetPVCDeletionInternalInfo(t, "data")
@@ -324,25 +324,25 @@ func TestCleanupResourcesJobCtlPreflightsProtectedPodsBeforeAnyDelete(t *testing
 		{
 			name: "pod labels",
 			podLabels: map[string]string{
-				config.LabelAppID:         "app-1",
-				config.LabelComponentName: "mysql",
-				config.LabelShareName:     "shared-mysql",
-				config.LabelShareStrategy: string(spec.ShareStrategyIgnore),
+				spec.LabelAppID:         "app-1",
+				spec.LabelComponentName: "mysql",
+				spec.LabelShareName:     "shared-mysql",
+				spec.LabelShareStrategy: string(spec.ShareStrategyIgnore),
 			},
 			wantErrDetail: "pod default/mysql-0 is protected",
 		},
 		{
 			name: "owner job labels",
 			podLabels: map[string]string{
-				config.LabelAppID:         "app-1",
-				config.LabelComponentName: "mysql",
+				spec.LabelAppID:         "app-1",
+				spec.LabelComponentName: "mysql",
 			},
 			ownerJob: &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
 				Name: "mysql-owner", Namespace: "default",
 				UID: types.UID("mysql-owner-uid"), ResourceVersion: "21",
 				Labels: map[string]string{
-					config.LabelShareName:     "shared-mysql-owner",
-					config.LabelShareStrategy: string(spec.ShareStrategyDefault),
+					spec.LabelShareName:     "shared-mysql-owner",
+					spec.LabelShareStrategy: string(spec.ShareStrategyDefault),
 				},
 			}},
 			ownerRefs: []metav1.OwnerReference{
@@ -411,8 +411,8 @@ func TestCleanupResourcesJobCtlRechecksProtectedPodsBeforePVCDeletion(t *testing
 	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	templatePVCName := "data-" + statefulSetName + "-0"
 	componentLabels := map[string]string{
-		config.LabelAppID:         component.AppID,
-		config.LabelComponentName: component.Name,
+		spec.LabelAppID:         component.AppID,
+		spec.LabelComponentName: component.Name,
 	}
 	client := fake.NewSimpleClientset(
 		&appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{
@@ -431,8 +431,8 @@ func TestCleanupResourcesJobCtlRechecksProtectedPodsBeforePVCDeletion(t *testing
 			return true, nil, err
 		}
 		pod := obj.(*corev1.Pod).DeepCopy()
-		pod.Labels[config.LabelShareName] = "late-shared-mysql"
-		pod.Labels[config.LabelShareStrategy] = string(spec.ShareStrategyDefault)
+		pod.Labels[spec.LabelShareName] = "late-shared-mysql"
+		pod.Labels[spec.LabelShareStrategy] = string(spec.ShareStrategyDefault)
 		if err := client.Tracker().Update(podResource, pod, component.Namespace); err != nil {
 			return true, nil, err
 		}
@@ -490,8 +490,8 @@ func TestCleanupResourcesJobCtlDoesNotSilentlySkipRequiredStatefulSetDeletion(t 
 	client := fake.NewSimpleClientset(&appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{
 		Name: statefulSetName, Namespace: component.Namespace,
 		Labels: map[string]string{
-			config.LabelShareName:     "shared-mysql",
-			config.LabelShareStrategy: string(spec.ShareStrategyDefault),
+			spec.LabelShareName:     "shared-mysql",
+			spec.LabelShareStrategy: string(spec.ShareStrategyDefault),
 		},
 	}})
 	task := &model.JobTask{

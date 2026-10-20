@@ -1035,8 +1035,8 @@ func newRequiredStatefulSetOwnerJobPodController(t *testing.T) (
 		Name: "mysql-owner-pod", Namespace: component.Namespace,
 		UID: types.UID("owner-pod-uid"), ResourceVersion: "31",
 		Labels: map[string]string{
-			config.LabelAppID:         component.AppID,
-			config.LabelComponentName: component.Name,
+			domainspec.LabelAppID:         component.AppID,
+			domainspec.LabelComponentName: component.Name,
 		},
 		OwnerReferences: []metav1.OwnerReference{{
 			APIVersion: "batch/v1", Kind: "Job", Name: ownerJob.Name, UID: ownerJob.UID,
@@ -1071,8 +1071,8 @@ func requiredStatefulSetPodCheckpointContainsPod(
 
 func protectedRequiredStatefulSetCleanupLabels(shareName string) map[string]string {
 	return map[string]string{
-		config.LabelShareName:     shareName,
-		config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
+		domainspec.LabelShareName:     shareName,
+		domainspec.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 	}
 }
 

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/stretchr/testify/require"
@@ -21,7 +20,7 @@ func TestBuildCommandJobUsesReferencesWithoutApplication(t *testing.T) {
 	job, err := buildCommandJob("command-task-1", "space", spec.CommandJobSpec{Image: "busybox:1.37.0", Command: []string{"echo"}, Args: []string{"hello"}, TimeoutSeconds: 60}, traits)
 	require.NoError(t, err)
 	require.Equal(t, "space", job.Namespace)
-	require.Empty(t, job.Labels[config.LabelAppID])
+	require.Empty(t, job.Labels[spec.LabelAppID])
 	require.EqualValues(t, 0, *job.Spec.BackoffLimit)
 	require.False(t, *job.Spec.Template.Spec.AutomountServiceAccountToken)
 	require.Nil(t, job.Spec.TTLSecondsAfterFinished, "durable checkpoint establishes retention before creation")

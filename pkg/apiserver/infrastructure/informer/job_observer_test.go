@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/stretchr/testify/require"
 	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -19,7 +20,7 @@ import (
 func TestJobObserverUsesManagedSelectorAndPreservesSnapshotFields(t *testing.T) {
 	job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
 		Name: "runner", Namespace: "own", UID: "job-uid", ResourceVersion: "8",
-		Labels:        map[string]string{config.LabelManagedBy: config.ManagedByEruun},
+		Labels:        map[string]string{spec.LabelManagedBy: config.ManagedByEruun},
 		Annotations:   map[string]string{config.AnnotationJobTaskID: "task"},
 		ManagedFields: []metav1.ManagedFieldsEntry{{Manager: "kube-controller-manager"}},
 	}, Status: batchv1.JobStatus{Active: 1}}
@@ -91,7 +92,7 @@ func TestJobObserverCacheAbsenceAndCancellationDoNotImplyTerminal(t *testing.T) 
 func TestJobObserverSelectorExitRemainsUnknown(t *testing.T) {
 	job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
 		Name: "runner", Namespace: "own", UID: "job-uid",
-		Labels: map[string]string{config.LabelManagedBy: config.ManagedByEruun},
+		Labels: map[string]string{spec.LabelManagedBy: config.ManagedByEruun},
 	}}
 	observer := NewKubernetesWorkloadObserver(fake.NewSimpleClientset(job))
 	startKubernetesWorkloadObserver(t, observer)

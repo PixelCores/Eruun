@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -24,7 +25,7 @@ func TestSandboxObserverLimitsResourcesAndIndexesOwnedPods(t *testing.T) {
 	sandbox := &unstructured.Unstructured{Object: map[string]interface{}{
 		"apiVersion": "agents.kruise.io/v1alpha1", "kind": "Sandbox",
 		"metadata": map[string]interface{}{"name": "trial", "namespace": "own", "uid": "sandbox-uid", "resourceVersion": "9", "generation": int64(2),
-			"labels":        map[string]interface{}{config.LabelManagedBy: config.ManagedByEruun, "eruun.io/task-id": "task"},
+			"labels":        map[string]interface{}{spec.LabelManagedBy: config.ManagedByEruun, "eruun.io/task-id": "task"},
 			"managedFields": []interface{}{map[string]interface{}{"manager": "sandbox-controller"}}},
 		"spec":   map[string]interface{}{"template": map[string]interface{}{}},
 		"status": map[string]interface{}{"observedGeneration": int64(2), "phase": "Running"},

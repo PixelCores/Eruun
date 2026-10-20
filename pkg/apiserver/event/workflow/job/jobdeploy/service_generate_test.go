@@ -60,7 +60,7 @@ func TestGenerateServiceFromTrait_UsesTraitFields(t *testing.T) {
 	if got := svc.Spec.Selector["mysql-pod-role"]; got != "master" {
 		t.Fatalf("unexpected selector mysql-pod-role=%q", got)
 	}
-	if _, exists := svc.Spec.Selector[config.LabelAppID]; exists {
+	if _, exists := svc.Spec.Selector[spec.LabelAppID]; exists {
 		t.Fatalf("expected custom selector to remain unchanged, got %+v", svc.Spec.Selector)
 	}
 	if got := svc.Labels["layer"]; got != "db" {
@@ -82,20 +82,20 @@ func TestBuildLabels_ManagedLabelsOverridePropertiesLabels(t *testing.T) {
 	}
 	properties := &model.Properties{
 		Labels: map[string]string{
-			config.LabelManagedBy:     config.ManagedByEruun,
-			config.LabelAppID:         "evil-app",
-			config.LabelComponentID:   "99",
-			config.LabelComponentName: "custom-api",
-			"team":                    "Platform Team",
+			spec.LabelManagedBy:     config.ManagedByEruun,
+			spec.LabelAppID:         "evil-app",
+			spec.LabelComponentID:   "99",
+			spec.LabelComponentName: "custom-api",
+			"team":                  "Platform Team",
 		},
 	}
 
 	labels := jobexec.BuildLabels(component, properties)
 
-	require.Equal(t, config.ManagedByEruun, labels[config.LabelManagedBy])
-	require.Equal(t, "app-1", labels[config.LabelAppID])
-	require.Equal(t, "7", labels[config.LabelComponentID])
-	require.Equal(t, "api", labels[config.LabelComponentName])
+	require.Equal(t, config.ManagedByEruun, labels[spec.LabelManagedBy])
+	require.Equal(t, "app-1", labels[spec.LabelAppID])
+	require.Equal(t, "7", labels[spec.LabelComponentID])
+	require.Equal(t, "api", labels[spec.LabelComponentName])
 	require.Equal(t, "platform-team", labels["team"])
 }
 
@@ -118,11 +118,11 @@ func TestGenerateServiceFromTrait_ManagedLabelsOverrideTraitLabels(t *testing.T)
 			"app": "api",
 		},
 		Labels: map[string]string{
-			config.LabelManagedBy:     config.ManagedByEruun,
-			config.LabelAppID:         "evil-app",
-			config.LabelComponentID:   "99",
-			config.LabelComponentName: "custom-api",
-			"layer":                   "Edge Service",
+			spec.LabelManagedBy:     config.ManagedByEruun,
+			spec.LabelAppID:         "evil-app",
+			spec.LabelComponentID:   "99",
+			spec.LabelComponentName: "custom-api",
+			"layer":                 "Edge Service",
 		},
 		Ports: []spec.ServicePortTraitSpec{
 			{Port: 8080},
@@ -132,10 +132,10 @@ func TestGenerateServiceFromTrait_ManagedLabelsOverrideTraitLabels(t *testing.T)
 	svc := GenerateServiceFromTrait(component, properties, trait)
 
 	require.NotNil(t, svc)
-	require.Equal(t, config.ManagedByEruun, svc.Labels[config.LabelManagedBy])
-	require.Equal(t, "app-1", svc.Labels[config.LabelAppID])
-	require.Equal(t, "7", svc.Labels[config.LabelComponentID])
-	require.Equal(t, "api", svc.Labels[config.LabelComponentName])
+	require.Equal(t, config.ManagedByEruun, svc.Labels[spec.LabelManagedBy])
+	require.Equal(t, "app-1", svc.Labels[spec.LabelAppID])
+	require.Equal(t, "7", svc.Labels[spec.LabelComponentID])
+	require.Equal(t, "api", svc.Labels[spec.LabelComponentName])
 	require.Equal(t, "platform-team", svc.Labels["team"])
 	require.Equal(t, "edge-service", svc.Labels["layer"])
 }
@@ -149,11 +149,11 @@ func TestGenerateServiceFromTrait_RebindsManagedIdentitySelectors(t *testing.T) 
 	}
 	trait := spec.ServiceTraitSpec{
 		Selector: map[string]string{
-			config.LabelManagedBy:     "Helm",
-			config.LabelAppID:         "source-app",
-			config.LabelComponentID:   "41",
-			config.LabelComponentName: "source-api",
-			"role":                    "backend",
+			spec.LabelManagedBy:     "Helm",
+			spec.LabelAppID:         "source-app",
+			spec.LabelComponentID:   "41",
+			spec.LabelComponentName: "source-api",
+			"role":                  "backend",
 		},
 		Ports: []spec.ServicePortTraitSpec{{Port: 8080}},
 	}
@@ -161,10 +161,10 @@ func TestGenerateServiceFromTrait_RebindsManagedIdentitySelectors(t *testing.T) 
 	svc := GenerateServiceFromTrait(component, nil, trait)
 
 	require.NotNil(t, svc)
-	require.Equal(t, "Helm", svc.Spec.Selector[config.LabelManagedBy])
-	require.Equal(t, "target-app", svc.Spec.Selector[config.LabelAppID])
-	require.Equal(t, "7", svc.Spec.Selector[config.LabelComponentID])
-	require.Equal(t, "api", svc.Spec.Selector[config.LabelComponentName])
+	require.Equal(t, "Helm", svc.Spec.Selector[spec.LabelManagedBy])
+	require.Equal(t, "target-app", svc.Spec.Selector[spec.LabelAppID])
+	require.Equal(t, "7", svc.Spec.Selector[spec.LabelComponentID])
+	require.Equal(t, "api", svc.Spec.Selector[spec.LabelComponentName])
 	require.Equal(t, "backend", svc.Spec.Selector["role"])
 }
 
@@ -176,12 +176,12 @@ func TestGenerateServiceFromTrait_NormalizesGeneratedSelectorsAndPreservesValidE
 	}
 	trait := spec.ServiceTraitSpec{
 		Selector: map[string]string{
-			config.LabelManagedBy:     "Helm",
-			config.LabelComponentName: "API",
-			"role":                    "API",
-			"game":                    "Penalty Shootout 2026",
-			"version":                 "v1.2.3",
-			"track":                   "canary_A",
+			spec.LabelManagedBy:     "Helm",
+			spec.LabelComponentName: "API",
+			"role":                  "API",
+			"game":                  "Penalty Shootout 2026",
+			"version":               "v1.2.3",
+			"track":                 "canary_A",
 		},
 		Ports: []spec.ServicePortTraitSpec{
 			{Port: 8080},
@@ -190,8 +190,8 @@ func TestGenerateServiceFromTrait_NormalizesGeneratedSelectorsAndPreservesValidE
 
 	svc := GenerateServiceFromTrait(component, nil, trait)
 	require.NotNil(t, svc)
-	require.Equal(t, "Helm", svc.Spec.Selector[config.LabelManagedBy])
-	require.Equal(t, "api", svc.Spec.Selector[config.LabelComponentName])
+	require.Equal(t, "Helm", svc.Spec.Selector[spec.LabelManagedBy])
+	require.Equal(t, "api", svc.Spec.Selector[spec.LabelComponentName])
 	require.Equal(t, "API", svc.Spec.Selector["role"])
 	require.Equal(t, "penalty-shootout-2026", svc.Spec.Selector["game"])
 	require.Equal(t, "v1.2.3", svc.Spec.Selector["version"])
@@ -339,10 +339,10 @@ func TestGenerateServiceFromTrait_DefaultSelectorWhenEmpty(t *testing.T) {
 	if svc == nil {
 		t.Fatalf("expected service spec")
 	}
-	if got := svc.Spec.Selector[config.LabelAppID]; got != "app-4" {
+	if got := svc.Spec.Selector[spec.LabelAppID]; got != "app-4" {
 		t.Fatalf("expected default selector app label app-4, got %q", got)
 	}
-	if got := svc.Spec.Selector[config.LabelComponentName]; got != "api" {
+	if got := svc.Spec.Selector[spec.LabelComponentName]; got != "api" {
 		t.Fatalf("expected default selector component label api, got %q", got)
 	}
 }
@@ -401,8 +401,8 @@ func TestGenerateService_Default(t *testing.T) {
 		t.Fatalf("unexpected service name: %#v", svc.Name)
 	}
 	require.Equal(t, map[string]string{
-		config.LabelAppID:         component.AppID,
-		config.LabelComponentName: component.Name,
+		spec.LabelAppID:         component.AppID,
+		spec.LabelComponentName: component.Name,
 	}, svc.Spec.Selector)
 	if svc.Spec.Type != corev1.ServiceTypeClusterIP {
 		t.Fatalf("expected ClusterIP service, got %#v", svc.Spec.Type)

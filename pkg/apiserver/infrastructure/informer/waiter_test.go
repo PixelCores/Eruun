@@ -13,6 +13,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
 func TestResourceReadyWaiterPodAbnormalUpdates(t *testing.T) {
@@ -929,9 +930,9 @@ func newTestPod(namespace, name, appID, componentName string, componentID int, s
 			Namespace: namespace,
 			Name:      name,
 			Labels: map[string]string{
-				config.LabelAppID:         appID,
-				config.LabelComponentName: componentName,
-				config.LabelComponentID:   strconv.Itoa(componentID),
+				spec.LabelAppID:         appID,
+				spec.LabelComponentName: componentName,
+				spec.LabelComponentID:   strconv.Itoa(componentID),
 			},
 		},
 		Status: corev1.PodStatus{

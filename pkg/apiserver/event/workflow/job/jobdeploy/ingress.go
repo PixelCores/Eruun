@@ -205,14 +205,14 @@ func reusableIngressScore(existing, desired *networkingv1.Ingress) int {
 		return 0
 	}
 
-	desiredAppLabel := strings.TrimSpace(desired.Labels[config.LabelAppID])
-	existingAppLabel := strings.TrimSpace(existing.Labels[config.LabelAppID])
+	desiredAppLabel := strings.TrimSpace(desired.Labels[domainspec.LabelAppID])
+	existingAppLabel := strings.TrimSpace(existing.Labels[domainspec.LabelAppID])
 	if desiredAppLabel != "" && desiredAppLabel == existingAppLabel {
 		return 3
 	}
 
-	desiredComponent := strings.TrimSpace(desired.Labels[config.LabelComponentName])
-	existingComponent := strings.TrimSpace(existing.Labels[config.LabelComponentName])
+	desiredComponent := strings.TrimSpace(desired.Labels[domainspec.LabelComponentName])
+	existingComponent := strings.TrimSpace(existing.Labels[domainspec.LabelComponentName])
 	if desiredComponent != "" && existingComponent != "" && desiredComponent == existingComponent {
 		return 2
 	}
@@ -230,7 +230,7 @@ func ingressAppIdentity(ing *networkingv1.Ingress) string {
 	if ing == nil {
 		return ""
 	}
-	if appID := strings.TrimSpace(ing.Labels[config.LabelAppID]); appID != "" {
+	if appID := strings.TrimSpace(ing.Labels[domainspec.LabelAppID]); appID != "" {
 		return appID
 	}
 	return ingressAppSegment(ing.Name)

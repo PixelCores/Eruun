@@ -14,6 +14,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -248,7 +249,7 @@ func TestDelayResultPayloadAndDecode(t *testing.T) {
 			Name:      "job-2",
 			Namespace: "ns-1",
 			Labels: map[string]string{
-				config.LabelComponentName: "svc-b",
+				spec.LabelComponentName: "svc-b",
 			},
 		},
 	}

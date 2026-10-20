@@ -14,6 +14,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
 )
 
@@ -301,9 +302,9 @@ func extractComponentMeta(labels map[string]string) (string, string, int, bool) 
 	if len(labels) == 0 {
 		return "", "", 0, false
 	}
-	appID := labels[config.LabelAppID]
-	componentName := labels[config.LabelComponentName]
-	componentIDStr := labels[config.LabelComponentID]
+	appID := labels[spec.LabelAppID]
+	componentName := labels[spec.LabelComponentName]
+	componentIDStr := labels[spec.LabelComponentID]
 	if appID == "" || componentName == "" || componentIDStr == "" {
 		return "", "", 0, false
 	}

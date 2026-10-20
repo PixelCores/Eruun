@@ -19,12 +19,13 @@ import (
 	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
 func TestKubernetesWorkloadObserverFindsReadyMatchingPod(t *testing.T) {
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "api-1", Namespace: "team-a", Labels: map[string]string{
-			config.LabelAppID: "app-1", config.LabelComponentName: "api",
+			spec.LabelAppID: "app-1", spec.LabelComponentName: "api",
 		}, Annotations: map[string]string{"rollout": "v2"}},
 		Spec:   corev1.PodSpec{Containers: []corev1.Container{{Name: "api", Image: "example/api:v2"}}},
 		Status: corev1.PodStatus{Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}},
@@ -42,7 +43,7 @@ func TestKubernetesWorkloadObserverFindsReadyMatchingPod(t *testing.T) {
 func TestKubernetesWorkloadObserverRetriesTransientListError(t *testing.T) {
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "api-1", Namespace: "team-a", Labels: map[string]string{
-			config.LabelAppID: "app-1", config.LabelComponentName: "api",
+			spec.LabelAppID: "app-1", spec.LabelComponentName: "api",
 		}},
 		Status: corev1.PodStatus{Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}},
 	}
@@ -85,7 +86,7 @@ func TestKubernetesWorkloadObserverFailsWhenInitialSyncTimesOut(t *testing.T) {
 func TestKubernetesWorkloadObserverReusesSharedPodCache(t *testing.T) {
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "api-1", Namespace: "team-a", Labels: map[string]string{
-			config.LabelAppID: "app-1", config.LabelComponentName: "api",
+			spec.LabelAppID: "app-1", spec.LabelComponentName: "api",
 		}},
 		Status: corev1.PodStatus{Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}},
 	}
@@ -137,8 +138,8 @@ func (l *stagedPodLister) Pods(string) corelisters.PodNamespaceLister {
 
 func TestKubernetesWorkloadObserverClearsRecoveredAbnormalSnapshot(t *testing.T) {
 	labels := map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "api",
+		spec.LabelAppID:         "app-1",
+		spec.LabelComponentName: "api",
 	}
 	abnormal := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "api-1", Namespace: "team-a", Labels: labels},

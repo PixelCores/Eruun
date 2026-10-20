@@ -19,6 +19,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
@@ -201,7 +202,7 @@ func TestRetrySelectorExitRepairsObservationBeforeLaterDeletion(t *testing.T) {
 		object, err := client.Tracker().Get(batchv1.SchemeGroupVersion.WithResource("jobs"), live.Namespace, live.Name)
 		require.NoError(t, err)
 		repaired := object.(*batchv1.Job)
-		require.Equal(t, config.ManagedByEruun, repaired.Labels[config.LabelManagedBy])
+		require.Equal(t, config.ManagedByEruun, repaired.Labels[spec.LabelManagedBy])
 		require.Equal(t, live.UID, repaired.UID)
 		done, err = check(repaired)
 		require.NoError(t, err)
@@ -276,12 +277,12 @@ func TestRetryAddsObserverLabelOnlyToFencedOwnedJob(t *testing.T) {
 			ttl := int32(3600)
 			live.Spec.TTLSecondsAfterFinished = &ttl
 			cp := &jobinfo.InstantJobRetryCheckpoint{Job: live.DeepCopy(), Attempt: 1, CurrentUID: live.UID}
-			cp.Job.Labels = map[string]string{config.LabelManagedBy: config.ManagedByEruun}
+			cp.Job.Labels = map[string]string{spec.LabelManagedBy: config.ManagedByEruun}
 			if tc.otherUID {
 				live.UID = "foreign"
 			}
 			if tc.otherOwner {
-				live.Labels = map[string]string{config.LabelManagedBy: "another-controller"}
+				live.Labels = map[string]string{spec.LabelManagedBy: "another-controller"}
 			}
 			client := fake.NewSimpleClientset(live)
 			client.PrependReactor("update", "jobs", func(action ktesting.Action) (bool, runtime.Object, error) {
@@ -301,7 +302,7 @@ func TestRetryAddsObserverLabelOnlyToFencedOwnedJob(t *testing.T) {
 				require.NoError(t, err)
 				updated, getErr := client.BatchV1().Jobs(live.Namespace).Get(context.Background(), live.Name, metav1.GetOptions{})
 				require.NoError(t, getErr)
-				require.Equal(t, config.ManagedByEruun, updated.Labels[config.LabelManagedBy])
+				require.Equal(t, config.ManagedByEruun, updated.Labels[spec.LabelManagedBy])
 				require.Nil(t, live.Labels, "the authoritative snapshot must not be mutated")
 			}
 			if tc.otherUID || tc.otherOwner {
@@ -320,7 +321,7 @@ func TestRetryLabelBackfillStopsAfterLeaseLoss(t *testing.T) {
 	ttl := int32(3600)
 	live.Spec.TTLSecondsAfterFinished = &ttl
 	cp := &jobinfo.InstantJobRetryCheckpoint{Job: live.DeepCopy(), Attempt: 1, CurrentUID: live.UID}
-	cp.Job.Labels = map[string]string{config.LabelManagedBy: config.ManagedByEruun}
+	cp.Job.Labels = map[string]string{spec.LabelManagedBy: config.ManagedByEruun}
 	client := fake.NewSimpleClientset(live)
 	store := &retryOwnedCheckpointStore{owner: model.WorkflowQueue{
 		TaskID: task.TaskID, Status: config.StatusRunning, RunGeneration: 2, RunToken: "new-token", WorkerID: "new-worker",

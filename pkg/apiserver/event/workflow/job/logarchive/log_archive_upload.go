@@ -13,6 +13,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
@@ -179,8 +180,8 @@ func (c *LogArchiveUploadJobCtl) resolveLogArchiveUploadTarget(ctx context.Conte
 		namespace = config.DefaultNamespace
 	}
 	pods, err := kube.ListPodsByLabels(ctx, c.Client, namespace, labels.Set{
-		config.LabelAppID:         component.AppID,
-		config.LabelComponentName: naming.BoundedLabelValue(component.Name),
+		spec.LabelAppID:         component.AppID,
+		spec.LabelComponentName: naming.BoundedLabelValue(component.Name),
 	})
 	if err != nil {
 		return nil, err

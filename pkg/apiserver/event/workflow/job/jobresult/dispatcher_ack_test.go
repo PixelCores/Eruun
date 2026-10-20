@@ -20,6 +20,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
@@ -214,7 +215,7 @@ func TestResultDispatcherHandleMessageLeavesActiveProcessingQueueMessage(t *test
 			Name:      "delay-job-redelivery",
 			Namespace: "default",
 			Labels: map[string]string{
-				config.LabelComponentName: "svc-a",
+				spec.LabelComponentName: "svc-a",
 			},
 		},
 		Status: batchv1.JobStatus{
@@ -278,7 +279,7 @@ func TestResultDispatcherHandleMessageProcessesDispatchingOutbox(t *testing.T) {
 			Name:      "delay-job-dispatching",
 			Namespace: "default",
 			Labels: map[string]string{
-				config.LabelComponentName: "svc-a",
+				spec.LabelComponentName: "svc-a",
 			},
 		},
 		Status: batchv1.JobStatus{
@@ -341,7 +342,7 @@ func TestResultDispatcherHandleMessageDispatchingClaimLostToQueuedContinuesProce
 			Name:      "delay-job-dispatching-race",
 			Namespace: "default",
 			Labels: map[string]string{
-				config.LabelComponentName: "svc-a",
+				spec.LabelComponentName: "svc-a",
 			},
 		},
 		Status: batchv1.JobStatus{
@@ -412,7 +413,7 @@ func TestResultDispatcherHandleMessageRefreshesPersistenceContextAfterLongProces
 			Name:      "delay-job-persist-refresh",
 			Namespace: "default",
 			Labels: map[string]string{
-				config.LabelComponentName: "svc-a",
+				spec.LabelComponentName: "svc-a",
 			},
 		},
 		Status: batchv1.JobStatus{
