@@ -11,7 +11,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 )
 
 func buildWorkloadInfo(jobType config.JobType, info interface{}, fallbackNamespace, fallbackName string) string {
@@ -41,9 +41,9 @@ func buildWorkloadInfo(jobType config.JobType, info interface{}, fallbackNamespa
 
 func buildConfigLikeInfo(kind domainspec.ResourceKind, info interface{}, fallbackNamespace, fallbackName string) string {
 	switch v := info.(type) {
-	case *workflowjob.ConfigMapInput:
+	case *jobinfo.ConfigMapInput:
 		return buildResourceInfo(kind, v.Namespace, v.Name)
-	case *workflowjob.SecretInput:
+	case *jobinfo.SecretInput:
 		return buildResourceInfo(kind, v.Namespace, v.Name)
 	case *corev1.ConfigMap:
 		return buildResourceInfo(kind, v.Namespace, v.Name)

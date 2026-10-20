@@ -13,6 +13,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
 
@@ -54,7 +55,7 @@ func (c *DeploySecretJobCtl) run(ctx context.Context) error {
 		return fmt.Errorf("client is nil")
 	}
 
-	secret, err := secretFromJobInfo(ctx, c.job, c.urlSecurityPolicy)
+	secret, err := jobinfo.SecretFromJobInfo(ctx, c.job, c.urlSecurityPolicy)
 	if err != nil {
 		return err
 	}
@@ -185,11 +186,11 @@ func materializeSecretData(secret *corev1.Secret) map[string][]byte {
 	return merged
 }
 
-func GenerateSecret(component *model.ApplicationComponent, properties *model.Properties) *SecretInput {
+func GenerateSecret(component *model.ApplicationComponent, properties *model.Properties) *jobinfo.SecretInput {
 	name, namespace := generatedResourceIdentity(component)
 
 	if url, fileName, ok := externalConfigFileInput(properties, properties != nil && properties.Secret != nil); ok {
-		return &SecretInput{
+		return &jobinfo.SecretInput{
 			Name:      name,
 			Namespace: namespace,
 			URL:       url,
@@ -204,7 +205,7 @@ func GenerateSecret(component *model.ApplicationComponent, properties *model.Pro
 		data = properties.Secret
 	}
 
-	return &SecretInput{
+	return &jobinfo.SecretInput{
 		Name:      name,
 		Namespace: namespace,
 		Labels:    labels,

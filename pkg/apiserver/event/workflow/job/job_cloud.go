@@ -14,6 +14,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	wfcloudcontract "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/cloudjob/contracts"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
@@ -43,7 +44,7 @@ func (c *CloudJobCtl) Clean(_ context.Context) {}
 
 func (c *CloudJobCtl) SaveInfo(ctx context.Context) error {
 	ensurePublicCloudJobInfo(c.job)
-	return saveOrUpdateJobInfo(ctx, c.store, c.job)
+	return jobinfo.SaveOrUpdateJobInfo(ctx, c.store, c.job)
 }
 
 func (c *CloudJobCtl) Run(ctx context.Context) error {
@@ -51,7 +52,7 @@ func (c *CloudJobCtl) Run(ctx context.Context) error {
 	defer cancel()
 	runCtx = wfcloudcontract.WithDataStore(runCtx, c.store)
 
-	info, err := cloudInfoFromJobInfo(c.job)
+	info, err := jobinfo.CloudInfoFromJobInfo(c.job)
 	if err != nil {
 		return fmt.Errorf("cloud job info is invalid: %w", err)
 	}
@@ -113,7 +114,7 @@ func (c *CloudJobCtl) Run(ctx context.Context) error {
 			status := statusForCloudActionErr(runErr)
 			setCloudJobCheckpoint(c.job, info, request, nil, state, status, runErr)
 			c.job.Status = status
-			return NewStatusError(status, runErr)
+			return jobinfo.NewStatusError(status, runErr)
 		}
 		if progress == nil {
 			err := fmt.Errorf("cloud action returned nil progress")
@@ -144,7 +145,7 @@ func (c *CloudJobCtl) Run(ctx context.Context) error {
 			status := statusForCloudActionErr(waitErr)
 			setCloudJobCheckpoint(c.job, info, request, progress.Result, state, status, waitErr)
 			c.job.Status = status
-			return NewStatusError(status, waitErr)
+			return jobinfo.NewStatusError(status, waitErr)
 		}
 	}
 }
@@ -161,9 +162,9 @@ func cloudRunContext(ctx context.Context, job *model.JobTask) (context.Context, 
 }
 
 func recordCloudJobResult(
-	info *CloudJobInfo,
-	request *CloudJobRequest,
-	result *CloudJobResult,
+	info *jobinfo.CloudJobInfo,
+	request *jobinfo.CloudJobRequest,
+	result *jobinfo.CloudJobResult,
 	state map[string]interface{},
 	status config.Status,
 	err error,
@@ -171,13 +172,13 @@ func recordCloudJobResult(
 	if status == "" {
 		status = config.StatusCompleted
 	}
-	record := CloudJobRecord{
+	record := jobinfo.CloudJobRecord{
 		Status: status,
 	}
 	if info != nil {
 		record.Provider = normalizeProviderName(info.Provider)
 		record.Action = strings.TrimSpace(info.Action)
-		record.ExecutionKey = cloudJobExecutionKey(info)
+		record.ExecutionKey = jobinfo.CloudJobExecutionKey(info)
 	}
 	if request != nil {
 		record.Request = cloneCloudJobRequest(request)
@@ -186,7 +187,7 @@ func recordCloudJobResult(
 		record.State = cloneCloudParams(state)
 	}
 	if result != nil {
-		record.Result = &CloudJobResult{
+		record.Result = &jobinfo.CloudJobResult{
 			RequestID: strings.TrimSpace(result.RequestID),
 			Message:   strings.TrimSpace(result.Message),
 			Output:    cloneCloudParams(result.Output),
@@ -207,9 +208,9 @@ func recordCloudJobResult(
 
 func setCloudJobCheckpoint(
 	job *model.JobTask,
-	info *CloudJobInfo,
-	request *CloudJobRequest,
-	result *CloudJobResult,
+	info *jobinfo.CloudJobInfo,
+	request *jobinfo.CloudJobRequest,
+	result *jobinfo.CloudJobResult,
 	state map[string]interface{},
 	status config.Status,
 	err error,
@@ -221,7 +222,7 @@ func setCloudJobCheckpoint(
 	job.InternalInfo = recordCloudJobResult(info, request, result, state, status, err)
 }
 
-func cloneCloudJobRequest(src *CloudJobRequest) *CloudJobRequest {
+func cloneCloudJobRequest(src *jobinfo.CloudJobRequest) *jobinfo.CloudJobRequest {
 	if src == nil {
 		return nil
 	}
@@ -245,8 +246,8 @@ func cloneCloudParams(src map[string]interface{}) map[string]interface{} {
 	return dst
 }
 
-func buildCloudJobRequest(job *model.JobTask, info *CloudJobInfo, checkpoint *CloudJobRecord) *CloudJobRequest {
-	request := &CloudJobRequest{
+func buildCloudJobRequest(job *model.JobTask, info *jobinfo.CloudJobInfo, checkpoint *jobinfo.CloudJobRecord) *jobinfo.CloudJobRequest {
+	request := &jobinfo.CloudJobRequest{
 		Name:         job.Name,
 		Namespace:    job.Namespace,
 		WorkflowID:   job.WorkflowID,
@@ -278,7 +279,7 @@ func buildCloudJobRequest(job *model.JobTask, info *CloudJobInfo, checkpoint *Cl
 	return request
 }
 
-func loadCheckpointState(checkpoint *CloudJobRecord, raw string) map[string]interface{} {
+func loadCheckpointState(checkpoint *jobinfo.CloudJobRecord, raw string) map[string]interface{} {
 	if checkpoint != nil && checkpoint.State != nil {
 		return cloneCloudParams(checkpoint.State)
 	}
@@ -286,37 +287,37 @@ func loadCheckpointState(checkpoint *CloudJobRecord, raw string) map[string]inte
 }
 
 func loadCloudActionState(raw string) map[string]interface{} {
-	record := parseCloudJobRecord(raw)
+	record := jobinfo.ParseCloudJobRecord(raw)
 	if record == nil {
 		return nil
 	}
 	return cloneCloudParams(record.State)
 }
 
-func (c *CloudJobCtl) loadCheckpoint(ctx context.Context) (*CloudJobRecord, error) {
+func (c *CloudJobCtl) loadCheckpoint(ctx context.Context) (*jobinfo.CloudJobRecord, error) {
 	if c == nil || c.job == nil {
 		return nil, nil
 	}
-	jobInfos, err := loadJobInfos(ctx, c.store, c.job.TaskID, c.job.JobType, resolveJobServiceName(c.job))
+	jobInfos, err := jobinfo.LoadJobInfos(ctx, c.store, c.job.TaskID, c.job.JobType, jobinfo.ResolveJobServiceName(c.job))
 	if err != nil {
 		return nil, err
 	}
-	if jobInfo := selectCloudCheckpointJobInfo(c.job, jobInfos); jobInfo != nil {
-		if record := parseCloudCheckpointFromJobInfo(jobInfo); record != nil {
+	if jobInfo := jobinfo.SelectCloudCheckpointJobInfo(c.job, jobInfos); jobInfo != nil {
+		if record := jobinfo.ParseCloudCheckpointFromJobInfo(jobInfo); record != nil {
 			return record, nil
 		}
 	}
-	if record := parseCloudJobRecord(c.job.InternalInfo); record != nil {
+	if record := jobinfo.ParseCloudJobRecord(c.job.InternalInfo); record != nil {
 		return record, nil
 	}
-	return parseCloudJobRecord(c.job.Info), nil
+	return jobinfo.ParseCloudJobRecord(c.job.Info), nil
 }
 
 func (c *CloudJobCtl) persistCheckpoint(
 	ctx context.Context,
-	info *CloudJobInfo,
-	request *CloudJobRequest,
-	result *CloudJobResult,
+	info *jobinfo.CloudJobInfo,
+	request *jobinfo.CloudJobRequest,
+	result *jobinfo.CloudJobResult,
 	state map[string]interface{},
 	status config.Status,
 	err error,
@@ -352,14 +353,14 @@ func ensurePublicCloudJobInfo(job *model.JobTask) {
 
 func PublicCloudJobInfoMessage(raw string) string {
 	raw = strings.TrimSpace(raw)
-	record := parseCloudJobRecord(raw)
+	record := jobinfo.ParseCloudJobRecord(raw)
 	if record == nil {
 		return raw
 	}
 	return summarizeCloudJobRecord(record)
 }
 
-func summarizeCloudJobRecord(record *CloudJobRecord) string {
+func summarizeCloudJobRecord(record *jobinfo.CloudJobRecord) string {
 	if record == nil {
 		return ""
 	}
@@ -386,7 +387,7 @@ func summarizeCloudJobRecord(record *CloudJobRecord) string {
 	return strings.Join(parts, "; ")
 }
 
-func cloudCheckpointRequiresRuntimeProviderSnapshot(record *CloudJobRecord) bool {
+func cloudCheckpointRequiresRuntimeProviderSnapshot(record *jobinfo.CloudJobRecord) bool {
 	if record == nil {
 		return false
 	}

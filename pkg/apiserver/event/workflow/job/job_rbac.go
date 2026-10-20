@@ -15,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
 
@@ -45,7 +46,7 @@ func (c *DeployServiceAccountJobCtl) run(ctx context.Context) error {
 		return fmt.Errorf("client is nil")
 	}
 
-	sa, err := serviceAccountFromJobInfo(c.job)
+	sa, err := jobinfo.ServiceAccountFromJobInfo(c.job)
 	if err != nil {
 		return err
 	}
@@ -153,7 +154,7 @@ func (c *DeployRoleJobCtl) run(ctx context.Context) error {
 		return fmt.Errorf("client is nil")
 	}
 
-	role, err := roleFromJobInfo(c.job)
+	role, err := jobinfo.RoleFromJobInfo(c.job)
 	if err != nil {
 		return err
 	}
@@ -256,7 +257,7 @@ func (c *DeployRoleBindingJobCtl) run(ctx context.Context) error {
 		return fmt.Errorf("client is nil")
 	}
 
-	binding, err := roleBindingFromJobInfo(c.job)
+	binding, err := jobinfo.RoleBindingFromJobInfo(c.job)
 	if err != nil {
 		return err
 	}
@@ -363,7 +364,7 @@ func (c *DeployClusterRoleJobCtl) run(ctx context.Context) error {
 		return fmt.Errorf("client is nil")
 	}
 
-	role, err := clusterRoleFromJobInfo(c.job)
+	role, err := jobinfo.ClusterRoleFromJobInfo(c.job)
 	if err != nil {
 		return err
 	}
@@ -467,7 +468,7 @@ func (c *DeployClusterRoleBindingJobCtl) run(ctx context.Context) error {
 		return fmt.Errorf("client is nil")
 	}
 
-	binding, err := clusterRoleBindingFromJobInfo(c.job)
+	binding, err := jobinfo.ClusterRoleBindingFromJobInfo(c.job)
 	if err != nil {
 		return err
 	}

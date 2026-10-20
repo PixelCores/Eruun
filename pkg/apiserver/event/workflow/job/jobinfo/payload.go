@@ -1,4 +1,4 @@
-package job
+package jobinfo
 
 import (
 	"context"
@@ -19,7 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 )
 
-func requiredJobInfo[T any](job *model.JobTask) (T, error) {
+func RequiredJobInfo[T any](job *model.JobTask) (T, error) {
 	var zero T
 	if job == nil {
 		return zero, fmt.Errorf("job task is nil")
@@ -34,7 +34,7 @@ func requiredJobInfo[T any](job *model.JobTask) (T, error) {
 	return info, nil
 }
 
-func optionalJobInfo[T any](job *model.JobTask) (T, bool) {
+func OptionalJobInfo[T any](job *model.JobTask) (T, bool) {
 	var zero T
 	if job == nil {
 		return zero, false
@@ -64,7 +64,7 @@ func isNilJobInfo(info interface{}) bool {
 	}
 }
 
-func configMapFromJobInfo(ctx context.Context, job *model.JobTask, urlSecurityPolicy *spec.URLSecurityPolicySpec) (*corev1.ConfigMap, error) {
+func ConfigMapFromJobInfo(ctx context.Context, job *model.JobTask, urlSecurityPolicy *spec.URLSecurityPolicySpec) (*corev1.ConfigMap, error) {
 	if job == nil {
 		return nil, fmt.Errorf("job task is nil")
 	}
@@ -88,7 +88,7 @@ func configMapFromJobInfo(ctx context.Context, job *model.JobTask, urlSecurityPo
 	}
 }
 
-func secretFromJobInfo(ctx context.Context, job *model.JobTask, urlSecurityPolicy *spec.URLSecurityPolicySpec) (*corev1.Secret, error) {
+func SecretFromJobInfo(ctx context.Context, job *model.JobTask, urlSecurityPolicy *spec.URLSecurityPolicySpec) (*corev1.Secret, error) {
 	if job == nil {
 		return nil, fmt.Errorf("job task is nil")
 	}
@@ -136,7 +136,7 @@ func secretFromJobInfo(ctx context.Context, job *model.JobTask, urlSecurityPolic
 	}
 }
 
-func scheduledJobInfo(job *model.JobTask) (*batchv1.CronJob, *batchv1.Job, error) {
+func ScheduledJobInfo(job *model.JobTask) (*batchv1.CronJob, *batchv1.Job, error) {
 	if job == nil {
 		return nil, nil, fmt.Errorf("job task is nil")
 	}
@@ -156,33 +156,33 @@ func scheduledJobInfo(job *model.JobTask) (*batchv1.CronJob, *batchv1.Job, error
 	}
 }
 
-func serviceFromJobInfo(job *model.JobTask) (*corev1.Service, error) {
-	return requiredJobInfo[*corev1.Service](job)
+func ServiceFromJobInfo(job *model.JobTask) (*corev1.Service, error) {
+	return RequiredJobInfo[*corev1.Service](job)
 }
 
-func deploymentFromJobInfo(job *model.JobTask) (*appsv1.Deployment, error) {
-	return requiredJobInfo[*appsv1.Deployment](job)
+func DeploymentFromJobInfo(job *model.JobTask) (*appsv1.Deployment, error) {
+	return RequiredJobInfo[*appsv1.Deployment](job)
 }
 
-func statefulSetFromJobInfo(job *model.JobTask) (*appsv1.StatefulSet, error) {
-	return requiredJobInfo[*appsv1.StatefulSet](job)
+func StatefulSetFromJobInfo(job *model.JobTask) (*appsv1.StatefulSet, error) {
+	return RequiredJobInfo[*appsv1.StatefulSet](job)
 }
 
-func pvcFromJobInfo(job *model.JobTask) (*corev1.PersistentVolumeClaim, error) {
-	return requiredJobInfo[*corev1.PersistentVolumeClaim](job)
+func PvcFromJobInfo(job *model.JobTask) (*corev1.PersistentVolumeClaim, error) {
+	return RequiredJobInfo[*corev1.PersistentVolumeClaim](job)
 }
 
-func ingressFromJobInfo(job *model.JobTask) (*networkingv1.Ingress, error) {
-	return requiredJobInfo[*networkingv1.Ingress](job)
+func IngressFromJobInfo(job *model.JobTask) (*networkingv1.Ingress, error) {
+	return RequiredJobInfo[*networkingv1.Ingress](job)
 }
 
-func batchJobFromJobInfo(job *model.JobTask) (*batchv1.Job, error) {
-	return requiredJobInfo[*batchv1.Job](job)
+func BatchJobFromJobInfo(job *model.JobTask) (*batchv1.Job, error) {
+	return RequiredJobInfo[*batchv1.Job](job)
 }
 
 // ApplyTaskIDAnnotation copies JobTask.TaskID into a batch Job payload when present.
 func ApplyTaskIDAnnotation(job *model.JobTask) {
-	jobObj, ok := optionalJobInfo[*batchv1.Job](job)
+	jobObj, ok := OptionalJobInfo[*batchv1.Job](job)
 	if !ok || job.TaskID == "" {
 		return
 	}
@@ -199,7 +199,7 @@ func ApplyExecutionIdentity(job *model.JobTask) {
 	if job == nil || job.ExecutionKey == "" || job.RunGeneration == 0 {
 		return
 	}
-	if jobObj, ok := optionalJobInfo[*batchv1.Job](job); ok {
+	if jobObj, ok := OptionalJobInfo[*batchv1.Job](job); ok {
 		annotations := jobObj.GetAnnotations()
 		if annotations == nil {
 			annotations = make(map[string]string, 2)
@@ -207,41 +207,41 @@ func ApplyExecutionIdentity(job *model.JobTask) {
 		annotations[config.AnnotationJobExecutionKey] = job.ExecutionKey
 		annotations[config.AnnotationJobRunGeneration] = strconv.FormatUint(job.RunGeneration, 10)
 		jobObj.SetAnnotations(annotations)
-		stampWorkspaceJobPodIdentity(job, jobObj)
+		StampWorkspaceJobPodIdentity(job, jobObj)
 	}
-	if info, ok := optionalJobInfo[*CallbackJobInfo](job); ok {
+	if info, ok := OptionalJobInfo[*CallbackJobInfo](job); ok {
 		info.Payload.ExecutionKey = job.ExecutionKey
 	}
 }
 
-func cloudInfoFromJobInfo(job *model.JobTask) (*CloudJobInfo, error) {
-	return requiredJobInfo[*CloudJobInfo](job)
+func CloudInfoFromJobInfo(job *model.JobTask) (*CloudJobInfo, error) {
+	return RequiredJobInfo[*CloudJobInfo](job)
 }
 
-func callbackInfoFromJobInfo(job *model.JobTask) (*CallbackJobInfo, error) {
-	return requiredJobInfo[*CallbackJobInfo](job)
+func CallbackInfoFromJobInfo(job *model.JobTask) (*CallbackJobInfo, error) {
+	return RequiredJobInfo[*CallbackJobInfo](job)
 }
 
-func cleanupComponentFromJobInfo(job *model.JobTask) (*model.ApplicationComponent, error) {
-	return requiredJobInfo[*model.ApplicationComponent](job)
+func CleanupComponentFromJobInfo(job *model.JobTask) (*model.ApplicationComponent, error) {
+	return RequiredJobInfo[*model.ApplicationComponent](job)
 }
 
-func serviceAccountFromJobInfo(job *model.JobTask) (*corev1.ServiceAccount, error) {
-	return requiredJobInfo[*corev1.ServiceAccount](job)
+func ServiceAccountFromJobInfo(job *model.JobTask) (*corev1.ServiceAccount, error) {
+	return RequiredJobInfo[*corev1.ServiceAccount](job)
 }
 
-func roleFromJobInfo(job *model.JobTask) (*rbacv1.Role, error) {
-	return requiredJobInfo[*rbacv1.Role](job)
+func RoleFromJobInfo(job *model.JobTask) (*rbacv1.Role, error) {
+	return RequiredJobInfo[*rbacv1.Role](job)
 }
 
-func roleBindingFromJobInfo(job *model.JobTask) (*rbacv1.RoleBinding, error) {
-	return requiredJobInfo[*rbacv1.RoleBinding](job)
+func RoleBindingFromJobInfo(job *model.JobTask) (*rbacv1.RoleBinding, error) {
+	return RequiredJobInfo[*rbacv1.RoleBinding](job)
 }
 
-func clusterRoleFromJobInfo(job *model.JobTask) (*rbacv1.ClusterRole, error) {
-	return requiredJobInfo[*rbacv1.ClusterRole](job)
+func ClusterRoleFromJobInfo(job *model.JobTask) (*rbacv1.ClusterRole, error) {
+	return RequiredJobInfo[*rbacv1.ClusterRole](job)
 }
 
-func clusterRoleBindingFromJobInfo(job *model.JobTask) (*rbacv1.ClusterRoleBinding, error) {
-	return requiredJobInfo[*rbacv1.ClusterRoleBinding](job)
+func ClusterRoleBindingFromJobInfo(job *model.JobTask) (*rbacv1.ClusterRoleBinding, error) {
+	return RequiredJobInfo[*rbacv1.ClusterRoleBinding](job)
 }

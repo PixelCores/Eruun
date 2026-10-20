@@ -1,4 +1,4 @@
-package job
+package jobinfo
 
 import (
 	"context"
@@ -31,7 +31,7 @@ func TestConfigMapFromJobInfo(t *testing.T) {
 			},
 		}
 
-		got, err := configMapFromJobInfo(ctx, jobTask, nil)
+		got, err := ConfigMapFromJobInfo(ctx, jobTask, nil)
 
 		require.NoError(t, err)
 		require.Equal(t, "app-config", got.Name)
@@ -42,21 +42,21 @@ func TestConfigMapFromJobInfo(t *testing.T) {
 
 	t.Run("existing", func(t *testing.T) {
 		existing := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "existing"}}
-		got, err := configMapFromJobInfo(ctx, &model.JobTask{JobInfo: existing}, nil)
+		got, err := ConfigMapFromJobInfo(ctx, &model.JobTask{JobInfo: existing}, nil)
 
 		require.NoError(t, err)
 		require.Same(t, existing, got)
 	})
 
 	t.Run("invalid", func(t *testing.T) {
-		_, err := configMapFromJobInfo(ctx, &model.JobTask{JobInfo: "bad"}, nil)
+		_, err := ConfigMapFromJobInfo(ctx, &model.JobTask{JobInfo: "bad"}, nil)
 
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "unsupported configmap job info type")
 	})
 
 	t.Run("nil-input", func(t *testing.T) {
-		_, err := configMapFromJobInfo(ctx, &model.JobTask{JobInfo: (*ConfigMapInput)(nil)}, nil)
+		_, err := ConfigMapFromJobInfo(ctx, &model.JobTask{JobInfo: (*ConfigMapInput)(nil)}, nil)
 
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "nil")
@@ -76,7 +76,7 @@ func TestSecretFromJobInfo(t *testing.T) {
 			},
 		}
 
-		got, err := secretFromJobInfo(ctx, jobTask, nil)
+		got, err := SecretFromJobInfo(ctx, jobTask, nil)
 
 		require.NoError(t, err)
 		require.Equal(t, "app-secret", got.Name)
@@ -88,21 +88,21 @@ func TestSecretFromJobInfo(t *testing.T) {
 
 	t.Run("existing", func(t *testing.T) {
 		existing := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "existing"}}
-		got, err := secretFromJobInfo(ctx, &model.JobTask{JobInfo: existing}, nil)
+		got, err := SecretFromJobInfo(ctx, &model.JobTask{JobInfo: existing}, nil)
 
 		require.NoError(t, err)
 		require.Same(t, existing, got)
 	})
 
 	t.Run("invalid", func(t *testing.T) {
-		_, err := secretFromJobInfo(ctx, &model.JobTask{JobInfo: "bad"}, nil)
+		_, err := SecretFromJobInfo(ctx, &model.JobTask{JobInfo: "bad"}, nil)
 
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "unsupported secret job info type")
 	})
 
 	t.Run("nil-input", func(t *testing.T) {
-		_, err := secretFromJobInfo(ctx, &model.JobTask{JobInfo: (*SecretInput)(nil)}, nil)
+		_, err := SecretFromJobInfo(ctx, &model.JobTask{JobInfo: (*SecretInput)(nil)}, nil)
 
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "nil")
@@ -113,7 +113,7 @@ func TestScheduledJobInfo(t *testing.T) {
 	t.Run("cronjob", func(t *testing.T) {
 		expected := &batchv1.CronJob{ObjectMeta: metav1.ObjectMeta{Name: "cron"}}
 
-		cron, oneTime, err := scheduledJobInfo(&model.JobTask{JobInfo: expected})
+		cron, oneTime, err := ScheduledJobInfo(&model.JobTask{JobInfo: expected})
 
 		require.NoError(t, err)
 		require.Same(t, expected, cron)
@@ -123,7 +123,7 @@ func TestScheduledJobInfo(t *testing.T) {
 	t.Run("one-time-job", func(t *testing.T) {
 		expected := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "one-time"}}
 
-		cron, oneTime, err := scheduledJobInfo(&model.JobTask{JobInfo: expected})
+		cron, oneTime, err := ScheduledJobInfo(&model.JobTask{JobInfo: expected})
 
 		require.NoError(t, err)
 		require.Nil(t, cron)
@@ -131,7 +131,7 @@ func TestScheduledJobInfo(t *testing.T) {
 	})
 
 	t.Run("invalid", func(t *testing.T) {
-		_, _, err := scheduledJobInfo(&model.JobTask{JobInfo: "bad"})
+		_, _, err := ScheduledJobInfo(&model.JobTask{JobInfo: "bad"})
 
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "scheduled job info has unexpected type")
@@ -173,7 +173,7 @@ func TestConfigurationURLReadLimits(t *testing.T) {
 			defer server.Close()
 			policy := &spec.URLSecurityPolicySpec{AllowPrivateByDefault: true}
 			readSize := min(size, configMapMaxSize+1024)
-			configMap, err := configMapFromJobInfo(context.Background(), &model.JobTask{JobInfo: &ConfigMapInput{
+			configMap, err := ConfigMapFromJobInfo(context.Background(), &model.JobTask{JobInfo: &ConfigMapInput{
 				Name: "config", URL: server.URL, FileName: "payload",
 			}}, policy)
 			if size > configMapMaxSize {
@@ -182,7 +182,7 @@ func TestConfigurationURLReadLimits(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, payload, configMap.Data["payload"])
 			}
-			secret, err := secretFromJobInfo(context.Background(), &model.JobTask{JobInfo: &SecretInput{
+			secret, err := SecretFromJobInfo(context.Background(), &model.JobTask{JobInfo: &SecretInput{
 				Name: "secret", URL: server.URL, FileName: "payload",
 			}}, policy)
 			require.NoError(t, err)

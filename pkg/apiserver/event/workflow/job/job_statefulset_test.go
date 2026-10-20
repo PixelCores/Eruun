@@ -15,6 +15,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
@@ -75,7 +77,7 @@ func TestDeployStatefulSetJobCtl_UpdateExisting(t *testing.T) {
 	}
 
 	job.JobInfo = desired
-	ctl := NewDeployStatefulSetJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployStatefulSetJobCtl(job, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 
 	if err := ctl.run(ctx); err != nil {
 		t.Fatalf("run returned error: %v", err)
@@ -166,7 +168,7 @@ func TestDeployStatefulSetJobCtl_SkipsUnchangedUpdate(t *testing.T) {
 	desired.Spec.Template.Spec.TerminationGracePeriodSeconds = nil
 	desired.Spec.Template.Spec.EnableServiceLinks = nil
 	job.JobInfo = desired
-	ctl := NewDeployStatefulSetJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployStatefulSetJobCtl(job, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 
 	if err := ctl.run(ctx); err != nil {
 		t.Fatalf("run returned error: %v", err)
@@ -205,7 +207,7 @@ func TestDeployStatefulSetJobCtl_RestoresTaskAnnotationForUpToDateStatefulSet(t 
 	desired.Name = statefulSetName
 	desired.Namespace = "ops"
 	job.JobInfo = desired
-	ctl := NewDeployStatefulSetJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployStatefulSetJobCtl(job, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 
 	require.NoError(t, ctl.run(ctx))
 
@@ -661,7 +663,7 @@ func TestDeployStatefulSetJobCtlWaitTimeoutWithPodAbnormalReturnsFailed(t *testi
 	err := ctl.wait(context.Background())
 	require.Error(t, err)
 
-	statusErr, ok := ExtractStatusError(err)
+	statusErr, ok := jobinfo.ExtractStatusError(err)
 	require.True(t, ok)
 	require.Equal(t, config.StatusFailed, statusErr.Status)
 	require.Contains(t, err.Error(), "CrashLoopBackOff")
@@ -722,7 +724,7 @@ func TestDeployStatefulSetJobCtlWaitTimeoutWithPendingPodReturnsTimeout(t *testi
 	err := ctl.wait(context.Background())
 	require.Error(t, err)
 
-	statusErr, ok := ExtractStatusError(err)
+	statusErr, ok := jobinfo.ExtractStatusError(err)
 	require.True(t, ok)
 	require.Equal(t, config.StatusTimeout, statusErr.Status)
 }
@@ -746,7 +748,7 @@ func TestDeployStatefulSetJobCtlWaitIgnoresReadyPodWithDifferentImage(t *testing
 	err := ctl.wait(context.Background())
 	require.Error(t, err)
 
-	statusErr, ok := ExtractStatusError(err)
+	statusErr, ok := jobinfo.ExtractStatusError(err)
 	require.True(t, ok)
 	require.Equal(t, config.StatusTimeout, statusErr.Status)
 }
@@ -799,7 +801,7 @@ func TestDeployStatefulSetJobCtlWaitRequiresExpectedTaskAnnotationWithSameImage(
 	err := ctl.wait(context.Background())
 	require.Error(t, err)
 
-	statusErr, ok := ExtractStatusError(err)
+	statusErr, ok := jobinfo.ExtractStatusError(err)
 	require.True(t, ok)
 	require.Equal(t, config.StatusFailed, statusErr.Status)
 	require.Contains(t, err.Error(), "CrashLoopBackOff")

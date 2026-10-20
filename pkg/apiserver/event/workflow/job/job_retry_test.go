@@ -26,6 +26,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sqlnamer"
@@ -34,7 +36,7 @@ import (
 )
 
 type retryCheckpointStore struct {
-	noopStore
+	jobtest.NoopStore
 	record    *model.JobInfo
 	afterSave func(*model.JobInfo) error
 }
@@ -180,11 +182,6 @@ func (s *retryCheckpointStore) CompareAndSwapWithConditions(_ context.Context, _
 	return true, nil
 }
 
-func retryTestPolicy() *workflowconfig.JobRetryPolicy {
-	return &workflowconfig.JobRetryPolicy{OnOOM: "resize", MaxRetries: 1, BackoffSeconds: 1, MemoryGrowthFactor: 2,
-		MaxResources: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1Gi")}}
-}
-
 func retryTestTask(t *testing.T, policy *workflowconfig.JobRetryPolicy) *model.JobTask {
 	t.Helper()
 	component := &model.ApplicationComponent{Name: "retry-job", Namespace: "ns", Image: "busybox:1.37"}
@@ -236,11 +233,11 @@ func TestInstantJobOOMRetryPolicies(t *testing.T) {
 		wantError   string
 		wantMemory  string
 	}{
-		{"resize", retryTestPolicy(), "OOMKilled", 1, 2, "", "512Mi"},
+		{"resize", jobtest.RetryTestPolicy(), "OOMKilled", 1, 2, "", "512Mi"},
 		{"retry same resources", &workflowconfig.JobRetryPolicy{OnOOM: "retry", MaxRetries: 1, BackoffSeconds: 1}, "OOMKilled", 1, 2, "", "256Mi"},
 		{"explicit stop", &workflowconfig.JobRetryPolicy{OnOOM: "stop"}, "OOMKilled", 1, 1, "job failed after attempt 1", "256Mi"},
-		{"ordinary exit 137 stops", retryTestPolicy(), "Error", 1, 1, "non-OOM", "256Mi"},
-		{"bounded retries", retryTestPolicy(), "OOMKilled", 2, 2, "job failed after attempt 2", "512Mi"},
+		{"ordinary exit 137 stops", jobtest.RetryTestPolicy(), "Error", 1, 1, "non-OOM", "256Mi"},
+		{"bounded retries", jobtest.RetryTestPolicy(), "OOMKilled", 2, 2, "job failed after attempt 2", "512Mi"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			task := retryTestTask(t, tt.policy)
@@ -248,7 +245,7 @@ func TestInstantJobOOMRetryPolicies(t *testing.T) {
 			client := fake.NewSimpleClientset()
 			var created []*batchv1.Job
 			installRetryJobReactor(t, client, tt.failures, tt.reason, &created)
-			ctl := newObservedInstantJobCtl(t, task, client, newRetryCreationBudgetStore(t, withJobTestOwner(store, task)), func() {})
+			ctl := newObservedInstantJobCtl(t, task, client, newRetryCreationBudgetStore(t, jobtest.WithJobTestOwner(store, task)), func() {})
 			err := ctl.Run(WithCleanupTracker(context.Background()))
 			if tt.wantError == "" {
 				require.NoError(t, err)
@@ -267,7 +264,7 @@ func TestInstantJobOOMRetryPolicies(t *testing.T) {
 }
 
 func TestInstantJobRetryCheckpointResumesWithoutDoubleGrowth(t *testing.T) {
-	task := retryTestTask(t, retryTestPolicy())
+	task := retryTestTask(t, jobtest.RetryTestPolicy())
 	client := fake.NewSimpleClientset()
 	var created []*batchv1.Job
 	installRetryJobReactor(t, client, 1, "OOMKilled", &created)
@@ -278,22 +275,22 @@ func TestInstantJobRetryCheckpointResumesWithoutDoubleGrowth(t *testing.T) {
 		}
 		return nil
 	}}
-	require.ErrorIs(t, newObservedInstantJobCtl(t, task, client, newRetryCreationBudgetStore(t, withJobTestOwner(store, task)), func() {}).Run(ctx), context.Canceled)
+	require.ErrorIs(t, newObservedInstantJobCtl(t, task, client, newRetryCreationBudgetStore(t, jobtest.WithJobTestOwner(store, task)), func() {}).Run(ctx), context.Canceled)
 	require.Len(t, created, 1)
 	require.Equal(t, uint(2), store.record.Attempt)
 	store.afterSave = nil
-	recovered := retryTestTask(t, retryTestPolicy())
+	recovered := retryTestTask(t, jobtest.RetryTestPolicy())
 	recovered.InternalInfo = store.record.InternalInfo
 	recovered.Attempt = store.record.Attempt
 	require.NoError(t, RestoreInstantJobRetryCheckpoint(recovered))
-	require.NoError(t, newObservedInstantJobCtl(t, recovered, client, newRetryCreationBudgetStore(t, withJobTestOwner(store, recovered)), func() {}).Run(context.Background()))
+	require.NoError(t, newObservedInstantJobCtl(t, recovered, client, newRetryCreationBudgetStore(t, jobtest.WithJobTestOwner(store, recovered)), func() {}).Run(context.Background()))
 	require.Len(t, created, 2)
 	require.Equal(t, "512Mi", created[1].Spec.Template.Spec.Containers[0].Resources.Limits.Memory().String())
 	require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
 }
 
 func TestInstantJobRetryCheckpointFailurePreventsDeletion(t *testing.T) {
-	task := retryTestTask(t, retryTestPolicy())
+	task := retryTestTask(t, jobtest.RetryTestPolicy())
 	client := fake.NewSimpleClientset()
 	var created []*batchv1.Job
 	installRetryJobReactor(t, client, 1, "OOMKilled", &created)
@@ -303,7 +300,7 @@ func TestInstantJobRetryCheckpointFailurePreventsDeletion(t *testing.T) {
 		}
 		return nil
 	}}
-	err := newObservedInstantJobCtl(t, task, client, newRetryCreationBudgetStore(t, withJobTestOwner(store, task)), func() {}).Run(context.Background())
+	err := newObservedInstantJobCtl(t, task, client, newRetryCreationBudgetStore(t, jobtest.WithJobTestOwner(store, task)), func() {}).Run(context.Background())
 	require.ErrorIs(t, err, signal.ErrInfrastructureStop)
 	require.Zero(t, countClientActions(client, "delete", "jobs"))
 	require.Len(t, created, 1)
@@ -311,7 +308,7 @@ func TestInstantJobRetryCheckpointFailurePreventsDeletion(t *testing.T) {
 }
 
 func TestRetryRejectsForeignOOMAndPreviousTermination(t *testing.T) {
-	task := retryTestTask(t, retryTestPolicy())
+	task := retryTestTask(t, jobtest.RetryTestPolicy())
 	job := task.JobInfo.(*batchv1.Job)
 	job.UID = "expected"
 	for _, tt := range []struct {
@@ -337,10 +334,10 @@ func TestRetryRejectsForeignOOMAndPreviousTermination(t *testing.T) {
 }
 
 func TestResizeResourcesRespectCapsAndExplicitCPU(t *testing.T) {
-	task := retryTestTask(t, retryTestPolicy())
+	task := retryTestTask(t, jobtest.RetryTestPolicy())
 	job := task.JobInfo.(*batchv1.Job)
 	container := job.Spec.Template.Spec.Containers[0].Name
-	policy := retryTestPolicy()
+	policy := jobtest.RetryTestPolicy()
 	policy.CPUGrowthFactor = 2
 	policy.MaxResources[corev1.ResourceCPU] = resource.MustParse("1")
 	next, err := growOOMJobResources(job, policy, map[string]bool{container: true})
@@ -354,13 +351,13 @@ func TestResizeResourcesRespectCapsAndExplicitCPU(t *testing.T) {
 }
 
 func TestRetryAttemptWaitsForPreviousOwnedPods(t *testing.T) {
-	task := retryTestTask(t, retryTestPolicy())
+	task := retryTestTask(t, jobtest.RetryTestPolicy())
 	job := task.JobInfo.(*batchv1.Job).DeepCopy()
 	job.UID = "previous"
 	pod := retryTestPod(job, "OOMKilled")
 	pod.Status.Phase = corev1.PodRunning
 	client := fake.NewSimpleClientset(pod)
-	cp := &instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: task.JobInfo.(*batchv1.Job), Attempt: 2,
+	cp := &jobinfo.InstantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: task.JobInfo.(*batchv1.Job), Attempt: 2,
 		PreviousUID: job.UID, RetryAt: time.Now().Add(-time.Second).UnixNano(), Deadline: time.Now().Add(time.Hour).UnixNano()}
 	cp.Job.Annotations[workflowconfig.AnnotationJobAttempt] = "2"
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
@@ -373,10 +370,10 @@ func TestRetryAttemptWaitsForPreviousOwnedPods(t *testing.T) {
 func TestRetryCheckpointCannotReplayMissingOrForeignJob(t *testing.T) {
 	for _, exists := range []bool{false, true} {
 		t.Run(strconv.FormatBool(exists), func(t *testing.T) {
-			task := retryTestTask(t, retryTestPolicy())
+			task := retryTestTask(t, jobtest.RetryTestPolicy())
 			job := task.JobInfo.(*batchv1.Job)
 			job.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
-			cp := &instantJobRetryCheckpoint{Job: job, Attempt: 1, CurrentUID: "expected"}
+			cp := &jobinfo.InstantJobRetryCheckpoint{Job: job, Attempt: 1, CurrentUID: "expected"}
 			client := fake.NewSimpleClientset()
 			if exists {
 				foreign := job.DeepCopy()
@@ -393,24 +390,24 @@ func TestRetryCheckpointCannotReplayMissingOrForeignJob(t *testing.T) {
 }
 
 func TestRestoreRetryCheckpointRejectsMalformedIdentity(t *testing.T) {
-	task := retryTestTask(t, retryTestPolicy())
+	task := retryTestTask(t, jobtest.RetryTestPolicy())
 	job := task.JobInfo.(*batchv1.Job)
 	job.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
-	cp := &instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: job, Attempt: 1, Deadline: time.Now().Add(time.Hour).UnixNano()}
+	cp := &jobinfo.InstantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: job, Attempt: 1, Deadline: time.Now().Add(time.Hour).UnixNano()}
 	raw, err := json.Marshal(cp)
 	require.NoError(t, err)
 	task.InternalInfo = string(raw)
 	require.NoError(t, RestoreInstantJobRetryCheckpoint(task))
 	task.ExecutionKey = "wrong-execution"
 	require.Error(t, RestoreInstantJobRetryCheckpoint(task))
-	require.True(t, HasInstantJobRetryCheckpoint(&model.JobInfo{Type: task.JobType, InternalInfo: "invalid json"}))
+	require.True(t, jobinfo.HasInstantJobRetryCheckpoint(&model.JobInfo{Type: task.JobType, InternalInfo: "invalid json"}))
 }
 
 func TestRetryRecoveryHonorsExpiredDeadline(t *testing.T) {
-	task := retryTestTask(t, retryTestPolicy())
+	task := retryTestTask(t, jobtest.RetryTestPolicy())
 	job := task.JobInfo.(*batchv1.Job)
 	job.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
-	cp := &instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: job, Attempt: 1, Deadline: time.Now().Add(-time.Second).UnixNano()}
+	cp := &jobinfo.InstantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: job, Attempt: 1, Deadline: time.Now().Add(-time.Second).UnixNano()}
 	raw, err := json.Marshal(cp)
 	require.NoError(t, err)
 	task.InternalInfo = string(raw)
@@ -422,14 +419,14 @@ func TestRetryRecoveryHonorsExpiredDeadline(t *testing.T) {
 }
 
 func TestRetryDeletionRechecksWorkflowFence(t *testing.T) {
-	task := retryTestTask(t, retryTestPolicy())
+	task := retryTestTask(t, jobtest.RetryTestPolicy())
 	task.OwnerRunGeneration = 1
 	task.RunToken = "token-1"
 	task.WorkerID = "worker-1"
 	current := model.WorkflowQueue{TaskID: task.TaskID, Status: config.StatusRunning, RunGeneration: 1, RunToken: task.RunToken, WorkerID: task.WorkerID}
 	replacement := current
 	replacement.RunGeneration = 2
-	store := &workflowOwnershipStore{noopStore: &noopStore{}, tasks: []model.WorkflowQueue{current, replacement}}
+	store := &workflowOwnershipStore{NoopStore: &jobtest.NoopStore{}, tasks: []model.WorkflowQueue{current, replacement}}
 	previous := task.JobInfo.(*batchv1.Job).DeepCopy()
 	previous.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
 	previous.UID = "old-job"
@@ -437,7 +434,7 @@ func TestRetryDeletionRechecksWorkflowFence(t *testing.T) {
 	previous.Status.Conditions = []batchv1.JobCondition{{Type: batchv1.JobFailed, Status: corev1.ConditionTrue}}
 	next := task.JobInfo.(*batchv1.Job).DeepCopy()
 	next.Annotations[workflowconfig.AnnotationJobAttempt] = "2"
-	cp := &instantJobRetryCheckpoint{Job: next, Attempt: 2, PreviousUID: previous.UID}
+	cp := &jobinfo.InstantJobRetryCheckpoint{Job: next, Attempt: 2, PreviousUID: previous.UID}
 	client := fake.NewSimpleClientset(previous)
 	err := NewInstantJobCtl(task, &Runtime{Client: client, Store: store, Ack: func() {}}).ensureRetryAttempt(context.Background(), cp)
 	require.ErrorIs(t, err, signal.ErrInfrastructureStop)
@@ -446,7 +443,7 @@ func TestRetryDeletionRechecksWorkflowFence(t *testing.T) {
 }
 
 func TestRetryDeletionUsesUIDAndResourceVersion(t *testing.T) {
-	task := retryTestTask(t, retryTestPolicy())
+	task := retryTestTask(t, jobtest.RetryTestPolicy())
 	live := task.JobInfo.(*batchv1.Job).DeepCopy()
 	live.UID = "old-job"
 	live.ResourceVersion = "9"
@@ -459,28 +456,28 @@ func TestRetryDeletionUsesUIDAndResourceVersion(t *testing.T) {
 }
 
 func TestResizeOnlyOOMContainerAndRejectsInjectedContainer(t *testing.T) {
-	task := retryTestTask(t, retryTestPolicy())
+	task := retryTestTask(t, jobtest.RetryTestPolicy())
 	job := task.JobInfo.(*batchv1.Job)
 	init := job.Spec.Template.Spec.Containers[0].DeepCopy()
 	init.Name = "init"
 	job.Spec.Template.Spec.InitContainers = []corev1.Container{*init}
-	next, err := growOOMJobResources(job, retryTestPolicy(), map[string]bool{"init": true})
+	next, err := growOOMJobResources(job, jobtest.RetryTestPolicy(), map[string]bool{"init": true})
 	require.NoError(t, err)
 	require.Equal(t, "512Mi", next.Spec.Template.Spec.InitContainers[0].Resources.Limits.Memory().String())
 	require.Equal(t, "256Mi", next.Spec.Template.Spec.Containers[0].Resources.Limits.Memory().String())
-	_, err = growOOMJobResources(job, retryTestPolicy(), map[string]bool{"injected": true})
+	_, err = growOOMJobResources(job, jobtest.RetryTestPolicy(), map[string]bool{"injected": true})
 	require.ErrorContains(t, err, "absent from the submitted Job template")
 }
 
 func TestRetryCleanupRecoveredTimeoutUsesCheckpointOwnership(t *testing.T) {
 	for _, pendingRetry := range []bool{false, true} {
 		t.Run(strconv.FormatBool(pendingRetry), func(t *testing.T) {
-			task := retryTestTask(t, retryTestPolicy())
+			task := retryTestTask(t, jobtest.RetryTestPolicy())
 			desired := task.JobInfo.(*batchv1.Job)
 			desired.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
 			live := desired.DeepCopy()
 			live.UID = "created-before-worker-restart"
-			cp := &instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: desired,
+			cp := &jobinfo.InstantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: desired,
 				Attempt: 1, CurrentUID: live.UID, Deadline: time.Now().Add(-time.Second).UnixNano()}
 			if pendingRetry {
 				cp.Attempt, task.Attempt = 2, 2
@@ -512,10 +509,10 @@ func TestRetryCleanupRejectsForeignExecutionOrUID(t *testing.T) {
 		{"replacement attempt", func(job *batchv1.Job) { job.Annotations[workflowconfig.AnnotationJobAttempt] = "2" }},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			task := retryTestTask(t, retryTestPolicy())
+			task := retryTestTask(t, jobtest.RetryTestPolicy())
 			desired := task.JobInfo.(*batchv1.Job)
 			desired.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
-			cp := &instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: desired, Attempt: 1,
+			cp := &jobinfo.InstantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: desired, Attempt: 1,
 				CurrentUID: "owned", Deadline: time.Now().Add(time.Hour).UnixNano()}
 			raw, err := json.Marshal(cp)
 			require.NoError(t, err)
@@ -525,7 +522,7 @@ func TestRetryCleanupRejectsForeignExecutionOrUID(t *testing.T) {
 			tt.change(live)
 			client := fake.NewSimpleClientset(live)
 			err = NewInstantJobCtl(task, &Runtime{Client: client, Store: &retryCheckpointStore{}, Ack: func() {}}).cleanRetryAttempt(context.Background())
-			require.ErrorIs(t, err, errJobExecutionIdentityChanged)
+			require.ErrorIs(t, err, jobinfo.ErrJobExecutionIdentityChanged)
 			require.Zero(t, countClientActions(client, "delete", "jobs"))
 		})
 	}
@@ -564,16 +561,16 @@ func (s *retryOwnedCheckpointStore) CompareAndSwapWithConditions(ctx context.Con
 }
 
 func TestRetryRuntimeResumesOldGenerationUnderCurrentLease(t *testing.T) {
-	task := retryTestTask(t, retryTestPolicy())
+	task := retryTestTask(t, jobtest.RetryTestPolicy())
 	task.OwnerRunGeneration, task.RunToken, task.WorkerID = 4, "token-4", "worker-4"
 	previous := task.JobInfo.(*batchv1.Job).DeepCopy()
 	previous.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
 	previous.UID = "generation-1-attempt-1"
 	previous.Status.Conditions = []batchv1.JobCondition{{Type: batchv1.JobFailed, Status: corev1.ConditionTrue}}
-	next, err := growOOMJobResources(task.JobInfo.(*batchv1.Job), retryTestPolicy(), map[string]bool{previous.Spec.Template.Spec.Containers[0].Name: true})
+	next, err := growOOMJobResources(task.JobInfo.(*batchv1.Job), jobtest.RetryTestPolicy(), map[string]bool{previous.Spec.Template.Spec.Containers[0].Name: true})
 	require.NoError(t, err)
 	next.Annotations[workflowconfig.AnnotationJobAttempt] = "2"
-	cp := &instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: next, Attempt: 2, PreviousUID: previous.UID,
+	cp := &jobinfo.InstantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: next, Attempt: 2, PreviousUID: previous.UID,
 		RetryAt: time.Now().Add(-time.Second).UnixNano(), Deadline: time.Now().Add(time.Hour).UnixNano()}
 	raw, err := json.Marshal(cp)
 	require.NoError(t, err)
@@ -596,13 +593,13 @@ func TestRetryRuntimeResumesOldGenerationUnderCurrentLease(t *testing.T) {
 func TestRetryCancellationRecognizesCommittedParentBeforeSignal(t *testing.T) {
 	for _, signalReceived := range []bool{false, true} {
 		t.Run(strconv.FormatBool(signalReceived), func(t *testing.T) {
-			task := retryTestTask(t, retryTestPolicy())
+			task := retryTestTask(t, jobtest.RetryTestPolicy())
 			task.OwnerRunGeneration, task.RunToken, task.WorkerID = 1, "token-1", "worker-1"
 			desired := task.JobInfo.(*batchv1.Job)
 			desired.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
 			live := desired.DeepCopy()
 			live.UID = "owned"
-			cp := &instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: desired, Attempt: 1,
+			cp := &jobinfo.InstantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: desired, Attempt: 1,
 				CurrentUID: live.UID, Deadline: time.Now().Add(time.Hour).UnixNano()}
 			raw, err := json.Marshal(cp)
 			require.NoError(t, err)
@@ -634,7 +631,7 @@ func TestRetryCancellationRecognizesCommittedParentBeforeSignal(t *testing.T) {
 func TestRetryCancellationCleanupRejectsDifferentLease(t *testing.T) {
 	for _, changed := range []string{"generation", "token", "worker"} {
 		t.Run(changed, func(t *testing.T) {
-			task := retryTestTask(t, retryTestPolicy())
+			task := retryTestTask(t, jobtest.RetryTestPolicy())
 			task.OwnerRunGeneration, task.RunToken, task.WorkerID = 1, "token-1", "worker-1"
 			owner := model.WorkflowQueue{TaskID: task.TaskID, Status: config.StatusCancelled, RunGeneration: 1,
 				RunToken: task.RunToken, WorkerID: task.WorkerID}
@@ -658,12 +655,12 @@ func TestRetryCancellationCleanupRejectsDifferentLease(t *testing.T) {
 }
 
 func TestRetryCancellationDuringCreatedUIDCheckpoint(t *testing.T) {
-	task := retryTestTask(t, retryTestPolicy())
+	task := retryTestTask(t, jobtest.RetryTestPolicy())
 	task.OwnerRunGeneration, task.RunToken, task.WorkerID = 1, "token-1", "worker-1"
 	store := &retryOwnedCheckpointStore{owner: model.WorkflowQueue{TaskID: task.TaskID, Status: config.StatusRunning,
 		RunGeneration: 1, RunToken: task.RunToken, WorkerID: task.WorkerID}}
 	store.afterSave = func(record *model.JobInfo) error {
-		var cp instantJobRetryCheckpoint
+		var cp jobinfo.InstantJobRetryCheckpoint
 		require.NoError(t, json.Unmarshal([]byte(record.InternalInfo), &cp))
 		if cp.CurrentUID != "" && record.Status == string(config.StatusRunning) {
 			store.owner.Status = config.StatusCancelled
@@ -714,12 +711,12 @@ func TestRetryCancellationWithoutLiveJobPersistsTerminal(t *testing.T) {
 				wantOwnerStatus: config.StatusRunning, wantStoredStatus: config.StatusRunning},
 		} {
 			t.Run(fmt.Sprintf("attempt-%d/%s", attempt, tc.name), func(t *testing.T) {
-				task := retryTestTask(t, retryTestPolicy())
+				task := retryTestTask(t, jobtest.RetryTestPolicy())
 				task.OwnerRunGeneration, task.RunToken, task.WorkerID = 1, "token-1", "worker-1"
 				task.OwnerStatus, task.Status, task.Attempt = config.StatusRunning, config.StatusRunning, attempt
 				desired := task.JobInfo.(*batchv1.Job)
 				desired.Annotations[workflowconfig.AnnotationJobAttempt] = strconv.FormatUint(uint64(attempt), 10)
-				cp := &instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: desired,
+				cp := &jobinfo.InstantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: desired,
 					Attempt: attempt, Deadline: time.Now().Add(time.Hour).UnixNano()}
 				if attempt > 1 {
 					cp.PreviousUID, cp.RetryAt = "deleted-attempt-1", time.Now().Add(-time.Second).UnixNano()
@@ -727,7 +724,7 @@ func TestRetryCancellationWithoutLiveJobPersistsTerminal(t *testing.T) {
 				raw, err := json.Marshal(cp)
 				require.NoError(t, err)
 				task.InternalInfo = string(raw)
-				record := buildJobInfoRecord(task)
+				record := jobinfo.BuildJobInfoRecord(task)
 				store := &retryOwnedCheckpointStore{retryCheckpointStore: retryCheckpointStore{record: &record},
 					owner: model.WorkflowQueue{TaskID: task.TaskID, Status: config.StatusCancelled,
 						RunGeneration: 1, RunToken: task.RunToken, WorkerID: task.WorkerID}}
@@ -767,7 +764,7 @@ func TestRetryCancellationWithoutLiveJobPersistsTerminal(t *testing.T) {
 }
 
 func TestRetrySuccessKeepsEvidenceUntilResultAndLogsAreSaved(t *testing.T) {
-	task := retryTestTask(t, retryTestPolicy())
+	task := retryTestTask(t, jobtest.RetryTestPolicy())
 	task.OwnerRunGeneration, task.RunToken, task.WorkerID = 1, "token-1", "worker-1"
 	client := fake.NewSimpleClientset()
 	var created []*batchv1.Job
@@ -776,7 +773,7 @@ func TestRetrySuccessKeepsEvidenceUntilResultAndLogsAreSaved(t *testing.T) {
 		RunGeneration: 1, RunToken: task.RunToken, WorkerID: task.WorkerID}}
 	ctl := newObservedInstantJobCtl(t, task, client, store, func() {})
 	require.NoError(t, ctl.Run(context.Background()))
-	var cp instantJobRetryCheckpoint
+	var cp jobinfo.InstantJobRetryCheckpoint
 	require.NoError(t, json.Unmarshal([]byte(store.record.InternalInfo), &cp))
 	require.Equal(t, created[0].UID, cp.CurrentUID)
 	require.Equal(t, string(config.StatusRunning), store.record.Status)
@@ -797,7 +794,7 @@ func TestRetrySuccessKeepsEvidenceUntilResultAndLogsAreSaved(t *testing.T) {
 
 	// A new lease resumes the same execution and completed attempt without a
 	// create, resource increase, fresh deadline, or fresh retry budget.
-	recovered := retryTestTask(t, retryTestPolicy())
+	recovered := retryTestTask(t, jobtest.RetryTestPolicy())
 	recovered.ExecutionKey, recovered.RunGeneration = *store.record.ExecutionKey, store.record.RunGeneration
 	recovered.OwnerRunGeneration, recovered.RunToken, recovered.WorkerID = 2, "token-2", "worker-2"
 	store.owner.RunGeneration, store.owner.RunToken, store.owner.WorkerID = 2, recovered.RunToken, recovered.WorkerID
@@ -813,7 +810,7 @@ func TestRetrySuccessKeepsEvidenceUntilResultAndLogsAreSaved(t *testing.T) {
 	require.Equal(t, recovered.Info, store.record.Info)
 	require.Equal(t, 1, countClientActions(client, "delete", "jobs"))
 	require.Len(t, created, 1)
-	var restored instantJobRetryCheckpoint
+	var restored jobinfo.InstantJobRetryCheckpoint
 	require.NoError(t, json.Unmarshal([]byte(store.record.InternalInfo), &restored))
 	require.Equal(t, cp.Deadline, restored.Deadline)
 	require.Equal(t, cp.Attempt, restored.Attempt)
@@ -901,17 +898,17 @@ func TestRetryFailedTerminalSaveRejectsDifferentLease(t *testing.T) {
 }
 
 func TestRetryRecoveryAddsRetentionToExistingCheckpointAndJob(t *testing.T) {
-	task := retryTestTask(t, retryTestPolicy())
+	task := retryTestTask(t, jobtest.RetryTestPolicy())
 	desired := task.JobInfo.(*batchv1.Job)
 	desired.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
 	live := desired.DeepCopy()
 	live.UID = "old-worker-job"
 	live.CreationTimestamp = metav1.NewTime(time.Now().Add(-2 * time.Hour))
-	cp := &instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: desired, Attempt: 1,
+	cp := &jobinfo.InstantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: desired, Attempt: 1,
 		CurrentUID: live.UID, Deadline: time.Now().Add(time.Hour).UnixNano()}
 	client := fake.NewSimpleClientset(live)
 	store := &retryCheckpointStore{}
-	require.NoError(t, NewInstantJobCtl(task, &Runtime{Client: client, Store: withJobTestOwner(store, task), Ack: func() {}}).ensureRetryAttempt(context.Background(), cp))
+	require.NoError(t, NewInstantJobCtl(task, &Runtime{Client: client, Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}}).ensureRetryAttempt(context.Background(), cp))
 	retained, err := client.BatchV1().Jobs(live.Namespace).Get(context.Background(), live.Name, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, retained.Spec.TTLSecondsAfterFinished)

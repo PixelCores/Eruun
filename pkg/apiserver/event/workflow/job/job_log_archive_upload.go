@@ -13,6 +13,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
@@ -88,7 +89,7 @@ func (c *LogArchiveUploadJobCtl) run(ctx context.Context) error {
 	if c.store == nil {
 		return fmt.Errorf("store is nil")
 	}
-	info, err := requiredJobInfo[*LogArchiveUploadJobInfo](c.job)
+	info, err := jobinfo.RequiredJobInfo[*LogArchiveUploadJobInfo](c.job)
 	if err != nil {
 		return err
 	}

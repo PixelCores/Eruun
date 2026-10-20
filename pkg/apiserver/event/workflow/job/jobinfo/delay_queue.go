@@ -1,4 +1,4 @@
-package job
+package jobinfo
 
 import (
 	"context"
@@ -33,7 +33,7 @@ type DelayJobPayload struct {
 	Job            *batchv1.Job `json:"job"`
 }
 
-const delayJobNotificationVersion = 2
+const DelayJobNotificationVersion = 2
 
 // The queue wakes the dispatcher; JobInfo.DelayPayload owns the workload.
 // Only versioned identity notifications are accepted; the workload stays in DB.
@@ -48,9 +48,9 @@ type delayJobNotification struct {
 	RunToken      string `json:"runToken,omitempty"`
 }
 
-func notificationForDelayJob(payload *DelayJobPayload) delayJobNotification {
+func NotificationForDelayJob(payload *DelayJobPayload) delayJobNotification {
 	return delayJobNotification{
-		Version:       delayJobNotificationVersion,
+		Version:       DelayJobNotificationVersion,
 		ExecuteAt:     payload.ExecuteAt,
 		TaskID:        payload.TaskID,
 		JobType:       payload.JobType,
@@ -62,21 +62,21 @@ func notificationForDelayJob(payload *DelayJobPayload) delayJobNotification {
 }
 
 func EnqueueDelayJob(ctx context.Context, queue msg.Queue, payload *DelayJobPayload) (string, error) {
-	if err := validateDelayJobPayload(payload); err != nil {
+	if err := ValidateDelayJobPayload(payload); err != nil {
 		return "", err
 	}
 	if queue == nil {
 		return "", ErrDelayQueueUnavailable
 	}
-	raw, err := json.Marshal(notificationForDelayJob(payload))
+	raw, err := json.Marshal(NotificationForDelayJob(payload))
 	if err != nil {
 		return "", fmt.Errorf("marshal delay notification: %w", err)
 	}
 	return queue.Enqueue(ctx, raw)
 }
 
-func persistDelayJobCheckpoint(ctx context.Context, store datastore.DataStore, job *model.JobTask, payload *DelayJobPayload) error {
-	if err := validateDelayJobPayload(payload); err != nil {
+func PersistDelayJobCheckpoint(ctx context.Context, store datastore.DataStore, job *model.JobTask, payload *DelayJobPayload) error {
+	if err := ValidateDelayJobPayload(payload); err != nil {
 		return err
 	}
 	if store == nil || job == nil {
@@ -91,23 +91,23 @@ func persistDelayJobCheckpoint(ctx context.Context, store datastore.DataStore, j
 	job.DelayState = config.JobDelayStatePending
 	job.DelayExecuteAt = payload.ExecuteAt
 	job.DelayPayload = string(raw)
-	if err := saveJobInfo(ctx, store, job); err != nil {
+	if err := SaveJobInfo(ctx, store, job); err != nil {
 		return errors.Join(signal.ErrInfrastructureStop, fmt.Errorf("save delay checkpoint: %w", err))
 	}
 	return nil
 }
 
-func validateDelayJobPayload(payload *DelayJobPayload) error {
+func ValidateDelayJobPayload(payload *DelayJobPayload) error {
 	if payload == nil || payload.Job == nil {
 		return fmt.Errorf("delay payload and job are required")
 	}
 	if strings.TrimSpace(payload.Job.Name) == "" {
 		return fmt.Errorf("delay payload job name is required")
 	}
-	return validateDelayJobIdentity(payload)
+	return ValidateDelayJobIdentity(payload)
 }
 
-func validateDelayJobIdentity(payload *DelayJobPayload) error {
+func ValidateDelayJobIdentity(payload *DelayJobPayload) error {
 	if payload == nil {
 		return fmt.Errorf("delay payload is required")
 	}
@@ -123,7 +123,7 @@ func validateDelayJobIdentity(payload *DelayJobPayload) error {
 	return nil
 }
 
-func isSettledDelayedExecutionStatus(status config.Status) bool {
+func IsSettledDelayedExecutionStatus(status config.Status) bool {
 	switch status {
 	case config.StatusCompleted, config.StatusPassed, config.StatusSkipped, config.StatusFailed, config.StatusTimeout, config.StatusCancelled, config.StatusReject:
 		return true

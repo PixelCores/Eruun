@@ -10,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
@@ -56,7 +57,7 @@ func retryPodOwnedByJob(pod *corev1.Pod, job *batchv1.Job) bool {
 
 func growOOMJobResources(job *batchv1.Job, policy *workflowconfig.JobRetryPolicy, oomContainers map[string]bool) (*batchv1.Job, error) {
 	next := job.DeepCopy()
-	if err := validateRetryJobResources(next, policy); err != nil {
+	if err := jobinfo.ValidateRetryJobResources(next, policy); err != nil {
 		return nil, err
 	}
 	matched := 0

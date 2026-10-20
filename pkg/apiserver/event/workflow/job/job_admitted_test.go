@@ -8,6 +8,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 )
 
 // runAdmittedTestJob exercises component execution and persistence after admission.
@@ -15,7 +16,7 @@ import (
 func runAdmittedTestJob(ctx context.Context, task *model.JobTask, configRuntime *Runtime) error {
 	runtime := newJobRuntime(configRuntime)
 	defer runtime.close()
-	runtime.Store = withJobTestOwner(runtime.Store, task)
+	runtime.Store = jobtest.WithJobTestOwner(runtime.Store, task)
 	if runtime.Ack == nil {
 		runtime.Ack = func() {}
 	}

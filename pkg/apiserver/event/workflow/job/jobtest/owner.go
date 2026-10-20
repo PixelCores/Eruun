@@ -1,4 +1,4 @@
-package job
+package jobtest
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 // withJobTestOwner supplies the claimed parent row for tests concerned with a
 // job's business behavior. Ownership-transfer tests use their own mutable rows.
 // All business writes and injected failures remain delegated to the original store.
-func withJobTestOwner(store datastore.DataStore, tasks ...*model.JobTask) datastore.DataStore {
+func WithJobTestOwner(store datastore.DataStore, tasks ...*model.JobTask) datastore.DataStore {
 	owners := make(map[string]model.WorkflowQueue, len(tasks))
 	for _, task := range tasks {
 		if task.TaskID == "" {

@@ -14,6 +14,8 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 )
@@ -47,7 +49,7 @@ func (q *enqueueCaptureQueue) Close(context.Context) error                      
 func (q *enqueueCaptureQueue) Stats(context.Context, string) (int64, int64, error) { return 0, 0, nil }
 
 type resultJobInfoStore struct {
-	noopStore
+	jobtest.NoopStore
 	listEntities            []datastore.Entity
 	listErr                 error
 	putErr                  error
@@ -132,13 +134,13 @@ func (s *resultJobInfoStore) CompareAndSwapWithConditions(ctx context.Context, e
 func TestEnqueueDelayJobBranches(t *testing.T) {
 	ctx := context.Background()
 
-	_, err := EnqueueDelayJob(ctx, nil, nil)
+	_, err := jobinfo.EnqueueDelayJob(ctx, nil, nil)
 	require.Error(t, err)
 
-	_, err = EnqueueDelayJob(ctx, nil, &DelayJobPayload{})
+	_, err = jobinfo.EnqueueDelayJob(ctx, nil, &jobinfo.DelayJobPayload{})
 	require.Error(t, err)
 
-	_, err = EnqueueDelayJob(ctx, nil, &DelayJobPayload{
+	_, err = jobinfo.EnqueueDelayJob(ctx, nil, &jobinfo.DelayJobPayload{
 		TaskID:        "task-1",
 		ExecutionKey:  "execution-1",
 		RunGeneration: 1,
@@ -146,16 +148,16 @@ func TestEnqueueDelayJobBranches(t *testing.T) {
 	})
 	require.ErrorContains(t, err, "job name")
 
-	_, err = EnqueueDelayJob(ctx, nil, &DelayJobPayload{
+	_, err = jobinfo.EnqueueDelayJob(ctx, nil, &jobinfo.DelayJobPayload{
 		TaskID:        "task-1",
 		ExecutionKey:  "execution-1",
 		RunGeneration: 1,
 		Job:           &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"}},
 	})
-	require.ErrorIs(t, err, ErrDelayQueueUnavailable)
+	require.ErrorIs(t, err, jobinfo.ErrDelayQueueUnavailable)
 
 	queue := &enqueueCaptureQueue{enqueueID: "delay-1"}
-	id, err := EnqueueDelayJob(ctx, queue, &DelayJobPayload{
+	id, err := jobinfo.EnqueueDelayJob(ctx, queue, &jobinfo.DelayJobPayload{
 		ExecuteAt:     10,
 		TaskID:        "task-1",
 		ExecutionKey:  "execution-1",
@@ -167,9 +169,10 @@ func TestEnqueueDelayJobBranches(t *testing.T) {
 	require.Equal(t, "delay-1", id)
 	require.Len(t, queue.enqueued, 1)
 
-	var notification delayJobNotification
+	notification := jobinfo.NotificationForDelayJob(&jobinfo.DelayJobPayload{})
+	notification.Version = 0
 	require.NoError(t, json.Unmarshal(queue.enqueued[0], &notification))
-	require.Equal(t, delayJobNotificationVersion, notification.Version)
+	require.Equal(t, jobinfo.DelayJobNotificationVersion, notification.Version)
 	require.Equal(t, "task-1", notification.TaskID)
 	require.Equal(t, uint64(3), notification.RunGeneration)
 	require.Equal(t, "run-3", notification.RunToken)
@@ -189,7 +192,7 @@ func TestPersistDelayJobCheckpointStoresRecoverablePayload(t *testing.T) {
 		ExecutionKey:  "execution-1",
 		RunGeneration: 3,
 	}
-	payload := &DelayJobPayload{
+	payload := &jobinfo.DelayJobPayload{
 		ExecuteAt:     4102444800,
 		TaskID:        jobTask.TaskID,
 		ExecutionKey:  jobTask.ExecutionKey,
@@ -198,7 +201,7 @@ func TestPersistDelayJobCheckpointStoresRecoverablePayload(t *testing.T) {
 		Job:           &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"}},
 	}
 
-	require.NoError(t, persistDelayJobCheckpoint(context.Background(), withJobTestOwner(store, jobTask), jobTask, payload))
+	require.NoError(t, jobinfo.PersistDelayJobCheckpoint(context.Background(), jobtest.WithJobTestOwner(store, jobTask), jobTask, payload))
 	require.Equal(t, config.StatusDistributed, jobTask.Status)
 	require.Equal(t, config.JobDelayStatePending, jobTask.DelayState)
 	require.Equal(t, payload.ExecuteAt, jobTask.DelayExecuteAt)
@@ -208,7 +211,7 @@ func TestPersistDelayJobCheckpointStoresRecoverablePayload(t *testing.T) {
 	require.NotNil(t, record)
 	require.Equal(t, config.JobDelayStatePending, record.DelayState)
 	require.Equal(t, payload.ExecuteAt, record.DelayExecuteAt)
-	var storedPayload DelayJobPayload
+	var storedPayload jobinfo.DelayJobPayload
 	require.NoError(t, json.Unmarshal([]byte(record.DelayPayload), &storedPayload))
 	require.Equal(t, payload.ExecutionKey, storedPayload.ExecutionKey)
 }
@@ -260,9 +263,9 @@ func TestDelayResultPayloadAndDecode(t *testing.T) {
 	require.Equal(t, "task-1", decoded.TaskID)
 
 	require.Nil(t, newJobResultPayloadFromDelay(nil, nil))
-	require.Nil(t, newJobResultPayloadFromDelay(&DelayJobPayload{}, &batchv1.Job{}))
+	require.Nil(t, newJobResultPayloadFromDelay(&jobinfo.DelayJobPayload{}, &batchv1.Job{}))
 
-	delayPayload := &DelayJobPayload{
+	delayPayload := &jobinfo.DelayJobPayload{
 		TaskID:        "task-2",
 		JobType:       string(config.JobDeployScheduled),
 		Namespace:     "ns-1",

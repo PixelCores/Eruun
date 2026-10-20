@@ -14,6 +14,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	wf "github.com/PixelCores/Eruun/pkg/apiserver/workflow"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	signal "github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
@@ -78,7 +79,7 @@ func (w *WorkflowCtl) triggerWorkflowCallback(ctx context.Context, status config
 	if targetURL == "" {
 		return
 	}
-	payload := job.CallbackPayload{
+	payload := jobinfo.CallbackPayload{
 		Event:        event,
 		Status:       string(status),
 		AppID:        task.AppID,
@@ -104,7 +105,7 @@ func (w *WorkflowCtl) triggerWorkflowCallback(ctx context.Context, status config
 		OwnerStatus:   status,
 		RunToken:      task.RunToken,
 		WorkerID:      task.WorkerID,
-		JobInfo: &job.CallbackJobInfo{
+		JobInfo: &jobinfo.CallbackJobInfo{
 			Event:          event,
 			URL:            targetURL,
 			Method:         method,
@@ -118,7 +119,7 @@ func (w *WorkflowCtl) triggerWorkflowCallback(ctx context.Context, status config
 	if w.workspace != nil {
 		callbackJob.Namespace = w.workspace.Namespace
 	}
-	job.ApplyExecutionIdentity(callbackJob)
+	jobinfo.ApplyExecutionIdentity(callbackJob)
 	callbackParent, stopCallbackParent := terminalCallbackParentContext(ctx, status)
 	defer stopCallbackParent()
 	callbackCtx, cancel := callbackContext(callbackParent, callback.TimeoutSeconds, w.callbackTimeoutMax)

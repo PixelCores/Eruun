@@ -19,6 +19,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -145,7 +147,7 @@ func TestCleanupResourcesJobCtlStatefulSetDeleteConflictRechecksCancellation(t *
 	err := ctl.deleteStatefulSet(ctx, component.Namespace, statefulSet.Name)
 
 	require.Error(t, err)
-	statusErr, ok := ExtractStatusError(err)
+	statusErr, ok := jobinfo.ExtractStatusError(err)
 	require.True(t, ok)
 	require.Equal(t, config.StatusCancelled, statusErr.Status)
 	require.Equal(t, 1, countClientActions(client, "delete", "statefulsets"))
@@ -193,7 +195,7 @@ func TestCleanupResourcesJobCtlStatefulSetDeleteConflictRetryIsBoundedAndCancell
 			require.Equal(t, requiredStatefulSetSafetyRefreshMaxAttempts, deleteAttempts)
 			require.Equal(t, requiredStatefulSetSafetyRefreshMaxAttempts, countClientActions(client, "delete", "statefulsets"))
 			if tt.wantStatus != "" {
-				statusErr, ok := ExtractStatusError(err)
+				statusErr, ok := jobinfo.ExtractStatusError(err)
 				require.True(t, ok)
 				require.Equal(t, tt.wantStatus, statusErr.Status)
 			} else {
@@ -328,7 +330,7 @@ func newRequiredStatefulSetPVCConflictRetryController(
 		Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: versionUpdateRequireStatefulSetPVCDeletionInternalInfo(t, "data"), Timeout: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: nil})
 	require.NotNil(t, ctl)
 	return component, pvc, client, ctl
 }

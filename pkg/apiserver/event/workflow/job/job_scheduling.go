@@ -14,6 +14,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
@@ -38,7 +39,7 @@ func waitForJobAdmission(ctx context.Context, store datastore.DataStore, task *m
 	if owner.Status == "" {
 		owner.Status = config.StatusRunning
 	}
-	record := buildJobInfoRecord(task)
+	record := jobinfo.BuildJobInfoRecord(task)
 	record.SchedulingClass = task.SchedulingClass
 	resources, err := jobSchedulingResourceSnapshot(task)
 	if err != nil {
@@ -51,7 +52,7 @@ func waitForJobAdmission(ctx context.Context, store datastore.DataStore, task *m
 	}
 	confirmedUID, err := confirmJobAdmissionRecovery(ctx, store, client, task)
 	if err != nil {
-		if statusErr, ok := ExtractStatusError(err); ok && statusErr.Status == config.StatusTimeout {
+		if statusErr, ok := jobinfo.ExtractStatusError(err); ok && statusErr.Status == config.StatusTimeout {
 			return noop, err
 		}
 		return noop, releaseLostJobAdmission(ctx, store, task, errors.Join(signal.ErrInfrastructureStop, err))
@@ -102,7 +103,7 @@ func releaseLostJobAdmission(ctx context.Context, store datastore.DataStore, tas
 	if owner.Status == "" {
 		owner.Status = config.StatusRunning
 	}
-	record := buildJobInfoRecord(task)
+	record := jobinfo.BuildJobInfoRecord(task)
 	releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	if err := repository.ReleaseLostJobAdmission(releaseCtx, store, owner, &record, "recovered Kubernetes Job is missing or has a different execution identity"); err != nil {
@@ -149,7 +150,7 @@ func confirmJobAdmissionRecovery(ctx context.Context, store datastore.DataStore,
 	if (task.JobType != string(config.JobCommand) && task.JobType != string(config.JobEval)) || task.InternalInfo == "" {
 		return "", nil
 	}
-	cp, err := decodeInstantJobRetryCheckpoint(task)
+	cp, err := jobinfo.DecodeInstantJobRetryCheckpoint(task)
 	if err != nil {
 		return "", err
 	}
@@ -161,12 +162,12 @@ func confirmJobAdmissionRecovery(ctx context.Context, store datastore.DataStore,
 	// including a create whose returned UID was never checkpointed. Use the
 	// same database time domain as the durable retry deadline.
 	if !time.Unix(0, cp.Deadline).After(now) {
-		return "", NewStatusError(config.StatusTimeout, context.DeadlineExceeded)
+		return "", jobinfo.NewStatusError(config.StatusTimeout, context.DeadlineExceeded)
 	}
 	if cp.CurrentUID == "" {
 		return "", nil
 	}
-	policy, err := retryPolicyFromJob(cp.Job)
+	policy, err := jobinfo.RetryPolicyFromJob(cp.Job)
 	if err != nil {
 		return "", err
 	}
@@ -183,9 +184,9 @@ func confirmJobAdmissionRecovery(ctx context.Context, store datastore.DataStore,
 		}
 		return "", fmt.Errorf("confirm existing Job admission: %w", err)
 	}
-	record := buildJobInfoRecord(task)
-	if err := ValidateInstantJobRetryExecution(&record, live); err != nil {
-		if errors.Is(err, errJobExecutionIdentityChanged) {
+	record := jobinfo.BuildJobInfoRecord(task)
+	if err := jobinfo.ValidateInstantJobRetryExecution(&record, live); err != nil {
+		if errors.Is(err, jobinfo.ErrJobExecutionIdentityChanged) {
 			return "", errors.Join(errJobAdmissionRecoveryExecutionLost, err)
 		}
 		return "", err

@@ -13,6 +13,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
@@ -144,7 +145,7 @@ func (w *WorkflowCtl) triggerApprovalNotification(ctx context.Context, stepExec 
 		method = "POST"
 	}
 	task := w.snapshotTask()
-	payload := job.CallbackPayload{
+	payload := jobinfo.CallbackPayload{
 		Event:        approvalEventName,
 		Status:       string(config.StatusWaitingApprove),
 		AppID:        task.AppID,
@@ -172,7 +173,7 @@ func (w *WorkflowCtl) triggerApprovalNotification(ctx context.Context, stepExec 
 		OwnerStatus:     task.Status,
 		RunToken:        task.RunToken,
 		WorkerID:        task.WorkerID,
-		JobInfo: &job.CallbackJobInfo{
+		JobInfo: &jobinfo.CallbackJobInfo{
 			Event:          approvalEventName,
 			URL:            targetURL,
 			Method:         method,
@@ -186,7 +187,7 @@ func (w *WorkflowCtl) triggerApprovalNotification(ctx context.Context, stepExec 
 	if w.workspace != nil {
 		callbackJob.Namespace = w.workspace.Namespace
 	}
-	job.ApplyExecutionIdentity(callbackJob)
+	jobinfo.ApplyExecutionIdentity(callbackJob)
 	callbackCtx, cancel := approvalNotificationContext(job.WithTaskMetadata(context.WithoutCancel(ctx), ""), approvalNotifyTimeout)
 	go func() {
 		defer cancel()

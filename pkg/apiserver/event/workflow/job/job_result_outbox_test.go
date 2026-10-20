@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/stretchr/testify/require"
 	batchv1 "k8s.io/api/batch/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -23,7 +22,9 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
 
@@ -47,7 +48,7 @@ func (s *resultOutboxTestStore) CurrentDatabaseTime(ctx context.Context) (time.T
 	return time.Now().UTC(), ctx.Err()
 }
 
-func seedCommittedDelayTestCheckpoint(t *testing.T, store *resultOutboxTestStore, payload *DelayJobPayload) {
+func seedCommittedDelayTestCheckpoint(t *testing.T, store *resultOutboxTestStore, payload *jobinfo.DelayJobPayload) {
 	t.Helper()
 	raw, err := json.Marshal(payload)
 	require.NoError(t, err)
@@ -55,7 +56,7 @@ func seedCommittedDelayTestCheckpoint(t *testing.T, store *resultOutboxTestStore
 	defer store.mu.Unlock()
 	var record *model.JobInfo
 	for _, existing := range store.jobInfos {
-		if jobInfoExecutionKey(*existing) == payload.ExecutionKey {
+		if jobinfo.JobInfoExecutionKey(*existing) == payload.ExecutionKey {
 			record = existing
 			break
 		}
@@ -559,7 +560,7 @@ func resultOutboxJobInfoMatchesConditions(current *model.JobInfo, conditions map
 			if ptr, ok := value.(*string); ok && ptr != nil {
 				key = *ptr
 			}
-			if jobInfoExecutionKey(*current) != key {
+			if jobinfo.JobInfoExecutionKey(*current) != key {
 				return false, nil
 			}
 		case "run_generation":
@@ -782,7 +783,7 @@ func TestDelayDispatcherDropsStaleWorkflowOwnership(t *testing.T) {
 			store := &delayFencingStore{resultOutboxTestStore: newResultOutboxTestStore(), task: tc.task}
 			client := fake.NewSimpleClientset()
 			dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
-			payload := &DelayJobPayload{
+			payload := &jobinfo.DelayJobPayload{
 				TaskID:        "task-delay-fenced",
 				JobType:       string(config.JobDeployScheduled),
 				Namespace:     "default",
@@ -820,7 +821,7 @@ func TestDelayDispatcherPreservesCommittedDelayedJobAcrossWorkflowGeneration(t *
 	}))
 	client := fake.NewSimpleClientset()
 	dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
-	payload := &DelayJobPayload{
+	payload := &jobinfo.DelayJobPayload{
 		TaskID:        "task-delay-committed",
 		JobType:       string(config.JobDeployInstant),
 		Namespace:     "default",
@@ -872,7 +873,7 @@ func TestDelayDispatcherDoesNotRecreateSettledDelayedExecution(t *testing.T) {
 			}))
 			client := fake.NewSimpleClientset()
 			dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
-			payload := &DelayJobPayload{
+			payload := &jobinfo.DelayJobPayload{
 				TaskID:        "task-delay-settled",
 				JobType:       string(config.JobDeployScheduled),
 				Namespace:     "default",
@@ -907,7 +908,7 @@ func TestDelayDispatcherAcceptsCurrentGenerationWithCompatibleToken(t *testing.T
 			}
 			client := fake.NewSimpleClientset()
 			dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
-			payload := &DelayJobPayload{
+			payload := &jobinfo.DelayJobPayload{
 				TaskID:        "task-delay-current",
 				JobType:       string(config.JobDeployScheduled),
 				Namespace:     "default",
@@ -965,7 +966,7 @@ func TestDelayDispatcherDoesNotBindOutboxToDifferentJobExecution(t *testing.T) {
 			}}
 			client := fake.NewSimpleClientset(existing)
 			dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
-			payload := &DelayJobPayload{
+			payload := &jobinfo.DelayJobPayload{
 				TaskID:        "task-delay-current",
 				JobType:       string(config.JobDeployScheduled),
 				Namespace:     "default",
@@ -1010,7 +1011,7 @@ func TestDelayDispatcherDoesNotRecreateWhenResultSettlesBetweenReads(t *testing.
 		ExecutionKey:  &executionKey,
 		RunGeneration: 2,
 	}
-	payload := &DelayJobPayload{
+	payload := &jobinfo.DelayJobPayload{
 		TaskID:        "task-delay-settles-between-reads",
 		JobType:       string(config.JobDeployScheduled),
 		Namespace:     "default",
@@ -1056,7 +1057,7 @@ func TestDelayDispatcherRetriesOwnershipLookupFailure(t *testing.T) {
 	}
 	client := fake.NewSimpleClientset()
 	dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
-	payload := &DelayJobPayload{
+	payload := &jobinfo.DelayJobPayload{
 		TaskID:        "task-delay-current",
 		JobType:       string(config.JobDeployScheduled),
 		Namespace:     "default",
@@ -1085,7 +1086,7 @@ func TestDelayDispatcherDispatchPersistsResultOutboxWithoutQueueDependency(t *te
 
 	jobObj := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "delay-job-1", Namespace: "default"}}
 	item := &delayItem{
-		payload: &DelayJobPayload{
+		payload: &jobinfo.DelayJobPayload{
 			TaskID:         "task-delay-1",
 			ExecutionKey:   "execution-delay-1",
 			RunGeneration:  1,
@@ -1114,7 +1115,7 @@ func TestDelayDispatcherRecoversDueCheckpointWithoutQueue(t *testing.T) {
 	store := newResultOutboxTestStore()
 	client := fake.NewSimpleClientset()
 	executionKey := "execution-delay-recovery"
-	payload := &DelayJobPayload{
+	payload := &jobinfo.DelayJobPayload{
 		ExecuteAt:     time.Now().Add(-time.Minute).Unix(),
 		Namespace:     "default",
 		JobType:       string(config.JobDeployInstant),
@@ -1171,7 +1172,7 @@ func TestDelayDispatcherDispatchDoesNotPersistOutboxBeforeJobExists(t *testing.T
 
 	jobObj := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "delay-job-create-fail", Namespace: "default"}}
 	item := &delayItem{
-		payload: &DelayJobPayload{
+		payload: &jobinfo.DelayJobPayload{
 			TaskID:         "task-delay-create-fail",
 			ExecutionKey:   "execution-delay-create-fail",
 			RunGeneration:  1,
@@ -1221,7 +1222,7 @@ func TestDelayDispatcherDispatchPersistsOutboxWhenCreateErrorLeavesJobPresent(t 
 		},
 	}}
 	item := &delayItem{
-		payload: &DelayJobPayload{
+		payload: &jobinfo.DelayJobPayload{
 			TaskID:         "task-delay-create-visible",
 			JobType:        string(config.JobDeployScheduled),
 			ExecutionKey:   "execution-current",
@@ -1267,7 +1268,7 @@ func TestDelayDispatcherDispatchRejectsDifferentJobAfterCreateError(t *testing.T
 	dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
 
 	jobObj := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "delay-job-create-conflict", Namespace: "default"}}
-	payload := &DelayJobPayload{
+	payload := &jobinfo.DelayJobPayload{
 		TaskID:         "task-delay-create-conflict",
 		ExecutionKey:   "execution-delay-create-conflict",
 		RunGeneration:  1,
@@ -1304,7 +1305,7 @@ func TestDelayDispatcherDispatchDoesNotRecreateWhenResultOutboxPendingAndJobMiss
 	dispatcher := NewDelayDispatcher(nil, &workspace.Manager{Client: client, RESTConfig: &rest.Config{}}, store, "", "")
 
 	jobObj := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "delay-job-2", Namespace: "default"}}
-	payload := &DelayJobPayload{
+	payload := &jobinfo.DelayJobPayload{
 		TaskID:         "task-delay-2",
 		ExecutionKey:   "execution-delay-2",
 		RunGeneration:  1,

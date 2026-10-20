@@ -8,7 +8,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 )
 
 func TestBuildDatabaseResetStepExecutionAggregatesComponents(t *testing.T) {
@@ -63,7 +63,7 @@ func TestBuildDatabaseResetStepExecutionAggregatesComponents(t *testing.T) {
 	}
 	require.Len(t, jobs, 1)
 	require.Equal(t, string(config.JobDatabaseReset), jobs[0].JobType)
-	info, ok := jobs[0].JobInfo.(*job.DatabaseResetJobInfo)
+	info, ok := jobs[0].JobInfo.(*jobinfo.DatabaseResetJobInfo)
 	require.True(t, ok)
 	require.Len(t, info.DatabaseComponents, 2)
 	require.Equal(t, "mysql", info.DatabaseComponents[0].Name)
@@ -142,7 +142,7 @@ func TestBuildDatabaseResetSubStepsAssignDistinctExecutionKeys(t *testing.T) {
 			var keys []string
 			for _, execution := range executions {
 				for _, jobTask := range execution.Jobs[config.JobPriorityLow] {
-					info, ok := jobTask.JobInfo.(*job.DatabaseResetJobInfo)
+					info, ok := jobTask.JobInfo.(*jobinfo.DatabaseResetJobInfo)
 					require.True(t, ok)
 					keys = append(keys, info.ExecutionKey)
 				}
@@ -179,7 +179,7 @@ func requireDatabaseResetExecutionKey(t *testing.T, executions []StepExecution) 
 	require.Len(t, executions, 1)
 	jobs := executions[0].Jobs[config.JobPriorityLow]
 	require.Len(t, jobs, 1)
-	info, ok := jobs[0].JobInfo.(*job.DatabaseResetJobInfo)
+	info, ok := jobs[0].JobInfo.(*jobinfo.DatabaseResetJobInfo)
 	require.True(t, ok)
 	return info.ExecutionKey
 }

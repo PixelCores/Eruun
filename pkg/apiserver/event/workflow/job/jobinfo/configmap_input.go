@@ -1,4 +1,4 @@
-package job
+package jobinfo
 
 import (
 	"context"

@@ -15,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	wf "github.com/PixelCores/Eruun/pkg/apiserver/workflow"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -120,7 +121,7 @@ func (w *workflowServiceImpl) runWorkflowTerminalCallback(ctx context.Context, t
 		return repository.ErrWorkflowOwnershipLost
 	}
 	task = parent
-	payload := workflowjob.CallbackPayload{
+	payload := jobinfo.CallbackPayload{
 		Event:        event,
 		Status:       string(status),
 		AppID:        task.AppID,
@@ -148,7 +149,7 @@ func (w *workflowServiceImpl) runWorkflowTerminalCallback(ctx context.Context, t
 		OwnerStatus:   task.Status,
 		RunToken:      task.RunToken,
 		WorkerID:      task.WorkerID,
-		JobInfo: &workflowjob.CallbackJobInfo{
+		JobInfo: &jobinfo.CallbackJobInfo{
 			Event:          event,
 			URL:            targetURL,
 			Method:         method,

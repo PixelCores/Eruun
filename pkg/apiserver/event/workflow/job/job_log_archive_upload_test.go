@@ -15,6 +15,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
@@ -45,7 +46,7 @@ func (m *mockArchiveUploader) UploadArchive(ctx context.Context, input ArchiveUp
 }
 
 func TestLogArchiveUploadJobCtlFailsWhenUploaderNotConfigured(t *testing.T) {
-	ctl := NewLogArchiveUploadJobCtl(logArchiveUploadTask("api"), &Runtime{Client: fake.NewSimpleClientset(), Store: &noopStore{}, KubeConfig: &rest.Config{}})
+	ctl := NewLogArchiveUploadJobCtl(logArchiveUploadTask("api"), &Runtime{Client: fake.NewSimpleClientset(), Store: &jobtest.NoopStore{}, KubeConfig: &rest.Config{}})
 
 	err := ctl.run(context.Background())
 	require.ErrorIs(t, err, ErrArchiveUploaderNotConfigured)
@@ -66,7 +67,7 @@ func TestLogArchiveUploadJobCtlUploadsZipAndWritesResultInfo(t *testing.T) {
 		}, nil
 	}
 	uploader := &mockArchiveUploader{}
-	ctl := NewLogArchiveUploadJobCtl(logArchiveUploadTask("api"), &Runtime{Client: fake.NewSimpleClientset(logArchiveUploadPod("api")), Store: &noopStore{}, KubeConfig: &rest.Config{}, archiveUploader: uploader})
+	ctl := NewLogArchiveUploadJobCtl(logArchiveUploadTask("api"), &Runtime{Client: fake.NewSimpleClientset(logArchiveUploadPod("api")), Store: &jobtest.NoopStore{}, KubeConfig: &rest.Config{}, archiveUploader: uploader})
 
 	err := ctl.run(context.Background())
 	require.NoError(t, err)
@@ -106,7 +107,7 @@ func TestLogArchiveUploadJobCtlRejectsNonZipArchive(t *testing.T) {
 		}, nil
 	}
 	uploader := &mockArchiveUploader{}
-	ctl := NewLogArchiveUploadJobCtl(logArchiveUploadTask("api"), &Runtime{Client: fake.NewSimpleClientset(logArchiveUploadPod("api")), Store: &noopStore{}, KubeConfig: &rest.Config{}, archiveUploader: uploader})
+	ctl := NewLogArchiveUploadJobCtl(logArchiveUploadTask("api"), &Runtime{Client: fake.NewSimpleClientset(logArchiveUploadPod("api")), Store: &jobtest.NoopStore{}, KubeConfig: &rest.Config{}, archiveUploader: uploader})
 
 	err := ctl.run(context.Background())
 	require.Error(t, err)
@@ -124,7 +125,7 @@ func TestLogArchiveUploadJobCtlRejectsInvalidRequestedContainer(t *testing.T) {
 	}
 	task := logArchiveUploadTask("api")
 	task.JobInfo.(*LogArchiveUploadJobInfo).Container = "missing"
-	ctl := NewLogArchiveUploadJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(logArchiveUploadPod("api")), Store: &noopStore{}, KubeConfig: &rest.Config{}, archiveUploader: &mockArchiveUploader{}})
+	ctl := NewLogArchiveUploadJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(logArchiveUploadPod("api")), Store: &jobtest.NoopStore{}, KubeConfig: &rest.Config{}, archiveUploader: &mockArchiveUploader{}})
 
 	err := ctl.run(context.Background())
 	require.Error(t, err)

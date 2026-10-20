@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
@@ -49,7 +50,7 @@ func (c *CleanupResourcesJobCtl) initializeRequiredStatefulSetPodTarget(
 	statefulSetFound bool,
 ) error {
 	if c.job.Status == config.StatusRunning {
-		existing, err := findExistingVersionUpdateCleanupJobInfo(ctx, c.store, c.job)
+		existing, err := jobinfo.FindExistingVersionUpdateCleanupJobInfo(ctx, c.store, c.job)
 		if err != nil {
 			return fmt.Errorf("load required StatefulSet pod identity checkpoint: %w", err)
 		}
@@ -105,7 +106,7 @@ func (c *CleanupResourcesJobCtl) persistRequiredStatefulSetPodTarget(ctx context
 	}
 
 	for attempt := 1; attempt <= requiredStatefulSetPodCheckpointPersistMaxAttempts; attempt++ {
-		existing, err := findExistingVersionUpdateCleanupJobInfo(ctx, c.store, c.job)
+		existing, err := jobinfo.FindExistingVersionUpdateCleanupJobInfo(ctx, c.store, c.job)
 		if err != nil {
 			return fmt.Errorf("load required StatefulSet pod identity checkpoint before persist: %w", err)
 		}
@@ -166,7 +167,7 @@ func (c *CleanupResourcesJobCtl) persistRequiredStatefulSetPodTarget(ctx context
 		if err := c.ensureRequiredStatefulSetWorkflowTaskActive(ctx, "persisting required StatefulSet Pod identity checkpoint"); err != nil {
 			return err
 		}
-		updated, err := conditionalStore.CompareAndSwapWithConditions(ctx, existing, versionUpdateCleanupJobInfoConditions(existing), map[string]interface{}{
+		updated, err := conditionalStore.CompareAndSwapWithConditions(ctx, existing, jobinfo.VersionUpdateCleanupJobInfoConditions(existing), map[string]interface{}{
 			"internal_info": nextInternalInfo,
 		})
 		if err != nil {
@@ -191,7 +192,7 @@ func (c *CleanupResourcesJobCtl) requiredStatefulSetPodCheckpointStatusError(sta
 	if isTerminalVersionUpdateCleanupStatus(status) {
 		return c.abortTerminalizedVersionUpdateCleanup(status, rawStatus)
 	}
-	return fmt.Errorf("version update cleanup job info for task %s component %s is %s while persisting required StatefulSet pod identity, expected running", c.job.TaskID, resolveJobServiceName(c.job), rawStatus)
+	return fmt.Errorf("version update cleanup job info for task %s component %s is %s while persisting required StatefulSet pod identity, expected running", c.job.TaskID, jobinfo.ResolveJobServiceName(c.job), rawStatus)
 }
 
 func requiredStatefulSetPodCheckpointFromTarget(target *requiredStatefulSetPodDeletionTarget) requiredStatefulSetPodDeletionCheckpoint {

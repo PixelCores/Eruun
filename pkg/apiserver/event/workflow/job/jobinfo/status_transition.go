@@ -1,4 +1,4 @@
-package job
+package jobinfo
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 )
 
-type runJobFunc func(context.Context) error
-type waitJobFunc func(context.Context) error
+type RunJobFunc func(context.Context) error
+type WaitJobFunc func(context.Context) error
 
 func startJobTransition(job *model.JobTask, ack func()) {
 	job.Status = config.StatusRunning
@@ -28,19 +28,19 @@ func finishJobTransitionWithError(ctx context.Context, job *model.JobTask, err e
 	if logMsg != "" {
 		klog.FromContext(ctx).Error(err, logMsg)
 	}
-	applyJobError(job, err, "")
+	ApplyJobError(job, err, "")
 	return err
 }
 
-func applyJobError(job *model.JobTask, err error, message string) {
+func ApplyJobError(job *model.JobTask, err error, message string) {
 	if job == nil || err == nil {
 		return
 	}
-	job.Error = jobErrorMessage(err, message)
-	job.Status = statusFromError(err)
+	job.Error = JobErrorMessage(err, message)
+	job.Status = StatusFromError(err)
 }
 
-func jobErrorMessage(err error, message string) string {
+func JobErrorMessage(err error, message string) string {
 	message = strings.TrimSpace(message)
 	if message != "" {
 		return message
@@ -51,7 +51,7 @@ func jobErrorMessage(err error, message string) string {
 	return strings.TrimSpace(err.Error())
 }
 
-func statusFromError(err error) config.Status {
+func StatusFromError(err error) config.Status {
 	if statusErr, ok := ExtractStatusError(err); ok {
 		return statusErr.Status
 	}
@@ -69,7 +69,7 @@ func completeJobTransition(job *model.JobTask) error {
 }
 
 // runJobWithStatus provides a consistent status transition flow around job execution.
-func runJobWithStatus(ctx context.Context, job *model.JobTask, ack func(), runFn runJobFunc, logMsg string) error {
+func RunJobWithStatus(ctx context.Context, job *model.JobTask, ack func(), runFn RunJobFunc, logMsg string) error {
 	startJobTransition(job, ack)
 	if err := runFn(ctx); err != nil {
 		return finishJobTransitionWithError(ctx, job, err, logMsg)
@@ -78,7 +78,7 @@ func runJobWithStatus(ctx context.Context, job *model.JobTask, ack func(), runFn
 }
 
 // runJobWithWait provides a consistent status transition flow around job execution and waiting.
-func runJobWithWait(ctx context.Context, job *model.JobTask, ack func(), runFn runJobFunc, waitFn waitJobFunc, runLogMsg, waitLogMsg string) error {
+func RunJobWithWait(ctx context.Context, job *model.JobTask, ack func(), runFn RunJobFunc, waitFn WaitJobFunc, runLogMsg, waitLogMsg string) error {
 	startJobTransition(job, ack)
 	if err := runFn(ctx); err != nil {
 		return finishJobTransitionWithError(ctx, job, err, runLogMsg)

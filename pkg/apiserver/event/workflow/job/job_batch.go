@@ -24,6 +24,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -249,7 +250,7 @@ func applyJobRunPolicy(
 		}
 		if done && status == config.StatusFailed {
 			klog.Errorf("job %s already failed: %s", jobName, message)
-			return runPolicyActionCreate, NewStatusError(config.StatusFailed, fmt.Errorf("existing job failed: %s", message))
+			return runPolicyActionCreate, jobinfo.NewStatusError(config.StatusFailed, fmt.Errorf("existing job failed: %s", message))
 		}
 		if _, err := adoptReusableJobExecution(ctx, client, jobObj, existing); err != nil {
 			return runPolicyActionCreate, err
@@ -267,7 +268,7 @@ func applyJobRunPolicy(
 		}
 		return runPolicyActionCreate, nil
 	default:
-		return runPolicyActionCreate, NewStatusError(config.StatusFailed, fmt.Errorf("unsupported run policy %q", policy))
+		return runPolicyActionCreate, jobinfo.NewStatusError(config.StatusFailed, fmt.Errorf("unsupported run policy %q", policy))
 	}
 }
 
@@ -298,7 +299,7 @@ func adoptReusableJobExecution(ctx context.Context, client kubernetes.Interface,
 	if existingTaskID == desiredTaskID && existingGeneration >= desiredGeneration {
 		return nil, fmt.Errorf(
 			"%w: job %s/%s belongs to task %q execution %q generation %d; requested task %q execution %q generation %d",
-			errJobExecutionIdentityChanged,
+			jobinfo.ErrJobExecutionIdentityChanged,
 			existing.Namespace,
 			existing.Name,
 			existingTaskID,
@@ -410,7 +411,7 @@ func validateExistingJobExecutionIdentity(ctx context.Context, store datastore.D
 				)
 			}
 			if !isTerminalWorkflowJobTaskStatus(existingTask.Status) {
-				return fmt.Errorf("%w: existing Job belongs to active workflow task %s", errJobExecutionIdentityChanged, existingTaskID)
+				return fmt.Errorf("%w: existing Job belongs to active workflow task %s", jobinfo.ErrJobExecutionIdentityChanged, existingTaskID)
 			}
 			return nil
 		}
@@ -421,22 +422,22 @@ func validateExistingJobExecutionIdentity(ctx context.Context, store datastore.D
 		}
 		desiredGeneration, err := strconv.ParseUint(desiredGenerationRaw, 10, 64)
 		if err != nil || desiredGeneration == 0 {
-			return fmt.Errorf("%w: desired Job has invalid run generation %q", errJobExecutionIdentityChanged, desiredGenerationRaw)
+			return fmt.Errorf("%w: desired Job has invalid run generation %q", jobinfo.ErrJobExecutionIdentityChanged, desiredGenerationRaw)
 		}
 		existingKey := strings.TrimSpace(existing.Annotations[config.AnnotationJobExecutionKey])
 		existingGenerationRaw := strings.TrimSpace(existing.Annotations[config.AnnotationJobRunGeneration])
 		if existingGenerationRaw == "" {
 			if existingKey != "" && existingKey != desiredKey {
-				return fmt.Errorf("%w: existing Job has a different execution key without a generation", errJobExecutionIdentityChanged)
+				return fmt.Errorf("%w: existing Job has a different execution key without a generation", jobinfo.ErrJobExecutionIdentityChanged)
 			}
 			return nil
 		}
 		existingGeneration, err := strconv.ParseUint(existingGenerationRaw, 10, 64)
 		if err != nil || existingGeneration == 0 {
-			return fmt.Errorf("%w: existing Job has invalid run generation %q", errJobExecutionIdentityChanged, existingGenerationRaw)
+			return fmt.Errorf("%w: existing Job has invalid run generation %q", jobinfo.ErrJobExecutionIdentityChanged, existingGenerationRaw)
 		}
 		if existingGeneration > desiredGeneration || (existingGeneration == desiredGeneration && existingKey != desiredKey) {
-			return fmt.Errorf("%w: existing Job generation %d does not belong to desired generation %d", errJobExecutionIdentityChanged, existingGeneration, desiredGeneration)
+			return fmt.Errorf("%w: existing Job generation %d does not belong to desired generation %d", jobinfo.ErrJobExecutionIdentityChanged, existingGeneration, desiredGeneration)
 		}
 		return nil
 	}
@@ -616,7 +617,7 @@ func (b *deployNamespacedResourceJobBase) waitBatchJob(ctx context.Context) (con
 	defer cancel()
 	namespace := b.namespace
 	name := b.job.Name
-	if jobObj, ok := optionalJobInfo[*batchv1.Job](b.job); ok {
+	if jobObj, ok := jobinfo.OptionalJobInfo[*batchv1.Job](b.job); ok {
 		if jobObj.Namespace != "" {
 			namespace = jobObj.Namespace
 		}
@@ -651,7 +652,7 @@ func waitForJobCompletionMatching(ctx context.Context, client kubernetes.Interfa
 			return false, err
 		}
 		if matches != nil && !matches(job) {
-			return false, errJobExecutionIdentityChanged
+			return false, jobinfo.ErrJobExecutionIdentityChanged
 		}
 		status, message, done := jobTerminalStatus(job)
 		if done {
@@ -672,12 +673,12 @@ func waitForJobCompletionMatching(ctx context.Context, client kubernetes.Interfa
 	})
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			return config.StatusTimeout, err.Error(), NewStatusError(config.StatusTimeout, err)
+			return config.StatusTimeout, err.Error(), jobinfo.NewStatusError(config.StatusTimeout, err)
 		}
 		return config.StatusFailed, err.Error(), err
 	}
 	if finalStatus == config.StatusFailed {
-		return finalStatus, finalMessage, NewStatusError(config.StatusFailed, fmt.Errorf("%s", finalMessage))
+		return finalStatus, finalMessage, jobinfo.NewStatusError(config.StatusFailed, fmt.Errorf("%s", finalMessage))
 	}
 	return finalStatus, finalMessage, nil
 }

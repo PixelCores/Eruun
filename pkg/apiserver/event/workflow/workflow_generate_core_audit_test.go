@@ -2,25 +2,23 @@ package workflow
 
 import (
 	"context"
-
 	"fmt"
+	"testing"
 
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
-	"testing"
-
 	corev1 "k8s.io/api/core/v1"
-
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	wfNaming "github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
-	"k8s.io/client-go/kubernetes/fake"
 )
 
 func TestGenerateJobTasksPropagatesWorkflowFailurePolicy(t *testing.T) {
@@ -269,7 +267,7 @@ func TestGenerateJobTasksSequential(t *testing.T) {
 	require.Len(t, second.Jobs[config.JobPriorityMaxHigh], 1)
 	cmJob := second.Jobs[config.JobPriorityMaxHigh][0]
 	require.Equal(t, configComponent.Name, cmJob.Name)
-	cmInput, ok := cmJob.JobInfo.(*workflowjob.ConfigMapInput)
+	cmInput, ok := cmJob.JobInfo.(*jobinfo.ConfigMapInput)
 	require.True(t, ok)
 	require.Equal(t, cmJob.Name, cmInput.Name)
 }

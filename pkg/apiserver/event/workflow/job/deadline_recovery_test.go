@@ -9,15 +9,18 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/stretchr/testify/require"
+	batchv1 "k8s.io/api/batch/v1"
+	"k8s.io/client-go/kubernetes/fake"
+
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
-	"github.com/stretchr/testify/require"
-	batchv1 "k8s.io/api/batch/v1"
-	"k8s.io/client-go/kubernetes/fake"
 )
 
 func TestRecoveredEvaluationRetryPreservesAbsoluteDeadline(t *testing.T) {
@@ -31,12 +34,12 @@ func TestRecoveredEvaluationRetryPreservesAbsoluteDeadline(t *testing.T) {
 		{"cannot extend budget", time.Hour, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			task := retryTestTask(t, retryTestPolicy())
+			task := retryTestTask(t, jobtest.RetryTestPolicy())
 			task.JobType = string(config.JobEval)
 			workload := task.JobInfo.(*batchv1.Job)
 			deadline := time.Now().Add(tc.deadline).UnixNano()
 			workload.Annotations[EvaluationDeadlineAnnotation] = strconv.FormatInt(deadline, 10)
-			ctl := NewInstantJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: withJobTestOwner(&retryCheckpointStore{}, task), Ack: func() {}})
+			ctl := NewInstantJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(&retryCheckpointStore{}, task), Ack: func() {}})
 			checkpoint, err := ctl.newRetryCheckpoint(context.Background(), workload)
 			if !tc.valid {
 				require.ErrorContains(t, err, "invalid evaluation recovery deadline")
@@ -44,7 +47,7 @@ func TestRecoveredEvaluationRetryPreservesAbsoluteDeadline(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.Equal(t, deadline, checkpoint.Deadline)
-			restored, err := decodeInstantJobRetryCheckpoint(task)
+			restored, err := jobinfo.DecodeInstantJobRetryCheckpoint(task)
 			require.NoError(t, err)
 			require.Equal(t, deadline, restored.Deadline)
 		})
@@ -67,14 +70,14 @@ func TestRetryCheckpointUsesDatabaseDeadlineAcrossNodeSkew(t *testing.T) {
 	for _, skew := range []time.Duration{-24 * time.Hour, 24 * time.Hour} {
 		for _, budget := range []time.Duration{-time.Nanosecond, 0, 5 * time.Second, 10 * time.Second, 11*time.Second + time.Nanosecond} {
 			t.Run(skew.String()+"/"+budget.String(), func(t *testing.T) {
-				task := retryTestTask(t, retryTestPolicy())
+				task := retryTestTask(t, jobtest.RetryTestPolicy())
 				task.JobType = string(config.JobEval)
 				workload := task.JobInfo.(*batchv1.Job)
 				now := time.Now().Add(skew)
 				deadline := now.Add(budget).UnixNano()
 				workload.Annotations[EvaluationDeadlineAnnotation] = strconv.FormatInt(deadline, 10)
 				store := &retryDeadlineClockStore{retryCheckpointStore: &retryCheckpointStore{}, now: now}
-				ctl := NewInstantJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: withJobTestOwner(store, task), Ack: func() {}})
+				ctl := NewInstantJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
 				cp, err := ctl.newRetryCheckpoint(context.Background(), workload)
 				if budget <= 0 || budget > 11*time.Second {
 					require.ErrorContains(t, err, "invalid evaluation recovery deadline")
@@ -88,9 +91,9 @@ func TestRetryCheckpointUsesDatabaseDeadlineAcrossNodeSkew(t *testing.T) {
 			})
 		}
 		t.Run(skew.String()+"/initial deadline", func(t *testing.T) {
-			task := retryTestTask(t, retryTestPolicy())
+			task := retryTestTask(t, jobtest.RetryTestPolicy())
 			store := &retryDeadlineClockStore{retryCheckpointStore: &retryCheckpointStore{}, now: time.Now().Add(skew)}
-			ctl := NewInstantJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: withJobTestOwner(store, task), Ack: func() {}})
+			ctl := NewInstantJobCtl(task, &Runtime{Client: fake.NewSimpleClientset(), Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
 			cp, err := ctl.newRetryCheckpoint(context.Background(), task.JobInfo.(*batchv1.Job))
 			require.NoError(t, err)
 			require.Equal(t, store.now.Add(time.Duration(task.Timeout)*time.Second).UnixNano(), cp.Deadline)
@@ -112,7 +115,7 @@ func TestRetryRecoveryUsesDatabaseRemainingBudget(t *testing.T) {
 	for _, skew := range []time.Duration{-24 * time.Hour, 24 * time.Hour} {
 		for _, budget := range []time.Duration{-time.Nanosecond, 0, 5 * time.Second} {
 			t.Run(skew.String()+"/"+budget.String(), func(t *testing.T) {
-				task := retryTestTask(t, retryTestPolicy())
+				task := retryTestTask(t, jobtest.RetryTestPolicy())
 				task.JobType = string(config.JobEval)
 				live := task.JobInfo.(*batchv1.Job)
 				live.UID = "owned"
@@ -122,13 +125,13 @@ func TestRetryRecoveryUsesDatabaseRemainingBudget(t *testing.T) {
 				live.Spec.TTLSecondsAfterFinished = &ttl
 				now := time.Now().Add(skew)
 				deadline := now.Add(budget).UnixNano()
-				cp := &instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Attempt: 1, CurrentUID: live.UID, Job: live, Deadline: deadline}
+				cp := &jobinfo.InstantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Attempt: 1, CurrentUID: live.UID, Job: live, Deadline: deadline}
 				raw, err := json.Marshal(cp)
 				require.NoError(t, err)
 				task.InternalInfo = string(raw)
 				store := &retryDeadlineClockStore{retryCheckpointStore: &retryCheckpointStore{}, now: now}
 				client := fake.NewSimpleClientset(live)
-				ctl := NewInstantJobCtl(task, &Runtime{Client: client, Store: withJobTestOwner(store, task), Ack: func() {}})
+				ctl := NewInstantJobCtl(task, &Runtime{Client: client, Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
 				observed := false
 				stop := errors.New("stop after observing remaining budget")
 				ctl.resourceWaiter = retryDeadlineObserver{observe: func(ctx context.Context) error {
@@ -138,7 +141,7 @@ func TestRetryRecoveryUsesDatabaseRemainingBudget(t *testing.T) {
 					require.InDelta(t, budget.Seconds(), time.Until(localDeadline).Seconds(), 0.5)
 					return stop
 				}}
-				err = ctl.runWithRetryPolicy(context.Background(), live, retryTestPolicy())
+				err = ctl.runWithRetryPolicy(context.Background(), live, jobtest.RetryTestPolicy())
 				if budget <= 0 {
 					require.ErrorIs(t, err, context.DeadlineExceeded)
 					require.False(t, observed)
@@ -157,11 +160,11 @@ func TestRetryDeadlineClockFailureStopsBeforeKubernetes(t *testing.T) {
 	for _, restored := range []bool{false, true} {
 		for _, mode := range []string{"error", "zero", "unsupported"} {
 			t.Run(strconv.FormatBool(restored)+"/"+mode, func(t *testing.T) {
-				task := retryTestTask(t, retryTestPolicy())
+				task := retryTestTask(t, jobtest.RetryTestPolicy())
 				workload := task.JobInfo.(*batchv1.Job)
 				workload.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
 				if restored {
-					raw, err := json.Marshal(&instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Attempt: 1, Job: workload, Deadline: time.Now().Add(time.Minute).UnixNano()})
+					raw, err := json.Marshal(&jobinfo.InstantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Attempt: 1, Job: workload, Deadline: time.Now().Add(time.Minute).UnixNano()})
 					require.NoError(t, err)
 					task.InternalInfo = string(raw)
 				}
@@ -169,13 +172,13 @@ func TestRetryDeadlineClockFailureStopsBeforeKubernetes(t *testing.T) {
 				if mode == "error" {
 					clock.err = errors.New("database unavailable")
 				}
-				var store datastore.DataStore = withJobTestOwner(clock, task)
+				var store datastore.DataStore = jobtest.WithJobTestOwner(clock, task)
 				if mode == "unsupported" {
 					store = struct{ datastore.DataStore }{store}
 				}
 				client := fake.NewSimpleClientset()
 				ctl := NewInstantJobCtl(task, &Runtime{Client: client, Store: store, Ack: func() {}})
-				err := ctl.runWithRetryPolicy(context.Background(), workload, retryTestPolicy())
+				err := ctl.runWithRetryPolicy(context.Background(), workload, jobtest.RetryTestPolicy())
 				require.ErrorIs(t, err, signal.ErrInfrastructureStop)
 				require.ErrorContains(t, err, "database clock")
 				require.Empty(t, client.Actions())
@@ -190,12 +193,12 @@ func TestRetryBackoffUsesDatabaseClockAcrossNodeSkew(t *testing.T) {
 		for _, remaining := range []time.Duration{0, 2 * time.Second} {
 			t.Run(skew.String()+"/"+remaining.String(), func(t *testing.T) {
 				synctest.Test(t, func(t *testing.T) {
-					task := retryTestTask(t, retryTestPolicy())
+					task := retryTestTask(t, jobtest.RetryTestPolicy())
 					now := time.Now().Add(skew)
 					store := &retryDeadlineClockStore{retryCheckpointStore: &retryCheckpointStore{}, now: now}
 					client := fake.NewSimpleClientset()
-					ctl := NewInstantJobCtl(task, &Runtime{Client: client, Store: withJobTestOwner(store, task), Ack: func() {}})
-					cp := &instantJobRetryCheckpoint{Job: task.JobInfo.(*batchv1.Job), CurrentUID: "missing-owned-job", RetryAt: now.Add(remaining).UnixNano()}
+					ctl := NewInstantJobCtl(task, &Runtime{Client: client, Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
+					cp := &jobinfo.InstantJobRetryCheckpoint{Job: task.JobInfo.(*batchv1.Job), CurrentUID: "missing-owned-job", RetryAt: now.Add(remaining).UnixNano()}
 					start := time.Now()
 					err := ctl.ensureRetryAttempt(context.Background(), cp)
 					require.ErrorContains(t, err, "disappeared")
@@ -210,7 +213,7 @@ func TestRetryBackoffUsesDatabaseClockAcrossNodeSkew(t *testing.T) {
 func TestRetryBackoffTimestampPreservesDatabaseDeadline(t *testing.T) {
 	for _, skew := range []time.Duration{-24 * time.Hour, 24 * time.Hour} {
 		t.Run(skew.String(), func(t *testing.T) {
-			task := retryTestTask(t, retryTestPolicy())
+			task := retryTestTask(t, jobtest.RetryTestPolicy())
 			stop := errors.New("stop after saving next attempt")
 			store := &retryDeadlineClockStore{retryCheckpointStore: &retryCheckpointStore{}, now: time.Now().Add(skew)}
 			store.afterSave = func(record *model.JobInfo) error {
@@ -222,11 +225,11 @@ func TestRetryBackoffTimestampPreservesDatabaseDeadline(t *testing.T) {
 			client := fake.NewSimpleClientset()
 			var created []*batchv1.Job
 			installRetryJobReactor(t, client, 1, "OOMKilled", &created)
-			ctl := NewInstantJobCtl(task, &Runtime{Client: client, Store: withJobTestOwner(store, task), Ack: func() {}})
+			ctl := NewInstantJobCtl(task, &Runtime{Client: client, Store: jobtest.WithJobTestOwner(store, task), Ack: func() {}})
 			ctl.resourceWaiter = fixedJobSnapshotObserver{}
-			err := ctl.runWithRetryPolicy(context.Background(), task.JobInfo.(*batchv1.Job), retryTestPolicy())
+			err := ctl.runWithRetryPolicy(context.Background(), task.JobInfo.(*batchv1.Job), jobtest.RetryTestPolicy())
 			require.ErrorIs(t, err, stop)
-			cp, err := decodeInstantJobRetryCheckpoint(task)
+			cp, err := jobinfo.DecodeInstantJobRetryCheckpoint(task)
 			require.NoError(t, err)
 			require.Equal(t, store.now.Add(time.Second).UnixNano(), cp.RetryAt)
 			require.Equal(t, store.now.Add(time.Duration(task.Timeout)*time.Second).UnixNano(), cp.Deadline)

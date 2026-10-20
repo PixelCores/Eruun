@@ -1,4 +1,4 @@
-package job
+package jobinfo
 
 import (
 	"strconv"
@@ -10,7 +10,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 )
 
-func stampWorkspaceJobPodIdentity(task *model.JobTask, workload *batchv1.Job) {
+func StampWorkspaceJobPodIdentity(task *model.JobTask, workload *batchv1.Job) {
 	if !config.IsWorkspaceJobType(config.JobType(task.JobType)) {
 		return
 	}

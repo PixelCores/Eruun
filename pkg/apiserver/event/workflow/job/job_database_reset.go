@@ -21,6 +21,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
@@ -60,7 +61,7 @@ func (c *DatabaseResetJobCtl) SaveInfo(ctx context.Context) error {
 	if err := ensureDatabaseResetCheckpointIdentity(c.job); err != nil {
 		return fmt.Errorf("prepare database reset replica checkpoint identity: %w", err)
 	}
-	return saveOrUpdateJobInfo(ctx, c.store, c.job)
+	return jobinfo.SaveOrUpdateJobInfo(ctx, c.store, c.job)
 }
 
 func (c *DatabaseResetJobCtl) Run(ctx context.Context) error {
@@ -74,11 +75,11 @@ func (c *DatabaseResetJobCtl) run(ctx context.Context) error {
 	if c.store == nil {
 		return fmt.Errorf("store is nil")
 	}
-	info, err := requiredJobInfo[*DatabaseResetJobInfo](c.job)
+	info, err := jobinfo.RequiredJobInfo[*jobinfo.DatabaseResetJobInfo](c.job)
 	if err != nil {
 		return err
 	}
-	if databaseResetExecutionKey(info) == "" {
+	if jobinfo.DatabaseResetExecutionKey(info) == "" {
 		return fmt.Errorf("database reset execution key is missing")
 	}
 	if len(info.DatabaseComponents) == 0 {
@@ -116,9 +117,9 @@ func (c *DatabaseResetJobCtl) checkpointDatabaseResetReplicas(ctx context.Contex
 		return err
 	}
 	if checkpoint == nil || !checkpoint.Prepared {
-		checkpoint = &databaseResetReplicaCheckpoint{
-			Version:          databaseResetReplicaCheckpointVersion,
-			ExecutionKey:     databaseResetExecutionKeyFromJob(c.job),
+		checkpoint = &jobinfo.DatabaseResetReplicaCheckpoint{
+			Version:          jobinfo.DatabaseResetReplicaCheckpointVersion,
+			ExecutionKey:     jobinfo.DatabaseResetExecutionKeyFromJob(c.job),
 			Prepared:         true,
 			OriginalReplicas: make(map[string]int32, len(plans)),
 		}
@@ -155,12 +156,12 @@ func (c *DatabaseResetJobCtl) checkpointDatabaseResetReplicas(ctx context.Contex
 	return nil
 }
 
-func (c *DatabaseResetJobCtl) loadDatabaseResetReplicaCheckpoint(ctx context.Context) (*databaseResetReplicaCheckpoint, error) {
-	candidates, err := loadJobInfos(ctx, c.store, c.job.TaskID, c.job.JobType, resolveJobServiceName(c.job))
+func (c *DatabaseResetJobCtl) loadDatabaseResetReplicaCheckpoint(ctx context.Context) (*jobinfo.DatabaseResetReplicaCheckpoint, error) {
+	candidates, err := jobinfo.LoadJobInfos(ctx, c.store, c.job.TaskID, c.job.JobType, jobinfo.ResolveJobServiceName(c.job))
 	if err != nil {
 		return nil, fmt.Errorf("load database reset replica checkpoint: %w", err)
 	}
-	existing, err := selectDatabaseResetCheckpointJobInfo(c.job, candidates)
+	existing, err := jobinfo.SelectDatabaseResetCheckpointJobInfo(c.job, candidates)
 	if err != nil {
 		return nil, fmt.Errorf("select database reset replica checkpoint: %w", err)
 	}
@@ -168,7 +169,7 @@ func (c *DatabaseResetJobCtl) loadDatabaseResetReplicaCheckpoint(ctx context.Con
 		return nil, nil
 	}
 	raw := strings.TrimSpace(existing.InternalInfo)
-	checkpoint, err := decodeDatabaseResetReplicaCheckpoint(raw)
+	checkpoint, err := jobinfo.DecodeDatabaseResetReplicaCheckpoint(raw)
 	if err != nil {
 		return nil, err
 	}
@@ -177,14 +178,14 @@ func (c *DatabaseResetJobCtl) loadDatabaseResetReplicaCheckpoint(ctx context.Con
 }
 
 func ensureDatabaseResetCheckpointIdentity(job *model.JobTask) error {
-	executionKey := databaseResetExecutionKeyFromJob(job)
+	executionKey := jobinfo.DatabaseResetExecutionKeyFromJob(job)
 	if executionKey == "" {
 		return fmt.Errorf("database reset execution key is missing")
 	}
 	raw := strings.TrimSpace(job.InternalInfo)
 	if raw == "" {
-		marker := databaseResetReplicaCheckpoint{
-			Version:      databaseResetReplicaCheckpointVersion,
+		marker := jobinfo.DatabaseResetReplicaCheckpoint{
+			Version:      jobinfo.DatabaseResetReplicaCheckpointVersion,
 			ExecutionKey: executionKey,
 			Prepared:     false,
 		}
@@ -195,7 +196,7 @@ func ensureDatabaseResetCheckpointIdentity(job *model.JobTask) error {
 		job.InternalInfo = string(encoded)
 		return nil
 	}
-	checkpoint, err := decodeDatabaseResetReplicaCheckpoint(raw)
+	checkpoint, err := jobinfo.DecodeDatabaseResetReplicaCheckpoint(raw)
 	if err != nil {
 		return err
 	}
@@ -483,7 +484,7 @@ func (c *DatabaseResetJobCtl) waitStatefulSetPodsGone(ctx context.Context, names
 		return len(list.Items) == 0, nil
 	})
 	if wait.Interrupted(err) && !errors.Is(err, context.Canceled) {
-		return NewStatusError(config.StatusTimeout, fmt.Errorf("wait database pods gone for component %s timeout", component.Name))
+		return jobinfo.NewStatusError(config.StatusTimeout, fmt.Errorf("wait database pods gone for component %s timeout", component.Name))
 	}
 	return err
 }
@@ -543,7 +544,7 @@ func (c *DatabaseResetJobCtl) waitPVCDeleted(ctx context.Context, namespace, nam
 		return false, err
 	})
 	if wait.Interrupted(err) && !errors.Is(err, context.Canceled) {
-		return NewStatusError(config.StatusTimeout, fmt.Errorf("wait pvc %s/%s deleted timeout", namespace, name))
+		return jobinfo.NewStatusError(config.StatusTimeout, fmt.Errorf("wait pvc %s/%s deleted timeout", namespace, name))
 	}
 	return err
 }
@@ -555,7 +556,7 @@ func (c *DatabaseResetJobCtl) waitDatabaseComponentReady(ctx context.Context, na
 		if err != nil {
 			var we *informer.WaitError
 			if errors.As(err, &we) {
-				return NewStatusError(we.Status, we.Err)
+				return jobinfo.NewStatusError(we.Status, we.Err)
 			}
 			return err
 		}
@@ -569,7 +570,7 @@ func (c *DatabaseResetJobCtl) waitDatabaseComponentReady(ctx context.Context, na
 		return current.Status.ReadyReplicas >= desiredReplicas, nil
 	})
 	if wait.Interrupted(err) && !errors.Is(err, context.Canceled) {
-		return NewStatusError(config.StatusTimeout, fmt.Errorf("wait database component %s ready timeout", component.Name))
+		return jobinfo.NewStatusError(config.StatusTimeout, fmt.Errorf("wait database component %s ready timeout", component.Name))
 	}
 	return err
 }

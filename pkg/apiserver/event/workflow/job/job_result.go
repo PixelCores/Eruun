@@ -21,6 +21,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -461,7 +462,7 @@ func processJobResultWithOutbox(ctx context.Context, client kubernetes.Interface
 	if recordErr != nil {
 		return recordErr
 	}
-	if record != nil && isSettledDelayedExecutionStatus(config.Status(record.Status)) {
+	if record != nil && jobinfo.IsSettledDelayedExecutionStatus(config.Status(record.Status)) {
 		if config.Status(record.Status) != config.StatusCompleted {
 			return nil
 		}
@@ -506,12 +507,12 @@ func processJobResultWithOutbox(ctx context.Context, client kubernetes.Interface
 	defer cancel()
 
 	status, message, err := waitForJobCompletionMatching(waitCtx, client, namespace, payload.Name, matchesExpectedJob)
-	if errors.Is(err, errJobExecutionIdentityChanged) {
+	if errors.Is(err, jobinfo.ErrJobExecutionIdentityChanged) {
 		klog.InfoS("discard stale job result after Kubernetes Job identity changed", "namespace", namespace, "name", payload.Name, "taskID", payload.TaskID, "runGeneration", payload.RunGeneration)
 		return nil
 	}
 	if err != nil {
-		if _, terminal := ExtractStatusError(err); !terminal {
+		if _, terminal := jobinfo.ExtractStatusError(err); !terminal {
 			return fmt.Errorf("observe result job: %w", err)
 		}
 	}
@@ -537,7 +538,7 @@ func processJobResultWithOutbox(ctx context.Context, client kubernetes.Interface
 	}
 	serviceName := strings.TrimSpace(payload.ServiceName)
 	if serviceName == "" && jobObj != nil {
-		serviceName = componentNameFromJobInfo(jobObj)
+		serviceName = jobinfo.ComponentNameFromJobInfo(jobObj)
 	}
 	payload.ServiceName = serviceName
 
@@ -564,7 +565,7 @@ func processJobResultWithOutbox(ctx context.Context, client kubernetes.Interface
 		if err != nil {
 			return err
 		}
-		if saved == nil || !isSettledDelayedExecutionStatus(config.Status(saved.Status)) {
+		if saved == nil || !jobinfo.IsSettledDelayedExecutionStatus(config.Status(saved.Status)) {
 			return fmt.Errorf("result status was not persisted for execution %s", payload.ExecutionKey)
 		}
 		persistedStatus = config.Status(saved.Status)
@@ -580,7 +581,7 @@ func processJobResultWithOutbox(ctx context.Context, client kubernetes.Interface
 	}
 
 	if err != nil {
-		if _, ok := ExtractStatusError(err); ok {
+		if _, ok := jobinfo.ExtractStatusError(err); ok {
 			return nil
 		}
 		return err
@@ -639,11 +640,11 @@ func jobCompletionResult(status config.Status, message string, err error) (confi
 			status = config.StatusFailed
 			message = "job status unknown"
 		} else {
-			status = statusFromError(err)
-			message = jobErrorMessage(err, message)
+			status = jobinfo.StatusFromError(err)
+			message = jobinfo.JobErrorMessage(err, message)
 		}
 	} else if err != nil {
-		message = jobErrorMessage(err, message)
+		message = jobinfo.JobErrorMessage(err, message)
 	}
 
 	return status, message
@@ -675,7 +676,7 @@ func stampJobExecutionIdentity(jobTask *model.JobTask, jobObj *batchv1.Job) {
 		attempt = uint(jobTask.RetryCount + 1)
 	}
 	jobObj.Annotations[workflowconfig.AnnotationJobAttempt] = strconv.FormatUint(uint64(attempt), 10)
-	stampWorkspaceJobPodIdentity(jobTask, jobObj)
+	jobinfo.StampWorkspaceJobPodIdentity(jobTask, jobObj)
 }
 
 func stampCronJobExecutionIdentity(jobTask *model.JobTask, cron *batchv1.CronJob) {
@@ -720,7 +721,7 @@ func updateJobInfoStatus(ctx context.Context, store datastore.DataStore, payload
 	if !ok {
 		return fmt.Errorf("update job info: datastore does not support conditional compare-and-swap")
 	}
-	for attempt := 1; attempt <= jobInfoSaveMaxAttempts; attempt++ {
+	for attempt := 1; attempt <= jobinfo.JobInfoSaveMaxAttempts; attempt++ {
 		jobInfo, err := findJobInfoForResult(ctx, store, payload)
 		if err != nil {
 			return err
@@ -729,7 +730,7 @@ func updateJobInfoStatus(ctx context.Context, store datastore.DataStore, payload
 			klog.InfoS("job info not found while updating result status", "taskID", payload.TaskID, "serviceName", payload.ServiceName, "status", status)
 			return nil
 		}
-		if isSettledDelayedExecutionStatus(config.Status(jobInfo.Status)) {
+		if jobinfo.IsSettledDelayedExecutionStatus(config.Status(jobInfo.Status)) {
 			return nil
 		}
 		updates := map[string]interface{}{"status": string(status)}
@@ -763,7 +764,7 @@ func updateJobInfoStatus(ctx context.Context, store datastore.DataStore, payload
 			return nil
 		}
 	}
-	return fmt.Errorf("update job info: concurrent execution state changes did not converge after %d attempts", jobInfoSaveMaxAttempts)
+	return fmt.Errorf("update job info: concurrent execution state changes did not converge after %d attempts", jobinfo.JobInfoSaveMaxAttempts)
 }
 
 func findJobInfoForResult(ctx context.Context, store datastore.DataStore, payload *JobResultPayload) (*model.JobInfo, error) {
@@ -798,7 +799,7 @@ func findJobInfoForResult(ctx context.Context, store datastore.DataStore, payloa
 	return jobInfo, nil
 }
 
-func newJobResultPayloadFromDelay(payload *DelayJobPayload, jobObj *batchv1.Job) *JobResultPayload {
+func newJobResultPayloadFromDelay(payload *jobinfo.DelayJobPayload, jobObj *batchv1.Job) *JobResultPayload {
 	if payload == nil || jobObj == nil {
 		return nil
 	}
@@ -809,7 +810,7 @@ func newJobResultPayloadFromDelay(payload *DelayJobPayload, jobObj *batchv1.Job)
 	}
 	serviceName := strings.TrimSpace(payload.ServiceName)
 	if serviceName == "" {
-		serviceName = componentNameFromJobInfo(jobObj)
+		serviceName = jobinfo.ComponentNameFromJobInfo(jobObj)
 	}
 	timeout := payload.TimeoutSeconds
 	if timeout <= 0 {

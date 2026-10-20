@@ -19,6 +19,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -52,7 +54,7 @@ func TestCleanupResourcesJobCtlRejectsPVCCheckpointWriteAfterExecutionTakeover(t
 
 	err = ctl.persistRequiredStatefulSetPVCTarget(ctx)
 	require.Error(t, err)
-	statusErr, ok := ExtractStatusError(err)
+	statusErr, ok := jobinfo.ExtractStatusError(err)
 	require.True(t, ok)
 	require.Equal(t, config.StatusCancelled, statusErr.Status)
 	require.True(t, ctl.skipSaveInfo)
@@ -78,7 +80,7 @@ func TestCleanupResourcesJobCtlPVCDeletePreconditionsRejectLateProtection(t *tes
 		Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: versionUpdateRequireStatefulSetPVCDeletionInternalInfo(t, "data"), Timeout: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: nil})
 	require.NotNil(t, ctl)
 	require.NoError(t, ctl.ensureRequiredStatefulSetPVCDeletionAllowed(ctx, component))
 
@@ -132,7 +134,7 @@ func TestCleanupResourcesJobCtlPVCDeleteNotFoundRejectsSameNameReplacement(t *te
 		Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: versionUpdateRequireStatefulSetPVCDeletionInternalInfo(t, "data"), Timeout: 1,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: nil})
 	require.NotNil(t, ctl)
 	require.NoError(t, ctl.ensureRequiredStatefulSetPVCDeletionAllowed(ctx, component))
 
@@ -410,8 +412,8 @@ func TestCleanupResourcesJobCtlBoundsCheckpointChurnDuringSaveInfo(t *testing.T)
 
 	err := ctl.SaveInfo(ctx)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), fmt.Sprintf("did not converge after %d attempts", jobInfoSaveMaxAttempts))
-	require.Equal(t, jobInfoSaveMaxAttempts, attempts)
+	require.Contains(t, err.Error(), fmt.Sprintf("did not converge after %d attempts", jobinfo.JobInfoSaveMaxAttempts))
+	require.Equal(t, jobinfo.JobInfoSaveMaxAttempts, attempts)
 	require.Equal(t, string(config.StatusRunning), store.jobInfo.Status)
 	require.Equal(t, store.jobInfo.InternalInfo, job.InternalInfo)
 }

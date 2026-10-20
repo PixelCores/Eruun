@@ -19,6 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
@@ -50,7 +51,7 @@ func (c *DeployStatefulSetJobCtl) Clean(ctx context.Context) {
 	namespace := c.namespace
 	name := naming.StoreServerName(c.job.Name, c.job.ResourceAppNameOrID())
 	var labels map[string]string
-	if statefulSet, ok := optionalJobInfo[*appsv1.StatefulSet](c.job); ok {
+	if statefulSet, ok := jobinfo.OptionalJobInfo[*appsv1.StatefulSet](c.job); ok {
 		if statefulSet.Namespace != "" {
 			namespace = statefulSet.Namespace
 		}
@@ -94,7 +95,7 @@ func (c *DeployStatefulSetJobCtl) run(ctx context.Context) error {
 
 	//During execution, it is possible to determine which resources need to be created,
 	//but these resources are limited to those closely related to the components, such as PVC.
-	statefulSet, err := statefulSetFromJobInfo(c.job)
+	statefulSet, err := jobinfo.StatefulSetFromJobInfo(c.job)
 	if err != nil {
 		return err
 	}
@@ -191,7 +192,7 @@ func (c *DeployStatefulSetJobCtl) wait(ctx context.Context) error {
 	targetName := naming.StoreServerName(c.job.Name, c.job.ResourceAppNameOrID())
 	namespace := c.job.Namespace
 	var expectedImages []string
-	if statefulSet, ok := optionalJobInfo[*appsv1.StatefulSet](c.job); ok {
+	if statefulSet, ok := jobinfo.OptionalJobInfo[*appsv1.StatefulSet](c.job); ok {
 		if statefulSet.Namespace != "" {
 			namespace = statefulSet.Namespace
 		}
@@ -214,7 +215,7 @@ func (c *DeployStatefulSetJobCtl) wait(ctx context.Context) error {
 	}, timeout)
 	if err != nil {
 		if we, ok := err.(*informer.WaitError); ok {
-			return NewStatusError(we.Status, workloadWaitError(ctx, c.client, c.job, "StatefulSet", namespace, targetName, naming.BoundedLabelValue(c.job.Name), we.Err))
+			return jobinfo.NewStatusError(we.Status, workloadWaitError(ctx, c.client, c.job, "StatefulSet", namespace, targetName, naming.BoundedLabelValue(c.job.Name), we.Err))
 		}
 		return workloadWaitError(ctx, c.client, c.job, "StatefulSet", namespace, targetName, naming.BoundedLabelValue(c.job.Name), err)
 	}

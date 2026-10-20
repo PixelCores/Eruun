@@ -16,6 +16,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 )
@@ -113,9 +114,9 @@ func cleanupRecoveredCancelledJob(ctx context.Context, client kubernetes.Interfa
 		return fmt.Errorf("cancelled Kubernetes Job namespace is missing")
 	}
 	resourceName := strings.TrimSpace(record.ServiceName)
-	if HasInstantJobRetryCheckpoint(record) {
+	if jobinfo.HasInstantJobRetryCheckpoint(record) {
 		task := &model.JobTask{TaskID: record.TaskID, ExecutionKey: *record.ExecutionKey, RunGeneration: record.RunGeneration, Attempt: record.Attempt, InternalInfo: record.InternalInfo}
-		checkpoint, checkpointErr := decodeInstantJobRetryCheckpoint(task)
+		checkpoint, checkpointErr := jobinfo.DecodeInstantJobRetryCheckpoint(task)
 		if checkpointErr != nil {
 			return checkpointErr
 		}
@@ -136,8 +137,8 @@ func cleanupRecoveredCancelledJob(ctx context.Context, client kubernetes.Interfa
 		if !cancelledKubernetesJobMatches(record, live) {
 			replacementJob = true
 		} else {
-			if HasInstantJobRetryCheckpoint(record) {
-				if err := ValidateInstantJobRetryExecution(record, live); err != nil {
+			if jobinfo.HasInstantJobRetryCheckpoint(record) {
+				if err := jobinfo.ValidateInstantJobRetryExecution(record, live); err != nil {
 					return fmt.Errorf("validate cancelled Kubernetes Job checkpoint: %w", err)
 				}
 			}
@@ -183,8 +184,8 @@ func finishOnlineCancelledJobCleanup(ctx context.Context, store datastore.DataSt
 }
 
 func updateCancelledJobCleanup(ctx context.Context, store datastore.DataStore, job *model.JobTask, expectedReason, outcome string) error {
-	return withJobInfoOwnership(ctx, store, job, func(tx datastore.DataStore) error {
-		record, err := findExistingJobInfo(ctx, tx, job)
+	return jobinfo.WithJobInfoOwnership(ctx, store, job, func(tx datastore.DataStore) error {
+		record, err := jobinfo.FindExistingJobInfo(ctx, tx, job)
 		if err != nil {
 			return fmt.Errorf("load cancelled Job cleanup checkpoint: %w", err)
 		}
@@ -255,19 +256,19 @@ func deleteCancelledBatchJob(ctx context.Context, client kubernetes.Interface, n
 	if client == nil || task == nil {
 		return fmt.Errorf("cancelled Kubernetes Job dependencies are incomplete")
 	}
-	record := buildJobInfoRecord(task)
+	record := jobinfo.BuildJobInfoRecord(task)
 	if record.ExecutionKey == nil || strings.TrimSpace(*record.ExecutionKey) == "" {
 		return fmt.Errorf("cancelled Kubernetes Job identity is incomplete")
 	}
 	resourceName := strings.TrimSpace(record.ServiceName)
-	if desired, ok := optionalJobInfo[*batchv1.Job](task); ok {
+	if desired, ok := jobinfo.OptionalJobInfo[*batchv1.Job](task); ok {
 		if desired.Namespace != "" {
 			namespace = desired.Namespace
 		}
 		resourceName = desired.Name
 	}
-	if HasInstantJobRetryCheckpoint(&record) {
-		checkpoint, err := decodeInstantJobRetryCheckpoint(task)
+	if jobinfo.HasInstantJobRetryCheckpoint(&record) {
+		checkpoint, err := jobinfo.DecodeInstantJobRetryCheckpoint(task)
 		if err != nil {
 			return err
 		}
@@ -286,8 +287,8 @@ func deleteCancelledBatchJob(ctx context.Context, client kubernetes.Interface, n
 	if !cancelledKubernetesJobMatches(&record, live) {
 		return fmt.Errorf("cancelled Kubernetes Job execution identity changed")
 	}
-	if HasInstantJobRetryCheckpoint(&record) {
-		if err := ValidateInstantJobRetryExecution(&record, live); err != nil {
+	if jobinfo.HasInstantJobRetryCheckpoint(&record) {
+		if err := jobinfo.ValidateInstantJobRetryExecution(&record, live); err != nil {
 			return fmt.Errorf("validate cancelled Kubernetes Job checkpoint: %w", err)
 		}
 	}

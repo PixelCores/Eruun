@@ -2,14 +2,14 @@ package workflow
 
 import (
 	"context"
+	"testing"
 
 	"github.com/stretchr/testify/require"
-	"testing"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 )
 
 func TestGenerateJobTasksCloudJob(t *testing.T) {
@@ -67,7 +67,7 @@ func TestGenerateJobTasksCloudJob(t *testing.T) {
 	require.Equal(t, string(config.JobDeployCloud), jobs[0].JobType)
 	require.Equal(t, int64(config.CloudJobTimeout), jobs[0].Timeout)
 
-	info, ok := jobs[0].JobInfo.(*workflowjob.CloudJobInfo)
+	info, ok := jobs[0].JobInfo.(*jobinfo.CloudJobInfo)
 	require.True(t, ok)
 	require.Equal(t, "aliyun", info.Provider)
 	require.Equal(t, "create-ecs", info.Action)
@@ -118,7 +118,7 @@ func TestGenerateJobTasksCloudJobWithoutCloudPropertiesStillEnqueuesJob(t *testi
 	require.Equal(t, string(config.JobDeployCloud), jobs[0].JobType)
 	require.Equal(t, int64(config.CloudJobTimeout), jobs[0].Timeout)
 
-	info, ok := jobs[0].JobInfo.(*workflowjob.CloudJobInfo)
+	info, ok := jobs[0].JobInfo.(*jobinfo.CloudJobInfo)
 	require.True(t, ok)
 	require.Empty(t, info.Provider)
 	require.Empty(t, info.Action)
@@ -216,9 +216,9 @@ func TestGenerateJobTasksCloudJobAssignsDistinctExecutionKeysAcrossRepeatedCompo
 	executions := mustGenerateJobTasks(t, context.Background(), task, store, int64(config.DefaultJobTaskTimeout.Seconds()))
 	require.Len(t, executions, 2)
 
-	firstInfo, ok := executions[0].Jobs[config.JobPriorityNormal][0].JobInfo.(*workflowjob.CloudJobInfo)
+	firstInfo, ok := executions[0].Jobs[config.JobPriorityNormal][0].JobInfo.(*jobinfo.CloudJobInfo)
 	require.True(t, ok)
-	secondInfo, ok := executions[1].Jobs[config.JobPriorityNormal][0].JobInfo.(*workflowjob.CloudJobInfo)
+	secondInfo, ok := executions[1].Jobs[config.JobPriorityNormal][0].JobInfo.(*jobinfo.CloudJobInfo)
 	require.True(t, ok)
 	require.Equal(t, "step:0/component:0", firstInfo.ExecutionKey)
 	require.Equal(t, "step:1/component:0", secondInfo.ExecutionKey)

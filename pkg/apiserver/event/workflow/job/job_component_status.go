@@ -11,6 +11,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
@@ -64,7 +65,7 @@ func syncConfigComponentStatusIfWorkflowOwned(
 		return nil
 	}
 	var appID string
-	err := withJobInfoOwnership(ctx, store, job, func(tx datastore.DataStore) error {
+	err := jobinfo.WithJobInfoOwnership(ctx, store, job, func(tx datastore.DataStore) error {
 		var syncErr error
 		appID, syncErr = syncConfigComponentStatus(ctx, job, tx)
 		return syncErr

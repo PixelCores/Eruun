@@ -7,13 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
-	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 	"github.com/stretchr/testify/require"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -22,6 +15,16 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
+	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
 
 func TestCreatedJobReattachesAfterOwnerAndQuotaChangeWithoutCreate(t *testing.T) {
@@ -38,13 +41,13 @@ func TestCreatedJobReattachesAfterOwnerAndQuotaChangeWithoutCreate(t *testing.T)
 	owner := &model.WorkflowQueue{TaskID: task.TaskID}
 	ctx := context.Background()
 	require.NoError(t, store.Get(ctx, owner))
-	record := buildJobInfoRecord(task)
+	record := jobinfo.BuildJobInfoRecord(task)
 	record.SchedulingResources, _ = jobSchedulingResourceSnapshot(task)
 	require.NoError(t, repository.EnqueueJobForScheduling(ctx, store, owner, &record, nil))
 	n, err := repository.AdmitQueuedJobs(ctx, store, corev1.ResourceList{corev1.ResourceRequestsCPU: resource.MustParse("2")})
 	require.NoError(t, err)
 	require.Equal(t, 1, n)
-	cp := &instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: live.DeepCopy(), Attempt: 1, CurrentUID: live.UID, Deadline: time.Now().Add(time.Hour).UnixNano()}
+	cp := &jobinfo.InstantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: live.DeepCopy(), Attempt: 1, CurrentUID: live.UID, Deadline: time.Now().Add(time.Hour).UnixNano()}
 	raw, err := json.Marshal(cp)
 	require.NoError(t, err)
 	task.InternalInfo = string(raw)
@@ -68,7 +71,7 @@ func TestCreatedJobReattachesAfterOwnerAndQuotaChangeWithoutCreate(t *testing.T)
 	// Losing the resource after confirmation still cannot turn that permission
 	// into a replacement Create, even though admission has already transferred.
 	require.NoError(t, client.BatchV1().Jobs(live.Namespace).Delete(ctx, live.Name, metav1.DeleteOptions{}))
-	policy, err := retryPolicyFromJob(cp.Job)
+	policy, err := jobinfo.RetryPolicyFromJob(cp.Job)
 	require.NoError(t, err)
 	require.ErrorIs(t, ctl.runWithRetryPolicy(ctx, cp.Job, policy), signal.ErrInfrastructureStop)
 	require.Zero(t, countClientActions(client, "create", "jobs"))
@@ -98,14 +101,14 @@ func TestJobAdmissionRecoveryRequiresConfirmedStopPolicyUID(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			policy := &workflowconfig.JobRetryPolicy{OnOOM: "stop"}
 			if tc.resize {
-				policy = retryTestPolicy()
+				policy = jobtest.RetryTestPolicy()
 			}
 			task := retryTestTask(t, policy)
 			task.JobType = string(config.JobEval)
 			live := task.JobInfo.(*batchv1.Job)
 			live.UID = "existing"
 			live.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
-			cp := instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: live.DeepCopy(), CurrentUID: live.UID, Attempt: 1, Deadline: time.Now().Add(time.Hour).UnixNano()}
+			cp := jobinfo.InstantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: live.DeepCopy(), CurrentUID: live.UID, Attempt: 1, Deadline: time.Now().Add(time.Hour).UnixNano()}
 			if tc.noUID {
 				cp.CurrentUID = ""
 			}
@@ -158,12 +161,12 @@ func TestJobAdmissionRecoveryConfirmationReleasesOnlyAuthoritativeLoss(t *testin
 			owner := &model.WorkflowQueue{TaskID: task.TaskID}
 			ctx := context.Background()
 			require.NoError(t, store.Get(ctx, owner))
-			record := buildJobInfoRecord(task)
+			record := jobinfo.BuildJobInfoRecord(task)
 			require.NoError(t, repository.EnqueueJobForScheduling(ctx, store, owner, &record, nil))
 			n, err := repository.AdmitQueuedJobs(ctx, store)
 			require.NoError(t, err)
 			require.Equal(t, 1, n)
-			cp := &instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: live.DeepCopy(), Attempt: 1,
+			cp := &jobinfo.InstantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: live.DeepCopy(), Attempt: 1,
 				CurrentUID: live.UID, Deadline: time.Now().Add(time.Hour).UnixNano()}
 			raw, err := json.Marshal(cp)
 			require.NoError(t, err)
@@ -238,7 +241,7 @@ func TestExpiredRecoveredJobSettlesWithoutAdmission(t *testing.T) {
 				live := task.JobInfo.(*batchv1.Job)
 				live.UID, live.ResourceVersion = "original-execution", "1"
 				stampJobExecutionIdentity(task, live)
-				cp := &instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: live.DeepCopy(),
+				cp := &jobinfo.InstantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Job: live.DeepCopy(),
 					Attempt: 1, CurrentUID: live.UID, Deadline: time.Now().Add(-time.Second).UnixNano()}
 				if tc.noUID {
 					cp.CurrentUID = ""
@@ -246,7 +249,7 @@ func TestExpiredRecoveredJobSettlesWithoutAdmission(t *testing.T) {
 				raw, err := json.Marshal(cp)
 				require.NoError(t, err)
 				task.InternalInfo = string(raw)
-				record := buildJobInfoRecord(task)
+				record := jobinfo.BuildJobInfoRecord(task)
 				ctx := context.Background()
 				require.NoError(t, store.Add(ctx, &record))
 				owner := &model.WorkflowQueue{TaskID: task.TaskID}
@@ -358,7 +361,7 @@ func TestRecoveredJobAdmissionUsesDatabaseDeadline(t *testing.T) {
 					ttl := int32(7200)
 					live.Spec.TTLSecondsAfterFinished = &ttl
 					stampJobExecutionIdentity(task, live)
-					cp := instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Attempt: 1, CurrentUID: live.UID, Job: live.DeepCopy(), Deadline: store.now.Add(remaining).UnixNano()}
+					cp := jobinfo.InstantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Attempt: 1, CurrentUID: live.UID, Job: live.DeepCopy(), Deadline: store.now.Add(remaining).UnixNano()}
 					raw, err := json.Marshal(cp)
 					require.NoError(t, err)
 					task.InternalInfo = string(raw)
@@ -368,7 +371,7 @@ func TestRecoveredJobAdmissionUsesDatabaseDeadline(t *testing.T) {
 					lease := store.now.Add(2 * time.Hour)
 					owner.LeaseExpiresAt = &lease
 					require.NoError(t, store.Put(ctx, owner))
-					record := buildJobInfoRecord(task)
+					record := jobinfo.BuildJobInfoRecord(task)
 					require.NoError(t, repository.EnqueueJobForScheduling(ctx, store, owner, &record, nil))
 					n, err := repository.AdmitQueuedJobs(ctx, store)
 					require.NoError(t, err)
@@ -418,10 +421,10 @@ func TestRecoveredJobAdmissionClockFailureKeepsExecution(t *testing.T) {
 				live.UID = "existing-attempt"
 				stampJobExecutionIdentity(task, live)
 				// Node time would already declare this execution expired.
-				raw, err := json.Marshal(instantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Attempt: 1, CurrentUID: live.UID, Job: live.DeepCopy(), Deadline: time.Now().Add(-time.Hour).UnixNano()})
+				raw, err := json.Marshal(jobinfo.InstantJobRetryCheckpoint{Kind: "instant_job_retry", Version: 1, Attempt: 1, CurrentUID: live.UID, Job: live.DeepCopy(), Deadline: time.Now().Add(-time.Hour).UnixNano()})
 				require.NoError(t, err)
 				task.InternalInfo = string(raw)
-				record := buildJobInfoRecord(task)
+				record := jobinfo.BuildJobInfoRecord(task)
 				require.NoError(t, rawStore.Add(context.Background(), &record))
 				clock := &admissionRecoveryClockStore{Driver: rawStore}
 				if mode == "query failure" {
@@ -449,7 +452,7 @@ func TestRecoveredJobAdmissionClockFailureKeepsExecution(t *testing.T) {
 func TestAdmissionWithoutRetryCheckpointDoesNotReadDatabaseClock(t *testing.T) {
 	for _, kind := range []config.JobType{config.JobCommand, config.JobEval, config.JobDeployInstant} {
 		t.Run(string(kind), func(t *testing.T) {
-			task := retryTestTask(t, retryTestPolicy())
+			task := retryTestTask(t, jobtest.RetryTestPolicy())
 			task.JobType = string(kind)
 			clock := &retryDeadlineClockStore{retryCheckpointStore: &retryCheckpointStore{}, err: errors.New("unexpected database clock query")}
 			uid, err := confirmJobAdmissionRecovery(context.Background(), clock, nil, task)

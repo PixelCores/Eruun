@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"testing"
 
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
@@ -9,16 +10,13 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	"testing"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	wfNaming "github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
@@ -271,7 +269,7 @@ func TestSecretJobNameNormalization(t *testing.T) {
 	expectedName := component.Name
 	require.Equal(t, expectedName, jobs[0].Name)
 
-	secretInput, ok := jobs[0].JobInfo.(*workflowjob.SecretInput)
+	secretInput, ok := jobs[0].JobInfo.(*jobinfo.SecretInput)
 	require.True(t, ok)
 	require.Equal(t, expectedName, secretInput.Name)
 	require.Equal(t, config.DefaultNamespace, secretInput.Namespace)

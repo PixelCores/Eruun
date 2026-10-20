@@ -1,12 +1,14 @@
 package job
 
 import (
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"reflect"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+
+	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 )
 
 func TestGenerateSecret(t *testing.T) {
@@ -24,7 +26,7 @@ func TestGenerateSecret(t *testing.T) {
 				"password": "password123",
 			},
 		}
-		expected := &SecretInput{
+		expected := &jobinfo.SecretInput{
 			Name:      "my-secret",
 			Namespace: "default",
 			Labels:    map[string]string{config.LabelManagedBy: config.ManagedByEruun, config.LabelAppID: "test-app", config.LabelComponentID: "1", config.LabelComponentName: "my-secret"},
@@ -58,7 +60,7 @@ func TestGenerateSecret(t *testing.T) {
 				"config.fileName": "my-config-file",
 			},
 		}
-		expected := &SecretInput{
+		expected := &jobinfo.SecretInput{
 			Name:      "my-secret-from-url",
 			Namespace: "kube-system",
 			URL:       "http://example.com/config",
@@ -85,7 +87,7 @@ func TestGenerateSecret(t *testing.T) {
 			AppID:     "test-app",
 			ID:        3,
 		}
-		expected := &SecretInput{
+		expected := &jobinfo.SecretInput{
 			Name:      "nil-props-secret",
 			Namespace: "default",
 			Labels:    map[string]string{config.LabelManagedBy: config.ManagedByEruun, config.LabelAppID: "test-app", config.LabelComponentID: "3", config.LabelComponentName: "nil-props-secret"},
@@ -108,7 +110,7 @@ func TestGenerateSecret(t *testing.T) {
 		properties := &model.Properties{
 			Secret: map[string]string{},
 		}
-		expected := &SecretInput{
+		expected := &jobinfo.SecretInput{
 			Name:      "empty-secret",
 			Namespace: "default",
 			Labels:    map[string]string{config.LabelManagedBy: config.ManagedByEruun, config.LabelAppID: "test-app", config.LabelComponentID: "4", config.LabelComponentName: "empty-secret"},
@@ -130,7 +132,7 @@ func TestGenerateSecret(t *testing.T) {
 		properties := &model.Properties{
 			Secret: map[string]string{"key": "value"},
 		}
-		expected := &SecretInput{
+		expected := &jobinfo.SecretInput{
 			Name:      "no-namespace-secret",
 			Namespace: config.DefaultNamespace,
 			Labels:    map[string]string{config.LabelManagedBy: config.ManagedByEruun, config.LabelAppID: "test-app", config.LabelComponentID: "5", config.LabelComponentName: "no-namespace-secret"},

@@ -13,6 +13,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
 
@@ -47,7 +48,7 @@ func (c *DeployPVCJobCtl) run(ctx context.Context) error {
 		return fmt.Errorf("client is nil")
 	}
 
-	pvc, err := pvcFromJobInfo(c.job)
+	pvc, err := jobinfo.PvcFromJobInfo(c.job)
 	if err != nil {
 		return err
 	}
@@ -108,7 +109,7 @@ func (c *DeployPVCJobCtl) run(ctx context.Context) error {
 func (c *DeployPVCJobCtl) wait(ctx context.Context) error {
 	logger := klog.FromContext(ctx)
 	var pvcName string
-	if p, ok := optionalJobInfo[*corev1.PersistentVolumeClaim](c.job); ok {
+	if p, ok := jobinfo.OptionalJobInfo[*corev1.PersistentVolumeClaim](c.job); ok {
 		pvcName = p.Name
 	} else {
 		pvcName = c.job.Name
@@ -125,11 +126,11 @@ func (c *DeployPVCJobCtl) wait(ctx context.Context) error {
 			return isReady, err
 		},
 		onCancel: func(err error) error {
-			return NewStatusError(config.StatusCancelled, fmt.Errorf("pvc %s cancelled: %w", pvcName, err))
+			return jobinfo.NewStatusError(config.StatusCancelled, fmt.Errorf("pvc %s cancelled: %w", pvcName, err))
 		},
 		onTimeout: func() error {
 			logger.Info("Timed out waiting for PVC", "pvcName", pvcName)
-			return NewStatusError(config.StatusTimeout, fmt.Errorf("wait pvc %s timeout", pvcName))
+			return jobinfo.NewStatusError(config.StatusTimeout, fmt.Errorf("wait pvc %s timeout", pvcName))
 		},
 		onError: func(err error) error {
 			logger.Error(err, "Error checking PVC status", "pvcName", pvcName)
@@ -139,7 +140,7 @@ func (c *DeployPVCJobCtl) wait(ctx context.Context) error {
 }
 
 func (c *DeployPVCJobCtl) getPVCStatus(ctx context.Context) (bool, error) {
-	pvcInfo, err := pvcFromJobInfo(c.job)
+	pvcInfo, err := jobinfo.PvcFromJobInfo(c.job)
 	if err != nil {
 		return false, fmt.Errorf("failed to get PVC info from job %s: %w", c.job.Name, err)
 	}

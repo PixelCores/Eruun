@@ -1,4 +1,4 @@
-package job
+package jobinfo
 
 import (
 	"context"
@@ -18,9 +18,9 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 )
 
-const jobInfoSaveMaxAttempts = 8
+const JobInfoSaveMaxAttempts = 8
 
-func withJobInfoOwnership(
+func WithJobInfoOwnership(
 	ctx context.Context,
 	store datastore.DataStore,
 	job *model.JobTask,
@@ -48,13 +48,13 @@ func withJobInfoOwnership(
 }
 
 func addJobInfoIfWorkflowOwned(ctx context.Context, store datastore.DataStore, job *model.JobTask, jobInfo *model.JobInfo) error {
-	return withJobInfoOwnership(ctx, store, job, func(tx datastore.DataStore) error {
+	return WithJobInfoOwnership(ctx, store, job, func(tx datastore.DataStore) error {
 		return tx.Add(ctx, jobInfo)
 	})
 }
 
 func putJobInfoIfWorkflowOwned(ctx context.Context, store datastore.DataStore, job *model.JobTask, jobInfo *model.JobInfo) error {
-	return withJobInfoOwnership(ctx, store, job, func(tx datastore.DataStore) error {
+	return WithJobInfoOwnership(ctx, store, job, func(tx datastore.DataStore) error {
 		return tx.Put(ctx, jobInfo)
 	})
 }
@@ -68,7 +68,7 @@ func compareAndSwapJobInfoIfWorkflowOwned(
 	updates map[string]interface{},
 ) (bool, error) {
 	var updated bool
-	err := withJobInfoOwnership(ctx, store, job, func(tx datastore.DataStore) error {
+	err := WithJobInfoOwnership(ctx, store, job, func(tx datastore.DataStore) error {
 		conditional, ok := tx.(datastore.ConditionalCompareAndSwap)
 		if !ok {
 			return fmt.Errorf("job info fencing requires multi-condition compare-and-swap")
@@ -81,24 +81,24 @@ func compareAndSwapJobInfoIfWorkflowOwned(
 }
 
 // saveJobInfo persists the normalized job snapshot used by workflow queries.
-func saveJobInfo(ctx context.Context, store datastore.DataStore, job *model.JobTask) error {
+func SaveJobInfo(ctx context.Context, store datastore.DataStore, job *model.JobTask) error {
 	if strings.TrimSpace(job.ExecutionKey) == "" {
-		jobInfo := buildJobInfoRecord(job)
+		jobInfo := BuildJobInfoRecord(job)
 		return addJobInfoIfWorkflowOwned(ctx, store, job, &jobInfo)
 	}
 	return saveExecutionJobInfo(ctx, store, job)
 }
 
 func saveExecutionJobInfo(ctx context.Context, store datastore.DataStore, job *model.JobTask) error {
-	return withJobInfoOwnership(ctx, store, job, func(tx datastore.DataStore) error {
-		desiredBase := buildJobInfoRecord(job)
+	return WithJobInfoOwnership(ctx, store, job, func(tx datastore.DataStore) error {
+		desiredBase := BuildJobInfoRecord(job)
 		conditionalStore, ok := tx.(datastore.ConditionalCompareAndSwap)
 		if !ok {
 			return fmt.Errorf("save job info: datastore does not support conditional compare-and-swap")
 		}
-		for attempt := 1; attempt <= jobInfoSaveMaxAttempts; attempt++ {
+		for attempt := 1; attempt <= JobInfoSaveMaxAttempts; attempt++ {
 			desired := desiredBase
-			existing, err := findExistingJobInfo(ctx, tx, job)
+			existing, err := FindExistingJobInfo(ctx, tx, job)
 			if err != nil {
 				return err
 			}
@@ -126,11 +126,11 @@ func saveExecutionJobInfo(ctx context.Context, store datastore.DataStore, job *m
 				map[string]interface{}{
 					"status":         existing.Status,
 					"internal_info":  existing.InternalInfo,
-					"execution_key":  jobInfoExecutionKey(*existing),
+					"execution_key":  JobInfoExecutionKey(*existing),
 					"run_generation": existing.RunGeneration,
 					"attempt":        existing.Attempt,
 				},
-				versionUpdateCleanupJobInfoUpdates(desired, true),
+				VersionUpdateCleanupJobInfoUpdates(desired, true),
 			)
 			if err != nil {
 				return fmt.Errorf("save job info: %w", err)
@@ -139,7 +139,7 @@ func saveExecutionJobInfo(ctx context.Context, store datastore.DataStore, job *m
 				return nil
 			}
 		}
-		return fmt.Errorf("save job info: concurrent execution state changes did not converge after %d attempts", jobInfoSaveMaxAttempts)
+		return fmt.Errorf("save job info: concurrent execution state changes did not converge after %d attempts", JobInfoSaveMaxAttempts)
 	})
 }
 
@@ -147,7 +147,7 @@ func preserveEvaluationRunnerCheckpoint(existing, desired *model.JobInfo) error 
 	if existing == nil || desired == nil || existing.Type != string(config.JobEval) ||
 		strings.TrimSpace(existing.InternalInfo) == "" ||
 		desired.Type != string(config.JobEval) || existing.Attempt != desired.Attempt ||
-		existing.RunGeneration != desired.RunGeneration || jobInfoExecutionKey(*existing) != jobInfoExecutionKey(*desired) {
+		existing.RunGeneration != desired.RunGeneration || JobInfoExecutionKey(*existing) != JobInfoExecutionKey(*desired) {
 		return nil
 	}
 	state, _, err := EvaluationRunnerCheckpoint(existing)
@@ -160,9 +160,9 @@ func preserveEvaluationRunnerCheckpoint(existing, desired *model.JobInfo) error 
 	return SetEvaluationRunnerCheckpoint(desired, state)
 }
 
-func saveOrUpdateJobInfo(ctx context.Context, store datastore.DataStore, job *model.JobTask) error {
-	jobInfo := buildJobInfoRecord(job)
-	existing, err := findExistingJobInfo(ctx, store, job)
+func SaveOrUpdateJobInfo(ctx context.Context, store datastore.DataStore, job *model.JobTask) error {
+	jobInfo := BuildJobInfoRecord(job)
+	existing, err := FindExistingJobInfo(ctx, store, job)
 	if err != nil {
 		return err
 	}
@@ -179,10 +179,10 @@ func saveOrUpdateJobInfo(ctx context.Context, store datastore.DataStore, job *mo
 	return putJobInfoIfWorkflowOwned(ctx, store, job, &updated)
 }
 
-func saveOrUpdateVersionUpdateCleanupJobInfo(ctx context.Context, store datastore.DataStore, job *model.JobTask) error {
-	desired := buildJobInfoRecord(job)
-	for attempt := 1; attempt <= jobInfoSaveMaxAttempts; attempt++ {
-		existing, err := findExistingVersionUpdateCleanupJobInfo(ctx, store, job)
+func SaveOrUpdateVersionUpdateCleanupJobInfo(ctx context.Context, store datastore.DataStore, job *model.JobTask) error {
+	desired := BuildJobInfoRecord(job)
+	for attempt := 1; attempt <= JobInfoSaveMaxAttempts; attempt++ {
+		existing, err := FindExistingVersionUpdateCleanupJobInfo(ctx, store, job)
 		if err != nil {
 			return err
 		}
@@ -195,7 +195,7 @@ func saveOrUpdateVersionUpdateCleanupJobInfo(ctx context.Context, store datastor
 			}
 			return nil
 		}
-		if versionUpdateCleanupJobInfoWriteIsStale(*existing, desired) {
+		if VersionUpdateCleanupJobInfoWriteIsStale(*existing, desired) {
 			klog.V(2).InfoS("ignore stale version update cleanup job info write",
 				"taskID", desired.TaskID,
 				"serviceName", desired.ServiceName,
@@ -215,8 +215,8 @@ func saveOrUpdateVersionUpdateCleanupJobInfo(ctx context.Context, store datastor
 			store,
 			job,
 			existing,
-			versionUpdateCleanupJobInfoConditions(existing),
-			versionUpdateCleanupJobInfoUpdates(desired, true),
+			VersionUpdateCleanupJobInfoConditions(existing),
+			VersionUpdateCleanupJobInfoUpdates(desired, true),
 		)
 		if err != nil {
 			return fmt.Errorf("save version update cleanup job info: %w", err)
@@ -225,58 +225,58 @@ func saveOrUpdateVersionUpdateCleanupJobInfo(ctx context.Context, store datastor
 			return nil
 		}
 	}
-	return fmt.Errorf("save version update cleanup job info: concurrent identity or state changes did not converge after %d attempts", jobInfoSaveMaxAttempts)
+	return fmt.Errorf("save version update cleanup job info: concurrent identity or state changes did not converge after %d attempts", JobInfoSaveMaxAttempts)
 }
 
 func versionUpdateCleanupJobInfoNeedsFencing(existing, desired model.JobInfo) bool {
 	return existing.RunGeneration > 0 || desired.RunGeneration > 0 ||
-		jobInfoExecutionKey(existing) != "" || jobInfoExecutionKey(desired) != ""
+		JobInfoExecutionKey(existing) != "" || JobInfoExecutionKey(desired) != ""
 }
 
-func versionUpdateCleanupJobInfoWriteIsStale(existing, desired model.JobInfo) bool {
+func VersionUpdateCleanupJobInfoWriteIsStale(existing, desired model.JobInfo) bool {
 	if !versionUpdateCleanupJobInfoNeedsFencing(existing, desired) {
 		return false
 	}
 	if desired.RunGeneration != existing.RunGeneration {
 		return desired.RunGeneration < existing.RunGeneration
 	}
-	if storedKey := jobInfoExecutionKey(existing); storedKey != "" && storedKey != jobInfoExecutionKey(desired) {
+	if storedKey := JobInfoExecutionKey(existing); storedKey != "" && storedKey != JobInfoExecutionKey(desired) {
 		return true
 	}
 	return desired.Attempt < existing.Attempt
 }
 
-func versionUpdateCleanupJobInfoSameExecution(existing, desired model.JobInfo) bool {
+func VersionUpdateCleanupJobInfoSameExecution(existing, desired model.JobInfo) bool {
 	if !versionUpdateCleanupJobInfoNeedsFencing(existing, desired) {
 		return true
 	}
 	if existing.RunGeneration != desired.RunGeneration || existing.Attempt != desired.Attempt {
 		return false
 	}
-	storedKey := jobInfoExecutionKey(existing)
-	return storedKey == "" || storedKey == jobInfoExecutionKey(desired)
+	storedKey := JobInfoExecutionKey(existing)
+	return storedKey == "" || storedKey == JobInfoExecutionKey(desired)
 }
 
-func versionUpdateCleanupJobInfoOwnershipMatches(existing, desired model.JobInfo) bool {
+func VersionUpdateCleanupJobInfoOwnershipMatches(existing, desired model.JobInfo) bool {
 	if !versionUpdateCleanupJobInfoNeedsFencing(existing, desired) {
 		return true
 	}
-	storedKey := jobInfoExecutionKey(existing)
-	desiredKey := jobInfoExecutionKey(desired)
+	storedKey := JobInfoExecutionKey(existing)
+	desiredKey := JobInfoExecutionKey(desired)
 	return existing.RunGeneration == desired.RunGeneration &&
 		existing.Attempt == desired.Attempt &&
 		storedKey != "" &&
 		storedKey == desiredKey
 }
 
-func jobInfoExecutionKey(jobInfo model.JobInfo) string {
+func JobInfoExecutionKey(jobInfo model.JobInfo) string {
 	if jobInfo.ExecutionKey == nil {
 		return ""
 	}
 	return strings.TrimSpace(*jobInfo.ExecutionKey)
 }
 
-func versionUpdateCleanupJobInfoConditions(existing *model.JobInfo) map[string]interface{} {
+func VersionUpdateCleanupJobInfoConditions(existing *model.JobInfo) map[string]interface{} {
 	conditions := map[string]interface{}{
 		"status":         existing.Status,
 		"internal_info":  existing.InternalInfo,
@@ -290,7 +290,7 @@ func versionUpdateCleanupJobInfoConditions(existing *model.JobInfo) map[string]i
 	return conditions
 }
 
-func versionUpdateCleanupJobInfoUpdates(jobInfo model.JobInfo, includeInternalInfo bool) map[string]interface{} {
+func VersionUpdateCleanupJobInfoUpdates(jobInfo model.JobInfo, includeInternalInfo bool) map[string]interface{} {
 	updates := map[string]interface{}{
 		"type":             jobInfo.Type,
 		"workflow_id":      jobInfo.WorkflowID,
@@ -317,7 +317,7 @@ func versionUpdateCleanupJobInfoUpdates(jobInfo model.JobInfo, includeInternalIn
 	if includeInternalInfo {
 		updates["internal_info"] = jobInfo.InternalInfo
 	}
-	if executionKey := jobInfoExecutionKey(jobInfo); executionKey != "" {
+	if executionKey := JobInfoExecutionKey(jobInfo); executionKey != "" {
 		updates["execution_key"] = executionKey
 	}
 	return updates
@@ -351,11 +351,11 @@ func copyJobInfoRecord(existing *model.JobInfo, jobInfo model.JobInfo) {
 	existing.DelayPayload = jobInfo.DelayPayload
 }
 
-func findExistingJobInfo(ctx context.Context, store datastore.DataStore, job *model.JobTask) (*model.JobInfo, error) {
+func FindExistingJobInfo(ctx context.Context, store datastore.DataStore, job *model.JobTask) (*model.JobInfo, error) {
 	if job == nil {
 		return nil, nil
 	}
-	candidates, err := loadJobInfos(ctx, store, job.TaskID, job.JobType, resolveJobServiceName(job))
+	candidates, err := LoadJobInfos(ctx, store, job.TaskID, job.JobType, ResolveJobServiceName(job))
 	if err != nil {
 		return nil, err
 	}
@@ -372,7 +372,7 @@ func findExistingJobInfo(ctx context.Context, store datastore.DataStore, job *mo
 		executionKey := strings.TrimSpace(job.ExecutionKey)
 		if executionKey != "" {
 			for _, candidate := range candidates {
-				if candidate != nil && jobInfoExecutionKey(*candidate) == executionKey {
+				if candidate != nil && JobInfoExecutionKey(*candidate) == executionKey {
 					return candidate, nil
 				}
 			}
@@ -380,7 +380,7 @@ func findExistingJobInfo(ctx context.Context, store datastore.DataStore, job *mo
 		}
 	}
 	if job.JobType == string(config.JobDatabaseReset) {
-		return selectDatabaseResetCheckpointJobInfo(job, candidates)
+		return SelectDatabaseResetCheckpointJobInfo(job, candidates)
 	}
 	if job.JobType != string(config.JobDeployCloud) {
 		if job.ExecutionKey != "" {
@@ -396,14 +396,14 @@ func findExistingJobInfo(ctx context.Context, store datastore.DataStore, job *mo
 		}
 		return candidates[0], nil
 	}
-	return selectCloudCheckpointJobInfo(job, candidates), nil
+	return SelectCloudCheckpointJobInfo(job, candidates), nil
 }
 
-func findExistingVersionUpdateCleanupJobInfo(ctx context.Context, store datastore.DataStore, job *model.JobTask) (*model.JobInfo, error) {
+func FindExistingVersionUpdateCleanupJobInfo(ctx context.Context, store datastore.DataStore, job *model.JobTask) (*model.JobInfo, error) {
 	if job == nil {
 		return nil, nil
 	}
-	candidates, err := loadJobInfos(ctx, store, job.TaskID, job.JobType, resolveJobServiceName(job))
+	candidates, err := LoadJobInfos(ctx, store, job.TaskID, job.JobType, ResolveJobServiceName(job))
 	if err != nil {
 		return nil, err
 	}
@@ -411,24 +411,24 @@ func findExistingVersionUpdateCleanupJobInfo(ctx context.Context, store datastor
 		if candidate == nil {
 			continue
 		}
-		if isVersionUpdateRemoveCleanupInternalInfo(candidate.InternalInfo) {
+		if IsVersionUpdateRemoveCleanupInternalInfo(candidate.InternalInfo) {
 			return candidate, nil
 		}
 	}
 	return nil, nil
 }
 
-func isVersionUpdateRemoveCleanupInternalInfo(raw string) bool {
+func IsVersionUpdateRemoveCleanupInternalInfo(raw string) bool {
 	_, marked := parseVersionUpdateCleanupInternalInfo(raw)
 	return marked
 }
 
-func versionUpdateCleanupRequiresStatefulSetDeletion(raw string) bool {
+func VersionUpdateCleanupRequiresStatefulSetDeletion(raw string) bool {
 	marker, marked := parseVersionUpdateCleanupInternalInfo(raw)
 	return marked && marker.RequireStatefulSetDeletion
 }
 
-func versionUpdateCleanupStatefulSetPVCTemplatesToDelete(raw string) []string {
+func VersionUpdateCleanupStatefulSetPVCTemplatesToDelete(raw string) []string {
 	marker, marked := parseVersionUpdateCleanupInternalInfo(raw)
 	if !marked || marker.Version != model.VersionUpdateCleanupInfoVersionStatefulSetPVCDeletion || !marker.RequireStatefulSetDeletion || len(marker.StatefulSetPVCTemplatesToDelete) == 0 {
 		return nil
@@ -448,7 +448,7 @@ func parseVersionUpdateCleanupInternalInfo(raw string) (model.VersionUpdateClean
 	return marker, marker.Source == config.JobInfoSourceVersionUpdateRemove
 }
 
-func validateVersionUpdateCleanupInternalInfo(raw string, component *model.ApplicationComponent) error {
+func ValidateVersionUpdateCleanupInternalInfo(raw string, component *model.ApplicationComponent) error {
 	marker, marked := parseVersionUpdateCleanupInternalInfo(raw)
 	if !marked {
 		return nil
@@ -476,7 +476,7 @@ func validateVersionUpdateCleanupInternalInfo(raw string, component *model.Appli
 	}
 }
 
-func loadJobInfos(ctx context.Context, store datastore.DataStore, taskID, jobType, serviceName string) ([]*model.JobInfo, error) {
+func LoadJobInfos(ctx context.Context, store datastore.DataStore, taskID, jobType, serviceName string) ([]*model.JobInfo, error) {
 	if store == nil || strings.TrimSpace(taskID) == "" {
 		return nil, nil
 	}
@@ -527,7 +527,7 @@ func loadJobInfos(ctx context.Context, store datastore.DataStore, taskID, jobTyp
 	return jobInfos, nil
 }
 
-func buildJobInfoRecord(job *model.JobTask) model.JobInfo {
+func BuildJobInfoRecord(job *model.JobTask) model.JobInfo {
 	record := model.JobInfo{
 		Type:           job.JobType,
 		WorkflowID:     job.WorkflowID,
@@ -542,7 +542,7 @@ func buildJobInfoRecord(job *model.JobTask) model.JobInfo {
 		InternalInfo:   job.InternalInfo,
 		EvaluationInfo: job.EvaluationInfo,
 		Error:          job.Error,
-		ServiceName:    resolveJobServiceName(job),
+		ServiceName:    ResolveJobServiceName(job),
 		RunGeneration:  job.RunGeneration,
 		Attempt:        job.Attempt,
 		DelayState:     job.DelayState,
@@ -560,7 +560,7 @@ func buildJobInfoRecord(job *model.JobTask) model.JobInfo {
 	return record
 }
 
-func resolveJobServiceName(job *model.JobTask) string {
+func ResolveJobServiceName(job *model.JobTask) string {
 	if job == nil {
 		return ""
 	}
@@ -570,10 +570,10 @@ func resolveJobServiceName(job *model.JobTask) string {
 	if name := strings.TrimSpace(job.Name); name != "" {
 		return name
 	}
-	return componentNameFromJobInfo(job.JobInfo)
+	return ComponentNameFromJobInfo(job.JobInfo)
 }
 
-func componentNameFromJobInfo(info interface{}) string {
+func ComponentNameFromJobInfo(info interface{}) string {
 	if name := rawComponentNameFromJobInfo(info); name != "" {
 		return name
 	}
@@ -584,7 +584,7 @@ func rawComponentNameFromJobInfo(info interface{}) string {
 	return strings.TrimSpace(jobInfoAnnotations(info)[config.AnnotationComponentName])
 }
 
-func shareStrategyFromJobInfo(info interface{}) (domainspec.ShareStrategy, bool) {
+func ShareStrategyFromJobInfo(info interface{}) (domainspec.ShareStrategy, bool) {
 	labels := jobInfoLabels(info)
 	if len(labels) == 0 {
 		return "", false

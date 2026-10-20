@@ -17,6 +17,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
 
@@ -74,7 +75,7 @@ func TestDeployPVCJobCtlCreatesMissingPVC(t *testing.T) {
 		JobType:   string(config.JobDeployPVC),
 		JobInfo:   pvc.DeepCopy(),
 	}
-	ctl := NewDeployPVCJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployPVCJobCtl(job, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 
 	require.NoError(t, ctl.run(ctx))
 
@@ -118,7 +119,7 @@ func TestDeployPVCJobCtlSkipsExistingPVCSpecUpdate(t *testing.T) {
 		JobType:   string(config.JobDeployPVC),
 		JobInfo:   desired,
 	}
-	ctl := NewDeployPVCJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployPVCJobCtl(job, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	if err := ctl.run(ctx); err != nil {
 		t.Fatalf("run returned error: %v", err)
 	}
@@ -151,7 +152,7 @@ func TestDeployPVCJobCtlCleanPreservesTrackedPVC(t *testing.T) {
 		JobType:   string(config.JobDeployPVC),
 		JobInfo:   pvc.DeepCopy(),
 	}
-	ctl := NewDeployPVCJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
+	ctl := NewDeployPVCJobCtl(job, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: func() {}}, locker.NewNoopLocker(shareLockerPrefix))
 	require.NotNil(t, ctl)
 
 	ctl.Clean(ctx)

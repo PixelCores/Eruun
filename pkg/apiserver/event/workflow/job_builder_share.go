@@ -13,7 +13,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -187,9 +187,9 @@ func applyShareLabelsToJobInfo(jobInfo interface{}, share shareConfig) {
 		info.Spec.JobTemplate.Spec.Template.Labels = applyShareLabels(info.Spec.JobTemplate.Spec.Template.Labels, share)
 	case metav1.Object:
 		applyShareLabelsToObject(info, share)
-	case *workflowjob.ConfigMapInput:
+	case *jobinfo.ConfigMapInput:
 		info.Labels = applyShareLabels(info.Labels, share)
-	case *workflowjob.SecretInput:
+	case *jobinfo.SecretInput:
 		info.Labels = applyShareLabels(info.Labels, share)
 	}
 }

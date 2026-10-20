@@ -19,6 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/clients"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -74,14 +75,14 @@ func NewCallbackJobCtl(job *model.JobTask, store datastore.DataStore, urlSecurit
 func (c *CallbackJobCtl) Clean(ctx context.Context) {}
 
 func (c *CallbackJobCtl) SaveInfo(ctx context.Context) error {
-	return saveJobInfo(ctx, c.store, c.job)
+	return jobinfo.SaveJobInfo(ctx, c.store, c.job)
 }
 
 func (c *CallbackJobCtl) Run(ctx context.Context) error {
 	if c.urlSecurityPolicy == nil {
 		return fmt.Errorf("url security policy is required")
 	}
-	info, err := callbackInfoFromJobInfo(c.job)
+	info, err := jobinfo.CallbackInfoFromJobInfo(c.job)
 	if err != nil {
 		return fmt.Errorf("callback job info is invalid: %w", err)
 	}
@@ -258,7 +259,7 @@ func callbackTimeout(seconds, maxNS int64) time.Duration {
 	return workflowconfig.ResolveWorkflowCallbackTimeout(seconds, maxTimeout)
 }
 
-func appendCallbackQuery(rawURL string, payload CallbackPayload) (string, error) {
+func appendCallbackQuery(rawURL string, payload jobinfo.CallbackPayload) (string, error) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		return "", fmt.Errorf("parse callback url: %w", err)
@@ -293,7 +294,7 @@ func appendCallbackQuery(rawURL string, payload CallbackPayload) (string, error)
 	return parsed.String(), nil
 }
 
-func recordCallbackJobInfo(info *CallbackJobInfo, statusCode int, response string, err error) string {
+func recordCallbackJobInfo(info *jobinfo.CallbackJobInfo, statusCode int, response string, err error) string {
 	record := CallbackJobRecord{
 		Event:      info.Event,
 		URL:        info.URL,
@@ -311,7 +312,7 @@ func recordCallbackJobInfo(info *CallbackJobInfo, statusCode int, response strin
 	return string(data)
 }
 
-func callbackLogValues(info *CallbackJobInfo, method, requestURL, payload, requestBody string, statusCode int, response ...string) []interface{} {
+func callbackLogValues(info *jobinfo.CallbackJobInfo, method, requestURL, payload, requestBody string, statusCode int, response ...string) []interface{} {
 	event := ""
 	headers := map[string]string(nil)
 	appID := ""

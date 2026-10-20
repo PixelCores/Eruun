@@ -17,6 +17,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -51,7 +52,7 @@ func TestCleanupResourcesJobCtlOnlyDefersGenericOwnerJobDeletesForRequiredStatef
 				},
 				&Runtime{
 					Client: client,
-					Store:  &noopStore{},
+					Store:  &jobtest.NoopStore{},
 					Ack:    nil,
 				},
 			)

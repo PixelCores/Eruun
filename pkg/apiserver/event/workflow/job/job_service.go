@@ -18,6 +18,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
@@ -52,7 +53,7 @@ func (c *DeployServiceJobCtl) run(ctx context.Context) error {
 		return fmt.Errorf("client is nil")
 	}
 
-	service, err := serviceFromJobInfo(c.job)
+	service, err := jobinfo.ServiceFromJobInfo(c.job)
 	if err != nil {
 		return err
 	}
@@ -131,11 +132,11 @@ func (c *DeployServiceJobCtl) wait(ctx context.Context) error {
 			return getServiceStatus(ctx, c.client, c.job.Namespace, serviceName)
 		},
 		onCancel: func(err error) error {
-			return NewStatusError(config.StatusCancelled, fmt.Errorf("service %s cancelled: %w", c.job.Name, err))
+			return jobinfo.NewStatusError(config.StatusCancelled, fmt.Errorf("service %s cancelled: %w", c.job.Name, err))
 		},
 		onTimeout: func() error {
 			klog.Warningf("timed out waiting for service: %s", c.job.Name)
-			return NewStatusError(config.StatusTimeout, fmt.Errorf("wait service %s timeout", c.job.Name))
+			return jobinfo.NewStatusError(config.StatusTimeout, fmt.Errorf("wait service %s timeout", c.job.Name))
 		},
 		onError: func(err error) error {
 			klog.Errorf("error checking service status: %v", err)
@@ -245,7 +246,7 @@ func resolveServiceName(jobTask *model.JobTask) string {
 	if jobTask == nil {
 		return ""
 	}
-	service, ok := optionalJobInfo[*corev1.Service](jobTask)
+	service, ok := jobinfo.OptionalJobInfo[*corev1.Service](jobTask)
 	if !ok {
 		return ""
 	}

@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 	"github.com/stretchr/testify/require"
 	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -19,13 +18,15 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
+	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/workspace"
 )
 
-func seedDelayRecoveryCheckpoint(t *testing.T, store *resultOutboxTestStore, id int, executeAt int64) *DelayJobPayload {
+func seedDelayRecoveryCheckpoint(t *testing.T, store *resultOutboxTestStore, id int, executeAt int64) *jobinfo.DelayJobPayload {
 	t.Helper()
 	name := fmt.Sprintf("delay-recovery-%d", id)
-	payload := &DelayJobPayload{
+	payload := &jobinfo.DelayJobPayload{
 		ExecuteAt: executeAt, Namespace: "default", JobType: string(config.JobDeployInstant),
 		TaskID: name, ExecutionKey: name, RunGeneration: 1, ServiceName: name,
 		Job: &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"}},
@@ -103,7 +104,7 @@ func TestDelayDispatcherDeduplicatedMessagesRemainRetryable(t *testing.T) {
 			ctx := context.Background()
 			store := newResultOutboxTestStore()
 			payload := seedDelayRecoveryCheckpoint(t, store, 1, time.Now().Add(-time.Minute).Unix())
-			raw, err := json.Marshal(notificationForDelayJob(payload))
+			raw, err := json.Marshal(jobinfo.NotificationForDelayJob(payload))
 			require.NoError(t, err)
 			queue := &dispatcherAckQueue{}
 			client := fake.NewSimpleClientset()

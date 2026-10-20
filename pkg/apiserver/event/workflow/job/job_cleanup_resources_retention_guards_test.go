@@ -16,6 +16,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
@@ -61,7 +62,7 @@ func TestCleanupResourcesJobCtlPinsStatefulSetUIDAcrossRetentionPolls(t *testing
 			Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 			InternalInfo: versionUpdateRequireStatefulSetDeletionInternalInfo(), Timeout: 2,
 		}
-		ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
+		ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: nil})
 		require.NotNil(t, ctl)
 
 		err := ctl.deleteStatefulSet(ctx, component.Namespace, statefulSetName)
@@ -118,7 +119,7 @@ func TestCleanupResourcesJobCtlPinsStatefulSetUIDAcrossRetentionPolls(t *testing
 			Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 			InternalInfo: versionUpdateRequireStatefulSetDeletionInternalInfo(), Timeout: 2,
 		}
-		ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
+		ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: nil})
 		require.NotNil(t, ctl)
 		ref, err := requiredStatefulSetCleanupRef(component)
 		require.NoError(t, err)
@@ -347,7 +348,7 @@ func newRetentionGuardController(
 		Name: component.Name, JobType: string(config.JobCleanupResources), JobInfo: component,
 		InternalInfo: internalInfo, Timeout: 2,
 	}
-	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &noopStore{}, Ack: nil})
+	ctl := NewCleanupResourcesJobCtl(job, &Runtime{Client: client, Store: &jobtest.NoopStore{}, Ack: nil})
 	require.NotNil(t, ctl)
 	return component, statefulSetName, client, ctl
 }

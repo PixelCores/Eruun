@@ -13,12 +13,14 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
 
 type workflowOwnedJobInfoStore struct {
-	noopStore
+	jobtest.NoopStore
 	workflowTask     *model.WorkflowQueue
 	addedJobInfo     *model.JobInfo
 	jobInfos         []datastore.Entity
@@ -87,7 +89,7 @@ func (s *workflowOwnedJobInfoStore) List(_ context.Context, entity datastore.Ent
 				case "service_name":
 					value = jobInfo.ServiceName
 				case "execution_key":
-					value = jobInfoExecutionKey(*jobInfo)
+					value = jobinfo.JobInfoExecutionKey(*jobInfo)
 				case "run_generation":
 					value = strconv.FormatUint(jobInfo.RunGeneration, 10)
 				default:
@@ -155,7 +157,7 @@ func (s *workflowOwnedJobInfoStore) CompareAndSwapWithConditions(
 				continue
 			}
 			if current.Status != conditions["status"] ||
-				jobInfoExecutionKey(*current) != conditions["execution_key"] ||
+				jobinfo.JobInfoExecutionKey(*current) != conditions["execution_key"] ||
 				current.RunGeneration != conditions["run_generation"] ||
 				current.Attempt != conditions["attempt"] {
 				return false, nil
@@ -216,7 +218,7 @@ func TestSaveJobInfoUsesWorkflowOwnershipFence(t *testing.T) {
 			WorkerID:      "worker-a",
 		}
 
-		err := saveJobInfo(context.Background(), store, job)
+		err := jobinfo.SaveJobInfo(context.Background(), store, job)
 
 		require.ErrorIs(t, err, repository.ErrWorkflowOwnershipLost)
 		require.Nil(t, store.addedJobInfo)
@@ -234,7 +236,7 @@ func TestSaveJobInfoUsesWorkflowOwnershipFence(t *testing.T) {
 			WorkerID:      current.WorkerID,
 		}
 
-		err := saveJobInfo(context.Background(), store, job)
+		err := jobinfo.SaveJobInfo(context.Background(), store, job)
 
 		require.NoError(t, err)
 		require.NotNil(t, store.addedJobInfo)
@@ -330,7 +332,7 @@ func (c *recordingTerminalJobCtl) SaveInfo(context.Context) error {
 
 func TestPersistTerminalJobStateSkipsInfrastructureCancellation(t *testing.T) {
 	job := &model.JobTask{JobType: "unknown", Status: config.StatusCancelled}
-	store := &noopStore{}
+	store := &jobtest.NoopStore{}
 
 	cancelledCtx, cancel := context.WithCancelCause(context.Background())
 	cancel(repository.ErrWorkflowLeaseRenewalFailed)

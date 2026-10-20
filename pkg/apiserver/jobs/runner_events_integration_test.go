@@ -29,7 +29,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	workflowjob "github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	sqldriver "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
@@ -89,8 +89,8 @@ func TestMySQLRunnerClaimRowLockHasOneWinner(t *testing.T) {
 	require.NoError(t, BuildEvaluationTask(scoped, service.Store, cfg, task, spec.JobTraits{}))
 	info, err := decodeEvaluationInfo(task.EvaluationInfo)
 	require.NoError(t, err)
-	workflowjob.ApplyTaskIDAnnotation(task)
-	workflowjob.ApplyExecutionIdentity(task)
+	jobinfo.ApplyTaskIDAnnotation(task)
+	jobinfo.ApplyExecutionIdentity(task)
 	workload := task.JobInfo.(*batchv1.Job)
 	workload.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
 	workload.UID = "job-uid"

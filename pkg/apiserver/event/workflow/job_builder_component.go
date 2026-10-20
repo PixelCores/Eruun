@@ -19,6 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
+	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	workspacejobs "github.com/PixelCores/Eruun/pkg/apiserver/jobs"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
@@ -445,7 +446,7 @@ func buildDatabaseResetJobs(
 	resourceAppName := databaseComponents[0].ResourceNameKey()
 	jobTask := NewJobTask(databaseResetWorkflowName(), namespace, task.WorkflowID, task.ProjectID, task.AppID, task.TaskID, defaultJobTimeoutSeconds, resourceAppName)
 	jobTask.JobType = string(config.JobDatabaseReset)
-	jobTask.JobInfo = &job.DatabaseResetJobInfo{
+	jobTask.JobInfo = &jobinfo.DatabaseResetJobInfo{
 		DatabaseComponents: databaseComponents,
 		InitSQLURL:         databaseResetInitSQLURL(workflowProperties),
 		ExecutionKey:       strings.TrimSpace(executionKey),
@@ -556,7 +557,7 @@ func buildJobsForComponent(
 		markJobSkippedIfIgnored(share, jobTask)
 		buckets[config.JobPriorityMaxHigh] = append(buckets[config.JobPriorityMaxHigh], jobTask)
 	case config.CloudJob:
-		cloudInfo := &job.CloudJobInfo{}
+		cloudInfo := &jobinfo.CloudJobInfo{}
 		if properties.Cloud == nil {
 			logger.Info("Cloudjob component missing properties.cloud, enqueuing fail-fast cloud job", "componentName", component.Name)
 		} else {
@@ -794,5 +795,5 @@ func applyJobFailurePolicyOverride(jobTask *model.JobTask, policy *workflowconfi
 }
 
 func applyJobTaskMetadata(jobTask *model.JobTask) {
-	job.ApplyTaskIDAnnotation(jobTask)
+	jobinfo.ApplyTaskIDAnnotation(jobTask)
 }
