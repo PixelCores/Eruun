@@ -10,7 +10,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
@@ -90,8 +89,8 @@ func defaultServiceTraitsFromProperties(component *model.ApplicationComponent, p
 			Name: "",
 			Type: string(spec.ServiceAccessInternal),
 			Selector: map[string]string{
-				config.LabelAppID:         component.AppID,
-				config.LabelComponentName: naming.BoundedLabelValue(component.Name),
+				spec.LabelAppID:         component.AppID,
+				spec.LabelComponentName: naming.BoundedLabelValue(component.Name),
 			},
 			Ports: ports,
 		},
@@ -155,8 +154,8 @@ func applyShareLabels(labels map[string]string, share shareConfig) map[string]st
 	for k, v := range naming.NormalizeLabelValues(labels) {
 		updated[k] = v
 	}
-	updated[config.LabelShareName] = share.Name
-	updated[config.LabelShareStrategy] = string(share.Strategy)
+	updated[spec.LabelShareName] = share.Name
+	updated[spec.LabelShareStrategy] = string(share.Strategy)
 	return updated
 }
 

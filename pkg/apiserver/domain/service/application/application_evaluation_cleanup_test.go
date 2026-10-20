@@ -35,7 +35,7 @@ func TestEvaluationResourceCleanupAcrossApplicationLifecycle(t *testing.T) {
 				}}),
 			}
 			labelsFor := func(app, name string) map[string]string {
-				return map[string]string{config.LabelAppID: app, config.LabelComponentName: naming.BoundedLabelValue(name)}
+				return map[string]string{spec.LabelAppID: app, spec.LabelComponentName: naming.BoundedLabelValue(name)}
 			}
 			owned := []*batchv1.Job{
 				{ObjectMeta: metav1.ObjectMeta{Name: "eruun-eval-execution-a", Namespace: app.Namespace, UID: "runner-a", Labels: labelsFor(app.ID, component.Name)}},
@@ -107,7 +107,7 @@ func TestEvaluationResourceCleanupReportsListAndIdentityFailures(t *testing.T) {
 				Traits: mustJSONStruct(spec.Traits{Evaluation: &spec.EvaluationTraitSpec{TaskPackageID: "tasks"}}),
 			}
 			item := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "eruun-eval-execution-a", Namespace: component.Namespace, UID: "original",
-				Labels: map[string]string{config.LabelAppID: component.AppID, config.LabelComponentName: component.Name}}}
+				Labels: map[string]string{spec.LabelAppID: component.AppID, spec.LabelComponentName: component.Name}}}
 			client := fake.NewSimpleClientset(item)
 			failure := errors.New("list unavailable")
 			if operation == "delete" {

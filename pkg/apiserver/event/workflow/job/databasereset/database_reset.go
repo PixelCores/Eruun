@@ -21,6 +21,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobcleanup"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobdeploy"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
@@ -497,8 +498,8 @@ func databaseResetPodSelector(statefulSet *appsv1.StatefulSet, component *model.
 		return metav1.FormatLabelSelector(statefulSet.Spec.Selector)
 	}
 	return labels.Set{
-		config.LabelAppID:         component.AppID,
-		config.LabelComponentName: naming.BoundedLabelValue(component.Name),
+		spec.LabelAppID:         component.AppID,
+		spec.LabelComponentName: naming.BoundedLabelValue(component.Name),
 	}.String()
 }
 

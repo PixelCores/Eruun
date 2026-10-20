@@ -25,8 +25,8 @@ func TestCreateApplicationsFromTemplateKeepsDuplicateCloneRewritesPerClone(t *te
 			Name: "mysql",
 			Type: string(spec.ServiceAccessInternal),
 			Selector: map[string]string{
-				config.LabelComponentName: "mysql",
-				"role":                    "mysql",
+				spec.LabelComponentName: "mysql",
+				"role":                  "mysql",
 			},
 			Ports: []spec.ServicePortTraitSpec{{Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
 		}},
@@ -80,9 +80,9 @@ func TestCreateApplicationsFromTemplateKeepsDuplicateCloneRewritesPerClone(t *te
 	require.NoError(t, json.Unmarshal([]byte(mustJSON(t, second.Traits)), &secondTraits))
 	require.Len(t, firstTraits.Service, 1)
 	require.Len(t, secondTraits.Service, 1)
-	require.Equal(t, "mysql", firstTraits.Service[0].Selector[config.LabelComponentName])
+	require.Equal(t, "mysql", firstTraits.Service[0].Selector[spec.LabelComponentName])
 	require.Equal(t, "mysql", firstTraits.Service[0].Selector["role"])
-	require.Equal(t, "mysql-1", secondTraits.Service[0].Selector[config.LabelComponentName])
+	require.Equal(t, "mysql-1", secondTraits.Service[0].Selector[spec.LabelComponentName])
 	require.Equal(t, "mysql-1", secondTraits.Service[0].Selector["role"])
 
 	var firstProps, secondProps apisv1.Properties
@@ -340,8 +340,8 @@ func TestCreateApplicationsFromTemplateDoesNotRewriteBareServiceNameText(t *test
 			Name: "mysql",
 			Type: string(spec.ServiceAccessInternal),
 			Selector: map[string]string{
-				"role":                    "mysql",
-				config.LabelComponentName: "mysql",
+				"role":                  "mysql",
+				spec.LabelComponentName: "mysql",
 			},
 			Ports: []spec.ServicePortTraitSpec{{Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
 		}},
@@ -393,7 +393,7 @@ func TestCreateApplicationsFromTemplateDoesNotRewriteBareServiceNameText(t *test
 	require.Len(t, clonedTraits.Service, 1)
 	require.Equal(t, "cloned-app-mysql", clonedTraits.Service[0].Name)
 	require.Equal(t, "cloned-app-mysql", clonedTraits.Service[0].Selector["role"])
-	require.Equal(t, "new-mysql", clonedTraits.Service[0].Selector[config.LabelComponentName])
+	require.Equal(t, "new-mysql", clonedTraits.Service[0].Selector[spec.LabelComponentName])
 
 	var clonedProps apisv1.Properties
 	require.NoError(t, json.Unmarshal([]byte(mustJSON(t, createdStore.Properties)), &clonedProps))
@@ -1143,11 +1143,11 @@ func TestRewriteServiceSelectorValuesRewritesServiceRefsAndPreservesMismatchedLa
 	rewriteMap.refresh()
 
 	selector := map[string]string{
-		"name":                    "mysql",
-		"role":                    "backend",
-		"tier":                    "frontend",
-		"mysql-pod-role":          "mysql-master",
-		config.LabelComponentName: "mysql",
+		"name":                  "mysql",
+		"role":                  "backend",
+		"tier":                  "frontend",
+		"mysql-pod-role":        "mysql-master",
+		spec.LabelComponentName: "mysql",
 	}
 	originalPodLabels := map[string]string{
 		"name": "mysql",
@@ -1166,5 +1166,5 @@ func TestRewriteServiceSelectorValuesRewritesServiceRefsAndPreservesMismatchedLa
 	require.Equal(t, "backend", selector["role"])
 	require.Equal(t, "cloned-app-frontend", selector["tier"])
 	require.Equal(t, "cloned-app-mysql-master", selector["mysql-pod-role"])
-	require.Equal(t, "new-mysql", selector[config.LabelComponentName])
+	require.Equal(t, "new-mysql", selector[spec.LabelComponentName])
 }

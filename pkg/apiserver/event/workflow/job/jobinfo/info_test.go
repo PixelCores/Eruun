@@ -11,6 +11,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 )
 
@@ -18,7 +19,7 @@ func TestBuildJobInfoRecordUsesRawComponentNameAnnotation(t *testing.T) {
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{
-				config.LabelComponentName: "api-v1",
+				spec.LabelComponentName: "api-v1",
 			},
 			Annotations: map[string]string{
 				config.AnnotationComponentName: "api.v1",
@@ -36,7 +37,7 @@ func TestBuildJobInfoRecordUsesRawComponentNameAnnotation(t *testing.T) {
 func TestBuildJobInfoRecordUsesRawComponentNameAnnotationFromService(t *testing.T) {
 	service := &corev1.Service{ObjectMeta: metav1.ObjectMeta{
 		Name: "public-api", Namespace: "default",
-		Labels:      map[string]string{config.LabelComponentName: "api-v1"},
+		Labels:      map[string]string{spec.LabelComponentName: "api-v1"},
 		Annotations: map[string]string{config.AnnotationComponentName: "api.v1"},
 	}}
 
@@ -52,7 +53,7 @@ func TestBuildJobInfoRecordFallsBackToBoundedComponentLabel(t *testing.T) {
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{
-				config.LabelComponentName: "api-v1",
+				spec.LabelComponentName: "api-v1",
 			},
 		},
 	}

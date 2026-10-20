@@ -12,6 +12,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
@@ -198,8 +199,8 @@ func newComponentContainersPod(
 			Name:      name,
 			Namespace: namespace,
 			Labels: map[string]string{
-				config.LabelAppID:         appID,
-				config.LabelComponentName: componentName,
+				spec.LabelAppID:         appID,
+				spec.LabelComponentName: componentName,
 			},
 			CreationTimestamp: metav1.NewTime(createdAt),
 		},

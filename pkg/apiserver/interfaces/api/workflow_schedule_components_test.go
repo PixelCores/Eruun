@@ -669,8 +669,8 @@ func TestListApplicationComponentsRefreshesAfterConfigJobStatusSync(t *testing.T
 				Name:      "app-config",
 				Namespace: "default",
 				Labels: map[string]string{
-					config.LabelShareName:     "shared-app-config",
-					config.LabelShareStrategy: string(spec.ShareStrategyDefault),
+					spec.LabelShareName:     "shared-app-config",
+					spec.LabelShareStrategy: string(spec.ShareStrategyDefault),
 				},
 			},
 		},

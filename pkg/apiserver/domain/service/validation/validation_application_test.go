@@ -1817,7 +1817,7 @@ func TestValidationService_TryApplication_InvalidReservedPropertiesLabels(t *tes
 				Image:         "nginx:latest",
 				Properties: apisv1.Properties{
 					Labels: map[string]string{
-						config.LabelComponentName: "custom-backend",
+						spec.LabelComponentName: "custom-backend",
 					},
 				},
 			},
@@ -1829,7 +1829,7 @@ func TestValidationService_TryApplication_InvalidReservedPropertiesLabels(t *tes
 	found := false
 	for _, err := range resp.Errors {
 		if err.Code == apisv1.ErrCodeInvalidTraitConfig &&
-			err.Field == "component[0].properties.labels."+config.LabelComponentName {
+			err.Field == "component[0].properties.labels."+spec.LabelComponentName {
 			found = true
 			break
 		}

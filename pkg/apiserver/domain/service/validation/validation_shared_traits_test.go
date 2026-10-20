@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 )
@@ -20,8 +19,8 @@ func TestTryApplicationTraitErrorsPreservePresentationAndOrder(t *testing.T) {
 		Ingress: []spec.IngressTraitsSpec{{
 			Name: "BAD_INGRESS",
 			Label: map[string]string{
-				config.LabelComponentName: "other-component",
-				config.LabelAppID:         "other-app",
+				spec.LabelComponentName: "other-component",
+				spec.LabelAppID:         "other-app",
 			},
 			Hosts: []string{"192.0.2.1"},
 			Routes: []spec.IngressRoutes{{
@@ -31,8 +30,8 @@ func TestTryApplicationTraitErrorsPreservePresentationAndOrder(t *testing.T) {
 		Service: []spec.ServiceTraitSpec{{
 			Name: "BAD_SERVICE", Type: "unknown", Headless: true,
 			Labels: map[string]string{
-				config.LabelComponentName: "other-component",
-				config.LabelAppID:         "other-app",
+				spec.LabelComponentName: "other-component",
+				spec.LabelAppID:         "other-app",
 			},
 			Ports: []spec.ServicePortTraitSpec{{Port: 0, TargetPort: -1, Protocol: "INVALID"}},
 		}},
@@ -75,7 +74,7 @@ func TestTryApplicationTraitErrorsPreservePresentationAndOrder(t *testing.T) {
 	traits := resp.NormalizedSpec.Components[0].Traits
 	require.Equal(t, "BAD_INGRESS", traits.Ingress[0].Name)
 	require.Equal(t, "BAD_SERVICE", traits.Service[0].Name)
-	labels := map[string]string{config.LabelAppID: "other-app", config.LabelComponentName: "other-component"}
+	labels := map[string]string{spec.LabelAppID: "other-app", spec.LabelComponentName: "other-component"}
 	require.Equal(t, labels, traits.Ingress[0].Label)
 	require.Equal(t, labels, traits.Service[0].Labels)
 }

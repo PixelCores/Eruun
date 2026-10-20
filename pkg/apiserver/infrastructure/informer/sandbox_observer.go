@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -54,7 +55,7 @@ func NewKubernetesSandboxObserver(client dynamic.Interface, pods kubernetes.Inte
 	}
 	factory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(client, 0, metav1.NamespaceAll,
 		func(options *metav1.ListOptions) {
-			options.LabelSelector = labels.Set{config.LabelManagedBy: config.ManagedByEruun}.String()
+			options.LabelSelector = labels.Set{spec.LabelManagedBy: config.ManagedByEruun}.String()
 		})
 	sandboxes := factory.ForResource(observedSandboxResource).Informer()
 	if err := sandboxes.SetTransform(stripObserverManagedFields); err != nil {

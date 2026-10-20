@@ -72,8 +72,8 @@ func TestWorkflowEvaluationJobsHaveIndependentExecutionsAndRecoverSnapshots(t *t
 		workload := task.JobInfo.(*batchv1.Job)
 		for _, labels := range []map[string]string{workload.Labels, workload.Spec.Template.Labels} {
 			require.Equal(t, "model-team", labels["team"])
-			require.Equal(t, config.ManagedByEruun, labels[config.LabelManagedBy])
-			require.Equal(t, "app", labels[config.LabelAppID])
+			require.Equal(t, config.ManagedByEruun, labels[spec.LabelManagedBy])
+			require.Equal(t, "app", labels[spec.LabelAppID])
 		}
 		require.NotContains(t, workload.Labels, workspace.EvaluationRunnerLabel)
 		require.NotContains(t, workload.Labels, "eruun.io/task-id")

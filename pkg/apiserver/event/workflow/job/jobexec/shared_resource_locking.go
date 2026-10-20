@@ -11,7 +11,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
@@ -23,17 +22,17 @@ func ShareInfoFromLabels(labels map[string]string) (string, domainspec.ShareStra
 	if labels == nil {
 		return "", ""
 	}
-	name := strings.TrimSpace(labels[config.LabelShareName])
+	name := strings.TrimSpace(labels[domainspec.LabelShareName])
 	if name == "" {
 		return "", ""
 	}
-	rawStrategy := strings.TrimSpace(labels[config.LabelShareStrategy])
+	rawStrategy := strings.TrimSpace(labels[domainspec.LabelShareStrategy])
 	strategy, _ := domainspec.NormalizeShareStrategy(rawStrategy)
 	return name, strategy
 }
 
 func shareListOptions(name string) metav1.ListOptions {
-	selector := labels.Set{config.LabelShareName: name}.String()
+	selector := labels.Set{domainspec.LabelShareName: name}.String()
 	return metav1.ListOptions{LabelSelector: selector}
 }
 

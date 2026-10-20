@@ -25,7 +25,7 @@ func TestBuildVersionUpdateFullCleanupInfoKeepsV2WhenVCTsAreUnchanged(t *testing
 		}},
 		Service: []spec.ServiceTraitSpec{{
 			Name: "mysql-headless", Type: string(spec.ServiceAccessInternal), Headless: true,
-			Selector: map[string]string{config.LabelComponentName: "mysql"},
+			Selector: map[string]string{spec.LabelComponentName: "mysql"},
 			Ports:    []spec.ServicePortTraitSpec{{Name: "mysql", Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
 		}},
 	}
@@ -187,8 +187,8 @@ func TestUpdateVersionRemoveComponentCleansKubeResources(t *testing.T) {
 				Name:      headlessServiceName,
 				Namespace: "default",
 				Labels: map[string]string{
-					config.LabelAppID:         "app-1",
-					config.LabelComponentName: "mongodb",
+					spec.LabelAppID:         "app-1",
+					spec.LabelComponentName: "mongodb",
 				},
 			},
 		},
@@ -197,8 +197,8 @@ func TestUpdateVersionRemoveComponentCleansKubeResources(t *testing.T) {
 				Name:      rwServiceName,
 				Namespace: "default",
 				Labels: map[string]string{
-					config.LabelAppID:         "app-1",
-					config.LabelComponentName: "mongodb",
+					spec.LabelAppID:         "app-1",
+					spec.LabelComponentName: "mongodb",
 				},
 			},
 		},
@@ -310,8 +310,8 @@ func TestUpdateVersionRejectsProtectedSharedComponentRemove(t *testing.T) {
 				Name:      "shared-backend-pod",
 				Namespace: "default",
 				Labels: map[string]string{
-					config.LabelAppID:         "app-1",
-					config.LabelComponentName: "shared-backend",
+					spec.LabelAppID:         "app-1",
+					spec.LabelComponentName: "shared-backend",
 				},
 			},
 			Status: corev1.PodStatus{
@@ -377,8 +377,8 @@ func TestUpdateVersionRejectsProtectedSharedComponentRemoveWhenPodAbnormal(t *te
 				Name:      "shared-backend-pod",
 				Namespace: "default",
 				Labels: map[string]string{
-					config.LabelAppID:         "app-1",
-					config.LabelComponentName: "shared-backend",
+					spec.LabelAppID:         "app-1",
+					spec.LabelComponentName: "shared-backend",
 				},
 			},
 			Status: corev1.PodStatus{

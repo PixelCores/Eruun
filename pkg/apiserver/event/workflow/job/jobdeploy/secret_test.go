@@ -8,6 +8,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 )
 
@@ -29,7 +30,7 @@ func TestGenerateSecret(t *testing.T) {
 		expected := &jobinfo.SecretInput{
 			Name:      "my-secret",
 			Namespace: "default",
-			Labels:    map[string]string{config.LabelManagedBy: config.ManagedByEruun, config.LabelAppID: "test-app", config.LabelComponentID: "1", config.LabelComponentName: "my-secret"},
+			Labels:    map[string]string{spec.LabelManagedBy: config.ManagedByEruun, spec.LabelAppID: "test-app", spec.LabelComponentID: "1", spec.LabelComponentName: "my-secret"},
 			Data: map[string]string{
 				"username": "admin",
 				"password": "password123",
@@ -51,8 +52,8 @@ func TestGenerateSecret(t *testing.T) {
 		}
 		properties := &model.Properties{
 			Labels: map[string]string{
-				config.LabelComponentName: "custom-secret",
-				"team":                    "security",
+				spec.LabelComponentName: "custom-secret",
+				"team":                  "security",
 			},
 			Secret: map[string]string{},
 			Conf: map[string]string{
@@ -66,11 +67,11 @@ func TestGenerateSecret(t *testing.T) {
 			URL:       "http://example.com/config",
 			FileName:  "my-config-file",
 			Labels: map[string]string{
-				config.LabelManagedBy:     config.ManagedByEruun,
-				config.LabelAppID:         "test-app",
-				config.LabelComponentID:   "2",
-				config.LabelComponentName: "my-secret-from-url",
-				"team":                    "security",
+				spec.LabelManagedBy:     config.ManagedByEruun,
+				spec.LabelAppID:         "test-app",
+				spec.LabelComponentID:   "2",
+				spec.LabelComponentName: "my-secret-from-url",
+				"team":                  "security",
 			},
 		}
 		actual := GenerateSecret(component, properties)
@@ -90,7 +91,7 @@ func TestGenerateSecret(t *testing.T) {
 		expected := &jobinfo.SecretInput{
 			Name:      "nil-props-secret",
 			Namespace: "default",
-			Labels:    map[string]string{config.LabelManagedBy: config.ManagedByEruun, config.LabelAppID: "test-app", config.LabelComponentID: "3", config.LabelComponentName: "nil-props-secret"},
+			Labels:    map[string]string{spec.LabelManagedBy: config.ManagedByEruun, spec.LabelAppID: "test-app", spec.LabelComponentID: "3", spec.LabelComponentName: "nil-props-secret"},
 			Data:      nil,
 		}
 		actual := GenerateSecret(component, nil)
@@ -113,7 +114,7 @@ func TestGenerateSecret(t *testing.T) {
 		expected := &jobinfo.SecretInput{
 			Name:      "empty-secret",
 			Namespace: "default",
-			Labels:    map[string]string{config.LabelManagedBy: config.ManagedByEruun, config.LabelAppID: "test-app", config.LabelComponentID: "4", config.LabelComponentName: "empty-secret"},
+			Labels:    map[string]string{spec.LabelManagedBy: config.ManagedByEruun, spec.LabelAppID: "test-app", spec.LabelComponentID: "4", spec.LabelComponentName: "empty-secret"},
 			Data:      map[string]string{},
 		}
 		actual := GenerateSecret(component, properties)
@@ -135,7 +136,7 @@ func TestGenerateSecret(t *testing.T) {
 		expected := &jobinfo.SecretInput{
 			Name:      "no-namespace-secret",
 			Namespace: config.DefaultNamespace,
-			Labels:    map[string]string{config.LabelManagedBy: config.ManagedByEruun, config.LabelAppID: "test-app", config.LabelComponentID: "5", config.LabelComponentName: "no-namespace-secret"},
+			Labels:    map[string]string{spec.LabelManagedBy: config.ManagedByEruun, spec.LabelAppID: "test-app", spec.LabelComponentID: "5", spec.LabelComponentName: "no-namespace-secret"},
 			Data:      map[string]string{"key": "value"},
 		}
 		actual := GenerateSecret(component, properties)

@@ -607,8 +607,8 @@ func ensureManagedLabel(obj metav1.Object, appID string) {
 	if labels == nil {
 		labels = make(map[string]string, 2)
 	}
-	labels[config.LabelManagedBy] = config.ManagedByEruun
-	labels[config.LabelAppID] = strings.TrimSpace(appID)
+	labels[domainspec.LabelManagedBy] = config.ManagedByEruun
+	labels[domainspec.LabelAppID] = strings.TrimSpace(appID)
 	obj.SetLabels(labels)
 }
 
@@ -617,6 +617,6 @@ func isManagedResource(obj metav1.Object, expected string) bool {
 	if labels == nil {
 		return false
 	}
-	return labels[config.LabelManagedBy] == config.ManagedByEruun &&
-		labels[config.LabelAppID] == strings.TrimSpace(expected)
+	return labels[domainspec.LabelManagedBy] == config.ManagedByEruun &&
+		labels[domainspec.LabelAppID] == strings.TrimSpace(expected)
 }

@@ -38,8 +38,8 @@ func TestCleanupResourcesJobCtlDeletesGeneratedAndLabeledResources(t *testing.T)
 		Properties:    props,
 	}
 	ownedLabels := map[string]string{
-		config.LabelAppID:         component.AppID,
-		config.LabelComponentName: component.Name,
+		spec.LabelAppID:         component.AppID,
+		spec.LabelComponentName: component.Name,
 	}
 	client := fake.NewSimpleClientset(
 		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: naming.WebServiceName(component.Name, component.AppID), Namespace: component.Namespace}},
@@ -185,26 +185,26 @@ func TestCleanupResourcesJobCtlKeepsProtectedSharedResources(t *testing.T) {
 		Properties:    props,
 	}
 	ownedLabels := map[string]string{
-		config.LabelAppID:         component.AppID,
-		config.LabelComponentName: component.Name,
+		spec.LabelAppID:         component.AppID,
+		spec.LabelComponentName: component.Name,
 	}
 	sharedLabels := map[string]string{
-		config.LabelAppID:         component.AppID,
-		config.LabelComponentName: component.Name,
-		config.LabelShareName:     "shared-web",
-		config.LabelShareStrategy: string(spec.ShareStrategyDefault),
+		spec.LabelAppID:         component.AppID,
+		spec.LabelComponentName: component.Name,
+		spec.LabelShareName:     "shared-web",
+		spec.LabelShareStrategy: string(spec.ShareStrategyDefault),
 	}
 	ignoredLabels := map[string]string{
-		config.LabelAppID:         component.AppID,
-		config.LabelComponentName: component.Name,
-		config.LabelShareName:     "ignored-web",
-		config.LabelShareStrategy: string(spec.ShareStrategyIgnore),
+		spec.LabelAppID:         component.AppID,
+		spec.LabelComponentName: component.Name,
+		spec.LabelShareName:     "ignored-web",
+		spec.LabelShareStrategy: string(spec.ShareStrategyIgnore),
 	}
 	forceLabels := map[string]string{
-		config.LabelAppID:         component.AppID,
-		config.LabelComponentName: component.Name,
-		config.LabelShareName:     "force-web",
-		config.LabelShareStrategy: string(spec.ShareStrategyForce),
+		spec.LabelAppID:         component.AppID,
+		spec.LabelComponentName: component.Name,
+		spec.LabelShareName:     "force-web",
+		spec.LabelShareStrategy: string(spec.ShareStrategyForce),
 	}
 	client := fake.NewSimpleClientset(
 		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: naming.WebServiceName(component.Name, component.AppID), Namespace: component.Namespace, Labels: sharedLabels}},
@@ -270,8 +270,8 @@ func TestCleanupResourcesJobCtlDeletesResidualComponentPods(t *testing.T) {
 		Properties:    props,
 	}
 	ownedLabels := map[string]string{
-		config.LabelAppID:         component.AppID,
-		config.LabelComponentName: component.Name,
+		spec.LabelAppID:         component.AppID,
+		spec.LabelComponentName: component.Name,
 	}
 	client := fake.NewSimpleClientset(
 		&batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: naming.JobName(component.Name, component.AppID), Namespace: component.Namespace}},
@@ -288,8 +288,8 @@ func TestCleanupResourcesJobCtlDeletesResidualComponentPods(t *testing.T) {
 			Name:      "other-pod",
 			Namespace: component.Namespace,
 			Labels: map[string]string{
-				config.LabelAppID:         component.AppID,
-				config.LabelComponentName: "other",
+				spec.LabelAppID:         component.AppID,
+				spec.LabelComponentName: "other",
 			},
 		}},
 	)
@@ -335,14 +335,14 @@ func TestCleanupResourcesJobCtlKeepsProtectedResidualPods(t *testing.T) {
 		Properties:    props,
 	}
 	ownedLabels := map[string]string{
-		config.LabelAppID:         component.AppID,
-		config.LabelComponentName: component.Name,
+		spec.LabelAppID:         component.AppID,
+		spec.LabelComponentName: component.Name,
 	}
 	sharedLabels := map[string]string{
-		config.LabelAppID:         component.AppID,
-		config.LabelComponentName: component.Name,
-		config.LabelShareName:     "shared-batch",
-		config.LabelShareStrategy: string(spec.ShareStrategyDefault),
+		spec.LabelAppID:         component.AppID,
+		spec.LabelComponentName: component.Name,
+		spec.LabelShareName:     "shared-batch",
+		spec.LabelShareStrategy: string(spec.ShareStrategyDefault),
 	}
 	client := fake.NewSimpleClientset(
 		&batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "batch-residual-job", Namespace: component.Namespace, Labels: sharedLabels}},
@@ -385,8 +385,8 @@ func TestCleanupResourcesJobCtlDeletesTraitDefinedServicesByName(t *testing.T) {
 			{
 				Name: "custom-public-web",
 				Labels: map[string]string{
-					config.LabelAppID:         "other-app",
-					config.LabelComponentName: "other-component",
+					spec.LabelAppID:         "other-app",
+					spec.LabelComponentName: "other-component",
 				},
 				Selector: map[string]string{"role": "web"},
 				Ports: []spec.ServicePortTraitSpec{
@@ -397,8 +397,8 @@ func TestCleanupResourcesJobCtlDeletesTraitDefinedServicesByName(t *testing.T) {
 				Name:     "custom-headless-web",
 				Headless: true,
 				Labels: map[string]string{
-					config.LabelAppID:         "not-app-reset",
-					config.LabelComponentName: "not-web",
+					spec.LabelAppID:         "not-app-reset",
+					spec.LabelComponentName: "not-web",
 				},
 				Selector: map[string]string{"role": "web"},
 				Ports: []spec.ServicePortTraitSpec{
@@ -423,16 +423,16 @@ func TestCleanupResourcesJobCtlDeletesTraitDefinedServicesByName(t *testing.T) {
 			Name:      "custom-public-web",
 			Namespace: component.Namespace,
 			Labels: map[string]string{
-				config.LabelAppID:         "other-app",
-				config.LabelComponentName: "other-component",
+				spec.LabelAppID:         "other-app",
+				spec.LabelComponentName: "other-component",
 			},
 		}},
 		&corev1.Service{ObjectMeta: metav1.ObjectMeta{
 			Name:      "custom-headless-web",
 			Namespace: component.Namespace,
 			Labels: map[string]string{
-				config.LabelAppID:         "not-app-reset",
-				config.LabelComponentName: "not-web",
+				spec.LabelAppID:         "not-app-reset",
+				spec.LabelComponentName: "not-web",
 			},
 		}},
 	)
@@ -465,10 +465,10 @@ func TestCleanupResourcesJobCtlKeepsProtectedTraitDefinedServices(t *testing.T) 
 			{
 				Name: "custom-public-web",
 				Labels: map[string]string{
-					config.LabelAppID:         "other-app",
-					config.LabelComponentName: "other-component",
-					config.LabelShareName:     "shared-public-web",
-					config.LabelShareStrategy: string(spec.ShareStrategyDefault),
+					spec.LabelAppID:         "other-app",
+					spec.LabelComponentName: "other-component",
+					spec.LabelShareName:     "shared-public-web",
+					spec.LabelShareStrategy: string(spec.ShareStrategyDefault),
 				},
 				Selector: map[string]string{"role": "web"},
 				Ports: []spec.ServicePortTraitSpec{
@@ -493,10 +493,10 @@ func TestCleanupResourcesJobCtlKeepsProtectedTraitDefinedServices(t *testing.T) 
 			Name:      "custom-public-web",
 			Namespace: component.Namespace,
 			Labels: map[string]string{
-				config.LabelAppID:         "other-app",
-				config.LabelComponentName: "other-component",
-				config.LabelShareName:     "shared-public-web",
-				config.LabelShareStrategy: string(spec.ShareStrategyDefault),
+				spec.LabelAppID:         "other-app",
+				spec.LabelComponentName: "other-component",
+				spec.LabelShareName:     "shared-public-web",
+				spec.LabelShareStrategy: string(spec.ShareStrategyDefault),
 			},
 		}},
 	)

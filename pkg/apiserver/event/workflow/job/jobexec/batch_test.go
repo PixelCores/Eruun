@@ -22,6 +22,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -47,8 +48,8 @@ func TestApplyJobRunPolicy(t *testing.T) {
 					config.AnnotationJobRunGeneration: "2",
 				},
 				Labels: map[string]string{
-					config.LabelAppID:         "app-1",
-					config.LabelComponentName: "demo",
+					spec.LabelAppID:         "app-1",
+					spec.LabelComponentName: "demo",
 				},
 			},
 		}
@@ -432,8 +433,8 @@ func TestApplyJobRunPolicy_UsesStoreForSkipIfCompleted(t *testing.T) {
 				config.AnnotationJobRunPolicy: string(workflowconfig.JobRunPolicySkipIfCompleted),
 			},
 			Labels: map[string]string{
-				config.LabelAppID:         "app-1",
-				config.LabelComponentName: "demo",
+				spec.LabelAppID:         "app-1",
+				spec.LabelComponentName: "demo",
 			},
 		},
 	}
@@ -459,8 +460,8 @@ func TestApplyJobRunPolicy_StoreErrorContinues(t *testing.T) {
 				config.AnnotationJobRunPolicy: string(workflowconfig.JobRunPolicySkipIfCompleted),
 			},
 			Labels: map[string]string{
-				config.LabelAppID:         "app-1",
-				config.LabelComponentName: "demo",
+				spec.LabelAppID:         "app-1",
+				spec.LabelComponentName: "demo",
 			},
 		},
 	}

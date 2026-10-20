@@ -8,7 +8,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
 )
@@ -26,7 +25,7 @@ func TestGuardSharedResource_DefaultUsesLabelSelector(t *testing.T) {
 	require.False(t, skipped)
 	require.NotNil(t, unlock)
 
-	wantSelector := labels.Set{config.LabelShareName: shareName}.String()
+	wantSelector := labels.Set{domainspec.LabelShareName: shareName}.String()
 	require.Equal(t, wantSelector, gotSelector)
 
 	unlock()

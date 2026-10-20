@@ -9,6 +9,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
@@ -26,7 +27,7 @@ func (c *applicationsServiceImpl) listComponentPods(
 		namespace = config.DefaultNamespace
 	}
 	return kube.ListPodsByLabels(ctx, c.KubeClient, namespace, labels.Set{
-		config.LabelAppID:         appID,
-		config.LabelComponentName: naming.BoundedLabelValue(component.Name),
+		spec.LabelAppID:         appID,
+		spec.LabelComponentName: naming.BoundedLabelValue(component.Name),
 	})
 }

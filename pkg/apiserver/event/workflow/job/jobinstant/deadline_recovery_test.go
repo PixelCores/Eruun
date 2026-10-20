@@ -15,6 +15,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
@@ -111,7 +112,7 @@ func TestRetryRecoveryUsesDatabaseRemainingBudget(t *testing.T) {
 				live := task.JobInfo.(*batchv1.Job)
 				live.UID = "owned"
 				live.Annotations[workflowconfig.AnnotationJobAttempt] = "1"
-				live.Labels[config.LabelManagedBy] = config.ManagedByEruun
+				live.Labels[spec.LabelManagedBy] = config.ManagedByEruun
 				ttl := int32(config.DefaultJobTTLSeconds + 10)
 				live.Spec.TTLSecondsAfterFinished = &ttl
 				now := time.Now().Add(skew)

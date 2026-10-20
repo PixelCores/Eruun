@@ -39,7 +39,7 @@ func TestEvaluationCleanupDeletesOnlyComponentRunners(t *testing.T) {
 				ComponentType: config.InstantJob, Traits: traits,
 			}
 			labelsFor := func(app, name string) map[string]string {
-				return map[string]string{config.LabelAppID: app, config.LabelComponentName: naming.BoundedLabelValue(name)}
+				return map[string]string{spec.LabelAppID: app, spec.LabelComponentName: naming.BoundedLabelValue(name)}
 			}
 			ownedLabels := labelsFor(component.AppID, component.Name)
 			objects := []runtime.Object{}

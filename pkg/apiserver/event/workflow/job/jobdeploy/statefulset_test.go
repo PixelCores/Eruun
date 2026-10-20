@@ -357,13 +357,13 @@ func TestGenerateStoreService_BoundsStatefulSetNameAndUsesStableSelector(t *test
 	require.True(t, ok)
 	require.Equal(t, "m2605081521cctqpk-redis-redis", statefulSet.Name)
 	require.LessOrEqual(t, len(statefulSet.Name), 52)
-	require.LessOrEqual(t, len(statefulSet.Labels[config.LabelManagedBy]), 63)
+	require.LessOrEqual(t, len(statefulSet.Labels[spec.LabelManagedBy]), 63)
 	require.Equal(t, map[string]string{
-		config.LabelAppID:         component.AppID,
-		config.LabelComponentName: naming.BoundedLabelValue(component.Name),
+		spec.LabelAppID:         component.AppID,
+		spec.LabelComponentName: naming.BoundedLabelValue(component.Name),
 	}, statefulSet.Spec.Selector.MatchLabels)
-	require.Equal(t, component.AppID, statefulSet.Spec.Template.Labels[config.LabelAppID])
-	require.Equal(t, naming.BoundedLabelValue(component.Name), statefulSet.Spec.Template.Labels[config.LabelComponentName])
+	require.Equal(t, component.AppID, statefulSet.Spec.Template.Labels[spec.LabelAppID])
+	require.Equal(t, naming.BoundedLabelValue(component.Name), statefulSet.Spec.Template.Labels[spec.LabelComponentName])
 	require.Equal(t, "penalty-shootout-2026-m2606241344ccufxh-mysql", statefulSet.Labels["name"])
 	require.Equal(t, "penalty-shootout-2026-m2606241344ccufxh-mysql", statefulSet.Spec.Template.Labels["name"])
 }

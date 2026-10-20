@@ -7,7 +7,6 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 )
 
@@ -153,8 +152,8 @@ func TestResolveSharedResourceAccess_ReconcileSharedBypassesDefaultGuard(t *test
 	listCalled := false
 	unlock, skipped, err := ResolveSharedResourceAccess(context.Background(), SharedResourceAccessOptions{
 		Labels: map[string]string{
-			config.LabelShareName:     "ops",
-			config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
+			domainspec.LabelShareName:     "ops",
+			domainspec.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 		},
 		Kind:            domainspec.ResourceServiceAccount,
 		LockProvider:    nil,
@@ -185,8 +184,8 @@ func TestResolveSharedResourceAccess_ReconcileSharedStillSkipsIgnore(t *testing.
 	listCalled := false
 	unlock, skipped, err := ResolveSharedResourceAccess(context.Background(), SharedResourceAccessOptions{
 		Labels: map[string]string{
-			config.LabelShareName:     "ops",
-			config.LabelShareStrategy: string(domainspec.ShareStrategyIgnore),
+			domainspec.LabelShareName:     "ops",
+			domainspec.LabelShareStrategy: string(domainspec.ShareStrategyIgnore),
 		},
 		Kind:            domainspec.ResourceServiceAccount,
 		LockProvider:    nil,

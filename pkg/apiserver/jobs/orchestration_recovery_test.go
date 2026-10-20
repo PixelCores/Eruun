@@ -643,7 +643,7 @@ func TestEvaluationRecoveryCleanupPreservesSandboxTerminationProof(t *testing.T)
 				snapshot.SetName(member.SnapshotName)
 				snapshot.SetNamespace(row.Namespace)
 				snapshot.SetUID("snapshot-uid")
-				snapshot.SetLabels(map[string]string{config.LabelManagedBy: "eruun"})
+				snapshot.SetLabels(map[string]string{spec.LabelManagedBy: "eruun"})
 				snapshot.SetAnnotations(map[string]string{checkpointOwnerAnnotation: point.ID, checkpointPodAnnotation: row.PodUID})
 				require.NoError(t, dynamicClient.Tracker().Create(CheckpointGVR, snapshot, row.Namespace))
 				finishPending = func() {

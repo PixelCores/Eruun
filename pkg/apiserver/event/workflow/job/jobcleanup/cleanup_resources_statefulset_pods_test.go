@@ -54,8 +54,8 @@ func TestCleanupResourcesJobCtlRechecksPinnedPodProtectionAfterOrphan(t *testing
 		current, err := client.CoreV1().Pods(component.Namespace).Get(ctx, pod.Name, metav1.GetOptions{})
 		require.NoError(t, err)
 		current.Labels = map[string]string{
-			config.LabelShareName:     "late-shared-mysql",
-			config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
+			domainspec.LabelShareName:     "late-shared-mysql",
+			domainspec.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 		}
 		_, err = client.CoreV1().Pods(component.Namespace).Update(ctx, current, metav1.UpdateOptions{})
 		require.NoError(t, err)
@@ -78,8 +78,8 @@ func TestCleanupResourcesJobCtlRechecksPinnedPodProtectionAfterOrphan(t *testing
 			Name: "mysql-owner-pod", Namespace: component.Namespace,
 			UID: types.UID("owner-pod-uid"), ResourceVersion: "31",
 			Labels: map[string]string{
-				config.LabelAppID:         component.AppID,
-				config.LabelComponentName: component.Name,
+				domainspec.LabelAppID:         component.AppID,
+				domainspec.LabelComponentName: component.Name,
 			},
 			OwnerReferences: []metav1.OwnerReference{{APIVersion: "batch/v1", Kind: "Job", Name: ownerJob.Name, UID: ownerJob.UID}},
 		}}
@@ -96,8 +96,8 @@ func TestCleanupResourcesJobCtlRechecksPinnedPodProtectionAfterOrphan(t *testing
 		currentJob, err := client.BatchV1().Jobs(component.Namespace).Get(ctx, ownerJob.Name, metav1.GetOptions{})
 		require.NoError(t, err)
 		currentJob.Labels = map[string]string{
-			config.LabelShareName:     "late-shared-owner",
-			config.LabelShareStrategy: string(domainspec.ShareStrategyIgnore),
+			domainspec.LabelShareName:     "late-shared-owner",
+			domainspec.LabelShareStrategy: string(domainspec.ShareStrategyIgnore),
 		}
 		_, err = client.BatchV1().Jobs(component.Namespace).Update(ctx, currentJob, metav1.UpdateOptions{})
 		require.NoError(t, err)
@@ -138,8 +138,8 @@ func TestCleanupResourcesJobCtlFailsClosedForOrphanOrdinalPodOnFreshRetry(t *tes
 	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
 		Name: statefulSetName + "-0", Namespace: component.Namespace, UID: types.UID("unknown-orphan-pod"),
 		Labels: map[string]string{
-			config.LabelAppID:         component.AppID,
-			config.LabelComponentName: component.Name,
+			domainspec.LabelAppID:         component.AppID,
+			domainspec.LabelComponentName: component.Name,
 		},
 	}}
 	client := fake.NewSimpleClientset(pod)
@@ -253,8 +253,8 @@ func TestCleanupResourcesJobCtlStopsWhenWorkflowTaskIsCancelledButJobInfoIsRunni
 	statefulSetUID := types.UID("statefulset-uid")
 	controller := true
 	labels := map[string]string{
-		config.LabelAppID:         component.AppID,
-		config.LabelComponentName: component.Name,
+		domainspec.LabelAppID:         component.AppID,
+		domainspec.LabelComponentName: component.Name,
 	}
 	client := fake.NewSimpleClientset(
 		&appsv1.StatefulSet{
@@ -323,8 +323,8 @@ func TestCleanupResourcesJobCtlStopsOldGenerationBeforeStatefulSetCleanup(t *tes
 	statefulSetUID := types.UID("statefulset-uid")
 	controller := true
 	labels := map[string]string{
-		config.LabelAppID:         component.AppID,
-		config.LabelComponentName: component.Name,
+		domainspec.LabelAppID:         component.AppID,
+		domainspec.LabelComponentName: component.Name,
 	}
 	client := fake.NewSimpleClientset(
 		&appsv1.StatefulSet{
@@ -449,8 +449,8 @@ func newRequiredStatefulSetPodController(t *testing.T) (
 		Name: statefulSetName + "-0", Namespace: component.Namespace,
 		UID: types.UID("statefulset-pod-uid"), ResourceVersion: "21",
 		Labels: map[string]string{
-			config.LabelAppID:         component.AppID,
-			config.LabelComponentName: component.Name,
+			domainspec.LabelAppID:         component.AppID,
+			domainspec.LabelComponentName: component.Name,
 		},
 		OwnerReferences: []metav1.OwnerReference{{
 			APIVersion: "apps/v1", Kind: "StatefulSet", Name: statefulSetName, UID: statefulSetUID,

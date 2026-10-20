@@ -15,6 +15,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
@@ -163,8 +164,8 @@ func logArchiveUploadPod(componentName string) *corev1.Pod {
 			Name:      componentName + "-pod",
 			Namespace: "default",
 			Labels: map[string]string{
-				config.LabelAppID:         "app-1",
-				config.LabelComponentName: naming.BoundedLabelValue(componentName),
+				spec.LabelAppID:         "app-1",
+				spec.LabelComponentName: naming.BoundedLabelValue(componentName),
 			},
 			CreationTimestamp: metav1.Now(),
 		},

@@ -9,7 +9,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
@@ -51,11 +50,11 @@ func TestDeployCleanupDeletesCreatedDeployment(t *testing.T) {
 func TestDeployCleanupDeletesObservedSharedDeploymentWhenPodAbnormal(t *testing.T) {
 	deployName := naming.WebServiceName("web", "app-1")
 	resourceLabels := map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "web",
-		config.LabelComponentID:   "7",
-		config.LabelShareName:     "shared-web",
-		config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
+		domainspec.LabelAppID:         "app-1",
+		domainspec.LabelComponentName: "web",
+		domainspec.LabelComponentID:   "7",
+		domainspec.LabelShareName:     "shared-web",
+		domainspec.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 	}
 	client := fake.NewSimpleClientset(
 		&appsv1.Deployment{
@@ -74,9 +73,9 @@ func TestDeployCleanupDeletesObservedSharedDeploymentWhenPodAbnormal(t *testing.
 				Name:      "web-0",
 				Namespace: "default",
 				Labels: map[string]string{
-					config.LabelAppID:         "app-1",
-					config.LabelComponentName: "web",
-					config.LabelComponentID:   "7",
+					domainspec.LabelAppID:         "app-1",
+					domainspec.LabelComponentName: "web",
+					domainspec.LabelComponentID:   "7",
 				},
 			},
 			Status: corev1.PodStatus{
@@ -124,11 +123,11 @@ func TestDeployCleanupDeletesObservedSharedDeploymentWhenPodAbnormal(t *testing.
 func TestDeployCleanupKeepsObservedSharedDeploymentWithoutAbnormalPod(t *testing.T) {
 	deployName := naming.WebServiceName("web", "app-1")
 	resourceLabels := map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "web",
-		config.LabelComponentID:   "7",
-		config.LabelShareName:     "shared-web",
-		config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
+		domainspec.LabelAppID:         "app-1",
+		domainspec.LabelComponentName: "web",
+		domainspec.LabelComponentID:   "7",
+		domainspec.LabelShareName:     "shared-web",
+		domainspec.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 	}
 	client := fake.NewSimpleClientset(
 		&appsv1.Deployment{
@@ -147,9 +146,9 @@ func TestDeployCleanupKeepsObservedSharedDeploymentWithoutAbnormalPod(t *testing
 				Name:      "web-0",
 				Namespace: "default",
 				Labels: map[string]string{
-					config.LabelAppID:         "app-1",
-					config.LabelComponentName: "web",
-					config.LabelComponentID:   "7",
+					domainspec.LabelAppID:         "app-1",
+					domainspec.LabelComponentName: "web",
+					domainspec.LabelComponentID:   "7",
 				},
 			},
 			Status: corev1.PodStatus{
@@ -197,11 +196,11 @@ func TestDeployCleanupKeepsObservedSharedDeploymentWithoutAbnormalPod(t *testing
 func TestStatefulSetCleanupDeletesObservedSharedStatefulSetWhenPodAbnormal(t *testing.T) {
 	statefulSetName := naming.StoreServerName("db", "app-1")
 	resourceLabels := map[string]string{
-		config.LabelAppID:         "app-1",
-		config.LabelComponentName: "db",
-		config.LabelComponentID:   "8",
-		config.LabelShareName:     "shared-db",
-		config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
+		domainspec.LabelAppID:         "app-1",
+		domainspec.LabelComponentName: "db",
+		domainspec.LabelComponentID:   "8",
+		domainspec.LabelShareName:     "shared-db",
+		domainspec.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 	}
 	client := fake.NewSimpleClientset(
 		&appsv1.StatefulSet{
@@ -220,9 +219,9 @@ func TestStatefulSetCleanupDeletesObservedSharedStatefulSetWhenPodAbnormal(t *te
 				Name:      "db-0",
 				Namespace: "default",
 				Labels: map[string]string{
-					config.LabelAppID:         "app-1",
-					config.LabelComponentName: "db",
-					config.LabelComponentID:   "8",
+					domainspec.LabelAppID:         "app-1",
+					domainspec.LabelComponentName: "db",
+					domainspec.LabelComponentID:   "8",
 				},
 			},
 			Status: corev1.PodStatus{

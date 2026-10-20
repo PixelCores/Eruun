@@ -541,9 +541,9 @@ func TestCreateApplicationsFromTemplateClonesTraitsAndNames(t *testing.T) {
 					"name": "mysql-master",
 				},
 				Selector: map[string]string{
-					"mysql-pod-role":          "mysql-master",
-					"role":                    "mysql-master",
-					config.LabelComponentName: "mysql",
+					"mysql-pod-role":        "mysql-master",
+					"role":                  "mysql-master",
+					spec.LabelComponentName: "mysql",
 				},
 				Ports: []spec.ServicePortTraitSpec{{Port: 3306, TargetPort: 3306, Protocol: "TCP"}},
 			},
@@ -700,7 +700,7 @@ func TestCreateApplicationsFromTemplateClonesTraitsAndNames(t *testing.T) {
 	require.Equal(t, "cloned-app-mysql-master", clonedTraits.Service[0].Labels["name"])
 	require.Equal(t, "cloned-app-mysql-master", clonedTraits.Service[0].Selector["mysql-pod-role"])
 	require.Equal(t, "cloned-app-mysql-master", clonedTraits.Service[0].Selector["role"])
-	require.Equal(t, "new-mysql", clonedTraits.Service[0].Selector[config.LabelComponentName])
+	require.Equal(t, "new-mysql", clonedTraits.Service[0].Selector[spec.LabelComponentName])
 	require.Equal(t, "cloned-app-primary", clonedTraits.Service[1].Name)
 	require.Equal(t, "cloned-app-primary", clonedTraits.Service[1].Selector["mysql-pod-role"])
 

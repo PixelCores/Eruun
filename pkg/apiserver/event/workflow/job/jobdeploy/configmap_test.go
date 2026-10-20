@@ -14,6 +14,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
@@ -38,7 +39,7 @@ func TestGenerateConfigMap(t *testing.T) {
 		expected := &jobinfo.ConfigMapInput{
 			Name:      "my-configmap",
 			Namespace: "default",
-			Labels:    map[string]string{config.LabelManagedBy: config.ManagedByEruun, config.LabelAppID: "test-app", config.LabelComponentID: "1", config.LabelComponentName: "my-configmap"},
+			Labels:    map[string]string{spec.LabelManagedBy: config.ManagedByEruun, spec.LabelAppID: "test-app", spec.LabelComponentID: "1", spec.LabelComponentName: "my-configmap"},
 			Data: map[string]string{
 				"key1": "value1",
 				"key2": "value2",
@@ -60,8 +61,8 @@ func TestGenerateConfigMap(t *testing.T) {
 		}
 		properties := &model.Properties{
 			Labels: map[string]string{
-				config.LabelAppID: "evil-app",
-				"team":            "platform",
+				spec.LabelAppID: "evil-app",
+				"team":          "platform",
 			},
 			Conf: map[string]string{
 				"config.url":      "http://example.com/config.txt",
@@ -74,11 +75,11 @@ func TestGenerateConfigMap(t *testing.T) {
 			URL:       "http://example.com/config.txt",
 			FileName:  "my-config-file.txt",
 			Labels: map[string]string{
-				config.LabelManagedBy:     config.ManagedByEruun,
-				config.LabelAppID:         "test-app",
-				config.LabelComponentID:   "2",
-				config.LabelComponentName: "my-configmap-from-url",
-				"team":                    "platform",
+				spec.LabelManagedBy:     config.ManagedByEruun,
+				spec.LabelAppID:         "test-app",
+				spec.LabelComponentID:   "2",
+				spec.LabelComponentName: "my-configmap-from-url",
+				"team":                  "platform",
 			},
 		}
 		actual := GenerateConfigMap(component, properties)
@@ -98,7 +99,7 @@ func TestGenerateConfigMap(t *testing.T) {
 		expected := &jobinfo.ConfigMapInput{
 			Name:      "nil-props-configmap",
 			Namespace: "default",
-			Labels:    map[string]string{config.LabelManagedBy: config.ManagedByEruun, config.LabelAppID: "test-app", config.LabelComponentID: "3", config.LabelComponentName: "nil-props-configmap"},
+			Labels:    map[string]string{spec.LabelManagedBy: config.ManagedByEruun, spec.LabelAppID: "test-app", spec.LabelComponentID: "3", spec.LabelComponentName: "nil-props-configmap"},
 			Data:      nil,
 		}
 		actual := GenerateConfigMap(component, nil)
@@ -121,7 +122,7 @@ func TestGenerateConfigMap(t *testing.T) {
 		expected := &jobinfo.ConfigMapInput{
 			Name:      "empty-configmap",
 			Namespace: "default",
-			Labels:    map[string]string{config.LabelManagedBy: config.ManagedByEruun, config.LabelAppID: "test-app", config.LabelComponentID: "4", config.LabelComponentName: "empty-configmap"},
+			Labels:    map[string]string{spec.LabelManagedBy: config.ManagedByEruun, spec.LabelAppID: "test-app", spec.LabelComponentID: "4", spec.LabelComponentName: "empty-configmap"},
 			Data:      map[string]string{},
 		}
 		actual := GenerateConfigMap(component, properties)
@@ -143,7 +144,7 @@ func TestGenerateConfigMap(t *testing.T) {
 		expected := &jobinfo.ConfigMapInput{
 			Name:      "no-namespace-configmap",
 			Namespace: config.DefaultNamespace,
-			Labels:    map[string]string{config.LabelManagedBy: config.ManagedByEruun, config.LabelAppID: "test-app", config.LabelComponentID: "5", config.LabelComponentName: "no-namespace-configmap"},
+			Labels:    map[string]string{spec.LabelManagedBy: config.ManagedByEruun, spec.LabelAppID: "test-app", spec.LabelComponentID: "5", spec.LabelComponentName: "no-namespace-configmap"},
 			Data:      map[string]string{"key": "value"},
 		}
 		actual := GenerateConfigMap(component, properties)

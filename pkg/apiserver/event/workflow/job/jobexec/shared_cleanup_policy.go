@@ -26,8 +26,8 @@ func ShouldForceCleanupSharedWorkload(ctx context.Context, kubeClient kubernetes
 		return false, fmt.Sprintf("strategy=%s", strategy)
 	}
 
-	appID := strings.TrimSpace(resourceLabels[config.LabelAppID])
-	componentName := strings.TrimSpace(resourceLabels[config.LabelComponentName])
+	appID := strings.TrimSpace(resourceLabels[domainspec.LabelAppID])
+	componentName := strings.TrimSpace(resourceLabels[domainspec.LabelComponentName])
 	if appID == "" || componentName == "" {
 		return false, "component labels missing"
 	}
@@ -37,12 +37,12 @@ func ShouldForceCleanupSharedWorkload(ctx context.Context, kubeClient kubernetes
 		ns = config.DefaultNamespace
 	}
 	labelSet := labels.Set{
-		config.LabelAppID:         appID,
-		config.LabelComponentName: componentName,
+		domainspec.LabelAppID:         appID,
+		domainspec.LabelComponentName: componentName,
 	}
-	componentID := strings.TrimSpace(resourceLabels[config.LabelComponentID])
+	componentID := strings.TrimSpace(resourceLabels[domainspec.LabelComponentID])
 	if componentID != "" {
-		labelSet[config.LabelComponentID] = componentID
+		labelSet[domainspec.LabelComponentID] = componentID
 	}
 
 	baseCtx := ctx

@@ -372,9 +372,9 @@ func versionRestartPod(component *model.ApplicationComponent, name, restartedAt 
 			Namespace:   "default",
 			Annotations: annotations,
 			Labels: map[string]string{
-				config.LabelAppID:         component.AppID,
-				config.LabelComponentName: component.Name,
-				config.LabelComponentID:   strconv.Itoa(component.ID),
+				spec.LabelAppID:         component.AppID,
+				spec.LabelComponentName: component.Name,
+				spec.LabelComponentID:   strconv.Itoa(component.ID),
 			},
 		},
 		Spec: corev1.PodSpec{

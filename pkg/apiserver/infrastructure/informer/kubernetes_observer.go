@@ -18,6 +18,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
 )
 
@@ -57,14 +58,14 @@ func NewKubernetesWorkloadObserver(client kubernetes.Interface) *KubernetesWorkl
 		client,
 		0,
 		k8sinformers.WithTweakListOptions(func(options *metav1.ListOptions) {
-			options.LabelSelector = config.LabelAppID
+			options.LabelSelector = spec.LabelAppID
 		}),
 		k8sinformers.WithTransform(stripObserverManagedFields),
 	)
 	pods := factory.Core().V1().Pods()
 	jobFactory := k8sinformers.NewSharedInformerFactoryWithOptions(client, 0,
 		k8sinformers.WithTweakListOptions(func(options *metav1.ListOptions) {
-			options.LabelSelector = labels.Set{config.LabelManagedBy: config.ManagedByEruun}.String()
+			options.LabelSelector = labels.Set{spec.LabelManagedBy: config.ManagedByEruun}.String()
 		}),
 		k8sinformers.WithTransform(stripObserverManagedFields),
 	)
@@ -150,8 +151,8 @@ func (o *KubernetesWorkloadObserver) WaitForComponentReadyWithOptions(ctx contex
 	}
 	options = normalizeComponentReadyWaitOptions(options)
 	selector := labels.Set{
-		config.LabelAppID:         appID,
-		config.LabelComponentName: componentName,
+		spec.LabelAppID:         appID,
+		spec.LabelComponentName: componentName,
 	}.AsSelector()
 	waitCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

@@ -159,14 +159,14 @@ func TestEvaluationBuilderSeparatesResourcesAndPreservesRecoveredSnapshot(t *tes
 	traits := spec.JobTraits{Evaluation: &spec.EvaluationTraitSpec{Env: "ack", TaskPackageID: dataset.ID, Agent: "terminus-2", Model: "openai/model-a"}}
 	traits.Resources = &spec.ResourceTraitsSpec{CPU: "1", Memory: "1Gi"}
 	traits.Evaluation.SandboxResources = &spec.ResourceTraitsSpec{CPU: "4", Memory: "8Gi"}
-	task := &model.JobTask{Name: "evaluation-component", Namespace: "space-ns", WorkspaceID: "space", AppID: "app", TaskID: "workflow-task", ExecutionKey: "step-execution", JobInfo: &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{config.LabelAppID: "app", config.LabelComponentName: "evaluation-component", config.LabelComponentID: "23"}, Annotations: map[string]string{config.AnnotationComponentName: "evaluation.component"}}}}
+	task := &model.JobTask{Name: "evaluation-component", Namespace: "space-ns", WorkspaceID: "space", AppID: "app", TaskID: "workflow-task", ExecutionKey: "step-execution", JobInfo: &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{spec.LabelAppID: "app", spec.LabelComponentName: "evaluation-component", spec.LabelComponentID: "23"}, Annotations: map[string]string{config.AnnotationComponentName: "evaluation.component"}}}}
 	require.NoError(t, BuildEvaluationTask(ctx, service.Store, service.Config, task, traits))
 	snapshot := task.EvaluationInfo
 	workload := task.JobInfo.(*batchv1.Job)
-	require.Equal(t, "app", workload.Labels[config.LabelAppID])
-	require.Equal(t, "evaluation-component", workload.Spec.Template.Labels[config.LabelComponentName])
-	require.Equal(t, "23", workload.Labels[config.LabelComponentID])
-	require.Equal(t, "23", workload.Spec.Template.Labels[config.LabelComponentID])
+	require.Equal(t, "app", workload.Labels[spec.LabelAppID])
+	require.Equal(t, "evaluation-component", workload.Spec.Template.Labels[spec.LabelComponentName])
+	require.Equal(t, "23", workload.Labels[spec.LabelComponentID])
+	require.Equal(t, "23", workload.Spec.Template.Labels[spec.LabelComponentID])
 	require.Equal(t, "evaluation.component", workload.Annotations[config.AnnotationComponentName])
 	require.Equal(t, "evaluation.component", workload.Spec.Template.Annotations[config.AnnotationComponentName])
 	require.Equal(t, "1", workload.Spec.Template.Spec.Containers[0].Resources.Requests.Cpu().String())
@@ -189,7 +189,7 @@ func TestEvaluationBuilderSeparatesResourcesAndPreservesRecoveredSnapshot(t *tes
 	require.NoError(t, BuildEvaluationTask(ctx, service.Store, service.Config, task, traits))
 	require.Equal(t, snapshot, task.EvaluationInfo, "recovery retains the committed declaration and capability")
 	require.EqualValues(t, 0, *task.JobInfo.(*batchv1.Job).Spec.BackoffLimit, "recovery must not enable Kubernetes retries of evaluation trials")
-	require.Equal(t, "evaluation-component", task.JobInfo.(*batchv1.Job).Labels[config.LabelComponentName])
+	require.Equal(t, "evaluation-component", task.JobInfo.(*batchv1.Job).Labels[spec.LabelComponentName])
 	require.Equal(t, "evaluation.component", task.JobInfo.(*batchv1.Job).Annotations[config.AnnotationComponentName])
 	info, err := decodeEvaluationInfo(task.EvaluationInfo)
 	require.NoError(t, err)

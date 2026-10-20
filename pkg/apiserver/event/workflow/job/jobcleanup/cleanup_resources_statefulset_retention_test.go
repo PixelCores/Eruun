@@ -399,14 +399,14 @@ func TestCleanupResourcesJobCtlBlocksExtraProtectedLabeledStatefulSetBeforeAnyDe
 	}
 	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	componentLabels := map[string]string{
-		config.LabelAppID:         component.AppID,
-		config.LabelComponentName: component.Name,
+		domainspec.LabelAppID:         component.AppID,
+		domainspec.LabelComponentName: component.Name,
 	}
 	extraLabels := map[string]string{
-		config.LabelAppID:         component.AppID,
-		config.LabelComponentName: component.Name,
-		config.LabelShareName:     "shared-mysql",
-		config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
+		domainspec.LabelAppID:         component.AppID,
+		domainspec.LabelComponentName: component.Name,
+		domainspec.LabelShareName:     "shared-mysql",
+		domainspec.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 	}
 	client := fake.NewSimpleClientset(
 		&appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{
@@ -491,8 +491,8 @@ func TestCleanupResourcesJobCtlRechecksRequiredStatefulSetShareLabelsAfterRetent
 		statefulSet := obj.(*appsv1.StatefulSet).DeepCopy()
 		statefulSet.ResourceVersion = "62"
 		statefulSet.Labels = map[string]string{
-			config.LabelShareName:     "late-shared-mysql",
-			config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
+			domainspec.LabelShareName:     "late-shared-mysql",
+			domainspec.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 		}
 		if err := client.Tracker().Update(statefulSetResource, statefulSet, component.Namespace); err != nil {
 			return true, nil, err
@@ -507,7 +507,7 @@ func TestCleanupResourcesJobCtlRechecksRequiredStatefulSetShareLabelsAfterRetent
 	require.Equal(t, 0, jobtest.CountClientActions(client, "delete", "statefulsets"))
 	statefulSet, err := client.AppsV1().StatefulSets(component.Namespace).Get(ctx, statefulSetName, metav1.GetOptions{})
 	require.NoError(t, err)
-	require.Equal(t, "late-shared-mysql", statefulSet.Labels[config.LabelShareName])
+	require.Equal(t, "late-shared-mysql", statefulSet.Labels[domainspec.LabelShareName])
 }
 
 func TestCleanupResourcesJobCtlFailsClosedIfRequiredStatefulSetChangesAfterRetention(t *testing.T) {
@@ -644,21 +644,21 @@ func TestCleanupResourcesJobCtlProtectsPodsForEveryRequiredStatefulSetDeletion(t
 		{
 			name: "protected pod",
 			podLabels: map[string]string{
-				config.LabelAppID: "app-1", config.LabelComponentName: "mysql",
-				config.LabelShareName: "shared-mysql", config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
+				domainspec.LabelAppID: "app-1", domainspec.LabelComponentName: "mysql",
+				domainspec.LabelShareName: "shared-mysql", domainspec.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 			},
 			want: "pod default/mysql-0 is protected",
 		},
 		{
 			name: "protected owner job",
 			podLabels: map[string]string{
-				config.LabelAppID: "app-1", config.LabelComponentName: "mysql",
+				domainspec.LabelAppID: "app-1", domainspec.LabelComponentName: "mysql",
 			},
 			ownerJob: &batchv1.Job{ObjectMeta: metav1.ObjectMeta{
 				Name: "mysql-owner", Namespace: "default",
 				UID: types.UID("mysql-owner-uid"), ResourceVersion: "21",
 				Labels: map[string]string{
-					config.LabelShareName: "shared-mysql-owner", config.LabelShareStrategy: string(domainspec.ShareStrategyIgnore),
+					domainspec.LabelShareName: "shared-mysql-owner", domainspec.LabelShareStrategy: string(domainspec.ShareStrategyIgnore),
 				},
 			}},
 			ownerRefs: []metav1.OwnerReference{{Kind: "Job", Name: "mysql-owner", UID: types.UID("mysql-owner-uid")}},

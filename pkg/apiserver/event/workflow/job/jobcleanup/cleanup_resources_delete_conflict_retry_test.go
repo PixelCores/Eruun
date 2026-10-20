@@ -83,8 +83,8 @@ func TestCleanupResourcesJobCtlStatefulSetDeleteConflictStillFailsClosed(t *test
 			name: "late share protection",
 			mutate: func(current *appsv1.StatefulSet) {
 				current.ResourceVersion = "12"
-				current.Labels[config.LabelShareName] = "late-shared-mysql"
-				current.Labels[config.LabelShareStrategy] = string(domainspec.ShareStrategyDefault)
+				current.Labels[domainspec.LabelShareName] = "late-shared-mysql"
+				current.Labels[domainspec.LabelShareStrategy] = string(domainspec.ShareStrategyDefault)
 			},
 			wantError:  "protected by live share labels",
 			wantUID:    types.UID("required-statefulset-uid"),
@@ -271,8 +271,8 @@ func TestCleanupResourcesJobCtlPVCDeleteConflictStillFailsClosed(t *testing.T) {
 			mutate: func(current *corev1.PersistentVolumeClaim) {
 				current.ResourceVersion = "2"
 				current.Labels = map[string]string{
-					config.LabelShareName:     "late-shared-data",
-					config.LabelShareStrategy: string(domainspec.ShareStrategyIgnore),
+					domainspec.LabelShareName:     "late-shared-data",
+					domainspec.LabelShareStrategy: string(domainspec.ShareStrategyIgnore),
 				}
 			},
 			wantError:  "protected by live share labels",

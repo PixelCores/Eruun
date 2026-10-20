@@ -278,7 +278,7 @@ func (s *restServer) buildRuntimeQueues(redisClient *redis.Client) (*msg.Runtime
 
 func (s *restServer) initRuntimeObservers(kubeClient kubernetes.Interface) {
 	// The manager writes observed state only while this node holds leadership.
-	s.InformerManager = informer.NewManager(kubeClient, informer.WithResyncPeriod(30*time.Second), informer.WithLabelSelector(config.LabelAppID))
+	s.InformerManager = informer.NewManager(kubeClient, informer.WithResyncPeriod(30*time.Second), informer.WithLabelSelector(spec.LabelAppID))
 	waiter := s.InformerManager.GetWaiter()
 	waiter.SetStatusSyncFunc(s.syncComponentStatus)
 	waiter.SetPodRestartMonitorConfigFunc(s.loadPodRestartMonitorConfig)

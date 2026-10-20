@@ -109,9 +109,9 @@ func TestCreateObjectJobsFromResultIngressNaming(t *testing.T) {
 		ing := &networkingv1.Ingress{
 			ObjectMeta: metav1.ObjectMeta{
 				Labels: map[string]string{
-					config.LabelAppID:         "evil-app",
-					config.LabelComponentName: "wrong-component",
-					"layer":                   "db",
+					spec.LabelAppID:         "evil-app",
+					spec.LabelComponentName: "wrong-component",
+					"layer":                 "db",
 				},
 			},
 		}
@@ -120,8 +120,8 @@ func TestCreateObjectJobsFromResultIngressNaming(t *testing.T) {
 		require.Len(t, jobs, 1)
 		ingressObj, ok := jobs[0].JobInfo.(*networkingv1.Ingress)
 		require.True(t, ok)
-		require.Equal(t, wfNaming.NormalizeLabelValue("App-1"), ingressObj.Labels[config.LabelAppID])
-		require.Equal(t, wfNaming.BoundedLabelValue("Gateway"), ingressObj.Labels[config.LabelComponentName])
+		require.Equal(t, wfNaming.NormalizeLabelValue("App-1"), ingressObj.Labels[spec.LabelAppID])
+		require.Equal(t, wfNaming.BoundedLabelValue("Gateway"), ingressObj.Labels[spec.LabelComponentName])
 		require.Equal(t, "db", ingressObj.Labels["layer"])
 	})
 }
@@ -229,8 +229,8 @@ func TestCreateObjectJobsFromResultRBAC(t *testing.T) {
 		default:
 			t.Fatalf("unexpected job type %s", job.JobType)
 		}
-		require.Equal(t, "ops", labels[config.LabelShareName])
-		require.Equal(t, string(spec.ShareStrategyDefault), labels[config.LabelShareStrategy])
+		require.Equal(t, "ops", labels[spec.LabelShareName])
+		require.Equal(t, string(spec.ShareStrategyDefault), labels[spec.LabelShareStrategy])
 	}
 
 	require.True(t, jobTypes[string(config.JobDeployServiceAccount)])
@@ -372,13 +372,13 @@ func TestBuildJobsForComponentAddsShareLabelsToWorkloadPodTemplates(t *testing.T
 	}
 	shareAssertions := func(t *testing.T, labels map[string]string) {
 		t.Helper()
-		require.Equal(t, "default", labels[config.LabelShareName])
-		require.Equal(t, string(spec.ShareStrategyDefault), labels[config.LabelShareStrategy])
+		require.Equal(t, "default", labels[spec.LabelShareName])
+		require.Equal(t, string(spec.ShareStrategyDefault), labels[spec.LabelShareStrategy])
 	}
 	selectorAssertions := func(t *testing.T, labels map[string]string) {
 		t.Helper()
-		require.NotContains(t, labels, config.LabelShareName)
-		require.NotContains(t, labels, config.LabelShareStrategy)
+		require.NotContains(t, labels, spec.LabelShareName)
+		require.NotContains(t, labels, spec.LabelShareStrategy)
 	}
 
 	t.Run("deployment", func(t *testing.T) {
@@ -601,7 +601,7 @@ func TestBuildJobsForComponent_ServiceTraitOverridesLegacyServiceGeneration(t *t
 		case "mysql-master":
 			require.Equal(t, "master", svcInfo.Spec.Selector["mysql-pod-role"])
 			require.Equal(t, "db", svcInfo.Labels["layer"])
-			require.NotContains(t, svcInfo.Spec.Selector, config.LabelAppID)
+			require.NotContains(t, svcInfo.Spec.Selector, spec.LabelAppID)
 		case "mysql-headless":
 			require.Equal(t, "mysql", svcInfo.Spec.Selector["name"])
 			require.Equal(t, corev1.ClusterIPNone, svcInfo.Spec.ClusterIP)
@@ -731,8 +731,8 @@ func TestServiceTraitsForComponent_FallbackFromProperties(t *testing.T) {
 	require.Len(t, traits, 1)
 	require.Empty(t, traits[0].Name)
 	require.Equal(t, "internal", traits[0].Type)
-	require.Equal(t, "app-1", traits[0].Selector[config.LabelAppID])
-	require.Equal(t, "api", traits[0].Selector[config.LabelComponentName])
+	require.Equal(t, "app-1", traits[0].Selector[spec.LabelAppID])
+	require.Equal(t, "api", traits[0].Selector[spec.LabelComponentName])
 	require.Len(t, traits[0].Ports, 2)
 	require.Equal(t, int32(8080), traits[0].Ports[0].Port)
 	require.Equal(t, int32(8080), traits[0].Ports[0].TargetPort)

@@ -288,8 +288,8 @@ func TestRunJob_ConfigMapSharedDefaultSkippedMapsRunning(t *testing.T) {
 				Name:      "app-config",
 				Namespace: "default",
 				Labels: map[string]string{
-					config.LabelShareName:     "shared-app-config",
-					config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
+					domainspec.LabelShareName:     "shared-app-config",
+					domainspec.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 				},
 			},
 		},
@@ -325,8 +325,8 @@ func TestRunJob_ConfigMapSharedIgnoreSkippedDoesNotMapRunning(t *testing.T) {
 				Name:      "app-config",
 				Namespace: "default",
 				Labels: map[string]string{
-					config.LabelShareName:     "shared-app-config",
-					config.LabelShareStrategy: string(domainspec.ShareStrategyIgnore),
+					domainspec.LabelShareName:     "shared-app-config",
+					domainspec.LabelShareStrategy: string(domainspec.ShareStrategyIgnore),
 				},
 			},
 		},
@@ -539,8 +539,8 @@ func TestRunJob_SecretSharedDefaultSkippedMapsRunning(t *testing.T) {
 				Name:      "app-secret",
 				Namespace: "default",
 				Labels: map[string]string{
-					config.LabelShareName:     "shared-app-secret",
-					config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
+					domainspec.LabelShareName:     "shared-app-secret",
+					domainspec.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 				},
 			},
 		},

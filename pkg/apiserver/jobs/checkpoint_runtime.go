@@ -7,9 +7,9 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -40,7 +40,7 @@ func checkpointMembers(row *model.JobCheckpoint) ([]CheckpointMember, error) {
 }
 
 func ownedCheckpoint(row *model.JobCheckpoint, member CheckpointMember, object *unstructured.Unstructured) bool {
-	if object == nil || object.GetUID() == "" || object.GetNamespace() != row.Namespace || object.GetName() != member.SnapshotName || object.GetAnnotations()[checkpointOwnerAnnotation] != row.ID || object.GetAnnotations()[checkpointPodAnnotation] != member.PodUID || object.GetLabels()[config.LabelManagedBy] != "eruun" {
+	if object == nil || object.GetUID() == "" || object.GetNamespace() != row.Namespace || object.GetName() != member.SnapshotName || object.GetAnnotations()[checkpointOwnerAnnotation] != row.ID || object.GetAnnotations()[checkpointPodAnnotation] != member.PodUID || object.GetLabels()[spec.LabelManagedBy] != "eruun" {
 		return false
 	}
 	if member.SnapshotUID != "" && string(object.GetUID()) != member.SnapshotUID {
@@ -194,7 +194,7 @@ func (s *Service) advanceCheckpoint(ctx context.Context, auth *runnerAuthorizati
 			desired := &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "agents.kruise.io/v1alpha1", "kind": "Checkpoint", "spec": map[string]interface{}{"podName": member.PodName, "keepRunning": true, "persistentContents": []interface{}{"filesystem"}}}}
 			desired.SetName(member.SnapshotName)
 			desired.SetNamespace(row.Namespace)
-			desired.SetLabels(map[string]string{config.LabelManagedBy: "eruun", "eruun.io/task-id": row.TaskID})
+			desired.SetLabels(map[string]string{spec.LabelManagedBy: "eruun", "eruun.io/task-id": row.TaskID})
 			desired.SetAnnotations(map[string]string{checkpointOwnerAnnotation: row.ID, checkpointPodAnnotation: member.PodUID})
 			object, err = client.Create(ctx, desired, metav1.CreateOptions{})
 			if err != nil {

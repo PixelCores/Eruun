@@ -44,8 +44,8 @@ func TestDeployServiceAccountJobCtl_Create(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected service account to be created: %v", err)
 	}
-	if created.Labels[config.LabelManagedBy] != config.ManagedByEruun {
-		t.Fatalf("expected label %s=eruun, got %v", config.LabelManagedBy, created.Labels)
+	if created.Labels[domainspec.LabelManagedBy] != config.ManagedByEruun {
+		t.Fatalf("expected label %s=eruun, got %v", domainspec.LabelManagedBy, created.Labels)
 	}
 }
 
@@ -86,8 +86,8 @@ func TestDeployServiceAccountJobCtl_CreateAlreadyExists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected service account to exist: %v", err)
 	}
-	if created.Labels[config.LabelManagedBy] != config.ManagedByEruun {
-		t.Fatalf("expected label %s=eruun, got %v", config.LabelManagedBy, created.Labels)
+	if created.Labels[domainspec.LabelManagedBy] != config.ManagedByEruun {
+		t.Fatalf("expected label %s=eruun, got %v", domainspec.LabelManagedBy, created.Labels)
 	}
 }
 
@@ -124,7 +124,7 @@ func TestDeployServiceAccountJobCtl_SkipUnmanaged(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected service account to exist: %v", err)
 	}
-	if _, ok := after.Labels[config.LabelManagedBy]; ok {
+	if _, ok := after.Labels[domainspec.LabelManagedBy]; ok {
 		t.Fatalf("expected unmanaged service account to remain unchanged, got labels %v", after.Labels)
 	}
 }
@@ -136,7 +136,7 @@ func TestDeployServiceAccountJobCtl_ShareDefaultStillReconcilesWithoutLocker(t *
 			Name:      "shared-proxy",
 			Namespace: "ops",
 			Labels: map[string]string{
-				config.LabelShareName: shareName,
+				domainspec.LabelShareName: shareName,
 			},
 		},
 	}
@@ -151,8 +151,8 @@ func TestDeployServiceAccountJobCtl_ShareDefaultStillReconcilesWithoutLocker(t *
 				Name:      "proxy-sa",
 				Namespace: "ops",
 				Labels: map[string]string{
-					config.LabelShareName:     shareName,
-					config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
+					domainspec.LabelShareName:     shareName,
+					domainspec.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 				},
 			},
 		},
@@ -217,10 +217,10 @@ func TestDeployRoleJobCtl_UpdateManaged(t *testing.T) {
 			Name:      "pod-labeler-role",
 			Namespace: "ops",
 			Labels: map[string]string{
-				config.LabelManagedBy:     config.ManagedByEruun,
-				config.LabelAppID:         "app-1",
-				config.LabelShareName:     "ops",
-				config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
+				domainspec.LabelManagedBy:     config.ManagedByEruun,
+				domainspec.LabelAppID:         "app-1",
+				domainspec.LabelShareName:     "ops",
+				domainspec.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 			},
 		},
 		Rules: []rbacv1.PolicyRule{{
@@ -239,8 +239,8 @@ func TestDeployRoleJobCtl_UpdateManaged(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "pod-labeler-role",
 				Labels: map[string]string{
-					config.LabelShareName:     "ops",
-					config.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
+					domainspec.LabelShareName:     "ops",
+					domainspec.LabelShareStrategy: string(domainspec.ShareStrategyDefault),
 				},
 			},
 			Rules: []rbacv1.PolicyRule{{

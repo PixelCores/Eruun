@@ -110,7 +110,7 @@ func retryDatabaseTime(ctx context.Context, store datastore.DataStore) (time.Tim
 }
 
 func (c *InstantJobCtl) retainRetryCheckpoint(ctx context.Context, cp *jobinfo.InstantJobRetryCheckpoint, createdAt time.Time) error {
-	if cp.Job.Spec.TTLSecondsAfterFinished != nil && cp.Job.Labels[config.LabelManagedBy] == config.ManagedByEruun {
+	if cp.Job.Spec.TTLSecondsAfterFinished != nil && cp.Job.Labels[domainspec.LabelManagedBy] == config.ManagedByEruun {
 		return nil
 	}
 	// Kubernetes counts TTL from termination, which can precede recovery.
@@ -132,7 +132,7 @@ func (c *InstantJobCtl) retainRetryCheckpoint(ctx context.Context, cp *jobinfo.I
 	if cp.Job.Labels == nil {
 		cp.Job.Labels = make(map[string]string)
 	}
-	cp.Job.Labels[config.LabelManagedBy] = config.ManagedByEruun
+	cp.Job.Labels[domainspec.LabelManagedBy] = config.ManagedByEruun
 	return c.persistRetryCheckpoint(ctx, cp)
 }
 
@@ -407,14 +407,14 @@ func (c *InstantJobCtl) retainLiveRetryAttempt(ctx context.Context, cp *jobinfo.
 	if live.UID == "" || !jobinfo.RetryJobMatchesTask(live, c.Job) {
 		return errors.Join(signal.ErrInfrastructureStop, jobinfo.ErrJobExecutionIdentityChanged)
 	}
-	if owner := live.Labels[config.LabelManagedBy]; owner != "" && owner != config.ManagedByEruun {
+	if owner := live.Labels[domainspec.LabelManagedBy]; owner != "" && owner != config.ManagedByEruun {
 		return errors.Join(signal.ErrInfrastructureStop, jobinfo.ErrJobExecutionIdentityChanged)
 	}
 	if err := c.retainRetryCheckpoint(ctx, cp, live.CreationTimestamp.Time); err != nil {
 		return err
 	}
 	retainTTL := live.Spec.TTLSecondsAfterFinished == nil || *live.Spec.TTLSecondsAfterFinished < *cp.Job.Spec.TTLSecondsAfterFinished
-	if retainTTL || live.Labels[config.LabelManagedBy] != config.ManagedByEruun {
+	if retainTTL || live.Labels[domainspec.LabelManagedBy] != config.ManagedByEruun {
 		if err := c.ensureRetryWorkflowOwnership(ctx); err != nil {
 			return err
 		}
@@ -425,7 +425,7 @@ func (c *InstantJobCtl) retainLiveRetryAttempt(ctx context.Context, cp *jobinfo.
 		if updated.Labels == nil {
 			updated.Labels = make(map[string]string)
 		}
-		updated.Labels[config.LabelManagedBy] = config.ManagedByEruun
+		updated.Labels[domainspec.LabelManagedBy] = config.ManagedByEruun
 		var err error
 		live, err = c.Client.BatchV1().Jobs(updated.Namespace).Update(ctx, updated, metav1.UpdateOptions{})
 		if err != nil {
@@ -503,7 +503,7 @@ func (c *InstantJobCtl) waitRetryAttempt(ctx context.Context, cp *jobinfo.Instan
 			terminal = live
 			return true, nil
 		}
-		if live.Labels[config.LabelManagedBy] != config.ManagedByEruun {
+		if live.Labels[domainspec.LabelManagedBy] != config.ManagedByEruun {
 			// Repair a selector exit under the same ownership fence and resource
 			// version checks as recovery, so later changes remain observable.
 			if err := c.retainLiveRetryAttempt(ctx, cp, live); err != nil {

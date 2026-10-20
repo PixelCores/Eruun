@@ -1115,7 +1115,7 @@ func TestValidationService_TryApplication_InvalidReservedServiceTraitLabels(t *t
 								"app": "backend",
 							},
 							Labels: map[string]string{
-								config.LabelAppID: "evil-app",
+								spec.LabelAppID: "evil-app",
 							},
 							Ports: []spec.ServicePortTraitSpec{
 								{Port: 8080},
@@ -1132,7 +1132,7 @@ func TestValidationService_TryApplication_InvalidReservedServiceTraitLabels(t *t
 	found := false
 	for _, err := range resp.Errors {
 		if err.Code == apisv1.ErrCodeInvalidTraitConfig &&
-			err.Field == "component[0].traits.service[0].labels."+config.LabelAppID {
+			err.Field == "component[0].traits.service[0].labels."+spec.LabelAppID {
 			found = true
 			break
 		}
@@ -1156,7 +1156,7 @@ func TestValidationService_TryApplication_InvalidReservedIngressTraitLabel(t *te
 						{
 							Name: "backend",
 							Label: map[string]string{
-								config.LabelComponentName: "custom-backend",
+								spec.LabelComponentName: "custom-backend",
 							},
 							Routes: []spec.IngressRoutes{
 								{
@@ -1179,7 +1179,7 @@ func TestValidationService_TryApplication_InvalidReservedIngressTraitLabel(t *te
 	found := false
 	for _, err := range resp.Errors {
 		if err.Code == apisv1.ErrCodeInvalidTraitConfig &&
-			err.Field == "component[0].traits.ingress[0].label."+config.LabelComponentName {
+			err.Field == "component[0].traits.ingress[0].label."+spec.LabelComponentName {
 			found = true
 			break
 		}
@@ -1368,7 +1368,7 @@ func TestValidateComponentTraitsForWriteRejectsReservedIngressLabels(t *testing.
 		Ingress: []spec.IngressTraitsSpec{
 			{
 				Label: map[string]string{
-					config.LabelComponentName: "custom-backend",
+					spec.LabelComponentName: "custom-backend",
 				},
 				Routes: []spec.IngressRoutes{
 					{
@@ -1385,7 +1385,7 @@ func TestValidateComponentTraitsForWriteRejectsReservedIngressLabels(t *testing.
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "traits.ingress.label")
-	require.Contains(t, err.Error(), config.LabelComponentName)
+	require.Contains(t, err.Error(), spec.LabelComponentName)
 }
 
 func TestValidateComponentTraitsForWriteRejectsAmbiguousIngressBackend(t *testing.T) {

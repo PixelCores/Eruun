@@ -21,6 +21,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobinfo"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
@@ -661,7 +662,7 @@ func StampJobExecutionIdentity(jobTask *model.JobTask, jobObj *batchv1.Job) {
 	if jobObj.Labels == nil {
 		jobObj.Labels = make(map[string]string)
 	}
-	jobObj.Labels[config.LabelManagedBy] = config.ManagedByEruun
+	jobObj.Labels[spec.LabelManagedBy] = config.ManagedByEruun
 	if strings.TrimSpace(jobTask.TaskID) != "" {
 		jobObj.Annotations[config.AnnotationJobTaskID] = strings.TrimSpace(jobTask.TaskID)
 	}

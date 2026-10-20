@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs/artifacts"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -33,7 +33,7 @@ const (
 )
 
 func sandboxLabels(row *model.JobSandbox) map[string]string {
-	return map[string]string{config.LabelManagedBy: "eruun", "eruun.io/task-id": row.TaskID, sandboxIDLabel: row.ID[:48],
+	return map[string]string{spec.LabelManagedBy: "eruun", "eruun.io/task-id": row.TaskID, sandboxIDLabel: row.ID[:48],
 		"alibabacloud.com/acs": "true", "alibabacloud.com/compute-class": "agent-sandbox"}
 }
 
@@ -92,7 +92,7 @@ func buildSandbox(row *model.JobSandbox, auth *runnerAuthorization, now time.Tim
 func ownedSandbox(row *model.JobSandbox, object *unstructured.Unstructured) bool {
 	return object != nil && object.GetName() == row.SandboxName && object.GetNamespace() == row.Namespace &&
 		object.GetUID() != "" && object.GetLabels()[sandboxIDLabel] == row.ID[:48] && object.GetLabels()["eruun.io/task-id"] == row.TaskID &&
-		object.GetLabels()[config.LabelManagedBy] == "eruun" && object.GetAnnotations()[sandboxDigestAnnotation] == row.RequestDigest && object.GetAnnotations()[sandboxRunnerAnnotation] == row.RunnerUID
+		object.GetLabels()[spec.LabelManagedBy] == "eruun" && object.GetAnnotations()[sandboxDigestAnnotation] == row.RequestDigest && object.GetAnnotations()[sandboxRunnerAnnotation] == row.RunnerUID
 }
 
 func sandboxReadyPodUID(object *unstructured.Unstructured) string {

@@ -244,11 +244,11 @@ spec:
 	component := findComponent(resp.Components, "api")
 	require.NotNil(t, component)
 	require.Equal(t, "api", component.Properties.Labels["app.kubernetes.io/name"])
-	require.NotContains(t, component.Properties.Labels, config.LabelManagedBy)
+	require.NotContains(t, component.Properties.Labels, spec.LabelManagedBy)
 	require.Len(t, component.Traits.Service, 1)
 	require.Equal(t, "api", component.Traits.Service[0].Labels["app.kubernetes.io/name"])
-	require.NotContains(t, component.Traits.Service[0].Labels, config.LabelManagedBy)
-	require.Equal(t, config.ManagedByEruun, component.Traits.Service[0].Selector[config.LabelManagedBy])
+	require.NotContains(t, component.Traits.Service[0].Labels, spec.LabelManagedBy)
+	require.Equal(t, config.ManagedByEruun, component.Traits.Service[0].Selector[spec.LabelManagedBy])
 }
 
 func TestConvertKubeResources_PreservesStorageSubPathExpr(t *testing.T) {
@@ -1190,14 +1190,14 @@ spec:
 	policy := api.Traits.RBAC[0]
 	require.Equal(t, "app-sa", policy.ServiceAccount)
 	require.NotNil(t, policy.ServiceAccountLabels)
-	require.Equal(t, "app-sa", policy.ServiceAccountLabels[config.LabelShareName])
-	require.Equal(t, string(spec.ShareStrategyDefault), policy.ServiceAccountLabels[config.LabelShareStrategy])
+	require.Equal(t, "app-sa", policy.ServiceAccountLabels[spec.LabelShareName])
+	require.Equal(t, string(spec.ShareStrategyDefault), policy.ServiceAccountLabels[spec.LabelShareStrategy])
 	require.NotNil(t, policy.RoleLabels)
-	require.Equal(t, "app-role", policy.RoleLabels[config.LabelShareName])
-	require.Equal(t, string(spec.ShareStrategyDefault), policy.RoleLabels[config.LabelShareStrategy])
+	require.Equal(t, "app-role", policy.RoleLabels[spec.LabelShareName])
+	require.Equal(t, string(spec.ShareStrategyDefault), policy.RoleLabels[spec.LabelShareStrategy])
 	require.NotNil(t, policy.BindingLabels)
-	require.Equal(t, "app-binding", policy.BindingLabels[config.LabelShareName])
-	require.Equal(t, string(spec.ShareStrategyDefault), policy.BindingLabels[config.LabelShareStrategy])
+	require.Equal(t, "app-binding", policy.BindingLabels[spec.LabelShareName])
+	require.Equal(t, string(spec.ShareStrategyDefault), policy.BindingLabels[spec.LabelShareStrategy])
 
 	worker := findComponent(resp.Components, "worker")
 	require.NotNil(t, worker)

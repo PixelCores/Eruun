@@ -16,6 +16,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobexec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job/jobtest"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
@@ -287,8 +288,8 @@ func TestCleanupResourcesJobCtlRejectsTerminatingRetainedPVCs(t *testing.T) {
 				Name: statefulSetName + "-0", Namespace: component.Namespace,
 				UID: types.UID("statefulset-pod-0"), ResourceVersion: "21",
 				Labels: map[string]string{
-					config.LabelAppID:         component.AppID,
-					config.LabelComponentName: component.Name,
+					spec.LabelAppID:         component.AppID,
+					spec.LabelComponentName: component.Name,
 				},
 				OwnerReferences: []metav1.OwnerReference{{
 					APIVersion: "apps/v1", Kind: "StatefulSet", Name: statefulSetName, UID: types.UID("statefulset-uid"),

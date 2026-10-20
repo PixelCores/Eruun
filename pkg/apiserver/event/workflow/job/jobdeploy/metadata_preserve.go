@@ -2,16 +2,17 @@ package jobdeploy
 
 import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 )
 
 var eruunSystemLabelKeys = []string{
-	config.LabelManagedBy,
-	config.LabelAppID,
-	config.LabelComponentID,
-	config.LabelComponentName,
-	config.LabelShareName,
-	config.LabelShareStrategy,
+	spec.LabelManagedBy,
+	spec.LabelAppID,
+	spec.LabelComponentID,
+	spec.LabelComponentName,
+	spec.LabelShareName,
+	spec.LabelShareStrategy,
 }
 
 var eruunWorkloadTemplateAnnotationKeys = []string{

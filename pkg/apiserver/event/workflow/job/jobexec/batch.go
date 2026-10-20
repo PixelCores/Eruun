@@ -475,8 +475,8 @@ func jobCompletedInStore(ctx context.Context, store datastore.DataStore, jobType
 		return false, fmt.Errorf("job type is empty")
 	}
 	labels := jobObj.GetLabels()
-	appID := strings.TrimSpace(labels[config.LabelAppID])
-	componentName := strings.TrimSpace(labels[config.LabelComponentName])
+	appID := strings.TrimSpace(labels[domainspec.LabelAppID])
+	componentName := strings.TrimSpace(labels[domainspec.LabelComponentName])
 	if appID == "" || componentName == "" {
 		return false, nil
 	}
