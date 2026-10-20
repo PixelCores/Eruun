@@ -42,7 +42,7 @@ func TestCanonicalJSONSchemaDefinesStrictPublicProfiles(t *testing.T) {
 	require.Equal(t, `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`, workflowProperties["name"].(map[string]any)["pattern"])
 	require.Equal(t, float64(2), workflowProperties["name"].(map[string]any)["minLength"])
 	require.Equal(t, float64(63), workflowProperties["name"].(map[string]any)["maxLength"])
-	require.ElementsMatch(t, []any{"workflow", "update", "test", "scan", "delivery", "database_reset", "log_archive_upload"}, workflowProperties["workflowType"].(map[string]any)["enum"])
+	require.ElementsMatch(t, []any{"workflow", "update", "database_reset", "log_archive_upload"}, workflowProperties["workflowType"].(map[string]any)["enum"])
 	stepProperties := definitions["WorkflowStep"].(map[string]any)["properties"].(map[string]any)
 	require.Equal(t, "array", stepProperties["properties"].(map[string]any)["type"])
 	workflowPropertyFields := definitions["WorkflowProperties"].(map[string]any)["properties"].(map[string]any)

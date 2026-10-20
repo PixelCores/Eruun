@@ -80,9 +80,6 @@ const (
 
 const (
 	WorkflowTaskTypeWorkflow         WorkflowTaskType = "workflow"
-	WorkflowTaskTypeTesting          WorkflowTaskType = "test"
-	WorkflowTaskTypeScanning         WorkflowTaskType = "scan"
-	WorkflowTaskTypeDelivery         WorkflowTaskType = "delivery"
 	WorkflowTaskTypeUpdate           WorkflowTaskType = "update"
 	WorkflowTaskTypeCleanup          WorkflowTaskType = "cleanup"
 	WorkflowTaskTypeRestart          WorkflowTaskType = "restart"
@@ -204,9 +201,6 @@ func IsSupportedWorkflowTaskType(value WorkflowTaskType) bool {
 	switch NormalizeWorkflowTaskType(value) {
 	case WorkflowTaskTypeWorkflow,
 		WorkflowTaskTypeUpdate,
-		WorkflowTaskTypeTesting,
-		WorkflowTaskTypeScanning,
-		WorkflowTaskTypeDelivery,
 		WorkflowTaskTypeDatabaseReset,
 		WorkflowTaskTypeLogArchiveUpload:
 		return true
