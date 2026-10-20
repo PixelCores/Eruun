@@ -132,16 +132,16 @@ POST /api/v1/admin/rbac-profiles
 }
 ```
 
-**错误码**：新增 `utils/bcode/006_scheduling_profile.go`，沿用现有领域错误的写法。
+**错误码**：新增 `utils/bcode/006_scheduling_profile.go`，沿用现有领域错误的写法。34xxx 号段已被 Job 错误码占用，因此使用 35xxx。
 
 | 错误 | HTTP | 业务码 |
 |---|---:|---:|
-| `ErrNodePoolInvalid` | 400 | 34000 |
-| `ErrNodePoolExists` | 409 | 34001 |
-| `ErrNodePoolNotFound` | 404 | 34002 |
-| `ErrRBACProfileInvalid` | 400 | 34010 |
-| `ErrRBACProfileExists` | 409 | 34011 |
-| `ErrRBACProfileNotFound` | 404 | 34012 |
+| `ErrNodePoolInvalid` | 400 | 35000 |
+| `ErrNodePoolExists` | 409 | 35001 |
+| `ErrNodePoolNotFound` | 404 | 35002 |
+| `ErrRBACProfileInvalid` | 400 | 35010 |
+| `ErrRBACProfileExists` | 409 | 35011 |
+| `ErrRBACProfileNotFound` | 404 | 35012 |
 
 ### 5.2 空间成员（`minimum = "viewer"`，供 Console 下拉选择）
 
