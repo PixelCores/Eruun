@@ -108,17 +108,15 @@ type WorkflowStep struct {
 
 ```
 pkg/apiserver/event/workflow/job/
-├── job.go                 # Job 执行器核心
-├── job_deploy.go          # Deployment 控制器
-├── job_statefulset.go     # StatefulSet 控制器
-├── job_service.go         # Service 控制器
-├── job_pvc.go             # PVC 控制器
-├── job_configmap.go       # ConfigMap 控制器
-├── job_secret.go          # Secret 控制器
-├── job_ingress.go         # Ingress 控制器
-├── job_rbac.go            # RBAC 资源控制器
-├── cleanup_tracker.go     # 清理跟踪器
-└── naming.go              # 命名规范
+├── job.go                 # Job 执行器核心（RunJobs、initJobCtl 工厂）
+├── jobinfo/               # JobInfo 记录、载荷、检查点、状态转换
+├── jobexec/               # Runtime、控制器基类、K8s Job 原语、清理跟踪器
+├── jobdeploy/             # Deployment、StatefulSet、Service、PVC、ConfigMap、Secret、Ingress、RBAC 控制器
+├── jobcleanup/            # 资源清理控制器
+├── jobresult/             # 结果派发与 outbox
+├── jobinstant/            # 一次性 Job、重试与准入
+├── jobdelay/              # 延迟派发与定时 Job
+└── jobcloud/ databasereset/ logarchive/ jobcallback/
 ```
 
 每个 Job 控制器实现统一的接口：
@@ -2195,9 +2193,9 @@ cache:
 | 消息分发 | `pkg/apiserver/event/workflow/dispatcher.go` |
 | Job 构建器 | `pkg/apiserver/event/workflow/job_builder.go` |
 | Job 执行器 | `pkg/apiserver/event/workflow/job/job.go` |
-| Deployment 控制器 | `pkg/apiserver/event/workflow/job/job_deploy.go` |
-| StatefulSet 控制器 | `pkg/apiserver/event/workflow/job/job_statefulset.go` |
-| 清理跟踪器 | `pkg/apiserver/event/workflow/job/cleanup_tracker.go` |
+| Deployment 控制器 | `pkg/apiserver/event/workflow/job/jobdeploy/deploy.go` |
+| StatefulSet 控制器 | `pkg/apiserver/event/workflow/job/jobdeploy/statefulset.go` |
+| 清理跟踪器 | `pkg/apiserver/event/workflow/job/jobexec/cleanup_tracker.go` |
 | 取消信号 | `pkg/apiserver/workflow/signal/cancel.go` |
 | 队列接口 | `pkg/apiserver/infrastructure/messaging/queue.go` |
 | Redis Streams | `pkg/apiserver/infrastructure/messaging/redis_streams.go` |

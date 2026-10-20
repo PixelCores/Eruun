@@ -165,9 +165,9 @@ kubectl get ingress -n <namespace> -l eruun.io/share-name=<namespace>
 
 ## 测试用例
 
-- `pkg/apiserver/event/workflow/job/job_run_test.go`
+- `pkg/apiserver/event/workflow/job/job_batch_test.go`（`TestRunJob_SkippedWritesJobInfo`）
   - 验证 `skipped` 的 Job 仍会写入 JobInfo。
-- `pkg/apiserver/event/workflow/job/shared_test.go`
+- `pkg/apiserver/event/workflow/job/jobexec/shared_resource_locking_test.go`（`TestGuardSharedResource_DefaultUsesLabelSelector`）
   - 验证 `default` 策略使用 label selector 判断共享资源，并返回可释放锁。
 - `pkg/apiserver/event/workflow/share_test.go`
   - 验证 shareName 优先使用 `namespace`，并在空 namespace 时回退为 `component.name + component.type`。
