@@ -632,8 +632,6 @@ const jobPollInterval = 2 * time.Second
 
 const jobDeleteTimeout = 30 * time.Second
 
-var errJobExecutionIdentityChanged = errors.New("job execution identity changed")
-
 func waitForJobCompletion(ctx context.Context, client kubernetes.Interface, namespace, name string) (config.Status, string, error) {
 	return waitForJobCompletionMatching(ctx, client, namespace, name, nil)
 }

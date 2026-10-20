@@ -122,3 +122,12 @@ func validateDelayJobIdentity(payload *DelayJobPayload) error {
 	}
 	return nil
 }
+
+func isSettledDelayedExecutionStatus(status config.Status) bool {
+	switch status {
+	case config.StatusCompleted, config.StatusPassed, config.StatusSkipped, config.StatusFailed, config.StatusTimeout, config.StatusCancelled, config.StatusReject:
+		return true
+	default:
+		return false
+	}
+}

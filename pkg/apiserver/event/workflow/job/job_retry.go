@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math"
 	"strconv"
-	"strings"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -27,18 +26,6 @@ import (
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
-
-type instantJobRetryCheckpoint struct {
-	Kind        string          `json:"kind"`
-	Version     int             `json:"version"`
-	Attempt     uint            `json:"attempt"`
-	PreviousUID types.UID       `json:"previousUID,omitempty"`
-	CurrentUID  types.UID       `json:"currentUID,omitempty"`
-	RetryAt     int64           `json:"retryAt,omitempty"`
-	Deadline    int64           `json:"deadline"`
-	Job         *batchv1.Job    `json:"job"`
-	Runner      json.RawMessage `json:"runner,omitempty"`
-}
 
 // EvaluationRunnerTerminal returns the accepted terminal outcome and whether
 // its referenced result was complete. Owner identity remains internal.
@@ -62,57 +49,6 @@ func EvaluationRunnerTerminal(record *model.JobInfo) (string, bool, error) {
 	return state.Terminal.Outcome, state.Terminal.CollectionComplete, nil
 }
 
-// EvaluationRunnerCheckpoint returns the runner-owned extension embedded in
-// the durable instant Job checkpoint together with that attempt's deadline.
-// The caller owns the returned bytes.
-func EvaluationRunnerCheckpoint(record *model.JobInfo) (json.RawMessage, int64, error) {
-	if record == nil || record.Type != string(config.JobEval) || record.ExecutionKey == nil {
-		return nil, 0, fmt.Errorf("evaluation runner checkpoint identity is incomplete")
-	}
-	task := &model.JobTask{
-		TaskID: record.TaskID, ExecutionKey: *record.ExecutionKey, RunGeneration: record.RunGeneration,
-		Attempt: record.Attempt, InternalInfo: record.InternalInfo,
-	}
-	cp, err := decodeInstantJobRetryCheckpoint(task)
-	if err != nil {
-		return nil, 0, err
-	}
-	return append(json.RawMessage(nil), cp.Runner...), cp.Deadline, nil
-}
-
-// SetEvaluationRunnerCheckpoint replaces only the runner-owned extension and
-// preserves the retry controller's workload identity and deadline.
-func SetEvaluationRunnerCheckpoint(record *model.JobInfo, state json.RawMessage) error {
-	if len(state) == 0 || !json.Valid(state) {
-		return fmt.Errorf("evaluation runner state is invalid")
-	}
-	if record == nil || record.Type != string(config.JobEval) || record.ExecutionKey == nil {
-		return fmt.Errorf("evaluation runner checkpoint identity is incomplete")
-	}
-	task := &model.JobTask{
-		TaskID: record.TaskID, ExecutionKey: *record.ExecutionKey, RunGeneration: record.RunGeneration,
-		Attempt: record.Attempt, InternalInfo: record.InternalInfo,
-	}
-	cp, err := decodeInstantJobRetryCheckpoint(task)
-	if err != nil {
-		return err
-	}
-	cp.Runner = append(json.RawMessage(nil), state...)
-	raw, err := json.Marshal(cp)
-	if err != nil {
-		return fmt.Errorf("encode evaluation runner checkpoint: %w", err)
-	}
-	record.InternalInfo = string(raw)
-	return nil
-}
-
-// HasInstantJobRetryCheckpoint includes malformed snapshots so recovery fails
-// closed instead of silently granting a fresh retry budget. Instant Jobs do not
-// use InternalInfo for other checkpoint kinds.
-func HasInstantJobRetryCheckpoint(record *model.JobInfo) bool {
-	return record != nil && config.IsInstantJobType(config.JobType(record.Type)) && strings.TrimSpace(record.InternalInfo) != ""
-}
-
 func RestoreInstantJobRetryCheckpoint(task *model.JobTask) error {
 	cp, err := decodeInstantJobRetryCheckpoint(task)
 	if err != nil {
@@ -121,85 +57,6 @@ func RestoreInstantJobRetryCheckpoint(task *model.JobTask) error {
 	task.JobInfo = cp.Job.DeepCopy()
 	task.Attempt = cp.Attempt
 	return nil
-}
-
-// ValidateInstantJobRetryExecution binds a live Kubernetes Job to its durable
-// checkpoint. A just-created Job can authenticate before its returned UID has
-// been checkpointed, using the exact intended attempt and execution identity.
-func ValidateInstantJobRetryExecution(record *model.JobInfo, live *batchv1.Job) error {
-	if record == nil || record.ExecutionKey == nil || !HasInstantJobRetryCheckpoint(record) || live == nil || live.UID == "" {
-		return fmt.Errorf("Job execution checkpoint identity is incomplete")
-	}
-	task := &model.JobTask{TaskID: record.TaskID, ExecutionKey: *record.ExecutionKey, RunGeneration: record.RunGeneration,
-		Attempt: record.Attempt, InternalInfo: record.InternalInfo}
-	cp, err := decodeInstantJobRetryCheckpoint(task)
-	if err != nil {
-		return err
-	}
-	if live.Namespace != cp.Job.Namespace || live.Name != cp.Job.Name || !retryJobMatchesTask(live, task) ||
-		live.Annotations[workflowconfig.AnnotationJobAttempt] != strconv.FormatUint(uint64(cp.Attempt), 10) ||
-		(cp.CurrentUID != "" && cp.CurrentUID != live.UID) || live.UID == cp.PreviousUID {
-		return errJobExecutionIdentityChanged
-	}
-	return nil
-}
-
-func decodeInstantJobRetryCheckpoint(task *model.JobTask) (*instantJobRetryCheckpoint, error) {
-	if task == nil {
-		return nil, fmt.Errorf("instant Job retry checkpoint task is nil")
-	}
-	var cp instantJobRetryCheckpoint
-	if err := json.Unmarshal([]byte(task.InternalInfo), &cp); err != nil {
-		return nil, fmt.Errorf("decode instant Job retry checkpoint: %w", err)
-	}
-	if cp.Kind != "instant_job_retry" || cp.Version != 1 || cp.Job == nil || cp.Job.Name == "" || cp.Job.Namespace == "" || cp.Attempt == 0 || cp.Deadline <= 0 {
-		return nil, fmt.Errorf("invalid instant Job retry checkpoint")
-	}
-	if !retryJobMatchesTask(cp.Job, task) || cp.Job.Annotations[workflowconfig.AnnotationJobAttempt] != strconv.FormatUint(uint64(cp.Attempt), 10) || (task.Attempt > 0 && task.Attempt != cp.Attempt) {
-		return nil, fmt.Errorf("instant Job retry checkpoint execution identity or attempt does not match")
-	}
-	policy, err := retryPolicyFromJob(cp.Job)
-	if err != nil || policy == nil {
-		return nil, fmt.Errorf("instant Job retry checkpoint policy is invalid: %v", err)
-	}
-	if cp.Attempt > policy.MaxRetries+1 || (cp.Attempt > 1 && (cp.PreviousUID == "" || cp.RetryAt <= 0)) {
-		return nil, fmt.Errorf("instant Job retry checkpoint exceeds its retry budget or lacks prior identity")
-	}
-	return &cp, nil
-}
-
-func retryJobMatchesTask(job *batchv1.Job, task *model.JobTask) bool {
-	return job != nil && task.TaskID != "" && task.ExecutionKey != "" && task.RunGeneration > 0 &&
-		job.Annotations[config.AnnotationJobTaskID] == task.TaskID &&
-		job.Annotations[config.AnnotationJobExecutionKey] == task.ExecutionKey &&
-		job.Annotations[config.AnnotationJobRunGeneration] == strconv.FormatUint(task.RunGeneration, 10)
-}
-
-func retryPolicyFromJob(job *batchv1.Job) (*workflowconfig.JobRetryPolicy, error) {
-	if job == nil {
-		return nil, fmt.Errorf("job is nil")
-	}
-	raw := job.Annotations[workflowconfig.AnnotationJobRetryPolicy]
-	if raw == "" {
-		return nil, nil
-	}
-	var policy workflowconfig.JobRetryPolicy
-	if err := json.Unmarshal([]byte(raw), &policy); err != nil {
-		return nil, fmt.Errorf("decode jobRetryPolicy: %w", err)
-	}
-	if err := policy.Validate(); err != nil {
-		return nil, fmt.Errorf("validate jobRetryPolicy: %w", err)
-	}
-	if strings.TrimSpace(job.Annotations[config.AnnotationJobStartTime]) != "" {
-		return nil, fmt.Errorf("jobRetryPolicy does not support startTime")
-	}
-	if job.Spec.BackoffLimit == nil || *job.Spec.BackoffLimit != 0 || job.Spec.Template.Spec.RestartPolicy != corev1.RestartPolicyNever {
-		return nil, fmt.Errorf("jobRetryPolicy requires backoffLimit 0 and restartPolicy Never")
-	}
-	if err := validateRetryJobResources(job, &policy); err != nil {
-		return nil, err
-	}
-	return &policy, nil
 }
 
 func (c *InstantJobCtl) ensureRetryWorkflowOwnership(ctx context.Context) error {

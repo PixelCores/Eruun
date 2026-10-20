@@ -7,8 +7,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 )
 
-const EvaluationDeadlineAnnotation = "eruun.io/evaluation-deadline"
-
 type evaluationRecoveryKey struct{}
 
 // EvaluationRecovery is supplied by the evaluation service. It runs outside

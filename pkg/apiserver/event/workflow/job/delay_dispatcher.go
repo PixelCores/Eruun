@@ -925,15 +925,6 @@ func (d *DelayDispatcher) findDelayCheckpoint(ctx context.Context, payload *Dela
 	return nil, nil
 }
 
-func isSettledDelayedExecutionStatus(status config.Status) bool {
-	switch status {
-	case config.StatusCompleted, config.StatusPassed, config.StatusSkipped, config.StatusFailed, config.StatusTimeout, config.StatusCancelled, config.StatusReject:
-		return true
-	default:
-		return false
-	}
-}
-
 func (d *DelayDispatcher) resumeDelayedResultOutbox(ctx context.Context, outbox *model.JobResultOutbox) error {
 	if outbox == nil {
 		return nil

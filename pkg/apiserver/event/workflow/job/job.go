@@ -13,20 +13,13 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/informer"
-	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/locker"
-	msg "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/messaging"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
 
@@ -36,36 +29,11 @@ type JobCtl interface {
 	SaveInfo(ctx context.Context) error
 }
 
-type GenerateServiceResult struct {
-	Service           client.Object
-	AdditionalObjects []client.Object
-}
-
-type taskIDKey struct{}
-
 const (
 	cancelledJobCleanupTimeout       = 4 * config.DelTimeOut
 	cancelledJobCleanupLeaseDuration = config.DelTimeOut
 	cancelledJobCleanupRenewInterval = config.DelTimeOut / 3
 )
-
-// Runtime contains the dependencies and execution policy for a RunJobs call.
-// RunJobs creates fresh lock and persistence state for each invocation.
-type Runtime struct {
-	Concurrency       int
-	Client            kubernetes.Interface
-	Store             datastore.DataStore
-	Ack               func()
-	StopOnFailure     bool
-	RedisClient       *redis.Client
-	Cache             cache.ICache
-	URLSecurityPolicy *spec.URLSecurityPolicySpec
-	DelayQueue        msg.Queue
-	ResourceWaiter    informer.ComponentReadyObserver
-	KubeConfig        *rest.Config
-	shareLocker       locker.Locker
-	archiveUploader   ArchiveUploader
-}
 
 func newJobRuntime(config *Runtime) *Runtime {
 	if config == nil {
@@ -86,59 +54,6 @@ func newJobRuntime(config *Runtime) *Runtime {
 		shareLocker:       newShareLocker(config.RedisClient),
 		archiveUploader:   currentArchiveUploader(),
 	}
-}
-
-func (r *Runtime) close() {
-	if r == nil || r.shareLocker == nil {
-		return
-	}
-	if err := r.shareLocker.Close(); err != nil {
-		klog.ErrorS(err, "close share locker failed")
-	}
-}
-
-// StatusError wraps an error with an explicit job status for persistence.
-type StatusError struct {
-	Status config.Status
-	Err    error
-}
-
-func (s *StatusError) Error() string { return s.Err.Error() }
-
-func (s *StatusError) Unwrap() error { return s.Err }
-
-// NewStatusError constructs a StatusError with the provided status and error.
-func NewStatusError(status config.Status, err error) error {
-	if err == nil {
-		return nil
-	}
-	return &StatusError{Status: status, Err: err}
-}
-
-// ExtractStatusError attempts to retrieve a StatusError from err.
-func ExtractStatusError(err error) (*StatusError, bool) {
-	if err == nil {
-		return nil, false
-	}
-	var se *StatusError
-	if errors.As(err, &se) {
-		return se, true
-	}
-	return nil, false
-}
-
-// WithTaskMetadata injects workflow identifiers into context so job controllers
-// can derive cancellation signals when needed.
-func WithTaskMetadata(ctx context.Context, taskID string) context.Context {
-	return context.WithValue(ctx, taskIDKey{}, taskID)
-}
-
-// TaskIDFromContext extracts the workflow task identifier from context.
-func TaskIDFromContext(ctx context.Context) string {
-	if v, ok := ctx.Value(taskIDKey{}).(string); ok {
-		return v
-	}
-	return ""
 }
 
 func initJobCtl(job *model.JobTask, runtime *Runtime) JobCtl {
@@ -289,13 +204,6 @@ func RunJobs(ctx context.Context, jobs []*model.JobTask, run *Runtime) error {
 		return err
 	}
 	return infrastructureStopCause(ctx)
-}
-
-func infrastructureStopCause(ctx context.Context) error {
-	if !signal.IsInfrastructureStop(ctx) {
-		return nil
-	}
-	return context.Cause(ctx)
 }
 
 func runJob(ctx context.Context, job *model.JobTask, runtime *Runtime) (resultErr error) {
@@ -867,23 +775,6 @@ func suppressTerminalJobPersistence(ctx context.Context) bool {
 	return signal.IsInfrastructureStop(ctx) ||
 		errors.Is(cause, repository.ErrWorkflowLeaseRenewalFailed) ||
 		errors.Is(cause, repository.ErrWorkflowOwnershipLost)
-}
-
-func isSharedDefaultSkippedConfigJob(job *model.JobTask) bool {
-	if job == nil {
-		return false
-	}
-	if job.Status != config.StatusSkipped {
-		return false
-	}
-	if !isConfigComponentJobType(job.JobType) {
-		return false
-	}
-	strategy, shared := shareStrategyFromJobInfo(job.JobInfo)
-	if !shared {
-		return false
-	}
-	return strategy == spec.ShareStrategyDefault
 }
 
 func persistenceContext(ctx context.Context) (context.Context, context.CancelFunc) {
