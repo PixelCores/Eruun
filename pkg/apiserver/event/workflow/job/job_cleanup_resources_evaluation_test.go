@@ -52,7 +52,7 @@ func TestEvaluationCleanupDeletesOnlyComponentRunners(t *testing.T) {
 				{ObjectMeta: metav1.ObjectMeta{Name: "other-component", Namespace: component.Namespace, Labels: labelsFor(component.AppID, "other")}},
 				{ObjectMeta: metav1.ObjectMeta{Name: "other-app", Namespace: component.Namespace, Labels: labelsFor("other-app", component.Name)}},
 				{ObjectMeta: metav1.ObjectMeta{Name: "other-namespace", Namespace: "tenant-b", Labels: ownedLabels}},
-				{ObjectMeta: metav1.ObjectMeta{Name: buildJobName(component.Name, component.ResourceNameKey()), Namespace: component.Namespace}},
+				{ObjectMeta: metav1.ObjectMeta{Name: naming.JobName(component.Name, component.ResourceNameKey()), Namespace: component.Namespace}},
 			}
 			for _, item := range unrelated {
 				objects = append(objects, item, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: item.Name + "-pod", Namespace: item.Namespace, Labels: item.Labels}})

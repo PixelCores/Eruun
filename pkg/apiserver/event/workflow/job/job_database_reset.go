@@ -345,7 +345,7 @@ func (c *DatabaseResetJobCtl) prepareDatabaseResetPlans(ctx context.Context, com
 		namespace := databaseResetNamespaceOrDefault(statefulSet.Namespace, component.Namespace)
 		name := strings.TrimSpace(statefulSet.Name)
 		if name == "" {
-			name = buildStoreSeverName(component.Name, component.ResourceNameKey())
+			name = naming.StoreServerName(component.Name, component.ResourceNameKey())
 		}
 		current, err := c.client.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
 		if err != nil {

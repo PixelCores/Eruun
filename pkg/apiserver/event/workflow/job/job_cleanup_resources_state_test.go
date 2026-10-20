@@ -15,6 +15,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 func TestCleanupResourcesJobCtlMarksVersionUpdateCleanupRunningBeforeDelete(t *testing.T) {
@@ -120,7 +121,7 @@ func TestCleanupResourcesJobCtlTreatsCompletedVersionUpdateCleanupAsSuccess(t *t
 		Namespace:     "default",
 		ComponentType: config.ServerJob,
 	}
-	deployName := buildWebServiceName(removed.Name, removed.ResourceNameKey())
+	deployName := naming.WebServiceName(removed.Name, removed.ResourceNameKey())
 	client := fake.NewSimpleClientset(
 		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: deployName, Namespace: removed.Namespace}},
 	)
@@ -179,7 +180,7 @@ func TestCleanupResourcesJobCtlBlocksVersionUpdateCleanupForReusedComponent(t *t
 		ComponentType: config.ServerJob,
 		Status:        string(config.ComponentStatusRunning),
 	}
-	deployName := buildWebServiceName(removed.Name, removed.ResourceNameKey())
+	deployName := naming.WebServiceName(removed.Name, removed.ResourceNameKey())
 	client := fake.NewSimpleClientset(
 		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: deployName, Namespace: removed.Namespace}},
 	)
@@ -214,7 +215,7 @@ func TestCleanupResourcesJobCtlFailsBeforeDeleteWhenRunningStatusCannotPersist(t
 		Namespace:     "default",
 		ComponentType: config.ServerJob,
 	}
-	deployName := buildWebServiceName(removed.Name, removed.ResourceNameKey())
+	deployName := naming.WebServiceName(removed.Name, removed.ResourceNameKey())
 	client := fake.NewSimpleClientset(
 		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: deployName, Namespace: removed.Namespace}},
 	)

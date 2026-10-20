@@ -21,6 +21,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 func TestCleanupResourcesJobCtlRetainsAllStatefulSetPVCsBeforeRequiredDeletion(t *testing.T) {
@@ -52,7 +53,7 @@ func TestCleanupResourcesJobCtlRetainsAllStatefulSetPVCsBeforeRequiredDeletion(t
 			component := &model.ApplicationComponent{
 				ID: 1, Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 			}
-			statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+			statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 			statefulSetUID := types.UID("statefulset-uid")
 			dataPVCName := "data-" + statefulSetName + "-0"
 			cachePVCName := "cache-" + statefulSetName + "-0"
@@ -166,7 +167,7 @@ func TestCleanupResourcesJobCtlRetainsAllStatefulSetPVCsBeforeRequiredDeletion(t
 func TestCleanupResourcesJobCtlRetriesAndIdempotentlyAppliesStatefulSetPVCRetention(t *testing.T) {
 	ctx := context.Background()
 	component := &model.ApplicationComponent{Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	client := fake.NewSimpleClientset(&appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{Name: statefulSetName, Namespace: component.Namespace},
 		Spec: appsv1.StatefulSetSpec{PersistentVolumeClaimRetentionPolicy: &appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy{
@@ -224,7 +225,7 @@ func TestCleanupResourcesJobCtlTreatsMissingStatefulSetAsRetentionConverged(t *t
 func TestCleanupResourcesJobCtlClearsStatefulSetPVCOwnerReferencesWithoutLivePods(t *testing.T) {
 	ctx := context.Background()
 	component := &model.ApplicationComponent{Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	statefulSetUID := types.UID("statefulset-uid")
 	controller := true
 	dataPVCName := "data-" + statefulSetName + "-0"
@@ -326,7 +327,7 @@ func TestCleanupResourcesJobCtlFailsClosedWhenStatefulSetPVCOwnerReferencePatchF
 			component := &model.ApplicationComponent{
 				ID: 1, Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 			}
-			statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+			statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 			statefulSetUID := types.UID("statefulset-uid")
 			controller := true
 			pvcName := "data-" + statefulSetName + "-0"
@@ -394,7 +395,7 @@ func TestCleanupResourcesJobCtlBlocksExtraProtectedLabeledStatefulSetBeforeAnyDe
 	component := &model.ApplicationComponent{
 		ID: 1, Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	componentLabels := map[string]string{
 		config.LabelAppID:         component.AppID,
 		config.LabelComponentName: component.Name,
@@ -455,7 +456,7 @@ func TestCleanupResourcesJobCtlRechecksRequiredStatefulSetShareLabelsAfterRetent
 	component := &model.ApplicationComponent{
 		Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	client := fake.NewSimpleClientset(&appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: statefulSetName, Namespace: component.Namespace,
@@ -538,7 +539,7 @@ func TestCleanupResourcesJobCtlFailsClosedIfRequiredStatefulSetChangesAfterReten
 			component := &model.ApplicationComponent{
 				Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 			}
-			statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+			statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 			client := fake.NewSimpleClientset(&appsv1.StatefulSet{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: statefulSetName, Namespace: component.Namespace,
@@ -592,7 +593,7 @@ func TestCleanupResourcesJobCtlRemembersMarkerTemplatesWhenStatefulSetAlreadyMis
 	component := &model.ApplicationComponent{
 		Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	pvcName := "retired-" + statefulSetName + "-7"
 	controller := true
 	unrelatedOwner := metav1.OwnerReference{Kind: "ConfigMap", Name: "keep-me", UID: types.UID("config-uid")}

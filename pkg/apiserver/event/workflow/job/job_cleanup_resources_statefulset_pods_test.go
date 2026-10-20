@@ -18,6 +18,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 func TestCleanupResourcesJobCtlDeletesPinnedStatefulSetPodAfterLabelDrift(t *testing.T) {
@@ -130,7 +131,7 @@ func TestCleanupResourcesJobCtlFailsClosedForOrphanOrdinalPodOnFreshRetry(t *tes
 	component := &model.ApplicationComponent{
 		Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
 		Name: statefulSetName + "-0", Namespace: component.Namespace, UID: types.UID("unknown-orphan-pod"),
 		Labels: map[string]string{
@@ -245,7 +246,7 @@ func TestCleanupResourcesJobCtlStopsWhenWorkflowTaskIsCancelledButJobInfoIsRunni
 	component := &model.ApplicationComponent{
 		ID: 1, Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	statefulSetUID := types.UID("statefulset-uid")
 	controller := true
 	labels := map[string]string{
@@ -315,7 +316,7 @@ func TestCleanupResourcesJobCtlStopsOldGenerationBeforeStatefulSetCleanup(t *tes
 	component := &model.ApplicationComponent{
 		ID: 1, Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	statefulSetUID := types.UID("statefulset-uid")
 	controller := true
 	labels := map[string]string{
@@ -392,7 +393,7 @@ func TestCleanupResourcesJobCtlKeepsCompletedRequiredStatefulSetCleanupIdempoten
 	component := &model.ApplicationComponent{
 		ID: 1, Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	client := fake.NewSimpleClientset(&appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{
 		Name: statefulSetName, Namespace: component.Namespace,
 	}})
@@ -436,7 +437,7 @@ func newRequiredStatefulSetPodController(t *testing.T) (
 	component := &model.ApplicationComponent{
 		Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	statefulSetUID := types.UID("statefulset-uid")
 	statefulSet := &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{
 		Name: statefulSetName, Namespace: component.Namespace, UID: statefulSetUID, ResourceVersion: "11",

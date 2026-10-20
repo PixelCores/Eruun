@@ -5,7 +5,8 @@ import (
 	"fmt"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/programminglanguage"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	assembler "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/assembler/v1"
 	apisv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	eruunv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1"
@@ -19,8 +20,8 @@ import (
 type AdministrationServer struct {
 	eruunv1.UnimplementedSettingsServiceServer
 	eruunv1.UnimplementedProgrammingLanguagesServiceServer
-	Settings             service.SystemSettingService       `inject:""`
-	ProgrammingLanguages service.ProgrammingLanguageService `inject:""`
+	Settings             systemsetting.SystemSettingService             `inject:""`
+	ProgrammingLanguages programminglanguage.ProgrammingLanguageService `inject:""`
 }
 
 func valueBytes(value *structpb.Value) ([]byte, error) {

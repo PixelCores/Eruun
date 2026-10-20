@@ -15,7 +15,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
+	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	eruunv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs"
@@ -28,8 +28,8 @@ const archiveMaxSize = 64 << 20
 
 type JobsServer struct {
 	eruunv1.UnimplementedJobsServiceServer
-	Jobs     *jobs.Service           `inject:""`
-	Workflow service.WorkflowService `inject:""`
+	Jobs     *jobs.Service                   `inject:""`
+	Workflow workflowservice.WorkflowService `inject:""`
 }
 
 func jobPolicyInput(p *eruunv1.JobResultPolicy) spec.JobResultPolicy {

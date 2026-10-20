@@ -48,7 +48,7 @@ func (c *DeployStatefulSetJobCtl) Clean(ctx context.Context) {
 		return
 	}
 	namespace := c.namespace
-	name := buildStoreSeverName(c.job.Name, c.job.ResourceAppNameOrID())
+	name := naming.StoreServerName(c.job.Name, c.job.ResourceAppNameOrID())
 	var labels map[string]string
 	if statefulSet, ok := optionalJobInfo[*appsv1.StatefulSet](c.job); ok {
 		if statefulSet.Namespace != "" {
@@ -104,7 +104,7 @@ func (c *DeployStatefulSetJobCtl) run(ctx context.Context) error {
 		c.desiredReplicas = 1
 	}
 
-	statefulSetName := buildStoreSeverName(c.job.Name, c.job.ResourceAppNameOrID())
+	statefulSetName := naming.StoreServerName(c.job.Name, c.job.ResourceAppNameOrID())
 	statefulSet.Name = statefulSetName
 	if statefulSet.Namespace == "" {
 		statefulSet.Namespace = c.namespace
@@ -188,7 +188,7 @@ func (c *DeployStatefulSetJobCtl) run(ctx context.Context) error {
 }
 
 func (c *DeployStatefulSetJobCtl) wait(ctx context.Context) error {
-	targetName := buildStoreSeverName(c.job.Name, c.job.ResourceAppNameOrID())
+	targetName := naming.StoreServerName(c.job.Name, c.job.ResourceAppNameOrID())
 	namespace := c.job.Namespace
 	var expectedImages []string
 	if statefulSet, ok := optionalJobInfo[*appsv1.StatefulSet](c.job); ok {
@@ -233,7 +233,7 @@ func GenerateStoreService(component *model.ApplicationComponent) (*GenerateServi
 	if component.Namespace == "" {
 		component.Namespace = config.DefaultNamespace
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	containerName := utils.NormalizeLowerStrip(component.Name)
 
 	properties, err := ParseProperties(component.Properties)
@@ -320,7 +320,7 @@ func statefulSetServiceName(component *model.ApplicationComponent) (string, erro
 	if component == nil {
 		return "", fmt.Errorf("component is nil")
 	}
-	defaultName := buildServiceName(component.Name, component.ResourceNameKey())
+	defaultName := naming.ServiceName(component.Name, component.ResourceNameKey())
 	traits, err := statefulSetComponentTraits(component)
 	if err != nil {
 		return "", err

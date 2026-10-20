@@ -5,7 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
+	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
+	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	eruunv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1"
 	"github.com/stretchr/testify/require"
@@ -14,7 +15,7 @@ import (
 )
 
 type createExecApplicationFake struct {
-	service.ApplicationsService
+	applicationservice.ApplicationsService
 	created *apis.ApplicationBase
 	marked  bool
 	called  bool
@@ -30,7 +31,7 @@ func (f *createExecApplicationFake) MarkInitialDeployingWorkflowComponents(conte
 }
 
 type createExecWorkflowFake struct {
-	service.WorkflowService
+	workflowservice.WorkflowService
 	result *apis.ExecWorkflowResponse
 	err    error
 }

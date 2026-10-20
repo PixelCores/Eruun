@@ -129,7 +129,7 @@ func (c *VersionRestartJobCtl) restartDeployment(
 	namespace := databaseResetNamespaceOrDefault(deploy.Namespace, component.Namespace)
 	name := strings.TrimSpace(deploy.Name)
 	if name == "" {
-		name = buildWebServiceName(component.Name, component.ResourceNameKey())
+		name = naming.WebServiceName(component.Name, component.ResourceNameKey())
 	}
 	if _, err := c.client.AppsV1().Deployments(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -169,7 +169,7 @@ func (c *VersionRestartJobCtl) restartStatefulSet(
 	namespace := databaseResetNamespaceOrDefault(statefulSet.Namespace, component.Namespace)
 	name := strings.TrimSpace(statefulSet.Name)
 	if name == "" {
-		name = buildStoreSeverName(component.Name, component.ResourceNameKey())
+		name = naming.StoreServerName(component.Name, component.ResourceNameKey())
 	}
 	if _, err := c.client.AppsV1().StatefulSets(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
 		if k8serrors.IsNotFound(err) {

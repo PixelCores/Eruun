@@ -19,6 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 func TestCleanupResourcesJobCtlDeletesGeneratedAndLabeledResources(t *testing.T) {
@@ -41,8 +42,8 @@ func TestCleanupResourcesJobCtlDeletesGeneratedAndLabeledResources(t *testing.T)
 		config.LabelComponentName: component.Name,
 	}
 	client := fake.NewSimpleClientset(
-		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: buildWebServiceName(component.Name, component.AppID), Namespace: component.Namespace}},
-		&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: buildServiceName(component.Name, component.AppID), Namespace: component.Namespace}},
+		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: naming.WebServiceName(component.Name, component.AppID), Namespace: component.Namespace}},
+		&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: naming.ServiceName(component.Name, component.AppID), Namespace: component.Namespace}},
 		&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "extra-service", Namespace: component.Namespace, Labels: ownedLabels}},
 		&corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: "data-web", Namespace: component.Namespace, Labels: ownedLabels}},
 		&networkingv1.Ingress{ObjectMeta: metav1.ObjectMeta{Name: "web-ingress", Namespace: component.Namespace, Labels: ownedLabels}},
@@ -73,9 +74,9 @@ func TestCleanupResourcesJobCtlDeletesGeneratedAndLabeledResources(t *testing.T)
 	require.NotNil(t, store.putComponent)
 	require.Equal(t, string(config.ComponentStatusNotDeploy), store.putComponent.Status)
 
-	_, err = client.AppsV1().Deployments(component.Namespace).Get(ctx, buildWebServiceName(component.Name, component.AppID), metav1.GetOptions{})
+	_, err = client.AppsV1().Deployments(component.Namespace).Get(ctx, naming.WebServiceName(component.Name, component.AppID), metav1.GetOptions{})
 	require.True(t, k8serrors.IsNotFound(err))
-	_, err = client.CoreV1().Services(component.Namespace).Get(ctx, buildServiceName(component.Name, component.AppID), metav1.GetOptions{})
+	_, err = client.CoreV1().Services(component.Namespace).Get(ctx, naming.ServiceName(component.Name, component.AppID), metav1.GetOptions{})
 	require.True(t, k8serrors.IsNotFound(err))
 	_, err = client.CoreV1().Services(component.Namespace).Get(ctx, "extra-service", metav1.GetOptions{})
 	require.True(t, k8serrors.IsNotFound(err))
@@ -134,7 +135,7 @@ func TestCleanupResourcesJobCtlPreservesTraitGeneratedRBAC(t *testing.T) {
 	require.NoError(t, err)
 	component.Traits = traitsJSON
 
-	deploymentName := buildWebServiceName(component.Name, component.AppID)
+	deploymentName := naming.WebServiceName(component.Name, component.AppID)
 	client := fake.NewSimpleClientset(
 		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: deploymentName, Namespace: component.Namespace}},
 		&corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "pod-labeler-sa", Namespace: component.Namespace}},
@@ -206,9 +207,9 @@ func TestCleanupResourcesJobCtlKeepsProtectedSharedResources(t *testing.T) {
 		config.LabelShareStrategy: string(spec.ShareStrategyForce),
 	}
 	client := fake.NewSimpleClientset(
-		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: buildWebServiceName(component.Name, component.AppID), Namespace: component.Namespace, Labels: sharedLabels}},
+		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: naming.WebServiceName(component.Name, component.AppID), Namespace: component.Namespace, Labels: sharedLabels}},
 		&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "web-shared-pod", Namespace: component.Namespace, Labels: sharedLabels}},
-		&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: buildServiceName(component.Name, component.AppID), Namespace: component.Namespace, Labels: ignoredLabels}},
+		&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: naming.ServiceName(component.Name, component.AppID), Namespace: component.Namespace, Labels: ignoredLabels}},
 		&corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: "data-web", Namespace: component.Namespace, Labels: sharedLabels}},
 		&rbacv1.Role{ObjectMeta: metav1.ObjectMeta{Name: "web-role", Namespace: component.Namespace, Labels: sharedLabels}},
 		&rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: "web-cluster-role", Labels: ignoredLabels}},
@@ -231,11 +232,11 @@ func TestCleanupResourcesJobCtlKeepsProtectedSharedResources(t *testing.T) {
 	require.NoError(t, ctl.Run(ctx))
 	require.Equal(t, config.StatusCompleted, task.Status)
 
-	_, err = client.AppsV1().Deployments(component.Namespace).Get(ctx, buildWebServiceName(component.Name, component.AppID), metav1.GetOptions{})
+	_, err = client.AppsV1().Deployments(component.Namespace).Get(ctx, naming.WebServiceName(component.Name, component.AppID), metav1.GetOptions{})
 	require.NoError(t, err)
 	_, err = client.CoreV1().Pods(component.Namespace).Get(ctx, "web-shared-pod", metav1.GetOptions{})
 	require.NoError(t, err)
-	_, err = client.CoreV1().Services(component.Namespace).Get(ctx, buildServiceName(component.Name, component.AppID), metav1.GetOptions{})
+	_, err = client.CoreV1().Services(component.Namespace).Get(ctx, naming.ServiceName(component.Name, component.AppID), metav1.GetOptions{})
 	require.NoError(t, err)
 	_, err = client.CoreV1().PersistentVolumeClaims(component.Namespace).Get(ctx, "data-web", metav1.GetOptions{})
 	require.NoError(t, err)
@@ -273,7 +274,7 @@ func TestCleanupResourcesJobCtlDeletesResidualComponentPods(t *testing.T) {
 		config.LabelComponentName: component.Name,
 	}
 	client := fake.NewSimpleClientset(
-		&batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: buildJobName(component.Name, component.AppID), Namespace: component.Namespace}},
+		&batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: naming.JobName(component.Name, component.AppID), Namespace: component.Namespace}},
 		&batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "batch-residual-job", Namespace: component.Namespace}},
 		&corev1.Pod{ObjectMeta: metav1.ObjectMeta{
 			Name:      "batch-owned-pod",
@@ -307,7 +308,7 @@ func TestCleanupResourcesJobCtlDeletesResidualComponentPods(t *testing.T) {
 	require.NoError(t, ctl.Run(ctx))
 	require.Equal(t, config.StatusCompleted, task.Status)
 
-	_, err = client.BatchV1().Jobs(component.Namespace).Get(ctx, buildJobName(component.Name, component.AppID), metav1.GetOptions{})
+	_, err = client.BatchV1().Jobs(component.Namespace).Get(ctx, naming.JobName(component.Name, component.AppID), metav1.GetOptions{})
 	require.True(t, k8serrors.IsNotFound(err))
 	_, err = client.BatchV1().Jobs(component.Namespace).Get(ctx, "batch-residual-job", metav1.GetOptions{})
 	require.True(t, k8serrors.IsNotFound(err))

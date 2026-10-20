@@ -756,7 +756,7 @@ func (c *DeployJobCtl) Run(ctx context.Context) error {
 
 func (c *DeployJobCtl) run(ctx context.Context) error {
     deploy := c.job.JobInfo.(*appsv1.Deployment)
-    deployName := buildWebServiceName(c.job.Name, c.job.AppID)
+    deployName := naming.WebServiceName(c.job.Name, c.job.AppID)
     deploy.Name = deployName
     
     // 检查是否已存在

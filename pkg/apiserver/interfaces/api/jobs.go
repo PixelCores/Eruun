@@ -11,7 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
+	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs"
@@ -20,8 +20,8 @@ import (
 )
 
 type workspaceJobs struct {
-	Service  *jobs.Service           `inject:""`
-	Workflow service.WorkflowService `inject:""`
+	Service  *jobs.Service                   `inject:""`
+	Workflow workflowservice.WorkflowService `inject:""`
 }
 
 func NewWorkspaceJobs() Interface { return &workspaceJobs{} }

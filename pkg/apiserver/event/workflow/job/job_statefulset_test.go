@@ -35,7 +35,7 @@ func TestDeployStatefulSetJobCtl_UpdateExisting(t *testing.T) {
 		TaskID:    "task-sts-template",
 		JobType:   string(config.JobDeployStore),
 	}
-	statefulSetName := buildStoreSeverName(job.Name, job.AppID)
+	statefulSetName := naming.StoreServerName(job.Name, job.AppID)
 
 	existing := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -117,7 +117,7 @@ func TestDeployStatefulSetJobCtl_SkipsUnchangedUpdate(t *testing.T) {
 		TaskID:    "task-sts-noop",
 		JobType:   string(config.JobDeployStore),
 	}
-	statefulSetName := buildStoreSeverName(job.Name, job.AppID)
+	statefulSetName := naming.StoreServerName(job.Name, job.AppID)
 
 	existing := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -191,7 +191,7 @@ func TestDeployStatefulSetJobCtl_RestoresTaskAnnotationForUpToDateStatefulSet(t 
 		TaskID:    "task-sts-template",
 		JobType:   string(config.JobDeployStore),
 	}
-	statefulSetName := buildStoreSeverName(job.Name, job.AppID)
+	statefulSetName := naming.StoreServerName(job.Name, job.AppID)
 
 	existing := comparableStatefulSet()
 	existing.Name = statefulSetName
@@ -324,7 +324,7 @@ func TestGenerateStoreService_DefaultsServiceNameWithoutHeadlessTrait(t *testing
 
 	statefulSet, ok := result.Service.(*appsv1.StatefulSet)
 	require.True(t, ok)
-	require.Equal(t, buildServiceName(component.Name, component.ResourceAppNameOrID()), statefulSet.Spec.ServiceName)
+	require.Equal(t, naming.ServiceName(component.Name, component.ResourceAppNameOrID()), statefulSet.Spec.ServiceName)
 }
 
 func TestGenerateStoreService_BoundsStatefulSetNameAndUsesStableSelector(t *testing.T) {

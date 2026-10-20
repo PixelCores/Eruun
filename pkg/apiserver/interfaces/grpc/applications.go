@@ -9,6 +9,10 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/conversion"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/validation"
+	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	assembler "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/assembler/v1"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	eruunv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1"
@@ -24,11 +28,11 @@ type applicationRuntimeReader interface {
 // ApplicationsServer composes the same domain services as the HTTP adapter.
 type ApplicationsServer struct {
 	eruunv1.UnimplementedApplicationServiceServer
-	Applications service.ApplicationsService `inject:""`
-	Runtime      applicationRuntimeReader    `inject:""`
-	Workflow     service.WorkflowService     `inject:""`
-	Validation   service.ValidationService   `inject:""`
-	Conversion   service.ConversionService   `inject:""`
+	Applications applicationservice.ApplicationsService `inject:""`
+	Runtime      applicationRuntimeReader               `inject:""`
+	Workflow     workflowservice.WorkflowService        `inject:""`
+	Validation   validation.ValidationService           `inject:""`
+	Conversion   conversion.ConversionService           `inject:""`
 }
 
 func typedResult[P proto.Message](value any, err error, target P) (P, error) {
@@ -54,8 +58,8 @@ func (s *ApplicationsServer) GetCanonicalJSONSchema(ctx context.Context, _ *empt
 	return &eruunv1.CanonicalJSONSchema{JsonSchema: schema}, nil
 }
 
-func listApplicationOptions(req *eruunv1.ApplicationListRequest) service.ListApplicationsOptions {
-	result := service.ListApplicationsOptions{}
+func listApplicationOptions(req *eruunv1.ApplicationListRequest) applicationservice.ListApplicationsOptions {
+	result := applicationservice.ListApplicationsOptions{}
 	if req != nil {
 		if req.Page != nil {
 			result.Page = int(*req.Page)

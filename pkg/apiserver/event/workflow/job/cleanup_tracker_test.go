@@ -12,6 +12,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 func TestDeployCleanupDeletesCreatedDeployment(t *testing.T) {
@@ -47,7 +48,7 @@ func TestDeployCleanupDeletesCreatedDeployment(t *testing.T) {
 }
 
 func TestDeployCleanupDeletesObservedSharedDeploymentWhenPodAbnormal(t *testing.T) {
-	deployName := buildWebServiceName("web", "app-1")
+	deployName := naming.WebServiceName("web", "app-1")
 	resourceLabels := map[string]string{
 		config.LabelAppID:         "app-1",
 		config.LabelComponentName: "web",
@@ -120,7 +121,7 @@ func TestDeployCleanupDeletesObservedSharedDeploymentWhenPodAbnormal(t *testing.
 }
 
 func TestDeployCleanupKeepsObservedSharedDeploymentWithoutAbnormalPod(t *testing.T) {
-	deployName := buildWebServiceName("web", "app-1")
+	deployName := naming.WebServiceName("web", "app-1")
 	resourceLabels := map[string]string{
 		config.LabelAppID:         "app-1",
 		config.LabelComponentName: "web",
@@ -193,7 +194,7 @@ func TestDeployCleanupKeepsObservedSharedDeploymentWithoutAbnormalPod(t *testing
 }
 
 func TestStatefulSetCleanupDeletesObservedSharedStatefulSetWhenPodAbnormal(t *testing.T) {
-	statefulSetName := buildStoreSeverName("db", "app-1")
+	statefulSetName := naming.StoreServerName("db", "app-1")
 	resourceLabels := map[string]string{
 		config.LabelAppID:         "app-1",
 		config.LabelComponentName: "db",

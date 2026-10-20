@@ -5,13 +5,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
 type settings struct {
-	SystemSettingService service.SystemSettingService `inject:""`
+	SystemSettingService systemsetting.SystemSettingService `inject:""`
 }
 
 // NewSettings creates a new settings API handler.

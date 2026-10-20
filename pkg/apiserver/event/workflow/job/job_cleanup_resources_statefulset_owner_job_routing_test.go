@@ -17,6 +17,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 func TestCleanupResourcesJobCtlOnlyDefersGenericOwnerJobDeletesForRequiredStatefulSetCleanup(t *testing.T) {
@@ -102,7 +103,7 @@ func TestCleanupResourcesJobCtlRunDefersLabeledOwnerJobToRequiredStatefulSetPodR
 				config.LabelAppID:         component.AppID,
 				config.LabelComponentName: component.Name,
 			}
-			statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+			statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 			statefulSet := &appsv1.StatefulSet{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: statefulSetName, Namespace: component.Namespace, UID: types.UID("statefulset-uid"),
@@ -315,7 +316,7 @@ func newRequiredStatefulSetLabeledOwnerRunFixture(
 			config.LabelComponentName: component.Name,
 		}
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	statefulSet := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: statefulSetName, Namespace: component.Namespace, UID: types.UID("statefulset-uid"),

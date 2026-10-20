@@ -7,13 +7,15 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/stretchr/testify/require"
 )
 
 type createExecAppStub struct {
-	ApplicationsService
+	application.ApplicationsService
 	created *apis.ApplicationBase
 	err     error
 	marked  bool
@@ -30,7 +32,7 @@ func (s *createExecAppStub) MarkInitialDeployingWorkflowComponents(context.Conte
 }
 
 type createExecWorkflowStub struct {
-	WorkflowService
+	workflow.WorkflowService
 	result *apis.ExecWorkflowResponse
 	err    error
 	called bool

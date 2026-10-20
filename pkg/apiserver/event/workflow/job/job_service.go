@@ -122,7 +122,7 @@ func (c *DeployServiceJobCtl) timeout() int {
 func (c *DeployServiceJobCtl) wait(ctx context.Context) error {
 	serviceName := resolveServiceName(c.job)
 	if serviceName == "" {
-		serviceName = buildServiceName(c.job.Name, c.job.ResourceAppNameOrID())
+		serviceName = naming.ServiceName(c.job.Name, c.job.ResourceAppNameOrID())
 	}
 	return waitForPolledResource(ctx, pollWaitOptions{
 		timeout:  time.Duration(c.timeout()) * time.Second,
@@ -174,7 +174,7 @@ func GenerateService(component *model.ApplicationComponent, properties *model.Pr
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Service"},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        buildServiceName(component.Name, component.ResourceNameKey()),
+			Name:        naming.ServiceName(component.Name, component.ResourceNameKey()),
 			Namespace:   component.Namespace,
 			Labels:      BuildLabels(component, properties),
 			Annotations: BuildAnnotations(component),
@@ -218,7 +218,7 @@ func GenerateServiceFromTrait(component *model.ApplicationComponent, properties 
 	serviceType := serviceTypeFromTrait(serviceTrait.Type)
 	serviceName := strings.TrimSpace(serviceTrait.Name)
 	if serviceName == "" {
-		serviceName = buildServiceName(component.Name, component.ResourceNameKey())
+		serviceName = naming.ServiceName(component.Name, component.ResourceNameKey())
 	}
 	svc := &corev1.Service{
 		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Service"},

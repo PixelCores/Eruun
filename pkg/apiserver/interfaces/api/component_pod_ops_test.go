@@ -11,7 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
+	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
@@ -22,7 +22,7 @@ type fakeComponentPodOperationsService struct {
 	lastExportAppID         string
 	lastExportComponentName string
 	lastExportReq           apis.ExportComponentFilesRequest
-	exportStream            *service.ComponentFileArchiveStream
+	exportStream            *applicationservice.ComponentFileArchiveStream
 	exportErr               error
 	lastExecAppID           string
 	lastExecComponentName   string
@@ -32,16 +32,16 @@ type fakeComponentPodOperationsService struct {
 	lastStreamAppID         string
 	lastStreamComponentName string
 	lastStreamReq           apis.ExecComponentShellScriptRequest
-	streamResp              *service.ComponentShellScriptStream
+	streamResp              *applicationservice.ComponentShellScriptStream
 	streamErr               error
 }
 
-func (f *fakeComponentPodOperationsService) ExportComponentFilesZip(_ context.Context, appID, componentName string, req apis.ExportComponentFilesRequest) (*service.ComponentFileArchiveStream, error) {
+func (f *fakeComponentPodOperationsService) ExportComponentFilesZip(_ context.Context, appID, componentName string, req apis.ExportComponentFilesRequest) (*applicationservice.ComponentFileArchiveStream, error) {
 	f.lastExportAppID = appID
 	f.lastExportComponentName = componentName
 	f.lastExportReq = req
 	if f.exportStream == nil {
-		f.exportStream = &service.ComponentFileArchiveStream{
+		f.exportStream = &applicationservice.ComponentFileArchiveStream{
 			Reader:        io.NopCloser(strings.NewReader("zip")),
 			PodName:       "pod-default",
 			ContainerName: "main",
@@ -68,7 +68,7 @@ func (f *fakeComponentPodOperationsService) ExecComponentShellScript(_ context.C
 	return f.execResp, f.execErr
 }
 
-func (f *fakeComponentPodOperationsService) StreamComponentShellScript(_ context.Context, appID, componentName string, req apis.ExecComponentShellScriptRequest) (*service.ComponentShellScriptStream, error) {
+func (f *fakeComponentPodOperationsService) StreamComponentShellScript(_ context.Context, appID, componentName string, req apis.ExecComponentShellScriptRequest) (*applicationservice.ComponentShellScriptStream, error) {
 	f.lastStreamAppID = appID
 	f.lastStreamComponentName = componentName
 	f.lastStreamReq = req
@@ -76,7 +76,7 @@ func (f *fakeComponentPodOperationsService) StreamComponentShellScript(_ context
 		events := make(chan kube.PodShellStreamEvent, 1)
 		events <- kube.PodShellStreamEvent{Type: kube.PodShellStreamEventExit, ExitCode: 0, Succeeded: true}
 		close(events)
-		f.streamResp = &service.ComponentShellScriptStream{
+		f.streamResp = &applicationservice.ComponentShellScriptStream{
 			Namespace:     "default",
 			PodName:       "pod-default",
 			ContainerName: "main",
@@ -90,7 +90,7 @@ func TestExportComponentFilesZipEndpointWritesArchiveHeaders(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	appSvc := &fakeComponentPodOperationsService{
-		exportStream: &service.ComponentFileArchiveStream{
+		exportStream: &applicationservice.ComponentFileArchiveStream{
 			Reader:        io.NopCloser(strings.NewReader("zip-bytes")),
 			Namespace:     "default",
 			PodName:       "pod-api",
@@ -139,7 +139,7 @@ func TestExportComponentFilesZipEndpointReturnsErrorBeforeHeadersOnEmptyStream(t
 	gin.SetMode(gin.TestMode)
 
 	appSvc := &fakeComponentPodOperationsService{
-		exportStream: &service.ComponentFileArchiveStream{
+		exportStream: &applicationservice.ComponentFileArchiveStream{
 			Reader:        failingReadCloser{err: errors.New("tar missing")},
 			Namespace:     "default",
 			PodName:       "pod-api",
@@ -174,7 +174,7 @@ func TestExportComponentFilesZipEndpointMapsLookupErrorsOnProbeToInvalidPath(t *
 	gin.SetMode(gin.TestMode)
 
 	appSvc := &fakeComponentPodOperationsService{
-		exportStream: &service.ComponentFileArchiveStream{
+		exportStream: &applicationservice.ComponentFileArchiveStream{
 			Reader:        failingReadCloser{err: errors.New("read tar stream: archive pod path: exit error: tar: out: cannot stat: no such file or directory")},
 			Namespace:     "default",
 			PodName:       "pod-api",
@@ -210,7 +210,7 @@ func TestExportComponentFilesZipEndpointSupportsMultipartFallbackHeaders(t *test
 
 	body := "--boundary\r\nContent-Type: application/octet-stream\r\n\r\nhello\r\n--boundary--\r\n"
 	appSvc := &fakeComponentPodOperationsService{
-		exportStream: &service.ComponentFileArchiveStream{
+		exportStream: &applicationservice.ComponentFileArchiveStream{
 			Reader:        io.NopCloser(strings.NewReader(body)),
 			Namespace:     "default",
 			PodName:       "pod-api",
@@ -318,7 +318,7 @@ func TestStreamComponentShellScriptEndpointWritesSSEEvents(t *testing.T) {
 	events <- kube.PodShellStreamEvent{Type: kube.PodShellStreamEventExit, ExitCode: 3, Succeeded: false}
 	close(events)
 	appSvc := &fakeComponentPodOperationsService{
-		streamResp: &service.ComponentShellScriptStream{
+		streamResp: &applicationservice.ComponentShellScriptStream{
 			Namespace:     "default",
 			PodName:       "pod-api",
 			ContainerName: "api",

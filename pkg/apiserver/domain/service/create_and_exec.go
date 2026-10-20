@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
@@ -18,8 +20,8 @@ import (
 // application already exists; each transport chooses its safe client message.
 func ExecuteCreateAndExecApplication(
 	ctx context.Context,
-	applications ApplicationsService,
-	workflows WorkflowService,
+	applications application.ApplicationsService,
+	workflows workflow.WorkflowService,
 	req apis.CreateAndExecApplicationRequest,
 	idempotencyKey string,
 	execFailureMessage func(error) string,

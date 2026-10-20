@@ -15,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, component *model.ApplicationComponent, props *model.Properties, deleted *cleanupResourceSet) {
@@ -26,7 +27,7 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 			return
 		}
 		ns := component.Namespace
-		name := buildWebServiceName(component.Name, component.ResourceNameKey())
+		name := naming.WebServiceName(component.Name, component.ResourceNameKey())
 		if result != nil {
 			ns, name = workloadIdentityFromObject(result.Service, ns, name)
 			c.deleteAdditionalObjects(ctx, component.Namespace, result.AdditionalObjects, deleted)
@@ -41,7 +42,7 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 			return
 		}
 		ns := component.Namespace
-		name := buildStoreSeverName(component.Name, component.ResourceNameKey())
+		name := naming.StoreServerName(component.Name, component.ResourceNameKey())
 		if result != nil {
 			ns, name = workloadIdentityFromObject(result.Service, ns, name)
 			c.deleteAdditionalObjects(ctx, component.Namespace, result.AdditionalObjects, deleted)
@@ -65,7 +66,7 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 			return
 		}
 		ns := component.Namespace
-		name := buildJobName(component.Name, component.ResourceNameKey())
+		name := naming.JobName(component.Name, component.ResourceNameKey())
 		if result != nil {
 			ns, name = workloadIdentityFromObject(result.Service, ns, name)
 			c.deleteAdditionalObjects(ctx, component.Namespace, result.AdditionalObjects, deleted)
@@ -83,7 +84,7 @@ func (c *CleanupResourcesJobCtl) deleteGeneratedResources(ctx context.Context, c
 			return
 		}
 		ns := component.Namespace
-		name := buildCronJobName(component.Name, component.ResourceNameKey())
+		name := naming.CronJobName(component.Name, component.ResourceNameKey())
 		if result != nil {
 			ns, name = workloadIdentityFromObject(result.Service, ns, name)
 			c.deleteAdditionalObjects(ctx, component.Namespace, result.AdditionalObjects, deleted)
@@ -118,7 +119,7 @@ func (c *CleanupResourcesJobCtl) deleteServicesForComponent(ctx context.Context,
 		ns := component.Namespace
 		name := strings.TrimSpace(trait.Name)
 		if name == "" {
-			name = buildServiceName(component.Name, component.ResourceNameKey())
+			name = naming.ServiceName(component.Name, component.ResourceNameKey())
 		}
 		if svc != nil {
 			name = pickNonEmpty(svc.Name, name)
@@ -132,7 +133,7 @@ func (c *CleanupResourcesJobCtl) deleteServicesForComponent(ctx context.Context,
 	if len(props.Ports) > 0 {
 		svc := GenerateService(component, props)
 		ns := component.Namespace
-		name := buildServiceName(component.Name, component.ResourceNameKey())
+		name := naming.ServiceName(component.Name, component.ResourceNameKey())
 		if svc != nil {
 			name = pickNonEmpty(svc.Name, name)
 			ns = pickNonEmpty(svc.Namespace, ns)

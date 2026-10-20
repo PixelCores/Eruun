@@ -9,6 +9,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 func TestGenerateServiceFromTrait_UsesTraitFields(t *testing.T) {
@@ -276,7 +277,7 @@ func TestGenerateServiceFromTrait_Defaults(t *testing.T) {
 	if svc == nil {
 		t.Fatalf("expected service, got nil")
 	}
-	if svc.Name != buildServiceName(component.Name, component.ResourceAppNameOrID()) {
+	if svc.Name != naming.ServiceName(component.Name, component.ResourceAppNameOrID()) {
 		t.Fatalf("unexpected default service name: %#v", svc.Name)
 	}
 	if svc.Spec.Type != corev1.ServiceTypeClusterIP {
@@ -395,7 +396,7 @@ func TestGenerateService_Default(t *testing.T) {
 	if svc == nil {
 		t.Fatalf("expected generated service")
 	}
-	if svc.Name != buildServiceName(component.Name, component.ResourceAppNameOrID()) {
+	if svc.Name != naming.ServiceName(component.Name, component.ResourceAppNameOrID()) {
 		t.Fatalf("unexpected service name: %#v", svc.Name)
 	}
 	require.Equal(t, map[string]string{

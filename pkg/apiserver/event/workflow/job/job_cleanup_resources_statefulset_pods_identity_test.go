@@ -20,6 +20,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 func TestCleanupResourcesJobCtlPinsOwnerJobAndPodDeleteIdentity(t *testing.T) {
@@ -92,7 +93,7 @@ func TestCleanupResourcesJobCtlConvergesTerminatingPodOwnerJobBeforeImmediateRep
 func TestCleanupResourcesJobCtlRestartsAfterPodDisappearsAndConvergesCheckpointedOwnerJob(t *testing.T) {
 	ctx := context.Background()
 	component, ownerJob, pod, client, _ := newRequiredStatefulSetOwnerJobPodController(t)
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	statefulSet := &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{
 		Name: statefulSetName, Namespace: component.Namespace,
 		UID: types.UID("statefulset-uid"), ResourceVersion: "11",
@@ -482,7 +483,7 @@ func TestCleanupResourcesJobCtlDoesNotCompleteAcrossConcurrentPodCheckpointExpan
 	component := &model.ApplicationComponent{
 		Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	marker := versionUpdateRequireStatefulSetDeletionInternalInfo()
 	checkpointA, err := marshalRequiredStatefulSetPodDeletionCheckpoint(marker, requiredStatefulSetPodDeletionCheckpoint{
 		Namespace: component.Namespace, StatefulSetName: statefulSetName, OwnerJobsCaptured: true,
@@ -532,7 +533,7 @@ func TestCleanupResourcesJobCtlKeepsExistingCompletedCheckpointAuthoritative(t *
 	component := &model.ApplicationComponent{
 		Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	marker := versionUpdateRequireStatefulSetDeletionInternalInfo()
 	checkpointA, err := marshalRequiredStatefulSetPodDeletionCheckpoint(marker, requiredStatefulSetPodDeletionCheckpoint{
 		Namespace: component.Namespace, StatefulSetName: statefulSetName, OwnerJobsCaptured: true,
@@ -573,7 +574,7 @@ func TestCleanupResourcesJobCtlKeepsExistingCompletedCheckpointAuthoritative(t *
 func TestCleanupResourcesJobCtlDoesNotRecreateDisappearedCheckpointAfterLocalExpansion(t *testing.T) {
 	ctx := context.Background()
 	component, firstOwnerJob, firstPod, client, _ := newRequiredStatefulSetOwnerJobPodController(t)
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	marker := versionUpdateRequireStatefulSetPVCDeletionInternalInfo(t, "data")
 	pvcSibling, err := marshalRequiredStatefulSetPVCDeletionCheckpoint(marker, requiredStatefulSetPVCDeletionCheckpoint{
 		Namespace: component.Namespace, StatefulSetName: statefulSetName, Templates: []string{"data"},
@@ -662,7 +663,7 @@ func TestCleanupResourcesJobCtlRejectsRestartAfterPodDisappearsWithoutOwnerJobCh
 	marker := versionUpdateRequireStatefulSetDeletionInternalInfo()
 	checkpointed, err := marshalRequiredStatefulSetPodDeletionCheckpoint(marker, requiredStatefulSetPodDeletionCheckpoint{
 		Namespace:           component.Namespace,
-		StatefulSetName:     buildStoreSeverName(component.Name, component.ResourceNameKey()),
+		StatefulSetName:     naming.StoreServerName(component.Name, component.ResourceNameKey()),
 		StatefulSetUID:      types.UID("statefulset-uid"),
 		StatefulSetWasFound: true,
 		Pods: []requiredStatefulSetPodIdentityCheckpoint{{
@@ -1019,7 +1020,7 @@ func newRequiredStatefulSetOwnerJobPodController(t *testing.T) (
 	component := &model.ApplicationComponent{
 		Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	statefulSet := &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{
 		Name: statefulSetName, Namespace: component.Namespace,
 		UID: types.UID("statefulset-uid"), ResourceVersion: "11",

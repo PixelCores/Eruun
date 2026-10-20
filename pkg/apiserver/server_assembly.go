@@ -15,6 +15,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/programminglanguage"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/validation"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
@@ -187,7 +188,7 @@ func (s *restServer) provideDomainAndEventBeans(runtimeQueues *msg.RuntimeQueues
 	if err != nil {
 		return err
 	}
-	programmingLanguageService, err := service.NewProgrammingLanguageServiceWithRepository(programmingLanguageRepository)
+	programmingLanguageService, err := programminglanguage.NewProgrammingLanguageServiceWithRepository(programmingLanguageRepository)
 	if err != nil {
 		return err
 	}

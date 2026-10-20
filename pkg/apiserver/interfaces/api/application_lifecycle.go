@@ -7,6 +7,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -86,13 +87,13 @@ func (app *applications) listTemplateApplications(c *gin.Context) {
 	respondWithResult(c, apis.ListApplicationResponse{Applications: apps}, err)
 }
 
-func bindListApplicationsOptions(c *gin.Context) (service.ListApplicationsOptions, bool) {
+func bindListApplicationsOptions(c *gin.Context) (applicationservice.ListApplicationsOptions, bool) {
 	var query apis.ListApplicationsQuery
 	if err := c.ShouldBindQuery(&query); err != nil {
 		apiresponse.ReturnError(c, bcode.ErrApplicationConfig)
-		return service.ListApplicationsOptions{}, false
+		return applicationservice.ListApplicationsOptions{}, false
 	}
-	return service.ListApplicationsOptions{
+	return applicationservice.ListApplicationsOptions{
 		Page:     query.Page,
 		PageSize: query.PageSize,
 	}, true

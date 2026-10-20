@@ -14,6 +14,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	spec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
@@ -42,7 +43,7 @@ func TestCleanupResourcesJobCtlEnforcesRequiredStatefulSetDeletion(t *testing.T)
 				Namespace:     "default",
 				ComponentType: config.StoreJob,
 			}
-			statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+			statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 			templatePVCName := "data-" + statefulSetName + "-0"
 			shareLabels := map[string]string{
 				config.LabelAppID:         component.AppID,
@@ -120,7 +121,7 @@ func TestCleanupResourcesJobCtlRetriesAffectedStatefulSetPVCDeletionAndWaitsForN
 		Namespace:     "default",
 		ComponentType: config.StoreJob,
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	targetNames := []string{
 		"data-" + statefulSetName + "-0",
 		"data-" + statefulSetName + "-4",
@@ -209,7 +210,7 @@ func TestCleanupResourcesJobCtlDeletesStatefulSetPVCsAfterWorkloadAndPods(t *tes
 	component := &model.ApplicationComponent{
 		ID: 1, Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	templatePVCName := "data-" + statefulSetName + "-0"
 	componentLabels := map[string]string{
 		config.LabelAppID:         component.AppID,
@@ -275,7 +276,7 @@ func TestCleanupResourcesJobCtlBlocksStatefulSetPVCDeletionForProtectedPVC(t *te
 	component := &model.ApplicationComponent{
 		ID: 1, Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	templatePVCName := "data-" + statefulSetName + "-0"
 	client := fake.NewSimpleClientset(&corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{
 		Name: templatePVCName, Namespace: component.Namespace, UID: types.UID("protected-pvc-uid"),
@@ -355,7 +356,7 @@ func TestCleanupResourcesJobCtlPreflightsProtectedPodsBeforeAnyDelete(t *testing
 			component := &model.ApplicationComponent{
 				ID: 1, Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 			}
-			statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+			statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 			templatePVCName := "data-" + statefulSetName + "-0"
 			objects := []k8sruntime.Object{
 				&appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: statefulSetName, Namespace: component.Namespace}},
@@ -405,7 +406,7 @@ func TestCleanupResourcesJobCtlRechecksProtectedPodsBeforePVCDeletion(t *testing
 	component := &model.ApplicationComponent{
 		ID: 1, Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	templatePVCName := "data-" + statefulSetName + "-0"
 	componentLabels := map[string]string{
 		config.LabelAppID:         component.AppID,
@@ -483,7 +484,7 @@ func TestCleanupResourcesJobCtlDoesNotSilentlySkipRequiredStatefulSetDeletion(t 
 	component := &model.ApplicationComponent{
 		Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	client := fake.NewSimpleClientset(&appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{
 		Name: statefulSetName, Namespace: component.Namespace,
 		Labels: map[string]string{
@@ -551,7 +552,7 @@ func TestCleanupResourcesJobCtlPreservesNestedStoragePVCs(t *testing.T) {
 		Traits:        traits,
 	}
 	client := fake.NewSimpleClientset(
-		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: buildWebServiceName(component.Name, component.AppID), Namespace: component.Namespace}},
+		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: naming.WebServiceName(component.Name, component.AppID), Namespace: component.Namespace}},
 		&corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: "init-data", Namespace: component.Namespace}},
 		&corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: "sidecar-data", Namespace: component.Namespace}},
 	)
@@ -596,7 +597,7 @@ func TestCleanupResourcesJobCtlPreservesExplicitClaimNamePVC(t *testing.T) {
 		Traits:        traits,
 	}
 	client := fake.NewSimpleClientset(
-		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: buildWebServiceName(component.Name, component.AppID), Namespace: component.Namespace}},
+		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: naming.WebServiceName(component.Name, component.AppID), Namespace: component.Namespace}},
 		&corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: "shared-logs", Namespace: component.Namespace}},
 	)
 	store := &cleanupComponentStore{component: component}
@@ -625,7 +626,7 @@ func TestCleanupResourcesJobCtlDeletesStatefulSetWithoutForcingTemplatePVCRetent
 		Namespace:     "default",
 		ComponentType: config.StoreJob,
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	statefulSet := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{Name: statefulSetName, Namespace: component.Namespace},
 		Spec: appsv1.StatefulSetSpec{

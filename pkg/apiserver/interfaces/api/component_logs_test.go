@@ -10,7 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
+	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
@@ -19,16 +19,16 @@ type fakeComponentLogsApplicationService struct {
 	lastAppID              string
 	lastComponentName      string
 	lastRequestedContainer string
-	stream                 *service.ComponentLogStream
+	stream                 *applicationservice.ComponentLogStream
 	err                    error
 }
 
-func (f *fakeComponentLogsApplicationService) StreamComponentLogs(_ context.Context, appID, componentName, requestedContainer string) (*service.ComponentLogStream, error) {
+func (f *fakeComponentLogsApplicationService) StreamComponentLogs(_ context.Context, appID, componentName, requestedContainer string) (*applicationservice.ComponentLogStream, error) {
 	f.lastAppID = appID
 	f.lastComponentName = componentName
 	f.lastRequestedContainer = requestedContainer
 	if f.stream == nil {
-		f.stream = &service.ComponentLogStream{
+		f.stream = &applicationservice.ComponentLogStream{
 			Reader:        io.NopCloser(strings.NewReader("")),
 			PodName:       "pod-default",
 			ContainerName: "main",
@@ -69,7 +69,7 @@ func TestStreamComponentLogsEndpointWritesContainerHeader(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	appSvc := &fakeComponentLogsApplicationService{
-		stream: &service.ComponentLogStream{
+		stream: &applicationservice.ComponentLogStream{
 			Reader:        io.NopCloser(strings.NewReader("line one\n")),
 			Namespace:     "default",
 			PodName:       "pod-api",

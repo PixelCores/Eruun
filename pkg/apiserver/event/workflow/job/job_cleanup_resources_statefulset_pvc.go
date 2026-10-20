@@ -18,6 +18,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 type requiredStatefulSetPVCDeletionTarget struct {
@@ -50,7 +51,7 @@ func requiredStatefulSetCleanupRef(component *model.ApplicationComponent) (clean
 		return cleanupResourceRef{}, err
 	}
 	namespace := component.Namespace
-	name := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	name := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	if result != nil {
 		if statefulSet, ok := result.Service.(*appsv1.StatefulSet); ok && statefulSet != nil {
 			namespace = pickNonEmpty(statefulSet.GetNamespace(), namespace)
