@@ -7,7 +7,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
+	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
@@ -195,14 +195,14 @@ func (f *fakeWorkflowService) DispatchWorkflowSchedules(context.Context) (int, e
 // noopApplicationsService supplies the one shared default used by status tests.
 // Other methods must be implemented by the test that exercises them.
 type noopApplicationsService struct {
-	service.ApplicationsService
+	applicationservice.ApplicationsService
 }
 
 func (noopApplicationsService) HasImmediateActiveVersionUpdateTask(context.Context, string, int64) (bool, error) {
 	return false, nil
 }
 
-var _ service.ApplicationsService = noopApplicationsService{}
+var _ applicationservice.ApplicationsService = noopApplicationsService{}
 
 type workflowListApplicationService struct {
 	noopApplicationsService
@@ -218,7 +218,7 @@ type templateApplicationService struct {
 	noopApplicationsService
 	templates []*apis.ApplicationBase
 	err       error
-	lastOpts  service.ListApplicationsOptions
+	lastOpts  applicationservice.ListApplicationsOptions
 }
 
 type componentListApplicationService struct {
@@ -474,7 +474,7 @@ func (s *cacheBackedComponentListService) ListApplicationComponents(ctx context.
 	return result, nil
 }
 
-func (s *templateApplicationService) ListTemplateApplications(_ context.Context, opts service.ListApplicationsOptions) ([]*apis.ApplicationBase, error) {
+func (s *templateApplicationService) ListTemplateApplications(_ context.Context, opts applicationservice.ListApplicationsOptions) ([]*apis.ApplicationBase, error) {
 	s.lastOpts = opts
 	return s.templates, s.err
 }
@@ -483,10 +483,10 @@ type listApplicationService struct {
 	noopApplicationsService
 	apps     []*apis.ApplicationBase
 	err      error
-	lastOpts service.ListApplicationsOptions
+	lastOpts applicationservice.ListApplicationsOptions
 }
 
-func (s *listApplicationService) ListApplications(_ context.Context, opts service.ListApplicationsOptions) ([]*apis.ApplicationBase, error) {
+func (s *listApplicationService) ListApplications(_ context.Context, opts applicationservice.ListApplicationsOptions) ([]*apis.ApplicationBase, error) {
 	s.lastOpts = opts
 	return s.apps, s.err
 }

@@ -5,14 +5,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/programminglanguage"
 	assembler "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/assembler/v1"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
 
 type programmingLanguages struct {
-	ProgrammingLanguageService service.ProgrammingLanguageService `inject:""`
+	ProgrammingLanguageService programminglanguage.ProgrammingLanguageService `inject:""`
 }
 
 // NewProgrammingLanguages creates a programming language API handler.

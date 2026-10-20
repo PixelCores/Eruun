@@ -18,7 +18,6 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	urlpolicy "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/systemsetting"
 	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
@@ -184,7 +183,7 @@ func (w *Workflow) expireApprovalDeadlines(ctx context.Context, limit int) {
 		reason := fmt.Sprintf(approvalTimeoutReasonFmt, task.PendingApprovalStep)
 		klog.InfoS("workflow approval timed out", "taskID", task.TaskID, "step", task.PendingApprovalStep)
 		cleanupCtx, cleanupCancel := context.WithTimeout(ctx, config.TaskStateTransitionTimeout)
-		if err := service.TerminalizePrecreatedVersionUpdateCleanupJobs(cleanupCtx, w.Store, task.TaskID, config.StatusTimeout, reason); err != nil {
+		if err := workflowservice.TerminalizePrecreatedVersionUpdateCleanupJobs(cleanupCtx, w.Store, task.TaskID, config.StatusTimeout, reason); err != nil {
 			klog.ErrorS(err, "terminalize cleanup jobs after approval timeout", "taskID", task.TaskID)
 		}
 		cleanupCancel()
@@ -762,7 +761,7 @@ func (w *Workflow) markTaskRunStartFailure(ctx context.Context, task *model.Work
 	if runErr != nil {
 		reason = runErr.Error()
 	}
-	if err := service.TerminalizePrecreatedVersionUpdateCleanupJobs(persistCtx, w.Store, task.TaskID, config.StatusFailed, reason); err != nil {
+	if err := workflowservice.TerminalizePrecreatedVersionUpdateCleanupJobs(persistCtx, w.Store, task.TaskID, config.StatusFailed, reason); err != nil {
 		klog.Errorf("terminalize cleanup jobs for failed workflow task %s before run: %v", task.TaskID, err)
 	}
 }

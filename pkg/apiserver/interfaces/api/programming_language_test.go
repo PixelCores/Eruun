@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/programminglanguage"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
@@ -19,8 +19,8 @@ import (
 type mockProgrammingLanguageService struct {
 	listFn   func(context.Context) ([]*model.ProgrammingLanguage, error)
 	getFn    func(context.Context, string) (*model.ProgrammingLanguage, error)
-	createFn func(context.Context, service.CreateProgrammingLanguageCommand) (*model.ProgrammingLanguage, error)
-	updateFn func(context.Context, string, service.UpdateProgrammingLanguageCommand) (*model.ProgrammingLanguage, error)
+	createFn func(context.Context, programminglanguage.CreateProgrammingLanguageCommand) (*model.ProgrammingLanguage, error)
+	updateFn func(context.Context, string, programminglanguage.UpdateProgrammingLanguageCommand) (*model.ProgrammingLanguage, error)
 	deleteFn func(context.Context, string) error
 }
 
@@ -38,14 +38,14 @@ func (m *mockProgrammingLanguageService) Get(ctx context.Context, id string) (*m
 	return m.getFn(ctx, id)
 }
 
-func (m *mockProgrammingLanguageService) Create(ctx context.Context, req service.CreateProgrammingLanguageCommand) (*model.ProgrammingLanguage, error) {
+func (m *mockProgrammingLanguageService) Create(ctx context.Context, req programminglanguage.CreateProgrammingLanguageCommand) (*model.ProgrammingLanguage, error) {
 	if m.createFn == nil {
 		return nil, nil
 	}
 	return m.createFn(ctx, req)
 }
 
-func (m *mockProgrammingLanguageService) Update(ctx context.Context, id string, req service.UpdateProgrammingLanguageCommand) (*model.ProgrammingLanguage, error) {
+func (m *mockProgrammingLanguageService) Update(ctx context.Context, id string, req programminglanguage.UpdateProgrammingLanguageCommand) (*model.ProgrammingLanguage, error) {
 	if m.updateFn == nil {
 		return nil, nil
 	}
@@ -70,12 +70,12 @@ func TestProgrammingLanguageAPI_CRUDSuccess(t *testing.T) {
 			require.Equal(t, "lang-1", id)
 			return &model.ProgrammingLanguage{ID: id, Code: "net"}, nil
 		},
-		createFn: func(_ context.Context, req service.CreateProgrammingLanguageCommand) (*model.ProgrammingLanguage, error) {
+		createFn: func(_ context.Context, req programminglanguage.CreateProgrammingLanguageCommand) (*model.ProgrammingLanguage, error) {
 			require.Equal(t, ".NET", req.Name)
 			require.NotNil(t, req.Enabled)
 			return &model.ProgrammingLanguage{ID: "lang-1", Code: "net", Enabled: req.Enabled}, nil
 		},
-		updateFn: func(_ context.Context, id string, req service.UpdateProgrammingLanguageCommand) (*model.ProgrammingLanguage, error) {
+		updateFn: func(_ context.Context, id string, req programminglanguage.UpdateProgrammingLanguageCommand) (*model.ProgrammingLanguage, error) {
 			require.Equal(t, "lang-1", id)
 			require.NotNil(t, req.Name)
 			return &model.ProgrammingLanguage{ID: id, Code: "net", Name: *req.Name}, nil
@@ -147,7 +147,7 @@ func TestProgrammingLanguageAPI_CreateRejectsClientCode(t *testing.T) {
 func TestProgrammingLanguageAPI_UpdateBindsEmptyResourceRequests(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	service := &mockProgrammingLanguageService{
-		updateFn: func(_ context.Context, id string, req service.UpdateProgrammingLanguageCommand) (*model.ProgrammingLanguage, error) {
+		updateFn: func(_ context.Context, id string, req programminglanguage.UpdateProgrammingLanguageCommand) (*model.ProgrammingLanguage, error) {
 			require.Equal(t, "lang-1", id)
 			require.NotNil(t, req.CPUReq)
 			require.NotNil(t, req.MemReq)
@@ -176,10 +176,10 @@ func TestProgrammingLanguageAPI_ErrorMapping(t *testing.T) {
 		getFn: func(context.Context, string) (*model.ProgrammingLanguage, error) {
 			return nil, bcode.ErrProgrammingLanguageNotFound
 		},
-		createFn: func(context.Context, service.CreateProgrammingLanguageCommand) (*model.ProgrammingLanguage, error) {
+		createFn: func(context.Context, programminglanguage.CreateProgrammingLanguageCommand) (*model.ProgrammingLanguage, error) {
 			return nil, bcode.ErrProgrammingLanguageExists
 		},
-		updateFn: func(context.Context, string, service.UpdateProgrammingLanguageCommand) (*model.ProgrammingLanguage, error) {
+		updateFn: func(context.Context, string, programminglanguage.UpdateProgrammingLanguageCommand) (*model.ProgrammingLanguage, error) {
 			return nil, bcode.ErrProgrammingLanguageExists
 		},
 	}

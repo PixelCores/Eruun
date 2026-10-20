@@ -3,15 +3,18 @@ package api
 import (
 	"github.com/gin-gonic/gin"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
+	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/conversion"
+	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/validation"
+	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 )
 
 type applications struct {
-	ApplicationService     service.ApplicationsService       `inject:""`
-	RuntimeComponentReader applicationRuntimeComponentReader `inject:""`
-	WorkflowService        service.WorkflowService           `inject:""`
-	ValidationService      service.ValidationService         `inject:""`
-	ConversionService      service.ConversionService         `inject:""`
+	ApplicationService     applicationservice.ApplicationsService `inject:""`
+	RuntimeComponentReader applicationRuntimeComponentReader      `inject:""`
+	WorkflowService        workflowservice.WorkflowService        `inject:""`
+	ValidationService      validation.ValidationService           `inject:""`
+	ConversionService      conversion.ConversionService           `inject:""`
 }
 
 // NewApplications new applications manage

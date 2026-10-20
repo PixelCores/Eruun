@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	eruunv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/jobs"
@@ -155,7 +155,7 @@ func (r *trackedReadCloser) Close() error { r.closed.Add(1); return nil }
 func TestComponentFileStreamChunkLimitAndReaderClose(t *testing.T) {
 	reader := &trackedReadCloser{Reader: bytes.NewReader(bytes.Repeat([]byte("z"), 2*archiveChunkSize+7))}
 	var chunks []*eruunv1.ComponentFileChunk
-	err := streamComponentFile(context.Background(), &service.ComponentFileArchiveStream{
+	err := streamComponentFile(context.Background(), &applicationservice.ComponentFileArchiveStream{
 		Reader: reader, FileName: "archive.zip", ContentType: "application/zip",
 	}, func(item *eruunv1.ComponentFileChunk) error { chunks = append(chunks, item); return nil })
 	require.NoError(t, err)
@@ -237,15 +237,15 @@ func TestDatasetUploadAndDownloadUseExistingArtifactStore(t *testing.T) {
 }
 
 type fakeStreamApplicationService struct {
-	service.ApplicationsService
-	logs  *service.ComponentLogStream
-	shell *service.ComponentShellScriptStream
+	applicationservice.ApplicationsService
+	logs  *applicationservice.ComponentLogStream
+	shell *applicationservice.ComponentShellScriptStream
 }
 
-func (f *fakeStreamApplicationService) StreamComponentLogs(context.Context, string, string, string) (*service.ComponentLogStream, error) {
+func (f *fakeStreamApplicationService) StreamComponentLogs(context.Context, string, string, string) (*applicationservice.ComponentLogStream, error) {
 	return f.logs, nil
 }
-func (f *fakeStreamApplicationService) StreamComponentShellScript(context.Context, string, string, apis.ExecComponentShellScriptRequest) (*service.ComponentShellScriptStream, error) {
+func (f *fakeStreamApplicationService) StreamComponentShellScript(context.Context, string, string, apis.ExecComponentShellScriptRequest) (*applicationservice.ComponentShellScriptStream, error) {
 	return f.shell, nil
 }
 
@@ -277,7 +277,7 @@ func TestLogAndShellStreamsBoundChunksAndCloseResources(t *testing.T) {
 	longLine := bytes.Repeat([]byte("x"), 2*archiveChunkSize+9)
 	reader := &trackedReadCloser{Reader: bytes.NewReader(append(append([]byte(nil), longLine...), '\n'))}
 	adapter := &ApplicationsServer{Applications: &fakeStreamApplicationService{
-		logs: &service.ComponentLogStream{Reader: reader, PodName: "pod", ContainerName: "api"},
+		logs: &applicationservice.ComponentLogStream{Reader: reader, PodName: "pod", ContainerName: "api"},
 	}}
 	logs := &fakeLogStream{ctx: context.Background()}
 	require.NoError(t, adapter.StreamComponentLogs(&eruunv1.ComponentLogsRequest{AppId: "app", ComponentName: "api"}, logs))
@@ -300,7 +300,7 @@ func TestLogAndShellStreamsBoundChunksAndCloseResources(t *testing.T) {
 	events <- kube.PodShellStreamEvent{Type: kube.PodShellStreamEventStdout, Chunk: string(data)}
 	events <- kube.PodShellStreamEvent{Type: kube.PodShellStreamEventExit, ExitCode: 0, Succeeded: true}
 	close(events)
-	adapter.Applications = &fakeStreamApplicationService{shell: &service.ComponentShellScriptStream{Events: events, PodName: "pod", ContainerName: "api"}}
+	adapter.Applications = &fakeStreamApplicationService{shell: &applicationservice.ComponentShellScriptStream{Events: events, PodName: "pod", ContainerName: "api"}}
 	shell := &fakeShellStream{ctx: context.Background()}
 	require.NoError(t, adapter.StreamComponentShell(&eruunv1.ComponentShellRequest{
 		AppId: "app", ComponentName: "api", Request: &eruunv1.AppDTOExecComponentShellScriptRequest{Script: "echo hi"},

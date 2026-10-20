@@ -23,8 +23,8 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/repository"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	access "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/event/workflow/job"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
@@ -252,7 +252,7 @@ func (w *WorkflowCtl) terminalizePrecreatedVersionUpdateCleanupJobs(ctx context.
 	if w == nil || w.Store == nil {
 		return
 	}
-	if err := service.TerminalizePrecreatedVersionUpdateCleanupJobs(ctx, w.Store, taskID, status, reason); err != nil {
+	if err := workflowservice.TerminalizePrecreatedVersionUpdateCleanupJobs(ctx, w.Store, taskID, status, reason); err != nil {
 		klog.Errorf("terminalize cleanup jobs for workflow task %s status=%s failed: %v", taskID, status, err)
 	}
 }

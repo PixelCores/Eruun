@@ -16,6 +16,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 func TestCleanupResourcesJobCtlPinsStatefulSetUIDAcrossRetentionPolls(t *testing.T) {
@@ -24,7 +25,7 @@ func TestCleanupResourcesJobCtlPinsStatefulSetUIDAcrossRetentionPolls(t *testing
 		component := &model.ApplicationComponent{
 			Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 		}
-		statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+		statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 		initialUID := types.UID("initial-statefulset")
 		replacementUID := types.UID("replacement-statefulset")
 		initial := retentionGuardStatefulSet(component.Namespace, statefulSetName, initialUID)
@@ -92,7 +93,7 @@ func TestCleanupResourcesJobCtlPinsStatefulSetUIDAcrossRetentionPolls(t *testing
 		component := &model.ApplicationComponent{
 			Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 		}
-		statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+		statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 		statefulSetUID := types.UID("stable-statefulset")
 		initial := retentionGuardStatefulSet(component.Namespace, statefulSetName, statefulSetUID)
 		initial.Generation = 2
@@ -154,7 +155,7 @@ func TestCleanupResourcesJobCtlPinsPreflightStatefulSetIdentityBeforeFirstRetent
 			component := &model.ApplicationComponent{
 				ID: 1, Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 			}
-			statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+			statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 			initialUID := types.UID("preflight-statefulset")
 			var objects []k8sruntime.Object
 			if tt.statefulSetWasFound {
@@ -330,7 +331,7 @@ func newRetentionGuardController(
 	component := &model.ApplicationComponent{
 		Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	pvc := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{
 		Name: pvcTemplate + "-" + statefulSetName + "-0", Namespace: component.Namespace, ResourceVersion: "11",
 	}}

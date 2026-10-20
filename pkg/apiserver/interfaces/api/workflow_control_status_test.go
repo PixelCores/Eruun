@@ -14,7 +14,7 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
+	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -344,7 +344,7 @@ func TestGetApplicationStatusEndpoint(t *testing.T) {
 
 func TestApplicationStatusRuntimeReaderWiring(t *testing.T) {
 	t.Run("production service implements private reader", func(t *testing.T) {
-		appService := service.NewApplicationService()
+		appService := applicationservice.NewApplicationService()
 		runtimeReader, ok := appService.(applicationRuntimeComponentReader)
 		require.True(t, ok)
 		require.NotNil(t, runtimeReader)
@@ -353,8 +353,8 @@ func TestApplicationStatusRuntimeReaderWiring(t *testing.T) {
 	t.Run("container injects one bean into both interfaces", func(t *testing.T) {
 		appService := &statusReadApplicationService{}
 		dependencies := &struct {
-			ApplicationService     service.ApplicationsService       `inject:""`
-			RuntimeComponentReader applicationRuntimeComponentReader `inject:""`
+			ApplicationService     applicationservice.ApplicationsService `inject:""`
+			RuntimeComponentReader applicationRuntimeComponentReader      `inject:""`
 		}{}
 		beanContainer := containerutil.NewContainer()
 		require.NoError(t, beanContainer.Provides(appService, dependencies))

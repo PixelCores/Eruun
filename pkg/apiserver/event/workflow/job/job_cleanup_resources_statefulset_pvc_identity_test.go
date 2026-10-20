@@ -19,6 +19,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 func TestCleanupResourcesJobCtlRejectsPVCCheckpointWriteAfterExecutionTakeover(t *testing.T) {
@@ -67,7 +68,7 @@ func TestCleanupResourcesJobCtlPVCDeletePreconditionsRejectLateProtection(t *tes
 	component := &model.ApplicationComponent{
 		Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	pvc := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{
 		Name: "data-" + statefulSetName + "-0", Namespace: component.Namespace,
 		UID: types.UID("original-pvc-uid"), ResourceVersion: "1",
@@ -121,7 +122,7 @@ func TestCleanupResourcesJobCtlPVCDeleteNotFoundRejectsSameNameReplacement(t *te
 	component := &model.ApplicationComponent{
 		Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	pvc := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{
 		Name: "data-" + statefulSetName + "-0", Namespace: component.Namespace,
 		UID: types.UID("original-pvc-uid"), ResourceVersion: "1",
@@ -179,7 +180,7 @@ func TestCleanupResourcesJobCtlRejectsMissingPVCDeleteIdentity(t *testing.T) {
 			component := &model.ApplicationComponent{
 				Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 			}
-			statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+			statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 			pvc := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{
 				Name: "data-" + statefulSetName + "-0", Namespace: component.Namespace,
 				UID: tt.uid, ResourceVersion: tt.resourceVersion,
@@ -221,7 +222,7 @@ func TestCleanupResourcesJobCtlRestoresPVCIdentityAndRejectsReplacementOnSameTas
 	component := &model.ApplicationComponent{
 		Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	pvc := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{
 		Name: "data-" + statefulSetName + "-0", Namespace: component.Namespace,
 		UID: types.UID("original-pvc-uid"), ResourceVersion: "1",
@@ -273,7 +274,7 @@ func TestCleanupResourcesJobCtlDoesNotOverwriteConcurrentPodCheckpoint(t *testin
 	component := &model.ApplicationComponent{
 		Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	pvc := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{
 		Name: "data-" + statefulSetName + "-0", Namespace: component.Namespace,
 		UID: types.UID("pvc-uid"), ResourceVersion: "1",
@@ -377,7 +378,7 @@ func TestCleanupResourcesJobCtlBoundsCheckpointChurnDuringSaveInfo(t *testing.T)
 	component := &model.ApplicationComponent{
 		Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	marker := versionUpdateRequireStatefulSetPVCDeletionInternalInfo(t, "data")
 	store := &cleanupComponentStore{jobInfo: &model.JobInfo{
 		ID: 10, Type: string(config.JobCleanupResources), AppID: component.AppID,
@@ -420,7 +421,7 @@ func TestCleanupResourcesJobCtlRejectsExtraLabelMatchedStatefulSetBeforeMutation
 	component := &model.ApplicationComponent{
 		ID: 1, Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	componentLabels := map[string]string{
 		config.LabelAppID:         component.AppID,
 		config.LabelComponentName: component.Name,

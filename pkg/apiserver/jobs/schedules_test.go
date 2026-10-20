@@ -14,8 +14,8 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	domainservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
+	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	sqlstore "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore/sql"
@@ -196,7 +196,7 @@ func TestDispatchScheduleConcurrencyPolicies(t *testing.T) {
 }
 
 type scheduleWorkflowService struct {
-	domainservice.WorkflowService
+	workflowservice.WorkflowService
 	cancel func(context.Context, string, string, string) error
 }
 

@@ -54,7 +54,7 @@ func (c *DeployJobCtl) Clean(ctx context.Context) {
 		return
 	}
 	namespace := c.job.Namespace
-	name := buildWebServiceName(c.job.Name, c.job.ResourceAppNameOrID())
+	name := naming.WebServiceName(c.job.Name, c.job.ResourceAppNameOrID())
 	var labels map[string]string
 	if deploy, ok := optionalJobInfo[*appsv1.Deployment](c.job); ok {
 		if deploy.Namespace != "" {
@@ -105,7 +105,7 @@ func (c *DeployJobCtl) run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	deployName = buildWebServiceName(c.job.Name, c.job.ResourceAppNameOrID())
+	deployName = naming.WebServiceName(c.job.Name, c.job.ResourceAppNameOrID())
 	deploy.Name = deployName
 	if deploy.Spec.Replicas != nil {
 		c.desiredReplicas = *deploy.Spec.Replicas
@@ -194,7 +194,7 @@ func (c *DeployJobCtl) run(ctx context.Context) error {
 }
 
 func (c *DeployJobCtl) wait(ctx context.Context) error {
-	targetName := buildWebServiceName(c.job.Name, c.job.ResourceAppNameOrID())
+	targetName := naming.WebServiceName(c.job.Name, c.job.ResourceAppNameOrID())
 	namespace := c.job.Namespace
 	var expectedImages []string
 	if deploy, ok := optionalJobInfo[*appsv1.Deployment](c.job); ok {
@@ -236,7 +236,7 @@ func (c *DeployJobCtl) timeout() int64 {
 }
 
 func GenerateWebService(component *model.ApplicationComponent, properties *model.Properties) (*GenerateServiceResult, error) {
-	deploymentName := buildWebServiceName(component.Name, component.ResourceNameKey())
+	deploymentName := naming.WebServiceName(component.Name, component.ResourceNameKey())
 	containerName := utils.NormalizeLowerStrip(component.Name)
 	var ContainerPort []corev1.ContainerPort
 	for _, v := range properties.Ports {

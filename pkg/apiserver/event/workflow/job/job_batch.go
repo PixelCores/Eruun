@@ -27,6 +27,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/datastore"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils"
 	workflowconfig "github.com/PixelCores/Eruun/pkg/apiserver/workflow/config"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/signal"
 )
 
@@ -52,7 +53,7 @@ func buildJob(component *model.ApplicationComponent, properties *model.Propertie
 
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        buildJobName(component.Name, component.ResourceNameKey()),
+			Name:        naming.JobName(component.Name, component.ResourceNameKey()),
 			Namespace:   component.Namespace,
 			Labels:      labels,
 			Annotations: annotations,
@@ -112,7 +113,7 @@ func buildCronJob(component *model.ApplicationComponent, properties *model.Prope
 	}
 	return &batchv1.CronJob{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        buildCronJobName(component.Name, component.ResourceNameKey()),
+			Name:        naming.CronJobName(component.Name, component.ResourceNameKey()),
 			Namespace:   component.Namespace,
 			Labels:      labels,
 			Annotations: BuildAnnotations(component),

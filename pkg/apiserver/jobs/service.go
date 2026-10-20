@@ -15,7 +15,6 @@ import (
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/account"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
@@ -35,7 +34,7 @@ import (
 )
 
 type Service struct {
-	Workflow             service.WorkflowService `inject:""`
+	Workflow             workflow.WorkflowService `inject:""`
 	scheduleDispatchMu   sync.Mutex
 	scheduleDispatchPage int
 	Store                artifacts.Backend

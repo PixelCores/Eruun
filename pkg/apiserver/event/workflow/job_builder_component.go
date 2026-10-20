@@ -100,7 +100,7 @@ func createObjectJobsFromResult(additionalObjects []client.Object, component *mo
 		}
 		if ingress, ok := obj.(*networkingv1.Ingress); ok {
 			baseName := nameOrFallback(ingress.Name, component.Name)
-			normalizedName := job.BuildIngressName(baseName, resourceAppName)
+			normalizedName := naming.IngressName(baseName, resourceAppName)
 			ingress.Name = normalizedName
 			if ingress.Namespace == "" {
 				ingress.Namespace = component.Namespace

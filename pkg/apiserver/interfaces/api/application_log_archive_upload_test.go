@@ -12,7 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
+	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
 )
@@ -21,15 +21,15 @@ type fakeLogArchiveDownloadApplicationService struct {
 	noopApplicationsService
 	lastAppID string
 	lastReq   apis.LogArchiveDownloadRequest
-	stream    *service.ComponentFileArchiveStream
+	stream    *applicationservice.ComponentFileArchiveStream
 	err       error
 }
 
-func (f *fakeLogArchiveDownloadApplicationService) DownloadLogArchive(_ context.Context, appID string, req apis.LogArchiveDownloadRequest) (*service.ComponentFileArchiveStream, error) {
+func (f *fakeLogArchiveDownloadApplicationService) DownloadLogArchive(_ context.Context, appID string, req apis.LogArchiveDownloadRequest) (*applicationservice.ComponentFileArchiveStream, error) {
 	f.lastAppID = appID
 	f.lastReq = req
 	if f.stream == nil && f.err == nil {
-		f.stream = &service.ComponentFileArchiveStream{
+		f.stream = &applicationservice.ComponentFileArchiveStream{
 			Reader:        io.NopCloser(strings.NewReader("zip")),
 			PodName:       "pod-default",
 			ContainerName: "main",
@@ -43,7 +43,7 @@ func (f *fakeLogArchiveDownloadApplicationService) DownloadLogArchive(_ context.
 func TestLogArchiveDownloadEndpointWritesArchiveStream(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	appSvc := &fakeLogArchiveDownloadApplicationService{
-		stream: &service.ComponentFileArchiveStream{
+		stream: &applicationservice.ComponentFileArchiveStream{
 			Reader:        io.NopCloser(strings.NewReader("zip-bytes")),
 			Namespace:     "default",
 			PodName:       "pod-worker",

@@ -1,14 +1,14 @@
 package api
 
 import (
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
+	workflowservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/workflow"
 	"github.com/gin-gonic/gin"
 )
 
 // applicationWorkflows handles workflow operations that do not need the
 // application service.
 type applicationWorkflows struct {
-	WorkflowService service.WorkflowService `inject:""`
+	WorkflowService workflowservice.WorkflowService `inject:""`
 }
 
 func (app *applicationWorkflows) RegisterRoutes(group *gin.RouterGroup) {

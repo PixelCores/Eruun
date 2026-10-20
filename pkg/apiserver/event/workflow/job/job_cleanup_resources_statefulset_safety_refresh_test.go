@@ -17,6 +17,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	domainspec "github.com/PixelCores/Eruun/pkg/apiserver/domain/spec"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 func TestCleanupResourcesJobCtlRefreshesStatefulSetSafetyBeforeRetentionMutation(t *testing.T) {
@@ -231,7 +232,7 @@ func newRequiredStatefulSetSafetyRefreshController(
 	component := &model.ApplicationComponent{
 		ID: 1, Name: "mysql", AppID: "app-1", Namespace: "default", ComponentType: config.StoreJob,
 	}
-	statefulSetName := buildStoreSeverName(component.Name, component.ResourceNameKey())
+	statefulSetName := naming.StoreServerName(component.Name, component.ResourceNameKey())
 	statefulSetUID := types.UID("required-statefulset-uid")
 	policy := &appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy{
 		WhenDeleted: appsv1.DeletePersistentVolumeClaimRetentionPolicyType,

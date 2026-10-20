@@ -12,7 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"k8s.io/klog/v2"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
+	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -42,7 +42,7 @@ func (app *applications) exportComponentFilesZip(c *gin.Context) {
 	writeComponentArchiveStream(c, archive, appID, componentName, "component-export")
 }
 
-func writeComponentArchiveStream(c *gin.Context, archive *service.ComponentFileArchiveStream, appID, componentName, fallbackBaseName string) {
+func writeComponentArchiveStream(c *gin.Context, archive *applicationservice.ComponentFileArchiveStream, appID, componentName, fallbackBaseName string) {
 	if archive == nil || archive.Reader == nil {
 		apiresponse.ReturnError(c, fmt.Errorf("component file archive stream is empty"))
 		return

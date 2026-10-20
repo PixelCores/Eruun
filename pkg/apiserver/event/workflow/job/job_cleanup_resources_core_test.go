@@ -14,6 +14,7 @@ import (
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
 	"github.com/PixelCores/Eruun/pkg/apiserver/domain/model"
 	cacheutil "github.com/PixelCores/Eruun/pkg/apiserver/infrastructure/cache"
+	"github.com/PixelCores/Eruun/pkg/apiserver/workflow/naming"
 )
 
 func TestCleanupResourcesJobCtlPrioritizesContextTerminationOverOpaqueWorkflowTaskReadError(t *testing.T) {
@@ -165,7 +166,7 @@ func TestCleanupResourcesJobCtlDoesNotRecreateRemovedComponent(t *testing.T) {
 		ComponentType: config.ServerJob,
 	}
 	client := fake.NewSimpleClientset(
-		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: buildWebServiceName(component.Name, component.ResourceNameKey()), Namespace: component.Namespace}},
+		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: naming.WebServiceName(component.Name, component.ResourceNameKey()), Namespace: component.Namespace}},
 	)
 	store := &cleanupComponentStore{
 		jobInfo: &model.JobInfo{
@@ -193,6 +194,6 @@ func TestCleanupResourcesJobCtlDoesNotRecreateRemovedComponent(t *testing.T) {
 	require.Equal(t, config.StatusCompleted, task.Status)
 	require.Nil(t, store.putComponent)
 
-	_, err := client.AppsV1().Deployments(component.Namespace).Get(ctx, buildWebServiceName(component.Name, component.ResourceNameKey()), metav1.GetOptions{})
+	_, err := client.AppsV1().Deployments(component.Namespace).Get(ctx, naming.WebServiceName(component.Name, component.ResourceNameKey()), metav1.GetOptions{})
 	require.True(t, k8serrors.IsNotFound(err))
 }

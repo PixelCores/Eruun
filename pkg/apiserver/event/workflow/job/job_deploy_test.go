@@ -651,7 +651,7 @@ func TestDeploymentForExistingUpdateReplacesVolumeMounts(t *testing.T) {
 
 func TestDeployJobCtlRunReplacesStaleDeploymentVolumeMounts(t *testing.T) {
 	ctx := WithCleanupTracker(context.Background())
-	deployName := buildWebServiceName("api", "app-1")
+	deployName := naming.WebServiceName("api", "app-1")
 	current := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	current.Name = deployName
 	current.Namespace = "default"
@@ -761,7 +761,7 @@ func TestDeployJobCtlRunReplacesStaleDeploymentVolumeMounts(t *testing.T) {
 
 func TestDeployJobCtlRunSkipsDeploymentWithOnlyLiveSystemLabels(t *testing.T) {
 	ctx := WithCleanupTracker(context.Background())
-	deployName := buildWebServiceName("api", "app-1")
+	deployName := naming.WebServiceName("api", "app-1")
 	current := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	current.Name = deployName
 	current.Namespace = "default"
@@ -813,7 +813,7 @@ func TestDeployJobCtlRunSkipsDeploymentWithOnlyLiveSystemLabels(t *testing.T) {
 
 func TestDeployJobCtlRunSkipsDeploymentWithOnlyImmutableSelectorDrift(t *testing.T) {
 	ctx := WithCleanupTracker(context.Background())
-	deployName := buildWebServiceName("api", "app-1")
+	deployName := naming.WebServiceName("api", "app-1")
 	current := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	current.Name = deployName
 	current.Namespace = "default"
@@ -860,7 +860,7 @@ func TestDeployJobCtlRunSkipsDeploymentWithOnlyImmutableSelectorDrift(t *testing
 
 func TestDeployJobCtlRunUpdatesDeploymentReplicasOnly(t *testing.T) {
 	ctx := WithCleanupTracker(context.Background())
-	deployName := buildWebServiceName("api", "app-1")
+	deployName := naming.WebServiceName("api", "app-1")
 	current := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	current.Name = deployName
 	current.Namespace = "default"
@@ -904,7 +904,7 @@ func TestDeployJobCtlRunUpdatesDeploymentReplicasOnly(t *testing.T) {
 
 func TestDeployJobCtlRunAnnotatesChangedPodTemplateWithTaskID(t *testing.T) {
 	ctx := WithCleanupTracker(context.Background())
-	deployName := buildWebServiceName("api", "app-1")
+	deployName := naming.WebServiceName("api", "app-1")
 	current := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	current.Name = deployName
 	current.Namespace = "default"
@@ -958,7 +958,7 @@ func TestDeployJobCtlRunAnnotatesChangedPodTemplateWithTaskID(t *testing.T) {
 
 func TestDeployJobCtlRunRestoresTaskAnnotationForUpToDateDeployment(t *testing.T) {
 	ctx := WithCleanupTracker(context.Background())
-	deployName := buildWebServiceName("api", "app-1")
+	deployName := naming.WebServiceName("api", "app-1")
 	current := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	current.Name = deployName
 	current.Namespace = "default"
@@ -1019,7 +1019,7 @@ func TestDeploymentPodTemplateChangedPreservesExistingTaskIDAnnotation(t *testin
 
 func TestDeployJobCtlRunReplacesStaleDeploymentVolumeSource(t *testing.T) {
 	ctx := WithCleanupTracker(context.Background())
-	deployName := buildWebServiceName("api", "app-1")
+	deployName := naming.WebServiceName("api", "app-1")
 	current := deploymentWithStrategy(appsv1.DeploymentStrategy{})
 	current.Name = deployName
 	current.Namespace = "default"

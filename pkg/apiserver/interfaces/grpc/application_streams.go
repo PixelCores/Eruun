@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/PixelCores/Eruun/pkg/apiserver/config"
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
+	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 	apis "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/dto/v1"
 	eruunv1 "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/grpc/pb/v1"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/bcode"
@@ -58,7 +58,7 @@ func (s *ApplicationsServer) StreamComponentLogs(req *eruunv1.ComponentLogsReque
 	}
 }
 
-func streamComponentFile(ctx context.Context, archive *service.ComponentFileArchiveStream, send func(*eruunv1.ComponentFileChunk) error) error {
+func streamComponentFile(ctx context.Context, archive *applicationservice.ComponentFileArchiveStream, send func(*eruunv1.ComponentFileChunk) error) error {
 	if archive == nil || archive.Reader == nil {
 		return rpcError(fmt.Errorf("component file archive is empty"))
 	}

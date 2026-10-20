@@ -11,7 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"k8s.io/klog/v2"
 
-	"github.com/PixelCores/Eruun/pkg/apiserver/domain/service"
+	applicationservice "github.com/PixelCores/Eruun/pkg/apiserver/domain/service/application"
 	apiresponse "github.com/PixelCores/Eruun/pkg/apiserver/interfaces/api/response"
 	"github.com/PixelCores/Eruun/pkg/apiserver/utils/kube"
 )
@@ -42,7 +42,7 @@ func (app *applications) streamComponentShellScript(c *gin.Context) {
 	}
 }
 
-func streamShellScriptSSEEvents(ctx context.Context, stream *service.ComponentShellScriptStream, writer io.Writer, flusher http.Flusher) error {
+func streamShellScriptSSEEvents(ctx context.Context, stream *applicationservice.ComponentShellScriptStream, writer io.Writer, flusher http.Flusher) error {
 	if stream == nil {
 		return fmt.Errorf("shell stream is nil")
 	}
